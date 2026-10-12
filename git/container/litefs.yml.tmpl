@@ -1,0 +1,19 @@
+# rendered by git-daemon.sh, only __CANDIDATE__ changes per restart
+
+fuse:
+  dir: "/var/lib/phosphorus/git/litefs"
+  allow-other: true
+
+data:
+  dir: "/var/lib/litefs-internal"
+
+# candidates only: a servant's db read-only
+exec:
+  - cmd: "env HOME=/var/lib/phosphorus/git setpriv --reuid=git --regid=phos --init-groups forgejo -w /var/lib/phosphorus/git -c /var/lib/phosphorus/git/conf/app.ini web"
+    if-candidate: true
+
+lease:
+  type: "static"
+  hostname: "__HOSTNAME__"
+  advertise-url: "http://__HOSTNAME__:20202"
+  candidate: __CANDIDATE__

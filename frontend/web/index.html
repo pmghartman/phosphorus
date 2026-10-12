@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>phosphorus</title>
+<link rel="icon" href="/favicon.ico?v=8" sizes="32x32">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=8">
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=8">
+<link rel="preload" href="/vendor/geist-mono.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/style.css">
+<script>
+// the browser's own light or dark unless a theme was picked, set before paint
+(() => {
+  let pick = null;
+  try { pick = localStorage.getItem('phos-theme'); } catch {}
+  const theme = pick || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+  if (theme === 'light' || theme === 'oled') document.documentElement.dataset.theme = theme;
+})();
+</script>
+</head>
+<body>
+<!-- the phi glyph's purple and orange as an svg paint, bands sliding on its 6s ease,
+outside #mesh-svg (emptied every redraw) so it never restarts -->
+<svg class="svg-defs" aria-hidden="true" focusable="false">
+  <defs>
+    <linearGradient id="phos-grad" x1="0" y1="0" x2="1" y2="1" spreadMethod="repeat">
+      <stop offset="0" class="phos-grad-p"></stop>
+      <stop offset="0.5" class="phos-grad-o"></stop>
+      <stop offset="1" class="phos-grad-p"></stop>
+      <animateTransform attributeName="gradientTransform" type="translate" values="0 0;1 1;0 0"
+        keyTimes="0;0.5;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1" dur="6s" repeatCount="indefinite"></animateTransform>
+    </linearGradient>
+  </defs>
+</svg>
+<div class="layout">
+
+  <section class="pane pane-main">
+    <div class="tabbar" id="tabbar">
+      <div class="tabbar-tabs" id="tabbar-tabs">
+        <span class="tab-ink" aria-hidden="true"></span>
+        <button class="tab-btn tab-brand" data-tab-id="about" title="about (p)"><span class="brand-text"><span class="brand-name">phosphorus </span><span class="brand-ver"></span></span></button>
+        <button class="tab-btn active" data-tab-id="services"><span class="tab-label">home</span></button>
+        <button class="tab-btn" data-tab-id="files"><span class="tab-label">files</span></button>
+        <button class="tab-btn" data-tab-id="status"><span class="tab-label">status</span></button>
+        <button class="tab-btn" data-tab-id="chat"><span class="tab-label">chat</span><span class="chat-badge" id="chat-tab-badge" hidden></span></button>
+        <button class="tab-btn" data-tab-id="projects"><span class="tab-label">projects</span></button>
+      </div>
+      <!-- phones: the open tabs, from the one tab shown -->
+      <div class="tab-menu tab-pick" id="tab-pick" hidden>
+        <div class="tab-menu-title">tabs</div>
+        <ul class="tab-menu-list"></ul>
+      </div>
+      <div class="tab-add-wrap">
+        <button class="tab-add" id="tab-add" title="open a tab, terminal or file">+</button>
+        <div class="tab-menu" id="tab-menu" hidden>
+          <div class="tab-menu-title">open terminal</div>
+          <ul id="tab-menu-list" class="tab-menu-list"></ul>
+          <div class="tab-menu-title tab-menu-sub" id="tab-menu-tabs-title" hidden>open tab</div>
+          <ul id="tab-menu-tabs" class="tab-menu-list" hidden></ul>
+          <div class="tab-menu-title tab-menu-sub" id="tab-menu-recent-title" hidden>recent files</div>
+          <ul id="tab-menu-recent" class="tab-menu-list" hidden></ul>
+        </div>
+      </div>
+      <div class="tabbar-fill">
+        <!-- the mesh-wide pair: the update popup and the theme -->
+        <div class="top-side top-mesh-wide">
+          <div class="update-wrap">
+            <button type="button" id="top-update" title="mesh update (u)" aria-label="mesh update" aria-controls="update-modal" aria-expanded="false"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M12.5 1.5v3h-3"/></svg></button>
+            <div class="update-pane" id="update-modal" hidden>
+              <div class="update-pane-header">
+                <span id="update-title">mesh update</span>
+                <button class="modal-close" id="update-close" type="button" title="close (u)" aria-label="close">&times;</button>
+              </div>
+              <div class="update-pane-body">
+                <div class="update-confirm" id="update-confirm" hidden>
+                  <p id="update-confirm-text"></p>
+                  <input class="update-pass" id="update-pass" type="text" placeholder="password" autocomplete="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" hidden>
+                  <div class="update-actions">
+                    <button type="button" id="update-confirm-cancel">cancel</button>
+                    <button type="button" id="update-confirm-go" class="primary">update</button>
+                  </div>
+                </div>
+                <div class="update-progress" id="update-progress" hidden>
+                  <span class="update-progress-track">[<span class="update-progress-cells" id="update-progress-cells"></span>]</span>
+                  <span class="update-progress-label" id="update-progress-label"></span>
+                </div>
+                <div class="update-mesh" id="update-mesh">
+                  <ul class="update-versions" id="update-versions"></ul>
+                  <div class="update-actions" id="update-start">
+                    <button type="button" class="primary" id="mesh-update">update</button>
+                  </div>
+                  <div class="update-actions" id="update-foot" hidden>
+                    <button type="button" id="update-cancel" class="danger">cancel</button>
+                    <button type="button" id="update-continue" hidden>continue</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="theme-wrap top-theme-wrap">
+          <button class="theme-toggle top-theme" type="button" title="theme" aria-label="theme" aria-haspopup="true">
+            <svg class="theme-icon sun" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="3"/><path d="M8 1v1.8M8 13.2V15M1 8h1.8M13.2 8H15M3 3l1.3 1.3M11.7 11.7L13 13M3 13l1.3-1.3M11.7 4.3L13 3"/></svg>
+            <svg class="theme-icon moon" viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 10A6 6 0 0 1 6 2.5a6 6 0 1 0 7.5 7.5z"/></svg>
+            <svg class="theme-icon moon-thin" viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 10A6 6 0 0 1 6 2.5a6 6 0 1 0 7.5 7.5z"/></svg>
+          </button>
+          <div class="tab-menu theme-menu" hidden>
+            <div class="tab-menu-title">theme</div>
+            <ul class="tab-menu-list"></ul>
+          </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal git-modal" id="git-modal" hidden role="dialog" aria-modal="true" aria-labelledby="git-modal-title">
+      <div class="modal-box">
+        <div class="modal-header">
+          <span id="git-modal-title">change git master</span>
+          <button class="modal-close" id="git-modal-close" type="button" title="close">&times;</button>
+        </div>
+        <div class="update-confirm">
+          <dl class="git-switch" id="git-switch"></dl>
+          <p class="git-modal-note" id="git-modal-note"></p>
+          <div class="update-actions">
+            <button type="button" id="git-modal-cancel">cancel</button>
+            <button type="button" id="git-modal-go" class="primary">make master</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal show-modal" id="show-modal" hidden role="dialog" aria-modal="true" aria-labelledby="show-modal-title">
+      <div class="modal-box">
+        <div class="modal-header">
+          <span id="show-modal-title">shared workspace</span>
+          <button class="modal-close" id="show-modal-close" type="button" title="close">&times;</button>
+        </div>
+        <div class="update-confirm">
+          <p id="show-modal-text"></p>
+          <div class="update-actions">
+            <button type="button" id="show-modal-no">not now</button>
+            <button type="button" id="show-modal-go" class="primary">open</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="pane-content" id="pane-content">
+      <div class="view active" id="view-services">
+        <div class="home-cols">
+          <div class="home-col">
+            <div class="home-col-head">services</div>
+            <div id="git-card" class="git-group" hidden></div>
+            <ul id="services-list" class="list"></ul>
+          </div>
+          <div class="home-divider"></div>
+          <div class="home-col">
+            <div class="home-col-head">game servers</div>
+            <ul id="game-servers-list" class="list">
+              <li class="empty">none yet</li>
+            </ul>
+            <div class="home-note">note: game servers reachable inside the mesh only
+              <div class="join-key" id="join-key">
+                <button type="button" class="join-key-btn" id="join-key-btn" title="single use, lasts 3 days">request guest key</button>
+                <a href="https://tailscale.com/download" target="_blank" rel="noopener">install tailscale</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="view" id="view-files">
+        <div class="files-wrap">
+          <div class="files-body">
+            <div class="files-stage">
+              <div class="files-panes" id="files-panes"></div>
+              <div class="files-preview" id="files-preview" hidden></div>
+            </div>
+            <span class="files-acts" id="files-acts">
+              <button type="button" data-act="mkdir" title="new folder"></button>
+              <button type="button" data-act="upload" title="upload, or drag files onto any folder"></button>
+              <button type="button" data-act="refresh" title="refresh"></button>
+              <button type="button" data-act="split" title="second pane, for host-to-host transfers"></button>
+              <button type="button" data-act="view" title="view pane, double click a file to open here"></button>
+            </span>
+            <input type="file" id="files-input" multiple hidden>
+          </div>
+          <div class="files-status">
+            <span class="files-msg" id="files-msg" hidden></span>
+            <span class="files-xferbar" id="files-xferbar" hidden>
+              <span class="files-xfer-what"></span>
+              <span class="files-xfer-track">[<span class="files-xfer-cells"></span>]</span>
+              <span class="files-xfer-pct"></span>
+            </span>
+          </div>
+        </div>
+
+        <template id="files-pane-tpl">
+          <section class="files-pane">
+            <ul class="files-tree"></ul>
+          </section>
+        </template>
+
+        <div class="modal files-modal" id="files-modal" hidden>
+          <div class="modal-box">
+            <div class="modal-header">
+              <span id="files-ask-title">files</span>
+              <button class="modal-close" id="files-ask-close" type="button" title="close">&times;</button>
+            </div>
+            <div class="update-confirm">
+              <p id="files-ask-text"></p>
+              <select class="update-pass" id="files-ask-where" hidden></select>
+              <input class="update-pass" id="files-ask-input" type="text" autocomplete="off" list="files-ask-dirs" hidden>
+              <datalist id="files-ask-dirs"></datalist>
+              <div class="update-actions">
+                <button type="button" id="files-ask-cancel">cancel</button>
+                <button type="button" id="files-ask-go" class="primary">ok</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+      <div class="view" id="view-status">
+        <div class="st-top" id="st-top">
+          <section class="st-mesh" id="st-mesh" hidden><div class="st-card-head">mesh</div><div class="st-mesh-grid"><div><div></div><canvas class="st-graph st-mesh-g"></canvas></div><div><div></div><div class="st-sum-net st-mesh-g"><canvas class="st-graph"></canvas><canvas class="st-graph"></canvas></div></div></div></section>
+          <section class="st-mesh st-model" id="st-model" hidden><div class="st-card-head">model</div><div class="st-model-pick" hidden></div><div class="st-model-roles"></div></section>
+        </div>
+        <div class="st-hosts" id="st-hosts"><div class="st-wait">connecting</div></div>
+      </div>
+      <!-- the corner's chat panel moved in beside the conversations while this is up -->
+      <div class="view" id="view-chat">
+        <div class="cw">
+          <div class="cw-side"><div class="home-col-head">conversations</div><nav class="cw-list" id="cw-list" aria-label="conversations"></nav></div>
+          <div class="cw-main" id="cw-main"></div>
+        </div>
+      </div>
+      <!-- the orangutan's long projects: the list, and the one picked or a new one -->
+      <div class="view" id="view-projects">
+        <div class="pj">
+          <div class="pj-side"><div class="home-col-head">projects</div><nav class="pj-list" id="pj-list" aria-label="projects"></nav></div>
+          <div class="pj-main" id="pj-main"><div class="home-col-head" id="pj-head">project</div><div class="pj-body" id="pj-body"></div></div>
+        </div>
+      </div>
+      <div class="view" id="view-about">
+        <div class="about-wrap">
+          <div class="about-brand">
+          <pre class="about-art" aria-hidden="true">             -@@@@@@@@@@@@@@@@@@=
+              ..-=*@@@@@@@@+-:..
+                   -@@@@@@=
+          .:-=++***#@@@@@@%****+=-:.
+      :+#@@@@@#*+==*@@@@@@*==+*#@@@@@#+:
+   .+@@@@@@*:      :@@@@@@-      .+@@@@@@*.
+  +@@@@@@#.        :@@@@@@-         *@@@@@@*
+ #@@@@@@#          :@@@@@@-          *@@@@@@%
+=@@@@@@@.          :@@@@@@-           @@@@@@@+
+%@@@@@@%           :@@@@@@-           #@@@@@@%
+%@@@@@@#           :@@@@@@-           +@@@@@@%
+*@@@@@@%           :@@@@@@-           #@@@@@@*
+.@@@@@@@.          :@@@@@@-          .@@@@@@@:
+ :@@@@@@%.         :@@@@@@-          %@@@@@@-
+  .#@@@@@@-        :@@@@@@-        -%@@@@@#.
+    :*@@@@@%=.     :@@@@@@-     .=%@@@@@*:
+       :+#@@@@@%**+*@@@@@@#++*%@@@@@#+:
+           .:-=++**#@@@@@@#**++=-:.
+                   :@@@@@@-
+                .:=%@@@@@@%=:.
+             :@@@@@@@@@@@@@@@@@@%</pre>
+            <div class="about-version" id="about-version"></div>
+          </div>
+          <div class="about-info">
+            <div class="about-row"><span class="about-key">copyright</span><span class="about-val">&copy; 2026 Patrick Hartman.</span></div>
+            <div class="about-row"><span class="about-key">license</span><span class="about-val">Apache License 2.0; see LICENSE.</span></div>
+            <div class="about-row"><span class="about-key">packages</span><span class="about-val">Each bundled package keeps its own license: Apache-2.0 (cloudflared, Docker, LiteFS), BSD-3-Clause (Tailscale), MIT (Node.js, ws, ssh2, xterm.js, KaTeX), OFL-1.1 (Geist Mono), GPL-3.0-or-later (Forgejo), and Debian's per-package terms. See THIRD_PARTY_NOTICES.md.</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- filled by app.js for whatever is on screen -->
+    <div class="keybar" id="keybar"></div>
+  </section>
+
+  <aside class="pane pane-chat">
+    <div class="mesh-panel" id="mesh-panel">
+      <div class="mesh-header">
+        <span>mesh</span>
+        <span class="mesh-count" id="mesh-count"></span>
+      </div>
+      <div class="mesh-body">
+        <div class="mesh-graph-wrap" id="mesh-graph-wrap">
+          <button class="mesh-toggle" id="mesh-toggle" type="button" aria-label="expand mesh graph" aria-expanded="false">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><polyline points="6 3 11 8 6 13"></polyline></svg>
+          </button>
+          <svg id="mesh-svg" class="mesh-svg"></svg>
+          <div class="mesh-legend" aria-hidden="true">
+            <span><span class="mesh-legend-star">*</span> git servant</span>
+            <span class="mesh-legend-git">git master</span>
+            <span><span class="mesh-legend-model">c</span> chimp model</span>
+            <span><span class="mesh-legend-model">o</span> orangutan model</span>
+          </div>
+          <div class="mesh-host-note" id="mesh-host-note" role="status" hidden></div>
+        </div>
+        <div class="mesh-stats" id="mesh-stats">
+          <div class="mesh-stats-head">
+            <span>node</span><span>ping</span>
+          </div>
+          <div class="mesh-stats-rows" id="mesh-stats-rows"></div>
+        </div>
+      </div>
+    </div>
+    <div class="chat-panel" id="chat-panel">
+      <div class="chat-header">
+        <button class="chat-title" id="chat-title" type="button" title="conversations"><span class="chat-title-text">#mesh</span><span class="chat-title-dot" hidden></span><svg class="chat-title-caret" viewBox="0 0 16 16" aria-hidden="true"><polyline points="4 6 8 10 12 6"></polyline></svg></button>
+        <span class="chat-status" id="chat-status"><span class="label">offline</span></span>
+        <span class="chat-tools">
+          <button class="chat-icon chat-files-btn" id="chat-files-btn" type="button" aria-label="attachments" hidden>
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5h5l3 3v8H4z"></path><polyline points="9 2.5 9 5.5 12 5.5"></polyline><line x1="6" y1="8.5" x2="10" y2="8.5"></line><line x1="6" y1="11" x2="10" y2="11"></line></svg><span class="n">0</span>
+          </button>
+          <button class="chat-icon" id="chat-find-btn" type="button" title="search this conversation (ctrl+f)" aria-label="search">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.2"></circle><line x1="10.2" y1="10.2" x2="13.5" y2="13.5"></line></svg>
+          </button>
+          <button class="chat-icon chat-bell" id="chat-bell" type="button" aria-pressed="false" hidden>
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M8 2.2a3.1 3.1 0 0 0-3.1 3.1v2.2L3.4 10.2h9.2L11.1 7.5V5.3A3.1 3.1 0 0 0 8 2.2z"></path>
+              <path d="M6.6 12a1.4 1.4 0 0 0 2.8 0"></path>
+              <line class="slash" x1="3" y1="13.2" x2="13" y2="2.8"></line>
+            </svg>
+          </button>
+        </span>
+      </div>
+      <div class="tab-menu chat-menu" id="chat-menu" hidden><nav class="cw-list" aria-label="conversations"></nav></div>
+      <div class="chat-find" id="chat-find" hidden>
+        <span class="chat-prompt">/</span><input id="chat-find-input" type="text" placeholder="search this conversation" autocomplete="off" spellcheck="false"><span class="chat-find-count" id="chat-find-count"></span>
+      </div>
+      <ul id="chat-log" class="chat-log"></ul>
+      <div class="chat-drop" id="chat-drop" hidden><span>drop to share</span></div>
+      <form id="chat-join" class="chat-join">
+        <span class="chat-prompt">&gt;</span>
+        <input id="chat-name" type="text" placeholder="your name" maxlength="32" required autocomplete="off">
+        <button type="submit" class="chat-go" id="chat-join-go" aria-label="join" title="join" disabled><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 12.5V3.5M4 7.5L8 3.5l4 4"/></svg></button>
+      </form>
+      <div class="chat-compose" id="chat-compose" hidden>
+        <div class="chat-creds" id="chat-creds" role="dialog" hidden></div>
+        <ul class="chat-cmds" id="chat-cmds" hidden></ul>
+        <div class="chat-bar" id="chat-bar" hidden></div>
+        <ul class="chat-atts" id="chat-atts" hidden></ul>
+        <form id="chat-form" class="chat-form">
+          <span class="chat-prompt">&gt;</span>
+          <span class="chat-chip" id="chat-chip" hidden></span>
+          <textarea id="chat-text" placeholder="message" maxlength="2000" rows="1"></textarea>
+          <button type="button" class="chat-icon chat-attach" id="chat-attach" title="attach files, or paste or drop them" aria-label="attach">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 4.5l-4.8 4.8a1.4 1.4 0 0 0 2 2l5-5a2.8 2.8 0 0 0-4-4l-5 5a4.2 4.2 0 0 0 6 6l4.3-4.3"></path></svg>
+          </button>
+          <button type="submit" class="chat-go" id="chat-send" aria-label="send" title="send" disabled><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 12.5V3.5M4 7.5L8 3.5l4 4"/></svg></button>
+        </form>
+        <div class="chat-foot"><span class="chat-typing" id="chat-typing"></span><span class="chat-sees" id="chat-sees" hidden></span></div>
+        <input type="file" id="chat-file" multiple hidden>
+      </div>
+    </div>
+  </aside>
+
+  <!-- the side column's cards, each label beside its own card, pressed to show or hide it -->
+  <nav class="side-rail" id="side-rail" aria-label="side column">
+    <button type="button" id="side-mesh" title="mesh" aria-controls="mesh-panel" aria-expanded="true"><span>mesh</span></button>
+    <button type="button" id="side-model" title="model" aria-controls="st-model" aria-expanded="false"><span>model</span></button>
+    <button type="button" id="side-chat" title="chat pane (shift+c)" aria-controls="chat-panel" aria-expanded="true"><span>chat</span></button>
+  </nav>
+
+</div>
+
+<!-- the chat's one popup: a conversation's actions, or what's been shared -->
+<div class="chat-pop" id="chat-pop" role="menu" hidden></div>
+
+<div class="mobile-tabbar" id="mobile-tabbar">
+  <span class="tab-ink" aria-hidden="true"></span>
+  <button class="mobile-tab-btn" type="button" data-section="main">home</button>
+  <button class="mobile-tab-btn active" type="button" data-section="mesh">mesh</button>
+  <button class="mobile-tab-btn" type="button" data-section="model">model</button>
+  <button class="mobile-tab-btn" type="button" data-section="chat">chat</button>
+</div>
+
+<link rel="stylesheet" href="/vendor/katex.css">
+<script src="/vendor/marked.js"></script>
+<script src="/vendor/purify.js"></script>
+<script src="/vendor/katex.js"></script>
+<script src="/vendor/mhchem.js"></script>
+<script src="/vendor/highlight.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,58 @@
+# rendered once by git-daemon.sh, sections added since appended there
+
+APP_NAME = phosphorus git
+RUN_MODE = prod
+RUN_USER = git
+
+[server]
+DOMAIN           = __GITHOST__
+HTTP_ADDR        = 0.0.0.0
+HTTP_PORT        = __PORT__
+ROOT_URL         = __ROOT_URL__
+DISABLE_SSH      = true
+LFS_START_SERVER = true
+# obj/ rsynced, forgejo's default data/ not
+APP_DATA_PATH    = /var/lib/phosphorus/git/obj
+
+[database]
+DB_TYPE = sqlite3
+PATH    = /var/lib/phosphorus/git/litefs/forgejo.db
+
+# sessions riding litefs with the rest of the db
+[session]
+PROVIDER = db
+
+# per-node and rebuildable, so never synced
+[queue]
+DATADIR = /var/lib/phosphorus/git/state/queues
+
+[indexer]
+ISSUE_INDEXER_PATH = /var/lib/phosphorus/git/state/indexers/issues.bleve
+REPO_INDEXER_PATH  = /var/lib/phosphorus/git/state/indexers/repos.bleve
+
+[log]
+ROOT_PATH = /var/lib/phosphorus/git/state/log
+
+[repository]
+ROOT = /var/lib/phosphorus/git/obj/forgejo-repositories
+
+[lfs]
+PATH = /var/lib/phosphorus/git/obj/lfs
+
+[picture]
+AVATAR_UPLOAD_PATH      = /var/lib/phosphorus/git/obj/avatars
+REPOSITORY_AVATAR_UPLOAD_PATH = /var/lib/phosphorus/git/obj/repo-avatars
+
+[attachment]
+PATH = /var/lib/phosphorus/git/obj/attachments
+
+[packages]
+PATH = /var/lib/phosphorus/git/obj/packages
+
+[security]
+INSTALL_LOCK = true
+
+# every push leaving loose objects, repacked daily, servants getting it by rsync
+[cron.git_gc_repos]
+ENABLED  = true
+SCHEDULE = @every 24h

@@ -1,0 +1,7 @@
+# runtime data (forgejo repos, litefs) out of every update's build, the
+# in-container classic builder shipping the whole context
+.git
+git/data
+state
+models
+**/node_modules

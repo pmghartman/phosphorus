@@ -1,0 +1,137 @@
+services:
+  phosphorus:
+    build:
+      context: .
+      dockerfile: container/Dockerfile
+      args:
+        PHOS_VERSION: ${PHOS_VERSION:-0.0.0}
+        # cuda where [model] gpu is set, by rebuild
+        LLAMA_BACKEND: ${PHOS_LLAMA_BACKEND:-cpu}
+    image: phosphorus:latest
+    container_name: phosphorus
+    restart: unless-stopped
+
+    # the host's network stack, for services at its Tailscale address and
+    # the ingress on port 80
+    network_mode: host
+
+    # the host's processes, for the status tab
+    pid: host
+
+    # a fallback resolver, since MagicDNS only answers once tailscaled has
+    # logged in
+    dns:
+      - 100.100.100.100
+      - 1.1.1.1
+    dns_search:
+      - tailc2cc6a.ts.net
+
+    # for tailscaled inside this container, IPC_LOCK and memlock for the
+    # model's weights locked in ram
+    cap_add: [NET_ADMIN, IPC_LOCK]
+    devices: ["/dev/net/tun"]
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+
+    env_file: .env
+
+    environment:
+      # what /files actually resolves to, so the frontend can tell a changed [files]
+      # dir from the one this container was created with
+      PHOS_FILES_DIR: ${PHOS_FILES_DIR:-./files}
+      # the tailnet and mesh name, empty: the container's hostname
+      TS_HOSTNAME: ${TS_HOSTNAME:-}
+      # set by rebuild where /hostfs holds the host's drives, empty: the
+      # status tab's disk counts only the binds below
+      PHOS_HOST_ROOT: ${PHOS_HOST_ROOT:-}
+
+    volumes:
+      # tailscaled's identity, persisted across rebuilds
+      - tailscale-state:/var/lib/tailscale
+
+      # this machine's own declarations, read only, a directory since a
+      # file mount's fixed inode misses an editor's atomic save
+      - ./config:/etc/phosphorus:ro
+
+      # tick-to-tick state: chat, tailnet view, git and update bookkeeping
+      - ./state:/state
+
+      # [files] dir from config/phos.ini, for the web's Files tab, read-write,
+      # unset: the repo's files/
+      - ${PHOS_FILES_DIR:-./files}:/files
+
+      # the checkout, for scripts/update.sh in place, never /opt/phosphorus
+      # (the image's own VERSION and sweep.sh)
+      - .:/repo
+
+      # every drive of the host, read only, for the status tab's disk, never
+      # served by the Files tab, without rebuild just state again
+      - ${PHOS_HOST_ROOT:-./state}:/hostfs:ro
+
+      # the model's gguf on the model host, Windows: phosphorus-models, off
+      # the slow NTFS share
+      - ${PHOS_MODEL_DIR:-./models}:/models
+
+      # for update.sh's sibling rebuild container, out of the swap's reach
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  # phos's web search, on model hosts only, published on loopback only, where
+  # the frontend's host networking reaches it, the rest asking a model host's frontend
+  search:
+    image: searxng/searxng:latest
+    container_name: phosphorus-search
+    restart: unless-stopped
+    profiles: ["model-host"]
+    ports: ["127.0.0.1:8888:8080"]
+    environment:
+      SEARXNG_BASE_URL: http://127.0.0.1:8888/
+    volumes:
+      - ./container/searxng/settings.yml:/etc/searxng/settings.yml:ro
+
+  # optional git-host, its own container: supervisor.sh killing everything
+  # when one child exits, litefs restarting on every flip
+  git:
+    build:
+      context: .
+      dockerfile: git/container/Dockerfile
+    image: phosphorus-git:latest
+    container_name: phosphorus-git
+    restart: unless-stopped
+    profiles: ["git-host"]
+    depends_on: [phosphorus]
+    # for the git host's own subdomain, nothing else from .env
+    environment:
+      BASE_DOMAIN: ${BASE_DOMAIN}
+
+    # host networking for tailnet reach, /dev/fuse for litefs
+    network_mode: host
+    cap_add: [SYS_ADMIN]
+    devices: ["/dev/fuse"]
+    # default apparmor denying mount(2), and with it fusermount3
+    security_opt: ["apparmor:unconfined"]
+    dns:
+      - 100.100.100.100
+      - 1.1.1.1
+    dns_search:
+      - tailc2cc6a.ts.net
+
+    volumes:
+      # data root, litefs/ litefs-managed, never rsynced
+      # Windows: phosphorus-git-data, off the slow NTFS share
+      - ${PHOS_GIT_DATA:-./git/data}:/var/lib/phosphorus/git
+
+      # litefs's real db store, mounted or a rebuild wipes forgejo's db
+      - ${PHOS_GIT_DB:-./git/data/litefs-internal}:/var/lib/litefs-internal
+
+      # shared with phosphorus: self-host, git-role, the elector's claim
+      - ./state:/state
+
+volumes:
+  tailscale-state:
+  # the git host's data on Windows, seeded once from git/data by rebuild
+  git-data:
+    name: phosphorus-git-data
+  git-db:
+    name: phosphorus-git-db
+  models:
+    name: phosphorus-models

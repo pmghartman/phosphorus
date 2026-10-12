@@ -1,0 +1,22 @@
+# per host secrets, see .env.example
+.env
+
+# runtime state, regenerated per host, not shipped
+/state/
+
+# forgejo + litefs data root, see git/container/ and config/phos.ini
+/git/data/
+
+.DS_Store
+*.bak
+node_modules/
+
+# default [files] share, contents per host, not shipped
+/files/*
+!/files/.gitkeep
+
+# generated per host from [files] in config/phos.ini
+/docker-compose.files.yml
+
+# the model's gguf on the model host, not shipped
+/models/
