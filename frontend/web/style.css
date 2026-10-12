@@ -247,8 +247,8 @@ body {
 /* numbered as in the cli, and as picked by 1-9 */
 .tab-btn::before { counter-increment: tab; content: counter(tab); color: var(--dim); transition: color 0.15s; }
 .tab-btn.active::before { color: var(--accent); }
-/* a terminal phos may read */
-.tab-btn.shared .tab-label::after { content: ' · phos'; color: var(--accent); }
+/* a terminal hesperus may read */
+.tab-btn.shared .tab-label::after { content: ' · hesperus'; color: var(--accent); }
 
 .tab-btn:hover { color: var(--fg); background: var(--tab-hover); }
 
@@ -1001,7 +1001,7 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
 .mesh-svg .mesh-line-stem.touched { stroke: var(--accent); opacity: 0.85; }
 
 /* purple the active path (self, a live request's path and target), green a serving
-   host, grey an idle one, sky services, dark grey non-phosphorus devices */
+   host, grey an idle one, sky services, dark grey non-hesperus devices */
 .mesh-svg .mesh-node.active { fill: var(--mesh-active); }
 .mesh-svg .mesh-node.idle { fill: var(--muted); }
 .mesh-svg .mesh-node.svc { fill: var(--sky); }
@@ -1029,12 +1029,12 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
   width: 0.5rem; text-align: center; font-weight: 600; color: transparent;
   background: linear-gradient(90deg, var(--glyph-purple), var(--glyph-orange)); -webkit-background-clip: text; background-clip: text;
 }
-.mesh-svg .mesh-model-mark { fill: url(#phos-grad); font-family: inherit; font-weight: 600; }
+.mesh-svg .mesh-model-mark { fill: url(#hesperus-grad); font-family: inherit; font-weight: 600; }
 .mesh-svg .mesh-model-mark.down { fill: var(--dim); }
 /* sized to nothing but still rendered: a display:none svg dropping its paints */
 .svg-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
-.phos-grad-p { stop-color: var(--glyph-purple); }
-.phos-grad-o { stop-color: var(--glyph-orange); }
+.hesperus-grad-p { stop-color: var(--glyph-purple); }
+.hesperus-grad-o { stop-color: var(--glyph-orange); }
 
 /* pulse along a touched path, one lap a second, on its own rAF loop in app.js */
 .mesh-svg .mesh-pulse { fill: var(--accent); }
@@ -1220,7 +1220,7 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
 .chat-log .fresh::before, .chat-log .fresh::after { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
 
 /* a line: its header, a bubble, its reactions. Yours on the right in the
-   accent, theirs on the left on their colour's edge, phos the full width */
+   accent, theirs on the left on their colour's edge, hesperus the full width */
 .chat-log .msg { --who: var(--muted); display: flex; flex-direction: column; align-items: flex-start; max-width: 100%; }
 .chat-log .msg.mine { align-items: flex-end; }
 .chat-log .msg.cont { margin-top: -0.35rem; }
@@ -1915,7 +1915,7 @@ input, textarea { caret-color: var(--accent); }
   /* one tab in the bar, the active one, the rest in its list */
   .tabbar-tabs .tab-btn:not(.active):not(.tab-brand) { display: none; }
   .tabbar-tabs .tab-btn.active:not(.tab-brand) .tab-label::after { content: ' ▾'; color: var(--muted); }
-  .tabbar-tabs .tab-btn.active.shared .tab-label::after { content: ' · phos ▾'; color: var(--accent); }
+  .tabbar-tabs .tab-btn.active.shared .tab-label::after { content: ' · hesperus ▾'; color: var(--accent); }
   .tab-menu.tab-pick { position: fixed; top: calc(var(--header-h) + 0.6rem); left: 0.5rem; }
   /* phones: the popup the screen's width, under the bar */
   .update-pane { position: fixed; top: calc(var(--header-h) + 0.6rem); left: 0.5rem; right: 0.5rem; width: auto; }

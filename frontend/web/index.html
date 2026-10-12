@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>phosphorus</title>
+<title>hesperus</title>
 <link rel="icon" href="/favicon.ico?v=8" sizes="32x32">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=8">
 <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=8">
@@ -13,7 +13,7 @@
 // the browser's own light or dark unless a theme was picked, set before paint
 (() => {
   let pick = null;
-  try { pick = localStorage.getItem('phos-theme'); } catch {}
+  try { pick = localStorage.getItem('hesperus-theme'); } catch {}
   const theme = pick || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
   if (theme === 'light' || theme === 'oled') document.documentElement.dataset.theme = theme;
 })();
@@ -24,10 +24,10 @@
 outside #mesh-svg (emptied every redraw) so it never restarts -->
 <svg class="svg-defs" aria-hidden="true" focusable="false">
   <defs>
-    <linearGradient id="phos-grad" x1="0" y1="0" x2="1" y2="1" spreadMethod="repeat">
-      <stop offset="0" class="phos-grad-p"></stop>
-      <stop offset="0.5" class="phos-grad-o"></stop>
-      <stop offset="1" class="phos-grad-p"></stop>
+    <linearGradient id="hesperus-grad" x1="0" y1="0" x2="1" y2="1" spreadMethod="repeat">
+      <stop offset="0" class="hesperus-grad-p"></stop>
+      <stop offset="0.5" class="hesperus-grad-o"></stop>
+      <stop offset="1" class="hesperus-grad-p"></stop>
       <animateTransform attributeName="gradientTransform" type="translate" values="0 0;1 1;0 0"
         keyTimes="0;0.5;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1" dur="6s" repeatCount="indefinite"></animateTransform>
     </linearGradient>
@@ -39,7 +39,7 @@ outside #mesh-svg (emptied every redraw) so it never restarts -->
     <div class="tabbar" id="tabbar">
       <div class="tabbar-tabs" id="tabbar-tabs">
         <span class="tab-ink" aria-hidden="true"></span>
-        <button class="tab-btn tab-brand" data-tab-id="about" title="about (p)"><span class="brand-text"><span class="brand-name">phosphorus </span><span class="brand-ver"></span></span></button>
+        <button class="tab-btn tab-brand" data-tab-id="about" title="about (p)"><span class="brand-text"><span class="brand-name">hesperus </span><span class="brand-ver"></span></span></button>
         <button class="tab-btn active" data-tab-id="services"><span class="tab-label">home</span></button>
         <button class="tab-btn" data-tab-id="files"><span class="tab-label">files</span></button>
         <button class="tab-btn" data-tab-id="status"><span class="tab-label">status</span></button>

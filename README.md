@@ -1,4 +1,4 @@
-# phosphorus
+# hesperus
 
 One container per machine, each a **host** on the mesh at `BASE_DOMAIN` (`.env`):
 its services published, the others' polled, one web UI and cli for all of them.
@@ -12,7 +12,7 @@ its services published, the others' polled, one web UI and cli for all of them.
 | Windows | Docker Desktop (host networking on), Git for Windows, admin PowerShell |
 
 ```
-git clone https://github.com/pmghartman/phosphorus.git && cd phosphorus
+git clone https://github.com/pmghartman/hesperus.git && cd hesperus
 cp .env.example .env         # then fill it in
 ./scripts/run-linux.sh      # or run-mac.sh, or scripts/windows/run.ps1
 ```
@@ -20,14 +20,14 @@ cp .env.example .env         # then fill it in
 Safe to re-run. On macOS set `hostname:` in `colima start --edit` first.
 `TS_AUTHKEY` and `TS_API_KEY` in `.env` expire every 90 days.
 
-## phos
+## hesperus
 
 | Command | Does |
 |---|---|
-| `phos` | The cli |
-| `phos start` / `stop` / `restart` | Start, stop, restart this host |
-| `phos update` | Update this host |
-| `phos update all` | Update the mesh (`PHOS_UPDATE_PASSWORD`) |
+| `hesperus` | The cli |
+| `hesperus start` / `stop` / `restart` | Start, stop, restart this host |
+| `hesperus update` | Update this host |
+| `hesperus update all` | Update the mesh (`HESPERUS_UPDATE_PASSWORD`) |
 
 ## Services
 
@@ -55,7 +55,7 @@ stop = systemctl --user stop tmodloader
 | `type` | none | `game`: tailnet only, at `<name>.<GAME_ZONE>:<port>` |
 | `start`, `stop` | none | Games only: play/stop commands |
 
-## phos.ini
+## hesperus.ini
 
 ```
 [files]
@@ -85,7 +85,7 @@ Applied a few seconds after a change.
   `/chimp` asks the small model through
   [opencode](https://github.com/anomalyco/opencode)'s harness, with its own
   tools (bash, files, grep in the container's files share), web search and
-  phos's MCP tools (`POST /api/mcp`). A password an action needs (a mesh
+  hesperus's MCP tools (`POST /api/mcp`). A password an action needs (a mesh
   update's) goes in a box by the chat, never to the model. The editor tab last open goes with
   each ask. Right click a line to react, reply, edit or delete.
 - **Files**: each host's shares, opened in a live shared editor, saved as you
@@ -95,7 +95,7 @@ Applied a few seconds after a change.
   refine until it calls `project_finish` or time runs out. One per host,
   resumed after a restart, told when one cut a round short. Its model host going offline pauses it, mid-round
   too, the clock held, until that same model answers again. It has opencode's own tools: its bash runs in a
-  `phos-sandbox-<id>` container off the phosphorus image, on the `phos-sandbox` network, which iptables cuts off
+  `hesperus-sandbox-<id>` container off the hesperus image, on the `hesperus-sandbox` network, which iptables cuts off
   from the tailnet, the lan and the host; its file and search tools are held to the workspace, links out of it
   refused; todowrite is the task list shown; task hands pieces to an `orangutan-helper` subagent; webfetch goes
   through the frontend's fenced fetch, public addresses only at every redirect; lsp servers (typescript,
@@ -110,11 +110,11 @@ Applied a few seconds after a change.
 ## Layout
 
 ```
-config/      services.export, phos.ini (per host)
-container/   phosphorus image
-frontend/    node service; web/ the UI, cli/ phos
-git/         phosphorus-git image
-scripts/     phos, run, rebuild, update
+config/      services.export, hesperus.ini (per host)
+container/   hesperus image
+frontend/    node service; web/ the UI, cli/ hesperus
+git/         hesperus-git image
+scripts/     hesperus, run, rebuild, update
 files/       default share
 state/       runtime state (not shipped)
 models/      ggufs (not shipped)

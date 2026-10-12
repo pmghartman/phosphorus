@@ -204,7 +204,7 @@ function commit(s, ops, id, by) {
 
 const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
 
-// a save from outside the editor (phos, the files tab): into the file's live
+// a save from outside the editor (hesperus, the files tab): into the file's live
 // session when one is open, an agent typing it in with its caret shown,
 // straight to disk otherwise
 async function write(share, rel, p) {
@@ -222,7 +222,7 @@ async function write(share, rel, p) {
   if (typeof target !== 'string') return [400, { error: 'text, or old and new' }];
   if (target.length > MAX_TEXT) return [413, { error: 'over 512KB' }];
   const by = p.by && typeof p.by === 'object' ? p.by : {};
-  const agent = { agent: true, readyState: 0, who: { name: String(by.name || 'phos').slice(0, 32), color: String(by.color || '').slice(0, 16) }, pos: 0 };
+  const agent = { agent: true, readyState: 0, who: { name: String(by.name || 'hesperus').slice(0, 32), color: String(by.color || '').slice(0, 16) }, pos: 0 };
   clearTimeout(s.idle);
   s.clients.add(agent);
   // the one changed run, by the texts' common ends: deleted at once, typed in after

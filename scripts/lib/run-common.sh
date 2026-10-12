@@ -8,11 +8,11 @@
 run_preflight() {
   command -v docker >/dev/null 2>&1 || fail "docker not found, $1"
   command -v git    >/dev/null 2>&1 || fail "git not found, $2"
-  [ -f .env ] || fail ".env not found, are you running this from inside the phosphorus clone?"
-  [ -f config/services.export ] || fail "config/services.export not found, are you running this from inside the phosphorus clone?"
+  [ -f .env ] || fail ".env not found, are you running this from inside the hesperus clone?"
+  [ -f config/services.export ] || fail "config/services.export not found, are you running this from inside the hesperus clone?"
 }
 
-phos_running() { [ "$($DOCKER inspect -f '{{.State.Running}}' phosphorus 2>/dev/null)" = "true" ]; }
+hesperus_running() { [ "$($DOCKER inspect -f '{{.State.Running}}' hesperus 2>/dev/null)" = "true" ]; }
 
 # the machine's own ram, invisible to the container behind a vm, shown
 # by the model tab against what docker gave
@@ -45,7 +45,7 @@ run_bring_up() {
 
   # --- ssh <host> from this host's terminals -------------------------------
   # state/ssh_config the frontend's, one Host per tailnet peer
-  local inc=/etc/ssh/ssh_config.d/phosphorus.conf line="Include \"$DIR/state/ssh_config\""
+  local inc=/etc/ssh/ssh_config.d/hesperus.conf line="Include \"$DIR/state/ssh_config\""
   if [ "$(cat "$inc" 2>/dev/null)" = "$line" ]; then
     say "ssh to hosts by name already set up, skipping"
   else
@@ -56,30 +56,30 @@ run_bring_up() {
   grep -qs 'ssh_config\.d' /etc/ssh/ssh_config \
     || say "/etc/ssh/ssh_config never reads ssh_config.d, add 'Include /etc/ssh/ssh_config.d/*.conf' at its top for ssh <host>"
 
-  # --- phos on PATH ---------------------------------------------------------
-  if [ "$(readlink /usr/local/bin/phos 2>/dev/null)" = "$DIR/scripts/phos" ]; then
-    say "phos already on PATH, skipping"
+  # --- hesperus on PATH ---------------------------------------------------------
+  if [ "$(readlink /usr/local/bin/hesperus 2>/dev/null)" = "$DIR/scripts/hesperus" ]; then
+    say "hesperus already on PATH, skipping"
   else
-    say "putting phos on PATH..."
+    say "putting hesperus on PATH..."
     sudo mkdir -p /usr/local/bin
-    sudo ln -sfn "$DIR/scripts/phos" /usr/local/bin/phos
+    sudo ln -sfn "$DIR/scripts/hesperus" /usr/local/bin/hesperus
   fi
 
   # --- git-host opt-in ---------------------------------------------------
-  if [ -z "$(phos_ini)" ] && [ -t 0 ]; then
+  if [ -z "$(hesperus_ini)" ] && [ -t 0 ]; then
     read -rp "make this host a git host (forgejo/litefs)? [y/N] " ans
     local host=false
     [[ "$ans" =~ ^[Yy] ]] && host=true
-    printf '[git]\nhost = %s\n' "$host" > config/phos.ini
-    git update-index --skip-worktree config/phos.ini
+    printf '[git]\nhost = %s\n' "$host" > config/hesperus.ini
+    git update-index --skip-worktree config/hesperus.ini
   fi
 
-  # --- phosphorus container -----------------------------------------------
+  # --- hesperus container -----------------------------------------------
   # on a live host no swap in this shell: handed by rebuild.sh to a
   # sibling container, an async build with nothing to wait on
   local bootstrap=0
-  phos_running || bootstrap=1
-  say "building and starting phosphorus..."
+  hesperus_running || bootstrap=1
+  say "building and starting hesperus..."
   bash "$DIR/scripts/rebuild.sh" || fail "build failed, nothing changed"
 
   # --- verify the frontend came up inside the container --------------------
@@ -88,17 +88,17 @@ run_bring_up() {
     say "waiting for the frontend..."
     local up=0
     for _ in $(seq 1 200); do
-      $DOCKER compose exec -T phosphorus curl -s -o /dev/null "http://127.0.0.1:8090/" && { up=1; break; }
+      $DOCKER compose exec -T hesperus curl -s -o /dev/null "http://127.0.0.1:8090/" && { up=1; break; }
       sleep 0.3
     done
     [ "$up" = "1" ] || fail "the frontend never came up, check: docker compose logs -f"
     say "the frontend is up"
   else
-    say "rebuilding in phosphorus-updater, docker logs -f phosphorus-updater to follow"
+    say "rebuilding in hesperus-updater, docker logs -f hesperus-updater to follow"
   fi
 
   # this host's own entries, safe from the next pull
   git update-index --skip-worktree config/services.export
 
-  say "done. 'docker compose logs -f' to watch phosphorus come up."
+  say "done. 'docker compose logs -f' to watch hesperus come up."
 }

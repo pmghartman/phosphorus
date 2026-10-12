@@ -6,7 +6,7 @@ const { execFile, spawn } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { notes, phosIni, readJson, requestJson, writeJsonAtomic } = require(`${process.env.FRONTEND_DIR || '/opt/frontend'}/util`);
+const { notes, hesperusIni, readJson, requestJson, writeJsonAtomic } = require(`${process.env.FRONTEND_DIR || '/opt/frontend'}/util`);
 
 const num = (k, d) => Number(process.env[k] || d);
 const STATE_DIR = process.env.STATE_DIR || '/state';
@@ -25,7 +25,7 @@ const MODEL_DIR = process.env.MODEL_DIR || '/models';
 // loopback only, peers reaching it through the model host's frontend
 const SERVER_PORT = num('MODEL_SERVER_PORT', 8791);
 
-// [model] ctx when phos.ini names none, the model itself without a default
+// [model] ctx when hesperus.ini names none, the model itself without a default
 const DEFAULT_CTX = 65536;
 // asks answered at once, sharing the one context window
 const DEFAULT_SLOTS = 4;
@@ -60,14 +60,14 @@ function modelLink(raw) {
   }
 }
 
-// re-read every tick, phos.ini edited in place
+// re-read every tick, hesperus.ini edited in place
 const config = () => ({
-  raw: phosIni('model', 'url') || '',
-  ...(modelLink(phosIni('model', 'url') || '') || { url: '', file: '' }),
-  ctx: Number(phosIni('model', 'ctx')) || DEFAULT_CTX,
-  slots: Math.max(1, Math.floor(Number(phosIni('model', 'slots')) || DEFAULT_SLOTS)),
-  host: phosIni('model', 'host') === 'true',
-  gpu: phosIni('model', 'gpu') === 'true',
+  raw: hesperusIni('model', 'url') || '',
+  ...(modelLink(hesperusIni('model', 'url') || '') || { url: '', file: '' }),
+  ctx: Number(hesperusIni('model', 'ctx')) || DEFAULT_CTX,
+  slots: Math.max(1, Math.floor(Number(hesperusIni('model', 'slots')) || DEFAULT_SLOTS)),
+  host: hesperusIni('model', 'host') === 'true',
+  gpu: hesperusIni('model', 'gpu') === 'true',
 });
 
 // own tailnet IP, where peers' asks come in
@@ -185,7 +185,7 @@ async function serve(cfg) {
   // [model] gpu never falling back to the cpu, not loaded until the gpu is usable
   if (cfg.gpu && !vram) {
     fit = { need: 0, why: fs.existsSync(path.join(LLAMA_DIR, 'libggml-cuda.so'))
-      ? 'gpu is on but no nvidia gpu is usable here' : 'gpu is on but llama-server here has no cuda, phos update rebuilds it' };
+      ? 'gpu is on but no nvidia gpu is usable here' : 'gpu is on but llama-server here has no cuda, hesperus update rebuilds it' };
     note('gpu', fit.why);
     // nvidia-smi asked again a retry later, not every tick
     stopServer();
@@ -279,7 +279,7 @@ async function tick() {
     if (dl.proc) pauseDownload(cfg.host ? '[model] url cleared' : '[model] host is off');
     stopServer();
     fit = { need: 0, why: !cfg.host ? '' : cfg.raw ? `[model] url isn't a https link to a single .gguf: ${cfg.raw}`
-      : 'no model yet, enter its download link in the model tab of phos' };
+      : 'no model yet, enter its download link in the model tab of hesperus' };
     if (fit.why) note('link', fit.why);
     else clear('link');
   } else {

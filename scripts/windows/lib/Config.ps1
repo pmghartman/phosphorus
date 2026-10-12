@@ -1,5 +1,5 @@
-# readers for config/phos.ini, config/services.export and .env, from the
-# checkout root, dot-sourced by run, rebuild, update, game-control and phos
+# readers for config/hesperus.ini, config/services.export and .env, from the
+# checkout root, dot-sourced by run, rebuild, update, game-control and hesperus
 
 # `key = value` lines under `[section]`, blank when unset or the file is missing
 function Get-IniValue([string]$File, [string]$Section, [string]$Key) {
@@ -27,21 +27,21 @@ function Get-EnvValue([string]$Key) {
 function Invoke-Quiet([scriptblock]$Cmd) { $ErrorActionPreference = "Continue"; & $Cmd 2>$null }
 
 # VERSION's <major>.<minor>, then the commit count
-function Get-PhosVersion {
+function Get-HesperusVersion {
     $n = Invoke-Quiet { git rev-list --count HEAD }
     "$((Get-Content VERSION -First 1).Trim()).$(if ($n) { $n } else { 0 })"
 }
 
-function Get-PhosIniPath { if (Test-Path config/phos.ini) { "config/phos.ini" } }
+function Get-HesperusIniPath { if (Test-Path config/hesperus.ini) { "config/hesperus.ini" } }
 
-function Get-PhosValue([string]$Section, [string]$Key) { Get-IniValue (Get-PhosIniPath) $Section $Key }
+function Get-HesperusValue([string]$Section, [string]$Key) { Get-IniValue (Get-HesperusIniPath) $Section $Key }
 
-function Test-PhosGitHost { (Get-PhosValue "git" "host") -eq "true" }
+function Test-HesperusGitHost { (Get-HesperusValue "git" "host") -eq "true" }
 
-# skip-worktree: an update restores this host's phos.ini verbatim, so
+# skip-worktree: an update restores this host's hesperus.ini verbatim, so
 # sections added upstream are appended here
-function Add-PhosMissingSections {
-    $file = Get-PhosIniPath
+function Add-HesperusMissingSections {
+    $file = Get-HesperusIniPath
     if (-not $file) { return }
     if ((Get-Content $file) -notcontains "[files]") {
         Add-Content $file @(
@@ -53,7 +53,7 @@ function Add-PhosMissingSections {
             "dir =",
             "priv ="
         )
-        Write-Host "[phos.ini] added the [files] section, set dir to publish a directory"
+        Write-Host "[hesperus.ini] added the [files] section, set dir to publish a directory"
     }
     if ((Get-Content $file) -notcontains "[model]") {
         Add-Content $file @(
@@ -66,18 +66,18 @@ function Add-PhosMissingSections {
             "gpu = false",
             "url ="
         )
-        Write-Host "[phos.ini] added the [model] section, set host and url on the one host with the memory and disk for the model"
+        Write-Host "[hesperus.ini] added the [model] section, set host and url on the one host with the memory and disk for the model"
     }
 }
 
 # [model] gpu: the image built with llama.cpp's cuda backend
-function Test-PhosModelHost { (Get-PhosValue "model" "host") -eq "true" }
-function Test-PhosModelGpu { (Get-PhosValue "model" "gpu") -eq "true" }
+function Test-HesperusModelHost { (Get-HesperusValue "model" "host") -eq "true" }
+function Test-HesperusModelGpu { (Get-HesperusValue "model" "gpu") -eq "true" }
 
 # absolute host path published on the frontend's Files tab, the repo's own
 # files/ when [files] dir is blank, so the mount always resolves
-function Get-PhosFilesDir {
-    $dir = Get-PhosValue "files" "dir"
+function Get-HesperusFilesDir {
+    $dir = Get-HesperusValue "files" "dir"
     if (-not $dir) { return (Join-Path (Get-Location) "files") }
     if ([System.IO.Path]::IsPathRooted($dir)) { return $dir }
     return (Join-Path (Get-Location) $dir)
@@ -85,8 +85,8 @@ function Get-PhosFilesDir {
 
 # [files] dir, one absolute host path per entry, empty when unset, relative
 # entries off -Base, the checkout
-function Get-PhosFilesDirList([string]$Base) {
-    $raw = Get-PhosValue "files" "dir"
+function Get-HesperusFilesDirList([string]$Base) {
+    $raw = Get-HesperusValue "files" "dir"
     if (-not $raw) { return @() }
     if (-not $Base) { $Base = (Get-Location).Path }
     $out = @()
@@ -100,20 +100,20 @@ function Get-PhosFilesDirList([string]$Base) {
 }
 
 # [files] priv, one entry per dir in the same order, none means rwd
-function Get-PhosFilesPermList {
-    $raw = Get-PhosValue "files" "priv"
+function Get-HesperusFilesPermList {
+    $raw = Get-HesperusValue "files" "priv"
     if (-not $raw) { return @() }
     return @($raw.Split(",") | ForEach-Object { $_.Trim() })
 }
 
 # shares in an override beside compose (no variable mount count there),
 # rewritten every build, never committed
-$PhosFilesOverride = "docker-compose.files.yml"
+$HesperusFilesOverride = "docker-compose.files.yml"
 
 # $true when it wrote one and the caller should add it to COMPOSE_FILE
-function Write-PhosFilesOverride([string]$Base) {
+function Write-HesperusFilesOverride([string]$Base) {
     $dirs = @()
-    foreach ($d in (Get-PhosFilesDirList $Base)) {
+    foreach ($d in (Get-HesperusFilesDirList $Base)) {
         if (-not (Test-Path -PathType Container $d)) {
             Write-Host "[files] skipping '$d'; no such directory on this host"
             continue
@@ -121,15 +121,15 @@ function Write-PhosFilesOverride([string]$Base) {
         $dirs += $d
     }
     if (-not $dirs.Count) {
-        if (Test-Path $PhosFilesOverride) { Remove-Item $PhosFilesOverride -Force }
+        if (Test-Path $HesperusFilesOverride) { Remove-Item $HesperusFilesOverride -Force }
         return $false
     }
 
-    $perms = Get-PhosFilesPermList
+    $perms = Get-HesperusFilesPermList
     $lines = @(
-        "# generated from [files] in config/phos.ini, rewritten every build",
+        "# generated from [files] in config/hesperus.ini, rewritten every build",
         "services:",
-        "  phosphorus:",
+        "  hesperus:",
         "    environment:"
     )
     $permList = @()
@@ -141,10 +141,10 @@ function Write-PhosFilesOverride([string]$Base) {
         $mode = if ($perm -match "[wd]") { "" } else { ":ro" }
         $mounts += "      - `"$($dirs[$i]):/shares/$i$mode`""
     }
-    $lines += "      PHOS_FILES_DIRS: `"$($dirs -join ',')`""
-    $lines += "      PHOS_FILES_PERMS: `"$($permList -join ',')`""
+    $lines += "      HESPERUS_FILES_DIRS: `"$($dirs -join ',')`""
+    $lines += "      HESPERUS_FILES_PERMS: `"$($permList -join ',')`""
     $lines += "    volumes:"
     $lines += $mounts
-    Set-Content -Path $PhosFilesOverride -Value $lines
+    Set-Content -Path $HesperusFilesOverride -Value $lines
     return $true
 }

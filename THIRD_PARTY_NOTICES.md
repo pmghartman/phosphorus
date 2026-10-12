@@ -1,11 +1,11 @@
 # Third-party notices
 
-phosphorus ships no third-party source in this repository. Its Dockerfiles
+hesperus ships no third-party source in this repository. Its Dockerfiles
 build two images on each host, and those builds download the components below
 from their upstream publishers, unmodified. Each stays under its own license;
-the phosphorus license (see `LICENSE`) covers none of them.
+the hesperus license (see `LICENSE`) covers none of them.
 
-## phosphorus image (`container/Dockerfile`)
+## hesperus image (`container/Dockerfile`)
 
 | Component | License | Source |
 |---|---|---|
@@ -32,14 +32,14 @@ the phosphorus license (see `LICENSE`) covers none of them.
 | Geist Mono (frontend, the page's font, via @fontsource-variable/geist-mono) | OFL-1.1 | https://github.com/vercel/geist-font |
 | commander (KaTeX) | MIT | https://github.com/tj/commander.js |
 
-## phosphorus-git image (`git/container/Dockerfile`)
+## hesperus-git image (`git/container/Dockerfile`)
 
 | Component | Version | License | Source |
 |---|---|---|---|
 | Forgejo | 16.0.5 | GPL-3.0-or-later | https://codeberg.org/forgejo/forgejo |
 | LiteFS | 0.5.14 | Apache-2.0 | https://github.com/superfly/litefs |
 
-Forgejo is run as a separate, unmodified program; phosphorus only writes its
+Forgejo is run as a separate, unmodified program; hesperus only writes its
 configuration. Its source is available at the link above.
 
 ## Debian packages (both images)
@@ -66,5 +66,5 @@ before the image is finalized.
 ## Trademarks
 
 Cloudflare, Docker, Forgejo, Node.js and Tailscale are trademarks of
-their respective owners. phosphorus is not affiliated with or endorsed by any
+their respective owners. hesperus is not affiliated with or endorsed by any
 of them.

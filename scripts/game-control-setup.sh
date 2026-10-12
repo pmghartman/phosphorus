@@ -6,7 +6,7 @@ set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 KEY_DIR="$DIR/state/game-control"
 KEY="$KEY_DIR/id_ed25519"
-TAG="phosphorus-game-control"
+TAG="hesperus-game-control"
 
 say() { echo "[game-control] $*"; }
 

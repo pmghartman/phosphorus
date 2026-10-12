@@ -6,7 +6,7 @@ let selfHost = '';
 // BASE_DOMAIN from /api/state, the page's own host until the first answer
 let baseDomain = location.hostname;
 // GAME_ZONE from /api/state, games joined at <name>.<zone>
-let gameZone = 'phos';
+let gameZone = 'hesperus';
 const aboutVersion = document.getElementById('about-version');
 const topUpdate = document.getElementById('top-update');
 const sideModel = document.getElementById('side-model');
@@ -75,7 +75,7 @@ let lastServicesSig = '';
 function renderRoutes(routes, tailnet) {
   const servicesList = document.getElementById('services-list');
 
-  terminalHosts = tailnet.filter((d) => d.phosphorus).map((d) => d.name);
+  terminalHosts = tailnet.filter((d) => d.hesperus).map((d) => d.name);
   const services = routes.filter((r) => r.type !== 'game' && r.name !== GIT_SERVICE);
   renderGames(routes.filter((r) => r.type === 'game'));
   gitRoute = routes.find((r) => r.name === GIT_SERVICE) || null;
@@ -607,7 +607,7 @@ function meshLayoutParams(expanded) {
   return { width, height, widthPx, legendPx: expanded ? legend.offsetTop + legend.offsetHeight : 0 };
 }
 
-// host row to the non-phosphorus devices, a frame fraction, LIFT the
+// host row to the non-hesperus devices, a frame fraction, LIFT the
 // expanded host row's rise
 const OTHERS_AXIS = 0.34;
 const LIFT = 0.1;
@@ -687,9 +687,9 @@ window.addEventListener('resize', () => {
 });
 
 // --- serving host -----------------------------------------------------------
-// the host serving this page, held by the ingress's phos-host cookie
+// the host serving this page, held by the ingress's hesperus-host cookie
 
-const phosHosts = () => meshTailnet.filter((d) => d.phosphorus).map((d) => d.name).sort();
+const hesperusHosts = () => meshTailnet.filter((d) => d.hesperus).map((d) => d.name).sort();
 
 // {to, from, at} of a switch awaiting the new host's first answer
 let hostSwitch = null;
@@ -940,7 +940,7 @@ function renderMesh(routes, tailnet) {
   const now = Date.now();
   let sampled = false;
   for (const d of tailnet) {
-    if (!d.phosphorus || typeof d.rttMs !== 'number') continue;
+    if (!d.hesperus || typeof d.rttMs !== 'number') continue;
     if (now - (rttSampledAt.get(d.name) || 0) < RTT_SAMPLE_MS) continue;
     rttSampledAt.set(d.name, now);
     const hist = rttHistory.get(d.name) || [];
@@ -951,7 +951,7 @@ function renderMesh(routes, tailnet) {
   }
   // nothing redrawn for a poll changing nothing drawn (a full rebuild at 10/s grew the tab)
   const sig = JSON.stringify([selfHost, routes.map((r) => [r.host, r.name]),
-    tailnet.map((d) => [d.name, !!d.phosphorus, d.os || '', typeof d.rttMs === 'number'])]);
+    tailnet.map((d) => [d.name, !!d.hesperus, d.os || '', typeof d.rttMs === 'number'])]);
   if (sig === meshSig && !sampled) return;
   meshSig = sig;
   meshStatsDirty = true;
@@ -1017,7 +1017,7 @@ function renderMeshStats(hosts, grouped) {
       `<span class="mesh-stat-ping-cell">${spark}<span class="mesh-stat-ping ${cls}">${pingText(rttMs)}</span></span>`;
     meshStatsRows.appendChild(row);
   };
-  // phosphorus hosts only, other mesh devices just in the graph
+  // hesperus hosts only, other mesh devices just in the graph
   for (const m of hosts) {
     const dotCls = m === selfHost ? 'self' : grouped.get(m).length ? 'active' : 'idle';
     addRow(m, hostPlatform.get(m), steadyRtt(m), dotCls);
@@ -1106,10 +1106,10 @@ function drawMesh() {
     if (!grouped.has(r.host)) grouped.set(r.host, []);
     grouped.get(r.host).push(r);
   }
-  // tailnet devices without phosphorus: no routes, known only to the tailnet list
+  // tailnet devices without hesperus: no routes, known only to the tailnet list
   const outside = new Map();
   for (const d of tailnet) {
-    if (d.phosphorus) {
+    if (d.hesperus) {
       hostPlatform.set(d.name, d.os || '');
       hostRtt.set(d.name, typeof d.rttMs === 'number' ? d.rttMs : null);
       if (!grouped.has(d.name)) grouped.set(d.name, []);
@@ -1413,7 +1413,7 @@ function applyState(state) {
   if (updateConfirm.hidden) applyChain(chain, !!state.chainMine); else renderVersions();
   // the update icon's dot: a host on another version, or a walk under way
   const mine = state.self.version || '';
-  const differs = state.tailnet.some((d) => d.phosphorus && d.version && mine && d.version !== mine);
+  const differs = state.tailnet.some((d) => d.hesperus && d.version && mine && d.version !== mine);
   const news = differs || !!meshLock || !!(chain && !chain.done);
   topUpdate.toggleAttribute('data-news', news);
   topUpdate.title = `mesh update (u)${meshLock || (chain && !chain.done) ? ', under way' : differs ? ', hosts on different versions' : ''}`;
@@ -1435,7 +1435,7 @@ const openTabs = new Map();
 
 // the built in tabs, closed ones only hidden and kept closed across visits
 const FIXED_TABS = { services: 'home', files: 'files', status: 'status', chat: 'chat', projects: 'projects' };
-const CLOSED_TABS_KEY = 'phos-closed-tabs';
+const CLOSED_TABS_KEY = 'hesperus-closed-tabs';
 const fixedBtn = (id) => tabbarTabs.querySelector(`.tab-btn[data-tab-id="${id}"]`);
 function closedTabs() {
   return Object.keys(FIXED_TABS).filter((id) => fixedBtn(id).hidden);
@@ -1472,7 +1472,7 @@ function activateTab(id, from) {
   statusWatch();
   btns[next]?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
   openTabs.get(id)?.show();
-  document.dispatchEvent(new CustomEvent('phos-tab', { detail: id }));
+  document.dispatchEvent(new CustomEvent('hesperus-tab', { detail: id }));
   paintMobileBar();
 }
 
@@ -1668,7 +1668,7 @@ function startTerminal(view, host, sid, resume, shared = false) {
   return {
     show: () => ready.then(() => { fit?.fit(); term?.focus(); }),
     focus: () => term?.focus(),
-    // readable by phos while shared, never written to
+    // readable by hesperus while shared, never written to
     get shared() { return shared; },
     share: (on) => {
       shared = on;
@@ -1691,7 +1691,7 @@ function startTerminal(view, host, sid, resume, shared = false) {
 }
 
 // open terminals across a reload, per browser tab, like the sessions
-const TERMS_KEY = 'phos-terms';
+const TERMS_KEY = 'hesperus-terms';
 function savedTerms() {
   try { return JSON.parse(sessionStorage.getItem(TERMS_KEY)) || []; } catch { return []; }
 }
@@ -1771,7 +1771,7 @@ function renderClosedTabs() {
 }
 
 // files opened in the editor, newest first, for the + menu
-const RECENT_FILES_KEY = 'phos-recent-files';
+const RECENT_FILES_KEY = 'hesperus-recent-files';
 const RECENT_FILES_MAX = 3;
 function rememberFile(file) {
   const list = loadJsonSafe(RECENT_FILES_KEY).filter((f) => f && codeKey(f) !== codeKey(file));
@@ -1878,7 +1878,7 @@ const filesApi = (loc, op, params) => {
   return `/api/files/${encodeURIComponent(loc.host)}/${op}?${q}`;
 };
 const filesJoin = (a, b) => (a ? `${a}/${b}` : b);
-// host then the share path: razer/phosphorus/files/gondor.jpg
+// host then the share path: razer/hesperus/files/gondor.jpg
 const filesPath = (host, root, rel) =>
   [host, ...`${root}/${rel || ''}`.split('/')].filter(Boolean).join('/');
 const filesParent = (p) => p.split('/').slice(0, -1).join('/');
@@ -2122,8 +2122,8 @@ async function loadHost(pane, host) {
     pane.infos.set(host, {
       shares: info.shares.map((sh) => ({ host, share: sh.id, root: sh.label, perms: sh.perms })),
       warn: !info.enabled
-        ? `no files directory, set [files] dir in ${host}'s config/phos.ini`
-        : info.wantDir ? `phos.ini now says ${info.wantDir}, rebuilding to mount it` : '',
+        ? `no files directory, set [files] dir in ${host}'s config/hesperus.ini`
+        : info.wantDir ? `hesperus.ini now says ${info.wantDir}, rebuilding to mount it` : '',
     });
   } catch (err) {
     pane.infos.set(host, { shares: [], warn: err.message });
@@ -2887,7 +2887,7 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !filesMo
 
 // the host list: whatever the mesh poll already knows, at no cost
 function filesSyncHosts(tailnet) {
-  const names = (tailnet || []).filter((d) => d.phosphorus).map((d) => d.name).sort();
+  const names = (tailnet || []).filter((d) => d.hesperus).map((d) => d.name).sort();
   if (!names.length || names.join() === filesHostNames.join()) return;
   filesHostNames = names;
   // a first mesh poll possibly after the tab opens, a pane learning its host
@@ -3469,9 +3469,9 @@ async function loadCatalog(force) {
 // every model a role can take, by provider, the mesh's own first; a role's
 // choice kept listed though its provider's key is gone
 function modelGroups(model) {
-  const groups = [{ id: 'phos', name: 'mesh', models: stModels().map((m) => ({ id: `phos/${m.host}`, name: m.file ? `${m.host} · ${m.file}` : m.host })) }];
+  const groups = [{ id: 'hesperus', name: 'mesh', models: stModels().map((m) => ({ id: `hesperus/${m.host}`, name: m.file ? `${m.host} · ${m.file}` : m.host })) }];
   for (const p of catalog || []) {
-    if (p.id !== 'phos' && p.models.length) groups.push({ id: p.id, name: p.id, models: p.models.map((m) => ({ id: `${p.id}/${m.id}`, name: m.name.toLowerCase() })) });
+    if (p.id !== 'hesperus' && p.models.length) groups.push({ id: p.id, name: p.id, models: p.models.map((m) => ({ id: `${p.id}/${m.id}`, name: m.name.toLowerCase() })) });
   }
   for (const r of MODEL_ROLES) {
     const id = model.roles?.[r]?.chosen;
@@ -3504,7 +3504,7 @@ function drawModelPick() {
   // never redrawn under a typing hand
   if (stModelPick.contains(document.activeElement)) return;
   const groups = modelGroups(model);
-  const providers = (catalog || []).filter((p) => p.id !== 'phos');
+  const providers = (catalog || []).filter((p) => p.id !== 'hesperus');
   const keys = model.keys || [];
   const order = roleOrder();
   const sig = JSON.stringify([model.roles, keys, groups, providers.map((p) => p.id), pickError, keysOpen, order]);
@@ -3527,7 +3527,7 @@ function drawModelPick() {
       + `<button type="button" class="st-pick-btn" data-clear="${esc(p)}" title="forget ${esc(p)}'s key">clear</button></div>`).join('')
     + '<div class="st-pick-row"><select class="st-pick-in st-pick-provider" aria-label="provider">'
     + `<option value="" disabled selected>provider</option>${providers.map((p) => option(p.id, p.id)).join('')}</select>`
-    + '<input class="st-pick-in st-pick-secret" type="text" name="phos-provider-key" placeholder="api key" autocomplete="off" '
+    + '<input class="st-pick-in st-pick-secret" type="text" name="hesperus-provider-key" placeholder="api key" autocomplete="off" '
     + 'autocorrect="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" aria-label="api key">'
     + '<button type="button" class="st-pick-btn" data-save>save</button></div></div>';
   stModelPick.innerHTML = roles + fold + open + (pickError ? `<div class="st-pick-row st-pick-err">${esc(pickError)}</div>` : '');
@@ -3739,7 +3739,7 @@ function drawProc(p, h) {
 
 // self first, then by name, hosts gone from the mesh dropped
 function statusRender() {
-  const live = stNet ? stNet.tailnet.filter((d) => d.phosphorus).map((d) => d.name) : [...stHosts.keys()];
+  const live = stNet ? stNet.tailnet.filter((d) => d.hesperus).map((d) => d.name) : [...stHosts.keys()];
   const names = [...new Set(live)].sort((a, b) => (b === selfHost) - (a === selfHost) || a.localeCompare(b));
   for (const [name, h] of stHosts) if (!names.includes(name)) { h.card?.card.remove(); stHosts.delete(name); }
   if (!names.includes(stOpenHost)) stOpenHost = null;
@@ -3818,13 +3818,13 @@ document.addEventListener('visibilitychange', statusWatch);
 
 // --- chat ------------------------------------------------------------
 // one log, redrawn per conversation from what the socket handed over: the
-// mesh and its channels, direct messages, and private phos sessions kept in
+// mesh and its channels, direct messages, and private hesperus sessions kept in
 // this browser. Bubbles: yours on the right, everyone else's on the left,
-// phos's replies the full width
+// hesperus's replies the full width
 
 const chatPanel = document.getElementById('chat-panel');
 const chatLog = document.getElementById('chat-log');
-// phos's [open a terminal on host](#term:host): a terminal tab, never a navigation
+// hesperus's [open a terminal on host](#term:host): a terminal tab, never a navigation
 chatPanel.addEventListener('click', (e) => {
   const a = e.target.closest?.('a[href^="#term:"]');
   if (!a) return;
@@ -3881,8 +3881,8 @@ function colorFor(n) {
   return NAME_COLORS[h % NAME_COLORS.length];
 }
 
-let name = localStorage.getItem('phos-chat-name') || '';
-let color = localStorage.getItem('phos-chat-color') || '';
+let name = localStorage.getItem('hesperus-chat-name') || '';
+let color = localStorage.getItem('hesperus-chat-color') || '';
 let ws = null;
 // fast first, then backing off x1.5 (capped), most reconnects a blip
 let reconnectDelay = 300;
@@ -3947,7 +3947,7 @@ window.addEventListener('focus', clearUnread);
 const chatBell = document.getElementById('chat-bell');
 const canNotify = 'Notification' in window;
 let notifyOn = canNotify && Notification.permission === 'granted'
-  && localStorage.getItem('phos-chat-notify') === '1';
+  && localStorage.getItem('hesperus-chat-notify') === '1';
 
 function paintBell() {
   chatBell.setAttribute('aria-pressed', String(notifyOn));
@@ -3961,7 +3961,7 @@ if (canNotify) { chatBell.hidden = false; paintBell(); }
 chatBell.addEventListener('click', async () => {
   if (notifyOn) {
     notifyOn = false;
-    localStorage.setItem('phos-chat-notify', '0');
+    localStorage.setItem('hesperus-chat-notify', '0');
     paintBell();
     return;
   }
@@ -3972,7 +3972,7 @@ chatBell.addEventListener('click', async () => {
     return;
   }
   notifyOn = true;
-  localStorage.setItem('phos-chat-notify', '1');
+  localStorage.setItem('hesperus-chat-notify', '1');
   paintBell();
 });
 
@@ -3981,7 +3981,7 @@ chatBell.addEventListener('click', async () => {
 function notifyChat(m, invite = false) {
   if ((!notifyOn && !invite) || !away() || !canNotify || Notification.permission !== 'granted') return;
   try {
-    const n = new Notification(m.name, { body: m.text, tag: 'phos-chat', silent: true });
+    const n = new Notification(m.name, { body: m.text, tag: 'hesperus-chat', silent: true });
     n.onclick = () => { window.focus(); n.close(); };
   } catch {}
 }
@@ -4437,12 +4437,12 @@ function redrawLine(m) {
 // mesh and the channels anyone opens, the agents' dms (kept in this browser),
 // and people's dms (kept by the mesh, shown to their two ends)
 
-const CHANNELS_KEY = 'phos-chat-channels';
+const CHANNELS_KEY = 'hesperus-chat-channels';
 // chat's agents, the orangutan kept for projects; both picked in the model card
 const AGENTS = ['chimp'];
 const MODEL_ROLES = ['chimp', 'orangutan'];
 const AGENT_SUB = { chimp: 'quick' };
-const AGENT_KEY = 'phos-agents';
+const AGENT_KEY = 'hesperus-agents';
 const AGENT_KEEP = 200;
 // mesh, ch:<name>, dm:<name> or chimp
 let conv = 'mesh';
@@ -4455,7 +4455,7 @@ const agents = (() => {
 // channels opened here, kept listed before anyone has said a word in them
 let myChannels = loadJson(CHANNELS_KEY, []);
 // channels left here, by when, hidden until a line comes after
-const LEFT_KEY = 'phos-chat-left';
+const LEFT_KEY = 'hesperus-chat-left';
 let leftChannels = loadJson(LEFT_KEY, {}) || {};
 const saveChannels = () => {
   try {
@@ -4805,7 +4805,7 @@ function paintSeen() {
   chatSees.textContent = codeName(f);
   chatSees.title = `the chimp sees ${f.label}, the file you have open, and knows you mean it`;
 }
-document.addEventListener('phos-tab', (e) => {
+document.addEventListener('hesperus-tab', (e) => {
   if (e.detail.startsWith('code-')) seenTab = e.detail;
   paintSeen();
 });
@@ -4868,7 +4868,7 @@ const goConv = (c) => {
 
 // the panel into the tab and back, the conversation's lines moved with it,
 // not drawn again
-document.addEventListener('phos-tab', (e) => {
+document.addEventListener('hesperus-tab', (e) => {
   const tab = e.detail === 'chat';
   if (tab === docked()) return;
   const pinned = chatPinned;
@@ -4884,7 +4884,7 @@ document.addEventListener('phos-tab', (e) => {
 });
 
 // the model card's roles in the order the tab puts them
-document.addEventListener('phos-tab', () => { if (stModel()) { stModelHtml = ''; drawModelSum(); } });
+document.addEventListener('hesperus-tab', () => { if (stModel()) { stModelHtml = ''; drawModelSum(); } });
 
 // --- incoming ---------------------------------------------------------------------
 
@@ -4952,7 +4952,7 @@ function settleSending(g, m, c) {
 const INVITE_MS = 15 * 60 * 1000;
 const isInvite = (m) => m.kind === 'show' && m.file && m.dm === name && m.name !== name
   && Date.now() - m.timestamp < INVITE_MS && m.timestamp > showSeen;
-let showSeen = Number(localStorage.getItem('phos-show-seen')) || 0;
+let showSeen = Number(localStorage.getItem('hesperus-show-seen')) || 0;
 
 function renderHistory(messages, closed = {}) {
   lines.clear();
@@ -5136,8 +5136,8 @@ function connectChat() {
     } else if (msg.type === 'message') {
       const { type, ...m } = msg;
       takeLine(m, true);
-    } else if (msg.type === 'phos-ui') {
-      phosPressed(msg.action);
+    } else if (msg.type === 'hesperus-ui') {
+      hesperusPressed(msg.action);
     } else if (msg.type === 'agent-reply') {
       agentAnswered(msg);
     } else if (msg.type === 'agent-purged') {
@@ -5417,7 +5417,7 @@ function runCommand(input) {
   if (cmd === '/rename') {
     if (!arg) { chatNote('usage: /rename name'); return; }
     name = arg.slice(0, 32);
-    localStorage.setItem('phos-chat-name', name);
+    localStorage.setItem('hesperus-chat-name', name);
     send({ type: 'rename', name });
     return;
   }
@@ -5425,7 +5425,7 @@ function runCommand(input) {
     const idx = arg ? COLOR_NAMES.indexOf(arg.toLowerCase()) : -1;
     if (arg && idx === -1) { chatNote(`usage: /recolor ${COLOR_NAMES.join('|')}`); return; }
     color = idx !== -1 ? NAME_COLORS[idx] : NAME_COLORS[Math.floor(Math.random() * NAME_COLORS.length)];
-    localStorage.setItem('phos-chat-color', color);
+    localStorage.setItem('hesperus-chat-color', color);
     send({ type: 'recolor', color });
     return;
   }
@@ -5465,7 +5465,7 @@ async function resolveShow(what) {
     if (f && (f.label === w || f.path === w || codeName(f) === w || f.label.endsWith(`/${w}`))) return f;
   }
   const [host, ...rest] = w.split('/');
-  if (![selfHost, ...phosHosts()].includes(host) || !rest.length) return null;
+  if (![selfHost, ...hesperusHosts()].includes(host) || !rest.length) return null;
   const info = await fetch(`/api/files/${encodeURIComponent(host)}/info`).then((r) => r.json()).catch(() => null);
   const full = rest.join('/');
   const bare = (l) => String(l || '').replace(/^\/+|\/+$/g, '');
@@ -5481,7 +5481,7 @@ let showFile = null;
 function showInvite(m) {
   showFile = m.file;
   showSeen = Math.max(showSeen, m.timestamp);
-  try { localStorage.setItem('phos-show-seen', String(showSeen)); } catch {}
+  try { localStorage.setItem('hesperus-show-seen', String(showSeen)); } catch {}
   document.getElementById('show-modal-text').replaceChildren(el('b', '', m.name), ' wants to work on ', el('code', '', m.file.label), ' with you, in a shared editor.');
   showModal.hidden = false;
   document.getElementById('show-modal-go').focus();
@@ -5726,7 +5726,7 @@ chatJoin.addEventListener('submit', (e) => {
   const v = chatName.value.trim().slice(0, 32);
   if (!v) return;
   name = v;
-  localStorage.setItem('phos-chat-name', name);
+  localStorage.setItem('hesperus-chat-name', name);
   chatJoin.hidden = true;
   chatCompose.hidden = false;
   connectChat();
@@ -5868,7 +5868,7 @@ function opMap(ops, pos) {
 
 // --- tabs ------------------------------------------------------------------------
 
-const CODE_TABS_KEY = 'phos-code-tabs';
+const CODE_TABS_KEY = 'hesperus-code-tabs';
 // host\nshare\npath -> its tab id
 const codeTabs = new Map();
 let codeSeq = 0;
@@ -5992,7 +5992,7 @@ function codeEditor(view, file, btn, id) {
   const redraw = () => { drawFrame ||= requestAnimationFrame(draw); mdSoon(); };
 
   // --- markdown rendered: the source's blocks drawn, one edited at a time in place ---
-  const MD_KEY = 'phos-md-rendered';
+  const MD_KEY = 'hesperus-md-rendered';
   let rendered = false;
   let mdEditing = null;
   let mdTimer = 0;
@@ -6558,7 +6558,7 @@ function pjWatch(on) {
   pjPoll();
   pjTimer = setInterval(() => { if (!document.hidden) pjPoll(); }, PJ_POLL_MS);
 }
-document.addEventListener('phos-tab', (e) => pjWatch(e.detail === 'projects'));
+document.addEventListener('hesperus-tab', (e) => pjWatch(e.detail === 'projects'));
 
 function pjPaintList() {
   const sig = JSON.stringify([pjAll, pjPick, Math.floor(Date.now() / 60000)]);
@@ -6744,7 +6744,7 @@ function pjPaintNew() {
   const form = el('form', 'pj-new');
   // one project a host: a busy one listed, not pickable
   const busy = new Set(pjAll.filter((p) => p.status === 'running').map((p) => p.host));
-  const hosts = [...new Set([pjSelf, ...phosHosts()].filter(Boolean))].sort((x, y) => (y === pjSelf) - (x === pjSelf) || x.localeCompare(y));
+  const hosts = [...new Set([pjSelf, ...hesperusHosts()].filter(Boolean))].sort((x, y) => (y === pjSelf) - (x === pjSelf) || x.localeCompare(y));
   const first = hosts.find((h) => !busy.has(h)) || hosts[0] || '';
   form.innerHTML = '<p class="pj-intro">The <span class="who-model">orangutan</span> works on it alone in a sandbox on the host picked, in rounds of plan, execute, test and refine, '
     + 'until it says it is done or the time runs out. It reports as it goes; its files land in the read-only projects share.</p>'
@@ -6785,18 +6785,18 @@ function pjPaintNew() {
   keybarDirty();
 }
 
-// --- phos's presses on this page ----------------------------------------------
+// --- hesperus's presses on this page ----------------------------------------------
 // the page moved for whoever asked, as a button would: a view, a terminal, a host
 
-const PHOS_VIEWS = { home: 'services', files: 'files', status: 'status', about: 'about', projects: 'projects' };
-function phosPressed(a) {
+const HESPERUS_VIEWS = { home: 'services', files: 'files', status: 'status', about: 'about', projects: 'projects' };
+function hesperusPressed(a) {
   if (!a) return;
-  // opened by phos, shared with it from the start, s still unshares
+  // opened by hesperus, shared with it from the start, s still unshares
   if (a.kind === 'terminal' && terminalHosts.includes(a.host)) openTerminalTab(a.host, undefined, a.share === true);
-  else if (a.kind === 'host' && phosHosts().includes(a.host)) switchHost(a.host);
+  else if (a.kind === 'host' && hesperusHosts().includes(a.host)) switchHost(a.host);
   else if (a.kind === 'code' && a.host && a.path) openCodeTab({ host: a.host, share: a.share, path: a.path, label: `${a.host}/${a.path}` });
   else if (a.kind === 'view') {
-    if (PHOS_VIEWS[a.view]) activateTab(PHOS_VIEWS[a.view]);
+    if (HESPERUS_VIEWS[a.view]) activateTab(HESPERUS_VIEWS[a.view]);
     else if (a.view === 'chat') openConv('mesh');
     else if (a.view === 'update' && updateModal.hidden) openUpdateModal();
   } else if (a.kind === 'creds') credsAsk(a);
@@ -6941,18 +6941,18 @@ function renderUpdateButton() {
   updateBtn.title = meshLock ? `started by ${meshLock.initiator}` : 'update every host on the mesh, one at a time';
 }
 
-// every phosphorus host and the version it answered with, ours from
+// every hesperus host and the version it answered with, ours from
 // /api/state itself, while a chain runs, in its order, each with its step
 function renderVersions() {
   const { tailnet, selfVersion } = updateSeen;
   // one that answered before listed too, as not answering, ours always,
   // even before this host is in its own tailnet view
-  const names = tailnet.filter((d) => d.phosphorus || d.phosSeen).map((d) => d.name);
+  const names = tailnet.filter((d) => d.hesperus || d.hesperusSeen).map((d) => d.name);
   if (selfHost && !names.includes(selfHost)) names.push(selfHost);
   const order = updateChain ? [...updateChain.order, ...names.filter((n) => !updateChain.order.includes(n))] : names;
   const isQuiet = (host) => {
     const d = tailnet.find((x) => x.name === host);
-    return host !== selfHost && !!d && !!d.phosSeen && !d.phosphorus;
+    return host !== selfHost && !!d && !!d.hesperusSeen && !d.hesperus;
   };
   const rows = order.map((host) => {
     const d = tailnet.find((x) => x.name === host) || {};
@@ -7182,8 +7182,8 @@ document.addEventListener('click', (e) => {
 
 // the side column, each card shown or hidden by its own button and stacked
 // mesh, model, chat
-const CARDS_KEY = 'phos-cards';
-const CHAT_PANE_KEY = 'phos-chat-pane';
+const CARDS_KEY = 'hesperus-cards';
+const CHAT_PANE_KEY = 'hesperus-chat-pane';
 const cards = { mesh: true, model: false };
 try { Object.assign(cards, JSON.parse(localStorage.getItem(CARDS_KEY) || '{}')); } catch {}
 let chatPane = true;
@@ -7377,7 +7377,7 @@ function applyTheme(theme) {
 }
 
 function themePick() {
-  try { return localStorage.getItem('phos-theme'); } catch { return null; }
+  try { return localStorage.getItem('hesperus-theme'); } catch { return null; }
 }
 
 function setTheme(theme) {
@@ -7385,8 +7385,8 @@ function setTheme(theme) {
   document.documentElement.classList.add('theme-fade');
   setTimeout(() => document.documentElement.classList.remove('theme-fade'), 350);
   try {
-    if (theme === (systemLight.matches ? 'light' : 'dark')) localStorage.removeItem('phos-theme');
-    else localStorage.setItem('phos-theme', theme);
+    if (theme === (systemLight.matches ? 'light' : 'dark')) localStorage.removeItem('hesperus-theme');
+    else localStorage.setItem('hesperus-theme', theme);
   } catch {}
   applyTheme(theme);
 }
@@ -7714,7 +7714,7 @@ function keybarKeys() {
   let here = [];
   if (id.startsWith('term-')) {
     here = [['enter', 'type', 'primary', () => openTabs.get(id)?.focus()],
-      ['s', openTabs.get(id)?.shared ? 'unshare' : 'share with phos', '', () => toggleShare(id)],
+      ['s', openTabs.get(id)?.shared ? 'unshare' : 'share with hesperus', '', () => toggleShare(id)],
       ['esc', 'close', 'danger', () => closeTab(id)]];
   } else if (id === 'services') {
     const enter = row && ROW_ENTER.find(([sel]) => row.matches(sel));

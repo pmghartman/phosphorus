@@ -52,7 +52,7 @@ function sshConfig(peers) {
   for (const p of peers) {
     if (!/^\d+\.\d+\.\d+\.\d+$/.test(p.ip)) continue;
     out += `\nHost ${p.host}\n\tHostName ${p.ip}\n`;
-    if (HOST_APART) out += `\tProxyCommand docker exec -i phosphorus node ${SELF} %h %p\n`;
+    if (HOST_APART) out += `\tProxyCommand docker exec -i hesperus node ${SELF} %h %p\n`;
   }
   return out;
 }

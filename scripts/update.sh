@@ -1,6 +1,6 @@
 #!/bin/bash
 # pull, then the rebuild handed to scripts/rebuild.sh, the git repo as the
-# distribution mechanism, from a host terminal or inside phosphorus
+# distribution mechanism, from a host terminal or inside hesperus
 set -uo pipefail
 
 # all inside main(), called on the last line, since `git reset` rewrites
@@ -12,12 +12,12 @@ main() {
   say() { echo "[update] $*"; }
   fail() { echo "[update] ERROR: $*" >&2; exit 1; }
 
-  [ -f config/services.export ] || fail "config/services.export not found, are you running this from inside the phosphorus clone?"
+  [ -f config/services.export ] || fail "config/services.export not found, are you running this from inside the hesperus clone?"
 
   # --- step 1: the fetch gate, behind the caller's exit code ---
 
   # the public repo, every host's origin, no credentials needed
-  local upstream="https://github.com/pmghartman/phosphorus.git"
+  local upstream="https://github.com/pmghartman/hesperus.git"
   [ "$(git remote get-url origin)" = "$upstream" ] || git remote set-url origin "$upstream"
 
   say "pulling latest..."
@@ -41,7 +41,7 @@ main() {
   # reset ignoring skip-worktree: each per-host file saved, reset with the
   # flag off, then put back
   local keep=() f saved i reset=1
-  for f in config/services.export config/phos.ini; do
+  for f in config/services.export config/hesperus.ini; do
     [ -f "$f" ] || continue
     saved="$(mktemp)"
     cp "$f" "$saved" || fail "couldn't back up $f, nothing changed"
@@ -63,7 +63,7 @@ main() {
 
   # --- step 2: rebuild and swap ---------------------------------------------
 
-  # main's copy of rebuild.sh, post-reset: reads phos.ini, builds before
+  # main's copy of rebuild.sh, post-reset: reads hesperus.ini, builds before
   # returning so a failure is real, then swaps, or skips when nothing changed
   say "building and restarting onto $version, a few minutes"
   bash "$dir/scripts/rebuild.sh" || fail "rebuild failed, still running the previous version"

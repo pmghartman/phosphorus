@@ -69,7 +69,7 @@ const n = (v) => Number(v) || 0;
 
 // --- roles ------------------------------------------------------------------
 
-// '' for none, the mesh's own models as phos/<host>
+// '' for none, the mesh's own models as hesperus/<host>
 const validChoice = (c) => !!c && (c.model === '' || MODEL_RE.test(c.model || '')) && Number.isFinite(c.at) && c.at <= Date.now() + 60000;
 const pickOf = (x, r) => (x && validChoice(x[r]) ? x[r] : null);
 const saved = readJson(ROLES_FILE, null) || {};
@@ -212,13 +212,13 @@ function summary() {
 // told apart
 function excuse(states, s) {
   if (!states.length) return 'not loaded: no host is running the model daemon';
-  if (!s) return 'not loaded: no host has host = true under [model] in its phos.ini';
+  if (!s) return 'not loaded: no host has host = true under [model] in its hesperus.ini';
   if (s.why) return `not loaded: ${s.why}`;
   if (s.oom && s.server !== 'ready') return 'out of vram, lower ctx or slots';
   const times = (k) => `${k} time${k === 1 ? '' : 's'}`;
   // shown whatever the server is doing, since a crash loop is mostly retries
   const crashed = s.exits
-    ? `llama-server has exited ${times(s.exits)} since it was last up (${s.lastExit}), docker logs phosphorus on ${s.host} says why`
+    ? `llama-server has exited ${times(s.exits)} since it was last up (${s.lastExit}), docker logs hesperus on ${s.host} says why`
     : '';
   if (crashed && s.server !== 'loading') return `not loaded: ${crashed}`;
   if (s.server === 'loading') {

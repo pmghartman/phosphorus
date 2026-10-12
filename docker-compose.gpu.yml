@@ -1,7 +1,7 @@
-# nvidia gpus into phosphorus, for the status tab's nvidia-smi and llama-server,
+# nvidia gpus into hesperus, for the status tab's nvidia-smi and llama-server,
 # added by rebuild only where a --gpus probe container starts
 services:
-  phosphorus:
+  hesperus:
     deploy:
       resources:
         reservations:

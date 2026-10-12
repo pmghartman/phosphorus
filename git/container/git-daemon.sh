@@ -2,14 +2,14 @@
 set -uo pipefail
 
 STATE_DIR="${STATE_DIR:-/state}"
-DATA_ROOT="${DATA_ROOT:-/var/lib/phosphorus/git}"
+DATA_ROOT="${DATA_ROOT:-/var/lib/hesperus/git}"
 LITEFS_YML_TMPL="${LITEFS_YML_TMPL:-/etc/litefs/litefs.yml.tmpl}"
 LITEFS_YML="${LITEFS_YML:-/etc/litefs/litefs.yml}"
 APP_INI_TMPL="${APP_INI_TMPL:-/etc/forgejo/app.ini.tmpl}"
 APP_INI="${APP_INI:-$DATA_ROOT/conf/app.ini}"
 GIT_ROLE_FILE="${GIT_ROLE_FILE:-$STATE_DIR/git-role}"
 SELF_HOST_FILE="${SELF_HOST_FILE:-$STATE_DIR/self-host}"
-ELECTOR="${ELECTOR:-/usr/local/lib/phosphorus-git/elector.js}"
+ELECTOR="${ELECTOR:-/usr/local/lib/hesperus-git/elector.js}"
 # touch to let this host lead without proof it has the newest data
 FORCE_FILE="${FORCE_FILE:-$STATE_DIR/git-force-promote}"
 VERSION_FILE="$DATA_ROOT/MU_GIT_VERSION"
@@ -343,8 +343,8 @@ term() {
 main() {
   mkdir -p "$STATE_DIR" "$DATA_ROOT"/{conf,custom,obj,litefs} /var/lib/litefs-internal
   # forgejo running as git, never chown litefs/ (the FUSE mount)
-  chown git:phos "$DATA_ROOT"
-  chown -R git:phos "$DATA_ROOT"/{conf,custom,obj}
+  chown git:hesperus "$DATA_ROOT"
+  chown -R git:hesperus "$DATA_ROOT"/{conf,custom,obj}
 
   say "waiting for $SELF_HOST_FILE..."
   while [ ! -s "$SELF_HOST_FILE" ]; do sleep 1; done
@@ -380,7 +380,7 @@ main() {
       fi
     fi
 
-    # a host rename landing in self-host once phosphorus restarts, restarted to follow it
+    # a host rename landing in self-host once hesperus restarts, restarted to follow it
     if [ -s "$SELF_HOST_FILE" ] && [ "$(<"$SELF_HOST_FILE")" != "$SELF_HOST" ]; then
       say "self-host is now $(<"$SELF_HOST_FILE"), restarting"
       term

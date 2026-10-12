@@ -8,10 +8,10 @@ function Say($msg) { Write-Host "[update] $msg" }
 function Fail($msg) { Write-Host "[update] ERROR: $msg" -ForegroundColor Red; exit 1 }
 
 # $ErrorActionPreference skips native commands, exit codes checked by hand
-if (-not (Test-Path config/services.export)) { Fail "config/services.export not found, are you running this from inside the phosphorus clone?" }
+if (-not (Test-Path config/services.export)) { Fail "config/services.export not found, are you running this from inside the hesperus clone?" }
 
 # the public repo, every host's origin, no credentials needed
-$Upstream = "https://github.com/pmghartman/phosphorus.git"
+$Upstream = "https://github.com/pmghartman/hesperus.git"
 if ((git remote get-url origin) -ne $Upstream) { git remote set-url origin $Upstream }
 
 Say "pulling latest..."
@@ -35,7 +35,7 @@ if (Test-Path .env) {
 # reset ignoring skip-worktree: each per-host file saved, reset with the
 # flag off, then put back
 $Keep = @{}
-foreach ($f in @("config/services.export", "config/phos.ini")) {
+foreach ($f in @("config/services.export", "config/hesperus.ini")) {
     if (-not (Test-Path $f)) { continue }
     $Keep[$f] = [System.IO.Path]::GetTempFileName()
     Copy-Item $f $Keep[$f] -Force
@@ -56,7 +56,7 @@ if (-not $Reset) { Fail "couldn't reset to origin/main, nothing changed" }
 
 $Version = (Get-Content VERSION -Raw).Trim()
 
-# main's copy of rebuild.ps1, post-reset: reads phos.ini itself, announces
+# main's copy of rebuild.ps1, post-reset: reads hesperus.ini itself, announces
 # the swap to the frontend, or skips it when nothing changed
 Say "restarting onto $Version, a few minutes"
 & "$PSScriptRoot/rebuild.ps1"

@@ -15,7 +15,7 @@ const FRONTEND_PORT = Number(process.env.FRONTEND_PORT || 8090);
 const STATE_DIR = process.env.STATE_DIR || '/state';
 const CHAIN_FILE = path.join(STATE_DIR, 'update-chain.json');
 const UPDATE_SCRIPT = process.env.UPDATE_SCRIPT || '/repo/scripts/update.sh';
-const VERSION_FILE = process.env.VERSION_FILE || '/opt/phosphorus/VERSION';
+const VERSION_FILE = process.env.VERSION_FILE || '/opt/hesperus/VERSION';
 // the checkout update.sh resets, once it returns, what was built
 const REPO_DIR = path.resolve(path.dirname(UPDATE_SCRIPT), '..');
 
@@ -136,7 +136,7 @@ async function callPeerUpdate(host, note) {
       continue;
     }
     if (swapDeadline && Date.now() > swapDeadline) {
-      return { ok: false, error: 'swap never landed, see docker logs phosphorus-updater on that host' };
+      return { ok: false, error: 'swap never landed, see docker logs hesperus-updater on that host' };
     }
     if (status.state === 'failed') return { ok: false, error: status.error || 'update failed' };
     // idle baseline untouched: this peer's update not yet run
@@ -215,11 +215,11 @@ function note(host, fields) {
   saveChain();
 }
 
-// every phosphorus host, git hosts then self last so origin stays up for the rest's
+// every hesperus host, git hosts then self last so origin stays up for the rest's
 // fetch, a quiet one walked too as unreachable, pausing the chain
 function buildOrder(gitHosts) {
   const peers = [...new Set(mesh.tailnet()
-    .filter((d) => d && (d.phosphorus || d.phosSeen) && d.name && d.name !== SELF_HOST)
+    .filter((d) => d && (d.hesperus || d.hesperusSeen) && d.name && d.name !== SELF_HOST)
     .map((d) => d.name))];
   const git = new Set(gitHosts);
   const rank = (m) => (git.has(m) ? 1 : 0);
@@ -255,7 +255,7 @@ function brief(result) {
   const e = String(result.error || '');
   if (/fetch origin/.test(e)) return 'fetch failed';
   if (/reset to origin/.test(e)) return 'reset failed';
-  if (/swap|phosphorus-updater/.test(e)) return 'swap failed';
+  if (/swap|hesperus-updater/.test(e)) return 'swap failed';
   if (/build failed/.test(e)) return 'build failed';
   if (/timed out|gave up/.test(e)) return 'timed out';
   return result.unreachable ? 'unreachable' : 'failed';

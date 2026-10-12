@@ -12,7 +12,7 @@ const clock = require('./clock');
 const { EXTRA_KEYS, rowError } = require('./proxy');
 const { notes, readJson } = require('./util');
 
-const SERVICES_FILE = process.env.SERVICES_FILE || '/etc/phosphorus/services.export';
+const SERVICES_FILE = process.env.SERVICES_FILE || '/etc/hesperus/services.export';
 const STATE_DIR = process.env.STATE_DIR || '/state';
 // git-daemon's output file
 const GIT_ROLE_FILE = path.join(STATE_DIR, 'git-role');

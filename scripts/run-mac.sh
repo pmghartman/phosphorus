@@ -15,11 +15,11 @@ run_preflight "install colima and docker first (see README)" "install Xcode Comm
 # --- native tailscaled conflict check ---------------------------------------
 # the container's tailscaled sharing this machine's network, a native
 # Tailscale client fighting it for the TUN/WireGuard port
-if phos_running; then
-  say "phosphorus is already running, any tailscale here is its own, skipping the native-client check"
+if hesperus_running; then
+  say "hesperus is already running, any tailscale here is its own, skipping the native-client check"
 elif pgrep -x tailscaled >/dev/null 2>&1 || pgrep -x Tailscale >/dev/null 2>&1 \
    || ifconfig 2>/dev/null | grep -q 'inet 100\.'; then
-  fail "native Tailscale client active, colliding with phosphorus's own tailscaled, quit the Tailscale app (or stop tailscaled) first"
+  fail "native Tailscale client active, colliding with hesperus's own tailscaled, quit the Tailscale app (or stop tailscaled) first"
 fi
 
 # --- local SSH server (Remote Login) ----------------------------------------

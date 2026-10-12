@@ -24,7 +24,7 @@ const PEER_RETRY_MS = 3000;
 const MOUNT_ROOTS = ['/state', '/files', '/repo'];
 const SHARES = '/shares';
 // the host's drives, bound whole by rebuild, unset: only the binds above
-const HOST_ROOT = process.env.PHOS_HOST_ROOT ? '/hostfs' : '';
+const HOST_ROOT = process.env.HESPERUS_HOST_ROOT ? '/hostfs' : '';
 // real filesystems, plus what Docker Desktop's VM passes windows drives as
 const REAL_FS = /^(ext[234]|xfs|btrfs|zfs|f2fs|bcachefs|jfs|reiserfs|ntfs3?|fuseblk|exfat|vfat|hfsplus|apfs|9p|drvfs|virtiofs)$/;
 // loopback and container plumbing, never a real link
@@ -417,7 +417,7 @@ function dropPeer(host) {
   p.ws?.terminate();
 }
 
-// phosphorus hosts only, redialed on an IP change
+// hesperus hosts only, redialed on an IP change
 function reconcile() {
   const want = hooks.peers();
   for (const host of peers.keys()) if (want.get(host) !== peers.get(host).ip) dropPeer(host);

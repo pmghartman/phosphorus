@@ -121,7 +121,7 @@ function stateFor(host) {
     s = {
       entries: [], presence: [], lock: null, chain: null, git: null, model: null, platform: '', version: '',
       rttMs: null, misses: 0, lastSeq: 0, chat: [], answered: false, fp: '',
-      // answered at least once since it joined the tailnet, so a phosphorus
+      // answered at least once since it joined the tailnet, so a hesperus
       // host gone quiet is still one, never cleared while it's a peer
       everAnswered: false,
     };
@@ -191,7 +191,7 @@ async function pollPeer(peer) {
     st.misses += 1;
     st.chat = [];
     if (st.misses >= MISS_THRESHOLD) retire(st);
-    note(`peer:${peer.host}`, `${peer.host} is not answering on port ${FRONTEND_PORT}, is phosphorus running there?`);
+    note(`peer:${peer.host}`, `${peer.host} is not answering on port ${FRONTEND_PORT}, is hesperus running there?`);
   }
 }
 
@@ -288,8 +288,8 @@ async function sweepGuests() {
   }
 }
 
-// phosphorus peers -> tailnet IP, self left out
-const peerIps = () => new Map(devices.filter((d) => d.phosphorus && d.name !== SELF_HOST && IPV4_RE.test(hostIps.get(d.name) || ''))
+// hesperus peers -> tailnet IP, self left out
+const peerIps = () => new Map(devices.filter((d) => d.hesperus && d.name !== SELF_HOST && IPV4_RE.test(hostIps.get(d.name) || ''))
   .map((d) => [d.name, hostIps.get(d.name)]));
 
 // --- the tick --------------------------------------------------------------
@@ -319,18 +319,18 @@ async function tick() {
       clock.markHot();
       log(`${host} left the tailnet`);
     }
-    // phosphorus: its frontend answers, offline non-phosphorus devices left out,
-    // phosSeen keeping a quiet one that answered before in the update pane
-    const next = SELF_HOST ? [{ name: SELF_HOST, os: hooks.platform(), phosphorus: true, phosSeen: true, rttMs: selfRttMs }] : [];
+    // hesperus: its frontend answers, offline non-hesperus devices left out,
+    // hesperusSeen keeping a quiet one that answered before in the update pane
+    const next = SELF_HOST ? [{ name: SELF_HOST, os: hooks.platform(), hesperus: true, hesperusSeen: true, rttMs: selfRttMs }] : [];
     for (const p of peers) {
       const st = stateFor(p.host);
       // never polled while offline, else its last answer lingering
       if (!p.online && st.answered) { st.answered = false; st.misses = 0; retire(st); clock.markHot(); }
-      const phos = p.online && st.answered && st.misses < MISS_THRESHOLD;
-      if (!phos && !p.online) continue;
+      const hesperus = p.online && st.answered && st.misses < MISS_THRESHOLD;
+      if (!hesperus && !p.online) continue;
       next.push({
-        name: p.host, os: phos ? st.platform : p.os, phosphorus: phos, phosSeen: st.everAnswered,
-        rttMs: phos ? st.rttMs : null, version: phos ? st.version : '',
+        name: p.host, os: hesperus ? st.platform : p.os, hesperus: hesperus, hesperusSeen: st.everAnswered,
+        rttMs: hesperus ? st.rttMs : null, version: hesperus ? st.version : '',
       });
     }
     devices = next;
@@ -368,7 +368,7 @@ async function tick() {
     }
   }
 
-  const live = devices.filter((d) => d.phosphorus).map((d) => d.name).sort();
+  const live = devices.filter((d) => d.hesperus).map((d) => d.name).sort();
   if (SELF_HOST && live[0] === SELF_HOST) {
     syncSplitDns(live.map((m) => hostIps.get(m)).filter((ip) => IPV4_RE.test(ip || '')).sort());
     sweepGuests();

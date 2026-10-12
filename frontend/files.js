@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
 const { pipeline, Transform } = require('stream');
-const { phosIni } = require('./util');
+const { hesperusIni } = require('./util');
 
 // one mount per share, /shares/<index>, FILES_ROOT the repo's own files/
 // when [files] dir is blank
@@ -20,7 +20,7 @@ const MAX_ENTRIES = 5000;
 const TREE_DEPTH_MAX = 8;
 const TREE_MAX = 2000;
 // an upload in flight, beside its target, never listed
-const UPLOAD_TMP = '.phos-upload-';
+const UPLOAD_TMP = '.hesperus-upload-';
 
 // r browse and download, w upload/new folder/rename, d delete, nothing else
 // (the frontend never runs anything in a share)
@@ -35,16 +35,16 @@ function cleanPerms(spec) {
 const splitList = (v) => String(v || '').split(',').map((s) => s.trim()).filter(Boolean);
 
 // empty when [files] dir is unset, with FILES_ROOT served instead
-const configuredDirs = () => splitList(phosIni('files', 'dir'));
+const configuredDirs = () => splitList(hesperusIni('files', 'dir'));
 
 // the host paths /shares/* were created from
-const mountedDirs = () => splitList(process.env.PHOS_FILES_DIRS);
+const mountedDirs = () => splitList(process.env.HESPERUS_FILES_DIRS);
 
 // each mount's source on the host, off the docker daemon, fixed for the
 // container's life, retried until docker answers
 const hostMounts = new Map();
 function loadMounts() {
-  execFile('docker', ['inspect', 'phosphorus', '--format', '{{range .Mounts}}{{.Destination}}\t{{.Source}}\n{{end}}'],
+  execFile('docker', ['inspect', 'hesperus', '--format', '{{range .Mounts}}{{.Destination}}\t{{.Source}}\n{{end}}'],
     { timeout: 10000 }, (err, out) => {
       if (err) { setTimeout(loadMounts, 60000).unref(); return; }
       for (const line of String(out).split('\n')) {
@@ -90,14 +90,14 @@ function makeShare(id, dir, perms, root) {
   return { id: String(id), label: labelFor(dir, root), perms, root, real, ok };
 }
 
-// PHOS_FILES_DIRS: what compose mounted, in order, unset: one full-access
+// HESPERUS_FILES_DIRS: what compose mounted, in order, unset: one full-access
 // share of FILES_ROOT
 function buildShares() {
   const dirs = mountedDirs();
   if (!dirs.length) {
-    return [makeShare(0, process.env.PHOS_FILES_DIR || '', FULL_PERMS, FILES_ROOT)];
+    return [makeShare(0, process.env.HESPERUS_FILES_DIR || '', FULL_PERMS, FILES_ROOT)];
   }
-  const perms = splitList(process.env.PHOS_FILES_PERMS);
+  const perms = splitList(process.env.HESPERUS_FILES_PERMS);
   return dirs.map((dir, i) => makeShare(
     i, dir,
     perms[i] === undefined ? FULL_PERMS : cleanPerms(perms[i]),
@@ -405,11 +405,11 @@ function remove(share, rel) {
   return [200, { ok: true }];
 }
 
-// what phos.ini asks for now against what is mounted, a mismatch waiting on a
+// what hesperus.ini asks for now against what is mounted, a mismatch waiting on a
 // container recreate
 function pending() {
   const want = configuredDirs().map((d) => path.resolve(d)).join(',');
-  const have = (mountedDirs().length ? mountedDirs() : [process.env.PHOS_FILES_DIR || ''])
+  const have = (mountedDirs().length ? mountedDirs() : [process.env.HESPERUS_FILES_DIR || ''])
     .filter(Boolean).map((d) => path.resolve(d)).join(',');
   return !!want && !!have && want !== have;
 }

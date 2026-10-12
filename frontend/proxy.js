@@ -181,15 +181,15 @@ function upstreamHeaders(req, route, upgrade) {
 
 const SELF_HOST = process.env.SELF_HOST || '';
 const INGRESS_PORT = Number(process.env.INGRESS_PORT || 80);
-const PIN_COOKIE = 'phos-host';
+const PIN_COOKIE = 'hesperus-host';
 // set on a pinned hop, never a second hop from the far ingress
-const PIN_HOP = 'x-forwarded-phos-host';
+const PIN_HOP = 'x-forwarded-hesperus-host';
 
-// live phosphorus peers, name -> tailnet IP, mesh.js's, every tick
+// live hesperus peers, name -> tailnet IP, mesh.js's, every tick
 let pinIps = new Map();
 const pinTargets = (ips) => { pinIps = ips; };
 
-const pinnedTo = (req) => (String(req.headers.cookie || '').match(/(?:^|;\s*)phos-host=([a-z0-9-]+)/) || [])[1] || '';
+const pinnedTo = (req) => (String(req.headers.cookie || '').match(/(?:^|;\s*)hesperus-host=([a-z0-9-]+)/) || [])[1] || '';
 const pinCookie = (host) => `${PIN_COOKIE}=${host}; Path=/; Max-Age=2592000; SameSite=Lax; HttpOnly`;
 
 // the pinned host's ingress, or null to serve here

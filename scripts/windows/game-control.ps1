@@ -1,4 +1,4 @@
-# forced command for phosphorus's game-control key: a game's start/stop line
+# forced command for hesperus's game-control key: a game's start/stop line
 # from config/services.export, run on the host
 
 $ErrorActionPreference = "Stop"

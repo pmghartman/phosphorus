@@ -1,6 +1,6 @@
 FROM debian:trixie-slim
 # inherited by every container off this image, for sweep.sh
-LABEL org.phosphorus=phosphorus
+LABEL org.hesperus=hesperus
 
 # shared by everything below, iproute2/iptables for tailscaled's routing
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -40,7 +40,7 @@ RUN arch="$(dpkg --print-architecture | sed 's/amd64/x64/')" kind="" \
  && [ -x /opt/llama/llama-server ]
 
 # --- opencode -----------------------------------------------------------------
-# upstream's release build, phos's harness run headless by the frontend,
+# upstream's release build, hesperus's harness run headless by the frontend,
 # ripgrep for its grep and glob so it never fetches one
 ARG OPENCODE_TAG=v1.18.34
 RUN arch="$(dpkg --print-architecture | sed 's/amd64/x64-baseline/')" \
@@ -66,13 +66,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # --- our own files ------------------------------------------------------------
 # last, so commits touching them rebuild only these cheap layers
-COPY container/sweep.sh            /opt/phosphorus/sweep.sh
-COPY container/model.js            /opt/phosphorus/model.js
+COPY container/sweep.sh            /opt/hesperus/sweep.sh
+COPY container/model.js            /opt/hesperus/model.js
 COPY container/supervisor.sh       /usr/local/bin/supervisor.sh
 COPY frontend/                     /opt/frontend/
 # stamped by rebuild: VERSION's <major>.<minor> and the commit count
-ARG PHOS_VERSION=0.0.0
-RUN echo "$PHOS_VERSION" > /opt/phosphorus/VERSION \
+ARG HESPERUS_VERSION=0.0.0
+RUN echo "$HESPERUS_VERSION" > /opt/hesperus/VERSION \
  && chmod +x /usr/local/bin/supervisor.sh \
  && mkdir -p /var/lib/tailscale /var/run/tailscale
 

@@ -1,6 +1,6 @@
 # rendered once by git-daemon.sh, sections added since appended there
 
-APP_NAME = phosphorus git
+APP_NAME = hesperus git
 RUN_MODE = prod
 RUN_USER = git
 
@@ -12,11 +12,11 @@ ROOT_URL         = __ROOT_URL__
 DISABLE_SSH      = true
 LFS_START_SERVER = true
 # obj/ rsynced, forgejo's default data/ not
-APP_DATA_PATH    = /var/lib/phosphorus/git/obj
+APP_DATA_PATH    = /var/lib/hesperus/git/obj
 
 [database]
 DB_TYPE = sqlite3
-PATH    = /var/lib/phosphorus/git/litefs/forgejo.db
+PATH    = /var/lib/hesperus/git/litefs/forgejo.db
 
 # sessions riding litefs with the rest of the db
 [session]
@@ -24,30 +24,30 @@ PROVIDER = db
 
 # per-node and rebuildable, so never synced
 [queue]
-DATADIR = /var/lib/phosphorus/git/state/queues
+DATADIR = /var/lib/hesperus/git/state/queues
 
 [indexer]
-ISSUE_INDEXER_PATH = /var/lib/phosphorus/git/state/indexers/issues.bleve
-REPO_INDEXER_PATH  = /var/lib/phosphorus/git/state/indexers/repos.bleve
+ISSUE_INDEXER_PATH = /var/lib/hesperus/git/state/indexers/issues.bleve
+REPO_INDEXER_PATH  = /var/lib/hesperus/git/state/indexers/repos.bleve
 
 [log]
-ROOT_PATH = /var/lib/phosphorus/git/state/log
+ROOT_PATH = /var/lib/hesperus/git/state/log
 
 [repository]
-ROOT = /var/lib/phosphorus/git/obj/forgejo-repositories
+ROOT = /var/lib/hesperus/git/obj/forgejo-repositories
 
 [lfs]
-PATH = /var/lib/phosphorus/git/obj/lfs
+PATH = /var/lib/hesperus/git/obj/lfs
 
 [picture]
-AVATAR_UPLOAD_PATH      = /var/lib/phosphorus/git/obj/avatars
-REPOSITORY_AVATAR_UPLOAD_PATH = /var/lib/phosphorus/git/obj/repo-avatars
+AVATAR_UPLOAD_PATH      = /var/lib/hesperus/git/obj/avatars
+REPOSITORY_AVATAR_UPLOAD_PATH = /var/lib/hesperus/git/obj/repo-avatars
 
 [attachment]
-PATH = /var/lib/phosphorus/git/obj/attachments
+PATH = /var/lib/hesperus/git/obj/attachments
 
 [packages]
-PATH = /var/lib/phosphorus/git/obj/packages
+PATH = /var/lib/hesperus/git/obj/packages
 
 [security]
 INSTALL_LOCK = true
