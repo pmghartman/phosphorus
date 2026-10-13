@@ -6,6 +6,11 @@ $ErrorActionPreference = "Stop"
 function Say($msg) { Write-Host "[migrate] $msg" }
 function Fail($msg) { Write-Host "[migrate] ERROR: $msg" -ForegroundColor Red; exit 1 }
 function Quiet([scriptblock]$Cmd) { $ErrorActionPreference = "Continue"; & $Cmd 2>$null }
+# Docker Desktop's VM spelling of a Windows path, /run/desktop/mnt/host/c/x, back to C:\x
+function ConvertFrom-VmPath([string]$P) {
+    if ($P -match '^/run/desktop/mnt/host/([a-z])(/.*)?$') { return "$($Matches[1].ToUpper()):$(($Matches[2] -replace '/', '\'))" }
+    $P
+}
 
 $Old = (Resolve-Path $Old).Path
 $HomeDir = (Resolve-Path $HesperusHome).Path
@@ -17,7 +22,7 @@ if (Test-Path (Join-Path $HomeDir ".env")) { Fail "$HomeDir already has a .env, 
 $Pre = "phosphorus"; $Ini = "phos.ini"
 # whichever container mounts this checkout names the era
 foreach ($c in @(Quiet { docker ps -a --format '{{.Names}}' })) {
-    $src = Quiet { docker inspect $c --format '{{range .Mounts}}{{if eq .Destination "/repo"}}{{.Source}}{{end}}{{end}}' }
+    $src = ConvertFrom-VmPath (Quiet { docker inspect $c --format '{{range .Mounts}}{{if eq .Destination "/repo"}}{{.Source}}{{end}}{{end}}' })
     if ($c -and $src -and ($src.TrimEnd('\') -eq $Old.TrimEnd('\'))) { $Pre = $c; break }
 }
 if (-not (Test-Path (Join-Path $Old "config/phos.ini"))) { $Ini = "hesperus.ini" }
@@ -65,6 +70,14 @@ foreach ($d in @("state", "files", "git/data", "models")) {
     New-Item -ItemType Directory -Force $t | Out-Null
     robocopy $s $t /E /COPY:DAT /R:1 /W:1 /NFL /NDL /NJH /NJS | Out-Null
     if ($LASTEXITCODE -ge 8) { Fail "couldn't copy $d" }
+}
+# a share an in-container rebuild bound off the docker VM's disk (/repo/files), not the drive
+$FilesSrc = Quiet { docker inspect $Pre --format '{{range .Mounts}}{{if eq .Destination "/files"}}{{.Source}}{{end}}{{end}}' }
+if ($FilesSrc -and -not $FilesSrc.StartsWith("/run/desktop/mnt/host/") -and $FilesSrc -notmatch '^[A-Za-z]:') {
+    Say "copying files out of the docker VM's $FilesSrc"
+    New-Item -ItemType Directory -Force (Join-Path $HomeDir "files") | Out-Null
+    docker run --rm -v "${FilesSrc}:/from:ro" -v "$(Join-Path $HomeDir 'files'):/to" alpine:3 cp -a /from/. /to/
+    if ($LASTEXITCODE) { Fail "couldn't copy $FilesSrc out of the docker VM" }
 }
 Remove-Item (Join-Path $HomeDir "state/ssh_config"), (Join-Path $HomeDir "state/machine.json") -ErrorAction SilentlyContinue
 

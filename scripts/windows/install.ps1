@@ -39,12 +39,18 @@ Set-Content $Manifest $Next
 $Version = (Get-Content (Join-Path $HomeDir "VERSION") -First 1).Trim()
 Say "hesperus $Version in $HomeDir"
 
+# Docker Desktop's VM spelling of a Windows path, /run/desktop/mnt/host/c/x, back to C:\x
+function ConvertFrom-VmPath([string]$P) {
+    if ($P -match '^/run/desktop/mnt/host/([a-z])(/.*)?$') { return "$($Matches[1].ToUpper()):$(($Matches[2] -replace '/', '\'))" }
+    $P
+}
+
 # any earlier checkout's /repo (phosphorus, git-era hesperus), from its container
 function Find-OldCheckout {
     $ErrorActionPreference = "Continue"
     foreach ($c in @(docker ps -a --format '{{.Names}}' 2>$null)) {
         $ErrorActionPreference = "Continue"
-        $src = docker inspect $c --format '{{range .Mounts}}{{if eq .Destination "/repo"}}{{.Source}}{{end}}{{end}}' 2>$null
+        $src = ConvertFrom-VmPath (docker inspect $c --format '{{range .Mounts}}{{if eq .Destination "/repo"}}{{.Source}}{{end}}{{end}}' 2>$null)
         if ($src -and $src -ne $HomeDir -and (Test-Path (Join-Path $src ".env"))) { return $src }
     }
     ""
