@@ -9,6 +9,7 @@ if ! bash /usr/lib/hesperus/scripts/install.sh $mode; then
     echo "hesperus isn't running yet: fix the above, then sudo hesperus start" >&2
 fi
 ln -sfn /var/lib/hesperus/scripts/hesperus /usr/local/bin/hesperus
+ln -sfn /var/lib/hesperus/scripts/hesperus /usr/local/bin/hesp
 if [ -d /run/systemd/system ]; then
     systemctl daemon-reload
     systemctl enable --now hesperus-update.path >/dev/null 2>&1 || true

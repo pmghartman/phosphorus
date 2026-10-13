@@ -76,7 +76,7 @@ The manual `release` workflow: images to ghcr, `.deb`, `.dmg`, setup `.exe`, rel
 
 | Command | Does |
 |---|---|
-| `hesperus` | The cli |
+| `hesperus` | The cli, `hesp` for short, every command below too |
 | `hesperus start` / `stop` / `restart` | Start, stop, restart this host |
 | `hesperus update` | Update this host from the release feed |
 | `hesperus update all` | Update the mesh (`HESPERUS_UPDATE_PASSWORD`) |

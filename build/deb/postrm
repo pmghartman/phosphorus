@@ -1,9 +1,11 @@
 #!/bin/sh
-# remove: the cli link; purge: containers, volumes and /var/lib/hesperus (git data, chat, shares)
+# remove: the cli links; purge: containers, volumes and /var/lib/hesperus (git data, chat, shares)
 set -e
 case "$1" in
 remove | purge)
-    [ "$(readlink /usr/local/bin/hesperus 2>/dev/null)" = /var/lib/hesperus/scripts/hesperus ] && rm -f /usr/local/bin/hesperus
+    for l in hesperus hesp; do
+        if [ "$(readlink /usr/local/bin/$l 2>/dev/null)" = /var/lib/hesperus/scripts/hesperus ]; then rm -f /usr/local/bin/$l; fi
+    done
     rm -f /etc/ssh/ssh_config.d/hesperus.conf
     [ -d /run/systemd/system ] && systemctl daemon-reload || true
     ;;

@@ -55,13 +55,15 @@ run_bring_up() {
   grep -qs 'ssh_config\.d' /etc/ssh/ssh_config \
     || say "/etc/ssh/ssh_config never reads ssh_config.d, add 'Include /etc/ssh/ssh_config.d/*.conf' at its top for ssh <host>"
 
-  # --- hesperus on PATH ---------------------------------------------------------
-  if [ "$(readlink /usr/local/bin/hesperus 2>/dev/null)" = "$DIR/scripts/hesperus" ]; then
+  # --- hesperus and hesp on PATH ------------------------------------------------
+  if [ "$(readlink /usr/local/bin/hesperus 2>/dev/null)" = "$DIR/scripts/hesperus" ] \
+     && [ "$(readlink /usr/local/bin/hesp 2>/dev/null)" = "$DIR/scripts/hesperus" ]; then
     say "hesperus already on PATH, skipping"
   else
-    say "putting hesperus on PATH..."
+    say "putting hesperus and hesp on PATH..."
     sudo mkdir -p /usr/local/bin
     sudo ln -sfn "$DIR/scripts/hesperus" /usr/local/bin/hesperus
+    sudo ln -sfn "$DIR/scripts/hesperus" /usr/local/bin/hesp
   fi
 
   # --- git-host opt-in ---------------------------------------------------

@@ -75,11 +75,11 @@ if [ "$HOST_SSH_HOST" = "127.0.0.1" ]; then
   else
     say "can't find this container's /state on the host, ssh <host> needs a sudo hesperus start"
   fi
-  # hesperus on the host's PATH, the same way
+  # hesperus and hesp on the host's PATH, the same way
   repo_src="$(docker inspect hesperus -f '{{range .Mounts}}{{if eq .Destination "/repo"}}{{.Source}}{{end}}{{end}}' 2>/dev/null)"
   if [ -n "$repo_src" ]; then
     docker run --rm --network none --entrypoint sh -v /usr/local/bin:/host-bin hesperus:latest -c '
-      [ "$(readlink /host-bin/hesperus)" = "$1" ] || ln -sfn "$1" /host-bin/hesperus' _ "$repo_src/scripts/hesperus" >/dev/null 2>&1 \
+      for l in hesperus hesp; do [ "$(readlink /host-bin/$l)" = "$1" ] || ln -sfn "$1" /host-bin/$l || exit 1; done' _ "$repo_src/scripts/hesperus" >/dev/null 2>&1 \
       || say "couldn't put hesperus on the host's PATH; hesperus needs a sudo hesperus start"
   fi
 fi
