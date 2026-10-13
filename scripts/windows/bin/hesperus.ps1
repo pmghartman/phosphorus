@@ -64,10 +64,32 @@ function Request-Update {
     Write-Host "gave up waiting, see $Out" -ForegroundColor Red; exit 1
 }
 
+# reruns this command outside the ssh session via WMI and follows its log:
+# sshd taking a dropped session's process tree with it, git left stopped
+function Invoke-Detached([string]$Cmd) {
+    if ($env:HESPERUS_DETACHED) { return }
+    $State = Join-Path (Split-Path -Parent $Scripts) "state"
+    New-Item -ItemType Directory -Force $State | Out-Null
+    $Log = Join-Path $State "$Cmd.log"
+    Set-Content $Log ""
+    $r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
+        CommandLine = "cmd /c set HESPERUS_DETACHED=1&& powershell -NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" $Cmd > `"$Log`" 2>&1"
+    }
+    $seen = 0
+    do {
+        Start-Sleep -Milliseconds 500
+        $lines = @(Get-Content $Log -ErrorAction SilentlyContinue)
+        $lines | Select-Object -Skip $seen | ForEach-Object { Write-Host $_ }
+        $seen = $lines.Count
+    } while (Get-Process -Id $r.ProcessId -ErrorAction SilentlyContinue)
+    exit 0
+}
+
 switch ("$($args[0])|$($args[1])") {
     "|"           { Invoke-Cli @() }
     "start|"      { & "$Scripts/run.ps1"; exit $LASTEXITCODE }
     "stop|"       {
+        Invoke-Detached "stop"
         # git first, so a master hands off before the frontend goes
         foreach ($c in @("hesperus-git", "hesperus", "hesperus-search")) {
             if ((Invoke-Quiet { docker inspect -f '{{.State.Running}}' $c }) -ne "true") { continue }
@@ -78,6 +100,7 @@ switch ("$($args[0])|$($args[1])") {
         Write-Host "hesperus stopped, hesperus start starts it again"
     }
     "restart|"    {
+        Invoke-Detached "restart"
         # git stopped first for the handoff, started again once hesperus is back
         $gitUp = (Invoke-Quiet { docker inspect -f '{{.State.Running}}' hesperus-git }) -eq "true"
         if ($gitUp) {
@@ -86,14 +109,17 @@ switch ("$($args[0])|$($args[1])") {
             if ($LASTEXITCODE) { exit 1 }
         }
         Write-Host "restarting hesperus..."
+        $rc = 0
         docker restart -t 30 hesperus | Out-Null
-        if ($LASTEXITCODE) { exit 1 }
+        if ($LASTEXITCODE) { Write-Host "couldn't restart hesperus" -ForegroundColor Red; $rc = 1 }
+        # git back whatever became of hesperus, else it stays stopped
         if ($gitUp) {
             Write-Host "starting hesperus-git..."
             docker start hesperus-git | Out-Null
-            if ($LASTEXITCODE) { exit 1 }
+            if ($LASTEXITCODE) { Write-Host "couldn't start hesperus-git" -ForegroundColor Red; $rc = 1 }
         }
-        Write-Host "hesperus restarted"
+        if (-not $rc) { Write-Host "hesperus restarted" }
+        exit $rc
     }
     "update|"     { Ask-Password; Request-Update }
     "update|all"  { Invoke-Cli @("update-all") }

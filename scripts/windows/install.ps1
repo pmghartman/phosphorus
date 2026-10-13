@@ -118,9 +118,12 @@ if ($Update) {
     }
 }
 Remove-Item (Join-Path $HomeDir ".hesperus-migrated-containers") -ErrorAction SilentlyContinue
-# headless: the tray app, the update agent, at the next login, as its own first run sets it
-if ($env:HESPERUS_NONINTERACTIVE) {
-    $App = Join-Path $env:LOCALAPPDATA "Hesperus\Hesperus.exe"
-    if (Test-Path $App) { Set-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "Hesperus" -Value "`"$App`"" }
-}
 Set-Content (Join-Path $HomeDir ".hesperus-installed") $Version
+# the tray app is this host's update agent: at every login, and running now
+# (after the marker above, or it would rerun this install on launch)
+$App = Join-Path $env:LOCALAPPDATA "Hesperus\Hesperus.exe"
+if (Test-Path $App) {
+    Set-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "Hesperus" -Value "`"$App`""
+    if (-not (Get-Process -Name Hesperus -ErrorAction SilentlyContinue)) { Start-Process $App }
+    Say "Hesperus app running, mesh updates go through it"
+}

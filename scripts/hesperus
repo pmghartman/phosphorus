@@ -85,6 +85,23 @@ request_update() {
   echo "gave up waiting, see $out" >&2; exit 1
 }
 
+# reruns this command detached and follows its log: a terminal inside hesperus
+# (or an ssh over its tailnet) dropping mid-restart never leaves git stopped
+detach() {
+  local log="$DIR/state/$1.log" pid tailpid code
+  mkdir -p "$DIR/state" && : > "$log"
+  if command -v setsid >/dev/null 2>&1; then
+    HESPERUS_DETACHED=1 nohup setsid "$DIR/scripts/hesperus" "$1" > "$log" 2>&1 < /dev/null &
+  else
+    HESPERUS_DETACHED=1 nohup "$DIR/scripts/hesperus" "$1" > "$log" 2>&1 < /dev/null &
+  fi
+  pid=$!
+  tail -n +1 -f "$log" & tailpid=$!
+  wait "$pid"; code=$?
+  sleep 0.3; kill "$tailpid" 2>/dev/null
+  exit "$code"
+}
+
 case "${1:-}|${2:-}" in
   "|") cli ;;
   start\|)
@@ -95,6 +112,7 @@ case "${1:-}|${2:-}" in
   # git first, so a master hands off before the frontend goes, stopped through
   # reboots since compose restarts only unless-stopped
   stop\|)
+    [ -n "${HESPERUS_DETACHED:-}" ] || detach stop
     for c in hesperus-git hesperus hesperus-search; do
       [ "$($DOCKER inspect -f '{{.State.Running}}' "$c" 2>/dev/null)" = true ] || continue
       echo "stopping $c..."
@@ -103,12 +121,19 @@ case "${1:-}|${2:-}" in
     echo "hesperus stopped, hesperus start starts it again" ;;
   # git stopped first for the handoff, started again once hesperus is back
   restart\|)
+    [ -n "${HESPERUS_DETACHED:-}" ] || detach restart
     git_up="$($DOCKER inspect -f '{{.State.Running}}' hesperus-git 2>/dev/null)"
     [ "$git_up" = true ] && { echo "stopping hesperus-git..."; $DOCKER stop -t 30 hesperus-git >/dev/null || exit 1; }
     echo "restarting hesperus..."
-    $DOCKER restart -t 30 hesperus >/dev/null || exit 1
-    [ "$git_up" = true ] && { echo "starting hesperus-git..."; $DOCKER start hesperus-git >/dev/null || exit 1; }
-    echo "hesperus restarted" ;;
+    rc=0
+    $DOCKER restart -t 30 hesperus >/dev/null || { echo "couldn't restart hesperus" >&2; rc=1; }
+    # git back whatever became of hesperus, else it stays stopped
+    if [ "$git_up" = true ]; then
+      echo "starting hesperus-git..."
+      $DOCKER start hesperus-git >/dev/null || { echo "couldn't start hesperus-git" >&2; rc=1; }
+    fi
+    [ "$rc" = 0 ] && echo "hesperus restarted"
+    exit "$rc" ;;
   update\|) ask_password; request_update ;;
   update\|all) cli update-all ;;
   -h\|*|-help\|*|--help\|*|help\|*) usage ;;
