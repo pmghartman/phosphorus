@@ -120,12 +120,31 @@ const surface = (bgHex, fgHex = PAL.fg) => (s) => `${bgHex === PAL.bg ? PAGE : B
 const caret = () => surface(PAL.accent)(' ');
 
 // .about-art: blue to gold and back across the word
-function gradient(s) {
+function gradient(s, span = [...s].length) {
   const chars = [...s];
   return chars.map((ch, i) => {
-    const t = chars.length > 1 ? i / (chars.length - 1) : 0;
+    const t = span > 1 ? i / (span - 1) : 0;
     return `${FG(mix(PAL.glyphBlue, PAL.glyphGold, t < 0.5 ? t * 2 : (1 - t) * 2))}${ch}`;
   }).join('') + FG(PAL.fg);
+}
+
+// wordmark: "hesperus" in phosphorus's quadrant-block pixel font
+const LOGO = [
+  '█                                   ',
+  '█▀▀▙▗▛▀▜▖▟▀▀▀▐▛▀▜▖▟▀▀▙▐▙▛▀▘█  █▗▛▀▀▘',
+  '█  █▐▛▀▀▘▝▀▀▙▐▌ ▐▌█▀▀▀▐▌   █  █ ▀▀▜▖',
+  '▀  ▀ ▀▀▀ ▀▀▀▘▐▛▀▀ ▝▀▀▘▝▘   ▝▀▀▀▝▀▀▀ ',
+  '             ▝▘                     ',
+];
+// linux vt fonts lack quadrant blocks; short or narrow windows keep the rows
+const bigLogo = (cols, rows) => process.env.TERM !== 'linux' && cols >= LOGO[0].length + 2 && rows >= 24;
+
+// title rows: the wordmark, version under its end, or one line
+function titleLines(cols, rows) {
+  const ver = ui.state ? `v${ui.state.self.version}` : '';
+  if (!bigLogo(cols, rows)) return [` ${gradient(ver ? `hesperus ${ver}` : 'hesperus')}`];
+  const last = LOGO.length - 1;
+  return LOGO.map((r, i) => ` ${gradient(i === last && ver ? r.slice(0, -ver.length) : r, r.length)}${i === last ? c.muted(ver) : ''}`);
 }
 
 // .is-self and .mesh-stat-dot: the square before a host's name
@@ -1093,8 +1112,7 @@ function currentView() {
 function render() {
   const cols = process.stdout.columns || 80;
   const rows = process.stdout.rows || 24;
-  const st = ui.state;
-  const title = ` ${gradient(st ? `hesperus v${st.self.version}` : 'hesperus')}`;
+  const title = titleLines(cols, rows);
   const global = ui.form ? [] : [[`1-${TABS.length} tabs`, 'quiet'], [ui.tab === UPDATE_TAB ? 'u close' : 'u update tab', 'quiet'], ['q quit', 'quiet']];
   let status = [''];
   let row = null;
@@ -1113,7 +1131,7 @@ function render() {
   let view = currentView();
   const footer = () => [...status, ...(row || buttons([view.keys || [], global], cols - 1))];
   let foot = footer();
-  const room = Math.max(1, rows - 3 - foot.length);
+  const room = Math.max(1, rows - 2 - title.length - foot.length);
   if (room !== ui.room) {
     ui.room = room;
     view = currentView();
@@ -1124,7 +1142,7 @@ function render() {
     ui.scroll = Math.max(0, Math.min(ui.scroll, body.length - room));
     body = body.slice(ui.scroll);
   }
-  const out = [title, tabBar(cols), '', ...body.slice(0, room)];
+  const out = [...title, tabBar(cols), '', ...body.slice(0, room)];
   while (out.length < rows - foot.length) out.push('');
   out.push(...foot);
   process.stdout.write(`\x1b[H${out.slice(0, rows).map((l) => `${BASE}${fit(l, cols)}`).join('\x1b[K\r\n')}\x1b[K\x1b[J`);
