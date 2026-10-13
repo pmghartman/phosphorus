@@ -22,6 +22,8 @@ const AGENT_FILE = path.join(STATE_DIR, 'update-agent.json');
 // the release feed: newest version, the installers and app feeds beside it
 const FEED_URL = process.env.HESPERUS_FEED_URL || 'https://github.com/pmghartman/hesperus/releases/download/update/latest.json';
 const FEED_TTL_MS = 600000;
+// the first installer release, older peers still git checkouts
+const MIN_PEER_VERSION = '0.13';
 // nobody answering the request: no agent on this host
 const AGENT_PICKUP_MS = 60000;
 
@@ -347,6 +349,17 @@ async function runChain() {
     chain.results[host] = 'running';
     note(host, { from: host === SELF_HOST ? readVersion(VERSION_FILE) : '' });
     log(`updating ${host} (${i + 1}/${chain.order.length})`);
+
+    // a phosphorus-era peer's own update pulls the wrong repo: the installer only
+    if (host !== SELF_HOST) {
+      const v = (await fetchSelf((await tailnetIp(host)) || host)).version;
+      if (v && newer(MIN_PEER_VERSION, v)) {
+        chain.results[host] = 'skipped';
+        chain.errors[host] = 'needs the installer';
+        note(host, { from: v });
+        continue;
+      }
+    }
 
     // no round trip when caller and callee are this process
     const result = host === SELF_HOST

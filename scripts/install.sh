@@ -5,7 +5,7 @@ set -uo pipefail
 
 main() {
   local payload; payload="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-  local mode=install from=""
+  local mode=install from="" migrated=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --update) mode=update ;;
@@ -45,6 +45,7 @@ main() {
   if [ ! -f "$home/.env" ]; then
     [ -n "$from" ] || from="$(old_checkout "$home")"
     if [ -n "$from" ]; then
+      migrated=1
       bash "$home/scripts/migrate.sh" "$from" "$home" || fail "migration from $from failed, it's still there as it was"
     fi
   fi
@@ -58,6 +59,8 @@ main() {
   fi
 
   cd "$home" || exit 1
+  # a failed first bring-up after a migration: the old install back up, still reachable
+  [ -n "$migrated" ] && trap 'rollback "$home"' EXIT
   if [ "$mode" = update ]; then
     bash scripts/rebuild.sh || fail "rebuild failed, still running the previous version"
   else
@@ -66,7 +69,26 @@ main() {
       *) bash scripts/run-linux.sh ;;
     esac || fail "bring-up failed, see above"
   fi
+  trap - EXIT
   printf '%s\n' "$version" > "$home/.hesperus-installed"
+}
+
+# new containers stopped, the old ones restarted, .env set aside so a rerun migrates again
+rollback() {
+  local docker=docker c
+  docker info >/dev/null 2>&1 || docker="sudo docker"
+  say "rolling back to the old install"
+  for c in hesperus-git hesperus hesperus-search hesperus-updater; do
+    $docker rm -f "$c" >/dev/null 2>&1
+  done
+  # git last, after its frontend
+  for c in $(awk '{a[NR]=$0} END {for (i = NR; i; i--) print a[i]}' "$1/.hesperus-migrated-containers" 2>/dev/null); do
+    $docker update --restart=unless-stopped "$c" >/dev/null 2>&1 && $docker start "$c" >/dev/null 2>&1 \
+      && say "restarted $c"
+  done
+  mv "$1/.env" "$1/.env.failed-$(date +%s)" 2>/dev/null
+  rm -f "$1/.hesperus-migrated-containers"
+  say "old install running again; fix the error above and rerun the installer"
 }
 
 # every release file into $2, what the last one shipped and this one doesn't

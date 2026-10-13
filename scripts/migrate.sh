@@ -34,6 +34,7 @@ main() {
   for c in "$pre-git" "$pre" "$pre-search" "$pre-updater"; do
     $docker inspect "$c" >/dev/null 2>&1 || continue
     say "stopping $c"
+    echo "$c" >> "$home/.hesperus-migrated-containers"
     $docker update --restart=no "$c" >/dev/null 2>&1
     $docker stop -t 30 "$c" >/dev/null 2>&1
     # same names as the new ones: removed, the volumes and data stay

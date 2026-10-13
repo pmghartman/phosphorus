@@ -6932,7 +6932,7 @@ const UPDATE_LABEL = {
 
 // a failure's short cause, when the chain named one
 const stepLabel = (chain, host, step) => (!step ? ''
-  : ((step === 'fail' || step === 'unreachable') && chain.errors && chain.errors[host]) || UPDATE_LABEL[step] || step);
+  : ((step === 'fail' || step === 'unreachable' || step === 'skipped') && chain.errors && chain.errors[host]) || UPDATE_LABEL[step] || step);
 
 // nothing new while a chain is in flight, its own continue and cancel above
 function renderUpdateButton() {
