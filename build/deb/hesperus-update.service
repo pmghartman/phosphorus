@@ -5,5 +5,5 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/bin/bash /opt/hesperus/scripts/upgrade.sh
+ExecStart=/bin/bash /usr/lib/hesperus/scripts/upgrade.sh
 TimeoutStartSec=30min

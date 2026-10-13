@@ -1,5 +1,5 @@
 #!/bin/sh
-# Linux package: the release under /opt/hesperus, the update agent's units, the apt feed
+# Linux package: the release under /usr/lib/hesperus, the update agent's units, the apt feed
 # Usage: build/deb.sh OUT.deb VER PAYLOAD   Env: HESPERUS_APT_KEY (binary public keyring)
 set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -8,9 +8,9 @@ VER=$2 PAYLOAD=$3
 T=$(mktemp -d)
 trap 'rm -rf "$T"' EXIT
 chmod 755 "$T"
-install -d "$T/opt/hesperus"
-cp -a "$PAYLOAD/." "$T/opt/hesperus/"
-chmod -R u=rwX,go=rX "$T/opt/hesperus"
+install -d "$T/usr/lib/hesperus"
+cp -a "$PAYLOAD/." "$T/usr/lib/hesperus/"
+chmod -R u=rwX,go=rX "$T/usr/lib/hesperus"
 for u in hesperus-update.path hesperus-update.service; do
     install -Dm644 "$HERE/deb/$u" "$T/usr/lib/systemd/system/$u"
 done

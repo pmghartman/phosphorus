@@ -5,7 +5,7 @@ set -e
 mode=
 [ -n "${2:-}" ] && mode=--update
 mkdir -p /var/lib/hesperus/state
-if ! bash /opt/hesperus/scripts/install.sh $mode; then
+if ! bash /usr/lib/hesperus/scripts/install.sh $mode; then
     echo "hesperus isn't running yet: fix the above, then sudo hesperus start" >&2
 fi
 ln -sfn /var/lib/hesperus/scripts/hesperus /usr/local/bin/hesperus

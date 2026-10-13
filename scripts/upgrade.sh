@@ -54,7 +54,7 @@ fi
 
 # newest already: this release's images and config, re-applied
 echo "[upgrade] $have is the newest"
-if bash /opt/hesperus/scripts/install.sh --update 2>&1 | tee "$log"; then
+if bash /usr/lib/hesperus/scripts/install.sh --update 2>&1 | tee "$log"; then
   current=false
   grep -q 'already up to date' "$log" && current=true
   report ok "$current" "$have"
