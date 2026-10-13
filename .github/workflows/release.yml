@@ -162,6 +162,8 @@ jobs:
     needs: [version, payload]
     if: needs.version.outputs.apps != '[]'
     strategy:
+      # one platform's failure leaves the other's build, and its cache, finished
+      fail-fast: false
       matrix:
         include: ${{ fromJSON(needs.version.outputs.apps) }}
     runs-on: ${{ matrix.os }}
@@ -178,6 +180,7 @@ jobs:
         with:
           workspaces: gui
           key: ${{ matrix.name }}
+          cache-on-failure: true
       - uses: taiki-e/install-action@v2
         with:
           tool: tauri-cli@2

@@ -337,7 +337,8 @@ fn main() {
         .setup(|app| {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
-            let payload = app.path().resource_dir()?.join("hesperus");
+            // not "hesperus": beside the Hesperus binary on a case-insensitive disk
+            let payload = app.path().resource_dir()?.join("release");
             let line = MenuItem::with_id(app, "status", "Hesperus", false, None::<&str>)?;
             app.manage(App { payload, home: home_dir(), line: line.clone() });
             tray(app.handle(), &line)?;
