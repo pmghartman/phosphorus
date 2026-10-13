@@ -1,4 +1,15 @@
-# hesperus
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/title-dark.svg">
+    <img src=".github/assets/title-light.svg" alt="hesperus" width="360">
+  </picture>
+</p>
+
+<p align="center">
+  <img src=".github/assets/hesperus-mengs.jpg" alt="Hesperus as personification of the evening, Anton Raphael Mengs" width="420">
+  <br>
+  <sub><i>Hesperus als Personifikation des Abends</i>, Anton Raphael Mengs, c. 1765. Public domain, via <a href="https://commons.wikimedia.org/wiki/File:Mengs,_Hesperus_als_Personifikation_des_Abends.jpg">Wikimedia Commons</a>.</sub>
+</p>
 
 One container per machine, each a **host** on the mesh at `BASE_DOMAIN` (`.env`):
 its services published, the others' polled, one web UI and cli for all of them.

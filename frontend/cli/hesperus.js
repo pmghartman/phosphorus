@@ -34,8 +34,8 @@ const GIB = 1024 ** 3;
 // style.css's tokens, light when the terminal's background is
 
 const DARK = {
-  bg: '#141414', fg: '#e0e0e0', muted: '#9d9d9d', accent: '#9f81cf', accent2: '#ce8755', dim: '#555555',
-  glyphPurple: '#a371f7', glyphOrange: '#f0883e', border: '#2e2e2e', card: '#1b1b1b', tabbar: '#0c0c0c',
+  bg: '#141414', fg: '#e0e0e0', muted: '#9d9d9d', accent: '#6f9fd0', accent2: '#c4b066', dim: '#555555',
+  glyphBlue: '#4a9ff0', glyphGold: '#d8c45a', border: '#2e2e2e', card: '#1b1b1b', tabbar: '#0c0c0c',
   online: '#3fb950', offmesh: '#f85149', warn: '#d29922',
   teal: '#6fb3a8', sage: '#93ad7d', sky: '#7fa0c9', rose: '#c98ba0', sand: '#c4ab78',
 };
@@ -116,12 +116,12 @@ const surface = (bgHex, fgHex = PAL.fg) => (s) => `${bgHex === PAL.bg ? PAGE : B
 // the caret: a block in the accent, as input's caret-color
 const caret = () => surface(PAL.accent)(' ');
 
-// .about-art: purple to orange and back across the word
+// .about-art: blue to gold and back across the word
 function gradient(s) {
   const chars = [...s];
   return chars.map((ch, i) => {
     const t = chars.length > 1 ? i / (chars.length - 1) : 0;
-    return `${FG(mix(PAL.glyphPurple, PAL.glyphOrange, t < 0.5 ? t * 2 : (1 - t) * 2))}${ch}`;
+    return `${FG(mix(PAL.glyphBlue, PAL.glyphGold, t < 0.5 ? t * 2 : (1 - t) * 2))}${ch}`;
   }).join('') + FG(PAL.fg);
 }
 

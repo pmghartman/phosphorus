@@ -22,7 +22,7 @@ function serviceUrl(route) {
 const serviceKey = (route) => `${route.host}::${route.name}`;
 
 // key -> { win, host, name } for each service opened from here whose tab is
-// still open, driving the touched/purple path and the packet pulse
+// still open, driving the touched/blue path and the packet pulse
 const activeConnections = new Map();
 
 // window.open rather than the anchor's own nav, for a pollable .closed, a
@@ -876,7 +876,7 @@ function drawNode(x, y, name, cls, tooltip, opts) {
 }
 
 // beside a git host: the git service's own glyph for the master, a * for the rest,
-// purple master, sand available, dark grey out of date, red unreachable
+// blue master, sand available, dark grey out of date, red unreachable
 function drawGitMarker(x, y, h, scale = 1) {
   const master = h.reachable && h.role === 'master';
   const state = !h.reachable ? 'down' : master ? 'master' : h.eligible ? 'ok' : 'stale';
@@ -1556,10 +1556,10 @@ const TERM_TAKEN = 4001;
 const RETRY_MIN_MS = 1000;
 const RETRY_MAX_MS = 10000;
 // the sixteen ANSI colors from the page's own tokens, so a restyle reaches
-// terminals too: magenta the accent, yellow its orange, status red and green
+// terminals too: magenta the rose, yellow the gold, status red and green
 const TERM_HUES = {
   red: '--offmesh', green: '--online', yellow: '--accent-2',
-  blue: '--sky', magenta: '--accent', cyan: '--teal',
+  blue: '--sky', magenta: '--rose', cyan: '--teal',
 };
 
 const hexRgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));

@@ -16,11 +16,11 @@
   --bg: #141414;
   --fg: #e0e0e0;
   --muted: #9d9d9d;
-  --accent: #9f81cf;
-  --accent-2: #ce8755;
+  --accent: #6f9fd0;
+  --accent-2: #c4b066;
   --dim: #555555;
-  --glyph-purple: #a371f7;
-  --glyph-orange: #f0883e;
+  --glyph-blue: #4a9ff0;
+  --glyph-gold: #d8c45a;
   --border: #2e2e2e;
   --card: #1b1b1b;
   --tabbar: #0c0c0c;
@@ -39,14 +39,14 @@
   --lift: 0 1px 2px rgb(0 0 0 / 0.3), 0 14px 30px -18px rgb(0 0 0 / 0.8);
   --drop: 0 2px 6px rgb(0 0 0 / 0.35), 0 18px 40px -16px rgb(0 0 0 / 0.85);
   --lift-sm: 0 1px 2px rgb(0 0 0 / 0.35);
-  /* muted companions to the purple, one per kind of thing */
+  /* muted companions to the blue, one per kind of thing */
   --teal: #6fb3a8;
   --sage: #93ad7d;
   --sky: #7fa0c9;
   --rose: #c98ba0;
   --sand: #c4ab78;
   /* graph nodes: self and serving hosts far apart in hue and lightness */
-  --mesh-self: #b48cff;
+  --mesh-self: #8cc4ff;
   --mesh-active: #4fc98a;
   /* page and terminal alike */
   --font: "Geist Mono Variable", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
@@ -67,7 +67,7 @@
   --lift: 0 1px 2px rgb(24 24 27 / 0.05), 0 14px 30px -20px rgb(24 24 27 / 0.22);
   --drop: 0 2px 6px rgb(24 24 27 / 0.08), 0 18px 40px -18px rgb(24 24 27 / 0.3);
   --lift-sm: 0 1px 2px rgb(24 24 27 / 0.08);
-  --mesh-self: #7a4fd6;
+  --mesh-self: #2f7fcf;
   --mesh-active: #2c9a5c;
 }
 
@@ -763,7 +763,7 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
 
 .about-version { position: absolute; right: 0; bottom: 0; font-size: 0.72rem; line-height: 1.3; letter-spacing: 0.04em; }
 .about-art, .about-version, .brand-text, .who-model, .st-model-mark {
-  background: linear-gradient(120deg, var(--glyph-purple), var(--glyph-orange), var(--glyph-purple), var(--glyph-orange), var(--glyph-purple));
+  background: linear-gradient(120deg, var(--glyph-blue), var(--glyph-gold), var(--glyph-blue), var(--glyph-gold), var(--glyph-blue));
   background-size: 200% 200%;
   -webkit-background-clip: text;
   background-clip: text;
@@ -1000,7 +1000,7 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
 .mesh-svg .mesh-line-stem { stroke: var(--sage); stroke-width: 0.5; opacity: 0.5; }
 .mesh-svg .mesh-line-stem.touched { stroke: var(--accent); opacity: 0.85; }
 
-/* purple the active path (self, a live request's path and target), green a serving
+/* blue the active path (self, a live request's path and target), green a serving
    host, grey an idle one, sky services, dark grey non-hesperus devices */
 .mesh-svg .mesh-node.active { fill: var(--mesh-active); }
 .mesh-svg .mesh-node.idle { fill: var(--muted); }
@@ -1024,17 +1024,17 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
 .mesh-legend > span { display: flex; align-items: center; gap: 0.2rem; }
 .mesh-legend-star { color: var(--sand); }
 .mesh-legend-git .db-icon { margin: 0; color: var(--accent); }
-/* a model host's role letters and their legend, in the glyph's shifting purple and orange */
+/* a model host's role letters and their legend, in the glyph's shifting blue and gold */
 .mesh-legend-model {
   width: 0.5rem; text-align: center; font-weight: 600; color: transparent;
-  background: linear-gradient(90deg, var(--glyph-purple), var(--glyph-orange)); -webkit-background-clip: text; background-clip: text;
+  background: linear-gradient(90deg, var(--glyph-blue), var(--glyph-gold)); -webkit-background-clip: text; background-clip: text;
 }
 .mesh-svg .mesh-model-mark { fill: url(#hesperus-grad); font-family: inherit; font-weight: 600; }
 .mesh-svg .mesh-model-mark.down { fill: var(--dim); }
 /* sized to nothing but still rendered: a display:none svg dropping its paints */
 .svg-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
-.hesperus-grad-p { stop-color: var(--glyph-purple); }
-.hesperus-grad-o { stop-color: var(--glyph-orange); }
+.hesperus-grad-b { stop-color: var(--glyph-blue); }
+.hesperus-grad-g { stop-color: var(--glyph-gold); }
 
 /* pulse along a touched path, one lap a second, on its own rAF loop in app.js */
 .mesh-svg .mesh-pulse { fill: var(--accent); }
@@ -1236,7 +1236,7 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
   background: var(--card); border-left: 2px solid var(--who); box-shadow: var(--lift-sm);
 }
 .msg.mine .bubble { border-left: 0; border-right: 2px solid var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--card)); }
-.msg.agent .bubble { width: 100%; max-width: 100%; background: none; box-shadow: none; border-left: 1px solid; border-image: linear-gradient(var(--glyph-purple), var(--glyph-orange)) 1; padding: 0.1rem 0 0.1rem 0.75rem; }
+.msg.agent .bubble { width: 100%; max-width: 100%; background: none; box-shadow: none; border-left: 1px solid; border-image: linear-gradient(var(--glyph-blue), var(--glyph-gold)) 1; padding: 0.1rem 0 0.1rem 0.75rem; }
 .msg.at-me .bubble { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warn) 55%, transparent); }
 .msg.flash .bubble { animation: msg-flash 1.2s ease-out; }
 @keyframes msg-flash { from { background: color-mix(in srgb, var(--accent) 35%, var(--card)); } }
@@ -1295,7 +1295,7 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
 .chat-log .md pre, .code-md .md pre { background: var(--bg); border: 1px solid var(--border); padding: 0.45em 0.7em; overflow-x: auto; white-space: pre; }
 .msg.agent .md code, .msg.agent .md pre { background: var(--card); }
 .chat-log .md pre code, .code-md .md pre code { background: none; padding: 0; }
-/* highlighted code in the palette's muted hues, purple for the language's own words */
+/* highlighted code in the palette's muted hues, blue for the language's own words */
 .chat-log .hljs-keyword, .chat-log .hljs-selector-tag, .chat-log .hljs-doctag, .code-md .hljs-keyword, .code-md .hljs-selector-tag, .code-md .hljs-doctag { color: var(--accent); }
 .chat-log .hljs-string, .chat-log .hljs-regexp, .chat-log .hljs-addition, .code-md .hljs-string, .code-md .hljs-regexp, .code-md .hljs-addition { color: var(--sage); }
 .chat-log .hljs-number, .chat-log .hljs-literal, .chat-log .hljs-symbol, .chat-log .hljs-bullet, .code-md .hljs-number, .code-md .hljs-literal, .code-md .hljs-symbol, .code-md .hljs-bullet { color: var(--sand); }
@@ -2003,10 +2003,10 @@ input, textarea { caret-color: var(--accent); }
 }
 /* an agent typing: its caret, mark and name in the models' moving gradient */
 .code-caret.agent, .code-mark.agent {
-  background: linear-gradient(180deg, var(--glyph-purple), var(--glyph-orange), var(--glyph-purple));
+  background: linear-gradient(180deg, var(--glyph-blue), var(--glyph-gold), var(--glyph-blue));
   background-size: 100% 200%; animation: agent-flow 1.6s linear infinite;
 }
-.code-caret.agent .code-caret-name { background: var(--bg); border: 1px solid var(--glyph-purple); font-weight: 600; }
+.code-caret.agent .code-caret-name { background: var(--bg); border: 1px solid var(--glyph-blue); font-weight: 600; }
 .code-caret-name .who-model, .code-who .who-model { display: inline-block; }
 @keyframes agent-flow { to { background-position: 0 200%; } }
 /* as wide as its longest line, so the textarea never scrolls inside itself */
@@ -2088,7 +2088,7 @@ input, textarea { caret-color: var(--accent); }
 #side-mesh[aria-expanded="true"] { color: var(--teal); }
 #side-chat[aria-expanded="true"] { color: var(--accent); }
 #side-model[aria-expanded="true"] > span {
-  background: linear-gradient(180deg, var(--glyph-purple), var(--glyph-orange), var(--glyph-purple)) 0 0 / 100% 200%;
+  background: linear-gradient(180deg, var(--glyph-blue), var(--glyph-gold), var(--glyph-blue)) 0 0 / 100% 200%;
   -webkit-background-clip: text; background-clip: text; color: transparent;
   animation: rail-glyph 6s ease-in-out infinite;
 }
