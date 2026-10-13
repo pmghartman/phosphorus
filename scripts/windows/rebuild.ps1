@@ -1,5 +1,5 @@
 # hesperus built and the running container swapped onto the new image,
-# shared by run.ps1 and update.ps1, the one step that can kill its caller
+# shared by run.ps1, install.ps1 and reconfig, the one step that can kill its caller
 $ErrorActionPreference = "Stop"
 $Dir = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 Set-Location $Dir
@@ -74,10 +74,15 @@ $Running = ((Invoke-Quiet { docker inspect -f '{{.State.Running}}' hesperus }) -
 
 # built beside the old container, a broken build changing nothing, in this
 # session for a real exit code
-Say "building hesperus..."
 $env:HESPERUS_VERSION = Get-HesperusVersion
-docker compose build
-if ($LASTEXITCODE) { Fail "build failed, still running the previous version" }
+if (Test-HesperusInstalled) {
+    Say "pulling hesperus $($env:HESPERUS_VERSION)..."
+    if (-not (Invoke-HesperusPull)) { Fail "pull failed, still running the previous version" }
+} else {
+    Say "building hesperus..."
+    docker compose build
+    if ($LASTEXITCODE) { Fail "build failed, still running the previous version" }
+}
 
 # nvidia gpus handed in wherever a probe off the new image gets them
 Invoke-Quiet { docker run --rm --gpus all --network none --entrypoint true hesperus:latest } | Out-Null

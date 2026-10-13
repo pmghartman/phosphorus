@@ -533,7 +533,7 @@ async function tick() {
   readPos();
   const local = readLocal();
   let to = '';
-  // update.sh announcing itself to the frontend before the swap takes this host off the tailnet
+  // rebuild announcing itself to the frontend before the swap takes this host off the tailnet
   const leaving = role === 'master' && selfState && selfState.updating && handedOffBoot !== selfState.bootId;
   if (leaving) handedOffBoot = selfState.bootId;
   if (leaving && (to = successor())) {

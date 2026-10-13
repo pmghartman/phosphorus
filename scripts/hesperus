@@ -21,6 +21,11 @@ usage() {
   echo "       hesperus update all   update the whole mesh, one host at a time"
 }
 
+# installed on Linux: root's /var/lib/hesperus
+if [ ! -e "$DIR/.git" ] && [ "$(uname)" = Linux ] && [ "$(id -u)" != 0 ] && [ -n "${1:-}" ]; then
+  exec sudo "$DIR/scripts/hesperus" "$@"
+fi
+
 DOCKER=docker
 [ "$(uname)" = Linux ] && ! docker info >/dev/null 2>&1 && DOCKER="sudo docker"
 
@@ -54,6 +59,33 @@ ask_password() {
   [ "$got" = "$want" ] || { echo "wrong password" >&2; exit 1; }
 }
 
+# handed to the host's agent (systemd path unit, the app), its verdict waited on
+request_update() {
+  [ -e "$DIR/.git" ] && { echo "a checkout: git pull, then hesperus start" >&2; exit 1; }
+  local id out="$DIR/state/update-agent.json" line last="" i
+  id="cli-$(date +%s)-$$"
+  mkdir -p "$DIR/state"
+  printf '{"id":"%s","at":%s}\n' "$id" "$(date +%s)000" > "$DIR/state/update-request.json.tmp" \
+    && mv "$DIR/state/update-request.json.tmp" "$DIR/state/update-request.json"
+  echo "update requested, checking the release feed..."
+  for i in $(seq 1 1800); do
+    line="$(cat "$out" 2>/dev/null)"
+    case "$line" in *"\"id\":\"$id\""*) ;; *) line="" ;; esac
+    if [ -n "$line" ] && [ "$line" != "$last" ]; then
+      last="$line"
+      case "$line" in
+        *'"state":"failed"'*) echo "update failed: $(sed -n 's/.*"error":"\([^"]*\)".*/\1/p' <<<"$line")" >&2; exit 1 ;;
+        *'"current":true'*) echo "already up to date"; exit 0 ;;
+        *'"state":"ok"'*) echo "updated to $(sed -n 's/.*"version":"\([^"]*\)".*/\1/p' <<<"$line")"; exit 0 ;;
+        *) echo "updating..." ;;
+      esac
+    fi
+    [ "$i" = 30 ] && [ -z "$last" ] && echo "nothing picked it up yet: is the update agent running (Linux: hesperus-update.path, else the Hesperus app)?"
+    sleep 1
+  done
+  echo "gave up waiting, see $out" >&2; exit 1
+}
+
 case "${1:-}|${2:-}" in
   "|") cli ;;
   start\|)
@@ -78,7 +110,7 @@ case "${1:-}|${2:-}" in
     $DOCKER restart -t 30 hesperus >/dev/null || exit 1
     [ "$git_up" = true ] && { echo "starting hesperus-git..."; $DOCKER start hesperus-git >/dev/null || exit 1; }
     echo "hesperus restarted" ;;
-  update\|) ask_password; exec bash "$DIR/scripts/update.sh" ;;
+  update\|) ask_password; request_update ;;
   update\|all) cli update-all ;;
   -h\|*|-help\|*|--help\|*|help\|*) usage ;;
   *) usage >&2; exit 2 ;;

@@ -27,7 +27,10 @@ if systemctl is-active --quiet ssh 2>/dev/null || systemctl is-active --quiet ss
   say "local SSH server already active, skipping"
 else
   say "enabling local SSH server..."
-  if command -v apt-get >/dev/null 2>&1; then
+  # installed already (the package's own dependency): enabled only, apt busy under dpkg
+  if [ -x /usr/sbin/sshd ]; then
+    sudo systemctl enable --now ssh 2>/dev/null || sudo systemctl enable --now sshd
+  elif command -v apt-get >/dev/null 2>&1; then
     sudo apt-get update && sudo apt-get install -y openssh-server
     sudo systemctl enable --now ssh
   elif command -v dnf >/dev/null 2>&1; then

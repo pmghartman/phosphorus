@@ -1,0 +1,294 @@
+# manual release: ghcr images, .deb, .dmg, setup .exe as vVERSION, feed on release `update`
+# app and apt feeds need TAURI_SIGNING_PRIVATE_KEY(_PASSWORD), APT_GPG_KEY, var TAURI_UPDATER_PUBKEY
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      major:
+        description: "Bump the major version (minor otherwise)"
+        type: boolean
+        default: false
+      linux:
+        description: "Linux (.deb)"
+        type: boolean
+        default: true
+      macos:
+        description: "macOS (.dmg)"
+        type: boolean
+        default: true
+      windows:
+        description: "Windows (setup .exe)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  REGISTRY: ghcr.io/${{ github.repository_owner }}
+
+jobs:
+  version:
+    runs-on: ubuntu-24.04
+    outputs:
+      ver: ${{ steps.v.outputs.ver }}
+      apps: ${{ steps.plan.outputs.apps }}
+    steps:
+      - uses: actions/checkout@v7
+      # next MAJOR.MINOR after the highest vMAJOR.MINOR tag; none yet: VERSION
+      - name: next version
+        id: v
+        env:
+          MAJOR: ${{ inputs.major }}
+        run: |
+          L=$(git ls-remote --tags origin | sed -n 's|.*refs/tags/v\([0-9]*\.[0-9]*\)$|\1|p' | sort -t. -k1,1n -k2,2n | tail -1)
+          if [ -z "$L" ]; then V=$(tr -d '[:space:]' < VERSION)
+          elif [ "$MAJOR" = true ]; then V=$(( ${L%.*} + 1 )).0
+          else V=${L%.*}.$(( ${L#*.} + 1 ))
+          fi
+          echo "ver=$V" >> "$GITHUB_OUTPUT"
+      - name: plan
+        id: plan
+        env:
+          MAC: ${{ inputs.macos }}
+          WIN: ${{ inputs.windows }}
+        run: |
+          apps=()
+          [ "$MAC" = true ] && apps+=('{"os":"macos-14","name":"macos-universal","args":"--target universal-apple-darwin --bundles app,dmg"}')
+          [ "$WIN" = true ] && apps+=('{"os":"windows-2022","name":"windows-x86_64","args":"--bundles nsis"}')
+          j() { local IFS=,; echo "[$*]"; }
+          echo "apps=$(j "${apps[@]}")" | tee -a "$GITHUB_OUTPUT"
+
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: syntax
+        run: |
+          for f in scripts/*.sh scripts/lib/*.sh scripts/hesperus build/*.sh build/deb/post* build/deb/prerm container/*.sh; do bash -n "$f"; done
+          for f in frontend/*.js frontend/cli/*.js frontend/web/*.js git/container/*.js container/*.js; do node --check "$f"; done
+
+  # the release's tree: what every installer ships and syncs into the host's home
+  payload:
+    needs: [version]
+    runs-on: ubuntu-24.04
+    env:
+      VER: ${{ needs.version.outputs.ver }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: tree
+        run: |
+          mkdir -p out/payload
+          git archive HEAD | tar -x -C out/payload
+          rm -rf out/payload/.github out/payload/gui out/payload/build
+          echo "$VER" > out/payload/VERSION
+          # a tarball: artifacts drop exec bits
+          tar -C out/payload -czf out/payload.tar.gz .
+      - uses: actions/upload-artifact@v7
+        with:
+          name: payload
+          path: out/payload.tar.gz
+          compression-level: 0
+
+  images:
+    needs: [version]
+    strategy:
+      matrix:
+        include:
+          - { name: hesperus, file: container/Dockerfile, platforms: "linux/amd64,linux/arm64", suffix: "", backend: cpu }
+          - { name: hesperus, file: container/Dockerfile, platforms: "linux/amd64", suffix: "-cuda", backend: cuda }
+          - { name: hesperus-git, file: git/container/Dockerfile, platforms: "linux/amd64,linux/arm64", suffix: "", backend: cpu }
+    runs-on: ubuntu-24.04
+    env:
+      VER: ${{ needs.version.outputs.ver }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.file }}
+          platforms: ${{ matrix.platforms }}
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ matrix.name }}:${{ env.VER }}${{ matrix.suffix }}
+          build-args: |
+            HESPERUS_VERSION=${{ env.VER }}
+            LLAMA_BACKEND=${{ matrix.backend }}
+          cache-from: type=gha,scope=${{ matrix.name }}${{ matrix.suffix }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}${{ matrix.suffix }}
+
+  deb:
+    if: inputs.linux
+    needs: [version, payload]
+    runs-on: ubuntu-24.04
+    env:
+      VER: ${{ needs.version.outputs.ver }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: payload
+          path: art
+      # apt key's public half, into the package
+      - name: apt key
+        env:
+          KEY: ${{ secrets.APT_GPG_KEY }}
+        run: |
+          [ -n "$KEY" ] || exit 0
+          export GNUPGHOME=$(mktemp -d)
+          echo "$KEY" | gpg --batch --import
+          gpg --export > "$RUNNER_TEMP/hesperus.gpg"
+          echo "HESPERUS_APT_KEY=$RUNNER_TEMP/hesperus.gpg" >> "$GITHUB_ENV"
+      - name: build .deb
+        run: |
+          mkdir -p art/payload out && tar -xzf art/payload.tar.gz -C art/payload
+          build/deb.sh "out/hesperus_${VER}_all.deb" "$VER" art/payload
+      - uses: actions/upload-artifact@v7
+        with:
+          name: deb
+          path: out/
+          compression-level: 0
+
+  # tray app: universal .dmg, Windows setup .exe, the release's tree as its resources
+  app:
+    needs: [version, payload]
+    if: needs.version.outputs.apps != '[]'
+    strategy:
+      matrix:
+        include: ${{ fromJSON(needs.version.outputs.apps) }}
+    runs-on: ${{ matrix.os }}
+    env:
+      VER: ${{ needs.version.outputs.ver }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: rust
+        run: rustup toolchain install stable --profile minimal && rustup default stable
+      - name: mac targets
+        if: matrix.name == 'macos-universal'
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: gui
+          key: ${{ matrix.name }}
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: tauri-cli@2
+      - uses: actions/download-artifact@v8
+        with:
+          name: payload
+          path: art
+      - name: resources
+        shell: bash
+        run: mkdir -p gui/payload && tar -xzf art/payload.tar.gz -C gui/payload
+      # updater config and artifacts only with a signing key
+      - name: app config
+        shell: bash
+        env:
+          KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          PUB: ${{ vars.TAURI_UPDATER_PUBKEY }}
+        run: |
+          C="{\"version\":\"$VER.0\"}"
+          if [ -n "$KEY" ] && [ -n "$PUB" ]; then
+            U="https://github.com/${{ github.repository }}/releases/download/update/{{target}}-{{arch}}.json"
+            C="{\"version\":\"$VER.0\",\"bundle\":{\"createUpdaterArtifacts\":true},\"plugins\":{\"updater\":{\"pubkey\":\"$PUB\",\"endpoints\":[\"$U\"],\"windows\":{\"installMode\":\"passive\"}}}}"
+          fi
+          echo "CFG=$C" >> "$GITHUB_ENV"
+      - name: build app
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          cd gui
+          cargo tauri build ${{ matrix.args }} --config "$CFG"
+          mkdir -p ../out ../upd
+          if [ "${{ matrix.name }}" = macos-universal ]; then
+            cp target/universal-apple-darwin/release/bundle/dmg/*.dmg "../out/hesperus-$VER-macos-universal.dmg"
+            u=target/universal-apple-darwin/release/bundle/macos/Hesperus.app.tar.gz
+            [ -e "$u.sig" ] && cp "$u" ../upd/hesperus-macos-universal.app.tar.gz && cp "$u.sig" ../upd/hesperus-macos-universal.app.tar.gz.sig
+          else
+            cp target/release/bundle/nsis/*-setup.exe "../out/hesperus-$VER-windows-x86_64-setup.exe"
+            for u in target/release/bundle/nsis/*-setup.exe; do
+              [ -e "$u.sig" ] && cp "$u" ../upd/hesperus-windows-x86_64-setup.exe && cp "$u.sig" ../upd/hesperus-windows-x86_64-setup.exe.sig
+            done
+          fi
+          true
+      - uses: actions/upload-artifact@v7
+        with:
+          name: app-${{ matrix.name }}
+          path: out/
+          compression-level: 0
+      - uses: actions/upload-artifact@v7
+        with:
+          name: upd-${{ matrix.name }}
+          path: upd/
+          compression-level: 0
+          if-no-files-found: ignore
+
+  release:
+    needs: [version, check, images, deb, app]
+    # runs with unchecked targets skipped, not when anything failed
+    if: ${{ !cancelled() && !failure() }}
+    runs-on: ubuntu-24.04
+    env:
+      VER: ${{ needs.version.outputs.ver }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: out
+          pattern: "{app-*,deb}"
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v3
+        with:
+          tag_name: v${{ env.VER }}
+          name: Hesperus ${{ env.VER }}
+          target_commitish: ${{ github.sha }}
+          body: |
+            ${{ inputs.macos && '**macOS**: open the `.dmg`, drag Hesperus to Applications, open it (first open: right-click > Open). Needs colima and docker (see README).' || '' }}
+            ${{ inputs.windows && '**Windows**: run the setup `.exe` (SmartScreen: More info > Run anyway). Needs Docker Desktop.' || '' }}
+            ${{ inputs.linux && format('**Linux**: `sudo apt install ./hesperus_{0}_all.deb`, then fill in `/var/lib/hesperus/.env` and `sudo hesperus start`.', env.VER) || '' }}
+            An existing phosphorus or hesperus checkout on the host is migrated on install: `.env`, config, state, git data and the tailnet identity.
+          files: out/*
+      - uses: actions/download-artifact@v8
+        with:
+          path: upd
+          pattern: upd-*
+          merge-multiple: true
+      # built targets' files onto `update`; others: last release's
+      - name: update feed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          KEY: ${{ secrets.APT_GPG_KEY }}
+        run: |
+          mkdir -p upd && cd upd
+          BASE=https://github.com/$GH_REPO/releases/download/update
+          NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          printf '{"version":"%s","pub_date":"%s","notes":"https://github.com/%s/releases/tag/v%s"}\n' "$VER" "$NOW" "$GH_REPO" "$VER" > latest.json
+          feed() { printf '{"version":"%s.0","pub_date":"%s","url":"%s/%s","signature":"%s","notes":""}\n' "$VER" "$NOW" "$BASE" "$2" "$(cat "$2.sig")" > "$1.json"; }
+          if [ -e hesperus-macos-universal.app.tar.gz ]; then
+            feed darwin-x86_64 hesperus-macos-universal.app.tar.gz
+            feed darwin-aarch64 hesperus-macos-universal.app.tar.gz
+          fi
+          [ -e hesperus-windows-x86_64-setup.exe ] && feed windows-x86_64 hesperus-windows-x86_64-setup.exe
+          if [ -n "$KEY" ] && ls ../out/*.deb >/dev/null 2>&1; then
+            command -v apt-ftparchive >/dev/null || { sudo apt-get update -q && sudo apt-get install -y -q apt-utils; }
+            cp ../out/*.deb hesperus_all.deb
+            mkdir a && mv hesperus_all.deb a/
+            (cd a && apt-ftparchive packages .) > Packages
+            mv a/hesperus_all.deb . && rmdir a
+            apt-ftparchive -o APT::FTPArchive::Release::Origin=Hesperus -o APT::FTPArchive::Release::Label=Hesperus release . > "$RUNNER_TEMP/Release"
+            export GNUPGHOME=$(mktemp -d)
+            echo "$KEY" | gpg --batch --import
+            gpg --batch --yes --clearsign -o InRelease "$RUNNER_TEMP/Release"
+          fi
+          gh release view update >/dev/null 2>&1 || gh release create update --prerelease --latest=false --title "Update feed" --notes "Files installed hosts update from. Install from the numbered releases."
+          gh release upload update * --clobber

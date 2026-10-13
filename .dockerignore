@@ -5,3 +5,5 @@ git/data
 state
 models
 **/node_modules
+gui
+build

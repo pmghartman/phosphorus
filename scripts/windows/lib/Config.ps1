@@ -26,10 +26,28 @@ function Get-EnvValue([string]$Key) {
 # stderr dropped: under Stop, Windows PowerShell turning any of it into a throw
 function Invoke-Quiet([scriptblock]$Cmd) { $ErrorActionPreference = "Continue"; & $Cmd 2>$null }
 
-# VERSION's <major>.<minor>, then the commit count
+# installed from a release: no .git, VERSION the release's own
+function Test-HesperusInstalled { -not (Test-Path .git) }
+
+# a release: VERSION, a checkout: VERSION's <major>.<minor>, then the commit count
 function Get-HesperusVersion {
+    if (Test-HesperusInstalled) { return (Get-Content VERSION -First 1).Trim() }
     $n = Invoke-Quiet { git rev-list --count HEAD }
     "$((Get-Content VERSION -First 1).Trim()).$(if ($n) { $n } else { 0 })"
+}
+
+# the release's images pulled and tagged as compose names them, cuda per [model] gpu
+function Invoke-HesperusPull {
+    $v = Get-HesperusVersion
+    $sfx = if (Test-HesperusModelGpu) { "-cuda" } else { "" }
+    foreach ($p in @(@("hesperus:$v$sfx", "hesperus:latest"), @("hesperus-git:$v", "hesperus-git:latest"))) {
+        $from = "ghcr.io/pmghartman/$($p[0])"
+        docker pull -q $from | Out-Null
+        if ($LASTEXITCODE) { return $false }
+        docker tag $from $p[1]
+        if ($LASTEXITCODE) { return $false }
+    }
+    $true
 }
 
 function Get-HesperusIniPath { if (Test-Path config/hesperus.ini) { "config/hesperus.ini" } }

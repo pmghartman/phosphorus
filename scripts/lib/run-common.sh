@@ -7,9 +7,9 @@
 # $1 and $2: where to get docker and git on this OS
 run_preflight() {
   command -v docker >/dev/null 2>&1 || fail "docker not found, $1"
-  command -v git    >/dev/null 2>&1 || fail "git not found, $2"
-  [ -f .env ] || fail ".env not found, are you running this from inside the hesperus clone?"
-  [ -f config/services.export ] || fail "config/services.export not found, are you running this from inside the hesperus clone?"
+  hesperus_installed || command -v git >/dev/null 2>&1 || fail "git not found, $2"
+  [ -f .env ] || fail ".env not found in $DIR, copy .env.example to it and fill it in"
+  [ -f config/services.export ] || fail "config/services.export not found in $DIR"
 }
 
 hesperus_running() { [ "$($DOCKER inspect -f '{{.State.Running}}' hesperus 2>/dev/null)" = "true" ]; }
@@ -71,7 +71,7 @@ run_bring_up() {
     local host=false
     [[ "$ans" =~ ^[Yy] ]] && host=true
     printf '[git]\nhost = %s\n' "$host" > config/hesperus.ini
-    git update-index --skip-worktree config/hesperus.ini
+    hesperus_installed || git update-index --skip-worktree config/hesperus.ini
   fi
 
   # --- hesperus container -----------------------------------------------
@@ -98,7 +98,7 @@ run_bring_up() {
   fi
 
   # this host's own entries, safe from the next pull
-  git update-index --skip-worktree config/services.export
+  hesperus_installed || git update-index --skip-worktree config/services.export
 
   say "done. 'docker compose logs -f' to watch hesperus come up."
 }

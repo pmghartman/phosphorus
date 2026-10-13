@@ -14,22 +14,58 @@
 One container per machine, each a **host** on the mesh at `BASE_DOMAIN` (`.env`):
 its services published, the others' polled, one web UI and cli for all of them.
 
-## Bring-up
+## Install
 
-| OS | Install yourself |
-|---|---|
-| Linux | Docker Engine + Compose, `git`, sudo |
-| macOS | [colima](https://github.com/abiosoft/colima), Homebrew `docker`, `docker-compose`, `docker-buildx`, Xcode CLI tools, sudo |
-| Windows | Docker Desktop (host networking on), Git for Windows, admin PowerShell |
+From the latest release:
 
-```
-git clone https://github.com/pmghartman/hesperus.git && cd hesperus
-cp .env.example .env         # then fill it in
-./scripts/run-linux.sh      # or run-mac.sh, or scripts/windows/run.ps1
-```
+| OS | Needs | Install |
+|---|---|---|
+| Linux (Debian, Ubuntu) | nothing, apt pulls Docker | `sudo apt install ./hesperus_VER_all.deb` |
+| macOS | [colima](https://github.com/abiosoft/colima), Homebrew `docker`, `docker-compose` | open `hesperus-VER-macos-universal.dmg`, drag Hesperus to Applications, open it (first open: right-click > Open) |
+| Windows | Docker Desktop (host networking on) | run `hesperus-VER-windows-x86_64-setup.exe` (SmartScreen: More info > Run anyway) |
 
-Safe to re-run. On macOS set `hostname:` in `colima start --edit` first.
+Each host's own files live in its **home**: `/var/lib/hesperus` (Linux),
+`~/Library/Hesperus` (macOS), `%LOCALAPPDATA%\Hesperus` (Windows). That covers `.env`, `config/`,
+`state/`, `git/data/`, `files/` and `models/`, none of them touched by an update. Fill in
+`.env` from `.env.example`, then `hesperus start` (`sudo` on Linux; the tray's Start on
+macOS and Windows). On macOS set `hostname:` in `colima start --edit` first.
 `TS_AUTHKEY` and `TS_API_KEY` in `.env` expire every 90 days.
+
+Images come prebuilt from `ghcr.io/pmghartman/hesperus` and `hesperus-git`, tagged by
+release. A git checkout still runs from source: `./scripts/run-linux.sh` (or `run-mac.sh`,
+`scripts/windows/run.ps1`) builds them locally.
+
+## Updates
+
+The update button checks the release feed first, then walks the mesh host by host. Each
+host hands the update to its agent:
+
+- Linux: `hesperus-update.path` runs `apt` against the signed feed, postinst pulls and swaps.
+- macOS, Windows: the tray app runs the Tauri updater, relaunches, pulls and swaps.
+
+`hesperus update` and the tray's Check for Updates do the same for one host.
+
+## From phosphorus
+
+Installing on a host that runs an old phosphorus (or git-era hesperus) checkout migrates
+it. The installer finds the old checkout through its container, stops it (kept, restart
+off, for a rollback), then moves into the home:
+
+- `.env` as it was, `PHOS_UPDATE_PASSWORD` renamed `HESPERUS_UPDATE_PASSWORD`, `GAME_ZONE=hesperus`
+- `config/phos.ini` as `config/hesperus.ini`, `services.export`, `state/`, `files/`, `models/`, `git/data/`
+- the tailscale volume, so the node keeps its tailnet name and ip with no new auth key, and
+  the Windows git and model volumes
+
+Never press update on an old phosphorus host: it resets to the phosphorus repo's `main`,
+now a different project. Migrate the git master first, then the replicas, in one sitting.
+Delete the old checkout once hesperus is up. By hand: `scripts/migrate.sh OLD HOME`.
+
+## Releasing
+
+The manual `release` workflow: images to ghcr, `.deb`, `.dmg`, setup `.exe`, release
+`vVERSION`, and the `update` feed. Once: make both ghcr packages public, set secrets
+`TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, `APT_GPG_KEY` and variable
+`TAURI_UPDATER_PUBKEY`. Without them the installers still build, with no update feed.
 
 ## hesperus
 
@@ -37,7 +73,7 @@ Safe to re-run. On macOS set `hostname:` in `colima start --edit` first.
 |---|---|
 | `hesperus` | The cli |
 | `hesperus start` / `stop` / `restart` | Start, stop, restart this host |
-| `hesperus update` | Update this host |
+| `hesperus update` | Update this host from the release feed |
 | `hesperus update all` | Update the mesh (`HESPERUS_UPDATE_PASSWORD`) |
 
 ## Services
@@ -125,7 +161,9 @@ config/      services.export, hesperus.ini (per host)
 container/   hesperus image
 frontend/    node service; web/ the UI, cli/ hesperus
 git/         hesperus-git image
-scripts/     hesperus, run, rebuild, update
+scripts/     hesperus, run, rebuild, install, migrate, upgrade
+build/       .deb packaging
+gui/         tray app (Tauri), macOS and Windows
 files/       default share
 state/       runtime state (not shipped)
 models/      ggufs (not shipped)

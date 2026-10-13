@@ -42,6 +42,29 @@ function Ask-Password {
     if ($got -ne $want) { Write-Host "wrong password" -ForegroundColor Red; exit 1 }
 }
 
+# handed to the Hesperus app, its verdict waited on
+function Request-Update {
+    $Root = Split-Path -Parent $Scripts
+    if (Test-Path (Join-Path $Root ".git")) { Write-Host "a checkout: git pull, then hesperus start" -ForegroundColor Red; exit 1 }
+    $State = Join-Path $Root "state"
+    New-Item -ItemType Directory -Force $State | Out-Null
+    $Id = "cli-$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())-$PID"
+    Set-Content (Join-Path $State "update-request.json") "{`"id`":`"$Id`",`"at`":$([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())}"
+    Write-Host "update requested, checking the release feed..."
+    $Out = Join-Path $State "update-agent.json"
+    for ($i = 1; $i -le 1800; $i++) {
+        $a = $null
+        try { $a = Get-Content $Out -Raw -ErrorAction Stop | ConvertFrom-Json } catch {}
+        if ($a -and $a.id -eq $Id) {
+            if ($a.state -eq "failed") { Write-Host "update failed: $($a.error)" -ForegroundColor Red; exit 1 }
+            if ($a.state -eq "ok") { if ($a.current) { Write-Host "already up to date" } else { Write-Host "updated to $($a.version)" }; exit 0 }
+        }
+        if ($i -eq 30 -and -not $a) { Write-Host "nothing picked it up yet: is the Hesperus app running?" }
+        Start-Sleep 1
+    }
+    Write-Host "gave up waiting, see $Out" -ForegroundColor Red; exit 1
+}
+
 switch ("$($args[0])|$($args[1])") {
     "|"           { Cli @() }
     "start|"      { & "$Scripts/run.ps1"; exit $LASTEXITCODE }
@@ -73,7 +96,7 @@ switch ("$($args[0])|$($args[1])") {
         }
         Write-Host "hesperus restarted"
     }
-    "update|"     { Ask-Password; & "$Scripts/update.ps1"; exit $LASTEXITCODE }
+    "update|"     { Ask-Password; Request-Update }
     "update|all"  { Cli @("update-all") }
     default       { Usage; if ($args[0] -notin @("help", "-h", "-help", "--help")) { exit 2 } }
 }

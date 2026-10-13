@@ -483,7 +483,7 @@ const MODEL_RULES = [
   + 'terminal_screen and wait_s, then terminal_type to leave a command for them to run with Enter (or refuse with '
   + 'Ctrl-C). Work one command at a time, reading each result before the next, for a credential prompt, tell them '
   + 'what to type and let them type it themselves.',
-  'Your own source, the hesperus version this host runs, is the checkout at /repo: README.md, frontend/ (server.js '
+  'Your own source, the hesperus version this host runs, is the install at /repo: README.md, frontend/ (server.js '
   + 'and the rest of the frontend, web/ the page, cli/ the cli, mcp.js your hesperus tools, harness.js how you are run), '
   + 'container/ and scripts/. Asked how hesperus or hesperus works, or why it did something, read and grep it there and '
   + 'answer from the code. Read only: never write, edit or run anything under /repo.',
@@ -1141,6 +1141,13 @@ function app(req, res) {
     if (!isTailnet(req)) { res.writeHead(403).end('forbidden'); return; }
     sendJson(res, 202, { status: 'started' });
     update.runLocalUpdate();
+    return;
+  }
+
+  // the update button's first step: the release feed against this host
+  if (pathname === '/api/update/check' && req.method === 'GET') {
+    if (!isLocalOrPeer(req)) { res.writeHead(403).end('forbidden'); return; }
+    update.check(searchParams.has('fresh')).then((c) => sendJson(res, 200, c));
     return;
   }
 

@@ -7067,13 +7067,43 @@ function openConfirm(message, { title, hideCancel, actionLabel, onAction, passwo
 
 // a chain start taking the mesh down a while, the password held by the
 // frontend, only what was typed carried by this box
-function askToStart() {
-  openConfirm('network down for a while. continue?', {
-    title: 'update the mesh',
-    actionLabel: 'update',
-    password: true,
+// the release feed first, the walk only with a host behind it
+async function askToStart() {
+  updateBtn.disabled = true;
+  updateBtn.textContent = 'checking';
+  let c = {};
+  try { c = await (await fetch('/api/update/check?fresh=1')).json(); } catch {}
+  renderUpdateButton();
+  const versions = [updateSeen.selfVersion, ...updateSeen.tailnet.filter((d) => d.hesperus).map((d) => d.version)]
+    .filter(Boolean);
+  const behind = c.latest ? versions.filter((v) => newerVersion(c.latest, v)).length : 0;
+  if (!c.latest) {
+    openConfirm(`couldn't reach the release feed${c.error ? ` (${c.error})` : ''}. update anyway?`, {
+      title: 'update the mesh', actionLabel: 'update', password: true,
+      onAction: () => startChain(updatePassField.get()),
+    });
+    return;
+  }
+  if (!behind) {
+    openConfirm(`every host is on v${c.latest}, the newest release.`, {
+      title: 'up to date', hideCancel: true, actionLabel: 'ok', onAction: openUpdateModal,
+    });
+    return;
+  }
+  openConfirm(`v${c.latest} is out, ${behind} host${behind === 1 ? '' : 's'} behind. network down for a while. continue?`, {
+    title: 'update the mesh', actionLabel: 'update', password: true,
     onAction: () => startChain(updatePassField.get()),
   });
+}
+
+function newerVersion(a, b) {
+  const pa = String(a).split('.').map(Number);
+  const pb = String(b).split('.').map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0);
+    if (d) return d > 0;
+  }
+  return false;
 }
 
 function passwordRejected() {

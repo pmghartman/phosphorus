@@ -2,7 +2,6 @@
 // the mesh update chain: this host's own update, the lock it publishes while
 // driving one, and the walk across every host
 
-const { execFile, execFileSync } = require('child_process');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
@@ -14,10 +13,17 @@ const SELF_HOST = process.env.SELF_HOST || '';
 const FRONTEND_PORT = Number(process.env.FRONTEND_PORT || 8090);
 const STATE_DIR = process.env.STATE_DIR || '/state';
 const CHAIN_FILE = path.join(STATE_DIR, 'update-chain.json');
-const UPDATE_SCRIPT = process.env.UPDATE_SCRIPT || '/repo/scripts/update.sh';
 const VERSION_FILE = process.env.VERSION_FILE || '/opt/hesperus/VERSION';
-// the checkout update.sh resets, once it returns, what was built
-const REPO_DIR = path.resolve(path.dirname(UPDATE_SCRIPT), '..');
+// the install as the host sees it, a checkout updating by hand
+const REPO_DIR = process.env.REPO_DIR || '/repo';
+// handed to the host's agent (systemd path unit, the app), its verdict read back
+const REQUEST_FILE = path.join(STATE_DIR, 'update-request.json');
+const AGENT_FILE = path.join(STATE_DIR, 'update-agent.json');
+// the release feed: newest version, the installers and app feeds beside it
+const FEED_URL = process.env.HESPERUS_FEED_URL || 'https://github.com/pmghartman/hesperus/releases/download/update/latest.json';
+const FEED_TTL_MS = 600000;
+// nobody answering the request: no agent on this host
+const AGENT_PICKUP_MS = 60000;
 
 // long enough for a cold layer cache, under PEER_CAP_MS, the peer's
 // own verdict, not a guess from here
@@ -25,7 +31,7 @@ const UPDATE_TIMEOUT_MS = 1200000;
 // a peer not listening failed now, not in minutes, still room for a tailnet
 // round trip and handshake
 const CONNECT_TIMEOUT_MS = 2000;
-// update.sh done, swap handed off: a new frontend answering well within this
+// the agent done, swap handed off: a new frontend answering well within this
 const SWAP_TIMEOUT_MS = 120000;
 // answering = still working, whatever the build costs, a clock only on
 // silence, the cap against a chain hanging forever
@@ -43,12 +49,36 @@ function readVersion(file) {
   try { return fs.readFileSync(file, 'utf8').trim(); } catch { return ''; }
 }
 
-// as rebuild stamps it: VERSION's <major>.<minor>, then the commit count
-function repoVersion() {
-  try {
-    const n = execFileSync('git', ['-C', REPO_DIR, 'rev-list', '--count', 'HEAD'], { encoding: 'utf8' }).trim();
-    return `${readVersion(path.join(REPO_DIR, 'VERSION'))}.${n}`;
-  } catch { return ''; }
+// numeric, part by part, 0.13 < 0.13.1 < 0.14
+function newer(a, b) {
+  const pa = String(a).split('.').map(Number);
+  const pb = String(b).split('.').map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0);
+    if (d) return d > 0;
+  }
+  return false;
+}
+
+let feed = { at: 0, latest: '', error: '' };
+
+// the newest release against this host's, cached, force: a button's fresh look
+async function check(force = false) {
+  if (force || Date.now() - feed.at > FEED_TTL_MS) {
+    try {
+      const r = await fetch(FEED_URL, { signal: AbortSignal.timeout(10000) });
+      if (!r.ok) throw new Error(`feed answered ${r.status}`);
+      const j = await r.json();
+      feed = { at: Date.now(), latest: String(j.version || ''), notes: String(j.notes || ''), error: '' };
+    } catch (err) {
+      feed = { ...feed, at: Date.now(), error: err.message };
+    }
+  }
+  const current = readVersion(VERSION_FILE);
+  return {
+    current, latest: feed.latest, notes: feed.notes || '', error: feed.error,
+    available: !!feed.latest && newer(feed.latest, current), checkedAt: feed.at,
+  };
 }
 
 // --- this host's own update ------------------------------------------------
@@ -62,20 +92,36 @@ function onFinish(fn) { finishHook = fn; }
 
 function runLocalUpdate() {
   outcomeHook({ state: 'running' });
-  return new Promise((resolve) => {
-    // via bash, not the shebang: no exec bit on a bind mount from Windows
-    execFile('bash', [UPDATE_SCRIPT], { timeout: UPDATE_TIMEOUT_MS }, (err, stdout, stderr) => {
-      // current: nothing to swap, this process staying, no restart to wait for
-      const current = /already up to date/.test(String(stdout));
-      // checkout already reset: the version about to run
-      const version = repoVersion() || readVersion(VERSION_FILE);
-      if (!err) { outcomeHook({ state: 'ok', current, version }); resolve({ ok: true, current, to: version }); return; }
-      const detail = (stderr || stdout || err.message).toString().trim().split('\n').slice(-3).join(' ');
-      const error = detail.slice(0, 500) || 'update failed';
-      outcomeHook({ state: 'failed', error });
-      resolve({ ok: false, error });
-    });
-  });
+  const done = (r) => {
+    if (r.ok) outcomeHook({ state: 'ok', current: r.current, version: r.to });
+    else outcomeHook({ state: 'failed', error: r.error });
+    return r;
+  };
+  if (fs.existsSync(path.join(REPO_DIR, '.git'))) {
+    return Promise.resolve(done({ ok: false, error: 'a source checkout: git pull, then hesperus start' }));
+  }
+  const id = crypto.randomUUID();
+  try { writeJsonAtomic(REQUEST_FILE, { id, at: Date.now() }); } catch (err) {
+    return Promise.resolve(done({ ok: false, error: `couldn't request the update: ${err.message}` }));
+  }
+  // the agent's swap may kill this process first, the next boot then answering
+  return (async () => {
+    const started = Date.now();
+    while (Date.now() - started < UPDATE_TIMEOUT_MS) {
+      await clock.sleep(2000);
+      const a = readJson(AGENT_FILE, {});
+      if (a.id !== id) {
+        if (Date.now() - started > AGENT_PICKUP_MS && fs.existsSync(REQUEST_FILE)) {
+          try { fs.unlinkSync(REQUEST_FILE); } catch {}
+          return done({ ok: false, error: 'no update agent on this host: reinstall from the latest release' });
+        }
+        continue;
+      }
+      if (a.state === 'ok') return done({ ok: true, current: !!a.current, to: a.version || readVersion(VERSION_FILE) });
+      if (a.state === 'failed') return done({ ok: false, error: String(a.error || 'update failed').slice(0, 500) });
+    }
+    return done({ ok: false, error: 'update timed out' });
+  })();
 }
 
 // --- peers ------------------------------------------------------------------
@@ -253,8 +299,8 @@ function finish(reason) {
 // a failure as the update pane's status column says it, the full text logged
 function brief(result) {
   const e = String(result.error || '');
-  if (/fetch origin/.test(e)) return 'fetch failed';
-  if (/reset to origin/.test(e)) return 'reset failed';
+  if (/agent|feed|apt/.test(e)) return 'update failed';
+  if (/pull failed/.test(e)) return 'pull failed';
   if (/swap|hesperus-updater/.test(e)) return 'swap failed';
   if (/build failed/.test(e)) return 'build failed';
   if (/timed out|gave up/.test(e)) return 'timed out';
@@ -382,5 +428,5 @@ function proceed() {
 }
 
 module.exports = {
-  START_GRACE_MS, runLocalUpdate, onOutcome, onFinish, remember, ownLock, sharedChain, meshLock, chainStatus, restoreChain, start, cancel, proceed,
+  START_GRACE_MS, check, newer, runLocalUpdate, onOutcome, onFinish, remember, ownLock, sharedChain, meshLock, chainStatus, restoreChain, start, cancel, proceed,
 };

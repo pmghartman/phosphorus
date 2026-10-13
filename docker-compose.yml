@@ -1,3 +1,6 @@
+# one project name wherever the install lives, its volumes with it
+name: hesperus
+
 services:
   hesperus:
     build:
@@ -60,7 +63,7 @@ services:
       # unset: the repo's files/
       - ${HESPERUS_FILES_DIR:-./files}:/files
 
-      # the checkout, for scripts/update.sh in place, never /opt/hesperus
+      # the install (or checkout), for reconfig's rebuild and the model's reading, never /opt/hesperus
       # (the image's own VERSION and sweep.sh)
       - .:/repo
 
@@ -72,7 +75,7 @@ services:
       # the slow NTFS share
       - ${HESPERUS_MODEL_DIR:-./models}:/models
 
-      # for update.sh's sibling rebuild container, out of the swap's reach
+      # for rebuild.sh's sibling swap container, out of the swap's reach
       - /var/run/docker.sock:/var/run/docker.sock
 
   # hesperus's web search, on model hosts only, published on loopback only, where

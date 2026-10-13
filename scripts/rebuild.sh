@@ -1,6 +1,6 @@
 #!/bin/bash
 # hesperus built and the running container swapped onto the new image,
-# shared by run-*.sh and update.sh, the one step that can kill its caller
+# shared by run-*.sh, install.sh and reconfig, the one step that can kill its caller
 set -uo pipefail
 
 main() {
@@ -86,10 +86,15 @@ main() {
     compose_env+=("HESPERUS_HOST_ROOT=/")
   fi
 
-  # build stops/creates nothing, run here for a real exit code and visible
-  # failures (the detached sibling made build failures silent)
-  say "building hesperus..."
-  $sudo env "${compose_env[@]}" docker compose build || fail "build failed, still running the previous version"
+  # a release's images pulled, a checkout's built, neither stopping anything,
+  # run here for a real exit code and visible failures
+  if hesperus_installed; then
+    say "pulling hesperus $(hesperus_version)..."
+    hesperus_pull_images "$sudo docker" || fail "pull failed, still running the previous version"
+  else
+    say "building hesperus..."
+    $sudo env "${compose_env[@]}" docker compose build || fail "build failed, still running the previous version"
+  fi
 
   # nvidia gpus handed in wherever a probe off the new image gets them
   if $sudo docker run --rm --gpus all --network none --entrypoint true hesperus:latest >/dev/null 2>&1; then

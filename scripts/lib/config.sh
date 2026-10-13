@@ -18,9 +18,28 @@ env_get() {
   grep "^$1=" .env 2>/dev/null | cut -d= -f2-
 }
 
-# VERSION's <major>.<minor>, then the commit count
+# installed from a release: no .git, VERSION the release's own
+hesperus_installed() { [ ! -e .git ]; }
+
+# a release: VERSION, a checkout: VERSION's <major>.<minor>, then the commit count
 hesperus_version() {
+  if hesperus_installed; then tr -d '[:space:]' < VERSION; return; fi
   printf '%s.%s' "$(cat VERSION)" "$(git rev-list --count HEAD 2>/dev/null || echo 0)"
+}
+
+# the release's images, CI-built, cuda per [model] gpu
+HESPERUS_REGISTRY="ghcr.io/pmghartman"
+
+# $1 docker or "sudo docker": the release's images pulled and tagged as
+# compose names them, so a source build never runs
+hesperus_pull_images() {
+  local docker="$1" v sfx="" pair from to
+  v="$(hesperus_version)"
+  hesperus_model_gpu && [ "$(uname -m)" = x86_64 ] && sfx="-cuda"
+  for pair in "hesperus:$v$sfx=hesperus:latest" "hesperus-git:$v=hesperus-git:latest"; do
+    from="$HESPERUS_REGISTRY/${pair%%=*}" to="${pair#*=}"
+    $docker pull -q "$from" >/dev/null && $docker tag "$from" "$to" || return 1
+  done
 }
 
 # config/hesperus.ini when there is one, else nothing

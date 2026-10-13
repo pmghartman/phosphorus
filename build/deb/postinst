@@ -1,0 +1,16 @@
+#!/bin/sh
+# the release into /var/lib/hesperus (an old checkout migrated first), the update agent, the cli
+set -e
+[ "$1" = configure ] || exit 0
+mode=
+[ -n "${2:-}" ] && mode=--update
+mkdir -p /var/lib/hesperus/state
+if ! bash /opt/hesperus/scripts/install.sh $mode; then
+    echo "hesperus isn't running yet: fix the above, then sudo hesperus start" >&2
+fi
+ln -sfn /var/lib/hesperus/scripts/hesperus /usr/local/bin/hesperus
+if [ -d /run/systemd/system ]; then
+    systemctl daemon-reload
+    systemctl enable --now hesperus-update.path >/dev/null 2>&1 || true
+fi
+exit 0
