@@ -1591,6 +1591,11 @@ function termTheme() {
 }
 const liveTerms = new Set();
 
+// plain ctrl+c with a selection, or ctrl+v: xterm's textarea copy and paste
+// events, bracketed paste included, in place of ^C and ^V
+const clipKey = (e, term) => e.type === 'keydown' && e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey
+  && (e.key === 'v' || (e.key === 'c' && term.hasSelection()));
+
 // /api/term/<host>: keystrokes and output as binary frames, resize as JSON,
 // a dropped socket's rejoin by sid, until the server's ENDED
 function startTerminal(view, host, sid, resume, shared = false) {
@@ -1613,8 +1618,9 @@ function startTerminal(view, host, sid, resume, shared = false) {
       theme: termTheme(),
     });
     liveTerms.add(term);
-    // shift+esc left to the page, which unfocuses, plain esc the terminal's
-    term.attachCustomKeyEventHandler((e) => !(e.key === 'Escape' && e.shiftKey));
+    // shift+esc left to the page, which unfocuses, plain esc the terminal's;
+    // ctrl+c over a selection and ctrl+v to the browser's copy and paste
+    term.attachCustomKeyEventHandler((e) => !(e.key === 'Escape' && e.shiftKey) && !clipKey(e, term));
     fit = new FitAddon.FitAddon();
     term.loadAddon(fit);
     term.open(view);
