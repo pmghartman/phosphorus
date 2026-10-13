@@ -8,7 +8,7 @@ const { execFile } = require('child_process');
 const { pipeline, Transform } = require('stream');
 const { hesperusIni } = require('./util');
 
-// one mount per share, /shares/<index>, FILES_ROOT the repo's own files/
+// one mount per share, /shares/<index>, FILES_ROOT the home's own files/
 // when [files] dir is blank
 const SHARE_ROOT = process.env.SHARE_ROOT || '/shares';
 const FILES_ROOT = process.env.FILES_ROOT || '/files';

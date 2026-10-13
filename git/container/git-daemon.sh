@@ -54,6 +54,10 @@ render_litefs_yml() {
 # conf/ rsynced wholesale from the master, a local value would drift
 render_app_ini_once() {
   if [ -s "$APP_INI" ]; then
+    # phosphorus-era paths, else forgejo's db outside litefs and nothing answering
+    grep -q '/var/lib/phosphorus/' "$APP_INI" \
+      && sed -i -e 's#/var/lib/phosphorus/git#/var/lib/hesperus/git#g' -e 's/^APP_NAME = phosphorus git$/APP_NAME = hesperus git/' "$APP_INI" \
+      && chown git:hesperus "$APP_INI" && say "app.ini moved off /var/lib/phosphorus"
     # added after first render, appended once, then rsynced like the rest of conf/
     grep -q '^\[cron.git_gc_repos\]' "$APP_INI" \
       || printf '\n[cron.git_gc_repos]\nENABLED  = true\nSCHEDULE = @every 24h\n' >> "$APP_INI"

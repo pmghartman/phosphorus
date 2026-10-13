@@ -660,7 +660,7 @@ function filesView() {
   const lines = panels([
     ['hesperus.ini [files]', shares.length
       ? table(['dir', 'perms'], shares.map((s) => [s.dir, c.teal(s.perms)]), ui.sel[1])
-      : [c.muted(`using default dir: ${info && info.shares && info.shares[0] ? info.shares[0].label : "the repo's files"}`)]],
+      : [c.muted(`using default dir: ${info && info.shares && info.shares[0] ? info.shares[0].label : "the home's files"}`)]],
     published && ['published now', published],
   ]);
   return { lines, keys: [['a add', 'primary'], shares.length && ['e edit'], shares.length && ['d delete', 'danger']] };

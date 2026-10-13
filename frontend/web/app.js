@@ -7076,7 +7076,8 @@ async function askToStart() {
   renderUpdateButton();
   const versions = [updateSeen.selfVersion, ...updateSeen.tailnet.filter((d) => d.hesperus).map((d) => d.version)]
     .filter(Boolean);
-  const behind = c.latest ? versions.filter((v) => newerVersion(c.latest, v)).length : 0;
+  // a checkout's version its commit count past the release's MAJOR.MINOR, always behind an install
+  const behind = c.latest ? versions.filter((v) => v.split('.').length > 2 || newerVersion(c.latest, v)).length : 0;
   if (!c.latest) {
     openConfirm(`couldn't reach the release feed${c.error ? ` (${c.error})` : ''}. update anyway?`, {
       title: 'update the mesh', actionLabel: 'update', password: true,

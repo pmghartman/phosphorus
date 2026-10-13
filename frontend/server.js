@@ -848,7 +848,8 @@ function filesInfo() {
 
 // --- HTTP ------------------------------------------------------------
 
-const selfInfo = () => ({ host: SELF_HOST, version: VERSION, platform: PLATFORM, bootId: BOOT_ID });
+const CHECKOUT = update.isCheckout();
+const selfInfo = () => ({ host: SELF_HOST, version: VERSION, platform: PLATFORM, bootId: BOOT_ID, checkout: CHECKOUT });
 
 // everything in /api/state the page redraws for, minus the round-trip times
 // (their jitter would keep the state from ever going quiet)

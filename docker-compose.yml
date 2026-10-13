@@ -60,7 +60,7 @@ services:
       - ./state:/state
 
       # [files] dir from config/hesperus.ini, for the web's Files tab, read-write,
-      # unset: the repo's files/
+      # unset: the home's files/
       - ${HESPERUS_FILES_DIR:-./files}:/files
 
       # the install (or checkout), for reconfig's rebuild and the model's reading, never /opt/hesperus

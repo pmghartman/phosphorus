@@ -34,7 +34,9 @@ COPY git/container/app.ini.tmpl    /etc/forgejo/app.ini.tmpl
 COPY git/container/rsyncd.conf     /etc/rsyncd.conf
 COPY git/container/git-daemon.sh   /usr/local/bin/git-daemon.sh
 COPY git/container/elector.js      /usr/local/lib/hesperus-git/elector.js
+# the link for phosphorus-era repo hooks, their paths still /var/lib/phosphorus/git
 RUN chmod +x /usr/local/bin/git-daemon.sh \
- && mkdir -p /var/lib/hesperus/git /var/lib/litefs-internal
+ && mkdir -p /var/lib/hesperus/git /var/lib/litefs-internal /var/lib/phosphorus \
+ && ln -s /var/lib/hesperus/git /var/lib/phosphorus/git
 
 ENTRYPOINT ["/usr/local/bin/git-daemon.sh"]

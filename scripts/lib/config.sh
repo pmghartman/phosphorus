@@ -63,7 +63,7 @@ hesperus_add_missing_sections() {
   local file; file="$(hesperus_ini)"
   [ -n "$file" ] || return
   if ! grep -qx '\[files\]' "$file"; then
-    printf '\n[files]\n# host directories on the Files tab, comma separated, blank: the repo'"'"'s files/\n# priv: one r/w/d set per dir, same order, r browse and download,\n# w upload, new folder and rename, d delete, none: rwd\ndir =\npriv =\n' >> "$file"
+    printf '\n[files]\n# host directories on the Files tab, comma separated, blank: the home'"'"'s files/\n# priv: one r/w/d set per dir, same order, r browse and download,\n# w upload, new folder and rename, d delete, none: rwd\ndir =\npriv =\n' >> "$file"
     echo "[hesperus.ini] added the [files] section, set dir to publish a directory"
   fi
   if ! grep -qx '\[model\]' "$file"; then
@@ -82,7 +82,7 @@ hesperus_model_gpu() {
   [ "$(hesperus_get model gpu)" = "true" ]
 }
 
-# absolute host path published on the frontend's Files tab, the repo's own
+# absolute host path published on the frontend's Files tab, the home's own
 # files/ when [files] dir is blank, so the mount always resolves
 hesperus_files_dir() {
   local dir; dir="$(hesperus_get files dir)"
@@ -111,6 +111,34 @@ hesperus_files_dir_list() {
       *) printf '%s\n' "$base/$d" ;;
     esac
   done
+}
+
+# [files] dir entries inside old checkout $1 copied into this home and made
+# relative to it, $2=all for relative ones too (a migration's, off the checkout)
+hesperus_rehome_files() {
+  local old="$1" all="${2:-}" ini raw d rel out="" changed=0
+  ini="$(hesperus_ini)"
+  [ -n "$ini" ] && [ -n "$old" ] && [ "$old" != "$PWD" ] || return 0
+  raw="$(hesperus_get files dir)"
+  [ -n "$raw" ] || return 0
+  local IFS=','
+  for d in $raw; do
+    d="${d# }"; d="${d%/}"
+    case "$d" in
+      '') continue ;;
+      "$old"/*) rel="${d#"$old"/}" ;;
+      /*|[A-Za-z]:*) out="${out:+$out,}$d"; continue ;;
+      *) rel="$d"; [ "$all" = all ] || { out="${out:+$out,}$d"; continue; } ;;
+    esac
+    if [ -d "$old/$rel" ]; then
+      echo "[files] copying $old/$rel into $PWD/$rel"
+      mkdir -p "$rel" && cp -a "$old/$rel/." "$rel/" || return 1
+    fi
+    out="${out:+$out,}$rel"; changed=1
+  done
+  [ "$changed" = 1 ] || return 0
+  awk -v v="$out" '/^\[/{on=($0=="[files]")} on && /^dir =/{print "dir = " v; next} {print}' "$ini" > "$ini.tmp" \
+    && mv "$ini.tmp" "$ini" && echo "[files] dir now $out, under $PWD"
 }
 
 # [files] priv, one entry per dir in the same order, none means rwd

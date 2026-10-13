@@ -65,7 +65,7 @@ function Add-HesperusMissingSections {
         Add-Content $file @(
             "",
             "[files]",
-            "# host directories on the Files tab, comma separated, blank: the repo's files/",
+            "# host directories on the Files tab, comma separated, blank: the home's files/",
             "# priv: one r/w/d set per dir, same order, r browse and download,",
             "# w upload, new folder and rename, d delete, none: rwd",
             "dir =",

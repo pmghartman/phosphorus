@@ -3,6 +3,7 @@
 // driving one, and the walk across every host
 
 const crypto = require('crypto');
+const { execFile } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const clock = require('./clock');
@@ -22,8 +23,11 @@ const AGENT_FILE = path.join(STATE_DIR, 'update-agent.json');
 // the release feed: newest version, the installers and app feeds beside it
 const FEED_URL = process.env.HESPERUS_FEED_URL || 'https://github.com/pmghartman/hesperus/releases/download/update/latest.json';
 const FEED_TTL_MS = 600000;
-// the first installer release, older peers still git checkouts
-const MIN_PEER_VERSION = '0.13';
+// a checkout's own update: github's main pulled and rebuilt, on Linux the
+// release's .deb installed on the host instead, migrating it into its home
+const PULL_SCRIPT = path.join(REPO_DIR, 'scripts', 'pull.sh');
+const INSTALLER = 'hesperus-installer';
+const PLATFORM_FILE = path.join(STATE_DIR, 'platform.json');
 // nobody answering the request: no agent on this host
 const AGENT_PICKUP_MS = 60000;
 
@@ -38,6 +42,8 @@ const SWAP_TIMEOUT_MS = 120000;
 // answering = still working, whatever the build costs, a clock only on
 // silence, the cap against a chain hanging forever
 const PEER_QUIET_MS = 180000;
+// a checkout's install migrating it, silent while it copies models and shares
+const INSTALL_QUIET_MS = 1500000;
 const PEER_CAP_MS = 1800000;
 // own update swapping the walk out, read back by the next boot, never
 // a chain from another day
@@ -50,6 +56,11 @@ function log(msg) { console.log(`[update] ${msg}`); }
 function readVersion(file) {
   try { return fs.readFileSync(file, 'utf8').trim(); } catch { return ''; }
 }
+
+const isCheckout = () => fs.existsSync(path.join(REPO_DIR, '.git'));
+
+// releases are MAJOR.MINOR, a checkout's version its commit count past that
+const behind = (latest, v) => !!latest && !!v && (String(v).split('.').length > 2 || newer(latest, v));
 
 // numeric, part by part, 0.13 < 0.13.1 < 0.14
 function newer(a, b) {
@@ -79,7 +90,7 @@ async function check(force = false) {
   const current = readVersion(VERSION_FILE);
   return {
     current, latest: feed.latest, notes: feed.notes || '', error: feed.error,
-    available: !!feed.latest && newer(feed.latest, current), checkedAt: feed.at,
+    available: behind(feed.latest, current), checkedAt: feed.at,
   };
 }
 
@@ -99,9 +110,7 @@ function runLocalUpdate() {
     else outcomeHook({ state: 'failed', error: r.error });
     return r;
   };
-  if (fs.existsSync(path.join(REPO_DIR, '.git'))) {
-    return Promise.resolve(done({ ok: false, error: 'a source checkout: git pull, then hesperus start' }));
-  }
+  if (isCheckout()) return checkoutUpdate().then(done);
   const id = crypto.randomUUID();
   try { writeJsonAtomic(REQUEST_FILE, { id, at: Date.now() }); } catch (err) {
     return Promise.resolve(done({ ok: false, error: `couldn't request the update: ${err.message}` }));
@@ -126,6 +135,54 @@ function runLocalUpdate() {
   })();
 }
 
+function run(cmd, args, timeout) {
+  return new Promise((resolve) => {
+    execFile(cmd, args, { timeout, maxBuffer: 4 << 20 }, (err, stdout, stderr) => resolve({
+      ok: !err, out: String(stdout).trim(), err: String(stderr || (err && err.message) || '').trim(),
+    }));
+  });
+}
+const lastLine = (s) => s.split('\n').filter(Boolean).pop() || '';
+
+// the checkout's own host path, what nsenter on the host runs from
+async function hostRepo() {
+  const r = await run('docker', ['inspect', 'hesperus', '--format',
+    '{{range .Mounts}}{{if eq .Destination "/repo"}}{{.Source}}{{end}}{{end}}'], 10000);
+  return r.ok ? r.out : '';
+}
+
+// Linux: the release's .deb on the host, in a sibling outliving this container,
+// its installer migrating the checkout into /var/lib/hesperus; elsewhere a pull
+async function checkoutUpdate() {
+  const platform = String((readJson(PLATFORM_FILE, {}) || {}).platform || '');
+  if (platform !== 'linux') {
+    log('a checkout: pulling github\'s main');
+    const before = readVersion(VERSION_FILE);
+    const r = await run('bash', [PULL_SCRIPT], UPDATE_TIMEOUT_MS);
+    if (!r.ok) return { ok: false, error: lastLine(r.err) || 'pull failed' };
+    return { ok: true, current: /already up to date/.test(r.out), to: before };
+  }
+  const repo = await hostRepo();
+  if (!repo.startsWith('/')) return { ok: false, error: 'can\'t find this checkout on the host' };
+  log(`a checkout at ${repo}: installing the latest release over it`);
+  await run('docker', ['rm', '-f', INSTALLER], 30000);
+  const started = await run('docker', ['run', '-d', '--name', INSTALLER, '--privileged', '--pid=host', '--net=host',
+    '--entrypoint', 'nsenter', 'hesperus:latest', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--',
+    'bash', `${repo}/scripts/install-release.sh`], 60000);
+  if (!started.ok) return { ok: false, error: `couldn't start ${INSTALLER}: ${lastLine(started.err)}` };
+  // the migration stops this container, the next boot answering for it
+  const until = Date.now() + UPDATE_TIMEOUT_MS;
+  while (Date.now() < until) {
+    await clock.sleep(2000);
+    const s = await run('docker', ['inspect', '-f', '{{.State.Status}}:{{.State.ExitCode}}', INSTALLER], 10000);
+    if (!s.ok || !s.out.startsWith('exited:')) continue;
+    if (s.out === 'exited:0') return { ok: true, to: feed.latest || '' };
+    const logs = await run('docker', ['logs', '--tail', '20', INSTALLER], 10000);
+    return { ok: false, error: lastLine(`${logs.out}\n${logs.err}`.split('\n').filter((l) => /ERROR/.test(l)).join('\n')) || `${INSTALLER} ${s.out}` };
+  }
+  return { ok: false, error: 'install timed out' };
+}
+
 // --- peers ------------------------------------------------------------------
 
 const peer = (host, opts) => requestJson({ host, port: FRONTEND_PORT, timeout: CONNECT_TIMEOUT_MS, ...opts });
@@ -147,16 +204,23 @@ function fetchStatus(host) {
 }
 
 // best effort, blank as unknown: boot id telling a landed swap from the old
-// process answering, version for the UI
+// process answering, version for the UI, a phosphorus-era peer by its tailnet's key
 function fetchSelf(host) {
   return peer(host, { path: '/api/mesh/snapshot' })
-    .then((r) => ((r.body && r.body.self) || {}), () => ({}))
-    .then((self) => ({ bootId: String(self.bootId || ''), version: String(self.version || '') }));
+    .then((r) => r.body || {}, () => ({}))
+    .then((b) => {
+      const self = b.self || {};
+      return {
+        bootId: String(self.bootId || ''), version: String(self.version || ''), checkout: !!self.checkout,
+        platform: String(self.platform || ''),
+        phosphorus: Array.isArray(b.tailnet) && b.tailnet.some((d) => d && 'phosphorus' in d),
+      };
+    });
 }
 
 // "current" ending it in place, else the swap kills the peer's frontend,
 // only a new boot id telling a landed swap from the old process's "ok"
-async function callPeerUpdate(host, note) {
+async function callPeerUpdate(host, note, quietMs = PEER_QUIET_MS) {
   const addr = (await tailnetIp(host)) || host;
   const before = await fetchSelf(addr);
   note({ from: before.version });
@@ -166,7 +230,7 @@ async function callPeerUpdate(host, note) {
   if (!kicked.ok) return kicked;
 
   const cap = Date.now() + PEER_CAP_MS;
-  let quietUntil = Date.now() + PEER_QUIET_MS;
+  let quietUntil = Date.now() + quietMs;
   let swapDeadline = 0;
   while (Date.now() < cap) {
     // the mesh's tick, held at the fast rate by the published lock
@@ -175,7 +239,7 @@ async function callPeerUpdate(host, note) {
     try {
       status = await fetchStatus(addr);
       // answered: building or swapping, however long that takes
-      quietUntil = Date.now() + PEER_QUIET_MS;
+      quietUntil = Date.now() + quietMs;
     } catch {
       // unreachable mid-build or mid-swap, a verdict only if it stays that way
       if (Date.now() > quietUntil) {
@@ -351,20 +415,29 @@ async function runChain() {
     log(`updating ${host} (${i + 1}/${chain.order.length})`);
 
     // a phosphorus-era peer's own update pulls the wrong repo: the installer only
-    if (host !== SELF_HOST) {
-      const v = (await fetchSelf((await tailnetIp(host)) || host)).version;
-      if (v && newer(MIN_PEER_VERSION, v)) {
+    const addr = host === SELF_HOST ? '' : (await tailnetIp(host)) || host;
+    const installing = (p) => p.checkout && p.platform === 'linux';
+    let quietMs = PEER_QUIET_MS;
+    if (addr) {
+      const p = await fetchSelf(addr);
+      if (installing(p)) quietMs = INSTALL_QUIET_MS;
+      if (p.phosphorus) {
         chain.results[host] = 'skipped';
         chain.errors[host] = 'needs the installer';
-        note(host, { from: v });
+        note(host, { from: p.version });
         continue;
       }
     }
 
     // no round trip when caller and callee are this process
-    const result = host === SELF_HOST
+    let result = host === SELF_HOST
       ? await runLocalUpdate()
-      : await callPeerUpdate(host, (fields) => note(host, fields));
+      : await callPeerUpdate(host, (fields) => note(host, fields), quietMs);
+    // a pre-installer checkout pulled onto this code: a second hop, its Linux install
+    if (result.ok && addr && installing(await fetchSelf(addr))) {
+      log(`${host} is still a checkout, installing the release there`);
+      result = await callPeerUpdate(host, (fields) => note(host, fields), INSTALL_QUIET_MS);
+    }
 
     if (result.ok) {
       chain.results[host] = result.current ? 'current' : 'ok';
@@ -441,5 +514,5 @@ function proceed() {
 }
 
 module.exports = {
-  START_GRACE_MS, check, newer, runLocalUpdate, onOutcome, onFinish, remember, ownLock, sharedChain, meshLock, chainStatus, restoreChain, start, cancel, proceed,
+  START_GRACE_MS, check, newer, isCheckout, runLocalUpdate, onOutcome, onFinish, remember, ownLock, sharedChain, meshLock, chainStatus, restoreChain, start, cancel, proceed,
 };

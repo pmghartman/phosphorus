@@ -16,6 +16,10 @@ main() {
   # git tracks no permission bits, .env locked down on every build
   chmod 600 .env
   hesperus_add_missing_sections
+  # a migrated host's shares still in its old checkout, moved here, host side only
+  if hesperus_installed && [ ! -f /.dockerenv ] && [ -s .hesperus-migrated-from ]; then
+    hesperus_rehome_files "$(cat .hesperus-migrated-from)" || fail "couldn't move [files] dirs out of the old checkout"
+  fi
   local profiles=()
   hesperus_is_git_host && profiles+=(git-host)
   hesperus_is_model_host && profiles+=(model-host)

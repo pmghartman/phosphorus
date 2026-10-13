@@ -45,6 +45,12 @@ host hands the update to its agent:
 
 `hesperus update` and the tray's Check for Updates do the same for one host.
 
+A host still running from a git checkout counts as behind. On Linux its update installs the
+release's `.deb` from GitHub over it, migrating it into `/var/lib/hesperus`; a git-era peer
+first pulls `main`, then installs. On macOS and Windows a checkout pulls GitHub's `main` and
+rebuilds in place, the `.dmg` or setup `.exe` moving it into its home. By hand:
+`sudo scripts/install-release.sh` (Linux) or `scripts/pull.sh`.
+
 ## From phosphorus
 
 Installing on a host that runs an old phosphorus (or git-era hesperus) checkout migrates
@@ -53,11 +59,12 @@ off, for a rollback), then moves into the home:
 
 - `.env` as it was, `PHOS_UPDATE_PASSWORD` renamed `HESPERUS_UPDATE_PASSWORD`, `GAME_ZONE=hesperus`
 - `config/phos.ini` as `config/hesperus.ini`, `services.export`, `state/`, `files/`, `models/`, `git/data/`
+- `[files] dir` entries inside the checkout, copied into the home and pointed there
 - the tailscale volume, so the node keeps its tailnet name and ip with no new auth key, and
   the Windows git and model volumes
 
-Never press update on an old phosphorus host: it resets to the phosphorus repo's `main`,
-now a different project. Migrate the git master first, then the replicas, in one sitting.
+The mesh update skips phosphorus-era hosts: their own update resets to the phosphorus repo's
+`main`, now a different project. Migrate the git master first, then the replicas, in one sitting.
 Delete the old checkout once hesperus is up. By hand: `scripts/migrate.sh OLD HOME`.
 
 ## Releasing

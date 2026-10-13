@@ -61,7 +61,7 @@ ask_password() {
 
 # handed to the host's agent (systemd path unit, the app), its verdict waited on
 request_update() {
-  [ -e "$DIR/.git" ] && { echo "a checkout: git pull, then hesperus start" >&2; exit 1; }
+  [ -e "$DIR/.git" ] && exec bash "$DIR/scripts/pull.sh"
   local id out="$DIR/state/update-agent.json" line last="" i
   id="cli-$(date +%s)-$$"
   mkdir -p "$DIR/state"
