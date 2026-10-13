@@ -876,7 +876,7 @@ function drawNode(x, y, name, cls, tooltip, opts) {
 }
 
 // beside a git host: the git service's own glyph for the master, a * for the rest,
-// blue master, sand available, dark grey out of date, red unreachable
+// blue master, clay available, dark grey out of date, red unreachable
 function drawGitMarker(x, y, h, scale = 1) {
   const master = h.reachable && h.role === 'master';
   const state = !h.reachable ? 'down' : master ? 'master' : h.eligible ? 'ok' : 'stale';
@@ -1556,17 +1556,17 @@ const TERM_TAKEN = 4001;
 const RETRY_MIN_MS = 1000;
 const RETRY_MAX_MS = 10000;
 // the sixteen ANSI colors from the page's own tokens, so a restyle reaches
-// terminals too: magenta the rose, yellow the gold, status red and green
+// terminals too: blue the accent, yellow the gold, magenta the rose
 const TERM_HUES = {
   red: '--offmesh', green: '--online', yellow: '--accent-2',
-  blue: '--sky', magenta: '--rose', cyan: '--teal',
+  blue: '--accent', magenta: '--rose', cyan: '--teal',
 };
 
 const hexRgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
 const mixHex = (a, b, t) => `#${hexRgb(a).map((v, i) => Math.round(v + (hexRgb(b)[i] - v) * t).toString(16).padStart(2, '0')).join('')}`;
 
 // read fresh each time so a theme switch reaches open terminals,
-// light inking the accents toward the text, to hold up on white
+// light's tokens already inked for white, only its brights darker
 function termTheme() {
   const css = getComputedStyle(document.documentElement);
   const cssVar = (name) => css.getPropertyValue(name).trim();
@@ -1584,8 +1584,8 @@ function termTheme() {
   for (const [name, token] of Object.entries(TERM_HUES)) {
     const hue = cssVar(token);
     const bright = `bright${name[0].toUpperCase()}${name.slice(1)}`;
-    theme[name] = light ? mixHex(hue, fg, 0.35) : hue;
-    theme[bright] = light ? mixHex(hue, fg, 0.15) : mixHex(hue, '#ffffff', 0.25);
+    theme[name] = hue;
+    theme[bright] = light ? mixHex(hue, fg, 0.25) : mixHex(hue, '#ffffff', 0.25);
   }
   return theme;
 }
@@ -3033,7 +3033,7 @@ function chipDraw() {
 // ---- glyphs ----------------------------------------------------------------
 
 const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
-// low to high: sage, sand, rose
+// low to high: sage, clay, rose
 const heat = (t) => (t < 0.5 ? 'st-lo' : t < 0.8 ? 'st-mid' : 'st-hi');
 
 // a glyph's width in the view's font, ■ often from a fallback font,
@@ -3065,7 +3065,7 @@ function meter(frac, cells, cls) {
 // btop's braille area graph as dots on a canvas, newest on the right (real
 // braille glyphs off a fallback font in most monospace faces)
 const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-const HEAT_VAR = { 'st-lo': '--sage', 'st-mid': '--sand', 'st-hi': '--rose' };
+const HEAT_VAR = { 'st-lo': '--sage', 'st-mid': '--clay', 'st-hi': '--rose' };
 const heatVar = (t) => HEAT_VAR[heat(t)];
 function dotGraph(canvas, values, max, hue, down, fine = 1) {
   const dpr = devicePixelRatio || 1;
@@ -4101,11 +4101,11 @@ function mermaidThemed(m) {
     themeVariables: {
       background: v('--bg'), fontFamily: v('--font'), fontSize: '12px',
       primaryColor: v('--card'), primaryTextColor: v('--fg'), primaryBorderColor: v('--accent'),
-      secondaryColor: v('--card'), secondaryTextColor: v('--fg'), secondaryBorderColor: v('--sky'),
+      secondaryColor: v('--card'), secondaryTextColor: v('--fg'), secondaryBorderColor: v('--iris'),
       tertiaryColor: v('--bg'), tertiaryTextColor: v('--fg'), tertiaryBorderColor: v('--sage'),
       lineColor: v('--muted'), textColor: v('--fg'), mainBkg: v('--card'), nodeBorder: v('--accent'),
       clusterBkg: v('--bg'), clusterBorder: v('--border'), edgeLabelBackground: v('--bg'),
-      noteBkgColor: v('--card'), noteTextColor: v('--fg'), noteBorderColor: v('--sand'),
+      noteBkgColor: v('--card'), noteTextColor: v('--fg'), noteBorderColor: v('--clay'),
       actorBkg: v('--card'), actorBorder: v('--accent'), actorTextColor: v('--fg'), signalColor: v('--muted'),
     },
   });

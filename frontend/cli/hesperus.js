@@ -37,10 +37,13 @@ const DARK = {
   bg: '#141414', fg: '#e0e0e0', muted: '#9d9d9d', accent: '#6f9fd0', accent2: '#c4b066', dim: '#555555',
   glyphBlue: '#4a9ff0', glyphGold: '#d8c45a', border: '#2e2e2e', card: '#1b1b1b', tabbar: '#0c0c0c',
   online: '#3fb950', offmesh: '#f85149', warn: '#d29922',
-  teal: '#6fb3a8', sage: '#93ad7d', sky: '#7fa0c9', rose: '#c98ba0', sand: '#c4ab78',
+  teal: '#6fb3a8', sage: '#93ad7d', iris: '#a397d6', rose: '#c98ba0', clay: '#c9916b',
 };
 const LIGHT = {
   ...DARK, bg: '#ffffff', fg: '#1f1f23', muted: '#6b6b73', dim: '#b4b4bb', border: '#e4e4e7', card: '#f4f4f5', tabbar: '#f7f7f8',
+  accent: '#2c6cb0', accent2: '#86690b', glyphBlue: '#1e74cc', glyphGold: '#a8830a',
+  online: '#1a7f37', offmesh: '#cf222e', warn: '#9a6700',
+  teal: '#2f7f72', sage: '#577a3c', iris: '#6a5bb5', rose: '#a8506f', clay: '#a5612f',
 };
 
 let PAL = DARK;
@@ -687,7 +690,7 @@ function lagMeter(ageSec) {
 // the card's glyphs: ● master, ○ servant ready, ◌ catching up, × unreachable
 function gitRow(h, masterGen) {
   const master = h.role === 'master';
-  const glyph = !h.reachable ? c.offmesh('×') : master ? c.accent('●') : !h.eligible ? c.sand('◌') : c.sage('○');
+  const glyph = !h.reachable ? c.offmesh('×') : master ? c.accent('●') : !h.eligible ? c.clay('◌') : c.sage('○');
   const name = h.reachable ? h.host : c.muted(strike(h.host));
   let backup;
   if (!h.reachable) backup = 'unreachable';
@@ -726,7 +729,7 @@ function statsView() {
       ];
     }))],
     ['routes', st.routes.length ? table(['host', 'name', 'mode', 'address', 'port', 'status'], st.routes.map((r) => [
-      c.sky(r.host), r.name, c.teal(r.type === 'game' ? 'game' : r.mode),
+      c.iris(r.host), r.name, c.teal(r.type === 'game' ? 'game' : r.mode),
       c.muted(r.type === 'game' ? `${r.name}.${st.gameZone}:${r.port}`
         : r.mode === 'subdomain' ? `${r.name}.${BASE_DOMAIN}${r.base_path ? `/${r.base_path}` : ''}`
           : `${BASE_DOMAIN}/${r.host}/${r.name}/`),
@@ -776,8 +779,8 @@ function modelView() {
   const rows = all.map((x) => [
     x.host === st.self.host ? selfMark(x.host) : `${c.teal('■')} ${x.host}`,
     rolesOf(x, st.model).length ? c.accent(rolesOf(x, st.model).join(' + ')) : c.dim('-'),
-    x.ready ? c.online('loaded') : x.download && x.download.total ? c.sand(`${Math.floor((100 * x.download.done) / x.download.total)}%`)
-      : x.loading ? c.sand('loading') : c.warn('down'),
+    x.ready ? c.online('loaded') : x.download && x.download.total ? c.clay(`${Math.floor((100 * x.download.done) / x.download.total)}%`)
+      : x.loading ? c.clay('loading') : c.warn('down'),
     x.ready && x.use && x.use.tps ? `${x.use.tps} tok/s` : c.dim('-'),
     x.file ? c.muted(x.file) : c.dim('no link'),
   ]);
@@ -837,7 +840,7 @@ function projectsView() {
   const p = ui.project && pickedProject() && ui.project.id === pickedProject().id ? ui.project : null;
   const now = Date.now();
   const rows = list.map((x) => [
-    x.title, c.sky(x.host), projectState(x), x.status === 'running' ? `${x.progress}%` : c.dim('-'),
+    x.title, c.iris(x.host), projectState(x), x.status === 'running' ? `${x.progress}%` : c.dim('-'),
     c.muted(x.status === 'running' ? `${span(x.deadline - now)} left` : span((x.ended || now) - x.started)),
   ]);
   let detail = null;
