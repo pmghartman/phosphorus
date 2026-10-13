@@ -16,7 +16,7 @@ function Started { Invoke-Quiet { docker inspect -f '{{.State.Running}} {{.State
 
 # a mesh update swaps this container out from under the cli: the new one
 # waited for and reattached, on the same tab
-function Cli([string[]]$CliArgs) {
+function Invoke-Cli([string[]]$CliArgs) {
     while ($true) {
         $before = Started
         if (-not "$before".StartsWith("true")) {
@@ -66,7 +66,7 @@ function Request-Update {
 }
 
 switch ("$($args[0])|$($args[1])") {
-    "|"           { Cli @() }
+    "|"           { Invoke-Cli @() }
     "start|"      { & "$Scripts/run.ps1"; exit $LASTEXITCODE }
     "stop|"       {
         # git first, so a master hands off before the frontend goes
@@ -97,6 +97,6 @@ switch ("$($args[0])|$($args[1])") {
         Write-Host "hesperus restarted"
     }
     "update|"     { Ask-Password; Request-Update }
-    "update|all"  { Cli @("update-all") }
+    "update|all"  { Invoke-Cli @("update-all") }
     default       { Usage; if ($args[0] -notin @("help", "-h", "-help", "--help")) { exit 2 } }
 }
