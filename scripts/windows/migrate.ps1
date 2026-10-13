@@ -35,6 +35,7 @@ foreach ($c in @("$Pre-git", $Pre, "$Pre-search")) {
     Quiet { docker inspect $c } | Out-Null
     if ($LASTEXITCODE) { continue }
     Say "stopping $c"
+    Add-Content (Join-Path $HomeDir ".hesperus-migrated-containers") $c
     Quiet { docker update --restart=no $c } | Out-Null
     Quiet { docker stop -t 30 $c } | Out-Null
     if ($Pre -eq "hesperus") { Quiet { docker rm $c } | Out-Null }

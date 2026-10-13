@@ -407,10 +407,18 @@ function remove(share, rel) {
 
 // what hesperus.ini asks for now against what is mounted, a mismatch waiting on a
 // container recreate
+// both as host paths, relative entries off the home, as rebuild resolves them
 function pending() {
-  const want = configuredDirs().map((d) => path.resolve(d)).join(',');
+  const home = hostPathOf('/repo');
+  if (!home) return false;
+  const norm = (d) => {
+    const p = hostSpelling(String(d).trim());
+    const abs = /^([A-Za-z]:)?\//.test(p) ? p : path.posix.join(home, p);
+    return path.posix.normalize(abs).replace(/(.)\/+$/, '$1');
+  };
+  const want = configuredDirs().map(norm).join(',');
   const have = (mountedDirs().length ? mountedDirs() : [process.env.HESPERUS_FILES_DIR || ''])
-    .filter(Boolean).map((d) => path.resolve(d)).join(',');
+    .filter(Boolean).map(norm).join(',');
   return !!want && !!have && want !== have;
 }
 

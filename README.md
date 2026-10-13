@@ -24,6 +24,17 @@ From the latest release:
 | macOS | [colima](https://github.com/abiosoft/colima), Homebrew `docker`, `docker-compose` | open `hesperus-VER-macos-universal.dmg`, drag Hesperus to Applications, open it (first open: right-click > Open) |
 | Windows | Docker Desktop (host networking on) | run `hesperus-VER-windows-x86_64-setup.exe` (SmartScreen: More info > Run anyway) |
 
+Windows over ssh, no desktop needed (an admin account's session):
+
+```powershell
+Start-Process .\hesperus-VER-windows-x86_64-setup.exe -ArgumentList '/S' -Wait
+powershell -NoProfile -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\Hesperus\release\scripts\windows\install.ps1" -Headless
+Get-Content -Wait $env:TEMP\hesperus-install.log
+```
+
+`-Headless` runs detached from the session, so a migration taking the old tailnet (and the
+ssh with it) down finishes anyway, and rolls back to the old install if bring-up fails.
+
 Each host's own files live in its **home**: `/var/lib/hesperus` (Linux),
 `~/Library/Hesperus` (macOS), `%USERPROFILE%\hesperus` (Windows). That covers `.env`, `config/`,
 `state/`, `git/data/`, `files/` and `models/`, none of them touched by an update. Fill in

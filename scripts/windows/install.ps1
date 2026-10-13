@@ -1,10 +1,26 @@
 # release files into this host's home, per-host ones kept, then bring-up or the rebuild
-# run by the Hesperus app
-param([switch]$Update, [string]$From = "", [string]$HesperusHome = "")
+# run by the Hesperus app, or -Headless over ssh: detached, logged, no prompts
+param([switch]$Update, [string]$From = "", [string]$HesperusHome = "", [switch]$Headless)
 $ErrorActionPreference = "Stop"
 
 function Say($msg) { Write-Host "[install] $msg" }
 function Fail($msg) { Write-Host "[install] ERROR: $msg" -ForegroundColor Red; exit 1 }
+
+# outside the ssh session via WMI: the migration stopping the old tailnet, and
+# sshd taking a dropped session's whole process tree with it
+if ($Headless) {
+    $Log = Join-Path $env:TEMP "hesperus-install.log"
+    $Argv = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$PSCommandPath`"")
+    if ($Update) { $Argv += "-Update" }
+    if ($From) { $Argv += @("-From", "`"$From`"") }
+    if ($HesperusHome) { $Argv += @("-HesperusHome", "`"$HesperusHome`"") }
+    Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
+        CommandLine = "cmd /c set HESPERUS_NONINTERACTIVE=1&& powershell $($Argv -join ' ') > `"$Log`" 2>&1"
+    } | Out-Null
+    Say "installing in the background, this terminal may drop"
+    Say "Get-Content -Wait $Log to follow"
+    exit 0
+}
 
 $Payload = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 # not %LOCALAPPDATA%\Hesperus: the app's own install dir, wiped by its uninstaller
@@ -72,11 +88,39 @@ if (-not $Domain -or $Domain -in @("BASE_DOMAIN=", "BASE_DOMAIN=example.com")) {
     exit 0
 }
 
+# new containers gone, the migrated ones restarted, .env set aside so a rerun migrates again
+function Undo-Migration {
+    Say "rolling back to the old install"
+    $ErrorActionPreference = "Continue"
+    foreach ($c in @("hesperus-git", "hesperus", "hesperus-search")) { docker rm -f $c 2>$null | Out-Null }
+    $Was = Join-Path $HomeDir ".hesperus-migrated-containers"
+    $Old = @(if (Test-Path $Was) { Get-Content $Was })
+    # git last, after its frontend
+    [array]::Reverse($Old)
+    foreach ($c in $Old) {
+        docker update --restart=unless-stopped $c 2>$null | Out-Null
+        docker start $c 2>$null | Out-Null
+        if (-not $LASTEXITCODE) { Say "restarted $c" }
+    }
+    Move-Item $EnvFile (Join-Path $HomeDir ".env.failed-$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())") -Force
+    Remove-Item $Was -ErrorAction SilentlyContinue
+    Say "old install running again; fix the error above and rerun the installer"
+}
+
 if ($Update) {
     & (Join-Path $HomeDir "scripts/windows/rebuild.ps1")
     if ($LASTEXITCODE) { Fail "rebuild failed, still running the previous version" }
 } else {
     & (Join-Path $HomeDir "scripts/windows/run.ps1")
-    if ($LASTEXITCODE) { Fail "bring-up failed, see above" }
+    if ($LASTEXITCODE) {
+        if (Test-Path (Join-Path $HomeDir ".hesperus-migrated-containers")) { Undo-Migration }
+        Fail "bring-up failed, see above"
+    }
+}
+Remove-Item (Join-Path $HomeDir ".hesperus-migrated-containers") -ErrorAction SilentlyContinue
+# headless: the tray app, the update agent, at the next login, as its own first run sets it
+if ($env:HESPERUS_NONINTERACTIVE) {
+    $App = Join-Path $env:LOCALAPPDATA "Hesperus\Hesperus.exe"
+    if (Test-Path $App) { Set-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "Hesperus" -Value "`"$App`"" }
 }
 Set-Content (Join-Path $HomeDir ".hesperus-installed") $Version

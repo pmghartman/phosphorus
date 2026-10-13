@@ -65,6 +65,9 @@ if ($kernel -and $kernel -notmatch "WSL") {
 }
 if ($wslRestart -and $hesperusRunning) {
     Say "it applies on the next 'wsl --shutdown', which stops hesperus and every other wsl distro for a moment"
+} elseif ($wslRestart -and $env:HESPERUS_NONINTERACTIVE) {
+    # no Docker Desktop to bring it back headless, never shut down unattended
+    Say "it applies on the next reboot or 'wsl --shutdown'"
 } elseif ($wslRestart) {
     Say "restarting wsl so it takes effect..."
     wsl --shutdown
@@ -119,7 +122,7 @@ if (($userPath -split ';') -contains $hesperusBin) {
 }
 
 # --- git-host opt-in ---------------------------------------------------
-if (-not (Get-HesperusIniPath) -and [Environment]::UserInteractive) {
+if (-not (Get-HesperusIniPath) -and [Environment]::UserInteractive -and -not $env:HESPERUS_NONINTERACTIVE) {
     $ans = Read-Host "make this host a git host (forgejo/litefs)? [y/N]"
     $host_ = if ($ans -match '^[Yy]') { "true" } else { "false" }
     Set-Content -Path config/hesperus.ini -Value "[git]", "host = $host_"
