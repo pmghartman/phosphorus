@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/title-dark.svg">
-    <img src=".github/assets/title-light.svg" alt="hesperus" width="360">
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/wordmark-dark.svg">
+    <img src=".github/assets/wordmark-light.svg" alt="hesperus" width="360">
   </picture>
 </p>
 
