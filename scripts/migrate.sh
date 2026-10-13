@@ -17,17 +17,20 @@ main() {
   docker info >/dev/null 2>&1 || docker="sudo docker"
 
   # names by era: containers, volumes, ini, cli, ssh include
-  local pre=phosphorus ini=phos.ini cli=phos
-  if ! $docker inspect phosphorus >/dev/null 2>&1 && [ ! -f "$old/config/phos.ini" ]; then
-    pre=hesperus ini=hesperus.ini cli=hesperus
-  fi
+  local pre=phosphorus ini=phos.ini cli=phos c
+  # whichever container mounts this checkout names the era
+  for c in $($docker ps -a --format '{{.Names}}' 2>/dev/null); do
+    [ "$($docker inspect "$c" --format '{{range .Mounts}}{{if eq .Destination "/repo"}}{{.Source}}{{end}}{{end}}' 2>/dev/null)" = "$old" ] \
+      && { pre="$c"; break; }
+  done
+  [ -f "$old/config/phos.ini" ] || ini=hesperus.ini
+  [ "$pre" = hesperus ] && cli=hesperus
   local project
   project="$($docker inspect "$pre" --format '{{index .Config.Labels "com.docker.compose.project"}}' 2>/dev/null)"
   [ -n "$project" ] || project="$(basename "$old" | tr 'A-Z' 'a-z' | tr -cd 'a-z0-9_-')"
   say "moving $old ($pre, compose project $project) into $home"
 
   # git first so a master hands off; never restarted by docker, kept for a rollback
-  local c
   for c in "$pre-git" "$pre" "$pre-search" "$pre-updater"; do
     $docker inspect "$c" >/dev/null 2>&1 || continue
     say "stopping $c"
@@ -42,8 +45,13 @@ main() {
   [ "$pre" = phosphorus ] && $docker network rm phos-sandbox >/dev/null 2>&1
 
   # .env as it was, PHOS_ renamed, games under the hesperus zone
-  sed -e 's/^PHOS_/HESPERUS_/' -e 's/^GAME_ZONE=.*/GAME_ZONE=hesperus/' "$old/.env" > "$home/.env" \
-    && chmod 600 "$home/.env" || fail "couldn't write $home/.env"
+  # GIT_* (update.sh's private git host) dropped with their comment block
+  awk '
+    /^#/ || /^$/ { buf = buf $0 "\n"; next }
+    /^GIT_(USERNAME|EMAIL|PASSWORD)=/ { buf = ""; next }
+    { sub(/^PHOS_/, "HESPERUS_"); if (/^GAME_ZONE=/) $0 = "GAME_ZONE=hesperus"; printf "%s%s\n", buf, $0; buf = "" }
+    END { printf "%s", buf }
+  ' "$old/.env" > "$home/.env" && chmod 600 "$home/.env" || fail "couldn't write $home/.env"
   grep -q '^GAME_ZONE=' "$home/.env" || echo 'GAME_ZONE=hesperus' >> "$home/.env"
 
   mkdir -p "$home/config"

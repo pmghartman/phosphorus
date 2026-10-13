@@ -90,11 +90,11 @@ sync_payload() {
   mv "$next" "$manifest"
 }
 
-# a phosphorus or git-era hesperus checkout's /repo, from its container
+# any earlier checkout's /repo (phosphorus, git-era hesperus), from its container
 old_checkout() {
   local docker=docker c src
   docker info >/dev/null 2>&1 || docker="sudo docker"
-  for c in phosphorus hesperus; do
+  for c in $($docker ps -a --format '{{.Names}}' 2>/dev/null); do
     src="$($docker inspect "$c" --format '{{range .Mounts}}{{if eq .Destination "/repo"}}{{.Source}}{{end}}{{end}}' 2>/dev/null)"
     [ -n "$src" ] && [ "$src" != "$1" ] && [ -f "$src/.env" ] && { printf '%s' "$src"; return; }
   done

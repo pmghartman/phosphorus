@@ -15,8 +15,12 @@ if (Test-Path (Join-Path $HomeDir ".env")) { Fail "$HomeDir already has a .env, 
 
 # names by era: containers, volumes, ini
 $Pre = "phosphorus"; $Ini = "phos.ini"
-Quiet { docker inspect phosphorus } | Out-Null
-if ($LASTEXITCODE -and -not (Test-Path (Join-Path $Old "config/phos.ini"))) { $Pre = "hesperus"; $Ini = "hesperus.ini" }
+# whichever container mounts this checkout names the era
+foreach ($c in @(Quiet { docker ps -a --format '{{.Names}}' })) {
+    $src = Quiet { docker inspect $c --format '{{range .Mounts}}{{if eq .Destination "/repo"}}{{.Source}}{{end}}{{end}}' }
+    if ($c -and $src -and ($src.TrimEnd('\') -eq $Old.TrimEnd('\'))) { $Pre = $c; break }
+}
+if (-not (Test-Path (Join-Path $Old "config/phos.ini"))) { $Ini = "hesperus.ini" }
 $Project = Quiet { docker inspect $Pre --format '{{index .Config.Labels "com.docker.compose.project"}}' }
 if (-not $Project) { $Project = ((Split-Path -Leaf $Old).ToLower() -replace '[^a-z0-9_-]', '') }
 Say "moving $Old ($Pre, compose project $Project) into $HomeDir"
@@ -34,8 +38,17 @@ foreach ($id in @(Quiet { docker ps -aq --filter "label=org.$Pre.sandbox" })) { 
 if ($Pre -eq "phosphorus") { Quiet { docker network rm phos-sandbox } | Out-Null }
 
 # .env as it was, PHOS_ renamed, games under the hesperus zone
-$EnvLines = @(Get-Content (Join-Path $Old ".env") | ForEach-Object { $_ -replace '^PHOS_', 'HESPERUS_' -replace '^GAME_ZONE=.*', 'GAME_ZONE=hesperus' })
-if (-not ($EnvLines -match '^GAME_ZONE=')) { $EnvLines += "GAME_ZONE=hesperus" }
+# GIT_* (update.sh's private git host) dropped with their comment block
+$EnvLines = [System.Collections.Generic.List[string]]::new()
+$Buf = @()
+foreach ($l in (Get-Content (Join-Path $Old ".env"))) {
+    if ($l -match '^#' -or $l -eq "") { $Buf += $l; continue }
+    if ($l -match '^GIT_(USERNAME|EMAIL|PASSWORD)=') { $Buf = @(); continue }
+    $Buf | ForEach-Object { $EnvLines.Add($_) }; $Buf = @()
+    $EnvLines.Add(($l -replace '^PHOS_', 'HESPERUS_' -replace '^GAME_ZONE=.*', 'GAME_ZONE=hesperus'))
+}
+$Buf | ForEach-Object { $EnvLines.Add($_) }
+if (-not ($EnvLines -match '^GAME_ZONE=')) { $EnvLines.Add("GAME_ZONE=hesperus") }
 Set-Content (Join-Path $HomeDir ".env") $EnvLines
 
 New-Item -ItemType Directory -Force (Join-Path $HomeDir "config") | Out-Null
