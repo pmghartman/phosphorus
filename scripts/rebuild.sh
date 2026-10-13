@@ -74,6 +74,14 @@ main() {
     HESPERUS_FILES_DIR="$dir/files"
   fi
   mkdir -p "$HESPERUS_FILES_DIR"
+  # in a container: the home's own path as the host sees it, else compose
+  # binding /repo/... off the docker VM's disk
+  if [ "$in_container" = 1 ]; then
+    case "$HESPERUS_FILES_DIR" in
+      "$dir") HESPERUS_FILES_DIR="$repo" ;;
+      "$dir"/*) HESPERUS_FILES_DIR="$repo/${HESPERUS_FILES_DIR#"$dir"/}" ;;
+    esac
+  fi
 
   # what compose interpolates, dropped by sudo and the siblings, TS_HOSTNAME
   # in a container rebuild.ps1's COMPUTERNAME, else docker-desktop on Windows
