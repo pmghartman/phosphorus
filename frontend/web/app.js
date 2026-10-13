@@ -1552,6 +1552,8 @@ function loadXterm() {
 
 // server's close codes: session gone for good, or taken by another tab
 const TERM_ENDED = 4000;
+// cmd+c and cmd+v a mac's own, its ctrl+c always ^C
+const IS_MAC = /Mac|iPhone|iPad/.test(navigator.userAgentData?.platform || navigator.platform || '');
 const TERM_TAKEN = 4001;
 const RETRY_MIN_MS = 1000;
 const RETRY_MAX_MS = 10000;
@@ -1591,11 +1593,6 @@ function termTheme() {
 }
 const liveTerms = new Set();
 
-// plain ctrl+c with a selection, or ctrl+v: xterm's textarea copy and paste
-// events, bracketed paste included, in place of ^C and ^V
-const clipKey = (e, term) => e.type === 'keydown' && e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey
-  && (e.key === 'v' || (e.key === 'c' && term.hasSelection()));
-
 // /api/term/<host>: keystrokes and output as binary frames, resize as JSON,
 // a dropped socket's rejoin by sid, until the server's ENDED
 function startTerminal(view, host, sid, resume, shared = false) {
@@ -1616,11 +1613,26 @@ function startTerminal(view, host, sid, resume, shared = false) {
       lineHeight: 1,
       letterSpacing: 0,
       theme: termTheme(),
+      // a paste as typed, never wrapped in \e[200~ markers
+      ignoreBracketedPasteMode: true,
     });
     liveTerms.add(term);
     // shift+esc left to the page, which unfocuses, plain esc the terminal's;
-    // ctrl+c over a selection and ctrl+v to the browser's copy and paste
-    term.attachCustomKeyEventHandler((e) => !(e.key === 'Escape' && e.shiftKey) && !clipKey(e, term));
+    // off a mac ctrl+c copies a selection (else ^C) and ctrl+v pastes, as Windows Terminal
+    term.attachCustomKeyEventHandler((e) => {
+      if (e.key === 'Escape' && e.shiftKey) return false;
+      if (IS_MAC || e.type !== 'keydown' || !e.ctrlKey || e.shiftKey || e.altKey || e.metaKey) return true;
+      const k = e.key.toLowerCase();
+      if (k === 'c' && term.hasSelection()) {
+        copyText(term.getSelection()).catch(() => {});
+        term.clearSelection();
+        e.preventDefault();
+        return false;
+      }
+      // the browser's own paste event, into xterm's textarea, instead of ^V
+      if (k === 'v') return false;
+      return true;
+    });
     fit = new FitAddon.FitAddon();
     term.loadAddon(fit);
     term.open(view);
