@@ -9,8 +9,12 @@ on:
         description: "Bump the major version (minor otherwise)"
         type: boolean
         default: false
-      linux:
-        description: "Linux (.deb)"
+      linux_amd64:
+        description: "Linux amd64 (.deb, images)"
+        type: boolean
+        default: true
+      linux_arm64:
+        description: "Linux arm64 (.deb, images)"
         type: boolean
         default: true
       macos:
@@ -35,6 +39,9 @@ jobs:
     outputs:
       ver: ${{ steps.v.outputs.ver }}
       apps: ${{ steps.plan.outputs.apps }}
+      images: ${{ steps.plan.outputs.images }}
+      manifests: ${{ steps.plan.outputs.manifests }}
+      debs: ${{ steps.plan.outputs.debs }}
     steps:
       - uses: actions/checkout@v7
       # next MAJOR.MINOR after the highest vMAJOR.MINOR tag; none yet: VERSION
@@ -52,14 +59,34 @@ jobs:
       - name: plan
         id: plan
         env:
+          AMD64: ${{ inputs.linux_amd64 }}
+          ARM64: ${{ inputs.linux_arm64 }}
           MAC: ${{ inputs.macos }}
           WIN: ${{ inputs.windows }}
         run: |
-          apps=()
+          on() { for v in "$@"; do [ "$v" = true ] && return 0; done; return 1; }
+          on "$AMD64" "$ARM64" "$MAC" "$WIN" || { echo "check at least one target" >&2; exit 1; }
+          apps=() images=() manifests=() debs=()
+          # image arches every checked target's hosts pull: macs on either, windows amd64
+          img() { images+=("{\"name\":\"$1\",\"file\":\"$2\",\"arch\":\"$3\",\"runner\":\"$4\",\"suffix\":\"$5\",\"backend\":\"$6\"}"); }
+          if on "$AMD64" "$MAC" "$WIN"; then
+            img hesperus container/Dockerfile amd64 ubuntu-24.04 "" cpu
+            img hesperus container/Dockerfile amd64 ubuntu-24.04 -cuda cuda
+            img hesperus-git git/container/Dockerfile amd64 ubuntu-24.04 "" cpu
+            manifests+=('{"name":"hesperus","suffix":"-cuda"}')
+          fi
+          if on "$ARM64" "$MAC"; then
+            img hesperus container/Dockerfile arm64 ubuntu-24.04-arm "" cpu
+            img hesperus-git git/container/Dockerfile arm64 ubuntu-24.04-arm "" cpu
+          fi
+          manifests+=('{"name":"hesperus","suffix":""}' '{"name":"hesperus-git","suffix":""}')
+          on "$AMD64" && debs+=('"amd64"')
+          on "$ARM64" && debs+=('"arm64"')
           [ "$MAC" = true ] && apps+=('{"os":"macos-14","name":"macos-universal","args":"--target universal-apple-darwin --bundles app,dmg"}')
           [ "$WIN" = true ] && apps+=('{"os":"windows-2022","name":"windows-x86_64","args":"--bundles nsis"}')
           j() { local IFS=,; echo "[$*]"; }
-          echo "apps=$(j "${apps[@]}")" | tee -a "$GITHUB_OUTPUT"
+          { echo "apps=$(j "${apps[@]}")"; echo "images=$(j "${images[@]}")"
+            echo "manifests=$(j "${manifests[@]}")"; echo "debs=$(j "${debs[@]}")"; } | tee -a "$GITHUB_OUTPUT"
 
   check:
     runs-on: ubuntu-24.04
@@ -92,45 +119,80 @@ jobs:
           path: out/payload.tar.gz
           compression-level: 0
 
+  # each arch on its own native runner, pushed by digest, joined into one tag by `manifests`
   images:
     needs: [version]
     strategy:
+      fail-fast: false
       matrix:
-        include:
-          - { name: hesperus, file: container/Dockerfile, platforms: "linux/amd64,linux/arm64", suffix: "", backend: cpu }
-          - { name: hesperus, file: container/Dockerfile, platforms: "linux/amd64", suffix: "-cuda", backend: cuda }
-          - { name: hesperus-git, file: git/container/Dockerfile, platforms: "linux/amd64,linux/arm64", suffix: "", backend: cpu }
-    runs-on: ubuntu-24.04
+        include: ${{ fromJSON(needs.version.outputs.images) }}
+    runs-on: ${{ matrix.runner }}
     env:
       VER: ${{ needs.version.outputs.ver }}
     steps:
       - uses: actions/checkout@v7
-      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
-      - uses: docker/build-push-action@v6
+      - id: build
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ${{ matrix.file }}
-          platforms: ${{ matrix.platforms }}
-          push: true
-          tags: ${{ env.REGISTRY }}/${{ matrix.name }}:${{ env.VER }}${{ matrix.suffix }}
+          platforms: linux/${{ matrix.arch }}
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ matrix.name }},push-by-digest=true,name-canonical=true,push=true
           build-args: |
             HESPERUS_VERSION=${{ env.VER }}
             LLAMA_BACKEND=${{ matrix.backend }}
-          cache-from: type=gha,scope=${{ matrix.name }}${{ matrix.suffix }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.name }}${{ matrix.suffix }}
+          cache-from: type=gha,scope=${{ matrix.name }}${{ matrix.suffix }}-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}${{ matrix.suffix }}-${{ matrix.arch }}
+      - name: digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: mkdir -p digests && touch "digests/${DIGEST#sha256:}"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: digest_${{ matrix.name }}${{ matrix.suffix }}_${{ matrix.arch }}
+          path: digests/*
 
-  deb:
-    if: inputs.linux
-    needs: [version, payload]
+  manifests:
+    needs: [version, images]
+    strategy:
+      matrix:
+        include: ${{ fromJSON(needs.version.outputs.manifests) }}
     runs-on: ubuntu-24.04
     env:
       VER: ${{ needs.version.outputs.ver }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: digests
+          pattern: digest_${{ matrix.name }}${{ matrix.suffix }}_*
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: tag
+        env:
+          IMG: ${{ env.REGISTRY }}/${{ matrix.name }}
+        run: |
+          cd digests
+          docker buildx imagetools create -t "$IMG:$VER${{ matrix.suffix }}" $(printf "$IMG@sha256:%s " *)
+          docker buildx imagetools inspect "$IMG:$VER${{ matrix.suffix }}"
+
+  deb:
+    needs: [version, payload]
+    if: needs.version.outputs.debs != '[]'
+    runs-on: ubuntu-24.04
+    env:
+      VER: ${{ needs.version.outputs.ver }}
+      ARCHES: ${{ join(fromJSON(needs.version.outputs.debs), ' ') }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
@@ -150,7 +212,7 @@ jobs:
       - name: build .deb
         run: |
           mkdir -p art/payload out && tar -xzf art/payload.tar.gz -C art/payload
-          build/deb.sh "out/hesperus_${VER}_all.deb" "$VER" art/payload
+          for a in $ARCHES; do build/deb.sh "out/hesperus_${VER}_$a.deb" "$VER" art/payload "$a"; done
       - uses: actions/upload-artifact@v7
         with:
           name: deb
@@ -237,7 +299,7 @@ jobs:
           if-no-files-found: ignore
 
   release:
-    needs: [version, check, images, deb, app]
+    needs: [version, check, manifests, deb, app]
     # runs with unchecked targets skipped, not when anything failed
     if: ${{ !cancelled() && !failure() }}
     runs-on: ubuntu-24.04
@@ -257,7 +319,7 @@ jobs:
           body: |
             ${{ inputs.macos && '**macOS**: open the `.dmg`, drag Hesperus to Applications, open it (first open: right-click > Open). Needs colima and docker (see README).' || '' }}
             ${{ inputs.windows && '**Windows**: run the setup `.exe` (SmartScreen: More info > Run anyway). Needs Docker Desktop.' || '' }}
-            ${{ inputs.linux && format('**Linux**: `sudo apt install ./hesperus_{0}_all.deb`, then fill in `/var/lib/hesperus/.env` and `sudo hesperus start`.', env.VER) || '' }}
+            ${{ (inputs.linux_amd64 || inputs.linux_arm64) && format('**Linux**: `sudo apt install ./hesperus_{0}_ARCH.deb` (`amd64` or `arm64`), then fill in `/var/lib/hesperus/.env` and `sudo hesperus start`.', env.VER) || '' }}
             An existing phosphorus or hesperus checkout on the host is migrated on install: `.env`, config, state, git data and the tailnet identity.
           files: out/*
       - uses: actions/download-artifact@v8
@@ -284,10 +346,15 @@ jobs:
           [ -e hesperus-windows-x86_64-setup.exe ] && feed windows-x86_64 hesperus-windows-x86_64-setup.exe
           if [ -n "$KEY" ] && ls ../out/*.deb >/dev/null 2>&1; then
             command -v apt-ftparchive >/dev/null || { sudo apt-get update -q && sudo apt-get install -y -q apt-utils; }
-            cp ../out/*.deb hesperus_all.deb
-            mkdir a && mv hesperus_all.deb a/
-            (cd a && apt-ftparchive packages .) > Packages
-            mv a/hesperus_all.deb . && rmdir a
+            # the unchecked arch's index kept from the last release
+            gh release download update -p 'Packages-*' || true
+            for f in ../out/*.deb; do
+              d=${f##*_}; d=${d%.deb}
+              mkdir -p "a-$d" && cp "$f" "a-$d/hesperus_$d.deb"
+              (cd "a-$d" && apt-ftparchive packages .) > "Packages-$d"
+              mv "a-$d/hesperus_$d.deb" . && rmdir "a-$d"
+            done
+            cat Packages-* > Packages
             apt-ftparchive -o APT::FTPArchive::Release::Origin=Hesperus -o APT::FTPArchive::Release::Label=Hesperus release . > "$RUNNER_TEMP/Release"
             export GNUPGHOME=$(mktemp -d)
             echo "$KEY" | gpg --batch --import

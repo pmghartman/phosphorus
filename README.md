@@ -20,7 +20,7 @@ From the latest release:
 
 | OS | Needs | Install |
 |---|---|---|
-| Linux (Debian, Ubuntu) | nothing, apt pulls Docker | `sudo apt install ./hesperus_VER_all.deb` |
+| Linux (Debian, Ubuntu) | nothing, apt pulls Docker | `sudo apt install ./hesperus_VER_ARCH.deb` (`amd64` or `arm64`) |
 | macOS | [colima](https://github.com/abiosoft/colima), Homebrew `docker`, `docker-compose` | open `hesperus-VER-macos-universal.dmg`, drag Hesperus to Applications, open it (first open: right-click > Open) |
 | Windows | Docker Desktop (host networking on) | run `hesperus-VER-windows-x86_64-setup.exe` (SmartScreen: More info > Run anyway) |
 

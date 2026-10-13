@@ -1,10 +1,10 @@
 #!/bin/sh
 # Linux package: the release under /usr/lib/hesperus, the update agent's units, the apt feed
-# Usage: build/deb.sh OUT.deb VER PAYLOAD   Env: HESPERUS_APT_KEY (binary public keyring)
+# Usage: build/deb.sh OUT.deb VER PAYLOAD ARCH (amd64|arm64)   Env: HESPERUS_APT_KEY (binary keyring)
 set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
-OUT=${1:?usage: build/deb.sh OUT.deb VER PAYLOAD}
-VER=$2 PAYLOAD=$3
+OUT=${1:?usage: build/deb.sh OUT.deb VER PAYLOAD ARCH}
+VER=$2 PAYLOAD=$3 ARCH=${4:?ARCH amd64 or arm64}
 T=$(mktemp -d)
 trap 'rm -rf "$T"' EXIT
 chmod 755 "$T"
@@ -26,7 +26,7 @@ fi
 cat > "$T/DEBIAN/control" <<CTL
 Package: hesperus
 Version: $VER
-Architecture: all
+Architecture: $ARCH
 Maintainer: Hesperus <https://github.com/pmghartman/hesperus>
 Depends: docker.io | docker-ce, docker-compose-v2 | docker-compose-plugin | docker-compose, openssh-server, sudo
 Installed-Size: $(du -sk --exclude=DEBIAN "$T" | cut -f1)
