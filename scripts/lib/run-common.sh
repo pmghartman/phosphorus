@@ -4,10 +4,9 @@
 
 . "$DIR/scripts/lib/config.sh"
 
-# $1 and $2: where to get docker and git on this OS
+# $1: where to get docker on this OS
 run_preflight() {
   command -v docker >/dev/null 2>&1 || fail "docker not found, $1"
-  hesperus_installed || command -v git >/dev/null 2>&1 || fail "git not found, $2"
   [ -f .env ] || fail ".env not found in $DIR, copy .env.example to it and fill it in"
   [ -f config/services.export ] || fail "config/services.export not found in $DIR"
 }
@@ -71,7 +70,6 @@ run_bring_up() {
     local host=false
     [[ "$ans" =~ ^[Yy] ]] && host=true
     printf '[git]\nhost = %s\n' "$host" > config/hesperus.ini
-    hesperus_installed || git update-index --skip-worktree config/hesperus.ini
   fi
 
   # --- hesperus container -----------------------------------------------
@@ -96,9 +94,6 @@ run_bring_up() {
   else
     say "rebuilding in hesperus-updater, docker logs -f hesperus-updater to follow"
   fi
-
-  # this host's own entries, safe from the next pull
-  hesperus_installed || git update-index --skip-worktree config/services.export
 
   say "done. 'docker compose logs -f' to watch hesperus come up."
 }

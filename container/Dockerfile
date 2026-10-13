@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # --- cloudflared, docker cli, tailscale ------------------------------------
 # three vendor repos, one index fetch, docker CLI only for the host's daemon
-# via the socket, safe.directory: the bind-mounted checkout isn't root's
+# via the socket, safe.directory: bind-mounted repos aren't root's
 RUN K=/usr/share/keyrings L=/etc/apt/sources.list.d \
  && curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg -o $K/cloudflare.gpg \
  && echo "deb [signed-by=$K/cloudflare.gpg] https://pkg.cloudflare.com/cloudflared any main" > $L/cloudflared.list \
@@ -70,7 +70,7 @@ COPY container/sweep.sh            /opt/hesperus/sweep.sh
 COPY container/model.js            /opt/hesperus/model.js
 COPY container/supervisor.sh       /usr/local/bin/supervisor.sh
 COPY frontend/                     /opt/frontend/
-# stamped by rebuild: VERSION's <major>.<minor> and the commit count
+# the release version, stamped by CI
 ARG HESPERUS_VERSION=0.0.0
 RUN echo "$HESPERUS_VERSION" > /opt/hesperus/VERSION \
  && chmod +x /usr/local/bin/supervisor.sh \

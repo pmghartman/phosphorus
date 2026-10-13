@@ -9,7 +9,6 @@ function Say($msg) { Write-Host "[run-windows] $msg" }
 function Fail($msg) { Write-Error "[run-windows] ERROR: $msg"; exit 1 }
 
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { Fail "docker not found, install Docker Desktop first (see README)" }
-if (-not (Test-HesperusInstalled) -and -not (Get-Command git -ErrorAction SilentlyContinue)) { Fail "git not found, install Git for Windows first (see README)" }
 
 if (-not (Test-Path .env)) { Fail ".env not found in $Dir, copy .env.example to it and fill it in" }
 if (-not (Test-Path config/services.export)) { Fail "config/services.export not found in $Dir" }
@@ -124,7 +123,6 @@ if (-not (Get-HesperusIniPath) -and [Environment]::UserInteractive) {
     $ans = Read-Host "make this host a git host (forgejo/litefs)? [y/N]"
     $host_ = if ($ans -match '^[Yy]') { "true" } else { "false" }
     Set-Content -Path config/hesperus.ini -Value "[git]", "host = $host_"
-    if (-not (Test-HesperusInstalled)) { git update-index --skip-worktree config/hesperus.ini }
 }
 
 # on a live host, a swap detached through WMI by rebuild.ps1, nothing to
@@ -149,8 +147,5 @@ if ($Bootstrap) {
 } else {
     Say "swapping containers in the background, Get-Content -Wait $env:TEMP\hesperus-update.log to follow"
 }
-
-# this host's own entries, safe from the next pull
-if (-not (Test-HesperusInstalled)) { git update-index --skip-worktree config/services.export }
 
 Say "done. 'docker compose logs -f' to watch hesperus come up."

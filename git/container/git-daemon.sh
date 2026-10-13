@@ -12,9 +12,11 @@ SELF_HOST_FILE="${SELF_HOST_FILE:-$STATE_DIR/self-host}"
 ELECTOR="${ELECTOR:-/usr/local/lib/hesperus-git/elector.js}"
 # touch to let this host lead without proof it has the newest data
 FORCE_FILE="${FORCE_FILE:-$STATE_DIR/git-force-promote}"
-VERSION_FILE="$DATA_ROOT/MU_GIT_VERSION"
+VERSION_FILE="$DATA_ROOT/GIT_VERSION"
+# pre-0.14 replicas' name for it, written beside it until none are left
+LEGACY_VERSION_FILE="$DATA_ROOT/MU_GIT_VERSION"
 # set by any pull: forgejo's per-node indexers and queues predating that data
-PULLED_FILE="$DATA_ROOT/MU_GIT_PULLED"
+PULLED_FILE="$DATA_ROOT/GIT_PULLED"
 
 # shared with elector.js
 export LOCAL_FILE="${LOCAL_FILE:-/run/git-local}"
@@ -175,6 +177,7 @@ read_version() {
 stamp_version() {
   local tmp; tmp="$(mktemp "$VERSION_FILE.XXXXXX")" || return
   echo "$MY_GEN $EPOCHSECONDS" >"$tmp" && chmod 644 "$tmp" && mv "$tmp" "$VERSION_FILE" || rm -f "$tmp"
+  cp -p "$VERSION_FILE" "$LEGACY_VERSION_FILE.tmp" 2>/dev/null && mv "$LEGACY_VERSION_FILE.tmp" "$LEGACY_VERSION_FILE"
   MY_STAMP="$EPOCHSECONDS"
 }
 
@@ -191,8 +194,13 @@ pull_from() {
         --exclude='/obj/forgejo-repositories/**/objects/**/tmp_*' --exclude='/obj/forgejo-repositories/**/objects/tmp_*' \
         "$src/conf" "$src/custom" "$src/obj" "$DATA_ROOT/" > >(log_rsync) 2>&1 &
   pid="$!"; wait "$pid" || exit 1
-  rsync -a --timeout=30 --contimeout=5 "$src/MU_GIT_VERSION" "$DATA_ROOT/" > >(log_rsync) 2>&1 &
-  pid="$!"; wait "$pid"
+  # a pre-0.14 master's stamp under its old name
+  rsync -a --timeout=30 --contimeout=5 "$src/GIT_VERSION" "$DATA_ROOT/" > >(log_rsync) 2>&1 &
+  pid="$!"
+  if ! wait "$pid"; then
+    rsync -a --timeout=30 --contimeout=5 "$src/MU_GIT_VERSION" "$DATA_ROOT/GIT_VERSION" > >(log_rsync) 2>&1 &
+    pid="$!"; wait "$pid"
+  fi
 }
 
 LAST_ROLE=""
@@ -349,6 +357,9 @@ main() {
   # forgejo running as git, never chown litefs/ (the FUSE mount)
   chown git:hesperus "$DATA_ROOT"
   chown -R git:hesperus "$DATA_ROOT"/{conf,custom,obj}
+  # the mulab-era names, once
+  [ -e "$DATA_ROOT/MU_GIT_VERSION" ] && [ ! -e "$VERSION_FILE" ] && cp -p "$DATA_ROOT/MU_GIT_VERSION" "$VERSION_FILE"
+  [ -e "$DATA_ROOT/MU_GIT_PULLED" ] && mv "$DATA_ROOT/MU_GIT_PULLED" "$PULLED_FILE"
 
   say "waiting for $SELF_HOST_FILE..."
   while [ ! -s "$SELF_HOST_FILE" ]; do sleep 1; done

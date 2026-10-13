@@ -15,7 +15,7 @@ const FRONTEND_PORT = Number(process.env.FRONTEND_PORT || 8090);
 const STATE_DIR = process.env.STATE_DIR || '/state';
 const CHAIN_FILE = path.join(STATE_DIR, 'update-chain.json');
 const VERSION_FILE = process.env.VERSION_FILE || '/opt/hesperus/VERSION';
-// the install as the host sees it, a checkout updating by hand
+// the home as the host sees it, a pre-installer checkout's clone
 const REPO_DIR = process.env.REPO_DIR || '/repo';
 // handed to the host's agent (systemd path unit, the app), its verdict read back
 const REQUEST_FILE = path.join(STATE_DIR, 'update-request.json');
@@ -23,9 +23,8 @@ const AGENT_FILE = path.join(STATE_DIR, 'update-agent.json');
 // the release feed: newest version, the installers and app feeds beside it
 const FEED_URL = process.env.HESPERUS_FEED_URL || 'https://github.com/pmghartman/hesperus/releases/download/update/latest.json';
 const FEED_TTL_MS = 600000;
-// a checkout's own update: github's main pulled and rebuilt, on Linux the
-// release's .deb installed on the host instead, migrating it into its home
-const PULL_SCRIPT = path.join(REPO_DIR, 'scripts', 'pull.sh');
+// a pre-installer checkout's update: the release's .deb installed on the host,
+// migrating it into its home
 const INSTALLER = 'hesperus-installer';
 const PLATFORM_FILE = path.join(STATE_DIR, 'platform.json');
 // nobody answering the request: no agent on this host
@@ -59,7 +58,7 @@ function readVersion(file) {
 
 const isCheckout = () => fs.existsSync(path.join(REPO_DIR, '.git'));
 
-// releases are MAJOR.MINOR, a checkout's version its commit count past that
+// releases are MAJOR.MINOR, an old checkout's version its commit count past that
 const behind = (latest, v) => !!latest && !!v && (String(v).split('.').length > 2 || newer(latest, v));
 
 // numeric, part by part, 0.13 < 0.13.1 < 0.14
@@ -151,16 +150,12 @@ async function hostRepo() {
   return r.ok ? r.out : '';
 }
 
-// Linux: the release's .deb on the host, in a sibling outliving this container,
-// its installer migrating the checkout into /var/lib/hesperus; elsewhere a pull
+// the release's .deb on the host, in a sibling outliving this container, its
+// installer migrating the checkout into /var/lib/hesperus
 async function checkoutUpdate() {
   const platform = String((readJson(PLATFORM_FILE, {}) || {}).platform || '');
   if (platform !== 'linux') {
-    log('a checkout: pulling github\'s main');
-    const before = readVersion(VERSION_FILE);
-    const r = await run('bash', [PULL_SCRIPT], UPDATE_TIMEOUT_MS);
-    if (!r.ok) return { ok: false, error: lastLine(r.err) || 'pull failed' };
-    return { ok: true, current: /already up to date/.test(r.out), to: before };
+    return { ok: false, error: `a checkout on ${platform || 'this host'}: run the latest release's installer there` };
   }
   const repo = await hostRepo();
   if (!repo.startsWith('/')) return { ok: false, error: 'can\'t find this checkout on the host' };

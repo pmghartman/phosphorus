@@ -1,6 +1,6 @@
 #!/bin/bash
 # readers for config/hesperus.ini, config/services.export and .env, from the
-# checkout root, sourced by run-*, rebuild, update, game-control, bash 3.2-safe
+# home, sourced by run-*, rebuild, update, game-control, bash 3.2-safe
 
 # ini_get <file> <section> <key>: `key = value` lines under `[section]`,
 # blank when unset or the file is missing
@@ -18,14 +18,8 @@ env_get() {
   grep "^$1=" .env 2>/dev/null | cut -d= -f2-
 }
 
-# installed from a release: no .git, VERSION the release's own
-hesperus_installed() { [ ! -e .git ]; }
-
-# a release: VERSION, a checkout: VERSION's <major>.<minor>, then the commit count
-hesperus_version() {
-  if hesperus_installed; then tr -d '[:space:]' < VERSION; return; fi
-  printf '%s.%s' "$(cat VERSION)" "$(git rev-list --count HEAD 2>/dev/null || echo 0)"
-}
+# the release's own, stamped by CI
+hesperus_version() { tr -d '[:space:]' < VERSION; }
 
 # the release's images, CI-built, cuda per [model] gpu
 HESPERUS_REGISTRY="ghcr.io/pmghartman"
@@ -57,8 +51,8 @@ hesperus_is_git_host() {
   [ "$(hesperus_get git host)" = "true" ]
 }
 
-# skip-worktree: an update restores this host's hesperus.ini verbatim, so
-# sections added upstream are appended here
+# the installer never overwrites this host's hesperus.ini, so sections added
+# since are appended here
 hesperus_add_missing_sections() {
   local file; file="$(hesperus_ini)"
   [ -n "$file" ] || return
@@ -97,7 +91,7 @@ hesperus_files_dir() {
 }
 
 # [files] dir, one absolute host path per line, nothing when unset, relative
-# entries off $1, the checkout as the host sees it
+# entries off $1, the home as the host sees it
 hesperus_files_dir_list() {
   local raw d base; raw="$(hesperus_get files dir)"
   [ -n "$raw" ] || return 0
@@ -154,7 +148,7 @@ hesperus_files_perm_list() {
 # rewritten every build, never committed
 HESPERUS_FILES_OVERRIDE="docker-compose.files.yml"
 
-# $1 the checkout as the host sees it, $2 whether those paths are statable
+# $1 the home as the host sees it, $2 whether those paths are statable
 # here, 0 with an override for COMPOSE_FILE, 1 with only the fallback mount
 hesperus_write_files_override() {
   local dirs=() perms=() dir perm i=0 base="${1:-$PWD}" vet="${2:-1}"

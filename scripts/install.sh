@@ -25,7 +25,7 @@ main() {
       *) home=/var/lib/hesperus ;;
     esac
   fi
-  [ -e "$payload/.git" ] && fail "$payload is a checkout, run scripts/run-linux.sh or run-mac.sh there"
+  [ -e "$payload/.git" ] && fail "$payload is a git clone, not a release: install from the latest release"
   [ "$payload" = "$home" ] && fail "run the package's copy, not $home's"
   mkdir -p "$home" || fail "can't create $home"
 

@@ -9,7 +9,7 @@ const { parse } = require('../services');
 const { FRONTEND_PORT } = require('../util');
 
 const API = `http://127.0.0.1:${FRONTEND_PORT}`;
-// the checkout's config/, read-write (/etc/hesperus a read-only mount)
+// the home's config/, read-write (/etc/hesperus a read-only mount)
 const CONFIG_DIR = process.env.HESPERUS_CONFIG_DIR || '/repo/config';
 const SERVICES_FILE = path.join(CONFIG_DIR, 'services.export');
 const INI_FILE = path.join(CONFIG_DIR, 'hesperus.ini');
@@ -322,7 +322,7 @@ function appendSection(doc, name) {
 const readText = (file) => { try { return fs.readFileSync(file, 'utf8'); } catch { return ''; } };
 
 // temp then rename, the frontend re-reading mid-write, owner and mode
-// kept, else a root-owned file in the host's checkout
+// kept, else a root-owned file in the host's home
 function writeAtomic(file, text) {
   let st = null;
   try { st = fs.statSync(file); } catch {}

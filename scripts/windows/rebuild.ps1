@@ -48,8 +48,6 @@ $env:HESPERUS_GIT_DATA = "git-data"
 $env:HESPERUS_GIT_DB = "git-db"
 # the model's gguf likewise, mmapped off a volume
 $env:HESPERUS_MODEL_DIR = "models"
-# [model] gpu: llama.cpp's cuda build, its runtime libs a larger image
-$env:HESPERUS_LLAMA_BACKEND = if (Test-HesperusModelGpu) { "cuda" } else { "cpu" }
 # every drive as Docker Desktop's VM mounts it, for the status tab's disk
 $env:HESPERUS_HOST_ROOT = "/run/desktop/mnt/host"
 
@@ -72,17 +70,10 @@ $env:HESPERUS_FILES_DIR = $FilesDir
 # $ErrorActionPreference skips native commands, exit codes checked by hand
 $Running = ((Invoke-Quiet { docker inspect -f '{{.State.Running}}' hesperus }) -eq "true")
 
-# built beside the old container, a broken build changing nothing, in this
-# session for a real exit code
-$env:HESPERUS_VERSION = Get-HesperusVersion
-if (Test-HesperusInstalled) {
-    Say "pulling hesperus $($env:HESPERUS_VERSION)..."
-    if (-not (Invoke-HesperusPull)) { Fail "pull failed, still running the previous version" }
-} else {
-    Say "building hesperus..."
-    docker compose build
-    if ($LASTEXITCODE) { Fail "build failed, still running the previous version" }
-}
+# the release's images pulled beside the old container, a failed pull
+# changing nothing, in this session for a real exit code
+Say "pulling hesperus $(Get-HesperusVersion)..."
+if (-not (Invoke-HesperusPull)) { Fail "pull failed, still running the previous version" }
 
 # nvidia gpus handed in wherever a probe off the new image gets them
 Invoke-Quiet { docker run --rm --gpus all --network none --entrypoint true hesperus:latest } | Out-Null
@@ -105,14 +96,14 @@ if (-not (Test-HesperusModelHost) -and (docker ps -aq -f "name=^hesperus-search$
 }
 
 # leftovers of earlier runs, from the new image's sweep.sh, in Docker
-# Desktop's VM, the checkout as that VM sees it
+# Desktop's VM, the home as that VM sees it
 $VmRepo = "/run/desktop/mnt/host/" + $Dir.Substring(0, 1).ToLower() + ($Dir.Substring(2) -replace '\\', '/')
 Invoke-Quiet { docker run --rm --pid=host -v /var/run/docker.sock:/var/run/docker.sock `
     --entrypoint sh hesperus:latest /opt/hesperus/sweep.sh $VmRepo } | ForEach-Object { Say $_ }
 
 # git/data onto the volumes once, git stopped first so a master hands off
 Invoke-Quiet { docker volume inspect hesperus-git-data } | Out-Null
-if ($LASTEXITCODE -and (Test-HesperusGitHost) -and (Test-Path git/data/MU_GIT_VERSION)) {
+if ($LASTEXITCODE -and (Test-HesperusGitHost) -and ((Test-Path git/data/GIT_VERSION) -or (Test-Path git/data/MU_GIT_VERSION))) {
     Say "moving git data onto a docker volume..."
     Invoke-Quiet { docker stop -t 30 hesperus-git } | Out-Null
     docker run --rm -v "${VmRepo}/git/data:/src:ro" -v hesperus-git-data:/data -v hesperus-git-db:/db `
@@ -124,14 +115,6 @@ if ($LASTEXITCODE -and (Test-HesperusGitHost) -and (Test-Path git/data/MU_GIT_VE
         Fail "couldn't copy git/data onto a volume, still running the previous version"
     }
 }
-# Windows' own node processes running this checkout's code
-$Stray = "^" + [regex]::Escape($Dir) + "\\(frontend|container|git)\\"
-Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" |
-    Where-Object { ($_.CommandLine -split '\s+' | Where-Object { $_.Trim('"') -match $Stray }) } |
-    ForEach-Object {
-        Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
-        Say "stopped stray node $($_.ProcessId): $($_.CommandLine)"
-    }
 
 # images earlier swaps replaced, and those the sweep freed, in-use ones
 # never dangling, so never hit

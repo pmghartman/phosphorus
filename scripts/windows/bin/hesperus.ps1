@@ -45,7 +45,6 @@ function Ask-Password {
 # handed to the Hesperus app, its verdict waited on
 function Request-Update {
     $Root = Split-Path -Parent $Scripts
-    if (Test-Path (Join-Path $Root ".git")) { Write-Host "a checkout: git pull, then hesperus start" -ForegroundColor Red; exit 1 }
     $State = Join-Path $Root "state"
     New-Item -ItemType Directory -Force $State | Out-Null
     $Id = "cli-$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())-$PID"

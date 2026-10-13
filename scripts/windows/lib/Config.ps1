@@ -1,5 +1,5 @@
 # readers for config/hesperus.ini, config/services.export and .env, from the
-# checkout root, dot-sourced by run, rebuild, update, game-control and hesperus
+# home, dot-sourced by run, rebuild, update, game-control and hesperus
 
 # `key = value` lines under `[section]`, blank when unset or the file is missing
 function Get-IniValue([string]$File, [string]$Section, [string]$Key) {
@@ -26,15 +26,8 @@ function Get-EnvValue([string]$Key) {
 # stderr dropped: under Stop, Windows PowerShell turning any of it into a throw
 function Invoke-Quiet([scriptblock]$Cmd) { $ErrorActionPreference = "Continue"; & $Cmd 2>$null }
 
-# installed from a release: no .git, VERSION the release's own
-function Test-HesperusInstalled { -not (Test-Path .git) }
-
-# a release: VERSION, a checkout: VERSION's <major>.<minor>, then the commit count
-function Get-HesperusVersion {
-    if (Test-HesperusInstalled) { return (Get-Content VERSION -First 1).Trim() }
-    $n = Invoke-Quiet { git rev-list --count HEAD }
-    "$((Get-Content VERSION -First 1).Trim()).$(if ($n) { $n } else { 0 })"
-}
+# the release's own, stamped by CI
+function Get-HesperusVersion { (Get-Content VERSION -First 1).Trim() }
 
 # the release's images pulled and tagged as compose names them, cuda per [model] gpu
 function Invoke-HesperusPull {
@@ -56,8 +49,8 @@ function Get-HesperusValue([string]$Section, [string]$Key) { Get-IniValue (Get-H
 
 function Test-HesperusGitHost { (Get-HesperusValue "git" "host") -eq "true" }
 
-# skip-worktree: an update restores this host's hesperus.ini verbatim, so
-# sections added upstream are appended here
+# the installer never overwrites this host's hesperus.ini, so sections added
+# since are appended here
 function Add-HesperusMissingSections {
     $file = Get-HesperusIniPath
     if (-not $file) { return }
@@ -102,7 +95,7 @@ function Get-HesperusFilesDir {
 }
 
 # [files] dir, one absolute host path per entry, empty when unset, relative
-# entries off -Base, the checkout
+# entries off -Base, the home
 function Get-HesperusFilesDirList([string]$Base) {
     $raw = Get-HesperusValue "files" "dir"
     if (-not $raw) { return @() }

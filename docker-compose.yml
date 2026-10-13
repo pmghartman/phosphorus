@@ -2,14 +2,8 @@
 name: hesperus
 
 services:
+  # the release's images, pulled from ghcr and tagged by rebuild
   hesperus:
-    build:
-      context: .
-      dockerfile: container/Dockerfile
-      args:
-        HESPERUS_VERSION: ${HESPERUS_VERSION:-0.0.0}
-        # cuda where [model] gpu is set, by rebuild
-        LLAMA_BACKEND: ${HESPERUS_LLAMA_BACKEND:-cpu}
     image: hesperus:latest
     container_name: hesperus
     restart: unless-stopped
@@ -63,7 +57,7 @@ services:
       # unset: the home's files/
       - ${HESPERUS_FILES_DIR:-./files}:/files
 
-      # the install (or checkout), for reconfig's rebuild and the model's reading, never /opt/hesperus
+      # the home, for reconfig's rebuild and the model's reading, never /opt/hesperus
       # (the image's own VERSION and sweep.sh)
       - .:/repo
 
@@ -94,9 +88,6 @@ services:
   # optional git-host, its own container: supervisor.sh killing everything
   # when one child exits, litefs restarting on every flip
   git:
-    build:
-      context: .
-      dockerfile: git/container/Dockerfile
     image: hesperus-git:latest
     container_name: hesperus-git
     restart: unless-stopped

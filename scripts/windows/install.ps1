@@ -9,7 +9,7 @@ function Fail($msg) { Write-Host "[install] ERROR: $msg" -ForegroundColor Red; e
 $Payload = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 # not %LOCALAPPDATA%\Hesperus: the app's own install dir, wiped by its uninstaller
 $HomeDir = if ($HesperusHome) { $HesperusHome } elseif ($env:HESPERUS_HOME) { $env:HESPERUS_HOME } else { Join-Path $env:USERPROFILE "hesperus" }
-if (Test-Path (Join-Path $Payload ".git")) { Fail "$Payload is a checkout, run scripts/windows/run.ps1 there" }
+if (Test-Path (Join-Path $Payload ".git")) { Fail "$Payload is a git clone, not a release: install from the latest release" }
 if ($HomeDir.TrimEnd('\').StartsWith((Split-Path -Parent $Payload).TrimEnd('\'), [StringComparison]::OrdinalIgnoreCase)) {
     Fail "$HomeDir is inside the app's install dir, which its uninstaller removes"
 }

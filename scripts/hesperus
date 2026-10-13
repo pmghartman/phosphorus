@@ -3,7 +3,7 @@
 # in the hesperus container, the host needing nothing past docker
 set -uo pipefail
 
-# through the /usr/local/bin symlink to the checkout
+# through the /usr/local/bin symlink to the home
 src="${BASH_SOURCE[0]}"
 while [ -L "$src" ]; do
   d="$(cd -P "$(dirname "$src")" && pwd)"
@@ -22,7 +22,7 @@ usage() {
 }
 
 # installed on Linux: root's /var/lib/hesperus
-if [ ! -e "$DIR/.git" ] && [ "$(uname)" = Linux ] && [ "$(id -u)" != 0 ] && [ -n "${1:-}" ]; then
+if [ "$(uname)" = Linux ] && [ "$(id -u)" != 0 ] && [ -n "${1:-}" ]; then
   exec sudo "$DIR/scripts/hesperus" "$@"
 fi
 
@@ -61,7 +61,6 @@ ask_password() {
 
 # handed to the host's agent (systemd path unit, the app), its verdict waited on
 request_update() {
-  [ -e "$DIR/.git" ] && exec bash "$DIR/scripts/pull.sh"
   local id out="$DIR/state/update-agent.json" line last="" i
   id="cli-$(date +%s)-$$"
   mkdir -p "$DIR/state"

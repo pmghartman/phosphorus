@@ -17,7 +17,7 @@ main() {
   chmod 600 .env
   hesperus_add_missing_sections
   # a migrated host's shares still in its old checkout, moved here, host side only
-  if hesperus_installed && [ ! -f /.dockerenv ] && [ -s .hesperus-migrated-from ]; then
+  if [ ! -f /.dockerenv ] && [ -s .hesperus-migrated-from ]; then
     hesperus_rehome_files "$(cat .hesperus-migrated-from)" || fail "couldn't move [files] dirs out of the old checkout"
   fi
   local profiles=()
@@ -31,7 +31,7 @@ main() {
   local sudo=""
   [ "$(uname -s)" = "Linux" ] && [ "$in_container" = 0 ] && sudo="sudo"
 
-  # compose resolving relative volume paths client-side: the repo mounted onto
+  # compose resolving relative volume paths client-side: the home mounted onto
   # itself at the host's path for the sibling, not /repo
   local repo="${HOST_REPO:-}"
   if [ -z "$repo" ]; then
@@ -57,7 +57,7 @@ main() {
   esac
   case "$repo" in
     /*) ;;
-    *) fail "can't tell where this checkout lives on the host ('${repo:-unset}'); set HOST_REPO and retry" ;;
+    *) fail "can't tell where this home lives on the host ('${repo:-unset}'); set HOST_REPO and retry" ;;
   esac
 
   # each [files] dir its own mount, written out as a compose override,
@@ -77,11 +77,9 @@ main() {
 
   # what compose interpolates, dropped by sudo and the siblings, TS_HOSTNAME
   # in a container rebuild.ps1's COMPUTERNAME, else docker-desktop on Windows
-  local compose_env=("COMPOSE_PROFILES=$COMPOSE_PROFILES" "HESPERUS_FILES_DIR=$HESPERUS_FILES_DIR" "COMPOSE_FILE=$COMPOSE_FILE" "HESPERUS_VERSION=$(hesperus_version)" "TS_HOSTNAME=${TS_HOSTNAME:-}")
+  local compose_env=("COMPOSE_PROFILES=$COMPOSE_PROFILES" "HESPERUS_FILES_DIR=$HESPERUS_FILES_DIR" "COMPOSE_FILE=$COMPOSE_FILE" "TS_HOSTNAME=${TS_HOSTNAME:-}")
   # Windows: git data on docker volumes, as rebuild.ps1 has it
   [ "$windows" = 1 ] && compose_env+=("HESPERUS_GIT_DATA=git-data" "HESPERUS_GIT_DB=git-db" "HESPERUS_MODEL_DIR=models")
-  # [model] gpu: llama.cpp's cuda build, its runtime libs a larger image
-  hesperus_model_gpu && compose_env+=("HESPERUS_LLAMA_BACKEND=cuda")
   # the host's drives for the status tab's disk: Windows' under the VM's
   # mount, Linux's own root, never another Docker Desktop VM's root
   if [ "$windows" = 1 ]; then
@@ -90,15 +88,10 @@ main() {
     compose_env+=("HESPERUS_HOST_ROOT=/")
   fi
 
-  # a release's images pulled, a checkout's built, neither stopping anything,
-  # run here for a real exit code and visible failures
-  if hesperus_installed; then
-    say "pulling hesperus $(hesperus_version)..."
-    hesperus_pull_images "$sudo docker" || fail "pull failed, still running the previous version"
-  else
-    say "building hesperus..."
-    $sudo env "${compose_env[@]}" docker compose build || fail "build failed, still running the previous version"
-  fi
+  # the release's images pulled, nothing stopped, run here for a real exit
+  # code and visible failures
+  say "pulling hesperus $(hesperus_version)..."
+  hesperus_pull_images "$sudo docker" || fail "pull failed, still running the previous version"
 
   # nvidia gpus handed in wherever a probe off the new image gets them
   if $sudo docker run --rm --gpus all --network none --entrypoint true hesperus:latest >/dev/null 2>&1; then
@@ -130,7 +123,8 @@ main() {
     --entrypoint sh hesperus:latest /opt/hesperus/sweep.sh "$repo" 2>/dev/null \
     | while IFS= read -r line; do say "$line"; done
   # Windows: git/data onto the volumes once, as rebuild.ps1 does
-  if [ "$windows" = 1 ] && hesperus_is_git_host && [ -f git/data/MU_GIT_VERSION ] \
+  if [ "$windows" = 1 ] && hesperus_is_git_host \
+     && { [ -f git/data/GIT_VERSION ] || [ -f git/data/MU_GIT_VERSION ]; } \
      && ! $sudo docker volume inspect hesperus-git-data >/dev/null 2>&1; then
     say "moving git data onto a docker volume..."
     $sudo docker stop -t 30 hesperus-git >/dev/null 2>&1
@@ -141,10 +135,6 @@ main() {
       $sudo docker start hesperus-git >/dev/null 2>&1
       fail "couldn't copy git/data onto a volume, still running the previous version"
     fi
-  fi
-  # macOS's own processes, out of Docker Desktop's VM
-  if [ "$(uname -s)" = Darwin ] && [ "$in_container" = 0 ]; then
-    pkill -f "node .*$dir/(frontend|container|git)/" && say "stopped stray node on this mac"
   fi
 
   # images earlier swaps replaced, and those the sweep freed, in-use ones

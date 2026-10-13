@@ -32,8 +32,7 @@ macOS and Windows). On macOS set `hostname:` in `colima start --edit` first.
 `TS_AUTHKEY` and `TS_API_KEY` in `.env` expire every 90 days.
 
 Images come prebuilt from `ghcr.io/pmghartman/hesperus` and `hesperus-git`, tagged by
-release. A git checkout still runs from source: `./scripts/run-linux.sh` (or `run-mac.sh`,
-`scripts/windows/run.ps1`) builds them locally.
+release. The installers are the only way in; a clone of this repo doesn't run.
 
 ## Updates
 
@@ -45,11 +44,10 @@ host hands the update to its agent:
 
 `hesperus update` and the tray's Check for Updates do the same for one host.
 
-A host still running from a git checkout counts as behind. On Linux its update installs the
-release's `.deb` from GitHub over it, migrating it into `/var/lib/hesperus`; a git-era peer
-first pulls `main`, then installs. On macOS and Windows a checkout pulls GitHub's `main` and
-rebuilds in place, the `.dmg` or setup `.exe` moving it into its home. By hand:
-`sudo scripts/install-release.sh` (Linux) or `scripts/pull.sh`.
+A host still on a git checkout counts as behind. On Linux the update installs the
+release's `.deb` from GitHub over it, migrating it into `/var/lib/hesperus` (a git-era peer
+pulls `main` first, then installs). macOS and Windows checkouts need the `.dmg` or setup
+`.exe` run there once.
 
 ## From phosphorus
 

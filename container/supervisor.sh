@@ -70,17 +70,17 @@ if [ "$HOST_SSH_HOST" = "127.0.0.1" ]; then
     case $? in
       0) ;;
       2) say "the host's /etc/ssh/ssh_config never reads ssh_config.d, ssh <host> needs 'Include /etc/ssh/ssh_config.d/*.conf' at its top" ;;
-      *) say "couldn't add the host's ssh Include, ssh <host> needs a run-linux.sh" ;;
+      *) say "couldn't add the host's ssh Include, ssh <host> needs a sudo hesperus start" ;;
     esac
   else
-    say "can't find this container's /state on the host, ssh <host> needs a run-linux.sh"
+    say "can't find this container's /state on the host, ssh <host> needs a sudo hesperus start"
   fi
   # hesperus on the host's PATH, the same way
   repo_src="$(docker inspect hesperus -f '{{range .Mounts}}{{if eq .Destination "/repo"}}{{.Source}}{{end}}{{end}}' 2>/dev/null)"
   if [ -n "$repo_src" ]; then
     docker run --rm --network none --entrypoint sh -v /usr/local/bin:/host-bin hesperus:latest -c '
       [ "$(readlink /host-bin/hesperus)" = "$1" ] || ln -sfn "$1" /host-bin/hesperus' _ "$repo_src/scripts/hesperus" >/dev/null 2>&1 \
-      || say "couldn't put hesperus on the host's PATH; hesperus needs a run-linux.sh"
+      || say "couldn't put hesperus on the host's PATH; hesperus needs a sudo hesperus start"
   fi
 fi
 
