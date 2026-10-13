@@ -7,8 +7,12 @@ function Say($msg) { Write-Host "[install] $msg" }
 function Fail($msg) { Write-Host "[install] ERROR: $msg" -ForegroundColor Red; exit 1 }
 
 $Payload = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-$HomeDir = if ($HesperusHome) { $HesperusHome } elseif ($env:HESPERUS_HOME) { $env:HESPERUS_HOME } else { Join-Path $env:LOCALAPPDATA "Hesperus" }
+# not %LOCALAPPDATA%\Hesperus: the app's own install dir, wiped by its uninstaller
+$HomeDir = if ($HesperusHome) { $HesperusHome } elseif ($env:HESPERUS_HOME) { $env:HESPERUS_HOME } else { Join-Path $env:USERPROFILE "hesperus" }
 if (Test-Path (Join-Path $Payload ".git")) { Fail "$Payload is a checkout, run scripts/windows/run.ps1 there" }
+if ($HomeDir.TrimEnd('\').StartsWith((Split-Path -Parent $Payload).TrimEnd('\'), [StringComparison]::OrdinalIgnoreCase)) {
+    Fail "$HomeDir is inside the app's install dir, which its uninstaller removes"
+}
 New-Item -ItemType Directory -Force $HomeDir | Out-Null
 
 # every release file into home, what the last one shipped and this one doesn't

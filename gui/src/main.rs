@@ -29,7 +29,8 @@ fn home_dir() -> PathBuf {
         return h.into();
     }
     if cfg!(windows) {
-        PathBuf::from(std::env::var_os("LOCALAPPDATA").unwrap_or_default()).join("Hesperus")
+        // not %LOCALAPPDATA%\Hesperus: the app's own install dir, wiped by its uninstaller
+        PathBuf::from(std::env::var_os("USERPROFILE").unwrap_or_default()).join("hesperus")
     } else {
         PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join("Library/Hesperus")
     }

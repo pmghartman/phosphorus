@@ -25,7 +25,7 @@ From the latest release:
 | Windows | Docker Desktop (host networking on) | run `hesperus-VER-windows-x86_64-setup.exe` (SmartScreen: More info > Run anyway) |
 
 Each host's own files live in its **home**: `/var/lib/hesperus` (Linux),
-`~/Library/Hesperus` (macOS), `%LOCALAPPDATA%\Hesperus` (Windows). That covers `.env`, `config/`,
+`~/Library/Hesperus` (macOS), `%USERPROFILE%\hesperus` (Windows). That covers `.env`, `config/`,
 `state/`, `git/data/`, `files/` and `models/`, none of them touched by an update. Fill in
 `.env` from `.env.example`, then `hesperus start` (`sudo` on Linux; the tray's Start on
 macOS and Windows). On macOS set `hostname:` in `colima start --edit` first.
