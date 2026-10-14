@@ -34,10 +34,29 @@ The host's folder: `/var/lib/phosphorus` (Linux), `~/Library/Phosphorus` (macOS)
 `%USERPROFILE%\phosphorus` (Windows). Updates never touch your settings or files there.
 Tailscale keys expire every 90 days.
 
+Everything through your domain needs a phosphorus login, every service's page and
+subdomain included (a page you open logged out sends you to log in, then back), so
+no Cloudflare Access policy is needed. Five wrong passwords from one address lock it
+out for 15 minutes. Hosts reach each other over the tailnet, outside the login.
+
 ## Using it
 
-Open your domain in a browser and log in to one or more hosts with that machine's
-own user and password. You get a desktop:
+Open your domain in a browser and log in with your phosphorus user. On first start
+there are no users: log in as `admin` with `ADMIN_PASS` from `.env`
+and make an admin user (the setup admin turns off once one exists). Admins add and
+delete users and give out admin from the users icon.
+
+The first time a user logs in they log in to one or more hosts with that machine's
+own user and password; those logins are saved to their profile for next time. A
+host online but not logged in shows a lock in the bottom bar: click it to log in.
+The profile button in the bar holds saved hosts, page logins, the password and log out.
+Your chat name is your user name, and your theme, icon layout, recent files and chat
+colour follow you to any browser.
+
+Each host's `state/sys/` is the mesh's own small file system: `etc/` (users in `passwd`
+and `shadow`, the model roles and API keys in `model/`) and `home/<user>/` (the vault,
+sealed with that user's password, and settings) are copied to every host; `var/` (chat)
+is the host's own. You get a desktop:
 
 - **terminal**: a shell on each host you logged in to
 - **files**: every host's shared folders; copy and move between hosts, drag files in to upload
@@ -55,8 +74,8 @@ to switch), the mesh map, updates, and light or dark theme.
 
 ## Updating
 
-Click the update icon in the bottom bar and press update: every host updates, one at
-a time. Or run `phosphorus update` on a single host.
+An admin clicks the update icon in the bottom bar (shown to admins only) and presses
+update: every host updates, one at a time. Or run `phosphorus update` on a single host.
 
 ## Settings
 
@@ -99,7 +118,9 @@ stop = systemctl --user stop tmodloader
 ```
 
 A service shows up at `yourdomain/host/name/`, or at `name.yourdomain` with
-`mode = subdomain`. Game servers are reachable only inside the mesh.
+`mode = subdomain`. A subdomain service can't open in a desktop window: its icon
+carries an arrow and opens in a new browser tab. Game servers are reachable only
+inside the mesh, at `name.phosphorus`.
 
 ## Command line
 

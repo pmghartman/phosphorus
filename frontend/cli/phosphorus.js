@@ -1311,7 +1311,7 @@ function askStart() {
 }
 
 function askPassword(error) {
-  ui.prompt = { label: 'update password', value: '', error, onSubmit: startChain };
+  ui.prompt = { label: 'admin password', value: '', error, onSubmit: startChain };
   render();
 }
 

@@ -172,13 +172,12 @@ async function pollPeer(peer) {
     st.chain = snap.chain && snap.chain.initiator ? snap.chain : null;
     st.git = snap.git && typeof snap.git === 'object' ? snap.git : null;
     st.model = snap.model && typeof snap.model === 'object' ? snap.model : null;
-    st.modelRoles = snap.modelRoles && typeof snap.modelRoles === 'object' ? snap.modelRoles : null;
-    st.modelKeys = snap.modelKeys && typeof snap.modelKeys === 'object' ? snap.modelKeys : null;
+    st.sys = snap.sys && typeof snap.users === 'object' ? snap.sys : null;
     st.projects = Array.isArray(snap.projects) ? snap.projects.filter((x) => x && x.host === peer.host) : [];
     st.answeredAt = Date.now();
     // news: anything redrawn, chat to relay, or a first answer, rttMs left
     // out (its jitter would pin the mesh hot)
-    const fp = JSON.stringify([st.entries, st.presence, st.lock, st.chain, st.platform, st.version, st.modelRoles, st.modelKeys, st.projects]);
+    const fp = JSON.stringify([st.entries, st.presence, st.lock, st.chain, st.platform, st.version, st.sys, st.projects]);
     if (fp !== st.fp || st.chat.length || !st.answered) clock.markHot();
     st.fp = fp;
     st.misses = 0;
@@ -403,9 +402,8 @@ module.exports = {
   peerIps,
   // answered within GIT_MAX_AGE_MS, a dead master's claim never outliving it
   peerGit: () => [...peerState.values()].filter((st) => Date.now() - (st.answeredAt || 0) <= GIT_MAX_AGE_MS).map((st) => st.git).filter(Boolean),
-  peerModelRoles: () => [...peerState.values()].map((st) => st.modelRoles).filter(Boolean),
-  // when each provider's key was set, the keys themselves fetched apart
-  peerModelKeys: () => [...peerState.entries()].filter(([, st]) => st.modelKeys).map(([host, st]) => ({ host, stamps: st.modelKeys })),
+  // when each sys file last changed, the files fetched apart
+  peerSys: () => [...peerState.entries()].filter(([, st]) => st.sys).map(([host, st]) => ({ host, stamps: st.sys })),
   peerModel: () => [...peerState.values()].filter((st) => Date.now() - (st.answeredAt || 0) <= MODEL_MAX_AGE_MS).map((st) => st.model).filter(Boolean),
   // the orangutan's projects on each answering peer
   peerProjects: () => [...peerState.values()].flatMap((st) => st.projects || []),

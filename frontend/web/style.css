@@ -2016,3 +2016,61 @@ input, textarea { caret-color: var(--accent); }
 .dk-mesh-pop .mesh-header { font-size: 0.72rem; }
 .dk-mesh-pop .mesh-header > * { background: var(--card); }
 @media (max-width: 720px) { .dk-mesh-pop { position: fixed; right: 0.5rem; left: 0.5rem; bottom: 3.6rem; width: auto; } }
+
+/* --- account: login, setup, profile, users, a locked host's login ----------- */
+.acct-login { display: flex; flex-direction: column; gap: 0.4rem; width: min(22rem, calc(100% - 2rem)); }
+.acct-login input, .acct-unlock input, .acct-new input {
+  min-width: 0; padding: 0.3rem 0.45rem; background: var(--card); border: 1px solid var(--border); color: var(--fg); font: inherit; font-size: 0.8rem;
+}
+.acct-login input:focus, .acct-unlock input:focus, .acct-new input:focus { outline: none; border-color: var(--accent); }
+.acct-login .update-actions { align-items: center; gap: 0.5rem; }
+.acct-login .dk-state { flex: 1; }
+.dk-login .update-actions { gap: 0.4rem; }
+.acct-pane { padding: 0.9rem; display: flex; flex-direction: column; gap: 0.4rem; overflow-y: auto; height: 100%; box-sizing: border-box; }
+.acct-pane .dk-pick-head { margin-top: 0.5rem; }
+.acct-user { grid-template-columns: minmax(5rem, 1fr) 1fr 5.5rem; }
+.acct-page { grid-template-columns: minmax(5rem, 1fr) 1fr auto auto auto; }
+.acct-new { grid-template-columns: 1fr 1fr 1fr 5.5rem; margin-top: 0.3rem; }
+.acct-check { display: flex; align-items: center; gap: 0.3rem; color: var(--muted); font-size: 0.75rem; }
+.acct-check input { accent-color: var(--accent); }
+.acct-users .dk-state.bad { min-height: 1em; margin-top: 0.3rem; white-space: normal; }
+.acct-pane button, .acct-users button, .acct-unlock button {
+  white-space: nowrap; font: inherit; font-size: 0.75rem; color: var(--fg); background: none;
+  border: 1px solid var(--muted); padding: 0.2rem 0.65rem; cursor: pointer;
+}
+.acct-pane button:hover:not(:disabled), .acct-users button:hover:not(:disabled), .acct-unlock button:hover:not(:disabled) { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.acct-pane button.danger, .acct-users button.danger { color: var(--offmesh); border-color: var(--offmesh); }
+.acct-pane button.danger:hover:not(:disabled), .acct-users button.danger:hover:not(:disabled) { background: var(--offmesh); color: var(--bg); }
+.acct-pane button.primary, .acct-users button.primary, .acct-unlock button.primary { color: var(--accent); border-color: var(--accent); font-weight: 600; }
+.acct-pane button.primary:hover, .acct-users button.primary:hover, .acct-unlock button.primary:hover { background: var(--accent); color: var(--bg); }
+.acct-pane button:disabled, .acct-users button:disabled { opacity: 0.5; cursor: default; }
+.acct-unlock {
+  position: fixed; z-index: 1000; width: 15rem; padding: 0.6rem; display: flex; flex-direction: column; gap: 0.35rem;
+  background: var(--card); border: 1px solid var(--border); box-shadow: var(--drop); animation: pop-in 0.12s ease-out;
+}
+.dk-chip.locked { color: var(--dim); display: inline-flex; align-items: center; gap: 0.3rem; }
+.dk-chip.locked::before { display: none; }
+.dk-chip.locked .ic { width: 0.75rem; height: 0.75rem; color: var(--warn); }
+.dk-chip.locked:hover { color: var(--fg); }
+.dk-profile { gap: 0.35rem; font: inherit; }
+.dk-profile-name { max-width: 7rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dk-icon.dk-users .ic { color: var(--sky); }
+@media (max-width: 720px) {
+  .acct-user, .acct-page, .acct-new { grid-template-columns: 1fr 1fr; }
+  .dk-profile-name { display: none; }
+}
+/* a subdomain's app, opened in a browser tab, an arrow on its tile's corner */
+.dk-tile .ic.dk-ext-mark {
+  position: absolute; right: -0.35rem; bottom: -0.35rem; width: 0.8rem; height: 0.8rem; padding: 0.05rem;
+  background: var(--card); border: 1px solid var(--border); color: var(--muted);
+}
+.dk-ext .dk-label { font-style: italic; }
+/* the bar's icon buttons one even row: same width, same glyph, no gap between */
+.dk-bar .dk-tray-wrap { margin-right: -0.6rem; }
+.dk-bar .dk-tray:not(.dk-profile), .dk-bar .update-wrap > button, .dk-bar .theme-toggle.top-theme {
+  width: 2.25rem; padding: 0; justify-content: center; display: flex; align-items: center;
+}
+.dk-bar .dk-tray .ic, .dk-bar .top-side svg { width: 0.85rem; height: 0.85rem; }
+.dk-bar .update-wrap[hidden] { display: none; }
+.dk-bar .dk-profile .dk-crown { stroke: var(--sand); }
+.dk-bar .dk-profile .ic { overflow: visible; }

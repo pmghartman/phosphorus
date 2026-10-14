@@ -1,10 +1,11 @@
 'use strict';
-// <game>.<GAME_ZONE> to its host's tailnet IP, for the split DNS domain
+// <game>.phosphorus to its host's tailnet IP, for the split DNS domain
 // mesh.js keeps pointed here
 
 const dgram = require('dgram');
 
-const ZONE = (process.env.GAME_ZONE || 'phosphorus').toLowerCase();
+// fixed, GAME_ZONE retired
+const ZONE = 'phosphorus';
 const TTL_S = 5; // short, so a game moving hosts shows up fast
 const RETRY_MS = 10000;
 const PORT = Number(process.env.GAME_DNS_PORT || 53); // the only port tailscale split DNS speaks

@@ -24,6 +24,8 @@ const reconfig = require('./reconfig');
 const stats = require('./stats');
 const media = require('./chatmedia');
 const collab = require('./collab');
+const users = require('./users');
+const sys = require('./sysfs');
 const { readJson, writeJsonAtomic, writeJsonSoon, tailnetIp, peerCall } = require('./util');
 
 // random per boot, a real restart told apart from a same-version update
@@ -35,9 +37,10 @@ const INGRESS_PORT = Number(process.env.INGRESS_PORT || 80);
 const STATE_DIR = process.env.STATE_DIR || '/state';
 const SELF_HOST = process.env.SELF_HOST || '';
 const BASE_DOMAIN = process.env.BASE_DOMAIN || '';
-const OWN_CHAT_FILE = path.join(STATE_DIR, 'own-chat.json');
-const CHAT_FILE = path.join(STATE_DIR, 'chat.json');
-const CLEAR_FILE = path.join(STATE_DIR, 'chat-clear.json');
+// the chat in sys var/chat, its own merge over the mesh
+const OWN_CHAT_FILE = sys.local('chat/own.json', path.join(STATE_DIR, 'own-chat.json'));
+const CHAT_FILE = sys.local('chat/merged.json', path.join(STATE_DIR, 'chat.json'));
+const CLEAR_FILE = sys.local('chat/clear.json', path.join(STATE_DIR, 'chat-clear.json'));
 const UPDATE_RESULT_FILE = path.join(STATE_DIR, 'update-result.json');
 const PLATFORM_FILE = path.join(STATE_DIR, 'platform.json');
 const GAME_KEY_DIR = path.join(STATE_DIR, 'game-control');
@@ -906,8 +909,7 @@ const GETS = {
     chain: update.sharedChain(),
     git: git.state(),
     model: model.state(),
-    modelRoles: model.roles(),
-    modelKeys: model.keyStamps(),
+    sys: sys.stamps(),
     projects: project.summaries(),
     chat: q.has('since') ? ownChat.filter((m) => m.seq > (Number(q.get('since')) || 0)) : [],
   }),
@@ -916,18 +918,18 @@ const GETS = {
   '/api/update/local/status': () => readJson(UPDATE_RESULT_FILE, { state: 'ok' }),
 };
 
-// PHOSPHORUS_UPDATE_PASSWORD from .env gating a start, unset: open, so a host whose
-// env predates the gate can still update itself out of that
-const UPDATE_PASSWORD = process.env.PHOSPHORUS_UPDATE_PASSWORD || '';
+// ADMIN_PASS from .env, the old PHOSPHORUS_UPDATE_PASSWORD still read; an admin's
+// session or the password starts a walk, unset: loopback's cli open
+const ADMIN_PASS = process.env.ADMIN_PASS || process.env.PHOSPHORUS_UPDATE_PASSWORD || '';
 
 // mesh-wide warning, counted down in the browser over the walk's grace window
 const ALERT_COLOR = '#f85149';
 const UPDATE_WARNING = 'phosphorus updating';
 
 // every way a browser drives this host's own chain, on one endpoint
-function chainAction(action, password) {
+function chainAction(action, password, admin) {
   if (action === 'start') {
-    if (UPDATE_PASSWORD && password !== UPDATE_PASSWORD) return [401, { error: 'wrong password' }];
+    if (!admin && (ADMIN_PASS ? password !== ADMIN_PASS : true)) return [401, { error: 'admins only, or the admin password' }];
     const started = update.start(git.rows().map((h) => h.host));
     if (started.locked) return [409, { status: 'locked', by: started.locked }];
     const alert = postOwn({
@@ -996,6 +998,20 @@ async function mintGuestKey() {
   }
 }
 
+// the users' endpoints, each (session, body) -> [status, body, cookie?]
+const USER_CALLS = {
+  'GET /api/me': (s) => (s ? [200, users.me(s)] : [401, { error: 'log in', setup: users.setup() }]),
+  'POST /api/login': (s, p, req) => users.login(p, req),
+  'POST /api/logout': (s, p, req) => [200, { ok: true }, users.clearCookie(req)],
+  'POST /api/me/vault': (s, p) => users.setVault(s, p),
+  'POST /api/me/prefs': (s, p) => users.setPrefs(s, p),
+  'POST /api/me/password': (s, p, req) => users.changePass(s, p, req),
+  'GET /api/users': (s) => users.list(s),
+  'POST /api/users': (s, p) => users.create(s, p),
+  'POST /api/users/admin': (s, p) => users.setAdmin(s, p),
+  'POST /api/users/delete': (s, p) => users.remove(s, p),
+};
+
 // every request on PORT, and whatever the ingress routes to the frontend
 function app(req, res) {
   const { pathname, searchParams } = new URL(req.url, 'http://localhost');
@@ -1005,6 +1021,29 @@ function app(req, res) {
   if (req.method === 'GET' && GETS[pathname]) {
     if (!isLocalOrPeer(req)) { res.writeHead(403).end('forbidden'); return; }
     sendJson(res, 200, GETS[pathname](searchParams));
+    return;
+  }
+
+  // the sys tree for a peer's pull, a browser's login and own vault
+  if (pathname === '/api/sys/sync' && req.method === 'GET') {
+    if (!isTailnet(req) || req.ingress) { res.writeHead(403).end('forbidden'); return; }
+    sendJson(res, 200, sys.dump());
+    return;
+  }
+  const userCall = USER_CALLS[`${req.method} ${pathname}`];
+  if (userCall) {
+    if (!isLocalOrPeer(req) || (req.method === 'POST' && !sameOrigin(req))) { res.writeHead(403).end('forbidden'); return; }
+    const s = users.session(req);
+    const reply = ([status, body, cookie]) => {
+      if (cookie) res.setHeader('Set-Cookie', cookie);
+      sendJson(res, status, body);
+    };
+    if (req.method === 'GET') { reply(userCall(s, {}, req)); return; }
+    readRaw(req, MAX_JSON_BODY).then(async (buf) => {
+      let p = {};
+      try { p = JSON.parse(buf.toString('utf8') || '{}') || {}; } catch {}
+      reply(await userCall(s, p, req));
+    }).catch(() => { if (!res.headersSent) res.writeHead(400).end('bad request'); });
     return;
   }
 
@@ -1045,13 +1084,6 @@ function app(req, res) {
       if (out[0] === 200) clock.markHot();
       return out;
     }, true);
-    return;
-  }
-
-  // the keys themselves, for peers alone, never through the ingress
-  if (pathname === '/api/model/keys' && req.method === 'GET') {
-    if (!isLoopback(req) && !isTailnet(req)) { res.writeHead(403).end('forbidden'); return; }
-    sendJson(res, 200, model.keys());
     return;
   }
 
@@ -1156,12 +1188,13 @@ function app(req, res) {
     if (!isBrowser(req)) { res.writeHead(403).end('forbidden'); return; }
     onJson(req, res, 1024, (p) => {
       clock.markHot(); // an update never watched lazily
-      return chainAction(p.action, String(p.password || ''));
+      const s = users.session(req);
+      return chainAction(p.action, String(p.password || ''), !!s?.admin || (!ADMIN_PASS && isLoopback(req)));
     });
     return;
   }
 
-  // browser only, behind Cloudflare Access
+  // browser only, behind the login
   if (pathname === '/api/join-key' && req.method === 'POST') {
     if (!isBrowser(req)) { res.writeHead(403).end('forbidden'); return; }
     mintGuestKey().then(([status, body]) => sendJson(res, status, body));
@@ -1401,7 +1434,7 @@ const actions = {
   game: (host, name, action) => (host === SELF_HOST ? runGameLocally(name, action) : forwardGame(host, name, action)),
   gitMaster: (host) => { clock.markHot(); return git.makeMaster(host); },
   modelRole: (role, m) => { const out = model.choose({ role, model: m }); if (out[0] === 200) clock.markHot(); return out; },
-  // start behind the update password, so phosphorus only ever continuing or cancelling
+  // start behind the admin password, so phosphorus only ever continuing or cancelling
   update: (action) => {
     clock.markHot();
     const [status, body] = chainAction(action, '');
@@ -1534,7 +1567,9 @@ function announceLeave(name) {
 }
 
 // history once joined, the dms in it only that name's
-function onChat(ws) {
+// a logged in user's chat name their user name
+function onChat(ws, s) {
+  const user = s && !s.boot ? s.user : '';
   ws.send(JSON.stringify({ type: 'presence', people: presenceFor(ws, allPresence()) }));
 
   ws.on('message', (raw) => {
@@ -1548,7 +1583,7 @@ function onChat(ws) {
     if (msg.type === 'ping') { ws.send(JSON.stringify({ type: 'pong' })); return; }
 
     if (msg.type === 'join') {
-      const name = String(msg.name || 'anon').trim().slice(0, MAX_NAME_LEN) || 'anon';
+      const name = user || String(msg.name || 'anon').trim().slice(0, MAX_NAME_LEN) || 'anon';
       ws.name = name;
       ws.color = VALID_COLORS.has(msg.color) ? msg.color : colorForName(name);
       sendHistory(ws);
@@ -1586,7 +1621,7 @@ function onChat(ws) {
 
     if (msg.type === 'rename') {
       const newName = String(msg.name || '').trim().slice(0, MAX_NAME_LEN);
-      if (!newName || newName === ws.name) return;
+      if (!newName || newName === ws.name || user) return;
       broadcast({ type: 'system', text: `${ws.name} renamed to ${newName}` });
       ws.name = newName;
       sendHistory(ws);
@@ -1784,7 +1819,7 @@ function onUpgrade(req, socket, head) {
   const { pathname, searchParams } = new URL(req.url, 'http://localhost');
   const refuse = (status) => socket.end(`HTTP/1.1 ${status}\r\n\r\n`);
   if (!isLocalOrPeer(req)) { refuse('403 Forbidden'); return; }
-  if (pathname === '/ws') { wss.handleUpgrade(req, socket, head, (ws) => onChat(keepAlive(ws))); return; }
+  if (pathname === '/ws') { wss.handleUpgrade(req, socket, head, (ws) => onChat(keepAlive(ws), users.session(req))); return; }
   if (pathname === '/api/state') { stateWss.handleUpgrade(req, socket, head, (ws) => onState(keepAlive(ws))); return; }
   if (pathname === '/api/stats') {
     // own: a peer's fan in, or the mcp's own sample
@@ -1856,7 +1891,7 @@ server.listen(PORT, () => {
   update.restoreChain();
   retractStaleAlerts();
   project.init();
-  proxy.listen(INGRESS_PORT, app, onUpgrade);
+  proxy.listen(INGRESS_PORT, app, onUpgrade, users.pass);
   stats.init({ self: () => ({ host: SELF_HOST, platform: PLATFORM, version: VERSION }), peers: mesh.peerIps });
   mcp.init({
     self: selfInfo, domain: () => BASE_DOMAIN, tailnet: mesh.tailnet, routes: mesh.routes, peerIps: mesh.peerIps,

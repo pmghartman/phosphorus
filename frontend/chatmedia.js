@@ -8,7 +8,8 @@ const http = require('http');
 const path = require('path');
 const { Transform, pipeline } = require('stream');
 
-const DIR = path.join(process.env.STATE_DIR || '/state', 'chat-media');
+// sys var/chat/media, this host's own
+const DIR = require('./sysfs').local('chat/media', path.join(process.env.STATE_DIR || '/state', 'chat-media'));
 const MAX_FILE = Number(process.env.CHAT_MEDIA_MAX_MB || 25) * 1024 * 1024;
 const MAX_TOTAL = Number(process.env.CHAT_MEDIA_TOTAL_MB || 1024) * 1024 * 1024;
 const MAX_FILES = 8;

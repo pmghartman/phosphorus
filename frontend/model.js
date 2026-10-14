@@ -6,15 +6,18 @@ const http = require('http');
 const path = require('path');
 const harness = require('./harness');
 const mesh = require('./mesh');
-const { FRONTEND_PORT, readJson, readFresh, requestJson, writeJsonAtomic } = require('./util');
+const sys = require('./sysfs');
+const { FRONTEND_PORT, readJson, readFresh, requestJson } = require('./util');
 
 const SELF_HOST = process.env.SELF_HOST || '';
 const STATE_DIR = process.env.STATE_DIR || '/state';
 const CLAIM_FILE = path.join(STATE_DIR, 'model-claim.json');
 const CLAIM_MAX_AGE_MS = 5000;
-// each role's model and when it was chosen, the latest choice on the mesh winning
-const ROLES_FILE = path.join(STATE_DIR, 'model-roles.json');
-const KEYS_FILE = path.join(STATE_DIR, 'model-keys.json');
+// the old per-host files, moved into sys etc/model/roles and etc/model/keys
+const OLD_ROLES_FILE = path.join(STATE_DIR, 'model-roles.json');
+const OLD_KEYS_FILE = path.join(STATE_DIR, 'model-keys.json');
+const roleFile = (r) => `etc/model/roles/${r}.json`;
+const keyFile = (p) => `etc/model/keys/${p}.json`;
 // the roles a model is asked as, more to come
 const ROLES = ['chimp', 'orangutan'];
 const { HANDLE, MESH } = harness;
@@ -69,23 +72,20 @@ const n = (v) => Number(v) || 0;
 
 // --- roles ------------------------------------------------------------------
 
-// '' for none, the mesh's own models as phosphorus/<host>
+// '' for none, the mesh's own models as phosphorus/<host>, each role a sys
+// file, the latest choice on the mesh winning
 const validChoice = (c) => !!c && (c.model === '' || MODEL_RE.test(c.model || '')) && Number.isFinite(c.at) && c.at <= Date.now() + 60000;
-const pickOf = (x, r) => (x && validChoice(x[r]) ? x[r] : null);
-const saved = readJson(ROLES_FILE, null) || {};
-const chosen = Object.fromEntries(ROLES.map((r) => [r, pickOf(saved, r) || { model: '', at: 0 }]));
 const meshHost = (model) => (model.startsWith(`${MESH}/`) ? model.slice(MESH.length + 1) : '');
+{
+  const old = readJson(OLD_ROLES_FILE, null) || {};
+  for (const r of ROLES) if (validChoice(old[r])) sys.adopt(roleFile(r), { model: old[r].model }, old[r].at);
+}
 
-// ours, each role's newer choice on a peer adopted and kept
 function roles() {
-  let changed = false;
-  for (const r of ROLES) {
-    const newer = mesh.peerModelRoles().map((x) => pickOf(x, r)).filter(Boolean).sort((a, b) => b.at - a.at)[0];
-    if (newer && newer.at > chosen[r].at) { chosen[r] = { model: newer.model, at: newer.at }; changed = true; }
-  }
-  if (changed) writeJsonAtomic(ROLES_FILE, chosen);
-  pullKeys();
-  return chosen;
+  return Object.fromEntries(ROLES.map((r) => {
+    const c = sys.read(roleFile(r));
+    return [r, { model: c && (c.model === '' || MODEL_RE.test(c.model || '')) ? c.model : '', at: sys.stamp(roleFile(r)) }];
+  }));
 }
 
 // a model as the chimp or the orangutan, mesh-wide: provider/model, or '' for none
@@ -94,9 +94,8 @@ function choose(p) {
   const model = String(p.model || '').trim();
   if (model && !MODEL_RE.test(model)) return [400, { error: 'model is provider/model, as anthropic/claude-sonnet-5-5' }];
   if (meshHost(model) && !runners(view()).some((s) => s.host === meshHost(model))) return [409, { error: `${meshHost(model)} runs no model` }];
-  chosen[p.role] = { model, at: Math.max(Date.now(), chosen[p.role].at + 1) };
-  writeJsonAtomic(ROLES_FILE, chosen);
-  return [200, chosen[p.role]];
+  sys.write(roleFile(p.role), { model });
+  return [200, roles()[p.role]];
 }
 
 // the role's mesh model while loaded, else the loaded one nearest its size
@@ -118,42 +117,19 @@ function resolve(states, role) {
 }
 
 // --- api keys -----------------------------------------------------------------
-// each provider's key and when set, '' once cleared, the latest on the mesh
-// winning; peers fetch them over the tailnet, browsers only see which are set
+// each provider's key a sys file, '' once cleared, the latest on the mesh
+// winning; browsers only see which are set
 
-const validKey = ([p, k]) => PROVIDER_RE.test(p) && p !== MESH && !!k && typeof k.key === 'string'
-  && k.key.length <= 512 && Number.isFinite(k.at) && k.at <= Date.now() + 60000;
-const keys = Object.fromEntries(Object.entries(readJson(KEYS_FILE, null) || {}).filter(validKey));
-const keyStamps = () => Object.fromEntries(Object.entries(keys).map(([p, k]) => [p, k.at]));
-const keyList = () => Object.keys(keys).filter((p) => keys[p].key).sort();
-const stamp = (p) => (keys[p] && keys[p].at) || 0;
-
-function merge(got) {
-  let changed = false;
-  for (const [p, k] of Object.entries(got && typeof got === 'object' ? got : {}).filter(validKey)) {
-    if (k.at > stamp(p)) { keys[p] = { key: k.key, at: k.at }; changed = true; }
+{
+  const old = readJson(OLD_KEYS_FILE, null) || {};
+  for (const [p, k] of Object.entries(old)) {
+    if (PROVIDER_RE.test(p) && p !== MESH && k && typeof k.key === 'string' && k.key.length <= 512) sys.adopt(keyFile(p), { key: k.key }, k.at);
   }
-  if (changed) writeJsonAtomic(KEYS_FILE, keys);
 }
-
-// a peer stamping a newer key: its keys fetched, one pull at a time, an
-// ask waiting on the pull running
-let pulling = null;
-function pullKeys() {
-  if (pulling) return pulling;
-  const newer = mesh.peerModelKeys().filter(({ stamps }) => Object.entries(stamps)
-    .some(([p, at]) => PROVIDER_RE.test(p) && Number(at) > stamp(p)));
-  if (!newer.length) return Promise.resolve();
-  pulling = (async () => {
-    const ips = mesh.peerIps();
-    for (const { host } of newer) {
-      const ip = ips.get(host);
-      const r = ip && await requestJson({ host: ip, port: FRONTEND_PORT, path: '/api/model/keys', timeout: 5000 }).catch(() => null);
-      if (r && r.status === 200) merge(r.body);
-    }
-  })().finally(() => { pulling = null; });
-  return pulling;
-}
+const keyOf = (p) => { const k = sys.read(keyFile(p)); return k && typeof k.key === 'string' ? k.key : ''; };
+const keyList = () => sys.list('etc/model/keys').map((f) => f.slice(0, -5)).filter((p) => PROVIDER_RE.test(p) && keyOf(p)).sort();
+// a key set elsewhere a moment ago already here
+const pullKeys = () => sys.pull().catch(() => {});
 
 // a provider's key set from a browser, '' clearing it
 function setKey(p) {
@@ -161,15 +137,14 @@ function setKey(p) {
   const key = String(p.key || '').trim();
   if (!PROVIDER_RE.test(provider) || provider === MESH) return [400, { error: 'provider is its id as models.dev has it, as anthropic' }];
   if (key.length > 512 || /\s/.test(key)) return [400, { error: 'bad key' }];
-  keys[provider] = { key, at: Math.max(Date.now(), stamp(provider) + 1) };
-  writeJsonAtomic(KEYS_FILE, keys);
+  sys.write(keyFile(provider), { key });
   return [200, { provider, set: !!key }];
 }
 
 // what opencode starts with: the mesh's models and the keys set
 const setup = (states) => ({
   mesh: runners(states).map((s) => ({ host: s.host, ctx: n(s.ctx) || DEFAULT_CTX })),
-  keys: Object.fromEntries(keyList().map((p) => [p, keys[p].key])),
+  keys: Object.fromEntries(keyList().map((p) => [p, keyOf(p)])),
 });
 
 // every provider opencode knows, the models of those it can use
@@ -445,5 +420,5 @@ async function eraseSlots() {
 
 module.exports = {
   HANDLE, ROLES, state, roles, choose, summary, ask, projectModel, purge, eraseSlots, serveChat, withContext,
-  keyStamps, setKey, keys: () => keys, catalog,
+  setKey, catalog,
 };

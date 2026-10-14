@@ -32,13 +32,16 @@ function Invoke-Cli([string[]]$CliArgs) {
     }
 }
 
-# PHOSPHORUS_UPDATE_PASSWORD from .env, as the web and cli ask it, unset: open
+# ADMIN_PASS from .env (PHOSPHORUS_UPDATE_PASSWORD before it), unset: open
 function Ask-Password {
     $envFile = Join-Path (Split-Path -Parent $Scripts) ".env"
-    $line = if (Test-Path $envFile) { Get-Content $envFile | Where-Object { $_.StartsWith("PHOSPHORUS_UPDATE_PASSWORD=") } | Select-Object -First 1 }
-    $want = if ($line) { $line.Substring("PHOSPHORUS_UPDATE_PASSWORD=".Length) }
+    $want = $null
+    foreach ($key in @("ADMIN_PASS=", "PHOSPHORUS_UPDATE_PASSWORD=")) {
+        $line = if (Test-Path $envFile) { Get-Content $envFile | Where-Object { $_.StartsWith($key) } | Select-Object -First 1 }
+        if ($line -and -not $want) { $want = $line.Substring($key.Length) }
+    }
     if (-not $want) { return }
-    $got = [Net.NetworkCredential]::new("", (Read-Host "update password" -AsSecureString)).Password
+    $got = [Net.NetworkCredential]::new("", (Read-Host "admin password" -AsSecureString)).Password
     if ($got -ne $want) { Write-Host "wrong password" -ForegroundColor Red; exit 1 }
 }
 
