@@ -1,6 +1,6 @@
 FROM debian:trixie-slim
 # inherited by every container off this image, for container/sweep.sh
-LABEL org.hesperus=git
+LABEL org.phosphorus=git
 
 ARG LITEFS_VERSION=v0.5.14
 ARG FORGEJO_VERSION=16.0.5
@@ -12,9 +12,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && echo user_allow_other >> /etc/fuse.conf \
     && rm -rf /var/lib/apt/lists/*
 
-# forgejo refusing root, ids matching what the old hesperus-git container wrote
-RUN groupadd -g 4000 hesperus \
- && useradd -u 4001 -g hesperus -d /var/lib/hesperus/git -s /usr/sbin/nologin git
+# forgejo refusing root, ids matching what the old phosphorus-git container wrote
+RUN groupadd -g 4000 phosphorus \
+ && useradd -u 4001 -g phosphorus -d /var/lib/phosphorus/git -s /usr/sbin/nologin git
 
 # --- litefs ------------------------------------------------------------
 RUN curl -fsSL "https://github.com/superfly/litefs/releases/download/${LITEFS_VERSION}/litefs-${LITEFS_VERSION}-linux-${TARGETARCH:-amd64}.tar.gz" \
@@ -33,10 +33,10 @@ COPY git/container/litefs.yml.tmpl /etc/litefs/litefs.yml.tmpl
 COPY git/container/app.ini.tmpl    /etc/forgejo/app.ini.tmpl
 COPY git/container/rsyncd.conf     /etc/rsyncd.conf
 COPY git/container/git-daemon.sh   /usr/local/bin/git-daemon.sh
-COPY git/container/elector.js      /usr/local/lib/hesperus-git/elector.js
-# the link for phosphorus-era repo hooks, their paths still /var/lib/phosphorus/git
+COPY git/container/elector.js      /usr/local/lib/phosphorus-git/elector.js
+# the link for hesperus-era repo hooks, their paths still /var/lib/hesperus/git
 RUN chmod +x /usr/local/bin/git-daemon.sh \
- && mkdir -p /var/lib/hesperus/git /var/lib/litefs-internal /var/lib/phosphorus \
- && ln -s /var/lib/hesperus/git /var/lib/phosphorus/git
+ && mkdir -p /var/lib/phosphorus/git /var/lib/litefs-internal /var/lib/hesperus \
+ && ln -s /var/lib/phosphorus/git /var/lib/hesperus/git
 
 ENTRYPOINT ["/usr/local/bin/git-daemon.sh"]

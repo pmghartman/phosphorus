@@ -5,7 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 const mesh = require('./mesh');
-const { hesperusIni, readJson, readFresh, writeJsonAtomic, peerCall } = require('./util');
+const { phosphorusIni, readJson, readFresh, writeJsonAtomic, peerCall } = require('./util');
 
 const SELF_HOST = process.env.SELF_HOST || '';
 const STATE_DIR = process.env.STATE_DIR || '/state';
@@ -41,7 +41,7 @@ function validRoster(r) {
 
 let roster = validRoster(readJson(ROSTER_FILE, null)) || { epoch: 0, members: [], prev: null };
 
-const isGitHost = () => hesperusIni('git', 'host') === 'true';
+const isGitHost = () => phosphorusIni('git', 'host') === 'true';
 
 // monotonic clock: no lease stretched or cut by a wall-clock step
 function vote(p) {
@@ -154,7 +154,7 @@ async function force(target) {
   return out;
 }
 
-// hesperus's press: done only once the target leads, so never pressed twice,
+// phosphorus's press: done only once the target leads, so never pressed twice,
 // already master counts as done
 async function makeMaster(target) {
   if (leads(target)) return [200, { master: target, note: 'already master' }];

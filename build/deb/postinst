@@ -1,17 +1,23 @@
 #!/bin/sh
-# the release into /var/lib/hesperus (an old checkout migrated first), the update agent, the cli
+# the release into /var/lib/phosphorus (an old checkout migrated first), the update agent, the cli
 set -e
 [ "$1" = configure ] || exit 0
+# a hesperus package's agent and feed, its keyring gone once the transitional hesperus lands;
+# its home migrated by install.sh below
+if [ -d /run/systemd/system ] && [ -e /usr/lib/systemd/system/hesperus-update.path ]; then
+    systemctl disable --now hesperus-update.path >/dev/null 2>&1 || true
+fi
+rm -f /etc/systemd/system/multi-user.target.wants/hesperus-update.path /etc/apt/sources.list.d/hesperus.list
 mode=
 [ -n "${2:-}" ] && mode=--update
-mkdir -p /var/lib/hesperus/state
-if ! bash /usr/lib/hesperus/scripts/install.sh $mode; then
-    echo "hesperus isn't running yet: fix the above, then sudo hesperus start" >&2
+mkdir -p /var/lib/phosphorus/state
+if ! bash /usr/lib/phosphorus/scripts/install.sh $mode; then
+    echo "phosphorus isn't running yet: fix the above, then sudo phosphorus start" >&2
 fi
-ln -sfn /var/lib/hesperus/scripts/hesperus /usr/local/bin/hesperus
-ln -sfn /var/lib/hesperus/scripts/hesperus /usr/local/bin/hesp
+ln -sfn /var/lib/phosphorus/scripts/phosphorus /usr/local/bin/phosphorus
+ln -sfn /var/lib/phosphorus/scripts/phosphorus /usr/local/bin/phos
 if [ -d /run/systemd/system ]; then
     systemctl daemon-reload
-    systemctl enable --now hesperus-update.path >/dev/null 2>&1 || true
+    systemctl enable --now phosphorus-update.path >/dev/null 2>&1 || true
 fi
 exit 0

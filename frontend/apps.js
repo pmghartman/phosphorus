@@ -8,10 +8,10 @@ const net = require('net');
 const path = require('path');
 const { Client } = require('ssh2');
 const WebSocket = require('ws');
-const { hesperusIni } = require('./util');
+const { phosphorusIni } = require('./util');
 
 // the host's / as compose mounts it, unset under a desktop VM
-const HOST_ROOT = process.env.HESPERUS_HOST_ROOT ? '/hostfs' : '';
+const HOST_ROOT = process.env.PHOSPHORUS_HOST_ROOT ? '/hostfs' : '';
 const APP_DIRS = [
   '/usr/share/applications', '/usr/local/share/applications',
   '/var/lib/flatpak/exports/share/applications', '/var/lib/snapd/desktop/applications',
@@ -33,7 +33,7 @@ const ID = /^[A-Za-z0-9][A-Za-z0-9._+-]*$/;
 // what xpra printed last, for a failed start's reason
 const LOG_MAX = 4096;
 
-const enabled = () => hesperusIni('apps', 'host') === 'true';
+const enabled = () => phosphorusIni('apps', 'host') === 'true';
 
 // [Desktop Entry]'s own keys, localized ones skipped
 function parseDesktop(text) {
@@ -84,10 +84,10 @@ const hasXpra = () => XPRA.some((p) => fs.existsSync(HOST_ROOT + p));
 
 // why this host lists nothing, '' when it can
 function blocked(platform) {
-  if (!enabled()) return 'apps are off here, [apps] host in hesperus.ini';
+  if (!enabled()) return 'apps are off here, [apps] host in phosphorus.ini';
   if (platform !== 'linux') return 'apps are Linux only for now';
   if (!HOST_ROOT) return "can't see the host's root";
-  if (!hasXpra()) return 'xpra is not installed on this host, hesperus start installs it';
+  if (!hasXpra()) return 'xpra is not installed on this host, phosphorus start installs it';
   return '';
 }
 

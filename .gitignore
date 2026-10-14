@@ -4,7 +4,7 @@
 # runtime state, regenerated per host, not shipped
 /state/
 
-# forgejo + litefs data root, see git/container/ and config/hesperus.ini
+# forgejo + litefs data root, see git/container/ and config/phosphorus.ini
 /git/data/
 
 .DS_Store
@@ -15,7 +15,7 @@ node_modules/
 /files/*
 !/files/.gitkeep
 
-# generated per host from [files] in config/hesperus.ini
+# generated per host from [files] in config/phosphorus.ini
 /docker-compose.files.yml
 
 # the model's gguf on the model host, not shipped

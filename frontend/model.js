@@ -69,12 +69,12 @@ const n = (v) => Number(v) || 0;
 
 // --- roles ------------------------------------------------------------------
 
-// '' for none, the mesh's own models as hesperus/<host>
+// '' for none, the mesh's own models as phosphorus/<host>
 const validChoice = (c) => !!c && (c.model === '' || MODEL_RE.test(c.model || '')) && Number.isFinite(c.at) && c.at <= Date.now() + 60000;
-// a phosphorus-era choice, the mesh's models once phos/<host>
-const LEGACY_MESH = 'phos/';
-const renamed = (c) => (c && typeof c.model === 'string' && c.model.startsWith(LEGACY_MESH)
-  ? { ...c, model: `${MESH}/${c.model.slice(LEGACY_MESH.length)}` } : c);
+// an older choice, the mesh's models once phos/<host> or hesperus/<host>
+const LEGACY_MESH = /^(phos|hesperus)\//;
+const renamed = (c) => (c && typeof c.model === 'string' && LEGACY_MESH.test(c.model)
+  ? { ...c, model: c.model.replace(LEGACY_MESH, `${MESH}/`) } : c);
 const pickOf = (x, r) => (x && validChoice(renamed(x[r])) ? renamed(x[r]) : null);
 const saved = readJson(ROLES_FILE, null) || {};
 const chosen = Object.fromEntries(ROLES.map((r) => [r, pickOf(saved, r) || { model: '', at: 0 }]));
@@ -216,13 +216,13 @@ function summary() {
 // told apart
 function excuse(states, s) {
   if (!states.length) return 'not loaded: no host is running the model daemon';
-  if (!s) return 'not loaded: no host has host = true under [model] in its hesperus.ini';
+  if (!s) return 'not loaded: no host has host = true under [model] in its phosphorus.ini';
   if (s.why) return `not loaded: ${s.why}`;
   if (s.oom && s.server !== 'ready') return 'out of vram, lower ctx or slots';
   const times = (k) => `${k} time${k === 1 ? '' : 's'}`;
   // shown whatever the server is doing, since a crash loop is mostly retries
   const crashed = s.exits
-    ? `llama-server has exited ${times(s.exits)} since it was last up (${s.lastExit}), docker logs hesperus on ${s.host} says why`
+    ? `llama-server has exited ${times(s.exits)} since it was last up (${s.lastExit}), docker logs phosphorus on ${s.host} says why`
     : '';
   if (crashed && s.server !== 'loading') return `not loaded: ${crashed}`;
   if (s.server === 'loading') {

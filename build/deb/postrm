@@ -1,18 +1,18 @@
 #!/bin/sh
-# remove: the cli links; purge: containers, volumes and /var/lib/hesperus (git data, chat, shares)
+# remove: the cli links; purge: containers, volumes and /var/lib/phosphorus (git data, chat, shares)
 set -e
 case "$1" in
 remove | purge)
-    for l in hesperus hesp; do
-        if [ "$(readlink /usr/local/bin/$l 2>/dev/null)" = /var/lib/hesperus/scripts/hesperus ]; then rm -f /usr/local/bin/$l; fi
+    for l in phosphorus phos; do
+        if [ "$(readlink /usr/local/bin/$l 2>/dev/null)" = /var/lib/phosphorus/scripts/phosphorus ]; then rm -f /usr/local/bin/$l; fi
     done
-    rm -f /etc/ssh/ssh_config.d/hesperus.conf
+    rm -f /etc/ssh/ssh_config.d/phosphorus.conf
     [ -d /run/systemd/system ] && systemctl daemon-reload || true
     ;;
 esac
 if [ "$1" = purge ]; then
-    docker rm -f hesperus-git hesperus hesperus-search hesperus-updater >/dev/null 2>&1 || true
-    docker volume rm hesperus_tailscale-state hesperus-git-data hesperus-git-db hesperus-models >/dev/null 2>&1 || true
-    rm -rf /var/lib/hesperus
+    docker rm -f phosphorus-git phosphorus phosphorus-search phosphorus-updater >/dev/null 2>&1 || true
+    docker volume rm phosphorus_tailscale-state phosphorus-git-data phosphorus-git-db phosphorus-models >/dev/null 2>&1 || true
+    rm -rf /var/lib/phosphorus
 fi
 exit 0

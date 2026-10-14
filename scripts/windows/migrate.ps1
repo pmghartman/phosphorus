@@ -1,6 +1,6 @@
-# old checkout (phosphorus, git-era hesperus) into a home: env, config, data, tailnet id
+# old install (phosphorus checkout, hesperus checkout or home) into a home: env, config, data, tailnet id
 # the old tree kept
-param([Parameter(Mandatory)][string]$Old, [Parameter(Mandatory)][string]$HesperusHome)
+param([Parameter(Mandatory)][string]$Old, [Parameter(Mandatory)][string]$PhosphorusHome)
 $ErrorActionPreference = "Stop"
 
 function Say($msg) { Write-Host "[migrate] $msg" }
@@ -13,19 +13,19 @@ function ConvertFrom-VmPath([string]$P) {
 }
 
 $Old = (Resolve-Path $Old).Path
-$HomeDir = (Resolve-Path $HesperusHome).Path
+$HomeDir = (Resolve-Path $PhosphorusHome).Path
 if ($Old -eq $HomeDir) { Fail "old checkout and home are the same directory" }
 if (-not (Test-Path (Join-Path $Old ".env"))) { Fail "no .env in $Old" }
 if (Test-Path (Join-Path $HomeDir ".env")) { Fail "$HomeDir already has a .env, migrated before?" }
 
 # names by era: containers, volumes, ini
-$Pre = "phosphorus"; $Ini = "phos.ini"
+$Pre = "phosphorus"; $Ini = "phosphorus.ini"
 # whichever container mounts this checkout names the era
 foreach ($c in @(Quiet { docker ps -a --format '{{.Names}}' })) {
     $src = ConvertFrom-VmPath (Quiet { docker inspect $c --format '{{range .Mounts}}{{if eq .Destination "/repo"}}{{.Source}}{{end}}{{end}}' })
     if ($c -and $src -and ($src.TrimEnd('\') -eq $Old.TrimEnd('\'))) { $Pre = $c; break }
 }
-if (-not (Test-Path (Join-Path $Old "config/phos.ini"))) { $Ini = "hesperus.ini" }
+foreach ($i in @("phos.ini", "hesperus.ini")) { if (Test-Path (Join-Path $Old "config/$i")) { $Ini = $i } }
 $Project = Quiet { docker inspect $Pre --format '{{index .Config.Labels "com.docker.compose.project"}}' }
 if (-not $Project) { $Project = ((Split-Path -Leaf $Old).ToLower() -replace '[^a-z0-9_-]', '') }
 Say "moving $Old ($Pre, compose project $Project) into $HomeDir"
@@ -35,15 +35,16 @@ foreach ($c in @("$Pre-git", $Pre, "$Pre-search")) {
     Quiet { docker inspect $c } | Out-Null
     if ($LASTEXITCODE) { continue }
     Say "stopping $c"
-    Add-Content (Join-Path $HomeDir ".hesperus-migrated-containers") $c
+    Add-Content (Join-Path $HomeDir ".phosphorus-migrated-containers") $c
     Quiet { docker update --restart=no $c } | Out-Null
     Quiet { docker stop -t 30 $c } | Out-Null
-    if ($Pre -eq "hesperus") { Quiet { docker rm $c } | Out-Null }
+    if ($Pre -eq "phosphorus") { Quiet { docker rm $c } | Out-Null }
 }
 foreach ($id in @(Quiet { docker ps -aq --filter "label=org.$Pre.sandbox" })) { if ($id) { Quiet { docker rm -f $id } | Out-Null } }
 if ($Pre -eq "phosphorus") { Quiet { docker network rm phos-sandbox } | Out-Null }
+if ($Pre -eq "hesperus") { Quiet { docker network rm hesperus-sandbox } | Out-Null }
 
-# .env as it was, PHOS_ renamed, games under the hesperus zone
+# .env as it was, PHOS_ and HESPERUS_ renamed, games under the phosphorus zone
 # GIT_* (update.sh's private git host) dropped with their comment block
 $EnvLines = [System.Collections.Generic.List[string]]::new()
 $Buf = @()
@@ -51,17 +52,17 @@ foreach ($l in (Get-Content (Join-Path $Old ".env"))) {
     if ($l -match '^#' -or $l -eq "") { $Buf += $l; continue }
     if ($l -match '^GIT_(USERNAME|EMAIL|PASSWORD)=') { $Buf = @(); continue }
     $Buf | ForEach-Object { $EnvLines.Add($_) }; $Buf = @()
-    $EnvLines.Add(($l -replace '^PHOS_', 'HESPERUS_' -replace '^GAME_ZONE=.*', 'GAME_ZONE=hesperus'))
+    $EnvLines.Add(($l -replace '^(PHOS|HESPERUS)_', 'PHOSPHORUS_' -replace '^GAME_ZONE=.*', 'GAME_ZONE=phosphorus'))
 }
 $Buf | ForEach-Object { $EnvLines.Add($_) }
-if (-not ($EnvLines -match '^GAME_ZONE=')) { $EnvLines.Add("GAME_ZONE=hesperus") }
+if (-not ($EnvLines -match '^GAME_ZONE=')) { $EnvLines.Add("GAME_ZONE=phosphorus") }
 Set-Content (Join-Path $HomeDir ".env") $EnvLines
 
 New-Item -ItemType Directory -Force (Join-Path $HomeDir "config") | Out-Null
 $src = Join-Path $Old "config/services.export"
 if (Test-Path $src) { Copy-Item $src (Join-Path $HomeDir "config/services.export") -Force }
 $src = Join-Path $Old "config/$Ini"
-if (Test-Path $src) { Copy-Item $src (Join-Path $HomeDir "config/hesperus.ini") -Force }
+if (Test-Path $src) { Copy-Item $src (Join-Path $HomeDir "config/phosphorus.ini") -Force }
 
 foreach ($d in @("state", "files", "git/data", "models")) {
     $s = Join-Path $Old $d
@@ -93,10 +94,10 @@ function Copy-Volume([string]$From, [string]$To) {
     docker run --rm -v "${From}:/from:ro" -v "${To}:/to" alpine:3 cp -a /from/. /to/
     if ($LASTEXITCODE) { Fail "couldn't copy volume $From" }
 }
-Copy-Volume "${Project}_tailscale-state" "hesperus_tailscale-state"
-Copy-Volume "$Pre-git-data" "hesperus-git-data"
-Copy-Volume "$Pre-git-db" "hesperus-git-db"
-Copy-Volume "$Pre-models" "hesperus-models"
+Copy-Volume "${Project}_tailscale-state" "phosphorus_tailscale-state"
+Copy-Volume "$Pre-git-data" "phosphorus-git-data"
+Copy-Volume "$Pre-git-db" "phosphorus-git-db"
+Copy-Volume "$Pre-models" "phosphorus-models"
 
 # the old ssh include and PATH entry, the new ones put back by bring-up
 $SshConf = Join-Path $env:ProgramData "ssh\ssh_config"
@@ -111,6 +112,6 @@ if (($UserPath -split ';') -contains $OldBin) {
     [Environment]::SetEnvironmentVariable("Path", (($UserPath -split ';') | Where-Object { $_ -and $_ -ne $OldBin }) -join ';', "User")
 }
 
-Set-Content (Join-Path $HomeDir ".hesperus-migrated-from") $Old
-Say "done, $Old left as it was: delete it once hesperus is up"
+Set-Content (Join-Path $HomeDir ".phosphorus-migrated-from") $Old
+Say "done, $Old left as it was: delete it once phosphorus is up"
 exit 0

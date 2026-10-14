@@ -16,12 +16,12 @@ if (-not (Test-Path config/services.export)) { Fail "config/services.export not 
 # --- native tailscaled conflict check ----------------------------------------
 # the container's tailscaled on this machine's network, a native client
 # fighting it for the TUN interface
-$hesperusRunning = (Invoke-Quiet { docker inspect -f '{{.State.Running}}' hesperus }) -eq "true"
+$phosphorusRunning = (Invoke-Quiet { docker inspect -f '{{.State.Running}}' phosphorus }) -eq "true"
 $tsService = Get-Service -Name Tailscale -ErrorAction SilentlyContinue
-if ($hesperusRunning) {
-    Say "hesperus is already running, skipping the native-client check"
+if ($phosphorusRunning) {
+    Say "phosphorus is already running, skipping the native-client check"
 } elseif ($tsService -and $tsService.Status -eq "Running") {
-    Fail "native Tailscale service running, colliding with hesperus's own tailscaled, stop it first (Stop-Service Tailscale) and quit the tray app"
+    Fail "native Tailscale service running, colliding with phosphorus's own tailscaled, stop it first (Stop-Service Tailscale) and quit the tray app"
 }
 
 # --- docker's ram -----------------------------------------------------------
@@ -63,9 +63,9 @@ if ($kernel -and $kernel -notmatch "WSL") {
     Say "docker here isn't on the wsl2 backend, set the vm's memory in Docker Desktop > Settings > Resources instead"
     $wslRestart = $false
 }
-if ($wslRestart -and $hesperusRunning) {
-    Say "it applies on the next 'wsl --shutdown', which stops hesperus and every other wsl distro for a moment"
-} elseif ($wslRestart -and $env:HESPERUS_NONINTERACTIVE) {
+if ($wslRestart -and $phosphorusRunning) {
+    Say "it applies on the next 'wsl --shutdown', which stops phosphorus and every other wsl distro for a moment"
+} elseif ($wslRestart -and $env:PHOSPHORUS_NONINTERACTIVE) {
     # no Docker Desktop to bring it back headless, never shut down unattended
     Say "it applies on the next reboot or 'wsl --shutdown'"
 } elseif ($wslRestart) {
@@ -77,7 +77,7 @@ if ($wslRestart -and $hesperusRunning) {
         if (Invoke-Quiet { docker info --format '{{.ServerVersion}}' }) { $engine = $true; break }
         Start-Sleep -Seconds 2
     }
-    if (-not $engine) { Fail "docker never came back after wsl --shutdown, start Docker Desktop and run hesperus start again" }
+    if (-not $engine) { Fail "docker never came back after wsl --shutdown, start Docker Desktop and run phosphorus start again" }
 }
 # what the model tab shows against the vm's own ram
 New-Item -ItemType Directory -Force -Path state | Out-Null
@@ -111,27 +111,27 @@ if ($current -contains $include) {
     Set-Content $sshConf (@($include) + $current)
 }
 
-# --- hesperus on PATH -------------------------------------------------------------
-$hesperusBin = Join-Path $PSScriptRoot "bin"
+# --- phosphorus on PATH -------------------------------------------------------------
+$phosphorusBin = Join-Path $PSScriptRoot "bin"
 $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
-if (($userPath -split ';') -contains $hesperusBin) {
-    Say "hesperus already on PATH, skipping"
+if (($userPath -split ';') -contains $phosphorusBin) {
+    Say "phosphorus already on PATH, skipping"
 } else {
-    Say "putting hesperus on PATH, new shells pick it up"
-    [Environment]::SetEnvironmentVariable("Path", (@($userPath, $hesperusBin) | Where-Object { $_ }) -join ';', "User")
+    Say "putting phosphorus on PATH, new shells pick it up"
+    [Environment]::SetEnvironmentVariable("Path", (@($userPath, $phosphorusBin) | Where-Object { $_ }) -join ';', "User")
 }
 
 # --- git-host opt-in ---------------------------------------------------
-if (-not (Get-HesperusIniPath) -and [Environment]::UserInteractive -and -not $env:HESPERUS_NONINTERACTIVE) {
+if (-not (Get-PhosphorusIniPath) -and [Environment]::UserInteractive -and -not $env:PHOSPHORUS_NONINTERACTIVE) {
     $ans = Read-Host "make this host a git host (forgejo/litefs)? [y/N]"
     $host_ = if ($ans -match '^[Yy]') { "true" } else { "false" }
-    Set-Content -Path config/hesperus.ini -Value "[git]", "host = $host_"
+    Set-Content -Path config/phosphorus.ini -Value "[git]", "host = $host_"
 }
 
 # on a live host, a swap detached through WMI by rebuild.ps1, nothing to
 # wait on
-$Bootstrap = ((Invoke-Quiet { docker inspect -f '{{.State.Running}}' hesperus }) -ne "true")
-Say "building and starting hesperus..."
+$Bootstrap = ((Invoke-Quiet { docker inspect -f '{{.State.Running}}' phosphorus }) -ne "true")
+Say "building and starting phosphorus..."
 & "$PSScriptRoot/rebuild.ps1"
 if ($LASTEXITCODE) { Fail "build failed, nothing changed" }
 
@@ -141,14 +141,14 @@ if ($Bootstrap) {
     Say "waiting for the frontend..."
     $up = $false
     for ($i = 0; $i -lt 30; $i++) {
-        docker compose exec -T hesperus curl -s -o /dev/null "http://127.0.0.1:8090/"
+        docker compose exec -T phosphorus curl -s -o /dev/null "http://127.0.0.1:8090/"
         if ($LASTEXITCODE -eq 0) { $up = $true; break }
         Start-Sleep -Seconds 2
     }
     if (-not $up) { Fail "the frontend never came up, check: docker compose logs -f" }
     Say "the frontend is up"
 } else {
-    Say "swapping containers in the background, Get-Content -Wait $env:TEMP\hesperus-update.log to follow"
+    Say "swapping containers in the background, Get-Content -Wait $env:TEMP\phosphorus-update.log to follow"
 }
 
-Say "done. 'docker compose logs -f' to watch hesperus come up."
+Say "done. 'docker compose logs -f' to watch phosphorus come up."

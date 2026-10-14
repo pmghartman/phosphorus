@@ -1,9 +1,0 @@
-[Unit]
-Description=Hesperus update requests from the web UI and cli
-
-[Path]
-PathExists=/var/lib/hesperus/state/update-request.json
-MakeDirectory=yes
-
-[Install]
-WantedBy=multi-user.target

@@ -16,11 +16,11 @@
   --bg: #141414;
   --fg: #e0e0e0;
   --muted: #9d9d9d;
-  --accent: #6f9fd0;
-  --accent-2: #c4b066;
+  --accent: #9f81cf;
+  --accent-2: #ce8755;
   --dim: #555555;
-  --glyph-blue: #4a9ff0;
-  --glyph-gold: #d8c45a;
+  --glyph-purple: #a371f7;
+  --glyph-orange: #f0883e;
   --border: #2e2e2e;
   --card: #1b1b1b;
   --tabbar: #0c0c0c;
@@ -39,14 +39,14 @@
   --lift: 0 1px 2px rgb(0 0 0 / 0.3), 0 14px 30px -18px rgb(0 0 0 / 0.8);
   --drop: 0 2px 6px rgb(0 0 0 / 0.35), 0 18px 40px -16px rgb(0 0 0 / 0.85);
   --lift-sm: 0 1px 2px rgb(0 0 0 / 0.35);
-  /* muted companions to the blue and gold, one per kind of thing, clear of both */
+  /* muted companions to the purple and orange, one per kind of thing */
   --teal: #6fb3a8;
   --sage: #93ad7d;
-  --iris: #a397d6;
+  --sky: #7fa0c9;
   --rose: #c98ba0;
-  --clay: #c9916b;
+  --sand: #c4ab78;
   /* graph nodes: self and serving hosts far apart in hue and lightness */
-  --mesh-self: #8cc4ff;
+  --mesh-self: #b48cff;
   --mesh-active: #4fc98a;
   /* page and terminal alike */
   --font: "Geist Mono Variable", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
@@ -55,18 +55,18 @@
 /* light: clean neutral surfaces, the accents inked darker to hold up on white */
 :root[data-theme="light"] {
   color-scheme: light;
-  --accent: #2c6cb0;
-  --accent-2: #86690b;
-  --glyph-blue: #1e74cc;
-  --glyph-gold: #a8830a;
+  --accent: #6a4bb0;
+  --accent-2: #a65a1e;
+  --glyph-purple: #7c4ddb;
+  --glyph-orange: #c4621a;
   --online: #1a7f37;
   --offmesh: #cf222e;
   --warn: #9a6700;
   --teal: #2f7f72;
   --sage: #577a3c;
-  --iris: #6a5bb5;
+  --sky: #3d6a9e;
   --rose: #a8506f;
-  --clay: #a5612f;
+  --sand: #8a6a2c;
   --bg: #ffffff;
   --fg: #1f1f23;
   --muted: #6b6b73;
@@ -79,7 +79,7 @@
   --lift: 0 1px 2px rgb(24 24 27 / 0.05), 0 14px 30px -20px rgb(24 24 27 / 0.22);
   --drop: 0 2px 6px rgb(24 24 27 / 0.08), 0 18px 40px -18px rgb(24 24 27 / 0.3);
   --lift-sm: 0 1px 2px rgb(24 24 27 / 0.08);
-  --mesh-self: #2f7fcf;
+  --mesh-self: #7a4fd6;
   --mesh-active: #2c9a5c;
 }
 
@@ -178,14 +178,14 @@ body {
 .top-side > button:hover, .top-side > button:focus-visible, .update-wrap > button:hover, .update-wrap > button:focus-visible { color: var(--fg); background: var(--tab-hover); outline: none; }
 /* open: joined to the page over the bar's rule, as an active tab */
 .top-side > button[aria-expanded="true"], .update-wrap > button[aria-expanded="true"] { color: var(--fg); background: var(--bg); border-top-color: var(--accent); box-shadow: 0 1px 0 var(--bg); }
-#top-update { color: var(--iris); }
+#top-update { color: var(--sky); }
 .top-side svg { width: 0.85rem; height: 0.85rem; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
 
 /* news for the update: hosts on different versions, or one under way */
 #top-update { position: relative; }
 #top-update[data-news]::after {
   content: ''; position: absolute; top: 0.45rem; right: 0.5rem; width: 0.3rem; height: 0.3rem;
-  border-radius: 50%; background: var(--clay);
+  border-radius: 50%; background: var(--sand);
 }
 /* the theme beside them, a tab like the side icons */
 .theme-toggle.top-theme {
@@ -208,7 +208,7 @@ body {
   flex: none; display: flex; align-items: center; justify-content: center;
   width: 2.75rem; height: 100%; padding: 0;
   background: none; border: none;
-  color: var(--clay); cursor: pointer;
+  color: var(--sand); cursor: pointer;
 }
 .theme-toggle:hover { color: var(--accent); }
 /* dark a filled moon, light a sun, oled a hollow thin moon, on the button and beside each pick */
@@ -259,8 +259,8 @@ body {
 /* numbered as in the cli, and as picked by 1-9 */
 .tab-btn::before { counter-increment: tab; content: counter(tab); color: var(--dim); transition: color 0.15s; }
 .tab-btn.active::before { color: var(--accent); }
-/* a terminal hesperus may read */
-.tab-btn.shared .tab-label::after { content: ' · hesperus'; color: var(--accent); }
+/* a terminal phosphorus may read */
+.tab-btn.shared .tab-label::after { content: ' · phosphorus'; color: var(--accent); }
 
 .tab-btn:hover { color: var(--fg); background: var(--tab-hover); }
 
@@ -457,8 +457,8 @@ body {
 .dk-icon:focus-visible { outline: none; }
 .dk-icon:active .dk-tile { transform: translateY(1px); }
 .dk-icon.dk-terminal .ic { color: var(--accent); }
-.dk-icon.dk-files .ic { color: var(--clay); }
-.dk-icon.dk-editor .ic { color: var(--iris); }
+.dk-icon.dk-files .ic { color: var(--sand); }
+.dk-icon.dk-editor .ic { color: var(--sky); }
 .dk-icon.dk-service .ic { color: var(--teal); }
 .dk-label, .dk-icon .dk-sub { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dk-sub { color: var(--muted); font-size: 0.65rem; }
@@ -607,8 +607,8 @@ body {
 .fm-tile .ic { width: 2rem; height: 2rem; stroke-width: 0.8; }
 .fm-tile .fm-label { max-width: 100%; text-align: center; white-space: normal; word-break: break-word; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .fm-empty { padding: 1.5rem; text-align: center; color: var(--muted); grid-column: 1 / -1; }
-.fm-dir { color: var(--clay); }
-.fm-file { color: var(--iris); }
+.fm-dir { color: var(--sand); }
+.fm-file { color: var(--sky); }
 .fm-code { color: var(--accent); }
 .fm-image { color: var(--teal); }
 .fm-video, .fm-pdf { color: var(--rose); }
@@ -717,11 +717,11 @@ body {
 .git-host.master .git-bubble { color: var(--accent); }
 .git-host.master .git-bubble::before { background: currentColor; }
 .git-host:is(.catching, .down, .busy) .git-bubble::before { display: inline; width: auto; height: auto; border: 0; border-radius: 0; background: none; }
-.git-host.catching .git-bubble { color: var(--clay); }
+.git-host.catching .git-bubble { color: var(--sand); }
 .git-host.catching .git-bubble::before { content: "◌"; }
 .git-host.down .git-bubble { color: var(--offmesh); }
 .git-host.down .git-bubble::before { content: "×"; }
-.git-host.busy .git-bubble { color: var(--iris); }
+.git-host.busy .git-bubble { color: var(--sky); }
 .git-host.busy .git-bubble::before { content: "◐"; animation: git-turn 0.8s steps(1) infinite; }
 @keyframes git-turn { 25% { content: "◓"; } 50% { content: "◑"; } 75% { content: "◒"; } }
 
@@ -849,7 +849,7 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
 /* the open keys indented under their row */
 .st-pick-keys { padding-left: 11ch; }
 .st-pick-key { flex: 1 1 auto; color: var(--teal); }
-.st-pick-why { padding-left: 11ch; color: var(--clay); }
+.st-pick-why { padding-left: 11ch; color: var(--sand); }
 .st-pick-err { color: var(--offmesh); overflow-wrap: anywhere; }
 .st-mesh > .st-card-head { color: var(--accent); }
 .st-mesh { container-type: inline-size; }
@@ -891,7 +891,7 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
 .st-mini-key { flex: 1 1 100%; white-space: normal; }
 .st-mini-key > span { white-space: nowrap; margin-right: 1ch; }
 .st-mini-key i { width: 1.1ch; height: 1.1ch; margin-right: 0.4ch; }
-.st-ctx .ctx-system { color: var(--iris); }
+.st-ctx .ctx-system { color: var(--sky); }
 .st-ctx .ctx-chat { color: var(--teal); }
 .st-ctx .ctx-ask { color: var(--accent); }
 .st-ctx .ctx-reply { color: var(--rose); }
@@ -916,12 +916,12 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
 .st-box { position: relative; min-width: 0; border: 1px solid var(--border); padding: 0.6rem 0.5rem 0.4rem; }
 .st-grid > .st-box[hidden] { display: none; }
 .st-cpu > .st-head { color: var(--accent); }
-.st-mem > .st-head { color: var(--clay); }
-.st-disk > .st-head { color: var(--iris); }
+.st-mem > .st-head { color: var(--sand); }
+.st-disk > .st-head { color: var(--sky); }
 .st-net > .st-head { color: var(--teal); }
 .st-gpu > .st-head { color: var(--sage); }
 .st-ctr > .st-head { color: var(--rose); }
-.st-proc > .st-head { color: var(--iris); }
+.st-proc > .st-head { color: var(--sky); }
 .st-body, .st-probe { font-size: 0.72rem; line-height: 1.35; white-space: pre; }
 .st-body { overflow: hidden; }
 .st-probe { position: absolute; visibility: hidden; }
@@ -945,9 +945,9 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
 .st-ctr > .st-body, .st-proc > .st-body { max-height: calc(1.35em * 14); }
 
 .st-lo { color: var(--sage); }
-.st-mid { color: var(--clay); }
+.st-mid { color: var(--sand); }
 .st-hi { color: var(--rose); }
-.st-cache { color: var(--iris); }
+.st-cache { color: var(--sky); }
 .st-rx { color: var(--accent); }
 .st-tx { color: var(--teal); }
 .st-dim { color: var(--muted); }
@@ -1021,7 +1021,7 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
 
 .about-version { position: absolute; right: 0; bottom: 0; font-size: 0.72rem; line-height: 1.3; letter-spacing: 0.04em; }
 .about-art, .about-version, .brand-text, .who-model, .st-model-mark {
-  background: linear-gradient(120deg, var(--glyph-blue), var(--glyph-gold), var(--glyph-blue), var(--glyph-gold), var(--glyph-blue));
+  background: linear-gradient(120deg, var(--glyph-purple), var(--glyph-orange), var(--glyph-purple), var(--glyph-orange), var(--glyph-purple));
   background-size: 200% 200%;
   -webkit-background-clip: text;
   background-clip: text;
@@ -1245,9 +1245,9 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
    transform, the redraw itself the "animation" */
 .mesh-svg { width: 100%; height: 100%; display: block; }
 .mesh-svg .mesh-hub { fill: var(--accent); }
-.mesh-svg .mesh-hub-dns { fill: var(--iris); font-size: 6px; font-family: inherit; }
+.mesh-svg .mesh-hub-dns { fill: var(--sky); font-size: 6px; font-family: inherit; }
 
-.mesh-svg .mesh-line-tunnel { stroke: var(--iris); stroke-width: 1; opacity: 0.45; }
+.mesh-svg .mesh-line-tunnel { stroke: var(--sky); stroke-width: 1; opacity: 0.45; }
 .mesh-svg .mesh-line-tunnel.self { stroke: var(--accent); opacity: 0.7; }
 
 /* fainter than even an inactive spoke */
@@ -1258,16 +1258,16 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
 .mesh-svg .mesh-line-stem { stroke: var(--sage); stroke-width: 0.5; opacity: 0.5; }
 .mesh-svg .mesh-line-stem.touched { stroke: var(--accent); opacity: 0.85; }
 
-/* blue the active path (self, a live request's path and target), green a serving
-   host, grey an idle one, iris services, dark grey non-hesperus devices */
+/* purple the active path (self, a live request's path and target), green a serving
+   host, grey an idle one, sky services, dark grey non-phosphorus devices */
 .mesh-svg .mesh-node.active { fill: var(--mesh-active); }
 .mesh-svg .mesh-node.idle { fill: var(--muted); }
-.mesh-svg .mesh-node.svc { fill: var(--iris); }
+.mesh-svg .mesh-node.svc { fill: var(--sky); }
 .mesh-svg .mesh-node.self { fill: var(--mesh-self); }
 .mesh-svg .mesh-node.outside { fill: var(--dim); }
 .mesh-svg .mesh-node.svc.touched { fill: var(--accent); }
 .mesh-svg .mesh-label { fill: var(--muted); font-size: 7px; font-family: inherit; }
-.mesh-svg .mesh-git { --git-c: var(--clay); }
+.mesh-svg .mesh-git { --git-c: var(--sand); }
 .mesh-svg .mesh-git.stale { --git-c: var(--dim); }
 .mesh-svg .mesh-git.down { --git-c: var(--offmesh); }
 .mesh-svg .mesh-git.master { --git-c: var(--accent); }
@@ -1280,19 +1280,19 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
 /* expanded only, hidden rather than gone so the layout can still measure it */
 .mesh-panel:not(.expanded) .mesh-legend { visibility: hidden; opacity: 0; }
 .mesh-legend > span { display: flex; align-items: center; gap: 0.2rem; }
-.mesh-legend-star { color: var(--clay); }
+.mesh-legend-star { color: var(--sand); }
 .mesh-legend-git .db-icon { margin: 0; color: var(--accent); }
-/* a model host's role letters and their legend, in the glyph's shifting blue and gold */
+/* a model host's role letters and their legend, in the glyph's shifting purple and orange */
 .mesh-legend-model {
   width: 0.5rem; text-align: center; font-weight: 600; color: transparent;
-  background: linear-gradient(90deg, var(--glyph-blue), var(--glyph-gold)); -webkit-background-clip: text; background-clip: text;
+  background: linear-gradient(90deg, var(--glyph-purple), var(--glyph-orange)); -webkit-background-clip: text; background-clip: text;
 }
-.mesh-svg .mesh-model-mark { fill: url(#hesperus-grad); font-family: inherit; font-weight: 600; }
+.mesh-svg .mesh-model-mark { fill: url(#phosphorus-grad); font-family: inherit; font-weight: 600; }
 .mesh-svg .mesh-model-mark.down { fill: var(--dim); }
 /* sized to nothing but still rendered: a display:none svg dropping its paints */
 .svg-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
-.hesperus-grad-b { stop-color: var(--glyph-blue); }
-.hesperus-grad-g { stop-color: var(--glyph-gold); }
+.phosphorus-grad-p { stop-color: var(--glyph-purple); }
+.phosphorus-grad-o { stop-color: var(--glyph-orange); }
 
 /* pulse along a touched path, one lap a second, on its own rAF loop in app.js */
 .mesh-svg .mesh-pulse { fill: var(--accent); }
@@ -1478,7 +1478,7 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
 .chat-log .fresh::before, .chat-log .fresh::after { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
 
 /* a line: its header, a bubble, its reactions. Yours on the right in the
-   accent, theirs on the left on their colour's edge, hesperus the full width */
+   accent, theirs on the left on their colour's edge, phosphorus the full width */
 .chat-log .msg { --who: var(--muted); display: flex; flex-direction: column; align-items: flex-start; max-width: 100%; }
 .chat-log .msg.mine { align-items: flex-end; }
 .chat-log .msg.cont { margin-top: -0.35rem; }
@@ -1494,7 +1494,7 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
   background: var(--card); border-left: 2px solid var(--who); box-shadow: var(--lift-sm);
 }
 .msg.mine .bubble { border-left: 0; border-right: 2px solid var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--card)); }
-.msg.agent .bubble { width: 100%; max-width: 100%; background: none; box-shadow: none; border-left: 1px solid; border-image: linear-gradient(var(--glyph-blue), var(--glyph-gold)) 1; padding: 0.1rem 0 0.1rem 0.75rem; }
+.msg.agent .bubble { width: 100%; max-width: 100%; background: none; box-shadow: none; border-left: 1px solid; border-image: linear-gradient(var(--glyph-purple), var(--glyph-orange)) 1; padding: 0.1rem 0 0.1rem 0.75rem; }
 .msg.at-me .bubble { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warn) 55%, transparent); }
 .msg.flash .bubble { animation: msg-flash 1.2s ease-out; }
 @keyframes msg-flash { from { background: color-mix(in srgb, var(--accent) 35%, var(--card)); } }
@@ -1502,7 +1502,7 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
 .pane-chat .bubble { max-width: 92%; }
 .chat-log .text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .chat-log .text.gone { color: var(--muted); font-style: italic; }
-.chat-log .mention { color: var(--iris); font-weight: 600; }
+.chat-log .mention { color: var(--sky); font-weight: 600; }
 .chat-log .mention.me { color: var(--warn); }
 
 /* the line it answers, a step back from the reply */
@@ -1553,11 +1553,11 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
 .chat-log .md pre, .code-md .md pre { background: var(--bg); border: 1px solid var(--border); padding: 0.45em 0.7em; overflow-x: auto; white-space: pre; }
 .msg.agent .md code, .msg.agent .md pre { background: var(--card); }
 .chat-log .md pre code, .code-md .md pre code { background: none; padding: 0; }
-/* highlighted code in the palette's muted hues, blue for the language's own words */
+/* highlighted code in the palette's muted hues, purple for the language's own words */
 .chat-log .hljs-keyword, .chat-log .hljs-selector-tag, .chat-log .hljs-doctag, .code-md .hljs-keyword, .code-md .hljs-selector-tag, .code-md .hljs-doctag { color: var(--accent); }
 .chat-log .hljs-string, .chat-log .hljs-regexp, .chat-log .hljs-addition, .code-md .hljs-string, .code-md .hljs-regexp, .code-md .hljs-addition { color: var(--sage); }
-.chat-log .hljs-number, .chat-log .hljs-literal, .chat-log .hljs-symbol, .chat-log .hljs-bullet, .code-md .hljs-number, .code-md .hljs-literal, .code-md .hljs-symbol, .code-md .hljs-bullet { color: var(--clay); }
-.chat-log .hljs-title, .chat-log .hljs-section, .chat-log .hljs-selector-id, .code-md .hljs-title, .code-md .hljs-section, .code-md .hljs-selector-id { color: var(--iris); }
+.chat-log .hljs-number, .chat-log .hljs-literal, .chat-log .hljs-symbol, .chat-log .hljs-bullet, .code-md .hljs-number, .code-md .hljs-literal, .code-md .hljs-symbol, .code-md .hljs-bullet { color: var(--sand); }
+.chat-log .hljs-title, .chat-log .hljs-section, .chat-log .hljs-selector-id, .code-md .hljs-title, .code-md .hljs-section, .code-md .hljs-selector-id { color: var(--sky); }
 .chat-log .hljs-type, .chat-log .hljs-built_in, .chat-log .hljs-selector-class, .code-md .hljs-type, .code-md .hljs-built_in, .code-md .hljs-selector-class { color: var(--teal); }
 .chat-log .hljs-attr, .chat-log .hljs-attribute, .chat-log .hljs-name, .chat-log .hljs-tag, .chat-log .hljs-variable.language_, .code-md .hljs-attr, .code-md .hljs-attribute, .code-md .hljs-name, .code-md .hljs-tag, .code-md .hljs-variable.language_ { color: var(--rose); }
 .chat-log .hljs-comment, .chat-log .hljs-quote, .chat-log .hljs-meta, .code-md .hljs-comment, .code-md .hljs-quote, .code-md .hljs-meta { color: var(--muted); font-style: italic; }
@@ -1568,7 +1568,7 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
 .chat-log .mermaid-box, .code-md .mermaid-box { margin: 0.25em 0 0; padding: 0.45em 0.7em; background: var(--bg); border: 1px solid var(--border); overflow-x: auto; white-space: normal; }
 .chat-log .mermaid-box svg, .code-md .mermaid-box svg { display: block; max-width: 100%; height: auto; margin: 0 auto; }
 .chat-log .md blockquote, .code-md .md blockquote { border-left: 2px solid var(--border); padding-left: 0.6em; color: var(--muted); }
-.chat-log .md a, .code-md .md a { color: var(--iris); }
+.chat-log .md a, .code-md .md a { color: var(--sky); }
 .chat-log .md table, .code-md .md table { border-collapse: collapse; display: block; overflow-x: auto; }
 .chat-log .md th, .chat-log .md td, .code-md .md th, .code-md .md td { border: 1px solid var(--border); padding: 0.1em 0.5em; }
 .chat-log .md li.task, .code-md .md li.task { list-style: none; }
@@ -1579,7 +1579,7 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
 .chat-log .md hr, .code-md .md hr { border: 0; border-top: 1px solid var(--border); margin: 0.8em 0; }
 .chat-log .md h5, .chat-log .md h6, .code-md .md h5, .code-md .md h6 { font-size: 0.9em; margin: 0.5em 0 0; color: var(--muted); }
 .chat-log .md kbd, .code-md .md kbd { padding: 0 0.4em; border: 1px solid var(--border); border-bottom-width: 2px; background: var(--bg); font: inherit; font-size: 0.9em; }
-.chat-log .md mark, .code-md .md mark { background: color-mix(in srgb, var(--clay) 30%, transparent); color: inherit; }
+.chat-log .md mark, .code-md .md mark { background: color-mix(in srgb, var(--sand) 30%, transparent); color: inherit; }
 .chat-log .md details, .code-md .md details { margin: 0.35em 0 0; }
 .chat-log .md summary, .code-md .md summary { cursor: pointer; color: var(--accent); }
 .chat-log .md del, .code-md .md del, .chat-log .md s, .code-md .md s { color: var(--muted); }
@@ -1912,8 +1912,8 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
 .ic { width: 0.85rem; height: 0.85rem; flex: none; fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
 /* each kind of thing its own muted hue */
 .ic-host { color: var(--rose); }
-.ic-folder, .ic-mkdir, .ic-rename { color: var(--clay); }
-.ic-file, .ic-split { color: var(--iris); }
+.ic-folder, .ic-mkdir, .ic-rename { color: var(--sand); }
+.ic-file, .ic-split { color: var(--sky); }
 .ic-upload, .ic-download { color: var(--sage); }
 .ic-refresh { color: var(--teal); }
 .ic-view, .ic-trash { color: var(--rose); }
@@ -2111,7 +2111,7 @@ input, textarea { caret-color: var(--accent); }
 
 /* section heads and column labels, a quiet green over the grey */
 .home-col-head, .mesh-stats-head, .tab-menu-title { color: var(--sage); }
-.list li .meta .svc-host { color: var(--iris); }
+.list li .meta .svc-host { color: var(--sky); }
 .list li .meta .svc-mode { color: var(--teal); }
 .files-perms { color: var(--teal); }
 
@@ -2173,7 +2173,7 @@ input, textarea { caret-color: var(--accent); }
   /* one tab in the bar, the active one, the rest in its list */
   .tabbar-tabs .tab-btn:not(.active):not(.tab-brand) { display: none; }
   .tabbar-tabs .tab-btn.active:not(.tab-brand) .tab-label::after { content: ' ▾'; color: var(--muted); }
-  .tabbar-tabs .tab-btn.active.shared .tab-label::after { content: ' · hesperus ▾'; color: var(--accent); }
+  .tabbar-tabs .tab-btn.active.shared .tab-label::after { content: ' · phosphorus ▾'; color: var(--accent); }
   .tab-menu.tab-pick { position: fixed; top: calc(var(--header-h) + 0.6rem); left: 0.5rem; }
   /* phones: the popup the screen's width, under the bar */
   .update-pane { position: fixed; top: calc(var(--header-h) + 0.6rem); left: 0.5rem; right: 0.5rem; width: auto; }
@@ -2220,10 +2220,10 @@ input, textarea { caret-color: var(--accent); }
 
 /* an invite to a shared editor, in the dm it came by */
 .chat-log .sys.show { color: var(--fg); }
-.chat-log .sys.show code { color: var(--iris); }
+.chat-log .sys.show code { color: var(--sky); }
 .show-open { margin-left: 0.4ch; padding: 0 0.6ch; border: 1px solid var(--accent); background: none; color: var(--accent); font: inherit; font-size: 0.72rem; cursor: pointer; }
 .show-open:hover { background: color-mix(in srgb, var(--accent) 15%, transparent); }
-.show-modal code { color: var(--iris); overflow-wrap: anywhere; }
+.show-modal code { color: var(--sky); overflow-wrap: anywhere; }
 
 /* --- code editor ----------------------------------------------------------------- */
 
@@ -2261,10 +2261,10 @@ input, textarea { caret-color: var(--accent); }
 }
 /* an agent typing: its caret, mark and name in the models' moving gradient */
 .code-caret.agent, .code-mark.agent {
-  background: linear-gradient(180deg, var(--glyph-blue), var(--glyph-gold), var(--glyph-blue));
+  background: linear-gradient(180deg, var(--glyph-purple), var(--glyph-orange), var(--glyph-purple));
   background-size: 100% 200%; animation: agent-flow 1.6s linear infinite;
 }
-.code-caret.agent .code-caret-name { background: var(--bg); border: 1px solid var(--glyph-blue); font-weight: 600; }
+.code-caret.agent .code-caret-name { background: var(--bg); border: 1px solid var(--glyph-purple); font-weight: 600; }
 .code-caret-name .who-model, .code-who .who-model { display: inline-block; }
 @keyframes agent-flow { to { background-position: 0 200%; } }
 /* as wide as its longest line, so the textarea never scrolls inside itself */
@@ -2288,8 +2288,8 @@ input, textarea { caret-color: var(--accent); }
 /* highlighted in the palette, as the chat's code is */
 .code-hl .hljs-keyword, .code-hl .hljs-selector-tag, .code-hl .hljs-doctag { color: var(--accent); }
 .code-hl .hljs-string, .code-hl .hljs-regexp, .code-hl .hljs-addition { color: var(--sage); }
-.code-hl .hljs-number, .code-hl .hljs-literal, .code-hl .hljs-symbol, .code-hl .hljs-bullet { color: var(--clay); }
-.code-hl .hljs-title, .code-hl .hljs-section, .code-hl .hljs-selector-id { color: var(--iris); }
+.code-hl .hljs-number, .code-hl .hljs-literal, .code-hl .hljs-symbol, .code-hl .hljs-bullet { color: var(--sand); }
+.code-hl .hljs-title, .code-hl .hljs-section, .code-hl .hljs-selector-id { color: var(--sky); }
 .code-hl .hljs-type, .code-hl .hljs-built_in, .code-hl .hljs-selector-class { color: var(--teal); }
 .code-hl .hljs-attr, .code-hl .hljs-attribute, .code-hl .hljs-name, .code-hl .hljs-tag, .code-hl .hljs-variable.language_ { color: var(--rose); }
 .code-hl .hljs-comment, .code-hl .hljs-quote, .code-hl .hljs-meta { color: var(--muted); font-style: italic; }
@@ -2346,7 +2346,7 @@ input, textarea { caret-color: var(--accent); }
 #side-mesh[aria-expanded="true"] { color: var(--teal); }
 #side-chat[aria-expanded="true"] { color: var(--accent); }
 #side-model[aria-expanded="true"] > span {
-  background: linear-gradient(180deg, var(--glyph-blue), var(--glyph-gold), var(--glyph-blue)) 0 0 / 100% 200%;
+  background: linear-gradient(180deg, var(--glyph-purple), var(--glyph-orange), var(--glyph-purple)) 0 0 / 100% 200%;
   -webkit-background-clip: text; background-clip: text; color: transparent;
   animation: rail-glyph 6s ease-in-out infinite;
 }

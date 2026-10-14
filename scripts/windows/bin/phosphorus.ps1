@@ -1,18 +1,18 @@
-# hesperus: the cli with no args, else start / stop / restart / update, the cli
-# in the hesperus container, the host needing nothing past docker
+# phosphorus: the cli with no args, else start / stop / restart / update, the cli
+# in the phosphorus container, the host needing nothing past docker
 $Scripts = Split-Path -Parent $PSScriptRoot
 . "$Scripts/lib/Config.ps1"
 
 function Usage {
-    Write-Host "usage: hesperus              the cli: services, files, git, stats, model, mesh update"
-    Write-Host "       hesperus start        bring this host up (run.ps1)"
-    Write-Host "       hesperus stop         stop hesperus until the next hesperus start"
-    Write-Host "       hesperus restart      restart hesperus (and hesperus-git), picks up a host rename"
-    Write-Host "       hesperus update       update this host only"
-    Write-Host "       hesperus update all   update the whole mesh, one host at a time"
+    Write-Host "usage: phosphorus              the cli: services, files, git, stats, model, mesh update"
+    Write-Host "       phosphorus start        bring this host up (run.ps1)"
+    Write-Host "       phosphorus stop         stop phosphorus until the next phosphorus start"
+    Write-Host "       phosphorus restart      restart phosphorus (and phosphorus-git), picks up a host rename"
+    Write-Host "       phosphorus update       update this host only"
+    Write-Host "       phosphorus update all   update the whole mesh, one host at a time"
 }
 
-function Started { Invoke-Quiet { docker inspect -f '{{.State.Running}} {{.State.StartedAt}}' hesperus } }
+function Started { Invoke-Quiet { docker inspect -f '{{.State.Running}} {{.State.StartedAt}}' phosphorus } }
 
 # a mesh update swaps this container out from under the cli: the new one
 # waited for and reattached, on the same tab
@@ -20,29 +20,29 @@ function Invoke-Cli([string[]]$CliArgs) {
     while ($true) {
         $before = Started
         if (-not "$before".StartsWith("true")) {
-            Write-Host "hesperus isn't running, start it with: hesperus start" -ForegroundColor Red
+            Write-Host "phosphorus isn't running, start it with: phosphorus start" -ForegroundColor Red
             exit 1
         }
-        docker exec -it -e TERM=xterm-256color -e COLORTERM=truecolor hesperus node /opt/frontend/cli/hesperus.js @CliArgs
+        docker exec -it -e TERM=xterm-256color -e COLORTERM=truecolor phosphorus node /opt/frontend/cli/phosphorus.js @CliArgs
         $code = $LASTEXITCODE
         if ((Started) -eq $before) { exit $code }
-        Write-Host "hesperus is restarting, reattaching (ctrl-c to quit)..."
+        Write-Host "phosphorus is restarting, reattaching (ctrl-c to quit)..."
         while (-not "$(Started)".StartsWith("true")) { Start-Sleep 1 }
         if ($CliArgs -and $CliArgs[0] -eq "update-all") { $CliArgs = @("--tab", "update") }
     }
 }
 
-# HESPERUS_UPDATE_PASSWORD from .env, as the web and cli ask it, unset: open
+# PHOSPHORUS_UPDATE_PASSWORD from .env, as the web and cli ask it, unset: open
 function Ask-Password {
     $envFile = Join-Path (Split-Path -Parent $Scripts) ".env"
-    $line = if (Test-Path $envFile) { Get-Content $envFile | Where-Object { $_.StartsWith("HESPERUS_UPDATE_PASSWORD=") } | Select-Object -First 1 }
-    $want = if ($line) { $line.Substring("HESPERUS_UPDATE_PASSWORD=".Length) }
+    $line = if (Test-Path $envFile) { Get-Content $envFile | Where-Object { $_.StartsWith("PHOSPHORUS_UPDATE_PASSWORD=") } | Select-Object -First 1 }
+    $want = if ($line) { $line.Substring("PHOSPHORUS_UPDATE_PASSWORD=".Length) }
     if (-not $want) { return }
     $got = [Net.NetworkCredential]::new("", (Read-Host "update password" -AsSecureString)).Password
     if ($got -ne $want) { Write-Host "wrong password" -ForegroundColor Red; exit 1 }
 }
 
-# handed to the Hesperus app, its verdict waited on
+# handed to the Phosphorus app, its verdict waited on
 function Request-Update {
     $Root = Split-Path -Parent $Scripts
     $State = Join-Path $Root "state"
@@ -58,7 +58,7 @@ function Request-Update {
             if ($a.state -eq "failed") { Write-Host "update failed: $($a.error)" -ForegroundColor Red; exit 1 }
             if ($a.state -eq "ok") { if ($a.current) { Write-Host "already up to date" } else { Write-Host "updated to $($a.version)" }; exit 0 }
         }
-        if ($i -eq 30 -and -not $a) { Write-Host "nothing picked it up yet: is the Hesperus app running?" }
+        if ($i -eq 30 -and -not $a) { Write-Host "nothing picked it up yet: is the Phosphorus app running?" }
         Start-Sleep 1
     }
     Write-Host "gave up waiting, see $Out" -ForegroundColor Red; exit 1
@@ -67,13 +67,13 @@ function Request-Update {
 # reruns this command outside the ssh session via WMI and follows its log:
 # sshd taking a dropped session's process tree with it, git left stopped
 function Invoke-Detached([string]$Cmd) {
-    if ($env:HESPERUS_DETACHED) { return }
+    if ($env:PHOSPHORUS_DETACHED) { return }
     $State = Join-Path (Split-Path -Parent $Scripts) "state"
     New-Item -ItemType Directory -Force $State | Out-Null
     $Log = Join-Path $State "$Cmd.log"
     Set-Content $Log ""
     $r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
-        CommandLine = "cmd /c set HESPERUS_DETACHED=1&& powershell -NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" $Cmd > `"$Log`" 2>&1"
+        CommandLine = "cmd /c set PHOSPHORUS_DETACHED=1&& powershell -NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" $Cmd > `"$Log`" 2>&1"
     }
     $seen = 0
     do {
@@ -91,34 +91,34 @@ switch ("$($args[0])|$($args[1])") {
     "stop|"       {
         Invoke-Detached "stop"
         # git first, so a master hands off before the frontend goes
-        foreach ($c in @("hesperus-git", "hesperus", "hesperus-search")) {
+        foreach ($c in @("phosphorus-git", "phosphorus", "phosphorus-search")) {
             if ((Invoke-Quiet { docker inspect -f '{{.State.Running}}' $c }) -ne "true") { continue }
             Write-Host "stopping $c..."
             docker stop -t 30 $c | Out-Null
             if ($LASTEXITCODE) { exit 1 }
         }
-        Write-Host "hesperus stopped, hesperus start starts it again"
+        Write-Host "phosphorus stopped, phosphorus start starts it again"
     }
     "restart|"    {
         Invoke-Detached "restart"
-        # git stopped first for the handoff, started again once hesperus is back
-        $gitUp = (Invoke-Quiet { docker inspect -f '{{.State.Running}}' hesperus-git }) -eq "true"
+        # git stopped first for the handoff, started again once phosphorus is back
+        $gitUp = (Invoke-Quiet { docker inspect -f '{{.State.Running}}' phosphorus-git }) -eq "true"
         if ($gitUp) {
-            Write-Host "stopping hesperus-git..."
-            docker stop -t 30 hesperus-git | Out-Null
+            Write-Host "stopping phosphorus-git..."
+            docker stop -t 30 phosphorus-git | Out-Null
             if ($LASTEXITCODE) { exit 1 }
         }
-        Write-Host "restarting hesperus..."
+        Write-Host "restarting phosphorus..."
         $rc = 0
-        docker restart -t 30 hesperus | Out-Null
-        if ($LASTEXITCODE) { Write-Host "couldn't restart hesperus" -ForegroundColor Red; $rc = 1 }
-        # git back whatever became of hesperus, else it stays stopped
+        docker restart -t 30 phosphorus | Out-Null
+        if ($LASTEXITCODE) { Write-Host "couldn't restart phosphorus" -ForegroundColor Red; $rc = 1 }
+        # git back whatever became of phosphorus, else it stays stopped
         if ($gitUp) {
-            Write-Host "starting hesperus-git..."
-            docker start hesperus-git | Out-Null
-            if ($LASTEXITCODE) { Write-Host "couldn't start hesperus-git" -ForegroundColor Red; $rc = 1 }
+            Write-Host "starting phosphorus-git..."
+            docker start phosphorus-git | Out-Null
+            if ($LASTEXITCODE) { Write-Host "couldn't start phosphorus-git" -ForegroundColor Red; $rc = 1 }
         }
-        if (-not $rc) { Write-Host "hesperus restarted" }
+        if (-not $rc) { Write-Host "phosphorus restarted" }
         exit $rc
     }
     "update|"     { Ask-Password; Request-Update }

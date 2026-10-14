@@ -1,12 +1,12 @@
 [package]
-name = "hesperus-app"
+name = "phosphorus-app"
 version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
-description = "Hesperus tray app: install, bring-up and updates on macOS and Windows"
+description = "Phosphorus tray app: install, bring-up and updates on macOS and Windows"
 
 [[bin]]
-name = "Hesperus"
+name = "Phosphorus"
 path = "src/main.rs"
 
 [build-dependencies]

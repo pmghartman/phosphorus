@@ -2,8 +2,8 @@
 # the agent and the containers stopped before the files go
 set -e
 [ "$1" = remove ] || exit 0
-[ -d /run/systemd/system ] && systemctl disable --now hesperus-update.path >/dev/null 2>&1 || true
-for c in hesperus-git hesperus hesperus-search; do
+[ -d /run/systemd/system ] && systemctl disable --now phosphorus-update.path >/dev/null 2>&1 || true
+for c in phosphorus-git phosphorus phosphorus-search; do
     docker update --restart=no "$c" >/dev/null 2>&1 || true
     docker stop -t 30 "$c" >/dev/null 2>&1 || true
 done

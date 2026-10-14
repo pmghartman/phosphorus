@@ -1,11 +1,11 @@
 # one project name wherever the install lives, its volumes with it
-name: hesperus
+name: phosphorus
 
 services:
   # the release's images, pulled from ghcr and tagged by rebuild
-  hesperus:
-    image: hesperus:latest
-    container_name: hesperus
+  phosphorus:
+    image: phosphorus:latest
+    container_name: phosphorus
     restart: unless-stopped
 
     # the host's network stack, for services at its Tailscale address and
@@ -35,12 +35,12 @@ services:
     environment:
       # what /files actually resolves to, so the frontend can tell a changed [files]
       # dir from the one this container was created with
-      HESPERUS_FILES_DIR: ${HESPERUS_FILES_DIR:-./files}
+      PHOSPHORUS_FILES_DIR: ${PHOSPHORUS_FILES_DIR:-./files}
       # the tailnet and mesh name, empty: the container's hostname
       TS_HOSTNAME: ${TS_HOSTNAME:-}
       # set by rebuild where /hostfs holds the host's drives, empty: the
       # status tab's disk counts only the binds below
-      HESPERUS_HOST_ROOT: ${HESPERUS_HOST_ROOT:-}
+      PHOSPHORUS_HOST_ROOT: ${PHOSPHORUS_HOST_ROOT:-}
 
     volumes:
       # tailscaled's identity, persisted across rebuilds
@@ -48,35 +48,35 @@ services:
 
       # this machine's own declarations, read only, a directory since a
       # file mount's fixed inode misses an editor's atomic save
-      - ./config:/etc/hesperus:ro
+      - ./config:/etc/phosphorus:ro
 
       # tick-to-tick state: chat, tailnet view, git and update bookkeeping
       - ./state:/state
 
-      # [files] dir from config/hesperus.ini, for the web's Files tab, read-write,
+      # [files] dir from config/phosphorus.ini, for the web's Files tab, read-write,
       # unset: the home's files/
-      - ${HESPERUS_FILES_DIR:-./files}:/files
+      - ${PHOSPHORUS_FILES_DIR:-./files}:/files
 
-      # the home, for reconfig's rebuild and the model's reading, never /opt/hesperus
+      # the home, for reconfig's rebuild and the model's reading, never /opt/phosphorus
       # (the image's own VERSION and sweep.sh)
       - .:/repo
 
       # every drive of the host, read only, for the status tab's disk, never
       # served by the Files tab, without rebuild just state again
-      - ${HESPERUS_HOST_ROOT:-./state}:/hostfs:ro
+      - ${PHOSPHORUS_HOST_ROOT:-./state}:/hostfs:ro
 
-      # the model's gguf on the model host, Windows: hesperus-models, off
+      # the model's gguf on the model host, Windows: phosphorus-models, off
       # the slow NTFS share
-      - ${HESPERUS_MODEL_DIR:-./models}:/models
+      - ${PHOSPHORUS_MODEL_DIR:-./models}:/models
 
       # for rebuild.sh's sibling swap container, out of the swap's reach
       - /var/run/docker.sock:/var/run/docker.sock
 
-  # hesperus's web search, on model hosts only, published on loopback only, where
+  # phosphorus's web search, on model hosts only, published on loopback only, where
   # the frontend's host networking reaches it, the rest asking a model host's frontend
   search:
     image: searxng/searxng:latest
-    container_name: hesperus-search
+    container_name: phosphorus-search
     restart: unless-stopped
     profiles: ["model-host"]
     ports: ["127.0.0.1:8888:8080"]
@@ -88,11 +88,11 @@ services:
   # optional git-host, its own container: supervisor.sh killing everything
   # when one child exits, litefs restarting on every flip
   git:
-    image: hesperus-git:latest
-    container_name: hesperus-git
+    image: phosphorus-git:latest
+    container_name: phosphorus-git
     restart: unless-stopped
     profiles: ["git-host"]
-    depends_on: [hesperus]
+    depends_on: [phosphorus]
     # for the git host's own subdomain, nothing else from .env
     environment:
       BASE_DOMAIN: ${BASE_DOMAIN}
@@ -111,21 +111,21 @@ services:
 
     volumes:
       # data root, litefs/ litefs-managed, never rsynced
-      # Windows: hesperus-git-data, off the slow NTFS share
-      - ${HESPERUS_GIT_DATA:-./git/data}:/var/lib/hesperus/git
+      # Windows: phosphorus-git-data, off the slow NTFS share
+      - ${PHOSPHORUS_GIT_DATA:-./git/data}:/var/lib/phosphorus/git
 
       # litefs's real db store, mounted or a rebuild wipes forgejo's db
-      - ${HESPERUS_GIT_DB:-./git/data/litefs-internal}:/var/lib/litefs-internal
+      - ${PHOSPHORUS_GIT_DB:-./git/data/litefs-internal}:/var/lib/litefs-internal
 
-      # shared with hesperus: self-host, git-role, the elector's claim
+      # shared with phosphorus: self-host, git-role, the elector's claim
       - ./state:/state
 
 volumes:
   tailscale-state:
   # the git host's data on Windows, seeded once from git/data by rebuild
   git-data:
-    name: hesperus-git-data
+    name: phosphorus-git-data
   git-db:
-    name: hesperus-git-db
+    name: phosphorus-git-db
   models:
-    name: hesperus-models
+    name: phosphorus-models

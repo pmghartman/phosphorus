@@ -4,7 +4,7 @@
 
 const dgram = require('dgram');
 
-const ZONE = (process.env.GAME_ZONE || 'hesperus').toLowerCase();
+const ZONE = (process.env.GAME_ZONE || 'phosphorus').toLowerCase();
 const TTL_S = 5; // short, so a game moving hosts shows up fast
 const RETRY_MS = 10000;
 const PORT = Number(process.env.GAME_DNS_PORT || 53); // the only port tailscale split DNS speaks

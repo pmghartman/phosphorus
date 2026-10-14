@@ -1,11 +1,11 @@
 'use strict';
-// hesperus.ini's [files], [git] host and [model] host and gpu applied as soon as
+// phosphorus.ini's [files], [git] host and [model] host and gpu applied as soon as
 // they're edited: baked into the container's mounts, profiles and image, hence a rebuild
 
 const { execFile } = require('child_process');
 const path = require('path');
 const clock = require('./clock');
-const { hesperusIni, readJson, writeJsonAtomic } = require('./util');
+const { phosphorusIni, readJson, writeJsonAtomic } = require('./util');
 
 const STATE_DIR = process.env.STATE_DIR || '/state';
 const APPLIED_FILE = path.join(STATE_DIR, 'reconfig.json');
@@ -17,12 +17,12 @@ const SETTLE_MS = 2000;
 function log(msg) { console.log(`[reconfig] ${msg}`); }
 
 const current = () => JSON.stringify({
-  dir: hesperusIni('files', 'dir'), priv: hesperusIni('files', 'priv'), git: hesperusIni('git', 'host') === 'true',
+  dir: phosphorusIni('files', 'dir'), priv: phosphorusIni('files', 'priv'), git: phosphorusIni('git', 'host') === 'true',
   // the image's llama build and the search's profile, the rest of [model] read live by the daemon
-  gpu: hesperusIni('model', 'gpu') === 'true', model: hesperusIni('model', 'host') === 'true',
+  gpu: phosphorusIni('model', 'gpu') === 'true', model: phosphorusIni('model', 'host') === 'true',
 });
 
-// busy: an update's own rebuild under way, which reads hesperus.ini anyway
+// busy: an update's own rebuild under way, which reads phosphorus.ini anyway
 async function start(busy) {
   // first boot: whatever built this container
   if (!readJson(APPLIED_FILE, null)) writeJsonAtomic(APPLIED_FILE, { sig: current() });
@@ -35,7 +35,7 @@ async function start(busy) {
     if (sig === readJson(APPLIED_FILE, {}).sig || Date.now() - since < SETTLE_MS || busy()) continue;
     // recorded first: a swap killing this process, and no rerun on the next boot
     writeJsonAtomic(APPLIED_FILE, { sig });
-    log('hesperus.ini [files], [git] or [model] host or gpu changed, rebuilding');
+    log('phosphorus.ini [files], [git] or [model] host or gpu changed, rebuilding');
     await new Promise((resolve) => {
       // via bash, not the shebang: no exec bit on a bind mount from Windows
       execFile('bash', [REBUILD_SCRIPT], { timeout: REBUILD_TIMEOUT_MS }, (err, stdout, stderr) => {

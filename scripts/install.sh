@@ -18,11 +18,11 @@ main() {
   say() { echo "[install] $*"; }
   fail() { echo "[install] ERROR: $*" >&2; exit 1; }
 
-  local home="${HESPERUS_HOME:-}"
+  local home="${PHOSPHORUS_HOME:-}"
   if [ -z "$home" ]; then
     case "$(uname)" in
-      Darwin) home="$HOME/Library/Hesperus" ;;
-      *) home=/var/lib/hesperus ;;
+      Darwin) home="$HOME/Library/Phosphorus" ;;
+      *) home=/var/lib/phosphorus ;;
     esac
   fi
   [ -e "$payload/.git" ] && fail "$payload is a git clone, not a release: install from the latest release"
@@ -37,9 +37,9 @@ main() {
 
   sync_payload "$payload" "$home" || fail "couldn't copy the release into $home"
   # app resources carry no exec bits
-  chmod +x "$home/scripts/hesperus" "$home"/scripts/*.sh 2>/dev/null
+  chmod +x "$home/scripts/phosphorus" "$home"/scripts/*.sh 2>/dev/null
   local version; version="$(tr -d '[:space:]' < "$home/VERSION")"
-  say "hesperus $version in $home"
+  say "phosphorus $version in $home"
 
   # an earlier checkout's host carried over once, before anything starts
   if [ ! -f "$home/.env" ]; then
@@ -53,8 +53,8 @@ main() {
     cp "$home/.env.example" "$home/.env" && chmod 600 "$home/.env"
   fi
   if grep -qx 'BASE_DOMAIN=example.com' "$home/.env" || grep -qx 'BASE_DOMAIN=' "$home/.env"; then
-    say "fill in $home/.env, then: hesperus start"
-    printf '%s\n' "$version" > "$home/.hesperus-installed"
+    say "fill in $home/.env, then: phosphorus start"
+    printf '%s\n' "$version" > "$home/.phosphorus-installed"
     exit 0
   fi
 
@@ -70,7 +70,7 @@ main() {
     esac || fail "bring-up failed, see above"
   fi
   trap - EXIT
-  printf '%s\n' "$version" > "$home/.hesperus-installed"
+  printf '%s\n' "$version" > "$home/.phosphorus-installed"
 }
 
 # new containers stopped, the old ones restarted, .env set aside so a rerun migrates again
@@ -78,16 +78,16 @@ rollback() {
   local docker=docker c
   docker info >/dev/null 2>&1 || docker="sudo docker"
   say "rolling back to the old install"
-  for c in hesperus-git hesperus hesperus-search hesperus-updater; do
+  for c in phosphorus-git phosphorus phosphorus-search phosphorus-updater; do
     $docker rm -f "$c" >/dev/null 2>&1
   done
   # git last, after its frontend
-  for c in $(awk '{a[NR]=$0} END {for (i = NR; i; i--) print a[i]}' "$1/.hesperus-migrated-containers" 2>/dev/null); do
+  for c in $(awk '{a[NR]=$0} END {for (i = NR; i; i--) print a[i]}' "$1/.phosphorus-migrated-containers" 2>/dev/null); do
     $docker update --restart=unless-stopped "$c" >/dev/null 2>&1 && $docker start "$c" >/dev/null 2>&1 \
       && say "restarted $c"
   done
   mv "$1/.env" "$1/.env.failed-$(date +%s)" 2>/dev/null
-  rm -f "$1/.hesperus-migrated-containers"
+  rm -f "$1/.phosphorus-migrated-containers"
   say "old install running again; fix the error above and rerun the installer"
 }
 
@@ -95,11 +95,11 @@ rollback() {
 # removed, this host's config and share never overwritten
 sync_payload() {
   local src="$1" dst="$2" f
-  local manifest="$dst/.hesperus-manifest" next; next="$(mktemp)"
-  (cd "$src" && find . -type f ! -name '.hesperus-*' | sed 's|^\./||' | LC_ALL=C sort) > "$next" || return 1
+  local manifest="$dst/.phosphorus-manifest" next; next="$(mktemp)"
+  (cd "$src" && find . -type f ! -name '.phosphorus-*' | sed 's|^\./||' | LC_ALL=C sort) > "$next" || return 1
   while IFS= read -r f; do
     case "$f" in
-      config/services.export|config/hesperus.ini|files/*) [ -e "$dst/$f" ] && continue ;;
+      config/services.export|config/phosphorus.ini|files/*) [ -e "$dst/$f" ] && continue ;;
     esac
     mkdir -p "$dst/$(dirname "$f")" && cp -p "$src/$f" "$dst/$f" || return 1
   done < "$next"
@@ -112,7 +112,7 @@ sync_payload() {
   mv "$next" "$manifest"
 }
 
-# any earlier checkout's /repo (phosphorus, git-era hesperus), from its container
+# any earlier checkout's /repo (phosphorus checkout, hesperus checkout or home), from its container
 old_checkout() {
   local docker=docker c src
   docker info >/dev/null 2>&1 || docker="sudo docker"

@@ -1,4 +1,4 @@
-//! Hesperus tray app, macOS and Windows: release into the home, bring-up, feed updates
+//! Phosphorus tray app, macOS and Windows: release into the home, bring-up, feed updates
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -25,14 +25,14 @@ struct App {
 }
 
 fn home_dir() -> PathBuf {
-    if let Some(h) = std::env::var_os("HESPERUS_HOME") {
+    if let Some(h) = std::env::var_os("PHOSPHORUS_HOME") {
         return h.into();
     }
     if cfg!(windows) {
-        // not %LOCALAPPDATA%\Hesperus: the app's own install dir, wiped by its uninstaller
-        PathBuf::from(std::env::var_os("USERPROFILE").unwrap_or_default()).join("hesperus")
+        // not %LOCALAPPDATA%\Phosphorus: the app's own install dir, wiped by its uninstaller
+        PathBuf::from(std::env::var_os("USERPROFILE").unwrap_or_default()).join("phosphorus")
     } else {
-        PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join("Library/Hesperus")
+        PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join("Library/Phosphorus")
     }
 }
 
@@ -52,7 +52,7 @@ fn write_json(p: &Path, v: &Value) {
     }
 }
 
-/// what the frontend and `hesperus update` wait on
+/// what the frontend and `phosphorus update` wait on
 fn report(home: &Path, id: &str, state: &str, current: bool, version: &str, error: &str) {
     let e: String = error.chars().take(400).collect();
     write_json(
@@ -122,7 +122,7 @@ fn run_interactive_install(app: &App) -> Result<(), String> {
     {
         let script = app.payload.join("scripts\\windows\\install.ps1");
         let arg = format!(
-            "Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-NoExit','-File','\"{}\"','-HesperusHome','\"{}\"'",
+            "Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-NoExit','-File','\"{}\"','-PhosphorusHome','\"{}\"'",
             script.display(),
             app.home.display()
         );
@@ -160,7 +160,7 @@ fn ensure_engine(handle: &AppHandle) -> Result<(), String> {
     if docker_up() {
         return Ok(());
     }
-    set_line(handle, "Hesperus starting docker…");
+    set_line(handle, "Phosphorus starting docker…");
     #[cfg(windows)]
     {
         let pf = std::env::var_os("ProgramFiles").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("C:\\Program Files"));
@@ -197,7 +197,7 @@ fn ensure_engine(handle: &AppHandle) -> Result<(), String> {
 
 fn set_line(app: &AppHandle, text: &str) {
     let _ = app.state::<App>().line.set_text(text);
-    if let Some(t) = app.tray_by_id("hesperus") {
+    if let Some(t) = app.tray_by_id("phosphorus") {
         let _ = t.set_tooltip(Some(text));
     }
 }
@@ -214,7 +214,7 @@ async fn handle_update(handle: AppHandle, id: String, ask: bool) {
     }
     let app = handle.state::<App>();
     report(&app.home, &id, "running", false, "", "");
-    set_line(&handle, "Hesperus checking for updates…");
+    set_line(&handle, "Phosphorus checking for updates…");
     let found = match handle.updater() {
         Ok(u) => u.check().await.map_err(|e| e.to_string()),
         Err(e) => Err(e.to_string()),
@@ -224,8 +224,8 @@ async fn handle_update(handle: AppHandle, id: String, ask: bool) {
             if ask {
                 let go = handle
                     .dialog()
-                    .message(format!("Hesperus {} is available. Updating restarts this host's containers.", u.version))
-                    .title("Hesperus Updates")
+                    .message(format!("Phosphorus {} is available. Updating restarts this host's containers.", u.version))
+                    .title("Phosphorus Updates")
                     .buttons(MessageDialogButtons::OkCancelCustom("Update".into(), "Later".into()))
                     .blocking_show();
                 if !go {
@@ -235,7 +235,7 @@ async fn handle_update(handle: AppHandle, id: String, ask: bool) {
                     return;
                 }
             }
-            set_line(&handle, &format!("Hesperus downloading {}…", u.version));
+            set_line(&handle, &format!("Phosphorus downloading {}…", u.version));
             let version = u.version.strip_suffix(".0").unwrap_or(&u.version).to_string();
             write_json(&app.home.join("state/update-pending.json"), &json!({"id": id, "version": version}));
             // Windows: the installer exits this process and relaunches it
@@ -249,16 +249,16 @@ async fn handle_update(handle: AppHandle, id: String, ask: bool) {
         }
         Ok(None) | Err(_) => {
             if let Err(e) = &found {
-                eprintln!("hesperus: update feed: {e}");
+                eprintln!("phosphorus: update feed: {e}");
             }
-            set_line(&handle, "Hesperus applying this release…");
+            set_line(&handle, "Phosphorus applying this release…");
             let (ok, current, tail) = run_update_install(&app);
             let v = payload_version(&app);
             if ok {
                 report(&app.home, &id, "ok", current, &v, "");
                 if ask {
-                    let m = if current { format!("Hesperus {v} is up to date.") } else { format!("Hesperus {v} re-applied.") };
-                    handle.dialog().message(m).title("Hesperus Updates").show(|_| {});
+                    let m = if current { format!("Phosphorus {v} is up to date.") } else { format!("Phosphorus {v} re-applied.") };
+                    handle.dialog().message(m).title("Phosphorus Updates").show(|_| {});
                 }
             } else {
                 report(&app.home, &id, "failed", false, "", if tail.is_empty() { "install failed" } else { &tail });
@@ -270,13 +270,13 @@ async fn handle_update(handle: AppHandle, id: String, ask: bool) {
 }
 
 fn status_line(app: &App) -> String {
-    let v = read(&app.home.join(".hesperus-installed"));
+    let v = read(&app.home.join(".phosphorus-installed"));
     if v.is_empty() {
-        "Hesperus not set up".into()
+        "Phosphorus not set up".into()
     } else if !configured(&app.home) {
-        format!("Hesperus {v}: fill in .env")
+        format!("Phosphorus {v}: fill in .env")
     } else {
-        format!("Hesperus {v}")
+        format!("Phosphorus {v}")
     }
 }
 
@@ -285,18 +285,18 @@ fn status_line(app: &App) -> String {
 fn startup(handle: AppHandle) {
     std::thread::spawn(move || {
         let app = handle.state::<App>();
-        let installed = read(&app.home.join(".hesperus-installed"));
+        let installed = read(&app.home.join(".phosphorus-installed"));
         let ver = payload_version(&app);
         // first run's install starts the engine itself
         let engine = if installed.is_empty() { Ok(()) } else { ensure_engine(&handle) };
         if let Err(e) = &engine {
-            eprintln!("hesperus: engine: {e}");
+            eprintln!("phosphorus: engine: {e}");
         }
         if installed.is_empty() && !app.home.join(".env").exists() {
             // first run: bring-up needs the person's sudo or admin
             let _ = run_interactive_install(&app);
         } else if installed != ver && !BUSY.swap(true, Ordering::SeqCst) {
-            set_line(&handle, &format!("Hesperus installing {ver}…"));
+            set_line(&handle, &format!("Phosphorus installing {ver}…"));
             let (ok, _, tail) = run_update_install(&app);
             let pending = app.home.join("state/update-pending.json");
             if let Ok(p) = std::fs::read_to_string(&pending).map(|s| serde_json::from_str::<Value>(&s).unwrap_or_default()) {
@@ -311,7 +311,7 @@ fn startup(handle: AppHandle) {
             BUSY.store(false, Ordering::SeqCst);
         }
         match &engine {
-            Err(e) => set_line(&handle, &format!("Hesperus: {e}")),
+            Err(e) => set_line(&handle, &format!("Phosphorus: {e}")),
             Ok(()) => set_line(&handle, &status_line(&app)),
         }
         let req = app.home.join("state/update-request.json");
@@ -325,13 +325,13 @@ fn startup(handle: AppHandle) {
     });
 }
 
-/// hesperus start / stop through the installed cli
+/// phosphorus start / stop through the installed cli
 fn cli(app: &App, arg: &str) {
     #[cfg(windows)]
     let mut c = {
         let mut c = Command::new("powershell");
         c.args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-NoExit", "-File"])
-            .arg(app.home.join("scripts\\windows\\bin\\hesperus.ps1"))
+            .arg(app.home.join("scripts\\windows\\bin\\phosphorus.ps1"))
             .arg(arg);
         c
     };
@@ -339,7 +339,7 @@ fn cli(app: &App, arg: &str) {
     let mut c = {
         let cmd = format!(
             "export PATH=/opt/homebrew/bin:/usr/local/bin:$PATH; /bin/bash '{}' {arg}",
-            app.home.join("scripts/hesperus").display()
+            app.home.join("scripts/phosphorus").display()
         );
         let script = format!("tell application \"Terminal\" to do script \"{}\"\ntell application \"Terminal\" to activate", cmd.replace('"', "\\\""));
         let mut c = Command::new("/usr/bin/osascript");
@@ -351,7 +351,7 @@ fn cli(app: &App, arg: &str) {
 
 fn tray(app: &AppHandle, line: &MenuItem<tauri::Wry>) -> tauri::Result<()> {
     let item = |id: &str, text: &str| MenuItem::with_id(app, id, text, true, None::<&str>);
-    let open = item("open", "Open Hesperus")?;
+    let open = item("open", "Open Phosphorus")?;
     let upd = item("update", "Check for Updates")?;
     let start = item("start", "Start")?;
     let stop = item("stop", "Stop")?;
@@ -360,9 +360,9 @@ fn tray(app: &AppHandle, line: &MenuItem<tauri::Wry>) -> tauri::Result<()> {
     let quit = item("quit", "Quit (containers keep running)")?;
     let sep = || PredefinedMenuItem::separator(app);
     let menu = Menu::with_items(app, &[line, &sep()?, &open, &upd, &sep()?, &start, &stop, &env, &folder, &sep()?, &quit])?;
-    TrayIconBuilder::with_id("hesperus")
+    TrayIconBuilder::with_id("phosphorus")
         .icon(app.default_window_icon().cloned().expect("icon"))
-        .tooltip("Hesperus")
+        .tooltip("Phosphorus")
         .menu(&menu)
         .on_menu_event(|app, e| {
             let st = app.state::<App>();
@@ -394,6 +394,29 @@ fn tray(app: &AppHandle, line: &MenuItem<tauri::Wry>) -> tauri::Result<()> {
     Ok(())
 }
 
+/// the Hesperus app this one replaced: its autostart entry, on Windows the app itself
+fn retire_hesperus() {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let quiet = |c: &mut Command| {
+            let _ = c.creation_flags(0x0800_0000).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status();
+        };
+        quiet(Command::new("reg").args(["delete", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", "/v", "Hesperus", "/f"]));
+        let dir = PathBuf::from(std::env::var_os("LOCALAPPDATA").unwrap_or_default()).join("Hesperus");
+        let uninstall = dir.join("uninstall.exe");
+        if uninstall.exists() {
+            quiet(Command::new("taskkill").args(["/F", "/IM", "Hesperus.exe"]));
+            quiet(Command::new(uninstall).arg("/S"));
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let home = PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
+        let _ = std::fs::remove_file(home.join("Library/LaunchAgents/Hesperus.plist"));
+    }
+}
+
 fn main() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -402,9 +425,9 @@ fn main() {
         .setup(|app| {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
-            // not "hesperus": beside the Hesperus binary on a case-insensitive disk
+            // not "phosphorus": beside the Phosphorus binary on a case-insensitive disk
             let payload = app.path().resource_dir()?.join("release");
-            let line = MenuItem::with_id(app, "status", "Hesperus", false, None::<&str>)?;
+            let line = MenuItem::with_id(app, "status", "Phosphorus", false, None::<&str>)?;
             app.manage(App { payload, home: home_dir(), line: line.clone() });
             tray(app.handle(), &line)?;
             // release builds carry the updater config; dev builds none
@@ -413,11 +436,12 @@ fn main() {
             }
             // a host stays up across logins
             let _ = app.autolaunch().enable();
+            std::thread::spawn(retire_hesperus);
             startup(app.handle().clone());
             Ok(())
         })
         .build(tauri::generate_context!())
-        .expect("Hesperus app");
+        .expect("Phosphorus app");
     app.run(|_, e| {
         if let RunEvent::ExitRequested { api, code: None, .. } = e {
             api.prevent_exit();

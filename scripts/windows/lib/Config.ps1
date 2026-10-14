@@ -1,5 +1,5 @@
-# readers for config/hesperus.ini, config/services.export and .env, from the
-# home, dot-sourced by run, rebuild, update, game-control and hesperus
+# readers for config/phosphorus.ini, config/services.export and .env, from the
+# home, dot-sourced by run, rebuild, update, game-control and phosphorus
 
 # `key = value` lines under `[section]`, blank when unset or the file is missing
 function Get-IniValue([string]$File, [string]$Section, [string]$Key) {
@@ -27,13 +27,13 @@ function Get-EnvValue([string]$Key) {
 function Invoke-Quiet([scriptblock]$Cmd) { $ErrorActionPreference = "Continue"; & $Cmd 2>$null }
 
 # the release's own, stamped by CI
-function Get-HesperusVersion { (Get-Content VERSION -First 1).Trim() }
+function Get-PhosphorusVersion { (Get-Content VERSION -First 1).Trim() }
 
 # the release's images pulled and tagged as compose names them, cuda per [model] gpu
-function Invoke-HesperusPull {
-    $v = Get-HesperusVersion
-    $sfx = if (Test-HesperusModelGpu) { "-cuda" } else { "" }
-    foreach ($p in @(@("hesperus:$v$sfx", "hesperus:latest"), @("hesperus-git:$v", "hesperus-git:latest"))) {
+function Invoke-PhosphorusPull {
+    $v = Get-PhosphorusVersion
+    $sfx = if (Test-PhosphorusModelGpu) { "-cuda" } else { "" }
+    foreach ($p in @(@("phosphorus:$v$sfx", "phosphorus:latest"), @("phosphorus-git:$v", "phosphorus-git:latest"))) {
         $from = "ghcr.io/pmghartman/$($p[0])"
         docker pull -q $from | Out-Null
         if ($LASTEXITCODE) { return $false }
@@ -43,16 +43,16 @@ function Invoke-HesperusPull {
     $true
 }
 
-function Get-HesperusIniPath { if (Test-Path config/hesperus.ini) { "config/hesperus.ini" } }
+function Get-PhosphorusIniPath { if (Test-Path config/phosphorus.ini) { "config/phosphorus.ini" } }
 
-function Get-HesperusValue([string]$Section, [string]$Key) { Get-IniValue (Get-HesperusIniPath) $Section $Key }
+function Get-PhosphorusValue([string]$Section, [string]$Key) { Get-IniValue (Get-PhosphorusIniPath) $Section $Key }
 
-function Test-HesperusGitHost { (Get-HesperusValue "git" "host") -eq "true" }
+function Test-PhosphorusGitHost { (Get-PhosphorusValue "git" "host") -eq "true" }
 
-# the installer never overwrites this host's hesperus.ini, so sections added
+# the installer never overwrites this host's phosphorus.ini, so sections added
 # since are appended here
-function Add-HesperusMissingSections {
-    $file = Get-HesperusIniPath
+function Add-PhosphorusMissingSections {
+    $file = Get-PhosphorusIniPath
     if (-not $file) { return }
     if ((Get-Content $file) -notcontains "[files]") {
         Add-Content $file @(
@@ -64,7 +64,7 @@ function Add-HesperusMissingSections {
             "dir =",
             "priv ="
         )
-        Write-Host "[hesperus.ini] added the [files] section, set dir to publish a directory"
+        Write-Host "[phosphorus.ini] added the [files] section, set dir to publish a directory"
     }
     if ((Get-Content $file) -notcontains "[model]") {
         Add-Content $file @(
@@ -77,18 +77,18 @@ function Add-HesperusMissingSections {
             "gpu = false",
             "url ="
         )
-        Write-Host "[hesperus.ini] added the [model] section, set host and url on the one host with the memory and disk for the model"
+        Write-Host "[phosphorus.ini] added the [model] section, set host and url on the one host with the memory and disk for the model"
     }
 }
 
 # [model] gpu: the image built with llama.cpp's cuda backend
-function Test-HesperusModelHost { (Get-HesperusValue "model" "host") -eq "true" }
-function Test-HesperusModelGpu { (Get-HesperusValue "model" "gpu") -eq "true" }
+function Test-PhosphorusModelHost { (Get-PhosphorusValue "model" "host") -eq "true" }
+function Test-PhosphorusModelGpu { (Get-PhosphorusValue "model" "gpu") -eq "true" }
 
 # absolute host path published on the frontend's Files tab, the repo's own
 # files/ when [files] dir is blank, so the mount always resolves
-function Get-HesperusFilesDir {
-    $dir = Get-HesperusValue "files" "dir"
+function Get-PhosphorusFilesDir {
+    $dir = Get-PhosphorusValue "files" "dir"
     if (-not $dir) { return (Join-Path (Get-Location) "files") }
     if ([System.IO.Path]::IsPathRooted($dir)) { return $dir }
     return (Join-Path (Get-Location) $dir)
@@ -96,8 +96,8 @@ function Get-HesperusFilesDir {
 
 # [files] dir, one absolute host path per entry, empty when unset, relative
 # entries off -Base, the home
-function Get-HesperusFilesDirList([string]$Base) {
-    $raw = Get-HesperusValue "files" "dir"
+function Get-PhosphorusFilesDirList([string]$Base) {
+    $raw = Get-PhosphorusValue "files" "dir"
     if (-not $raw) { return @() }
     if (-not $Base) { $Base = (Get-Location).Path }
     $out = @()
@@ -111,20 +111,20 @@ function Get-HesperusFilesDirList([string]$Base) {
 }
 
 # [files] priv, one entry per dir in the same order, none means rwd
-function Get-HesperusFilesPermList {
-    $raw = Get-HesperusValue "files" "priv"
+function Get-PhosphorusFilesPermList {
+    $raw = Get-PhosphorusValue "files" "priv"
     if (-not $raw) { return @() }
     return @($raw.Split(",") | ForEach-Object { $_.Trim() })
 }
 
 # shares in an override beside compose (no variable mount count there),
 # rewritten every build, never committed
-$HesperusFilesOverride = "docker-compose.files.yml"
+$PhosphorusFilesOverride = "docker-compose.files.yml"
 
 # $true when it wrote one and the caller should add it to COMPOSE_FILE
-function Write-HesperusFilesOverride([string]$Base) {
+function Write-PhosphorusFilesOverride([string]$Base) {
     $dirs = @()
-    foreach ($d in (Get-HesperusFilesDirList $Base)) {
+    foreach ($d in (Get-PhosphorusFilesDirList $Base)) {
         if (-not (Test-Path -PathType Container $d)) {
             Write-Host "[files] skipping '$d'; no such directory on this host"
             continue
@@ -132,15 +132,15 @@ function Write-HesperusFilesOverride([string]$Base) {
         $dirs += $d
     }
     if (-not $dirs.Count) {
-        if (Test-Path $HesperusFilesOverride) { Remove-Item $HesperusFilesOverride -Force }
+        if (Test-Path $PhosphorusFilesOverride) { Remove-Item $PhosphorusFilesOverride -Force }
         return $false
     }
 
-    $perms = Get-HesperusFilesPermList
+    $perms = Get-PhosphorusFilesPermList
     $lines = @(
-        "# generated from [files] in config/hesperus.ini, rewritten every build",
+        "# generated from [files] in config/phosphorus.ini, rewritten every build",
         "services:",
-        "  hesperus:",
+        "  phosphorus:",
         "    environment:"
     )
     $permList = @()
@@ -152,10 +152,10 @@ function Write-HesperusFilesOverride([string]$Base) {
         $mode = if ($perm -match "[wd]") { "" } else { ":ro" }
         $mounts += "      - `"$($dirs[$i]):/shares/$i$mode`""
     }
-    $lines += "      HESPERUS_FILES_DIRS: `"$($dirs -join ',')`""
-    $lines += "      HESPERUS_FILES_PERMS: `"$($permList -join ',')`""
+    $lines += "      PHOSPHORUS_FILES_DIRS: `"$($dirs -join ',')`""
+    $lines += "      PHOSPHORUS_FILES_PERMS: `"$($permList -join ',')`""
     $lines += "    volumes:"
     $lines += $mounts
-    Set-Content -Path $HesperusFilesOverride -Value $lines
+    Set-Content -Path $PhosphorusFilesOverride -Value $lines
     return $true
 }

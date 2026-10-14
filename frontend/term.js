@@ -19,14 +19,14 @@ const ENDED = 4000;
 const TAKEN = 4001;
 // a peer's hop, given up on past this
 const HOP_TIMEOUT_MS = 10000;
-// a shared screen's lines handed to hesperus, scrollback included
+// a shared screen's lines handed to phosphorus, scrollback included
 const SCREEN_LINES = 120;
 // a command's output taken as done once quiet this long
 const SETTLE_MS = 1500;
 const MAX_COMMAND = 2000;
 // never typed: newlines and control keys, so only the owner's Enter runs it
 const CONTROL = /[\x00-\x1f\x7f-\x9f]/g;
-// the screen asking for a secret: nothing typed into it by hesperus
+// the screen asking for a secret: nothing typed into it by phosphorus
 const SECRET_PROMPT = /pass(word|phrase)|token|secret|\bpin\b|\[sudo\]/i;
 
 const dim = (n, fallback) => (Number.isInteger(n) && n > 0 && n <= 1000 ? n : fallback);
@@ -82,7 +82,7 @@ function createSession(sid) {
     ws.on('message', (data, isBinary) => {
       if (s.ws !== ws) return;
       if (isBinary) {
-        // hesperus's typed command: Enter to run it, ctrl-c to refuse it
+        // phosphorus's typed command: Enter to run it, ctrl-c to refuse it
         if (s.waiter && data.includes(0x0d)) s.waiter('enter');
         else if (s.waiter && data.includes(0x03)) s.waiter('cancel');
         if (s.onInput) s.onInput(data);
@@ -91,7 +91,7 @@ function createSession(sid) {
       let m;
       try { m = JSON.parse(data.toString()); } catch { return; }
       if (m.type === 'close') { s.end(); return; }
-      // the tab's owner letting hesperus read this screen, never write to it
+      // the tab's owner letting phosphorus read this screen, never write to it
       if (m.type === 'share') {
         s.shared = m.on === true;
         if (typeof m.by === 'string') s.owner = m.by.slice(0, MAX_FIELD);
@@ -255,7 +255,7 @@ const screens = (by = '') => Promise.all([...sessions.values()].filter((s) => s.
 // run, then the screen once Enter's output settles
 async function type(by, id, text, waitS) {
   const mine = [...sessions.values()].filter((x) => x.shared && x.stream && by && x.owner === by && x.sid.startsWith(id || ''));
-  if (mine.length !== 1) throw new Error(mine.length ? 'several shared terminals, give its id' : 'no terminal of theirs is shared with hesperus and logged in here');
+  if (mine.length !== 1) throw new Error(mine.length ? 'several shared terminals, give its id' : 'no terminal of theirs is shared with phosphorus and logged in here');
   const s = mine[0];
   if (s.waiter) throw new Error('already waiting on a command there');
   const before = await render(s);

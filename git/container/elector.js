@@ -22,7 +22,7 @@ const DECISION_FILE = process.env.DECISION_FILE || '/run/git-decision';
 const LEASE_UNTIL_FILE = process.env.LEASE_UNTIL_FILE || '/run/git-lease-until';
 const LITEFS_PID_FILE = process.env.LITEFS_PID_FILE || '/run/git-litefs-pid';
 // litefs's "<txid>/<checksum>" for forgejo's db, gone while its mount is down
-const DB_POS_FILE = process.env.DB_POS_FILE || '/var/lib/hesperus/git/litefs/forgejo.db-pos';
+const DB_POS_FILE = process.env.DB_POS_FILE || '/var/lib/phosphorus/git/litefs/forgejo.db-pos';
 // rsyncd refusing pulls while it exists (rsyncd.conf)
 const PROMOTING_FILE = process.env.PROMOTING_FILE || '/run/git-promoting';
 

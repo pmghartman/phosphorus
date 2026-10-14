@@ -14,18 +14,18 @@ const SELF_HOST = process.env.SELF_HOST || '';
 const FRONTEND_PORT = Number(process.env.FRONTEND_PORT || 8090);
 const STATE_DIR = process.env.STATE_DIR || '/state';
 const CHAIN_FILE = path.join(STATE_DIR, 'update-chain.json');
-const VERSION_FILE = process.env.VERSION_FILE || '/opt/hesperus/VERSION';
+const VERSION_FILE = process.env.VERSION_FILE || '/opt/phosphorus/VERSION';
 // the home as the host sees it, a pre-installer checkout's clone
 const REPO_DIR = process.env.REPO_DIR || '/repo';
 // handed to the host's agent (systemd path unit, the app), its verdict read back
 const REQUEST_FILE = path.join(STATE_DIR, 'update-request.json');
 const AGENT_FILE = path.join(STATE_DIR, 'update-agent.json');
 // the release feed: newest version, the installers and app feeds beside it
-const FEED_URL = process.env.HESPERUS_FEED_URL || 'https://github.com/pmghartman/hesperus/releases/download/update/latest.json';
+const FEED_URL = process.env.PHOSPHORUS_FEED_URL || 'https://github.com/pmghartman/phosphorus/releases/download/update/latest.json';
 const FEED_TTL_MS = 600000;
 // a pre-installer checkout's update: the release's .deb installed on the host,
 // migrating it into its home
-const INSTALLER = 'hesperus-installer';
+const INSTALLER = 'phosphorus-installer';
 const PLATFORM_FILE = path.join(STATE_DIR, 'platform.json');
 // nobody answering the request: no agent on this host
 const AGENT_PICKUP_MS = 60000;
@@ -145,13 +145,13 @@ const lastLine = (s) => s.split('\n').filter(Boolean).pop() || '';
 
 // the checkout's own host path, what nsenter on the host runs from
 async function hostRepo() {
-  const r = await run('docker', ['inspect', 'hesperus', '--format',
+  const r = await run('docker', ['inspect', 'phosphorus', '--format',
     '{{range .Mounts}}{{if eq .Destination "/repo"}}{{.Source}}{{end}}{{end}}'], 10000);
   return r.ok ? r.out : '';
 }
 
 // the release's .deb on the host, in a sibling outliving this container, its
-// installer migrating the checkout into /var/lib/hesperus
+// installer migrating the checkout into /var/lib/phosphorus
 async function checkoutUpdate() {
   const platform = String((readJson(PLATFORM_FILE, {}) || {}).platform || '');
   if (platform !== 'linux') {
@@ -162,7 +162,7 @@ async function checkoutUpdate() {
   log(`a checkout at ${repo}: installing the latest release over it`);
   await run('docker', ['rm', '-f', INSTALLER], 30000);
   const started = await run('docker', ['run', '-d', '--name', INSTALLER, '--privileged', '--pid=host', '--net=host',
-    '--entrypoint', 'nsenter', 'hesperus:latest', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--',
+    '--entrypoint', 'nsenter', 'phosphorus:latest', '-t', '1', '-m', '-u', '-i', '-n', '-p', '--',
     'bash', `${repo}/scripts/install-release.sh`], 60000);
   if (!started.ok) return { ok: false, error: `couldn't start ${INSTALLER}: ${lastLine(started.err)}` };
   // the migration stops this container, the next boot answering for it
@@ -199,7 +199,8 @@ function fetchStatus(host) {
 }
 
 // best effort, blank as unknown: boot id telling a landed swap from the old
-// process answering, version for the UI, a phosphorus-era peer by its tailnet's key
+// process answering, version for the UI, a pre-hesperus phosphorus checkout by
+// its tailnet's key and no checkout flag
 function fetchSelf(host) {
   return peer(host, { path: '/api/mesh/snapshot' })
     .then((r) => r.body || {}, () => ({}))
@@ -208,7 +209,7 @@ function fetchSelf(host) {
       return {
         bootId: String(self.bootId || ''), version: String(self.version || ''), checkout: !!self.checkout,
         platform: String(self.platform || ''),
-        phosphorus: Array.isArray(b.tailnet) && b.tailnet.some((d) => d && 'phosphorus' in d),
+        legacy: !('checkout' in self) && Array.isArray(b.tailnet) && b.tailnet.some((d) => d && 'phosphorus' in d),
       };
     });
 }
@@ -243,7 +244,7 @@ async function callPeerUpdate(host, note, quietMs = PEER_QUIET_MS) {
       continue;
     }
     if (swapDeadline && Date.now() > swapDeadline) {
-      return { ok: false, error: 'swap never landed, see docker logs hesperus-updater on that host' };
+      return { ok: false, error: 'swap never landed, see docker logs phosphorus-updater on that host' };
     }
     if (status.state === 'failed') return { ok: false, error: status.error || 'update failed' };
     // idle baseline untouched: this peer's update not yet run
@@ -322,11 +323,11 @@ function note(host, fields) {
   saveChain();
 }
 
-// every hesperus host, git hosts then self last so origin stays up for the rest's
+// every phosphorus host, git hosts then self last so origin stays up for the rest's
 // fetch, a quiet one walked too as unreachable, pausing the chain
 function buildOrder(gitHosts) {
   const peers = [...new Set(mesh.tailnet()
-    .filter((d) => d && (d.hesperus || d.hesperusSeen) && d.name && d.name !== SELF_HOST)
+    .filter((d) => d && (d.phosphorus || d.phosphorusSeen) && d.name && d.name !== SELF_HOST)
     .map((d) => d.name))];
   const git = new Set(gitHosts);
   const rank = (m) => (git.has(m) ? 1 : 0);
@@ -362,7 +363,7 @@ function brief(result) {
   const e = String(result.error || '');
   if (/agent|feed|apt/.test(e)) return 'update failed';
   if (/pull failed/.test(e)) return 'pull failed';
-  if (/swap|hesperus-updater/.test(e)) return 'swap failed';
+  if (/swap|phosphorus-updater/.test(e)) return 'swap failed';
   if (/build failed/.test(e)) return 'build failed';
   if (/timed out|gave up/.test(e)) return 'timed out';
   return result.unreachable ? 'unreachable' : 'failed';
@@ -409,14 +410,14 @@ async function runChain() {
     note(host, { from: host === SELF_HOST ? readVersion(VERSION_FILE) : '' });
     log(`updating ${host} (${i + 1}/${chain.order.length})`);
 
-    // a phosphorus-era peer's own update pulls the wrong repo: the installer only
+    // a pre-hesperus checkout's own update pulls the wrong repo: the installer only
     const addr = host === SELF_HOST ? '' : (await tailnetIp(host)) || host;
     const installing = (p) => p.checkout && p.platform === 'linux';
     let quietMs = PEER_QUIET_MS;
     if (addr) {
       const p = await fetchSelf(addr);
       if (installing(p)) quietMs = INSTALL_QUIET_MS;
-      if (p.phosphorus) {
+      if (p.legacy) {
         chain.results[host] = 'skipped';
         chain.errors[host] = 'needs the installer';
         note(host, { from: p.version });

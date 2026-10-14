@@ -7,7 +7,7 @@ set -uo pipefail
 : "${TUNNEL_TOKEN:?TUNNEL_TOKEN must be set in the env file}"
 : "${TS_AUTHKEY:?TS_AUTHKEY must be set in the env file}"
 
-export SERVICES_FILE="${SERVICES_FILE:-/etc/hesperus/services.export}"
+export SERVICES_FILE="${SERVICES_FILE:-/etc/phosphorus/services.export}"
 export STATE_DIR="${STATE_DIR:-/state}"
 export FRONTEND_PORT="${FRONTEND_PORT:-8090}"
 # the tunnel's origin
@@ -59,28 +59,28 @@ say "terminals will log in over ssh to ${HOST_SSH_HOST}:${HOST_SSH_PORT}"
 # ssh <host> on a Linux host: run-*'s Include, also for in-place updates,
 # a throwaway container since only it reaches the host's /etc
 if [ "$HOST_SSH_HOST" = "127.0.0.1" ]; then
-  state_src="$(docker inspect hesperus -f '{{range .Mounts}}{{if eq .Destination "/state"}}{{.Source}}{{end}}{{end}}' 2>/dev/null)"
+  state_src="$(docker inspect phosphorus -f '{{range .Mounts}}{{if eq .Destination "/state"}}{{.Source}}{{end}}{{end}}' 2>/dev/null)"
   if [ -n "$state_src" ]; then
     line="Include \"$state_src/ssh_config\""
-    docker run --rm --network none --entrypoint sh -v /etc/ssh:/host-ssh hesperus:latest -c '
+    docker run --rm --network none --entrypoint sh -v /etc/ssh:/host-ssh phosphorus:latest -c '
       grep -qs "ssh_config\.d" /host-ssh/ssh_config || exit 2
-      inc=/host-ssh/ssh_config.d/hesperus.conf
+      inc=/host-ssh/ssh_config.d/phosphorus.conf
       [ "$(cat "$inc" 2>/dev/null)" = "$1" ] && exit 0
       mkdir -p /host-ssh/ssh_config.d && printf "%s\n" "$1" > "$inc"' _ "$line" >/dev/null 2>&1
     case $? in
       0) ;;
       2) say "the host's /etc/ssh/ssh_config never reads ssh_config.d, ssh <host> needs 'Include /etc/ssh/ssh_config.d/*.conf' at its top" ;;
-      *) say "couldn't add the host's ssh Include, ssh <host> needs a sudo hesperus start" ;;
+      *) say "couldn't add the host's ssh Include, ssh <host> needs a sudo phosphorus start" ;;
     esac
   else
-    say "can't find this container's /state on the host, ssh <host> needs a sudo hesperus start"
+    say "can't find this container's /state on the host, ssh <host> needs a sudo phosphorus start"
   fi
-  # hesperus and hesp on the host's PATH, the same way
-  repo_src="$(docker inspect hesperus -f '{{range .Mounts}}{{if eq .Destination "/repo"}}{{.Source}}{{end}}{{end}}' 2>/dev/null)"
+  # phosphorus and phos on the host's PATH, the same way
+  repo_src="$(docker inspect phosphorus -f '{{range .Mounts}}{{if eq .Destination "/repo"}}{{.Source}}{{end}}{{end}}' 2>/dev/null)"
   if [ -n "$repo_src" ]; then
-    docker run --rm --network none --entrypoint sh -v /usr/local/bin:/host-bin hesperus:latest -c '
-      for l in hesperus hesp; do [ "$(readlink /host-bin/$l)" = "$1" ] || ln -sfn "$1" /host-bin/$l || exit 1; done' _ "$repo_src/scripts/hesperus" >/dev/null 2>&1 \
-      || say "couldn't put hesperus on the host's PATH; hesperus needs a sudo hesperus start"
+    docker run --rm --network none --entrypoint sh -v /usr/local/bin:/host-bin phosphorus:latest -c '
+      for l in phosphorus phos; do [ "$(readlink /host-bin/$l)" = "$1" ] || ln -sfn "$1" /host-bin/$l || exit 1; done' _ "$repo_src/scripts/phosphorus" >/dev/null 2>&1 \
+      || say "couldn't put phosphorus on the host's PATH; phosphorus needs a sudo phosphorus start"
   fi
 fi
 
@@ -88,7 +88,7 @@ node /opt/frontend/server.js &
 PIDS+=("$!"); NAMES+=("frontend")
 
 # llama-server on the model host, idle on every other
-node /opt/hesperus/model.js &
+node /opt/phosphorus/model.js &
 PIDS+=("$!"); NAMES+=("model")
 
 # the ingress answering before the tunnel hands it anything
@@ -113,9 +113,9 @@ term() {
 # the swap's updater, gone once it exits cleanly, a failed one kept for its logs
 (
   for _ in $(seq 1 120); do
-    s="$(docker inspect -f '{{.State.Status}}:{{.State.ExitCode}}' hesperus-updater 2>/dev/null)" || exit 0
+    s="$(docker inspect -f '{{.State.Status}}:{{.State.ExitCode}}' phosphorus-updater 2>/dev/null)" || exit 0
     case "$s" in
-      exited:0) docker rm hesperus-updater >/dev/null 2>&1; exit 0 ;;
+      exited:0) docker rm phosphorus-updater >/dev/null 2>&1; exit 0 ;;
       exited:*) exit 0 ;;
     esac
     sleep 5

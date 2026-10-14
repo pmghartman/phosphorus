@@ -1,12 +1,12 @@
-# hesperus's web search: json for the harness, answering on loopback only
+# phosphorus's web search: json for the harness, answering on loopback only
 use_default_settings: true
 
 general:
-  instance_name: hesperus
+  instance_name: phosphorus
 
 server:
   # never reachable off this host, so it signs nothing anyone else sees
-  secret_key: "hesperus-search-loopback-only"
+  secret_key: "phosphorus-search-loopback-only"
   limiter: false
   image_proxy: false
   public_instance: false

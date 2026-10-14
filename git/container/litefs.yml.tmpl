@@ -1,7 +1,7 @@
 # rendered by git-daemon.sh, only __CANDIDATE__ changes per restart
 
 fuse:
-  dir: "/var/lib/hesperus/git/litefs"
+  dir: "/var/lib/phosphorus/git/litefs"
   allow-other: true
 
 data:
@@ -9,7 +9,7 @@ data:
 
 # candidates only: a servant's db read-only
 exec:
-  - cmd: "env HOME=/var/lib/hesperus/git setpriv --reuid=git --regid=hesperus --init-groups forgejo -w /var/lib/hesperus/git -c /var/lib/hesperus/git/conf/app.ini web"
+  - cmd: "env HOME=/var/lib/phosphorus/git setpriv --reuid=git --regid=phosphorus --init-groups forgejo -w /var/lib/phosphorus/git -c /var/lib/phosphorus/git/conf/app.ini web"
     if-candidate: true
 
 lease:

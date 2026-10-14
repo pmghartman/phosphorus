@@ -1,0 +1,9 @@
+[Unit]
+Description=Phosphorus update requests from the web UI and cli
+
+[Path]
+PathExists=/var/lib/phosphorus/state/update-request.json
+MakeDirectory=yes
+
+[Install]
+WantedBy=multi-user.target

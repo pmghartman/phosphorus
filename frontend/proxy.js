@@ -181,20 +181,23 @@ function upstreamHeaders(req, route, upgrade) {
 
 const SELF_HOST = process.env.SELF_HOST || '';
 const INGRESS_PORT = Number(process.env.INGRESS_PORT || 80);
-const PIN_COOKIE = 'hesperus-host';
+const PIN_COOKIE = 'phosphorus-host';
 // set on a pinned hop, never a second hop from the far ingress
-const PIN_HOP = 'x-forwarded-hesperus-host';
+const PIN_HOP = 'x-forwarded-phosphorus-host';
+// a hesperus peer's, mid-update
+const PIN_HOP_OLD = 'x-forwarded-hesperus-host';
+const pinHopped = (req) => !!(req.headers[PIN_HOP] || req.headers[PIN_HOP_OLD]);
 
-// live hesperus peers, name -> tailnet IP, mesh.js's, every tick
+// live phosphorus peers, name -> tailnet IP, mesh.js's, every tick
 let pinIps = new Map();
 const pinTargets = (ips) => { pinIps = ips; };
 
-const pinnedTo = (req) => (String(req.headers.cookie || '').match(/(?:^|;\s*)hesperus-host=([a-z0-9-]+)/) || [])[1] || '';
+const pinnedTo = (req) => (String(req.headers.cookie || '').match(/(?:^|;\s*)phosphorus-host=([a-z0-9-]+)/) || [])[1] || '';
 const pinCookie = (host) => `${PIN_COOKIE}=${host}; Path=/; Max-Age=2592000; SameSite=Lax; HttpOnly`;
 
 // the pinned host's ingress, or null to serve here
 function pinRoute(req) {
-  if (!SELF_HOST || req.headers[PIN_HOP]) return null;
+  if (!SELF_HOST || pinHopped(req)) return null;
   const host = pinnedTo(req);
   const ip = host && host !== SELF_HOST && pinIps.get(host);
   return ip ? { pin: true, host, name: 'frontend', scheme: 'http', ip, port: INGRESS_PORT, proto: 'https', maxBody: 0 } : null;
@@ -213,7 +216,7 @@ function pinSwitch(req, res) {
 
 // no pin, or one to a host gone quiet: pinned here from now on
 function pinHere(req, res) {
-  if (SELF_HOST && !req.headers[PIN_HOP] && pinnedTo(req) !== SELF_HOST) res.setHeader('Set-Cookie', pinCookie(SELF_HOST));
+  if (SELF_HOST && !pinHopped(req) && pinnedTo(req) !== SELF_HOST) res.setHeader('Set-Cookie', pinCookie(SELF_HOST));
 }
 
 function refuse(res, status, text) {

@@ -15,10 +15,10 @@ run_preflight "install Docker first (see README)"
 # --- native tailscaled conflict check ---------------------------------------
 # the container's tailscaled sharing this machine's netns (network_mode: host),
 # a native one fighting it for tailscale0/WireGuard
-if hesperus_running; then
-  say "hesperus is already running, tailscale0 is its own, skipping the native-client check"
+if phosphorus_running; then
+  say "phosphorus is already running, tailscale0 is its own, skipping the native-client check"
 elif ip link show tailscale0 >/dev/null 2>&1 || systemctl is-active --quiet tailscaled 2>/dev/null; then
-  fail "native tailscaled running, colliding with hesperus's own, disable it first: sudo systemctl disable --now tailscaled"
+  fail "native tailscaled running, colliding with phosphorus's own, disable it first: sudo systemctl disable --now tailscaled"
 fi
 
 # --- local SSH server -------------------------------------------------------
@@ -47,7 +47,7 @@ fi
 # --- xpra, for [apps] ---------------------------------------------------------
 # each app on its own display, streamed by xpra's html5 client
 install_xpra() {
-  hesperus_is_apps_host || return 0
+  phosphorus_is_apps_host || return 0
   if command -v xpra >/dev/null 2>&1; then
     say "xpra already installed, skipping"
     return 0

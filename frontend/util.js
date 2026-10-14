@@ -1,5 +1,5 @@
 'use strict';
-// shared helpers: JSON files on disk, JSON over HTTP, hesperus.ini, tailnet name
+// shared helpers: JSON files on disk, JSON over HTTP, phosphorus.ini, tailnet name
 // lookups and change-only logging
 
 const { execFile } = require('child_process');
@@ -7,18 +7,18 @@ const fs = require('fs');
 const http = require('http');
 
 const FRONTEND_PORT = Number(process.env.FRONTEND_PORT || 8090);
-const HESPERUS_INI_FILE = process.env.HESPERUS_INI_FILE || '/etc/hesperus/hesperus.ini';
+const PHOSPHORUS_INI_FILE = process.env.PHOSPHORUS_INI_FILE || '/etc/phosphorus/phosphorus.ini';
 
-// one key of hesperus.ini, blank when unset, re-parsed only on a stat change
+// one key of phosphorus.ini, blank when unset, re-parsed only on a stat change
 // (edited in place, asked many times a second)
 let ini = { sig: '', keys: new Map() };
-function hesperusIni(section, key) {
+function phosphorusIni(section, key) {
   let st;
-  try { st = fs.statSync(HESPERUS_INI_FILE); } catch { return ''; }
+  try { st = fs.statSync(PHOSPHORUS_INI_FILE); } catch { return ''; }
   const sig = `${st.ino}:${st.size}:${st.mtimeMs}`;
   if (sig !== ini.sig) {
     let text = '';
-    try { text = fs.readFileSync(HESPERUS_INI_FILE, 'utf8'); } catch {}
+    try { text = fs.readFileSync(PHOSPHORUS_INI_FILE, 'utf8'); } catch {}
     const keys = new Map();
     let current = '';
     for (const line of text.split(/\r?\n/)) {
@@ -158,4 +158,4 @@ function notes(tag) {
   return { log, note, clear: (key) => last.delete(key), reset };
 }
 
-module.exports = { FRONTEND_PORT, notes, hesperusIni, readJson, readFresh, writeJsonAtomic, writeJsonSoon, noteTailnetIps, tailnetIp, requestJson, peerCall };
+module.exports = { FRONTEND_PORT, notes, phosphorusIni, readJson, readFresh, writeJsonAtomic, writeJsonSoon, noteTailnetIps, tailnetIp, requestJson, peerCall };

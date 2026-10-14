@@ -1,5 +1,5 @@
 'use strict';
-// hesperus: the cli, run in the container by scripts/hesperus, reads from
+// phosphorus: the cli, run in the container by scripts/phosphorus, reads from
 // this host's /api/state, writes straight to config/
 
 const fs = require('fs');
@@ -9,10 +9,10 @@ const { parse } = require('../services');
 const { FRONTEND_PORT } = require('../util');
 
 const API = `http://127.0.0.1:${FRONTEND_PORT}`;
-// the home's config/, read-write (/etc/hesperus a read-only mount)
-const CONFIG_DIR = process.env.HESPERUS_CONFIG_DIR || '/repo/config';
+// the home's config/, read-write (/etc/phosphorus a read-only mount)
+const CONFIG_DIR = process.env.PHOSPHORUS_CONFIG_DIR || '/repo/config';
 const SERVICES_FILE = path.join(CONFIG_DIR, 'services.export');
-const INI_FILE = path.join(CONFIG_DIR, 'hesperus.ini');
+const INI_FILE = path.join(CONFIG_DIR, 'phosphorus.ini');
 const BASE_DOMAIN = process.env.BASE_DOMAIN || '';
 const REQUEST_MS = 2000;
 const TABS = ['services', 'files', 'git', 'stats', 'model', 'projects', 'update', 'apps'];
@@ -25,26 +25,26 @@ const STEP_LABEL = {
   fail: 'failed', unreachable: 'unreachable', skipped: 'skipped',
 };
 // [files] and [git] host: rebuilt by the frontend on its own once saved
-const INI_NOTE = 'saving rebuilds hesperus, terminals drop for a moment';
-const REBUILDING = 'rebuilding hesperus';
+const INI_NOTE = 'saving rebuilds phosphorus, terminals drop for a moment';
+const REBUILDING = 'rebuilding phosphorus';
 // [model]: only gpu baked into the image
-const MODEL_NOTE = 'all but gpu apply on the next tick, gpu rebuilds hesperus';
+const MODEL_NOTE = 'all but gpu apply on the next tick, gpu rebuilds phosphorus';
 const GIB = 1024 ** 3;
 
 // --- the web's look ----------------------------------------------------------
 // style.css's tokens, light when the terminal's background is
 
 const DARK = {
-  bg: '#141414', fg: '#e0e0e0', muted: '#9d9d9d', accent: '#6f9fd0', accent2: '#c4b066', dim: '#555555',
-  glyphBlue: '#4a9ff0', glyphGold: '#d8c45a', border: '#2e2e2e', card: '#1b1b1b', tabbar: '#0c0c0c',
+  bg: '#141414', fg: '#e0e0e0', muted: '#9d9d9d', accent: '#9f81cf', accent2: '#ce8755', dim: '#555555',
+  glyphPurple: '#a371f7', glyphOrange: '#f0883e', border: '#2e2e2e', card: '#1b1b1b', tabbar: '#0c0c0c',
   online: '#3fb950', offmesh: '#f85149', warn: '#d29922',
-  teal: '#6fb3a8', sage: '#93ad7d', iris: '#a397d6', rose: '#c98ba0', clay: '#c9916b',
+  teal: '#6fb3a8', sage: '#93ad7d', sky: '#7fa0c9', rose: '#c98ba0', sand: '#c4ab78',
 };
 const LIGHT = {
   ...DARK, bg: '#ffffff', fg: '#1f1f23', muted: '#6b6b73', dim: '#b4b4bb', border: '#e4e4e7', card: '#f4f4f5', tabbar: '#f7f7f8',
-  accent: '#2c6cb0', accent2: '#86690b', glyphBlue: '#1e74cc', glyphGold: '#a8830a',
+  accent: '#6a4bb0', accent2: '#a65a1e', glyphPurple: '#7c4ddb', glyphOrange: '#c4621a',
   online: '#1a7f37', offmesh: '#cf222e', warn: '#9a6700',
-  teal: '#2f7f72', sage: '#577a3c', iris: '#6a5bb5', rose: '#a8506f', clay: '#a5612f',
+  teal: '#2f7f72', sage: '#577a3c', sky: '#3d6a9e', rose: '#a8506f', sand: '#8a6a2c',
 };
 
 let PAL = DARK;
@@ -120,22 +120,22 @@ const surface = (bgHex, fgHex = PAL.fg) => (s) => `${bgHex === PAL.bg ? PAGE : B
 // the caret: a block in the accent, as input's caret-color
 const caret = () => surface(PAL.accent)(' ');
 
-// .about-art: blue to gold and back across the word
+// .about-art: purple to orange and back across the word
 function gradient(s, span = [...s].length) {
   const chars = [...s];
   return chars.map((ch, i) => {
     const t = span > 1 ? i / (span - 1) : 0;
-    return `${FG(mix(PAL.glyphBlue, PAL.glyphGold, t < 0.5 ? t * 2 : (1 - t) * 2))}${ch}`;
+    return `${FG(mix(PAL.glyphPurple, PAL.glyphOrange, t < 0.5 ? t * 2 : (1 - t) * 2))}${ch}`;
   }).join('') + FG(PAL.fg);
 }
 
-// wordmark: "hesperus" in phosphorus's quadrant-block pixel font
+// wordmark: "phosphorus" in phosphorus's quadrant-block pixel font
 const LOGO = [
-  '█                                   ',
-  '█▀▀▙▗▛▀▜▖▟▀▀▀▐▛▀▜▖▟▀▀▙▐▙▛▀▘█  █▗▛▀▀▘',
-  '█  █▐▛▀▀▘▝▀▀▙▐▌ ▐▌█▀▀▀▐▌   █  █ ▀▀▜▖',
-  '▀  ▀ ▀▀▀ ▀▀▀▘▐▛▀▀ ▝▀▀▘▝▘   ▝▀▀▀▝▀▀▀ ',
-  '             ▝▘                     ',
+  '     █                 █                      ',
+  '▐▛▀▜▖█▀▀▙▗▛▀▜▖▟▀▀▀▐▛▀▜▖█▀▀▙▗▛▀▜▖▐▙▛▀▘█  █▗▛▀▀▘',
+  '▐▌ ▐▌█  █▐▌ ▐▌▝▀▀▙▐▌ ▐▌█  █▐▌ ▐▌▐▌   █  █ ▀▀▜▖',
+  '▐▛▀▀ ▀  ▀ ▀▀▀ ▀▀▀▘▐▛▀▀ ▀  ▀ ▀▀▀ ▝▘   ▝▀▀▀▝▀▀▀ ',
+  '▝▘                ▝▘                          ',
 ];
 // linux vt fonts lack quadrant blocks; short or narrow windows keep the rows
 const bigLogo = (cols, rows) => process.env.TERM !== 'linux' && cols >= LOGO[0].length + 2 && rows >= 24;
@@ -143,14 +143,14 @@ const bigLogo = (cols, rows) => process.env.TERM !== 'linux' && cols >= LOGO[0].
 // title rows: the wordmark, version under its end, or one line
 function titleLines(cols, rows) {
   const ver = ui.state ? `v${ui.state.self.version}` : '';
-  if (!bigLogo(cols, rows)) return [` ${gradient(ver ? `hesperus ${ver}` : 'hesperus')}`];
+  if (!bigLogo(cols, rows)) return [` ${gradient(ver ? `phosphorus ${ver}` : 'phosphorus')}`];
   const last = LOGO.length - 1;
   return LOGO.map((r, i) => ` ${gradient(i === last && ver ? r.slice(0, -ver.length) : r, r.length)}${i === last ? c.muted(ver) : ''}`);
 }
 
 // .is-self and .mesh-stat-dot: the square before a host's name
 const selfMark = (name) => `${c.accent('■')} ${name}`;
-const dot = (d) => `${(d.hesperus ? c.teal : c.dim)('■')} ${d.name}`;
+const dot = (d) => `${(d.phosphorus ? c.teal : c.dim)('■')} ${d.name}`;
 
 const ANSI = /\x1b\[[0-9;?]*[A-Za-z]/g;
 const vlen = (s) => [...String(s).replace(ANSI, '')].length;
@@ -346,7 +346,7 @@ const readText = (file) => { try { return fs.readFileSync(file, 'utf8'); } catch
 function writeAtomic(file, text) {
   let st = null;
   try { st = fs.statSync(file); } catch {}
-  const tmp = path.join(path.dirname(file), `.${path.basename(file)}.hesperus-${process.pid}`);
+  const tmp = path.join(path.dirname(file), `.${path.basename(file)}.phosphorus-${process.pid}`);
   fs.writeFileSync(tmp, text);
   try {
     if (st) { fs.chmodSync(tmp, st.mode & 0o7777); fs.chownSync(tmp, st.uid, st.gid); }
@@ -434,7 +434,7 @@ function commitServices(doc) {
   return '';
 }
 
-// --- hesperus.ini [files] -----------------------------------------------------------
+// --- phosphorus.ini [files] -----------------------------------------------------------
 
 const splitList = (v) => String(v || '').split(',').map((s) => s.trim()).filter(Boolean);
 
@@ -483,7 +483,7 @@ function saveShare(form) {
   return writeShares(shares);
 }
 
-// --- hesperus.ini [git] -------------------------------------------------------------
+// --- phosphorus.ini [git] -------------------------------------------------------------
 
 function readGitHost() {
   const sec = splitSections(readText(INI_FILE)).sections.find((s) => s.name === 'git');
@@ -498,7 +498,7 @@ function writeGitHost(on) {
   return '';
 }
 
-// --- hesperus.ini [apps] ------------------------------------------------------------
+// --- phosphorus.ini [apps] ------------------------------------------------------------
 
 function readAppsHost() {
   const sec = splitSections(readText(INI_FILE)).sections.find((s) => s.name === 'apps');
@@ -513,7 +513,7 @@ function writeAppsHost(on) {
   return '';
 }
 
-// --- hesperus.ini [model] -----------------------------------------------------------
+// --- phosphorus.ini [model] -----------------------------------------------------------
 
 // host, gpu and url always written, ctx and slots only once set
 const MODEL_KEYS = ['host', 'gpu', 'url', 'ctx', 'slots'];
@@ -543,9 +543,9 @@ function writeModel(vals) {
 // for the vm's own kernel and rounding
 const vmGap = (m) => m.machine > 0 && m.total < m.machine * 0.9;
 
-// wsl's cap hesperus start writes itself, colima's set when its vm starts
+// wsl's cap phosphorus start writes itself, colima's set when its vm starts
 const vmFix = () => (String(ui.state.self.platform || '').toLowerCase() === 'windows'
-  ? 'hesperus start gives it all of it' : 'colima start --memory gives it all of it');
+  ? 'phosphorus start gives it all of it' : 'colima start --memory gives it all of it');
 
 const ROLES = ['chimp', 'orangutan'];
 
@@ -695,7 +695,7 @@ function filesView() {
     ...(info.wantDir ? ['', c.warn(`${REBUILDING} to publish ${info.wantDir}`)] : []),
   ] : null;
   const lines = panels([
-    ['hesperus.ini [files]', shares.length
+    ['phosphorus.ini [files]', shares.length
       ? table(['dir', 'perms'], shares.map((s) => [s.dir, c.teal(s.perms)]), ui.sel[1])
       : [c.muted(`using default dir: ${info && info.shares && info.shares[0] ? info.shares[0].label : "the home's files"}`)]],
     published && ['published now', published],
@@ -727,7 +727,7 @@ function lagMeter(ageSec) {
 // the card's glyphs: ● master, ○ servant ready, ◌ catching up, × unreachable
 function gitRow(h, masterGen) {
   const master = h.role === 'master';
-  const glyph = !h.reachable ? c.offmesh('×') : master ? c.accent('●') : !h.eligible ? c.clay('◌') : c.sage('○');
+  const glyph = !h.reachable ? c.offmesh('×') : master ? c.accent('●') : !h.eligible ? c.sand('◌') : c.sage('○');
   const name = h.reachable ? h.host : c.muted(strike(h.host));
   let backup;
   if (!h.reachable) backup = 'unreachable';
@@ -756,17 +756,17 @@ function statsView() {
     lock && ['mesh update', [c.accent(`${lock.paused ? 'paused' : 'running'}, started by ${lock.initiator}`)]],
     ['tailnet', table(['host', 'os', 'version', 'ping'], [
       // this host usually in the tailnet list already, only added when missing
-      ...(st.tailnet.some((d) => d.name === st.self.host) ? [] : [{ name: st.self.host, hesperus: true }]),
+      ...(st.tailnet.some((d) => d.name === st.self.host) ? [] : [{ name: st.self.host, phosphorus: true }]),
       ...st.tailnet,
     ].map((d) => {
       const self = d.name === st.self.host;
       return [
         self ? selfMark(d.name) : dot(d), c.teal((self ? st.self.platform : d.os) || ''),
-        c.muted((self ? st.self.version : d.version) || ''), d.hesperus && !self ? ping(d.rttMs) : '',
+        c.muted((self ? st.self.version : d.version) || ''), d.phosphorus && !self ? ping(d.rttMs) : '',
       ];
     }))],
     ['routes', st.routes.length ? table(['host', 'name', 'mode', 'address', 'port', 'status'], st.routes.map((r) => [
-      c.iris(r.host), r.name, c.teal(r.type === 'game' ? 'game' : r.mode),
+      c.sky(r.host), r.name, c.teal(r.type === 'game' ? 'game' : r.mode),
       c.muted(r.type === 'game' ? `${r.name}.${st.gameZone}:${r.port}`
         : r.mode === 'subdomain' ? `${r.name}.${BASE_DOMAIN}${r.base_path ? `/${r.base_path}` : ''}`
           : `${BASE_DOMAIN}/${r.host}/${r.name}/`),
@@ -777,7 +777,7 @@ function statsView() {
   return { lines, keys: [['↑↓ scroll', 'quiet']], scroll: true };
 }
 
-// hesperus.ini's flag against what the mesh sees, the election as the git card draws it
+// phosphorus.ini's flag against what the mesh sees, the election as the git card draws it
 function gitView() {
   const st = ui.state;
   const want = readGitHost();
@@ -801,7 +801,7 @@ function gitView() {
   };
 }
 
-// hesperus.ini's flag, and what the new tab lists for this host
+// phosphorus.ini's flag, and what the new tab lists for this host
 function appsView() {
   const st = ui.state;
   const on = readAppsHost();
@@ -850,8 +850,8 @@ function modelView() {
   const rows = all.map((x) => [
     x.host === st.self.host ? selfMark(x.host) : `${c.teal('■')} ${x.host}`,
     rolesOf(x, st.model).length ? c.accent(rolesOf(x, st.model).join(' + ')) : c.dim('-'),
-    x.ready ? c.online('loaded') : x.download && x.download.total ? c.clay(`${Math.floor((100 * x.download.done) / x.download.total)}%`)
-      : x.loading ? c.clay('loading') : c.warn('down'),
+    x.ready ? c.online('loaded') : x.download && x.download.total ? c.sand(`${Math.floor((100 * x.download.done) / x.download.total)}%`)
+      : x.loading ? c.sand('loading') : c.warn('down'),
     x.ready && x.use && x.use.tps ? `${x.use.tps} tok/s` : c.dim('-'),
     x.file ? c.muted(x.file) : c.dim('no link'),
   ]);
@@ -911,7 +911,7 @@ function projectsView() {
   const p = ui.project && pickedProject() && ui.project.id === pickedProject().id ? ui.project : null;
   const now = Date.now();
   const rows = list.map((x) => [
-    x.title, c.iris(x.host), projectState(x), x.status === 'running' ? `${x.progress}%` : c.dim('-'),
+    x.title, c.sky(x.host), projectState(x), x.status === 'running' ? `${x.progress}%` : c.dim('-'),
     c.muted(x.status === 'running' ? `${span(x.deadline - now)} left` : span((x.ended || now) - x.started)),
   ]);
   let detail = null;
@@ -1043,11 +1043,11 @@ function updateView() {
   const title = !chain ? (last ? 'mesh update finished' : 'mesh update') : chain.paused ? 'mesh update paused' : 'updating the mesh';
   // one that answered before is listed too, as not answering, rather than
   // dropping out of sight and out of the walk
-  const names = st.tailnet.filter((d) => d.hesperus || d.hesperusSeen).map((d) => d.name);
+  const names = st.tailnet.filter((d) => d.phosphorus || d.phosphorusSeen).map((d) => d.name);
   if (!names.includes(st.self.host)) names.push(st.self.host);
   const quiet = (m) => {
     const d = st.tailnet.find((x) => x.name === m);
-    return m !== st.self.host && !!d && !!d.hesperusSeen && !d.hesperus;
+    return m !== st.self.host && !!d && !!d.phosphorusSeen && !d.phosphorus;
   };
   const order = shown ? [...shown.order, ...names.filter((n) => !shown.order.includes(n))] : names.sort();
   // .update-row: muted while waiting, accent while running, a failure reds its step only
@@ -1085,7 +1085,7 @@ function updateView() {
 function offlineView() {
   return panels([['offline', [
     c.offmesh(`the frontend is not answering on :${FRONTEND_PORT}`), '',
-    c.muted('hesperus is down or restarting, start it with'), '', `  ${c.accent('hesperus start')}`, '',
+    c.muted('phosphorus is down or restarting, start it with'), '', `  ${c.accent('phosphorus start')}`, '',
     c.muted('this screen clears on its own once it answers'),
   ]]]);
 }
@@ -1319,7 +1319,7 @@ function scrollKey(key) {
   else if (key.name === 'down') ui.scroll += 1;
 }
 
-// --- git: the flag in hesperus.ini, and the git card's make master -------------------
+// --- git: the flag in phosphorus.ini, and the git card's make master -------------------
 
 function gitKey(str, key) {
   const hosts = ui.state.gitHosts;
@@ -1328,7 +1328,7 @@ function gitKey(str, key) {
   else if (str === 'h') {
     const on = !readGitHost();
     ui.confirm = {
-      text: on ? `make this host a git host (forgejo/litefs)? ${INI_NOTE}` : `stop being a git host? hesperus-git is removed, ${INI_NOTE}`,
+      text: on ? `make this host a git host (forgejo/litefs)? ${INI_NOTE}` : `stop being a git host? phosphorus-git is removed, ${INI_NOTE}`,
       danger: !on,
       onYes: () => { const err = writeGitHost(on); flash(err ? c.offmesh(err) : c.online(`git host ${on ? 'on' : 'off'}; ${REBUILDING}`)); },
     };
@@ -1442,11 +1442,11 @@ function quit(code = 0) {
 
 async function main() {
   if (!process.stdin.isTTY) {
-    console.error('hesperus needs a terminal; run it as plain `hesperus`');
+    console.error('phosphorus needs a terminal; run it as plain `phosphorus`');
     process.exit(2);
   }
   const args = process.argv.slice(2);
-  // hesperus update all: straight to the start prompt, --tab keeping a reconnect's place
+  // phosphorus update all: straight to the start prompt, --tab keeping a reconnect's place
   const tabArg = args.indexOf('--tab');
   if (tabArg >= 0) ui.tab = Math.max(0, TABS.findIndex((t) => t.toLowerCase() === String(args[tabArg + 1]).toLowerCase()));
   if (args[0] === 'update-all') ui.tab = UPDATE_TAB;

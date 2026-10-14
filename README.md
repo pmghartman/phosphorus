@@ -1,14 +1,14 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/wordmark-dark.svg">
-    <img src=".github/assets/wordmark-light.svg" alt="hesperus" width="360">
+    <img src=".github/assets/wordmark-light.svg" alt="phosphorus" width="440">
   </picture>
 </p>
 
 <p align="center">
-  <img src=".github/assets/hesperus-mengs.jpg" alt="Hesperus as personification of the evening, Anton Raphael Mengs" width="420">
+  <img src=".github/assets/wright-alchemist.jpg" alt="The Alchemist in Search of the Philosopher's Stone, Joseph Wright of Derby" width="420">
   <br>
-  <sub><i>Hesperus als Personifikation des Abends</i>, Anton Raphael Mengs, c. 1765. Public domain, via <a href="https://commons.wikimedia.org/wiki/File:Mengs,_Hesperus_als_Personifikation_des_Abends.jpg">Wikimedia Commons</a>.</sub>
+  <sub><i>The Alchemist in Search of the Philosopher's Stone</i>, Joseph Wright of Derby, 1771. Public domain, via <a href="https://commons.wikimedia.org/wiki/File:Joseph_Wright_of_Derby_The_Alchemist.jpg">Wikimedia Commons</a>.</sub>
 </p>
 
 One container per machine, each a **host** on the mesh at `BASE_DOMAIN` (`.env`):
@@ -20,29 +20,29 @@ From the latest release:
 
 | OS | Needs | Install |
 |---|---|---|
-| Linux (Debian, Ubuntu) | nothing, apt pulls Docker | `sudo apt install ./hesperus_VER_ARCH.deb` (`amd64` or `arm64`) |
-| macOS | [colima](https://github.com/abiosoft/colima), Homebrew `docker`, `docker-compose` | open `hesperus-VER-macos-universal.dmg`, drag Hesperus to Applications, open it (first open: right-click > Open) |
-| Windows | Docker Desktop (host networking on) | run `hesperus-VER-windows-x86_64-setup.exe` (SmartScreen: More info > Run anyway) |
+| Linux (Debian, Ubuntu) | nothing, apt pulls Docker | `sudo apt install ./phosphorus_VER_ARCH.deb` (`amd64` or `arm64`) |
+| macOS | [colima](https://github.com/abiosoft/colima), Homebrew `docker`, `docker-compose` | open `phosphorus-VER-macos-universal.dmg`, drag Phosphorus to Applications, open it (first open: right-click > Open) |
+| Windows | Docker Desktop (host networking on) | run `phosphorus-VER-windows-x86_64-setup.exe` (SmartScreen: More info > Run anyway) |
 
 Windows over ssh, no desktop needed (an admin account's session):
 
 ```powershell
-Start-Process .\hesperus-VER-windows-x86_64-setup.exe -ArgumentList '/S' -Wait
-powershell -NoProfile -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\Hesperus\release\scripts\windows\install.ps1" -Headless
-Get-Content -Wait $env:TEMP\hesperus-install.log
+Start-Process .\phosphorus-VER-windows-x86_64-setup.exe -ArgumentList '/S' -Wait
+powershell -NoProfile -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\Phosphorus\release\scripts\windows\install.ps1" -Headless
+Get-Content -Wait $env:TEMP\phosphorus-install.log
 ```
 
 `-Headless` runs detached from the session, so a migration taking the old tailnet (and the
 ssh with it) down finishes anyway, and rolls back to the old install if bring-up fails.
 
-Each host's own files live in its **home**: `/var/lib/hesperus` (Linux),
-`~/Library/Hesperus` (macOS), `%USERPROFILE%\hesperus` (Windows). That covers `.env`, `config/`,
+Each host's own files live in its **home**: `/var/lib/phosphorus` (Linux),
+`~/Library/Phosphorus` (macOS), `%USERPROFILE%\phosphorus` (Windows). That covers `.env`, `config/`,
 `state/`, `git/data/`, `files/` and `models/`, none of them touched by an update. Fill in
-`.env` from `.env.example`, then `hesperus start` (`sudo` on Linux; the tray's Start on
+`.env` from `.env.example`, then `phosphorus start` (`sudo` on Linux; the tray's Start on
 macOS and Windows). On macOS set `hostname:` in `colima start --edit` first.
 `TS_AUTHKEY` and `TS_API_KEY` in `.env` expire every 90 days.
 
-Images come prebuilt from `ghcr.io/pmghartman/hesperus` and `hesperus-git`, tagged by
+Images come prebuilt from `ghcr.io/pmghartman/phosphorus` and `phosphorus-git`, tagged by
 release. The installers are the only way in; a clone of this repo doesn't run.
 
 ## Updates
@@ -50,31 +50,40 @@ release. The installers are the only way in; a clone of this repo doesn't run.
 The update button checks the release feed first, then walks the mesh host by host. Each
 host hands the update to its agent:
 
-- Linux: `hesperus-update.path` runs `apt` against the signed feed, postinst pulls and swaps.
+- Linux: `phosphorus-update.path` runs `apt` against the signed feed, postinst pulls and swaps.
 - macOS, Windows: the tray app runs the Tauri updater, relaunches, pulls and swaps.
 
-`hesperus update` and the tray's Check for Updates do the same for one host.
+`phosphorus update` and the tray's Check for Updates do the same for one host.
 
 A host still on a git checkout counts as behind. On Linux the update installs the
-release's `.deb` from GitHub over it, migrating it into `/var/lib/hesperus` (a git-era peer
+release's `.deb` from GitHub over it, migrating it into `/var/lib/phosphorus` (a git-era peer
 pulls `main` first, then installs). macOS and Windows checkouts need the `.dmg` or setup
 `.exe` run there once.
 
-## From phosphorus
+## From hesperus
 
-Installing on a host that runs an old phosphorus (or git-era hesperus) checkout migrates
-it. The installer finds the old checkout through its container, stops it (kept, restart
-off, for a rollback), then moves into the home:
+A hesperus host (1.x) updates into phosphorus on its own: the Linux agent's apt upgrade
+pulls a transitional `hesperus` package that depends on `phosphorus`, and the tray app's
+update installs the Phosphorus app. Either way phosphorus's installer then migrates the
+old home. On Windows the Phosphorus app asks for admin once to migrate, then removes the
+Hesperus app. On macOS the app keeps its `Hesperus.app` path until renamed by hand, and may
+need opening once from Applications after the update.
 
-- `.env` as it was, `PHOS_UPDATE_PASSWORD` renamed `HESPERUS_UPDATE_PASSWORD`, `GAME_ZONE=hesperus`
-- `config/phos.ini` as `config/hesperus.ini`, `services.export`, `state/`, `files/`, `models/`, `git/data/`
-- `[files] dir` entries inside the checkout, copied into the home and pointed there
+Installing on a host that runs a hesperus home or an old phosphorus checkout migrates it.
+The installer finds the old install through its container, stops it (kept, restart off,
+for a rollback), then moves into the home:
+
+- `.env` as it was, `PHOS_` and `HESPERUS_` keys renamed `PHOSPHORUS_`, `GAME_ZONE=phosphorus`
+- `config/phos.ini` or `config/hesperus.ini` as `config/phosphorus.ini`, `services.export`,
+  `state/`, `files/`, `models/`, `git/data/`
+- `[files] dir` entries inside the old install, copied into the home and pointed there
 - the tailscale volume, so the node keeps its tailnet name and ip with no new auth key, and
   the Windows git and model volumes
 
-The mesh update skips phosphorus-era hosts: their own update resets to the phosphorus repo's
-`main`, now a different project. Migrate the git master first, then the replicas, in one sitting.
-Delete the old checkout once hesperus is up. By hand: `scripts/migrate.sh OLD HOME`.
+The mesh update skips pre-hesperus phosphorus checkouts: their own update resets to a git
+`main` that no longer runs. Install the release on those by hand, the git master first,
+then the replicas, in one sitting. Delete the old install once phosphorus is up. By hand:
+`scripts/migrate.sh OLD HOME`.
 
 ## Releasing
 
@@ -83,14 +92,14 @@ The manual `release` workflow: images to ghcr, `.deb`, `.dmg`, setup `.exe`, rel
 `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, `APT_GPG_KEY` and variable
 `TAURI_UPDATER_PUBKEY`. Without them the installers still build, with no update feed.
 
-## hesperus
+## phosphorus
 
 | Command | Does |
 |---|---|
-| `hesperus` | The cli, `hesp` for short, every command below too |
-| `hesperus start` / `stop` / `restart` | Start, stop, restart this host |
-| `hesperus update` | Update this host from the release feed |
-| `hesperus update all` | Update the mesh (`HESPERUS_UPDATE_PASSWORD`) |
+| `phosphorus` | The cli, `phos` for short, every command below too |
+| `phosphorus start` / `stop` / `restart` | Start, stop, restart this host |
+| `phosphorus update` | Update this host from the release feed |
+| `phosphorus update all` | Update the mesh (`PHOSPHORUS_UPDATE_PASSWORD`) |
 
 ## Services
 
@@ -118,7 +127,7 @@ stop = systemctl --user stop tmodloader
 | `type` | none | `game`: tailnet only, at `<name>.<GAME_ZONE>:<port>` |
 | `start`, `stop` | none | Games only: play/stop commands |
 
-## hesperus.ini
+## phosphorus.ini
 
 ```
 [files]
@@ -144,7 +153,7 @@ host = true
   `slots` (4). Needs ram plus vram of about the gguf's size plus 64KB a token.
 - `[apps]`: Linux only. The host's `.desktop` apps in the `+` tab's second box,
   each launched as the user who logs in, on its own xpra display, streamed by
-  xpra's html5 client. `hesperus start` installs xpra.
+  xpra's html5 client. `phosphorus start` installs xpra.
 
 Applied a few seconds after a change.
 
@@ -154,7 +163,7 @@ Applied a few seconds after a change.
   `/chimp` asks the small model through
   [opencode](https://github.com/anomalyco/opencode)'s harness, with its own
   tools (bash, files, grep in the container's files share), web search and
-  hesperus's MCP tools (`POST /api/mcp`). A password an action needs (a mesh
+  phosphorus's MCP tools (`POST /api/mcp`). A password an action needs (a mesh
   update's) goes in a box by the chat, never to the model. The editor tab last open goes with
   each ask. Right click a line to react, reply, edit or delete.
 - **Files**: each host's shares, opened in a live shared editor, saved as you
@@ -164,7 +173,7 @@ Applied a few seconds after a change.
   refine until it calls `project_finish` or time runs out. One per host,
   resumed after a restart, told when one cut a round short. Its model host going offline pauses it, mid-round
   too, the clock held, until that same model answers again. It has opencode's own tools: its bash runs in a
-  `hesperus-sandbox-<id>` container off the hesperus image, on the `hesperus-sandbox` network, which iptables cuts off
+  `phosphorus-sandbox-<id>` container off the phosphorus image, on the `phosphorus-sandbox` network, which iptables cuts off
   from the tailnet, the lan and the host; its file and search tools are held to the workspace, links out of it
   refused; todowrite is the task list shown; task hands pieces to an `orangutan-helper` subagent; webfetch goes
   through the frontend's fenced fetch, public addresses only at every redirect; lsp servers (typescript,
@@ -179,11 +188,11 @@ Applied a few seconds after a change.
 ## Layout
 
 ```
-config/      services.export, hesperus.ini (per host)
-container/   hesperus image
-frontend/    node service; web/ the UI, cli/ hesperus
-git/         hesperus-git image
-scripts/     hesperus, run, rebuild, install, migrate, upgrade
+config/      services.export, phosphorus.ini (per host)
+container/   phosphorus image
+frontend/    node service; web/ the UI, cli/ phosphorus
+git/         phosphorus-git image
+scripts/     phosphorus, run, rebuild, install, migrate, upgrade
 build/       .deb packaging
 gui/         tray app (Tauri), macOS and Windows
 files/       default share

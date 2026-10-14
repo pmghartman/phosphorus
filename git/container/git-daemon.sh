@@ -2,14 +2,14 @@
 set -uo pipefail
 
 STATE_DIR="${STATE_DIR:-/state}"
-DATA_ROOT="${DATA_ROOT:-/var/lib/hesperus/git}"
+DATA_ROOT="${DATA_ROOT:-/var/lib/phosphorus/git}"
 LITEFS_YML_TMPL="${LITEFS_YML_TMPL:-/etc/litefs/litefs.yml.tmpl}"
 LITEFS_YML="${LITEFS_YML:-/etc/litefs/litefs.yml}"
 APP_INI_TMPL="${APP_INI_TMPL:-/etc/forgejo/app.ini.tmpl}"
 APP_INI="${APP_INI:-$DATA_ROOT/conf/app.ini}"
 GIT_ROLE_FILE="${GIT_ROLE_FILE:-$STATE_DIR/git-role}"
 SELF_HOST_FILE="${SELF_HOST_FILE:-$STATE_DIR/self-host}"
-ELECTOR="${ELECTOR:-/usr/local/lib/hesperus-git/elector.js}"
+ELECTOR="${ELECTOR:-/usr/local/lib/phosphorus-git/elector.js}"
 # touch to let this host lead without proof it has the newest data
 FORCE_FILE="${FORCE_FILE:-$STATE_DIR/git-force-promote}"
 VERSION_FILE="$DATA_ROOT/GIT_VERSION"
@@ -56,10 +56,10 @@ render_litefs_yml() {
 # conf/ rsynced wholesale from the master, a local value would drift
 render_app_ini_once() {
   if [ -s "$APP_INI" ]; then
-    # phosphorus-era paths, else forgejo's db outside litefs and nothing answering
-    grep -q '/var/lib/phosphorus/' "$APP_INI" \
-      && sed -i -e 's#/var/lib/phosphorus/git#/var/lib/hesperus/git#g' -e 's/^APP_NAME = phosphorus git$/APP_NAME = hesperus git/' "$APP_INI" \
-      && chown git:hesperus "$APP_INI" && say "app.ini moved off /var/lib/phosphorus"
+    # hesperus-era paths, else forgejo's db outside litefs and nothing answering
+    grep -q '/var/lib/hesperus/' "$APP_INI" \
+      && sed -i -e 's#/var/lib/hesperus/git#/var/lib/phosphorus/git#g' -e 's/^APP_NAME = hesperus git$/APP_NAME = phosphorus git/' "$APP_INI" \
+      && chown git:phosphorus "$APP_INI" && say "app.ini moved off /var/lib/hesperus"
     # added after first render, appended once, then rsynced like the rest of conf/
     grep -q '^\[cron.git_gc_repos\]' "$APP_INI" \
       || printf '\n[cron.git_gc_repos]\nENABLED  = true\nSCHEDULE = @every 24h\n' >> "$APP_INI"
@@ -355,8 +355,8 @@ term() {
 main() {
   mkdir -p "$STATE_DIR" "$DATA_ROOT"/{conf,custom,obj,litefs} /var/lib/litefs-internal
   # forgejo running as git, never chown litefs/ (the FUSE mount)
-  chown git:hesperus "$DATA_ROOT"
-  chown -R git:hesperus "$DATA_ROOT"/{conf,custom,obj}
+  chown git:phosphorus "$DATA_ROOT"
+  chown -R git:phosphorus "$DATA_ROOT"/{conf,custom,obj}
   # the mulab-era names, once
   [ -e "$DATA_ROOT/MU_GIT_VERSION" ] && [ ! -e "$VERSION_FILE" ] && cp -p "$DATA_ROOT/MU_GIT_VERSION" "$VERSION_FILE"
   [ -e "$DATA_ROOT/MU_GIT_PULLED" ] && mv "$DATA_ROOT/MU_GIT_PULLED" "$PULLED_FILE"
@@ -395,7 +395,7 @@ main() {
       fi
     fi
 
-    # a host rename landing in self-host once hesperus restarts, restarted to follow it
+    # a host rename landing in self-host once phosphorus restarts, restarted to follow it
     if [ -s "$SELF_HOST_FILE" ] && [ "$(<"$SELF_HOST_FILE")" != "$SELF_HOST" ]; then
       say "self-host is now $(<"$SELF_HOST_FILE"), restarting"
       term
