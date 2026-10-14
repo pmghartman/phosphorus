@@ -48,12 +48,12 @@ outside #mesh-svg (emptied every redraw) so it never restarts -->
       <div class="tabbar-tabs" id="tabbar-tabs">
         <span class="tab-ink" aria-hidden="true"></span>
         <button class="tab-btn tab-brand" data-tab-id="about" title="about (p)"><span class="brand-text"><span class="brand-name">phosphorus </span><span class="brand-ver"></span></span></button>
-        <button class="tab-btn active" data-tab-id="services"><span class="tab-label">home</span></button>
+        <button class="tab-btn" data-tab-id="services"><span class="tab-label">home</span></button>
         <button class="tab-btn" data-tab-id="files"><span class="tab-label">files</span></button>
         <button class="tab-btn" data-tab-id="status"><span class="tab-label">status</span></button>
         <button class="tab-btn" data-tab-id="chat"><span class="tab-label">chat</span><span class="chat-badge" id="chat-tab-badge" hidden></span></button>
         <button class="tab-btn" data-tab-id="projects"><span class="tab-label">projects</span></button>
-        <button class="tab-btn" data-tab-id="desktop"><span class="tab-label">desktop</span></button>
+        <button class="tab-btn active" data-tab-id="desktop"><span class="tab-label">desktop</span></button>
       </div>
       <!-- phones: the open tabs, from the one tab shown -->
       <div class="tab-menu tab-pick" id="tab-pick" hidden>
@@ -150,7 +150,7 @@ outside #mesh-svg (emptied every redraw) so it never restarts -->
       </div>
     </div>
     <div class="pane-content" id="pane-content">
-      <div class="view active" id="view-services">
+      <div class="view" id="view-services">
         <div class="home-cols">
           <div class="home-col">
             <div class="home-col-head">services</div>
@@ -246,7 +246,7 @@ outside #mesh-svg (emptied every redraw) so it never restarts -->
         </div>
       </div>
       <!-- a pretend remote desktop over the hosts' own terminals, files and services -->
-      <div class="view dk" id="view-desktop"></div>
+      <div class="view dk active" id="view-desktop"></div>
       <div class="view" id="view-about">
         <div class="about-wrap">
           <div class="about-brand">

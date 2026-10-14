@@ -1454,6 +1454,8 @@ for (const id of loadJsonSafe(CLOSED_TABS_KEY)) if (FIXED_TABS[id]) fixedBtn(id)
 // from: the side the view slides in from, by tab order when not given
 // a closed built in tab reopened by being gone to
 function activateTab(id, from) {
+  // desktop only, every other view kept off screen
+  if (id !== 'desktop') return;
   if (FIXED_TABS[id] && fixedBtn(id).hidden) {
     fixedBtn(id).hidden = false;
     saveClosedTabs();
@@ -1653,11 +1655,20 @@ function startTerminal(view, host, sid, resume, shared = false, login = null) {
     let got = 0;
     // true while the prompts are still being answered
     let seen = '';
+    // the password's echoed line break dropped, the shell's first output at the top
+    let trim = false;
     const loginStep = (data) => {
       seen += new TextDecoder().decode(data);
       if (/login: $/.test(seen)) { seen = ''; ws.send(enc.encode(`${login.user}\r`)); }
-      else if (/password: $/.test(seen)) { ws.send(enc.encode(`${login.pass}\r`)); login = null; }
+      else if (/password: $/.test(seen)) { ws.send(enc.encode(`${login.pass}\r`)); login = null; trim = true; }
       return true;
+    };
+    const trimStep = (data) => {
+      const bytes = new Uint8Array(data);
+      let i = 0;
+      while (i < bytes.length && (bytes[i] === 13 || bytes[i] === 10)) i += 1;
+      if (i < bytes.length) trim = false;
+      return bytes.subarray(i);
     };
     let delay = RETRY_MIN_MS;
     const connect = () => {
@@ -1671,7 +1682,7 @@ function startTerminal(view, host, sid, resume, shared = false, login = null) {
         resume = true;
         got += e.data.byteLength;
         if (login && loginStep(e.data)) return;
-        term.write(new Uint8Array(e.data));
+        term.write(trim ? trimStep(e.data) : new Uint8Array(e.data));
       };
       ws.onclose = (e) => {
         if (e.code === TERM_TAKEN) {
@@ -8163,6 +8174,8 @@ for (const el of [...document.querySelectorAll('.modal'), updateModal, tabMenu, 
 }
 keybarDirty();
 
+const DESK_ONLY = true;
+
 // keys by the name the row shows them under
 const KEY_NAMES = { ' ': 'space', Enter: 'enter', Delete: 'd', U: 'shift+u', C: 'shift+c' };
 
@@ -8197,7 +8210,8 @@ document.addEventListener('keydown', (e) => {
     closeMenus();
     return;
   }
-  if (typing) return;
+  // desktop only: no tab or key row keys
+  if (typing || DESK_ONLY) return;
   // a focused link or button's own enter and space
   if ((e.key === 'Enter' || e.key === ' ') && t.closest?.('a[href], button')) return;
   const name = KEY_NAMES[e.key] || e.key;
@@ -8218,8 +8232,7 @@ document.addEventListener('keydown', (e) => {
   e.preventDefault();
 });
 
-// home closed last visit: the first tab still open, else the about page
-if (tabbarTabs.querySelector('.tab-btn.active')?.hidden) activateTab(tabIds()[0] || 'about');
+activateTab('desktop');
 
 // --- desktop: a pretend remote desktop, every window one of the
 // mesh's own terminals, files or services, drawn here
@@ -8290,7 +8303,11 @@ function dkLogin() {
   actions.append(go);
   box.append(el('div', 'home-col-head', 'desktop'), el('p', 'dk-note', 'ssh into one or more hosts'), list, actions);
   go.addEventListener('click', dkConnect);
-  dkView.replaceChildren(box);
+  const stage = el('div', 'dk-stage');
+  stage.appendChild(box);
+  const desk = el('div', 'dk-desk');
+  desk.append(dkArt(), stage, dkBar());
+  dkView.replaceChildren(desk);
   dk.login = { list, go };
   dk.rows.clear();
   dkLoginHosts();
@@ -8343,20 +8360,15 @@ function dkDesktop() {
   const wins = el('div', 'dk-wins');
   const tasks = el('div', 'dk-tasks');
   const hosts = el('span', 'dk-hosts');
-  const clock = el('span', 'dk-clock');
   const off = Object.assign(el('button', 'dk-off', 'disconnect'), { type: 'button' });
-  const bar = el('div', 'dk-bar');
-  bar.append(tasks, hosts, clock, off);
-  const art = el('div', 'dk-art');
-  art.appendChild(document.querySelector('.about-art').cloneNode(true));
   const desk = el('div', 'dk-desk');
-  desk.append(art, icons, wins, bar);
+  desk.append(dkArt(), icons, wins, dkBar(tasks, hosts, off));
   dkView.replaceChildren(desk);
   hosts.replaceChildren(...[...dk.creds.keys()].map((h) => el('span', 'dk-chip', h)));
   off.addEventListener('click', dkDisconnect);
-  // a press on bare desk unfocuses every window
-  wins.addEventListener('pointerdown', (e) => { if (e.target === wins) dkFocus(null); });
-  dk.desk = { el: desk, icons, wins, tasks, clock };
+  dkBand(icons);
+  dk.desk = { el: desk, icons, wins, tasks };
+  new ResizeObserver(() => dkLayout()).observe(icons);
   // the desk resized (side column shown or hidden), floating windows kept on it
   new ResizeObserver(() => {
     const W = wins.clientWidth;
@@ -8378,9 +8390,26 @@ function dkDesktop() {
   dkIcons();
 }
 
+// the page's update and theme buttons, moved into whichever bar is up
+const dkTray = document.querySelector('.top-mesh-wide');
+function dkBar(...before) {
+  const bar = el('div', 'dk-bar');
+  dk.clock = el('span', 'dk-clock');
+  if (!before.length) bar.appendChild(el('span', 'dk-tasks'));
+  bar.append(...before.slice(0, 2), dkTray, dk.clock, ...before.slice(2));
+  dkClock();
+  return bar;
+}
+
+function dkArt() {
+  const art = el('div', 'dk-art');
+  art.appendChild(document.querySelector('.about-art').cloneNode(true));
+  return art;
+}
+
 function dkClock() {
-  if (!dk.desk) return;
-  dk.desk.clock.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  if (!dk.clock) return;
+  dk.clock.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 setInterval(dkClock, 5000);
 
@@ -8411,13 +8440,24 @@ const DK_UI = {
   list: 'M2.5 4h11M2.5 8h11M2.5 12h11', grid: 'M2.5 2.5h4.5v4.5H2.5zM9 2.5h4.5v4.5H9zM2.5 9h4.5v4.5H2.5zM9 9h4.5v4.5H9z',
 };
 
+// icons on a grid, any cell, kept per browser; a press selects, a drag moves
+// the selection, a double click (a tap on touch) opens
+const DK_POS_KEY = 'phosphorus-dk-icons';
+const DK_GX = 92;
+const DK_GY = 86;
+const DK_PAD = 8;
+dk.sel = new Set();
+
 function dkIcon(kind, label, sub, open) {
   const b = Object.assign(el('button', `dk-icon dk-${kind}`), { type: 'button', title: sub ? `${label} on ${sub}` : label });
   const tile = el('span', 'dk-tile');
   tile.appendChild(dkGlyph(DK_GLYPHS[kind]));
   b.append(tile, el('span', 'dk-label', label));
   if (sub) b.appendChild(el('span', 'dk-sub', sub));
-  b.addEventListener('click', open);
+  b.dataset.id = `${kind}\n${label}\n${sub}`;
+  b.addEventListener('dblclick', open);
+  b.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); open(); } });
+  b.addEventListener('pointerdown', (e) => dkGrab(e, b, open));
   return b;
 }
 
@@ -8434,7 +8474,205 @@ function dkIcons() {
     dkIcon('editor', 'editor', '', dkEditorPick),
     ...dk.services.map((r) => dkIcon('service', r.name, r.host, () => dkService(r))),
   );
+  dkLayout();
 }
+
+function dkSaved() {
+  try { const v = JSON.parse(localStorage.getItem(DK_POS_KEY)); return v && typeof v === 'object' && !Array.isArray(v) ? v : {}; } catch { return {}; }
+}
+const dkIconEls = () => (dk.desk ? [...dk.desk.icons.querySelectorAll('.dk-icon')] : []);
+const dkGrid = () => {
+  const { icons } = dk.desk;
+  return {
+    cols: Math.max(1, Math.floor((icons.clientWidth - DK_PAD) / DK_GX)),
+    rows: Math.max(1, Math.floor((icons.clientHeight - DK_PAD) / DK_GY)),
+  };
+};
+const dkCell = (c, r) => `${c},${r}`;
+
+// saved cells first, the rest down then across into the free ones
+function dkLayout() {
+  if (!dk.desk) return;
+  const { cols, rows } = dkGrid();
+  const saved = dkSaved();
+  const taken = new Set();
+  const rest = [];
+  for (const b of dkIconEls()) {
+    const p = saved[b.dataset.id];
+    if (Array.isArray(p) && p[0] < cols && p[1] < rows && !taken.has(dkCell(...p))) {
+      taken.add(dkCell(...p));
+      dkPut(b, p[0], p[1]);
+    } else rest.push(b);
+  }
+  let i = 0;
+  for (const b of rest) {
+    while (taken.has(dkCell(Math.floor(i / rows), i % rows)) && i < cols * rows) i += 1;
+    const c = Math.floor(i / rows);
+    const r = i % rows;
+    taken.add(dkCell(c, r));
+    dkPut(b, c, r);
+  }
+  for (const id of [...dk.sel]) if (!dkIconEls().some((b) => b.dataset.id === id)) dk.sel.delete(id);
+  dkPaintSel();
+}
+
+function dkPut(b, c, r) {
+  b.dataset.c = c;
+  b.dataset.r = r;
+  b.style.transform = `translate(${DK_PAD + c * DK_GX}px, ${DK_PAD + r * DK_GY}px)`;
+}
+
+function dkSave() {
+  const saved = dkSaved();
+  for (const b of dkIconEls()) saved[b.dataset.id] = [Number(b.dataset.c), Number(b.dataset.r)];
+  try { localStorage.setItem(DK_POS_KEY, JSON.stringify(saved)); } catch {}
+}
+
+function dkPaintSel() {
+  for (const b of dkIconEls()) b.classList.toggle('sel', dk.sel.has(b.dataset.id));
+}
+
+function dkGrab(e, b, open) {
+  if (e.button !== 0) return;
+  e.preventDefault();
+  dkFocus(null);
+  b.focus({ preventScroll: true });
+  const id = b.dataset.id;
+  const add = e.ctrlKey || e.metaKey;
+  const was = dk.sel.has(id);
+  if (add) { if (!was) dk.sel.add(id); } else if (!was) dk.sel = new Set([id]);
+  dkPaintSel();
+  b.setPointerCapture(e.pointerId);
+  const moving = dkIconEls().filter((x) => dk.sel.has(x.dataset.id));
+  let dx = 0;
+  let dy = 0;
+  let dragged = false;
+  let frame = 0;
+  const paint = () => {
+    frame = 0;
+    for (const x of moving) x.style.transform = `translate(${DK_PAD + x.dataset.c * DK_GX + dx}px, ${DK_PAD + x.dataset.r * DK_GY + dy}px)`;
+  };
+  const onMove = (ev) => {
+    dx = ev.clientX - e.clientX;
+    dy = ev.clientY - e.clientY;
+    if (!dragged && Math.hypot(dx, dy) < 4) return;
+    if (!dragged) { dragged = true; dk.desk.el.classList.add('dk-moving'); for (const x of moving) x.classList.add('dk-lift'); }
+    if (!frame) frame = requestAnimationFrame(paint);
+  };
+  const onUp = (ev) => {
+    b.removeEventListener('pointermove', onMove);
+    b.removeEventListener('pointerup', onUp);
+    b.removeEventListener('pointercancel', onUp);
+    cancelAnimationFrame(frame);
+    if (!dragged) {
+      if (add && was) { dk.sel.delete(id); dkPaintSel(); }
+      else if (!add && ev.type === 'pointerup') {
+        dk.sel = new Set([id]);
+        dkPaintSel();
+        if (e.pointerType !== 'mouse') open();
+      }
+      return;
+    }
+    dk.desk?.el.classList.remove('dk-moving');
+    for (const x of moving) x.classList.remove('dk-lift');
+    dkDrop(moving, Math.round(dx / DK_GX), Math.round(dy / DK_GY));
+  };
+  b.addEventListener('pointermove', onMove);
+  b.addEventListener('pointerup', onUp);
+  b.addEventListener('pointercancel', onUp);
+}
+
+// each moved icon its own cell, else the nearest free one
+function dkDrop(moving, dc, dr) {
+  const { cols, rows } = dkGrid();
+  const taken = new Set(dkIconEls().filter((x) => !moving.includes(x)).map((x) => dkCell(x.dataset.c, x.dataset.r)));
+  for (const x of moving) {
+    const c0 = Math.max(0, Math.min(cols - 1, Number(x.dataset.c) + dc));
+    const r0 = Math.max(0, Math.min(rows - 1, Number(x.dataset.r) + dr));
+    let best = null;
+    for (let c = 0; c < cols; c++) {
+      for (let r = 0; r < rows; r++) {
+        if (taken.has(dkCell(c, r))) continue;
+        const d = (c - c0) ** 2 + (r - r0) ** 2;
+        if (!best || d < best.d) best = { c, r, d };
+      }
+    }
+    const at = best || { c: c0, r: r0 };
+    taken.add(dkCell(at.c, at.r));
+    dkPut(x, at.c, at.r);
+  }
+  dkSave();
+}
+
+// a drag on bare desk: a band selecting every icon it touches, ctrl adding
+function dkBand(icons) {
+  icons.addEventListener('pointerdown', (e) => {
+    if (e.target !== icons || e.button !== 0) return;
+    e.preventDefault();
+    dkFocus(null);
+    document.activeElement?.blur?.();
+    const keep = e.ctrlKey || e.metaKey ? new Set(dk.sel) : new Set();
+    dk.sel = new Set(keep);
+    dkPaintSel();
+    icons.setPointerCapture(e.pointerId);
+    const box = icons.getBoundingClientRect();
+    const x0 = e.clientX - box.left;
+    const y0 = e.clientY - box.top;
+    const band = el('div', 'dk-band');
+    let frame = 0;
+    let at = null;
+    const paint = () => {
+      frame = 0;
+      const x1 = Math.max(0, Math.min(box.width, at.clientX - box.left));
+      const y1 = Math.max(0, Math.min(box.height, at.clientY - box.top));
+      const l = Math.min(x0, x1);
+      const t = Math.min(y0, y1);
+      const r = Math.max(x0, x1);
+      const bt = Math.max(y0, y1);
+      Object.assign(band.style, { left: `${l}px`, top: `${t}px`, width: `${r - l}px`, height: `${bt - t}px` });
+      dk.sel = new Set(keep);
+      for (const b of dkIconEls()) {
+        const i = b.getBoundingClientRect();
+        const il = i.left - box.left;
+        const it = i.top - box.top;
+        if (il < r && il + i.width > l && it < bt && it + i.height > t) dk.sel.add(b.dataset.id);
+      }
+      dkPaintSel();
+    };
+    const onMove = (ev) => {
+      if (!band.isConnected) {
+        if (Math.hypot(ev.clientX - e.clientX, ev.clientY - e.clientY) < 3) return;
+        icons.appendChild(band);
+      }
+      at = ev;
+      if (!frame) frame = requestAnimationFrame(paint);
+    };
+    const onUp = () => {
+      icons.removeEventListener('pointermove', onMove);
+      icons.removeEventListener('pointerup', onUp);
+      icons.removeEventListener('pointercancel', onUp);
+      cancelAnimationFrame(frame);
+      if (at) paint();
+      band.remove();
+    };
+    icons.addEventListener('pointermove', onMove);
+    icons.addEventListener('pointerup', onUp);
+    icons.addEventListener('pointercancel', onUp);
+  });
+}
+
+// esc and ctrl+a for the icons, a window's own keys left alone
+document.addEventListener('keydown', (e) => {
+  if (!dk.desk || e.defaultPrevented) return;
+  const t = e.target;
+  if (t !== document.body && !dk.desk.icons.contains(t)) return;
+  if (e.key === 'Escape') { dk.sel.clear(); dkPaintSel(); }
+  else if (e.key === 'a' && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault();
+    dk.sel = new Set(dkIconEls().map((b) => b.dataset.id));
+    dkPaintSel();
+  }
+});
 
 function dkRoutes(services) {
   dk.services = services;

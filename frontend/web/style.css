@@ -438,10 +438,9 @@ body {
 }
 .dk-art { position: absolute; inset: 0 0 2rem; display: flex; align-items: center; justify-content: center; opacity: 0.06; pointer-events: none; user-select: none; overflow: hidden; }
 .dk-art .about-art { overflow: visible; max-width: none; }
-.dk-icons {
-  position: absolute; top: 0.6rem; left: 0.6rem; bottom: 2.4rem; z-index: 1;
-  display: flex; flex-direction: column; flex-wrap: wrap; align-content: flex-start; gap: 0.2rem;
-}
+.dk-icons { position: absolute; inset: 0 0 2rem 0; z-index: 1; touch-action: none; user-select: none; }
+.dk-icons > .dk-icon { position: absolute; top: 0; left: 0; touch-action: none; transition: transform 0.12s ease-out; }
+.dk-icon.dk-lift { z-index: 2; opacity: 0.75; transition: none; }
 /* the files tab's square buttons, grown, a label under */
 .dk-icon {
   width: 5.5rem; padding: 0.4rem 0.2rem 0.3rem; display: flex; flex-direction: column; align-items: center; gap: 0.25rem;
@@ -2354,3 +2353,29 @@ input, textarea { caret-color: var(--accent); }
 .side-rail > button:disabled { opacity: 0.35; cursor: default; }
 .side-rail > button:disabled:hover { color: var(--muted); background: none; }
 @media (prefers-reduced-motion: reduce) { .side-rail > button { transition: none; } #side-model > span { animation: none; } }
+
+/* --- desktop only: no tabs, key row, about or side column -------------- */
+.tabbar, .keybar, .pane-chat, .side-rail, .mobile-tabbar, .tab-menu.tab-pick, .tab-menu.omni-menu { display: none !important; }
+.layout { height: 100vh !important; height: 100dvh !important; }
+.pane-main { display: flex !important; flex: 1 1 100% !important; }
+.dk-stage { flex: 1; min-height: 0; display: flex; overflow-y: auto; z-index: 1; }
+
+/* the update and theme in the task bar, their popups opening upward */
+.dk-bar .top-mesh-wide { align-self: stretch; height: 100%; }
+.dk-bar .top-side > button, .dk-bar .update-wrap > button, .dk-bar .theme-toggle.top-theme {
+  padding: 0 0.7rem; border-left: 0; border-top: 0; background: none;
+}
+.dk-bar .top-side > button[aria-expanded="true"], .dk-bar .update-wrap > button[aria-expanded="true"] { background: var(--tab-hover); box-shadow: none; }
+.dk-bar .update-pane { top: auto; bottom: calc(100% + 0.6rem); max-height: calc(100vh - 3.5rem); }
+.dk-bar .tab-menu.theme-menu { top: auto; bottom: calc(100% + 0.6rem); right: 0; }
+@media (max-width: 720px) {
+  .dk-bar .update-pane { position: fixed; top: auto; bottom: 2.6rem; left: 0.5rem; right: 0.5rem; }
+}
+
+/* icons placed on a grid by app.js, a band selecting on bare desk */
+.dk-icon.sel .dk-tile { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, var(--card)); }
+.dk-icon.sel .dk-label { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+.dk-band {
+  position: absolute; z-index: 3; pointer-events: none;
+  border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
