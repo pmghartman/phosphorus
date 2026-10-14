@@ -1424,10 +1424,7 @@ const tabbarTabs = document.getElementById('tabbar-tabs');
 const tabAddBtn = document.getElementById('tab-add');
 const tabMenu = document.getElementById('tab-menu');
 const tabMenuList = document.getElementById('tab-menu-list');
-const tabMenuRecent = document.getElementById('tab-menu-recent');
-const tabMenuRecentTitle = document.getElementById('tab-menu-recent-title');
-const tabMenuTabs = document.getElementById('tab-menu-tabs');
-const tabMenuTabsTitle = document.getElementById('tab-menu-tabs-title');
+const tabMenuTitle = document.getElementById('tab-menu-title');
 const paneContent = document.getElementById('pane-content');
 
 // id -> { show, close } for each open terminal
@@ -1757,35 +1754,6 @@ function toggleShare(id) {
   keybarDirty();
 }
 
-function renderTabMenu() {
-  tabMenuList.innerHTML = '';
-  const sorted = [...terminalHosts].sort((a, b) => (b === selfHost) - (a === selfHost) || a.localeCompare(b));
-  if (!sorted.length) {
-    tabMenuList.innerHTML = '<li class="empty">no terminals live</li>';
-    return;
-  }
-  for (const m of sorted) {
-    const li = document.createElement('li');
-    li.textContent = m;
-    li.tabIndex = 0;
-    li.classList.toggle('is-self', m === selfHost);
-    li.addEventListener('click', () => openTerminalTab(m));
-    tabMenuList.appendChild(li);
-  }
-}
-
-// the closed built in tabs, back in their own place
-function renderClosedTabs() {
-  const ids = closedTabs();
-  tabMenuTabs.replaceChildren(...ids.map((id) => {
-    const li = el('li', '', FIXED_TABS[id]);
-    li.tabIndex = 0;
-    li.addEventListener('click', () => { tabMenu.hidden = true; showTab(id); });
-    return li;
-  }));
-  tabMenuTabs.hidden = tabMenuTabsTitle.hidden = !ids.length;
-}
-
 // files opened in the editor, newest first, for the + menu
 const RECENT_FILES_KEY = 'hesperus-recent-files';
 const RECENT_FILES_MAX = 3;
@@ -1793,34 +1761,161 @@ function rememberFile(file) {
   const list = loadJsonSafe(RECENT_FILES_KEY).filter((f) => f && codeKey(f) !== codeKey(file));
   try { localStorage.setItem(RECENT_FILES_KEY, JSON.stringify([file, ...list].slice(0, RECENT_FILES_MAX))); } catch {}
 }
-function renderRecentFiles() {
-  const list = loadJsonSafe(RECENT_FILES_KEY).filter((f) => f && f.host && f.path).slice(0, RECENT_FILES_MAX);
-  tabMenuRecent.replaceChildren(...list.map((f) => {
-    const li = el('li', '', f.label || `${f.host}/${f.path}`);
-    li.tabIndex = 0;
-    li.addEventListener('click', () => openCodeTab(f));
+// --- new tab: its title the search, a host or page first, then the host's app
+
+// every host's apps, a terminal on all of them
+function hostApps(host) {
+  return [{ name: 'terminal', kind: 'app', open: () => openTerminalTab(host) }];
+}
+
+function omniPlaces() {
+  const hosts = [...terminalHosts].sort((a, b) => (b === selfHost) - (a === selfHost) || a.localeCompare(b))
+    .map((h) => ({ name: h, kind: h === selfHost ? 'this host' : 'host', host: h }));
+  const pages = [...Object.entries(FIXED_TABS), ['about', 'about']]
+    .map(([id, label]) => ({ name: label, kind: 'page', open: () => showTab(id) }));
+  const files = loadJsonSafe(RECENT_FILES_KEY).filter((f) => f && f.host && f.path).slice(0, RECENT_FILES_MAX)
+    .map((f) => ({ name: f.label || `${f.host}/${f.path}`, kind: 'recent file', open: () => openCodeTab(f) }));
+  return [...hosts, ...pages, ...files];
+}
+
+// prefix matches ahead of the rest
+function omniMatch(items, q) {
+  q = q.trim().toLowerCase();
+  if (!q) return items;
+  const n = (it) => it.name.toLowerCase();
+  return [...items.filter((it) => n(it).startsWith(q)), ...items.filter((it) => !n(it).startsWith(q) && n(it).includes(q))];
+}
+
+// the one new tab, null when none is open
+let omni = null;
+
+function omniFit(input) {
+  input.style.width = `${(input.value || input.placeholder).length + 1}ch`;
+}
+
+function omniRender() {
+  if (!omni) return;
+  const onApp = omni.host && document.activeElement === omni.app;
+  omni.items = onApp ? omniMatch(hostApps(omni.host), omni.app.value) : omniMatch(omniPlaces(), omni.place.value);
+  omni.sel = Math.min(omni.sel, Math.max(0, omni.items.length - 1));
+  tabMenuTitle.textContent = onApp ? `${omni.host} apps` : 'open';
+  tabMenuList.replaceChildren(...omni.items.map((it, i) => {
+    const li = el('li', i === omni.sel ? 'sel' : '', it.name);
+    li.appendChild(el('span', 'omni-kind', it.kind));
+    // focus kept in the title's box
+    li.addEventListener('mousedown', (e) => e.preventDefault());
+    li.addEventListener('click', () => omniChoose(it));
     return li;
   }));
-  tabMenuRecent.hidden = tabMenuRecentTitle.hidden = !list.length;
+  if (!omni.items.length) tabMenuList.replaceChildren(el('li', 'empty', 'no match'));
+  tabMenu.hidden = false;
+  const r = omni.btn.getBoundingClientRect();
+  tabMenu.style.left = `${Math.max(8, Math.min(r.left, innerWidth - tabMenu.offsetWidth - 8))}px`;
+  tabMenu.style.top = `${r.bottom + 10}px`;
+}
+
+function omniSetHost(host) {
+  omni.host = host;
+  if (host) omni.place.value = host;
+  omni.app.value = '';
+  omni.app.hidden = omni.sep.hidden = !host;
+  omniFit(omni.place);
+  omniFit(omni.app);
+  omni.sel = 0;
+  (host ? omni.app : omni.place).focus();
+  omniRender();
+}
+
+function omniChoose(it) {
+  if (!it) return;
+  if (it.host) return omniSetHost(it.host);
+  const id = omni.id;
+  omni.btn.remove();
+  document.getElementById(`view-${id}`)?.remove();
+  openTabs.delete(id);
+  omni = null;
+  tabMenu.hidden = true;
+  it.open();
+}
+
+function omniKeys(e) {
+  const onApp = e.target === omni.app;
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    const n = omni.items.length;
+    if (n) omni.sel = (omni.sel + (e.key === 'ArrowDown' ? 1 : -1) + n) % n;
+    omniRender();
+  } else if (e.key === 'Enter' || (e.key === 'Tab' && omni.items.length)) {
+    omniChoose(omni.items[omni.sel]);
+  } else if (e.key === 'Backspace' && onApp && !omni.app.value) {
+    omniSetHost(null);
+  } else if (e.key === 'Escape') {
+    closeTab(omni.id);
+  } else return;
+  e.preventDefault();
+}
+
+function openOmniTab() {
+  if (omni) {
+    activateTab(omni.id);
+    return;
+  }
+  let n = 1;
+  while (openTabs.has(`new-${n}`)) n++;
+  const id = `new-${n}`;
+  // a div, an input inside a button never focusing in some browsers
+  const btn = el('div', 'tab-btn tab-new');
+  btn.dataset.tabId = id;
+  const place = Object.assign(el('input', 'omni-input'), { placeholder: 'host or page', spellcheck: false, autocomplete: 'off' });
+  const app = Object.assign(el('input', 'omni-input'), { placeholder: 'app', spellcheck: false, autocomplete: 'off', hidden: true });
+  const sep = Object.assign(el('span', 'omni-sep', '›'), { hidden: true });
+  btn.append(el('span', 'tab-label', 'new tab'), place, sep, app);
+  addTabClose(btn, id);
+  // the page's click, which shuts menus, kept off its own
+  btn.addEventListener('click', (e) => { e.stopPropagation(); activateTab(id); });
+  for (const input of [place, app]) {
+    input.addEventListener('keydown', omniKeys);
+    input.addEventListener('focus', omniRender);
+    input.addEventListener('input', () => {
+      omniFit(input);
+      // the host's name edited away, its apps with it
+      if (input === place && omni.host && place.value !== omni.host) {
+        omni.host = null;
+        app.hidden = sep.hidden = true;
+      }
+      omni.sel = 0;
+      omniRender();
+    });
+  }
+  btn.addEventListener('focusout', (e) => { if (!btn.contains(e.relatedTarget)) tabMenu.hidden = true; });
+  omniFit(place);
+  omniFit(app);
+  tabbarTabs.appendChild(btn);
+  const view = el('div', 'view new-view');
+  view.id = `view-${id}`;
+  paneContent.appendChild(view);
+  omni = { id, btn, place, app, sep, host: null, items: [], sel: 0 };
+  openTabs.set(id, {
+    show: () => (omni?.host ? omni.app : omni?.place)?.focus(),
+    close: () => { omni = null; tabMenu.hidden = true; },
+  });
+  activateTab(id);
 }
 
 tabAddBtn.addEventListener('click', (e) => {
   e.stopPropagation();
-  renderTabMenu();
-  renderClosedTabs();
-  renderRecentFiles();
-  const open = tabMenu.hidden;
   closeMenus();
-  tabMenu.hidden = !open;
+  openOmniTab();
 });
 tabMenu.addEventListener('click', (e) => e.stopPropagation());
+// placed under the new tab, the scrolling tab bar never clipping it
+document.body.appendChild(tabMenu);
 document.addEventListener('click', () => closeMenus());
 
 // phones: only the active tab in the bar, a tap on it the list of the rest
 const tabPick = document.getElementById('tab-pick');
 tabbarTabs.addEventListener('click', (e) => {
   const btn = e.target.closest('.tab-btn');
-  if (!isMobile() || !btn?.classList.contains('active') || btn.classList.contains('tab-brand') || e.target.closest('.tab-close')) return;
+  if (!isMobile() || !btn?.classList.contains('active') || btn.classList.contains('tab-brand') || e.target.closest('.tab-close, input')) return;
   e.stopPropagation();
   const open = tabPick.hidden;
   closeMenus();
@@ -7731,6 +7826,10 @@ function keybarKeys() {
     ]];
   }
   const menu = openMenu();
+  if (menu === tabMenu && omni) {
+    return [['new tab', ['enter', 'open', 'primary', () => omniChoose(omni.items[omni.sel])], ['tab', 'complete', 'quiet'],
+      ['↑↓', 'move', 'quiet'], ['esc', 'close', '', () => closeTab(omni.id)]]];
+  }
   if (menu) {
     const pick = () => (menu.contains(at) && at.matches('li') ? at : menu.querySelector('li:not(.empty)'))?.click();
     return [[menu === tabMenu ? 'menu' : menu === tabPick ? 'tabs' : 'theme', ['enter', menu === themeMenus[0] ? 'set' : 'open', 'primary', pick], ['esc', 'close', '', closeMenus]]];
@@ -7802,7 +7901,7 @@ function keybarKeys() {
   }
   if (here.length) here = [here];
   // an editor's or terminal's name already in its tab, none under it
-  const tabName = !/^(code|term)-/.test(id) && tabbarTabs.querySelector('.tab-btn.active .tab-label')?.textContent.trim().toLowerCase();
+  const tabName = !/^(code|term|new)-/.test(id) && tabbarTabs.querySelector('.tab-btn.active .tab-label')?.textContent.trim().toLowerCase();
   const first = here.find((g) => g.some(Array.isArray));
   if (first && tabName) first.unshift(tabName);
   // the open update pane beside the rest, its go on a key of its own
@@ -7814,7 +7913,7 @@ function keybarKeys() {
     ['1-9', 'tabs', 'quiet'],
     ['c', 'chat', 'quiet', focusChat],
     !docked() && ['shift+c', chatPane ? 'hide chat pane' : 'chat pane', 'quiet', () => setChatPane(!chatPane)],
-    ['+', 'terminal', 'quiet', () => tabAddBtn.click()],
+    ['+', 'new tab', 'quiet', () => tabAddBtn.click()],
     ['u', updateModal.hidden ? 'update' : 'close update', 'quiet', toggleUpdatePane],
     ['p', 'about', 'quiet', () => goTab(-1, 'about')],
   ]];}
@@ -7913,7 +8012,7 @@ document.addEventListener('keydown', (e) => {
     if (!updateModal.hidden) closeUpdateModal();
     // esc on an unfocused terminal tab: closed
     const id = tabbarTabs.querySelector('.tab-btn.active')?.dataset.tabId || '';
-    if (!typing && !openMenu() && !modalOpen() && (id.startsWith('term-') || id.startsWith('code-'))) closeTab(id);
+    if (!typing && !openMenu() && !modalOpen() && /^(term|code|new)-/.test(id)) closeTab(id);
     closeMenus();
     return;
   }

@@ -333,6 +333,20 @@ body {
 
 
 .tab-menu-list li.empty { color: var(--muted); cursor: default; }
+
+/* the new tab: its title two boxes, a place then the host's app */
+.omni-menu { position: fixed; z-index: 60; min-width: 16rem; }
+.omni-menu .tab-menu-list { max-height: 60vh; overflow-y: auto; }
+.tab-new .tab-label { display: none; }
+.omni-input {
+  min-width: 4ch; padding: 0; background: none; border: none; outline: none;
+  color: var(--fg); font: inherit; font-size: 0.8rem;
+}
+.omni-input::placeholder { color: var(--dim); }
+.omni-input[hidden], .omni-sep[hidden] { display: none; }
+.omni-sep { color: var(--dim); }
+.tab-menu-list li.sel { background: var(--border); }
+.omni-kind { float: right; margin-left: 2ch; color: var(--muted); font-size: 0.72rem; }
 .tab-menu-list li.empty:hover { background: none; }
 
 .pane-content {

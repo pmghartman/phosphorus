@@ -52,14 +52,11 @@ outside #mesh-svg (emptied every redraw) so it never restarts -->
         <ul class="tab-menu-list"></ul>
       </div>
       <div class="tab-add-wrap">
-        <button class="tab-add" id="tab-add" title="open a tab, terminal or file">+</button>
-        <div class="tab-menu" id="tab-menu" hidden>
-          <div class="tab-menu-title">open terminal</div>
+        <button class="tab-add" id="tab-add" title="new tab (+)">+</button>
+        <!-- the new tab's suggestions, under its title -->
+        <div class="tab-menu omni-menu" id="tab-menu" hidden>
+          <div class="tab-menu-title" id="tab-menu-title">open</div>
           <ul id="tab-menu-list" class="tab-menu-list"></ul>
-          <div class="tab-menu-title tab-menu-sub" id="tab-menu-tabs-title" hidden>open tab</div>
-          <ul id="tab-menu-tabs" class="tab-menu-list" hidden></ul>
-          <div class="tab-menu-title tab-menu-sub" id="tab-menu-recent-title" hidden>recent files</div>
-          <ul id="tab-menu-recent" class="tab-menu-list" hidden></ul>
         </div>
       </div>
       <div class="tabbar-fill">
