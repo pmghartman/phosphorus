@@ -1307,6 +1307,18 @@ function app(req, res) {
     return;
   }
 
+  // a service's own icon, for its desktop icon
+  const icon = pathname.match(/^\/api\/favicon\/([a-z0-9][a-z0-9-]*)\/([a-z0-9][a-z0-9-]*)$/);
+  if (icon && req.method === 'GET') {
+    if (!isLocalOrPeer(req)) { res.writeHead(403).end('forbidden'); return; }
+    proxy.favicon(icon[1], icon[2]).then((v) => {
+      if (!v) { res.writeHead(404, { 'cache-control': 'max-age=600' }).end(); return; }
+      res.writeHead(200, { 'content-type': v.type, 'cache-control': 'max-age=3600', 'x-content-type-options': 'nosniff',
+        'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox" }).end(v.body);
+    });
+    return;
+  }
+
   if (pathname.startsWith('/api/') || pathname.startsWith('/internal/')) {
     sendJson(res, 404, { error: 'not found' });
     return;

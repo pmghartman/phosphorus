@@ -123,15 +123,10 @@ Applied a few seconds after a change.
 ## Using it
 
 The page is one desktop: log into one or more hosts over ssh, then icons for each
-host's terminal, files, the editor, chat, status, projects, git and every service, windows
-that move, snap and minimize to the task bar, and widgets on the desk. The `Φ` button
-lists every app, shows or hides each widget, and opens about.
-
-Widgets, placed and sized per browser:
-
-- **mesh**: the hosts, the tailnet and the pings; expanded, a click moves this page to a host.
-- **model**: each role's model and its context, picked here or in status.
-- **game servers**: play and stop, the join address, a guest key.
+host's terminal, files, the editor, chat, status, projects, git, games, about and every
+service (with the site's own icon), windows that move, snap, resize from any edge and
+minimize to the task bar. The task bar's graph icon pops up the mesh: the hosts, the
+tailnet and the pings; expanded, a click moves this page to a host.
 
 Apps:
 
@@ -145,8 +140,8 @@ Apps:
 - **Files**: a file manager over each host's shares, cut, copy and paste across hosts;
   text opens in the editor, live and shared, saved as you type, markdown rendered with
   checkable tasks, nothing ever executed.
-- **Git**: the git hosts, master and replicas with how far each trails, a caught up one
-  made master in a click, beside forgejo itself.
+- **Git**: forgejo, the master host in the title.
+- **Games**: the game servers, play and stop, the join address, a guest key.
 - **Projects**: the orangutan (the big model) only works on these: a brief and
   up to 14 days (72h default), worked alone in rounds of plan, execute, test and
   refine until it calls `project_finish` or time runs out. One per host,
@@ -161,7 +156,7 @@ Apps:
   workspaces in `state/projects/`, served read only as the `projects` share.
   API: `GET/POST /api/projects`, `GET /api/projects/<host>/<id>`,
   `POST .../stop|note|delete`.
-- **Status**: btop for the whole mesh, one card per host.
+- **Status**: btop for the whole mesh, one card per host, and each role's model, picked here.
 - **Terminal**: a shell on a logged in host.
 
 ## Layout
