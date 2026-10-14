@@ -184,9 +184,7 @@ const INGRESS_PORT = Number(process.env.INGRESS_PORT || 80);
 const PIN_COOKIE = 'phosphorus-host';
 // set on a pinned hop, never a second hop from the far ingress
 const PIN_HOP = 'x-forwarded-phosphorus-host';
-// a hesperus peer's, mid-update
-const PIN_HOP_OLD = 'x-forwarded-hesperus-host';
-const pinHopped = (req) => !!(req.headers[PIN_HOP] || req.headers[PIN_HOP_OLD]);
+const pinHopped = (req) => !!req.headers[PIN_HOP];
 
 // live phosphorus peers, name -> tailnet IP, mesh.js's, every tick
 let pinIps = new Map();

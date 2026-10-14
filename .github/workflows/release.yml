@@ -320,7 +320,6 @@ jobs:
             ${{ inputs.macos && '**macOS**: open the `.dmg`, drag Phosphorus to Applications, open it (first open: right-click > Open). Needs colima and docker (see README).' || '' }}
             ${{ inputs.windows && '**Windows**: run the setup `.exe` (SmartScreen: More info > Run anyway). Needs Docker Desktop.' || '' }}
             ${{ (inputs.linux_amd64 || inputs.linux_arm64) && format('**Linux**: `sudo apt install ./phosphorus_{0}_ARCH.deb` (`amd64` or `arm64`), then fill in `/var/lib/phosphorus/.env` and `sudo phosphorus start`.', env.VER) || '' }}
-            An existing hesperus install or phosphorus checkout on the host is migrated on install: `.env`, config, state, git data and the tailnet identity.
           files: out/*
       - uses: actions/download-artifact@v8
         with:
@@ -348,21 +347,18 @@ jobs:
             command -v apt-ftparchive >/dev/null || { sudo apt-get update -q && sudo apt-get install -y -q apt-utils; }
             # the unchecked arch's index kept from the last release
             gh release download update -p 'Packages-*' || true
-            # transitional hesperus: a v1.x host's agent upgrades it, pulling in phosphorus
-            mkdir -p t/DEBIAN
-            printf '%s\n' 'Package: hesperus' "Version: $VER" 'Architecture: all' "Depends: phosphorus (>= $VER)" \
-              "Maintainer: Phosphorus <https://github.com/$GH_REPO>" 'Section: oldlibs' 'Priority: optional' \
-              'Description: transitional package, renamed phosphorus' ' Upgrades hesperus hosts to phosphorus. Safe to remove.' > t/DEBIAN/control
-            mkdir -p ../out-all && dpkg-deb --root-owner-group --build t "../out-all/hesperus_${VER}_all.deb" >/dev/null && rm -rf t
-            for f in ../out/*.deb ../out-all/*.deb; do
+            # the retired transitional package's index and file
+            rm -f Packages-all
+            gh release delete-asset update hesperus_all.deb -y 2>/dev/null || true
+            for f in ../out/*.deb; do
               d=${f##*_}; d=${d%.deb} n=${f##*/}; n=${n%%_*}
               mkdir -p "a-$d" && cp "$f" "a-$d/${n}_$d.deb"
               (cd "a-$d" && apt-ftparchive packages .) > "Packages-$d"
               mv "a-$d/${n}_$d.deb" . && rmdir "a-$d"
             done
             cat Packages-* > Packages
-            # Origin and Label kept from hesperus: a change fails hesperus agents' apt-get update
-            apt-ftparchive -o APT::FTPArchive::Release::Origin=Hesperus -o APT::FTPArchive::Release::Label=Hesperus release . > "$RUNNER_TEMP/Release"
+            # agents' apt-get allows the Origin and Label change
+            apt-ftparchive -o APT::FTPArchive::Release::Origin=Phosphorus -o APT::FTPArchive::Release::Label=Phosphorus release . > "$RUNNER_TEMP/Release"
             export GNUPGHOME=$(mktemp -d)
             echo "$KEY" | gpg --batch --import
             gpg --batch --yes --clearsign -o InRelease "$RUNNER_TEMP/Release"

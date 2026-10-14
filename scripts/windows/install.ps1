@@ -1,18 +1,17 @@
 # release files into this host's home, per-host ones kept, then bring-up or the rebuild
 # run by the Phosphorus app, or -Headless over ssh: detached, logged, no prompts
-param([switch]$Update, [string]$From = "", [string]$PhosphorusHome = "", [switch]$Headless)
+param([switch]$Update, [string]$PhosphorusHome = "", [switch]$Headless)
 $ErrorActionPreference = "Stop"
 
 function Say($msg) { Write-Host "[install] $msg" }
 function Fail($msg) { Write-Host "[install] ERROR: $msg" -ForegroundColor Red; exit 1 }
 
-# outside the ssh session via WMI: the migration stopping the old tailnet, and
-# sshd taking a dropped session's whole process tree with it
+# outside the ssh session via WMI: sshd taking a dropped session's whole
+# process tree with it
 if ($Headless) {
     $Log = Join-Path $env:TEMP "phosphorus-install.log"
     $Argv = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$PSCommandPath`"")
     if ($Update) { $Argv += "-Update" }
-    if ($From) { $Argv += @("-From", "`"$From`"") }
     if ($PhosphorusHome) { $Argv += @("-PhosphorusHome", "`"$PhosphorusHome`"") }
     Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
         CommandLine = "cmd /c set PHOSPHORUS_NONINTERACTIVE=1&& powershell $($Argv -join ' ') > `"$Log`" 2>&1"
@@ -55,31 +54,7 @@ Set-Content $Manifest $Next
 $Version = (Get-Content (Join-Path $HomeDir "VERSION") -First 1).Trim()
 Say "phosphorus $Version in $HomeDir"
 
-# Docker Desktop's VM spelling of a Windows path, /run/desktop/mnt/host/c/x, back to C:\x
-function ConvertFrom-VmPath([string]$P) {
-    if ($P -match '^/run/desktop/mnt/host/([a-z])(/.*)?$') { return "$($Matches[1].ToUpper()):$(($Matches[2] -replace '/', '\'))" }
-    $P
-}
-
-# any earlier checkout's /repo (phosphorus checkout, hesperus checkout or home), from its container
-function Find-OldCheckout {
-    $ErrorActionPreference = "Continue"
-    foreach ($c in @(docker ps -a --format '{{.Names}}' 2>$null)) {
-        $ErrorActionPreference = "Continue"
-        $src = ConvertFrom-VmPath (docker inspect $c --format '{{range .Mounts}}{{if eq .Destination "/repo"}}{{.Source}}{{end}}{{end}}' 2>$null)
-        if ($src -and $src -ne $HomeDir -and (Test-Path (Join-Path $src ".env"))) { return $src }
-    }
-    ""
-}
-
 $EnvFile = Join-Path $HomeDir ".env"
-if (-not (Test-Path $EnvFile)) {
-    if (-not $From) { $From = Find-OldCheckout }
-    if ($From) {
-        & (Join-Path $HomeDir "scripts/windows/migrate.ps1") -Old $From -PhosphorusHome $HomeDir
-        if ($LASTEXITCODE) { Fail "migration from $From failed, it's still there as it was" }
-    }
-}
 if (-not (Test-Path $EnvFile)) { Copy-Item (Join-Path $HomeDir ".env.example") $EnvFile }
 $Domain = (Get-Content $EnvFile | Where-Object { $_.StartsWith("BASE_DOMAIN=") } | Select-Object -First 1)
 if (-not $Domain -or $Domain -in @("BASE_DOMAIN=", "BASE_DOMAIN=example.com")) {
@@ -88,36 +63,13 @@ if (-not $Domain -or $Domain -in @("BASE_DOMAIN=", "BASE_DOMAIN=example.com")) {
     exit 0
 }
 
-# new containers gone, the migrated ones restarted, .env set aside so a rerun migrates again
-function Undo-Migration {
-    Say "rolling back to the old install"
-    $ErrorActionPreference = "Continue"
-    foreach ($c in @("phosphorus-git", "phosphorus", "phosphorus-search")) { docker rm -f $c 2>$null | Out-Null }
-    $Was = Join-Path $HomeDir ".phosphorus-migrated-containers"
-    $Old = @(if (Test-Path $Was) { Get-Content $Was })
-    # git last, after its frontend
-    [array]::Reverse($Old)
-    foreach ($c in $Old) {
-        docker update --restart=unless-stopped $c 2>$null | Out-Null
-        docker start $c 2>$null | Out-Null
-        if (-not $LASTEXITCODE) { Say "restarted $c" }
-    }
-    Move-Item $EnvFile (Join-Path $HomeDir ".env.failed-$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())") -Force
-    Remove-Item $Was -ErrorAction SilentlyContinue
-    Say "old install running again; fix the error above and rerun the installer"
-}
-
 if ($Update) {
     & (Join-Path $HomeDir "scripts/windows/rebuild.ps1")
     if ($LASTEXITCODE) { Fail "rebuild failed, still running the previous version" }
 } else {
     & (Join-Path $HomeDir "scripts/windows/run.ps1")
-    if ($LASTEXITCODE) {
-        if (Test-Path (Join-Path $HomeDir ".phosphorus-migrated-containers")) { Undo-Migration }
-        Fail "bring-up failed, see above"
-    }
+    if ($LASTEXITCODE) { Fail "bring-up failed, see above" }
 }
-Remove-Item (Join-Path $HomeDir ".phosphorus-migrated-containers") -ErrorAction SilentlyContinue
 Set-Content (Join-Path $HomeDir ".phosphorus-installed") $Version
 # the tray app is this host's update agent: at every login, and running now
 # (after the marker above, or it would rerun this install on launch)

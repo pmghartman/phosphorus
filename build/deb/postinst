@@ -1,13 +1,7 @@
 #!/bin/sh
-# the release into /var/lib/phosphorus (an old checkout migrated first), the update agent, the cli
+# the release into /var/lib/phosphorus, the update agent, the cli
 set -e
 [ "$1" = configure ] || exit 0
-# a hesperus package's agent and feed, its keyring gone once the transitional hesperus lands;
-# its home migrated by install.sh below
-if [ -d /run/systemd/system ] && [ -e /usr/lib/systemd/system/hesperus-update.path ]; then
-    systemctl disable --now hesperus-update.path >/dev/null 2>&1 || true
-fi
-rm -f /etc/systemd/system/multi-user.target.wants/hesperus-update.path /etc/apt/sources.list.d/hesperus.list
 mode=
 [ -n "${2:-}" ] && mode=--update
 mkdir -p /var/lib/phosphorus/state

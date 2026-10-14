@@ -150,7 +150,7 @@ function fetchOnce(host, id, ip, port) {
   return new Promise((resolve) => {
     const req = http.get({ host: ip, port, path: `/api/chat/media/${host}/${id}?hop=1`, timeout: 60000 }, (r) => {
       let info = null;
-      try { info = JSON.parse(decodeURIComponent(r.headers['x-phosphorus-media'] || r.headers['x-hesperus-media'] || '')); } catch {}
+      try { info = JSON.parse(decodeURIComponent(r.headers['x-phosphorus-media'] || '')); } catch {}
       if (r.statusCode !== 200 || !info) { r.resume(); resolve(false); return; }
       store(host, id, r, { name: String(info.name || 'file').slice(0, 200), type: String(info.type || '') }).then(([s]) => resolve(s === 200));
     });

@@ -116,34 +116,6 @@ phosphorus_files_dir_list() {
   done
 }
 
-# [files] dir entries inside old checkout $1 copied into this home and made
-# relative to it, $2=all for relative ones too (a migration's, off the checkout)
-phosphorus_rehome_files() {
-  local old="$1" all="${2:-}" ini raw d rel out="" changed=0
-  ini="$(phosphorus_ini)"
-  [ -n "$ini" ] && [ -n "$old" ] && [ "$old" != "$PWD" ] || return 0
-  raw="$(phosphorus_get files dir)"
-  [ -n "$raw" ] || return 0
-  local IFS=','
-  for d in $raw; do
-    d="${d# }"; d="${d%/}"
-    case "$d" in
-      '') continue ;;
-      "$old"/*) rel="${d#"$old"/}" ;;
-      /*|[A-Za-z]:*) out="${out:+$out,}$d"; continue ;;
-      *) rel="$d"; [ "$all" = all ] || { out="${out:+$out,}$d"; continue; } ;;
-    esac
-    if [ -d "$old/$rel" ]; then
-      echo "[files] copying $old/$rel into $PWD/$rel"
-      mkdir -p "$rel" && cp -a "$old/$rel/." "$rel/" || return 1
-    fi
-    out="${out:+$out,}$rel"; changed=1
-  done
-  [ "$changed" = 1 ] || return 0
-  awk -v v="$out" '/^\[/{on=($0=="[files]")} on && /^dir =/{print "dir = " v; next} {print}' "$ini" > "$ini.tmp" \
-    && mv "$ini.tmp" "$ini" && echo "[files] dir now $out, under $PWD"
-}
-
 # [files] priv, one entry per dir in the same order, none means rwd
 phosphorus_files_perm_list() {
   local raw p; raw="$(phosphorus_get files priv)"

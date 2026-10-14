@@ -32,8 +32,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\Phosphoru
 Get-Content -Wait $env:TEMP\phosphorus-install.log
 ```
 
-`-Headless` runs detached from the session, so a migration taking the old tailnet (and the
-ssh with it) down finishes anyway, and rolls back to the old install if bring-up fails.
+`-Headless` runs detached from the session, so a dropped ssh never cuts the install short.
 
 Each host's own files live in its **home**: `/var/lib/phosphorus` (Linux),
 `~/Library/Phosphorus` (macOS), `%USERPROFILE%\phosphorus` (Windows). That covers `.env`, `config/`,
@@ -54,36 +53,6 @@ host hands the update to its agent:
 - macOS, Windows: the tray app runs the Tauri updater, relaunches, pulls and swaps.
 
 `phosphorus update` and the tray's Check for Updates do the same for one host.
-
-A host still on a git checkout counts as behind. On Linux the update installs the
-release's `.deb` from GitHub over it, migrating it into `/var/lib/phosphorus` (a git-era peer
-pulls `main` first, then installs). macOS and Windows checkouts need the `.dmg` or setup
-`.exe` run there once.
-
-## From hesperus
-
-A hesperus host (1.x) updates into phosphorus on its own: the Linux agent's apt upgrade
-pulls a transitional `hesperus` package that depends on `phosphorus`, and the tray app's
-update installs the Phosphorus app. Either way phosphorus's installer then migrates the
-old home. On Windows the Phosphorus app asks for admin once to migrate, then removes the
-Hesperus app. On macOS the app keeps its `Hesperus.app` path until renamed by hand, and may
-need opening once from Applications after the update.
-
-Installing on a host that runs a hesperus home or an old phosphorus checkout migrates it.
-The installer finds the old install through its container, stops it (kept, restart off,
-for a rollback), then moves into the home:
-
-- `.env` as it was, `PHOS_` and `HESPERUS_` keys renamed `PHOSPHORUS_`, `GAME_ZONE=phosphorus`
-- `config/phos.ini` or `config/hesperus.ini` as `config/phosphorus.ini`, `services.export`,
-  `state/`, `files/`, `models/`, `git/data/`
-- `[files] dir` entries inside the old install, copied into the home and pointed there
-- the tailscale volume, so the node keeps its tailnet name and ip with no new auth key, and
-  the Windows git and model volumes
-
-The mesh update skips pre-hesperus phosphorus checkouts: their own update resets to a git
-`main` that no longer runs. Install the release on those by hand, the git master first,
-then the replicas, in one sitting. Delete the old install once phosphorus is up. By hand:
-`scripts/migrate.sh OLD HOME`.
 
 ## Releasing
 
@@ -192,7 +161,7 @@ config/      services.export, phosphorus.ini (per host)
 container/   phosphorus image
 frontend/    node service; web/ the UI, cli/ phosphorus
 git/         phosphorus-git image
-scripts/     phosphorus, run, rebuild, install, migrate, upgrade
+scripts/     phosphorus, run, rebuild, install, upgrade
 build/       .deb packaging
 gui/         tray app (Tauri), macOS and Windows
 files/       default share

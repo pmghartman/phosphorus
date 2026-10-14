@@ -849,8 +849,7 @@ function filesInfo() {
 
 // --- HTTP ------------------------------------------------------------
 
-const CHECKOUT = update.isCheckout();
-const selfInfo = () => ({ host: SELF_HOST, version: VERSION, platform: PLATFORM, bootId: BOOT_ID, checkout: CHECKOUT });
+const selfInfo = () => ({ host: SELF_HOST, version: VERSION, platform: PLATFORM, bootId: BOOT_ID });
 
 // everything in /api/state the page redraws for, minus the round-trip times
 // (their jitter would keep the state from ever going quiet)
@@ -1765,8 +1764,7 @@ async function appTarget(req, [, host, sid, rest = '/']) {
     const port = apps.upstream(sid);
     return port ? { port, ip: '127.0.0.1', url: rest + new URL(req.url, 'http://localhost').search } : null;
   }
-  // a hesperus peer's too, mid-update
-  if (req.headers[HOP_HEADER] || req.headers['x-hesperus-hop']) return null;
+  if (req.headers[HOP_HEADER]) return null;
   const ip = await tailnetIp(host);
   return ip ? { port: Number(PORT), ip, url: req.url, extra: { [HOP_HEADER]: '1' } } : null;
 }

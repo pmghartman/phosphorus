@@ -394,29 +394,6 @@ fn tray(app: &AppHandle, line: &MenuItem<tauri::Wry>) -> tauri::Result<()> {
     Ok(())
 }
 
-/// the Hesperus app this one replaced: its autostart entry, on Windows the app itself
-fn retire_hesperus() {
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        let quiet = |c: &mut Command| {
-            let _ = c.creation_flags(0x0800_0000).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status();
-        };
-        quiet(Command::new("reg").args(["delete", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", "/v", "Hesperus", "/f"]));
-        let dir = PathBuf::from(std::env::var_os("LOCALAPPDATA").unwrap_or_default()).join("Hesperus");
-        let uninstall = dir.join("uninstall.exe");
-        if uninstall.exists() {
-            quiet(Command::new("taskkill").args(["/F", "/IM", "Hesperus.exe"]));
-            quiet(Command::new(uninstall).arg("/S"));
-        }
-    }
-    #[cfg(not(windows))]
-    {
-        let home = PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
-        let _ = std::fs::remove_file(home.join("Library/LaunchAgents/Hesperus.plist"));
-    }
-}
-
 fn main() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -436,7 +413,6 @@ fn main() {
             }
             // a host stays up across logins
             let _ = app.autolaunch().enable();
-            std::thread::spawn(retire_hesperus);
             startup(app.handle().clone());
             Ok(())
         })

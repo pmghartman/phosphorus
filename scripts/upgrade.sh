@@ -20,7 +20,7 @@ report() {
 }
 
 apt_phosphorus() {
-  # the feed's Origin and Label still hesperus's, free to change
+  # the feed's Origin and Label free to change
   DEBIAN_FRONTEND=noninteractive apt-get -q -o Dir::Etc::sourcelist=sources.list.d/phosphorus.list \
     -o Dir::Etc::sourceparts=- -o Acquire::AllowReleaseInfoChange::Origin=true \
     -o Acquire::AllowReleaseInfoChange::Label=true "$@"

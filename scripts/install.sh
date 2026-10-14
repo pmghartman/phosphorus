@@ -1,16 +1,15 @@
 #!/bin/bash
 # release files into this host's home, per-host ones kept, then bring-up or the rebuild
-# usage: install.sh [--update] [--from OLD_CHECKOUT], by the package only
+# usage: install.sh [--update], by the package only
 set -uo pipefail
 
 main() {
   local payload; payload="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-  local mode=install from="" migrated=""
+  local mode=install
   while [ $# -gt 0 ]; do
     case "$1" in
       --update) mode=update ;;
-      --from) from="${2:-}"; shift ;;
-      *) echo "usage: install.sh [--update] [--from OLD_CHECKOUT]" >&2; exit 2 ;;
+      *) echo "usage: install.sh [--update]" >&2; exit 2 ;;
     esac
     shift
   done
@@ -41,14 +40,6 @@ main() {
   local version; version="$(tr -d '[:space:]' < "$home/VERSION")"
   say "phosphorus $version in $home"
 
-  # an earlier checkout's host carried over once, before anything starts
-  if [ ! -f "$home/.env" ]; then
-    [ -n "$from" ] || from="$(old_checkout "$home")"
-    if [ -n "$from" ]; then
-      migrated=1
-      bash "$home/scripts/migrate.sh" "$from" "$home" || fail "migration from $from failed, it's still there as it was"
-    fi
-  fi
   if [ ! -f "$home/.env" ]; then
     cp "$home/.env.example" "$home/.env" && chmod 600 "$home/.env"
   fi
@@ -59,8 +50,6 @@ main() {
   fi
 
   cd "$home" || exit 1
-  # a failed first bring-up after a migration: the old install back up, still reachable
-  [ -n "$migrated" ] && trap 'rollback "$home"' EXIT
   if [ "$mode" = update ]; then
     bash scripts/rebuild.sh || fail "rebuild failed, still running the previous version"
   else
@@ -69,26 +58,7 @@ main() {
       *) bash scripts/run-linux.sh ;;
     esac || fail "bring-up failed, see above"
   fi
-  trap - EXIT
   printf '%s\n' "$version" > "$home/.phosphorus-installed"
-}
-
-# new containers stopped, the old ones restarted, .env set aside so a rerun migrates again
-rollback() {
-  local docker=docker c
-  docker info >/dev/null 2>&1 || docker="sudo docker"
-  say "rolling back to the old install"
-  for c in phosphorus-git phosphorus phosphorus-search phosphorus-updater; do
-    $docker rm -f "$c" >/dev/null 2>&1
-  done
-  # git last, after its frontend
-  for c in $(awk '{a[NR]=$0} END {for (i = NR; i; i--) print a[i]}' "$1/.phosphorus-migrated-containers" 2>/dev/null); do
-    $docker update --restart=unless-stopped "$c" >/dev/null 2>&1 && $docker start "$c" >/dev/null 2>&1 \
-      && say "restarted $c"
-  done
-  mv "$1/.env" "$1/.env.failed-$(date +%s)" 2>/dev/null
-  rm -f "$1/.phosphorus-migrated-containers"
-  say "old install running again; fix the error above and rerun the installer"
 }
 
 # every release file into $2, what the last one shipped and this one doesn't
@@ -110,16 +80,6 @@ sync_payload() {
     done
   fi
   mv "$next" "$manifest"
-}
-
-# any earlier checkout's /repo (phosphorus checkout, hesperus checkout or home), from its container
-old_checkout() {
-  local docker=docker c src
-  docker info >/dev/null 2>&1 || docker="sudo docker"
-  for c in $($docker ps -a --format '{{.Names}}' 2>/dev/null); do
-    src="$($docker inspect "$c" --format '{{range .Mounts}}{{if eq .Destination "/repo"}}{{.Source}}{{end}}{{end}}' 2>/dev/null)"
-    [ -n "$src" ] && [ "$src" != "$1" ] && [ -f "$src/.env" ] && { printf '%s' "$src"; return; }
-  done
 }
 
 main "$@"

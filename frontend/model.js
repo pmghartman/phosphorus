@@ -71,11 +71,7 @@ const n = (v) => Number(v) || 0;
 
 // '' for none, the mesh's own models as phosphorus/<host>
 const validChoice = (c) => !!c && (c.model === '' || MODEL_RE.test(c.model || '')) && Number.isFinite(c.at) && c.at <= Date.now() + 60000;
-// an older choice, the mesh's models once phos/<host> or hesperus/<host>
-const LEGACY_MESH = /^(phos|hesperus)\//;
-const renamed = (c) => (c && typeof c.model === 'string' && LEGACY_MESH.test(c.model)
-  ? { ...c, model: c.model.replace(LEGACY_MESH, `${MESH}/`) } : c);
-const pickOf = (x, r) => (x && validChoice(renamed(x[r])) ? renamed(x[r]) : null);
+const pickOf = (x, r) => (x && validChoice(x[r]) ? x[r] : null);
 const saved = readJson(ROLES_FILE, null) || {};
 const chosen = Object.fromEntries(ROLES.map((r) => [r, pickOf(saved, r) || { model: '', at: 0 }]));
 const meshHost = (model) => (model.startsWith(`${MESH}/`) ? model.slice(MESH.length + 1) : '');
