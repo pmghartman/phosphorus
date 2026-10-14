@@ -5391,7 +5391,10 @@ async function askToStart() {
   updateBtn.disabled = true;
   updateBtn.textContent = 'checking';
   let c = {};
-  try { c = await (await fetch('/api/update/check?fresh=1')).json(); } catch {}
+  try {
+    const r = await fetch('/api/update/check?fresh=1');
+    c = r.ok ? await r.json() : { error: `${r.status} ${(await r.text()).slice(0, 80)}`.trim() };
+  } catch (err) { c = { error: err.message }; }
   renderUpdateButton();
   const versions = [updateSeen.selfVersion, ...updateSeen.tailnet.filter((d) => d.phosphorus).map((d) => d.version)]
     .filter(Boolean);
@@ -5765,9 +5768,17 @@ function dkProbe(host, user, pass) {
 
 // --- login: every host's user and password, any that answer enough
 
+// masked by css, never a password field, so password managers skip it
+function noFill(input, secret) {
+  Object.assign(input, { type: 'text', autocomplete: 'off', name: `nf-${Math.random().toString(36).slice(2)}` });
+  for (const [k, v] of [['data-1p-ignore', ''], ['data-lpignore', 'true'], ['data-bwignore', ''], ['data-form-type', 'other']]) input.setAttribute(k, v);
+  if (secret) input.classList.add('no-fill-secret');
+  return input;
+}
+
 function dkLoginRow(host) {
-  const user = Object.assign(el('input'), { placeholder: 'user', autocomplete: 'username', spellcheck: false, value: dkUsers()[host] || '' });
-  const pass = Object.assign(el('input'), { type: 'password', placeholder: 'password', autocomplete: 'current-password' });
+  const user = noFill(Object.assign(el('input'), { placeholder: 'user', spellcheck: false, value: dkUsers()[host] || '' }));
+  const pass = noFill(Object.assign(el('input'), { placeholder: 'password' }), true);
   const state = el('span', 'dk-state');
   const li = el('li', 'dk-row');
   li.append(el('span', 'dk-host', host), user, pass, state);
@@ -7440,6 +7451,11 @@ function acctNext() {
   const next = new URLSearchParams(location.search).get('next');
   if (!next) return false;
   history.replaceState(null, '', '/');
+  // the service still refusing: no second bounce back to it
+  let last = '';
+  try { last = sessionStorage.getItem('phosphorus-next') || ''; sessionStorage.setItem('phosphorus-next', `${Date.now()} ${next}`); } catch {}
+  const [at, prev] = [Number(last.split(' ')[0]), last.slice(last.indexOf(' ') + 1)];
+  if (prev === next && Date.now() - at < 15000) return false;
   let u;
   try { u = new URL(next); } catch { return false; }
   const base = baseDomain || location.hostname;
@@ -7475,8 +7491,8 @@ function acctSetup() {
 function acctUsers() {
   const wrap = el('div', 'acct-users');
   const list = el('ul', 'dk-rows');
-  const name = Object.assign(el('input'), { placeholder: 'new user', autocomplete: 'off', spellcheck: false, autocapitalize: 'off' });
-  const pass = Object.assign(el('input'), { type: 'password', placeholder: 'password', autocomplete: 'new-password' });
+  const name = noFill(Object.assign(el('input'), { placeholder: 'new user', spellcheck: false, autocapitalize: 'off' }));
+  const pass = noFill(Object.assign(el('input'), { placeholder: 'password' }), true);
   const admin = Object.assign(el('input'), { type: 'checkbox' });
   const adminLabel = el('label', 'acct-check');
   adminLabel.append(admin, ' admin');
@@ -7527,8 +7543,8 @@ function dkUsersWin() {
 function dkUnlock(host, chip) {
   const r = chip.getBoundingClientRect();
   const pop = el('form', 'acct-unlock');
-  const user = Object.assign(el('input'), { placeholder: 'user', autocomplete: 'off', spellcheck: false, autocapitalize: 'off', value: dkUsers()[host] || '' });
-  const pass = Object.assign(el('input'), { type: 'password', placeholder: 'password', autocomplete: 'off' });
+  const user = noFill(Object.assign(el('input'), { placeholder: 'user', spellcheck: false, autocapitalize: 'off', value: dkUsers()[host] || '' }));
+  const pass = noFill(Object.assign(el('input'), { placeholder: 'password' }), true);
   const why = el('span', 'dk-state');
   const go = Object.assign(el('button', 'primary', 'log in'), { type: 'submit' });
   pop.append(el('div', 'home-col-head', host), user, pass, why, go);
@@ -7633,13 +7649,13 @@ function dkProfileWin() {
       li.append(name, el('span', 'dk-state', p.user), cu, cp, del);
       return li;
     }) : [el('li', 'empty', 'none saved')]));
-    const pName = Object.assign(el('input'), { placeholder: 'page', autocomplete: 'off', spellcheck: false });
+    const pName = noFill(Object.assign(el('input'), { placeholder: 'page', spellcheck: false }));
     pName.setAttribute('list', 'acct-page-names');
     const opts = el('datalist');
     opts.id = 'acct-page-names';
     opts.replaceChildren(...dk.services.map((r) => Object.assign(el('option'), { value: r.name })));
-    const pUser = Object.assign(el('input'), { placeholder: 'user', autocomplete: 'off', spellcheck: false });
-    const pPass = Object.assign(el('input'), { type: 'password', placeholder: 'password', autocomplete: 'off' });
+    const pUser = noFill(Object.assign(el('input'), { placeholder: 'user', spellcheck: false }));
+    const pPass = noFill(Object.assign(el('input'), { placeholder: 'password' }), true);
     const pAdd = Object.assign(el('button', 'primary', 'save'), { type: 'button' });
     pAdd.addEventListener('click', () => {
       const k = pName.value.trim();
@@ -7653,12 +7669,11 @@ function dkProfileWin() {
     pRow.append(pName, pUser, pPass, pAdd);
 
     const pw = el('form', 'dk-row acct-new');
-    const hidden = Object.assign(el('input'), { name: 'username', autocomplete: 'username', value: acct.user, hidden: true });
-    const old = Object.assign(el('input'), { type: 'password', placeholder: 'current', autocomplete: 'current-password' });
-    const neu = Object.assign(el('input'), { type: 'password', placeholder: 'new', autocomplete: 'new-password' });
+    const old = noFill(Object.assign(el('input'), { placeholder: 'current' }), true);
+    const neu = noFill(Object.assign(el('input'), { placeholder: 'new' }), true);
     const pwGo = Object.assign(el('button', 'primary', 'change'), { type: 'submit' });
     const pwWhy = el('div', 'dk-state');
-    pw.append(hidden, old, neu, pwGo);
+    pw.append(old, neu, pwGo);
     pw.addEventListener('submit', async (e) => {
       e.preventDefault();
       const r = await acctCall('/api/me/password', { old: old.value, pass: neu.value });

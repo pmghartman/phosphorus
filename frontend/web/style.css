@@ -667,6 +667,7 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
 .st-pick-in option { color: var(--fg); }
 /* masked like a password, never one to a password manager */
 .st-pick-secret { -webkit-text-security: disc; }
+.no-fill-secret { -webkit-text-security: disc; text-security: disc; }
 .st-pick-btn { height: 1.75rem; padding: 0 0.7rem; border: 1px solid var(--border); background: none; font: inherit; color: var(--muted); cursor: pointer; transition: color 0.15s, border-color 0.15s; }
 .st-pick-btn:is( :focus-visible) { border-color: var(--accent); color: var(--fg); outline: none; }
 .st-pick-fold { padding: 0; border: 0; background: none; font: inherit; color: var(--teal); cursor: pointer; }
