@@ -139,6 +139,62 @@ fn run_interactive_install(app: &App) -> Result<(), String> {
     }
 }
 
+fn docker_up() -> bool {
+    let mut c = Command::new("docker");
+    c.args(["info", "--format", "{{.ServerVersion}}"]).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        c.creation_flags(0x0800_0000);
+    }
+    #[cfg(not(windows))]
+    {
+        let path = std::env::var("PATH").unwrap_or_default();
+        c.env("PATH", format!("/opt/homebrew/bin:/usr/local/bin:{path}"));
+    }
+    c.status().map(|s| s.success()).unwrap_or(false)
+}
+
+/// the docker engine up at login: colima on macOS, Docker Desktop on Windows
+fn ensure_engine(handle: &AppHandle) -> Result<(), String> {
+    if docker_up() {
+        return Ok(());
+    }
+    set_line(handle, "Hesperus starting docker…");
+    #[cfg(windows)]
+    {
+        let pf = std::env::var_os("ProgramFiles").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("C:\\Program Files"));
+        let exe = pf.join("Docker\\Docker\\Docker Desktop.exe");
+        if !exe.exists() {
+            return Err("Docker Desktop not installed".into());
+        }
+        Command::new(exe).spawn().map_err(|e| e.to_string())?;
+    }
+    #[cfg(not(windows))]
+    {
+        let path = std::env::var("PATH").unwrap_or_default();
+        // blocks until the vm's docker answers or colima gives up
+        let ok = Command::new("colima")
+            .arg("start")
+            .env("PATH", format!("/opt/homebrew/bin:/usr/local/bin:{path}"))
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map_err(|e| format!("colima: {e}"))?;
+        if !ok.success() {
+            return Err("colima didn't start".into());
+        }
+    }
+    for _ in 0..90 {
+        if docker_up() {
+            return Ok(());
+        }
+        std::thread::sleep(Duration::from_secs(2));
+    }
+    Err("docker never answered".into())
+}
+
 fn set_line(app: &AppHandle, text: &str) {
     let _ = app.state::<App>().line.set_text(text);
     if let Some(t) = app.tray_by_id("hesperus") {
@@ -231,6 +287,11 @@ fn startup(handle: AppHandle) {
         let app = handle.state::<App>();
         let installed = read(&app.home.join(".hesperus-installed"));
         let ver = payload_version(&app);
+        // first run's install starts the engine itself
+        let engine = if installed.is_empty() { Ok(()) } else { ensure_engine(&handle) };
+        if let Err(e) = &engine {
+            eprintln!("hesperus: engine: {e}");
+        }
         if installed.is_empty() && !app.home.join(".env").exists() {
             // first run: bring-up needs the person's sudo or admin
             let _ = run_interactive_install(&app);
@@ -249,7 +310,10 @@ fn startup(handle: AppHandle) {
             }
             BUSY.store(false, Ordering::SeqCst);
         }
-        set_line(&handle, &status_line(&app));
+        match &engine {
+            Err(e) => set_line(&handle, &format!("Hesperus: {e}")),
+            Ok(()) => set_line(&handle, &status_line(&app)),
+        }
         let req = app.home.join("state/update-request.json");
         loop {
             std::thread::sleep(Duration::from_secs(2));
