@@ -24,6 +24,7 @@ const BOOT_SESSION_MS = 3600 * 1000;
 const MAX_VAULT = 64 * 1024;
 const MAX_PASS = 256;
 const BASE_DOMAIN = (process.env.BASE_DOMAIN || '').toLowerCase();
+const SELF_HOST = process.env.SELF_HOST || '';
 // failed logins per address, and per name from anywhere (looser, so one
 // address can't lock a user out), locked a while past the limit
 const TRIES = { ip: 5, user: 20 };
@@ -85,7 +86,8 @@ function attrs(req) {
 }
 
 function issue(req, payload, ms) {
-  const box = seal(meshKey(), JSON.stringify({ ...payload, e: Date.now() + ms }));
+  // h: the issuing host, any other one not reading it yet handing it there
+  const box = { ...seal(meshKey(), JSON.stringify({ ...payload, e: Date.now() + ms })), h: SELF_HOST };
   const token = Buffer.from(JSON.stringify(box)).toString('base64url');
   return `${COOKIE}=${token}; Max-Age=${Math.round(ms / 1000)}${attrs(req)}`;
 }
@@ -133,6 +135,17 @@ function session(req) {
 
 // a host-only cookie from before the domain's, moved onto the base domain
 // so service subdomains see it too
+// the hosts that issued the cookies sent, this one aside
+function issuers(req) {
+  const out = [];
+  for (const token of cookiesOf(req)) {
+    let h = '';
+    try { h = String(JSON.parse(Buffer.from(token, 'base64url').toString('utf8')).h || ''); } catch {}
+    if (h && h !== SELF_HOST && !out.includes(h)) out.push(h);
+  }
+  return out;
+}
+
 function refresh(req, s) {
   if (!s || !/Domain=/.test(attrs(req))) return undefined;
   const left = Math.round((s.e - Date.now()) / 1000);
@@ -268,5 +281,6 @@ function remove(s, p) {
 
 module.exports = {
   pass: (req) => !!session(req),
+  issuers,
   COOKIE, session, refresh, me, login, setVault, setPrefs, changePass, list, create, setAdmin, remove, clearCookie, setup: () => !anyAdmin(),
 };

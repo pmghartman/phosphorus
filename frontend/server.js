@@ -1891,7 +1891,7 @@ server.listen(PORT, () => {
   update.restoreChain();
   retractStaleAlerts();
   project.init();
-  proxy.listen(INGRESS_PORT, app, onUpgrade, users.pass);
+  proxy.listen(INGRESS_PORT, app, onUpgrade, users);
   stats.init({ self: () => ({ host: SELF_HOST, platform: PLATFORM, version: VERSION }), peers: mesh.peerIps });
   mcp.init({
     self: selfInfo, domain: () => BASE_DOMAIN, tailnet: mesh.tailnet, routes: mesh.routes, peerIps: mesh.peerIps,
