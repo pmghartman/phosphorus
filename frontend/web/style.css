@@ -2060,12 +2060,6 @@ input, textarea { caret-color: var(--accent); }
   .acct-user, .acct-page, .acct-new { grid-template-columns: 1fr 1fr; }
   .dk-profile-name { display: none; }
 }
-/* a subdomain's app, opened in a browser tab, an arrow on its tile's corner */
-.dk-tile .ic.dk-ext-mark {
-  position: absolute; right: -0.35rem; bottom: -0.35rem; width: 0.8rem; height: 0.8rem; padding: 0.05rem;
-  background: var(--card); border: 1px solid var(--border); color: var(--muted);
-}
-.dk-ext .dk-label { font-style: italic; }
 /* the bar's icon buttons one even row: same width, same glyph, no gap between */
 .dk-bar .dk-tray-wrap { margin-right: -0.6rem; }
 .dk-bar .dk-tray:not(.dk-profile), .dk-bar .update-wrap > button, .dk-bar .theme-toggle.top-theme {

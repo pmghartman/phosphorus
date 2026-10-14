@@ -5965,20 +5965,17 @@ const DK_GY = 86;
 const DK_PAD = 8;
 dk.sel = new Set();
 
-function dkIcon(kind, label, sub, open, icon = '', tab = false) {
-  const b = Object.assign(el('button', `dk-icon dk-${kind}${tab ? ' dk-ext' : ''}`), { type: 'button', title: sub ? `${label} on ${sub}` : label });
-  if (tab) b.title += ', opens in a new tab';
+function dkIcon(kind, label, sub, open, icon = '') {
+  const b = Object.assign(el('button', `dk-icon dk-${kind}`), { type: 'button', title: sub ? `${label} on ${sub}` : label });
   const tile = el('span', 'dk-tile');
   tile.appendChild(dkGlyph(DK_GLYPHS[kind]));
-  const mark = tab && dkGlyph(DK_UI.pop, 'dk-ext-mark');
   if (kind === 'chat') tile.appendChild(dkBadge());
   // a site's own icon once it loads, the globe till then
   if (icon) {
     const img = Object.assign(el('img', 'dk-favicon'), { alt: '', decoding: 'async', draggable: false });
-    img.addEventListener('load', () => { if (img.naturalWidth) tile.replaceChildren(img, ...(mark ? [mark] : [])); }, { once: true });
+    img.addEventListener('load', () => { if (img.naturalWidth) tile.replaceChildren(img); }, { once: true });
     img.src = icon;
   }
-  if (mark) tile.appendChild(mark);
   b.append(tile, el('span', 'dk-label', label));
   if (sub) b.appendChild(el('span', 'dk-sub', sub));
   b.dataset.id = `${kind}\n${label}\n${sub}`;
@@ -5993,7 +5990,7 @@ function dkIcons() {
   if (!dk.desk) return;
   const hosts = [...dk.creds.keys()];
   const git = !!gitRoute;
-  const sig = JSON.stringify([hosts, git, inTab(gitRoute), !!acct?.admin, dk.services.map((r) => [r.host, r.name, r.mode])]);
+  const sig = JSON.stringify([hosts, git, !!acct?.admin, dk.services.map((r) => [r.host, r.name])]);
   if (sig === dk.sig) return;
   dk.sig = sig;
   dk.desk.icons.replaceChildren(
@@ -6003,12 +6000,12 @@ function dkIcons() {
     dkIcon('chat', 'chat', '', () => dkOpenApp('chat')),
     dkIcon('status', 'status', '', () => dkOpenApp('status')),
     dkIcon('projects', 'projects', '', () => dkOpenApp('projects')),
-    ...(git ? [dkIcon('git', 'git', '', () => dkOpenApp('git'), '', inTab(gitRoute))] : []),
+    ...(git ? [dkIcon('git', 'git', '', () => dkOpenApp('git'))] : []),
     dkIcon('games', 'games', '', () => dkOpenApp('games')),
     dkIcon('about', 'about', '', () => dkOpenApp('about')),
     ...(acct?.admin ? [dkIcon('users', 'users', '', dkUsersWin)] : []),
     ...dk.services.map((r) => dkIcon('service', r.name, r.host, () => dkService(r),
-      `/api/favicon/${encodeURIComponent(r.host)}/${encodeURIComponent(r.name)}`, inTab(r))),
+      `/api/favicon/${encodeURIComponent(r.host)}/${encodeURIComponent(r.name)}`)),
   );
   dkLayout();
 }
@@ -7108,11 +7105,7 @@ function dkEditorPick() {
   dkFocus(w);
 }
 
-// a subdomain's app refusing to be framed, a browser tab instead
-const inTab = (r) => r?.mode === 'subdomain';
-
 function dkService(r) {
-  if (inTab(r)) { window.open(serviceUrl(r), '_blank', 'noopener'); return; }
   const w = dkWin(`svc:${serviceKey(r)}`, r.name, r.host, 'svc');
   if (!w) return;
   const url = serviceUrl(r);
@@ -7234,7 +7227,6 @@ const gitMaster = () => gitHostsList.find((h) => h.role === 'master' && h.reacha
 
 function dkGit() {
   if (!gitRoute) return;
-  if (inTab(gitRoute)) { window.open(serviceUrl(gitRoute), '_blank', 'noopener'); return; }
   const w = dkWin('app:git', 'git', gitMaster(), 'svc dk-git');
   if (!w) return;
   const pop = Object.assign(el('button', 'dk-pop'), { type: 'button', title: 'open in a browser tab', ariaLabel: 'open in a browser tab' });
