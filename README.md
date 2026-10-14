@@ -118,9 +118,8 @@ stop = systemctl --user stop tmodloader
 ```
 
 A service shows up at `yourdomain/host/name/`, or at `name.yourdomain` with
-`mode = subdomain`. A subdomain service can't open in a desktop window: its icon
-carries an arrow and opens in a new browser tab. Game servers are reachable only
-inside the mesh, at `name.phosphorus`.
+`mode = subdomain`. Game servers are reachable only inside the mesh, at
+`name.phosphorus`.
 
 ## Command line
 
