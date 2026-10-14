@@ -2065,3 +2065,10 @@ input, textarea { caret-color: var(--accent); }
   background: var(--card); border: 1px solid var(--border); color: var(--muted);
 }
 .dk-ext .dk-label { font-style: italic; }
+/* the bar's icon buttons one even row: same width, same glyph, no gap between */
+.dk-bar .dk-tray-wrap { margin-right: -0.6rem; }
+.dk-bar .dk-tray:not(.dk-profile), .dk-bar .update-wrap > button, .dk-bar .theme-toggle.top-theme {
+  width: 2.25rem; padding: 0; justify-content: center; display: flex; align-items: center;
+}
+.dk-bar .dk-tray .ic, .dk-bar .top-side svg { width: 0.85rem; height: 0.85rem; }
+.dk-bar .update-wrap[hidden] { display: none; }

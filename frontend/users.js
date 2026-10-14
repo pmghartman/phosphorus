@@ -6,11 +6,12 @@ const crypto = require('crypto');
 const sys = require('./sysfs');
 
 // the sys tree: etc/passwd/<name> {admin}, etc/shadow/<name> {salt, hash,
-// pwAt}, home/<name>/vault {iv, tag, data}, etc/secret {v}
+// pwAt}, home/<name>/vault {iv, tag, data}, home/<name>/prefs, etc/secret {v}
 const SECRET = 'etc/secret.json';
 const passwd = (n) => `etc/passwd/${n}.json`;
 const shadow = (n) => `etc/shadow/${n}.json`;
 const vaultFile = (n) => `home/${n}/vault.json`;
+const prefsFile = (n) => `home/${n}/prefs.json`;
 sys.oldestWins(SECRET);
 
 // .env's admin password, the bootstrap admin's, unset: an empty one
@@ -22,6 +23,9 @@ const SESSION_MS = 30 * 24 * 3600 * 1000;
 const BOOT_SESSION_MS = 3600 * 1000;
 const MAX_VAULT = 64 * 1024;
 const MAX_PASS = 256;
+const MAX_PREFS = 32 * 1024;
+// the page's settings following a user between browsers
+const PREF_KEYS = ['icons', 'theme', 'recent', 'color'];
 
 const live = (name) => {
   const pw = NAME_RE.test(name) && sys.read(passwd(name));
@@ -92,7 +96,24 @@ function vaultOf(s) {
   try { return JSON.parse(text) || {}; } catch { return {}; }
 }
 
-const me = (s) => ({ user: s.user, admin: s.admin, boot: s.boot, vault: vaultOf(s) || { hosts: {}, pages: {} } });
+const me = (s) => ({
+  user: s.user, admin: s.admin, boot: s.boot, vault: vaultOf(s) || { hosts: {}, pages: {} },
+  prefs: (!s.boot && sys.read(prefsFile(s.user))) || {},
+});
+
+// each a string as the page's localStorage held it, '' dropping it
+function setPrefs(s, p) {
+  if (!s || s.boot) return [403, { error: 'the setup admin keeps no settings' }];
+  const prefs = { ...(sys.read(prefsFile(s.user)) || {}) };
+  for (const k of PREF_KEYS) {
+    if (!p.prefs || !(k in p.prefs)) continue;
+    const v = String(p.prefs[k] ?? '');
+    if (v) prefs[k] = v; else delete prefs[k];
+  }
+  if (JSON.stringify(prefs).length > MAX_PREFS) return [413, { error: 'settings too large' }];
+  sys.write(prefsFile(s.user), prefs);
+  return [200, { prefs }];
+}
 
 // --- the browser's calls, [status, body, cookie?] -------------------------
 
@@ -188,10 +209,10 @@ function remove(s, p) {
   const name = String(p.name || '');
   if (!live(name)) return [404, { error: 'no such user' }];
   if (name === s.user) return [400, { error: 'another admin can delete you, not yourself' }];
-  for (const f of [passwd(name), shadow(name), vaultFile(name)]) sys.remove(f);
+  for (const f of [passwd(name), shadow(name), vaultFile(name), prefsFile(name)]) sys.remove(f);
   return list(s);
 }
 
 module.exports = {
-  session, me, login, setVault, changePass, list, create, setAdmin, remove, clearCookie, setup: () => !anyAdmin(),
+  session, me, login, setVault, setPrefs, changePass, list, create, setAdmin, remove, clearCookie, setup: () => !anyAdmin(),
 };

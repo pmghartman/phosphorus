@@ -37,9 +37,10 @@ const INGRESS_PORT = Number(process.env.INGRESS_PORT || 80);
 const STATE_DIR = process.env.STATE_DIR || '/state';
 const SELF_HOST = process.env.SELF_HOST || '';
 const BASE_DOMAIN = process.env.BASE_DOMAIN || '';
-const OWN_CHAT_FILE = path.join(STATE_DIR, 'own-chat.json');
-const CHAT_FILE = path.join(STATE_DIR, 'chat.json');
-const CLEAR_FILE = path.join(STATE_DIR, 'chat-clear.json');
+// the chat in sys var/chat, its own merge over the mesh
+const OWN_CHAT_FILE = sys.local('chat/own.json', path.join(STATE_DIR, 'own-chat.json'));
+const CHAT_FILE = sys.local('chat/merged.json', path.join(STATE_DIR, 'chat.json'));
+const CLEAR_FILE = sys.local('chat/clear.json', path.join(STATE_DIR, 'chat-clear.json'));
 const UPDATE_RESULT_FILE = path.join(STATE_DIR, 'update-result.json');
 const PLATFORM_FILE = path.join(STATE_DIR, 'platform.json');
 const GAME_KEY_DIR = path.join(STATE_DIR, 'game-control');
@@ -908,8 +909,6 @@ const GETS = {
     chain: update.sharedChain(),
     git: git.state(),
     model: model.state(),
-    modelRoles: model.roles(),
-    modelKeys: model.keyStamps(),
     sys: sys.stamps(),
     projects: project.summaries(),
     chat: q.has('since') ? ownChat.filter((m) => m.seq > (Number(q.get('since')) || 0)) : [],
@@ -1005,6 +1004,7 @@ const USER_CALLS = {
   'POST /api/login': (s, p) => users.login(p),
   'POST /api/logout': () => [200, { ok: true }, users.clearCookie()],
   'POST /api/me/vault': (s, p) => users.setVault(s, p),
+  'POST /api/me/prefs': (s, p) => users.setPrefs(s, p),
   'POST /api/me/password': (s, p) => users.changePass(s, p),
   'GET /api/users': (s) => users.list(s),
   'POST /api/users': (s, p) => users.create(s, p),
@@ -1084,13 +1084,6 @@ function app(req, res) {
       if (out[0] === 200) clock.markHot();
       return out;
     }, true);
-    return;
-  }
-
-  // the keys themselves, for peers alone, never through the ingress
-  if (pathname === '/api/model/keys' && req.method === 'GET') {
-    if (!isLoopback(req) && !isTailnet(req)) { res.writeHead(403).end('forbidden'); return; }
-    sendJson(res, 200, model.keys());
     return;
   }
 
@@ -1574,7 +1567,9 @@ function announceLeave(name) {
 }
 
 // history once joined, the dms in it only that name's
-function onChat(ws) {
+// a logged in user's chat name their user name
+function onChat(ws, s) {
+  const user = s && !s.boot ? s.user : '';
   ws.send(JSON.stringify({ type: 'presence', people: presenceFor(ws, allPresence()) }));
 
   ws.on('message', (raw) => {
@@ -1588,7 +1583,7 @@ function onChat(ws) {
     if (msg.type === 'ping') { ws.send(JSON.stringify({ type: 'pong' })); return; }
 
     if (msg.type === 'join') {
-      const name = String(msg.name || 'anon').trim().slice(0, MAX_NAME_LEN) || 'anon';
+      const name = user || String(msg.name || 'anon').trim().slice(0, MAX_NAME_LEN) || 'anon';
       ws.name = name;
       ws.color = VALID_COLORS.has(msg.color) ? msg.color : colorForName(name);
       sendHistory(ws);
@@ -1626,7 +1621,7 @@ function onChat(ws) {
 
     if (msg.type === 'rename') {
       const newName = String(msg.name || '').trim().slice(0, MAX_NAME_LEN);
-      if (!newName || newName === ws.name) return;
+      if (!newName || newName === ws.name || user) return;
       broadcast({ type: 'system', text: `${ws.name} renamed to ${newName}` });
       ws.name = newName;
       sendHistory(ws);
@@ -1824,7 +1819,7 @@ function onUpgrade(req, socket, head) {
   const { pathname, searchParams } = new URL(req.url, 'http://localhost');
   const refuse = (status) => socket.end(`HTTP/1.1 ${status}\r\n\r\n`);
   if (!isLocalOrPeer(req)) { refuse('403 Forbidden'); return; }
-  if (pathname === '/ws') { wss.handleUpgrade(req, socket, head, (ws) => onChat(keepAlive(ws))); return; }
+  if (pathname === '/ws') { wss.handleUpgrade(req, socket, head, (ws) => onChat(keepAlive(ws), users.session(req))); return; }
   if (pathname === '/api/state') { stateWss.handleUpgrade(req, socket, head, (ws) => onState(keepAlive(ws))); return; }
   if (pathname === '/api/stats') {
     // own: a peer's fan in, or the mcp's own sample

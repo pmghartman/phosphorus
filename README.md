@@ -45,8 +45,13 @@ The first time a user logs in they log in to one or more hosts with that machine
 own user and password; those logins are saved to their profile for next time. A
 host online but not logged in shows a lock in the bottom bar: click it to log in.
 The profile button in the bar holds saved hosts, page logins, the password and log out.
-Users live in each host's `state/sys/` (`etc/passwd`, `etc/shadow`, `home/<user>/vault`),
-copied to every host, each user's vault sealed with their own password. You get a desktop:
+Your chat name is your user name, and your theme, icon layout, recent files and chat
+colour follow you to any browser.
+
+Each host's `state/sys/` is the mesh's own small file system: `etc/` (users in `passwd`
+and `shadow`, the model roles and API keys in `model/`) and `home/<user>/` (the vault,
+sealed with that user's password, and settings) are copied to every host; `var/` (chat)
+is the host's own. You get a desktop:
 
 - **terminal**: a shell on each host you logged in to
 - **files**: every host's shared folders; copy and move between hosts, drag files in to upload

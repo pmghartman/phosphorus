@@ -3475,7 +3475,7 @@ function connectChat() {
     people = [];
     chatOnline = false;
     paintStatus();
-    setTimeout(connectChat, reconnectDelay);
+    setTimeout(() => { if (name) connectChat(); }, reconnectDelay);
     reconnectDelay = Math.min(reconnectDelay * 1.5, 5000);
   };
   ws.onerror = () => ws.close();
@@ -3768,6 +3768,7 @@ function runCommand(input) {
   if (cmd === '/close' && chOf(conv)) { convMenu(conv, chatTitle, true); return; }
   if (cmd === '/topic' && chOf(conv)) { send({ type: 'topic', ch: chOf(conv), text: arg }); return; }
   if (cmd === '/rename') {
+    if (acct) { chatNote('your chat name is your user name'); return; }
     if (!arg) { chatNote('usage: /rename name'); return; }
     name = arg.slice(0, 32);
     localStorage.setItem('phosphorus-chat-name', name);
@@ -3883,7 +3884,7 @@ const DM_CMD = ['/dm', 'message one person directly', 'name, then the message'];
 const CHANNEL_CHIP = ['#', 'open or make a channel', 'channel name, then a topic'];
 const SHARE_CMD = ['/share', 'work on a file together', 'name, then an open tab or a shared file'];
 const BACK_CMD = ['/chat', 'back to #mesh', ''];
-const ME_CMDS = [['/rename', 'change your name', 'new name'], ['/recolor', 'change your colour', COLOR_NAMES.join(', ')]];
+const ME_CMDS = [['/recolor', 'change your colour', COLOR_NAMES.join(', ')]];
 function commands() {
   if (isAgent(conv)) {
     return [BACK_CMD, ...ASK_CMDS, ['/stop', `stop the ${conv}'s answer`, ''], ['/clear', 'clear this conversation and its context', ''],
@@ -4084,10 +4085,15 @@ chatJoin.addEventListener('submit', (e) => {
   connectChat();
 });
 
-if (name) {
-  chatJoin.hidden = true;
-  chatCompose.hidden = false;
-  connectChat();
+// joined as the logged in user, never before
+function chatAs(user) {
+  if (user === name && ws && ws.readyState <= WebSocket.OPEN) return;
+  name = user;
+  try { if (user) localStorage.setItem('phosphorus-chat-name', user); } catch {}
+  chatJoin.hidden = !!user;
+  chatCompose.hidden = !user;
+  if (ws && ws.readyState <= WebSocket.OPEN) ws.close();
+  else if (user) connectChat();
 }
 setConv('mesh');
 
@@ -7326,6 +7332,7 @@ async function acctStart() {
 // a real form, so the browser offers to save and fill it
 function acctLogin(setup) {
   acct = null;
+  chatAs('');
   dkLogout();
   const form = Object.assign(el('form', 'dk-login acct-login'), { method: 'post', action: '/api/login' });
   const user = Object.assign(el('input'), { name: 'username', placeholder: 'user', autocomplete: 'username', spellcheck: false, autocapitalize: 'off', required: true });
@@ -7359,6 +7366,8 @@ function acctIn(me) {
   acct.vault.hosts ||= {};
   acct.vault.pages ||= {};
   if (acct.boot) { acctSetup(); return; }
+  acctPrefs(me.prefs || {});
+  chatAs(acct.user);
   dk.creds = new Map(Object.entries(acct.vault.hosts).map(([h, c]) => [h, { user: c.user, pass: c.pass }]));
   if (dk.creds.size) dkDesktop(); else dkLogin();
 }
@@ -7367,6 +7376,47 @@ async function acctSave() {
   if (!acct || acct.boot) return '';
   const r = await acctCall('/api/me/vault', { vault: acct.vault });
   return r.ok ? '' : r.error || 'not saved';
+}
+
+// the page's own settings in localStorage, mirrored to the user's home
+const PREF_LS = { icons: 'phosphorus-dk-icons', theme: 'phosphorus-theme', recent: 'phosphorus-recent-files', color: 'phosphorus-chat-color' };
+const PREF_OF = Object.fromEntries(Object.entries(PREF_LS).map(([k, v]) => [v, k]));
+let prefsTimer = null;
+let prefsQuiet = false;
+
+function prefsSoon() {
+  if (prefsQuiet || !acct || acct.boot) return;
+  clearTimeout(prefsTimer);
+  prefsTimer = setTimeout(() => {
+    const prefs = {};
+    for (const [k, ls] of Object.entries(PREF_LS)) { try { prefs[k] = localStorage.getItem(ls) || ''; } catch {} }
+    acctCall('/api/me/prefs', { prefs });
+  }, 800);
+}
+
+for (const m of ['setItem', 'removeItem']) {
+  const own = Storage.prototype[m];
+  Storage.prototype[m] = function (k, ...rest) {
+    own.call(this, k, ...rest);
+    if (this === window.localStorage && PREF_OF[k]) prefsSoon();
+  };
+}
+
+// the home's settings over this browser's, this browser's sent up where the home has none
+function acctPrefs(prefs) {
+  let seed = false;
+  prefsQuiet = true;
+  for (const [k, ls] of Object.entries(PREF_LS)) {
+    try {
+      if (prefs[k]) localStorage.setItem(ls, prefs[k]);
+      else if (localStorage.getItem(ls)) seed = true;
+    } catch {}
+  }
+  prefsQuiet = false;
+  if (seed) prefsSoon();
+  let theme = null;
+  try { theme = localStorage.getItem(PREF_LS.theme); color = localStorage.getItem(PREF_LS.color) || color; } catch {}
+  applyTheme(theme || (systemLight.matches ? 'light' : 'dark'));
 }
 
 async function acctLogout() {
