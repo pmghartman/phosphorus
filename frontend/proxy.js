@@ -200,8 +200,9 @@ function deny(req, res) {
   const host = String(req.headers.host || '').toLowerCase();
   const page = req.method === 'GET' && /text\/html/.test(String(req.headers.accept || ''));
   if (page && BASE_DOMAIN) {
-    const next = encodeURIComponent(`https://${host}${req.url}`);
-    res.writeHead(302, { Location: `https://${BASE_DOMAIN}/?next=${next}`, 'Cache-Control': 'no-store' }).end();
+    const why = /(?:^|;\s*)phosphorus-user=/.test(String(req.headers.cookie || '')) ? 'refused' : 'none';
+    const q = new URLSearchParams({ next: `https://${host}${req.url}`, why, by: SELF_HOST });
+    res.writeHead(302, { Location: `https://${BASE_DOMAIN}/?${q}`, 'Cache-Control': 'no-store' }).end();
     return;
   }
   refuse(res, 401, `log in first${SELF_HOST ? ` (${SELF_HOST})` : ''}`);

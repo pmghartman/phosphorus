@@ -7440,16 +7440,23 @@ async function acctCheck() {
 
 // a service's page sent here to log in first, back to it after
 function acctNext() {
-  const next = new URLSearchParams(location.search).get('next');
+  const q = new URLSearchParams(location.search);
+  const next = q.get('next');
   if (!next) return false;
   history.replaceState(null, '', '/');
   // the service still refusing: no second bounce back to it
   let last = '';
   try { last = sessionStorage.getItem('phosphorus-next') || ''; sessionStorage.setItem('phosphorus-next', `${Date.now()} ${next}`); } catch {}
   const [at, prev] = [Number(last.split(' ')[0]), last.slice(last.indexOf(' ') + 1)];
-  if (prev === next && Date.now() - at < 15000) return false;
   let u;
   try { u = new URL(next); } catch { return false; }
+  if (prev === next && Date.now() - at < 15000) {
+    const why = q.get('why') === 'none' ? 'no login cookie reached it, log out and in again' : 'the login cookie was refused';
+    setTimeout(() => openConfirm(`${u.host} sent you back here${q.get('by') ? ` from ${q.get('by')}` : ''}: ${why}.`, {
+      title: 'not logged in there', hideCancel: true, actionLabel: 'ok', onAction: closeUpdateModal,
+    }));
+    return false;
+  }
   const base = baseDomain || location.hostname;
   if (u.protocol !== 'https:' || !(u.hostname === base || u.hostname.endsWith(`.${base}`))) return false;
   location.replace(u.href);
