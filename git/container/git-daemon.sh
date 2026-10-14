@@ -56,10 +56,6 @@ render_litefs_yml() {
 # conf/ rsynced wholesale from the master, a local value would drift
 render_app_ini_once() {
   if [ -s "$APP_INI" ]; then
-    # hesperus-era paths, else forgejo's db outside litefs and nothing answering
-    grep -q '/var/lib/hesperus/' "$APP_INI" \
-      && sed -i -e 's#/var/lib/hesperus/git#/var/lib/phosphorus/git#g' -e 's/^APP_NAME = hesperus git$/APP_NAME = phosphorus git/' "$APP_INI" \
-      && chown git:phosphorus "$APP_INI" && say "app.ini moved off /var/lib/hesperus"
     # added after first render, appended once, then rsynced like the rest of conf/
     grep -q '^\[cron.git_gc_repos\]' "$APP_INI" \
       || printf '\n[cron.git_gc_repos]\nENABLED  = true\nSCHEDULE = @every 24h\n' >> "$APP_INI"
@@ -69,6 +65,16 @@ render_app_ini_once() {
       -e "s/__PORT__/${GIT_PORT}/g" \
       -e "s#__ROOT_URL__#https://${GIT_NAME}.${BASE_DOMAIN}/#g" \
       "$APP_INI_TMPL" > "$APP_INI"
+}
+
+# repo hooks written under an older data root, pointed at this app.ini
+fix_hook_configs() {
+  local root="$DATA_ROOT/obj/forgejo-repositories"
+  [ -d "$root" ] || return 0
+  find "$root" -path '*/hooks/*.d/*' -type f -print0 2>/dev/null \
+    | xargs -0r grep -lZ -e '--config=' 2>/dev/null \
+    | xargs -0r grep -LZ -F -e "$APP_INI" 2>/dev/null \
+    | xargs -0r sed -i -E "s#--config=(['\"]?)[^'\" ]*app\.ini#--config=\1$APP_INI#"
 }
 
 LITEFS_PID=""
@@ -374,6 +380,7 @@ main() {
   WATCHDOG_PID="$!"
 
   render_app_ini_once
+  fix_hook_configs
   start_rsyncd
   trap term SIGTERM SIGINT
 

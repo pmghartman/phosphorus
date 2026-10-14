@@ -102,8 +102,11 @@ function mapPos(ops, pos) {
 const sessions = new Map();
 const keyOf = (share, rel) => `${share.id}\n${rel}`;
 
+// each tab's own id, so it knows itself among the names
+let clientSeq = 0;
+
 function people(s) {
-  return [...s.clients].filter((c) => c.who).map((c) => ({ name: c.who.name, color: c.who.color, pos: c.pos || 0, ...(c.agent ? { agent: true } : {}) }));
+  return [...s.clients].filter((c) => c.who).map((c) => ({ id: c.cid || 0, name: c.who.name, color: c.who.color, pos: c.pos || 0, ...(c.agent ? { agent: true } : {}) }));
 }
 
 function send(ws, body) { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(body)); }
@@ -264,8 +267,9 @@ function attach(ws, shareId, rel) {
   if (!files.can(share, 'r')) { fail('this share is not readable'); return; }
   const [status, s] = open(share, String(rel || ''));
   if (status !== 200) { fail(s.error || `can't open it (${status})`); return; }
+  ws.cid = clientSeq += 1;
   s.clients.add(ws);
-  send(ws, { type: 'init', text: s.text, v: s.version, saved: s.saved, perms: share.perms, people: people(s) });
+  send(ws, { type: 'init', text: s.text, v: s.version, saved: s.saved, perms: share.perms, people: people(s), you: ws.cid });
   ws.on('message', (raw) => {
     let msg;
     try { msg = JSON.parse(raw.toString()); } catch { return; }

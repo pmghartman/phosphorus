@@ -44,34 +44,4 @@ else
   fi
 fi
 
-# --- xpra, for [apps] ---------------------------------------------------------
-# each app on its own display, streamed by xpra's html5 client
-install_xpra() {
-  phosphorus_is_apps_host || return 0
-  if command -v xpra >/dev/null 2>&1; then
-    say "xpra already installed, skipping"
-    return 0
-  fi
-  say "installing xpra for [apps]..."
-  if command -v apt-get >/dev/null 2>&1; then
-    # xpra.org's own: distro builds lag, Ubuntu 24.04's has no server at all
-    local codename src
-    codename="$(. /etc/os-release && echo "${VERSION_CODENAME:-}")"
-    src="https://raw.githubusercontent.com/Xpra-org/xpra/master/packaging/repos/$codename/xpra.sources"
-    if [ -n "$codename" ] && curl -fsSL -o /tmp/xpra.sources "$src" \
-       && sudo curl -fsSL -o /usr/share/keyrings/xpra.asc https://xpra.org/xpra.asc; then
-      sudo mv /tmp/xpra.sources /etc/apt/sources.list.d/xpra.sources
-      sudo apt-get update
-    fi
-    sudo apt-get install -y xpra xpra-html5
-  elif command -v dnf >/dev/null 2>&1; then
-    sudo dnf install -y xpra xpra-html5
-  elif command -v pacman >/dev/null 2>&1; then
-    sudo pacman -Sy --noconfirm xpra
-  else
-    false
-  fi || say "couldn't install xpra, apps stay off until it is: https://github.com/Xpra-org/xpra/wiki/Download"
-}
-
 run_bring_up
-install_xpra

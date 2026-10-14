@@ -64,15 +64,11 @@ phosphorus_add_missing_sections() {
     printf '\n[model]\n# host: true downloads the mesh model here and runs it for every host\n# gpu: true offloads it to this host'"'"'s nvidia gpu\n# url: download link to the model'"'"'s .gguf, no default\nhost = false\ngpu = false\nurl =\n' >> "$file"
     echo "[phosphorus.ini] added the [model] section, set host and url on the one host with the memory and disk for the model"
   fi
-  if ! grep -qx '\[apps\]' "$file"; then
-    printf '\n[apps]\n# host: true lists this host'"'"'s desktop apps in the new tab, each opened on\n# its own xpra display, Linux only\nhost = false\n' >> "$file"
-    echo "[phosphorus.ini] added the [apps] section, set host = true to open this host's apps in the browser"
+  # the retired [apps] section dropped, comments and all
+  if grep -qx '\[apps\]' "$file"; then
+    awk '/^\[/{skip=($0=="[apps]")} !skip' "$file" | cat -s > "$file.tmp" && mv "$file.tmp" "$file" \
+      && echo "[phosphorus.ini] dropped the [apps] section, desktop apps are gone"
   fi
-}
-
-# [apps] host: this host's desktop apps, each on its own xpra display
-phosphorus_is_apps_host() {
-  [ "$(phosphorus_get apps host)" = "true" ]
 }
 
 # [model] host: the model and the web search run here
@@ -114,34 +110,6 @@ phosphorus_files_dir_list() {
       *) printf '%s\n' "$base/$d" ;;
     esac
   done
-}
-
-# [files] dir entries inside old checkout $1 copied into this home and made
-# relative to it, $2=all for relative ones too (a migration's, off the checkout)
-phosphorus_rehome_files() {
-  local old="$1" all="${2:-}" ini raw d rel out="" changed=0
-  ini="$(phosphorus_ini)"
-  [ -n "$ini" ] && [ -n "$old" ] && [ "$old" != "$PWD" ] || return 0
-  raw="$(phosphorus_get files dir)"
-  [ -n "$raw" ] || return 0
-  local IFS=','
-  for d in $raw; do
-    d="${d# }"; d="${d%/}"
-    case "$d" in
-      '') continue ;;
-      "$old"/*) rel="${d#"$old"/}" ;;
-      /*|[A-Za-z]:*) out="${out:+$out,}$d"; continue ;;
-      *) rel="$d"; [ "$all" = all ] || { out="${out:+$out,}$d"; continue; } ;;
-    esac
-    if [ -d "$old/$rel" ]; then
-      echo "[files] copying $old/$rel into $PWD/$rel"
-      mkdir -p "$rel" && cp -a "$old/$rel/." "$rel/" || return 1
-    fi
-    out="${out:+$out,}$rel"; changed=1
-  done
-  [ "$changed" = 1 ] || return 0
-  awk -v v="$out" '/^\[/{on=($0=="[files]")} on && /^dir =/{print "dir = " v; next} {print}' "$ini" > "$ini.tmp" \
-    && mv "$ini.tmp" "$ini" && echo "[files] dir now $out, under $PWD"
 }
 
 # [files] priv, one entry per dir in the same order, none means rwd

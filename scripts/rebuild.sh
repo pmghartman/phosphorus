@@ -16,10 +16,6 @@ main() {
   # git tracks no permission bits, .env locked down on every build
   chmod 600 .env
   phosphorus_add_missing_sections
-  # a migrated host's shares still in its old checkout, moved here, host side only
-  if [ ! -f /.dockerenv ] && [ -s .phosphorus-migrated-from ]; then
-    phosphorus_rehome_files "$(cat .phosphorus-migrated-from)" || fail "couldn't move [files] dirs out of the old checkout"
-  fi
   local profiles=()
   phosphorus_is_git_host && profiles+=(git-host)
   phosphorus_is_model_host && profiles+=(model-host)

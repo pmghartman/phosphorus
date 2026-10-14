@@ -184,9 +184,7 @@ const INGRESS_PORT = Number(process.env.INGRESS_PORT || 80);
 const PIN_COOKIE = 'phosphorus-host';
 // set on a pinned hop, never a second hop from the far ingress
 const PIN_HOP = 'x-forwarded-phosphorus-host';
-// a hesperus peer's, mid-update
-const PIN_HOP_OLD = 'x-forwarded-hesperus-host';
-const pinHopped = (req) => !!(req.headers[PIN_HOP] || req.headers[PIN_HOP_OLD]);
+const pinHopped = (req) => !!req.headers[PIN_HOP];
 
 // live phosphorus peers, name -> tailnet IP, mesh.js's, every tick
 let pinIps = new Map();
@@ -321,4 +319,72 @@ function listen(port, app, upgrade) {
   return server;
 }
 
-module.exports = { EXTRA_KEYS, rowError, swap, pinTargets, listen };
+// --- favicons -----------------------------------------------------------------
+// a service's own icon for the desktop: its page's <link rel=icon>, else
+// /favicon.ico, fetched upstream as the proxy would, kept a while
+
+const ICON_MAX = 256 * 1024;
+const ICON_KEEP_MS = 3600000;
+const ICON_MISS_MS = 600000;
+const icons = new Map();
+
+function grab(route, path, max) {
+  return new Promise((resolve) => {
+    const req = (route.scheme === 'https' ? https : http).get({
+      host: route.ip, port: route.port, path, timeout: 4000, agent: agents[route.scheme],
+      headers: { host: route.domain || BASE_DOMAIN, accept: '*/*', 'x-forwarded-prefix': route.prefix },
+    }, (res) => {
+      if (res.statusCode !== 200) { res.resume(); resolve(null); return; }
+      const parts = [];
+      let n = 0;
+      res.on('data', (c) => { n += c.length; if (n > max) req.destroy(); else parts.push(c); });
+      res.on('end', () => resolve({ type: String(res.headers['content-type'] || ''), body: Buffer.concat(parts) }));
+      res.on('error', () => resolve(null));
+    });
+    req.on('timeout', () => req.destroy());
+    req.on('error', () => resolve(null));
+  });
+}
+
+// an href off the page, as an upstream path, the public prefix dropped
+function iconPath(route, href) {
+  let u;
+  try { u = new URL(href.replace(/&amp;/g, '&'), 'http://upstream/'); } catch { return ''; }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return '';
+  if (u.host !== 'upstream' && u.hostname !== (route.domain || BASE_DOMAIN)) return '';
+  const p = route.prefix && under(u.pathname, route.prefix) ? strip(u.pathname, route.prefix) : u.pathname;
+  return p + u.search;
+}
+
+const isImage = (r) => !!r && r.body.length > 0 && (/^image\//.test(r.type) || /octet-stream/.test(r.type));
+
+async function lookIcon(route) {
+  const page = await grab(route, '/', ICON_MAX * 4);
+  const html = page && /html/.test(page.type) ? page.body.toString('utf8') : '';
+  const hrefs = [];
+  for (const tag of html.match(/<link\b[^>]*>/gi) || []) {
+    if (!/\brel\s*=\s*["']?[^"'>]*icon/i.test(tag)) continue;
+    const m = tag.match(/\bhref\s*=\s*["']([^"']+)["']/i);
+    if (m) hrefs.push(m[1]);
+  }
+  for (const path of [...hrefs.map((h) => iconPath(route, h)).filter(Boolean), '/favicon.ico']) {
+    const r = await grab(route, path, ICON_MAX);
+    if (isImage(r)) return { type: /^image\//.test(r.type) ? r.type.split(';')[0] : 'image/x-icon', body: r.body };
+  }
+  return null;
+}
+
+// {type, body}, null when the service has none
+function favicon(host, name) {
+  const key = `${host}/${name}`;
+  const held = icons.get(key);
+  if (held && Date.now() < held.until) return held.icon;
+  const route = [...table.domains.values(), ...table.paths].find((r) => r.host === host && r.name === name);
+  if (!route) return Promise.resolve(null);
+  const icon = lookIcon(route).catch(() => null);
+  icons.set(key, { icon, until: Date.now() + ICON_KEEP_MS });
+  icon.then((v) => { if (!v) icons.set(key, { icon, until: Date.now() + ICON_MISS_MS }); });
+  return icon;
+}
+
+module.exports = { EXTRA_KEYS, rowError, swap, pinTargets, listen, favicon };
