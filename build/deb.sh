@@ -29,6 +29,7 @@ Version: $VER
 Architecture: $ARCH
 Maintainer: Hesperus <https://github.com/pmghartman/hesperus>
 Depends: docker.io | docker-ce, docker-compose-v2 | docker-compose-plugin | docker-compose, openssh-server, sudo
+Suggests: xpra, xpra-html5
 Installed-Size: $(du -sk --exclude=DEBIAN "$T" | cut -f1)
 Section: misc
 Priority: optional

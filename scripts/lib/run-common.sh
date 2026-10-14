@@ -72,6 +72,12 @@ run_bring_up() {
     local host=false
     [[ "$ans" =~ ^[Yy] ]] && host=true
     printf '[git]\nhost = %s\n' "$host" > config/hesperus.ini
+    if [ "$(uname)" = Linux ]; then
+      read -rp "open this host's desktop apps in the browser (xpra)? [y/N] " ans
+      host=false
+      [[ "$ans" =~ ^[Yy] ]] && host=true
+      printf '\n[apps]\nhost = %s\n' "$host" >> config/hesperus.ini
+    fi
   fi
 
   # --- hesperus container -----------------------------------------------

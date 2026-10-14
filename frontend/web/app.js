@@ -1746,6 +1746,126 @@ function openTerminalTab(host, sid, shared = false) {
 
 for (const t of savedTerms()) openTerminalTab(t.host, t.sid, !!t.shared);
 
+// --- app tabs: a login over /api/app/<host>, then xpra's html5 client in a frame
+
+const APPS_KEY = 'hesperus-apps';
+function savedApps() {
+  try { return JSON.parse(sessionStorage.getItem(APPS_KEY)) || []; } catch { return []; }
+}
+function saveApps(list) {
+  try { sessionStorage.setItem(APPS_KEY, JSON.stringify(list)); } catch {}
+}
+const forgetApp = (sid) => saveApps(savedApps().filter((a) => a.sid !== sid));
+
+// the frame's own client pointed back through this page's origin
+function appFrameUrl(host, sid) {
+  const base = `/api/appview/${encodeURIComponent(host)}/${sid}/`;
+  const https = location.protocol === 'https:';
+  const q = new URLSearchParams({
+    server: location.hostname, port: location.port || (https ? '443' : '80'), ssl: String(https), path: base,
+    floating_menu: 'false', sound: 'false', sharing: 'false', reconnect: 'true',
+  });
+  return `${base}index.html?${q}`;
+}
+
+function startApp(view, host, app, sid, resume) {
+  const msg = el('div', 'app-msg', resume ? 'reconnecting…' : 'connecting…');
+  const user = Object.assign(el('input'), { placeholder: 'user', autocomplete: 'username', spellcheck: false });
+  const pass = Object.assign(el('input'), { type: 'password', placeholder: 'password', autocomplete: 'current-password' });
+  const go = Object.assign(el('button', 'primary', 'open'), { type: 'submit' });
+  const form = Object.assign(el('form', 'app-login'), { hidden: true });
+  form.append(el('div', 'app-login-title', `${app.name} on ${host}`), user, pass, go);
+  const frame = Object.assign(el('iframe', 'app-frame'), { hidden: true, title: app.name });
+  view.append(msg, form, frame);
+  let ws = null;
+  let retry = null;
+  let delay = RETRY_MIN_MS;
+  let ended = false;
+  const say = (text) => { msg.textContent = text; msg.hidden = !text; };
+  const finish = (text) => {
+    ended = true;
+    forgetApp(sid);
+    form.hidden = true;
+    say(text || `${app.name} closed`);
+  };
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (ws?.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({ type: 'auth', user: user.value, password: pass.value }));
+    pass.value = '';
+    form.hidden = true;
+  });
+  const connect = () => {
+    const q = new URLSearchParams({ sid, id: app.id });
+    if (resume) q.set('resume', '1');
+    ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/app/${encodeURIComponent(host)}?${q}`);
+    ws.binaryType = 'arraybuffer';
+    ws.onopen = () => { delay = RETRY_MIN_MS; };
+    ws.onmessage = (e) => {
+      // a hop's own failure, plain text
+      if (typeof e.data !== 'string') { say(new TextDecoder().decode(e.data).trim()); return; }
+      let m;
+      try { m = JSON.parse(e.data); } catch { return; }
+      if (m.type === 'login') {
+        say(m.why || '');
+        form.hidden = false;
+        (user.value ? pass : user).focus();
+      } else if (m.type === 'status') say(m.text);
+      else if (m.type === 'error') say(m.text);
+      else if (m.type === 'ready') {
+        resume = true;
+        say('');
+        if (frame.hidden) { frame.src = appFrameUrl(host, sid); frame.hidden = false; }
+      }
+    };
+    ws.onclose = (e) => {
+      if (ended) return;
+      if (e.code === TERM_TAKEN) { finish('opened in another tab'); frame.remove(); return; }
+      if (e.code === TERM_ENDED || !resume) { finish(msg.textContent); frame.remove(); return; }
+      retry = setTimeout(connect, delay);
+      delay = Math.min(delay * 2, RETRY_MAX_MS);
+    };
+  };
+  connect();
+  return {
+    show: () => (form.hidden ? frame.contentWindow?.focus() : (user.value ? pass : user).focus()),
+    close: () => {
+      ended = true;
+      forgetApp(sid);
+      clearTimeout(retry);
+      if (ws) {
+        ws.onclose = null;
+        if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'close' }));
+        ws.close();
+      }
+      frame.src = 'about:blank';
+    },
+  };
+}
+
+// a sid from before a reload: its app rejoined, unfocused
+function openAppTab(host, app, sid) {
+  let n = 1;
+  while (openTabs.has(`app-${host}-${n}`)) n++;
+  const id = `app-${host}-${n}`;
+  const btn = createTabButton(id, app.name);
+  btn.title = `${app.name} on ${host}`;
+  tabbarTabs.appendChild(btn);
+  const view = el('div', 'view app-view');
+  view.id = `view-${id}`;
+  paneContent.appendChild(view);
+  const resume = !!sid;
+  if (!resume) {
+    sid = newSid();
+    saveApps([...savedApps(), { host, sid, app: { id: app.id, name: app.name } }]);
+  }
+  openTabs.set(id, startApp(view, host, app, sid, resume));
+  if (!resume) activateTab(id);
+}
+
+// after the page's script, el and the rest defined below
+queueMicrotask(() => { for (const a of savedApps()) if (a.app?.id) openAppTab(a.host, a.app, a.sid); });
+
 function toggleShare(id) {
   const t = openTabs.get(id);
   if (!t) return;
@@ -1763,9 +1883,20 @@ function rememberFile(file) {
 }
 // --- new tab: its title the search, a host or page first, then the host's app
 
-// every host's apps, a terminal on all of them
+// host -> its /api/apps answer, the last one kept while a fresh one's asked
+const appLists = new Map();
+function fetchApps(host) {
+  fetch(`/api/apps/${encodeURIComponent(host)}`).then((r) => r.json()).then((b) => {
+    appLists.set(host, { apps: Array.isArray(b.apps) ? b.apps : [], why: b.on ? b.why || b.error || '' : '' });
+    if (omni?.host === host) omniRender();
+  }).catch(() => {});
+}
+
+// every host's apps, a terminal on all of them, the rest as its list has them
 function hostApps(host) {
-  return [{ name: 'terminal', kind: 'app', open: () => openTerminalTab(host) }];
+  const list = appLists.get(host);
+  return [{ name: 'terminal', kind: 'app', open: () => openTerminalTab(host) },
+    ...(list?.apps || []).map((a) => ({ name: a.name, kind: 'app', open: () => openAppTab(host, a) }))];
 }
 
 function omniPlaces() {
@@ -1808,6 +1939,8 @@ function omniRender() {
     return li;
   }));
   if (!omni.items.length) tabMenuList.replaceChildren(el('li', 'empty', 'no match'));
+  const why = onApp && appLists.get(omni.host)?.why;
+  if (why) tabMenuList.appendChild(el('li', 'empty', why));
   tabMenu.hidden = false;
   const r = omni.btn.getBoundingClientRect();
   tabMenu.style.left = `${Math.max(8, Math.min(r.left, innerWidth - tabMenu.offsetWidth - 8))}px`;
@@ -1819,6 +1952,7 @@ function omniSetHost(host) {
   if (host) omni.place.value = host;
   omni.app.value = '';
   omni.app.hidden = omni.sep.hidden = !host;
+  if (host) fetchApps(host);
   omniFit(omni.place);
   omniFit(omni.app);
   omni.sel = 0;
@@ -1874,7 +2008,10 @@ function openOmniTab() {
   btn.addEventListener('click', (e) => { e.stopPropagation(); activateTab(id); });
   for (const input of [place, app]) {
     input.addEventListener('keydown', omniKeys);
-    input.addEventListener('focus', omniRender);
+    input.addEventListener('focus', () => {
+      if (input === app && omni.host) fetchApps(omni.host);
+      omniRender();
+    });
     input.addEventListener('input', () => {
       omniFit(input);
       // the host's name edited away, its apps with it
@@ -7901,7 +8038,7 @@ function keybarKeys() {
   }
   if (here.length) here = [here];
   // an editor's or terminal's name already in its tab, none under it
-  const tabName = !/^(code|term|new)-/.test(id) && tabbarTabs.querySelector('.tab-btn.active .tab-label')?.textContent.trim().toLowerCase();
+  const tabName = !/^(code|term|new|app)-/.test(id) && tabbarTabs.querySelector('.tab-btn.active .tab-label')?.textContent.trim().toLowerCase();
   const first = here.find((g) => g.some(Array.isArray));
   if (first && tabName) first.unshift(tabName);
   // the open update pane beside the rest, its go on a key of its own
@@ -8012,7 +8149,7 @@ document.addEventListener('keydown', (e) => {
     if (!updateModal.hidden) closeUpdateModal();
     // esc on an unfocused terminal tab: closed
     const id = tabbarTabs.querySelector('.tab-btn.active')?.dataset.tabId || '';
-    if (!typing && !openMenu() && !modalOpen() && /^(term|code|new)-/.test(id)) closeTab(id);
+    if (!typing && !openMenu() && !modalOpen() && /^(term|code|new|app)-/.test(id)) closeTab(id);
     closeMenus();
     return;
   }

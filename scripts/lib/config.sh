@@ -64,6 +64,15 @@ hesperus_add_missing_sections() {
     printf '\n[model]\n# host: true downloads the mesh model here and runs it for every host\n# gpu: true offloads it to this host'"'"'s nvidia gpu\n# url: download link to the model'"'"'s .gguf, no default\nhost = false\ngpu = false\nurl =\n' >> "$file"
     echo "[hesperus.ini] added the [model] section, set host and url on the one host with the memory and disk for the model"
   fi
+  if ! grep -qx '\[apps\]' "$file"; then
+    printf '\n[apps]\n# host: true lists this host'"'"'s desktop apps in the new tab, each opened on\n# its own xpra display, Linux only\nhost = false\n' >> "$file"
+    echo "[hesperus.ini] added the [apps] section, set host = true to open this host's apps in the browser"
+  fi
+}
+
+# [apps] host: this host's desktop apps, each on its own xpra display
+hesperus_is_apps_host() {
+  [ "$(hesperus_get apps host)" = "true" ]
 }
 
 # [model] host: the model and the web search run here

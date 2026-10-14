@@ -15,10 +15,11 @@ const SERVICES_FILE = path.join(CONFIG_DIR, 'services.export');
 const INI_FILE = path.join(CONFIG_DIR, 'hesperus.ini');
 const BASE_DOMAIN = process.env.BASE_DOMAIN || '';
 const REQUEST_MS = 2000;
-const TABS = ['services', 'files', 'git', 'stats', 'model', 'projects', 'update'];
+const TABS = ['services', 'files', 'git', 'stats', 'model', 'projects', 'update', 'apps'];
 const MODEL_TAB = TABS.indexOf('model');
 const PROJECTS_TAB = TABS.indexOf('projects');
 const UPDATE_TAB = TABS.indexOf('update');
+const APPS_TAB = TABS.indexOf('apps');
 const STEP_LABEL = {
   pending: 'waiting', running: 'updating', ok: 'success', current: 'up to date',
   fail: 'failed', unreachable: 'unreachable', skipped: 'skipped',
@@ -497,6 +498,21 @@ function writeGitHost(on) {
   return '';
 }
 
+// --- hesperus.ini [apps] ------------------------------------------------------------
+
+function readAppsHost() {
+  const sec = splitSections(readText(INI_FILE)).sections.find((s) => s.name === 'apps');
+  return !!sec && fieldsOf(sec).host === 'true';
+}
+
+function writeAppsHost(on) {
+  const doc = splitSections(readText(INI_FILE));
+  const sec = doc.sections.find((s) => s.name === 'apps') || appendSection(doc, 'apps');
+  sec.lines = rewriteSection(sec, 'apps', { host: on ? 'true' : 'false' }, ['host']);
+  try { writeAtomic(INI_FILE, joinSections(doc)); } catch (e) { return `can't write ${INI_FILE}: ${e.message}`; }
+  return '';
+}
+
 // --- hesperus.ini [model] -----------------------------------------------------------
 
 // host, gpu and url always written, ctx and slots only once set
@@ -589,6 +605,7 @@ const ui = {
   state: null,
   offline: false,
   filesInfo: null,
+  appsInfo: null,
   // each list tab's selected row, the model tab's set to this host once
   sel: TABS.map(() => 0),
   modelPicked: false,
@@ -630,6 +647,7 @@ async function pollOnce() {
       ui.filesInfo = await call(`/api/files/${body.self.host}/info`).then((r) => r.body, () => null);
     }
     if (ui.tab === PROJECTS_TAB) await pollProjects();
+    if (ui.tab === APPS_TAB) ui.appsInfo = await call(`/api/apps/${body.self.host}`).then((r) => r.body, () => null);
   } catch {
     ui.offline = true;
   }
@@ -781,6 +799,40 @@ function gitView() {
     lines,
     keys: [['h toggle host', 'primary'], target && target.reachable && target.role !== 'master' && ['p make master']],
   };
+}
+
+// hesperus.ini's flag, and what the new tab lists for this host
+function appsView() {
+  const st = ui.state;
+  const on = readAppsHost();
+  const info = ui.appsInfo;
+  const apps = (info && info.apps) || [];
+  ui.sel[APPS_TAB] = Math.max(0, Math.min(ui.sel[APPS_TAB], apps.length - 1));
+  const lines = panels([
+    ['this host', [
+      `${selfMark(st.self.host)}  apps host ${on ? c.online('on') : c.muted('off')}`,
+      ...(on && info && info.why ? [c.warn(info.why)] : []),
+    ]],
+    on && ['apps', apps.length
+      ? table(['name', 'id'], apps.map((a) => [a.name, c.muted(a.id)]), ui.sel[APPS_TAB], ui.room - 6)
+      : [c.muted(info ? 'none found' : 'asking...')]],
+  ]);
+  return { lines, keys: [['h toggle host', 'primary'], apps.length && ['↑↓ move', 'quiet']] };
+}
+
+function appsKey(str, key) {
+  const n = ((ui.appsInfo && ui.appsInfo.apps) || []).length;
+  if (key.name === 'up') ui.sel[APPS_TAB] = Math.max(0, ui.sel[APPS_TAB] - 1);
+  else if (key.name === 'down') ui.sel[APPS_TAB] = Math.min(n - 1, ui.sel[APPS_TAB] + 1);
+  else if (str === 'h') {
+    const on = !readAppsHost();
+    ui.confirm = {
+      text: on ? "list this host's desktop apps in every host's new tab? each opens after a login, applied at once"
+        : 'stop listing apps here? open ones keep running until their tab closes',
+      danger: !on,
+      onYes: () => { const err = writeAppsHost(on); flash(err ? c.offmesh(err) : c.online(`apps host ${on ? 'on' : 'off'}`)); poll(); },
+    };
+  }
 }
 
 // a model host's roles, as each now answers
@@ -1106,7 +1158,7 @@ function tabBar(cols) {
 function currentView() {
   if (ui.offline || !ui.state) return { lines: ui.offline ? offlineView() : [c.muted(' reaching the frontend...')], keys: [] };
   if (ui.form) return formView(ui.form);
-  return [servicesView, filesView, gitView, statsView, modelView, projectsView, updateView][ui.tab]();
+  return [servicesView, filesView, gitView, statsView, modelView, projectsView, updateView, appsView][ui.tab]();
 }
 
 function render() {
@@ -1257,6 +1309,8 @@ function listKey(str, key) {
     projectsKey(str, key);
   } else if (ui.tab === UPDATE_TAB) {
     updateKey(str);
+  } else if (ui.tab === APPS_TAB) {
+    appsKey(str, key);
   }
 }
 
@@ -1376,7 +1430,7 @@ function switchTab(i) {
   if (i !== ui.tab && ui.tab !== UPDATE_TAB) ui.lastTab = ui.tab;
   ui.tab = i;
   ui.scroll = 0;
-  if (i === 1 || i === PROJECTS_TAB) poll();
+  if (i === 1 || i === PROJECTS_TAB || i === APPS_TAB) poll();
 }
 
 // --- startup ------------------------------------------------------------------------
