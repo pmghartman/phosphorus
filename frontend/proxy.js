@@ -63,6 +63,8 @@ function toRoute(r, ip) {
   const size = String(r.max_body || '').match(SIZE_RE);
   return {
     host: r.host, name: r.name, master: r.master === true,
+    // git-daemon's forgejo, behind only its own login
+    git: typeof r.master === 'boolean',
     domain: sub ? `${r.name}.${BASE_DOMAIN}` : '',
     prefix: sub ? base : `/${r.host}/${r.name}${base}`,
     scheme: r.scheme, ip, port: r.port,
@@ -188,6 +190,15 @@ function upstreamHeaders(req, route, upgrade) {
 
 const LOGIN_COOKIE = 'phosphorus-user';
 let passes = () => true;
+let issuers = () => [];
+const gated = (hit) => (hit.route ? !hit.route.git : !!hit.frontend);
+
+// a login this host can't read yet: to the host that issued it, gated there
+function issuerRoute(req) {
+  if (pinHopped(req)) return null;
+  const host = issuers(req).find((h) => pinIps.has(h));
+  return host ? peerIngress(host) : null;
+}
 const OPEN_API = /^\/api\/(me|login|logout|users)(\/|$)/;
 
 function isOpen(req, hit) {
@@ -229,7 +240,11 @@ const pinCookie = (host) => `${PIN_COOKIE}=${host}; Path=/; Max-Age=2592000; Sam
 function pinRoute(req) {
   if (!SELF_HOST || pinHopped(req)) return null;
   const host = pinnedTo(req);
-  const ip = host && host !== SELF_HOST && pinIps.get(host);
+  return host && host !== SELF_HOST ? peerIngress(host) : null;
+}
+
+function peerIngress(host) {
+  const ip = pinIps.get(host);
   return ip ? { pin: true, host, name: 'frontend', scheme: 'http', ip, port: INGRESS_PORT, proto: 'https', maxBody: 0 } : null;
 }
 
@@ -319,14 +334,17 @@ function tunnel(route, req, socket, head, path) {
 
 // app and upgrade: the frontend's own handlers, for whatever no route claims
 function listen(port, app, upgrade, gate) {
-  if (gate) passes = gate;
+  if (gate) ({ pass: passes, issuers } = gate);
   const server = http.createServer({ requestTimeout: 0 }, (req, res) => {
     req.ingress = true;
     const hit = resolve(req);
     const hop = hit.frontend && req.method === 'POST' && /^\/api\/host(\?|$)/.test(req.url);
     // a pinned request gated by the host serving it
     const pin = hit.frontend && !hop && pinRoute(req);
-    if ((hit.route || hit.frontend) && !pin && !isOpen(req, hit) && !passes(req)) return deny(req, res);
+    if (gated(hit) && !pin && !isOpen(req, hit) && !passes(req)) {
+      const via = issuerRoute(req);
+      return via ? forward(via, req, res, req.url) : deny(req, res);
+    }
     if (hop) return pinSwitch(req, res);
     if (hit.route) forward(hit.route, req, res, hit.path);
     else if (pin) forward(pin, req, res, req.url);
@@ -341,7 +359,12 @@ function listen(port, app, upgrade, gate) {
     socket.on('error', () => {});
     const hit = resolve(req);
     const pin = hit.frontend && pinRoute(req);
-    if ((hit.route || hit.frontend) && !pin && !passes(req)) { socket.end('HTTP/1.1 401 Unauthorized\r\n\r\n'); return; }
+    if (gated(hit) && !pin && !passes(req)) {
+      const via = issuerRoute(req);
+      if (via) tunnel(via, req, socket, head, req.url);
+      else socket.end('HTTP/1.1 401 Unauthorized\r\n\r\n');
+      return;
+    }
     if (hit.route) tunnel(hit.route, req, socket, head, hit.path);
     else if (pin) tunnel(pin, req, socket, head, req.url);
     else if (hit.frontend) upgrade(req, socket, head);

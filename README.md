@@ -36,7 +36,8 @@ Tailscale keys expire every 90 days.
 
 Everything through your domain needs a phosphorus login, every service's page and
 subdomain included (a page you open logged out sends you to log in, then back), so
-no Cloudflare Access policy is needed. Five wrong passwords from one address lock it
+no Cloudflare Access policy is needed. The git server is the exception, behind only
+its own login so git clients reach it. Five wrong passwords from one address lock it
 out for 15 minutes. Hosts reach each other over the tailnet, outside the login.
 
 ## Using it
