@@ -84,6 +84,7 @@ function renderRoutes(routes, tailnet) {
   const sig = JSON.stringify([services, !gitHostsList.length]);
   if (sig !== lastServicesSig) renderServices(servicesList, services, sig);
   renderMesh(routes, tailnet);
+  dkRoutes(services);
 }
 
 function renderServices(servicesList, services, sig) {
@@ -1431,7 +1432,7 @@ const paneContent = document.getElementById('pane-content');
 const openTabs = new Map();
 
 // the built in tabs, closed ones only hidden and kept closed across visits
-const FIXED_TABS = { services: 'home', files: 'files', status: 'status', chat: 'chat', projects: 'projects' };
+const FIXED_TABS = { services: 'home', files: 'files', status: 'status', chat: 'chat', projects: 'projects', desktop: 'desktop connector' };
 const CLOSED_TABS_KEY = 'hesperus-closed-tabs';
 const fixedBtn = (id) => tabbarTabs.querySelector(`.tab-btn[data-tab-id="${id}"]`);
 function closedTabs() {
@@ -1592,7 +1593,8 @@ const liveTerms = new Set();
 
 // /api/term/<host>: keystrokes and output as binary frames, resize as JSON,
 // a dropped socket's rejoin by sid, until the server's ENDED
-function startTerminal(view, host, sid, resume, shared = false) {
+// login: {user, pass} typed into the host's prompts, unseen
+function startTerminal(view, host, sid, resume, shared = false, login = null) {
   let term = null;
   let fit = null;
   let ws = null;
@@ -1649,6 +1651,14 @@ function startTerminal(view, host, sid, resume, shared = false) {
 
     // bytes so far, so a rejoin replays only what's missing, 0 after a reload
     let got = 0;
+    // true while the prompts are still being answered
+    let seen = '';
+    const loginStep = (data) => {
+      seen += new TextDecoder().decode(data);
+      if (/login: $/.test(seen)) { seen = ''; ws.send(enc.encode(`${login.user}\r`)); }
+      else if (/password: $/.test(seen)) { ws.send(enc.encode(`${login.pass}\r`)); login = null; }
+      return true;
+    };
     let delay = RETRY_MIN_MS;
     const connect = () => {
       const q = new URLSearchParams({ sid, since: got });
@@ -1657,7 +1667,12 @@ function startTerminal(view, host, sid, resume, shared = false) {
       ws.binaryType = 'arraybuffer';
       // the share said again on every join, so a reload's choice holds
       ws.onopen = () => { delay = RETRY_MIN_MS; sendSize(); ws.send(JSON.stringify({ type: 'share', on: shared, by: name })); };
-      ws.onmessage = (e) => { resume = true; got += e.data.byteLength; term.write(new Uint8Array(e.data)); };
+      ws.onmessage = (e) => {
+        resume = true;
+        got += e.data.byteLength;
+        if (login && loginStep(e.data)) return;
+        term.write(new Uint8Array(e.data));
+      };
       ws.onclose = (e) => {
         if (e.code === TERM_TAKEN) {
           term.write('\r\n\x1b[2m[opened in another tab]\x1b[0m\r\n');
@@ -2080,6 +2095,8 @@ document.querySelector('.tab-btn[data-tab-id="chat"]')
   .addEventListener('click', () => activateTab('chat'));
 document.querySelector('.tab-btn[data-tab-id="projects"]')
   .addEventListener('click', () => activateTab('projects'));
+document.querySelector('.tab-btn[data-tab-id="desktop"]')
+  .addEventListener('click', () => activateTab('desktop'));
 
 // --- files -----------------------------------------------------------------
 
@@ -7781,7 +7798,7 @@ let swipe = null;
 
 layoutEl.addEventListener('pointerdown', (e) => {
   if (e.pointerType === 'mouse' || !e.isPrimary) return;
-  if (e.target.closest('input, textarea, select, .modal, .update-pane, .tab-menu')) return;
+  if (e.target.closest('input, textarea, select, .modal, .update-pane, .tab-menu, .dk')) return;
   const main = e.target.closest('.pane-content');
   const side = isMobile() && e.target.closest('.mesh-panel, .chat-panel, #st-model');
   if (main || side) swipe = { id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now(), el: null, dx: 0 };
@@ -8176,3 +8193,369 @@ document.addEventListener('keydown', (e) => {
 
 // home closed last visit: the first tab still open, else the about page
 if (tabbarTabs.querySelector('.tab-btn.active')?.hidden) activateTab(tabIds()[0] || 'about');
+
+// --- desktop connector: a pretend remote desktop, every window one of the
+// mesh's own terminals, files or services, drawn here
+
+const dkView = document.getElementById('view-desktop');
+const DK_USERS_KEY = 'hesperus-dk-users';
+const wsBase = () => `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`;
+// creds: host -> {user, pass}, this page's memory only
+const dk = { creds: new Map(), rows: new Map(), wins: new Map(), services: [], z: 10, n: 0, desk: null, sig: '' };
+
+function dkUsers() {
+  try { return JSON.parse(localStorage.getItem(DK_USERS_KEY)) || {}; } catch { return {}; }
+}
+
+// null once the host's shell answers, else why not, the session ended either way
+function dkProbe(host, user, pass) {
+  return new Promise((resolve) => {
+    const ws = new WebSocket(`${wsBase()}/api/term/${encodeURIComponent(host)}?${new URLSearchParams({ sid: newSid(), since: 0 })}`);
+    ws.binaryType = 'arraybuffer';
+    const enc = new TextEncoder();
+    const dec = new TextDecoder();
+    let text = '';
+    let step = 0;
+    let settle = null;
+    const lastLine = () => text.trim().split(/\r?\n/).filter(Boolean)[0];
+    const done = (why) => {
+      if (step === 3) return;
+      step = 3;
+      clearTimeout(settle);
+      clearTimeout(limit);
+      ws.onclose = null;
+      if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'close' }));
+      ws.close();
+      resolve(why);
+    };
+    const limit = setTimeout(() => done('no answer'), 15000);
+    ws.onmessage = (e) => {
+      text += dec.decode(e.data, { stream: true });
+      if (step === 0 && /login: $/.test(text)) { step = 1; text = ''; ws.send(enc.encode(`${user}\r`)); }
+      else if (step === 1 && /password: $/.test(text)) { step = 2; text = ''; ws.send(enc.encode(`${pass}\r`)); }
+      else if (step === 2) {
+        if (/login: $/.test(text)) return done(lastLine() || 'access denied');
+        // the shell's first words, unless a refusal's prompt follows close behind
+        if (text.trim()) { clearTimeout(settle); settle = setTimeout(() => done(null), 250); }
+      }
+    };
+    ws.onclose = () => done(lastLine() || `${host} didn't answer`);
+  });
+}
+
+// --- login: every host's user and password, any that answer enough
+
+function dkLoginRow(host) {
+  const user = Object.assign(el('input'), { placeholder: 'user', autocomplete: 'username', spellcheck: false, value: dkUsers()[host] || '' });
+  const pass = Object.assign(el('input'), { type: 'password', placeholder: 'password', autocomplete: 'current-password' });
+  const state = el('span', 'dk-state');
+  const li = el('li', 'dk-row');
+  li.append(el('span', 'dk-host', host), user, pass, state);
+  for (const input of [user, pass]) input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); dkConnect(); } });
+  return { li, user, pass, state, host };
+}
+
+function dkLogin() {
+  const list = el('ul', 'dk-rows');
+  const go = Object.assign(el('button', 'primary', 'connect'), { type: 'button' });
+  const box = el('div', 'dk-login');
+  const actions = el('div', 'update-actions');
+  actions.append(go);
+  box.append(el('div', 'home-col-head', 'desktop connector'), el('p', 'dk-note', 'ssh into one or more hosts'), list, actions);
+  go.addEventListener('click', dkConnect);
+  dkView.replaceChildren(box);
+  dk.login = { list, go };
+  dk.rows.clear();
+  dkLoginHosts();
+}
+
+// rows kept as typed across a state push, only new hosts added
+function dkLoginHosts() {
+  if (!dk.login) return;
+  const hosts = [...terminalHosts].sort((a, b) => (b === selfHost) - (a === selfHost) || a.localeCompare(b));
+  for (const h of hosts) if (!dk.rows.has(h)) dk.rows.set(h, dkLoginRow(h));
+  const shown = hosts.map((h) => dk.rows.get(h).li);
+  if (shown.length !== dk.login.list.children.length || shown.some((li, i) => dk.login.list.children[i] !== li)) {
+    dk.login.list.replaceChildren(...(shown.length ? shown : [el('li', 'empty', 'no hosts yet')]));
+  }
+}
+
+async function dkConnect() {
+  const tries = [...dk.rows.values()].filter((r) => r.user.value.trim() && r.pass.value && !dk.creds.has(r.host));
+  if (!tries.length) {
+    const first = [...dk.rows.values()].find((r) => !r.user.value.trim() || !r.pass.value);
+    (first && !first.user.value.trim() ? first.user : first?.pass)?.focus();
+    return;
+  }
+  dk.login.go.disabled = true;
+  const users = dkUsers();
+  await Promise.all(tries.map(async (r) => {
+    const user = r.user.value.trim();
+    const pass = r.pass.value;
+    r.state.className = 'dk-state busy';
+    r.state.textContent = '…';
+    const why = await dkProbe(r.host, user, pass);
+    r.state.className = `dk-state ${why ? 'bad' : 'ok'}`;
+    r.state.textContent = why || 'ok';
+    r.state.title = why || '';
+    if (why) { r.pass.value = ''; return; }
+    dk.creds.set(r.host, { user, pass });
+    users[r.host] = user;
+  }));
+  try { localStorage.setItem(DK_USERS_KEY, JSON.stringify(users)); } catch {}
+  if (!dk.login) return;
+  dk.login.go.disabled = false;
+  if (dk.creds.size) dkDesktop();
+}
+
+// --- the desktop: icons, windows and a task bar
+
+function dkDesktop() {
+  dk.login = null;
+  const icons = el('div', 'dk-icons');
+  const wins = el('div', 'dk-wins');
+  const tasks = el('div', 'dk-tasks');
+  const hosts = el('span', 'dk-hosts');
+  const clock = el('span', 'dk-clock');
+  const off = Object.assign(el('button', 'dk-off', 'disconnect'), { type: 'button' });
+  const bar = el('div', 'dk-bar');
+  bar.append(tasks, hosts, clock, off);
+  const art = document.querySelector('.about-art').cloneNode(true);
+  art.className = 'about-art dk-art';
+  const desk = el('div', 'dk-desk');
+  desk.append(art, icons, wins, bar);
+  dkView.replaceChildren(desk);
+  hosts.replaceChildren(...[...dk.creds.keys()].map((h) => el('span', 'dk-chip', h)));
+  off.addEventListener('click', dkDisconnect);
+  // a press on bare desk unfocuses every window
+  wins.addEventListener('pointerdown', (e) => { if (e.target === wins) dkFocus(null); });
+  dk.desk = { el: desk, icons, wins, tasks, clock };
+  dk.sig = '';
+  dkClock();
+  dkIcons();
+}
+
+function dkClock() {
+  if (!dk.desk) return;
+  dk.desk.clock.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+setInterval(dkClock, 5000);
+
+function dkDisconnect() {
+  for (const w of [...dk.wins.values()]) dkClose(w);
+  dk.creds.clear();
+  dk.desk = null;
+  dkLogin();
+}
+
+const DK_GLYPHS = {
+  terminal: 'M2 3h12v10H2zM4.5 6.5l2 1.5-2 1.5M8 10h3.5',
+  files: ICONS.folder,
+  service: 'M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM1.5 8h13M8 1.5c-2.2 2.4-2.2 10.6 0 13M8 1.5c2.2 2.4 2.2 10.6 0 13',
+};
+
+function dkIcon(kind, label, sub, open) {
+  const b = Object.assign(el('button', `dk-icon dk-${kind}`), { type: 'button', title: sub ? `${label} on ${sub}` : label });
+  const svg = svgEl('svg', { viewBox: '0 0 16 16', 'aria-hidden': 'true' });
+  svg.appendChild(svgEl('path', { d: DK_GLYPHS[kind] }));
+  b.append(svg, el('span', 'dk-label', label));
+  if (sub) b.appendChild(el('span', 'dk-sub', sub));
+  b.addEventListener('click', open);
+  return b;
+}
+
+// rebuilt only when the hosts or services change
+function dkIcons() {
+  if (!dk.desk) return;
+  const hosts = [...dk.creds.keys()];
+  const sig = JSON.stringify([hosts, dk.services.map((r) => [r.host, r.name])]);
+  if (sig === dk.sig) return;
+  dk.sig = sig;
+  dk.desk.icons.replaceChildren(
+    ...hosts.map((h) => dkIcon('terminal', 'terminal', h, () => dkTerminal(h))),
+    dkIcon('files', 'files', '', dkFiles),
+    ...dk.services.map((r) => dkIcon('service', r.name, r.host, () => dkService(r))),
+  );
+}
+
+function dkRoutes(services) {
+  dk.services = services;
+  dkIcons();
+  dkLoginHosts();
+}
+
+// one window, key: a single instance's, else a fresh one per open
+function dkWin(key, title, sub, kind) {
+  if (key && dk.wins.has(key)) { dkFocus(dk.wins.get(key)); return null; }
+  const { wins, tasks } = dk.desk;
+  const node = el('div', `dk-win dk-${kind}`);
+  const head = el('div', 'dk-head');
+  const name = el('span', 'dk-title', title);
+  if (sub) name.appendChild(el('span', 'dk-sub', ` ${sub}`));
+  const btns = el('span', 'dk-btns');
+  const btn = (cls, text, label) => Object.assign(el('button', cls, text), { type: 'button', title: label, ariaLabel: label });
+  const min = btn('dk-min', '_', 'minimize');
+  const max = btn('dk-max', '□', 'maximize');
+  const close = btn('dk-close', '×', 'close');
+  btns.append(min, max, close);
+  head.append(name, btns);
+  const body = el('div', 'dk-body');
+  const grip = el('div', 'dk-grip');
+  node.append(head, body, grip);
+  const task = Object.assign(el('button', 'dk-task', title), { type: 'button', title: sub ? `${title} ${sub}` : title });
+  const w = { key: key || `w${++dk.n}`, node, body, head, task, kind, onFocus: null, onClose: null };
+  // cascaded from the icons, a phone's filling the desk
+  const step = (dk.n++ % 8) * 24;
+  const W = wins.clientWidth;
+  const H = wins.clientHeight;
+  w.w = Math.min(760, W - 24);
+  w.h = Math.min(460, H - 24);
+  w.x = Math.max(0, Math.min(W - w.w, 120 + step));
+  w.y = Math.max(0, Math.min(H - w.h, 16 + step));
+  dkPlace(w);
+  if (isMobile()) node.classList.add('max');
+  min.addEventListener('click', () => dkMin(w));
+  max.addEventListener('click', () => dkMax(w));
+  close.addEventListener('click', () => dkClose(w));
+  head.addEventListener('dblclick', (e) => { if (!e.target.closest('button')) dkMax(w); });
+  task.addEventListener('click', () => {
+    if (node.hidden) { node.hidden = false; dkFocus(w); } else if (node.classList.contains('focused')) dkMin(w); else dkFocus(w);
+  });
+  node.addEventListener('pointerdown', () => dkFocus(w), true);
+  dkDrag(w, head, (dx, dy, o) => { w.x = o.x + dx; w.y = Math.max(0, o.y + dy); }, true);
+  dkDrag(w, grip, (dx, dy, o) => { w.w = Math.max(280, o.w + dx); w.h = Math.max(160, o.h + dy); });
+  wins.appendChild(node);
+  tasks.appendChild(task);
+  dk.wins.set(w.key, w);
+  return w;
+}
+
+function dkPlace(w) {
+  w.node.style.transform = `translate3d(${w.x}px, ${w.y}px, 0)`;
+  w.node.style.width = `${w.w}px`;
+  w.node.style.height = `${w.h}px`;
+}
+
+// pointer captured from press to release, one write per frame
+function dkDrag(w, handle, move, fromHead) {
+  handle.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || e.target.closest('button')) return;
+    if (fromHead && w.node.classList.contains('max')) return;
+    e.preventDefault();
+    handle.setPointerCapture(e.pointerId);
+    const o = { x: w.x, y: w.y, w: w.w, h: w.h, px: e.clientX, py: e.clientY };
+    let frame = 0;
+    dk.desk.el.classList.add('dk-moving');
+    const onMove = (ev) => {
+      move(ev.clientX - o.px, ev.clientY - o.py, o);
+      if (!frame) frame = requestAnimationFrame(() => { frame = 0; dkPlace(w); });
+    };
+    const onUp = () => {
+      handle.removeEventListener('pointermove', onMove);
+      dk.desk?.el.classList.remove('dk-moving');
+      // never lost under the task bar or off either side
+      const W = dk.desk?.wins.clientWidth || 0;
+      const H = dk.desk?.wins.clientHeight || 0;
+      w.x = Math.max(48 - w.w, Math.min(W - 48, w.x));
+      w.y = Math.max(0, Math.min(H - 28, w.y));
+      cancelAnimationFrame(frame);
+      dkPlace(w);
+    };
+    handle.addEventListener('pointermove', onMove);
+    handle.addEventListener('pointerup', onUp, { once: true });
+    handle.addEventListener('pointercancel', onUp, { once: true });
+  });
+}
+
+function dkFocus(w) {
+  for (const o of dk.wins.values()) {
+    o.node.classList.toggle('focused', o === w);
+    o.task.classList.toggle('active', o === w);
+  }
+  if (!w) return;
+  w.node.hidden = false;
+  if (w.node.style.zIndex !== String(dk.z)) w.node.style.zIndex = ++dk.z;
+  w.onFocus?.();
+}
+
+function dkMin(w) {
+  w.node.hidden = true;
+  w.node.classList.remove('focused');
+  w.task.classList.remove('active');
+  const top = [...dk.wins.values()].filter((o) => !o.node.hidden).sort((a, b) => b.node.style.zIndex - a.node.style.zIndex)[0];
+  if (top) dkFocus(top);
+}
+
+function dkMax(w) {
+  w.node.classList.toggle('max');
+  dkFocus(w);
+}
+
+function dkClose(w) {
+  w.onClose?.();
+  w.node.remove();
+  w.task.remove();
+  dk.wins.delete(w.key);
+}
+
+// --- the apps
+
+function dkTerminal(host) {
+  const c = dk.creds.get(host);
+  const w = dkWin(null, 'terminal', host, 'term');
+  if (!w || !c) return;
+  const t = startTerminal(w.body, host, newSid(), false, false, { ...c });
+  w.onFocus = () => t.focus();
+  w.onClose = () => t.close();
+  dkFocus(w);
+}
+
+// the files tab's own pane, lent to the window while it's open
+function dkFiles() {
+  const w = dkWin('files', 'files', '', 'files');
+  if (!w) return;
+  const wrap = document.querySelector('.files-wrap');
+  const modal = document.getElementById('files-modal');
+  const home = document.getElementById('view-files');
+  w.body.appendChild(wrap);
+  dkView.appendChild(modal);
+  filesOpen();
+  w.onClose = () => { home.prepend(wrap); home.appendChild(modal); };
+  dkFocus(w);
+}
+// the files tab taking its pane back
+document.addEventListener('hesperus-tab', (e) => {
+  const w = dk.wins.get('files');
+  if (e.detail === 'files' && w) dkClose(w);
+});
+
+function dkService(r) {
+  const w = dkWin(`svc:${serviceKey(r)}`, r.name, r.host, 'svc');
+  if (!w) return;
+  const url = serviceUrl(r);
+  const pop = Object.assign(el('button', 'dk-pop', '↗'), { type: 'button', title: 'open in a browser tab', ariaLabel: 'open in a browser tab' });
+  pop.addEventListener('click', () => window.open(url, '_blank', 'noopener'));
+  w.head.querySelector('.dk-btns').prepend(pop);
+  const frame = Object.assign(el('iframe', 'dk-frame'), { src: url, title: r.name, allow: 'clipboard-read; clipboard-write; fullscreen' });
+  w.body.appendChild(frame);
+  // lit on the mesh graph as an open tab of it would be
+  const conn = { win: { closed: false }, host: r.host, name: r.name };
+  activeConnections.set(serviceKey(r), conn);
+  startPulseLoop();
+  drawMesh();
+  w.onFocus = () => frame.contentWindow?.focus();
+  w.onClose = () => { conn.win.closed = true; frame.src = 'about:blank'; };
+  dkFocus(w);
+}
+
+// a press inside a service's frame never reaching the page, its window raised by the page's blur
+addEventListener('blur', () => setTimeout(() => {
+  const f = document.activeElement;
+  const w = f?.classList.contains('dk-frame') && [...dk.wins.values()].find((o) => o.body.contains(f));
+  if (w && !w.node.classList.contains('focused')) dkFocus(w);
+}));
+
+// shells ended with the page, not left for their grace
+addEventListener('pagehide', (e) => { if (!e.persisted) for (const w of [...dk.wins.values()]) if (w.kind === 'term') dkClose(w); });
+
+dkLogin();

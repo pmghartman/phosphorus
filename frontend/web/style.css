@@ -414,6 +414,102 @@ body {
 .app-login input { padding: 0.4rem 0.5rem; background: var(--card); border: 1px solid var(--border); color: var(--fg); font: inherit; font-size: 0.85rem; }
 .app-frame { flex: 1; width: 100%; border: none; background: var(--bg); }
 
+/* --- desktop connector: a pretend remote desktop --------------------------- */
+
+.dk.active { display: flex; padding: 0; overflow: clip; }
+.dk-login {
+  position: relative; margin: auto; width: min(34rem, calc(100% - 2rem));
+  border: 1px solid var(--border); padding: 0.9rem 0.6rem 0.6rem; animation: pop-in 0.12s ease-out;
+}
+.dk-note { margin: 0 0 0.5rem 0.2rem; color: var(--muted); font-size: 0.75rem; }
+.dk-rows { list-style: none; margin: 0 0 0.6rem; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; }
+.dk-row { display: grid; grid-template-columns: minmax(5rem, 1fr) 1fr 1fr 5.5rem; gap: 0.35rem; align-items: center; }
+.dk-host { color: var(--sage); font-size: 0.8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dk-row input { min-width: 0; padding: 0.3rem 0.45rem; background: var(--card); border: 1px solid var(--border); color: var(--fg); font: inherit; font-size: 0.8rem; }
+.dk-row input:focus { outline: none; border-color: var(--accent); }
+.dk-state { font-size: 0.72rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dk-state.ok { color: var(--online); }
+.dk-state.bad { color: var(--offmesh); }
+.dk-login .update-actions { display: flex; justify-content: flex-end; }
+
+.dk-desk {
+  position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column;
+  background: radial-gradient(var(--border) 1px, transparent 1px) 0 0 / 22px 22px, var(--bg);
+}
+.dk-art { position: absolute; left: 50%; top: calc(50% - 1rem); transform: translate(-50%, -50%); max-width: none; overflow: visible; opacity: 0.06; pointer-events: none; user-select: none; }
+.dk-icons {
+  position: absolute; top: 0.6rem; left: 0.6rem; bottom: 2.4rem; z-index: 1;
+  display: flex; flex-direction: column; flex-wrap: wrap; align-content: flex-start; gap: 0.3rem;
+}
+.dk-icon {
+  width: 5.5rem; padding: 0.45rem 0.2rem 0.35rem; display: flex; flex-direction: column; align-items: center; gap: 0.15rem;
+  background: none; border: 1px solid transparent; color: var(--fg); font-size: 0.72rem; cursor: pointer;
+  transition: background-color 0.1s, border-color 0.1s;
+}
+.dk-icon:hover, .dk-icon:focus-visible { background: var(--card); border-color: var(--border); outline: none; }
+.dk-icon:active { transform: translateY(1px); }
+.dk-icon svg { width: 1.9rem; height: 1.9rem; fill: none; stroke: currentColor; stroke-width: 1; stroke-linecap: round; stroke-linejoin: round; }
+.dk-icon.dk-terminal svg { color: var(--accent); }
+.dk-icon.dk-files svg { color: var(--clay); }
+.dk-icon.dk-service svg { color: var(--teal); }
+.dk-label, .dk-icon .dk-sub { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dk-sub { color: var(--muted); font-size: 0.65rem; }
+
+.dk-wins { position: relative; flex: 1; min-height: 0; overflow: clip; z-index: 2; pointer-events: none; }
+.dk-win {
+  position: absolute; top: 0; left: 0; display: flex; flex-direction: column; pointer-events: auto;
+  background: var(--bg); border: 1px solid var(--border); box-shadow: var(--drop);
+  will-change: transform; contain: layout paint; animation: dk-open 0.11s ease-out;
+}
+.dk-win[hidden] { display: none; }
+.dk-win.focused { border-color: var(--dim); }
+.dk-win.max { transform: none !important; width: 100% !important; height: 100% !important; border-width: 0; box-shadow: none; }
+@keyframes dk-open { from { opacity: 0; scale: 0.97; } }
+.dk-head {
+  flex: none; height: 1.6rem; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
+  padding: 0 0.15rem 0 0.55rem; background: var(--card); border-bottom: 1px solid var(--border);
+  font-size: 0.75rem; cursor: default; user-select: none; touch-action: none;
+}
+.dk-title { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dk-win.focused .dk-title { color: var(--sage); }
+.dk-btns { display: flex; flex: none; }
+.dk-btns button {
+  width: 1.6rem; height: 1.35rem; padding: 0; background: none; border: none; color: var(--muted);
+  font: inherit; font-size: 0.8rem; line-height: 1; cursor: pointer;
+}
+.dk-btns button:hover { background: var(--tab-hover); color: var(--fg); }
+.dk-btns .dk-close:hover { background: var(--offmesh); color: var(--bg); }
+.dk-body { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+.dk-term .dk-body { padding: 0.25rem 0 0 0.5rem; }
+.dk-files .dk-body .files-wrap { height: 100%; }
+.dk-frame { display: block; width: 100%; height: 100%; border: none; background: var(--bg); }
+.dk-grip { position: absolute; right: 0; bottom: 0; width: 0.9rem; height: 0.9rem; cursor: nwse-resize; touch-action: none; }
+.dk-win.max .dk-grip { display: none; }
+/* a frame under the pointer never stealing a drag */
+.dk-moving .dk-frame, .dk-moving .xterm { pointer-events: none; }
+.dk-moving { cursor: grabbing; user-select: none; }
+
+.dk-bar {
+  flex: none; height: 2rem; z-index: 3; display: flex; align-items: center; gap: 0.6rem; padding: 0 0.4rem;
+  background: var(--tabbar); border-top: 1px solid var(--border); font-size: 0.72rem;
+}
+.dk-tasks { flex: 1; min-width: 0; display: flex; gap: 0.25rem; overflow-x: auto; scrollbar-width: none; }
+.dk-task {
+  flex: none; max-width: 10rem; padding: 0.2rem 0.6rem; background: none; border: 1px solid var(--border);
+  color: var(--muted); font: inherit; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.dk-task:hover { color: var(--fg); background: var(--tab-hover); }
+.dk-task.active { color: var(--fg); border-color: var(--accent); }
+.dk-hosts { display: flex; gap: 0.5rem; color: var(--muted); }
+.dk-chip::before { content: ""; display: inline-block; width: 0.4rem; height: 0.4rem; margin-right: 0.35rem; background: var(--online); vertical-align: 0.05rem; }
+.dk-clock { color: var(--fg); font-variant-numeric: tabular-nums; }
+.dk-off { padding: 0.2rem 0.6rem; background: none; border: 1px solid var(--offmesh); color: var(--offmesh); font: inherit; cursor: pointer; }
+.dk-off:hover { background: var(--offmesh); color: var(--bg); }
+@media (max-width: 720px) {
+  .dk-row { grid-template-columns: 1fr 1fr; }
+  .dk-hosts { display: none; }
+}
+
 /* --- services list ------------------------------------------------------ */
 
 /* rows, not cards, lit like a selection in a cli list */
