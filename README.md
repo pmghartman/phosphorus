@@ -110,9 +110,6 @@ host = true
 host = true
 gpu = true
 url = https://huggingface.co/ggml-org/gpt-oss-120b-GGUF/resolve/main/gpt-oss-120b-MXFP4.gguf
-
-[apps]
-host = true
 ```
 
 - `[files]`: shared directories, `r` read, `w` write, `d` delete. No auth, so
@@ -120,9 +117,6 @@ host = true
 - `[git]`: runs forgejo, one elected master, the rest replicas.
 - `[model]`: `host`, `gpu` (nvidia, x64), `url` (one `.gguf`), `ctx` (65536),
   `slots` (4). Needs ram plus vram of about the gguf's size plus 64KB a token.
-- `[apps]`: Linux only. The host's `.desktop` apps in the `+` tab's second box,
-  each launched as the user who logs in, on its own xpra display, streamed by
-  xpra's html5 client. `phosphorus start` installs xpra.
 
 Applied a few seconds after a change.
 

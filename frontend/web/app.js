@@ -1772,153 +1772,6 @@ function openTerminalTab(host, sid, shared = false) {
 
 for (const t of savedTerms()) openTerminalTab(t.host, t.sid, !!t.shared);
 
-// --- app tabs: a login over /api/app/<host>, then xpra's html5 client in a frame
-
-const APPS_KEY = 'phosphorus-apps';
-function savedApps() {
-  try { return JSON.parse(sessionStorage.getItem(APPS_KEY)) || []; } catch { return []; }
-}
-function saveApps(list) {
-  try { sessionStorage.setItem(APPS_KEY, JSON.stringify(list)); } catch {}
-}
-const forgetApp = (sid) => saveApps(savedApps().filter((a) => a.sid !== sid));
-
-// the frame's own client pointed back through this page's origin
-function appFrameUrl(host, sid) {
-  const base = `/api/appview/${encodeURIComponent(host)}/${sid}/`;
-  const https = location.protocol === 'https:';
-  const q = new URLSearchParams({
-    server: location.hostname, port: location.port || (https ? '443' : '80'), ssl: String(https), path: base,
-    floating_menu: 'false', sound: 'false', sharing: 'false', reconnect: 'true',
-  });
-  return `${base}index.html?${q}`;
-}
-
-// only the app's own windows, edge to edge, xpra's desktop never shown: its
-// client same origin here, main windows undecorated and maximized, dialogs left floating
-const APP_FRAME_CSS = `html, body, #screen { background: none !important; }
-#float_menu, #taskbar { display: none !important; }`;
-function appOnly(frame) {
-  const fit = () => {
-    const c = frame.contentWindow?.client;
-    for (const w of Object.values(c?.id_to_window || {})) {
-      if (w.phosphorusFit || w.override_redirect || w.tray || w.metadata?.['transient-for']) continue;
-      if (w.windowtype?.length && !w.has_windowtype(['NORMAL'])) continue;
-      w.phosphorusFit = true;
-      // set_decorated in older clients, _set_decorated in newer
-      (w.set_decorated || w._set_decorated)?.call(w, false);
-      w.set_maximized?.(true);
-    }
-  };
-  frame.addEventListener('load', () => {
-    const doc = frame.contentDocument;
-    if (!doc) return;
-    doc.head.appendChild(Object.assign(doc.createElement('style'), { textContent: APP_FRAME_CSS }));
-    // after the client's own bookkeeping for the new window
-    new MutationObserver(() => setTimeout(fit)).observe(doc.getElementById('screen') || doc.body, { childList: true });
-    fit();
-  });
-}
-
-function startApp(view, host, app, sid, resume) {
-  const msg = el('div', 'app-msg', resume ? 'reconnecting…' : 'connecting…');
-  const user = Object.assign(el('input'), { placeholder: 'user', autocomplete: 'username', spellcheck: false });
-  const pass = Object.assign(el('input'), { type: 'password', placeholder: 'password', autocomplete: 'current-password' });
-  const go = Object.assign(el('button', 'primary', 'open'), { type: 'submit' });
-  const form = Object.assign(el('form', 'app-login'), { hidden: true });
-  form.append(el('div', 'app-login-title', `${app.name} on ${host}`), user, pass, go);
-  const frame = Object.assign(el('iframe', 'app-frame'), { hidden: true, title: app.name });
-  appOnly(frame);
-  view.append(msg, form, frame);
-  let ws = null;
-  let retry = null;
-  let delay = RETRY_MIN_MS;
-  let ended = false;
-  const say = (text) => { msg.textContent = text; msg.hidden = !text; };
-  const finish = (text) => {
-    ended = true;
-    forgetApp(sid);
-    form.hidden = true;
-    say(text || `${app.name} closed`);
-  };
-  form.addEventListener('submit', (e) => {
-    e.preventDefault();
-    if (ws?.readyState !== WebSocket.OPEN) return;
-    ws.send(JSON.stringify({ type: 'auth', user: user.value, password: pass.value }));
-    pass.value = '';
-    form.hidden = true;
-  });
-  const connect = () => {
-    const q = new URLSearchParams({ sid, id: app.id });
-    if (resume) q.set('resume', '1');
-    ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/app/${encodeURIComponent(host)}?${q}`);
-    ws.binaryType = 'arraybuffer';
-    ws.onopen = () => { delay = RETRY_MIN_MS; };
-    ws.onmessage = (e) => {
-      // a hop's own failure, plain text
-      if (typeof e.data !== 'string') { say(new TextDecoder().decode(e.data).trim()); return; }
-      let m;
-      try { m = JSON.parse(e.data); } catch { return; }
-      if (m.type === 'login') {
-        say(m.why || '');
-        form.hidden = false;
-        (user.value ? pass : user).focus();
-      } else if (m.type === 'status') say(m.text);
-      else if (m.type === 'error') say(m.text);
-      else if (m.type === 'ready') {
-        resume = true;
-        say('');
-        if (frame.hidden) { frame.src = appFrameUrl(host, sid); frame.hidden = false; }
-      }
-    };
-    ws.onclose = (e) => {
-      if (ended) return;
-      if (e.code === TERM_TAKEN) { finish('opened in another tab'); frame.remove(); return; }
-      if (e.code === TERM_ENDED || !resume) { finish(msg.textContent); frame.remove(); return; }
-      retry = setTimeout(connect, delay);
-      delay = Math.min(delay * 2, RETRY_MAX_MS);
-    };
-  };
-  connect();
-  return {
-    show: () => (form.hidden ? frame.contentWindow?.focus() : (user.value ? pass : user).focus()),
-    close: () => {
-      ended = true;
-      forgetApp(sid);
-      clearTimeout(retry);
-      if (ws) {
-        ws.onclose = null;
-        if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'close' }));
-        ws.close();
-      }
-      frame.src = 'about:blank';
-    },
-  };
-}
-
-// a sid from before a reload: its app rejoined, unfocused
-function openAppTab(host, app, sid) {
-  let n = 1;
-  while (openTabs.has(`app-${host}-${n}`)) n++;
-  const id = `app-${host}-${n}`;
-  const btn = createTabButton(id, app.name);
-  btn.title = `${app.name} on ${host}`;
-  tabbarTabs.appendChild(btn);
-  const view = el('div', 'view app-view');
-  view.id = `view-${id}`;
-  paneContent.appendChild(view);
-  const resume = !!sid;
-  if (!resume) {
-    sid = newSid();
-    saveApps([...savedApps(), { host, sid, app: { id: app.id, name: app.name } }]);
-  }
-  openTabs.set(id, startApp(view, host, app, sid, resume));
-  if (!resume) activateTab(id);
-}
-
-// after the page's script, el and the rest defined below
-queueMicrotask(() => { for (const a of savedApps()) if (a.app?.id) openAppTab(a.host, a.app, a.sid); });
-
 function toggleShare(id) {
   const t = openTabs.get(id);
   if (!t) return;
@@ -1934,27 +1787,11 @@ function rememberFile(file) {
   const list = loadJsonSafe(RECENT_FILES_KEY).filter((f) => f && codeKey(f) !== codeKey(file));
   try { localStorage.setItem(RECENT_FILES_KEY, JSON.stringify([file, ...list].slice(0, RECENT_FILES_MAX))); } catch {}
 }
-// --- new tab: its title the search, a host or page first, then the host's app
-
-// host -> its /api/apps answer, the last one kept while a fresh one's asked
-const appLists = new Map();
-function fetchApps(host) {
-  fetch(`/api/apps/${encodeURIComponent(host)}`).then((r) => r.json()).then((b) => {
-    appLists.set(host, { apps: Array.isArray(b.apps) ? b.apps : [], why: b.on ? b.why || b.error || '' : '' });
-    if (omni?.host === host) omniRender();
-  }).catch(() => {});
-}
-
-// every host's apps, a terminal on all of them, the rest as its list has them
-function hostApps(host) {
-  const list = appLists.get(host);
-  return [{ name: 'terminal', kind: 'app', open: () => openTerminalTab(host) },
-    ...(list?.apps || []).map((a) => ({ name: a.name, kind: 'app', open: () => openAppTab(host, a) }))];
-}
+// --- new tab: its title the search, a host's terminal, a page or a recent file
 
 function omniPlaces() {
   const hosts = [...terminalHosts].sort((a, b) => (b === selfHost) - (a === selfHost) || a.localeCompare(b))
-    .map((h) => ({ name: h, kind: h === selfHost ? 'this host' : 'host', host: h }));
+    .map((h) => ({ name: h, kind: h === selfHost ? 'terminal here' : 'terminal', open: () => openTerminalTab(h) }));
   const pages = [...Object.entries(FIXED_TABS), ['about', 'about']]
     .map(([id, label]) => ({ name: label, kind: 'page', open: () => showTab(id) }));
   const files = loadJsonSafe(RECENT_FILES_KEY).filter((f) => f && f.host && f.path).slice(0, RECENT_FILES_MAX)
@@ -1979,10 +1816,9 @@ function omniFit(input) {
 
 function omniRender() {
   if (!omni) return;
-  const onApp = omni.host && document.activeElement === omni.app;
-  omni.items = onApp ? omniMatch(hostApps(omni.host), omni.app.value) : omniMatch(omniPlaces(), omni.place.value);
+  omni.items = omniMatch(omniPlaces(), omni.place.value);
   omni.sel = Math.min(omni.sel, Math.max(0, omni.items.length - 1));
-  tabMenuTitle.textContent = onApp ? `${omni.host} apps` : 'open';
+  tabMenuTitle.textContent = 'open';
   tabMenuList.replaceChildren(...omni.items.map((it, i) => {
     const li = el('li', i === omni.sel ? 'sel' : '', it.name);
     li.appendChild(el('span', 'omni-kind', it.kind));
@@ -1992,30 +1828,14 @@ function omniRender() {
     return li;
   }));
   if (!omni.items.length) tabMenuList.replaceChildren(el('li', 'empty', 'no match'));
-  const why = onApp && appLists.get(omni.host)?.why;
-  if (why) tabMenuList.appendChild(el('li', 'empty', why));
   tabMenu.hidden = false;
   const r = omni.btn.getBoundingClientRect();
   tabMenu.style.left = `${Math.max(8, Math.min(r.left, innerWidth - tabMenu.offsetWidth - 8))}px`;
   tabMenu.style.top = `${r.bottom + 10}px`;
 }
 
-function omniSetHost(host) {
-  omni.host = host;
-  if (host) omni.place.value = host;
-  omni.app.value = '';
-  omni.app.hidden = omni.sep.hidden = !host;
-  if (host) fetchApps(host);
-  omniFit(omni.place);
-  omniFit(omni.app);
-  omni.sel = 0;
-  (host ? omni.app : omni.place).focus();
-  omniRender();
-}
-
 function omniChoose(it) {
   if (!it) return;
-  if (it.host) return omniSetHost(it.host);
   const id = omni.id;
   omni.btn.remove();
   document.getElementById(`view-${id}`)?.remove();
@@ -2026,15 +1846,12 @@ function omniChoose(it) {
 }
 
 function omniKeys(e) {
-  const onApp = e.target === omni.app;
   if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
     const n = omni.items.length;
     if (n) omni.sel = (omni.sel + (e.key === 'ArrowDown' ? 1 : -1) + n) % n;
     omniRender();
   } else if (e.key === 'Enter' || (e.key === 'Tab' && omni.items.length)) {
     omniChoose(omni.items[omni.sel]);
-  } else if (e.key === 'Backspace' && onApp && !omni.app.value) {
-    omniSetHost(null);
   } else if (e.key === 'Escape') {
     closeTab(omni.id);
   } else return;
@@ -2053,39 +1870,26 @@ function openOmniTab() {
   const btn = el('div', 'tab-btn tab-new');
   btn.dataset.tabId = id;
   const place = Object.assign(el('input', 'omni-input'), { placeholder: 'host or page', spellcheck: false, autocomplete: 'off' });
-  const app = Object.assign(el('input', 'omni-input'), { placeholder: 'app', spellcheck: false, autocomplete: 'off', hidden: true });
-  const sep = Object.assign(el('span', 'omni-sep', '›'), { hidden: true });
-  btn.append(el('span', 'tab-label', 'new tab'), place, sep, app);
+  btn.append(el('span', 'tab-label', 'new tab'), place);
   addTabClose(btn, id);
   // the page's click, which shuts menus, kept off its own
   btn.addEventListener('click', (e) => { e.stopPropagation(); activateTab(id); });
-  for (const input of [place, app]) {
-    input.addEventListener('keydown', omniKeys);
-    input.addEventListener('focus', () => {
-      if (input === app && omni.host) fetchApps(omni.host);
-      omniRender();
-    });
-    input.addEventListener('input', () => {
-      omniFit(input);
-      // the host's name edited away, its apps with it
-      if (input === place && omni.host && place.value !== omni.host) {
-        omni.host = null;
-        app.hidden = sep.hidden = true;
-      }
-      omni.sel = 0;
-      omniRender();
-    });
-  }
+  place.addEventListener('keydown', omniKeys);
+  place.addEventListener('focus', omniRender);
+  place.addEventListener('input', () => {
+    omniFit(place);
+    omni.sel = 0;
+    omniRender();
+  });
   btn.addEventListener('focusout', (e) => { if (!btn.contains(e.relatedTarget)) tabMenu.hidden = true; });
   omniFit(place);
-  omniFit(app);
   tabbarTabs.appendChild(btn);
   const view = el('div', 'view new-view');
   view.id = `view-${id}`;
   paneContent.appendChild(view);
-  omni = { id, btn, place, app, sep, host: null, items: [], sel: 0 };
+  omni = { id, btn, place, items: [], sel: 0 };
   openTabs.set(id, {
-    show: () => (omni?.host ? omni.app : omni?.place)?.focus(),
+    show: () => omni?.place.focus(),
     close: () => { omni = null; tabMenu.hidden = true; },
   });
   activateTab(id);

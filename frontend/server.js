@@ -20,7 +20,6 @@ const model = require('./model');
 const project = require('./project');
 const mcp = require('./mcp');
 const term = require('./term');
-const apps = require('./apps');
 const reconfig = require('./reconfig');
 const stats = require('./stats');
 const media = require('./chatmedia');
@@ -1308,26 +1307,6 @@ function app(req, res) {
     return;
   }
 
-  // a host's launchable apps, for the new tab's second box
-  const appsAt = pathname.match(APPS_PATH);
-  if (appsAt && req.method === 'GET') {
-    if (!isLocalOrPeer(req)) { res.writeHead(403).end('forbidden'); return; }
-    const [, h] = appsAt;
-    if (h === SELF_HOST) { sendJson(res, ...apps.list(PLATFORM)); return; }
-    if (searchParams.has('hop')) { sendJson(res, 421, { error: 'misdirected' }); return; }
-    tailnetIp(h).then((ip) => (ip ? peerCall(h, { host: ip, path: `/api/apps/${h}?hop=1`, timeout: 5000, connectTimeout: 1500 })
-      : [502, { error: `can't find ${h} on the tailnet` }])).then(([st, b]) => sendJson(res, st, b));
-    return;
-  }
-
-  // an open app's html5 client, from its host's xpra
-  const view = pathname.match(APPVIEW_PATH);
-  if (view) {
-    if (!isLocalOrPeer(req)) { res.writeHead(403).end('forbidden'); return; }
-    appTarget(req, view).then((t) => (t ? apps.proxyHttp(req, res, t.port, t.ip, t.url, t.extra) : res.writeHead(404).end('no such app')));
-    return;
-  }
-
   if (pathname.startsWith('/api/') || pathname.startsWith('/internal/')) {
     sendJson(res, 404, { error: 'not found' });
     return;
@@ -1737,38 +1716,6 @@ function onTerm(ws, host, params) {
   term.forward(ws, host, lookup, params.has('resume'));
 }
 
-// --- app WS ------------------------------------------------------------------
-
-const APPS_PATH = /^\/api\/apps\/([a-z0-9][a-z0-9-]*)$/;
-const APP_PATH = /^\/api\/app\/([a-z0-9][a-z0-9-]*)$/;
-const APPVIEW_PATH = /^\/api\/appview\/([a-z0-9][a-z0-9-]*)\/([0-9a-f]{32})(\/.*)?$/;
-const HOP_HEADER = 'x-phosphorus-hop';
-
-// the login and its outcome, the stream itself under /api/appview
-function onApp(ws, host, params) {
-  if (host === SELF_HOST) {
-    apps.attach(ws, {
-      host, sid: params.get('sid'), id: params.get('id') || '', resume: params.has('resume'),
-      sshHost: HOST_SSH_HOST, port: Number(HOST_SSH_PORT), platform: PLATFORM,
-    });
-    return;
-  }
-  params.set('hop', '1');
-  const lookup = tailnetIp(host).then((ip) => ip && `ws://${ip}:${PORT}/api/app/${host}?${params}`);
-  term.forward(ws, host, lookup, params.has('resume'));
-}
-
-// this host's xpra by the session's port, else the owning peer's frontend
-async function appTarget(req, [, host, sid, rest = '/']) {
-  if (host === SELF_HOST) {
-    const port = apps.upstream(sid);
-    return port ? { port, ip: '127.0.0.1', url: rest + new URL(req.url, 'http://localhost').search } : null;
-  }
-  if (req.headers[HOP_HEADER]) return null;
-  const ip = await tailnetIp(host);
-  return ip ? { port: Number(PORT), ip, url: req.url, extra: { [HOP_HEADER]: '1' } } : null;
-}
-
 // --- upgrades -------------------------------------------------------------
 // same gate for all as the reads: a browser or a peer
 
@@ -1783,7 +1730,6 @@ const termWss = new WebSocket.Server({ noServer: true });
 const stateWss = new WebSocket.Server({ noServer: true });
 const statsWss = new WebSocket.Server({ noServer: true });
 const codeWss = new WebSocket.Server({ noServer: true });
-const appWss = new WebSocket.Server({ noServer: true });
 
 // --- state push -----------------------------------------------------------
 // browsers' /api/state as a socket: a push on every change, round trip times
@@ -1835,22 +1781,6 @@ function onUpgrade(req, socket, head) {
     statsWss.handleUpgrade(req, socket, head, (ws) => stats.attach(keepAlive(ws), own));
     return;
   }
-  // an app's stream, spliced through to xpra's own socket
-  const view = pathname.match(APPVIEW_PATH);
-  if (view) {
-    if (!sameOrigin(req)) { refuse('403 Forbidden'); return; }
-    appTarget(req, view).then((t) => (t ? apps.proxyUpgrade(req, socket, head, t.port, t.ip, t.url, t.extra) : refuse('404 Not Found')));
-    return;
-  }
-  const appAt = pathname.match(APP_PATH);
-  if (appAt) {
-    const [, appHost] = appAt;
-    if (!sameOrigin(req)) { refuse('403 Forbidden'); return; }
-    if (appHost !== SELF_HOST && searchParams.has('hop')) { refuse('421 Misdirected Request'); return; }
-    if (!SID.test(searchParams.get('sid'))) { refuse('400 Bad Request'); return; }
-    appWss.handleUpgrade(req, socket, head, (ws) => onApp(keepAlive(ws), appHost, searchParams));
-    return;
-  }
   // a file's shared editor: its session on the host whose share has it
   const code = pathname.match(/^\/api\/code\/([a-z0-9][a-z0-9-]*)$/);
   if (code) {
@@ -1891,7 +1821,7 @@ function mergeFromPeers(messages) {
 // an idle terminal outlives Cloudflare's idle cutoff
 const HEARTBEAT_INTERVAL = 3000;
 setInterval(() => {
-  for (const ws of [...wss.clients, ...termWss.clients, ...stateWss.clients, ...statsWss.clients, ...codeWss.clients, ...appWss.clients]) {
+  for (const ws of [...wss.clients, ...termWss.clients, ...stateWss.clients, ...statsWss.clients, ...codeWss.clients]) {
     if (ws.isAlive === false) { ws.terminate(); continue; }
     ws.isAlive = false;
     ws.ping();

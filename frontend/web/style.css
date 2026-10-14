@@ -343,8 +343,6 @@ body {
   color: var(--fg); font: inherit; font-size: 0.8rem;
 }
 .omni-input::placeholder { color: var(--dim); }
-.omni-input[hidden], .omni-sep[hidden] { display: none; }
-.omni-sep { color: var(--dim); }
 .tab-menu-list li.sel { background: var(--border); }
 .omni-kind { float: right; margin-left: 2ch; color: var(--muted); font-size: 0.72rem; }
 .tab-menu-list li.empty:hover { background: none; }
@@ -404,15 +402,6 @@ body {
 @keyframes rise-in { from { transform: translateY(0.4rem); opacity: 0; } }
 
 .term-view { overflow: hidden; padding: 0.25rem 0 0 0.5rem; }
-/* an app: its login, then the host's xpra client edge to edge */
-.app-view { overflow: hidden; }
-.app-view.active { display: flex; flex-direction: column; }
-.app-msg { padding: 1rem; color: var(--muted); font-size: 0.85rem; }
-.app-msg[hidden], .app-login[hidden], .app-frame[hidden] { display: none; }
-.app-login { display: flex; flex-direction: column; gap: 0.5rem; width: min(18rem, 100%); padding: 0 1rem 1rem; }
-.app-login-title { color: var(--sage); font-size: 0.8rem; }
-.app-login input { padding: 0.4rem 0.5rem; background: var(--card); border: 1px solid var(--border); color: var(--fg); font: inherit; font-size: 0.85rem; }
-.app-frame { flex: 1; width: 100%; border: none; background: var(--bg); }
 
 /* --- desktop: a pretend remote desktop ------------------------------------ */
 
