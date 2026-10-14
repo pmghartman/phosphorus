@@ -11,92 +11,58 @@
   <sub><i>The Alchemist in Search of the Philosopher's Stone</i>, Joseph Wright of Derby, 1771. Public domain, via <a href="https://commons.wikimedia.org/wiki/File:Joseph_Wright_of_Derby_The_Alchemist.jpg">Wikimedia Commons</a>.</sub>
 </p>
 
-One container per machine, each a **host** on the mesh at `BASE_DOMAIN` (`.env`):
-its services published, the others' polled, one web UI and cli for all of them.
+Phosphorus turns every computer you own into one shared desktop in the browser.
+Install it on each machine (a **host**), and every host's terminals, files, web
+services, chat and status show up together at your domain.
 
 ## Install
 
-From the latest release:
+Download the installer for your system from the
+[latest release](https://github.com/pmghartman/phosphorus/releases/latest):
 
-| OS | Needs | Install |
+| System | You need first | Then |
 |---|---|---|
-| Linux (Debian, Ubuntu) | nothing, apt pulls Docker | `sudo apt install ./phosphorus_VER_ARCH.deb` (`amd64` or `arm64`) |
-| macOS | [colima](https://github.com/abiosoft/colima), Homebrew `docker`, `docker-compose` | open `phosphorus-VER-macos-universal.dmg`, drag Phosphorus to Applications, open it (first open: right-click > Open) |
-| Windows | Docker Desktop (host networking on) | run `phosphorus-VER-windows-x86_64-setup.exe` (SmartScreen: More info > Run anyway) |
+| Linux (Debian, Ubuntu) | nothing | `sudo apt install ./phosphorus_VERSION_amd64.deb` (or `arm64`) |
+| macOS | [colima](https://github.com/abiosoft/colima) and Homebrew `docker`, `docker-compose` | open the `.dmg`, drag Phosphorus to Applications, right-click > Open |
+| Windows | Docker Desktop, with host networking on | run the setup `.exe` (SmartScreen: More info > Run anyway) |
 
-Windows over ssh, no desktop needed (an admin account's session):
+Then open the `.env` file in the host's folder, fill it in from `.env.example`
+(your domain and Tailscale keys), and start it: `sudo phosphorus start` on Linux,
+or Start in the tray icon on macOS and Windows.
 
-```powershell
-Start-Process .\phosphorus-VER-windows-x86_64-setup.exe -ArgumentList '/S' -Wait
-powershell -NoProfile -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\Phosphorus\release\scripts\windows\install.ps1" -Headless
-Get-Content -Wait $env:TEMP\phosphorus-install.log
-```
+The host's folder: `/var/lib/phosphorus` (Linux), `~/Library/Phosphorus` (macOS),
+`%USERPROFILE%\phosphorus` (Windows). Updates never touch your settings or files there.
+Tailscale keys expire every 90 days.
 
-`-Headless` runs detached from the session, so a dropped ssh never cuts the install short.
+## Using it
 
-Each host's own files live in its **home**: `/var/lib/phosphorus` (Linux),
-`~/Library/Phosphorus` (macOS), `%USERPROFILE%\phosphorus` (Windows). That covers `.env`, `config/`,
-`state/`, `git/data/`, `files/` and `models/`, none of them touched by an update. Fill in
-`.env` from `.env.example`, then `phosphorus start` (`sudo` on Linux; the tray's Start on
-macOS and Windows). On macOS set `hostname:` in `colima start --edit` first.
-`TS_AUTHKEY` and `TS_API_KEY` in `.env` expire every 90 days.
+Open your domain in a browser and log in to one or more hosts with that machine's
+own user and password. You get a desktop:
 
-Images come prebuilt from `ghcr.io/pmghartman/phosphorus` and `phosphorus-git`, tagged by
-release. The installers are the only way in; a clone of this repo doesn't run.
+- **terminal**: a shell on each host you logged in to
+- **files**: every host's shared folders; copy and move between hosts, drag files in to upload
+- **editor**: edit text files live with others, saved as you type (ctrl+s saves now)
+- **chat**: channels and direct messages; `/chimp` asks the AI model
+- **status**: CPU, memory, disk and network for every host, and which AI model is in use
+- **projects**: hand a longer task to the big AI model and watch it work
+- **git**: your own git server
+- **games**: start and stop game servers, get the join address
+- every other web service your hosts publish, with its own icon
 
-## Updates
+Windows move, snap to edges and resize from any side. In the bar at the bottom:
+your open windows, your hosts (purple is the one serving this page; click another
+to switch), the mesh map, updates, and light or dark theme.
 
-The update button checks the release feed first, then walks the mesh host by host. Each
-host hands the update to its agent:
+## Updating
 
-- Linux: `phosphorus-update.path` runs `apt` against the signed feed, postinst pulls and swaps.
-- macOS, Windows: the tray app runs the Tauri updater, relaunches, pulls and swaps.
+Click the update icon in the bottom bar and press update: every host updates, one at
+a time. Or run `phosphorus update` on a single host.
 
-`phosphorus update` and the tray's Check for Updates do the same for one host.
+## Settings
 
-## Releasing
+Two files in `config/`, applied a few seconds after you save them.
 
-The manual `release` workflow: images to ghcr, `.deb`, `.dmg`, setup `.exe`, release
-`vVERSION`, and the `update` feed. Once: make both ghcr packages public, set secrets
-`TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, `APT_GPG_KEY` and variable
-`TAURI_UPDATER_PUBKEY`. Without them the installers still build, with no update feed.
-
-## phosphorus
-
-| Command | Does |
-|---|---|
-| `phosphorus` | The cli, `phos` for short, every command below too |
-| `phosphorus start` / `stop` / `restart` | Start, stop, restart this host |
-| `phosphorus update` | Update this host from the release feed |
-| `phosphorus update all` | Update the mesh (`PHOSPHORUS_UPDATE_PASSWORD`) |
-
-## Services
-
-`config/services.export`, a bad entry keeping the last good version:
-
-```
-[grafana]
-port = 3001
-mode = subdomain
-
-[terraria]
-port = 7777
-type = game
-start = systemctl --user start tmodloader
-stop = systemctl --user stop tmodloader
-```
-
-| Key | Default | Meaning |
-|---|---|---|
-| `port` | none | TCP port (required), bound to `0.0.0.0` or the tailnet IP |
-| `scheme` | `http` | `http` or `https` |
-| `mode` | `path` | `path`: `<domain>/<host>/<name>/`, `subdomain`: `<name>.<domain>` |
-| `base_path` | none | Sub-path stripped before proxying |
-| `extras` | `{}` | JSON: `max_body`, `forwarded_proto` |
-| `type` | none | `game`: tailnet only, at `<name>.<GAME_ZONE>:<port>` |
-| `start`, `stop` | none | Games only: play/stop commands |
-
-## phosphorus.ini
+`phosphorus.ini`, what this host does:
 
 ```
 [files]
@@ -112,67 +78,33 @@ gpu = true
 url = https://huggingface.co/ggml-org/gpt-oss-120b-GGUF/resolve/main/gpt-oss-120b-MXFP4.gguf
 ```
 
-- `[files]`: shared directories, `r` read, `w` write, `d` delete. No auth, so
-  never `/` or a home directory.
-- `[git]`: runs forgejo, one elected master, the rest replicas.
-- `[model]`: `host`, `gpu` (nvidia, x64), `url` (one `.gguf`), `ctx` (65536),
-  `slots` (4). Needs ram plus vram of about the gguf's size plus 64KB a token.
+- `[files]`: the folders to share, and for each `r` read, `w` write, `d` delete.
+- `[git]`: keep a copy of the git server on this host.
+- `[model]`: run the AI model here (needs memory about the model file's size),
+  on an nvidia `gpu` if set, from the `.gguf` at `url`.
 
-Applied a few seconds after a change.
+Never share `/` or a home folder: shares have no login.
 
-## Using it
-
-The page is one desktop: log into one or more hosts over ssh, then icons for each
-host's terminal, files, the editor, chat, status, projects, git, games, about and every
-service (with the site's own icon), windows that move, snap, resize from any edge and
-minimize to the task bar. The task bar's graph icon pops up the mesh: the hosts, the
-tailnet and the pings; expanded, a click moves this page to a host.
-
-Apps:
-
-- **Chat**: channels, dms, reactions, replies, attachments, markdown and LaTeX.
-  `/chimp` asks the small model through
-  [opencode](https://github.com/anomalyco/opencode)'s harness, with its own
-  tools (bash, files, grep in the container's files share), web search and
-  phosphorus's MCP tools (`POST /api/mcp`). A password an action needs (a mesh
-  update's) goes in a box by the chat, never to the model. The editor last focused goes with
-  each ask. Unread lines badge the chat icon and its task. Right click a line to react, reply, edit or delete.
-- **Files**: a file manager over each host's shares, cut, copy and paste across hosts;
-  text opens in the editor, live and shared, saved as you type, markdown rendered with
-  checkable tasks, nothing ever executed.
-- **Git**: forgejo, the master host in the title.
-- **Games**: the game servers, play and stop, the join address, a guest key.
-- **Projects**: the orangutan (the big model) only works on these: a brief and
-  up to 14 days (72h default), worked alone in rounds of plan, execute, test and
-  refine until it calls `project_finish` or time runs out. One per host,
-  resumed after a restart, told when one cut a round short. Its model host going offline pauses it, mid-round
-  too, the clock held, until that same model answers again. It has opencode's own tools: its bash runs in a
-  `phosphorus-sandbox-<id>` container off the phosphorus image, on the `phosphorus-sandbox` network, which iptables cuts off
-  from the tailnet, the lan and the host; its file and search tools are held to the workspace, links out of it
-  refused; todowrite is the task list shown; task hands pieces to an `orangutan-helper` subagent; webfetch goes
-  through the frontend's fenced fetch, public addresses only at every redirect; lsp servers (typescript,
-  pyright, bash, gopls, rust-analyzer, clangd) and formatters run by `docker exec` in the sandbox, installed
-  there as needed, never on the host. Records in `state/project-runs/`,
-  workspaces in `state/projects/`, served read only as the `projects` share.
-  API: `GET/POST /api/projects`, `GET /api/projects/<host>/<id>`,
-  `POST .../stop|note|delete`.
-- **Status**: btop for the whole mesh, one card per host, and each role's model, picked here.
-- **Terminal**: a shell on a logged in host.
-
-## Layout
+`services.export`, the web services and game servers on this host:
 
 ```
-config/      services.export, phosphorus.ini (per host)
-container/   phosphorus image
-frontend/    node service; web/ the UI, cli/ phosphorus
-git/         phosphorus-git image
-scripts/     phosphorus, run, rebuild, install, upgrade
-build/       .deb packaging
-gui/         tray app (Tauri), macOS and Windows
-files/       default share
-state/       runtime state (not shipped)
-models/      ggufs (not shipped)
+[grafana]
+port = 3001
+
+[terraria]
+port = 7777
+type = game
+start = systemctl --user start tmodloader
+stop = systemctl --user stop tmodloader
 ```
+
+A service shows up at `yourdomain/host/name/`, or at `name.yourdomain` with
+`mode = subdomain`. Game servers are reachable only inside the mesh.
+
+## Command line
+
+`phosphorus` (or `phos`) opens the same view in a terminal. `phosphorus start`,
+`stop`, `restart` and `update` control this host.
 
 ## License
 

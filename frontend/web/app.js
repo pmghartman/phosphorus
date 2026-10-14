@@ -9,12 +9,7 @@ let baseDomain = location.hostname;
 let gameZone = 'phosphorus';
 const aboutVersion = document.getElementById('about-version');
 const topUpdate = document.getElementById('top-update');
-const sideModel = document.getElementById('side-model');
-const sideChat = document.getElementById('side-chat');
-const sideMesh = document.getElementById('side-mesh');
 
-// the desktop the whole page, the old tabs' views opened in its windows
-const DESK_ONLY = true;
 // the desktop's apps up and not minimized, for each view's own watchers
 const deskApps = new Set();
 // unread lines, for the chat icon's and task's badges
@@ -31,18 +26,6 @@ const serviceKey = (route) => `${route.host}::${route.name}`;
 // key -> { win, host, name } for each service opened from here whose tab is
 // still open, driving the touched/purple path and the packet pulse
 const activeConnections = new Map();
-
-// window.open rather than the anchor's own nav, for a pollable .closed, a
-// blocked popup falling back to target=_blank, untracked
-function openService(route, e) {
-  if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-  const win = window.open(serviceUrl(route), '_blank');
-  if (!win) return;
-  e.preventDefault();
-  activeConnections.set(serviceKey(route), { win, host: route.host, name: route.name });
-  startPulseLoop();
-  drawMesh();
-}
 
 // a closed tab's line dropped from the graph, checked every second
 function pruneConnections() {
@@ -73,321 +56,19 @@ const rttSampledAt = new Map();
 // the table's number: the median of the last few samples
 const RTT_SHOWN_OF = 5;
 
-// first in the directory, marked with a database icon
+// forgejo's service name, its own app rather than a service icon
 const GIT_SERVICE = 'git';
-
-// rebuilt only on change, for a ↑↓-selected row's focus
-let lastServicesSig = '';
+// the git service, and every git host's role and lag
+let gitRoute = null;
+let gitHostsList = [];
 
 function renderRoutes(routes, tailnet) {
-  const servicesList = document.getElementById('services-list');
-
   terminalHosts = tailnet.filter((d) => d.phosphorus).map((d) => d.name);
   const services = routes.filter((r) => r.type !== 'game' && r.name !== GIT_SERVICE);
   renderGames(routes.filter((r) => r.type === 'game'));
   gitRoute = routes.find((r) => r.name === GIT_SERVICE) || null;
-  renderGitCard();
-
-  const sig = JSON.stringify([services, !gitHostsList.length]);
-  if (sig !== lastServicesSig) renderServices(servicesList, services, sig);
   renderMesh(routes, tailnet);
   dkRoutes(services);
-}
-
-function renderServices(servicesList, services, sig) {
-  lastServicesSig = sig;
-  servicesList.innerHTML = '';
-  if (!services.length && !gitHostsList.length) {
-    servicesList.innerHTML = '<li class="empty">nothing live right now</li>';
-  } else {
-    for (const r of services) {
-      const li = document.createElement('li');
-      const a = document.createElement('a');
-      a.href = serviceUrl(r);
-      a.target = '_blank';
-      a.rel = 'noopener noreferrer';
-      a.addEventListener('click', (e) => openService(r, e));
-      a.textContent = r.name;
-      const meta = document.createElement('span');
-      meta.className = 'meta';
-      meta.append(
-        Object.assign(document.createElement('span'), { className: 'svc-host', textContent: r.host }),
-        ' · ',
-        Object.assign(document.createElement('span'), { className: 'svc-mode', textContent: r.mode }),
-      );
-      a.appendChild(meta);
-      li.appendChild(a);
-      servicesList.appendChild(li);
-    }
-  }
-}
-
-// --- git card ---------------------------------------------------------------
-
-// a row with its hosts folded under it, which expanding slides out,
-// updated in place since a rebuild would cut the fan-out short
-
-let gitRoute = null;
-let gitHostsList = [];
-let gitOpen = false;
-let gitBusy = '';
-let gitError = '';
-let gitEls = null;
-let gitAnimating = false;
-const gitItems = new Map(); // host -> { li, bubble, backup, lag }
-// time behind as the transfer bar's cells: three even bands, each filled
-// across its own span of seconds, green to 8s, yellow to 15s, red to 60s
-const GIT_LAG_BAND_CELLS = 5;
-const GIT_LAG_BANDS = [['good', 0, 8], ['slow', 8, 15], ['stale', 15, 60]];
-const GIT_STACK_STEP = 0;
-const GIT_STACK_MAX = 3;
-
-function ago(sec) {
-  if (sec < 60) return `${sec}s`;
-  if (sec < 3600) return `${Math.floor(sec / 60)}m`;
-  if (sec < 86400) return `${Math.floor(sec / 3600)}h`;
-  return `${Math.floor(sec / 86400)}d`;
-}
-
-// how far a host's copy trails the master
-function gitBackupText(h, masterGen) {
-  if (!h.reachable) return 'unreachable';
-  if (h.gen == null || h.ageSec == null) return 'no data yet';
-  const parts = [];
-  if (h.role === 'master') parts.push('live');
-  else if (masterGen != null && h.gen < masterGen) parts.push('older lineage');
-  else parts.push(`${ago(h.ageSec)} behind`);
-  if (h.role !== 'master' && !h.eligible) parts.push('catching up');
-  if (h.updating) parts.push('updating');
-  return parts.join(' · ');
-}
-
-function lagMeter(ageSec) {
-  let html = '';
-  let empty = 0;
-  for (const [cls, from, to] of GIT_LAG_BANDS) {
-    const frac = Math.max(0, Math.min(1, (ageSec - from) / (to - from)));
-    const full = Math.round(frac * GIT_LAG_BAND_CELLS);
-    if (full) html += `<span class="${cls}">${'█'.repeat(full)}</span>`;
-    empty += GIT_LAG_BAND_CELLS - full;
-  }
-  return `${html}<span class="off">${'░'.repeat(empty)}</span>`;
-}
-
-function chevronIcon() {
-  const icon = svgEl('svg', { viewBox: '0 0 16 16', 'aria-hidden': 'true' });
-  icon.appendChild(svgEl('polyline', { points: '6 3 11 8 6 13' }));
-  return icon;
-}
-
-function gitSkeleton() {
-  if (gitEls) return gitEls;
-  const group = document.getElementById('git-card');
-  const head = document.createElement('div');
-  head.className = 'git-head';
-  const toggle = document.createElement('button');
-  toggle.type = 'button';
-  toggle.className = 'git-toggle';
-  toggle.appendChild(chevronIcon());
-  toggle.addEventListener('click', () => {
-    gitOpen = !gitOpen;
-    toggle.setAttribute('aria-expanded', String(gitOpen));
-    toggle.setAttribute('aria-label', gitOpen ? 'hide git hosts' : 'show git hosts');
-    layoutGitStack(true);
-  });
-  toggle.setAttribute('aria-expanded', 'false');
-  toggle.setAttribute('aria-label', 'show git hosts');
-  const name = document.createElement('a');
-  name.className = 'git-name';
-  name.target = '_blank';
-  name.rel = 'noopener noreferrer';
-  name.append(databaseIcon(), document.createTextNode(GIT_SERVICE));
-  name.addEventListener('click', (e) => { if (gitRoute) openService(gitRoute, e); else e.preventDefault(); });
-  const warn = document.createElement('span');
-  warn.className = 'git-warn';
-  head.append(toggle, name, warn);
-
-  const list = document.createElement('ul');
-  list.className = 'git-hosts';
-  list.addEventListener('transitionend', (e) => {
-    if (e.target !== list || e.propertyName !== 'height') return;
-    gitAnimating = false;
-    list.classList.remove('animate');
-    if (gitOpen) list.style.height = 'auto';
-  });
-  const err = document.createElement('div');
-  err.className = 'git-error';
-  group.append(head, list, err);
-  window.addEventListener('resize', () => { if (!gitOpen) layoutGitStack(false); });
-  gitEls = { group, head, name, warn, list, err };
-  return gitEls;
-}
-
-function gitItem(host) {
-  let item = gitItems.get(host);
-  if (item) return item;
-  const li = document.createElement('li');
-  li.className = 'git-host';
-  const bubble = document.createElement('button');
-  bubble.type = 'button';
-  bubble.className = 'git-bubble';
-  bubble.addEventListener('click', () => askGitSwitch(host));
-  const name = document.createElement('span');
-  name.className = 'git-host-name';
-  name.textContent = host;
-  const backup = document.createElement('span');
-  backup.className = 'git-host-backup';
-  const lag = document.createElement('span');
-  lag.className = 'git-lag';
-  lag.title = 'time behind the master: green to 8s, yellow to 15s, red to 60s';
-  li.append(bubble, name, backup, lag);
-  item = { li, bubble, backup, lag };
-  gitItems.set(host, item);
-  return item;
-}
-
-function renderGitCard() {
-  const { group, name, warn, list, err } = gitSkeleton();
-  const wasHidden = group.hidden;
-  group.hidden = !gitRoute && !gitHostsList.length;
-  if (group.hidden) return;
-
-  if (gitRoute) name.href = serviceUrl(gitRoute); else name.removeAttribute('href');
-  const up = gitHostsList.filter((h) => h.reachable).length;
-  warn.hidden = up > 1;
-  warn.textContent = up ? 'only one git-host' : 'no git host reachable';
-
-  const master = gitHostsList.find((h) => h.role === 'master' && h.reachable);
-  const masterGen = master ? master.gen : null;
-  let setChanged = wasHidden;
-  const seen = new Set();
-  gitHostsList.forEach((h, i) => {
-    seen.add(h.host);
-    const it = gitItem(h.host);
-    if (list.children[i] !== it.li) { list.insertBefore(it.li, list.children[i] || null); setChanged = true; }
-    const isMaster = h.reachable && h.role === 'master';
-    const canLead = h.reachable && !isMaster && (h.eligible || !master);
-    it.li.className = `git-host${isMaster ? ' master' : ''}${h.reachable ? '' : ' down'}${gitBusy === h.host ? ' busy' : ''}${h.reachable && !isMaster && !canLead ? ' catching' : ''}`;
-    it.bubble.disabled = !canLead || !!gitBusy;
-    it.bubble.setAttribute('aria-pressed', String(isMaster));
-    it.bubble.title = isMaster ? `${h.host} is master`
-      : !h.reachable ? `${h.host} is unreachable`
-      : gitBusy === h.host ? 'switching…'
-      : canLead ? `make ${h.host} master` : `${h.host} is still catching up`;
-    it.bubble.setAttribute('aria-label', it.bubble.title);
-    it.backup.textContent = gitBusy === h.host ? 'switching…' : gitBackupText(h, masterGen);
-    const meter = h.reachable && !isMaster && h.ageSec != null ? lagMeter(h.ageSec) : '';
-    if (it.lag.dataset.m !== meter) { it.lag.innerHTML = meter; it.lag.dataset.m = meter; }
-  });
-  for (const [host, it] of gitItems) {
-    if (!seen.has(host)) { it.li.remove(); gitItems.delete(host); setChanged = true; }
-  }
-  err.hidden = !gitError;
-  err.textContent = gitError ? `! ${gitError}` : '';
-  if (setChanged && !gitAnimating) layoutGitStack(false);
-}
-
-// collapsed: each host folded onto the git row, hidden (the CSS), no gap,
-// open: the rows slid out into the tree
-function layoutGitStack(animate) {
-  const { group, head, list } = gitSkeleton();
-  group.classList.toggle('open', gitOpen);
-  const items = [...list.children];
-  // natural height, read with 'auto' before the transition is switched on
-  const from = list.offsetHeight;
-  list.style.height = 'auto';
-  const full = list.offsetHeight;
-  if (animate) {
-    list.style.height = `${from}px`;
-    void list.offsetHeight;
-    gitAnimating = true;
-    list.classList.add('animate');
-  }
-  if (gitOpen) {
-    list.style.height = animate ? `${full}px` : 'auto';
-    items.forEach((li) => {
-      li.style.transform = '';
-      li.style.zIndex = '';
-    });
-    return;
-  }
-  const depth = Math.min(items.length, GIT_STACK_MAX) * GIT_STACK_STEP;
-  list.style.height = `${depth}px`;
-  items.forEach((li, i) => {
-    const k = Math.min(i + 1, GIT_STACK_MAX);
-    const dx = head.offsetLeft + k * GIT_STACK_STEP - li.offsetLeft;
-    const dy = head.offsetTop + k * GIT_STACK_STEP - li.offsetTop;
-    const sx = head.offsetWidth / li.offsetWidth;
-    const sy = head.offsetHeight / li.offsetHeight;
-    li.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`;
-    li.style.zIndex = String(GIT_STACK_MAX + 1 - k);
-  });
-  if (!animate) gitAnimating = false;
-}
-
-// the frontend's own dialog, not confirm(): shows the switch, and flags a force-promote
-const gitModal = document.getElementById('git-modal');
-const gitModalGo = document.getElementById('git-modal-go');
-
-function closeGitModal() {
-  gitModal.hidden = true;
-  gitModalGo.onclick = null;
-}
-
-function askGitSwitch(host) {
-  const master = gitHostsList.find((h) => h.role === 'master' && h.reachable);
-  const target = gitHostsList.find((h) => h.host === host);
-  const rows = [
-    ['from', master ? master.host : 'no live master'],
-    ['to', `${host}${target ? ` · ${gitBackupText(target, master ? master.gen : null)}` : ''}`],
-  ];
-  const dl = document.getElementById('git-switch');
-  dl.replaceChildren(...rows.flatMap(([k, v]) => {
-    const dt = document.createElement('dt');
-    dt.textContent = k;
-    const dd = document.createElement('dd');
-    dd.textContent = v;
-    return [dt, dd];
-  }));
-  const note = document.getElementById('git-modal-note');
-  note.classList.toggle('warn', !master);
-  note.textContent = master
-    ? `${master.host} hands off to ${host}, git.${baseDomain} down a few seconds`
-    : `${host} force-promoted, roster reset to the hosts in view, only if the old master is gone`;
-  gitModalGo.textContent = master ? 'make master' : 'force-promote';
-  gitModalGo.className = master ? 'primary' : 'force';
-  gitModalGo.onclick = () => { closeGitModal(); forceGit(host); };
-  // hung just below the host being elected, in the main pane's coordinates
-  const row = gitItems.get(host)?.li.getBoundingClientRect();
-  const pane = gitModal.parentElement.getBoundingClientRect();
-  if (row) {
-    gitModal.style.top = `${row.bottom - pane.top + 4}px`;
-    gitModal.style.left = `${row.left - pane.left}px`;
-  }
-  gitModal.hidden = false;
-  gitModalGo.focus();
-}
-
-document.getElementById('git-modal-close').addEventListener('click', closeGitModal);
-document.getElementById('git-modal-cancel').addEventListener('click', closeGitModal);
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !gitModal.hidden) closeGitModal(); });
-
-async function forceGit(host) {
-  gitBusy = host;
-  gitError = '';
-  renderGitCard();
-  const why = await postFailure(`/api/githosts/${encodeURIComponent(host)}/force`);
-  if (why) gitError = `make master failed: ${why}`;
-  pollState();
-  // busy until it leads, or gives up after 30s
-  const leads = () => gitHostsList.some((h) => h.host === host && h.role === 'master');
-  const until = Date.now() + 30000;
-  while (!gitError && Date.now() < until && !leads()) await new Promise((r) => setTimeout(r, 1000));
-  if (!gitError && !leads()) gitError = `${host} didn't take over, check the git-daemon logs`;
-  gitBusy = '';
-  renderGitCard();
-  const shown = gitError;
-  if (shown) setTimeout(() => { if (gitError === shown) { gitError = ''; renderGitCard(); } }, 15000);
 }
 
 // a bare POST's failure as text, blank when it went through
@@ -581,45 +262,27 @@ const meshStats = document.getElementById('mesh-stats');
 const meshStatsRows = document.getElementById('mesh-stats-rows');
 const meshHeader = document.querySelector('.mesh-header');
 const meshToggle = document.getElementById('mesh-toggle');
-const paneChat = document.querySelector('.pane-chat');
-const layoutEl = document.querySelector('.layout');
+const stash = document.querySelector('.stash');
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 // the stats table's unclipped height, cached whenever renderMeshStats() runs,
 // reserved by meshLayoutParams() when expanded
 let lastStatsHeight = 0;
 
-// the chat out of the column on a wide screen: the graph the column's full
-// height, set by paintColumn()
-let meshAlone = false;
-
 // stats table DOM rebuilt only on real data changes, never per
 // expand/collapse frame
 let meshStatsDirty = true;
 
-// expanded: fewer logical units per pixel width, a real zoom, on mobile
-// .pane-chat is display:contents (clientHeight 0), hence .layout
+// expanded: fewer logical units per pixel width, a real zoom, the popup's
+// height whatever the stats table leaves
 function meshLayoutParams(expanded) {
   const width = expanded ? 200 : 232;
   const box = meshPanel.closest('.dk-mesh-pop');
-  if (box) {
-    const bodyH = box.clientHeight - (expanded ? lastStatsHeight : 0);
-    const widthPx = meshGraphWrap.clientWidth || width;
-    const legend = meshGraphWrap.querySelector('.mesh-legend');
-    return { width, height: width * (Math.max(60, bodyH) / widthPx), widthPx, legendPx: expanded ? legend.offsetTop + legend.offsetHeight : 0 };
-  }
-  const mobile = isMobile();
-  const alone = meshAlone && !mobile;
-  const pad = alone ? getComputedStyle(paneChat) : null;
-  const totalH = mobile ? layoutEl.clientHeight
-    : paneChat.clientHeight - (alone ? parseFloat(pad.paddingTop) + parseFloat(pad.paddingBottom) : 0);
-  const fraction = mobile || alone ? 1 : (expanded ? 0.5 : 0.25);
-  const bodyH = totalH * fraction - meshHeader.clientHeight - (expanded ? lastStatsHeight : 0);
+  const bodyH = (box?.clientHeight || 240) - meshHeader.clientHeight - (expanded ? lastStatsHeight : 0);
   const widthPx = meshGraphWrap.clientWidth || width;
-  const height = width * (Math.max(60, bodyH) / widthPx);
   // the legend expanded only, hidden, not gone, so still measured
   const legend = meshGraphWrap.querySelector('.mesh-legend');
-  return { width, height, widthPx, legendPx: expanded ? legend.offsetTop + legend.offsetHeight : 0 };
+  return { width, height: width * (Math.max(60, bodyH) / widthPx), widthPx, legendPx: expanded ? legend.offsetTop + legend.offsetHeight : 0 };
 }
 
 // host row to the non-phosphorus devices, a frame fraction, LIFT the
@@ -657,17 +320,9 @@ function animateMeshT(target) {
   meshAnimFrame = requestAnimationFrame(step);
 }
 
-// the desktop's own pick, always expanded on a phone, expanded on its own
-// with the column to itself, that pick back after
-let meshDesktopExpanded = false;
-
-// snap: straight to the end, the column itself changing under it, no table
-// fading in or out on the way
+// snap: straight to the end, no table fading in or out on the way
 function setMeshExpanded(willExpand, snap) {
-  if (isMobile()) willExpand = true;
-  else if (!meshAlone) meshDesktopExpanded = willExpand;
   if (willExpand === meshPanel.classList.contains('expanded')) return;
-  keybarDirty();
   meshPanel.classList.toggle('expanded', willExpand);
   meshToggle.setAttribute('aria-expanded', String(willExpand));
   meshToggle.setAttribute('aria-label', willExpand ? 'shrink mesh graph' : 'expand mesh graph');
@@ -680,7 +335,6 @@ function setMeshExpanded(willExpand, snap) {
 }
 
 meshToggle.addEventListener('click', () => setMeshExpanded(!meshPanel.classList.contains('expanded')));
-mobileQuery.addEventListener('change', () => setMeshExpanded(meshAlone || meshDesktopExpanded));
 setMeshExpanded(false);
 
 // touch swipe on the graph: up to open its table, down to close, desktop only
@@ -710,16 +364,17 @@ const phosphorusHosts = () => meshTailnet.filter((d) => d.phosphorus).map((d) =>
 let hostSwitch = null;
 // grace for a late poll from the old host
 const HOST_SWITCH_MS = 4000;
-const hostNote = document.getElementById('mesh-host-note');
 let hostNoteTimer = null;
 
-// kind: pending, ok or error, the last two fading on their own
+// beside the task bar's hosts, kind: pending, ok or error, the last two fading on their own
 function setHostNote(text, kind) {
   clearTimeout(hostNoteTimer);
-  hostNote.textContent = text;
-  hostNote.className = `mesh-host-note ${kind}`;
-  hostNote.hidden = false;
-  if (kind !== 'pending') hostNoteTimer = setTimeout(() => { hostNote.hidden = true; }, kind === 'ok' ? 2500 : 6000);
+  const note = document.querySelector('.dk-host-note');
+  if (!note) return;
+  note.textContent = text;
+  note.className = `dk-host-note ${kind}`;
+  note.hidden = false;
+  if (kind !== 'pending') hostNoteTimer = setTimeout(() => { note.hidden = true; }, kind === 'ok' ? 2500 : 6000);
 }
 
 // drawn at once as the new self, confirmed or undone by the state
@@ -727,7 +382,7 @@ function redrawHost(host) {
   selfHost = host;
   meshSig = '';
   renderMesh(meshRoutes, meshTailnet);
-  keybarDirty();
+  dkChips();
 }
 
 async function switchHost(host) {
@@ -766,69 +421,6 @@ function settleHost(served) {
   setHostNote(`${sw.to} didn't take over, still on ${served}`, 'error');
   return served;
 }
-
-// a host's square, name or stats row, expanded only, a mouse on press (no click
-// lost to a redraw), a tap on release (never a swipe)
-let hostTap = null;
-const hostAt = (el) => meshPanel.classList.contains('expanded') && el?.closest?.('[data-host]')?.dataset.host;
-for (const el of [meshSvg, meshStatsRows]) {
-  el.addEventListener('pointerdown', (e) => {
-    if (e.pointerType !== 'mouse') { hostTap = { id: e.pointerId, x: e.clientX, y: e.clientY }; return; }
-    const host = e.button === 0 && hostAt(e.target);
-    if (host) { e.preventDefault(); switchHost(host); }
-  });
-  el.addEventListener('pointerup', (e) => {
-    if (!hostTap || hostTap.id !== e.pointerId) return;
-    const moved = Math.hypot(e.clientX - hostTap.x, e.clientY - hostTap.y);
-    hostTap = null;
-    const host = moved < 10 && hostAt(document.elementFromPoint(e.clientX, e.clientY));
-    if (host) switchHost(host);
-  });
-}
-
-// --- mobile bottom tabs -----------------------------------------------
-
-// below the 720px breakpoint the main pane, the mesh and the model card as
-// full-height sections, switched by a bottom tab bar instead of stacking, its
-// chat the chat tab
-const mobileSections = {
-  main: document.querySelector('.pane-main'),
-  mesh: meshPanel,
-  model: document.getElementById('st-model'),
-};
-
-let mobileSection = '';
-const MOBILE_ORDER = ['main', 'mesh', 'model'];
-
-// chat lit while the chat tab is up, home for every other tab
-function paintMobileBar() {
-  const chatUp = mobileSection === 'main' && document.querySelector('#tabbar-tabs .tab-btn.active')?.dataset.tabId === 'chat';
-  const lit = chatUp ? 'chat' : mobileSection;
-  for (const btn of document.querySelectorAll('.mobile-tab-btn')) btn.classList.toggle('active', btn.dataset.section === lit);
-  moveInk(document.getElementById('mobile-tabbar'), document.querySelector('.mobile-tab-btn.active'));
-}
-
-function setMobileSection(name, from) {
-  const prev = mobileSection;
-  mobileSection = name;
-  for (const key in mobileSections) mobileSections[key].classList.toggle('mobile-active', key === name);
-  if (prev !== name && (prev === 'model' || name === 'model')) placeModel();
-  keybarDirty();
-  if (prev && prev !== name && isMobile()) {
-    slideIn(mobileSections[name], from || (MOBILE_ORDER.indexOf(name) > MOBILE_ORDER.indexOf(prev) ? 'right' : 'left'));
-  }
-  paintMobileBar();
-}
-
-document.getElementById('mobile-tabbar').addEventListener('click', (e) => {
-  const btn = e.target.closest('.mobile-tab-btn');
-  if (!btn) return;
-  if (btn.dataset.section !== 'chat') { setMobileSection(btn.dataset.section); return; }
-  setMobileSection('main');
-  showTab('chat');
-});
-
-setMobileSection('main');
 
 function svgEl(tag, attrs) {
   const el = document.createElementNS(SVG_NS, tag);
@@ -970,7 +562,6 @@ function renderMesh(routes, tailnet) {
   if (sig === meshSig && !sampled) return;
   meshSig = sig;
   meshStatsDirty = true;
-  keybarDirty();
   if (!meshAnimFrame) drawMesh();
 }
 
@@ -1162,8 +753,6 @@ function drawMesh() {
   }
 
   const { collapsed, expanded } = meshDimsNow();
-  // written after the reads, so the frame lays out once
-  meshPanel.style.setProperty('--mesh-basis', meshAlone && !isMobile() ? '100%' : `${25 + 25 * t}%`);
 
   // service squares fanned out in a row below their host once t>0, the frame
   // grown by a fixed drop to clear that row, not per extra service
@@ -1398,7 +987,6 @@ function applyState(state) {
   if (state.gameZone) gameZone = state.gameZone;
   if (state.self.version) {
     aboutVersion.textContent = `v${state.self.version}`;
-    document.querySelector('.brand-ver').textContent = `v${state.self.version}`;
   }
 
   const next = state.gitHosts;
@@ -1413,7 +1001,6 @@ function applyState(state) {
     .filter(([, v]) => v.roles.length));
   const modelChanged = JSON.stringify([...nextModels]) !== JSON.stringify([...meshModels]);
   meshModels = nextModels;
-  if (filesOpened) filesSyncHosts(state.tailnet);
   if ((gitChanged || modelChanged) && !meshAnimFrame) drawMesh();
   meshLock = state.lock && state.lock.initiator ? state.lock : null;
   renderUpdateButton();
@@ -1436,115 +1023,8 @@ function applyState(state) {
   topUpdate.title = `mesh update (u)${meshLock || (chain && !chain.done) ? ', under way' : differs ? ', hosts on different versions' : ''}`;
 }
 
-// --- terminal tabs --------------------------------------------------------
-const tabbarTabs = document.getElementById('tabbar-tabs');
-const tabAddBtn = document.getElementById('tab-add');
-const tabMenu = document.getElementById('tab-menu');
-const tabMenuList = document.getElementById('tab-menu-list');
-const tabMenuTitle = document.getElementById('tab-menu-title');
+// --- terminals --------------------------------------------------------------
 const paneContent = document.getElementById('pane-content');
-
-// id -> { show, close } for each open terminal
-const openTabs = new Map();
-
-// the built in tabs, closed ones only hidden and kept closed across visits
-const FIXED_TABS = { services: 'home', files: 'files', status: 'status', chat: 'chat', projects: 'projects', desktop: 'desktop' };
-const CLOSED_TABS_KEY = 'phosphorus-closed-tabs';
-const fixedBtn = (id) => tabbarTabs.querySelector(`.tab-btn[data-tab-id="${id}"]`);
-function closedTabs() {
-  return Object.keys(FIXED_TABS).filter((id) => fixedBtn(id).hidden);
-}
-function saveClosedTabs() {
-  try { localStorage.setItem(CLOSED_TABS_KEY, JSON.stringify(closedTabs())); } catch {}
-}
-function addTabClose(btn, id) {
-  const close = document.createElement('span');
-  close.className = 'tab-close';
-  close.textContent = '×';
-  close.addEventListener('click', (e) => { e.stopPropagation(); closeTab(id); });
-  btn.appendChild(close);
-}
-for (const id in FIXED_TABS) addTabClose(fixedBtn(id), id);
-for (const id of loadJsonSafe(CLOSED_TABS_KEY)) if (FIXED_TABS[id]) fixedBtn(id).hidden = true;
-
-// from: the side the view slides in from, by tab order when not given
-// a closed built in tab reopened by being gone to
-function activateTab(id, from) {
-  // desktop only, every other view kept off screen
-  if (id !== 'desktop') return;
-  if (FIXED_TABS[id] && fixedBtn(id).hidden) {
-    fixedBtn(id).hidden = false;
-    saveClosedTabs();
-  }
-  const btns = [...tabbarTabs.querySelectorAll('.tab-btn')];
-  const prev = btns.findIndex((b) => b.classList.contains('active'));
-  const next = btns.findIndex((b) => b.dataset.tabId === id);
-  btns.forEach((b) => b.classList.toggle('active', b.dataset.tabId === id));
-  document.querySelectorAll('.view').forEach((v) => v.classList.toggle('active', v.id === `view-${id}`));
-  const view = document.getElementById(`view-${id}`);
-  if (view && prev !== -1 && prev !== next) slideIn(view, from || (next > prev ? 'right' : 'left'));
-  moveInk(tabbarTabs, btns[next]);
-  keybarDirty();
-  statusWatch();
-  btns[next]?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
-  openTabs.get(id)?.show();
-  document.dispatchEvent(new CustomEvent('phosphorus-tab', { detail: id }));
-  paintMobileBar();
-}
-
-// a files reload on every visit, however reached
-function showTab(id, from) {
-  activateTab(id, from);
-  if (id === 'files') filesOpen();
-}
-
-function closeTab(id) {
-  if (openTabs.get(id)?.holdClose?.()) return;
-  const btn = tabbarTabs.querySelector(`.tab-btn[data-tab-id="${id}"]`);
-  const view = document.getElementById(`view-${id}`);
-  const wasActive = btn?.classList.contains('active');
-  const at = tabIds().indexOf(id);
-  if (FIXED_TABS[id]) {
-    btn.hidden = true;
-    saveClosedTabs();
-  } else {
-    openTabs.get(id)?.close();
-    btn?.remove();
-    view?.remove();
-    openTabs.delete(id);
-    labelTerms();
-  }
-  // the one before it, else the one now first, else the about page
-  if (wasActive) showTab(tabIds()[Math.max(0, at - 1)] || 'about', 'left');
-  else moveInk(tabbarTabs, tabbarTabs.querySelector('.tab-btn.active'));
-}
-
-function createTabButton(id, label) {
-  const btn = document.createElement('button');
-  btn.className = 'tab-btn';
-  btn.dataset.tabId = id;
-
-  const span = document.createElement('span');
-  span.className = 'tab-label';
-  span.textContent = label;
-  btn.appendChild(span);
-
-  addTabClose(btn, id);
-
-  btn.addEventListener('click', () => activateTab(id));
-  return btn;
-}
-
-// a host's lone terminal by its name, several as (1), (2), ... in tab order
-function labelTerms() {
-  const btns = [...tabbarTabs.querySelectorAll('.tab-btn[data-host]')];
-  for (const btn of btns) {
-    const same = btns.filter((b) => b.dataset.host === btn.dataset.host);
-    btn.querySelector('.tab-label').textContent = same.length > 1
-      ? `${btn.dataset.host} (${same.indexOf(btn) + 1})` : btn.dataset.host;
-  }
-  syncInks();
-}
 
 // xterm only on the first terminal, most visits never opening one
 let xtermLoaded = null;
@@ -1703,12 +1183,10 @@ function startTerminal(view, host, sid, resume, shared = false, login = null) {
       ws.onclose = (e) => {
         if (e.code === TERM_TAKEN) {
           term.write('\r\n\x1b[2m[opened in another tab]\x1b[0m\r\n');
-          forgetTerm(sid);
           return;
         }
         if (e.code === TERM_ENDED || !resume) {
           term.write('\r\n\x1b[2m[connection closed]\x1b[0m\r\n');
-          forgetTerm(sid);
           return;
         }
         retry = setTimeout(connect, delay);
@@ -1723,15 +1201,7 @@ function startTerminal(view, host, sid, resume, shared = false, login = null) {
   return {
     show: () => ready.then(() => { fit?.fit(); term?.focus(); }),
     focus: () => term?.focus(),
-    // readable by phosphorus while shared, never written to
-    get shared() { return shared; },
-    share: (on) => {
-      shared = on;
-      saveTerms(savedTerms().map((t) => (t.sid === sid ? { ...t, shared } : t)));
-      if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'share', on, by: name }));
-    },
     close: () => ready.then(() => {
-      forgetTerm(sid);
       observer?.disconnect();
       clearTimeout(retry);
       if (ws) {
@@ -1745,55 +1215,8 @@ function startTerminal(view, host, sid, resume, shared = false, login = null) {
   };
 }
 
-// open terminals across a reload, per browser tab, like the sessions
-const TERMS_KEY = 'phosphorus-terms';
-function savedTerms() {
-  try { return JSON.parse(sessionStorage.getItem(TERMS_KEY)) || []; } catch { return []; }
-}
-function saveTerms(list) {
-  try { sessionStorage.setItem(TERMS_KEY, JSON.stringify(list)); } catch {}
-}
-function forgetTerm(sid) {
-  saveTerms(savedTerms().filter((t) => t.sid !== sid));
-}
-
 function newSid() {
   return Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-// a new session per click, its id by lowest free number
-// a sid from before a reload: its session rejoined, unfocused
-function openTerminalTab(host, sid, shared = false) {
-  let n = 1;
-  while (openTabs.has(`term-${host}-${n}`)) n++;
-  const id = `term-${host}-${n}`;
-  const btn = createTabButton(id, host);
-  btn.dataset.host = host;
-  tabbarTabs.appendChild(btn);
-  labelTerms();
-  const view = document.createElement('div');
-  view.className = 'view term-view';
-  view.id = `view-${id}`;
-  paneContent.appendChild(view);
-  const resume = !!sid;
-  if (!resume) {
-    sid = newSid();
-    saveTerms([...savedTerms(), { host, sid, shared }]);
-  }
-  openTabs.set(id, startTerminal(view, host, sid, resume, shared));
-  btn.classList.toggle('shared', shared);
-  if (!resume) activateTab(id);
-  tabMenu.hidden = true;
-}
-
-for (const t of savedTerms()) openTerminalTab(t.host, t.sid, !!t.shared);
-
-function toggleShare(id) {
-  const t = openTabs.get(id);
-  if (!t) return;
-  t.share(!t.shared);
-  tabbarTabs.querySelector(`.tab-btn[data-tab-id="${id}"]`)?.classList.toggle('shared', t.shared);
-  keybarDirty();
 }
 
 // files opened in the editor, newest first, for the + menu
@@ -1803,159 +1226,6 @@ function rememberFile(file) {
   const list = loadJsonSafe(RECENT_FILES_KEY).filter((f) => f && codeKey(f) !== codeKey(file));
   try { localStorage.setItem(RECENT_FILES_KEY, JSON.stringify([file, ...list].slice(0, RECENT_FILES_MAX))); } catch {}
 }
-// --- new tab: its title the search, a host's terminal, a page or a recent file
-
-function omniPlaces() {
-  const hosts = [...terminalHosts].sort((a, b) => (b === selfHost) - (a === selfHost) || a.localeCompare(b))
-    .map((h) => ({ name: h, kind: h === selfHost ? 'terminal here' : 'terminal', open: () => openTerminalTab(h) }));
-  const pages = [...Object.entries(FIXED_TABS), ['about', 'about']]
-    .map(([id, label]) => ({ name: label, kind: 'page', open: () => showTab(id) }));
-  const files = loadJsonSafe(RECENT_FILES_KEY).filter((f) => f && f.host && f.path).slice(0, RECENT_FILES_MAX)
-    .map((f) => ({ name: f.label || `${f.host}/${f.path}`, kind: 'recent file', open: () => openCodeTab(f) }));
-  return [...hosts, ...pages, ...files];
-}
-
-// prefix matches ahead of the rest
-function omniMatch(items, q) {
-  q = q.trim().toLowerCase();
-  if (!q) return items;
-  const n = (it) => it.name.toLowerCase();
-  return [...items.filter((it) => n(it).startsWith(q)), ...items.filter((it) => !n(it).startsWith(q) && n(it).includes(q))];
-}
-
-// the one new tab, null when none is open
-let omni = null;
-
-function omniFit(input) {
-  input.style.width = `${(input.value || input.placeholder).length + 1}ch`;
-}
-
-function omniRender() {
-  if (!omni) return;
-  omni.items = omniMatch(omniPlaces(), omni.place.value);
-  omni.sel = Math.min(omni.sel, Math.max(0, omni.items.length - 1));
-  tabMenuTitle.textContent = 'open';
-  tabMenuList.replaceChildren(...omni.items.map((it, i) => {
-    const li = el('li', i === omni.sel ? 'sel' : '', it.name);
-    li.appendChild(el('span', 'omni-kind', it.kind));
-    // focus kept in the title's box
-    li.addEventListener('mousedown', (e) => e.preventDefault());
-    li.addEventListener('click', () => omniChoose(it));
-    return li;
-  }));
-  if (!omni.items.length) tabMenuList.replaceChildren(el('li', 'empty', 'no match'));
-  tabMenu.hidden = false;
-  const r = omni.btn.getBoundingClientRect();
-  tabMenu.style.left = `${Math.max(8, Math.min(r.left, innerWidth - tabMenu.offsetWidth - 8))}px`;
-  tabMenu.style.top = `${r.bottom + 10}px`;
-}
-
-function omniChoose(it) {
-  if (!it) return;
-  const id = omni.id;
-  omni.btn.remove();
-  document.getElementById(`view-${id}`)?.remove();
-  openTabs.delete(id);
-  omni = null;
-  tabMenu.hidden = true;
-  it.open();
-}
-
-function omniKeys(e) {
-  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-    const n = omni.items.length;
-    if (n) omni.sel = (omni.sel + (e.key === 'ArrowDown' ? 1 : -1) + n) % n;
-    omniRender();
-  } else if (e.key === 'Enter' || (e.key === 'Tab' && omni.items.length)) {
-    omniChoose(omni.items[omni.sel]);
-  } else if (e.key === 'Escape') {
-    closeTab(omni.id);
-  } else return;
-  e.preventDefault();
-}
-
-function openOmniTab() {
-  if (omni) {
-    activateTab(omni.id);
-    return;
-  }
-  let n = 1;
-  while (openTabs.has(`new-${n}`)) n++;
-  const id = `new-${n}`;
-  // a div, an input inside a button never focusing in some browsers
-  const btn = el('div', 'tab-btn tab-new');
-  btn.dataset.tabId = id;
-  const place = Object.assign(el('input', 'omni-input'), { placeholder: 'host or page', spellcheck: false, autocomplete: 'off' });
-  btn.append(el('span', 'tab-label', 'new tab'), place);
-  addTabClose(btn, id);
-  // the page's click, which shuts menus, kept off its own
-  btn.addEventListener('click', (e) => { e.stopPropagation(); activateTab(id); });
-  place.addEventListener('keydown', omniKeys);
-  place.addEventListener('focus', omniRender);
-  place.addEventListener('input', () => {
-    omniFit(place);
-    omni.sel = 0;
-    omniRender();
-  });
-  btn.addEventListener('focusout', (e) => { if (!btn.contains(e.relatedTarget)) tabMenu.hidden = true; });
-  omniFit(place);
-  tabbarTabs.appendChild(btn);
-  const view = el('div', 'view new-view');
-  view.id = `view-${id}`;
-  paneContent.appendChild(view);
-  omni = { id, btn, place, items: [], sel: 0 };
-  openTabs.set(id, {
-    show: () => omni?.place.focus(),
-    close: () => { omni = null; tabMenu.hidden = true; },
-  });
-  activateTab(id);
-}
-
-tabAddBtn.addEventListener('click', (e) => {
-  e.stopPropagation();
-  closeMenus();
-  openOmniTab();
-});
-tabMenu.addEventListener('click', (e) => e.stopPropagation());
-// placed under the new tab, the scrolling tab bar never clipping it
-document.body.appendChild(tabMenu);
-document.addEventListener('click', () => closeMenus());
-
-// phones: only the active tab in the bar, a tap on it the list of the rest
-const tabPick = document.getElementById('tab-pick');
-tabbarTabs.addEventListener('click', (e) => {
-  const btn = e.target.closest('.tab-btn');
-  if (!isMobile() || !btn?.classList.contains('active') || btn.classList.contains('tab-brand') || e.target.closest('.tab-close, input')) return;
-  e.stopPropagation();
-  const open = tabPick.hidden;
-  closeMenus();
-  if (!open) return;
-  const list = tabPick.querySelector('ul');
-  list.replaceChildren(...tabIds().map((id) => {
-    const li = el('li', id === btn.dataset.tabId ? 'current' : '', tabbarTabs.querySelector(`.tab-btn[data-tab-id="${id}"] .tab-label`)?.textContent.trim() || id);
-    li.tabIndex = 0;
-    li.addEventListener('click', () => { tabPick.hidden = true; goTab(-1, id); });
-    return li;
-  }));
-  tabPick.hidden = false;
-}, true);
-tabPick.addEventListener('click', (e) => e.stopPropagation());
-
-document.querySelector('.tab-btn[data-tab-id="services"]')
-  .addEventListener('click', () => activateTab('services'));
-document.querySelector('.tab-btn[data-tab-id="about"]')
-  .addEventListener('click', () => activateTab('about'));
-document.querySelector('.tab-btn[data-tab-id="files"]')
-  .addEventListener('click', () => showTab('files'));
-document.querySelector('.tab-btn[data-tab-id="status"]')
-  .addEventListener('click', () => activateTab('status'));
-document.querySelector('.tab-btn[data-tab-id="chat"]')
-  .addEventListener('click', () => activateTab('chat'));
-document.querySelector('.tab-btn[data-tab-id="projects"]')
-  .addEventListener('click', () => activateTab('projects'));
-document.querySelector('.tab-btn[data-tab-id="desktop"]')
-  .addEventListener('click', () => activateTab('desktop'));
-
 // --- files -----------------------------------------------------------------
 
 // hosts at the top, their published directories beneath, every path relative
@@ -1981,20 +1251,6 @@ function icon(name) {
   return svg;
 }
 
-const filesPanesEl = document.getElementById('files-panes');
-const filesPreview = document.getElementById('files-preview');
-const filesMsgEl = document.getElementById('files-msg');
-const xferBarEl = document.getElementById('files-xferbar');
-const filesPaneTpl = document.getElementById('files-pane-tpl');
-const filesActsEl = document.getElementById('files-acts');
-const filesAct = (name) => filesActsEl.querySelector(`[data-act="${name}"]`);
-const filesInput = document.getElementById('files-input');
-
-let filesPanes = [];
-let filesOpened = false;
-let filesHostNames = [];
-let filesActive = null;
-
 // loc is any {host, share}: a pane, a share row, or the pair a transfer holds
 const filesApi = (loc, op, params) => {
   const q = new URLSearchParams({ share: loc.share || '0', ...(params || {}) });
@@ -2005,20 +1261,6 @@ const filesJoin = (a, b) => (a ? `${a}/${b}` : b);
 const filesPath = (host, root, rel) =>
   [host, ...`${root}/${rel || ''}`.split('/')].filter(Boolean).join('/');
 const filesParent = (p) => p.split('/').slice(0, -1).join('/');
-
-// one key per tree node: host alone, share root, or a path under a share
-const fkey = (host, share, rel) => `${host}\n${share}\n${rel}`;
-const fparts = (key) => {
-  const [host, share, ...rel] = key.split('\n');
-  return { host, share, rel: rel.join('\n') };
-};
-
-function filesMsg(text, bad) {
-  filesMsgEl.hidden = !text;
-  filesMsgEl.textContent = text || '';
-  filesMsgEl.classList.toggle('bad', !!bad);
-  if (text) setTimeout(() => { if (filesMsgEl.textContent === text) filesMsgEl.hidden = true; }, 6000);
-}
 
 // JSON from every call, failures included, one place to surface them
 async function filesCall(loc, op, init, params) {
@@ -2044,650 +1286,6 @@ function humanSize(n) {
   let v = n;
   while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
   return `${i ? v.toFixed(1) : v}${u[i]}`;
-}
-
-// ---- panes ----------------------------------------------------------------
-
-// host, share, root, perms and cwd: the working directory, where new folders
-// and blank-space drops land
-function makePane() {
-  const el = filesPaneTpl.content.firstElementChild.cloneNode(true);
-  const pane = {
-    el,
-    host: '',
-    share: '',
-    root: '',
-    perms: '',
-    cwd: '',
-    infos: new Map(),    // host -> {shares, warn}, fetched on first expand
-    dirs: new Map(),     // fkey -> entries, the loaded part of the tree
-    open: new Set(),     // expanded fkeys
-    fetchedAt: new Map(), // fkey -> when its listing landed
-    fetching: new Map(), // fkey -> its listing in flight
-    sel: new Set(),      // fkeys picked for transfer
-    anchor: '',          // where a shift-click range starts
-    flat: [],            // visible entry keys in order, for shift ranges
-  };
-  el.addEventListener('pointerdown', () => setActive(pane));
-  el.addEventListener('focusin', () => { if (filesActive !== pane) setActive(pane); });
-  const tree = el.querySelector('.files-tree');
-  tree.addEventListener('dragover', (e) => dragOver(pane, e));
-  tree.addEventListener('dragleave', (e) => { if (!tree.contains(e.relatedTarget)) dragClear(); });
-  tree.addEventListener('drop', (e) => dragDrop(pane, e));
-  return pane;
-}
-
-// a snapshot, so a transfer keeps its target when the working directory moves
-const workLoc = (pane) => ({ host: pane.host, share: pane.share, root: pane.root, perms: pane.perms });
-
-// the toolbar acts on whichever pane was last touched
-function setActive(pane) {
-  filesActive = pane;
-  keybarDirty();
-  for (const p of filesPanes) p.el.classList.toggle('active', p === pane);
-  actsSync();
-}
-
-function actsSync() {
-  const pane = filesActive;
-  filesAct('mkdir').hidden = !pane || !may(pane, 'w');
-  filesAct('mkdir').title = pane && pane.host ? `new folder in ${filesPath(pane.host, pane.root, pane.cwd)}` : 'new folder';
-}
-
-for (const name of ['mkdir', 'upload', 'refresh', 'split', 'view']) filesAct(name).appendChild(icon(name));
-filesAct('mkdir').addEventListener('click', () => paneMkdir(filesActive));
-filesAct('upload').addEventListener('click', () => uploadAsk());
-filesAct('refresh').addEventListener('click', () => { for (const pane of filesPanes) paneReload(pane); });
-filesAct('split').addEventListener('click', () => filesSetSplit(!filesSplit()));
-filesAct('view').addEventListener('click', () => {
-  filesSetView(filesPreview.hidden);
-  // opened on the highlighted file, not an empty view
-  filesActive?.el.querySelector('.files-row.sel')?.fileActs?.follow?.();
-});
-
-// picked in the upload dialog, used once the file chooser answers
-let uploadDest = null;
-filesInput.addEventListener('change', () => {
-  if (uploadDest) uploadTo(uploadDest.loc, uploadDest.dir, filesInput.files);
-  filesInput.value = '';
-});
-
-// any writable share on any host, and a folder inside it, one not there yet
-// made by the first write
-async function uploadAsk() {
-  const pane = filesActive;
-  await Promise.all(filesHostNames.filter((m) => !pane.infos.has(m)).map((m) => loadHost(pane, m)));
-  const locs = filesHostNames.flatMap((m) => pane.infos.get(m).shares).filter((l) => may(l, 'w'));
-  if (!locs.length) { filesMsg('no published directory allows uploads', true); return; }
-  const at = locs.findIndex((l) => l.host === pane.host && l.share === pane.share);
-  const pick = await filesAsk({
-    title: 'upload',
-    message: 'where the files go, or skip this and drag them from your computer onto any folder',
-    where: locs,
-    whereAt: Math.max(at, 0),
-    value: at === -1 ? '' : pane.cwd,
-    actionLabel: 'choose files',
-  });
-  if (!pick) return;
-  uploadDest = pick;
-  filesInput.click();
-}
-
-// ---- drag and drop --------------------------------------------------------
-
-let filesDrag = null;   // rows in flight: {pane, keys}
-let dragMark = null;    // the row, or tree, lit up as the target
-let dragExpand = null;  // unfolds a closed folder held under the pointer
-const DRAG_EXPAND_MS = 500;
-const dragHint = document.createElement('div');
-dragHint.className = 'files-drag-hint';
-dragHint.hidden = true;
-document.body.appendChild(dragHint);
-
-// the selection if the row is part of it, the row alone otherwise
-function dragStart(pane, key, e) {
-  filesDrag = { pane, keys: pane.sel.has(key) ? [...pane.sel] : [key] };
-  e.currentTarget.addEventListener('dragend', dragEnd, { once: true });
-  e.dataTransfer.effectAllowed = 'copyMove';
-  e.dataTransfer.setData('text/plain', filesDrag.keys.map((k) => fparts(k).rel).join('\n'));
-}
-
-function dragClear() {
-  if (dragMark) dragMark.classList.remove('drop-ok', 'drop-no');
-  dragMark = null;
-  dragHint.hidden = true;
-  clearTimeout(dragExpand);
-}
-
-// on the row itself too: the tree redrawn on unfold, a detached row's
-// dragend never reaching the document
-const dragEnd = () => { filesDrag = null; dragClear(); };
-document.addEventListener('dragend', dragEnd);
-// a file let go anywhere else, otherwise opened by the browser in place of the frontend
-document.addEventListener('dragover', (e) => {
-  if (!e.defaultPrevented && [...e.dataTransfer.types].includes('Files')) {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'none';
-  }
-});
-document.addEventListener('drop', (e) => { if ([...e.dataTransfer.types].includes('Files')) e.preventDefault(); });
-
-// a folder row, a file row's folder, or blank space as the working directory
-function dropTarget(pane, e) {
-  const li = e.target.closest('li');
-  if (li) return li.dropAt ? { ...li.dropAt, mark: li } : null;
-  return pane.share ? { loc: workLoc(pane), rel: pane.cwd, mark: pane.el.querySelector('.files-tree') } : null;
-}
-
-// what letting go here would do, or why it can't, a move inside one share
-// only, a copy for anything crossing shares or held with ctrl
-function dropPlan(t, e) {
-  const where = filesPath(t.loc.host, t.loc.root, t.rel);
-  if (!may(t.loc, 'w')) return { bad: `${where} is read-only` };
-  if (!filesDrag) return { say: `upload to ${where}` };
-  const items = filesDrag.keys.map(fparts);
-  const same = (k) => k.host === t.loc.host && k.share === t.loc.share;
-  if (items.some((k) => same(k) && `${t.rel}/`.startsWith(`${k.rel}/`))) return { bad: "can't drop a folder into itself" };
-  if (items.every((k) => same(k) && filesParent(k.rel) === t.rel)) return { bad: 'already here' };
-  const move = items.every(same) && !(e.ctrlKey || e.metaKey);
-  return { say: `${move ? 'move' : 'copy'} ${items.length > 1 ? `${items.length} items ` : ''}to ${where}`, move, items };
-}
-
-function dragOver(pane, e) {
-  if (!filesDrag && ![...e.dataTransfer.types].includes('Files')) return;
-  const t = dropTarget(pane, e);
-  if (!t) {
-    // a host row taking no drop, but still unfolding under a held file
-    const li = e.target.closest('li');
-    if (li !== dragMark) {
-      dragClear();
-      dragMark = li;
-      if (li?.expandOnDrag) dragExpand = setTimeout(li.expandOnDrag, DRAG_EXPAND_MS);
-    }
-    return;
-  }
-  const plan = dropPlan(t, e);
-  if (!plan.bad) {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = plan.move ? 'move' : 'copy';
-  }
-  if (dragMark !== t.mark) {
-    dragClear();
-    dragMark = t.mark;
-    if (t.mark.expandOnDrag) dragExpand = setTimeout(t.mark.expandOnDrag, DRAG_EXPAND_MS);
-  }
-  dragMark.classList.toggle('drop-ok', !plan.bad);
-  dragMark.classList.toggle('drop-no', !!plan.bad);
-  dragHint.textContent = plan.bad || plan.say;
-  dragHint.classList.toggle('bad', !!plan.bad);
-  dragHint.hidden = false;
-  dragHint.style.transform = `translate(${e.clientX + 14}px, ${e.clientY + 18}px)`;
-}
-
-function dragDrop(pane, e) {
-  e.preventDefault();
-  const t = dropTarget(pane, e);
-  const plan = t && dropPlan(t, e);
-  const drag = filesDrag;
-  const files = e.dataTransfer.files; // gone once this handler returns
-  filesDrag = null;
-  dragClear();
-  if (!plan || plan.bad) return;
-  if (!drag) uploadTo(t.loc, t.rel, files);
-  else if (plan.move) moveItems(plan.items, t.loc, t.rel);
-  else copyItems(drag.pane, plan.items, t.loc, t.rel);
-}
-
-// an unreachable host still given a node, with the error as its note
-async function loadHost(pane, host) {
-  try {
-    const info = await filesCall({ host }, 'info');
-    pane.infos.set(host, {
-      shares: info.shares.map((sh) => ({ host, share: sh.id, root: sh.label, perms: sh.perms })),
-      warn: !info.enabled
-        ? `no files directory, set [files] dir in ${host}'s config/phosphorus.ini`
-        : info.wantDir ? `phosphorus.ini now says ${info.wantDir}, rebuilding to mount it` : '',
-    });
-  } catch (err) {
-    pane.infos.set(host, { shares: [], warn: err.message });
-  }
-}
-
-const shareOf = (pane, host, share) =>
-  ((pane.infos.get(host) || {}).shares || []).find((s) => s.share === share);
-
-// true when the listing differs from the one held
-async function paneFetch(pane, loc, dir) {
-  const key = fkey(loc.host, loc.share, dir);
-  const body = await filesCall(loc, 'list', undefined, { path: dir });
-  const changed = JSON.stringify(pane.dirs.get(key)) !== JSON.stringify(body.entries);
-  pane.dirs.set(key, body.entries);
-  pane.fetchedAt.set(key, Date.now());
-  if (body.truncated) filesMsg(`${filesPath(loc.host, loc.root, dir)} has more entries than shown`, true);
-  return changed;
-}
-
-// one listing in flight a folder, a hover's head start shared with its click
-function paneList(pane, loc, dir) {
-  const key = fkey(loc.host, loc.share, dir);
-  if (!pane.fetching.has(key)) pane.fetching.set(key, paneFetch(pane, loc, dir).finally(() => pane.fetching.delete(key)));
-  return pane.fetching.get(key);
-}
-
-// fetched this recently: shown as held, nothing asked again
-const HELD_MS = 5000;
-const heldFresh = (pane, key) => pane.dirs.has(key) && Date.now() - (pane.fetchedAt.get(key) || 0) < HELD_MS;
-
-// a closed folder's listing fetched while the pointer rests on it
-const HOVER_MS = 60;
-function prefetchOnHover(li, pane, loc, rel) {
-  let timer = null;
-  li.addEventListener('pointerenter', () => {
-    if (pane.open.has(fkey(loc.host, loc.share, rel)) || heldFresh(pane, fkey(loc.host, loc.share, rel))) return;
-    timer = setTimeout(() => paneList(pane, loc, rel).catch(() => {}), HOVER_MS);
-  });
-  li.addEventListener('pointerleave', () => clearTimeout(timer));
-}
-
-const isWork = (pane, loc, rel) => pane.host === loc.host && pane.share === loc.share && pane.cwd === rel;
-
-function setWork(pane, loc, rel) {
-  Object.assign(pane, { host: loc.host, share: loc.share, root: loc.root, perms: loc.perms, cwd: rel });
-}
-
-// a pane's starting point: the host unfolded, its first share as the working one
-async function paneHome(pane, host) {
-  pane.open.add(fkey(host, '', ''));
-  if (!pane.infos.has(host)) await loadHost(pane, host);
-  const loc = pane.infos.get(host).shares[0];
-  if (loc) {
-    setWork(pane, loc, '');
-    pane.open.add(fkey(host, loc.share, ''));
-    await paneFetch(pane, loc, '').catch((err) => filesMsg(`${host}: ${err.message}`, true));
-  } else setWork(pane, { host, share: '', root: '', perms: '' }, '');
-  paneRender(pane);
-}
-
-// everything unfolded fetched again over what's shown, whatever vanished folded away
-async function paneReload(pane) {
-  const opened = [...pane.open].map(fparts);
-  const hosts = new Set(opened.map((k) => k.host).filter((m) => filesHostNames.includes(m)));
-  await Promise.all([...hosts].map((m) => loadHost(pane, m)));
-  await Promise.all(opened.filter((k) => k.share).map(async (k) => {
-    const loc = shareOf(pane, k.host, k.share);
-    try {
-      if (!loc) throw new Error('gone');
-      await paneFetch(pane, loc, k.rel);
-    } catch { pane.open.delete(fkey(k.host, k.share, k.rel)); }
-  }));
-  const here = shareOf(pane, pane.host, pane.share);
-  pane.perms = here ? here.perms : '';
-  paneRender(pane);
-}
-
-// unfolded at once, from what's held or a loading row, the fetch drawn as it lands
-async function toggleOpen(pane, key, load) {
-  pane.flip = key;
-  if (pane.open.has(key)) { pane.open.delete(key); paneRender(pane); return; }
-  pane.open.add(key);
-  paneRender(pane);
-  try {
-    if (await load()) paneRender(pane);
-  } catch (err) {
-    pane.open.delete(key);
-    filesMsg(err.message, true);
-    paneRender(pane);
-  }
-}
-
-// a held listing shown first, fetched again behind it unless just fetched,
-// drawn again only when it changed
-const toggleDir = (pane, loc, rel) => toggleOpen(pane, fkey(loc.host, loc.share, rel),
-  () => (heldFresh(pane, fkey(loc.host, loc.share, rel)) ? false : paneList(pane, loc, rel)));
-
-// ---- tree -----------------------------------------------------------------
-
-// rwd with a dash for whatever is missing: rw-, -wd, r-d
-const permMask = (perms) => 'rwd'.split('').map((c) => ((perms || '').includes(c) ? c : '-')).join('');
-
-function noteRow(text, depth, cls) {
-  const li = document.createElement('li');
-  li.className = cls || 'empty';
-  li.style.setProperty('--depth', depth);
-  li.classList.toggle('guided', depth > 1);
-  li.textContent = text;
-  return li;
-}
-
-// > in the gutter of a row that can unfold, shown on hover, the one just
-// toggled born in its old state then turned, as the graph's toggle
-function chevron(li, pane, key, expandable) {
-  if (!expandable) return;
-  li.classList.add('expandable');
-  const open = pane.open.has(key);
-  const c = document.createElement('span');
-  c.className = 'files-chev';
-  c.appendChild(chevronIcon());
-  c.classList.toggle('open', pane.flip === key ? !open : open);
-  if (pane.flip === key) pane.flipEl = c;
-  li.prepend(c);
-}
-
-// icon and label, the part every row shares
-function rowBase(depth, iconName, text) {
-  const li = document.createElement('li');
-  li.className = 'files-row';
-  li.style.setProperty('--depth', depth);
-  li.classList.toggle('guided', depth > 1);
-  li.tabIndex = 0;
-  const name = document.createElement('span');
-  name.className = 'files-name';
-  name.appendChild(icon(iconName));
-  const label = document.createElement('span');
-  label.textContent = text;
-  name.appendChild(label);
-  li.append(name);
-  return li;
-}
-
-function paneRender(pane) {
-  if (pane === filesActive) actsSync();
-  // the card's title: where new folders and blank-space drops land
-  pane.el.dataset.title = pane.host ? filesPath(pane.host, pane.root, pane.cwd) : 'files';
-  pane.flat = []; // rebuilt as the walk goes, so shift ranges match the screen
-  const rows = [];
-  for (const host of filesHostNames) {
-    const mk = fkey(host, '', '');
-    const open = pane.open.has(mk);
-    const load = () => (pane.infos.has(host) ? null : loadHost(pane, host));
-    const li = rowBase(0, 'host', host);
-    li.dataset.fk = mk;
-    chevron(li, pane, mk, true);
-    if (!open) li.expandOnDrag = () => toggleOpen(pane, mk, load);
-    li.classList.add('host');
-    li.querySelector('.files-name > span').classList.toggle('is-self', host === selfHost);
-    li.addEventListener('click', () => toggleOpen(pane, mk, load));
-    rows.push(li);
-    const info = open && pane.infos.get(host);
-    if (!info) continue;
-    if (info.warn) rows.push(noteRow(info.warn, 1, 'files-warn'));
-    for (const loc of info.shares) {
-      const shown = shareRows(pane, loc);
-      if (pane.flip === mk) shown[0].classList.add('unfold');
-      rows.push(...shown);
-    }
-  }
-  const tree = pane.el.querySelector('.files-tree');
-  const focused = tree.contains(document.activeElement) ? document.activeElement.dataset.fk : null;
-  tree.replaceChildren(...rows);
-  if (focused != null) rows.find((li) => li.dataset.fk === focused)?.focus({ preventScroll: true });
-  keybarDirty();
-  // styled once in the old state, now on the page, then turned
-  if (pane.flipEl) {
-    getComputedStyle(pane.flipEl.firstChild).transform;
-    pane.flipEl.classList.toggle('open');
-  }
-  pane.flip = pane.flipEl = null;
-}
-
-// a published directory, its permissions beside it, then whatever is unfolded
-function shareRows(pane, loc) {
-  const key = fkey(loc.host, loc.share, '');
-  const open = pane.open.has(key);
-  const li = rowBase(1, 'folder', loc.root);
-  li.dataset.fk = key;
-  const listed = pane.dirs.get(key);
-  chevron(li, pane, key, !listed || listed.length > 0);
-  if (!open) li.expandOnDrag = () => toggleDir(pane, loc, '');
-  prefetchOnHover(li, pane, loc, '');
-  const perms = document.createElement('span');
-  perms.className = 'files-perms';
-  perms.title = 'what this directory allows: read, write, delete';
-  perms.textContent = permMask(loc.perms);
-  li.querySelector('.files-name').appendChild(perms);
-  li.dropAt = { loc, rel: '' };
-  li.addEventListener('click', () => {
-    const again = open && isWork(pane, loc, '');
-    setWork(pane, loc, '');
-    if (open && !again) paneRender(pane); else toggleDir(pane, loc, '');
-  });
-  if (!open) return [li];
-  if (!pane.dirs.has(key)) return [li, noteRow('loading', 2)];
-  const entries = entryRows(pane, loc, '', 2);
-  if (entries.length) return [li, ...entries];
-  const empty = noteRow(may(loc, 'w') ? 'drop files here' : 'empty', 2);
-  empty.dropAt = li.dropAt;
-  return [li, empty];
-}
-
-function entryRows(pane, loc, dir, depth) {
-  const out = [];
-  // the folder just opened: its rows ease in rather than appear
-  const fresh = pane.flip === fkey(loc.host, loc.share, dir);
-  for (const e of pane.dirs.get(fkey(loc.host, loc.share, dir)) || []) {
-    const rel = filesJoin(dir, e.name);
-    pane.flat.push(fkey(loc.host, loc.share, rel));
-    const row = entryRow(pane, loc, e, rel, depth);
-    if (fresh) row.classList.add('unfold');
-    out.push(row);
-    if (!e.dir || !pane.open.has(fkey(loc.host, loc.share, rel))) continue;
-    if (pane.dirs.has(fkey(loc.host, loc.share, rel))) out.push(...entryRows(pane, loc, rel, depth + 1));
-    else out.push(noteRow('loading', depth + 1));
-  }
-  return out;
-}
-
-// plain click: selection replaced, ctrl/cmd: one added, shift: the run from
-// the anchor, in on-screen row order
-function selectRow(pane, key, e) {
-  if (e.shiftKey && pane.anchor) {
-    const a = pane.flat.indexOf(pane.anchor);
-    const b = pane.flat.indexOf(key);
-    if (a !== -1 && b !== -1) {
-      if (!(e.ctrlKey || e.metaKey)) pane.sel.clear();
-      for (const p of pane.flat.slice(Math.min(a, b), Math.max(a, b) + 1)) pane.sel.add(p);
-    }
-  } else if (e.ctrlKey || e.metaKey) {
-    if (pane.sel.has(key)) pane.sel.delete(key); else pane.sel.add(key);
-    pane.anchor = key;
-  } else {
-    pane.sel.clear();
-    pane.sel.add(key);
-    pane.anchor = key;
-  }
-  paintSel(pane);
-}
-
-// the marks moved in place, the tree itself never drawn again for a click
-function paintSel(pane) {
-  for (const li of pane.el.querySelectorAll('.files-tree > .files-row')) li.classList.toggle('sel', pane.sel.has(li.dataset.fk));
-  keybarDirty();
-}
-
-function entryRow(pane, loc, entry, rel, depth) {
-  const key = fkey(loc.host, loc.share, rel);
-  const open = pane.open.has(key);
-  const li = rowBase(depth, entry.dir ? 'folder' : 'file', entry.name);
-  li.dataset.fk = key;
-  const listed = pane.dirs.get(key);
-  chevron(li, pane, key, entry.dir && (listed ? listed.length > 0 : !entry.empty));
-  if (entry.dir && !open) li.expandOnDrag = () => toggleDir(pane, loc, rel);
-  if (entry.dir && !entry.empty) prefetchOnHover(li, pane, loc, rel);
-  if (pane.sel.has(key)) li.classList.add('sel');
-  li.draggable = true;
-  li.addEventListener('dragstart', (e) => dragStart(pane, key, e));
-  li.dropAt = { loc, rel: entry.dir ? rel : filesParent(rel) };
-
-  const meta = document.createElement('span');
-  meta.className = 'files-meta';
-  meta.textContent = entry.dir ? '' : humanSize(entry.size);
-
-  const acts = document.createElement('span');
-  acts.className = 'files-rowacts';
-  if (!entry.dir) {
-    const dl = document.createElement('a');
-    dl.href = filesApi(loc, 'download', { path: rel });
-    dl.title = 'download';
-    dl.appendChild(icon('download'));
-    acts.appendChild(dl);
-  }
-  if (may(loc, 'w')) {
-    const ren = document.createElement('button');
-    ren.type = 'button';
-    ren.title = 'rename';
-    ren.appendChild(icon('rename'));
-    ren.addEventListener('click', (e) => { e.stopPropagation(); paneRename(pane, loc, rel, entry.name); });
-    acts.appendChild(ren);
-  }
-  if (may(loc, 'd')) {
-    const del = document.createElement('button');
-    del.type = 'button';
-    del.className = 'bad';
-    del.title = 'delete';
-    del.appendChild(icon('trash'));
-    del.addEventListener('click', (e) => { e.stopPropagation(); paneDelete(pane, loc, rel, entry); });
-    acts.appendChild(del);
-  }
-
-  // plain click on a folder: working directory, unfolded too, the same click
-  // on the open working folder: folded
-  li.addEventListener('click', (e) => {
-    if (e.target.closest('.files-rowacts')) return;
-    const again = open && isWork(pane, loc, rel);
-    selectRow(pane, key, e);
-    if (!entry.dir || e.shiftKey || e.ctrlKey || e.metaKey) return;
-    setWork(pane, loc, rel);
-    if (!open || again) toggleDir(pane, loc, rel); else paneRender(pane);
-  });
-  // a file: code in the editor, the rest previewed
-  const edit = !entry.dir && codeLang(rel)
-    ? () => openCodeTab({ host: loc.host, share: loc.share, path: rel, label: fileLabel(loc.host, loc.root, rel) }) : null;
-  li.addEventListener('dblclick', (e) => {
-    if (entry.dir || e.target.closest('.files-rowacts')) return;
-    if (isCode(rel)) edit(); else filesShow(loc, rel);
-  });
-  if (!entry.dir) li.addEventListener('click', () => viewFollow(loc, rel));
-
-  // what the key row offers for this row while it has focus
-  li.fileActs = {
-    dir: entry.dir,
-    follow: entry.dir ? null : () => viewFollow(loc, rel),
-    edit,
-    download: entry.dir ? null : () => acts.querySelector('a').click(),
-    rename: may(loc, 'w') ? () => paneRename(pane, loc, rel, entry.name) : null,
-    del: may(loc, 'd') ? () => paneDelete(pane, loc, rel, entry) : null,
-  };
-  li.append(meta, acts);
-  return li;
-}
-
-// ---- actions --------------------------------------------------------------
-
-// fresh for every pane holding one of these directories
-async function refreshShown(loc, dirs) {
-  for (const pane of filesPanes) {
-    const shown = [...new Set(dirs)].filter((d) => pane.dirs.has(fkey(loc.host, loc.share, d)));
-    if (!shown.length) continue;
-    try { await Promise.all(shown.map((d) => paneFetch(pane, loc, d))); } catch (err) { filesMsg(err.message, true); }
-    paneRender(pane);
-  }
-}
-
-async function paneMkdir(pane) {
-  const loc = workLoc(pane);
-  const dir = pane.cwd;
-  const name = await filesAsk({
-    title: 'new folder',
-    message: `in ${filesPath(loc.host, loc.root, dir)}`,
-    value: '',
-    actionLabel: 'create',
-  });
-  if (!name) return;
-  try {
-    await filesCall(loc, 'mkdir', jsonPost({ path: filesJoin(dir, name) }));
-    await refreshShown(loc, [dir]);
-  } catch (err) { filesMsg(err.message, true); }
-}
-
-async function paneRename(pane, loc, rel, current) {
-  const name = await filesAsk({
-    title: 'rename',
-    message: filesPath(loc.host, loc.root, rel),
-    value: current,
-    actionLabel: 'rename',
-  });
-  if (!name || name === current) return;
-  try {
-    await filesCall(loc, 'rename', jsonPost({ from: rel, to: filesJoin(filesParent(rel), name) }));
-    followMove(loc, rel, filesJoin(filesParent(rel), name));
-    await refreshShown(loc, [filesParent(rel)]);
-  } catch (err) { filesMsg(err.message, true); }
-}
-
-async function paneDelete(pane, loc, rel, entry) {
-  const what = entry.dir ? `${entry.name} and everything in it` : entry.name;
-  const ok = await filesAsk({
-    title: 'delete',
-    message: `delete ${what} from ${filesPath(loc.host, loc.root, filesParent(rel))}? this cannot be undone.`,
-    actionLabel: 'delete',
-    danger: true,
-  });
-  if (!ok) return;
-  try {
-    await filesCall(loc, 'delete', jsonPost({ path: rel }));
-    followMove(loc, rel, filesParent(rel), true);
-    const v = filesViewing;
-    if (v && v.loc.host === loc.host && v.loc.share === loc.share && `${v.rel}/`.startsWith(`${rel}/`)) viewEmpty();
-    await refreshShown(loc, [filesParent(rel)]);
-  } catch (err) { filesMsg(err.message, true); }
-}
-
-// a working directory inside a moved folder following it, inside a deleted
-// one, back to where that stood
-function followMove(loc, from, to, gone) {
-  for (const pane of filesPanes) {
-    pane.sel.delete(fkey(loc.host, loc.share, from));
-    if (pane.host !== loc.host || pane.share !== loc.share) continue;
-    if (!`${pane.cwd}/`.startsWith(`${from}/`)) continue;
-    pane.cwd = gone ? to : to + pane.cwd.slice(from.length);
-  }
-}
-
-// within one share, a rename without a byte through here
-async function moveItems(items, loc, dir) {
-  let failed = 0;
-  for (const k of items) {
-    const name = k.rel.split('/').pop();
-    if (filesParent(k.rel) === dir) continue;
-    try {
-      await filesCall(loc, 'rename', jsonPost({ from: k.rel, to: filesJoin(dir, name) }));
-      followMove(loc, k.rel, filesJoin(dir, name));
-    } catch (err) { failed += 1; filesMsg(`${name}: ${err.message}`, true); }
-  }
-  if (!failed) filesMsg(`moved ${items.length} to ${filesPath(loc.host, loc.root, dir)}`);
-  await refreshShown(loc, [dir, ...items.map((k) => filesParent(k.rel))]);
-}
-
-// raw body, not multipart, the target name in the query string
-async function uploadTo(loc, dir, fileList) {
-  const list = [...fileList];
-  if (!list.length) return;
-  if (!may(loc, 'w')) { filesMsg(`${filesPath(loc.host, loc.root, dir)} is read-only`, true); return; }
-  const total = list.reduce((n, f) => n + f.size, 0);
-  let done = 0;
-  let failed = 0;
-  for (let i = 0; i < list.length; i++) {
-    const f = list[i];
-    try {
-      await putFile(loc, filesJoin(dir, f.name), f, (sent) => {
-        xferShow(`upload -> ${loc.host}`, i + 1, list.length, f.name, done + sent, total);
-      });
-      done += f.size;
-    } catch (err) { failed += 1; filesMsg(`${f.name}: ${err.message}`, true); }
-  }
-  xferHide();
-  if (!failed) filesMsg(`uploaded ${list.length} to ${filesPath(loc.host, loc.root, dir)}`);
-  await refreshShown(loc, [dir]);
 }
 
 // ---- transfer -------------------------------------------------------------
@@ -2779,277 +1377,6 @@ async function copyTree(from, fromPath, to, toPath, tick) {
   }
 }
 
-// a pick possibly spanning shares, so each item carrying its own
-async function copyItems(from, items, to, dir) {
-  let failed = 0;
-  for (let i = 0; i < items.length; i++) {
-    const { host, share, rel } = items[i];
-    const name = rel.split('/').pop();
-    if (host === to.host && share === to.share && filesParent(rel) === dir) {
-      failed += 1;
-      filesMsg(`${name} is already in ${filesPath(to.host, to.root, dir)}`, true);
-      continue;
-    }
-    const src = { host, share };
-    const dst = filesJoin(dir, name);
-    const entry = (from.dirs.get(fkey(host, share, filesParent(rel))) || []).find((e) => e.name === name);
-    const label = `${host} -> ${to.host}`;
-    try {
-      if (entry && entry.dir) {
-        await copyTree(src, rel, to, dst, (f, child) => xferShow(label, i + 1, items.length, child || name, f, 1));
-      } else {
-        await copyFile(src, rel, to, dst, (f) => xferShow(label, i + 1, items.length, name, f, 1));
-      }
-    } catch (err) { failed += 1; filesMsg(`${name}: ${err.message}`, true); }
-  }
-  xferHide();
-  if (!failed) filesMsg(`copied ${items.length} to ${filesPath(to.host, to.root, dir)}`);
-  from.sel.clear();
-  paneRender(from);
-  await refreshShown(to, [dir]);
-}
-
-// ---- progress bar ---------------------------------------------------------
-
-// cells at 0.7em, 30 of them about as wide as the 22 at full height
-const XFER_CELLS = 30;
-
-// block cells rather than a styled div, to sit with the rest of the UI
-function xferShow(label, n, of, name, got, total) {
-  const frac = total ? Math.max(0, Math.min(1, got / total)) : 0;
-  const full = Math.round(frac * XFER_CELLS);
-  xferBarEl.hidden = false;
-  xferBarEl.querySelector('.files-xfer-what').textContent = `${label}  ${n}/${of}  ${name}`;
-  xferBarEl.querySelector('.files-xfer-cells').textContent = `${'█'.repeat(full)}${'░'.repeat(XFER_CELLS - full)}`;
-  xferBarEl.querySelector('.files-xfer-pct').textContent = `${String(Math.round(frac * 100)).padStart(3)}%`;
-}
-
-function xferHide() { xferBarEl.hidden = true; }
-
-// ---- view -----------------------------------------------------------------
-// right of the panes, or their bottom half in split mode
-
-let filesViewing = null; // {loc, rel, key} last opened
-
-function filesSetView(on) {
-  keybarDirty();
-  filesPreview.hidden = !on;
-  filesAct('view').classList.toggle('on', on);
-  if (on && !filesViewing) viewEmpty();
-}
-
-// open, the view following the highlighted file
-function viewFollow(loc, rel) {
-  if (filesPreview.hidden || filesViewing?.key === fkey(loc.host, loc.share, rel)) return;
-  filesShow(loc, rel);
-}
-filesPanesEl.addEventListener('focusin', (e) => e.target.fileActs?.follow?.());
-
-function viewHead(text) {
-  const head = document.createElement('div');
-  head.className = 'files-preview-head';
-  head.textContent = text;
-  const close = document.createElement('button');
-  close.type = 'button';
-  close.title = 'close';
-  close.textContent = '×';
-  close.addEventListener('click', () => filesSetView(false));
-  head.appendChild(close);
-  return head;
-}
-
-function viewEmpty() {
-  filesViewing = null;
-  const note = document.createElement('div');
-  note.className = 'files-note';
-  note.textContent = 'highlight a file to view it';
-  filesPreview.replaceChildren(viewHead(''), note);
-}
-
-// files last read, key -> body, drawn at once on a revisit and handed to an editor
-const filesReads = new Map();
-const FILES_READS_MAX = 24;
-function keepRead(key, body) {
-  filesReads.delete(key);
-  filesReads.set(key, body);
-  if (filesReads.size > FILES_READS_MAX) filesReads.delete(filesReads.keys().next().value);
-}
-
-// text inline, an image as an image, anything else a download; a held read
-// shown first, fetched again behind it
-async function filesShow(loc, rel) {
-  const mine = { loc, rel, key: fkey(loc.host, loc.share, rel) };
-  filesViewing = mine;
-  filesSetView(true);
-  const held = filesReads.get(mine.key);
-  if (held) viewBody(loc, rel, held);
-  else filesPreview.replaceChildren(viewHead(filesPath(loc.host, loc.root, rel)), document.createTextNode('loading...'));
-  try {
-    const body = await filesCall(loc, 'read', undefined, { path: rel });
-    if (filesViewing !== mine) return; // a later click winning
-    keepRead(mine.key, body);
-    if (held && held.text === body.text && held.size === body.size) return;
-    viewBody(loc, rel, body);
-  } catch (err) {
-    if (filesViewing === mine) filesPreview.replaceChildren(viewHead(filesPath(loc.host, loc.root, rel)), document.createTextNode(err.message));
-  }
-}
-
-function viewBody(loc, rel, body) {
-  const head = viewHead(filesPath(loc.host, loc.root, rel));
-  const src = filesApi(loc, 'download', { inline: '1', path: rel });
-  let inner;
-  if (body.text !== undefined) {
-    inner = document.createElement('pre');
-    inner.className = 'files-text';
-    inner.textContent = body.text;
-  } else if (/\.(png|jpe?g|gif|webp|svg)$/i.test(rel)) {
-    inner = document.createElement('img');
-    inner.className = 'files-img';
-    inner.src = src;
-    inner.alt = rel;
-  } else {
-    inner = document.createElement('div');
-    inner.className = 'files-note';
-    inner.textContent = body.tooBig
-      ? `${humanSize(body.size)}, too large to preview, download it instead`
-      : 'no preview for this file type';
-  }
-  if (body.text !== undefined && codeLang(rel)) {
-    const open = Object.assign(document.createElement('button'), { type: 'button', className: 'files-edit', textContent: 'edit', title: 'open in the code editor (o)' });
-    open.addEventListener('click', () => openCodeTab({ host: loc.host, share: loc.share, path: rel, label: fileLabel(loc.host, loc.root, rel) }));
-    head.insertBefore(open, head.lastChild);
-    const f = { host: loc.host, share: loc.share, path: rel, label: fileLabel(loc.host, loc.root, rel) };
-    const share = Object.assign(document.createElement('button'), { type: 'button', className: 'files-edit', textContent: 'share', title: 'invite someone to work on it with you' });
-    share.addEventListener('click', () => shareMenu(share, f, (said) => { share.textContent = said; setTimeout(() => { share.textContent = 'share'; }, 3000); }));
-    head.insertBefore(share, head.lastChild);
-  }
-  filesPreview.replaceChildren(head, inner);
-}
-
-// ---- ask ------------------------------------------------------------------
-
-// rename, new folder, delete and upload asked here, not through prompt() and
-// confirm(), both outside the page and unstyleable
-
-const filesModal = document.getElementById('files-modal');
-const filesAskTitle = document.getElementById('files-ask-title');
-const filesAskText = document.getElementById('files-ask-text');
-const filesAskWhere = document.getElementById('files-ask-where');
-const filesAskInput = document.getElementById('files-ask-input');
-const filesAskDirs = document.getElementById('files-ask-dirs');
-const filesAskGo = document.getElementById('files-ask-go');
-const filesAskCancel = document.getElementById('files-ask-cancel');
-const filesAskClose = document.getElementById('files-ask-close');
-
-// the open dialog's answer, settled by whichever button or key ends it
-let filesAskSettle = null;
-let filesAskLocs = null;
-
-function filesAskEnd(answer) {
-  filesModal.hidden = true;
-  const settle = filesAskSettle;
-  filesAskSettle = null;
-  if (settle) settle(answer);
-}
-
-// resolves to the typed name, true for a bare confirm, {loc, dir} when given
-// shares to pick from, null when dismissed
-function filesAsk({ title, message, value, actionLabel, danger, where, whereAt }) {
-  filesAskEnd(null); // whatever was open losing
-  filesAskTitle.textContent = title;
-  filesAskText.textContent = message;
-  filesAskGo.textContent = actionLabel || 'ok';
-  filesAskGo.classList.toggle('danger', !!danger);
-  filesAskGo.classList.toggle('primary', !danger);
-  filesAskLocs = where || null;
-  filesAskWhere.hidden = !where;
-  filesAskWhere.replaceChildren(...(where || []).map((l, i) =>
-    new Option(`${filesPath(l.host, l.root, '')}  ${permMask(l.perms)}`, i)));
-  if (where) filesAskWhere.selectedIndex = whereAt;
-  whereHints();
-  filesAskInput.placeholder = where ? 'folder inside it, blank for the top' : '';
-  const asksName = value !== undefined;
-  filesAskInput.hidden = !asksName;
-  filesAskInput.value = asksName ? value : '';
-  filesModal.hidden = false;
-  if (asksName) { filesAskInput.focus(); filesAskInput.select(); }
-  return new Promise((resolve) => { filesAskSettle = resolve; });
-}
-
-// folders already seen in the picked share, offered as the path is typed
-function whereHints() {
-  const loc = filesAskLocs && filesAskLocs[filesAskWhere.selectedIndex];
-  const seen = new Set();
-  for (const pane of loc ? filesPanes : []) {
-    for (const [key, entries] of pane.dirs) {
-      const k = fparts(key);
-      if (k.host !== loc.host || k.share !== loc.share) continue;
-      for (const e of entries) if (e.dir) seen.add(filesJoin(k.rel, e.name));
-    }
-  }
-  filesAskDirs.replaceChildren(...[...seen].sort().map((d) => new Option(d)));
-}
-
-filesAskWhere.addEventListener('change', () => { filesAskInput.value = ''; whereHints(); });
-filesAskGo.addEventListener('click', () => {
-  const text = filesAskInput.value.trim();
-  if (filesAskLocs) {
-    const dir = text.split('/').filter(Boolean).join('/');
-    filesAskEnd({ loc: filesAskLocs[filesAskWhere.selectedIndex], dir });
-  } else filesAskEnd(filesAskInput.hidden ? true : text || null);
-});
-filesAskCancel.addEventListener('click', () => filesAskEnd(null));
-filesAskClose.addEventListener('click', () => filesAskEnd(null));
-filesAskInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') { e.preventDefault(); filesAskGo.click(); }
-});
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !filesModal.hidden) filesAskEnd(null); });
-
-// ---- wiring ---------------------------------------------------------------
-
-// the host list: whatever the mesh poll already knows, at no cost
-function filesSyncHosts(tailnet) {
-  const names = (tailnet || []).filter((d) => d.phosphorus).map((d) => d.name).sort();
-  if (!names.length || names.join() === filesHostNames.join()) return;
-  filesHostNames = names;
-  // a first mesh poll possibly after the tab opens, a pane learning its host
-  // only here, homed rather than left empty
-  for (const pane of filesPanes) {
-    if (pane.host && names.includes(pane.host)) paneRender(pane);
-    else paneHome(pane, names.includes(selfHost) ? selfHost : names[0]);
-  }
-}
-
-const filesSplit = () => filesPanesEl.classList.contains('split');
-
-function filesSetSplit(on) {
-  keybarDirty();
-  filesPanesEl.classList.toggle('split', on);
-  filesAct('split').classList.toggle('on', on);
-  if (on && filesPanes.length === 1) {
-    const second = makePane();
-    filesPanes.push(second);
-    filesPanesEl.append(second.el);
-    // a second pane on the same host no use, started somewhere else
-    const other = filesHostNames.find((m) => m !== filesPanes[0].host) || filesPanes[0].host;
-    if (other) paneHome(second, other);
-  } else if (!on && filesPanes.length === 2) {
-    filesPanes.pop().el.remove();
-    if (!filesPanes.includes(filesActive)) setActive(filesPanes[0]);
-  }
-}
-
-function filesOpen() {
-  if (filesOpened) { for (const pane of filesPanes) paneReload(pane); return; }
-  filesOpened = true;
-  const first = makePane();
-  filesPanes = [first];
-  filesPanesEl.appendChild(first.el);
-  setActive(first);
-  filesSyncHosts(meshTailnet);
-}
-
 // --- status: btop for the whole mesh ----------------------------------------
 // one socket to the serving host, every host's samples fanned in there, open
 // only while the tab is up
@@ -3070,13 +1397,12 @@ let stNet = null;
 // the one host shown in full, the rest as tiles
 let stOpenHost = null;
 
-const stOpen = () => (DESK_ONLY ? deskApps.has('status') : document.getElementById('view-status').classList.contains('active'))
-  && !document.hidden;
+const stOpen = () => deskApps.has('status') && !document.hidden;
 
 // opened on the first look and kept for the page's life: samples and history
 // arriving while the tab is away, so coming back never a grey wait
 function statusWatch() {
-  if (!stOpen() && !chipOut()) return;
+  if (!stOpen()) return;
   if (!stWs) statusConnect();
   statusDraw();
 }
@@ -3107,7 +1433,6 @@ function statusConnect() {
       push('gpu', util.length ? util.reduce((a, g) => a + g.util, 0) / util.length : 0);
     }
     statusDraw();
-    chipDraw();
   };
   sock.onclose = () => {
     if (stWs !== sock) return;
@@ -3121,7 +1446,7 @@ function statusConnect() {
 let stLast = 0;
 const ST_QUIET_MS = 5000;
 function statusAwake() {
-  if (stWs && (stOpen() || chipOut()) && Date.now() - stLast > ST_QUIET_MS) statusConnect();
+  if (stWs && stOpen() && Date.now() - stLast > ST_QUIET_MS) statusConnect();
 }
 setInterval(statusAwake, 2000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) statusAwake(); });
@@ -3142,16 +1467,6 @@ function statusDraw() {
 function statusState(state) {
   stNet = state;
   statusDraw();
-  chipDraw();
-}
-
-// the model card standing in for the corner chat on the chat tab, redrawn
-// once a frame at most, the stats socket open for it as for the status tab
-const chipOut = () => stModelEl.parentElement === paneChat && !document.hidden;
-let chipFrame = null;
-function chipDraw() {
-  if (chipFrame || !chipOut()) return;
-  chipFrame = requestAnimationFrame(() => { chipFrame = null; drawModelSum(); });
 }
 
 // ---- glyphs ----------------------------------------------------------------
@@ -3457,15 +1772,7 @@ function ctxCells(m) {
 function contextHtml(m) {
   if (!(m && m.ready && m.ctx)) return '';
   const { cells, parts, used } = ctxCells(m);
-  if (chipOut()) {
-    const line = (cls, label, n) => `<div class="st-row"><i class="${cls}"></i> ${kTok(n).padEnd(5)} <span class="st-dim">${label}</span></div>`;
-    const legend = [
-      `<div class="st-row">${kTok(used)}/${kTok(m.ctx)} <span class="st-dim">${pct(used / m.ctx)}</span></div>`,
-      ...parts.map(([k, label, n]) => line(`ctx-${k} full`, label.split(' ')[0], n)),
-      line('', 'free', m.ctx - used),
-    ].join('');
-    return `<div class="st-ctx st-ctx-chip"><div class="st-ctx-grid">${cells}</div><div class="st-ctx-key">${legend}</div>${loadHtml(m.host)}</div>`;
-  }
+
   const line = (cls, label, n) => `<div class="st-row"><i class="${cls}"></i> ${label.padEnd(14)}`
     + `<span class="st-dim">${kTok(n).padStart(5)} tokens (${tenth(n / m.ctx)})</span></div>`;
   const legend = [
@@ -3479,11 +1786,6 @@ function contextHtml(m) {
 // the model host's cpu and, where one reports load, gpu, as the status tab's boxes
 // (the chat tab's card only)
 const loadKinds = (host) => ['cpu', ...(stHosts.get(host)?.gpu ? ['gpu'] : [])];
-function loadHtml(host) {
-  return `<div class="st-ctx-load">${loadKinds(host).map((k) => `<div class="st-box st-${k}"><div class="st-head">${k} <span class="st-dim">${esc(host)}</span></div>`
-    + `<canvas class="st-graph st-graph-cpu" data-host="${esc(host)}" data-k="${k}"></canvas><div class="st-row"></div></div>`).join('')}</div>`;
-}
-
 // the status tab's cpu graph for both, 0 to 100% by heat, a spin up a climb
 function drawLoads(el) {
   for (const c of el.querySelectorAll('canvas[data-k]')) {
@@ -3611,8 +1913,7 @@ function modelGroups(model) {
 const MODEL_LABEL_MAX = 28;
 const clipLabel = (t) => (t.length > MODEL_LABEL_MAX ? `${t.slice(0, MODEL_LABEL_MAX - 1)}…` : t);
 const option = (value, label, on) => `<option value="${esc(value)}"${label.length > MODEL_LABEL_MAX ? ` title="${esc(label)}"` : ''}${on ? ' selected' : ''}>${esc(clipLabel(label))}</option>`;
-// the orangutan first on the projects tab, its own there
-const roleOrder = () => (tabbarTabs.querySelector('.tab-btn.active')?.dataset.tabId === 'projects' ? [...MODEL_ROLES].reverse() : MODEL_ROLES);
+const roleOrder = () => MODEL_ROLES;
 
 // the keys' list folded away until asked for
 let keysOpen = false;
@@ -3903,32 +2204,9 @@ function statusRender() {
 function stToggle(name) {
   stOpenHost = stOpenHost === name ? null : name;
   statusRender();
-  keybarDirty();
   const card = stHosts.get(name)?.card?.card;
   card?.focus({ preventScroll: true });
   card?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-}
-
-// arrows: the nearest host that way on screen, false at an edge, for the tabs
-function statusStep(dx, dy) {
-  const cards = [...stHostsEl.querySelectorAll('.st-card')];
-  const at = cards.find((c) => c === document.activeElement);
-  if (!at) { cards[0]?.focus(); return !!cards[0]; }
-  const mid = (el) => { const r = el.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; };
-  const [x, y] = mid(at);
-  let best = null;
-  let bestD = Infinity;
-  for (const c of cards) {
-    const [cx, cy] = mid(c);
-    const along = dx ? (cx - x) * dx : (cy - y) * dy;
-    if (c === at || along <= 1) continue;
-    const d = along + 2 * Math.abs(dx ? cy - y : cx - x);
-    if (d < bestD) { bestD = d; best = c; }
-  }
-  if (!best) return !!dy;
-  best.focus({ preventScroll: true });
-  best.scrollIntoView({ block: 'nearest' });
-  return true;
 }
 
 document.addEventListener('keydown', (e) => {
@@ -3948,18 +2226,16 @@ document.addEventListener('visibilitychange', statusWatch);
 
 const chatPanel = document.getElementById('chat-panel');
 const chatLog = document.getElementById('chat-log');
-// phosphorus's [open a terminal on host](#term:host): a terminal tab, never a navigation
+// phosphorus's [open a terminal on host](#term:host): a terminal window, never a navigation
 chatPanel.addEventListener('click', (e) => {
   const a = e.target.closest?.('a[href^="#term:"]');
   if (!a) return;
   e.preventDefault();
   const host = decodeURIComponent(a.getAttribute('href').slice(6));
-  if (DESK_ONLY) dkOpenTerminal(host);
-  else if (terminalHosts.includes(host)) openTerminalTab(host);
+  dkOpenTerminal(host);
 });
 const chatTitle = document.getElementById('chat-title');
 const chatStatus = document.getElementById('chat-status');
-const chatMenu = document.getElementById('chat-menu');
 const chatJoin = document.getElementById('chat-join');
 const chatName = document.getElementById('chat-name');
 const chatJoinGo = document.getElementById('chat-join-go');
@@ -3980,9 +2256,10 @@ const chatFindCount = document.getElementById('chat-find-count');
 const chatDrop = document.getElementById('chat-drop');
 const cwList = document.getElementById('cw-list');
 const cwMain = document.getElementById('cw-main');
+// the chat's panel beside its conversations, in the chat app
+cwMain.appendChild(chatPanel);
 const chatFilesBtn = document.getElementById('chat-files-btn');
 const chatPop = document.getElementById('chat-pop');
-const chatTabBadge = document.getElementById('chat-tab-badge');
 
 // everyone on the mesh, peers merged in by the frontend
 let people = [];
@@ -4595,7 +2872,6 @@ const news = new Map();
 // the conversation the divider was drawn for, and how many lines it marks
 let freshFrom = 0;
 
-const docked = () => cwMain.contains(chatPanel);
 const dmWith = (c) => (c.startsWith('dm:') ? c.slice(3) : '');
 const chOf = (c) => (c.startsWith('ch:') ? c.slice(3) : '');
 const isAgent = (c) => AGENTS.includes(c);
@@ -4639,7 +2915,7 @@ const convOrder = () => ['mesh', ...channels().map((ch) => `ch:${ch}`), ...AGENT
 function stepConv(step) {
   const order = convOrder();
   const at = order.indexOf(conv);
-  goConv(order[(Math.max(0, at) + step + order.length) % order.length]);
+  openConv(order[(Math.max(0, at) + step + order.length) % order.length]);
 }
 
 // the list, in the tab beside the chat or the corner's menu
@@ -4685,21 +2961,17 @@ function convItems() {
 
 function paintConvs() {
   const total = [...news].reduce((n, [c, k]) => n + (c === conv ? 0 : k), 0);
-  chatTabBadge.hidden = !total;
-  chatTabBadge.textContent = `(${total > 99 ? '99+' : total})`;
   deskBadge(total);
   chatTitle.querySelector('.chat-title-dot').hidden = !total;
   cwList.replaceChildren(...convItems());
-  if (!chatMenu.hidden) chatMenu.firstElementChild.replaceChildren(...convItems());
 }
 
-for (const list of [cwList, chatMenu]) {
+for (const list of [cwList]) {
   list.addEventListener('click', (e) => {
     const more = e.target.closest('.cw-more');
     if (more) { e.stopPropagation(); convMenu(more.dataset.conv, more); return; }
     const b = e.target.closest('.cw-item');
     if (!b) return;
-    chatMenu.hidden = true;
     setConv(b.dataset.conv);
     (joined() ? chatText : chatName).focus();
   });
@@ -4723,7 +2995,6 @@ function closePop(refocus) {
   chatPop.hidden = true;
   if (refocus && popFrom?.isConnected) popFrom.focus();
   popFrom = null;
-  keybarDirty();
 }
 
 // title: a heading, or a node over the items; at: a right click's point to open at
@@ -4763,7 +3034,6 @@ function popMenu(anchor, title, items, focusAt = 0, at = null) {
   chatPop.style.left = `${Math.max(8, Math.min(innerWidth - w - 8, r.left))}px`;
   chatPop.style.top = `${r.bottom + 4 + h > innerHeight - 8 ? Math.max(8, r.top - h - 4) : r.bottom + 4}px`;
   els[Math.min(focusAt, els.length - 1)]?.focus();
-  keybarDirty();
 }
 
 chatPop.addEventListener('keydown', (e) => {
@@ -4787,7 +3057,7 @@ function convActions(c) {
   const read = news.get(c) && { label: 'mark read', act: () => { news.delete(c); paintConvs(); } };
   const ch = chOf(c);
   if (ch) {
-    return [read, { label: 'open', act: () => goConv(c) },
+    return [read, { label: 'open', act: () => openConv(c) },
       { label: 'leave', sub: 'hide it here until someone posts', act: () => leaveChannel(ch) },
       { label: 'close for everyone', sub: 'its history gone mesh-wide', key: 'd', danger: true, confirm: `sure? close #${ch} for everyone`, act: () => send({ type: 'close', ch }) },
     ].filter(Boolean);
@@ -4796,11 +3066,11 @@ function convActions(c) {
     return [read, { label: 'clear for everyone', sub: "#mesh's history gone mesh-wide", key: 'd', danger: true, confirm: 'sure? clear #mesh for everyone', act: () => send({ type: 'clear' }) }].filter(Boolean);
   }
   if (isAgent(c)) {
-    return [read, { label: 'open', act: () => goConv(c) },
+    return [read, { label: 'open', act: () => openConv(c) },
       { label: 'clear conversation', sub: 'and its context, in this browser', key: 'd', danger: true, confirm: `sure? forget the ${c} conversation`, act: () => clearAgent(c) },
     ].filter(Boolean);
   }
-  return [read, { label: 'open', act: () => goConv(c) }].filter(Boolean);
+  return [read, { label: 'open', act: () => openConv(c) }].filter(Boolean);
 }
 
 function convMenu(c, anchor, destructive) {
@@ -4852,15 +3122,6 @@ function openFiles() {
   })));
 }
 chatFilesBtn.addEventListener('click', openFiles);
-
-// the corner's title a menu of every conversation
-chatTitle.addEventListener('click', (e) => {
-  e.stopPropagation();
-  if (docked()) return;
-  chatMenu.hidden = !chatMenu.hidden;
-  if (!chatMenu.hidden) chatMenu.firstElementChild.replaceChildren(...convItems());
-});
-document.addEventListener('click', (e) => { if (!chatMenu.hidden && !chatMenu.contains(e.target)) chatMenu.hidden = true; });
 
 // who's typing here, never this browser's own name
 function typers(c) {
@@ -4914,27 +3175,23 @@ function paintStatus() {
 // the host answering for an agent, with no chimp chosen, the one /chimp goes to
 const agentHost = (r) => modelWho.find((a) => a.name === r)?.host || '';
 
-// the code tab last up and still open: the file the models take "this file" to mean
+// the editor last focused and still open: the file the models take "this file" to mean
 const chatSees = document.getElementById('chat-sees');
 const SEEN_MAX = 24000;
-let seenTab = '';
+let seenEditor = '';
 function seenFile() {
-  const ed = seenTab && openTabs.get(seenTab);
+  const ed = seenEditor && editors.get(seenEditor);
   if (!ed) return undefined;
   const text = ed.text();
   return { ...ed.file, text: text.slice(0, SEEN_MAX), size: text.length };
 }
 function paintSeen() {
-  const f = seenTab && openTabs.get(seenTab)?.file;
+  const f = seenEditor && editors.get(seenEditor)?.file;
   chatSees.hidden = !f;
   if (!f) return;
   chatSees.textContent = codeName(f);
   chatSees.title = `the chimp sees ${f.label}, the file you have open, and knows you mean it`;
 }
-document.addEventListener('phosphorus-tab', (e) => {
-  if (e.detail.startsWith('code-')) seenTab = e.detail;
-  paintSeen();
-});
 
 function paintCtx() {
   chatAttach.hidden = isAgent(conv);
@@ -4975,43 +3232,13 @@ function setConv(c) {
   paintConvs();
   paintStatus();
   paintFiles();
-  keybarDirty();
 }
 
-// the chat tab up, on this conversation
+// the chat app up, on this conversation
 function openConv(c) {
-  if (DESK_ONLY) dkOpenApp('chat');
-  else if (isMobile() && mobileSection !== 'main') setMobileSection('main');
-  if (!DESK_ONLY && !docked()) showTab('chat');
+  dkOpenApp('chat');
   setConv(c);
 }
-
-// wherever the chat is, the tab only on a phone, where the corner isn't
-const goConv = (c) => {
-  if (isMobile() || DESK_ONLY) return openConv(c);
-  if (!chatPane && !docked()) setChatPane(true);
-  setConv(c);
-};
-
-// the panel into the tab and back, the conversation's lines moved with it,
-// not drawn again
-document.addEventListener('phosphorus-tab', (e) => {
-  const tab = DESK_ONLY || e.detail === 'chat';
-  if (tab === docked()) return;
-  const pinned = chatPinned;
-  const top = chatLog.scrollTop;
-  (tab ? cwMain : paneChat).appendChild(chatPanel);
-  placeModel();
-  paintColumn();
-  chatMenu.hidden = true;
-  chatPinned = pinned;
-  chatLog.scrollTop = pinned ? chatLog.scrollHeight : top;
-  paintConvs();
-  keybarDirty();
-});
-
-// the model card's roles in the order the tab puts them
-document.addEventListener('phosphorus-tab', () => { if (stModel()) { stModelHtml = ''; drawModelSum(); } });
 
 // --- incoming ---------------------------------------------------------------------
 
@@ -5422,7 +3649,7 @@ chatLog.addEventListener('click', (e) => {
     void t.offsetWidth;
     t.classList.add('flash');
   } else if (act === 'show') {
-    if (m.file) openCodeTab(m.file);
+    if (m.file) dkCode(m.file);
   } else if (act === 'react') react(m, b.dataset.emoji);
 });
 
@@ -5492,7 +3719,7 @@ function joinChannel(arg) {
   delete leftChannels[ch];
   saveChannels();
   const fresh = !convLines.get(`ch:${ch}`)?.length;
-  goConv(`ch:${ch}`);
+  openConv(`ch:${ch}`);
   if (fresh || topic.length) send({ type: 'topic', ch, text: topic.join(' ') });
 }
 
@@ -5506,7 +3733,7 @@ function runCommand(input) {
   const agent = AGENT_CMDS[cmd.toLowerCase()];
   if (agent) {
     if ((conv === 'mesh' || chOf(conv)) && arg) { send({ type: 'message', text: input.trim(), ch: chOf(conv) || undefined, open: seenFile() }); return; }
-    goConv(agent);
+    openConv(agent);
     if (arg) sendAgent(agent, arg);
     return;
   }
@@ -5520,7 +3747,7 @@ function runCommand(input) {
     resolveShow(what).then((f) => {
       if (!f) { chatNote(`no open editor tab or shared file called ${what}`); return; }
       chatNote(`${shareWith(to, f)}, it's open in its own tab`);
-      openCodeTab(f, false);
+      dkCode(f);
     });
     return;
   }
@@ -5528,8 +3755,8 @@ function runCommand(input) {
     const to = nameIn(arg);
     if (!to || to === name) { chatNote('usage: /dm name [message]'); return; }
     const text = arg.slice(to.length).trim();
-    if (isAgent(to)) { goConv(to); if (text) sendAgent(to, text); return; }
-    goConv(`dm:${to}`);
+    if (isAgent(to)) { openConv(to); if (text) sendAgent(to, text); return; }
+    openConv(`dm:${to}`);
     if (text) send({ type: 'dm', to, text });
     return;
   }
@@ -5588,7 +3815,7 @@ function shareMenu(anchor, f, done) {
 async function resolveShow(what) {
   const w = what.replace(/^\/+/, '');
   for (const id of codeTabs.values()) {
-    const f = openTabs.get(id)?.file;
+    const f = editors.get(id)?.file;
     if (f && (f.label === w || f.path === w || codeName(f) === w || f.label.endsWith(`/${w}`))) return f;
   }
   const [host, ...rest] = w.split('/');
@@ -5614,7 +3841,7 @@ function showInvite(m) {
   document.getElementById('show-modal-go').focus();
 }
 const closeShow = () => { showModal.hidden = true; };
-document.getElementById('show-modal-go').addEventListener('click', () => { closeShow(); if (showFile) openCodeTab(showFile); });
+document.getElementById('show-modal-go').addEventListener('click', () => { closeShow(); if (showFile) dkCode(showFile); });
 document.getElementById('show-modal-no').addEventListener('click', closeShow);
 document.getElementById('show-modal-close').addEventListener('click', closeShow);
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !showModal.hidden) closeShow(); });
@@ -5631,7 +3858,7 @@ function argHints() {
     if (!who) list = knownNames().filter((n) => cmd === '/dm' || !isAgent(n)).map((n) => [n, online(n)]);
     else if (cmd === '/share') {
       prefix = `${who} `;
-      list = [...codeTabs.values()].map((id) => openTabs.get(id)?.file).filter(Boolean).map((f) => [f.label, 'open in an editor tab']);
+      list = [...codeTabs.values()].map((id) => editors.get(id)?.file).filter(Boolean).map((f) => [f.label, 'open in an editor tab']);
     }
   } else if (cmd === CHANNEL_CHIP[0]) list = channels().map((c) => [c, topicOf(`ch:${c}`) || 'channel']);
   else if (cmd === '/recolor') list = COLOR_NAMES.map((c) => [c, '']);
@@ -5684,7 +3911,6 @@ function setChatChip(cmd) {
 
 // a command picked from outside the box, its words typed next
 function startCommand(cmd) {
-  chatMenu.hidden = true;
   if (!joined()) { chatName.focus(); return; }
   setChatChip(cmd);
   chatText.value = '';
@@ -5993,49 +4219,20 @@ function opMap(ops, pos) {
   return j;
 }
 
-// --- tabs ------------------------------------------------------------------------
+// --- editors ---------------------------------------------------------------------
 
-const CODE_TABS_KEY = 'phosphorus-code-tabs';
-// host\nshare\npath -> its tab id
+// tab id -> its editor, host\nshare\npath -> its id
+const editors = new Map();
 const codeTabs = new Map();
 let codeSeq = 0;
 const codeKey = (f) => `${f.host}\n${f.share}\n${f.path}`;
 const codeName = (f) => f.path.split('/').pop() || f.path;
 
-function saveCodeTabs() {
-  const list = [...codeTabs.values()].map((id) => openTabs.get(id)?.file).filter(Boolean);
-  try { localStorage.setItem(CODE_TABS_KEY, JSON.stringify(list)); } catch {}
-}
-
 // a file as the files tab names it: host, then the share's root, then the path
 const fileLabel = (host, root, rel) => filesPath(host, root, rel);
 
-function openCodeTab(f, focus = true) {
-  const file = { host: f.host, share: String(f.share ?? ''), path: f.path, label: f.label || `${f.host}/${f.path}` };
-  if (focus) rememberFile(file);
-  const have = codeTabs.get(codeKey(file));
-  if (have && openTabs.has(have)) { if (focus) activateTab(have); return openTabs.get(have); }
-  const id = `code-${codeSeq += 1}`;
-  const btn = createTabButton(id, codeName(file));
-  btn.classList.add('code-tab');
-  btn.title = file.label;
-  tabbarTabs.appendChild(btn);
-  syncInks();
-  const view = el('div', 'view code-view');
-  view.id = `view-${id}`;
-  paneContent.appendChild(view);
-  const ed = codeEditor(view, file, btn, id);
-  openTabs.set(id, ed);
-  codeTabs.set(codeKey(file), id);
-  saveCodeTabs();
-  if (focus) activateTab(id);
-  tabMenu.hidden = true;
-  return ed;
-}
-
-const anyCodeDirty = () => [...codeTabs.values()].some((id) => openTabs.get(id)?.dirty());
+const anyCodeDirty = () => [...editors.values()].some((ed) => ed.dirty());
 window.addEventListener('beforeunload', (e) => { if (anyCodeDirty()) e.preventDefault(); });
-
 
 function codeEditor(view, file, btn, id) {
   const lang = codeLang(file.path) || { hl: 'plaintext', check: '', comment: '' };
@@ -6091,6 +4288,8 @@ function codeEditor(view, file, btn, id) {
   let closed = false;
   let retry = 1000;
   let people = [];
+  // this tab's own id in the session, its own caret never drawn
+  let me = 0;
   let opSeq = 0;
   const canWrite = () => perms.includes('w');
   const say = (body) => sock && sock.readyState === WebSocket.OPEN && sock.send(JSON.stringify(body));
@@ -6283,7 +4482,7 @@ function codeEditor(view, file, btn, id) {
     const cs = getComputedStyle(ta);
     const cw = chWidthIn(ta);
     for (const p of people) {
-      if (p.name === name) continue;
+      if (me ? p.id === me : p.name === name) continue;
       const before = ta.value.slice(0, Math.min(p.pos, ta.value.length));
       const line = before.split('\n').length - 1;
       const col = [...before.slice(before.lastIndexOf('\n') + 1)].reduce((n, ch) => (ch === '\t' ? n + 4 - (n % 4) : n + 1), 0);
@@ -6318,7 +4517,6 @@ function codeEditor(view, file, btn, id) {
       return s;
     }));
     whoEl.hidden = !others.length;
-    keybarDirty();
   }
 
   // the caret kept in view as it moves, the scroller being the editor, not the box
@@ -6369,7 +4567,9 @@ function codeEditor(view, file, btn, id) {
     if (closed) return;
     const q = new URLSearchParams({ share: file.share, path: file.path });
     sock = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/code/${encodeURIComponent(file.host)}?${q}`);
-    sock.onopen = () => { retry = 1000; say({ type: 'join', name: name || 'anon', color: color || colorFor(name || 'anon') }); };
+    // the chat's name, else the user this desktop logged into the host as
+    const who = name || dk.creds.get(file.host)?.user || 'anon';
+    sock.onopen = () => { retry = 1000; say({ type: 'join', name: who, color: color || colorFor(who) }); };
     sock.onmessage = (ev) => {
       let msg;
       try { msg = JSON.parse(ev.data); } catch { return; }
@@ -6381,6 +4581,7 @@ function codeEditor(view, file, btn, id) {
         savedText = saved >= 0 && saved === V ? S : null;
         if (msg.perms !== undefined) perms = msg.perms;
         if (msg.people) people = msg.people;
+        if (msg.you) me = msg.you;
         inflight = null;
         ready = true;
         setText(S, true);
@@ -6470,6 +4671,11 @@ function codeEditor(view, file, btn, id) {
     typeIn(a, b, next, a, a + next.length);
   }
 
+  // ctrl+s the file's save, never the browser's save page
+  view.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 's') { e.preventDefault(); e.stopPropagation(); save(); }
+  });
+
   ta.addEventListener('keydown', (e) => {
     const s = ta.selectionStart;
     const t = ta.selectionEnd;
@@ -6531,8 +4737,6 @@ function codeEditor(view, file, btn, id) {
   };
   ta.addEventListener('input', () => { redraw(); flush(); paintState(); caretInView(); sendCursor(); });
   for (const ev of ['keyup', 'click', 'select']) ta.addEventListener(ev, () => { caretInView(); sendCursor(); });
-  ta.addEventListener('focus', keybarDirty);
-  ta.addEventListener('blur', keybarDirty);
 
   function save() {
     if (!ready || !canWrite()) return;
@@ -6560,9 +4764,6 @@ function codeEditor(view, file, btn, id) {
     return true;
   }
 
-  // a held read shown while the session connects, read-only until it lands
-  const held = filesReads.get(fkey(file.host, file.share, file.path));
-  if (typeof held?.text === 'string') { ta.value = held.text.replace(/\r\n?/g, '\n'); ta.setSelectionRange(0, 0); }
   connect();
   redraw();
   paintState();
@@ -6577,9 +4778,9 @@ function codeEditor(view, file, btn, id) {
     close: () => {
       closed = true;
       if (sock) sock.close();
-      codeTabs.delete(codeKey(file));
-      saveCodeTabs();
-      if (seenTab === id) { seenTab = ''; paintSeen(); }
+      if (codeTabs.get(codeKey(file)) === id) codeTabs.delete(codeKey(file));
+      editors.delete(id);
+      if (seenEditor === id) { seenEditor = ''; paintSeen(); }
     },
   };
 }
@@ -6600,7 +4801,6 @@ function chWidthIn(node) {
 document.fonts.addEventListener('loadingdone', () => chWidths.clear());
 
 // the editor tabs from the last visit, back on their sessions
-for (const f of loadJsonSafe(CODE_TABS_KEY)) if (f && f.host && f.path) openCodeTab(f, false);
 function loadJsonSafe(key) { try { const v = JSON.parse(localStorage.getItem(key)); return Array.isArray(v) ? v : []; } catch { return []; } }
 
 // --- projects -----------------------------------------------------------------
@@ -6685,7 +4885,6 @@ function pjWatch(on) {
   pjPoll();
   pjTimer = setInterval(() => { if (!document.hidden) pjPoll(); }, PJ_POLL_MS);
 }
-document.addEventListener('phosphorus-tab', (e) => pjWatch(DESK_ONLY ? deskApps.has('projects') : e.detail === 'projects'));
 
 function pjPaintList() {
   const sig = JSON.stringify([pjAll, pjPick, Math.floor(Date.now() / 60000)]);
@@ -6724,7 +4923,6 @@ function pjGo(key) {
   pjListSig = '';
   pjPaintList();
   if (key === 'new') pjPaintNew(); else { pjBody.replaceChildren(el('div', 'st-wait', 'loading')); pjPoll(); }
-  keybarDirty();
 }
 
 // --- one project ---
@@ -6844,7 +5042,7 @@ function pjSay(text) {
 pjBody.addEventListener('click', (e) => {
   if (e.target.closest('.pj-cmds')) { pjCmds = !pjCmds; pjSig = ''; pjPaintOne(); return; }
   const f = e.target.closest('.pj-file');
-  if (f && pjOne) openCodeTab({ host: pjOne.host, share: 'projects', path: f.dataset.path, label: `${pjOne.host}/projects/${f.dataset.path}` });
+  if (f && pjOne) dkCode({ host: pjOne.host, share: 'projects', path: f.dataset.path, label: `${pjOne.host}/projects/${f.dataset.path}` });
 });
 
 // the workspace's files, again only once something happened there
@@ -6909,26 +5107,13 @@ function pjPaintNew() {
     }).then((p) => { pjPick = pjKey(p); pjBody.replaceChildren(); pjPoll(); }, (err) => { msg.textContent = err.message; });
   });
   pjBody.replaceChildren(form);
-  keybarDirty();
 }
 
 // --- phosphorus's presses on this page ----------------------------------------------
-// the page moved for whoever asked, as a button would: a view, a terminal, a host
+// the page moved for whoever asked, as a button would: an app, a terminal, a host
 
-const PHOSPHORUS_VIEWS = { home: 'services', files: 'files', status: 'status', about: 'about', projects: 'projects' };
 function phosphorusPressed(a) {
-  if (!a) return;
-  if (DESK_ONLY) { dkPressed(a); return; }
-  // opened by phosphorus, shared with it from the start, s still unshares
-  if (a.kind === 'terminal' && terminalHosts.includes(a.host)) openTerminalTab(a.host, undefined, a.share === true);
-  else if (a.kind === 'host' && phosphorusHosts().includes(a.host)) switchHost(a.host);
-  else if (a.kind === 'code' && a.host && a.path) openCodeTab({ host: a.host, share: a.share, path: a.path, label: `${a.host}/${a.path}` });
-  else if (a.kind === 'view') {
-    if (PHOSPHORUS_VIEWS[a.view]) activateTab(PHOSPHORUS_VIEWS[a.view]);
-    else if (a.view === 'chat') openConv('mesh');
-    else if (a.view === 'update' && updateModal.hidden) openUpdateModal();
-  } else if (a.kind === 'creds') credsAsk(a);
-  else if (a.kind === 'creds-close') credsClose(a.id);
+  if (a) dkPressed(a);
 }
 
 // --- credential boxes ---------------------------------------------------------
@@ -7338,132 +5523,7 @@ document.addEventListener('click', (e) => {
   if (updateWasOpen && !updateModal.hidden && !updateWrap.contains(e.target) && !e.target.closest?.('.modal, .keybar')) closeUpdateModal();
 });
 
-// the side column, each card shown or hidden by its own button and stacked
-// mesh, model, chat
-const CARDS_KEY = 'phosphorus-cards';
-const CHAT_PANE_KEY = 'phosphorus-chat-pane';
-const cards = { mesh: true, model: false };
-try { Object.assign(cards, JSON.parse(localStorage.getItem(CARDS_KEY) || '{}')); } catch {}
-let chatPane = true;
-try { chatPane = localStorage.getItem(CHAT_PANE_KEY) !== 'off'; } catch {}
-
-function setCard(k, on) {
-  cards[k] = on;
-  try { localStorage.setItem(CARDS_KEY, JSON.stringify(cards)); } catch {}
-  placeModel();
-  paintColumn();
-  if (k === 'mesh' && on) drawMesh();
-}
-function setChatPane(on) {
-  chatPane = on;
-  try { localStorage.setItem(CHAT_PANE_KEY, on ? 'on' : 'off'); } catch {}
-  placeModel();
-  paintColumn();
-}
-// the column gone on a wide screen with nothing in it, the tabs the full width
-function paintColumn() {
-  // the mesh in its tray popup, sized there
-  if (DESK_ONLY) {
-    meshDims = null;
-    if (!meshAnimFrame) drawMesh();
-    return;
-  }
-  const chatIn = chatPane && !docked();
-  paneChat.dataset.chat = chatPane ? 'on' : 'off';
-  paneChat.dataset.mesh = cards.mesh ? 'on' : 'off';
-  sideMesh.setAttribute('aria-expanded', String(cards.mesh));
-  sideModel.setAttribute('aria-expanded', String(cards.model));
-  sideChat.setAttribute('aria-expanded', String(chatPane));
-  // the chat up in its tab: the button with nothing to show or hide
-  sideChat.disabled = docked();
-  sideChat.title = docked() ? 'chat pane, the chat is in this tab' : 'chat pane (shift+c)';
-  layoutEl.classList.toggle('no-side', !cards.mesh && !cards.model && !chatIn);
-  meshDims = null;
-  const alone = cards.mesh && !cards.model && !chatIn;
-  if (alone !== meshAlone) {
-    meshAlone = alone;
-    const want = alone || meshDesktopExpanded;
-    if (isMobile() || want === meshPanel.classList.contains('expanded')) { if (!meshAnimFrame) drawMesh(); } else setMeshExpanded(want, true);
-  } else if (cards.mesh && !meshAnimFrame) drawMesh();
-  if (typeof railDirty === 'function') railDirty();
-  keybarDirty();
-}
-// barebones in the column above the chat, the rest of the column without it,
-// on a phone its own section; else back on the status tab
-function placeModel() {
-  // the model card in the status app
-  if (DESK_ONLY) {
-    if (stModelEl.parentElement !== stTopEl) stTopEl.appendChild(stModelEl);
-    stModelEl.classList.remove('mini');
-    stModelHtml = '';
-    return;
-  }
-  const full = !chatPane || docked();
-  const here = isMobile() ? mobileSection === 'model' : cards.model;
-  const before = !isMobile() && chatPanel.parentElement === paneChat ? chatPanel : null;
-  if (here && (stModelEl.parentElement !== paneChat || stModelEl.nextElementSibling !== before)) paneChat.insertBefore(stModelEl, before);
-  if (!here && stModelEl.parentElement !== stTopEl) stTopEl.appendChild(stModelEl);
-  stModelEl.classList.toggle('mini', here && !full && !isMobile());
-  stModelHtml = '';
-  if (here) { statusWatch(); drawModelSum(); }
-}
-mobileQuery.addEventListener('change', () => { placeModel(); paintColumn(); });
-sideMesh.addEventListener('click', () => setCard('mesh', !cards.mesh));
-sideModel.addEventListener('click', () => setCard('model', !cards.model));
-sideChat.addEventListener('click', () => setChatPane(!chatPane));
-
-// the rail's labels beside their cards: a shown card's the card's own height,
-// a hidden one's a short slot where it would sit, cut from the next card's
-// label (else the one before), all stacked at the top with none shown
-const railEl = document.getElementById('side-rail');
-const RAIL_SLOT_REM = 4.4;
-const RAIL_GAP_REM = 0.35;
-let railFrame = null;
-function paintRail() {
-  railFrame = null;
-  if (isMobile()) return;
-  const rem = parseFloat(getComputedStyle(document.documentElement).fontSize);
-  const slot = RAIL_SLOT_REM * rem;
-  const gap = RAIL_GAP_REM * rem;
-  const top0 = railEl.getBoundingClientRect().top;
-  const open = !layoutEl.classList.contains('no-side');
-  const items = [[sideMesh, meshPanel, cards.mesh], [sideModel, stModelEl, cards.model && stModelEl.parentElement === paneChat],
-    [sideChat, chatPanel, chatPane && !docked()]].map(([btn, card, on]) => {
-    const r = on && open ? card.getBoundingClientRect() : null;
-    return r && r.height ? { btn, on: true, top: r.top - top0, bottom: r.bottom - top0 } : { btn, on: false };
-  });
-  if (!items.some((x) => x.on)) {
-    let y = parseFloat(getComputedStyle(railEl).paddingTop);
-    for (const x of items) { x.top = y; x.bottom = y + slot; y += slot + gap; }
-  } else {
-    for (let i = 0; i < items.length;) {
-      if (items[i].on) { i += 1; continue; }
-      let j = i;
-      while (j < items.length && !items[j].on) j += 1;
-      const run = items.slice(i, j);
-      const next = items[j];
-      const prev = items.slice(0, i).reverse().find((x) => x.on);
-      if (next) {
-        run.forEach((x, k) => { x.top = next.top + k * (slot + gap); x.bottom = x.top + slot; });
-        next.top += run.length * (slot + gap);
-      } else {
-        run.forEach((x, k) => { x.top = prev.bottom - (run.length - k) * (slot + gap) + gap; x.bottom = x.top + slot; });
-        prev.bottom -= run.length * (slot + gap);
-      }
-      i = j;
-    }
-  }
-  for (const x of items) {
-    x.btn.style.top = `${x.top}px`;
-    x.btn.style.height = `${Math.max(slot, x.bottom - x.top)}px`;
-  }
-}
-const railDirty = () => { if (!railFrame) railFrame = requestAnimationFrame(paintRail); };
-const railWatch = new ResizeObserver(railDirty);
-for (const e of [meshPanel, stModelEl, chatPanel, paneChat, layoutEl]) railWatch.observe(e);
 new MutationObserver(() => topUpdate.setAttribute('aria-expanded', String(!updateModal.hidden))).observe(updateModal, { attributes: true, attributeFilter: ['hidden'] });
-placeModel();
-paintColumn();
 
 // back to the host list, not out of the pane
 updateConfirmCancel.addEventListener('click', openUpdateModal);
@@ -7534,8 +5594,8 @@ const themeMenus = [...document.querySelectorAll('.theme-menu')];
 const systemLight = matchMedia('(prefers-color-scheme: light)');
 
 const currentTheme = () => document.documentElement.dataset.theme || 'dark';
-const openMenu = () => [tabMenu, tabPick, ...themeMenus].find((m) => !m.hidden);
-function closeMenus() { for (const m of [tabMenu, tabPick, ...themeMenus]) m.hidden = true; }
+const openMenu = () => themeMenus.find((m) => !m.hidden);
+function closeMenus() { for (const m of themeMenus) m.hidden = true; }
 
 function applyTheme(theme) {
   if (theme === 'dark') delete document.documentElement.dataset.theme;
@@ -7562,7 +5622,6 @@ function setTheme(theme) {
   applyTheme(theme);
 }
 
-const rotateTheme = () => setTheme(THEMES[(THEMES.indexOf(currentTheme()) + 1) % THEMES.length]);
 
 // each pick led by its button's own icon
 const THEME_ICON = { dark: 'moon', light: 'sun', oled: 'moon-thin' };
@@ -7592,156 +5651,10 @@ for (const b of themeToggles) {
 systemLight.addEventListener('change', (e) => { if (!themePick()) applyTheme(e.matches ? 'light' : 'dark'); });
 applyTheme(currentTheme());
 
-// --- navigation: swipes, keys and the key bar -------------------------------
-// one row of stops, the tabs in order, on a phone mesh and chat after them
+// --- keys and popups ------------------------------------------------------------
 
 function isMobile() { return mobileQuery.matches; }
-
-function slideIn(el, from) {
-  el.classList.remove('swipe-in', 'from-left', 'from-right');
-  void el.offsetWidth;
-  el.classList.add('swipe-in', `from-${from}`);
-  const done = (e) => {
-    if (e.target !== el) return;
-    el.classList.remove('swipe-in', 'from-left', 'from-right');
-    el.removeEventListener('animationend', done);
-  };
-  el.addEventListener('animationend', done);
-}
-
-// the accent edge over a bar's active button
-function moveInk(bar, btn) {
-  const ink = bar.querySelector('.tab-ink');
-  if (!ink) return;
-  ink.style.width = btn ? `${btn.offsetWidth}px` : '0';
-  ink.style.transform = btn ? `translateX(${btn.offsetLeft}px)` : '';
-}
-
-function syncInks() {
-  moveInk(tabbarTabs, tabbarTabs.querySelector('.tab-btn.active'));
-  moveInk(document.getElementById('mobile-tabbar'), document.querySelector('.mobile-tab-btn.active'));
-}
-window.addEventListener('resize', () => {
-  syncInks();
-  // narrowed to a phone: the active tab kept in the scrolled bar's view
-  tabbarTabs.querySelector('.tab-btn.active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-});
-// any tab resizing (the brand's version landing, a label marked unsaved), every tab after it shifted
-const tabSizes = new ResizeObserver(syncInks);
-const watchTabs = () => document.querySelectorAll('.tab-btn, .mobile-tab-btn').forEach((b) => tabSizes.observe(b));
-new MutationObserver(watchTabs).observe(tabbarTabs, { childList: true });
-watchTabs();
-
-// the brand off the numbering
-const tabIds = () => [...tabbarTabs.querySelectorAll('.tab-btn:not(.tab-brand):not([hidden])')].map((b) => b.dataset.tabId);
-
-function navStops() {
-  const tabs = tabIds().map((tab) => ({ tab }));
-  return isMobile() ? [...tabs, { section: 'mesh' }, { section: 'model' }] : tabs;
-}
-
-function navAt() {
-  if (isMobile() && mobileSection !== 'main') return navStops().findIndex((s) => s.section === mobileSection);
-  return tabIds().indexOf(tabbarTabs.querySelector('.tab-btn.active')?.dataset.tabId);
-}
-
-// false at either end unless wrapping, as the cli's ←/→
-function navGo(step, wrap) {
-  const stops = navStops();
-  let i = navAt() + step;
-  if (wrap) i = (i + stops.length) % stops.length;
-  if (i < 0 || i >= stops.length) return false;
-  const from = step > 0 ? 'right' : 'left';
-  const stop = stops[i];
-  if (stop.section) setMobileSection(stop.section, from);
-  else {
-    if (isMobile() && mobileSection !== 'main') setMobileSection('main', from);
-    showTab(stop.tab, from);
-  }
-  return true;
-}
-
-function goTab(n, id = tabIds()[n]) {
-  if (!id) return;
-  if (isMobile() && mobileSection !== 'main') setMobileSection('main');
-  showTab(id);
-}
-
-// touch and pen only, mouse drags left to text selection and file drag and drop
-const SWIPE_PX = 60;
-let swipe = null;
-
-layoutEl.addEventListener('pointerdown', (e) => {
-  if (e.pointerType === 'mouse' || !e.isPrimary) return;
-  if (e.target.closest('input, textarea, select, .modal, .update-pane, .tab-menu, .dk')) return;
-  const main = e.target.closest('.pane-content');
-  const side = isMobile() && e.target.closest('.mesh-panel, .chat-panel, #st-model');
-  if (main || side) swipe = { id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now(), el: null, dx: 0 };
-});
-
-layoutEl.addEventListener('pointermove', (e) => {
-  if (!swipe || e.pointerId !== swipe.id) return;
-  const dx = e.clientX - swipe.x;
-  const dy = e.clientY - swipe.y;
-  if (!swipe.el) {
-    if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) { swipe = null; return; }
-    if (Math.abs(dx) < 12) return;
-    swipe.el = isMobile() && mobileSection !== 'main' ? mobileSections[mobileSection] : document.querySelector('.view.active');
-    if (!swipe.el) { swipe = null; return; }
-    swipe.el.classList.add('dragging');
-  }
-  // under the finger, heavy past either end, a rubber band
-  const i = navAt();
-  const edge = (dx > 0 && i <= 0) || (dx < 0 && i >= navStops().length - 1);
-  const shown = edge ? dx / 4 : dx;
-  swipe.dx = dx;
-  swipe.el.style.transform = `translateX(${shown}px)`;
-  swipe.el.style.opacity = String(1 - Math.min(0.5, Math.abs(shown) / 600));
-});
-
-function swipeEnd(e) {
-  if (!swipe || e.pointerId !== swipe.id) return;
-  const { el, dx, t } = swipe;
-  swipe = null;
-  if (!el) return;
-  el.classList.remove('dragging');
-  const flick = Math.abs(dx) > 25 && Math.abs(dx) / (performance.now() - t) > 0.5;
-  const went = e.type === 'pointerup' && (Math.abs(dx) > SWIPE_PX || flick) && navGo(dx < 0 ? 1 : -1);
-  if (!went) {
-    el.classList.add('settling');
-    el.addEventListener('transitionend', () => el.classList.remove('settling'), { once: true });
-  }
-  el.style.transform = '';
-  el.style.opacity = '';
-}
-layoutEl.addEventListener('pointerup', swipeEnd);
-layoutEl.addEventListener('pointercancel', swipeEnd);
-
-// a trackpad's sideways two-finger swipe, its momentum one swipe, not several
-let wheelSum = 0;
-let wheelLocked = false;
-let wheelQuiet = null;
-
-// a sideways scroller under the pointer, with room left to move, keeping the gesture
-function scrollsSideways(el, dx) {
-  for (; el && el !== paneContent; el = el.parentElement) {
-    if (el.scrollWidth <= el.clientWidth || !/auto|scroll/.test(getComputedStyle(el).overflowX)) continue;
-    if (dx > 0 ? el.scrollLeft + el.clientWidth < el.scrollWidth - 1 : el.scrollLeft > 0) return true;
-  }
-  return false;
-}
-
-paneContent.addEventListener('wheel', (e) => {
-  if (e.ctrlKey || Math.abs(e.deltaX) <= Math.abs(e.deltaY) * 1.5) return;
-  clearTimeout(wheelQuiet);
-  wheelQuiet = setTimeout(() => { wheelSum = 0; wheelLocked = false; }, 250);
-  if (wheelLocked || scrollsSideways(e.target, e.deltaX)) return;
-  wheelSum += e.deltaX;
-  if (Math.abs(wheelSum) < 90) return;
-  wheelLocked = true;
-  navGo(wheelSum > 0 ? 1 : -1);
-  wheelSum = 0;
-}, { passive: true });
+const modalOpen = () => !!document.querySelector('.modal:not([hidden])');
 
 // swipe down on a popup: dismissed, as by its ×
 for (const box of document.querySelectorAll('.modal-box')) {
@@ -7770,250 +5683,6 @@ for (const box of document.querySelectorAll('.modal-box')) {
   box.addEventListener('pointercancel', end);
 }
 
-// ↑↓: a › walked down the rows, as in the cli's lists, enter to open
-const NAV_ROWS = '.list > li > a, .git-name[href], .git-bubble:not(:disabled), .game-card, .join-key-btn, .files-row, .cw-item, .pj-file:not(:disabled)';
-
-// the view's side-by-side columns: services | game servers, or files panes
-function navCols(view) {
-  return view.id === 'view-files' ? filesPanes.map((p) => p.el) : [...view.querySelectorAll('.home-col, .pj-side, .pj-main')];
-}
-
-// ↑↓ within the focused row's column, the join links as one row
-function moveSelection(step) {
-  const menu = openMenu();
-  const view = document.querySelector('.view.active');
-  const focused = document.activeElement;
-  const scope = menu || view && (navCols(view).find((col) => col.contains(focused)) || view);
-  if (!scope) return;
-  const rows = [...scope.querySelectorAll(menu ? '.tab-menu-list li:not(.empty)' : NAV_ROWS)]
-    .filter((el) => (el.checkVisibility ? el.checkVisibility({ visibilityProperty: true }) : el.offsetParent));
-  if (!rows.length) return;
-  const at = rows.indexOf(focused.closest?.('.join-key') ? joinKeyBtn : focused);
-  const next = at === -1 ? (step > 0 ? 0 : rows.length - 1) : Math.max(0, Math.min(rows.length - 1, at + step));
-  rows[next].focus();
-  rows[next].scrollIntoView({ block: 'nearest' });
-}
-
-const modalOpen = () => !!document.querySelector('.modal:not([hidden])');
-const shown = (el) => !!el && (el.checkVisibility ? el.checkVisibility({ visibilityProperty: true }) : !!el.offsetParent);
-
-// a popup's go button, never the one that cancels a running update
-function modalGo(modal) {
-  return [...modal.querySelectorAll('.update-actions button')]
-    .filter((b) => b.id !== 'update-cancel' && !b.disabled && shown(b)).pop();
-}
-
-// c: the chat wherever it is, on a phone its tab
-function focusChat() {
-  if (isMobile()) openConv(conv);
-  else if (!chatPane && !docked()) setChatPane(true);
-  (joined() ? chatText : chatName).focus();
-}
-
-// ←→: the next column's row at the same height, never the join links, false
-// at the edge for the tabs, on a join link the other one
-function sideStep(step) {
-  const at = document.activeElement;
-  const view = document.querySelector('.view.active');
-  if (!view || !view.contains(at) || at === view) return false;
-  const join = at.closest('.join-key');
-  if (join) {
-    const links = [...join.querySelectorAll('button:not(:disabled), a[href]')].filter(shown);
-    links[Math.max(0, Math.min(links.length - 1, links.indexOf(at) + step))]?.focus();
-    return true;
-  }
-  const cols = navCols(view);
-  const from = cols.findIndex((col) => col.contains(at));
-  const to = cols[from + step];
-  if (from === -1 || !to) return false;
-  const rowsOf = (col) => [...col.querySelectorAll(NAV_ROWS)].filter((el) => shown(el) && !el.closest('.join-key'));
-  const rows = rowsOf(to);
-  if (!rows.length) return false;
-  const pane = filesPanes.find((p) => p.el === to);
-  if (pane) setActive(pane);
-  const row = rows[Math.min(rows.length - 1, Math.max(0, rowsOf(cols[from]).indexOf(at)))];
-  row.focus();
-  row.scrollIntoView({ block: 'nearest' });
-  return true;
-}
-
-const ROW_ENTER = [['.game-card', 'play/stop'], ['.git-bubble', 'make master'], ['.join-key-btn', 'guest key'], ['.files-row', 'open'], ['a, button', 'open']];
-
-// the keys for what is on screen, as groups of [key, label, kind, action],
-// no action: only a hint, a leading string for the group's pane name
-function keybarKeys() {
-  const at = document.activeElement;
-  // every key but this one to a focused terminal
-  if (at?.closest('.xterm')) return [[['shift+esc', 'unfocus', '', () => at.blur()]]];
-  const modal = document.querySelector('.modal:not([hidden])');
-  if (modal) {
-    const go = modalGo(modal);
-    return [[
-      modal.querySelector('.modal-header > span')?.textContent.trim().toLowerCase() || 'popup',
-      go && ['enter', go.textContent, go.classList.contains('primary') ? 'primary' : 'danger', () => go.click()],
-      ['esc', 'close', '', () => modal.querySelector('.modal-close').click()],
-    ]];
-  }
-  const menu = openMenu();
-  if (menu === tabMenu && omni) {
-    return [['new tab', ['enter', 'open', 'primary', () => omniChoose(omni.items[omni.sel])], ['tab', 'complete', 'quiet'],
-      ['↑↓', 'move', 'quiet'], ['esc', 'close', '', () => closeTab(omni.id)]]];
-  }
-  if (menu) {
-    const pick = () => (menu.contains(at) && at.matches('li') ? at : menu.querySelector('li:not(.empty)'))?.click();
-    return [[menu === tabMenu ? 'menu' : menu === tabPick ? 'tabs' : 'theme', ['enter', menu === themeMenus[0] ? 'set' : 'open', 'primary', pick], ['esc', 'close', '', closeMenus]]];
-  }
-  if (at?.classList?.contains('code-ta')) {
-    return [['editor', ['esc', 'leave editor', '', () => at.blur()]]];
-  }
-  if (chatPop.contains(at)) {
-    return [['menu', ['enter', at.classList.contains('armed') ? 'confirm' : 'pick', at.classList.contains('danger') ? 'danger' : 'primary', () => at.click()],
-      ['↑↓', 'move', 'quiet'], ['esc', 'close', '', () => closePop(true)]]];
-  }
-  if (at === chatText || at === chatName) {
-    const form = at === chatText ? chatForm : chatJoin;
-    const box = at === chatText;
-    return [[
-      'chat',
-      ['enter', !box ? 'join' : editing ? 'save' : 'send', 'primary', () => form.requestSubmit()],
-      box && ['shift+enter', 'newline', 'quiet'],
-      box && ['/', 'commands', 'quiet'],
-      ['ctrl+↑↓', 'chats', 'quiet'],
-      ['esc', replyTo || editing ? 'cancel' : 'leave chat', '', () => (replyTo || editing ? cancelCompose() : at.blur())],
-    ]];
-  }
-
-  const id = tabbarTabs.querySelector('.tab-btn.active')?.dataset.tabId || '';
-  const view = document.getElementById(`view-${id}`);
-  const row = view && view.contains(at) && at !== view ? at : null;
-  let here = [];
-  if (id.startsWith('term-')) {
-    here = [['enter', 'type', 'primary', () => openTabs.get(id)?.focus()],
-      ['s', openTabs.get(id)?.shared ? 'unshare' : 'share with phosphorus', '', () => toggleShare(id)],
-      ['esc', 'close', 'danger', () => closeTab(id)]];
-  } else if (id === 'services') {
-    const enter = row && ROW_ENTER.find(([sel]) => row.matches(sel));
-    here = [
-      enter && ['enter', enter[1], 'primary', () => (row.querySelector('.game-btn') || row).click()],
-    ];
-  } else if (id.startsWith('code-')) {
-    const ed = openTabs.get(id);
-    here = ed ? [['enter', 'edit', 'primary', () => ed.focus()],
-      ['esc', 'close', 'danger', () => closeTab(id)]] : [];
-  } else if (id === 'chat') {
-    const c = row?.matches('.cw-item') && row.dataset.conv;
-    const danger = c && convActions(c).find((it) => it.danger);
-    here = [
-      ['enter', row ? 'open' : joined() ? 'type' : 'join', 'primary', () => (row ? row.click() : (joined() ? chatText : chatName).focus())],
-      danger && ['d', danger.label, 'danger', () => convMenu(c, row, true)],
-      ['ctrl+↑↓', 'chats', 'quiet'],
-    ];
-  } else if (id === 'status') {
-    const host = row?.dataset.host;
-    here = [
-      host && ['enter', host === stOpenHost ? 'close host' : 'open host', 'primary', () => stToggle(host)],
-    ];
-  } else if (id === 'projects') {
-    const live = pjOne && pjOne.status === 'running';
-    here = [
-      row && ['enter', 'open', 'primary', () => row.click()],
-      ['n', 'new project', '', () => pjGo('new')],
-      pjOne && pjPick !== 'new' && (live ? ['s', pjArmed === 'stop' ? 'really stop' : 'stop', 'danger', pjStop]
-        : ['d', pjArmed === 'delete' ? 'really delete' : 'delete', 'danger', pjDelete]),
-    ];
-  } else if (id === 'files' && filesActive) {
-    const acts = row && row.fileActs;
-    here = [
-      row && row.matches('.files-row') && ['enter', acts && !acts.dir ? 'select' : 'open', 'primary', () => row.click()],
-      acts && acts.del && ['d', 'delete', 'danger', acts.del],
-    ];
-  }
-  if (here.length) here = [here];
-  // an editor's or terminal's name already in its tab, none under it
-  const tabName = !/^(code|term|new|app)-/.test(id) && tabbarTabs.querySelector('.tab-btn.active .tab-label')?.textContent.trim().toLowerCase();
-  const first = here.find((g) => g.some(Array.isArray));
-  if (first && tabName) first.unshift(tabName);
-  // the open update pane beside the rest, its go on a key of its own
-  const go = !updateModal.hidden && modalGo(updateModal);
-  // shift+u only with the pane open: a walk's start, or its own step once running
-  const start = go && ['mesh-update', 'update-confirm-go'].includes(go.id);
-  if (go) here.push(['update', ['shift+u', start ? 'start update' : go.textContent, go.classList.contains('primary') ? 'primary' : 'danger', () => go.click()]]);
-  return [...here, [
-    ['1-9', 'tabs', 'quiet'],
-    ['c', 'chat', 'quiet', focusChat],
-    !docked() && ['shift+c', chatPane ? 'hide chat pane' : 'chat pane', 'quiet', () => setChatPane(!chatPane)],
-    ['+', 'new tab', 'quiet', () => tabAddBtn.click()],
-    ['u', updateModal.hidden ? 'update' : 'close update', 'quiet', toggleUpdatePane],
-    ['p', 'about', 'quiet', () => goTab(-1, 'about')],
-  ]];}
-
-const keybarEl = document.getElementById('keybar');
-let keybarActs = [];
-
-function renderKeybar() {
-  const groups = keybarKeys().map((g) => g.filter(Boolean)).filter((g) => g.some(Array.isArray));
-  const names = groups.map((g) => (typeof g[0] === 'string' ? g.shift() : ''));
-  keybarActs = groups.flat();
-  const els = [];
-  groups.forEach((g, gi) => {
-    if (gi) els.push(Object.assign(document.createElement('span'), { className: 'keybar-sep' }));
-    for (const [key, label, kind, act] of g) {
-      const el = document.createElement(act ? 'button' : 'span');
-      if (act) { el.type = 'button'; el.dataset.i = keybarActs.indexOf(g.find((k) => k[0] === key && k[1] === label)); }
-      el.className = act ? kind || '' : 'keybar-hint';
-      // the global row first to go on a narrow screen
-      if (gi === groups.length - 1 && groups.length > 1) el.dataset.drop = '';
-      el.append(Object.assign(document.createElement('b'), { textContent: key }), ` ${label}`);
-      // the pane's name over its first key
-      if (names[gi] && key === g[0][0] && label === g[0][1]) el.dataset.pane = names[gi];
-      els.push(el);
-    }
-  });
-  const sig = els.map((el) => `${el.className}|${el.dataset.pane || ''}|${el.textContent}`).join('\n');
-  if (sig !== keybarEl.dataset.sig) {
-    keybarEl.dataset.sig = sig;
-    keybarEl.replaceChildren(...els);
-    fitKeybar();
-  }
-}
-
-// one row, as the cli's: global keys dropped first, then hints, only the rest
-// wrapped
-function fitKeybar() {
-  const all = [...keybarEl.children];
-  for (const el of all) el.hidden = false;
-  const drop = [...keybarEl.querySelectorAll('[data-drop], .keybar-hint')].reverse();
-  const wraps = () => all.some((el) => !el.hidden && el.offsetTop > all[0].offsetTop + 2);
-  while (drop.length && wraps()) drop.shift().hidden = true;
-  for (const sep of keybarEl.querySelectorAll('.keybar-sep')) sep.hidden = !!sep.nextElementSibling?.hidden;
-}
-
-function keybarDirty() {
-  if (keybarDirty.queued) return;
-  keybarDirty.queued = true;
-  requestAnimationFrame(() => { keybarDirty.queued = false; renderKeybar(); });
-}
-
-// focus kept on the row the keys are about, the menu shut by any click
-// reaching the page
-keybarEl.addEventListener('mousedown', (e) => e.preventDefault());
-keybarEl.addEventListener('click', (e) => {
-  e.stopPropagation();
-  const i = e.target.closest('button')?.dataset.i;
-  if (i !== undefined) keybarActs[i]?.[3]();
-});
-document.addEventListener('focusin', keybarDirty);
-document.addEventListener('focusout', keybarDirty);
-window.addEventListener('resize', fitKeybar);
-const keybarWatch = new MutationObserver(keybarDirty);
-for (const el of [...document.querySelectorAll('.modal'), updateModal, tabMenu, ...themeMenus, chatJoin, document.getElementById('git-card')]) {
-  keybarWatch.observe(el, { attributes: true, attributeFilter: ['hidden', 'class'], subtree: true });
-}
-keybarDirty();
-
-// keys by the name the row shows them under
-const KEY_NAMES = { ' ': 'space', Enter: 'enter', Delete: 'd', U: 'shift+u', C: 'shift+c' };
-
 // ctrl+↑↓ through the chats, from the chat or anywhere not typing; ahead of
 // the chat box's own ↑, an editor's and a terminal's left alone
 document.addEventListener('keydown', (e) => {
@@ -8026,48 +5695,19 @@ document.addEventListener('keydown', (e) => {
   stepConv(e.key === 'ArrowDown' ? 1 : -1);
 }, true);
 
+// shift+esc only ever unfocusing a terminal, esc the menus and the update pane
 document.addEventListener('keydown', (e) => {
-  if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || e.key !== 'Escape') return;
   const t = e.target;
-  const typing = t.closest?.('input, textarea, select, [contenteditable], .xterm');
-  // shift+esc only ever unfocusing a terminal, never closing one
-  if (e.key === 'Escape' && e.shiftKey) {
+  if (e.shiftKey) {
     if (t.closest?.('.xterm')) t.blur();
     e.preventDefault();
     return;
   }
-  if (e.key === 'Escape') {
-    if (typing && t.closest('.chat-panel')) t.blur();
-    if (!updateModal.hidden) closeUpdateModal();
-    // esc on an unfocused terminal tab: closed
-    const id = tabbarTabs.querySelector('.tab-btn.active')?.dataset.tabId || '';
-    if (!typing && !openMenu() && !modalOpen() && /^(term|code|new|app)-/.test(id)) closeTab(id);
-    closeMenus();
-    return;
-  }
-  // desktop only: no tab or key row keys
-  if (typing || DESK_ONLY) return;
-  // a focused link or button's own enter and space
-  if ((e.key === 'Enter' || e.key === ' ') && t.closest?.('a[href], button')) return;
-  const name = KEY_NAMES[e.key] || e.key;
-  if (/^[1-9]$/.test(e.key) && !modalOpen()) goTab(Number(e.key) - 1);
-  else if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && !modalOpen()) {
-    const step = e.key === 'ArrowDown' ? 1 : -1;
-    if (!(stOpen() && !openMenu() && statusStep(0, step))) moveSelection(step);
-  // unlisted in the key row, ←→ crossing columns first, then tabs
-  } else if (['ArrowLeft', 'ArrowRight'].includes(e.key) && !modalOpen()) {
-    const step = e.key === 'ArrowRight' ? 1 : -1;
-    if (!(stOpen() && !openMenu() ? statusStep(step, 0) : sideStep(step))) navGo(step, true);
-  } else {
-    renderKeybar();
-    const hit = keybarActs.find(([key, , , act]) => act && key === name);
-    if (!hit) return;
-    hit[3]();
-  }
-  e.preventDefault();
+  if (t.closest?.('.chat-panel') && t.closest('input, textarea')) t.blur();
+  if (!updateModal.hidden) closeUpdateModal();
+  closeMenus();
 });
-
-activateTab('desktop');
 
 // --- desktop: a pretend remote desktop, every window one of the
 // mesh's own terminals, files or services, drawn here
@@ -8195,18 +5835,21 @@ function dkDesktop() {
   const wins = el('div', 'dk-wins');
   const tasks = el('div', 'dk-tasks');
   const hosts = el('span', 'dk-hosts');
+  const note = Object.assign(el('span', 'dk-host-note'), { hidden: true });
   const off = Object.assign(el('button', 'dk-off', 'disconnect'), { type: 'button' });
   const desk = el('div', 'dk-desk');
   const bar = dkBar(tasks, hosts, off);
+  hosts.after(note);
   bar.insertBefore(dkMeshTray(), dkTray);
   desk.append(dkArt(), icons, wins, bar);
   dkView.replaceChildren(desk);
-  hosts.replaceChildren(...[...dk.creds.keys()].map((h) => el('span', 'dk-chip', h)));
   off.addEventListener('click', dkDisconnect);
   dkBand(icons);
-  dk.desk = { el: desk, icons, wins, tasks };
+  dk.desk = { el: desk, icons, wins, tasks, hosts };
+  dk.chips = '';
+  dkChips();
   new ResizeObserver(() => dkLayout()).observe(icons);
-  // the desk resized (side column shown or hidden), floating windows kept on it
+  // the desk resized, floating windows kept on it
   new ResizeObserver(() => {
     const W = wins.clientWidth;
     const H = wins.clientHeight;
@@ -8269,7 +5912,7 @@ const DK_GLYPHS = {
   git: 'M4.5 2v8M4.5 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM11.5 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM11.5 6c0 3-7 2-7 4',
   games: 'M2.5 5h11a1 1 0 0 1 1 1v5a2 2 0 0 1-3.5 1.3L9.5 11h-3L5 12.3A2 2 0 0 1 1.5 11V6a1 1 0 0 1 1-1zM4.5 7v2.5M3.25 8.25h2.5M10.5 7.5h.01M12 9h.01',
   about: 'M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM8 7v4.5M8 4.75h.01',
-  mesh: 'M2.3 3.3h2.4v2.4H2.3zM11.3 2.3h2.4v2.4h-2.4zM6.3 11.3h2.4v2.4H6.3zM11.8 9.8h2.4v2.4h-2.4zM4.7 4.4l6.6-.8M4.2 5.7l2.7 5.6M11.8 4.7l-3.4 6.6M12.6 4.7l.3 5.1M8.7 12.2l3.1-.9',
+  mesh: 'M6.5 1.5h3v3h-3zM1.5 11.5h3v3h-3zM11.5 11.5h3v3h-3zM7.2 4.5l-3.4 7M8.8 4.5l3.4 7M4.5 13h7',
 };
 
 // the frontend's own stroked glyphs, a phrase of path data each
@@ -8537,8 +6180,27 @@ document.addEventListener('keydown', (e) => {
 function dkRoutes(services) {
   dk.services = services;
   dkIcons();
+  dkChips();
   dkGitFrame();
   dkLoginHosts();
+}
+
+// the logged in hosts, the one serving this page purple, a press moving it there
+function dkChips() {
+  const hosts = dk.desk?.hosts;
+  if (!hosts) return;
+  const here = hostSwitch?.to || selfHost;
+  const names = [...dk.creds.keys()];
+  const sig = JSON.stringify([here, names]);
+  if (sig === dk.chips) return;
+  dk.chips = sig;
+  hosts.replaceChildren(...names.map((h) => {
+    const b = Object.assign(el('button', `dk-chip${h === here ? ' here' : ''}`, h), { type: 'button' });
+    b.title = h === here ? `this page is served by ${h}` : `serve this page from ${h}`;
+    b.setAttribute('aria-pressed', String(h === here));
+    b.addEventListener('click', () => switchHost(h));
+    return b;
+  }));
 }
 
 // one window, key: a single instance's, else a fresh one per open
@@ -9361,17 +7023,21 @@ function dkViewer(loc, rel) {
 function dkCode(f) {
   const file = { host: f.host, share: String(f.share ?? ''), path: f.path, label: f.label || `${f.host}/${f.path}` };
   rememberFile(file);
+  if (!dk.desk) return;
   const w = dkWin(`code:${codeKey(file)}`, codeName(file), file.host, 'code');
   if (!w) return;
-  // a tab already on the file kept as the one the editor's map points to
-  const tab = codeTabs.get(codeKey(file));
-  const ed = codeEditor(w.body, file, w.node, `dkcode-${dk.n}`);
-  w.onFocus = () => { if (!w.body.contains(document.activeElement)) ed.focus(); };
-  w.holdClose = () => ed.holdClose();
-  w.onClose = () => {
-    ed.close();
-    if (tab && openTabs.has(tab)) { codeTabs.set(codeKey(file), tab); saveCodeTabs(); }
+  const id = `code-${codeSeq += 1}`;
+  const ed = codeEditor(w.body, file, w.node, id);
+  editors.set(id, ed);
+  codeTabs.set(codeKey(file), id);
+  // the file the chat's models take "this file" to mean
+  w.onFocus = () => {
+    if (!w.body.contains(document.activeElement)) ed.focus();
+    seenEditor = id;
+    paintSeen();
   };
+  w.holdClose = () => ed.holdClose();
+  w.onClose = () => ed.close();
   dkFocus(w);
 }
 
@@ -9428,8 +7094,7 @@ const DK_APPS = {
   status: { title: 'status', view: 'view-status', w: 920, h: 600 },
   projects: { title: 'projects', view: 'view-projects', w: 920, h: 580 },
   about: { title: 'about', view: 'view-about', w: 700, h: 420 },
-  // part: a piece of an old view, wrapped as a view of its own
-  games: { title: 'game servers', part: () => document.getElementById('game-servers-list').closest('.home-col'), w: 460, h: 420 },
+  games: { title: 'game servers', view: 'view-games', w: 460, h: 420 },
 };
 
 // a fresh window's size, centered, a phone's left filling the desk
@@ -9452,11 +7117,7 @@ function dkOpenApp(id) {
   const app = DK_APPS[id];
   const w = app && dkWin(`app:${id}`, app.title, '', `app dk-app-${id}`);
   if (!w) return;
-  const part = app.part?.();
-  const home = part?.parentElement;
-  const next = part?.nextSibling;
-  const view = part ? el('div', `view dk-part dk-part-${id}`) : document.getElementById(app.view);
-  if (part) view.appendChild(part);
+  const view = document.getElementById(app.view);
   view.classList.add('active');
   w.body.appendChild(view);
   dkSize(w, app.w, app.h);
@@ -9464,7 +7125,6 @@ function dkOpenApp(id) {
   fit.observe(w.body);
   w.onClose = () => {
     fit.disconnect();
-    if (part) { home.insertBefore(part, next?.parentNode === home ? next : null); return; }
     view.classList.remove('active');
     paneContent.appendChild(view);
   };
@@ -9594,7 +7254,7 @@ function dkMeshTray() {
       drawMesh();
     } else {
       fit.disconnect();
-      paneChat.prepend(meshPanel);
+      stash.prepend(meshPanel);
     }
   };
   b.addEventListener('click', () => show(pop.hidden));

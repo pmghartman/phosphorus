@@ -34,34 +34,8 @@ outside #mesh-svg (emptied every redraw) so it never restarts -->
   </defs>
 </svg>
 <div class="layout">
-
-  <section class="pane pane-main">
-    <div class="tabbar" id="tabbar">
-      <div class="tabbar-tabs" id="tabbar-tabs">
-        <span class="tab-ink" aria-hidden="true"></span>
-        <button class="tab-btn tab-brand" data-tab-id="about" title="about (p)"><span class="brand-text"><span class="brand-name">phosphorus </span><span class="brand-ver"></span></span></button>
-        <button class="tab-btn" data-tab-id="services"><span class="tab-label">home</span></button>
-        <button class="tab-btn" data-tab-id="files"><span class="tab-label">files</span></button>
-        <button class="tab-btn" data-tab-id="status"><span class="tab-label">status</span></button>
-        <button class="tab-btn" data-tab-id="chat"><span class="tab-label">chat</span><span class="chat-badge" id="chat-tab-badge" hidden></span></button>
-        <button class="tab-btn" data-tab-id="projects"><span class="tab-label">projects</span></button>
-        <button class="tab-btn active" data-tab-id="desktop"><span class="tab-label">desktop</span></button>
-      </div>
-      <!-- phones: the open tabs, from the one tab shown -->
-      <div class="tab-menu tab-pick" id="tab-pick" hidden>
-        <div class="tab-menu-title">tabs</div>
-        <ul class="tab-menu-list"></ul>
-      </div>
-      <div class="tab-add-wrap">
-        <button class="tab-add" id="tab-add" title="new tab (+)">+</button>
-        <!-- the new tab's suggestions, under its title -->
-        <div class="tab-menu omni-menu" id="tab-menu" hidden>
-          <div class="tab-menu-title" id="tab-menu-title">open</div>
-          <ul id="tab-menu-list" class="tab-menu-list"></ul>
-        </div>
-      </div>
-      <div class="tabbar-fill">
-        <!-- the mesh-wide pair: the update popup and the theme -->
+  <!-- the update popup and the theme, moved into the desktop's task bar -->
+  <div class="tray-stash" hidden>
         <div class="top-side top-mesh-wide">
           <div class="update-wrap">
             <button type="button" id="top-update" title="mesh update (u)" aria-label="mesh update" aria-controls="update-modal" aria-expanded="false"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M12.5 1.5v3h-3"/></svg></button>
@@ -108,24 +82,7 @@ outside #mesh-svg (emptied every redraw) so it never restarts -->
           </div>
           </div>
         </div>
-      </div>
-    </div>
-    <div class="modal git-modal" id="git-modal" hidden role="dialog" aria-modal="true" aria-labelledby="git-modal-title">
-      <div class="modal-box">
-        <div class="modal-header">
-          <span id="git-modal-title">change git master</span>
-          <button class="modal-close" id="git-modal-close" type="button" title="close">&times;</button>
-        </div>
-        <div class="update-confirm">
-          <dl class="git-switch" id="git-switch"></dl>
-          <p class="git-modal-note" id="git-modal-note"></p>
-          <div class="update-actions">
-            <button type="button" id="git-modal-cancel">cancel</button>
-            <button type="button" id="git-modal-go" class="primary">make master</button>
-          </div>
-        </div>
-      </div>
-    </div>
+  </div>
     <div class="modal show-modal" id="show-modal" hidden role="dialog" aria-modal="true" aria-labelledby="show-modal-title">
       <div class="modal-box">
         <div class="modal-header">
@@ -141,15 +98,16 @@ outside #mesh-svg (emptied every redraw) so it never restarts -->
         </div>
       </div>
     </div>
-    <div class="pane-content" id="pane-content">
-      <div class="view" id="view-services">
-        <div class="home-cols">
-          <div class="home-col">
-            <div class="home-col-head">services</div>
-            <div id="git-card" class="git-group" hidden></div>
-            <ul id="services-list" class="list"></ul>
-          </div>
-          <div class="home-divider"></div>
+  <div class="pane-content" id="pane-content">
+      <div class="view" id="view-status">
+        <div class="st-top" id="st-top">
+          <section class="st-mesh" id="st-mesh" hidden><div class="st-card-head">mesh</div><div class="st-mesh-grid"><div><div></div><canvas class="st-graph st-mesh-g"></canvas></div><div><div></div><div class="st-sum-net st-mesh-g"><canvas class="st-graph"></canvas><canvas class="st-graph"></canvas></div></div></div></section>
+          <section class="st-mesh st-model" id="st-model" hidden><div class="st-card-head">model</div><div class="st-model-pick" hidden></div><div class="st-model-roles"></div></section>
+        </div>
+        <div class="st-hosts" id="st-hosts"><div class="st-wait">connecting</div></div>
+      </div>
+      <!-- the game servers app -->
+      <div class="view" id="view-games">
           <div class="home-col">
             <div class="home-col-head">game servers</div>
             <ul id="game-servers-list" class="list">
@@ -162,68 +120,7 @@ outside #mesh-svg (emptied every redraw) so it never restarts -->
               </div>
             </div>
           </div>
-        </div>
       </div>
-      <div class="view" id="view-files">
-        <div class="files-wrap">
-          <div class="files-body">
-            <div class="files-stage">
-              <div class="files-panes" id="files-panes"></div>
-              <div class="files-preview" id="files-preview" hidden></div>
-            </div>
-            <span class="files-acts" id="files-acts">
-              <button type="button" data-act="mkdir" title="new folder"></button>
-              <button type="button" data-act="upload" title="upload, or drag files onto any folder"></button>
-              <button type="button" data-act="refresh" title="refresh"></button>
-              <button type="button" data-act="split" title="second pane, for host-to-host transfers"></button>
-              <button type="button" data-act="view" title="view pane, double click a file to open here"></button>
-            </span>
-            <input type="file" id="files-input" multiple hidden>
-          </div>
-          <div class="files-status">
-            <span class="files-msg" id="files-msg" hidden></span>
-            <span class="files-xferbar" id="files-xferbar" hidden>
-              <span class="files-xfer-what"></span>
-              <span class="files-xfer-track">[<span class="files-xfer-cells"></span>]</span>
-              <span class="files-xfer-pct"></span>
-            </span>
-          </div>
-        </div>
-
-        <template id="files-pane-tpl">
-          <section class="files-pane">
-            <ul class="files-tree"></ul>
-          </section>
-        </template>
-
-        <div class="modal files-modal" id="files-modal" hidden>
-          <div class="modal-box">
-            <div class="modal-header">
-              <span id="files-ask-title">files</span>
-              <button class="modal-close" id="files-ask-close" type="button" title="close">&times;</button>
-            </div>
-            <div class="update-confirm">
-              <p id="files-ask-text"></p>
-              <select class="update-pass" id="files-ask-where" hidden></select>
-              <input class="update-pass" id="files-ask-input" type="text" autocomplete="off" list="files-ask-dirs" hidden>
-              <datalist id="files-ask-dirs"></datalist>
-              <div class="update-actions">
-                <button type="button" id="files-ask-cancel">cancel</button>
-                <button type="button" id="files-ask-go" class="primary">ok</button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-      </div>
-      <div class="view" id="view-status">
-        <div class="st-top" id="st-top">
-          <section class="st-mesh" id="st-mesh" hidden><div class="st-card-head">mesh</div><div class="st-mesh-grid"><div><div></div><canvas class="st-graph st-mesh-g"></canvas></div><div><div></div><div class="st-sum-net st-mesh-g"><canvas class="st-graph"></canvas><canvas class="st-graph"></canvas></div></div></div></section>
-          <section class="st-mesh st-model" id="st-model" hidden><div class="st-card-head">model</div><div class="st-model-pick" hidden></div><div class="st-model-roles"></div></section>
-        </div>
-        <div class="st-hosts" id="st-hosts"><div class="st-wait">connecting</div></div>
-      </div>
-      <!-- the corner's chat panel moved in beside the conversations while this is up -->
       <div class="view" id="view-chat">
         <div class="cw">
           <div class="cw-side"><div class="home-col-head">conversations</div><nav class="cw-list" id="cw-list" aria-label="conversations"></nav></div>
@@ -272,12 +169,9 @@ outside #mesh-svg (emptied every redraw) so it never restarts -->
           </div>
         </div>
       </div>
-    </div>
-    <!-- filled by app.js for whatever is on screen -->
-    <div class="keybar" id="keybar"></div>
-  </section>
-
-  <aside class="pane pane-chat">
+  </div>
+  <!-- the mesh's graph between visits to its tray popup, the chat's panel till docked -->
+  <div class="stash" hidden>
     <div class="mesh-panel" id="mesh-panel">
       <div class="mesh-header">
         <span>mesh</span>
@@ -295,7 +189,6 @@ outside #mesh-svg (emptied every redraw) so it never restarts -->
             <span><span class="mesh-legend-model">c</span> chimp model</span>
             <span><span class="mesh-legend-model">o</span> orangutan model</span>
           </div>
-          <div class="mesh-host-note" id="mesh-host-note" role="status" hidden></div>
         </div>
         <div class="mesh-stats" id="mesh-stats">
           <div class="mesh-stats-head">
@@ -307,7 +200,7 @@ outside #mesh-svg (emptied every redraw) so it never restarts -->
     </div>
     <div class="chat-panel" id="chat-panel">
       <div class="chat-header">
-        <button class="chat-title" id="chat-title" type="button" title="conversations"><span class="chat-title-text">#mesh</span><span class="chat-title-dot" hidden></span><svg class="chat-title-caret" viewBox="0 0 16 16" aria-hidden="true"><polyline points="4 6 8 10 12 6"></polyline></svg></button>
+        <span class="chat-title" id="chat-title"><span class="chat-title-text">#mesh</span><span class="chat-title-dot" title="news in another conversation" hidden></span></span>
         <span class="chat-status" id="chat-status"><span class="label">offline</span></span>
         <span class="chat-tools">
           <button class="chat-icon chat-files-btn" id="chat-files-btn" type="button" aria-label="attachments" hidden>
@@ -325,7 +218,6 @@ outside #mesh-svg (emptied every redraw) so it never restarts -->
           </button>
         </span>
       </div>
-      <div class="tab-menu chat-menu" id="chat-menu" hidden><nav class="cw-list" aria-label="conversations"></nav></div>
       <div class="chat-find" id="chat-find" hidden>
         <span class="chat-prompt">/</span><input id="chat-find-input" type="text" placeholder="search this conversation" autocomplete="off" spellcheck="false"><span class="chat-find-count" id="chat-find-count"></span>
       </div>
@@ -354,27 +246,11 @@ outside #mesh-svg (emptied every redraw) so it never restarts -->
         <input type="file" id="chat-file" multiple hidden>
       </div>
     </div>
-  </aside>
-
-  <!-- the side column's cards, each label beside its own card, pressed to show or hide it -->
-  <nav class="side-rail" id="side-rail" aria-label="side column">
-    <button type="button" id="side-mesh" title="mesh" aria-controls="mesh-panel" aria-expanded="true"><span>mesh</span></button>
-    <button type="button" id="side-model" title="model" aria-controls="st-model" aria-expanded="false"><span>model</span></button>
-    <button type="button" id="side-chat" title="chat pane (shift+c)" aria-controls="chat-panel" aria-expanded="true"><span>chat</span></button>
-  </nav>
-
+  </div>
 </div>
 
 <!-- the chat's one popup: a conversation's actions, or what's been shared -->
 <div class="chat-pop" id="chat-pop" role="menu" hidden></div>
-
-<div class="mobile-tabbar" id="mobile-tabbar">
-  <span class="tab-ink" aria-hidden="true"></span>
-  <button class="mobile-tab-btn" type="button" data-section="main">home</button>
-  <button class="mobile-tab-btn active" type="button" data-section="mesh">mesh</button>
-  <button class="mobile-tab-btn" type="button" data-section="model">model</button>
-  <button class="mobile-tab-btn" type="button" data-section="chat">chat</button>
-</div>
 
 <link rel="stylesheet" href="/vendor/katex.css">
 <script src="/vendor/marked.js"></script>
