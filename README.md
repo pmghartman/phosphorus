@@ -36,8 +36,17 @@ Tailscale keys expire every 90 days.
 
 ## Using it
 
-Open your domain in a browser and log in to one or more hosts with that machine's
-own user and password. You get a desktop:
+Open your domain in a browser and log in with your phosphorus user. On first start
+there are no users: log in as `admin` with `PHOSPHORUS_UPDATE_PASSWORD` from `.env`
+and make an admin user (the setup admin turns off once one exists). Admins add and
+delete users and give out admin from the users icon.
+
+The first time a user logs in they log in to one or more hosts with that machine's
+own user and password; those logins are saved to their profile for next time. A
+host online but not logged in shows a lock in the bottom bar: click it to log in.
+The profile button in the bar holds saved hosts, page logins, the password and log out.
+Users live in each host's `state/sys/` (`etc/passwd`, `etc/shadow`, `home/<user>/vault`),
+copied to every host, each user's vault sealed with their own password. You get a desktop:
 
 - **terminal**: a shell on each host you logged in to
 - **files**: every host's shared folders; copy and move between hosts, drag files in to upload

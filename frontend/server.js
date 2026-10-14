@@ -24,6 +24,8 @@ const reconfig = require('./reconfig');
 const stats = require('./stats');
 const media = require('./chatmedia');
 const collab = require('./collab');
+const users = require('./users');
+const sys = require('./sysfs');
 const { readJson, writeJsonAtomic, writeJsonSoon, tailnetIp, peerCall } = require('./util');
 
 // random per boot, a real restart told apart from a same-version update
@@ -908,6 +910,7 @@ const GETS = {
     model: model.state(),
     modelRoles: model.roles(),
     modelKeys: model.keyStamps(),
+    sys: sys.stamps(),
     projects: project.summaries(),
     chat: q.has('since') ? ownChat.filter((m) => m.seq > (Number(q.get('since')) || 0)) : [],
   }),
@@ -996,6 +999,19 @@ async function mintGuestKey() {
   }
 }
 
+// the users' endpoints, each (session, body) -> [status, body, cookie?]
+const USER_CALLS = {
+  'GET /api/me': (s) => (s ? [200, users.me(s)] : [401, { error: 'log in', setup: users.setup() }]),
+  'POST /api/login': (s, p) => users.login(p),
+  'POST /api/logout': () => [200, { ok: true }, users.clearCookie()],
+  'POST /api/me/vault': (s, p) => users.setVault(s, p),
+  'POST /api/me/password': (s, p) => users.changePass(s, p),
+  'GET /api/users': (s) => users.list(s),
+  'POST /api/users': (s, p) => users.create(s, p),
+  'POST /api/users/admin': (s, p) => users.setAdmin(s, p),
+  'POST /api/users/delete': (s, p) => users.remove(s, p),
+};
+
 // every request on PORT, and whatever the ingress routes to the frontend
 function app(req, res) {
   const { pathname, searchParams } = new URL(req.url, 'http://localhost');
@@ -1005,6 +1021,29 @@ function app(req, res) {
   if (req.method === 'GET' && GETS[pathname]) {
     if (!isLocalOrPeer(req)) { res.writeHead(403).end('forbidden'); return; }
     sendJson(res, 200, GETS[pathname](searchParams));
+    return;
+  }
+
+  // the sys tree for a peer's pull, a browser's login and own vault
+  if (pathname === '/api/sys/sync' && req.method === 'GET') {
+    if (!isTailnet(req) || req.ingress) { res.writeHead(403).end('forbidden'); return; }
+    sendJson(res, 200, sys.dump());
+    return;
+  }
+  const userCall = USER_CALLS[`${req.method} ${pathname}`];
+  if (userCall) {
+    if (!isLocalOrPeer(req) || (req.method === 'POST' && !sameOrigin(req))) { res.writeHead(403).end('forbidden'); return; }
+    const s = users.session(req);
+    const reply = ([status, body, cookie]) => {
+      if (cookie) res.setHeader('Set-Cookie', cookie);
+      sendJson(res, status, body);
+    };
+    if (req.method === 'GET') { reply(userCall(s)); return; }
+    readRaw(req, MAX_JSON_BODY).then(async (buf) => {
+      let p = {};
+      try { p = JSON.parse(buf.toString('utf8') || '{}') || {}; } catch {}
+      reply(await userCall(s, p));
+    }).catch(() => { if (!res.headersSent) res.writeHead(400).end('bad request'); });
     return;
   }
 

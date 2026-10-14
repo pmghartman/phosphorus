@@ -5776,8 +5776,14 @@ function dkLogin() {
   const box = el('div', 'dk-login');
   const actions = el('div', 'update-actions');
   actions.append(go);
-  box.append(el('div', 'home-col-head', 'desktop'), el('p', 'dk-note', 'ssh into one or more hosts'), list, actions);
+  const skip = Object.assign(el('button', '', 'skip'), { type: 'button', title: 'log in to hosts later from their locks in the task bar' });
+  const out = Object.assign(el('button', '', 'log out'), { type: 'button' });
+  actions.prepend(out, skip);
+  box.append(el('div', 'home-col-head', acct ? `desktop, ${acct.user}` : 'desktop'),
+    el('p', 'dk-note', 'ssh into one or more hosts, saved to your profile for next time'), list, actions);
   go.addEventListener('click', dkConnect);
+  skip.addEventListener('click', dkDesktop);
+  out.addEventListener('click', acctLogout);
   const stage = el('div', 'dk-stage');
   stage.appendChild(box);
   const desk = el('div', 'dk-desk');
@@ -5820,7 +5826,9 @@ async function dkConnect() {
     if (why) { r.pass.value = ''; return; }
     dk.creds.set(r.host, { user, pass });
     users[r.host] = user;
+    if (acct) acct.vault.hosts[r.host] = { user, pass };
   }));
+  acctSave();
   try { localStorage.setItem(DK_USERS_KEY, JSON.stringify(users)); } catch {}
   if (!dk.login) return;
   dk.login.go.disabled = false;
@@ -5836,14 +5844,12 @@ function dkDesktop() {
   const tasks = el('div', 'dk-tasks');
   const hosts = el('span', 'dk-hosts');
   const note = Object.assign(el('span', 'dk-host-note'), { hidden: true });
-  const off = Object.assign(el('button', 'dk-off', 'log out'), { type: 'button' });
   const desk = el('div', 'dk-desk');
-  const bar = dkBar(tasks, hosts, off);
+  const bar = dkBar(tasks, hosts, dkProfileTray());
   hosts.after(note);
   bar.insertBefore(dkMeshTray(), dkTray);
   desk.append(dkArt(), icons, wins, bar);
   dkView.replaceChildren(desk);
-  off.addEventListener('click', dkLogout);
   dkBand(icons);
   dk.desk = { el: desk, icons, wins, tasks, hosts };
   dk.chips = '';
@@ -5895,10 +5901,10 @@ setInterval(dkClock, 5000);
 
 function dkLogout() {
   dk.meshTray?.show(false);
+  dk.profileTray?.show(false);
   for (const w of [...dk.wins.values()]) dkClose(w, true);
   dk.creds.clear();
   dk.desk = null;
-  dkLogin();
 }
 
 const DK_GLYPHS = {
@@ -5913,6 +5919,10 @@ const DK_GLYPHS = {
   games: 'M2.5 5h11a1 1 0 0 1 1 1v5a2 2 0 0 1-3.5 1.3L9.5 11h-3L5 12.3A2 2 0 0 1 1.5 11V6a1 1 0 0 1 1-1zM4.5 7v2.5M3.25 8.25h2.5M10.5 7.5h.01M12 9h.01',
   about: 'M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM8 7v4.5M8 4.75h.01',
   mesh: 'M6.5 1.5h3v3h-3zM1.5 11.5h3v3h-3zM11.5 11.5h3v3h-3zM7.2 4.5l-3.4 7M8.8 4.5l3.4 7M4.5 13h7',
+  lock: 'M4 7.5h8v6H4zM5.5 7.5V5a2.5 2.5 0 0 1 5 0v2.5',
+  user: 'M8 2a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM2.5 14.5c.6-3 2.8-4.5 5.5-4.5s4.9 1.5 5.5 4.5',
+  users: 'M6 2.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM1.5 13.5c.4-2.6 2.2-4 4.5-4s4.1 1.4 4.5 4M11 3a2 2 0 0 1 0 4M12.5 9.8c1.2.5 1.9 1.7 2 3.7',
+  key: 'M10 2a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM7.2 8.8L2 14v1.5h2.5V14H6v-1.5h1.5L9 11',
 };
 
 // the frontend's own stroked glyphs, a phrase of path data each
@@ -5961,7 +5971,7 @@ function dkIcons() {
   if (!dk.desk) return;
   const hosts = [...dk.creds.keys()];
   const git = !!gitRoute;
-  const sig = JSON.stringify([hosts, git, dk.services.map((r) => [r.host, r.name])]);
+  const sig = JSON.stringify([hosts, git, !!acct?.admin, dk.services.map((r) => [r.host, r.name])]);
   if (sig === dk.sig) return;
   dk.sig = sig;
   dk.desk.icons.replaceChildren(
@@ -5974,6 +5984,7 @@ function dkIcons() {
     ...(git ? [dkIcon('git', 'git', '', () => dkOpenApp('git'))] : []),
     dkIcon('games', 'games', '', () => dkOpenApp('games')),
     dkIcon('about', 'about', '', () => dkOpenApp('about')),
+    ...(acct?.admin ? [dkIcon('users', 'users', '', dkUsersWin)] : []),
     ...dk.services.map((r) => dkIcon('service', r.name, r.host, () => dkService(r),
       `/api/favicon/${encodeURIComponent(r.host)}/${encodeURIComponent(r.name)}`)),
   );
@@ -6190,11 +6201,18 @@ function dkChips() {
   const hosts = dk.desk?.hosts;
   if (!hosts) return;
   const here = hostSwitch?.to || selfHost;
-  const names = [...dk.creds.keys()];
-  const sig = JSON.stringify([here, names]);
+  const names = [...new Set([...dk.creds.keys(), ...terminalHosts])]
+    .sort((a, b) => (b === selfHost) - (a === selfHost) || a.localeCompare(b));
+  const sig = JSON.stringify([here, names, [...dk.creds.keys()]]);
   if (sig === dk.chips) return;
   dk.chips = sig;
   hosts.replaceChildren(...names.map((h) => {
+    if (!dk.creds.has(h)) {
+      const b = Object.assign(el('button', 'dk-chip locked', h), { type: 'button', title: `log in to ${h}` });
+      b.prepend(dkGlyph(DK_GLYPHS.lock));
+      b.addEventListener('click', () => dkUnlock(h, b));
+      return b;
+    }
     const b = Object.assign(el('button', `dk-chip${h === here ? ' here' : ''}`, h), { type: 'button' });
     b.title = h === here ? `this page is served by ${h}` : `serve this page from ${h}`;
     b.setAttribute('aria-pressed', String(h === here));
@@ -6421,6 +6439,7 @@ function dkTerminal(host) {
   const c = dk.creds.get(host);
   const w = dkWin(null, 'terminal', host, 'term');
   if (!w || !c) return;
+  w.host = host;
   const t = startTerminal(w.body, host, newSid(), false, false, { ...c });
   w.onFocus = () => t.focus();
   w.onClose = () => t.close();
@@ -7275,4 +7294,293 @@ addEventListener('blur', () => setTimeout(() => {
 // shells ended with the page, not left for their grace
 addEventListener('pagehide', (e) => { if (!e.persisted) for (const w of [...dk.wins.values()]) if (w.kind === 'term') dkClose(w, true); });
 
-dkLogin();
+// --- the account: a phosphorus user over the hosts' own logins, its vault
+// of host and page logins kept on the mesh, sealed with its password
+
+let acct = null;
+
+async function acctCall(url, body) {
+  try {
+    const r = await fetch(url, body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const out = await r.json().catch(() => ({}));
+    return { ok: r.ok, status: r.status, ...out };
+  } catch (err) { return { ok: false, status: 0, error: err.message }; }
+}
+
+async function acctStart() {
+  const me = await acctCall('/api/me');
+  if (me.ok) acctIn(me);
+  else acctLogin(me.setup);
+}
+
+// a real form, so the browser offers to save and fill it
+function acctLogin(setup) {
+  acct = null;
+  dkLogout();
+  const form = Object.assign(el('form', 'dk-login acct-login'), { method: 'post', action: '/api/login' });
+  const user = Object.assign(el('input'), { name: 'username', placeholder: 'user', autocomplete: 'username', spellcheck: false, autocapitalize: 'off', required: true });
+  const pass = Object.assign(el('input'), { name: 'password', type: 'password', placeholder: 'password', autocomplete: 'current-password' });
+  const why = el('span', 'dk-state bad');
+  const go = Object.assign(el('button', 'primary', 'log in'), { type: 'submit' });
+  const actions = el('div', 'update-actions');
+  actions.append(why, go);
+  form.append(el('div', 'home-col-head', 'phosphorus'),
+    el('p', 'dk-note', setup ? 'first start: log in as admin with the update password from .env to make users' : 'log in'),
+    user, pass, actions);
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    go.disabled = true;
+    why.textContent = '';
+    const me = await acctCall('/api/login', { user: user.value.trim(), pass: pass.value });
+    go.disabled = false;
+    if (!me.ok) { why.textContent = me.error || 'no answer'; pass.value = ''; pass.focus(); return; }
+    acctIn(me);
+  });
+  const stage = el('div', 'dk-stage');
+  stage.appendChild(form);
+  const desk = el('div', 'dk-desk');
+  desk.append(dkArt(), stage, dkBar());
+  dkView.replaceChildren(desk);
+  user.focus();
+}
+
+function acctIn(me) {
+  acct = { user: me.user, admin: me.admin, boot: me.boot, vault: me.vault || { hosts: {}, pages: {} } };
+  acct.vault.hosts ||= {};
+  acct.vault.pages ||= {};
+  if (acct.boot) { acctSetup(); return; }
+  dk.creds = new Map(Object.entries(acct.vault.hosts).map(([h, c]) => [h, { user: c.user, pass: c.pass }]));
+  if (dk.creds.size) dkDesktop(); else dkLogin();
+}
+
+async function acctSave() {
+  if (!acct || acct.boot) return '';
+  const r = await acctCall('/api/me/vault', { vault: acct.vault });
+  return r.ok ? '' : r.error || 'not saved';
+}
+
+async function acctLogout() {
+  await acctCall('/api/logout', {});
+  acctLogin(false);
+}
+
+// the setup admin: only the users list, then out
+function acctSetup() {
+  dkLogout();
+  const box = el('div', 'dk-login');
+  const out = Object.assign(el('button', '', 'log out'), { type: 'button' });
+  out.addEventListener('click', acctLogout);
+  const actions = el('div', 'update-actions');
+  actions.appendChild(out);
+  box.append(el('div', 'home-col-head', 'setup admin'),
+    el('p', 'dk-note', 'make an admin user, then log out and in as them; the setup admin is off once an admin exists'),
+    acctUsers(), actions);
+  const stage = el('div', 'dk-stage');
+  stage.appendChild(box);
+  const desk = el('div', 'dk-desk');
+  desk.append(dkArt(), stage, dkBar());
+  dkView.replaceChildren(desk);
+}
+
+// the users list and a new user's form, for admins
+function acctUsers() {
+  const wrap = el('div', 'acct-users');
+  const list = el('ul', 'dk-rows');
+  const name = Object.assign(el('input'), { placeholder: 'new user', autocomplete: 'off', spellcheck: false, autocapitalize: 'off' });
+  const pass = Object.assign(el('input'), { type: 'password', placeholder: 'password', autocomplete: 'new-password' });
+  const admin = Object.assign(el('input'), { type: 'checkbox' });
+  const adminLabel = el('label', 'acct-check');
+  adminLabel.append(admin, ' admin');
+  const add = Object.assign(el('button', 'primary', 'add'), { type: 'button' });
+  const why = el('div', 'dk-state bad');
+  const row = el('div', 'dk-row acct-new');
+  row.append(name, pass, adminLabel, add);
+  const draw = (r) => {
+    why.textContent = r.ok ? '' : r.error || 'no answer';
+    if (!r.users) return;
+    list.replaceChildren(...(r.users.length ? r.users.map((u) => {
+      const li = el('li', 'dk-row acct-user');
+      const box = Object.assign(el('input'), { type: 'checkbox', checked: u.admin, disabled: u.name === acct.user });
+      const lab = el('label', 'acct-check');
+      lab.append(box, ' admin');
+      box.addEventListener('change', async () => draw(await acctCall('/api/users/admin', { name: u.name, admin: box.checked })));
+      const del = Object.assign(el('button', 'danger', 'delete'), { type: 'button', disabled: u.name === acct.user });
+      del.addEventListener('click', async () => {
+        if (del.textContent !== 'sure?') { del.textContent = 'sure?'; return; }
+        draw(await acctCall('/api/users/delete', { name: u.name }));
+      });
+      li.append(el('span', 'dk-host', u.name), lab, del);
+      return li;
+    }) : [el('li', 'empty', 'no users yet')]));
+  };
+  add.addEventListener('click', async () => {
+    const r = await acctCall('/api/users', { name: name.value.trim(), pass: pass.value, admin: admin.checked });
+    if (r.ok) { name.value = ''; pass.value = ''; admin.checked = false; }
+    draw(r);
+  });
+  for (const i of [name, pass]) i.addEventListener('keydown', (e) => { if (e.key === 'Enter') add.click(); });
+  wrap.append(list, row, why);
+  acctCall('/api/users').then(draw);
+  return wrap;
+}
+
+function dkUsersWin() {
+  const w = dkWin('app:users', 'users', '', 'app dk-app-users');
+  if (!w) return;
+  const body = el('div', 'acct-pane');
+  body.appendChild(acctUsers());
+  w.body.appendChild(body);
+  dkSize(w, 560, 420);
+  dkFocus(w);
+}
+
+// a locked host chip's own login, saved to the vault once the shell answers
+function dkUnlock(host, chip) {
+  const r = chip.getBoundingClientRect();
+  const pop = el('form', 'acct-unlock');
+  const user = Object.assign(el('input'), { placeholder: 'user', autocomplete: 'off', spellcheck: false, autocapitalize: 'off', value: dkUsers()[host] || '' });
+  const pass = Object.assign(el('input'), { type: 'password', placeholder: 'password', autocomplete: 'off' });
+  const why = el('span', 'dk-state');
+  const go = Object.assign(el('button', 'primary', 'log in'), { type: 'submit' });
+  pop.append(el('div', 'home-col-head', host), user, pass, why, go);
+  pop.style.left = `${Math.max(4, Math.min(r.left, innerWidth - 260))}px`;
+  pop.style.bottom = `${innerHeight - r.top + 10}px`;
+  const close = () => { pop.remove(); document.removeEventListener('pointerdown', away, true); };
+  const away = (e) => { if (!pop.contains(e.target)) close(); };
+  document.addEventListener('pointerdown', away, true);
+  pop.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+  pop.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!user.value.trim() || !pass.value) return;
+    go.disabled = true;
+    why.className = 'dk-state busy';
+    why.textContent = '…';
+    const bad = await dkProbe(host, user.value.trim(), pass.value);
+    go.disabled = false;
+    if (bad) { why.className = 'dk-state bad'; why.textContent = bad; pass.value = ''; pass.focus(); return; }
+    dkRemember(host, user.value.trim(), pass.value);
+    close();
+  });
+  document.body.appendChild(pop);
+  (user.value ? pass : user).focus();
+}
+
+function dkRemember(host, user, pass) {
+  dk.creds.set(host, { user, pass });
+  const users = dkUsers();
+  users[host] = user;
+  try { localStorage.setItem(DK_USERS_KEY, JSON.stringify(users)); } catch {}
+  if (acct && !acct.boot) { acct.vault.hosts[host] = { user, pass }; acctSave(); }
+  dkChips();
+  dkIcons();
+}
+
+function dkForget(host) {
+  dk.creds.delete(host);
+  if (acct) { delete acct.vault.hosts[host]; acctSave(); }
+  for (const w of [...dk.wins.values()]) if (w.host === host) dkClose(w, true);
+  dkChips();
+  dkIcons();
+}
+
+// the task bar's profile: a menu of settings, users and log out
+function dkProfileTray() {
+  const b = Object.assign(el('button', 'dk-tray dk-profile'), { type: 'button', title: acct?.user || 'profile', ariaLabel: 'profile' });
+  b.appendChild(dkGlyph(DK_GLYPHS.user));
+  b.append(el('span', 'dk-profile-name', acct?.user || ''));
+  b.addEventListener('click', () => {
+    const r = b.getBoundingClientRect();
+    dkMenu(r.left, r.top - 140, [
+      ['settings', dkProfileWin, true],
+      ...(acct?.admin ? [['users', dkUsersWin, true]] : []),
+      null,
+      ['log out', acctLogout, true, 'danger'],
+    ]);
+    dkMenuEl.style.top = `${Math.max(4, r.top - dkMenuEl.offsetHeight - 8)}px`;
+  });
+  return b;
+}
+
+// the profile window: saved hosts, page logins and the password
+function dkProfileWin() {
+  const w = dkWin('app:profile', 'profile', acct?.user || '', 'app dk-app-profile');
+  if (!w) return;
+  const body = el('div', 'acct-pane');
+  w.body.appendChild(body);
+  const draw = () => {
+    const hosts = el('ul', 'dk-rows');
+    const names = [...new Set([...Object.keys(acct.vault.hosts), ...terminalHosts])].sort();
+    hosts.replaceChildren(...(names.length ? names.map((h) => {
+      const li = el('li', 'dk-row acct-user');
+      const saved = acct.vault.hosts[h];
+      const act = Object.assign(el('button', saved ? 'danger' : '', saved ? 'forget' : 'log in'), { type: 'button' });
+      act.addEventListener('click', () => {
+        if (saved) { dkForget(h); draw(); return; }
+        const chip = [...(dk.desk?.hosts.children || [])].find((c) => c.textContent === h);
+        if (chip) dkUnlock(h, chip);
+      });
+      li.append(el('span', 'dk-host', h), el('span', 'dk-state', saved ? saved.user : terminalHosts.includes(h) ? 'locked' : ''), act);
+      return li;
+    }) : [el('li', 'empty', 'no hosts')]));
+
+    const pages = el('ul', 'dk-rows');
+    const keys = Object.keys(acct.vault.pages).sort();
+    pages.replaceChildren(...(keys.length ? keys.map((k) => {
+      const p = acct.vault.pages[k];
+      const li = el('li', 'dk-row acct-page');
+      const cu = Object.assign(el('button', '', 'copy user'), { type: 'button' });
+      const cp = Object.assign(el('button', '', 'copy pass'), { type: 'button' });
+      const del = Object.assign(el('button', 'danger', 'delete'), { type: 'button' });
+      cu.addEventListener('click', () => copyText(p.user));
+      cp.addEventListener('click', () => copyText(p.pass));
+      del.addEventListener('click', () => { delete acct.vault.pages[k]; acctSave(); draw(); });
+      const name = Object.assign(el('span', 'dk-host', k), { title: p.url || k });
+      li.append(name, el('span', 'dk-state', p.user), cu, cp, del);
+      return li;
+    }) : [el('li', 'empty', 'none saved')]));
+    const pName = Object.assign(el('input'), { placeholder: 'page', autocomplete: 'off', spellcheck: false });
+    pName.setAttribute('list', 'acct-page-names');
+    const opts = el('datalist');
+    opts.id = 'acct-page-names';
+    opts.replaceChildren(...dk.services.map((r) => Object.assign(el('option'), { value: r.name })));
+    const pUser = Object.assign(el('input'), { placeholder: 'user', autocomplete: 'off', spellcheck: false });
+    const pPass = Object.assign(el('input'), { type: 'password', placeholder: 'password', autocomplete: 'off' });
+    const pAdd = Object.assign(el('button', 'primary', 'save'), { type: 'button' });
+    pAdd.addEventListener('click', () => {
+      const k = pName.value.trim();
+      if (!k || !pUser.value) return;
+      const svc = dk.services.find((r) => r.name === k);
+      acct.vault.pages[k] = { url: svc ? serviceUrl(svc) : '', user: pUser.value, pass: pPass.value };
+      acctSave();
+      draw();
+    });
+    const pRow = el('div', 'dk-row acct-new');
+    pRow.append(pName, pUser, pPass, pAdd);
+
+    const pw = el('form', 'dk-row acct-new');
+    const hidden = Object.assign(el('input'), { name: 'username', autocomplete: 'username', value: acct.user, hidden: true });
+    const old = Object.assign(el('input'), { type: 'password', placeholder: 'current', autocomplete: 'current-password' });
+    const neu = Object.assign(el('input'), { type: 'password', placeholder: 'new', autocomplete: 'new-password' });
+    const pwGo = Object.assign(el('button', 'primary', 'change'), { type: 'submit' });
+    const pwWhy = el('div', 'dk-state');
+    pw.append(hidden, old, neu, pwGo);
+    pw.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const r = await acctCall('/api/me/password', { old: old.value, pass: neu.value });
+      pwWhy.className = `dk-state ${r.ok ? 'ok' : 'bad'}`;
+      pwWhy.textContent = r.ok ? 'changed' : r.error || 'no answer';
+      if (r.ok) { old.value = ''; neu.value = ''; }
+    });
+
+    body.replaceChildren(
+      el('div', 'dk-pick-head', 'hosts'), hosts,
+      el('div', 'dk-pick-head', 'page logins'), pages, pRow, opts,
+      el('div', 'dk-pick-head', 'password'), pw, pwWhy,
+    );
+  };
+  draw();
+  dkSize(w, 620, 520);
+  dkFocus(w);
+}
+
+acctStart();
