@@ -5927,7 +5927,7 @@ const DK_GLYPHS = {
   about: 'M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM8 7v4.5M8 4.75h.01',
   mesh: 'M6.5 1.5h3v3h-3zM1.5 11.5h3v3h-3zM11.5 11.5h3v3h-3zM7.2 4.5l-3.4 7M8.8 4.5l3.4 7M4.5 13h7',
   lock: 'M4 7.5h8v6H4zM5.5 7.5V5a2.5 2.5 0 0 1 5 0v2.5',
-  crown: 'M2.5 12.5h11M3 10.5L2 4.5l3.5 3L8 2.5l2.5 5 3.5-3-1 6z',
+  crown: 'M5.6 3.9L5 1.2l1.7 1.3L8 .6l1.3 1.9L11 1.2l-.6 2.7z',
   user: 'M8 2a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM2.5 14.5c.6-3 2.8-4.5 5.5-4.5s4.9 1.5 5.5 4.5',
   users: 'M6 2.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM1.5 13.5c.4-2.6 2.2-4 4.5-4s4.1 1.4 4.5 4M11 3a2 2 0 0 1 0 4M12.5 9.8c1.2.5 1.9 1.7 2 3.7',
   key: 'M10 2a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM7.2 8.8L2 14v1.5h2.5V14H6v-1.5h1.5L9 11',
@@ -7575,11 +7575,13 @@ function dkForget(host) {
 // the task bar's profile: a menu of settings, users and log out
 function dkProfileTray() {
   const b = Object.assign(el('button', 'dk-tray dk-profile'), { type: 'button', title: acct?.user || 'profile', ariaLabel: 'profile' });
-  b.appendChild(dkGlyph(DK_GLYPHS.user));
   if (acct?.admin) {
-    b.appendChild(dkGlyph(DK_GLYPHS.crown, 'dk-crown'));
+    // the user's head lowered, the crown on it
+    const svg = dkGlyph('M8 4.6a2.6 2.6 0 1 0 0 5.2 2.6 2.6 0 0 0 0-5.2zM2.5 15c.6-2.8 2.8-4.2 5.5-4.2s4.9 1.4 5.5 4.2');
+    svg.appendChild(svgEl('path', { d: DK_GLYPHS.crown, class: 'dk-crown' }));
+    b.appendChild(svg);
     b.title += ', admin';
-  }
+  } else b.appendChild(dkGlyph(DK_GLYPHS.user));
   b.append(el('span', 'dk-profile-name', acct?.user || ''));
   b.addEventListener('click', () => {
     const r = b.getBoundingClientRect();
