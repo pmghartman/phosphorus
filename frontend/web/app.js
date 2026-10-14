@@ -1613,8 +1613,6 @@ function startTerminal(view, host, sid, resume, shared = false) {
       lineHeight: 1,
       letterSpacing: 0,
       theme: termTheme(),
-      // a paste as typed, never wrapped in \e[200~ markers
-      ignoreBracketedPasteMode: true,
     });
     liveTerms.add(term);
     // shift+esc left to the page, which unfocuses, plain esc the terminal's;
