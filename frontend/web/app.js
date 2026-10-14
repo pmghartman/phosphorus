@@ -1768,6 +1768,32 @@ function appFrameUrl(host, sid) {
   return `${base}index.html?${q}`;
 }
 
+// only the app's own windows, edge to edge, xpra's desktop never shown: its
+// client same origin here, main windows undecorated and maximized, dialogs left floating
+const APP_FRAME_CSS = `html, body, #screen { background: none !important; }
+#float_menu, #taskbar { display: none !important; }`;
+function appOnly(frame) {
+  const fit = () => {
+    const c = frame.contentWindow?.client;
+    for (const w of Object.values(c?.id_to_window || {})) {
+      if (w.hesperusFit || w.override_redirect || w.tray || w.metadata?.['transient-for']) continue;
+      if (w.windowtype?.length && !w.has_windowtype(['NORMAL'])) continue;
+      w.hesperusFit = true;
+      // set_decorated in older clients, _set_decorated in newer
+      (w.set_decorated || w._set_decorated)?.call(w, false);
+      w.set_maximized?.(true);
+    }
+  };
+  frame.addEventListener('load', () => {
+    const doc = frame.contentDocument;
+    if (!doc) return;
+    doc.head.appendChild(Object.assign(doc.createElement('style'), { textContent: APP_FRAME_CSS }));
+    // after the client's own bookkeeping for the new window
+    new MutationObserver(() => setTimeout(fit)).observe(doc.getElementById('screen') || doc.body, { childList: true });
+    fit();
+  });
+}
+
 function startApp(view, host, app, sid, resume) {
   const msg = el('div', 'app-msg', resume ? 'reconnecting…' : 'connecting…');
   const user = Object.assign(el('input'), { placeholder: 'user', autocomplete: 'username', spellcheck: false });
@@ -1776,6 +1802,7 @@ function startApp(view, host, app, sid, resume) {
   const form = Object.assign(el('form', 'app-login'), { hidden: true });
   form.append(el('div', 'app-login-title', `${app.name} on ${host}`), user, pass, go);
   const frame = Object.assign(el('iframe', 'app-frame'), { hidden: true, title: app.name });
+  appOnly(frame);
   view.append(msg, form, frame);
   let ws = null;
   let retry = null;
