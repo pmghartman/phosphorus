@@ -13,8 +13,8 @@ const shadow = (n) => `etc/shadow/${n}.json`;
 const vaultFile = (n) => `home/${n}/vault.json`;
 sys.oldestWins(SECRET);
 
-// .env's update password, the bootstrap admin's, unset: an empty one
-const ADMIN_PASS = process.env.PHOSPHORUS_UPDATE_PASSWORD || '';
+// .env's admin password, the bootstrap admin's, unset: an empty one
+const ADMIN_PASS = process.env.ADMIN_PASS || process.env.PHOSPHORUS_UPDATE_PASSWORD || '';
 const ADMIN = 'admin';
 const NAME_RE = /^[a-z0-9][a-z0-9._-]{0,31}$/;
 const COOKIE = 'phosphorus-user';
@@ -147,7 +147,7 @@ function setVault(s, p) {
 }
 
 async function changePass(s, p) {
-  if (!s || s.boot) return [403, { error: 'the setup admin\'s password is the update password in .env' }];
+  if (!s || s.boot) return [403, { error: 'the setup admin\'s password is ADMIN_PASS in .env' }];
   const pass = String(p.pass || '');
   if (pass.length < 4 || pass.length > MAX_PASS) return [400, { error: 'password: 4 to 256 characters' }];
   const u = live(s.user);

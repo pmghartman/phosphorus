@@ -50,12 +50,13 @@ cli() {
   done
 }
 
-# PHOSPHORUS_UPDATE_PASSWORD from .env, as the web and cli ask it, unset: open
+# ADMIN_PASS from .env (PHOSPHORUS_UPDATE_PASSWORD before it), unset: open
 ask_password() {
   local want got
-  want="$(grep '^PHOSPHORUS_UPDATE_PASSWORD=' "$DIR/.env" 2>/dev/null | cut -d= -f2-)"
+  want="$(grep '^ADMIN_PASS=' "$DIR/.env" 2>/dev/null | cut -d= -f2-)"
+  [ -n "$want" ] || want="$(grep '^PHOSPHORUS_UPDATE_PASSWORD=' "$DIR/.env" 2>/dev/null | cut -d= -f2-)"
   [ -n "$want" ] || return 0
-  read -rsp "update password: " got; echo
+  read -rsp "admin password: " got; echo
   [ "$got" = "$want" ] || { echo "wrong password" >&2; exit 1; }
 }
 

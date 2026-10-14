@@ -919,18 +919,18 @@ const GETS = {
   '/api/update/local/status': () => readJson(UPDATE_RESULT_FILE, { state: 'ok' }),
 };
 
-// PHOSPHORUS_UPDATE_PASSWORD from .env gating a start, unset: open, so a host whose
-// env predates the gate can still update itself out of that
-const UPDATE_PASSWORD = process.env.PHOSPHORUS_UPDATE_PASSWORD || '';
+// ADMIN_PASS from .env, the old PHOSPHORUS_UPDATE_PASSWORD still read; an admin's
+// session or the password starts a walk, unset: loopback's cli open
+const ADMIN_PASS = process.env.ADMIN_PASS || process.env.PHOSPHORUS_UPDATE_PASSWORD || '';
 
 // mesh-wide warning, counted down in the browser over the walk's grace window
 const ALERT_COLOR = '#f85149';
 const UPDATE_WARNING = 'phosphorus updating';
 
 // every way a browser drives this host's own chain, on one endpoint
-function chainAction(action, password) {
+function chainAction(action, password, admin) {
   if (action === 'start') {
-    if (UPDATE_PASSWORD && password !== UPDATE_PASSWORD) return [401, { error: 'wrong password' }];
+    if (!admin && (ADMIN_PASS ? password !== ADMIN_PASS : true)) return [401, { error: 'admins only, or the admin password' }];
     const started = update.start(git.rows().map((h) => h.host));
     if (started.locked) return [409, { status: 'locked', by: started.locked }];
     const alert = postOwn({
@@ -1195,7 +1195,8 @@ function app(req, res) {
     if (!isBrowser(req)) { res.writeHead(403).end('forbidden'); return; }
     onJson(req, res, 1024, (p) => {
       clock.markHot(); // an update never watched lazily
-      return chainAction(p.action, String(p.password || ''));
+      const s = users.session(req);
+      return chainAction(p.action, String(p.password || ''), !!s?.admin || (!ADMIN_PASS && isLoopback(req)));
     });
     return;
   }
@@ -1440,7 +1441,7 @@ const actions = {
   game: (host, name, action) => (host === SELF_HOST ? runGameLocally(name, action) : forwardGame(host, name, action)),
   gitMaster: (host) => { clock.markHot(); return git.makeMaster(host); },
   modelRole: (role, m) => { const out = model.choose({ role, model: m }); if (out[0] === 200) clock.markHot(); return out; },
-  // start behind the update password, so phosphorus only ever continuing or cancelling
+  // start behind the admin password, so phosphorus only ever continuing or cancelling
   update: (action) => {
     clock.markHot();
     const [status, body] = chainAction(action, '');

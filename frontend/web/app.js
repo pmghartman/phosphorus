@@ -5,8 +5,8 @@
 let selfHost = '';
 // BASE_DOMAIN from /api/state, the page's own host until the first answer
 let baseDomain = location.hostname;
-// GAME_ZONE from /api/state, games joined at <name>.<zone>
-let gameZone = 'phosphorus';
+// games joined at <name>.phosphorus
+const gameZone = 'phosphorus';
 const aboutVersion = document.getElementById('about-version');
 const topUpdate = document.getElementById('top-update');
 
@@ -984,7 +984,6 @@ function fitMesh(w, h, dims) {
 function applyState(state) {
   selfHost = settleHost(state.self.host || '');
   if (state.domain) baseDomain = state.domain;
-  if (state.gameZone) gameZone = state.gameZone;
   if (state.self.version) {
     aboutVersion.textContent = `v${state.self.version}`;
   }
@@ -5347,6 +5346,7 @@ function applyChain(status, mine) {
 }
 
 function openUpdateModal() {
+  if (!acct?.admin) return;
   updateConfirm.hidden = true;
   updateMesh.hidden = false;
   updateModal.hidden = false;
@@ -5392,8 +5392,8 @@ async function askToStart() {
   const behind = c.latest ? versions.filter((v) => newerVersion(c.latest, v)).length : 0;
   if (!c.latest) {
     openConfirm(`couldn't reach the release feed${c.error ? ` (${c.error})` : ''}. update anyway?`, {
-      title: 'update the mesh', actionLabel: 'update', password: true,
-      onAction: () => startChain(updatePassField.get()),
+      title: 'update the mesh', actionLabel: 'update',
+      onAction: () => startChain(),
     });
     return;
   }
@@ -5404,8 +5404,8 @@ async function askToStart() {
     return;
   }
   openConfirm(`v${c.latest} is out, ${behind} host${behind === 1 ? '' : 's'} behind. network down for a while. continue?`, {
-    title: 'update the mesh', actionLabel: 'update', password: true,
-    onAction: () => startChain(updatePassField.get()),
+    title: 'update the mesh', actionLabel: 'update',
+    onAction: () => startChain(),
   });
 }
 
@@ -5883,6 +5883,8 @@ function dkBar(...before) {
   dk.clock = el('span', 'dk-clock');
   if (!before.length) bar.appendChild(el('span', 'dk-tasks'));
   bar.append(...before.slice(0, 2), dkTray, dk.clock, ...before.slice(2));
+  dkTray.querySelector('.update-wrap').hidden = !acct?.admin;
+  if (!acct?.admin) closeUpdateModal();
   dkClock();
   return bar;
 }
@@ -5946,17 +5948,20 @@ const DK_GY = 86;
 const DK_PAD = 8;
 dk.sel = new Set();
 
-function dkIcon(kind, label, sub, open, icon = '') {
-  const b = Object.assign(el('button', `dk-icon dk-${kind}`), { type: 'button', title: sub ? `${label} on ${sub}` : label });
+function dkIcon(kind, label, sub, open, icon = '', tab = false) {
+  const b = Object.assign(el('button', `dk-icon dk-${kind}${tab ? ' dk-ext' : ''}`), { type: 'button', title: sub ? `${label} on ${sub}` : label });
+  if (tab) b.title += ', opens in a new tab';
   const tile = el('span', 'dk-tile');
   tile.appendChild(dkGlyph(DK_GLYPHS[kind]));
+  const mark = tab && dkGlyph(DK_UI.pop, 'dk-ext-mark');
   if (kind === 'chat') tile.appendChild(dkBadge());
   // a site's own icon once it loads, the globe till then
   if (icon) {
     const img = Object.assign(el('img', 'dk-favicon'), { alt: '', decoding: 'async', draggable: false });
-    img.addEventListener('load', () => { if (img.naturalWidth) tile.replaceChildren(img); }, { once: true });
+    img.addEventListener('load', () => { if (img.naturalWidth) tile.replaceChildren(img, ...(mark ? [mark] : [])); }, { once: true });
     img.src = icon;
   }
+  if (mark) tile.appendChild(mark);
   b.append(tile, el('span', 'dk-label', label));
   if (sub) b.appendChild(el('span', 'dk-sub', sub));
   b.dataset.id = `${kind}\n${label}\n${sub}`;
@@ -5971,7 +5976,7 @@ function dkIcons() {
   if (!dk.desk) return;
   const hosts = [...dk.creds.keys()];
   const git = !!gitRoute;
-  const sig = JSON.stringify([hosts, git, !!acct?.admin, dk.services.map((r) => [r.host, r.name])]);
+  const sig = JSON.stringify([hosts, git, inTab(gitRoute), !!acct?.admin, dk.services.map((r) => [r.host, r.name, r.mode])]);
   if (sig === dk.sig) return;
   dk.sig = sig;
   dk.desk.icons.replaceChildren(
@@ -5981,12 +5986,12 @@ function dkIcons() {
     dkIcon('chat', 'chat', '', () => dkOpenApp('chat')),
     dkIcon('status', 'status', '', () => dkOpenApp('status')),
     dkIcon('projects', 'projects', '', () => dkOpenApp('projects')),
-    ...(git ? [dkIcon('git', 'git', '', () => dkOpenApp('git'))] : []),
+    ...(git ? [dkIcon('git', 'git', '', () => dkOpenApp('git'), '', inTab(gitRoute))] : []),
     dkIcon('games', 'games', '', () => dkOpenApp('games')),
     dkIcon('about', 'about', '', () => dkOpenApp('about')),
     ...(acct?.admin ? [dkIcon('users', 'users', '', dkUsersWin)] : []),
     ...dk.services.map((r) => dkIcon('service', r.name, r.host, () => dkService(r),
-      `/api/favicon/${encodeURIComponent(r.host)}/${encodeURIComponent(r.name)}`)),
+      `/api/favicon/${encodeURIComponent(r.host)}/${encodeURIComponent(r.name)}`, inTab(r))),
   );
   dkLayout();
 }
@@ -7086,7 +7091,11 @@ function dkEditorPick() {
   dkFocus(w);
 }
 
+// a subdomain's app refusing to be framed, a browser tab instead
+const inTab = (r) => r?.mode === 'subdomain';
+
 function dkService(r) {
+  if (inTab(r)) { window.open(serviceUrl(r), '_blank', 'noopener'); return; }
   const w = dkWin(`svc:${serviceKey(r)}`, r.name, r.host, 'svc');
   if (!w) return;
   const url = serviceUrl(r);
@@ -7208,6 +7217,7 @@ const gitMaster = () => gitHostsList.find((h) => h.role === 'master' && h.reacha
 
 function dkGit() {
   if (!gitRoute) return;
+  if (inTab(gitRoute)) { window.open(serviceUrl(gitRoute), '_blank', 'noopener'); return; }
   const w = dkWin('app:git', 'git', gitMaster(), 'svc dk-git');
   if (!w) return;
   const pop = Object.assign(el('button', 'dk-pop'), { type: 'button', title: 'open in a browser tab', ariaLabel: 'open in a browser tab' });
@@ -7325,7 +7335,7 @@ function acctLogin(setup) {
   const actions = el('div', 'update-actions');
   actions.append(why, go);
   form.append(el('div', 'home-col-head', 'phosphorus'),
-    el('p', 'dk-note', setup ? 'first start: log in as admin with the update password from .env to make users' : 'log in'),
+    el('p', 'dk-note', setup ? 'first start: log in as admin with ADMIN_PASS from .env to make users' : 'log in'),
     user, pass, actions);
   form.addEventListener('submit', async (e) => {
     e.preventDefault();

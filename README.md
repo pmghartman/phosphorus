@@ -37,7 +37,7 @@ Tailscale keys expire every 90 days.
 ## Using it
 
 Open your domain in a browser and log in with your phosphorus user. On first start
-there are no users: log in as `admin` with `PHOSPHORUS_UPDATE_PASSWORD` from `.env`
+there are no users: log in as `admin` with `ADMIN_PASS` from `.env`
 and make an admin user (the setup admin turns off once one exists). Admins add and
 delete users and give out admin from the users icon.
 
@@ -64,8 +64,8 @@ to switch), the mesh map, updates, and light or dark theme.
 
 ## Updating
 
-Click the update icon in the bottom bar and press update: every host updates, one at
-a time. Or run `phosphorus update` on a single host.
+An admin clicks the update icon in the bottom bar (shown to admins only) and presses
+update: every host updates, one at a time. Or run `phosphorus update` on a single host.
 
 ## Settings
 
@@ -108,7 +108,9 @@ stop = systemctl --user stop tmodloader
 ```
 
 A service shows up at `yourdomain/host/name/`, or at `name.yourdomain` with
-`mode = subdomain`. Game servers are reachable only inside the mesh.
+`mode = subdomain`. A subdomain service can't open in a desktop window: its icon
+carries an arrow and opens in a new browser tab. Game servers are reachable only
+inside the mesh, at `name.phosphorus`.
 
 ## Command line
 
