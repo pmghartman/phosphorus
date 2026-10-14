@@ -23,6 +23,12 @@ const SESSION_MS = 30 * 24 * 3600 * 1000;
 const BOOT_SESSION_MS = 3600 * 1000;
 const MAX_VAULT = 64 * 1024;
 const MAX_PASS = 256;
+const BASE_DOMAIN = (process.env.BASE_DOMAIN || '').toLowerCase();
+// failed logins per address, and per name from anywhere (looser, so one
+// address can't lock a user out), locked a while past the limit
+const TRIES = { ip: 5, user: 20 };
+const TRIES_MS = 15 * 60 * 1000;
+const tries = new Map();
 const MAX_PREFS = 32 * 1024;
 // the page's settings following a user between browsers
 const PREF_KEYS = ['icons', 'theme', 'recent', 'color'];
@@ -69,12 +75,40 @@ function cookieOf(req) {
   return (String(req.headers.cookie || '').match(/(?:^|;\s*)phosphorus-user=([A-Za-z0-9_-]+)/) || [])[1] || '';
 }
 
-function issue(payload, ms) {
+// the base domain's and every service subdomain's, https only behind the tunnel
+function attrs(req) {
+  const host = String(req.headers.host || '').toLowerCase().replace(/:\d+$/, '');
+  const domain = BASE_DOMAIN && (host === BASE_DOMAIN || host.endsWith(`.${BASE_DOMAIN}`)) ? `; Domain=${BASE_DOMAIN}` : '';
+  const secure = req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '';
+  return `; Path=/${domain}; SameSite=Lax; HttpOnly${secure}`;
+}
+
+function issue(req, payload, ms) {
   const box = seal(meshKey(), JSON.stringify({ ...payload, e: Date.now() + ms }));
   const token = Buffer.from(JSON.stringify(box)).toString('base64url');
-  return `${COOKIE}=${token}; Path=/; Max-Age=${Math.round(ms / 1000)}; SameSite=Strict; HttpOnly`;
+  return `${COOKIE}=${token}; Max-Age=${Math.round(ms / 1000)}${attrs(req)}`;
 }
-const clearCookie = () => `${COOKIE}=; Path=/; Max-Age=0; SameSite=Strict; HttpOnly`;
+// the domain's and any older host-only one
+const clearCookie = (req) => [`${COOKIE}=; Max-Age=0${attrs(req)}`, `${COOKIE}=; Max-Age=0; Path=/; SameSite=Lax; HttpOnly`];
+
+// the browser's address as cloudflared saw it, else the socket's
+const ipOf = (req) => String(req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
+
+function locked(keys) {
+  const now = Date.now();
+  let until = 0;
+  for (const k of keys) {
+    const t = (tries.get(k) || []).filter((at) => now - at < TRIES_MS);
+    if (t.length) tries.set(k, t); else tries.delete(k);
+    const max = TRIES[k.split(':')[0]];
+    if (t.length >= max) until = Math.max(until, t[t.length - max] + TRIES_MS);
+  }
+  return until;
+}
+function failed(keys) {
+  for (const k of keys) tries.set(k, [...(tries.get(k) || []), Date.now()]);
+  if (tries.size > 10000) tries.delete(tries.keys().next().value);
+}
 
 // {user, admin, boot, key} or null
 function session(req) {
@@ -117,14 +151,17 @@ function setPrefs(s, p) {
 
 // --- the browser's calls, [status, body, cookie?] -------------------------
 
-async function login(p) {
+async function login(p, req) {
   const name = String(p.user || '').trim().toLowerCase();
   const pass = String(p.pass || '');
-  const fail = async () => { await new Promise((r) => setTimeout(r, 400)); return [401, { error: 'wrong user or password' }]; };
+  const keys = [`ip:${ipOf(req)}`, `user:${name}`];
+  const until = locked(keys);
+  if (until) return [429, { error: `too many wrong passwords, try again in ${Math.ceil((until - Date.now()) / 60000)} min` }];
+  const fail = async () => { failed(keys); await new Promise((r) => setTimeout(r, 400)); return [401, { error: 'wrong user or password' }]; };
   if (name === ADMIN) {
     if (anyAdmin()) return [403, { error: 'the setup admin is off once an admin user exists' }];
     if (pass !== ADMIN_PASS) return fail();
-    return [200, me({ user: ADMIN, admin: true, boot: true }), issue({ b: 1 }, BOOT_SESSION_MS)];
+    return [200, me({ user: ADMIN, admin: true, boot: true }), issue(req, { b: 1 }, BOOT_SESSION_MS)];
   }
   const u = live(name);
   if (!u || pass.length > MAX_PASS) return fail();
@@ -132,7 +169,7 @@ async function login(p) {
   if (!crypto.timingSafeEqual(out.subarray(0, 32), Buffer.from(u.hash, 'hex'))) return fail();
   const key = out.subarray(32);
   const s = { user: name, admin: !!u.admin, boot: false, key };
-  return [200, me(s), issue({ u: name, p: u.pwAt, k: key.toString('hex') }, SESSION_MS)];
+  return [200, me(s), issue(req, { u: name, p: u.pwAt, k: key.toString('hex') }, SESSION_MS)];
 }
 
 // a fresh salt, hash and key, the vault sealed under it
@@ -167,7 +204,7 @@ function setVault(s, p) {
   return [200, { vault }];
 }
 
-async function changePass(s, p) {
+async function changePass(s, p, req) {
   if (!s || s.boot) return [403, { error: 'the setup admin\'s password is ADMIN_PASS in .env' }];
   const pass = String(p.pass || '');
   if (pass.length < 4 || pass.length > MAX_PASS) return [400, { error: 'password: 4 to 256 characters' }];
@@ -175,7 +212,7 @@ async function changePass(s, p) {
   const old = await derive(String(p.old || ''), u.salt);
   if (!crypto.timingSafeEqual(old.subarray(0, 32), Buffer.from(u.hash, 'hex'))) return [401, { error: 'wrong current password' }];
   const key = await setPass(s.user, pass, vaultOf(s) || {});
-  return [200, { ok: true }, issue({ u: s.user, p: live(s.user).pwAt, k: key.toString('hex') }, SESSION_MS)];
+  return [200, { ok: true }, issue(req, { u: s.user, p: live(s.user).pwAt, k: key.toString('hex') }, SESSION_MS)];
 }
 
 const needAdmin = (s) => (s && s.admin ? null : [403, { error: 'admins only' }]);
@@ -214,5 +251,7 @@ function remove(s, p) {
 }
 
 module.exports = {
-  session, me, login, setVault, setPrefs, changePass, list, create, setAdmin, remove, clearCookie, setup: () => !anyAdmin(),
+  // a full user's session, the setup admin's reaching only its own page
+  pass: (req) => { const s = session(req); return !!s && !s.boot; },
+  COOKIE, session, me, login, setVault, setPrefs, changePass, list, create, setAdmin, remove, clearCookie, setup: () => !anyAdmin(),
 };

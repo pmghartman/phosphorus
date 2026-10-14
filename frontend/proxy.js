@@ -162,11 +162,17 @@ const agents = {
   https: new https.Agent({ keepAlive: true, rejectUnauthorized: false }),
 };
 
-// the client's own X-Forwarded-* never trusted, always replaced
+// the client's own X-Forwarded-* never trusted, always replaced; the login
+// cookie only ever to another host's ingress, never to a service
 function upstreamHeaders(req, route, upgrade) {
   const out = {};
   for (const [k, v] of Object.entries(req.headers)) {
     if (k.startsWith('x-forwarded-') || (!upgrade && HOP.has(k))) continue;
+    if (k === 'cookie' && !route.pin) {
+      const kept = String(v).split(/;\s*/).filter((c) => c && !c.startsWith(`${LOGIN_COOKIE}=`)).join('; ');
+      if (kept) out[k] = kept;
+      continue;
+    }
     out[k] = v;
   }
   out['x-forwarded-for'] = (req.socket.remoteAddress || '').replace(/^::ffff:/, '');
@@ -174,6 +180,31 @@ function upstreamHeaders(req, route, upgrade) {
   out['x-forwarded-host'] = req.headers.host || '';
   if (route.pin) out[PIN_HOP] = SELF_HOST;
   return out;
+}
+
+// --- the login ------------------------------------------------------------
+// every request through the ingress a logged in user's, but the page itself
+// and its login calls; a page of a service sent to log in first
+
+const LOGIN_COOKIE = 'phosphorus-user';
+let passes = () => true;
+const OPEN_API = /^\/api\/(me|login|logout|users)(\/|$)/;
+
+function isOpen(req, hit) {
+  if (!hit.frontend) return false;
+  const p = req.url.split('?')[0];
+  return !p.startsWith('/api/') && !p.startsWith('/internal/') ? true : OPEN_API.test(p);
+}
+
+function deny(req, res) {
+  const host = String(req.headers.host || '').toLowerCase();
+  const page = req.method === 'GET' && /text\/html/.test(String(req.headers.accept || ''));
+  if (page && BASE_DOMAIN) {
+    const next = encodeURIComponent(`https://${host}${req.url}`);
+    res.writeHead(302, { Location: `https://${BASE_DOMAIN}/?next=${next}`, 'Cache-Control': 'no-store' }).end();
+    return;
+  }
+  refuse(res, 401, 'log in first');
 }
 
 // --- pinning ---------------------------------------------------------------
@@ -286,10 +317,12 @@ function tunnel(route, req, socket, head, path) {
 }
 
 // app and upgrade: the frontend's own handlers, for whatever no route claims
-function listen(port, app, upgrade) {
+function listen(port, app, upgrade, gate) {
+  if (gate) passes = gate;
   const server = http.createServer({ requestTimeout: 0 }, (req, res) => {
     req.ingress = true;
     const hit = resolve(req);
+    if ((hit.route || hit.frontend) && !isOpen(req, hit) && !passes(req)) return deny(req, res);
     if (hit.frontend && req.method === 'POST' && /^\/api\/host(\?|$)/.test(req.url)) return pinSwitch(req, res);
     const pin = hit.frontend && pinRoute(req);
     if (hit.route) forward(hit.route, req, res, hit.path);
@@ -304,6 +337,7 @@ function listen(port, app, upgrade) {
     req.ingress = true;
     socket.on('error', () => {});
     const hit = resolve(req);
+    if ((hit.route || hit.frontend) && !passes(req)) { socket.end('HTTP/1.1 401 Unauthorized\r\n\r\n'); return; }
     const pin = hit.frontend && pinRoute(req);
     if (hit.route) tunnel(hit.route, req, socket, head, hit.path);
     else if (pin) tunnel(pin, req, socket, head, req.url);

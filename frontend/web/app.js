@@ -5576,6 +5576,7 @@ function connectState() {
   };
   sock.onclose = () => {
     if (stateWs !== sock) return;
+    acctCheck();
     stateRetry = setTimeout(connectState, stateRetryMs);
     stateRetryMs = Math.min(stateRetryMs * 1.5, 5000);
   };
@@ -5583,11 +5584,9 @@ function connectState() {
 }
 
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && stateWs.readyState === WebSocket.CLOSED) connectState();
+  if (!document.hidden && acct && !acct.boot && stateWs?.readyState === WebSocket.CLOSED) connectState();
 });
 setInterval(pruneConnections, 1000);
-
-connectState();
 
 // --- themes -----------------------------------------------------------------
 
@@ -5928,6 +5927,7 @@ const DK_GLYPHS = {
   about: 'M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM8 7v4.5M8 4.75h.01',
   mesh: 'M6.5 1.5h3v3h-3zM1.5 11.5h3v3h-3zM11.5 11.5h3v3h-3zM7.2 4.5l-3.4 7M8.8 4.5l3.4 7M4.5 13h7',
   lock: 'M4 7.5h8v6H4zM5.5 7.5V5a2.5 2.5 0 0 1 5 0v2.5',
+  crown: 'M2.5 12.5h11M3 10.5L2 4.5l3.5 3L8 2.5l2.5 5 3.5-3-1 6z',
   user: 'M8 2a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM2.5 14.5c.6-3 2.8-4.5 5.5-4.5s4.9 1.5 5.5 4.5',
   users: 'M6 2.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM1.5 13.5c.4-2.6 2.2-4 4.5-4s4.1 1.4 4.5 4M11 3a2 2 0 0 1 0 4M12.5 9.8c1.2.5 1.9 1.7 2 3.7',
   key: 'M10 2a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM7.2 8.8L2 14v1.5h2.5V14H6v-1.5h1.5L9 11',
@@ -7333,6 +7333,10 @@ async function acctStart() {
 function acctLogin(setup) {
   acct = null;
   chatAs('');
+  clearTimeout(stateRetry);
+  const sock = stateWs;
+  stateWs = null;
+  sock?.close();
   dkLogout();
   const form = Object.assign(el('form', 'dk-login acct-login'), { method: 'post', action: '/api/login' });
   const user = Object.assign(el('input'), { name: 'username', placeholder: 'user', autocomplete: 'username', spellcheck: false, autocapitalize: 'off', required: true });
@@ -7368,6 +7372,8 @@ function acctIn(me) {
   if (acct.boot) { acctSetup(); return; }
   acctPrefs(me.prefs || {});
   chatAs(acct.user);
+  if (acctNext()) return;
+  if (!stateWs) connectState();
   dk.creds = new Map(Object.entries(acct.vault.hosts).map(([h, c]) => [h, { user: c.user, pass: c.pass }]));
   if (dk.creds.size) dkDesktop(); else dkLogin();
 }
@@ -7417,6 +7423,29 @@ function acctPrefs(prefs) {
   let theme = null;
   try { theme = localStorage.getItem(PREF_LS.theme); color = localStorage.getItem(PREF_LS.color) || color; } catch {}
   applyTheme(theme || (systemLight.matches ? 'light' : 'dark'));
+}
+
+// a session gone (expired, password changed, user deleted): back to the login
+let acctChecking = false;
+async function acctCheck() {
+  if (!acct || acctChecking) return;
+  acctChecking = true;
+  const me = await acctCall('/api/me');
+  acctChecking = false;
+  if (me.status === 401 && acct) acctLogin(me.setup);
+}
+
+// a service's page sent here to log in first, back to it after
+function acctNext() {
+  const next = new URLSearchParams(location.search).get('next');
+  if (!next) return false;
+  history.replaceState(null, '', '/');
+  let u;
+  try { u = new URL(next); } catch { return false; }
+  const base = baseDomain || location.hostname;
+  if (u.protocol !== 'https:' || !(u.hostname === base || u.hostname.endsWith(`.${base}`))) return false;
+  location.replace(u.href);
+  return true;
 }
 
 async function acctLogout() {
@@ -7547,6 +7576,10 @@ function dkForget(host) {
 function dkProfileTray() {
   const b = Object.assign(el('button', 'dk-tray dk-profile'), { type: 'button', title: acct?.user || 'profile', ariaLabel: 'profile' });
   b.appendChild(dkGlyph(DK_GLYPHS.user));
+  if (acct?.admin) {
+    b.appendChild(dkGlyph(DK_GLYPHS.crown, 'dk-crown'));
+    b.title += ', admin';
+  }
   b.append(el('span', 'dk-profile-name', acct?.user || ''));
   b.addEventListener('click', () => {
     const r = b.getBoundingClientRect();

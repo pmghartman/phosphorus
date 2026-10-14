@@ -1001,11 +1001,11 @@ async function mintGuestKey() {
 // the users' endpoints, each (session, body) -> [status, body, cookie?]
 const USER_CALLS = {
   'GET /api/me': (s) => (s ? [200, users.me(s)] : [401, { error: 'log in', setup: users.setup() }]),
-  'POST /api/login': (s, p) => users.login(p),
-  'POST /api/logout': () => [200, { ok: true }, users.clearCookie()],
+  'POST /api/login': (s, p, req) => users.login(p, req),
+  'POST /api/logout': (s, p, req) => [200, { ok: true }, users.clearCookie(req)],
   'POST /api/me/vault': (s, p) => users.setVault(s, p),
   'POST /api/me/prefs': (s, p) => users.setPrefs(s, p),
-  'POST /api/me/password': (s, p) => users.changePass(s, p),
+  'POST /api/me/password': (s, p, req) => users.changePass(s, p, req),
   'GET /api/users': (s) => users.list(s),
   'POST /api/users': (s, p) => users.create(s, p),
   'POST /api/users/admin': (s, p) => users.setAdmin(s, p),
@@ -1038,11 +1038,11 @@ function app(req, res) {
       if (cookie) res.setHeader('Set-Cookie', cookie);
       sendJson(res, status, body);
     };
-    if (req.method === 'GET') { reply(userCall(s)); return; }
+    if (req.method === 'GET') { reply(userCall(s, {}, req)); return; }
     readRaw(req, MAX_JSON_BODY).then(async (buf) => {
       let p = {};
       try { p = JSON.parse(buf.toString('utf8') || '{}') || {}; } catch {}
-      reply(await userCall(s, p));
+      reply(await userCall(s, p, req));
     }).catch(() => { if (!res.headersSent) res.writeHead(400).end('bad request'); });
     return;
   }
@@ -1194,7 +1194,7 @@ function app(req, res) {
     return;
   }
 
-  // browser only, behind Cloudflare Access
+  // browser only, behind the login
   if (pathname === '/api/join-key' && req.method === 'POST') {
     if (!isBrowser(req)) { res.writeHead(403).end('forbidden'); return; }
     mintGuestKey().then(([status, body]) => sendJson(res, status, body));
@@ -1891,7 +1891,7 @@ server.listen(PORT, () => {
   update.restoreChain();
   retractStaleAlerts();
   project.init();
-  proxy.listen(INGRESS_PORT, app, onUpgrade);
+  proxy.listen(INGRESS_PORT, app, onUpgrade, users.pass);
   stats.init({ self: () => ({ host: SELF_HOST, platform: PLATFORM, version: VERSION }), peers: mesh.peerIps });
   mcp.init({
     self: selfInfo, domain: () => BASE_DOMAIN, tailnet: mesh.tailnet, routes: mesh.routes, peerIps: mesh.peerIps,

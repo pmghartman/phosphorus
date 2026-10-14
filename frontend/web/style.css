@@ -2072,3 +2072,4 @@ input, textarea { caret-color: var(--accent); }
 }
 .dk-bar .dk-tray .ic, .dk-bar .top-side svg { width: 0.85rem; height: 0.85rem; }
 .dk-bar .update-wrap[hidden] { display: none; }
+.dk-bar .dk-profile .ic.dk-crown { width: 0.8rem; height: 0.8rem; margin-left: -0.15rem; color: var(--sand); }

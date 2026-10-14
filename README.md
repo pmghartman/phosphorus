@@ -34,6 +34,11 @@ The host's folder: `/var/lib/phosphorus` (Linux), `~/Library/Phosphorus` (macOS)
 `%USERPROFILE%\phosphorus` (Windows). Updates never touch your settings or files there.
 Tailscale keys expire every 90 days.
 
+Everything through your domain needs a phosphorus login, every service's page and
+subdomain included (a page you open logged out sends you to log in, then back), so
+no Cloudflare Access policy is needed. Five wrong passwords from one address lock it
+out for 15 minutes. Hosts reach each other over the tailnet, outside the login.
+
 ## Using it
 
 Open your domain in a browser and log in with your phosphorus user. On first start
