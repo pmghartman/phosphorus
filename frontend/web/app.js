@@ -5391,7 +5391,10 @@ async function askToStart() {
   updateBtn.disabled = true;
   updateBtn.textContent = 'checking';
   let c = {};
-  try { c = await (await fetch('/api/update/check?fresh=1')).json(); } catch {}
+  try {
+    const r = await fetch('/api/update/check?fresh=1');
+    c = r.ok ? await r.json() : { error: `${r.status} ${(await r.text()).slice(0, 80)}`.trim() };
+  } catch (err) { c = { error: err.message }; }
   renderUpdateButton();
   const versions = [updateSeen.selfVersion, ...updateSeen.tailnet.filter((d) => d.phosphorus).map((d) => d.version)]
     .filter(Boolean);
