@@ -2368,3 +2368,63 @@ input, textarea { caret-color: var(--accent); }
   position: absolute; z-index: 3; pointer-events: none;
   border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent);
 }
+
+/* the old tabs as apps: chat, status, projects, git and about in windows */
+.dk-icon.dk-chat .ic { color: var(--accent); }
+.dk-icon.dk-status .ic { color: var(--online); }
+.dk-icon.dk-projects .ic { color: var(--rose); }
+.dk-icon.dk-git .ic { color: var(--sand); }
+.dk-tile { position: relative; }
+.dk-badge {
+  position: absolute; top: -0.4rem; right: -0.55rem; min-width: 1rem; padding: 0 0.2rem; line-height: 1rem;
+  background: var(--accent); color: var(--bg); font-size: 0.6rem; text-align: center;
+}
+.dk-badge[hidden] { display: none; }
+.dk-task { position: relative; overflow: visible; }
+.dk-task .dk-badge { top: -0.45rem; right: -0.35rem; }
+.dk-app .dk-body > .view { padding: 0.9rem; }
+.dk-app-chat .dk-body > .view, .dk-app-projects .dk-body > .view { padding: 0.9rem 0.7rem 0.6rem; }
+.dk-git .dk-body { flex-direction: row; container-type: inline-size; }
+.dk-git-side { flex: none; width: 19rem; display: flex; flex-direction: column; gap: 0.6rem; padding: 0.7rem 0.6rem; overflow-y: auto; border-right: 1px solid var(--border); }
+.dk-git-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.dk-git-main > .dk-note { padding: 1rem; }
+.dk-git-url { flex: 1; min-width: 0; padding: 0 0.4rem; color: var(--muted); font-size: 0.72rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@container (max-width: 40rem) {
+  .dk-git .dk-body { flex-direction: column; }
+  .dk-git-side { width: auto; max-height: 45%; border-right: 0; border-bottom: 1px solid var(--border); }
+}
+
+/* the start button, its menu opening upward */
+.dk-start {
+  flex: none; align-self: stretch; padding: 0 0.7rem; margin-left: -0.4rem; background: none; border: 0; border-right: 1px solid var(--border);
+  color: var(--accent); font: inherit; font-size: 1.1rem; font-weight: 700; line-height: 1; cursor: pointer;
+}
+.dk-start:hover { background: var(--tab-hover); }
+.dk-menu .dk-menu-tick { font-variant-numeric: tabular-nums; }
+
+/* widgets: live cards over the icons, under the windows */
+.dk-widgets { position: absolute; inset: 0 0 2rem 0; z-index: 1; pointer-events: none; }
+.dk-widget {
+  position: absolute; top: 0; left: 0; display: flex; flex-direction: column; pointer-events: auto;
+  background: color-mix(in srgb, var(--bg) 88%, transparent); border: 1px solid var(--border);
+  backdrop-filter: blur(6px); will-change: transform; animation: dk-open 0.11s ease-out;
+}
+.dk-whead {
+  flex: none; height: 1.35rem; display: flex; align-items: center; justify-content: space-between;
+  padding: 0 0.1rem 0 0.5rem; font-size: 0.7rem; color: var(--sage); cursor: grab; user-select: none; touch-action: none;
+}
+.dk-wclose { display: flex; align-items: center; justify-content: center; width: 1.3rem; height: 1.15rem; padding: 0; background: none; border: 0; color: var(--muted); cursor: pointer; opacity: 0; transition: opacity 0.12s; }
+.dk-wclose .ic { width: 0.65rem; height: 0.65rem; }
+.dk-widget:hover .dk-wclose, .dk-wclose:focus-visible { opacity: 1; }
+.dk-wclose:hover { color: var(--fg); }
+.dk-wbody { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: auto; }
+.dk-wbody > .mesh-panel, .dk-wbody > .st-model, .dk-wbody > .home-col {
+  flex: 1 1 auto; min-height: 0; max-width: none; margin: 0; border: 0; animation: none; display: flex; flex-direction: column;
+}
+.dk-wbody > .st-model { padding: 0.2rem 0.5rem 0.5rem; overflow-y: auto; }
+.dk-wbody > .home-col { padding: 0.2rem 0.4rem 0.4rem; }
+.dk-wbody > .mesh-panel > .mesh-header { top: 0.15rem; left: auto; right: 0.3rem; transform: none; }
+.dk-wbody > .mesh-panel > .mesh-header > span:first-child,
+.dk-wbody > .home-col > .home-col-head, .dk-wbody > .st-model > .st-card-head { display: none; }
+.dk-wbody > .mesh-panel .mesh-body { flex: 1; min-height: 0; }
+@media (max-width: 720px) { .dk-widgets { display: none; } }

@@ -122,15 +122,31 @@ Applied a few seconds after a change.
 
 ## Using it
 
+The page is one desktop: log into one or more hosts over ssh, then icons for each
+host's terminal, files, the editor, chat, status, projects, git and every service, windows
+that move, snap and minimize to the task bar, and widgets on the desk. The `Φ` button
+lists every app, shows or hides each widget, and opens about.
+
+Widgets, placed and sized per browser:
+
+- **mesh**: the hosts, the tailnet and the pings; expanded, a click moves this page to a host.
+- **model**: each role's model and its context, picked here or in status.
+- **game servers**: play and stop, the join address, a guest key.
+
+Apps:
+
 - **Chat**: channels, dms, reactions, replies, attachments, markdown and LaTeX.
   `/chimp` asks the small model through
   [opencode](https://github.com/anomalyco/opencode)'s harness, with its own
   tools (bash, files, grep in the container's files share), web search and
   phosphorus's MCP tools (`POST /api/mcp`). A password an action needs (a mesh
-  update's) goes in a box by the chat, never to the model. The editor tab last open goes with
-  each ask. Right click a line to react, reply, edit or delete.
-- **Files**: each host's shares, opened in a live shared editor, saved as you
-  type, markdown rendered with checkable tasks, nothing ever executed.
+  update's) goes in a box by the chat, never to the model. The editor last focused goes with
+  each ask. Unread lines badge the chat icon and its task. Right click a line to react, reply, edit or delete.
+- **Files**: a file manager over each host's shares, cut, copy and paste across hosts;
+  text opens in the editor, live and shared, saved as you type, markdown rendered with
+  checkable tasks, nothing ever executed.
+- **Git**: the git hosts, master and replicas with how far each trails, a caught up one
+  made master in a click, beside forgejo itself.
 - **Projects**: the orangutan (the big model) only works on these: a brief and
   up to 14 days (72h default), worked alone in rounds of plan, execute, test and
   refine until it calls `project_finish` or time runs out. One per host,
@@ -146,7 +162,7 @@ Applied a few seconds after a change.
   API: `GET/POST /api/projects`, `GET /api/projects/<host>/<id>`,
   `POST .../stop|note|delete`.
 - **Status**: btop for the whole mesh, one card per host.
-- **Terminals**: a shell on any host.
+- **Terminal**: a shell on a logged in host.
 
 ## Layout
 

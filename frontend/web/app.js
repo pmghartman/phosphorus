@@ -13,6 +13,15 @@ const sideModel = document.getElementById('side-model');
 const sideChat = document.getElementById('side-chat');
 const sideMesh = document.getElementById('side-mesh');
 
+// the desktop the whole page, the old tabs' views opened in its windows
+const DESK_ONLY = true;
+// the desktop's apps up and not minimized, for each view's own watchers
+const deskApps = new Set();
+// the model widget's body while it's up, the model card inside
+let deskModelSlot = null;
+// unread lines, for the chat icon's and task's badges
+let deskNews = 0;
+
 function serviceUrl(route) {
   const base = route.base_path ? `${route.base_path.replace(/^\/+|\/+$/g, '')}/` : '';
   if (route.mode === 'subdomain') return `https://${route.name}.${baseDomain}/${base}`;
@@ -594,6 +603,13 @@ let meshStatsDirty = true;
 // .pane-chat is display:contents (clientHeight 0), hence .layout
 function meshLayoutParams(expanded) {
   const width = expanded ? 200 : 232;
+  const box = meshPanel.closest('.dk-wbody');
+  if (box) {
+    const bodyH = box.clientHeight - (expanded ? lastStatsHeight : 0);
+    const widthPx = meshGraphWrap.clientWidth || width;
+    const legend = meshGraphWrap.querySelector('.mesh-legend');
+    return { width, height: width * (Math.max(60, bodyH) / widthPx), widthPx, legendPx: expanded ? legend.offsetTop + legend.offsetHeight : 0 };
+  }
   const mobile = isMobile();
   const alone = meshAlone && !mobile;
   const pad = alone ? getComputedStyle(paneChat) : null;
@@ -3054,7 +3070,8 @@ let stNet = null;
 // the one host shown in full, the rest as tiles
 let stOpenHost = null;
 
-const stOpen = () => document.getElementById('view-status').classList.contains('active') && !document.hidden;
+const stOpen = () => (DESK_ONLY ? deskApps.has('status') : document.getElementById('view-status').classList.contains('active'))
+  && !document.hidden;
 
 // opened on the first look and kept for the page's life: samples and history
 // arriving while the tab is away, so coming back never a grey wait
@@ -3130,7 +3147,7 @@ function statusState(state) {
 
 // the model card standing in for the corner chat on the chat tab, redrawn
 // once a frame at most, the stats socket open for it as for the status tab
-const chipOut = () => stModelEl.parentElement === paneChat && !document.hidden;
+const chipOut = () => !!stModelEl.parentElement && [paneChat, deskModelSlot].includes(stModelEl.parentElement) && !document.hidden;
 let chipFrame = null;
 function chipDraw() {
   if (chipFrame || !chipOut()) return;
@@ -3937,7 +3954,8 @@ chatPanel.addEventListener('click', (e) => {
   if (!a) return;
   e.preventDefault();
   const host = decodeURIComponent(a.getAttribute('href').slice(6));
-  if (terminalHosts.includes(host)) openTerminalTab(host);
+  if (DESK_ONLY) dkOpenTerminal(host);
+  else if (terminalHosts.includes(host)) openTerminalTab(host);
 });
 const chatTitle = document.getElementById('chat-title');
 const chatStatus = document.getElementById('chat-status');
@@ -4590,7 +4608,7 @@ function saveAgents() {
 }
 
 function noteNews(c) {
-  if (c === conv && !away() && (docked() || chatPanel.offsetParent)) return;
+  if (c === conv && !away() && chatPanel.offsetParent) return;
   news.set(c, (news.get(c) || 0) + 1);
   paintConvs();
 }
@@ -4669,6 +4687,7 @@ function paintConvs() {
   const total = [...news].reduce((n, [c, k]) => n + (c === conv ? 0 : k), 0);
   chatTabBadge.hidden = !total;
   chatTabBadge.textContent = `(${total > 99 ? '99+' : total})`;
+  deskBadge(total);
   chatTitle.querySelector('.chat-title-dot').hidden = !total;
   cwList.replaceChildren(...convItems());
   if (!chatMenu.hidden) chatMenu.firstElementChild.replaceChildren(...convItems());
@@ -4961,14 +4980,15 @@ function setConv(c) {
 
 // the chat tab up, on this conversation
 function openConv(c) {
-  if (isMobile() && mobileSection !== 'main') setMobileSection('main');
-  if (!docked()) showTab('chat');
+  if (DESK_ONLY) dkOpenApp('chat');
+  else if (isMobile() && mobileSection !== 'main') setMobileSection('main');
+  if (!DESK_ONLY && !docked()) showTab('chat');
   setConv(c);
 }
 
 // wherever the chat is, the tab only on a phone, where the corner isn't
 const goConv = (c) => {
-  if (isMobile()) return openConv(c);
+  if (isMobile() || DESK_ONLY) return openConv(c);
   if (!chatPane && !docked()) setChatPane(true);
   setConv(c);
 };
@@ -4976,7 +4996,7 @@ const goConv = (c) => {
 // the panel into the tab and back, the conversation's lines moved with it,
 // not drawn again
 document.addEventListener('phosphorus-tab', (e) => {
-  const tab = e.detail === 'chat';
+  const tab = DESK_ONLY || e.detail === 'chat';
   if (tab === docked()) return;
   const pinned = chatPinned;
   const top = chatLog.scrollTop;
@@ -6665,7 +6685,7 @@ function pjWatch(on) {
   pjPoll();
   pjTimer = setInterval(() => { if (!document.hidden) pjPoll(); }, PJ_POLL_MS);
 }
-document.addEventListener('phosphorus-tab', (e) => pjWatch(e.detail === 'projects'));
+document.addEventListener('phosphorus-tab', (e) => pjWatch(DESK_ONLY ? deskApps.has('projects') : e.detail === 'projects'));
 
 function pjPaintList() {
   const sig = JSON.stringify([pjAll, pjPick, Math.floor(Date.now() / 60000)]);
@@ -6898,6 +6918,7 @@ function pjPaintNew() {
 const PHOSPHORUS_VIEWS = { home: 'services', files: 'files', status: 'status', about: 'about', projects: 'projects' };
 function phosphorusPressed(a) {
   if (!a) return;
+  if (DESK_ONLY) { dkPressed(a); return; }
   // opened by phosphorus, shared with it from the start, s still unshares
   if (a.kind === 'terminal' && terminalHosts.includes(a.host)) openTerminalTab(a.host, undefined, a.share === true);
   else if (a.kind === 'host' && phosphorusHosts().includes(a.host)) switchHost(a.host);
@@ -7341,6 +7362,12 @@ function setChatPane(on) {
 }
 // the column gone on a wide screen with nothing in it, the tabs the full width
 function paintColumn() {
+  // the mesh in its widget, sized there
+  if (DESK_ONLY) {
+    meshDims = null;
+    if (!meshAnimFrame) drawMesh();
+    return;
+  }
   const chatIn = chatPane && !docked();
   paneChat.dataset.chat = chatPane ? 'on' : 'off';
   paneChat.dataset.mesh = cards.mesh ? 'on' : 'off';
@@ -7364,6 +7391,14 @@ function paintColumn() {
 // barebones in the column above the chat, the rest of the column without it,
 // on a phone its own section; else back on the status tab
 function placeModel() {
+  if (DESK_ONLY) {
+    const slot = deskModelSlot || stTopEl;
+    if (stModelEl.parentElement !== slot) slot.appendChild(stModelEl);
+    stModelEl.classList.remove('mini');
+    stModelHtml = '';
+    if (deskModelSlot) { statusWatch(); drawModelSum(); }
+    return;
+  }
   const full = !chatPane || docked();
   const here = isMobile() ? mobileSection === 'model' : cards.model;
   const before = !isMobile() && chatPanel.parentElement === paneChat ? chatPanel : null;
@@ -7977,8 +8012,6 @@ for (const el of [...document.querySelectorAll('.modal'), updateModal, tabMenu, 
 }
 keybarDirty();
 
-const DESK_ONLY = true;
-
 // keys by the name the row shows them under
 const KEY_NAMES = { ' ': 'space', Enter: 'enter', Delete: 'd', U: 'shift+u', C: 'shift+c' };
 
@@ -8044,7 +8077,7 @@ const dkView = document.getElementById('view-desktop');
 const DK_USERS_KEY = 'phosphorus-dk-users';
 const wsBase = () => `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`;
 // creds: host -> {user, pass}, this page's memory only
-const dk = { creds: new Map(), rows: new Map(), wins: new Map(), services: [], z: 10, n: 0, desk: null, sig: '' };
+const dk = { creds: new Map(), rows: new Map(), wins: new Map(), widgets: new Map(), services: [], z: 10, n: 0, desk: null, sig: '' };
 
 function dkUsers() {
   try { return JSON.parse(localStorage.getItem(DK_USERS_KEY)) || {}; } catch { return {}; }
@@ -8160,17 +8193,20 @@ async function dkConnect() {
 function dkDesktop() {
   dk.login = null;
   const icons = el('div', 'dk-icons');
+  const widgets = el('div', 'dk-widgets');
   const wins = el('div', 'dk-wins');
   const tasks = el('div', 'dk-tasks');
   const hosts = el('span', 'dk-hosts');
   const off = Object.assign(el('button', 'dk-off', 'disconnect'), { type: 'button' });
   const desk = el('div', 'dk-desk');
-  desk.append(dkArt(), icons, wins, dkBar(tasks, hosts, off));
+  const bar = dkBar(tasks, hosts, off);
+  bar.prepend(dkStart());
+  desk.append(dkArt(), icons, widgets, wins, bar);
   dkView.replaceChildren(desk);
   hosts.replaceChildren(...[...dk.creds.keys()].map((h) => el('span', 'dk-chip', h)));
   off.addEventListener('click', dkDisconnect);
   dkBand(icons);
-  dk.desk = { el: desk, icons, wins, tasks };
+  dk.desk = { el: desk, icons, widgets, wins, tasks };
   new ResizeObserver(() => dkLayout()).observe(icons);
   // the desk resized (side column shown or hidden), floating windows kept on it
   new ResizeObserver(() => {
@@ -8187,10 +8223,12 @@ function dkDesktop() {
       Object.assign(w, { w: nw, h: nh, x: nx, y: ny });
       dkPlace(w);
     }
+    for (const wg of dk.widgets.values()) dkWidgetFit(wg);
   }).observe(wins);
   dk.sig = '';
   dkClock();
   dkIcons();
+  dkWidgetsUp();
 }
 
 // the page's update and theme buttons, moved into whichever bar is up
@@ -8218,6 +8256,7 @@ setInterval(dkClock, 5000);
 
 function dkDisconnect() {
   for (const w of [...dk.wins.values()]) dkClose(w, true);
+  for (const wg of [...dk.widgets.values()]) dkWidgetDrop(wg);
   dk.creds.clear();
   dk.desk = null;
   dkLogin();
@@ -8228,6 +8267,10 @@ const DK_GLYPHS = {
   files: ICONS.folder,
   editor: 'M3 1.5h7l3 3v10H3zM10 1.5v3h3M5 7.5h6M5 10h6M5 12.5h3.5',
   service: 'M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM1.5 8h13M8 1.5c-2.2 2.4-2.2 10.6 0 13M8 1.5c2.2 2.4 2.2 10.6 0 13',
+  chat: 'M2 2.5h12v8H6.5L3.5 13v-2.5H2zM4.5 5.5h7M4.5 8h4.5',
+  status: 'M1.5 8h3l1.5-4 3 8 1.5-4h4',
+  projects: 'M2 3.5h12v10H2zM2 6.5h12M5 3.5v-2M11 3.5v-2M4.5 9h3M4.5 11h5',
+  git: 'M4.5 2v8M4.5 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM11.5 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM11.5 6c0 3-7 2-7 4',
 };
 
 // the frontend's own stroked glyphs, a phrase of path data each
@@ -8255,6 +8298,7 @@ function dkIcon(kind, label, sub, open) {
   const b = Object.assign(el('button', `dk-icon dk-${kind}`), { type: 'button', title: sub ? `${label} on ${sub}` : label });
   const tile = el('span', 'dk-tile');
   tile.appendChild(dkGlyph(DK_GLYPHS[kind]));
+  if (kind === 'chat') tile.appendChild(dkBadge());
   b.append(tile, el('span', 'dk-label', label));
   if (sub) b.appendChild(el('span', 'dk-sub', sub));
   b.dataset.id = `${kind}\n${label}\n${sub}`;
@@ -8268,13 +8312,18 @@ function dkIcon(kind, label, sub, open) {
 function dkIcons() {
   if (!dk.desk) return;
   const hosts = [...dk.creds.keys()];
-  const sig = JSON.stringify([hosts, dk.services.map((r) => [r.host, r.name])]);
+  const git = dkHasGit();
+  const sig = JSON.stringify([hosts, git, dk.services.map((r) => [r.host, r.name])]);
   if (sig === dk.sig) return;
   dk.sig = sig;
   dk.desk.icons.replaceChildren(
     ...hosts.map((h) => dkIcon('terminal', 'terminal', h, () => dkTerminal(h))),
     dkIcon('files', 'files', '', () => dkFiles()),
     dkIcon('editor', 'editor', '', dkEditorPick),
+    dkIcon('chat', 'chat', '', () => dkOpenApp('chat')),
+    dkIcon('status', 'status', '', () => dkOpenApp('status')),
+    dkIcon('projects', 'projects', '', () => dkOpenApp('projects')),
+    ...(git ? [dkIcon('git', 'git', '', () => dkOpenApp('git'))] : []),
     ...dk.services.map((r) => dkIcon('service', r.name, r.host, () => dkService(r))),
   );
   dkLayout();
@@ -8480,6 +8529,7 @@ document.addEventListener('keydown', (e) => {
 function dkRoutes(services) {
   dk.services = services;
   dkIcons();
+  dkGitFrame();
   dkLoginHosts();
 }
 
@@ -8645,6 +8695,7 @@ function dkFocus(w) {
   w.node.hidden = false;
   if (w.node.style.zIndex !== String(dk.z)) w.node.style.zIndex = ++dk.z;
   w.onFocus?.();
+  dkAppsChanged();
 }
 
 function dkMin(w) {
@@ -8653,6 +8704,7 @@ function dkMin(w) {
   w.task.classList.remove('active');
   const top = [...dk.wins.values()].filter((o) => !o.node.hidden).sort((a, b) => b.node.style.zIndex - a.node.style.zIndex)[0];
   if (top) dkFocus(top);
+  dkAppsChanged();
 }
 
 function dkMax(w) {
@@ -8667,6 +8719,7 @@ function dkClose(w, force) {
   w.node.remove();
   w.task.remove();
   dk.wins.delete(w.key);
+  dkAppsChanged();
 }
 
 // --- the apps
@@ -9067,6 +9120,7 @@ dkMenuEl.hidden = true;
 dkMenuEl.setAttribute('role', 'menu');
 document.body.appendChild(dkMenuEl);
 function dkMenu(x, y, items, after) {
+  delete dkMenuEl.dataset.from;
   dkMenuEl.replaceChildren(...items.map((it) => {
     if (!it) return el('div', 'dk-menu-sep');
     const [label, act, ok, cls] = it;
@@ -9335,6 +9389,297 @@ function dkService(r) {
   w.onFocus = () => frame.contentWindow?.focus();
   w.onClose = () => { conn.win.closed = true; frame.src = 'about:blank'; };
   dkFocus(w);
+}
+
+// --- the mesh's own apps: each old tab's view moved into a window, back on close
+
+const DK_APPS = {
+  chat: { title: 'chat', view: 'view-chat', w: 880, h: 560 },
+  status: { title: 'status', view: 'view-status', w: 920, h: 600 },
+  projects: { title: 'projects', view: 'view-projects', w: 920, h: 580 },
+  about: { title: 'about', view: 'view-about', w: 700, h: 420 },
+};
+
+// a fresh window's size, centered, a phone's left filling the desk
+function dkSize(w, width, height) {
+  if (w.snap) return;
+  const W = dk.desk.wins.clientWidth;
+  const H = dk.desk.wins.clientHeight;
+  w.w = Math.min(width, W - 24);
+  w.h = Math.min(height, H - 24);
+  // centered, each next one stepped down and right
+  const step = (dk.n % 6) * 26;
+  w.x = Math.max(0, Math.min(W - w.w, Math.round((W - w.w) / 2) - 65 + step));
+  w.y = Math.max(0, Math.min(H - w.h, Math.round((H - w.h) / 3) - 65 + step));
+  dkPlace(w);
+}
+
+function dkOpenApp(id) {
+  if (!dk.desk) return;
+  if (id === 'git') { dkGit(); return; }
+  const app = DK_APPS[id];
+  const w = app && dkWin(`app:${id}`, app.title, '', `app dk-app-${id}`);
+  if (!w) return;
+  const view = document.getElementById(app.view);
+  view.classList.add('active');
+  w.body.appendChild(view);
+  dkSize(w, app.w, app.h);
+  const fit = new ResizeObserver(() => { if (id === 'status') statusDraw(); });
+  fit.observe(w.body);
+  w.onClose = () => {
+    fit.disconnect();
+    view.classList.remove('active');
+    paneContent.appendChild(view);
+  };
+  if (id === 'chat') {
+    w.task.appendChild(dkBadge());
+    w.onFocus = () => { if (!w.body.contains(document.activeElement)) (joined() ? chatText : chatName).focus({ preventScroll: true }); };
+  }
+  dkFocus(w);
+}
+
+// which apps are up, each view's watcher told of a change
+function dkAppsChanged() {
+  const was = new Set(deskApps);
+  deskApps.clear();
+  for (const id of [...Object.keys(DK_APPS), 'git']) {
+    const w = dk.wins.get(`app:${id}`);
+    if (w && !w.node.hidden) deskApps.add(id);
+  }
+  const up = (id) => deskApps.has(id) && !was.has(id);
+  if (deskApps.has('projects') !== was.has('projects')) pjWatch(deskApps.has('projects'));
+  if (up('status')) statusWatch();
+  // the conversation's news read once it's on screen
+  if (up('chat')) setConv(conv);
+}
+
+function deskBadge(total) {
+  deskNews = total;
+  for (const b of document.querySelectorAll('.dk-badge')) {
+    b.hidden = !total;
+    b.textContent = total > 99 ? '99+' : String(total);
+  }
+}
+function dkBadge() {
+  const b = el('span', 'dk-badge', deskNews > 99 ? '99+' : String(deskNews));
+  b.hidden = !deskNews;
+  return b;
+}
+
+// a shell from the chat or phosphorus, on a host this desktop is logged into
+function dkOpenTerminal(host) {
+  if (dk.desk && dk.creds.has(host)) dkTerminal(host);
+}
+
+// phosphorus's presses, each the app it names
+const DK_VIEWS = { status: 'status', about: 'about', projects: 'projects', chat: 'chat', git: 'git' };
+function dkPressed(a) {
+  if (a.kind === 'terminal') dkOpenTerminal(a.host);
+  else if (a.kind === 'host' && phosphorusHosts().includes(a.host)) switchHost(a.host);
+  else if (a.kind === 'code' && a.host && a.path) { if (dk.desk) dkCode({ host: a.host, share: a.share, path: a.path }); }
+  else if (a.kind === 'view') {
+    if (a.view === 'chat') openConv('mesh');
+    else if (DK_VIEWS[a.view]) dkOpenApp(DK_VIEWS[a.view]);
+    else if (a.view === 'files' && dk.desk) dkFiles();
+    else if (a.view === 'update' && updateModal.hidden) openUpdateModal();
+  } else if (a.kind === 'creds') credsAsk(a);
+  else if (a.kind === 'creds-close') credsClose(a.id);
+}
+
+// --- git: the hosts' copies and the master beside forgejo itself
+
+const dkHasGit = () => !!gitRoute || gitHostsList.length > 0;
+
+function dkGit() {
+  const w = dkWin('app:git', 'git', '', 'app dk-git');
+  if (!w) return;
+  const card = gitSkeleton().group;
+  const home = card.parentElement;
+  const next = card.nextSibling;
+  const side = el('div', 'dk-git-side');
+  side.append(el('div', 'dk-pick-head', 'hosts'), card,
+    el('p', 'dk-note', 'the master takes the pushes, the rest copy it; a host caught up can take over'));
+  const main = el('div', 'dk-git-main');
+  w.body.append(side, main);
+  w.git = { main, url: '' };
+  dkSize(w, 1000, 620);
+  if (!gitOpen) gitSkeleton().head.querySelector('.git-toggle').click();
+  renderGitCard();
+  dkGitFrame();
+  w.onClose = () => {
+    home.insertBefore(card, next?.parentNode === home ? next : null);
+    layoutGitStack(false);
+    if (w.git.conn) w.git.conn.win.closed = true;
+  };
+  dkFocus(w);
+}
+
+// forgejo framed once the git service is up, the frame kept while its url holds
+function dkGitFrame() {
+  const w = dk.wins.get('app:git');
+  if (!w) return;
+  const url = gitRoute ? serviceUrl(gitRoute) : '';
+  if (url === w.git.url) return;
+  w.git.url = url;
+  if (w.git.conn) w.git.conn.win.closed = true;
+  w.git.conn = null;
+  if (!url) {
+    w.git.main.replaceChildren(el('p', 'dk-note', 'no git service answering yet'));
+    return;
+  }
+  const bar = el('div', 'fm-tools');
+  const pop = Object.assign(el('button', 'fm-btn'), { type: 'button', title: 'open in a browser tab', ariaLabel: 'open in a browser tab' });
+  pop.appendChild(dkGlyph(DK_UI.pop));
+  pop.addEventListener('click', () => window.open(url, '_blank', 'noopener'));
+  bar.append(el('span', 'dk-git-url', url), pop);
+  const frame = Object.assign(el('iframe', 'dk-frame'), { src: url, title: 'git', allow: 'clipboard-read; clipboard-write; fullscreen' });
+  w.git.main.replaceChildren(bar, frame);
+  // lit on the mesh graph as the service's window is
+  w.git.conn = { win: { closed: false }, host: gitRoute.host, name: gitRoute.name };
+  activeConnections.set(serviceKey(gitRoute), w.git.conn);
+  startPulseLoop();
+  drawMesh();
+  w.onFocus = () => frame.contentWindow?.focus();
+}
+
+// --- widgets: small live cards on the desk under the windows, each placed,
+// sized and shown per browser
+
+const DK_WIDGETS = {
+  mesh: {
+    title: 'mesh', on: true, w: 330, h: 300, node: () => meshPanel,
+    open: (wg) => {
+      wg.fit = new ResizeObserver(() => { meshDims = null; if (!meshAnimFrame) drawMesh(); });
+      wg.fit.observe(wg.body);
+    },
+    close: (wg) => wg.fit.disconnect(),
+  },
+  model: {
+    title: 'model', on: false, w: 360, h: 340, node: () => stModelEl,
+    open: (wg) => { deskModelSlot = wg.body; },
+    close: () => { deskModelSlot = null; placeModel(); },
+  },
+  games: { title: 'game servers', on: true, w: 330, h: 230, node: () => document.getElementById('game-servers-list').closest('.home-col') },
+};
+const DK_WIDGETS_KEY = 'phosphorus-dk-widgets';
+
+function dkWidgetSaved() {
+  try { const v = JSON.parse(localStorage.getItem(DK_WIDGETS_KEY)); return v && typeof v === 'object' && !Array.isArray(v) ? v : {}; } catch { return {}; }
+}
+function dkWidgetSave() {
+  const saved = dkWidgetSaved();
+  for (const id in DK_WIDGETS) {
+    const wg = dk.widgets.get(id);
+    saved[id] = wg ? { on: true, x: wg.x, y: wg.y, w: wg.w, h: wg.h } : { ...saved[id], on: false };
+  }
+  try { localStorage.setItem(DK_WIDGETS_KEY, JSON.stringify(saved)); } catch {}
+}
+
+function dkWidgetsUp() {
+  const saved = dkWidgetSaved();
+  for (const id in DK_WIDGETS) if (saved[id]?.on ?? DK_WIDGETS[id].on) dkWidget(id, true);
+}
+
+// kept whole on the desk, however small it gets
+function dkWidgetFit(wg) {
+  const W = dk.desk.widgets.clientWidth;
+  const H = dk.desk.widgets.clientHeight;
+  if (!W || !H) return;
+  wg.w = Math.max(200, Math.min(wg.w, W));
+  wg.h = Math.max(120, Math.min(wg.h, H));
+  wg.x = Math.max(0, Math.min(W - wg.w, wg.x));
+  wg.y = Math.max(0, Math.min(H - wg.h, wg.y));
+  dkPlace(wg);
+}
+
+function dkWidget(id, on) {
+  const have = dk.widgets.get(id);
+  if (!on) {
+    if (have) dkWidgetDrop(have);
+    dkWidgetSave();
+    return;
+  }
+  if (have || !dk.desk) return;
+  const spec = DK_WIDGETS[id];
+  const saved = dkWidgetSaved()[id] || {};
+  const node = el('div', `dk-widget dk-w-${id}`);
+  const head = el('div', 'dk-whead');
+  const close = Object.assign(el('button', 'dk-wclose'), { type: 'button', title: 'hide', ariaLabel: 'hide' });
+  close.appendChild(dkGlyph(DK_UI.close));
+  head.append(el('span', 'dk-wtitle', spec.title), close);
+  const body = el('div', 'dk-wbody');
+  const grip = el('div', 'dk-grip');
+  node.append(head, body, grip);
+  const content = spec.node();
+  const wg = { id, node, body, content, home: content.parentElement, next: content.nextSibling, snap: '' };
+  // a new one under the others down the right edge, a column further left once that's full
+  const W = dk.desk.widgets.clientWidth;
+  const H = dk.desk.widgets.clientHeight;
+  wg.w = saved.w || spec.w;
+  wg.h = saved.h || spec.h;
+  wg.x = W - wg.w - 12;
+  wg.y = Math.max(12, ...[...dk.widgets.values()].filter((o) => o.x + o.w > wg.x).map((o) => o.y + o.h + 12));
+  if (wg.y + wg.h > H) {
+    wg.x = Math.min(...[...dk.widgets.values()].map((o) => o.x)) - wg.w - 12;
+    wg.y = 12;
+  }
+  if (Number.isFinite(saved.x) && Number.isFinite(saved.y)) Object.assign(wg, { x: saved.x, y: saved.y });
+  body.appendChild(content);
+  dk.desk.widgets.appendChild(node);
+  dk.widgets.set(id, wg);
+  dkWidgetFit(wg);
+  dkDrag(wg, head, (dx, dy, o) => {
+    wg.x = Math.max(0, Math.min(dk.desk.widgets.clientWidth - wg.w, o.x + dx));
+    wg.y = Math.max(0, Math.min(dk.desk.widgets.clientHeight - wg.h, o.y + dy));
+  });
+  dkDrag(wg, grip, (dx, dy, o) => {
+    wg.w = Math.max(200, Math.min(dk.desk.widgets.clientWidth - wg.x, o.w + dx));
+    wg.h = Math.max(120, Math.min(dk.desk.widgets.clientHeight - wg.y, o.h + dy));
+  });
+  for (const h of [head, grip]) h.addEventListener('pointerup', dkWidgetSave);
+  close.addEventListener('click', () => dkWidget(id, false));
+  spec.open?.(wg);
+  if (id === 'model') placeModel();
+  if (id === 'mesh') { meshDims = null; drawMesh(); }
+  dkWidgetSave();
+}
+
+// its card back where the old views keep it
+function dkWidgetDrop(wg) {
+  DK_WIDGETS[wg.id].close?.(wg);
+  if (wg.body.contains(wg.content)) wg.home.insertBefore(wg.content, wg.next?.parentNode === wg.home ? wg.next : null);
+  wg.node.remove();
+  dk.widgets.delete(wg.id);
+}
+
+// --- the start button: every app, the widgets shown or hidden, about
+
+const dkMenuFrom = { start: false };
+addEventListener('pointerdown', (e) => { dkMenuFrom.start = !dkMenuEl.hidden && dkMenuEl.dataset.from === 'start' && !!e.target.closest?.('.dk-start'); }, true);
+
+function dkStart() {
+  const b = Object.assign(el('button', 'dk-start', 'Φ'), { type: 'button', title: 'apps and widgets', ariaLabel: 'apps and widgets' });
+  b.addEventListener('click', () => {
+    if (dkMenuFrom.start) { dkMenuEl.hidden = true; return; }
+    const tick = (id) => `${dk.widgets.has(id) ? '■' : '□'} ${DK_WIDGETS[id].title}`;
+    dkMenu(0, 0, [
+      ['chat', () => dkOpenApp('chat'), true],
+      ['status', () => dkOpenApp('status'), true],
+      ['projects', () => dkOpenApp('projects'), true],
+      ['git', () => dkOpenApp('git'), dkHasGit()],
+      ['files', () => dkFiles(), true],
+      ['editor', dkEditorPick, true],
+      null,
+      ...Object.keys(DK_WIDGETS).map((id) => [tick(id), () => dkWidget(id, !dk.widgets.has(id)), true, 'dk-menu-tick']),
+      null,
+      ['about phosphorus', () => dkOpenApp('about'), true],
+    ]);
+    dkMenuEl.dataset.from = 'start';
+    const r = b.getBoundingClientRect();
+    dkMenuEl.style.left = `${Math.max(4, r.left)}px`;
+    dkMenuEl.style.top = `${Math.max(4, r.top - dkMenuEl.offsetHeight - 4)}px`;
+  });
+  return b;
 }
 
 // a press inside a service's frame never reaching the page, its window raised by the page's blur
