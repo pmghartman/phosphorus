@@ -1000,7 +1000,7 @@ async function mintGuestKey() {
 
 // the users' endpoints, each (session, body) -> [status, body, cookie?]
 const USER_CALLS = {
-  'GET /api/me': (s) => (s ? [200, users.me(s)] : [401, { error: 'log in', setup: users.setup() }]),
+  'GET /api/me': (s, p, req) => (s ? [200, users.me(s), users.refresh(req, s)] : [401, { error: 'log in', setup: users.setup() }]),
   'POST /api/login': (s, p, req) => users.login(p, req),
   'POST /api/logout': (s, p, req) => [200, { ok: true }, users.clearCookie(req)],
   'POST /api/me/vault': (s, p) => users.setVault(s, p),

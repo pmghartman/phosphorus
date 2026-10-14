@@ -71,8 +71,9 @@ function meshKey() {
 
 // --- sessions -------------------------------------------------------------
 
-function cookieOf(req) {
-  return (String(req.headers.cookie || '').match(/(?:^|;\s*)phosphorus-user=([A-Za-z0-9_-]+)/) || [])[1] || '';
+// every one sent, a stale host-only one beside the domain's
+function cookiesOf(req) {
+  return [...String(req.headers.cookie || '').matchAll(/(?:^|;\s*)phosphorus-user=([A-Za-z0-9_-]+)/g)].map((m) => m[1]);
 }
 
 // the base domain's and every service subdomain's, https only behind the tunnel
@@ -110,17 +111,32 @@ function failed(keys) {
   if (tries.size > 10000) tries.delete(tries.keys().next().value);
 }
 
-// {user, admin, boot, key} or null
-function session(req) {
-  const token = cookieOf(req);
-  if (!token || !sys.read(SECRET)) return null;
+function sessionOf(token) {
   let s;
   try { s = JSON.parse(open(meshKey(), JSON.parse(Buffer.from(token, 'base64url').toString('utf8'))) || 'null'); } catch { return null; }
   if (!s || !(s.e > Date.now())) return null;
-  if (s.b) return { user: ADMIN, admin: true, boot: true, key: null };
+  if (s.b) return { user: ADMIN, admin: true, boot: true, key: null, token, e: s.e };
   const u = live(s.u);
   if (!u || u.pwAt !== s.p) return null;
-  return { user: s.u, admin: !!u.admin, boot: false, key: Buffer.from(s.k, 'hex') };
+  return { user: s.u, admin: !!u.admin, boot: false, key: Buffer.from(s.k, 'hex'), token, e: s.e };
+}
+
+// {user, admin, boot, key, token, e} or null, the first valid cookie's
+function session(req) {
+  if (!sys.read(SECRET)) return null;
+  for (const token of cookiesOf(req)) {
+    const s = sessionOf(token);
+    if (s) return s;
+  }
+  return null;
+}
+
+// a host-only cookie from before the domain's, moved onto the base domain
+// so service subdomains see it too
+function refresh(req, s) {
+  if (!s || !/Domain=/.test(attrs(req))) return undefined;
+  const left = Math.round((s.e - Date.now()) / 1000);
+  return [`${COOKIE}=; Max-Age=0; Path=/; SameSite=Lax; HttpOnly`, `${COOKIE}=${s.token}; Max-Age=${left}${attrs(req)}`];
 }
 
 function vaultOf(s) {
@@ -251,7 +267,6 @@ function remove(s, p) {
 }
 
 module.exports = {
-  // a full user's session, the setup admin's reaching only its own page
-  pass: (req) => { const s = session(req); return !!s && !s.boot; },
-  COOKIE, session, me, login, setVault, setPrefs, changePass, list, create, setAdmin, remove, clearCookie, setup: () => !anyAdmin(),
+  pass: (req) => !!session(req),
+  COOKIE, session, refresh, me, login, setVault, setPrefs, changePass, list, create, setAdmin, remove, clearCookie, setup: () => !anyAdmin(),
 };

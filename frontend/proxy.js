@@ -204,7 +204,7 @@ function deny(req, res) {
     res.writeHead(302, { Location: `https://${BASE_DOMAIN}/?next=${next}`, 'Cache-Control': 'no-store' }).end();
     return;
   }
-  refuse(res, 401, 'log in first');
+  refuse(res, 401, `log in first${SELF_HOST ? ` (${SELF_HOST})` : ''}`);
 }
 
 // --- pinning ---------------------------------------------------------------
@@ -322,9 +322,11 @@ function listen(port, app, upgrade, gate) {
   const server = http.createServer({ requestTimeout: 0 }, (req, res) => {
     req.ingress = true;
     const hit = resolve(req);
-    if ((hit.route || hit.frontend) && !isOpen(req, hit) && !passes(req)) return deny(req, res);
-    if (hit.frontend && req.method === 'POST' && /^\/api\/host(\?|$)/.test(req.url)) return pinSwitch(req, res);
-    const pin = hit.frontend && pinRoute(req);
+    const hop = hit.frontend && req.method === 'POST' && /^\/api\/host(\?|$)/.test(req.url);
+    // a pinned request gated by the host serving it
+    const pin = hit.frontend && !hop && pinRoute(req);
+    if ((hit.route || hit.frontend) && !pin && !isOpen(req, hit) && !passes(req)) return deny(req, res);
+    if (hop) return pinSwitch(req, res);
     if (hit.route) forward(hit.route, req, res, hit.path);
     else if (pin) forward(pin, req, res, req.url);
     else if (hit.frontend) { pinHere(req, res); app(req, res); }
@@ -337,8 +339,8 @@ function listen(port, app, upgrade, gate) {
     req.ingress = true;
     socket.on('error', () => {});
     const hit = resolve(req);
-    if ((hit.route || hit.frontend) && !passes(req)) { socket.end('HTTP/1.1 401 Unauthorized\r\n\r\n'); return; }
     const pin = hit.frontend && pinRoute(req);
+    if ((hit.route || hit.frontend) && !pin && !passes(req)) { socket.end('HTTP/1.1 401 Unauthorized\r\n\r\n'); return; }
     if (hit.route) tunnel(hit.route, req, socket, head, hit.path);
     else if (pin) tunnel(pin, req, socket, head, req.url);
     else if (hit.frontend) upgrade(req, socket, head);
