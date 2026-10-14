@@ -1432,7 +1432,7 @@ const paneContent = document.getElementById('pane-content');
 const openTabs = new Map();
 
 // the built in tabs, closed ones only hidden and kept closed across visits
-const FIXED_TABS = { services: 'home', files: 'files', status: 'status', chat: 'chat', projects: 'projects', desktop: 'desktop connector' };
+const FIXED_TABS = { services: 'home', files: 'files', status: 'status', chat: 'chat', projects: 'projects', desktop: 'desktop' };
 const CLOSED_TABS_KEY = 'hesperus-closed-tabs';
 const fixedBtn = (id) => tabbarTabs.querySelector(`.tab-btn[data-tab-id="${id}"]`);
 function closedTabs() {
@@ -8194,7 +8194,7 @@ document.addEventListener('keydown', (e) => {
 // home closed last visit: the first tab still open, else the about page
 if (tabbarTabs.querySelector('.tab-btn.active')?.hidden) activateTab(tabIds()[0] || 'about');
 
-// --- desktop connector: a pretend remote desktop, every window one of the
+// --- desktop: a pretend remote desktop, every window one of the
 // mesh's own terminals, files or services, drawn here
 
 const dkView = document.getElementById('view-desktop');
@@ -8261,7 +8261,7 @@ function dkLogin() {
   const box = el('div', 'dk-login');
   const actions = el('div', 'update-actions');
   actions.append(go);
-  box.append(el('div', 'home-col-head', 'desktop connector'), el('p', 'dk-note', 'ssh into one or more hosts'), list, actions);
+  box.append(el('div', 'home-col-head', 'desktop'), el('p', 'dk-note', 'ssh into one or more hosts'), list, actions);
   go.addEventListener('click', dkConnect);
   dkView.replaceChildren(box);
   dk.login = { list, go };
@@ -8320,8 +8320,8 @@ function dkDesktop() {
   const off = Object.assign(el('button', 'dk-off', 'disconnect'), { type: 'button' });
   const bar = el('div', 'dk-bar');
   bar.append(tasks, hosts, clock, off);
-  const art = document.querySelector('.about-art').cloneNode(true);
-  art.className = 'about-art dk-art';
+  const art = el('div', 'dk-art');
+  art.appendChild(document.querySelector('.about-art').cloneNode(true));
   const desk = el('div', 'dk-desk');
   desk.append(art, icons, wins, bar);
   dkView.replaceChildren(desk);
@@ -8330,6 +8330,22 @@ function dkDesktop() {
   // a press on bare desk unfocuses every window
   wins.addEventListener('pointerdown', (e) => { if (e.target === wins) dkFocus(null); });
   dk.desk = { el: desk, icons, wins, tasks, clock };
+  // the desk resized (side column shown or hidden), floating windows kept on it
+  new ResizeObserver(() => {
+    const W = wins.clientWidth;
+    const H = wins.clientHeight;
+    if (!W || !H) return;
+    for (const w of dk.wins.values()) {
+      if (w.snap) continue;
+      const nw = Math.min(w.w, W);
+      const nh = Math.min(w.h, H);
+      const nx = Math.max(0, Math.min(W - nw, w.x));
+      const ny = Math.max(0, Math.min(H - nh, w.y));
+      if (nw === w.w && nh === w.h && nx === w.x && ny === w.y) continue;
+      Object.assign(w, { w: nw, h: nh, x: nx, y: ny });
+      dkPlace(w);
+    }
+  }).observe(wins);
   dk.sig = '';
   dkClock();
   dkIcons();
@@ -8342,7 +8358,7 @@ function dkClock() {
 setInterval(dkClock, 5000);
 
 function dkDisconnect() {
-  for (const w of [...dk.wins.values()]) dkClose(w);
+  for (const w of [...dk.wins.values()]) dkClose(w, true);
   dk.creds.clear();
   dk.desk = null;
   dkLogin();
@@ -8351,14 +8367,28 @@ function dkDisconnect() {
 const DK_GLYPHS = {
   terminal: 'M2 3h12v10H2zM4.5 6.5l2 1.5-2 1.5M8 10h3.5',
   files: ICONS.folder,
+  editor: 'M3 1.5h7l3 3v10H3zM10 1.5v3h3M5 7.5h6M5 10h6M5 12.5h3.5',
   service: 'M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM1.5 8h13M8 1.5c-2.2 2.4-2.2 10.6 0 13M8 1.5c2.2 2.4 2.2 10.6 0 13',
+};
+
+// the frontend's own stroked glyphs, a phrase of path data each
+function dkGlyph(d, cls = '') {
+  const svg = svgEl('svg', { viewBox: '0 0 16 16', class: `ic ${cls}`, 'aria-hidden': 'true' });
+  svg.appendChild(svgEl('path', { d }));
+  return svg;
+}
+const DK_UI = {
+  min: 'M4 11.5h8', max: 'M3.5 3.5h9v9h-9z', close: 'M4 4l8 8M12 4l-8 8',
+  pop: 'M9 2.5h4.5V7M13.5 2.5L7.5 8.5M12 9.5v4H2.5V4h4',
+  back: 'M10 3L5 8l5 5', fwd: 'M6 3l5 5-5 5', up: 'M3 10.5l5-5 5 5',
+  list: 'M2.5 4h11M2.5 8h11M2.5 12h11', grid: 'M2.5 2.5h4.5v4.5H2.5zM9 2.5h4.5v4.5H9zM2.5 9h4.5v4.5H2.5zM9 9h4.5v4.5H9z',
 };
 
 function dkIcon(kind, label, sub, open) {
   const b = Object.assign(el('button', `dk-icon dk-${kind}`), { type: 'button', title: sub ? `${label} on ${sub}` : label });
-  const svg = svgEl('svg', { viewBox: '0 0 16 16', 'aria-hidden': 'true' });
-  svg.appendChild(svgEl('path', { d: DK_GLYPHS[kind] }));
-  b.append(svg, el('span', 'dk-label', label));
+  const tile = el('span', 'dk-tile');
+  tile.appendChild(dkGlyph(DK_GLYPHS[kind]));
+  b.append(tile, el('span', 'dk-label', label));
   if (sub) b.appendChild(el('span', 'dk-sub', sub));
   b.addEventListener('click', open);
   return b;
@@ -8373,7 +8403,8 @@ function dkIcons() {
   dk.sig = sig;
   dk.desk.icons.replaceChildren(
     ...hosts.map((h) => dkIcon('terminal', 'terminal', h, () => dkTerminal(h))),
-    dkIcon('files', 'files', '', dkFiles),
+    dkIcon('files', 'files', '', () => dkFiles()),
+    dkIcon('editor', 'editor', '', dkEditorPick),
     ...dk.services.map((r) => dkIcon('service', r.name, r.host, () => dkService(r))),
   );
 }
@@ -8390,13 +8421,18 @@ function dkWin(key, title, sub, kind) {
   const { wins, tasks } = dk.desk;
   const node = el('div', `dk-win dk-${kind}`);
   const head = el('div', 'dk-head');
-  const name = el('span', 'dk-title', title);
+  const name = el('span', 'dk-title');
+  name.appendChild(el('span', 'tab-label', title));
   if (sub) name.appendChild(el('span', 'dk-sub', ` ${sub}`));
   const btns = el('span', 'dk-btns');
-  const btn = (cls, text, label) => Object.assign(el('button', cls, text), { type: 'button', title: label, ariaLabel: label });
-  const min = btn('dk-min', '_', 'minimize');
-  const max = btn('dk-max', '□', 'maximize');
-  const close = btn('dk-close', '×', 'close');
+  const btn = (cls, d, label) => {
+    const b = Object.assign(el('button', cls), { type: 'button', title: label, ariaLabel: label });
+    b.appendChild(dkGlyph(d));
+    return b;
+  };
+  const min = btn('dk-min', DK_UI.min, 'minimize');
+  const max = btn('dk-max', DK_UI.max, 'maximize');
+  const close = btn('dk-close', DK_UI.close, 'close');
   btns.append(min, max, close);
   head.append(name, btns);
   const body = el('div', 'dk-body');
@@ -8413,7 +8449,8 @@ function dkWin(key, title, sub, kind) {
   w.x = Math.max(0, Math.min(W - w.w, 120 + step));
   w.y = Math.max(0, Math.min(H - w.h, 16 + step));
   dkPlace(w);
-  if (isMobile()) node.classList.add('max');
+  w.snap = '';
+  if (isMobile()) dkSnap(w, 'max');
   min.addEventListener('click', () => dkMin(w));
   max.addEventListener('click', () => dkMax(w));
   close.addEventListener('click', () => dkClose(w));
@@ -8422,7 +8459,7 @@ function dkWin(key, title, sub, kind) {
     if (node.hidden) { node.hidden = false; dkFocus(w); } else if (node.classList.contains('focused')) dkMin(w); else dkFocus(w);
   });
   node.addEventListener('pointerdown', () => dkFocus(w), true);
-  dkDrag(w, head, (dx, dy, o) => { w.x = o.x + dx; w.y = Math.max(0, o.y + dy); }, true);
+  dkMove(w, head);
   dkDrag(w, grip, (dx, dy, o) => { w.w = Math.max(280, o.w + dx); w.h = Math.max(160, o.h + dy); });
   wins.appendChild(node);
   tasks.appendChild(task);
@@ -8437,10 +8474,9 @@ function dkPlace(w) {
 }
 
 // pointer captured from press to release, one write per frame
-function dkDrag(w, handle, move, fromHead) {
+function dkDrag(w, handle, move) {
   handle.addEventListener('pointerdown', (e) => {
-    if (e.button !== 0 || e.target.closest('button')) return;
-    if (fromHead && w.node.classList.contains('max')) return;
+    if (e.button !== 0 || e.target.closest('button') || w.snap) return;
     e.preventDefault();
     handle.setPointerCapture(e.pointerId);
     const o = { x: w.x, y: w.y, w: w.w, h: w.h, px: e.clientX, py: e.clientY };
@@ -8453,17 +8489,82 @@ function dkDrag(w, handle, move, fromHead) {
     const onUp = () => {
       handle.removeEventListener('pointermove', onMove);
       dk.desk?.el.classList.remove('dk-moving');
-      // never lost under the task bar or off either side
-      const W = dk.desk?.wins.clientWidth || 0;
-      const H = dk.desk?.wins.clientHeight || 0;
-      w.x = Math.max(48 - w.w, Math.min(W - 48, w.x));
-      w.y = Math.max(0, Math.min(H - 28, w.y));
       cancelAnimationFrame(frame);
       dkPlace(w);
     };
     handle.addEventListener('pointermove', onMove);
     handle.addEventListener('pointerup', onUp, { once: true });
     handle.addEventListener('pointercancel', onUp, { once: true });
+  });
+}
+
+// where letting go snaps: the top edge maximized, a side its half, a side's
+// end its quarter
+const DK_EDGE = 14;
+function dkZone(x, y, W, H) {
+  if (y < DK_EDGE && x > DK_EDGE * 3 && x < W - DK_EDGE * 3) return 'max';
+  const side = x < DK_EDGE ? 'l' : x > W - DK_EDGE ? 'r' : '';
+  if (!side) return y < DK_EDGE ? (x < W / 2 ? 'tl' : 'tr') : '';
+  return y < H * 0.25 ? `t${side}` : y > H * 0.75 ? `b${side}` : side;
+}
+
+function dkSnap(w, zone) {
+  w.snap = zone || '';
+  if (zone) w.node.dataset.snap = zone; else delete w.node.dataset.snap;
+  w.node.querySelector('.dk-max').title = zone === 'max' ? 'restore' : 'maximize';
+}
+
+// a title bar's drag: a snapped window let go of its snap first, under the
+// pointer where it was held, a dashed outline showing the snap to come
+function dkMove(w, head) {
+  head.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || e.target.closest('button')) return;
+    e.preventDefault();
+    head.setPointerCapture(e.pointerId);
+    const { wins } = dk.desk;
+    const box = wins.getBoundingClientRect();
+    const at = w.node.getBoundingClientRect();
+    const grab = (e.clientX - at.left) / at.width;
+    let o = null;
+    let zone = '';
+    let frame = 0;
+    const preview = el('div', 'dk-snap');
+    const onMove = (ev) => {
+      if (!o) {
+        if (Math.hypot(ev.clientX - e.clientX, ev.clientY - e.clientY) < 4) return;
+        if (w.snap) {
+          w.x = e.clientX - box.left - grab * w.w;
+          w.y = Math.max(0, e.clientY - box.top - 12);
+          dkSnap(w, '');
+        }
+        o = { x: w.x, y: w.y };
+        dk.desk.el.classList.add('dk-moving');
+        wins.appendChild(preview);
+      }
+      w.x = o.x + ev.clientX - e.clientX;
+      w.y = Math.max(0, o.y + ev.clientY - e.clientY);
+      const next = dkZone(ev.clientX - box.left, ev.clientY - box.top, box.width, box.height);
+      if (next !== zone) {
+        zone = next;
+        if (zone) preview.dataset.snap = zone; else delete preview.dataset.snap;
+      }
+      if (!frame) frame = requestAnimationFrame(() => { frame = 0; dkPlace(w); });
+    };
+    const onUp = () => {
+      head.removeEventListener('pointermove', onMove);
+      preview.remove();
+      if (!o) return;
+      dk.desk?.el.classList.remove('dk-moving');
+      cancelAnimationFrame(frame);
+      // never lost under the task bar or off either side
+      w.x = Math.max(48 - w.w, Math.min(box.width - 48, w.x));
+      w.y = Math.max(0, Math.min(box.height - 28, w.y));
+      dkPlace(w);
+      if (zone) dkSnap(w, zone);
+    };
+    head.addEventListener('pointermove', onMove);
+    head.addEventListener('pointerup', onUp, { once: true });
+    head.addEventListener('pointercancel', onUp, { once: true });
   });
 }
 
@@ -8487,11 +8588,13 @@ function dkMin(w) {
 }
 
 function dkMax(w) {
-  w.node.classList.toggle('max');
+  dkSnap(w, w.snap === 'max' ? '' : 'max');
   dkFocus(w);
 }
 
-function dkClose(w) {
+// force: past an editor's unsaved hold
+function dkClose(w, force) {
+  if (!force && w.holdClose?.()) return;
   w.onClose?.();
   w.node.remove();
   w.task.remove();
@@ -8510,30 +8613,648 @@ function dkTerminal(host) {
   dkFocus(w);
 }
 
-// the files tab's own pane, lent to the window while it's open
-function dkFiles() {
-  const w = dkWin('files', 'files', '', 'files');
+// --- files: a file manager over the hosts' shares, places, a path bar, list
+// or icons, a right click's menu, cut, copy and paste across hosts
+
+const FM_KINDS = {
+  image: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico', 'avif'],
+  video: ['mp4', 'webm', 'mkv', 'mov', 'avi'],
+  audio: ['mp3', 'wav', 'flac', 'ogg', 'm4a', 'opus'],
+  archive: ['zip', 'tar', 'gz', 'tgz', '7z', 'rar', 'xz', 'bz2', 'zst'],
+  pdf: ['pdf'],
+};
+const FM_GLYPHS = {
+  dir: 'M1.5 3.5h4l1.2 1.5h7.8v8h-13z',
+  file: 'M3.5 1.5h6l3 3v10h-9zM9.5 1.5v3h3',
+  code: 'M3.5 1.5h6l3 3v10h-9zM9.5 1.5v3h3M6.5 8l-1.5 1.5 1.5 1.5M9.5 8l1.5 1.5-1.5 1.5',
+  image: 'M2 3h12v10H2zM2 11l3.5-3.5 3 3 2-2 3.5 3.5M10.5 5.5h.01',
+  video: 'M2 3.5h12v9H2zM6.5 6v4l3.5-2z',
+  audio: 'M6 12.5a1.5 1.5 0 1 1-1.5-1.5H6V3l7-1.5v9a1.5 1.5 0 1 1-1.5-1.5H13',
+  archive: 'M3.5 1.5h9v13h-9zM8 1.5v2M8 4.5v1M8 6.5v1M7 8.5h2v2H7z',
+  pdf: 'M3.5 1.5h6l3 3v10h-9zM9.5 1.5v3h3M5.5 9.5h5M5.5 12h3.5',
+  host: ICONS.host,
+};
+const fmExt = (name) => (name.includes('.') ? name.split('.').pop().toLowerCase() : '');
+function fmKind(e) {
+  if (e.dir) return 'dir';
+  const x = fmExt(e.name);
+  for (const k in FM_KINDS) if (FM_KINDS[k].includes(x)) return k;
+  return isCode(e.name) ? 'code' : 'file';
+}
+const fmKindLabel = (e) => (e.dir ? 'folder' : fmExt(e.name) ? `${fmExt(e.name)} file` : 'file');
+const fmIcon = (kind) => dkGlyph(FM_GLYPHS[kind], `fm-${kind}`);
+const fmDate = (ms) => (ms ? new Date(ms).toLocaleString([], { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '');
+const fmSame = (a, b) => a && b && a.host === b.host && a.share === b.share;
+// every file manager open, for a change one makes shown in the rest
+const dkFms = new Set();
+
+function dkFiles(at) {
+  const w = dkWin(null, 'files', '', 'fm');
   if (!w) return;
-  const wrap = document.querySelector('.files-wrap');
-  const modal = document.getElementById('files-modal');
-  const home = document.getElementById('view-files');
-  w.body.appendChild(wrap);
-  dkView.appendChild(modal);
-  filesOpen();
-  w.onClose = () => { home.prepend(wrap); home.appendChild(modal); };
+  const fm = {
+    w, loc: null, dir: '', back: [], fwd: [], entries: [], shown: [], sel: new Set(), anchor: null,
+    sort: { key: 'name', dir: 1 }, mode: 'list', filter: '', shares: new Map(), busy: '',
+  };
+  const btn = (cls, glyph, label) => {
+    const b = Object.assign(el('button', `fm-btn ${cls}`), { type: 'button', title: label, ariaLabel: label });
+    if (glyph) b.append(glyph);
+    return b;
+  };
+  fm.backBtn = btn('', dkGlyph(DK_UI.back), 'back (alt+←)');
+  fm.fwdBtn = btn('', dkGlyph(DK_UI.fwd), 'forward (alt+→)');
+  fm.upBtn = btn('', dkGlyph(DK_UI.up), 'up (alt+↑)');
+  const refresh = btn('', icon('refresh'), 'refresh (f5)');
+  fm.crumbs = el('div', 'fm-crumbs');
+  fm.find = Object.assign(el('input', 'fm-find'), { placeholder: 'search', spellcheck: false, autocomplete: 'off' });
+  const mkdir = btn('', icon('mkdir'), 'new folder (ctrl+shift+n)');
+  const upload = btn('', icon('upload'), 'upload here');
+  fm.modeBtn = btn('', null, 'list or icons');
+  const tools = el('div', 'fm-tools');
+  tools.append(fm.backBtn, fm.fwdBtn, fm.upBtn, refresh, fm.crumbs, mkdir, upload, fm.modeBtn, fm.find);
+  fm.side = el('nav', 'fm-side');
+  fm.main = Object.assign(el('div', 'fm-main'), { tabIndex: 0 });
+  fm.status = el('div', 'fm-status');
+  fm.count = el('span', 'fm-count');
+  fm.note = el('span', 'fm-note');
+  fm.status.append(fm.count, fm.note);
+  const split = el('div', 'fm-split');
+  split.append(fm.side, fm.main);
+  fm.input = Object.assign(el('input'), { type: 'file', multiple: true, hidden: true });
+  w.body.append(tools, split, fm.status, fm.input);
+
+  fm.backBtn.addEventListener('click', () => fmHistory(fm, -1));
+  fm.fwdBtn.addEventListener('click', () => fmHistory(fm, 1));
+  fm.upBtn.addEventListener('click', () => fmUp(fm));
+  refresh.addEventListener('click', () => fmLoad(fm));
+  mkdir.addEventListener('click', () => fmMkdir(fm));
+  upload.addEventListener('click', () => fmCan(fm, 'w') && fm.input.click());
+  fm.input.addEventListener('change', () => { fmUpload(fm, fm.loc, fm.dir, fm.input.files); fm.input.value = ''; });
+  fm.modeBtn.addEventListener('click', () => { fm.mode = fm.mode === 'list' ? 'grid' : 'list'; fmRender(fm); });
+  fm.find.addEventListener('input', () => { fm.filter = fm.find.value.trim().toLowerCase(); fmRender(fm); });
+  fm.find.addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    if (e.key === 'Escape') { fm.find.value = ''; fm.filter = ''; fmRender(fm); fm.main.focus(); }
+    if (e.key === 'ArrowDown' || e.key === 'Enter') { e.preventDefault(); fm.main.focus(); fmStep(fm, 0); }
+  });
+  fm.main.addEventListener('keydown', (e) => fmKeys(fm, e));
+  fm.main.addEventListener('pointerdown', (e) => {
+    if (e.target === fm.main || e.target.classList.contains('fm-items')) { fm.sel.clear(); fmPaintSel(fm); }
+  });
+  fm.main.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    const row = e.target.closest('[data-name]');
+    if (row && !fm.sel.has(row.dataset.name)) { fm.sel = new Set([row.dataset.name]); fm.anchor = row.dataset.name; fmPaintSel(fm); }
+    if (!row) { fm.sel.clear(); fmPaintSel(fm); }
+    fmMenu(fm, e.clientX, e.clientY, !!row);
+  });
+  fmDropZone(fm, fm.main, () => (fm.loc ? { loc: fm.loc, dir: fm.dir } : null));
+  w.onFocus = () => { if (!w.node.contains(document.activeElement)) fm.main.focus({ preventScroll: true }); };
+  w.onClose = () => dkFms.delete(fm);
+  dkFms.add(fm);
+  fmSide(fm);
+  if (at) fmGo(fm, at.loc, at.dir); else fmRender(fm);
   dkFocus(w);
 }
-// the files tab taking its pane back
-document.addEventListener('hesperus-tab', (e) => {
-  const w = dk.wins.get('files');
-  if (e.detail === 'files' && w) dkClose(w);
-});
+
+// each connected host's shares, asked once a window
+async function fmSide(fm) {
+  const hosts = [...dk.creds.keys()];
+  const render = () => {
+    const out = [el('div', 'fm-side-head', 'hosts')];
+    for (const h of hosts) {
+      const info = fm.shares.get(h);
+      const hostRow = el('div', 'fm-place fm-hostrow');
+      hostRow.append(fmIcon('host'), el('span', '', h));
+      out.push(hostRow);
+      if (!info) { out.push(el('div', 'fm-place-note', '…')); continue; }
+      if (info.error) { out.push(Object.assign(el('div', 'fm-place-note bad', info.error), { title: info.error })); continue; }
+      for (const loc of info.shares) {
+        const row = el('div', `fm-place fm-share${fmSame(loc, fm.loc) ? ' here' : ''}`);
+        row.append(fmIcon('dir'), el('span', '', loc.root));
+        row.title = `${h}/${loc.root}`;
+        row.addEventListener('click', () => fmGo(fm, loc, ''));
+        fmDropZone(fm, row, () => ({ loc, dir: '' }));
+        out.push(row);
+      }
+    }
+    fm.side.replaceChildren(...out);
+  };
+  fm.renderSide = render;
+  render();
+  await Promise.all(hosts.map(async (h) => {
+    try {
+      const info = await filesCall({ host: h }, 'info');
+      fm.shares.set(h, info.enabled
+        ? { shares: info.shares.map((sh) => ({ host: h, share: sh.id, root: sh.label, perms: sh.perms })) }
+        : { error: 'no files directory' });
+    } catch (err) { fm.shares.set(h, { error: err.message }); }
+    render();
+  }));
+  // no place yet: the first share found
+  if (!fm.loc) {
+    const first = [...fm.shares.values()].find((i) => i.shares?.length);
+    if (first) fmGo(fm, first.shares[0], '');
+  }
+}
+
+function fmGo(fm, loc, dir, how) {
+  if (how !== 'history' && fm.loc) { fm.back.push({ loc: fm.loc, dir: fm.dir }); fm.fwd = []; }
+  const from = fmSame(fm.loc, loc) ? fm.dir : null;
+  fm.loc = loc;
+  fm.dir = dir;
+  fm.sel.clear();
+  fm.find.value = '';
+  fm.filter = '';
+  // back up a level: the folder left, picked
+  if (from != null && filesParent(from) === dir && from !== dir) { fm.sel.add(from.split('/').pop()); fm.anchor = from.split('/').pop(); }
+  fm.entries = [];
+  fm.renderSide?.();
+  fmLoad(fm);
+}
+
+function fmHistory(fm, step) {
+  const from = step < 0 ? fm.back : fm.fwd;
+  const to = step < 0 ? fm.fwd : fm.back;
+  const at = from.pop();
+  if (!at) return;
+  to.push({ loc: fm.loc, dir: fm.dir });
+  fmGo(fm, at.loc, at.dir, 'history');
+}
+
+const fmUp = (fm) => fm.loc && fm.dir && fmGo(fm, fm.loc, filesParent(fm.dir));
+
+async function fmLoad(fm) {
+  if (!fm.loc) return fmRender(fm);
+  const want = `${fm.loc.host}\n${fm.loc.share}\n${fm.dir}`;
+  fm.loading = want;
+  fmRender(fm);
+  try {
+    const body = await filesCall(fm.loc, 'list', undefined, { path: fm.dir });
+    if (fm.loading !== want) return;
+    fm.entries = body.entries;
+    fm.error = body.truncated ? 'more entries than shown' : '';
+  } catch (err) {
+    if (fm.loading !== want) return;
+    fm.entries = [];
+    fm.error = err.message;
+  }
+  fm.loading = '';
+  fmRender(fm);
+}
+
+// every window showing that folder, read again
+function fmChanged(loc, ...dirs) {
+  for (const fm of dkFms) if (fmSame(fm.loc, loc) && dirs.includes(fm.dir)) fmLoad(fm);
+}
+
+const fmCan = (fm, perm) => !!fm.loc && may(fm.loc, perm);
+
+function fmSorted(fm) {
+  const { key, dir } = fm.sort;
+  const val = (e) => (key === 'size' ? e.size ?? -1 : key === 'mtime' ? e.mtime ?? 0 : key === 'kind' ? fmKindLabel(e) : e.name.toLowerCase());
+  return fm.entries
+    .filter((e) => !fm.filter || e.name.toLowerCase().includes(fm.filter))
+    .sort((a, b) => (a.dir !== b.dir ? (a.dir ? -1 : 1) : (val(a) < val(b) ? -1 : val(a) > val(b) ? 1 : 0) * dir));
+}
+
+function fmRender(fm) {
+  fm.backBtn.disabled = !fm.back.length;
+  fm.fwdBtn.disabled = !fm.fwd.length;
+  fm.upBtn.disabled = !fm.dir;
+  fm.modeBtn.replaceChildren(dkGlyph(fm.mode === 'list' ? DK_UI.grid : DK_UI.list));
+  // the path bar: host, the share, then each folder, any one a jump
+  const crumbs = [];
+  if (fm.loc) {
+    crumbs.push(el('span', 'fm-crumb-host', fm.loc.host));
+    const parts = fm.dir ? fm.dir.split('/') : [];
+    [fm.loc.root, ...parts].forEach((name, i) => {
+      const c = Object.assign(el('button', 'fm-crumb', name), { type: 'button' });
+      const to = parts.slice(0, i).join('/');
+      c.addEventListener('click', () => to !== fm.dir && fmGo(fm, fm.loc, to));
+      fmDropZone(fm, c, () => ({ loc: fm.loc, dir: to }));
+      crumbs.push(el('span', 'fm-crumb-sep', '›'), c);
+    });
+  }
+  fm.crumbs.replaceChildren(...crumbs);
+  fm.w.task.textContent = fm.loc ? (fm.dir.split('/').pop() || fm.loc.root) : 'files';
+  fm.w.head.querySelector('.tab-label').textContent = fm.w.task.textContent;
+
+  fm.shown = fmSorted(fm);
+  const items = el('div', `fm-items fm-${fm.mode}`);
+  if (fm.mode === 'list') {
+    const head = el('div', 'fm-row fm-cols');
+    for (const [key, label] of [['name', 'name'], ['mtime', 'modified'], ['size', 'size'], ['kind', 'kind']]) {
+      const c = Object.assign(el('button', `fm-col fm-c-${key}`, label), { type: 'button' });
+      if (fm.sort.key === key) c.append(el('span', 'fm-arrow', fm.sort.dir > 0 ? ' ▴' : ' ▾'));
+      c.addEventListener('click', () => { fm.sort = { key, dir: fm.sort.key === key ? -fm.sort.dir : 1 }; fmRender(fm); });
+      head.appendChild(c);
+    }
+    items.appendChild(head);
+  }
+  for (const e of fm.shown) items.appendChild(fmItem(fm, e));
+  const note = !fm.loc ? 'pick a place' : fm.loading && !fm.entries.length ? 'loading…'
+    : fm.error && !fm.entries.length ? fm.error : !fm.shown.length ? (fm.filter ? 'no match' : 'this folder is empty') : '';
+  if (note) items.appendChild(el('div', 'fm-empty', note));
+  fm.main.replaceChildren(items);
+  fmPaintSel(fm);
+}
+
+function fmItem(fm, e) {
+  const kind = fmKind(e);
+  const row = el('div', fm.mode === 'list' ? 'fm-row fm-item' : 'fm-tile fm-item');
+  row.dataset.name = e.name;
+  row.draggable = true;
+  const name = el('span', 'fm-name');
+  name.append(fmIcon(kind), el('span', 'fm-label', e.name));
+  if (fm.mode === 'list') {
+    row.append(name, el('span', 'fm-c-mtime', fmDate(e.mtime)), el('span', 'fm-c-size', e.dir ? '' : humanSize(e.size || 0)), el('span', 'fm-c-kind', fmKindLabel(e)));
+  } else {
+    row.append(name);
+    row.title = `${e.name}\n${e.dir ? 'folder' : humanSize(e.size || 0)}\n${fmDate(e.mtime)}`;
+  }
+  row.addEventListener('click', (ev) => fmClick(fm, e.name, ev));
+  row.addEventListener('dblclick', () => fmOpen(fm, e));
+  row.addEventListener('dragstart', (ev) => {
+    if (!fm.sel.has(e.name)) { fm.sel = new Set([e.name]); fmPaintSel(fm); }
+    dk.drag = { loc: fm.loc, items: fmPicked(fm) };
+    ev.dataTransfer.effectAllowed = 'copyMove';
+    ev.dataTransfer.setData('text/plain', fmPicked(fm).map((p) => p.rel).join('\n'));
+  });
+  row.addEventListener('dragend', () => { dk.drag = null; });
+  if (e.dir) fmDropZone(fm, row, () => ({ loc: fm.loc, dir: filesJoin(fm.dir, e.name) }));
+  return row;
+}
+
+function fmPaintSel(fm) {
+  for (const r of fm.main.querySelectorAll('.fm-item')) r.classList.toggle('sel', fm.sel.has(r.dataset.name));
+  const n = fm.shown.length;
+  const picked = fm.shown.filter((e) => fm.sel.has(e.name));
+  const bytes = picked.reduce((t, e) => t + (e.size || 0), 0);
+  fm.count.textContent = `${n} item${n === 1 ? '' : 's'}${picked.length ? `, ${picked.length} selected${bytes ? ` (${humanSize(bytes)})` : ''}` : ''}`;
+}
+
+function fmClick(fm, name, e) {
+  const names = fm.shown.map((x) => x.name);
+  if (e.shiftKey && fm.anchor != null && names.includes(fm.anchor)) {
+    const [a, b] = [names.indexOf(fm.anchor), names.indexOf(name)].sort((x, y) => x - y);
+    if (!(e.ctrlKey || e.metaKey)) fm.sel.clear();
+    for (const n of names.slice(a, b + 1)) fm.sel.add(n);
+  } else if (e.ctrlKey || e.metaKey) {
+    if (fm.sel.has(name)) fm.sel.delete(name); else fm.sel.add(name);
+    fm.anchor = name;
+  } else {
+    fm.sel = new Set([name]);
+    fm.anchor = name;
+  }
+  fmPaintSel(fm);
+}
+
+// the picked entries as {rel, dir, name}
+const fmPicked = (fm) => fm.shown.filter((e) => fm.sel.has(e.name)).map((e) => ({ rel: filesJoin(fm.dir, e.name), dir: e.dir, name: e.name }));
+
+function fmOpen(fm, e) {
+  const rel = filesJoin(fm.dir, e.name);
+  if (e.dir) return fmGo(fm, fm.loc, rel);
+  if (isCode(e.name)) return dkCode({ host: fm.loc.host, share: fm.loc.share, path: rel, label: fileLabel(fm.loc.host, fm.loc.root, rel) });
+  dkViewer(fm.loc, rel);
+}
+
+// keys as a file manager's: arrows, enter, delete, f2, and the clipboard's
+function fmKeys(fm, e) {
+  const mod = e.ctrlKey || e.metaKey;
+  const k = e.key;
+  const one = fm.shown.find((x) => x.name === fm.anchor && fm.sel.has(x.name)) || fm.shown.find((x) => fm.sel.has(x.name));
+  if (k === 'ArrowDown' || k === 'ArrowUp' || ((k === 'ArrowLeft' || k === 'ArrowRight') && fm.mode === 'grid' && !e.altKey)) {
+    const cols = fm.mode === 'grid' ? Math.max(1, Math.floor(fm.main.clientWidth / (fm.main.querySelector('.fm-tile')?.offsetWidth || 1))) : 1;
+    fmStep(fm, { ArrowDown: cols, ArrowUp: -cols, ArrowRight: 1, ArrowLeft: -1 }[k], e.shiftKey);
+  } else if (e.altKey && k === 'ArrowLeft') fmHistory(fm, -1);
+  else if (e.altKey && k === 'ArrowRight') fmHistory(fm, 1);
+  else if ((e.altKey && k === 'ArrowUp') || k === 'Backspace') fmUp(fm);
+  else if (k === 'Enter' && one) fmOpen(fm, one);
+  else if ((k === 'Delete' || (e.metaKey && k === 'Backspace')) && fm.sel.size) fmDelete(fm);
+  else if (k === 'F2' && one) fmRename(fm, one);
+  else if (k === 'F5') fmLoad(fm);
+  else if (mod && e.shiftKey && k.toLowerCase() === 'n') fmMkdir(fm);
+  else if (mod && k.toLowerCase() === 'a') { fm.sel = new Set(fm.shown.map((x) => x.name)); fmPaintSel(fm); }
+  else if (mod && k.toLowerCase() === 'c' && fm.sel.size) fmClip(fm, 'copy');
+  else if (mod && k.toLowerCase() === 'x' && fm.sel.size) fmClip(fm, 'cut');
+  else if (mod && k.toLowerCase() === 'v') fmPaste(fm);
+  else if (mod && k.toLowerCase() === 'f') fm.find.focus();
+  else if (k === 'Escape') { fm.sel.clear(); fmPaintSel(fm); }
+  else if (k.length === 1 && !mod && !e.altKey) {
+    // typed letters jump to the next name starting with them
+    const names = fm.shown.map((x) => x.name);
+    const at = names.indexOf(fm.anchor);
+    const hit = [...names.slice(at + 1), ...names.slice(0, at + 1)].find((n) => n.toLowerCase().startsWith(k.toLowerCase()));
+    if (hit) { fm.sel = new Set([hit]); fm.anchor = hit; fmPaintSel(fm); fmReveal(fm, hit); }
+  } else return;
+  e.preventDefault();
+  e.stopPropagation();
+}
+
+function fmStep(fm, by, extend) {
+  const names = fm.shown.map((x) => x.name);
+  if (!names.length) return;
+  const at = names.indexOf(fm.anchor);
+  const to = names[Math.max(0, Math.min(names.length - 1, at < 0 ? 0 : at + by))];
+  if (!extend) fm.sel.clear();
+  fm.sel.add(to);
+  fm.anchor = to;
+  fmPaintSel(fm);
+  fmReveal(fm, to);
+}
+
+const fmReveal = (fm, name) => [...fm.main.querySelectorAll('.fm-item')].find((r) => r.dataset.name === name)?.scrollIntoView({ block: 'nearest' });
+
+// a right click's menu, on the page so no window's transform shifts it
+function fmMenu(fm, x, y, onItem) {
+  const picked = fmPicked(fm);
+  const one = picked.length === 1 ? fm.shown.find((e) => e.name === picked[0].name) : null;
+  const w = fmCan(fm, 'w');
+  const items = onItem ? [
+    ['open', () => one && fmOpen(fm, one), !!one],
+    one && !one.dir && ['open in editor', () => dkCode({ host: fm.loc.host, share: fm.loc.share, path: picked[0].rel, label: fileLabel(fm.loc.host, fm.loc.root, picked[0].rel) }), true],
+    one && !one.dir && ['download', () => fmDownload(fm, picked[0].rel), fmCan(fm, 'r')],
+    null,
+    ['cut', () => fmClip(fm, 'cut'), fmCan(fm, 'd')],
+    ['copy', () => fmClip(fm, 'copy'), true],
+    ['paste', () => fmPaste(fm, one?.dir ? picked[0].rel : fm.dir), !!dk.clip && w],
+    null,
+    ['rename', () => fmRename(fm, one), !!one && w],
+    ['delete', () => fmDelete(fm), fmCan(fm, 'd'), 'danger'],
+  ] : [
+    ['new folder', () => fmMkdir(fm), w],
+    ['new text file', () => fmTouch(fm), w],
+    ['upload here', () => fm.input.click(), w],
+    null,
+    ['paste', () => fmPaste(fm), !!dk.clip && w],
+    ['select all', () => { fm.sel = new Set(fm.shown.map((e) => e.name)); fmPaintSel(fm); }, true],
+    ['refresh', () => fmLoad(fm), true],
+  ];
+  dkMenu(x, y, items.filter((i) => i !== false && i !== undefined), () => fm.main.focus({ preventScroll: true }));
+}
+
+const dkMenuEl = el('div', 'dk-menu');
+dkMenuEl.hidden = true;
+dkMenuEl.setAttribute('role', 'menu');
+document.body.appendChild(dkMenuEl);
+function dkMenu(x, y, items, after) {
+  dkMenuEl.replaceChildren(...items.map((it) => {
+    if (!it) return el('div', 'dk-menu-sep');
+    const [label, act, ok, cls] = it;
+    const b = Object.assign(el('button', cls || '', label), { type: 'button', disabled: !ok });
+    b.addEventListener('click', () => { dkMenuEl.hidden = true; after?.(); act(); });
+    return b;
+  }));
+  dkMenuEl.hidden = false;
+  dkMenuEl.style.left = `${Math.min(x, innerWidth - dkMenuEl.offsetWidth - 4)}px`;
+  dkMenuEl.style.top = `${Math.min(y, innerHeight - dkMenuEl.offsetHeight - 4)}px`;
+}
+document.addEventListener('pointerdown', (e) => { if (!dkMenuEl.contains(e.target)) dkMenuEl.hidden = true; }, true);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') dkMenuEl.hidden = true; }, true);
+addEventListener('blur', () => { dkMenuEl.hidden = true; });
+
+// a question inside the window: text back, true for a yes, null for no
+function dkAsk(fm, { title, message, value, action, danger }) {
+  return new Promise((resolve) => {
+    const veil = el('div', 'fm-veil');
+    const box = el('form', 'fm-ask');
+    const input = value != null && Object.assign(el('input'), { value, spellcheck: false, autocomplete: 'off' });
+    const no = Object.assign(el('button', '', 'cancel'), { type: 'button' });
+    const go = Object.assign(el('button', danger ? 'danger' : 'primary', action), { type: 'submit' });
+    const acts = el('div', 'update-actions');
+    acts.append(no, go);
+    box.append(el('div', 'fm-ask-title', title), el('p', '', message), ...(input ? [input] : []), acts);
+    veil.appendChild(box);
+    fm.w.body.appendChild(veil);
+    const end = (v) => { veil.remove(); fm.main.focus({ preventScroll: true }); resolve(v); };
+    no.addEventListener('click', () => end(null));
+    box.addEventListener('submit', (e) => { e.preventDefault(); end(input ? input.value.trim() || null : true); });
+    box.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Escape') end(null); });
+    if (input) {
+      input.focus();
+      // the name picked, not its extension
+      const dot = value.lastIndexOf('.');
+      input.setSelectionRange(0, dot > 0 ? dot : value.length);
+    } else go.focus();
+  });
+}
+
+const fmSay = (fm, text, bad) => {
+  fm.note.textContent = text || '';
+  fm.note.classList.toggle('bad', !!bad);
+  clearTimeout(fm.noteTimer);
+  if (text && !fm.busy) fm.noteTimer = setTimeout(() => { if (fm.note.textContent === text) fm.note.textContent = ''; }, 6000);
+};
+
+async function fmMkdir(fm) {
+  if (!fmCan(fm, 'w')) return fmSay(fm, 'this share is read-only', true);
+  const name = await dkAsk(fm, { title: 'new folder', message: `in ${filesPath(fm.loc.host, fm.loc.root, fm.dir)}`, value: 'new folder', action: 'create' });
+  if (!name) return;
+  try {
+    await filesCall(fm.loc, 'mkdir', jsonPost({ path: filesJoin(fm.dir, name) }));
+    fm.sel = new Set([name]);
+    fm.anchor = name;
+    fmChanged(fm.loc, fm.dir);
+  } catch (err) { fmSay(fm, err.message, true); }
+}
+
+// an empty file, then the editor on it
+async function fmTouch(fm) {
+  const name = await dkAsk(fm, { title: 'new text file', message: `in ${filesPath(fm.loc.host, fm.loc.root, fm.dir)}`, value: 'untitled.txt', action: 'create' });
+  if (!name) return;
+  const rel = filesJoin(fm.dir, name);
+  if (fm.entries.some((e) => e.name === name)) return fmSay(fm, `${name} is already here`, true);
+  try {
+    await putFile(fm.loc, rel, new Blob([]));
+    fmChanged(fm.loc, fm.dir);
+    dkCode({ host: fm.loc.host, share: fm.loc.share, path: rel, label: fileLabel(fm.loc.host, fm.loc.root, rel) });
+  } catch (err) { fmSay(fm, err.message, true); }
+}
+
+async function fmRename(fm, e) {
+  const name = await dkAsk(fm, { title: 'rename', message: filesPath(fm.loc.host, fm.loc.root, filesJoin(fm.dir, e.name)), value: e.name, action: 'rename' });
+  if (!name || name === e.name) return;
+  try {
+    await filesCall(fm.loc, 'rename', jsonPost({ from: filesJoin(fm.dir, e.name), to: filesJoin(fm.dir, name) }));
+    fm.sel = new Set([name]);
+    fm.anchor = name;
+    fmChanged(fm.loc, fm.dir);
+  } catch (err) { fmSay(fm, err.message, true); }
+}
+
+async function fmDelete(fm) {
+  const picked = fmPicked(fm);
+  if (!picked.length) return;
+  const what = picked.length === 1 ? `${picked[0].name}${picked[0].dir ? ' and everything in it' : ''}` : `these ${picked.length} items`;
+  const ok = await dkAsk(fm, { title: 'delete', message: `delete ${what}? this cannot be undone.`, action: 'delete', danger: true });
+  if (!ok) return;
+  const loc = fm.loc;
+  const dir = fm.dir;
+  for (const p of picked) {
+    try { await filesCall(loc, 'delete', jsonPost({ path: p.rel })); } catch (err) { fmSay(fm, `${p.name}: ${err.message}`, true); }
+  }
+  fm.sel.clear();
+  fmChanged(loc, dir);
+}
+
+function fmDownload(fm, rel) {
+  const a = Object.assign(document.createElement('a'), { href: filesApi(fm.loc, 'download', { path: rel }), download: rel.split('/').pop() });
+  a.click();
+}
+
+function fmClip(fm, op) {
+  dk.clip = { op, loc: fm.loc, items: fmPicked(fm) };
+  fmSay(fm, `${dk.clip.items.length} ${op === 'cut' ? 'cut' : 'copied'}, paste with ctrl+v`);
+}
+
+async function fmPaste(fm, dir = fm.dir) {
+  const clip = dk.clip;
+  if (!clip || !fm.loc) return;
+  if (clip.op === 'cut') dk.clip = null;
+  await fmTransfer(fm, clip.loc, clip.items, fm.loc, dir, clip.op === 'cut');
+}
+
+// inside one share a move is a rename, anything else bytes through the page,
+// a move's source deleted once its copy is whole
+async function fmTransfer(fm, from, items, to, dir, move) {
+  if (!may(to, 'w')) return fmSay(fm, `${to.root} is read-only`, true);
+  const label = move ? 'moving' : 'copying';
+  let failed = 0;
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    const dst = filesJoin(dir, it.name);
+    if (fmSame(from, to) && (dst === it.rel || `${dir}/`.startsWith(`${it.rel}/`))) {
+      if (move || it.dir) { failed += 1; fmSay(fm, `${it.name} can't go inside itself`, true); continue; }
+    }
+    const tick = (f, child) => { fm.busy = 'x'; fmSay(fm, `${label} ${child || it.name} ${Math.round(f * 100)}% (${i + 1}/${items.length})`); };
+    try {
+      if (move && fmSame(from, to)) {
+        await filesCall(to, 'rename', jsonPost({ from: it.rel, to: dst }));
+      } else {
+        // a copy into its own folder, as a file manager's: "name copy.ext"
+        let target = dst;
+        if (fmSame(from, to) && filesParent(it.rel) === dir) {
+          const x = it.dir ? '' : fmExt(it.name);
+          target = filesJoin(dir, x ? `${it.name.slice(0, -x.length - 1)} copy.${x}` : `${it.name} copy`);
+        }
+        if (it.dir) await copyTree(from, it.rel, to, target, tick);
+        else await copyFile(from, it.rel, to, target, tick);
+        if (move) await filesCall(from, 'delete', jsonPost({ path: it.rel }));
+      }
+    } catch (err) { failed += 1; fm.busy = ''; fmSay(fm, `${it.name}: ${err.message}`, true); }
+  }
+  fm.busy = '';
+  if (!failed) fmSay(fm, `${move ? 'moved' : 'copied'} ${items.length} to ${filesPath(to.host, to.root, dir)}`);
+  fmChanged(to, dir);
+  if (move) fmChanged(from, ...new Set(items.map((it) => filesParent(it.rel))));
+}
+
+async function fmUpload(fm, loc, dir, fileList) {
+  const list = [...fileList];
+  if (!list.length || !loc) return;
+  if (!may(loc, 'w')) return fmSay(fm, `${loc.root} is read-only`, true);
+  for (let i = 0; i < list.length; i++) {
+    const f = list[i];
+    try {
+      fm.busy = 'x';
+      await putFile(loc, filesJoin(dir, f.name), f, (sent) => fmSay(fm, `uploading ${f.name} ${f.size ? Math.round((sent / f.size) * 100) : 100}% (${i + 1}/${list.length})`));
+    } catch (err) { fm.busy = ''; fmSay(fm, `${f.name}: ${err.message}`, true); }
+  }
+  fm.busy = '';
+  fmSay(fm, `uploaded ${list.length} to ${filesPath(loc.host, loc.root, dir)}`);
+  fmChanged(loc, dir);
+}
+
+// a folder, a place or blank space taking a drag: the computer's own files
+// uploaded, a window's moved inside one share or copied (ctrl) across them
+function fmDropZone(fm, node, where) {
+  node.addEventListener('dragover', (e) => {
+    const t = where();
+    if (!t || (!dk.drag && !e.dataTransfer.types.includes('Files'))) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = dk.drag && fmSame(dk.drag.loc, t.loc) && !e.ctrlKey && !e.altKey ? 'move' : 'copy';
+    fm.main.querySelectorAll('.drop').forEach((x) => x !== node && x.classList.remove('drop'));
+    node.classList.add('drop');
+  });
+  node.addEventListener('dragleave', (e) => { if (!node.contains(e.relatedTarget)) node.classList.remove('drop'); });
+  node.addEventListener('drop', (e) => {
+    const t = where();
+    node.classList.remove('drop');
+    if (!t) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const drag = dk.drag;
+    dk.drag = null;
+    if (drag) {
+      const items = drag.items.filter((it) => !(fmSame(drag.loc, t.loc) && it.rel === t.dir));
+      if (items.length) fmTransfer(fm, drag.loc, items, t.loc, t.dir, fmSame(drag.loc, t.loc) && !e.ctrlKey && !e.altKey);
+    } else fmUpload(fm, t.loc, t.dir, e.dataTransfer.files);
+  });
+}
+
+// anything the browser shows itself: pictures, video, sound, pdfs, else its text
+function dkViewer(loc, rel) {
+  const w = dkWin(`view:${loc.host}\n${loc.share}\n${rel}`, rel.split('/').pop(), loc.host, 'svc');
+  if (!w) return;
+  const frame = Object.assign(el('iframe', 'dk-frame'), { src: filesApi(loc, 'download', { path: rel, inline: 1 }), title: rel });
+  w.body.appendChild(frame);
+  w.onClose = () => { frame.src = 'about:blank'; };
+  dkFocus(w);
+}
+
+// --- the editor: the code tab's own editor, in a window
+
+function dkCode(f) {
+  const file = { host: f.host, share: String(f.share ?? ''), path: f.path, label: f.label || `${f.host}/${f.path}` };
+  rememberFile(file);
+  const w = dkWin(`code:${codeKey(file)}`, codeName(file), file.host, 'code');
+  if (!w) return;
+  // a tab already on the file kept as the one the editor's map points to
+  const tab = codeTabs.get(codeKey(file));
+  const ed = codeEditor(w.body, file, w.node, `dkcode-${dk.n}`);
+  w.onFocus = () => { if (!w.body.contains(document.activeElement)) ed.focus(); };
+  w.holdClose = () => ed.holdClose();
+  w.onClose = () => {
+    ed.close();
+    if (tab && openTabs.has(tab)) { codeTabs.set(codeKey(file), tab); saveCodeTabs(); }
+  };
+  dkFocus(w);
+}
+
+// the editor's launcher: recent files, or a file manager to pick one
+function dkEditorPick() {
+  const w = dkWin('editor', 'editor', '', 'pick');
+  if (!w) return;
+  const list = el('ul', 'dk-recent');
+  const recent = loadJsonSafe(RECENT_FILES_KEY).filter((f) => f && f.host && f.path && dk.creds.has(f.host));
+  for (const f of recent) {
+    const li = Object.assign(el('li'), { tabIndex: 0 });
+    li.append(fmIcon(isCode(f.path) ? 'code' : 'file'), el('span', 'fm-label', f.label || `${f.host}/${f.path}`));
+    const open = () => { dkClose(w); dkCode(f); };
+    li.addEventListener('click', open);
+    li.addEventListener('keydown', (e) => { if (e.key === 'Enter') open(); });
+    list.appendChild(li);
+  }
+  if (!recent.length) list.appendChild(el('li', 'empty', 'no recent files'));
+  const browse = Object.assign(el('button', 'primary', 'browse files'), { type: 'button' });
+  browse.addEventListener('click', () => { dkClose(w); dkFiles(); });
+  const acts = el('div', 'update-actions');
+  acts.appendChild(browse);
+  w.body.append(el('div', 'dk-pick-head', 'recent'), list, el('p', 'dk-note', 'double click a text file in files to edit it, or right click a folder for a new one'), acts);
+  w.w = Math.min(w.w, 460);
+  w.h = Math.min(w.h, 340);
+  dkPlace(w);
+  dkFocus(w);
+}
 
 function dkService(r) {
   const w = dkWin(`svc:${serviceKey(r)}`, r.name, r.host, 'svc');
   if (!w) return;
   const url = serviceUrl(r);
-  const pop = Object.assign(el('button', 'dk-pop', '↗'), { type: 'button', title: 'open in a browser tab', ariaLabel: 'open in a browser tab' });
+  const pop = Object.assign(el('button', 'dk-pop'), { type: 'button', title: 'open in a browser tab', ariaLabel: 'open in a browser tab' });
+  pop.appendChild(dkGlyph(DK_UI.pop));
   pop.addEventListener('click', () => window.open(url, '_blank', 'noopener'));
   w.head.querySelector('.dk-btns').prepend(pop);
   const frame = Object.assign(el('iframe', 'dk-frame'), { src: url, title: r.name, allow: 'clipboard-read; clipboard-write; fullscreen' });
@@ -8556,6 +9277,6 @@ addEventListener('blur', () => setTimeout(() => {
 }));
 
 // shells ended with the page, not left for their grace
-addEventListener('pagehide', (e) => { if (!e.persisted) for (const w of [...dk.wins.values()]) if (w.kind === 'term') dkClose(w); });
+addEventListener('pagehide', (e) => { if (!e.persisted) for (const w of [...dk.wins.values()]) if (w.kind === 'term') dkClose(w, true); });
 
 dkLogin();
