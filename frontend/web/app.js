@@ -5836,14 +5836,14 @@ function dkDesktop() {
   const tasks = el('div', 'dk-tasks');
   const hosts = el('span', 'dk-hosts');
   const note = Object.assign(el('span', 'dk-host-note'), { hidden: true });
-  const off = Object.assign(el('button', 'dk-off', 'disconnect'), { type: 'button' });
+  const off = Object.assign(el('button', 'dk-off', 'log out'), { type: 'button' });
   const desk = el('div', 'dk-desk');
   const bar = dkBar(tasks, hosts, off);
   hosts.after(note);
   bar.insertBefore(dkMeshTray(), dkTray);
   desk.append(dkArt(), icons, wins, bar);
   dkView.replaceChildren(desk);
-  off.addEventListener('click', dkDisconnect);
+  off.addEventListener('click', dkLogout);
   dkBand(icons);
   dk.desk = { el: desk, icons, wins, tasks, hosts };
   dk.chips = '';
@@ -5893,7 +5893,7 @@ function dkClock() {
 }
 setInterval(dkClock, 5000);
 
-function dkDisconnect() {
+function dkLogout() {
   dk.meshTray?.show(false);
   for (const w of [...dk.wins.values()]) dkClose(w, true);
   dk.creds.clear();
