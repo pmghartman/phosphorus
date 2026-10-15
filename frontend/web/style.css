@@ -316,6 +316,10 @@ body {
 .dk-icons { position: absolute; inset: 0 0 3.3rem 0; z-index: 1; touch-action: none; user-select: none; }
 .dk-icons > .dk-icon { position: absolute; top: 0; left: 0; touch-action: none; transition: transform 0.12s ease-out; }
 .dk-icon.dk-lift { z-index: 2; opacity: 0.75; transition: none; }
+/* the carried icon over the windows, toward a files window */
+.dk-ghost { position: fixed; left: 0; top: 0; z-index: 50; pointer-events: none; opacity: 0.85; }
+.dk-ghost .dk-icon { position: static; transform: none !important; }
+.dk-ghost-n { position: absolute; top: 0; right: 0.6rem; min-width: 1.1rem; padding: 0 0.25rem; border-radius: 0.55rem; background: var(--accent); color: var(--bg); font-size: 0.65rem; text-align: center; }
 /* the files tab's square buttons, grown, a label under */
 .dk-icon {
   width: 5.5rem; padding: 0.4rem 0.2rem 0.3rem; display: flex; flex-direction: column; align-items: center; gap: 0.25rem;
@@ -347,6 +351,11 @@ body {
   will-change: transform; contain: layout paint; animation: dk-open 0.16s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 .dk-win[hidden] { display: none; }
+/* a picture fit to its window, at its own size once clicked */
+.dk-imgview { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; background: var(--bg); cursor: zoom-in; }
+.dk-imgview img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.dk-imgview.full { display: block; overflow: auto; cursor: zoom-out; }
+.dk-imgview.full img { max-width: none; max-height: none; }
 .dk-win.focused { border-color: var(--dim); }
 @keyframes dk-open { from { opacity: 0; scale: 0.97; translate: 0 0.35rem; } }
 /* closing or minimizing: a short fade and drop, then gone */
