@@ -1132,16 +1132,15 @@ function app(req, res) {
   const userCall = USER_CALLS[`${req.method} ${pathname}`];
   if (userCall) {
     if (!isLocalOrPeer(req) || (req.method === 'POST' && !sameOrigin(req))) { res.writeHead(403).end('forbidden'); return; }
-    const s = users.session(req);
     const reply = ([status, body, cookie]) => {
       if (cookie) res.setHeader('Set-Cookie', cookie);
       sendJson(res, status, body);
     };
-    if (req.method === 'GET') { reply(userCall(s, {}, req)); return; }
+    if (req.method === 'GET') { users.sessionSoon(req).then((s) => reply(userCall(s, {}, req))); return; }
     readRaw(req, pathname === '/api/me/wallpaper' ? Math.ceil(users.MAX_WALL * 1.4) + 1024 : MAX_JSON_BODY).then(async (buf) => {
       let p = {};
       try { p = JSON.parse(buf.toString('utf8') || '{}') || {}; } catch {}
-      reply(await userCall(s, p, req));
+      reply(await userCall(await users.sessionSoon(req), p, req));
     }).catch(() => { if (!res.headersSent) res.writeHead(400).end('bad request'); });
     return;
   }

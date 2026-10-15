@@ -123,7 +123,8 @@ function sessionOf(token) {
   let s;
   try { s = JSON.parse(open(meshKey(), JSON.parse(Buffer.from(token, 'base64url').toString('utf8'))) || 'null'); } catch { return null; }
   if (!s || !(s.e > Date.now())) return null;
-  if (s.b) return { user: ADMIN, admin: true, boot: true, key: null, token, e: s.e };
+  // the setup admin gone with the first admin user, wherever it logged in
+  if (s.b) return anyAdmin() ? null : { user: ADMIN, admin: true, boot: true, key: null, token, e: s.e };
   const u = live(s.u);
   if (!u || u.pwAt !== s.p) return null;
   return { user: s.u, admin: !!u.admin, boot: false, key: Buffer.from(s.k, 'hex'), token, e: s.e };
@@ -132,11 +133,23 @@ function sessionOf(token) {
 // {user, admin, boot, key, token, e} or null, the first valid cookie's
 function session(req) {
   if (!sys.read(SECRET)) return null;
+  let boot = null;
   for (const token of cookiesOf(req)) {
     const s = sessionOf(token);
-    if (s) return s;
+    if (s && !s.boot) return s;
+    boot ||= s;
   }
-  return null;
+  return boot;
+}
+
+// a login this host can't read yet (a user or password from a host it hasn't
+// caught up with): the mesh's sys pulled first, a short wait at most
+const PULL_WAIT_MS = 3000;
+async function sessionSoon(req) {
+  const s = session(req);
+  if (s || !cookiesOf(req).length) return s;
+  await Promise.race([sys.pull().catch(() => {}), new Promise((r) => { setTimeout(r, PULL_WAIT_MS); })]);
+  return session(req);
 }
 
 // a host-only cookie from before the domain's, moved onto the base domain
@@ -168,6 +181,7 @@ function vaultOf(s) {
 const me = (s) => ({
   user: s.user, admin: s.admin, boot: s.boot, vault: vaultOf(s) || { hosts: {}, pages: {} },
   prefs: (!s.boot && sys.read(prefsFile(s.user))) || {},
+  prefsAt: (!s.boot && sys.stamp(prefsFile(s.user))) || 0,
   wallpaper: (!s.boot && sys.read(wallFile(s.user)) && sys.stamp(wallFile(s.user))) || 0,
 });
 
@@ -200,7 +214,7 @@ function setPrefs(s, p) {
   }
   if (JSON.stringify(prefs).length > MAX_PREFS) return [413, { error: 'settings too large' }];
   sys.write(prefsFile(s.user), prefs);
-  return [200, { prefs }];
+  return [200, { prefs, prefsAt: sys.stamp(prefsFile(s.user)) }];
 }
 
 // --- the browser's calls, [status, body, cookie?] -------------------------
@@ -318,5 +332,5 @@ module.exports = {
   isAdmin: (name) => !!live(String(name || ''))?.admin,
   sealGrant, openGrant,
   issuers,
-  COOKIE, MAX_WALL, session, refresh, me, login, setVault, setPrefs, wallpaper, setWallpaper, changePass, list, create, setAdmin, remove, clearCookie, setup: () => !anyAdmin(),
+  COOKIE, MAX_WALL, session, sessionSoon, refresh, me, login, setVault, setPrefs, wallpaper, setWallpaper, changePass, list, create, setAdmin, remove, clearCookie, setup: () => !anyAdmin(),
 };

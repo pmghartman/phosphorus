@@ -7574,8 +7574,9 @@ function dkDeskWatch() {
 async function dkDeskLoad() {
   if (!dkDeskAt()) return;
   const key = dk.deskKey;
+  // a folder no host answered for: its last icons kept, never blinking out
   const lists = await Promise.all(dkDeskDirs().map((dir) => homeList(dir)
-    .then((b) => b.entries.map((e) => ({ ...e, at: dir })), () => [])));
+    .then((b) => b.entries.map((e) => ({ ...e, at: dir })), () => dk.deskFiles.filter((e) => e.at === dir))));
   if (key !== dk.deskKey) return;
   dk.deskFiles = lists.flat();
   dkIcons();
@@ -8064,7 +8065,7 @@ function acctIn(me) {
   acct.vault.hosts ||= {};
   acct.vault.pages ||= {};
   if (acct.boot) { acctSetup(); return; }
-  acctPrefs(me.prefs || {});
+  acctPrefs(me.prefs || {}, me.prefsAt || 0);
   chatAs(acct.user);
   if (acctNext()) return;
   if (!stateWs) connectState();
@@ -8084,13 +8085,20 @@ const PREF_OF = Object.fromEntries(Object.entries(PREF_LS).map(([k, v]) => [v, k
 let prefsTimer = null;
 let prefsQuiet = false;
 
-function prefsSoon() {
+// only the keys this browser changed sent, another's newer ones left be
+const prefsDirty = new Set();
+function prefsSoon(key) {
   if (prefsQuiet || !acct || acct.boot) return;
+  for (const k of key ? [key] : Object.keys(PREF_LS)) prefsDirty.add(k);
   clearTimeout(prefsTimer);
   prefsTimer = setTimeout(() => {
     const prefs = {};
-    for (const [k, ls] of Object.entries(PREF_LS)) { try { prefs[k] = localStorage.getItem(ls) || ''; } catch {} }
-    acctCall('/api/me/prefs', { prefs }).then((r) => { if (r.ok) prefsSeen = JSON.stringify(r.prefs); prefsTimer = null; });
+    for (const k of prefsDirty) { try { prefs[k] = localStorage.getItem(PREF_LS[k]) || ''; } catch {} }
+    prefsDirty.clear();
+    acctCall('/api/me/prefs', { prefs }).then((r) => {
+      if (r.ok) { prefsSeen = JSON.stringify(r.prefs); prefsAt = Math.max(prefsAt, r.prefsAt || 0); }
+      prefsTimer = null;
+    });
   }, 800);
 }
 
@@ -8098,7 +8106,7 @@ for (const m of ['setItem', 'removeItem']) {
   const own = Storage.prototype[m];
   Storage.prototype[m] = function (k, ...rest) {
     own.call(this, k, ...rest);
-    if (this === window.localStorage && PREF_OF[k]) prefsSoon();
+    if (this === window.localStorage && PREF_OF[k]) prefsSoon(PREF_OF[k]);
   };
 }
 
@@ -8106,7 +8114,11 @@ for (const m of ['setItem', 'removeItem']) {
 // the user has none only when this same user left them here
 const PREF_OWNER = 'phosphorus-prefs-owner';
 let prefsSeen = '';
-function acctPrefs(prefs) {
+// the newest settings stamp taken in or written, an older copy (a host not
+// yet caught up) never undoing it
+let prefsAt = 0;
+function acctPrefs(prefs, at = 0) {
+  prefsAt = Math.max(prefsAt, at);
   let seed = false;
   let mine = false;
   try { mine = localStorage.getItem(PREF_OWNER) === acct.user; localStorage.setItem(PREF_OWNER, acct.user); } catch {}
@@ -8148,7 +8160,7 @@ async function acctCheck() {
   if (me.status === 401 && acct) acctLogin(me.setup);
   // another browser's icon moves, theme or wallpaper, taken in
   if (!me.ok || !acct || acct.boot || me.user !== acct.user) return me.status !== 0;
-  if (JSON.stringify(me.prefs || {}) !== prefsSeen && !prefsTimer) { acctPrefs(me.prefs || {}); dkLayout(); }
+  if ((me.prefsAt || 0) > prefsAt && JSON.stringify(me.prefs || {}) !== prefsSeen && !prefsTimer) { acctPrefs(me.prefs || {}, me.prefsAt); dkLayout(); }
   if ((me.wallpaper || 0) !== acct.wallpaper) { acct.wallpaper = me.wallpaper || 0; dkWallPaint(); }
   return true;
 }
