@@ -824,13 +824,7 @@ func initMCP() {
 			return mesh.Chain()
 		},
 		Projects: func() any { return append(project.Summaries(), mesh.PeerProjects()...) },
-		Asker: func(id string) *mcp.Asker {
-			c := askerFor(id)
-			if c == nil {
-				return nil
-			}
-			return &mcp.Asker{Name: c.name, UI: func(a map[string]any) bool { return uiFor(c, a) }, Creds: func(a, why string) any { return askCreds(c, a, why) }}
-		},
+		Asker: mcpAsker,
 		Actions: mcp.Actions{
 			Game: func(host, name, action string) (int, any) {
 				if host == selfHost {
@@ -934,3 +928,48 @@ func writeP(p map[string]any) collab.WriteP {
 
 var _ = web.Markdown
 var _ = term.SessionCount
+
+// mcpAsker the person behind an ask: on this host, or on the peer that
+// passed the ask here, reached back over its frontend
+func mcpAsker(id string) *mcp.Asker {
+	host, aid, remote := strings.Cut(id, "|")
+	if !remote || host == selfHost {
+		if remote {
+			id = aid
+		}
+		c := askerFor(id)
+		if c == nil {
+			return nil
+		}
+		return &mcp.Asker{Name: c.name, UI: func(a map[string]any) bool { return uiFor(c, a) }, Creds: func(a, why string) any { return askCreds(c, a, why) }}
+	}
+	ip := util.TailnetIP(host)
+	if ip == "" {
+		return nil
+	}
+	ask := func(body map[string]any, wait time.Duration) map[string]any {
+		body["id"] = aid
+		res, err := util.RequestJSON(util.Req{Host: ip, Port: util.FrontendPort, Method: "POST", Path: "/api/model/asker", Body: body, Timeout: wait})
+		if err != nil || res.Status != 200 {
+			return nil
+		}
+		return util.Obj(util.Decode(res.Body))
+	}
+	who := ask(map[string]any{"op": "name"}, 5*time.Second)
+	if who == nil {
+		return nil
+	}
+	return &mcp.Asker{
+		Name: util.Str(who["name"]),
+		UI: func(a map[string]any) bool {
+			return util.Truthy(ask(map[string]any{"op": "ui", "action": a}, 10*time.Second)["ok"])
+		},
+		Creds: func(a, why string) any {
+			got := ask(map[string]any{"op": "creds", "action": a, "why": why}, credsWait+30*time.Second)
+			if got == nil {
+				return Msg{"done": false, "note": "their page is gone"}
+			}
+			return got["out"]
+		},
+	}
+}

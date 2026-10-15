@@ -1087,10 +1087,13 @@ func Start(b map[string]any) (int, any) {
 	if title == "" || brief == "" || b["title"] == nil || b["brief"] == nil {
 		return 400, map[string]any{"error": "a project needs a title and a brief"}
 	}
+	if !model.HarnessHere() {
+		return 409, map[string]any{"error": "projects run on the model host, " + selfHost + " isn't it"}
+	}
 	mu.Lock()
 	if r := runningLocked(); len(r) >= maxRunning {
 		mu.Unlock()
-		return 409, map[string]any{"error": fmt.Sprintf("the orangutan is already on %s here, stop it first or start this on another host", r[0].s("title"))}
+		return 409, map[string]any{"error": fmt.Sprintf("the orangutan is already on %s here, stop it first or start this on another model host", r[0].s("title"))}
 	}
 	now := float64(util.Now())
 	byS := ""

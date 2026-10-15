@@ -15,9 +15,12 @@ FROM debian:trixie-slim
 # inherited by every container off this image, for sweep.sh
 LABEL org.phosphorus=phosphorus
 
-# shared by everything below, iproute2/iptables for tailscaled's routing
+# shared by everything below, iproute2/iptables for tailscaled's routing,
+# libgomp for llama-server and ripgrep for opencode, both fetched by the
+# model host alone at run time
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates curl jq bash procps iproute2 iptables git openssh-client \
+        libgomp1 ripgrep \
     && rm -rf /var/lib/apt/lists/*
 
 # --- cloudflared, docker cli, tailscale ------------------------------------
@@ -35,34 +38,6 @@ RUN K=/usr/share/keyrings L=/etc/apt/sources.list.d \
         cloudflared docker-ce-cli docker-compose-plugin docker-buildx-plugin tailscale \
  && rm -rf /var/lib/apt/lists/* $L/cloudflared.list $L/docker.list $L/tailscale.list $K/cloudflare.gpg $K/docker.asc $K/tailscale.gpg \
  && git config --system --add safe.directory '*'
-
-# --- llama.cpp ----------------------------------------------------------------
-# upstream's release build of llama-server, cuda only where rebuild
-# asks for it ([model] gpu), its runtime libs beside the binaries
-ARG LLAMA_TAG=b11284
-ARG LLAMA_BACKEND=cpu
-RUN arch="$(dpkg --print-architecture | sed 's/amd64/x64/')" kind="" \
- && base="https://github.com/ggml-org/llama.cpp/releases/download/$LLAMA_TAG" \
- && if [ "$LLAMA_BACKEND" = cuda ] && [ "$arch" = x64 ]; then kind="cuda-12.8-x64"; else kind="$arch"; fi \
- && apt-get update && apt-get install -y --no-install-recommends libgomp1 \
- && rm -rf /var/lib/apt/lists/* \
- && mkdir -p /opt/llama \
- && curl -fsSL "$base/llama-$LLAMA_TAG-bin-ubuntu-$kind.tar.gz" | tar xz -C /opt/llama --strip-components=1 \
- && if [ "$kind" != "$arch" ]; then \
-      curl -fsSL "$base/cudart-llama-$LLAMA_TAG-bin-ubuntu-$kind.tar.gz" | tar xz -C /opt/llama --strip-components=1; \
-    fi \
- && [ -x /opt/llama/llama-server ]
-
-# --- opencode -----------------------------------------------------------------
-# upstream's release build, phosphorus's harness run headless by the frontend,
-# ripgrep for its grep and glob so it never fetches one
-ARG OPENCODE_TAG=v1.18.34
-RUN arch="$(dpkg --print-architecture | sed 's/amd64/x64-baseline/')" \
- && apt-get update && apt-get install -y --no-install-recommends ripgrep \
- && rm -rf /var/lib/apt/lists/* \
- && mkdir -p /opt/opencode \
- && curl -fsSL "https://github.com/anomalyco/opencode/releases/download/$OPENCODE_TAG/opencode-linux-$arch.tar.gz" | tar xz -C /opt/opencode \
- && [ -x /opt/opencode/opencode ]
 
 # --- our own files ------------------------------------------------------------
 # last, so commits touching them rebuild only these cheap layers

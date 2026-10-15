@@ -688,7 +688,7 @@ func projectsView() view {
 		ls = append(append(ls, ""), events...)
 		detail = &card{str(p["title"]), plainRows(ls...)}
 	}
-	body := plainRows(c("muted")("none yet, n starts one on this host"))
+	body := plainRows(c("muted")("none yet, n starts one on the model host"))
 	if len(rows) > 0 {
 		body = table([]string{"title", "host", "state", "done", "time"}, rows, ui.sel[projectsTab], 8)
 	}
@@ -706,7 +706,7 @@ func or0(v any, def float64) float64 {
 }
 
 func projectForm() *form {
-	return &form{kind: "project", title: "new project on " + selfHost(), fields: []*field{
+	return &form{kind: "project", title: "new project on the model host", fields: []*field{
 		{key: "title", hint: "a few words"},
 		{key: "brief", hint: "what to make and what done looks like, pasted or typed"},
 		{key: "hours", value: "72", hint: "how long the orangutan has, up to 336"},

@@ -1054,6 +1054,7 @@ function applyState(state) {
   renderRoutes(state.routes, state.tailnet);
   statusState(state);
   modelPresence(state.model);
+  harnessHosts = (state.model?.models || []).filter((x) => x.harness).map((x) => x.host);
   const nextModels = new Map((state.model?.models || []).map((x) => [x.host, { file: x.file, ready: x.ready, roles: modelRoles(x, state.model) }])
     .filter(([, v]) => v.roles.length));
   const modelChanged = JSON.stringify([...nextModels]) !== JSON.stringify([...meshModels]);
@@ -4855,6 +4856,8 @@ const PJ_PHASES = ['plan', 'execute', 'test', 'refine'];
 const PJ_ENDED = { done: 'done', blocked: 'blocked', expired: 'out of time', stopped: 'stopped', failed: 'failed' };
 let pjAll = [];
 let pjSelf = '';
+// model hosts whose opencode is up, the only ones running projects
+let harnessHosts = [];
 // host/id, or 'new'
 let pjPick = '';
 let pjOne = null;
@@ -5159,10 +5162,11 @@ function pjPaintNew() {
   const form = el('form', 'pj-new');
   // one project a host: a busy one listed, not pickable
   const busy = new Set(pjAll.filter((p) => p.status === 'running').map((p) => p.host));
-  const hosts = [...new Set([pjSelf, ...phosphorusHosts()].filter(Boolean))].sort((x, y) => (y === pjSelf) - (x === pjSelf) || x.localeCompare(y));
+  const hosts = [...new Set(harnessHosts)].sort((x, y) => (y === pjSelf) - (x === pjSelf) || x.localeCompare(y));
   const first = hosts.find((h) => !busy.has(h)) || hosts[0] || '';
-  form.innerHTML = '<p class="pj-intro">The <span class="who-model">orangutan</span> works on it alone in a sandbox on the host picked, in rounds of plan, execute, test and refine, '
+  form.innerHTML = '<p class="pj-intro">The <span class="who-model">orangutan</span> works on it alone in a sandbox on the model host picked, in rounds of plan, execute, test and refine, '
     + 'until it says it is done or the time runs out. It reports as it goes; its files land in shared/projects on that host.</p>'
+    + (hosts.length ? '' : '<p class="pj-intro st-dim">no model host has opencode up yet, so there is nowhere to run one</p>')
     + '<input class="update-pass pj-title" type="text" placeholder="title" maxlength="120" autocomplete="off" required>'
     + '<textarea class="update-pass pj-brief-in" rows="12" placeholder="the brief: what to make, what done looks like, any constraints" maxlength="20000" required></textarea>'
     + '<div class="pj-opts"><label class="pj-host">host <select class="update-pass">'

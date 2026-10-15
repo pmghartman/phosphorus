@@ -248,6 +248,7 @@ type Req struct {
 	Body           any // nil: none
 	Timeout        time.Duration
 	ConnectTimeout time.Duration
+	Ctx            context.Context // nil: background
 }
 
 var plainTransport = &http.Transport{
@@ -276,6 +277,9 @@ func RequestJSON(r Req) (Response, error) {
 	}
 	url := "http://" + net.JoinHostPort(host, strconv.Itoa(r.Port)) + r.Path
 	ctx := context.Background()
+	if r.Ctx != nil {
+		ctx = r.Ctx
+	}
 	var cancel context.CancelFunc
 	if r.Timeout > 0 {
 		ctx, cancel = context.WithTimeout(ctx, r.Timeout)

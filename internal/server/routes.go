@@ -15,6 +15,7 @@ import (
 	"github.com/pmghartman/phosphorus/internal/collab"
 	"github.com/pmghartman/phosphorus/internal/files"
 	"github.com/pmghartman/phosphorus/internal/git"
+	"github.com/pmghartman/phosphorus/internal/harness"
 	"github.com/pmghartman/phosphorus/internal/mcp"
 	"github.com/pmghartman/phosphorus/internal/mesh"
 	"github.com/pmghartman/phosphorus/internal/mirror"
@@ -337,6 +338,53 @@ func appHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		model.ServeChat(r, p, w, isLoopback(r), r.Header.Get("X-Phosphorus-Ask"))
 		return
+	case pathname == "/api/model/ask" && method == "POST":
+		// a peer's ask, answered by this model host's opencode
+		if !isTailnet(r) {
+			forbidden(w)
+			return
+		}
+		onJSON(w, r, 16*1024*1024, true, func(p map[string]any) (int, any) {
+			if !model.HarnessHere() {
+				return 409, map[string]any{"error": "opencode isn't on " + selfHost}
+			}
+			msgs := []harness.Msg{}
+			for _, x := range anyList(p["messages"]) {
+				m := util.Obj(x)
+				msgs = append(msgs, harness.Msg{Role: util.Str(m["role"]), Content: util.Str(m["content"])})
+			}
+			if len(msgs) < 2 {
+				return 400, map[string]any{"error": "an ask is a system turn and at least one more"}
+			}
+			rep, err := model.AskHere(msgs, util.Str(p["role"]), util.Str(p["asker"]), util.Truthy(p["direct"]), r.Context())
+			if err != nil {
+				return 502, map[string]any{"error": err.Error()}
+			}
+			return 200, map[string]any{"text": rep.Text, "by": rep.By}
+		})
+		return
+	case pathname == "/api/model/asker" && method == "POST":
+		// the model host reaching an asker's page here: their name, a button, a login
+		if !isTailnet(r) {
+			forbidden(w)
+			return
+		}
+		onJSON(w, r, maxJSONBody, true, func(p map[string]any) (int, any) {
+			c := askerFor(util.Str(p["id"]))
+			if c == nil {
+				return 404, map[string]any{"error": "that ask is over"}
+			}
+			switch util.Str(p["op"]) {
+			case "name":
+				return 200, map[string]any{"name": c.name}
+			case "ui":
+				return 200, map[string]any{"ok": uiFor(c, util.Obj(p["action"]))}
+			case "creds":
+				return 200, map[string]any{"out": askCreds(c, util.Str(p["action"]), util.Str(p["why"]))}
+			}
+			return 400, map[string]any{"error": "op is name, ui or creds"}
+		})
+		return
 	case pathname == "/api/model/purge" && method == "POST":
 		if !isLoopback(r) && !isTailnet(r) {
 			forbidden(w)
@@ -440,6 +488,13 @@ func appHandler(w http.ResponseWriter, r *http.Request) {
 			host := selfHost
 			if h, ok := p["host"]; ok && util.Truthy(h) {
 				host = util.JSString(h)
+			} else if !model.HarnessHere() {
+				// projects run where opencode does: the model host
+				mh := model.HarnessHost(model.ProjectHost())
+				if mh == nil {
+					return 409, map[string]any{"error": "projects run on the model host, and none has opencode up yet"}
+				}
+				host = util.JSString(mh["host"])
 			}
 			if host != selfHost {
 				if hop {
@@ -802,4 +857,9 @@ func filesRoute(w http.ResponseWriter, r *http.Request, host, op string, q url.V
 		return
 	}
 	sendJSON(w, 405, map[string]any{"error": "method not allowed"})
+}
+
+func anyList(v any) []any {
+	a, _ := v.([]any)
+	return a
 }

@@ -21,16 +21,16 @@ env_get() {
 # the release's own, stamped by CI
 phosphorus_version() { tr -d '[:space:]' < VERSION; }
 
-# the release's images, CI-built, cuda per [model] gpu
+# the release's images, CI-built, one for every host: llama-server and
+# opencode fetched at run time by the model host alone
 PHOSPHORUS_REGISTRY="ghcr.io/pmghartman"
 
 # $1 docker or "sudo docker": the release's images pulled and tagged as
 # compose names them, so a source build never runs
 phosphorus_pull_images() {
-  local docker="$1" v sfx="" pair from to
+  local docker="$1" v pair from to
   v="$(phosphorus_version)"
-  phosphorus_model_gpu && [ "$(uname -m)" = x86_64 ] && sfx="-cuda"
-  for pair in "phosphorus:$v$sfx=phosphorus:latest" "phosphorus-git:$v=phosphorus-git:latest"; do
+  for pair in "phosphorus:$v=phosphorus:latest" "phosphorus-git:$v=phosphorus-git:latest"; do
     from="$PHOSPHORUS_REGISTRY/${pair%%=*}" to="${pair#*=}"
     $docker pull -q "$from" >/dev/null && $docker tag "$from" "$to" || return 1
   done
@@ -80,7 +80,7 @@ phosphorus_is_model_host() {
   [ "$(phosphorus_get model host)" = "true" ]
 }
 
-# [model] gpu: the image built with llama.cpp's cuda backend
+# [model] gpu: the gpu handed to the container, cuda's llama-server fetched
 phosphorus_model_gpu() {
   [ "$(phosphorus_get model gpu)" = "true" ]
 }

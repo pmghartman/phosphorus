@@ -29,11 +29,10 @@ function Invoke-Quiet([scriptblock]$Cmd) { $ErrorActionPreference = "Continue"; 
 # the release's own, stamped by CI
 function Get-PhosphorusVersion { (Get-Content VERSION -First 1).Trim() }
 
-# the release's images pulled and tagged as compose names them, cuda per [model] gpu
+# the release's images pulled and tagged as compose names them, one for every host
 function Invoke-PhosphorusPull {
     $v = Get-PhosphorusVersion
-    $sfx = if (Test-PhosphorusModelGpu) { "-cuda" } else { "" }
-    foreach ($p in @(@("phosphorus:$v$sfx", "phosphorus:latest"), @("phosphorus-git:$v", "phosphorus-git:latest"))) {
+    foreach ($p in @(@("phosphorus:$v", "phosphorus:latest"), @("phosphorus-git:$v", "phosphorus-git:latest"))) {
         $from = "ghcr.io/pmghartman/$($p[0])"
         docker pull -q $from | Out-Null
         if ($LASTEXITCODE) { return $false }
@@ -91,7 +90,7 @@ function Add-PhosphorusMissingSections {
     }
 }
 
-# [model] gpu: the image built with llama.cpp's cuda backend
+# [model] gpu: the gpu handed to the container, cuda's llama-server fetched
 function Test-PhosphorusModelHost { (Get-PhosphorusValue "model" "host") -eq "true" }
 function Test-PhosphorusModelGpu { (Get-PhosphorusValue "model" "gpu") -eq "true" }
 

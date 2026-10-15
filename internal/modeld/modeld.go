@@ -1,5 +1,5 @@
-// Package modeld: llama-server on the one host with [model] host = true,
-// every other host asking it through its frontend (container/model.js's port)
+// Package modeld: llama-server on the one host with [model] host = true, it
+// and opencode fetched there alone, every other host asking it through its frontend
 package modeld
 
 import (
@@ -22,6 +22,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/pmghartman/phosphorus/internal/tools"
 	"github.com/pmghartman/phosphorus/internal/util"
 )
 
@@ -32,7 +33,6 @@ var (
 	machineFile   = filepath.Join(stateDir, "machine.json")
 	installedFile = filepath.Join(stateDir, "model-installed.json")
 	slotDir       = filepath.Join(stateDir, "llama-slots")
-	llamaDir      = util.Env("LLAMA_DIR", "/opt/llama")
 	modelDir      = util.Env("MODEL_DIR", "/models")
 	serverPort    = util.EnvInt("MODEL_SERVER_PORT", 8791)
 	tickMS        = util.EnvInt("MODEL_TICK_MS", 1000)
@@ -144,8 +144,13 @@ func memTotal() float64 {
 	return jsNum(m[1]) * 1024
 }
 
+func hasCuda() bool {
+	_, err := os.Stat(filepath.Join(tools.LlamaDir(true), "libggml-cuda.so"))
+	return err == nil
+}
+
 func freeVram() float64 {
-	if _, err := os.Stat(filepath.Join(llamaDir, "libggml-cuda.so")); err != nil {
+	if !hasCuda() {
 		return 0
 	}
 	for _, bin := range nvsmi {
@@ -326,6 +331,15 @@ func healthy() bool {
 }
 
 func serve(c config) {
+	if !tools.Ready(tools.LlamaDir(c.gpu)) {
+		fitNeed = 0
+		fitWhy = "fetching llama-server " + tools.LlamaTag
+		if st := toolState["llama"]; strings.HasPrefix(st, "failed") {
+			fitWhy = "llama-server " + tools.LlamaTag + " " + st + ", retrying"
+		}
+		stopServer()
+		return
+	}
 	if srv.proc == nil && (!c.gpu || !time.Now().Before(srv.retryAt)) {
 		if c.gpu {
 			mu.Unlock()
@@ -338,10 +352,10 @@ func serve(c config) {
 	}
 	if c.gpu && vram == 0 {
 		fitNeed = 0
-		if _, err := os.Stat(filepath.Join(llamaDir, "libggml-cuda.so")); err == nil {
+		if hasCuda() {
 			fitWhy = "gpu is on but no nvidia gpu is usable here"
 		} else {
-			fitWhy = "gpu is on but llama-server here has no cuda, phosphorus update rebuilds it"
+			fitWhy = "gpu is on but upstream has no cuda build of llama-server for this machine"
 		}
 		notes.Note("gpu", fitWhy)
 		stopServer()
@@ -414,8 +428,9 @@ func serve(c config) {
 	}
 	args = append(args, "--cache-ram", cache, "--cache-reuse", "256", "--slots", "--slot-save-path", slotDir,
 		"--host", "127.0.0.1", "--port", strconv.Itoa(serverPort))
-	cmd := exec.Command(filepath.Join(llamaDir, "llama-server"), args...)
-	cmd.Env = append(os.Environ(), "LD_LIBRARY_PATH="+llamaDir)
+	dir := tools.LlamaDir(c.gpu)
+	cmd := exec.Command(filepath.Join(dir, "llama-server"), args...)
+	cmd.Env = append(os.Environ(), "LD_LIBRARY_PATH="+dir)
 	cmd.Stdout = os.Stdout
 	stderr, _ := cmd.StderrPipe()
 	oom := false
@@ -508,7 +523,7 @@ func claim(c config) map[string]any {
 		for k, v := range map[string]any{
 			"file": c.file, "size": sizeOf(modelPath(c)), "ctx": c.ctx, "slots": c.slots, "gpu": vram > 0, "vram": vram,
 			"server": srv.state, "serverSince": srv.since, "need": fitNeed, "why": fitWhy,
-			"exits": trouble.exits, "lastExit": trouble.lastExit, "oom": trouble.oom, "download": d,
+			"exits": trouble.exits, "lastExit": trouble.lastExit, "oom": trouble.oom, "download": d, "tools": toolState,
 		} {
 			out[k] = v
 		}
@@ -516,10 +531,21 @@ func claim(c config) map[string]any {
 	return out
 }
 
+// the tools' states on the model host: ready, fetching or why not
+var toolState = map[string]string{}
+
 func tick() {
 	c := readConfig()
+	// fetched on the model host, dropped from every other
+	st := map[string]string{}
+	if c.host {
+		st = tools.Ensure(c.gpu)
+	} else {
+		tools.Remove()
+	}
 	mu.Lock()
 	defer mu.Unlock()
+	toolState = st
 	if !c.host || c.file == "" {
 		if dl.proc != nil {
 			if c.host {

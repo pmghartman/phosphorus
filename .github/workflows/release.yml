@@ -68,16 +68,14 @@ jobs:
           on "$AMD64" "$ARM64" "$MAC" "$WIN" || { echo "check at least one target" >&2; exit 1; }
           apps=() images=() manifests=() debs=()
           # image arches every checked target's hosts pull: macs on either, windows amd64
-          img() { images+=("{\"name\":\"$1\",\"file\":\"$2\",\"arch\":\"$3\",\"runner\":\"$4\",\"suffix\":\"$5\",\"backend\":\"$6\"}"); }
+          img() { images+=("{\"name\":\"$1\",\"file\":\"$2\",\"arch\":\"$3\",\"runner\":\"$4\",\"suffix\":\"$5\"}"); }
           if on "$AMD64" "$MAC" "$WIN"; then
-            img phosphorus container/Dockerfile amd64 ubuntu-24.04 "" cpu
-            img phosphorus container/Dockerfile amd64 ubuntu-24.04 -cuda cuda
-            img phosphorus-git container/git/Dockerfile amd64 ubuntu-24.04 "" cpu
-            manifests+=('{"name":"phosphorus","suffix":"-cuda"}')
+            img phosphorus container/Dockerfile amd64 ubuntu-24.04 ""
+            img phosphorus-git container/git/Dockerfile amd64 ubuntu-24.04 ""
           fi
           if on "$ARM64" "$MAC"; then
-            img phosphorus container/Dockerfile arm64 ubuntu-24.04-arm "" cpu
-            img phosphorus-git container/git/Dockerfile arm64 ubuntu-24.04-arm "" cpu
+            img phosphorus container/Dockerfile arm64 ubuntu-24.04-arm ""
+            img phosphorus-git container/git/Dockerfile arm64 ubuntu-24.04-arm ""
           fi
           manifests+=('{"name":"phosphorus","suffix":""}' '{"name":"phosphorus-git","suffix":""}')
           on "$AMD64" && debs+=('"amd64"')
@@ -158,7 +156,6 @@ jobs:
           outputs: type=image,name=${{ env.REGISTRY }}/${{ matrix.name }},push-by-digest=true,name-canonical=true,push=true
           build-args: |
             PHOSPHORUS_VERSION=${{ env.VER }}
-            LLAMA_BACKEND=${{ matrix.backend }}
           cache-from: type=gha,scope=${{ matrix.name }}${{ matrix.suffix }}-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}${{ matrix.suffix }}-${{ matrix.arch }}
       - name: digest
@@ -195,7 +192,10 @@ jobs:
           IMG: ${{ env.REGISTRY }}/${{ matrix.name }}
         run: |
           cd digests
-          docker buildx imagetools create -t "$IMG:$VER${{ matrix.suffix }}" $(printf "$IMG@sha256:%s " *)
+          # -cuda the same image now, kept for launchers older than the run-time fetch
+          extra=""
+          [ "${{ matrix.name }}" = phosphorus ] && extra="-t $IMG:$VER-cuda"
+          docker buildx imagetools create -t "$IMG:$VER${{ matrix.suffix }}" $extra $(printf "$IMG@sha256:%s " *)
           docker buildx imagetools inspect "$IMG:$VER${{ matrix.suffix }}"
 
   deb:

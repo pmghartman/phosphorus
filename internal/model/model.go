@@ -24,6 +24,7 @@ import (
 	"github.com/pmghartman/phosphorus/internal/harness"
 	"github.com/pmghartman/phosphorus/internal/mesh"
 	"github.com/pmghartman/phosphorus/internal/sysfs"
+	"github.com/pmghartman/phosphorus/internal/tools"
 	"github.com/pmghartman/phosphorus/internal/util"
 )
 
@@ -368,7 +369,7 @@ func row(s map[string]any, states []map[string]any) map[string]any {
 		"host": s["host"], "file": util.Str(s["file"]), "size": n(s["size"]),
 		"ctx": n(s["ctx"]), "slots": n(s["slots"]), "ready": ready, "loading": s["server"] == "loading",
 		"gpu": util.Truthy(s["gpu"]), "vram": n(s["vram"]), "total": n(s["total"]), "machine": n(s["machine"]), "need": n(s["need"]),
-		"why": why, "use": u, "download": dl,
+		"why": why, "use": u, "download": dl, "harness": harnessReady(s), "tools": s["tools"],
 	}
 }
 
@@ -784,8 +785,17 @@ type Reply struct {
 	By   string
 }
 
-// Ask the role's model through opencode, emoji stripped
+// Ask the role's model through opencode, emoji stripped, passed to a model
+// host when opencode isn't here
 func Ask(messages []harness.Msg, r, asker string, direct bool, ctx context.Context) (Reply, error) {
+	if !HarnessHere() {
+		return askRemote(messages, r, asker, direct, ctx)
+	}
+	return AskHere(messages, r, asker, direct, ctx)
+}
+
+// AskHere the ask answered by this host's own opencode
+func AskHere(messages []harness.Msg, r, asker string, direct bool, ctx context.Context) (Reply, error) {
 	if r != "chimp" {
 		r = "chimp"
 	}
@@ -803,6 +813,81 @@ func Ask(messages []harness.Msg, r, asker string, direct bool, ctx context.Conte
 	return Reply{strings.TrimSpace(Plain(text)), r}, nil
 }
 
+// HarnessHere opencode fetched and runnable on this host
+func HarnessHere() bool { return tools.OpencodeReady() }
+
+// opencode ready on a model host's claim; a claim without tools is an
+// older phosphorus, its opencode in its image but no /api/model/ask
+func harnessReady(s map[string]any) bool { return util.Obj(s["tools"])["opencode"] == "ready" }
+
+// HarnessHost the model host answering asks and running projects, the one
+// running prefer's model first, nil when none has opencode up
+func HarnessHost(prefer string) map[string]any {
+	all := runners(view())
+	for _, s := range all {
+		if s["host"] == prefer && harnessReady(s) {
+			return s
+		}
+	}
+	for _, s := range all {
+		if harnessReady(s) {
+			return s
+		}
+	}
+	return nil
+}
+
+// why no host can take an ask, for the asker
+func noHarness() error {
+	all := runners(view())
+	if len(all) == 0 {
+		return errors.New("no host is the model host, set [model] host = true on one")
+	}
+	for _, s := range all {
+		if s["tools"] == nil {
+			return errors.New(util.JSString(s["host"]) + " runs an older phosphorus, update the mesh")
+		}
+	}
+	return errors.New("the model host is still fetching opencode")
+}
+
+// AskerRef an asker on this host as a model host names it
+func AskerRef(id string) string { return selfHost + "|" + id }
+
+func askRemote(messages []harness.Msg, r, asker string, direct bool, ctx context.Context) (Reply, error) {
+	_, rs := resolve(view(), r)
+	prefer := ""
+	if rs != nil {
+		prefer = util.JSString(rs["host"])
+	}
+	h := HarnessHost(prefer)
+	if h == nil {
+		return Reply{}, noHarness()
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	res, err := util.RequestJSON(util.Req{
+		Host: util.JSString(h["ip"]), Port: util.FrontendPort, Method: "POST", Path: "/api/model/ask", Ctx: ctx, Timeout: time.Hour,
+		Body: map[string]any{"messages": messages, "role": r, "asker": AskerRef(asker), "direct": direct},
+	})
+	if ctx.Err() != nil {
+		return Reply{}, errors.New("stopped")
+	}
+	if err != nil {
+		return Reply{}, fmt.Errorf("%s didn't answer: %v", util.JSString(h["host"]), err)
+	}
+	b := util.Obj(util.Decode(res.Body))
+	if res.Status != 200 {
+		e := util.Str(b["error"])
+		if e == "" {
+			e = fmt.Sprintf("%s answered %d", util.JSString(h["host"]), res.Status)
+		}
+		return Reply{}, errors.New(e)
+	}
+	return Reply{util.Str(b["text"]), util.Str(b["by"])}, nil
+}
+
 // ProjectModel the orangutan's model for a round
 type ProjectModel struct {
 	Model    string
@@ -815,8 +900,19 @@ type ErrWaiting struct{ Msg string }
 
 func (e ErrWaiting) Error() string { return e.Msg }
 
+// ProjectHost the host running the orangutan's mesh model, blank for none
+func ProjectHost() string {
+	if _, s := resolve(view(), "orangutan"); s != nil {
+		return util.JSString(s["host"])
+	}
+	return ""
+}
+
 // ForProject a mesh host chosen, or the one the project ran on, waited for
 func ForProject(prefer string) (ProjectModel, error) {
+	if !HarnessHere() {
+		return ProjectModel{}, ErrWaiting{"projects run on the model host, " + selfHost + " isn't it"}
+	}
 	pullKeys()
 	states := view()
 	own := roles()["orangutan"].Model

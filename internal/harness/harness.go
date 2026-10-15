@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/pmghartman/phosphorus/internal/files"
+	"github.com/pmghartman/phosphorus/internal/tools"
 	"github.com/pmghartman/phosphorus/internal/util"
 )
 
@@ -34,7 +35,6 @@ import (
 var pluginSrc []byte
 
 var (
-	bin     = util.Env("OPENCODE_BIN", "/opt/opencode/opencode")
 	port    = util.EnvInt("OPENCODE_PORT", 8792)
 	home    = util.Env("OPENCODE_HOME", "/var/lib/opencode")
 	workdir = util.Env("OPENCODE_DIR", "/files")
@@ -294,8 +294,9 @@ func call(method, p string, body any, timeout time.Duration, dir string) (any, e
 }
 
 func start(sig string, s Setup) error {
-	if _, err := os.Stat(bin); err != nil {
-		return fmt.Errorf("opencode isn't installed at %s, phosphorus update rebuilds it", bin)
+	bin := tools.OpencodeBin()
+	if !tools.OpencodeReady() {
+		return fmt.Errorf("opencode isn't on this host yet, it is fetched on the model host only")
 	}
 	for _, d := range []string{"config", "data", "cache", "state"} {
 		os.MkdirAll(filepath.Join(home, d), 0o755)
