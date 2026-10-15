@@ -98,6 +98,8 @@
 }
 
 * { box-sizing: border-box; }
+/* square corners everywhere, the browser's own controls included */
+*, *::before, *::after, ::-webkit-scrollbar-thumb { border-radius: 0; }
 /* no browser focus ring or tap flash, the UI marks its own selection */
 * { -webkit-tap-highlight-color: transparent; }
 :focus, :focus-visible { outline: none; }
@@ -162,7 +164,7 @@ body {
 #top-update { position: relative; }
 #top-update[data-news]::after {
   content: ''; position: absolute; top: 0.45rem; right: 0.5rem; width: 0.3rem; height: 0.3rem;
-  border-radius: 50%; background: var(--sand);
+  background: var(--sand);
 }
 /* the theme beside them, a tab like the side icons */
 .theme-toggle.top-theme {
@@ -319,7 +321,7 @@ body {
 /* the carried icon over the windows, toward a files window */
 .dk-ghost { position: fixed; left: 0; top: 0; z-index: 50; pointer-events: none; opacity: 0.85; }
 .dk-ghost .dk-icon { position: static; transform: none !important; }
-.dk-ghost-n { position: absolute; top: 0; right: 0.6rem; min-width: 1.1rem; padding: 0 0.25rem; border-radius: 0.55rem; background: var(--accent); color: var(--bg); font-size: 0.65rem; text-align: center; }
+.dk-ghost-n { position: absolute; top: 0; right: 0.6rem; min-width: 1.1rem; padding: 0 0.25rem; background: var(--accent); color: var(--bg); font-size: 0.65rem; text-align: center; }
 /* the files tab's square buttons, grown, a label under */
 .dk-icon {
   width: 5.5rem; padding: 0.4rem 0.2rem 0.3rem; display: flex; flex-direction: column; align-items: center; gap: 0.25rem;
@@ -332,8 +334,10 @@ body {
 /* bare glyphs, the icon's own box the only highlight */
 .dk-tile .ic { width: 1.6rem; height: 1.6rem; stroke-width: 1.6; }
 .dk-tile-img .dk-favicon { width: 1.6rem; height: 1.6rem; }
-.dk-icon { border-radius: 0.3rem; }
-.dk-icon:hover, .dk-icon:focus-visible { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+/* the glyph box and the label's own text the only highlight, never the whole cell */
+.dk-icon .dk-label { padding: 0 0.2rem; border: 1px solid transparent; }
+.dk-icon .dk-tile { border: 1px solid transparent; }
+.dk-icon:hover .dk-tile, .dk-icon:focus-visible .dk-tile { background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .dk-icon:focus-visible { outline: none; }
 .dk-icon:active .dk-tile { transform: translateY(1px); }
 .dk-icon.dk-files .ic { color: var(--sand); }
@@ -419,35 +423,37 @@ body {
 .dk-moving .dk-frame, .dk-moving .xterm { pointer-events: none; }
 .dk-moving { cursor: grabbing; user-select: none; }
 
-/* a floating panel, as plasma's: off every edge, rounded, over a blur of the desk */
+/* a floating panel, as plasma's: off every edge, square, over a blur of the desk */
 .dk-bar {
   flex: none; height: 2.3rem; margin: 0.45rem 0.6rem 0.55rem; z-index: 3; display: flex; align-items: center; gap: 0.6rem;
-  padding: 0 0.35rem; border-radius: 0.7rem; border: 1px solid var(--border); font-size: 0.72rem;
+  padding: 0 0.35rem; border: 1px solid var(--border); font-size: 0.72rem;
   background: color-mix(in srgb, var(--tabbar) 82%, transparent); backdrop-filter: blur(10px) saturate(1.2);
   box-shadow: var(--drop);
 }
-.dk-bar > :first-child { border-radius: 0.5rem; }
 .dk-tasks { flex: 1; min-width: 0; display: flex; gap: 0.25rem; overflow-x: auto; scrollbar-width: none; }
 .dk-task {
-  flex: none; max-width: 10rem; padding: 0.25rem 0.65rem; background: none; border: 1px solid transparent; border-radius: 0.45rem;
+  flex: none; max-width: 10rem; padding: 0.25rem 0.65rem; background: none; border: 1px solid transparent;
   color: var(--muted); font: inherit; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .dk-task:hover { color: var(--fg); background: var(--tab-hover); }
 .dk-task.active { color: var(--fg); border-color: var(--accent); }
 .dk-hosts { display: flex; gap: 0.15rem; color: var(--muted); }
 /* the host serving this page purple, the rest green, a press moving the page there */
-.dk-chip { padding: 0.2rem 0.45rem; background: none; border: 0; border-radius: 0.4rem; color: var(--muted); font: inherit; cursor: pointer; }
+.dk-chip { padding: 0.2rem 0.45rem; background: none; border: 0; color: var(--muted); font: inherit; cursor: pointer; }
 .dk-chip:hover { background: var(--tab-hover); color: var(--fg); }
 .dk-chip.here { color: var(--fg); cursor: default; }
 .dk-chip.here:hover { background: none; }
 .dk-chip::before { content: ""; display: inline-block; width: 0.45rem; height: 0.45rem; margin-right: 0.35rem; background: var(--online); vertical-align: 0.05rem; }
 .dk-chip.here::before { background: var(--accent); }
+.dk-chip.down { color: var(--offmesh); cursor: default; }
+.dk-chip.down:hover { background: none; color: var(--offmesh); }
+.dk-chip.down::before { background: var(--offmesh); }
 .dk-host-note { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 16rem; }
 .dk-host-note[hidden] { display: none; }
 .dk-host-note.ok { color: var(--online); }
 .dk-host-note.error { color: var(--offmesh); }
 .dk-clock { color: var(--fg); font-variant-numeric: tabular-nums; }
-.dk-off { padding: 0.2rem 0.6rem; background: none; border: 1px solid var(--offmesh); border-radius: 0.45rem; color: var(--offmesh); font: inherit; cursor: pointer; }
+.dk-off { padding: 0.2rem 0.6rem; background: none; border: 1px solid var(--offmesh); color: var(--offmesh); font: inherit; cursor: pointer; }
 .dk-off:hover { background: var(--offmesh); color: var(--bg); }
 
 /* right click menus, on the page above every window */
@@ -1015,7 +1021,7 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
 .cw-typing { margin-left: auto; color: var(--accent); animation: update-blink 1.2s ease-in-out infinite; }
 .cw-item .chat-badge { margin-left: auto; padding: 0 0.4ch; background: var(--accent); color: var(--bg); font-size: 0.65rem; font-weight: 600; }
 .cw-sub + .chat-badge, .cw-typing + .chat-badge { margin-left: 0.5ch; }
-.cw-dot { flex: none; width: 0.4rem; height: 0.4rem; border-radius: 50%; background: var(--dim); }
+.cw-dot { flex: none; width: 0.4rem; height: 0.4rem; background: var(--dim); }
 .cw-dot.up { background: var(--online); }
 .cw-empty { padding: 0.3rem 0.6rem; color: var(--muted); font-size: 0.75rem; }
 .cw-main { flex: 1; min-width: 0; min-height: 0; display: flex; }
@@ -1151,7 +1157,7 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
 .mesh-git-rows { max-height: 7.5rem; overflow-y: auto; }
 .mesh-git-box[hidden] { display: none; }
 .mesh-git-row { display: grid; grid-template-columns: 1fr auto; gap: 0.4rem; padding: 0.3rem 0.4rem; }
-.mesh-git-dot { flex: none; width: 0.45rem; height: 0.45rem; border: 1px solid var(--sage); border-radius: 50%; align-self: center; }
+.mesh-git-dot { flex: none; width: 0.45rem; height: 0.45rem; border: 1px solid var(--sage); align-self: center; }
 .mesh-git-row.master .mesh-git-dot { background: var(--accent); border-color: var(--accent); }
 .mesh-git-row.catching .mesh-git-dot { border-color: var(--sand); }
 .mesh-git-row.down .mesh-git-dot { border-color: var(--offmesh); }
@@ -1177,7 +1183,7 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
   width: 0.4rem;
   height: 0.4rem;
   margin-right: 0.1rem;
-  border-radius: 1px;
+ 
   background: var(--muted);
   flex: none;
 }
@@ -1209,7 +1215,7 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
   display: inline-flex; align-items: center; gap: 0.4ch; border: 0; font: inherit; color: var(--sage); cursor: pointer; min-width: 0;
 }
 .chat-title-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 14rem; }
-.chat-title-dot { width: 0.35rem; height: 0.35rem; padding: 0; border-radius: 50%; background: var(--accent); }
+.chat-title-dot { width: 0.35rem; height: 0.35rem; padding: 0; background: var(--accent); }
 .chat-title-dot[hidden] { display: none; }
 .chat-title:hover { color: var(--fg); }
 .cw-main .chat-title { cursor: default; }
@@ -1732,7 +1738,7 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
 /* this host, wherever it is listed: the square the node table gives it */
 .is-self::before {
   content: ''; display: inline-block; width: 0.4rem; height: 0.4rem; margin-right: 0.5rem;
-  border-radius: 1px; background: var(--accent); vertical-align: middle;
+  background: var(--accent); vertical-align: middle;
 }
 
 /* the up arrow inside the box's right edge, kept at the bottom as the box grows */
@@ -1974,14 +1980,11 @@ input, textarea { caret-color: var(--accent); }
   padding: 0 0.7rem; border-left: 0; border-top: 0; background: none;
 }
 .dk-bar .top-side > button[aria-expanded="true"], .dk-bar .update-wrap > button[aria-expanded="true"] { background: var(--tab-hover); box-shadow: none; }
-.dk-bar .update-pane { top: auto; bottom: calc(100% + 0.9rem); max-height: calc(100vh - 3.5rem); }
-.dk-bar .tab-menu.theme-menu { top: auto; bottom: calc(100% + 0.9rem); right: 0; }
-@media (max-width: 720px) {
-  .dk-bar .update-pane { position: fixed; top: auto; bottom: 3.6rem; left: 0.5rem; right: 0.5rem; }
-}
+.dk-bar .update-pane { max-height: calc(100vh - 3.5rem); }
 
 /* icons placed on a grid by app.js, a band selecting on bare desk */
-.dk-icon.sel { background: color-mix(in srgb, var(--accent) 18%, transparent); border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
+.dk-icon.sel .dk-tile { background: color-mix(in srgb, var(--accent) 18%, transparent); border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
+.dk-icon.sel .dk-label { background: var(--accent); color: var(--bg); }
 .dk-band {
   position: absolute; z-index: 3; pointer-events: none;
   border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent);
@@ -2017,8 +2020,7 @@ input, textarea { caret-color: var(--accent); }
 .dk-tray .ic { width: 0.95rem; height: 0.95rem; }
 .dk-tray:hover, .dk-tray[aria-expanded="true"] { background: var(--tab-hover); color: var(--accent); }
 .dk-mesh-pop {
-  position: absolute; z-index: 20; right: 0; bottom: calc(100% + 0.9rem); width: min(26rem, calc(100vw - 1rem)); height: min(28rem, calc(100vh - 5rem));
-  display: flex; animation: pop-in 0.16s ease-out;
+  z-index: 20; display: flex; animation: pop-in 0.16s ease-out;
 }
 .dk-mesh-pop[hidden] { display: none; }
 /* the update pane's card: its border, its shadow, the name on the top edge */
@@ -2028,7 +2030,6 @@ input, textarea { caret-color: var(--accent); }
 }
 .dk-mesh-pop .mesh-header { font-size: 0.72rem; }
 .dk-mesh-pop .mesh-header > * { background: var(--card); }
-@media (max-width: 720px) { .dk-mesh-pop { position: fixed; right: 0.5rem; left: 0.5rem; bottom: 3.6rem; width: auto; } }
 
 /* --- account: login, setup, profile, users, a locked host's login ----------- */
 .acct-login { display: flex; flex-direction: column; gap: 0.4rem; width: min(22rem, calc(100% - 2rem)); }
@@ -2112,8 +2113,9 @@ input, textarea { caret-color: var(--accent); }
   color: #fff; background: none; text-shadow: 0 0 1px rgb(0 0 0 / 0.95), 0 1px 2px rgb(0 0 0 / 0.9), 0 0 7px rgb(0 0 0 / 0.7), 0 0 12px rgb(0 0 0 / 0.4);
 }
 .dk-walled .dk-icon .dk-sub { color: rgb(255 255 255 / 0.8); }
-.dk-walled .dk-icon:hover, .dk-walled .dk-icon:focus-visible { background: rgb(255 255 255 / 0.14); border-color: rgb(255 255 255 / 0.2); }
-.dk-walled .dk-icon.sel { background: color-mix(in srgb, var(--accent) 34%, rgb(255 255 255 / 0.1)); border-color: color-mix(in srgb, var(--accent) 70%, #fff); }
+.dk-walled .dk-icon:hover .dk-tile, .dk-walled .dk-icon:focus-visible .dk-tile { background: rgb(255 255 255 / 0.14); border-color: rgb(255 255 255 / 0.2); }
+.dk-walled .dk-icon.sel .dk-tile { background: color-mix(in srgb, var(--accent) 34%, rgb(255 255 255 / 0.1)); border-color: color-mix(in srgb, var(--accent) 70%, #fff); }
+.dk-walled .dk-icon.sel .dk-label { background: var(--accent); color: #fff; text-shadow: none; }
 .dk-walled .dk-band { border-color: rgb(255 255 255 / 0.7); background: rgb(255 255 255 / 0.15); }
 
 /* the merged home: where each entry lives, greyed while only an offline host has it */
@@ -2126,3 +2128,8 @@ input, textarea { caret-color: var(--accent); }
 .fm-choice:disabled { color: var(--muted); cursor: default; }
 .fm-choice-why { color: var(--muted); font-size: 0.68rem; }
 .dk-menu button.on::after { content: ' ✓'; color: var(--accent); }
+
+/* every task bar popup: fixed, placed by app.js on its own button, one frame,
+   its title inside the top edge in sage */
+.dk-pop { position: fixed; z-index: 1000; }
+.dk-menu-title { padding: 0.35rem 0.75rem 0.4rem; line-height: 1; color: var(--sage); font-size: 0.72rem; letter-spacing: 0.04em; }

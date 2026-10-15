@@ -73,6 +73,14 @@ function renderRoutes(routes, tailnet) {
   gitRoute = routes.find((r) => r.name === GIT_SERVICE) || null;
   renderMesh(routes, tailnet);
   dkRoutes(services);
+  dkHostsGone();
+}
+
+// a host gone from the mesh: its terminals closed, its chip red until it answers again
+function dkHostsGone() {
+  const up = new Set([...terminalHosts, selfHost]);
+  for (const w of [...dk.wins.values()]) if (w.kind === 'term' && w.host && !up.has(w.host)) dkClose(w, true);
+  dkChips();
 }
 
 // a bare POST's failure as text, blank when it went through
@@ -996,7 +1004,7 @@ function drawMesh() {
       };
       if (svcTouched) stem.id = `stem-${key}`;
       edges.appendChild(svgEl('line', stem));
-      drawNode(c.x, c.y, r.name, svcTouched ? 'svc touched' : 'svc', `${m}/${r.name}`,
+      drawNode(c.x, c.y, r.name, svcTouched ? 'svc touched' : 'svc', r.name,
         { size: 1.8 * c.s, opacity: t * c.fog, noLabel: true });
     });
   });
@@ -5731,6 +5739,7 @@ for (const b of themeToggles) {
     const open = menu.hidden;
     closeMenus();
     menu.hidden = !open;
+    if (open && b.closest('.dk-bar')) { menu.classList.add('dk-pop'); dkAnchor(menu, b); }
   });
 }
 systemLight.addEventListener('change', (e) => { if (!themePick()) applyTheme(e.matches ? 'light' : 'dark'); });
@@ -5778,6 +5787,13 @@ document.addEventListener('keydown', (e) => {
   e.preventDefault();
   e.stopPropagation();
   stepConv(e.key === 'ArrowDown' ? 1 : -1);
+}, true);
+
+// a press outside a popup and its button closing it, as the mesh's and the menus'
+document.addEventListener('pointerdown', (e) => {
+  const t = e.target;
+  for (const m of themeMenus) if (!m.hidden && !m.contains(t) && !m.previousElementSibling?.contains(t)) m.hidden = true;
+  if (!updateModal.hidden && !updateModal.parentElement.contains(t)) closeUpdateModal();
 }, true);
 
 // shift+esc only ever unfocusing a terminal, esc the menus and the update pane
@@ -5978,6 +5994,8 @@ function dkBar(...before) {
   if (!before.length) bar.appendChild(el('span', 'dk-tasks'));
   bar.append(...before.slice(0, 2), dkTray, dk.clock, ...before.slice(2));
   dkTray.querySelector('.update-wrap').hidden = !acct?.admin;
+  updateModal.classList.add('dk-pop');
+  dkAnchor(updateModal, topUpdate);
   if (!acct?.admin) closeUpdateModal();
   dkClock();
   return bar;
@@ -6045,10 +6063,10 @@ const DK_GY = 86;
 const DK_PAD = 8;
 dk.sel = new Set();
 
-// a service with no icon of its own: its initial in a rounded square
+// a service with no icon of its own: its initial in a square
 function dkMono(label) {
   const svg = svgEl('svg', { viewBox: '0 0 16 16', class: 'ic dk-mono', 'aria-hidden': 'true' });
-  svg.appendChild(svgEl('rect', { x: 1.5, y: 1.5, width: 13, height: 13, rx: 3 }));
+  svg.appendChild(svgEl('rect', { x: 1.5, y: 1.5, width: 13, height: 13 }));
   const t = svgEl('text', { x: 8, y: 8.6, 'text-anchor': 'middle', 'dominant-baseline': 'middle' });
   t.textContent = (String(label).match(/[a-z0-9]/i)?.[0] || '?').toUpperCase();
   svg.appendChild(t);
@@ -6122,7 +6140,9 @@ const dkCell = (c, r) => `${c},${r}`;
 
 // saved cells first, the rest down then across into the free ones
 function dkLayout() {
-  if (!dk.desk) return;
+  // unmeasured (not on the page yet, or hidden): placed once it has a size,
+  // never squeezed into one row and sprung back
+  if (!dk.desk || !dk.desk.icons.clientHeight) return;
   const { cols, rows } = dkGrid();
   const saved = dkSaved();
   const taken = new Set();
@@ -6135,13 +6155,17 @@ function dkLayout() {
     } else rest.push(b);
   }
   let i = 0;
+  let placed = false;
   for (const b of rest) {
     while (taken.has(dkCell(Math.floor(i / rows), i % rows)) && i < cols * rows) i += 1;
     const c = Math.floor(i / rows);
     const r = i % rows;
     taken.add(dkCell(c, r));
     dkPut(b, c, r);
+    // an icon's first cell kept, so one blinking out never reflows the rest
+    if (!(b.dataset.id in saved)) { saved[b.dataset.id] = [c, r]; placed = true; }
   }
+  if (placed) try { localStorage.setItem(DK_POS_KEY, JSON.stringify(saved)); } catch {}
   for (const id of [...dk.sel]) if (!dkIconEls().some((b) => b.dataset.id === id)) dk.sel.delete(id);
   dkPaintSel();
 }
@@ -6365,7 +6389,8 @@ function dkChips() {
   const here = hostSwitch?.to || selfHost;
   const names = [...new Set([...dk.creds.keys(), ...terminalHosts])]
     .sort((a, b) => (b === selfHost) - (a === selfHost) || a.localeCompare(b));
-  const sig = JSON.stringify([here, names, [...dk.creds.keys()]]);
+  const up = new Set([...terminalHosts, selfHost]);
+  const sig = JSON.stringify([here, names, [...dk.creds.keys()], names.filter((h) => !up.has(h))]);
   if (sig === dk.chips) return;
   dk.chips = sig;
   hosts.replaceChildren(...names.map((h) => {
@@ -6375,6 +6400,7 @@ function dkChips() {
       b.addEventListener('click', () => dkUnlock(h, b));
       return b;
     }
+    if (!up.has(h)) return Object.assign(el('button', 'dk-chip down', h), { type: 'button', title: `${h} dropped off the mesh` });
     const b = Object.assign(el('button', `dk-chip${h === here ? ' here' : ''}`, h), { type: 'button' });
     b.title = h === here ? `this page is served by ${h}` : `serve this page from ${h}`;
     b.setAttribute('aria-pressed', String(h === here));
@@ -6723,7 +6749,7 @@ function dkNewFile(x, y) {
   pop.append(el('div', 'home-col-head', 'add file'), name, why, go);
   pop.style.left = `${Math.max(4, Math.min(x, innerWidth - 260))}px`;
   pop.style.top = `${Math.max(4, Math.min(y, innerHeight - 140))}px`;
-  const close = () => { pop.remove(); document.removeEventListener('pointerdown', away, true); };
+  const close = () => { pop.remove(); pop.dkRelease?.(); document.removeEventListener('pointerdown', away, true); };
   const away = (e) => { if (!pop.contains(e.target)) close(); };
   document.addEventListener('pointerdown', away, true);
   pop.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
@@ -7274,9 +7300,12 @@ const dkMenuEl = el('div', 'dk-menu');
 dkMenuEl.hidden = true;
 dkMenuEl.setAttribute('role', 'menu');
 document.body.appendChild(dkMenuEl);
-function dkMenu(x, y, items, after) {
+function dkMenu(x, y, items, after, title) {
   if (dkMenuEl.owner && dkMenuEl.hidden) dkMenuEl.owner = null;
-  dkMenuEl.replaceChildren(...items.map((it) => {
+  dkMenuEl.classList.remove('dk-pop');
+  dkMenuEl.dkAnchor = null;
+  dkMenuEl.style.bottom = '';
+  dkMenuEl.replaceChildren(...(title ? [el('div', 'dk-menu-title', title)] : []), ...items.map((it) => {
     if (!it) return el('div', 'dk-menu-sep');
     const [label, act, ok, cls] = it;
     const b = Object.assign(el('button', cls || '', label), { type: 'button', disabled: !ok });
@@ -8036,6 +8065,38 @@ function dkGitFrame() {
   w.onFocus = () => frame.contentWindow?.focus();
 }
 
+// --- task bar popups: each grown out of its own button, its bottom on the
+// bar's top, its left on the button's left, slid back only as the screen needs
+
+const DK_POP_GAP = 6;
+const DK_POP_EDGE = 8;
+
+// fill: a popup as wide as the button's left to the screen's right, at least
+// that many px; tall: as tall as the screen allows, at most that many px
+function dkAnchor(pop, btn, { fill = 0, tall = 0 } = {}) {
+  pop.dkAnchor = { btn, fill, tall };
+  if (!pop.dkPlace) {
+    const ro = new ResizeObserver(() => pop.dkPlace());
+    pop.dkPlace = () => {
+      const a = pop.dkAnchor;
+      if (!a || pop.hidden || !pop.isConnected || !a.btn.isConnected) return;
+      const r = a.btn.getBoundingClientRect();
+      const top = (a.btn.closest('.dk-bar') || a.btn).getBoundingClientRect().top;
+      pop.style.top = 'auto';
+      pop.style.right = 'auto';
+      pop.style.bottom = `${innerHeight - top + DK_POP_GAP}px`;
+      if (a.tall) pop.style.height = `${Math.min(a.tall, top - DK_POP_GAP - DK_POP_EDGE)}px`;
+      if (a.fill) pop.style.width = `${Math.min(innerWidth - 2 * DK_POP_EDGE, Math.max(a.fill, innerWidth - DK_POP_EDGE - r.left))}px`;
+      pop.style.left = `${Math.max(DK_POP_EDGE, Math.min(r.left, innerWidth - DK_POP_EDGE - pop.offsetWidth))}px`;
+    };
+    // shown, grown or the screen resized: placed again
+    ro.observe(pop);
+    addEventListener('resize', pop.dkPlace);
+    pop.dkRelease = () => { ro.disconnect(); removeEventListener('resize', pop.dkPlace); pop.dkPlace = null; };
+  }
+  pop.dkPlace();
+}
+
 // --- the mesh: the tray's icon, its graph and pings in a popup above it
 
 function dkMeshTray() {
@@ -8043,8 +8104,10 @@ function dkMeshTray() {
   const b = Object.assign(el('button', 'dk-tray'), { type: 'button', title: 'mesh', ariaLabel: 'mesh' });
   b.setAttribute('aria-expanded', 'false');
   b.appendChild(dkGlyph(DK_GLYPHS.mesh));
-  const pop = Object.assign(el('div', 'dk-mesh-pop'), { hidden: true });
+  const pop = Object.assign(el('div', 'dk-mesh-pop dk-pop'), { hidden: true });
   wrap.append(b, pop);
+  // a column up the screen's right edge, the button at its bottom left corner
+  dkAnchor(pop, b, { fill: 240, tall: 720 });
   const fit = new ResizeObserver(() => { meshDims = null; if (!pop.hidden && !meshAnimFrame) drawMesh(); });
   const show = (on) => {
     pop.hidden = !on;
@@ -8343,16 +8406,14 @@ function dkUsersWin() {
 function dkUnlock(host, chip) {
   // a second press on its chip closing it
   if (chip.unlockClosed && Date.now() - chip.unlockClosed < 400) { chip.unlockClosed = 0; return; }
-  const r = chip.getBoundingClientRect();
   const pop = el('form', 'acct-unlock');
   const user = noFill(Object.assign(el('input'), { placeholder: 'user', spellcheck: false, autocapitalize: 'off', value: dkUsers()[host] || '' }));
   const pass = noFill(Object.assign(el('input'), { placeholder: 'password' }), true);
   const why = el('span', 'dk-state');
   const go = Object.assign(el('button', 'primary', 'log in'), { type: 'submit' });
   pop.append(el('div', 'home-col-head', host), user, pass, why, go);
-  pop.style.left = `${Math.max(4, Math.min(r.left, innerWidth - 260))}px`;
-  pop.style.bottom = `${innerHeight - r.top + 10}px`;
-  const close = () => { pop.remove(); document.removeEventListener('pointerdown', away, true); };
+  pop.classList.add('dk-pop');
+  const close = () => { pop.remove(); pop.dkRelease?.(); document.removeEventListener('pointerdown', away, true); };
   const away = (e) => {
     if (pop.contains(e.target)) return;
     if (chip.contains(e.target)) chip.unlockClosed = Date.now();
@@ -8373,6 +8434,7 @@ function dkUnlock(host, chip) {
     close();
   });
   document.body.appendChild(pop);
+  dkAnchor(pop, chip);
   (user.value ? pass : user).focus();
 }
 
@@ -8410,15 +8472,15 @@ function dkProfileTray() {
   b.addEventListener('pointerdown', () => { open = !dkMenuEl.hidden && dkMenuEl.owner === b; });
   b.addEventListener('click', () => {
     if (open) { open = false; return; }
-    const r = b.getBoundingClientRect();
     dkMenuEl.owner = b;
-    dkMenu(r.left, r.top - 140, [
+    dkMenu(0, 0, [
       ['settings', dkProfileWin, true],
       ...(acct?.admin ? [['users', dkUsersWin, true]] : []),
       null,
       ['log out', acctLogout, true, 'danger'],
-    ]);
-    dkMenuEl.style.top = `${Math.max(4, r.top - dkMenuEl.offsetHeight - 8)}px`;
+    ], null, acct?.user || 'profile');
+    dkMenuEl.classList.add('dk-pop');
+    dkAnchor(dkMenuEl, b);
   });
   return b;
 }
