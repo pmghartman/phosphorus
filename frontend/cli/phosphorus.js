@@ -477,37 +477,32 @@ function saveShare(form) {
   if (dir.includes(',')) return "dir can't contain a comma";
   if (!/^[rwd]+$/.test(perms) || new Set(perms).size !== perms.length) return 'perms is a mix of r, w and d';
   const shares = readShares();
+  const wasHome = form.orig !== null && isHomeDir(shares[form.orig].dir);
   if (form.orig === null) shares.push({ dir, perms });
   else shares[form.orig] = { dir, perms };
-  return writeShares(shares);
+  return writeShares(shares) || (wasHome ? writeHomeDir(dir) : '');
 }
 
 // --- phosphorus.ini [home] ------------------------------------------------------------
-// where usr/ (the homes, shared/) and sys/ live; a change copies both there on
-// the rebuild and deletes the old ones
+// which [files] dir holds the homes, shared/ and sys/, blank the home's files/;
+// a change moves them there on the rebuild
+
+const homeKey = (d) => String(d || '').trim().replace(/[/\\]+$/, '');
 
 function readHomeDir() {
   const sec = splitSections(readText(INI_FILE)).sections.find((s) => s.name === 'home');
-  return sec ? fieldsOf(sec).dir || '' : '';
+  return sec ? homeKey(fieldsOf(sec).dir) : '';
 }
 
-function homeForm() {
-  return {
-    kind: 'home', title: 'usr and sys directory', idx: 0, error: '',
-    fields: [{ key: 'dir', value: readHomeDir(), hint: 'host path, blank: the home\'s state/' }],
-  };
-}
-
-function saveHome(form) {
-  const dir = form.fields[0].value.trim().replace(/[/\\]+$/, '');
-  if (dir.includes(',')) return "dir can't contain a comma";
-  if (dir === '/' || /^[A-Za-z]:$/.test(dir)) return "never / or a drive's root";
+function writeHomeDir(dir) {
   const doc = splitSections(readText(INI_FILE));
   const sec = doc.sections.find((s) => s.name === 'home') || appendSection(doc, 'home');
-  sec.lines = rewriteSection(sec, 'home', { dir }, ['dir']);
+  sec.lines = rewriteSection(sec, 'home', { dir: homeKey(dir) }, ['dir']);
   try { writeAtomic(INI_FILE, joinSections(doc)); } catch (e) { return `can't write ${INI_FILE}: ${e.message}`; }
   return '';
 }
+
+const isHomeDir = (dir) => !!readHomeDir() && homeKey(dir) === readHomeDir();
 
 // --- phosphorus.ini [git] -------------------------------------------------------------
 
@@ -698,23 +693,24 @@ function servicesView() {
 function filesView() {
   const shares = readShares();
   const info = ui.filesInfo;
+  const home = readHomeDir();
   ui.sel[1] = Math.max(0, Math.min(ui.sel[1], shares.length - 1));
+  const star = (on) => (on ? c.accent('★') : ' ');
   const published = info && info.shares ? [
-    ...info.shares.map((s) => `${s.label}  ${c.teal(s.perms)}`),
+    ...info.shares.map((s) => `${star(s.home)} ${s.label}  ${c.teal(s.perms)}`),
     ...(info.shares.length ? [] : [c.muted('nothing')]),
     ...(info.wantDir ? ['', c.warn(`${REBUILDING} to publish ${info.wantDir}`)] : []),
   ] : null;
+  const fallback = c.muted(info && info.home ? info.home : "the home's files/");
   const lines = panels([
-    ['phosphorus.ini [files]', shares.length
-      ? table(['dir', 'perms'], shares.map((s) => [s.dir, c.teal(s.perms)]), ui.sel[1])
-      : [c.muted(`using default dir: ${info && info.shares && info.shares[0] ? info.shares[0].label : "the home's files"}`)]],
-    published && ['published now', published],
-    ['phosphorus.ini [home]', [
-      `usr and sys  ${readHomeDir() || c.muted("the home's state/")}`,
-      ...(info && info.home ? [c.muted(`now at ${info.home}`)] : []),
+    ['phosphorus.ini [files]', [
+      ...(shares.length ? table(['', 'dir', 'perms'], shares.map((s) => [star(isHomeDir(s.dir)), s.dir, c.teal(s.perms)]), ui.sel[1]) : []),
+      ...(!home || !shares.some((s) => isHomeDir(s.dir)) ? [`${shares.length ? '  ' : ''}${star(true)} ${fallback} ${c.muted('(default)')}`] : []),
+      '', c.muted('★ home: each user\'s folder, shared/ and sys/'),
     ]],
+    published && ['published now', published],
   ]);
-  return { lines, keys: [['a add', 'primary'], shares.length && ['e edit'], shares.length && ['d delete', 'danger'], ['h home dir']] };
+  return { lines, keys: [['a add', 'primary'], shares.length && ['e edit'], shares.length && ['d delete', 'danger'], shares.length && ['h home']] };
 }
 
 function gb(bytes) { return `${(bytes / GIB).toFixed(1)}GB`; }
@@ -1114,7 +1110,6 @@ function formView(form) {
   });
   const notes = [
     ...(form.kind === 'share' ? [c.muted(INI_NOTE)] : []),
-    ...(form.kind === 'home' ? [c.muted('usr and sys copied there on the rebuild, the old ones deleted')] : []),
     ...(form.kind === 'model' ? [c.muted(MODEL_NOTE)] : []),
     ...(form.error ? [c.offmesh(form.error)] : []),
   ];
@@ -1191,7 +1186,7 @@ function formKey(str, key) {
     return;
   }
   if (key.name === 'return') {
-    form.error = { service: saveService, share: saveShare, home: saveHome, model: saveModel, project: saveProject, note: saveNote }[form.kind](form);
+    form.error = { service: saveService, share: saveShare, model: saveModel, project: saveProject, note: saveNote }[form.kind](form);
     if (form.error) return;
     ui.form = null;
     if (form.kind === 'service') {
@@ -1200,7 +1195,7 @@ function formKey(str, key) {
     }
     // only a share, or [model] gpu, changing what the container was built with
     const gpu = form.fields.find((f) => f.key === 'gpu');
-    const rebuilds = form.kind === 'share' || form.kind === 'home' || (form.kind === 'model' && !!gpu && gpu.value.trim() !== form.gpuWas);
+    const rebuilds = form.kind === 'share' || (form.kind === 'model' && !!gpu && gpu.value.trim() !== form.gpuWas);
     if (form.kind === 'project' || form.kind === 'note') return;
     flash(c.online(rebuilds ? `saved, ${REBUILDING}` : 'saved, live on the next tick'));
     poll();
@@ -1269,14 +1264,22 @@ function listKey(str, key) {
     if (key.name === 'up') ui.sel[1] = Math.max(0, ui.sel[1] - 1);
     else if (key.name === 'down') ui.sel[1] = Math.min(shares.length - 1, ui.sel[1] + 1);
     else if (str === 'a') openForm(shareForm(null));
-    else if (str === 'h') openForm(homeForm());
+    else if (str === 'h' && shares[ui.sel[1]]) {
+      const { dir } = shares[ui.sel[1]];
+      const off = isHomeDir(dir);
+      ui.confirm = {
+        text: `${off ? `home back to the default files/` : `home to ${dir}`}? the homes, shared and sys move with it, ${INI_NOTE}`,
+        onYes: () => { const err = writeHomeDir(off ? '' : dir); flash(err ? c.offmesh(err) : c.online(`saved, ${REBUILDING}`)); poll(); },
+      };
+    }
     else if ((str === 'e' || key.name === 'return') && shares[ui.sel[1]]) openForm(shareForm(ui.sel[1]));
     else if (str === 'd' && shares[ui.sel[1]]) {
       const i = ui.sel[1];
       ui.confirm = {
         text: `stop publishing ${shares[i].dir}? ${INI_NOTE}`, danger: true,
         onYes: () => {
-          const err = writeShares(shares.filter((_, j) => j !== i));
+          // the home's own dir dropped: home back to the default
+          const err = writeShares(shares.filter((_, j) => j !== i)) || (isHomeDir(shares[i].dir) ? writeHomeDir('') : '');
           flash(err ? c.offmesh(err) : c.online(`removed, ${REBUILDING}`));
         },
       };

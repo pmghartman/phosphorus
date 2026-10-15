@@ -909,7 +909,7 @@ async function forwardFiles(host, req, res, urlPath) {
 
 // everything the tab needs before it can list anything
 function filesInfo() {
-  const shares = files.shares().map((s) => ({ id: s.id, label: s.label, perms: s.perms }));
+  const shares = files.shares().map((s) => ({ id: s.id, label: s.label, perms: s.perms, ...(s.home ? { home: true } : {}) }));
   return {
     host: SELF_HOST, enabled: shares.length > 0, shares, home: files.homeDir(),
     wantDir: files.pending() ? files.configuredDirs().join(', ') : '',
@@ -1395,7 +1395,7 @@ function app(req, res) {
 
   // one endpoint, both ends of the hop like games: the host named in the
   // path serves it, anyone else streams it there
-  // a mirrored usr file's latest copy, host to host only
+  // a mirrored home file's latest copy, host to host only
   const mirrorReq = pathname.match(/^\/internal\/mirror\/([0-9a-f]{24})$/);
   if (mirrorReq && req.method === 'GET') {
     if (!isTailnet(req) && !isLoopback(req)) { res.writeHead(403).end('forbidden'); return; }
@@ -1427,7 +1427,7 @@ function app(req, res) {
       if (why) sendJson(res, who ? 403 : 401, { error: why });
       return !!why;
     };
-    // a usr listing cut to who may see it, each file kept on every host marked all
+    // a home listing cut to who may see it, each file kept on every host marked all
     const seen = (r) => {
       if (share.id !== 'home') return r;
       const out = files.homeFilter(who, rel, r[1], users.exists);
@@ -1458,7 +1458,7 @@ function app(req, res) {
       return;
     }
     if (req.method === 'POST' && op === 'mirror') {
-      onJson(req, res, MAX_JSON_BODY, (p) => (share.id !== 'home' ? [400, { error: 'only usr files go to every host' }]
+      onJson(req, res, MAX_JSON_BODY, (p) => (share.id !== 'home' ? [400, { error: 'only home files go to every host' }]
         : gate(p.path) || (p.on ? mirror.mark(String(p.path || '')) : mirror.unmark(String(p.path || '')))));
       return;
     }

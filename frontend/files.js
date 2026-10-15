@@ -105,22 +105,43 @@ function buildShares() {
   ));
 }
 
-// the orangutan's project workspaces, read only, once there is one
-const PROJECTS_ROOT = path.join(process.env.STATE_DIR || '/state', 'projects');
-
-// usr/ in [home] dir: admin files at the top, each user's own folder under
-// its name, reached by that user alone, admin or not, and shared/ for everyone
+// [home] dir: each user's folder under its name, reached by that user alone,
+// shared/ for everyone, sys/ never, anything else admins only
 const HOME_FS = process.env.HOME_FS || process.env.STATE_DIR || '/state';
-const HOME_ROOT = path.join(HOME_FS, 'usr');
+const HOME_ROOT = HOME_FS;
 const DESKTOP = 'Desktop';
 const SHARED = 'shared';
-// the earlier state/home moved in once
-const OLD_HOME = path.join(process.env.STATE_DIR || '/state', 'home');
-try { if (!fs.existsSync(HOME_ROOT) && fs.existsSync(OLD_HOME)) fs.renameSync(OLD_HOME, HOME_ROOT); } catch {}
-try { fs.mkdirSync(path.join(HOME_ROOT, SHARED, DESKTOP), { recursive: true }); } catch {}
-const homeShare = () => ({ ...makeShare('home', '', FULL_PERMS, HOME_ROOT), label: 'usr' });
+const SYS = 'sys';
+const STATE_DIR = process.env.STATE_DIR || '/state';
 
-const shares = () => [homeShare(), ...buildShares(), makeShare('projects', '', 'r', PROJECTS_ROOT)].filter((s) => s.ok);
+// an older layout's folder (its shared/ the tell) emptied into the home, a
+// name already there left
+function flatten(from) {
+  let names;
+  try { if (!fs.statSync(path.join(from, SHARED)).isDirectory()) return; names = fs.readdirSync(from); } catch { return; }
+  for (const n of names) {
+    const to = path.join(HOME_ROOT, n);
+    if (n === SYS || fs.existsSync(to)) continue;
+    try { fs.renameSync(path.join(from, n), to); } catch (e) { console.error(`[files] moving ${n} into the home: ${e.message}`); }
+  }
+  try { fs.rmdirSync(from); } catch {}
+}
+// usr/ of [home] dir, and the earlier state/home
+flatten(path.join(HOME_ROOT, 'usr'));
+if (path.resolve(STATE_DIR) !== path.resolve(HOME_ROOT)) flatten(path.join(STATE_DIR, 'home'));
+try { fs.mkdirSync(path.join(HOME_ROOT, SHARED, DESKTOP), { recursive: true }); } catch {}
+
+// where the home lives on the host now, before docker answers the dir
+// compose was handed
+const homeDir = () => hostPathOf(HOME_FS) || process.env.PHOSPHORUS_HOME_DIR || HOME_FS;
+const homeShare = () => ({ ...makeShare('home', '', FULL_PERMS, HOME_ROOT), label: homeDir(), home: true });
+
+// one directory under two mounts, the home and a [files] dir
+const sameDir = (a, b) => {
+  try { const x = fs.statSync(a); const y = fs.statSync(b); return x.dev === y.dev && x.ino === y.ino; } catch { return false; }
+};
+
+const shares = () => [homeShare(), ...buildShares().filter((s) => !sameDir(s.root, HOME_ROOT) && s.label !== homeDir())].filter((s) => s.ok);
 
 const shareOf = (id) => shares().find((s) => s.id === String(id)) || null;
 
@@ -313,7 +334,7 @@ function stat(share, rel) {
   try { return { dir: fs.statSync(abs).isDirectory(), rel: relOf(share, abs) }; } catch { return null; }
 }
 
-// a usr change told to whoever watches (the mirror), set from outside
+// a home change told to whoever watches (the mirror), set from outside
 const hooks = { change: null };
 const changed = (share, op, rel, to) => { if (share.id === 'home' && hooks.change) hooks.change(op, rel, to); };
 
@@ -470,6 +491,7 @@ function homeGate(who, rel, isUser) {
   if (!who) return 'log in to reach home';
   const seg = firstSeg(rel);
   if (who.user) ensureHome(who.user);
+  if (seg === SYS) return 'the system\'s alone';
   if (!seg || seg === who.user || seg === SHARED) return '';
   if (isUser(seg)) return "another user's home";
   return who.admin ? '' : 'admins only';
@@ -484,12 +506,8 @@ function homeFilter(who, rel, out, isUser) {
   return { ...out, entries: out.entries.filter((e) => !homeGate(who, full(e), isUser)) };
 }
 
-// where usr/ and sys/ live on the host now, before docker answers the dir
-// compose was handed
-const homeDir = () => hostPathOf(HOME_FS) || process.env.PHOSPHORUS_HOME_DIR || HOME_FS;
-
 module.exports = {
-  hooks, homeDir, DESKTOP, SHARED, HOME_ROOT, homeGate, homeFilter, safePath, makeParents, relOf,
+  hooks, homeDir, DESKTOP, SHARED, SYS, HOME_ROOT, homeGate, homeFilter, safePath, makeParents, relOf,
   configuredDirs, pending, enabled, shares, shareOf, can, locate,
   list, tree, read, stat, downloadPath, write, save, mkdir, rename, remove,
 };

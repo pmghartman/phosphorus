@@ -58,8 +58,8 @@ function Add-PhosphorusMissingSections {
         Add-Content $file @(
             "",
             "[home]",
-            "# dir: where usr/ (each user's home, shared/) and sys/ live, blank: the home's state/",
-            "# changed: both copied there on the next rebuild and the old ones deleted",
+            "# dir: the [files] dir holding each user's folder, shared/ and sys/, blank: the home's files/",
+            "# changed: all three moved there on the next rebuild",
             "dir ="
         )
         Write-Host "[phosphorus.ini] added the [home] section"
@@ -97,11 +97,11 @@ function Test-PhosphorusModelGpu { (Get-PhosphorusValue "model" "gpu") -eq "true
 
 # absolute host path published on the frontend's Files tab, the repo's own
 # files/ when [files] dir is blank, so the mount always resolves
-# [home] dir, where usr/ and sys/ live, the home's state\ when blank
+# [home] dir, where the homes, shared/ and sys/ live, the home's files\ when blank
 function Get-PhosphorusHomeDir {
     $dir = (Get-PhosphorusValue "home" "dir")
     if ($dir) { $dir = $dir.TrimEnd("/", "\") }
-    if (-not $dir) { return (Join-Path (Get-Location) "state") }
+    if (-not $dir) { return (Join-Path (Get-Location) "files") }
     if ([System.IO.Path]::IsPathRooted($dir)) { return $dir }
     return (Join-Path (Get-Location) $dir)
 }

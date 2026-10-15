@@ -36,9 +36,10 @@ services:
       # what /files actually resolves to, so the frontend can tell a changed [files]
       # dir from the one this container was created with
       PHOSPHORUS_FILES_DIR: ${PHOSPHORUS_FILES_DIR:-./files}
-      # [home] dir: usr/ and sys/ under /homefs, the host path kept for the frontend
+      # [home] dir: the homes, shared/ and sys/ under /homefs, the host path
+      # kept for the frontend
       HOME_FS: /homefs
-      PHOSPHORUS_HOME_DIR: ${PHOSPHORUS_HOME_DIR:-./state}
+      PHOSPHORUS_HOME_DIR: ${PHOSPHORUS_HOME_DIR:-./files}
       # the tailnet and mesh name, empty: the container's hostname
       TS_HOSTNAME: ${TS_HOSTNAME:-}
       # set by rebuild where /hostfs holds the host's drives, empty: the
@@ -53,12 +54,13 @@ services:
       # file mount's fixed inode misses an editor's atomic save
       - ./config:/etc/phosphorus:ro
 
-      # tick-to-tick state: chat, tailnet view, git and update bookkeeping
+      # this host's own bookkeeping, never published: chat cache, tailnet
+      # view, git, model, update and project records
       - ./state:/state
 
-      # [home] dir from config/phosphorus.ini: usr/ (homes, shared) and sys/
-      # (the mesh's users and settings), unset: state/ above
-      - ${PHOSPHORUS_HOME_DIR:-./state}:/homefs
+      # [home] dir from config/phosphorus.ini: each user's folder, shared/ and
+      # sys/ (the mesh's users and settings), unset: files/ below
+      - ${PHOSPHORUS_HOME_DIR:-./files}:/homefs
 
       # [files] dir from config/phosphorus.ini, for the web's Files tab, read-write,
       # unset: the home's files/

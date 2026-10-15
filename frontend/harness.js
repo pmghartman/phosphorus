@@ -8,6 +8,7 @@ const fs = require('fs');
 const http = require('http');
 const path = require('path');
 const { FRONTEND_PORT } = require('./util');
+const { HOME_ROOT, SHARED } = require('./files');
 
 const BIN = process.env.OPENCODE_BIN || '/opt/opencode/opencode';
 const PORT = Number(process.env.OPENCODE_PORT || 8792);
@@ -58,7 +59,7 @@ const HELPER_TOOLS = { ...PROJECT_TOOLS, task: false, [`${HANDLE}_project_*`]: f
 // (its cwd or file), installed there on first use; anywhere else, a chat's
 // share among them, refused, so none ever runs a workspace's code out here
 
-const WORK_ROOT = path.posix.join(process.env.STATE_DIR || '/state', 'projects');
+const WORK_ROOT = path.posix.join(HOME_ROOT, SHARED, 'projects');
 const SANDBOX_PREFIX = 'phosphorus-sandbox-';
 // the toolchains' own bin dirs, rustup's and go's
 const PATHS = 'export DEBIAN_FRONTEND=noninteractive PATH="$HOME/.cargo/bin:$HOME/go/bin:/usr/local/go/bin:$PATH"';

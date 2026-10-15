@@ -4967,6 +4967,8 @@ const pjList = document.getElementById('pj-list');
 const PJ_MAX_HOURS = 14 * 24;
 const pjHead = document.getElementById('pj-head');
 const pjBody = document.getElementById('pj-body');
+// a project's folder in its host's home
+const pjWork = (p) => `shared/projects/${p.workspace || p.id}`;
 // the workspace's files listed again at most this often, on news only
 const PJ_FILES_MS = 3000;
 const PJ_PHASES = ['plan', 'execute', 'test', 'refine'];
@@ -5150,7 +5152,7 @@ function pjPaintOne() {
       + `<span class="pj-ev-text">${esc(text)}${e.n > 1 ? ` <span class="st-dim">×${e.n}</span>` : ''}</span></li>`;
   }).join('');
   const files = pjFiles.list.length ? pjFiles.list.map((f) => `<li><button type="button" class="pj-file" data-path="${esc(f.path)}"${f.dir ? ' disabled' : ''}>`
-    + `${esc(f.path.slice(p.id.length + 1))}</button></li>`).join('') : '<li class="st-dim">empty</li>';
+    + `${esc(f.path.slice(pjWork(p).length + 1))}</button></li>`).join('') : '<li class="st-dim">empty</li>';
   const row = (k, v) => `<div class="pj-row"><span class="st-key">${k}</span><span>${v}</span></div>`;
   const detail = el('div', 'pj-detail');
   detail.innerHTML = `<div class="pj-top">`
@@ -5164,7 +5166,7 @@ function pjPaintOne() {
     + `</div>`
     + (p.final ? `<div class="pj-sec"><div class="pj-sec-head">summary</div><div class="pj-final md"></div></div>` : '')
     + `<div class="pj-cols"><div class="pj-sec"><div class="pj-sec-head">tasks ${p.tasks.length ? `<span class="st-dim">${p.tasks.filter((t) => t.done).length}/${p.tasks.length}</span>` : ''}</div><ul class="pj-tasks">${tasks}</ul></div>`
-    + `<div class="pj-sec"><div class="pj-sec-head">workspace <span class="st-dim">${esc(p.host)}/projects/${esc(p.workspace || p.id)}</span></div><ul class="pj-files">${files}</ul></div></div>`
+    + `<div class="pj-sec"><div class="pj-sec-head">workspace <span class="st-dim">${esc(p.host)}/${esc(pjWork(p))}</span></div><ul class="pj-files">${files}</ul></div></div>`
     + `<div class="pj-sec"><div class="pj-sec-head">timeline <button type="button" class="st-clear pj-cmds">${pjCmds ? 'hide commands' : 'show commands'}</button></div><ul class="pj-events">${timeline}</ul></div>`
     + `<div class="pj-sec"><div class="pj-sec-head">brief</div><div class="pj-brief"></div></div>`;
   detail.querySelector('.pj-brief').textContent = p.brief;
@@ -5250,7 +5252,7 @@ function pjSay(text) {
 pjBody.addEventListener('click', (e) => {
   if (e.target.closest('.pj-cmds')) { pjCmds = !pjCmds; pjSig = ''; pjPaintOne(); return; }
   const f = e.target.closest('.pj-file');
-  if (f && pjOne) dkCode({ host: pjOne.host, share: 'projects', path: f.dataset.path, label: `${pjOne.host}/projects/${f.dataset.path}` });
+  if (f && pjOne) dkCode({ host: pjOne.host, share: 'home', path: f.dataset.path, label: `${pjOne.host}/${f.dataset.path}` });
 });
 
 // the workspace's files, again only once something happened there
@@ -5261,7 +5263,7 @@ function pjLoadFiles() {
   const news = `${p.events.length}:${p.events.at(-1)?.at || 0}`;
   if (pjFiles.key === key && (pjFiles.sig === news || Date.now() - pjFiles.at < PJ_FILES_MS)) return;
   pjFiles = { ...pjFiles, key, at: Date.now(), sig: news };
-  pjGet(`/api/files/${encodeURIComponent(p.host)}/tree?share=projects&path=${encodeURIComponent(p.workspace || p.id)}&depth=4`).then((r) => {
+  pjGet(`/api/files/${encodeURIComponent(p.host)}/tree?share=home&path=${encodeURIComponent(pjWork(p))}&depth=4`).then((r) => {
     if (pjFiles.key !== key) return;
     pjFiles.list = (r.entries || []).filter((x) => !/(^|\/)(\.git|node_modules|__pycache__|\.venv)(\/|$)/.test(x.path))
       .map((x) => ({ path: x.path.replace(/\/$/, ''), dir: x.path.endsWith('/') })).filter((x) => !x.dir).slice(0, 200);
@@ -5280,7 +5282,7 @@ function pjPaintNew() {
   const hosts = [...new Set([pjSelf, ...phosphorusHosts()].filter(Boolean))].sort((x, y) => (y === pjSelf) - (x === pjSelf) || x.localeCompare(y));
   const first = hosts.find((h) => !busy.has(h)) || hosts[0] || '';
   form.innerHTML = '<p class="pj-intro">The <span class="who-model">orangutan</span> works on it alone in a sandbox on the host picked, in rounds of plan, execute, test and refine, '
-    + 'until it says it is done or the time runs out. It reports as it goes; its files land in the read-only projects share.</p>'
+    + 'until it says it is done or the time runs out. It reports as it goes; its files land in shared/projects on that host.</p>'
     + '<input class="update-pass pj-title" type="text" placeholder="title" maxlength="120" autocomplete="off" required>'
     + '<textarea class="update-pass pj-brief-in" rows="12" placeholder="the brief: what to make, what done looks like, any constraints" maxlength="20000" required></textarea>'
     + '<div class="pj-opts"><label class="pj-host">host <select class="update-pass">'
@@ -6172,17 +6174,33 @@ const DK_GY = 86;
 const DK_PAD = 8;
 dk.sel = new Set();
 
+// a service with no icon of its own: its initial in a rounded square
+function dkMono(label) {
+  const svg = svgEl('svg', { viewBox: '0 0 16 16', class: 'ic dk-mono', 'aria-hidden': 'true' });
+  svg.appendChild(svgEl('rect', { x: 1.5, y: 1.5, width: 13, height: 13, rx: 3 }));
+  const t = svgEl('text', { x: 8, y: 8.6, 'text-anchor': 'middle', 'dominant-baseline': 'middle' });
+  t.textContent = (String(label).match(/[a-z0-9]/i)?.[0] || '?').toUpperCase();
+  svg.appendChild(t);
+  return svg;
+}
+
+// the first of icons that loads, the glyph kept when none does
+function dkTryIcons(tile, icons) {
+  const [first, ...rest] = icons.filter(Boolean);
+  if (!first) return;
+  const img = Object.assign(el('img', 'dk-favicon'), { alt: '', decoding: 'async', draggable: false });
+  img.addEventListener('load', () => { tile.replaceChildren(img); tile.classList.add('dk-tile-img'); }, { once: true });
+  img.addEventListener('error', () => dkTryIcons(tile, rest), { once: true });
+  img.src = first;
+}
+
 function dkIcon(kind, label, sub, open, icon = '') {
   const b = Object.assign(el('button', `dk-icon dk-${kind}`), { type: 'button', title: sub ? `${label} on ${sub}` : label });
   const tile = el('span', 'dk-tile');
-  tile.appendChild(dkGlyph(DK_GLYPHS[kind]));
+  tile.appendChild(kind === 'service' ? dkMono(label) : dkGlyph(DK_GLYPHS[kind]));
   if (kind === 'chat') tile.appendChild(dkBadge());
-  // a site's own icon once it loads, the globe till then
-  if (icon) {
-    const img = Object.assign(el('img', 'dk-favicon'), { alt: '', decoding: 'async', draggable: false });
-    img.addEventListener('load', () => { tile.replaceChildren(img); tile.classList.add('dk-tile-img'); }, { once: true });
-    img.src = icon;
-  }
+  // a site's own icon once it loads
+  dkTryIcons(tile, [].concat(icon));
   b.append(tile, el('span', 'dk-label', label));
   if (sub) b.appendChild(el('span', 'dk-sub', sub));
   b.dataset.id = `${kind}\n${label}\n${sub}`;
@@ -6617,7 +6635,7 @@ function dkMove(w, head) {
       w.x = Math.max(48 - w.w, Math.min(box.width - 48, w.x));
       w.y = Math.max(0, Math.min(box.height - 28, w.y));
       dkPlace(w);
-      if (zone) dkSnap(w, zone);
+      if (zone) { dkTween(w); dkSnap(w, zone); }
     };
     head.addEventListener('pointermove', onMove);
     head.addEventListener('pointerup', onUp, { once: true });
@@ -6625,7 +6643,37 @@ function dkMove(w, head) {
   });
 }
 
+// a class played out before done, cut short by a refocus
+function dkLeave(w, done) {
+  const n = w.node;
+  const end = () => {
+    if (w.leaving !== t) return;
+    clearTimeout(t);
+    w.leaving = 0;
+    n.removeEventListener('animationend', onEnd);
+    n.classList.remove('dk-leaving');
+    done();
+  };
+  const onEnd = (e) => { if (e.target === n) end(); };
+  const t = setTimeout(end, 250);
+  w.leaving = t;
+  n.classList.add('dk-leaving');
+  n.addEventListener('animationend', onEnd);
+}
+
+// a geometry change eased, never a drag's
+function dkTween(w) {
+  w.node.classList.add('dk-tween');
+  clearTimeout(w.tween);
+  w.tween = setTimeout(() => w.node.classList.remove('dk-tween'), 220);
+}
+
 function dkFocus(w) {
+  if (w?.leaving) {
+    clearTimeout(w.leaving);
+    w.leaving = 0;
+    w.node.classList.remove('dk-leaving');
+  }
   for (const o of dk.wins.values()) {
     o.node.classList.toggle('focused', o === w);
     o.task.classList.toggle('active', o === w);
@@ -6638,15 +6686,16 @@ function dkFocus(w) {
 }
 
 function dkMin(w) {
-  w.node.hidden = true;
+  dkLeave(w, () => { w.node.hidden = true; });
   w.node.classList.remove('focused');
   w.task.classList.remove('active');
-  const top = [...dk.wins.values()].filter((o) => !o.node.hidden).sort((a, b) => b.node.style.zIndex - a.node.style.zIndex)[0];
+  const top = [...dk.wins.values()].filter((o) => !o.node.hidden && !o.leaving).sort((a, b) => b.node.style.zIndex - a.node.style.zIndex)[0];
   if (top) dkFocus(top);
   dkAppsChanged();
 }
 
 function dkMax(w) {
+  dkTween(w);
   dkSnap(w, w.snap === 'max' ? '' : 'max');
   dkFocus(w);
 }
@@ -6655,7 +6704,7 @@ function dkMax(w) {
 function dkClose(w, force) {
   if (!force && w.holdClose?.()) return;
   w.onClose?.();
-  w.node.remove();
+  if (force) w.node.remove(); else dkLeave(w, () => w.node.remove());
   w.task.remove();
   dk.wins.delete(w.key);
   dkAppsChanged();
@@ -6892,7 +6941,7 @@ async function fmSide(fm) {
   const render = () => {
     const home = el('div', `fm-place fm-share${fmSame(HOME, fm.loc) ? ' here' : ''}`);
     home.append(fmIcon('dir'), el('span', '', 'home'));
-    home.title = 'usr on every host as one';
+    home.title = 'every host\'s home as one';
     home.addEventListener('click', () => fmGo(fm, HOME, ''));
     fmDropZone(fm, home, () => ({ loc: HOME, dir: '' }));
     const out = [home, el('div', 'fm-side-head', 'hosts')];
@@ -6920,7 +6969,7 @@ async function fmSide(fm) {
     try {
       // what the host published in sys, else asked
       const info = hostsInfo[h.toLowerCase()]?.files || await filesCall({ host: h }, 'info');
-      // usr only as the merged home above
+      // the home only as the merged one above
       fm.shares.set(h, info.enabled
         ? { shares: info.shares.filter((sh) => sh.id !== 'home').map((sh) => ({ host: h, share: sh.id, root: sh.label, perms: sh.perms })) }
         : { error: 'no files directory' });
@@ -7532,16 +7581,20 @@ async function dkDeskLoad() {
   dkIcons();
 }
 
+// an .app folder's own icon, the first of these it holds
+const DK_APP_ICONS = ['icon.svg', 'icon.png', 'favicon.svg', 'favicon.png', 'favicon.ico'];
+
 function dkFileIcon(e) {
   const rel = filesJoin(e.at, e.name);
   const kind = runnable(e) ? 'app' : fmKind(e);
-  const pic = kind === 'image' && !e.stale ? filesApi(HOME, 'download', { path: rel, inline: 1 }) : '';
+  const pic = kind === 'image' && !e.stale ? filesApi(HOME, 'download', { path: rel, inline: 1 })
+    : kind === 'app' && e.dir && !e.stale ? DK_APP_ICONS.map((n) => filesApi(homeAt(e.live?.includes(selfHost) ? selfHost : e.live?.[0] || selfHost), 'download', { path: `${rel}/${n}`, inline: 1 })) : '';
   // under it: shared, and the host unless it's everywhere or here alone
   const where = e.all ? '' : e.hosts.length === 1 && e.hosts[0] === selfHost ? '' : e.hosts.join(', ');
   const sub = [e.at.startsWith('shared/') ? 'shared' : '', where].filter(Boolean).join(' · ');
   const b = dkIcon('doc', e.name.replace(/\.app$/i, ''), sub, () => fileOpen(HOME, rel, e), pic);
   const tile = b.querySelector('.dk-tile');
-  if (!pic) tile.replaceChildren(kind === 'app' ? dkGlyph(DK_GLYPHS.app, 'fm-app') : fmIcon(kind));
+  if (!pic || kind === 'app') tile.replaceChildren(kind === 'app' ? dkGlyph(DK_GLYPHS.app, 'fm-app') : fmIcon(kind));
   b.classList.add(`dk-doc-${kind}`);
   if (e.stale) b.classList.add('dk-stale');
   b.dataset.file = rel;
@@ -7815,7 +7868,7 @@ function dkAppsChanged() {
   deskApps.clear();
   for (const id of [...Object.keys(DK_APPS), 'git']) {
     const w = dk.wins.get(`app:${id}`);
-    if (w && !w.node.hidden) deskApps.add(id);
+    if (w && !w.node.hidden && !w.leaving) deskApps.add(id);
   }
   const up = (id) => deskApps.has(id) && !was.has(id);
   if (deskApps.has('projects') !== was.has('projects')) pjWatch(deskApps.has('projects'));
