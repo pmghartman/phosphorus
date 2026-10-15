@@ -64,14 +64,18 @@ is the host's own. You get a desktop:
 - **editor**: edit text files live with others, saved as you type (ctrl+s saves now)
 - **chat**: channels and direct messages; `/chimp` asks the AI model
 - **status**: CPU, memory, disk and network for every host, and which AI model is in use
-- **projects**: hand a longer task to the big AI model and watch it work
+- **projects**: hand a longer task to the big AI model and watch it work; its
+  files land in a folder named after the project in the read-only projects share
 - **git**: your own git server
 - **games**: start and stop game servers, get the join address
 - every other web service your hosts publish, with its own icon
 
 Windows move, snap to edges and resize from any side. In the bar at the bottom:
 your open windows, your hosts (purple is the one serving this page; click another
-to switch), the mesh map, updates, and light or dark theme.
+to switch), the mesh map, updates, and light or dark theme. Right click the desktop
+to open a terminal or files, add files from your computer (or drop them on it),
+change the wallpaper or arrange the icons; right click a picture in files to make it
+the wallpaper. Your wallpaper follows you to any browser.
 
 ## Updating
 
@@ -119,8 +123,26 @@ stop = systemctl --user stop tmodloader
 ```
 
 A service shows up at `yourdomain/host/name/`, or at `name.yourdomain` with
-`mode = subdomain`. Game servers are reachable only inside the mesh, at
-`name.phosphorus`.
+`mode = subdomain`. Both open in a desktop window: a subdomain service's
+`X-Frame-Options` and `frame-ancestors` are relaxed to let your domain, and only it,
+frame it. Game servers are reachable only inside the mesh, at `name.phosphorus`.
+
+## Projects API
+
+Through your domain logged in (the `phosphorus-user` cookie), or on the host itself;
+JSON in and out, any host forwarding to the one named.
+
+| | |
+|---|---|
+| `GET /api/projects` | every host's projects |
+| `POST /api/projects` | start one: `{host, title, brief, hours, by}` |
+| `GET /api/projects/<host>/<id>` | one, with its tasks, notes and events |
+| `GET /api/projects/<host>/<id>/events?since=<ms>` | the events after a time |
+| `POST /api/projects/<host>/<id>/note` | `{text, by}`, read next round |
+| `POST /api/projects/<host>/<id>/extend` | `{hours, by}` more for a running one |
+| `POST /api/projects/<host>/<id>/restart` | `{hours, brief, by}`, back to work in the same folder |
+| `POST /api/projects/<host>/<id>/stop` | `{by}` |
+| `POST /api/projects/<host>/<id>/delete` | the record and its folder, once stopped |
 
 ## Command line
 

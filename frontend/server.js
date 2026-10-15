@@ -1005,6 +1005,7 @@ const USER_CALLS = {
   'POST /api/logout': (s, p, req) => [200, { ok: true }, users.clearCookie(req)],
   'POST /api/me/vault': (s, p) => users.setVault(s, p),
   'POST /api/me/prefs': (s, p) => users.setPrefs(s, p),
+  'POST /api/me/wallpaper': (s, p) => users.setWallpaper(s, p),
   'POST /api/me/password': (s, p, req) => users.changePass(s, p, req),
   'GET /api/users': (s) => users.list(s),
   'POST /api/users': (s, p) => users.create(s, p),
@@ -1027,7 +1028,16 @@ function app(req, res) {
   // the sys tree for a peer's pull, a browser's login and own vault
   if (pathname === '/api/sys/sync' && req.method === 'GET') {
     if (!isTailnet(req) || req.ingress) { res.writeHead(403).end('forbidden'); return; }
-    sendJson(res, 200, sys.dump());
+    const rels = searchParams.get('rels');
+    sendJson(res, 200, sys.dump(rels ? rels.split(',').slice(0, 200) : null));
+    return;
+  }
+  // the user's desktop picture, as an image
+  if (pathname === '/api/me/wallpaper' && req.method === 'GET') {
+    if (!isLocalOrPeer(req)) { res.writeHead(403).end('forbidden'); return; }
+    const w = users.wallpaper(users.session(req));
+    if (!w) { res.writeHead(404, { 'cache-control': 'no-store' }).end(); return; }
+    res.writeHead(200, { 'content-type': w.type, 'cache-control': 'private, max-age=31536000, immutable', 'x-content-type-options': 'nosniff' }).end(w.body);
     return;
   }
   const userCall = USER_CALLS[`${req.method} ${pathname}`];
@@ -1039,7 +1049,7 @@ function app(req, res) {
       sendJson(res, status, body);
     };
     if (req.method === 'GET') { reply(userCall(s, {}, req)); return; }
-    readRaw(req, MAX_JSON_BODY).then(async (buf) => {
+    readRaw(req, pathname === '/api/me/wallpaper' ? Math.ceil(users.MAX_WALL * 1.4) + 1024 : MAX_JSON_BODY).then(async (buf) => {
       let p = {};
       try { p = JSON.parse(buf.toString('utf8') || '{}') || {}; } catch {}
       reply(await userCall(s, p, req));
@@ -1226,8 +1236,8 @@ function app(req, res) {
     return;
   }
   // one project, its host's own, anyone else forwarding it like games
-  const pj = pathname.match(/^\/api\/projects\/([a-z0-9][a-z0-9-]*)\/([a-z0-9]{12})(?:\/(stop|note|delete))?$/i);
-  if (pj && (pj[3] ? req.method === 'POST' : req.method === 'GET')) {
+  const pj = pathname.match(/^\/api\/projects\/([a-z0-9][a-z0-9-]*)\/([a-z0-9]{12})(?:\/(stop|note|delete|extend|restart|events))?$/i);
+  if (pj && (pj[3] && pj[3] !== 'events' ? req.method === 'POST' : req.method === 'GET')) {
     if (!isLocalOrPeer(req)) { res.writeHead(403).end('forbidden'); return; }
     const [, host, id, op] = pj;
     const run = async (p) => {
@@ -1235,14 +1245,17 @@ function app(req, res) {
         if (searchParams.has('hop')) return [421, { error: `sent to ${SELF_HOST}, which isn't ${host}` }];
         const ip = await tailnetIp(host);
         if (!ip) return [502, { error: `can't find ${host} on the tailnet` }];
-        return peerCall(host, { host: ip, method: req.method, path: `${pathname}?hop=1`, body: op ? p : undefined, timeout: 15000 });
+        const q = new URLSearchParams(searchParams);
+        q.set('hop', '1');
+        return peerCall(host, { host: ip, method: req.method, path: `${pathname}?${q}`, body: req.method === 'POST' ? p : undefined, timeout: 15000 });
       }
       const out = op === 'stop' ? project.stop(id, p.by) : op === 'note' ? project.note(id, p.by, p.text)
-        : op === 'delete' ? project.remove(id) : project.detail(id);
-      if (op && out[0] === 200) clock.markHot();
+        : op === 'delete' ? project.remove(id) : op === 'extend' ? project.extend(id, p)
+          : op === 'restart' ? project.restart(id, p) : op === 'events' ? project.events(id, searchParams.get('since')) : project.detail(id);
+      if (req.method === 'POST' && out[0] === 200) clock.markHot();
       return out;
     };
-    if (op) onJson(req, res, MAX_JSON_BODY, run, true);
+    if (req.method === 'POST') onJson(req, res, MAX_JSON_BODY, run, true);
     else run({}).then((out) => sendJson(res, ...out));
     return;
   }

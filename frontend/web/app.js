@@ -261,7 +261,6 @@ const meshGraphWrap = document.getElementById('mesh-graph-wrap');
 const meshStats = document.getElementById('mesh-stats');
 const meshStatsRows = document.getElementById('mesh-stats-rows');
 const meshHeader = document.querySelector('.mesh-header');
-const meshToggle = document.getElementById('mesh-toggle');
 const stash = document.querySelector('.stash');
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -324,8 +323,6 @@ function animateMeshT(target) {
 function setMeshExpanded(willExpand, snap) {
   if (willExpand === meshPanel.classList.contains('expanded')) return;
   meshPanel.classList.toggle('expanded', willExpand);
-  meshToggle.setAttribute('aria-expanded', String(willExpand));
-  meshToggle.setAttribute('aria-label', willExpand ? 'shrink mesh graph' : 'expand mesh graph');
   if (!snap) { animateMeshT(willExpand ? 1 : 0); return; }
   if (meshAnimFrame) cancelAnimationFrame(meshAnimFrame);
   meshAnimFrame = null;
@@ -334,22 +331,9 @@ function setMeshExpanded(willExpand, snap) {
   drawMesh();
 }
 
-meshToggle.addEventListener('click', () => setMeshExpanded(!meshPanel.classList.contains('expanded')));
-setMeshExpanded(false);
-
-// touch swipe on the graph: up to open its table, down to close, desktop only
-let meshSwipe = null;
-meshGraphWrap.addEventListener('pointerdown', (e) => {
-  if (e.pointerType !== 'mouse') meshSwipe = { id: e.pointerId, x: e.clientX, y: e.clientY };
-});
-meshGraphWrap.addEventListener('pointercancel', () => { meshSwipe = null; });
-meshGraphWrap.addEventListener('pointerup', (e) => {
-  if (!meshSwipe || e.pointerId !== meshSwipe.id) return;
-  const dx = e.clientX - meshSwipe.x;
-  const dy = e.clientY - meshSwipe.y;
-  meshSwipe = null;
-  if (Math.abs(dy) > 40 && Math.abs(dy) > Math.abs(dx) * 1.3) setMeshExpanded(dy < 0);
-});
+// always expanded, its table always up
+meshPanel.classList.add('expanded');
+meshT = 1;
 
 window.addEventListener('resize', () => {
   if (!meshAnimFrame) drawMesh();
@@ -4991,9 +4975,11 @@ function pjActs(p) {
   const send = Object.assign(el('button', 'primary pj-send', 'note'), { type: 'submit' });
   const stop = Object.assign(el('button', 'danger pj-stop', 'stop'), { type: 'button' });
   const del = Object.assign(el('button', 'danger pj-del', 'delete'), { type: 'button' });
+  const more = Object.assign(el('button', 'pj-more', '+24h'), { type: 'button', title: 'give it another day' });
+  const again = Object.assign(el('button', 'primary pj-again', 'restart'), { type: 'button', title: 'back to work in the same workspace, 72h' });
   const msg = el('span', 'pj-msg');
   const btns = el('div', 'update-actions');
-  btns.append(msg, stop, del, send);
+  btns.append(msg, more, stop, del, again, send);
   acts.append(input, btns);
   acts.addEventListener('submit', (e) => {
     e.preventDefault();
@@ -5004,6 +4990,9 @@ function pjActs(p) {
   });
   stop.addEventListener('click', () => pjStop());
   del.addEventListener('click', () => pjDelete());
+  const call = (op, body) => pjPost(`/api/projects/${encodeURIComponent(p.host)}/${p.id}/${op}`, { by: name, ...body }).then(pjPoll, (err) => { msg.textContent = err.message; });
+  more.addEventListener('click', () => call('extend', { hours: 24 }));
+  again.addEventListener('click', () => call('restart', { brief: input.value.trim() }));
   return acts;
 }
 
@@ -5013,6 +5002,8 @@ function pjActsState(acts, p) {
   acts.querySelector('.pj-send').hidden = !live;
   acts.querySelector('.pj-stop').hidden = !live;
   acts.querySelector('.pj-del').hidden = live;
+  acts.querySelector('.pj-more').hidden = !live;
+  acts.querySelector('.pj-again').hidden = live;
   acts.querySelector('.pj-stop').textContent = pjArmed === 'stop' ? 'really stop?' : 'stop';
   acts.querySelector('.pj-del').textContent = pjArmed === 'delete' ? 'delete it and its workspace?' : 'delete';
 }
@@ -5058,7 +5049,7 @@ function pjLoadFiles() {
   const news = `${p.events.length}:${p.events.at(-1)?.at || 0}`;
   if (pjFiles.key === key && (pjFiles.sig === news || Date.now() - pjFiles.at < PJ_FILES_MS)) return;
   pjFiles = { ...pjFiles, key, at: Date.now(), sig: news };
-  pjGet(`/api/files/${encodeURIComponent(p.host)}/tree?share=projects&path=${encodeURIComponent(p.id)}&depth=4`).then((r) => {
+  pjGet(`/api/files/${encodeURIComponent(p.host)}/tree?share=projects&path=${encodeURIComponent(p.workspace || p.id)}&depth=4`).then((r) => {
     if (pjFiles.key !== key) return;
     pjFiles.list = (r.entries || []).filter((x) => !/(^|\/)(\.git|node_modules|__pycache__|\.venv)(\/|$)/.test(x.path))
       .map((x) => ({ path: x.path.replace(/\/$/, ''), dir: x.path.endsWith('/') })).filter((x) => !x.dir).slice(0, 200);
@@ -5867,6 +5858,7 @@ function dkDesktop() {
   desk.append(dkArt(), icons, wins, bar);
   dkView.replaceChildren(desk);
   dkBand(icons);
+  dkDeskMenu(icons);
   dk.desk = { el: desk, icons, wins, tasks, hosts };
   dk.chips = '';
   dkChips();
@@ -5906,6 +5898,7 @@ function dkBar(...before) {
 }
 
 function dkArt() {
+  dkWallPaint();
   const art = el('div', 'dk-art');
   art.appendChild(document.querySelector('.about-art').cloneNode(true));
   return art;
@@ -5973,7 +5966,7 @@ function dkIcon(kind, label, sub, open, icon = '') {
   // a site's own icon once it loads, the globe till then
   if (icon) {
     const img = Object.assign(el('img', 'dk-favicon'), { alt: '', decoding: 'async', draggable: false });
-    img.addEventListener('load', () => { if (img.naturalWidth) tile.replaceChildren(img); }, { once: true });
+    img.addEventListener('load', () => { tile.replaceChildren(img); tile.classList.add('dk-tile-img'); }, { once: true });
     img.src = icon;
   }
   b.append(tile, el('span', 'dk-label', label));
@@ -6465,6 +6458,101 @@ function dkTerminal(host) {
   dkFocus(w);
 }
 
+// --- the wallpaper: a picture of the user's, kept in their home on the mesh
+
+const DK_WALL_MAX = 2560;
+
+function dkWallPaint() {
+  const at = acct?.wallpaper || 0;
+  dkView.classList.toggle('dk-walled', !!at);
+  if (at) dkView.style.setProperty('--dk-wall', `url("/api/me/wallpaper?v=${at}")`);
+  else dkView.style.removeProperty('--dk-wall');
+}
+
+// shrunk to the screen's size at most, a jpeg; '' once set, else why not
+async function dkWallSet(blob) {
+  let url;
+  try {
+    const bmp = await createImageBitmap(blob);
+    const k = Math.min(1, DK_WALL_MAX / Math.max(bmp.width, bmp.height));
+    const c = Object.assign(document.createElement('canvas'), { width: Math.round(bmp.width * k), height: Math.round(bmp.height * k) });
+    c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+    bmp.close?.();
+    url = c.toDataURL('image/jpeg', 0.85);
+  } catch { return 'not a picture this browser can read'; }
+  const r = await acctCall('/api/me/wallpaper', { data: url });
+  if (!r.ok) return r.error || 'not saved';
+  acct.wallpaper = r.wallpaper;
+  dkWallPaint();
+  return '';
+}
+
+async function dkWallClear() {
+  const r = await acctCall('/api/me/wallpaper', { data: '' });
+  if (!r.ok) return;
+  acct.wallpaper = 0;
+  dkWallPaint();
+}
+
+const dkPick = (accept, multiple, then) => {
+  const input = Object.assign(el('input'), { type: 'file', accept, multiple });
+  input.addEventListener('change', () => { if (input.files.length) then([...input.files]); });
+  input.click();
+};
+
+// computer files into a files window's first folder
+function dkAddFiles(list) {
+  const fm = dk.desk && dkFiles();
+  if (fm && list.length) fm.pendingUpload = list;
+}
+
+// a right click on the desk or an icon, a drop of the computer's files
+function dkDeskMenu(icons) {
+  icons.addEventListener('contextmenu', (e) => {
+    const b = e.target.closest('.dk-icon');
+    if (e.target !== icons && !b) return;
+    e.preventDefault();
+    if (b && !dk.sel.has(b.dataset.id)) { dk.sel = new Set([b.dataset.id]); dkPaintSel(); }
+    const hosts = [...dk.creds.keys()];
+    const items = [
+      ...(b ? [['open', () => b.dispatchEvent(new MouseEvent('dblclick')), true], null] : []),
+      ...hosts.map((h) => [`terminal on ${h}`, () => dkTerminal(h), true]),
+      ['files', () => dkFiles(), true],
+      ['add files…', () => dkPick('', true, dkAddFiles), hosts.length > 0],
+      null,
+      ['change wallpaper…', () => dkPick('image/*', false, ([f]) => dkWallSet(f).then((why) => why && dkMenuNote(why))), !!acct && !acct.boot],
+      ['remove wallpaper', dkWallClear, !!acct?.wallpaper],
+      null,
+      ['select all', () => { dk.sel = new Set(dkIconEls().map((x) => x.dataset.id)); dkPaintSel(); }, true],
+      ['arrange icons', dkArrange, true],
+    ];
+    dkMenu(e.clientX, e.clientY, items);
+  });
+  icons.addEventListener('dragover', (e) => {
+    if (!dragsFiles(e) || !dk.creds.size) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  });
+  icons.addEventListener('drop', (e) => {
+    if (!dragsFiles(e)) return;
+    e.preventDefault();
+    dkAddFiles([...e.dataTransfer.files]);
+  });
+}
+
+// a word in the clock's place a moment
+function dkMenuNote(text) {
+  if (!dk.clock) return;
+  dk.clock.textContent = text;
+  setTimeout(dkClock, 4000);
+}
+
+// every icon back in the default order
+function dkArrange() {
+  try { localStorage.setItem(DK_POS_KEY, '{}'); } catch {}
+  dkLayout();
+}
+
 // --- files: a file manager over the hosts' shares, places, a path bar, list
 // or icons, a right click's menu, cut, copy and paste across hosts
 
@@ -6566,6 +6654,7 @@ function dkFiles(at) {
   fmSide(fm);
   if (at) fmGo(fm, at.loc, at.dir); else fmRender(fm);
   dkFocus(w);
+  return fm;
 }
 
 // each connected host's shares, asked once a window
@@ -6652,6 +6741,9 @@ async function fmLoad(fm) {
   }
   fm.loading = '';
   fmRender(fm);
+  // files added from the desktop, into the first folder shown
+  const up = fm.pendingUpload;
+  if (up) { fm.pendingUpload = null; fmUpload(fm, fm.loc, fm.dir, up); }
 }
 
 // every window showing that folder, read again
@@ -6818,6 +6910,16 @@ function fmStep(fm, by, extend) {
 
 const fmReveal = (fm, name) => [...fm.main.querySelectorAll('.fm-item')].find((r) => r.dataset.name === name)?.scrollIntoView({ block: 'nearest' });
 
+async function fmWallpaper(fm, rel) {
+  fmSay(fm, 'setting the wallpaper…');
+  try {
+    const r = await fetch(filesApi(fm.loc, 'download', { path: rel }));
+    if (!r.ok) throw new Error(`${r.status}`);
+    const why = await dkWallSet(await r.blob());
+    fmSay(fm, why || 'wallpaper set', !!why);
+  } catch (err) { fmSay(fm, `wallpaper: ${err.message}`, true); }
+}
+
 // a right click's menu, on the page so no window's transform shifts it
 function fmMenu(fm, x, y, onItem) {
   const picked = fmPicked(fm);
@@ -6827,6 +6929,7 @@ function fmMenu(fm, x, y, onItem) {
     ['open', () => one && fmOpen(fm, one), !!one],
     one && !one.dir && ['open in editor', () => dkCode({ host: fm.loc.host, share: fm.loc.share, path: picked[0].rel, label: fileLabel(fm.loc.host, fm.loc.root, picked[0].rel) }), true],
     one && !one.dir && ['download', () => fmDownload(fm, picked[0].rel), fmCan(fm, 'r')],
+    one && fmKind(one) === 'image' && ['set as wallpaper', () => fmWallpaper(fm, picked[0].rel), fmCan(fm, 'r')],
     null,
     ['cut', () => fmClip(fm, 'cut'), fmCan(fm, 'd')],
     ['copy', () => fmClip(fm, 'copy'), true],
@@ -7369,7 +7472,7 @@ function acctLogin(setup) {
 }
 
 function acctIn(me) {
-  acct = { user: me.user, admin: me.admin, boot: me.boot, vault: me.vault || { hosts: {}, pages: {} } };
+  acct = { user: me.user, admin: me.admin, boot: me.boot, wallpaper: me.wallpaper || 0, vault: me.vault || { hosts: {}, pages: {} } };
   acct.vault.hosts ||= {};
   acct.vault.pages ||= {};
   if (acct.boot) { acctSetup(); return; }

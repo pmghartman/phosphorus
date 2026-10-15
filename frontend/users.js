@@ -12,6 +12,7 @@ const passwd = (n) => `etc/passwd/${n}.json`;
 const shadow = (n) => `etc/shadow/${n}.json`;
 const vaultFile = (n) => `home/${n}/vault.json`;
 const prefsFile = (n) => `home/${n}/prefs.json`;
+const wallFile = (n) => `home/${n}/wallpaper.json`;
 sys.oldestWins(SECRET);
 
 // .env's admin password, the bootstrap admin's, unset: an empty one
@@ -33,6 +34,9 @@ const tries = new Map();
 const MAX_PREFS = 32 * 1024;
 // the page's settings following a user between browsers
 const PREF_KEYS = ['icons', 'theme', 'recent', 'color'];
+// a desktop picture, already shrunk by the page
+const MAX_WALL = 3 * 1024 * 1024;
+const WALL_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
 
 const live = (name) => {
   const pw = NAME_RE.test(name) && sys.read(passwd(name));
@@ -162,7 +166,26 @@ function vaultOf(s) {
 const me = (s) => ({
   user: s.user, admin: s.admin, boot: s.boot, vault: vaultOf(s) || { hosts: {}, pages: {} },
   prefs: (!s.boot && sys.read(prefsFile(s.user))) || {},
+  wallpaper: (!s.boot && sys.read(wallFile(s.user)) && sys.stamp(wallFile(s.user))) || 0,
 });
+
+// {type, body}, null for none
+function wallpaper(s) {
+  const w = s && !s.boot && sys.read(wallFile(s.user));
+  return w && WALL_TYPES.includes(w.type) ? { type: w.type, body: Buffer.from(String(w.data || ''), 'base64') } : null;
+}
+
+// a data: url, '' dropping it
+function setWallpaper(s, p) {
+  if (!s || s.boot) return [403, { error: 'the setup admin keeps no settings' }];
+  const url = String(p.data || '');
+  if (!url) { sys.remove(wallFile(s.user)); return [200, { wallpaper: 0 }]; }
+  const m = url.match(/^data:([a-z/]+);base64,([A-Za-z0-9+/=]+)$/);
+  if (!m || !WALL_TYPES.includes(m[1])) return [400, { error: 'png, jpeg, webp or gif only' }];
+  if (m[2].length * 0.75 > MAX_WALL) return [413, { error: 'picture too large' }];
+  sys.write(wallFile(s.user), { type: m[1], data: m[2] });
+  return [200, { wallpaper: sys.stamp(wallFile(s.user)) }];
+}
 
 // each a string as the page's localStorage held it, '' dropping it
 function setPrefs(s, p) {
@@ -275,12 +298,12 @@ function remove(s, p) {
   const name = String(p.name || '');
   if (!live(name)) return [404, { error: 'no such user' }];
   if (name === s.user) return [400, { error: 'another admin can delete you, not yourself' }];
-  for (const f of [passwd(name), shadow(name), vaultFile(name), prefsFile(name)]) sys.remove(f);
+  for (const f of [passwd(name), shadow(name), vaultFile(name), prefsFile(name), wallFile(name)]) sys.remove(f);
   return list(s);
 }
 
 module.exports = {
   pass: (req) => !!session(req),
   issuers,
-  COOKIE, session, refresh, me, login, setVault, setPrefs, changePass, list, create, setAdmin, remove, clearCookie, setup: () => !anyAdmin(),
+  COOKIE, MAX_WALL, session, refresh, me, login, setVault, setPrefs, wallpaper, setWallpaper, changePass, list, create, setAdmin, remove, clearCookie, setup: () => !anyAdmin(),
 };

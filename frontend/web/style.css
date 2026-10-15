@@ -307,6 +307,10 @@ body {
   position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column;
   background: radial-gradient(var(--border) 1px, transparent 1px) 0 0 / 22px 22px, var(--bg);
 }
+/* the user's own picture over the dots, the art hidden */
+.dk-walled .dk-desk { background: var(--dk-wall) center / cover no-repeat, var(--bg); }
+.dk-walled .dk-art { display: none; }
+.dk-walled .dk-label, .dk-walled .dk-icon .dk-sub { padding: 0 0.25rem; border-radius: 0.2rem; background: color-mix(in srgb, var(--bg) 72%, transparent); }
 .dk-art { position: absolute; inset: 0 0 3.3rem; display: flex; align-items: center; justify-content: center; opacity: 0.06; pointer-events: none; user-select: none; overflow: hidden; }
 .dk-art .about-art { overflow: visible; max-width: none; }
 .dk-icons { position: absolute; inset: 0 0 3.3rem 0; z-index: 1; touch-action: none; user-select: none; }
@@ -319,11 +323,12 @@ body {
 }
 .dk-tile {
   display: flex; align-items: center; justify-content: center; width: 2.4rem; height: 2.4rem;
-  background: var(--card); border: 1px solid var(--border); color: var(--muted);
+  background: transparent; border: 1px solid var(--border); color: var(--muted);
   transition: border-color 0.12s, color 0.12s, background-color 0.12s;
 }
+.dk-tile-img { border-color: transparent; }
 .dk-tile .ic { width: 1.15rem; height: 1.15rem; }
-.dk-icon:hover .dk-tile, .dk-icon:focus-visible .dk-tile { border-color: var(--accent); background: var(--bg); }
+.dk-icon:hover .dk-tile, .dk-icon:focus-visible .dk-tile { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .dk-icon:focus-visible { outline: none; }
 .dk-icon:active .dk-tile { transform: translateY(1px); }
 .dk-icon.dk-terminal .ic { color: var(--accent); }
@@ -1023,38 +1028,6 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
   min-height: 0;
 }
 
-/* pinned to the graph pane's own top-left corner, not the header bar */
-.mesh-toggle {
-  position: absolute;
-  top: 0.35rem;
-  left: 0.35rem;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 1rem;
-  height: 1rem;
-  padding: 0;
-  background: none;
-  border: none;
-  color: var(--muted);
-  cursor: pointer;
-  transition: transform 0.3s ease-in-out;
-}
-
-.mesh-toggle svg {
-  width: 0.7rem;
-  height: 0.7rem;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.5;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.mesh-toggle:hover { color: var(--fg); }
-.mesh-panel.expanded .mesh-toggle { transform: rotate(90deg); }
-
 /* redrawn by app.js every animation frame with tweened coordinates, no CSS
    transform, the redraw itself the "animation" */
 .mesh-svg { width: 100%; height: 100%; display: block; }
@@ -1489,7 +1462,6 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
   }
   .mesh-panel { margin: 0.9rem 0.5rem 0.5rem; animation: none; }
   .mesh-panel { transition: none; }
-  .mesh-toggle { display: none; }
 
   /* the projects a row over the one picked */
   .pj { flex-direction: column; gap: 1.2rem; }
@@ -1969,7 +1941,7 @@ input, textarea { caret-color: var(--accent); }
 }
 
 /* icons placed on a grid by app.js, a band selecting on bare desk */
-.dk-icon.sel .dk-tile { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, var(--card)); }
+.dk-icon.sel .dk-tile { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, transparent); }
 .dk-icon.sel .dk-label { background: color-mix(in srgb, var(--accent) 30%, transparent); }
 .dk-band {
   position: absolute; z-index: 3; pointer-events: none;
@@ -1987,7 +1959,8 @@ input, textarea { caret-color: var(--accent); }
   background: var(--accent); color: var(--bg); font-size: 0.6rem; text-align: center;
 }
 .dk-badge[hidden] { display: none; }
-.dk-task { position: relative; overflow: visible; }
+.dk-task { position: relative; }
+.dk-task:has(.dk-badge) { overflow: visible; }
 .dk-task .dk-badge { top: -0.45rem; right: -0.35rem; }
 .dk-app .dk-body > .view { padding: 0.9rem; }
 .dk-app-chat .dk-body > .view, .dk-app-projects .dk-body > .view { padding: 0.9rem 0.7rem 0.6rem; }
