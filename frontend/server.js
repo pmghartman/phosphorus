@@ -232,75 +232,84 @@ const ownChat = readJson(OWN_CHAT_FILE, []);
 let ownSeq = ownChat.length ? ownChat[ownChat.length - 1].seq : 0;
 const mergedChat = readJson(CHAT_FILE, []);
 
-// mesh-wide `/clear`: a `kind: 'clear'` own-chat entry whose timestamp is a
-// watermark, anything at or below it dropped on merge
-let clearedAt = Number((readJson(CLEAR_FILE, {}) || {}).at) || 0;
-// a channel closed for everyone: a `kind: 'close'` entry per channel, its
-// timestamp that channel's watermark as /clear's is #mesh's
-const closedAt = { ...((readJson(CLEAR_FILE, {}) || {}).ch || {}) };
-const writeClears = () => writeJsonSoon(CLEAR_FILE, { at: clearedAt, ch: closedAt });
+// the channels in sys: etc/chat/clear {at, by}, #mesh's `/clear` watermark,
+// and etc/chat/ch/<ch> {created, createdBy, topic, topicBy, closedAt, closedBy},
+// a close that channel's; anything at or below a watermark dropped
+const CLEAR_REL = 'etc/chat/clear.json';
+const chRel = (ch) => `etc/chat/ch/${ch}.json`;
+const chMeta = (ch) => sys.read(chRel(ch)) || {};
+const clearedAt = () => Number(sys.read(CLEAR_REL)?.at) || 0;
+const closedOf = (ch) => Number(chMeta(ch).closedAt) || 0;
+const channels = () => Object.fromEntries(sys.list('etc/chat/ch').map((f) => f.slice(0, -5)).map((ch) => [ch, chMeta(ch)]));
+const closedAll = () => Object.fromEntries(Object.entries(channels()).filter(([, m]) => m.closedAt).map(([ch, m]) => [ch, m.closedAt]));
 
+// a watermark only ever raised
+function setClear(at, by) {
+  if (Number.isFinite(at) && at > clearedAt()) sys.write(CLEAR_REL, { at, by: by || '' });
+}
+function setChannel(ch, fields) {
+  sys.write(chRel(ch), { ...chMeta(ch), ...fields });
+}
+// the old per-host clear file, taken in once
+{
+  const old = readJson(CLEAR_FILE, null);
+  if (old) {
+    setClear(Number(old.at) || 0, '');
+    for (const [ch, at] of Object.entries(old.ch || {})) if (/^[a-z0-9][a-z0-9-]{0,23}$/.test(ch) && at > closedOf(ch)) setChannel(ch, { closedAt: at, closedBy: '' });
+    try { fs.rmSync(CLEAR_FILE, { force: true }); } catch {}
+  }
+}
+
+// old peers' clear and close entries, mid-update, taken into sys
 function isClearEntry(m) { return m && m.kind === 'clear'; }
 const isClose = (m) => !!m && m.kind === 'close';
-// the markers still in force, kept in our own log whatever its cap
-const liveMarker = (m) => (isClearEntry(m) && m.timestamp === clearedAt) || (isClose(m) && closedAt[m.ch] === m.timestamp);
 
 // a direct message (or a reaction, edit or delete on one), held mesh-wide like
 // the rest, shown only to its two ends, never wiped by a clear or a close; a
 // channel's line under its own close, a #mesh line under /clear
 const isDm = (m) => !!m && typeof m.dm === 'string' && !!m.dm;
-const survives = (m) => isDm(m) || m.timestamp > (m.ch ? closedAt[m.ch] || 0 : clearedAt);
+const survives = (m) => isDm(m) || m.timestamp > (m.ch ? closedOf(m.ch) : clearedAt());
 const sees = (ws, m) => !isDm(m) || (!!ws.name && (ws.name === m.name || ws.name === m.dm));
 
-// capped like the merged log (never keeping our older entries anyway),
-// the live clear marker always kept
+// capped like the merged log, never keeping our older entries anyway
 function pushOwn(entry) {
   ownChat.push(entry);
-  const cut = ownChat.length - MAX_MESSAGES;
-  if (cut > 0) {
-    const kept = ownChat.filter((m, i) => i >= cut || liveMarker(m));
-    ownChat.splice(0, ownChat.length, ...kept);
-  }
+  if (ownChat.length > MAX_MESSAGES) ownChat.splice(0, ownChat.length - MAX_MESSAGES);
   writeJsonSoon(OWN_CHAT_FILE, ownChat);
 }
 
-// re-published under our own seq so a clear outlives its host going
-// offline, same timestamp, never a second clear
-function recordOwnClear(at, by) {
-  ownSeq += 1;
-  pushOwn({ host: SELF_HOST, seq: ownSeq, kind: 'clear', name: by, color: '', text: '', timestamp: at });
-}
-
-function applyClear(at, by) {
-  if (!Number.isFinite(at) || at <= clearedAt) return false;
-  clearedAt = at;
-  writeClears();
-
+// a watermark raised here or by a peer through sys: the logs cut under it and
+// the pages told, each once
+let shownClear = clearedAt();
+const shownClose = { ...closedAll() };
+const shownMeta = new Map(Object.entries(channels()).map(([ch, m]) => [ch, JSON.stringify(m)]));
+function dropUnder() {
   refill(mergedChat, mergedChat.filter(survives), CHAT_FILE);
-  // only the markers, dms and channels left in our own log, for a peer polling from seq 0
-  refill(ownChat, ownChat.filter((m) => survives(m) || liveMarker(m)), OWN_CHAT_FILE);
-
-  broadcast({ type: 'clear', by: by || '', at: clearedAt });
-  console.log(`[frontend] chat cleared up to ${new Date(clearedAt).toISOString()}${by ? ` by ${by}` : ''}`);
-  return true;
+  refill(ownChat, ownChat.filter(survives), OWN_CHAT_FILE);
 }
-
-// as a clear, re-published under our own seq so it outlives its host
-function recordOwnClose(ch, at, by) {
-  ownSeq += 1;
-  pushOwn({ host: SELF_HOST, seq: ownSeq, kind: 'close', ch, name: by, color: '', text: '', timestamp: at });
-}
-
-function applyClose(ch, at, by) {
-  if (!Number.isFinite(at) || at <= (closedAt[ch] || 0)) return false;
-  closedAt[ch] = at;
-  writeClears();
-  refill(mergedChat, mergedChat.filter(survives), CHAT_FILE);
-  refill(ownChat, ownChat.filter((m) => survives(m) || liveMarker(m)), OWN_CHAT_FILE);
-  broadcast({ type: 'close', ch, by: by || '', at });
-  console.log(`[frontend] #${ch} closed${by ? ` by ${by}` : ''}`);
-  return true;
-}
+sys.watch((rel) => {
+  if (rel === CLEAR_REL) {
+    const c = sys.read(CLEAR_REL);
+    if (!c || !(c.at > shownClear)) return;
+    shownClear = c.at;
+    dropUnder();
+    broadcast({ type: 'clear', by: c.by || '', at: c.at });
+    console.log(`[frontend] chat cleared up to ${new Date(c.at).toISOString()}${c.by ? ` by ${c.by}` : ''}`);
+    return;
+  }
+  const ch = (rel.match(/^etc\/chat\/ch\/([a-z0-9-]+)\.json$/) || [])[1];
+  if (!ch) return;
+  const m = chMeta(ch);
+  if (JSON.stringify(m) === shownMeta.get(ch)) return;
+  shownMeta.set(ch, JSON.stringify(m));
+  if (m.closedAt > (shownClose[ch] || 0)) {
+    shownClose[ch] = m.closedAt;
+    dropUnder();
+    broadcast({ type: 'close', ch, by: m.closedBy || '', at: m.closedAt });
+    console.log(`[frontend] #${ch} closed${m.closedBy ? ` by ${m.closedBy}` : ''}`);
+  }
+  broadcast({ type: 'channel', ch, meta: m });
+});
 
 // a host withdrawing one of its own entries, always after it in that host's seq
 const isRetract = (m) => m && m.kind === 'retract';
@@ -327,22 +336,9 @@ function dropOrphanMarks() {
 }
 
 function mergeChatMessages(newMsgs) {
-  let clearAt = 0;
-  let clearBy = '';
   for (const m of newMsgs) {
-    if (isClearEntry(m) && m.timestamp > clearAt) { clearAt = m.timestamp; clearBy = m.name; }
-  }
-  if (clearAt > clearedAt) {
-    recordOwnClear(clearAt, clearBy);
-    applyClear(clearAt, clearBy);
-  }
-  // each channel's newest close, once
-  const closes = new Map();
-  for (const m of newMsgs) if (isClose(m) && m.timestamp > (closes.get(m.ch)?.timestamp || 0)) closes.set(m.ch, m);
-  for (const [ch, m] of closes) {
-    if (m.timestamp <= (closedAt[ch] || 0)) continue;
-    recordOwnClose(ch, m.timestamp, m.name);
-    applyClose(ch, m.timestamp, m.name);
+    if (isClearEntry(m)) setClear(m.timestamp, m.name);
+    else if (isClose(m) && m.timestamp > closedOf(m.ch)) setChannel(m.ch, { closedAt: m.timestamp, closedBy: m.name });
   }
 
   const gone = new Set(newMsgs.filter(isRetract).map((m) => `${m.host}:${m.target}`));
@@ -933,9 +929,26 @@ function stateFp(state) {
     state.tailnet.map((d) => [d.name, d.os, d.phosphorus, d.phosphorusSeen, d.version]),
     git.rowsFp(state.gitHosts),
     // a role's model or a key changed anywhere, at once on every page
-    state.model.roles, state.model.keys,
+    state.model.roles, state.model.keys, state.hosts,
   ]);
 }
+
+// --- etc/hosts/<host>/: what each host says about itself, written by it alone,
+// read by every other even while it's offline: services.json its services,
+// info.json its version, platform and files
+
+const hostRel = (h, f) => `etc/hosts/${String(h).toLowerCase()}/${f}.json`;
+const hostNames = () => [...new Set(sys.list('etc/hosts').map((f) => f.split('/')[0]))];
+
+function publishHost() {
+  if (!SELF_HOST) return;
+  const put = (f, data) => { if (JSON.stringify(sys.read(hostRel(SELF_HOST, f))) !== JSON.stringify(data)) sys.write(hostRel(SELF_HOST, f), data); };
+  put('services', services.own());
+  put('info', { version: VERSION, platform: PLATFORM, files: filesInfo() });
+}
+
+// every host's info.json, by name
+const hostsInfo = () => Object.fromEntries(hostNames().map((h) => [h, sys.read(hostRel(h, 'info'))]).filter(([, v]) => v));
 
 // the whole picture, merged over the mesh
 function buildState() {
@@ -952,6 +965,7 @@ function buildState() {
     // ours, else a peer's walk or its lingering results, seen by every host
     chain: update.chainStatus() || mesh.chain(),
     chainMine: !!update.chainStatus(),
+    hosts: hostsInfo(),
   };
 }
 
@@ -974,13 +988,12 @@ const GETS = {
   // peers' mesh poll, this host's own state, chat only when `since` is given
   '/api/mesh/snapshot': (q) => ({
     self: selfInfo(),
-    services: services.own(),
     presence: presence(),
     lock: update.ownLock(),
     chain: update.sharedChain(),
     git: git.state(),
     model: model.state(),
-    sys: sys.stamps(),
+    sysDigest: sys.digest(),
     projects: project.summaries(),
     chat: q.has('since') ? ownChat.filter((m) => m.seq > (Number(q.get('since')) || 0)) : [],
   }),
@@ -1096,7 +1109,12 @@ function app(req, res) {
     return;
   }
 
-  // the sys tree for a peer's pull, a browser's login and own vault
+  // the sys tree's stamps then the files wanted, a peer's pull once digests differ
+  if (pathname === '/api/sys/stamps' && req.method === 'GET') {
+    if (!isTailnet(req) || req.ingress) { res.writeHead(403).end('forbidden'); return; }
+    sendJson(res, 200, sys.stamps());
+    return;
+  }
   if (pathname === '/api/sys/sync' && req.method === 'GET') {
     if (!isTailnet(req) || req.ingress) { res.writeHead(403).end('forbidden'); return; }
     const rels = searchParams.get('rels');
@@ -1636,7 +1654,7 @@ function broadcast(payload, to = () => true) {
 
 // the log as this socket may see it
 function sendHistory(ws) {
-  ws.send(JSON.stringify({ type: 'history', messages: mergedChat.filter((m) => sees(ws, m)), closed: closedAt }));
+  ws.send(JSON.stringify({ type: 'history', messages: mergedChat.filter((m) => sees(ws, m)), closed: closedAll(), channels: channels() }));
 }
 
 // a dm from phosphorus's chimp or orangutan, or a line to the group chat, sent by its tool
@@ -1767,18 +1785,14 @@ function onChat(ws, s) {
     }
 
     if (msg.type === 'clear') {
-      const at = nextClearTimestamp();
-      recordOwnClear(at, ws.name);
-      applyClear(at, ws.name);
+      setClear(nextClearTimestamp(), ws.name);
       return;
     }
 
     if (msg.type === 'close') {
       const ch = channelOf(msg.ch);
       if (!ch) return;
-      const at = nextClearTimestamp();
-      recordOwnClose(ch, at, ws.name);
-      applyClose(ch, at, ws.name);
+      setChannel(ch, { closedAt: nextClearTimestamp(), closedBy: ws.name });
       return;
     }
 
@@ -1810,7 +1824,13 @@ function onChat(ws, s) {
 
     // a channel made, or its topic set, a line of its own
     if (msg.type === 'topic') {
-      if (ch) postOwn({ name: ws.name, color: ws.color, kind: 'topic', ch, text: text.trim().slice(0, 200) });
+      if (!ch) return;
+      const topic = text.trim().slice(0, 200);
+      const m = chMeta(ch);
+      // made anew, or made again after a close
+      const fresh = !m.created || (m.closedAt || 0) >= m.created;
+      setChannel(ch, { ...(fresh ? { created: Date.now(), createdBy: ws.name } : {}), ...(topic || fresh ? { topic, topicBy: ws.name } : {}) });
+      postOwn({ name: ws.name, color: ws.color, kind: 'topic', ch, text: topic });
       return;
     }
 
@@ -2099,7 +2119,12 @@ server.listen(PORT, () => {
     chain: () => update.chainStatus() || mesh.chain(),
     projects: () => [...project.summaries(), ...mesh.peerProjects()],
   });
-  mesh.start({ mergeChat: mergeFromPeers, mergePresence: mergePeerPresence, platform: () => PLATFORM, ownLock: update.ownLock });
+  mesh.start({
+    mergeChat: mergeFromPeers, mergePresence: mergePeerPresence, platform: () => PLATFORM, ownLock: update.ownLock,
+    hostServices: (h) => sys.read(hostRel(h, 'services')),
+  });
+  setInterval(publishHost, 2000).unref();
+  publishHost();
   reconfig.start(() => updating || readJson(UPDATE_RESULT_FILE, {}).state === 'running');
 });
 

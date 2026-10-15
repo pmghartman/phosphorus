@@ -56,9 +56,10 @@ files and chat colour belong to you, not the browser: they follow you to any bro
 and another user logging in on yours never sees them.
 
 Each host's `state/sys/` is the mesh's own small file system: `etc/` (users in `passwd`
-and `shadow`, the model roles and API keys in `model/`) and `home/<user>/` (the vault,
-sealed with that user's password, and settings) are copied to every host; `var/` (chat)
-is the host's own. You get a desktop:
+and `shadow`, the model roles and API keys in `model/`, chat channels in `chat/`, what
+each host publishes about itself in `hosts/<host>/`, files kept on every host in
+`mirror/`) and `home/<user>/` (the vault, sealed with that user's password, and
+settings) are copied to every host; `var/` (chat) is the host's own. You get a desktop:
 
 - **terminal**: a shell on each host you logged in to
 - **files**: every host's shared folders; copy and move between hosts, drag files in to upload

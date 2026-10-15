@@ -1022,8 +1022,12 @@ function fitMesh(w, h, dims) {
   meshSvg.setAttribute('viewBox', `${vx} ${vy} ${vw} ${vh}`);
 }
 
+// each host's own info.json off sys, offline ones too
+let hostsInfo = {};
+
 function applyState(state) {
   selfHost = settleHost(state.self.host || '');
+  hostsInfo = state.hosts && typeof state.hosts === 'object' ? state.hosts : {};
   if (state.domain) baseDomain = state.domain;
   if (state.self.version) {
     aboutVersion.textContent = `v${state.self.version}`;
@@ -3024,16 +3028,23 @@ function noteNews(c) {
   paintConvs();
 }
 
-// every channel: mesh, those with lines, those opened here
+// each channel's mesh-wide meta: when made, its topic, its last close
+let chMetas = {};
+const chOpen = (m) => !!m.created && m.created > (m.closedAt || 0);
+
+// every channel: mesh, those open mesh-wide or with lines, those opened here
 function channels() {
-  const seen = [...convLines.keys()].filter((c) => c.startsWith('ch:') && convLines.get(c).length).map(chOf)
-    .filter((ch) => !(leftChannels[ch] >= lastAt(`ch:${ch}`)));
-  return [...new Set([...seen, ...myChannels])].sort();
+  const seen = [...convLines.keys()].filter((c) => c.startsWith('ch:') && convLines.get(c).length).map(chOf);
+  const open = Object.keys(chMetas).filter((ch) => chOpen(chMetas[ch]));
+  const shown = [...seen, ...open].filter((ch) => !(leftChannels[ch] >= Math.max(lastAt(`ch:${ch}`), chMetas[ch]?.created || 0)));
+  return [...new Set([...shown, ...myChannels])].sort();
 }
 
 const lastAt = (c) => convLines.get(c)?.at(-1)?.timestamp || 0;
 function topicOf(c) {
-  return convLines.get(c)?.findLast((m) => m.kind === 'topic' && m.text)?.text || '';
+  const m = chMetas[chOf(c)];
+  if (m && chOpen(m)) return m.topic || '';
+  return convLines.get(c)?.findLast((x) => x.kind === 'topic' && x.text)?.text || '';
 }
 
 // everyone to dm, by name so a new line never moves a chat
@@ -3621,6 +3632,7 @@ function connectChat() {
     try { msg = JSON.parse(ev.data); } catch { return; }
     if (msg.type === 'pong') return;
     if (msg.type === 'history') {
+      chMetas = msg.channels && typeof msg.channels === 'object' ? msg.channels : {};
       renderHistory(msg.messages, msg.closed && typeof msg.closed === 'object' ? msg.closed : {});
     } else if (msg.type === 'message') {
       const { type, ...m } = msg;
@@ -3648,6 +3660,8 @@ function connectChat() {
       paintFiles();
     } else if (msg.type === 'close') {
       if (typeof msg.ch === 'string') channelClosed(msg.ch, msg.by);
+    } else if (msg.type === 'channel') {
+      if (typeof msg.ch === 'string' && msg.meta && typeof msg.meta === 'object') { chMetas[msg.ch] = msg.meta; paintConvs(); paintCtx(); }
     }
   };
 }
@@ -6904,7 +6918,8 @@ async function fmSide(fm) {
   render();
   await Promise.all(hosts.map(async (h) => {
     try {
-      const info = await filesCall({ host: h }, 'info');
+      // what the host published in sys, else asked
+      const info = hostsInfo[h.toLowerCase()]?.files || await filesCall({ host: h }, 'info');
       // usr only as the merged home above
       fm.shares.set(h, info.enabled
         ? { shares: info.shares.filter((sh) => sh.id !== 'home').map((sh) => ({ host: h, share: sh.id, root: sh.label, perms: sh.perms })) }

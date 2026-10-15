@@ -654,7 +654,8 @@ async function pollOnce() {
     ui.state = body;
     ui.offline = false;
     if (ui.tab === 1) {
-      ui.filesInfo = await call(`/api/files/${body.self.host}/info`).then((r) => r.body, () => null);
+      ui.filesInfo = (body.hosts || {})[String(body.self.host).toLowerCase()]?.files
+        || await call(`/api/files/${body.self.host}/info`).then((r) => r.body, () => null);
     }
     if (ui.tab === PROJECTS_TAB) await pollProjects();
   } catch {
