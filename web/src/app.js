@@ -8066,13 +8066,27 @@ function dkGitFrame() {
 }
 
 // --- task bar popups: each grown out of its own button, its bottom on the
-// bar's top, its left on the button's left, slid back only as the screen needs
+// bar's top, a corner on the button's, right of it where it fits, else left
 
 const DK_POP_GAP = 6;
 const DK_POP_EDGE = 8;
 
 // fill: a popup as wide as the button's left to the screen's right, at least
 // that many px; tall: as tall as the screen allows, at most that many px
+// the box a fixed element is placed in: the screen, or the nearest ancestor
+// whose transform, filter or blur takes that over
+function dkFixedFrame(node) {
+  for (let a = node.parentElement; a && a !== document.documentElement; a = a.parentElement) {
+    const cs = getComputedStyle(a);
+    if (cs.transform !== 'none' || cs.filter !== 'none' || cs.backdropFilter !== 'none' || cs.perspective !== 'none'
+      || /paint|layout|strict|content/.test(cs.contain) || /transform|filter|perspective/.test(cs.willChange)) {
+      const r = a.getBoundingClientRect();
+      return { left: r.left + a.clientLeft, bottom: r.top + a.clientTop + a.clientHeight };
+    }
+  }
+  return { left: 0, bottom: innerHeight };
+}
+
 function dkAnchor(pop, btn, { fill = 0, tall = 0 } = {}) {
   pop.dkAnchor = { btn, fill, tall };
   if (!pop.dkPlace) {
@@ -8081,13 +8095,21 @@ function dkAnchor(pop, btn, { fill = 0, tall = 0 } = {}) {
       const a = pop.dkAnchor;
       if (!a || pop.hidden || !pop.isConnected || !a.btn.isConnected) return;
       const r = a.btn.getBoundingClientRect();
-      const top = (a.btn.closest('.dk-bar') || a.btn).getBoundingClientRect().top;
+      // the bar's edges the limits, so a popup lines up with it
+      const bar = (a.btn.closest('.dk-bar') || a.btn).getBoundingClientRect();
+      const lo = Math.max(DK_POP_EDGE, bar.left);
+      const hi = Math.min(innerWidth - DK_POP_EDGE, bar.right);
+      // fixed, but inside the bar its blur makes the bar the frame of reference
+      const cb = dkFixedFrame(pop);
       pop.style.top = 'auto';
       pop.style.right = 'auto';
-      pop.style.bottom = `${innerHeight - top + DK_POP_GAP}px`;
-      if (a.tall) pop.style.height = `${Math.min(a.tall, top - DK_POP_GAP - DK_POP_EDGE)}px`;
-      if (a.fill) pop.style.width = `${Math.min(innerWidth - 2 * DK_POP_EDGE, Math.max(a.fill, innerWidth - DK_POP_EDGE - r.left))}px`;
-      pop.style.left = `${Math.max(DK_POP_EDGE, Math.min(r.left, innerWidth - DK_POP_EDGE - pop.offsetWidth))}px`;
+      pop.style.bottom = `${cb.bottom - bar.top + DK_POP_GAP}px`;
+      if (a.tall) pop.style.height = `${Math.min(a.tall, bar.top - DK_POP_GAP - DK_POP_EDGE)}px`;
+      if (a.fill) pop.style.width = `${Math.min(hi - lo, Math.max(a.fill, hi - r.left))}px`;
+      // the button's left edge, else, short of room, its right edge
+      const w = pop.offsetWidth;
+      const left = r.left + w <= hi + 1 ? r.left : Math.max(lo, r.right - w);
+      pop.style.left = `${left - cb.left}px`;
     };
     // shown, grown or the screen resized: placed again
     ro.observe(pop);
