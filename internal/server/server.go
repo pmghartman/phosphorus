@@ -824,7 +824,7 @@ func initMCP() {
 			return mesh.Chain()
 		},
 		Projects: func() any { return append(project.Summaries(), mesh.PeerProjects()...) },
-		Asker: mcpAsker,
+		Asker:    mcpAsker,
 		Actions: mcp.Actions{
 			Game: func(host, name, action string) (int, any) {
 				if host == selfHost {

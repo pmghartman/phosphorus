@@ -1079,13 +1079,21 @@ func randID() string {
 	return hex.EncodeToString(b)
 }
 
+// Check a new project's body, 0 when it will do
+func Check(b map[string]any) (int, any) {
+	if strings.TrimSpace(clip(b["title"], 120)) == "" || strings.TrimSpace(clip(b["brief"], briefMax)) == "" || b["title"] == nil || b["brief"] == nil {
+		return 400, map[string]any{"error": "a project needs a title and a brief"}
+	}
+	return 0, nil
+}
+
 // Start a new project here
 func Start(b map[string]any) (int, any) {
 	title := strings.TrimSpace(clip(b["title"], 120))
 	brief := strings.TrimSpace(clip(b["brief"], briefMax))
 	h := hoursOf(b)
-	if title == "" || brief == "" || b["title"] == nil || b["brief"] == nil {
-		return 400, map[string]any{"error": "a project needs a title and a brief"}
+	if st, out := Check(b); st != 0 {
+		return st, out
 	}
 	if !model.HarnessHere() {
 		return 409, map[string]any{"error": "projects run on the model host, " + selfHost + " isn't it"}

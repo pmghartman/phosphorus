@@ -488,6 +488,8 @@ func appHandler(w http.ResponseWriter, r *http.Request) {
 			host := selfHost
 			if h, ok := p["host"]; ok && util.Truthy(h) {
 				host = util.JSString(h)
+			} else if st, out := project.Check(p); st != 0 {
+				return st, out
 			} else if !model.HarnessHere() {
 				// projects run where opencode does: the model host
 				mh := model.HarnessHost(model.ProjectHost())
