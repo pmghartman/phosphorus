@@ -212,7 +212,7 @@ function refreshDocker() {
 }
 
 // --- gpus ------------------------------------------------------------------------
-// nvidia through nvidia-smi (docker-compose.gpu.yml's), amd and intel off sysfs
+// nvidia through nvidia-smi (container/docker-compose.gpu.yml's), amd and intel off sysfs
 
 const NVSMI = ['nvidia-smi', '/usr/lib/wsl/lib/nvidia-smi'];
 const VENDOR = { '0x10de': 'nvidia', '0x1002': 'amd', '0x8086': 'intel' };

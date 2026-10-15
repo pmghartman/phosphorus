@@ -1,5 +1,5 @@
 'use strict';
-// git hosts: this host's vote in the master election (git/container/elector.js
+// git hosts: this host's vote in the master election (container/git/elector.js
 // runs it), and the frontend's git card, from what the mesh poll carries
 
 const fs = require('fs');

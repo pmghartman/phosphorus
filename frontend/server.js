@@ -1489,6 +1489,7 @@ function app(req, res) {
   const icon = pathname.match(/^\/api\/favicon\/([a-z0-9][a-z0-9-]*)\/([a-z0-9][a-z0-9-]*)$/);
   if (icon && req.method === 'GET') {
     if (!isLocalOrPeer(req)) { res.writeHead(403).end('forbidden'); return; }
+    if (searchParams.has('why')) { proxy.faviconWhy(icon[1], icon[2]).then((w) => sendJson(res, 200, w)); return; }
     proxy.favicon(icon[1], icon[2]).then((v) => {
       // none: 204, no console error for a globe that stays
       if (!v) { res.writeHead(204, { 'cache-control': 'max-age=600' }).end(); return; }

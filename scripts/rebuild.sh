@@ -56,6 +56,12 @@ main() {
     *) fail "can't tell where this home lives on the host ('${repo:-unset}'); set HOST_REPO and retry" ;;
   esac
 
+  # an older home's models/ into state/, where the model's gguf lives now
+  if [ "$windows" = 0 ] && [ -d models ] && [ ! -e state/models ]; then
+    # docker made it root's where it made it
+    mkdir -p state && { mv models state/models 2>/dev/null || $sudo mv models state/models; } && say "moved models/ into state/"
+  fi
+
   # each [files] dir its own mount, written out as a compose override,
   # /files keeping the repo's own share underneath, whatever else is published
   export COMPOSE_FILE="docker-compose.yml"
@@ -123,7 +129,7 @@ main() {
 
   # nvidia gpus handed in wherever a probe off the new image gets them
   if $sudo docker run --rm --gpus all --network none --entrypoint true phosphorus:latest >/dev/null 2>&1; then
-    COMPOSE_FILE="$COMPOSE_FILE:docker-compose.gpu.yml"
+    COMPOSE_FILE="$COMPOSE_FILE:container/docker-compose.gpu.yml"
     compose_env=("${compose_env[@]/#COMPOSE_FILE=*/COMPOSE_FILE=$COMPOSE_FILE}")
     say "handing the nvidia gpu to phosphorus"
   fi

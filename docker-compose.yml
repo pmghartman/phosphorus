@@ -76,7 +76,7 @@ services:
 
       # the model's gguf on the model host, Windows: phosphorus-models, off
       # the slow NTFS share
-      - ${PHOSPHORUS_MODEL_DIR:-./models}:/models
+      - ${PHOSPHORUS_MODEL_DIR:-./state/models}:/models
 
       # for rebuild.sh's sibling swap container, out of the swap's reach
       - /var/run/docker.sock:/var/run/docker.sock

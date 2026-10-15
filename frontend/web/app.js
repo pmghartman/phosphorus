@@ -1201,7 +1201,13 @@ function startTerminal(view, host, sid, resume, shared = false, login = null) {
     const loginStep = (data) => {
       seen += new TextDecoder().decode(data);
       if (/login: $/.test(seen)) { seen = ''; ws.send(enc.encode(`${login.user}\r`)); }
-      else if (/password: $/.test(seen)) { ws.send(enc.encode(`${login.pass}\r`)); login = null; trim = true; }
+      else if (/password: $/.test(seen)) {
+        ws.send(enc.encode(`${login.pass}\r`));
+        // a command asked for, typed ahead of the shell's prompt
+        if (login.run) ws.send(enc.encode(`${login.run}\r`));
+        login = null;
+        trim = true;
+      }
       return true;
     };
     const trimStep = (data) => {
@@ -6135,7 +6141,6 @@ function dkLogout() {
 const DK_GLYPHS = {
   doc: ICONS.file,
   app: 'M2.5 2.5h11v11h-11zM2.5 5.5h11M4.25 4h.01M5.75 4h.01M6 8.5l-1.5 1.5L6 11.5M10 8.5l1.5 1.5-1.5 1.5',
-  terminal: 'M2 3h12v10H2zM4.5 6.5l2 1.5-2 1.5M8 10h3.5',
   files: ICONS.folder,
   editor: 'M3 1.5h7l3 3v10H3zM10 1.5v3h3M5 7.5h6M5 10h6M5 12.5h3.5',
   service: 'M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM1.5 8h13M8 1.5c-2.2 2.4-2.2 10.6 0 13M8 1.5c2.2 2.4 2.2 10.6 0 13',
@@ -6220,7 +6225,6 @@ function dkIcons() {
   if (sig === dk.sig) return;
   dk.sig = sig;
   dk.desk.icons.replaceChildren(
-    ...hosts.map((h) => dkIcon('terminal', 'terminal', h, () => dkTerminal(h))),
     dkIcon('files', 'files', '', () => dkFiles()),
     dkIcon('editor', 'editor', '', dkEditorPick),
     dkIcon('chat', 'chat', '', () => dkOpenApp('chat')),
@@ -6758,12 +6762,12 @@ function dkClose(w, force) {
 
 // --- the apps
 
-function dkTerminal(host) {
+function dkTerminal(host, run = '') {
   const c = dk.creds.get(host);
   const w = dkWin(null, 'terminal', host, 'term');
   if (!w || !c) return;
   w.host = host;
-  const t = startTerminal(w.body, host, newSid(), false, false, { ...c });
+  const t = startTerminal(w.body, host, newSid(), false, false, { ...c, run });
   w.onFocus = () => t.focus();
   w.onClose = () => t.close();
   dkFocus(w);
@@ -6832,6 +6836,41 @@ function dkPlaceAt(x, y, names, dir = dkDeskAt()?.dir) {
   try { localStorage.setItem(DK_POS_KEY, JSON.stringify(saved)); } catch {}
 }
 
+// a new empty file on the desktop at x, y, on this host, opened to edit
+function dkNewFile(x, y) {
+  const d = dkDeskAt();
+  if (!d) return;
+  const pop = el('form', 'acct-unlock dk-newfile');
+  const name = Object.assign(el('input'), { value: 'untitled.txt', spellcheck: false, autocomplete: 'off' });
+  const why = el('span', 'dk-state');
+  const go = Object.assign(el('button', 'primary', 'create'), { type: 'submit' });
+  pop.append(el('div', 'home-col-head', 'add file'), name, why, go);
+  pop.style.left = `${Math.max(4, Math.min(x, innerWidth - 260))}px`;
+  pop.style.top = `${Math.max(4, Math.min(y, innerHeight - 140))}px`;
+  const close = () => { pop.remove(); document.removeEventListener('pointerdown', away, true); };
+  const away = (e) => { if (!pop.contains(e.target)) close(); };
+  document.addEventListener('pointerdown', away, true);
+  pop.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+  pop.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const n = name.value.trim();
+    if (!n || /[\\/]/.test(n)) { why.textContent = 'a name, no slashes'; return; }
+    if (dk.deskFiles.some((f) => f.at === d.dir && f.name === n)) { why.textContent = `${n} is already there`; return; }
+    const loc = homeAt(selfHost);
+    const rel = filesJoin(d.dir, n);
+    go.disabled = true;
+    try { await putFile(loc, rel, new Blob([])); } catch (err) { go.disabled = false; why.textContent = err.message; return; }
+    close();
+    dkPlaceAt(x, y, [n], d.dir);
+    fmChanged(HOME, d.dir);
+    dkCode({ host: loc.host, share: loc.share, path: rel, label: fileLabel(loc.host, 'home', rel) });
+  });
+  document.body.appendChild(pop);
+  name.focus();
+  // the name picked, its extension left
+  name.setSelectionRange(0, name.value.lastIndexOf('.'));
+}
+
 // computer files onto the desktop, else a files window's first folder,
 // a files window showing the upload either way
 function dkAddFiles(list) {
@@ -6851,9 +6890,8 @@ function dkDeskMenu(icons) {
     if (f) { dkMenu(e.clientX, e.clientY, dkFileMenu(f)); return; }
     const items = [
       ...(b ? [['open', () => b.dispatchEvent(new MouseEvent('dblclick')), true], null] : []),
-      ...hosts.map((h) => [`terminal on ${h}`, () => dkTerminal(h), true]),
-      ['files', () => dkFiles(), true],
-      ['add files…', () => dkPick('', true, (list) => { dkPlaceAt(e.clientX, e.clientY, list.map((f) => f.name)); dkAddFiles(list); }), hosts.length > 0],
+      ['add file…', () => dkNewFile(e.clientX, e.clientY), !!dkDeskAt()],
+      ['upload files…', () => dkPick('', true, (list) => { dkPlaceAt(e.clientX, e.clientY, list.map((f) => f.name)); dkAddFiles(list); }), hosts.length > 0],
       null,
       ['change wallpaper…', () => dkPick('image/*', false, ([f]) => dkWallSet(f).then((why) => why && dkMenuNote(why))), !!acct && !acct.boot],
       ['remove wallpaper', dkWallClear, !!acct?.wallpaper],
@@ -7302,6 +7340,7 @@ function fmMenu(fm, x, y, onItem) {
     one && one.dir && runnable(one) && ['browse inside', () => fmGo(fm, fm.loc, picked[0].rel), true],
     one && !one.dir && ['open in editor', () => dkCode({ host: fm.loc.host, share: fm.loc.share, path: picked[0].rel, label: fileLabel(fm.loc.host, fm.loc.root, picked[0].rel) }), true],
     one && !one.dir && ['download', () => fmDownload(fm, picked[0].rel), fmCan(fm, 'r')],
+    ...(one && !one.dir && fm.loc.share === 'home' ? dkRunItems(picked[0].rel, fm.loc.host === '*' ? (one.all ? homeOnline() : one.live || []) : [fm.loc.host]) : []),
     one && fmKind(one) === 'image' && ['set as wallpaper', () => fmWallpaper(fm, picked[0].rel), fmCan(fm, 'r')],
     one && !one.dir && one.hosts && ['keep on every host', () => fmMirror(fm, one, !one.all), true, one.all ? 'on' : ''],
     one && !one.dir && one.hosts && !one.all && ['move to host…', () => fmMoveHost(fm, one), homeOnline().length > 1],
@@ -7716,6 +7755,30 @@ function dkFileIcon(e) {
   return b;
 }
 
+// a source file built or run in a terminal on a host the user has a login
+// for, its build out of the home in a temp dir; $f the file, $o the program
+const DK_RUNNERS = {
+  c: 'cc "$f" -o "$o" && "$o"', cpp: 'c++ "$f" -o "$o" && "$o"', cc: 'c++ "$f" -o "$o" && "$o"', cxx: 'c++ "$f" -o "$o" && "$o"',
+  rs: 'rustc "$f" -o "$o" && "$o"', go: 'go run "$f"', zig: 'zig run "$f"', java: 'java "$f"', swift: 'swift "$f"',
+  py: 'python3 "$f"', js: 'node "$f"', mjs: 'node "$f"', ts: 'npx --yes tsx "$f"', sh: 'bash "$f"', bash: 'bash "$f"',
+  rb: 'ruby "$f"', pl: 'perl "$f"', php: 'php "$f"', lua: 'lua "$f"', hs: 'runghc "$f"', r: 'Rscript "$f"',
+};
+const shQuote = (v) => `'${String(v).replace(/'/g, "'\\''")}'`;
+// the home on a host as its own shell sees it, none on a Windows one
+function dkHomeOn(host) {
+  const home = hostsInfo[host.toLowerCase()]?.files?.shares?.find((x) => x.home)?.label || '';
+  return home.startsWith('/') && !home.startsWith('/run/desktop/') ? home : '';
+}
+// one "run on" per host holding the file whose login is saved
+function dkRunItems(rel, hosts) {
+  const runner = DK_RUNNERS[fmExt(rel)];
+  if (!runner) return [];
+  return hosts.filter((h) => dk.creds.has(h) && dkHomeOn(h)).map((h) => [`run on ${h}`, () => {
+    const stem = rel.split('/').pop().replace(/\.[^.]+$/, '') || 'a.out';
+    dkTerminal(h, `f=${shQuote(`${dkHomeOn(h)}/${rel}`)}; o="$(mktemp -d)"/${shQuote(stem)}; cd "$(dirname "$f")" && ${runner}`);
+  }, true]);
+}
+
 function dkFileMenu(e) {
   const rel = filesJoin(e.at, e.name);
   const loc = homeAt(homePick(rel));
@@ -7724,6 +7787,7 @@ function dkFileMenu(e) {
     e.dir && ['show in files', () => dkFiles({ loc: HOME, dir: rel }), true],
     !e.dir && ['open in editor', () => dkCode({ host: loc.host, share: loc.share, path: rel, label: fileLabel(loc.host, 'home', rel) }), !e.stale],
     !e.dir && ['download', () => { location.href = filesApi(loc, 'download', { path: rel }); }, !e.stale],
+    ...(e.dir ? [] : dkRunItems(rel, e.all ? homeOnline() : e.live || [])),
     null,
     ['show in files', () => dkFiles({ loc: HOME, dir: e.at }), true],
     ['delete', async () => {
