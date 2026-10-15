@@ -219,7 +219,8 @@ func appHandler(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	case pathname == "/api/model/catalog" && method == "GET":
-		b, err := model.Catalog()
+		_, hop := q["hop"]
+		b, err := model.Catalog(hop && isTailnet(r))
 		if err != nil {
 			sendJSON(w, 502, map[string]any{"error": err.Error()})
 			return

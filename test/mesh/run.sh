@@ -110,6 +110,8 @@ code=$(ip netns exec ph-beta curl -s -o /dev/null -w '%{http_code}' -m 5 -H 'con
 [ "$code" = 403 ] && ok "an ask from off the tailnet refused" || bad "an off-tailnet ask got $code"
 out=$(ip netns exec ph-beta curl -s -m 5 -H 'content-type: application/json' -d '{"id":"gone","op":"name"}' http://100.64.0.1:8090/api/model/asker)
 echo "$out" | jq -e '.error == "that ask is over"' > /dev/null && ok "beta reaches back to alpha's askers" || bad "asker relay: $out"
+out=$(api alpha -m 45 http://127.0.0.1:8090/api/model/catalog)
+echo "$out" | grep -q "isn't on this host" && bad "alpha's catalog not passed to beta: $out" || ok "alpha's catalog asked of beta: $(echo "$out" | head -c 80)"
 out=$(json alpha /api/projects '{"title":"mesh test","brief":"nothing","hours":1}')
 echo "$out" | jq -e '.host == "beta"' > /dev/null && ok "a project asked of alpha runs on beta" || bad "project start: $out"
 id=$(echo "$out" | jq -r .id)

@@ -335,8 +335,30 @@ func setup(states []map[string]any) harness.Setup {
 	return s
 }
 
-// Catalog every provider opencode knows
-func Catalog() (any, error) { return harness.Catalog(setup(view())) }
+// Catalog every provider opencode knows, asked of the model host when
+// opencode isn't here; hop: already passed on once
+func Catalog(hop bool) (any, error) {
+	if HarnessHere() || hop {
+		return harness.Catalog(setup(view()))
+	}
+	h := HarnessHost("")
+	if h == nil {
+		return nil, noHarness()
+	}
+	res, err := util.RequestJSON(util.Req{Host: util.JSString(h["ip"]), Port: util.FrontendPort, Path: "/api/model/catalog?hop=1", Timeout: 40 * time.Second})
+	if err != nil {
+		return nil, fmt.Errorf("%s didn't answer: %v", util.JSString(h["host"]), err)
+	}
+	b := util.Decode(res.Body)
+	if res.Status != 200 {
+		e := util.Str(util.Obj(b)["error"])
+		if e == "" {
+			e = fmt.Sprintf("%s answered %d", util.JSString(h["host"]), res.Status)
+		}
+		return nil, errors.New(e)
+	}
+	return b, nil
+}
 
 var useKeys = []string{"system", "chat", "ask", "reply", "tps", "at"}
 
