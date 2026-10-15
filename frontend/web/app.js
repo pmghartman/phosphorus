@@ -6811,6 +6811,27 @@ const dkPick = (accept, multiple, then) => {
   input.click();
 };
 
+// files about to land on the desktop held to the cell at x, y (else the
+// nearest free ones after it), their icons placed there once they show
+function dkPlaceAt(x, y, names, dir = dkDeskAt()?.dir) {
+  if (!dk.desk || !dir || !names.length) return;
+  const box = dk.desk.icons.getBoundingClientRect();
+  const { cols, rows } = dkGrid();
+  const c0 = Math.max(0, Math.min(cols - 1, Math.floor((x - box.left - DK_PAD) / DK_GX)));
+  const r0 = Math.max(0, Math.min(rows - 1, Math.floor((y - box.top - DK_PAD) / DK_GY)));
+  const ids = new Set(names.map((n) => `doc\n${filesJoin(dir, n)}`));
+  const taken = new Set(dkIconEls().filter((b) => !ids.has(b.dataset.id)).map((b) => dkCell(b.dataset.c, b.dataset.r)));
+  const saved = dkSaved();
+  let i = c0 * rows + r0;
+  for (const id of ids) {
+    while (i < cols * rows && taken.has(dkCell(Math.floor(i / rows), i % rows))) i += 1;
+    const at = i < cols * rows ? [Math.floor(i / rows), i % rows] : [c0, r0];
+    taken.add(dkCell(...at));
+    saved[id] = at;
+  }
+  try { localStorage.setItem(DK_POS_KEY, JSON.stringify(saved)); } catch {}
+}
+
 // computer files onto the desktop, else a files window's first folder,
 // a files window showing the upload either way
 function dkAddFiles(list) {
@@ -6832,7 +6853,7 @@ function dkDeskMenu(icons) {
       ...(b ? [['open', () => b.dispatchEvent(new MouseEvent('dblclick')), true], null] : []),
       ...hosts.map((h) => [`terminal on ${h}`, () => dkTerminal(h), true]),
       ['files', () => dkFiles(), true],
-      ['add files…', () => dkPick('', true, dkAddFiles), hosts.length > 0],
+      ['add files…', () => dkPick('', true, (list) => { dkPlaceAt(e.clientX, e.clientY, list.map((f) => f.name)); dkAddFiles(list); }), hosts.length > 0],
       null,
       ['change wallpaper…', () => dkPick('image/*', false, ([f]) => dkWallSet(f).then((why) => why && dkMenuNote(why))), !!acct && !acct.boot],
       ['remove wallpaper', dkWallClear, !!acct?.wallpaper],
@@ -6855,12 +6876,15 @@ function dkDeskMenu(icons) {
       e.preventDefault();
       dk.drag = null;
       const items = drag.items.filter((it) => !(fmSame(drag.loc, d.loc) && filesParent(it.rel) === d.dir));
+      dkPlaceAt(e.clientX, e.clientY, items.map((it) => it.name), d.dir);
       if (items.length) fmTransfer(drag.fm, drag.loc, items, d.loc, d.dir, false);
       return;
     }
     if (!dragsFiles(e)) return;
     e.preventDefault();
-    dkAddFiles([...e.dataTransfer.files]);
+    const list = [...e.dataTransfer.files];
+    dkPlaceAt(e.clientX, e.clientY, list.map((f) => f.name));
+    dkAddFiles(list);
   });
 }
 
@@ -7564,8 +7588,6 @@ async function fmUpload(fm, loc, dir, fileList) {
   fmChanged(loc, dir);
 }
 
-// a folder, a place or blank space taking a drag: the computer's own files
-// uploaded, a window's moved inside one share or copied (ctrl) across them
 // a folder or place held under a drag this long: opened, the drag going on
 const FM_SPRING_MS = 700;
 function fmSpring(fm, node, t) {
@@ -7588,6 +7610,8 @@ function fmMark(fm, node) {
   node?.classList.add('drop');
 }
 
+// a folder, a place or blank space taking a drag: the computer's own files
+// uploaded, a window's moved inside one share or copied (ctrl) across them
 function fmDropZone(fm, node, where) {
   fmZones.set(node, { fm, where });
   node.dataset.fmDrop = '';
