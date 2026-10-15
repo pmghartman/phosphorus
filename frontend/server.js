@@ -24,6 +24,8 @@ const reconfig = require('./reconfig');
 const stats = require('./stats');
 const media = require('./chatmedia');
 const collab = require('./collab');
+const mirror = require('./mirror');
+files.hooks.change = mirror.touched;
 const users = require('./users');
 const sys = require('./sysfs');
 const { readJson, writeJsonAtomic, writeJsonSoon, tailnetIp, peerCall } = require('./util');
@@ -230,75 +232,84 @@ const ownChat = readJson(OWN_CHAT_FILE, []);
 let ownSeq = ownChat.length ? ownChat[ownChat.length - 1].seq : 0;
 const mergedChat = readJson(CHAT_FILE, []);
 
-// mesh-wide `/clear`: a `kind: 'clear'` own-chat entry whose timestamp is a
-// watermark, anything at or below it dropped on merge
-let clearedAt = Number((readJson(CLEAR_FILE, {}) || {}).at) || 0;
-// a channel closed for everyone: a `kind: 'close'` entry per channel, its
-// timestamp that channel's watermark as /clear's is #mesh's
-const closedAt = { ...((readJson(CLEAR_FILE, {}) || {}).ch || {}) };
-const writeClears = () => writeJsonSoon(CLEAR_FILE, { at: clearedAt, ch: closedAt });
+// the channels in sys: etc/chat/clear {at, by}, #mesh's `/clear` watermark,
+// and etc/chat/ch/<ch> {created, createdBy, topic, topicBy, closedAt, closedBy},
+// a close that channel's; anything at or below a watermark dropped
+const CLEAR_REL = 'etc/chat/clear.json';
+const chRel = (ch) => `etc/chat/ch/${ch}.json`;
+const chMeta = (ch) => sys.read(chRel(ch)) || {};
+const clearedAt = () => Number(sys.read(CLEAR_REL)?.at) || 0;
+const closedOf = (ch) => Number(chMeta(ch).closedAt) || 0;
+const channels = () => Object.fromEntries(sys.list('etc/chat/ch').map((f) => f.slice(0, -5)).map((ch) => [ch, chMeta(ch)]));
+const closedAll = () => Object.fromEntries(Object.entries(channels()).filter(([, m]) => m.closedAt).map(([ch, m]) => [ch, m.closedAt]));
 
+// a watermark only ever raised
+function setClear(at, by) {
+  if (Number.isFinite(at) && at > clearedAt()) sys.write(CLEAR_REL, { at, by: by || '' });
+}
+function setChannel(ch, fields) {
+  sys.write(chRel(ch), { ...chMeta(ch), ...fields });
+}
+// the old per-host clear file, taken in once
+{
+  const old = readJson(CLEAR_FILE, null);
+  if (old) {
+    setClear(Number(old.at) || 0, '');
+    for (const [ch, at] of Object.entries(old.ch || {})) if (/^[a-z0-9][a-z0-9-]{0,23}$/.test(ch) && at > closedOf(ch)) setChannel(ch, { closedAt: at, closedBy: '' });
+    try { fs.rmSync(CLEAR_FILE, { force: true }); } catch {}
+  }
+}
+
+// old peers' clear and close entries, mid-update, taken into sys
 function isClearEntry(m) { return m && m.kind === 'clear'; }
 const isClose = (m) => !!m && m.kind === 'close';
-// the markers still in force, kept in our own log whatever its cap
-const liveMarker = (m) => (isClearEntry(m) && m.timestamp === clearedAt) || (isClose(m) && closedAt[m.ch] === m.timestamp);
 
 // a direct message (or a reaction, edit or delete on one), held mesh-wide like
 // the rest, shown only to its two ends, never wiped by a clear or a close; a
 // channel's line under its own close, a #mesh line under /clear
 const isDm = (m) => !!m && typeof m.dm === 'string' && !!m.dm;
-const survives = (m) => isDm(m) || m.timestamp > (m.ch ? closedAt[m.ch] || 0 : clearedAt);
+const survives = (m) => isDm(m) || m.timestamp > (m.ch ? closedOf(m.ch) : clearedAt());
 const sees = (ws, m) => !isDm(m) || (!!ws.name && (ws.name === m.name || ws.name === m.dm));
 
-// capped like the merged log (never keeping our older entries anyway),
-// the live clear marker always kept
+// capped like the merged log, never keeping our older entries anyway
 function pushOwn(entry) {
   ownChat.push(entry);
-  const cut = ownChat.length - MAX_MESSAGES;
-  if (cut > 0) {
-    const kept = ownChat.filter((m, i) => i >= cut || liveMarker(m));
-    ownChat.splice(0, ownChat.length, ...kept);
-  }
+  if (ownChat.length > MAX_MESSAGES) ownChat.splice(0, ownChat.length - MAX_MESSAGES);
   writeJsonSoon(OWN_CHAT_FILE, ownChat);
 }
 
-// re-published under our own seq so a clear outlives its host going
-// offline, same timestamp, never a second clear
-function recordOwnClear(at, by) {
-  ownSeq += 1;
-  pushOwn({ host: SELF_HOST, seq: ownSeq, kind: 'clear', name: by, color: '', text: '', timestamp: at });
-}
-
-function applyClear(at, by) {
-  if (!Number.isFinite(at) || at <= clearedAt) return false;
-  clearedAt = at;
-  writeClears();
-
+// a watermark raised here or by a peer through sys: the logs cut under it and
+// the pages told, each once
+let shownClear = clearedAt();
+const shownClose = { ...closedAll() };
+const shownMeta = new Map(Object.entries(channels()).map(([ch, m]) => [ch, JSON.stringify(m)]));
+function dropUnder() {
   refill(mergedChat, mergedChat.filter(survives), CHAT_FILE);
-  // only the markers, dms and channels left in our own log, for a peer polling from seq 0
-  refill(ownChat, ownChat.filter((m) => survives(m) || liveMarker(m)), OWN_CHAT_FILE);
-
-  broadcast({ type: 'clear', by: by || '', at: clearedAt });
-  console.log(`[frontend] chat cleared up to ${new Date(clearedAt).toISOString()}${by ? ` by ${by}` : ''}`);
-  return true;
+  refill(ownChat, ownChat.filter(survives), OWN_CHAT_FILE);
 }
-
-// as a clear, re-published under our own seq so it outlives its host
-function recordOwnClose(ch, at, by) {
-  ownSeq += 1;
-  pushOwn({ host: SELF_HOST, seq: ownSeq, kind: 'close', ch, name: by, color: '', text: '', timestamp: at });
-}
-
-function applyClose(ch, at, by) {
-  if (!Number.isFinite(at) || at <= (closedAt[ch] || 0)) return false;
-  closedAt[ch] = at;
-  writeClears();
-  refill(mergedChat, mergedChat.filter(survives), CHAT_FILE);
-  refill(ownChat, ownChat.filter((m) => survives(m) || liveMarker(m)), OWN_CHAT_FILE);
-  broadcast({ type: 'close', ch, by: by || '', at });
-  console.log(`[frontend] #${ch} closed${by ? ` by ${by}` : ''}`);
-  return true;
-}
+sys.watch((rel) => {
+  if (rel === CLEAR_REL) {
+    const c = sys.read(CLEAR_REL);
+    if (!c || !(c.at > shownClear)) return;
+    shownClear = c.at;
+    dropUnder();
+    broadcast({ type: 'clear', by: c.by || '', at: c.at });
+    console.log(`[frontend] chat cleared up to ${new Date(c.at).toISOString()}${c.by ? ` by ${c.by}` : ''}`);
+    return;
+  }
+  const ch = (rel.match(/^etc\/chat\/ch\/([a-z0-9-]+)\.json$/) || [])[1];
+  if (!ch) return;
+  const m = chMeta(ch);
+  if (JSON.stringify(m) === shownMeta.get(ch)) return;
+  shownMeta.set(ch, JSON.stringify(m));
+  if (m.closedAt > (shownClose[ch] || 0)) {
+    shownClose[ch] = m.closedAt;
+    dropUnder();
+    broadcast({ type: 'close', ch, by: m.closedBy || '', at: m.closedAt });
+    console.log(`[frontend] #${ch} closed${m.closedBy ? ` by ${m.closedBy}` : ''}`);
+  }
+  broadcast({ type: 'channel', ch, meta: m });
+});
 
 // a host withdrawing one of its own entries, always after it in that host's seq
 const isRetract = (m) => m && m.kind === 'retract';
@@ -325,22 +336,9 @@ function dropOrphanMarks() {
 }
 
 function mergeChatMessages(newMsgs) {
-  let clearAt = 0;
-  let clearBy = '';
   for (const m of newMsgs) {
-    if (isClearEntry(m) && m.timestamp > clearAt) { clearAt = m.timestamp; clearBy = m.name; }
-  }
-  if (clearAt > clearedAt) {
-    recordOwnClear(clearAt, clearBy);
-    applyClear(clearAt, clearBy);
-  }
-  // each channel's newest close, once
-  const closes = new Map();
-  for (const m of newMsgs) if (isClose(m) && m.timestamp > (closes.get(m.ch)?.timestamp || 0)) closes.set(m.ch, m);
-  for (const [ch, m] of closes) {
-    if (m.timestamp <= (closedAt[ch] || 0)) continue;
-    recordOwnClose(ch, m.timestamp, m.name);
-    applyClose(ch, m.timestamp, m.name);
+    if (isClearEntry(m)) setClear(m.timestamp, m.name);
+    else if (isClose(m) && m.timestamp > closedOf(m.ch)) setChannel(m.ch, { closedAt: m.timestamp, closedBy: m.name });
   }
 
   const gone = new Set(newMsgs.filter(isRetract).map((m) => `${m.host}:${m.target}`));
@@ -800,21 +798,90 @@ const MIME_BY_EXT = {
   '.pdf': 'application/pdf', '.mp4': 'video/mp4', '.webm': 'video/webm',
 };
 
-function sendFile(res, abs, download) {
+// an inline svg sandboxed, its scripts never on this origin
+function sendFile(res, abs, download, extra = {}) {
   const name = path.basename(abs);
+  const ext = path.extname(name).toLowerCase();
   let size = 0;
   try { size = fs.statSync(abs).size; } catch {}
   // filename* for anything non-ASCII, the plain one the fallback
   const disp = `${download ? 'attachment' : 'inline'}; filename*=UTF-8''${encodeURIComponent(name)}`;
   res.writeHead(200, {
-    'Content-Type': MIME_BY_EXT[path.extname(name).toLowerCase()] || 'application/octet-stream',
+    'Content-Type': MIME_BY_EXT[ext] || 'application/octet-stream',
     'Content-Length': size,
     'Content-Disposition': disp,
     'Cache-Control': 'no-store',
+    'X-Content-Type-Options': 'nosniff',
+    ...(!download && ext === '.svg' ? { 'Content-Security-Policy': 'sandbox' } : {}),
+    ...extra,
   });
   const stream = fs.createReadStream(abs);
   stream.on('error', () => res.destroy());
   stream.pipe(res);
+}
+
+// --- running: a page or wasm in a share, served from a sealed grant on its
+// folder, sandboxed off this origin so it never acts as the user
+
+const RUN_MIME = {
+  '.html': 'text/html; charset=utf-8', '.htm': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8', '.wasm': 'application/wasm', '.data': 'application/octet-stream',
+  '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.woff': 'font/woff', '.ttf': 'font/ttf',
+  '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg', '.wav': 'audio/wav',
+};
+const RUN_MS = 12 * 3600 * 1000;
+const RUN_SANDBOX = 'sandbox allow-scripts allow-forms allow-modals allow-popups allow-pointer-lock allow-downloads';
+const runKind = (rel, dir) => (dir ? 'app' : /\.html?$/i.test(rel) ? 'html' : /\.wasm$/i.test(rel) ? 'wasm' : '');
+
+// {user, admin} off the session, null without one
+function homeWho(req) {
+  const s = users.session(req);
+  return s ? { user: s.boot ? '' : s.user, admin: !!s.admin } : null;
+}
+
+// a page, a folder with an index.html (an app), or a .wasm: its run url
+function runGrant(share, rel, who) {
+  const st = files.stat(share, rel);
+  if (!st) return [404, { error: 'no such file' }];
+  const kind = runKind(rel, st.dir);
+  if (!kind) return [400, { error: 'not runnable: a page, a .wasm or a folder with an index.html' }];
+  const dir = st.dir ? st.rel : path.posix.dirname(st.rel).replace(/^\.$/, '');
+  const entry = st.dir ? 'index.html' : path.posix.basename(st.rel);
+  if (st.dir && !files.stat(share, `${st.rel}/index.html`)) return [400, { error: 'no index.html in that folder' }];
+  const token = users.sealGrant({ h: SELF_HOST, s: share.id, d: dir, u: who?.user || '' }, RUN_MS);
+  return [200, { kind, url: `/api/run/${SELF_HOST}/${token}/${encodeURIComponent(entry)}` }];
+}
+
+// GET /api/run/<host>/<grant>/<path>: a file under the grant's folder
+function serveRun(req, res, host, token, rest, searchParams) {
+  if (host !== SELF_HOST) {
+    if (searchParams.has('hop')) { sendJson(res, 421, { error: `sent to ${SELF_HOST}, which isn't ${host}` }); return; }
+    forwardFiles(host, req, res, `${req.url}${req.url.includes('?') ? '&' : '?'}hop=1`);
+    return;
+  }
+  const g = users.openGrant(token);
+  const share = g && g.h === SELF_HOST && files.shareOf(g.s);
+  if (!share) { sendJson(res, 403, { error: 'that run link expired' }); return; }
+  let sub;
+  try { sub = rest.split('/').map(decodeURIComponent).join('/'); } catch { sendJson(res, 400, { error: 'bad path' }); return; }
+  const rel = path.posix.normalize(`/${g.d}/${sub}`).slice(1);
+  if (g.d && rel !== g.d && !rel.startsWith(`${g.d}/`)) { sendJson(res, 403, { error: 'outside the app' }); return; }
+  if (share.id === 'home') {
+    const who = g.u && users.exists(g.u) ? { user: g.u, admin: users.isAdmin(g.u) } : null;
+    const why = files.homeGate(who, rel, users.exists);
+    if (why) { sendJson(res, 403, { error: why }); return; }
+  }
+  const st = files.stat(share, rel);
+  const abs = st && files.downloadPath(share, st.dir ? `${st.rel}/index.html` : st.rel);
+  if (!abs) { sendJson(res, 404, { error: 'no such file' }); return; }
+  const type = RUN_MIME[path.extname(abs).toLowerCase()];
+  sendFile(res, abs, false, {
+    ...(type ? { 'Content-Type': type } : {}),
+    'Content-Security-Policy': RUN_SANDBOX,
+    'Access-Control-Allow-Origin': '*',
+    'Cross-Origin-Resource-Policy': 'cross-origin',
+  });
 }
 
 // pipes the request on to the host that owns the share and its answer back,
@@ -844,7 +911,7 @@ async function forwardFiles(host, req, res, urlPath) {
 function filesInfo() {
   const shares = files.shares().map((s) => ({ id: s.id, label: s.label, perms: s.perms }));
   return {
-    host: SELF_HOST, enabled: shares.length > 0, shares,
+    host: SELF_HOST, enabled: shares.length > 0, shares, home: files.homeDir(),
     wantDir: files.pending() ? files.configuredDirs().join(', ') : '',
   };
 }
@@ -862,9 +929,26 @@ function stateFp(state) {
     state.tailnet.map((d) => [d.name, d.os, d.phosphorus, d.phosphorusSeen, d.version]),
     git.rowsFp(state.gitHosts),
     // a role's model or a key changed anywhere, at once on every page
-    state.model.roles, state.model.keys,
+    state.model.roles, state.model.keys, state.hosts,
   ]);
 }
+
+// --- etc/hosts/<host>/: what each host says about itself, written by it alone,
+// read by every other even while it's offline: services.json its services,
+// info.json its version, platform and files
+
+const hostRel = (h, f) => `etc/hosts/${String(h).toLowerCase()}/${f}.json`;
+const hostNames = () => [...new Set(sys.list('etc/hosts').map((f) => f.split('/')[0]))];
+
+function publishHost() {
+  if (!SELF_HOST) return;
+  const put = (f, data) => { if (JSON.stringify(sys.read(hostRel(SELF_HOST, f))) !== JSON.stringify(data)) sys.write(hostRel(SELF_HOST, f), data); };
+  put('services', services.own());
+  put('info', { version: VERSION, platform: PLATFORM, files: filesInfo() });
+}
+
+// every host's info.json, by name
+const hostsInfo = () => Object.fromEntries(hostNames().map((h) => [h, sys.read(hostRel(h, 'info'))]).filter(([, v]) => v));
 
 // the whole picture, merged over the mesh
 function buildState() {
@@ -881,6 +965,7 @@ function buildState() {
     // ours, else a peer's walk or its lingering results, seen by every host
     chain: update.chainStatus() || mesh.chain(),
     chainMine: !!update.chainStatus(),
+    hosts: hostsInfo(),
   };
 }
 
@@ -903,13 +988,12 @@ const GETS = {
   // peers' mesh poll, this host's own state, chat only when `since` is given
   '/api/mesh/snapshot': (q) => ({
     self: selfInfo(),
-    services: services.own(),
     presence: presence(),
     lock: update.ownLock(),
     chain: update.sharedChain(),
     git: git.state(),
     model: model.state(),
-    sys: sys.stamps(),
+    sysDigest: sys.digest(),
     projects: project.summaries(),
     chat: q.has('since') ? ownChat.filter((m) => m.seq > (Number(q.get('since')) || 0)) : [],
   }),
@@ -1025,7 +1109,12 @@ function app(req, res) {
     return;
   }
 
-  // the sys tree for a peer's pull, a browser's login and own vault
+  // the sys tree's stamps then the files wanted, a peer's pull once digests differ
+  if (pathname === '/api/sys/stamps' && req.method === 'GET') {
+    if (!isTailnet(req) || req.ingress) { res.writeHead(403).end('forbidden'); return; }
+    sendJson(res, 200, sys.stamps());
+    return;
+  }
   if (pathname === '/api/sys/sync' && req.method === 'GET') {
     if (!isTailnet(req) || req.ingress) { res.writeHead(403).end('forbidden'); return; }
     const rels = searchParams.get('rels');
@@ -1297,9 +1386,24 @@ function app(req, res) {
     return;
   }
 
+  const run = pathname.match(/^\/api\/run\/([a-z0-9][a-z0-9-]*)\/([A-Za-z0-9_-]+)\/(.*)$/);
+  if (run && req.method === 'GET') {
+    if (!isLocalOrPeer(req)) { res.writeHead(403).end('forbidden'); return; }
+    serveRun(req, res, run[1], run[2], run[3], searchParams);
+    return;
+  }
+
   // one endpoint, both ends of the hop like games: the host named in the
   // path serves it, anyone else streams it there
-  const filesReq = pathname.match(/^\/api\/files\/([a-z0-9][a-z0-9-]*)\/(info|list|tree|read|download|upload|save|mkdir|rename|delete)$/);
+  // a mirrored usr file's latest copy, host to host only
+  const mirrorReq = pathname.match(/^\/internal\/mirror\/([0-9a-f]{24})$/);
+  if (mirrorReq && req.method === 'GET') {
+    if (!isTailnet(req) && !isLoopback(req)) { res.writeHead(403).end('forbidden'); return; }
+    mirror.serve(mirrorReq[1], res);
+    return;
+  }
+
+  const filesReq = pathname.match(/^\/api\/files\/([a-z0-9][a-z0-9-]*)\/(info|list|tree|read|download|upload|save|mkdir|rename|delete|run|mirror)$/);
   if (filesReq) {
     // read-write with no auth of its own, browsers and peers only
     if (!isLocalOrPeer(req)) { res.writeHead(403).end('forbidden'); return; }
@@ -1316,8 +1420,23 @@ function app(req, res) {
     if (!share) { sendJson(res, 404, { error: `${SELF_HOST} has no such share` }); return; }
 
     const rel = searchParams.get('path') || '';
-    if (req.method === 'GET' && op === 'list') { files.list(share, rel).then((r) => sendJson(res, ...r)); return; }
-    if (req.method === 'GET' && op === 'tree') { files.tree(share, rel, searchParams.get('depth'), searchParams.get('match')).then((r) => sendJson(res, ...r)); return; }
+    // the home: every path through its gate, the forwarded cookie saying who
+    const who = share.id === 'home' ? homeWho(req) : null;
+    const barred = (...rels) => {
+      const why = share.id === 'home' && rels.map((r) => files.homeGate(who, r, users.exists)).find(Boolean);
+      if (why) sendJson(res, who ? 403 : 401, { error: why });
+      return !!why;
+    };
+    // a usr listing cut to who may see it, each file kept on every host marked all
+    const seen = (r) => {
+      if (share.id !== 'home') return r;
+      const out = files.homeFilter(who, rel, r[1], users.exists);
+      if (out?.entries && op === 'list') out.entries = out.entries.map((e) => (!e.dir && mirror.isMirrored(rel ? `${rel}/${e.name}` : e.name) ? { ...e, all: true } : e));
+      return [r[0], out];
+    };
+    if (req.method === 'GET' && ['list', 'tree', 'read', 'download'].includes(op) && barred(rel)) return;
+    if (req.method === 'GET' && op === 'list') { files.list(share, rel).then((r) => sendJson(res, ...seen(r))); return; }
+    if (req.method === 'GET' && op === 'tree') { files.tree(share, rel, searchParams.get('depth'), searchParams.get('match')).then((r) => sendJson(res, ...seen(r))); return; }
     if (req.method === 'GET' && op === 'read') { sendJson(res, ...files.read(share, rel)); return; }
     if (req.method === 'GET' && op === 'download') {
       const abs = files.downloadPath(share, rel);
@@ -1326,15 +1445,29 @@ function app(req, res) {
       return;
     }
     if (req.method === 'POST' && op === 'upload') {
+      if (barred(rel)) { req.resume(); return; }
       files.write(share, rel, req, { id: searchParams.get('id'), offset: searchParams.get('offset'), total: searchParams.get('total') }).then((out) => sendJson(res, ...out));
       return;
     }
+    const gate = (...rels) => {
+      const why = share.id === 'home' && rels.map((r) => files.homeGate(who, r, users.exists)).find(Boolean);
+      return why ? [who ? 403 : 401, { error: why }] : null;
+    };
     if (req.method === 'POST' && op === 'save') {
-      onJson(req, res, MAX_SAVE_BODY, (p) => collab.write(share, p.path, p), true);
+      onJson(req, res, MAX_SAVE_BODY, (p) => gate(p.path) || collab.write(share, p.path, p), true);
+      return;
+    }
+    if (req.method === 'POST' && op === 'mirror') {
+      onJson(req, res, MAX_JSON_BODY, (p) => (share.id !== 'home' ? [400, { error: 'only usr files go to every host' }]
+        : gate(p.path) || (p.on ? mirror.mark(String(p.path || '')) : mirror.unmark(String(p.path || '')))));
+      return;
+    }
+    if (req.method === 'POST' && op === 'run') {
+      onJson(req, res, MAX_JSON_BODY, (p) => gate(p.path) || runGrant(share, String(p.path || ''), who));
       return;
     }
     if (req.method === 'POST') {
-      onJson(req, res, MAX_JSON_BODY, (p) => (op === 'mkdir' ? files.mkdir(share, p.path)
+      onJson(req, res, MAX_JSON_BODY, (p) => (op === 'rename' ? gate(p.from, p.to) : gate(p.path)) || (op === 'mkdir' ? files.mkdir(share, p.path)
         : op === 'rename' ? files.rename(share, p.from, p.to)
         : op === 'delete' ? files.remove(share, p.path)
         : [405, { error: 'method not allowed' }]));
@@ -1358,7 +1491,8 @@ function app(req, res) {
   if (icon && req.method === 'GET') {
     if (!isLocalOrPeer(req)) { res.writeHead(403).end('forbidden'); return; }
     proxy.favicon(icon[1], icon[2]).then((v) => {
-      if (!v) { res.writeHead(404, { 'cache-control': 'max-age=600' }).end(); return; }
+      // none: 204, no console error for a globe that stays
+      if (!v) { res.writeHead(204, { 'cache-control': 'max-age=600' }).end(); return; }
       res.writeHead(200, { 'content-type': v.type, 'cache-control': 'max-age=3600', 'x-content-type-options': 'nosniff',
         'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox" }).end(v.body);
     });
@@ -1423,6 +1557,7 @@ async function filesCall(host, op, share, body) {
     if (!files.enabled()) return [503, { error: `${SELF_HOST} publishes no files directory` }];
     const sh = files.shareOf(share);
     if (!sh) return [404, { error: `${SELF_HOST} has no such share` }];
+    if (sh.id === 'home') return [403, { error: 'the homes are for their users only' }];
     if (op === 'list') return files.list(sh, body.path || '');
     if (op === 'tree') return files.tree(sh, body.path || '', body.depth, body.match);
     if (op === 'read') return files.read(sh, body.path || '');
@@ -1519,7 +1654,7 @@ function broadcast(payload, to = () => true) {
 
 // the log as this socket may see it
 function sendHistory(ws) {
-  ws.send(JSON.stringify({ type: 'history', messages: mergedChat.filter((m) => sees(ws, m)), closed: closedAt }));
+  ws.send(JSON.stringify({ type: 'history', messages: mergedChat.filter((m) => sees(ws, m)), closed: closedAll(), channels: channels() }));
 }
 
 // a dm from phosphorus's chimp or orangutan, or a line to the group chat, sent by its tool
@@ -1650,18 +1785,14 @@ function onChat(ws, s) {
     }
 
     if (msg.type === 'clear') {
-      const at = nextClearTimestamp();
-      recordOwnClear(at, ws.name);
-      applyClear(at, ws.name);
+      setClear(nextClearTimestamp(), ws.name);
       return;
     }
 
     if (msg.type === 'close') {
       const ch = channelOf(msg.ch);
       if (!ch) return;
-      const at = nextClearTimestamp();
-      recordOwnClose(ch, at, ws.name);
-      applyClose(ch, at, ws.name);
+      setChannel(ch, { closedAt: nextClearTimestamp(), closedBy: ws.name });
       return;
     }
 
@@ -1693,7 +1824,13 @@ function onChat(ws, s) {
 
     // a channel made, or its topic set, a line of its own
     if (msg.type === 'topic') {
-      if (ch) postOwn({ name: ws.name, color: ws.color, kind: 'topic', ch, text: text.trim().slice(0, 200) });
+      if (!ch) return;
+      const topic = text.trim().slice(0, 200);
+      const m = chMeta(ch);
+      // made anew, or made again after a close
+      const fresh = !m.created || (m.closedAt || 0) >= m.created;
+      setChannel(ch, { ...(fresh ? { created: Date.now(), createdBy: ws.name } : {}), ...(topic || fresh ? { topic, topicBy: ws.name } : {}) });
+      postOwn({ name: ws.name, color: ws.color, kind: 'topic', ch, text: topic });
       return;
     }
 
@@ -1917,9 +2054,9 @@ function onUpgrade(req, socket, head) {
     if (codeHost !== SELF_HOST && searchParams.has('hop')) { refuse('421 Misdirected Request'); return; }
     codeWss.handleUpgrade(req, socket, head, (ws) => {
       keepAlive(ws);
-      if (codeHost === SELF_HOST) { collab.attach(ws, searchParams.get('share'), searchParams.get('path')); return; }
+      if (codeHost === SELF_HOST) { collab.attach(ws, searchParams.get('share'), searchParams.get('path'), homeWho(req), users.exists); return; }
       searchParams.set('hop', '1');
-      collab.forward(ws, tailnetIp(codeHost).then((ip) => ip && `ws://${ip}:${PORT}/api/code/${codeHost}?${searchParams}`));
+      collab.forward(ws, tailnetIp(codeHost).then((ip) => ip && `ws://${ip}:${PORT}/api/code/${codeHost}?${searchParams}`), req.headers.cookie);
     });
     return;
   }
@@ -1970,6 +2107,7 @@ server.listen(PORT, () => {
   writeJsonAtomic(UPDATE_RESULT_FILE, { state: 'ok', at: Date.now() });
   // a chain whose own step swapped this container out
   update.restoreChain();
+  mirror.start(tailnetIp, PORT);
   retractStaleAlerts();
   project.init();
   proxy.listen(INGRESS_PORT, app, onUpgrade, users);
@@ -1981,7 +2119,12 @@ server.listen(PORT, () => {
     chain: () => update.chainStatus() || mesh.chain(),
     projects: () => [...project.summaries(), ...mesh.peerProjects()],
   });
-  mesh.start({ mergeChat: mergeFromPeers, mergePresence: mergePeerPresence, platform: () => PLATFORM, ownLock: update.ownLock });
+  mesh.start({
+    mergeChat: mergeFromPeers, mergePresence: mergePeerPresence, platform: () => PLATFORM, ownLock: update.ownLock,
+    hostServices: (h) => sys.read(hostRel(h, 'services')),
+  });
+  setInterval(publishHost, 2000).unref();
+  publishHost();
   reconfig.start(() => updating || readJson(UPDATE_RESULT_FILE, {}).state === 'running');
 });
 

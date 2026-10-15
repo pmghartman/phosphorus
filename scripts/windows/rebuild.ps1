@@ -67,6 +67,23 @@ if (Write-PhosphorusFilesOverride $Dir) {
 New-Item -ItemType Directory -Force $FilesDir *> $null
 $env:PHOSPHORUS_FILES_DIR = $FilesDir
 
+# [home] dir as the VM sees it, moved from where the running container has it
+$HomeDir = Get-PhosphorusHomeDir
+New-Item -ItemType Directory -Force $HomeDir *> $null
+$HomeTo = ConvertTo-VmPath $HomeDir
+$HomeFrom = ""
+if (docker ps -aq -f "name=^phosphorus$") {
+    $HomeFrom = Invoke-Quiet { docker inspect phosphorus --format '{{range .Mounts}}{{if eq .Destination "/homefs"}}{{.Source}}{{end}}{{end}}' }
+    if (-not $HomeFrom) { $HomeFrom = ConvertTo-VmPath (Join-Path $Dir "state") }
+    $HomeFrom = "$HomeFrom".Trim().TrimEnd("/", "\")
+    if ($HomeFrom -match '^[A-Za-z]:') { $HomeFrom = ConvertTo-VmPath $HomeFrom }
+    if ($HomeFrom -eq $HomeTo) { $HomeFrom = "" }
+}
+if ($HomeFrom -and ("$HomeTo/".StartsWith("$HomeFrom/usr/") -or "$HomeTo/".StartsWith("$HomeFrom/sys/"))) {
+    Fail "[home] dir can't be inside the usr or sys it moves"
+}
+$env:PHOSPHORUS_HOME_DIR = $HomeDir
+
 # $ErrorActionPreference skips native commands, exit codes checked by hand
 $Running = ((Invoke-Quiet { docker inspect -f '{{.State.Running}}' phosphorus }) -eq "true")
 
@@ -120,6 +137,19 @@ if ($LASTEXITCODE -and (Test-PhosphorusGitHost) -and ((Test-Path git/data/GIT_VE
 # never dangling, so never hit
 Invoke-Quiet { docker image prune -f } | Out-Null
 
+# usr and sys moved with phosphorus stopped, a failed copy leaving them put
+if ($HomeFrom) {
+    Say "moving usr and sys from $HomeFrom to $HomeTo..."
+    Invoke-Quiet { docker stop -t 30 phosphorus } | Out-Null
+    $Move = "set -e`nm=.phosphorus-move-`$`$; touch /mv/old/`$m`nif [ -e /mv/new/`$m ]; then rm -f /mv/old/`$m; exit 0; fi`nrm -f /mv/old/`$m`nfor d in usr sys; do [ -d /mv/old/`$d ] && mkdir -p /mv/new/`$d && cp -a /mv/old/`$d/. /mv/new/`$d/; done`nfor d in usr sys; do rm -rf /mv/old/`$d; done"
+    docker run --rm -v "${HomeFrom}:/mv/old" -v "${HomeTo}:/mv/new" --entrypoint sh phosphorus:latest -c $Move
+    if ($LASTEXITCODE) {
+        Say "couldn't move usr and sys, keeping them in $HomeFrom"
+        $env:PHOSPHORUS_HOME_DIR = $HomeFrom
+    }
+    $Running = $false
+}
+
 if (-not $Running) {
     # nothing for the swap to kill, the caller free to wait on this
     Say "starting phosphorus..."
@@ -146,7 +176,7 @@ $Log = Join-Path $env:TEMP "phosphorus-update.log"
 Say "swapping containers, this terminal may drop"
 Say "Get-Content -Wait $Log to follow."
 Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
-    CommandLine      = "cmd /c set COMPOSE_PROFILES=$($env:COMPOSE_PROFILES)&& set DOCKER_CONFIG=$($env:DOCKER_CONFIG)&& set TS_HOSTNAME=$($env:TS_HOSTNAME)&& set PHOSPHORUS_GIT_DATA=git-data&& set PHOSPHORUS_GIT_DB=git-db&& set PHOSPHORUS_MODEL_DIR=models&& set PHOSPHORUS_HOST_ROOT=$($env:PHOSPHORUS_HOST_ROOT)&& set PHOSPHORUS_FILES_DIR=$FilesDir&& set COMPOSE_FILE=$($env:COMPOSE_FILE)&& docker compose up -d --remove-orphans > `"$Log`" 2>&1"
+    CommandLine      = "cmd /c set COMPOSE_PROFILES=$($env:COMPOSE_PROFILES)&& set DOCKER_CONFIG=$($env:DOCKER_CONFIG)&& set TS_HOSTNAME=$($env:TS_HOSTNAME)&& set PHOSPHORUS_GIT_DATA=git-data&& set PHOSPHORUS_GIT_DB=git-db&& set PHOSPHORUS_MODEL_DIR=models&& set PHOSPHORUS_HOST_ROOT=$($env:PHOSPHORUS_HOST_ROOT)&& set PHOSPHORUS_FILES_DIR=$FilesDir&& set PHOSPHORUS_HOME_DIR=$($env:PHOSPHORUS_HOME_DIR)&& set COMPOSE_FILE=$($env:COMPOSE_FILE)&& docker compose up -d --remove-orphans > `"$Log`" 2>&1"
     CurrentDirectory = $Dir
 } | Out-Null
 

@@ -258,13 +258,16 @@ async function write(share, rel, p) {
   return [status, status === 200 ? { ...out, live: true, note: 'typed into the open editor and saved' } : out];
 }
 
-// a tab on this host's file: its session, opened on the first
-function attach(ws, shareId, rel) {
+// a tab on this host's file: its session, opened on the first; a home's
+// file through its gate
+function attach(ws, shareId, rel, who, isUser) {
   ws.on('error', () => {});
   const share = files.shareOf(shareId);
   const fail = (error) => { send(ws, { type: 'error', error }); ws.close(1000); };
   if (!files.enabled() || !share) { fail('no such share here'); return; }
   if (!files.can(share, 'r')) { fail('this share is not readable'); return; }
+  const why = share.id === 'home' && files.homeGate(who, String(rel || ''), isUser);
+  if (why) { fail(why); return; }
   const [status, s] = open(share, String(rel || ''));
   if (status !== 200) { fail(s.error || `can't open it (${status})`); return; }
   ws.cid = clientSeq += 1;
@@ -278,8 +281,9 @@ function attach(ws, shareId, rel) {
   ws.on('close', () => leave(s, ws));
 }
 
-// a tab whose file is on another host: passed through to it as is
-function forward(ws, lookup) {
+// a tab whose file is on another host: passed through to it as is, the
+// login cookie along for a home's gate
+function forward(ws, lookup, cookie) {
   ws.on('error', () => {});
   let up = null;
   const early = [];
@@ -288,7 +292,7 @@ function forward(ws, lookup) {
   lookup.then((url) => {
     if (ws.readyState !== WebSocket.OPEN) return;
     if (!url) { send(ws, { type: 'error', error: "can't find that host on the tailnet" }); ws.close(1000); return; }
-    up = new WebSocket(url, { handshakeTimeout: HOP_TIMEOUT_MS });
+    up = new WebSocket(url, { handshakeTimeout: HOP_TIMEOUT_MS, headers: cookie ? { cookie } : {} });
     up.on('open', () => { for (const d of early) up.send(d); early.length = 0; });
     up.on('message', (d) => { if (ws.readyState === WebSocket.OPEN) ws.send(d.toString()); });
     up.on('close', () => ws.close(1000));

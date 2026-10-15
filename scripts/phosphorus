@@ -13,12 +13,12 @@ done
 DIR="$(cd -P "$(dirname "$src")/.." && pwd)"
 
 usage() {
-  echo "usage: phosphorus              the cli: services, files, git, stats, model, mesh update"
-  echo "       phosphorus start        bring this host up (run-linux.sh / run-mac.sh)"
-  echo "       phosphorus stop         stop phosphorus until the next phosphorus start"
-  echo "       phosphorus restart      restart phosphorus (and phosphorus-git), picks up a host rename"
-  echo "       phosphorus update       update this host only"
-  echo "       phosphorus update all   update the whole mesh, one host at a time"
+  echo "usage: phos             the cli"
+  echo "       phos start       start host"
+  echo "       phos stop        stop host"
+  echo "       phos restart     restart host"
+  echo "       phos update      update host"
+  echo "       phos update all  update mesh"
 }
 
 # installed on Linux: root's /var/lib/phosphorus
@@ -38,7 +38,7 @@ cli() {
   while :; do
     before="$(started)"
     if [ "${before%% *}" != true ]; then
-      echo "phosphorus isn't running, start it with: phosphorus start" >&2
+      echo "phosphorus isn't running, run: phos start" >&2
       exit 1
     fi
     $DOCKER exec -it -e TERM="${TERM:-xterm-256color}" -e COLORTERM -e COLORFGBG -e TERM_PROGRAM phosphorus node /opt/frontend/cli/phosphorus.js "${args[@]+"${args[@]}"}"
@@ -119,7 +119,7 @@ case "${1:-}|${2:-}" in
       echo "stopping $c..."
       $DOCKER stop -t 30 "$c" >/dev/null || exit 1
     done
-    echo "phosphorus stopped, phosphorus start starts it again" ;;
+    echo "phosphorus stopped, phos start to resume" ;;
   # git stopped first for the handoff, started again once phosphorus is back
   restart\|)
     [ -n "${PHOSPHORUS_DETACHED:-}" ] || detach restart

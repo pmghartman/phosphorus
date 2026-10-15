@@ -107,7 +107,20 @@ function buildShares() {
 
 // the orangutan's project workspaces, read only, once there is one
 const PROJECTS_ROOT = path.join(process.env.STATE_DIR || '/state', 'projects');
-const shares = () => [...buildShares(), makeShare('projects', '', 'r', PROJECTS_ROOT)].filter((s) => s.ok);
+
+// usr/ in [home] dir: admin files at the top, each user's own folder under
+// its name, reached by that user alone, admin or not, and shared/ for everyone
+const HOME_FS = process.env.HOME_FS || process.env.STATE_DIR || '/state';
+const HOME_ROOT = path.join(HOME_FS, 'usr');
+const DESKTOP = 'Desktop';
+const SHARED = 'shared';
+// the earlier state/home moved in once
+const OLD_HOME = path.join(process.env.STATE_DIR || '/state', 'home');
+try { if (!fs.existsSync(HOME_ROOT) && fs.existsSync(OLD_HOME)) fs.renameSync(OLD_HOME, HOME_ROOT); } catch {}
+try { fs.mkdirSync(path.join(HOME_ROOT, SHARED, DESKTOP), { recursive: true }); } catch {}
+const homeShare = () => ({ ...makeShare('home', '', FULL_PERMS, HOME_ROOT), label: 'usr' });
+
+const shares = () => [homeShare(), ...buildShares(), makeShare('projects', '', 'r', PROJECTS_ROOT)].filter((s) => s.ok);
 
 const shareOf = (id) => shares().find((s) => s.id === String(id)) || null;
 
@@ -141,11 +154,12 @@ function safePath(share, rel, mustExist) {
 
 const relOf = (share, abs) => path.relative(share.real, abs).split(path.sep).join('/');
 
-// an absolute path back to its share and its path there, null outside them all
+// an absolute path back to its share and its path there, null outside them
+// all, the homes never
 function locate(abs) {
   let real;
   try { real = fs.realpathSync(abs); } catch { return null; }
-  const sh = shares().find((s) => inside(s, real));
+  const sh = shares().find((s) => s.id !== 'home' && inside(s, real));
   return sh ? { share: sh.id, path: relOf(sh, real) } : null;
 }
 
@@ -291,6 +305,18 @@ function downloadPath(share, rel) {
   try { return fs.statSync(abs).isFile() ? abs : null; } catch { return null; }
 }
 
+// {dir, rel} for an existing path, null otherwise
+function stat(share, rel) {
+  if (!can(share, 'r')) return null;
+  const abs = safePath(share, rel, true);
+  if (!abs) return null;
+  try { return { dir: fs.statSync(abs).isDirectory(), rel: relOf(share, abs) }; } catch { return null; }
+}
+
+// a usr change told to whoever watches (the mirror), set from outside
+const hooks = { change: null };
+const changed = (share, op, rel, to) => { if (share.id === 'home' && hooks.change) hooks.change(op, rel, to); };
+
 const BAD_NAME = /[/\\]|^\.\.?$|\0/;
 
 // one chunk of an upload appended to a temp file named by the upload's id,
@@ -298,6 +324,7 @@ const BAD_NAME = /[/\\]|^\.\.?$|\0/;
 // offset, a gap answers 409 with what is held
 function write(share, rel, req, q) {
   if (!can(share, 'w')) return Promise.resolve([403, { error: 'this share is read-only' }]);
+  makeParents(share, rel);
   const abs = safePath(share, rel, false);
   if (!abs || BAD_NAME.test(path.basename(abs))) return Promise.resolve([400, { error: 'bad path' }]);
   const total = Number(q.total);
@@ -332,6 +359,7 @@ function write(share, rel, req, q) {
         if (offset + size < total) { resolve([200, { ok: true, next: offset + size }]); return; }
         fs.truncateSync(tmp, total);
         fs.renameSync(tmp, abs);
+        changed(share, 'write', relOf(share, abs));
         resolve([200, { ok: true, path: relOf(share, abs) }]);
       } catch (e) {
         if (offset === 0) fs.rm(tmp, { force: true }, () => {});
@@ -370,6 +398,7 @@ function save(share, rel, p) {
     fs.rm(tmp, { force: true }, () => {});
     return [500, { error: e.message }];
   }
+  changed(share, 'write', relOf(share, abs));
   return [200, { ok: true, path: relOf(share, abs), size: Buffer.byteLength(text), ...(made ? { created: true } : {}) }];
 }
 
@@ -392,7 +421,9 @@ function rename(share, from, to) {
   if (!src || !dst || BAD_NAME.test(path.basename(dst))) return [400, { error: 'bad path' }];
   if (src === share.real) return [400, { error: "can't rename the share itself" }];
   if (fs.existsSync(dst)) return [409, { error: 'already exists' }];
+  const was = relOf(share, src);
   try { fs.renameSync(src, dst); } catch (e) { return [500, { error: e.message }]; }
+  changed(share, 'rename', was, relOf(share, dst));
   return [200, { ok: true, path: relOf(share, dst) }];
 }
 
@@ -402,6 +433,7 @@ function remove(share, rel) {
   if (!abs) return [400, { error: 'bad path' }];
   if (abs === share.real) return [400, { error: "can't delete the share itself" }];
   try { fs.rmSync(abs, { recursive: true, force: true }); } catch (e) { return [500, { error: e.message }]; }
+  changed(share, 'delete', relOf(share, abs));
   return [200, { ok: true }];
 }
 
@@ -422,7 +454,42 @@ function pending() {
   return !!want && !!have && want !== have;
 }
 
+// --- the home's gate ----------------------------------------------------------
+// who: {user, admin} off the session, null without one; isUser: a mesh user's name
+
+const firstSeg = (rel) => path.posix.normalize(`/${String(rel || '').replace(/\\/g, '/')}`).split('/')[1].toLowerCase();
+
+// a user's home and desktop made on first reach
+function ensureHome(user) {
+  const desk = path.join(HOME_ROOT, user, DESKTOP);
+  if (!fs.existsSync(desk)) try { fs.mkdirSync(desk, { recursive: true }); } catch {}
+}
+
+// '' when who may reach rel, else why not
+function homeGate(who, rel, isUser) {
+  if (!who) return 'log in to reach home';
+  const seg = firstSeg(rel);
+  if (who.user) ensureHome(who.user);
+  if (!seg || seg === who.user || seg === SHARED) return '';
+  if (isUser(seg)) return "another user's home";
+  return who.admin ? '' : 'admins only';
+}
+
+// a listing's or tree's entries cut to what who may reach
+function homeFilter(who, rel, out, isUser) {
+  if (!out || !Array.isArray(out.entries)) return out;
+  // a tree's paths off the share's root, a list's names off rel
+  const base = String(rel || '');
+  const full = (e) => (e.path != null ? e.path : base ? `${base}/${e.name}` : e.name);
+  return { ...out, entries: out.entries.filter((e) => !homeGate(who, full(e), isUser)) };
+}
+
+// where usr/ and sys/ live on the host now, before docker answers the dir
+// compose was handed
+const homeDir = () => hostPathOf(HOME_FS) || process.env.PHOSPHORUS_HOME_DIR || HOME_FS;
+
 module.exports = {
+  hooks, homeDir, DESKTOP, SHARED, HOME_ROOT, homeGate, homeFilter, safePath, makeParents, relOf,
   configuredDirs, pending, enabled, shares, shareOf, can, locate,
-  list, tree, read, downloadPath, write, save, mkdir, rename, remove,
+  list, tree, read, stat, downloadPath, write, save, mkdir, rename, remove,
 };

@@ -64,6 +64,10 @@ phosphorus_add_missing_sections() {
     printf '\n[model]\n# host: true downloads the mesh model here and runs it for every host\n# gpu: true offloads it to this host'"'"'s nvidia gpu\n# url: download link to the model'"'"'s .gguf, no default\nhost = false\ngpu = false\nurl =\n' >> "$file"
     echo "[phosphorus.ini] added the [model] section, set host and url on the one host with the memory and disk for the model"
   fi
+  if ! grep -qx '\[home\]' "$file"; then
+    printf '\n[home]\n# dir: where usr/ (each user'"'"'s home, shared/) and sys/ live, blank: the home'"'"'s state/\n# changed: both copied there on the next rebuild and the old ones deleted\ndir =\n' >> "$file"
+    echo "[phosphorus.ini] added the [home] section"
+  fi
   # the retired [apps] section dropped, comments and all
   if grep -qx '\[apps\]' "$file"; then
     awk '/^\[/{skip=($0=="[apps]")} !skip' "$file" | cat -s > "$file.tmp" && mv "$file.tmp" "$file" \
@@ -94,6 +98,28 @@ phosphorus_files_dir() {
     *) printf '%s' "$PWD/$dir" ;;
   esac
 }
+
+# [home] dir as an absolute host path, $1 the home as the host sees it,
+# its state/ when blank
+phosphorus_home_dir() {
+  local d base="${1:-$PWD}"; d="$(phosphorus_get home dir)"
+  d="${d%/}"
+  case "$d" in
+    '') printf '%s' "$base/state" ;;
+    /*|[A-Za-z]:*) printf '%s' "$d" ;;
+    *) printf '%s' "$base/$d" ;;
+  esac
+}
+
+# the copy run with phosphorus stopped, old at /mv/old, new at /mv/new: usr/
+# and sys/ copied whole, only then the old ones deleted; one dir spelt two
+# ways (a marker seen through both) left alone
+PHOSPHORUS_HOME_MOVE='set -e
+m=".phosphorus-move-$$"; touch /mv/old/$m
+if [ -e /mv/new/$m ]; then rm -f /mv/old/$m; exit 0; fi
+rm -f /mv/old/$m
+for d in usr sys; do [ -d /mv/old/$d ] && mkdir -p /mv/new/$d && cp -a /mv/old/$d/. /mv/new/$d/; done
+for d in usr sys; do rm -rf /mv/old/$d; done'
 
 # [files] dir, one absolute host path per line, nothing when unset, relative
 # entries off $1, the home as the host sees it

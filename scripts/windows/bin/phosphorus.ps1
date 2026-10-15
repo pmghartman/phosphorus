@@ -4,12 +4,12 @@ $Scripts = Split-Path -Parent $PSScriptRoot
 . "$Scripts/lib/Config.ps1"
 
 function Usage {
-    Write-Host "usage: phosphorus              the cli: services, files, git, stats, model, mesh update"
-    Write-Host "       phosphorus start        bring this host up (run.ps1)"
-    Write-Host "       phosphorus stop         stop phosphorus until the next phosphorus start"
-    Write-Host "       phosphorus restart      restart phosphorus (and phosphorus-git), picks up a host rename"
-    Write-Host "       phosphorus update       update this host only"
-    Write-Host "       phosphorus update all   update the whole mesh, one host at a time"
+    Write-Host "usage: phos             the cli"
+    Write-Host "       phos start       start host"
+    Write-Host "       phos stop        stop host"
+    Write-Host "       phos restart     restart host"
+    Write-Host "       phos update      update host"
+    Write-Host "       phos update all  update mesh"
 }
 
 function Started { Invoke-Quiet { docker inspect -f '{{.State.Running}} {{.State.StartedAt}}' phosphorus } }
@@ -20,7 +20,7 @@ function Invoke-Cli([string[]]$CliArgs) {
     while ($true) {
         $before = Started
         if (-not "$before".StartsWith("true")) {
-            Write-Host "phosphorus isn't running, start it with: phosphorus start" -ForegroundColor Red
+            Write-Host "phosphorus isn't running, run: phos start" -ForegroundColor Red
             exit 1
         }
         docker exec -it -e TERM=xterm-256color -e COLORTERM=truecolor phosphorus node /opt/frontend/cli/phosphorus.js @CliArgs
@@ -100,7 +100,7 @@ switch ("$($args[0])|$($args[1])") {
             docker stop -t 30 $c | Out-Null
             if ($LASTEXITCODE) { exit 1 }
         }
-        Write-Host "phosphorus stopped, phosphorus start starts it again"
+        Write-Host "phosphorus stopped, phos start to resume"
     }
     "restart|"    {
         Invoke-Detached "restart"

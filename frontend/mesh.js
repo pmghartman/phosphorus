@@ -42,7 +42,8 @@ const { log, note, clear } = notes('mesh');
 
 // server.js's: chat and presence in, own platform and update lock out
 
-let hooks = { mergeChat: () => {}, mergePresence: () => {}, platform: () => '', ownLock: () => null };
+// hostServices: a peer's services as it published them in sys, null for none
+let hooks = { mergeChat: () => {}, mergePresence: () => {}, platform: () => '', ownLock: () => null, hostServices: () => null };
 
 // --- discovery -------------------------------------------------------------
 
@@ -156,7 +157,9 @@ async function pollPeer(peer) {
     const start = Date.now();
     const snap = await fetchJson(peer.ip, `/api/mesh/snapshot?since=${st.lastSeq}`);
     st.rttMs = Date.now() - start;
-    const entries = Array.isArray(snap.services) ? snap.services : [];
+    // sys's copy, a peer from before it the snapshot's
+    const published = hooks.hostServices(peer.host);
+    const entries = Array.isArray(published) ? published : Array.isArray(snap.services) ? snap.services : [];
     // all or nothing per peer, a bad row keeping its last good list
     const bad = entries.map(proxy.rowError).find(Boolean);
     if (bad) note(`bad:${peer.host}`, `${peer.host} published a bad service, keeping its last good list: ${bad}`);
@@ -172,7 +175,7 @@ async function pollPeer(peer) {
     st.chain = snap.chain && snap.chain.initiator ? snap.chain : null;
     st.git = snap.git && typeof snap.git === 'object' ? snap.git : null;
     st.model = snap.model && typeof snap.model === 'object' ? snap.model : null;
-    st.sys = snap.sys && typeof snap.users === 'object' ? snap.sys : null;
+    st.sys = typeof snap.sysDigest === 'string' ? snap.sysDigest : null;
     st.projects = Array.isArray(snap.projects) ? snap.projects.filter((x) => x && x.host === peer.host) : [];
     st.answeredAt = Date.now();
     // news: anything redrawn, chat to relay, or a first answer, rttMs left
@@ -403,7 +406,7 @@ module.exports = {
   // answered within GIT_MAX_AGE_MS, a dead master's claim never outliving it
   peerGit: () => [...peerState.values()].filter((st) => Date.now() - (st.answeredAt || 0) <= GIT_MAX_AGE_MS).map((st) => st.git).filter(Boolean),
   // when each sys file last changed, the files fetched apart
-  peerSys: () => [...peerState.entries()].filter(([, st]) => st.sys).map(([host, st]) => ({ host, stamps: st.sys })),
+  peerSys: () => [...peerState.entries()].filter(([, st]) => st.sys && st.answered).map(([host, st]) => ({ host, digest: st.sys })),
   peerModel: () => [...peerState.values()].filter((st) => Date.now() - (st.answeredAt || 0) <= MODEL_MAX_AGE_MS).map((st) => st.model).filter(Boolean),
   // the orangutan's projects on each answering peer
   peerProjects: () => [...peerState.values()].flatMap((st) => st.projects || []),

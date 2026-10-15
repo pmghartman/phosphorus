@@ -323,12 +323,13 @@ body {
 }
 .dk-tile {
   display: flex; align-items: center; justify-content: center; width: 2.4rem; height: 2.4rem;
-  background: transparent; border: 1px solid var(--border); color: var(--muted);
-  transition: border-color 0.12s, color 0.12s, background-color 0.12s;
+  background: none; border: 0; color: var(--muted);
 }
-.dk-tile-img { border-color: transparent; }
-.dk-tile .ic { width: 1.15rem; height: 1.15rem; }
-.dk-icon:hover .dk-tile, .dk-icon:focus-visible .dk-tile { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+/* bare glyphs, the icon's own box the only highlight */
+.dk-tile .ic { width: 1.6rem; height: 1.6rem; stroke-width: 1.6; }
+.dk-tile-img .dk-favicon { width: 1.6rem; height: 1.6rem; }
+.dk-icon { border-radius: 0.3rem; }
+.dk-icon:hover, .dk-icon:focus-visible { background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .dk-icon:focus-visible { outline: none; }
 .dk-icon:active .dk-tile { transform: translateY(1px); }
 .dk-icon.dk-terminal .ic { color: var(--accent); }
@@ -1960,8 +1961,7 @@ input, textarea { caret-color: var(--accent); }
 }
 
 /* icons placed on a grid by app.js, a band selecting on bare desk */
-.dk-icon.sel .dk-tile { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, transparent); }
-.dk-icon.sel .dk-label { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+.dk-icon.sel { background: color-mix(in srgb, var(--accent) 18%, transparent); border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
 .dk-band {
   position: absolute; z-index: 3; pointer-events: none;
   border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent);
@@ -2085,21 +2085,24 @@ input, textarea { caret-color: var(--accent); }
 .acct-unlock > .home-col-head { position: absolute; left: 0.6rem; }
 
 /* icons over a picture, as windows draws them: white labels on a soft shadow
-   whatever the theme, a frosted tile under each glyph, a light box on hover */
-.dk-walled .dk-icon { border-radius: 0.3rem; }
-.dk-walled .dk-tile {
-  border: 0; border-radius: 0.55rem; background: color-mix(in srgb, var(--bg) 80%, transparent);
-  backdrop-filter: blur(10px) saturate(1.3); box-shadow: 0 1px 3px rgb(0 0 0 / 0.35), inset 0 0 0 1px rgb(255 255 255 / 0.12);
-}
-.dk-walled .dk-tile-img { background: none; backdrop-filter: none; box-shadow: none; }
-.dk-walled .dk-tile-img .dk-favicon { filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.6)); }
+   whatever the theme, bare glyphs on a drop shadow, a light box on hover */
+/* glyphs shadowed as the labels are, so they read on any picture */
+.dk-walled .dk-tile .ic, .dk-walled .dk-tile-img .dk-favicon { filter: drop-shadow(0 0 1px rgb(0 0 0 / 0.95)) drop-shadow(0 1px 2px rgb(0 0 0 / 0.9)) drop-shadow(0 0 6px rgb(0 0 0 / 0.6)); }
 .dk-walled .dk-label, .dk-walled .dk-icon .dk-sub {
   color: #fff; background: none; text-shadow: 0 0 1px rgb(0 0 0 / 0.95), 0 1px 2px rgb(0 0 0 / 0.9), 0 0 7px rgb(0 0 0 / 0.7), 0 0 12px rgb(0 0 0 / 0.4);
 }
 .dk-walled .dk-icon .dk-sub { color: rgb(255 255 255 / 0.8); }
 .dk-walled .dk-icon:hover, .dk-walled .dk-icon:focus-visible { background: rgb(255 255 255 / 0.14); border-color: rgb(255 255 255 / 0.2); }
-.dk-walled .dk-icon:hover .dk-tile, .dk-walled .dk-icon:focus-visible .dk-tile { background: color-mix(in srgb, var(--bg) 80%, transparent); }
 .dk-walled .dk-icon.sel { background: color-mix(in srgb, var(--accent) 34%, rgb(255 255 255 / 0.1)); border-color: color-mix(in srgb, var(--accent) 70%, #fff); }
-.dk-walled .dk-icon.sel .dk-tile { background: color-mix(in srgb, var(--bg) 80%, transparent); }
-.dk-walled .dk-icon.sel .dk-label { background: none; }
 .dk-walled .dk-band { border-color: rgb(255 255 255 / 0.7); background: rgb(255 255 255 / 0.15); }
+
+/* the merged home: where each entry lives, greyed while only an offline host has it */
+.fm-where { margin-left: 0.5rem; color: var(--muted); font-size: 0.68rem; white-space: nowrap; }
+.fm-grid .fm-where { display: none; }
+.fm-stale, .dk-icon.dk-stale { opacity: 0.45; }
+.fm-choices { display: flex; flex-direction: column; gap: 0.25rem; }
+.fm-choice { display: flex; justify-content: space-between; gap: 0.5rem; padding: 0.35rem 0.5rem; text-align: left; background: none; border: 1px solid var(--border); color: var(--fg); font: inherit; cursor: pointer; }
+.fm-choice:hover:not(:disabled), .fm-choice:focus-visible { border-color: var(--accent); outline: none; }
+.fm-choice:disabled { color: var(--muted); cursor: default; }
+.fm-choice-why { color: var(--muted); font-size: 0.68rem; }
+.dk-menu button.on::after { content: ' ✓'; color: var(--accent); }

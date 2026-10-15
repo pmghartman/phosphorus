@@ -51,16 +51,24 @@ The first time a user logs in they log in to one or more hosts with that machine
 own user and password; those logins are saved to their profile for next time. A
 host online but not logged in shows a lock in the bottom bar: click it to log in.
 The profile button in the bar holds saved hosts, page logins, the password and log out.
-Your chat name is your user name, and your theme, icon layout, recent files and chat
-colour follow you to any browser.
+Your chat name is your user name, and your theme, icon layout, wallpaper, recent
+files and chat colour belong to you, not the browser: they follow you to any browser,
+and another user logging in on yours never sees them.
 
 Each host's `state/sys/` is the mesh's own small file system: `etc/` (users in `passwd`
-and `shadow`, the model roles and API keys in `model/`) and `home/<user>/` (the vault,
-sealed with that user's password, and settings) are copied to every host; `var/` (chat)
-is the host's own. You get a desktop:
+and `shadow`, the model roles and API keys in `model/`, chat channels in `chat/`, what
+each host publishes about itself in `hosts/<host>/`, files kept on every host in
+`mirror/`) and `home/<user>/` (the vault, sealed with that user's password, and
+settings) are copied to every host; `var/` (chat) is the host's own. You get a desktop:
 
 - **terminal**: a shell on each host you logged in to
 - **files**: every host's shared folders; copy and move between hosts, drag files in to upload
+- **home**: every host's `usr/` as one folder: your own (only you can open it, admins
+  included), `shared/` for everyone, and admin files at the top. Each file lives on the
+  host you pick when you add it, or on all hosts (32MB at most, kept in step); a host
+  that's offline shows its files greyed. Your `Desktop/` and `shared/Desktop/` are on
+  your desktop. Pages, `.wasm` programs and `NAME.app` folders (with an `index.html`)
+  run in a sandboxed window in your browser
 - **editor**: edit text files live with others, saved as you type (ctrl+s saves now)
 - **chat**: channels and direct messages; `/chimp` asks the AI model
 - **status**: CPU, memory, disk and network for every host, and which AI model is in use
@@ -93,6 +101,9 @@ Two files in `config/`, applied a few seconds after you save them.
 dir = files, /srv/media
 priv = rwd, r
 
+[home]
+dir = /srv/phosphorus
+
 [git]
 host = true
 
@@ -103,6 +114,9 @@ url = https://huggingface.co/ggml-org/gpt-oss-120b-GGUF/resolve/main/gpt-oss-120
 ```
 
 - `[files]`: the folders to share, and for each `r` read, `w` write, `d` delete.
+- `[home]`: where this host keeps `usr/` (the homes) and `sys/` (users and settings),
+  blank for `state/`. Change it (or press `h` on the files tab of `phos`) and both
+  are copied there on the rebuild, then the old ones deleted.
 - `[git]`: keep a copy of the git server on this host.
 - `[model]`: run the AI model here (needs memory about the model file's size),
   on an nvidia `gpu` if set, from the `.gguf` at `url`.

@@ -275,7 +275,7 @@ async function create(s, p) {
   if (no) return no;
   const name = String(p.name || '').trim().toLowerCase();
   const pass = String(p.pass || '');
-  if (!NAME_RE.test(name) || name === ADMIN) return [400, { error: 'name: letters, digits, . _ -, up to 32, never admin' }];
+  if (!NAME_RE.test(name) || name === ADMIN || name === 'shared') return [400, { error: 'name: letters, digits, . _ -, up to 32, never admin or shared' }];
   if (live(name)) return [409, { error: `${name} already exists` }];
   if (pass.length < 4 || pass.length > MAX_PASS) return [400, { error: 'password: 4 to 256 characters' }];
   await setPass(name, pass, { hosts: {}, pages: {} }, !!p.admin);
@@ -302,8 +302,19 @@ function remove(s, p) {
   return list(s);
 }
 
+// a short lived grant sealed with the mesh key, any host reading it
+const sealGrant = (o, ms) => Buffer.from(JSON.stringify(seal(meshKey(), JSON.stringify({ ...o, e: Date.now() + ms })))).toString('base64url');
+function openGrant(token) {
+  let o;
+  try { o = JSON.parse(open(meshKey(), JSON.parse(Buffer.from(String(token), 'base64url').toString('utf8'))) || 'null'); } catch { return null; }
+  return o && o.e > Date.now() ? o : null;
+}
+
 module.exports = {
   pass: (req) => !!session(req),
+  exists: (name) => !!live(String(name || '')),
+  isAdmin: (name) => !!live(String(name || ''))?.admin,
+  sealGrant, openGrant,
   issuers,
   COOKIE, MAX_WALL, session, refresh, me, login, setVault, setPrefs, wallpaper, setWallpaper, changePass, list, create, setAdmin, remove, clearCookie, setup: () => !anyAdmin(),
 };

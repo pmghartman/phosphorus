@@ -2,20 +2,24 @@
 // the pretend OS's tree: etc/ and home/ replicated, every host a full copy,
 // each file's latest write winning; var/ this host's own; never served
 
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const clock = require('./clock');
 const mesh = require('./mesh');
 const { FRONTEND_PORT, readJson, requestJson, writeJsonAtomic } = require('./util');
 
-const STATE_DIR = process.env.STATE_DIR || '/state';
-const ROOT = path.join(STATE_DIR, 'sys');
+// beside usr/ in [home] dir, the home's state/ unset
+const ROOT = path.join(process.env.HOME_FS || process.env.STATE_DIR || '/state', 'sys');
 const REL_RE = /^(etc|home)(\/[a-z0-9][a-z0-9._-]{0,63}){1,5}\.json$/;
 // paths whose first write stays, a mesh secret two hosts made at once
 const oldest = new Set();
 
 // rel -> {at, gone?, data}
 const files = new Map();
+// told of every change, local or a peer's, by rel
+const watchers = [];
+let digestMemo = '';
 
 function load(dir, rel) {
   let ents = [];
@@ -34,6 +38,8 @@ const valid = (f) => !!f && Number.isFinite(f.at) && f.at <= Date.now() + 60000 
 
 function put(rel, f) {
   files.set(rel, f);
+  digestMemo = '';
+  for (const w of watchers) { try { w(rel); } catch (e) { console.error(`[sys] watcher on ${rel}: ${e.message}`); } }
   // peers see the new stamp on their next fast poll
   clock.markHot();
   const abs = path.join(ROOT, rel);
@@ -73,6 +79,16 @@ function list(dir) {
 // --- the mesh -------------------------------------------------------------
 
 const stamps = () => Object.fromEntries([...files].map(([r, f]) => [r, f.at]));
+// every rel and stamp in one hash, all a peer's poll carries; two equal means
+// nothing to pull
+function digest() {
+  if (!digestMemo) {
+    const h = crypto.createHash('sha256');
+    for (const r of [...files.keys()].sort()) h.update(`${r}\t${files.get(r).at}\n`);
+    digestMemo = h.digest('hex').slice(0, 32);
+  }
+  return digestMemo;
+}
 // the whole tree, or only the files asked for
 const dump = (rels) => Object.fromEntries(rels ? rels.filter((r) => files.has(r)).map((r) => [r, files.get(r)]) : files);
 
@@ -103,6 +119,9 @@ function local(rel, old) {
   return abs;
 }
 
+// host -> the digest last pulled from in full, its stamps not asked again
+const synced = new Map();
+
 let pulling = null;
 function pull() {
   if (!pulling) pulling = pullOnce().finally(() => { pulling = null; });
@@ -111,9 +130,13 @@ function pull() {
 const PULL_BATCH = 40;
 async function pullOnce() {
   const ips = mesh.peerIps();
-  await Promise.all(mesh.peerSys().map(async ({ host, stamps: st }) => {
+  await Promise.all(mesh.peerSys().map(async ({ host, digest: d }) => {
     const ip = ips.get(host);
-    const want = ip ? wanted(st) : [];
+    if (!ip || d === digest() || d === synced.get(host)) return;
+    const s = await requestJson({ host: ip, port: FRONTEND_PORT, path: '/api/sys/stamps', timeout: 5000 }).catch(() => null);
+    if (!s || s.status !== 200 || !s.body || typeof s.body !== 'object') return;
+    const st = s.body;
+    const want = wanted(st);
     for (let i = 0; i < want.length; i += PULL_BATCH) {
       const rels = want.slice(i, i + PULL_BATCH).filter((rel) => wins(rel, st[rel]));
       if (!rels.length) continue;
@@ -122,10 +145,14 @@ async function pullOnce() {
       if (!r || r.status !== 200) return;
       merge(r.body);
     }
+    synced.set(host, d);
   }));
 }
 
 load(ROOT, '');
 setInterval(() => { pull().catch(() => {}); }, 1000).unref();
 
-module.exports = { read, write, adopt, remove, list, local, stamp: stampOf, pull, stamps, dump, oldestWins: (rel) => oldest.add(rel) };
+module.exports = {
+  read, write, adopt, remove, list, local, stamp: stampOf, pull, stamps, digest, dump,
+  oldestWins: (rel) => oldest.add(rel), watch: (fn) => watchers.push(fn),
+};
