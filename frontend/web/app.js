@@ -8126,21 +8126,31 @@ function acctPrefs(prefs) {
   applyTheme(theme || (systemLight.matches ? 'light' : 'dark'));
 }
 
-addEventListener('focus', () => { acctCheck(); dkDeskLoad(); });
-setInterval(() => { if (!document.hidden) { acctCheck(); dkDeskLoad(); } }, 30000);
+// the session and desktop rechecked, the desktop's lists only once this host
+// answers, backing off to 5 minutes while it doesn't
+const ACCT_POLL_MS = 30000;
+let acctPollMs = ACCT_POLL_MS;
+async function acctTick() {
+  const up = await acctCheck();
+  acctPollMs = up === false ? Math.min(acctPollMs * 2, 300000) : ACCT_POLL_MS;
+  if (up !== false) dkDeskLoad();
+}
+addEventListener('focus', acctTick);
+(function acctPoll() { setTimeout(async () => { if (!document.hidden) await acctTick(); acctPoll(); }, acctPollMs); })();
 
 // a session gone (expired, password changed, user deleted): back to the login
 let acctChecking = false;
 async function acctCheck() {
-  if (!acct || acctChecking) return;
+  if (!acct || acctChecking) return undefined;
   acctChecking = true;
   const me = await acctCall('/api/me');
   acctChecking = false;
   if (me.status === 401 && acct) acctLogin(me.setup);
   // another browser's icon moves, theme or wallpaper, taken in
-  if (!me.ok || !acct || acct.boot || me.user !== acct.user) return;
+  if (!me.ok || !acct || acct.boot || me.user !== acct.user) return me.status !== 0;
   if (JSON.stringify(me.prefs || {}) !== prefsSeen && !prefsTimer) { acctPrefs(me.prefs || {}); dkLayout(); }
   if ((me.wallpaper || 0) !== acct.wallpaper) { acct.wallpaper = me.wallpaper || 0; dkWallPaint(); }
+  return true;
 }
 
 // a service's page sent here to log in first, back to it after
