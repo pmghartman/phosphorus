@@ -61,7 +61,6 @@ each host publishes about itself in `hosts/<host>/`, files kept on every host in
 `mirror/`) and `home/<user>/` (the vault, sealed with that user's password, and
 settings) are copied to every host; `var/` (chat) is the host's own. You get a desktop:
 
-- **terminal**: a shell on each host you logged in to
 - **files**: every host's shared folders; copy and move between hosts, drag files in to upload
 - **home**: every host's `home/` folder (in `files/` unless `[home]` says otherwise) as one:
   your own (only you can open it, admins included), `shared/` for everyone, `sys/` for
@@ -69,7 +68,9 @@ settings) are copied to every host; `var/` (chat) is the host's own. You get a d
   host you pick when you add it, or on all hosts (32MB at most, kept in step); a host
   that's offline shows its files greyed. Your `Desktop/` and `shared/Desktop/` are on
   your desktop. Pages, `.wasm` programs and `NAME.app` folders (with an `index.html`)
-  run in a sandboxed window in your browser
+  run in a sandboxed window in your browser; source files (C, C++, Rust, Go, Python,
+  JavaScript, shell and more) run with "run on HOST" in a terminal on any host
+  holding them that you've logged in to, built in a temp folder
 - **editor**: edit text files live with others, saved as you type (ctrl+s saves now)
 - **chat**: channels and direct messages; `/chimp` asks the AI model
 - **status**: CPU, memory, disk and network for every host, and which AI model is in use
@@ -82,8 +83,8 @@ settings) are copied to every host; `var/` (chat) is the host's own. You get a d
 Windows move, snap to edges and resize from any side. In the bar at the bottom:
 your open windows, your hosts (purple is the one serving this page; click another
 to switch), the mesh map, updates, and light or dark theme. Right click the desktop
-to open a terminal or files, add files from your computer (or drop them on it),
-change the wallpaper or arrange the icons; right click a picture in files to make it
+to add a new file or upload files from your computer (or drop them on it), each
+landing where you clicked, change the wallpaper or arrange the icons; right click a picture in files to make it
 the wallpaper. Your wallpaper follows you to any browser.
 
 ## Updating

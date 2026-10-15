@@ -95,7 +95,7 @@ if (-not (Invoke-PhosphorusPull)) { Fail "pull failed, still running the previou
 # nvidia gpus handed in wherever a probe off the new image gets them
 Invoke-Quiet { docker run --rm --gpus all --network none --entrypoint true phosphorus:latest } | Out-Null
 if (-not $LASTEXITCODE) {
-    $env:COMPOSE_FILE += ";docker-compose.gpu.yml"
+    $env:COMPOSE_FILE += ";container/docker-compose.gpu.yml"
     Say "handing the nvidia gpu to phosphorus"
 }
 

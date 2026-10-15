@@ -419,7 +419,8 @@ function unpack(body, enc) {
 // {type, body, path}, redirects on the same upstream followed; a page cut
 // at max (a login page's 4xx kept, its links still the app's), anything else
 // over it dropped
-function grab(route, path, max, { page = false, hops = 4 } = {}) {
+function grab(route, path, max, { page = false, hops = 4, trace = null } = {}) {
+  const say = (what) => trace?.push(`${path} ${what}`);
   return new Promise((resolve) => {
     const host = route.domain || BASE_DOMAIN;
     const req = (route.scheme === 'https' ? https : http).get({
@@ -435,9 +436,11 @@ function grab(route, path, max, { page = false, hops = 4 } = {}) {
       if (to) {
         res.resume();
         const next = hops > 0 && iconPath(route, to, path);
-        resolve(next && next !== path ? grab(route, next, max, { page, hops: hops - 1 }) : null);
+        say(`${res.statusCode} to ${to}${next ? '' : ', not followed'}`);
+        resolve(next && next !== path ? grab(route, next, max, { page, hops: hops - 1, trace }) : null);
         return;
       }
+      say(`${res.statusCode} ${res.headers['content-type'] || 'no type'}${res.headers['content-encoding'] ? ` ${res.headers['content-encoding']}` : ''}`);
       if (res.statusCode !== 200 && !(page && res.statusCode >= 400 && res.statusCode < 500)) { res.resume(); resolve(null); return; }
       const parts = [];
       let n = 0;
@@ -454,8 +457,8 @@ function grab(route, path, max, { page = false, hops = 4 } = {}) {
       res.on('end', done);
       res.on('error', () => resolve(null));
     });
-    req.on('timeout', () => req.destroy());
-    req.on('error', () => resolve(null));
+    req.on('timeout', () => { say('timed out'); req.destroy(); });
+    req.on('error', (e) => { say(e.message); resolve(null); });
   });
 }
 
@@ -496,9 +499,9 @@ const fromData = (href) => {
 };
 
 // a web manifest's icons, biggest first, as upstream paths
-async function manifestIcons(route, href, from) {
+async function manifestIcons(route, href, from, trace) {
   const path = iconPath(route, href, from);
-  const r = path && await grab(route, path, ICON_MAX);
+  const r = path && await grab(route, path, ICON_MAX, { trace });
   let icons;
   try { icons = JSON.parse(r.body.toString('utf8')).icons; } catch { return []; }
   if (!Array.isArray(icons)) return [];
@@ -513,10 +516,13 @@ const USUAL_ICONS = ['/favicon.ico', '/favicon.png', '/favicon.svg', '/apple-tou
   '/assets/favicon.ico', '/.client/favicon.png', '/.client/logo.png', '/logo.png', '/icon.png'];
 
 // rel=icon, then apple-touch-icon, the manifest's, then the usual paths
-async function lookIcon(route) {
-  const page = await grab(route, '/', ICON_MAX * 4, { page: true });
+async function lookIcon(route, trace = null) {
+  const page = await grab(route, '/', ICON_MAX * 4, { page: true, trace });
   const html = page && (/html/.test(page.type) || /^\s*</.test(page.body.toString('utf8', 0, 64))) ? page.body.toString('utf8') : '';
-  const from = page?.path || '/';
+  // hrefs off the page's <base> where it names one (silverbullet's
+  // `{{host_prefix}}/`), else off the page itself
+  const base = (html.match(/<base\b[^>]*\bhref\s*=\s*(["'])([^"']*)\1/i) || [])[2];
+  const from = (base && iconPath(route, base.endsWith('/') ? `${base}_` : base, page.path)) || page?.path || '/';
   const icons = [];
   const touch = [];
   let manifest = '';
@@ -534,9 +540,10 @@ async function lookIcon(route) {
     if (d) return d;
   }
   const paths = [...icons, ...touch].filter((h) => !h.startsWith('data:')).map((h) => iconPath(route, h, from)).filter(Boolean);
-  if (manifest) paths.push(...await manifestIcons(route, manifest, from));
+  trace?.push(`page names ${paths.length ? paths.join(', ') : 'no icons'}${manifest ? `, manifest ${manifest}` : ''}`);
+  if (manifest) paths.push(...await manifestIcons(route, manifest, from, trace));
   for (const path of new Set([...paths, ...USUAL_ICONS])) {
-    const r = asImage(await grab(route, path, ICON_MAX));
+    const r = asImage(await grab(route, path, ICON_MAX, { trace }));
     if (r) return r;
   }
   return null;
@@ -559,4 +566,17 @@ function favicon(host, name) {
   return icon;
 }
 
-module.exports = { EXTRA_KEYS, rowError, swap, pinTargets, listen, favicon };
+// every step of a fresh lookup, for an icon that won't show
+async function faviconWhy(host, name) {
+  const route = everyRoute.find((r) => r.host === host && r.name === name);
+  if (!route) return { route: null, steps: [`no route for ${host}/${name}`] };
+  const steps = [];
+  const icon = await lookIcon(route, steps).catch((e) => { steps.push(e.message); return null; });
+  return {
+    route: `${route.scheme}://${route.ip}:${route.port}, host ${route.domain || BASE_DOMAIN}, prefix ${route.prefix || '/'}`,
+    found: icon ? `${icon.type}, ${icon.body.length} bytes` : null,
+    steps,
+  };
+}
+
+module.exports = { EXTRA_KEYS, rowError, swap, pinTargets, listen, favicon, faviconWhy };

@@ -141,12 +141,15 @@ function Get-PhosphorusFilesPermList {
     return @($raw.Split(",") | ForEach-Object { $_.Trim() })
 }
 
-# shares in an override beside compose (no variable mount count there),
-# rewritten every build, never committed
-$PhosphorusFilesOverride = "docker-compose.files.yml"
+# shares in an override in state\ (no variable mount count in compose),
+# rewritten every build
+$PhosphorusFilesOverride = "state/docker-compose.files.yml"
 
 # $true when it wrote one and the caller should add it to COMPOSE_FILE
 function Write-PhosphorusFilesOverride([string]$Base) {
+    # the older one at the home's root
+    if (Test-Path "docker-compose.files.yml") { Remove-Item "docker-compose.files.yml" -Force }
+    New-Item -ItemType Directory -Force "state" *> $null
     $dirs = @()
     foreach ($d in (Get-PhosphorusFilesDirList $Base)) {
         if (-not (Test-Path -PathType Container $d)) {

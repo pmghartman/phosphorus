@@ -32,7 +32,7 @@ the phosphorus license (see `LICENSE`) covers none of them.
 | Geist Mono (frontend, the page's font, via @fontsource-variable/geist-mono) | OFL-1.1 | https://github.com/vercel/geist-font |
 | commander (KaTeX) | MIT | https://github.com/tj/commander.js |
 
-## phosphorus-git image (`git/container/Dockerfile`)
+## phosphorus-git image (`container/git/Dockerfile`)
 
 | Component | Version | License | Source |
 |---|---|---|---|

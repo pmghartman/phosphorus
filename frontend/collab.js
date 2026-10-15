@@ -117,7 +117,8 @@ function open(share, rel) {
   const held = sessions.get(key);
   if (held) { clearTimeout(held.idle); return [200, held]; }
   const [status, f] = files.read(share, rel);
-  if (status === 404) return [200, newSession(key, share, rel, '', -1)];
+  // never a blank one for a file renamed or deleted
+  if (status === 404) return [404, { error: 'no such file: renamed, moved or deleted' }];
   if (status !== 200) return [status, f];
   if (f.binary) return [415, { error: 'a binary file, not text' }];
   if (f.tooBig) return [413, { error: 'over 512KB, too big to edit here' }];

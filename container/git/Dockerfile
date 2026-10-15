@@ -29,11 +29,11 @@ RUN curl -fsSL "https://codeberg.org/forgejo/forgejo/releases/download/v${FORGEJ
  && chmod 755 /usr/local/bin/forgejo
 
 # --- our own files ---------------------------------------------------------
-COPY git/container/litefs.yml.tmpl /etc/litefs/litefs.yml.tmpl
-COPY git/container/app.ini.tmpl    /etc/forgejo/app.ini.tmpl
-COPY git/container/rsyncd.conf     /etc/rsyncd.conf
-COPY git/container/git-daemon.sh   /usr/local/bin/git-daemon.sh
-COPY git/container/elector.js      /usr/local/lib/phosphorus-git/elector.js
+COPY container/git/litefs.yml.tmpl /etc/litefs/litefs.yml.tmpl
+COPY container/git/app.ini.tmpl    /etc/forgejo/app.ini.tmpl
+COPY container/git/rsyncd.conf     /etc/rsyncd.conf
+COPY container/git/git-daemon.sh   /usr/local/bin/git-daemon.sh
+COPY container/git/elector.js      /usr/local/lib/phosphorus-git/elector.js
 RUN chmod +x /usr/local/bin/git-daemon.sh \
  && mkdir -p /var/lib/phosphorus/git /var/lib/litefs-internal
 

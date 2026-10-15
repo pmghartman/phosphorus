@@ -150,14 +150,17 @@ phosphorus_files_perm_list() {
   done
 }
 
-# shares in an override beside compose (no variable mount count there),
-# rewritten every build, never committed
-PHOSPHORUS_FILES_OVERRIDE="docker-compose.files.yml"
+# shares in an override in state/ (no variable mount count in compose),
+# rewritten every build
+PHOSPHORUS_FILES_OVERRIDE="state/docker-compose.files.yml"
 
 # $1 the home as the host sees it, $2 whether those paths are statable
 # here, 0 with an override for COMPOSE_FILE, 1 with only the fallback mount
 phosphorus_write_files_override() {
   local dirs=() perms=() dir perm i=0 base="${1:-$PWD}" vet="${2:-1}"
+  # the older one at the home's root
+  rm -f docker-compose.files.yml
+  mkdir -p state
   while IFS= read -r dir; do
     if [ "$vet" = 1 ] && [ ! -d "$dir" ]; then
       echo "[files] skipping '$dir'; no such directory on this host" >&2

@@ -72,12 +72,12 @@ jobs:
           if on "$AMD64" "$MAC" "$WIN"; then
             img phosphorus container/Dockerfile amd64 ubuntu-24.04 "" cpu
             img phosphorus container/Dockerfile amd64 ubuntu-24.04 -cuda cuda
-            img phosphorus-git git/container/Dockerfile amd64 ubuntu-24.04 "" cpu
+            img phosphorus-git container/git/Dockerfile amd64 ubuntu-24.04 "" cpu
             manifests+=('{"name":"phosphorus","suffix":"-cuda"}')
           fi
           if on "$ARM64" "$MAC"; then
             img phosphorus container/Dockerfile arm64 ubuntu-24.04-arm "" cpu
-            img phosphorus-git git/container/Dockerfile arm64 ubuntu-24.04-arm "" cpu
+            img phosphorus-git container/git/Dockerfile arm64 ubuntu-24.04-arm "" cpu
           fi
           manifests+=('{"name":"phosphorus","suffix":""}' '{"name":"phosphorus-git","suffix":""}')
           on "$AMD64" && debs+=('"amd64"')
@@ -95,7 +95,7 @@ jobs:
       - name: syntax
         run: |
           for f in scripts/*.sh scripts/lib/*.sh scripts/phosphorus build/*.sh build/deb/post* build/deb/prerm container/*.sh; do bash -n "$f"; done
-          for f in frontend/*.js frontend/cli/*.js frontend/web/*.js git/container/*.js container/*.js; do node --check "$f"; done
+          for f in frontend/*.js frontend/cli/*.js frontend/web/*.js container/git/*.js container/*.js; do node --check "$f"; done
 
   # the release's tree: what every installer ships and syncs into the host's home
   payload:

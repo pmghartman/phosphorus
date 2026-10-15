@@ -1201,7 +1201,13 @@ function startTerminal(view, host, sid, resume, shared = false, login = null) {
     const loginStep = (data) => {
       seen += new TextDecoder().decode(data);
       if (/login: $/.test(seen)) { seen = ''; ws.send(enc.encode(`${login.user}\r`)); }
-      else if (/password: $/.test(seen)) { ws.send(enc.encode(`${login.pass}\r`)); login = null; trim = true; }
+      else if (/password: $/.test(seen)) {
+        ws.send(enc.encode(`${login.pass}\r`));
+        // a command asked for, typed ahead of the shell's prompt
+        if (login.run) ws.send(enc.encode(`${login.run}\r`));
+        login = null;
+        trim = true;
+      }
       return true;
     };
     const trimStep = (data) => {
@@ -2878,6 +2884,7 @@ function lineEl(m, prev) {
       const b = Object.assign(el('button', 'show-open', 'open'), { type: 'button', title: 'open it in a shared editor' });
       b.dataset.act = 'show';
       li.append(' ', b);
+      fileThere(m.file).then((there) => { if (!there) b.replaceWith(el('span', 'st-dim', '(gone)')); });
     }
     return li;
   }
@@ -4718,6 +4725,7 @@ function codeEditor(view, file, btn, id) {
     redraw();
   }
 
+  let refused = '';
   function connect() {
     if (closed) return;
     const q = new URLSearchParams({ share: file.share, path: file.path });
@@ -4764,6 +4772,7 @@ function codeEditor(view, file, btn, id) {
         paintState();
         paintMarks();
       } else if (msg.type === 'error') {
+        refused = msg.error;
         paintState(msg.error);
       }
     };
@@ -4771,6 +4780,8 @@ function codeEditor(view, file, btn, id) {
       ready = false;
       inflight = null;
       if (closed) return;
+      // the host said why: said once, never retried
+      if (refused) { paintState(refused); return; }
       paintState('reconnecting');
       setTimeout(connect, retry);
       retry = Math.min(retry * 2, 10000);
@@ -6135,7 +6146,6 @@ function dkLogout() {
 const DK_GLYPHS = {
   doc: ICONS.file,
   app: 'M2.5 2.5h11v11h-11zM2.5 5.5h11M4.25 4h.01M5.75 4h.01M6 8.5l-1.5 1.5L6 11.5M10 8.5l1.5 1.5-1.5 1.5',
-  terminal: 'M2 3h12v10H2zM4.5 6.5l2 1.5-2 1.5M8 10h3.5',
   files: ICONS.folder,
   editor: 'M3 1.5h7l3 3v10H3zM10 1.5v3h3M5 7.5h6M5 10h6M5 12.5h3.5',
   service: 'M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM1.5 8h13M8 1.5c-2.2 2.4-2.2 10.6 0 13M8 1.5c2.2 2.4 2.2 10.6 0 13',
@@ -6220,7 +6230,6 @@ function dkIcons() {
   if (sig === dk.sig) return;
   dk.sig = sig;
   dk.desk.icons.replaceChildren(
-    ...hosts.map((h) => dkIcon('terminal', 'terminal', h, () => dkTerminal(h))),
     dkIcon('files', 'files', '', () => dkFiles()),
     dkIcon('editor', 'editor', '', dkEditorPick),
     dkIcon('chat', 'chat', '', () => dkOpenApp('chat')),
@@ -6690,20 +6699,20 @@ function dkMove(w, head) {
 }
 
 // a class played out before done, cut short by a refocus
-function dkLeave(w, done) {
+function dkLeave(w, done, cls = 'dk-leaving') {
   const n = w.node;
   const end = () => {
     if (w.leaving !== t) return;
     clearTimeout(t);
     w.leaving = 0;
     n.removeEventListener('animationend', onEnd);
-    n.classList.remove('dk-leaving');
+    n.classList.remove(cls);
     done();
   };
   const onEnd = (e) => { if (e.target === n) end(); };
-  const t = setTimeout(end, 250);
+  const t = setTimeout(end, 300);
   w.leaving = t;
-  n.classList.add('dk-leaving');
+  n.classList.add(cls);
   n.addEventListener('animationend', onEnd);
 }
 
@@ -6718,7 +6727,7 @@ function dkFocus(w) {
   if (w?.leaving) {
     clearTimeout(w.leaving);
     w.leaving = 0;
-    w.node.classList.remove('dk-leaving');
+    w.node.classList.remove('dk-leaving', 'dk-minimizing');
   }
   for (const o of dk.wins.values()) {
     o.node.classList.toggle('focused', o === w);
@@ -6731,8 +6740,18 @@ function dkFocus(w) {
   dkAppsChanged();
 }
 
+// shrunk into its task bar button; the scale also pulls the window's own
+// offset in, made up for in the translate
+const DK_MIN_SCALE = 0.1;
 function dkMin(w) {
-  dkLeave(w, () => { w.node.hidden = true; });
+  const a = w.node.getBoundingClientRect();
+  const b = w.task.getBoundingClientRect();
+  const k = 1 - DK_MIN_SCALE;
+  const mx = w.snap ? 0 : w.x;
+  const my = w.snap ? 0 : w.y;
+  w.node.style.setProperty('--min-x', `${b.left + b.width / 2 - (a.left + a.width / 2) + k * mx}px`);
+  w.node.style.setProperty('--min-y', `${b.top + b.height / 2 - (a.top + a.height / 2) + k * my}px`);
+  dkLeave(w, () => { w.node.hidden = true; }, 'dk-minimizing');
   w.node.classList.remove('focused');
   w.task.classList.remove('active');
   const top = [...dk.wins.values()].filter((o) => !o.node.hidden && !o.leaving).sort((a, b) => b.node.style.zIndex - a.node.style.zIndex)[0];
@@ -6758,12 +6777,12 @@ function dkClose(w, force) {
 
 // --- the apps
 
-function dkTerminal(host) {
+function dkTerminal(host, run = '') {
   const c = dk.creds.get(host);
   const w = dkWin(null, 'terminal', host, 'term');
   if (!w || !c) return;
   w.host = host;
-  const t = startTerminal(w.body, host, newSid(), false, false, { ...c });
+  const t = startTerminal(w.body, host, newSid(), false, false, { ...c, run });
   w.onFocus = () => t.focus();
   w.onClose = () => t.close();
   dkFocus(w);
@@ -6811,6 +6830,62 @@ const dkPick = (accept, multiple, then) => {
   input.click();
 };
 
+// files about to land on the desktop held to the cell at x, y (else the
+// nearest free ones after it), their icons placed there once they show
+function dkPlaceAt(x, y, names, dir = dkDeskAt()?.dir) {
+  if (!dk.desk || !dir || !names.length) return;
+  const box = dk.desk.icons.getBoundingClientRect();
+  const { cols, rows } = dkGrid();
+  const c0 = Math.max(0, Math.min(cols - 1, Math.floor((x - box.left - DK_PAD) / DK_GX)));
+  const r0 = Math.max(0, Math.min(rows - 1, Math.floor((y - box.top - DK_PAD) / DK_GY)));
+  const ids = new Set(names.map((n) => `doc\n${filesJoin(dir, n)}`));
+  const taken = new Set(dkIconEls().filter((b) => !ids.has(b.dataset.id)).map((b) => dkCell(b.dataset.c, b.dataset.r)));
+  const saved = dkSaved();
+  let i = c0 * rows + r0;
+  for (const id of ids) {
+    while (i < cols * rows && taken.has(dkCell(Math.floor(i / rows), i % rows))) i += 1;
+    const at = i < cols * rows ? [Math.floor(i / rows), i % rows] : [c0, r0];
+    taken.add(dkCell(...at));
+    saved[id] = at;
+  }
+  try { localStorage.setItem(DK_POS_KEY, JSON.stringify(saved)); } catch {}
+}
+
+// a new empty file on the desktop at x, y, on this host, opened to edit
+function dkNewFile(x, y) {
+  const d = dkDeskAt();
+  if (!d) return;
+  const pop = el('form', 'acct-unlock dk-newfile');
+  const name = Object.assign(el('input'), { value: 'untitled.txt', spellcheck: false, autocomplete: 'off' });
+  const why = el('span', 'dk-state');
+  const go = Object.assign(el('button', 'primary', 'create'), { type: 'submit' });
+  pop.append(el('div', 'home-col-head', 'add file'), name, why, go);
+  pop.style.left = `${Math.max(4, Math.min(x, innerWidth - 260))}px`;
+  pop.style.top = `${Math.max(4, Math.min(y, innerHeight - 140))}px`;
+  const close = () => { pop.remove(); document.removeEventListener('pointerdown', away, true); };
+  const away = (e) => { if (!pop.contains(e.target)) close(); };
+  document.addEventListener('pointerdown', away, true);
+  pop.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+  pop.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const n = name.value.trim();
+    if (!n || /[\\/]/.test(n)) { why.textContent = 'a name, no slashes'; return; }
+    if (dk.deskFiles.some((f) => f.at === d.dir && f.name === n)) { why.textContent = `${n} is already there`; return; }
+    const loc = homeAt(selfHost);
+    const rel = filesJoin(d.dir, n);
+    go.disabled = true;
+    try { await putFile(loc, rel, new Blob([])); } catch (err) { go.disabled = false; why.textContent = err.message; return; }
+    close();
+    dkPlaceAt(x, y, [n], d.dir);
+    fmChanged(HOME, d.dir);
+    dkCode({ host: loc.host, share: loc.share, path: rel, label: fileLabel(loc.host, 'home', rel) });
+  });
+  document.body.appendChild(pop);
+  name.focus();
+  // the name picked, its extension left
+  name.setSelectionRange(0, name.value.lastIndexOf('.'));
+}
+
 // computer files onto the desktop, else a files window's first folder,
 // a files window showing the upload either way
 function dkAddFiles(list) {
@@ -6830,9 +6905,8 @@ function dkDeskMenu(icons) {
     if (f) { dkMenu(e.clientX, e.clientY, dkFileMenu(f)); return; }
     const items = [
       ...(b ? [['open', () => b.dispatchEvent(new MouseEvent('dblclick')), true], null] : []),
-      ...hosts.map((h) => [`terminal on ${h}`, () => dkTerminal(h), true]),
-      ['files', () => dkFiles(), true],
-      ['add files…', () => dkPick('', true, dkAddFiles), hosts.length > 0],
+      ['add file…', () => dkNewFile(e.clientX, e.clientY), !!dkDeskAt()],
+      ['upload files…', () => dkPick('', true, (list) => { dkPlaceAt(e.clientX, e.clientY, list.map((f) => f.name)); dkAddFiles(list); }), hosts.length > 0],
       null,
       ['change wallpaper…', () => dkPick('image/*', false, ([f]) => dkWallSet(f).then((why) => why && dkMenuNote(why))), !!acct && !acct.boot],
       ['remove wallpaper', dkWallClear, !!acct?.wallpaper],
@@ -6855,12 +6929,15 @@ function dkDeskMenu(icons) {
       e.preventDefault();
       dk.drag = null;
       const items = drag.items.filter((it) => !(fmSame(drag.loc, d.loc) && filesParent(it.rel) === d.dir));
+      dkPlaceAt(e.clientX, e.clientY, items.map((it) => it.name), d.dir);
       if (items.length) fmTransfer(drag.fm, drag.loc, items, d.loc, d.dir, false);
       return;
     }
     if (!dragsFiles(e)) return;
     e.preventDefault();
-    dkAddFiles([...e.dataTransfer.files]);
+    const list = [...e.dataTransfer.files];
+    dkPlaceAt(e.clientX, e.clientY, list.map((f) => f.name));
+    dkAddFiles(list);
   });
 }
 
@@ -7278,6 +7355,7 @@ function fmMenu(fm, x, y, onItem) {
     one && one.dir && runnable(one) && ['browse inside', () => fmGo(fm, fm.loc, picked[0].rel), true],
     one && !one.dir && ['open in editor', () => dkCode({ host: fm.loc.host, share: fm.loc.share, path: picked[0].rel, label: fileLabel(fm.loc.host, fm.loc.root, picked[0].rel) }), true],
     one && !one.dir && ['download', () => fmDownload(fm, picked[0].rel), fmCan(fm, 'r')],
+    ...(one && !one.dir && fm.loc.share === 'home' ? dkRunItems(picked[0].rel, fm.loc.host === '*' ? (one.all ? homeOnline() : one.live || []) : [fm.loc.host]) : []),
     one && fmKind(one) === 'image' && ['set as wallpaper', () => fmWallpaper(fm, picked[0].rel), fmCan(fm, 'r')],
     one && !one.dir && one.hosts && ['keep on every host', () => fmMirror(fm, one, !one.all), true, one.all ? 'on' : ''],
     one && !one.dir && one.hosts && !one.all && ['move to host…', () => fmMoveHost(fm, one), homeOnline().length > 1],
@@ -7564,8 +7642,6 @@ async function fmUpload(fm, loc, dir, fileList) {
   fmChanged(loc, dir);
 }
 
-// a folder, a place or blank space taking a drag: the computer's own files
-// uploaded, a window's moved inside one share or copied (ctrl) across them
 // a folder or place held under a drag this long: opened, the drag going on
 const FM_SPRING_MS = 700;
 function fmSpring(fm, node, t) {
@@ -7588,6 +7664,8 @@ function fmMark(fm, node) {
   node?.classList.add('drop');
 }
 
+// a folder, a place or blank space taking a drag: the computer's own files
+// uploaded, a window's moved inside one share or copied (ctrl) across them
 function fmDropZone(fm, node, where) {
   fmZones.set(node, { fm, where });
   node.dataset.fmDrop = '';
@@ -7672,6 +7750,15 @@ async function dkDeskLoad() {
 // an .app folder's own icon, the first of these it holds
 const DK_APP_ICONS = ['icon.svg', 'icon.png', 'favicon.svg', 'favicon.png', 'favicon.ico'];
 
+// a long name cut in its middle, its extension always shown
+const DK_NAME_MAX = 24;
+function dkShort(n) {
+  if (n.length <= DK_NAME_MAX) return n;
+  const dot = n.lastIndexOf('.');
+  const ext = dot > 0 && n.length - dot <= 8 ? n.slice(dot) : '';
+  return `${n.slice(0, DK_NAME_MAX - ext.length - 1)}…${ext}`;
+}
+
 function dkFileIcon(e) {
   const rel = filesJoin(e.at, e.name);
   const kind = runnable(e) ? 'app' : fmKind(e);
@@ -7680,7 +7767,7 @@ function dkFileIcon(e) {
   // under it: shared, and the host unless it's everywhere or here alone
   const where = e.all ? '' : e.hosts.length === 1 && e.hosts[0] === selfHost ? '' : e.hosts.join(', ');
   const sub = [e.at.startsWith('shared/') ? 'shared' : '', where].filter(Boolean).join(' · ');
-  const b = dkIcon('doc', e.name.replace(/\.app$/i, ''), sub, () => fileOpen(HOME, rel, e), pic);
+  const b = dkIcon('doc', dkShort(e.name.replace(/\.app$/i, '')), sub, () => fileOpen(HOME, rel, e), pic);
   const tile = b.querySelector('.dk-tile');
   if (!pic || kind === 'app') tile.replaceChildren(kind === 'app' ? dkGlyph(DK_GLYPHS.app, 'fm-app') : fmIcon(kind));
   b.classList.add(`dk-doc-${kind}`);
@@ -7692,6 +7779,30 @@ function dkFileIcon(e) {
   return b;
 }
 
+// a source file built or run in a terminal on a host the user has a login
+// for, its build out of the home in a temp dir; $f the file, $o the program
+const DK_RUNNERS = {
+  c: 'cc "$f" -o "$o" && "$o"', cpp: 'c++ "$f" -o "$o" && "$o"', cc: 'c++ "$f" -o "$o" && "$o"', cxx: 'c++ "$f" -o "$o" && "$o"',
+  rs: 'rustc "$f" -o "$o" && "$o"', go: 'go run "$f"', zig: 'zig run "$f"', java: 'java "$f"', swift: 'swift "$f"',
+  py: 'python3 "$f"', js: 'node "$f"', mjs: 'node "$f"', ts: 'npx --yes tsx "$f"', sh: 'bash "$f"', bash: 'bash "$f"',
+  rb: 'ruby "$f"', pl: 'perl "$f"', php: 'php "$f"', lua: 'lua "$f"', hs: 'runghc "$f"', r: 'Rscript "$f"',
+};
+const shQuote = (v) => `'${String(v).replace(/'/g, "'\\''")}'`;
+// the home on a host as its own shell sees it, none on a Windows one
+function dkHomeOn(host) {
+  const home = hostsInfo[host.toLowerCase()]?.files?.shares?.find((x) => x.home)?.label || '';
+  return home.startsWith('/') && !home.startsWith('/run/desktop/') ? home : '';
+}
+// one "run on" per host holding the file whose login is saved
+function dkRunItems(rel, hosts) {
+  const runner = DK_RUNNERS[fmExt(rel)];
+  if (!runner) return [];
+  return hosts.filter((h) => dk.creds.has(h) && dkHomeOn(h)).map((h) => [`run on ${h}`, () => {
+    const stem = rel.split('/').pop().replace(/\.[^.]+$/, '') || 'a.out';
+    dkTerminal(h, `f=${shQuote(`${dkHomeOn(h)}/${rel}`)}; o="$(mktemp -d)"/${shQuote(stem)}; cd "$(dirname "$f")" && ${runner}`);
+  }, true]);
+}
+
 function dkFileMenu(e) {
   const rel = filesJoin(e.at, e.name);
   const loc = homeAt(homePick(rel));
@@ -7700,6 +7811,7 @@ function dkFileMenu(e) {
     e.dir && ['show in files', () => dkFiles({ loc: HOME, dir: rel }), true],
     !e.dir && ['open in editor', () => dkCode({ host: loc.host, share: loc.share, path: rel, label: fileLabel(loc.host, 'home', rel) }), !e.stale],
     !e.dir && ['download', () => { location.href = filesApi(loc, 'download', { path: rel }); }, !e.stale],
+    ...(e.dir ? [] : dkRunItems(rel, e.all ? homeOnline() : e.live || [])),
     null,
     ['show in files', () => dkFiles({ loc: HOME, dir: e.at }), true],
     ['delete', async () => {
@@ -7835,7 +7947,21 @@ body{margin:0;padding:.6rem;background:${bg};color:${fg};font:13px ui-monospace,
 
 // --- the editor: the code tab's own editor, in a window
 
-function dkCode(f) {
+// whether a file is still where it was: its folder listed, it in it
+async function fileThere(f) {
+  try {
+    const body = await filesCall({ host: f.host, share: String(f.share ?? '') }, 'list', undefined, { path: filesParent(f.path) });
+    return body.entries.some((e) => e.name === f.path.split('/').pop() && !e.dir);
+  } catch { return false; }
+}
+
+// a file to edit, refused with a note when it's gone
+async function dkCode(f) {
+  if (!(await fileThere(f))) { dkMenuNote(`${f.path.split('/').pop()} is gone`); return; }
+  dkCodeNow(f);
+}
+
+function dkCodeNow(f) {
   const file = { host: f.host, share: String(f.share ?? ''), path: f.path, label: f.label || `${f.host}/${f.path}` };
   rememberFile(file);
   if (!dk.desk) return;

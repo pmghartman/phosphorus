@@ -77,6 +77,8 @@ sync_payload() {
     LC_ALL=C comm -23 <(LC_ALL=C sort "$manifest") "$next" | while IFS= read -r f; do
       case "$f" in config/*|files/*) continue ;; esac
       rm -f "$dst/$f"
+      # its folder too, once nothing else is in it
+      rmdir -p "$(dirname "$dst/$f")" 2>/dev/null || true
     done
   fi
   mv "$next" "$manifest"
