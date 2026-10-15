@@ -19,6 +19,8 @@ sys.oldestWins(SECRET);
 const ADMIN_PASS = process.env.ADMIN_PASS || process.env.PHOSPHORUS_UPDATE_PASSWORD || '';
 const ADMIN = 'admin';
 const NAME_RE = /^[a-z0-9][a-z0-9._-]{0,31}$/;
+// the home's own folders, never a user's
+const RESERVED = [ADMIN, 'shared', 'sys', 'usr'];
 const COOKIE = 'phosphorus-user';
 const SESSION_MS = 30 * 24 * 3600 * 1000;
 const BOOT_SESSION_MS = 3600 * 1000;
@@ -275,7 +277,7 @@ async function create(s, p) {
   if (no) return no;
   const name = String(p.name || '').trim().toLowerCase();
   const pass = String(p.pass || '');
-  if (!NAME_RE.test(name) || name === ADMIN || name === 'shared') return [400, { error: 'name: letters, digits, . _ -, up to 32, never admin or shared' }];
+  if (!NAME_RE.test(name) || RESERVED.includes(name)) return [400, { error: `name: letters, digits, . _ -, up to 32, never ${RESERVED.join(', ')}` }];
   if (live(name)) return [409, { error: `${name} already exists` }];
   if (pass.length < 4 || pass.length > MAX_PASS) return [400, { error: 'password: 4 to 256 characters' }];
   await setPass(name, pass, { hosts: {}, pages: {} }, !!p.admin);

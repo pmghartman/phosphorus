@@ -1,5 +1,5 @@
 'use strict';
-// usr files kept on every host: one sys entry per file (etc/mirror/<id>),
+// home files kept on every host: one sys entry per file (etc/mirror/<id>),
 // stamped by the host that wrote it last, every other host pulling that copy
 // over the tailnet; a removed entry deletes the copies it made
 
@@ -52,7 +52,7 @@ function unmark(rel) {
   return [200, { ok: true, all: false }];
 }
 
-// a write, rename or delete in usr, a mirrored path's entry following it
+// a write, rename or delete in the home, a mirrored path's entry following it
 function touched(op, rel, to) {
   if (op === 'delete') {
     for (const id of sys.list(DIR).map((f) => f.slice(0, -5))) {

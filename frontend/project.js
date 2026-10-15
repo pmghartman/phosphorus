@@ -13,9 +13,20 @@ const { readJson, writeJsonSoon } = require('./util');
 
 const SELF_HOST = process.env.SELF_HOST || '';
 const STATE_DIR = process.env.STATE_DIR || '/state';
-// each project's record, and its workspace (the files tab's read-only projects share)
+// each project's record, and its workspace in the home's shared/
 const RUNS_DIR = path.join(STATE_DIR, 'project-runs');
-const WORK_ROOT = path.join(STATE_DIR, 'projects');
+// files first, an older home flattened before shared/ is touched
+const { HOME_ROOT: HOME_FS, SHARED } = require('./files');
+const WORK_REL = [SHARED, 'projects'];
+const WORK_ROOT = path.join(HOME_FS, ...WORK_REL);
+// the earlier state/projects moved over once
+const OLD_ROOT = path.join(STATE_DIR, 'projects');
+if (path.resolve(OLD_ROOT) !== path.resolve(WORK_ROOT) && fs.existsSync(OLD_ROOT) && !fs.existsSync(WORK_ROOT)) {
+  try {
+    fs.cpSync(OLD_ROOT, WORK_ROOT, { recursive: true, preserveTimestamps: true, verbatimSymlinks: true });
+    fs.rmSync(OLD_ROOT, { recursive: true, force: true });
+  } catch (e) { console.error(`[project] moving state/projects into shared/: ${e.message}`); }
+}
 // sandboxes off this image: already here, so nothing pulled
 const SANDBOX_IMAGE = process.env.PHOSPHORUS_SANDBOX_IMAGE || 'phosphorus:latest';
 const SANDBOX_PREFIX = 'phosphorus-sandbox-';
@@ -93,16 +104,16 @@ function docker(args, timeoutMs = 60000) {
   });
 }
 
-// /state's source on the docker host, joined in its own separator
-let stateSource = '';
+// the home's source on the docker host, joined in its own separator
+let homeSource = '';
 async function hostWorkDir(id) {
-  if (!stateSource) {
-    const r = await docker(['inspect', 'phosphorus', '--format', '{{range .Mounts}}{{if eq .Destination "/state"}}{{.Source}}{{end}}{{end}}'], 10000);
-    stateSource = r.out.trim();
+  if (!homeSource) {
+    const r = await docker(['inspect', 'phosphorus', '--format', `{{range .Mounts}}{{if eq .Destination "${HOME_FS}"}}{{.Source}}{{end}}{{end}}`], 10000);
+    homeSource = r.out.trim();
   }
-  if (!stateSource) throw new Error('can\'t find where /state lives on the docker host');
-  const sep = /^[A-Za-z]:\\/.test(stateSource) ? '\\' : '/';
-  return [stateSource.replace(/[\\/]+$/, ''), 'projects', dirOf(id)].join(sep);
+  if (!homeSource) throw new Error(`can't find where ${HOME_FS} lives on the docker host`);
+  const sep = /^[A-Za-z]:\\/.test(homeSource) ? '\\' : '/';
+  return [homeSource.replace(/[\\/]+$/, ''), ...WORK_REL, dirOf(id)].join(sep);
 }
 
 const sandboxName = (id) => `${SANDBOX_PREFIX}${id}`;
@@ -133,8 +144,10 @@ async function fence() {
 
 async function sandboxUp(p) {
   const name = sandboxName(p.id);
-  const st = await docker(['inspect', '--format', '{{.State.Running}}', name], 10000);
-  if (st.out.trim() === 'true') return;
+  // one bound elsewhere (a moved home) remade
+  const src = await hostWorkDir(p.id);
+  const st = await docker(['inspect', '--format', '{{.State.Running}} {{range .Mounts}}{{.Source}}{{end}}', name], 10000);
+  if (st.out.trim() === `true ${src}`) return;
   await docker(['rm', '-f', name], 20000);
   await fence();
   const dir = workDir(p.id);
@@ -144,7 +157,7 @@ async function sandboxUp(p) {
   const mem = Math.max(1024 ** 3, Math.floor(os.totalmem() / 4));
   const r = await docker(['run', '-d', '--rm', '--name', name, '--hostname', `sandbox-${p.id}`,
     '--label', `org.phosphorus.sandbox=${p.id}`, '--network', NET,
-    '--mount', `type=bind,source=${await hostWorkDir(p.id)},target=${dir}`, '-w', dir,
+    '--mount', `type=bind,source=${src},target=${dir}`, '-w', dir,
     '--cpus', String(cpus), '--memory', String(mem), '--pids-limit', '4096', '--security-opt', 'no-new-privileges',
     '-e', 'HOME=/root', '--entrypoint', 'sleep', SANDBOX_IMAGE, 'infinity'], 120000);
   if (r.code) throw new Error(`the sandbox wouldn't start: ${(r.err || r.out).trim().slice(0, 400)}`);

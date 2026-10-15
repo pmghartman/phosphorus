@@ -55,7 +55,7 @@ Your chat name is your user name, and your theme, icon layout, wallpaper, recent
 files and chat colour belong to you, not the browser: they follow you to any browser,
 and another user logging in on yours never sees them.
 
-Each host's `state/sys/` is the mesh's own small file system: `etc/` (users in `passwd`
+Each host's `files/sys/` is the mesh's own small file system, no user's to open: `etc/` (users in `passwd`
 and `shadow`, the model roles and API keys in `model/`, chat channels in `chat/`, what
 each host publishes about itself in `hosts/<host>/`, files kept on every host in
 `mirror/`) and `home/<user>/` (the vault, sealed with that user's password, and
@@ -63,8 +63,9 @@ settings) are copied to every host; `var/` (chat) is the host's own. You get a d
 
 - **terminal**: a shell on each host you logged in to
 - **files**: every host's shared folders; copy and move between hosts, drag files in to upload
-- **home**: every host's `usr/` as one folder: your own (only you can open it, admins
-  included), `shared/` for everyone, and admin files at the top. Each file lives on the
+- **home**: every host's home folder (`files/` unless `[home]` says otherwise) as one:
+  your own (only you can open it, admins included), `shared/` for everyone, `sys/` for
+  no one, and admin files at the top. Each file lives on the
   host you pick when you add it, or on all hosts (32MB at most, kept in step); a host
   that's offline shows its files greyed. Your `Desktop/` and `shared/Desktop/` are on
   your desktop. Pages, `.wasm` programs and `NAME.app` folders (with an `index.html`)
@@ -73,7 +74,7 @@ settings) are copied to every host; `var/` (chat) is the host's own. You get a d
 - **chat**: channels and direct messages; `/chimp` asks the AI model
 - **status**: CPU, memory, disk and network for every host, and which AI model is in use
 - **projects**: hand a longer task to the big AI model and watch it work; its
-  files land in a folder named after the project in the read-only projects share
+  files land in a folder named after the project in `shared/projects/` of its host's home
 - **git**: your own git server
 - **games**: start and stop game servers, get the join address
 - every other web service your hosts publish, with its own icon
@@ -102,7 +103,7 @@ dir = files, /srv/media
 priv = rwd, r
 
 [home]
-dir = /srv/phosphorus
+dir = files
 
 [git]
 host = true
@@ -114,9 +115,11 @@ url = https://huggingface.co/ggml-org/gpt-oss-120b-GGUF/resolve/main/gpt-oss-120
 ```
 
 - `[files]`: the folders to share, and for each `r` read, `w` write, `d` delete.
-- `[home]`: where this host keeps `usr/` (the homes) and `sys/` (users and settings),
-  blank for `state/`. Change it (or press `h` on the files tab of `phos`) and both
-  are copied there on the rebuild, then the old ones deleted.
+- `[home]`: which `[files]` dir holds each user's folder, `shared/` (the orangutan's
+  projects in `shared/projects/`) and `sys/` (users and settings), blank for `files/`.
+  Change it (or press `h` on a dir in the files tab of `phos`) and they move there on
+  the rebuild. `state/` is the host's own bookkeeping (chat cache, git, update and
+  project records), never published.
 - `[git]`: keep a copy of the git server on this host.
 - `[model]`: run the AI model here (needs memory about the model file's size),
   on an nvidia `gpu` if set, from the `.gguf` at `url`.

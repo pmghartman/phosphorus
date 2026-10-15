@@ -97,11 +97,11 @@ main() {
   home_from="${home_from%/}"
   [ "$home_from" = "$home_to" ] && home_from=""
   case "$home_to/" in
-    "$home_from/usr/"*|"$home_from/sys/"*) [ -n "$home_from" ] && fail "[home] dir can't be inside the usr or sys it moves" ;;
+    "$home_from/usr/"*|"$home_from/sys/"*|"$home_from/shared/"*) [ -n "$home_from" ] && fail "[home] dir can't be inside the folders it moves" ;;
   esac
   [ "$in_container" = 0 ] && mkdir -p "$home_to"
   export PHOSPHORUS_HOME_DIR="$home_to"
-  [ -n "$home_from" ] && say "moving usr and sys from $home_from to $home_to with this swap"
+  [ -n "$home_from" ] && say "moving the homes, shared and sys from $home_from to $home_to with this swap"
 
   # what compose interpolates, dropped by sudo and the siblings, TS_HOSTNAME
   # in a container rebuild.ps1's COMPUTERNAME, else docker-desktop on Windows
@@ -175,7 +175,7 @@ main() {
   if [ "$running" != "true" ]; then
     if [ -n "$home_from" ] && ! $sudo docker run --rm -v "$home_from:/mv/old" -v "$home_to:/mv/new" \
          --entrypoint sh phosphorus:latest -c "$PHOSPHORUS_HOME_MOVE"; then
-      say "couldn't move usr and sys, keeping them in $home_from"
+      say "couldn't move the homes, keeping them in $home_from"
       compose_env=("${compose_env[@]/#PHOSPHORUS_HOME_DIR=*/PHOSPHORUS_HOME_DIR=$home_from}")
     fi
     say "phosphorus isn't running, starting it here"
