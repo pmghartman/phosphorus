@@ -516,7 +516,10 @@ const USUAL_ICONS = ['/favicon.ico', '/favicon.png', '/favicon.svg', '/apple-tou
 async function lookIcon(route) {
   const page = await grab(route, '/', ICON_MAX * 4, { page: true });
   const html = page && (/html/.test(page.type) || /^\s*</.test(page.body.toString('utf8', 0, 64))) ? page.body.toString('utf8') : '';
-  const from = page?.path || '/';
+  // hrefs off the page's <base> where it names one (silverbullet's
+  // `{{host_prefix}}/`), else off the page itself
+  const base = (html.match(/<base\b[^>]*\bhref\s*=\s*(["'])([^"']*)\1/i) || [])[2];
+  const from = (base && iconPath(route, base.endsWith('/') ? `${base}_` : base, page.path)) || page?.path || '/';
   const icons = [];
   const touch = [];
   let manifest = '';
