@@ -24,6 +24,8 @@ const reconfig = require('./reconfig');
 const stats = require('./stats');
 const media = require('./chatmedia');
 const collab = require('./collab');
+const mirror = require('./mirror');
+files.hooks.change = mirror.touched;
 const users = require('./users');
 const sys = require('./sysfs');
 const { readJson, writeJsonAtomic, writeJsonSoon, tailnetIp, peerCall } = require('./util');
@@ -913,7 +915,7 @@ async function forwardFiles(host, req, res, urlPath) {
 function filesInfo() {
   const shares = files.shares().map((s) => ({ id: s.id, label: s.label, perms: s.perms }));
   return {
-    host: SELF_HOST, enabled: shares.length > 0, shares,
+    host: SELF_HOST, enabled: shares.length > 0, shares, home: files.homeDir(),
     wantDir: files.pending() ? files.configuredDirs().join(', ') : '',
   };
 }
@@ -1375,7 +1377,15 @@ function app(req, res) {
 
   // one endpoint, both ends of the hop like games: the host named in the
   // path serves it, anyone else streams it there
-  const filesReq = pathname.match(/^\/api\/files\/([a-z0-9][a-z0-9-]*)\/(info|list|tree|read|download|upload|save|mkdir|rename|delete|run)$/);
+  // a mirrored usr file's latest copy, host to host only
+  const mirrorReq = pathname.match(/^\/internal\/mirror\/([0-9a-f]{24})$/);
+  if (mirrorReq && req.method === 'GET') {
+    if (!isTailnet(req) && !isLoopback(req)) { res.writeHead(403).end('forbidden'); return; }
+    mirror.serve(mirrorReq[1], res);
+    return;
+  }
+
+  const filesReq = pathname.match(/^\/api\/files\/([a-z0-9][a-z0-9-]*)\/(info|list|tree|read|download|upload|save|mkdir|rename|delete|run|mirror)$/);
   if (filesReq) {
     // read-write with no auth of its own, browsers and peers only
     if (!isLocalOrPeer(req)) { res.writeHead(403).end('forbidden'); return; }
@@ -1399,7 +1409,13 @@ function app(req, res) {
       if (why) sendJson(res, who ? 403 : 401, { error: why });
       return !!why;
     };
-    const seen = (r) => (share.id === 'home' ? [r[0], files.homeFilter(who, rel, r[1], users.exists)] : r);
+    // a usr listing cut to who may see it, each file kept on every host marked all
+    const seen = (r) => {
+      if (share.id !== 'home') return r;
+      const out = files.homeFilter(who, rel, r[1], users.exists);
+      if (out?.entries && op === 'list') out.entries = out.entries.map((e) => (!e.dir && mirror.isMirrored(rel ? `${rel}/${e.name}` : e.name) ? { ...e, all: true } : e));
+      return [r[0], out];
+    };
     if (req.method === 'GET' && ['list', 'tree', 'read', 'download'].includes(op) && barred(rel)) return;
     if (req.method === 'GET' && op === 'list') { files.list(share, rel).then((r) => sendJson(res, ...seen(r))); return; }
     if (req.method === 'GET' && op === 'tree') { files.tree(share, rel, searchParams.get('depth'), searchParams.get('match')).then((r) => sendJson(res, ...seen(r))); return; }
@@ -1421,6 +1437,11 @@ function app(req, res) {
     };
     if (req.method === 'POST' && op === 'save') {
       onJson(req, res, MAX_SAVE_BODY, (p) => gate(p.path) || collab.write(share, p.path, p), true);
+      return;
+    }
+    if (req.method === 'POST' && op === 'mirror') {
+      onJson(req, res, MAX_JSON_BODY, (p) => (share.id !== 'home' ? [400, { error: 'only usr files go to every host' }]
+        : gate(p.path) || (p.on ? mirror.mark(String(p.path || '')) : mirror.unmark(String(p.path || '')))));
       return;
     }
     if (req.method === 'POST' && op === 'run') {
@@ -2066,6 +2087,7 @@ server.listen(PORT, () => {
   writeJsonAtomic(UPDATE_RESULT_FILE, { state: 'ok', at: Date.now() });
   // a chain whose own step swapped this container out
   update.restoreChain();
+  mirror.start(tailnetIp, PORT);
   retractStaleAlerts();
   project.init();
   proxy.listen(INGRESS_PORT, app, onUpgrade, users);

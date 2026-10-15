@@ -1292,19 +1292,22 @@ function icon(name) {
   return svg;
 }
 
-// loc is any {host, share}: a pane, a share row, or the pair a transfer holds
+// loc is any {host, share}: a pane, a share row, or the pair a transfer holds;
+// host * the merged home, a path's call sent to a host holding it
 const filesApi = (loc, op, params) => {
   const q = new URLSearchParams({ share: loc.share || '0', ...(params || {}) });
-  return `/api/files/${encodeURIComponent(loc.host)}/${op}?${q}`;
+  const host = loc.host === '*' ? homePick(params?.path || '') : loc.host;
+  return `/api/files/${encodeURIComponent(host)}/${op}?${q}`;
 };
 const filesJoin = (a, b) => (a ? `${a}/${b}` : b);
 // host then the share path: razer/phosphorus/files/gondor.jpg
 const filesPath = (host, root, rel) =>
-  [host, ...`${root}/${rel || ''}`.split('/')].filter(Boolean).join('/');
+  [host === '*' ? '' : host, ...`${root}/${rel || ''}`.split('/')].filter(Boolean).join('/');
 const filesParent = (p) => p.split('/').slice(0, -1).join('/');
 
 // JSON from every call, failures included, one place to surface them
 async function filesCall(loc, op, init, params) {
+  if (loc.host === '*') return homeCall(op, init, params);
   const res = await fetch(filesApi(loc, op, params), init);
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body.error || `status ${res.status}`);
@@ -1328,6 +1331,97 @@ function humanSize(n) {
   while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
   return `${i ? v.toFixed(1) : v}${u[i]}`;
 }
+
+// ---- the merged home: usr on every host as one, each entry carrying the
+// hosts that hold it, an offline host's last listing shown greyed
+
+const HOME = { host: '*', share: 'home', root: 'home', perms: 'rwd' };
+const isHome = (loc) => !!loc && loc.share === 'home';
+const homeAt = (host) => ({ host, share: 'home', root: 'home', perms: 'rwd' });
+// path -> hosts holding it, from the last listings
+const homeWhere = new Map();
+const homeCacheKey = () => `phosphorus-home-cache:${acct?.user || ''}`;
+let homeCache = null;
+
+const homeOnline = () => [...new Set([selfHost, ...phosphorusHosts()].filter(Boolean))];
+const homeOffline = () => meshTailnet.filter((d) => d.phosphorusSeen && !d.phosphorus).map((d) => d.name).filter((h) => h !== selfHost);
+
+// the holder to read a path from: this host first, then any online one
+function homePick(rel) {
+  const on = homeOnline();
+  const has = [...(homeWhere.get(rel) || [])].filter((h) => on.includes(h));
+  return has.includes(selfHost) ? selfHost : has[0] || selfHost;
+}
+const homeHolders = (rel) => {
+  const on = homeOnline();
+  const has = [...(homeWhere.get(rel) || [])].filter((h) => on.includes(h));
+  return has.length ? has : [selfHost];
+};
+
+function homeCached() {
+  if (!homeCache) { try { homeCache = JSON.parse(localStorage.getItem(homeCacheKey())) || {}; } catch { homeCache = {}; } }
+  return homeCache;
+}
+function homeRemember(host, dir, entries) {
+  const c = homeCached();
+  c[`${host}\n${dir}`] = entries.slice(0, 300).map(({ name, dir: d, size, mtime }) => ({ name, dir: d, size, mtime }));
+  const keys = Object.keys(c);
+  for (const k of keys.slice(0, Math.max(0, keys.length - 200))) delete c[k];
+  try { localStorage.setItem(homeCacheKey(), JSON.stringify(c)); } catch {}
+}
+
+async function homeList(dir) {
+  const online = homeOnline();
+  const got = await Promise.all(online.map(async (h) => {
+    try {
+      const body = await filesCall(homeAt(h), 'list', undefined, { path: dir });
+      homeRemember(h, dir, body.entries);
+      return { h, entries: body.entries };
+    } catch { return { h, entries: homeCached()[`${h}\n${dir}`] || [], stale: true }; }
+  }));
+  for (const h of homeOffline()) got.push({ h, entries: homeCached()[`${h}\n${dir}`] || [], stale: true });
+  const by = new Map();
+  for (const { h, entries, stale } of got) {
+    for (const e of entries) {
+      const m = by.get(e.name) || { ...e, hosts: [], live: [] };
+      m.hosts.push(h);
+      if (!stale) m.live.push(h);
+      m.mtime = Math.max(m.mtime || 0, e.mtime || 0);
+      m.all ||= !!e.all;
+      m.dir ||= e.dir;
+      by.set(e.name, m);
+    }
+  }
+  const entries = [...by.values()].map((m) => ({ ...m, stale: !m.live.length }));
+  for (const e of entries) homeWhere.set(filesJoin(dir, e.name), new Set(e.live.length ? e.live : e.hosts));
+  if (!got.some((g) => !g.stale)) throw new Error('no host answered');
+  return { path: dir, entries };
+}
+
+// one call over the merged home: listing merged, new folders made everywhere,
+// deletes and renames on every holder, the rest on one
+async function homeCall(op, init, params) {
+  if (op === 'list') return homeList(params?.path || '');
+  const body = init?.body ? JSON.parse(init.body) : {};
+  const rel = op === 'rename' ? body.from : body.path ?? params?.path ?? '';
+  const hosts = op === 'mkdir' ? homeOnline() : ['delete', 'rename', 'mirror'].includes(op) ? homeHolders(rel) : [homePick(rel)];
+  const out = await Promise.allSettled(hosts.map((h) => filesCall(homeAt(h), op, init, params)));
+  const ok = out.find((r) => r.status === 'fulfilled');
+  if (!ok) throw out[0].reason;
+  if (op === 'delete') homeWhere.delete(rel);
+  return ok.value;
+}
+
+// where new bytes in the home go: one host, or every host (small files only)
+async function homeTarget(fm, bytes, what) {
+  const on = homeOnline();
+  const opts = [...on.map((h) => [h === selfHost ? `${h} (this host)` : h, h]), ['all hosts', '*', bytes > HOME_ALL_MAX ? 'over 32MB' : '']];
+  if (on.length < 2) return { host: selfHost, all: false };
+  const pick = await dkChoose(fm, { title: 'keep it on', message: what, options: opts });
+  if (!pick) return null;
+  return pick === '*' ? { host: selfHost, all: true } : { host: pick, all: false };
+}
+const HOME_ALL_MAX = 32 * 1024 * 1024;
 
 // ---- transfer -------------------------------------------------------------
 
@@ -6090,7 +6184,7 @@ function dkIcons() {
   dkDeskWatch();
   const hosts = [...dk.creds.keys()];
   const git = !!gitRoute;
-  const sig = JSON.stringify([hosts, git, !!acct?.admin, dk.services.map((r) => [r.host, r.name]), dk.deskFiles.map((e) => [e.name, e.dir, e.mtime])]);
+  const sig = JSON.stringify([hosts, git, !!acct?.admin, dk.services.map((r) => [r.host, r.name]), dk.deskFiles.map((e) => [e.at, e.name, e.dir, e.mtime, e.hosts, e.stale, e.all])]);
   if (sig === dk.sig) return;
   dk.sig = sig;
   dk.desk.icons.replaceChildren(
@@ -6623,7 +6717,7 @@ function dkDeskMenu(icons) {
     e.preventDefault();
     if (b && !dk.sel.has(b.dataset.id)) { dk.sel = new Set([b.dataset.id]); dkPaintSel(); }
     const hosts = [...dk.creds.keys()];
-    const f = b && dk.deskFiles.find((x) => x.name === b.dataset.file);
+    const f = b && dk.deskFiles.find((x) => filesJoin(x.at, x.name) === b.dataset.file);
     if (f) { dkMenu(e.clientX, e.clientY, dkFileMenu(f)); return; }
     const items = [
       ...(b ? [['open', () => b.dispatchEvent(new MouseEvent('dblclick')), true], null] : []),
@@ -6782,7 +6876,12 @@ function dkFiles(at) {
 async function fmSide(fm) {
   const hosts = [...dk.creds.keys()];
   const render = () => {
-    const out = [el('div', 'fm-side-head', 'hosts')];
+    const home = el('div', `fm-place fm-share${fmSame(HOME, fm.loc) ? ' here' : ''}`);
+    home.append(fmIcon('dir'), el('span', '', 'home'));
+    home.title = 'usr on every host as one';
+    home.addEventListener('click', () => fmGo(fm, HOME, ''));
+    fmDropZone(fm, home, () => ({ loc: HOME, dir: '' }));
+    const out = [home, el('div', 'fm-side-head', 'hosts')];
     for (const h of hosts) {
       const info = fm.shares.get(h);
       const hostRow = el('div', 'fm-place fm-hostrow');
@@ -6806,16 +6905,18 @@ async function fmSide(fm) {
   await Promise.all(hosts.map(async (h) => {
     try {
       const info = await filesCall({ host: h }, 'info');
+      // usr only as the merged home above
       fm.shares.set(h, info.enabled
-        ? { shares: info.shares.map((sh) => ({ host: h, share: sh.id, root: sh.label, perms: sh.perms })) }
+        ? { shares: info.shares.filter((sh) => sh.id !== 'home').map((sh) => ({ host: h, share: sh.id, root: sh.label, perms: sh.perms })) }
         : { error: 'no files directory' });
     } catch (err) { fm.shares.set(h, { error: err.message }); }
     render();
   }));
-  // no place yet: the first share found
+  // no place yet: the home, the boot admin's first share
   if (!fm.loc) {
     const first = [...fm.shares.values()].find((i) => i.shares?.length);
-    if (first) fmGo(fm, first.shares[0], '');
+    if (acct && !acct.boot) fmGo(fm, HOME, '');
+    else if (first) fmGo(fm, first.shares[0], '');
   }
 }
 
@@ -6869,9 +6970,9 @@ async function fmLoad(fm) {
 
 // every window showing that folder, read again
 function fmChanged(loc, ...dirs) {
-  for (const fm of dkFms) if (fmSame(fm.loc, loc) && dirs.includes(fm.dir)) fmLoad(fm);
-  const d = dkDeskAt();
-  if (d && fmSame(d.loc, loc) && dirs.includes(d.dir)) dkDeskLoad();
+  const same = (a) => fmSame(a, loc) || (isHome(a) && isHome(loc));
+  for (const fm of dkFms) if (same(fm.loc) && dirs.includes(fm.dir)) fmLoad(fm);
+  if (isHome(loc) && dkDeskDirs().some((d) => dirs.includes(d))) dkDeskLoad();
 }
 
 const fmCan = (fm, perm) => !!fm.loc && may(fm.loc, perm);
@@ -6892,14 +6993,14 @@ function fmRender(fm) {
   // the path bar: host, the share, then each folder, any one a jump
   const crumbs = [];
   if (fm.loc) {
-    crumbs.push(el('span', 'fm-crumb-host', fm.loc.host));
+    if (fm.loc.host !== '*') crumbs.push(el('span', 'fm-crumb-host', fm.loc.host));
     const parts = fm.dir ? fm.dir.split('/') : [];
     [fm.loc.root, ...parts].forEach((name, i) => {
       const c = Object.assign(el('button', 'fm-crumb', name), { type: 'button' });
       const to = parts.slice(0, i).join('/');
       c.addEventListener('click', () => to !== fm.dir && fmGo(fm, fm.loc, to));
       fmDropZone(fm, c, () => ({ loc: fm.loc, dir: to }));
-      crumbs.push(el('span', 'fm-crumb-sep', '›'), c);
+      crumbs.push(...(crumbs.length ? [el('span', 'fm-crumb-sep', '›')] : []), c);
     });
   }
   fm.crumbs.replaceChildren(...crumbs);
@@ -6933,6 +7034,11 @@ function fmItem(fm, e) {
   row.draggable = true;
   const name = el('span', 'fm-name');
   name.append(fmIcon(kind), el('span', 'fm-label', e.name));
+  // the merged home: where it lives, greyed while only an offline host has it
+  if (e.hosts) {
+    name.append(el('span', 'fm-where', e.all ? 'all hosts' : e.hosts.join(', ')));
+    if (e.stale) { row.classList.add('fm-stale'); row.title = `on ${e.hosts.join(', ')}, offline`; }
+  }
   if (fm.mode === 'list') {
     row.append(name, el('span', 'fm-c-mtime', fmDate(e.mtime)), el('span', 'fm-c-size', e.dir ? '' : humanSize(e.size || 0)), el('span', 'fm-c-kind', fmKindLabel(e)));
   } else {
@@ -6988,6 +7094,7 @@ function fmOpen(fm, e) {
 // pages, wasm and NAME.app folders run, text edits, the rest shown
 const runnable = (e) => (e.dir ? /\.app$/i.test(e.name) : ['html', 'htm', 'wasm'].includes(fmExt(e.name)));
 function fileOpen(loc, rel, e) {
+  if (loc.host === '*' && !(e.dir && !runnable(e))) loc = homeAt(homePick(rel));
   if (runnable(e)) return dkRun(loc, rel);
   if (e.dir) return dkFiles({ loc, dir: rel });
   if (isCode(e.name)) return dkCode({ host: loc.host, share: loc.share, path: rel, label: fileLabel(loc.host, loc.root, rel) });
@@ -7062,6 +7169,8 @@ function fmMenu(fm, x, y, onItem) {
     one && !one.dir && ['open in editor', () => dkCode({ host: fm.loc.host, share: fm.loc.share, path: picked[0].rel, label: fileLabel(fm.loc.host, fm.loc.root, picked[0].rel) }), true],
     one && !one.dir && ['download', () => fmDownload(fm, picked[0].rel), fmCan(fm, 'r')],
     one && fmKind(one) === 'image' && ['set as wallpaper', () => fmWallpaper(fm, picked[0].rel), fmCan(fm, 'r')],
+    one && !one.dir && one.hosts && ['keep on every host', () => fmMirror(fm, one, !one.all), true, one.all ? 'on' : ''],
+    one && !one.dir && one.hosts && !one.all && ['move to host…', () => fmMoveHost(fm, one), homeOnline().length > 1],
     null,
     ['cut', () => fmClip(fm, 'cut'), fmCan(fm, 'd')],
     ['copy', () => fmClip(fm, 'copy'), true],
@@ -7079,6 +7188,37 @@ function fmMenu(fm, x, y, onItem) {
     ['refresh', () => fmLoad(fm), true],
   ];
   dkMenu(x, y, items.filter((i) => i !== false && i !== undefined), () => fm.main.focus({ preventScroll: true }));
+}
+
+// a home file kept on every host, or back to only the one it's read from
+async function fmMirror(fm, e, on) {
+  const rel = filesJoin(fm.dir, e.name);
+  const host = homePick(rel);
+  if (!on) {
+    const keep = await dkChoose(fm, { title: 'keep it only on', message: e.name, options: homeOnline().map((h) => [h, h]) });
+    if (!keep) return;
+    try { await filesCall(homeAt(keep), 'mirror', jsonPost({ path: rel, on: false })); } catch (err) { return fmSay(fm, err.message, true); }
+    fmSay(fm, `${e.name} kept on ${keep}, the other copies going`);
+  } else {
+    try { await filesCall(homeAt(host), 'mirror', jsonPost({ path: rel, on: true })); } catch (err) { return fmSay(fm, err.message, true); }
+    fmSay(fm, `${e.name} copying to every host`);
+  }
+  setTimeout(() => fmChanged(HOME, fm.dir), 4000);
+  fmChanged(HOME, fm.dir);
+}
+
+// the bytes to one host, then off the rest
+async function fmMoveHost(fm, e) {
+  const rel = filesJoin(fm.dir, e.name);
+  const to = await dkChoose(fm, { title: 'move to', message: `${e.name}, now on ${e.hosts.join(', ')}`, options: homeOnline().map((h) => [h, h, e.hosts.includes(h) && e.hosts.length === 1 ? 'already there' : '']) });
+  if (!to) return;
+  try {
+    const from = homePick(rel);
+    if (from !== to) await copyFile(homeAt(from), rel, homeAt(to), rel, (f) => fmSay(fm, `moving ${e.name} ${Math.round(f * 100)}%`));
+    for (const h of homeHolders(rel)) if (h !== to) await filesCall(homeAt(h), 'delete', jsonPost({ path: rel }));
+    fmSay(fm, `${e.name} moved to ${to}`);
+  } catch (err) { fmSay(fm, err.message, true); }
+  fmChanged(HOME, fm.dir);
 }
 
 const dkMenuEl = el('div', 'dk-menu');
@@ -7127,6 +7267,32 @@ function dkAsk(fm, { title, message, value, action, danger }) {
   });
 }
 
+// one of a few choices inside the window, its value back, null for none;
+// [label, value, why disabled]
+function dkChoose(fm, { title, message, options }) {
+  return new Promise((resolve) => {
+    const veil = el('div', 'fm-veil');
+    const box = el('div', 'fm-ask');
+    const list = el('div', 'fm-choices');
+    const end = (v) => { veil.remove(); fm.main.focus({ preventScroll: true }); resolve(v); };
+    for (const [label, value, why] of options) {
+      const b = Object.assign(el('button', 'fm-choice', label), { type: 'button', disabled: !!why });
+      if (why) b.append(el('span', 'fm-choice-why', why));
+      b.addEventListener('click', () => end(value));
+      list.appendChild(b);
+    }
+    const no = Object.assign(el('button', '', 'cancel'), { type: 'button' });
+    no.addEventListener('click', () => end(null));
+    const acts = el('div', 'update-actions');
+    acts.append(no);
+    box.append(el('div', 'fm-ask-title', title), el('p', '', message), list, acts);
+    box.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Escape') end(null); });
+    veil.appendChild(box);
+    fm.w.body.appendChild(veil);
+    list.querySelector('button:not(:disabled)')?.focus();
+  });
+}
+
 const fmSay = (fm, text, bad) => {
   fm.note.textContent = text || '';
   fm.note.classList.toggle('bad', !!bad);
@@ -7152,10 +7318,19 @@ async function fmTouch(fm) {
   if (!name) return;
   const rel = filesJoin(fm.dir, name);
   if (fm.entries.some((e) => e.name === name)) return fmSay(fm, `${name} is already here`, true);
+  let loc = fm.loc;
+  let all = false;
+  if (loc.host === '*') {
+    const t = await homeTarget(fm, 0, name);
+    if (!t) return;
+    loc = homeAt(t.host);
+    all = t.all;
+  }
   try {
-    await putFile(fm.loc, rel, new Blob([]));
-    fmChanged(fm.loc, fm.dir);
-    dkCode({ host: fm.loc.host, share: fm.loc.share, path: rel, label: fileLabel(fm.loc.host, fm.loc.root, rel) });
+    await putFile(loc, rel, new Blob([]));
+    if (all) await filesCall(loc, 'mirror', jsonPost({ path: rel, on: true }));
+    fmChanged(loc, fm.dir);
+    dkCode({ host: loc.host, share: loc.share, path: rel, label: fileLabel(loc.host, loc.root, rel) });
   } catch (err) { fmSay(fm, err.message, true); }
 }
 
@@ -7206,6 +7381,17 @@ async function fmPaste(fm, dir = fm.dir) {
 // a move's source deleted once its copy is whole
 async function fmTransfer(fm, from, items, to, dir, move) {
   if (!may(to, 'w')) return fmSay(fm, `${to.root} is read-only`, true);
+  // into the home, other than a move inside it: where the copies go; every
+  // host's a folder copied to each, a file kept in step
+  let all = false;
+  let alsoTo = [];
+  if (to.host === '*' && !(move && fmSame(from, to))) {
+    const t = await homeTarget(fm, items.some((it) => it.dir) ? 0 : 1, items.length === 1 ? items[0].name : `${items.length} items`);
+    if (!t) return;
+    all = t.all;
+    if (all) alsoTo = homeOnline().filter((h) => h !== t.host).map(homeAt);
+    to = homeAt(t.host);
+  }
   const label = move ? 'moving' : 'copying';
   let failed = 0;
   for (let i = 0; i < items.length; i++) {
@@ -7225,8 +7411,13 @@ async function fmTransfer(fm, from, items, to, dir, move) {
           const x = it.dir ? '' : fmExt(it.name);
           target = filesJoin(dir, x ? `${it.name.slice(0, -x.length - 1)} copy.${x}` : `${it.name} copy`);
         }
-        if (it.dir) await copyTree(from, it.rel, to, target, tick);
-        else await copyFile(from, it.rel, to, target, tick);
+        if (it.dir) {
+          await copyTree(from, it.rel, to, target, tick);
+          for (const other of alsoTo) await copyTree(from, it.rel, other, target, tick);
+        } else {
+          await copyFile(from, it.rel, to, target, tick);
+          if (all) await filesCall(to, 'mirror', jsonPost({ path: target, on: true }));
+        }
         if (move) await filesCall(from, 'delete', jsonPost({ path: it.rel }));
       }
     } catch (err) { failed += 1; fm.busy = ''; fmSay(fm, `${it.name}: ${err.message}`, true); }
@@ -7241,11 +7432,20 @@ async function fmUpload(fm, loc, dir, fileList) {
   const list = [...fileList];
   if (!list.length || !loc) return;
   if (!may(loc, 'w')) return fmSay(fm, `${loc.root} is read-only`, true);
+  let all = false;
+  if (loc.host === '*') {
+    const bytes = list.reduce((t, f) => Math.max(t, f.size), 0);
+    const t = await homeTarget(fm, bytes, list.length === 1 ? list[0].name : `${list.length} files`);
+    if (!t) return;
+    loc = homeAt(t.host);
+    all = t.all;
+  }
   for (let i = 0; i < list.length; i++) {
     const f = list[i];
     try {
       fm.busy = 'x';
       await putFile(loc, filesJoin(dir, f.name), f, (sent) => fmSay(fm, `uploading ${f.name} ${f.size ? Math.round((sent / f.size) * 100) : 100}% (${i + 1}/${list.length})`));
+      if (all) await filesCall(loc, 'mirror', jsonPost({ path: filesJoin(dir, f.name), on: true }));
     } catch (err) { fm.busy = ''; fmSay(fm, `${f.name}: ${err.message}`, true); }
   }
   fm.busy = '';
@@ -7291,62 +7491,65 @@ function dkViewer(loc, rel) {
   dkFocus(w);
 }
 
-// --- the desktop's files: the user's home/<user>/Desktop on the serving host
+// --- the desktop's files: the user's own Desktop and shared/Desktop, each
+// over the merged home, from every host
 
-const dkDeskAt = () => (acct && !acct.boot && selfHost
-  ? { loc: { host: selfHost, share: 'home', root: 'home', perms: 'rwd' }, dir: `${acct.user}/Desktop` } : null);
+const dkDeskDirs = () => (acct && !acct.boot ? [`${acct.user}/Desktop`, 'shared/Desktop'] : []);
+// where a drop lands: the user's own
+const dkDeskAt = () => (acct && !acct.boot && selfHost ? { loc: HOME, dir: `${acct.user}/Desktop` } : null);
 
 // read again whenever the serving host or the user changes
 function dkDeskWatch() {
-  const d = dkDeskAt();
-  const key = d ? `${d.loc.host}\n${d.dir}` : '';
+  const key = dkDeskAt() ? `${selfHost}\n${acct.user}` : '';
   if (key === dk.deskKey) return;
   dk.deskKey = key;
   dk.deskFiles = [];
-  if (d) dkDeskLoad();
+  if (key) dkDeskLoad();
 }
 
 async function dkDeskLoad() {
-  const d = dkDeskAt();
-  if (!d) return;
+  if (!dkDeskAt()) return;
   const key = dk.deskKey;
-  try {
-    const body = await filesCall(d.loc, 'list', undefined, { path: d.dir });
-    if (key !== dk.deskKey) return;
-    dk.deskFiles = body.entries;
-  } catch { return; }
+  const lists = await Promise.all(dkDeskDirs().map((dir) => homeList(dir)
+    .then((b) => b.entries.map((e) => ({ ...e, at: dir })), () => [])));
+  if (key !== dk.deskKey) return;
+  dk.deskFiles = lists.flat();
   dkIcons();
 }
 
 function dkFileIcon(e) {
-  const d = dkDeskAt();
-  const rel = filesJoin(d.dir, e.name);
+  const rel = filesJoin(e.at, e.name);
   const kind = runnable(e) ? 'app' : fmKind(e);
-  const pic = kind === 'image' ? filesApi(d.loc, 'download', { path: rel, inline: 1 }) : '';
-  const b = dkIcon('doc', e.name.replace(/\.app$/i, ''), '', () => fileOpen(d.loc, rel, e), pic);
+  const pic = kind === 'image' && !e.stale ? filesApi(HOME, 'download', { path: rel, inline: 1 }) : '';
+  // under it: shared, and the host unless it's everywhere or here alone
+  const where = e.all ? '' : e.hosts.length === 1 && e.hosts[0] === selfHost ? '' : e.hosts.join(', ');
+  const sub = [e.at.startsWith('shared/') ? 'shared' : '', where].filter(Boolean).join(' · ');
+  const b = dkIcon('doc', e.name.replace(/\.app$/i, ''), sub, () => fileOpen(HOME, rel, e), pic);
   const tile = b.querySelector('.dk-tile');
   if (!pic) tile.replaceChildren(kind === 'app' ? dkGlyph(DK_GLYPHS.app, 'fm-app') : fmIcon(kind));
   b.classList.add(`dk-doc-${kind}`);
-  b.dataset.file = e.name;
-  b.title = e.name;
+  if (e.stale) b.classList.add('dk-stale');
+  b.dataset.file = rel;
+  // placed by its path, whatever its label says
+  b.dataset.id = `doc\n${rel}`;
+  b.title = e.stale ? `${e.name}, on ${e.hosts.join(', ')}, offline` : e.name;
   return b;
 }
 
 function dkFileMenu(e) {
-  const d = dkDeskAt();
-  const rel = filesJoin(d.dir, e.name);
-  const loc = d.loc;
+  const rel = filesJoin(e.at, e.name);
+  const loc = homeAt(homePick(rel));
   return [
-    ['open', () => fileOpen(loc, rel, e), true],
-    e.dir && ['show in files', () => dkFiles({ loc, dir: rel }), true],
-    !e.dir && ['open in editor', () => dkCode({ host: loc.host, share: loc.share, path: rel, label: fileLabel(loc.host, loc.root, rel) }), true],
-    !e.dir && ['download', () => { location.href = filesApi(loc, 'download', { path: rel }); }, true],
+    ['open', () => fileOpen(HOME, rel, e), !e.stale],
+    e.dir && ['show in files', () => dkFiles({ loc: HOME, dir: rel }), true],
+    !e.dir && ['open in editor', () => dkCode({ host: loc.host, share: loc.share, path: rel, label: fileLabel(loc.host, 'home', rel) }), !e.stale],
+    !e.dir && ['download', () => { location.href = filesApi(loc, 'download', { path: rel }); }, !e.stale],
     null,
-    ['show desktop folder', () => dkFiles(d), true],
+    ['show in files', () => dkFiles({ loc: HOME, dir: e.at }), true],
     ['delete', async () => {
-      try { await filesCall(loc, 'delete', jsonPost({ path: rel })); } catch (err) { dkMenuNote(err.message); }
-      fmChanged(loc, d.dir);
-    }, true, 'danger'],
+      try { await filesCall(HOME, 'delete', jsonPost({ path: rel })); } catch (err) { dkMenuNote(err.message); }
+      fmChanged(HOME, e.at);
+    }, !e.stale, 'danger'],
   ].filter((i) => i !== false);
 }
 
@@ -7819,7 +8022,7 @@ function prefsSoon() {
   prefsTimer = setTimeout(() => {
     const prefs = {};
     for (const [k, ls] of Object.entries(PREF_LS)) { try { prefs[k] = localStorage.getItem(ls) || ''; } catch {} }
-    acctCall('/api/me/prefs', { prefs });
+    acctCall('/api/me/prefs', { prefs }).then((r) => { if (r.ok) prefsSeen = JSON.stringify(r.prefs); prefsTimer = null; });
   }, 800);
 }
 
@@ -7831,14 +8034,21 @@ for (const m of ['setItem', 'removeItem']) {
   };
 }
 
-// the home's settings over this browser's, this browser's sent up where the home has none
+// the user's own settings over this browser's; this browser's sent up where
+// the user has none only when this same user left them here
+const PREF_OWNER = 'phosphorus-prefs-owner';
+let prefsSeen = '';
 function acctPrefs(prefs) {
   let seed = false;
+  let mine = false;
+  try { mine = localStorage.getItem(PREF_OWNER) === acct.user; localStorage.setItem(PREF_OWNER, acct.user); } catch {}
+  prefsSeen = JSON.stringify(prefs);
   prefsQuiet = true;
   for (const [k, ls] of Object.entries(PREF_LS)) {
     try {
       if (prefs[k]) localStorage.setItem(ls, prefs[k]);
-      else if (localStorage.getItem(ls)) seed = true;
+      else if (localStorage.getItem(ls) && mine) seed = true;
+      else localStorage.removeItem(ls);
     } catch {}
   }
   prefsQuiet = false;
@@ -7848,6 +8058,9 @@ function acctPrefs(prefs) {
   applyTheme(theme || (systemLight.matches ? 'light' : 'dark'));
 }
 
+addEventListener('focus', () => { acctCheck(); dkDeskLoad(); });
+setInterval(() => { if (!document.hidden) { acctCheck(); dkDeskLoad(); } }, 30000);
+
 // a session gone (expired, password changed, user deleted): back to the login
 let acctChecking = false;
 async function acctCheck() {
@@ -7856,6 +8069,10 @@ async function acctCheck() {
   const me = await acctCall('/api/me');
   acctChecking = false;
   if (me.status === 401 && acct) acctLogin(me.setup);
+  // another browser's icon moves, theme or wallpaper, taken in
+  if (!me.ok || !acct || acct.boot || me.user !== acct.user) return;
+  if (JSON.stringify(me.prefs || {}) !== prefsSeen && !prefsTimer) { acctPrefs(me.prefs || {}); dkLayout(); }
+  if ((me.wallpaper || 0) !== acct.wallpaper) { acct.wallpaper = me.wallpaper || 0; dkWallPaint(); }
 }
 
 // a service's page sent here to log in first, back to it after

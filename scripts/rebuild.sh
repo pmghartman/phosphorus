@@ -79,9 +79,33 @@ main() {
     esac
   fi
 
+  # [home] dir as the host sees it, moved from where the running container
+  # has it when the two differ (before this, always the home's state/)
+  local home_to home_from=""
+  home_to="$(phosphorus_home_dir "$repo")"
+  case "$home_to" in
+    [A-Za-z]:*) home_to="/run/desktop/mnt/host/$(printf '%s' "${home_to%%:*}" | tr 'A-Z' 'a-z')$(printf '%s' "${home_to#*:}" | tr '\\' '/')" ;;
+  esac
+  if [ -n "$($sudo docker ps -aq -f name=^phosphorus$)" ]; then
+    home_from="$($sudo docker inspect phosphorus \
+      --format '{{range .Mounts}}{{if eq .Destination "/homefs"}}{{.Source}}{{end}}{{end}}' 2>/dev/null)"
+    [ -n "$home_from" ] || home_from="$repo/state"
+  fi
+  case "$home_from" in
+    [A-Za-z]:*) home_from="/run/desktop/mnt/host/$(printf '%s' "${home_from%%:*}" | tr 'A-Z' 'a-z')$(printf '%s' "${home_from#*:}" | tr '\\' '/')" ;;
+  esac
+  home_from="${home_from%/}"
+  [ "$home_from" = "$home_to" ] && home_from=""
+  case "$home_to/" in
+    "$home_from/usr/"*|"$home_from/sys/"*) [ -n "$home_from" ] && fail "[home] dir can't be inside the usr or sys it moves" ;;
+  esac
+  [ "$in_container" = 0 ] && mkdir -p "$home_to"
+  export PHOSPHORUS_HOME_DIR="$home_to"
+  [ -n "$home_from" ] && say "moving usr and sys from $home_from to $home_to with this swap"
+
   # what compose interpolates, dropped by sudo and the siblings, TS_HOSTNAME
   # in a container rebuild.ps1's COMPUTERNAME, else docker-desktop on Windows
-  local compose_env=("COMPOSE_PROFILES=$COMPOSE_PROFILES" "PHOSPHORUS_FILES_DIR=$PHOSPHORUS_FILES_DIR" "COMPOSE_FILE=$COMPOSE_FILE" "TS_HOSTNAME=${TS_HOSTNAME:-}")
+  local compose_env=("COMPOSE_PROFILES=$COMPOSE_PROFILES" "PHOSPHORUS_FILES_DIR=$PHOSPHORUS_FILES_DIR" "COMPOSE_FILE=$COMPOSE_FILE" "TS_HOSTNAME=${TS_HOSTNAME:-}" "PHOSPHORUS_HOME_DIR=$PHOSPHORUS_HOME_DIR")
   # Windows: git data on docker volumes, as rebuild.ps1 has it
   [ "$windows" = 1 ] && compose_env+=("PHOSPHORUS_GIT_DATA=git-data" "PHOSPHORUS_GIT_DB=git-db" "PHOSPHORUS_MODEL_DIR=models")
   # the host's drives for the status tab's disk: Windows' under the VM's
@@ -149,6 +173,11 @@ main() {
   # caller to wait on
   local running; running="$($sudo docker inspect -f '{{.State.Running}}' phosphorus 2>/dev/null)"
   if [ "$running" != "true" ]; then
+    if [ -n "$home_from" ] && ! $sudo docker run --rm -v "$home_from:/mv/old" -v "$home_to:/mv/new" \
+         --entrypoint sh phosphorus:latest -c "$PHOSPHORUS_HOME_MOVE"; then
+      say "couldn't move usr and sys, keeping them in $home_from"
+      compose_env=("${compose_env[@]/#PHOSPHORUS_HOME_DIR=*/PHOSPHORUS_HOME_DIR=$home_from}")
+    fi
     say "phosphorus isn't running, starting it here"
     $sudo env "${compose_env[@]}" docker compose up -d --remove-orphans || fail "couldn't start phosphorus"
     return 0
@@ -178,11 +207,17 @@ main() {
   # not the sibling, left behind (not --rm'd) so `docker logs` records a failure
   say "swapping containers in phosphorus-updater, this terminal may drop"
   $sudo docker rm -f phosphorus-updater >/dev/null 2>&1
+  # a [home] move done here, phosphorus stopped first so nothing writes
+  # mid-copy, a failed copy leaving it where it was
   $sudo docker run -d --name phosphorus-updater "${compose_flags[@]}" \
+    -e "MV_FROM=$home_from" -e "MV_TO=$home_to" -e "MV_CMD=$PHOSPHORUS_HOME_MOVE" \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v "$repo:$repo" -w "$repo" \
     --entrypoint sh phosphorus:latest \
-    -c "docker compose up -d --remove-orphans" >/dev/null \
+    -c 'if [ -n "$MV_FROM" ]; then docker stop -t 30 phosphorus >/dev/null
+          docker run --rm -v "$MV_FROM:/mv/old" -v "$MV_TO:/mv/new" --entrypoint sh phosphorus:latest -c "$MV_CMD" \
+            || export PHOSPHORUS_HOME_DIR="$MV_FROM"; fi
+        docker compose up -d --remove-orphans' >/dev/null \
     || fail "couldn't start phosphorus-updater, still running the previous version"
 
   # `docker run -d` returning once the container starts, a beat waited for an

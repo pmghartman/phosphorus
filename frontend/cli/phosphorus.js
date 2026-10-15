@@ -482,6 +482,33 @@ function saveShare(form) {
   return writeShares(shares);
 }
 
+// --- phosphorus.ini [home] ------------------------------------------------------------
+// where usr/ (the homes, shared/) and sys/ live; a change copies both there on
+// the rebuild and deletes the old ones
+
+function readHomeDir() {
+  const sec = splitSections(readText(INI_FILE)).sections.find((s) => s.name === 'home');
+  return sec ? fieldsOf(sec).dir || '' : '';
+}
+
+function homeForm() {
+  return {
+    kind: 'home', title: 'usr and sys directory', idx: 0, error: '',
+    fields: [{ key: 'dir', value: readHomeDir(), hint: 'host path, blank: the home\'s state/' }],
+  };
+}
+
+function saveHome(form) {
+  const dir = form.fields[0].value.trim().replace(/[/\\]+$/, '');
+  if (dir.includes(',')) return "dir can't contain a comma";
+  if (dir === '/' || /^[A-Za-z]:$/.test(dir)) return "never / or a drive's root";
+  const doc = splitSections(readText(INI_FILE));
+  const sec = doc.sections.find((s) => s.name === 'home') || appendSection(doc, 'home');
+  sec.lines = rewriteSection(sec, 'home', { dir }, ['dir']);
+  try { writeAtomic(INI_FILE, joinSections(doc)); } catch (e) { return `can't write ${INI_FILE}: ${e.message}`; }
+  return '';
+}
+
 // --- phosphorus.ini [git] -------------------------------------------------------------
 
 function readGitHost() {
@@ -681,8 +708,12 @@ function filesView() {
       ? table(['dir', 'perms'], shares.map((s) => [s.dir, c.teal(s.perms)]), ui.sel[1])
       : [c.muted(`using default dir: ${info && info.shares && info.shares[0] ? info.shares[0].label : "the home's files"}`)]],
     published && ['published now', published],
+    ['phosphorus.ini [home]', [
+      `usr and sys  ${readHomeDir() || c.muted("the home's state/")}`,
+      ...(info && info.home ? [c.muted(`now at ${info.home}`)] : []),
+    ]],
   ]);
-  return { lines, keys: [['a add', 'primary'], shares.length && ['e edit'], shares.length && ['d delete', 'danger']] };
+  return { lines, keys: [['a add', 'primary'], shares.length && ['e edit'], shares.length && ['d delete', 'danger'], ['h home dir']] };
 }
 
 function gb(bytes) { return `${(bytes / GIB).toFixed(1)}GB`; }
@@ -1082,6 +1113,7 @@ function formView(form) {
   });
   const notes = [
     ...(form.kind === 'share' ? [c.muted(INI_NOTE)] : []),
+    ...(form.kind === 'home' ? [c.muted('usr and sys copied there on the rebuild, the old ones deleted')] : []),
     ...(form.kind === 'model' ? [c.muted(MODEL_NOTE)] : []),
     ...(form.error ? [c.offmesh(form.error)] : []),
   ];
@@ -1158,7 +1190,7 @@ function formKey(str, key) {
     return;
   }
   if (key.name === 'return') {
-    form.error = { service: saveService, share: saveShare, model: saveModel, project: saveProject, note: saveNote }[form.kind](form);
+    form.error = { service: saveService, share: saveShare, home: saveHome, model: saveModel, project: saveProject, note: saveNote }[form.kind](form);
     if (form.error) return;
     ui.form = null;
     if (form.kind === 'service') {
@@ -1167,7 +1199,7 @@ function formKey(str, key) {
     }
     // only a share, or [model] gpu, changing what the container was built with
     const gpu = form.fields.find((f) => f.key === 'gpu');
-    const rebuilds = form.kind === 'share' || (form.kind === 'model' && !!gpu && gpu.value.trim() !== form.gpuWas);
+    const rebuilds = form.kind === 'share' || form.kind === 'home' || (form.kind === 'model' && !!gpu && gpu.value.trim() !== form.gpuWas);
     if (form.kind === 'project' || form.kind === 'note') return;
     flash(c.online(rebuilds ? `saved, ${REBUILDING}` : 'saved, live on the next tick'));
     poll();
@@ -1236,6 +1268,7 @@ function listKey(str, key) {
     if (key.name === 'up') ui.sel[1] = Math.max(0, ui.sel[1] - 1);
     else if (key.name === 'down') ui.sel[1] = Math.min(shares.length - 1, ui.sel[1] + 1);
     else if (str === 'a') openForm(shareForm(null));
+    else if (str === 'h') openForm(homeForm());
     else if ((str === 'e' || key.name === 'return') && shares[ui.sel[1]]) openForm(shareForm(ui.sel[1]));
     else if (str === 'd' && shares[ui.sel[1]]) {
       const i = ui.sel[1];

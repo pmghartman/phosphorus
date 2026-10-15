@@ -8,8 +8,8 @@ const clock = require('./clock');
 const mesh = require('./mesh');
 const { FRONTEND_PORT, readJson, requestJson, writeJsonAtomic } = require('./util');
 
-const STATE_DIR = process.env.STATE_DIR || '/state';
-const ROOT = path.join(STATE_DIR, 'sys');
+// beside usr/ in [home] dir, the home's state/ unset
+const ROOT = path.join(process.env.HOME_FS || process.env.STATE_DIR || '/state', 'sys');
 const REL_RE = /^(etc|home)(\/[a-z0-9][a-z0-9._-]{0,63}){1,5}\.json$/;
 // paths whose first write stays, a mesh secret two hosts made at once
 const oldest = new Set();

@@ -54,6 +54,16 @@ function Test-PhosphorusGitHost { (Get-PhosphorusValue "git" "host") -eq "true" 
 function Add-PhosphorusMissingSections {
     $file = Get-PhosphorusIniPath
     if (-not $file) { return }
+    if ((Get-Content $file) -notcontains "[home]") {
+        Add-Content $file @(
+            "",
+            "[home]",
+            "# dir: where usr/ (each user's home, shared/) and sys/ live, blank: the home's state/",
+            "# changed: both copied there on the next rebuild and the old ones deleted",
+            "dir ="
+        )
+        Write-Host "[phosphorus.ini] added the [home] section"
+    }
     if ((Get-Content $file) -notcontains "[files]") {
         Add-Content $file @(
             "",
@@ -87,6 +97,20 @@ function Test-PhosphorusModelGpu { (Get-PhosphorusValue "model" "gpu") -eq "true
 
 # absolute host path published on the frontend's Files tab, the repo's own
 # files/ when [files] dir is blank, so the mount always resolves
+# [home] dir, where usr/ and sys/ live, the home's state\ when blank
+function Get-PhosphorusHomeDir {
+    $dir = (Get-PhosphorusValue "home" "dir")
+    if ($dir) { $dir = $dir.TrimEnd("/", "\") }
+    if (-not $dir) { return (Join-Path (Get-Location) "state") }
+    if ([System.IO.Path]::IsPathRooted($dir)) { return $dir }
+    return (Join-Path (Get-Location) $dir)
+}
+
+# a Windows path as Docker Desktop's VM mounts it
+function ConvertTo-VmPath([string]$Path) {
+    "/run/desktop/mnt/host/" + $Path.Substring(0, 1).ToLower() + ($Path.Substring(2) -replace '\\', '/')
+}
+
 function Get-PhosphorusFilesDir {
     $dir = Get-PhosphorusValue "files" "dir"
     if (-not $dir) { return (Join-Path (Get-Location) "files") }

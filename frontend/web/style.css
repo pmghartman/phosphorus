@@ -2095,3 +2095,14 @@ input, textarea { caret-color: var(--accent); }
 .dk-walled .dk-icon:hover, .dk-walled .dk-icon:focus-visible { background: rgb(255 255 255 / 0.14); border-color: rgb(255 255 255 / 0.2); }
 .dk-walled .dk-icon.sel { background: color-mix(in srgb, var(--accent) 34%, rgb(255 255 255 / 0.1)); border-color: color-mix(in srgb, var(--accent) 70%, #fff); }
 .dk-walled .dk-band { border-color: rgb(255 255 255 / 0.7); background: rgb(255 255 255 / 0.15); }
+
+/* the merged home: where each entry lives, greyed while only an offline host has it */
+.fm-where { margin-left: 0.5rem; color: var(--muted); font-size: 0.68rem; white-space: nowrap; }
+.fm-grid .fm-where { display: none; }
+.fm-stale, .dk-icon.dk-stale { opacity: 0.45; }
+.fm-choices { display: flex; flex-direction: column; gap: 0.25rem; }
+.fm-choice { display: flex; justify-content: space-between; gap: 0.5rem; padding: 0.35rem 0.5rem; text-align: left; background: none; border: 1px solid var(--border); color: var(--fg); font: inherit; cursor: pointer; }
+.fm-choice:hover:not(:disabled), .fm-choice:focus-visible { border-color: var(--accent); outline: none; }
+.fm-choice:disabled { color: var(--muted); cursor: default; }
+.fm-choice-why { color: var(--muted); font-size: 0.68rem; }
+.dk-menu button.on::after { content: ' ✓'; color: var(--accent); }
