@@ -50,7 +50,19 @@ const projects = new Map();
 // id -> AbortController of its running loop
 const loops = new Map();
 
-const workDir = (id) => path.join(WORK_ROOT, id);
+// a project's folder, its title's; an older one's its id
+const dirOf = (id) => projects.get(id)?.dir || id;
+const workDir = (id) => path.join(WORK_ROOT, dirOf(id));
+
+// the title as a folder name, a number after one already taken
+function folderFor(title) {
+  const base = title.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48).replace(/-+$/, '') || 'project';
+  const taken = new Set([...projects.values()].map((p) => p.dir || p.id));
+  for (let n = 1; ; n++) {
+    const name = n === 1 ? base : `${base}-${n}`;
+    if (!taken.has(name) && !fs.existsSync(path.join(WORK_ROOT, name))) return name;
+  }
+}
 const fileOf = (id) => path.join(RUNS_DIR, `${id}.json`);
 const clip = (t, n = TEXT_MAX) => String(t ?? '').slice(0, n);
 const save = (p) => writeJsonSoon(fileOf(p.id), p);
@@ -90,7 +102,7 @@ async function hostWorkDir(id) {
   }
   if (!stateSource) throw new Error('can\'t find where /state lives on the docker host');
   const sep = /^[A-Za-z]:\\/.test(stateSource) ? '\\' : '/';
-  return [stateSource.replace(/[\\/]+$/, ''), 'projects', id].join(sep);
+  return [stateSource.replace(/[\\/]+$/, ''), 'projects', dirOf(id)].join(sep);
 }
 
 const sandboxName = (id) => `${SANDBOX_PREFIX}${id}`;
@@ -442,34 +454,73 @@ const running = () => [...projects.values()].filter((p) => p.status === 'running
 
 // a project's row for lists and peers, no events
 const summary = (p) => ({
-  id: p.id, host: p.host, title: p.title, by: p.by, status: p.status, phase: p.phase, progress: p.progress,
+  id: p.id, host: p.host, title: p.title, dir: p.dir || p.id, by: p.by, status: p.status, phase: p.phase, progress: p.progress,
   round: p.round, started: p.started, deadline: deadlineOf(p), ended: p.ended || 0, model: p.model || '',
   working: !!p.roundAt, paused: p.status === 'running' && !!p.pausedAt, waiting: p.status === 'running' ? p.waiting || '' : '',
   note: p.note || '',
+  // the last event's time, a change in the record without a list fetch
+  news: p.events.at(-1)?.at || 0,
 });
 
 const summaries = () => [...projects.values()].map(summary).sort((a, b) => b.started - a.started);
 
 function detail(id) {
   const p = projects.get(id);
-  return p ? [200, { ...summary(p), brief: p.brief, tasks: p.tasks, notes: p.notes, events: p.events, final: p.final || '', execs: p.execs || 0, workspace: id }] : [404, { error: 'no such project' }];
+  return p ? [200, { ...summary(p), brief: p.brief, tasks: p.tasks, notes: p.notes, events: p.events, final: p.final || '', execs: p.execs || 0, workspace: dirOf(id) }] : [404, { error: 'no such project' }];
+}
+
+// the events after a time, for a caller following along
+function events(id, since) {
+  const p = projects.get(id);
+  if (!p) return [404, { error: 'no such project' }];
+  const t = Number(since) || 0;
+  return [200, { ...summary(p), events: p.events.filter((e) => e.at > t) }];
+}
+
+const hoursOf = (b) => Math.min(MAX_HOURS, Math.max(0.1, Number(b.hours) || DEFAULT_HOURS));
+
+// more time for a running one, never past the longest a project gets from now
+function extend(id, b) {
+  const p = projects.get(id);
+  if (!p) return [404, { error: 'no such project' }];
+  if (p.status !== 'running') return [409, { error: 'not running, restart it instead' }];
+  const add = hoursOf(b) * 3600 * 1000;
+  p.deadline = Math.min(p.deadline + add, Date.now() + MAX_HOURS * 3600 * 1000);
+  event(p, 'extend', `${clip(b.by, 32) || 'someone'} gave it ${hours(add)} more, ${hours(deadlineOf(p) - Date.now())} left`);
+  return [200, summary(p)];
+}
+
+// a stopped, expired, failed or finished one back to work, its workspace kept
+function restart(id, b) {
+  const p = projects.get(id);
+  if (!p) return [404, { error: 'no such project' }];
+  if (p.status === 'running') return [409, { error: 'already running' }];
+  if (running().length >= MAX_RUNNING) return [409, { error: `the orangutan is already on ${running()[0].title} here, stop it first` }];
+  const now = Date.now();
+  const t = clip(b.brief, BRIEF_MAX).trim();
+  if (t) p.notes.push({ at: now, by: clip(b.by, 32) || 'someone', text: clip(t, 2000), read: false });
+  Object.assign(p, { status: 'running', deadline: now + hoursOf(b) * 3600 * 1000, ended: 0, pausedAt: 0, waiting: '', final: '' });
+  fs.mkdirSync(workDir(id), { recursive: true });
+  event(p, 'start', `restarted by ${clip(b.by, 32) || 'someone'}, ${hours(p.deadline - now)} to work`);
+  run(p);
+  return [200, summary(p)];
 }
 
 function start(b) {
   const title = clip(b.title, 120).trim();
   const brief = clip(b.brief, BRIEF_MAX).trim();
-  const h = Math.min(MAX_HOURS, Math.max(0.1, Number(b.hours) || DEFAULT_HOURS));
+  const h = hoursOf(b);
   if (!title || !brief) return [400, { error: 'a project needs a title and a brief' }];
   if (running().length >= MAX_RUNNING) return [409, { error: `the orangutan is already on ${running()[0].title} here, stop it first or start this on another host` }];
   const now = Date.now();
   const p = {
     id: crypto.randomBytes(6).toString('hex'), host: SELF_HOST, title, brief, by: clip(b.by, 32).trim(),
     status: 'running', phase: 'plan', progress: 0, round: 0, started: now, deadline: now + h * 3600 * 1000,
-    ended: 0, note: '', tasks: [], notes: [], events: [], final: '', execs: 0, model: '', roundAt: 0,
+    ended: 0, note: '', tasks: [], notes: [], events: [], final: '', execs: 0, model: '', roundAt: 0, dir: folderFor(title),
   };
+  projects.set(p.id, p);
   fs.mkdirSync(RUNS_DIR, { recursive: true });
   fs.mkdirSync(workDir(p.id), { recursive: true });
-  projects.set(p.id, p);
   event(p, 'start', `started by ${p.by || 'someone'}, ${hours(p.deadline - now)} to work`);
   run(p);
   return [200, summary(p)];
@@ -502,9 +553,10 @@ function remove(id) {
   const p = projects.get(id);
   if (!p) return [404, { error: 'no such project' }];
   if (p.status === 'running') return [409, { error: 'stop it first' }];
+  const dir = workDir(id);
   projects.delete(id);
   try { fs.rmSync(fileOf(id), { force: true }); } catch {}
-  try { fs.rmSync(workDir(id), { recursive: true, force: true }); } catch {}
+  try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
   return [200, { ok: true }];
 }
 
@@ -559,5 +611,5 @@ function init() {
 }
 
 module.exports = {
-  WORK_ROOT, init, summaries, detail, start, stop, note, remove, report, finish, exec, guard, todos,
+  WORK_ROOT, init, summaries, detail, events, start, stop, note, extend, restart, remove, report, finish, exec, guard, todos,
 };

@@ -55,6 +55,8 @@ function rowError(r) {
 // rebuilt whole from the merged rows, swapped in by one assignment
 
 let table = { domains: new Map(), paths: [] };
+// every route, a subdomain's shadowed duplicate too, for icons
+let everyRoute = [];
 let tableFp = '[]';
 
 function toRoute(r, ip) {
@@ -77,11 +79,13 @@ function toRoute(r, ip) {
 function build(rows, ipOf) {
   const domains = new Map();
   const paths = [];
+  const every = [];
   for (const r of rows) {
     if (r.type === 'game') continue;
     const why = NAME_RE.test(r.host || '') ? rowError(r) : `'${r.host}' is not a valid host`;
     if (why) return { error: `${r.host}'s ${r.name}: ${why}` };
     const route = toRoute(r, ipOf(r.host) || r.host);
+    every.push(route);
     if (!route.domain) { paths.push(route); continue; }
     // one name on two hosts: the git master, else the first alphabetically
     const held = domains.get(route.domain);
@@ -93,7 +97,7 @@ function build(rows, ipOf) {
   }
   // most specific prefix first
   paths.sort((a, b) => b.prefix.length - a.prefix.length);
-  return { table: { domains, paths } };
+  return { table: { domains, paths }, every };
 }
 
 // validate then swap, the live table untouched on any failure
@@ -104,6 +108,7 @@ function swap(rows, ipOf) {
     return false;
   }
   clear('table');
+  everyRoute = out.every;
   const all = [...out.table.domains.values(), ...out.table.paths];
   const fp = JSON.stringify(all);
   if (fp === tableFp) return false;
@@ -269,6 +274,13 @@ function refuse(res, status, text) {
   res.writeHead(status, { 'Content-Type': 'text/plain; charset=utf-8' }).end(text);
 }
 
+// a subdomain's app framed by the desktop on the base domain, no one else
+function frameable(csp) {
+  const own = `frame-ancestors 'self' https://${BASE_DOMAIN}`;
+  const kept = String(csp).split(';').map((d) => d.trim()).filter((d) => d && !/^frame-ancestors(\s|$)/i.test(d));
+  return [...kept, own].join('; ');
+}
+
 // streamed both ways, unbuffered, max_body enforced on the way in
 function forward(route, req, res, path) {
   if (route.maxBody && Number(req.headers['content-length']) > route.maxBody) {
@@ -281,7 +293,11 @@ function forward(route, req, res, path) {
   }, (pr) => {
     const headers = [];
     for (let i = 0; i < pr.rawHeaders.length; i += 2) {
-      if (!HOP.has(pr.rawHeaders[i].toLowerCase())) headers.push(pr.rawHeaders[i], pr.rawHeaders[i + 1]);
+      const k = pr.rawHeaders[i].toLowerCase();
+      if (HOP.has(k)) continue;
+      if (route.domain && k === 'x-frame-options') continue;
+      const v = route.domain && k === 'content-security-policy' ? frameable(pr.rawHeaders[i + 1]) : pr.rawHeaders[i + 1];
+      if (v) headers.push(pr.rawHeaders[i], v);
     }
     res.writeHead(pr.statusCode, pr.statusMessage, headers);
     // upstream gone mid-body: cut the client too, never a hung response
@@ -388,17 +404,25 @@ const ICON_KEEP_MS = 3600000;
 const ICON_MISS_MS = 600000;
 const icons = new Map();
 
-function grab(route, path, max) {
+// {type, body, path}, redirects on the same upstream followed
+function grab(route, path, max, hops = 4) {
   return new Promise((resolve) => {
     const req = (route.scheme === 'https' ? https : http).get({
       host: route.ip, port: route.port, path, timeout: 4000, agent: agents[route.scheme],
       headers: { host: route.domain || BASE_DOMAIN, accept: '*/*', 'x-forwarded-prefix': route.prefix },
     }, (res) => {
+      const to = res.statusCode >= 300 && res.statusCode < 400 && res.headers.location;
+      if (to) {
+        res.resume();
+        const next = hops > 0 && iconPath(route, to, path);
+        resolve(next ? grab(route, next, max, hops - 1) : null);
+        return;
+      }
       if (res.statusCode !== 200) { res.resume(); resolve(null); return; }
       const parts = [];
       let n = 0;
       res.on('data', (c) => { n += c.length; if (n > max) req.destroy(); else parts.push(c); });
-      res.on('end', () => resolve({ type: String(res.headers['content-type'] || ''), body: Buffer.concat(parts) }));
+      res.on('end', () => resolve({ type: String(res.headers['content-type'] || ''), body: Buffer.concat(parts), path }));
       res.on('error', () => resolve(null));
     });
     req.on('timeout', () => req.destroy());
@@ -407,29 +431,60 @@ function grab(route, path, max) {
 }
 
 // an href off the page, as an upstream path, the public prefix dropped
-function iconPath(route, href) {
+function iconPath(route, href, from = '/') {
   let u;
-  try { u = new URL(href.replace(/&amp;/g, '&'), 'http://upstream/'); } catch { return ''; }
+  try { u = new URL(href.replace(/&amp;/g, '&'), new URL(from, 'http://upstream/')); } catch { return ''; }
   if (u.protocol !== 'http:' && u.protocol !== 'https:') return '';
   if (u.host !== 'upstream' && u.hostname !== (route.domain || BASE_DOMAIN)) return '';
   const p = route.prefix && under(u.pathname, route.prefix) ? strip(u.pathname, route.prefix) : u.pathname;
   return p + u.search;
 }
 
-const isImage = (r) => !!r && r.body.length > 0 && (/^image\//.test(r.type) || /octet-stream/.test(r.type));
+// by its bytes when the server names it wrong
+function sniff(b) {
+  if (b[0] === 0x89 && b.toString('latin1', 1, 4) === 'PNG') return 'image/png';
+  if (b.readUInt32BE(0) === 0x00000100) return 'image/x-icon';
+  if (b.toString('latin1', 0, 3) === 'GIF') return 'image/gif';
+  if (b[0] === 0xff && b[1] === 0xd8) return 'image/jpeg';
+  if (b.toString('latin1', 0, 4) === 'RIFF' && b.toString('latin1', 8, 12) === 'WEBP') return 'image/webp';
+  if (/^\s*(<\?xml[^>]*>\s*)?(<!--[\s\S]*?-->\s*)*<svg[\s>]/i.test(b.toString('utf8', 0, 512))) return 'image/svg+xml';
+  return '';
+}
 
+function asImage(r) {
+  if (!r || r.body.length < 4) return null;
+  const named = r.type.split(';')[0].trim().toLowerCase();
+  const type = sniff(r.body) || (/^image\//.test(named) ? named : '');
+  return type ? { type, body: r.body } : null;
+}
+
+const fromData = (href) => {
+  const m = href.match(/^data:(image\/[a-z0-9.+-]+)(;base64)?,(.*)$/is);
+  if (!m) return null;
+  try { return { type: m[1].toLowerCase(), body: m[2] ? Buffer.from(m[3], 'base64') : Buffer.from(decodeURIComponent(m[3])) }; } catch { return null; }
+};
+
+// rel=icon, then apple-touch-icon, then the usual paths
 async function lookIcon(route) {
   const page = await grab(route, '/', ICON_MAX * 4);
   const html = page && /html/.test(page.type) ? page.body.toString('utf8') : '';
-  const hrefs = [];
+  const from = page?.path || '/';
+  const icons = [];
+  const touch = [];
   for (const tag of html.match(/<link\b[^>]*>/gi) || []) {
-    if (!/\brel\s*=\s*["']?[^"'>]*icon/i.test(tag)) continue;
-    const m = tag.match(/\bhref\s*=\s*["']([^"']+)["']/i);
-    if (m) hrefs.push(m[1]);
+    const rel = (tag.match(/\brel\s*=\s*["']?([^"'>]*)/i) || [])[1] || '';
+    if (!/icon/i.test(rel) || /mask-icon/i.test(rel)) continue;
+    const m = tag.match(/\bhref\s*=\s*["']([^"']+)["']/i) || tag.match(/\bhref\s*=\s*([^\s"'>]+)/i);
+    if (m) (/apple-touch/i.test(rel) ? touch : icons).push(m[1].trim());
   }
-  for (const path of [...hrefs.map((h) => iconPath(route, h)).filter(Boolean), '/favicon.ico']) {
-    const r = await grab(route, path, ICON_MAX);
-    if (isImage(r)) return { type: /^image\//.test(r.type) ? r.type.split(';')[0] : 'image/x-icon', body: r.body };
+  for (const h of [...icons, ...touch]) {
+    const d = h.startsWith('data:') ? fromData(h) : null;
+    if (d) return d;
+  }
+  const paths = [...icons, ...touch].filter((h) => !h.startsWith('data:')).map((h) => iconPath(route, h, from)).filter(Boolean);
+  for (const path of new Set([...paths, '/favicon.ico', '/favicon.png', '/favicon.svg', '/apple-touch-icon.png', '/static/favicon.ico'])) {
+    const r = asImage(await grab(route, path, ICON_MAX));
+    if (r) return r;
   }
   return null;
 }
@@ -439,7 +494,7 @@ function favicon(host, name) {
   const key = `${host}/${name}`;
   const held = icons.get(key);
   if (held && Date.now() < held.until) return held.icon;
-  const route = [...table.domains.values(), ...table.paths].find((r) => r.host === host && r.name === name);
+  const route = everyRoute.find((r) => r.host === host && r.name === name);
   if (!route) return Promise.resolve(null);
   const icon = lookIcon(route).catch(() => null);
   icons.set(key, { icon, until: Date.now() + ICON_KEEP_MS });
