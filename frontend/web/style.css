@@ -1125,6 +1125,25 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
 
 /* a host switch's progress and outcome, expanded only */
 
+/* each git host's copy, a freshness bar for every backup */
+.mesh-git-box { border-top: 1px solid var(--border); }
+.mesh-git-rows { max-height: 7.5rem; overflow-y: auto; }
+.mesh-git-box[hidden] { display: none; }
+.mesh-git-row { display: grid; grid-template-columns: 1fr auto; gap: 0.4rem; padding: 0.3rem 0.4rem; }
+.mesh-git-dot { flex: none; width: 0.45rem; height: 0.45rem; border: 1px solid var(--sage); border-radius: 50%; align-self: center; }
+.mesh-git-row.master .mesh-git-dot { background: var(--accent); border-color: var(--accent); }
+.mesh-git-row.catching .mesh-git-dot { border-color: var(--sand); }
+.mesh-git-row.down .mesh-git-dot { border-color: var(--offmesh); }
+.mesh-git-row.down .mesh-stat-nm { color: var(--muted); text-decoration: line-through; }
+.mesh-git-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.mesh-git-behind { display: flex; align-items: center; gap: 0.3rem; }
+.git-ago { min-width: 2.2rem; text-align: right; color: var(--muted); }
+.git-lag { font-size: 0.7em; letter-spacing: 0; }
+.git-lag .good { color: var(--online); }
+.git-lag .slow { color: var(--warn); }
+.git-lag .stale { color: var(--offmesh); }
+.git-lag .off { color: color-mix(in srgb, var(--muted) 55%, var(--border)); }
+
 /* up to 4 rows (a px max-height from app.js), then a scroll */
 .mesh-stats-rows { display: flex; flex-direction: column; overflow-y: auto; }
 
@@ -1978,7 +1997,7 @@ input, textarea { caret-color: var(--accent); }
 .dk-tray .ic { width: 0.95rem; height: 0.95rem; }
 .dk-tray:hover, .dk-tray[aria-expanded="true"] { background: var(--tab-hover); color: var(--accent); }
 .dk-mesh-pop {
-  position: absolute; z-index: 20; right: 0; bottom: calc(100% + 0.9rem); width: min(26rem, calc(100vw - 1rem)); height: min(22rem, calc(100vh - 5rem));
+  position: absolute; z-index: 20; right: 0; bottom: calc(100% + 0.9rem); width: min(26rem, calc(100vw - 1rem)); height: min(28rem, calc(100vh - 5rem));
   display: flex; animation: pop-in 0.16s ease-out;
 }
 .dk-mesh-pop[hidden] { display: none; }

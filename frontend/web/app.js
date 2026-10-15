@@ -631,6 +631,63 @@ function renderMeshStats(hosts, grouped) {
   meshStats.style.maxHeight = prevMaxHeight;
 }
 
+// --- git backups: each git host's copy and how far it trails the master
+
+const meshGit = document.getElementById('mesh-git');
+const meshGitRows = document.getElementById('mesh-git-rows');
+// five cells a band, each filled across its own seconds
+const GIT_LAG_CELLS = 5;
+const GIT_LAG_BANDS = [['good', 0, 8], ['slow', 8, 15], ['stale', 15, 60]];
+let meshGitHosts = '';
+
+function ago(sec) {
+  if (sec < 60) return `${sec}s`;
+  if (sec < 3600) return `${Math.floor(sec / 60)}m`;
+  if (sec < 86400) return `${Math.floor(sec / 3600)}h`;
+  return `${Math.floor(sec / 86400)}d`;
+}
+
+function lagMeter(sec) {
+  let html = '';
+  let empty = 0;
+  for (const [cls, from, to] of GIT_LAG_BANDS) {
+    const full = Math.round(Math.max(0, Math.min(1, (sec - from) / (to - from))) * GIT_LAG_CELLS);
+    if (full) html += `<span class="${cls}">${'█'.repeat(full)}</span>`;
+    empty += GIT_LAG_CELLS - full;
+  }
+  return `${html}<span class="off">${'░'.repeat(empty)}</span>`;
+}
+
+function gitBackupText(h, masterGen) {
+  if (!h.reachable) return 'unreachable';
+  if (h.gen == null || h.ageSec == null) return 'no data yet';
+  const parts = [h.role === 'master' ? 'master, live' : masterGen != null && h.gen < masterGen ? 'older lineage' : h.role];
+  if (h.role !== 'master' && !h.eligible) parts.push('catching up');
+  if (h.updating) parts.push('updating');
+  return parts.join(' · ');
+}
+
+// every state push, ageSec fresh each time; the table remeasured on a new host set
+function renderMeshGit() {
+  meshGit.hidden = !gitHostsList.length;
+  const masterGen = gitHostsList.find((h) => h.role === 'master' && h.reachable)?.gen ?? null;
+  meshGitRows.innerHTML = gitHostsList.map((h) => {
+    const master = h.reachable && h.role === 'master';
+    const cls = master ? 'master' : !h.reachable ? 'down' : !h.eligible ? 'catching' : '';
+    const behind = h.reachable && !master && h.ageSec != null
+      ? `<span class="git-lag" title="green to 8s, yellow to 15s, red to 60s">${lagMeter(h.ageSec)}</span><span class="git-ago">${ago(h.ageSec)}</span>` : '';
+    return `<div class="mesh-git-row ${cls}"><span class="mesh-stat-name"><span class="mesh-git-dot"></span>`
+      + `<span class="mesh-stat-nm">${esc(h.host)}</span><span class="mesh-git-text">${esc(gitBackupText(h, masterGen))}</span></span>`
+      + `<span class="mesh-git-behind">${behind}</span></div>`;
+  }).join('');
+  const sig = gitHostsList.map((h) => h.host).join();
+  if (sig !== meshGitHosts) {
+    meshGitHosts = sig;
+    meshStatsDirty = true;
+    if (!meshAnimFrame) drawMesh();
+  }
+}
+
 let pulseAnimFrame = null;
 
 // the touched elements drawMesh() drew (tunnel spoke, peer arc, service stem)
@@ -976,6 +1033,7 @@ function applyState(state) {
   const gitChanged = JSON.stringify(next.map((h) => [h.host, h.reachable, h.role, h.eligible]))
     !== JSON.stringify(gitHostsList.map((h) => [h.host, h.reachable, h.role, h.eligible]));
   gitHostsList = next;
+  renderMeshGit();
 
   renderRoutes(state.routes, state.tailnet);
   statusState(state);
@@ -4794,14 +4852,13 @@ function loadJsonSafe(key) { try { const v = JSON.parse(localStorage.getItem(key
 
 // --- projects -----------------------------------------------------------------
 // the orangutan's long projects, every host's: the list, one's live state, or a
-// new one, polled while the tab is up
+// new one, pushed over a socket while the window is up
 
 const pjList = document.getElementById('pj-list');
 // a project's longest, as the server holds it
 const PJ_MAX_HOURS = 14 * 24;
 const pjHead = document.getElementById('pj-head');
 const pjBody = document.getElementById('pj-body');
-const PJ_POLL_MS = 1000;
 // the workspace's files listed again at most this often, on news only
 const PJ_FILES_MS = 3000;
 const PJ_PHASES = ['plan', 'execute', 'test', 'refine'];
@@ -4811,7 +4868,6 @@ let pjSelf = '';
 // host/id, or 'new'
 let pjPick = '';
 let pjOne = null;
-let pjTimer = 0;
 let pjSig = '';
 let pjListSig = '';
 let pjFiles = { key: '', at: 0, sig: '', list: [] };
@@ -4846,14 +4902,56 @@ async function pjPost(url, body) {
   return out;
 }
 
+// the list as pushed or fetched, the pick settled on it
+function pjTakeList(r) {
+  pjSelf = r.self;
+  pjAll = (r.projects || []).sort((a, b) => (b.status === 'running') - (a.status === 'running') || b.started - a.started);
+  if (!pjPick && pjAll.length) pjPick = pjKey(pjAll[0]);
+  if (!pjPick && !pjAll.length) pjPick = 'new';
+  pjPaintList();
+}
+
+function pjTakeOne(p) {
+  if (!p || pjKey(p) !== pjPick) return;
+  pjOne = p;
+  pjPaintOne();
+  pjLoadFiles();
+}
+
+// pushed while the window is up; a press's answer asked for at once
+let pjWs = null;
+let pjWsRetry = 0;
+let pjTick = 0;
+const pjWsOpen = () => pjWs?.readyState === WebSocket.OPEN;
+const pjSendPick = (fresh) => pjWsOpen() && pjWs.send(JSON.stringify({ pick: pjPick === 'new' ? '' : pjPick, fresh }));
+
+function pjConnect() {
+  const ws = new WebSocket(`${wsBase()}/api/projects/ws`);
+  pjWs = ws;
+  ws.onopen = () => { pjWsRetry = 0; pjSendPick(false); };
+  ws.onmessage = (e) => {
+    let m = null;
+    try { m = JSON.parse(e.data); } catch { return; }
+    if (m.type === 'list') {
+      const was = pjPick;
+      pjTakeList(m);
+      if (pjPick !== was) pjSendPick(false);
+      if (pjPick === 'new') pjPaintNew();
+      else if (!pjFind() && pjPick) { pjOne = null; pjGo(pjAll.length ? pjKey(pjAll[0]) : 'new'); }
+    } else if (m.type === 'one') pjTakeOne(m.project);
+  };
+  ws.onclose = () => {
+    if (pjWs !== ws) return;
+    pjWs = null;
+    pjWsRetry = Math.min(10000, (pjWsRetry || 500) * 2);
+    setTimeout(() => { if (deskApps.has('projects') && !pjWs) pjConnect(); }, pjWsRetry);
+  };
+}
+
 async function pjPoll() {
+  if (pjWsOpen()) { pjSendPick(true); return; }
   try {
-    const r = await pjGet('/api/projects');
-    pjSelf = r.self;
-    pjAll = (r.projects || []).sort((a, b) => (b.status === 'running') - (a.status === 'running') || b.started - a.started);
-    if (!pjPick && pjAll.length) pjPick = pjKey(pjAll[0]);
-    if (!pjPick && !pjAll.length) pjPick = 'new';
-    pjPaintList();
+    pjTakeList(await pjGet('/api/projects'));
     const p = pjFind();
     if (p) {
       pjOne = await pjGet(`/api/projects/${encodeURIComponent(p.host)}/${p.id}`).catch(() => pjOne);
@@ -4868,11 +4966,17 @@ async function pjPoll() {
 }
 
 function pjWatch(on) {
-  clearInterval(pjTimer);
-  pjTimer = 0;
-  if (!on) return;
-  pjPoll();
-  pjTimer = setInterval(() => { if (!document.hidden) pjPoll(); }, PJ_POLL_MS);
+  clearInterval(pjTick);
+  pjTick = 0;
+  if (!on) {
+    const ws = pjWs;
+    pjWs = null;
+    ws?.close();
+    return;
+  }
+  if (!pjWs) pjConnect();
+  // times on screen kept current without asking anyone
+  pjTick = setInterval(() => { pjPaintList(); pjPaintOne(); }, 30000);
 }
 
 function pjPaintList() {
@@ -4911,7 +5015,7 @@ function pjGo(key) {
   pjFiles = { key: '', at: 0, sig: '', list: [] };
   pjListSig = '';
   pjPaintList();
-  if (key === 'new') pjPaintNew(); else { pjBody.replaceChildren(el('div', 'st-wait', 'loading')); pjPoll(); }
+  if (key === 'new') { pjPaintNew(); pjSendPick(false); } else { pjBody.replaceChildren(el('div', 'st-wait', 'loading')); pjPoll(); }
 }
 
 // --- one project ---
@@ -4952,7 +5056,7 @@ function pjPaintOne() {
     + `</div>`
     + (p.final ? `<div class="pj-sec"><div class="pj-sec-head">summary</div><div class="pj-final md"></div></div>` : '')
     + `<div class="pj-cols"><div class="pj-sec"><div class="pj-sec-head">tasks ${p.tasks.length ? `<span class="st-dim">${p.tasks.filter((t) => t.done).length}/${p.tasks.length}</span>` : ''}</div><ul class="pj-tasks">${tasks}</ul></div>`
-    + `<div class="pj-sec"><div class="pj-sec-head">workspace <span class="st-dim">${esc(p.host)}/projects/${p.id}</span></div><ul class="pj-files">${files}</ul></div></div>`
+    + `<div class="pj-sec"><div class="pj-sec-head">workspace <span class="st-dim">${esc(p.host)}/projects/${esc(p.workspace || p.id)}</span></div><ul class="pj-files">${files}</ul></div></div>`
     + `<div class="pj-sec"><div class="pj-sec-head">timeline <button type="button" class="st-clear pj-cmds">${pjCmds ? 'hide commands' : 'show commands'}</button></div><ul class="pj-events">${timeline}</ul></div>`
     + `<div class="pj-sec"><div class="pj-sec-head">brief</div><div class="pj-brief"></div></div>`;
   detail.querySelector('.pj-brief').textContent = p.brief;

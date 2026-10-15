@@ -1789,6 +1789,7 @@ const wss = new WebSocket.Server({ noServer: true });
 const termWss = new WebSocket.Server({ noServer: true });
 const stateWss = new WebSocket.Server({ noServer: true });
 const statsWss = new WebSocket.Server({ noServer: true });
+const projectsWss = new WebSocket.Server({ noServer: true });
 const codeWss = new WebSocket.Server({ noServer: true });
 
 // --- state push -----------------------------------------------------------
@@ -1822,6 +1823,72 @@ clock.onHot(() => {
   for (;;) { pushState(); await clock.sleep(clock.intervalMs()); }
 })();
 
+// --- projects push ---------------------------------------------------------
+// the list on a change, the picked one's record when its summary moves,
+// fetched from its host once per change however many watch it
+
+const PROJECTS_PUSH_MS = 500;
+const allProjects = () => [...project.summaries(), ...mesh.peerProjects()];
+// host/id -> {fp, got: Promise<[status, body]>}
+const pjDetails = new Map();
+// a paused one's deadline creeping every ms, counted by the minute
+const pjFp = (x) => JSON.stringify(x, (k, v) => (k === 'deadline' ? Math.round(v / 60000) : v));
+
+function pjDetail(s) {
+  const key = `${s.host}/${s.id}`;
+  const fp = pjFp(s);
+  const held = pjDetails.get(key);
+  if (held && held.fp === fp) return held.got;
+  const got = s.host === SELF_HOST ? Promise.resolve(project.detail(s.id))
+    : tailnetIp(s.host).then((ip) => (ip ? peerCall(s.host, { host: ip, path: `/api/projects/${s.host}/${s.id}?hop=1`, timeout: 15000 }) : [502, { error: `can't find ${s.host}` }]));
+  pjDetails.set(key, { fp, got });
+  return got;
+}
+
+function pushProjects(ws, list, listFp) {
+  if (ws.readyState !== WebSocket.OPEN) return;
+  if (ws.pj.listFp !== listFp) {
+    ws.pj.listFp = listFp;
+    ws.send(JSON.stringify({ type: 'list', self: SELF_HOST, projects: list }));
+  }
+  const s = list.find((x) => `${x.host}/${x.id}` === ws.pj.pick);
+  const fp = s ? pjFp(s) : '';
+  if (!s || fp === ws.pj.oneFp) return;
+  ws.pj.oneFp = fp;
+  pjDetail(s).then(([status, body]) => {
+    if (ws.readyState !== WebSocket.OPEN || ws.pj.oneFp !== fp) return;
+    if (status === 200) ws.send(JSON.stringify({ type: 'one', project: body }));
+    else ws.pj.oneFp = '';
+  });
+}
+
+function pushAllProjects() {
+  if (!projectsWss.clients.size) { pjDetails.clear(); return; }
+  const list = allProjects();
+  const listFp = pjFp(list);
+  const live = new Set(list.map((x) => `${x.host}/${x.id}`));
+  for (const k of pjDetails.keys()) if (!live.has(k)) pjDetails.delete(k);
+  for (const ws of projectsWss.clients) pushProjects(ws, list, listFp);
+}
+setInterval(pushAllProjects, PROJECTS_PUSH_MS).unref();
+
+// {pick: 'host/id'} from the page, the record pushed at once
+function onProjects(ws) {
+  ws.pj = { pick: '', listFp: '', oneFp: '' };
+  ws.on('message', (data) => {
+    let m = null;
+    try { m = JSON.parse(String(data)); } catch {}
+    if (!m || typeof m.pick !== 'string') return;
+    ws.pj.pick = m.pick.slice(0, 100);
+    ws.pj.oneFp = '';
+    if (m.fresh) { ws.pj.listFp = ''; pjDetails.delete(ws.pj.pick); }
+    const list = allProjects();
+    pushProjects(ws, list, pjFp(list));
+  });
+  const list = allProjects();
+  pushProjects(ws, list, pjFp(list));
+}
+
 function onState(ws) {
   const state = buildState();
   noteState(state);
@@ -1834,6 +1901,7 @@ function onUpgrade(req, socket, head) {
   if (!isLocalOrPeer(req)) { refuse('403 Forbidden'); return; }
   if (pathname === '/ws') { wss.handleUpgrade(req, socket, head, (ws) => onChat(keepAlive(ws), users.session(req))); return; }
   if (pathname === '/api/state') { stateWss.handleUpgrade(req, socket, head, (ws) => onState(keepAlive(ws))); return; }
+  if (pathname === '/api/projects/ws') { projectsWss.handleUpgrade(req, socket, head, (ws) => onProjects(keepAlive(ws))); return; }
   if (pathname === '/api/stats') {
     // own: a peer's fan in, or the mcp's own sample
     const own = searchParams.has('own');
@@ -1881,7 +1949,7 @@ function mergeFromPeers(messages) {
 // an idle terminal outlives Cloudflare's idle cutoff
 const HEARTBEAT_INTERVAL = 3000;
 setInterval(() => {
-  for (const ws of [...wss.clients, ...termWss.clients, ...stateWss.clients, ...statsWss.clients, ...codeWss.clients]) {
+  for (const ws of [...wss.clients, ...termWss.clients, ...stateWss.clients, ...statsWss.clients, ...codeWss.clients, ...projectsWss.clients]) {
     if (ws.isAlive === false) { ws.terminate(); continue; }
     ws.isAlive = false;
     ws.ping();

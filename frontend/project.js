@@ -458,6 +458,8 @@ const summary = (p) => ({
   round: p.round, started: p.started, deadline: deadlineOf(p), ended: p.ended || 0, model: p.model || '',
   working: !!p.roundAt, paused: p.status === 'running' && !!p.pausedAt, waiting: p.status === 'running' ? p.waiting || '' : '',
   note: p.note || '',
+  // the last event's time, a change in the record without a list fetch
+  news: p.events.at(-1)?.at || 0,
 });
 
 const summaries = () => [...projects.values()].map(summary).sort((a, b) => b.started - a.started);
