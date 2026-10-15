@@ -16,8 +16,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/coder/websocket"
 	"context"
+	"github.com/coder/websocket"
 )
 
 var volatile = regexp.MustCompile(`^(bootId|pollMs|at|timestamp|mtime|checkedAt|serverSince|news|started|deadline|ended|prefsAt|wallpaper|e|pwAt|salt|hash|iv|tag|data|rttMs|id|seq|uptime|since|sysDigest)$`)
