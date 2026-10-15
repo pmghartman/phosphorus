@@ -101,8 +101,10 @@ func ServeStatic(w http.ResponseWriter, r *http.Request) {
 	h.Set("ETag", etag)
 	h.Set("Vary", "Accept-Encoding")
 	switch {
-	case hashed(name) || strings.HasPrefix(name, "vendor/fonts/"):
+	case hashed(name):
 		h.Set("Cache-Control", "public, max-age=31536000, immutable")
+	case ext == ".woff2":
+		h.Set("Cache-Control", "public, max-age=86400")
 	default:
 		h.Set("Cache-Control", "no-cache")
 	}

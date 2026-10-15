@@ -1,4 +1,8 @@
-'use strict';
+import { renderMd, mdBlocks, fitMath } from './md.js';
+import { parserFor, parserNow, highlight, syntaxErrors } from './lezer.js';
+
+// the page's vendor files, hashed by the build
+const ASSETS = __ASSETS__;
 
 // --- self / routes ------------------------------------------------------
 // everything from /api/state, pushed, see connectState at the bottom
@@ -1073,21 +1077,18 @@ const paneContent = document.getElementById('pane-content');
 
 // xterm only on the first terminal, most visits never opening one
 let xtermLoaded = null;
+let Terminal = null;
+let FitAddon = null;
+let WebglAddon = null;
 function loadXterm() {
   if (xtermLoaded) return xtermLoaded;
   const css = document.createElement('link');
   css.rel = 'stylesheet';
-  css.href = '/vendor/xterm.css';
+  css.href = ASSETS['xterm.css'];
   document.head.appendChild(css);
-  const script = (src) => new Promise((resolve, reject) => {
-    const s = document.createElement('script');
-    s.src = src;
-    s.onload = resolve;
-    s.onerror = () => reject(new Error(`couldn't load ${src}`));
-    document.head.appendChild(s);
-  });
-  xtermLoaded = script('/vendor/xterm.js')
-    .then(() => Promise.all([script('/vendor/addon-fit.js'), script('/vendor/addon-webgl.js')]));
+  xtermLoaded = Promise.all([import('@xterm/xterm'), import('@xterm/addon-fit'), import('@xterm/addon-webgl')])
+    .then(([x, f, g]) => { Terminal = x.Terminal; FitAddon = f; WebglAddon = g; })
+    .catch((e) => { xtermLoaded = null; throw e; });
   return xtermLoaded;
 }
 
@@ -2573,125 +2574,6 @@ function alertCountdown(li, m, until) {
 // what the model posts: its answer, its spinner and why it can't
 const MODEL_KINDS = ['model', 'pending', 'notice'];
 
-// --- markdown and math ------------------------------------------------------
-// a line's text as markdown, $..$ \(..\) inline and $$..$$ \[..\] display
-// math through katex, sanitised, plain text if a library never loaded
-
-const MATH_RE = /\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\]|\\\(([\s\S]+?)\\\)|\$(?=\S)((?:\\\$|[^$\n])+?)(?<=\S)\$(?!\d)/g;
-const mdReady = () => !!(window.marked && window.DOMPurify && window.katex);
-// text only: pictures come as attachments, never from wherever a line points
-const MD_TAGS = ['p', 'br', 'strong', 'em', 'del', 's', 'code', 'pre', 'ul', 'ol', 'li', 'blockquote', 'a', 'hr',
-  'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'input',
-  'details', 'summary', 'kbd', 'sup', 'sub', 'mark', 'ins', 'abbr'];
-const MD_ATTRS = ['href', 'align', 'class', 'start', 'type', 'checked', 'disabled', 'open', 'title', 'colspan', 'rowspan'];
-if (window.DOMPurify) {
-  // links out of the page, never over it; a task's checkbox the only input
-  DOMPurify.addHook('afterSanitizeAttributes', (el) => {
-    if (el.tagName === 'A') { el.target = '_blank'; el.rel = 'noopener noreferrer'; }
-    if (el.tagName === 'INPUT' && el.getAttribute('type') !== 'checkbox') el.remove();
-    if (el.tagName === 'INPUT') el.setAttribute('disabled', '');
-  });
-}
-
-function renderMd(el, src, breaks = true) {
-  if (!mdReady()) { el.textContent = src; return; }
-  // code first so a $ in it stays a $, then math, each held by a token
-  const held = [];
-  const hold = (html) => `\u0001${held.push(html) - 1}\u0001`;
-  const code = [];
-  let text = src.replace(/```[\s\S]*?(?:```|$)|`[^`\n]+`/g, (m) => `\u0002${code.push(m) - 1}\u0002`);
-  text = text.replace(MATH_RE, (m, dd, db, ip, id) => {
-    const tex = dd ?? db ?? ip ?? id;
-    try {
-      return hold(katex.renderToString(tex, { displayMode: dd != null || db != null, throwOnError: false, output: 'html' }));
-    } catch {
-      return m;
-    }
-  });
-  text = text.replace(/\u0002(\d+)\u0002/g, (_, i) => code[i]);
-  const html = DOMPurify.sanitize(marked.parse(text, { breaks, gfm: true }), { ALLOWED_TAGS: MD_TAGS, ALLOWED_ATTR: MD_ATTRS });
-  el.innerHTML = html.replace(/\u0001(\d+)\u0001/g, (_, i) => held[i]);
-  el.classList.add('md');
-  for (const box of el.querySelectorAll('li > input:first-child, li > p:first-child > input:first-child')) box.closest('li').classList.add('task');
-  if (held.length) fitMath(el);
-  for (const c of el.querySelectorAll('pre > code[class*="language-"]')) {
-    const lang = c.className.match(/language-(\S+)/)[1].toLowerCase();
-    if (lang === 'mermaid') drawMermaid(c.parentElement, c.textContent);
-    else if (window.hljs && hljs.getLanguage(lang)) hljs.highlightElement(c);
-  }
-}
-
-// --- diagrams -------------------------------------------------------------------
-// a mermaid fence drawn in the palette, the library fetched on the first one,
-// each drawing kept by theme and source so a redraw while streaming never flickers
-
-const mermaidSvgs = new Map();
-let mermaidLoad = null;
-let mermaidTheme = '';
-let mermaidSeq = 0;
-const loadMermaid = () => (mermaidLoad ||= new Promise((resolve, reject) => {
-  const s = Object.assign(document.createElement('script'), { src: '/vendor/mermaid.js' });
-  s.onload = () => resolve(window.mermaid);
-  s.onerror = () => { mermaidLoad = null; reject(new Error('mermaid failed to load')); };
-  document.head.appendChild(s);
-}));
-
-function mermaidThemed(m) {
-  const css = getComputedStyle(document.documentElement);
-  const v = (k) => css.getPropertyValue(k).trim();
-  const theme = [v('--bg'), v('--fg'), v('--accent')].join();
-  if (theme === mermaidTheme) return theme;
-  mermaidTheme = theme;
-  m.initialize({
-    startOnLoad: false, securityLevel: 'strict', suppressErrorRendering: true, theme: 'base',
-    fontFamily: v('--font'),
-    themeVariables: {
-      background: v('--bg'), fontFamily: v('--font'), fontSize: '12px',
-      primaryColor: v('--card'), primaryTextColor: v('--fg'), primaryBorderColor: v('--accent'),
-      secondaryColor: v('--card'), secondaryTextColor: v('--fg'), secondaryBorderColor: v('--sky'),
-      tertiaryColor: v('--bg'), tertiaryTextColor: v('--fg'), tertiaryBorderColor: v('--sage'),
-      lineColor: v('--muted'), textColor: v('--fg'), mainBkg: v('--card'), nodeBorder: v('--accent'),
-      clusterBkg: v('--bg'), clusterBorder: v('--border'), edgeLabelBackground: v('--bg'),
-      noteBkgColor: v('--card'), noteTextColor: v('--fg'), noteBorderColor: v('--sand'),
-      actorBkg: v('--card'), actorBorder: v('--accent'), actorTextColor: v('--fg'), signalColor: v('--muted'),
-    },
-  });
-  return theme;
-}
-
-// the source stays up as code until the drawing lands, and if it won't parse
-async function drawMermaid(pre, src) {
-  pre.classList.add('mermaid-src');
-  let m;
-  try { m = await loadMermaid(); } catch { return; }
-  const key = `${mermaidThemed(m)}\n${src}`;
-  let svg = mermaidSvgs.get(key);
-  if (svg === undefined) {
-    try { svg = (await m.render(`mermaid-${mermaidSeq += 1}`, src)).svg; } catch { svg = ''; }
-    mermaidSvgs.set(key, svg);
-  }
-  if (!svg || !pre.isConnected) return;
-  const box = Object.assign(document.createElement('div'), { className: 'mermaid-box' });
-  box.innerHTML = svg;
-  pre.replaceWith(box);
-}
-
-// math wider than its line shrunk to fit, to half size at most, display math
-// scrolling past that, inline math breaking only between its bases
-const MATH_EM = 1.05;
-function fitMath(el) {
-  const line = el.closest('.bubble') || el.closest('li');
-  if (!line || !line.clientWidth) return;
-  for (const k of el.querySelectorAll('.katex')) {
-    k.style.fontSize = '';
-    const disp = k.closest('.katex-display');
-    const bases = [...k.querySelectorAll('.katex-html > *')].map((b) => b.getBoundingClientRect().width);
-    const wide = disp ? bases.reduce((a, w) => a + w, 0) : Math.max(0, ...bases);
-    const room = (disp || line).clientWidth - 2;
-    if (wide > room) k.style.fontSize = `${MATH_EM * Math.max(0.5, room / wide)}em`;
-  }
-}
-
 // a chat reply opened with who it's for, "Patrick, yes", a plain first word lowered,
 // a block (fence, list, heading, table, display math) on its own line
 const PLAIN_FIRST = /^(?:Yes|No|The|It|Its|It's|That|This|There|These|Those|You|Your|A|An|Sure|Done|Here|Nothing|None|All|Both|Not|To|In|On|For|With|From|At|By|Use|Run|Try|Open|Ok|Okay|Each|One|Some|Only|Just)\b/;
@@ -2756,7 +2638,7 @@ function fold(k) {
     return m;
   }
   if (k.name !== m.name) return null;
-  if (k.kind === 'edit' && (!m.editAt || m.editAt <= k.timestamp)) { m.edited = k.text; m.editAt = k.timestamp; }
+  if (k.kind === 'edit' && (!m.editAt || m.editAt <= k.timestamp)) { m.edited = k.text; m.editedHtml = k.html; m.editAt = k.timestamp; }
   if (k.kind === 'delete') m.gone = true;
   return m;
 }
@@ -2918,6 +2800,7 @@ function lineEl(m, prev) {
   const to = ['model', 'pending'].includes(m.kind) && typeof m.to === 'string' ? m.to : '';
   if (to) li.dataset.to = to;
   const body = m.edited ?? m.text;
+  const html = m.edited != null ? m.editedHtml : m.html;
   // an ask's /chimp or /orang coloured as the command it is, the rest as markdown
   const cmd = !m.kind && typeof body === 'string' && body.match(/^\/chimp(?=\s|$)/i);
   if (m.gone) {
@@ -2929,10 +2812,10 @@ function lineEl(m, prev) {
     text.append(row);
   } else if (cmd) {
     const rest = el('span');
-    renderMd(rest, body.slice(cmd[0].length).trimStart());
+    renderMd(rest, body.slice(cmd[0].length).trimStart(), true, html);
     text.append(el('span', 'cmd', cmd[0]), ' ', rest);
   } else if (body) {
-    renderMd(text, addressed(to, body));
+    renderMd(text, addressed(to, body), true, html);
   }
   if (!m.gone && markMentions(text)) li.classList.add('at-me');
   if (body || m.gone || m.kind === 'pending') bubble.append(text);
@@ -3496,7 +3379,7 @@ function agentSaid(m, live) {
 function turnLine(r, t, i) {
   return {
     host: 'agent', seq: `${r}-${i}`, timestamp: t.at, name: t.role === 'user' ? name : t.by || r, color: color || undefined,
-    kind: t.role === 'assistant' ? 'model' : t.role === 'notice' ? 'notice' : undefined, text: t.text,
+    kind: t.role === 'assistant' ? 'model' : t.role === 'notice' ? 'notice' : undefined, text: t.text, html: t.html,
   };
 }
 
@@ -3579,7 +3462,7 @@ function agentAnswered(msg) {
   paintTyping();
   const by = isAgent(msg.by) && msg.by !== w.agent ? { by: msg.by } : {};
   const said = String(msg.error || msg.text || '');
-  addAgentTurn(w.agent, msg.error ? { role: 'notice', text: said, at: Date.now() } : { role: 'assistant', text: said, ...by, at: Date.now() }, was);
+  addAgentTurn(w.agent, msg.error ? { role: 'notice', text: said, at: Date.now() } : { role: 'assistant', text: said, html: msg.html, ...by, at: Date.now() }, was);
   was?.remove();
   noteNews(w.agent);
   bumpUnread();
@@ -4285,30 +4168,6 @@ function codeLang(p) {
 // any text kind the editor knows, code or prose: what a double click opens in it
 const isCode = (p) => !!codeLang(p);
 
-// syntax errors by a parse alone, lezer's parsers fetched per language; never evaluated
-const parsers = new Map();
-function parserFor(check) {
-  const [mod, dialect] = check.split(':');
-  if (!parsers.has(check)) {
-    parsers.set(check, import(`/vendor/lezer/${mod}.js`)
-      .then((m) => (dialect ? m.parser.configure({ dialect }) : m.parser)).catch(() => null));
-  }
-  return parsers.get(check);
-}
-const ERR_MAX = 50;
-function syntaxErrors(parser, text) {
-  const out = [];
-  parser.parse(text).iterate({
-    enter: (n) => {
-      if (!n.type.isError || out.length >= ERR_MAX) return;
-      const near = n.to > n.from ? text.slice(n.from, n.to) : (text.slice(n.from).match(/^\s*(\S{1,16})/) || [])[1];
-      const what = near ? `unexpected ${near.trim().slice(0, 24)}` : 'unexpected end of file';
-      if (!out.some((e) => e.from === n.from)) out.push({ from: n.from, to: n.to, what });
-    },
-  });
-  return out;
-}
-
 // --- the text operations the session speaks (collab.js's, here for the tab's end) ---
 
 const opIns = (o) => typeof o === 'string';
@@ -4466,9 +4325,13 @@ function codeEditor(view, file, btn, id) {
     // a tab shown again with the same text: its highlight kept
     if (text === hlText) { paintMarks(); return; }
     hlText = text;
-    if (window.hljs && text.length <= HL_MAX && hljs.getLanguage(lang.hl)) {
-      code.innerHTML = `${hljs.highlight(text, { language: lang.hl, ignoreIllegals: true }).value}\n`;
-    } else code.textContent = `${text}\n`;
+    const parser = text.length <= HL_MAX && parserNow(lang.check);
+    if (parser) code.innerHTML = `${highlight(parser, text)}\n`;
+    else {
+      code.textContent = `${text}\n`;
+      if (lang.check && text.length <= HL_MAX) parserFor(lang.check).then((p) => { if (p) { hlText = null; redraw(); } });
+      else if (lang.hl !== 'plaintext' && text.length <= HL_MAX) serverHighlight(text);
+    }
     const lines = text.split('\n').length;
     if (nums.dataset.n !== String(lines)) {
       nums.dataset.n = String(lines);
@@ -4478,6 +4341,18 @@ function codeEditor(view, file, btn, id) {
     checkSoon();
   }
   const redraw = () => { drawFrame ||= requestAnimationFrame(draw); mdSoon(); };
+  // a grammar the page has no parser for: chroma's, once typing pauses
+  let hlTimer = 0;
+  function serverHighlight(text) {
+    clearTimeout(hlTimer);
+    hlTimer = setTimeout(async () => {
+      try {
+        const r = await fetch('/api/md', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ highlight: lang.hl, text }) });
+        const { html } = r.ok ? await r.json() : {};
+        if (typeof html === 'string' && ta.value === text) code.innerHTML = `${html}\n`;
+      } catch {}
+    }, 150);
+  }
 
   // --- markdown rendered: the source's blocks drawn, one edited at a time in place ---
   const MD_KEY = 'phosphorus-md-rendered';
@@ -4494,32 +4369,18 @@ function codeEditor(view, file, btn, id) {
     if (isMd) try { localStorage.setItem(MD_KEY, rendered ? '1' : ''); } catch {}
     if (rendered) paintMd(); else if (mdEditing) mdEditing.box.blur();
   }
-  // its blocks by marked's lexer, each with where its source sits
-  function mdBlocks(text) {
-    const blocks = [];
-    let at = 0;
-    try {
-      // an html element left open, a <details> say, one block with what it wraps
-      let open = 0;
-      for (const t of marked.lexer(text)) {
-        const from = at;
-        at += t.raw.length;
-        if (open) blocks.at(-1).raw += t.raw;
-        else if (t.type !== 'space') blocks.push({ from, raw: t.raw });
-        if (t.type === 'html' || open) open = Math.max(0, open + (t.raw.match(/<details\b/gi) || []).length - (t.raw.match(/<\/details>/gi) || []).length);
-      }
-    } catch { at = -1; }
-    return at === text.length ? blocks : [{ from: 0, raw: text }];
-  }
-  function paintMd() {
+  let mdSeq = 0;
+  async function paintMd() {
     if (!rendered || mdEditing) return;
     const text = ta.value;
+    const seq = mdSeq += 1;
+    const blocks = await mdBlocks(text);
+    if (seq !== mdSeq || !rendered || mdEditing || ta.value !== text) return;
     const top = mdView.scrollTop;
-    const blocks = window.marked ? mdBlocks(text) : [{ from: 0, raw: text }];
     const edit = canWrite();
     mdView.replaceChildren(...blocks.map((b) => {
       const d = el('div', 'md-block');
-      renderMd(d, b.raw.replace(/\n+$/, ''), false);
+      renderMd(d, b.raw.replace(/\n+$/, ''), false, b.html);
       if (edit) {
         d.title = 'double click to edit';
         d.addEventListener('dblclick', (e) => { if (!e.target.closest('input, a, summary')) editBlock(d, b); });

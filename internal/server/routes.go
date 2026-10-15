@@ -356,7 +356,21 @@ func appHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		onJSON(w, r, maxSaveBody, true, func(p map[string]any) (int, any) {
+			if items, ok := p["items"].([]any); ok {
+				if len(items) > 500 {
+					items = items[:500]
+				}
+				out := make([]string, len(items))
+				for i, x := range items {
+					it := util.Obj(x)
+					out[i] = web.Markdown(str(it["text"]), it["breaks"] != false)
+				}
+				return 200, map[string]any{"html": out}
+			}
 			text := str(p["text"])
+			if lang, ok := p["highlight"].(string); ok {
+				return 200, map[string]any{"html": web.Highlight(text, lang)}
+			}
 			if p["blocks"] == true {
 				return 200, map[string]any{"blocks": web.Blocks(text)}
 			}
