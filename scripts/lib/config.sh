@@ -65,7 +65,7 @@ phosphorus_add_missing_sections() {
     echo "[phosphorus.ini] added the [model] section, set host and url on the one host with the memory and disk for the model"
   fi
   if ! grep -qx '\[home\]' "$file"; then
-    printf '\n[home]\n# dir: the [files] dir holding each user'"'"'s folder, shared/ and sys/, blank: the home'"'"'s files/\n# changed: all three moved there on the next rebuild\ndir =\n' >> "$file"
+    printf '\n[home]\n# dir: the [files] dir whose home/ holds each user'"'"'s folder, shared/ and sys/, blank: the home'"'"'s files/\n# changed: home/ moved there on the next rebuild\ndir =\n' >> "$file"
     echo "[phosphorus.ini] added the [home] section"
   fi
   # the retired [apps] section dropped, comments and all
@@ -111,15 +111,15 @@ phosphorus_home_dir() {
   esac
 }
 
-# the copy run with phosphorus stopped, old at /mv/old, new at /mv/new: sys/,
-# shared/ and each user's folder (an older home's usr/ and sys/) copied whole,
-# only then the old ones deleted; one dir spelt two ways (a marker seen
-# through both) left alone
+# the copy run with phosphorus stopped, old at /mv/old, new at /mv/new: home/
+# (an older layout's usr/, sys/, shared/ and users' folders, the frontend
+# moving them into home/) copied whole, only then the old ones deleted; one
+# dir spelt two ways (a marker seen through both) left alone
 PHOSPHORUS_HOME_MOVE='set -e
 m=".phosphorus-move-$$"; touch /mv/old/$m
 if [ -e /mv/new/$m ]; then rm -f /mv/old/$m; exit 0; fi
 rm -f /mv/old/$m
-if [ -d /mv/old/usr/shared ]; then names="usr sys"; else names="sys shared"
+if [ -d /mv/old/home/sys ]; then names="home"; elif [ -d /mv/old/usr/shared ]; then names="usr sys"; else names="sys shared"
   for f in /mv/old/sys/etc/passwd/*.json; do [ -f "$f" ] && names="$names $(basename "$f" .json)"; done; fi
 for d in $names; do [ -d /mv/old/$d ] && mkdir -p /mv/new/$d && cp -a /mv/old/$d/. /mv/new/$d/; done
 for d in $names; do rm -rf /mv/old/$d; done'

@@ -6,6 +6,7 @@ const http = require('http');
 const https = require('https');
 const net = require('net');
 const tls = require('tls');
+const zlib = require('zlib');
 const { notes } = require('./util');
 
 const BASE_DOMAIN = process.env.BASE_DOMAIN || '';
@@ -405,15 +406,28 @@ const ICON_KEEP_MS = 3600000;
 const ICON_MISS_MS = 600000;
 const icons = new Map();
 
+// a body as sent, else unpacked, some servers compressing whatever is asked
+function unpack(body, enc) {
+  try {
+    if (/\bgzip\b/i.test(enc)) return zlib.gunzipSync(body);
+    if (/\bbr\b/i.test(enc)) return zlib.brotliDecompressSync(body);
+    if (/\bdeflate\b/i.test(enc)) return zlib.inflateSync(body);
+  } catch { return null; }
+  return body;
+}
+
 // {type, body, path}, redirects on the same upstream followed; a page cut
-// at max, anything else over it dropped
+// at max (a login page's 4xx kept, its links still the app's), anything else
+// over it dropped
 function grab(route, path, max, { page = false, hops = 4 } = {}) {
   return new Promise((resolve) => {
     const host = route.domain || BASE_DOMAIN;
     const req = (route.scheme === 'https' ? https : http).get({
       host: route.ip, port: route.port, path, timeout: 4000, agent: agents[route.scheme],
+      ...(route.scheme === 'https' && host && !net.isIP(host) ? { servername: host } : {}),
       headers: {
-        host, accept: page ? 'text/html,*/*;q=0.8' : 'image/*,*/*;q=0.8', 'user-agent': 'Mozilla/5.0 (phosphorus icons)',
+        host, accept: page ? 'text/html,*/*;q=0.8' : 'image/*,*/*;q=0.8', 'accept-encoding': 'identity',
+        'user-agent': 'Mozilla/5.0 (phosphorus icons)',
         'x-forwarded-host': host, 'x-forwarded-proto': route.proto, 'x-forwarded-prefix': route.prefix,
       },
     }, (res) => {
@@ -424,10 +438,13 @@ function grab(route, path, max, { page = false, hops = 4 } = {}) {
         resolve(next && next !== path ? grab(route, next, max, { page, hops: hops - 1 }) : null);
         return;
       }
-      if (res.statusCode !== 200) { res.resume(); resolve(null); return; }
+      if (res.statusCode !== 200 && !(page && res.statusCode >= 400 && res.statusCode < 500)) { res.resume(); resolve(null); return; }
       const parts = [];
       let n = 0;
-      const done = () => resolve({ type: String(res.headers['content-type'] || ''), body: Buffer.concat(parts), path });
+      const done = () => {
+        const body = unpack(Buffer.concat(parts), String(res.headers['content-encoding'] || ''));
+        resolve(body ? { type: String(res.headers['content-type'] || ''), body, path } : null);
+      };
       res.on('data', (c) => {
         n += c.length;
         if (n <= max) { parts.push(c); return; }
@@ -447,7 +464,9 @@ function iconPath(route, href, from = '/') {
   let u;
   try { u = new URL(href.replace(/&amp;/g, '&'), new URL(from, 'http://upstream/')); } catch { return ''; }
   if (u.protocol !== 'http:' && u.protocol !== 'https:') return '';
-  if (u.host !== 'upstream' && u.hostname !== (route.domain || BASE_DOMAIN)) return '';
+  // the app's own address too, one that redirects to where it listens
+  const own = [route.domain || BASE_DOMAIN, route.ip, 'localhost', '127.0.0.1'];
+  if (u.host !== 'upstream' && !own.includes(u.hostname)) return '';
   const p = route.prefix && under(u.pathname, route.prefix) ? strip(u.pathname, route.prefix) : u.pathname;
   return p + u.search;
 }
@@ -491,7 +510,7 @@ async function manifestIcons(route, href, from) {
 // rel=icon, then apple-touch-icon, the manifest's, then the usual paths
 async function lookIcon(route) {
   const page = await grab(route, '/', ICON_MAX * 4, { page: true });
-  const html = page && /html/.test(page.type) ? page.body.toString('utf8') : '';
+  const html = page && (/html/.test(page.type) || /^\s*</.test(page.body.toString('utf8', 0, 64))) ? page.body.toString('utf8') : '';
   const from = page?.path || '/';
   const icons = [];
   const touch = [];

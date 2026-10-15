@@ -15,10 +15,12 @@ const SELF_HOST = process.env.SELF_HOST || '';
 const STATE_DIR = process.env.STATE_DIR || '/state';
 // each project's record, and its workspace in the home's shared/
 const RUNS_DIR = path.join(STATE_DIR, 'project-runs');
-// files first, an older home flattened before shared/ is touched
-const { HOME_ROOT: HOME_FS, SHARED } = require('./files');
-const WORK_REL = [SHARED, 'projects'];
-const WORK_ROOT = path.join(HOME_FS, ...WORK_REL);
+// files first, an older home moved in before shared/ is touched
+const { HOME_ROOT, SHARED } = require('./files');
+const HOME_FS = process.env.HOME_FS || STATE_DIR;
+const WORK_ROOT = path.join(HOME_ROOT, SHARED, 'projects');
+// the same off [home] dir's mount, for its host path
+const WORK_REL = path.relative(HOME_FS, WORK_ROOT).split(path.sep);
 // the earlier state/projects moved over once
 const OLD_ROOT = path.join(STATE_DIR, 'projects');
 if (path.resolve(OLD_ROOT) !== path.resolve(WORK_ROOT) && fs.existsSync(OLD_ROOT) && !fs.existsSync(WORK_ROOT)) {

@@ -105,43 +105,66 @@ function buildShares() {
   ));
 }
 
-// [home] dir: each user's folder under its name, reached by that user alone,
-// shared/ for everyone, sys/ never, anything else admins only
+// home/ in [home] dir: each user's folder under its name, reached by that user
+// alone, shared/ for everyone, sys/ never, anything else admins only; the
+// rest of [home] dir an ordinary share
 const HOME_FS = process.env.HOME_FS || process.env.STATE_DIR || '/state';
-const HOME_ROOT = HOME_FS;
+const HOME = 'home';
+const HOME_ROOT = path.join(HOME_FS, HOME);
 const DESKTOP = 'Desktop';
 const SHARED = 'shared';
 const SYS = 'sys';
 const STATE_DIR = process.env.STATE_DIR || '/state';
+
+const move = (from, to) => {
+  if (!fs.existsSync(from) || fs.existsSync(to)) return;
+  try { fs.renameSync(from, to); } catch (e) { console.error(`[files] moving ${from} into the home: ${e.message}`); }
+};
 
 // an older layout's folder (its shared/ the tell) emptied into the home, a
 // name already there left
 function flatten(from) {
   let names;
   try { if (!fs.statSync(path.join(from, SHARED)).isDirectory()) return; names = fs.readdirSync(from); } catch { return; }
-  for (const n of names) {
-    const to = path.join(HOME_ROOT, n);
-    if (n === SYS || fs.existsSync(to)) continue;
-    try { fs.renameSync(path.join(from, n), to); } catch (e) { console.error(`[files] moving ${n} into the home: ${e.message}`); }
-  }
+  for (const n of names) if (n !== SYS) move(path.join(from, n), path.join(HOME_ROOT, n));
   try { fs.rmdirSync(from); } catch {}
 }
+
+// sys/, shared/ and each user's folder straight in [home] dir moved under home/
+function lift() {
+  if (!fs.existsSync(path.join(HOME_FS, SYS)) || fs.existsSync(path.join(HOME_ROOT, SYS))) return;
+  let users = [];
+  try { users = fs.readdirSync(path.join(HOME_FS, SYS, 'etc', 'passwd')).filter((n) => n.endsWith('.json')).map((n) => n.slice(0, -5)); } catch {}
+  for (const n of [SYS, SHARED, ...users]) move(path.join(HOME_FS, n), path.join(HOME_ROOT, n));
+}
+
+try { fs.mkdirSync(HOME_ROOT, { recursive: true }); } catch {}
+lift();
 // usr/ of [home] dir, and the earlier state/home
-flatten(path.join(HOME_ROOT, 'usr'));
-if (path.resolve(STATE_DIR) !== path.resolve(HOME_ROOT)) flatten(path.join(STATE_DIR, 'home'));
+flatten(path.join(HOME_FS, 'usr'));
+if (path.resolve(STATE_DIR) !== path.resolve(HOME_FS)) flatten(path.join(STATE_DIR, 'home'));
 try { fs.mkdirSync(path.join(HOME_ROOT, SHARED, DESKTOP), { recursive: true }); } catch {}
 
 // where the home lives on the host now, before docker answers the dir
 // compose was handed
-const homeDir = () => hostPathOf(HOME_FS) || process.env.PHOSPHORUS_HOME_DIR || HOME_FS;
+const homeDir = () => hostPathOf(HOME_ROOT) || (process.env.PHOSPHORUS_HOME_DIR ? `${process.env.PHOSPHORUS_HOME_DIR.replace(/[\\/]+$/, '')}/${HOME}` : HOME_ROOT);
 const homeShare = () => ({ ...makeShare('home', '', FULL_PERMS, HOME_ROOT), label: homeDir(), home: true });
 
-// one directory under two mounts, the home and a [files] dir
-const sameDir = (a, b) => {
-  try { const x = fs.statSync(a); const y = fs.statSync(b); return x.dev === y.dev && x.ino === y.ino; } catch { return false; }
-};
+// home/ out of every other share's reach, known by its inode (another
+// mount of [home] dir spells it differently)
+let homeId = '';
+const idOf = (p) => { try { const st = fs.statSync(p); return `${st.dev}:${st.ino}`; } catch { return ''; } };
+const isHome = (p) => (homeId ||= idOf(HOME_ROOT)) !== '' && idOf(p) === homeId;
+// p or a folder above it, up to the share's root, the home
+function homeHeld(share, p) {
+  if (share.id === 'home') return false;
+  for (let at = p; ; at = path.dirname(at)) {
+    if (isHome(at)) return true;
+    if (at === share.real || at === path.dirname(at)) return false;
+  }
+}
 
-const shares = () => [homeShare(), ...buildShares().filter((s) => !sameDir(s.root, HOME_ROOT) && s.label !== homeDir())].filter((s) => s.ok);
+const shares = () => [homeShare(), ...buildShares()].filter((s) => s.ok);
 
 const shareOf = (id) => shares().find((s) => s.id === String(id)) || null;
 
@@ -166,8 +189,8 @@ function safePath(share, rel, mustExist) {
   const abs = toAbs(share, rel);
   if (!abs) return null;
   try {
-    if (mustExist) return inside(share, fs.realpathSync(abs)) ? abs : null;
-    return inside(share, fs.realpathSync(path.dirname(abs))) ? abs : null;
+    const real = fs.realpathSync(mustExist ? abs : path.dirname(abs));
+    return inside(share, real) && !homeHeld(share, real) ? abs : null;
   } catch {
     return null;
   }
@@ -181,7 +204,7 @@ function locate(abs) {
   let real;
   try { real = fs.realpathSync(abs); } catch { return null; }
   const sh = shares().find((s) => s.id !== 'home' && inside(s, real));
-  return sh ? { share: sh.id, path: relOf(sh, real) } : null;
+  return sh && !homeHeld(sh, real) ? { share: sh.id, path: relOf(sh, real) } : null;
 }
 
 async function isEmptyDir(abs) {
@@ -240,7 +263,7 @@ async function list(share, rel) {
     if (e.code === 'ENOTDIR') return [400, { error: 'not a directory' }];
     return [500, { error: e.message }];
   }
-  names = names.filter((n) => !n.startsWith(UPLOAD_TMP));
+  names = names.filter((n) => !n.startsWith(UPLOAD_TMP) && (share.id === 'home' || !isHome(path.join(abs, n))));
   const entries = await entriesOf(abs, names.slice(0, MAX_ENTRIES));
   // directories first, then by name, the way a file manager is read
   entries.sort((a, b) => (a.dir === b.dir ? a.name.localeCompare(b.name) : a.dir ? -1 : 1));
@@ -270,7 +293,7 @@ async function tree(share, rel, depth, match) {
     const next = [];
     for (const dir of level) {
       let names;
-      try { names = fs.readdirSync(dir).filter((n) => !n.startsWith(UPLOAD_TMP)).sort((a, b) => a.localeCompare(b)); } catch { continue; }
+      try { names = fs.readdirSync(dir).filter((n) => !n.startsWith(UPLOAD_TMP) && (share.id === 'home' || !isHome(path.join(dir, n)))).sort((a, b) => a.localeCompare(b)); } catch { continue; }
       const got = await entriesOf(dir, names);
       for (const e of got) {
         const n = e.name;
@@ -507,7 +530,7 @@ function homeFilter(who, rel, out, isUser) {
 }
 
 module.exports = {
-  hooks, homeDir, DESKTOP, SHARED, SYS, HOME_ROOT, homeGate, homeFilter, safePath, makeParents, relOf,
+  hooks, homeDir, DESKTOP, SHARED, SYS, HOME, HOME_ROOT, homeGate, homeFilter, safePath, makeParents, relOf,
   configuredDirs, pending, enabled, shares, shareOf, can, locate,
   list, tree, read, stat, downloadPath, write, save, mkdir, rename, remove,
 };

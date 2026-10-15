@@ -97,11 +97,11 @@ main() {
   home_from="${home_from%/}"
   [ "$home_from" = "$home_to" ] && home_from=""
   case "$home_to/" in
-    "$home_from/usr/"*|"$home_from/sys/"*|"$home_from/shared/"*) [ -n "$home_from" ] && fail "[home] dir can't be inside the folders it moves" ;;
+    "$home_from/home/"*|"$home_from/usr/"*|"$home_from/sys/"*|"$home_from/shared/"*) [ -n "$home_from" ] && fail "[home] dir can't be inside the folders it moves" ;;
   esac
   [ "$in_container" = 0 ] && mkdir -p "$home_to"
   export PHOSPHORUS_HOME_DIR="$home_to"
-  [ -n "$home_from" ] && say "moving the homes, shared and sys from $home_from to $home_to with this swap"
+  [ -n "$home_from" ] && say "moving home/ from $home_from to $home_to with this swap"
 
   # what compose interpolates, dropped by sudo and the siblings, TS_HOSTNAME
   # in a container rebuild.ps1's COMPUTERNAME, else docker-desktop on Windows
