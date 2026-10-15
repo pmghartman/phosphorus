@@ -107,7 +107,15 @@ function buildShares() {
 
 // the orangutan's project workspaces, read only, once there is one
 const PROJECTS_ROOT = path.join(process.env.STATE_DIR || '/state', 'projects');
-const shares = () => [...buildShares(), makeShare('projects', '', 'r', PROJECTS_ROOT)].filter((s) => s.ok);
+
+// the host's home: admin files at the top, each user's own folder under its
+// name, reached by that user alone, admin or not
+const HOME_ROOT = path.join(process.env.STATE_DIR || '/state', 'home');
+const DESKTOP = 'Desktop';
+try { fs.mkdirSync(HOME_ROOT, { recursive: true }); } catch {}
+const homeShare = () => ({ ...makeShare('home', '', FULL_PERMS, HOME_ROOT), label: 'home' });
+
+const shares = () => [homeShare(), ...buildShares(), makeShare('projects', '', 'r', PROJECTS_ROOT)].filter((s) => s.ok);
 
 const shareOf = (id) => shares().find((s) => s.id === String(id)) || null;
 
@@ -141,11 +149,12 @@ function safePath(share, rel, mustExist) {
 
 const relOf = (share, abs) => path.relative(share.real, abs).split(path.sep).join('/');
 
-// an absolute path back to its share and its path there, null outside them all
+// an absolute path back to its share and its path there, null outside them
+// all, the homes never
 function locate(abs) {
   let real;
   try { real = fs.realpathSync(abs); } catch { return null; }
-  const sh = shares().find((s) => inside(s, real));
+  const sh = shares().find((s) => s.id !== 'home' && inside(s, real));
   return sh ? { share: sh.id, path: relOf(sh, real) } : null;
 }
 
@@ -291,6 +300,14 @@ function downloadPath(share, rel) {
   try { return fs.statSync(abs).isFile() ? abs : null; } catch { return null; }
 }
 
+// {dir, rel} for an existing path, null otherwise
+function stat(share, rel) {
+  if (!can(share, 'r')) return null;
+  const abs = safePath(share, rel, true);
+  if (!abs) return null;
+  try { return { dir: fs.statSync(abs).isDirectory(), rel: relOf(share, abs) }; } catch { return null; }
+}
+
 const BAD_NAME = /[/\\]|^\.\.?$|\0/;
 
 // one chunk of an upload appended to a temp file named by the upload's id,
@@ -422,7 +439,38 @@ function pending() {
   return !!want && !!have && want !== have;
 }
 
+// --- the home's gate ----------------------------------------------------------
+// who: {user, admin} off the session, null without one; isUser: a mesh user's name
+
+const firstSeg = (rel) => path.posix.normalize(`/${String(rel || '').replace(/\\/g, '/')}`).split('/')[1].toLowerCase();
+
+// a user's home and desktop made on first reach
+function ensureHome(user) {
+  const desk = path.join(HOME_ROOT, user, DESKTOP);
+  if (!fs.existsSync(desk)) try { fs.mkdirSync(desk, { recursive: true }); } catch {}
+}
+
+// '' when who may reach rel, else why not
+function homeGate(who, rel, isUser) {
+  if (!who) return 'log in to reach home';
+  const seg = firstSeg(rel);
+  if (who.user) ensureHome(who.user);
+  if (!seg || seg === who.user) return '';
+  if (isUser(seg)) return "another user's home";
+  return who.admin ? '' : 'admins only';
+}
+
+// a listing's or tree's entries cut to what who may reach
+function homeFilter(who, rel, out, isUser) {
+  if (!out || !Array.isArray(out.entries)) return out;
+  // a tree's paths off the share's root, a list's names off rel
+  const base = String(rel || '');
+  const full = (e) => (e.path != null ? e.path : base ? `${base}/${e.name}` : e.name);
+  return { ...out, entries: out.entries.filter((e) => !homeGate(who, full(e), isUser)) };
+}
+
 module.exports = {
+  DESKTOP, homeGate, homeFilter,
   configuredDirs, pending, enabled, shares, shareOf, can, locate,
-  list, tree, read, downloadPath, write, save, mkdir, rename, remove,
+  list, tree, read, stat, downloadPath, write, save, mkdir, rename, remove,
 };

@@ -800,21 +800,90 @@ const MIME_BY_EXT = {
   '.pdf': 'application/pdf', '.mp4': 'video/mp4', '.webm': 'video/webm',
 };
 
-function sendFile(res, abs, download) {
+// an inline svg sandboxed, its scripts never on this origin
+function sendFile(res, abs, download, extra = {}) {
   const name = path.basename(abs);
+  const ext = path.extname(name).toLowerCase();
   let size = 0;
   try { size = fs.statSync(abs).size; } catch {}
   // filename* for anything non-ASCII, the plain one the fallback
   const disp = `${download ? 'attachment' : 'inline'}; filename*=UTF-8''${encodeURIComponent(name)}`;
   res.writeHead(200, {
-    'Content-Type': MIME_BY_EXT[path.extname(name).toLowerCase()] || 'application/octet-stream',
+    'Content-Type': MIME_BY_EXT[ext] || 'application/octet-stream',
     'Content-Length': size,
     'Content-Disposition': disp,
     'Cache-Control': 'no-store',
+    'X-Content-Type-Options': 'nosniff',
+    ...(!download && ext === '.svg' ? { 'Content-Security-Policy': 'sandbox' } : {}),
+    ...extra,
   });
   const stream = fs.createReadStream(abs);
   stream.on('error', () => res.destroy());
   stream.pipe(res);
+}
+
+// --- running: a page or wasm in a share, served from a sealed grant on its
+// folder, sandboxed off this origin so it never acts as the user
+
+const RUN_MIME = {
+  '.html': 'text/html; charset=utf-8', '.htm': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8', '.wasm': 'application/wasm', '.data': 'application/octet-stream',
+  '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.woff': 'font/woff', '.ttf': 'font/ttf',
+  '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg', '.wav': 'audio/wav',
+};
+const RUN_MS = 12 * 3600 * 1000;
+const RUN_SANDBOX = 'sandbox allow-scripts allow-forms allow-modals allow-popups allow-pointer-lock allow-downloads';
+const runKind = (rel, dir) => (dir ? 'app' : /\.html?$/i.test(rel) ? 'html' : /\.wasm$/i.test(rel) ? 'wasm' : '');
+
+// {user, admin} off the session, null without one
+function homeWho(req) {
+  const s = users.session(req);
+  return s ? { user: s.boot ? '' : s.user, admin: !!s.admin } : null;
+}
+
+// a page, a folder with an index.html (an app), or a .wasm: its run url
+function runGrant(share, rel, who) {
+  const st = files.stat(share, rel);
+  if (!st) return [404, { error: 'no such file' }];
+  const kind = runKind(rel, st.dir);
+  if (!kind) return [400, { error: 'not runnable: a page, a .wasm or a folder with an index.html' }];
+  const dir = st.dir ? st.rel : path.posix.dirname(st.rel).replace(/^\.$/, '');
+  const entry = st.dir ? 'index.html' : path.posix.basename(st.rel);
+  if (st.dir && !files.stat(share, `${st.rel}/index.html`)) return [400, { error: 'no index.html in that folder' }];
+  const token = users.sealGrant({ h: SELF_HOST, s: share.id, d: dir, u: who?.user || '' }, RUN_MS);
+  return [200, { kind, url: `/api/run/${SELF_HOST}/${token}/${encodeURIComponent(entry)}` }];
+}
+
+// GET /api/run/<host>/<grant>/<path>: a file under the grant's folder
+function serveRun(req, res, host, token, rest, searchParams) {
+  if (host !== SELF_HOST) {
+    if (searchParams.has('hop')) { sendJson(res, 421, { error: `sent to ${SELF_HOST}, which isn't ${host}` }); return; }
+    forwardFiles(host, req, res, `${req.url}${req.url.includes('?') ? '&' : '?'}hop=1`);
+    return;
+  }
+  const g = users.openGrant(token);
+  const share = g && g.h === SELF_HOST && files.shareOf(g.s);
+  if (!share) { sendJson(res, 403, { error: 'that run link expired' }); return; }
+  let sub;
+  try { sub = rest.split('/').map(decodeURIComponent).join('/'); } catch { sendJson(res, 400, { error: 'bad path' }); return; }
+  const rel = path.posix.normalize(`/${g.d}/${sub}`).slice(1);
+  if (g.d && rel !== g.d && !rel.startsWith(`${g.d}/`)) { sendJson(res, 403, { error: 'outside the app' }); return; }
+  if (share.id === 'home') {
+    const who = g.u && users.exists(g.u) ? { user: g.u, admin: users.isAdmin(g.u) } : null;
+    const why = files.homeGate(who, rel, users.exists);
+    if (why) { sendJson(res, 403, { error: why }); return; }
+  }
+  const st = files.stat(share, rel);
+  const abs = st && files.downloadPath(share, st.dir ? `${st.rel}/index.html` : st.rel);
+  if (!abs) { sendJson(res, 404, { error: 'no such file' }); return; }
+  const type = RUN_MIME[path.extname(abs).toLowerCase()];
+  sendFile(res, abs, false, {
+    ...(type ? { 'Content-Type': type } : {}),
+    'Content-Security-Policy': RUN_SANDBOX,
+    'Access-Control-Allow-Origin': '*',
+    'Cross-Origin-Resource-Policy': 'cross-origin',
+  });
 }
 
 // pipes the request on to the host that owns the share and its answer back,
@@ -1297,9 +1366,16 @@ function app(req, res) {
     return;
   }
 
+  const run = pathname.match(/^\/api\/run\/([a-z0-9][a-z0-9-]*)\/([A-Za-z0-9_-]+)\/(.*)$/);
+  if (run && req.method === 'GET') {
+    if (!isLocalOrPeer(req)) { res.writeHead(403).end('forbidden'); return; }
+    serveRun(req, res, run[1], run[2], run[3], searchParams);
+    return;
+  }
+
   // one endpoint, both ends of the hop like games: the host named in the
   // path serves it, anyone else streams it there
-  const filesReq = pathname.match(/^\/api\/files\/([a-z0-9][a-z0-9-]*)\/(info|list|tree|read|download|upload|save|mkdir|rename|delete)$/);
+  const filesReq = pathname.match(/^\/api\/files\/([a-z0-9][a-z0-9-]*)\/(info|list|tree|read|download|upload|save|mkdir|rename|delete|run)$/);
   if (filesReq) {
     // read-write with no auth of its own, browsers and peers only
     if (!isLocalOrPeer(req)) { res.writeHead(403).end('forbidden'); return; }
@@ -1316,8 +1392,17 @@ function app(req, res) {
     if (!share) { sendJson(res, 404, { error: `${SELF_HOST} has no such share` }); return; }
 
     const rel = searchParams.get('path') || '';
-    if (req.method === 'GET' && op === 'list') { files.list(share, rel).then((r) => sendJson(res, ...r)); return; }
-    if (req.method === 'GET' && op === 'tree') { files.tree(share, rel, searchParams.get('depth'), searchParams.get('match')).then((r) => sendJson(res, ...r)); return; }
+    // the home: every path through its gate, the forwarded cookie saying who
+    const who = share.id === 'home' ? homeWho(req) : null;
+    const barred = (...rels) => {
+      const why = share.id === 'home' && rels.map((r) => files.homeGate(who, r, users.exists)).find(Boolean);
+      if (why) sendJson(res, who ? 403 : 401, { error: why });
+      return !!why;
+    };
+    const seen = (r) => (share.id === 'home' ? [r[0], files.homeFilter(who, rel, r[1], users.exists)] : r);
+    if (req.method === 'GET' && ['list', 'tree', 'read', 'download'].includes(op) && barred(rel)) return;
+    if (req.method === 'GET' && op === 'list') { files.list(share, rel).then((r) => sendJson(res, ...seen(r))); return; }
+    if (req.method === 'GET' && op === 'tree') { files.tree(share, rel, searchParams.get('depth'), searchParams.get('match')).then((r) => sendJson(res, ...seen(r))); return; }
     if (req.method === 'GET' && op === 'read') { sendJson(res, ...files.read(share, rel)); return; }
     if (req.method === 'GET' && op === 'download') {
       const abs = files.downloadPath(share, rel);
@@ -1326,15 +1411,24 @@ function app(req, res) {
       return;
     }
     if (req.method === 'POST' && op === 'upload') {
+      if (barred(rel)) { req.resume(); return; }
       files.write(share, rel, req, { id: searchParams.get('id'), offset: searchParams.get('offset'), total: searchParams.get('total') }).then((out) => sendJson(res, ...out));
       return;
     }
+    const gate = (...rels) => {
+      const why = share.id === 'home' && rels.map((r) => files.homeGate(who, r, users.exists)).find(Boolean);
+      return why ? [who ? 403 : 401, { error: why }] : null;
+    };
     if (req.method === 'POST' && op === 'save') {
-      onJson(req, res, MAX_SAVE_BODY, (p) => collab.write(share, p.path, p), true);
+      onJson(req, res, MAX_SAVE_BODY, (p) => gate(p.path) || collab.write(share, p.path, p), true);
+      return;
+    }
+    if (req.method === 'POST' && op === 'run') {
+      onJson(req, res, MAX_JSON_BODY, (p) => gate(p.path) || runGrant(share, String(p.path || ''), who));
       return;
     }
     if (req.method === 'POST') {
-      onJson(req, res, MAX_JSON_BODY, (p) => (op === 'mkdir' ? files.mkdir(share, p.path)
+      onJson(req, res, MAX_JSON_BODY, (p) => (op === 'rename' ? gate(p.from, p.to) : gate(p.path)) || (op === 'mkdir' ? files.mkdir(share, p.path)
         : op === 'rename' ? files.rename(share, p.from, p.to)
         : op === 'delete' ? files.remove(share, p.path)
         : [405, { error: 'method not allowed' }]));
@@ -1424,6 +1518,7 @@ async function filesCall(host, op, share, body) {
     if (!files.enabled()) return [503, { error: `${SELF_HOST} publishes no files directory` }];
     const sh = files.shareOf(share);
     if (!sh) return [404, { error: `${SELF_HOST} has no such share` }];
+    if (sh.id === 'home') return [403, { error: 'the homes are for their users only' }];
     if (op === 'list') return files.list(sh, body.path || '');
     if (op === 'tree') return files.tree(sh, body.path || '', body.depth, body.match);
     if (op === 'read') return files.read(sh, body.path || '');
@@ -1918,9 +2013,9 @@ function onUpgrade(req, socket, head) {
     if (codeHost !== SELF_HOST && searchParams.has('hop')) { refuse('421 Misdirected Request'); return; }
     codeWss.handleUpgrade(req, socket, head, (ws) => {
       keepAlive(ws);
-      if (codeHost === SELF_HOST) { collab.attach(ws, searchParams.get('share'), searchParams.get('path')); return; }
+      if (codeHost === SELF_HOST) { collab.attach(ws, searchParams.get('share'), searchParams.get('path'), homeWho(req), users.exists); return; }
       searchParams.set('hop', '1');
-      collab.forward(ws, tailnetIp(codeHost).then((ip) => ip && `ws://${ip}:${PORT}/api/code/${codeHost}?${searchParams}`));
+      collab.forward(ws, tailnetIp(codeHost).then((ip) => ip && `ws://${ip}:${PORT}/api/code/${codeHost}?${searchParams}`), req.headers.cookie);
     });
     return;
   }

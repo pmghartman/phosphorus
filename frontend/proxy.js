@@ -204,7 +204,8 @@ function issuerRoute(req) {
   const host = issuers(req).find((h) => pinIps.has(h));
   return host ? peerIngress(host) : null;
 }
-const OPEN_API = /^\/api\/(me|login|logout|users)(\/|$)/;
+// run: a sandboxed app's own loads, cookieless, its sealed grant the gate
+const OPEN_API = /^\/api\/(me|login|logout|users|run)(\/|$)/;
 
 function isOpen(req, hit) {
   if (!hit.frontend) return false;

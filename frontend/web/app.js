@@ -5819,7 +5819,7 @@ const dkView = document.getElementById('view-desktop');
 const DK_USERS_KEY = 'phosphorus-dk-users';
 const wsBase = () => `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`;
 // creds: host -> {user, pass}, this page's memory only
-const dk = { creds: new Map(), rows: new Map(), wins: new Map(), services: [], z: 10, n: 0, desk: null, sig: '' };
+const dk = { creds: new Map(), rows: new Map(), wins: new Map(), services: [], deskFiles: [], z: 10, n: 0, desk: null, sig: '' };
 
 function dkUsers() {
   try { return JSON.parse(localStorage.getItem(DK_USERS_KEY)) || {}; } catch { return {}; }
@@ -6023,6 +6023,8 @@ function dkLogout() {
 }
 
 const DK_GLYPHS = {
+  doc: ICONS.file,
+  app: 'M2.5 2.5h11v11h-11zM2.5 5.5h11M4.25 4h.01M5.75 4h.01M6 8.5l-1.5 1.5L6 11.5M10 8.5l1.5 1.5-1.5 1.5',
   terminal: 'M2 3h12v10H2zM4.5 6.5l2 1.5-2 1.5M8 10h3.5',
   files: ICONS.folder,
   editor: 'M3 1.5h7l3 3v10H3zM10 1.5v3h3M5 7.5h6M5 10h6M5 12.5h3.5',
@@ -6085,9 +6087,10 @@ function dkIcon(kind, label, sub, open, icon = '') {
 // rebuilt only when the hosts or services change
 function dkIcons() {
   if (!dk.desk) return;
+  dkDeskWatch();
   const hosts = [...dk.creds.keys()];
   const git = !!gitRoute;
-  const sig = JSON.stringify([hosts, git, !!acct?.admin, dk.services.map((r) => [r.host, r.name])]);
+  const sig = JSON.stringify([hosts, git, !!acct?.admin, dk.services.map((r) => [r.host, r.name]), dk.deskFiles.map((e) => [e.name, e.dir, e.mtime])]);
   if (sig === dk.sig) return;
   dk.sig = sig;
   dk.desk.icons.replaceChildren(
@@ -6103,6 +6106,7 @@ function dkIcons() {
     ...(acct?.admin ? [dkIcon('users', 'users', '', dkUsersWin)] : []),
     ...dk.services.map((r) => dkIcon('service', r.name, r.host, () => dkService(r),
       `/api/favicon/${encodeURIComponent(r.host)}/${encodeURIComponent(r.name)}`)),
+    ...dk.deskFiles.map(dkFileIcon),
   );
   dkLayout();
 }
@@ -6604,9 +6608,10 @@ const dkPick = (accept, multiple, then) => {
   input.click();
 };
 
-// computer files into a files window's first folder
+// computer files onto the desktop, else a files window's first folder,
+// a files window showing the upload either way
 function dkAddFiles(list) {
-  const fm = dk.desk && dkFiles();
+  const fm = dk.desk && dkFiles(dkDeskAt() || undefined);
   if (fm && list.length) fm.pendingUpload = list;
 }
 
@@ -6618,6 +6623,8 @@ function dkDeskMenu(icons) {
     e.preventDefault();
     if (b && !dk.sel.has(b.dataset.id)) { dk.sel = new Set([b.dataset.id]); dkPaintSel(); }
     const hosts = [...dk.creds.keys()];
+    const f = b && dk.deskFiles.find((x) => x.name === b.dataset.file);
+    if (f) { dkMenu(e.clientX, e.clientY, dkFileMenu(f)); return; }
     const items = [
       ...(b ? [['open', () => b.dispatchEvent(new MouseEvent('dblclick')), true], null] : []),
       ...hosts.map((h) => [`terminal on ${h}`, () => dkTerminal(h), true]),
@@ -6633,11 +6640,21 @@ function dkDeskMenu(icons) {
     dkMenu(e.clientX, e.clientY, items);
   });
   icons.addEventListener('dragover', (e) => {
-    if (!dragsFiles(e) || !dk.creds.size) return;
+    if (!(dragsFiles(e) || (dk.drag && dkDeskAt())) || !dk.creds.size) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
   });
   icons.addEventListener('drop', (e) => {
+    const drag = dk.drag;
+    const d = dkDeskAt();
+    // a files window's picks copied onto the desktop
+    if (drag && d) {
+      e.preventDefault();
+      dk.drag = null;
+      const items = drag.items.filter((it) => !(fmSame(drag.loc, d.loc) && filesParent(it.rel) === d.dir));
+      if (items.length) fmTransfer(drag.fm, drag.loc, items, d.loc, d.dir, false);
+      return;
+    }
     if (!dragsFiles(e)) return;
     e.preventDefault();
     dkAddFiles([...e.dataTransfer.files]);
@@ -6853,6 +6870,8 @@ async function fmLoad(fm) {
 // every window showing that folder, read again
 function fmChanged(loc, ...dirs) {
   for (const fm of dkFms) if (fmSame(fm.loc, loc) && dirs.includes(fm.dir)) fmLoad(fm);
+  const d = dkDeskAt();
+  if (d && fmSame(d.loc, loc) && dirs.includes(d.dir)) dkDeskLoad();
 }
 
 const fmCan = (fm, perm) => !!fm.loc && may(fm.loc, perm);
@@ -6924,7 +6943,7 @@ function fmItem(fm, e) {
   row.addEventListener('dblclick', () => fmOpen(fm, e));
   row.addEventListener('dragstart', (ev) => {
     if (!fm.sel.has(e.name)) { fm.sel = new Set([e.name]); fmPaintSel(fm); }
-    dk.drag = { loc: fm.loc, items: fmPicked(fm) };
+    dk.drag = { fm, loc: fm.loc, items: fmPicked(fm) };
     ev.dataTransfer.effectAllowed = 'copyMove';
     ev.dataTransfer.setData('text/plain', fmPicked(fm).map((p) => p.rel).join('\n'));
   });
@@ -6962,9 +6981,17 @@ const fmPicked = (fm) => fm.shown.filter((e) => fm.sel.has(e.name)).map((e) => (
 
 function fmOpen(fm, e) {
   const rel = filesJoin(fm.dir, e.name);
-  if (e.dir) return fmGo(fm, fm.loc, rel);
-  if (isCode(e.name)) return dkCode({ host: fm.loc.host, share: fm.loc.share, path: rel, label: fileLabel(fm.loc.host, fm.loc.root, rel) });
-  dkViewer(fm.loc, rel);
+  if (e.dir && !runnable(e)) return fmGo(fm, fm.loc, rel);
+  fileOpen(fm.loc, rel, e);
+}
+
+// pages, wasm and NAME.app folders run, text edits, the rest shown
+const runnable = (e) => (e.dir ? /\.app$/i.test(e.name) : ['html', 'htm', 'wasm'].includes(fmExt(e.name)));
+function fileOpen(loc, rel, e) {
+  if (runnable(e)) return dkRun(loc, rel);
+  if (e.dir) return dkFiles({ loc, dir: rel });
+  if (isCode(e.name)) return dkCode({ host: loc.host, share: loc.share, path: rel, label: fileLabel(loc.host, loc.root, rel) });
+  dkViewer(loc, rel);
 }
 
 // keys as a file manager's: arrows, enter, delete, f2, and the clipboard's
@@ -7031,6 +7058,7 @@ function fmMenu(fm, x, y, onItem) {
   const w = fmCan(fm, 'w');
   const items = onItem ? [
     ['open', () => one && fmOpen(fm, one), !!one],
+    one && one.dir && runnable(one) && ['browse inside', () => fmGo(fm, fm.loc, picked[0].rel), true],
     one && !one.dir && ['open in editor', () => dkCode({ host: fm.loc.host, share: fm.loc.share, path: picked[0].rel, label: fileLabel(fm.loc.host, fm.loc.root, picked[0].rel) }), true],
     one && !one.dir && ['download', () => fmDownload(fm, picked[0].rel), fmCan(fm, 'r')],
     one && fmKind(one) === 'image' && ['set as wallpaper', () => fmWallpaper(fm, picked[0].rel), fmCan(fm, 'r')],
@@ -7261,6 +7289,189 @@ function dkViewer(loc, rel) {
   w.body.appendChild(frame);
   w.onClose = () => { frame.src = 'about:blank'; };
   dkFocus(w);
+}
+
+// --- the desktop's files: the user's home/<user>/Desktop on the serving host
+
+const dkDeskAt = () => (acct && !acct.boot && selfHost
+  ? { loc: { host: selfHost, share: 'home', root: 'home', perms: 'rwd' }, dir: `${acct.user}/Desktop` } : null);
+
+// read again whenever the serving host or the user changes
+function dkDeskWatch() {
+  const d = dkDeskAt();
+  const key = d ? `${d.loc.host}\n${d.dir}` : '';
+  if (key === dk.deskKey) return;
+  dk.deskKey = key;
+  dk.deskFiles = [];
+  if (d) dkDeskLoad();
+}
+
+async function dkDeskLoad() {
+  const d = dkDeskAt();
+  if (!d) return;
+  const key = dk.deskKey;
+  try {
+    const body = await filesCall(d.loc, 'list', undefined, { path: d.dir });
+    if (key !== dk.deskKey) return;
+    dk.deskFiles = body.entries;
+  } catch { return; }
+  dkIcons();
+}
+
+function dkFileIcon(e) {
+  const d = dkDeskAt();
+  const rel = filesJoin(d.dir, e.name);
+  const kind = runnable(e) ? 'app' : fmKind(e);
+  const pic = kind === 'image' ? filesApi(d.loc, 'download', { path: rel, inline: 1 }) : '';
+  const b = dkIcon('doc', e.name.replace(/\.app$/i, ''), '', () => fileOpen(d.loc, rel, e), pic);
+  const tile = b.querySelector('.dk-tile');
+  if (!pic) tile.replaceChildren(kind === 'app' ? dkGlyph(DK_GLYPHS.app, 'fm-app') : fmIcon(kind));
+  b.classList.add(`dk-doc-${kind}`);
+  b.dataset.file = e.name;
+  b.title = e.name;
+  return b;
+}
+
+function dkFileMenu(e) {
+  const d = dkDeskAt();
+  const rel = filesJoin(d.dir, e.name);
+  const loc = d.loc;
+  return [
+    ['open', () => fileOpen(loc, rel, e), true],
+    e.dir && ['show in files', () => dkFiles({ loc, dir: rel }), true],
+    !e.dir && ['open in editor', () => dkCode({ host: loc.host, share: loc.share, path: rel, label: fileLabel(loc.host, loc.root, rel) }), true],
+    !e.dir && ['download', () => { location.href = filesApi(loc, 'download', { path: rel }); }, true],
+    null,
+    ['show desktop folder', () => dkFiles(d), true],
+    ['delete', async () => {
+      try { await filesCall(loc, 'delete', jsonPost({ path: rel })); } catch (err) { dkMenuNote(err.message); }
+      fmChanged(loc, d.dir);
+    }, true, 'danger'],
+  ].filter((i) => i !== false);
+}
+
+// --- running: a page, a NAME.app folder's index.html, or a .wasm, sandboxed
+// in a window, off this origin, its files through a sealed run link
+
+const RUN_SANDBOX = 'allow-scripts allow-forms allow-modals allow-popups allow-pointer-lock allow-downloads';
+
+async function dkRun(loc, rel) {
+  const name = rel.split('/').pop();
+  let got;
+  try { got = await filesCall(loc, 'run', jsonPost({ path: rel })); } catch (err) { dkMenuNote(err.message); return; }
+  const w = dkWin(`run:${loc.host}\n${loc.share}\n${rel}`, name.replace(/\.app$/i, ''), loc.host, 'svc');
+  if (!w) return;
+  const url = new URL(got.url, location.origin).href;
+  const frame = Object.assign(el('iframe', 'dk-frame'), { title: name, allow: 'fullscreen; clipboard-write; autoplay; gamepad' });
+  frame.setAttribute('sandbox', RUN_SANDBOX);
+  if (got.kind === 'wasm') frame.srcdoc = wasiPage(url, name);
+  else {
+    frame.src = url;
+    const pop = Object.assign(el('button', 'dk-pop'), { type: 'button', title: 'open in a browser tab', ariaLabel: 'open in a browser tab' });
+    pop.appendChild(dkGlyph(DK_UI.pop));
+    pop.addEventListener('click', () => window.open(url, '_blank', 'noopener'));
+    w.head.querySelector('.dk-btns').prepend(pop);
+  }
+  w.body.appendChild(frame);
+  w.onClose = () => { frame.src = 'about:blank'; };
+  dkFocus(w);
+}
+
+// a console for a wasi command: stdout and stderr shown, a line of stdin
+// typed, any import it wants past wasi stubbed
+function wasiPage(url, name) {
+  const run = (url, name) => {
+    const out = document.getElementById('out');
+    const say = (t, cls) => { const s = document.createElement('span'); if (cls) s.className = cls; s.textContent = t; out.append(s); scrollTo(0, document.body.scrollHeight); };
+    const dec = new TextDecoder();
+    const enc = new TextEncoder();
+    let mem;
+    let stdin = new Uint8Array(0);
+    class Exit { constructor(code) { this.code = code; } }
+    const dv = () => new DataView(mem.buffer);
+    const u8 = () => new Uint8Array(mem.buffer);
+    const args = [name];
+    const env = ['TERM=dumb'];
+    const strs = (list, ptrs, buf) => {
+      let at = buf;
+      list.forEach((s, i) => { const b = enc.encode(`${s}\0`); dv().setUint32(ptrs + i * 4, at, true); u8().set(b, at); at += b.length; });
+      return 0;
+    };
+    const sizes = (list, n, sz) => { dv().setUint32(n, list.length, true); dv().setUint32(sz, list.reduce((t, s) => t + enc.encode(s).length + 1, 0), true); return 0; };
+    const wasi = {
+      args_get: (p, b) => strs(args, p, b), args_sizes_get: (n, s) => sizes(args, n, s),
+      environ_get: (p, b) => strs(env, p, b), environ_sizes_get: (n, s) => sizes(env, n, s),
+      clock_res_get: (id, p) => { dv().setBigUint64(p, 1000n, true); return 0; },
+      clock_time_get: (id, prec, p) => { dv().setBigUint64(p, BigInt(Math.round((id === 0 ? Date.now() : performance.now()) * 1e6)), true); return 0; },
+      fd_write: (fd, iovs, n, wrote) => {
+        let t = 0;
+        for (let i = 0; i < n; i++) {
+          const p = dv().getUint32(iovs + i * 8, true);
+          const l = dv().getUint32(iovs + i * 8 + 4, true);
+          if (fd === 1 || fd === 2) say(dec.decode(u8().slice(p, p + l), { stream: true }), fd === 2 ? 'err' : '');
+          t += l;
+        }
+        dv().setUint32(wrote, t, true);
+        return fd === 1 || fd === 2 ? 0 : 8;
+      },
+      fd_read: (fd, iovs, n, read) => {
+        if (fd !== 0) return 8;
+        let t = 0;
+        for (let i = 0; i < n && stdin.length; i++) {
+          const p = dv().getUint32(iovs + i * 8, true);
+          const l = Math.min(dv().getUint32(iovs + i * 8 + 4, true), stdin.length);
+          u8().set(stdin.subarray(0, l), p);
+          stdin = stdin.subarray(l);
+          t += l;
+        }
+        dv().setUint32(read, t, true);
+        return 0;
+      },
+      fd_fdstat_get: (fd, p) => { if (fd > 2) return 8; u8().fill(0, p, p + 24); dv().setUint8(p, 2); return 0; },
+      fd_prestat_get: () => 8, fd_prestat_dir_name: () => 8, fd_close: () => 0, fd_seek: () => 70, fd_sync: () => 0,
+      path_open: () => 76, random_get: (p, l) => { crypto.getRandomValues(u8().subarray(p, p + l)); return 0; },
+      sched_yield: () => 0, poll_oneoff: () => 52,
+      proc_exit: (code) => { throw new Exit(code); },
+    };
+    // past wasi: functions answering ENOSYS, a memory or table where one's asked
+    const fill = (i) => (i.kind === 'function' ? (i.module === 'wasi_snapshot_preview1' && wasi[i.name]) || (() => 52)
+      : i.kind === 'memory' ? new WebAssembly.Memory({ initial: 256, maximum: 32768 })
+        : i.kind === 'table' ? new WebAssembly.Table({ initial: 4096, element: 'anyfunc' }) : undefined);
+    const start = async () => {
+      out.textContent = '';
+      try {
+        const mod = await WebAssembly.compile(await (await fetch(url)).arrayBuffer());
+        const real = {};
+        for (const i of WebAssembly.Module.imports(mod)) (real[i.module] ||= {})[i.name] = fill(i);
+        const inst = await WebAssembly.instantiate(mod, real);
+        mem = inst.exports.memory || Object.values(real).flatMap(Object.values).find((v) => v instanceof WebAssembly.Memory);
+        const main = inst.exports._start || inst.exports.main;
+        if (!main) { say('no _start or main to run\n', 'err'); return; }
+        const r = main();
+        say(`\n[exited ${typeof r === 'number' ? r : 0}]\n`, 'dim');
+      } catch (e) {
+        if (e instanceof Exit) say(`\n[exited ${e.code}]\n`, 'dim');
+        else say(`\n${e}\n`, 'err');
+      }
+    };
+    document.getElementById('in').addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      stdin = enc.encode(`${e.target.value}\n`);
+      e.target.value = '';
+      start();
+    });
+    start();
+  };
+  const css = getComputedStyle(document.documentElement);
+  const fg = css.getPropertyValue('--fg').trim() || '#ddd';
+  const bg = css.getPropertyValue('--bg').trim() || '#111';
+  const esc = (v) => JSON.stringify(v).replace(/</g, '\\u003c');
+  return `<!doctype html><meta charset="utf-8"><style>
+body{margin:0;padding:.6rem;background:${bg};color:${fg};font:13px ui-monospace,monospace}
+#out{white-space:pre-wrap;margin:0 0 2rem}.err{color:#e57373}.dim{opacity:.6}
+#in{position:fixed;left:0;right:0;bottom:0;box-sizing:border-box;width:100%;padding:.4rem .6rem;border:0;border-top:1px solid #8884;background:${bg};color:${fg};font:inherit;outline:0}
+</style><pre id="out"></pre><input id="in" placeholder="stdin, enter reruns with it" autocomplete="off">
+<script>(${run})(${esc(url)}, ${esc(name)});<\/script>`;
 }
 
 // --- the editor: the code tab's own editor, in a window

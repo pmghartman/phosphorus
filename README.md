@@ -61,6 +61,10 @@ is the host's own. You get a desktop:
 
 - **terminal**: a shell on each host you logged in to
 - **files**: every host's shared folders; copy and move between hosts, drag files in to upload
+- **home**: each host's `state/home/`: admin files at the top, and a folder per user
+  that only that user can open, admins included. Its `Desktop/` shows on your desktop,
+  from the host serving the page. Pages, `.wasm` programs and `NAME.app` folders (with an
+  `index.html`) run in a sandboxed window when opened
 - **editor**: edit text files live with others, saved as you type (ctrl+s saves now)
 - **chat**: channels and direct messages; `/chimp` asks the AI model
 - **status**: CPU, memory, disk and network for every host, and which AI model is in use

@@ -302,8 +302,19 @@ function remove(s, p) {
   return list(s);
 }
 
+// a short lived grant sealed with the mesh key, any host reading it
+const sealGrant = (o, ms) => Buffer.from(JSON.stringify(seal(meshKey(), JSON.stringify({ ...o, e: Date.now() + ms })))).toString('base64url');
+function openGrant(token) {
+  let o;
+  try { o = JSON.parse(open(meshKey(), JSON.parse(Buffer.from(String(token), 'base64url').toString('utf8'))) || 'null'); } catch { return null; }
+  return o && o.e > Date.now() ? o : null;
+}
+
 module.exports = {
   pass: (req) => !!session(req),
+  exists: (name) => !!live(String(name || '')),
+  isAdmin: (name) => !!live(String(name || ''))?.admin,
+  sealGrant, openGrant,
   issuers,
   COOKIE, MAX_WALL, session, refresh, me, login, setVault, setPrefs, wallpaper, setWallpaper, changePass, list, create, setAdmin, remove, clearCookie, setup: () => !anyAdmin(),
 };
