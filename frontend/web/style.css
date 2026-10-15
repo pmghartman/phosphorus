@@ -2085,21 +2085,18 @@ input, textarea { caret-color: var(--accent); }
 .acct-unlock > .home-col-head { position: absolute; left: 0.6rem; }
 
 /* icons over a picture, as windows draws them: white labels on a soft shadow
-   whatever the theme, a frosted tile under each glyph, a light box on hover */
+   whatever the theme, bare glyphs on a drop shadow, a light box on hover */
 .dk-walled .dk-icon { border-radius: 0.3rem; }
-.dk-walled .dk-tile {
-  border: 0; border-radius: 0.55rem; background: color-mix(in srgb, var(--bg) 80%, transparent);
-  backdrop-filter: blur(10px) saturate(1.3); box-shadow: 0 1px 3px rgb(0 0 0 / 0.35), inset 0 0 0 1px rgb(255 255 255 / 0.12);
-}
-.dk-walled .dk-tile-img { background: none; backdrop-filter: none; box-shadow: none; }
-.dk-walled .dk-tile-img .dk-favicon { filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.6)); }
+.dk-walled .dk-tile, .dk-walled .dk-tile-img { border: 0; background: none; }
+.dk-walled .dk-tile .ic { width: 1.6rem; height: 1.6rem; stroke-width: 1.6; }
+.dk-walled .dk-tile .ic, .dk-walled .dk-tile-img .dk-favicon { filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.7)) drop-shadow(0 2px 4px rgb(0 0 0 / 0.45)); }
+.dk-walled .dk-tile-img .dk-favicon { width: 1.6rem; height: 1.6rem; }
 .dk-walled .dk-label, .dk-walled .dk-icon .dk-sub {
   color: #fff; background: none; text-shadow: 0 0 1px rgb(0 0 0 / 0.95), 0 1px 2px rgb(0 0 0 / 0.9), 0 0 7px rgb(0 0 0 / 0.7), 0 0 12px rgb(0 0 0 / 0.4);
 }
 .dk-walled .dk-icon .dk-sub { color: rgb(255 255 255 / 0.8); }
 .dk-walled .dk-icon:hover, .dk-walled .dk-icon:focus-visible { background: rgb(255 255 255 / 0.14); border-color: rgb(255 255 255 / 0.2); }
-.dk-walled .dk-icon:hover .dk-tile, .dk-walled .dk-icon:focus-visible .dk-tile { background: color-mix(in srgb, var(--bg) 80%, transparent); }
 .dk-walled .dk-icon.sel { background: color-mix(in srgb, var(--accent) 34%, rgb(255 255 255 / 0.1)); border-color: color-mix(in srgb, var(--accent) 70%, #fff); }
-.dk-walled .dk-icon.sel .dk-tile { background: color-mix(in srgb, var(--bg) 80%, transparent); }
 .dk-walled .dk-icon.sel .dk-label { background: none; }
+.dk-walled .dk-icon:hover .dk-tile, .dk-walled .dk-icon:focus-visible .dk-tile, .dk-walled .dk-icon.sel .dk-tile { background: none; }
 .dk-walled .dk-band { border-color: rgb(255 255 255 / 0.7); background: rgb(255 255 255 / 0.15); }

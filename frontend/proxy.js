@@ -404,25 +404,36 @@ const ICON_KEEP_MS = 3600000;
 const ICON_MISS_MS = 600000;
 const icons = new Map();
 
-// {type, body, path}, redirects on the same upstream followed
-function grab(route, path, max, hops = 4) {
+// {type, body, path}, redirects on the same upstream followed; a page cut
+// at max, anything else over it dropped
+function grab(route, path, max, { page = false, hops = 4 } = {}) {
   return new Promise((resolve) => {
+    const host = route.domain || BASE_DOMAIN;
     const req = (route.scheme === 'https' ? https : http).get({
       host: route.ip, port: route.port, path, timeout: 4000, agent: agents[route.scheme],
-      headers: { host: route.domain || BASE_DOMAIN, accept: '*/*', 'x-forwarded-prefix': route.prefix },
+      headers: {
+        host, accept: page ? 'text/html,*/*;q=0.8' : 'image/*,*/*;q=0.8', 'user-agent': 'Mozilla/5.0 (phosphorus icons)',
+        'x-forwarded-host': host, 'x-forwarded-proto': route.proto, 'x-forwarded-prefix': route.prefix,
+      },
     }, (res) => {
       const to = res.statusCode >= 300 && res.statusCode < 400 && res.headers.location;
       if (to) {
         res.resume();
         const next = hops > 0 && iconPath(route, to, path);
-        resolve(next ? grab(route, next, max, hops - 1) : null);
+        resolve(next && next !== path ? grab(route, next, max, { page, hops: hops - 1 }) : null);
         return;
       }
       if (res.statusCode !== 200) { res.resume(); resolve(null); return; }
       const parts = [];
       let n = 0;
-      res.on('data', (c) => { n += c.length; if (n > max) req.destroy(); else parts.push(c); });
-      res.on('end', () => resolve({ type: String(res.headers['content-type'] || ''), body: Buffer.concat(parts), path }));
+      const done = () => resolve({ type: String(res.headers['content-type'] || ''), body: Buffer.concat(parts), path });
+      res.on('data', (c) => {
+        n += c.length;
+        if (n <= max) { parts.push(c); return; }
+        req.destroy();
+        if (page) done(); else resolve(null);
+      });
+      res.on('end', done);
       res.on('error', () => resolve(null));
     });
     req.on('timeout', () => req.destroy());
@@ -447,7 +458,7 @@ function sniff(b) {
   if (b.toString('latin1', 0, 3) === 'GIF') return 'image/gif';
   if (b[0] === 0xff && b[1] === 0xd8) return 'image/jpeg';
   if (b.toString('latin1', 0, 4) === 'RIFF' && b.toString('latin1', 8, 12) === 'WEBP') return 'image/webp';
-  if (/^\s*(<\?xml[^>]*>\s*)?(<!--[\s\S]*?-->\s*)*<svg[\s>]/i.test(b.toString('utf8', 0, 512))) return 'image/svg+xml';
+  if (/^\uFEFF?\s*(<\?xml[^>]*>\s*)?(<!--[\s\S]*?-->\s*|<!DOCTYPE[^>]*>\s*)*<svg[\s>]/i.test(b.toString('utf8', 0, 1024))) return 'image/svg+xml';
   return '';
 }
 
@@ -464,17 +475,31 @@ const fromData = (href) => {
   try { return { type: m[1].toLowerCase(), body: m[2] ? Buffer.from(m[3], 'base64') : Buffer.from(decodeURIComponent(m[3])) }; } catch { return null; }
 };
 
-// rel=icon, then apple-touch-icon, then the usual paths
+// a web manifest's icons, biggest first, as upstream paths
+async function manifestIcons(route, href, from) {
+  const path = iconPath(route, href, from);
+  const r = path && await grab(route, path, ICON_MAX);
+  let icons;
+  try { icons = JSON.parse(r.body.toString('utf8')).icons; } catch { return []; }
+  if (!Array.isArray(icons)) return [];
+  const size = (i) => Math.max(0, ...String(i.sizes || '').split(/\s+/).map((x) => parseInt(x, 10) || (x === 'any' ? 1024 : 0)));
+  return icons.filter((i) => i && typeof i.src === 'string').sort((a, b) => size(b) - size(a))
+    .map((i) => iconPath(route, i.src, path)).filter(Boolean);
+}
+
+// rel=icon, then apple-touch-icon, the manifest's, then the usual paths
 async function lookIcon(route) {
-  const page = await grab(route, '/', ICON_MAX * 4);
+  const page = await grab(route, '/', ICON_MAX * 4, { page: true });
   const html = page && /html/.test(page.type) ? page.body.toString('utf8') : '';
   const from = page?.path || '/';
   const icons = [];
   const touch = [];
+  let manifest = '';
   for (const tag of html.match(/<link\b[^>]*>/gi) || []) {
     const rel = (tag.match(/\brel\s*=\s*["']?([^"'>]*)/i) || [])[1] || '';
-    if (!/icon/i.test(rel) || /mask-icon/i.test(rel)) continue;
     const m = tag.match(/\bhref\s*=\s*["']([^"']+)["']/i) || tag.match(/\bhref\s*=\s*([^\s"'>]+)/i);
+    if (m && /\bmanifest\b/i.test(rel)) manifest ||= m[1].trim();
+    if (!/icon/i.test(rel) || /mask-icon/i.test(rel)) continue;
     if (m) (/apple-touch/i.test(rel) ? touch : icons).push(m[1].trim());
   }
   for (const h of [...icons, ...touch]) {
@@ -482,6 +507,7 @@ async function lookIcon(route) {
     if (d) return d;
   }
   const paths = [...icons, ...touch].filter((h) => !h.startsWith('data:')).map((h) => iconPath(route, h, from)).filter(Boolean);
+  if (manifest) paths.push(...await manifestIcons(route, manifest, from));
   for (const path of new Set([...paths, '/favicon.ico', '/favicon.png', '/favicon.svg', '/apple-touch-icon.png', '/static/favicon.ico'])) {
     const r = asImage(await grab(route, path, ICON_MAX));
     if (r) return r;
