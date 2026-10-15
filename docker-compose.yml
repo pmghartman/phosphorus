@@ -36,8 +36,8 @@ services:
       # what /files actually resolves to, so the frontend can tell a changed [files]
       # dir from the one this container was created with
       PHOSPHORUS_FILES_DIR: ${PHOSPHORUS_FILES_DIR:-./files}
-      # [home] dir: the homes, shared/ and sys/ under /homefs, the host path
-      # kept for the frontend
+      # [home] dir: its home/ (the users, shared/ and sys/) under /homefs, the
+      # host path kept for the frontend
       HOME_FS: /homefs
       PHOSPHORUS_HOME_DIR: ${PHOSPHORUS_HOME_DIR:-./files}
       # the tailnet and mesh name, empty: the container's hostname
@@ -58,8 +58,8 @@ services:
       # view, git, model, update and project records
       - ./state:/state
 
-      # [home] dir from config/phosphorus.ini: each user's folder, shared/ and
-      # sys/ (the mesh's users and settings), unset: files/ below
+      # [home] dir from config/phosphorus.ini, its home/ holding each user's
+      # folder, shared/ and sys/ (the mesh's users and settings), unset: files/ below
       - ${PHOSPHORUS_HOME_DIR:-./files}:/homefs
 
       # [files] dir from config/phosphorus.ini, for the web's Files tab, read-write,

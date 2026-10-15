@@ -79,7 +79,7 @@ if (docker ps -aq -f "name=^phosphorus$") {
     if ($HomeFrom -match '^[A-Za-z]:') { $HomeFrom = ConvertTo-VmPath $HomeFrom }
     if ($HomeFrom -eq $HomeTo) { $HomeFrom = "" }
 }
-if ($HomeFrom -and ("$HomeTo/".StartsWith("$HomeFrom/usr/") -or "$HomeTo/".StartsWith("$HomeFrom/sys/") -or "$HomeTo/".StartsWith("$HomeFrom/shared/"))) {
+if ($HomeFrom -and ("$HomeTo/".StartsWith("$HomeFrom/home/") -or "$HomeTo/".StartsWith("$HomeFrom/usr/") -or "$HomeTo/".StartsWith("$HomeFrom/sys/") -or "$HomeTo/".StartsWith("$HomeFrom/shared/"))) {
     Fail "[home] dir can't be inside the folders it moves"
 }
 $env:PHOSPHORUS_HOME_DIR = $HomeDir
@@ -137,11 +137,11 @@ if ($LASTEXITCODE -and (Test-PhosphorusGitHost) -and ((Test-Path git/data/GIT_VE
 # never dangling, so never hit
 Invoke-Quiet { docker image prune -f } | Out-Null
 
-# the homes, shared and sys moved with phosphorus stopped, a failed copy leaving them put
+# home/ moved with phosphorus stopped, a failed copy leaving them put
 if ($HomeFrom) {
-    Say "moving the homes, shared and sys from $HomeFrom to $HomeTo..."
+    Say "moving home/ from $HomeFrom to $HomeTo..."
     Invoke-Quiet { docker stop -t 30 phosphorus } | Out-Null
-    $Move = "set -e`nm=.phosphorus-move-`$`$; touch /mv/old/`$m`nif [ -e /mv/new/`$m ]; then rm -f /mv/old/`$m; exit 0; fi`nrm -f /mv/old/`$m`nif [ -d /mv/old/usr/shared ]; then names='usr sys'; else names='sys shared'`n  for f in /mv/old/sys/etc/passwd/*.json; do [ -f `$f ] && names=`$names' '`$(basename `$f .json); done; fi`nfor d in `$names; do [ -d /mv/old/`$d ] && mkdir -p /mv/new/`$d && cp -a /mv/old/`$d/. /mv/new/`$d/; done`nfor d in `$names; do rm -rf /mv/old/`$d; done"
+    $Move = "set -e`nm=.phosphorus-move-`$`$; touch /mv/old/`$m`nif [ -e /mv/new/`$m ]; then rm -f /mv/old/`$m; exit 0; fi`nrm -f /mv/old/`$m`nif [ -d /mv/old/home/sys ]; then names=home; elif [ -d /mv/old/usr/shared ]; then names='usr sys'; else names='sys shared'`n  for f in /mv/old/sys/etc/passwd/*.json; do [ -f `$f ] && names=`$names' '`$(basename `$f .json); done; fi`nfor d in `$names; do [ -d /mv/old/`$d ] && mkdir -p /mv/new/`$d && cp -a /mv/old/`$d/. /mv/new/`$d/; done`nfor d in `$names; do rm -rf /mv/old/`$d; done"
     docker run --rm -v "${HomeFrom}:/mv/old" -v "${HomeTo}:/mv/new" --entrypoint sh phosphorus:latest -c $Move
     if ($LASTEXITCODE) {
         Say "couldn't move the homes, keeping them in $HomeFrom"

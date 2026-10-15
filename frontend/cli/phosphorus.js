@@ -484,8 +484,8 @@ function saveShare(form) {
 }
 
 // --- phosphorus.ini [home] ------------------------------------------------------------
-// which [files] dir holds the homes, shared/ and sys/, blank the home's files/;
-// a change moves them there on the rebuild
+// the [files] dir whose home/ holds the users, shared/ and sys/, blank the
+// home's files/; a change moves home/ there on the rebuild
 
 const homeKey = (d) => String(d || '').trim().replace(/[/\\]+$/, '');
 
@@ -706,7 +706,7 @@ function filesView() {
     ['phosphorus.ini [files]', [
       ...(shares.length ? table(['', 'dir', 'perms'], shares.map((s) => [star(isHomeDir(s.dir)), s.dir, c.teal(s.perms)]), ui.sel[1]) : []),
       ...(!home || !shares.some((s) => isHomeDir(s.dir)) ? [`${shares.length ? '  ' : ''}${star(true)} ${fallback} ${c.muted('(default)')}`] : []),
-      '', c.muted('★ home: each user\'s folder, shared/ and sys/'),
+      '', c.muted('★ holds home/: each user\'s folder, shared/ and sys/'),
     ]],
     published && ['published now', published],
   ]);
@@ -1268,7 +1268,7 @@ function listKey(str, key) {
       const { dir } = shares[ui.sel[1]];
       const off = isHomeDir(dir);
       ui.confirm = {
-        text: `${off ? `home back to the default files/` : `home to ${dir}`}? the homes, shared and sys move with it, ${INI_NOTE}`,
+        text: `${off ? `home/ back to the default files/` : `home/ into ${dir}`}? it moves with everything in it, ${INI_NOTE}`,
         onYes: () => { const err = writeHomeDir(off ? '' : dir); flash(err ? c.offmesh(err) : c.online(`saved, ${REBUILDING}`)); poll(); },
       };
     }
