@@ -385,11 +385,6 @@ const (
 	pinHop      = "X-Forwarded-Phosphorus-Host"
 )
 
-var hop = map[string]bool{
-	"connection": true, "keep-alive": true, "proxy-connection": true, "proxy-authenticate": true,
-	"proxy-authorization": true, "te": true, "trailer": true, "transfer-encoding": true, "upgrade": true,
-}
-
 var transports = map[string]*http.Transport{
 	"http": {Proxy: nil, MaxIdleConnsPerHost: 32, IdleConnTimeout: 90 * time.Second, DialContext: (&net.Dialer{Timeout: 30 * time.Second}).DialContext},
 	"https": {Proxy: nil, MaxIdleConnsPerHost: 32, IdleConnTimeout: 90 * time.Second,

@@ -92,10 +92,22 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
       - name: syntax
         run: |
-          for f in scripts/*.sh scripts/lib/*.sh scripts/phosphorus build/*.sh build/deb/post* build/deb/prerm container/*.sh; do bash -n "$f"; done
-          for f in frontend/*.js frontend/cli/*.js frontend/web/*.js container/git/*.js container/*.js; do node --check "$f"; done
+          for f in scripts/*.sh scripts/lib/*.sh scripts/phosphorus build/*.sh build/deb/post* build/deb/prerm container/*.sh container/git/*.sh; do bash -n "$f"; done
+          # the JS kept until every host runs the binary
+          for f in legacy/frontend/*.js legacy/frontend/cli/*.js legacy/container/*.js legacy/container/git/*.js; do node --check "$f"; done
+      # the client's bundle first, embedded by everything after
+      - name: go
+        run: |
+          go generate ./internal/web
+          test -z "$(gofmt -l cmd internal test)" || { gofmt -l cmd internal test; exit 1; }
+          go vet ./...
+          go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...
+          go test -race ./...
 
   # the release's tree: what every installer ships and syncs into the host's home
   payload:

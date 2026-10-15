@@ -5,7 +5,6 @@ package server
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"fmt"
 	"io"
 	"log"
@@ -717,12 +716,6 @@ func mintGuestKey() (int, any) {
 }
 
 // --- startup -----------------------------------------------------------------
-
-func randomBytes(n int) []byte {
-	b := make([]byte, n)
-	rand.Read(b)
-	return b
-}
 
 // Main the frontend until SIGTERM
 func Main() int {

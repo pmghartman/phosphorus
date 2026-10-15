@@ -20,7 +20,7 @@ const (
 	idle        = 60 * time.Second
 	hopTimeout  = 5 * time.Second
 	typeSteps   = 24
-	typeMS      = 40 * time.Millisecond
+	typeWait    = 40 * time.Millisecond
 	agentStay   = 10 * time.Second
 	autosave    = 1500 * time.Millisecond
 	autosaveMax = 10 * time.Second
@@ -427,7 +427,7 @@ func Write(sh files.Share, rel string, p WriteP) (int, any) {
 		step = 1
 	}
 	for i := 0; i < len(typed); i += step {
-		time.Sleep(typeMS)
+		time.Sleep(typeWait)
 		end := i + step
 		if end > len(typed) {
 			end = len(typed)

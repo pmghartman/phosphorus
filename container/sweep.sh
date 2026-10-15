@@ -1,5 +1,5 @@
 #!/bin/sh
-# phosphorus leftovers: stopped containers from its images, its node processes
+# phosphorus leftovers: stopped containers from its images, its processes
 # outside any running container, run by rebuild with --pid=host, $1 the repo
 repo="$1"
 
@@ -20,14 +20,21 @@ for p in /proc/[0-9]*; do
   pid="${p#/proc/}"
   # the redirect's own error too: a process gone mid-scan
   cmd="$({ tr '\0' ' ' < "$p/cmdline"; } 2>/dev/null)"
-  case "$cmd" in node\ *|*/node\ *) ;; *) continue ;; esac
   case "$cmd" in
-    *" /opt/frontend/"*|*" /opt/phosphorus/"*|*" /usr/local/lib/phosphorus-git/"*) ;;
-    *" $repo/frontend/"*|*" $repo/container/"*|*" $repo/git/"*) ;;
+    # the binary's roles
+    phosphorus\ serve*|phosphorus\ model*|phosphorus\ elector*) ;;
+    */phosphorus\ serve*|*/phosphorus\ model*|*/phosphorus\ elector*) ;;
+    # node's, from images before it
+    node\ *|*/node\ *)
+      case "$cmd" in
+        *" /opt/frontend/"*|*" /opt/phosphorus/"*|*" /usr/local/lib/phosphorus-git/"*) ;;
+        *" $repo/frontend/"*|*" $repo/legacy/"*|*" $repo/container/"*|*" $repo/git/"*) ;;
+        *) continue ;;
+      esac ;;
     *) continue ;;
   esac
   cid="$(grep -o '[0-9a-f]\{64\}' "$p/cgroup" 2>/dev/null | head -n 1)"
   [ -n "$cid" ] && case "$live" in *" $cid "*) continue ;; esac
-  kill "$pid" 2>/dev/null && echo "stopped stray node $pid: $cmd"
+  kill "$pid" 2>/dev/null && echo "stopped stray $pid: $cmd"
 done
 exit 0

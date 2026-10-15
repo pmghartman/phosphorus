@@ -9,7 +9,7 @@ APP_INI_TMPL="${APP_INI_TMPL:-/etc/forgejo/app.ini.tmpl}"
 APP_INI="${APP_INI:-$DATA_ROOT/conf/app.ini}"
 GIT_ROLE_FILE="${GIT_ROLE_FILE:-$STATE_DIR/git-role}"
 SELF_HOST_FILE="${SELF_HOST_FILE:-$STATE_DIR/self-host}"
-ELECTOR="${ELECTOR:-/usr/local/lib/phosphorus-git/elector.js}"
+ELECTOR="${ELECTOR:-phosphorus elector}"
 # touch to let this host lead without proof it has the newest data
 FORCE_FILE="${FORCE_FILE:-$STATE_DIR/git-force-promote}"
 VERSION_FILE="$DATA_ROOT/GIT_VERSION"
@@ -18,7 +18,7 @@ LEGACY_VERSION_FILE="$DATA_ROOT/MU_GIT_VERSION"
 # set by any pull: forgejo's per-node indexers and queues predating that data
 PULLED_FILE="$DATA_ROOT/GIT_PULLED"
 
-# shared with elector.js
+# shared with the elector
 export LOCAL_FILE="${LOCAL_FILE:-/run/git-local}"
 export DECISION_FILE="${DECISION_FILE:-/run/git-decision}"
 export LEASE_UNTIL_FILE="${LEASE_UNTIL_FILE:-/run/git-lease-until}"
@@ -342,7 +342,7 @@ ELECTOR_NEXT=0
 start_elector() {
   [ "$EPOCHSECONDS" -ge "$ELECTOR_NEXT" ] || return
   ELECTOR_NEXT=$((EPOCHSECONDS + 2))
-  node "$ELECTOR" &
+  $ELECTOR &
   ELECTOR_PID="$!"
 }
 

@@ -1,3 +1,13 @@
+# --- the binary -----------------------------------------------------------------
+# for its elector, the client's bundle left out
+FROM golang:1.26-trixie AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY cmd/ cmd/
+COPY internal/ internal/
+RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/phosphorus ./cmd/phosphorus
+
 FROM debian:trixie-slim
 # inherited by every container off this image, for container/sweep.sh
 LABEL org.phosphorus=git
@@ -8,7 +18,7 @@ ARG FORGEJO_VERSION=16.0.5
 ARG TARGETARCH
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        ca-certificates curl jq bash git rsync openssh-client fuse3 nodejs \
+        ca-certificates curl jq bash git rsync openssh-client fuse3 \
     && echo user_allow_other >> /etc/fuse.conf \
     && rm -rf /var/lib/apt/lists/*
 
@@ -33,7 +43,7 @@ COPY container/git/litefs.yml.tmpl /etc/litefs/litefs.yml.tmpl
 COPY container/git/app.ini.tmpl    /etc/forgejo/app.ini.tmpl
 COPY container/git/rsyncd.conf     /etc/rsyncd.conf
 COPY container/git/git-daemon.sh   /usr/local/bin/git-daemon.sh
-COPY container/git/elector.js      /usr/local/lib/phosphorus-git/elector.js
+COPY --from=build /out/phosphorus  /usr/local/bin/phosphorus
 RUN chmod +x /usr/local/bin/git-daemon.sh \
  && mkdir -p /var/lib/phosphorus/git /var/lib/litefs-internal
 

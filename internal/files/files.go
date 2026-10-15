@@ -556,7 +556,6 @@ type TreeEntry struct {
 	Path  string `json:"path"`
 	Size  *int64 `json:"size,omitempty"`
 	Mtime *int64 `json:"mtime"`
-	dir   bool
 }
 
 // Tree every entry under rel to depth, breadth first
@@ -917,7 +916,7 @@ func Save(sh *Share, rel string, p SaveP) (int, any) {
 		if at < 0 {
 			return 409, errBody("old text not found")
 		}
-		if strings.Contains(t[at+1:], *p.Old) && strings.Index(t[at+1:], *p.Old) >= 0 {
+		if strings.Contains(t[at+1:], *p.Old) {
 			return 409, errBody("old text found more than once, give more of it")
 		}
 		s := t[:at] + *p.New + t[at+len(*p.Old):]

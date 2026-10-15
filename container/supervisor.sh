@@ -84,11 +84,11 @@ if [ "$HOST_SSH_HOST" = "127.0.0.1" ]; then
   fi
 fi
 
-node /opt/frontend/server.js &
+phosphorus serve &
 PIDS+=("$!"); NAMES+=("frontend")
 
 # llama-server on the model host, idle on every other
-node /opt/phosphorus/model.js &
+phosphorus model &
 PIDS+=("$!"); NAMES+=("model")
 
 # the ingress answering before the tunnel hands it anything

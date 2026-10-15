@@ -176,7 +176,6 @@ func bigLogo(cols, rows int) bool {
 }
 
 var ansiRe = regexp.MustCompile(`\x1b\[[0-9;?]*[A-Za-z]`)
-var ansiSplit = regexp.MustCompile(`(\x1b\[[0-9;?]*[A-Za-z])`)
 
 func vlen(s string) int { return len([]rune(ansiRe.ReplaceAllString(s, ""))) }
 

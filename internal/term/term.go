@@ -561,7 +561,10 @@ func (s *session) render() string {
 	for y := 0; y < rows; y++ {
 		lines = append(lines, lineText(func(x int) string { return cellStr(e.CellAt(x, y)) }, cols))
 	}
-	e.Close()
+	// the pipe closed under it, vt's Close racing its own Read on a bare bool
+	if pw, ok := e.InputPipe().(*io.PipeWriter); ok {
+		pw.Close()
+	}
 	if len(lines) > screenLines {
 		lines = lines[len(lines)-screenLines:]
 	}

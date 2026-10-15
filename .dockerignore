@@ -7,3 +7,8 @@ models
 **/node_modules
 gui
 build
+# the binary's build: vendored tarballs and a stale bundle rebuilt in the image
+web/.vendor
+internal/web/dist/*
+!internal/web/dist/README
+legacy

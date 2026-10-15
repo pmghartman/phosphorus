@@ -45,9 +45,8 @@ const (
 var gameActionMS = map[string]int64{"start": 180000, "stop": 60000}
 
 type section struct {
-	name  string
-	f     map[string]string
-	order []string
+	name string
+	f    map[string]string
 }
 
 // Parse every section as a declared row, or the first reason to reject
