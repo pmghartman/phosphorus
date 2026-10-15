@@ -2884,6 +2884,7 @@ function lineEl(m, prev) {
       const b = Object.assign(el('button', 'show-open', 'open'), { type: 'button', title: 'open it in a shared editor' });
       b.dataset.act = 'show';
       li.append(' ', b);
+      fileThere(m.file).then((there) => { if (!there) b.replaceWith(el('span', 'st-dim', '(gone)')); });
     }
     return li;
   }
@@ -4724,6 +4725,7 @@ function codeEditor(view, file, btn, id) {
     redraw();
   }
 
+  let refused = '';
   function connect() {
     if (closed) return;
     const q = new URLSearchParams({ share: file.share, path: file.path });
@@ -4770,6 +4772,7 @@ function codeEditor(view, file, btn, id) {
         paintState();
         paintMarks();
       } else if (msg.type === 'error') {
+        refused = msg.error;
         paintState(msg.error);
       }
     };
@@ -4777,6 +4780,8 @@ function codeEditor(view, file, btn, id) {
       ready = false;
       inflight = null;
       if (closed) return;
+      // the host said why: said once, never retried
+      if (refused) { paintState(refused); return; }
       paintState('reconnecting');
       setTimeout(connect, retry);
       retry = Math.min(retry * 2, 10000);
@@ -6694,20 +6699,20 @@ function dkMove(w, head) {
 }
 
 // a class played out before done, cut short by a refocus
-function dkLeave(w, done) {
+function dkLeave(w, done, cls = 'dk-leaving') {
   const n = w.node;
   const end = () => {
     if (w.leaving !== t) return;
     clearTimeout(t);
     w.leaving = 0;
     n.removeEventListener('animationend', onEnd);
-    n.classList.remove('dk-leaving');
+    n.classList.remove(cls);
     done();
   };
   const onEnd = (e) => { if (e.target === n) end(); };
-  const t = setTimeout(end, 250);
+  const t = setTimeout(end, 300);
   w.leaving = t;
-  n.classList.add('dk-leaving');
+  n.classList.add(cls);
   n.addEventListener('animationend', onEnd);
 }
 
@@ -6722,7 +6727,7 @@ function dkFocus(w) {
   if (w?.leaving) {
     clearTimeout(w.leaving);
     w.leaving = 0;
-    w.node.classList.remove('dk-leaving');
+    w.node.classList.remove('dk-leaving', 'dk-minimizing');
   }
   for (const o of dk.wins.values()) {
     o.node.classList.toggle('focused', o === w);
@@ -6735,8 +6740,18 @@ function dkFocus(w) {
   dkAppsChanged();
 }
 
+// shrunk into its task bar button; the scale also pulls the window's own
+// offset in, made up for in the translate
+const DK_MIN_SCALE = 0.1;
 function dkMin(w) {
-  dkLeave(w, () => { w.node.hidden = true; });
+  const a = w.node.getBoundingClientRect();
+  const b = w.task.getBoundingClientRect();
+  const k = 1 - DK_MIN_SCALE;
+  const mx = w.snap ? 0 : w.x;
+  const my = w.snap ? 0 : w.y;
+  w.node.style.setProperty('--min-x', `${b.left + b.width / 2 - (a.left + a.width / 2) + k * mx}px`);
+  w.node.style.setProperty('--min-y', `${b.top + b.height / 2 - (a.top + a.height / 2) + k * my}px`);
+  dkLeave(w, () => { w.node.hidden = true; }, 'dk-minimizing');
   w.node.classList.remove('focused');
   w.task.classList.remove('active');
   const top = [...dk.wins.values()].filter((o) => !o.node.hidden && !o.leaving).sort((a, b) => b.node.style.zIndex - a.node.style.zIndex)[0];
@@ -7735,6 +7750,15 @@ async function dkDeskLoad() {
 // an .app folder's own icon, the first of these it holds
 const DK_APP_ICONS = ['icon.svg', 'icon.png', 'favicon.svg', 'favicon.png', 'favicon.ico'];
 
+// a long name cut in its middle, its extension always shown
+const DK_NAME_MAX = 24;
+function dkShort(n) {
+  if (n.length <= DK_NAME_MAX) return n;
+  const dot = n.lastIndexOf('.');
+  const ext = dot > 0 && n.length - dot <= 8 ? n.slice(dot) : '';
+  return `${n.slice(0, DK_NAME_MAX - ext.length - 1)}…${ext}`;
+}
+
 function dkFileIcon(e) {
   const rel = filesJoin(e.at, e.name);
   const kind = runnable(e) ? 'app' : fmKind(e);
@@ -7743,7 +7767,7 @@ function dkFileIcon(e) {
   // under it: shared, and the host unless it's everywhere or here alone
   const where = e.all ? '' : e.hosts.length === 1 && e.hosts[0] === selfHost ? '' : e.hosts.join(', ');
   const sub = [e.at.startsWith('shared/') ? 'shared' : '', where].filter(Boolean).join(' · ');
-  const b = dkIcon('doc', e.name.replace(/\.app$/i, ''), sub, () => fileOpen(HOME, rel, e), pic);
+  const b = dkIcon('doc', dkShort(e.name.replace(/\.app$/i, '')), sub, () => fileOpen(HOME, rel, e), pic);
   const tile = b.querySelector('.dk-tile');
   if (!pic || kind === 'app') tile.replaceChildren(kind === 'app' ? dkGlyph(DK_GLYPHS.app, 'fm-app') : fmIcon(kind));
   b.classList.add(`dk-doc-${kind}`);
@@ -7923,7 +7947,21 @@ body{margin:0;padding:.6rem;background:${bg};color:${fg};font:13px ui-monospace,
 
 // --- the editor: the code tab's own editor, in a window
 
-function dkCode(f) {
+// whether a file is still where it was: its folder listed, it in it
+async function fileThere(f) {
+  try {
+    const body = await filesCall({ host: f.host, share: String(f.share ?? '') }, 'list', undefined, { path: filesParent(f.path) });
+    return body.entries.some((e) => e.name === f.path.split('/').pop() && !e.dir);
+  } catch { return false; }
+}
+
+// a file to edit, refused with a note when it's gone
+async function dkCode(f) {
+  if (!(await fileThere(f))) { dkMenuNote(`${f.path.split('/').pop()} is gone`); return; }
+  dkCodeNow(f);
+}
+
+function dkCodeNow(f) {
   const file = { host: f.host, share: String(f.share ?? ''), path: f.path, label: f.label || `${f.host}/${f.path}` };
   rememberFile(file);
   if (!dk.desk) return;

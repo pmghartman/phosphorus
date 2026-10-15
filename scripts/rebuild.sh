@@ -56,6 +56,9 @@ main() {
     *) fail "can't tell where this home lives on the host ('${repo:-unset}'); set HOST_REPO and retry" ;;
   esac
 
+  # git/ only on a git host, its empty folders gone elsewhere
+  phosphorus_is_git_host || rmdir git/data git 2>/dev/null || true
+
   # an older home's models/ into state/, where the model's gguf lives now
   if [ "$windows" = 0 ] && [ -d models ] && [ ! -e state/models ]; then
     # docker made it root's where it made it

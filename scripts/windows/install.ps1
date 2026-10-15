@@ -48,6 +48,12 @@ if (Test-Path $Manifest) {
     foreach ($f in (Get-Content $Manifest)) {
         if ($f -in $Next -or $f.StartsWith("config/") -or $f.StartsWith("files/")) { continue }
         Remove-Item (Join-Path $HomeDir $f) -Force -ErrorAction SilentlyContinue
+        # its folder too, once nothing else is in it
+        $d = Split-Path -Parent (Join-Path $HomeDir $f)
+        while ($d.Length -gt $HomeDir.Length -and (Test-Path $d) -and -not (Get-ChildItem -Force $d)) {
+            Remove-Item $d -Force -ErrorAction SilentlyContinue
+            $d = Split-Path -Parent $d
+        }
     }
 }
 Set-Content $Manifest $Next
