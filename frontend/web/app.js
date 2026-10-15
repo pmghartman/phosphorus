@@ -6308,13 +6308,45 @@ function dkGrab(e, b, open) {
   let dy = 0;
   let dragged = false;
   let frame = 0;
+  // files on the desktop carried into a files window: its folder under the pointer
+  const files = moving.filter((x) => x.dataset.file);
+  let zone = null;
+  let px = e.clientX;
+  let py = e.clientY;
+  const aim = () => {
+    let z = null;
+    for (const n of document.elementsFromPoint(px, py)) {
+      if (n.closest('.dk-icons')) continue;
+      z = n.closest('[data-fm-drop]');
+      break;
+    }
+    const got = z && fmZones.get(z);
+    const t = got?.where();
+    if (zone && zone !== z) { zone.classList.remove('drop'); fmUnspring(fmZones.get(zone).fm, zone); }
+    zone = got && t && may(t.loc, 'w') ? z : null;
+    if (zone) { fmMark(got.fm, zone); fmSpring(got.fm, zone, t); }
+  };
+  // a copy riding the pointer above every window
+  let ghost = null;
   const paint = () => {
     frame = 0;
     for (const x of moving) x.style.transform = `translate(${DK_PAD + x.dataset.c * DK_GX + dx}px, ${DK_PAD + x.dataset.r * DK_GY + dy}px)`;
+    if (!files.length) return;
+    if (!ghost) {
+      ghost = el('div', 'dk-ghost');
+      ghost.appendChild(b.cloneNode(true));
+      if (moving.length > 1) ghost.appendChild(el('span', 'dk-ghost-n', String(moving.length)));
+      document.body.appendChild(ghost);
+    }
+    const r = b.getBoundingClientRect();
+    ghost.style.transform = `translate(${r.left}px, ${r.top}px)`;
+    aim();
   };
   const onMove = (ev) => {
     dx = ev.clientX - e.clientX;
     dy = ev.clientY - e.clientY;
+    px = ev.clientX;
+    py = ev.clientY;
     if (!dragged && Math.hypot(dx, dy) < 4) return;
     if (!dragged) { dragged = true; dk.desk.el.classList.add('dk-moving'); for (const x of moving) x.classList.add('dk-lift'); }
     if (!frame) frame = requestAnimationFrame(paint);
@@ -6334,7 +6366,21 @@ function dkGrab(e, b, open) {
       return;
     }
     dk.desk?.el.classList.remove('dk-moving');
+    ghost?.remove();
     for (const x of moving) x.classList.remove('dk-lift');
+    if (zone) {
+      // into the window: the icons back in their cells, the files sent
+      const { fm, where } = fmZones.get(zone);
+      const t = where();
+      zone.classList.remove('drop');
+      fmUnspring(fm);
+      for (const x of moving) dkPut(x, Number(x.dataset.c), Number(x.dataset.r));
+      const items = files.map((x) => dk.deskFiles.find((f) => filesJoin(f.at, f.name) === x.dataset.file))
+        .filter(Boolean).map((f) => ({ rel: filesJoin(f.at, f.name), dir: !!f.dir, name: f.name }))
+        .filter((it) => !(fmSame(HOME, t.loc) && filesParent(it.rel) === t.dir));
+      if (items.length) fmTransfer(fm, HOME, items, t.loc, t.dir, fmSame(HOME, t.loc) && !ev.ctrlKey && !ev.altKey);
+      return;
+    }
     dkDrop(moving, Math.round(dx / DK_GX), Math.round(dy / DK_GY));
   };
   b.addEventListener('pointermove', onMove);
@@ -7290,6 +7336,7 @@ dkMenuEl.hidden = true;
 dkMenuEl.setAttribute('role', 'menu');
 document.body.appendChild(dkMenuEl);
 function dkMenu(x, y, items, after) {
+  if (dkMenuEl.owner && dkMenuEl.hidden) dkMenuEl.owner = null;
   dkMenuEl.replaceChildren(...items.map((it) => {
     if (!it) return el('div', 'dk-menu-sep');
     const [label, act, ok, cls] = it;
@@ -7519,19 +7566,48 @@ async function fmUpload(fm, loc, dir, fileList) {
 
 // a folder, a place or blank space taking a drag: the computer's own files
 // uploaded, a window's moved inside one share or copied (ctrl) across them
+// a folder or place held under a drag this long: opened, the drag going on
+const FM_SPRING_MS = 700;
+function fmSpring(fm, node, t) {
+  if (fm.spring?.node === node) return;
+  clearTimeout(fm.spring?.timer);
+  fm.spring = null;
+  if (fmSame(t.loc, fm.loc) && t.dir === fm.dir) return;
+  fm.spring = { node, timer: setTimeout(() => { fm.spring = null; node.classList.remove('drop'); fmGo(fm, t.loc, t.dir); }, FM_SPRING_MS) };
+}
+function fmUnspring(fm, node) {
+  if (node && fm.spring?.node !== node) return;
+  clearTimeout(fm.spring?.timer);
+  fm.spring = null;
+}
+
+// every drop zone's window and target, for the desktop's own icon drags
+const fmZones = new WeakMap();
+function fmMark(fm, node) {
+  for (const root of [fm.main, fm.side]) root?.querySelectorAll('.drop').forEach((x) => x !== node && x.classList.remove('drop'));
+  node?.classList.add('drop');
+}
+
 function fmDropZone(fm, node, where) {
+  fmZones.set(node, { fm, where });
+  node.dataset.fmDrop = '';
   node.addEventListener('dragover', (e) => {
     const t = where();
     if (!t || (!dk.drag && !e.dataTransfer.types.includes('Files'))) return;
     e.preventDefault();
     e.stopPropagation();
     e.dataTransfer.dropEffect = dk.drag && fmSame(dk.drag.loc, t.loc) && !e.ctrlKey && !e.altKey ? 'move' : 'copy';
-    fm.main.querySelectorAll('.drop').forEach((x) => x !== node && x.classList.remove('drop'));
-    node.classList.add('drop');
+    fmMark(fm, node);
+    fmSpring(fm, node, t);
   });
-  node.addEventListener('dragleave', (e) => { if (!node.contains(e.relatedTarget)) node.classList.remove('drop'); });
+  node.addEventListener('dragleave', (e) => {
+    if (node.contains(e.relatedTarget)) return;
+    node.classList.remove('drop');
+    fmUnspring(fm, node);
+  });
   node.addEventListener('drop', (e) => {
     const t = where();
+    fmUnspring(fm);
     node.classList.remove('drop');
     if (!t) return;
     e.preventDefault();
@@ -7549,7 +7625,18 @@ function fmDropZone(fm, node, where) {
 function dkViewer(loc, rel) {
   const w = dkWin(`view:${loc.host}\n${loc.share}\n${rel}`, rel.split('/').pop(), loc.host, 'svc');
   if (!w) return;
-  const frame = Object.assign(el('iframe', 'dk-frame'), { src: filesApi(loc, 'download', { path: rel, inline: 1 }), title: rel });
+  const src = filesApi(loc, 'download', { path: rel, inline: 1 });
+  // a picture fit to the window, a click for its own size and back
+  if (fmKind({ name: rel }) === 'image') {
+    const box = el('div', 'dk-imgview');
+    const img = Object.assign(el('img'), { src, alt: rel, draggable: false });
+    box.addEventListener('click', () => box.classList.toggle('full'));
+    box.appendChild(img);
+    w.body.appendChild(box);
+    dkFocus(w);
+    return;
+  }
+  const frame = Object.assign(el('iframe', 'dk-frame'), { src, title: rel });
   w.body.appendChild(frame);
   w.onClose = () => { frame.src = 'about:blank'; };
   dkFocus(w);
@@ -8267,6 +8354,8 @@ function dkUsersWin() {
 
 // a locked host chip's own login, saved to the vault once the shell answers
 function dkUnlock(host, chip) {
+  // a second press on its chip closing it
+  if (chip.unlockClosed && Date.now() - chip.unlockClosed < 400) { chip.unlockClosed = 0; return; }
   const r = chip.getBoundingClientRect();
   const pop = el('form', 'acct-unlock');
   const user = noFill(Object.assign(el('input'), { placeholder: 'user', spellcheck: false, autocapitalize: 'off', value: dkUsers()[host] || '' }));
@@ -8277,7 +8366,11 @@ function dkUnlock(host, chip) {
   pop.style.left = `${Math.max(4, Math.min(r.left, innerWidth - 260))}px`;
   pop.style.bottom = `${innerHeight - r.top + 10}px`;
   const close = () => { pop.remove(); document.removeEventListener('pointerdown', away, true); };
-  const away = (e) => { if (!pop.contains(e.target)) close(); };
+  const away = (e) => {
+    if (pop.contains(e.target)) return;
+    if (chip.contains(e.target)) chip.unlockClosed = Date.now();
+    close();
+  };
   document.addEventListener('pointerdown', away, true);
   pop.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
   pop.addEventListener('submit', async (e) => {
@@ -8325,8 +8418,13 @@ function dkProfileTray() {
     b.title += ', admin';
   } else b.appendChild(dkGlyph(DK_GLYPHS.user));
   b.append(el('span', 'dk-profile-name', acct?.user || ''));
+  // a second press closing it, the press itself having hidden it already
+  let open = false;
+  b.addEventListener('pointerdown', () => { open = !dkMenuEl.hidden && dkMenuEl.owner === b; });
   b.addEventListener('click', () => {
+    if (open) { open = false; return; }
     const r = b.getBoundingClientRect();
+    dkMenuEl.owner = b;
     dkMenu(r.left, r.top - 140, [
       ['settings', dkProfileWin, true],
       ...(acct?.admin ? [['users', dkUsersWin, true]] : []),

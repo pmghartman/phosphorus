@@ -507,6 +507,11 @@ async function manifestIcons(route, href, from) {
     .map((i) => iconPath(route, i.src, path)).filter(Boolean);
 }
 
+// where apps keep one when the page names none, or sits behind a login
+// (silverbullet's .client/ open to all)
+const USUAL_ICONS = ['/favicon.ico', '/favicon.png', '/favicon.svg', '/apple-touch-icon.png', '/static/favicon.ico', '/static/favicon.png',
+  '/assets/favicon.ico', '/.client/favicon.png', '/.client/logo.png', '/logo.png', '/icon.png'];
+
 // rel=icon, then apple-touch-icon, the manifest's, then the usual paths
 async function lookIcon(route) {
   const page = await grab(route, '/', ICON_MAX * 4, { page: true });
@@ -517,10 +522,12 @@ async function lookIcon(route) {
   let manifest = '';
   for (const tag of html.match(/<link\b[^>]*>/gi) || []) {
     const rel = (tag.match(/\brel\s*=\s*["']?([^"'>]*)/i) || [])[1] || '';
-    const m = tag.match(/\bhref\s*=\s*["']([^"']+)["']/i) || tag.match(/\bhref\s*=\s*([^\s"'>]+)/i);
-    if (m && /\bmanifest\b/i.test(rel)) manifest ||= m[1].trim();
+    // closed by its own quote, a data: svg holding the other kind
+    const q = tag.match(/\bhref\s*=\s*(["'])([\s\S]*?)\1/i);
+    const href = q ? q[2] : (tag.match(/\bhref\s*=\s*([^\s"'>]+)/i) || [])[1];
+    if (href && /\bmanifest\b/i.test(rel)) manifest ||= href.trim();
     if (!/icon/i.test(rel) || /mask-icon/i.test(rel)) continue;
-    if (m) (/apple-touch/i.test(rel) ? touch : icons).push(m[1].trim());
+    if (href) (/apple-touch/i.test(rel) ? touch : icons).push(href.trim());
   }
   for (const h of [...icons, ...touch]) {
     const d = h.startsWith('data:') ? fromData(h) : null;
@@ -528,7 +535,7 @@ async function lookIcon(route) {
   }
   const paths = [...icons, ...touch].filter((h) => !h.startsWith('data:')).map((h) => iconPath(route, h, from)).filter(Boolean);
   if (manifest) paths.push(...await manifestIcons(route, manifest, from));
-  for (const path of new Set([...paths, '/favicon.ico', '/favicon.png', '/favicon.svg', '/apple-touch-icon.png', '/static/favicon.ico'])) {
+  for (const path of new Set([...paths, ...USUAL_ICONS])) {
     const r = asImage(await grab(route, path, ICON_MAX));
     if (r) return r;
   }
@@ -544,7 +551,11 @@ function favicon(host, name) {
   if (!route) return Promise.resolve(null);
   const icon = lookIcon(route).catch(() => null);
   icons.set(key, { icon, until: Date.now() + ICON_KEEP_MS });
-  icon.then((v) => { if (!v) icons.set(key, { icon, until: Date.now() + ICON_MISS_MS }); });
+  icon.then((v) => {
+    if (v) return;
+    icons.set(key, { icon, until: Date.now() + ICON_MISS_MS });
+    log(`no icon found for ${key} at ${route.scheme}://${route.ip}:${route.port}, its page and the usual paths tried`);
+  });
   return icon;
 }
 
