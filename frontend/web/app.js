@@ -7496,6 +7496,8 @@ function dkMeshTray() {
       pop.appendChild(meshPanel);
       fit.observe(pop);
       meshDims = null;
+      // measured while stashed, 0 tall: measured again now it shows
+      meshStatsDirty = true;
       drawMesh();
     } else {
       fit.disconnect();

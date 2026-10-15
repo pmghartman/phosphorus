@@ -291,6 +291,7 @@ body {
 .dk-login {
   position: relative; margin: auto; width: min(34rem, calc(100% - 2rem));
   border: 1px solid var(--border); padding: 0.9rem 0.6rem 0.6rem; animation: pop-in 0.12s ease-out;
+  background: var(--card); box-shadow: var(--drop);
 }
 .dk-note { margin: 0 0 0.5rem 0.2rem; color: var(--muted); font-size: 0.75rem; }
 .dk-rows { list-style: none; margin: 0 0 0.6rem; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; }
@@ -310,7 +311,6 @@ body {
 /* the user's own picture over the dots, the art hidden */
 .dk-walled .dk-desk { background: var(--dk-wall) center / cover no-repeat, var(--bg); }
 .dk-walled .dk-art { display: none; }
-.dk-walled .dk-label, .dk-walled .dk-icon .dk-sub { padding: 0 0.25rem; border-radius: 0.2rem; background: color-mix(in srgb, var(--bg) 72%, transparent); }
 .dk-art { position: absolute; inset: 0 0 3.3rem; display: flex; align-items: center; justify-content: center; opacity: 0.06; pointer-events: none; user-select: none; overflow: hidden; }
 .dk-art .about-art { overflow: visible; max-width: none; }
 .dk-icons { position: absolute; inset: 0 0 3.3rem 0; z-index: 1; touch-action: none; user-select: none; }
@@ -2061,3 +2061,45 @@ input, textarea { caret-color: var(--accent); }
 .dk-bar .update-wrap[hidden] { display: none; }
 .dk-bar .dk-profile .dk-crown { stroke: var(--sand); }
 .dk-bar .dk-profile .ic { overflow: visible; }
+
+/* a title on a card's top edge: its lower half the card's own fill over the
+   line, its upper half see through, never a box over what lies outside */
+:root { --edge: var(--bg); }
+.dk-win { --edge: var(--bg); }
+.tab-menu-title, .update-pane-header > *, .st-card-head, .st-head, .home-col-head, .about-info::before,
+.mesh-header > *, .chat-header > *, .modal-header > * {
+  background: linear-gradient(transparent calc(50% - 1px), var(--edge) calc(50% - 1px));
+}
+/* a popup floating over anything: its title inside its frame, nothing to cut through */
+.dk-mesh-pop .mesh-header, .update-pane-header, .tab-menu-title, .modal-header,
+.dk-login > .home-col-head, .acct-unlock > .home-col-head { transform: none; top: 0.4rem; }
+.dk-mesh-pop .mesh-header > *, .update-pane-header > *, .tab-menu-title, .modal-header > *,
+.dk-login > .home-col-head, .acct-unlock > .home-col-head { background: none; padding: 0; }
+.dk-mesh-pop .mesh-header { left: 0.6rem; right: 0.6rem; }
+.dk-mesh-pop > .mesh-panel { padding-top: 1.3rem; }
+.update-pane { padding-top: 1.5rem; }
+.tab-menu { padding-top: 1.5rem; }
+.modal-box { padding-top: 1.6rem; }
+.dk-login { padding-top: 1.6rem; }
+.acct-unlock { padding-top: 1.5rem; }
+.acct-unlock > .home-col-head { position: absolute; left: 0.6rem; }
+
+/* icons over a picture, as windows draws them: white labels on a soft shadow
+   whatever the theme, a frosted tile under each glyph, a light box on hover */
+.dk-walled .dk-icon { border-radius: 0.3rem; }
+.dk-walled .dk-tile {
+  border: 0; border-radius: 0.55rem; background: color-mix(in srgb, var(--bg) 80%, transparent);
+  backdrop-filter: blur(10px) saturate(1.3); box-shadow: 0 1px 3px rgb(0 0 0 / 0.35), inset 0 0 0 1px rgb(255 255 255 / 0.12);
+}
+.dk-walled .dk-tile-img { background: none; backdrop-filter: none; box-shadow: none; }
+.dk-walled .dk-tile-img .dk-favicon { filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.6)); }
+.dk-walled .dk-label, .dk-walled .dk-icon .dk-sub {
+  color: #fff; background: none; text-shadow: 0 0 1px rgb(0 0 0 / 0.95), 0 1px 2px rgb(0 0 0 / 0.9), 0 0 7px rgb(0 0 0 / 0.7), 0 0 12px rgb(0 0 0 / 0.4);
+}
+.dk-walled .dk-icon .dk-sub { color: rgb(255 255 255 / 0.8); }
+.dk-walled .dk-icon:hover, .dk-walled .dk-icon:focus-visible { background: rgb(255 255 255 / 0.14); border-color: rgb(255 255 255 / 0.2); }
+.dk-walled .dk-icon:hover .dk-tile, .dk-walled .dk-icon:focus-visible .dk-tile { background: color-mix(in srgb, var(--bg) 80%, transparent); }
+.dk-walled .dk-icon.sel { background: color-mix(in srgb, var(--accent) 34%, rgb(255 255 255 / 0.1)); border-color: color-mix(in srgb, var(--accent) 70%, #fff); }
+.dk-walled .dk-icon.sel .dk-tile { background: color-mix(in srgb, var(--bg) 80%, transparent); }
+.dk-walled .dk-icon.sel .dk-label { background: none; }
+.dk-walled .dk-band { border-color: rgb(255 255 255 / 0.7); background: rgb(255 255 255 / 0.15); }
