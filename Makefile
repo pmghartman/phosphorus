@@ -2,7 +2,7 @@
 BIN ?= phosphorus
 STATICCHECK = honnef.co/go/tools/cmd/staticcheck@v0.8.2
 
-.PHONY: all web build check test dualrun clean
+.PHONY: all web build check test dualrun mesh clean
 
 all: build
 
@@ -24,6 +24,10 @@ test: web
 # the JS and Go frontends side by side, every endpoint diffed
 dualrun: build
 	test/dualrun/run.sh $(BIN)
+
+# three hosts in network namespaces, JS and Go mixed, root only
+mesh: build
+	test/mesh/run.sh $(BIN)
 
 clean:
 	rm -rf $(BIN) web/.vendor

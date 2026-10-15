@@ -107,6 +107,26 @@ jobs:
           go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...
           go test -race ./...
 
+  # the JS and Go frontends answering alike, then a mixed mesh of both
+  interop:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: legacy modules
+        run: cd legacy/frontend && npm ci --omit=dev --ignore-scripts
+      - name: build
+        run: make build
+      - name: dual run
+        run: test/dualrun/run.sh ./phosphorus
+      - name: mesh
+        run: sudo env "PATH=$PATH" test/mesh/run.sh ./phosphorus
+
   # the release's tree: what every installer ships and syncs into the host's home
   payload:
     needs: [version]
@@ -311,7 +331,7 @@ jobs:
           if-no-files-found: ignore
 
   release:
-    needs: [version, check, manifests, deb, app]
+    needs: [version, check, interop, manifests, deb, app]
     # runs with unchecked targets skipped, not when anything failed
     if: ${{ !cancelled() && !failure() }}
     runs-on: ubuntu-24.04
