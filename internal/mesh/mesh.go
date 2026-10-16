@@ -39,7 +39,9 @@ var (
 )
 
 const (
-	pollTimeout    = 700 * time.Millisecond
+	pollTimeout = 700 * time.Millisecond
+	// a quiet peer (a phone, a host without phosphorus) tried this often, off the tick
+	quietRetryMS   = 3000
 	discoverIdleMS = 5000
 	discoverHotMS  = 1000
 	gitMaxAgeMS    = 3000
@@ -224,6 +226,8 @@ type peerState struct {
 	sys          string
 	projects     []any
 	answeredAt   int64
+	nextTry      int64
+	trying       bool
 }
 
 var peerStates = map[string]*peerState{}
@@ -283,9 +287,12 @@ func pollPeer(p peer) {
 	mu.Lock()
 	defer mu.Unlock()
 	if err != nil {
-		clock.MarkHot()
 		st.misses++
 		st.chat = nil
+		// hot only while a peer that answered goes quiet, until it's called gone
+		if st.answered && st.misses <= missThreshold {
+			clock.MarkHot()
+		}
 		if st.misses >= missThreshold {
 			retire(st)
 		}
@@ -593,7 +600,28 @@ func tick() {
 	wg.Add(1)
 	go func() { defer wg.Done(); own = services.Refresh(ip) }()
 	for _, p := range peers {
-		if p.online {
+		if !p.online {
+			continue
+		}
+		mu.Lock()
+		st := stateFor(p.host)
+		quiet := st.misses >= missThreshold
+		due := !quiet || (!st.trying && util.Now() >= st.nextTry)
+		if quiet && due {
+			st.trying, st.nextTry = true, util.Now()+quietRetryMS
+		}
+		mu.Unlock()
+		switch {
+		case !due:
+		case quiet:
+			// never waited on, so its timeout holds no tick
+			go func(p peer) {
+				pollPeer(p)
+				mu.Lock()
+				stateFor(p.host).trying = false
+				mu.Unlock()
+			}(p)
+		default:
 			wg.Add(1)
 			go func(p peer) { defer wg.Done(); pollPeer(p) }(p)
 		}
