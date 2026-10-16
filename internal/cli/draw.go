@@ -163,18 +163,6 @@ func gradient(s string, span int) string {
 	return b.String()
 }
 
-var logo = []string{
-	"     █                 █                      ",
-	"▐▛▀▜▖█▀▀▙▗▛▀▜▖▟▀▀▀▐▛▀▜▖█▀▀▙▗▛▀▜▖▐▙▛▀▘█  █▗▛▀▀▘",
-	"▐▌ ▐▌█  █▐▌ ▐▌▝▀▀▙▐▌ ▐▌█  █▐▌ ▐▌▐▌   █  █ ▀▀▜▖",
-	"▐▛▀▀ ▀  ▀ ▀▀▀ ▀▀▀▘▐▛▀▀ ▀  ▀ ▀▀▀ ▝▘   ▝▀▀▀▝▀▀▀ ",
-	"▝▘                ▝▘                          ",
-}
-
-func bigLogo(cols, rows int) bool {
-	return os.Getenv("TERM") != "linux" && cols >= len([]rune(logo[0]))+2 && rows >= 24
-}
-
 var ansiRe = regexp.MustCompile(`\x1b\[[0-9;?]*[A-Za-z]`)
 
 func vlen(s string) int { return len([]rune(ansiRe.ReplaceAllString(s, ""))) }
@@ -442,20 +430,8 @@ func panels(list ...*card) []string {
 			items = append(items, x)
 		}
 	}
-	w := 0
-	for _, it := range items {
-		if vlen(it.title)+2 > w {
-			w = vlen(it.title) + 2
-		}
-		for _, l := range it.lines {
-			if vlen(l.text) > w {
-				w = vlen(l.text)
-			}
-		}
-	}
-	if w > inner() {
-		w = inner()
-	}
+	// the width of the window, as the frontend's cards
+	w := inner()
 	out := []string{}
 	for i, it := range items {
 		if i > 0 {
@@ -468,64 +444,3 @@ func panels(list ...*card) []string {
 
 // key one of a view's buttons: label and kind
 type key struct{ label, kind string }
-
-func buttons(groups [][]key, width int) []string {
-	rows := [][3]string{}
-	var cur *[3]string
-	used := 0
-	start := func() {
-		rows = append(rows, [3]string{})
-		cur = &rows[len(rows)-1]
-		used = 0
-	}
-	start()
-	gi := 0
-	for _, g := range groups {
-		items := []key{}
-		for _, k := range g {
-			if k.label != "" {
-				items = append(items, k)
-			}
-		}
-		if len(items) == 0 {
-			continue
-		}
-		for i, k := range items {
-			text := map[string]func(string) string{"primary": c("accent"), "danger": c("offmesh"), "quiet": c("muted")}[k.kind]
-			if text == nil {
-				text = func(s string) string { return s }
-			}
-			frame := map[string]func(string) string{"primary": c("accent"), "danger": c("offmesh"), "quiet": c("border")}[k.kind]
-			if frame == nil {
-				frame = c("muted")
-			}
-			n := vlen(k.label) + 2
-			gap := " "
-			if used == 0 {
-				gap = ""
-			} else if gi > 0 && i == 0 {
-				gap = "  " + c("border")("│") + " "
-			}
-			if used > 0 && used+vlen(gap)+n+2 > width {
-				start()
-				gap = ""
-			}
-			label := k.label
-			if sp := strings.Index(label, " "); sp > 0 {
-				label = bold(label[:sp]) + label[sp:]
-			}
-			cur[0] += gap + frame("┌"+strings.Repeat("─", n)+"┐")
-			cur[1] += gap + frame("│") + text(" "+label+" ") + frame("│")
-			cur[2] += gap + frame("└"+strings.Repeat("─", n)+"┘")
-			used += vlen(gap) + n + 2
-		}
-		gi++
-	}
-	out := []string{}
-	for _, r := range rows {
-		for _, l := range r {
-			out = append(out, " "+l)
-		}
-	}
-	return out
-}

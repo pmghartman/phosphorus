@@ -16,6 +16,8 @@ type view struct {
 	lines  []string
 	keys   []key
 	scroll bool
+	// the window title, the tab's name when blank
+	title string
 }
 
 func k(label string, kind ...string) key {
@@ -45,30 +47,102 @@ func clampSel(i, n int) int {
 
 func selfHost() string { return str(get(ui.state, "self", "host")) }
 
-// title rows: the wordmark, version under its end, or one line
-func titleLines(cols, rows int) []string {
-	ver := ""
+// header .dk-head: the window's title bar, the glyph and title left, version right
+func header(cols int, title string) string {
+	if title == "" {
+		title = "keys"
+		if !ui.keysOnly {
+			title = tabs[ui.tab]
+		}
+	}
+	left := " " + gradient("Φ phosphorus", 0) + c("muted")(" · ") + c("sage")(title)
+	right := ""
 	if ui.state != nil {
-		ver = "v" + str(get(ui.state, "self", "version"))
+		right = c("muted")("v"+str(get(ui.state, "self", "version"))) + " "
 	}
-	if !bigLogo(cols, rows) {
-		t := "phosphorus"
-		if ver != "" {
-			t += " " + ver
+	return surface(pal["card"])(left + strings.Repeat(" ", max0(cols-vlen(left)-vlen(right))) + right)
+}
+
+// taskBar .dk-bar: the tabs as tasks, each host a chip, the clock
+func taskBar(cols int) string {
+	tasks := func(short bool) string {
+		parts := []string{}
+		for i, t := range tabs {
+			label := fmt.Sprintf(" %d %s ", i+1, t)
+			if short {
+				label = fmt.Sprintf(" %d ", i+1)
+			}
+			if i == ui.tab && !ui.update {
+				parts = append(parts, surface(pal["border"])(bold(fg(pal["accent"])+label[:2]+fg(pal["fg"])+label[2:])))
+			} else {
+				parts = append(parts, c("muted")(label))
+			}
 		}
-		return []string{" " + gradient(t, 0)}
+		u := " update "
+		if short {
+			u = " u "
+		}
+		if ui.update {
+			parts = append(parts, surface(pal["border"])(bold(u)))
+		} else if lock := obj(get(ui.state, "lock")); lock != nil {
+			parts = append(parts, c("accent")(u))
+		}
+		return strings.Join(parts, "")
 	}
-	last := len(logo) - 1
-	out := []string{}
-	for i, r := range logo {
-		rs := []rune(r)
-		if i == last && ver != "" {
-			out = append(out, " "+gradient(string(rs[:len(rs)-len([]rune(ver))]), len(rs))+c("muted")(ver))
-		} else {
-			out = append(out, " "+gradient(r, len(rs)))
+	clock := c("fg")(time.Now().Format("15:04")) + " "
+	chips := hostChips()
+	t := tasks(false)
+	right := chips + "  " + clock
+	if vlen(t)+vlen(right) > cols {
+		right = clock
+	}
+	if vlen(t)+vlen(right) > cols {
+		t = tasks(true)
+	}
+	fill := strings.Repeat(" ", max0(cols-vlen(t)-vlen(right)))
+	return surface(pal["tabbar"])(t + fill + right)
+}
+
+// .dk-chip: this host purple, the rest green, one not answering red
+func hostChips() string {
+	if ui.state == nil {
+		return ""
+	}
+	self := selfHost()
+	chips := []string{c("accent")("■") + " " + self}
+	for _, d := range objs(ui.state["tailnet"]) {
+		n := str(d["name"])
+		switch {
+		case n == self || n == "":
+		case truthy(d["phosphorus"]):
+			chips = append(chips, c("online")("■")+" "+c("muted")(n))
+		case truthy(d["phosphorusSeen"]):
+			chips = append(chips, c("offmesh")("■")+" "+c("offmesh")(n))
 		}
 	}
-	return out
+	return strings.Join(chips, "  ")
+}
+
+// hints one line: a view's keys left, the global ones right, the key letter
+// in its kind's colour, the rest muted
+func hints(keys, global []key, cols int) string {
+	one := func(ks []key) string {
+		parts := []string{}
+		for _, x := range ks {
+			if x.label == "" {
+				continue
+			}
+			tok := map[string]string{"primary": "accent", "danger": "offmesh", "quiet": "muted"}[x.kind]
+			if tok == "" {
+				tok = "fg"
+			}
+			key, rest, _ := strings.Cut(x.label, " ")
+			parts = append(parts, bold(c(tok)(key))+" "+c("muted")(rest))
+		}
+		return strings.Join(parts, "   ")
+	}
+	left, right := " "+one(keys), one(global)+" "
+	return left + strings.Repeat(" ", max0(cols-vlen(left)-vlen(right))) + right
 }
 
 // .is-self and .mesh-stat-dot: the square before a host's name
@@ -886,20 +960,20 @@ func updateView() view {
 		}
 		prog = &card{"progress", plainRows(ls...)}
 	}
-	keys := []key{k("shift+u update", "primary")}
+	keys := []key{k("enter update", "primary")}
 	if chain != nil {
 		keys = nil
 		if mine {
 			keys = []key{kif(truthy(chain["paused"]), "c continue", "primary"), k("x cancel", "danger")}
 		}
 	}
-	return view{lines: panels(prog, &card{title, table([]string{"host", "version", ""}, rows, -1, 0)}), keys: keys}
+	return view{lines: panels(prog, &card{title, table([]string{"host", "version", ""}, rows, -1, 0)}), keys: keys, title: "mesh update"}
 }
 
 func offlineView() []string {
 	return panels(&card{"offline", plainRows(
 		c("offmesh")(fmt.Sprintf("the frontend is not answering on :%d", util.FrontendPort)), "",
-		c("muted")("phosphorus is down or restarting, start it with"), "", "  "+c("accent")("phosphorus start"), "",
+		c("muted")("phosphorus is down or restarting, start it with"), "", "  "+c("accent")("phos start"), "",
 		c("muted")("this screen clears on its own once it answers"),
 	)})
 }
@@ -1054,32 +1128,8 @@ func formView(f *form) view {
 	if len(notes) > 0 {
 		notesCard = &card{"notes", plainRows(notes...)}
 	}
-	return view{lines: panels(strip, &card{f.title, plainRows(fields...)}, notesCard),
+	return view{title: f.title, lines: panels(strip, &card{f.title, plainRows(fields...)}, notesCard),
 		keys: []key{k("enter save", "primary"), k("esc cancel"), k("↑↓ field", "quiet"), kif(strip != nil, "←→ service", "quiet")}}
-}
-
-// .tab-btn: muted on the tab bar, the active one whole on the row highlight,
-// short of room, the rest by number alone
-func tabBar(cols int) string {
-	draw := func(short bool) string {
-		parts := []string{}
-		for i, t := range tabs {
-			switch {
-			case i == ui.tab:
-				parts = append(parts, surface(pal["border"])(bold(fmt.Sprintf(" %s%d%s %s ", fg(pal["accent"]), i+1, fg(pal["fg"]), t))))
-			case short:
-				parts = append(parts, surface(pal["tabbar"], pal["muted"])(fmt.Sprintf(" %d ", i+1)))
-			default:
-				parts = append(parts, surface(pal["tabbar"], pal["muted"])(fmt.Sprintf(" %d %s ", i+1, t)))
-			}
-		}
-		return strings.Join(parts, surface(pal["tabbar"], pal["border"])("│"))
-	}
-	t := draw(false)
-	if vlen(t) > cols {
-		t = draw(true)
-	}
-	return t + surface(pal["tabbar"])(strings.Repeat(" ", max0(cols-vlen(t))))
 }
 
 func currentView() view {
@@ -1095,5 +1145,8 @@ func currentView() view {
 	if ui.form != nil {
 		return formView(ui.form)
 	}
-	return []func() view{servicesView, filesView, gitView, statsView, modelView, projectsView, updateView}[ui.tab]()
+	if ui.update {
+		return updateView()
+	}
+	return []func() view{statsView, servicesView, filesView, gitView, modelView, projectsView}[ui.tab]()
 }

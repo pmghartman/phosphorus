@@ -358,6 +358,8 @@ fn tray(app: &AppHandle) -> tauri::Result<()> {
             &item("update", "Check for Updates")?,
             &PredefinedMenuItem::separator(app)?,
             &item("keys", "Edit Keys…")?,
+            &PredefinedMenuItem::separator(app)?,
+            &item("quit", "Quit (containers keep running)")?,
         ],
     )?;
     let b = TrayIconBuilder::with_id("phosphorus").tooltip("Phosphorus").menu(&menu);
@@ -375,6 +377,7 @@ fn tray(app: &AppHandle) -> tauri::Result<()> {
             tauri::async_runtime::spawn(async move { handle_update(a, id, true).await });
         }
         "keys" => open_keys(app),
+        "quit" => app.exit(0),
         _ => {}
     })
     .build(app)?;

@@ -80,7 +80,7 @@ stop = systemctl --user stop tmodloader
 ## Use
 
 - `phosphorus` (or `phos`): the cli; `start`, `stop`, `restart`, `update`, `update all`, `keys`
-- Tray (macOS, Windows): Start, Stop, Check for Updates, Edit Keys
+- Tray (macOS, Windows): Start, Stop, Check for Updates, Edit Keys, Quit
 - Mesh update: update icon in the bar (admins) or `phos update all`. Every peer updates at once through its own installer, then the host that started it
 - Projects API: `/api/projects`, see `internal/project`
 
@@ -99,7 +99,7 @@ flowchart TB
   subgraph host["Host machine"]
     subgraph installers["Installer"]
       dpkg["apt + postinst"]
-      tray["Tray app: Start, Stop, Check for Updates, Edit Keys"]
+      tray["Tray app: Start, Stop, Check for Updates, Edit Keys, Quit"]
     end
     bin["phosphorus binary<br/>install, start, stop, keys, rebuild, upgrade"]
     agent["update agent<br/>systemd path unit or tray app"]

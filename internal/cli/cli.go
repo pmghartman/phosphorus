@@ -34,16 +34,16 @@ var (
 	client       = &http.Client{Timeout: 2 * time.Second}
 )
 
-var tabs = []string{"services", "files", "git", "stats", "model", "projects", "update"}
+// the frontend's apps, the mesh update a popup as its tray's
+var tabs = []string{"status", "services", "files", "git", "model", "projects"}
 
 const (
-	servicesTab = iota
+	statsTab = iota
+	servicesTab
 	filesTab
 	gitTab
-	statsTab
 	modelTab
 	projectsTab
-	updateTab
 )
 
 const (
@@ -197,10 +197,12 @@ type prompt struct {
 }
 
 var ui = struct {
-	tab, lastTab int
-	state        J
-	offline      bool
-	filesInfo    J
+	tab int
+	// the mesh update popup over the tab
+	update    bool
+	state     J
+	offline   bool
+	filesInfo J
 	// each list tab's selected row, the model tab's set to this host once
 	sel         []int
 	modelPicked bool
@@ -332,17 +334,16 @@ func size() (int, int) {
 
 func render() {
 	cols, rows := size()
-	title := titleLines(cols, rows)
 	var global []key
-	if ui.form == nil {
-		u := "u update tab"
-		if ui.tab == updateTab {
+	if ui.form == nil && !ui.keysOnly {
+		u := "u update"
+		if ui.update {
 			u = "u close"
 		}
-		global = []key{k(fmt.Sprintf("1-%d tabs", len(tabs)), "quiet"), k(u, "quiet"), k("k keys", "quiet"), k("q quit", "quiet")}
+		global = []key{k(u, "quiet"), k("k keys", "quiet"), k("q quit", "quiet")}
 	}
-	status := []string{""}
-	var btnRow []string
+	status := ""
+	var hint []key
 	switch {
 	case ui.prompt != nil:
 		p := ui.prompt
@@ -350,28 +351,35 @@ func render() {
 		if p.err != "" {
 			label = c("offmesh")(p.err)
 		}
-		status = []string{" " + label + " " + surface(pal["card"])(" "+strings.Repeat("*", len([]rune(p.value)))+caret()+bg(pal["card"])+" ")}
-		btnRow = buttons([][]key{{k("enter send", "primary"), k("esc cancel")}}, cols-1)
+		status = " " + label + " " + surface(pal["card"])(" "+strings.Repeat("•", len([]rune(p.value)))+caret()+bg(pal["card"])+" ")
+		hint = []key{k("enter send", "primary"), k("esc cancel")}
 	case ui.confirm != nil:
-		status = wrap(" "+ui.confirm.text, cols, 1)
+		status = " " + ui.confirm.text
 		kind := "primary"
 		if ui.confirm.danger {
 			kind = "danger"
 		}
-		btnRow = buttons([][]key{{k("y yes", kind), k("n no")}}, cols-1)
+		hint = []key{k("y yes", kind), k("n no")}
 	case ui.flash != "" && time.Since(ui.flashAt) < 8*time.Second:
-		status = wrap(" "+ui.flash, cols, 1)
+		status = " " + ui.flash
 	}
 	// a view drawn again if the footer's rows moved its room
 	v := currentView()
 	footer := func() []string {
-		if btnRow != nil {
-			return append(append([]string{}, status...), btnRow...)
+		f := wrap(status, cols, 1)
+		if hint != nil {
+			f = append(f, hints(hint, nil, cols))
+		} else {
+			f = append(f, hints(v.keys, global, cols))
 		}
-		return append(append([]string{}, status...), buttons([][]key{v.keys, global}, cols-1)...)
+		if !ui.keysOnly {
+			f = append(f, taskBar(cols))
+		}
+		return f
 	}
 	foot := footer()
-	room := rows - 2 - len(title) - len(foot)
+	head := []string{header(cols, v.title), ""}
+	room := rows - len(head) - len(foot) - 1
 	if room < 1 {
 		room = 1
 	}
@@ -390,10 +398,6 @@ func render() {
 	}
 	if len(body) > room {
 		body = body[:room]
-	}
-	head := append(title, tabBar(cols), "")
-	if ui.keysOnly {
-		head = append(title, "")
 	}
 	lines := append(head, body...)
 	for len(lines) < rows-len(foot) {
@@ -723,8 +727,6 @@ func listKey(s string, e keyEv) {
 		modelKey(s, e)
 	case projectsTab:
 		projectsKey(s, e)
-	case updateTab:
-		updateKey(s)
 	}
 }
 
@@ -871,17 +873,14 @@ func onKey(e keyEv) {
 		return
 	case s == "k":
 		openForm(keysForm(false))
-	case s == "U":
-		switchTab(updateTab)
+	case s == "u" || (ui.update && e.name == "escape"):
+		ui.update = !ui.update
+	case ui.update && (e.name == "return" || s == "U"):
 		if ch, _ := liveChain(ui.state); ui.state != nil && ch == nil {
 			askStart()
 		}
-	case s == "u":
-		if ui.tab == updateTab {
-			switchTab(ui.lastTab)
-		} else {
-			switchTab(updateTab)
-		}
+	case ui.update:
+		updateKey(s)
 	case len(s) == 1 && s >= "1" && s <= "9" && int(s[0]-'0') <= len(tabs):
 		switchTab(int(s[0] - '1'))
 	case e.name == "tab" || e.name == "right" || e.name == "left":
@@ -903,9 +902,7 @@ func openForm(f *form) {
 }
 
 func switchTab(i int) {
-	if i != ui.tab && ui.tab != updateTab {
-		ui.lastTab = ui.tab
-	}
+	ui.update = false
 	ui.tab = i
 	ui.scroll = 0
 	if i == filesTab || i == projectsTab {
@@ -926,12 +923,14 @@ func quit(code int) {
 func Main(args []string) int {
 	for i, a := range args {
 		if a == "--tab" && i+1 < len(args) {
-			ui.tab = max0(indexOf(tabs, strings.ToLower(args[i+1])))
+			t := strings.ToLower(args[i+1])
+			ui.tab = max0(indexOf(tabs, t))
+			ui.update = t == "update"
 		}
 	}
 	updateAll := len(args) > 0 && args[0] == "update-all"
 	if updateAll {
-		ui.tab = updateTab
+		ui.update = true
 	}
 	var later func()
 	if updateAll {
@@ -1020,6 +1019,7 @@ func run(later, first func()) int {
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 	cols, rows := size()
+	minute := time.Now().Minute()
 	for {
 		select {
 		case code := <-quitCh:
@@ -1043,6 +1043,10 @@ func run(later, first func()) int {
 		case <-tick.C:
 			// the flash line cleared once stale, a resize caught where no signal tells
 			c, r := size()
+			if m := time.Now().Minute(); m != minute {
+				minute = m
+				render()
+			}
 			if (c != cols || r != rows) || ui.flash != "" && time.Since(ui.flashAt) >= 8*time.Second && time.Since(ui.flashAt) < 10*time.Second {
 				cols, rows = c, r
 				render()
