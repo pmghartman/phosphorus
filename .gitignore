@@ -4,8 +4,9 @@
 # runtime state, regenerated per host, not shipped
 /state/
 
-# forgejo + litefs data root, see container/git/ and config/phosphorus.ini
-/git/data/
+# forgejo data root and the bundled tailscaled's identity, see container/git/
+/git/
+/tailscale/
 
 .DS_Store
 *.bak

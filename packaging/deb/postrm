@@ -1,18 +1,25 @@
 #!/bin/sh
-# remove: the cli links; purge: containers, volumes and /var/lib/phosphorus (git data, chat, shares)
+# remove: the cli links; purge: /var/lib/phosphorus (git data, chat, shares, the
+# tailnet identity), the git account, and any containers earlier releases left
 set -e
 case "$1" in
 remove | purge)
-    for l in phosphorus phos; do
-        if [ "$(readlink /usr/local/bin/$l 2>/dev/null)" = /var/lib/phosphorus/bin/phosphorus ]; then rm -f /usr/local/bin/$l; fi
+    for l in phosphorus phos tailscale; do
+        case "$(readlink /usr/local/bin/$l 2>/dev/null)" in
+        /var/lib/phosphorus/bin/phosphorus | /usr/libexec/phosphorus/tailscale) rm -f /usr/local/bin/$l ;;
+        esac
     done
     rm -f /etc/ssh/ssh_config.d/phosphorus.conf
     [ -d /run/systemd/system ] && systemctl daemon-reload || true
     ;;
 esac
 if [ "$1" = purge ]; then
-    docker rm -f phosphorus-git phosphorus phosphorus-model phosphorus-search phosphorus-updater >/dev/null 2>&1 || true
-    docker volume rm phosphorus_tailscale-state phosphorus-git-data phosphorus-git-db phosphorus-models >/dev/null 2>&1 || true
+    if command -v docker >/dev/null 2>&1; then
+        docker rm -f phosphorus-git phosphorus phosphorus-model phosphorus-search phosphorus-updater >/dev/null 2>&1 || true
+        docker volume rm phosphorus_tailscale-state phosphorus-git-data phosphorus-git-db phosphorus-models >/dev/null 2>&1 || true
+    fi
+    userdel phosphorus-git >/dev/null 2>&1 || true
+    groupdel phosphorus-git >/dev/null 2>&1 || true
     rm -rf /var/lib/phosphorus
 fi
 exit 0

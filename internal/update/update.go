@@ -293,7 +293,7 @@ func callPeerUpdate(host string, note func(map[string]string)) result {
 		}
 		quietUntil = util.Now() + peerQuietMS
 		if swapDeadline != 0 && util.Now() > swapDeadline {
-			return result{error: "swap never landed, see docker logs phosphorus-updater on that host"}
+			return result{error: "swap never landed, see that host's update log (journalctl -u phosphorus, or docker logs phosphorus-updater)"}
 		}
 		if status["state"] == "failed" {
 			e := util.Str(status["error"])

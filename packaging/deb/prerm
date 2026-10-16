@@ -1,10 +1,10 @@
 #!/bin/sh
-# the agent and the containers stopped before the files go
+# the agent and the service stopped before the files go, git handing off first
 set -e
 [ "$1" = remove ] || exit 0
-[ -d /run/systemd/system ] && systemctl disable --now phosphorus-update.path >/dev/null 2>&1 || true
-for c in phosphorus-git phosphorus phosphorus-model; do
-    docker update --restart=no "$c" >/dev/null 2>&1 || true
-    docker stop -t 30 "$c" >/dev/null 2>&1 || true
-done
+if [ -d /run/systemd/system ]; then
+    systemctl disable --now phosphorus-update.path >/dev/null 2>&1 || true
+    systemctl disable --now phosphorus.service >/dev/null 2>&1 || true
+    systemctl disable --now phosphorus-tailscaled.service >/dev/null 2>&1 || true
+fi
 exit 0

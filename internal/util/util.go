@@ -51,7 +51,11 @@ var (
 	FrontendPort = EnvInt("FRONTEND_PORT", 8090)
 	StateDir     = Env("STATE_DIR", "/state")
 	SelfHost     = os.Getenv("SELF_HOST")
-	iniFile      = &ini.File{Path: Env("PHOSPHORUS_INI_FILE", "/etc/phosphorus/phosphorus.ini")}
+	// Native run by phosphorus run under systemd, every path a real one
+	Native = os.Getenv("PHOSPHORUS_NATIVE") == "1"
+	// RepoDir the install, mounted at /repo in the image
+	RepoDir = Env("PHOSPHORUS_REPO_DIR", "/repo")
+	iniFile = &ini.File{Path: Env("PHOSPHORUS_INI_FILE", "/etc/phosphorus/phosphorus.ini")}
 )
 
 // Now in ms, Date.now()

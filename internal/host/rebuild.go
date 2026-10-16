@@ -45,6 +45,9 @@ func absTo(base, p string) string {
 // them, compose itself always run from the image; the one step that can kill
 // its caller, so the swap is handed to a sibling container
 func rebuild() error {
+	if native() {
+		return nativeRebuild()
+	}
 	tag = "rebuild"
 	if err := os.Chdir(home); err != nil {
 		return err

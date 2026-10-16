@@ -32,7 +32,7 @@ var (
 var Commands = map[string]bool{
 	"": true, "start": true, "stop": true, "restart": true, "update": true, "keys": true, "install": true,
 	"setup": true, "rebuild": true, "upgrade": true, "game-control": true, "game-control-setup": true,
-	"mesh-keys": true, "help": true, "-h": true, "--help": true,
+	"mesh-keys": true, "run": true, "ps": true, "help": true, "-h": true, "--help": true,
 }
 
 func usage(w io.Writer) {
@@ -43,6 +43,7 @@ func usage(w io.Writer) {
        phos update      update host
        phos update all  update mesh
        phos keys        replace keys in .env
+       phos ps          phosphorus's processes, by role
 `)
 }
 
@@ -115,6 +116,10 @@ func Main(cmd string, args []string) int {
 		err = gameControlSetup()
 	case "mesh-keys":
 		err = meshKeys()
+	case "run":
+		err = runHost()
+	case "ps":
+		err = psHost(os.Stdout)
 	default:
 		usage(os.Stdout)
 		return 0
@@ -295,6 +300,17 @@ func dockerLines(args ...string) error {
 
 func isRunning(name string) bool {
 	return dockerOut("inspect", "-f", "{{.State.Running}}", name) == "true"
+}
+
+// inDpkg inside a package's maintainer script, dpkg's lock held
+func inDpkg() bool { return os.Getenv("DPKG_MAINTSCRIPT_PACKAGE") != "" }
+
+// up phosphorus itself running, the service natively, the container otherwise
+func up() bool {
+	if native() {
+		return nativeUp()
+	}
+	return isRunning("phosphorus")
 }
 
 func containerExists(name string) bool {

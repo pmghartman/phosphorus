@@ -40,7 +40,10 @@ var (
 	mountRoots = []string{"/state", "/files", "/repo"}
 	shares     = "/shares"
 	hostRoot   = func() string {
-		if os.Getenv("PHOSPHORUS_HOST_ROOT") != "" {
+		switch {
+		case util.Native:
+			return "/"
+		case os.Getenv("PHOSPHORUS_HOST_ROOT") != "":
 			return "/hostfs"
 		}
 		return ""
@@ -199,7 +202,7 @@ func diskMounts() []mount {
 			bound = bound || dir == r
 		}
 		bound = bound || strings.HasPrefix(dir, shares+"/")
-		host := hostRoot != "" && (dir == hostRoot || strings.HasPrefix(dir, hostRoot+"/")) && realFS.MatchString(v[sep+1])
+		host := hostRoot != "" && (dir == hostRoot || strings.HasPrefix(dir, strings.TrimSuffix(hostRoot, "/")+"/")) && realFS.MatchString(v[sep+1])
 		if bound || host {
 			out = append(out, mount{dir, v[2]})
 		}
@@ -335,6 +338,16 @@ func netDayTotals() map[string]any {
 
 // --- containers ----------------------------------------------------------------
 
+// roleOf the PHOSPHORUS_ROLE phosphorus run gave a process, its children inheriting it
+func roleOf(pid string) string {
+	for _, kv := range strings.Split(read("/proc/"+pid+"/environ"), "\x00") {
+		if strings.HasPrefix(kv, "PHOSPHORUS_ROLE=") {
+			return kv[len("PHOSPHORUS_ROLE="):]
+		}
+	}
+	return ""
+}
+
 var unitMul = map[string]float64{"b": 1, "kb": 1e3, "mb": 1e6, "gb": 1e9, "tb": 1e12, "kib": 1024, "mib": 1 << 20, "gib": 1 << 30, "tib": 1 << 40}
 var bytesRe = regexp.MustCompile(`(?i)^([\d.]+)\s*([a-z]*)$`)
 
@@ -358,6 +371,10 @@ var (
 )
 
 func refreshDocker() {
+	// natively phosphorus's own roles instead, from refreshProcs
+	if util.Native {
+		return
+	}
 	dmu.Lock()
 	if dockerBusy || util.Now()-dockerAt < dockerMS {
 		dmu.Unlock()
@@ -543,6 +560,7 @@ func refreshProcs(now int64) {
 	procAt = now
 	cur := map[string]float64{}
 	list := []map[string]any{}
+	roles := map[string]map[string]any{}
 	for _, pid := range readdir("/proc") {
 		if _, err := strconv.Atoi(pid); err != nil {
 			continue
@@ -567,9 +585,33 @@ func refreshProcs(now int64) {
 			cpu = math.Round(1000*(ticks-was)/clkTck/secs) / 10
 		}
 		n, _ := strconv.Atoi(pid)
-		list = append(list, map[string]any{"pid": n, "name": st[strings.Index(st, "(")+1 : cl], "cpu": cpu, "mem": rss})
+		row := map[string]any{"pid": n, "name": st[strings.Index(st, "(")+1 : cl], "cpu": cpu, "mem": rss}
+		if util.Native {
+			if role := roleOf(pid); role != "" {
+				row["role"] = role
+				r := roles[role]
+				if r == nil {
+					r = map[string]any{"name": role, "cpu": 0.0, "mem": 0.0, "pids": 0.0}
+					roles[role] = r
+				}
+				r["cpu"] = math.Round(10*(r["cpu"].(float64)+cpu)) / 10
+				r["mem"] = r["mem"].(float64) + rss
+				r["pids"] = r["pids"].(float64) + 1
+			}
+		}
+		list = append(list, row)
 	}
 	procPrev = cur
+	if util.Native {
+		rl := []map[string]any{}
+		for _, r := range roles {
+			rl = append(rl, r)
+		}
+		sort.SliceStable(rl, func(i, j int) bool { return rl[i]["name"].(string) < rl[j]["name"].(string) })
+		dmu.Lock()
+		containers = rl
+		dmu.Unlock()
+	}
 	sort.SliceStable(list, func(i, j int) bool {
 		a, b := list[i], list[j]
 		if a["cpu"].(float64) != b["cpu"].(float64) {
@@ -692,7 +734,7 @@ func sample() map[string]any {
 		"cpu": map[string]any{"total": cpus[0], "cores": cpus[1:], "model": cpuModel(), "load": ld},
 		"mem": memInfo(), "net": nets, "netDay": netDayTotals(),
 		"io":   map[string]any{"r": rate(cur.r, last.r, true), "w": rate(cur.w, last.w, true)},
-		"disk": disk(), "gpus": gpus(), "uptime": uptime, "containers": ctr, "procs": procs,
+		"disk": disk(), "gpus": gpus(), "uptime": uptime, "containers": ctr, "procs": procs, "native": util.Native,
 	} {
 		out[k] = v
 	}

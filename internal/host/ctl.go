@@ -102,6 +102,9 @@ func stop() error {
 	if ok, err := detached("stop"); ok || err != nil {
 		return err
 	}
+	if native() {
+		return nativeStop()
+	}
 	for _, c := range []string{"phosphorus-git", "phosphorus", "phosphorus-model"} {
 		if !isRunning(c) {
 			continue
@@ -119,6 +122,9 @@ func stop() error {
 func restart() error {
 	if ok, err := detached("restart"); ok || err != nil {
 		return err
+	}
+	if native() {
+		return nativeRestart()
 	}
 	gitUp := isRunning("phosphorus-git")
 	if gitUp {

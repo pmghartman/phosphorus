@@ -1,5 +1,6 @@
-# manual release: ghcr images, then per checked OS a client-only and a host installer
-# (.deb, .dmg, setup .exe) as vVERSION, feeds on release `update`
+# manual release: ghcr images (macOS and Windows hosts only, Linux hosts run natively),
+# then per checked OS a client-only and a host installer (.deb, .dmg, setup .exe) as
+# vVERSION, feeds on release `update`
 # app and apt feeds need TAURI_SIGNING_PRIVATE_KEY(_PASSWORD), APT_GPG_KEY, var TAURI_UPDATER_PUBKEY
 name: release
 
@@ -66,9 +67,9 @@ jobs:
           on() { for v in "$@"; do [ "$v" = true ] && return 0; done; return 1; }
           on "$AMD64" "$ARM64" "$MAC" "$WIN" || { echo "check at least one OS" >&2; exit 1; }
           builds=() arches=()
-          # image arches every checked OS's hosts pull: macs on either, windows amd64
-          on "$AMD64" "$MAC" "$WIN" && arches+=('{"arch":"amd64","runner":"ubuntu-24.04"}')
-          on "$ARM64" "$MAC" && arches+=('{"arch":"arm64","runner":"ubuntu-24.04-arm"}')
+          # image arches the docker hosts pull: macs on either, windows amd64
+          on "$MAC" "$WIN" && arches+=('{"arch":"amd64","runner":"ubuntu-24.04"}')
+          on "$MAC" && arches+=('{"arch":"arm64","runner":"ubuntu-24.04-arm"}')
           [ "$AMD64" = true ] && builds+=('{"name":"linux-amd64","runner":"ubuntu-24.04","arch":"amd64","args":"--bundles deb"}')
           [ "$ARM64" = true ] && builds+=('{"name":"linux-arm64","runner":"ubuntu-24.04-arm","arch":"arm64","args":"--bundles deb"}')
           [ "$MAC" = true ] && builds+=('{"name":"macos-universal","runner":"macos-14","arch":"universal","args":"--target universal-apple-darwin --bundles app,dmg"}')
@@ -95,6 +96,7 @@ jobs:
   # digest, joined into one tag per image by `manifests`
   images:
     needs: [version]
+    if: needs.version.outputs.arches != '[]'
     strategy:
       fail-fast: false
       matrix:
@@ -133,6 +135,7 @@ jobs:
 
   manifests:
     needs: [version, images]
+    if: needs.version.outputs.arches != '[]'
     runs-on: ubuntu-24.04
     env:
       VER: ${{ needs.version.outputs.ver }}
@@ -212,7 +215,8 @@ jobs:
           case "${{ matrix.name }}" in
             linux-*)
               b linux ${{ matrix.arch }} art/phosphorus
-              packaging/deb/build.sh "out/phosphorus_${VER}_${{ matrix.arch }}.deb" "$VER" $APP/payload ${{ matrix.arch }} art/phosphorus ;;
+              packaging/deb/tools.sh ${{ matrix.arch }} art/tools
+              packaging/deb/build.sh "out/phosphorus_${VER}_${{ matrix.arch }}.deb" "$VER" $APP/payload ${{ matrix.arch }} art/phosphorus art/tools ;;
             macos-universal)
               b darwin arm64 art/h-arm64 && b darwin amd64 art/h-amd64
               lipo -create -output $APP/binaries/phosphorus-host-universal-apple-darwin art/h-arm64 art/h-amd64 ;;

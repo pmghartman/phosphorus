@@ -18,11 +18,13 @@ import (
 // start bring-up, safe to re-run: checks, the one-time admin setup, the
 // rebuild, then the frontend waited on when nothing ran before
 func start() error {
-	if _, err := exec.LookPath("docker"); err != nil {
-		return fail("docker not found, %s", dockerHint())
-	}
-	if err := ensureEngine(); err != nil {
-		return err
+	if !native() {
+		if _, err := exec.LookPath("docker"); err != nil {
+			return fail("docker not found, %s", dockerHint())
+		}
+		if err := ensureEngine(); err != nil {
+			return err
+		}
 	}
 	if keysMissing() {
 		return fail("no TS_AUTHKEY in %s, run phosphorus to enter the keys", envPath())
@@ -31,13 +33,16 @@ func start() error {
 		return fail("config/services.export not found in %s", home)
 	}
 	envfile.Lock(envPath())
-	up := isRunning("phosphorus")
-	if up {
-		say("phosphorus is already running, skipping the native Tailscale check")
-	} else if why := nativeTailscale(); why != "" {
-		return fail("%s", why)
+	running := up()
+	// natively the machine's own tailscaled adopted, else the bundled one
+	if !native() {
+		if running {
+			say("phosphorus is already running, skipping the native Tailscale check")
+		} else if why := nativeTailscale(); why != "" {
+			return fail("%s", why)
+		}
 	}
-	if err := prepareOS(up); err != nil {
+	if err := prepareOS(running); err != nil {
 		return err
 	}
 	if b := machineRAM(); b > 0 {
@@ -55,7 +60,17 @@ func start() error {
 	if err := rebuild(); err != nil {
 		return fail("build failed, nothing changed: %v", err)
 	}
-	if up {
+	if native() {
+		if inDpkg() && !nativeUp() {
+			return nil
+		}
+		if !waitFrontend(2 * time.Minute) {
+			return fail("the frontend never came up, check: journalctl -u phosphorus")
+		}
+		say("the frontend is up")
+		return nil
+	}
+	if running {
 		say("swapping in phosphorus-updater, docker logs -f phosphorus-updater to follow")
 		return nil
 	}
@@ -158,7 +173,7 @@ func ensureEngine() error {
 
 // tui the cli in the container, the keys asked for first on a new host
 func tui(args []string) error {
-	if !isRunning("phosphorus") {
+	if !up() {
 		if !keysMissing() {
 			return fail("phosphorus isn't running, run: phos start")
 		}
@@ -174,6 +189,9 @@ func tui(args []string) error {
 			return err
 		}
 		tag = "phosphorus"
+	}
+	if native() {
+		return nativeAttach(args)
 	}
 	return attach(args)
 }
@@ -213,7 +231,7 @@ func keys(opts []string) error {
 		return nil
 	}
 	envfile.Lock(envPath())
-	if !isRunning("phosphorus") {
+	if !up() {
 		say("saved, phos start to bring phosphorus up")
 		return nil
 	}

@@ -1,0 +1,20 @@
+[Unit]
+Description=Tailscale for phosphorus
+Documentation=https://tailscale.com/kb/
+Wants=network-pre.target
+After=network-pre.target NetworkManager.service systemd-resolved.service
+# the machine's own tailscaled, when it has one, is used instead
+Conflicts=tailscaled.service
+
+[Service]
+ExecStart=/usr/libexec/phosphorus/tailscaled --state=/var/lib/phosphorus/tailscale/tailscaled.state --socket=/run/tailscale/tailscaled.sock --port=41641
+ExecStopPost=/usr/libexec/phosphorus/tailscaled --cleanup
+Restart=on-failure
+RuntimeDirectory=tailscale
+RuntimeDirectoryMode=0755
+CacheDirectory=tailscale
+CacheDirectoryMode=0700
+Type=notify
+
+[Install]
+WantedBy=multi-user.target

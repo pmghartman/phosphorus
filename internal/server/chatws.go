@@ -66,9 +66,11 @@ type credPrompt struct {
 	end func(any)
 }
 
-func groupSystem() string { return strings.ReplaceAll(groupSystemT, "\x01SELF\x01", hostOr()) }
+func groupSystem() string {
+	return strings.ReplaceAll(strings.ReplaceAll(groupSystemT, "\x01SELF\x01", hostOr()), "\x01REPO\x01", util.RepoDir)
+}
 func directSystem(who string) string {
-	return strings.ReplaceAll(strings.ReplaceAll(directSystemT, "\x01SELF\x01", hostOr()), "\x01WHO\x01", who)
+	return strings.NewReplacer("\x01SELF\x01", hostOr(), "\x01WHO\x01", who, "\x01REPO\x01", util.RepoDir).Replace(directSystemT)
 }
 func hostOr() string {
 	if selfHost != "" {

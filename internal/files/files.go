@@ -96,6 +96,9 @@ var (
 )
 
 func loadMounts() {
+	if util.Native {
+		return
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	out, err := exec.CommandContext(ctx, "docker", "inspect", "phosphorus", "--format", "{{range .Mounts}}{{.Destination}}\t{{.Source}}\n{{end}}").Output()
@@ -130,8 +133,11 @@ func HostSpelling(src string) string {
 	return trailRe.ReplaceAllString(p, "$1")
 }
 
-// HostPathOf a container path as it lives on the host
+// HostPathOf a container path as it lives on the host, natively itself
 func HostPathOf(p string) string {
+	if util.Native {
+		return p
+	}
 	mountsMu.RLock()
 	defer mountsMu.RUnlock()
 	for at := p; at != "" && at != "/"; at = path.Dir(at) {
@@ -180,7 +186,11 @@ func buildShares() []Share {
 		if i < len(perms) {
 			p = cleanPerms(perms[i])
 		}
-		out = append(out, makeShare(strconv.Itoa(i), d, p, filepath.Join(ShareRoot, strconv.Itoa(i))))
+		root := filepath.Join(ShareRoot, strconv.Itoa(i))
+		if util.Native {
+			root = d
+		}
+		out = append(out, makeShare(strconv.Itoa(i), d, p, root))
 	}
 	return out
 }
@@ -1015,7 +1025,7 @@ func Remove(sh *Share, rel string) (int, any) {
 
 // Pending what phosphorus.ini asks for against what is mounted
 func Pending() bool {
-	home := HostPathOf("/repo")
+	home := HostPathOf(util.RepoDir)
 	if home == "" {
 		return false
 	}

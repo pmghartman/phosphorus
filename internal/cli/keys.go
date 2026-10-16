@@ -61,7 +61,7 @@ func saveKeys(f *form) string {
 // applyKeys the containers recreated on the new .env, by the image's own
 // rebuild, its own session so quitting the cli never cuts it short
 func applyKeys() {
-	c := exec.Command("/usr/local/bin/phosphorus", "rebuild", "--home", "/repo")
+	c := exec.Command(util.Env("REBUILD_CMD", "/usr/local/bin/phosphorus"), "rebuild", "--home", util.RepoDir)
 	detach(c)
 	if c.Start() == nil {
 		go c.Wait()

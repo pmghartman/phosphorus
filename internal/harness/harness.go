@@ -384,7 +384,7 @@ func start(sig string, s Setup) error {
 			var st tools.OpencodeState
 			got := util.ReadJSON(tools.OpencodeStateFile(), &st) && st.Gen == gen
 			if got && st.Err != "" {
-				fail(errors.New("opencode " + st.Err + ", docker logs phosphorus-model says why"))
+				fail(errors.New("opencode " + st.Err + ", the model's log says why (journalctl -u phosphorus, or docker logs phosphorus-model)"))
 				return
 			}
 			if !got && time.Since(t0) > pickupWait {

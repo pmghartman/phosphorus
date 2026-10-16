@@ -431,7 +431,7 @@ func serve(c config) {
 		"--host", "127.0.0.1", "--port", strconv.Itoa(serverPort))
 	dir := tools.LlamaDir(c.gpu)
 	cmd := exec.Command(filepath.Join(dir, "llama-server"), args...)
-	cmd.Env = append(os.Environ(), "LD_LIBRARY_PATH="+dir)
+	cmd.Env = append(os.Environ(), "LD_LIBRARY_PATH="+dir, "PHOSPHORUS_ROLE=llama-server")
 	cmd.Stdout = os.Stdout
 	stderr, _ := cmd.StderrPipe()
 	oom := false

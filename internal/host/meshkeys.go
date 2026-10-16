@@ -15,6 +15,18 @@ import (
 // meshKeys a joining host's missing keys from the first peer that has them,
 // into the home's .env and printed as exports for supervisor.sh
 func meshKeys() error {
+	vals, err := meshKeyValues()
+	if err != nil {
+		return err
+	}
+	for k, v := range vals {
+		fmt.Printf("export %s='%s'\n", k, strings.ReplaceAll(v, "'", `'\''`))
+	}
+	return nil
+}
+
+// meshKeyValues the missing keys from a peer, saved into .env, none missing none asked
+func meshKeyValues() (map[string]string, error) {
 	want := []string{}
 	for _, k := range envfile.Keys {
 		if k.Mesh && os.Getenv(k.Name) == "" {
@@ -22,7 +34,7 @@ func meshKeys() error {
 		}
 	}
 	if len(want) == 0 {
-		return nil
+		return nil, nil
 	}
 	var status struct {
 		Peer map[string]struct {
@@ -31,7 +43,7 @@ func meshKeys() error {
 		}
 	}
 	if err := json.Unmarshal([]byte(output("tailscale", "--socket=/var/run/tailscale/tailscaled.sock", "status", "--json")), &status); err != nil {
-		return fail("can't list tailnet peers: %v", err)
+		return nil, fail("can't list tailnet peers: %v", err)
 	}
 	c := &http.Client{Timeout: 3 * time.Second}
 	for _, p := range status.Peer {
@@ -61,14 +73,11 @@ func meshKeys() error {
 			if err := envfile.Set(envPath(), vals); err != nil {
 				fmt.Fprintf(os.Stderr, "can't save the keys into %s: %v\n", envPath(), err)
 			}
-			for k, v := range vals {
-				fmt.Printf("export %s='%s'\n", k, strings.ReplaceAll(v, "'", `'\''`))
-			}
 			fmt.Fprintf(os.Stderr, "copied %s from %s\n", strings.Join(keysOf(vals), ", "), ip)
-			return nil
+			return vals, nil
 		}
 	}
-	return fail("no peer on the tailnet has the keys")
+	return nil, fail("no peer on the tailnet has the keys")
 }
 
 func keysOf(m map[string]string) []string {

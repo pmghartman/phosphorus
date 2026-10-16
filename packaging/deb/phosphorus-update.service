@@ -1,6 +1,6 @@
 [Unit]
 Description=Phosphorus update
-After=network-online.target docker.service
+After=network-online.target
 Wants=network-online.target
 
 [Service]

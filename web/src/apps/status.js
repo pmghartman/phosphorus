@@ -783,8 +783,9 @@ function drawGpu(p, h) {
 
 function drawCtr(p, h) {
   const list = h.s.containers;
-  const vm = h.s.platform && h.s.platform !== 'linux' ? ' · docker vm' : '';
-  p.ctrHead.innerHTML = `containers <span class="st-dim">${list ? list.length : ''}${vm}</span>`;
+  // natively phosphorus's own processes by role, else its containers
+  const vm = !h.s.native && h.s.platform && h.s.platform !== 'linux' ? ' · docker vm' : '';
+  p.ctrHead.innerHTML = `${h.s.native ? 'phosphorus' : 'containers'} <span class="st-dim">${list ? list.length : ''}${vm}</span>`;
   if (!list) { p.ctr.innerHTML = '<div class="st-dim">no docker access</div>'; return; }
   p.ctr.innerHTML = '<div class="st-ctr-row st-dim"><span>name</span><span>cpu</span><span>mem</span><span>pids</span></div>'
     + list.map((c) => `<div class="st-ctr-row"><span class="st-ctr-name">${esc(c.name)}</span>`
@@ -794,12 +795,12 @@ function drawCtr(p, h) {
 
 function drawProc(p, h) {
   const pr = h.s.procs;
-  const vm = h.s.platform && h.s.platform !== 'linux' ? ' · docker vm' : '';
+  const vm = !h.s.native && h.s.platform && h.s.platform !== 'linux' ? ' · docker vm' : '';
   p.procHead.innerHTML = `processes <span class="st-dim">${pr ? pr.count : ''}${vm}</span>`;
   if (!pr) { p.proc.innerHTML = '<div class="st-dim">no process list</div>'; return; }
   p.proc.innerHTML = '<div class="st-proc-row st-dim"><span>name</span><span>pid</span><span>cpu</span><span>mem</span></div>'
     + pr.top.map((x) => `<div class="st-proc-row"${x.cmd ? ` title="${esc(x.cmd)}"` : ''}>`
-      + `<span class="st-ctr-name">${esc(x.name)}</span><span class="st-dim">${x.pid}</span>`
+      + `<span class="st-ctr-name">${esc(x.name)}${x.role ? ` <span class="st-dim">${esc(x.role)}</span>` : ''}</span><span class="st-dim">${x.pid}</span>`
       + `<span class="${heat(x.cpu / 100)}">${x.cpu.toFixed(1)}%</span><span>${humanSize(x.mem)}</span></div>`).join('');
 }
 

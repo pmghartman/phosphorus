@@ -47,7 +47,7 @@ func ocStop() {
 func ocStart(r tools.OpencodeRun) {
 	cmd := exec.Command(tools.OpencodeBin(), r.Args...)
 	cmd.Dir = r.Dir
-	cmd.Env = append(os.Environ(), r.Env...)
+	cmd.Env = append(append(os.Environ(), r.Env...), "PHOSPHORUS_ROLE=opencode")
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	if err := cmd.Start(); err != nil {
 		notes.Log("opencode didn't start: " + err.Error())

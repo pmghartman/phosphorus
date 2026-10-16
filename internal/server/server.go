@@ -107,6 +107,9 @@ func dockerOut(args ...string) string {
 }
 
 func detectPlatform() string {
+	if util.Native {
+		return "linux"
+	}
 	src := dockerOut("inspect", "phosphorus", "--format", `{{range .Mounts}}{{if eq .Destination "/repo"}}{{.Source}}{{end}}{{end}}`)
 	if regexp.MustCompile(`^[A-Za-z]:`).MatchString(src) || regexp.MustCompile(`^/run/desktop/mnt/host/[a-z]/`).MatchString(src) {
 		return "windows"
