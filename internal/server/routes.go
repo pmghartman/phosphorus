@@ -489,6 +489,9 @@ func appHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		onJSON(w, r, maxJSONBody, true, func(p map[string]any) (int, any) {
+			if !project.Enabled {
+				return project.Soon()
+			}
 			host := selfHost
 			if h, ok := p["host"]; ok && util.Truthy(h) {
 				host = util.JSString(h)

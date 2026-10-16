@@ -61,7 +61,7 @@ dir = files               # which share holds home/ (users, shared/, sys/)
 host = true               # run a git server replica here
 
 [model]
-host = true               # run the AI model and projects here
+host = true               # run the AI model here (projects coming soon)
 gpu = true
 url = https://huggingface.co/.../model.gguf
 ```
@@ -84,7 +84,7 @@ stop = systemctl --user stop tmodloader
 - `phosphorus` (or `phos`): the cli; `start`, `stop`, `restart`, `update`, `update all`, `keys`
 - Host app (macOS, Windows): opening it opens the frontend; tray: Start, Stop, Check for Updates, Edit Keys, Quit
 - Mesh update: update icon in the bar (admins) or `phos update all`. Every peer updates at once through its own installer, then the host that started it
-- Projects API: `/api/projects`, see `internal/project`
+- Projects: coming soon, shelved while their sandboxes move off Docker; `/api/projects` still lists past ones
 
 ## How it fits together
 

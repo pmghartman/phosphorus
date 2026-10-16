@@ -27,6 +27,8 @@ const pjWork = (p) => `shared/projects/${p.workspace || p.id}`;
 const PJ_FILES_MS = 3000;
 const PJ_PHASES = ['plan', 'execute', 'test', 'refine'];
 const PJ_ENDED = { done: 'done', blocked: 'blocked', expired: 'out of time', stopped: 'stopped', failed: 'failed' };
+// sandboxes shelved: past projects readable, none started
+const PJ_SOON = true;
 let pjAll = [];
 let pjSelf = '';
 // host/id, or 'new'
@@ -149,7 +151,7 @@ function pjPaintList() {
   pjListSig = sig;
   const head = el('div', 'cw-head');
   head.append(el('span', 'who-model', 'orangutan'));
-  const add = Object.assign(el('button', 'cw-add', '+'), { type: 'button', title: 'new project (n)' });
+  const add = Object.assign(el('button', 'cw-add', '+'), { type: 'button', title: PJ_SOON ? 'new projects coming soon' : 'new project (n)' });
   add.addEventListener('click', () => pjGo('new'));
   head.append(add);
   const rows = [head];
@@ -271,7 +273,7 @@ function pjActsState(acts, p) {
   acts.querySelector('.pj-stop').hidden = !live;
   acts.querySelector('.pj-del').hidden = live;
   acts.querySelector('.pj-more').hidden = !live;
-  acts.querySelector('.pj-again').hidden = live;
+  acts.querySelector('.pj-again').hidden = live || PJ_SOON;
   acts.querySelector('.pj-stop').textContent = pjArmed === 'stop' ? 'really stop?' : 'stop';
   acts.querySelector('.pj-del').textContent = pjArmed === 'delete' ? 'delete it and its workspace?' : 'delete';
 }
@@ -330,6 +332,13 @@ function pjLoadFiles() {
 function pjPaintNew() {
   if (pjBody.querySelector('.pj-new')) return;
   pjHead.textContent = 'new project';
+  if (PJ_SOON) {
+    const soon = el('div', 'pj-new');
+    soon.innerHTML = '<p class="pj-intro"><b>Coming soon.</b> The <span class="who-model">orangutan</span>\'s projects are paused while their sandboxes '
+      + 'are rebuilt to run without Docker. Past projects stay listed and their files stay in shared/projects.</p>';
+    pjBody.replaceChildren(soon);
+    return;
+  }
   const form = el('form', 'pj-new');
   // one project a host: a busy one listed, not pickable
   const busy = new Set(pjAll.filter((p) => p.status === 'running').map((p) => p.host));

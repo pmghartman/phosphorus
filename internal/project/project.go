@@ -1040,6 +1040,9 @@ func Extend(id string, b map[string]any) (int, any) {
 
 // Restart a stopped one, its workspace kept
 func Restart(id string, b map[string]any) (int, any) {
+	if !Enabled {
+		return Soon()
+	}
 	mu.Lock()
 	p := projects[id]
 	if p == nil {
@@ -1079,8 +1082,19 @@ func randID() string {
 	return hex.EncodeToString(b)
 }
 
+// Enabled false while sandboxes are shelved, records kept and readable
+const Enabled = false
+
+// Soon the answer to a start or restart while shelved
+func Soon() (int, any) {
+	return 503, map[string]any{"error": "projects are coming soon, their sandboxes are being rebuilt without docker", "comingSoon": true}
+}
+
 // Check a new project's body, 0 when it will do
 func Check(b map[string]any) (int, any) {
+	if !Enabled {
+		return Soon()
+	}
 	if strings.TrimSpace(clip(b["title"], 120)) == "" || strings.TrimSpace(clip(b["brief"], briefMax)) == "" || b["title"] == nil || b["brief"] == nil {
 		return 400, map[string]any{"error": "a project needs a title and a brief"}
 	}
@@ -1303,6 +1317,14 @@ func Init() {
 		projects[id] = p
 	}
 	resume := runningLocked()
+	// shelved: cut-off ones ended, never resumed into a sandbox
+	if !Enabled {
+		for _, p := range resume {
+			endLocked(p, "stopped", "stopped: projects are coming soon, restart it once they are back")
+			save(p)
+		}
+		resume = nil
+	}
 	mu.Unlock()
 	for _, p := range resume {
 		p := p
