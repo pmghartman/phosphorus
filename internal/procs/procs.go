@@ -1,6 +1,5 @@
-// Package procs: every process with its phosphorus role, on any OS; a role
-// from PHOSPHORUS_ROLE where the OS shows another process's env, else the
-// nearest ancestor phosphorus run recorded in state/roles.json
+// Package procs: every process with its phosphorus role on any OS, from
+// PHOSPHORUS_ROLE where readable, else the nearest ancestor in state/roles.json
 package procs
 
 import (
