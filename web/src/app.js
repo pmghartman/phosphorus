@@ -4,7 +4,7 @@ import { parserFor, parserNow, highlight, syntaxErrors } from './lezer.js';
 // the page's vendor files, hashed by the build
 const ASSETS = __ASSETS__;
 
-// each app's own code, fetched the first time it opens, its own chunk
+// each app's own code in its own chunk, all fetched once the desktop is up
 const APPS = {
   projects: () => import('./apps/projects.js'),
   status: () => import('./apps/status.js'),
@@ -23,6 +23,10 @@ function app(name) {
 function appCall(name, on, call) {
   if (on || appMods.has(name)) app(name).then(call, (e) => console.error(`${name} failed to load`, e));
 }
+// past first paint, so opening one never waits on the network
+addEventListener('load', () => (self.requestIdleCallback || setTimeout)(() => {
+  for (const n of Object.keys(APPS)) app(n).catch(() => {});
+}));
 
 // --- helpers ----------------------------------------------------------------
 
@@ -4644,10 +4648,50 @@ function dkMax(w) {
 function dkClose(w, force) {
   if (!force && w.holdClose?.()) return;
   w.onClose?.();
+  if (w.back) dkNavDrop(w);
   if (force) w.node.remove(); else dkLeave(w, () => w.node.remove());
   w.task.remove();
   dk.wins.delete(w.key);
   dkAppsChanged();
+}
+
+// --- a website window's back: history.back() undoes the newest frame load
+// anywhere, so only the window holding it gets one
+
+let dkNavs = [];
+const dkNavWins = new Set();
+const DK_NAV_UNDO_MS = 3000;
+function dkNavSync() { for (const w of dkNavWins) w.back.disabled = !w.frame || dkNavs.at(-1) !== w.frame; }
+function dkNavDrop(w) {
+  dkNavs = dkNavs.filter((f) => f.isConnected && f !== w.frame);
+  dkNavWins.delete(w);
+  dkNavSync();
+}
+function dkNav(w, frame) {
+  if (!w.back) {
+    w.back = Object.assign(el('button', 'dk-back'), { type: 'button', title: 'back', ariaLabel: 'back' });
+    w.back.appendChild(dkGlyph(DK_UI.back));
+    w.back.addEventListener('click', () => {
+      if (dkNavs.at(-1) !== w.frame) return;
+      dkNavs.pop();
+      w.frame.dkUndo = performance.now();
+      history.back();
+      dkNavSync();
+    });
+    w.head.prepend(w.back);
+    dkNavWins.add(w);
+  }
+  if (w.frame && w.frame !== frame) dkNavs = dkNavs.filter((f) => f !== w.frame);
+  w.frame = frame;
+  let first = true;
+  // the first load the page itself, one just after a back that back's
+  frame.addEventListener('load', () => {
+    if (first) { first = false; return; }
+    if (performance.now() - (frame.dkUndo || -Infinity) < DK_NAV_UNDO_MS) { frame.dkUndo = 0; return; }
+    dkNavs.push(frame);
+    dkNavSync();
+  });
+  dkNavSync();
 }
 
 // --- the apps
@@ -5122,7 +5166,8 @@ async function dkRun(loc, rel) {
     w.head.querySelector('.dk-btns').prepend(pop);
   }
   w.body.appendChild(frame);
-  w.onClose = () => { frame.src = 'about:blank'; };
+  if (got.kind !== 'wasm') dkNav(w, frame);
+  w.onClose = () => { frame.contentWindow?.location.replace('about:blank'); };
   dkFocus(w);
 }
 
@@ -5304,13 +5349,14 @@ function dkService(r) {
   w.head.querySelector('.dk-btns').prepend(pop);
   const frame = Object.assign(el('iframe', 'dk-frame'), { src: url, title: r.name, allow: 'clipboard-read; clipboard-write; fullscreen' });
   w.body.appendChild(frame);
+  dkNav(w, frame);
   // lit on the mesh graph as an open tab of it would be
   const conn = { win: { closed: false }, host: r.host, name: r.name };
   activeConnections.set(serviceKey(r), conn);
   startPulseLoop();
   drawMesh();
   w.onFocus = () => frame.contentWindow?.focus();
-  w.onClose = () => { conn.win.closed = true; frame.src = 'about:blank'; };
+  w.onClose = () => { conn.win.closed = true; frame.contentWindow?.location.replace('about:blank'); };
   dkFocus(w);
 }
 
@@ -5453,6 +5499,7 @@ function dkGitFrame() {
   }
   const frame = Object.assign(el('iframe', 'dk-frame'), { src: url, title: 'git', allow: 'clipboard-read; clipboard-write; fullscreen' });
   w.body.replaceChildren(frame);
+  dkNav(w, frame);
   // lit on the mesh graph as the service's window is
   w.git.conn = { win: { closed: false }, host: gitRoute.host, name: gitRoute.name };
   activeConnections.set(serviceKey(gitRoute), w.git.conn);

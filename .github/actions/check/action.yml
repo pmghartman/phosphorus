@@ -1,0 +1,21 @@
+# lint, tests and the three host mesh, shared by check and release
+name: check
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@v6
+      with:
+        go-version-file: go.mod
+    - uses: actions/cache@v4
+      with:
+        path: web/.vendor/cache
+        key: web-vendor-${{ hashFiles('web/vendor.lock') }}
+    - name: shell
+      shell: bash
+      run: for f in scripts/*.sh scripts/lib/*.sh scripts/phosphorus packaging/deb/build.sh packaging/deb/post* packaging/deb/prerm container/*/*.sh test/mesh/*.sh; do bash -n "$f"; done
+    - name: go
+      shell: bash
+      run: make check test build
+    - name: mesh
+      shell: bash
+      run: sudo env "PATH=$PATH" test/mesh/run.sh ./phosphorus

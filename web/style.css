@@ -393,7 +393,14 @@ body {
   padding: 0 0.15rem 0 0.55rem; background: var(--card); border-bottom: 1px solid var(--border);
   font-size: 0.75rem; cursor: default; user-select: none; touch-action: none;
 }
-.dk-title { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dk-title { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: auto; }
+.dk-back {
+  flex: none; display: flex; align-items: center; justify-content: center; width: 1.35rem; height: 1.35rem;
+  margin-left: -0.45rem; margin-right: -0.3rem; padding: 0; background: none; border: none; color: var(--muted); cursor: pointer;
+}
+.dk-back .ic { width: 0.75rem; height: 0.75rem; }
+.dk-back:hover:not(:disabled) { background: var(--tab-hover); color: var(--fg); }
+.dk-back:disabled { opacity: 0.35; cursor: default; }
 .dk-win.focused .dk-title { color: var(--sage); }
 .dk-win.dirty .dk-title .tab-label { color: var(--warn); }
 .dk-btns { display: flex; flex: none; }

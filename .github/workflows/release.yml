@@ -77,7 +77,10 @@ jobs:
           { echo "apps=$(j "${apps[@]}")"; echo "arches=$(j "${arches[@]}")"; echo "debs=$(j "${debs[@]}")"; } | tee -a "$GITHUB_OUTPUT"
 
   check:
-    uses: ./.github/workflows/check.yml
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/check
 
   # the release's tree: what every installer ships and syncs into the host's home
   payload:

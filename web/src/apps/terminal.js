@@ -7,7 +7,7 @@ import {
 
 // --- terminals --------------------------------------------------------------
 
-// xterm only on the first terminal, most visits never opening one
+// xterm with this chunk's prefetch, its own chunks
 let xtermLoaded = null;
 let Terminal = null;
 let FitAddon = null;
@@ -23,6 +23,7 @@ function loadXterm() {
     .catch((e) => { xtermLoaded = null; throw e; });
   return xtermLoaded;
 }
+loadXterm().catch(() => {});
 
 // server's close codes: session gone for good, or taken by another tab
 const TERM_ENDED = 4000;
