@@ -431,5 +431,18 @@ func psHost(w io.Writer) error {
 	for _, r := range roots {
 		walk(r, 0)
 	}
+	// totals, the model's own runtimes apart: their weights and caches dwarf the rest
+	var all, model uint64
+	for _, p := range ps {
+		all += p.RSS
+		if p.Role == "llama-server" || p.Role == "opencode" {
+			model += p.RSS
+		}
+	}
+	fmt.Fprintf(w, "\n%-16s %7s %7dM\n", "phosphorus", "", (all-model)>>20)
+	if model > 0 {
+		fmt.Fprintf(w, "%-16s %7s %7dM\n", "llama, opencode", "", model>>20)
+		fmt.Fprintf(w, "%-16s %7s %7dM\n", "total", "", all>>20)
+	}
 	return nil
 }
