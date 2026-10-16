@@ -17,7 +17,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"sort"
@@ -37,10 +36,10 @@ var pluginSrc []byte
 
 var (
 	port    = util.EnvInt("OPENCODE_PORT", 8792)
-	home    = util.Env("OPENCODE_HOME", "/var/lib/opencode")
+	home    = tools.OpencodeHome()
 	workdir = util.Env("OPENCODE_DIR", "/files")
-	secret  = func() string { b := make([]byte, 24); rand.Read(b); return hex.EncodeToString(b) }()
-	auth    = "Basic " + base64.StdEncoding.EncodeToString([]byte(user+":"+secret))
+	// each run's own, an older run answering nothing
+	auth atomic.Value
 )
 
 const (
@@ -51,6 +50,8 @@ const (
 	toolMS     = 61 * 60 * 1000
 	// opencode's few hundred MB handed back after this long unasked
 	idleFor = 10 * time.Minute
+	// phosphorus-model picking a run up, its tick far shorter
+	pickupWait = 5 * time.Second
 	// Handle phosphorus's name, its tools' prefix
 	Handle = "phosphorus"
 	// Mesh the provider id of the mesh's own models
@@ -208,8 +209,9 @@ func config(s Setup) map[string]any {
 
 // --- the server ---------------------------------------------------------------
 
+// one run asked of phosphorus-model
 type srvT struct {
-	proc  *exec.Cmd
+	gen   string
 	sig   string
 	ready chan struct{}
 	err   error
@@ -227,7 +229,7 @@ type Ask struct {
 
 var (
 	mu       sync.Mutex
-	srv      srvT
+	srv      *srvT
 	asks     = map[string]*Ask{}
 	children = map[string]string{}
 	client   = &http.Client{Transport: &http.Transport{Proxy: nil}}
@@ -235,21 +237,27 @@ var (
 )
 
 // opencode stopped once idle, the next ask starting it again
-func reap(cmd *exec.Cmd) {
+func reap(cur *srvT) {
 	for range time.Tick(time.Minute) {
 		mu.Lock()
-		if srv.proc != cmd {
+		if srv != cur {
 			mu.Unlock()
 			return
 		}
 		if len(asks) == 0 && time.Since(time.UnixMilli(lastUse.Load())) > idleFor {
 			log.Printf("[harness] opencode idle for %s, stopping", idleFor)
-			cmd.Process.Kill()
+			stopLocked()
 			mu.Unlock()
 			return
 		}
 		mu.Unlock()
 	}
+}
+
+// the run file emptied, phosphorus-model stopping it
+func stopLocked() {
+	srv = nil
+	util.WriteJSONAtomic(tools.OpencodeRunFile(), tools.OpencodeRun{})
 }
 
 func errorText(e any) string {
@@ -291,7 +299,8 @@ func call(method, p string, body any, timeout time.Duration, dir string) (any, e
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	req, _ := http.NewRequestWithContext(ctx, method, fmt.Sprintf("http://127.0.0.1:%d%s", port, at), rd)
-	req.Header.Set("Authorization", auth)
+	a, _ := auth.Load().(string)
+	req.Header.Set("Authorization", a)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -317,87 +326,85 @@ func call(method, p string, body any, timeout time.Duration, dir string) (any, e
 	return parsed, nil
 }
 
+// handed to phosphorus-model, which runs it next to llama-server
 func start(sig string, s Setup) error {
-	bin := tools.OpencodeBin()
 	if !tools.OpencodeReady() {
 		return fmt.Errorf("opencode isn't on this host yet, it is fetched on the model host only")
 	}
+	os.MkdirAll(home, 0o700)
+	os.Chmod(home, 0o700)
 	for _, d := range []string{"config", "data", "cache", "state"} {
 		os.MkdirAll(filepath.Join(home, d), 0o755)
 	}
 	os.WriteFile(pluginPath(), pluginSrc, 0o644)
-	cmd := exec.Command(bin, "serve", "--hostname", "127.0.0.1", "--port", strconv.Itoa(port))
-	cmd.Dir = home
+	dir := home
 	if st, err := os.Stat(workdir); err == nil && st.IsDir() {
-		cmd.Dir = workdir
+		dir = workdir
 	}
-	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
-	cmd.Env = append(os.Environ(), "HOME="+home,
-		"XDG_CONFIG_HOME="+filepath.Join(home, "config"), "XDG_DATA_HOME="+filepath.Join(home, "data"),
-		"XDG_CACHE_HOME="+filepath.Join(home, "cache"), "XDG_STATE_HOME="+filepath.Join(home, "state"),
-		"OPENCODE_CONFIG_CONTENT="+string(util.Marshal(config(s))),
-		"OPENCODE_SERVER_USERNAME="+user, "OPENCODE_SERVER_PASSWORD="+secret,
-		fmt.Sprintf("PHOSPHORUS_MCP_URL=http://127.0.0.1:%d/api/mcp", util.FrontendPort),
-		"OPENCODE_DISABLE_AUTOUPDATE=1", "OPENCODE_DISABLE_LSP_DOWNLOAD=true", "OPENCODE_DISABLE_PROJECT_CONFIG=1")
-	if err := cmd.Start(); err != nil {
+	b := make([]byte, 24)
+	rand.Read(b)
+	secret := hex.EncodeToString(b)
+	auth.Store("Basic " + base64.StdEncoding.EncodeToString([]byte(user+":"+secret)))
+	gen := strconv.FormatInt(time.Now().UnixNano(), 36)
+	run := tools.OpencodeRun{Gen: gen, Dir: dir,
+		Args: []string{"serve", "--hostname", "127.0.0.1", "--port", strconv.Itoa(port)},
+		Env: []string{"HOME=" + home,
+			"XDG_CONFIG_HOME=" + filepath.Join(home, "config"), "XDG_DATA_HOME=" + filepath.Join(home, "data"),
+			"XDG_CACHE_HOME=" + filepath.Join(home, "cache"), "XDG_STATE_HOME=" + filepath.Join(home, "state"),
+			"OPENCODE_CONFIG_CONTENT=" + string(util.Marshal(config(s))),
+			"OPENCODE_SERVER_USERNAME=" + user, "OPENCODE_SERVER_PASSWORD=" + secret,
+			fmt.Sprintf("PHOSPHORUS_MCP_URL=http://127.0.0.1:%d/api/mcp", util.FrontendPort),
+			"OPENCODE_DISABLE_AUTOUPDATE=1", "OPENCODE_DISABLE_LSP_DOWNLOAD=true", "OPENCODE_DISABLE_PROJECT_CONFIG=1"}}
+	if err := util.WriteJSONAtomic(tools.OpencodeRunFile(), run); err != nil {
 		return err
 	}
-	ready := make(chan struct{})
-	srv = srvT{proc: cmd, sig: sig, ready: ready}
+	cur := &srvT{gen: gen, sig: sig, ready: make(chan struct{})}
+	srv = cur
 	lastUse.Store(time.Now().UnixMilli())
-	go reap(cmd)
+	go reap(cur)
 	go func() {
-		err := cmd.Wait()
-		mu.Lock()
-		defer mu.Unlock()
-		if srv.proc != cmd {
-			return
-		}
-		why := "exit 0"
-		if err != nil {
-			why = err.Error()
-		}
-		if srv.err == nil && !closed(srv.ready) {
-			srv.err = errors.New("opencode exited while starting, docker logs phosphorus says why")
-			close(srv.ready)
-		}
-		srv = srvT{}
-		log.Printf("[harness] opencode stopped (%s)", why)
-	}()
-	go func() {
-		until := time.Now().Add(readyMS * time.Millisecond)
-		for time.Now().Before(until) {
+		fail := func(e error) {
 			mu.Lock()
-			alive := srv.proc == cmd
+			defer mu.Unlock()
+			cur.err = e
+			close(cur.ready)
+			if srv == cur {
+				stopLocked()
+			}
+		}
+		t0 := time.Now()
+		for time.Since(t0) < readyMS*time.Millisecond {
+			mu.Lock()
+			alive := srv == cur
 			mu.Unlock()
 			if !alive {
+				fail(errors.New("opencode was stopped while starting"))
 				return
 			}
-			if _, err := call("GET", "/global/health", nil, 2*time.Second, ""); err == nil {
-				mu.Lock()
-				if srv.proc == cmd && !closed(ready) {
-					close(ready)
-				}
-				mu.Unlock()
+			var st tools.OpencodeState
+			got := util.ReadJSON(tools.OpencodeStateFile(), &st) && st.Gen == gen
+			if got && st.Err != "" {
+				fail(errors.New("opencode " + st.Err + ", docker logs phosphorus-model says why"))
 				return
+			}
+			if !got && time.Since(t0) > pickupWait {
+				fail(errors.New("phosphorus-model isn't running opencode, is it up on this host?"))
+				return
+			}
+			if got {
+				if _, err := call("GET", "/global/health", nil, 2*time.Second, ""); err == nil {
+					close(cur.ready)
+					return
+				}
 			}
 			time.Sleep(250 * time.Millisecond)
 		}
-		mu.Lock()
-		if srv.proc == cmd && !closed(ready) {
-			srv.err = errors.New("opencode never came up")
-			close(ready)
-			cmd.Process.Kill()
-		}
-		mu.Unlock()
+		fail(errors.New("opencode never came up"))
 	}()
 	return nil
 }
 
 func closed(c chan struct{}) bool {
-	if c == nil {
-		return true
-	}
 	select {
 	case <-c:
 		return true
@@ -410,34 +417,44 @@ func ensure(s Setup) error {
 	sig := string(util.Marshal(s))
 	lastUse.Store(time.Now().UnixMilli())
 	mu.Lock()
-	if srv.proc != nil && srv.sig != sig && len(asks) == 0 {
-		old := srv.proc
-		srv = srvT{}
-		old.Process.Kill()
+	// phosphorus-model restarted under a running one
+	if cur := srv; cur != nil && closed(cur.ready) && cur.err == nil {
+		mu.Unlock()
+		_, err := call("GET", "/global/health", nil, 2*time.Second, "")
+		mu.Lock()
+		if err != nil && srv == cur {
+			log.Printf("[harness] opencode gone (%v), starting it again", err)
+			srv = nil
+		}
 	}
-	if srv.proc == nil {
+	if srv != nil && srv.sig != sig && len(asks) == 0 {
+		srv = nil
+	}
+	if srv == nil {
 		if err := start(sig, s); err != nil {
 			mu.Unlock()
 			return err
 		}
 	}
-	ready := srv.ready
+	cur := srv
 	mu.Unlock()
-	<-ready
-	mu.Lock()
-	defer mu.Unlock()
-	if srv.proc == nil {
-		return errors.New("opencode exited while starting, docker logs phosphorus says why")
+	<-cur.ready
+	return cur.err
+}
+
+// Reset a run left by an earlier frontend stopped
+func Reset() {
+	if _, err := os.Stat(tools.OpencodeRunFile()); err == nil {
+		util.WriteJSONAtomic(tools.OpencodeRunFile(), tools.OpencodeRun{})
 	}
-	return srv.err
 }
 
 // Stop opencode with this process
 func Stop() {
 	mu.Lock()
 	defer mu.Unlock()
-	if srv.proc != nil && srv.proc.Process != nil {
-		srv.proc.Process.Kill()
+	if srv != nil {
+		stopLocked()
 	}
 }
 

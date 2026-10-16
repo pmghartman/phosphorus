@@ -46,6 +46,13 @@ client at build time and is not part of the binary.
 | Docker Compose (`docker-compose-plugin`) | Apache-2.0 | https://github.com/docker/compose |
 | Docker Buildx (`docker-buildx-plugin`) | Apache-2.0 | https://github.com/docker/buildx |
 | Tailscale | BSD-3-Clause | https://github.com/tailscale/tailscale |
+
+## phosphorus-model image (`container/Dockerfile --target model`)
+
+| Component | License | Source |
+|---|---|---|
+| Debian trixie-slim (base image) | Various, per package (DFSG) | https://www.debian.org |
+| Docker CLI (from `docker:28-cli`, opencode's sandbox calls) | Apache-2.0 | https://github.com/docker/cli |
 | ripgrep (opencode's grep and glob) | MIT OR Unlicense | https://github.com/BurntSushi/ripgrep |
 
 ## Fetched at run time by the model host alone

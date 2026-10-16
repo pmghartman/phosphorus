@@ -185,5 +185,9 @@ phosphorus_write_files_override() {
     echo "      PHOSPHORUS_FILES_PERMS: \"$permCsv\""
     echo "    volumes:"
     printf "%b" "$mounts"
+    # opencode's, the same shares
+    echo "  model:"
+    echo "    volumes:"
+    printf "%b" "$mounts"
   } > "$PHOSPHORUS_FILES_OVERRIDE"
 }

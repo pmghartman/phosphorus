@@ -71,16 +71,16 @@ services:
       # served by the Files tab, without rebuild just state again
       - ${PHOSPHORUS_HOST_ROOT:-./state}:/hostfs:ro
 
-      # opencode, fetched by phosphorus-model, run by the frontend, Windows:
+      # opencode's home, run by phosphorus-model as the frontend asks, Windows:
       # phosphorus-models, off the slow NTFS share
       - ${PHOSPHORUS_MODEL_DIR:-./state/models}:/models
 
       # for rebuild.sh's sibling swap container, out of the swap's reach
       - /var/run/docker.sock:/var/run/docker.sock
 
-  # llama-server on the model host alone, its tools and gguf in /models,
-  # reached on loopback by the frontend's host networking, its name from
-  # phosphorus's self-host
+  # llama-server and opencode on the model host alone, their tools and gguf in
+  # /models, reached on loopback by the frontend's host networking, its name
+  # from phosphorus's self-host
   model:
     image: phosphorus-model:latest
     container_name: phosphorus-model
@@ -97,6 +97,10 @@ services:
       - ./config:/etc/phosphorus:ro
       - ./state:/state
       - ${PHOSPHORUS_MODEL_DIR:-./state/models}:/models
+      # opencode's files at the frontend's paths, its sandboxes through docker
+      - ${PHOSPHORUS_HOME_DIR:-./files}:/homefs
+      - ${PHOSPHORUS_FILES_DIR:-./files}:/files
+      - /var/run/docker.sock:/var/run/docker.sock
 
   # phosphorus's web search, on model hosts only, published on loopback only, where
   # the frontend's host networking reaches it, the rest asking a model host's frontend

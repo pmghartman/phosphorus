@@ -775,6 +775,7 @@ func Main() int {
 	update.RestoreChain()
 	mirror.Start(util.TailnetIP, port)
 	retractStaleAlerts()
+	harness.Reset()
 	project.Init()
 	proxy.Listen(ingressPort, app, proxy.Gate{Pass: users.Pass, Issuers: users.Issuers})
 	stats.Hooks.Self = func() map[string]any {

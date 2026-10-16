@@ -23,12 +23,15 @@ FROM debian:trixie-slim AS base
 # inherited by every container off these images, for sweep.sh
 LABEL org.phosphorus=phosphorus
 
-# --- phosphorus-model: llama-server on the model host ---------------------------
-# llama-server and opencode fetched into /models at run time, libgomp for the first
+# --- phosphorus-model: llama-server and opencode on the model host ---------------
+# both fetched into /models at run time, libgomp for llama-server; git, ripgrep
+# and the docker cli for opencode's tools and the projects' sandboxes
 FROM base AS model
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        ca-certificates curl procps libgomp1 \
-    && rm -rf /var/lib/apt/lists/*
+        ca-certificates curl procps libgomp1 bash git ripgrep \
+    && rm -rf /var/lib/apt/lists/* \
+    && git config --system --add safe.directory '*'
+COPY --from=docker:28-cli /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=build /out/phosphorus /usr/local/bin/phosphorus
 ENTRYPOINT ["/usr/local/bin/phosphorus", "model"]
 
@@ -59,9 +62,9 @@ ENTRYPOINT ["/usr/local/bin/git-daemon.sh"]
 
 # --- phosphorus: tailscale, the frontend and the tunnel ---------------------------
 FROM base
-# iproute2/iptables for tailscaled's routing, ripgrep for opencode
+# iproute2/iptables for tailscaled's routing
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        ca-certificates curl jq bash procps iproute2 iptables git openssh-client ripgrep \
+        ca-certificates curl jq bash procps iproute2 iptables git openssh-client \
     && rm -rf /var/lib/apt/lists/*
 
 # cloudflared, the docker cli for the host's daemon via the socket, tailscale;

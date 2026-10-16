@@ -180,6 +180,10 @@ function Write-PhosphorusFilesOverride([string]$Base) {
     $lines += "      PHOSPHORUS_FILES_PERMS: `"$($permList -join ',')`""
     $lines += "    volumes:"
     $lines += $mounts
+    # opencode's, the same shares
+    $lines += "  model:"
+    $lines += "    volumes:"
+    $lines += $mounts
     Set-Content -Path $PhosphorusFilesOverride -Value $lines
     return $true
 }

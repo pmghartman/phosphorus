@@ -36,6 +36,32 @@ var (
 // Root where every fetched tool lives
 func Root() string { return root }
 
+// OpencodeHome opencode's home on the model volume, the frontend and
+// phosphorus-model both mounting it
+func OpencodeHome() string {
+	return util.Env("OPENCODE_HOME", filepath.Join(filepath.Dir(root), "opencode"))
+}
+
+// OpencodeRun the opencode the frontend wants run by phosphorus-model, no Gen: none
+type OpencodeRun struct {
+	Gen  string   `json:"gen"`
+	Args []string `json:"args"`
+	Env  []string `json:"env"`
+	Dir  string   `json:"dir"`
+}
+
+// OpencodeState phosphorus-model's answer to a run
+type OpencodeState struct {
+	Gen string `json:"gen"`
+	Err string `json:"err,omitempty"`
+}
+
+// OpencodeRunFile the frontend's ask, read by phosphorus-model
+func OpencodeRunFile() string { return filepath.Join(OpencodeHome(), "run.json") }
+
+// OpencodeStateFile phosphorus-model's answer
+func OpencodeStateFile() string { return filepath.Join(OpencodeHome(), "state.json") }
+
 func llamaKind(gpu bool) string {
 	a := map[string]string{"amd64": "x64", "arm64": "arm64"}[runtime.GOARCH]
 	if gpu && a == "x64" {
@@ -180,6 +206,7 @@ func Remove() {
 	if _, err := os.Stat(root); err == nil {
 		os.RemoveAll(root)
 	}
+	os.RemoveAll(OpencodeHome())
 }
 
 // install each tarball into dir.part, renamed to dir once all are in

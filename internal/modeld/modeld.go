@@ -1,5 +1,5 @@
-// Package modeld: llama-server on the one host with [model] host = true, it
-// and opencode fetched there alone, every other host asking it through its frontend
+// Package modeld: llama-server and opencode on the one host with [model] host = true,
+// both fetched there alone, every other host asking it through its frontend
 package modeld
 
 import (
@@ -609,6 +609,7 @@ func Main() int {
 	notes.Log("starting as " + h)
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)
+	go ocWatch()
 	for {
 		t0 := time.Now()
 		func() {
@@ -634,6 +635,7 @@ func Main() int {
 				}
 			}
 			mu.Unlock()
+			ocStop()
 			return 0
 		case <-time.After(wait):
 		}
