@@ -15,6 +15,8 @@ build: web
 check: web
 	@test -z "$$(gofmt -l cmd internal)" || { gofmt -l cmd internal; exit 1; }
 	go vet ./...
+	GOOS=darwin go vet ./cmd/... ./internal/host
+	GOOS=windows go vet ./cmd/... ./internal/host
 
 test: web
 	go test ./...

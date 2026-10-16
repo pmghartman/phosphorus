@@ -88,7 +88,8 @@ jobs:
         with:
           path: web/.vendor/cache
           key: web-vendor-${{ hashFiles('web/vendor.lock') }}
-      - run: go generate ./internal/web && go vet ./... && go test ./...
+      # the host side cross-built too: macOS and Windows ship it in the app
+      - run: go generate ./internal/web && go vet ./... && go test ./... && GOOS=darwin go vet ./cmd/... ./internal/host && GOOS=windows go vet ./cmd/... ./internal/host
 
   # every image of one arch on its native runner in one bake, pushed by
   # digest, joined into one tag per image by `manifests`
@@ -173,19 +174,25 @@ jobs:
           echo "$KEY" | gpg --batch --import
           gpg --export > "$RUNNER_TEMP/phosphorus.gpg"
           echo "PHOSPHORUS_APT_KEY=$RUNNER_TEMP/phosphorus.gpg" >> "$GITHUB_ENV"
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
       - name: build .deb
         run: |
           mkdir -p art/payload out
           # the release's tree, .github and packaging export-ignored
           git archive HEAD | tar -x -C art/payload && echo "$VER" > art/payload/VERSION
-          for a in $ARCHES; do packaging/deb/build.sh "out/phosphorus_${VER}_$a.deb" "$VER" art/payload "$a"; done
+          for a in $ARCHES; do
+            CGO_ENABLED=0 GOOS=linux GOARCH=$a go build -trimpath -ldflags "-s -w" -o "art/phosphorus-$a" ./cmd/phosphorus
+            packaging/deb/build.sh "out/phosphorus_${VER}_$a.deb" "$VER" art/payload "$a" "art/phosphorus-$a"
+          done
       - uses: actions/upload-artifact@v7
         with:
           name: deb
           path: out/
           compression-level: 0
 
-  # tray app: universal .dmg, Windows setup .exe, the release's tree as its resources
+  # tray app: universal .dmg, Windows setup .exe, the release's tree and host binary inside
   app:
     needs: [version]
     if: needs.version.outputs.apps != '[]'
@@ -212,11 +219,23 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: tauri-cli@2
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: false
+      # the release's tree as resources, the host binary as the app's sidecar
       - name: resources
         shell: bash
         run: |
-          mkdir -p packaging/app/payload
+          mkdir -p packaging/app/payload packaging/app/binaries
           git archive HEAD | tar -x -C packaging/app/payload && echo "$VER" > packaging/app/payload/VERSION
+          b() { CGO_ENABLED=0 GOOS=$1 GOARCH=$2 go build -trimpath -ldflags "-s -w" -o "$3" ./cmd/phosphorus; }
+          if [ "${{ matrix.name }}" = macos-universal ]; then
+            b darwin arm64 h-arm64 && b darwin amd64 h-amd64
+            lipo -create -output packaging/app/binaries/phosphorus-host-universal-apple-darwin h-arm64 h-amd64
+          else
+            b windows amd64 packaging/app/binaries/phosphorus-host-x86_64-pc-windows-msvc.exe
+          fi
       # updater config and artifacts only with a signing key
       - name: app config
         shell: bash
@@ -281,9 +300,9 @@ jobs:
           name: Phosphorus ${{ env.VER }}
           target_commitish: ${{ github.sha }}
           body: |
-            ${{ inputs.macos && '**macOS**: open the `.dmg`, drag Phosphorus to Applications, open it (first open: right-click > Open). Needs colima and docker (see README).' || '' }}
-            ${{ inputs.windows && '**Windows**: run the setup `.exe` (SmartScreen: More info > Run anyway). Needs Docker Desktop.' || '' }}
-            ${{ (inputs.linux_amd64 || inputs.linux_arm64) && format('**Linux**: `sudo apt install ./phosphorus_{0}_ARCH.deb` (`amd64` or `arm64`), then fill in `/var/lib/phosphorus/.env` and `sudo phosphorus start`.', env.VER) || '' }}
+            ${{ inputs.macos && '**macOS**: open the `.dmg`, drag Phosphorus to Applications, open it (first open: right-click > Open) and paste the keys it asks for. Needs colima and docker (see README).' || '' }}
+            ${{ inputs.windows && '**Windows**: run the setup `.exe` (SmartScreen: More info > Run anyway) and paste the keys it asks for. Needs Docker Desktop.' || '' }}
+            ${{ (inputs.linux_amd64 || inputs.linux_arm64) && format('**Linux**: `sudo apt install ./phosphorus_{0}_ARCH.deb` (`amd64` or `arm64`), then `sudo phosphorus` and paste the keys it asks for.', env.VER) || '' }}
           files: out/*
       - uses: actions/download-artifact@v8
         with:

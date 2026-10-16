@@ -3,9 +3,7 @@
 # for Docker's restart policy; the model daemon in phosphorus-model
 set -uo pipefail
 
-: "${BASE_DOMAIN:?BASE_DOMAIN must be set in the env file}"
-: "${TUNNEL_TOKEN:?TUNNEL_TOKEN must be set in the env file}"
-: "${TS_AUTHKEY:?TS_AUTHKEY must be set in the env file}"
+: "${TS_AUTHKEY:?TS_AUTHKEY must be set in .env, run phosphorus on the host}"
 
 export SERVICES_FILE="${SERVICES_FILE:-/etc/phosphorus/services.export}"
 export STATE_DIR="${STATE_DIR:-/state}"
@@ -35,7 +33,7 @@ for _ in $(seq 1 150); do
   sleep 0.2
 done
 
-# own var: TS_HOSTNAME left as compose set it, for rebuild.sh to carry along
+# own var: TS_HOSTNAME left as compose set it, for the rebuild to carry along
 ts_hostname="${TS_HOSTNAME:-$(hostname)}"
 if ! tailscale --socket=/var/run/tailscale/tailscaled.sock up \
        --authkey="$TS_AUTHKEY" --hostname="$ts_hostname" --accept-dns=true; then
@@ -46,6 +44,26 @@ fi
 
 TS_DNSNAME="$(tailscale --socket=/var/run/tailscale/tailscaled.sock status --json | jq -r '.Self.DNSName' | sed 's/\.$//')"
 say "joined the tailnet as $TS_DNSNAME"
+
+# a host joining with TS_AUTHKEY alone: the rest from a peer, into .env too
+if [ -z "${BASE_DOMAIN:-}" ] || [ -z "${TUNNEL_TOKEN:-}" ] || [ -z "${TS_API_KEY:-}" ] || [ -z "${ADMIN_PASS:-}" ]; then
+  # peers waited on only when this host can't run without them
+  tries=1
+  [ -n "${BASE_DOMAIN:-}" ] && [ -n "${TUNNEL_TOKEN:-}" ] || tries=30
+  for _ in $(seq 1 "$tries"); do
+    keys="$(PHOSPHORUS_HOME=/repo phosphorus mesh-keys)" && break
+    keys=""
+    sleep 2
+  done
+  eval "$keys"
+fi
+if [ -z "${BASE_DOMAIN:-}" ] || [ -z "${TUNNEL_TOKEN:-}" ]; then
+  say "no BASE_DOMAIN or TUNNEL_TOKEN and no peer to copy them from: the first host of a mesh needs them in .env"
+  kill "${PIDS[@]}" 2>/dev/null
+  exit 1
+fi
+# for the git host's own subdomain
+printf '%s\n' "$BASE_DOMAIN" > "$STATE_DIR/base-domain"
 
 # the one host name for every child, from the tailnet name
 export SELF_HOST="$(printf '%s' "${TS_DNSNAME%%.*}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')"
@@ -79,7 +97,7 @@ if [ "$HOST_SSH_HOST" = "127.0.0.1" ]; then
   repo_src="$(docker inspect phosphorus -f '{{range .Mounts}}{{if eq .Destination "/repo"}}{{.Source}}{{end}}{{end}}' 2>/dev/null)"
   if [ -n "$repo_src" ]; then
     docker run --rm --network none --entrypoint sh -v /usr/local/bin:/host-bin phosphorus:latest -c '
-      for l in phosphorus phos; do [ "$(readlink /host-bin/$l)" = "$1" ] || ln -sfn "$1" /host-bin/$l || exit 1; done' _ "$repo_src/scripts/phosphorus" >/dev/null 2>&1 \
+      for l in phosphorus phos; do [ "$(readlink /host-bin/$l)" = "$1" ] || ln -sfn "$1" /host-bin/$l || exit 1; done' _ "$repo_src/bin/phosphorus" >/dev/null 2>&1 \
       || say "couldn't put phosphorus on the host's PATH; phosphorus needs a sudo phosphorus start"
   fi
 fi

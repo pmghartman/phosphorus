@@ -27,7 +27,9 @@ export LITEFS_PID_FILE="${LITEFS_PID_FILE:-/run/git-litefs-pid}"
 GIT_NAME="${GIT_NAME:-git}"
 GIT_PORT="${GIT_PORT:-3001}"
 GIT_MODE="${GIT_MODE:-subdomain}"
-: "${BASE_DOMAIN:?BASE_DOMAIN must be set in .env}"
+# a host that joined with TS_AUTHKEY alone: the domain phosphorus copied from a peer
+[ -n "${BASE_DOMAIN:-}" ] || BASE_DOMAIN="$(cat /state/base-domain 2>/dev/null)"
+: "${BASE_DOMAIN:?BASE_DOMAIN not in .env and not copied from a peer yet}"
 
 TICK="${TICK:-0.25}"
 # a decision older than this: the elector gone, stand down

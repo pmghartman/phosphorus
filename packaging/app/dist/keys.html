@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phosphorus Keys</title>
+<style>
+  :root { --bg: #ffffff; --fg: #1d1d1f; --muted: #6e6e73; --line: #d2d2d7; --field: #f5f5f7; --accent: #a371f7; --ok: #1a7f37; --bad: #cf222e; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #151515; --fg: #f0f0f0; --muted: #9a9aa0; --line: #2e2e33; --field: #1f1f23; --ok: #3fb950; --bad: #f85149; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 22px 24px; background: var(--bg); color: var(--fg); font: 13px/1.4 -apple-system, "Segoe UI", system-ui, sans-serif; }
+  h1 { font-size: 17px; margin: 0 0 4px; }
+  p.lead { margin: 0 0 18px; color: var(--muted); }
+  label { display: block; margin-bottom: 14px; }
+  .row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+  .name { font-weight: 600; }
+  .state { font-size: 11px; }
+  .state.set { color: var(--ok); }
+  .state.unset { color: var(--muted); }
+  input { width: 100%; padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--field); color: var(--fg); font: 13px ui-monospace, Menlo, Consolas, monospace; }
+  input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+  .hint { color: var(--muted); font-size: 11px; margin-top: 3px; }
+  .foot { display: flex; gap: 10px; align-items: center; margin-top: 18px; }
+  .err { color: var(--bad); flex: 1; }
+  button { padding: 6px 16px; border-radius: 6px; border: 1px solid var(--line); background: var(--field); color: var(--fg); font: inherit; cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:disabled { opacity: .6; cursor: default; }
+</style>
+</head>
+<body>
+<h1>Keys</h1>
+<p class="lead" id="lead">Values are never shown. Paste a new one to replace it, leave a field blank to keep what's set.</p>
+<form id="f" autocomplete="off"></form>
+<div class="foot">
+  <span class="err" id="err"></span>
+  <button type="button" id="cancel">Cancel</button>
+  <button type="submit" form="f" class="primary" id="save">Save</button>
+</div>
+<script>
+  const KEYS = [
+    ['TS_AUTHKEY', 'Tailscale auth key', 'Reusable, expires every 90 days. The only key a host joining an existing mesh needs.'],
+    ['BASE_DOMAIN', 'Domain', "The mesh's domain, services under it. Copied from a peer when blank."],
+    ['TUNNEL_TOKEN', 'Cloudflare tunnel token', "For a replica of the mesh's tunnel. Copied from a peer when blank."],
+    ['TS_API_KEY', 'Tailscale API token', 'Game split DNS, expires every 90 days. Copied from a peer when blank.'],
+    ['ADMIN_PASS', 'Admin password', "The setup admin's login and the gate on a mesh update. Copied from a peer when blank."],
+  ];
+  const { invoke } = window.__TAURI__.core;
+  const form = document.getElementById('f');
+  const err = document.getElementById('err');
+  const save = document.getElementById('save');
+
+  function field([name, label, hint], set) {
+    const l = document.createElement('label');
+    const row = document.createElement('div');
+    row.className = 'row';
+    const n = document.createElement('span');
+    n.className = 'name';
+    n.textContent = label;
+    const s = document.createElement('span');
+    s.className = 'state ' + (set ? 'set' : 'unset');
+    s.textContent = set ? 'set' : 'not set';
+    row.append(n, s);
+    const i = document.createElement('input');
+    i.type = 'password';
+    i.name = name;
+    i.spellcheck = false;
+    i.placeholder = set ? 'paste to replace' : name;
+    const h = document.createElement('div');
+    h.className = 'hint';
+    h.textContent = hint;
+    l.append(row, i, h);
+    return l;
+  }
+
+  invoke('keys_status').then((set) => {
+    if (!set.TS_AUTHKEY) {
+      document.getElementById('lead').textContent = 'First start. Joining an existing mesh needs only the Tailscale auth key, the rest is copied from a peer. A new mesh needs the domain and tunnel token too.';
+    }
+    form.replaceChildren(...KEYS.map((k) => field(k, !!set[k[0]])));
+    form.querySelector('input').focus();
+  });
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    err.textContent = '';
+    save.disabled = true;
+    const values = Object.fromEntries([...form.querySelectorAll('input')].map((i) => [i.name, i.value.trim()]));
+    try {
+      await invoke('save_keys', { values });
+    } catch (x) {
+      err.textContent = String(x);
+      save.disabled = false;
+    }
+  });
+  document.getElementById('cancel').addEventListener('click', () => invoke('close_keys'));
+</script>
+</body>
+</html>

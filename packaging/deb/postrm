@@ -4,7 +4,7 @@ set -e
 case "$1" in
 remove | purge)
     for l in phosphorus phos; do
-        if [ "$(readlink /usr/local/bin/$l 2>/dev/null)" = /var/lib/phosphorus/scripts/phosphorus ]; then rm -f /usr/local/bin/$l; fi
+        if [ "$(readlink /usr/local/bin/$l 2>/dev/null)" = /var/lib/phosphorus/bin/phosphorus ]; then rm -f /usr/local/bin/$l; fi
     done
     rm -f /etc/ssh/ssh_config.d/phosphorus.conf
     [ -d /run/systemd/system ] && systemctl daemon-reload || true

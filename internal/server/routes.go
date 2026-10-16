@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"github.com/pmghartman/phosphorus/internal/chatmedia"
 	"github.com/pmghartman/phosphorus/internal/clock"
 	"github.com/pmghartman/phosphorus/internal/collab"
+	"github.com/pmghartman/phosphorus/internal/envfile"
 	"github.com/pmghartman/phosphorus/internal/files"
 	"github.com/pmghartman/phosphorus/internal/git"
 	"github.com/pmghartman/phosphorus/internal/harness"
@@ -650,6 +652,23 @@ func appHandler(w http.ResponseWriter, r *http.Request) {
 
 	if m := filesRe.FindStringSubmatch(pathname); m != nil {
 		filesRoute(w, r, m[1], m[2], q)
+		return
+	}
+
+	// a host joining with only TS_AUTHKEY: the rest from here, tailnet peers alone
+	if pathname == "/internal/keys" && method == "GET" {
+		if !isTailnet(r) {
+			forbidden(w)
+			return
+		}
+		keys := map[string]string{}
+		for _, k := range envfile.Keys {
+			if k.Mesh {
+				keys[k.Name] = os.Getenv(k.Name)
+			}
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		sendJSON(w, 200, keys)
 		return
 	}
 

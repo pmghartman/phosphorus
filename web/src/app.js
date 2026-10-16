@@ -3331,7 +3331,7 @@ const stepLabel = (chain, host, step) => (!step ? ''
 function renderUpdateButton() {
   updateBtn.disabled = !!meshLock;
   updateBtn.textContent = !meshLock ? 'update' : meshLock.paused ? 'paused' : 'updating';
-  updateBtn.title = meshLock ? `started by ${meshLock.initiator}` : 'update every host on the mesh, one at a time';
+  updateBtn.title = meshLock ? `started by ${meshLock.initiator}` : 'update every host on the mesh at once';
 }
 
 // every phosphorus host and the version it answered with, ours from

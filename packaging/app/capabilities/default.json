@@ -1,7 +1,12 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "No windows: tray only",
-  "windows": [],
-  "permissions": ["core:default", "dialog:default"]
+  "description": "the keys window alone, the rest tray only",
+  "windows": [
+    "keys"
+  ],
+  "permissions": [
+    "core:default",
+    "dialog:default"
+  ]
 }

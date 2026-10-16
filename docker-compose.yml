@@ -75,7 +75,7 @@ services:
       # phosphorus-models, off the slow NTFS share
       - ${PHOSPHORUS_MODEL_DIR:-./state/models}:/models
 
-      # for rebuild.sh's sibling swap container, out of the swap's reach
+      # for the rebuild's sibling swap container, out of the swap's reach
       - /var/run/docker.sock:/var/run/docker.sock
 
   # llama-server and opencode on the model host alone, their tools and gguf in

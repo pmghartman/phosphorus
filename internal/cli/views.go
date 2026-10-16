@@ -967,6 +967,9 @@ func formView(f *form) view {
 		if vlen(x.value)+1 > widest {
 			widest = vlen(x.value) + 1
 		}
+		if x.secret && widest < 24 {
+			widest = 24
+		}
 	}
 	hint := func(x *field) string {
 		if x.choices != nil {
@@ -987,8 +990,11 @@ func formView(f *form) view {
 	fields := []string{}
 	for i, x := range f.fields {
 		on := i == f.idx
-		chars := []rune(x.value)
 		shown := x.value
+		if x.secret {
+			shown = strings.Repeat("•", min(len([]rune(x.value)), vw-2))
+		}
+		chars := []rune(shown)
 		if len(chars) >= vw {
 			if on {
 				shown = "…" + string(chars[len(chars)-vw+2:])
@@ -1030,6 +1036,14 @@ func formView(f *form) view {
 	if f.kind == "model" {
 		notes = append(notes, c("muted")(modelNote))
 	}
+	if f.kind == "keys" {
+		notes = append(notes, c("muted")(keysNote))
+		if f.first {
+			notes = append(notes, c("muted")(joinNote))
+		} else if !ui.keysOnly {
+			notes = append(notes, c("muted")(keysNoteApply))
+		}
+	}
 	if f.err != "" {
 		notes = append(notes, c("offmesh")(f.err))
 	}
@@ -1069,6 +1083,9 @@ func tabBar(cols int) string {
 }
 
 func currentView() view {
+	if ui.keysOnly && ui.form != nil {
+		return formView(ui.form)
+	}
 	if ui.offline || ui.state == nil {
 		if ui.offline {
 			return view{lines: offlineView()}

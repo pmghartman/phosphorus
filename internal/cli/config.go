@@ -9,7 +9,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"syscall"
 
 	"github.com/pmghartman/phosphorus/internal/services"
 )
@@ -155,10 +154,8 @@ func writeAtomic(file, text string) error {
 			if err := os.Chmod(tmp, st.Mode().Perm()|st.Mode()&(os.ModeSetuid|os.ModeSetgid|os.ModeSticky)); err != nil {
 				return err
 			}
-			if sys, ok := st.Sys().(*syscall.Stat_t); ok {
-				if err := os.Chown(tmp, int(sys.Uid), int(sys.Gid)); err != nil {
-					return err
-				}
+			if err := chownLike(tmp, st); err != nil {
+				return err
 			}
 		}
 		return os.Rename(tmp, file)
@@ -188,6 +185,8 @@ func errText(err error) string {
 type field struct {
 	key, value, hint string
 	choices          []string
+	// typed and pasted, never drawn
+	secret bool
 }
 
 type form struct {
@@ -202,6 +201,7 @@ type form struct {
 	initial string
 	gpuWas  string
 	target  J
+	first   bool
 }
 
 func (f *form) values() string {

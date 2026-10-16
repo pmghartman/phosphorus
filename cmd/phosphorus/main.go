@@ -1,4 +1,5 @@
-// phosphorus: one binary for every role, serve | model | elector | cli | ssh-relay
+// phosphorus: one binary for every role, the container's (serve | model | elector |
+// cli | ssh-relay) and the host's (install, start, stop, keys and the rest)
 package main
 
 import (
@@ -7,38 +8,27 @@ import (
 	"os"
 
 	"github.com/pmghartman/phosphorus/internal/cli"
-	"github.com/pmghartman/phosphorus/internal/elector"
-	"github.com/pmghartman/phosphorus/internal/modeld"
-	"github.com/pmghartman/phosphorus/internal/server"
-	"github.com/pmghartman/phosphorus/internal/sshrelay"
+	"github.com/pmghartman/phosphorus/internal/host"
 )
-
-func usage() {
-	fmt.Fprintln(os.Stderr, "usage: phosphorus serve | model | elector | cli [args] | ssh-relay <host> <port> | version")
-}
 
 func main() {
 	log.SetFlags(0)
-	if len(os.Args) < 2 {
-		usage()
-		os.Exit(2)
+	cmd, args := "", []string{}
+	if len(os.Args) > 1 {
+		cmd, args = os.Args[1], os.Args[2:]
 	}
-	args := os.Args[2:]
-	switch os.Args[1] {
-	case "serve":
-		os.Exit(server.Main())
-	case "model":
-		os.Exit(modeld.Main())
-	case "elector":
-		os.Exit(elector.Main())
-	case "cli":
+	switch {
+	case cmd == "cli":
 		os.Exit(cli.Main(args))
-	case "ssh-relay":
-		os.Exit(sshrelay.ProxyMain(args))
-	case "version":
-		fmt.Println(server.Version())
+	case cmd == "version":
+		fmt.Println(host.Version())
+	case host.Commands[cmd]:
+		os.Exit(host.Main(cmd, args))
 	default:
-		usage()
+		if code, ok := role(cmd, args); ok {
+			os.Exit(code)
+		}
+		fmt.Fprintln(os.Stderr, "usage: phosphorus [start | stop | restart | update [all] | keys | help]")
 		os.Exit(2)
 	}
 }

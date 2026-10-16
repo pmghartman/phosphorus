@@ -10,13 +10,25 @@
     "windows": [],
     "security": {
       "csp": null
-    }
+    },
+    "withGlobalTauri": true
   },
   "bundle": {
     "active": true,
-    "targets": ["dmg", "nsis"],
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
-    "resources": { "payload/": "release/" },
+    "targets": [
+      "dmg",
+      "nsis"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": {
+      "payload/": "release/"
+    },
     "category": "Utility",
     "shortDescription": "Run this machine as a phosphorus host",
     "macOS": {
@@ -24,7 +36,12 @@
       "signingIdentity": "-"
     },
     "windows": {
-      "nsis": { "installMode": "currentUser" }
-    }
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    },
+    "externalBin": [
+      "binaries/phosphorus-host"
+    ]
   }
 }

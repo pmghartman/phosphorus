@@ -1,16 +1,17 @@
 #!/bin/sh
-# Linux package: the release under /usr/lib/phosphorus, the update agent's units, the apt feed
-# Usage: packaging/deb/build.sh OUT.deb VER PAYLOAD ARCH (amd64|arm64)   Env: PHOSPHORUS_APT_KEY (binary keyring)
+# Linux package: the release and its binary under /usr/lib/phosphorus, the update agent's units, the apt feed
+# Usage: packaging/deb/build.sh OUT.deb VER PAYLOAD ARCH (amd64|arm64) BIN   Env: PHOSPHORUS_APT_KEY (binary keyring)
 set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
-OUT=${1:?usage: packaging/deb/build.sh OUT.deb VER PAYLOAD ARCH}
-VER=$2 PAYLOAD=$3 ARCH=${4:?ARCH amd64 or arm64}
+OUT=${1:?usage: packaging/deb/build.sh OUT.deb VER PAYLOAD ARCH BIN}
+VER=$2 PAYLOAD=$3 ARCH=${4:?ARCH amd64 or arm64} BIN=${5:?BIN the linux/ARCH phosphorus binary}
 T=$(mktemp -d)
 trap 'rm -rf "$T"' EXIT
 chmod 755 "$T"
 install -d "$T/usr/lib/phosphorus"
 cp -a "$PAYLOAD/." "$T/usr/lib/phosphorus/"
 chmod -R u=rwX,go=rX "$T/usr/lib/phosphorus"
+install -Dm755 "$BIN" "$T/usr/lib/phosphorus/bin/phosphorus"
 for u in phosphorus-update.path phosphorus-update.service; do
     install -Dm644 "$HERE/$u" "$T/usr/lib/systemd/system/$u"
 done
@@ -28,7 +29,7 @@ Package: phosphorus
 Version: $VER
 Architecture: $ARCH
 Maintainer: Phosphorus <https://github.com/pmghartman/phosphorus>
-Depends: docker.io | docker-ce, docker-compose-v2 | docker-compose-plugin | docker-compose, openssh-server, sudo
+Depends: docker.io | docker-ce, openssh-server, sudo
 Installed-Size: $(du -sk --exclude=DEBIAN "$T" | cut -f1)
 Section: misc
 Priority: optional

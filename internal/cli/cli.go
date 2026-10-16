@@ -1,4 +1,4 @@
-// Package cli: the terminal ui run in the container by scripts/phosphorus,
+// Package cli: the terminal ui, run in the container by the host's phosphorus,
 // reading this host's /api/state and writing straight to config/
 package cli
 
@@ -16,7 +16,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 	"unicode/utf8"
 
@@ -215,6 +214,8 @@ var ui = struct {
 	prompt   *prompt
 	flash    string
 	flashAt  time.Time
+	// the key form alone, before the container runs
+	keysOnly bool
 }{sel: make([]int, len(tabs)), room: 20, projects: []J{}}
 
 // everything touching ui runs on the loop, other goroutines handing it work here
@@ -338,7 +339,7 @@ func render() {
 		if ui.tab == updateTab {
 			u = "u close"
 		}
-		global = []key{k(fmt.Sprintf("1-%d tabs", len(tabs)), "quiet"), k(u, "quiet"), k("q quit", "quiet")}
+		global = []key{k(fmt.Sprintf("1-%d tabs", len(tabs)), "quiet"), k(u, "quiet"), k("k keys", "quiet"), k("q quit", "quiet")}
 	}
 	status := []string{""}
 	var btnRow []string
@@ -390,7 +391,11 @@ func render() {
 	if len(body) > room {
 		body = body[:room]
 	}
-	lines := append(append(title, tabBar(cols), ""), body...)
+	head := append(title, tabBar(cols), "")
+	if ui.keysOnly {
+		head = append(title, "")
+	}
+	lines := append(head, body...)
 	for len(lines) < rows-len(foot) {
 		lines = append(lines, "")
 	}
@@ -422,6 +427,9 @@ func formKey(s string, e keyEv) {
 	f := ui.form
 	if e.name == "escape" {
 		ui.form = nil
+		if ui.keysOnly {
+			quit(1)
+		}
 		return
 	}
 	if f.kind == "service" && (e.name == "left" || e.name == "right") {
@@ -433,7 +441,7 @@ func formKey(s string, e keyEv) {
 		return
 	}
 	if e.name == "return" {
-		f.err = map[string]func(*form) string{"service": saveService, "share": saveShare, "model": saveModel, "project": saveProject, "note": saveNote}[f.kind](f)
+		f.err = map[string]func(*form) string{"service": saveService, "share": saveShare, "model": saveModel, "project": saveProject, "note": saveNote, "keys": saveKeys}[f.kind](f)
 		if f.err != "" {
 			return
 		}
@@ -448,6 +456,15 @@ func formKey(s string, e keyEv) {
 			}
 		}
 		if f.kind == "project" || f.kind == "note" {
+			return
+		}
+		if f.kind == "keys" {
+			if ui.keysOnly {
+				quit(0)
+			} else {
+				flash(c("online")(keysSaved))
+				applyKeys()
+			}
 			return
 		}
 		// only a share, or [model] gpu, changing what the container was built with
@@ -807,7 +824,7 @@ func updateKey(s string) {
 	if s == "c" && mine && truthy(chain["paused"]) {
 		go func() { chainPost("continue", nil); poll() }()
 	} else if s == "x" && mine {
-		ui.confirm = &confirm{danger: true, text: "cancel the mesh update? the host in flight still finishes",
+		ui.confirm = &confirm{danger: true, text: "cancel the mesh update? hosts already updating still finish",
 			onYes: func() { go func() { chainPost("cancel", nil); poll() }() }}
 	}
 }
@@ -852,6 +869,8 @@ func onKey(e keyEv) {
 	case s == "q":
 		quit(0)
 		return
+	case s == "k":
+		openForm(keysForm(false))
 	case s == "U":
 		switchTab(updateTab)
 		if ch, _ := liveChain(ui.state); ui.state != nil && ch == nil {
@@ -905,11 +924,6 @@ func quit(code int) {
 
 // Main runs the ui: update-all opens on the start prompt, --tab keeps a reconnect's place
 func Main(args []string) int {
-	in := int(os.Stdin.Fd())
-	if !term.IsTerminal(in) {
-		fmt.Fprintln(os.Stderr, "phosphorus needs a terminal; run it as plain `phosphorus`")
-		return 2
-	}
 	for i, a := range args {
 		if a == "--tab" && i+1 < len(args) {
 			ui.tab = max0(indexOf(tabs, strings.ToLower(args[i+1])))
@@ -919,7 +933,37 @@ func Main(args []string) int {
 	if updateAll {
 		ui.tab = updateTab
 	}
+	var later func()
+	if updateAll {
+		// the start prompt once the first poll says whether a chain already runs
+		later = func() {
+			for {
+				ch := make(chan bool, 1)
+				onLoop(func() { ch <- ui.state != nil || ui.offline })
+				if <-ch {
+					break
+				}
+				time.Sleep(50 * time.Millisecond)
+			}
+			onLoop(func() {
+				if !ui.offline {
+					askStart()
+					render()
+				}
+			})
+		}
+	}
+	return run(later, nil)
+}
 
+// run the terminal loop: later off the loop, first on it before the first frame,
+// polling the frontend unless only the keys are asked for
+func run(later, first func()) int {
+	in := int(os.Stdin.Fd())
+	if !term.IsTerminal(in) {
+		fmt.Fprintln(os.Stderr, "phosphorus needs a terminal; run it as plain `phosphorus`")
+		return 2
+	}
 	old, err := term.MakeRaw(in)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -954,26 +998,15 @@ func Main(args []string) int {
 	rest := pickTheme(chunks)
 
 	sigs := make(chan os.Signal, 4)
-	signal.Notify(sigs, syscall.SIGWINCH, syscall.SIGTERM, syscall.SIGHUP)
-	go poller()
-	if updateAll {
-		// the start prompt once the first poll says whether a chain already runs
-		go func() {
-			for {
-				ch := make(chan bool, 1)
-				onLoop(func() { ch <- ui.state != nil || ui.offline })
-				if <-ch {
-					break
-				}
-				time.Sleep(50 * time.Millisecond)
-			}
-			onLoop(func() {
-				if !ui.offline {
-					askStart()
-					render()
-				}
-			})
-		}()
+	signal.Notify(sigs, notifySignals...)
+	if !ui.keysOnly {
+		go poller()
+	}
+	if later != nil {
+		go later()
+	}
+	if first != nil {
+		first()
 	}
 	render()
 
@@ -986,6 +1019,7 @@ func Main(args []string) int {
 	feed(rest)
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
+	cols, rows := size()
 	for {
 		select {
 		case code := <-quitCh:
@@ -1000,15 +1034,17 @@ func Main(args []string) int {
 		case f := <-loop:
 			f()
 		case sig := <-sigs:
-			if sig == syscall.SIGWINCH {
+			if sig == sigResize {
 				render()
 			} else {
 				restore()
 				return 0
 			}
 		case <-tick.C:
-			// the flash line cleared once stale
-			if ui.flash != "" && time.Since(ui.flashAt) >= 8*time.Second && time.Since(ui.flashAt) < 10*time.Second {
+			// the flash line cleared once stale, a resize caught where no signal tells
+			c, r := size()
+			if (c != cols || r != rows) || ui.flash != "" && time.Since(ui.flashAt) >= 8*time.Second && time.Since(ui.flashAt) < 10*time.Second {
+				cols, rows = c, r
 				render()
 			}
 		}

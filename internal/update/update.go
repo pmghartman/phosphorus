@@ -1,5 +1,5 @@
 // Package update: this host's own update, the lock it publishes while driving
-// one, and the walk across every host
+// one, and the mesh's, every host at once
 package update
 
 import (
@@ -325,7 +325,7 @@ func callPeerUpdate(host string, note func(map[string]string)) result {
 
 // --- chain state ------------------------------------------------------------
 
-// Chain the walk, on the initiator only
+// Chain the mesh update, on the initiator only
 type Chain struct {
 	ID           string                       `json:"id"`
 	Order        []string                     `json:"order"`
@@ -556,63 +556,73 @@ func RestoreChain() {
 	finishLocked("interrupted by a restart")
 }
 
+// record a host's outcome, under cmu
+func recordLocked(host string, r result) bool {
+	if r.ok {
+		chain.Results[host] = "ok"
+		if r.current {
+			chain.Results[host] = "current"
+		}
+		noteLocked(host, map[string]string{"to": r.to})
+		return true
+	}
+	chain.Results[host] = "fail"
+	if r.unreachable {
+		chain.Results[host] = "unreachable"
+	}
+	chain.Errors[host] = brief(r)
+	saveLocked()
+	return false
+}
+
+// runChain every peer at once, each through its own installer, then this
+// host, whose swap ends the chain's driver; a failure pausing before that
 func runChain() {
 	time.Sleep(StartGraceMS * time.Millisecond)
 	cmu.Lock()
-	n := len(chain.Order)
-	cmu.Unlock()
-	for i := 0; i < n; i++ {
-		cmu.Lock()
-		if chain.Cancelled {
-			finishLocked("cancelled")
-			cmu.Unlock()
-			return
-		}
-		host := chain.Order[i]
-		chain.CurrentIndex = i
-		chain.Results[host] = "running"
-		from := ""
-		if host == selfHost {
-			from = ReadVersion(VersionFile)
-		}
-		noteLocked(host, map[string]string{"from": from})
+	if chain.Cancelled {
+		finishLocked("cancelled")
 		cmu.Unlock()
-		logf("updating %s (%d/%d)", host, i+1, n)
-		var r result
-		if host == selfHost {
-			r = RunLocalUpdate()
-		} else {
-			r = callPeerUpdate(host, func(f map[string]string) { cmu.Lock(); noteLocked(host, f); cmu.Unlock() })
+		return
+	}
+	peers := []string{}
+	for _, h := range chain.Order {
+		if h != selfHost {
+			peers = append(peers, h)
+			chain.Results[h] = "running"
+			noteLocked(h, map[string]string{"from": ""})
 		}
-		cmu.Lock()
-		if r.ok {
-			if r.current {
-				chain.Results[host] = "current"
-			} else {
-				chain.Results[host] = "ok"
+	}
+	cmu.Unlock()
+	logf("updating %s at once", strings.Join(peers, ", "))
+	var wg sync.WaitGroup
+	failed := []string{}
+	for _, h := range peers {
+		wg.Add(1)
+		go func(host string) {
+			defer wg.Done()
+			r := callPeerUpdate(host, func(f map[string]string) { cmu.Lock(); noteLocked(host, f); cmu.Unlock() })
+			cmu.Lock()
+			if !recordLocked(host, r) {
+				failed = append(failed, host)
+				logf("%s: %s", host, r.error)
 			}
-			noteLocked(host, map[string]string{"to": r.to})
 			cmu.Unlock()
-			continue
-		}
-		if r.unreachable {
-			chain.Results[host] = "unreachable"
-		} else {
-			chain.Results[host] = "fail"
-		}
-		chain.Errors[host] = brief(r)
-		saveLocked()
-		if chain.Cancelled {
-			finishLocked("cancelled")
-			cmu.Unlock()
-			return
-		}
+		}(h)
+	}
+	wg.Wait()
+
+	cmu.Lock()
+	chain.CurrentIndex = len(peers)
+	if chain.Cancelled {
+		finishLocked("cancelled")
+		cmu.Unlock()
+		return
+	}
+	if len(failed) > 0 {
+		sort.Strings(failed)
 		chain.Paused = true
-		if r.unreachable {
-			chain.PauseReason = fmt.Sprintf("%s unreachable: %s", host, r.error)
-		} else {
-			chain.PauseReason = fmt.Sprintf("%s returned FAIL: %s", host, r.error)
-		}
+		chain.PauseReason = fmt.Sprintf("%s failed, continue with %s?", strings.Join(failed, ", "), selfHost)
 		logf("paused, %s", chain.PauseReason)
 		saveLocked()
 		w := make(chan struct{})
@@ -627,9 +637,14 @@ func runChain() {
 		}
 		chain.Paused = false
 		chain.PauseReason = ""
-		cmu.Unlock()
 	}
+	chain.Results[selfHost] = "running"
+	noteLocked(selfHost, map[string]string{"from": ReadVersion(VersionFile)})
+	cmu.Unlock()
+	logf("updating %s", selfHost)
+	r := RunLocalUpdate()
 	cmu.Lock()
+	recordLocked(selfHost, r)
 	chain.CurrentIndex = len(chain.Order)
 	finishLocked("finished")
 	cmu.Unlock()
@@ -675,7 +690,7 @@ func Start(gitHosts []string) map[string]any {
 	return map[string]any{"chainId": id, "order": order}
 }
 
-// Cancel stops before the next call
+// Cancel stops before this host's own update
 func Cancel() bool {
 	cmu.Lock()
 	defer cmu.Unlock()
@@ -689,7 +704,7 @@ func Cancel() bool {
 	return true
 }
 
-// Proceed past a pause
+// Proceed past a pause, on to this host
 func Proceed() bool {
 	cmu.Lock()
 	defer cmu.Unlock()

@@ -1,4 +1,4 @@
-# per host secrets, see .env.example
+# per host keys, written by the app or phosphorus on first start
 .env
 
 # runtime state, regenerated per host, not shipped

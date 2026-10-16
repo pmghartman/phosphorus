@@ -176,7 +176,7 @@ func runGameLocally(name, action string) (int, any) {
 		}
 	}
 	if err != nil {
-		return 503, map[string]any{"error": fmt.Sprintf("play/stop isn't set up on %s; run scripts/game-control-setup.sh there", selfHost)}
+		return 503, map[string]any{"error": fmt.Sprintf("play/stop isn't set up on %s; run phos game-control-setup there", selfHost)}
 	}
 	services.SetPending(name, action)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)

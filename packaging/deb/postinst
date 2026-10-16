@@ -1,15 +1,14 @@
 #!/bin/sh
-# the release into /var/lib/phosphorus, the update agent, the cli
+# the release into /var/lib/phosphorus and up, the update agent; no keys yet: sudo phosphorus asks
 set -e
 [ "$1" = configure ] || exit 0
 mode=
 [ -n "${2:-}" ] && mode=--update
 mkdir -p /var/lib/phosphorus/state
-if ! bash /usr/lib/phosphorus/scripts/install.sh $mode; then
+if ! /usr/lib/phosphorus/bin/phosphorus install $mode; then
     echo "phosphorus isn't running yet: fix the above, then sudo phosphorus start" >&2
 fi
-ln -sfn /var/lib/phosphorus/scripts/phosphorus /usr/local/bin/phosphorus
-ln -sfn /var/lib/phosphorus/scripts/phosphorus /usr/local/bin/phos
+for l in phosphorus phos; do ln -sfn /var/lib/phosphorus/bin/phosphorus /usr/local/bin/$l; done
 if [ -d /run/systemd/system ]; then
     systemctl daemon-reload
     systemctl enable --now phosphorus-update.path >/dev/null 2>&1 || true

@@ -19,11 +19,27 @@ From the [latest release](https://github.com/pmghartman/phosphorus/releases/late
 
 | System | Needs | Install |
 |---|---|---|
-| Linux | nothing | `sudo apt install ./phosphorus_VERSION_ARCH.deb` |
-| macOS | colima, docker, docker-compose | `.dmg` |
+| Linux | nothing | `sudo apt install ./phosphorus_VERSION_ARCH.deb`, then `sudo phosphorus` |
+| macOS | colima, docker | `.dmg` |
 | Windows | Docker Desktop, host networking on | setup `.exe` |
 
-Fill in `.env` from `.env.example` in the host folder (`/var/lib/phosphorus`, `~/Library/Phosphorus` or `%USERPROFILE%\phosphorus`), then `sudo phosphorus start` or Start in the tray.
+The installer carries the `phosphorus` binary, which installs the release into the host folder (`/var/lib/phosphorus`, `~/Library/Phosphorus` or `%USERPROFILE%\phosphorus`) and brings it up. There are no scripts to run.
+
+## Keys
+
+On first start the app opens a keys window and `phosphorus` opens a keys form. Paste the keys there; they go into the host folder's `.env`.
+
+| Key | Needed |
+|---|---|
+| `TS_AUTHKEY` | always, a reusable Tailscale auth key |
+| `BASE_DOMAIN` | first host of a mesh, copied from a peer otherwise |
+| `TUNNEL_TOKEN` | first host of a mesh, copied from a peer otherwise |
+| `TS_API_KEY` | optional, game split DNS, copied from a peer otherwise |
+| `ADMIN_PASS` | optional, setup admin login and mesh update gate, copied from a peer otherwise |
+
+A host joining an existing mesh needs only `TS_AUTHKEY`: once on the tailnet it copies the rest from the first peer that answers.
+
+`.env` is readable only by root on Linux, and by the account running Docker plus SYSTEM on macOS and Windows. Keys are never displayed. To replace one, use Edit Keys in the tray, `phos keys`, or `k` in the cli. Paste the new value; blank fields keep what is set. Saving recreates the containers with the new keys.
 
 First login: user `admin`, password `ADMIN_PASS`; create a real admin and that login turns off.
 
@@ -63,18 +79,86 @@ stop = systemctl --user stop tmodloader
 
 ## Use
 
-- `phosphorus` (or `phos`): terminal UI; `start`, `stop`, `restart`, `update`
-- Mesh update: update icon in the bar (admins), one host at a time
+- `phosphorus` (or `phos`): the cli; `start`, `stop`, `restart`, `update`, `update all`, `keys`
+- Tray (macOS, Windows): Start, Stop, Check for Updates, Edit Keys
+- Mesh update: update icon in the bar (admins) or `phos update all`. Every peer updates at once through its own installer, then the host that started it
 - Projects API: `/api/projects`, see `internal/project`
+
+## How it fits together
+
+```mermaid
+flowchart TB
+  subgraph release["GitHub release"]
+    deb[".deb (amd64, arm64)"]
+    dmg[".dmg"]
+    exe["setup .exe"]
+    feed["update feed: apt repo, app feed, latest.json"]
+    ghcr["ghcr.io images: phosphorus, -model, -git"]
+  end
+
+  subgraph host["Host machine"]
+    subgraph installers["Installer"]
+      dpkg["apt + postinst"]
+      tray["Tray app: Start, Stop, Check for Updates, Edit Keys"]
+    end
+    bin["phosphorus binary<br/>install, start, stop, keys, rebuild, upgrade"]
+    agent["update agent<br/>systemd path unit or tray app"]
+    subgraph home["Host folder"]
+      env[".env (locked)"]
+      cfg["config/ phosphorus.ini, services.export"]
+      state["state/"]
+      files["files/ and [files] shares"]
+    end
+    sshd["host sshd"]
+    subgraph docker["Docker"]
+      ph["phosphorus<br/>tailscaled, frontend, cloudflared"]
+      model["phosphorus-model<br/>llama-server, opencode"]
+      search["phosphorus-search<br/>searxng"]
+      git["phosphorus-git<br/>forgejo, litefs, elector"]
+      updater["phosphorus-updater<br/>compose swap"]
+    end
+  end
+
+  subgraph mesh["Tailnet"]
+    peers["other hosts"]
+  end
+  cf["Cloudflare tunnel"]
+  browser["Browser at BASE_DOMAIN"]
+
+  deb --> dpkg --> bin
+  dmg --> tray
+  exe --> tray
+  tray -->|"keys window, install, start"| bin
+  bin -->|"keys form"| env
+  bin -->|"release synced, old files removed"| home
+  bin -->|"admin setup once"| sshd
+  bin -->|"pull, compose up"| ghcr
+  bin -->|"compose swap"| updater
+  updater --> ph & model & search & git
+  ph -->|"reconfig: phosphorus rebuild"| updater
+  env --> ph
+  cfg --> ph
+  state <--> ph
+  files <--> ph
+  ph -->|"terminals, game play/stop"| sshd
+  ph -->|"update request"| state
+  state --> agent
+  agent -->|"apt upgrade or app update"| feed
+  agent --> bin
+  ph <-->|"snapshots, files, chat, updates"| peers
+  ph -->|"missing keys from /internal/keys"| peers
+  git <-->|"litefs replication"| peers
+  ph --> model & search
+  ph --> cf --> browser
+```
 
 ## Layout
 
 ```
-cmd/          phosphorus (every role: serve, model, elector, cli, ssh-relay), webbuild
-internal/     Go packages
+cmd/          phosphorus: container roles (serve, model, elector, cli, ssh-relay), host commands; webbuild
+internal/     Go packages, internal/host the host side the installers run
 web/          browser client, bundled into the binary by go generate
 container/    Dockerfile (phosphorus, model, git targets) and their scripts
-scripts/      host install, start, rebuild and update (windows/ for Windows)
 config/       default host config
 packaging/    deb/ and app/ (Tauri tray app for macOS and Windows)
 ```

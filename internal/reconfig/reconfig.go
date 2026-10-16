@@ -16,8 +16,9 @@ import (
 )
 
 var (
-	appliedFile   = filepath.Join(util.Env("STATE_DIR", "/state"), "reconfig.json")
-	rebuildScript = util.Env("REBUILD_SCRIPT", "/repo/scripts/rebuild.sh")
+	appliedFile = filepath.Join(util.Env("STATE_DIR", "/state"), "reconfig.json")
+	// the image's binary, its host role run against the home at /repo
+	rebuildCmd = util.Env("REBUILD_CMD", "/usr/local/bin/phosphorus")
 )
 
 const (
@@ -74,7 +75,7 @@ func Start(busy func() bool) {
 			log.Print("[reconfig] phosphorus.ini [files], [home], [git] or [model] host or gpu changed, rebuilding")
 			ctx, cancel := context.WithTimeout(context.Background(), rebuildTimeout)
 			var out, errb bytes.Buffer
-			cmd := exec.CommandContext(ctx, "bash", rebuildScript)
+			cmd := exec.CommandContext(ctx, rebuildCmd, "rebuild", "--home", "/repo")
 			cmd.Stdout, cmd.Stderr = &out, &errb
 			err := cmd.Run()
 			cancel()
