@@ -1,6 +1,6 @@
 // Package elector: git master election, every host's frontend voting, a
 // majority lease making one master, joint rosters keeping quorums
-// overlapping, acted on by git-daemon.sh (container/git/elector.js's port)
+// overlapping, acted on by git-daemon.sh
 package elector
 
 import (
@@ -675,7 +675,7 @@ func (e *E) lead() {
 }
 
 // probeSafe the probe run beside a campaign: adopt is the shared write,
-// both rare enough to tolerate the JS ordering
+// both rare enough to tolerate the ordering
 func (e *E) probeSafe() { e.probe() }
 
 func (e *E) followOrCampaign(l local) {

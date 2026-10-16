@@ -1,5 +1,5 @@
 // Package collab: shared code and text, one live session per file, edits as
-// ot.js's text operations rebased in arrival order. Positions count UTF-16
+// text operations rebased in arrival order. Positions count UTF-16
 // units, as the browsers' strings do
 package collab
 

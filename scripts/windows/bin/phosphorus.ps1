@@ -14,10 +14,6 @@ function Usage {
 
 function Started { Invoke-Quiet { docker inspect -f '{{.State.Running}} {{.State.StartedAt}}' phosphorus } }
 
-# the binary's cli, node's on an image from before it
-# no double quotes, powershell 5 drops them on the way to docker
-$Cli = 'command -v phosphorus >/dev/null && exec phosphorus cli $@; exec node /opt/frontend/cli/phosphorus.js $@'
-
 # a mesh update swaps this container out from under the cli: the new one
 # waited for and reattached, on the same tab
 function Invoke-Cli([string[]]$CliArgs) {
@@ -27,7 +23,7 @@ function Invoke-Cli([string[]]$CliArgs) {
             Write-Host "phosphorus isn't running, run: phos start" -ForegroundColor Red
             exit 1
         }
-        docker exec -it -e TERM=xterm-256color -e COLORTERM=truecolor phosphorus sh -c $Cli sh @CliArgs
+        docker exec -it -e TERM=xterm-256color -e COLORTERM=truecolor phosphorus phosphorus cli @CliArgs
         $code = $LASTEXITCODE
         if ((Started) -eq $before) { exit $code }
         Write-Host "phosphorus is restarting, reattaching (ctrl-c to quit)..."

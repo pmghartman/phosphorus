@@ -18,8 +18,8 @@ env_get() {
   grep "^$1=" .env 2>/dev/null | cut -d= -f2-
 }
 
-# the release's own, stamped by CI
-phosphorus_version() { tr -d '[:space:]' < VERSION; }
+# the release's own, stamped by CI, a checkout's latest tag
+phosphorus_version() { tr -d '[:space:]' < VERSION 2>/dev/null || git describe --tags --abbrev=0 | sed 's/^v//'; }
 
 # the release's images, CI-built, the same on every host: llama-server and
 # opencode fetched at run time by the model host's phosphorus-model

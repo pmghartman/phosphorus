@@ -2,11 +2,7 @@ package users
 
 import (
 	"encoding/hex"
-	"os/exec"
-	"strings"
 	"testing"
-
-	"github.com/pmghartman/phosphorus/internal/util"
 )
 
 // vectors recorded from Node's crypto (scrypt defaults, aes-256-gcm)
@@ -48,21 +44,5 @@ func TestB64URL(t *testing.T) {
 	b, err := B64URL("eyJhIjoiw6k_PiJ9")
 	if err != nil || string(b) != `{"a":"é?>"}` {
 		t.Fatalf("%s %v", b, err)
-	}
-}
-
-// Node opening Go's box, when node is on the path
-func TestNodeOpensGoBox(t *testing.T) {
-	if _, err := exec.LookPath("node"); err != nil {
-		t.Skip("no node")
-	}
-	out, _ := hex.DecodeString(vecOut)
-	b := Seal(out[32:], vecText)
-	js := `const c=require("crypto");const b=JSON.parse(process.argv[1]);const k=Buffer.from(process.argv[2],"hex");` +
-		`const d=c.createDecipheriv("aes-256-gcm",k,Buffer.from(b.iv,"hex"));d.setAuthTag(Buffer.from(b.tag,"hex"));` +
-		`process.stdout.write(Buffer.concat([d.update(Buffer.from(b.data,"base64")),d.final()]).toString("utf8"))`
-	got, err := exec.Command("node", "-e", js, string(util.Marshal(b)), hex.EncodeToString(out[32:])).Output()
-	if err != nil || strings.TrimSpace(string(got)) != vecText {
-		t.Fatalf("node: %q %v", got, err)
 	}
 }

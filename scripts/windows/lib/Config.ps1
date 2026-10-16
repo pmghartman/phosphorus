@@ -26,8 +26,11 @@ function Get-EnvValue([string]$Key) {
 # stderr dropped: under Stop, Windows PowerShell turning any of it into a throw
 function Invoke-Quiet([scriptblock]$Cmd) { $ErrorActionPreference = "Continue"; & $Cmd 2>$null }
 
-# the release's own, stamped by CI
-function Get-PhosphorusVersion { (Get-Content VERSION -First 1).Trim() }
+# the release's own, stamped by CI, a checkout's latest tag
+function Get-PhosphorusVersion {
+    if (Test-Path VERSION) { return (Get-Content VERSION -First 1).Trim() }
+    (git describe --tags --abbrev=0) -replace '^v', ''
+}
 
 # the release's images pulled and tagged as compose names them, one for every host
 function Invoke-PhosphorusPull {

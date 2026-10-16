@@ -18,7 +18,7 @@ import (
 const (
 	readLimit = 32 << 20
 	queueLen  = 1024
-	// Heartbeat as server.js's: a socket not answering pings dropped
+	// Heartbeat a socket not answering pings dropped
 	Heartbeat = 3 * time.Second
 )
 

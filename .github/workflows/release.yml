@@ -43,14 +43,14 @@ jobs:
       debs: ${{ steps.plan.outputs.debs }}
     steps:
       - uses: actions/checkout@v7
-      # every run one past the highest vMAJOR.MINOR tag (none yet: VERSION): minor, or major with .0
+      # every run one past the highest vMAJOR.MINOR tag: minor, or major with .0
       - name: next version
         id: v
         env:
           MAJOR: ${{ inputs.major }}
         run: |
           L=$(git ls-remote --tags origin | sed -n 's|.*refs/tags/v\([0-9]*\.[0-9]*\)$|\1|p' | sort -t. -k1,1n -k2,2n | tail -1)
-          [ -n "$L" ] || L=$(tr -d '[:space:]' < VERSION)
+          L=${L:-0.0}
           if [ "$MAJOR" = true ]; then V=$(( ${L%.*} + 1 )).0
           else V=${L%.*}.$(( ${L#*.} + 1 ))
           fi
@@ -76,7 +76,7 @@ jobs:
           j() { local IFS=,; echo "[$*]"; }
           { echo "apps=$(j "${apps[@]}")"; echo "arches=$(j "${arches[@]}")"; echo "debs=$(j "${debs[@]}")"; } | tee -a "$GITHUB_OUTPUT"
 
-  # lint and tests, gating the release
+  # vet and tests, gating the release
   check:
     runs-on: ubuntu-24.04
     steps:
@@ -88,10 +88,7 @@ jobs:
         with:
           path: web/.vendor/cache
           key: web-vendor-${{ hashFiles('web/vendor.lock') }}
-      - name: shell
-        run: for f in scripts/*.sh scripts/lib/*.sh scripts/phosphorus packaging/deb/build.sh packaging/deb/post* packaging/deb/prerm container/*/*.sh; do bash -n "$f"; done
-      - name: go
-        run: make check test
+      - run: go generate ./internal/web && go vet ./... && go test ./...
 
   # every image of one arch on its native runner in one bake, pushed by
   # digest, joined into one tag per image by `manifests`

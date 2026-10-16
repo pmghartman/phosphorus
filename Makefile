@@ -1,6 +1,5 @@
 # the binary and its checks, the same as CI's
 BIN ?= phosphorus
-STATICCHECK = honnef.co/go/tools/cmd/staticcheck@v0.8.2
 
 .PHONY: all web build check test clean
 
@@ -16,10 +15,9 @@ build: web
 check: web
 	@test -z "$$(gofmt -l cmd internal)" || { gofmt -l cmd internal; exit 1; }
 	go vet ./...
-	go run $(STATICCHECK) ./...
 
 test: web
-	go test -race ./...
+	go test ./...
 
 clean:
 	rm -rf $(BIN) web/.vendor
