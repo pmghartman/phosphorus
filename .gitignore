@@ -9,7 +9,6 @@
 
 .DS_Store
 *.bak
-node_modules/
 
 # default [files] share, contents per host, not shipped
 /files/*

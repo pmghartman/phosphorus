@@ -8,7 +8,7 @@ Set-Location $Dir
 function Say($msg) { Write-Host "[run-windows] $msg" }
 function Fail($msg) { Write-Error "[run-windows] ERROR: $msg"; exit 1 }
 
-if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { Fail "docker not found, install Docker Desktop first (see README)" }
+if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { Fail "docker not found, install Docker Desktop first" }
 
 if (-not (Test-Path .env)) { Fail ".env not found in $Dir, copy .env.example to it and fill it in" }
 if (-not (Test-Path config/services.export)) { Fail "config/services.export not found in $Dir" }

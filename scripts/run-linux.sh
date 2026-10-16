@@ -10,7 +10,7 @@ fail() { echo "[run-linux] ERROR: $*" >&2; exit 1; }
 DOCKER="sudo docker"
 . "$DIR/scripts/lib/run-common.sh"
 
-run_preflight "install Docker first (see README)"
+run_preflight "install Docker first"
 
 # --- native tailscaled conflict check ---------------------------------------
 # the container's tailscaled sharing this machine's netns (network_mode: host),

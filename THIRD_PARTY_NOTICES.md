@@ -59,7 +59,7 @@ first start, and deletes them when it stops being the model host.
 | opencode (the model harness) | MIT | https://github.com/anomalyco/opencode |
 | NVIDIA CUDA runtime (only with `[model] gpu`, on x86-64) | NVIDIA CUDA EULA | https://developer.nvidia.com/cuda-toolkit |
 
-## phosphorus-git image (`container/git/Dockerfile`)
+## phosphorus-git image (`container/Dockerfile --target git`)
 
 | Component | Version | License | Source |
 |---|---|---|---|

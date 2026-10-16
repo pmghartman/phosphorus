@@ -39,8 +39,7 @@ jobs:
     outputs:
       ver: ${{ steps.v.outputs.ver }}
       apps: ${{ steps.plan.outputs.apps }}
-      images: ${{ steps.plan.outputs.images }}
-      manifests: ${{ steps.plan.outputs.manifests }}
+      arches: ${{ steps.plan.outputs.arches }}
       debs: ${{ steps.plan.outputs.debs }}
     steps:
       - uses: actions/checkout@v7
@@ -66,59 +65,19 @@ jobs:
         run: |
           on() { for v in "$@"; do [ "$v" = true ] && return 0; done; return 1; }
           on "$AMD64" "$ARM64" "$MAC" "$WIN" || { echo "check at least one target" >&2; exit 1; }
-          apps=() images=() manifests=() debs=()
+          apps=() arches=() debs=()
           # image arches every checked target's hosts pull: macs on either, windows amd64
-          img() { images+=("{\"name\":\"$1\",\"file\":\"$2\",\"target\":\"$3\",\"arch\":\"$4\",\"runner\":\"$5\",\"suffix\":\"\"}"); }
-          if on "$AMD64" "$MAC" "$WIN"; then
-            img phosphorus container/Dockerfile "" amd64 ubuntu-24.04
-            img phosphorus-model container/Dockerfile model amd64 ubuntu-24.04
-            img phosphorus-git container/git/Dockerfile "" amd64 ubuntu-24.04
-          fi
-          if on "$ARM64" "$MAC"; then
-            img phosphorus container/Dockerfile "" arm64 ubuntu-24.04-arm
-            img phosphorus-model container/Dockerfile model arm64 ubuntu-24.04-arm
-            img phosphorus-git container/git/Dockerfile "" arm64 ubuntu-24.04-arm
-          fi
-          manifests+=('{"name":"phosphorus","suffix":""}' '{"name":"phosphorus-model","suffix":""}' '{"name":"phosphorus-git","suffix":""}')
+          on "$AMD64" "$MAC" "$WIN" && arches+=('{"arch":"amd64","runner":"ubuntu-24.04"}')
+          on "$ARM64" "$MAC" && arches+=('{"arch":"arm64","runner":"ubuntu-24.04-arm"}')
           on "$AMD64" && debs+=('"amd64"')
           on "$ARM64" && debs+=('"arm64"')
           [ "$MAC" = true ] && apps+=('{"os":"macos-14","name":"macos-universal","args":"--target universal-apple-darwin --bundles app,dmg"}')
           [ "$WIN" = true ] && apps+=('{"os":"windows-2022","name":"windows-x86_64","args":"--bundles nsis"}')
           j() { local IFS=,; echo "[$*]"; }
-          { echo "apps=$(j "${apps[@]}")"; echo "images=$(j "${images[@]}")"
-            echo "manifests=$(j "${manifests[@]}")"; echo "debs=$(j "${debs[@]}")"; } | tee -a "$GITHUB_OUTPUT"
+          { echo "apps=$(j "${apps[@]}")"; echo "arches=$(j "${arches[@]}")"; echo "debs=$(j "${debs[@]}")"; } | tee -a "$GITHUB_OUTPUT"
 
   check:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-      - name: syntax
-        run: |
-          for f in scripts/*.sh scripts/lib/*.sh scripts/phosphorus build/*.sh build/deb/post* build/deb/prerm container/*.sh container/git/*.sh test/mesh/*.sh; do bash -n "$f"; done
-      # the client's bundle first, embedded by everything after
-      - name: go
-        run: |
-          go generate ./internal/web
-          test -z "$(gofmt -l cmd internal test)" || { gofmt -l cmd internal test; exit 1; }
-          go vet ./...
-          go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...
-          go test -race ./...
-
-  # three hosts in network namespaces
-  mesh:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-      - name: build
-        run: make build
-      - name: mesh
-        run: sudo env "PATH=$PATH" test/mesh/run.sh ./phosphorus
+    uses: ./.github/workflows/check.yml
 
   # the release's tree: what every installer ships and syncs into the host's home
   payload:
@@ -131,8 +90,8 @@ jobs:
       - name: tree
         run: |
           mkdir -p out/payload
+          # .github, packaging and test export-ignored
           git archive HEAD | tar -x -C out/payload
-          rm -rf out/payload/.github out/payload/gui out/payload/build
           echo "$VER" > out/payload/VERSION
           # a tarball: artifacts drop exec bits
           tar -C out/payload -czf out/payload.tar.gz .
@@ -142,13 +101,14 @@ jobs:
           path: out/payload.tar.gz
           compression-level: 0
 
-  # each arch on its own native runner, pushed by digest, joined into one tag by `manifests`
+  # every image of one arch on its native runner, one Go build shared by all
+  # three, pushed by digest, joined into one tag per image by `manifests`
   images:
     needs: [version]
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(needs.version.outputs.images) }}
+        include: ${{ fromJSON(needs.version.outputs.arches) }}
     runs-on: ${{ matrix.runner }}
     env:
       VER: ${{ needs.version.outputs.ver }}
@@ -160,40 +120,57 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
-      - id: build
+      - id: phosphorus
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: ${{ matrix.file }}
-          target: ${{ matrix.target }}
+          file: container/Dockerfile
           platforms: linux/${{ matrix.arch }}
-          outputs: type=image,name=${{ env.REGISTRY }}/${{ matrix.name }},push-by-digest=true,name-canonical=true,push=true
-          build-args: |
-            PHOSPHORUS_VERSION=${{ env.VER }}
-          cache-from: type=gha,scope=${{ matrix.name }}${{ matrix.suffix }}-${{ matrix.arch }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.name }}${{ matrix.suffix }}-${{ matrix.arch }}
-      - name: digest
+          outputs: type=image,name=${{ env.REGISTRY }}/phosphorus,push-by-digest=true,name-canonical=true,push=true
+          build-args: PHOSPHORUS_VERSION=${{ env.VER }}
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
+      - id: model
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: container/Dockerfile
+          target: model
+          platforms: linux/${{ matrix.arch }}
+          outputs: type=image,name=${{ env.REGISTRY }}/phosphorus-model,push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ matrix.arch }}
+      - id: git
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: container/Dockerfile
+          target: git
+          platforms: linux/${{ matrix.arch }}
+          outputs: type=image,name=${{ env.REGISTRY }}/phosphorus-git,push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ matrix.arch }}
+      - name: digests
         env:
-          DIGEST: ${{ steps.build.outputs.digest }}
-        run: mkdir -p digests && touch "digests/${DIGEST#sha256:}"
+          P: ${{ steps.phosphorus.outputs.digest }}
+          M: ${{ steps.model.outputs.digest }}
+          G: ${{ steps.git.outputs.digest }}
+        run: |
+          mkdir -p d/phosphorus d/phosphorus-model d/phosphorus-git
+          touch "d/phosphorus/${P#sha256:}" "d/phosphorus-model/${M#sha256:}" "d/phosphorus-git/${G#sha256:}"
       - uses: actions/upload-artifact@v7
         with:
-          name: digest_${{ matrix.name }}${{ matrix.suffix }}_${{ matrix.arch }}
-          path: digests/*
+          name: digests_${{ matrix.arch }}
+          path: d/
 
   manifests:
     needs: [version, images]
-    strategy:
-      matrix:
-        include: ${{ fromJSON(needs.version.outputs.manifests) }}
     runs-on: ubuntu-24.04
     env:
       VER: ${{ needs.version.outputs.ver }}
     steps:
       - uses: actions/download-artifact@v8
         with:
-          path: digests
-          pattern: digest_${{ matrix.name }}${{ matrix.suffix }}_*
+          path: d
+          pattern: digests_*
           merge-multiple: true
       - uses: docker/setup-buildx-action@v4
       - uses: docker/login-action@v4
@@ -202,12 +179,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ github.token }}
       - name: tag
-        env:
-          IMG: ${{ env.REGISTRY }}/${{ matrix.name }}
         run: |
-          cd digests
-          docker buildx imagetools create -t "$IMG:$VER${{ matrix.suffix }}" $(printf "$IMG@sha256:%s " *)
-          docker buildx imagetools inspect "$IMG:$VER${{ matrix.suffix }}"
+          for n in phosphorus phosphorus-model phosphorus-git; do
+            img="$REGISTRY/$n"
+            docker buildx imagetools create -t "$img:$VER" $(cd "d/$n" && printf "$img@sha256:%s " *)
+          done
 
   deb:
     needs: [version, payload]
@@ -235,7 +211,7 @@ jobs:
       - name: build .deb
         run: |
           mkdir -p art/payload out && tar -xzf art/payload.tar.gz -C art/payload
-          for a in $ARCHES; do build/deb.sh "out/phosphorus_${VER}_$a.deb" "$VER" art/payload "$a"; done
+          for a in $ARCHES; do packaging/deb/build.sh "out/phosphorus_${VER}_$a.deb" "$VER" art/payload "$a"; done
       - uses: actions/upload-artifact@v7
         with:
           name: deb
@@ -263,7 +239,7 @@ jobs:
         run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: gui
+          workspaces: packaging/app
           key: ${{ matrix.name }}
           cache-on-failure: true
       - uses: taiki-e/install-action@v2
@@ -275,7 +251,7 @@ jobs:
           path: art
       - name: resources
         shell: bash
-        run: mkdir -p gui/payload && tar -xzf art/payload.tar.gz -C gui/payload
+        run: mkdir -p packaging/app/payload && tar -xzf art/payload.tar.gz -C packaging/app/payload
       # updater config and artifacts only with a signing key
       - name: app config
         shell: bash
@@ -295,17 +271,17 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
-          cd gui
+          cd packaging/app
           cargo tauri build ${{ matrix.args }} --config "$CFG"
-          mkdir -p ../out ../upd
+          mkdir -p ../../out ../../upd
           if [ "${{ matrix.name }}" = macos-universal ]; then
-            cp target/universal-apple-darwin/release/bundle/dmg/*.dmg "../out/phosphorus-$VER-macos-universal.dmg"
+            cp target/universal-apple-darwin/release/bundle/dmg/*.dmg "../../out/phosphorus-$VER-macos-universal.dmg"
             u=target/universal-apple-darwin/release/bundle/macos/Phosphorus.app.tar.gz
-            [ -e "$u.sig" ] && cp "$u" ../upd/phosphorus-macos-universal.app.tar.gz && cp "$u.sig" ../upd/phosphorus-macos-universal.app.tar.gz.sig
+            [ -e "$u.sig" ] && cp "$u" ../../upd/phosphorus-macos-universal.app.tar.gz && cp "$u.sig" ../../upd/phosphorus-macos-universal.app.tar.gz.sig
           else
-            cp target/release/bundle/nsis/*-setup.exe "../out/phosphorus-$VER-windows-x86_64-setup.exe"
+            cp target/release/bundle/nsis/*-setup.exe "../../out/phosphorus-$VER-windows-x86_64-setup.exe"
             for u in target/release/bundle/nsis/*-setup.exe; do
-              [ -e "$u.sig" ] && cp "$u" ../upd/phosphorus-windows-x86_64-setup.exe && cp "$u.sig" ../upd/phosphorus-windows-x86_64-setup.exe.sig
+              [ -e "$u.sig" ] && cp "$u" ../../upd/phosphorus-windows-x86_64-setup.exe && cp "$u.sig" ../../upd/phosphorus-windows-x86_64-setup.exe.sig
             done
           fi
           true
@@ -322,7 +298,7 @@ jobs:
           if-no-files-found: ignore
 
   release:
-    needs: [version, check, mesh, manifests, deb, app]
+    needs: [version, check, manifests, deb, app]
     # runs with unchecked targets skipped, not when anything failed
     if: ${{ !cancelled() && !failure() }}
     runs-on: ubuntu-24.04

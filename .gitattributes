@@ -1,3 +1,7 @@
 * text=auto eol=lf
 *.ps1 text eol=crlf
 *.cmd text eol=crlf
+# left out of the release tree hosts receive
+/.github export-ignore
+/packaging export-ignore
+/test export-ignore

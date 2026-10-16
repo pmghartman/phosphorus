@@ -1,13 +1,11 @@
-# runtime data (forgejo repos, litefs) out of every update's build, the
-# in-container classic builder shipping the whole context
-.git
-git/data
-state
-models
-**/node_modules
-gui
-build
-# the binary's build: vendored tarballs and a stale bundle rebuilt in the image
+# only what the images build from
+*
+!go.mod
+!go.sum
+!cmd/
+!internal/
+!web/
+!container/
 web/.vendor
 internal/web/dist/*
 !internal/web/dist/README

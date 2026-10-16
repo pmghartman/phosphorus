@@ -14,7 +14,7 @@ build: web
 	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o $(BIN) ./cmd/phosphorus
 
 check: web
-	@test -z "$$(gofmt -l cmd internal test)" || { gofmt -l cmd internal test; exit 1; }
+	@test -z "$$(gofmt -l cmd internal)" || { gofmt -l cmd internal; exit 1; }
 	go vet ./...
 	go run $(STATICCHECK) ./...
 

@@ -10,7 +10,7 @@ fail() { echo "[run-mac] ERROR: $*" >&2; exit 1; }
 DOCKER="docker"
 . "$DIR/scripts/lib/run-common.sh"
 
-run_preflight "install colima and docker first (see README)"
+run_preflight "install colima and docker first"
 
 # --- native tailscaled conflict check ---------------------------------------
 # the container's tailscaled sharing this machine's network, a native
