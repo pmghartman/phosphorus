@@ -456,13 +456,6 @@ async function fmMoveHost(fm, e) {
   fmChanged(HOME, fm.dir);
 }
 
-dkMenuEl.hidden = true;
-dkMenuEl.setAttribute('role', 'menu');
-document.body.appendChild(dkMenuEl);
-document.addEventListener('pointerdown', (e) => { if (!dkMenuEl.contains(e.target)) dkMenuEl.hidden = true; }, true);
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') dkMenuEl.hidden = true; }, true);
-addEventListener('blur', () => { dkMenuEl.hidden = true; });
-
 // a question inside the window: text back, true for a yes, null for no
 function dkAsk(fm, { title, message, value, action, danger }) {
   return new Promise((resolve) => {

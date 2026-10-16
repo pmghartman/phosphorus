@@ -340,6 +340,7 @@ body {
 .dk-icon:hover .dk-tile, .dk-icon:focus-visible .dk-tile { background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .dk-icon:focus-visible { outline: none; }
 .dk-icon:active .dk-tile { transform: translateY(1px); }
+.dk-icon.dk-terminal .ic { color: var(--accent); }
 .dk-icon.dk-files .ic { color: var(--sand); }
 .dk-icon.dk-editor .ic { color: var(--sky); }
 .dk-icon.dk-service .ic { color: var(--teal); }

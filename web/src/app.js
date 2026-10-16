@@ -3590,7 +3590,7 @@ updateBtn.addEventListener('click', askToStart);
 // column never touched
 const toggleUpdatePane = () => {
   if (!updateModal.hidden) { closeUpdateModal(); return; }
-  closeMenus();
+  dkPopsClose('update');
   openUpdateModal();
 };
 topUpdate.addEventListener('click', toggleUpdatePane);
@@ -3722,6 +3722,7 @@ for (const b of themeToggles) {
     e.stopPropagation();
     const menu = b.parentElement.querySelector('.theme-menu');
     const open = menu.hidden;
+    dkPopsClose('theme');
     closeMenus();
     menu.hidden = !open;
     if (open && b.closest('.dk-bar')) { menu.classList.add('dk-pop'); dkAnchor(menu, b); }
@@ -4010,6 +4011,7 @@ function dkLogout() {
 const DK_GLYPHS = {
   doc: ICONS.file,
   app: 'M2.5 2.5h11v11h-11zM2.5 5.5h11M4.25 4h.01M5.75 4h.01M6 8.5l-1.5 1.5L6 11.5M10 8.5l1.5 1.5-1.5 1.5',
+  terminal: 'M2 3h12v10H2zM4.5 6.5l2 1.5-2 1.5M8 10h3.5',
   files: ICONS.folder,
   editor: 'M3 1.5h7l3 3v10H3zM10 1.5v3h3M5 7.5h6M5 10h6M5 12.5h3.5',
   service: 'M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM1.5 8h13M8 1.5c-2.2 2.4-2.2 10.6 0 13M8 1.5c2.2 2.4 2.2 10.6 0 13',
@@ -4094,6 +4096,7 @@ function dkIcons() {
   if (sig === dk.sig) return;
   dk.sig = sig;
   dk.desk.icons.replaceChildren(
+    ...hosts.map((h) => dkIcon('terminal', 'terminal', h, () => dkTerminal(h))),
     dkIcon('files', 'files', '', () => filesWin()),
     dkIcon('editor', 'editor', '', dkEditorPick),
     dkIcon('chat', 'chat', '', () => dkOpenApp('chat')),
@@ -4777,6 +4780,8 @@ function dkDeskMenu(icons) {
     if (f) { dkMenu(e.clientX, e.clientY, dkFileMenu(f)); return; }
     const items = [
       ...(b ? [['open', () => b.dispatchEvent(new MouseEvent('dblclick')), true], null] : []),
+      ...hosts.map((h) => [`terminal on ${h}`, () => dkTerminal(h), true]),
+      ...(hosts.length ? [null] : []),
       ['add file…', () => dkNewFile(e.clientX, e.clientY), !!dkDeskAt()],
       ['upload files…', () => dkPick('', true, (list) => { dkPlaceAt(e.clientX, e.clientY, list.map((f) => f.name)); dkAddFiles(list); }), hosts.length > 0],
       null,
@@ -4858,9 +4863,16 @@ function fileOpen(loc, rel, e) {
 }
 
 const dkMenuEl = el('div', 'dk-menu');
+dkMenuEl.hidden = true;
+dkMenuEl.setAttribute('role', 'menu');
+document.body.appendChild(dkMenuEl);
+// a press on its owner left to the owner's own toggle
+document.addEventListener('pointerdown', (e) => { if (!dkMenuEl.contains(e.target) && !dkMenuEl.owner?.contains(e.target)) dkMenuEl.hidden = true; }, true);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') dkMenuEl.hidden = true; }, true);
+addEventListener('blur', () => { dkMenuEl.hidden = true; });
 
 function dkMenu(x, y, items, after, title) {
-  if (dkMenuEl.owner && dkMenuEl.hidden) dkMenuEl.owner = null;
+  dkMenuEl.owner = null;
   dkMenuEl.classList.remove('dk-pop');
   dkMenuEl.dkAnchor = null;
   dkMenuEl.style.bottom = '';
@@ -5453,6 +5465,15 @@ function dkGitFrame() {
 // bar's top, a corner on the button's, right of it where it fits, else left
 
 const DK_POP_GAP = 6;
+
+// one task bar popup open at a time, every other closed as one opens
+function dkPopsClose(keep) {
+  if (keep !== 'mesh') dk.meshTray?.show(false);
+  if (keep !== 'menu') dkMenuEl.hidden = true;
+  if (keep !== 'update' && !updateModal.hidden) closeUpdateModal();
+  if (keep !== 'theme') closeMenus();
+  if (keep !== 'unlock') for (const p of document.querySelectorAll('.acct-unlock')) p.dkClose?.();
+}
 const DK_POP_EDGE = 8;
 
 // fill: a popup as wide as the button's left to the screen's right, at least
@@ -5513,9 +5534,11 @@ function dkMeshTray() {
   const pop = Object.assign(el('div', 'dk-mesh-pop dk-pop'), { hidden: true });
   wrap.append(b, pop);
   // a column up the screen's right edge, the button at its bottom left corner
-  dkAnchor(pop, b, { fill: 240, tall: 720 });
+  dkAnchor(pop, b, { fill: 240, tall: 440 });
   const fit = new ResizeObserver(() => { meshDims = null; if (!pop.hidden && !meshAnimFrame) drawMesh(); });
   const show = (on) => {
+    if (!on && pop.hidden) return;
+    if (on) dkPopsClose('mesh');
     pop.hidden = !on;
     b.setAttribute('aria-expanded', String(on));
     if (on) {
@@ -5812,6 +5835,7 @@ function dkUsersWin() {
 function dkUnlock(host, chip) {
   // a second press on its chip closing it
   if (chip.unlockClosed && Date.now() - chip.unlockClosed < 400) { chip.unlockClosed = 0; return; }
+  dkPopsClose();
   const pop = el('form', 'acct-unlock');
   const user = noFill(Object.assign(el('input'), { placeholder: 'user', spellcheck: false, autocapitalize: 'off', value: dkUsers()[host] || '' }));
   const pass = noFill(Object.assign(el('input'), { placeholder: 'password' }), true);
@@ -5820,6 +5844,7 @@ function dkUnlock(host, chip) {
   pop.append(el('div', 'home-col-head', host), user, pass, why, go);
   pop.classList.add('dk-pop');
   const close = () => { pop.remove(); pop.dkRelease?.(); document.removeEventListener('pointerdown', away, true); };
+  pop.dkClose = close;
   const away = (e) => {
     if (pop.contains(e.target)) return;
     if (chip.contains(e.target)) chip.unlockClosed = Date.now();
@@ -5873,18 +5898,17 @@ function dkProfileTray() {
     b.title += ', admin';
   } else b.appendChild(dkGlyph(DK_GLYPHS.user));
   b.append(el('span', 'dk-profile-name', acct?.user || ''));
-  // a second press closing it, the press itself having hidden it already
-  let open = false;
-  b.addEventListener('pointerdown', () => { open = !dkMenuEl.hidden && dkMenuEl.owner === b; });
+  // a second press closing it
   b.addEventListener('click', () => {
-    if (open) { open = false; return; }
-    dkMenuEl.owner = b;
+    if (!dkMenuEl.hidden && dkMenuEl.owner === b) { dkMenuEl.hidden = true; return; }
+    dkPopsClose('menu');
     dkMenu(0, 0, [
       ['settings', dkProfileWin, true],
       ...(acct?.admin ? [['users', dkUsersWin, true]] : []),
       null,
       ['log out', acctLogout, true, 'danger'],
     ], null, acct?.user || 'profile');
+    dkMenuEl.owner = b;
     dkMenuEl.classList.add('dk-pop');
     dkAnchor(dkMenuEl, b);
   });
