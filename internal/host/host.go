@@ -115,6 +115,8 @@ func Main(cmd string, args []string) int {
 	case "run":
 		err = runHost()
 	case "ps":
+		// the roles file under this home, not the default state dir
+		os.Setenv("STATE_DIR", at("state"))
 		err = psHost(os.Stdout)
 	default:
 		usage(os.Stdout)
