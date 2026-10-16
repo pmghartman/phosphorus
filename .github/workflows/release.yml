@@ -156,6 +156,9 @@ jobs:
             macos-universal)
               b darwin arm64 art/h-arm64 && b darwin amd64 art/h-amd64
               lipo -create -output $APP/binaries/phosphorus-host-universal-apple-darwin art/h-arm64 art/h-amd64
+              # per-arch sidecars for the per-arch cargo builds of the universal target
+              cp art/h-arm64 $APP/binaries/phosphorus-host-aarch64-apple-darwin
+              cp art/h-amd64 $APP/binaries/phosphorus-host-x86_64-apple-darwin
               packaging/tools.sh darwin universal $APP/payload/tools ;;
             windows-*)
               b windows amd64 $APP/binaries/phosphorus-host-x86_64-pc-windows-msvc.exe
