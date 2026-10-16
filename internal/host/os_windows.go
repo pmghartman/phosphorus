@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/mgr"
 )
@@ -280,4 +281,19 @@ func deferRebuild() error       { return nil }
 func gitEnv() map[string]string { return nil }
 func ensureGitUser() error      { return nil }
 func gitUp() error              { return nil }
+func gitLeftovers() string      { return "" }
 func gitDown()                  {}
+
+// lockRebuild state/rebuild.lock held for the rebuild, a second one waiting
+func lockRebuild() (func(), error) {
+	f, err := os.OpenFile(at("state", "rebuild.lock"), os.O_CREATE|os.O_RDWR, 0o644)
+	if err != nil {
+		return nil, err
+	}
+	ol := new(windows.Overlapped)
+	if err := windows.LockFileEx(windows.Handle(f.Fd()), windows.LOCKFILE_EXCLUSIVE_LOCK, 0, 1, 0, ol); err != nil {
+		f.Close()
+		return nil, err
+	}
+	return func() { f.Close() }, nil
+}

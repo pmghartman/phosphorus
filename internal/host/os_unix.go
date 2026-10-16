@@ -94,3 +94,19 @@ func setupOS() error {
 func elevateWindows() error { return nil }
 
 func prepareOS(bool) error { return nil }
+
+// lockRebuild state/rebuild.lock held for the rebuild, a second one waiting
+func lockRebuild() (func(), error) {
+	f, err := os.OpenFile(at("state", "rebuild.lock"), os.O_CREATE|os.O_RDWR, 0o644)
+	if err != nil {
+		return nil, err
+	}
+	if syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB) != nil {
+		say("another rebuild is running, waiting for it...")
+		if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+			f.Close()
+			return nil, err
+		}
+	}
+	return func() { f.Close() }, nil
+}

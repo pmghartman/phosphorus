@@ -242,42 +242,55 @@ func ensureGitUser() error {
 	return nil
 }
 
-// moveEntries every entry of from into to, rename only
-func moveEntries(from, to, skip string) error {
-	ents, err := os.ReadDir(from)
-	if err != nil {
-		return err
+// gitLeftovers why git/data can't become git/: anything beside it there,
+// from an earlier attempt, which only a person can sort out
+func gitLeftovers() string {
+	if !fileExists(at("git", "data")) {
+		return ""
 	}
-	if err := os.MkdirAll(to, 0o755); err != nil {
-		return err
-	}
+	ents, _ := os.ReadDir(at("git"))
+	extra := []string{}
 	for _, e := range ents {
-		if e.Name() == skip {
-			continue
+		if e.Name() != "data" {
+			extra = append(extra, e.Name())
 		}
-		if err := os.Rename(filepath.Join(from, e.Name()), filepath.Join(to, e.Name())); err != nil {
-			return err
+	}
+	if len(extra) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%s holds %s beside data/, left by an earlier attempt: move them aside (sudo mkdir %s && sudo mv %s/{%s} %s/), check git/data is complete, then phos start",
+		at("git"), strings.Join(extra, ", "), at("git.leftover"), at("git"), strings.Join(extra, ","), at("git.leftover"))
+}
+
+// gitUp git/data as git/, the image's data root at the same path; three
+// renames, a run cut short finished by the next
+func gitUp() error {
+	tmp := at("git.native")
+	if fileExists(at("git", "data")) {
+		say("moving git data from git/data to git/")
+		if err := os.Rename(at("git", "data"), tmp); err != nil {
+			return fail("couldn't move git data: %v", err)
+		}
+		if err := os.Remove(at("git")); err != nil {
+			os.Rename(tmp, at("git", "data"))
+			return fail("couldn't move git data: %v", err)
+		}
+	}
+	if fileExists(tmp) && !fileExists(at("git")) {
+		if err := os.Rename(tmp, at("git")); err != nil {
+			return fail("couldn't move git data: %v", err)
 		}
 	}
 	return nil
 }
 
-// gitUp git/data's contents to git/, the image's data root at the same path
-func gitUp() error {
-	from := at("git", "data")
-	if !fileExists(from) {
-		return nil
-	}
-	say("moving git data from git/data to git/")
-	if err := moveEntries(from, at("git"), ""); err != nil {
-		return fail("couldn't move git data: %v", err)
-	}
-	return os.Remove(from)
-}
-
 // gitDown the containers' layout back, for a rollback
 func gitDown() {
-	if fileExists(at("git")) && !fileExists(at("git", "data")) {
-		moveEntries(at("git"), at("git", "data"), "data")
+	if !fileExists(at("git")) || fileExists(at("git", "data")) {
+		return
+	}
+	tmp := at("git.native")
+	if os.Rename(at("git"), tmp) == nil && os.MkdirAll(at("git"), 0o755) == nil {
+		os.Rename(tmp, at("git", "data"))
 	}
 }

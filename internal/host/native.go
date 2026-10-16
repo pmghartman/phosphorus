@@ -202,6 +202,13 @@ func rebuild() error {
 	if err := os.Chdir(home); err != nil {
 		return err
 	}
+	os.MkdirAll(at("state"), 0o755)
+	// one rebuild at a time: the update's deferred one and a phos start never interleave
+	unlock, err := lockRebuild()
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	lockEnv()
 	addMissingSections()
 	if isGitHost() && !isLinux {
@@ -227,6 +234,9 @@ func rebuild() error {
 	os.MkdirAll(at("state"), 0o755)
 
 	migrating := dockerEra()
+	if why := gitLeftovers(); why != "" {
+		return fail("%s; nothing was stopped", why)
+	}
 	homeTo := at("files")
 	if d := iniGet("home", "dir"); d != "" {
 		homeTo = filepath.Clean(absTo(home, d))
@@ -262,10 +272,15 @@ func rebuild() error {
 	if migrating {
 		say("moving phosphorus out of docker")
 		notifyUpdating()
+		// a native start an earlier attempt left behind, off the containers' ports and tailnet
+		if up {
+			svcStop()
+			up = false
+		}
+		tailscaleStop()
 		stopContainers()
 		if err := carryOver(); err != nil {
-			startContainers()
-			return fail("couldn't carry the containers' state over, containers left running: %v", err)
+			return rollback(true, fail("couldn't carry the containers' state over: %v", err))
 		}
 	} else if up && homeFrom != "" {
 		notifyUpdating()
@@ -273,10 +288,7 @@ func rebuild() error {
 		up = false
 	}
 	if err := gitUp(); err != nil {
-		if migrating {
-			startContainers()
-		}
-		return err
+		return rollback(migrating, err)
 	}
 	if homeFrom != "" {
 		say("moving home/ from %s to %s", homeFrom, homeTo)
@@ -288,7 +300,7 @@ func rebuild() error {
 		}
 	}
 	if err := writeEnvFile(nativeEnvFile(), env); err != nil {
-		return err
+		return rollback(migrating, err)
 	}
 	os.WriteFile(at("state", "native-home"), []byte(homeTo+"\n"), 0o644)
 	if err := tailscaleStart(); err != nil {
