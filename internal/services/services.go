@@ -25,8 +25,8 @@ import (
 type Row = map[string]any
 
 var (
-	servicesFile = util.Env("SERVICES_FILE", "/etc/phosphorus/services.export")
-	gitRoleFile  = filepath.Join(util.Env("STATE_DIR", "/state"), "git-role")
+	servicesFile = util.Env("SERVICES_FILE", filepath.Join(util.RepoDir, "config", "services.export"))
+	gitRoleFile  = filepath.Join(util.StateDir, "git-role")
 	notes        = util.NewNotes("services")
 	keys         = map[string]bool{"port": true, "scheme": true, "mode": true, "base_path": true, "extras": true, "type": true, "start": true, "stop": true}
 	headRe       = regexp.MustCompile(`^\[\s*(.*?)\s*\]$`)

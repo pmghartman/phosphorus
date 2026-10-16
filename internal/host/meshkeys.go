@@ -12,19 +12,6 @@ import (
 	"github.com/pmghartman/phosphorus/internal/util"
 )
 
-// meshKeys a joining host's missing keys from the first peer that has them,
-// into the home's .env and printed as exports for supervisor.sh
-func meshKeys() error {
-	vals, err := meshKeyValues()
-	if err != nil {
-		return err
-	}
-	for k, v := range vals {
-		fmt.Printf("export %s='%s'\n", k, strings.ReplaceAll(v, "'", `'\''`))
-	}
-	return nil
-}
-
 // meshKeyValues the missing keys from a peer, saved into .env, none missing none asked
 func meshKeyValues() (map[string]string, error) {
 	want := []string{}

@@ -30,7 +30,7 @@ const (
 )
 
 var (
-	root   = filepath.Join(util.Env("MODEL_DIR", "/models"), "tools")
+	root   = filepath.Join(util.Env("MODEL_DIR", filepath.Join(util.StateDir, "models")), "tools")
 	client = &http.Client{Timeout: 30 * time.Minute}
 )
 

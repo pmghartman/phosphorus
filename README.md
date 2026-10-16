@@ -37,8 +37,6 @@ Nothing runs in containers. `phosphorus run` keeps the frontend, cloudflared, th
 
 On Linux the distro packages a role needs (git, rsync, sqlite3 on a git host, curl, ripgrep, libgomp1 on a model host) are installed on the first start that needs them. Git hosts are Linux only: forgejo ships for Linux alone. The Windows service is installed once through the admin prompt `phos start` raises; after that the signed-in account starts and stops it.
 
-A host still on a Docker release moves over on its next update by itself. Linux keeps the same tailnet node; macOS and Windows join through the Tailscale app, the old container's node deleted and its name handed over when `TS_API_KEY` is set. Git data and the model come along, then the old containers, images, volumes and networks are removed; docker itself stays installed. If the new service doesn't come up, the containers are started again as they were.
-
 ## Keys
 
 On first start the app opens a keys window and `phosphorus` opens a keys form. Paste the keys there; they go into the host folder's `.env`.

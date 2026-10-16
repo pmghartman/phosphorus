@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"log"
 	"math"
 	"os"
 	"path"
@@ -24,9 +23,9 @@ import (
 )
 
 var (
-	FilesRoot = util.Env("FILES_ROOT", "/files")
-	StateDir  = util.Env("STATE_DIR", "/state")
-	HomeFS    = util.Env("HOME_FS", StateDir)
+	FilesRoot = util.Env("FILES_ROOT", filepath.Join(util.RepoDir, "files"))
+	StateDir  = util.StateDir
+	HomeFS    = util.Env("HOME_FS", FilesRoot)
 	HomeRoot  = filepath.Join(HomeFS, Home)
 )
 
@@ -87,15 +86,12 @@ func ConfiguredDirs() []string { return splitList(util.Ini("files", "dir")) }
 
 func mountedDirs() []string { return splitList(os.Getenv("PHOSPHORUS_FILES_DIRS")) }
 
-// HostSpelling a path with forward slashes, trailing ones dropped
-func HostSpelling(src string) string {
+// slashed a path with forward slashes, trailing ones dropped
+func slashed(src string) string {
 	return trailRe.ReplaceAllString(strings.ReplaceAll(src, `\`, "/"), "$1")
 }
 
 var trailRe = regexp.MustCompile(`(.)/+$`)
-
-// HostPathOf a path as the host spells it, every path a real one
-func HostPathOf(p string) string { return p }
 
 var absRe = regexp.MustCompile(`^([A-Za-z]:)?/`)
 
@@ -130,81 +126,22 @@ func buildShares() []Share {
 	return out
 }
 
-func move(from, to string) {
-	if !exists(from) || exists(to) {
-		return
-	}
-	if err := os.Rename(from, to); err != nil {
-		log.Printf("[files] moving %s into the home: %v", from, err)
-	}
-}
-
 func exists(p string) bool {
 	_, err := os.Stat(p)
 	return err == nil
 }
 
-func flatten(from string) {
-	st, err := os.Stat(filepath.Join(from, Shared))
-	if err != nil || !st.IsDir() {
-		return
-	}
-	ents, err := os.ReadDir(from)
-	if err != nil {
-		return
-	}
-	for _, e := range ents {
-		if e.Name() != Sys {
-			move(filepath.Join(from, e.Name()), filepath.Join(HomeRoot, e.Name()))
-		}
-	}
-	os.Remove(from)
-}
-
-func lift() {
-	if !exists(filepath.Join(HomeFS, Sys)) || exists(filepath.Join(HomeRoot, Sys)) {
-		return
-	}
-	users := []string{}
-	if ents, err := os.ReadDir(filepath.Join(HomeFS, Sys, "etc", "passwd")); err == nil {
-		for _, e := range ents {
-			if strings.HasSuffix(e.Name(), ".json") {
-				users = append(users, strings.TrimSuffix(e.Name(), ".json"))
-			}
-		}
-	}
-	for _, n := range append([]string{Sys, Shared}, users...) {
-		move(filepath.Join(HomeFS, n), filepath.Join(HomeRoot, n))
-	}
-}
-
 var initOnce sync.Once
 
-// Init the home's layout moved into place, mounts looked up
+// Init the home's folders made
 func Init() {
 	initOnce.Do(func() {
-		os.MkdirAll(HomeRoot, 0o755)
-		lift()
-		flatten(filepath.Join(HomeFS, "usr"))
-		a, _ := filepath.Abs(StateDir)
-		b, _ := filepath.Abs(HomeFS)
-		if a != b {
-			flatten(filepath.Join(StateDir, "home"))
-		}
 		os.MkdirAll(filepath.Join(HomeRoot, Shared, Desktop), 0o755)
 	})
 }
 
-// HomeDir where the home lives on the host now
-func HomeDir() string {
-	if h := HostPathOf(HomeRoot); h != "" {
-		return h
-	}
-	if d := os.Getenv("PHOSPHORUS_HOME_DIR"); d != "" {
-		return strings.TrimRight(d, `\/`) + "/" + Home
-	}
-	return HomeRoot
-}
+// HomeDir where the home lives
+func HomeDir() string { return HomeRoot }
 
 func homeShare() Share {
 	s := makeShare("home", "", fullPerms, HomeRoot)
@@ -951,12 +888,9 @@ func Remove(sh *Share, rel string) (int, any) {
 
 // Pending what phosphorus.ini asks for against what is mounted
 func Pending() bool {
-	home := HostPathOf(util.RepoDir)
-	if home == "" {
-		return false
-	}
+	home := slashed(util.RepoDir)
 	norm := func(d string) string {
-		p := HostSpelling(strings.TrimSpace(d))
+		p := slashed(strings.TrimSpace(d))
 		abs := p
 		if !absRe.MatchString(p) {
 			abs = path.Join(home, p)

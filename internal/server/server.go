@@ -51,7 +51,7 @@ import (
 var (
 	port        = util.EnvInt("FRONTEND_PORT", 8090)
 	ingressPort = util.EnvInt("INGRESS_PORT", 80)
-	stateDir    = util.Env("STATE_DIR", "/state")
+	stateDir    = util.StateDir
 	selfHost    = os.Getenv("SELF_HOST")
 	baseDomain  = os.Getenv("BASE_DOMAIN")
 	hostSSHHost = util.Env("HOST_SSH_HOST", "127.0.0.1")

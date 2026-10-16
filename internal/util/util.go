@@ -49,11 +49,11 @@ func EnvInt(k string, def int) int {
 
 var (
 	FrontendPort = EnvInt("FRONTEND_PORT", 8090)
-	StateDir     = Env("STATE_DIR", "/state")
 	SelfHost     = os.Getenv("SELF_HOST")
-	// RepoDir the install, phosphorus run's PHOSPHORUS_REPO_DIR
-	RepoDir = Env("PHOSPHORUS_REPO_DIR", "/repo")
-	iniFile = &ini.File{Path: Env("PHOSPHORUS_INI_FILE", "/etc/phosphorus/phosphorus.ini")}
+	// RepoDir the install, phosphorus run's PHOSPHORUS_HOME
+	RepoDir  = Env("PHOSPHORUS_REPO_DIR", Env("PHOSPHORUS_HOME", "/var/lib/phosphorus"))
+	StateDir = Env("STATE_DIR", filepath.Join(RepoDir, "state"))
+	iniFile  = &ini.File{Path: Env("PHOSPHORUS_INI_FILE", filepath.Join(RepoDir, "config", "phosphorus.ini"))}
 )
 
 // Now in ms, Date.now()

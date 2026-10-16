@@ -16,9 +16,9 @@ import (
 )
 
 var (
-	appliedFile = filepath.Join(util.Env("STATE_DIR", "/state"), "reconfig.json")
+	appliedFile = filepath.Join(util.StateDir, "reconfig.json")
 	// the image's binary, or natively the home's, run against the install
-	rebuildCmd = util.Env("REBUILD_CMD", "/usr/local/bin/phosphorus")
+	rebuildCmd = util.Env("REBUILD_CMD", filepath.Join(util.RepoDir, "bin", "phosphorus"))
 )
 
 const (

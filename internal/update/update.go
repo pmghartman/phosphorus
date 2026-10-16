@@ -25,9 +25,9 @@ import (
 
 var (
 	selfHost    = os.Getenv("SELF_HOST")
-	stateDir    = util.Env("STATE_DIR", "/state")
+	stateDir    = util.StateDir
 	chainFile   = filepath.Join(stateDir, "update-chain.json")
-	VersionFile = util.Env("VERSION_FILE", "VERSION")
+	VersionFile = util.Env("VERSION_FILE", filepath.Join(util.RepoDir, "VERSION"))
 	requestFile = filepath.Join(stateDir, "update-request.json")
 	agentFile   = filepath.Join(stateDir, "update-agent.json")
 	feedURL     = util.Env("PHOSPHORUS_FEED_URL", "https://github.com/pmghartman/phosphorus/releases/download/update/latest.json")

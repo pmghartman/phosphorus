@@ -1,20 +1,20 @@
 #!/bin/bash
 set -uo pipefail
 
-STATE_DIR="${STATE_DIR:-/state}"
+STATE_DIR="${STATE_DIR:-/var/lib/phosphorus/state}"
 DATA_ROOT="${DATA_ROOT:-/var/lib/phosphorus/git}"
-APP_INI_TMPL="${APP_INI_TMPL:-/etc/forgejo/app.ini.tmpl}"
+APP_INI_TMPL="${APP_INI_TMPL:-/var/lib/phosphorus/gitd/app.ini.tmpl}"
 APP_INI="${APP_INI:-$DATA_ROOT/conf/app.ini}"
 GIT_ROLE_FILE="${GIT_ROLE_FILE:-$STATE_DIR/git-role}"
 SELF_HOST_FILE="${SELF_HOST_FILE:-$STATE_DIR/self-host}"
-ELECTOR="${ELECTOR:-phosphorus elector}"
-FORGEJO_BIN="${FORGEJO_BIN:-forgejo}"
-# forgejo's account, git:phosphorus in the image, phosphorus-git on a native host
-GIT_USER="${GIT_USER:-git}"
-GIT_GROUP="${GIT_GROUP:-phosphorus}"
-RSYNCD_CONF_TMPL="${RSYNCD_CONF_TMPL:-/etc/rsyncd.conf}"
-RSYNCD_CONF="${RSYNCD_CONF:-/run/phosphorus-rsyncd.conf}"
-RSYNCD_PID="${RSYNCD_PID:-/var/run/rsyncd.pid}"
+ELECTOR="${ELECTOR:-/var/lib/phosphorus/bin/phosphorus elector}"
+FORGEJO_BIN="${FORGEJO_BIN:-/usr/libexec/phosphorus/forgejo}"
+# forgejo's account
+GIT_USER="${GIT_USER:-phosphorus-git}"
+GIT_GROUP="${GIT_GROUP:-phosphorus-git}"
+RSYNCD_CONF_TMPL="${RSYNCD_CONF_TMPL:-/var/lib/phosphorus/gitd/rsyncd.conf}"
+RSYNCD_CONF="${RSYNCD_CONF:-/run/phosphorus/rsyncd.conf}"
+RSYNCD_PID="${RSYNCD_PID:-/run/phosphorus/rsyncd.pid}"
 # touch to let this host lead without proof it has the newest data
 FORCE_FILE="${FORCE_FILE:-$STATE_DIR/git-force-promote}"
 VERSION_FILE="$DATA_ROOT/GIT_VERSION"
@@ -25,17 +25,15 @@ PULLED_FILE="$DATA_ROOT/GIT_PULLED"
 DB="$DATA_ROOT/db/forgejo.db"
 # the master's consistent copy, what peers pull
 SNAP="$DATA_ROOT/snap/forgejo.db"
-# litefs's store from earlier releases, read once
-LEGACY_DB="${LEGACY_DB:-/var/lib/litefs-internal/dbs/forgejo.db/database}"
 
 # shared with the elector
-export LOCAL_FILE="${LOCAL_FILE:-/run/git-local}"
-export DECISION_FILE="${DECISION_FILE:-/run/git-decision}"
-export LEASE_UNTIL_FILE="${LEASE_UNTIL_FILE:-/run/git-lease-until}"
+export LOCAL_FILE="${LOCAL_FILE:-/run/phosphorus/git-local}"
+export DECISION_FILE="${DECISION_FILE:-/run/phosphorus/git-decision}"
+export LEASE_UNTIL_FILE="${LEASE_UNTIL_FILE:-/run/phosphorus/git-lease-until}"
 # the master forgejo's pid, for the watchdog, empty otherwise
-export FORGEJO_PID_FILE="${FORGEJO_PID_FILE:-/run/git-forgejo-pid}"
+export FORGEJO_PID_FILE="${FORGEJO_PID_FILE:-/run/phosphorus/git-forgejo-pid}"
 # set by the elector while a new master's final pull lands, rsyncd refusing then
-export PROMOTING_FILE="${PROMOTING_FILE:-/run/git-promoting}"
+export PROMOTING_FILE="${PROMOTING_FILE:-/run/phosphorus/git-promoting}"
 
 # must match across every git host
 GIT_NAME="${GIT_NAME:-git}"
@@ -64,43 +62,15 @@ as_git() { PHOSPHORUS_ROLE="${ROLE:-forgejo}" setpriv --reuid="$GIT_USER" --regi
 
 # DOMAIN/ROOT_URL the stable mesh name, never this host's own hostname:
 # conf/ rsynced wholesale from the master, a local value would drift
-# the db path off litefs's mount and RUN_USER this host's account, conf/
-# possibly pulled from an older master or one running forgejo as another user
-fix_app_ini() {
-  [ -s "$APP_INI" ] || return 0
-  sed -i -e 's#/var/lib/phosphorus/git/litefs/forgejo\.db#/var/lib/phosphorus/git/db/forgejo.db#' \
-         -e "s#^RUN_USER *=.*#RUN_USER = $GIT_USER#" "$APP_INI"
-  # sed -i's new file root's, forgejo writing its tokens back into it
-  chown "$GIT_USER:$GIT_GROUP" "$APP_INI"
-}
-
-# hooks naming forgejo's binary, rewritten when obj/ came from a master
-# whose binary lives elsewhere
-fix_hooks() {
-  local mark="$DATA_ROOT/obj/.phosphorus-hooks" want
-  want="$(command -v "$FORGEJO_BIN") $APP_INI"
-  [ "$(cat "$mark" 2>/dev/null)" = "$want" ] && return 0
-  [ -d "$DATA_ROOT/obj/forgejo-repositories" ] || { write_file "$mark" "$want"; return 0; }
-  say "regenerating repository hooks for $FORGEJO_BIN"
-  if HOME="$DATA_ROOT" as_git "$FORGEJO_BIN" -w "$DATA_ROOT" -c "$APP_INI" admin regenerate hooks >/dev/null 2>&1; then
-    write_file "$mark" "$want"
-  else
-    say "couldn't regenerate hooks, pushes may fail until the next start"
-  fi
-}
-
 render_app_ini_once() {
-  if [ -s "$APP_INI" ]; then
-    fix_app_ini
-    # added after first render, appended once, then rsynced like the rest of conf/
-    grep -q '^\[cron.git_gc_repos\]' "$APP_INI" \
-      || printf '\n[cron.git_gc_repos]\nENABLED  = true\nSCHEDULE = @every 24h\n' >> "$APP_INI"
-    return
-  fi
+  [ -s "$APP_INI" ] && return
   sed -e "s/__GITHOST__/${GIT_NAME}.${BASE_DOMAIN}/g" \
       -e "s/__PORT__/${GIT_PORT}/g" \
+      -e "s/__GIT_USER__/${GIT_USER}/g" \
       -e "s#__ROOT_URL__#https://${GIT_NAME}.${BASE_DOMAIN}/#g" \
       "$APP_INI_TMPL" > "$APP_INI"
+  # forgejo writing its tokens back into it
+  chown "$GIT_USER:$GIT_GROUP" "$APP_INI"
 }
 
 FORGEJO_PID=""
@@ -111,8 +81,6 @@ am_master=false
 SNAP_SIG=""
 
 start_forgejo() {
-  fix_app_ini
-  fix_hooks
   # a simple command, so $! is forgejo itself for the watchdog
   HOME="$DATA_ROOT" PHOSPHORUS_ROLE=forgejo setpriv --reuid="$GIT_USER" --regid="$GIT_GROUP" --init-groups \
     "$FORGEJO_BIN" -w "$DATA_ROOT" -c "$APP_INI" web &
@@ -203,10 +171,9 @@ watchdog() {
   done
 }
 
-# this host's pid file and promoting flag in the image's config
 start_rsyncd() {
-  sed -e "s#/var/run/rsyncd.pid#$RSYNCD_PID#" -e "s#/run/git-promoting#$PROMOTING_FILE#" \
-      -e "s#/var/lib/phosphorus/git#$DATA_ROOT#" "$RSYNCD_CONF_TMPL" > "$RSYNCD_CONF"
+  sed -e "s#__PID__#$RSYNCD_PID#" -e "s#__PROMOTING__#$PROMOTING_FILE#" \
+      -e "s#__ROOT__#$DATA_ROOT#" "$RSYNCD_CONF_TMPL" > "$RSYNCD_CONF"
   PHOSPHORUS_ROLE=git-rsyncd rsync --daemon --config="$RSYNCD_CONF" --no-detach &
   RSYNCD_PID="$!"
   say "rsync daemon started (pid $RSYNCD_PID)"
@@ -406,21 +373,11 @@ term() {
   exit 0
 }
 
-# litefs's last db, from releases before rsync carried it, kept as this host's own
-migrate_litefs() {
-  [ -e "$DB" ] || [ ! -s "$LEGACY_DB" ] && return
-  say "moving the db off litefs"
-  cp "$LEGACY_DB" "$DB.tmp" && mv "$DB.tmp" "$DB" || { rm -f "$DB.tmp"; say "couldn't copy litefs's db"; return; }
-  chown "$GIT_USER:$GIT_GROUP" "$DB"
-  chmod 640 "$DB"
-}
-
 main() {
   mkdir -p "$STATE_DIR" "$DATA_ROOT"/{conf,custom,obj,db,snap}
   mkdir -p "$DATA_ROOT/state"
   chown "$GIT_USER:$GIT_GROUP" "$DATA_ROOT"
   chown -R "$GIT_USER:$GIT_GROUP" "$DATA_ROOT"/{conf,custom,obj,db,snap,state}
-  migrate_litefs
 
   say "waiting for $SELF_HOST_FILE..."
   while [ ! -s "$SELF_HOST_FILE" ]; do sleep 1; done

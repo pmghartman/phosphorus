@@ -29,7 +29,7 @@ import (
 )
 
 var (
-	stateDir      = util.Env("STATE_DIR", "/state")
+	stateDir      = util.StateDir
 	selfHost      = os.Getenv("SELF_HOST")
 	selfHostFile  = filepath.Join(stateDir, "self-host")
 	sshConfigFile = filepath.Join(stateDir, "ssh_config")

@@ -28,7 +28,7 @@ var (
 var Commands = map[string]bool{
 	"": true, "start": true, "stop": true, "restart": true, "update": true, "keys": true, "install": true,
 	"setup": true, "rebuild": true, "upgrade": true, "game-control": true, "game-control-setup": true,
-	"mesh-keys": true, "run": true, "ps": true, "help": true, "-h": true, "--help": true,
+	"run": true, "ps": true, "help": true, "-h": true, "--help": true,
 }
 
 func usage(w io.Writer) {
@@ -110,8 +110,6 @@ func Main(cmd string, args []string) int {
 		err = gameControl()
 	case "game-control-setup":
 		err = gameControlSetup()
-	case "mesh-keys":
-		err = meshKeys()
 	case "run":
 		err = runHost()
 	case "ps":
@@ -210,43 +208,6 @@ func iniGet(section, key string) string {
 
 func isGitHost() bool   { return iniGet("git", "host") == "true" }
 func isModelHost() bool { return iniGet("model", "host") == "true" }
-
-// sections added since this host's phosphorus.ini, never overwritten, appended
-func addMissingSections() {
-	b, err := os.ReadFile(iniFile())
-	if err != nil {
-		return
-	}
-	text := string(b)
-	has := func(s string) bool {
-		for _, l := range strings.Split(text, "\n") {
-			if strings.TrimSpace(l) == "["+s+"]" {
-				return true
-			}
-		}
-		return false
-	}
-	add := ""
-	if !has("files") {
-		add += "\n[files]\n# host directories on the Files tab, comma separated, blank: the home's files/\n# priv: one r/w/d set per dir, same order, r browse and download,\n# w upload, new folder and rename, d delete, none: rwd\ndir =\npriv =\n"
-		say("[phosphorus.ini] added the [files] section, set dir to publish a directory")
-	}
-	if !has("model") {
-		add += "\n[model]\n# host: true downloads the mesh model here and runs it for every host\n# gpu: true offloads it to this host's nvidia gpu\n# url: download link to the model's .gguf, no default\nhost = false\ngpu = false\nurl =\n"
-		say("[phosphorus.ini] added the [model] section, set host and url on the one host with the memory and disk for the model")
-	}
-	if !has("home") {
-		add += "\n[home]\n# dir: the [files] dir whose home/ holds each user's folder, shared/ and sys/, blank: the home's files/\n# changed: home/ moved there on the next rebuild\ndir =\n"
-		say("[phosphorus.ini] added the [home] section")
-	}
-	if add != "" {
-		f, err := os.OpenFile(iniFile(), os.O_APPEND|os.O_WRONLY, 0)
-		if err == nil {
-			f.WriteString(add)
-			f.Close()
-		}
-	}
-}
 
 func has(name string) bool { _, err := exec.LookPath(name); return err == nil }
 

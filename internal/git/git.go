@@ -18,7 +18,7 @@ import (
 
 var (
 	selfHost    = os.Getenv("SELF_HOST")
-	stateDir    = util.Env("STATE_DIR", "/state")
+	stateDir    = util.StateDir
 	claimFile   = filepath.Join(stateDir, "git-claim.json")
 	rosterFile  = filepath.Join(stateDir, "git-roster.json")
 	handoffFile = filepath.Join(stateDir, "git-handoff.json")

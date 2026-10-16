@@ -37,7 +37,7 @@ var pluginSrc []byte
 var (
 	port    = util.EnvInt("OPENCODE_PORT", 8792)
 	home    = tools.OpencodeHome()
-	workdir = util.Env("OPENCODE_DIR", "/files")
+	workdir = util.Env("OPENCODE_DIR", filepath.Join(util.RepoDir, "files"))
 	// each run's own, an older run answering nothing
 	auth atomic.Value
 )

@@ -29,13 +29,13 @@ import (
 )
 
 var (
-	stateDir      = util.Env("STATE_DIR", "/state")
+	stateDir      = util.StateDir
 	selfHost      = os.Getenv("SELF_HOST")
 	selfHostFile  = filepath.Join(stateDir, "self-host")
 	claimFile     = filepath.Join(stateDir, "model-claim.json")
 	installedFile = filepath.Join(stateDir, "model-installed.json")
 	slotDir       = filepath.Join(stateDir, "llama-slots")
-	modelDir      = util.Env("MODEL_DIR", "/models")
+	modelDir      = util.Env("MODEL_DIR", filepath.Join(util.StateDir, "models"))
 	serverPort    = util.EnvInt("MODEL_SERVER_PORT", 8791)
 	tickMS        = util.EnvInt("MODEL_TICK_MS", 1000)
 	notes         = util.NewNotes("model")

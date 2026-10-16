@@ -28,7 +28,7 @@ import (
 var (
 	api = fmt.Sprintf("http://127.0.0.1:%d", util.FrontendPort)
 	// the home's config/, read-write, /etc/phosphorus a read-only mount
-	configDir    = util.Env("PHOSPHORUS_CONFIG_DIR", "/repo/config")
+	configDir    = util.Env("PHOSPHORUS_CONFIG_DIR", filepath.Join(util.RepoDir, "config"))
 	servicesFile = filepath.Join(configDir, "services.export")
 	iniFile      = filepath.Join(configDir, "phosphorus.ini")
 	baseDomain   = os.Getenv("BASE_DOMAIN")

@@ -28,16 +28,16 @@ import (
 )
 
 var (
-	stateDir       = util.Env("STATE_DIR", "/state")
+	stateDir       = util.StateDir
 	frontendPort   = util.EnvInt("FRONTEND_PORT", 8090)
 	claimFile      = filepath.Join(stateDir, "git-claim.json")
 	rosterFile     = filepath.Join(stateDir, "git-elector-roster.json")
 	handoffFile    = filepath.Join(stateDir, "git-handoff.json")
-	localFile      = util.Env("LOCAL_FILE", "/run/git-local")
-	decisionFile   = util.Env("DECISION_FILE", "/run/git-decision")
-	leaseFile      = util.Env("LEASE_UNTIL_FILE", "/run/git-lease-until")
-	forgejoPidFile = util.Env("FORGEJO_PID_FILE", "/run/git-forgejo-pid")
-	promotingFile  = util.Env("PROMOTING_FILE", "/run/git-promoting")
+	localFile      = util.Env("LOCAL_FILE", "/run/phosphorus/git-local")
+	decisionFile   = util.Env("DECISION_FILE", "/run/phosphorus/git-decision")
+	leaseFile      = util.Env("LEASE_UNTIL_FILE", "/run/phosphorus/git-lease-until")
+	forgejoPidFile = util.Env("FORGEJO_PID_FILE", "/run/phosphorus/git-forgejo-pid")
+	promotingFile  = util.Env("PROMOTING_FILE", "/run/phosphorus/git-promoting")
 
 	tickMS        = int64(util.EnvInt("TICK_MS", 500))
 	probeTimeout  = time.Duration(util.EnvInt("PROBE_TIMEOUT_MS", 500)) * time.Millisecond

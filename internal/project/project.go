@@ -30,7 +30,7 @@ import (
 
 var (
 	selfHost  = os.Getenv("SELF_HOST")
-	stateDir  = util.Env("STATE_DIR", "/state")
+	stateDir  = util.StateDir
 	runsDir   = filepath.Join(stateDir, "project-runs")
 	idRe      = regexp.MustCompile(`^[a-z0-9]{12}$`)
 	phases    = []string{"plan", "execute", "test", "refine"}

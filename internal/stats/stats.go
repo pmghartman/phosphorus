@@ -79,7 +79,7 @@ type netDayT struct {
 }
 
 var (
-	netDayFile = filepath.Join(util.Env("STATE_DIR", "/state"), "net-day.json")
+	netDayFile = filepath.Join(util.StateDir, "net-day.json")
 	bootID     = bootIDOf()
 	ndMu       sync.Mutex
 	netDay     netDayT

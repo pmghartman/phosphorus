@@ -30,7 +30,7 @@ import (
 
 var (
 	selfHost   = os.Getenv("SELF_HOST")
-	stateDir   = util.Env("STATE_DIR", "/state")
+	stateDir   = util.StateDir
 	claimFile  = filepath.Join(stateDir, "model-claim.json")
 	serverPort = util.EnvInt("MODEL_SERVER_PORT", 8791)
 	nameRe     = regexp.MustCompile(`^[A-Za-z0-9-]{1,63}$`)

@@ -147,12 +147,6 @@ func tailscaleReady() error {
 }
 
 func tailscaleStart() error { return nil }
-func tailscaleStop()        {}
-
-func carryTailnet() (bool, error) { return false, nil }
-func identityCarried() bool       { return true }
-
-func startDocker() bool { return has("colima") && quiet("colima", "start") }
 
 // --- no distro packages, no git host ------------------------------------------------------
 
@@ -161,6 +155,3 @@ func aptInstall([]string) error { return nil }
 func deferRebuild() error       { return nil }
 func gitEnv() map[string]string { return nil }
 func ensureGitUser() error      { return nil }
-func gitUp() error              { return nil }
-func gitLeftovers() string      { return "" }
-func gitDown()                  {}

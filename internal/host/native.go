@@ -89,7 +89,7 @@ func splitComma(v string) []string {
 
 func absTo(base, p string) string {
 	p = strings.TrimRight(strings.TrimSpace(p), `/\`)
-	if filepath.IsAbs(p) || drivePath.MatchString(p) {
+	if filepath.IsAbs(p) {
 		return p
 	}
 	return filepath.Join(base, p)
@@ -195,8 +195,7 @@ func notifyUpdating() {
 // inService a child of the running service, whose restart would kill it first
 func inService() bool { return os.Getenv("PHOSPHORUS_ROLE") != "" }
 
-// rebuild the release's config baked and the service (re)started on it; the
-// first run after a docker release moves its state over, rolling back on failure
+// rebuild the release's config baked and the service (re)started on it
 func rebuild() error {
 	tag = "rebuild"
 	if err := os.Chdir(home); err != nil {
@@ -210,7 +209,6 @@ func rebuild() error {
 	}
 	defer unlock()
 	lockEnv()
-	addMissingSections()
 	if isGitHost() && !isLinux {
 		return fail("git hosts run forgejo, which ships for Linux alone: set [git] host = false in config/phosphorus.ini")
 	}
@@ -233,23 +231,12 @@ func rebuild() error {
 	os.MkdirAll(at("files"), 0o755)
 	os.MkdirAll(at("state"), 0o755)
 
-	migrating := dockerEra()
-	// git/data the containers' layout only while they're here; natively an old one inside git/
-	if why := gitLeftovers(); migrating && why != "" {
-		return fail("%s; nothing was stopped", why)
-	}
 	homeTo := at("files")
 	if d := iniGet("home", "dir"); d != "" {
 		homeTo = filepath.Clean(absTo(home, d))
 		os.MkdirAll(homeTo, 0o755)
 	}
 	homeFrom := readTrim(at("state", "native-home"))
-	if migrating {
-		// the containers' own, any [home] move left to the next rebuild
-		if h := containerHome(); h != "" {
-			homeTo, homeFrom = h, ""
-		}
-	}
 	if homeFrom == homeTo {
 		homeFrom = ""
 	}
@@ -262,7 +249,7 @@ func rebuild() error {
 		return err
 	}
 	up := svcActive()
-	if up && !migrating && homeFrom == "" && readTrim(at("state", "native-sig")) == sig {
+	if up && homeFrom == "" && readTrim(at("state", "native-sig")) == sig {
 		say("already up to date, nothing to restart")
 		return nil
 	}
@@ -270,28 +257,10 @@ func rebuild() error {
 		return err
 	}
 
-	if migrating {
-		say("moving phosphorus out of docker")
-		notifyUpdating()
-		// a native start an earlier attempt left behind, off the containers' ports and tailnet
-		if up {
-			svcStop()
-			up = false
-		}
-		tailscaleStop()
-		stopContainers()
-		if err := carryOver(); err != nil {
-			return rollback(true, fail("couldn't carry the containers' state over: %v", err))
-		}
-	} else if up && homeFrom != "" {
+	if up && homeFrom != "" {
 		notifyUpdating()
 		svcStop()
 		up = false
-	}
-	if migrating {
-		if err := gitUp(); err != nil {
-			return rollback(true, err)
-		}
 	}
 	if homeFrom != "" {
 		say("moving home/ from %s to %s", homeFrom, homeTo)
@@ -303,11 +272,11 @@ func rebuild() error {
 		}
 	}
 	if err := writeEnvFile(nativeEnvFile(), env); err != nil {
-		return rollback(migrating, err)
+		return err
 	}
 	os.WriteFile(at("state", "native-home"), []byte(homeTo+"\n"), 0o644)
 	if err := tailscaleStart(); err != nil {
-		return rollback(migrating, err)
+		return err
 	}
 	switch {
 	case up && inService():
@@ -324,19 +293,13 @@ func rebuild() error {
 	default:
 		say("starting phosphorus")
 		if err := svcStart(); err != nil {
-			return rollback(migrating, fail("couldn't start phosphorus: %v", err))
+			return fail("couldn't start phosphorus: %v", err)
 		}
 	}
 	if !waitFrontend(3 * time.Minute) {
-		return rollback(migrating, fail("the frontend never came up, see %s", logHint()))
+		return fail("the frontend never came up, see %s", logHint())
 	}
 	os.WriteFile(at("state", "native-sig"), []byte(sig+"\n"), 0o644)
-	cleanupDocker()
-	cleanupLitefs()
-	os.Remove(at("state", "app.ini.docker"))
-	if migrating {
-		say("phosphorus is out of docker, the old containers, images and volumes removed")
-	}
 	return nil
 }
 
