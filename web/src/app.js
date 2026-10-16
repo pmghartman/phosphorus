@@ -134,16 +134,14 @@ let harnessHosts = [];
 // host as linux)
 const hostPlatform = new Map();
 
-// round-trip ms of the mesh poller's snapshot call to that host, null until
-// measured
+// round-trip ms from this browser to that host, timed here, null until
+// measured or when it didn't answer
 const hostRtt = new Map();
 
-// host -> last 20 rttMs samples, oldest first, for the stats table sparkline,
-// one a second at most so a 100ms poll can't make the table flicker
+// host -> last 20 samples, oldest first, for the stats table sparkline
 const rttHistory = new Map();
 const RTT_HISTORY_LEN = 20;
-const RTT_SAMPLE_MS = 1000;
-const rttSampledAt = new Map();
+const RTT_SAMPLE_MS = 2000;
 // the table's number: the median of the last few samples
 const RTT_SHOWN_OF = 5;
 
@@ -626,27 +624,35 @@ let meshSig = '';
 function renderMesh(routes, tailnet) {
   meshRoutes = routes;
   meshTailnet = tailnet;
-  // once per real poll, never per animation frame
-  const now = Date.now();
-  let sampled = false;
-  for (const d of tailnet) {
-    if (!d.phosphorus || typeof d.rttMs !== 'number') continue;
-    if (now - (rttSampledAt.get(d.name) || 0) < RTT_SAMPLE_MS) continue;
-    rttSampledAt.set(d.name, now);
-    const hist = rttHistory.get(d.name) || [];
-    hist.push(d.rttMs);
-    if (hist.length > RTT_HISTORY_LEN) hist.shift();
-    rttHistory.set(d.name, hist);
-    sampled = true;
-  }
   // nothing redrawn for a poll changing nothing drawn (a full rebuild at 10/s grew the tab)
   const sig = JSON.stringify([selfHost, routes.map((r) => [r.host, r.name]),
-    tailnet.map((d) => [d.name, !!d.phosphorus, d.os || '', typeof d.rttMs === 'number'])]);
-  if (sig === meshSig && !sampled) return;
+    tailnet.map((d) => [d.name, !!d.phosphorus, d.os || ''])]);
+  if (sig === meshSig) return;
   meshSig = sig;
   meshStatsDirty = true;
   if (!meshAnimFrame) drawMesh();
 }
+
+// every host pinged from this browser, through the tunnel and the host serving
+// the page, the whole round trip timed here
+async function pingHosts() {
+  const hosts = phosphorusHosts();
+  if (!hosts.length) return;
+  await Promise.all(hosts.map(async (h) => {
+    const t = performance.now();
+    const r = await fetch(`/api/ping/${encodeURIComponent(h)}`, { cache: 'no-store' }).catch(() => null);
+    const ms = r?.status === 204 ? Math.round(performance.now() - t) : null;
+    hostRtt.set(h, ms);
+    if (ms === null) return;
+    const hist = rttHistory.get(h) || [];
+    hist.push(ms);
+    if (hist.length > RTT_HISTORY_LEN) hist.shift();
+    rttHistory.set(h, hist);
+  }));
+  meshStatsDirty = true;
+  if (!meshAnimFrame) drawMesh();
+}
+setInterval(() => { if (!document.hidden) pingHosts(); }, RTT_SAMPLE_MS);
 
 const lerp = (a, b, t) => a + (b - a) * t;
 
@@ -859,7 +865,6 @@ function drawMesh() {
   for (const d of tailnet) {
     if (d.phosphorus) {
       hostPlatform.set(d.name, d.os || '');
-      hostRtt.set(d.name, typeof d.rttMs === 'number' ? d.rttMs : null);
       if (!grouped.has(d.name)) grouped.set(d.name, []);
     } else if (!grouped.has(d.name)) {
       outside.set(d.name, d);

@@ -386,7 +386,7 @@ func buildTools() {
 			schema:      object(map[string]any{"url": map[string]any{"type": "string"}}, "url"),
 			run:         func(a map[string]any, _ Meta) (any, error) { return fetchPage(str(a["url"])) }},
 		{name: "mesh_hosts", read: true,
-			description: "Every host on the phosphorus mesh: whether it runs phosphorus, its OS, version and ping from this host.",
+			description: "Every host on the phosphorus mesh: whether it runs phosphorus, its OS and version.",
 			schema:      object(nil),
 			run: func(map[string]any, Meta) (any, error) {
 				return map[string]any{"self": src.Self(), "domain": src.Domain(), "hosts": src.Tailnet()}, nil

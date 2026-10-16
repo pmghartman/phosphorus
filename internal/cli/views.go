@@ -398,8 +398,9 @@ func statsView() view {
 		name, os, ver, p := dot(d), str(d["os"]), str(d["version"]), ""
 		if isSelf {
 			name, os, ver = selfMark(self), str(get(st, "self", "platform")), str(get(st, "self", "version"))
-		} else if truthy(d["phosphorus"]) {
-			p = ping(d["rttMs"])
+		}
+		if isSelf || truthy(d["phosphorus"]) {
+			p = ping(ui.rtt[str(d["name"])])
 		}
 		trows = append(trows, []string{name, c("teal")(os), c("muted")(ver), p})
 	}

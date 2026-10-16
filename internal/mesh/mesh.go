@@ -215,7 +215,6 @@ type peerState struct {
 	git, model   any
 	platform     string
 	version      string
-	rttMS        *int64
 	misses       int
 	lastSeq      float64
 	chat         []any
@@ -243,7 +242,6 @@ func retire(st *peerState) {
 	st.presence = []any{}
 	st.lock, st.chain, st.git, st.model = nil, nil, nil, nil
 	st.projects = []any{}
-	st.rttMS = nil
 }
 
 var pollClient = &http.Client{Timeout: pollTimeout, Transport: &http.Transport{Proxy: nil, MaxIdleConnsPerHost: 4}}
@@ -265,21 +263,6 @@ func fetchSnapshot(host, path string) (map[string]any, error) {
 	return m, nil
 }
 
-var selfRTT *int64
-
-func pollSelf() {
-	start := time.Now()
-	_, err := fetchSnapshot("127.0.0.1", "/api/mesh/snapshot")
-	mu.Lock()
-	defer mu.Unlock()
-	if err != nil {
-		selfRTT = nil
-		return
-	}
-	v := time.Since(start).Milliseconds()
-	selfRTT = &v
-}
-
 func objOrNil(v any, key string) any {
 	m, ok := v.(map[string]any)
 	if !ok || m == nil {
@@ -296,7 +279,6 @@ func pollPeer(p peer) {
 	st := stateFor(p.host)
 	since := st.lastSeq
 	mu.Unlock()
-	start := time.Now()
 	snap, err := fetchSnapshot(p.ip, "/api/mesh/snapshot?since="+util.JSNum(since))
 	mu.Lock()
 	defer mu.Unlock()
@@ -310,8 +292,6 @@ func pollPeer(p peer) {
 		notes.Note("peer:"+p.host, fmt.Sprintf("%s is not answering on port %d, is phosphorus running there?", p.host, util.FrontendPort))
 		return
 	}
-	rtt := time.Since(start).Milliseconds()
-	st.rttMS = &rtt
 	mu.Unlock()
 	published := hooks.HostServices(p.host)
 	mu.Lock()
@@ -611,9 +591,8 @@ func tick() {
 	}
 	var wg sync.WaitGroup
 	var own []map[string]any
-	wg.Add(2)
+	wg.Add(1)
 	go func() { defer wg.Done(); own = services.Refresh(ip) }()
-	go func() { defer wg.Done(); pollSelf() }()
 	for _, p := range peers {
 		if p.online {
 			wg.Add(1)
@@ -641,11 +620,7 @@ func tick() {
 		}
 		next := []map[string]any{}
 		if selfHost != "" {
-			var rtt any
-			if selfRTT != nil {
-				rtt = *selfRTT
-			}
-			next = append(next, map[string]any{"name": selfHost, "os": platform, "phosphorus": true, "phosphorusSeen": true, "rttMs": rtt})
+			next = append(next, map[string]any{"name": selfHost, "os": platform, "phosphorus": true, "phosphorusSeen": true})
 		}
 		for _, p := range peers {
 			st := stateFor(p.host)
@@ -662,15 +637,9 @@ func tick() {
 			d := map[string]any{"name": p.host, "phosphorus": ph, "phosphorusSeen": st.everAnswered}
 			if ph {
 				d["os"] = st.platform
-				if st.rttMS != nil {
-					d["rttMs"] = *st.rttMS
-				} else {
-					d["rttMs"] = nil
-				}
 				d["version"] = st.version
 			} else {
 				d["os"] = p.os
-				d["rttMs"] = nil
 				d["version"] = ""
 			}
 			next = append(next, d)

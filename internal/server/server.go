@@ -393,6 +393,30 @@ func withHop(u string) string {
 
 var hopTransport = &http.Transport{Proxy: nil, MaxIdleConnsPerHost: 16, IdleConnTimeout: 90 * time.Second}
 
+// pingPeer the client's ping carried on to host over the tailnet
+func pingPeer(ctx context.Context, host string) error {
+	ip := util.TailnetIP(host)
+	if ip == "" {
+		return fmt.Errorf("can't find %s on the tailnet", host)
+	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("http://%s:%d/api/ping/%s?hop=1", ip, port, host), nil)
+	if err != nil {
+		return err
+	}
+	res, err := (&http.Client{Transport: hopTransport}).Do(req)
+	if err != nil {
+		return fmt.Errorf("%s didn't answer", host)
+	}
+	io.Copy(io.Discard, res.Body)
+	res.Body.Close()
+	if res.StatusCode != 204 {
+		return fmt.Errorf("%s answered %d", host, res.StatusCode)
+	}
+	return nil
+}
+
 // forwardFiles streams a request on to the host that owns the share
 func forwardFiles(host string, w http.ResponseWriter, r *http.Request, urlPath string) {
 	ip := util.TailnetIP(host)

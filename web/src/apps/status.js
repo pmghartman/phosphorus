@@ -261,7 +261,7 @@ function headLine(name, h, open) {
   const dev = (stNet?.tailnet || []).find((d) => d.name === name) || {};
   const git = (stNet?.gitHosts || []).find((g) => g.host === name);
   const svc = hostServices(name);
-  const rtt = steadyRtt(name) ?? dev.rttMs;
+  const rtt = steadyRtt(name);
   return dotJoin([
     `<span class="st-name${name === selfHost ? ' self' : ''}">${esc(name)}</span>`,
     esc(s.platform || dev.os || '?'),

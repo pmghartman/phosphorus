@@ -16,6 +16,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -218,7 +219,9 @@ var ui = struct {
 	flashAt  time.Time
 	// the key form alone, before the container runs
 	keysOnly bool
-}{sel: make([]int, len(tabs)), room: 20, projects: []J{}}
+	// this terminal's round trip to each host, timed here
+	rtt map[string]any
+}{sel: make([]int, len(tabs)), room: 20, projects: []J{}, rtt: map[string]any{}}
 
 // everything touching ui runs on the loop, other goroutines handing it work here
 var (
@@ -268,6 +271,10 @@ func pollOnce() time.Duration {
 		return 500 * time.Millisecond
 	}
 	st := r.body
+	if time.Since(pingedAt) >= 2*time.Second {
+		pingedAt = time.Now()
+		go pingHosts(st)
+	}
 	var info J
 	if s.tab == filesTab {
 		host := str(get(st, "self", "host"))
@@ -308,6 +315,40 @@ func pollOnce() time.Duration {
 		return time.Duration(ms) * time.Millisecond
 	}
 	return 500 * time.Millisecond
+}
+
+// the poller's alone, pings every 2s at most
+var pingedAt time.Time
+
+// pingHosts every host timed from this terminal, as the page times its own,
+// nil for one that didn't answer
+func pingHosts(st J) {
+	hosts := []string{str(get(st, "self", "host"))}
+	for _, d := range objs(st["tailnet"]) {
+		if truthy(d["phosphorus"]) && str(d["name"]) != hosts[0] {
+			hosts = append(hosts, str(d["name"]))
+		}
+	}
+	got := map[string]any{}
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	for _, h := range hosts {
+		wg.Add(1)
+		go func(h string) {
+			defer wg.Done()
+			t := time.Now()
+			r := call("GET", "/api/ping/"+url.PathEscape(h), nil)
+			var v any
+			if r.status == 204 {
+				v = float64(time.Since(t).Milliseconds())
+			}
+			mu.Lock()
+			got[h] = v
+			mu.Unlock()
+		}(h)
+	}
+	wg.Wait()
+	onLoop(func() { ui.rtt = got; render() })
 }
 
 // said a request's outcome on the flash line, back on the loop

@@ -39,6 +39,7 @@ var (
 	mediaRe    = regexp.MustCompile(`^/api/chat/media/([a-z0-9][a-z0-9-]*)/([0-9a-f]{32})$`)
 	runRe      = regexp.MustCompile(`^/api/run/([a-z0-9][a-z0-9-]*)/([A-Za-z0-9_-]+)/(.*)$`)
 	mirrorRe   = regexp.MustCompile(`^/internal/mirror/([0-9a-f]{24})$`)
+	pingRe     = regexp.MustCompile(`^/api/ping/([a-z0-9-]+)$`)
 	filesRe    = regexp.MustCompile(`^/api/files/([a-z0-9][a-z0-9-]*)/(info|list|tree|read|download|upload|save|mkdir|rename|delete|run|mirror)$`)
 	faviconRe  = regexp.MustCompile(`^/api/favicon/([a-z0-9][a-z0-9-]*)/([a-z0-9][a-z0-9-]*)$`)
 )
@@ -652,6 +653,30 @@ func appHandler(w http.ResponseWriter, r *http.Request) {
 
 	if m := filesRe.FindStringSubmatch(pathname); m != nil {
 		filesRoute(w, r, m[1], m[2], q)
+		return
+	}
+
+	// a client's ping to a host: answered here, or relayed once to that host,
+	// the client timing the whole round trip itself
+	if m := pingRe.FindStringSubmatch(pathname); m != nil && method == "GET" {
+		if !isLocalOrPeer(r) {
+			forbidden(w)
+			return
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		host := m[1]
+		if host != selfHost {
+			if _, hop := q["hop"]; hop {
+				st, b := hopErr(host)
+				sendJSON(w, st, b)
+				return
+			}
+			if err := pingPeer(r.Context(), host); err != nil {
+				sendJSON(w, 502, map[string]any{"error": err.Error()})
+				return
+			}
+		}
+		w.WriteHeader(204)
 		return
 	}
 
