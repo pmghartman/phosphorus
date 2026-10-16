@@ -303,29 +303,6 @@ func appHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(200)
 		w.Write(b)
 		return
-	case pathname == "/api/search" && method == "GET":
-		if !isLoopback(r) && !isTailnet(r) {
-			forbidden(w)
-			return
-		}
-		page := int(files.JSNumber(q.Get("page")))
-		if page < 1 {
-			page = 1
-		}
-		if page > 5 {
-			page = 5
-		}
-		qs := q.Get("q")
-		if r := []rune(qs); len(r) > 400 {
-			qs = string(r[:400])
-		}
-		b, err := mcp.Search(qs, page)
-		if err != nil {
-			sendJSON(w, 502, map[string]any{"error": err.Error()})
-			return
-		}
-		sendJSON(w, 200, b)
-		return
 	case pathname == "/api/model/v1/chat/completions" && method == "POST":
 		if !isLoopback(r) && !isTailnet(r) {
 			forbidden(w)

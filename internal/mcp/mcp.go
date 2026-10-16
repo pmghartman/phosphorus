@@ -321,7 +321,7 @@ func numOr(v any, def float64) float64 {
 	return n
 }
 
-var projectOK = map[string]bool{"web_search": true, "fetch_page": true}
+var projectOK = map[string]bool{"fetch_page": true}
 var phases = []any{"plan", "execute", "test", "refine"}
 
 var tools []tool
@@ -373,16 +373,8 @@ func buildTools() {
 				}
 				return project.Exec(id, str(a["command"]), a["timeout_s"], a["background"] == true)
 			}},
-		{name: "web_search", read: true,
-			description: "Search the web: titles, links and snippets. Use it for anything factual, " +
-				"current or outside the mesh, then fetch_page the best results. A name the mesh knows (host, service, share, " +
-				"person) is the mesh's: look it up with the mesh tools first, never search it.",
-			schema: object(map[string]any{"query": map[string]any{"type": "string"}, "page": map[string]any{"type": "integer", "description": "results page, from 1", "default": 1}}, "query"),
-			run: func(a map[string]any, _ Meta) (any, error) {
-				return webSearch(clip(str(a["query"]), 400), int(math.Max(1, math.Min(5, numOr(a["page"], 1)))))
-			}},
 		{name: "fetch_page", read: true,
-			description: "A web page's readable text, from public addresses only, for reading search results.",
+			description: "A web page's readable text, from public addresses only, for a link someone gave or an address known for sure.",
 			schema:      object(map[string]any{"url": map[string]any{"type": "string"}}, "url"),
 			run:         func(a map[string]any, _ Meta) (any, error) { return fetchPage(str(a["url"])) }},
 		{name: "mesh_hosts", read: true,

@@ -105,7 +105,7 @@ func today() string {
 	d := time.Now().Add(clockSkew).UTC()
 	skewMu.Unlock()
 	return fmt.Sprintf("Today is %s, %s UTC. This is the real date: your training data is older, ", d.Format("Monday, January 2, 2006"), d.Format("15:04")) +
-		"so never assume an earlier year, and for anything current, latest or recent go by today and search."
+		"so never assume an earlier year, and for anything current, latest or recent go by today and say what you know may be out of date."
 }
 
 func meshNames() string {

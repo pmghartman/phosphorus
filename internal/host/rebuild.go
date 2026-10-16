@@ -171,7 +171,7 @@ func rebuild() error {
 			dockerQuiet("rm", "phosphorus-model")
 		}
 	}
-	// searxng, from releases before search moved in
+	// searxng, from releases that still had web search
 	dockerQuiet("rm", "-f", "phosphorus-search")
 
 	// leftovers of earlier runs, from the new image's sweep.sh, host pids and
