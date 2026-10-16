@@ -28,17 +28,16 @@ import (
 )
 
 var (
-	stateDir      = util.Env("STATE_DIR", "/state")
-	frontendPort  = util.EnvInt("FRONTEND_PORT", 8090)
-	claimFile     = filepath.Join(stateDir, "git-claim.json")
-	rosterFile    = filepath.Join(stateDir, "git-elector-roster.json")
-	handoffFile   = filepath.Join(stateDir, "git-handoff.json")
-	localFile     = util.Env("LOCAL_FILE", "/run/git-local")
-	decisionFile  = util.Env("DECISION_FILE", "/run/git-decision")
-	leaseFile     = util.Env("LEASE_UNTIL_FILE", "/run/git-lease-until")
-	litefsPidFile = util.Env("LITEFS_PID_FILE", "/run/git-litefs-pid")
-	dbPosFile     = util.Env("DB_POS_FILE", "/var/lib/phosphorus/git/litefs/forgejo.db-pos")
-	promotingFile = util.Env("PROMOTING_FILE", "/run/git-promoting")
+	stateDir       = util.Env("STATE_DIR", "/state")
+	frontendPort   = util.EnvInt("FRONTEND_PORT", 8090)
+	claimFile      = filepath.Join(stateDir, "git-claim.json")
+	rosterFile     = filepath.Join(stateDir, "git-elector-roster.json")
+	handoffFile    = filepath.Join(stateDir, "git-handoff.json")
+	localFile      = util.Env("LOCAL_FILE", "/run/git-local")
+	decisionFile   = util.Env("DECISION_FILE", "/run/git-decision")
+	leaseFile      = util.Env("LEASE_UNTIL_FILE", "/run/git-lease-until")
+	forgejoPidFile = util.Env("FORGEJO_PID_FILE", "/run/git-forgejo-pid")
+	promotingFile  = util.Env("PROMOTING_FILE", "/run/git-promoting")
 
 	tickMS        = int64(util.EnvInt("TICK_MS", 500))
 	probeTimeout  = time.Duration(util.EnvInt("PROBE_TIMEOUT_MS", 500)) * time.Millisecond
@@ -147,7 +146,6 @@ type claim struct {
 	Master    string
 	Gen       int
 	Stamp     int
-	Txid      int
 	Eligible  bool
 	HandoffTo string
 }
@@ -166,11 +164,8 @@ func validClaim(v any) *claim {
 	if !ok1 || !ok2 {
 		return nil
 	}
-	c := &claim{Role: role, Gen: g, Stamp: s, Txid: -1}
+	c := &claim{Role: role, Gen: g, Stamp: s}
 	c.Master, _ = o["master"].(string)
-	if t, ok := isInt(o["txid"]); ok {
-		c.Txid = t
-	}
 	c.Eligible = truthy(o["eligible"])
 	c.HandoffTo, _ = o["handoffTo"].(string)
 	return c
@@ -233,11 +228,8 @@ type E struct {
 	handoffTo             string
 	vouched               bool
 	vouchedAt             int64
-	dbOK                  bool
 	lastMaster, finalFrom string
 	lastStall             string
-	txid                  atomic.Int64
-	posReading            atomic.Bool
 	grantedLast           map[string]bool
 	client                *http.Client
 	mu                    sync.Mutex
@@ -492,31 +484,6 @@ func (e *E) campaign(r Roster, ms int64, extra []string) map[string]bool {
 	return granted
 }
 
-func (e *E) readPos() {
-	if !e.posReading.CompareAndSwap(false, true) {
-		return
-	}
-	go func() {
-		defer e.posReading.Store(false)
-		b, err := os.ReadFile(dbPosFile)
-		if err != nil {
-			e.txid.Store(-1)
-			return
-		}
-		m := regexp.MustCompile(`^([0-9a-f]{16})/`).FindStringSubmatch(string(b))
-		if m == nil {
-			e.txid.Store(-1)
-			return
-		}
-		v, err := strconv.ParseUint(m[1], 16, 64)
-		if err != nil {
-			e.txid.Store(-1)
-			return
-		}
-		e.txid.Store(int64(v))
-	}()
-}
-
 type local struct {
 	gen, stamp    int
 	inSync, force bool
@@ -542,10 +509,10 @@ func readLocal() local {
 }
 
 func (e *E) me(l local) *claim {
-	return &claim{Gen: l.gen, Stamp: l.stamp, Txid: int(e.txid.Load()), Host: e.self}
+	return &claim{Gen: l.gen, Stamp: l.stamp, Host: e.self}
 }
 
-func (e *E) synced(l local) bool { return l.inSync && e.dbOK }
+func (e *E) synced(l local) bool { return l.inSync }
 
 func better(a, b *claim) bool {
 	if a.Gen != b.Gen {
@@ -553,9 +520,6 @@ func better(a, b *claim) bool {
 	}
 	if a.Stamp != b.Stamp {
 		return a.Stamp > b.Stamp
-	}
-	if a.Txid != b.Txid {
-		return a.Txid > b.Txid
 	}
 	return a.Host < b.Host
 }
@@ -697,14 +661,12 @@ func (e *E) followOrCampaign(l local) {
 			e.refused = best.Host
 			e.vouched = false
 			e.vouchedAt = 0
-			e.dbOK = false
 			e.role = "none"
 			e.master = ""
 			return
 		}
 		e.refused = ""
 		e.lastStall = ""
-		e.dbOK = int(e.txid.Load()) >= best.Txid
 		if e.synced(l) {
 			e.vouchedAt = uptimeMS()
 		}
@@ -878,13 +840,13 @@ func (e *E) sortedClaims() []*claim {
 	return out
 }
 
-func litefsUp() bool {
-	b, err := os.ReadFile(litefsPidFile)
+func forgejoUp() bool {
+	b, err := os.ReadFile(forgejoPidFile)
 	return err == nil && strings.TrimSpace(string(b)) != ""
 }
 
 func (e *E) writeOut(l local) {
-	if e.role == "master" && !litefsUp() {
+	if e.role == "master" && !forgejoUp() {
 		os.WriteFile(promotingFile, nil, 0o644)
 	} else {
 		os.Remove(promotingFile)
@@ -912,7 +874,6 @@ type claimOut struct {
 	Master    string `json:"master"`
 	Gen       int    `json:"gen"`
 	Stamp     int    `json:"stamp"`
-	Txid      int64  `json:"txid"`
 	Eligible  bool   `json:"eligible"`
 	Roster    int    `json:"roster"`
 	HandoffTo string `json:"handoffTo"`
@@ -924,7 +885,7 @@ func (e *E) writeClaim(l local, g int) {
 		h = e.handoffTo
 	}
 	writeAtomic(claimFile, marshal(claimOut{
-		Host: e.self, Role: e.role, Master: e.master, Gen: g, Stamp: l.stamp, Txid: e.txid.Load(),
+		Host: e.self, Role: e.role, Master: e.master, Gen: g, Stamp: l.stamp,
 		Eligible: e.role == "master" || e.synced(l), Roster: e.known.Epoch, HandoffTo: h,
 	}))
 }
@@ -986,7 +947,7 @@ func (e *E) handOff(reason, to string) {
 	e.handoffTo = to
 	e.holdUntil = uptimeMS() + holdMS
 	e.writeOut(readLocal())
-	for litefsUp() {
+	for forgejoUp() {
 		sent := uptimeMS()
 		if quorum(e.known, e.campaign(e.known, leaseMS, nil), e.self) {
 			e.leaseUntil = sent + leaseMS - leaseMarginMS
@@ -1033,7 +994,6 @@ func (e *E) tick() {
 	if e.stopping.Load() {
 		return
 	}
-	e.readPos()
 	l := readLocal()
 	leaving := false
 	if e.role == "master" && e.selfState != nil {
@@ -1084,7 +1044,6 @@ func Main() int {
 		grantedLast: map[string]bool{},
 		client:      &http.Client{Timeout: probeTimeout, Transport: &http.Transport{Proxy: nil}},
 	}
-	e.txid.Store(-1)
 	var saved any
 	if util.ReadJSON(rosterFile, &saved) {
 		if r := ValidRoster(saved); r != nil {

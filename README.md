@@ -116,7 +116,7 @@ flowchart TB
     subgraph docker["Docker"]
       ph["phosphorus<br/>tailscaled, frontend, cloudflared"]
       model["phosphorus-model<br/>llama-server, opencode"]
-      git["phosphorus-git<br/>forgejo, litefs, elector"]
+      git["phosphorus-git<br/>forgejo, elector"]
       updater["phosphorus-updater<br/>compose swap"]
     end
   end
@@ -149,7 +149,7 @@ flowchart TB
   agent --> bin
   ph <-->|"snapshots, files, chat, updates"| peers
   ph -->|"missing keys from /internal/keys"| peers
-  git <-->|"litefs replication"| peers
+  git <-->|"rsync replication"| peers
   ph --> model
   ph --> cf --> browser
   client --> browser

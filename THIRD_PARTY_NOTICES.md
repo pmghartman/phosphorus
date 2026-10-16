@@ -71,7 +71,6 @@ first start, and deletes them when it stops being the model host.
 | Component | Version | License | Source |
 |---|---|---|---|
 | Forgejo | 16.0.5 | GPL-3.0-or-later | https://codeberg.org/forgejo/forgejo |
-| LiteFS | 0.5.14 | Apache-2.0 | https://github.com/superfly/litefs |
 
 Forgejo is run as a separate, unmodified program; phosphorus only writes its
 configuration. Its source is available at the link above.

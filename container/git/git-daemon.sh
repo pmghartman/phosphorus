@@ -3,8 +3,6 @@ set -uo pipefail
 
 STATE_DIR="${STATE_DIR:-/state}"
 DATA_ROOT="${DATA_ROOT:-/var/lib/phosphorus/git}"
-LITEFS_YML_TMPL="${LITEFS_YML_TMPL:-/etc/litefs/litefs.yml.tmpl}"
-LITEFS_YML="${LITEFS_YML:-/etc/litefs/litefs.yml}"
 APP_INI_TMPL="${APP_INI_TMPL:-/etc/forgejo/app.ini.tmpl}"
 APP_INI="${APP_INI:-$DATA_ROOT/conf/app.ini}"
 GIT_ROLE_FILE="${GIT_ROLE_FILE:-$STATE_DIR/git-role}"
@@ -13,15 +11,22 @@ ELECTOR="${ELECTOR:-phosphorus elector}"
 # touch to let this host lead without proof it has the newest data
 FORCE_FILE="${FORCE_FILE:-$STATE_DIR/git-force-promote}"
 VERSION_FILE="$DATA_ROOT/GIT_VERSION"
-# set by any pull: forgejo's per-node indexers and queues predating that data
+# set by any pull: forgejo's per-node indexers and queues predating that data,
+# snap/ the db to lead on
 PULLED_FILE="$DATA_ROOT/GIT_PULLED"
+# the live db, the master's alone, never rsynced
+DB="$DATA_ROOT/db/forgejo.db"
+# the master's consistent copy, what peers pull
+SNAP="$DATA_ROOT/snap/forgejo.db"
+# litefs's store from earlier releases, read once
+LEGACY_DB="${LEGACY_DB:-/var/lib/litefs-internal/dbs/forgejo.db/database}"
 
 # shared with the elector
 export LOCAL_FILE="${LOCAL_FILE:-/run/git-local}"
 export DECISION_FILE="${DECISION_FILE:-/run/git-decision}"
 export LEASE_UNTIL_FILE="${LEASE_UNTIL_FILE:-/run/git-lease-until}"
-# the master litefs's pid, for the watchdog, empty otherwise
-export LITEFS_PID_FILE="${LITEFS_PID_FILE:-/run/git-litefs-pid}"
+# the master forgejo's pid, for the watchdog, empty otherwise
+export FORGEJO_PID_FILE="${FORGEJO_PID_FILE:-/run/git-forgejo-pid}"
 
 # must match across every git host
 GIT_NAME="${GIT_NAME:-git}"
@@ -45,17 +50,16 @@ now_ms() { local up; read -r up _ </proc/uptime; REPLY=$(( 10#${up/./} * 10 )); 
 
 write_file() { echo "$2" >"$1.tmp" && mv "$1.tmp" "$1"; }
 
-# __HOSTNAME__ the master's identity, not always this node's own, static
-# lease without discovery: every node points at the same hostname/url
-render_litefs_yml() {
-  sed -e "s/__HOSTNAME__/${2}/g" -e "s/__CANDIDATE__/${1}/g" \
-      "$LITEFS_YML_TMPL" > "$LITEFS_YML"
-}
-
 # DOMAIN/ROOT_URL the stable mesh name, never this host's own hostname:
 # conf/ rsynced wholesale from the master, a local value would drift
+# the db path off litefs's mount, conf/ possibly pulled from an older master
+fix_app_ini() {
+  [ -s "$APP_INI" ] && sed -i 's#/var/lib/phosphorus/git/litefs/forgejo\.db#/var/lib/phosphorus/git/db/forgejo.db#' "$APP_INI"
+}
+
 render_app_ini_once() {
   if [ -s "$APP_INI" ]; then
+    fix_app_ini
     # added after first render, appended once, then rsynced like the rest of conf/
     grep -q '^\[cron.git_gc_repos\]' "$APP_INI" \
       || printf '\n[cron.git_gc_repos]\nENABLED  = true\nSCHEDULE = @every 24h\n' >> "$APP_INI"
@@ -67,68 +71,83 @@ render_app_ini_once() {
       "$APP_INI_TMPL" > "$APP_INI"
 }
 
-LITEFS_PID=""
-LITEFS_STARTED_AT=0
-# a litefs dying on startup never respawned every tick
-LITEFS_RETRY_MS="${LITEFS_RETRY_MS:-5000}"
+FORGEJO_PID=""
+FORGEJO_STARTED_AT=0
+# a forgejo dying on startup never respawned every tick
+FORGEJO_RETRY_MS="${FORGEJO_RETRY_MS:-5000}"
 am_master=false
+SNAP_SIG=""
 
-start_litefs() {
-  litefs mount --config "$LITEFS_YML" &
-  LITEFS_PID="$!"
-  now_ms; LITEFS_STARTED_AT="$REPLY"
-  say "litefs started (pid $LITEFS_PID)"
-  [ "$am_master" = true ] && write_file "$LITEFS_PID_FILE" "$LITEFS_PID"
+start_forgejo() {
+  fix_app_ini
+  env HOME="$DATA_ROOT" setpriv --reuid=git --regid=phosphorus --init-groups \
+    forgejo -w "$DATA_ROOT" -c "$APP_INI" web &
+  FORGEJO_PID="$!"
+  now_ms; FORGEJO_STARTED_AT="$REPLY"
+  say "forgejo started (pid $FORGEJO_PID)"
+  write_file "$FORGEJO_PID_FILE" "$FORGEJO_PID"
 }
 
 # kill -0 succeeding on a child exited but not reaped, so the
 # process state decides it, not the signal
-litefs_alive() {
-  [ -n "$LITEFS_PID" ] || return 1
-  kill -0 "$LITEFS_PID" 2>/dev/null || return 1
-  # still signalable, so a zombie ruled out, comm can hold spaces and parens,
-  # hence the state read after the last ") "
+forgejo_alive() {
+  [ -n "$FORGEJO_PID" ] || return 1
+  kill -0 "$FORGEJO_PID" 2>/dev/null || return 1
+  # comm can hold spaces and parens, hence the state read after the last ") "
   local stat="" rest
-  read -r stat 2>/dev/null < /proc/"$LITEFS_PID"/stat
+  read -r stat 2>/dev/null < /proc/"$FORGEJO_PID"/stat
   [ -n "$stat" ] || return 0
   rest=${stat##*') '}
   [ "${rest%% *}" != Z ]
 }
 
-# pid cleared only once forgejo is down, the elector handing off on that
-stop_litefs() {
-  if [ -n "$LITEFS_PID" ]; then
-    kill "$LITEFS_PID" 2>/dev/null
-    wait "$LITEFS_PID" 2>/dev/null
-    LITEFS_PID=""
+# the live db copied out consistently, skipped while unchanged
+snapshot() {
+  [ -s "$DB" ] || return 0
+  local sig
+  sig="$(stat -c '%.9Y.%s' "$DB" "$DB-wal" 2>/dev/null | tr '\n' ' ')"
+  [ "$sig" = "$SNAP_SIG" ] && [ -s "$SNAP" ] && return 0
+  rm -f "$SNAP.tmp"
+  # as git, no root-owned wal or shm left for forgejo
+  if setpriv --reuid=git --regid=phosphorus --init-groups \
+       sqlite3 -cmd ".timeout 5000" "$DB" ".backup '$SNAP.tmp'" 2>/dev/null; then
+    chmod 640 "$SNAP.tmp" && mv "$SNAP.tmp" "$SNAP" && SNAP_SIG="$sig"
+  else
+    rm -f "$SNAP.tmp"
+    say "couldn't snapshot the db, peers keep the last one"
+    return 1
   fi
-  write_file "$LITEFS_PID_FILE" ""
 }
 
-# $1: true (master), false (servant of $2) or none (stopped)
-# static lease reading hostname/candidate only at startup, any change a restart
-CURRENT_CANDIDATE=""
-CURRENT_MASTER_HOSTNAME=""
-apply_litefs_state() {
-  if [ "$1" = "$CURRENT_CANDIDATE" ] && [ "$2" = "$CURRENT_MASTER_HOSTNAME" ]; then
-    # the config still stands, so only a litefs gone away under it means acting:
-    # a fenced, crashed or failed-to-mount one
-    { [ "$1" = none ] || litefs_alive; } && return
-    now_ms
-    [ $((REPLY - LITEFS_STARTED_AT)) -ge "$LITEFS_RETRY_MS" ] || return
-    # the watchdog fencing a master whose lease lapsed, a restart while still
-    # lapsed: two masters on the same database
-    [ "$1" = true ] && ! lease_valid && return
-    say "litefs is gone under candidate=$1 master=${2:-none}, restarting it"
-  else
-    say "litefs state: candidate=$1 master=${2:-none}"
+# pid cleared only once forgejo is down and its last write snapshotted,
+# the elector handing off on that
+stop_forgejo() {
+  if [ -n "$FORGEJO_PID" ]; then
+    kill "$FORGEJO_PID" 2>/dev/null
+    wait "$FORGEJO_PID" 2>/dev/null
+    FORGEJO_PID=""
+    snapshot && stamp_version
   fi
-  stop_litefs
-  CURRENT_CANDIDATE="$1"
-  CURRENT_MASTER_HOSTNAME="$2"
-  [ "$1" = none ] && return
-  render_litefs_yml "$1" "$2"
-  start_litefs
+  write_file "$FORGEJO_PID_FILE" ""
+}
+
+# forgejo up on the master alone, $1 true or false
+apply_forgejo() {
+  if [ "$1" != true ]; then
+    [ -n "$FORGEJO_PID" ] && stop_forgejo
+    return
+  fi
+  forgejo_alive && return
+  if [ -n "$FORGEJO_PID" ]; then
+    now_ms
+    [ $((REPLY - FORGEJO_STARTED_AT)) -ge "$FORGEJO_RETRY_MS" ] || return
+    # the watchdog fencing a master whose lease lapsed, a restart while still
+    # lapsed: two masters on the same data
+    lease_valid || return
+    say "forgejo is gone, restarting it"
+    wait "$FORGEJO_PID" 2>/dev/null
+  fi
+  start_forgejo
 }
 
 lease_valid() {
@@ -142,10 +161,10 @@ lease_valid() {
 watchdog() {
   local pid fenced=""
   while sleep 0.2; do
-    read -r pid <"$LITEFS_PID_FILE" 2>/dev/null || continue
+    read -r pid <"$FORGEJO_PID_FILE" 2>/dev/null || continue
     [ -n "$pid" ] && [ "$pid" != "$fenced" ] || continue
     lease_valid && continue
-    kill "$pid" 2>/dev/null && say "lease ran out, watchdog fenced litefs (pid $pid)"
+    kill "$pid" 2>/dev/null && say "lease ran out, watchdog fenced forgejo (pid $pid)"
     fenced="$pid"
   done
 }
@@ -187,7 +206,7 @@ pull_from() {
   rsync -az --delete --delete-excluded --timeout=30 --contimeout=5 --exclude=/obj/tmp/ \
         --exclude='/obj/forgejo-repositories/**.lock' --exclude='/obj/forgejo-repositories/**/gc.pid' \
         --exclude='/obj/forgejo-repositories/**/objects/**/tmp_*' --exclude='/obj/forgejo-repositories/**/objects/tmp_*' \
-        "$src/conf" "$src/custom" "$src/obj" "$DATA_ROOT/" > >(log_rsync) 2>&1 &
+        "$src/conf" "$src/custom" "$src/obj" "$src/snap" "$DATA_ROOT/" > >(log_rsync) 2>&1 &
   pid="$!"; wait "$pid" || exit 1
   rsync -a --timeout=30 --contimeout=5 "$src/GIT_VERSION" "$DATA_ROOT/" > >(log_rsync) 2>&1 &
   pid="$!"; wait "$pid"
@@ -234,13 +253,22 @@ step_down() {
   PROMOTING=false
   AUTHORITATIVE=""
   stop_pull
-  apply_litefs_state none ""
+  apply_forgejo false
+}
+
+# the pulled snapshot as the live db, its old wal and shm gone with it
+install_snapshot() {
+  [ -s "$SNAP" ] || { say "no pulled db to lead on, keeping this host's own"; return; }
+  cp "$SNAP" "$DB.tmp" && chown git:phosphorus "$DB.tmp" && rm -f "$DB-wal" "$DB-shm" && mv "$DB.tmp" "$DB" || { rm -f "$DB.tmp"; return 1; }
+  chmod 640 "$DB"
+  SNAP_SIG=""
 }
 
 # once, before forgejo first starts as master
 begin_leading() {
   if [ -e "$PULLED_FILE" ]; then
-    say "data pulled since this host last led, indexers and queues rebuilt"
+    say "data pulled since this host last led, its db installed, indexers and queues rebuilt"
+    install_snapshot
     rm -rf "$DATA_ROOT"/state/indexers "$DATA_ROOT"/state/queues
     rm -f "$PULLED_FILE"
   fi
@@ -281,15 +309,14 @@ apply_decision() {
         fi
         begin_leading
       fi
-      # every tick, not only on the transition: a no-op unless the
-      # config drifted or litefs died under it
-      apply_litefs_state true "$SELF_HOST"
+      # every tick, not only on the transition: a no-op unless forgejo died
+      apply_forgejo true
       ;;
     servant)
       [ "$am_master" = true ] && step_down
       [ "$AUTHORITATIVE" = "$master" ] || stop_pull
       AUTHORITATIVE="$master"
-      apply_litefs_state false "$master"
+      apply_forgejo false
       ;;
     *)
       [ "$am_master" = true ] && step_down
@@ -310,7 +337,8 @@ replicate() {
   fi
   [ $((EPOCHSECONDS - LAST_REPL)) -ge "$REPLICATE_INTERVAL" ] || return
   if [ "$am_master" = true ]; then
-    stamp_version
+    # stamp after the snapshot, vouching for it
+    snapshot && stamp_version
   elif [ -n "$AUTHORITATIVE" ]; then
     pull_from "$AUTHORITATIVE" &
     REPL_PID="$!"
@@ -335,18 +363,27 @@ term() {
   say "shutting down"
   [ -n "${WATCHDOG_PID:-}" ] && kill "$WATCHDOG_PID" 2>/dev/null
   write_git_role false
-  stop_litefs
+  stop_forgejo
   if [ -n "$ELECTOR_PID" ]; then kill "$ELECTOR_PID" 2>/dev/null; wait "$ELECTOR_PID" 2>/dev/null; fi
   [ -n "${RSYNCD_PID:-}" ] && kill "$RSYNCD_PID" 2>/dev/null
   stop_pull
   exit 0
 }
 
+# litefs's last db, from releases before rsync carried it, kept as this host's own
+migrate_litefs() {
+  [ -e "$DB" ] || [ ! -s "$LEGACY_DB" ] && return
+  say "moving the db off litefs"
+  cp "$LEGACY_DB" "$DB.tmp" && mv "$DB.tmp" "$DB" || { rm -f "$DB.tmp"; say "couldn't copy litefs's db"; return; }
+  chown git:phosphorus "$DB"
+  chmod 640 "$DB"
+}
+
 main() {
-  mkdir -p "$STATE_DIR" "$DATA_ROOT"/{conf,custom,obj,litefs} /var/lib/litefs-internal
-  # forgejo running as git, never chown litefs/ (the FUSE mount)
+  mkdir -p "$STATE_DIR" "$DATA_ROOT"/{conf,custom,obj,db,snap}
   chown git:phosphorus "$DATA_ROOT"
-  chown -R git:phosphorus "$DATA_ROOT"/{conf,custom,obj}
+  chown -R git:phosphorus "$DATA_ROOT"/{conf,custom,obj,db,snap}
+  migrate_litefs
 
   say "waiting for $SELF_HOST_FILE..."
   while [ ! -s "$SELF_HOST_FILE" ]; do sleep 1; done
@@ -354,7 +391,7 @@ main() {
   say "this host is $SELF_HOST"
 
   read_version
-  write_file "$LITEFS_PID_FILE" ""
+  write_file "$FORGEJO_PID_FILE" ""
   write_file "$LEASE_UNTIL_FILE" 0
   write_local
   watchdog &
@@ -372,14 +409,8 @@ main() {
     apply_decision
 
     # a lapsed lease fencing, not restarting
-    if [ -n "$LITEFS_PID" ] && ! kill -0 "$LITEFS_PID" 2>/dev/null; then
-      if [ "$am_master" = true ] && ! lease_valid; then
-        step_down
-      else
-        say "litefs exited unexpectedly, restarting"
-        render_litefs_yml "$CURRENT_CANDIDATE" "$CURRENT_MASTER_HOSTNAME"
-        start_litefs
-      fi
+    if [ "$am_master" = true ] && [ -n "$FORGEJO_PID" ] && ! forgejo_alive && ! lease_valid; then
+      step_down
     fi
 
     # a host rename landing in self-host once phosphorus restarts, restarted to follow it

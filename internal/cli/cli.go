@@ -784,7 +784,7 @@ func gitKey(s string, e keyEv) {
 		on := !readGitHost()
 		text := "stop being a git host? phosphorus-git is removed, " + iniNote
 		if on {
-			text = "make this host a git host (forgejo/litefs)? " + iniNote
+			text = "make this host a git host (forgejo)? " + iniNote
 		}
 		ui.confirm = &confirm{text: text, danger: !on, onYes: func() {
 			if err := writeGitHost(on); err != "" {

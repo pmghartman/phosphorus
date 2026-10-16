@@ -103,7 +103,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
 
   # optional git-host, its own container: supervisor.sh killing everything
-  # when one child exits, litefs restarting on every flip
+  # when one child exits, forgejo restarting on every flip
   git:
     image: phosphorus-git:latest
     container_name: phosphorus-git
@@ -114,12 +114,8 @@ services:
     environment:
       BASE_DOMAIN: ${BASE_DOMAIN}
 
-    # host networking for tailnet reach, /dev/fuse for litefs
+    # host networking for tailnet reach
     network_mode: host
-    cap_add: [SYS_ADMIN]
-    devices: ["/dev/fuse"]
-    # default apparmor denying mount(2), and with it fusermount3
-    security_opt: ["apparmor:unconfined"]
     dns:
       - 100.100.100.100
       - 1.1.1.1
@@ -127,12 +123,12 @@ services:
       - tailc2cc6a.ts.net
 
     volumes:
-      # data root, litefs/ litefs-managed, never rsynced
+      # data root, db/ the live db never rsynced, snap/ its copy for peers
       # Windows: phosphorus-git-data, off the slow NTFS share
       - ${PHOSPHORUS_GIT_DATA:-./git/data}:/var/lib/phosphorus/git
 
-      # litefs's real db store, mounted or a rebuild wipes forgejo's db
-      - ${PHOSPHORUS_GIT_DB:-./git/data/litefs-internal}:/var/lib/litefs-internal
+      # litefs's db store from earlier releases, read once into db/
+      - ${PHOSPHORUS_GIT_DB:-./git/data/litefs-internal}:/var/lib/litefs-internal:ro
 
       # shared with phosphorus: self-host, git-role, the elector's claim
       - ./state:/state

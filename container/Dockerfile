@@ -35,29 +35,24 @@ COPY --from=docker:28-cli /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=build /out/phosphorus /usr/local/bin/phosphorus
 ENTRYPOINT ["/usr/local/bin/phosphorus", "model"]
 
-# --- phosphorus-git: forgejo on litefs, its elector the binary --------------------
+# --- phosphorus-git: forgejo, its db rsynced as snapshots, its elector the binary --
 FROM base AS git
 LABEL org.phosphorus=git
-ARG LITEFS_VERSION=v0.5.14
 ARG FORGEJO_VERSION=16.0.5
 ARG TARGETARCH
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        ca-certificates curl jq bash git rsync openssh-client fuse3 \
-    && echo user_allow_other >> /etc/fuse.conf \
+        ca-certificates curl jq bash git rsync openssh-client sqlite3 \
     && rm -rf /var/lib/apt/lists/*
 # forgejo refusing root, ids matching the data already on disk
 RUN groupadd -g 4000 phosphorus \
  && useradd -u 4001 -g phosphorus -d /var/lib/phosphorus/git -s /usr/sbin/nologin git
-RUN curl -fsSL "https://github.com/superfly/litefs/releases/download/${LITEFS_VERSION}/litefs-${LITEFS_VERSION}-linux-${TARGETARCH:-amd64}.tar.gz" \
-      | tar -xz -C /usr/local/bin litefs \
- && curl -fsSL -o /usr/local/bin/forgejo "https://codeberg.org/forgejo/forgejo/releases/download/v${FORGEJO_VERSION}/forgejo-${FORGEJO_VERSION}-linux-${TARGETARCH:-amd64}" \
- && chmod 755 /usr/local/bin/litefs /usr/local/bin/forgejo
-COPY container/git/litefs.yml.tmpl /etc/litefs/litefs.yml.tmpl
+RUN curl -fsSL -o /usr/local/bin/forgejo "https://codeberg.org/forgejo/forgejo/releases/download/v${FORGEJO_VERSION}/forgejo-${FORGEJO_VERSION}-linux-${TARGETARCH:-amd64}" \
+ && chmod 755 /usr/local/bin/forgejo
 COPY container/git/app.ini.tmpl    /etc/forgejo/app.ini.tmpl
 COPY container/git/rsyncd.conf     /etc/rsyncd.conf
 COPY --chmod=755 container/git/git-daemon.sh /usr/local/bin/git-daemon.sh
 COPY --from=build /out/phosphorus  /usr/local/bin/phosphorus
-RUN mkdir -p /var/lib/phosphorus/git /var/lib/litefs-internal
+RUN mkdir -p /var/lib/phosphorus/git
 ENTRYPOINT ["/usr/local/bin/git-daemon.sh"]
 
 # --- phosphorus: tailscale, the frontend and the tunnel ---------------------------
