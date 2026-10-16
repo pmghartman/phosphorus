@@ -24,6 +24,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/pmghartman/phosphorus/internal/files"
@@ -48,6 +49,8 @@ const (
 	askTimeout = time.Hour
 	catalogMS  = 5 * 60 * 1000
 	toolMS     = 61 * 60 * 1000
+	// opencode's few hundred MB handed back after this long unasked
+	idleFor = 10 * time.Minute
 	// Handle phosphorus's name, its tools' prefix
 	Handle = "phosphorus"
 	// Mesh the provider id of the mesh's own models
@@ -228,7 +231,26 @@ var (
 	asks     = map[string]*Ask{}
 	children = map[string]string{}
 	client   = &http.Client{Transport: &http.Transport{Proxy: nil}}
+	lastUse  atomic.Int64
 )
+
+// opencode stopped once idle, the next ask starting it again
+func reap(cmd *exec.Cmd) {
+	for range time.Tick(time.Minute) {
+		mu.Lock()
+		if srv.proc != cmd {
+			mu.Unlock()
+			return
+		}
+		if len(asks) == 0 && time.Since(time.UnixMilli(lastUse.Load())) > idleFor {
+			log.Printf("[harness] opencode idle for %s, stopping", idleFor)
+			cmd.Process.Kill()
+			mu.Unlock()
+			return
+		}
+		mu.Unlock()
+	}
+}
 
 func errorText(e any) string {
 	m := util.Obj(e)
@@ -252,6 +274,8 @@ func errorText(e any) string {
 }
 
 func call(method, p string, body any, timeout time.Duration, dir string) (any, error) {
+	lastUse.Store(time.Now().UnixMilli())
+	defer func() { lastUse.Store(time.Now().UnixMilli()) }()
 	at := p
 	if dir != "" {
 		sep := "?"
@@ -320,6 +344,8 @@ func start(sig string, s Setup) error {
 	}
 	ready := make(chan struct{})
 	srv = srvT{proc: cmd, sig: sig, ready: ready}
+	lastUse.Store(time.Now().UnixMilli())
+	go reap(cmd)
 	go func() {
 		err := cmd.Wait()
 		mu.Lock()
@@ -382,6 +408,7 @@ func closed(c chan struct{}) bool {
 
 func ensure(s Setup) error {
 	sig := string(util.Marshal(s))
+	lastUse.Store(time.Now().UnixMilli())
 	mu.Lock()
 	if srv.proc != nil && srv.sig != sig && len(asks) == 0 {
 		old := srv.proc
@@ -674,16 +701,15 @@ var (
 
 // Catalog every provider opencode knows, the mesh first, kept a while
 func Catalog(s Setup) (any, error) {
-	if err := ensure(s); err != nil {
-		return nil, err
-	}
-	mu.Lock()
-	sig := srv.sig
-	mu.Unlock()
+	sig := string(util.Marshal(s))
 	listedMu.Lock()
 	defer listedMu.Unlock()
+	// a cached list never waking a stopped opencode
 	if listed.body != nil && listed.sig == sig && util.Now()-listed.at < catalogMS {
 		return listed.body, nil
+	}
+	if err := ensure(s); err != nil {
+		return nil, err
 	}
 	r, err := call("GET", "/provider", nil, 30*time.Second, "")
 	if err != nil {
