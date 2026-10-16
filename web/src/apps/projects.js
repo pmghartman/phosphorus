@@ -6,11 +6,11 @@ import {
   harnessHosts,
   name,
   news,
-  renderMd,
   send,
   ws,
   wsBase,
 } from '../app.js';
+import { renderMd } from '../md.js';
 
 // --- projects -----------------------------------------------------------------
 // the orangutan's long projects, every host's: the list, one's live state, or a

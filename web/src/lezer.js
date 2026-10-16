@@ -83,7 +83,7 @@ export function highlight(parser, text) {
   return out;
 }
 
-const ERR_MAX = 50;
+export const ERR_MAX = 50;
 export function syntaxErrors(parser, text) {
   const out = [];
   parser.parse(text).iterate({
