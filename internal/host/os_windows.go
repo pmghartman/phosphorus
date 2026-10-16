@@ -282,3 +282,39 @@ func lockRebuild() (func(), error) {
 	}
 	return func() { f.Close() }, nil
 }
+
+func svcRemove() {}
+
+// unpath the home's bin out of the user's PATH
+func unpath() {
+	ps("$b = " + psq(at("bin")) + "; [Environment]::SetEnvironmentVariable('Path', ((([Environment]::GetEnvironmentVariable('Path', 'User')) -split ';' | Where-Object { $_ -and $_.TrimEnd('\\') -ne $b }) -join ';'), 'User')")
+}
+
+// uninstallAdmin the service deleted, the ssh include dropped, the home's
+// SYSTEM-written files removed
+func uninstallAdmin() error {
+	svcStop()
+	if m, err := mgr.Connect(); err == nil {
+		if s, err := m.OpenService(svcName); err == nil {
+			s.Delete()
+			s.Close()
+		}
+		m.Disconnect()
+	}
+	if b, err := os.ReadFile(sshConfig()); err == nil && strings.Contains(string(b), sshInclude()) {
+		kept := []string{}
+		for _, l := range strings.Split(string(b), "\n") {
+			if strings.TrimRight(l, "\r") != sshInclude() {
+				kept = append(kept, l)
+			}
+		}
+		os.WriteFile(sshConfig(), []byte(strings.Join(kept, "\n")), 0o644)
+	}
+	os.RemoveAll(home)
+	return nil
+}
+
+// elevateUninstall the admin half through UAC, waited on
+func elevateUninstall() {
+	ps("Start-Process -Wait -Verb RunAs -FilePath " + psq(exe()) + " -ArgumentList @('uninstall','--admin','--home'," + psq(`"`+home+`"`) + ")")
+}

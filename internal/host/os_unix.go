@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"syscall"
+
+	"golang.org/x/term"
 )
 
 func hide(*exec.Cmd) {}
@@ -109,4 +111,30 @@ func lockRebuild() (func(), error) {
 		}
 	}
 	return func() { f.Close() }, nil
+}
+
+func unpath() {}
+
+// uninstallAdmin setup's ssh include and PATH links, only while still ours
+func uninstallAdmin() error {
+	if readTrim(sshInc) == sshInclude() {
+		os.Remove(sshInc)
+	}
+	for _, l := range links {
+		if t, _ := os.Readlink(l); t == binPath("phosphorus") {
+			os.Remove(l)
+		}
+	}
+	return nil
+}
+
+// elevateUninstall sudo on a terminal, else left for the app's own prompt
+func elevateUninstall() {
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		say("admin setup left for the Phosphorus app's prompt, or: sudo phosphorus uninstall --admin")
+		return
+	}
+	c := exec.Command("sudo", exe(), "uninstall", "--admin", "--home", home)
+	c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
+	c.Run()
 }

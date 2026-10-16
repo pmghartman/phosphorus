@@ -9,10 +9,11 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
+use tauri::webview::NewWindowResponse;
 use tauri::{AppHandle, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
@@ -20,6 +21,8 @@ use tauri_plugin_updater::UpdaterExt;
 
 /// one install, start, stop or update at a time
 static BUSY: AtomicBool = AtomicBool::new(false);
+/// popped out windows' labels
+static TABS: AtomicU32 = AtomicU32::new(0);
 
 struct App {
     payload: PathBuf,
@@ -146,13 +149,19 @@ fn admin_setup(app: &App) {
         if host_cmd(app, &["setup", "--check"]).status().map(|s| s.success()).unwrap_or(true) {
             return;
         }
-        let q = |p: &Path| format!("'{}'", p.display().to_string().replace('\'', "'\\''"));
-        let sh = format!("{} setup --home {}", q(&app.host), q(&app.home));
-        let script = format!("do shell script \"{}\" with administrator privileges", sh.replace('\\', "\\\\").replace('"', "\\\""));
-        let _ = Command::new("/usr/bin/osascript").args(["-e", &script]).status();
+        as_admin(app, "setup");
     }
     #[cfg(not(target_os = "macos"))]
     let _ = app;
+}
+
+/// macOS: one host command as root behind the system's password prompt
+#[cfg(target_os = "macos")]
+fn as_admin(app: &App, args: &str) {
+    let q = |p: &Path| format!("'{}'", p.display().to_string().replace('\'', "'\\''"));
+    let sh = format!("{} {args} --home {}", q(&app.host), q(&app.home));
+    let script = format!("do shell script \"{}\" with administrator privileges", sh.replace('\\', "\\\\").replace('"', "\\\""));
+    let _ = Command::new("/usr/bin/osascript").args(["-e", &script]).status();
 }
 
 /// start or stop in the background, the tooltip following, a failure shown
@@ -333,12 +342,36 @@ fn open_main(handle: &AppHandle) {
         open_connect(handle);
         return;
     };
+    let h = handle.clone();
     let _ = WebviewWindowBuilder::new(handle, "main", WebviewUrl::External(url))
         .title("Phosphorus")
         .inner_size(1280.0, 820.0)
         .min_inner_size(480.0, 360.0)
+        .decorations(false)
+        .maximized(true)
+        .focused(true)
+        .on_new_window(move |u, _| popout(&h, u))
+        .build();
+}
+
+/// an app's new tab or window: a window of its own on the same session
+fn popout(handle: &AppHandle, url: tauri::Url) -> NewWindowResponse<tauri::Wry> {
+    let h = handle.clone();
+    let _ = handle.run_on_main_thread(move || open_tab(&h, url));
+    NewWindowResponse::Deny
+}
+
+fn open_tab(handle: &AppHandle, url: tauri::Url) {
+    let label = format!("tab-{}", TABS.fetch_add(1, Ordering::SeqCst));
+    let title = url.host_str().unwrap_or("Phosphorus").to_string();
+    let h = handle.clone();
+    let _ = WebviewWindowBuilder::new(handle, label, WebviewUrl::External(url))
+        .title(title)
+        .inner_size(1100.0, 760.0)
+        .min_inner_size(360.0, 240.0)
         .center()
         .focused(true)
+        .on_new_window(move |u, _| popout(&h, u))
         .build();
 }
 
@@ -434,6 +467,139 @@ fn close_keys(handle: AppHandle) {
     }
 }
 
+/// the app's own folders: config, data, caches, logs
+fn app_dirs(handle: &AppHandle) -> Vec<PathBuf> {
+    let p = handle.path();
+    [p.app_config_dir(), p.app_data_dir(), p.app_local_data_dir(), p.app_cache_dir(), p.app_log_dir()]
+        .into_iter()
+        .flatten()
+        .collect()
+}
+
+/// the app itself removed once this process is gone: the bundle (macOS), the
+/// installer's uninstaller (Windows)
+fn remove_app() {
+    let Ok(exe) = std::env::current_exe() else { return };
+    #[cfg(target_os = "macos")]
+    if let Some(bundle) = exe.ancestors().find(|p| p.extension().is_some_and(|e| e == "app")) {
+        let q = format!("'{}'", bundle.display().to_string().replace('\'', "'\\''"));
+        let _ = Command::new("/bin/sh").args(["-c", &format!("sleep 2; rm -rf {q}")]).stdin(Stdio::null()).spawn();
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let un = exe.parent().unwrap_or(Path::new(".")).join("uninstall.exe");
+        if un.exists() {
+            let _ = Command::new("cmd")
+                .args(["/c", "timeout", "/t", "2", "/nobreak", ">nul", "&"])
+                .arg(&un)
+                .arg("/S")
+                .creation_flags(0x0800_0000)
+                .spawn();
+        }
+    }
+    #[cfg(target_os = "linux")]
+    let _ = exe;
+}
+
+/// everything gone after a confirm: a host's service, setup and home, the
+/// app's own folders and login item, then the app
+fn uninstall(handle: AppHandle) {
+    if BUSY.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    std::thread::spawn(move || {
+        let app = handle.state::<App>();
+        let what = if app.is_host {
+            format!("This removes Phosphorus from this computer: the host service, its setup and everything in {}, including this host's git data and shares. Other hosts keep the mesh.", app.home.display())
+        } else {
+            "This removes Phosphorus Client and its settings from this computer.".into()
+        };
+        let go = handle
+            .dialog()
+            .message(what)
+            .title("Uninstall Phosphorus")
+            .kind(MessageDialogKind::Warning)
+            .buttons(MessageDialogButtons::OkCancelCustom("Uninstall".into(), "Cancel".into()))
+            .blocking_show();
+        if !go {
+            BUSY.store(false, Ordering::SeqCst);
+            return;
+        }
+        if app.is_host {
+            set_tip(&handle, "Phosphorus uninstalling…");
+            #[cfg(target_os = "macos")]
+            as_admin(&app, "uninstall --admin");
+            // not host_run: its log would put the home back
+            match host_cmd(&app, &["uninstall"]).output() {
+                Ok(o) if o.status.success() => {}
+                Ok(o) => {
+                    let text = format!("{}{}", String::from_utf8_lossy(&o.stdout), String::from_utf8_lossy(&o.stderr));
+                    let e = last_error(&text);
+                    BUSY.store(false, Ordering::SeqCst);
+                    set_tip(&handle, &status_tip(&app));
+                    alert(&handle, if e.is_empty() { "uninstall failed" } else { &e });
+                    return;
+                }
+                Err(e) => {
+                    BUSY.store(false, Ordering::SeqCst);
+                    alert(&handle, &e.to_string());
+                    return;
+                }
+            }
+        }
+        let _ = handle.autolaunch().disable();
+        for d in app_dirs(&handle) {
+            let _ = std::fs::remove_dir_all(d);
+        }
+        remove_app();
+        handle.exit(0);
+    });
+}
+
+/// macOS: the app menu, its Edit menu the webviews' copy and paste
+#[cfg(target_os = "macos")]
+fn app_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
+    let name = app.package_info().name.clone();
+    let main = tauri::menu::Submenu::with_items(
+        app,
+        &name,
+        true,
+        &[
+            &PredefinedMenuItem::about(app, None, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &MenuItem::with_id(app, "uninstall", "Uninstall…", true, None::<&str>)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::hide(app, None)?,
+            &PredefinedMenuItem::hide_others(app, None)?,
+            &PredefinedMenuItem::show_all(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::quit(app, None)?,
+        ],
+    )?;
+    let edit = tauri::menu::Submenu::with_items(
+        app,
+        "Edit",
+        true,
+        &[
+            &PredefinedMenuItem::undo(app, None)?,
+            &PredefinedMenuItem::redo(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::cut(app, None)?,
+            &PredefinedMenuItem::copy(app, None)?,
+            &PredefinedMenuItem::paste(app, None)?,
+            &PredefinedMenuItem::select_all(app, None)?,
+        ],
+    )?;
+    let window = tauri::menu::Submenu::with_items(
+        app,
+        "Window",
+        true,
+        &[&PredefinedMenuItem::minimize(app, None)?, &PredefinedMenuItem::fullscreen(app, None)?, &PredefinedMenuItem::close_window(app, None)?],
+    )?;
+    Menu::with_items(app, &[&main, &edit, &window])
+}
+
 fn tray(app: &AppHandle) -> tauri::Result<()> {
     let item = |id: &str, text: &str| MenuItem::with_id(app, id, text, true, None::<&str>);
     let menu = Menu::with_items(
@@ -444,6 +610,8 @@ fn tray(app: &AppHandle) -> tauri::Result<()> {
             &item("update", "Check for Updates")?,
             &PredefinedMenuItem::separator(app)?,
             &item("keys", "Edit Keys…")?,
+            &PredefinedMenuItem::separator(app)?,
+            &item("uninstall", "Uninstall…")?,
             &PredefinedMenuItem::separator(app)?,
             &item("quit", "Quit (phosphorus keeps running)")?,
         ],
@@ -476,6 +644,11 @@ fn main() {
         // opened again: the running one's window brought up instead
         .plugin(tauri_plugin_single_instance::init(|app, _, _| open_main(app)))
         .enable_macos_default_menu(false)
+        .on_menu_event(|app, e| {
+            if e.id().as_ref() == "uninstall" {
+                uninstall(app.clone());
+            }
+        })
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--background"])))
         .invoke_handler(tauri::generate_handler![keys_status, save_keys, close_keys, set_domain])
@@ -486,6 +659,8 @@ fn main() {
             let is_host = host.exists() && payload.join("VERSION").exists();
             let config = app.path().app_config_dir()?.join("client.json");
             app.manage(App { payload, home: home_dir(), host, is_host, config });
+            #[cfg(target_os = "macos")]
+            app.set_menu(app_menu(app.handle())?)?;
             // release builds carry the updater config; dev builds none
             if app.config().plugins.0.contains_key("updater") {
                 app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;

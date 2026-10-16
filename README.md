@@ -51,9 +51,11 @@ On first start the app opens a keys window and `phosphorus` opens a keys form. P
 
 A host joining an existing mesh needs only `TS_AUTHKEY`: once on the tailnet it copies the rest from the first peer that answers.
 
-`.env` is readable only by root on Linux, by the app's account on macOS, and by the app's account plus SYSTEM on Windows. Keys are never displayed. To replace one, use Edit Keys in the tray, `phos keys`, or `k` in the cli. Paste the new value; blank fields keep what is set. Saving restarts phosphorus with the new keys.
+`.env` is readable only by root on Linux, by the app's account on macOS, and by the app's account plus SYSTEM on Windows. Saved keys are never displayed; typed ones are. To replace one, use Edit Keys in the tray, `phos keys`, or `k` in the cli. Paste the new value; blank fields keep what is set. Saving restarts phosphorus with the new keys.
 
 First login: user `admin`, password `ADMIN_PASS`; create a real admin and that login turns off.
+
+Uninstall: Uninstall in the tray (or the app menu on macOS), or `phos uninstall`. It removes the service, the admin setup, PATH entries, the home with its git data and shares, the app's own folders and the app itself. On Linux it purges the package.
 
 ## Config
 

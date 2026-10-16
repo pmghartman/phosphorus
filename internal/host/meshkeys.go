@@ -29,7 +29,7 @@ func meshKeyValues() (map[string]string, error) {
 			Online       bool
 		}
 	}
-	if err := json.Unmarshal([]byte(output("tailscale", "--socket=/var/run/tailscale/tailscaled.sock", "status", "--json")), &status); err != nil {
+	if err := json.Unmarshal([]byte(output(tailscaleCLI(), "status", "--json")), &status); err != nil {
 		return nil, fail("can't list tailnet peers: %v", err)
 	}
 	c := &http.Client{Timeout: 3 * time.Second}

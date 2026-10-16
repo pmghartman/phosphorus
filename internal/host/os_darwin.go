@@ -155,3 +155,5 @@ func aptInstall([]string) error { return nil }
 func deferRebuild() error       { return nil }
 func gitEnv() map[string]string { return nil }
 func ensureGitUser() error      { return nil }
+
+func svcRemove() { os.Remove(plistPath()) }

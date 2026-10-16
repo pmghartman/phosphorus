@@ -191,3 +191,5 @@ func ensureGitUser() error {
 	}
 	return nil
 }
+
+func svcRemove() {}

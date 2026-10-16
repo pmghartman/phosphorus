@@ -31,7 +31,7 @@
 </head>
 <body>
 <h1>Keys</h1>
-<p class="lead" id="lead">Values are never shown. Paste a new one to replace it, leave a field blank to keep what's set.</p>
+<p class="lead" id="lead">Saved values are never shown. Paste a new one to replace it, leave a field blank to keep what's set.</p>
 <form id="f" autocomplete="off"></form>
 <div class="foot">
   <span class="err" id="err"></span>
@@ -63,7 +63,9 @@
     s.textContent = set ? 'set' : 'not set';
     row.append(n, s);
     const i = document.createElement('input');
-    i.type = 'password';
+    i.type = 'text';
+    i.autocomplete = 'off';
+    i.autocapitalize = 'off';
     i.name = name;
     i.spellcheck = false;
     i.placeholder = set ? 'paste to replace' : name;

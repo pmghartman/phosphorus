@@ -28,7 +28,7 @@ var (
 var Commands = map[string]bool{
 	"": true, "start": true, "stop": true, "restart": true, "update": true, "keys": true, "install": true,
 	"setup": true, "rebuild": true, "upgrade": true, "game-control": true, "game-control-setup": true,
-	"run": true, "ps": true, "help": true, "-h": true, "--help": true,
+	"run": true, "ps": true, "uninstall": true, "help": true, "-h": true, "--help": true,
 }
 
 func usage(w io.Writer) {
@@ -40,6 +40,7 @@ func usage(w io.Writer) {
        phos update all  update mesh
        phos keys        replace keys in .env
        phos ps          phosphorus's processes, by role
+       phos uninstall   remove phosphorus and its data from this host
 `)
 }
 
@@ -112,6 +113,8 @@ func Main(cmd string, args []string) int {
 		err = gameControlSetup()
 	case "run":
 		err = runHost()
+	case "uninstall":
+		err = uninstall(f.rest)
 	case "ps":
 		// the roles file under this home, not the default state dir
 		os.Setenv("STATE_DIR", at("state"))
