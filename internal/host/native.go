@@ -234,7 +234,8 @@ func rebuild() error {
 	os.MkdirAll(at("state"), 0o755)
 
 	migrating := dockerEra()
-	if why := gitLeftovers(); why != "" {
+	// git/data the containers' layout only while they're here; natively an old one inside git/
+	if why := gitLeftovers(); migrating && why != "" {
 		return fail("%s; nothing was stopped", why)
 	}
 	homeTo := at("files")
@@ -287,8 +288,10 @@ func rebuild() error {
 		svcStop()
 		up = false
 	}
-	if err := gitUp(); err != nil {
-		return rollback(migrating, err)
+	if migrating {
+		if err := gitUp(); err != nil {
+			return rollback(true, err)
+		}
 	}
 	if homeFrom != "" {
 		say("moving home/ from %s to %s", homeFrom, homeTo)
