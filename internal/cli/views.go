@@ -360,9 +360,9 @@ func ping(ms any) string {
 	}
 	n := int(math.Round(v))
 	tok := "offmesh"
-	if n <= 40 {
+	if n <= 200 {
 		tok = "online"
-	} else if n <= 150 {
+	} else if n <= 400 {
 		tok = "warn"
 	}
 	return c(tok)(fmt.Sprintf("%dms", n))

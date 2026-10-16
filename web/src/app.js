@@ -652,15 +652,18 @@ async function pingHosts() {
   meshStatsDirty = true;
   if (!meshAnimFrame) drawMesh();
 }
-setInterval(() => { if (!document.hidden) pingHosts(); }, RTT_SAMPLE_MS);
+// only while the mesh graph or the status view is on screen
+const pingWanted = () => !document.hidden && [meshPanel, document.getElementById('view-status')]
+  .some((v) => v?.getClientRects().length && !v.closest('.stash'));
+setInterval(() => { if (pingWanted()) pingHosts(); }, RTT_SAMPLE_MS);
 
 const lerp = (a, b, t) => a + (b - a) * t;
 
 // ping bucket -> CSS class, null/undefined meaning unmeasured, not offline
 function pingClass(rttMs) {
   if (rttMs === null || rttMs === undefined) return '';
-  if (rttMs <= 40) return 'good';
-  if (rttMs <= 150) return 'slow';
+  if (rttMs <= 200) return 'good';
+  if (rttMs <= 400) return 'slow';
   return 'bad';
 }
 
@@ -678,7 +681,7 @@ function steadyRtt(name) {
 
 // inline trend line over the last RTT samples, '' without enough history,
 // fixed 0..SPARK_MAX_MS scale so 1ms jitter stays flat
-const SPARK_MAX_MS = 150;
+const SPARK_MAX_MS = 400;
 function sparkline(history, cls) {
   if (!history || history.length < 2) return '';
   const w = 24;
@@ -4105,9 +4108,14 @@ function dkMono(label) {
 // the first of icons that loads, the glyph kept when none does
 function dkTryIcons(tile, icons) {
   const [first, ...rest] = icons.filter(Boolean);
-  if (!first) return;
+  if (!first) { tile.classList.remove('dk-wait'); return; }
+  if (!tile.classList.contains('dk-wait')) {
+    tile.classList.add('dk-wait');
+    // the glyph shown after a while, a slow host never leaving a hole
+    setTimeout(() => tile.classList.remove('dk-wait'), 600);
+  }
   const img = Object.assign(el('img', 'dk-favicon'), { alt: '', decoding: 'async', draggable: false });
-  img.addEventListener('load', () => { tile.replaceChildren(img); tile.classList.add('dk-tile-img'); }, { once: true });
+  img.addEventListener('load', () => { tile.replaceChildren(img); tile.classList.add('dk-tile-img'); tile.classList.remove('dk-wait'); }, { once: true });
   img.addEventListener('error', () => dkTryIcons(tile, rest), { once: true });
   img.src = first;
 }
@@ -4137,21 +4145,32 @@ function dkIcons() {
   const sig = JSON.stringify([hosts, git, !!acct?.admin, dk.services.map((r) => [r.host, r.name]), dk.deskFiles.map((e) => [e.at, e.name, e.dir, e.mtime, e.hosts, e.stale, e.all])]);
   if (sig === dk.sig) return;
   dk.sig = sig;
-  dk.desk.icons.replaceChildren(
-    ...hosts.map((h) => dkIcon('terminal', 'terminal', h, () => dkTerminal(h))),
-    dkIcon('files', 'files', '', () => filesWin()),
-    dkIcon('editor', 'editor', '', dkEditorPick),
-    dkIcon('chat', 'chat', '', () => dkOpenApp('chat')),
-    dkIcon('status', 'status', '', () => dkOpenApp('status')),
-    dkIcon('projects', 'projects', '', () => dkOpenApp('projects')),
-    ...(git ? [dkIcon('git', 'git', '', () => dkOpenApp('git'))] : []),
-    dkIcon('games', 'games', '', () => dkOpenApp('games')),
-    dkIcon('about', 'about', '', () => dkOpenApp('about')),
-    ...(acct?.admin ? [dkIcon('users', 'users', '', dkUsersWin)] : []),
-    ...dk.services.map((r) => dkIcon('service', r.name, r.host, () => dkService(r),
-      `/api/favicon/${encodeURIComponent(r.host)}/${encodeURIComponent(r.name)}`)),
-    ...dk.deskFiles.map(dkFileIcon),
-  );
+  const files = new Map(dk.deskFiles.map((e) => [`doc\n${filesJoin(e.at, e.name)}`, e]));
+  // one key per icon and what it shows, an unchanged one kept as it is
+  const want = [
+    ...hosts.map((h) => ['terminal', () => dkIcon('terminal', 'terminal', h, () => dkTerminal(h))]),
+    ['files', () => dkIcon('files', 'files', '', () => filesWin())],
+    ['editor', () => dkIcon('editor', 'editor', '', dkEditorPick)],
+    ['chat', () => dkIcon('chat', 'chat', '', () => dkOpenApp('chat'))],
+    ['status', () => dkIcon('status', 'status', '', () => dkOpenApp('status'))],
+    ['projects', () => dkIcon('projects', 'projects', '', () => dkOpenApp('projects'))],
+    ...(git ? [['git', () => dkIcon('git', 'git', '', () => dkOpenApp('git'))]] : []),
+    ['games', () => dkIcon('games', 'games', '', () => dkOpenApp('games'))],
+    ['about', () => dkIcon('about', 'about', '', () => dkOpenApp('about'))],
+    ...(acct?.admin ? [['users', () => dkIcon('users', 'users', '', dkUsersWin)]] : []),
+    ...dk.services.map((r) => [JSON.stringify([r.host, r.name]), () => dkIcon('service', r.name, r.host, () => dkService(r),
+      `/api/favicon/${encodeURIComponent(r.host)}/${encodeURIComponent(r.name)}`)]),
+    ...[...files.values()].map((e) => [JSON.stringify([e.at, e.name, e.dir, e.mtime, e.hosts, e.stale, e.all, e.live]), () => dkFileIcon(e)]),
+  ];
+  const had = new Map(dkIconEls().map((b) => [b.dataset.key, b]));
+  dk.desk.icons.replaceChildren(...want.map(([key, make]) => {
+    const old = had.get(key);
+    if (old) return old;
+    const b = make();
+    b.dataset.key = key;
+    b.classList.add('dk-new');
+    return b;
+  }));
   dkLayout();
 }
 
@@ -4175,6 +4194,16 @@ function dkLayout() {
   if (!dk.desk || !dk.desk.icons.clientHeight) return;
   const { cols, rows } = dkGrid();
   const saved = dkSaved();
+  const here = new Set(dkIconEls().map((b) => b.dataset.id));
+  let placed = false;
+  // a deleted file's cell freed once the desktop's files are read
+  if (dk.deskReady) {
+    for (const id of Object.keys(saved)) {
+      if (id.startsWith('doc\n') && !here.has(id)) { delete saved[id]; placed = true; }
+    }
+  }
+  // an icon not in yet keeps its cell, none of the others spilling into it
+  const held = new Set(Object.entries(saved).filter(([id, p]) => !here.has(id) && Array.isArray(p)).map(([, p]) => dkCell(...p)));
   const taken = new Set();
   const rest = [];
   for (const b of dkIconEls()) {
@@ -4184,16 +4213,20 @@ function dkLayout() {
       dkPut(b, p[0], p[1]);
     } else rest.push(b);
   }
+  const busy = (i, skipHeld) => taken.has(dkCell(Math.floor(i / rows), i % rows)) || (skipHeld && held.has(dkCell(Math.floor(i / rows), i % rows)));
   let i = 0;
-  let placed = false;
   for (const b of rest) {
-    while (taken.has(dkCell(Math.floor(i / rows), i % rows)) && i < cols * rows) i += 1;
-    const c = Math.floor(i / rows);
-    const r = i % rows;
+    let j = i;
+    while (j < cols * rows && busy(j, true)) j += 1;
+    // a full grid: held cells given up before overlapping
+    if (j >= cols * rows) { j = i; while (j < cols * rows && busy(j, false)) j += 1; } else i = j;
+    const c = Math.floor(j / rows);
+    const r = j % rows;
     taken.add(dkCell(c, r));
     dkPut(b, c, r);
-    // an icon's first cell kept, so one blinking out never reflows the rest
-    if (!(b.dataset.id in saved)) { saved[b.dataset.id] = [c, r]; placed = true; }
+    // its cell kept, off the grid only while the desk is too small
+    const p = saved[b.dataset.id];
+    if (!(Array.isArray(p) && (p[0] >= cols || p[1] >= rows))) { saved[b.dataset.id] = [c, r]; placed = true; }
   }
   if (placed) try { localStorage.setItem(DK_POS_KEY, JSON.stringify(saved)); } catch {}
   for (const id of [...dk.sel]) if (!dkIconEls().some((b) => b.dataset.id === id)) dk.sel.delete(id);
@@ -4204,6 +4237,7 @@ function dkPut(b, c, r) {
   b.dataset.c = c;
   b.dataset.r = r;
   b.style.transform = `translate(${DK_PAD + c * DK_GX}px, ${DK_PAD + r * DK_GY}px)`;
+  if (b.classList.contains('dk-new')) requestAnimationFrame(() => requestAnimationFrame(() => b.classList.remove('dk-new')));
 }
 
 function dkSave() {
@@ -5119,6 +5153,7 @@ function dkDeskWatch() {
   if (key === dk.deskKey) return;
   dk.deskKey = key;
   dk.deskFiles = [];
+  dk.deskReady = false;
   if (key) dkDeskLoad();
 }
 
@@ -5130,6 +5165,7 @@ async function dkDeskLoad() {
     .then((b) => b.entries.map((e) => ({ ...e, at: dir })), () => dk.deskFiles.filter((e) => e.at === dir))));
   if (key !== dk.deskKey) return;
   dk.deskFiles = lists.flat();
+  dk.deskReady = true;
   dkIcons();
 }
 
@@ -5458,6 +5494,7 @@ function dkOpenApp(id) {
   view.classList.add('active');
   w.body.appendChild(view);
   dkSize(w, app.w, app.h);
+  if (id === 'status') pingHosts();
   const fit = new ResizeObserver(() => { if (id === 'status') appCall('status', false, (m) => m.statusDraw()); });
   fit.observe(w.body);
   w.onClose = () => {
@@ -5659,6 +5696,7 @@ function dkMeshTray() {
       // measured while stashed, 0 tall: measured again now it shows
       meshStatsDirty = true;
       drawMesh();
+      pingHosts();
     } else {
       fit.disconnect();
       stash.prepend(meshPanel);
