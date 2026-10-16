@@ -2,7 +2,7 @@
 BIN ?= phosphorus
 STATICCHECK = honnef.co/go/tools/cmd/staticcheck@v0.8.2
 
-.PHONY: all web build check test mesh clean
+.PHONY: all web build check test clean
 
 all: build
 
@@ -20,10 +20,6 @@ check: web
 
 test: web
 	go test -race ./...
-
-# three hosts in network namespaces, root only
-mesh: build
-	test/mesh/run.sh $(BIN)
 
 clean:
 	rm -rf $(BIN) web/.vendor

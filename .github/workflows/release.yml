@@ -76,36 +76,25 @@ jobs:
           j() { local IFS=,; echo "[$*]"; }
           { echo "apps=$(j "${apps[@]}")"; echo "arches=$(j "${arches[@]}")"; echo "debs=$(j "${debs[@]}")"; } | tee -a "$GITHUB_OUTPUT"
 
+  # lint and tests, gating the release
   check:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
-      - uses: ./.github/actions/check
-
-  # the release's tree: what every installer ships and syncs into the host's home
-  payload:
-    needs: [version]
-    runs-on: ubuntu-24.04
-    env:
-      VER: ${{ needs.version.outputs.ver }}
-    steps:
-      - uses: actions/checkout@v7
-      - name: tree
-        run: |
-          mkdir -p out/payload
-          # .github, packaging and test export-ignored
-          git archive HEAD | tar -x -C out/payload
-          echo "$VER" > out/payload/VERSION
-          # a tarball: artifacts drop exec bits
-          tar -C out/payload -czf out/payload.tar.gz .
-      - uses: actions/upload-artifact@v7
+      - uses: actions/setup-go@v6
         with:
-          name: payload
-          path: out/payload.tar.gz
-          compression-level: 0
+          go-version-file: go.mod
+      - uses: actions/cache@v4
+        with:
+          path: web/.vendor/cache
+          key: web-vendor-${{ hashFiles('web/vendor.lock') }}
+      - name: shell
+        run: for f in scripts/*.sh scripts/lib/*.sh scripts/phosphorus packaging/deb/build.sh packaging/deb/post* packaging/deb/prerm container/*/*.sh; do bash -n "$f"; done
+      - name: go
+        run: make check test
 
-  # every image of one arch on its native runner, one Go build shared by all
-  # three, pushed by digest, joined into one tag per image by `manifests`
+  # every image of one arch on its native runner in one bake, pushed by
+  # digest, joined into one tag per image by `manifests`
   images:
     needs: [version]
     strategy:
@@ -123,42 +112,22 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
-      - id: phosphorus
-        uses: docker/build-push-action@v7
+      - id: bake
+        uses: docker/bake-action@v6
+        env:
+          ARCH: ${{ matrix.arch }}
         with:
-          context: .
-          file: container/Dockerfile
-          platforms: linux/${{ matrix.arch }}
-          outputs: type=image,name=${{ env.REGISTRY }}/phosphorus,push-by-digest=true,name-canonical=true,push=true
-          build-args: PHOSPHORUS_VERSION=${{ env.VER }}
-          cache-from: type=gha,scope=${{ matrix.arch }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
-      - id: model
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: container/Dockerfile
-          target: model
-          platforms: linux/${{ matrix.arch }}
-          outputs: type=image,name=${{ env.REGISTRY }}/phosphorus-model,push-by-digest=true,name-canonical=true,push=true
-          cache-from: type=gha,scope=${{ matrix.arch }}
-      - id: git
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: container/Dockerfile
-          target: git
-          platforms: linux/${{ matrix.arch }}
-          outputs: type=image,name=${{ env.REGISTRY }}/phosphorus-git,push-by-digest=true,name-canonical=true,push=true
-          cache-from: type=gha,scope=${{ matrix.arch }}
+          source: .
+          files: container/docker-bake.hcl
       - name: digests
         env:
-          P: ${{ steps.phosphorus.outputs.digest }}
-          M: ${{ steps.model.outputs.digest }}
-          G: ${{ steps.git.outputs.digest }}
+          META: ${{ steps.bake.outputs.metadata }}
         run: |
-          mkdir -p d/phosphorus d/phosphorus-model d/phosphorus-git
-          touch "d/phosphorus/${P#sha256:}" "d/phosphorus-model/${M#sha256:}" "d/phosphorus-git/${G#sha256:}"
+          for t in phosphorus model git; do
+            n=phosphorus; [ $t = phosphorus ] || n=phosphorus-$t
+            d=$(jq -r --arg t $t '.[$t]["containerimage.digest"]' <<<"$META")
+            mkdir -p d/$n && touch "d/$n/${d#sha256:}"
+          done
       - uses: actions/upload-artifact@v7
         with:
           name: digests_${{ matrix.arch }}
@@ -189,7 +158,7 @@ jobs:
           done
 
   deb:
-    needs: [version, payload]
+    needs: [version]
     if: needs.version.outputs.debs != '[]'
     runs-on: ubuntu-24.04
     env:
@@ -197,10 +166,6 @@ jobs:
       ARCHES: ${{ join(fromJSON(needs.version.outputs.debs), ' ') }}
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v8
-        with:
-          name: payload
-          path: art
       # apt key's public half, into the package
       - name: apt key
         env:
@@ -213,7 +178,9 @@ jobs:
           echo "PHOSPHORUS_APT_KEY=$RUNNER_TEMP/phosphorus.gpg" >> "$GITHUB_ENV"
       - name: build .deb
         run: |
-          mkdir -p art/payload out && tar -xzf art/payload.tar.gz -C art/payload
+          mkdir -p art/payload out
+          # the release's tree, .github and packaging export-ignored
+          git archive HEAD | tar -x -C art/payload && echo "$VER" > art/payload/VERSION
           for a in $ARCHES; do packaging/deb/build.sh "out/phosphorus_${VER}_$a.deb" "$VER" art/payload "$a"; done
       - uses: actions/upload-artifact@v7
         with:
@@ -223,7 +190,7 @@ jobs:
 
   # tray app: universal .dmg, Windows setup .exe, the release's tree as its resources
   app:
-    needs: [version, payload]
+    needs: [version]
     if: needs.version.outputs.apps != '[]'
     strategy:
       # one platform's failure leaves the other's build, and its cache, finished
@@ -248,13 +215,11 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: tauri-cli@2
-      - uses: actions/download-artifact@v8
-        with:
-          name: payload
-          path: art
       - name: resources
         shell: bash
-        run: mkdir -p packaging/app/payload && tar -xzf art/payload.tar.gz -C packaging/app/payload
+        run: |
+          mkdir -p packaging/app/payload
+          git archive HEAD | tar -x -C packaging/app/payload && echo "$VER" > packaging/app/payload/VERSION
       # updater config and artifacts only with a signing key
       - name: app config
         shell: bash

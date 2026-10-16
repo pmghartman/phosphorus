@@ -4,4 +4,3 @@
 # left out of the release tree hosts receive
 /.github export-ignore
 /packaging export-ignore
-/test export-ignore

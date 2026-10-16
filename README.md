@@ -77,10 +77,9 @@ container/    Dockerfile (phosphorus, model, git targets) and their scripts
 scripts/      host install, start, rebuild and update (windows/ for Windows)
 config/       default host config
 packaging/    deb/ and app/ (Tauri tray app for macOS and Windows)
-test/mesh     three hosts in network namespaces
 ```
 
-`make build`, `make check`, `make test`, `make mesh` (root).
+`make build`, `make check`, `make test`.
 
 ## License
 
