@@ -279,6 +279,15 @@ func callPeerUpdate(host string, note func(map[string]string)) result {
 	if k := kickOff(addr); !k.ok {
 		return k
 	}
+	// the stage each progress bar weighs the host by, every peer at once
+	stage := ""
+	at := func(s string) {
+		if s != stage {
+			stage = s
+			note(map[string]string{"stage": s})
+		}
+	}
+	at("asked")
 	capAt := util.Now() + peerCapMS
 	quietUntil := util.Now() + peerQuietMS
 	var swapDeadline int64
@@ -286,6 +295,10 @@ func callPeerUpdate(host string, note func(map[string]string)) result {
 		time.Sleep(clock.Interval())
 		status, err := fetchStatus(addr)
 		if err != nil {
+			// silent once installing: its service restarting onto the new release
+			if stage == "installing" {
+				at("restarting")
+			}
 			if util.Now() > quietUntil {
 				return result{unreachable: true, error: "stopped answering during its update"}
 			}
@@ -302,6 +315,9 @@ func callPeerUpdate(host string, note func(map[string]string)) result {
 			}
 			return result{error: e}
 		}
+		if status["state"] == "running" && stage == "asked" {
+			at("installing")
+		}
 		if status["state"] != "ok" || (baselineAt != nil && status["at"] == baselineAt) {
 			continue
 		}
@@ -316,6 +332,7 @@ func callPeerUpdate(host string, note func(map[string]string)) result {
 			}
 			return result{ok: true, to: to}
 		}
+		at("restarting")
 		if swapDeadline == 0 {
 			swapDeadline = util.Now() + swapTimeoutMS
 		}
@@ -639,7 +656,7 @@ func runChain() {
 		chain.PauseReason = ""
 	}
 	chain.Results[selfHost] = "running"
-	noteLocked(selfHost, map[string]string{"from": ReadVersion(VersionFile)})
+	noteLocked(selfHost, map[string]string{"from": ReadVersion(VersionFile), "stage": "installing"})
 	cmu.Unlock()
 	logf("updating %s", selfHost)
 	r := RunLocalUpdate()

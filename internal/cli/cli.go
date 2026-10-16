@@ -35,8 +35,8 @@ var (
 	client       = &http.Client{Timeout: 2 * time.Second}
 )
 
-// the frontend's apps, the mesh update a popup as its tray's
-var tabs = []string{"status", "services", "files", "git", "model", "projects"}
+// the frontend's apps and the mesh update, every one a tab
+var tabs = []string{"status", "services", "files", "git", "model", "projects", "update"}
 
 const (
 	statsTab = iota
@@ -45,6 +45,7 @@ const (
 	gitTab
 	modelTab
 	projectsTab
+	updateTab
 )
 
 const (
@@ -198,9 +199,7 @@ type prompt struct {
 }
 
 var ui = struct {
-	tab int
-	// the mesh update popup over the tab
-	update    bool
+	tab       int
 	state     J
 	offline   bool
 	filesInfo J
@@ -377,11 +376,7 @@ func render() {
 	cols, rows := size()
 	var global []key
 	if ui.form == nil && !ui.keysOnly {
-		u := "u update"
-		if ui.update {
-			u = "u close"
-		}
-		global = []key{k(u, "quiet"), k("k keys", "quiet"), k("q quit", "quiet")}
+		global = []key{k("u update", "quiet"), k("k keys", "quiet"), k("q quit", "quiet")}
 	}
 	status := ""
 	var hint []key
@@ -914,13 +909,13 @@ func onKey(e keyEv) {
 		return
 	case s == "k":
 		openForm(keysForm(false))
-	case s == "u" || (ui.update && e.name == "escape"):
-		ui.update = !ui.update
-	case ui.update && (e.name == "return" || s == "U"):
+	case s == "u":
+		switchTab(updateTab)
+	case ui.tab == updateTab && (e.name == "return" || s == "U"):
 		if ch, _ := liveChain(ui.state); ui.state != nil && ch == nil {
 			askStart()
 		}
-	case ui.update:
+	case ui.tab == updateTab && (s == "c" || s == "x"):
 		updateKey(s)
 	case len(s) == 1 && s >= "1" && s <= "9" && int(s[0]-'0') <= len(tabs):
 		switchTab(int(s[0] - '1'))
@@ -943,7 +938,6 @@ func openForm(f *form) {
 }
 
 func switchTab(i int) {
-	ui.update = false
 	ui.tab = i
 	ui.scroll = 0
 	if i == filesTab || i == projectsTab {
@@ -966,12 +960,11 @@ func Main(args []string) int {
 		if a == "--tab" && i+1 < len(args) {
 			t := strings.ToLower(args[i+1])
 			ui.tab = max0(indexOf(tabs, t))
-			ui.update = t == "update"
 		}
 	}
 	updateAll := len(args) > 0 && args[0] == "update-all"
 	if updateAll {
-		ui.update = true
+		ui.tab = updateTab
 	}
 	var later func()
 	if updateAll {

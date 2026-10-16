@@ -72,20 +72,15 @@ func taskBar(cols int) string {
 			if short {
 				label = fmt.Sprintf(" %d ", i+1)
 			}
-			if i == ui.tab && !ui.update {
+			switch {
+			case i == ui.tab:
 				parts = append(parts, surface(pal["border"])(bold(fg(pal["accent"])+label[:2]+fg(pal["fg"])+label[2:])))
-			} else {
+			case i == updateTab && obj(get(ui.state, "lock")) != nil:
+				// a mesh update running, lit from any tab
+				parts = append(parts, c("accent")(label))
+			default:
 				parts = append(parts, c("muted")(label))
 			}
-		}
-		u := " update "
-		if short {
-			u = " u "
-		}
-		if ui.update {
-			parts = append(parts, surface(pal["border"])(bold(u)))
-		} else if lock := obj(get(ui.state, "lock")); lock != nil {
-			parts = append(parts, c("accent")(u))
 		}
 		return strings.Join(parts, "")
 	}
@@ -820,21 +815,35 @@ func bar(frac float64, tok string) string {
 	return p("["+strings.Repeat("█", full)) + fg(off) + strings.Repeat("░", n-full) + p("]")
 }
 
-// the walk's progress, a running host counted half
+// a running host's stage, every peer updating at once, and how far along it is
+var (
+	stageLabel = map[string]string{"asked": "starting", "installing": "installing", "restarting": "restarting"}
+	stageDone  = map[string]float64{"asked": 0.15, "installing": 0.45, "restarting": 0.8}
+)
+
+func stageOf(chain J, host string) string { return str(get(chain, "versions", host, "stage")) }
+
+// the mesh's progress, each host weighed by its stage, so the bar moves as
+// the hosts do, not in one jump per host
 func progress(chain J) string {
 	order := strs(chain["order"])
 	res := obj(chain["results"])
-	done := 0.0
+	done, finished := 0.0, 0
 	for _, m := range order {
 		switch or(str(res[m]), "pending") {
 		case "running":
-			done += 0.5
+			if d, ok := stageDone[stageOf(chain, m)]; ok {
+				done += d
+			} else {
+				done += 0.05
+			}
 		case "pending":
 		default:
 			done++
+			finished++
 		}
 	}
-	return bar(done/float64(len(order)), "") + "  " + c("muted")(fmt.Sprintf("%d/%d hosts", int(done), len(order)))
+	return bar(done/float64(len(order)), "") + "  " + c("muted")(fmt.Sprintf("%d/%d hosts", finished, len(order)))
 }
 
 var stepLabel = map[string]string{
@@ -937,6 +946,9 @@ func updateView() view {
 			verText = c("warn")(ver)
 		}
 		label := or(stepLabel[step], step)
+		if step == "running" && stageLabel[stageOf(shown, m)] != "" {
+			label = stageLabel[stageOf(shown, m)]
+		}
 		if step == "fail" || step == "unreachable" {
 			label = or(str(get(shown, "errors", m)), label)
 		}
@@ -1143,8 +1155,5 @@ func currentView() view {
 	if ui.form != nil {
 		return formView(ui.form)
 	}
-	if ui.update {
-		return updateView()
-	}
-	return []func() view{statsView, servicesView, filesView, gitView, modelView, projectsView}[ui.tab]()
+	return []func() view{statsView, servicesView, filesView, gitView, modelView, projectsView, updateView}[ui.tab]()
 }

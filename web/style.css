@@ -370,6 +370,8 @@ body {
 /* minimizing: down into its own task bar button */
 .dk-win.dk-minimizing { animation: dk-min 0.22s cubic-bezier(0.4, 0, 0.7, 0.2) forwards; pointer-events: none; }
 @keyframes dk-min { to { opacity: 0.2; scale: 0.1; translate: var(--min-x, 0) var(--min-y, 0); } }
+.dk-win.dk-restoring { animation: dk-restore 0.22s cubic-bezier(0.3, 0.8, 0.6, 1); }
+@keyframes dk-restore { from { opacity: 0.2; scale: 0.1; translate: var(--min-x, 0) var(--min-y, 0); } }
 /* maximize, restore and a dropped snap eased into place */
 .dk-win.dk-tween { transition: transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1), width 0.18s cubic-bezier(0.2, 0.8, 0.2, 1), height 0.18s cubic-bezier(0.2, 0.8, 0.2, 1), left 0.18s cubic-bezier(0.2, 0.8, 0.2, 1), top 0.18s cubic-bezier(0.2, 0.8, 0.2, 1); }
 /* snapped: a share of the desk, held by the desk's size rather than pixels */

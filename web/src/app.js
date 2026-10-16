@@ -3328,9 +3328,15 @@ const UPDATE_LABEL = {
   fail: 'failed', unreachable: 'unreachable', skipped: 'skipped',
 };
 
-// a failure's short cause, when the chain named one
+// a running host's stage, every peer updating at once, and how far along it is
+const STAGE_LABEL = { asked: 'starting', installing: 'installing', restarting: 'restarting' };
+const STAGE_DONE = { asked: 0.15, installing: 0.45, restarting: 0.8 };
+const stageOf = (chain, host) => (chain && chain.versions && chain.versions[host] && chain.versions[host].stage) || '';
+
+// a failure's short cause, when the chain named one, a running host's stage
 const stepLabel = (chain, host, step) => (!step ? ''
-  : ((step === 'fail' || step === 'unreachable' || step === 'skipped') && chain.errors && chain.errors[host]) || UPDATE_LABEL[step] || step);
+  : ((step === 'fail' || step === 'unreachable' || step === 'skipped') && chain.errors && chain.errors[host])
+    || (step === 'running' && STAGE_LABEL[stageOf(chain, host)]) || UPDATE_LABEL[step] || step);
 
 // nothing new while a chain is in flight, its own continue and cancel above
 function renderUpdateButton() {
@@ -3395,23 +3401,25 @@ function updateCells() {
 
 let progressStatus = null;
 
-// one step per host, half done mid-rebuild so the bar still creeps
+// every host updating at once, each weighed by its stage, so the bar moves
+// as the mesh does, not in one jump per host
 function renderProgress(status) {
   progressStatus = status;
   const total = status.order.length;
   if (!total) { updateProgress.hidden = true; return; }
   let done = 0;
+  let finished = 0;
   for (const host of status.order) {
     const state = status.results[host] || 'pending';
-    if (state === 'running') done += 0.5;
-    else if (state !== 'pending') done += 1;
+    if (state === 'running') done += STAGE_DONE[stageOf(status, host)] || 0.05;
+    else if (state !== 'pending') { done += 1; finished += 1; }
   }
   // block cells, as the files transfer bar
   updateProgress.hidden = false;
   const cells = updateCells();
   const full = Math.round((done / total) * cells);
   updateProgressCells.replaceChildren('█'.repeat(full), Object.assign(document.createElement('i'), { textContent: '░'.repeat(cells - full) }));
-  updateProgressLabel.textContent = `${Math.floor(done)}/${total} hosts`;
+  updateProgressLabel.textContent = `${finished}/${total} hosts`;
 }
 new ResizeObserver(() => { if (progressStatus && !updateProgress.hidden) renderProgress(progressStatus); }).observe(updateProgressCells);
 
@@ -4452,9 +4460,10 @@ function dkWin(key, title, sub, kind) {
   close.addEventListener('click', () => dkClose(w));
   head.addEventListener('dblclick', (e) => { if (!e.target.closest('button')) dkMax(w); });
   task.addEventListener('click', () => {
-    if (node.hidden) { node.hidden = false; dkFocus(w); } else if (node.classList.contains('focused')) dkMin(w); else dkFocus(w);
+    if (node.hidden || w.leaving) dkFocus(w); else if (node.classList.contains('focused')) dkMin(w); else dkFocus(w);
   });
-  node.addEventListener('pointerdown', () => dkFocus(w), true);
+  // the minimize button never raising or focusing on its way down
+  node.addEventListener('pointerdown', (e) => { if (!e.target.closest('.dk-min')) dkFocus(w); }, true);
   dkMove(w, head);
   for (const edge of edges) dkDrag(w, edge, (dx, dy, o) => dkResize(w, edge.dataset.e, dx, dy, o));
   wins.appendChild(node);
@@ -4618,16 +4627,16 @@ function dkFocus(w) {
     o.task.classList.toggle('active', o === w);
   }
   if (!w) return;
-  w.node.hidden = false;
+  if (w.node.hidden) dkRestore(w);
   if (w.node.style.zIndex !== String(dk.z)) w.node.style.zIndex = ++dk.z;
   w.onFocus?.();
   dkAppsChanged();
 }
 
-// shrunk into its task bar button; the scale also pulls the window's own
-// offset in, made up for in the translate
+// the offset from the window to its task bar button; the scale also pulls
+// the window's own offset in, made up for in the translate
 const DK_MIN_SCALE = 0.1;
-function dkMin(w) {
+function dkToTask(w) {
   const a = w.node.getBoundingClientRect();
   const b = w.task.getBoundingClientRect();
   const k = 1 - DK_MIN_SCALE;
@@ -4635,12 +4644,37 @@ function dkMin(w) {
   const my = w.snap ? 0 : w.y;
   w.node.style.setProperty('--min-x', `${b.left + b.width / 2 - (a.left + a.width / 2) + k * mx}px`);
   w.node.style.setProperty('--min-y', `${b.top + b.height / 2 - (a.top + a.height / 2) + k * my}px`);
-  dkLeave(w, () => { w.node.hidden = true; }, 'dk-minimizing');
-  w.node.classList.remove('focused');
-  w.task.classList.remove('active');
-  const top = [...dk.wins.values()].filter((o) => !o.node.hidden && !o.leaving).sort((a, b) => b.node.style.zIndex - a.node.style.zIndex)[0];
-  if (top) dkFocus(top);
-  dkAppsChanged();
+}
+
+// shrunk into its task bar button, focused and on top the whole way, the
+// next window focused only once it's gone
+function dkMin(w) {
+  dkToTask(w);
+  dkLeave(w, () => {
+    w.node.hidden = true;
+    w.node.classList.remove('focused');
+    w.task.classList.remove('active');
+    const top = [...dk.wins.values()].filter((o) => !o.node.hidden && !o.leaving).sort((a, b) => b.node.style.zIndex - a.node.style.zIndex)[0];
+    if (top) dkFocus(top);
+    dkAppsChanged();
+  }, 'dk-minimizing');
+}
+
+// grown back out of its task bar button, measured unanimated first
+function dkRestore(w) {
+  const n = w.node;
+  n.style.animation = 'none';
+  n.hidden = false;
+  dkToTask(w);
+  n.style.animation = '';
+  n.classList.add('dk-restoring');
+  const end = (e) => {
+    if (e && e.target !== n) return;
+    n.classList.remove('dk-restoring');
+    n.removeEventListener('animationend', end);
+  };
+  n.addEventListener('animationend', end);
+  setTimeout(end, 400);
 }
 
 function dkMax(w) {
@@ -5165,7 +5199,7 @@ async function dkRun(loc, rel) {
   if (got.kind === 'wasm') frame.srcdoc = wasiPage(url, name);
   else {
     frame.src = url;
-    const pop = Object.assign(el('button', 'dk-pop'), { type: 'button', title: 'open in a browser tab', ariaLabel: 'open in a browser tab' });
+    const pop = Object.assign(el('button', 'dk-out'), { type: 'button', title: 'open in a browser tab', ariaLabel: 'open in a browser tab' });
     pop.appendChild(dkGlyph(DK_UI.pop));
     pop.addEventListener('click', () => window.open(url, '_blank', 'noopener'));
     w.head.querySelector('.dk-btns').prepend(pop);
@@ -5348,7 +5382,7 @@ function dkService(r) {
   const w = dkWin(`svc:${serviceKey(r)}`, r.name, r.host, 'svc');
   if (!w) return;
   const url = serviceUrl(r);
-  const pop = Object.assign(el('button', 'dk-pop'), { type: 'button', title: 'open in a browser tab', ariaLabel: 'open in a browser tab' });
+  const pop = Object.assign(el('button', 'dk-out'), { type: 'button', title: 'open in a browser tab', ariaLabel: 'open in a browser tab' });
   pop.appendChild(dkGlyph(DK_UI.pop));
   pop.addEventListener('click', () => window.open(url, '_blank', 'noopener'));
   w.head.querySelector('.dk-btns').prepend(pop);
@@ -5469,7 +5503,7 @@ function dkGit() {
   if (!gitRoute) return;
   const w = dkWin('app:git', 'git', gitMaster(), 'svc dk-git');
   if (!w) return;
-  const pop = Object.assign(el('button', 'dk-pop'), { type: 'button', title: 'open in a browser tab', ariaLabel: 'open in a browser tab' });
+  const pop = Object.assign(el('button', 'dk-out'), { type: 'button', title: 'open in a browser tab', ariaLabel: 'open in a browser tab' });
   pop.appendChild(dkGlyph(DK_UI.pop));
   pop.addEventListener('click', () => { if (w.git.url) window.open(w.git.url, '_blank', 'noopener'); });
   w.head.querySelector('.dk-btns').prepend(pop);
