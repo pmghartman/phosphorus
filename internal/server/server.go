@@ -469,7 +469,7 @@ func publishHost() {
 		}
 	}
 	put("services", services.Own())
-	put("info", map[string]any{"version": Version(), "platform": getPlatform(), "files": filesInfo()})
+	put("info", map[string]any{"version": Version(), "platform": getPlatform(), "files": filesInfo(), "desk": deskStamps()})
 }
 
 func hostsInfo() map[string]any {

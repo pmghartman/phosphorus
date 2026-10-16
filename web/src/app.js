@@ -662,8 +662,8 @@ const lerp = (a, b, t) => a + (b - a) * t;
 // ping bucket -> CSS class, null/undefined meaning unmeasured, not offline
 function pingClass(rttMs) {
   if (rttMs === null || rttMs === undefined) return '';
-  if (rttMs <= 200) return 'good';
-  if (rttMs <= 400) return 'slow';
+  if (rttMs <= 150) return 'good';
+  if (rttMs <= 300) return 'slow';
   return 'bad';
 }
 
@@ -681,7 +681,7 @@ function steadyRtt(name) {
 
 // inline trend line over the last RTT samples, '' without enough history,
 // fixed 0..SPARK_MAX_MS scale so 1ms jitter stays flat
-const SPARK_MAX_MS = 400;
+const SPARK_MAX_MS = 300;
 function sparkline(history, cls) {
   if (!history || history.length < 2) return '';
   const w = 24;
@@ -1160,6 +1160,7 @@ let hostsInfo = {};
 function applyState(state) {
   selfHost = settleHost(state.self.host || '');
   hostsInfo = state.hosts && typeof state.hosts === 'object' ? state.hosts : {};
+  dkDeskStamps();
   if (state.domain) baseDomain = state.domain;
   if (state.self.version) {
     aboutVersion.textContent = `v${state.self.version}`;
@@ -5157,8 +5158,17 @@ function dkDeskWatch() {
   if (key) dkDeskLoad();
 }
 
+// each online host's Desktop stamps, pushed with the state: a change rereads them
+const dkDeskStampNow = () => JSON.stringify(homeOnline().sort()
+  .map((h) => [h, dkDeskDirs().map((d) => hostsInfo[h.toLowerCase()]?.desk?.[d] ?? '')]));
+
+function dkDeskStamps() {
+  if (dk.deskReady && dkDeskStampNow() !== dk.deskStamp) dkDeskLoad();
+}
+
 async function dkDeskLoad() {
   if (!dkDeskAt()) return;
+  dk.deskStamp = dkDeskStampNow();
   const key = dk.deskKey;
   // a folder no host answered for: its last icons kept, never blinking out
   const lists = await Promise.all(dkDeskDirs().map((dir) => homeList(dir)
@@ -5853,14 +5863,13 @@ function acctPrefs(prefs, at = 0) {
   applyTheme(theme || (systemLight.matches ? 'light' : 'dark'));
 }
 
-// the session and desktop rechecked, the desktop's lists only once this host
-// answers, backing off to 5 minutes while it doesn't
+// the session rechecked, backing off to 5 minutes while this host doesn't answer;
+// the desktop's lists reread on their stamps instead
 const ACCT_POLL_MS = 30000;
 let acctPollMs = ACCT_POLL_MS;
 async function acctTick() {
   const up = await acctCheck();
   acctPollMs = up === false ? Math.min(acctPollMs * 2, 300000) : ACCT_POLL_MS;
-  if (up !== false) dkDeskLoad();
 }
 addEventListener('focus', acctTick);
 (function acctPoll() { setTimeout(async () => { if (!document.hidden) await acctTick(); acctPoll(); }, acctPollMs); })();
