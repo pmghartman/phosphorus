@@ -8,6 +8,13 @@ APP_INI="${APP_INI:-$DATA_ROOT/conf/app.ini}"
 GIT_ROLE_FILE="${GIT_ROLE_FILE:-$STATE_DIR/git-role}"
 SELF_HOST_FILE="${SELF_HOST_FILE:-$STATE_DIR/self-host}"
 ELECTOR="${ELECTOR:-phosphorus elector}"
+FORGEJO_BIN="${FORGEJO_BIN:-forgejo}"
+# forgejo's account, git:phosphorus in the image, phosphorus-git on a native host
+GIT_USER="${GIT_USER:-git}"
+GIT_GROUP="${GIT_GROUP:-phosphorus}"
+RSYNCD_CONF_TMPL="${RSYNCD_CONF_TMPL:-/etc/rsyncd.conf}"
+RSYNCD_CONF="${RSYNCD_CONF:-/run/phosphorus-rsyncd.conf}"
+RSYNCD_PID="${RSYNCD_PID:-/var/run/rsyncd.pid}"
 # touch to let this host lead without proof it has the newest data
 FORCE_FILE="${FORCE_FILE:-$STATE_DIR/git-force-promote}"
 VERSION_FILE="$DATA_ROOT/GIT_VERSION"
@@ -27,13 +34,15 @@ export DECISION_FILE="${DECISION_FILE:-/run/git-decision}"
 export LEASE_UNTIL_FILE="${LEASE_UNTIL_FILE:-/run/git-lease-until}"
 # the master forgejo's pid, for the watchdog, empty otherwise
 export FORGEJO_PID_FILE="${FORGEJO_PID_FILE:-/run/git-forgejo-pid}"
+# set by the elector while a new master's final pull lands, rsyncd refusing then
+export PROMOTING_FILE="${PROMOTING_FILE:-/run/git-promoting}"
 
 # must match across every git host
 GIT_NAME="${GIT_NAME:-git}"
 GIT_PORT="${GIT_PORT:-3001}"
 GIT_MODE="${GIT_MODE:-subdomain}"
 # a host that joined with TS_AUTHKEY alone: the domain phosphorus copied from a peer
-[ -n "${BASE_DOMAIN:-}" ] || BASE_DOMAIN="$(cat /state/base-domain 2>/dev/null)"
+[ -n "${BASE_DOMAIN:-}" ] || BASE_DOMAIN="$(cat "$STATE_DIR/base-domain" 2>/dev/null)"
 : "${BASE_DOMAIN:?BASE_DOMAIN not in .env and not copied from a peer yet}"
 
 TICK="${TICK:-0.25}"
@@ -50,11 +59,32 @@ now_ms() { local up; read -r up _ </proc/uptime; REPLY=$(( 10#${up/./} * 10 )); 
 
 write_file() { echo "$2" >"$1.tmp" && mv "$1.tmp" "$1"; }
 
+# as forgejo's account, labelled for phos ps
+as_git() { PHOSPHORUS_ROLE="${ROLE:-forgejo}" setpriv --reuid="$GIT_USER" --regid="$GIT_GROUP" --init-groups "$@"; }
+
 # DOMAIN/ROOT_URL the stable mesh name, never this host's own hostname:
 # conf/ rsynced wholesale from the master, a local value would drift
-# the db path off litefs's mount, conf/ possibly pulled from an older master
+# the db path off litefs's mount and RUN_USER this host's account, conf/
+# possibly pulled from an older master or one running forgejo as another user
 fix_app_ini() {
-  [ -s "$APP_INI" ] && sed -i 's#/var/lib/phosphorus/git/litefs/forgejo\.db#/var/lib/phosphorus/git/db/forgejo.db#' "$APP_INI"
+  [ -s "$APP_INI" ] || return 0
+  sed -i -e 's#/var/lib/phosphorus/git/litefs/forgejo\.db#/var/lib/phosphorus/git/db/forgejo.db#' \
+         -e "s#^RUN_USER *=.*#RUN_USER = $GIT_USER#" "$APP_INI"
+}
+
+# hooks naming forgejo's binary, rewritten when obj/ came from a master
+# whose binary lives elsewhere
+fix_hooks() {
+  local mark="$DATA_ROOT/obj/.phosphorus-hooks" want
+  want="$(command -v "$FORGEJO_BIN") $APP_INI"
+  [ "$(cat "$mark" 2>/dev/null)" = "$want" ] && return 0
+  [ -d "$DATA_ROOT/obj/forgejo-repositories" ] || { write_file "$mark" "$want"; return 0; }
+  say "regenerating repository hooks for $FORGEJO_BIN"
+  if HOME="$DATA_ROOT" as_git "$FORGEJO_BIN" -w "$DATA_ROOT" -c "$APP_INI" admin regenerate hooks >/dev/null 2>&1; then
+    write_file "$mark" "$want"
+  else
+    say "couldn't regenerate hooks, pushes may fail until the next start"
+  fi
 }
 
 render_app_ini_once() {
@@ -80,8 +110,10 @@ SNAP_SIG=""
 
 start_forgejo() {
   fix_app_ini
-  env HOME="$DATA_ROOT" setpriv --reuid=git --regid=phosphorus --init-groups \
-    forgejo -w "$DATA_ROOT" -c "$APP_INI" web &
+  fix_hooks
+  # a simple command, so $! is forgejo itself for the watchdog
+  HOME="$DATA_ROOT" PHOSPHORUS_ROLE=forgejo setpriv --reuid="$GIT_USER" --regid="$GIT_GROUP" --init-groups \
+    "$FORGEJO_BIN" -w "$DATA_ROOT" -c "$APP_INI" web &
   FORGEJO_PID="$!"
   now_ms; FORGEJO_STARTED_AT="$REPLY"
   say "forgejo started (pid $FORGEJO_PID)"
@@ -109,7 +141,7 @@ snapshot() {
   [ "$sig" = "$SNAP_SIG" ] && [ -s "$SNAP" ] && return 0
   rm -f "$SNAP.tmp"
   # as git, no root-owned wal or shm left for forgejo
-  if setpriv --reuid=git --regid=phosphorus --init-groups \
+  if ROLE=git-snapshot as_git \
        sqlite3 -cmd ".timeout 5000" "$DB" ".backup '$SNAP.tmp'" 2>/dev/null; then
     chmod 640 "$SNAP.tmp" && mv "$SNAP.tmp" "$SNAP" && SNAP_SIG="$sig"
   else
@@ -169,8 +201,11 @@ watchdog() {
   done
 }
 
+# this host's pid file and promoting flag in the image's config
 start_rsyncd() {
-  rsync --daemon --config=/etc/rsyncd.conf --no-detach &
+  sed -e "s#/var/run/rsyncd.pid#$RSYNCD_PID#" -e "s#/run/git-promoting#$PROMOTING_FILE#" \
+      -e "s#/var/lib/phosphorus/git#$DATA_ROOT#" "$RSYNCD_CONF_TMPL" > "$RSYNCD_CONF"
+  PHOSPHORUS_ROLE=git-rsyncd rsync --daemon --config="$RSYNCD_CONF" --no-detach &
   RSYNCD_PID="$!"
   say "rsync daemon started (pid $RSYNCD_PID)"
 }
@@ -219,9 +254,8 @@ write_git_role() {
   [ "$1" = "$LAST_ROLE" ] && [ -e "$GIT_ROLE_FILE" ] && return
   # same dir as the target: mv across filesystems not atomic
   local tmp; tmp="$(mktemp "$GIT_ROLE_FILE.XXXXXX")"
-  jq -n --argjson master "$1" --argjson publish "$1" \
-        --arg name "$GIT_NAME" --argjson port "$GIT_PORT" --arg mode "$GIT_MODE" \
-    '{master:$master, publish:$publish, name:$name, port:$port, scheme:"http", mode:$mode, base_path:""}' \
+  printf '{"master":%s,"publish":%s,"name":"%s","port":%d,"scheme":"http","mode":"%s","base_path":""}\n' \
+    "$1" "$1" "$GIT_NAME" "$GIT_PORT" "$GIT_MODE" \
     > "$tmp" && mv "$tmp" "$GIT_ROLE_FILE" && LAST_ROLE="$1" || rm -f "$tmp"
 }
 
@@ -259,7 +293,7 @@ step_down() {
 # the pulled snapshot as the live db, its old wal and shm gone with it
 install_snapshot() {
   [ -s "$SNAP" ] || { say "no pulled db to lead on, keeping this host's own"; return; }
-  cp "$SNAP" "$DB.tmp" && chown git:phosphorus "$DB.tmp" && rm -f "$DB-wal" "$DB-shm" && mv "$DB.tmp" "$DB" || { rm -f "$DB.tmp"; return 1; }
+  cp "$SNAP" "$DB.tmp" && chown "$GIT_USER:$GIT_GROUP" "$DB.tmp" && rm -f "$DB-wal" "$DB-shm" && mv "$DB.tmp" "$DB" || { rm -f "$DB.tmp"; return 1; }
   chmod 640 "$DB"
   SNAP_SIG=""
 }
@@ -278,7 +312,7 @@ begin_leading() {
 
 apply_decision() {
   local role=none master="" gen=0 written=0 from=""
-  read -r role master gen written from <"$DECISION_FILE" 2>/dev/null
+  read -r role master gen written from 2>/dev/null <"$DECISION_FILE"
   now_ms
   [ $((REPLY - ${written:-0})) -le "$DECISION_MAX_AGE_MS" ] || role=none
   master="${master#-}"
@@ -354,7 +388,7 @@ ELECTOR_NEXT=0
 start_elector() {
   [ "$EPOCHSECONDS" -ge "$ELECTOR_NEXT" ] || return
   ELECTOR_NEXT=$((EPOCHSECONDS + 2))
-  $ELECTOR &
+  PHOSPHORUS_ROLE=git-elector $ELECTOR &
   ELECTOR_PID="$!"
 }
 
@@ -375,14 +409,15 @@ migrate_litefs() {
   [ -e "$DB" ] || [ ! -s "$LEGACY_DB" ] && return
   say "moving the db off litefs"
   cp "$LEGACY_DB" "$DB.tmp" && mv "$DB.tmp" "$DB" || { rm -f "$DB.tmp"; say "couldn't copy litefs's db"; return; }
-  chown git:phosphorus "$DB"
+  chown "$GIT_USER:$GIT_GROUP" "$DB"
   chmod 640 "$DB"
 }
 
 main() {
   mkdir -p "$STATE_DIR" "$DATA_ROOT"/{conf,custom,obj,db,snap}
-  chown git:phosphorus "$DATA_ROOT"
-  chown -R git:phosphorus "$DATA_ROOT"/{conf,custom,obj,db,snap}
+  mkdir -p "$DATA_ROOT/state"
+  chown "$GIT_USER:$GIT_GROUP" "$DATA_ROOT"
+  chown -R "$GIT_USER:$GIT_GROUP" "$DATA_ROOT"/{conf,custom,obj,db,snap,state}
   migrate_litefs
 
   say "waiting for $SELF_HOST_FILE..."
