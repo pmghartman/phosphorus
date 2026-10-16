@@ -202,7 +202,7 @@ function netScale(h) {
 
 // box, title, its drawing
 const ST_BOXES = [['cpu', 'cpu', drawCpu], ['mem', 'mem', drawMem], ['disk', 'disk', drawDisk], ['net', 'net', drawNet],
-  ['gpu', 'gpu', drawGpu], ['ctr', 'containers', drawCtr], ['proc', 'processes', drawProc]];
+  ['gpu', 'gpu', drawGpu], ['ctr', 'phosphorus', drawCtr], ['proc', 'processes', drawProc]];
 
 // a tile of the headline numbers, clicked open to the full btop grid
 function stCard(name) {
@@ -375,7 +375,7 @@ function drawMeshSum(names) {
     text('24h', `<span class="st-rx">▼ ${humanSize(sum((s) => s.netDay.rx))}</span>  <span class="st-tx">▲ ${humanSize(sum((s) => s.netDay.tx))}</span>`),
     text('io', `<span class="st-rx">▼ ${rate(ioR)}</span>  <span class="st-tx">▲ ${rate(ioW)}</span>`),
     text('load', `${load.toFixed(2)} <span class="st-dim">1m, all hosts</span>`),
-    text('run', dotJoin([plural(svc, 'service'), plural(ctr, 'container')])),
+    text('run', dotJoin([plural(svc, 'service'), plural(ctr, 'process', 'processes')])),
     git.length && text('git', dotJoin([master ? `master ${esc(master.host)}` : '<span class="st-hi">no master</span>',
       git.length > 1 && `${git.filter((g) => g.role !== 'master' && g.eligible).length}/${git.length - 1} in sync`])),
   ].filter(Boolean).join('');
@@ -732,7 +732,7 @@ function drawMem(p, h) {
   ].filter(Boolean));
 }
 
-// the host's own disks, summed, docker's never among them
+// the host's own disks, summed
 function drawDisk(p, h) {
   const { disk, io } = h.s;
   const n = disk.count > 1 ? ` · ${disk.count} filesystems` : '';
@@ -782,11 +782,10 @@ function drawGpu(p, h) {
 }
 
 function drawCtr(p, h) {
+  // phosphorus's own processes, by role
   const list = h.s.containers;
-  // natively phosphorus's own processes by role, else its containers
-  const vm = !h.s.native && h.s.platform && h.s.platform !== 'linux' ? ' · docker vm' : '';
-  p.ctrHead.innerHTML = `${h.s.native ? 'phosphorus' : 'containers'} <span class="st-dim">${list ? list.length : ''}${vm}</span>`;
-  if (!list) { p.ctr.innerHTML = '<div class="st-dim">no docker access</div>'; return; }
+  p.ctrHead.innerHTML = `phosphorus <span class="st-dim">${list ? list.length : ''}</span>`;
+  if (!list) { p.ctr.innerHTML = '<div class="st-dim">no process list</div>'; return; }
   p.ctr.innerHTML = '<div class="st-ctr-row st-dim"><span>name</span><span>cpu</span><span>mem</span><span>pids</span></div>'
     + list.map((c) => `<div class="st-ctr-row"><span class="st-ctr-name">${esc(c.name)}</span>`
       + `<span class="${heat(c.cpu / 100)}">${c.cpu.toFixed(1)}%</span><span>${humanSize(c.mem)}</span>`
@@ -795,8 +794,7 @@ function drawCtr(p, h) {
 
 function drawProc(p, h) {
   const pr = h.s.procs;
-  const vm = !h.s.native && h.s.platform && h.s.platform !== 'linux' ? ' · docker vm' : '';
-  p.procHead.innerHTML = `processes <span class="st-dim">${pr ? pr.count : ''}${vm}</span>`;
+  p.procHead.innerHTML = `processes <span class="st-dim">${pr ? pr.count : ''}</span>`;
   if (!pr) { p.proc.innerHTML = '<div class="st-dim">no process list</div>'; return; }
   p.proc.innerHTML = '<div class="st-proc-row st-dim"><span>name</span><span>pid</span><span>cpu</span><span>mem</span></div>'
     + pr.top.map((x) => `<div class="st-proc-row"${x.cmd ? ` title="${esc(x.cmd)}"` : ''}>`

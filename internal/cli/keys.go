@@ -8,7 +8,7 @@ import (
 	"github.com/pmghartman/phosphorus/internal/util"
 )
 
-// the home's .env as the container mounts it, the host passing its own
+// the home's .env, phosphorus run passing its path
 var envFile = util.Env("PHOSPHORUS_ENV_FILE", "/repo/.env")
 
 const (
@@ -58,7 +58,7 @@ func saveKeys(f *form) string {
 	return ""
 }
 
-// applyKeys the containers recreated on the new .env, by the image's own
+// applyKeys phosphorus restarted on the new .env, by the home's own
 // rebuild, its own session so quitting the cli never cuts it short
 func applyKeys() {
 	c := exec.Command(util.Env("REBUILD_CMD", "/usr/local/bin/phosphorus"), "rebuild", "--home", util.RepoDir)

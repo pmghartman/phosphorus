@@ -4,7 +4,7 @@ package envfile
 
 import "os"
 
-// Lock 0600, root's when root writes it (Linux), else the docker user's (macOS)
+// Lock 0600, root's when root writes it (Linux), else the app user's (macOS)
 func Lock(file string) error {
 	if os.Geteuid() == 0 {
 		if err := os.Chown(file, 0, 0); err != nil {

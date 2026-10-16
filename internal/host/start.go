@@ -15,17 +15,9 @@ import (
 	"golang.org/x/term"
 )
 
-// start bring-up, safe to re-run: checks, the one-time admin setup, the
-// rebuild, then the frontend waited on when nothing ran before
+// start bring-up, safe to re-run: checks, the one-time admin setup, then
+// the rebuild, which starts the service and waits on the frontend
 func start() error {
-	if !native() {
-		if _, err := exec.LookPath("docker"); err != nil {
-			return fail("docker not found, %s", dockerHint())
-		}
-		if err := ensureEngine(); err != nil {
-			return err
-		}
-	}
 	if keysMissing() {
 		return fail("no TS_AUTHKEY in %s, run phosphorus to enter the keys", envPath())
 	}
@@ -33,22 +25,8 @@ func start() error {
 		return fail("config/services.export not found in %s", home)
 	}
 	envfile.Lock(envPath())
-	running := up()
-	// natively the machine's own tailscaled adopted, else the bundled one
-	if !native() {
-		if running {
-			say("phosphorus is already running, skipping the native Tailscale check")
-		} else if why := nativeTailscale(); why != "" {
-			return fail("%s", why)
-		}
-	}
-	if err := prepareOS(running); err != nil {
+	if err := prepareOS(up()); err != nil {
 		return err
-	}
-	if b := machineRAM(); b > 0 {
-		os.MkdirAll(at("state"), 0o755)
-		os.WriteFile(at("state", "machine.json"), []byte(fmt.Sprintf("{\"ram\":%d}\n", b)), 0o644)
-		ramHint(b)
 	}
 	if todo := needSetup(); todo != "" {
 		say("needs %s", todo)
@@ -58,32 +36,16 @@ func start() error {
 	}
 	say("building and starting phosphorus...")
 	if err := rebuild(); err != nil {
-		return fail("build failed, nothing changed: %v", err)
+		return fail("start failed: %v", err)
 	}
-	if native() {
-		if inDpkg() && !nativeUp() {
-			return nil
-		}
-		if !waitFrontend(2 * time.Minute) {
-			return fail("the frontend never came up, check: journalctl -u phosphorus")
-		}
-		say("the frontend is up")
+	if inDpkg() && !up() {
 		return nil
 	}
-	if running {
-		say("swapping in phosphorus-updater, docker logs -f phosphorus-updater to follow")
-		return nil
+	if !waitFrontend(2 * time.Minute) {
+		return fail("the frontend never came up, check: %s", logHint())
 	}
-	// everything after tailscaled waiting on its login, real time allowed
-	say("waiting for the frontend...")
-	for i := 0; i < 240; i++ {
-		if dockerQuiet("exec", "phosphorus", "curl", "-s", "-o", "/dev/null", "http://127.0.0.1:8090/") {
-			say("the frontend is up")
-			return nil
-		}
-		time.Sleep(500 * time.Millisecond)
-	}
-	return fail("the frontend never came up, check: docker logs -f phosphorus")
+	say("the frontend is up")
+	return nil
 }
 
 // setup the steps only an admin can take, once per machine: the ssh server,
@@ -140,38 +102,7 @@ func sshInclude() string {
 	return `Include "` + strings.ReplaceAll(at("state", "ssh_config"), `\`, "/") + `"`
 }
 
-// ensureEngine docker answering: colima on macOS, Docker Desktop on Windows
-func ensureEngine() error {
-	if dockerUp() {
-		return nil
-	}
-	// Linux: docker.service still coming up at boot, nothing to start
-	tries := 15
-	if isMac {
-		if _, err := exec.LookPath("colima"); err == nil {
-			say("starting colima...")
-			if err := run("colima", "start"); err != nil {
-				return fail("colima didn't start")
-			}
-			tries = 90
-		}
-	}
-	if isWindows {
-		if err := startDockerDesktop(); err != nil {
-			return err
-		}
-		tries = 90
-	}
-	for i := 0; i < tries && !dockerUp(); i++ {
-		time.Sleep(2 * time.Second)
-	}
-	if !dockerUp() {
-		return fail("docker isn't answering, %s", dockerHint())
-	}
-	return nil
-}
-
-// tui the cli in the container, the keys asked for first on a new host
+// tui the cli on the service's env, the keys asked for first on a new host
 func tui(args []string) error {
 	if !up() {
 		if !keysMissing() {
@@ -189,9 +120,6 @@ func tui(args []string) error {
 			return err
 		}
 		tag = "phosphorus"
-	}
-	if native() {
-		return nativeAttach(args)
 	}
 	return attach(args)
 }
@@ -235,7 +163,7 @@ func keys(opts []string) error {
 		say("saved, phos start to bring phosphorus up")
 		return nil
 	}
-	// env_file read only when a container is made: recreated on the new keys
+	// .env read once at start: restarted on the new keys
 	say("saved, restarting phosphorus with them")
 	return rebuild()
 }

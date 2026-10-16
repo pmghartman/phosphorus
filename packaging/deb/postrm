@@ -1,6 +1,6 @@
 #!/bin/sh
 # remove: the cli links; purge: /var/lib/phosphorus (git data, chat, shares, the
-# tailnet identity), the git account, and any containers earlier releases left
+# tailnet identity) and the git account
 set -e
 case "$1" in
 remove | purge)
@@ -14,10 +14,6 @@ remove | purge)
     ;;
 esac
 if [ "$1" = purge ]; then
-    if command -v docker >/dev/null 2>&1; then
-        docker rm -f phosphorus-git phosphorus phosphorus-model phosphorus-search phosphorus-updater >/dev/null 2>&1 || true
-        docker volume rm phosphorus_tailscale-state phosphorus-git-data phosphorus-git-db phosphorus-models >/dev/null 2>&1 || true
-    fi
     userdel phosphorus-git >/dev/null 2>&1 || true
     groupdel phosphorus-git >/dev/null 2>&1 || true
     rm -rf /var/lib/phosphorus

@@ -335,7 +335,7 @@ function pjPaintNew() {
   if (PJ_SOON) {
     const soon = el('div', 'pj-new');
     soon.innerHTML = '<p class="pj-intro"><b>Coming soon.</b> The <span class="who-model">orangutan</span>\'s projects are paused while their sandboxes '
-      + 'are rebuilt to run without Docker. Past projects stay listed and their files stay in shared/projects.</p>';
+      + 'are rebuilt. Past projects stay listed and their files stay in shared/projects.</p>';
     pjBody.replaceChildren(soon);
     return;
   }

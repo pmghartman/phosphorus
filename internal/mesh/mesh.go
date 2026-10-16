@@ -402,7 +402,6 @@ func handOn() {
 var (
 	gameIPs  = map[string]string{}
 	gameDNS  *gamedns.Server
-	sshIn    *sshrelay.Inbound
 	ipv4Only = util.IsIPv4
 )
 
@@ -749,7 +748,6 @@ func tick() {
 		clock.MarkHot()
 	}
 	gameDNS.Bind(selfIPNow)
-	sshIn.Bind(selfIPNow)
 	if ok {
 		if err := sshrelay.WriteConfig(sshConfigFile, livePeers); err != nil {
 			notes.Note("ssh-config", fmt.Sprintf("can't write %s: %v", sshConfigFile, err))
@@ -785,7 +783,6 @@ func Start(h Hooks) {
 		defer mu.RUnlock()
 		return gameIPs[name]
 	}, notes.Note)
-	sshIn = sshrelay.NewInbound(notes.Note)
 	if selfHost != "" {
 		util.WriteFileAtomic(selfHostFile, []byte(selfHost))
 	}

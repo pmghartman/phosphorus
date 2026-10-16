@@ -3,7 +3,6 @@
 package files
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -11,7 +10,6 @@ import (
 	"log"
 	"math"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -26,7 +24,6 @@ import (
 )
 
 var (
-	ShareRoot = util.Env("SHARE_ROOT", "/shares")
 	FilesRoot = util.Env("FILES_ROOT", "/files")
 	StateDir  = util.Env("STATE_DIR", "/state")
 	HomeFS    = util.Env("HOME_FS", StateDir)
@@ -90,77 +87,19 @@ func ConfiguredDirs() []string { return splitList(util.Ini("files", "dir")) }
 
 func mountedDirs() []string { return splitList(os.Getenv("PHOSPHORUS_FILES_DIRS")) }
 
-var (
-	mountsMu   sync.RWMutex
-	hostMounts = map[string]string{}
-)
-
-func loadMounts() {
-	if util.Native {
-		return
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	out, err := exec.CommandContext(ctx, "docker", "inspect", "phosphorus", "--format", "{{range .Mounts}}{{.Destination}}\t{{.Source}}\n{{end}}").Output()
-	if err != nil {
-		time.AfterFunc(60*time.Second, loadMounts)
-		return
-	}
-	mountsMu.Lock()
-	defer mountsMu.Unlock()
-	for _, line := range strings.Split(string(out), "\n") {
-		parts := strings.SplitN(line, "\t", 2)
-		if len(parts) == 2 && parts[0] != "" && parts[1] != "" {
-			hostMounts[strings.TrimRight(parts[0], "/")] = parts[1]
-		}
-	}
+// HostSpelling a path with forward slashes, trailing ones dropped
+func HostSpelling(src string) string {
+	return trailRe.ReplaceAllString(strings.ReplaceAll(src, `\`, "/"), "$1")
 }
 
-var vmRe = regexp.MustCompile(`^/run/desktop/mnt/host/([a-z])(/.*)?$`)
 var trailRe = regexp.MustCompile(`(.)/+$`)
 
-// HostSpelling Docker Desktop's VM spelling back to the Windows drive
-func HostSpelling(src string) string {
-	p := src
-	if m := vmRe.FindStringSubmatch(src); m != nil {
-		rest := m[2]
-		if rest == "" {
-			rest = "/"
-		}
-		p = strings.ToUpper(m[1]) + ":" + rest
-	}
-	p = strings.ReplaceAll(p, `\`, "/")
-	return trailRe.ReplaceAllString(p, "$1")
-}
-
-// HostPathOf a container path as it lives on the host, natively itself
-func HostPathOf(p string) string {
-	if util.Native {
-		return p
-	}
-	mountsMu.RLock()
-	defer mountsMu.RUnlock()
-	for at := p; at != "" && at != "/"; at = path.Dir(at) {
-		if src, ok := hostMounts[at]; ok {
-			return HostSpelling(src) + p[len(at):]
-		}
-	}
-	return ""
-}
+// HostPathOf a path as the host spells it, every path a real one
+func HostPathOf(p string) string { return p }
 
 var absRe = regexp.MustCompile(`^([A-Za-z]:)?/`)
-var repoRe = regexp.MustCompile(`^/repo(/|$)`)
 
-func labelFor(dir, root string) string {
-	if h := HostPathOf(root); h != "" {
-		return h
-	}
-	clean := trailRe.ReplaceAllString(strings.ReplaceAll(dir, `\`, "/"), "$1")
-	if absRe.MatchString(clean) && !repoRe.MatchString(clean) {
-		return clean
-	}
-	return root
-}
+func labelFor(_, root string) string { return root }
 
 func makeShare(id, dir, perms, root string) Share {
 	real := root
@@ -186,11 +125,7 @@ func buildShares() []Share {
 		if i < len(perms) {
 			p = cleanPerms(perms[i])
 		}
-		root := filepath.Join(ShareRoot, strconv.Itoa(i))
-		if util.Native {
-			root = d
-		}
-		out = append(out, makeShare(strconv.Itoa(i), d, p, root))
+		out = append(out, makeShare(strconv.Itoa(i), d, p, d))
 	}
 	return out
 }
@@ -257,7 +192,6 @@ func Init() {
 			flatten(filepath.Join(StateDir, "home"))
 		}
 		os.MkdirAll(filepath.Join(HomeRoot, Shared, Desktop), 0o755)
-		go loadMounts()
 	})
 }
 
@@ -281,26 +215,18 @@ func homeShare() Share {
 
 var (
 	homeIDMu sync.Mutex
-	homeID   string
+	homeID   os.FileInfo
 )
-
-func idOf(p string) string {
-	st, err := os.Stat(p)
-	if err != nil {
-		return ""
-	}
-	s := st.Sys().(*syscall.Stat_t)
-	return fmt.Sprintf("%d:%d", s.Dev, s.Ino)
-}
 
 func isHome(p string) bool {
 	homeIDMu.Lock()
-	if homeID == "" {
-		homeID = idOf(HomeRoot)
+	if homeID == nil {
+		homeID, _ = os.Stat(HomeRoot)
 	}
 	h := homeID
 	homeIDMu.Unlock()
-	return h != "" && idOf(p) == h
+	st, err := os.Stat(p)
+	return h != nil && err == nil && os.SameFile(st, h)
 }
 
 func homeHeld(sh Share, p string) bool {

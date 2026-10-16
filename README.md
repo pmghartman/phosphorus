@@ -20,16 +20,24 @@ From the [latest release](https://github.com/pmghartman/phosphorus/releases/late
 | System | Client only | Host | Host needs |
 |---|---|---|---|
 | Linux | `sudo apt install ./phosphorus-client_VERSION_ARCH.deb` | `sudo apt install ./phosphorus_VERSION_ARCH.deb`, then `sudo phosphorus` | systemd |
-| macOS | `phosphorus-client-VERSION-macos-universal.dmg` | `phosphorus-VERSION-macos-universal.dmg` | colima, docker |
-| Windows | `phosphorus-client-VERSION-windows-x86_64-setup.exe` | `phosphorus-VERSION-windows-x86_64-setup.exe` | Docker Desktop, host networking on |
+| macOS | `phosphorus-client-VERSION-macos-universal.dmg` | `phosphorus-VERSION-macos-universal.dmg` | the Tailscale app |
+| Windows | `phosphorus-client-VERSION-windows-x86_64-setup.exe` | `phosphorus-VERSION-windows-x86_64-setup.exe` | Tailscale for Windows |
 
 The client is the mesh's frontend in a window with no menu bar; it asks for the mesh's domain on first start. The macOS and Windows host apps include the client: opening the app opens the same window, and a tray icon runs the host.
 
 The host installer carries the `phosphorus` binary, which installs the release into the host folder (`/var/lib/phosphorus`, `~/Library/Phosphorus` or `%USERPROFILE%\phosphorus`) and brings it up. There are no scripts to run.
 
-On Linux the host runs natively, no Docker: `phosphorus.service` runs `phosphorus run`, which keeps the frontend, cloudflared, the model and the git daemon as its own labelled child processes (`phos ps`, logs in `journalctl -u phosphorus`). Tailscale is the machine's own `tailscaled` when one is running, else the bundled one as `phosphorus-tailscaled.service`. cloudflared, forgejo and tailscale ship in the package under `/usr/libexec/phosphorus`; the distro packages a role needs (git, rsync, sqlite3 on a git host, curl, ripgrep, libgomp1 on a model host) are installed on the first start that needs them.
+Nothing runs in containers. `phosphorus run` keeps the frontend, cloudflared, the model and (Linux) the git daemon as its own labelled child processes; `phos ps` shows them by role and the status tab sums them.
 
-A Linux host still on the Docker release moves over on its next update by itself: the same tailnet node, git data and model, then its old containers, images, volumes and networks removed. If the native service doesn't come up, the containers are started again as they were. macOS and Windows hosts still run in Docker.
+| | Service | Logs | Tailscale | Bundled |
+|---|---|---|---|---|
+| Linux | `phosphorus.service` (systemd) | `journalctl -u phosphorus` | the machine's `tailscaled` when running, else `phosphorus-tailscaled.service` | tailscale, cloudflared, forgejo in `/usr/libexec/phosphorus` |
+| macOS | LaunchAgent `dev.phosphorus.host` | `~/Library/Phosphorus/state/phosphorus.log` | the Tailscale app | cloudflared in the host folder's `tools/` |
+| Windows | the `phosphorus` service | `%USERPROFILE%\phosphorus\state\phosphorus.log` | Tailscale for Windows | cloudflared in the host folder's `tools\` |
+
+On Linux the distro packages a role needs (git, rsync, sqlite3 on a git host, curl, ripgrep, libgomp1 on a model host) are installed on the first start that needs them. Git hosts are Linux only: forgejo ships for Linux alone. The Windows service is installed once through the admin prompt `phos start` raises; after that the signed-in account starts and stops it.
+
+A host still on a Docker release moves over on its next update by itself. Linux keeps the same tailnet node; macOS and Windows join through the Tailscale app, the old container's node deleted and its name handed over when `TS_API_KEY` is set. Git data and the model come along, then the old containers, images, volumes and networks are removed; docker itself stays installed. If the new service doesn't come up, the containers are started again as they were.
 
 ## Keys
 
@@ -45,7 +53,7 @@ On first start the app opens a keys window and `phosphorus` opens a keys form. P
 
 A host joining an existing mesh needs only `TS_AUTHKEY`: once on the tailnet it copies the rest from the first peer that answers.
 
-`.env` is readable only by root on Linux, and by the account running Docker plus SYSTEM on macOS and Windows. Keys are never displayed. To replace one, use Edit Keys in the tray, `phos keys`, or `k` in the cli. Paste the new value; blank fields keep what is set. Saving restarts phosphorus with the new keys.
+`.env` is readable only by root on Linux, by the app's account on macOS, and by the app's account plus SYSTEM on Windows. Keys are never displayed. To replace one, use Edit Keys in the tray, `phos keys`, or `k` in the cli. Paste the new value; blank fields keep what is set. Saving restarts phosphorus with the new keys.
 
 First login: user `admin`, password `ADMIN_PASS`; create a real admin and that login turns off.
 
@@ -88,7 +96,7 @@ stop = systemctl --user stop tmodloader
 - `phosphorus` (or `phos`): the cli; `start`, `stop`, `restart`, `update`, `update all`, `keys`, `ps` (Linux: phosphorus's processes by role)
 - Host app (macOS, Windows): opening it opens the frontend; tray: Start, Stop, Check for Updates, Edit Keys, Quit
 - Mesh update: update icon in the bar (admins) or `phos update all`. Every peer updates at once through its own installer, then the host that started it
-- Projects: coming soon, shelved while their sandboxes move off Docker; `/api/projects` still lists past ones
+- Projects: coming soon, shelved while their sandboxes are rebuilt; `/api/projects` still lists past ones
 
 ## How it fits together
 
@@ -100,10 +108,9 @@ flowchart TB
     exe["setup .exe"]
     client["client-only installers"]
     feed["update feed: apt repo, app feed, latest.json"]
-    ghcr["ghcr.io images, macOS and Windows hosts"]
   end
 
-  subgraph host["Linux host"]
+  subgraph host["Host (Linux shown)"]
     dpkg["apt + postinst"]
     bin["phosphorus binary<br/>install, start, stop, keys, rebuild, upgrade, ps"]
     agent["update agent<br/>phosphorus-update.path"]
@@ -125,13 +132,13 @@ flowchart TB
   end
 
   subgraph mesh["Tailnet"]
-    peers["other hosts, macOS and Windows ones in Docker"]
+    peers["other hosts, Linux, macOS and Windows"]
   end
   cf["Cloudflare tunnel"]
   browser["Browser or client app at BASE_DOMAIN"]
 
   deb --> dpkg --> bin
-  dmg & exe -->|"tray app, Docker"| ghcr
+  dmg & exe -->|"tray app: install, start, keys"| bin
   bin -->|"keys form"| env
   bin -->|"release synced, old files removed"| home
   bin -->|"admin setup once"| sshd
@@ -162,9 +169,9 @@ flowchart TB
 cmd/          phosphorus: roles (serve, model, elector, cli, ssh-relay), host commands (run, start, rebuild, ps and the rest); webbuild
 internal/     Go packages, internal/host the host side the installers run
 web/          browser client, bundled into the binary by go generate
-container/    Dockerfile for the macOS and Windows hosts, and the git daemon every host runs
+gitd/         the git daemon a Linux git host runs: forgejo, rsync replication, the elector
 config/       default host config
-packaging/    deb/ (Linux host: units, bundled tools) and app/ (Tauri app: the client everywhere, the host tray on macOS and Windows)
+packaging/    tools.sh (bundled tools), deb/ (Linux host: units) and app/ (Tauri app: the client everywhere, the host tray on macOS and Windows)
 ```
 
 `make build`, `make check`, `make test`.

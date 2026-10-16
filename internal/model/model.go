@@ -416,7 +416,7 @@ func excuse(states []map[string]any, s map[string]any) string {
 	}
 	crashed := ""
 	if e := int(n(s["exits"])); e > 0 {
-		crashed = fmt.Sprintf("llama-server has exited %s since it was last up (%s), the model's log on %s says why (journalctl -u phosphorus, or docker logs phosphorus-model)", times(e), util.JSString(s["lastExit"]), util.JSString(s["host"]))
+		crashed = fmt.Sprintf("llama-server has exited %s since it was last up (%s), the phosphorus log on %s says why", times(e), util.JSString(s["lastExit"]), util.JSString(s["host"]))
 	}
 	if crashed != "" && s["server"] != "loading" {
 		return "not loaded: " + crashed

@@ -1,5 +1,5 @@
 // Package envfile: the home's .env, its keys read and written in place, the
-// file locked to the system and the account running docker
+// file locked to the system and the account running phosphorus
 package envfile
 
 import (

@@ -22,6 +22,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/shirou/gopsutil/v4/mem"
+
 	"github.com/pmghartman/phosphorus/internal/tools"
 	"github.com/pmghartman/phosphorus/internal/util"
 )
@@ -31,14 +33,13 @@ var (
 	selfHost      = os.Getenv("SELF_HOST")
 	selfHostFile  = filepath.Join(stateDir, "self-host")
 	claimFile     = filepath.Join(stateDir, "model-claim.json")
-	machineFile   = filepath.Join(stateDir, "machine.json")
 	installedFile = filepath.Join(stateDir, "model-installed.json")
 	slotDir       = filepath.Join(stateDir, "llama-slots")
 	modelDir      = util.Env("MODEL_DIR", "/models")
 	serverPort    = util.EnvInt("MODEL_SERVER_PORT", 8791)
 	tickMS        = util.EnvInt("MODEL_TICK_MS", 1000)
 	notes         = util.NewNotes("model")
-	nvsmi         = []string{"nvidia-smi", "/usr/lib/wsl/lib/nvidia-smi"}
+	nvsmi         = []string{"nvidia-smi"}
 	vramRe        = regexp.MustCompile(`(?i)cudaMalloc failed|out of memory|(failed|unable) to allocate CUDA\d* buffer`)
 	hfBlob        = regexp.MustCompile(`^(https://huggingface\.co/.+?)/blob/`)
 )
@@ -137,18 +138,14 @@ func selfAddr() string {
 }
 
 func memTotal() float64 {
-	b, _ := os.ReadFile("/proc/meminfo")
-	m := regexp.MustCompile(`(?m)^MemTotal:\s+(\d+)`).FindStringSubmatch(string(b))
-	if m == nil {
+	v, err := mem.VirtualMemory()
+	if err != nil {
 		return 0
 	}
-	return jsNum(m[1]) * 1024
+	return float64(v.Total)
 }
 
-func hasCuda() bool {
-	_, err := os.Stat(filepath.Join(tools.LlamaDir(true), "libggml-cuda.so"))
-	return err == nil
-}
+func hasCuda() bool { return tools.HasCuda() }
 
 func freeVram() float64 {
 	if !hasCuda() {
@@ -430,7 +427,7 @@ func serve(c config) {
 	args = append(args, "--cache-ram", cache, "--cache-reuse", "256", "--slots", "--slot-save-path", slotDir,
 		"--host", "127.0.0.1", "--port", strconv.Itoa(serverPort))
 	dir := tools.LlamaDir(c.gpu)
-	cmd := exec.Command(filepath.Join(dir, "llama-server"), args...)
+	cmd := exec.Command(tools.LlamaServer(c.gpu), args...)
 	cmd.Env = append(os.Environ(), "LD_LIBRARY_PATH="+dir, "PHOSPHORUS_ROLE=llama-server")
 	cmd.Stdout = os.Stdout
 	stderr, _ := cmd.StderrPipe()
@@ -512,10 +509,7 @@ func unixSigName(s syscall.Signal) string {
 // --- the tick ---------------------------------------------------------------
 
 func claim(c config) map[string]any {
-	var machine map[string]any
-	util.ReadJSON(machineFile, &machine)
-	ram, _ := machine["ram"].(float64)
-	out := map[string]any{"host": selfHost, "ip": selfAddr(), "runs": c.host, "total": memTotal(), "machine": ram}
+	out := map[string]any{"host": selfHost, "ip": selfAddr(), "runs": c.host, "total": memTotal(), "machine": memTotal()}
 	if c.host {
 		var d any
 		if dl.proc != nil {

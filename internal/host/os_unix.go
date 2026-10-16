@@ -41,8 +41,6 @@ const sshInc = "/etc/ssh/ssh_config.d/phosphorus.conf"
 
 var links = []string{"/usr/local/bin/phosphorus", "/usr/local/bin/phos"}
 
-func prepareOS(bool) error { return nil }
-
 func needSetup() string {
 	switch {
 	case !sshdUp():
@@ -93,7 +91,6 @@ func setupOS() error {
 	return nil
 }
 
-func elevateWindows() error     { return nil }
-func startDockerDesktop() error { return nil }
+func elevateWindows() error { return nil }
 
-func sshDockerConfig() {}
+func prepareOS(bool) error { return nil }

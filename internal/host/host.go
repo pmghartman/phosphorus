@@ -3,7 +3,6 @@
 package host
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -17,18 +16,15 @@ import (
 	"github.com/pmghartman/phosphorus/internal/ini"
 )
 
-const registry = "ghcr.io/pmghartman"
-
 var (
-	home        string
-	tag         = "phosphorus"
-	inContainer = fileExists("/.dockerenv")
-	isLinux     = runtime.GOOS == "linux"
-	isMac       = runtime.GOOS == "darwin"
-	isWindows   = runtime.GOOS == "windows"
+	home      string
+	tag       = "phosphorus"
+	isLinux   = runtime.GOOS == "linux"
+	isMac     = runtime.GOOS == "darwin"
+	isWindows = runtime.GOOS == "windows"
 )
 
-// Commands the ones Main takes, everything else the container roles'
+// Commands the ones Main takes, everything else run's children's roles
 var Commands = map[string]bool{
 	"": true, "start": true, "stop": true, "restart": true, "update": true, "keys": true, "install": true,
 	"setup": true, "rebuild": true, "upgrade": true, "game-control": true, "game-control-setup": true,
@@ -79,7 +75,7 @@ func Main(cmd string, args []string) int {
 		home = homeDir()
 	}
 	// Linux: root's /var/lib/phosphorus, its .env root's alone
-	if isLinux && !inContainer && os.Geteuid() != 0 && cmd != "game-control" && cmd != "game-control-setup" && cmd != "help" {
+	if isLinux && os.Geteuid() != 0 && cmd != "game-control" && cmd != "game-control-setup" && cmd != "help" {
 		return asRoot(append([]string{cmd}, args...))
 	}
 	tag = cmd
@@ -144,9 +140,6 @@ func homeDir() string {
 	if h := os.Getenv("PHOSPHORUS_HOME"); h != "" {
 		return h
 	}
-	if inContainer {
-		return "/repo"
-	}
 	switch {
 	case isWindows:
 		// not %LOCALAPPDATA%\Phosphorus: the app's own install dir, wiped by its uninstaller
@@ -173,11 +166,8 @@ func readTrim(p string) string {
 
 func version() string { return readTrim(at("VERSION")) }
 
-// Version the image's, else the home's release
+// Version the home's release
 func Version() string {
-	if v := readTrim("/opt/phosphorus/VERSION"); v != "" {
-		return v
-	}
 	if home == "" {
 		home = homeDir()
 	}
@@ -256,68 +246,13 @@ func addMissingSections() {
 	}
 }
 
-// --- docker ------------------------------------------------------------------------
-
-func docker(args ...string) *exec.Cmd {
-	c := exec.Command("docker", args...)
-	hide(c)
-	return c
-}
-
-// dockerOut stdout trimmed, "" on failure
-func dockerOut(args ...string) string {
-	c := docker(args...)
-	c.Stderr = nil
-	b, err := c.Output()
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(b))
-}
-
-func dockerQuiet(args ...string) bool { return docker(args...).Run() == nil }
-
-// dockerShow output on this terminal
-func dockerShow(args ...string) error {
-	c := docker(args...)
-	c.Stdout, c.Stderr = os.Stdout, os.Stderr
-	return c.Run()
-}
-
-// dockerLines each output line said, the exit's error returned
-func dockerLines(args ...string) error {
-	var b bytes.Buffer
-	c := docker(args...)
-	c.Stdout = &b
-	err := c.Run()
-	for _, l := range strings.Split(strings.TrimSpace(b.String()), "\n") {
-		if l != "" {
-			say("%s", l)
-		}
-	}
-	return err
-}
-
-func isRunning(name string) bool {
-	return dockerOut("inspect", "-f", "{{.State.Running}}", name) == "true"
-}
+func has(name string) bool { _, err := exec.LookPath(name); return err == nil }
 
 // inDpkg inside a package's maintainer script, dpkg's lock held
 func inDpkg() bool { return os.Getenv("DPKG_MAINTSCRIPT_PACKAGE") != "" }
 
-// up phosphorus itself running, the service natively, the container otherwise
-func up() bool {
-	if native() {
-		return nativeUp()
-	}
-	return isRunning("phosphorus")
-}
-
-func containerExists(name string) bool {
-	return dockerOut("ps", "-aq", "-f", "name=^"+name+"$") != ""
-}
-
-func dockerUp() bool { return dockerQuiet("info", "--format", "{{.ServerVersion}}") }
+// up phosphorus itself running
+func up() bool { return svcActive() }
 
 // run a host command, its output on this terminal
 func run(name string, args ...string) error {

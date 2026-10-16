@@ -5,54 +5,11 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
-	"strings"
 	"time"
 
 	"github.com/pmghartman/phosphorus/internal/envfile"
 	"golang.org/x/term"
 )
-
-func started() string {
-	return dockerOut("inspect", "-f", "{{.State.Running}} {{.State.StartedAt}}", "phosphorus")
-}
-
-// attach the cli in the container; a mesh update swapping it out from under
-// the cli, the new one waited for and reattached on the same tab
-func attach(args []string) error {
-	for {
-		before := started()
-		if !strings.HasPrefix(before, "true") {
-			return fail("phosphorus isn't running, run: phos start")
-		}
-		t := os.Getenv("TERM")
-		if t == "" {
-			t = "xterm-256color"
-		}
-		a := []string{"exec", "-it", "-e", "TERM=" + t}
-		for _, k := range []string{"COLORTERM", "COLORFGBG", "TERM_PROGRAM"} {
-			if v := os.Getenv(k); v != "" {
-				a = append(a, "-e", k+"="+v)
-			}
-		}
-		c := exec.Command("docker", append(append(a, "phosphorus", "phosphorus", "cli"), args...)...)
-		c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
-		err := c.Run()
-		if started() == before {
-			if x, ok := err.(*exec.ExitError); ok {
-				return exitCode(x.ExitCode())
-			}
-			return err
-		}
-		fmt.Println("phosphorus is restarting, reattaching (ctrl-c to quit)...")
-		for !strings.HasPrefix(started(), "true") {
-			time.Sleep(time.Second)
-		}
-		if len(args) > 0 && args[0] == "update-all" {
-			args = []string{"--tab", "update"}
-		}
-	}
-}
 
 // detached this command rerun in its own session and its log followed: a
 // terminal inside phosphorus dropping mid-stop never leaves git stopped
@@ -96,59 +53,20 @@ func detached(cmd string) (bool, error) {
 	}
 }
 
-// stop git first, so a master hands off before the frontend goes, stopped
-// through reboots since compose restarts only unless-stopped
+// stop git first (run stops it before the rest), so a master hands off;
+// kept stopped through reboots
 func stop() error {
 	if ok, err := detached("stop"); ok || err != nil {
 		return err
 	}
-	if native() {
-		return nativeStop()
-	}
-	for _, c := range []string{"phosphorus-git", "phosphorus", "phosphorus-model"} {
-		if !isRunning(c) {
-			continue
-		}
-		fmt.Printf("stopping %s...\n", c)
-		if !dockerQuiet("stop", "-t", "30", c) {
-			return fail("couldn't stop %s", c)
-		}
-	}
-	fmt.Println("phosphorus stopped, phos start to resume")
-	return nil
+	return nativeStop()
 }
 
-// restart git stopped first for the hand-off, started again once phosphorus is back
 func restart() error {
 	if ok, err := detached("restart"); ok || err != nil {
 		return err
 	}
-	if native() {
-		return nativeRestart()
-	}
-	gitUp := isRunning("phosphorus-git")
-	if gitUp {
-		fmt.Println("stopping phosphorus-git...")
-		if !dockerQuiet("stop", "-t", "30", "phosphorus-git") {
-			return fail("couldn't stop phosphorus-git")
-		}
-	}
-	fmt.Println("restarting phosphorus...")
-	var err error
-	if !dockerQuiet("restart", "-t", "30", "phosphorus") {
-		err = fail("couldn't restart phosphorus")
-	}
-	// git back whatever became of phosphorus, else it stays stopped
-	if gitUp {
-		fmt.Println("starting phosphorus-git...")
-		if !dockerQuiet("start", "phosphorus-git") {
-			err = fail("couldn't start phosphorus-git")
-		}
-	}
-	if err == nil {
-		fmt.Println("phosphorus restarted")
-	}
-	return err
+	return nativeRestart()
 }
 
 // update handed to the host's agent (the systemd path unit, the app), its

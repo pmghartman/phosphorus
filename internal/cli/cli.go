@@ -1,4 +1,4 @@
-// Package cli: the terminal ui, run in the container by the host's phosphorus,
+// Package cli: the terminal ui, run by the host's phosphorus on the service's env,
 // reading this host's /api/state and writing straight to config/
 package cli
 
@@ -217,7 +217,7 @@ var ui = struct {
 	prompt   *prompt
 	flash    string
 	flashAt  time.Time
-	// the key form alone, before the container runs
+	// the key form alone, before phosphorus runs
 	keysOnly bool
 	// this terminal's round trip to each host, timed here
 	rtt map[string]any
@@ -512,7 +512,7 @@ func formKey(s string, e keyEv) {
 			}
 			return
 		}
-		// only a share, or [model] gpu, changing what the container was built with
+		// only a share, or [model] gpu, changing what phosphorus was started with
 		rebuilds := f.kind == "share"
 		for _, x := range f.fields {
 			if f.kind == "model" && x.key == "gpu" && strings.TrimSpace(x.value) != f.gpuWas {

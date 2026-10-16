@@ -98,7 +98,7 @@ func into(inner string, args ...string) []string {
 		fmt.Sprintf(`for p in "$(pwd -P)" "$@"; do case "$p" in %s/????????????|%s/????????????/*) id=${p#%s/}; id=${id%%%%/*}; break;; esac; done`, wr, wr, wr),
 		`[ -n "$id" ] || { echo "lsp and formatters run only in a project's sandbox" >&2; exit 1; }`,
 		fmt.Sprintf(`d=$(pwd -P); case "$d" in %s/"$id"|%s/"$id"/*) ;; *) d=%s/$id;; esac`, wr, wr, wr),
-		fmt.Sprintf(`exec docker exec -i -w "$d" "%s$id" sh -c "$s" sh "$@"`, sandboxPrefix),
+		`echo "project sandboxes are coming soon" >&2; exit 1`,
 	}, "\n")
 	return append([]string{"sh", "-c", script, "sh", inner}, args...)
 }
@@ -384,7 +384,7 @@ func start(sig string, s Setup) error {
 			var st tools.OpencodeState
 			got := util.ReadJSON(tools.OpencodeStateFile(), &st) && st.Gen == gen
 			if got && st.Err != "" {
-				fail(errors.New("opencode " + st.Err + ", the model's log says why (journalctl -u phosphorus, or docker logs phosphorus-model)"))
+				fail(errors.New("opencode " + st.Err + ", the model's log says why"))
 				return
 			}
 			if !got && time.Since(t0) > pickupWait {

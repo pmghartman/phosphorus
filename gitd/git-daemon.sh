@@ -70,6 +70,8 @@ fix_app_ini() {
   [ -s "$APP_INI" ] || return 0
   sed -i -e 's#/var/lib/phosphorus/git/litefs/forgejo\.db#/var/lib/phosphorus/git/db/forgejo.db#' \
          -e "s#^RUN_USER *=.*#RUN_USER = $GIT_USER#" "$APP_INI"
+  # sed -i's new file root's, forgejo writing its tokens back into it
+  chown "$GIT_USER:$GIT_GROUP" "$APP_INI"
 }
 
 # hooks naming forgejo's binary, rewritten when obj/ came from a master

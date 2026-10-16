@@ -2,8 +2,8 @@
 
 phosphorus ships no third-party source in this repository. The `phosphorus`
 binary statically links the Go modules below, its embedded web client bundles
-the npm packages below, and the image builds download the rest from their
-upstream publishers, unmodified. Each stays under its own license; the
+the npm packages below, and the host installers carry or fetch the rest from
+their upstream publishers, unmodified. Each stays under its own license; the
 phosphorus license (see `LICENSE`) covers none of them.
 
 ## The `phosphorus` binary
@@ -22,6 +22,8 @@ phosphorus license (see `LICENSE`) covers none of them.
 | clipperhouse displaywidth, uax29 | MIT | https://github.com/clipperhouse |
 | mattn/go-runewidth, rivo/uniseg, lucasb-eyer/go-colorful, muesli/cancelreader, xo/terminfo | MIT | GitHub, under each name |
 | andybalholm/brotli | MIT | https://github.com/andybalholm/brotli |
+| shirou/gopsutil (status on macOS and Windows) | BSD-3-Clause | https://github.com/shirou/gopsutil |
+| tklauser/go-sysconf, tklauser/numcpus, ebitengine/purego, yusufpapurcu/wmi, go-ole/go-ole (gopsutil) | BSD-3-Clause, Apache-2.0, BSD-3-Clause, MIT, MIT | GitHub, under each name |
 
 Built with esbuild (MIT, https://github.com/evanw/esbuild), which bundles the
 client at build time and is not part of the binary.
@@ -36,24 +38,16 @@ client at build time and is not part of the binary.
 | Lezer and its grammars (editor checks and highlighting) | MIT | https://github.com/lezer-parser |
 | Geist Mono (the page's font, via @fontsource-variable/geist-mono) | OFL-1.1 | https://github.com/vercel/geist-font |
 
-## phosphorus image (`container/Dockerfile`)
+## Bundled with the host installers
 
-| Component | License | Source |
-|---|---|---|
-| Debian trixie-slim (base image) | Various, per package (DFSG) | https://www.debian.org |
-| cloudflared | Apache-2.0 | https://github.com/cloudflare/cloudflared |
-| Docker CLI (`docker-ce-cli`) | Apache-2.0 | https://github.com/docker/cli |
-| Docker Compose (`docker-compose-plugin`) | Apache-2.0 | https://github.com/docker/compose |
-| Docker Buildx (`docker-buildx-plugin`) | Apache-2.0 | https://github.com/docker/buildx |
-| Tailscale | BSD-3-Clause | https://github.com/tailscale/tailscale |
+| Component | Version | License | Source | In |
+|---|---|---|---|---|
+| Tailscale (`tailscale`, `tailscaled`) | 1.104.1 | BSD-3-Clause | https://github.com/tailscale/tailscale | the Linux package; macOS and Windows use the Tailscale app |
+| cloudflared | 2026.9.3 | Apache-2.0 | https://github.com/cloudflare/cloudflared | every host installer |
+| Forgejo | 16.0.5 | GPL-3.0-or-later | https://codeberg.org/forgejo/forgejo | the Linux package (git hosts are Linux only) |
 
-## phosphorus-model image (`container/Dockerfile --target model`)
-
-| Component | License | Source |
-|---|---|---|
-| Debian trixie-slim (base image) | Various, per package (DFSG) | https://www.debian.org |
-| Docker CLI (from `docker:28-cli`, opencode's sandbox calls) | Apache-2.0 | https://github.com/docker/cli |
-| ripgrep (opencode's grep and glob) | MIT OR Unlicense | https://github.com/BurntSushi/ripgrep |
+Forgejo is run as a separate, unmodified program; phosphorus only writes its
+configuration. Its source is available at the link above.
 
 ## Fetched at run time by the model host alone
 
@@ -66,36 +60,13 @@ first start, and deletes them when it stops being the model host.
 | opencode (the model harness) | MIT | https://github.com/anomalyco/opencode |
 | NVIDIA CUDA runtime (only with `[model] gpu`, on x86-64) | NVIDIA CUDA EULA | https://developer.nvidia.com/cuda-toolkit |
 
-## phosphorus-git image (`container/Dockerfile --target git`)
+## Distro packages a Linux host installs as its roles need them
 
-| Component | Version | License | Source |
-|---|---|---|---|
-| Forgejo | 16.0.5 | GPL-3.0-or-later | https://codeberg.org/forgejo/forgejo |
-
-Forgejo is run as a separate, unmodified program; phosphorus only writes its
-configuration. Its source is available at the link above.
-
-## Debian packages (both images)
-
-| Package | License |
-|---|---|
-| bash | GPL-3.0-or-later |
-| ca-certificates | MPL-2.0 |
-| curl | curl |
-| fuse3 | GPL-2.0 (tools), LGPL-2.1 (library) |
-| git | GPL-2.0-only |
-| iproute2 | GPL-2.0-or-later |
-| iptables | GPL-2.0-or-later |
-| jq | MIT |
-| libgomp1 | GPL-3.0-or-later with the GCC Runtime Library Exception |
-| openssh-client | BSD-style (OpenSSH) |
-| procps | GPL-2.0-or-later, LGPL-2.0-or-later |
-| rsync | GPL-3.0-or-later |
-
-Full license texts for installed Debian packages are in each image under
+git, rsync, sqlite3 (git hosts), curl, ripgrep, libgomp1 (model hosts), each
+under its own license from the distribution; full texts are in
 `/usr/share/doc/<package>/copyright`.
 
 ## Trademarks
 
-Cloudflare, Docker, Forgejo and Tailscale are trademarks of their respective
+Cloudflare, Forgejo and Tailscale are trademarks of their respective
 owners. phosphorus is not affiliated with or endorsed by any of them.

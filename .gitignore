@@ -4,7 +4,7 @@
 # runtime state, regenerated per host, not shipped
 /state/
 
-# forgejo data root and the bundled tailscaled's identity, see container/git/
+# forgejo data root and the bundled tailscaled's identity, see gitd/
 /git/
 /tailscale/
 

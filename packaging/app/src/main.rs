@@ -203,7 +203,7 @@ async fn handle_update(handle: AppHandle, id: String, ask: bool) {
             if ask {
                 let go = handle
                     .dialog()
-                    .message(format!("Phosphorus {} is available. Updating restarts this host's containers.", u.version))
+                    .message(format!("Phosphorus {} is available. Updating restarts phosphorus on this host.", u.version))
                     .title("Phosphorus Updates")
                     .buttons(MessageDialogButtons::OkCancelCustom("Update".into(), "Later".into()))
                     .blocking_show();
@@ -445,7 +445,7 @@ fn tray(app: &AppHandle) -> tauri::Result<()> {
             &PredefinedMenuItem::separator(app)?,
             &item("keys", "Edit Keys…")?,
             &PredefinedMenuItem::separator(app)?,
-            &item("quit", "Quit (containers keep running)")?,
+            &item("quit", "Quit (phosphorus keeps running)")?,
         ],
     )?;
     let b = TrayIconBuilder::with_id("phosphorus").tooltip("Phosphorus").menu(&menu);

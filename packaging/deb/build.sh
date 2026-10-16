@@ -1,12 +1,12 @@
 #!/bin/sh
 # Linux package: the release and its binary under /usr/lib/phosphorus, the bundled tools
 # under /usr/libexec/phosphorus, the service's and update agent's units, the apt feed
-# Usage: packaging/deb/build.sh OUT.deb VER PAYLOAD ARCH (amd64|arm64) BIN TOOLS   Env: PHOSPHORUS_APT_KEY (binary keyring)
+# Usage: packaging/deb/build.sh OUT.deb VER PAYLOAD ARCH (amd64|arm64) BIN TOOLS (packaging/tools.sh linux)   Env: PHOSPHORUS_APT_KEY (binary keyring)
 set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
 OUT=${1:?usage: packaging/deb/build.sh OUT.deb VER PAYLOAD ARCH BIN TOOLS}
 VER=$2 PAYLOAD=$3 ARCH=${4:?ARCH amd64 or arm64} BIN=${5:?BIN the linux/ARCH phosphorus binary}
-TOOLS=${6:?TOOLS packaging/deb/tools.sh output}
+TOOLS=${6:?TOOLS packaging/tools.sh output}
 T=$(mktemp -d)
 trap 'rm -rf "$T"' EXIT
 chmod 755 "$T"

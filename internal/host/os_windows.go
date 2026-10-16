@@ -1,7 +1,6 @@
 package host
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -11,7 +10,8 @@ import (
 	"syscall"
 	"time"
 
-	"golang.org/x/term"
+	"golang.org/x/sys/windows/svc"
+	"golang.org/x/sys/windows/svc/mgr"
 )
 
 // no console flashed up when the app runs us
@@ -50,107 +50,8 @@ func spawnDetached(args []string, log *os.File) (func(), error) {
 	return func() { p.Wait() }, nil
 }
 
-func dockerHint() string { return "install Docker Desktop first" }
-
-func startDockerDesktop() error {
-	exe := os.Getenv("ProgramFiles") + `\Docker\Docker\Docker Desktop.exe`
-	if !fileExists(exe) {
-		return fail("Docker Desktop not installed")
-	}
-	say("starting Docker Desktop...")
-	c := exec.Command(exe)
-	return c.Start()
-}
-
-// the container's tailscaled on this machine's network, a native client
-// fighting it for the TUN interface
-func nativeTailscale() string {
-	if strings.Contains(output("sc", "query", "Tailscale"), "RUNNING") {
-		return "native Tailscale service running, colliding with phosphorus's own, stop it first (Stop-Service Tailscale) and quit the tray app"
-	}
-	return ""
-}
-
-func machineRAM() int64 {
-	n, _ := strconv.ParseInt(ps("(Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory"), 10, 64)
-	return n
-}
-
-func ramHint(int64) {}
-
-// wsl2 capping its vm at half the machine, so with no memory= of their own,
-// the whole machine; phosphorus on PATH for new shells
-func prepareOS(up bool) error {
-	const gib = 1 << 30
-	machine := machineRAM()
-	want := machine / gib
-	conf := filepath.Join(os.Getenv("USERPROFILE"), ".wslconfig")
-	b, _ := os.ReadFile(conf)
-	lines := []string{}
-	if len(b) > 0 {
-		lines = strings.Split(strings.ReplaceAll(strings.TrimRight(string(b), "\r\n"), "\r\n", "\n"), "\n")
-	}
-	set, reclaim := "", false
-	for _, l := range lines {
-		t := strings.ReplaceAll(strings.TrimSpace(l), " ", "")
-		if strings.HasPrefix(t, "memory=") {
-			set = strings.TrimSpace(l)
-		}
-		if strings.HasPrefix(t, "autoMemoryReclaim=") {
-			reclaim = true
-		}
-	}
-	restart := false
-	switch {
-	case set != "":
-		say("%s already sets '%s', the model sees that much of %dGB", conf, set, want)
-	case want < 1:
-		say("this machine has too little ram to hand docker any more")
-	default:
-		say("giving docker's wsl vm all %dGB this machine has", want)
-		add := []string{fmt.Sprintf("memory=%dGB", want)}
-		// the vm handing ram back to windows instead of holding its peak
-		if !reclaim {
-			add = append(add, "autoMemoryReclaim=gradual")
-		}
-		out, placed := []string{}, false
-		for _, l := range lines {
-			out = append(out, l)
-			if !placed && strings.TrimSpace(l) == "[wsl2]" {
-				out = append(out, add...)
-				placed = true
-			}
-		}
-		if !placed {
-			if len(out) > 0 {
-				out = append(out, "")
-			}
-			out = append(append(out, "[wsl2]"), add...)
-		}
-		if err := os.WriteFile(conf, []byte(strings.Join(out, "\r\n")+"\r\n"), 0o644); err == nil {
-			restart = true
-		}
-	}
-	// hyper-V backend: .wslconfig read by nothing
-	if k := dockerOut("info", "--format", "{{.KernelVersion}}"); k != "" && !strings.Contains(k, "WSL") {
-		say("docker here isn't on the wsl2 backend, set its memory in Docker Desktop > Settings > Resources instead")
-		restart = false
-	}
-	switch {
-	case restart && up:
-		say("it applies on the next 'wsl --shutdown', which stops phosphorus and every other wsl distro for a moment")
-	case restart && !term.IsTerminal(int(os.Stdin.Fd())):
-		say("it applies on the next reboot or 'wsl --shutdown'")
-	case restart:
-		say("restarting wsl so it takes effect...")
-		run("wsl", "--shutdown")
-		for i := 0; i < 60 && !dockerUp(); i++ {
-			time.Sleep(2 * time.Second)
-		}
-		if !dockerUp() {
-			return fail("docker never came back after wsl --shutdown, start Docker Desktop and run phos start again")
-		}
-	}
+// prepareOS phosphorus on PATH for new shells
+func prepareOS(bool) error {
 	bin := at("bin")
 	path := ps("[Environment]::GetEnvironmentVariable('Path', 'User')")
 	for _, p := range strings.Split(path, ";") {
@@ -172,6 +73,9 @@ func needSetup() string {
 	b, _ := os.ReadFile(sshConfig())
 	if !strings.Contains(string(b), sshInclude()) {
 		return "ssh to hosts by name"
+	}
+	if !svcInstalled() {
+		return "the phosphorus service"
 	}
 	return ""
 }
@@ -204,33 +108,176 @@ func setupOS() error {
 			return err
 		}
 	}
+	return createService()
+}
+
+// --- the phosphorus service, LocalSystem, startable by the account that set it up -------------
+
+const svcName = "phosphorus"
+
+// libexec the app's bundled tools, synced into the home with the release
+func libexec() string { return at("tools") }
+
+func logHint() string { return at("state", "phosphorus.log") }
+
+func svcInstalled() bool {
+	m, err := mgr.Connect()
+	if err != nil {
+		return quiet("sc", "query", svcName)
+	}
+	defer m.Disconnect()
+	s, err := m.OpenService(svcName)
+	if err != nil {
+		return false
+	}
+	s.Close()
+	return true
+}
+
+// createService installed once by the elevated setup, run with the home's
+// binary; its DACL letting signed-in users start and stop it
+func createService() error {
+	m, err := mgr.Connect()
+	if err != nil {
+		return fail("can't reach the service manager: %v", err)
+	}
+	defer m.Disconnect()
+	args := []string{"run", "--home", home}
+	if s, err := m.OpenService(svcName); err == nil {
+		c, _ := s.Config()
+		c.BinaryPathName = syscall.EscapeArg(binPath("phosphorus")) + " " + strings.Join(quoteAll(args), " ")
+		c.StartType = mgr.StartAutomatic
+		s.UpdateConfig(c)
+		s.Close()
+	} else {
+		say("installing the phosphorus service...")
+		s, err = m.CreateService(svcName, binPath("phosphorus"), mgr.Config{
+			DisplayName: "Phosphorus host", StartType: mgr.StartAutomatic,
+			Description: "phosphorus run: the frontend, the tunnel and the model as its own processes",
+		}, args...)
+		if err != nil {
+			return fail("couldn't install the service: %v", err)
+		}
+		s.SetRecoveryActions([]mgr.RecoveryAction{{Type: mgr.ServiceRestart, Delay: 5 * time.Second}}, 0)
+		s.Close()
+	}
+	// SY and BA full, interactive and service users query, authenticated users start and stop
+	run("sc", "sdset", svcName, "D:(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWLOCRRC;;;IU)(A;;CCLCSWLOCRRC;;;SU)(A;;CCLCSWRPWPLOCRRC;;;AU)")
 	return nil
 }
 
-// sshDockerConfig no credential vault over ssh ("logon session does not exist"):
-// a throwaway config with a dummy auths entry, the real ~/.docker left alone
-func sshDockerConfig() {
-	if os.Getenv("SSH_CONNECTION") == "" || os.Getenv("DOCKER_CONFIG") != "" {
-		return
+func quoteAll(a []string) []string {
+	out := make([]string, len(a))
+	for i, x := range a {
+		out[i] = syscall.EscapeArg(x)
 	}
-	real := filepath.Join(os.Getenv("USERPROFILE"), ".docker")
-	cfg := filepath.Join(os.TempDir(), "phosphorus-docker")
-	os.MkdirAll(cfg, 0o755)
-	ctx := "desktop-linux"
-	var c struct {
-		CurrentContext string `json:"currentContext"`
-	}
-	if b, err := os.ReadFile(filepath.Join(real, "config.json")); err == nil && json.Unmarshal(b, &c) == nil && c.CurrentContext != "" {
-		ctx = c.CurrentContext
-	}
-	if fileExists(filepath.Join(real, "contexts")) {
-		ps("Copy-Item " + psq(filepath.Join(real, "contexts")) + " " + psq(cfg) + " -Recurse -Force")
-	}
-	b, _ := json.Marshal(map[string]any{
-		"auths":               map[string]any{"phosphorus.invalid": map[string]any{}},
-		"currentContext":      ctx,
-		"cliPluginsExtraDirs": []string{filepath.Join(os.Getenv("ProgramFiles"), `Docker\Docker\resources\cli-plugins`), filepath.Join(real, "cli-plugins")},
-	})
-	os.WriteFile(filepath.Join(cfg, "config.json"), b, 0o644)
-	os.Setenv("DOCKER_CONFIG", cfg)
+	return out
 }
+
+func svcInstall() error {
+	if svcInstalled() {
+		return nil
+	}
+	if !isAdmin() {
+		return fail("the phosphorus service isn't installed yet: phos start (it asks for admin once)")
+	}
+	return createService()
+}
+
+func svcState() svc.State {
+	m, err := mgr.Connect()
+	if err != nil {
+		return 0
+	}
+	defer m.Disconnect()
+	s, err := m.OpenService(svcName)
+	if err != nil {
+		return 0
+	}
+	defer s.Close()
+	st, err := s.Query()
+	if err != nil {
+		return 0
+	}
+	return st.State
+}
+
+func svcActive() bool { return svcState() == svc.Running }
+
+func svcSince() string {
+	out := output("sc", "queryex", svcName)
+	for _, l := range strings.Split(out, "\n") {
+		if k, v, ok := strings.Cut(l, ":"); ok && strings.TrimSpace(k) == "PID" {
+			return strings.TrimSpace(v)
+		}
+	}
+	return ""
+}
+
+func svcStart() error {
+	quiet("sc", "config", svcName, "start=", "auto")
+	if err := run("sc", "start", svcName); err != nil && !svcActive() {
+		return err
+	}
+	return nil
+}
+
+// svcStop kept off through reboots
+func svcStop() error {
+	quiet("sc", "config", svcName, "start=", "demand")
+	quiet("sc", "stop", svcName)
+	for i := 0; i < 150 && svcState() != svc.Stopped; i++ {
+		time.Sleep(time.Second)
+	}
+	return nil
+}
+
+func svcRestart(noBlock bool) error {
+	if noBlock {
+		// the stop kills this process's parent, so a detached one finishes the job
+		c := exec.Command("cmd", "/c", "sc stop "+svcName+" & timeout /t 10 /nobreak >nul & sc start "+svcName)
+		hide(c)
+		return c.Start()
+	}
+	svcStop()
+	return svcStart()
+}
+
+// --- tailscale: the Tailscale app's own node ---------------------------------------------
+
+func tailscaleDirs() []string {
+	return []string{filepath.Join(os.Getenv("ProgramFiles"), "Tailscale")}
+}
+
+func tailscaleCLI() string { return filepath.Join(tailscaleDirs()[0], "tailscale.exe") }
+
+func tailscaleReady() error {
+	if !fileExists(tailscaleCLI()) {
+		return fail("no Tailscale here: install Tailscale for Windows (tailscale.com/download), then phos start")
+	}
+	return tailscaleLogin()
+}
+
+func tailscaleStart() error { return nil }
+func tailscaleStop()        {}
+
+func carryTailnet() (bool, error) { return false, nil }
+func identityCarried() bool       { return true }
+
+func startDocker() bool {
+	exe := os.Getenv("ProgramFiles") + `\Docker\Docker\Docker Desktop.exe`
+	if !fileExists(exe) {
+		return false
+	}
+	return exec.Command(exe).Start() == nil
+}
+
+// --- no distro packages, no git host ------------------------------------------------------
+
+func missingDeps() []string     { return nil }
+func aptInstall([]string) error { return nil }
+func deferRebuild() error       { return nil }
+func gitEnv() map[string]string { return nil }
+func ensureGitUser() error      { return nil }
+func gitUp() error              { return nil }
+func gitDown()                  {}

@@ -1,5 +1,5 @@
-// phosphorus: one binary for every role, the container's (serve | model | elector |
-// cli | ssh-relay) and the host's (install, start, stop, keys and the rest)
+// phosphorus: one binary for every role, run's children (serve | model | elector |
+// cli) and the host's (install, start, stop, keys and the rest)
 package main
 
 import (

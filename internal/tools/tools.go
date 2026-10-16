@@ -5,6 +5,7 @@ package tools
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"compress/gzip"
 	"fmt"
 	"io"
@@ -62,12 +63,43 @@ func OpencodeRunFile() string { return filepath.Join(OpencodeHome(), "run.json")
 // OpencodeStateFile phosphorus-model's answer
 func OpencodeStateFile() string { return filepath.Join(OpencodeHome(), "state.json") }
 
+// llamaKind upstream's build for this OS: Metal on macOS, cuda when asked for
+// on x64 Linux and Windows, else the cpu one
 func llamaKind(gpu bool) string {
 	a := map[string]string{"amd64": "x64", "arm64": "arm64"}[runtime.GOARCH]
+	switch runtime.GOOS {
+	case "darwin":
+		return "macos-" + a
+	case "windows":
+		if gpu && a == "x64" {
+			return "win-cuda-12.4-x64"
+		}
+		return "win-cpu-" + a
+	}
 	if gpu && a == "x64" {
 		return "cuda-12.8-x64"
 	}
 	return a
+}
+
+func exeName(n string) string {
+	if runtime.GOOS == "windows" {
+		return n + ".exe"
+	}
+	return n
+}
+
+// LlamaServer the llama-server binary of that build
+func LlamaServer(gpu bool) string { return filepath.Join(LlamaDir(gpu), exeName("llama-server")) }
+
+// HasCuda the cuda build fetched, its backend library in place
+func HasCuda() bool {
+	lib := "libggml-cuda.so"
+	if runtime.GOOS == "windows" {
+		lib = "ggml-cuda.dll"
+	}
+	_, err := os.Stat(filepath.Join(LlamaDir(true), lib))
+	return err == nil
 }
 
 // LlamaDir llama-server and its libs, cuda's build when gpu and there is one
@@ -80,7 +112,7 @@ func OpencodeBin() string {
 	if b := os.Getenv("OPENCODE_BIN"); b != "" {
 		return b
 	}
-	return filepath.Join(root, "opencode-"+OpencodeTag, "opencode")
+	return filepath.Join(root, "opencode-"+OpencodeTag, exeName("opencode"))
 }
 
 // Ready a tool's folder fully unpacked
@@ -107,6 +139,16 @@ type fetch struct {
 func llamaFetch(gpu bool) fetch {
 	base := "https://github.com/ggml-org/llama.cpp/releases/download/" + LlamaTag
 	k := llamaKind(gpu)
+	switch runtime.GOOS {
+	case "darwin":
+		return fetch{LlamaDir(gpu), []string{fmt.Sprintf("%s/llama-%s-bin-%s.tar.gz", base, LlamaTag, k)}, 1}
+	case "windows":
+		urls := []string{fmt.Sprintf("%s/llama-%s-bin-%s.zip", base, LlamaTag, k)}
+		if strings.Contains(k, "cuda") {
+			urls = append(urls, fmt.Sprintf("%s/cudart-llama-bin-%s.zip", base, k))
+		}
+		return fetch{LlamaDir(gpu), urls, 0}
+	}
 	urls := []string{fmt.Sprintf("%s/llama-%s-bin-ubuntu-%s.tar.gz", base, LlamaTag, k)}
 	if strings.HasPrefix(k, "cuda") {
 		urls = append(urls, fmt.Sprintf("%s/cudart-llama-%s-bin-ubuntu-%s.tar.gz", base, LlamaTag, k))
@@ -115,8 +157,16 @@ func llamaFetch(gpu bool) fetch {
 }
 
 func opencodeFetch() fetch {
-	a := map[string]string{"amd64": "x64-baseline", "arm64": "arm64"}[runtime.GOARCH]
-	u := fmt.Sprintf("https://github.com/anomalyco/opencode/releases/download/%s/opencode-linux-%s.tar.gz", OpencodeTag, a)
+	base := "https://github.com/anomalyco/opencode/releases/download/" + OpencodeTag
+	var u string
+	switch runtime.GOOS {
+	case "darwin":
+		u = fmt.Sprintf("%s/opencode-darwin-%s.zip", base, map[string]string{"amd64": "x64", "arm64": "arm64"}[runtime.GOARCH])
+	case "windows":
+		u = base + "/opencode-windows-x64-baseline.zip"
+	default:
+		u = fmt.Sprintf("%s/opencode-linux-%s.tar.gz", base, map[string]string{"amd64": "x64-baseline", "arm64": "arm64"}[runtime.GOARCH])
+	}
 	return fetch{filepath.Dir(OpencodeBin()), []string{u}, 0}
 }
 
@@ -230,6 +280,9 @@ func install(f fetch) error {
 }
 
 func unpack(u, dir string, strip int) error {
+	if strings.HasSuffix(u, ".zip") {
+		return unzip(u, dir, strip)
+	}
 	res, err := client.Get(u)
 	if err != nil {
 		return err
@@ -286,4 +339,64 @@ func unpack(u, dir string, strip int) error {
 			}
 		}
 	}
+}
+
+// unzip a zip release into dir, downloaded whole first for its directory
+func unzip(u, dir string, strip int) error {
+	res, err := client.Get(u)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 200 {
+		return fmt.Errorf("%s: %s", filepath.Base(u), res.Status)
+	}
+	tmp, err := os.CreateTemp(dir, ".zip-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+	defer tmp.Close()
+	n, err := io.Copy(tmp, res.Body)
+	if err != nil {
+		return err
+	}
+	zr, err := zip.NewReader(tmp, n)
+	if err != nil {
+		return err
+	}
+	for _, f := range zr.File {
+		parts := strings.Split(strings.TrimPrefix(filepath.ToSlash(f.Name), "./"), "/")
+		if len(parts) <= strip {
+			continue
+		}
+		rel := filepath.Clean(filepath.Join(parts[strip:]...))
+		if rel == "." || strings.HasPrefix(rel, "..") || filepath.IsAbs(rel) {
+			continue
+		}
+		p := filepath.Join(dir, rel)
+		if f.FileInfo().IsDir() {
+			os.MkdirAll(p, 0o755)
+			continue
+		}
+		os.MkdirAll(filepath.Dir(p), 0o755)
+		mode := os.FileMode(0o644)
+		if f.Mode()&0o111 != 0 || strings.HasSuffix(rel, ".exe") {
+			mode = 0o755
+		}
+		rc, err := f.Open()
+		if err != nil {
+			return err
+		}
+		out, err := os.OpenFile(p, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, mode)
+		if err == nil {
+			_, err = io.Copy(out, rc)
+			out.Close()
+		}
+		rc.Close()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }

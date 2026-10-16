@@ -8,15 +8,13 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"os/signal"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/pmghartman/phosphorus/internal/envfile"
+	"github.com/pmghartman/phosphorus/internal/procs"
 )
 
 // child one process phosphorus run keeps, labelled by PHOSPHORUS_ROLE
@@ -39,8 +37,7 @@ func (c *child) start() error {
 	cmd := exec.Command(c.argv[0], c.argv[1:]...)
 	cmd.Env = append(append([]string{}, c.env...), "PHOSPHORUS_ROLE="+c.role)
 	cmd.Dir = home
-	// its own group, killed whole on the way out; gone with run if run dies
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pdeathsig: syscall.SIGTERM}
+	childAttr(cmd)
 	var out io.Writer = os.Stdout
 	if c.prefix {
 		out = prefixed(c.role)
@@ -53,6 +50,7 @@ func (c *child) start() error {
 	c.mu.Lock()
 	c.cmd, c.done, c.started = cmd, done, time.Now()
 	c.mu.Unlock()
+	noteRole(cmd.Process.Pid, c.role)
 	go func() { cmd.Wait(); close(done) }()
 	return nil
 }
@@ -70,14 +68,33 @@ func (c *child) stop() {
 		return
 	default:
 	}
-	cmd.Process.Signal(syscall.SIGTERM)
-	select {
-	case <-done:
-	case <-time.After(c.grace):
-		say("%s ignored TERM for %s, killing it", c.role, c.grace)
+	if terminate(cmd) {
+		select {
+		case <-done:
+		case <-time.After(c.grace):
+			say("%s ignored TERM for %s, killing it", c.role, c.grace)
+		}
 	}
-	syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+	killTree(cmd)
 	<-done
+}
+
+var (
+	rolesMu sync.Mutex
+	roles   = map[int]string{}
+)
+
+// noteRole each child's pid for phos ps and the status tab on any OS
+func noteRole(pid int, role string) {
+	rolesMu.Lock()
+	defer rolesMu.Unlock()
+	for p, r := range roles {
+		if r == role {
+			delete(roles, p)
+		}
+	}
+	roles[pid] = role
+	procs.WriteRoles(roles)
 }
 
 func prefixed(role string) io.Writer {
@@ -102,7 +119,7 @@ func tailnetSelf() (string, error) {
 	}
 	read := func() (status, error) {
 		var st status
-		out, err := exec.Command("tailscale", "status", "--json").Output()
+		out, err := exec.Command(tailscaleCLI(), "status", "--json").Output()
 		if err == nil {
 			err = json.Unmarshal(out, &st)
 		}
@@ -121,12 +138,12 @@ func tailnetSelf() (string, error) {
 		if key == "" {
 			return "", fail("tailscale is %s and there's no TS_AUTHKEY in .env to log in with", strings.ToLower(st.BackendState))
 		}
-		a := []string{"up", "--authkey=" + key, "--accept-dns=true"}
+		a := append([]string{"up", "--authkey=" + key}, tailscaleUpFlags()...)
 		if h := os.Getenv("TS_HOSTNAME"); h != "" {
 			a = append(a, "--hostname="+h)
 		}
 		say("logging tailscale in...")
-		if err := run("tailscale", a...); err != nil {
+		if err := run(tailscaleCLI(), a...); err != nil {
 			return "", fail("couldn't join the tailnet, check TS_AUTHKEY in .env (it must be reusable and unexpired)")
 		}
 		if st, err = read(); err != nil {
@@ -173,11 +190,15 @@ func waitHealthz() {
 	}
 }
 
-// runHost systemd's main process: tailscale checked, the frontend, the tunnel,
-// the model and git daemons as labelled children, all down with a core one
-func runHost() error {
+// runHost the service's main process: tailscale checked, the frontend, the
+// tunnel, the model and git daemons as labelled children, all down with a core one
+func runHost() error { return serve(runMain) }
+
+func runMain(stop <-chan struct{}) error {
 	tag = "run"
-	os.MkdirAll(runDir, 0o755)
+	os.MkdirAll(runtimeDir(), 0o755)
+	logToFile()
+	noteRole(os.Getpid(), "run")
 	env := runEnv()
 	for _, kv := range env {
 		k, v, _ := strings.Cut(kv, "=")
@@ -204,7 +225,7 @@ func runHost() error {
 
 	frontend := &child{role: "frontend", core: true, grace: 15 * time.Second, argv: []string{bin, "serve"}, env: env}
 	tunnel := &child{role: "cloudflared", core: true, grace: 10 * time.Second, prefix: true, env: env,
-		argv: []string{filepath.Join(libexec, "cloudflared"), "tunnel", "--no-autoupdate", "--loglevel", "warn", "run"}}
+		argv: []string{tool("cloudflared"), "tunnel", "--no-autoupdate", "--loglevel", "warn", "run"}}
 	kids := []*child{frontend}
 	extra := []*child{}
 	if isModelHost() {
@@ -212,7 +233,7 @@ func runHost() error {
 	}
 	if isGitHost() {
 		extra = append(extra, &child{role: "git", grace: 60 * time.Second, env: env,
-			argv: []string{"/bin/bash", at("container", "git", "git-daemon.sh")}})
+			argv: []string{"/bin/bash", at("gitd", "git-daemon.sh")}})
 	}
 
 	if err := frontend.start(); err != nil {
@@ -238,8 +259,6 @@ func runHost() error {
 	}
 	say("all up: %s", strings.Join(names, " "))
 
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)
 	exited := make(chan *child, len(all))
 	var watch func(c *child)
 	watch = func(c *child) {
@@ -265,8 +284,8 @@ func runHost() error {
 	backoff := map[string]time.Duration{}
 	for {
 		select {
-		case s := <-sig:
-			say("%s, shutting down", s)
+		case <-stop:
+			say("shutting down")
 			shutdown()
 			return nil
 		case c := <-exited:

@@ -529,20 +529,6 @@ func writeModel(vals map[string]string) string {
 	return writeDoc(iniFile, d)
 }
 
-// the vm short of the machine the run script hands it whole, a tenth of slack
-func vmGap(m J) bool {
-	machine, total := num(m["machine"]), num(m["total"])
-	return machine > 0 && total < machine*0.9
-}
-
-// wsl's cap written by phosphorus start, colima's set when its vm starts
-func vmFix() string {
-	if strings.ToLower(str(get(ui.state, "self", "platform"))) == "windows" {
-		return "phosphorus start gives it all of it"
-	}
-	return "colima start --memory gives it all of it"
-}
-
 var roles = []string{"chimp", "orangutan"}
 
 func modelForm() *form {

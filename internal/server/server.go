@@ -16,6 +16,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -96,51 +97,18 @@ func selfInfo() map[string]any {
 
 // --- host platform ---------------------------------------------------------
 
-func dockerOut(args ...string) string {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	out, err := exec.CommandContext(ctx, "docker", args...).Output()
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(out))
-}
-
 func detectPlatform() string {
-	if util.Native {
-		return "linux"
-	}
-	src := dockerOut("inspect", "phosphorus", "--format", `{{range .Mounts}}{{if eq .Destination "/repo"}}{{.Source}}{{end}}{{end}}`)
-	if regexp.MustCompile(`^[A-Za-z]:`).MatchString(src) || regexp.MustCompile(`^/run/desktop/mnt/host/[a-z]/`).MatchString(src) {
-		return "windows"
-	}
-	if strings.HasPrefix(src, "/Users/") {
+	switch runtime.GOOS {
+	case "darwin":
 		return "macOS"
-	}
-	info := dockerOut("info", "--format", "{{.OperatingSystem}}\t{{.KernelVersion}}")
-	if info == "" {
-		return ""
-	}
-	parts := strings.SplitN(info, "\t", 2)
-	if len(parts) == 2 && regexp.MustCompile(`(?i)WSL`).MatchString(parts[1]) {
+	case "windows":
 		return "windows"
-	}
-	if regexp.MustCompile(`(?i)OrbStack|Docker Desktop`).MatchString(parts[0]) {
-		return "macOS"
 	}
 	return "linux"
 }
 
 func recordPlatform() {
 	found := detectPlatform()
-	if found == "" {
-		keep := ""
-		if p := getPlatform(); p != "" {
-			keep = " keeping " + p
-		}
-		log.Printf("[frontend] can't see the host's OS; is the docker socket mounted?%s", keep)
-		return
-	}
 	platformMu.Lock()
 	platform = found
 	platformMu.Unlock()

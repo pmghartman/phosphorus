@@ -4,10 +4,9 @@ import (
 	"github.com/pmghartman/phosphorus/internal/elector"
 	"github.com/pmghartman/phosphorus/internal/modeld"
 	"github.com/pmghartman/phosphorus/internal/server"
-	"github.com/pmghartman/phosphorus/internal/sshrelay"
 )
 
-// role the container's, Linux only
+// role run's children: the frontend, the model, the git elector
 func role(cmd string, args []string) (int, bool) {
 	switch cmd {
 	case "serve":
@@ -16,8 +15,6 @@ func role(cmd string, args []string) (int, bool) {
 		return modeld.Main(), true
 	case "elector":
 		return elector.Main(), true
-	case "ssh-relay":
-		return sshrelay.ProxyMain(args), true
 	}
 	return 0, false
 }

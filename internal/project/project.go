@@ -3,7 +3,6 @@
 package project
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -15,7 +14,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -31,40 +29,33 @@ import (
 )
 
 var (
-	selfHost     = os.Getenv("SELF_HOST")
-	stateDir     = util.Env("STATE_DIR", "/state")
-	runsDir      = filepath.Join(stateDir, "project-runs")
-	homeFS       = util.Env("HOME_FS", stateDir)
-	sandboxImage = util.Env("PHOSPHORUS_SANDBOX_IMAGE", "phosphorus:latest")
-	idRe         = regexp.MustCompile(`^[a-z0-9]{12}$`)
-	phases       = []string{"plan", "execute", "test", "refine"}
-	retryMS      = []int64{30000, 120000, 600000}
-	imageDirs    = []string{"/usr", "/bin", "/sbin", "/lib", "/lib32", "/lib64", "/libx32", "/opt"}
-	fenced       = []string{"100.64.0.0/10", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16"}
+	selfHost  = os.Getenv("SELF_HOST")
+	stateDir  = util.Env("STATE_DIR", "/state")
+	runsDir   = filepath.Join(stateDir, "project-runs")
+	idRe      = regexp.MustCompile(`^[a-z0-9]{12}$`)
+	phases    = []string{"plan", "execute", "test", "refine"}
+	retryMS   = []int64{30000, 120000, 600000}
+	imageDirs = []string{"/usr", "/bin", "/sbin", "/lib", "/lib32", "/lib64", "/libx32", "/opt"}
+	fenced    = []string{"100.64.0.0/10", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16"}
 )
 
 const (
-	sandboxPrefix = "phosphorus-sandbox-"
-	defaultHours  = 72
-	maxHours      = 14 * 24
-	maxRunning    = 1
-	eventsMax     = 500
-	notesMax      = 50
-	tasksMax      = 60
-	textMax       = 4000
-	briefMax      = 20000
-	outMax        = 16000
-	execDefaultS  = 300
-	execMaxS      = 3600
-	roundGapMS    = 5000
-	modelPollMS   = 1000
-	roundMS       = 4 * 60 * 60 * 1000
-	freshAfter    = 3
-	failAfter     = 12
-	netName       = "phosphorus-sandbox"
-	bridge        = "phosphorus-sandbox0"
-	bashDefaultMS = 2 * 60 * 1000
-	bashMaxMS     = 10 * 60 * 1000
+	defaultHours = 72
+	maxHours     = 14 * 24
+	maxRunning   = 1
+	eventsMax    = 500
+	notesMax     = 50
+	tasksMax     = 60
+	textMax      = 4000
+	briefMax     = 20000
+	outMax       = 16000
+	execDefaultS = 300
+	execMaxS     = 3600
+	roundGapMS   = 5000
+	modelPollMS  = 1000
+	roundMS      = 4 * 60 * 60 * 1000
+	freshAfter   = 3
+	failAfter    = 12
 )
 
 // WorkRoot every project's workspace
@@ -197,206 +188,15 @@ func event(p P, kind, text string, extra map[string]any) {
 
 // --- the sandbox --------------------------------------------------------------
 
-type dout struct {
-	code     int
-	out, err string
-	killed   bool
-}
+// errSoon every sandbox call while they are rebuilt
+var errSoon = errors.New("project sandboxes are coming soon")
 
-func docker(args []string, timeout time.Duration) dout {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "docker", args...)
-	var o, e bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &o, &e
-	err := cmd.Run()
-	r := dout{out: o.String(), err: e.String()}
-	if err != nil {
-		r.code = -1
-		if ee, ok := err.(*exec.ExitError); ok && ee.ExitCode() >= 0 {
-			r.code = ee.ExitCode()
-		}
-		r.killed = ctx.Err() != nil
-	}
-	return r
-}
+func sandboxUp(P) error { return errSoon }
 
-var (
-	homeSrcMu  sync.Mutex
-	homeSource string
-)
-
-func hostWorkDir(id string) (string, error) {
-	homeSrcMu.Lock()
-	if homeSource == "" {
-		r := docker([]string{"inspect", "phosphorus", "--format", fmt.Sprintf(`{{range .Mounts}}{{if eq .Destination "%s"}}{{.Source}}{{end}}{{end}}`, homeFS)}, 10*time.Second)
-		homeSource = strings.TrimSpace(r.out)
-	}
-	src := homeSource
-	homeSrcMu.Unlock()
-	if src == "" {
-		return "", fmt.Errorf("can't find where %s lives on the docker host", homeFS)
-	}
-	sep := "/"
-	if regexp.MustCompile(`^[A-Za-z]:\\`).MatchString(src) {
-		sep = `\`
-	}
-	rel, _ := filepath.Rel(homeFS, WorkRoot())
-	parts := append([]string{strings.TrimRight(src, `\/`)}, strings.Split(rel, string(filepath.Separator))...)
-	mu.Lock()
-	parts = append(parts, dirOfLocked(id))
-	mu.Unlock()
-	return strings.Join(parts, sep), nil
-}
-
-func sandboxName(id string) string { return sandboxPrefix + id }
-
-func ok(bin string, args ...string) bool {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	return exec.CommandContext(ctx, bin, args...).Run() == nil
-}
-
-func fence() error {
-	if docker([]string{"network", "inspect", netName}, 10*time.Second).code != 0 {
-		made := docker([]string{"network", "create", "--driver", "bridge", "-o", "com.docker.network.bridge.name=" + bridge, netName}, 30*time.Second)
-		if made.code != 0 && !strings.Contains(made.err, "already exists") {
-			return fmt.Errorf("no sandbox network: %s", clip(strings.TrimSpace(made.err), 300))
-		}
-	}
-	bin := ""
-	for _, b := range []string{"iptables", "iptables-legacy"} {
-		if ok(b, "-n", "-L", "DOCKER-USER") {
-			bin = b
-			break
-		}
-	}
-	if bin == "" {
-		return errors.New("can't fence the sandbox off the mesh: no DOCKER-USER chain in iptables")
-	}
-	rules := [][]string{}
-	for _, d := range fenced {
-		rules = append(rules, []string{"DOCKER-USER", "-i", bridge, "-d", d, "-j", "DROP"})
-	}
-	rules = append(rules, []string{"INPUT", "-i", bridge, "-j", "DROP"})
-	for _, r := range rules {
-		if ok(bin, append([]string{"-C"}, r...)...) {
-			continue
-		}
-		if !ok(bin, append([]string{"-I"}, r...)...) {
-			return fmt.Errorf("can't fence the sandbox off the mesh: %s -I %s failed", bin, r[0])
-		}
-	}
-	return nil
-}
-
-func totalMem() float64 {
-	b, _ := os.ReadFile("/proc/meminfo")
-	m := regexp.MustCompile(`(?m)^MemTotal:\s+(\d+)`).FindSubmatch(b)
-	if m == nil {
-		return 0
-	}
-	var n float64
-	fmt.Sscan(string(m[1]), &n)
-	return n * 1024
-}
-
-func sandboxUp(p P) error {
-	id := p.s("id")
-	name := sandboxName(id)
-	src, err := hostWorkDir(id)
-	if err != nil {
-		return err
-	}
-	st := docker([]string{"inspect", "--format", "{{.State.Running}} {{range .Mounts}}{{.Source}}{{end}}", name}, 10*time.Second)
-	if strings.TrimSpace(st.out) == "true "+src {
-		return nil
-	}
-	docker([]string{"rm", "-f", name}, 20*time.Second)
-	if err := fence(); err != nil {
-		return err
-	}
-	dir := workDir(id)
-	os.MkdirAll(dir, 0o755)
-	cpus := runtime.NumCPU() - 1
-	if cpus < 1 {
-		cpus = 1
-	}
-	mem := math.Max(1<<30, math.Floor(totalMem()/4))
-	r := docker([]string{"run", "-d", "--rm", "--name", name, "--hostname", "sandbox-" + id,
-		"--label", "org.phosphorus.sandbox=" + id, "--network", netName,
-		"--mount", fmt.Sprintf("type=bind,source=%s,target=%s", src, dir), "-w", dir,
-		"--cpus", fmt.Sprint(cpus), "--memory", fmt.Sprintf("%.0f", mem), "--pids-limit", "4096", "--security-opt", "no-new-privileges",
-		"-e", "HOME=/root", "--entrypoint", "sleep", sandboxImage, "infinity"}, 120*time.Second)
-	if r.code != 0 {
-		e := r.err
-		if e == "" {
-			e = r.out
-		}
-		return fmt.Errorf("the sandbox wouldn't start: %s", clip(strings.TrimSpace(e), 400))
-	}
-	event(p, "sandbox", "sandbox started", nil)
-	go docker([]string{"exec", "-d", name, "sh", "-c", harness.Prewarm}, 30*time.Second)
-	return nil
-}
-
-func sandboxDown(id string) { docker([]string{"rm", "-f", sandboxName(id)}, 30*time.Second) }
+func sandboxDown(string) {}
 
 // Exec a command in the project's sandbox
-func Exec(id, command string, timeoutS any, background bool) (any, error) {
-	mu.Lock()
-	p := projects[id]
-	running := p != nil && p.s("status") == "running"
-	mu.Unlock()
-	if !running {
-		return nil, errors.New("the project isn't running")
-	}
-	if strings.TrimSpace(command) == "" {
-		return nil, errors.New("no command")
-	}
-	if err := sandboxUp(p); err != nil {
-		return nil, err
-	}
-	t := int(files.JSNumber(timeoutS))
-	if t == 0 {
-		t = execDefaultS
-	}
-	if t < 1 {
-		t = 1
-	}
-	if t > execMaxS {
-		t = execMaxS
-	}
-	mu.Lock()
-	p["execs"] = p.f("execs") + 1
-	eventLocked(p, "exec", clip(strings.Split(command, "\n")[0], 200), nil)
-	mu.Unlock()
-	dir := workDir(id)
-	if background {
-		r := docker([]string{"exec", "-d", "-w", dir, sandboxName(id), "bash", "-lc", command}, 30*time.Second)
-		if r.code != 0 {
-			e := strings.TrimSpace(r.err)
-			if e == "" {
-				e = fmt.Sprintf("docker exec exited %d", r.code)
-			}
-			return map[string]any{"error": e}, nil
-		}
-		return map[string]any{"started": true, "note": "running in the background, its output only where you redirect it"}, nil
-	}
-	r := docker([]string{"exec", "-w", dir, sandboxName(id), "timeout", "-k", "5", fmt.Sprint(t), "bash", "-lc", command}, time.Duration(t+30)*time.Second)
-	tail := func(s string) string {
-		u := []rune(s)
-		if len(u) > outMax {
-			return fmt.Sprintf("[first %d chars cut]\n%s", len(u)-outMax, string(u[len(u)-outMax:]))
-		}
-		return s
-	}
-	out := map[string]any{"exit": r.code, "stdout": tail(r.out), "stderr": tail(r.err)}
-	if r.code == 124 {
-		out["timedOut"] = fmt.Sprintf("after %ds", t)
-	}
-	return out, nil
-}
+func Exec(string, string, any, bool) (any, error) { return nil, errSoon }
 
 // --- opencode's own tools -----------------------------------------------------
 
@@ -493,41 +293,7 @@ func linksHeld(id, from string) error {
 
 var patchRe = regexp.MustCompile(`(?m)^\*\*\* (?:(?:Add|Update|Delete) File|Move to): (.+)$`)
 
-func shell(p P, a map[string]any) (any, error) {
-	cmd := util.Str(a["command"])
-	if strings.TrimSpace(cmd) == "" {
-		return nil, errors.New("no command")
-	}
-	if err := sandboxUp(p); err != nil {
-		return nil, err
-	}
-	ms := files.JSNumber(a["timeout"])
-	if ms == 0 || math.IsNaN(ms) {
-		ms = bashDefaultMS
-	}
-	ms = math.Min(bashMaxMS, math.Max(1000, ms))
-	id := p.s("id")
-	dir := workDir(id)
-	wd := dir
-	if w := util.Str(a["workdir"]); w != "" {
-		if filepath.IsAbs(w) {
-			wd = filepath.Clean(w)
-		} else {
-			wd = filepath.Join(dir, w)
-		}
-	}
-	mu.Lock()
-	p["execs"] = p.f("execs") + 1
-	eventLocked(p, "exec", clip(strings.Split(cmd, "\n")[0], 200), nil)
-	mu.Unlock()
-	return map[string]any{
-		"set": map[string]any{
-			"command": fmt.Sprintf("docker exec -w %s %s timeout -k 5 %d bash -lc %s", quote(wd), quote(sandboxName(id)), int(math.Ceil(ms/1000)), quote(cmd)),
-			"timeout": ms + 15000,
-		},
-		"unset": []string{"workdir"},
-	}, nil
-}
+func shell(P, map[string]any) (any, error) { return nil, errSoon }
 
 var fileTools = map[string]bool{"read": false, "write": true, "edit": true, "multiedit": true}
 
@@ -1086,7 +852,7 @@ const Enabled = false
 
 // Soon the answer to a start or restart while shelved
 func Soon() (int, any) {
-	return 503, map[string]any{"error": "projects are coming soon, their sandboxes are being rebuilt without docker", "comingSoon": true}
+	return 503, map[string]any{"error": "projects are coming soon, their sandboxes are being rebuilt", "comingSoon": true}
 }
 
 // Check a new project's body, 0 when it will do
@@ -1329,22 +1095,6 @@ func Init() {
 		p := p
 		time.AfterFunc(10*time.Second, func() { run(p) })
 	}
-	go func() {
-		r := docker([]string{"ps", "-a", "--filter", "label=org.phosphorus.sandbox", "--format", `{{.Label "org.phosphorus.sandbox"}}`}, 20*time.Second)
-		for _, id := range strings.Split(r.out, "\n") {
-			id = strings.TrimSpace(id)
-			if id == "" {
-				continue
-			}
-			mu.Lock()
-			p := projects[id]
-			running := p != nil && p.s("status") == "running"
-			mu.Unlock()
-			if !running {
-				sandboxDown(id)
-			}
-		}
-	}()
 }
 
 var _ = unicode.IsSpace

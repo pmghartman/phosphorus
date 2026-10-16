@@ -27,7 +27,7 @@ var (
 	selfHost    = os.Getenv("SELF_HOST")
 	stateDir    = util.Env("STATE_DIR", "/state")
 	chainFile   = filepath.Join(stateDir, "update-chain.json")
-	VersionFile = util.Env("VERSION_FILE", "/opt/phosphorus/VERSION")
+	VersionFile = util.Env("VERSION_FILE", "VERSION")
 	requestFile = filepath.Join(stateDir, "update-request.json")
 	agentFile   = filepath.Join(stateDir, "update-agent.json")
 	feedURL     = util.Env("PHOSPHORUS_FEED_URL", "https://github.com/pmghartman/phosphorus/releases/download/update/latest.json")
@@ -293,7 +293,7 @@ func callPeerUpdate(host string, note func(map[string]string)) result {
 		}
 		quietUntil = util.Now() + peerQuietMS
 		if swapDeadline != 0 && util.Now() > swapDeadline {
-			return result{error: "swap never landed, see that host's update log (journalctl -u phosphorus, or docker logs phosphorus-updater)"}
+			return result{error: "the restart never landed, see that host's phosphorus log"}
 		}
 		if status["state"] == "failed" {
 			e := util.Str(status["error"])
@@ -486,7 +486,7 @@ var briefRes = []struct {
 }{
 	{regexp.MustCompile(`agent|feed|apt`), "update failed"},
 	{regexp.MustCompile(`pull failed`), "pull failed"},
-	{regexp.MustCompile(`swap|phosphorus-updater`), "swap failed"},
+	{regexp.MustCompile(`restart never landed`), "restart failed"},
 	{regexp.MustCompile(`build failed`), "build failed"},
 	{regexp.MustCompile(`timed out|gave up`), "timed out"},
 }

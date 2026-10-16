@@ -563,9 +563,6 @@ func modelView() view {
 		if !truthy(m["ready"]) && str(m["why"]) != "" {
 			here = append(here, c("warn")(str(m["why"])))
 		}
-		if vmGap(m) {
-			here = append(here, c("warn")(fmt.Sprintf("docker's vm has %s of this machine's %s; %s", gb(num(m["total"])), gb(num(m["machine"])), vmFix())))
-		}
 	}
 	var picked J
 	if ui.sel[modelTab] < len(all) {
