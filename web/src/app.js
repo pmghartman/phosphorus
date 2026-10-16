@@ -445,18 +445,6 @@ const phosphorusHosts = () => meshTailnet.filter((d) => d.phosphorus).map((d) =>
 let hostSwitch = null;
 // grace for a late poll from the old host
 const HOST_SWITCH_MS = 4000;
-let hostNoteTimer = null;
-
-// beside the task bar's hosts, kind: pending, ok or error, the last two fading on their own
-function setHostNote(text, kind) {
-  clearTimeout(hostNoteTimer);
-  const note = document.querySelector('.dk-host-note');
-  if (!note) return;
-  note.textContent = text;
-  note.className = `dk-host-note ${kind}`;
-  note.hidden = false;
-  if (kind !== 'pending') hostNoteTimer = setTimeout(() => { note.hidden = true; }, kind === 'ok' ? 2500 : 6000);
-}
 
 // drawn at once as the new self, confirmed or undone by the state
 function redrawHost(host) {
@@ -470,13 +458,11 @@ async function switchHost(host) {
   if (!host || host === (hostSwitch?.to || selfHost)) return;
   const from = hostSwitch?.from || selfHost;
   hostSwitch = { to: host, from, at: Date.now() };
-  setHostNote(`switching to ${host}…`, 'pending');
   redrawHost(host);
   const r = await fetch(`/api/host?host=${encodeURIComponent(host)}`, { method: 'POST' }).catch(() => null);
   if (hostSwitch?.to !== host) return;
   if (!r || !r.ok) {
     hostSwitch = null;
-    setHostNote(`couldn't switch to ${host}: ${r ? (await r.text()).trim() : 'no answer'}`, 'error');
     redrawHost(from);
     return;
   }
@@ -494,12 +480,10 @@ function settleHost(served) {
   meshSig = '';
   if (served === sw.to) {
     hostSwitch = null;
-    setHostNote(`hosted by ${served}`, 'ok');
     return served;
   }
   if (Date.now() - sw.at < HOST_SWITCH_MS) return sw.to;
   hostSwitch = null;
-  setHostNote(`${sw.to} didn't take over, still on ${served}`, 'error');
   return served;
 }
 
@@ -3984,10 +3968,8 @@ function dkDesktop() {
   const wins = el('div', 'dk-wins');
   const tasks = el('div', 'dk-tasks');
   const hosts = el('span', 'dk-hosts');
-  const note = Object.assign(el('span', 'dk-host-note'), { hidden: true });
   const desk = el('div', 'dk-desk');
   const bar = dkBar(tasks, hosts, dkProfileTray());
-  hosts.after(note);
   bar.insertBefore(dkMeshTray(), dkTray);
   desk.append(dkArt(), icons, wins, bar);
   dkView.replaceChildren(desk);

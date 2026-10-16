@@ -460,10 +460,6 @@ body {
 .dk-chip.down { color: var(--offmesh); cursor: default; }
 .dk-chip.down:hover { background: none; color: var(--offmesh); }
 .dk-chip.down::before { background: var(--offmesh); }
-.dk-host-note { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 16rem; }
-.dk-host-note[hidden] { display: none; }
-.dk-host-note.ok { color: var(--online); }
-.dk-host-note.error { color: var(--offmesh); }
 .dk-clock { color: var(--fg); font-variant-numeric: tabular-nums; }
 .dk-off { padding: 0.2rem 0.6rem; background: none; border: 1px solid var(--offmesh); color: var(--offmesh); font: inherit; cursor: pointer; }
 .dk-off:hover { background: var(--offmesh); color: var(--bg); }
