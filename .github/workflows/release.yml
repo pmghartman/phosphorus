@@ -1,6 +1,6 @@
-# manual release: ghcr images (macOS and Windows hosts only, Linux hosts run natively),
-# then per checked OS a client-only and a host installer (.deb, .dmg, setup .exe) as
-# vVERSION, feeds on release `update`
+# manual release: per checked OS a client-only and a host installer (.deb, .dmg,
+# setup .exe) as vVERSION, feeds on release `update`, then only the two newest
+# releases and runs kept
 # app and apt feeds need TAURI_SIGNING_PRIVATE_KEY(_PASSWORD), APT_GPG_KEY, var TAURI_UPDATER_PUBKEY
 name: release
 
@@ -30,10 +30,7 @@ on:
 
 permissions:
   contents: write
-  packages: write
-
-env:
-  REGISTRY: ghcr.io/${{ github.repository_owner }}
+  actions: write
 
 jobs:
   version:
@@ -41,7 +38,6 @@ jobs:
     outputs:
       ver: ${{ steps.v.outputs.ver }}
       builds: ${{ steps.plan.outputs.builds }}
-      arches: ${{ steps.plan.outputs.arches }}
     steps:
       - uses: actions/checkout@v7
       # every run one past the highest vMAJOR.MINOR tag: minor, or major with .0
@@ -66,16 +62,13 @@ jobs:
         run: |
           on() { for v in "$@"; do [ "$v" = true ] && return 0; done; return 1; }
           on "$AMD64" "$ARM64" "$MAC" "$WIN" || { echo "check at least one OS" >&2; exit 1; }
-          builds=() arches=()
-          # image arches the docker hosts pull: macs on either, windows amd64
-          on "$MAC" "$WIN" && arches+=('{"arch":"amd64","runner":"ubuntu-24.04"}')
-          on "$MAC" && arches+=('{"arch":"arm64","runner":"ubuntu-24.04-arm"}')
+          builds=()
           [ "$AMD64" = true ] && builds+=('{"name":"linux-amd64","runner":"ubuntu-24.04","arch":"amd64","args":"--bundles deb"}')
           [ "$ARM64" = true ] && builds+=('{"name":"linux-arm64","runner":"ubuntu-24.04-arm","arch":"arm64","args":"--bundles deb"}')
           [ "$MAC" = true ] && builds+=('{"name":"macos-universal","runner":"macos-14","arch":"universal","args":"--target universal-apple-darwin --bundles app,dmg"}')
           [ "$WIN" = true ] && builds+=('{"name":"windows-x86_64","runner":"windows-2022","arch":"amd64","args":"--bundles nsis"}')
           j() { local IFS=,; echo "[$*]"; }
-          { echo "builds=$(j "${builds[@]}")"; echo "arches=$(j "${arches[@]}")"; } | tee -a "$GITHUB_OUTPUT"
+          echo "builds=$(j "${builds[@]}")" | tee -a "$GITHUB_OUTPUT"
 
   # vet and tests, gating the release
   check:
@@ -89,74 +82,8 @@ jobs:
         with:
           path: web/.vendor/cache
           key: web-vendor-${{ hashFiles('web/vendor.lock') }}
-      # the host side cross-built too: macOS and Windows ship it in the app
-      - run: go generate ./internal/web && go vet ./... && go test ./... && GOOS=darwin go vet ./cmd/... ./internal/host && GOOS=windows go vet ./cmd/... ./internal/host
-
-  # every image of one arch on its native runner in one bake, pushed by
-  # digest, joined into one tag per image by `manifests`
-  images:
-    needs: [version]
-    if: needs.version.outputs.arches != '[]'
-    strategy:
-      fail-fast: false
-      matrix:
-        include: ${{ fromJSON(needs.version.outputs.arches) }}
-    runs-on: ${{ matrix.runner }}
-    env:
-      VER: ${{ needs.version.outputs.ver }}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: docker/setup-buildx-action@v4
-      - uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ github.token }}
-      - id: bake
-        uses: docker/bake-action@v6
-        env:
-          ARCH: ${{ matrix.arch }}
-        with:
-          source: .
-          files: container/docker-bake.hcl
-      - name: digests
-        env:
-          META: ${{ steps.bake.outputs.metadata }}
-        run: |
-          for t in phosphorus model git; do
-            n=phosphorus; [ $t = phosphorus ] || n=phosphorus-$t
-            d=$(jq -r --arg t $t '.[$t]["containerimage.digest"]' <<<"$META")
-            mkdir -p d/$n && touch "d/$n/${d#sha256:}"
-          done
-      - uses: actions/upload-artifact@v7
-        with:
-          name: digests_${{ matrix.arch }}
-          path: d/
-
-  manifests:
-    needs: [version, images]
-    if: needs.version.outputs.arches != '[]'
-    runs-on: ubuntu-24.04
-    env:
-      VER: ${{ needs.version.outputs.ver }}
-    steps:
-      - uses: actions/download-artifact@v8
-        with:
-          path: d
-          pattern: digests_*
-          merge-multiple: true
-      - uses: docker/setup-buildx-action@v4
-      - uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ github.token }}
-      - name: tag
-        run: |
-          for n in phosphorus phosphorus-model phosphorus-git; do
-            img="$REGISTRY/$n"
-            docker buildx imagetools create -t "$img:$VER" $(cd "d/$n" && printf "$img@sha256:%s " *)
-          done
+      # every package cross-vetted too: macOS and Windows hosts run the same roles
+      - run: go generate ./internal/web && go vet ./... && go test ./... && GOOS=darwin go vet ./... && GOOS=windows go vet ./...
 
   # one job per OS: the host binary built once, the client installer every host
   # installer builds on bundled first, the host one after off the same Rust build
@@ -204,8 +131,8 @@ jobs:
           echo "$KEY" | gpg --batch --import
           gpg --export > "$RUNNER_TEMP/phosphorus.gpg"
           echo "PHOSPHORUS_APT_KEY=$RUNNER_TEMP/phosphorus.gpg" >> "$GITHUB_ENV"
-      # the release's tree (.github and packaging export-ignored) and the host binary,
-      # Linux's packaged at once, macOS's and Windows' the host app's sidecar
+      # the release's tree (.github and packaging export-ignored), its bundled tools
+      # and the host binary, Linux's packaged at once, macOS's and Windows' the host app's sidecar
       - name: host binary
         shell: bash
         run: |
@@ -215,13 +142,15 @@ jobs:
           case "${{ matrix.name }}" in
             linux-*)
               b linux ${{ matrix.arch }} art/phosphorus
-              packaging/deb/tools.sh ${{ matrix.arch }} art/tools
+              packaging/tools.sh linux ${{ matrix.arch }} art/tools
               packaging/deb/build.sh "out/phosphorus_${VER}_${{ matrix.arch }}.deb" "$VER" $APP/payload ${{ matrix.arch }} art/phosphorus art/tools ;;
             macos-universal)
               b darwin arm64 art/h-arm64 && b darwin amd64 art/h-amd64
-              lipo -create -output $APP/binaries/phosphorus-host-universal-apple-darwin art/h-arm64 art/h-amd64 ;;
+              lipo -create -output $APP/binaries/phosphorus-host-universal-apple-darwin art/h-arm64 art/h-amd64
+              packaging/tools.sh darwin universal $APP/payload/tools ;;
             windows-*)
-              b windows amd64 $APP/binaries/phosphorus-host-x86_64-pc-windows-msvc.exe ;;
+              b windows amd64 $APP/binaries/phosphorus-host-x86_64-pc-windows-msvc.exe
+              packaging/tools.sh windows amd64 $APP/payload/tools ;;
           esac
       # updater config and artifacts only with a signing key, Linux's client a plain .deb
       - name: app config
@@ -298,7 +227,7 @@ jobs:
           if-no-files-found: ignore
 
   release:
-    needs: [version, check, manifests, build]
+    needs: [version, check, build]
     # runs with unchecked OSes skipped, not when anything failed
     if: ${{ !cancelled() && !failure() }}
     runs-on: ubuntu-24.04
@@ -317,8 +246,8 @@ jobs:
           target_commitish: ${{ github.sha }}
           body: |
             Each OS has a client-only installer (`phosphorus-client`), a window on the mesh's frontend, and a host installer (`phosphorus`), which runs this machine as a host and includes the client.
-            ${{ inputs.macos && '**MacOS**: open the `.dmg`, drag the app to Applications and open it (first open: right-click > Open). The host app asks for its keys and needs colima and docker (see README).' || '' }}
-            ${{ inputs.windows && '**Windows**: run the setup `.exe` (SmartScreen: More info > Run anyway). The host app asks for its keys and needs Docker Desktop.' || '' }}
+            ${{ inputs.macos && '**MacOS**: open the `.dmg`, drag the app to Applications and open it (first open: right-click > Open). The host app asks for its keys and needs the Tailscale app.' || '' }}
+            ${{ inputs.windows && '**Windows**: run the setup `.exe` (SmartScreen: More info > Run anyway). The host app asks for its keys and needs Tailscale for Windows.' || '' }}
             ${{ (inputs.linux_amd64 || inputs.linux_arm64) && format('**Linux**: client `sudo apt install ./phosphorus-client_{0}_ARCH.deb`; host `sudo apt install ./phosphorus_{0}_ARCH.deb`, then `sudo phosphorus` and paste the keys it asks for (`amd64` or `arm64`).', env.VER) || '' }}
           files: out/*
       - uses: actions/download-artifact@v8
@@ -366,3 +295,28 @@ jobs:
           fi
           gh release view update >/dev/null 2>&1 || gh release create update --prerelease --latest=false --title "Update feed" --notes "Files installed hosts and clients update from. Install from the numbered releases."
           gh release upload update * --clobber
+
+  # only the two newest numbered releases and their tags kept, the `update` feed
+  # aside; only this workflow's two newest runs, this one included
+  prune:
+    needs: [release]
+    if: ${{ !cancelled() && needs.release.result == 'success' }}
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: releases
+        run: |
+          gh release list --limit 200 --json tagName,createdAt --jq '[.[] | select(.tagName | test("^v[0-9]"))] | sort_by(.createdAt) | reverse | .[2:] | .[].tagName' |
+          while read -r t; do
+            echo "deleting release $t"
+            gh release delete "$t" --yes --cleanup-tag
+          done
+      - name: runs
+        run: |
+          gh run list --workflow release.yml --limit 200 --json databaseId,createdAt,status --jq 'sort_by(.createdAt) | reverse | .[2:] | .[] | select(.status == "completed") | .databaseId' |
+          while read -r id; do
+            echo "deleting run $id"
+            gh run delete "$id" || true
+          done
