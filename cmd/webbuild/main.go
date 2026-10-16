@@ -125,14 +125,28 @@ func main() {
 	var meta struct {
 		Outputs map[string]struct {
 			EntryPoint string `json:"entryPoint"`
+			Imports    []struct {
+				Path string `json:"path"`
+				Kind string `json:"kind"`
+			} `json:"imports"`
 		} `json:"outputs"`
 	}
 	must(json.Unmarshal([]byte(res.Metafile), &meta))
 	entry := map[string]string{}
+	preload := ""
 	for outFile, o := range meta.Outputs {
 		if o.EntryPoint != "" {
 			rel, _ := filepath.Rel(*out, outFile)
 			entry[filepath.Base(o.EntryPoint)] = "/" + filepath.ToSlash(rel)
+		}
+		// the entry's own chunks asked for with it, not after it parses
+		if filepath.Base(o.EntryPoint) == "main.js" {
+			for _, im := range o.Imports {
+				if im.Kind == "import-statement" {
+					rel, _ := filepath.Rel(*out, im.Path)
+					preload += `<link rel="modulepreload" href="/` + filepath.ToSlash(rel) + `">` + "\n"
+				}
+			}
 		}
 	}
 
@@ -140,6 +154,7 @@ func main() {
 	must(err)
 	page := strings.Replace(string(html), `href="/style.css"`, `href="`+entry["style.css"]+`"`, 1)
 	page = strings.Replace(page, `<script type="module" src="/src/main.js"></script>`, `<script type="module" src="`+entry["main.js"]+`"></script>`, 1)
+	page = strings.Replace(page, "</head>", preload+"</head>", 1)
 	if !strings.Contains(page, entry["main.js"]) || !strings.Contains(page, entry["style.css"]) {
 		log.Fatal("index.html lost its style.css or main.js tag")
 	}
@@ -152,7 +167,7 @@ func main() {
 			return err
 		}
 		n++
-		return precompress(p)
+		return precompress(p, hashedPath(*out, p))
 	}))
 	log.Printf("built %s and %s, %d files precompressed", entry["main.js"], entry["style.css"], n)
 }
@@ -271,7 +286,15 @@ func copyDir(from, to, ext string) error {
 	})
 }
 
-func precompress(p string) error {
+// hashedPath under assets/ or vendor/h/, the server's cached-for-good files
+func hashedPath(out, p string) bool {
+	rel, _ := filepath.Rel(out, p)
+	rel = filepath.ToSlash(rel)
+	return strings.HasPrefix(rel, "assets/") || strings.HasPrefix(rel, "vendor/h/")
+}
+
+// precompress p as .br and .gz, a hashed file's own copy then dropped
+func precompress(p string, dropRaw bool) error {
 	data, err := os.ReadFile(p)
 	if err != nil {
 		return err
@@ -289,8 +312,14 @@ func precompress(p string) error {
 			return err
 		}
 	}
-	if gz.Len() < len(data) {
-		return os.WriteFile(p+".gz", gz.Bytes(), 0o644)
+	if gz.Len() >= len(data) {
+		return nil
+	}
+	if err := os.WriteFile(p+".gz", gz.Bytes(), 0o644); err != nil {
+		return err
+	}
+	if dropRaw {
+		return os.Remove(p)
 	}
 	return nil
 }

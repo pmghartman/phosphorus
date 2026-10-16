@@ -117,6 +117,7 @@ const activeConnections = new Map();
 
 // a closed tab's line dropped from the graph, checked every second
 function pruneConnections() {
+  if (!activeConnections.size) return;
   let changed = false;
   for (const [key, conn] of activeConnections) {
     if (conn.win.closed) { activeConnections.delete(key); changed = true; }
@@ -832,8 +833,8 @@ function startPulseLoop() {
   if (pulseAnimFrame) return;
   const tick = (now) => {
     if (!activeConnections.size) { pulseAnimFrame = null; return; }
-    // the graph off screen: nothing to measure, the loop kept for its return
-    if (!meshPanel.offsetParent) { pulseAnimFrame = requestAnimationFrame(tick); return; }
+    // the graph off screen: nothing to measure, looked at again a few times a second
+    if (!meshPanel.offsetParent) { pulseAnimFrame = setTimeout(() => requestAnimationFrame(tick), 250); return; }
     const progress = (now / 1000) % 1;
     for (const [key, conn] of activeConnections) {
       const point = pulsePoint(key, conn.host, progress);
@@ -4026,7 +4027,11 @@ function dkClock() {
   if (!dk.clock) return;
   dk.clock.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
-setInterval(dkClock, 5000);
+// on each minute's turn, not up to 5s after it
+(function dkClockTick() {
+  dkClock();
+  setTimeout(dkClockTick, 60000 - (Date.now() % 60000) + 20);
+}());
 
 function dkLogout() {
   dk.meshTray?.show(false);

@@ -1,9 +1,12 @@
 package web
 
 import (
+	"bytes"
+	"compress/gzip"
 	"crypto/sha256"
 	"embed"
 	"encoding/hex"
+	"io"
 	"io/fs"
 	"mime"
 	"net/http"
@@ -14,7 +17,7 @@ import (
 )
 
 // dist: go generate's build of web/, esbuild's hashed files, vendor files and
-// each one's .br and .gz beside it
+// each one's .br and .gz beside it, hashed ones kept only compressed
 //
 //go:embed all:dist
 var distFS embed.FS
@@ -81,6 +84,11 @@ func ServeStatic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	b, err := fs.ReadFile(dist, name)
+	packed := false
+	if err != nil {
+		b, err = fs.ReadFile(dist, name+".gz")
+		packed = true
+	}
 	if err != nil {
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(404)
@@ -112,7 +120,7 @@ func ServeStatic(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(304)
 		return
 	}
-	body := b
+	var body []byte
 	for _, enc := range []struct{ name, ext string }{{"br", ".br"}, {"gzip", ".gz"}} {
 		if !accepts(r, enc.name) {
 			continue
@@ -123,9 +131,24 @@ func ServeStatic(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
+	if body == nil && packed {
+		body = gunzip(b)
+	} else if body == nil {
+		body = b
+	}
 	h.Set("Content-Length", strconv.Itoa(len(body)))
 	w.WriteHeader(200)
 	if r.Method != "HEAD" {
 		w.Write(body)
 	}
+}
+
+// gunzip a compressed-only file for a browser that takes neither encoding
+func gunzip(b []byte) []byte {
+	z, err := gzip.NewReader(bytes.NewReader(b))
+	if err != nil {
+		return nil
+	}
+	out, _ := io.ReadAll(z)
+	return out
 }
