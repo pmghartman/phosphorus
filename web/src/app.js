@@ -783,7 +783,8 @@ function renderMeshGit() {
       ? `<span class="git-lag" title="green to 8s, yellow to 15s, red to 60s">${lagMeter(h.ageSec)}</span><span class="git-ago">${ago(h.ageSec)}</span>` : '';
     return `<div class="mesh-git-row ${cls}"><span class="mesh-stat-name"><span class="mesh-git-dot"></span>`
       + `<span class="mesh-stat-nm">${esc(h.host)}</span><span class="mesh-git-text">${esc(gitBackupText(h, masterGen))}</span></span>`
-      + `<span class="mesh-git-behind">${behind}</span></div>`;
+      + `<span class="mesh-git-behind">${behind}${h.reachable && !master && acct?.admin
+        ? `<button type="button" class="mesh-git-take" data-host="${esc(h.host)}" title="make ${esc(h.host)} the git master">master</button>` : ''}</span></div>`;
   }).join('');
   const sig = gitHostsList.map((h) => h.host).join();
   if (sig !== meshGitHosts) {
@@ -792,6 +793,30 @@ function renderMeshGit() {
     if (!meshAnimFrame) drawMesh();
   }
 }
+
+// a live master handing off, none force-promoting
+function askGitSwitch(name) {
+  const master = gitHostsList.find((h) => h.role === 'master' && h.reachable);
+  const text = master
+    ? `${master.host} hands off to ${name}, git.${baseDomain} down a few seconds.`
+    : `${name} force-promoted, roster reset to the hosts in view. only if the old master is gone.`;
+  openConfirm(text, {
+    title: master ? 'switch git master' : 'force-promote', actionLabel: master ? 'make master' : 'force-promote',
+    onAction: async () => {
+      let msg = `${name} is taking over`;
+      try {
+        const r = await fetch(`/api/githosts/${encodeURIComponent(name)}/force`, { method: 'POST' });
+        if (!r.ok) msg = `make master failed: ${(await r.json().catch(() => ({}))).error || `status ${r.status}`}`;
+      } catch (err) { msg = `make master failed: ${err.message}`; }
+      openConfirm(msg, { title: 'git master', hideCancel: true, actionLabel: 'ok', onAction: closeUpdateModal });
+    },
+  });
+}
+
+meshGitRows.addEventListener('click', (e) => {
+  const b = e.target.closest('.mesh-git-take');
+  if (b) askGitSwitch(b.dataset.host);
+});
 
 let pulseAnimFrame = null;
 

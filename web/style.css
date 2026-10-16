@@ -1174,6 +1174,8 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
 .mesh-git-row.down .mesh-stat-nm { color: var(--muted); text-decoration: line-through; }
 .mesh-git-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
 .mesh-git-behind { display: flex; align-items: center; gap: 0.3rem; }
+.mesh-git-take { font: inherit; font-size: 0.85em; padding: 0 0.35rem; color: var(--muted); background: none; border: 1px solid var(--border); cursor: pointer; }
+.mesh-git-take:hover, .mesh-git-take:focus-visible { color: var(--accent); border-color: var(--accent); }
 .git-ago { min-width: 2.2rem; text-align: right; color: var(--muted); }
 .git-lag { font-size: 0.7em; letter-spacing: 0; }
 .git-lag .good { color: var(--online); }

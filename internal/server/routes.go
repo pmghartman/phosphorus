@@ -409,6 +409,11 @@ func appHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if m := gitForceRe.FindStringSubmatch(pathname); m != nil && method == "POST" {
+		// the tailnet and this machine, the public side admins only
+		if s := users.Of(r); proxy.IsIngress(r) && (s == nil || !s.Admin) {
+			forbidden(w)
+			return
+		}
 		clock.MarkHot()
 		st, b := git.Force(m[1])
 		sendJSON(w, st, b)
