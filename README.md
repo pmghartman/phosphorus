@@ -15,15 +15,17 @@ Every computer you own as one shared desktop in the browser: terminals, files, w
 
 ## Install
 
-From the [latest release](https://github.com/pmghartman/phosphorus/releases/latest):
+From the [latest release](https://github.com/pmghartman/phosphorus/releases/latest), per OS:
 
-| System | Needs | Install |
-|---|---|---|
-| Linux | nothing | `sudo apt install ./phosphorus_VERSION_ARCH.deb`, then `sudo phosphorus` |
-| macOS | colima, docker | `.dmg` |
-| Windows | Docker Desktop, host networking on | setup `.exe` |
+| System | Client only | Host | Host needs |
+|---|---|---|---|
+| Linux | `sudo apt install ./phosphorus-client_VERSION_ARCH.deb` | `sudo apt install ./phosphorus_VERSION_ARCH.deb`, then `sudo phosphorus` | nothing |
+| macOS | `phosphorus-client-VERSION-macos-universal.dmg` | `phosphorus-VERSION-macos-universal.dmg` | colima, docker |
+| Windows | `phosphorus-client-VERSION-windows-x86_64-setup.exe` | `phosphorus-VERSION-windows-x86_64-setup.exe` | Docker Desktop, host networking on |
 
-The installer carries the `phosphorus` binary, which installs the release into the host folder (`/var/lib/phosphorus`, `~/Library/Phosphorus` or `%USERPROFILE%\phosphorus`) and brings it up. There are no scripts to run.
+The client is the mesh's frontend in a window with no menu bar; it asks for the mesh's domain on first start. The macOS and Windows host apps include the client: opening the app opens the same window, and a tray icon runs the host.
+
+The host installer carries the `phosphorus` binary, which installs the release into the host folder (`/var/lib/phosphorus`, `~/Library/Phosphorus` or `%USERPROFILE%\phosphorus`) and brings it up. There are no scripts to run.
 
 ## Keys
 
@@ -80,7 +82,7 @@ stop = systemctl --user stop tmodloader
 ## Use
 
 - `phosphorus` (or `phos`): the cli; `start`, `stop`, `restart`, `update`, `update all`, `keys`
-- Tray (macOS, Windows): Start, Stop, Check for Updates, Edit Keys, Quit
+- Host app (macOS, Windows): opening it opens the frontend; tray: Start, Stop, Check for Updates, Edit Keys, Quit
 - Mesh update: update icon in the bar (admins) or `phos update all`. Every peer updates at once through its own installer, then the host that started it
 - Projects API: `/api/projects`, see `internal/project`
 
@@ -92,6 +94,7 @@ flowchart TB
     deb[".deb (amd64, arm64)"]
     dmg[".dmg"]
     exe["setup .exe"]
+    client["client-only installers"]
     feed["update feed: apt repo, app feed, latest.json"]
     ghcr["ghcr.io images: phosphorus, -model, -git"]
   end
@@ -123,7 +126,7 @@ flowchart TB
     peers["other hosts"]
   end
   cf["Cloudflare tunnel"]
-  browser["Browser at BASE_DOMAIN"]
+  browser["Browser or client app at BASE_DOMAIN"]
 
   deb --> dpkg --> bin
   dmg --> tray
@@ -150,6 +153,9 @@ flowchart TB
   git <-->|"litefs replication"| peers
   ph --> model & search
   ph --> cf --> browser
+  client --> browser
+  tray -->|"window on the frontend"| browser
+  browser -->|"/api/ping/host, timed by the client"| ph
 ```
 
 ## Layout
@@ -160,7 +166,7 @@ internal/     Go packages, internal/host the host side the installers run
 web/          browser client, bundled into the binary by go generate
 container/    Dockerfile (phosphorus, model, git targets) and their scripts
 config/       default host config
-packaging/    deb/ and app/ (Tauri tray app for macOS and Windows)
+packaging/    deb/ (Linux host) and app/ (Tauri app: the client everywhere, the host tray on macOS and Windows)
 ```
 
 `make build`, `make check`, `make test`.

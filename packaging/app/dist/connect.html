@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phosphorus</title>
+<style>
+  :root { --bg: #ffffff; --fg: #1d1d1f; --muted: #6e6e73; --line: #d2d2d7; --field: #f5f5f7; --accent: #a371f7; --ok: #1a7f37; --bad: #cf222e; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #151515; --fg: #f0f0f0; --muted: #9a9aa0; --line: #2e2e33; --field: #1f1f23; --ok: #3fb950; --bad: #f85149; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 22px 24px; background: var(--bg); color: var(--fg); font: 13px/1.4 -apple-system, "Segoe UI", system-ui, sans-serif; }
+  h1 { font-size: 17px; margin: 0 0 4px; }
+  p.lead { margin: 0 0 18px; color: var(--muted); }
+  label { display: block; margin-bottom: 14px; }
+  .row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+  .name { font-weight: 600; }
+  .state { font-size: 11px; }
+  .state.set { color: var(--ok); }
+  .state.unset { color: var(--muted); }
+  input { width: 100%; padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--field); color: var(--fg); font: 13px ui-monospace, Menlo, Consolas, monospace; }
+  input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+  .hint { color: var(--muted); font-size: 11px; margin-top: 3px; }
+  .foot { display: flex; gap: 10px; align-items: center; margin-top: 18px; }
+  .err { color: var(--bad); flex: 1; }
+  button { padding: 6px 16px; border-radius: 6px; border: 1px solid var(--line); background: var(--field); color: var(--fg); font: inherit; cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:disabled { opacity: .6; cursor: default; }
+</style>
+</head>
+<body>
+<h1>Connect</h1>
+<p class="lead">The mesh's domain, where its frontend is served.</p>
+<form id="f" autocomplete="off">
+  <label>
+    <div class="row"><span class="name">Domain</span></div>
+    <input id="d" name="domain" placeholder="example.com" spellcheck="false" autofocus>
+  </label>
+</form>
+<div class="foot">
+  <span class="err" id="err"></span>
+  <button type="submit" form="f" class="primary" id="go">Open</button>
+</div>
+<script>
+  const { invoke } = window.__TAURI__.core;
+  const err = document.getElementById('err');
+  const go = document.getElementById('go');
+  document.getElementById('f').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    err.textContent = '';
+    go.disabled = true;
+    try {
+      await invoke('set_domain', { domain: document.getElementById('d').value });
+    } catch (x) {
+      err.textContent = String(x);
+      go.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Phosphorus",
+  "productName": "Phosphorus Client",
   "version": "0.1.0",
-  "identifier": "dev.phosphorus.app",
+  "identifier": "dev.phosphorus.client",
   "build": {
     "frontendDist": "dist"
   },
@@ -16,6 +16,7 @@
   "bundle": {
     "active": true,
     "targets": [
+      "deb",
       "dmg",
       "nsis"
     ],
@@ -26,11 +27,8 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": {
-      "payload/": "release/"
-    },
     "category": "Utility",
-    "shortDescription": "Run this machine as a phosphorus host",
+    "shortDescription": "The phosphorus mesh in a window",
     "macOS": {
       "minimumSystemVersion": "12.0",
       "signingIdentity": "-"
@@ -39,9 +37,6 @@
       "nsis": {
         "installMode": "currentUser"
       }
-    },
-    "externalBin": [
-      "binaries/phosphorus-host"
-    ]
+    }
   }
 }

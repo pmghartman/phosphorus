@@ -1,9 +1,10 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "the keys window alone, the rest tray only",
+  "description": "the app's own pages, keys and connect; the frontend's window none",
   "windows": [
-    "keys"
+    "keys",
+    "connect"
   ],
   "permissions": [
     "core:default",

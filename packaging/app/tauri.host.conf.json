@@ -1,0 +1,13 @@
+{
+  "productName": "Phosphorus",
+  "identifier": "dev.phosphorus.app",
+  "bundle": {
+    "resources": {
+      "payload/": "release/"
+    },
+    "externalBin": [
+      "binaries/phosphorus-host"
+    ],
+    "shortDescription": "Run this machine as a phosphorus host"
+  }
+}

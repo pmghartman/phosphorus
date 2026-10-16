@@ -3,7 +3,7 @@ name = "phosphorus-app"
 version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
-description = "Phosphorus tray app: keys, install, bring-up and updates on macOS and Windows"
+description = "Phosphorus app: the frontend in a window, and on a host its tray: keys, install, bring-up and updates"
 
 [[bin]]
 name = "Phosphorus"
@@ -17,6 +17,7 @@ tauri = { version = "2", features = ["tray-icon", "image-png"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-autostart = "2"
+tauri-plugin-single-instance = "2"
 serde_json = "1"
 
 [profile.release]

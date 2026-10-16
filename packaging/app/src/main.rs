@@ -1,5 +1,6 @@
-//! Phosphorus tray app, macOS and Windows: keys asked for, the bundled host binary's
-//! install and bring-up, start and stop, feed updates
+//! Phosphorus app, macOS, Windows and Linux: a window on the mesh's frontend; bundled
+//! with the host binary and release, also the host's tray: keys, install, start and
+//! stop, feed updates
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -24,6 +25,10 @@ struct App {
     payload: PathBuf,
     home: PathBuf,
     host: PathBuf,
+    // the host binary and release bundled: a host, else a client alone
+    is_host: bool,
+    // where a client keeps the mesh's domain
+    config: PathBuf,
 }
 
 fn home_dir() -> PathBuf {
@@ -151,7 +156,7 @@ fn admin_setup(app: &App) {
 }
 
 /// start or stop in the background, the tooltip following, a failure shown
-fn host_action(handle: AppHandle, action: &'static str) {
+fn host_action(handle: AppHandle, action: &'static str, then_open: bool) {
     if BUSY.swap(true, Ordering::SeqCst) {
         return;
     }
@@ -173,6 +178,9 @@ fn host_action(handle: AppHandle, action: &'static str) {
         if !ok {
             let e = last_error(&out);
             alert(&handle, if e.is_empty() { "failed, see state/ in the Phosphorus folder" } else { &e });
+        } else if then_open {
+            let h = handle.clone();
+            let _ = handle.run_on_main_thread(move || open_main(&h));
         }
     });
 }
@@ -245,7 +253,7 @@ async fn handle_update(handle: AppHandle, id: String, ask: bool) {
 
 /// launch: a new release unpacked into home, a pending update's verdict
 /// written, the keys asked for when there are none, then the update requests watched
-fn startup(handle: AppHandle) {
+fn startup(handle: AppHandle, background: bool) {
     std::thread::spawn(move || {
         let app = handle.state::<App>();
         let installed = read(&app.home.join(".phosphorus-installed"));
@@ -270,9 +278,10 @@ fn startup(handle: AppHandle) {
             }
             BUSY.store(false, Ordering::SeqCst);
         }
-        if keys_missing(&app) {
+        // opened by hand: the frontend (or the keys); at login: the tray alone
+        if !background || keys_missing(&app) {
             let h = handle.clone();
-            let _ = handle.run_on_main_thread(move || open_keys(&h));
+            let _ = handle.run_on_main_thread(move || open_main(&h));
         }
         set_tip(&handle, &status_tip(&app));
         let req = app.home.join("state/update-request.json");
@@ -284,6 +293,83 @@ fn startup(handle: AppHandle) {
             tauri::async_runtime::block_on(handle_update(handle.clone(), id, false));
         }
     });
+}
+
+/// the mesh's domain: a host's from its .env, a client's as entered
+fn domain(app: &App) -> String {
+    if app.is_host {
+        let (_, out) = host_run(app, &["keys", "--domain"], "keys");
+        let d = out.lines().last().unwrap_or("").trim().to_string();
+        if !d.is_empty() {
+            return d;
+        }
+    }
+    serde_json::from_str::<Value>(&read(&app.config)).ok().and_then(|v| v["domain"].as_str().map(str::to_string)).unwrap_or_default()
+}
+
+/// a typed domain bare: no scheme, path or port
+fn bare_domain(s: &str) -> String {
+    let s = s.trim().trim_start_matches("https://").trim_start_matches("http://");
+    s.split(['/', '?', '#']).next().unwrap_or("").to_ascii_lowercase()
+}
+
+/// the frontend in a window of its own, no menu bar; the keys asked for first
+/// on a host without them, the domain on a client without one
+fn open_main(handle: &AppHandle) {
+    if let Some(w) = handle.get_webview_window("main") {
+        let _ = w.unminimize();
+        let _ = w.show();
+        let _ = w.set_focus();
+        return;
+    }
+    let app = handle.state::<App>();
+    if app.is_host && keys_missing(&app) {
+        open_keys(handle);
+        return;
+    }
+    let d = domain(&app);
+    let url = tauri::Url::parse(&format!("https://{d}/"));
+    let Ok(url) = url.map_err(|_| ()).and_then(|u| if d.is_empty() { Err(()) } else { Ok(u) }) else {
+        open_connect(handle);
+        return;
+    };
+    let _ = WebviewWindowBuilder::new(handle, "main", WebviewUrl::External(url))
+        .title("Phosphorus")
+        .inner_size(1280.0, 820.0)
+        .min_inner_size(480.0, 360.0)
+        .center()
+        .focused(true)
+        .build();
+}
+
+/// a client's first start: the mesh's domain asked for
+fn open_connect(handle: &AppHandle) {
+    if let Some(w) = handle.get_webview_window("connect") {
+        let _ = w.set_focus();
+        return;
+    }
+    let _ = WebviewWindowBuilder::new(handle, "connect", WebviewUrl::App("connect.html".into()))
+        .title("Phosphorus")
+        .inner_size(460.0, 260.0)
+        .resizable(false)
+        .center()
+        .focused(true)
+        .build();
+}
+
+#[tauri::command]
+fn set_domain(handle: AppHandle, domain: String) -> Result<(), String> {
+    let d = bare_domain(&domain);
+    if d.is_empty() || !d.contains('.') || d.chars().any(|c| !(c.is_ascii_alphanumeric() || c == '.' || c == '-')) {
+        return Err("a domain like example.com".into());
+    }
+    let app = handle.state::<App>();
+    write_json(&app.config, &json!({"domain": d}));
+    if let Some(w) = handle.get_webview_window("connect") {
+        let _ = w.close();
+    }
+    open_main(&handle);
+    Ok(())
 }
 
 /// the keys window, one at a time
@@ -337,7 +423,7 @@ fn save_keys(handle: AppHandle, values: HashMap<String, String>) -> Result<(), S
         return Err("the Tailscale auth key is needed".into());
     }
     close_keys(handle.clone());
-    host_action(handle, "start");
+    host_action(handle, "start", true);
     Ok(())
 }
 
@@ -369,8 +455,8 @@ fn tray(app: &AppHandle) -> tauri::Result<()> {
     #[cfg(not(target_os = "macos"))]
     let b = b.icon(app.default_window_icon().cloned().expect("icon"));
     b.on_menu_event(|app, e| match e.id().as_ref() {
-        "start" => host_action(app.clone(), "start"),
-        "stop" => host_action(app.clone(), "stop"),
+        "start" => host_action(app.clone(), "start", false),
+        "stop" => host_action(app.clone(), "stop", false),
         "update" => {
             let a = app.clone();
             let id = format!("app-{}", now_ms());
@@ -385,32 +471,44 @@ fn tray(app: &AppHandle) -> tauri::Result<()> {
 }
 
 fn main() {
+    let background = std::env::args().any(|a| a == "--background");
     let app = tauri::Builder::default()
+        // opened again: the running one's window brought up instead
+        .plugin(tauri_plugin_single_instance::init(|app, _, _| open_main(app)))
+        .enable_macos_default_menu(false)
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
-        .invoke_handler(tauri::generate_handler![keys_status, save_keys, close_keys])
-        .setup(|app| {
-            #[cfg(target_os = "macos")]
-            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+        .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--background"])))
+        .invoke_handler(tauri::generate_handler![keys_status, save_keys, close_keys, set_domain])
+        .setup(move |app| {
             // not "phosphorus": beside the Phosphorus binary on a case-insensitive disk
             let payload = app.path().resource_dir()?.join("release");
-            app.manage(App { payload, home: home_dir(), host: host_bin() });
-            tray(app.handle())?;
+            let host = host_bin();
+            let is_host = host.exists() && payload.join("VERSION").exists();
+            let config = app.path().app_config_dir()?.join("client.json");
+            app.manage(App { payload, home: home_dir(), host, is_host, config });
             // release builds carry the updater config; dev builds none
             if app.config().plugins.0.contains_key("updater") {
                 app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
             }
+            if !is_host {
+                open_main(app.handle());
+                return Ok(());
+            }
+            #[cfg(target_os = "macos")]
+            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+            tray(app.handle())?;
             // a host stays up across logins
             let _ = app.autolaunch().enable();
-            startup(app.handle().clone());
+            startup(app.handle().clone(), background);
             Ok(())
         })
         .build(tauri::generate_context!())
         .expect("Phosphorus app");
-    app.run(|_, e| {
-        // the keys window closing never quits the tray
-        if let RunEvent::ExitRequested { api, code: None, .. } = e {
-            api.prevent_exit();
-        }
+    app.run(|h, e| match e {
+        // a host's windows closing never quit the tray; a client's last one does
+        RunEvent::ExitRequested { api, code: None, .. } if h.state::<App>().is_host => api.prevent_exit(),
+        #[cfg(target_os = "macos")]
+        RunEvent::Reopen { .. } => open_main(h),
+        _ => {}
     });
 }

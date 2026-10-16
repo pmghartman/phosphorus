@@ -1,4 +1,5 @@
-# manual release: ghcr images, .deb, .dmg, setup .exe as vVERSION, feed on release `update`
+# manual release: ghcr images, then per checked OS a client-only and a host installer
+# (.deb, .dmg, setup .exe) as vVERSION, feeds on release `update`
 # app and apt feeds need TAURI_SIGNING_PRIVATE_KEY(_PASSWORD), APT_GPG_KEY, var TAURI_UPDATER_PUBKEY
 name: release
 
@@ -6,25 +7,25 @@ on:
   workflow_dispatch:
     inputs:
       major:
-        description: "Bump the major version (minor otherwise)"
+        description: "Bump Major Version"
         type: boolean
         default: false
       linux_amd64:
-        description: "Linux amd64 (.deb, images)"
+        description: "Linux amd64"
         type: boolean
-        default: true
+        default: false
       linux_arm64:
-        description: "Linux arm64 (.deb, images)"
+        description: "Linux arm64"
         type: boolean
-        default: true
+        default: false
       macos:
-        description: "macOS (.dmg)"
+        description: "MacOS"
         type: boolean
-        default: true
+        default: false
       windows:
-        description: "Windows (setup .exe)"
+        description: "Windows"
         type: boolean
-        default: true
+        default: false
 
 permissions:
   contents: write
@@ -38,9 +39,8 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       ver: ${{ steps.v.outputs.ver }}
-      apps: ${{ steps.plan.outputs.apps }}
+      builds: ${{ steps.plan.outputs.builds }}
       arches: ${{ steps.plan.outputs.arches }}
-      debs: ${{ steps.plan.outputs.debs }}
     steps:
       - uses: actions/checkout@v7
       # every run one past the highest vMAJOR.MINOR tag: minor, or major with .0
@@ -64,17 +64,17 @@ jobs:
           WIN: ${{ inputs.windows }}
         run: |
           on() { for v in "$@"; do [ "$v" = true ] && return 0; done; return 1; }
-          on "$AMD64" "$ARM64" "$MAC" "$WIN" || { echo "check at least one target" >&2; exit 1; }
-          apps=() arches=() debs=()
-          # image arches every checked target's hosts pull: macs on either, windows amd64
+          on "$AMD64" "$ARM64" "$MAC" "$WIN" || { echo "check at least one OS" >&2; exit 1; }
+          builds=() arches=()
+          # image arches every checked OS's hosts pull: macs on either, windows amd64
           on "$AMD64" "$MAC" "$WIN" && arches+=('{"arch":"amd64","runner":"ubuntu-24.04"}')
           on "$ARM64" "$MAC" && arches+=('{"arch":"arm64","runner":"ubuntu-24.04-arm"}')
-          on "$AMD64" && debs+=('"amd64"')
-          on "$ARM64" && debs+=('"arm64"')
-          [ "$MAC" = true ] && apps+=('{"os":"macos-14","name":"macos-universal","args":"--target universal-apple-darwin --bundles app,dmg"}')
-          [ "$WIN" = true ] && apps+=('{"os":"windows-2022","name":"windows-x86_64","args":"--bundles nsis"}')
+          [ "$AMD64" = true ] && builds+=('{"name":"linux-amd64","runner":"ubuntu-24.04","arch":"amd64","args":"--bundles deb"}')
+          [ "$ARM64" = true ] && builds+=('{"name":"linux-arm64","runner":"ubuntu-24.04-arm","arch":"arm64","args":"--bundles deb"}')
+          [ "$MAC" = true ] && builds+=('{"name":"macos-universal","runner":"macos-14","arch":"universal","args":"--target universal-apple-darwin --bundles app,dmg"}')
+          [ "$WIN" = true ] && builds+=('{"name":"windows-x86_64","runner":"windows-2022","arch":"amd64","args":"--bundles nsis"}')
           j() { local IFS=,; echo "[$*]"; }
-          { echo "apps=$(j "${apps[@]}")"; echo "arches=$(j "${arches[@]}")"; echo "debs=$(j "${debs[@]}")"; } | tee -a "$GITHUB_OUTPUT"
+          { echo "builds=$(j "${builds[@]}")"; echo "arches=$(j "${arches[@]}")"; } | tee -a "$GITHUB_OUTPUT"
 
   # vet and tests, gating the release
   check:
@@ -155,57 +155,28 @@ jobs:
             docker buildx imagetools create -t "$img:$VER" $(cd "d/$n" && printf "$img@sha256:%s " *)
           done
 
-  deb:
+  # one job per OS: the host binary built once, the client installer every host
+  # installer builds on bundled first, the host one after off the same Rust build
+  # (only the app crate relinked); Linux's host the .deb around the binary alone
+  build:
     needs: [version]
-    if: needs.version.outputs.debs != '[]'
-    runs-on: ubuntu-24.04
+    strategy:
+      # one OS's failure leaves the others' builds, and their caches, finished
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.version.outputs.builds) }}
+    runs-on: ${{ matrix.runner }}
     env:
       VER: ${{ needs.version.outputs.ver }}
-      ARCHES: ${{ join(fromJSON(needs.version.outputs.debs), ' ') }}
+      APP: packaging/app
     steps:
       - uses: actions/checkout@v7
-      # apt key's public half, into the package
-      - name: apt key
-        env:
-          KEY: ${{ secrets.APT_GPG_KEY }}
-        run: |
-          [ -n "$KEY" ] || exit 0
-          export GNUPGHOME=$(mktemp -d)
-          echo "$KEY" | gpg --batch --import
-          gpg --export > "$RUNNER_TEMP/phosphorus.gpg"
-          echo "PHOSPHORUS_APT_KEY=$RUNNER_TEMP/phosphorus.gpg" >> "$GITHUB_ENV"
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-      - name: build .deb
-        run: |
-          mkdir -p art/payload out
-          # the release's tree, .github and packaging export-ignored
-          git archive HEAD | tar -x -C art/payload && echo "$VER" > art/payload/VERSION
-          for a in $ARCHES; do
-            CGO_ENABLED=0 GOOS=linux GOARCH=$a go build -trimpath -ldflags "-s -w" -o "art/phosphorus-$a" ./cmd/phosphorus
-            packaging/deb/build.sh "out/phosphorus_${VER}_$a.deb" "$VER" art/payload "$a" "art/phosphorus-$a"
-          done
-      - uses: actions/upload-artifact@v7
-        with:
-          name: deb
-          path: out/
-          compression-level: 0
-
-  # tray app: universal .dmg, Windows setup .exe, the release's tree and host binary inside
-  app:
-    needs: [version]
-    if: needs.version.outputs.apps != '[]'
-    strategy:
-      # one platform's failure leaves the other's build, and its cache, finished
-      fail-fast: false
-      matrix:
-        include: ${{ fromJSON(needs.version.outputs.apps) }}
-    runs-on: ${{ matrix.os }}
-    env:
-      VER: ${{ needs.version.outputs.ver }}
-    steps:
-      - uses: actions/checkout@v7
+      - name: webkit
+        if: startsWith(matrix.name, 'linux')
+        run: sudo apt-get update -q && sudo apt-get install -y -q libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf
       - name: rust
         run: rustup toolchain install stable --profile minimal && rustup default stable
       - name: mac targets
@@ -219,59 +190,100 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: tauri-cli@2
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-          cache: false
-      # the release's tree as resources, the host binary as the app's sidecar
-      - name: resources
+      # apt key's public half, into the host package
+      - name: apt key
+        if: startsWith(matrix.name, 'linux')
+        env:
+          KEY: ${{ secrets.APT_GPG_KEY }}
+        run: |
+          [ -n "$KEY" ] || exit 0
+          export GNUPGHOME=$(mktemp -d)
+          echo "$KEY" | gpg --batch --import
+          gpg --export > "$RUNNER_TEMP/phosphorus.gpg"
+          echo "PHOSPHORUS_APT_KEY=$RUNNER_TEMP/phosphorus.gpg" >> "$GITHUB_ENV"
+      # the release's tree (.github and packaging export-ignored) and the host binary,
+      # Linux's packaged at once, macOS's and Windows' the host app's sidecar
+      - name: host binary
         shell: bash
         run: |
-          mkdir -p packaging/app/payload packaging/app/binaries
-          git archive HEAD | tar -x -C packaging/app/payload && echo "$VER" > packaging/app/payload/VERSION
+          mkdir -p out upd art $APP/payload $APP/binaries
+          git archive HEAD | tar -x -C $APP/payload && echo "$VER" > $APP/payload/VERSION
           b() { CGO_ENABLED=0 GOOS=$1 GOARCH=$2 go build -trimpath -ldflags "-s -w" -o "$3" ./cmd/phosphorus; }
-          if [ "${{ matrix.name }}" = macos-universal ]; then
-            b darwin arm64 h-arm64 && b darwin amd64 h-amd64
-            lipo -create -output packaging/app/binaries/phosphorus-host-universal-apple-darwin h-arm64 h-amd64
-          else
-            b windows amd64 packaging/app/binaries/phosphorus-host-x86_64-pc-windows-msvc.exe
-          fi
-      # updater config and artifacts only with a signing key
+          case "${{ matrix.name }}" in
+            linux-*)
+              b linux ${{ matrix.arch }} art/phosphorus
+              packaging/deb/build.sh "out/phosphorus_${VER}_${{ matrix.arch }}.deb" "$VER" $APP/payload ${{ matrix.arch }} art/phosphorus ;;
+            macos-universal)
+              b darwin arm64 art/h-arm64 && b darwin amd64 art/h-amd64
+              lipo -create -output $APP/binaries/phosphorus-host-universal-apple-darwin art/h-arm64 art/h-amd64 ;;
+            windows-*)
+              b windows amd64 $APP/binaries/phosphorus-host-x86_64-pc-windows-msvc.exe ;;
+          esac
+      # updater config and artifacts only with a signing key, Linux's client a plain .deb
       - name: app config
         shell: bash
         env:
           KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           PUB: ${{ vars.TAURI_UPDATER_PUBKEY }}
         run: |
-          C="{\"version\":\"$VER.0\"}"
-          if [ -n "$KEY" ] && [ -n "$PUB" ]; then
-            U="https://github.com/${{ github.repository }}/releases/download/update/{{target}}-{{arch}}.json"
-            C="{\"version\":\"$VER.0\",\"bundle\":{\"createUpdaterArtifacts\":true},\"plugins\":{\"updater\":{\"pubkey\":\"$PUB\",\"endpoints\":[\"$U\"],\"windows\":{\"installMode\":\"passive\"}}}}"
+          cfg() { echo "{\"version\":\"$VER.0\"}"; }
+          upd() { echo "{\"version\":\"$VER.0\",\"bundle\":{\"createUpdaterArtifacts\":true},\"plugins\":{\"updater\":{\"pubkey\":\"$PUB\",\"endpoints\":[\"https://github.com/${{ github.repository }}/releases/download/update/$1{{target}}-{{arch}}.json\"],\"windows\":{\"installMode\":\"passive\"}}}}"; }
+          if [ -n "$KEY" ] && [ -n "$PUB" ] && [[ "${{ matrix.name }}" != linux-* ]]; then
+            { echo "CLIENT_CFG=$(upd client-)"; echo "HOST_CFG=$(upd '')"; } >> "$GITHUB_ENV"
+          else
+            { echo "CLIENT_CFG=$(cfg)"; echo "HOST_CFG=$(cfg)"; } >> "$GITHUB_ENV"
           fi
-          echo "CFG=$C" >> "$GITHUB_ENV"
-      - name: build app
+      - name: client
         shell: bash
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
-          cd packaging/app
-          cargo tauri build ${{ matrix.args }} --config "$CFG"
-          mkdir -p ../../out ../../upd
+          cd $APP
+          cargo tauri build ${{ matrix.args }} --config "$CLIENT_CFG"
+          o=../../out u=../../upd
+          case "${{ matrix.name }}" in
+            linux-*)
+              cp target/release/bundle/deb/*.deb "$o/phosphorus-client_${VER}_${{ matrix.arch }}.deb" ;;
+            macos-universal)
+              d=target/universal-apple-darwin/release/bundle
+              cp $d/dmg/*.dmg "$o/phosphorus-client-$VER-macos-universal.dmg"
+              t="$d/macos/Phosphorus Client.app.tar.gz"
+              [ -e "$t.sig" ] && cp "$t" $u/phosphorus-client-macos-universal.app.tar.gz && cp "$t.sig" $u/phosphorus-client-macos-universal.app.tar.gz.sig
+              rm -rf $d ;;
+            windows-*)
+              d=target/release/bundle/nsis
+              for f in $d/*-setup.exe; do
+                cp "$f" "$o/phosphorus-client-$VER-windows-x86_64-setup.exe"
+                [ -e "$f.sig" ] && cp "$f" $u/phosphorus-client-windows-x86_64-setup.exe && cp "$f.sig" $u/phosphorus-client-windows-x86_64-setup.exe.sig
+              done
+              rm -rf $d ;;
+          esac
+      - name: host app
+        if: ${{ !startsWith(matrix.name, 'linux') }}
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          cd $APP
+          cargo tauri build ${{ matrix.args }} --config tauri.host.conf.json --config "$HOST_CFG"
+          o=../../out u=../../upd
           if [ "${{ matrix.name }}" = macos-universal ]; then
-            cp target/universal-apple-darwin/release/bundle/dmg/*.dmg "../../out/phosphorus-$VER-macos-universal.dmg"
-            u=target/universal-apple-darwin/release/bundle/macos/Phosphorus.app.tar.gz
-            [ -e "$u.sig" ] && cp "$u" ../../upd/phosphorus-macos-universal.app.tar.gz && cp "$u.sig" ../../upd/phosphorus-macos-universal.app.tar.gz.sig
+            d=target/universal-apple-darwin/release/bundle
+            cp $d/dmg/*.dmg "$o/phosphorus-$VER-macos-universal.dmg"
+            t=$d/macos/Phosphorus.app.tar.gz
+            [ -e "$t.sig" ] && cp "$t" $u/phosphorus-macos-universal.app.tar.gz && cp "$t.sig" $u/phosphorus-macos-universal.app.tar.gz.sig
           else
-            cp target/release/bundle/nsis/*-setup.exe "../../out/phosphorus-$VER-windows-x86_64-setup.exe"
-            for u in target/release/bundle/nsis/*-setup.exe; do
-              [ -e "$u.sig" ] && cp "$u" ../../upd/phosphorus-windows-x86_64-setup.exe && cp "$u.sig" ../../upd/phosphorus-windows-x86_64-setup.exe.sig
+            for f in target/release/bundle/nsis/*-setup.exe; do
+              cp "$f" "$o/phosphorus-$VER-windows-x86_64-setup.exe"
+              [ -e "$f.sig" ] && cp "$f" $u/phosphorus-windows-x86_64-setup.exe && cp "$f.sig" $u/phosphorus-windows-x86_64-setup.exe.sig
             done
           fi
           true
       - uses: actions/upload-artifact@v7
         with:
-          name: app-${{ matrix.name }}
+          name: out-${{ matrix.name }}
           path: out/
           compression-level: 0
       - uses: actions/upload-artifact@v7
@@ -282,8 +294,8 @@ jobs:
           if-no-files-found: ignore
 
   release:
-    needs: [version, check, manifests, deb, app]
-    # runs with unchecked targets skipped, not when anything failed
+    needs: [version, check, manifests, build]
+    # runs with unchecked OSes skipped, not when anything failed
     if: ${{ !cancelled() && !failure() }}
     runs-on: ubuntu-24.04
     env:
@@ -292,7 +304,7 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           path: out
-          pattern: "{app-*,deb}"
+          pattern: out-*
           merge-multiple: true
       - uses: softprops/action-gh-release@v3
         with:
@@ -300,16 +312,17 @@ jobs:
           name: Phosphorus ${{ env.VER }}
           target_commitish: ${{ github.sha }}
           body: |
-            ${{ inputs.macos && '**macOS**: open the `.dmg`, drag Phosphorus to Applications, open it (first open: right-click > Open) and paste the keys it asks for. Needs colima and docker (see README).' || '' }}
-            ${{ inputs.windows && '**Windows**: run the setup `.exe` (SmartScreen: More info > Run anyway) and paste the keys it asks for. Needs Docker Desktop.' || '' }}
-            ${{ (inputs.linux_amd64 || inputs.linux_arm64) && format('**Linux**: `sudo apt install ./phosphorus_{0}_ARCH.deb` (`amd64` or `arm64`), then `sudo phosphorus` and paste the keys it asks for.', env.VER) || '' }}
+            Each OS has a client-only installer (`phosphorus-client`), a window on the mesh's frontend, and a host installer (`phosphorus`), which runs this machine as a host and includes the client.
+            ${{ inputs.macos && '**MacOS**: open the `.dmg`, drag the app to Applications and open it (first open: right-click > Open). The host app asks for its keys and needs colima and docker (see README).' || '' }}
+            ${{ inputs.windows && '**Windows**: run the setup `.exe` (SmartScreen: More info > Run anyway). The host app asks for its keys and needs Docker Desktop.' || '' }}
+            ${{ (inputs.linux_amd64 || inputs.linux_arm64) && format('**Linux**: client `sudo apt install ./phosphorus-client_{0}_ARCH.deb`; host `sudo apt install ./phosphorus_{0}_ARCH.deb`, then `sudo phosphorus` and paste the keys it asks for (`amd64` or `arm64`).', env.VER) || '' }}
           files: out/*
       - uses: actions/download-artifact@v8
         with:
           path: upd
           pattern: upd-*
           merge-multiple: true
-      # built targets' files onto `update`; others: last release's
+      # built OSes' files onto `update`; others: last release's
       - name: update feed
         env:
           GH_TOKEN: ${{ github.token }}
@@ -321,16 +334,20 @@ jobs:
           NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           printf '{"version":"%s","pub_date":"%s","notes":"https://github.com/%s/releases/tag/v%s"}\n' "$VER" "$NOW" "$GH_REPO" "$VER" > latest.json
           feed() { printf '{"version":"%s.0","pub_date":"%s","url":"%s/%s","signature":"%s","notes":""}\n' "$VER" "$NOW" "$BASE" "$2" "$(cat "$2.sig")" > "$1.json"; }
-          if [ -e phosphorus-macos-universal.app.tar.gz ]; then
-            feed darwin-x86_64 phosphorus-macos-universal.app.tar.gz
-            feed darwin-aarch64 phosphorus-macos-universal.app.tar.gz
-          fi
-          [ -e phosphorus-windows-x86_64-setup.exe ] && feed windows-x86_64 phosphorus-windows-x86_64-setup.exe
-          if [ -n "$KEY" ] && ls ../out/*.deb >/dev/null 2>&1; then
+          for p in "" client-; do
+            if [ -e phosphorus-${p}macos-universal.app.tar.gz ]; then
+              f=phosphorus-${p}macos-universal.app.tar.gz
+              feed ${p}darwin-x86_64 $f
+              feed ${p}darwin-aarch64 $f
+            fi
+            if [ -e phosphorus-${p}windows-x86_64-setup.exe ]; then feed ${p}windows-x86_64 phosphorus-${p}windows-x86_64-setup.exe; fi
+          done
+          # the apt feed: the host packages alone
+          if [ -n "$KEY" ] && ls ../out/phosphorus_*.deb >/dev/null 2>&1; then
             command -v apt-ftparchive >/dev/null || { sudo apt-get update -q && sudo apt-get install -y -q apt-utils; }
             # the unchecked arch's index kept from the last release
             gh release download update -p 'Packages-*' || true
-            for f in ../out/*.deb; do
+            for f in ../out/phosphorus_*.deb; do
               d=${f##*_}; d=${d%.deb} n=${f##*/}; n=${n%%_*}
               mkdir -p "a-$d" && cp "$f" "a-$d/${n}_$d.deb"
               (cd "a-$d" && apt-ftparchive packages .) > "Packages-$d"
@@ -343,5 +360,5 @@ jobs:
             echo "$KEY" | gpg --batch --import
             gpg --batch --yes --clearsign -o InRelease "$RUNNER_TEMP/Release"
           fi
-          gh release view update >/dev/null 2>&1 || gh release create update --prerelease --latest=false --title "Update feed" --notes "Files installed hosts update from. Install from the numbered releases."
+          gh release view update >/dev/null 2>&1 || gh release create update --prerelease --latest=false --title "Update feed" --notes "Files installed hosts and clients update from. Install from the numbered releases."
           gh release upload update * --clobber

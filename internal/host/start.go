@@ -178,13 +178,17 @@ func tui(args []string) error {
 	return attach(args)
 }
 
-// keys replaced in .env, never shown; the app's form through --status and --stdin
+// keys replaced in .env, never shown; the app's through --status, --stdin and --domain
 func keys(opts []string) error {
 	if err := envfile.Ensure(envPath()); err != nil {
 		return fail("can't write %s: %v", envPath(), err)
 	}
 	for _, o := range opts {
 		switch o {
+		case "--domain":
+			// not secret: the app's window opened on it
+			fmt.Println(envfile.Read(envPath())["BASE_DOMAIN"])
+			return nil
 		case "--status":
 			set := map[string]bool{}
 			have := envfile.Read(envPath())
