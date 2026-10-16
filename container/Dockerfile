@@ -1,6 +1,7 @@
 # --- the binary -----------------------------------------------------------------
 # server, model daemon, cli and the client's bundle in one static file, built
-# from pinned npm tarballs by go generate, no node anywhere
+# from pinned npm tarballs by go generate, no node anywhere; two images off it:
+# phosphorus (the default, last) and model (--target model, phosphorus-model)
 FROM golang:1.26-trixie AS build
 WORKDIR /src
 COPY go.mod go.sum ./
@@ -11,16 +12,29 @@ COPY web/ web/
 RUN go generate ./internal/web \
  && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/phosphorus ./cmd/phosphorus
 
+# --- phosphorus-model: llama-server on the model host -------------------------
+# llama-server and opencode fetched into /models at run time, libgomp for the
+# first, no tailscale, tunnel or docker of its own
+FROM debian:trixie-slim AS model
+LABEL org.phosphorus=phosphorus
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates curl procps libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=build /out/phosphorus /usr/local/bin/phosphorus
+ARG PHOSPHORUS_VERSION=0.0.0
+RUN mkdir -p /opt/phosphorus && echo "$PHOSPHORUS_VERSION" > /opt/phosphorus/VERSION
+ENTRYPOINT ["/usr/local/bin/phosphorus", "model"]
+
+# --- phosphorus ----------------------------------------------------------------
 FROM debian:trixie-slim
 # inherited by every container off this image, for sweep.sh
 LABEL org.phosphorus=phosphorus
 
-# shared by everything below, iproute2/iptables for tailscaled's routing,
-# libgomp for llama-server and ripgrep for opencode, both fetched by the
-# model host alone at run time
+# iproute2/iptables for tailscaled's routing, ripgrep for opencode, run by the
+# model host's frontend off the binary phosphorus-model fetched
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates curl jq bash procps iproute2 iptables git openssh-client \
-        libgomp1 ripgrep \
+        ripgrep \
     && rm -rf /var/lib/apt/lists/*
 
 # --- cloudflared, docker cli, tailscale ------------------------------------
@@ -43,12 +57,11 @@ RUN K=/usr/share/keyrings L=/etc/apt/sources.list.d \
 # last, so commits touching them rebuild only these cheap layers
 COPY container/sweep.sh            /opt/phosphorus/sweep.sh
 COPY container/supervisor.sh       /usr/local/bin/supervisor.sh
-COPY container/node-shim.sh        /usr/local/bin/node
 COPY --from=build /out/phosphorus  /usr/local/bin/phosphorus
 # the release version, stamped by CI
 ARG PHOSPHORUS_VERSION=0.0.0
 RUN echo "$PHOSPHORUS_VERSION" > /opt/phosphorus/VERSION \
- && chmod +x /usr/local/bin/supervisor.sh /usr/local/bin/node \
+ && chmod +x /usr/local/bin/supervisor.sh \
  && mkdir -p /var/lib/tailscale /var/run/tailscale
 
 ENTRYPOINT ["/usr/local/bin/supervisor.sh"]

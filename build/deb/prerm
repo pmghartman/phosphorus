@@ -3,7 +3,7 @@
 set -e
 [ "$1" = remove ] || exit 0
 [ -d /run/systemd/system ] && systemctl disable --now phosphorus-update.path >/dev/null 2>&1 || true
-for c in phosphorus-git phosphorus phosphorus-search; do
+for c in phosphorus-git phosphorus phosphorus-model phosphorus-search; do
     docker update --restart=no "$c" >/dev/null 2>&1 || true
     docker stop -t 30 "$c" >/dev/null 2>&1 || true
 done

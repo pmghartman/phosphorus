@@ -201,13 +201,6 @@ func Write(rel string, data any) {
 	put(rel, File{At: nextAt(rel), Data: util.Marshal(data)})
 }
 
-// Adopt an older file's contents at its own stamp, a newer one kept
-func Adopt(rel string, data any, at float64) {
-	if relRe.MatchString(rel) && !math.IsNaN(at) && !math.IsInf(at, 0) && at > stampOf(rel) {
-		put(rel, File{At: at, Data: util.Marshal(data)})
-	}
-}
-
 // Remove a live file, a tombstone left
 func Remove(rel string) {
 	if Read(rel) != nil {
@@ -327,17 +320,10 @@ func wanted(st map[string]any) []string {
 	return out
 }
 
-// Local var/<rel>: this host's own, an older file at old moved in once
-func Local(rel, old string) string {
+// Local var/<rel>: this host's own
+func Local(rel string) string {
 	abs := filepath.Join(Root, "var", rel)
 	os.MkdirAll(filepath.Dir(abs), 0o700)
-	if old != "" {
-		if _, err := os.Stat(abs); err != nil {
-			if _, err := os.Stat(old); err == nil {
-				os.Rename(old, abs)
-			}
-		}
-	}
 	return abs
 }
 

@@ -124,8 +124,9 @@ url = https://huggingface.co/ggml-org/gpt-oss-120b-GGUF/resolve/main/gpt-oss-120
   moves there on the rebuild. `state/` is the host's own bookkeeping (chat cache, git, update and
   project records), never published.
 - `[git]`: keep a copy of the git server on this host.
-- `[model]`: make this the model host. It fetches `llama-server` and the opencode
-  harness on its first start (and deletes them if it stops being the model host),
+- `[model]`: make this the model host. Its `phosphorus-model` container fetches
+  `llama-server` and the opencode harness on its first start (both deleted if it
+  stops being the model host),
   runs the `.gguf` at `url` (needs memory about the model file's size), on an nvidia
   `gpu` if set, and answers every host's `/chimp` asks and runs every project.
   Without a `url` it still answers with a provider whose key you set in status.
@@ -176,7 +177,7 @@ a start without `host` goes to one.
 ## Development
 
 One Go binary, `phosphorus`, is every role: `serve` (the frontend), `model` (the model
-daemon), `elector` (the git host's election), `cli` and `ssh-relay`. No Node at build
+daemon, alone in the `phosphorus-model` image), `elector` (the git host's election), `cli` and `ssh-relay`. No Node at build
 or run time: `go generate ./internal/web` fetches the client's pinned npm tarballs
 (checked against `web/vendor.lock`) and bundles `web/` with esbuild's Go API into the
 binary.
@@ -187,16 +188,14 @@ cmd/webbuild       the client's build, run by go generate
 internal/          one package per part: server, mesh, sysfs, users, files, collab,
                    term, model, modeld, harness, project, tools, elector, cli, ...
 web/               the client: index.html, style.css, src/ (apps/ each loaded on first open)
-container/         the two images and their entry scripts
+container/         the images and their entry scripts
 scripts/           install, start, update and the phosphorus launcher
-test/dualrun       the JS and Go frontends side by side, every endpoint diffed
-test/mesh          a mixed JS and Go mesh in network namespaces
-legacy/            the JS frontend, kept until every host runs the binary
+test/mesh          a three host mesh in network namespaces
 docs/formats.md    what phosphorus keeps on disk and on the wire
 ```
 
 `make build`, `make check` (gofmt, vet, staticcheck), `make test` (race tests),
-`make dualrun`, and `make mesh` (root).
+and `make mesh` (root).
 
 ## License
 

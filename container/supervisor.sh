@@ -1,6 +1,6 @@
 #!/bin/bash
-# tailscaled, the frontend, the model daemon and cloudflared, all down with
-# the first one out, for Docker's restart policy
+# tailscaled, the frontend and cloudflared, all down with the first one out,
+# for Docker's restart policy; the model daemon in phosphorus-model
 set -uo pipefail
 
 : "${BASE_DOMAIN:?BASE_DOMAIN must be set in the env file}"
@@ -84,12 +84,12 @@ if [ "$HOST_SSH_HOST" = "127.0.0.1" ]; then
   fi
 fi
 
+# leftovers of earlier runs and installs, rebuild's sweep again for a start
+# without one
+sh /opt/phosphorus/sweep.sh 2>/dev/null | while IFS= read -r line; do say "$line"; done
+
 phosphorus serve &
 PIDS+=("$!"); NAMES+=("frontend")
-
-# llama-server on the model host, idle on every other
-phosphorus model &
-PIDS+=("$!"); NAMES+=("model")
 
 # the ingress answering before the tunnel hands it anything
 for _ in $(seq 1 100); do

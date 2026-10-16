@@ -1277,19 +1277,6 @@ func Finish(id string, a map[string]any) (any, error) {
 
 // Init the records loaded, cut-off ones resumed, stray sandboxes gone
 func Init() {
-	old := filepath.Join(stateDir, "projects")
-	if a, b := filepath.Clean(old), filepath.Clean(WorkRoot()); a != b {
-		if _, err := os.Stat(old); err == nil {
-			if _, err := os.Stat(b); err != nil {
-				os.MkdirAll(filepath.Dir(b), 0o755)
-				if err := exec.Command("cp", "-a", old, b).Run(); err == nil {
-					os.RemoveAll(old)
-				} else {
-					log.Printf("[project] moving state/projects into shared/: %v", err)
-				}
-			}
-		}
-	}
 	ents, _ := os.ReadDir(runsDir)
 	mu.Lock()
 	for _, e := range ents {

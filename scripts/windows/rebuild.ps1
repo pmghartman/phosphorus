@@ -74,12 +74,11 @@ $HomeTo = ConvertTo-VmPath $HomeDir
 $HomeFrom = ""
 if (docker ps -aq -f "name=^phosphorus$") {
     $HomeFrom = Invoke-Quiet { docker inspect phosphorus --format '{{range .Mounts}}{{if eq .Destination "/homefs"}}{{.Source}}{{end}}{{end}}' }
-    if (-not $HomeFrom) { $HomeFrom = ConvertTo-VmPath (Join-Path $Dir "state") }
     $HomeFrom = "$HomeFrom".Trim().TrimEnd("/", "\")
     if ($HomeFrom -match '^[A-Za-z]:') { $HomeFrom = ConvertTo-VmPath $HomeFrom }
-    if ($HomeFrom -eq $HomeTo) { $HomeFrom = "" }
+    if (-not $HomeFrom -or $HomeFrom -eq $HomeTo) { $HomeFrom = "" }
 }
-if ($HomeFrom -and ("$HomeTo/".StartsWith("$HomeFrom/home/") -or "$HomeTo/".StartsWith("$HomeFrom/usr/") -or "$HomeTo/".StartsWith("$HomeFrom/sys/") -or "$HomeTo/".StartsWith("$HomeFrom/shared/"))) {
+if ($HomeFrom -and "$HomeTo/".StartsWith("$HomeFrom/home/")) {
     Fail "[home] dir can't be inside the folders it moves"
 }
 $env:PHOSPHORUS_HOME_DIR = $HomeDir
@@ -106,21 +105,27 @@ if (-not (Test-PhosphorusGitHost) -and (docker ps -aq -f "name=^phosphorus-git$"
     Invoke-Quiet { docker stop -t 30 phosphorus-git } | Out-Null
     Invoke-Quiet { docker rm phosphorus-git } | Out-Null
 }
-# likewise the search, model hosts' alone
-if (-not (Test-PhosphorusModelHost) -and (docker ps -aq -f "name=^phosphorus-search$")) {
-    Say "no longer a model host, removing phosphorus-search"
+# likewise the model and search, model hosts' alone, the fetched tools gone
+# with them, the gguf kept
+if (-not (Test-PhosphorusModelHost)) {
+    if (docker ps -aq -f "name=^phosphorus-model$") {
+        Say "no longer a model host, removing phosphorus-model"
+        Invoke-Quiet { docker stop -t 30 phosphorus-model } | Out-Null
+        Invoke-Quiet { docker run --rm --volumes-from phosphorus-model --entrypoint rm phosphorus:latest -rf /models/tools } | Out-Null
+        Invoke-Quiet { docker rm phosphorus-model } | Out-Null
+    }
     Invoke-Quiet { docker rm -f phosphorus-search } | Out-Null
 }
 
 # leftovers of earlier runs, from the new image's sweep.sh, in Docker
-# Desktop's VM, the home as that VM sees it
+# Desktop's VM
 $VmRepo = "/run/desktop/mnt/host/" + $Dir.Substring(0, 1).ToLower() + ($Dir.Substring(2) -replace '\\', '/')
 Invoke-Quiet { docker run --rm --pid=host -v /var/run/docker.sock:/var/run/docker.sock `
-    --entrypoint sh phosphorus:latest /opt/phosphorus/sweep.sh $VmRepo } | ForEach-Object { Say $_ }
+    --entrypoint sh phosphorus:latest /opt/phosphorus/sweep.sh } | ForEach-Object { Say $_ }
 
 # git/data onto the volumes once, git stopped first so a master hands off
 Invoke-Quiet { docker volume inspect phosphorus-git-data } | Out-Null
-if ($LASTEXITCODE -and (Test-PhosphorusGitHost) -and ((Test-Path git/data/GIT_VERSION) -or (Test-Path git/data/MU_GIT_VERSION))) {
+if ($LASTEXITCODE -and (Test-PhosphorusGitHost) -and (Test-Path git/data/GIT_VERSION)) {
     Say "moving git data onto a docker volume..."
     Invoke-Quiet { docker stop -t 30 phosphorus-git } | Out-Null
     docker run --rm -v "${VmRepo}/git/data:/src:ro" -v phosphorus-git-data:/data -v phosphorus-git-db:/db `
@@ -134,14 +139,21 @@ if ($LASTEXITCODE -and (Test-PhosphorusGitHost) -and ((Test-Path git/data/GIT_VE
 }
 
 # images earlier swaps replaced, and those the sweep freed, in-use ones
-# never dangling, so never hit
+# never dangling, so never hit; earlier releases' tags and hesperus's images
+# too, docker refusing any still in use
 Invoke-Quiet { docker image prune -f } | Out-Null
+$Ver = Get-PhosphorusVersion
+foreach ($img in @(Invoke-Quiet { docker images --format '{{.Repository}}:{{.Tag}}' })) {
+    if (($img -match '^ghcr\.io/pmghartman/phosphorus(-model|-git)?:' -or $img -match '(^|/)hesperus[^/:]*:') -and -not $img.EndsWith(":$Ver")) {
+        Invoke-Quiet { docker rmi $img } | Out-Null
+    }
+}
 
 # home/ moved with phosphorus stopped, a failed copy leaving them put
 if ($HomeFrom) {
     Say "moving home/ from $HomeFrom to $HomeTo..."
     Invoke-Quiet { docker stop -t 30 phosphorus } | Out-Null
-    $Move = "set -e`nm=.phosphorus-move-`$`$; touch /mv/old/`$m`nif [ -e /mv/new/`$m ]; then rm -f /mv/old/`$m; exit 0; fi`nrm -f /mv/old/`$m`nif [ -d /mv/old/home/sys ]; then names=home; elif [ -d /mv/old/usr/shared ]; then names='usr sys'; else names='sys shared'`n  for f in /mv/old/sys/etc/passwd/*.json; do [ -f `$f ] && names=`$names' '`$(basename `$f .json); done; fi`nfor d in `$names; do [ -d /mv/old/`$d ] && mkdir -p /mv/new/`$d && cp -a /mv/old/`$d/. /mv/new/`$d/; done`nfor d in `$names; do rm -rf /mv/old/`$d; done"
+    $Move = "set -e`nm=.phosphorus-move-`$`$; touch /mv/old/`$m`nif [ -e /mv/new/`$m ]; then rm -f /mv/old/`$m; exit 0; fi`nrm -f /mv/old/`$m`n[ -d /mv/old/home ] || exit 0`nmkdir -p /mv/new/home && cp -a /mv/old/home/. /mv/new/home/`nrm -rf /mv/old/home"
     docker run --rm -v "${HomeFrom}:/mv/old" -v "${HomeTo}:/mv/new" --entrypoint sh phosphorus:latest -c $Move
     if ($LASTEXITCODE) {
         Say "couldn't move the homes, keeping them in $HomeFrom"

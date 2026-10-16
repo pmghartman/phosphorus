@@ -59,12 +59,6 @@ main() {
   # git/ only on a git host, its empty folders gone elsewhere
   phosphorus_is_git_host || rmdir git/data git 2>/dev/null || true
 
-  # an older home's models/ into state/, where the model's gguf lives now
-  if [ "$windows" = 0 ] && [ -d models ] && [ ! -e state/models ]; then
-    # docker made it root's where it made it
-    mkdir -p state && { mv models state/models 2>/dev/null || $sudo mv models state/models; } && say "moved models/ into state/"
-  fi
-
   # each [files] dir its own mount, written out as a compose override,
   # /files keeping the repo's own share underneath, whatever else is published
   export COMPOSE_FILE="docker-compose.yml"
@@ -89,7 +83,7 @@ main() {
   fi
 
   # [home] dir as the host sees it, moved from where the running container
-  # has it when the two differ (before this, always the home's state/)
+  # has it when the two differ
   local home_to home_from=""
   home_to="$(phosphorus_home_dir "$repo")"
   case "$home_to" in
@@ -98,7 +92,6 @@ main() {
   if [ -n "$($sudo docker ps -aq -f name=^phosphorus$)" ]; then
     home_from="$($sudo docker inspect phosphorus \
       --format '{{range .Mounts}}{{if eq .Destination "/homefs"}}{{.Source}}{{end}}{{end}}' 2>/dev/null)"
-    [ -n "$home_from" ] || home_from="$repo/state"
   fi
   case "$home_from" in
     [A-Za-z]:*) home_from="/run/desktop/mnt/host/$(printf '%s' "${home_from%%:*}" | tr 'A-Z' 'a-z')$(printf '%s' "${home_from#*:}" | tr '\\' '/')" ;;
@@ -106,7 +99,7 @@ main() {
   home_from="${home_from%/}"
   [ "$home_from" = "$home_to" ] && home_from=""
   case "$home_to/" in
-    "$home_from/home/"*|"$home_from/usr/"*|"$home_from/sys/"*|"$home_from/shared/"*) [ -n "$home_from" ] && fail "[home] dir can't be inside the folders it moves" ;;
+    "$home_from/home/"*) [ -n "$home_from" ] && fail "[home] dir can't be inside the folders it moves" ;;
   esac
   [ "$in_container" = 0 ] && mkdir -p "$home_to"
   export PHOSPHORUS_HOME_DIR="$home_to"
@@ -147,9 +140,15 @@ main() {
     $sudo docker stop -t 30 phosphorus-git >/dev/null 2>&1
     $sudo docker rm phosphorus-git >/dev/null 2>&1
   fi
-  # likewise the search, model hosts' alone
-  if ! phosphorus_is_model_host && [ -n "$($sudo docker ps -aq -f name=^phosphorus-search$)" ]; then
-    say "no longer a model host, removing phosphorus-search"
+  # likewise the model and search, model hosts' alone, the fetched tools
+  # gone with them, the gguf kept
+  if ! phosphorus_is_model_host; then
+    if [ -n "$($sudo docker ps -aq -f name=^phosphorus-model$)" ]; then
+      say "no longer a model host, removing phosphorus-model"
+      $sudo docker stop -t 30 phosphorus-model >/dev/null 2>&1
+      $sudo docker run --rm --volumes-from phosphorus-model --entrypoint rm phosphorus:latest -rf /models/tools >/dev/null 2>&1
+      $sudo docker rm phosphorus-model >/dev/null 2>&1
+    fi
     $sudo docker rm -f phosphorus-search >/dev/null 2>&1
   fi
 
@@ -157,11 +156,11 @@ main() {
   # an unconfined profile for signals to processes outside any container
   $sudo docker run --rm --pid=host --security-opt apparmor=unconfined \
     -v /var/run/docker.sock:/var/run/docker.sock \
-    --entrypoint sh phosphorus:latest /opt/phosphorus/sweep.sh "$repo" 2>/dev/null \
+    --entrypoint sh phosphorus:latest /opt/phosphorus/sweep.sh 2>/dev/null \
     | while IFS= read -r line; do say "$line"; done
   # Windows: git/data onto the volumes once, as rebuild.ps1 does
   if [ "$windows" = 1 ] && phosphorus_is_git_host \
-     && { [ -f git/data/GIT_VERSION ] || [ -f git/data/MU_GIT_VERSION ]; } \
+     && [ -f git/data/GIT_VERSION ] \
      && ! $sudo docker volume inspect phosphorus-git-data >/dev/null 2>&1; then
     say "moving git data onto a docker volume..."
     $sudo docker stop -t 30 phosphorus-git >/dev/null 2>&1
@@ -175,8 +174,13 @@ main() {
   fi
 
   # images earlier swaps replaced, and those the sweep freed, in-use ones
-  # never dangling, so never hit
+  # never dangling, so never hit; earlier releases' tags and hesperus's
+  # images too, docker refusing any still in use
   $sudo docker image prune -f >/dev/null 2>&1
+  $sudo docker images --format '{{.Repository}}:{{.Tag}}' \
+    | grep -E "^$PHOSPHORUS_REGISTRY/phosphorus(-model|-git)?:|(^|/)hesperus[^/:]*:" \
+    | grep -v ":$(phosphorus_version)\$" \
+    | while IFS= read -r img; do $sudo docker rmi "$img" >/dev/null 2>&1; done
 
   # nothing running, nothing for the swap to kill, finished here for the
   # caller to wait on

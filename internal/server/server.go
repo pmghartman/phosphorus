@@ -736,7 +736,6 @@ func Main() int {
 	}
 	sysfs.Start()
 	chatmedia.Init()
-	model.Init()
 	git.Init(updating.Load, bootID)
 	update.OnFinish(func(c *update.Chain) {
 		if c.AlertSeq != nil {

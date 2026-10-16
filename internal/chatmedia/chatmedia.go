@@ -42,9 +42,9 @@ var (
 
 const maxFiles = 8
 
-// Init var/chat/media, the older state/chat-media moved in once
+// Init var/chat/media
 func Init() {
-	dir = sysfs.Local("chat/media", filepath.Join(util.Env("STATE_DIR", "/state"), "chat-media"))
+	dir = sysfs.Local("chat/media")
 	os.MkdirAll(dir, 0o755)
 }
 

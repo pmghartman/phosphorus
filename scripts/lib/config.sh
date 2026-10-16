@@ -21,8 +21,8 @@ env_get() {
 # the release's own, stamped by CI
 phosphorus_version() { tr -d '[:space:]' < VERSION; }
 
-# the release's images, CI-built, one for every host: llama-server and
-# opencode fetched at run time by the model host alone
+# the release's images, CI-built, the same on every host: llama-server and
+# opencode fetched at run time by the model host's phosphorus-model
 PHOSPHORUS_REGISTRY="ghcr.io/pmghartman"
 
 # $1 docker or "sudo docker": the release's images pulled and tagged as
@@ -30,7 +30,7 @@ PHOSPHORUS_REGISTRY="ghcr.io/pmghartman"
 phosphorus_pull_images() {
   local docker="$1" v pair from to
   v="$(phosphorus_version)"
-  for pair in "phosphorus:$v=phosphorus:latest" "phosphorus-git:$v=phosphorus-git:latest"; do
+  for pair in "phosphorus:$v=phosphorus:latest" "phosphorus-model:$v=phosphorus-model:latest" "phosphorus-git:$v=phosphorus-git:latest"; do
     from="$PHOSPHORUS_REGISTRY/${pair%%=*}" to="${pair#*=}"
     $docker pull -q "$from" >/dev/null && $docker tag "$from" "$to" || return 1
   done
@@ -67,11 +67,6 @@ phosphorus_add_missing_sections() {
   if ! grep -qx '\[home\]' "$file"; then
     printf '\n[home]\n# dir: the [files] dir whose home/ holds each user'"'"'s folder, shared/ and sys/, blank: the home'"'"'s files/\n# changed: home/ moved there on the next rebuild\ndir =\n' >> "$file"
     echo "[phosphorus.ini] added the [home] section"
-  fi
-  # the retired [apps] section dropped, comments and all
-  if grep -qx '\[apps\]' "$file"; then
-    awk '/^\[/{skip=($0=="[apps]")} !skip' "$file" | cat -s > "$file.tmp" && mv "$file.tmp" "$file" \
-      && echo "[phosphorus.ini] dropped the [apps] section, desktop apps are gone"
   fi
 }
 
@@ -112,17 +107,15 @@ phosphorus_home_dir() {
 }
 
 # the copy run with phosphorus stopped, old at /mv/old, new at /mv/new: home/
-# (an older layout's usr/, sys/, shared/ and users' folders, the frontend
-# moving them into home/) copied whole, only then the old ones deleted; one
-# dir spelt two ways (a marker seen through both) left alone
+# copied whole, only then the old one deleted; one dir spelt two ways (a
+# marker seen through both) left alone
 PHOSPHORUS_HOME_MOVE='set -e
 m=".phosphorus-move-$$"; touch /mv/old/$m
 if [ -e /mv/new/$m ]; then rm -f /mv/old/$m; exit 0; fi
 rm -f /mv/old/$m
-if [ -d /mv/old/home/sys ]; then names="home"; elif [ -d /mv/old/usr/shared ]; then names="usr sys"; else names="sys shared"
-  for f in /mv/old/sys/etc/passwd/*.json; do [ -f "$f" ] && names="$names $(basename "$f" .json)"; done; fi
-for d in $names; do [ -d /mv/old/$d ] && mkdir -p /mv/new/$d && cp -a /mv/old/$d/. /mv/new/$d/; done
-for d in $names; do rm -rf /mv/old/$d; done'
+[ -d /mv/old/home ] || exit 0
+mkdir -p /mv/new/home && cp -a /mv/old/home/. /mv/new/home/
+rm -rf /mv/old/home'
 
 # [files] dir, one absolute host path per line, nothing when unset, relative
 # entries off $1, the home as the host sees it
@@ -158,8 +151,6 @@ PHOSPHORUS_FILES_OVERRIDE="state/docker-compose.files.yml"
 # here, 0 with an override for COMPOSE_FILE, 1 with only the fallback mount
 phosphorus_write_files_override() {
   local dirs=() perms=() dir perm i=0 base="${1:-$PWD}" vet="${2:-1}"
-  # the older one at the home's root
-  rm -f docker-compose.files.yml
   mkdir -p state
   while IFS= read -r dir; do
     if [ "$vet" = 1 ] && [ ! -d "$dir" ]; then

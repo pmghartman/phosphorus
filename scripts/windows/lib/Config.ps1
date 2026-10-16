@@ -32,7 +32,7 @@ function Get-PhosphorusVersion { (Get-Content VERSION -First 1).Trim() }
 # the release's images pulled and tagged as compose names them, one for every host
 function Invoke-PhosphorusPull {
     $v = Get-PhosphorusVersion
-    foreach ($p in @(@("phosphorus:$v", "phosphorus:latest"), @("phosphorus-git:$v", "phosphorus-git:latest"))) {
+    foreach ($p in @(@("phosphorus:$v", "phosphorus:latest"), @("phosphorus-model:$v", "phosphorus-model:latest"), @("phosphorus-git:$v", "phosphorus-git:latest"))) {
         $from = "ghcr.io/pmghartman/$($p[0])"
         docker pull -q $from | Out-Null
         if ($LASTEXITCODE) { return $false }
@@ -146,8 +146,6 @@ $PhosphorusFilesOverride = "state/docker-compose.files.yml"
 
 # $true when it wrote one and the caller should add it to COMPOSE_FILE
 function Write-PhosphorusFilesOverride([string]$Base) {
-    # the older one at the home's root
-    if (Test-Path "docker-compose.files.yml") { Remove-Item "docker-compose.files.yml" -Force }
     New-Item -ItemType Directory -Force "state" *> $null
     $dirs = @()
     foreach ($d in (Get-PhosphorusFilesDirList $Base)) {

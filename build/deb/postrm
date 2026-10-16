@@ -11,7 +11,7 @@ remove | purge)
     ;;
 esac
 if [ "$1" = purge ]; then
-    docker rm -f phosphorus-git phosphorus phosphorus-search phosphorus-updater >/dev/null 2>&1 || true
+    docker rm -f phosphorus-git phosphorus phosphorus-model phosphorus-search phosphorus-updater >/dev/null 2>&1 || true
     docker volume rm phosphorus_tailscale-state phosphorus-git-data phosphorus-git-db phosphorus-models >/dev/null 2>&1 || true
     rm -rf /var/lib/phosphorus
 fi

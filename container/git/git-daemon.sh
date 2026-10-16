@@ -13,8 +13,6 @@ ELECTOR="${ELECTOR:-phosphorus elector}"
 # touch to let this host lead without proof it has the newest data
 FORCE_FILE="${FORCE_FILE:-$STATE_DIR/git-force-promote}"
 VERSION_FILE="$DATA_ROOT/GIT_VERSION"
-# pre-0.14 replicas' name for it, written beside it until none are left
-LEGACY_VERSION_FILE="$DATA_ROOT/MU_GIT_VERSION"
 # set by any pull: forgejo's per-node indexers and queues predating that data
 PULLED_FILE="$DATA_ROOT/GIT_PULLED"
 
@@ -65,16 +63,6 @@ render_app_ini_once() {
       -e "s/__PORT__/${GIT_PORT}/g" \
       -e "s#__ROOT_URL__#https://${GIT_NAME}.${BASE_DOMAIN}/#g" \
       "$APP_INI_TMPL" > "$APP_INI"
-}
-
-# repo hooks written under an older data root, pointed at this app.ini
-fix_hook_configs() {
-  local root="$DATA_ROOT/obj/forgejo-repositories"
-  [ -d "$root" ] || return 0
-  find "$root" -path '*/hooks/*.d/*' -type f -print0 2>/dev/null \
-    | xargs -0r grep -lZ -e '--config=' 2>/dev/null \
-    | xargs -0r grep -LZ -F -e "$APP_INI" 2>/dev/null \
-    | xargs -0r sed -i -E "s#--config=(['\"]?)[^'\" ]*app\.ini#--config=\1$APP_INI#"
 }
 
 LITEFS_PID=""
@@ -183,7 +171,6 @@ read_version() {
 stamp_version() {
   local tmp; tmp="$(mktemp "$VERSION_FILE.XXXXXX")" || return
   echo "$MY_GEN $EPOCHSECONDS" >"$tmp" && chmod 644 "$tmp" && mv "$tmp" "$VERSION_FILE" || rm -f "$tmp"
-  cp -p "$VERSION_FILE" "$LEGACY_VERSION_FILE.tmp" 2>/dev/null && mv "$LEGACY_VERSION_FILE.tmp" "$LEGACY_VERSION_FILE"
   MY_STAMP="$EPOCHSECONDS"
 }
 
@@ -200,13 +187,8 @@ pull_from() {
         --exclude='/obj/forgejo-repositories/**/objects/**/tmp_*' --exclude='/obj/forgejo-repositories/**/objects/tmp_*' \
         "$src/conf" "$src/custom" "$src/obj" "$DATA_ROOT/" > >(log_rsync) 2>&1 &
   pid="$!"; wait "$pid" || exit 1
-  # a pre-0.14 master's stamp under its old name
   rsync -a --timeout=30 --contimeout=5 "$src/GIT_VERSION" "$DATA_ROOT/" > >(log_rsync) 2>&1 &
-  pid="$!"
-  if ! wait "$pid"; then
-    rsync -a --timeout=30 --contimeout=5 "$src/MU_GIT_VERSION" "$DATA_ROOT/GIT_VERSION" > >(log_rsync) 2>&1 &
-    pid="$!"; wait "$pid"
-  fi
+  pid="$!"; wait "$pid"
 }
 
 LAST_ROLE=""
@@ -363,9 +345,6 @@ main() {
   # forgejo running as git, never chown litefs/ (the FUSE mount)
   chown git:phosphorus "$DATA_ROOT"
   chown -R git:phosphorus "$DATA_ROOT"/{conf,custom,obj}
-  # the mulab-era names, once
-  [ -e "$DATA_ROOT/MU_GIT_VERSION" ] && [ ! -e "$VERSION_FILE" ] && cp -p "$DATA_ROOT/MU_GIT_VERSION" "$VERSION_FILE"
-  [ -e "$DATA_ROOT/MU_GIT_PULLED" ] && mv "$DATA_ROOT/MU_GIT_PULLED" "$PULLED_FILE"
 
   say "waiting for $SELF_HOST_FILE..."
   while [ ! -s "$SELF_HOST_FILE" ]; do sleep 1; done
@@ -380,7 +359,6 @@ main() {
   WATCHDOG_PID="$!"
 
   render_app_ini_once
-  fix_hook_configs
   start_rsyncd
   trap term SIGTERM SIGINT
 

@@ -1,14 +1,13 @@
 #!/bin/bash
 # a three host mesh in network namespaces, a stand-in tailscale between them:
-# alpha and beta the binary, beta the model host, gamma the JS frontend;
-# checks peers, users across both, asks and projects passed to the model host,
-# and a host dropping. Root, iproute2, jq, node with legacy/frontend's modules.
+# beta the model host; checks peers, users across hosts, asks and projects
+# passed to the model host, and a host dropping. Root, iproute2, jq.
 # $1 the binary
 set -u
 cd "$(dirname "$0")/../.."
 bin="$(realpath "${1:-./phosphorus}")"
 here="$(pwd)/test/mesh"
-dir="$(mktemp -d)/dualrun"
+dir="$(mktemp -d)/mesh"
 mkdir -p "$dir/down"
 hosts="$dir/hosts"
 printf 'alpha 100.64.0.1 linux\nbeta 100.64.0.2 linux\ngamma 100.64.0.3 linux\n' > "$hosts"
@@ -45,7 +44,7 @@ done
 
 # a host's environment, as env.sh with this mesh's names and the stand-in first on PATH
 envof() {
-  echo "source test/dualrun/env.sh $1 8090 8091; export SELF_HOST=$1 MESH_HOSTS=$hosts MESH_SELF=$1 PATH=$here:\$PATH MODEL_DIR=$dir/$1/models"
+  echo "source test/mesh/env.sh $1 8090 8091; export SELF_HOST=$1 MESH_HOSTS=$hosts MESH_SELF=$1 PATH=$here:\$PATH MODEL_DIR=$dir/$1/models"
 }
 on() { local h=$1; shift; ip netns exec "ph-$h" bash -c "$(envof "$h"); $*"; }
 
@@ -53,7 +52,7 @@ on() { local h=$1; shift; ip netns exec "ph-$h" bash -c "$(envof "$h"); $*"; }
 mkdir -p "$dir/beta/config" "$dir/beta/state"
 printf '[model]\nhost = true\n' > "$dir/beta/config/phosphorus.ini"
 (
-  DUALRUN_DIR=$dir; eval "$(envof beta)"; unset OPENCODE_BIN
+  MESH_DIR=$dir; eval "$(envof beta)"; unset OPENCODE_BIN
   "$bin" model > "$dir/fetch.log" 2>&1 &
   p=$!
   for _ in $(seq 1 120); do
@@ -65,7 +64,7 @@ printf '[model]\nhost = true\n' > "$dir/beta/config/phosphorus.ini"
 [ -e "$dir/beta/models/tools" ] && ok "beta's tools fetched" || bad "beta's tools never fetched"
 
 # --- the hosts ----------------------------------------------------------------
-export DUALRUN_DIR=$dir
+export MESH_DIR=$dir
 for h in alpha beta gamma; do
   mkdir -p "$dir/$h"
   echo 0.0.0 > "$dir/$h/VERSION"
@@ -73,7 +72,7 @@ done
 on alpha "exec $bin serve" > "$dir/alpha.log" 2>&1 & pids+=($!)
 on beta "unset OPENCODE_BIN; exec $bin serve" > "$dir/beta.log" 2>&1 & pids+=($!)
 on beta "unset OPENCODE_BIN; exec $bin model" > "$dir/beta-model.log" 2>&1 & pids+=($!)
-on gamma "cd legacy/frontend && exec node server.js" > "$dir/gamma.log" 2>&1 & pids+=($!)
+on gamma "exec $bin serve" > "$dir/gamma.log" 2>&1 & pids+=($!)
 gamma_pid=$!
 
 # curl on a host's own loopback: $1 host, then curl's arguments
@@ -89,17 +88,17 @@ wait_for() {
 
 seen() { api "$1" http://127.0.0.1:8090/api/state | jq -e --arg p "$2" '.tailnet[] | select(.name == $p) | .phosphorus == true'; }
 for h in alpha beta gamma; do wait_for "$h answers" 30 "api $h -f http://127.0.0.1:8090/healthz || api $h -f http://127.0.0.1:8091/healthz"; done
-wait_for "alpha sees gamma (JS)" 40 seen alpha gamma
-wait_for "gamma (JS) sees alpha" 40 seen gamma alpha
+wait_for "alpha sees gamma" 40 seen alpha gamma
+wait_for "gamma sees alpha" 40 seen gamma alpha
 wait_for "beta sees alpha" 40 seen beta alpha
 
 # --- users: made on one side, logged in on the other ------------------------
 json alpha /api/login '{"user":"admin","pass":"adminpass"}' > /dev/null
 json alpha /api/users '{"name":"ann","pass":"hunter22","admin":true}' > /dev/null
-wait_for "ann, made on alpha, logs in on gamma (JS)" 40 "json gamma /api/login '{\"user\":\"ann\",\"pass\":\"hunter22\"}' | jq -e '.user == \"ann\"'"
+wait_for "ann, made on alpha, logs in on gamma" 40 "json gamma /api/login '{\"user\":\"ann\",\"pass\":\"hunter22\"}' | jq -e '.user == \"ann\"'"
 wait_for "ann logs in on beta" 40 "json beta /api/login '{\"user\":\"ann\",\"pass\":\"hunter22\"}' | jq -e '.user == \"ann\"'"
 json gamma /api/users '{"name":"bob","pass":"hunter33"}' > /dev/null
-wait_for "bob, made on gamma (JS), logs in on alpha" 40 "json alpha /api/login '{\"user\":\"bob\",\"pass\":\"hunter33\"}' | jq -e '.user == \"bob\"'"
+wait_for "bob, made on gamma, logs in on alpha" 40 "json alpha /api/login '{\"user\":\"bob\",\"pass\":\"hunter33\"}' | jq -e '.user == \"bob\"'"
 
 # --- the model host: asks and projects passed to it -----------------------------
 wait_for "alpha sees beta's opencode" 40 "api alpha http://127.0.0.1:8090/api/state | jq -e '.model.models[] | select(.host == \"beta\") | .harness == true'"

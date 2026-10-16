@@ -15,10 +15,6 @@ node_modules/
 /files/*
 !/files/.gitkeep
 
-# older homes' generated override and models, moved into state/ by rebuild
-/docker-compose.files.yml
-/models/
-
 # go generate's web build, rebuilt in CI and the image
 /internal/web/dist/*
 !/internal/web/dist/README

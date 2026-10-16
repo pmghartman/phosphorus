@@ -255,7 +255,7 @@ func tick(ipOf func(string) string, port int) {
 
 // Start the pull loop
 func Start(ipOf func(string) string, port int) {
-	appliedFile = sysfs.Local("mirror-applied.json", "")
+	appliedFile = sysfs.Local("mirror-applied.json")
 	util.ReadJSON(appliedFile, &applied)
 	if applied == nil {
 		applied = map[string]appliedRec{}

@@ -6,7 +6,6 @@ import (
 	"log"
 	"math"
 	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -780,9 +779,9 @@ func announceLeave(name string) {
 // --- startup ----------------------------------------------------------------
 
 func initChat() {
-	ownChatFile = sysfs.Local("chat/own.json", filepath.Join(stateDir, "own-chat.json"))
-	chatFile = sysfs.Local("chat/merged.json", filepath.Join(stateDir, "chat.json"))
-	clearFile = sysfs.Local("chat/clear.json", filepath.Join(stateDir, "chat-clear.json"))
+	ownChatFile = sysfs.Local("chat/own.json")
+	chatFile = sysfs.Local("chat/merged.json")
+	clearFile = sysfs.Local("chat/clear.json")
 	ownChat = readLog(ownChatFile)
 	if n := len(ownChat); n > 0 {
 		ownSeq = num(ownChat[n-1]["seq"])

@@ -11,4 +11,3 @@ build
 web/.vendor
 internal/web/dist/*
 !internal/web/dist/README
-legacy

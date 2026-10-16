@@ -117,7 +117,7 @@ case "${1:-}|${2:-}" in
   # reboots since compose restarts only unless-stopped
   stop\|)
     [ -n "${PHOSPHORUS_DETACHED:-}" ] || detach stop
-    for c in phosphorus-git phosphorus phosphorus-search; do
+    for c in phosphorus-git phosphorus phosphorus-model phosphorus-search; do
       [ "$($DOCKER inspect -f '{{.State.Running}}' "$c" 2>/dev/null)" = true ] || continue
       echo "stopping $c..."
       $DOCKER stop -t 30 "$c" >/dev/null || exit 1

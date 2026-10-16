@@ -98,7 +98,7 @@ switch ("$($args[0])|$($args[1])") {
     "stop|"       {
         Invoke-Detached "stop"
         # git first, so a master hands off before the frontend goes
-        foreach ($c in @("phosphorus-git", "phosphorus", "phosphorus-search")) {
+        foreach ($c in @("phosphorus-git", "phosphorus", "phosphorus-model", "phosphorus-search")) {
             if ((Invoke-Quiet { docker inspect -f '{{.State.Running}}' $c }) -ne "true") { continue }
             Write-Host "stopping $c..."
             docker stop -t 30 $c | Out-Null

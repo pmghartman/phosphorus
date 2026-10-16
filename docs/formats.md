@@ -1,8 +1,8 @@
 # What phosphorus keeps on disk and on the wire
 
-Every format here is shared by the Go binary and the JS frontend in `legacy/`, byte
-for byte where it matters, so a mesh can run both during an update. `test/dualrun`
-and `test/mesh` hold them to it.
+Every format here is shared by every host on the mesh, byte for byte where it
+matters, so hosts on different releases agree during an update. `test/mesh` holds
+them to it.
 
 ## The mesh's file system, `sys/`
 

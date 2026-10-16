@@ -251,9 +251,9 @@ func issue(r *http.Request, payload map[string]any, ms int64) string {
 	return fmt.Sprintf("%s=%s; Max-Age=%d%s", Cookie, token, int64(math.Round(float64(ms)/1000)), attrs(r))
 }
 
-// ClearCookie the domain's and any older host-only one
+// ClearCookie the session cookie gone
 func ClearCookie(r *http.Request) []string {
-	return []string{Cookie + "=; Max-Age=0" + attrs(r), Cookie + "=; Max-Age=0; Path=/; SameSite=Lax; HttpOnly"}
+	return []string{Cookie + "=; Max-Age=0" + attrs(r)}
 }
 
 // IPOf the browser's address as cloudflared saw it, else the socket's

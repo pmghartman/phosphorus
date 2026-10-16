@@ -32,8 +32,6 @@ var (
 	selfHost   = os.Getenv("SELF_HOST")
 	stateDir   = util.Env("STATE_DIR", "/state")
 	claimFile  = filepath.Join(stateDir, "model-claim.json")
-	oldRoles   = filepath.Join(stateDir, "model-roles.json")
-	oldKeys    = filepath.Join(stateDir, "model-keys.json")
 	serverPort = util.EnvInt("MODEL_SERVER_PORT", 8791)
 	nameRe     = regexp.MustCompile(`^[A-Za-z0-9-]{1,63}$`)
 	providerRe = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
@@ -161,30 +159,6 @@ func meshHost(m string) string {
 		return m[len(harness.Mesh)+1:]
 	}
 	return ""
-}
-
-// Init the old per-host files taken into sys
-func Init() {
-	if old := util.ReadJSONMap(oldRoles); old != nil {
-		for _, r := range Roles {
-			c := util.Obj(old[r])
-			m, _ := c["model"].(string)
-			at, ok := c["at"].(float64)
-			if c != nil && (m == "" || modelRe.MatchString(m)) && ok && at <= float64(util.Now()+60000) {
-				sysfs.Adopt(roleFile(r), map[string]any{"model": m}, at)
-			}
-		}
-	}
-	if old := util.ReadJSONMap(oldKeys); old != nil {
-		for p, kv := range old {
-			k := util.Obj(kv)
-			key, ok := k["key"].(string)
-			at, _ := k["at"].(float64)
-			if providerRe.MatchString(p) && p != harness.Mesh && ok && key != "" && len(key) <= 512 {
-				sysfs.Adopt(keyFile(p), map[string]any{"key": key}, at)
-			}
-		}
-	}
 }
 
 type role struct {
@@ -442,7 +416,7 @@ func excuse(states []map[string]any, s map[string]any) string {
 	}
 	crashed := ""
 	if e := int(n(s["exits"])); e > 0 {
-		crashed = fmt.Sprintf("llama-server has exited %s since it was last up (%s), docker logs phosphorus on %s says why", times(e), util.JSString(s["lastExit"]), util.JSString(s["host"]))
+		crashed = fmt.Sprintf("llama-server has exited %s since it was last up (%s), docker logs phosphorus-model on %s says why", times(e), util.JSString(s["lastExit"]), util.JSString(s["host"]))
 	}
 	if crashed != "" && s["server"] != "loading" {
 		return "not loaded: " + crashed
@@ -838,8 +812,7 @@ func AskHere(messages []harness.Msg, r, asker string, direct bool, ctx context.C
 // HarnessHere opencode fetched and runnable on this host
 func HarnessHere() bool { return tools.OpencodeReady() }
 
-// opencode ready on a model host's claim; a claim without tools is an
-// older phosphorus, its opencode in its image but no /api/model/ask
+// opencode ready on a model host's claim
 func harnessReady(s map[string]any) bool { return util.Obj(s["tools"])["opencode"] == "ready" }
 
 // HarnessHost the model host answering asks and running projects, the one
@@ -864,11 +837,6 @@ func noHarness() error {
 	all := runners(view())
 	if len(all) == 0 {
 		return errors.New("no host is the model host, set [model] host = true on one")
-	}
-	for _, s := range all {
-		if s["tools"] == nil {
-			return errors.New(util.JSString(s["host"]) + " runs an older phosphorus, update the mesh")
-		}
 	}
 	return errors.New("the model host is still fetching opencode")
 }

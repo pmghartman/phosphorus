@@ -29,6 +29,7 @@ import (
 var (
 	stateDir      = util.Env("STATE_DIR", "/state")
 	selfHost      = os.Getenv("SELF_HOST")
+	selfHostFile  = filepath.Join(stateDir, "self-host")
 	claimFile     = filepath.Join(stateDir, "model-claim.json")
 	machineFile   = filepath.Join(stateDir, "machine.json")
 	installedFile = filepath.Join(stateDir, "model-installed.json")
@@ -534,7 +535,17 @@ func claim(c config) map[string]any {
 // the tools' states on the model host: ready, fetching or why not
 var toolState = map[string]string{}
 
+// phosphorus-model has no tailnet of its own: the name phosphorus wrote
+func readSelf() {
+	if os.Getenv("SELF_HOST") == "" {
+		if b, err := os.ReadFile(selfHostFile); err == nil {
+			selfHost = strings.TrimSpace(string(b))
+		}
+	}
+}
+
 func tick() {
+	readSelf()
 	c := readConfig()
 	// fetched on the model host, dropped from every other
 	st := map[string]string{}
@@ -590,6 +601,7 @@ func Main() int {
 	if util.ReadJSON(installedFile, &inst) {
 		installed = &inst
 	}
+	readSelf()
 	h := selfHost
 	if h == "" {
 		h = "an unnamed host"
