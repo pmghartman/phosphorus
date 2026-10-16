@@ -102,7 +102,7 @@ func stop() error {
 	if ok, err := detached("stop"); ok || err != nil {
 		return err
 	}
-	for _, c := range []string{"phosphorus-git", "phosphorus", "phosphorus-model", "phosphorus-search"} {
+	for _, c := range []string{"phosphorus-git", "phosphorus", "phosphorus-model"} {
 		if !isRunning(c) {
 			continue
 		}

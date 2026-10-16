@@ -374,7 +374,7 @@ func buildTools() {
 				return project.Exec(id, str(a["command"]), a["timeout_s"], a["background"] == true)
 			}},
 		{name: "web_search", read: true,
-			description: "Search the web (searxng on a model host): titles, links and snippets. Use it for anything factual, " +
+			description: "Search the web: titles, links and snippets. Use it for anything factual, " +
 				"current or outside the mesh, then fetch_page the best results. A name the mesh knows (host, service, share, " +
 				"person) is the mesh's: look it up with the mesh tools first, never search it.",
 			schema: object(map[string]any{"query": map[string]any{"type": "string"}, "page": map[string]any{"type": "integer", "description": "results page, from 1", "default": 1}}, "query"),

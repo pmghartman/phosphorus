@@ -319,7 +319,7 @@ func appHandler(w http.ResponseWriter, r *http.Request) {
 		if r := []rune(qs); len(r) > 400 {
 			qs = string(r[:400])
 		}
-		b, err := mcp.Searxng(qs, page)
+		b, err := mcp.Search(qs, page)
 		if err != nil {
 			sendJSON(w, 502, map[string]any{"error": err.Error()})
 			return

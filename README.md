@@ -61,7 +61,7 @@ dir = files               # which share holds home/ (users, shared/, sys/)
 host = true               # run a git server replica here
 
 [model]
-host = true               # run the AI model, projects and web search here
+host = true               # run the AI model and projects here
 gpu = true
 url = https://huggingface.co/.../model.gguf
 ```
@@ -116,7 +116,6 @@ flowchart TB
     subgraph docker["Docker"]
       ph["phosphorus<br/>tailscaled, frontend, cloudflared"]
       model["phosphorus-model<br/>llama-server, opencode"]
-      search["phosphorus-search<br/>searxng"]
       git["phosphorus-git<br/>forgejo, litefs, elector"]
       updater["phosphorus-updater<br/>compose swap"]
     end
@@ -137,7 +136,7 @@ flowchart TB
   bin -->|"admin setup once"| sshd
   bin -->|"pull, compose up"| ghcr
   bin -->|"compose swap"| updater
-  updater --> ph & model & search & git
+  updater --> ph & model & git
   ph -->|"reconfig: phosphorus rebuild"| updater
   env --> ph
   cfg --> ph
@@ -151,7 +150,7 @@ flowchart TB
   ph <-->|"snapshots, files, chat, updates"| peers
   ph -->|"missing keys from /internal/keys"| peers
   git <-->|"litefs replication"| peers
-  ph --> model & search
+  ph --> model
   ph --> cf --> browser
   client --> browser
   tray -->|"window on the frontend"| browser

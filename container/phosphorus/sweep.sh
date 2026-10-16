@@ -13,7 +13,7 @@ while IFS='|' read -r id state status name label sandbox project; do
   case "$id" in "$self"*) continue ;; esac
   [ -n "$sandbox" ] && continue
   case "$name" in
-    phosphorus|phosphorus-model|phosphorus-git|phosphorus-search) [ "$project" = phosphorus ] && continue ;;
+    phosphorus|phosphorus-model|phosphorus-git) [ "$project" = phosphorus ] && continue ;;
     phosphorus-updater)
       [ "$state" = running ] && continue
       case "$status" in *"(0)"*) ;; *) continue ;; esac ;;

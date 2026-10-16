@@ -102,19 +102,6 @@ services:
       - ${PHOSPHORUS_FILES_DIR:-./files}:/files
       - /var/run/docker.sock:/var/run/docker.sock
 
-  # phosphorus's web search, on model hosts only, published on loopback only, where
-  # the frontend's host networking reaches it, the rest asking a model host's frontend
-  search:
-    image: searxng/searxng:latest
-    container_name: phosphorus-search
-    restart: unless-stopped
-    profiles: ["model-host"]
-    ports: ["127.0.0.1:8888:8080"]
-    environment:
-      SEARXNG_BASE_URL: http://127.0.0.1:8888/
-    volumes:
-      - ./container/searxng/settings.yml:/etc/searxng/settings.yml:ro
-
   # optional git-host, its own container: supervisor.sh killing everything
   # when one child exits, litefs restarting on every flip
   git:

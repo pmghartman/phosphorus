@@ -162,7 +162,7 @@ func rebuild() error {
 		dockerQuiet("stop", "-t", "30", "phosphorus-git")
 		dockerQuiet("rm", "phosphorus-git")
 	}
-	// likewise the model and search, the fetched tools gone with them, the gguf kept
+	// likewise the model, the fetched tools gone with it, the gguf kept
 	if !isModelHost() {
 		if containerExists("phosphorus-model") {
 			say("no longer a model host, removing phosphorus-model")
@@ -170,8 +170,9 @@ func rebuild() error {
 			dockerQuiet("run", "--rm", "--volumes-from", "phosphorus-model", "--entrypoint", "rm", "phosphorus:latest", "-rf", "/models/tools")
 			dockerQuiet("rm", "phosphorus-model")
 		}
-		dockerQuiet("rm", "-f", "phosphorus-search")
 	}
+	// searxng, from releases before search moved in
+	dockerQuiet("rm", "-f", "phosphorus-search")
 
 	// leftovers of earlier runs, from the new image's sweep.sh, host pids and
 	// an unconfined profile for signals to processes outside any container
