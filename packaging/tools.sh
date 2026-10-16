@@ -12,7 +12,7 @@ T=$(mktemp -d)
 trap 'rm -rf "$T"' EXIT
 mkdir -p "$OUT"
 get() { curl -fsSL --retry 3 -o "$1" "$2"; }
-check() { echo "$2  $1" | sha256sum -c - >/dev/null 2>&1 || echo "$2  $1" | shasum -a 256 -c - >/dev/null || { echo "checksum mismatch: $1" >&2; exit 1; }; }
+check() { s=$( (sha256sum "$1" 2>/dev/null || shasum -a 256 "$1") | cut -d' ' -f1); [ "$s" = "$2" ] || { echo "checksum mismatch: $1 (got $s)" >&2; exit 1; }; }
 
 case $OS in
 linux)
@@ -42,7 +42,7 @@ darwin)
     ;;
 windows)
     get "$OUT/cloudflared.exe" "$CF/cloudflared-windows-amd64.exe"
-    check "$OUT/cloudflared.exe" e9285e111d44ae76fa084127b458a9cef3017151837c735be1421f02b46f7362
+    check "$OUT/cloudflared.exe" f096265ec2fcbe9bb6e2d64268db167ced3fcbb83d894bdb9e2fcdb26f2ea7e2
     ;;
 *) echo "unknown OS $OS" >&2; exit 1 ;;
 esac
