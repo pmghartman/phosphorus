@@ -4467,27 +4467,16 @@ function dkChips() {
   const sig = JSON.stringify([here, names, [...dk.creds.keys()], names.filter((h) => !up.has(h))]);
   if (sig === dk.chips) return;
   dk.chips = sig;
+  // a locked one's press its login, the rest only shown: hosts switched from the mesh view
   hosts.replaceChildren(...names.map((h) => {
-    const locked = !dk.creds.has(h);
-    if (!up.has(h)) {
-      if (!locked) return Object.assign(el('button', 'dk-chip down', h), { type: 'button', title: `${h} dropped off the mesh` });
+    if (!dk.creds.has(h)) {
       const b = Object.assign(el('button', 'dk-chip locked', h), { type: 'button', title: `log in to ${h}` });
       b.prepend(dkGlyph(DK_GLYPHS.lock));
       b.addEventListener('click', () => dkUnlock(h, b));
       return b;
     }
-    // creds only gate the shell, the lock its own login button
-    const b = Object.assign(el('button', `dk-chip${h === here ? ' here' : ''}${locked ? ' locked' : ''}`, h), { type: 'button' });
-    b.title = h === here ? `this page is served by ${h}` : `serve this page from ${h}`;
-    b.setAttribute('aria-pressed', String(h === here));
-    b.addEventListener('click', () => switchHost(h));
-    if (locked) {
-      const lock = Object.assign(el('span', 'dk-lock'), { role: 'button', title: `log in to ${h}` });
-      lock.appendChild(dkGlyph(DK_GLYPHS.lock));
-      lock.addEventListener('click', (e) => { e.stopPropagation(); dkUnlock(h, b); });
-      b.prepend(lock);
-    }
-    return b;
+    if (!up.has(h)) return Object.assign(el('span', 'dk-chip down', h), { title: `${h} dropped off the mesh` });
+    return Object.assign(el('span', `dk-chip${h === here ? ' here' : ''}`, h), { title: h === here ? `this page is served by ${h}` : `${h}, logged in` });
   }));
 }
 
