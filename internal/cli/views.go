@@ -919,6 +919,7 @@ func updateView() view {
 	}
 	selfVer := str(get(st, "self", "version"))
 	rows := [][]string{}
+	why := []string{}
 	for _, m := range order {
 		d := byName[m]
 		isSelf := m == self
@@ -967,6 +968,9 @@ func updateView() view {
 		}
 		if step == "fail" || step == "unreachable" {
 			label = or(str(get(shown, "errors", m)), label)
+			if d := str(get(shown, "details", m)); d != "" {
+				why = append(why, c("sky")(m)+" "+c("muted")(d))
+			}
 		}
 		if step == "" && quiet(m) {
 			rows = append(rows, []string{name + " " + os, c("muted")(ver), c("offmesh")("not answering")})
@@ -993,7 +997,11 @@ func updateView() view {
 			keys = []key{kif(truthy(chain["paused"]), "c continue", "primary"), k("x cancel", "danger")}
 		}
 	}
-	return view{lines: panels(prog, &card{title, table([]string{"host", "version", ""}, rows, -1, 0)}), keys: keys, title: "mesh update"}
+	var failed *card
+	if len(why) > 0 {
+		failed = &card{"why", plainRows(why...)}
+	}
+	return view{lines: panels(prog, &card{title, table([]string{"host", "version", ""}, rows, -1, 0)}, failed), keys: keys, title: "mesh update"}
 }
 
 func offlineView() []string {

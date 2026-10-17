@@ -3389,7 +3389,7 @@ function renderVersions() {
     if (os) name.appendChild(Object.assign(document.createElement('span'), { className: 'update-os', textContent: os }));
     li.append(name,
       Object.assign(document.createElement('span'), { className: 'update-ver', textContent: version ? `v${version}` : '?' }),
-      Object.assign(document.createElement('span'), { className: 'update-state', textContent: stepLabel(updateChain, host, step) || (quiet ? 'not answering' : '') }));
+      Object.assign(document.createElement('span'), { className: 'update-state', textContent: stepLabel(updateChain, host, step) || (quiet ? 'not answering' : ''), title: updateChain?.details?.[host] || '' }));
     return li;
   });
   if (!rows.length) rows.push(Object.assign(document.createElement('li'), { className: 'empty', textContent: 'no hosts in view' }));

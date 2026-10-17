@@ -50,7 +50,7 @@ func install(payload string, update bool) error {
 	if update {
 		err = rebuild()
 		if err != nil {
-			err = fail("rebuild failed, still running the previous version: %v", err)
+			err = fail("rebuild failed, the service may still run the previous binary: %v", err)
 		}
 	} else {
 		err = start()

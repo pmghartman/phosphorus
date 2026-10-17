@@ -349,6 +349,7 @@ type Chain struct {
 	Results      map[string]string            `json:"results"`
 	Versions     map[string]map[string]string `json:"versions"`
 	Errors       map[string]string            `json:"errors"`
+	Details      map[string]string            `json:"details,omitempty"`
 	Target       string                       `json:"target"`
 	CurrentIndex int                          `json:"currentIndex"`
 	Paused       bool                         `json:"paused"`
@@ -588,6 +589,11 @@ func recordLocked(host string, r result) bool {
 		chain.Results[host] = "unreachable"
 	}
 	chain.Errors[host] = brief(r)
+	if chain.Details == nil {
+		chain.Details = map[string]string{}
+	}
+	chain.Details[host] = r.error
+	logf("%s failed: %s", host, r.error)
 	saveLocked()
 	return false
 }
