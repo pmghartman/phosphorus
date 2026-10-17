@@ -645,8 +645,9 @@ fn open_connect(handle: &AppHandle) {
     }
 }
 
+// async: a window made in a sync command deadlocks WebView2, a white main window
 #[tauri::command]
-fn set_domain(handle: AppHandle, domain: String) -> Result<(), String> {
+async fn set_domain(handle: AppHandle, domain: String) -> Result<(), String> {
     let d = bare_domain(&domain);
     if d.is_empty() || !d.contains('.') || d.chars().any(|c| !(c.is_ascii_alphanumeric() || c == '.' || c == '-')) {
         return Err("a domain like example.com".into());
