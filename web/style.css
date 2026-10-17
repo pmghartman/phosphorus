@@ -2078,6 +2078,9 @@ input, textarea { caret-color: var(--accent); }
 .dk-chip.locked::before { display: none; }
 .dk-chip.locked .ic { width: 0.75rem; height: 0.75rem; color: var(--warn); }
 .dk-chip.locked:hover { color: var(--fg); }
+.dk-chip.locked.here { color: var(--fg); }
+.dk-lock { display: inline-flex; cursor: pointer; }
+.dk-lock:hover .ic { color: var(--fg); }
 .dk-profile { gap: 0.35rem; font: inherit; }
 .dk-profile-name { max-width: 7rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dk-icon.dk-users .ic { color: var(--sky); }
