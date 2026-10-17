@@ -31,7 +31,7 @@ var (
 
 const (
 	MaxPreview   = 512 * 1024
-	MaxUpload    = 256 * 1024 * 1024
+	MaxUpload    = 64 << 30
 	maxEntries   = 5000
 	treeDepthMax = 8
 	treeMax      = 2000
