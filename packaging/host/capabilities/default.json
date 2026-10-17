@@ -1,10 +1,9 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "the app's own pages, keys and connect; the frontend's window none",
+  "description": "the host app's keys window",
   "windows": [
-    "keys",
-    "connect"
+    "keys"
   ],
   "permissions": [
     "core:default",

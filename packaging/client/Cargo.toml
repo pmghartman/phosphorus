@@ -1,9 +1,9 @@
 [package]
-name = "phosphorus-app"
+name = "phosphorus-client"
 version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
-description = "Phosphorus app: the frontend in a window, and on a host its tray: keys, install, bring-up and updates"
+description = "Phosphorus Client: the mesh's frontend in a window, updating itself from the release feed"
 
 [[bin]]
 name = "Phosphorus"
@@ -13,16 +13,11 @@ path = "src/main.rs"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["tray-icon", "image-png", "devtools"] }
+tauri = { version = "2", features = ["devtools"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-updater = "2"
-tauri-plugin-autostart = "2"
 tauri-plugin-single-instance = "2"
 serde_json = "1"
-
-[target.'cfg(target_os = "macos")'.dependencies]
-objc2 = "0.6"
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSResponder"] }
 
 [profile.release]
 strip = true
