@@ -129,6 +129,9 @@ func RowError(r map[string]any) string {
 	if m, has := r["mode"]; m != "path" && m != "subdomain" {
 		return fmt.Sprintf("'%s' is not path or subdomain", tpl(m, has))
 	}
+	if p, has := r["public"]; has && p != true && p != false {
+		return fmt.Sprintf("'%s' is not true or false", util.JSString(p))
+	}
 	if bp, has := r["base_path"]; has && util.Truthy(bp) {
 		s, ok := bp.(string)
 		if !ok || strings.Contains(s, "..") || !baseRe.MatchString(s) {
@@ -151,6 +154,7 @@ type Route struct {
 	Name    string  `json:"name"`
 	Master  bool    `json:"master"`
 	Git     bool    `json:"git"`
+	Public  bool    `json:"public"`
 	Domain  string  `json:"domain"`
 	Prefix  string  `json:"prefix"`
 	Scheme  string  `json:"scheme"`
@@ -192,6 +196,7 @@ func toRoute(r map[string]any, ip string) *Route {
 	name := util.JSString(r["name"])
 	rt := &Route{Host: host, Name: name, Scheme: util.JSString(r["scheme"]), IP: ip, Proto: "http"}
 	rt.Port = int(r["port"].(float64))
+	rt.Public = r["public"] == true
 	if m, ok := r["master"].(bool); ok {
 		rt.Git = true
 		rt.Master = m
@@ -598,8 +603,9 @@ type Gate struct {
 var openAPI = regexp.MustCompile(`^/api/(me|login|logout|users|run)(/|$)`)
 
 func gated(h hit) bool {
+	// public routes left to the service's own login
 	if h.route != nil {
-		return !h.route.Git
+		return !h.route.Git && !h.route.Public
 	}
 	return h.frontend
 }

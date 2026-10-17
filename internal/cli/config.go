@@ -234,7 +234,7 @@ func indexOf(xs []string, x string) int {
 
 // --- services.export ------------------------------------------------------------
 
-var svcKeys = []string{"port", "scheme", "mode", "base_path", "extras", "type", "start", "stop"}
+var svcKeys = []string{"port", "scheme", "mode", "base_path", "extras", "type", "start", "stop", "public"}
 
 func serviceForm(s *section) *form {
 	f := fieldsOf(s)
@@ -255,6 +255,7 @@ func serviceForm(s *section) *form {
 		fl("mode", "blank = path, subdomain = <name>."+baseDomain, "", "path", "subdomain"),
 		fl("base_path", "sub-path stripped before proxying"),
 		fl("extras", `JSON: {"max_body":"50MB","forwarded_proto":"https"}`),
+		fl("public", "true = no phosphorus login, the service's own only", "", "true"),
 		fl("type", "blank, or game", "", "game"),
 		fl("start", "games only: host command behind play"),
 		fl("stop", "games only: host command behind stop"),
