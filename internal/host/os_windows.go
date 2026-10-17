@@ -258,7 +258,16 @@ func tailscaleDirs() []string {
 	return []string{filepath.Join(os.Getenv("ProgramFiles"), "Tailscale")}
 }
 
-func tailscaleCLI() string { return filepath.Join(tailscaleDirs()[0], "tailscale.exe") }
+// tailscaleCLI Program Files', else one on PATH
+func tailscaleCLI() string {
+	p := filepath.Join(tailscaleDirs()[0], "tailscale.exe")
+	if !fileExists(p) {
+		if l, err := exec.LookPath("tailscale"); err == nil {
+			return l
+		}
+	}
+	return p
+}
 
 func tailscaleInstalled() bool { return fileExists(tailscaleCLI()) }
 
@@ -273,6 +282,11 @@ func tailscaleRunInstaller(msi string) error {
 
 // tailscaleLaunch its service, set to start by the installer
 func tailscaleLaunch() { quiet("net", "start", "Tailscale") }
+
+func tailscaleHint() string { return "start Tailscale from the Start menu" }
+
+// tailscaleKeepUp an existing install's node kept up signed out of Windows, for the service
+func tailscaleKeepUp() { quiet(tailscaleCLI(), "set", "--unattended") }
 
 func tailscaleReady() error {
 	if !fileExists(tailscaleCLI()) {

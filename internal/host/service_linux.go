@@ -71,6 +71,8 @@ func tailscaleInstalled() bool { return true }
 
 func tailscaleInstall() error { return nil }
 
+func tailscaleKeepUp() {}
+
 func tailscaleReady() error {
 	if !systemTailscale() && !fileExists(tool("tailscaled")) {
 		return fail("no tailscaled here: reinstall the phosphorus package")

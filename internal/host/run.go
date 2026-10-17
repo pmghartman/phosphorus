@@ -111,7 +111,7 @@ func prefixed(role string) io.Writer {
 
 var slugRe = regexp.MustCompile(`[^a-z0-9]+`)
 
-// tailnetSelf this node's DNS name, logging in with TS_AUTHKEY when it isn't
+// tailnetSelf this node's DNS name, on the mesh's tailnet first
 func tailnetSelf() (string, error) {
 	type status struct {
 		BackendState string
@@ -119,8 +119,9 @@ func tailnetSelf() (string, error) {
 	}
 	read := func() (status, error) {
 		var st status
+		// signed out exits nonzero, its JSON still printed
 		out, err := exec.Command(tailscaleCLI(), "status", "--json").Output()
-		if err == nil {
+		if len(out) > 0 {
 			err = json.Unmarshal(out, &st)
 		}
 		return st, err
@@ -133,22 +134,14 @@ func tailnetSelf() (string, error) {
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
-	if st.BackendState != "Running" {
-		key := os.Getenv("TS_AUTHKEY")
-		if key == "" {
-			return "", fail("tailscale is %s and there's no TS_AUTHKEY in .env to log in with", strings.ToLower(st.BackendState))
-		}
-		a := append([]string{"up", "--authkey=" + key}, tailscaleUpFlags()...)
-		if h := os.Getenv("TS_HOSTNAME"); h != "" {
-			a = append(a, "--hostname="+h)
-		}
-		say("logging tailscale in...")
-		if err := run(tailscaleCLI(), a...); err != nil {
-			return "", fail("couldn't join the tailnet, check TS_AUTHKEY in .env (it must be reusable and unexpired)")
-		}
-		if st, err = read(); err != nil {
-			return "", err
-		}
+	if st.BackendState == "" {
+		return "", fail("tailscale isn't answering: %v", err)
+	}
+	if err := tailnetJoin(st.BackendState); err != nil {
+		return "", err
+	}
+	if st, err = read(); err != nil {
+		return "", err
 	}
 	return strings.TrimSuffix(st.Self.DNSName, "."), nil
 }

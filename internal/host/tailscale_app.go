@@ -12,8 +12,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"time"
-
-	"github.com/pmghartman/phosphorus/internal/envfile"
 )
 
 // tailscaleVersion the installer setup fetches when the machine has no Tailscale
@@ -62,8 +60,8 @@ func download(dst, url, sum string) error {
 	return nil
 }
 
-// tailscaleLogin Tailscale launched and waited on, then signed in with TS_AUTHKEY when
-// it isn't, or once when joining while signed in elsewhere
+// tailscaleLogin Tailscale launched and waited on, an existing install's too, then
+// on the mesh's tailnet
 func tailscaleLogin() error {
 	var st struct{ BackendState string }
 	ready := func() bool {
@@ -78,32 +76,8 @@ func tailscaleLogin() error {
 			time.Sleep(time.Second)
 		}
 		if st.BackendState == "" {
-			return fail("Tailscale isn't running: open the Tailscale app (on macOS allow its VPN configuration), then Start")
+			return fail("Tailscale isn't running: %s, then Start", tailscaleHint())
 		}
 	}
-	env := envfile.Read(envPath())
-	joined := at("state", "tailnet-joined")
-	joining := env["BASE_DOMAIN"] == "" && !fileExists(joined)
-	if st.BackendState == "Running" && !joining {
-		return nil
-	}
-	key := env["TS_AUTHKEY"]
-	if key == "" {
-		return fail("Tailscale isn't signed in and there's no TS_AUTHKEY in .env: sign in to the Tailscale app, then phos start")
-	}
-	a := append([]string{"up", "--reset", "--authkey=" + key}, tailscaleUpFlags()...)
-	if st.BackendState == "Running" {
-		// signed in to another tailnet: the mesh's instead
-		a = append(a, "--force-reauth")
-	}
-	if h := os.Getenv("TS_HOSTNAME"); h != "" {
-		a = append(a, "--hostname="+h)
-	}
-	say("signing Tailscale in with TS_AUTHKEY...")
-	if err := run(tailscaleCLI(), a...); err != nil {
-		return fail("couldn't sign Tailscale in, check TS_AUTHKEY in .env (it must be reusable and unexpired)")
-	}
-	os.MkdirAll(at("state"), 0o755)
-	os.WriteFile(joined, []byte(time.Now().UTC().Format(time.RFC3339)+"\n"), 0o644)
-	return nil
+	return tailnetJoin(st.BackendState)
 }

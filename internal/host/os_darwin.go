@@ -141,12 +141,22 @@ func tailscalePkg() (string, string) {
 
 func tailscaleRunInstaller(pkg string) error { return run("installer", "-pkg", pkg, "-target", "/") }
 
-// tailscaleLaunch the app, in the background: its daemon lives in it
+// tailscaleLaunch the app, in the background: its daemon lives in it; Homebrew's
+// tailscaled root's to start
 func tailscaleLaunch() {
-	if !quiet("open", "-g", "-a", "Tailscale") {
+	if fileExists(appCLI[0]) {
 		quiet("open", "-g", "/Applications/Tailscale.app")
 	}
 }
+
+func tailscaleHint() string {
+	if fileExists(appCLI[0]) {
+		return "open the Tailscale app and allow its VPN configuration"
+	}
+	return "start Homebrew's tailscaled with sudo brew services start tailscale"
+}
+
+func tailscaleKeepUp() {}
 
 // tailscaleReady the app's CLI linked into the tools as tailscale, logged in with TS_AUTHKEY when it isn't
 func tailscaleReady() error {
