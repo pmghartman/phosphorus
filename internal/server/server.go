@@ -422,7 +422,8 @@ func forwardFiles(host string, w http.ResponseWriter, r *http.Request, urlPath s
 	}
 	for k, vs := range r.Header {
 		lk := strings.ToLower(k)
-		if lk == "accept-encoding" || lk == "connection" {
+		// the origin checked here already, the peer's own Host never matching it
+		if lk == "accept-encoding" || lk == "connection" || lk == "origin" {
 			continue
 		}
 		req.Header[k] = vs

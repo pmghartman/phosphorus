@@ -803,6 +803,15 @@ function askGitSwitch(name) {
   });
 }
 
+// the one place a host is switched: its square in the graph or its row in the stats
+meshSvg.addEventListener('click', (e) => {
+  const g = e.target.closest('.mesh-host');
+  if (g && meshPanel.classList.contains('expanded')) switchHost(g.dataset.host);
+});
+meshStatsRows.addEventListener('click', (e) => {
+  const row = e.target.closest('.mesh-stat-row[data-host]');
+  if (row) switchHost(row.dataset.host);
+});
 meshGitRows.addEventListener('click', (e) => {
   const b = e.target.closest('.mesh-git-take');
   if (b) askGitSwitch(b.dataset.host);
