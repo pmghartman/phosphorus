@@ -510,6 +510,8 @@ body {
 .fm-place { display: flex; align-items: center; gap: 0.45rem; padding: 0.2rem 0.6rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fm-place span { overflow: hidden; text-overflow: ellipsis; }
 .fm-hostrow { color: var(--fg); margin-top: 0.2rem; }
+.fm-hostrow.fm-ro { color: var(--muted); }
+.fm-hostrow.fm-ro::after { content: 'read only'; margin-left: auto; font-size: 0.8em; color: var(--dim); }
 .fm-share { padding-left: 1.4rem; cursor: pointer; color: var(--muted); }
 .fm-share:hover { background: var(--tab-hover); color: var(--fg); }
 .fm-share.here { color: var(--fg); background: var(--bg); box-shadow: inset 2px 0 var(--accent); }
@@ -1171,6 +1173,7 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
 .mesh-git-row.down .mesh-git-dot { border-color: var(--offmesh); }
 .mesh-git-row.down .mesh-stat-nm { color: var(--muted); text-decoration: line-through; }
 .mesh-git-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.git-spin { display: inline-block; width: 0.6em; height: 0.6em; margin-right: 0.35em; vertical-align: -0.05em; border: 1.5px solid var(--sand); border-right-color: transparent; border-radius: 50%; animation: game-spin 0.8s linear infinite; }
 .mesh-git-behind { display: flex; align-items: center; gap: 0.3rem; }
 .mesh-git-take { font: inherit; font-size: 0.85em; padding: 0 0.35rem; color: var(--muted); background: none; border: 1px solid var(--border); cursor: pointer; }
 .mesh-git-take:hover, .mesh-git-take:focus-visible { color: var(--accent); border-color: var(--accent); }

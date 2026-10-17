@@ -10,6 +10,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::OnceLock;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
@@ -25,6 +26,8 @@ static BUSY: AtomicBool = AtomicBool::new(false);
 static TRAY: AtomicBool = AtomicBool::new(false);
 /// popped out windows' labels
 static TABS: AtomicU32 = AtomicU32::new(0);
+/// the tray menu's first line: what the tooltip says, visible on macOS
+static STATUS: OnceLock<MenuItem<tauri::Wry>> = OnceLock::new();
 
 struct App {
     payload: PathBuf,
@@ -122,6 +125,22 @@ fn set_tip(app: &AppHandle, text: &str) {
     if let Some(t) = app.tray_by_id("phosphorus") {
         let _ = t.set_tooltip(Some(text));
     }
+    if let Some(s) = STATUS.get() {
+        let _ = s.set_text(text);
+    }
+}
+
+/// macOS: a tray-only app brought forward, its windows and dialogs otherwise behind
+fn activate(handle: &AppHandle) {
+    #[cfg(target_os = "macos")]
+    let _ = handle.run_on_main_thread(|| {
+        if let Some(mtm) = objc2::MainThreadMarker::new() {
+            #[allow(deprecated)]
+            objc2_app_kit::NSApplication::sharedApplication(mtm).activateIgnoringOtherApps(true);
+        }
+    });
+    #[cfg(not(target_os = "macos"))]
+    let _ = handle;
 }
 
 fn payload_version(app: &App) -> String {
@@ -140,6 +159,7 @@ fn status_tip(app: &App) -> String {
 }
 
 fn alert(handle: &AppHandle, text: &str) {
+    activate(handle);
     handle.dialog().message(text).title("Phosphorus").kind(MessageDialogKind::Error).show(|_| {});
 }
 
@@ -201,6 +221,7 @@ fn host_action(handle: AppHandle, action: &'static str, then_open: bool) {
 async fn handle_update(handle: AppHandle, id: String, ask: bool) {
     if BUSY.swap(true, Ordering::SeqCst) {
         if ask {
+            activate(&handle);
             handle.dialog().message("Phosphorus is busy starting, stopping or installing; try again once it's done.").title("Phosphorus Updates").show(|_| {});
         }
         return;
@@ -215,6 +236,7 @@ async fn handle_update(handle: AppHandle, id: String, ask: bool) {
     match found {
         Ok(Some(u)) => {
             if ask {
+                activate(&handle);
                 let go = handle
                     .dialog()
                     .message(format!("Phosphorus {} is available. Updating restarts phosphorus on this host.", u.version))
@@ -252,6 +274,7 @@ async fn handle_update(handle: AppHandle, id: String, ask: bool) {
             if ok {
                 report(&app.home, &id, "ok", current, &v, "");
                 if ask {
+                    activate(&handle);
                     let m = if current { format!("Phosphorus {v} is up to date.") } else { format!("Phosphorus {v} re-applied.") };
                     handle.dialog().message(m).title("Phosphorus Updates").show(|_| {});
                 }
@@ -330,6 +353,7 @@ fn bare_domain(s: &str) -> String {
 /// the frontend in a window of its own, no menu bar; the keys asked for first
 /// on a host without them, the domain on a client without one
 fn open_main(handle: &AppHandle) {
+    activate(handle);
     if let Some(w) = handle.get_webview_window("main") {
         let _ = w.unminimize();
         let _ = w.show();
@@ -384,17 +408,21 @@ fn open_tab(handle: &AppHandle, url: tauri::Url) {
 
 /// a client's first start: the mesh's domain asked for
 fn open_connect(handle: &AppHandle) {
+    activate(handle);
     if let Some(w) = handle.get_webview_window("connect") {
         let _ = w.set_focus();
         return;
     }
-    let _ = WebviewWindowBuilder::new(handle, "connect", WebviewUrl::App("connect.html".into()))
+    let w = WebviewWindowBuilder::new(handle, "connect", WebviewUrl::App("connect.html".into()))
         .title("Phosphorus")
         .inner_size(460.0, 260.0)
         .resizable(false)
         .center()
         .focused(true)
         .build();
+    if let Ok(w) = w {
+        let _ = w.set_focus();
+    }
 }
 
 #[tauri::command]
@@ -414,17 +442,21 @@ fn set_domain(handle: AppHandle, domain: String) -> Result<(), String> {
 
 /// the keys window, one at a time
 fn open_keys(handle: &AppHandle) {
+    activate(handle);
     if let Some(w) = handle.get_webview_window("keys") {
         let _ = w.set_focus();
         return;
     }
-    let _ = WebviewWindowBuilder::new(handle, "keys", WebviewUrl::App("keys.html".into()))
+    let w = WebviewWindowBuilder::new(handle, "keys", WebviewUrl::App("keys.html".into()))
         .title("Phosphorus Keys")
         .inner_size(520.0, 600.0)
         .resizable(false)
         .center()
         .focused(true)
         .build();
+    if let Ok(w) = w {
+        let _ = w.set_focus();
+    }
 }
 
 /// for the keys window: which are set, never what they are
@@ -522,6 +554,7 @@ fn uninstall(handle: AppHandle) {
         } else {
             "This removes Phosphorus Client and its settings from this computer.".into()
         };
+        activate(&handle);
         let go = handle
             .dialog()
             .message(what)
@@ -612,9 +645,13 @@ fn tray(app: &AppHandle, is_host: bool) -> tauri::Result<()> {
     let item = |id: &str, text: &str| MenuItem::with_id(app, id, text, true, None::<&str>);
     let sep = || PredefinedMenuItem::separator(app);
     let menu = if is_host {
+        let status = MenuItem::with_id(app, "status", "Phosphorus", false, None::<&str>)?;
+        let _ = STATUS.set(status.clone());
         Menu::with_items(
             app,
             &[
+                &status,
+                &sep()?,
                 &item("open", "Open Phosphorus")?,
                 &sep()?,
                 &item("start", "Start")?,

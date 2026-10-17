@@ -753,7 +753,8 @@ function lagMeter(sec) {
 
 function gitBackupText(h, masterGen) {
   if (!h.reachable) return 'unreachable';
-  if (h.gen == null || h.ageSec == null) return 'no data yet';
+  // a live master to copy from: the first download under way
+  if (h.gen == null || h.ageSec == null) return masterGen != null && h.role !== 'master' ? 'downloading' : 'no data yet';
   const parts = [h.role === 'master' ? 'master, live' : masterGen != null && h.gen < masterGen ? 'older lineage' : h.role];
   if (h.role !== 'master' && !h.eligible) parts.push('catching up');
   if (h.updating) parts.push('updating');
@@ -767,10 +768,11 @@ function renderMeshGit() {
   meshGitRows.innerHTML = gitHostsList.map((h) => {
     const master = h.reachable && h.role === 'master';
     const cls = master ? 'master' : !h.reachable ? 'down' : !h.eligible ? 'catching' : '';
+    const text = gitBackupText(h, masterGen);
     const behind = h.reachable && !master && h.ageSec != null
       ? `<span class="git-lag" title="green to 8s, yellow to 15s, red to 60s">${lagMeter(h.ageSec)}</span><span class="git-ago">${ago(h.ageSec)}</span>` : '';
     return `<div class="mesh-git-row ${cls}"><span class="mesh-stat-name"><span class="mesh-git-dot"></span>`
-      + `<span class="mesh-stat-nm">${esc(h.host)}</span><span class="mesh-git-text">${esc(gitBackupText(h, masterGen))}</span></span>`
+      + `<span class="mesh-stat-nm">${esc(h.host)}</span><span class="mesh-git-text">${text === 'downloading' ? '<span class="git-spin"></span>' : ''}${esc(text)}</span></span>`
       + `<span class="mesh-git-behind">${behind}${h.reachable && !master && acct?.admin
         ? `<button type="button" class="mesh-git-take" data-host="${esc(h.host)}" title="make ${esc(h.host)} the git master">master</button>` : ''}</span></div>`;
   }).join('');
