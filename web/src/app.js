@@ -4136,7 +4136,7 @@ function dkIcons() {
   const files = new Map(dk.deskFiles.map((e) => [`doc\n${filesJoin(e.at, e.name)}`, e]));
   // one key per icon and what it shows, an unchanged one kept as it is
   const want = [
-    ...hosts.map((h) => ['terminal', () => dkIcon('terminal', 'terminal', h, () => dkTerminal(h))]),
+    ...hosts.map((h) => [`terminal\n${h}`, () => dkIcon('terminal', 'terminal', h, () => dkTerminal(h))]),
     ['files', () => dkIcon('files', 'files', '', () => filesWin())],
     ['editor', () => dkIcon('editor', 'editor', '', dkEditorPick)],
     ['chat', () => dkIcon('chat', 'chat', '', () => dkOpenApp('chat'))],
