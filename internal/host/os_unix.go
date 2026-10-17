@@ -51,6 +51,8 @@ func needSetup() string {
 		return "ssh to hosts by name"
 	case !linked():
 		return "phosphorus on PATH"
+	case !tailscaleInstalled():
+		return "Tailscale"
 	}
 	return ""
 }
@@ -89,6 +91,9 @@ func setupOS() error {
 				return err
 			}
 		}
+	}
+	if !tailscaleInstalled() {
+		return tailscaleInstall()
 	}
 	return nil
 }

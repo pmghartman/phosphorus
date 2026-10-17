@@ -66,6 +66,11 @@ func tailscaleCLI() string {
 	return tool("tailscale")
 }
 
+// tailscaleInstalled the package's own tailscaled, nothing for setup to fetch
+func tailscaleInstalled() bool { return true }
+
+func tailscaleInstall() error { return nil }
+
 func tailscaleReady() error {
 	if !systemTailscale() && !fileExists(tool("tailscaled")) {
 		return fail("no tailscaled here: reinstall the phosphorus package")

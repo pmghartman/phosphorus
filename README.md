@@ -20,10 +20,10 @@ From the [latest release](https://github.com/pmghartman/phosphorus/releases/late
 | System | Client only | Host | Host needs |
 |---|---|---|---|
 | Linux | `sudo apt install ./phosphorus-client_VERSION_ARCH.deb` | `sudo apt install ./phosphorus_VERSION_ARCH.deb`, then `sudo phosphorus` | systemd |
-| macOS | `phosphorus-client-VERSION-macos-universal.dmg` | `phosphorus-VERSION-macos-universal.dmg` | the Tailscale app |
-| Windows | `phosphorus-client-VERSION-windows-x86_64-setup.exe` | `phosphorus-VERSION-windows-x86_64-setup.exe` | Tailscale for Windows |
+| macOS | `phosphorus-client-VERSION-macos-universal.dmg` | `phosphorus-VERSION-macos-universal.dmg` | the Tailscale app, installed by first start if missing (allow its VPN configuration) |
+| Windows | `phosphorus-client-VERSION-windows-x86_64-setup.exe` | `phosphorus-VERSION-windows-x86_64-setup.exe` | Tailscale for Windows, installed by first start if missing |
 
-The client is the mesh's frontend in a window with no menu bar; it asks for the mesh's domain on first start. The macOS and Windows host apps include the client: opening the app opens the same window, and a tray icon runs the host.
+The client is the mesh's frontend in a window with no menu bar (on macOS no title bar either, the window buttons kept); it asks for the mesh's domain on first start. Closing the window leaves the app in the tray; Quit ends it. The macOS and Windows host apps include the client: opening the app opens the same window, and a tray icon runs the host.
 
 The host installer carries the `phosphorus` binary, which installs the release into the host folder (`/var/lib/phosphorus`, `~/Library/Phosphorus` or `%USERPROFILE%\phosphorus`) and brings it up. There are no scripts to run.
 
@@ -94,7 +94,7 @@ stop = systemctl --user stop tmodloader
 ## Use
 
 - `phosphorus` (or `phos`): the cli; `start`, `stop`, `restart`, `update`, `update all`, `keys`, `ps` (Linux: phosphorus's processes by role)
-- Host app (macOS, Windows): opening it opens the frontend; tray: Start, Stop, Check for Updates, Edit Keys, Quit
+- Host app (macOS, Windows): opening it opens the frontend; tray: Open, Start, Stop, Check for Updates, Edit Keys, Uninstall, Quit (stops phosphorus too)
 - Mesh update: update icon in the bar (admins) or `phos update all`. Every peer updates at once through its own installer, then the host that started it
 - Projects: coming soon, shelved while their sandboxes are rebuilt; `/api/projects` still lists past ones
 

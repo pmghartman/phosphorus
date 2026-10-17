@@ -78,6 +78,9 @@ func needSetup() string {
 	if !svcInstalled() {
 		return "the phosphorus service"
 	}
+	if !tailscaleInstalled() {
+		return "Tailscale"
+	}
 	return ""
 }
 
@@ -106,6 +109,11 @@ func setupOS() error {
 		say("letting ssh reach hosts by name...")
 		os.MkdirAll(filepath.Dir(sshConfig()), 0o755)
 		if err := os.WriteFile(sshConfig(), append([]byte(sshInclude()+"\r\n"), b...), 0o644); err != nil {
+			return err
+		}
+	}
+	if !tailscaleInstalled() {
+		if err := tailscaleInstall(); err != nil {
 			return err
 		}
 	}
@@ -251,6 +259,20 @@ func tailscaleDirs() []string {
 }
 
 func tailscaleCLI() string { return filepath.Join(tailscaleDirs()[0], "tailscale.exe") }
+
+func tailscaleInstalled() bool { return fileExists(tailscaleCLI()) }
+
+func tailscalePkg() (string, string) {
+	return "tailscale-setup-" + tailscaleVersion + "-amd64.msi", "6da8bcdb0d45a214cae0e8a88c2987ad48dec134bf04dffb9c05f1354c02b0b4"
+}
+
+// tailscaleRunInstaller silent, unattended so it stays up signed out of Windows
+func tailscaleRunInstaller(msi string) error {
+	return run("msiexec", "/i", msi, "/quiet", "/norestart", "TS_UNATTENDEDMODE=always")
+}
+
+// tailscaleLaunch its service, set to start by the installer
+func tailscaleLaunch() { quiet("net", "start", "Tailscale") }
 
 func tailscaleReady() error {
 	if !fileExists(tailscaleCLI()) {

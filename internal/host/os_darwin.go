@@ -124,15 +124,33 @@ func tailscaleDirs() []string { return nil }
 
 func tailscaleCLI() string { return tool("tailscale") }
 
-// tailscaleReady the app's CLI linked into the tools as tailscale, logged in with TS_AUTHKEY when it isn't
-func tailscaleReady() error {
-	cli := ""
+func appTailscale() string {
 	for _, c := range appCLI {
 		if fileExists(c) {
-			cli = c
-			break
+			return c
 		}
 	}
+	return ""
+}
+
+func tailscaleInstalled() bool { return appTailscale() != "" }
+
+func tailscalePkg() (string, string) {
+	return "Tailscale-" + tailscaleVersion + "-macos.pkg", "67ec55f18ee2afac0a8fb57f7811977f4ad6df1debd4a187fa0db3dbb5d401d5"
+}
+
+func tailscaleRunInstaller(pkg string) error { return run("installer", "-pkg", pkg, "-target", "/") }
+
+// tailscaleLaunch the app, in the background: its daemon lives in it
+func tailscaleLaunch() {
+	if !quiet("open", "-g", "-a", "Tailscale") {
+		quiet("open", "-g", "/Applications/Tailscale.app")
+	}
+}
+
+// tailscaleReady the app's CLI linked into the tools as tailscale, logged in with TS_AUTHKEY when it isn't
+func tailscaleReady() error {
+	cli := appTailscale()
 	if cli == "" {
 		return fail("no Tailscale here: install the Tailscale app (tailscale.com/download), then phos start")
 	}

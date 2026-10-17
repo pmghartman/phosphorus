@@ -21,6 +21,8 @@ use tauri_plugin_updater::UpdaterExt;
 
 /// one install, start, stop or update at a time
 static BUSY: AtomicBool = AtomicBool::new(false);
+/// a tray up, closed windows keeping the app
+static TRAY: AtomicBool = AtomicBool::new(false);
 /// popped out windows' labels
 static TABS: AtomicU32 = AtomicU32::new(0);
 
@@ -343,15 +345,17 @@ fn open_main(handle: &AppHandle) {
         return;
     };
     let h = handle.clone();
-    let _ = WebviewWindowBuilder::new(handle, "main", WebviewUrl::External(url))
+    let b = WebviewWindowBuilder::new(handle, "main", WebviewUrl::External(url))
         .title("Phosphorus")
         .inner_size(1280.0, 820.0)
         .min_inner_size(480.0, 360.0)
-        .decorations(false)
         .maximized(true)
         .focused(true)
-        .on_new_window(move |u, _| popout(&h, u))
-        .build();
+        .on_new_window(move |u, _| popout(&h, u));
+    // macOS: no title bar, the traffic lights over the page
+    #[cfg(target_os = "macos")]
+    let b = b.title_bar_style(tauri::TitleBarStyle::Overlay).hidden_title(true);
+    let _ = b.build();
 }
 
 /// an app's new tab or window: a window of its own on the same session
@@ -574,7 +578,7 @@ fn app_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
             &PredefinedMenuItem::hide_others(app, None)?,
             &PredefinedMenuItem::show_all(app, None)?,
             &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::quit(app, None)?,
+            &MenuItem::with_id(app, "quit", format!("Quit {name}"), true, Some("CmdOrCtrl+Q"))?,
         ],
     )?;
     let edit = tauri::menu::Submenu::with_items(
@@ -600,29 +604,44 @@ fn app_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     Menu::with_items(app, &[&main, &edit, &window])
 }
 
-fn tray(app: &AppHandle) -> tauri::Result<()> {
+/// the tray: a host's controls, a client's open and quit; closed windows leave the app here
+fn tray(app: &AppHandle, is_host: bool) -> tauri::Result<()> {
     let item = |id: &str, text: &str| MenuItem::with_id(app, id, text, true, None::<&str>);
-    let menu = Menu::with_items(
-        app,
-        &[
-            &item("start", "Start")?,
-            &item("stop", "Stop")?,
-            &item("update", "Check for Updates")?,
-            &PredefinedMenuItem::separator(app)?,
-            &item("keys", "Edit Keys…")?,
-            &PredefinedMenuItem::separator(app)?,
-            &item("uninstall", "Uninstall…")?,
-            &PredefinedMenuItem::separator(app)?,
-            &item("quit", "Quit (phosphorus keeps running)")?,
-        ],
-    )?;
+    let sep = || PredefinedMenuItem::separator(app);
+    let menu = if is_host {
+        Menu::with_items(
+            app,
+            &[
+                &item("open", "Open Phosphorus")?,
+                &sep()?,
+                &item("start", "Start")?,
+                &item("stop", "Stop")?,
+                &item("update", "Check for Updates")?,
+                &sep()?,
+                &item("keys", "Edit Keys…")?,
+                &sep()?,
+                &item("uninstall", "Uninstall…")?,
+                &sep()?,
+                &item("quit", "Quit (stops phosphorus)")?,
+            ],
+        )?
+    } else {
+        Menu::with_items(app, &[&item("open", "Open Phosphorus")?, &sep()?, &item("uninstall", "Uninstall…")?, &sep()?, &item("quit", "Quit")?])?
+    };
     let b = TrayIconBuilder::with_id("phosphorus").tooltip("Phosphorus").menu(&menu);
     // macOS: the white glyph as a template, tinted like the system's own
     #[cfg(target_os = "macos")]
     let b = b.icon(tauri::image::Image::from_bytes(include_bytes!("../icons/tray.png"))?).icon_as_template(true);
     #[cfg(not(target_os = "macos"))]
     let b = b.icon(app.default_window_icon().cloned().expect("icon"));
-    b.on_menu_event(|app, e| match e.id().as_ref() {
+    b.build(app)?;
+    Ok(())
+}
+
+/// every menu's items, the tray's and the macOS app menu's
+fn menu_event(app: &AppHandle, id: &str) {
+    match id {
+        "open" => open_main(app),
         "start" => host_action(app.clone(), "start", false),
         "stop" => host_action(app.clone(), "stop", false),
         "update" => {
@@ -631,11 +650,34 @@ fn tray(app: &AppHandle) -> tauri::Result<()> {
             tauri::async_runtime::spawn(async move { handle_update(a, id, true).await });
         }
         "keys" => open_keys(app),
-        "quit" => app.exit(0),
+        "uninstall" => uninstall(app.clone()),
+        "quit" => quit(app.clone()),
         _ => {}
-    })
-    .build(app)?;
-    Ok(())
+    }
+}
+
+/// a host's phosphorus stopped first, then the app gone
+fn quit(handle: AppHandle) {
+    if !handle.state::<App>().is_host {
+        handle.exit(0);
+        return;
+    }
+    if BUSY.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    std::thread::spawn(move || {
+        let app = handle.state::<App>();
+        set_tip(&handle, "Phosphorus stopping…");
+        let (ok, out) = host_run(&app, &["stop"], "stop");
+        if !ok {
+            BUSY.store(false, Ordering::SeqCst);
+            set_tip(&handle, &status_tip(&app));
+            let e = last_error(&out);
+            alert(&handle, if e.is_empty() { "couldn't stop phosphorus, see state/ in the Phosphorus folder" } else { &e });
+            return;
+        }
+        handle.exit(0);
+    });
 }
 
 fn main() {
@@ -644,11 +686,7 @@ fn main() {
         // opened again: the running one's window brought up instead
         .plugin(tauri_plugin_single_instance::init(|app, _, _| open_main(app)))
         .enable_macos_default_menu(false)
-        .on_menu_event(|app, e| {
-            if e.id().as_ref() == "uninstall" {
-                uninstall(app.clone());
-            }
-        })
+        .on_menu_event(|app, e| menu_event(app, e.id().as_ref()))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--background"])))
         .invoke_handler(tauri::generate_handler![keys_status, save_keys, close_keys, set_domain])
@@ -666,12 +704,15 @@ fn main() {
                 app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
             }
             if !is_host {
+                // no tray (Linux without an indicator): the last window's close quits
+                TRAY.store(tray(app.handle(), false).is_ok(), Ordering::SeqCst);
                 open_main(app.handle());
                 return Ok(());
             }
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
-            tray(app.handle())?;
+            tray(app.handle(), true)?;
+            TRAY.store(true, Ordering::SeqCst);
             // a host stays up across logins
             let _ = app.autolaunch().enable();
             startup(app.handle().clone(), background);
@@ -680,10 +721,12 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("Phosphorus app");
     app.run(|h, e| match e {
-        // a host's windows closing never quit the tray; a client's last one does
-        RunEvent::ExitRequested { api, code: None, .. } if h.state::<App>().is_host => api.prevent_exit(),
+        // windows closing leave the app in the tray, Quit alone ends it
+        RunEvent::ExitRequested { api, code: None, .. } if TRAY.load(Ordering::SeqCst) => api.prevent_exit(),
         #[cfg(target_os = "macos")]
         RunEvent::Reopen { .. } => open_main(h),
-        _ => {}
+        _ => {
+            let _ = h;
+        }
     });
 }
