@@ -95,6 +95,71 @@ stop = systemctl --user stop tmodloader
 
 A failed install or update also leaves `state/install.log` in the host folder.
 
+## How it fits together
+
+```mermaid
+flowchart TB
+  subgraph release["GitHub release"]
+    deb[".deb (amd64, arm64)<br/>binary, tailscale, cloudflared, forgejo"]
+    dmg[".dmg"]
+    exe["setup .exe"]
+    client["client-only installers"]
+    feed["update feed: apt repo, app feed, latest.json"]
+  end
+
+  subgraph host["Host (Linux shown)"]
+    dpkg["apt + postinst"]
+    bin["phosphorus binary<br/>install, start, stop, keys, rebuild, upgrade, ps"]
+    agent["update agent<br/>phosphorus-update.path"]
+    tsd["tailscaled<br/>the machine's, or phosphorus-tailscaled.service"]
+    subgraph home["/var/lib/phosphorus"]
+      env[".env (locked)"]
+      cfg["config/ phosphorus.ini, services.export"]
+      state["state/ native.env and the rest"]
+      files["files/ and [files] shares"]
+      gitdata["git/ forgejo data"]
+    end
+    sshd["host sshd"]
+    subgraph svc["phosphorus.service: phosphorus run"]
+      ph["frontend<br/>phosphorus serve"]
+      cfd["cloudflared"]
+      model["model<br/>llama-server, opencode"]
+      git["git daemon<br/>forgejo, rsyncd, elector"]
+    end
+  end
+
+  subgraph mesh["Tailnet"]
+    peers["other hosts, Linux, macOS and Windows"]
+  end
+  cf["Cloudflare tunnel"]
+  browser["Browser or client app at BASE_DOMAIN"]
+
+  deb --> dpkg --> bin
+  dmg & exe -->|"tray app: install, start, keys"| bin
+  bin -->|"keys form"| env
+  bin -->|"release synced, old files removed"| home
+  bin -->|"admin setup once"| sshd
+  bin -->|"rebuild: native.env, systemctl"| svc
+  ph -->|"reconfig: phosphorus rebuild"| bin
+  env & cfg --> ph
+  state <--> ph
+  files <--> ph
+  git <--> gitdata
+  ph -->|"terminals, game play/stop"| sshd
+  ph -->|"update request"| state
+  state --> agent
+  agent -->|"apt upgrade"| feed
+  agent --> bin
+  ph --- tsd
+  ph <-->|"snapshots, files, chat, updates"| peers
+  ph -->|"missing keys from /internal/keys"| peers
+  git <-->|"rsync replication"| peers
+  ph --> model
+  ph --> cfd --> cf --> browser
+  client --> browser
+  browser -->|"/api/ping/host, timed by the client"| ph
+```
+
 ## Building
 
 `make build` builds the binary, `make check` and `make test` run the checks, and `make licenses` refreshes `THIRD_PARTY_LICENSES.txt` after a dependency changes.
