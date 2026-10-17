@@ -40,6 +40,8 @@ func usage(w io.Writer) {
        phos update all  update mesh
        phos keys        replace keys in .env
        phos ps          phosphorus's processes, by role
+       phos status      whether phosphorus and Tailscale are up
+       phos vpn on|off  Tailscale up, or phosphorus stopped and Tailscale down
        phos uninstall   remove phosphorus and its data from this host
 `)
 }
@@ -115,6 +117,10 @@ func Main(cmd string, args []string) int {
 		err = runHost()
 	case "uninstall":
 		err = uninstall(f.rest)
+	case "status":
+		err = status(f.rest)
+	case "vpn":
+		err = vpn(f.rest)
 	case "ps":
 		// the roles file under this home, not the default state dir
 		os.Setenv("STATE_DIR", at("state"))

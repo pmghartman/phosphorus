@@ -20,6 +20,15 @@ func tailnetJoin(state string) error {
 		os.MkdirAll(at("state"), 0o755)
 		os.WriteFile(joined, []byte(time.Now().UTC().Format(time.RFC3339)+"\n"), 0o644)
 	}
+	// turned off (vpn off, or by hand): back up as the same node, no re-auth
+	if state == "Stopped" && (env["BASE_DOMAIN"] != "" || fileExists(joined)) {
+		c := exec.Command(tailscaleCLI(), append([]string{"up"}, tailscaleUpFlags()...)...)
+		hide(c)
+		if c.Run() == nil {
+			tailscaleKeepUp()
+			return nil
+		}
+	}
 	if state == "Running" {
 		if env["BASE_DOMAIN"] != "" || fileExists(joined) {
 			tailscaleKeepUp()

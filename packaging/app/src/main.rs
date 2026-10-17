@@ -30,6 +30,8 @@ const CLIENT_ID: &str = "dev.phosphorus.client";
 static TABS: AtomicU32 = AtomicU32::new(0);
 /// the tray menu's first line: what the tooltip says, visible on macOS
 static STATUS: OnceLock<MenuItem<tauri::Wry>> = OnceLock::new();
+/// the tray's Start, Stop and VPN items, enabled and named by the host's state
+static ITEMS: OnceLock<[MenuItem<tauri::Wry>; 3]> = OnceLock::new();
 
 struct App {
     payload: PathBuf,
@@ -153,15 +155,47 @@ fn payload_version(app: &App) -> String {
     read(&app.payload.join("VERSION"))
 }
 
+/// whether the service and Tailscale are up, (false, false) when the host can't say
+fn host_state(app: &App) -> (bool, bool) {
+    let out = host_cmd(app, &["status", "--json"]).stderr(Stdio::null()).output();
+    let v: Value = out.ok().and_then(|o| serde_json::from_slice(&o.stdout).ok()).unwrap_or_default();
+    (v["running"].as_bool().unwrap_or(false), v["vpn"].as_bool().unwrap_or(false))
+}
+
 fn status_tip(app: &App) -> String {
     let v = read(&app.home.join(".phosphorus-installed"));
     if v.is_empty() {
-        "Phosphorus not set up".into()
-    } else if keys_missing(app) {
-        format!("Phosphorus {v}: no keys yet")
-    } else {
-        format!("Phosphorus {v}")
+        return "Phosphorus not set up".into();
     }
+    if keys_missing(app) {
+        return format!("Phosphorus {v}: no keys yet");
+    }
+    let (running, vpn) = host_state(app);
+    let svc = if running { "running" } else { "stopped" };
+    let net = if vpn { "VPN on" } else { "VPN off" };
+    format!("Phosphorus {v}: {svc}, {net}")
+}
+
+/// the tray's status line and items set from the host's state, all off while busy
+fn refresh(handle: &AppHandle) {
+    let app = handle.state::<App>();
+    let busy = BUSY.load(Ordering::SeqCst);
+    let (running, vpn) = if busy { (false, false) } else { host_state(&app) };
+    if !busy {
+        set_tip(handle, &status_tip(&app));
+    }
+    if let Some([start, stop, net]) = ITEMS.get() {
+        let _ = start.set_enabled(!busy && !running);
+        let _ = stop.set_enabled(!busy && running);
+        let _ = net.set_enabled(!busy);
+        let _ = net.set_text(if vpn { "Turn VPN Off" } else { "Turn VPN On" });
+    }
+}
+
+/// a finished action said in a small dialog, the tray otherwise silent
+fn notify(handle: &AppHandle, text: &str) {
+    activate(handle);
+    handle.dialog().message(text).title("Phosphorus").kind(MessageDialogKind::Info).show(|_| {});
 }
 
 fn alert(handle: &AppHandle, text: &str) {
@@ -209,15 +243,55 @@ fn host_action(handle: AppHandle, action: &'static str, then_open: bool) {
             admin_setup(&app);
         }
         set_tip(&handle, if action == "start" { "Phosphorus starting…" } else { "Phosphorus stopping…" });
+        refresh(&handle);
         let (ok, out) = host_run(&app, &[action], action);
         BUSY.store(false, Ordering::SeqCst);
-        set_tip(&handle, &status_tip(&app));
+        refresh(&handle);
         if !ok {
             let e = last_error(&out);
             alert(&handle, if e.is_empty() { "failed, see state/ in the Phosphorus folder" } else { &e });
         } else if then_open {
             let h = handle.clone();
             let _ = handle.run_on_main_thread(move || open_main(&h));
+        } else {
+            notify(&handle, if action == "start" { "Phosphorus is running." } else { "Phosphorus stopped." });
+        }
+    });
+}
+
+/// Tailscale on or off; off stops phosphorus first, after a confirm when it's running
+fn vpn_action(handle: AppHandle) {
+    if BUSY.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    std::thread::spawn(move || {
+        let app = handle.state::<App>();
+        let (running, vpn) = host_state(&app);
+        if vpn && running {
+            activate(&handle);
+            let go = handle
+                .dialog()
+                .message("Turning the VPN off stops Phosphorus on this computer and takes it off the mesh. Start turns both back on.")
+                .title("Turn VPN Off")
+                .kind(MessageDialogKind::Warning)
+                .buttons(MessageDialogButtons::OkCancelCustom("Turn Off".into(), "Cancel".into()))
+                .blocking_show();
+            if !go {
+                BUSY.store(false, Ordering::SeqCst);
+                return;
+            }
+        }
+        let to = if vpn { "off" } else { "on" };
+        set_tip(&handle, if vpn { "Phosphorus turning the VPN off…" } else { "Phosphorus turning the VPN on…" });
+        refresh(&handle);
+        let (ok, out) = host_run(&app, &["vpn", to], "vpn");
+        BUSY.store(false, Ordering::SeqCst);
+        refresh(&handle);
+        if ok {
+            notify(&handle, if vpn { "VPN off, Phosphorus stopped." } else { "VPN on." });
+        } else {
+            let e = last_error(&out);
+            alert(&handle, if e.is_empty() { "couldn't change the VPN, see state/vpn.log in the Phosphorus folder" } else { &e });
         }
     });
 }
@@ -252,7 +326,7 @@ async fn handle_update(handle: AppHandle, id: String, ask: bool) {
                 if !go {
                     report(&app.home, &id, "failed", false, "", "update declined");
                     BUSY.store(false, Ordering::SeqCst);
-                    set_tip(&handle, &status_tip(&app));
+                    refresh(&handle);
                     return;
                 }
             }
@@ -291,7 +365,7 @@ async fn handle_update(handle: AppHandle, id: String, ask: bool) {
         }
     }
     BUSY.store(false, Ordering::SeqCst);
-    set_tip(&handle, &status_tip(&app));
+    refresh(&handle);
 }
 
 /// launch: a new release unpacked into home, a pending update's verdict
@@ -329,10 +403,16 @@ fn startup(handle: AppHandle, background: bool) {
             let h = handle.clone();
             let _ = handle.run_on_main_thread(move || open_main(&h));
         }
-        set_tip(&handle, &status_tip(&app));
+        refresh(&handle);
         let req = app.home.join("state/update-request.json");
+        // the menu kept current with changes made elsewhere (the cli, the Tailscale app)
+        let mut tick = 0u32;
         loop {
             std::thread::sleep(Duration::from_secs(2));
+            tick += 1;
+            if tick % 10 == 0 && !BUSY.load(Ordering::SeqCst) {
+                refresh(&handle);
+            }
             let Ok(text) = std::fs::read_to_string(&req) else { continue };
             let _ = std::fs::remove_file(&req);
             let id = serde_json::from_str::<Value>(&text).ok().and_then(|v| v["id"].as_str().map(str::to_string)).unwrap_or_default();
@@ -587,15 +667,20 @@ fn open_keys(handle: &AppHandle) {
         let _ = w.set_focus();
         return;
     }
-    let w = WebviewWindowBuilder::new(handle, "keys", WebviewUrl::App("keys.html".into()))
+    let b = WebviewWindowBuilder::new(handle, "keys", WebviewUrl::App("keys.html".into()))
         .title("Phosphorus Keys")
         // the tray's own: no taskbar button beside the client's
         .skip_taskbar(true)
-        .inner_size(520.0, 600.0)
+        .inner_size(520.0, 460.0)
         .resizable(false)
         .center()
-        .focused(true)
-        .build();
+        .focused(true);
+    // no title bar: macOS keeps its traffic lights over the page, the rest none; the page's top strip drags it
+    #[cfg(target_os = "macos")]
+    let b = b.title_bar_style(tauri::TitleBarStyle::Overlay).hidden_title(true);
+    #[cfg(not(target_os = "macos"))]
+    let b = b.decorations(false);
+    let w = b.build();
     if let Ok(w) = w {
         let _ = w.set_focus();
     }
@@ -743,7 +828,7 @@ fn uninstall(handle: AppHandle) {
                     let text = format!("{}{}", String::from_utf8_lossy(&o.stdout), String::from_utf8_lossy(&o.stderr));
                     let e = last_error(&text);
                     BUSY.store(false, Ordering::SeqCst);
-                    set_tip(&handle, &status_tip(&app));
+                    refresh(&handle);
                     alert(&handle, if e.is_empty() { "uninstall failed" } else { &e });
                     return;
                 }
@@ -815,6 +900,10 @@ fn tray(app: &AppHandle) -> tauri::Result<()> {
     let sep = || PredefinedMenuItem::separator(app);
     let status = MenuItem::with_id(app, "status", "Phosphorus", false, None::<&str>)?;
     let _ = STATUS.set(status.clone());
+    let start = item("start", "Start")?;
+    let stop = item("stop", "Stop")?;
+    let net = item("vpn", "Turn VPN Off")?;
+    let _ = ITEMS.set([start.clone(), stop.clone(), net.clone()]);
     let menu = Menu::with_items(
             app,
             &[
@@ -822,8 +911,9 @@ fn tray(app: &AppHandle) -> tauri::Result<()> {
                 &sep()?,
                 &item("open", "Open Phosphorus")?,
                 &sep()?,
-                &item("start", "Start")?,
-                &item("stop", "Stop")?,
+                &start,
+                &stop,
+                &net,
                 &item("update", "Check for Updates")?,
                 &sep()?,
                 &item("keys", "Edit Keys…")?,
@@ -849,6 +939,7 @@ fn menu_event(app: &AppHandle, id: &str) {
         "open" => open_main(app),
         "start" => host_action(app.clone(), "start", false),
         "stop" => host_action(app.clone(), "stop", false),
+        "vpn" => vpn_action(app.clone()),
         "update" => {
             let a = app.clone();
             let id = format!("app-{}", now_ms());
@@ -876,7 +967,7 @@ fn quit(handle: AppHandle) {
         let (ok, out) = host_run(&app, &["stop"], "stop");
         if !ok {
             BUSY.store(false, Ordering::SeqCst);
-            set_tip(&handle, &status_tip(&app));
+            refresh(&handle);
             let e = last_error(&out);
             alert(&handle, if e.is_empty() { "couldn't stop phosphorus, see state/ in the Phosphorus folder" } else { &e });
             return;
