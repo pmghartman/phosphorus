@@ -427,3 +427,64 @@ func Own() []Row {
 	defer mu.Unlock()
 	return own
 }
+
+var editMu sync.Mutex
+
+// SetPublic [name]'s public line set or dropped, the whole file validated first
+func SetPublic(name string, on bool) (int, any) {
+	editMu.Lock()
+	defer editMu.Unlock()
+	b, err := os.ReadFile(servicesFile)
+	if err != nil {
+		return 500, map[string]any{"error": "can't read services.export"}
+	}
+	lines := strings.Split(string(b), "\n")
+	start, end := -1, len(lines)
+	for i, raw := range lines {
+		m := headRe.FindStringSubmatch(strings.TrimSpace(strings.TrimSuffix(raw, "\r")))
+		if m == nil {
+			continue
+		}
+		if start >= 0 {
+			end = i
+			break
+		}
+		if m[1] == name {
+			start = i
+		}
+	}
+	if start < 0 {
+		return 404, map[string]any{"error": "this host declares no service called " + name}
+	}
+	out := append([]string{}, lines[:start+1]...)
+	last := start
+	for i := start + 1; i < end; i++ {
+		line := strings.TrimSpace(lines[i])
+		if eq := strings.Index(line, "="); eq > 0 && !commentRe.MatchString(line) && strings.TrimSpace(line[:eq]) == "public" {
+			continue
+		}
+		out = append(out, lines[i])
+		if line != "" {
+			last = len(out) - 1
+		}
+	}
+	if on {
+		out = append(out[:last+1], append([]string{"public = true"}, out[last+1:]...)...)
+	}
+	out = append(out, lines[end:]...)
+	text := strings.Join(out, "\n")
+	rows, why := Parse(text)
+	if why != "" {
+		return 400, map[string]any{"error": why}
+	}
+	for _, r := range rows {
+		if r["name"] == name && r["type"] == "game" {
+			return 400, map[string]any{"error": "public is for web services only"}
+		}
+	}
+	if err := util.WriteFileAtomic(servicesFile, []byte(text)); err != nil {
+		return 500, map[string]any{"error": "can't write services.export: " + err.Error()}
+	}
+	clock.MarkHot()
+	return 200, map[string]any{"public": on}
+}

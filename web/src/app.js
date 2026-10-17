@@ -4441,6 +4441,7 @@ document.addEventListener('keydown', (e) => {
 
 function dkRoutes(services) {
   dk.services = services;
+  for (const w of dk.wins.values()) w.pubSync?.();
   dkIcons();
   dkChips();
   dkGitFrame();
@@ -5361,6 +5362,46 @@ function dkEditorPick() {
   dkFocus(w);
 }
 
+// admins' public/login switch, going public asked twice, kept in step with the routes
+function dkPublicToggle(w, r) {
+  const b = Object.assign(el('button', 'dk-pub'), { type: 'button' });
+  let on = !!r.public;
+  let arm = 0;
+  let busy = false;
+  const draw = (text) => {
+    b.textContent = text || (on ? 'public' : 'login');
+    b.classList.toggle('on', on);
+    b.title = text ? '' : on ? 'anyone can reach it, its own login only; press to require the phosphorus login' : 'behind the phosphorus login; press to make it public';
+  };
+  w.pubSync = () => {
+    const live = dk.services.find((x) => x.host === r.host && x.name === r.name);
+    if (live && !busy && !arm) { on = !!live.public; draw(); }
+  };
+  b.addEventListener('click', async () => {
+    if (busy) return;
+    if (!on && !arm) {
+      arm = setTimeout(() => { arm = 0; draw(); }, 3000);
+      draw('make public?');
+      return;
+    }
+    clearTimeout(arm);
+    arm = 0;
+    busy = true;
+    draw('…');
+    const res = await fetch(`/api/services/${encodeURIComponent(r.host)}/${encodeURIComponent(r.name)}/public`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ public: !on }),
+    }).catch(() => null);
+    const out = res ? await res.json().catch(() => ({})) : { error: 'no answer' };
+    busy = false;
+    if (res?.ok) { on = !!out.public; draw(); return; }
+    draw('failed');
+    b.title = out.error || `status ${res?.status}`;
+    setTimeout(() => { if (!busy && !arm) draw(); }, 3000);
+  });
+  draw();
+  return b;
+}
+
 function dkService(r) {
   const w = dkWin(`svc:${serviceKey(r)}`, r.name, r.public ? `${r.host}, public` : r.host, 'svc');
   if (!w) return;
@@ -5369,6 +5410,7 @@ function dkService(r) {
   pop.appendChild(dkGlyph(DK_UI.pop));
   pop.addEventListener('click', () => window.open(url, '_blank', 'noopener'));
   w.head.querySelector('.dk-btns').prepend(pop);
+  if (acct?.admin) w.head.querySelector('.dk-btns').prepend(dkPublicToggle(w, r));
   const frame = Object.assign(el('iframe', 'dk-frame'), { src: url, title: r.name, allow: 'clipboard-read; clipboard-write; fullscreen' });
   w.body.appendChild(frame);
   dkNav(w, frame);
