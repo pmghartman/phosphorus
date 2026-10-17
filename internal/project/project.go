@@ -359,7 +359,33 @@ func Todos(id string, list any) {
 		tasks = append(tasks, map[string]any{"text": clip(c, 300), "done": t["status"] == "completed"})
 	}
 	p["tasks"] = tasks
+	byTasksLocked(p)
 	save(p)
+}
+
+// byTasksLocked progress as the share of tasks done, while the round has no report of its own
+func byTasksLocked(p P) {
+	tasks := p.list("tasks")
+	if len(tasks) == 0 || p.f("reportRound") == p.f("round") {
+		return
+	}
+	done := 0
+	for _, x := range tasks {
+		if util.Truthy(util.Obj(x)["done"]) {
+			done++
+		}
+	}
+	p["progress"] = math.Min(99, math.Floor(float64(done)*100/float64(len(tasks))))
+}
+
+// phaseOf a round's phase: plan, execute, test, refine and around again
+func phaseOf(round float64) string { return phases[(int(round)-1+len(phases))%len(phases)] }
+
+var phaseAsk = map[string]string{
+	"plan":    "This round is plan: re-read the brief, PLAN.md and NOTES.md, write or revise the plan and the task list for what is left, then report.",
+	"execute": "This round is execute: build the next tasks of PLAN.md, saving and committing as you go, then report.",
+	"test":    "This round is test: run and test everything built so far against the brief, write each failure and its cause in NOTES.md, then report.",
+	"refine":  "This round is refine: fix what testing found, retry what failed another way, harden and polish, then report. The next round plans again from what is left.",
 }
 
 // --- what the model is told ----------------------------------------------------
@@ -382,7 +408,8 @@ func system(p P, identity string) string {
 		identity,
 		fmt.Sprintf(`Your project is "%s", given by %s. Nobody watches turn by turn: the people `, p.s("title"), by) +
 			"who set it read your reports and your workspace later, and may leave you notes, which come with a round's message.",
-		"Work in rounds of plan, execute, test and refine, again and again, until the brief is met as well as it can be. " +
+		"Work in rounds of plan, execute, test and refine, again and again, until the brief is met as well as it can be; " +
+			"each round is one phase, named in its message, and the progress shown is your tasks done until you report. " +
 			"A round ends when you stop calling tools; the next starts at once with the time left, so end a round only at a " +
 			"sensible checkpoint, with your files saved.",
 		fmt.Sprintf("Your workspace is %s: read, write and edit there with your own file tools, nothing outside it. Keep PLAN.md ", dir) +
@@ -425,10 +452,14 @@ func promptLocked(p P, first bool, cut string) string {
 		notes = "\n\nNotes left for you since the last round:\n" + strings.Join(unread, "\n")
 	}
 	if first {
-		return fmt.Sprintf("<brief>\n%s\n</brief>\n\n%s The workspace is empty. Start with a plan: write PLAN.md, report it, then execute, test and refine.%s%s", p.s("brief"), t, back, notes)
+		return fmt.Sprintf("<brief>\n%s\n</brief>\n\n%s The workspace is empty. %s Write PLAN.md and the task list with todowrite.%s%s", p.s("brief"), t, phaseAsk["plan"], back, notes)
 	}
-	return fmt.Sprintf("Round %d. %s%s Last reported: %s%% in %s. Carry on from where you are, re-reading PLAN.md and NOTES.md if unsure, and work the next plan, execute, test, refine cycle.%s",
-		int(p.f("round")), t, back, util.JSNum(p.f("progress")), p.s("phase"), notes)
+	unreported := ""
+	if r := p.f("round"); r > 1 && p.f("reportRound") < r-1 {
+		unreported = " You made no phosphorus_project_report last round: report where you are first."
+	}
+	return fmt.Sprintf("Round %d. %s%s Progress so far: %s%%.%s %s Re-read PLAN.md and NOTES.md if unsure.%s",
+		int(p.f("round")), t, back, util.JSNum(p.f("progress")), unreported, phaseAsk[p.s("phase")], notes)
 }
 
 // --- the loop -----------------------------------------------------------------
@@ -598,7 +629,8 @@ func run(p P) {
 			mu.Lock()
 			p["round"] = p.f("round") + 1
 			p["roundAt"] = float64(util.Now())
-			eventLocked(p, "round", fmt.Sprintf("round %d started", int(p.f("round"))), nil)
+			p["phase"] = phaseOf(p.f("round"))
+			eventLocked(p, "round", fmt.Sprintf("round %d started: %s", int(p.f("round")), p.s("phase")), map[string]any{"phase": p.s("phase")})
 			text := promptLocked(p, first, cut)
 			sys := system(p, m.Identity)
 			mu.Unlock()
@@ -996,6 +1028,7 @@ func Report(id string, a map[string]any) (any, error) {
 	p["phase"] = phase
 	if pr := files.JSNumber(a["progress"]); a["progress"] != nil && !math.IsNaN(pr) && !math.IsInf(pr, 0) {
 		p["progress"] = math.Max(0, math.Min(100, math.Round(pr)))
+		p["reportRound"] = p.f("round")
 	}
 	if arr, ok := a["tasks"].([]any); ok {
 		if len(arr) > tasksMax {
@@ -1023,6 +1056,14 @@ func Report(id string, a map[string]any) (any, error) {
 		extra["phase"] = phase
 	}
 	eventLocked(p, "report", text, extra)
+	// a reported 100% the end, as a finish
+	if p.f("progress") >= 100 {
+		if p.s("final") == "" {
+			p["final"] = p.s("note")
+		}
+		endLocked(p, "done", "finished early: reported 100%")
+		return map[string]any{"ok": true, "note": "the project is closed at 100%, end your turn with a one-line summary"}, nil
+	}
 	left := p.f("deadline") - float64(util.Now())
 	note := "keep going"
 	if left <= 0 {

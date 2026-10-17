@@ -332,7 +332,8 @@ func buildTools() {
 	tools = []tool{
 		{name: "project_report", project: true,
 			description: "Report your project's state, shown live to the people who set it: the phase you are in, a line or two " +
-				"on what you are doing and found, and progress 0-100 against the whole brief. The task list shown is your todowrite " +
+				"on what you are doing and found, and progress 0-100 against the whole brief; 100 closes the project as done, so report it " +
+				"only once the brief is fully met and tested. The task list shown is your todowrite " +
 				"list; tasks here (the whole list) only replace it.",
 			schema: object(map[string]any{
 				"phase": map[string]any{"type": "string", "enum": phases}, "note": map[string]any{"type": "string"},
