@@ -255,7 +255,7 @@ func serviceForm(s *section) *form {
 		fl("mode", "blank = path, subdomain = <name>."+baseDomain, "", "path", "subdomain"),
 		fl("base_path", "sub-path stripped before proxying"),
 		fl("extras", `JSON: {"max_body":"50MB","forwarded_proto":"https"}`),
-		fl("public", "true = no phosphorus login, the service's own only", "", "true"),
+		fl("public", "true = no phosphorus login, the service's own only", "", "true", "false"),
 		fl("type", "blank, or game", "", "game"),
 		fl("start", "games only: host command behind play"),
 		fl("stop", "games only: host command behind stop"),
@@ -316,6 +316,9 @@ func saveService(f *form) string {
 	}
 	if v["type"] != "game" && (v["start"] != "" || v["stop"] != "") {
 		return "start and stop are for games only"
+	}
+	if v["type"] == "game" && v["public"] != "" {
+		return "public is for web services only"
 	}
 	d := splitSections(readText(servicesFile))
 	var s *section

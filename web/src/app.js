@@ -1111,7 +1111,7 @@ function drawMesh() {
       };
       if (svcTouched) stem.id = `stem-${key}`;
       edges.appendChild(svgEl('line', stem));
-      drawNode(c.x, c.y, r.name, svcTouched ? 'svc touched' : 'svc', r.name,
+      drawNode(c.x, c.y, r.name, svcTouched ? 'svc touched' : 'svc', r.public ? `${r.name} (public, no phosphorus login)` : r.name,
         { size: 1.8 * c.s, opacity: t * c.fog, noLabel: true });
     });
   });
@@ -4126,13 +4126,25 @@ function dkIcon(kind, label, sub, open, icon = '') {
   return b;
 }
 
+// a public one badged with a globe, open to all behind its own login only
+function dkServiceIcon(r) {
+  const b = dkIcon('service', r.name, r.host, () => dkService(r), `/api/favicon/${encodeURIComponent(r.host)}/${encodeURIComponent(r.name)}`);
+  if (r.public) {
+    b.title += ', public: no phosphorus login';
+    const g = el('span', 'dk-public');
+    g.appendChild(dkGlyph(DK_GLYPHS.service));
+    b.querySelector('.dk-tile').appendChild(g);
+  }
+  return b;
+}
+
 // rebuilt only when the hosts or services change
 function dkIcons() {
   if (!dk.desk) return;
   dkDeskWatch();
   const hosts = [...dk.creds.keys()];
   const git = !!gitRoute;
-  const sig = JSON.stringify([hosts, git, !!acct?.admin, dk.services.map((r) => [r.host, r.name]), dk.deskFiles.map((e) => [e.at, e.name, e.dir, e.mtime, e.hosts, e.stale, e.all])]);
+  const sig = JSON.stringify([hosts, git, !!acct?.admin, dk.services.map((r) => [r.host, r.name, !!r.public]), dk.deskFiles.map((e) => [e.at, e.name, e.dir, e.mtime, e.hosts, e.stale, e.all])]);
   if (sig === dk.sig) return;
   dk.sig = sig;
   const files = new Map(dk.deskFiles.map((e) => [`doc\n${filesJoin(e.at, e.name)}`, e]));
@@ -4148,8 +4160,7 @@ function dkIcons() {
     ['games', () => dkIcon('games', 'games', '', () => dkOpenApp('games'))],
     ['about', () => dkIcon('about', 'about', '', () => dkOpenApp('about'))],
     ...(acct?.admin ? [['users', () => dkIcon('users', 'users', '', dkUsersWin)]] : []),
-    ...dk.services.map((r) => [JSON.stringify([r.host, r.name]), () => dkIcon('service', r.name, r.host, () => dkService(r),
-      `/api/favicon/${encodeURIComponent(r.host)}/${encodeURIComponent(r.name)}`)]),
+    ...dk.services.map((r) => [JSON.stringify([r.host, r.name, !!r.public]), () => dkServiceIcon(r)]),
     ...[...files.values()].map((e) => [JSON.stringify([e.at, e.name, e.dir, e.mtime, e.hosts, e.stale, e.all, e.live]), () => dkFileIcon(e)]),
   ];
   const had = new Map(dkIconEls().map((b) => [b.dataset.key, b]));
@@ -5351,7 +5362,7 @@ function dkEditorPick() {
 }
 
 function dkService(r) {
-  const w = dkWin(`svc:${serviceKey(r)}`, r.name, r.host, 'svc');
+  const w = dkWin(`svc:${serviceKey(r)}`, r.name, r.public ? `${r.host}, public` : r.host, 'svc');
   if (!w) return;
   const url = serviceUrl(r);
   const pop = Object.assign(el('button', 'dk-out'), { type: 'button', title: 'open in a browser tab', ariaLabel: 'open in a browser tab' });
