@@ -10,7 +10,7 @@
     :root { --bg: #151515; --fg: #f0f0f0; --muted: #9a9aa0; --line: #2e2e33; --field: #1f1f23; --ok: #3fb950; --bad: #f85149; }
   }
   * { box-sizing: border-box; }
-  body { margin: 0; padding: 22px 24px; background: var(--bg); color: var(--fg); font: 13px/1.4 -apple-system, "Segoe UI", system-ui, sans-serif; }
+  body { margin: 0; padding: 34px 24px 22px; background: var(--bg); color: var(--fg); font: 13px/1.4 -apple-system, "Segoe UI", system-ui, sans-serif; }
   h1 { font-size: 17px; margin: 0 0 4px; }
   p.lead { margin: 0 0 18px; color: var(--muted); }
   label { display: block; margin-bottom: 14px; }
@@ -27,9 +27,16 @@
   button { padding: 6px 16px; border-radius: 6px; border: 1px solid var(--line); background: var(--field); color: var(--fg); font: inherit; cursor: pointer; }
   button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
   button:disabled { opacity: .6; cursor: default; }
+  /* no title bar: the top strip drags the window */
+  .drag { position: fixed; top: 0; left: 0; right: 0; height: 28px; }
+  details { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 4px; }
+  summary { cursor: pointer; font-weight: 600; margin-bottom: 4px; list-style-position: inside; }
+  summary .count { font-weight: 400; color: var(--muted); font-size: 11px; margin-left: 6px; }
+  details > p { margin: 2px 0 14px; color: var(--muted); font-size: 11px; }
 </style>
 </head>
 <body>
+<div class="drag" data-tauri-drag-region></div>
 <h1>Keys</h1>
 <p class="lead" id="lead">Saved values are never shown. Paste a new one to replace it, leave a field blank to keep what's set.</p>
 <form id="f" autocomplete="off"></form>
@@ -39,8 +46,9 @@
   <button type="submit" form="f" class="primary" id="save">Save</button>
 </div>
 <script>
-  const KEYS = [
-    ['TS_AUTHKEY', 'Tailscale auth key', 'Reusable, expires every 90 days. The only key a host joining an existing mesh needs.'],
+  const MAIN = ['TS_AUTHKEY', 'Tailscale auth key', 'Reusable, expires every 90 days. The only key a host joining an existing mesh needs.'];
+  // the first host's, copied from a peer by every other
+  const SETUP = [
     ['BASE_DOMAIN', 'Domain', "The mesh's domain, services under it. Copied from a peer when blank."],
     ['TUNNEL_TOKEN', 'Cloudflare tunnel token', "For a replica of the mesh's tunnel. Copied from a peer when blank."],
     ['TS_API_KEY', 'Tailscale API token', 'Game split DNS, expires every 90 days. Copied from a peer when blank.'],
@@ -80,7 +88,18 @@
     if (!set.TS_AUTHKEY) {
       document.getElementById('lead').textContent = 'First start. Joining an existing mesh needs only the Tailscale auth key, the rest is copied from a peer. A new mesh needs the domain and tunnel token too.';
     }
-    form.replaceChildren(...KEYS.map((k) => field(k, !!set[k[0]])));
+    const more = document.createElement('details');
+    const sum = document.createElement('summary');
+    const n = SETUP.filter((k) => set[k[0]]).length;
+    sum.append('First setup');
+    const count = document.createElement('span');
+    count.className = 'count';
+    count.textContent = `${n} of ${SETUP.length} set`;
+    sum.append(count);
+    const note = document.createElement('p');
+    note.textContent = 'Only the first host of a new mesh needs the domain and tunnel token. Every other host copies these from a peer, so leave them blank when joining.';
+    more.append(sum, note, ...SETUP.map((k) => field(k, !!set[k[0]])));
+    form.replaceChildren(field(MAIN, !!set.TS_AUTHKEY), more);
     form.querySelector('input').focus();
   });
 
@@ -97,6 +116,7 @@
     }
   });
   document.getElementById('cancel').addEventListener('click', () => invoke('close_keys'));
+  addEventListener('keydown', (e) => { if (e.key === 'Escape') invoke('close_keys'); });
 </script>
 </body>
 </html>
