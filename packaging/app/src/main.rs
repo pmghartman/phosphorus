@@ -480,7 +480,8 @@ fn open_main(handle: &AppHandle) {
         .min_inner_size(480.0, 360.0)
         .maximized(true)
         .focused(true)
-        .on_new_window(move |u, _| popout(&h, u));
+        .on_new_window(move |u, _| popout(&h, u))
+        .initialization_script("window.__phosphorusClient = true;");
     // macOS: no title bar, the traffic lights over the page and a strip above it to drag by
     #[cfg(target_os = "macos")]
     let b = b.title_bar_style(tauri::TitleBarStyle::Overlay).hidden_title(true).initialization_script(DRAG_STRIP);
