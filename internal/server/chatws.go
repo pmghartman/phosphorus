@@ -23,12 +23,6 @@ import (
 	"github.com/pmghartman/phosphorus/internal/wsock"
 )
 
-//go:embed assets/apes/r8w.gif
-var apeR8w []byte
-
-//go:embed assets/apes/j3t.gif
-var apeJ3t []byte
-
 const (
 	modelColor        = "#d2a8ff"
 	modelContext      = 30
@@ -42,8 +36,7 @@ const (
 
 var (
 	askRe   = regexp.MustCompile(`(?i)^/(chimp)(\s|$)`)
-	apeCall = regexp.MustCompile(`(?i)^\s*ape apart weak\W*$`)
-	apes    = []string{"gorilla", "bonobo", "gibbon", "siamang"}
+	apeCall = regexp.MustCompile(`(?i)^\s*apes? together strong\W*$`)
 	busy    = fmt.Sprintf("already chewing on %d questions from this host, ask again once one lands", maxAsks)
 
 	askMu       sync.Mutex
@@ -296,43 +289,10 @@ func askModel(ask Msg, c *chatClient, open any) {
 }
 
 func apesAnswer() {
-	m := model.Summary()
-	up := map[string]bool{}
-	order := []string{}
-	if ms, ok := m["models"].([]any); ok {
-		for _, x := range ms {
-			r := util.Obj(x)
-			if r["ready"] == true {
-				h := str(r["host"])
-				if !up[h] {
-					up[h] = true
-					order = append(order, h)
-				}
-			}
-		}
-	}
-	names := []string{}
-	chimp := str(m["chimp"])
-	if up[chimp] {
-		names = append(names, "chimp")
-	}
-	i := 0
-	for _, h := range order {
-		if h != chimp {
-			names = append(names, apes[i%len(apes)])
-			i++
-		}
-	}
-	gifs := []struct {
-		name string
-		data []byte
-	}{{"r8w.gif", apeR8w}, {"j3t.gif", apeJ3t}}
-	for i, name := range names {
-		i, name := i, name
+	for i, name := range model.Roles {
+		name := name
 		time.AfterFunc(time.Duration(i+1)*apeGap, func() {
-			g := gifs[i%len(gifs)]
-			postOwn(Msg{"name": name, "color": modelColor, "kind": "model", "text": "apes together strong",
-				"files": []any{chatmedia.Bundled(selfHost, g.name, g.data)}})
+			postOwn(Msg{"name": name, "color": modelColor, "kind": "model", "text": "apes together strong!"})
 		})
 	}
 }

@@ -3,7 +3,6 @@
 package chatmedia
 
 import (
-	"crypto/md5"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -214,20 +213,6 @@ func or(a, b string) string {
 		return a
 	}
 	return b
-}
-
-// Bundled a file shipped with the app, kept under an id from its name
-func Bundled(host, name string, data []byte) map[string]any {
-	h := md5.Sum([]byte(name))
-	id := hex.EncodeToString(h[:])
-	ext := strings.TrimPrefix(filepath.Ext(name), ".")
-	info := Meta{name, "image/" + ext, int64(len(data))}
-	if meta(host, id) == nil {
-		os.MkdirAll(filepath.Join(dir, host), 0o755)
-		os.WriteFile(where(host, id), data, 0o644)
-		os.WriteFile(where(host, id)+".json", util.Marshal(info), 0o644)
-	}
-	return map[string]any{"host": host, "id": id, "name": info.Name, "type": info.Type, "size": info.Size}
 }
 
 // Serve one attachment, false when not held here

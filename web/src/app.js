@@ -3165,8 +3165,8 @@ chatForm.addEventListener('submit', (e) => {
     return;
   }
   const agent = isAgent(conv) && conv;
-  // easter egg: the mesh's apes answering, the main chat brought up
-  if (!agent && /^\s*ape apart weak\W*$/i.test(text)) {
+  // easter egg: chimp and orangutan answering, the main chat brought up
+  if (!agent && /^\s*apes? together strong\W*$/i.test(text)) {
     send({ type: 'message', text });
     openConv('mesh');
     return;
