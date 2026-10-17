@@ -26,5 +26,6 @@ objc2-app-kit = { version = "0.3", default-features = false, features = ["std", 
 
 [profile.release]
 strip = true
-lto = "thin"
+# no cross-crate LTO: release builds minutes faster, the binary a little larger
+lto = false
 codegen-units = 16

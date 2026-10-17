@@ -18,6 +18,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/pmghartman/phosphorus/internal/clock"
@@ -83,6 +84,9 @@ var (
 	lastDiscover int64
 	lastPeers    []peer
 	hasPeers     bool
+	// tailnet address -> trusted, tag:guest devices false
+	trustIPs = map[string]bool{}
+	trustAt  atomic.Int64
 )
 
 var nonAlnum = regexp.MustCompile(`[^a-z0-9]+`)
@@ -117,6 +121,7 @@ func discoverPeers() []peer {
 			TailscaleIPs []string
 			Online       bool
 			OS           string
+			Tags         []string
 		}
 	}
 	if err == nil {
@@ -127,8 +132,22 @@ func discoverPeers() []peer {
 		return nil
 	}
 	notes.Clear("tailscale")
+	trust := map[string]bool{}
+	for _, a := range status.Self.TailscaleIPs {
+		trust[a] = true
+	}
+	for _, p := range status.Peer {
+		guest := false
+		for _, t := range p.Tags {
+			guest = guest || t == "tag:guest"
+		}
+		for _, a := range p.TailscaleIPs {
+			trust[a] = !guest
+		}
+	}
 	mu.Lock()
 	selfIP = v4(status.Self.TailscaleIPs)
+	trustIPs = trust
 	mu.Unlock()
 	if selfHost != "" {
 		if renamed := HostOf(status.Self.DNSName); renamed != "" && renamed != selfHost {
@@ -156,6 +175,23 @@ func discoverPeers() []peer {
 		peers = append(peers, peer{h, ip, p.OS, p.Online})
 	}
 	return peers
+}
+
+// Trusted a tailnet address of this tailnet's own devices, tag:guest ones not;
+// an unknown one looked up again, at most once a second
+func Trusted(ip string) bool {
+	mu.RLock()
+	ok, known := trustIPs[ip]
+	mu.RUnlock()
+	if known {
+		return ok
+	}
+	if at := trustAt.Load(); util.Now()-at >= 1000 && trustAt.CompareAndSwap(at, util.Now()) {
+		discoverPeers()
+	}
+	mu.RLock()
+	defer mu.RUnlock()
+	return trustIPs[ip]
 }
 
 // OfflineMS per host, only while tailscale itself still answers

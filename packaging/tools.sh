@@ -18,11 +18,17 @@ check() { s=$( (sha256sum "$1" 2>/dev/null || shasum -a 256 "$1") | cut -d' ' -f
 case $OS in
 linux)
     get "$T/ts.tgz" "https://pkgs.tailscale.com/stable/tailscale_${TAILSCALE}_${ARCH}.tgz"
-    check "$T/ts.tgz" "$(curl -fsSL "https://pkgs.tailscale.com/stable/tailscale_${TAILSCALE}_${ARCH}.tgz.sha256")"
+    case $ARCH in
+    amd64) check "$T/ts.tgz" 108d1d96ecf410d305571e173516f27038f870919a9b89c914a167c6d33a4528 ;;
+    arm64) check "$T/ts.tgz" f60294374967f3dfd8cf57bbbd474d6cfce32d123e3a8ddeab82a87940daa806 ;;
+    esac
     tar -xzf "$T/ts.tgz" -C "$T"
     install -m755 "$T/tailscale_${TAILSCALE}_${ARCH}/tailscale" "$T/tailscale_${TAILSCALE}_${ARCH}/tailscaled" "$OUT/"
     get "$OUT/forgejo" "https://codeberg.org/forgejo/forgejo/releases/download/v${FORGEJO}/forgejo-${FORGEJO}-linux-${ARCH}"
-    check "$OUT/forgejo" "$(curl -fsSL "https://codeberg.org/forgejo/forgejo/releases/download/v${FORGEJO}/forgejo-${FORGEJO}-linux-${ARCH}.sha256" | cut -d' ' -f1)"
+    case $ARCH in
+    amd64) check "$OUT/forgejo" b90e22c2e5534fd7705d93d81ecea792b00f15cad0ee7bbc3061c65bf9524293 ;;
+    arm64) check "$OUT/forgejo" c55ec791a3924097971c65dfd960f02a63efabc3ebcb4bb9a3363c2b5c693206 ;;
+    esac
     get "$OUT/cloudflared" "$CF/cloudflared-linux-${ARCH}"
     case $ARCH in
     amd64) check "$OUT/cloudflared" 77e26d8d900e0b8469f416239d14b5f296525fdf79fee6f511ef55609e3fbac2 ;;
@@ -47,7 +53,7 @@ windows)
     ;;
 source)
     get "$OUT/forgejo-src-${FORGEJO}.tar.gz" "https://codeberg.org/forgejo/forgejo/releases/download/v${FORGEJO}/forgejo-src-${FORGEJO}.tar.gz"
-    check "$OUT/forgejo-src-${FORGEJO}.tar.gz" "$(curl -fsSL "https://codeberg.org/forgejo/forgejo/releases/download/v${FORGEJO}/forgejo-src-${FORGEJO}.tar.gz.sha256" | cut -d' ' -f1)"
+    check "$OUT/forgejo-src-${FORGEJO}.tar.gz" 0fe93c0bc4e1006ec3aa7d65be51181cc02efe4974c4237bb23723d954ffa630
     ;;
 *) echo "unknown OS $OS" >&2; exit 1 ;;
 esac

@@ -29,8 +29,7 @@ on:
         default: false
 
 permissions:
-  contents: write
-  actions: write
+  contents: read
 
 jobs:
   version:
@@ -39,7 +38,7 @@ jobs:
       ver: ${{ steps.v.outputs.ver }}
       builds: ${{ steps.plan.outputs.builds }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       # every run one past the highest vMAJOR.MINOR tag: minor, or major with .0
       - name: next version
         id: v
@@ -74,11 +73,11 @@ jobs:
   check:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version-file: go.mod
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: web/.vendor/cache
           key: web-vendor-${{ hashFiles('web/vendor.lock') }}
@@ -105,8 +104,8 @@ jobs:
       VER: ${{ needs.version.outputs.ver }}
       APP: packaging/app
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version-file: go.mod
       - name: webkit
@@ -117,15 +116,15 @@ jobs:
       - name: mac targets
         if: matrix.name == 'macos-universal'
         run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           workspaces: packaging/app
           # v1: v0 held a target-less save from a failed run, never replaced on a full match
           prefix-key: v1-rust
           key: ${{ matrix.name }}
-      - uses: taiki-e/install-action@v2
+      - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2
         with:
-          tool: tauri-cli@2
+          tool: tauri-cli@2.12.3
       # apt key's public half, into the host package
       - name: apt key
         if: startsWith(matrix.name, 'linux')
@@ -137,7 +136,7 @@ jobs:
           echo "$KEY" | gpg --batch --import
           gpg --export > "$RUNNER_TEMP/phosphorus.gpg"
           echo "PHOSPHORUS_APT_KEY=$RUNNER_TEMP/phosphorus.gpg" >> "$GITHUB_ENV"
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: web/.vendor/cache
           key: web-vendor-${{ hashFiles('web/vendor.lock') }}
@@ -238,12 +237,12 @@ jobs:
             done
           fi
           true
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: out-${{ matrix.name }}
           path: out/
           compression-level: 0
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: upd-${{ matrix.name }}
           path: upd/
@@ -255,15 +254,17 @@ jobs:
     # runs with unchecked OSes skipped, not when anything failed
     if: ${{ !cancelled() && !failure() }}
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
     env:
       VER: ${{ needs.version.outputs.ver }}
     steps:
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           path: out
           pattern: out-*
           merge-multiple: true
-      - uses: softprops/action-gh-release@v3
+      - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
         with:
           tag_name: v${{ env.VER }}
           name: Phosphorus ${{ env.VER }}
@@ -275,7 +276,7 @@ jobs:
             ${{ (inputs.linux_amd64 || inputs.linux_arm64) && format('**Linux**: client `sudo apt install ./phosphorus-client_{0}_ARCH.deb`; host `sudo apt install ./phosphorus_{0}_ARCH.deb`, then `sudo phosphorus` and paste the keys it asks for (`amd64` or `arm64`).', env.VER) || '' }}
             Licenses: `THIRD_PARTY_LICENSES.txt` in every installer and on this release; Forgejo's source as `forgejo-src-*.tar.gz` here when a Linux package is.
           files: out/*
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           path: upd
           pattern: upd-*
@@ -327,6 +328,9 @@ jobs:
     needs: [release]
     if: ${{ !cancelled() && needs.release.result == 'success' }}
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      actions: write
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}

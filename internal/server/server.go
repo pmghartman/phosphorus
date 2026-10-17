@@ -758,7 +758,7 @@ func Main() int {
 		return 1
 	}
 	app := http.HandlerFunc(appHandler)
-	srv := &http.Server{Handler: app, IdleTimeout: 120 * time.Second, ErrorLog: log.New(io.Discard, "", 0)}
+	srv := &http.Server{Handler: meshOnly(app), IdleTimeout: 120 * time.Second, ErrorLog: log.New(io.Discard, "", 0)}
 	go srv.Serve(ln)
 	h := selfHost
 	if h == "" {

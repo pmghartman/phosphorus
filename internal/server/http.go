@@ -4,10 +4,13 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 
+	"github.com/pmghartman/phosphorus/internal/mesh"
 	"github.com/pmghartman/phosphorus/internal/proxy"
 	"github.com/pmghartman/phosphorus/internal/util"
 )
@@ -44,7 +47,47 @@ func isLoopback(r *http.Request) bool {
 }
 
 func isTailnet(r *http.Request) bool {
-	return !proxy.IsIngress(r) && proxy.IsTailnetAddr(proxy.RemoteIP(r))
+	a := proxy.RemoteIP(r)
+	return !proxy.IsIngress(r) && proxy.IsTailnetAddr(a) && mesh.Trusted(a)
+}
+
+// meshOnly the frontend port: loopback and tailnet sockets alone, by a Host
+// no page can rebind
+func meshOnly(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		remote, local := proxy.RemoteIP(r), ""
+		if a, ok := r.Context().Value(http.LocalAddrContextKey).(net.Addr); ok {
+			if h, _, err := net.SplitHostPort(a.String()); err == nil {
+				local = strings.TrimPrefix(h, "::ffff:")
+			}
+		}
+		lo := proxy.IsLoopbackAddr(remote) && proxy.IsLoopbackAddr(local)
+		tail := proxy.IsTailnetAddr(remote) && proxy.IsTailnetAddr(local)
+		if !(lo || tail) || !unrebindable(r.Host) {
+			forbidden(w)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// unrebindable an address, a bare name or a tailnet one
+func unrebindable(host string) bool {
+	h := host
+	if x, _, err := net.SplitHostPort(host); err == nil {
+		h = x
+	}
+	h = strings.TrimSuffix(strings.ToLower(strings.Trim(h, "[]")), ".")
+	return net.ParseIP(h) != nil || !strings.Contains(h, ".") || strings.HasSuffix(h, ".ts.net")
+}
+
+// crossSite a write or socket from another site's page
+func crossSite(r *http.Request) bool {
+	switch r.Method {
+	case "GET", "HEAD", "OPTIONS":
+		return proxy.IsUpgrade(r) && !sameOrigin(r)
+	}
+	return !sameOrigin(r)
 }
 
 func isBrowser(r *http.Request) bool     { return proxy.IsIngress(r) || isLoopback(r) }

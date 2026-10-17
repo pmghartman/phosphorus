@@ -13,7 +13,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
-	"net"
 	"net/http"
 	"os"
 	"regexp"
@@ -24,6 +23,7 @@ import (
 
 	"golang.org/x/crypto/scrypt"
 
+	"github.com/pmghartman/phosphorus/internal/proxy"
 	"github.com/pmghartman/phosphorus/internal/sysfs"
 	"github.com/pmghartman/phosphorus/internal/util"
 )
@@ -256,18 +256,18 @@ func ClearCookie(r *http.Request) []string {
 	return []string{Cookie + "=; Max-Age=0" + attrs(r)}
 }
 
-// IPOf the browser's address as cloudflared saw it, else the socket's
+// IPOf the browser's address as cloudflared or a peer's ingress saw it, else the socket's
 func IPOf(r *http.Request) string {
+	sock := proxy.RemoteIP(r)
+	if !proxy.IsLoopbackAddr(sock) && !proxy.IsTailnetAddr(sock) {
+		return sock
+	}
 	v := r.Header.Get("Cf-Connecting-Ip")
 	if v == "" {
 		v = r.Header.Get("X-Forwarded-For")
 	}
 	if v == "" {
-		host, _, err := net.SplitHostPort(r.RemoteAddr)
-		if err != nil {
-			host = r.RemoteAddr
-		}
-		v = host
+		v = sock
 	}
 	return strings.TrimSpace(strings.Split(v, ",")[0])
 }
@@ -598,7 +598,7 @@ func Login(p map[string]any, r *http.Request) R {
 		if anyAdmin() {
 			return errR(403, "the setup admin is off once an admin user exists")
 		}
-		if pass != adminPass {
+		if adminPass == "" || subtle.ConstantTimeCompare([]byte(pass), []byte(adminPass)) != 1 {
 			return fail()
 		}
 		return R{Status: 200, Body: Me(&Session{User: admin, Admin: true, Boot: true}), Cookie: []string{issue(r, map[string]any{"b": 1}, bootSessionMS)}}

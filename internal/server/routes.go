@@ -79,6 +79,10 @@ func appHandler(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	method := r.Method
 
+	if crossSite(r) {
+		forbidden(w)
+		return
+	}
 	if proxy.IsUpgrade(r) {
 		onUpgrade(w, r, pathname, q)
 		return
@@ -198,6 +202,15 @@ func appHandler(w http.ResponseWriter, r *http.Request) {
 				}
 				return st, out
 			})
+			return
+		}
+	}
+
+	// mesh-wide model picks and keys: this machine, the tailnet, ingress admins
+	if strings.HasPrefix(pathname, "/api/model/") && !isLoopback(r) && !isTailnet(r) {
+		pick := method == "POST" && (pathname == "/api/model/role" || pathname == "/api/model/key")
+		if s := users.Of(r); !proxy.IsIngress(r) || pick && (s == nil || !s.Admin) {
+			forbidden(w)
 			return
 		}
 	}
@@ -450,7 +463,8 @@ func appHandler(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	case pathname == "/api/join-key" && method == "POST":
-		if !isBrowser(r) {
+		// admins, or this machine with no admin password
+		if s := users.Of(r); !isBrowser(r) || !(s != nil && s.Admin || adminPass == "" && isLoopback(r)) {
 			forbidden(w)
 			return
 		}
