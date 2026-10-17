@@ -1,8 +1,5 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/wordmark-dark.svg">
-    <img src=".github/assets/wordmark-light.svg" alt="phosphorus" width="440">
-  </picture>
+  <img src=".github/assets/phosphorus.svg" alt="phosphorus" width="300">
 </p>
 
 <p align="center">
@@ -11,82 +8,71 @@
   <sub><i>The Alchemist in Search of the Philosopher's Stone</i>, Joseph Wright of Derby, 1771. Public domain, via <a href="https://commons.wikimedia.org/wiki/File:Joseph_Wright_of_Derby_The_Alchemist.jpg">Wikimedia Commons</a>.</sub>
 </p>
 
-Every computer you own as one shared desktop in the browser: terminals, files, web services, chat, status, git and a local AI model across all hosts, at your domain.
+Every computer you own as one shared desktop in your browser: terminals, files, web services, game servers, chat, live status, git and a local AI model, across all your machines, at your own domain.
+
+## What you need
+
+- A [Tailscale](https://tailscale.com) account (the free plan is enough) and a reusable auth key
+- A domain on [Cloudflare](https://cloudflare.com) and a Cloudflare tunnel token (only for the first host)
 
 ## Install
 
-From the [latest release](https://github.com/pmghartman/phosphorus/releases/latest), per OS:
+Download from the [latest release](https://github.com/pmghartman/phosphorus/releases/latest).
 
-| System | Client only | Host | Host needs |
-|---|---|---|---|
-| Linux | `sudo apt install ./phosphorus-client_VERSION_ARCH.deb` | `sudo apt install ./phosphorus_VERSION_ARCH.deb`, then `sudo phosphorus` | systemd |
-| macOS | `phosphorus-client-VERSION-macos-universal.dmg` | `phosphorus-VERSION-macos-universal.dmg` | the Tailscale app, installed by first start if missing (allow its VPN configuration) |
-| Windows | `phosphorus-client-VERSION-windows-x86_64-setup.exe` | `phosphorus-VERSION-windows-x86_64-setup.exe` | Tailscale for Windows, installed by first start if missing |
+**Host** (a machine that joins the mesh):
 
-The client is the mesh's frontend in a window with no menu bar (on macOS no title bar either, the window buttons kept); it asks for the mesh's domain on first start. It is a Dock (macOS) or taskbar (Windows) app with no tray icon; on macOS the window's top strip drags it like a title bar. Every macOS and Windows host has two apps: Phosphorus, the tray icon that runs the service and makes the machine a host, and Phosphorus Client, which it installs beside itself (macOS) or in the user's programs with a Start menu entry (Windows). Open Phosphorus in the tray, or opening the Phosphorus app, starts the client full size on the host's domain.
+- **macOS**: open `phosphorus-VERSION-macos-universal.dmg`, drag Phosphorus to Applications and open it (the first time: right-click, Open).
+- **Windows**: run `phosphorus-VERSION-windows-x86_64-setup.exe` (if SmartScreen warns: More info, Run anyway).
+- **Linux**: `sudo apt install ./phosphorus_VERSION_ARCH.deb`, then `sudo phosphorus`.
 
-The host installer carries the `phosphorus` binary, which installs the release into the host folder (`/var/lib/phosphorus`, `~/Library/Phosphorus` or `%USERPROFILE%\phosphorus`) and brings it up. There are no scripts to run.
+Tailscale is installed on first start if it's missing. On macOS, allow its VPN configuration when asked.
 
-Nothing runs in containers. `phosphorus run` keeps the frontend, cloudflared, the model and (Linux) the git daemon as its own labelled child processes; `phos ps` shows them by role and the status tab sums them.
+**Client only** (just a window onto the mesh, from any computer): install `phosphorus-client` for your system and enter your domain.
 
-| | Service | Logs | Tailscale | Bundled |
-|---|---|---|---|---|
-| Linux | `phosphorus.service` (systemd) | `journalctl -u phosphorus` | the machine's `tailscaled` when running, else `phosphorus-tailscaled.service` | tailscale, cloudflared, forgejo in `/usr/libexec/phosphorus` |
-| macOS | LaunchAgent `dev.phosphorus.host` | `~/Library/Phosphorus/state/phosphorus.log` | the Tailscale app | cloudflared in the host folder's `tools/` |
-| Windows | the `phosphorus` service | `%USERPROFILE%\phosphorus\state\phosphorus.log` | Tailscale for Windows | cloudflared in the host folder's `tools\` |
+## First start
 
-On Linux the distro packages a role needs (git, rsync, sqlite3 on a git host, curl, ripgrep, libgomp1 on a model host, libvulkan1 and mesa-vulkan-drivers with `gpu` on and no nvidia gpu) are installed on the first start that needs them. Git hosts are Linux only: forgejo ships for Linux alone. The Windows service is installed once through the admin prompt `phos start` raises; after that the signed-in account starts and stops it.
+Phosphorus asks for its keys:
 
-## Keys
+- **Tailscale auth key**: always needed. A machine joining an existing mesh needs nothing else; it copies the rest from the other hosts.
+- **First setup** (only for the first host of a new mesh): your domain, the Cloudflare tunnel token, and optionally a Tailscale API token (for game server DNS) and an admin password.
 
-On first start the app opens a keys window and `phosphorus` opens a keys form. Paste the keys there; they go into the host folder's `.env`.
+Then open `https://your-domain`. The first login is user `admin` with your admin password; create your own admin account and that login turns off.
 
-| Key | Needed |
-|---|---|
-| `TS_AUTHKEY` | always, a reusable Tailscale auth key |
-| `BASE_DOMAIN` | first host of a mesh, copied from a peer otherwise |
-| `TUNNEL_TOKEN` | first host of a mesh, copied from a peer otherwise |
-| `TS_API_KEY` | optional, game split DNS, copied from a peer otherwise |
-| `ADMIN_PASS` | optional, setup admin login and mesh update gate, copied from a peer otherwise |
+To change a key later: **Edit Keys** in the tray, or `phos keys`.
 
-A host joining an existing mesh needs only `TS_AUTHKEY`: once on the tailnet it copies the rest from the first peer that answers.
+## Everyday use
 
-`.env` is readable only by root on Linux, by the app's account on macOS, and by the app's account plus SYSTEM on Windows. Saved keys are never displayed; typed ones are. To replace one, use Edit Keys in the tray, `phos keys`, or `k` in the cli. Paste the new value; blank fields keep what is set. Saving restarts phosphorus with the new keys.
+**Tray icon** (macOS and Windows): Open, Start, Stop, Turn VPN Off/On, Check for Updates, Edit Keys, Uninstall, Quit.
 
-First login: user `admin`, password `ADMIN_PASS`; create a real admin and that login turns off.
+**Command line** (any host): `phos` opens the terminal UI. Also `phos start`, `phos stop`, `phos status`, `phos vpn off`, `phos vpn on`, `phos update`, `phos update all`, `phos uninstall`.
 
-Uninstall: Uninstall in the tray (or the app menu on macOS), or `phos uninstall`. It removes the service, the admin setup, PATH entries, the home with its git data and shares, the app's own folders and the app itself. On Linux it purges the package.
+**Updating**: admins click the update icon in the web bar (or run `phos update all`) to update every host at once.
 
-## Config
+## Settings
 
-`config/phosphorus.ini`, applied on save:
+Edit `config/phosphorus.ini` in the host folder, or use `phos`. Changes apply when saved.
 
 ```ini
 [files]
-dir = files, /srv/media   # shared folders
-priv = rwd, r             # read, write, delete per folder
-
-[home]
-dir = files               # which share holds home/ (users, shared/, sys/)
+dir = files, /srv/media   # folders to share
+priv = rwd, r             # read, write, delete for each folder
 
 [git]
-host = true               # run a git server replica here
+host = true               # keep a copy of the git server here (Linux only)
 
 [model]
-host = true               # run the AI model here (projects coming soon)
-gpu = true                # nvidia via cuda, amd and intel via vulkan, apple via metal
+host = true               # run the AI model here, for the whole mesh
+gpu = true                # use this machine's graphics card
 url = https://huggingface.co/.../model.gguf
 ```
 
-A model host downloads, into its model folder: llama.cpp's `llama-server` (its CUDA build plus NVIDIA's CUDA runtime with an nvidia gpu, Vulkan for amd and intel, Metal on a Mac), opencode, and the model itself, often several GB; a Linux one also installs `libgomp1`, `ripgrep` and `curl`. Turning `host` off deletes them again. Once projects return, a model host will also need a sandbox runtime (see Projects under Use).
+**A model host downloads a lot**: llama.cpp's `llama-server` (plus NVIDIA's CUDA runtime on an NVIDIA card), opencode, and the model itself, often several GB. Turning `host` off removes them. You pick the model, so following its license is up to you.
 
-The model at `url` is downloaded by that host from wherever it points; its weights come under the model's own license (Llama, Gemma, Qwen and the rest each have theirs), which whoever sets `url` is responsible for following. phosphorus ships no model.
-
-`config/services.export`, web services and game servers on this host:
+To show a web service or game server on the mesh, add it to `config/services.export`:
 
 ```ini
 [grafana]
-port = 3001               # yourdomain/host/grafana/, or mode = subdomain
+port = 3001               # at your-domain/host/grafana/
 
 [terraria]
 port = 7777
@@ -95,92 +81,24 @@ start = systemctl --user start tmodloader
 stop = systemctl --user stop tmodloader
 ```
 
-## Use
+## Coming soon
 
-- `phosphorus` (or `phos`): the cli; `start`, `stop`, `restart`, `update`, `update all`, `keys`, `ps` (Linux: phosphorus's processes by role)
-- Host app (macOS, Windows): opening it starts Phosphorus Client; tray: Open, Start, Stop, Turn VPN Off/On, Check for Updates, Edit Keys, Uninstall, Quit (stops phosphorus too). Start and Stop grey out by state and confirm when done; Turn VPN Off stops phosphorus and takes Tailscale down until Start
-- `phos status`: whether phosphorus and Tailscale are up; `phos vpn off` / `phos vpn on` the tray's VPN switch
-- Mesh update: update icon in the bar (admins) or `phos update all`. Every peer updates at once through its own installer, then the host that started it
-- Projects: coming soon, shelved while their sandboxes are rebuilt; `/api/projects` still lists past ones
+**Projects**: long-running tasks the AI works on by itself in a sandbox. They're paused while the sandbox is rebuilt.
 
-## How it fits together
+## Troubleshooting
 
-```mermaid
-flowchart TB
-  subgraph release["GitHub release"]
-    deb[".deb (amd64, arm64)<br/>binary, tailscale, cloudflared, forgejo"]
-    dmg[".dmg"]
-    exe["setup .exe"]
-    client["client-only installers"]
-    feed["update feed: apt repo, app feed, latest.json"]
-  end
+| | Host folder | Log |
+|---|---|---|
+| macOS | `~/Library/Phosphorus` | `~/Library/Phosphorus/state/phosphorus.log` |
+| Windows | `%USERPROFILE%\phosphorus` | `%USERPROFILE%\phosphorus\state\phosphorus.log` |
+| Linux | `/var/lib/phosphorus` | `journalctl -u phosphorus` |
 
-  subgraph host["Host (Linux shown)"]
-    dpkg["apt + postinst"]
-    bin["phosphorus binary<br/>install, start, stop, keys, rebuild, upgrade, ps"]
-    agent["update agent<br/>phosphorus-update.path"]
-    tsd["tailscaled<br/>the machine's, or phosphorus-tailscaled.service"]
-    subgraph home["/var/lib/phosphorus"]
-      env[".env (locked)"]
-      cfg["config/ phosphorus.ini, services.export"]
-      state["state/ native.env and the rest"]
-      files["files/ and [files] shares"]
-      gitdata["git/ forgejo data"]
-    end
-    sshd["host sshd"]
-    subgraph svc["phosphorus.service: phosphorus run"]
-      ph["frontend<br/>phosphorus serve"]
-      cfd["cloudflared"]
-      model["model<br/>llama-server, opencode"]
-      git["git daemon<br/>forgejo, rsyncd, elector"]
-    end
-  end
+A failed install or update also leaves `state/install.log` in the host folder.
 
-  subgraph mesh["Tailnet"]
-    peers["other hosts, Linux, macOS and Windows"]
-  end
-  cf["Cloudflare tunnel"]
-  browser["Browser or client app at BASE_DOMAIN"]
+## Building
 
-  deb --> dpkg --> bin
-  dmg & exe -->|"tray app: install, start, keys"| bin
-  bin -->|"keys form"| env
-  bin -->|"release synced, old files removed"| home
-  bin -->|"admin setup once"| sshd
-  bin -->|"rebuild: native.env, systemctl"| svc
-  ph -->|"reconfig: phosphorus rebuild"| bin
-  env & cfg --> ph
-  state <--> ph
-  files <--> ph
-  git <--> gitdata
-  ph -->|"terminals, game play/stop"| sshd
-  ph -->|"update request"| state
-  state --> agent
-  agent -->|"apt upgrade"| feed
-  agent --> bin
-  ph --- tsd
-  ph <-->|"snapshots, files, chat, updates"| peers
-  ph -->|"missing keys from /internal/keys"| peers
-  git <-->|"rsync replication"| peers
-  ph --> model
-  ph --> cfd --> cf --> browser
-  client --> browser
-  browser -->|"/api/ping/host, timed by the client"| ph
-```
-
-## Layout
-
-```
-cmd/          phosphorus: roles (serve, model, elector, cli, ssh-relay), host commands (run, start, rebuild, ps and the rest); webbuild; licenses
-internal/     Go packages, internal/host the host side the installers run
-web/          browser client, bundled into the binary by go generate
-gitd/         the git daemon a Linux git host runs: forgejo, rsync replication, the elector
-config/       default host config
-packaging/    tools.sh (bundled tools), deb/ (Linux host: units) and app/ (Tauri app: the client everywhere, the host tray on macOS and Windows)
-```
-
-`make build`, `make check`, `make test`, `make licenses` (after a dependency or pinned tool changes; a release fails while `THIRD_PARTY_LICENSES.txt` is stale).
+`make build` builds the binary, `make check` and `make test` run the checks, and `make licenses` refreshes `THIRD_PARTY_LICENSES.txt` after a dependency changes.
 
 ## License
 
-Apache 2.0, see `LICENSE`. `THIRD_PARTY_NOTICES.md` lists what phosphorus ships and fetches; `THIRD_PARTY_LICENSES.txt`, generated by `make licenses` and carried by every installer, holds their full license texts.
+Apache 2.0, see `LICENSE`. Everything phosphorus bundles or downloads keeps its own license; the full texts are in `THIRD_PARTY_LICENSES.txt`, included in every installer.
