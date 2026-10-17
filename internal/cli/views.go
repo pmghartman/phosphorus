@@ -55,7 +55,7 @@ func header(cols int, title string) string {
 			title = tabs[ui.tab]
 		}
 	}
-	left := " " + gradient("Φ phosphorus", 0) + c("muted")(" · ") + c("sage")(title)
+	left := " " + gradient("phosphorus", 0) + c("muted")(" · ") + c("sage")(title)
 	right := ""
 	if ui.state != nil {
 		right = c("muted")("v"+str(get(ui.state, "self", "version"))) + " "
