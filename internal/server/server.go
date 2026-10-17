@@ -253,7 +253,8 @@ func runKind(rel string, dir bool) string {
 }
 
 func homeWho(r *http.Request) *files.Who {
-	s := users.Of(r)
+	// a login from another host: the mesh's sys pulled when it's not here yet
+	s := users.Soon(r)
 	if s == nil {
 		return nil
 	}
