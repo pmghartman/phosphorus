@@ -1152,6 +1152,7 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
 /* a host to switch to, expanded only */
 .mesh-panel.expanded [data-host] { cursor: pointer; }
 .mesh-svg .mesh-hit { fill: transparent; }
+.mesh-panel.expanded .mesh-host, .mesh-stat-row[data-host] { cursor: pointer; }
 .mesh-panel:not(.expanded) .mesh-svg .mesh-hit { pointer-events: none; }
 .mesh-panel.expanded .mesh-host:hover .mesh-node { stroke: var(--accent); stroke-width: 1; }
 .mesh-panel.expanded .mesh-host:hover .mesh-label { fill: var(--fg); }
