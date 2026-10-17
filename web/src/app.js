@@ -1111,7 +1111,7 @@ function drawMesh() {
       };
       if (svcTouched) stem.id = `stem-${key}`;
       edges.appendChild(svgEl('line', stem));
-      drawNode(c.x, c.y, r.name, svcTouched ? 'svc touched' : 'svc', r.public ? `${r.name} (public, no phosphorus login)` : r.name,
+      drawNode(c.x, c.y, r.name, svcTouched ? 'svc touched' : 'svc', r.public || r.master !== undefined ? `${r.name} (public, no phosphorus login)` : r.name,
         { size: 1.8 * c.s, opacity: t * c.fog, noLabel: true });
     });
   });
@@ -4129,12 +4129,21 @@ function dkIcon(kind, label, sub, open, icon = '') {
 // a public one badged with a globe, open to all behind its own login only
 function dkServiceIcon(r) {
   const b = dkIcon('service', r.name, r.host, () => dkService(r), `/api/favicon/${encodeURIComponent(r.host)}/${encodeURIComponent(r.name)}`);
-  if (r.public) {
-    b.title += ', public: no phosphorus login';
-    const g = el('span', 'dk-public');
-    g.appendChild(dkGlyph(DK_GLYPHS.service));
-    b.querySelector('.dk-tile').appendChild(g);
-  }
+  return r.public ? dkGlobe(b, 'public: no phosphorus login') : b;
+}
+
+// the logged in hosts still on the mesh, a dead one's terminal never offered
+function dkLiveHosts() {
+  const up = new Set([...terminalHosts, selfHost]);
+  return [...dk.creds.keys()].filter((h) => up.has(h));
+}
+
+// a globe in the tile's corner: reachable without the phosphorus login
+function dkGlobe(b, why) {
+  b.title += `, ${why}`;
+  const g = el('span', 'dk-public');
+  g.appendChild(dkGlyph(DK_GLYPHS.service));
+  b.querySelector('.dk-tile').appendChild(g);
   return b;
 }
 
@@ -4142,7 +4151,7 @@ function dkServiceIcon(r) {
 function dkIcons() {
   if (!dk.desk) return;
   dkDeskWatch();
-  const hosts = [...dk.creds.keys()];
+  const hosts = dkLiveHosts();
   const git = !!gitRoute;
   const sig = JSON.stringify([hosts, git, !!acct?.admin, dk.services.map((r) => [r.host, r.name, !!r.public]), dk.deskFiles.map((e) => [e.at, e.name, e.dir, e.mtime, e.hosts, e.stale, e.all])]);
   if (sig === dk.sig) return;
@@ -4156,7 +4165,7 @@ function dkIcons() {
     ['chat', () => dkIcon('chat', 'chat', '', () => dkOpenApp('chat'))],
     ['status', () => dkIcon('status', 'status', '', () => dkOpenApp('status'))],
     ['projects', () => dkIcon('projects', 'projects', '', () => dkOpenApp('projects'))],
-    ...(git ? [['git', () => dkIcon('git', 'git', '', () => dkOpenApp('git'))]] : []),
+    ...(git ? [['git', () => dkGlobe(dkIcon('git', 'git', '', () => dkOpenApp('git')), 'public: its own login only')]] : []),
     ['games', () => dkIcon('games', 'games', '', () => dkOpenApp('games'))],
     ['about', () => dkIcon('about', 'about', '', () => dkOpenApp('about'))],
     ...(acct?.admin ? [['users', () => dkIcon('users', 'users', '', dkUsersWin)]] : []),
@@ -4441,7 +4450,6 @@ document.addEventListener('keydown', (e) => {
 
 function dkRoutes(services) {
   dk.services = services;
-  for (const w of dk.wins.values()) w.pubSync?.();
   dkIcons();
   dkChips();
   dkGitFrame();
@@ -4927,11 +4935,15 @@ function dkDeskMenu(icons) {
     if (e.target !== icons && !b) return;
     e.preventDefault();
     if (b && !dk.sel.has(b.dataset.id)) { dk.sel = new Set([b.dataset.id]); dkPaintSel(); }
-    const hosts = [...dk.creds.keys()];
+    const hosts = dkLiveHosts();
     const f = b && dk.deskFiles.find((x) => filesJoin(x.at, x.name) === b.dataset.file);
     if (f) { dkMenu(e.clientX, e.clientY, dkFileMenu(f)); return; }
+    const [kind, name, host] = b ? b.dataset.id.split('\n') : [];
+    const svc = kind === 'service' && dk.services.find((r) => r.host === host && r.name === name);
     const items = [
-      ...(b ? [['open', () => b.dispatchEvent(new MouseEvent('dblclick')), true], null] : []),
+      ...(b ? [['open', () => b.dispatchEvent(new MouseEvent('dblclick')), true]] : []),
+      ...(svc && acct?.admin ? [[svc.public ? 'make private' : 'make public', () => dkSetPublic(svc, !svc.public), true]] : []),
+      ...(b ? [null] : []),
       ...hosts.map((h) => [`terminal on ${h}`, () => dkTerminal(h), true]),
       ...(hosts.length ? [null] : []),
       ['add file…', () => dkNewFile(e.clientX, e.clientY), !!dkDeskAt()],
@@ -5238,7 +5250,8 @@ function dkHomeOn(host) {
 function dkRunItems(rel, hosts) {
   const runner = DK_RUNNERS[fmExt(rel)];
   if (!runner) return [];
-  return hosts.filter((h) => dk.creds.has(h) && dkHomeOn(h)).map((h) => [`run on ${h}`, () => {
+  const live = new Set(dkLiveHosts());
+  return hosts.filter((h) => live.has(h) && dkHomeOn(h)).map((h) => [`run on ${h}`, () => {
     const stem = rel.split('/').pop().replace(/\.[^.]+$/, '') || 'a.out';
     dkTerminal(h, `f=${shQuote(`${dkHomeOn(h)}/${rel}`)}; o="$(mktemp -d)"/${shQuote(stem)}; cd "$(dirname "$f")" && ${runner}`);
   }, true]);
@@ -5362,44 +5375,13 @@ function dkEditorPick() {
   dkFocus(w);
 }
 
-// admins' public/login switch, going public asked twice, kept in step with the routes
-function dkPublicToggle(w, r) {
-  const b = Object.assign(el('button', 'dk-pub'), { type: 'button' });
-  let on = !!r.public;
-  let arm = 0;
-  let busy = false;
-  const draw = (text) => {
-    b.textContent = text || (on ? 'public' : 'login');
-    b.classList.toggle('on', on);
-    b.title = text ? '' : on ? 'anyone can reach it, its own login only; press to require the phosphorus login' : 'behind the phosphorus login; press to make it public';
-  };
-  w.pubSync = () => {
-    const live = dk.services.find((x) => x.host === r.host && x.name === r.name);
-    if (live && !busy && !arm) { on = !!live.public; draw(); }
-  };
-  b.addEventListener('click', async () => {
-    if (busy) return;
-    if (!on && !arm) {
-      arm = setTimeout(() => { arm = 0; draw(); }, 3000);
-      draw('make public?');
-      return;
-    }
-    clearTimeout(arm);
-    arm = 0;
-    busy = true;
-    draw('…');
-    const res = await fetch(`/api/services/${encodeURIComponent(r.host)}/${encodeURIComponent(r.name)}/public`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ public: !on }),
-    }).catch(() => null);
-    const out = res ? await res.json().catch(() => ({})) : { error: 'no answer' };
-    busy = false;
-    if (res?.ok) { on = !!out.public; draw(); return; }
-    draw('failed');
-    b.title = out.error || `status ${res?.status}`;
-    setTimeout(() => { if (!busy && !arm) draw(); }, 3000);
-  });
-  draw();
-  return b;
+// a service behind the phosphorus login or open to all, its owning host's services.export rewritten
+async function dkSetPublic(r, on) {
+  const res = await fetch(`/api/services/${encodeURIComponent(r.host)}/${encodeURIComponent(r.name)}/public`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ public: on }),
+  }).catch(() => null);
+  const out = res ? await res.json().catch(() => ({})) : {};
+  dkMenuNote(res?.ok ? `${r.name} ${on ? 'public' : 'private'}` : out.error || 'not changed');
 }
 
 function dkService(r) {
@@ -5410,7 +5392,6 @@ function dkService(r) {
   pop.appendChild(dkGlyph(DK_UI.pop));
   pop.addEventListener('click', () => window.open(url, '_blank', 'noopener'));
   w.head.querySelector('.dk-btns').prepend(pop);
-  if (acct?.admin) w.head.querySelector('.dk-btns').prepend(dkPublicToggle(w, r));
   const frame = Object.assign(el('iframe', 'dk-frame'), { src: url, title: r.name, allow: 'clipboard-read; clipboard-write; fullscreen' });
   w.body.appendChild(frame);
   dkNav(w, frame);

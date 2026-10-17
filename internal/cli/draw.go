@@ -223,6 +223,8 @@ func fit(s string, w int) string { return cut(s, w) + base }
 
 var wrapTok = regexp.MustCompile(`(\x1b\[[0-9;?]*[A-Za-z]| +)`)
 
+var softRe = regexp.MustCompile(`[^/.\-_:]*[/.\-_:]+|[^/.\-_:]+`)
+
 func wrap(s string, w, hang int) []string {
 	if vlen(s) <= w || w < 2 {
 		return []string{s}
@@ -239,7 +241,16 @@ func wrap(s string, w, hang int) []string {
 			room = 1
 		}
 	}
+	toks := []string{}
 	for _, tok := range splitKeep(wrapTok, s) {
+		// a long word broken after its / . - _ : before mid-letter
+		if tok != "" && tok[0] != ' ' && !strings.HasPrefix(tok, "\x1b[") {
+			toks = append(toks, softRe.FindAllString(tok, -1)...)
+			continue
+		}
+		toks = append(toks, tok)
+	}
+	for _, tok := range toks {
 		if tok == "" {
 			continue
 		}

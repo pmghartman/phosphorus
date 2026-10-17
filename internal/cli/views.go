@@ -434,7 +434,7 @@ func statsView() view {
 				status = c(tok)(str(r["status"]))
 			}
 			access := c("muted")("login")
-			if r["public"] == true {
+			if r["public"] == true || r["master"] != nil {
 				access = c("warn")("public")
 			}
 			if game {
