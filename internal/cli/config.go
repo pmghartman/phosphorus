@@ -542,7 +542,7 @@ func modelForm() *form {
 		return &field{key: key, value: m[key], hint: hint, choices: choices}
 	}
 	return &form{kind: "model", title: "[model]", gpuWas: m["gpu"], hostWas: m["host"], fields: []*field{
-		fl("host", "true downloads the model here and runs it for the whole mesh", "false", "true"),
+		fl("host", "true runs the model here for the whole mesh, downloading llama.cpp's llama-server (with NVIDIA's CUDA runtime on an nvidia gpu), opencode and the model itself, several GB", "false", "true"),
 		fl("gpu", "true offloads it to this nvidia, amd or intel gpu, the rest in ram", "false", "true"),
 		fl("url", "download link to a single .gguf, pasted or typed, a hugging face page link works too"),
 		fl("ctx", "context tokens, blank is 65536, and every token costs memory"),

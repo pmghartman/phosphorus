@@ -78,6 +78,8 @@ gpu = true                # nvidia via cuda, amd and intel via vulkan, apple via
 url = https://huggingface.co/.../model.gguf
 ```
 
+A model host downloads, into its model folder: llama.cpp's `llama-server` (its CUDA build plus NVIDIA's CUDA runtime with an nvidia gpu, Vulkan for amd and intel, Metal on a Mac), opencode, and the model itself, often several GB; a Linux one also installs `libgomp1`, `ripgrep` and `curl`. Turning `host` off deletes them again. Once projects return, a model host will also need a sandbox runtime (see Projects under Use).
+
 The model at `url` is downloaded by that host from wherever it points; its weights come under the model's own license (Llama, Gemma, Qwen and the rest each have theirs), which whoever sets `url` is responsible for following. phosphorus ships no model.
 
 `config/services.export`, web services and game servers on this host:
@@ -96,7 +98,8 @@ stop = systemctl --user stop tmodloader
 ## Use
 
 - `phosphorus` (or `phos`): the cli; `start`, `stop`, `restart`, `update`, `update all`, `keys`, `ps` (Linux: phosphorus's processes by role)
-- Host app (macOS, Windows): opening it starts Phosphorus Client; tray: Open, Start, Stop, Check for Updates, Edit Keys, Uninstall, Quit (stops phosphorus too)
+- Host app (macOS, Windows): opening it starts Phosphorus Client; tray: Open, Start, Stop, Turn VPN Off/On, Check for Updates, Edit Keys, Uninstall, Quit (stops phosphorus too). Start and Stop grey out by state and confirm when done; Turn VPN Off stops phosphorus and takes Tailscale down until Start
+- `phos status`: whether phosphorus and Tailscale are up; `phos vpn off` / `phos vpn on` the tray's VPN switch
 - Mesh update: update icon in the bar (admins) or `phos update all`. Every peer updates at once through its own installer, then the host that started it
 - Projects: coming soon, shelved while their sandboxes are rebuilt; `/api/projects` still lists past ones
 
