@@ -27,7 +27,7 @@ Download from the [latest release](https://github.com/pmghartman/phosphorus/rele
 
 Tailscale is installed on first start if it's missing. On macOS, allow its VPN configuration when asked.
 
-**Client only** (just a window onto the mesh, from any computer): install `phosphorus-client` for your system and enter your domain.
+**Client** (optional, a window onto the mesh from any computer): install `phosphorus-client` for your system and enter your domain. It updates itself. Hosts don't need it: Open in the tray uses the client when it's installed, else your browser.
 
 ## First start
 
@@ -42,7 +42,7 @@ To change a key later: **Edit Keys** in the tray, or `phos keys`.
 
 ## Everyday use
 
-**Tray icon** (macOS and Windows): Open, Start, Stop, Turn VPN Off/On, Check for Updates, Edit Keys, Uninstall, Quit.
+**Tray icon** (macOS and Windows): Open (the client, or your browser), Start, Stop, Turn VPN Off/On, Check for Updates, Edit Keys, Uninstall, Quit.
 
 **Command line** (any host): `phos` opens the terminal UI. Also `phos start`, `phos stop`, `phos status`, `phos vpn off`, `phos vpn on`, `phos update`, `phos update all`, `phos uninstall`.
 

@@ -145,46 +145,9 @@ type meta struct {
 // rustParts the app's crates on every target it ships for, dev-dependencies left out
 func rustParts() []part {
 	seen := map[string]part{}
-	for _, t := range []string{"x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-pc-windows-msvc"} {
-		var m meta
-		must(json.Unmarshal(run(nil, "cargo", "metadata", "--format-version", "1", "--locked",
-			"--manifest-path", "packaging/app/Cargo.toml", "--filter-platform", t), &m))
-		pkgs := map[string]crate{}
-		for _, p := range m.Packages {
-			pkgs[p.ID] = p
-		}
-		edges := map[string][]string{}
-		for _, n := range m.Resolve.Nodes {
-			for _, d := range n.Deps {
-				for _, k := range d.DepKinds {
-					if k.Kind == nil || *k.Kind == "build" {
-						edges[n.ID] = append(edges[n.ID], d.Pkg)
-						break
-					}
-				}
-			}
-		}
-		stack := []string{m.Resolve.Root}
-		visited := map[string]bool{}
-		for len(stack) > 0 {
-			id := stack[len(stack)-1]
-			stack = stack[:len(stack)-1]
-			if visited[id] {
-				continue
-			}
-			visited[id] = true
-			stack = append(stack, edges[id]...)
-			c := pkgs[id]
-			key := c.Name + "@" + c.Version
-			if id == m.Resolve.Root || seen[key].name != "" {
-				continue
-			}
-			src := c.Repository
-			if src == "" {
-				src = "https://crates.io/crates/" + c.Name
-			}
-			seen[key] = part{group: "Rust crates in the Phosphorus apps", name: c.Name, version: c.Version, source: src,
-				texts: filesIn(filepath.Dir(c.ManifestPath)), spdx: c.License}
+	for _, mf := range []string{"packaging/host/Cargo.toml", "packaging/client/Cargo.toml"} {
+		for _, t := range []string{"x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-pc-windows-msvc"} {
+			rustTarget(mf, t, seen)
 		}
 	}
 	parts := []part{}
@@ -195,6 +158,50 @@ func rustParts() []part {
 		parts = append(parts, p)
 	}
 	return parts
+}
+
+// rustTarget one app's crates on one target into seen
+func rustTarget(manifest, target string, seen map[string]part) {
+	var m meta
+	must(json.Unmarshal(run(nil, "cargo", "metadata", "--format-version", "1", "--locked",
+		"--manifest-path", manifest, "--filter-platform", target), &m))
+	pkgs := map[string]crate{}
+	for _, p := range m.Packages {
+		pkgs[p.ID] = p
+	}
+	edges := map[string][]string{}
+	for _, n := range m.Resolve.Nodes {
+		for _, d := range n.Deps {
+			for _, k := range d.DepKinds {
+				if k.Kind == nil || *k.Kind == "build" {
+					edges[n.ID] = append(edges[n.ID], d.Pkg)
+					break
+				}
+			}
+		}
+	}
+	stack := []string{m.Resolve.Root}
+	visited := map[string]bool{}
+	for len(stack) > 0 {
+		id := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if visited[id] {
+			continue
+		}
+		visited[id] = true
+		stack = append(stack, edges[id]...)
+		c := pkgs[id]
+		key := c.Name + "@" + c.Version
+		if id == m.Resolve.Root || seen[key].name != "" {
+			continue
+		}
+		src := c.Repository
+		if src == "" {
+			src = "https://crates.io/crates/" + c.Name
+		}
+		seen[key] = part{group: "Rust crates in the Phosphorus apps", name: c.Name, version: c.Version, source: src,
+			texts: filesIn(filepath.Dir(c.ManifestPath)), spdx: c.License}
+	}
 }
 
 // --- tools --------------------------------------------------------------------
