@@ -4005,6 +4005,16 @@ function dkDesktop() {
 
 // the page's update and theme buttons, moved into whichever bar is up
 const dkTray = document.querySelector('.top-mesh-wide');
+// the client apps' own reload, no browser bar of theirs to do it: a button, F5 and ctrl/cmd+R
+if (window.__phosphorusClient) {
+  const b = Object.assign(el('button'), { type: 'button', title: 'refresh (F5)', ariaLabel: 'refresh' });
+  b.appendChild(dkGlyph('M13 2.5v3h-3M3 13.5v-3h3M12.6 5.5A5 5 0 0 0 3.3 6.5M3.4 10.5a5 5 0 0 0 9.3-1'));
+  b.addEventListener('click', () => location.reload());
+  dkTray.prepend(b);
+  addEventListener('keydown', (e) => {
+    if (e.key === 'F5' || ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'r')) { e.preventDefault(); location.reload(); }
+  });
+}
 function dkBar(...before) {
   const bar = el('div', 'dk-bar');
   dk.clock = el('span', 'dk-clock');
