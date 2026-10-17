@@ -3,7 +3,8 @@
   "identifier": "dev.phosphorus.app",
   "bundle": {
     "resources": {
-      "payload/": "release/"
+      "payload/": "release/",
+      "client/": "client/"
     },
     "externalBin": [
       "binaries/phosphorus-host"

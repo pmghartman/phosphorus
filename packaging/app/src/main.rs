@@ -24,6 +24,8 @@ use tauri_plugin_updater::UpdaterExt;
 static BUSY: AtomicBool = AtomicBool::new(false);
 /// a tray up, closed windows keeping the app
 static TRAY: AtomicBool = AtomicBool::new(false);
+/// a client the host's tray opened: no tray, no uninstall, the host's bundle its home
+static HOSTED: AtomicBool = AtomicBool::new(false);
 /// popped out windows' labels
 static TABS: AtomicU32 = AtomicU32::new(0);
 /// the tray menu's first line: what the tooltip says, visible on macOS
@@ -37,6 +39,8 @@ struct App {
     is_host: bool,
     // where a client keeps the mesh's domain
     config: PathBuf,
+    // a host's bundled client app, its window a process of its own
+    client: Option<PathBuf>,
 }
 
 fn home_dir() -> PathBuf {
@@ -353,6 +357,15 @@ fn bare_domain(s: &str) -> String {
 /// the frontend in a window of its own, no menu bar; the keys asked for first
 /// on a host without them, the domain on a client without one
 fn open_main(handle: &AppHandle) {
+    let app = handle.state::<App>();
+    if let Some(c) = app.client.as_ref().filter(|_| app.is_host) {
+        if keys_missing(&app) {
+            open_keys(handle);
+        } else {
+            launch_client(c, &domain(&app));
+        }
+        return;
+    }
     activate(handle);
     if let Some(w) = handle.get_webview_window("main") {
         let _ = w.unminimize();
@@ -360,7 +373,6 @@ fn open_main(handle: &AppHandle) {
         let _ = w.set_focus();
         return;
     }
-    let app = handle.state::<App>();
     if app.is_host && keys_missing(&app) {
         open_keys(handle);
         return;
@@ -404,6 +416,31 @@ fn open_tab(handle: &AppHandle, url: tauri::Url) {
         .focused(true)
         .on_new_window(move |u, _| popout(&h, u))
         .build();
+}
+
+/// the bundled client started on the mesh's domain, a running one brought up
+fn launch_client(client: &Path, domain: &str) {
+    let mut args = vec!["--hosted"];
+    if !domain.is_empty() {
+        args.extend(["--domain", domain]);
+    }
+    #[cfg(target_os = "macos")]
+    {
+        // copied off the .dmg quarantined, the nested app otherwise refused
+        let _ = Command::new("/usr/bin/xattr").args(["-dr", "com.apple.quarantine"]).arg(client).status();
+        let _ = Command::new("/usr/bin/open").arg("-a").arg(client).arg("--args").args(&args).spawn();
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = Command::new(client).args(&args).stdin(Stdio::null()).spawn();
+}
+
+/// a client's domain handed over on its command line, kept for later opens
+fn take_domain(app: &App, args: &[String]) {
+    let Some(d) = args.iter().position(|a| a == "--domain").and_then(|i| args.get(i + 1)) else { return };
+    let d = bare_domain(d);
+    if d.contains('.') && d.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-') {
+        write_json(&app.config, &json!({"domain": d}));
+    }
 }
 
 /// a client's first start: the mesh's domain asked for
@@ -519,6 +556,10 @@ fn app_dirs(handle: &AppHandle) -> Vec<PathBuf> {
 /// installer's uninstaller (Windows)
 fn remove_app() {
     let Ok(exe) = std::env::current_exe() else { return };
+    // inside the host's bundle: gone with it
+    if HOSTED.load(Ordering::SeqCst) {
+        return;
+    }
     #[cfg(target_os = "macos")]
     if let Some(bundle) = exe.ancestors().find(|p| p.extension().is_some_and(|e| e == "app")) {
         let q = format!("'{}'", bundle.display().to_string().replace('\'', "'\\''"));
@@ -608,7 +649,7 @@ fn app_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         &[
             &PredefinedMenuItem::about(app, None, None)?,
             &PredefinedMenuItem::separator(app)?,
-            &MenuItem::with_id(app, "uninstall", "Uninstall…", true, None::<&str>)?,
+            &MenuItem::with_id(app, "uninstall", "Uninstall…", !HOSTED.load(Ordering::SeqCst), None::<&str>)?,
             &PredefinedMenuItem::separator(app)?,
             &PredefinedMenuItem::hide(app, None)?,
             &PredefinedMenuItem::hide_others(app, None)?,
@@ -690,7 +731,7 @@ fn menu_event(app: &AppHandle, id: &str) {
             tauri::async_runtime::spawn(async move { handle_update(a, id, true).await });
         }
         "keys" => open_keys(app),
-        "uninstall" => uninstall(app.clone()),
+        "uninstall" if !HOSTED.load(Ordering::SeqCst) => uninstall(app.clone()),
         "quit" => quit(app.clone()),
         _ => {}
     }
@@ -721,10 +762,18 @@ fn quit(handle: AppHandle) {
 }
 
 fn main() {
-    let background = std::env::args().any(|a| a == "--background");
+    let args: Vec<String> = std::env::args().collect();
+    let background = args.iter().any(|a| a == "--background");
+    HOSTED.store(args.iter().any(|a| a == "--hosted"), Ordering::SeqCst);
     let app = tauri::Builder::default()
         // opened again: the running one's window brought up instead
-        .plugin(tauri_plugin_single_instance::init(|app, _, _| open_main(app)))
+        .plugin(tauri_plugin_single_instance::init(|app, args, _| {
+            let st = app.state::<App>();
+            if !st.is_host {
+                take_domain(&st, &args);
+            }
+            open_main(app)
+        }))
         .enable_macos_default_menu(false)
         .on_menu_event(|app, e| menu_event(app, e.id().as_ref()))
         .plugin(tauri_plugin_dialog::init())
@@ -736,7 +785,9 @@ fn main() {
             let host = host_bin();
             let is_host = host.exists() && payload.join("VERSION").exists();
             let config = app.path().app_config_dir()?.join("client.json");
-            app.manage(App { payload, home: home_dir(), host, is_host, config });
+            let name = if cfg!(windows) { "Phosphorus Client.exe" } else { "Phosphorus Client.app" };
+            let client = Some(app.path().resource_dir()?.join("client").join(name)).filter(|c| c.exists());
+            app.manage(App { payload, home: home_dir(), host, is_host, config, client });
             #[cfg(target_os = "macos")]
             app.set_menu(app_menu(app.handle())?)?;
             // release builds carry the updater config; dev builds none
@@ -744,8 +795,9 @@ fn main() {
                 app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
             }
             if !is_host {
-                // no tray (Linux without an indicator): the last window's close quits
-                TRAY.store(tray(app.handle(), false).is_ok(), Ordering::SeqCst);
+                take_domain(&app.state::<App>(), &args);
+                // no tray (Linux without an indicator, or the host's tray already up): the last window's close quits
+                TRAY.store(!HOSTED.load(Ordering::SeqCst) && tray(app.handle(), false).is_ok(), Ordering::SeqCst);
                 open_main(app.handle());
                 return Ok(());
             }

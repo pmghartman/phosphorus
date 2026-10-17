@@ -195,6 +195,8 @@ jobs:
               cp $d/dmg/*.dmg "$o/phosphorus-client-$VER-macos-universal.dmg"
               t="$d/macos/Phosphorus Client.app.tar.gz"
               [ -e "$t.sig" ] && cp "$t" $u/phosphorus-client-macos-universal.app.tar.gz && cp "$t.sig" $u/phosphorus-client-macos-universal.app.tar.gz.sig
+              # into the host app, its window opened by the tray
+              mkdir -p client && cp -R "$d/macos/Phosphorus Client.app" client/
               rm -rf $d ;;
             windows-*)
               d=target/release/bundle/nsis
@@ -202,6 +204,7 @@ jobs:
                 cp "$f" "$o/phosphorus-client-$VER-windows-x86_64-setup.exe"
                 [ -e "$f.sig" ] && cp "$f" $u/phosphorus-client-windows-x86_64-setup.exe && cp "$f.sig" $u/phosphorus-client-windows-x86_64-setup.exe.sig
               done
+              mkdir -p client && cp target/release/Phosphorus.exe "client/Phosphorus Client.exe"
               rm -rf $d ;;
           esac
       - name: host app
