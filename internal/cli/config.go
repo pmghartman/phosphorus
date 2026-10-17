@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -479,10 +480,13 @@ func isHomeDir(dir string) bool {
 
 func readGitHost() bool {
 	s := splitSections(readText(iniFile)).find("git")
-	return s != nil && fieldsOf(s)["host"] == "true"
+	return runtime.GOOS == "linux" && s != nil && fieldsOf(s)["host"] == "true"
 }
 
 func writeGitHost(on bool) string {
+	if on && runtime.GOOS != "linux" {
+		return "git hosts run on Linux alone: forgejo and the git daemon ship for it only"
+	}
 	d := splitSections(readText(iniFile))
 	s := iniSection(d, "git")
 	s.lines = rewriteSection(s, "git", map[string]*string{"host": sp(strconv.FormatBool(on))}, []string{"host"})

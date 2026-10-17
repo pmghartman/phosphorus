@@ -450,7 +450,8 @@ function codeEditor(view, file, btn, id) {
         V = msg.v;
         saved = msg.saved;
         savedText = saved >= 0 && saved === V ? S : null;
-        if (msg.perms !== undefined) perms = msg.perms;
+        // a host's own share without its login: read only
+        if (msg.perms !== undefined) perms = file.share !== 'home' && !dk.creds.has(file.host) ? msg.perms.replace(/[^r]/g, '') : msg.perms;
         if (msg.people) people = msg.people;
         if (msg.you) me = msg.you;
         inflight = null;

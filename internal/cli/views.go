@@ -327,6 +327,8 @@ func gitRow(h J, masterGen any) []string {
 	switch {
 	case !reach:
 		backup = "unreachable"
+	case (h["gen"] == nil || h["ageSec"] == nil) && masterGen != nil && !master:
+		backup = c("sand")("downloading…")
 	case h["gen"] == nil || h["ageSec"] == nil:
 		backup = "no data yet"
 	default:

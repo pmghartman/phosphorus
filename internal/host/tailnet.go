@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/pmghartman/phosphorus/internal/envfile"
@@ -44,8 +45,18 @@ func tailnetJoin(state string) error {
 		a = append(a, "--hostname="+h)
 	}
 	say("signing Tailscale in with TS_AUTHKEY...")
-	if err := run(tailscaleCLI(), a...); err != nil {
-		return fail("couldn't sign Tailscale in, check TS_AUTHKEY in .env (it must be reusable and unexpired)")
+	c := exec.Command(tailscaleCLI(), a...)
+	hide(c)
+	if out, err := c.CombinedOutput(); err != nil {
+		os.Stdout.Write(out)
+		why := strings.TrimSpace(string(out))
+		if i := strings.LastIndexByte(why, '\n'); i >= 0 {
+			why = why[i+1:]
+		}
+		if why == "" {
+			why = err.Error()
+		}
+		return fail("couldn't sign Tailscale in (%s); TS_AUTHKEY in .env must be reusable and unexpired", why)
 	}
 	mark()
 	return nil

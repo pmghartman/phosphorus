@@ -125,7 +125,13 @@ var appCLI = []string{"/Applications/Tailscale.app/Contents/MacOS/Tailscale", "/
 
 func tailscaleDirs() []string { return nil }
 
-func tailscaleCLI() string { return tool("tailscale") }
+// tailscaleCLI by its own path: through a link the app's binary misses its bundle
+func tailscaleCLI() string {
+	if c := appTailscale(); c != "" {
+		return c
+	}
+	return tool("tailscale")
+}
 
 func appTailscale() string {
 	for _, c := range appCLI {
@@ -164,16 +170,19 @@ func tailscaleHint() string {
 
 func tailscaleKeepUp() {}
 
-// tailscaleReady the app's CLI linked into the tools as tailscale, logged in with TS_AUTHKEY when it isn't
+// tailscaleReady the app's CLI in the tools as tailscale, a script exec'ing its full
+// path for the roles' PATH, logged in with TS_AUTHKEY when it isn't
 func tailscaleReady() error {
 	cli := appTailscale()
 	if cli == "" {
 		return fail("no Tailscale here: install the Tailscale app (tailscale.com/download), then phos start")
 	}
 	os.MkdirAll(libexec(), 0o755)
-	if t, _ := os.Readlink(tool("tailscale")); t != cli {
+	sh := "#!/bin/sh\nTAILSCALE_BE_CLI=1 exec '" + strings.ReplaceAll(cli, "'", `'\''`) + "' \"$@\"\n"
+	if b, err := os.ReadFile(tool("tailscale")); err != nil || string(b) != sh {
+		// an old symlink removed, never written through
 		os.Remove(tool("tailscale"))
-		if err := os.Symlink(cli, tool("tailscale")); err != nil {
+		if err := os.WriteFile(tool("tailscale"), []byte(sh), 0o755); err != nil {
 			return err
 		}
 	}
