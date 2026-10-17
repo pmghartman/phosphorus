@@ -24,6 +24,7 @@ import (
 	"github.com/pmghartman/phosphorus/internal/model"
 	"github.com/pmghartman/phosphorus/internal/project"
 	"github.com/pmghartman/phosphorus/internal/proxy"
+	"github.com/pmghartman/phosphorus/internal/services"
 	"github.com/pmghartman/phosphorus/internal/sysfs"
 	"github.com/pmghartman/phosphorus/internal/term"
 	"github.com/pmghartman/phosphorus/internal/update"
@@ -41,6 +42,7 @@ var (
 	mirrorRe   = regexp.MustCompile(`^/internal/mirror/([0-9a-f]{24})$`)
 	pingRe     = regexp.MustCompile(`^/api/ping/([a-z0-9-]+)$`)
 	filesRe    = regexp.MustCompile(`^/api/files/([a-z0-9][a-z0-9-]*)/(info|list|tree|read|download|upload|save|mkdir|rename|delete|run|mirror)$`)
+	publicRe   = regexp.MustCompile(`^/api/services/([a-z0-9][a-z0-9-]*)/([a-z0-9][a-z0-9-]*)/public$`)
 	faviconRe  = regexp.MustCompile(`^/api/favicon/([a-z0-9][a-z0-9-]*)/([a-z0-9][a-z0-9-]*)$`)
 )
 
@@ -579,6 +581,35 @@ func appHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		}
+	}
+
+	if m := publicRe.FindStringSubmatch(pathname); m != nil && method == "POST" {
+		// the tailnet and this machine, the public side admins only
+		s := users.Of(r)
+		if !isLocalOrPeer(r) || !sameOrigin(r) || proxy.IsIngress(r) && (s == nil || !s.Admin) {
+			forbidden(w)
+			return
+		}
+		host, name := m[1], m[2]
+		onJSON(w, r, 1024, true, func(p map[string]any) (int, any) {
+			on, ok := p["public"].(bool)
+			if !ok {
+				return 400, map[string]any{"error": "public is true or false"}
+			}
+			if host == selfHost {
+				return services.SetPublic(name, on)
+			}
+			if _, hop := q["hop"]; hop {
+				return hopErr(host)
+			}
+			ip := util.TailnetIP(host)
+			if ip == "" {
+				return 502, map[string]any{"error": "can't find " + host + " on the tailnet"}
+			}
+			return util.PeerCall(host, util.Req{Host: ip, Method: "POST", Path: fmt.Sprintf("/api/services/%s/%s/public?hop=1", host, name),
+				Body: map[string]any{"public": on}, Timeout: 10 * time.Second, ConnectTimeout: 5 * time.Second})
+		})
+		return
 	}
 
 	if m := gameRe.FindStringSubmatch(pathname); m != nil && method == "POST" {
