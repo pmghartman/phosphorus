@@ -74,6 +74,11 @@ To show a web service or game server on the mesh, add it to `config/services.exp
 [grafana]
 port = 3001               # at your-domain/host/grafana/
 
+[jellyfin]
+port = 8096
+mode = subdomain          # at jellyfin.your-domain
+public = true             # no phosphorus login, for TV and phone apps; jellyfin's own login only
+
 [terraria]
 port = 7777
 type = game

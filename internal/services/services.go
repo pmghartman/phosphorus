@@ -28,7 +28,7 @@ var (
 	servicesFile = util.Env("SERVICES_FILE", filepath.Join(util.RepoDir, "config", "services.export"))
 	gitRoleFile  = filepath.Join(util.StateDir, "git-role")
 	notes        = util.NewNotes("services")
-	keys         = map[string]bool{"port": true, "scheme": true, "mode": true, "base_path": true, "extras": true, "type": true, "start": true, "stop": true}
+	keys         = map[string]bool{"port": true, "scheme": true, "mode": true, "base_path": true, "extras": true, "type": true, "start": true, "stop": true, "public": true}
 	headRe       = regexp.MustCompile(`^\[\s*(.*?)\s*\]$`)
 	commentRe    = regexp.MustCompile(`^[#;]`)
 	digitsRe     = regexp.MustCompile(`^[0-9]+$`)
@@ -126,6 +126,12 @@ func Parse(text string) ([]Row, string) {
 			row["base_path"] = s.f["base_path"]
 			if s.f["type"] != "" {
 				row["type"] = s.f["type"]
+			}
+			if p, has := s.f["public"]; has {
+				row["public"] = p
+				if p == "true" || p == "false" {
+					row["public"] = p == "true"
+				}
 			}
 		}
 		if port == nil {
