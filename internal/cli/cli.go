@@ -777,7 +777,7 @@ func gitKey(s string, e keyEv) {
 	case e.name == "down":
 		ui.sel[gitTab] = max0(min(len(hosts)-1, ui.sel[gitTab]+1))
 	case s == "h" && !readGitHost() && runtime.GOOS != "linux":
-		flash(c("offmesh")("git hosts run on Linux alone: forgejo and the git daemon ship for it only"))
+		flash(c("offmesh")(writeGitHost(true)))
 	case s == "h":
 		on := !readGitHost()
 		text := "stop being a git host? phosphorus-git is removed, " + iniNote

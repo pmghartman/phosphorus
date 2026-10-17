@@ -209,8 +209,8 @@ func rebuild() error {
 	}
 	defer unlock()
 	lockEnv()
-	if isGitHost() && !isLinux {
-		return fail("git hosts run forgejo, which ships for Linux alone: set [git] host = false in config/phosphorus.ini")
+	if !isLinux && iniGet("git", "host") == "true" {
+		say("[git] host = true ignored: git hosts run on Linux alone")
 	}
 	if missing := missingDeps(); len(missing) > 0 {
 		if inDpkg() {

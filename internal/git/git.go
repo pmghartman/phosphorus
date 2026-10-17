@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"sync"
 	"time"
@@ -55,7 +56,8 @@ func Init(isUpdating func() bool, boot string) {
 	}
 }
 
-func isGitHost() bool { return util.Ini("git", "host") == "true" }
+// Linux alone, as the host's own check
+func isGitHost() bool { return runtime.GOOS == "linux" && util.Ini("git", "host") == "true" }
 
 // Vote a monotonic lease, the newest roster kept
 func Vote(p map[string]any) (int, any) {

@@ -209,7 +209,8 @@ func iniGet(section, key string) string {
 	return ini.Parse(string(b))[section+"\x00"+key]
 }
 
-func isGitHost() bool   { return iniGet("git", "host") == "true" }
+// Linux alone: forgejo and the git daemon ship for it only
+func isGitHost() bool   { return isLinux && iniGet("git", "host") == "true" }
 func isModelHost() bool { return iniGet("model", "host") == "true" }
 
 func has(name string) bool { _, err := exec.LookPath(name); return err == nil }
