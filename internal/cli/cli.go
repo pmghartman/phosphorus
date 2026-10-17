@@ -373,6 +373,15 @@ func size() (int, int) {
 	return cols, rows
 }
 
+// headTitle the last frame's, for the wordmark's own redraws
+var headTitle string
+
+// glow the header line alone redrawn, its wordmark's bands slid on
+func glow() {
+	cols, _ := size()
+	io.WriteString(out, "\x1b[H"+base+fit(header(cols, headTitle), cols)+"\x1b[K")
+}
+
 func render() {
 	cols, rows := size()
 	var global []key
@@ -415,6 +424,7 @@ func render() {
 		return f
 	}
 	foot := footer()
+	headTitle = v.title
 	head := []string{header(cols, v.title), ""}
 	room := rows - len(head) - len(foot) - 1
 	if room < 1 {
@@ -1066,6 +1076,8 @@ func run(later, first func()) int {
 	feed(rest)
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
+	shine := time.NewTicker(100 * time.Millisecond)
+	defer shine.Stop()
 	cols, rows := size()
 	minute := time.Now().Minute()
 	for {
@@ -1088,6 +1100,8 @@ func run(later, first func()) int {
 				restore()
 				return 0
 			}
+		case <-shine.C:
+			glow()
 		case <-tick.C:
 			// the flash line cleared once stale, a resize caught where no signal tells
 			c, r := size()

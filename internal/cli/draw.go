@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // --- the web's look ----------------------------------------------------------
@@ -141,17 +142,28 @@ func surface(bgHex string, fgHex ...string) func(string) string {
 
 func caret() string { return surface(pal["accent"])(" ") }
 
+// shift the bands' offset now: the web glyph's 6s ease out and back
+func shift() float64 {
+	t := float64(time.Now().UnixMilli()%6000) / 3000
+	if t > 1 {
+		t = 2 - t
+	}
+	return t * t * (3 - 2*t)
+}
+
 func gradient(s string, span int) string {
 	chars := []rune(s)
 	if span == 0 {
 		span = len(chars)
 	}
+	off := shift()
 	var b strings.Builder
 	for i, ch := range chars {
-		t := 0.0
+		t := off
 		if span > 1 {
-			t = float64(i) / float64(span-1)
+			t += float64(i) / float64(span-1)
 		}
+		t -= math.Floor(t)
 		u := t * 2
 		if t >= 0.5 {
 			u = (1 - t) * 2

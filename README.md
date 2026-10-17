@@ -1,12 +1,12 @@
-<p align="center">
-  <img src=".github/assets/phosphorus.svg" alt="phosphorus" width="300">
-</p>
-
-<p align="center">
-  <img src=".github/assets/wright-alchemist.jpg" alt="The Alchemist in Search of the Philosopher's Stone, Joseph Wright of Derby" width="420">
-  <br>
-  <sub><i>The Alchemist in Search of the Philosopher's Stone</i>, Joseph Wright of Derby, 1771. Public domain, via <a href="https://commons.wikimedia.org/wiki/File:Joseph_Wright_of_Derby_The_Alchemist.jpg">Wikimedia Commons</a>.</sub>
-</p>
+<table align="center">
+  <tr>
+    <td align="center" valign="middle"><img src=".github/assets/phosphorus.svg" alt="phosphorus" width="260"></td>
+    <td align="center" valign="middle"><img src=".github/assets/wright-alchemist.jpg" alt="The Alchemist Discovering Phosphorus, Joseph Wright of Derby" width="220"></td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><sub><i>The Alchymist, In Search of the Philosopher's Stone, Discovers Phosphorus</i>, Joseph Wright of Derby, 1771: Hennig Brand in 1669, boiling down urine for gold, watching his flask glow with the first element found by a known person. Public domain, via <a href="https://commons.wikimedia.org/wiki/File:Joseph_Wright_of_Derby_The_Alchemist.jpg">Wikimedia Commons</a>.</sub></td>
+  </tr>
+</table>
 
 Every computer you own as one shared desktop in your browser: terminals, files, web services, game servers, chat, live status, git and a local AI model, across all your machines, at your own domain.
 
