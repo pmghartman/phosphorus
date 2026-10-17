@@ -40,6 +40,8 @@ var (
 
 const (
 	pollTimeout = 700 * time.Millisecond
+	// a relayed or far peer's: a few of its own round trips, a quiet one's retry the longest
+	pollTimeoutMax = 3 * time.Second
 	// a quiet peer (a phone, a host without phosphorus) tried this often, off the tick
 	quietRetryMS   = 3000
 	discoverIdleMS = 5000
@@ -226,6 +228,7 @@ type peerState struct {
 	sys          string
 	projects     []any
 	answeredAt   int64
+	took         time.Duration
 	nextTry      int64
 	trying       bool
 }
@@ -248,10 +251,16 @@ func retire(st *peerState) {
 	st.projects = []any{}
 }
 
-var pollClient = &http.Client{Timeout: pollTimeout, Transport: &http.Transport{Proxy: nil, MaxIdleConnsPerHost: 4}}
+var pollClient = &http.Client{Transport: &http.Transport{Proxy: nil, MaxIdleConnsPerHost: 4}}
 
-func fetchSnapshot(host, path string) (map[string]any, error) {
-	res, err := pollClient.Get(fmt.Sprintf("http://%s:%d%s", host, util.FrontendPort, path))
+func fetchSnapshot(host, path string, wait time.Duration) (map[string]any, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), wait)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("http://%s:%d%s", host, util.FrontendPort, path), nil)
+	if err != nil {
+		return nil, err
+	}
+	res, err := pollClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -282,8 +291,14 @@ func pollPeer(p peer) {
 	mu.Lock()
 	st := stateFor(p.host)
 	since := st.lastSeq
+	wait := min(max(pollTimeout, 4*st.took), pollTimeoutMax)
+	if st.misses >= missThreshold {
+		wait = pollTimeoutMax
+	}
 	mu.Unlock()
-	snap, err := fetchSnapshot(p.ip, "/api/mesh/snapshot?since="+util.JSNum(since))
+	t0 := time.Now()
+	snap, err := fetchSnapshot(p.ip, "/api/mesh/snapshot?since="+util.JSNum(since), wait)
+	took := time.Since(t0)
 	mu.Lock()
 	defer mu.Unlock()
 	if err != nil {
@@ -352,6 +367,7 @@ func pollPeer(p peer) {
 		}
 	}
 	st.answeredAt = util.Now()
+	st.took = took
 	fp := string(util.Marshal([]any{st.entries, st.presence, st.lock, st.chain, st.platform, st.version, st.sys, st.projects}))
 	if fp != st.fp || len(st.chat) > 0 || !st.answered {
 		defer clock.MarkHot()
