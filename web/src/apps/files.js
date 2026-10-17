@@ -122,7 +122,7 @@ function dkFiles(at) {
   return fm;
 }
 
-// each online host's shares, asked once a window; without its login, read only
+// each online host's shares, asked once a window, as its own [files] perms allow
 async function fmSide(fm) {
   const hosts = [...new Set([...dk.creds.keys(), ...homeOnline()])];
   const render = () => {
@@ -136,10 +136,6 @@ async function fmSide(fm) {
       const info = fm.shares.get(h);
       const hostRow = el('div', 'fm-place fm-hostrow');
       hostRow.append(fmIcon('host'), el('span', '', h));
-      if (!dk.creds.has(h)) {
-        hostRow.classList.add('fm-ro');
-        hostRow.title = `read only: log in to ${h} to change its files`;
-      }
       out.push(hostRow);
       if (!info) { out.push(el('div', 'fm-place-note', '…')); continue; }
       if (info.error) { out.push(Object.assign(el('div', 'fm-place-note bad', info.error), { title: info.error })); continue; }
@@ -160,10 +156,9 @@ async function fmSide(fm) {
     try {
       // what the host published in sys, else asked
       const info = hostsInfo[h.toLowerCase()]?.files || await filesCall({ host: h }, 'info');
-      // the home only as the merged one above
-      const perms = (p) => (dk.creds.has(h) ? p : (p || '').replace(/[^r]/g, ''));
+      // the home only as the merged one above, ssh logins no part of it
       fm.shares.set(h, info.enabled
-        ? { shares: info.shares.filter((sh) => sh.id !== 'home' && perms(sh.perms)).map((sh) => ({ host: h, share: sh.id, root: sh.label, perms: perms(sh.perms) })) }
+        ? { shares: info.shares.filter((sh) => sh.id !== 'home').map((sh) => ({ host: h, share: sh.id, root: sh.label, perms: sh.perms || '' })) }
         : { error: 'no files directory' });
     } catch (err) { fm.shares.set(h, { error: err.message }); }
     render();
