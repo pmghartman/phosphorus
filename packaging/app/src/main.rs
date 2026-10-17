@@ -653,10 +653,11 @@ fn set_domain(handle: AppHandle, domain: String) -> Result<(), String> {
     }
     let app = handle.state::<App>();
     write_json(&app.config, &json!({"domain": d}));
+    // main up before connect goes, never a moment with no window to quit on
+    open_main(&handle);
     if let Some(w) = handle.get_webview_window("connect") {
         let _ = w.close();
     }
-    open_main(&handle);
     Ok(())
 }
 
@@ -1019,9 +1020,10 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("Phosphorus app");
     app.run(|h, e| match e {
-        // windows closing leave the app in the tray, Quit alone ends it
-        // the host's tray, and on macOS the client's Dock icon, outliving their windows
-        RunEvent::ExitRequested { api, code: None, .. } if TRAY.load(Ordering::SeqCst) || cfg!(target_os = "macos") => api.prevent_exit(),
+        // the host's tray outliving its windows, Quit alone ending it
+        RunEvent::ExitRequested { api, code: None, .. } if TRAY.load(Ordering::SeqCst) => api.prevent_exit(),
+        // the client's main window closed: the client quit, its tabs with it
+        RunEvent::WindowEvent { label, event: tauri::WindowEvent::Destroyed, .. } if label == "main" && !TRAY.load(Ordering::SeqCst) => h.exit(0),
         #[cfg(target_os = "macos")]
         RunEvent::Reopen { .. } => open_main(h),
         _ => {
