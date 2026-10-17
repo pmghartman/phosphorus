@@ -5,6 +5,19 @@ license; the phosphorus license (LICENSE) covers none of them. Components are
 listed by group, then every distinct license text follows once, with the
 components it covers.
 
+Forgejo runs as a separate, unmodified program; phosphorus only writes its
+configuration. Its complete corresponding source, forgejo-src-16.0.6.tar.gz, is
+attached to every phosphorus release that carries a Linux package, and is at
+https://codeberg.org/forgejo/forgejo/releases/tag/v16.0.6.
+
+With [model] gpu on an nvidia gpu, the model host also downloads NVIDIA's CUDA
+runtime from llama.cpp's releases, under the NVIDIA CUDA EULA
+(https://docs.nvidia.com/cuda/eula/). phosphorus ships no model; a model's
+weights come under its own license.
+
+Cloudflare, Forgejo and Tailscale are trademarks of their respective owners;
+phosphorus is not affiliated with or endorsed by any of them.
+
 
 == Go modules in the phosphorus binary ==
 
