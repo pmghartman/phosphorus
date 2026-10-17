@@ -510,8 +510,6 @@ body {
 .fm-place { display: flex; align-items: center; gap: 0.45rem; padding: 0.2rem 0.6rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fm-place span { overflow: hidden; text-overflow: ellipsis; }
 .fm-hostrow { color: var(--fg); margin-top: 0.2rem; }
-.fm-hostrow.fm-ro { color: var(--muted); }
-.fm-hostrow.fm-ro::after { content: 'read only'; margin-left: auto; font-size: 0.8em; color: var(--dim); }
 .fm-share { padding-left: 1.4rem; cursor: pointer; color: var(--muted); }
 .fm-share:hover { background: var(--tab-hover); color: var(--fg); }
 .fm-share.here { color: var(--fg); background: var(--bg); box-shadow: inset 2px 0 var(--accent); }

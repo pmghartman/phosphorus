@@ -4947,7 +4947,7 @@ function dkDeskMenu(icons) {
       ...hosts.map((h) => [`terminal on ${h}`, () => dkTerminal(h), true]),
       ...(hosts.length ? [null] : []),
       ['add file…', () => dkNewFile(e.clientX, e.clientY), !!dkDeskAt()],
-      ['upload files…', () => dkPick('', true, (list) => { dkPlaceAt(e.clientX, e.clientY, list.map((f) => f.name)); dkAddFiles(list); }), hosts.length > 0],
+      ['upload files…', () => dkPick('', true, (list) => { dkPlaceAt(e.clientX, e.clientY, list.map((f) => f.name)); dkAddFiles(list); }), homeOnline().length > 0],
       null,
       ['change wallpaper…', () => dkPick('image/*', false, ([f]) => dkWallSet(f).then((why) => why && dkMenuNote(why))), !!acct && !acct.boot],
       ['remove wallpaper', dkWallClear, !!acct?.wallpaper],
@@ -4958,7 +4958,7 @@ function dkDeskMenu(icons) {
     dkMenu(e.clientX, e.clientY, items);
   });
   icons.addEventListener('dragover', (e) => {
-    if (!(dragsFiles(e) || (dk.drag && dkDeskAt())) || !dk.creds.size) return;
+    if (!(dragsFiles(e) || (dk.drag && dkDeskAt()))) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
   });
@@ -5354,7 +5354,7 @@ function dkEditorPick() {
   const w = dkWin('editor', 'editor', '', 'pick');
   if (!w) return;
   const list = el('ul', 'dk-recent');
-  const recent = loadJsonSafe(RECENT_FILES_KEY).filter((f) => f && f.host && f.path && dk.creds.has(f.host));
+  const recent = loadJsonSafe(RECENT_FILES_KEY).filter((f) => f && f.host && f.path && homeOnline().includes(f.host));
   for (const f of recent) {
     const li = Object.assign(el('li'), { tabIndex: 0 });
     li.append(fmIcon(isCode(f.path) ? 'code' : 'file'), el('span', 'fm-label', f.label || `${f.host}/${f.path}`));
