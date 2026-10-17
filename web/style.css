@@ -450,15 +450,15 @@ body {
 .dk-task:hover { color: var(--fg); background: var(--tab-hover); }
 .dk-task.active { color: var(--fg); border-color: var(--accent); }
 .dk-hosts { display: flex; gap: 0.15rem; color: var(--muted); }
-/* the host serving this page purple, the rest green, a press moving the page there */
+/* the host serving this page purple, the rest green, a down one a red dot; a press moving the page there */
 .dk-chip { padding: 0.2rem 0.45rem; background: none; border: 0; color: var(--muted); font: inherit; cursor: pointer; }
 .dk-chip:hover { background: var(--tab-hover); color: var(--fg); }
 .dk-chip.here { color: var(--fg); cursor: default; }
 .dk-chip.here:hover { background: none; }
 .dk-chip::before { content: ""; display: inline-block; width: 0.45rem; height: 0.45rem; margin-right: 0.35rem; background: var(--online); vertical-align: 0.05rem; }
 .dk-chip.here::before { background: var(--accent); }
-.dk-chip.down { color: var(--offmesh); cursor: default; }
-.dk-chip.down:hover { background: none; color: var(--offmesh); }
+.dk-chip.down { color: var(--muted); cursor: default; }
+.dk-chip.down:hover { background: none; color: var(--muted); }
 .dk-chip.down::before { background: var(--offmesh); }
 .dk-clock { color: var(--fg); font-variant-numeric: tabular-nums; }
 .dk-off { padding: 0.2rem 0.6rem; background: none; border: 1px solid var(--offmesh); color: var(--offmesh); font: inherit; cursor: pointer; }
