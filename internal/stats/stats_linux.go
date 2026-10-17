@@ -208,7 +208,7 @@ func integrated(v, dev string) bool {
 	return false
 }
 
-func sysfsGpus(haveNvidia bool) []map[string]any {
+func vendorGpus(haveNvidia bool) []map[string]any {
 	out := []map[string]any{}
 	for _, c := range readdir("/sys/class/drm") {
 		if !regexp.MustCompile(`^card\d+$`).MatchString(c) {

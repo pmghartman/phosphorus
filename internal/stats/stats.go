@@ -239,7 +239,7 @@ func gpus() []map[string]any {
 	gmu.Lock()
 	nv := append([]map[string]any{}, nvidia...)
 	gmu.Unlock()
-	return append(nv, sysfsGpus(len(nv) > 0)...)
+	return append(nv, vendorGpus(len(nv) > 0)...)
 }
 
 // containers phosphorus's own processes by role, from refreshProcs

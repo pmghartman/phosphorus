@@ -137,8 +137,6 @@ func uptimeSecs() float64 {
 	return float64(u)
 }
 
-func sysfsGpus(bool) []map[string]any { return nil }
-
 var (
 	procPrev = map[int32]float64{}
 	procAt   int64
