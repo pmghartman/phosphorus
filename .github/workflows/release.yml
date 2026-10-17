@@ -84,6 +84,11 @@ jobs:
           key: web-vendor-${{ hashFiles('web/vendor.lock') }}
       # every package cross-vetted too: macOS and Windows hosts run the same roles
       - run: go generate ./internal/web && go vet ./... && go test ./... && GOOS=darwin go vet ./... && GOOS=windows go vet ./...
+      # the shipped license texts current with every dependency and pinned tool
+      - name: licenses
+        run: |
+          go run ./cmd/licenses
+          git diff --exit-code THIRD_PARTY_LICENSES.txt || { echo "THIRD_PARTY_LICENSES.txt is stale, run make licenses and commit it" >&2; exit 1; }
 
   # one job per OS: the host binary built once, the client installer every host
   # installer builds on bundled first, the host one after off the same Rust build
@@ -148,12 +153,15 @@ jobs:
         run: |
           mkdir -p out upd art $APP/payload $APP/binaries
           git archive HEAD | tar -x -C $APP/payload && echo "$VER" > $APP/payload/VERSION
+          cp THIRD_PARTY_LICENSES.txt out/
           b() { test -f internal/web/dist/index.html && CGO_ENABLED=0 GOOS=$1 GOARCH=$2 go build -trimpath -ldflags "-s -w" -o "$3" ./cmd/phosphorus; }
           case "${{ matrix.name }}" in
             linux-*)
               b linux ${{ matrix.arch }} art/phosphorus
               packaging/tools.sh linux ${{ matrix.arch }} art/tools
-              packaging/deb/build.sh "out/phosphorus_${VER}_${{ matrix.arch }}.deb" "$VER" $APP/payload ${{ matrix.arch }} art/phosphorus art/tools ;;
+              packaging/deb/build.sh "out/phosphorus_${VER}_${{ matrix.arch }}.deb" "$VER" $APP/payload ${{ matrix.arch }} art/phosphorus art/tools
+              # forgejo's corresponding source beside the package carrying its binary
+              packaging/tools.sh source any out ;;
             macos-universal)
               b darwin arm64 art/h-arm64 && b darwin amd64 art/h-amd64
               lipo -create -output $APP/binaries/phosphorus-host-universal-apple-darwin art/h-arm64 art/h-amd64
@@ -265,6 +273,7 @@ jobs:
             ${{ inputs.macos && '**MacOS**: open the `.dmg`, drag the app to Applications and open it (first open: right-click > Open). The host app asks for its keys and needs the Tailscale app.' || '' }}
             ${{ inputs.windows && '**Windows**: run the setup `.exe` (SmartScreen: More info > Run anyway). The host app asks for its keys and needs Tailscale for Windows.' || '' }}
             ${{ (inputs.linux_amd64 || inputs.linux_arm64) && format('**Linux**: client `sudo apt install ./phosphorus-client_{0}_ARCH.deb`; host `sudo apt install ./phosphorus_{0}_ARCH.deb`, then `sudo phosphorus` and paste the keys it asks for (`amd64` or `arm64`).', env.VER) || '' }}
+            Licenses: `THIRD_PARTY_LICENSES.txt` in every installer and on this release; Forgejo's source as `forgejo-src-*.tar.gz` here when a Linux package is.
           files: out/*
       - uses: actions/download-artifact@v8
         with:

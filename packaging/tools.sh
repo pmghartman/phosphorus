@@ -1,12 +1,13 @@
 #!/bin/sh
 # the host installers' bundled tools, pinned and checked: tailscale and forgejo on
-# Linux (git hosts are Linux only), cloudflared everywhere
-# Usage: packaging/tools.sh OS (linux|darwin|windows) ARCH (amd64|arm64|universal) OUTDIR
+# Linux (git hosts are Linux only), cloudflared everywhere; OS source: forgejo's
+# source tarball, attached to releases shipping its binary (GPL-3.0)
+# Usage: packaging/tools.sh OS (linux|darwin|windows|source) ARCH (amd64|arm64|universal|any) OUTDIR
 set -eu
 OS=${1:?usage: packaging/tools.sh OS ARCH OUTDIR} ARCH=${2:?ARCH} OUT=${3:?OUTDIR}
 TAILSCALE=1.104.1
 CLOUDFLARED=2026.9.3
-FORGEJO=16.0.5
+FORGEJO=16.0.6
 CF=https://github.com/cloudflare/cloudflared/releases/download/$CLOUDFLARED
 T=$(mktemp -d)
 trap 'rm -rf "$T"' EXIT
@@ -43,6 +44,10 @@ darwin)
 windows)
     get "$OUT/cloudflared.exe" "$CF/cloudflared-windows-amd64.exe"
     check "$OUT/cloudflared.exe" f096265ec2fcbe9bb6e2d64268db167ced3fcbb83d894bdb9e2fcdb26f2ea7e2
+    ;;
+source)
+    get "$OUT/forgejo-src-${FORGEJO}.tar.gz" "https://codeberg.org/forgejo/forgejo/releases/download/v${FORGEJO}/forgejo-src-${FORGEJO}.tar.gz"
+    check "$OUT/forgejo-src-${FORGEJO}.tar.gz" "$(curl -fsSL "https://codeberg.org/forgejo/forgejo/releases/download/v${FORGEJO}/forgejo-src-${FORGEJO}.tar.gz.sha256" | cut -d' ' -f1)"
     ;;
 *) echo "unknown OS $OS" >&2; exit 1 ;;
 esac

@@ -1,7 +1,7 @@
 # the binary and its checks, the same as CI's
 BIN ?= phosphorus
 
-.PHONY: all web build check test clean
+.PHONY: all web build check test licenses clean
 
 all: build
 
@@ -20,6 +20,10 @@ check: web
 
 test: web
 	go test ./...
+
+# THIRD_PARTY_LICENSES.txt regenerated, CI failing a release while it's stale
+licenses: web
+	go run ./cmd/licenses
 
 clean:
 	rm -rf $(BIN) web/.vendor

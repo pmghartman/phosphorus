@@ -14,6 +14,9 @@ install -d "$T/usr/lib/phosphorus"
 cp -a "$PAYLOAD/." "$T/usr/lib/phosphorus/"
 chmod -R u=rwX,go=rX "$T/usr/lib/phosphorus"
 install -Dm755 "$BIN" "$T/usr/lib/phosphorus/bin/phosphorus"
+# the licenses where Debian looks for them too
+install -Dm644 "$PAYLOAD/LICENSE" "$T/usr/share/doc/phosphorus/copyright"
+for f in THIRD_PARTY_NOTICES.md THIRD_PARTY_LICENSES.txt; do install -Dm644 "$PAYLOAD/$f" "$T/usr/share/doc/phosphorus/$f"; done
 for t in tailscale tailscaled cloudflared forgejo; do install -Dm755 "$TOOLS/$t" "$T/usr/libexec/phosphorus/$t"; done
 for u in phosphorus.service phosphorus-tailscaled.service phosphorus-update.path phosphorus-update.service; do
     install -Dm644 "$HERE/$u" "$T/usr/lib/systemd/system/$u"

@@ -27,6 +27,11 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "resources": {
+      "../../LICENSE": "LICENSE",
+      "../../THIRD_PARTY_NOTICES.md": "THIRD_PARTY_NOTICES.md",
+      "../../THIRD_PARTY_LICENSES.txt": "THIRD_PARTY_LICENSES.txt"
+    },
     "category": "Utility",
     "shortDescription": "The phosphorus mesh in a window",
     "macOS": {
