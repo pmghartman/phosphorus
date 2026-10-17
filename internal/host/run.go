@@ -119,8 +119,7 @@ func tailnetSelf() (string, error) {
 	}
 	read := func() (status, error) {
 		var st status
-		// signed out exits nonzero, its JSON still printed
-		out, err := exec.Command(tailscaleCLI(), "status", "--json").Output()
+		out, err := tailscaleStatus()
 		if len(out) > 0 {
 			err = json.Unmarshal(out, &st)
 		}

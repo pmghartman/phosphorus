@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -13,6 +14,8 @@ import (
 func init() {
 	// Finder's PATH: no homebrew tools
 	os.Setenv("PATH", "/opt/homebrew/bin:/usr/local/bin:"+os.Getenv("PATH"))
+	// the app's binary a GUI without a terminal's env: a hung status
+	os.Setenv("TAILSCALE_BE_CLI", "1")
 }
 
 const sshdName = "Remote Login (ssh)"
@@ -145,7 +148,10 @@ func tailscaleRunInstaller(pkg string) error { return run("installer", "-pkg", p
 // tailscaled root's to start
 func tailscaleLaunch() {
 	if fileExists(appCLI[0]) {
-		quiet("open", "-g", "/Applications/Tailscale.app")
+		// GUI env: not the CLI env this process carries
+		c := exec.Command("open", "-a", "/Applications/Tailscale.app")
+		c.Env = slices.DeleteFunc(os.Environ(), func(kv string) bool { return strings.HasPrefix(kv, "TAILSCALE_BE_CLI=") })
+		c.Run()
 	}
 }
 

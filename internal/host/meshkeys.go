@@ -48,7 +48,8 @@ func peerKeys() (map[string]string, string, error) {
 			Online       bool
 		}
 	}
-	if err := json.Unmarshal([]byte(output(tailscaleCLI(), "status", "--json")), &status); err != nil {
+	out, _ := tailscaleStatus()
+	if err := json.Unmarshal(out, &status); err != nil {
 		return nil, "", fail("can't list tailnet peers: %v", err)
 	}
 	c := &http.Client{Timeout: 3 * time.Second}

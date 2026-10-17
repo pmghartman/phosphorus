@@ -200,12 +200,15 @@ fn host_action(handle: AppHandle, action: &'static str, then_open: bool) {
 /// launch), else this release's images and config re-applied
 async fn handle_update(handle: AppHandle, id: String, ask: bool) {
     if BUSY.swap(true, Ordering::SeqCst) {
+        if ask {
+            handle.dialog().message("Phosphorus is busy starting, stopping or installing; try again once it's done.").title("Phosphorus Updates").show(|_| {});
+        }
         return;
     }
     let app = handle.state::<App>();
     report(&app.home, &id, "running", false, "", "");
     set_tip(&handle, "Phosphorus checking for updates…");
-    let found = match handle.updater() {
+    let found = match handle.updater_builder().timeout(Duration::from_secs(30)).build() {
         Ok(u) => u.check().await.map_err(|e| e.to_string()),
         Err(e) => Err(e.to_string()),
     };

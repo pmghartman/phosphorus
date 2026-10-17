@@ -1,7 +1,9 @@
 package host
 
 import (
+	"context"
 	"os"
+	"os/exec"
 	"time"
 
 	"github.com/pmghartman/phosphorus/internal/envfile"
@@ -34,7 +36,7 @@ func tailnetJoin(state string) error {
 	if key == "" {
 		return fail("Tailscale isn't on the mesh's tailnet and there's no TS_AUTHKEY in .env to sign in with")
 	}
-	a := append([]string{"up", "--reset", "--authkey=" + key}, tailscaleUpFlags()...)
+	a := append([]string{"up", "--reset", "--timeout=90s", "--authkey=" + key}, tailscaleUpFlags()...)
 	if state == "Running" {
 		a = append(a, "--force-reauth")
 	}
@@ -47,4 +49,13 @@ func tailnetJoin(state string) error {
 	}
 	mark()
 	return nil
+}
+
+// tailscaleStatus status --json, cut off at 10s; signed out exits nonzero, its JSON still printed
+func tailscaleStatus() ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	c := exec.CommandContext(ctx, tailscaleCLI(), "status", "--json")
+	hide(c)
+	return c.Output()
 }

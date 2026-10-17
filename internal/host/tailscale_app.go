@@ -9,7 +9,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"time"
 )
@@ -66,7 +65,7 @@ func tailscaleLogin() error {
 	var st struct{ BackendState string }
 	ready := func() bool {
 		st.BackendState = ""
-		out, _ := exec.Command(tailscaleCLI(), "status", "--json").Output()
+		out, _ := tailscaleStatus()
 		return json.Unmarshal(out, &st) == nil && st.BackendState != "" && st.BackendState != "NoState" && st.BackendState != "Starting"
 	}
 	if !ready() {
