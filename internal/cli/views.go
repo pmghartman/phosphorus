@@ -84,7 +84,7 @@ func taskBar(cols int) string {
 		}
 		return strings.Join(parts, "")
 	}
-	clock := c("fg")(time.Now().Format("15:04")) + " "
+	clock := c("fg")(time.Now().Format("3:04 PM")) + " "
 	chips := hostChips()
 	t := tasks(false)
 	right := chips + "  " + clock
@@ -730,7 +730,7 @@ func projectsView() view {
 		for i := len(evs) - 1; i >= 0; i-- {
 			e := evs[i]
 			kind := str(e["kind"])
-			at := time.UnixMilli(int64(num(e["at"]))).Format("15:04")
+			at := time.UnixMilli(int64(num(e["at"]))).Format("3:04 PM")
 			tag := kind
 			if kind == "report" {
 				tag = or(str(e["phase"]), "report")
@@ -748,7 +748,7 @@ func projectsView() view {
 			case "said":
 				tok = "accent"
 			}
-			events = append(events, c("dim")(at)+" "+c(tok)(fmt.Sprintf("%-9s", tag))+" "+strings.SplitN(str(e["text"]), "\n", 2)[0])
+			events = append(events, c("dim")(fmt.Sprintf("%8s", at))+" "+c(tok)(fmt.Sprintf("%-9s", tag))+" "+strings.SplitN(str(e["text"]), "\n", 2)[0])
 		}
 		ls := head
 		if len(tasks) > 0 {

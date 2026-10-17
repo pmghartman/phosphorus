@@ -403,6 +403,9 @@ func table(headers []string, rows [][]string, sel, max int) []row {
 	return append([]row{{text: c("sage")(lead + strings.Join(head, "  "))}}, out...)
 }
 
+// selMark a selected row's tag, for render to scroll it into view; never written out
+const selMark = "\x1b[9999m"
+
 func panel(title string, lines []row, w int) []string {
 	b := c("border")
 	head := cut(title, w-1)
@@ -413,7 +416,7 @@ func panel(title string, lines []row, w int) []string {
 	out := []string{top}
 	for _, l := range lines {
 		if l.sel {
-			out = append(out, b("│")+surface(pal["border"])(" "+pad(l.text, w)+" ")+b("│"))
+			out = append(out, selMark+b("│")+surface(pal["border"])(" "+pad(l.text, w)+" ")+b("│"))
 			continue
 		}
 		for _, x := range wrap(l.text, w, 0) {

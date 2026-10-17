@@ -376,6 +376,9 @@ func size() (int, int) {
 // headTitle the last frame's, for the wordmark's own redraws
 var headTitle string
 
+// selAt the last frame's selected body line, -1 for none
+var selAt = -1
+
 // glow the header line alone redrawn, its wordmark's bands slid on
 func glow() {
 	cols, _ := size()
@@ -412,7 +415,10 @@ func render() {
 	// a view drawn again if the footer's rows moved its room
 	v := currentView()
 	footer := func() []string {
-		f := wrap(status, cols, 1)
+		var f []string
+		if status != "" {
+			f = wrap(status, cols, 1)
+		}
 		if hint != nil {
 			f = append(f, hints(hint, nil, cols))
 		} else {
@@ -439,13 +445,35 @@ func render() {
 	for i, l := range v.lines {
 		body[i] = " " + l
 	}
-	if v.scroll {
-		ui.scroll = max0(min(ui.scroll, len(body)-room))
-		body = body[ui.scroll:]
+	// past the room: scrolled, the selected row kept in view, an arrow where more is
+	at := -1
+	for i, l := range body {
+		if strings.Contains(l, selMark) {
+			body[i] = strings.Replace(l, selMark, "", 1)
+			if at < 0 {
+				at = i
+			}
+		}
 	}
 	if len(body) > room {
-		body = body[:room]
+		// followed only when it moved, pgup and pgdn free to look past it
+		if at >= 0 && at != selAt && room > 2 {
+			ui.scroll = min(ui.scroll, at-1)
+			ui.scroll = max(ui.scroll, at-room+2)
+		}
+		ui.scroll = max0(min(ui.scroll, len(body)-room))
+		more := len(body) - ui.scroll - room
+		body = body[ui.scroll : ui.scroll+room]
+		if ui.scroll > 0 && room > 1 {
+			body[0] = " " + c("muted")("↑ more, pgup")
+		}
+		if more > 0 && room > 1 {
+			body[room-1] = " " + c("muted")(fmt.Sprintf("↓ %d more, pgdn", more+1))
+		}
+	} else {
+		ui.scroll = 0
 	}
+	selAt = at
 	lines := append(head, body...)
 	for len(lines) < rows-len(foot) {
 		lines = append(lines, "")
@@ -924,6 +952,10 @@ func onKey(e keyEv) {
 		if s == "y" || s == "Y" {
 			cf.onYes()
 		}
+	case e.name == "pageup":
+		ui.scroll = max0(ui.scroll - max(1, ui.room-2))
+	case e.name == "pagedown":
+		ui.scroll += max(1, ui.room-2)
 	case ui.form != nil:
 		if !ui.offline || localForm(ui.form) {
 			formKey(s, e)
@@ -1227,8 +1259,13 @@ func (p *parser) feed(s string) []keyEv {
 				case "Z":
 					e.name, e.shift = "tab", true
 				case "~":
-					if strings.HasPrefix(m[2], "3") {
+					switch strings.SplitN(m[2], ";", 2)[0] {
+					case "3":
 						e.name = "delete"
+					case "5":
+						e.name = "pageup"
+					case "6":
+						e.name = "pagedown"
 					}
 				}
 				out = append(out, e)

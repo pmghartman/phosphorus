@@ -349,11 +349,29 @@ func serveRun(w http.ResponseWriter, r *http.Request, host, token, rest string, 
 		return
 	}
 	extra := map[string]string{"Content-Security-Policy": runSandbox, "Access-Control-Allow-Origin": "*", "Cross-Origin-Resource-Policy": "cross-origin"}
+	// a .wasm asked as an app: the console page running it, beside it
+	if _, console := r.URL.Query()["console"]; console && strings.EqualFold(filepath.Ext(abs), ".wasm") {
+		for k, v := range extra {
+			w.Header().Set(k, v)
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		io.WriteString(w, wasiConsole)
+		return
+	}
 	if t := runMime[strings.ToLower(filepath.Ext(abs))]; t != "" {
 		extra["Content-Type"] = t
 	}
 	sendFile(w, abs, false, extra)
 }
+
+const wasiConsole = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><style>
+body{margin:0;padding:.6rem;background:var(--bg);color:var(--fg);font:13px ui-monospace,monospace}
+#out{white-space:pre-wrap;margin:0 0 2rem}.err{color:#e57373}.dim{opacity:.6}
+#in{position:fixed;left:0;right:0;bottom:0;box-sizing:border-box;width:100%;padding:.4rem .6rem;border:0;border-top:1px solid #8884;background:var(--bg);color:var(--fg);font:inherit;outline:0}
+</style><pre id="out"></pre><input id="in" placeholder="stdin, enter reruns with it" autocomplete="off">
+<script src="/wasi.js"></script>
+`
 
 func withHop(u string) string {
 	if strings.Contains(u, "?") {
