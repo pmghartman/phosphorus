@@ -190,7 +190,14 @@ func servicesView() view {
 		if scheme == "" && f["type"] == "" {
 			scheme = "http"
 		}
-		rows = append(rows, []string{s.name, f["port"], c("teal")(or(f["type"], f["mode"], "path")), c("muted")(scheme), c("muted")(where), status})
+		access := c("muted")("login")
+		switch {
+		case f["type"] == "game":
+			access = c("muted")("-")
+		case f["public"] == "true":
+			access = c("warn")("public")
+		}
+		rows = append(rows, []string{s.name, f["port"], c("teal")(or(f["type"], f["mode"], "path")), c("muted")(scheme), c("muted")(where), access, status})
 	}
 	var rejected *card
 	room := ui.room - 3
@@ -200,7 +207,7 @@ func servicesView() view {
 	}
 	body := plainRows(c("muted")("no services declared"))
 	if len(rows) > 0 {
-		body = table([]string{"name", "port", "mode", "scheme", "address", "live"}, rows, ui.sel[servicesTab], room)
+		body = table([]string{"name", "port", "mode", "scheme", "address", "access", "live"}, rows, ui.sel[servicesTab], room)
 	}
 	n := len(rows) > 0
 	return view{lines: panels(rejected, &card{"services.export", body}),
@@ -426,9 +433,16 @@ func statsView() view {
 				}
 				status = c(tok)(str(r["status"]))
 			}
-			rrows = append(rrows, []string{c("sky")(str(r["host"])), str(r["name"]), c("teal")(mode), c("muted")(addr), c("muted")(str(r["port"])), status})
+			access := c("muted")("login")
+			if r["public"] == true {
+				access = c("warn")("public")
+			}
+			if game {
+				access = c("muted")("-")
+			}
+			rrows = append(rrows, []string{c("sky")(str(r["host"])), str(r["name"]), c("teal")(mode), c("muted")(addr), c("muted")(str(r["port"])), access, status})
 		}
-		rbody = table([]string{"host", "name", "mode", "address", "port", "status"}, rrows, -1, 0)
+		rbody = table([]string{"host", "name", "mode", "address", "port", "access", "status"}, rrows, -1, 0)
 	}
 	return view{lines: panels(lockCard, &card{"tailnet", table([]string{"host", "os", "version", "ping"}, trows, -1, 0)}, &card{"routes", rbody}),
 		keys: []key{k("↑↓ scroll", "quiet")}, scroll: true}

@@ -2013,6 +2013,8 @@ input, textarea { caret-color: var(--accent); }
   background: var(--accent); color: var(--bg); font-size: 0.6rem; text-align: center;
 }
 .dk-badge[hidden] { display: none; }
+.dk-public { position: absolute; bottom: -0.3rem; right: -0.4rem; display: flex; padding: 0.1rem; background: var(--bg); color: var(--warn); }
+.dk-tile .dk-public .ic { width: 0.75rem; height: 0.75rem; stroke-width: 1.6; }
 .dk-task { position: relative; }
 .dk-task:has(.dk-badge) { overflow: visible; }
 .dk-task .dk-badge { top: -0.45rem; right: -0.35rem; }
