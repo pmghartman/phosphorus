@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"os"
 	"os/exec"
-	"syscall"
 	"time"
 
 	"github.com/pmghartman/phosphorus/internal/tools"
@@ -33,7 +32,7 @@ func ocStop() {
 	if p == nil || p.Process == nil {
 		return
 	}
-	p.Process.Signal(syscall.SIGTERM)
+	stop(p.Process)
 	done := make(chan struct{})
 	go func() { p.Wait(); close(done) }()
 	select {

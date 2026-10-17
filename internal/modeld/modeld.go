@@ -16,6 +16,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -39,9 +40,10 @@ var (
 	serverPort    = util.EnvInt("MODEL_SERVER_PORT", 8791)
 	tickMS        = util.EnvInt("MODEL_TICK_MS", 1000)
 	notes         = util.NewNotes("model")
-	nvsmi         = []string{"nvidia-smi"}
-	vramRe        = regexp.MustCompile(`(?i)cudaMalloc failed|out of memory|(failed|unable) to allocate CUDA\d* buffer`)
-	hfBlob        = regexp.MustCompile(`^(https://huggingface\.co/.+?)/blob/`)
+	vramRe        = regexp.MustCompile(`(?i)cudaMalloc failed|out of memory|OutOfDeviceMemory|(failed|unable) to allocate (CUDA|Vulkan)\d* buffer`)
+	// "  Vulkan0: AMD Radeon RX 7800 XT (16368 MiB, 15600 MiB free)"
+	deviceRe = regexp.MustCompile(`(?m)^\s*(\S+): .* \((\d+) MiB, (\d+) MiB free\)\s*$`)
+	hfBlob   = regexp.MustCompile(`^(https://huggingface\.co/.+?)/blob/`)
 )
 
 const (
@@ -145,22 +147,21 @@ func memTotal() float64 {
 	return float64(v.Total)
 }
 
-func hasCuda() bool { return tools.HasCuda() }
-
-func freeVram() float64 {
-	if !hasCuda() {
-		return 0
-	}
-	for _, bin := range nvsmi {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		out, err := exec.CommandContext(ctx, bin, "--query-gpu=memory.free", "--format=csv,noheader,nounits").Output()
-		cancel()
-		if err != nil {
-			continue
+// gpuDevice the device llama-server's own build lists with the most free
+// memory, and 95% of that free memory
+func gpuDevice(gpu bool) (string, float64) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, tools.LlamaServer(gpu), "--list-devices")
+	cmd.Env = append(os.Environ(), "LD_LIBRARY_PATH="+tools.LlamaDir(gpu))
+	out, _ := cmd.CombinedOutput()
+	name, free := "", 0.0
+	for _, m := range deviceRe.FindAllStringSubmatch(string(out), -1) {
+		if f := jsNum(m[3]); f > free {
+			name, free = m[1], f
 		}
-		return math.Floor(jsNum(strings.Split(string(out), "\n")[0]) * (1 << 20) * 0.95)
 	}
-	return 0
+	return name, math.Floor(free * (1 << 20) * 0.95)
 }
 
 // --- download ---------------------------------------------------------------
@@ -305,15 +306,23 @@ type troubleT struct {
 
 var (
 	vram     float64
+	device   string
 	fitNeed  float64
 	fitWhy   string
 	trouble  troubleT
 	triedSig string
 )
 
+// stop asks p to end, killed where there's no TERM to ask with (Windows)
+func stop(p *os.Process) {
+	if p.Signal(syscall.SIGTERM) != nil {
+		p.Kill()
+	}
+}
+
 func stopServer() {
 	if srv.proc != nil && srv.proc.Process != nil {
-		srv.proc.Process.Signal(syscall.SIGTERM)
+		stop(srv.proc.Process)
 	}
 	srv = server{state: "down"}
 }
@@ -341,19 +350,19 @@ func serve(c config) {
 	if srv.proc == nil && (!c.gpu || !time.Now().Before(srv.retryAt)) {
 		if c.gpu {
 			mu.Unlock()
-			v := freeVram()
+			d, v := gpuDevice(c.gpu)
 			mu.Lock()
-			vram = v
+			device, vram = d, v
 		} else {
-			vram = 0
+			device, vram = "", 0
 		}
 	}
 	if c.gpu && vram == 0 {
 		fitNeed = 0
-		if hasCuda() {
-			fitWhy = "gpu is on but no nvidia gpu is usable here"
+		if b := tools.Backend(c.gpu); b != "" {
+			fitWhy = "gpu is on but llama-server's " + b + " build finds no usable gpu here"
 		} else {
-			fitWhy = "gpu is on but upstream has no cuda build of llama-server for this machine"
+			fitWhy = "gpu is on but upstream has no gpu build of llama-server for this machine"
 		}
 		notes.Note("gpu", fitWhy)
 		stopServer()
@@ -362,7 +371,11 @@ func serve(c config) {
 	}
 	notes.Clear("gpu")
 	need := math.Ceil(float64(sizeOf(modelPath(c)))*needFactor + float64(c.ctx)*kvBytesPerToken)
-	has := memTotal() + vram
+	has := memTotal()
+	// macOS' gpu memory is its ram
+	if runtime.GOOS != "darwin" {
+		has += vram
+	}
 	fitNeed, fitWhy = need, ""
 	if has < need {
 		h := selfHost
@@ -416,7 +429,7 @@ func serve(c config) {
 		"-c", strconv.Itoa(c.ctx), "-np", strconv.Itoa(c.slots), "--kv-unified", "--jinja",
 		"-fa", "on", "-ctk", "q8_0", "-ctv", "q8_0"}
 	if c.gpu {
-		args = append(args, "--device", "CUDA0", "-ngl", "999")
+		args = append(args, "--device", device, "-ngl", "999")
 	} else {
 		args = append(args, "-ngl", "0")
 	}
@@ -625,7 +638,7 @@ func Main() int {
 			mu.Lock()
 			for _, p := range []*exec.Cmd{srv.proc, dl.proc} {
 				if p != nil && p.Process != nil {
-					p.Process.Signal(syscall.SIGTERM)
+					stop(p.Process)
 				}
 			}
 			mu.Unlock()

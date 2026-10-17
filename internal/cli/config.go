@@ -200,6 +200,7 @@ type form struct {
 	fields  []*field
 	initial string
 	gpuWas  string
+	hostWas string
 	target  J
 	first   bool
 }
@@ -536,9 +537,9 @@ func modelForm() *form {
 	fl := func(key, hint string, choices ...string) *field {
 		return &field{key: key, value: m[key], hint: hint, choices: choices}
 	}
-	return &form{kind: "model", title: "[model]", gpuWas: m["gpu"], fields: []*field{
+	return &form{kind: "model", title: "[model]", gpuWas: m["gpu"], hostWas: m["host"], fields: []*field{
 		fl("host", "true downloads the model here and runs it for the whole mesh", "false", "true"),
-		fl("gpu", "true offloads it to this nvidia gpu, the rest in ram", "false", "true"),
+		fl("gpu", "true offloads it to this nvidia, amd or intel gpu, the rest in ram", "false", "true"),
 		fl("url", "download link to a single .gguf, pasted or typed, a hugging face page link works too"),
 		fl("ctx", "context tokens, blank is 65536, and every token costs memory"),
 		fl("slots", "asks answered at once, sharing ctx, blank is 4"),

@@ -53,7 +53,7 @@ const (
 	iniNote    = "saving rebuilds phosphorus, terminals drop for a moment"
 	rebuilding = "rebuilding phosphorus"
 	// [model]: only gpu baked into the image
-	modelNote = "all but gpu apply on the next tick, gpu rebuilds phosphorus"
+	modelNote = "url, ctx and slots apply on the next tick, host and gpu rebuild phosphorus"
 )
 
 // --- json as the api sends it -----------------------------------------------------
@@ -463,6 +463,9 @@ type keyEv struct {
 	ctrl, shift, meta bool
 }
 
+// localForm one writing files here alone, kept working with the frontend down
+func localForm(f *form) bool { return f.kind != "project" && f.kind != "note" }
+
 func formKey(s string, e keyEv) {
 	f := ui.form
 	if e.name == "escape" {
@@ -507,14 +510,16 @@ func formKey(s string, e keyEv) {
 			}
 			return
 		}
-		// only a share, or [model] gpu, changing what phosphorus was started with
+		// only a share, or [model] host or gpu, changing what phosphorus was started with
 		rebuilds := f.kind == "share"
 		for _, x := range f.fields {
-			if f.kind == "model" && x.key == "gpu" && strings.TrimSpace(x.value) != f.gpuWas {
+			if f.kind == "model" && (x.key == "gpu" && strings.TrimSpace(x.value) != f.gpuWas || x.key == "host" && strings.TrimSpace(x.value) != f.hostWas) {
 				rebuilds = true
 			}
 		}
-		if rebuilds {
+		if ui.offline {
+			flash(c("online")("saved, applied once phosphorus is up: phos start"))
+		} else if rebuilds {
 			flash(c("online")("saved, " + rebuilding))
 		} else {
 			flash(c("online")("saved, live on the next tick"))
@@ -542,8 +547,14 @@ func fieldKey(f *form, s string, e keyEv) {
 		x.value = x.choices[(indexOf(x.choices, x.value)+1)%len(x.choices)]
 		return
 	}
-	// the model's choices only ever cycled
+	// the model's choices cycled, or picked by their first letter
 	if x.choices != nil && f.kind == "model" {
+		for _, ch := range x.choices {
+			if s != "" && strings.HasPrefix(ch, strings.ToLower(s)) {
+				x.value = ch
+				break
+			}
+		}
 		return
 	}
 	if e.name == "backspace" {
@@ -901,7 +912,7 @@ func onKey(e keyEv) {
 			cf.onYes()
 		}
 	case ui.form != nil:
-		if !ui.offline {
+		if !ui.offline || localForm(ui.form) {
 			formKey(s, e)
 		}
 	case s == "q":

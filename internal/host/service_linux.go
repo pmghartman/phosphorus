@@ -106,7 +106,7 @@ func tailscaleStart() error {
 
 // --- distro packages ------------------------------------------------------------------
 
-type dep struct{ bin, lib, pkg string }
+type dep struct{ bin, lib, file, pkg string }
 
 // missingDeps the distro packages this host's roles need and lack
 func missingDeps() []string {
@@ -117,6 +117,11 @@ func missingDeps() []string {
 	if isModelHost() {
 		want = append(want, dep{bin: "curl", pkg: "curl"}, dep{bin: "git", pkg: "git"}, dep{bin: "rg", pkg: "ripgrep"},
 			dep{lib: "libgomp.so.1", pkg: "libgomp1"})
+		// llama-server's vulkan build, for amd and intel gpus
+		if iniGet("model", "gpu") == "true" && !has("nvidia-smi") {
+			want = append(want, dep{lib: "libvulkan.so.1", pkg: "libvulkan1"},
+				dep{file: "/usr/share/vulkan/icd.d/radeon_icd.x86_64.json", pkg: "mesa-vulkan-drivers"})
+		}
 	}
 	libs := ""
 	out, seen := []string{}, map[string]bool{}
@@ -124,6 +129,8 @@ func missingDeps() []string {
 		ok := false
 		if d.bin != "" {
 			ok = has(d.bin)
+		} else if d.file != "" {
+			ok = fileExists(d.file)
 		} else {
 			if libs == "" {
 				libs = output("ldconfig", "-p")

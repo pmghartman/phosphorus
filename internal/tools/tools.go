@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -63,21 +64,48 @@ func OpencodeRunFile() string { return filepath.Join(OpencodeHome(), "run.json")
 // OpencodeStateFile phosphorus-model's answer
 func OpencodeStateFile() string { return filepath.Join(OpencodeHome(), "state.json") }
 
-// llamaKind upstream's build for this OS: Metal on macOS, cuda when asked for
-// on x64 Linux and Windows, else the cpu one
+// Backend llama-server's gpu build: cuda on an nvidia gpu, vulkan for amd
+// and intel ones, metal on macOS, none with gpu off or off x64
+func Backend(gpu bool) string {
+	switch {
+	case !gpu:
+		return ""
+	case runtime.GOOS == "darwin":
+		return "metal"
+	case runtime.GOARCH != "amd64":
+		return ""
+	case hasNvidia():
+		return "cuda"
+	}
+	return "vulkan"
+}
+
+var hasNvidia = sync.OnceValue(func() bool {
+	_, err := exec.LookPath("nvidia-smi")
+	return err == nil
+})
+
+// llamaKind upstream's build for this OS and backend
 func llamaKind(gpu bool) string {
 	a := map[string]string{"amd64": "x64", "arm64": "arm64"}[runtime.GOARCH]
+	b := Backend(gpu)
 	switch runtime.GOOS {
 	case "darwin":
 		return "macos-" + a
 	case "windows":
-		if gpu && a == "x64" {
+		switch b {
+		case "cuda":
 			return "win-cuda-12.4-x64"
+		case "vulkan":
+			return "win-vulkan-x64"
 		}
 		return "win-cpu-" + a
 	}
-	if gpu && a == "x64" {
+	switch b {
+	case "cuda":
 		return "cuda-12.8-x64"
+	case "vulkan":
+		return "vulkan-x64"
 	}
 	return a
 }
@@ -92,17 +120,7 @@ func exeName(n string) string {
 // LlamaServer the llama-server binary of that build
 func LlamaServer(gpu bool) string { return filepath.Join(LlamaDir(gpu), exeName("llama-server")) }
 
-// HasCuda the cuda build fetched, its backend library in place
-func HasCuda() bool {
-	lib := "libggml-cuda.so"
-	if runtime.GOOS == "windows" {
-		lib = "ggml-cuda.dll"
-	}
-	_, err := os.Stat(filepath.Join(LlamaDir(true), lib))
-	return err == nil
-}
-
-// LlamaDir llama-server and its libs, cuda's build when gpu and there is one
+// LlamaDir llama-server and its libs, the gpu build when gpu
 func LlamaDir(gpu bool) string {
 	return filepath.Join(root, "llama-"+LlamaTag+"-"+llamaKind(gpu))
 }

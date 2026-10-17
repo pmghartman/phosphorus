@@ -1143,7 +1143,7 @@ func formView(f *form) view {
 }
 
 func currentView() view {
-	if ui.keysOnly && ui.form != nil {
+	if ui.form != nil && (ui.keysOnly || ui.offline && localForm(ui.form)) {
 		return formView(ui.form)
 	}
 	if ui.offline || ui.state == nil {

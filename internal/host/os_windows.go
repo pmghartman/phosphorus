@@ -243,10 +243,12 @@ func svcStop() error {
 
 func svcRestart(noBlock bool) error {
 	if noBlock {
-		// the stop kills this process's parent, so a detached one finishes the job
-		c := exec.Command("cmd", "/c", "sc stop "+svcName+" & timeout /t 10 /nobreak >nul & sc start "+svcName)
-		hide(c)
-		return c.Start()
+		// started through WMI, outside run's job that the stop kills
+		line := "powershell -NoProfile -NonInteractive -Command Restart-Service " + svcName + " -Force"
+		if pid, err := strconv.Atoi(ps("(Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{CommandLine=" + psq(line) + "}).ProcessId")); err != nil || pid == 0 {
+			return fmt.Errorf("couldn't start the restart detached")
+		}
+		return nil
 	}
 	svcStop()
 	return svcStart()

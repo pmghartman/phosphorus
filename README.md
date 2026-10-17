@@ -35,7 +35,7 @@ Nothing runs in containers. `phosphorus run` keeps the frontend, cloudflared, th
 | macOS | LaunchAgent `dev.phosphorus.host` | `~/Library/Phosphorus/state/phosphorus.log` | the Tailscale app | cloudflared in the host folder's `tools/` |
 | Windows | the `phosphorus` service | `%USERPROFILE%\phosphorus\state\phosphorus.log` | Tailscale for Windows | cloudflared in the host folder's `tools\` |
 
-On Linux the distro packages a role needs (git, rsync, sqlite3 on a git host, curl, ripgrep, libgomp1 on a model host) are installed on the first start that needs them. Git hosts are Linux only: forgejo ships for Linux alone. The Windows service is installed once through the admin prompt `phos start` raises; after that the signed-in account starts and stops it.
+On Linux the distro packages a role needs (git, rsync, sqlite3 on a git host, curl, ripgrep, libgomp1 on a model host, libvulkan1 and mesa-vulkan-drivers with `gpu` on and no nvidia gpu) are installed on the first start that needs them. Git hosts are Linux only: forgejo ships for Linux alone. The Windows service is installed once through the admin prompt `phos start` raises; after that the signed-in account starts and stops it.
 
 ## Keys
 
@@ -74,7 +74,7 @@ host = true               # run a git server replica here
 
 [model]
 host = true               # run the AI model here (projects coming soon)
-gpu = true
+gpu = true                # nvidia via cuda, amd and intel via vulkan, apple via metal
 url = https://huggingface.co/.../model.gguf
 ```
 
