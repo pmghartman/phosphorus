@@ -120,6 +120,15 @@ func names() []string {
 }
 
 func anyAdmin() bool {
+	if hasAdmin() {
+		return true
+	}
+	// a fresh host's empty etc/ never taken for a mesh without admins
+	pull()
+	return hasAdmin()
+}
+
+func hasAdmin() bool {
 	for _, n := range names() {
 		if u := live(n); u != nil && u.Admin {
 			return true
@@ -378,18 +387,23 @@ func Of(r *http.Request) *Session {
 	return boot
 }
 
-// Soon a login this host can't read yet: the mesh's sys pulled first
-func Soon(r *http.Request) *Session {
-	s := Of(r)
-	if s != nil || len(cookiesOf(r)) == 0 {
-		return s
-	}
+// pull the mesh's sys, waiting at most pullWait
+func pull() {
 	done := make(chan struct{})
 	go func() { sysfs.Pull(); close(done) }()
 	select {
 	case <-done:
 	case <-time.After(pullWait):
 	}
+}
+
+// Soon a login this host can't read yet: the mesh's sys pulled first
+func Soon(r *http.Request) *Session {
+	s := Of(r)
+	if s != nil || len(cookiesOf(r)) == 0 {
+		return s
+	}
+	pull()
 	return Of(r)
 }
 
@@ -432,28 +446,42 @@ func Refresh(r *http.Request, s *Session) []string {
 	return []string{Cookie + "=; Max-Age=0; Path=/; SameSite=Lax; HttpOnly", fmt.Sprintf("%s=%s; Max-Age=%d%s", Cookie, s.Token, left, attrs(r))}
 }
 
-func vaultOf(s *Session) map[string]any {
-	if s == nil || s.Boot {
-		return nil
-	}
+// openVault false while this host holds no vault it can open, as a fresh
+// host before its sys arrives
+func openVault(s *Session) (map[string]any, bool) {
 	var b Box
 	if !sysfs.ReadInto(vaultFile(s.User), &b) {
-		return map[string]any{}
+		return nil, false
 	}
 	text, ok := Open(s.Key, b)
 	if !ok {
-		return map[string]any{}
+		return nil, false
 	}
 	var v map[string]any
 	if json.Unmarshal([]byte(text), &v) != nil || v == nil {
-		return map[string]any{}
+		return map[string]any{}, true
 	}
-	return v
+	return v, true
+}
+
+func vaultOf(s *Session) (map[string]any, bool) {
+	if s == nil || s.Boot {
+		return nil, true
+	}
+	v, ok := openVault(s)
+	if !ok {
+		pull()
+		v, ok = openVault(s)
+	}
+	if !ok {
+		return map[string]any{}, false
+	}
+	return v, true
 }
 
 // Me what the page gets about its user
 func Me(s *Session) map[string]any {
-	vault := vaultOf(s)
+	vault, vaultOK := vaultOf(s)
 	if vault == nil {
 		vault = map[string]any{"hosts": map[string]any{}, "pages": map[string]any{}}
 	}
@@ -468,7 +496,7 @@ func Me(s *Session) map[string]any {
 			wall = sysfs.Stamp(wallFile(s.User))
 		}
 	}
-	return map[string]any{"user": s.User, "admin": s.Admin, "boot": s.Boot, "vault": vault, "prefs": prefs, "prefsAt": prefsAt, "wallpaper": wall}
+	return map[string]any{"user": s.User, "admin": s.Admin, "boot": s.Boot, "vault": vault, "vaultOK": vaultOK, "prefs": prefs, "prefsAt": prefsAt, "wallpaper": wall}
 }
 
 // Wallpaper the user's desktop picture
@@ -603,8 +631,16 @@ func Login(p map[string]any, r *http.Request) R {
 		}
 		return R{Status: 200, Body: Me(&Session{User: admin, Admin: true, Boot: true}), Cookie: []string{issue(r, map[string]any{"b": 1}, bootSessionMS)}}
 	}
+	if len([]rune(pass)) > maxPass {
+		return fail()
+	}
 	u := live(name)
-	if u == nil || len([]rune(pass)) > maxPass {
+	if u == nil || !hashOK(Derive(pass, u.Salt), u.Hash) {
+		// a user or new password this host hasn't pulled yet
+		pull()
+		u = live(name)
+	}
+	if u == nil {
 		return fail()
 	}
 	out := Derive(pass, u.Salt)
@@ -677,6 +713,13 @@ func SetVault(s *Session, p map[string]any) R {
 	if s == nil || s.Boot {
 		return errR(403, "the setup admin keeps no logins")
 	}
+	// an unsynced host's empty vault never sealed over the mesh's
+	if _, ok := openVault(s); !ok {
+		pull()
+		if _, ok := openVault(s); !ok {
+			return errR(503, "this host hasn't your saved logins yet, try again shortly")
+		}
+	}
 	vault := cleanVault(p["vault"])
 	text := string(util.Marshal(vault))
 	if len(text) > maxVault {
@@ -700,9 +743,12 @@ func ChangePass(s *Session, p map[string]any, r *http.Request) R {
 	if u == nil || !hashOK(Derive(str(p["old"]), u.Salt), u.Hash) {
 		return errR(401, "wrong current password")
 	}
-	v := vaultOf(s)
-	if v == nil {
-		v = map[string]any{}
+	v, ok := openVault(s)
+	if !ok {
+		pull()
+		if v, ok = openVault(s); !ok {
+			return errR(503, "this host hasn't your saved logins yet, try again shortly")
+		}
 	}
 	key := setPass(s.User, pass, v, nil)
 	return R{Status: 200, Body: map[string]any{"ok": true}, Cookie: []string{issue(r, map[string]any{"u": s.User, "p": live(s.User).PwAt, "k": hex.EncodeToString(key)}, sessionMS)}}
