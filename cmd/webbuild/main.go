@@ -23,7 +23,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/andybalholm/brotli"
 	"github.com/evanw/esbuild/pkg/api"
 )
 
@@ -72,7 +71,6 @@ func main() {
 		return "/" + rel
 	}
 	assets["xterm.css"] = hashed(filepath.Join(modules, "@xterm/xterm/css/xterm.css"), "xterm.css")
-	assets["mermaid.js"] = hashed(filepath.Join(modules, "mermaid/dist/mermaid.min.js"), "mermaid.js")
 	// katex's css beside its fonts, the folder named by the css's hash
 	kcss, err := os.ReadFile(filepath.Join(modules, "katex/dist/katex.min.css"))
 	must(err)
@@ -293,25 +291,16 @@ func hashedPath(out, p string) bool {
 	return strings.HasPrefix(rel, "assets/") || strings.HasPrefix(rel, "vendor/h/")
 }
 
-// precompress p as .br and .gz, a hashed file's own copy then dropped
+// precompress p as .gz, a hashed file's own copy then dropped
 func precompress(p string, dropRaw bool) error {
 	data, err := os.ReadFile(p)
 	if err != nil {
 		return err
 	}
-	var br bytes.Buffer
-	w := brotli.NewWriterLevel(&br, brotli.BestCompression)
-	w.Write(data)
-	w.Close()
 	var gz bytes.Buffer
 	g, _ := gzip.NewWriterLevel(&gz, gzip.BestCompression)
 	g.Write(data)
 	g.Close()
-	if br.Len() < len(data) {
-		if err := os.WriteFile(p+".br", br.Bytes(), 0o644); err != nil {
-			return err
-		}
-	}
 	if gz.Len() >= len(data) {
 		return nil
 	}

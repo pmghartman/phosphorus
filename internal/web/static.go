@@ -17,7 +17,7 @@ import (
 )
 
 // dist: go generate's build of web/, esbuild's hashed files, vendor files and
-// each one's .br and .gz beside it, hashed ones kept only compressed
+// each one's .gz beside it, hashed ones kept only compressed
 //
 //go:embed all:dist
 var distFS embed.FS
@@ -79,7 +79,7 @@ func ServeStatic(w http.ResponseWriter, r *http.Request) {
 		p = "/index.html"
 	}
 	name := strings.TrimPrefix(path.Clean(p), "/")
-	if name == "" || strings.HasSuffix(name, ".br") || strings.HasSuffix(name, ".gz") {
+	if name == "" || strings.HasSuffix(name, ".gz") {
 		http.Error(w, "not found", 404)
 		return
 	}
@@ -121,14 +121,10 @@ func ServeStatic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body []byte
-	for _, enc := range []struct{ name, ext string }{{"br", ".br"}, {"gzip", ".gz"}} {
-		if !accepts(r, enc.name) {
-			continue
-		}
-		if c, err := fs.ReadFile(dist, name+enc.ext); err == nil {
-			h.Set("Content-Encoding", enc.name)
+	if accepts(r, "gzip") {
+		if c, err := fs.ReadFile(dist, name+".gz"); err == nil {
+			h.Set("Content-Encoding", "gzip")
 			body = c
-			break
 		}
 	}
 	if body == nil && packed {

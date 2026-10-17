@@ -20,8 +20,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/andybalholm/brotli"
 )
 
 const (
@@ -75,8 +73,6 @@ func unpack(body []byte, enc string) []byte {
 			return nil
 		}
 		r = g
-	case regexp.MustCompile(`\bbr\b`).MatchString(l):
-		r = brotli.NewReader(bytes.NewReader(body))
 	case regexp.MustCompile(`\bdeflate\b`).MatchString(l):
 		z, err := zlib.NewReader(bytes.NewReader(body))
 		if err != nil {

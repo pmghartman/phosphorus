@@ -110,11 +110,7 @@ func (codeRenderer) RegisterFuncs(r renderer.NodeRendererFuncRegisterer) {
 			cls += " language-" + html.EscapeString(lang)
 		}
 		w.WriteString(`<pre><code class="` + cls + `">`)
-		if lang == "mermaid" {
-			w.WriteString(html.EscapeString(body.String()))
-		} else {
-			w.WriteString(Highlight(body.String(), lang))
-		}
+		w.WriteString(Highlight(body.String(), lang))
 		w.WriteString("</code></pre>\n")
 		return ast.WalkContinue, nil
 	})

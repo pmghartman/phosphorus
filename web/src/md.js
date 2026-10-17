@@ -1,5 +1,5 @@
 // markdown as the server renders it (goldmark, chroma, bluemonday), the page
-// adding only katex for math and mermaid for diagrams, both fetched on first use
+// adding only katex for math, fetched on first use
 
 // the server's html for a text, by breaks and text
 const cache = new Map();
@@ -64,7 +64,6 @@ function paint(el, html) {
   for (const a of el.querySelectorAll('a[href]')) { a.target = '_blank'; a.rel = 'noopener noreferrer'; }
   for (const box of el.querySelectorAll('input')) box.setAttribute('disabled', '');
   if (el.querySelector('.math')) drawMath(el);
-  for (const c of el.querySelectorAll('pre > code.language-mermaid')) drawMermaid(c.parentElement, c.textContent);
   el.dispatchEvent(new CustomEvent('md-painted', { bubbles: true }));
 }
 
@@ -106,58 +105,4 @@ export function fitMath(el) {
     const room = (disp || line).clientWidth - 2;
     if (wide > room) k.style.fontSize = `${MATH_EM * Math.max(0.5, room / wide)}em`;
   }
-}
-
-// --- diagrams -----------------------------------------------------------------
-// a mermaid fence drawn in the palette, each drawing kept by theme and source
-
-const mermaidSvgs = new Map();
-let mermaidLoad = null;
-let mermaidTheme = '';
-let mermaidSeq = 0;
-const loadMermaid = () => (mermaidLoad ||= new Promise((resolve, reject) => {
-  const s = Object.assign(document.createElement('script'), { src: __ASSETS__['mermaid.js'] });
-  s.onload = () => resolve(window.mermaid);
-  s.onerror = () => { mermaidLoad = null; reject(new Error('mermaid failed to load')); };
-  document.head.appendChild(s);
-}));
-
-function mermaidThemed(m) {
-  const css = getComputedStyle(document.documentElement);
-  const v = (k) => css.getPropertyValue(k).trim();
-  const theme = [v('--bg'), v('--fg'), v('--accent')].join();
-  if (theme === mermaidTheme) return theme;
-  mermaidTheme = theme;
-  m.initialize({
-    startOnLoad: false, securityLevel: 'strict', suppressErrorRendering: true, theme: 'base',
-    fontFamily: v('--font'),
-    themeVariables: {
-      background: v('--bg'), fontFamily: v('--font'), fontSize: '12px',
-      primaryColor: v('--card'), primaryTextColor: v('--fg'), primaryBorderColor: v('--accent'),
-      secondaryColor: v('--card'), secondaryTextColor: v('--fg'), secondaryBorderColor: v('--sky'),
-      tertiaryColor: v('--bg'), tertiaryTextColor: v('--fg'), tertiaryBorderColor: v('--sage'),
-      lineColor: v('--muted'), textColor: v('--fg'), mainBkg: v('--card'), nodeBorder: v('--accent'),
-      clusterBkg: v('--bg'), clusterBorder: v('--border'), edgeLabelBackground: v('--bg'),
-      noteBkgColor: v('--card'), noteTextColor: v('--fg'), noteBorderColor: v('--sand'),
-      actorBkg: v('--card'), actorBorder: v('--accent'), actorTextColor: v('--fg'), signalColor: v('--muted'),
-    },
-  });
-  return theme;
-}
-
-// the source stays up as code until the drawing lands, and if it won't parse
-async function drawMermaid(pre, src) {
-  pre.classList.add('mermaid-src');
-  let m;
-  try { m = await loadMermaid(); } catch { return; }
-  const key = `${mermaidThemed(m)}\n${src}`;
-  let svg = mermaidSvgs.get(key);
-  if (svg === undefined) {
-    try { svg = (await m.render(`mermaid-${mermaidSeq += 1}`, src)).svg; } catch { svg = ''; }
-    mermaidSvgs.set(key, svg);
-  }
-  if (!svg || !pre.isConnected) return;
-  const box = Object.assign(document.createElement('div'), { className: 'mermaid-box' });
-  box.innerHTML = svg;
-  pre.replaceWith(box);
 }

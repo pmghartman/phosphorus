@@ -132,7 +132,7 @@ body {
 
 /* every card the page is built from, lifted off it */
 .home-col, .about-info, .st-card, .st-mesh, .st-box, .mesh-panel, .chat-panel, .cw-side,
-.update-pane, .chat-find, .msg-file, .msg-img img, .chat-log .md pre, .code-md .md pre, .chat-log .mermaid-box, .code-md .mermaid-box { box-shadow: var(--lift); }
+.update-pane, .chat-find, .msg-file, .msg-img img, .chat-log .md pre, .code-md .md pre { box-shadow: var(--lift); }
 
 .layout {
   display: flex;
@@ -1402,9 +1402,6 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
 .chat-log .hljs-deletion, .code-md .hljs-deletion { color: var(--offmesh); }
 .chat-log .hljs-emphasis, .code-md .hljs-emphasis { font-style: italic; }
 .chat-log .hljs-strong, .code-md .hljs-strong { font-weight: 700; }
-/* a mermaid diagram, its source shown as code until it draws */
-.chat-log .mermaid-box, .code-md .mermaid-box { margin: 0.25em 0 0; padding: 0.45em 0.7em; background: var(--bg); border: 1px solid var(--border); overflow-x: auto; white-space: normal; }
-.chat-log .mermaid-box svg, .code-md .mermaid-box svg { display: block; max-width: 100%; height: auto; margin: 0 auto; }
 .chat-log .md blockquote, .code-md .md blockquote { border-left: 2px solid var(--border); padding-left: 0.6em; color: var(--muted); }
 .chat-log .md a, .code-md .md a { color: var(--sky); }
 .chat-log .md table, .code-md .md table { border-collapse: collapse; display: block; overflow-x: auto; }
