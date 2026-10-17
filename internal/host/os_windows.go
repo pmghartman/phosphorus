@@ -129,19 +129,7 @@ func libexec() string { return at("tools") }
 
 func logHint() string { return at("state", "phosphorus.log") }
 
-func svcInstalled() bool {
-	m, err := mgr.Connect()
-	if err != nil {
-		return quiet("sc", "query", svcName)
-	}
-	defer m.Disconnect()
-	s, err := m.OpenService(svcName)
-	if err != nil {
-		return false
-	}
-	s.Close()
-	return true
-}
+func svcInstalled() bool { return svcState() != 0 }
 
 // createService installed once by the elevated setup, run with the home's
 // binary; its DACL letting signed-in users start and stop it
@@ -193,22 +181,25 @@ func svcInstall() error {
 	return createService()
 }
 
+// svcState asked with query rights alone: mgr.Connect's full access refused a non-admin,
+// a running service then read as stopped
 func svcState() svc.State {
-	m, err := mgr.Connect()
+	m, err := windows.OpenSCManager(nil, nil, windows.SC_MANAGER_CONNECT)
 	if err != nil {
 		return 0
 	}
-	defer m.Disconnect()
-	s, err := m.OpenService(svcName)
+	defer windows.CloseServiceHandle(m)
+	name, _ := windows.UTF16PtrFromString(svcName)
+	h, err := windows.OpenService(m, name, windows.SERVICE_QUERY_STATUS)
 	if err != nil {
 		return 0
 	}
-	defer s.Close()
-	st, err := s.Query()
-	if err != nil {
+	defer windows.CloseServiceHandle(h)
+	var st windows.SERVICE_STATUS
+	if windows.QueryServiceStatus(h, &st) != nil {
 		return 0
 	}
-	return st.State
+	return svc.State(st.CurrentState)
 }
 
 func svcActive() bool { return svcState() == svc.Running }
