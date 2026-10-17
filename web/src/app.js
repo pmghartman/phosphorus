@@ -5687,7 +5687,7 @@ function acctLogin(setup) {
 }
 
 function acctIn(me) {
-  acct = { user: me.user, admin: me.admin, boot: me.boot, wallpaper: me.wallpaper || 0, vault: me.vault || { hosts: {}, pages: {} } };
+  acct = { user: me.user, admin: me.admin, boot: me.boot, wallpaper: me.wallpaper || 0, vault: me.vault || { hosts: {}, pages: {} }, vaultOK: me.vaultOK !== false };
   acct.vault.hosts ||= {};
   acct.vault.pages ||= {};
   if (acct.boot) { acctSetup(); return; }
@@ -5701,6 +5701,15 @@ function acctIn(me) {
 
 async function acctSave() {
   if (!acct || acct.boot) return '';
+  // a vault the serving host couldn't read yet, the saved one merged under before saving
+  if (!acct.vaultOK) {
+    const me = await acctCall('/api/me');
+    if (!me.ok || me.vaultOK === false) return 'saved logins not reachable yet';
+    acct.vault.hosts = { ...me.vault.hosts, ...acct.vault.hosts };
+    acct.vault.pages = { ...me.vault.pages, ...acct.vault.pages };
+    acct.vaultOK = true;
+    for (const [h, c] of Object.entries(acct.vault.hosts)) if (!dk.creds.has(h)) dk.creds.set(h, { user: c.user, pass: c.pass });
+  }
   const r = await acctCall('/api/me/vault', { vault: acct.vault });
   return r.ok ? '' : r.error || 'not saved';
 }

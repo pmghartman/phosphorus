@@ -308,16 +308,22 @@ func Merge(got map[string]json.RawMessage) bool {
 	return changed
 }
 
-func wanted(st map[string]any) []string {
-	out := []string{}
+// wanted the newer rels, ahead those stamped past this host's clock
+func wanted(st map[string]any) (out []string, ahead int) {
+	out = []string{}
 	for rel, v := range st {
 		at, ok := v.(float64)
-		if relRe.MatchString(rel) && ok && !math.IsInf(at, 0) && at <= float64(util.Now()+60000) && wins(rel, at) {
-			out = append(out, rel)
+		if !relRe.MatchString(rel) || !ok || math.IsInf(at, 0) || math.IsNaN(at) || !wins(rel, at) {
+			continue
 		}
+		if at > float64(util.Now()+60000) {
+			ahead++
+			continue
+		}
+		out = append(out, rel)
 	}
 	sort.Strings(out)
-	return out
+	return out, ahead
 }
 
 // Local var/<rel>: this host's own
@@ -372,7 +378,7 @@ func pullOnce() {
 			if json.Unmarshal(s.Body, &st) != nil || st == nil {
 				return
 			}
-			want := wanted(st)
+			want, ahead := wanted(st)
 			for i := 0; i < len(want); i += pullBatch {
 				end := i + pullBatch
 				if end > len(want) {
@@ -397,12 +403,29 @@ func pullOnce() {
 					Merge(got)
 				}
 			}
+			// a slow clock's skipped files retried, never marked synced
+			if ahead > 0 {
+				aheadLog(p.Host, ahead)
+				return
+			}
 			syncedMu.Lock()
 			synced[p.Host] = p.Digest
 			syncedMu.Unlock()
 		}(p, ip)
 	}
 	wg.Wait()
+}
+
+var aheadAt = map[string]int64{}
+
+func aheadLog(host string, n int) {
+	syncedMu.Lock()
+	defer syncedMu.Unlock()
+	if util.Now()-aheadAt[host] < 10*60*1000 {
+		return
+	}
+	aheadAt[host] = util.Now()
+	log.Printf("[sys] %d files from %s stamped over a minute ahead of this clock, skipped until it's set right", n, host)
 }
 
 // OldestWins a path whose first write stays
