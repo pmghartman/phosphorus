@@ -452,7 +452,8 @@ body {
 .dk-hosts { display: flex; gap: 0.15rem; color: var(--muted); }
 /* the host serving this page purple, the rest green, a down one a red dot; a press moving the page there */
 .dk-chip { padding: 0.2rem 0.45rem; background: none; border: 0; color: var(--muted); font: inherit; cursor: pointer; }
-.dk-chip:hover { background: var(--tab-hover); color: var(--fg); }
+button.dk-chip:hover { background: var(--tab-hover); color: var(--fg); }
+span.dk-chip { cursor: default; }
 .dk-chip.here { color: var(--fg); cursor: default; }
 .dk-chip.here:hover { background: none; }
 .dk-chip::before { content: ""; display: inline-block; width: 0.45rem; height: 0.45rem; margin-right: 0.35rem; background: var(--online); vertical-align: 0.05rem; }
@@ -2078,9 +2079,6 @@ input, textarea { caret-color: var(--accent); }
 .dk-chip.locked::before { display: none; }
 .dk-chip.locked .ic { width: 0.75rem; height: 0.75rem; color: var(--warn); }
 .dk-chip.locked:hover { color: var(--fg); }
-.dk-chip.locked.here { color: var(--fg); }
-.dk-lock { display: inline-flex; cursor: pointer; }
-.dk-lock:hover .ic { color: var(--fg); }
 .dk-profile { gap: 0.35rem; font: inherit; }
 .dk-profile-name { max-width: 7rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dk-icon.dk-users .ic { color: var(--sky); }
