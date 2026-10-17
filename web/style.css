@@ -1986,6 +1986,8 @@ input, textarea { caret-color: var(--accent); }
  .keybar { display: none !important; }
 .layout { height: 100vh !important; height: 100dvh !important; }
 .dk-stage { flex: 1; min-height: 0; display: flex; overflow-y: auto; z-index: 1; }
+/* the macOS app: its top 28px a title bar to drag by, the traffic lights in it */
+.app-mac .dk-desk { padding-top: 28px; }
 
 /* the update and theme in the task bar, their popups opening upward */
 .dk-bar .top-mesh-wide { align-self: stretch; height: 100%; }
