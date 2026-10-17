@@ -22,8 +22,10 @@ use tauri_plugin_updater::UpdaterExt;
 
 /// one install, start, stop or update at a time
 static BUSY: AtomicBool = AtomicBool::new(false);
-/// a tray up, closed windows keeping the app
+/// a host's tray up, closed windows keeping the app
 static TRAY: AtomicBool = AtomicBool::new(false);
+/// the client's identifier, the host installing it and clearing its folders
+const CLIENT_ID: &str = "dev.phosphorus.client";
 /// popped out windows' labels
 static TABS: AtomicU32 = AtomicU32::new(0);
 /// the tray menu's first line: what the tooltip says, visible on macOS
@@ -37,6 +39,10 @@ struct App {
     is_host: bool,
     // where a client keeps the mesh's domain
     config: PathBuf,
+    // a host's bundled client app, installed as an app of its own
+    client: Option<PathBuf>,
+    // a client on a host's machine: the host's domain, its uninstall the host's
+    host_here: bool,
 }
 
 fn home_dir() -> PathBuf {
@@ -315,7 +321,10 @@ fn startup(handle: AppHandle, background: bool) {
             }
             BUSY.store(false, Ordering::SeqCst);
         }
-        // opened by hand: the frontend (or the keys); at login: the tray alone
+        if let Some(c) = &app.client {
+            install_client(c);
+        }
+        // opened by hand: the client app (or the keys); at login: the tray alone
         if !background || keys_missing(&app) {
             let h = handle.clone();
             let _ = handle.run_on_main_thread(move || open_main(&h));
@@ -341,6 +350,12 @@ fn domain(app: &App) -> String {
             return d;
         }
     }
+    if app.host_here {
+        let d = host_domain();
+        if !d.is_empty() {
+            return d;
+        }
+    }
     serde_json::from_str::<Value>(&read(&app.config)).ok().and_then(|v| v["domain"].as_str().map(str::to_string)).unwrap_or_default()
 }
 
@@ -353,16 +368,23 @@ fn bare_domain(s: &str) -> String {
 /// the frontend in a window of its own, no menu bar; the keys asked for first
 /// on a host without them, the domain on a client without one
 fn open_main(handle: &AppHandle) {
+    let app = handle.state::<App>();
+    if app.is_host {
+        // the tray never a window of its own on the frontend: the client app's
+        if keys_missing(&app) {
+            open_keys(handle);
+        } else if let Some(c) = app.client.as_ref() {
+            launch_client(&install_client(c));
+        } else {
+            alert(handle, "no Phosphorus Client in this build");
+        }
+        return;
+    }
     activate(handle);
     if let Some(w) = handle.get_webview_window("main") {
         let _ = w.unminimize();
         let _ = w.show();
         let _ = w.set_focus();
-        return;
-    }
-    let app = handle.state::<App>();
-    if app.is_host && keys_missing(&app) {
-        open_keys(handle);
         return;
     }
     let d = domain(&app);
@@ -379,11 +401,32 @@ fn open_main(handle: &AppHandle) {
         .maximized(true)
         .focused(true)
         .on_new_window(move |u, _| popout(&h, u));
-    // macOS: no title bar, the traffic lights over the page
+    // macOS: no title bar, the traffic lights over the page and a strip above it to drag by
     #[cfg(target_os = "macos")]
-    let b = b.title_bar_style(tauri::TitleBarStyle::Overlay).hidden_title(true);
+    let b = b.title_bar_style(tauri::TitleBarStyle::Overlay).hidden_title(true).initialization_script(DRAG_STRIP);
+    #[cfg(target_os = "macos")]
+    {
+        let cap = tauri::ipc::CapabilityBuilder::new("drag")
+            .remote(format!("https://{d}/*"))
+            .window("main")
+            .permission("core:window:allow-start-dragging")
+            .permission("core:window:allow-internal-toggle-maximize");
+        let _ = handle.add_capability(cap);
+    }
     let _ = b.build();
 }
+
+/// the page's top 28px a drag strip, as a title bar; the page pads its desk under it
+#[cfg(target_os = "macos")]
+const DRAG_STRIP: &str = r#"
+document.documentElement.classList.add('app-mac');
+addEventListener('DOMContentLoaded', () => {
+  const s = document.createElement('div');
+  s.setAttribute('data-tauri-drag-region', '');
+  s.style.cssText = 'position:fixed;top:0;left:0;right:0;height:28px;z-index:2147483647';
+  document.body.appendChild(s);
+});
+"#;
 
 /// an app's new tab or window: a window of its own on the same session
 fn popout(handle: &AppHandle, url: tauri::Url) -> NewWindowResponse<tauri::Wry> {
@@ -404,6 +447,103 @@ fn open_tab(handle: &AppHandle, url: tauri::Url) {
         .focused(true)
         .on_new_window(move |u, _| popout(&h, u))
         .build();
+}
+
+/// the bundled client copied out as an app of its own, beside the host's (macOS) or in
+/// the user's programs with a Start menu entry (Windows), refreshed when it differs; its path
+fn install_client(src: &Path) -> PathBuf {
+    #[cfg(target_os = "macos")]
+    {
+        let exe = std::env::current_exe().unwrap_or_default();
+        let beside = exe.ancestors().find(|p| p.extension().is_some_and(|e| e == "app")).and_then(Path::parent).map(Path::to_path_buf);
+        let user = PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join("Applications");
+        let writable = |d: &Path| d.is_dir() && std::fs::metadata(d).map(|m| !m.permissions().readonly()).unwrap_or(false) && {
+            let probe = d.join(".phosphorus-probe");
+            let ok = std::fs::write(&probe, b"").is_ok();
+            let _ = std::fs::remove_file(&probe);
+            ok
+        };
+        let dir = beside.filter(|d| writable(d)).unwrap_or_else(|| {
+            let _ = std::fs::create_dir_all(&user);
+            user
+        });
+        let dst = dir.join("Phosphorus Client.app");
+        let same = |rel: &str| std::fs::read(src.join(rel)).ok().is_some_and(|a| std::fs::read(dst.join(rel)).ok() == Some(a));
+        if !(same("Contents/Info.plist") && same("Contents/MacOS/Phosphorus")) {
+            // a fresh copy swapped in, a running client keeping its old files
+            let tmp = dir.join(".Phosphorus Client.app.new");
+            let _ = std::fs::remove_dir_all(&tmp);
+            let ok = Command::new("/usr/bin/ditto").arg("--noextattr").arg(src).arg(&tmp).status().is_ok_and(|s| s.success());
+            if ok {
+                let _ = std::fs::remove_dir_all(&dst);
+                let _ = std::fs::rename(&tmp, &dst);
+            }
+        }
+        if dst.exists() {
+            dst
+        } else {
+            src.to_path_buf()
+        }
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let local = PathBuf::from(std::env::var_os("LOCALAPPDATA").unwrap_or_default());
+        let dir = local.join("Programs").join("Phosphorus Client");
+        let dst = dir.join("Phosphorus Client.exe");
+        let want = std::fs::read(src).unwrap_or_default();
+        if !want.is_empty() && std::fs::read(&dst).ok() != Some(want.clone()) {
+            // a running client locks its exe: the copy waits for the next open
+            let _ = std::fs::create_dir_all(&dir);
+            let tmp = dir.join("Phosphorus Client.exe.new");
+            if std::fs::write(&tmp, &want).is_ok() && std::fs::rename(&tmp, &dst).is_err() {
+                let _ = std::fs::remove_file(&tmp);
+            }
+        }
+        if !dst.exists() {
+            return src.to_path_buf();
+        }
+        let lnk = client_shortcut();
+        if !lnk.exists() {
+            let q = |p: &Path| p.display().to_string().replace('\'', "''");
+            let ps = format!(
+                "$s=(New-Object -ComObject WScript.Shell).CreateShortcut('{}');$s.TargetPath='{}';$s.WorkingDirectory='{}';$s.Save()",
+                q(&lnk),
+                q(&dst),
+                q(&dir)
+            );
+            let _ = Command::new("powershell").args(["-NoProfile", "-NonInteractive", "-Command", &ps]).creation_flags(0x0800_0000).status();
+        }
+        dst
+    }
+    #[cfg(not(any(target_os = "macos", windows)))]
+    src.to_path_buf()
+}
+
+/// the client's Start menu entry
+#[cfg(windows)]
+fn client_shortcut() -> PathBuf {
+    PathBuf::from(std::env::var_os("APPDATA").unwrap_or_default()).join(r"Microsoft\Windows\Start Menu\Programs\Phosphorus Client.lnk")
+}
+
+/// the client app started, a running one brought up
+fn launch_client(client: &Path) {
+    #[cfg(target_os = "macos")]
+    let _ = Command::new("/usr/bin/open").arg("-a").arg(client).spawn();
+    #[cfg(not(target_os = "macos"))]
+    let _ = Command::new(client).stdin(Stdio::null()).spawn();
+}
+
+/// the host's mesh domain, for a client on its machine: .env's, else the one copied from a peer
+fn host_domain() -> String {
+    let h = home_dir();
+    let env = std::fs::read_to_string(h.join(".env")).unwrap_or_default();
+    let d = env
+        .lines()
+        .find_map(|l| l.trim().strip_prefix("BASE_DOMAIN=").map(|v| v.trim().trim_matches(['"', '\'']).to_string()))
+        .filter(|d| !d.is_empty())
+        .unwrap_or_else(|| read(&h.join("state/base-domain")));
+    bare_domain(&d)
 }
 
 /// a client's first start: the mesh's domain asked for
@@ -449,6 +589,8 @@ fn open_keys(handle: &AppHandle) {
     }
     let w = WebviewWindowBuilder::new(handle, "keys", WebviewUrl::App("keys.html".into()))
         .title("Phosphorus Keys")
+        // the tray's own: no taskbar button beside the client's
+        .skip_taskbar(true)
         .inner_size(520.0, 600.0)
         .resizable(false)
         .center()
@@ -503,6 +645,30 @@ fn save_keys(handle: AppHandle, values: HashMap<String, String>) -> Result<(), S
 fn close_keys(handle: AppHandle) {
     if let Some(w) = handle.get_webview_window("keys") {
         let _ = w.close();
+    }
+}
+
+/// a host's installed client app, its Start menu entry and its folders
+fn remove_client(handle: &AppHandle) {
+    let p = handle.path();
+    for d in [p.config_dir(), p.data_dir(), p.local_data_dir(), p.cache_dir()].into_iter().flatten() {
+        let _ = std::fs::remove_dir_all(d.join(CLIENT_ID));
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let h = PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
+        let _ = std::fs::remove_dir_all(h.join("Library/WebKit").join(CLIENT_ID));
+        let exe = std::env::current_exe().unwrap_or_default();
+        let beside = exe.ancestors().find(|p| p.extension().is_some_and(|e| e == "app")).and_then(Path::parent).map(Path::to_path_buf);
+        for d in [beside, Some(h.join("Applications"))].into_iter().flatten() {
+            let _ = std::fs::remove_dir_all(d.join("Phosphorus Client.app"));
+        }
+    }
+    #[cfg(windows)]
+    {
+        let _ = std::fs::remove_file(client_shortcut());
+        let local = PathBuf::from(std::env::var_os("LOCALAPPDATA").unwrap_or_default());
+        let _ = std::fs::remove_dir_all(local.join("Programs").join("Phosphorus Client"));
     }
 }
 
@@ -589,6 +755,9 @@ fn uninstall(handle: AppHandle) {
             }
         }
         let _ = handle.autolaunch().disable();
+        if app.is_host {
+            remove_client(&handle);
+        }
         for d in app_dirs(&handle) {
             let _ = std::fs::remove_dir_all(d);
         }
@@ -608,7 +777,7 @@ fn app_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         &[
             &PredefinedMenuItem::about(app, None, None)?,
             &PredefinedMenuItem::separator(app)?,
-            &MenuItem::with_id(app, "uninstall", "Uninstall…", true, None::<&str>)?,
+            &MenuItem::with_id(app, "uninstall", "Uninstall…", !app.state::<App>().host_here, None::<&str>)?,
             &PredefinedMenuItem::separator(app)?,
             &PredefinedMenuItem::hide(app, None)?,
             &PredefinedMenuItem::hide_others(app, None)?,
@@ -640,14 +809,13 @@ fn app_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     Menu::with_items(app, &[&main, &edit, &window])
 }
 
-/// the tray: a host's controls, a client's open and quit; closed windows leave the app here
-fn tray(app: &AppHandle, is_host: bool) -> tauri::Result<()> {
+/// the tray, a host's alone: the service's controls, Open the client app
+fn tray(app: &AppHandle) -> tauri::Result<()> {
     let item = |id: &str, text: &str| MenuItem::with_id(app, id, text, true, None::<&str>);
     let sep = || PredefinedMenuItem::separator(app);
-    let menu = if is_host {
-        let status = MenuItem::with_id(app, "status", "Phosphorus", false, None::<&str>)?;
-        let _ = STATUS.set(status.clone());
-        Menu::with_items(
+    let status = MenuItem::with_id(app, "status", "Phosphorus", false, None::<&str>)?;
+    let _ = STATUS.set(status.clone());
+    let menu = Menu::with_items(
             app,
             &[
                 &status,
@@ -664,10 +832,7 @@ fn tray(app: &AppHandle, is_host: bool) -> tauri::Result<()> {
                 &sep()?,
                 &item("quit", "Quit (stops phosphorus)")?,
             ],
-        )?
-    } else {
-        Menu::with_items(app, &[&item("open", "Open Phosphorus")?, &sep()?, &item("uninstall", "Uninstall…")?, &sep()?, &item("quit", "Quit")?])?
-    };
+        )?;
     let b = TrayIconBuilder::with_id("phosphorus").tooltip("Phosphorus").menu(&menu);
     // macOS: the white glyph as a template, tinted like the system's own
     #[cfg(target_os = "macos")]
@@ -690,7 +855,7 @@ fn menu_event(app: &AppHandle, id: &str) {
             tauri::async_runtime::spawn(async move { handle_update(a, id, true).await });
         }
         "keys" => open_keys(app),
-        "uninstall" => uninstall(app.clone()),
+        "uninstall" if !app.state::<App>().host_here => uninstall(app.clone()),
         "quit" => quit(app.clone()),
         _ => {}
     }
@@ -736,7 +901,10 @@ fn main() {
             let host = host_bin();
             let is_host = host.exists() && payload.join("VERSION").exists();
             let config = app.path().app_config_dir()?.join("client.json");
-            app.manage(App { payload, home: home_dir(), host, is_host, config });
+            let name = if cfg!(windows) { "Phosphorus Client.exe" } else { "Phosphorus Client.app" };
+            let client = Some(app.path().resource_dir()?.join("client").join(name)).filter(|c| c.exists());
+            let host_here = !is_host && home_dir().join(".phosphorus-installed").exists();
+            app.manage(App { payload, home: home_dir(), host, is_host, config, client, host_here });
             #[cfg(target_os = "macos")]
             app.set_menu(app_menu(app.handle())?)?;
             // release builds carry the updater config; dev builds none
@@ -744,14 +912,13 @@ fn main() {
                 app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
             }
             if !is_host {
-                // no tray (Linux without an indicator): the last window's close quits
-                TRAY.store(tray(app.handle(), false).is_ok(), Ordering::SeqCst);
+                // a Dock or taskbar app alone, the tray the host's
                 open_main(app.handle());
                 return Ok(());
             }
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
-            tray(app.handle(), true)?;
+            tray(app.handle())?;
             TRAY.store(true, Ordering::SeqCst);
             // a host stays up across logins
             let _ = app.autolaunch().enable();
@@ -762,7 +929,8 @@ fn main() {
         .expect("Phosphorus app");
     app.run(|h, e| match e {
         // windows closing leave the app in the tray, Quit alone ends it
-        RunEvent::ExitRequested { api, code: None, .. } if TRAY.load(Ordering::SeqCst) => api.prevent_exit(),
+        // the host's tray, and on macOS the client's Dock icon, outliving their windows
+        RunEvent::ExitRequested { api, code: None, .. } if TRAY.load(Ordering::SeqCst) || cfg!(target_os = "macos") => api.prevent_exit(),
         #[cfg(target_os = "macos")]
         RunEvent::Reopen { .. } => open_main(h),
         _ => {
