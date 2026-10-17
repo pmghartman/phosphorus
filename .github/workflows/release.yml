@@ -115,8 +115,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: packaging/app
+          # v1: v0 held a target-less save from a failed run, never replaced on a full match
+          prefix-key: v1-rust
           key: ${{ matrix.name }}
-          cache-on-failure: true
       - uses: taiki-e/install-action@v2
         with:
           tool: tauri-cli@2
