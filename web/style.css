@@ -2224,10 +2224,20 @@ input, textarea { caret-color: var(--accent); }
 .dk-ctl-role { color: var(--muted); }
 /* who's here: initial, name, role and date, log out to the side */
 .dk-ctl-id { display: flex; align-items: center; gap: 0.6rem; padding: 0.7rem 0.7rem 0.6rem; }
-.dk-ctl-avatar {
-  flex: none; width: 2rem; height: 2rem; border-radius: 50%; display: grid; place-items: center;
-  background: linear-gradient(135deg, var(--glyph-purple), var(--glyph-orange)); color: #fff; font-weight: 600; font-size: 0.85rem;
+.dk-ctl-avatar { flex: none; display: grid; place-items: center; color: var(--muted); }
+.dk-ctl-avatar .ic { width: 1.6rem; height: 1.6rem; overflow: visible; }
+.dk-ctl-avatar .dk-crown { stroke: var(--sand); }
+/* an update waiting: a blue dot on the button and its tile */
+.dk-ctl > .dk-profile { position: relative; }
+.dk-ctl > .dk-profile.has-update::after, .dk-ctl-tile.fresh::after {
+  content: ''; position: absolute; width: 0.4rem; height: 0.4rem; border-radius: 50%; background: var(--sky);
 }
+.dk-ctl > .dk-profile.has-update::after { top: 0.45rem; right: 0.35rem; }
+.dk-ctl-tile { position: relative; }
+.dk-ctl-tile.fresh::after { top: 0.5rem; right: 0.5rem; }
+.dk-ctl-tile.fresh .ic { color: var(--sky); }
+.dk-ctl-seg { display: flex; align-items: center; justify-content: center; gap: 0.35rem; }
+.dk-ctl-seg .theme-icon { display: block; width: 0.8rem; height: 0.8rem; }
 .dk-ctl-who { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
 .dk-ctl-name { color: var(--fg); font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dk-ctl-out {
@@ -2249,3 +2259,10 @@ input, textarea { caret-color: var(--accent); }
 /* the bar's right side: the hosts, a rule, the bell, then the clock and the user */
 .dk-bar .dk-tray-wrap:has(> .dk-bell)::before { content: ''; align-self: center; width: 1px; height: 1.1rem; margin-right: 0.3rem; background: var(--border); }
 .dk-bar .dk-bell { width: 2rem; }
+/* the bar's right end: hosts, bell and clock close together, the button flush to the edge */
+.dk-bar { gap: 0.3rem; padding-right: 0; }
+.dk-bar .dk-tasks { margin-right: 0.3rem; }
+.dk-bar .dk-bell { width: 1.9rem; }
+.dk-bar .dk-tray-wrap:has(> .dk-bell)::before { margin-right: 0.15rem; }
+.dk-ctl > .dk-profile { padding: 0 0.55rem; gap: 0.4rem; }
+.dk-ctl > .dk-profile .dk-clock { margin-right: 0.15rem; }
