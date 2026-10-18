@@ -4519,20 +4519,12 @@ function dkChips() {
   const names = [...new Set([...dk.creds.keys(), ...terminalHosts])]
     .sort((a, b) => (b === selfHost) - (a === selfHost) || a.localeCompare(b));
   const up = new Set([...terminalHosts, selfHost]);
-  const open = dkChipsOpen();
-  const sig = JSON.stringify([here, names, [...dk.creds.keys()], names.filter((h) => !up.has(h)), open]);
+  dkChipsFold(hosts, names.length);
+  const sig = JSON.stringify([here, names, [...dk.creds.keys()], names.filter((h) => !up.has(h))]);
   if (sig === dk.chips) return;
   dk.chips = sig;
-  // folded: the serving host alone, a chevron for the rest
-  const shown = open ? names : names.filter((h) => h === here);
-  const fold = Object.assign(el('button', 'dk-chip-fold', open ? '›' : '‹'), { type: 'button', title: open ? 'fewer hosts' : `all hosts (${names.length})` });
-  fold.setAttribute('aria-expanded', String(open));
-  fold.addEventListener('click', () => {
-    try { localStorage.setItem(DK_CHIPS_KEY, open ? '0' : '1'); } catch {}
-    dkChips();
-  });
-  // a locked one's press its login, the rest only shown: hosts switched from the mesh view
-  hosts.replaceChildren(...(names.length > 1 ? [fold] : []), ...shown.map((h) => {
+  // every chip kept, the fold's class sliding all but the serving one shut
+  const chips = names.map((h) => {
     if (!dk.creds.has(h)) {
       const b = Object.assign(el('button', 'dk-chip locked', h), { type: 'button', title: `log in to ${h}` });
       b.prepend(dkGlyph(DK_GLYPHS.lock));
@@ -4541,7 +4533,27 @@ function dkChips() {
     }
     if (!up.has(h)) return Object.assign(el('span', 'dk-chip down', h), { title: `${h} dropped off the mesh` });
     return Object.assign(el('span', `dk-chip${h === here ? ' here' : ''}`, h), { title: h === here ? `this page is served by ${h}` : `${h}, logged in` });
-  }));
+  });
+  chips.forEach((c, i) => c.classList.toggle('cur', names[i] === here));
+  hosts.replaceChildren(dk.chipFold, ...chips);
+}
+
+// one chevron for good, so its turn and the chips' slide both animate
+function dkChipsFold(hosts, n) {
+  if (!dk.chipFold) {
+    const b = Object.assign(el('button', 'dk-chip-fold'), { type: 'button' });
+    b.appendChild(dkGlyph(DK_UI.back));
+    b.addEventListener('click', () => {
+      try { localStorage.setItem(DK_CHIPS_KEY, dkChipsOpen() ? '0' : '1'); } catch {}
+      dkChipsFold(hosts, n);
+    });
+    dk.chipFold = b;
+  }
+  const open = dkChipsOpen();
+  hosts.classList.toggle('folded', !open);
+  dk.chipFold.hidden = n < 2;
+  dk.chipFold.title = open ? 'fewer hosts' : 'all hosts';
+  dk.chipFold.setAttribute('aria-expanded', String(open));
 }
 
 // one window, key: a single instance's, else a fresh one per open

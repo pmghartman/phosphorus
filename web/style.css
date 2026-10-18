@@ -449,13 +449,18 @@ body {
 }
 .dk-task:hover { color: var(--fg); background: var(--tab-hover); }
 .dk-task.active { color: var(--fg); border-color: var(--accent); }
-.dk-hosts { display: flex; gap: 0.15rem; color: var(--muted); }
+.dk-hosts { display: flex; align-items: center; color: var(--muted); }
 /* the host serving this page purple, the rest green, a down one a red dot; a press moving the page there */
 .dk-chip { padding: 0.2rem 0.45rem; background: none; border: 0; color: var(--muted); font: inherit; cursor: pointer; }
 button.dk-chip:hover { background: var(--tab-hover); color: var(--fg); }
 span.dk-chip { cursor: default; }
-.dk-chip-fold { padding: 0.2rem 0.4rem; background: none; border: 0; color: var(--muted); font: inherit; cursor: pointer; }
-.dk-chip-fold:hover { background: var(--tab-hover); color: var(--accent); }
+.dk-chip-fold { display: flex; align-items: center; padding: 0 0.15rem; margin-right: -0.1rem; background: none; border: 0; color: var(--muted); cursor: pointer; }
+.dk-chip-fold[hidden] { display: none; }
+.dk-chip-fold .ic { width: 0.7rem; height: 0.7rem; transition: transform 0.25s ease; }
+.dk-chip-fold[aria-expanded="true"] .ic { transform: rotate(180deg); }
+.dk-chip-fold:hover { color: var(--accent); }
+.dk-hosts .dk-chip { max-width: 12rem; white-space: nowrap; overflow: hidden; margin-left: 0.15rem; transition: max-width 0.25s ease, opacity 0.2s ease, padding 0.25s ease, margin 0.25s ease; }
+.dk-hosts.folded .dk-chip:not(.cur) { max-width: 0; opacity: 0; padding-left: 0; padding-right: 0; margin-left: 0; pointer-events: none; }
 .dk-chip.here { color: var(--fg); cursor: default; }
 .dk-chip.here:hover { background: none; }
 .dk-chip::before { content: ""; display: inline-block; width: 0.45rem; height: 0.45rem; margin-right: 0.35rem; background: var(--online); vertical-align: 0.05rem; }
