@@ -148,10 +148,10 @@ func tailnetSelf() (string, error) {
 // fillMeshKeys a joining host's missing keys from a peer, waited on only
 // when this host can't run without them
 func fillMeshKeys() {
-	need := os.Getenv("BASE_DOMAIN") == "" || os.Getenv("TUNNEL_TOKEN") == ""
-	missing := false
+	need, missing := true, false
 	for _, k := range envfile.Keys {
 		missing = missing || (k.Mesh && os.Getenv(k.Name) == "")
+		need = need && (!k.Mesh || os.Getenv(k.Name) == "")
 	}
 	if !missing {
 		return
@@ -205,8 +205,9 @@ func runMain(stop <-chan struct{}) error {
 	}
 	say("on the tailnet as %s", dns)
 	fillMeshKeys()
-	if os.Getenv("BASE_DOMAIN") == "" || os.Getenv("TUNNEL_TOKEN") == "" {
-		return fail("no BASE_DOMAIN or TUNNEL_TOKEN and no peer to copy them from: the first host of a mesh needs them in .env")
+	// no domain: the tailnet alone, http://<host>/
+	if os.Getenv("BASE_DOMAIN") == "" {
+		say("no BASE_DOMAIN, served on the tailnet only")
 	}
 	os.WriteFile(at("state", "base-domain"), []byte(os.Getenv("BASE_DOMAIN")+"\n"), 0o644)
 	first, _, _ := strings.Cut(dns, ".")
@@ -223,7 +224,10 @@ func runMain(stop <-chan struct{}) error {
 	if isModelHost() {
 		extra = append(extra, &child{role: "model", grace: 30 * time.Second, argv: []string{bin, "model"}, env: env})
 	}
-	if isGitHost() {
+	// forgejo's ROOT_URL at git.<domain>, no git without one
+	if isGitHost() && os.Getenv("BASE_DOMAIN") == "" {
+		say("git: no BASE_DOMAIN, not started")
+	} else if isGitHost() {
 		extra = append(extra, &child{role: "git", grace: 60 * time.Second, env: env,
 			argv: []string{"/bin/bash", at("gitd", "git-daemon.sh")}})
 	}
@@ -233,12 +237,16 @@ func runMain(stop <-chan struct{}) error {
 	}
 	// the ingress answering before the tunnel hands it anything
 	waitHealthz()
-	say("tunnel: joining the Cloudflare tunnel as a replica")
-	if err := tunnel.start(); err != nil {
-		frontend.stop()
-		return fail("couldn't start cloudflared: %v", err)
+	if os.Getenv("TUNNEL_TOKEN") == "" {
+		say("tunnel: no TUNNEL_TOKEN, tailnet only")
+	} else {
+		say("tunnel: joining the Cloudflare tunnel as a replica")
+		if err := tunnel.start(); err != nil {
+			frontend.stop()
+			return fail("couldn't start cloudflared: %v", err)
+		}
+		kids = append(kids, tunnel)
 	}
-	kids = append(kids, tunnel)
 	for _, c := range extra {
 		if err := c.start(); err != nil {
 			say("couldn't start %s: %v", c.role, err)

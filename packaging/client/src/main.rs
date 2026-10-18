@@ -62,7 +62,14 @@ fn bare_domain(s: &str) -> String {
     s.split(['/', '?', '#']).next().unwrap_or("").to_ascii_lowercase()
 }
 
-/// a host's mesh domain on this machine: .env's, else the one copied from a peer
+/// the frontend's address: https at a domain, http at a tailnet name or address
+fn url_of(d: &str) -> String {
+    let tail = !d.contains('.') || d.ends_with(".ts.net") || d.parse::<std::net::IpAddr>().is_ok();
+    format!("{}://{d}/", if tail { "http" } else { "https" })
+}
+
+/// a host's mesh domain on this machine: .env's, else the one copied from a peer,
+/// else, on a host with none, its own frontend
 fn host_domain() -> String {
     let h = home_dir();
     let env = std::fs::read_to_string(h.join(".env")).unwrap_or_default();
@@ -71,7 +78,11 @@ fn host_domain() -> String {
         .find_map(|l| l.trim().strip_prefix("BASE_DOMAIN=").map(|v| v.trim().trim_matches(['"', '\'']).to_string()))
         .filter(|d| !d.is_empty())
         .unwrap_or_else(|| read(&h.join("state/base-domain")));
-    bare_domain(&d)
+    let d = bare_domain(&d);
+    if d.is_empty() && h.join(".env").exists() {
+        return "localhost".into();
+    }
+    d
 }
 
 /// the mesh's domain: a host's here, else the one entered
@@ -92,7 +103,7 @@ fn open_main(handle: &AppHandle) {
         return;
     }
     let d = domain(&handle.state::<App>());
-    let url = tauri::Url::parse(&format!("https://{d}/"));
+    let url = tauri::Url::parse(&url_of(&d));
     let Ok(url) = url.map_err(|_| ()).and_then(|u| if d.is_empty() { Err(()) } else { Ok(u) }) else {
         open_connect(handle);
         return;
@@ -112,7 +123,7 @@ fn open_main(handle: &AppHandle) {
     #[cfg(target_os = "macos")]
     {
         let cap = tauri::ipc::CapabilityBuilder::new("drag")
-            .remote(format!("https://{d}/*"))
+            .remote(format!("{}*", url_of(&d)))
             .window("main")
             .permission("core:window:allow-start-dragging")
             .permission("core:window:allow-internal-toggle-maximize");
@@ -176,8 +187,8 @@ fn open_connect(handle: &AppHandle) {
 #[tauri::command]
 async fn set_domain(handle: AppHandle, domain: String) -> Result<(), String> {
     let d = bare_domain(&domain);
-    if d.is_empty() || !d.contains('.') || d.chars().any(|c| !(c.is_ascii_alphanumeric() || c == '.' || c == '-')) {
-        return Err("a domain like example.com".into());
+    if d.is_empty() || d.chars().any(|c| !(c.is_ascii_alphanumeric() || c == '.' || c == '-')) {
+        return Err("a domain or tailnet name".into());
     }
     write_json(&handle.state::<App>().config, &json!({"domain": d}));
     // main up before connect goes, never a moment with no window to quit on

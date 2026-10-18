@@ -17,8 +17,8 @@ type Key struct {
 // Keys every key phosphorus reads, TS_AUTHKEY the one a new host must bring
 var Keys = []Key{
 	{"TS_AUTHKEY", "Tailscale auth key", "reusable, expires every 90 days", false},
-	{"BASE_DOMAIN", "Domain", "the mesh's domain, services under it", true},
-	{"TUNNEL_TOKEN", "Cloudflare tunnel token", "for a replica of the mesh's tunnel", true},
+	{"BASE_DOMAIN", "Domain", "optional, for access off the tailnet", true},
+	{"TUNNEL_TOKEN", "Cloudflare tunnel token", "optional, with the domain", true},
 	{"TS_API_KEY", "Tailscale API token", "game split DNS, expires every 90 days", true},
 	{"ADMIN_PASS", "Admin password", "setup admin's login, the gate on a mesh update", true},
 }

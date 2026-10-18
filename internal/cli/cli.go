@@ -860,16 +860,16 @@ func askGitSwitch(target J) {
 		}
 	}
 	name := str(target["host"])
-	text := name + " force-promoted, roster reset to the hosts in view, only if the old master is gone. force-promote?"
+	text := "force " + name + "?"
 	if master != nil {
-		text = fmt.Sprintf("%s hands off to %s, git.%s down a few seconds. make master?", str(master["host"]), name, baseDomain)
+		text = name + " master?"
 	}
 	ui.confirm = &confirm{text: text, danger: master == nil, onYes: func() {
 		go func() {
 			r := post("/api/githosts/"+url.PathEscape(name)+"/force", nil)
 			onLoop(func() {
 				if r.status == 200 {
-					flash(c("online")(name + " is taking over"))
+					flash(c("online")("switching"))
 				} else {
 					flash(c("offmesh")("make master failed: " + or(str(r.body["error"]), fmt.Sprintf("status %d", r.status))))
 				}

@@ -47,6 +47,14 @@ func clampSel(i, n int) int {
 
 func selfHost() string { return str(get(ui.state, "self", "host")) }
 
+// the domain, else this host's name on the tailnet
+func meshAddr() string {
+	if baseDomain != "" {
+		return baseDomain
+	}
+	return selfHost()
+}
+
 // header .dk-head: the window's title bar, the glyph and title left, version right
 func header(cols int, title string) string {
 	if title == "" {
@@ -180,10 +188,10 @@ func servicesView() view {
 		default:
 			status = c("warn")("not answering")
 		}
-		where := fmt.Sprintf("%s/%s/%s/", baseDomain, selfHost(), s.name)
+		where := fmt.Sprintf("%s/%s/%s/", meshAddr(), selfHost(), s.name)
 		if f["type"] == "game" {
 			where = fmt.Sprintf("%s.%s:%s", s.name, str(st["gameZone"]), f["port"])
-		} else if f["mode"] == "subdomain" {
+		} else if f["mode"] == "subdomain" && baseDomain != "" {
 			where = s.name + "." + baseDomain
 		}
 		scheme := f["scheme"]
@@ -418,13 +426,13 @@ func statsView() view {
 			switch {
 			case game:
 				mode, addr = "game", fmt.Sprintf("%s.%s:%s", str(r["name"]), str(st["gameZone"]), str(r["port"]))
-			case mode == "subdomain":
+			case mode == "subdomain" && baseDomain != "":
 				addr = str(r["name"]) + "." + baseDomain
 				if bp := str(r["base_path"]); bp != "" {
 					addr += "/" + bp
 				}
 			default:
-				addr = fmt.Sprintf("%s/%s/%s/", baseDomain, str(r["host"]), str(r["name"]))
+				addr = fmt.Sprintf("%s/%s/%s/", meshAddr(), str(r["host"]), str(r["name"]))
 			}
 			if game {
 				tok := "muted"

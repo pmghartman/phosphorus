@@ -68,7 +68,7 @@ func peerKeys() (map[string]string, string, error) {
 			got := map[string]string{}
 			err = json.NewDecoder(r.Body).Decode(&got)
 			r.Body.Close()
-			if err != nil || r.StatusCode != 200 || got["BASE_DOMAIN"] == "" {
+			if err != nil || r.StatusCode != 200 {
 				continue
 			}
 			return got, ip, nil

@@ -93,6 +93,8 @@ function editorGone(id) { if (seenEditor === id) { seenEditor = ''; paintSeen();
 let selfHost = '';
 // BASE_DOMAIN from /api/state, the page's own host until the first answer
 let baseDomain = location.hostname;
+// the mesh's own domain, '' on the tailnet alone
+let meshDomain = '';
 // games joined at <name>.phosphorus
 const gameZone = 'phosphorus';
 const aboutVersion = document.getElementById('about-version');
@@ -105,7 +107,7 @@ let deskNews = 0;
 
 function serviceUrl(route) {
   const base = route.base_path ? `${route.base_path.replace(/^\/+|\/+$/g, '')}/` : '';
-  if (route.mode === 'subdomain') return `https://${route.name}.${baseDomain}/${base}`;
+  if (route.mode === 'subdomain' && meshDomain) return `https://${route.name}.${meshDomain}/${base}`;
   return `/${route.host}/${route.name}/${base}`;
 }
 
@@ -1105,7 +1107,7 @@ function drawMesh() {
   const hubDns = svgEl('text', {
     x: hubX, y: hubY + 12 * hub.s + 4, 'text-anchor': 'middle', class: 'mesh-hub-dns', style: `font-size:${6 * hub.s}px`,
   });
-  hubDns.textContent = baseDomain;
+  hubDns.textContent = meshDomain || 'tailnet';
   meshSvg.appendChild(hubDns);
 
   // spokes on the tunnel, only this node's highlighted
@@ -1192,6 +1194,7 @@ function applyState(state) {
   selfHost = settleHost(state.self.host || '');
   hostsInfo = state.hosts && typeof state.hosts === 'object' ? state.hosts : {};
   dkDeskStamps();
+  meshDomain = state.domain || '';
   if (state.domain) baseDomain = state.domain;
   if (state.self.version) {
     aboutVersion.textContent = `v${state.self.version}`;

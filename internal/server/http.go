@@ -63,22 +63,12 @@ func meshOnly(next http.Handler) http.Handler {
 		}
 		lo := proxy.IsLoopbackAddr(remote) && proxy.IsLoopbackAddr(local)
 		tail := proxy.IsTailnetAddr(remote) && proxy.IsTailnetAddr(local)
-		if !(lo || tail) || !unrebindable(r.Host) {
+		if !(lo || tail) || !proxy.Unrebindable(r.Host) {
 			forbidden(w)
 			return
 		}
 		next.ServeHTTP(w, r)
 	})
-}
-
-// unrebindable an address, a bare name or a tailnet one
-func unrebindable(host string) bool {
-	h := host
-	if x, _, err := net.SplitHostPort(host); err == nil {
-		h = x
-	}
-	h = strings.TrimSuffix(strings.ToLower(strings.Trim(h, "[]")), ".")
-	return net.ParseIP(h) != nil || !strings.Contains(h, ".") || strings.HasSuffix(h, ".ts.net")
 }
 
 // crossSite a write or socket from another site's page
