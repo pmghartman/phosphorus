@@ -21,11 +21,14 @@
 
 ## Features
 
-- **Terminals** on every host, in browser windows
-- **Files** across all hosts, as one home
-- **Services and game servers**, proxied and started from the desktop
-- **Chat**, live **status** and **git**, shared by the mesh
-- **A local AI model**, hosted on one machine for all of them
+- **Terminals** on every host in browser windows, with `ssh <host>` to any peer
+- **Files** across all hosts as one home, with a shared live editor and chosen files mirrored to every host
+- **Services and game servers**, proxied by path or subdomain and started from the desktop
+- **Chat**, live **status** and notifications, shared by the mesh
+- **Git** on Forgejo, replicated to every host with an elected master
+- **A local AI model**, hosted on one machine for all of them, with projects it works on alone in a sandbox
+- **An MCP server** at `/api/mcp`: Claude or any MCP client reads the mesh and acts on it with your rights; the client connects Claude Desktop in one click
+- **Accounts** with admin roles and a per-user vault of host and page logins
 
 ## Quick start
 
