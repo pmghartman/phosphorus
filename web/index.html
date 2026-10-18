@@ -113,7 +113,7 @@ outside #mesh-svg (emptied every redraw) so it never restarts -->
             <ul id="game-servers-list" class="list">
               <li class="empty">none yet</li>
             </ul>
-            <div class="home-note">note: game servers reachable inside the mesh only
+            <div class="home-note">mesh only
               <div class="join-key" id="join-key">
                 <button type="button" class="join-key-btn" id="join-key-btn" title="single use, lasts 3 days">request guest key</button>
                 <a href="https://tailscale.com/download" target="_blank" rel="noopener">install tailscale</a>
@@ -175,7 +175,7 @@ outside #mesh-svg (emptied every redraw) so it never restarts -->
     <div class="mesh-panel" id="mesh-panel">
       <div class="mesh-header">
         <span>mesh</span>
-        <span class="mesh-count" id="mesh-count"></span>
+        <span class="mesh-head-right"><span class="mesh-count" id="mesh-count"></span><button type="button" class="mesh-legend-btn" id="mesh-legend-btn" title="legend" aria-label="legend" aria-pressed="false">?</button></span>
       </div>
       <div class="mesh-body">
         <div class="mesh-graph-wrap" id="mesh-graph-wrap">
@@ -188,12 +188,10 @@ outside #mesh-svg (emptied every redraw) so it never restarts -->
           </div>
         </div>
         <div class="mesh-stats" id="mesh-stats">
-          <div class="mesh-stats-head">
-            <span>node</span><span>ping</span>
-          </div>
+          <button type="button" class="mesh-stats-head mesh-fold" data-fold="nodes" aria-expanded="false"><span>nodes <span class="mesh-fold-n" id="mesh-nodes-n"></span></span><span>ping</span></button>
           <div class="mesh-stats-rows" id="mesh-stats-rows"></div>
           <div class="mesh-git-box" id="mesh-git" hidden>
-            <div class="mesh-stats-head"><span>git backups</span><span>behind</span></div>
+            <button type="button" class="mesh-stats-head mesh-fold" data-fold="git" aria-expanded="false"><span>git <span class="mesh-fold-n" id="mesh-git-n"></span></span><span>behind</span></button>
             <div class="mesh-git-rows" id="mesh-git-rows"></div>
           </div>
         </div>
