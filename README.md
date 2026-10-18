@@ -42,7 +42,7 @@ To change a key later: **Edit Keys** in the tray, or `phos keys`.
 
 ## Everyday use
 
-**Tray icon** (macOS and Windows): Open (the client, or your browser), Start, Stop, Turn VPN Off/On, Check for Updates, Edit Keys, Uninstall, Quit.
+**Tray icon** (macOS and Windows): Start, Stop, Check for Updates, Edit Keys, Uninstall, Quit.
 
 **Command line** (any host): `phos` opens the terminal UI. Also `phos start`, `phos stop`, `phos status`, `phos vpn off`, `phos vpn on`, `phos update`, `phos update all`, `phos uninstall`.
 
