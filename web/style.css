@@ -2121,7 +2121,7 @@ input, textarea { caret-color: var(--accent); }
 }
 /* the bar's icon buttons one even row: same width, same glyph, no gap between */
 .dk-bar .dk-tray-wrap { margin-right: 0; }
-.dk-bar .dk-ctl { margin-left: 0.2rem; }
+.dk-bar .dk-ctl { margin-left: 0; }
 .dk-bar .dk-tray:not(.dk-profile), .dk-bar .update-wrap > button, .dk-bar .theme-toggle.top-theme {
   width: 2.25rem; padding: 0; justify-content: center; display: flex; align-items: center;
 }
@@ -2222,7 +2222,30 @@ input, textarea { caret-color: var(--accent); }
 .dk-ctl > .dk-profile { gap: 0.45rem; padding: 0 0.7rem; }
 .dk-ctl > .dk-profile .dk-clock { margin-right: 0.25rem; }
 .dk-ctl-role { color: var(--muted); }
-.dk-ctl-rows { display: flex; flex-direction: column; padding: 0.2rem 0 0.35rem; border-top: 1px solid var(--border); }
-.dk-ctl-row { padding: 0.35rem 0.75rem; text-align: left; background: none; border: 0; color: var(--fg); font: inherit; cursor: pointer; }
-.dk-ctl-row:hover, .dk-ctl-row:focus-visible { background: var(--tab-hover); outline: none; }
-.dk-ctl-row.danger { color: var(--offmesh); }
+/* who's here: initial, name, role and date, log out to the side */
+.dk-ctl-id { display: flex; align-items: center; gap: 0.6rem; padding: 0.7rem 0.7rem 0.6rem; }
+.dk-ctl-avatar {
+  flex: none; width: 2rem; height: 2rem; border-radius: 50%; display: grid; place-items: center;
+  background: linear-gradient(135deg, var(--glyph-purple), var(--glyph-orange)); color: #fff; font-weight: 600; font-size: 0.85rem;
+}
+.dk-ctl-who { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+.dk-ctl-name { color: var(--fg); font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dk-ctl-out {
+  margin-left: auto; flex: none; width: 1.9rem; height: 1.9rem; display: grid; place-items: center;
+  background: none; border: 1px solid var(--border); color: var(--muted); cursor: pointer; transition: color 0.15s, border-color 0.15s;
+}
+.dk-ctl-out .ic { width: 0.85rem; height: 0.85rem; }
+.dk-ctl-out:hover, .dk-ctl-out:focus-visible { color: var(--offmesh); border-color: var(--offmesh); outline: none; }
+/* the account's own actions, chips under the tiles */
+.dk-ctl-chips { display: flex; gap: 0.35rem; padding: 0 0.6rem 0.6rem; }
+.dk-ctl-chip {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 0.35rem; padding: 0.4rem 0.3rem;
+  background: none; border: 1px solid var(--border); color: var(--fg); font: inherit; cursor: pointer; transition: border-color 0.15s, color 0.15s;
+}
+.dk-ctl-chip .ic { width: 0.8rem; height: 0.8rem; color: var(--muted); transition: color 0.15s; }
+.dk-ctl-chip:hover, .dk-ctl-chip:focus-visible { border-color: var(--accent); outline: none; }
+.dk-ctl-chip:hover .ic { color: var(--accent); }
+.dk-ctl-theme { margin: 0.6rem; }
+/* the bar's right side: the hosts, a rule, the bell, then the clock and the user */
+.dk-bar .dk-tray-wrap:has(> .dk-bell)::before { content: ''; align-self: center; width: 1px; height: 1.1rem; margin-right: 0.3rem; background: var(--border); }
+.dk-bar .dk-bell { width: 2rem; }
