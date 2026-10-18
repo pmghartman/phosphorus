@@ -454,6 +454,8 @@ body {
 .dk-chip { padding: 0.2rem 0.45rem; background: none; border: 0; color: var(--muted); font: inherit; cursor: pointer; }
 button.dk-chip:hover { background: var(--tab-hover); color: var(--fg); }
 span.dk-chip { cursor: default; }
+.dk-chip-fold { padding: 0.2rem 0.4rem; background: none; border: 0; color: var(--muted); font: inherit; cursor: pointer; }
+.dk-chip-fold:hover { background: var(--tab-hover); color: var(--accent); }
 .dk-chip.here { color: var(--fg); cursor: default; }
 .dk-chip.here:hover { background: none; }
 .dk-chip::before { content: ""; display: inline-block; width: 0.45rem; height: 0.45rem; margin-right: 0.35rem; background: var(--online); vertical-align: 0.05rem; }
