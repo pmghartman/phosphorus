@@ -48,59 +48,9 @@ To change a key later: **Edit Keys** in the tray, or `phos keys`.
 
 **Updating**: admins click the update icon in the web bar (or run `phos update all`) to update every host at once.
 
-## Settings
-
-Edit `config/phosphorus.ini` in the host folder, or use `phos`. Changes apply when saved.
-
-```ini
-[files]
-dir = files, /srv/media   # folders to share
-priv = rwd, r             # read, write, delete for each folder
-
-[git]
-host = true               # keep a copy of the git server here (Linux only)
-
-[model]
-host = true               # run the AI model here, for the whole mesh
-gpu = true                # use this machine's graphics card
-url = https://huggingface.co/.../model.gguf
-```
-
 **A model host downloads a lot**: llama.cpp's `llama-server` (plus NVIDIA's CUDA runtime on an NVIDIA card), opencode, and the model itself, often several GB. Turning `host` off removes them. You pick the model, so following its license is up to you.
 
-To show a web service or game server on the mesh, add it to `config/services.export`:
-
-```ini
-[grafana]
-port = 3001               # at your-domain/host/grafana/
-
-[jellyfin]
-port = 8096
-mode = subdomain          # at jellyfin.your-domain
-public = true             # no phosphorus login, for TV and phone apps; jellyfin's own login only
-
-[terraria]
-port = 7777
-type = game
-start = systemctl --user start tmodloader
-stop = systemctl --user stop tmodloader
-```
-
-## Coming soon
-
-**Projects**: long-running tasks the AI works on by itself in a sandbox. They're paused while the sandbox is rebuilt.
-
-## Troubleshooting
-
-| | Host folder | Log |
-|---|---|---|
-| macOS | `~/Library/Phosphorus` | `~/Library/Phosphorus/state/phosphorus.log` |
-| Windows | `%USERPROFILE%\phosphorus` | `%USERPROFILE%\phosphorus\state\phosphorus.log` |
-| Linux | `/var/lib/phosphorus` | `journalctl -u phosphorus` |
-
-A failed install or update also leaves `state/install.log` in the host folder.
-
-## How it fits together
+## Architecture
 
 ```mermaid
 flowchart TB
@@ -165,10 +115,6 @@ flowchart TB
   client -->|"self-update"| feed
   browser -->|"/api/ping/host, timed by the client"| ph
 ```
-
-## Building
-
-`make build` builds the binary, `make check` and `make test` run the checks, and `make licenses` refreshes `THIRD_PARTY_LICENSES.txt` after a dependency changes.
 
 ## License
 
