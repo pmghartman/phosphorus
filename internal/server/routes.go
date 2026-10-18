@@ -41,7 +41,7 @@ var (
 	runRe      = regexp.MustCompile(`^/api/run/([a-z0-9][a-z0-9-]*)/([A-Za-z0-9_-]+)/(.*)$`)
 	mirrorRe   = regexp.MustCompile(`^/internal/mirror/([0-9a-f]{24})$`)
 	pingRe     = regexp.MustCompile(`^/api/ping/([a-z0-9-]+)$`)
-	filesRe    = regexp.MustCompile(`^/api/files/([a-z0-9][a-z0-9-]*)/(info|list|tree|read|download|upload|save|mkdir|rename|delete|run|mirror)$`)
+	filesRe    = regexp.MustCompile(`^/api/files/([a-z0-9][a-z0-9-]*)/(info|list|tree|search|read|download|upload|save|mkdir|rename|delete|run|mirror)$`)
 	publicRe   = regexp.MustCompile(`^/api/services/([a-z0-9][a-z0-9-]*)/([a-z0-9][a-z0-9-]*)/public$`)
 	faviconRe  = regexp.MustCompile(`^/api/favicon/([a-z0-9][a-z0-9-]*)/([a-z0-9][a-z0-9-]*)$`)
 )
@@ -722,6 +722,28 @@ func appHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// a host joining with only TS_AUTHKEY: the rest from here, tailnet peers alone
+	// a peer's calls for a keyed caller, already checked there: logs, config, page actions
+	if strings.HasPrefix(pathname, "/internal/") && method == "POST" && (pathname == "/internal/logs" || pathname == "/internal/config" || pathname == "/internal/ui") {
+		if !isTailnet(r) {
+			forbidden(w)
+			return
+		}
+		onJSON(w, r, maxJSONBody, true, func(p map[string]any) (int, any) {
+			switch pathname {
+			case "/internal/logs":
+				return hostLogs(int(files.JSNumber(p["lines"])), str(p["match"]))
+			case "/internal/config":
+				return configOp(p)
+			}
+			g := users.OpenGrant(str(p["grant"]))
+			if g == nil {
+				return 403, map[string]any{"error": "bad grant"}
+			}
+			return 200, map[string]any{"ok": localUI(str(g["u"]), util.Obj(g["a"]))}
+		})
+		return
+	}
+
 	if pathname == "/internal/keys" && method == "GET" {
 		if !isTailnet(r) {
 			forbidden(w)
@@ -836,7 +858,7 @@ func filesRoute(w http.ResponseWriter, r *http.Request, host, op string, q url.V
 		return false
 	}
 	m := r.Method
-	if m == "GET" && (op == "list" || op == "tree" || op == "read" || op == "download") && barred(rel) {
+	if m == "GET" && (op == "list" || op == "tree" || op == "search" || op == "read" || op == "download") && barred(rel) {
 		return
 	}
 	switch {
@@ -863,6 +885,14 @@ func filesRoute(w http.ResponseWriter, r *http.Request, host, op string, q url.V
 		if sh.ID == "home" && st == 200 {
 			out := b.(map[string]any)
 			out["entries"] = files.HomeFilterTree(who, out["entries"].([]map[string]any), users.Exists)
+		}
+		sendJSON(w, st, b)
+		return
+	case m == "GET" && op == "search":
+		st, b := files.Search(sh, rel, q.Get("query"), q.Get("content") == "true", q.Get("glob"))
+		if sh.ID == "home" && st == 200 {
+			out := b.(map[string]any)
+			out["results"] = homeFilterResults(who, out["results"].([]map[string]any))
 		}
 		sendJSON(w, st, b)
 		return

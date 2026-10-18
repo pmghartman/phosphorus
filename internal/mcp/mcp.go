@@ -45,6 +45,11 @@ type Actions struct {
 	ModelRole  func(role, model string) (int, any)
 	Update     func(action string) (int, any)
 	Files      func(c *Caller, host, op, share string, body map[string]any) (int, any)
+	Copy       func(c *Caller, from, to [3]string, move bool) (int, any)
+	Logs       func(host string, lines int, match string) (int, any)
+	Config     func(host string, p map[string]any) (int, any)
+	UserUI     func(user string, action map[string]any) bool
+	Service    func(host, name, method, path string, headers map[string]string, body string) (int, any)
 	ModelColor string
 }
 
@@ -258,7 +263,7 @@ type Meta struct {
 
 func askerOf(m Meta) (*Asker, error) {
 	if c := m.Caller; c != nil {
-		return &Asker{Name: c.User, UI: func(map[string]any) bool { return false },
+		return &Asker{Name: c.User, UI: func(a map[string]any) bool { return src.Actions.UserUI(c.User, a) },
 			Creds: func(string, string) any { return map[string]any{"done": false, "note": "never over a key"} }}, nil
 	}
 	a := src.Asker(m.Asker)
@@ -330,7 +335,23 @@ type tool struct {
 	schema      map[string]any
 	read        bool
 	project     bool
+	// scope: "" any caller, "key" a user's key only, "ask" an ask in the chat only
+	scope       string
+	destructive bool
+	open        bool
 	run         func(a map[string]any, m Meta) (any, error)
+}
+
+// visible whether a caller sees a tool: a key every tool but the chat's and a
+// project's, the mesh's own model all but a key's, an unkeyed peer only reads
+func visible(t *tool, local bool, caller *Caller) bool {
+	switch {
+	case caller != nil:
+		return !t.project && t.scope != "ask"
+	case local:
+		return t.scope != "key"
+	}
+	return t.read && t.scope == "" && !t.project
 }
 
 var name = map[string]any{"type": "string", "description": "host name, as mesh_hosts lists it"}
@@ -352,6 +373,7 @@ var toolsOnce sync.Once
 
 func buildTools() {
 	views := []string{"home", "files", "status", "about", "chat", "projects", "update"}
+	defer func() { tools = append(tools, agentTools()...); describe() }()
 	tools = []tool{
 		{name: "project_report", project: true,
 			description: "Report your project's state, shown live to the people who set it: the phase you are in, a line or two " +
@@ -479,7 +501,7 @@ func buildTools() {
 				"wait_s": map[string]any{"type": "integer", "description": fmt.Sprintf("seconds to wait for the screen to change, up to %d", waitMaxS), "default": 0}}, "host"),
 			run: func(a map[string]any, m Meta) (any, error) {
 				by := ""
-				if as := src.Asker(m.Asker); as != nil {
+				if as, err := askerOf(m); err == nil {
 					by = as.Name
 				}
 				w := files.JSNumber(a["wait_s"])
@@ -794,7 +816,7 @@ func buildTools() {
 				}
 				return map[string]any{"opened": host + "/" + util.JSString(a["path"])}, nil
 			}},
-		{name: "ask_credentials",
+		{name: "ask_credentials", scope: "ask",
 			description: "For an action that needs a credential: a small box by the asker's chat asks them for it, and what they " +
 				"type goes from their page straight to the action, never to you. update: start a mesh update, its password. " +
 				"Waits up to two minutes for them and says whether the action went through.",
@@ -868,50 +890,18 @@ func buildTools() {
 				return map[string]any{"switching": host}, nil
 			}},
 		{name: "chat_history", read: true,
-			description: "The last lines of the mesh group chat and its channels, oldest first, each with its channel.",
+			description: "",
 			schema: object(map[string]any{
 				"limit":   map[string]any{"type": "integer", "description": fmt.Sprintf("lines, at most %d", chatMax), "default": 20},
-				"channel": map[string]any{"type": "string", "description": "one channel only, mesh for the main one"},
+				"channel": map[string]any{"type": "string", "description": "one channel only: mesh for the main one, or dm:<name>"},
 			}),
 			run: func(a map[string]any, m Meta) (any, error) {
-				want := strings.TrimPrefix(str(a["channel"]), "#")
-				lines := []map[string]any{}
-				for _, m := range src.Chat() {
-					k := str(m["kind"])
-					if (k != "" && k != "model") || util.Truthy(m["dm"]) {
-						continue
-					}
-					ch := str(m["ch"])
-					if ch == "" {
-						ch = "mesh"
-					}
-					if want != "" && ch != want {
-						continue
-					}
-					lines = append(lines, m)
-				}
+				lines := chatRows(m, strings.TrimPrefix(str(a["channel"]), "#"))
 				n := int(math.Max(1, math.Min(chatMax, numOr(a["limit"], 20))))
 				if len(lines) > n {
 					lines = lines[len(lines)-n:]
 				}
-				out := []any{}
-				for _, m := range lines {
-					ch := str(m["ch"])
-					if ch == "" {
-						ch = "mesh"
-					}
-					ts, _ := m["timestamp"].(float64)
-					row := map[string]any{"at": time.UnixMilli(int64(ts)).UTC().Format("2006-01-02T15:04:05.000Z"), "channel": ch, "name": m["name"], "text": m["text"]}
-					if fs, ok := m["files"].([]any); ok {
-						names := []any{}
-						for _, f := range fs {
-							names = append(names, util.Obj(f)["name"])
-						}
-						row["files"] = names
-					}
-					out = append(out, row)
-				}
-				return out, nil
+				return lines, nil
 			}},
 		{name: "send_message",
 			description: "Post as yourself to the mesh group chat, or as a direct message to one person by their chat name, " +
@@ -1049,11 +1039,17 @@ func one(raw any, local bool, caller *Caller) map[string]any {
 		return reply(id, map[string]any{})
 	case method == "tools/list":
 		list := []any{}
-		for _, t := range tools {
-			x := map[string]any{"name": t.name, "description": t.description, "inputSchema": t.schema}
-			if t.read {
-				x["annotations"] = map[string]any{"readOnlyHint": true}
+		for i := range tools {
+			t := &tools[i]
+			if !visible(t, local, caller) {
+				continue
 			}
+			x := map[string]any{"name": t.name, "description": t.description, "inputSchema": t.schema}
+			ann := map[string]any{"readOnlyHint": t.read, "openWorldHint": t.open}
+			if !t.read {
+				ann["destructiveHint"] = t.destructive
+			}
+			x["annotations"] = ann
 			list = append(list, x)
 		}
 		return reply(id, map[string]any{"tools": list})
@@ -1064,7 +1060,7 @@ func one(raw any, local bool, caller *Caller) map[string]any {
 				t = &tools[i]
 			}
 		}
-		if t == nil {
+		if t == nil || !visible(t, local, caller) {
 			return fail(id, -32602, fmt.Sprintf("no tool %s", util.JSString(params["name"])))
 		}
 		args := map[string]any{}
