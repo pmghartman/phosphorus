@@ -40,6 +40,7 @@ import {
   hostsInfo,
   humanSize,
   icon,
+  isMobile,
   jsonPost,
   may,
   name,
@@ -343,7 +344,11 @@ function fmItem(fm, e) {
     row.append(name);
     row.title = `${e.name}\n${e.dir ? 'folder' : humanSize(e.size || 0)}\n${fmDate(e.mtime)}`;
   }
-  row.addEventListener('click', (ev) => fmClick(fm, e.name, ev));
+  row.addEventListener('click', (ev) => {
+    fmClick(fm, e.name, ev);
+    // a phone's tap opens, as its launcher's does
+    if (isMobile() && !ev.ctrlKey && !ev.metaKey && !ev.shiftKey) fmOpen(fm, e);
+  });
   row.addEventListener('dblclick', () => fmOpen(fm, e));
   row.addEventListener('dragstart', (ev) => {
     if (!fm.sel.has(e.name)) { fm.sel = new Set([e.name]); fmPaintSel(fm); }

@@ -4282,6 +4282,7 @@ function dkDesktop() {
   const hosts = el('span', 'dk-hosts');
   const desk = el('div', 'dk-desk');
   const bar = dkBar(tasks, hosts);
+  bar.prepend(dkHomeBtn());
   const ctl = dkControlTray();
   bar.insertBefore(dkBellTray(), dkTray);
   bar.append(ctl);
@@ -4336,6 +4337,21 @@ function dkBar(...before) {
   dkClock();
   return bar;
 }
+
+// a phone's way back to its icons: every window down into the bar
+function dkHomeBtn() {
+  const b = Object.assign(el('button', 'dk-home'), { type: 'button', title: 'home', ariaLabel: 'home' });
+  b.appendChild(dkGlyph(DK_UI.grid));
+  b.addEventListener('click', () => {
+    for (const w of dk.wins.values()) if (!w.node.hidden && !w.leaving) dkMin(w);
+  });
+  return b;
+}
+
+// a phone's windows always filling the screen
+mobileQuery.addEventListener('change', () => {
+  if (isMobile()) for (const w of dk.wins.values()) dkSnap(w, 'max');
+});
 
 function dkArt() {
   dkWallPaint();
@@ -4450,6 +4466,8 @@ function dkIcon(kind, label, sub, open, icon = '') {
   if (sub) b.appendChild(el('span', 'dk-sub', sub));
   b.dataset.id = `${kind}\n${label}\n${sub}`;
   b.addEventListener('dblclick', open);
+  // a phone's icons a grid that scrolls, a tap opening
+  b.addEventListener('click', () => { if (isMobile()) open(); });
   b.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); open(); } });
   b.addEventListener('pointerdown', (e) => dkGrab(e, b, open));
   return b;
@@ -4589,7 +4607,7 @@ function dkPaintSel() {
 }
 
 function dkGrab(e, b, open) {
-  if (e.button !== 0) return;
+  if (e.button !== 0 || isMobile()) return;
   e.preventDefault();
   dkFocus(null);
   b.focus({ preventScroll: true });
@@ -4709,7 +4727,7 @@ function dkDrop(moving, dc, dr) {
 // a drag on bare desk: a band selecting every icon it touches, ctrl adding
 function dkBand(icons) {
   icons.addEventListener('pointerdown', (e) => {
-    if (e.target !== icons || e.button !== 0) return;
+    if (e.target !== icons || e.button !== 0 || isMobile()) return;
     e.preventDefault();
     dkFocus(null);
     document.activeElement?.blur?.();
@@ -4961,7 +4979,7 @@ function dkSnap(w, zone) {
 // pointer where it was held, a dashed outline showing the snap to come
 function dkMove(w, head) {
   head.addEventListener('pointerdown', (e) => {
-    if (e.button !== 0 || e.target.closest('button')) return;
+    if (e.button !== 0 || e.target.closest('button') || isMobile()) return;
     e.preventDefault();
     head.setPointerCapture(e.pointerId);
     const { wins } = dk.desk;
@@ -5098,6 +5116,7 @@ function dkRestore(w) {
 }
 
 function dkMax(w) {
+  if (isMobile()) return;
   dkTween(w);
   dkSnap(w, w.snap === 'max' ? '' : 'max');
   dkFocus(w);
@@ -6554,6 +6573,7 @@ export {
   hostsInfo,
   humanSize,
   icon,
+  isMobile,
   jsonPost,
   lines,
   may,
