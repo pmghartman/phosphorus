@@ -2197,6 +2197,8 @@ input, textarea { caret-color: var(--accent); }
 .dk-note-list { list-style: none; margin: 0; padding: 0 0 0.3rem; max-height: min(60vh, 26rem); overflow-y: auto; }
 .dk-note { padding: 0.4rem 0.7rem; border-left: 2px solid transparent; }
 .dk-note.new { border-left-color: var(--accent); }
+.dk-note.go { cursor: pointer; }
+.dk-note.go:hover .dk-note-t { color: var(--accent); }
 .dk-note + .dk-note { border-top: 1px solid var(--border); }
 .dk-note-top { display: flex; justify-content: space-between; gap: 0.6rem; }
 .dk-note-t { color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

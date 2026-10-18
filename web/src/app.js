@@ -1650,8 +1650,9 @@ chatBell.addEventListener('click', async () => {
 const chatReading = (c) => !away() && c === conv && (!dk.desk || deskApps.has('chat'));
 
 // g groups a burst into one bell entry: a channel's, a person's, an agent's
-function notifyChat(m, invite = false, g = null) {
-  if (!g?.seen) noteAdd(m.name, m.text, g);
+// c the conversation its entry opens
+function notifyChat(m, invite = false, g = null, c = '') {
+  if (!g?.seen) noteAdd(m.name, m.text, g, c ? { conv: c } : null);
   if ((!notifyOn && !invite) || !away()) return;
   notifyOs(m.name, m.text);
 }
@@ -1671,7 +1672,7 @@ let seenHosts = null;
 let seenLock = false;
 function notifyMesh(state) {
   const now = new Set((state.tailnet || []).filter((d) => d.phosphorus).map((d) => d.name));
-  const say = (t) => { noteAdd(t, ''); if (notifyOn) notifyOs(t, ''); };
+  const say = (t) => { noteAdd(t, '', null, { view: 'status' }); if (notifyOn) notifyOs(t, ''); };
   if (seenHosts) {
     for (const h of seenHosts) if (!now.has(h)) say(`${h} offline`);
     for (const h of now) if (!seenHosts.has(h)) say(`${h} online`);
@@ -1687,20 +1688,28 @@ const NOTES_KEY = 'phosphorus-notes';
 const NOTES_MAX = 50;
 let notes = (() => { try { const v = JSON.parse(localStorage.getItem(NOTES_KEY)); return Array.isArray(v) ? v : []; } catch { return []; } })();
 
-function noteAdd(title, body, g = null) {
+// go where the entry leads when clicked, a conversation or a view
+function noteAdd(title, body, g = null, go = null) {
   // a burst still unread folded into its one entry, raised to the top
   const at = g?.key ? notes.findIndex((n) => n.g === g.key && !n.read) : -1;
   if (at >= 0) {
     const n = notes.splice(at, 1)[0];
     n.c = (n.c || 1) + 1;
-    Object.assign(n, { t: `${g.label} · ${n.c} new`, b: String(g.line || body || ''), at: Date.now() });
+    Object.assign(n, { t: `${g.label} · ${n.c} new`, b: String(g.line || body || ''), at: Date.now() }, go ? { go } : {});
     notes.unshift(n);
     notesSave();
     return;
   }
-  notes.unshift({ t: String(title || ''), b: String(body || ''), at: Date.now(), read: false, ...(g?.key ? { g: g.key } : {}) });
+  notes.unshift({ t: String(title || ''), b: String(body || ''), at: Date.now(), read: false, ...(g?.key ? { g: g.key } : {}), ...(go ? { go } : {}) });
   notes = notes.slice(0, NOTES_MAX);
   notesSave();
+}
+
+function noteGo(go) {
+  if (go?.conv) openConv(go.conv);
+  else if (go?.view === 'status') dkOpenApp('status');
+  else if (go?.view === 'update') { if (updateModal.hidden) openUpdateModal(); }
+  else if (go?.view === 'control') dk.ctl?.show(true);
 }
 
 function notesSave() {
@@ -1728,7 +1737,8 @@ function dkBellTray(anchor) {
     head.append(el('span', '', 'notifications'), clear);
     const list = el('ul', 'dk-note-list');
     list.replaceChildren(...(notes.length ? notes.map((n) => {
-      const li = el('li', `dk-note${n.read ? '' : ' new'}`);
+      const li = el('li', `dk-note${n.read ? '' : ' new'}${n.go ? ' go' : ''}`);
+      if (n.go) li.addEventListener('click', () => { show(false); noteGo(n.go); });
       const top = el('div', 'dk-note-top');
       top.append(el('span', 'dk-note-t', n.t), el('span', 'dk-note-at', ago2(n.at)));
       li.append(top);
@@ -1849,7 +1859,7 @@ function paintUpdates() {
   const say = (k, title) => {
     if (!updates[k] || noted[k] === updates[k]) return;
     noted[k] = updates[k];
-    noteAdd(title, `v${updates[k]}`);
+    noteAdd(title, `v${updates[k]}`, null, { view: k === 'mesh' ? 'update' : 'control' });
     if (notifyOn) notifyOs(title, `v${updates[k]}`);
   };
   say('mesh', 'mesh update');
@@ -1877,10 +1887,10 @@ async function checkUpdates() {
 }
 
 async function clientUpdate() {
-  if (!updates.client) { await checkUpdates(); if (!updates.client) noteAdd('client current', updates.clientNow ? `v${updates.clientNow}` : ''); return; }
+  if (!updates.client) { await checkUpdates(); if (!updates.client) noteAdd('client current', updates.clientNow ? `v${updates.clientNow}` : '', null, { view: 'control' }); return; }
   updates.clientBusy = true;
   paintUpdates();
-  try { await clientInvoke('client_update'); } catch (e) { noteAdd('client update failed', String(e)); }
+  try { await clientInvoke('client_update'); } catch (e) { noteAdd('client update failed', String(e), null, { view: 'control' }); }
   updates.clientBusy = false;
   paintUpdates();
 }
@@ -2636,12 +2646,12 @@ function takeLine(m, live) {
   if (MARKS.includes(m.kind)) {
     const t = fold(m);
     if (t && live && convOf(t) === conv) redrawLine(t);
-    if (t && live && m.kind === 'react' && t.name === name && m.name !== name && m.on !== false) notifyChat({ name: m.name, text: `reacted ${m.emoji}` }, false, { key: 'reactions', label: 'reactions', line: `${m.name} ${m.emoji}` });
+    if (t && live && m.kind === 'react' && t.name === name && m.name !== name && m.on !== false) notifyChat({ name: m.name, text: `reacted ${m.emoji}` }, false, { key: 'reactions', label: 'reactions', line: `${m.name} ${m.emoji}` }, convOf(t));
     return;
   }
   // an agent's invite: asked, not kept in its dm
   if (m.kind === 'show' && isAgent(m.name)) {
-    if (live && isInvite(m)) { showInvite(m); notifyChat({ name: `${m.name} invited you`, text: `to work on ${m.file.label} together` }, true); }
+    if (live && isInvite(m)) { showInvite(m); notifyChat({ name: `${m.name} invited you`, text: `to work on ${m.file.label} together` }, true, null, m.name); }
     return;
   }
   if (m.dm && isAgent(m.name)) { agentSaid(m, live); return; }
@@ -2657,7 +2667,7 @@ function takeLine(m, live) {
     showInvite(m);
     noteNews(c);
     bumpUnread();
-    notifyChat({ name: `${m.name} invited you`, text: `to work on ${m.file.label} together` }, true);
+    notifyChat({ name: `${m.name} invited you`, text: `to work on ${m.file.label} together` }, true, null, c);
     return;
   }
   if (m.files && c === conv) paintFiles();
@@ -2669,7 +2679,7 @@ function takeLine(m, live) {
   // a mention its own entry; the rest by channel or person, none for the one being read
   const where = m.dm ? m.name : `#${m.ch || 'mesh'}`;
   notifyChat({ name: m.dm ? `${m.name} (direct)` : atMe ? `${m.name} mentioned you` : m.ch ? `${m.name} in #${m.ch}` : m.name, text }, false,
-    atMe ? null : { key: m.dm ? `dm:${m.name}` : where, label: where, line: m.dm ? text : `${m.name}: ${text}`, seen: chatReading(c) });
+    atMe ? null : { key: m.dm ? `dm:${m.name}` : where, label: where, line: m.dm ? text : `${m.name}: ${text}`, seen: chatReading(c) }, c);
 }
 
 // own lines drawn at once, swapped in place for the host's echo
@@ -2707,7 +2717,7 @@ function renderHistory(messages, closed = {}) {
   for (const m of messages) takeLine(m, false);
   // one sent while this browser was away, asked now
   const missed = messages.filter(isInvite).pop();
-  if (missed) { showInvite(missed); notifyChat({ name: `${missed.name} invited you`, text: `to work on ${missed.file.label} together` }, true); }
+  if (missed) { showInvite(missed); notifyChat({ name: `${missed.name} invited you`, text: `to work on ${missed.file.label} together` }, true, null, convOf(missed)); }
   // channels closed while this browser was away, unless opened again since
   const gone = Object.keys(closed).filter((ch) => !convLines.get(`ch:${ch}`)?.length);
   if (gone.some((ch) => myChannels.includes(ch))) { myChannels = myChannels.filter((ch) => !gone.includes(ch)); saveChannels(); }
@@ -2726,7 +2736,7 @@ function agentSaid(m, live) {
   if (!live) return;
   noteNews(m.name);
   bumpUnread();
-  notifyChat({ name: m.name, text: m.text }, false, { key: `dm:${m.name}`, label: m.name, line: m.text, seen: chatReading(m.name) });
+  notifyChat({ name: m.name, text: m.text }, false, { key: `dm:${m.name}`, label: m.name, line: m.text, seen: chatReading(m.name) }, m.name);
 }
 
 // --- the agents' dms -------------------------------------------------------------
@@ -2824,7 +2834,7 @@ function agentAnswered(msg) {
   was?.remove();
   noteNews(w.agent);
   bumpUnread();
-  notifyChat({ name: by.by || w.agent, text: said }, false, { key: `dm:${w.agent}`, label: w.agent, line: said, seen: chatReading(w.agent) });
+  notifyChat({ name: by.by || w.agent, text: said }, false, { key: `dm:${w.agent}`, label: w.agent, line: said, seen: chatReading(w.agent) }, w.agent);
 }
 
 // --- the socket -------------------------------------------------------------------
