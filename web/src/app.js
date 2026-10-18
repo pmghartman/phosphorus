@@ -1646,7 +1646,8 @@ chatBell.addEventListener('click', async () => {
 
 // silent, one live popup replaced by the next, a burst never stacking
 // an invite to a file past the bell: asked of this person by name
-function notifyChat(m, invite = false) {
+function notifyChat(m, invite = false, kept = false) {
+  if (invite || kept) noteAdd(m.name, m.text);
   if ((!notifyOn && !invite) || !away()) return;
   notifyOs(m.name, m.text);
 }
@@ -1666,13 +1667,130 @@ let seenHosts = null;
 let seenLock = false;
 function notifyMesh(state) {
   const now = new Set((state.tailnet || []).filter((d) => d.phosphorus).map((d) => d.name));
-  if (notifyOn && seenHosts) {
-    for (const h of seenHosts) if (!now.has(h)) notifyOs(`${h} offline`, '');
-    for (const h of now) if (!seenHosts.has(h)) notifyOs(`${h} online`, '');
-    if (seenLock && !state.lock?.initiator) notifyOs('update done', '');
+  const say = (t) => { noteAdd(t, ''); if (notifyOn) notifyOs(t, ''); };
+  if (seenHosts) {
+    for (const h of seenHosts) if (!now.has(h)) say(`${h} offline`);
+    for (const h of now) if (!seenHosts.has(h)) say(`${h} online`);
+    if (seenLock && !state.lock?.initiator) say('update done');
   }
   seenHosts = now;
   seenLock = !!state.lock?.initiator;
+}
+
+// --- the notification center: what happened mesh-wide, newest first, kept per browser
+
+const NOTES_KEY = 'phosphorus-notes';
+const NOTES_MAX = 50;
+let notes = (() => { try { const v = JSON.parse(localStorage.getItem(NOTES_KEY)); return Array.isArray(v) ? v : []; } catch { return []; } })();
+
+function noteAdd(title, body) {
+  notes.unshift({ t: String(title || ''), b: String(body || ''), at: Date.now(), read: false });
+  notes = notes.slice(0, NOTES_MAX);
+  notesSave();
+}
+
+function notesSave() {
+  try { localStorage.setItem(NOTES_KEY, JSON.stringify(notes)); } catch {}
+  dk.bell?.paint();
+}
+
+const ago2 = (ms) => {
+  const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
+  return s < 60 ? 'now' : s < 3600 ? `${Math.floor(s / 60)}m` : s < 86400 ? `${Math.floor(s / 3600)}h` : `${Math.floor(s / 86400)}d`;
+};
+
+function dkBellTray(anchor) {
+  const wrap = el('div', 'dk-tray-wrap');
+  const b = Object.assign(el('button', 'dk-tray dk-bell'), { type: 'button', title: 'notifications', ariaLabel: 'notifications' });
+  b.setAttribute('aria-expanded', 'false');
+  b.appendChild(dkGlyph(DK_GLYPHS.bell));
+  const pop = Object.assign(el('div', 'dk-note-pop dk-pop'), { hidden: true });
+  wrap.append(b, pop);
+  dkAnchor(pop, b, { fill: 280 });
+  const draw = () => {
+    const head = el('div', 'dk-note-head');
+    const clear = Object.assign(el('button', 'dk-note-clear', 'clear'), { type: 'button', hidden: !notes.length });
+    clear.addEventListener('click', () => { notes = []; notesSave(); draw(); });
+    head.append(el('span', '', 'notifications'), clear);
+    const list = el('ul', 'dk-note-list');
+    list.replaceChildren(...(notes.length ? notes.map((n) => {
+      const li = el('li', `dk-note${n.read ? '' : ' new'}`);
+      const top = el('div', 'dk-note-top');
+      top.append(el('span', 'dk-note-t', n.t), el('span', 'dk-note-at', ago2(n.at)));
+      li.append(top);
+      if (n.b) li.append(el('div', 'dk-note-b', n.b));
+      return li;
+    }) : [el('li', 'dk-note-none', 'nothing yet')]));
+    pop.replaceChildren(head, list);
+  };
+  const show = (on) => {
+    if (!on && pop.hidden) return;
+    if (on) dkPopsClose('bell');
+    pop.hidden = !on;
+    b.setAttribute('aria-expanded', String(on));
+    if (on) draw();
+    // seen once it closes, so the open list still marks what was new
+    if (!on && notes.some((n) => !n.read)) { for (const n of notes) n.read = true; notesSave(); }
+  };
+  b.addEventListener('click', () => show(pop.hidden));
+  document.addEventListener('pointerdown', (e) => { if (!pop.hidden && !wrap.contains(e.target)) show(false); }, true);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !pop.hidden) show(false); });
+  const paint = () => {
+    const n = notes.filter((x) => !x.read).length;
+    b.classList.toggle('has-new', n > 0);
+    b.title = n ? `notifications (${n} new)` : 'notifications';
+    if (!pop.hidden) draw();
+  };
+  dk.bell = { show, paint };
+  paint();
+  return wrap;
+}
+
+// --- the control panel: the mesh, the update, the theme, one button for all
+
+function dkControlTray() {
+  const wrap = el('div', 'dk-tray-wrap dk-ctl');
+  const b = Object.assign(el('button', 'dk-tray'), { type: 'button', title: 'control panel', ariaLabel: 'control panel' });
+  b.setAttribute('aria-expanded', 'false');
+  b.appendChild(dkGlyph(DK_GLYPHS.sliders));
+  const pop = Object.assign(el('div', 'dk-ctl-pop dk-pop'), { hidden: true });
+  wrap.append(b, pop);
+  dkAnchor(pop, b, { fill: 260 });
+  const tile = (glyph, label, sub, act) => {
+    const t = Object.assign(el('button', 'dk-ctl-tile'), { type: 'button' });
+    t.append(dkGlyph(glyph), el('span', 'dk-ctl-label', label), el('span', 'dk-ctl-sub', sub));
+    t.addEventListener('click', () => { show(false); act(); });
+    return t;
+  };
+  const draw = () => {
+    const n = phosphorusHosts().length;
+    const tiles = el('div', 'dk-ctl-tiles');
+    tiles.append(tile(DK_GLYPHS.mesh, 'mesh', `${n} host${n === 1 ? '' : 's'}`, () => dk.meshTray?.show(true)));
+    if (acct?.admin) {
+      const busy = meshLock ? (meshLock.paused ? 'paused' : 'running') : topUpdate.hasAttribute('data-news') ? 'news' : 'current';
+      tiles.append(tile(DK_GLYPHS.update, 'update', busy, () => { dkPopsClose('update'); openUpdateModal(); }));
+    }
+    if (window.__phosphorusClient) tiles.append(tile(DK_GLYPHS.reload, 'refresh', 'page', () => location.reload()));
+    const theme = el('div', 'dk-ctl-theme');
+    for (const t of THEMES) {
+      const tb = Object.assign(el('button', `dk-ctl-seg${currentTheme() === t ? ' on' : ''}`, t), { type: 'button' });
+      tb.addEventListener('click', () => { setTheme(t); draw(); });
+      theme.append(tb);
+    }
+    pop.replaceChildren(el('div', 'dk-ctl-head', 'control'), tiles, theme);
+  };
+  const show = (on) => {
+    if (!on && pop.hidden) return;
+    if (on) dkPopsClose('ctl');
+    pop.hidden = !on;
+    b.setAttribute('aria-expanded', String(on));
+    if (on) draw();
+  };
+  b.addEventListener('click', () => show(pop.hidden));
+  document.addEventListener('pointerdown', (e) => { if (!pop.hidden && !wrap.contains(e.target)) show(false); }, true);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !pop.hidden) show(false); });
+  dk.ctl = { show, btn: b, wrap };
+  return wrap;
 }
 
 // the log following its newest line, eased down rather than snapped, a jump
@@ -2454,7 +2572,7 @@ function takeLine(m, live) {
   bumpUnread();
   const text = m.text || (m.files ? `shared ${m.files.map((f) => f.name).join(', ')}` : '');
   const atMe = name && new RegExp(`@${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(m.text || '');
-  notifyChat({ name: m.dm ? `${m.name} (direct)` : atMe ? `${m.name} mentioned you` : m.ch ? `${m.name} in #${m.ch}` : m.name, text });
+  notifyChat({ name: m.dm ? `${m.name} (direct)` : atMe ? `${m.name} mentioned you` : m.ch ? `${m.name} in #${m.ch}` : m.name, text }, false, !!(m.dm || atMe));
 }
 
 // own lines drawn at once, swapped in place for the host's echo
@@ -3703,7 +3821,7 @@ const updateWrap = topUpdate.parentElement;
 let updateWasOpen = false;
 document.addEventListener('pointerdown', () => { updateWasOpen = !updateModal.hidden; }, true);
 document.addEventListener('click', (e) => {
-  if (updateWasOpen && !updateModal.hidden && !updateWrap.contains(e.target) && !e.target.closest?.('.modal, .keybar')) closeUpdateModal();
+  if (updateWasOpen && !updateModal.hidden && !updateWrap.contains(e.target) && !updateModal.contains(e.target) && !e.target.closest?.('.modal, .keybar, .dk-ctl-pop')) closeUpdateModal();
 });
 
 new MutationObserver(() => topUpdate.setAttribute('aria-expanded', String(!updateModal.hidden))).observe(updateModal, { attributes: true, attributeFilter: ['hidden'] });
@@ -4043,7 +4161,12 @@ function dkDesktop() {
   const hosts = el('span', 'dk-hosts');
   const desk = el('div', 'dk-desk');
   const bar = dkBar(tasks, hosts, dkProfileTray());
-  bar.insertBefore(dkMeshTray(), dkTray);
+  const ctl = dkControlTray();
+  bar.insertBefore(dkBellTray(), dkTray);
+  bar.insertBefore(ctl, dkTray);
+  // the mesh and update panes opened from the panel, their own buttons out of sight
+  ctl.append(dkMeshTray(dk.ctl.btn), dkTray, updateModal);
+  dkAnchor(updateModal, dk.ctl.btn);
   desk.append(dkArt(), icons, wins, bar);
   dkView.replaceChildren(desk);
   dkBand(icons);
@@ -4088,7 +4211,6 @@ function dkBar(...before) {
   bar.append(...before.slice(0, 2), dkTray, dk.clock, ...before.slice(2));
   dkTray.querySelector('.update-wrap').hidden = !acct?.admin;
   updateModal.classList.add('dk-pop');
-  dkAnchor(updateModal, topUpdate);
   if (!acct?.admin) closeUpdateModal();
   dkClock();
   return bar;
@@ -4120,6 +4242,10 @@ function dkLogout() {
 }
 
 const DK_GLYPHS = {
+  bell: 'M8 2.2a3.1 3.1 0 0 0-3.1 3.1v2.2L3.4 10.2h9.2L11.1 7.5V5.3A3.1 3.1 0 0 0 8 2.2zM6.6 12.6a1.4 1.4 0 0 0 2.8 0',
+  sliders: 'M2.5 4.5h6M11.5 4.5h2M2.5 11.5h2M7.5 11.5h6M10 3v3M6 10v3',
+  update: 'M13.5 8a5.5 5.5 0 1 1-1.6-3.9M12.5 1.5v3h-3',
+  reload: 'M13.5 8a5.5 5.5 0 1 1-1.8-4.1M13.5 1.5v3.5h-3.5',
   doc: ICONS.file,
   app: 'M2.5 2.5h11v11h-11zM2.5 5.5h11M4.25 4h.01M5.75 4h.01M6 8.5l-1.5 1.5L6 11.5M10 8.5l1.5 1.5-1.5 1.5',
   terminal: 'M2 3h12v10H2zM4.5 6.5l2 1.5-2 1.5M8 10h3.5',
@@ -5609,7 +5735,7 @@ function dkPressed(a) {
     else if (DK_VIEWS[a.view]) dkOpenApp(DK_VIEWS[a.view]);
     else if (a.view === 'files' && dk.desk) filesWin();
     else if (a.view === 'update' && updateModal.hidden) openUpdateModal();
-  } else if (a.kind === 'notify') notifyOs(String(a.title || ''), String(a.body || ''));
+  } else if (a.kind === 'notify') { noteAdd(a.title, a.body); notifyOs(String(a.title || ''), String(a.body || '')); }
   else if (a.kind === 'creds') credsAsk(a);
   else if (a.kind === 'creds-close') credsClose(a.id);
 }
@@ -5674,6 +5800,8 @@ const DK_POP_GAP = 6;
 // one task bar popup open at a time, every other closed as one opens
 function dkPopsClose(keep) {
   if (keep !== 'mesh') dk.meshTray?.show(false);
+  if (keep !== 'bell') dk.bell?.show(false);
+  if (keep !== 'ctl') dk.ctl?.show(false);
   if (keep !== 'menu') dkMenuEl.hidden = true;
   if (keep !== 'update' && !updateModal.hidden) closeUpdateModal();
   if (keep !== 'theme') closeMenus();
@@ -5731,7 +5859,7 @@ function dkAnchor(pop, btn, { fill = 0, tall = 0 } = {}) {
 
 // --- the mesh: the tray's icon, its graph and pings in a popup above it
 
-function dkMeshTray() {
+function dkMeshTray(anchor) {
   const wrap = el('div', 'dk-tray-wrap');
   const b = Object.assign(el('button', 'dk-tray'), { type: 'button', title: 'mesh', ariaLabel: 'mesh' });
   b.setAttribute('aria-expanded', 'false');
@@ -5740,7 +5868,7 @@ function dkMeshTray() {
   wrap.append(b, pop);
   // a column up the screen's right edge, the button at its bottom left corner
   const size = meshUi.size || { w: 320, h: 540 };
-  dkAnchor(pop, b, { fill: size.w, tall: size.h });
+  dkAnchor(pop, anchor || b, { fill: size.w, tall: size.h });
   // its top left corner dragged for a size, the popup pinned bottom right
   const grip = Object.assign(el('span', 'dk-mesh-grip'), { title: 'resize' });
   pop.append(grip);
@@ -6128,9 +6256,10 @@ function dkForget(host) {
 async function claudeConnect() {
   const r = await acctCall('/api/me/mcp-key', {});
   if (!r.ok) { openConfirm(r.error || 'failed', { title: 'claude', hideCancel: true, actionLabel: 'ok', onAction: closeUpdateModal }); return; }
-  let msg;
-  try { msg = await clientInvoke('claude_setup', { key: r.key }); } catch (e) { msg = `failed: ${e}`; }
-  openConfirm(msg, { title: 'claude', hideCancel: true, actionLabel: 'ok', onAction: closeUpdateModal });
+  try {
+    await clientInvoke('claude_setup', { key: r.key });
+    noteAdd('claude connected', 'on its next start');
+  } catch (e) { openConfirm(`failed: ${e}`, { title: 'claude', hideCancel: true, actionLabel: 'ok', onAction: closeUpdateModal }); }
 }
 
 // the task bar's profile: a menu of settings, users and log out
@@ -6151,7 +6280,6 @@ function dkProfileTray() {
     dkMenu(0, 0, [
       ['settings', dkProfileWin, true],
       ...(acct?.admin ? [['users', dkUsersWin, true]] : []),
-      ...(window.__phosphorusClient ? [['refresh page', () => location.reload(), true]] : []),
       ...(clientInvoke && !acct?.boot ? [['connect claude', claudeConnect, true]] : []),
       null,
       ['log out', acctLogout, true, 'danger'],
