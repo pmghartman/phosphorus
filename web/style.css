@@ -2129,6 +2129,8 @@ input, textarea { caret-color: var(--accent); }
 .dk-bar .update-wrap[hidden] { display: none; }
 .dk-bar .dk-profile .dk-crown { stroke: var(--sand); }
 .dk-bar .dk-profile .ic { overflow: visible; }
+.dk-profile:hover .dk-clock, .dk-profile[aria-expanded="true"] .dk-clock { color: inherit; }
+.dk-bar .dk-profile:hover .dk-crown, .dk-bar .dk-profile[aria-expanded="true"] .dk-crown { stroke: currentColor; }
 
 /* a title on a card's top edge: its lower half the card's own fill over the
    line, its upper half see through, never a box over what lies outside */
