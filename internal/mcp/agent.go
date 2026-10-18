@@ -213,8 +213,8 @@ func agentTools() []tool {
 				"checked before it's written and live within seconds. fields only change the keys given; a blank value drops one. " +
 				"Web: port (required), scheme http|https, mode path|subdomain, base_path, public true. Game: type game, port, start and stop commands. Admins only.",
 			schema: object(map[string]any{"host": name,
-				"name":   map[string]any{"type": "string", "description": "the service, lowercase letters, digits and -"},
-				"fields": map[string]any{"type": "object", "description": "keys to set, e.g. {\"port\":\"8096\",\"public\":\"true\"}", "additionalProperties": map[string]any{"type": "string"}},
+				"name":    map[string]any{"type": "string", "description": "the service, lowercase letters, digits and -"},
+				"fields":  map[string]any{"type": "object", "description": "keys to set, e.g. {\"port\":\"8096\",\"public\":\"true\"}", "additionalProperties": map[string]any{"type": "string"}},
 				"remove":  map[string]any{"type": "boolean", "default": false},
 				"dry_run": map[string]any{"type": "boolean", "description": "return the diff alone, nothing written", "default": false}}, "host", "name"),
 			run: func(a map[string]any, m Meta) (any, error) {
