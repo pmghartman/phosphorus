@@ -264,7 +264,7 @@ func appHandler(w http.ResponseWriter, r *http.Request) {
 			if ws < 1 {
 				ws = 60
 			}
-			out, err := term.Type(str(p["by"]), str(p["id"]), str(p["text"]), ws)
+			out, err := term.Type(str(p["by"]), str(p["id"]), str(p["text"]), ws, p["run"] == true)
 			if err != nil {
 				return 500, map[string]any{"error": err.Error()}
 			}

@@ -258,16 +258,16 @@ func watchScreens(host string, waitS int, by string) (any, error) {
 	return first, nil
 }
 
-func typeTerminal(host, text, id string, waitS int, by string) (any, error) {
+func typeTerminal(host, text, id string, waitS int, by string, run bool) (any, error) {
 	if host == util.Str(src.Self()["host"]) {
-		return term.Type(by, id, text, waitS)
+		return term.Type(by, id, text, waitS, run)
 	}
 	ip := src.PeerIPs()[host]
 	if ip == "" {
 		return nil, fmt.Errorf("%s isn't a phosphorus host answering on the mesh", host)
 	}
 	r, err := util.RequestJSON(util.Req{Host: ip, Port: util.FrontendPort, Method: "POST", Path: "/api/terms/type",
-		Body: map[string]any{"by": by, "id": id, "text": text, "wait_s": waitS}, Timeout: time.Duration(waitS+15) * time.Second})
+		Body: map[string]any{"by": by, "id": id, "text": text, "wait_s": waitS, "run": run}, Timeout: time.Duration(waitS+15) * time.Second})
 	if err != nil {
 		return nil, err
 	}
@@ -635,7 +635,7 @@ func buildTools() {
 					return nil, err
 				}
 				w := int(math.Min(waitMaxS, math.Max(1, numOr(a["wait_s"], 60))))
-				return typeTerminal(host, str(a["text"]), str(a["id"]), w, as.Name)
+				return typeTerminal(host, str(a["text"]), str(a["id"]), w, as.Name, false)
 			}},
 		{name: "files_list", read: true,
 			description: "Files shared to the mesh. No host: every host's shares and perms at once. " +
