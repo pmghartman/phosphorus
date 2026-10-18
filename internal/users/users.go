@@ -726,6 +726,7 @@ func SetVault(s *Session, p map[string]any) R {
 		return errR(413, "too many saved logins")
 	}
 	sysfs.Write(vaultFile(s.User), Seal(s.Key, text))
+	resealMCP(s, vault)
 	return R{Status: 200, Body: map[string]any{"vault": vault}}
 }
 
@@ -855,6 +856,8 @@ func OpenGrant(token string) map[string]any {
 func mcpFile(n string) string { return "home/" + n + "/mcp.json" }
 
 // MCPKey a fresh key for the session's user, a year long
+// the user's saved host logins ride along, sealed under a secret held only in
+// the key, its copy under the user's own key so a vault change reseals them
 func MCPKey(s *Session, _ map[string]any) R {
 	if s == nil || s.Boot {
 		return errR(403, "log in as a user")
@@ -863,10 +866,81 @@ func MCPKey(s *Session, _ map[string]any) R {
 	if lu == nil {
 		return errR(403, "no such user")
 	}
+	v, ok := vaultOf(s)
+	if !ok {
+		return errR(503, "this host hasn't your saved logins yet, try again shortly")
+	}
 	g := randHex(8)
-	sysfs.Write(mcpFile(s.User), map[string]string{"g": g})
-	o := map[string]any{"u": s.User, "p": lu.PwAt, "m": g}
-	return R{Status: 200, Body: map[string]any{"key": SealGrant(o, 365*24*3600*1000), "user": s.User}}
+	k := make([]byte, 32)
+	rand.Read(k)
+	logins, _ := cleanVault(v)["hosts"].(map[string]any)
+	hosts := []string{}
+	for h := range logins {
+		hosts = append(hosts, h)
+	}
+	sort.Strings(hosts)
+	sysfs.Write(mcpFile(s.User), map[string]any{"g": g, "kk": Seal(s.Key, hex.EncodeToString(k)), "c": Seal(k, string(util.Marshal(logins)))})
+	o := map[string]any{"u": s.User, "p": lu.PwAt, "m": g, "k": hex.EncodeToString(k)}
+	return R{Status: 200, Body: map[string]any{"key": SealGrant(o, 365*24*3600*1000), "user": s.User, "hosts": hosts}}
+}
+
+// mcpRecord the user's key record, its boxes typed
+func mcpRecord(u string) (g string, kk, c *Box) {
+	var rec struct {
+		G  string `json:"g"`
+		KK *Box   `json:"kk"`
+		C  *Box   `json:"c"`
+	}
+	if !sysfs.ReadInto(mcpFile(u), &rec) {
+		return "", nil, nil
+	}
+	return rec.G, rec.KK, rec.C
+}
+
+// resealMCP the key's host logins kept in step with a vault just saved
+func resealMCP(s *Session, vault map[string]any) {
+	g, kk, _ := mcpRecord(s.User)
+	if kk == nil {
+		return
+	}
+	kh, ok := Open(s.Key, *kk)
+	k, err := hex.DecodeString(kh)
+	if !ok || err != nil || len(k) != 32 {
+		return
+	}
+	sysfs.Write(mcpFile(s.User), map[string]any{"g": g, "kk": kk, "c": Seal(k, string(util.Marshal(vault["hosts"])))})
+}
+
+// MCPLogin the host login a key carries, ok false when it carries none
+func MCPLogin(key, host string) (user, pass string, ok bool) {
+	l, _ := MCPLogins(key)[host].(map[string]any)
+	user, _ = l["user"].(string)
+	pass, _ = l["pass"].(string)
+	return user, pass, user != ""
+}
+
+// MCPLogins every host login a key carries, by host
+func MCPLogins(key string) map[string]any {
+	o := OpenGrant(key)
+	if o == nil {
+		return nil
+	}
+	kh, _ := o["k"].(string)
+	k, err := hex.DecodeString(kh)
+	if err != nil || len(k) != 32 {
+		return nil
+	}
+	u, _ := o["u"].(string)
+	g, _, c := mcpRecord(u)
+	if c == nil || g != o["m"] {
+		return nil
+	}
+	text, ok := Open(k, *c)
+	var out map[string]any
+	if !ok || json.Unmarshal([]byte(text), &out) != nil {
+		return nil
+	}
+	return out
 }
 
 // MCPRevoke every key of the session's user void
@@ -908,8 +982,7 @@ func CheckMCPKey(key string) (*Session, string) {
 	case o["p"] != lu.PwAt:
 		return nil, "voided by a password change, make a new one"
 	}
-	var cur map[string]string
-	if !sysfs.ReadInto(mcpFile(u), &cur) || cur["g"] != g {
+	if cur, _, _ := mcpRecord(u); cur == "" || cur != g {
 		return nil, "revoked or replaced by a newer key"
 	}
 	return &Session{User: u, Admin: lu.Admin}, ""
