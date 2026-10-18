@@ -2710,7 +2710,7 @@ function settleSending(g, m, c) {
 
 // an invite this browser hasn't answered, still fresh
 const INVITE_MS = 15 * 60 * 1000;
-const isInvite = (m) => m.kind === 'show' && m.file && m.dm === name && m.name !== name
+const isInvite = (m) => m.kind === 'show' && m.file && !m.gone && m.dm === name && m.name !== name
   && Date.now() - m.timestamp < INVITE_MS && m.timestamp > showSeen;
 let showSeen = Number(localStorage.getItem('phosphorus-show-seen')) || 0;
 

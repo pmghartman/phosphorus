@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -642,6 +643,12 @@ func runChain() {
 		cmu.Unlock()
 		return
 	}
+	// a retry of some peers alone: this host left as it is
+	if !slices.Contains(chain.Order, selfHost) {
+		finishLocked("finished")
+		cmu.Unlock()
+		return
+	}
 	if len(failed) > 0 {
 		sort.Strings(failed)
 		chain.Paused = true
@@ -681,11 +688,26 @@ func resumeLocked() {
 }
 
 // Start a chain, or who holds the lock
-func Start(gitHosts []string) map[string]any {
+func Start(gitHosts []string) map[string]any { return StartOnly(gitHosts, nil) }
+
+// StartOnly a chain over only those hosts, every host when only is empty
+func StartOnly(gitHosts, only []string) map[string]any {
 	if held := util.Obj(MeshLock()); held != nil {
 		return map[string]any{"locked": held["initiator"]}
 	}
 	order := buildOrder(gitHosts)
+	if len(only) > 0 {
+		kept := []string{}
+		for _, h := range order {
+			if slices.Contains(only, h) {
+				kept = append(kept, h)
+			}
+		}
+		if len(kept) == 0 {
+			return map[string]any{"error": "none of " + strings.Join(only, ", ") + " is a phosphorus host on the mesh"}
+		}
+		order = kept
+	}
 	cmu.Lock()
 	results := map[string]string{}
 	for _, m := range order {

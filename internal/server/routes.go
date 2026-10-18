@@ -725,6 +725,14 @@ func appHandler(w http.ResponseWriter, r *http.Request) {
 
 	// a host joining with only TS_AUTHKEY: the rest from here, tailnet peers alone
 	// a peer's calls for a keyed caller, already checked there: logs, config, page actions
+	if pathname == "/internal/op" && method == "POST" {
+		if !isTailnet(r) {
+			forbidden(w)
+			return
+		}
+		onJSON(w, r, maxJSONBody, true, peerOp)
+		return
+	}
 	if strings.HasPrefix(pathname, "/internal/") && method == "POST" && (pathname == "/internal/logs" || pathname == "/internal/config" || pathname == "/internal/ui") {
 		if !isTailnet(r) {
 			forbidden(w)
