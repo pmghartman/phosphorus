@@ -477,6 +477,13 @@ span.dk-chip { cursor: default; }
 .dk-menu button.danger { color: var(--offmesh); }
 .dk-menu button.danger:hover:not(:disabled) { background: var(--offmesh); color: var(--bg); }
 .dk-menu button:disabled { color: var(--dim); cursor: default; }
+/* a submenu beside its item, flipped left at the screen's edge */
+.dk-menu-item { position: relative; display: flex; flex-direction: column; }
+.dk-menu-more::after { content: '›'; float: right; margin-left: 1.5rem; color: var(--dim); }
+.dk-menu-item.open > .dk-menu-more:not(:disabled) { background: var(--accent); color: var(--bg); }
+.dk-menu .dk-submenu { position: absolute; left: 100%; top: 0; margin-top: -0.2rem; display: none; animation: none; }
+.dk-menu .dk-submenu.left { left: auto; right: 100%; }
+.dk-menu-item.open > .dk-submenu { display: flex; }
 .dk-menu-sep { height: 1px; margin: 0.2rem 0; background: var(--border); }
 
 /* --- the file manager ---- */
@@ -2013,8 +2020,7 @@ input, textarea { caret-color: var(--accent); }
   background: var(--accent); color: var(--bg); font-size: 0.6rem; text-align: center;
 }
 .dk-badge[hidden] { display: none; }
-.dk-public { position: absolute; bottom: -0.3rem; right: -0.4rem; display: flex; padding: 0.1rem; background: var(--bg); color: var(--warn); }
-.dk-tile .dk-public .ic { width: 0.75rem; height: 0.75rem; stroke-width: 1.6; }
+.dk-tile .dk-public { position: absolute; bottom: -0.3rem; right: -0.4rem; width: 0.85rem; height: 0.85rem; pointer-events: none; }
 .dk-task { position: relative; }
 .dk-task:has(.dk-badge) { overflow: visible; }
 .dk-task .dk-badge { top: -0.45rem; right: -0.35rem; }
