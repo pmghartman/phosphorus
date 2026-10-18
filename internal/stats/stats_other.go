@@ -50,6 +50,10 @@ func memInfo() map[string]any {
 	}
 	out := map[string]any{"total": float64(v.Total), "used": float64(v.Total - v.Available), "avail": float64(v.Available),
 		"cached": float64(v.Cached + v.Buffers), "swapTotal": 0.0, "swapUsed": 0.0}
+	// gopsutil has no cache figure on Windows or macOS
+	if v.Cached+v.Buffers == 0 {
+		out["cached"] = memCached(float64(v.Inactive))
+	}
 	if s, err := mem.SwapMemory(); err == nil {
 		out["swapTotal"], out["swapUsed"] = float64(s.Total), float64(s.Used)
 	}

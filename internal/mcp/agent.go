@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pmghartman/phosphorus/internal/files"
 	"github.com/pmghartman/phosphorus/internal/util"
 )
 
@@ -92,9 +93,10 @@ func agentTools() []tool {
 			}),
 			run: func(a map[string]any, m Meta) (any, error) {
 				hosts := []string{}
-				if h := str(a["host"]); h != "" {
-					if !nameRe.MatchString(h) {
-						return nil, errors.New("bad host")
+				if str(a["host"]) != "" {
+					h, err := knownHost(a)
+					if err != nil {
+						return nil, err
 					}
 					hosts = append(hosts, h)
 				} else {
@@ -140,8 +142,8 @@ func agentTools() []tool {
 				return map[string]any{"found": out}, nil
 			}},
 		{name: "files_copy", destructive: true,
-			description: "Copy one file from a share to a share, on the same host or across hosts, any size and any kind " +
-				"(binary too), streamed host to host. move deletes the original once the copy lands. An existing file at to is replaced. Folders aren't copied: copy each file.",
+			description: "Copy a file or a whole folder from a share to a share, on the same host or across hosts, any size and any kind " +
+				"(binary too), streamed host to host. move deletes the original once the copy lands. An existing file at to is replaced.",
 			schema: object(map[string]any{"from": loc("source"), "to": loc("target"),
 				"move": map[string]any{"type": "boolean", "default": false}}, "from", "to"),
 			run: func(a map[string]any, m Meta) (any, error) {
@@ -156,23 +158,41 @@ func agentTools() []tool {
 				if err != nil {
 					return nil, err
 				}
-				return pressed(src.Actions.Copy(m.Caller, from, to, a["move"] == true))
+				for _, h := range []string{from[0], to[0]} {
+					if _, err := knownHost(map[string]any{"host": h}); err != nil {
+						return nil, err
+					}
+				}
+				// a folder: its tree walked, folders made, each file copied
+				st, b := src.Actions.Files(m.Caller, from[0], "tree", from[1], map[string]any{"path": from[2], "depth": 8})
+				if st >= 300 {
+					if e := str(util.Obj(toAny(b))["error"]); e != "not a directory" {
+						return nil, &toolError{code: codeOf(st), msg: e}
+					}
+					return pressed(src.Actions.Copy(m.Caller, from, to, a["move"] == true))
+				}
+				return copyFolder(m, from, to, util.Obj(toAny(b)), a["move"] == true)
 			}},
 		{name: "host_logs", read: true, scope: "key",
-			description: "A host's phosphorus log (systemd's journal on Linux, phosphorus.log on macOS and Windows): its last lines, " +
-				"or the last ones holding match. The first stop when a host, service, update or git replica misbehaves. Admins only.",
+			description: "A host's logs: phosphorus's own (systemd's journal on Linux, phosphorus.log elsewhere), one part of it, " +
+				"a docker container's, or a game's start/stop output; the last lines, filtered. The first stop when something misbehaves. Admins only.",
 			schema: object(map[string]any{"host": name,
-				"lines": map[string]any{"type": "integer", "description": "how many, up to 2000", "default": 200},
-				"match": map[string]any{"type": "string", "description": "only lines holding this, case-insensitive"}}, "host"),
+				"lines":  map[string]any{"type": "integer", "description": "how many, up to 2000", "default": 200},
+				"match":  map[string]any{"type": "string", "description": "only lines holding this, case-insensitive"},
+				"source": map[string]any{"type": "string", "description": "phosphorus (all, default), frontend, cloudflared, git, model, mesh, container:<name>, game:<name>"},
+				"level":  map[string]any{"type": "string", "enum": []any{"error", "warn"}, "description": "only lines that read as errors, or as errors and warnings"},
+				"since":  map[string]any{"type": "string", "description": "RFC3339, a date, or an age like 30m, 2h, 1d"},
+				"until":  map[string]any{"type": "string", "description": "as since"}}, "host"),
 			run: func(a map[string]any, m Meta) (any, error) {
 				if err := adminOf(m); err != nil {
 					return nil, err
 				}
-				h, err := hostOf(a)
+				h, err := knownHost(a)
 				if err != nil {
 					return nil, err
 				}
-				return pressed(src.Actions.Logs(h, int(numOr(a["lines"], 200)), str(a["match"])))
+				return pressed(src.Actions.Logs(h, map[string]any{"lines": numOr(a["lines"], 200), "match": a["match"], "source": a["source"],
+					"level": a["level"], "since": a["since"], "until": a["until"]}))
 			}},
 		{name: "host_config", read: true, scope: "key",
 			description: "A host's two config files as they stand: phosphorus.ini (shares in [files], [git], [model], [home]) and " +
@@ -182,7 +202,7 @@ func agentTools() []tool {
 				if err := adminOf(m); err != nil {
 					return nil, err
 				}
-				h, err := hostOf(a)
+				h, err := knownHost(a)
 				if err != nil {
 					return nil, err
 				}
@@ -195,32 +215,34 @@ func agentTools() []tool {
 			schema: object(map[string]any{"host": name,
 				"name":   map[string]any{"type": "string", "description": "the service, lowercase letters, digits and -"},
 				"fields": map[string]any{"type": "object", "description": "keys to set, e.g. {\"port\":\"8096\",\"public\":\"true\"}", "additionalProperties": map[string]any{"type": "string"}},
-				"remove": map[string]any{"type": "boolean", "default": false}}, "host", "name"),
+				"remove":  map[string]any{"type": "boolean", "default": false},
+				"dry_run": map[string]any{"type": "boolean", "description": "return the diff alone, nothing written", "default": false}}, "host", "name"),
 			run: func(a map[string]any, m Meta) (any, error) {
 				if err := adminOf(m); err != nil {
 					return nil, err
 				}
-				h, err := hostOf(a)
+				h, err := knownHost(a)
 				if err != nil {
 					return nil, err
 				}
-				return pressed(src.Actions.Config(h, map[string]any{"op": "service", "name": a["name"], "fields": a["fields"], "remove": a["remove"]}))
+				return pressed(src.Actions.Config(h, map[string]any{"op": "service", "name": a["name"], "fields": a["fields"], "remove": a["remove"], "dry_run": a["dry_run"]}))
 			}},
 		{name: "config_set", scope: "key", destructive: true,
-			description: "Set one key of a host's phosphorus.ini, blank value to drop it; phosphorus applies it within seconds. " +
-				"[files] dir and priv list the shares and their rwd perms, comma-separated in step; [git] host, [model] host/gpu/url, [home] are the rest. " +
+			description: "Set one key of a host's phosphorus.ini, blank value to drop it (a section left empty goes too); phosphorus applies it within seconds. " +
+				"Keys: [files] dir and priv (the shares and their rwd perms, comma-separated in step), [git] host, [model] host/gpu/url/ctx/slots, [home] dir. " +
 				"Read host_config first and keep the other values. Admins only.",
 			schema: object(map[string]any{"host": name,
-				"section": map[string]any{"type": "string"}, "key": map[string]any{"type": "string"}, "value": map[string]any{"type": "string"}}, "host", "section", "key", "value"),
+				"section": map[string]any{"type": "string", "enum": []any{"files", "git", "model", "home"}}, "key": map[string]any{"type": "string"}, "value": map[string]any{"type": "string"},
+				"dry_run": map[string]any{"type": "boolean", "description": "return the diff alone, nothing written", "default": false}}, "host", "section", "key", "value"),
 			run: func(a map[string]any, m Meta) (any, error) {
 				if err := adminOf(m); err != nil {
 					return nil, err
 				}
-				h, err := hostOf(a)
+				h, err := knownHost(a)
 				if err != nil {
 					return nil, err
 				}
-				return pressed(src.Actions.Config(h, map[string]any{"op": "ini", "section": a["section"], "key": a["key"], "value": a["value"]}))
+				return pressed(src.Actions.Config(h, map[string]any{"op": "ini", "section": a["section"], "key": a["key"], "value": a["value"], "dry_run": a["dry_run"]}))
 			}},
 		{name: "chat_wait", read: true, scope: "key",
 			description: "Wait for new chat lines: in a channel, a direct message with someone (dm:<name>), or anywhere you can read, " +
@@ -232,7 +254,14 @@ func agentTools() []tool {
 				"wait_s":  map[string]any{"type": "integer", "description": fmt.Sprintf("seconds to wait, up to %d", chatWaitMax), "default": 60}}),
 			run: func(a map[string]any, m Meta) (any, error) {
 				want := strings.TrimPrefix(str(a["channel"]), "#")
-				since := int64(numOr(a["since"], float64(time.Now().UnixMilli())))
+				if err := channelKnown(m, want); err != nil {
+					return nil, err
+				}
+				// only a missing since means now, 0 the whole history
+				since := time.Now().UnixMilli()
+				if v, ok := a["since"]; ok && v != nil {
+					since = int64(files.JSNumber(v))
+				}
 				end := time.Now().Add(time.Duration(math.Min(chatWaitMax, math.Max(1, numOr(a["wait_s"], 60)))) * time.Second)
 				for {
 					fresh := []map[string]any{}
@@ -285,6 +314,47 @@ func agentTools() []tool {
 	}
 }
 
+// copyFolder a tree from files_list's tree op copied under to, then the source
+// removed when move and every file landed
+func copyFolder(m Meta, from, to [3]string, tree map[string]any, move bool) (any, error) {
+	if tree["truncated"] == true {
+		return nil, errc("bad_input", "%s holds too many entries to copy at once, copy its subfolders", from[2])
+	}
+	base := strings.TrimSuffix(from[2], "/")
+	dst := strings.TrimSuffix(to[2], "/")
+	if st, b := src.Actions.Files(m.Caller, to[0], "mkdir", to[1], map[string]any{"path": dst}); st >= 300 && st != 409 {
+		return nil, &toolError{code: codeOf(st), msg: "can't make " + dst + ": " + str(util.Obj(toAny(b))["error"])}
+	}
+	copied, failed := []any{}, []any{}
+	for _, e := range arr(tree["entries"]) {
+		p := str(util.Obj(e)["path"])
+		rel := strings.TrimPrefix(strings.TrimPrefix(p, base), "/")
+		if strings.HasSuffix(p, "/") {
+			src.Actions.Files(m.Caller, to[0], "mkdir", to[1], map[string]any{"path": dst + "/" + strings.TrimSuffix(rel, "/")})
+			continue
+		}
+		st, b := src.Actions.Copy(m.Caller, [3]string{from[0], from[1], p}, [3]string{to[0], to[1], dst + "/" + rel}, false)
+		if st >= 300 {
+			failed = append(failed, map[string]any{"path": p, "error": str(util.Obj(toAny(b))["error"])})
+			continue
+		}
+		copied = append(copied, p)
+	}
+	out := map[string]any{"folder": dst, "copied": len(copied)}
+	if len(failed) > 0 {
+		return nil, &toolError{code: "failed", msg: fmt.Sprintf("%d of %d files failed, the source kept", len(failed), len(failed)+len(copied)),
+			data: map[string]any{"copied": copied, "failed": failed}}
+	}
+	if move {
+		if st, b := src.Actions.Files(m.Caller, from[0], "delete", from[1], map[string]any{"path": base}); st >= 300 {
+			out["note"] = "copied, the original left: " + str(util.Obj(toAny(b))["error"])
+		} else {
+			out["moved"] = true
+		}
+	}
+	return out, nil
+}
+
 // meshHosts this host then every phosphorus peer
 func meshHosts() []string {
 	hosts := []string{str(src.Self()["host"])}
@@ -329,7 +399,7 @@ func describe() {
 			"Returns the screen once it runs and settles. Read each result before the next. " + noCreds,
 		"game_power":      "Start or stop a game server, running only the start or stop command its service declares.",
 		"update_status":   "The mesh update: whether one runs, who started it, each host's step and result.",
-		"update_control":  "Continue a paused mesh update or cancel the running one. Starting one isn't possible here. Admins only.",
+		"update_control":  "Start a mesh update on an admin's key, continue a paused one, or cancel the running one. update_status follows it. Admins only.",
 		"make_git_master": "Make a git host the master: the live one hands off, or with none it's force-promoted. Returns once it leads (up to 30s); never press it twice. Admins only.",
 		"set_model_role":  "Pick the chimp's (chat) or orangutan's (projects) model mesh-wide: provider/model, phosphorus/<host> for a mesh host's own, blank for the default. Admins only.",
 		"models":          "The models: each role's model chosen and answering, providers with a key, each mesh model host's file, state and memory, and the last ask's context use.",

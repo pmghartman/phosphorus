@@ -230,45 +230,51 @@ fn claude_setup(handle: AppHandle, key: String) -> Result<String, String> {
     Ok("restart claude".into())
 }
 
-/// `--mcp`: Claude Desktop's stdio, each message posted to the mesh with the saved key
+/// `--mcp`: Claude Desktop's stdio, each message posted to the mesh with the saved key,
+/// each on its own thread so a long wait never holds the calls after it
 fn mcp_bridge() {
     use std::io::{BufRead, Write};
+    use std::sync::{Arc, Mutex};
     let cfg = serde_json::from_str::<Value>(&read(&config_dir().join("mcp.json"))).unwrap_or_default();
     let (url, key) = (cfg["url"].as_str().unwrap_or_default().to_string(), cfg["key"].as_str().unwrap_or_default().to_string());
-    let agent = ureq::AgentBuilder::new().timeout(Duration::from_secs(300)).build();
-    let mut out = std::io::stdout();
+    let agent = ureq::AgentBuilder::new().timeout(Duration::from_secs(660)).build();
+    let out = Arc::new(Mutex::new(std::io::stdout()));
     for line in std::io::stdin().lock().lines() {
         let Ok(line) = line else { break };
         if line.trim().is_empty() {
             continue;
         }
-        let res = agent
-            .post(&url)
-            .set("Content-Type", "application/json")
-            .set("Accept", "application/json")
-            .set("Authorization", &format!("Bearer {key}"))
-            .send_string(&line);
-        let text = match res {
-            Ok(r) if r.status() == 202 => continue,
-            Ok(r) => r.into_string().unwrap_or_default(),
-            Err(e) => {
+        let (agent, url, key, out) = (agent.clone(), url.clone(), key.clone(), out.clone());
+        std::thread::spawn(move || {
+            let id = serde_json::from_str::<Value>(&line).ok().map(|v| v["id"].clone()).unwrap_or(Value::Null);
+            let res = agent
+                .post(&url)
+                .set("Content-Type", "application/json")
+                .set("Accept", "application/json")
+                .set("Authorization", &format!("Bearer {key}"))
+                .set("X-Phosphorus-Via", "claude")
+                .send_string(&line);
+            let text = match res {
+                Ok(r) if r.status() == 202 => return,
+                Ok(r) => r.into_string().unwrap_or_default(),
                 // an error for a request, nothing for a notification
-                let id = serde_json::from_str::<Value>(&line).ok().map(|v| v["id"].clone()).unwrap_or(Value::Null);
-                if id.is_null() {
-                    continue;
+                Err(_) if id.is_null() => return,
+                Err(ureq::Error::Status(code, r)) => {
+                    let body = serde_json::from_str::<Value>(&r.into_string().unwrap_or_default()).unwrap_or_default();
+                    let why = body["error"].as_str().map(str::to_string).unwrap_or_else(|| format!("status {code}"));
+                    let why = if code == 401 { format!("phosphorus: {why}; connect claude again from the client") } else { format!("phosphorus: {why}") };
+                    json!({"jsonrpc": "2.0", "id": id, "error": {"code": -32000, "message": why}}).to_string()
                 }
-                let why = match e {
-                    ureq::Error::Status(401, _) => "phosphorus: key refused, connect claude again".to_string(),
-                    e => format!("phosphorus: {e}"),
-                };
-                json!({"jsonrpc": "2.0", "id": id, "error": {"code": -32000, "message": why}}).to_string()
+                Err(e) => json!({"jsonrpc": "2.0", "id": id, "error": {"code": -32000, "message": format!("phosphorus: {e}")}}).to_string(),
+            };
+            if text.trim().is_empty() {
+                return;
             }
-        };
-        if text.trim().is_empty() {
-            continue;
-        }
-        let _ = writeln!(out, "{}", text.trim());
-        let _ = out.flush();
+            let mut o = out.lock().unwrap();
+            let _ = writeln!(o, "{}", text.trim());
+            let _ = o.flush();
+            eprintln!("phosphorus: answered {}", id);
+        });
     }
 }
 

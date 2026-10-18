@@ -194,7 +194,7 @@ func refreshNvidia() {
 	gmu.Unlock()
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		out, err := exec.CommandContext(ctx, bin, "--query-gpu=name,utilization.gpu,memory.used,memory.total,temperature.gpu", "--format=csv,noheader,nounits").Output()
+		out, err := exec.CommandContext(ctx, bin, "--query-gpu=name,utilization.gpu,memory.used,memory.total,temperature.gpu,clocks.sm,clocks.max.sm", "--format=csv,noheader,nounits").Output()
 		cancel()
 		gmu.Lock()
 		defer gmu.Unlock()
@@ -213,7 +213,7 @@ func refreshNvidia() {
 				continue
 			}
 			p := strings.Split(l, ",")
-			for len(p) < 5 {
+			for len(p) < 7 {
 				p = append(p, "")
 			}
 			z := func(s string) float64 {
@@ -223,12 +223,15 @@ func refreshNvidia() {
 				}
 				return v
 			}
-			var temp any
-			if t := z(p[4]); t != 0 {
-				temp = t
+			// a field nvidia-smi can't read ([N/A]) left null, never a false 0
+			opt := func(s string) any {
+				if v := num(strings.TrimSpace(s)); !math.IsNaN(v) && v != 0 {
+					return v
+				}
+				return nil
 			}
 			list = append(list, map[string]any{"name": strings.ToLower(strings.TrimSpace(p[0])), "util": z(p[1]),
-				"memUsed": z(p[2]) * (1 << 20), "memTotal": z(p[3]) * (1 << 20), "temp": temp})
+				"memUsed": z(p[2]) * (1 << 20), "memTotal": z(p[3]) * (1 << 20), "temp": opt(p[4]), "mhz": opt(p[5]), "mhzMax": opt(p[6])})
 		}
 		nvidia = list
 	}()

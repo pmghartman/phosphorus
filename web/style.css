@@ -1358,6 +1358,7 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
 .msg.mine .user { color: var(--accent); }
 .chat-log .ts { color: var(--muted); }
 .msg-head .edited { color: var(--muted); font-style: italic; }
+.msg-head .via { color: var(--muted); font-size: 0.66rem; letter-spacing: 0.02em; }
 .bubble {
   max-width: min(78%, 46rem); min-width: 0; padding: 0.35rem 0.65rem;
   background: var(--card); border-left: 2px solid var(--who); box-shadow: var(--lift-sm);

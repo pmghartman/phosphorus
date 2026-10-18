@@ -488,3 +488,55 @@ func SetPublic(name string, on bool) (int, any) {
 	clock.MarkHot()
 	return 200, map[string]any{"public": on}
 }
+
+// Health one declared service checked now: listening, its HTTP answer, and
+// whether it's published, with why not; nil when nothing declares name
+func Health(name, ip string) map[string]any {
+	mu.Lock()
+	readDeclared()
+	var r Row
+	for _, x := range declared {
+		if x["name"] == name {
+			r = copyRow(x)
+		}
+	}
+	published := false
+	for _, x := range own {
+		published = published || x["name"] == name
+	}
+	mu.Unlock()
+	if r == nil {
+		return nil
+	}
+	port := int(r["port"].(float64))
+	out := map[string]any{"name": name, "port": port, "type": or(str(r["type"]), "web"), "published": published,
+		"listening": connects(ip, port) || connects("127.0.0.1", port)}
+	if r["type"] == "game" {
+		if out["listening"] == true {
+			out["why"] = "up"
+		} else {
+			out["why"] = fmt.Sprintf("nothing listening on :%d, start it with game_power", port)
+		}
+		return out
+	}
+	scheme, _ := r["scheme"].(string)
+	base, _ := r["base_path"].(string)
+	res, err := probeClient.Get(fmt.Sprintf("%s://%s/%s", or(scheme, "http"), net.JoinHostPort(ip, strconv.Itoa(port)), base))
+	switch {
+	case err != nil && out["listening"] != true:
+		out["why"] = fmt.Sprintf("not published: nothing on :%d", port)
+	case err != nil:
+		out["error"] = err.Error()
+		out["why"] = fmt.Sprintf("not published: :%d takes connections but no %s answer (%s)", port, or(scheme, "http"), err.Error())
+	default:
+		res.Body.Close()
+		out["httpStatus"] = res.StatusCode
+		out["why"] = "answering"
+		if !published {
+			out["why"] = "answering, published on the next tick"
+		}
+	}
+	return out
+}
+
+func str(v any) string { s, _ := v.(string); return s }

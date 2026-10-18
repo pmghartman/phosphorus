@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -597,16 +598,30 @@ var svcNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 
 // SetService [name] written with fields, a blank one dropped, or removed; "" once saved
 func SetService(name string, fields map[string]string, remove bool) string {
+	why, _ := EditService(name, fields, remove, false)
+	return why
+}
+
+// EditService SetService, or with dry the change it would make as a diff, nothing written
+func EditService(name string, fields map[string]string, remove, dry bool) (string, string) {
 	if !svcNameRe.MatchString(name) {
-		return "name: lowercase letters, digits, -"
+		return "name: lowercase letters, digits, -", ""
 	}
-	d := splitSections(readText(servicesFile))
+	before := readText(servicesFile)
+	d := splitSections(before)
 	s := d.find(name)
 	if remove {
 		if s == nil {
-			return "no service " + name
+			return "no service " + name, ""
 		}
-		return deleteService(name)
+		kept := d.secs[:0]
+		for _, x := range d.secs {
+			if x.name != name {
+				kept = append(kept, x)
+			}
+		}
+		d.secs = kept
+		return commitDry(d, before, dry)
 	}
 	v := fieldsOf(s)
 	for k, x := range fields {
@@ -615,18 +630,18 @@ func SetService(name string, fields map[string]string, remove bool) string {
 			known = known || sk == k
 		}
 		if !known {
-			return "no field " + k + ", only " + strings.Join(svcKeys, ", ")
+			return "no field " + k + ", only " + strings.Join(svcKeys, ", "), ""
 		}
 		v[k] = strings.TrimSpace(x)
 	}
 	if v["port"] == "" {
-		return "port is required"
+		return "port is required", ""
 	}
 	if v["type"] == "game" && (v["start"] == "") != (v["stop"] == "") {
-		return "start and stop go together"
+		return "start and stop go together", ""
 	}
 	if v["type"] != "game" && (v["start"] != "" || v["stop"] != "") {
-		return "start and stop are for games only"
+		return "start and stop are for games only", ""
 	}
 	if s == nil {
 		s = d.appendSection(name)
@@ -639,25 +654,120 @@ func SetService(name string, fields map[string]string, remove bool) string {
 		}
 	}
 	s.lines = rewriteSection(s, name, vals, svcKeys)
-	return commitServices(d)
+	return commitDry(d, before, dry)
+}
+
+// commitDry services.export checked, then written, or only diffed when dry
+func commitDry(d *doc, before string, dry bool) (string, string) {
+	if _, err := services.Parse(d.join()); err != "" {
+		return err, ""
+	}
+	diff := LineDiff(before, d.join())
+	if dry {
+		return "", diff
+	}
+	return writeDoc(servicesFile, d), diff
+}
+
+// IniKeys the phosphorus.ini keys phosphorus reads, by section
+var IniKeys = map[string][]string{
+	"files": {"dir", "priv"},
+	"git":   {"host"},
+	"model": {"host", "gpu", "url", "ctx", "slots"},
+	"home":  {"dir"},
 }
 
 // SetIni phosphorus.ini's section key set, blank dropping it; "" once saved
 func SetIni(section, key, value string) string {
-	if strings.ContainsAny(section+key, "[]=\n\r") || strings.TrimSpace(section) == "" || strings.TrimSpace(key) == "" {
-		return "bad section or key"
+	why, _ := EditIni(section, key, value, false)
+	return why
+}
+
+// EditIni SetIni held to IniKeys, a section left empty removed, or with dry
+// the change it would make as a diff
+func EditIni(section, key, value string, dry bool) (string, string) {
+	keys, ok := IniKeys[section]
+	if !ok {
+		names := []string{}
+		for k := range IniKeys {
+			names = append(names, k)
+		}
+		sort.Strings(names)
+		return "no section " + section + ", only " + strings.Join(names, ", "), ""
+	}
+	if indexOf(keys, key) < 0 {
+		return "no key " + key + " in [" + section + "], only " + strings.Join(keys, ", "), ""
 	}
 	if strings.ContainsAny(value, "\n\r") {
-		return "one line only"
+		return "one line only", ""
 	}
-	d := splitSections(readText(iniFile))
+	before := readText(iniFile)
+	d := splitSections(before)
 	s := iniSection(d, section)
 	var v *string
 	if value = strings.TrimSpace(value); value != "" {
 		v = sp(value)
 	}
 	s.lines = rewriteSection(s, section, map[string]*string{key: v}, []string{key})
-	return writeDoc(iniFile, d)
+	// a header with no keys left dropped, its blank lines with it
+	if len(fieldsOf(s)) == 0 {
+		kept := d.secs[:0]
+		for _, x := range d.secs {
+			if x != s {
+				kept = append(kept, x)
+			}
+		}
+		d.secs = kept
+	}
+	diff := LineDiff(before, d.join())
+	if dry {
+		return "", diff
+	}
+	return writeDoc(iniFile, d), diff
+}
+
+// LineDiff the lines b changed from a, "- " gone and "+ " new, unchanged left out
+func LineDiff(a, b string) string {
+	lines := func(t string) []string {
+		if t = strings.TrimRight(t, "\n"); t == "" {
+			return nil
+		}
+		return strings.Split(t, "\n")
+	}
+	x, y := lines(a), lines(b)
+	n, m := len(x), len(y)
+	l := make([][]int, n+1)
+	for i := range l {
+		l[i] = make([]int, m+1)
+	}
+	for i := n - 1; i >= 0; i-- {
+		for j := m - 1; j >= 0; j-- {
+			if x[i] == y[j] {
+				l[i][j] = l[i+1][j+1] + 1
+			} else {
+				l[i][j] = max(l[i+1][j], l[i][j+1])
+			}
+		}
+	}
+	out := []string{}
+	i, j := 0, 0
+	for i < n || j < m {
+		switch {
+		case i < n && j < m && x[i] == y[j]:
+			i, j = i+1, j+1
+		case j < m && (i == n || l[i][j+1] >= l[i+1][j]):
+			if strings.TrimSpace(y[j]) != "" {
+				out = append(out, "+ "+y[j])
+			}
+			j++
+		default:
+			if strings.TrimSpace(x[i]) != "" {
+				out = append(out, "- "+x[i])
+			}
+			i++
+		}
+	}
+	return strings.Join(out, "\n")
 }
 
 // ConfigText phosphorus.ini and services.export as they stand

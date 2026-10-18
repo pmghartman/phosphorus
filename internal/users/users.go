@@ -880,21 +880,39 @@ func MCPRevoke(s *Session, _ map[string]any) R {
 
 // OfMCPKey the user behind a key: live, its password and key unchanged
 func OfMCPKey(key string) *Session {
-	o := OpenGrant(key)
+	s, _ := CheckMCPKey(key)
+	return s
+}
+
+// CheckMCPKey the key's user, or why it's refused: missing, malformed,
+// expired, user gone, password changed or revoked
+func CheckMCPKey(key string) (*Session, string) {
+	if key == "" {
+		return nil, "missing"
+	}
+	o := openToken(key)
 	if o == nil {
-		return nil
+		return nil, "malformed, or sealed by another mesh"
+	}
+	if e, _ := o["e"].(float64); !(e > float64(util.Now())) {
+		return nil, "expired, make a new one"
 	}
 	u, _ := o["u"].(string)
 	g, _ := o["m"].(string)
 	lu := live(u)
-	if lu == nil || g == "" || o["p"] != lu.PwAt {
-		return nil
+	switch {
+	case lu == nil:
+		return nil, "its user " + u + " no longer exists"
+	case g == "":
+		return nil, "malformed"
+	case o["p"] != lu.PwAt:
+		return nil, "voided by a password change, make a new one"
 	}
 	var cur map[string]string
 	if !sysfs.ReadInto(mcpFile(u), &cur) || cur["g"] != g {
-		return nil
+		return nil, "revoked or replaced by a newer key"
 	}
-	return &Session{User: u, Admin: lu.Admin}
+	return &Session{User: u, Admin: lu.Admin}, ""
 }
 
 // Exists a live user

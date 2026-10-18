@@ -208,6 +208,23 @@ func integrated(v, dev string) bool {
 	return false
 }
 
+// amdClock the shader clock now and its top step, from pp_dpm_sclk's levels
+func amdClock(dev string) (any, any) {
+	var now, top any
+	for _, l := range strings.Split(read(dev+"/pp_dpm_sclk"), "\n") {
+		m := regexp.MustCompile(`(\d+)Mhz`).FindStringSubmatch(l)
+		if m == nil {
+			continue
+		}
+		v := num(m[1])
+		top = v
+		if strings.HasSuffix(strings.TrimSpace(l), "*") {
+			now = v
+		}
+	}
+	return now, top
+}
+
 func vendorGpus(haveNvidia bool) []map[string]any {
 	out := []map[string]any{}
 	for _, c := range readdir("/sys/class/drm") {
@@ -216,9 +233,10 @@ func vendorGpus(haveNvidia bool) []map[string]any {
 		}
 		dev := "/sys/class/drm/" + c + "/device"
 		v := vendor[strings.TrimSpace(read(dev+"/vendor"))]
-		if v == "" || (v == "nvidia" && haveNvidia) || integrated(v, dev) {
+		if v == "" || (v == "nvidia" && haveNvidia) {
 			continue
 		}
+		igpu := integrated(v, dev)
 		var temp any
 		if hw := readdir(dev + "/hwmon"); len(hw) > 0 {
 			if t, ok := numFile(dev + "/hwmon/" + hw[0] + "/temp1_input").(float64); ok {
@@ -226,14 +244,23 @@ func vendorGpus(haveNvidia bool) []map[string]any {
 			}
 		}
 		name := strings.TrimSpace(read(dev + "/product_name"))
-		if name == "" {
+		if name == "" && igpu {
+			name = v + " integrated gpu"
+		} else if name == "" {
 			name = v + " gpu"
+		}
+		used, total := numFile(dev+"/mem_info_vram_used"), numFile(dev+"/mem_info_vram_total")
+		// an amd igpu's memory the gtt it maps from system ram
+		if igpu && v == "amd" {
+			used, total = numFile(dev+"/mem_info_gtt_used"), numFile(dev+"/mem_info_gtt_total")
+		}
+		mhz, mhzMax := numFile("/sys/class/drm/"+c+"/gt_act_freq_mhz"), numFile("/sys/class/drm/"+c+"/gt_max_freq_mhz")
+		if v == "amd" {
+			mhz, mhzMax = amdClock(dev)
 		}
 		out = append(out, map[string]any{
 			"name": strings.ToLower(name), "util": numFile(dev + "/gpu_busy_percent"),
-			"memUsed": numFile(dev + "/mem_info_vram_used"), "memTotal": numFile(dev + "/mem_info_vram_total"),
-			"mhz": numFile("/sys/class/drm/" + c + "/gt_act_freq_mhz"), "mhzMax": numFile("/sys/class/drm/" + c + "/gt_max_freq_mhz"),
-			"temp": temp,
+			"memUsed": used, "memTotal": total, "mhz": mhz, "mhzMax": mhzMax, "temp": temp, "integrated": igpu,
 		})
 	}
 	return out

@@ -2124,7 +2124,8 @@ function lineEl(m, prev) {
   }
   if (m.kind === 'show') {
     li.className = 'sys show';
-    li.append(m.name === name ? `invited ${m.dm}: ` : `${m.name} invites: `, el('code', '', m.file?.label || m.text));
+    const by = m.via ? `${m.name} via ${m.via}` : m.name;
+    li.append(m.name === name ? `invited ${m.dm}${m.via ? ` via ${m.via}` : ''}: ` : `${by} invites: `, el('code', '', m.file?.label || m.text));
     if (m.file) {
       const b = Object.assign(el('button', 'show-open', 'open'), { type: 'button', title: 'open it in a shared editor' });
       b.dataset.act = 'show';
@@ -2143,15 +2144,18 @@ function lineEl(m, prev) {
   const real = m.host !== 'agent' && m.kind !== 'pending' && m.kind !== 'notice' && !m.gone && !m.sending;
   li.className = `msg ${agent ? 'agent' : mine ? 'mine' : 'theirs'}`;
   if (m.kind === 'pending') li.classList.add('pending');
-  li.dataset.who = m.name;
+  // an agent's line on someone's key never grouped under their own
+  li.dataset.who = m.via ? `${m.name}\u0000${m.via}` : m.name;
   li.style.setProperty('--who', m.color || colorFor(m.name));
   const p = prev?.matches?.('.msg') && prev;
-  if (p && p.dataset.who === m.name && m.timestamp - Number(p.dataset.at) < GROUP_MS && !m.re) li.classList.add('cont');
+  if (p && p.dataset.who === li.dataset.who && m.timestamp - Number(p.dataset.at) < GROUP_MS && !m.re) li.classList.add('cont');
 
   const head = el('div', 'msg-head');
   const user = el('span', 'user', mine ? 'you' : m.name);
   if (agent) user.classList.add('who-model');
-  head.append(user, el('span', 'ts', formatTime(m.timestamp)));
+  head.append(user);
+  if (m.via) head.append(el('span', 'via', `via ${m.via}`));
+  head.append(el('span', 'ts', formatTime(m.timestamp)));
   if (m.edited != null && !m.gone) head.append(el('span', 'edited', 'edited'));
   if (real) li.dataset.acts = mine ? 'mine' : 'theirs';
   li.append(head);

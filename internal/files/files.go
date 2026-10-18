@@ -244,6 +244,31 @@ func SafePath(sh Share, rel string, mustExist bool) string {
 	return ""
 }
 
+// badPath why rel isn't a path SafePath gives: outside the share, missing,
+// in the homes, or a name not allowed
+func badPath(sh Share, rel string, mustExist bool) (int, any) {
+	abs := toAbs(sh, rel)
+	if abs == "" {
+		return 400, errBody("outside the share")
+	}
+	at := abs
+	if !mustExist {
+		at = filepath.Dir(abs)
+	}
+	real, err := filepath.EvalSymlinks(at)
+	switch {
+	case err != nil && mustExist:
+		return 404, errBody("not found")
+	case err != nil:
+		return 404, errBody("its folder doesn't exist")
+	case !inside(sh, real):
+		return 400, errBody("outside the share, through a link")
+	case homeHeld(sh, real):
+		return 403, errBody("inside the homes, reached through the home share only")
+	}
+	return 400, errBody("a name with characters not allowed")
+}
+
 // RelOf an absolute path off the share's root
 func RelOf(sh Share, abs string) string {
 	r, err := filepath.Rel(sh.Real, abs)
@@ -361,7 +386,7 @@ func List(sh *Share, rel string) (int, any) {
 	}
 	abs := SafePath(*sh, rel, true)
 	if abs == "" {
-		return 400, errBody("bad path")
+		return badPath(*sh, rel, true)
 	}
 	f, err := os.Open(abs)
 	if err != nil {
@@ -438,7 +463,7 @@ func Tree(sh *Share, rel string, depth any, match string) (int, any) {
 	}
 	root := SafePath(*sh, rel, true)
 	if root == "" {
-		return 400, errBody("bad path")
+		return badPath(*sh, rel, true)
 	}
 	st, err := os.Stat(root)
 	if err != nil {
@@ -528,7 +553,7 @@ func Search(sh *Share, rel, query string, content bool, glob string) (int, any) 
 	}
 	root := SafePath(*sh, rel, true)
 	if root == "" {
-		return 400, errBody("bad path")
+		return badPath(*sh, rel, true)
 	}
 	q := strings.ToLower(strings.TrimSpace(query))
 	if q == "" && glob == "" {
@@ -680,7 +705,7 @@ func Read(sh *Share, rel string) (int, any) {
 		if SafePath(*sh, rel, false) != "" {
 			return 404, errBody("no such file")
 		}
-		return 400, errBody("bad path")
+		return badPath(*sh, rel, false)
 	}
 	st, err := os.Stat(abs)
 	if err != nil {
@@ -773,7 +798,7 @@ func Write(sh *Share, rel string, body io.Reader, q UploadQ) (int, any) {
 	MakeParents(*sh, rel)
 	abs := SafePath(*sh, rel, false)
 	if abs == "" || badName.MatchString(filepath.Base(abs)) {
-		return 400, errBody("bad path")
+		return badPath(*sh, rel, false)
 	}
 	total := JSNumber(q.Total)
 	offset := JSNumber(q.Offset)
@@ -854,7 +879,7 @@ func Save(sh *Share, rel string, p SaveP) (int, any) {
 	MakeParents(*sh, rel)
 	abs := SafePath(*sh, rel, false)
 	if abs == "" || badName.MatchString(filepath.Base(abs)) {
-		return 400, errBody("bad path")
+		return badPath(*sh, rel, false)
 	}
 	var text *string = p.Text
 	if p.Old != nil && p.New != nil {
@@ -914,7 +939,7 @@ func Mkdir(sh *Share, rel string) (int, any) {
 	}
 	abs := SafePath(*sh, rel, false)
 	if abs == "" || badName.MatchString(filepath.Base(abs)) {
-		return 400, errBody("bad path")
+		return badPath(*sh, rel, false)
 	}
 	if exists(abs) {
 		return 409, errBody("already exists")
@@ -939,7 +964,10 @@ func Rename(sh *Share, from, to string) (int, any) {
 	}
 	dst := SafePath(*sh, to, false)
 	if src == "" || dst == "" || badName.MatchString(filepath.Base(dst)) {
-		return 400, errBody("bad path")
+		if src == "" {
+			return badPath(*sh, from, true)
+		}
+		return badPath(*sh, to, false)
 	}
 	if src == sh.Real {
 		return 400, errBody("can't rename the share itself")
@@ -962,7 +990,7 @@ func Remove(sh *Share, rel string) (int, any) {
 	}
 	abs := SafePath(*sh, rel, true)
 	if abs == "" {
-		return 400, errBody("bad path")
+		return badPath(*sh, rel, true)
 	}
 	if abs == sh.Real {
 		return 400, errBody("can't delete the share itself")
