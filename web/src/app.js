@@ -1757,8 +1757,8 @@ function dkControlTray() {
   const pop = Object.assign(el('div', 'dk-ctl-pop dk-pop'), { hidden: true });
   wrap.append(b, pop);
   dkAnchor(pop, b, { fill: 270 });
-  const tile = (glyph, label, sub, act) => {
-    const t = Object.assign(el('button', 'dk-ctl-tile'), { type: 'button' });
+  const tile = (glyph, label, sub, act, fresh = false) => {
+    const t = Object.assign(el('button', `dk-ctl-tile${fresh ? ' fresh' : ''}`), { type: 'button' });
     t.append(dkGlyph(glyph), el('span', 'dk-ctl-label', label), el('span', 'dk-ctl-sub', sub));
     t.addEventListener('click', () => { show(false); act(); });
     return t;
@@ -1768,13 +1768,19 @@ function dkControlTray() {
     const tiles = el('div', 'dk-ctl-tiles');
     tiles.append(tile(DK_GLYPHS.mesh, 'mesh', `${n} host${n === 1 ? '' : 's'}`, () => dk.meshTray?.show(true)));
     if (acct?.admin) {
-      const busy = meshLock ? (meshLock.paused ? 'paused' : 'running') : topUpdate.hasAttribute('data-news') ? 'news' : 'current';
-      tiles.append(tile(DK_GLYPHS.update, 'update', busy, () => { dkPopsClose('update'); openUpdateModal(); }));
+      const busy = meshLock ? (meshLock.paused ? 'paused' : 'running') : updates.mesh ? `v${updates.mesh} out` : 'current';
+      tiles.append(tile(DK_GLYPHS.update, 'mesh update', busy, () => { dkPopsClose('update'); openUpdateModal(); }, !!updates.mesh && !meshLock));
+    }
+    if (clientInvoke) {
+      const sub = updates.clientBusy ? 'updating' : updates.client ? `v${updates.client} out` : updates.clientNow ? `v${updates.clientNow}` : 'client';
+      tiles.append(tile(DK_GLYPHS.download, 'client', sub, clientUpdate, !!updates.client));
     }
     if (window.__phosphorusClient) tiles.append(tile(DK_GLYPHS.reload, 'refresh', 'page', () => location.reload()));
     const theme = el('div', 'dk-ctl-theme');
     for (const t of THEMES) {
-      const tb = Object.assign(el('button', `dk-ctl-seg${currentTheme() === t ? ' on' : ''}`, t), { type: 'button' });
+      const tb = Object.assign(el('button', `dk-ctl-seg${currentTheme() === t ? ' on' : ''}`), { type: 'button', title: t });
+      const icon = document.querySelector(`.theme-toggle .${THEME_ICON[t]}`)?.cloneNode(true);
+      tb.append(...(icon ? [icon] : []), t);
       tb.addEventListener('click', () => { setTheme(t); draw(); });
       theme.append(tb);
     }
@@ -1796,7 +1802,9 @@ function dkControlTray() {
     const out = Object.assign(el('button', 'dk-ctl-out'), { type: 'button', title: 'log out', ariaLabel: 'log out' });
     out.append(dkGlyph(DK_GLYPHS.power));
     out.addEventListener('click', () => { show(false); acctLogout(); });
-    head.append(el('span', 'dk-ctl-avatar', (acct?.user || '?')[0].toUpperCase()), who, out);
+    const avatar = el('span', 'dk-ctl-avatar');
+    avatar.append(dkUserGlyph());
+    head.append(avatar, who, out);
     pop.replaceChildren(head, tiles, theme, chips);
   };
   const show = (on) => {
@@ -1809,9 +1817,61 @@ function dkControlTray() {
   b.addEventListener('click', () => show(pop.hidden));
   document.addEventListener('pointerdown', (e) => { if (!pop.hidden && !wrap.contains(e.target)) show(false); }, true);
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !pop.hidden) show(false); });
-  dk.ctl = { show, btn: b, wrap };
+  dk.ctl = { show, btn: b, wrap, draw: () => { if (!pop.hidden) draw(); } };
+  setTimeout(checkUpdates, 3000);
   return wrap;
 }
+
+// --- updates waiting: the mesh's release and this client's, a blue dot and one note each
+
+const updates = { mesh: '', client: '', clientNow: '', clientBusy: false };
+const UPDATE_NOTED = 'phosphorus-update-noted';
+
+function paintUpdates() {
+  dk.ctl?.btn.classList.toggle('has-update', !!(updates.mesh || updates.client));
+  dk.ctl?.draw();
+  let noted = {};
+  try { noted = JSON.parse(localStorage.getItem(UPDATE_NOTED)) || {}; } catch {}
+  const say = (k, title) => {
+    if (!updates[k] || noted[k] === updates[k]) return;
+    noted[k] = updates[k];
+    noteAdd(title, `v${updates[k]}`);
+    if (notifyOn) notifyOs(title, `v${updates[k]}`);
+  };
+  say('mesh', 'mesh update');
+  say('client', 'client update');
+  try { localStorage.setItem(UPDATE_NOTED, JSON.stringify(noted)); } catch {}
+}
+
+// the release feed against every host, the client's own feed; asked, never acted on
+async function checkUpdates() {
+  if (acct?.admin) {
+    try {
+      const c = await (await fetch('/api/update/check')).json();
+      const versions = [updateSeen.selfVersion, ...(updateSeen.tailnet || []).filter((d) => d.phosphorus).map((d) => d.version)].filter(Boolean);
+      updates.mesh = c.latest && versions.some((v) => newerVersion(c.latest, v)) ? c.latest : '';
+    } catch {}
+  }
+  if (clientInvoke) {
+    try {
+      const c = await clientInvoke('client_update_check');
+      updates.clientNow = c.current || '';
+      updates.client = c.latest || '';
+    } catch {}
+  }
+  paintUpdates();
+}
+
+async function clientUpdate() {
+  if (!updates.client) { await checkUpdates(); if (!updates.client) noteAdd('client current', updates.clientNow ? `v${updates.clientNow}` : ''); return; }
+  updates.clientBusy = true;
+  paintUpdates();
+  try { await clientInvoke('client_update'); } catch (e) { noteAdd('client update failed', String(e)); }
+  updates.clientBusy = false;
+  paintUpdates();
+}
+// a look once the desk comes up, then every few hours
+setInterval(checkUpdates, 6 * 3600 * 1000);
 
 // the log following its newest line, eased down rather than snapped, a jump
 // past a screen (history, a conversation coming up) still snapped
@@ -4271,6 +4331,7 @@ const DK_GLYPHS = {
   power: 'M8 1.5v6M4.6 3.8a5 5 0 1 0 6.8 0',
   spark: 'M8 1.5l1.4 5.1 5.1 1.4-5.1 1.4L8 14.5l-1.4-5.1L1.5 8l5.1-1.4z',
   reload: 'M13.5 8a5.5 5.5 0 1 1-1.8-4.1M13.5 1.5v3.5h-3.5',
+  download: 'M8 2v8M4.5 7L8 10.5 11.5 7M2.5 13.5h11',
   doc: ICONS.file,
   app: 'M2.5 2.5h11v11h-11zM2.5 5.5h11M4.25 4h.01M5.75 4h.01M6 8.5l-1.5 1.5L6 11.5M10 8.5l1.5 1.5-1.5 1.5',
   terminal: 'M2 3h12v10H2zM4.5 6.5l2 1.5-2 1.5M8 10h3.5',

@@ -21,8 +21,6 @@ use tauri_plugin_updater::UpdaterExt;
 static BUSY: AtomicBool = AtomicBool::new(false);
 /// popped out windows' labels
 static TABS: AtomicU32 = AtomicU32::new(0);
-/// between the feed's quiet checks while running
-const UPDATE_EVERY: Duration = Duration::from_secs(6 * 3600);
 
 struct App {
     // where the mesh's domain is kept
@@ -128,7 +126,9 @@ fn open_main(handle: &AppHandle) {
         .remote(format!("{}*", url_of(&d)))
         .window("main")
         .permission("allow-notify")
-        .permission("allow-claude-setup");
+        .permission("allow-claude-setup")
+        .permission("allow-client-update-check")
+        .permission("allow-client-update");
     #[cfg(target_os = "macos")]
     let cap = cap.permission("core:window:allow-start-dragging").permission("core:window:allow-internal-toggle-maximize");
     let _ = handle.add_capability(cap);
@@ -332,18 +332,36 @@ async fn check_update(handle: AppHandle, ask: bool) {
     BUSY.store(false, Ordering::SeqCst);
 }
 
-/// a quiet check soon after launch, then every few hours
-fn watch_updates(handle: AppHandle) {
+/// the page's check: a newer client's version, or none; never a prompt
+#[tauri::command]
+async fn client_update_check(handle: AppHandle) -> Result<Value, String> {
+    let v = handle.package_info().version.to_string();
+    let current = v.strip_suffix(".0").unwrap_or(&v).to_string();
     if !can_update(&handle) {
-        return;
+        return Ok(json!({"current": current, "latest": null}));
     }
-    std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_secs(5));
-        loop {
-            tauri::async_runtime::block_on(check_update(handle.clone(), false));
-            std::thread::sleep(UPDATE_EVERY);
-        }
-    });
+    let u = handle.updater_builder().timeout(Duration::from_secs(30)).build().map_err(|e| e.to_string())?;
+    let found = u.check().await.map_err(|e| e.to_string())?;
+    let latest = found.map(|f| f.version.strip_suffix(".0").unwrap_or(&f.version).to_string());
+    Ok(json!({"current": current, "latest": latest}))
+}
+
+/// the page's update: the newer client downloaded, installed and started
+#[tauri::command]
+async fn client_update(handle: AppHandle) -> Result<(), String> {
+    if !can_update(&handle) || BUSY.swap(true, Ordering::SeqCst) {
+        return Err("busy".into());
+    }
+    let res = async {
+        let u = handle.updater_builder().timeout(Duration::from_secs(30)).build().map_err(|e| e.to_string())?;
+        let Some(f) = u.check().await.map_err(|e| e.to_string())? else { return Err("up to date".to_string()) };
+        // Windows: the installer exits this process and relaunches it
+        f.download_and_install(|_, _| {}, || {}).await.map_err(|e| e.to_string())
+    }
+    .await;
+    BUSY.store(false, Ordering::SeqCst);
+    res?;
+    handle.restart()
 }
 
 /// the app's own folders: config, data, caches, logs
@@ -474,7 +492,7 @@ fn main() {
         .on_menu_event(|app, e| menu_event(app, e.id().as_ref()))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
-        .invoke_handler(tauri::generate_handler![set_domain, notify, claude_setup])
+        .invoke_handler(tauri::generate_handler![set_domain, notify, claude_setup, client_update_check, client_update])
         .setup(|app| {
             let config = app.path().app_config_dir()?.join("client.json");
             app.manage(App { config });
@@ -484,7 +502,6 @@ fn main() {
                 app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
             }
             open_main(app.handle());
-            watch_updates(app.handle().clone());
             Ok(())
         })
         .build(tauri::generate_context!())
