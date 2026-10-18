@@ -27,7 +27,7 @@ Download from the [latest release](https://github.com/pmghartman/phosphorus/rele
 
 Tailscale is installed on first start if it's missing. On macOS, allow its VPN configuration when asked.
 
-**Client** (optional, a window onto the mesh from any computer): install `phosphorus-client` for your system and enter your domain. It updates itself. Hosts don't need it: Open in the tray uses the client when it's installed, else your browser.
+**Client** (optional, a window onto the mesh from any computer): install `phosphorus-client` for your system and enter your domain. It updates itself. Hosts don't need it.
 
 ## First start
 
@@ -114,7 +114,7 @@ flowchart TB
 
   subgraph host["Host (Linux shown)"]
     dpkg["apt + postinst"]
-    bin["phosphorus binary<br/>install, start, stop, keys, rebuild, upgrade, ps"]
+    bin["phosphorus binary<br/>install, start, stop, keys, status, vpn, rebuild, upgrade, ps"]
     agent["update agent<br/>phosphorus-update.path"]
     tsd["tailscaled<br/>the machine's, or phosphorus-tailscaled.service"]
     subgraph home["/var/lib/phosphorus"]
@@ -162,6 +162,7 @@ flowchart TB
   ph --> model
   ph --> cfd --> cf --> browser
   client --> browser
+  client -->|"self-update"| feed
   browser -->|"/api/ping/host, timed by the client"| ph
 ```
 
