@@ -2120,7 +2120,8 @@ input, textarea { caret-color: var(--accent); }
   .dk-profile-name { display: none; }
 }
 /* the bar's icon buttons one even row: same width, same glyph, no gap between */
-.dk-bar .dk-tray-wrap { margin-right: -0.6rem; }
+.dk-bar .dk-tray-wrap { margin-right: 0; }
+.dk-bar .dk-ctl { margin-right: 0.35rem; }
 .dk-bar .dk-tray:not(.dk-profile), .dk-bar .update-wrap > button, .dk-bar .theme-toggle.top-theme {
   width: 2.25rem; padding: 0; justify-content: center; display: flex; align-items: center;
 }
@@ -2177,3 +2178,43 @@ input, textarea { caret-color: var(--accent); }
    its title inside the top edge in sage */
 .dk-pop { position: fixed; z-index: 1000; }
 .dk-menu-title { padding: 0.35rem 0.75rem 0.4rem; line-height: 1; color: var(--sage); font-size: 0.72rem; letter-spacing: 0.04em; }
+
+/* --- the bar's bell and control panel ------------------------------------------ */
+
+/* the panes the panel opens, their own buttons out of sight */
+.dk-ctl > .dk-tray-wrap > .dk-tray, .dk-ctl .top-mesh-wide > .update-wrap > button, .dk-ctl .top-mesh-wide .theme-wrap { display: none; }
+.dk-ctl .top-mesh-wide { display: contents; }
+.dk-bell { position: relative; }
+.dk-bell.has-new::after { content: ''; position: absolute; top: 0.55rem; right: 0.6rem; width: 0.35rem; height: 0.35rem; border-radius: 50%; background: var(--accent); }
+.dk-note-pop, .dk-ctl-pop {
+  display: flex; flex-direction: column; background: var(--card); border: 1px solid var(--border);
+  box-shadow: var(--drop); font-size: 0.75rem; animation: pop-in 0.12s ease-out;
+}
+.dk-note-pop[hidden], .dk-ctl-pop[hidden] { display: none; }
+.dk-note-head, .dk-ctl-head { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0.7rem 0.35rem; color: var(--sage); font-size: 0.72rem; letter-spacing: 0.04em; }
+.dk-note-clear { background: none; border: 0; padding: 0; color: var(--muted); font: inherit; cursor: pointer; }
+.dk-note-clear:hover { color: var(--accent); }
+.dk-note-list { list-style: none; margin: 0; padding: 0 0 0.3rem; max-height: min(60vh, 26rem); overflow-y: auto; }
+.dk-note { padding: 0.4rem 0.7rem; border-left: 2px solid transparent; }
+.dk-note.new { border-left-color: var(--accent); }
+.dk-note + .dk-note { border-top: 1px solid var(--border); }
+.dk-note-top { display: flex; justify-content: space-between; gap: 0.6rem; }
+.dk-note-t { color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dk-note-at { flex: none; color: var(--dim); }
+.dk-note-b { margin-top: 0.15rem; color: var(--muted); overflow-wrap: anywhere; }
+.dk-note-none { padding: 0.9rem 0.7rem 1rem; color: var(--muted); text-align: center; }
+.dk-ctl-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(5.2rem, 1fr)); gap: 0.35rem; padding: 0 0.6rem; }
+.dk-ctl-tile {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 0.15rem; padding: 0.5rem 0.55rem;
+  background: var(--bg); border: 1px solid var(--border); color: var(--fg); font: inherit; cursor: pointer; text-align: left;
+  transition: border-color 0.15s, color 0.15s;
+}
+.dk-ctl-tile .ic { width: 0.95rem; height: 0.95rem; color: var(--muted); margin-bottom: 0.2rem; transition: color 0.15s; }
+.dk-ctl-tile:hover, .dk-ctl-tile:focus-visible { border-color: var(--accent); outline: none; }
+.dk-ctl-tile:hover .ic { color: var(--accent); }
+.dk-ctl-sub { color: var(--muted); font-size: 0.68rem; }
+.dk-ctl-theme { display: flex; margin: 0.6rem; border: 1px solid var(--border); }
+.dk-ctl-seg { flex: 1; padding: 0.3rem 0; background: none; border: 0; color: var(--muted); font: inherit; cursor: pointer; transition: background-color 0.15s, color 0.15s; }
+.dk-ctl-seg + .dk-ctl-seg { border-left: 1px solid var(--border); }
+.dk-ctl-seg:hover { color: var(--fg); }
+.dk-ctl-seg.on { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--fg); }
