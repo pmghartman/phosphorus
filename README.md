@@ -128,8 +128,6 @@ flowchart TB
   browser <-->|"tailnet, no domain"| ph
 ```
 
-## The name
-
 <p align="center">
   <img src=".github/assets/wright-alchemist.jpg" alt="The Alchemist Discovering Phosphorus, Joseph Wright of Derby" width="420">
 </p>
