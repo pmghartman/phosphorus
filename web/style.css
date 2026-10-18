@@ -2121,7 +2121,7 @@ input, textarea { caret-color: var(--accent); }
 }
 /* the bar's icon buttons one even row: same width, same glyph, no gap between */
 .dk-bar .dk-tray-wrap { margin-right: 0; }
-.dk-bar .dk-ctl { margin-right: 0.35rem; }
+.dk-bar .dk-ctl { margin-left: 0.2rem; }
 .dk-bar .dk-tray:not(.dk-profile), .dk-bar .update-wrap > button, .dk-bar .theme-toggle.top-theme {
   width: 2.25rem; padding: 0; justify-content: center; display: flex; align-items: center;
 }
@@ -2218,3 +2218,11 @@ input, textarea { caret-color: var(--accent); }
 .dk-ctl-seg + .dk-ctl-seg { border-left: 1px solid var(--border); }
 .dk-ctl-seg:hover { color: var(--fg); }
 .dk-ctl-seg.on { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--fg); }
+/* the clock and the user, one wide button */
+.dk-ctl > .dk-profile { gap: 0.45rem; padding: 0 0.7rem; }
+.dk-ctl > .dk-profile .dk-clock { margin-right: 0.25rem; }
+.dk-ctl-role { color: var(--muted); }
+.dk-ctl-rows { display: flex; flex-direction: column; padding: 0.2rem 0 0.35rem; border-top: 1px solid var(--border); }
+.dk-ctl-row { padding: 0.35rem 0.75rem; text-align: left; background: none; border: 0; color: var(--fg); font: inherit; cursor: pointer; }
+.dk-ctl-row:hover, .dk-ctl-row:focus-visible { background: var(--tab-hover); outline: none; }
+.dk-ctl-row.danger { color: var(--offmesh); }
