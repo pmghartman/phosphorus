@@ -155,14 +155,15 @@ func controlTools(local func(m Meta) bool) []tool {
 				return pressed(src.Actions.ChatEdit(m.Caller.User, str(a["ref"]), str(a["action"]), str(a["text"])))
 			}},
 		{name: "terminal_run", scope: "key", destructive: true,
-			description: "Run a command as you in your own shared, logged-in terminal on a host, with exactly the rights that login has, " +
-				"and return the screen once its output settles. open_terminal first opens one there, logged in with your saved login for " +
-				"that host (none saved: nothing opens). Read each result before the next command. Never types a password: a prompt " +
-				"asking for one is left for you. " + noCreds,
+			description: "Run a command on a host as you, with exactly the rights of your saved login for it. With a login saved, " +
+				"it signs in over ssh on its own, no window needed, and returns the exit code, stdout and stderr (each command a fresh " +
+				"shell, so chain steps with && or ;). mode tab runs it instead in your shared, logged-in terminal tab (open_terminal " +
+				"opens one) and returns the screen, keeping its directory and state between commands. Never types a password. " + noCreds,
 			schema: object(map[string]any{"host": name,
 				"command": map[string]any{"type": "string", "description": "one line, run as typed"},
-				"id":      map[string]any{"type": "string", "description": "terminal id from terminal_screen, if several are shared"},
-				"wait_s":  map[string]any{"type": "integer", "description": "seconds to wait for output to settle, up to 120", "default": 30}}, "host", "command"),
+				"mode":    map[string]any{"type": "string", "enum": []any{"auto", "ssh", "tab"}, "description": "auto: ssh with a saved login, else a shared tab", "default": "auto"},
+				"id":      map[string]any{"type": "string", "description": "tab only: terminal id from terminal_screen, if several are shared"},
+				"wait_s":  map[string]any{"type": "integer", "description": "ssh: seconds before it's killed, up to 600; tab: seconds to wait for output to settle, up to 120", "default": 60}}, "host", "command"),
 			run: func(a map[string]any, m Meta) (any, error) {
 				if m.Caller == nil {
 					return nil, errc("forbidden", "on a user's key only; the chat's model uses terminal_type")
@@ -175,13 +176,35 @@ func controlTools(local func(m Meta) bool) []tool {
 				if strings.ContainsAny(cmd, "\r\n") {
 					return nil, errc("bad_input", "one line only")
 				}
+				if strings.TrimSpace(cmd) == "" {
+					return nil, errc("bad_input", "missing 'command'")
+				}
+				mode := str(a["mode"])
+				if mode == "" {
+					mode = "auto"
+				}
+				var user, pass string
+				saved := false
+				if m.Caller.Login != nil {
+					user, pass, saved = m.Caller.Login(h)
+				}
+				if mode == "ssh" || mode == "auto" && saved {
+					if !saved {
+						return nil, errc("forbidden", "your key carries no saved login for %s: save one in the browser, the key picks it up", h)
+					}
+					w := int(numOr(a["wait_s"], 60))
+					if w < 1 || w > 600 {
+						return nil, errc("bad_input", "wait_s is 1 to 600")
+					}
+					return pressed(src.Actions.Op(h, "exec", map[string]any{"user": user, "pass": pass, "cmd": cmd, "timeout": float64(w)}))
+				}
 				w := int(numOr(a["wait_s"], 30))
 				if w < 1 || w > waitMaxS {
 					return nil, errc("bad_input", "wait_s is 1 to %d", waitMaxS)
 				}
 				out, err := typeTerminal(h, cmd, str(a["id"]), w, m.Caller.User, true)
 				if err != nil {
-					return nil, errc("not_found", "%s; open_terminal opens one logged in with your saved login", err.Error())
+					return nil, errc("not_found", "%s; open_terminal opens one logged in with your saved login, or save a login so it runs over ssh", err.Error())
 				}
 				return out, nil
 			}},

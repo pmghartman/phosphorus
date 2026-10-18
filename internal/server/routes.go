@@ -282,7 +282,9 @@ func appHandler(w http.ResponseWriter, r *http.Request) {
 				sendJSON(w, 401, map[string]any{"error": "key refused: " + why})
 				return
 			}
-			caller = &mcp.Caller{User: s.User, Admin: s.Admin, Via: strings.ToLower(strings.TrimSpace(r.Header.Get("X-Phosphorus-Via")))}
+			k := strings.TrimSpace(key)
+			caller = &mcp.Caller{User: s.User, Admin: s.Admin, Via: strings.ToLower(strings.TrimSpace(r.Header.Get("X-Phosphorus-Via"))),
+				Login: func(host string) (string, string, bool) { return users.MCPLogin(k, host) }}
 		} else if !isLoopback(r) && !isTailnet(r) {
 			forbidden(w)
 			return

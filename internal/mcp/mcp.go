@@ -287,6 +287,8 @@ type Caller struct {
 	User  string
 	Admin bool
 	Via   string
+	// Login the host login the key carries, ok false for none
+	Login func(host string) (user, pass string, ok bool)
 }
 
 // Meta an ask's context: its asker, role and project, or a keyed caller

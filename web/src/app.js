@@ -6376,7 +6376,8 @@ async function claudeConnect() {
   if (!r.ok) { openConfirm(r.error || 'failed', { title: 'claude', hideCancel: true, actionLabel: 'ok', onAction: closeUpdateModal }); return; }
   try {
     await clientInvoke('claude_setup', { key: r.key });
-    noteAdd('claude connected', 'on its next start');
+    const hs = r.hosts || [];
+    noteAdd('claude connected', `on its next start${hs.length ? `, runs commands as you on ${hs.join(', ')}` : ''}`);
   } catch (e) { openConfirm(`failed: ${e}`, { title: 'claude', hideCancel: true, actionLabel: 'ok', onAction: closeUpdateModal }); }
 }
 
