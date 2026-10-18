@@ -4778,9 +4778,11 @@ function dkChips() {
   const hosts = dk.desk?.hosts;
   if (!hosts) return;
   const here = hostSwitch?.to || selfHost;
-  const names = [...new Set([...dk.creds.keys(), ...terminalHosts])]
-    .sort((a, b) => (b === selfHost) - (a === selfHost) || a.localeCompare(b));
   const up = new Set([...terminalHosts, selfHost]);
+  // logged in first, then dropped off, the locked last
+  const rank = (h) => (!dk.creds.has(h) ? 2 : up.has(h) ? 0 : 1);
+  const names = [...new Set([...dk.creds.keys(), ...terminalHosts])]
+    .sort((a, b) => rank(a) - rank(b) || (b === selfHost) - (a === selfHost) || a.localeCompare(b));
   dkChipsFold(hosts, names.length);
   const sig = JSON.stringify([here, names, [...dk.creds.keys()], names.filter((h) => !up.has(h))]);
   if (sig === dk.chips) return;
@@ -6391,7 +6393,8 @@ function dkProfileWin() {
   w.body.appendChild(body);
   const draw = () => {
     const hosts = el('ul', 'dk-rows');
-    const names = [...new Set([...Object.keys(acct.vault.hosts), ...terminalHosts])].sort();
+    const names = [...new Set([...Object.keys(acct.vault.hosts), ...terminalHosts])]
+      .sort((a, b) => !acct.vault.hosts[a] - !acct.vault.hosts[b] || a.localeCompare(b));
     hosts.replaceChildren(...(names.length ? names.map((h) => {
       const li = el('li', 'dk-row acct-user');
       const saved = acct.vault.hosts[h];
