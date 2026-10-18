@@ -28,7 +28,7 @@ var (
 var Commands = map[string]bool{
 	"": true, "start": true, "stop": true, "restart": true, "update": true, "keys": true, "install": true,
 	"setup": true, "rebuild": true, "upgrade": true, "game-control": true, "game-control-setup": true,
-	"run": true, "ps": true, "uninstall": true, "help": true, "-h": true, "--help": true,
+	"run": true, "ps": true, "uninstall": true, "status": true, "vpn": true, "help": true, "-h": true, "--help": true,
 }
 
 func usage(w io.Writer) {

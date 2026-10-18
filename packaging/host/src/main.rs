@@ -26,8 +26,8 @@ static BUSY: AtomicBool = AtomicBool::new(false);
 const CLIENT_ID: &str = "dev.phosphorus.client";
 /// the tray menu's first line: what the tooltip says, visible on macOS
 static STATUS: OnceLock<MenuItem<tauri::Wry>> = OnceLock::new();
-/// the tray's Start, Stop and VPN items, enabled and named by the host's state
-static ITEMS: OnceLock<[MenuItem<tauri::Wry>; 3]> = OnceLock::new();
+/// the tray's Start and Stop items, enabled by the host's state
+static ITEMS: OnceLock<[MenuItem<tauri::Wry>; 2]> = OnceLock::new();
 
 struct App {
     payload: PathBuf,
@@ -168,15 +168,13 @@ fn status_tip(app: &App) -> String {
 fn refresh(handle: &AppHandle) {
     let app = handle.state::<App>();
     let busy = BUSY.load(Ordering::SeqCst);
-    let (running, vpn) = if busy { (false, false) } else { host_state(&app) };
+    let (running, _) = if busy { (false, false) } else { host_state(&app) };
     if !busy {
         set_tip(handle, &status_tip(&app));
     }
-    if let Some([start, stop, net]) = ITEMS.get() {
+    if let Some([start, stop]) = ITEMS.get() {
         let _ = start.set_enabled(!busy && !running);
         let _ = stop.set_enabled(!busy && running);
-        let _ = net.set_enabled(!busy);
-        let _ = net.set_text(if vpn { "Turn VPN Off" } else { "Turn VPN On" });
     }
 }
 
@@ -243,43 +241,6 @@ fn host_action(handle: AppHandle, action: &'static str, then_open: bool) {
             let _ = handle.run_on_main_thread(move || open_main(&h));
         } else {
             notify(&handle, if action == "start" { "Phosphorus is running." } else { "Phosphorus stopped." });
-        }
-    });
-}
-
-/// Tailscale on or off; off stops phosphorus first, after a confirm when it's running
-fn vpn_action(handle: AppHandle) {
-    if BUSY.swap(true, Ordering::SeqCst) {
-        return;
-    }
-    std::thread::spawn(move || {
-        let app = handle.state::<App>();
-        let (running, vpn) = host_state(&app);
-        if vpn && running {
-            activate(&handle);
-            let go = handle
-                .dialog()
-                .message("Turning the VPN off stops Phosphorus on this computer and takes it off the mesh. Start turns both back on.")
-                .title("Turn VPN Off")
-                .kind(MessageDialogKind::Warning)
-                .buttons(MessageDialogButtons::OkCancelCustom("Turn Off".into(), "Cancel".into()))
-                .blocking_show();
-            if !go {
-                BUSY.store(false, Ordering::SeqCst);
-                return;
-            }
-        }
-        let to = if vpn { "off" } else { "on" };
-        set_tip(&handle, if vpn { "Phosphorus turning the VPN off…" } else { "Phosphorus turning the VPN on…" });
-        refresh(&handle);
-        let (ok, out) = host_run(&app, &["vpn", to], "vpn");
-        BUSY.store(false, Ordering::SeqCst);
-        refresh(&handle);
-        if ok {
-            notify(&handle, if vpn { "VPN off, Phosphorus stopped." } else { "VPN on." });
-        } else {
-            let e = last_error(&out);
-            alert(&handle, if e.is_empty() { "couldn't change the VPN, see state/vpn.log in the Phosphorus folder" } else { &e });
         }
     });
 }
@@ -664,7 +625,7 @@ fn app_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     Menu::with_items(app, &[&main, &edit, &window])
 }
 
-/// the tray: the service's controls, Open the frontend
+/// the tray: the service's controls
 fn tray(app: &AppHandle) -> tauri::Result<()> {
     let item = |id: &str, text: &str| MenuItem::with_id(app, id, text, true, None::<&str>);
     let sep = || PredefinedMenuItem::separator(app);
@@ -672,18 +633,14 @@ fn tray(app: &AppHandle) -> tauri::Result<()> {
     let _ = STATUS.set(status.clone());
     let start = item("start", "Start")?;
     let stop = item("stop", "Stop")?;
-    let net = item("vpn", "Turn VPN Off")?;
-    let _ = ITEMS.set([start.clone(), stop.clone(), net.clone()]);
+    let _ = ITEMS.set([start.clone(), stop.clone()]);
     let menu = Menu::with_items(
             app,
             &[
                 &status,
                 &sep()?,
-                &item("open", "Open Phosphorus")?,
-                &sep()?,
                 &start,
                 &stop,
-                &net,
                 &item("update", "Check for Updates")?,
                 &sep()?,
                 &item("keys", "Edit Keys…")?,
@@ -706,10 +663,8 @@ fn tray(app: &AppHandle) -> tauri::Result<()> {
 /// every menu's items, the tray's and the macOS app menu's
 fn menu_event(app: &AppHandle, id: &str) {
     match id {
-        "open" => open_main(app),
         "start" => host_action(app.clone(), "start", false),
         "stop" => host_action(app.clone(), "stop", false),
-        "vpn" => vpn_action(app.clone()),
         "update" => {
             let a = app.clone();
             let id = format!("app-{}", now_ms());
