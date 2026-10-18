@@ -333,34 +333,21 @@ jobs:
         run: |
           cd out
           U=https://github.com/$REPO/releases/download/v$VER
-          link() { for f in "$@"; do [ -e "$f" ] && echo "- [\`$f\`]($U/$f)"; done; true; }
+          # one table row per OS: its label, then each built file as a short link
+          row() { local os=$1 out=""; shift; for f in "$@"; do [ -e "$f" ] || continue; local l=${f##*.}; case $f in *amd64*) l="amd64 .$l";; *arm64*) l="arm64 .$l";; *) l=".$l";; esac; out+="${out:+ · }[$l]($U/$f)"; done; [ -n "$out" ] && echo "| $os | $out |"; true; }
+          table() { local rows; rows=$(row macOS $1-macos-universal.dmg; row Windows $1-windows-x86_64-setup.exe; row Linux $2_amd64.deb $2_arm64.deb); [ -n "$rows" ] && printf '## %s\n\n| | |\n|---|---|\n%s\n\n' "$3" "$rows"; true; }
           {
-            h=$(link phosphorus-*-macos-universal.dmg phosphorus-*-windows-x86_64-setup.exe phosphorus_*.deb | grep -v phosphorus-client || true)
-            if [ -n "$h" ]; then
-              echo "## Phosphorus (the service)"
-              echo "Runs this machine as a host; the frontend opens in your browser, or in Phosphorus Client when it's installed."
-              echo
-              echo "$h"
-              echo
-              grep -qF macos-universal.dmg <<<"$h" && echo "- **macOS**: open the \`.dmg\`, drag the app to Applications and open it (first open: right-click > Open). It asks for its keys and needs the Tailscale app."
-              grep -qF windows-x86_64-setup.exe <<<"$h" && echo "- **Windows**: run the setup \`.exe\` (SmartScreen: More info > Run anyway). It asks for its keys and needs Tailscale for Windows."
-              grep -qF .deb <<<"$h" && echo "- **Linux**: \`sudo apt install ./phosphorus_${VER}_ARCH.deb\`, then \`sudo phosphorus\` and paste the keys it asks for (\`amd64\` or \`arm64\`)."
-              echo
-            fi
-            c=$(link phosphorus-client-*.dmg phosphorus-client-*-setup.exe phosphorus-client_*.deb)
-            if [ -n "$c" ]; then
-              echo "## Phosphorus Client"
-              echo "Optional, for any computer: a window on the mesh, updating itself."
-              echo
-              echo "$c"
-              echo
-              echo "- **macOS**: open the \`.dmg\` and drag the app to Applications. **Windows**: run the setup \`.exe\`. **Linux**: \`sudo apt install ./phosphorus-client_${VER}_ARCH.deb\`."
-              echo
-            fi
-            echo "## Misc files"
-            link THIRD_PARTY_LICENSES.txt forgejo-src-*.tar.gz
+            shopt -s nullglob
+            table phosphorus-$VER phosphorus_$VER Phosphorus
+            table phosphorus-client-$VER phosphorus-client_$VER Client
+            echo "## Misc"
             echo
-            echo "\`THIRD_PARTY_LICENSES.txt\` is in every installer too; Forgejo's source is here whenever a Linux host package is."
+            m=""
+            [ -e THIRD_PARTY_LICENSES.txt ] && m="[Licenses]($U/THIRD_PARTY_LICENSES.txt)"
+            for f in forgejo-src-*.tar.gz; do m+="${m:+ · }[Forgejo source]($U/$f)"; done
+            echo "$m"
+            echo
+            echo "Install steps: [README](https://github.com/$REPO#install)"
           } > "$RUNNER_TEMP/notes.md"
           cat "$RUNNER_TEMP/notes.md"
       - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
