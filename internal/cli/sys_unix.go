@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"syscall"
+	"time"
 )
 
 var (
@@ -21,3 +22,15 @@ func chownLike(file string, st os.FileInfo) error {
 }
 
 func detach(c *exec.Cmd) { c.SysProcAttr = &syscall.SysProcAttr{Setsid: true} }
+
+// StartDetached c in its own session, run after delay, outliving this process
+func StartDetached(c *exec.Cmd, delay time.Duration) error {
+	detach(c)
+	go func() {
+		time.Sleep(delay)
+		if c.Start() == nil {
+			c.Wait()
+		}
+	}()
+	return nil
+}

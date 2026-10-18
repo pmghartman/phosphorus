@@ -45,7 +45,11 @@ type Actions struct {
 	Game       func(host, name, action string) (int, any)
 	GitMaster  func(host string) (int, any)
 	ModelRole  func(role, model string) (int, any)
-	Update     func(action string, admin bool) (int, any)
+	Update     func(action string, admin bool, only []string) (int, any)
+	// Op a host operation: health, power, containers, container, term_close,
+	// service_health, or mesh-wide mesh_health and update_history
+	Op       func(host, op string, p map[string]any) (int, any)
+	ChatEdit func(user, ref, action, text string) (int, any)
 	Files      func(c *Caller, host, op, share string, body map[string]any) (int, any)
 	Copy       func(c *Caller, from, to [3]string, move bool) (int, any)
 	Logs       func(host string, p map[string]any) (int, any)
@@ -293,6 +297,8 @@ type Meta struct {
 	Project string
 	Session string
 	Caller  *Caller
+	// Local an unkeyed call from this host itself
+	Local bool
 }
 
 func askerOf(m Meta) (*Asker, error) {
@@ -418,6 +424,8 @@ type tool struct {
 	scope       string
 	destructive bool
 	open        bool
+	// admin a key's tool for admins only, kept off other keys' lists
+	admin bool
 	run         func(a map[string]any, m Meta) (any, error)
 }
 
@@ -426,7 +434,7 @@ type tool struct {
 func visible(t *tool, local bool, caller *Caller) bool {
 	switch {
 	case caller != nil:
-		return !t.project && t.scope != "ask"
+		return !t.project && t.scope != "ask" && (!t.admin || caller.Admin)
 	case local:
 		return t.scope != "key"
 	}
@@ -452,7 +460,11 @@ var toolsOnce sync.Once
 
 func buildTools() {
 	views := []string{"home", "files", "status", "about", "chat", "projects", "update"}
-	defer func() { tools = append(tools, agentTools()...); describe() }()
+	defer func() {
+		tools = append(tools, agentTools()...)
+		tools = append(tools, controlTools(func(m Meta) bool { return m.Local })...)
+		describe()
+	}()
 	tools = []tool{
 		{name: "project_report", project: true,
 			description: "Report your project's state, shown live to the people who set it: the phase you are in, a line or two " +
@@ -776,7 +788,8 @@ func buildTools() {
 			}},
 		{name: "update_control",
 			description: "Start a mesh update (an admin's key), continue a paused one, or cancel the running one. " + noCreds,
-			schema:      object(map[string]any{"action": map[string]any{"type": "string", "enum": []any{"start", "continue", "cancel"}}}, "action"),
+			schema: object(map[string]any{"action": map[string]any{"type": "string", "enum": []any{"start", "continue", "cancel"}},
+				"hosts": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "start only: just these hosts, to retry the ones that failed"}}, "action"),
 			run: func(a map[string]any, m Meta) (any, error) {
 				if err := adminOf(m); err != nil {
 					return nil, err
@@ -792,7 +805,17 @@ func buildTools() {
 				if act == "start" && m.Caller == nil {
 					return nil, errors.New("starting one takes the update password: ask_credentials update")
 				}
-				return pressed(src.Actions.Update(act, m.Caller != nil && m.Caller.Admin))
+				only := []string{}
+				for _, h := range arr(a["hosts"]) {
+					if !nameRe.MatchString(str(h)) {
+						return nil, errc("bad_input", "bad host %s", util.JSString(h))
+					}
+					only = append(only, str(h))
+				}
+				if len(only) > 0 && act != "start" {
+					return nil, errc("bad_input", "hosts goes with start alone")
+				}
+				return pressed(src.Actions.Update(act, m.Caller != nil && m.Caller.Admin, only))
 			}},
 		{name: "files_write",
 			description: "Write a text file in a share with w: the whole file as text (made if missing), or old replaced by new, " +
@@ -1219,10 +1242,11 @@ func one(raw any, local bool, caller *Caller) map[string]any {
 					err = fmt.Errorf("%v", r)
 				}
 			}()
-			m := Meta{Caller: caller}
+			m := Meta{Caller: caller, Local: local}
 			if local && util.Truthy(pa["_ask"]) {
 				if x := metaOf(pa["_ask"], pa["_dir"]); x != nil {
 					m = *x
+					m.Local = true
 				}
 			}
 			if m.Project != "" && !t.project && !projectOK[t.name] {

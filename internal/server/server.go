@@ -606,7 +606,7 @@ func nilIfEmpty(m map[string]any) any {
 
 // --- the update chain ------------------------------------------------------------
 
-func chainAction(action, password string, admin bool) (int, any) {
+func chainAction(action, password string, admin bool, only ...string) (int, any) {
 	switch action {
 	case "start":
 		if !admin && (adminPass == "" || password != adminPass) {
@@ -616,9 +616,12 @@ func chainAction(action, password string, admin bool) (int, any) {
 		for _, h := range git.Rows() {
 			hosts = append(hosts, str(h["host"]))
 		}
-		started := update.Start(hosts)
+		started := update.StartOnly(hosts, only)
 		if l, ok := started["locked"]; ok {
 			return 409, map[string]any{"status": "locked", "by": l}
+		}
+		if e, ok := started["error"]; ok {
+			return 404, map[string]any{"error": e}
 		}
 		alert := postOwn(Msg{"kind": "alert", "name": "system", "color": alertColor, "text": updateWarning, "countdown": update.StartGraceMS / 1000})
 		update.Remember(num(alert["seq"]))
@@ -764,6 +767,7 @@ func Main() int {
 		if c.AlertSeq != nil {
 			retractOwn(*c.AlertSeq)
 		}
+		rememberChain(c)
 	})
 	update.OnOutcome(func(o map[string]any) {
 		o["at"] = util.Now()
@@ -863,9 +867,9 @@ func initMCP() {
 				}
 				return st, out
 			},
-			Update: func(action string, admin bool) (int, any) {
+			Update: func(action string, admin bool, only []string) (int, any) {
 				clock.MarkHot()
-				st, body := chainAction(action, "", admin)
+				st, body := chainAction(action, "", admin, only...)
 				if st == 409 {
 					return 409, map[string]any{"error": "no update started here to " + action}
 				}
@@ -876,6 +880,16 @@ func initMCP() {
 				return copyAcross(c, Loc{from[0], from[1], from[2]}, Loc{to[0], to[1], to[2]}, move)
 			},
 			Logs:       hostLogsOn,
+			Op: func(host, op string, p map[string]any) (int, any) {
+				if op == "mesh_health" {
+					return 200, meshHealth()
+				}
+				if op == "update_history" {
+					return 200, chainHistory()
+				}
+				return opOn(host, op, p, 100*time.Second)
+			},
+			ChatEdit: chatEditAs,
 			Config:     hostConfig,
 			UserUI:     userUI,
 			Service:    svcRequest,

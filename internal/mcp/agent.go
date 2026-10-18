@@ -41,7 +41,26 @@ func chatRows(m Meta, want string) []map[string]any {
 		me = m.Caller.User
 	}
 	out := []map[string]any{}
-	for _, x := range src.Chat() {
+	all := src.Chat()
+	// edits and deletes folded in, each by its own author only
+	authors := map[string]any{}
+	for _, x := range all {
+		authors[util.JSString(x["host"])+":"+util.JSString(x["seq"])] = x["name"]
+	}
+	gone, edited := map[string]bool{}, map[string]string{}
+	for _, x := range all {
+		ref := str(x["ref"])
+		if authors[ref] != x["name"] {
+			continue
+		}
+		switch str(x["kind"]) {
+		case "delete":
+			gone[ref] = true
+		case "edit":
+			edited[ref] = str(x["text"])
+		}
+	}
+	for _, x := range all {
 		k := str(x["kind"])
 		if k != "" && k != "model" && k != "dm" {
 			continue
@@ -64,7 +83,17 @@ func chatRows(m Meta, want string) []map[string]any {
 			continue
 		}
 		ts, _ := x["timestamp"].(float64)
-		row := map[string]any{"at": time.UnixMilli(int64(ts)).UTC().Format("2006-01-02T15:04:05.000Z"), "ms": int64(ts), "channel": ch, "name": x["name"], "text": x["text"]}
+		ref := util.JSString(x["host"]) + ":" + util.JSString(x["seq"])
+		if gone[ref] {
+			continue
+		}
+		row := map[string]any{"at": time.UnixMilli(int64(ts)).UTC().Format("2006-01-02T15:04:05.000Z"), "ms": int64(ts), "channel": ch, "name": x["name"], "text": x["text"], "ref": ref}
+		if t, ok := edited[ref]; ok {
+			row["text"], row["edited"] = t, true
+		}
+		if v := str(x["via"]); v != "" {
+			row["via"] = v
+		}
 		if fs, ok := x["files"].([]any); ok {
 			names := []any{}
 			for _, f := range fs {
@@ -413,6 +442,10 @@ func describe() {
 		}
 	}
 	for i := range tools {
+		switch tools[i].name {
+		case "make_git_master", "set_model_role", "update_control", "host_logs", "host_config", "service_edit", "config_set":
+			tools[i].admin = true
+		}
 		switch tools[i].name {
 		case "files_change", "game_power", "update_control", "make_git_master":
 			tools[i].destructive = true

@@ -899,3 +899,48 @@ func mergeFromPeers(messages []any) {
 	}
 	mergeChatMessages(valid)
 }
+
+// chatEditAs a line of user's edited or deleted, as the chat's own edit and
+// delete do; a pending invite of theirs withdrawn by deleting it
+func chatEditAs(user, ref, action, text string) (int, any) {
+	if !refRe.MatchString(ref) {
+		return 400, Msg{"error": "ref is host:seq, as chat_history gives it"}
+	}
+	cmu.Lock()
+	var line Msg
+	for _, m := range mergedChat {
+		if keyOf(m) == ref && !isMark(m) {
+			line = m
+			break
+		}
+	}
+	cmu.Unlock()
+	if line == nil {
+		return 404, Msg{"error": "no line " + ref}
+	}
+	if line["name"] != user {
+		return 403, Msg{"error": "only your own lines"}
+	}
+	base := Msg{"name": user, "color": line["color"], "kind": action, "ref": ref, "text": ""}
+	if isDm(line) {
+		base["dm"] = line["dm"]
+	}
+	if ch := str(line["ch"]); ch != "" {
+		base["ch"] = ch
+	}
+	switch action {
+	case "delete":
+	case "edit":
+		k := str(line["kind"])
+		if k != "" && k != "dm" && k != "model" {
+			return 400, Msg{"error": "only messages are edited"}
+		}
+		if base["text"] = clipU(strings.TrimSpace(text), maxModelTextLen); base["text"] == "" {
+			return 400, Msg{"error": "nothing to change it to, delete it instead"}
+		}
+	default:
+		return 400, Msg{"error": "action is edit or delete"}
+	}
+	postOwn(base)
+	return 200, Msg{"ok": true, "ref": ref, "action": action}
+}

@@ -621,6 +621,27 @@ func Screens(by string) []Screen {
 	return out
 }
 
+// Close one of the owner's shared sessions, ended for every tab on it
+func Close(by, id string) error {
+	mine := []*session{}
+	for _, s := range shared("") {
+		s.mu.Lock()
+		ok := by != "" && s.owner == by && id != "" && strings.HasPrefix(s.sid, id)
+		s.mu.Unlock()
+		if ok {
+			mine = append(mine, s)
+		}
+	}
+	switch {
+	case len(mine) == 0:
+		return errors.New("no shared terminal of theirs with that id here")
+	case len(mine) > 1:
+		return errors.New("several match, give more of the id")
+	}
+	mine[0].end()
+	return nil
+}
+
 // Type a command typed into the owner's shared screen, left for them to run
 func Type(by, id, text string, waitS int) (map[string]any, error) {
 	mine := []*session{}
