@@ -277,7 +277,7 @@ function codeEditor(view, file, btn, id) {
         // found again if others' edits moved it meanwhile
         const now = ta.value;
         const from = now.slice(b.from, b.from + b.raw.length) === b.raw ? b.from : b.raw ? now.indexOf(b.raw) : now.length;
-        if (from < 0) paintState('that block changed under you, your edit was not kept');
+        if (from < 0) paintState('edit lost');
         else {
           const put = box.value.trim() ? `${b.gap || ''}${box.value.replace(/\n+$/, '')}${tail}` : '';
           ta.setRangeText(put, from, from + b.raw.length, 'end');
@@ -457,7 +457,7 @@ function codeEditor(view, file, btn, id) {
         inflight = null;
         ready = true;
         setText(S, true);
-        paintState(lost ? 'out of step, your last edit was dropped' : '');
+        paintState(lost ? 'edit dropped' : '');
         if (msg.type === 'init' && !view.dataset.seen) { view.dataset.seen = '1'; ta.setSelectionRange(0, 0); }
       } else if (msg.type === 'op') {
         if (inflight && msg.id === inflight.id) {
@@ -634,7 +634,7 @@ function codeEditor(view, file, btn, id) {
   let armed = 0;
   function holdClose() {
     if (!dirty() || armed) return false;
-    btn.querySelector('.tab-label').textContent = `${codeName(file)} unsaved, close again`;
+    btn.querySelector('.tab-label').textContent = 'unsaved';
     armed = setTimeout(() => { armed = 0; paintState(); }, 3000);
     return true;
   }

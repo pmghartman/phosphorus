@@ -379,7 +379,8 @@ function meshLayoutParams(expanded) {
   const widthPx = meshGraphWrap.clientWidth || width;
   // the legend expanded only, hidden, not gone, so still measured
   const legend = meshGraphWrap.querySelector('.mesh-legend');
-  return { width, height: width * (Math.max(60, bodyH) / widthPx), widthPx, legendPx: expanded ? legend.offsetTop + legend.offsetHeight : 0 };
+  const legendOn = expanded && meshPanel.classList.contains('legend-on');
+  return { width, height: width * (Math.max(60, bodyH) / widthPx), widthPx, legendPx: legendOn ? legend.offsetTop + legend.offsetHeight : 0 };
 }
 
 // host row to the non-phosphorus devices, a frame fraction, LIFT the
@@ -432,6 +433,38 @@ function setMeshExpanded(willExpand, snap) {
 // always expanded, its table always up
 meshPanel.classList.add('expanded');
 meshT = 1;
+
+// the nodes and git rows folded under their heads, the legend behind a ?; kept per browser
+const MESH_UI_KEY = 'phosphorus-mesh-ui';
+const meshUi = (() => { try { return JSON.parse(localStorage.getItem(MESH_UI_KEY)) || {}; } catch { return {}; } })();
+const saveMeshUi = () => { try { localStorage.setItem(MESH_UI_KEY, JSON.stringify(meshUi)); } catch {} };
+const meshLegendBtn = document.getElementById('mesh-legend-btn');
+function paintMeshUi() {
+  meshPanel.classList.toggle('legend-on', !!meshUi.legend);
+  meshLegendBtn.setAttribute('aria-pressed', String(!!meshUi.legend));
+  for (const b of meshPanel.querySelectorAll('.mesh-fold')) {
+    const open = !!meshUi[b.dataset.fold];
+    b.setAttribute('aria-expanded', String(open));
+    b.parentElement.classList.toggle(`fold-${b.dataset.fold}`, !open);
+  }
+}
+paintMeshUi();
+meshLegendBtn.addEventListener('click', () => {
+  meshUi.legend = !meshUi.legend;
+  saveMeshUi();
+  paintMeshUi();
+  meshDims = null;
+  if (!meshAnimFrame) drawMesh();
+});
+for (const b of meshPanel.querySelectorAll('.mesh-fold')) {
+  b.addEventListener('click', () => {
+    meshUi[b.dataset.fold] = !meshUi[b.dataset.fold];
+    saveMeshUi();
+    paintMeshUi();
+    meshStatsDirty = true;
+    if (!meshAnimFrame) drawMesh();
+  });
+}
 
 window.addEventListener('resize', () => {
   if (!meshAnimFrame) drawMesh();
@@ -713,9 +746,10 @@ function renderMeshStats(hosts, grouped) {
   meshStats.style.display = 'flex';
   meshStats.style.maxHeight = 'none';
 
-  // up to 4 rows tall, then a scroll, measured off a real row, not guessed
+  document.getElementById('mesh-nodes-n').textContent = hosts.length;
+  // up to 8 rows tall, then a scroll, measured off a real row, not guessed
   const firstRow = meshStatsRows.firstElementChild;
-  meshStatsRows.style.maxHeight = firstRow ? `${firstRow.offsetHeight * 4}px` : '';
+  meshStatsRows.style.maxHeight = firstRow?.offsetHeight ? `${firstRow.offsetHeight * 8}px` : '';
 
   // scrollHeight: the natural height, whatever max-height drawMesh() animates
   lastStatsHeight = meshStats.scrollHeight;
@@ -764,6 +798,7 @@ function gitBackupText(h, masterGen) {
 // every state push, ageSec fresh each time; the table remeasured on a new host set
 function renderMeshGit() {
   meshGit.hidden = !gitHostsList.length;
+  document.getElementById('mesh-git-n').textContent = gitHostsList.length;
   const masterGen = gitHostsList.find((h) => h.role === 'master' && h.reachable)?.gen ?? null;
   meshGitRows.innerHTML = gitHostsList.map((h) => {
     const master = h.reachable && h.role === 'master';
@@ -788,16 +823,16 @@ function renderMeshGit() {
 function askGitSwitch(name) {
   const master = gitHostsList.find((h) => h.role === 'master' && h.reachable);
   const text = master
-    ? `${master.host} hands off to ${name}, git.${baseDomain} down a few seconds.`
-    : `${name} force-promoted, roster reset to the hosts in view. only if the old master is gone.`;
+    ? `${name} master?`
+    : `force ${name}?`;
   openConfirm(text, {
     title: master ? 'switch git master' : 'force-promote', actionLabel: master ? 'make master' : 'force-promote',
     onAction: async () => {
-      let msg = `${name} is taking over`;
+      let msg = 'switching';
       try {
         const r = await fetch(`/api/githosts/${encodeURIComponent(name)}/force`, { method: 'POST' });
-        if (!r.ok) msg = `make master failed: ${(await r.json().catch(() => ({}))).error || `status ${r.status}`}`;
-      } catch (err) { msg = `make master failed: ${err.message}`; }
+        if (!r.ok) msg = `failed: ${(await r.json().catch(() => ({}))).error || r.status}`;
+      } catch (err) { msg = `failed: ${err.message}`; }
       openConfirm(msg, { title: 'git master', hideCancel: true, actionLabel: 'ok', onAction: closeUpdateModal });
     },
   });
@@ -1596,7 +1631,7 @@ chatBell.addEventListener('click', async () => {
   let perm = Notification.permission;
   if (perm === 'default') perm = await Notification.requestPermission();
   if (perm !== 'granted') {
-    chatNote('notifications are blocked for this site, allow them in the browser to turn them on');
+    chatNote('notifications blocked');
     return;
   }
   notifyOn = true;
@@ -1647,7 +1682,7 @@ new ResizeObserver(() => {
 // when live, from the timestamp for history
 function alertCountdown(li, m, until) {
   const left = Math.ceil((until - Date.now()) / 1000);
-  li.textContent = left > 0 ? `system: ${m.text} in ${left} second${left === 1 ? '' : 's'}` : `system: ${m.text}`;
+  li.textContent = left > 0 ? `system: ${m.text} ${left}s` : `system: ${m.text}`;
   if (left > 0) setTimeout(() => { if (li.isConnected) alertCountdown(li, m, until); }, (until - Date.now()) % 1000 || 1000);
 }
 
@@ -1817,7 +1852,7 @@ function quoteEl(ref) {
   q.type = 'button';
   q.dataset.act = 'goto';
   q.dataset.ref = ref;
-  if (!t || t.gone) { q.textContent = '↳ a message no longer here'; return q; }
+  if (!t || t.gone) { q.textContent = '↳ deleted'; return q; }
   const text = (t.edited ?? t.text) || (t.files ? `[${t.files.map((f) => f.name).join(', ')}]` : '');
   q.append('↳ ', Object.assign(el('b', '', t.name), { style: `color: ${t.color || colorFor(t.name)}` }), ` ${text.replace(/\s+/g, ' ').slice(0, 120)}`);
   return q;
@@ -1841,7 +1876,7 @@ function lineEl(m, prev) {
   }
   if (m.kind === 'show') {
     li.className = 'sys show';
-    li.append(m.name === name ? `you invited ${m.dm} to work on ` : `${m.name} invited you to work on `, el('code', '', m.file?.label || m.text));
+    li.append(m.name === name ? `invited ${m.dm}: ` : `${m.name} invites: `, el('code', '', m.file?.label || m.text));
     if (m.file) {
       const b = Object.assign(el('button', 'show-open', 'open'), { type: 'button', title: 'open it in a shared editor' });
       b.dataset.act = 'show';
@@ -1852,7 +1887,7 @@ function lineEl(m, prev) {
   }
   if (m.kind === 'topic') {
     li.className = 'sys';
-    li.textContent = m.text ? `${m.name} set the topic: ${m.text}` : `${m.name} opened #${m.ch}`;
+    li.textContent = m.text ? `topic: ${m.text}` : `#${m.ch} opened`;
     return li;
   }
   const agent = MODEL_KINDS.includes(m.kind);
@@ -2175,7 +2210,7 @@ function convActions(c) {
   if (ch) {
     return [read, { label: 'open', act: () => openConv(c) },
       { label: 'leave', sub: 'hide it here until someone posts', act: () => leaveChannel(ch) },
-      { label: 'close for everyone', sub: 'its history gone mesh-wide', key: 'd', danger: true, confirm: `sure? close #${ch} for everyone`, act: () => send({ type: 'close', ch }) },
+      { label: 'close for everyone', sub: 'its history gone mesh-wide', key: 'd', danger: true, confirm: `close #${ch}?`, act: () => send({ type: 'close', ch }) },
     ].filter(Boolean);
   }
   if (c === 'mesh') {
@@ -2183,7 +2218,7 @@ function convActions(c) {
   }
   if (isAgent(c)) {
     return [read, { label: 'open', act: () => openConv(c) },
-      { label: 'clear conversation', sub: 'and its context, in this browser', key: 'd', danger: true, confirm: `sure? forget the ${c} conversation`, act: () => clearAgent(c) },
+      { label: 'clear conversation', sub: 'and its context, in this browser', key: 'd', danger: true, confirm: `clear ${c}?`, act: () => clearAgent(c) },
     ].filter(Boolean);
   }
   return [read, { label: 'open', act: () => openConv(c) }].filter(Boolean);
@@ -2230,7 +2265,7 @@ function paintFiles() {
 
 function openFiles() {
   const list = convFiles().slice(0, 50);
-  if (!list.length) { chatNote('nothing shared here yet'); return; }
+  if (!list.length) { chatNote('nothing shared'); return; }
   popMenu(chatFilesBtn, `attachments · ${convFiles().length}`, list.map(([f, m]) => ({
     label: f.name, href: mediaUrl(f),
     sub: `${humanSize(f.size || 0)} · ${m.name === name ? 'you' : m.name} · ${formatDay(m.timestamp)} ${formatTime(m.timestamp)}`,
@@ -2251,8 +2286,8 @@ function paintTyping() {
   const writing = isAgent(conv) && agentBusy(conv);
   chatTyping.textContent = '';
   if (!who.length && !writing) return;
-  const text = writing ? `the ${conv} is writing`
-    : who.length === 1 ? `${who[0]} is typing` : who.length === 2 ? `${who[0]} and ${who[1]} are typing` : `${who.length} people are typing`;
+  const text = writing ? 'writing…'
+    : who.length === 1 ? `${who[0]} typing` : `${who.length} typing`;
   chatTyping.append(text, el('span', 'dots'));
 }
 
@@ -2318,12 +2353,12 @@ function renderConv() {
   delete chatLog.dataset.day;
   const dm = dmWith(conv);
   if (isAgent(conv)) {
-    chatNote(`only you and the ${conv} see this, kept in this browser. /clear forgets it`);
+    chatNote('private');
     agents[conv].turns.forEach((t, i) => putLine(turnLine(conv, t, i)));
     for (const [id, w] of agentWaiting) if (w.agent === conv) putLine(agentPendingLine(id, w));
   } else {
-    if (dm) chatNote(`direct messages with ${dm}, shown only to the two of you`);
-    else if (chOf(conv) && !convLines.get(conv)?.length) chatNote(`#${chOf(conv)} is new. say something, or /topic to describe it`);
+    if (dm) chatNote('private');
+    else if (chOf(conv) && !convLines.get(conv)?.length) chatNote('empty');
     for (const m of (convLines.get(conv) || []).slice(-CHAT_KEEP)) putLine(m);
   }
   // unread since last here, under a rule
@@ -2492,7 +2527,7 @@ function agentPending(r, id, text) {
 
 // the whole conversation as its context
 function sendAgent(r, text) {
-  if (agentBusy(r)) { if (conv === r) chatNote(`the ${r} is still answering the last one`); return; }
+  if (agentBusy(r)) { if (conv === r) chatNote('busy'); return; }
   const history = agents[r].turns.filter((t) => t.role !== 'notice').map(({ role, text: tx }) => ({ role, text: tx }));
   const id = newSid().slice(0, 12);
   agentPending(r, id, text);
@@ -2502,7 +2537,7 @@ function sendAgent(r, text) {
 // its answer in the making dropped, the model told to stop
 function stopAgent(r) {
   const id = [...agentWaiting].find(([, w]) => w.agent === r)?.[0];
-  if (!id) { chatNote(`the ${r} isn't answering anything`); return; }
+  if (!id) { chatNote('idle'); return; }
   send({ type: 'agent-stop', id });
   agentAnswered({ id, error: 'stopped' });
 }
@@ -2520,7 +2555,7 @@ stRolesEl.addEventListener('click', (e) => {
 // the llama-server slots on its host erased, a fresh start for its kv cache
 function purgeAgent(r) {
   send({ type: 'agent-purge', id: r, to: r });
-  chatNote(`purging the ${r}'s cache`);
+  chatNote('purging');
 }
 function agentPurged(msg) {
   const btn = stRolesEl.querySelector(`.st-clear[data-role="${CSS.escape(String(msg.id).replace(/^st:/, ''))}"]`);
@@ -2532,7 +2567,7 @@ function agentPurged(msg) {
   }
   if (conv !== msg.id) return;
   if (msg.error) { chatNote(`no purge: ${msg.error}`); return; }
-  chatNote(`the ${msg.id}'s cache on ${msg.host} cleared, ${msg.erased} slot${msg.erased === 1 ? '' : 's'}${msg.busy ? `, ${msg.busy} mid-answer left alone` : ''}`);
+  chatNote('purged');
 }
 
 // the answer, or why there's none, counted on the agent while away from it
@@ -2589,7 +2624,7 @@ function connectChat() {
   };
   ws.onclose = () => {
     // an answer in flight lost with the socket
-    for (const id of [...agentWaiting.keys()]) agentAnswered({ id, error: 'the connection dropped before it answered, ask again' });
+    for (const id of [...agentWaiting.keys()]) agentAnswered({ id, error: 'disconnected' });
     credsClose();
     people = [];
     chatOnline = false;
@@ -2835,7 +2870,7 @@ function joinChannel(arg) {
   const [raw, ...topic] = arg.trim().split(/s+/);
   const ch = (raw || '').replace(/^#/, '').toLowerCase();
   if (ch === 'mesh') { setConv('mesh'); return; }
-  if (!/^[a-z0-9][a-z0-9-]{0,23}$/.test(ch)) { chatNote('a channel name: lowercase letters, digits and dashes'); return; }
+  if (!/^[a-z0-9][a-z0-9-]{0,23}$/.test(ch)) { chatNote('bad name'); return; }
   if (!myChannels.includes(ch)) myChannels.push(ch);
   delete leftChannels[ch];
   saveChannels();
@@ -2863,11 +2898,11 @@ function runCommand(input) {
     let to = nameIn(arg);
     let what = arg.slice(to.length).trim();
     if (dmWith(conv) && !knownNames().includes(to)) { to = dmWith(conv); what = arg; }
-    if (!to || to === name || !what) { chatNote('usage: /share name file, an open editor tab or a file as the files tab shows it'); return; }
-    if (isAgent(to)) { chatNote(`ask the ${to} to open it, it can`); return; }
+    if (!to || to === name || !what) { chatNote('usage: /share name file'); return; }
+    if (isAgent(to)) { chatNote('ask it'); return; }
     resolveShow(what).then((f) => {
-      if (!f) { chatNote(`no open editor tab or shared file called ${what}`); return; }
-      chatNote(`${shareWith(to, f)}, it's open in its own tab`);
+      if (!f) { chatNote(`no ${what}`); return; }
+      chatNote(shareWith(to, f));
       dkCode(f);
     });
     return;
@@ -2890,7 +2925,7 @@ function runCommand(input) {
   if (cmd === '/close' && chOf(conv)) { convMenu(conv, chatTitle, true); return; }
   if (cmd === '/topic' && chOf(conv)) { send({ type: 'topic', ch: chOf(conv), text: arg }); return; }
   if (cmd === '/rename') {
-    if (acct) { chatNote('your chat name is your user name'); return; }
+    if (acct) { chatNote('name fixed'); return; }
     if (!arg) { chatNote('usage: /rename name'); return; }
     name = arg.slice(0, 32);
     localStorage.setItem('phosphorus-chat-name', name);
@@ -2905,10 +2940,10 @@ function runCommand(input) {
     send({ type: 'recolor', color });
     return;
   }
-  if (agentHere || dmWith(conv)) { chatNote(`${cmd} isn't for here`); return; }
+  if (agentHere || dmWith(conv)) { chatNote('not here'); return; }
   // the mesh channel's own, everyone's, not a local scrollback wipe
   if (cmd === '/clear' && conv === 'mesh') { send({ type: 'clear' }); return; }
-  chatNote(`unknown command: ${cmd}`);
+  chatNote(`unknown ${cmd}`);
 }
 
 // every name this browser knows of, and the longest of them an argument starts
@@ -2919,7 +2954,7 @@ const nameIn = (arg) => knownNames().sort((a, b) => b.length - a.length).find((n
 
 // a file offered to someone: an invite as a dm, a dialog on their end
 function shareWith(to, f) {
-  if (!joined()) return 'join the chat first, then share';
+  if (!joined()) return 'join first';
   send({ type: 'show', to, file: f });
   return `invited ${to} to ${f.label}`;
 }
@@ -2929,7 +2964,7 @@ function shareMenu(anchor, f, done) {
   const who = knownNames().filter((n) => !isAgent(n)).sort((a, b) => on(b) - on(a) || a.localeCompare(b));
   popMenu(anchor, `share ${codeName(f)} with`, who.length
     ? who.map((n) => ({ label: n, sub: on(n) ? 'online' : 'asked when they are back', act: () => done(shareWith(n, f)) }))
-    : [{ label: 'nobody else here yet', act: () => {} }]);
+    : [{ label: 'nobody', act: () => {} }]);
 }
 
 // a /share's file: an open editor tab by its name or path, else a file as the
@@ -3150,7 +3185,7 @@ chatText.addEventListener('keydown', (e) => {
 chatForm.addEventListener('submit', (e) => {
   e.preventDefault();
   const text = `${chatChip.textContent} ${chatText.value}`.trim();
-  if (!wsOpen()) { chatNote('offline, reconnecting'); return; }
+  if (!wsOpen()) { chatNote('reconnecting'); return; }
   if (editing) {
     if (text) send({ type: 'edit', ref: keyOf(editing), text });
     cancelCompose();
@@ -3160,7 +3195,7 @@ chatForm.addEventListener('submit', (e) => {
   }
   const files = atts.filter((a) => a.state === 'done').map((a) => a.meta);
   if (!text && !files.length) return;
-  if (uploading()) { chatNote('still uploading, send once it lands'); return; }
+  if (uploading()) { chatNote('uploading'); return; }
   chatText.value = '';
   setChatChip('');
   autoGrowChatText();
@@ -3241,7 +3276,7 @@ const CRED_ACTIONS = {
       if (res.status === 401) return { retry: 'wrong password' };
       if (res.status === 409) {
         const body = await res.json().catch(() => ({}));
-        return { error: `already updating, started by ${body.by || 'another host'}` };
+        return { error: 'already updating' };
       }
       if (!res.ok) return { error: `the update didn't start (status ${res.status})` };
       openUpdateModal();
@@ -3279,7 +3314,7 @@ function credsAsk(a) {
     if (empty) { empty.input.focus(); return; }
     go.disabled = true;
     let out;
-    try { out = await spec.run(Object.fromEntries(fields.map((f) => [f.key, f.field.get()]))); } catch { out = { error: 'this host could not be reached' }; }
+    try { out = await spec.run(Object.fromEntries(fields.map((f) => [f.key, f.field.get()]))); } catch { out = { error: 'unreachable' }; }
     go.disabled = false;
     if (!out.retry) { done(!out.error, out.error); return; }
     const f = fields.at(-1);
@@ -3513,20 +3548,20 @@ async function askToStart() {
     .filter(Boolean);
   const behind = c.latest ? versions.filter((v) => newerVersion(c.latest, v)).length : 0;
   if (!c.latest) {
-    openConfirm(`couldn't reach the release feed${c.error ? ` (${c.error})` : ''}. update anyway?`, {
-      title: 'update the mesh', actionLabel: 'update',
+    openConfirm('feed down', {
+      title: 'update', actionLabel: 'update anyway',
       onAction: () => startChain(),
     });
     return;
   }
   if (!behind) {
-    openConfirm(`every host is on v${c.latest}, the newest release.`, {
+    openConfirm(`v${c.latest}`, {
       title: 'up to date', hideCancel: true, actionLabel: 'ok', onAction: openUpdateModal,
     });
     return;
   }
-  openConfirm(`v${c.latest} is out, ${behind} host${behind === 1 ? '' : 's'} behind. network down for a while. continue?`, {
-    title: 'update the mesh', actionLabel: 'update',
+  openConfirm(`v${c.latest}?`, {
+    title: 'update', actionLabel: 'update',
     onAction: () => startChain(),
   });
 }
@@ -3597,8 +3632,8 @@ updatePass.addEventListener('keydown', (e) => {
 });
 
 function showLockedInfo(by) {
-  openConfirm(`already updating, started by ${by}.`, {
-    title: 'update the mesh',
+  openConfirm(`by ${by}`, {
+    title: 'updating',
     hideCancel: true,
     actionLabel: 'ok',
     onAction: closeUpdateModal,
@@ -3917,7 +3952,7 @@ function dkLogin() {
   const out = Object.assign(el('button', '', 'log out'), { type: 'button' });
   actions.prepend(out, skip);
   box.append(el('div', 'home-col-head', acct ? `desktop, ${acct.user}` : 'desktop'),
-    el('p', 'dk-note', 'ssh into one or more hosts, saved to your profile for next time'), list, actions);
+    el('p', 'dk-note', 'ssh logins'), list, actions);
   go.addEventListener('click', dkConnect);
   skip.addEventListener('click', dkDesktop);
   out.addEventListener('click', acctLogout);
@@ -4847,7 +4882,7 @@ async function dkWallSet(blob) {
     c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
     bmp.close?.();
     url = c.toDataURL('image/jpeg', 0.85);
-  } catch { return 'not a picture this browser can read'; }
+  } catch { return 'not an image'; }
   const r = await acctCall('/api/me/wallpaper', { data: url });
   if (!r.ok) return r.error || 'not saved';
   acct.wallpaper = r.wallpaper;
@@ -4907,8 +4942,8 @@ function dkNewFile(x, y) {
   pop.addEventListener('submit', async (e) => {
     e.preventDefault();
     const n = name.value.trim();
-    if (!n || /[\\/]/.test(n)) { why.textContent = 'a name, no slashes'; return; }
-    if (dk.deskFiles.some((f) => f.at === d.dir && f.name === n)) { why.textContent = `${n} is already there`; return; }
+    if (!n || /[\\/]/.test(n)) { why.textContent = 'no slashes'; return; }
+    if (dk.deskFiles.some((f) => f.at === d.dir && f.name === n)) { why.textContent = 'exists'; return; }
     const loc = homeAt(selfHost);
     const rel = filesJoin(d.dir, n);
     go.disabled = true;
@@ -5081,7 +5116,7 @@ function dkMenu(x, y, items, after, title) {
 // inside one share a move is a rename, anything else bytes through the page,
 // a move's source deleted once its copy is whole
 async function fmTransfer(fm, from, items, to, dir, move) {
-  if (!may(to, 'w')) return fmSay(fm, `${to.root} is read-only`, true);
+  if (!may(to, 'w')) return fmSay(fm, 'read-only', true);
   // into the home, other than a move inside it: where the copies go; every
   // host's a folder copied to each, a file kept in step
   let all = false;
@@ -5099,9 +5134,9 @@ async function fmTransfer(fm, from, items, to, dir, move) {
     const it = items[i];
     const dst = filesJoin(dir, it.name);
     if (fmSame(from, to) && (dst === it.rel || `${dir}/`.startsWith(`${it.rel}/`))) {
-      if (move || it.dir) { failed += 1; fmSay(fm, `${it.name} can't go inside itself`, true); continue; }
+      if (move || it.dir) { failed += 1; fmSay(fm, 'into itself', true); continue; }
     }
-    const tick = (f, child) => { fm.busy = 'x'; fmSay(fm, `${label} ${child || it.name} ${Math.round(f * 100)}% (${i + 1}/${items.length})`); };
+    const tick = (f, child) => { fm.busy = 'x'; fmSay(fm, `${label} ${Math.round(f * 100)}%`); };
     try {
       if (move && fmSame(from, to)) {
         await filesCall(to, 'rename', jsonPost({ from: it.rel, to: dst }));
@@ -5124,7 +5159,7 @@ async function fmTransfer(fm, from, items, to, dir, move) {
     } catch (err) { failed += 1; fm.busy = ''; fmSay(fm, `${it.name}: ${err.message}`, true); }
   }
   fm.busy = '';
-  if (!failed) fmSay(fm, `${move ? 'moved' : 'copied'} ${items.length} to ${filesPath(to.host, to.root, dir)}`);
+  if (!failed) fmSay(fm, move ? 'moved' : 'copied');
   fmChanged(to, dir);
   if (move) fmChanged(from, ...new Set(items.map((it) => filesParent(it.rel))));
 }
@@ -5360,7 +5395,7 @@ function dkCodeNow(f) {
     ed = m.codeEditor(w.body, file, w.node, id);
     editors.set(id, ed);
     if (w.node.classList.contains('focused')) ed.focus();
-  }, (e) => { w.body.textContent = `the editor failed to load: ${e.message}`; });
+  }, (e) => { w.body.textContent = `failed: ${e.message}`; });
   // the file the chat's models take "this file" to mean
   w.onFocus = () => {
     if (ed && !w.body.contains(document.activeElement)) ed.focus();
@@ -5566,7 +5601,7 @@ function dkGitFrame() {
   if (w.git.conn) w.git.conn.win.closed = true;
   w.git.conn = null;
   if (!url) {
-    w.body.replaceChildren(el('p', 'dk-note', 'no git service answering'));
+    w.body.replaceChildren(el('p', 'dk-note', 'git down'));
     return;
   }
   const frame = Object.assign(el('iframe', 'dk-frame'), { src: url, title: 'git', allow: 'clipboard-read; clipboard-write; fullscreen' });
@@ -5653,7 +5688,30 @@ function dkMeshTray() {
   const pop = Object.assign(el('div', 'dk-mesh-pop dk-pop'), { hidden: true });
   wrap.append(b, pop);
   // a column up the screen's right edge, the button at its bottom left corner
-  dkAnchor(pop, b, { fill: 240, tall: 440 });
+  const size = meshUi.size || { w: 320, h: 540 };
+  dkAnchor(pop, b, { fill: size.w, tall: size.h });
+  // its top left corner dragged for a size, the popup pinned bottom right
+  const grip = Object.assign(el('span', 'dk-mesh-grip'), { title: 'resize' });
+  pop.append(grip);
+  grip.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    grip.setPointerCapture(e.pointerId);
+    const x0 = e.clientX;
+    const y0 = e.clientY;
+    const w0 = pop.offsetWidth;
+    const h0 = pop.offsetHeight;
+    const move = (ev) => {
+      meshUi.size = { w: Math.max(240, Math.round(w0 + x0 - ev.clientX)), h: Math.max(260, Math.round(h0 + y0 - ev.clientY)) };
+      pop.dkAnchor.fill = meshUi.size.w;
+      pop.dkAnchor.tall = meshUi.size.h;
+      pop.style.width = '';
+      pop.dkPlace();
+    };
+    const up = () => { grip.removeEventListener('pointermove', move); saveMeshUi(); };
+    grip.addEventListener('pointermove', move);
+    grip.addEventListener('pointerup', up, { once: true });
+    grip.addEventListener('pointercancel', up, { once: true });
+  });
   const fit = new ResizeObserver(() => { meshDims = null; if (!pop.hidden && !meshAnimFrame) drawMesh(); });
   const show = (on) => {
     if (!on && pop.hidden) return;
@@ -5727,7 +5785,7 @@ function acctLogin(setup) {
   const actions = el('div', 'update-actions');
   actions.append(why, go);
   form.append(el('div', 'home-col-head', 'phosphorus'),
-    el('p', 'dk-note', setup ? 'first start: log in as admin with ADMIN_PASS from .env to make users' : 'log in'),
+    el('p', 'dk-note', setup ? 'admin, ADMIN_PASS' : 'log in'),
     user, pass, actions);
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -5764,7 +5822,7 @@ async function acctSave() {
   // a vault the serving host couldn't read yet, the saved one merged under before saving
   if (!acct.vaultOK) {
     const me = await acctCall('/api/me');
-    if (!me.ok || me.vaultOK === false) return 'saved logins not reachable yet';
+    if (!me.ok || me.vaultOK === false) return 'vault unreachable';
     acct.vault.hosts = { ...me.vault.hosts, ...acct.vault.hosts };
     acct.vault.pages = { ...me.vault.pages, ...acct.vault.pages };
     acct.vaultOK = true;
@@ -5872,9 +5930,9 @@ function acctNext() {
   let u;
   try { u = new URL(next); } catch { return false; }
   if (prev === next && Date.now() - at < 15000) {
-    const why = q.get('why') === 'none' ? 'no login cookie reached it, log out and in again' : 'the login cookie was refused';
-    setTimeout(() => openConfirm(`${u.host} sent you back here${q.get('by') ? ` from ${q.get('by')}` : ''}: ${why}.`, {
-      title: 'not logged in there', hideCancel: true, actionLabel: 'ok', onAction: closeUpdateModal,
+    const why = q.get('why') === 'none' ? 'no cookie' : 'cookie refused';
+    setTimeout(() => openConfirm(why, {
+      title: u.host, hideCancel: true, actionLabel: 'ok', onAction: closeUpdateModal,
     }));
     return false;
   }

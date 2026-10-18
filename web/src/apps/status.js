@@ -620,7 +620,7 @@ async function pickPost(url, body, shown) {
 function saveKey() {
   const provider = stModelPick.querySelector('.st-pick-provider');
   const secret = stModelPick.querySelector('.st-pick-secret');
-  if (!provider.value || !secret.value.trim()) { pickError = 'a provider and its key'; pickSig = ''; drawModelPick(); return; }
+  if (!provider.value || !secret.value.trim()) { pickError = 'key missing'; pickSig = ''; drawModelPick(); return; }
   const body = { provider: provider.value, key: secret.value.trim() };
   secret.value = '';
   document.activeElement?.blur();

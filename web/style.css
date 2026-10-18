@@ -1112,9 +1112,9 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
 .mesh-svg .mesh-git-star { fill: var(--git-c); font-size: 9px; font-family: inherit; }
 
 /* what the git marks mean, stacked in the graph's top-right corner */
-.mesh-legend { position: absolute; right: 0.35rem; top: 0.3rem; display: flex; flex-direction: column; align-items: flex-start; gap: 0.1rem; color: var(--muted); font-size: 0.5rem; pointer-events: none; transition: opacity 0.2s; }
+.mesh-legend { position: absolute; right: 0.35rem; top: 0.3rem; display: flex; flex-direction: column; align-items: flex-start; gap: 0.15rem; padding: 0.25rem 0.35rem; background: var(--card); border: 1px solid var(--border); color: var(--muted); font-size: 0.6rem; pointer-events: none; transition: opacity 0.2s; }
 /* expanded only, hidden rather than gone so the layout can still measure it */
-.mesh-panel:not(.expanded) .mesh-legend { visibility: hidden; opacity: 0; }
+.mesh-panel:not(.expanded) .mesh-legend, .mesh-panel:not(.legend-on) .mesh-legend { visibility: hidden; opacity: 0; }
 .mesh-legend > span { display: flex; align-items: center; gap: 0.2rem; }
 .mesh-legend-star { color: var(--sand); }
 .mesh-legend-git .db-icon { margin: 0; color: var(--accent); }
@@ -1160,6 +1160,16 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
   padding-top: 0.35rem;
 }
 .mesh-stats-head span:last-child { text-align: right; }
+.mesh-fold { width: 100%; background: none; border: 0; font-family: inherit; text-align: left; cursor: pointer; }
+.mesh-fold > span:first-child::before { content: '▾ '; }
+.mesh-fold[aria-expanded="false"] > span:first-child::before { content: '▸ '; }
+.mesh-fold[aria-expanded="false"] > span:last-child { visibility: hidden; }
+.mesh-fold:hover { color: var(--fg); }
+.mesh-fold-n { color: var(--sage); }
+.mesh-stats.fold-nodes > .mesh-stats-rows, .mesh-git-box.fold-git > .mesh-git-rows { display: none; }
+.mesh-head-right { display: flex; align-items: center; gap: 0.5rem; }
+.mesh-legend-btn { width: 1rem; height: 1rem; padding: 0; font: inherit; font-size: 0.65rem; line-height: 1; color: var(--muted); background: none; border: 1px solid var(--border); cursor: pointer; }
+.mesh-legend-btn:hover, .mesh-legend-btn[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
 .mesh-stat-row { transition: background-color 0.15s; }
 .mesh-stat-row:hover { background: var(--border); }
 /* a host to switch to, expanded only */
@@ -1177,7 +1187,7 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
 
 /* each git host's copy, a freshness bar for every backup */
 .mesh-git-box { border-top: 1px solid var(--border); }
-.mesh-git-rows { max-height: 7.5rem; overflow-y: auto; }
+.mesh-git-rows { max-height: 9rem; overflow-y: auto; }
 .mesh-git-box[hidden] { display: none; }
 .mesh-git-row { display: grid; grid-template-columns: 1fr auto; gap: 0.4rem; padding: 0.3rem 0.4rem; }
 .mesh-git-dot { flex: none; width: 0.45rem; height: 0.45rem; border: 1px solid var(--sage); align-self: center; }
@@ -2049,6 +2059,9 @@ input, textarea { caret-color: var(--accent); }
   z-index: 20; display: flex; animation: pop-in 0.16s ease-out;
 }
 .dk-mesh-pop[hidden] { display: none; }
+.dk-mesh-grip { position: absolute; z-index: 3; left: 0; top: 0; width: 0.8rem; height: 0.8rem; cursor: nwse-resize; touch-action: none; }
+.dk-mesh-grip::before { content: ''; position: absolute; left: 3px; top: 3px; width: 5px; height: 5px; border-left: 1px solid var(--muted); border-top: 1px solid var(--muted); opacity: 0.5; }
+.dk-mesh-grip:hover::before { opacity: 1; border-color: var(--accent); }
 /* the update pane's card: its border, its shadow, the name on the top edge */
 .dk-mesh-pop > .mesh-panel {
   display: flex !important; flex: 1 1 auto; min-height: 0; margin: 0; animation: none;

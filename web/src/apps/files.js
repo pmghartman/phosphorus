@@ -212,7 +212,7 @@ async function fmLoad(fm) {
     const body = await filesCall(fm.loc, 'list', undefined, { path: fm.dir });
     if (fm.loading !== want) return;
     fm.entries = body.entries;
-    fm.error = body.truncated ? 'more entries than shown' : '';
+    fm.error = body.truncated ? 'truncated' : '';
   } catch (err) {
     if (fm.loading !== want) return;
     fm.entries = [];
@@ -281,7 +281,7 @@ function fmRender(fm) {
   }
   for (const e of fm.shown) items.appendChild(fmItem(fm, e));
   const note = !fm.loc ? 'pick a place' : fm.loading && !fm.entries.length ? 'loading…'
-    : fm.error && !fm.entries.length ? fm.error : !fm.shown.length ? (fm.filter ? 'no match' : 'this folder is empty') : '';
+    : fm.error && !fm.entries.length ? fm.error : !fm.shown.length ? (fm.filter ? 'no match' : 'empty') : '';
   if (note) items.appendChild(el('div', 'fm-empty', note));
   fm.main.replaceChildren(items);
   fmPaintSel(fm);
@@ -437,7 +437,7 @@ function fmStep(fm, by, extend) {
 const fmReveal = (fm, name) => [...fm.main.querySelectorAll('.fm-item')].find((r) => r.dataset.name === name)?.scrollIntoView({ block: 'nearest' });
 
 async function fmWallpaper(fm, rel) {
-  fmSay(fm, 'setting the wallpaper…');
+  fmSay(fm, 'setting…');
   try {
     const r = await fetch(filesApi(fm.loc, 'download', { path: rel }));
     if (!r.ok) throw new Error(`${r.status}`);
@@ -487,10 +487,10 @@ async function fmMirror(fm, e, on) {
     const keep = await dkChoose(fm, { title: 'keep it only on', message: e.name, options: homeOnline().map((h) => [h, h]) });
     if (!keep) return;
     try { await filesCall(homeAt(keep), 'mirror', jsonPost({ path: rel, on: false })); } catch (err) { return fmSay(fm, err.message, true); }
-    fmSay(fm, `${e.name} kept on ${keep}, the other copies going`);
+    fmSay(fm, `kept on ${keep}`);
   } else {
     try { await filesCall(homeAt(host), 'mirror', jsonPost({ path: rel, on: true })); } catch (err) { return fmSay(fm, err.message, true); }
-    fmSay(fm, `${e.name} copying to every host`);
+    fmSay(fm, 'mirroring');
   }
   setTimeout(() => fmChanged(HOME, fm.dir), 4000);
   fmChanged(HOME, fm.dir);
@@ -503,9 +503,9 @@ async function fmMoveHost(fm, e) {
   if (!to) return;
   try {
     const from = homePick(rel);
-    if (from !== to) await copyFile(homeAt(from), rel, homeAt(to), rel, (f) => fmSay(fm, `moving ${e.name} ${Math.round(f * 100)}%`));
+    if (from !== to) await copyFile(homeAt(from), rel, homeAt(to), rel, (f) => fmSay(fm, `moving ${Math.round(f * 100)}%`));
     for (const h of homeHolders(rel)) if (h !== to) await filesCall(homeAt(h), 'delete', jsonPost({ path: rel }));
-    fmSay(fm, `${e.name} moved to ${to}`);
+    fmSay(fm, `moved to ${to}`);
   } catch (err) { fmSay(fm, err.message, true); }
   fmChanged(HOME, fm.dir);
 }
@@ -563,7 +563,7 @@ function dkChoose(fm, { title, message, options }) {
 }
 
 async function fmMkdir(fm) {
-  if (!fmCan(fm, 'w')) return fmSay(fm, 'this share is read-only', true);
+  if (!fmCan(fm, 'w')) return fmSay(fm, 'read-only', true);
   const name = await dkAsk(fm, { title: 'new folder', message: `in ${filesPath(fm.loc.host, fm.loc.root, fm.dir)}`, value: 'new folder', action: 'create' });
   if (!name) return;
   try {
@@ -579,7 +579,7 @@ async function fmTouch(fm) {
   const name = await dkAsk(fm, { title: 'new text file', message: `in ${filesPath(fm.loc.host, fm.loc.root, fm.dir)}`, value: 'untitled.txt', action: 'create' });
   if (!name) return;
   const rel = filesJoin(fm.dir, name);
-  if (fm.entries.some((e) => e.name === name)) return fmSay(fm, `${name} is already here`, true);
+  if (fm.entries.some((e) => e.name === name)) return fmSay(fm, 'exists', true);
   let loc = fm.loc;
   let all = false;
   if (loc.host === '*') {
@@ -610,8 +610,8 @@ async function fmRename(fm, e) {
 async function fmDelete(fm) {
   const picked = fmPicked(fm);
   if (!picked.length) return;
-  const what = picked.length === 1 ? `${picked[0].name}${picked[0].dir ? ' and everything in it' : ''}` : `these ${picked.length} items`;
-  const ok = await dkAsk(fm, { title: 'delete', message: `delete ${what}? this cannot be undone.`, action: 'delete', danger: true });
+  const what = picked.length === 1 ? picked[0].name : picked.length;
+  const ok = await dkAsk(fm, { title: 'delete', message: `delete ${what}?`, action: 'delete', danger: true });
   if (!ok) return;
   const loc = fm.loc;
   const dir = fm.dir;
@@ -629,7 +629,7 @@ function fmDownload(fm, rel) {
 
 function fmClip(fm, op) {
   dk.clip = { op, loc: fm.loc, items: fmPicked(fm) };
-  fmSay(fm, `${dk.clip.items.length} ${op === 'cut' ? 'cut' : 'copied'}, paste with ctrl+v`);
+  fmSay(fm, op === 'cut' ? 'cut' : 'copied');
 }
 
 async function fmPaste(fm, dir = fm.dir) {
@@ -642,7 +642,7 @@ async function fmPaste(fm, dir = fm.dir) {
 async function fmUpload(fm, loc, dir, fileList) {
   const list = [...fileList];
   if (!list.length || !loc) return;
-  if (!may(loc, 'w')) return fmSay(fm, `${loc.root} is read-only`, true);
+  if (!may(loc, 'w')) return fmSay(fm, 'read-only', true);
   let all = false;
   if (loc.host === '*') {
     const bytes = list.reduce((t, f) => Math.max(t, f.size), 0);
@@ -655,12 +655,12 @@ async function fmUpload(fm, loc, dir, fileList) {
     const f = list[i];
     try {
       fm.busy = 'x';
-      await putFile(loc, filesJoin(dir, f.name), f, (sent) => fmSay(fm, `uploading ${f.name} ${f.size ? Math.round((sent / f.size) * 100) : 100}% (${i + 1}/${list.length})`));
+      await putFile(loc, filesJoin(dir, f.name), f, (sent) => fmSay(fm, `uploading ${f.size ? Math.round((sent / f.size) * 100) : 100}%`));
       if (all) await filesCall(loc, 'mirror', jsonPost({ path: filesJoin(dir, f.name), on: true }));
     } catch (err) { fm.busy = ''; fmSay(fm, `${f.name}: ${err.message}`, true); }
   }
   fm.busy = '';
-  fmSay(fm, `uploaded ${list.length} to ${filesPath(loc.host, loc.root, dir)}`);
+  fmSay(fm, 'uploaded');
   fmChanged(loc, dir);
 }
 

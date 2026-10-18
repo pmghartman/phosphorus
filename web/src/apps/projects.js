@@ -127,7 +127,7 @@ async function pjPoll() {
     } else if (pjPick === 'new') pjPaintNew();
     else { pjOne = null; pjPick = pjAll.length ? pjKey(pjAll[0]) : 'new'; }
   } catch (e) {
-    pjList.replaceChildren(el('div', 'cw-empty', `can't list projects: ${e.message}`));
+    pjList.replaceChildren(el('div', 'cw-empty', `failed: ${e.message}`));
   }
 }
 
@@ -256,7 +256,7 @@ function pjActs(p) {
     const text = input.value.trim();
     if (!text) return;
     pjPost(`/api/projects/${encodeURIComponent(p.host)}/${p.id}/note`, { by: name, text })
-      .then(() => { input.value = ''; msg.textContent = 'noted, read next round'; pjPoll(); }, (err) => { msg.textContent = err.message; });
+      .then(() => { input.value = ''; msg.textContent = 'noted'; pjPoll(); }, (err) => { msg.textContent = err.message; });
   });
   stop.addEventListener('click', () => pjStop());
   del.addEventListener('click', () => pjDelete());
@@ -274,8 +274,8 @@ function pjActsState(acts, p) {
   acts.querySelector('.pj-del').hidden = live;
   acts.querySelector('.pj-more').hidden = !live;
   acts.querySelector('.pj-again').hidden = live || PJ_SOON;
-  acts.querySelector('.pj-stop').textContent = pjArmed === 'stop' ? 'really stop?' : 'stop';
-  acts.querySelector('.pj-del').textContent = pjArmed === 'delete' ? 'delete it and its workspace?' : 'delete';
+  acts.querySelector('.pj-stop').textContent = pjArmed === 'stop' ? 'stop?' : 'stop';
+  acts.querySelector('.pj-del').textContent = pjArmed === 'delete' ? 'delete?' : 'delete';
 }
 
 // twice to confirm, the first press arming it a few seconds
