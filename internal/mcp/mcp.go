@@ -24,11 +24,13 @@ import (
 
 const (
 	protocol  = "2025-06-18"
-	statsWait = 4 * time.Second
-	chatMax   = 50
-	filePage  = 12000
-	waitMaxS  = 120
-	noCreds   = "Never asks for, takes or types a password, key or any other credential."
+	statsWait = 7 * time.Second
+	// process cpu needs two process samples, 2s apart, to be a rate
+	statsSettle = 4500 * time.Millisecond
+	chatMax     = 50
+	filePage    = 12000
+	waitMaxS    = 120
+	noCreds     = "Never asks for, takes or types a password, key or any other credential."
 )
 
 // Asker the person behind a phosphorus ask
@@ -43,10 +45,10 @@ type Actions struct {
 	Game       func(host, name, action string) (int, any)
 	GitMaster  func(host string) (int, any)
 	ModelRole  func(role, model string) (int, any)
-	Update     func(action string) (int, any)
+	Update     func(action string, admin bool) (int, any)
 	Files      func(c *Caller, host, op, share string, body map[string]any) (int, any)
 	Copy       func(c *Caller, from, to [3]string, move bool) (int, any)
-	Logs       func(host string, lines int, match string) (int, any)
+	Logs       func(host string, p map[string]any) (int, any)
 	Config     func(host string, p map[string]any) (int, any)
 	UserUI     func(user string, action map[string]any) bool
 	Service    func(host, name, method, path string, headers map[string]string, body string) (int, any)
@@ -69,9 +71,11 @@ type Src struct {
 	Projects func() any
 	Asker    func(id string) *Asker
 	Actions  Actions
-	Post     func(by, to, text string) (int, any)
-	Show     func(by, to string, f map[string]any) (int, any)
-	Locate   func(abs string) *files.Located
+	Post     func(by, to, text, via string) (int, any)
+	// Known a person by chat name: a user, or anyone the chat has seen
+	Known  func(name string) bool
+	Show   func(by, to string, f map[string]any) (int, any)
+	Locate func(abs string) *files.Located
 }
 
 var src Src
@@ -104,20 +108,38 @@ func hostStats(host string) (any, error) {
 	defer ws.Terminate()
 	got := make(chan map[string]any, 1)
 	go func() {
+		var last map[string]any
+		var first time.Time
+		defer func() {
+			if last != nil {
+				got <- last
+			}
+			close(got)
+		}()
 		for {
 			b, _, err := ws.Read()
 			if err != nil {
 				return
 			}
 			var s map[string]any
-			if json.Unmarshal(b, &s) == nil {
-				got <- s
+			if json.Unmarshal(b, &s) != nil {
+				continue
+			}
+			if last == nil {
+				first = time.Now()
+			}
+			last = s
+			// a sample whose processes carry a rate, or the wait spent
+			if busy(s) || time.Since(first) >= statsSettle {
 				return
 			}
 		}
 	}()
 	select {
-	case s := <-got:
+	case s, ok := <-got:
+		if !ok {
+			return nil, fmt.Errorf("%s sent no stats", host)
+		}
 		cpu := util.Obj(s["cpu"])
 		cores, _ := cpu["cores"].([]any)
 		ctrs := []any{}
@@ -149,6 +171,17 @@ func hostStats(host string) (any, error) {
 	case <-time.After(statsWait):
 		return nil, fmt.Errorf("%s sent no stats", host)
 	}
+}
+
+// busy any process in a stats sample with cpu over zero
+func busy(s map[string]any) bool {
+	top, _ := util.Obj(s["procs"])["top"].([]any)
+	for _, p := range top {
+		if files.JSNumber(util.Obj(p)["cpu"]) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func sharedScreens(host, by string) (map[string]any, error) {
@@ -245,10 +278,11 @@ func typeTerminal(host, text, id string, waitS int, by string) (any, error) {
 	return b, nil
 }
 
-// Caller a user's own key, its rights theirs
+// Caller a user's own key, its rights theirs, Via the agent using it
 type Caller struct {
 	User  string
 	Admin bool
+	Via   string
 }
 
 // Meta an ask's context: its asker, role and project, or a keyed caller
@@ -273,13 +307,41 @@ func askerOf(m Meta) (*Asker, error) {
 	return a, nil
 }
 
+// toolError a failure with its short code: not_found, bad_input, forbidden,
+// unreachable, conflict or failed, data riding along when there is some
+type toolError struct {
+	code, msg string
+	data      any
+}
+
+func (e *toolError) Error() string { return e.msg }
+
+func errc(code, f string, a ...any) error { return &toolError{code: code, msg: fmt.Sprintf(f, a...)} }
+
+// codeOf an http status as a tool error's code
+func codeOf(status int) string {
+	switch {
+	case status == 400 || status == 413 || status == 422:
+		return "bad_input"
+	case status == 401 || status == 403:
+		return "forbidden"
+	case status == 404:
+		return "not_found"
+	case status == 409:
+		return "conflict"
+	case status == 502 || status == 503 || status == 504:
+		return "unreachable"
+	}
+	return "failed"
+}
+
 func pressed(status int, body any) (any, error) {
 	if status >= 300 {
 		e := util.Str(util.Obj(toAny(body))["error"])
 		if e == "" {
 			e = fmt.Sprintf("status %d", status)
 		}
-		return nil, errors.New(e)
+		return nil, &toolError{code: codeOf(status), msg: e}
 	}
 	if body == nil {
 		return map[string]any{"ok": true}, nil
@@ -298,10 +360,27 @@ var nameRe = regexp.MustCompile(`^[A-Za-z0-9-]{1,63}$`)
 
 func hostOf(a map[string]any) (string, error) {
 	h := util.Str(a["host"])
+	if h == "" {
+		return "", errc("bad_input", "missing 'host'")
+	}
 	if !nameRe.MatchString(h) {
-		return "", errors.New("bad host")
+		return "", errc("bad_input", "bad host %s", util.JSString(h))
 	}
 	return h, nil
+}
+
+// knownHost hostOf held to the phosphorus hosts answering on the mesh
+func knownHost(a map[string]any) (string, error) {
+	h, err := hostOf(a)
+	if err != nil {
+		return "", err
+	}
+	for _, x := range meshHosts() {
+		if x == h {
+			return h, nil
+		}
+	}
+	return "", errc("not_found", "no phosphorus host %s answering on the mesh; mesh_hosts lists them", h)
 }
 
 func projectOf(m Meta) (string, error) {
@@ -314,7 +393,7 @@ func projectOf(m Meta) (string, error) {
 // adminOf an error unless the caller, when keyed, is an admin
 func adminOf(m Meta) error {
 	if m.Caller != nil && !m.Caller.Admin {
-		return errors.New("admins only")
+		return errc("forbidden", "admins only")
 	}
 	return nil
 }
@@ -462,7 +541,13 @@ func buildTools() {
 		{name: "host_stats", read: true,
 			description: "Live cpu, memory, disk, gpu, network, containers and top processes of one host.",
 			schema:      object(map[string]any{"host": name}, "host"),
-			run:         func(a map[string]any, _ Meta) (any, error) { return hostStats(str(a["host"])) }},
+			run: func(a map[string]any, _ Meta) (any, error) {
+				h, err := knownHost(a)
+				if err != nil {
+					return nil, err
+				}
+				return hostStats(h)
+			}},
 		{name: "git", read: true,
 			description: "The git hosts (forgejo): which is master, which are replicas, how far behind, reachable or not.",
 			schema:      object(nil),
@@ -504,11 +589,21 @@ func buildTools() {
 				if as, err := askerOf(m); err == nil {
 					by = as.Name
 				}
+				host, err := knownHost(a)
+				if err != nil {
+					return nil, err
+				}
 				w := files.JSNumber(a["wait_s"])
 				if math.IsNaN(w) || w < 0 {
 					w = 0
 				}
-				return watchScreens(str(a["host"]), int(w), by)
+				out, err := watchScreens(host, int(w), by)
+				if r := util.Obj(toAny(out)); err == nil && r != nil && len(arr(r["terminals"])) == 0 && openedFor(by, host) {
+					r["state"] = "opened, waiting for login"
+					r["note"] = "a terminal to " + host + " was opened on their page and isn't logged in yet; wait_s waits for it"
+					return r, nil
+				}
+				return out, err
 			}},
 		{name: "terminal_type",
 			description: "Type a command into the asker's shared, logged-in terminal on one host and leave it for them to run: " +
@@ -523,8 +618,12 @@ func buildTools() {
 				if err != nil {
 					return nil, err
 				}
+				host, err := knownHost(a)
+				if err != nil {
+					return nil, err
+				}
 				w := int(math.Min(waitMaxS, math.Max(1, numOr(a["wait_s"], 60))))
-				return typeTerminal(str(a["host"]), str(a["text"]), str(a["id"]), w, as.Name)
+				return typeTerminal(host, str(a["text"]), str(a["id"]), w, as.Name)
 			}},
 		{name: "files_list", read: true,
 			description: "Files shared to the mesh. No host: every host's shares and perms at once. " +
@@ -574,14 +673,21 @@ func buildTools() {
 					wg.Wait()
 					return map[string]any{"hosts": out}, nil
 				}
-				host, err := hostOf(a)
+				host, err := knownHost(a)
 				if err != nil {
 					return nil, err
 				}
 				if !util.Truthy(a["share"]) {
 					return pressed(src.Actions.Files(m.Caller, host, "info", "", map[string]any{}))
 				}
-				body := map[string]any{"path": str(a["path"]), "depth": math.Min(8, math.Max(1, numOr(a["depth"], 1))), "match": str(a["match"])}
+				depth := 1.0
+				if d, ok := a["depth"]; ok {
+					depth = files.JSNumber(d)
+					if math.IsNaN(depth) || depth < 1 || depth > 8 {
+						return nil, errc("bad_input", "depth is 1 to 8")
+					}
+				}
+				body := map[string]any{"path": str(a["path"]), "depth": depth, "match": str(a["match"])}
 				return pressed(src.Actions.Files(m.Caller, host, "tree", str(a["share"]), body))
 			}},
 		{name: "files_read", read: true,
@@ -590,7 +696,7 @@ func buildTools() {
 				"path": map[string]any{"type": "string", "description": "the file, relative to the share's root"},
 				"from": map[string]any{"type": "integer", "description": "character offset to read from", "default": 0}}, "host", "share", "path"),
 			run: func(a map[string]any, m Meta) (any, error) {
-				host, err := hostOf(a)
+				host, err := knownHost(a)
 				if err != nil {
 					return nil, err
 				}
@@ -632,7 +738,7 @@ func buildTools() {
 				if (act != "start" && act != "stop") || !regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`).MatchString(str(a["name"])) {
 					return nil, errors.New("bad name or action")
 				}
-				host, err := hostOf(a)
+				host, err := knownHost(a)
 				if err != nil {
 					return nil, err
 				}
@@ -649,7 +755,7 @@ func buildTools() {
 				if _, err := askerOf(m); err != nil {
 					return nil, err
 				}
-				host, err := hostOf(a)
+				host, err := knownHost(a)
 				if err != nil {
 					return nil, err
 				}
@@ -669,8 +775,8 @@ func buildTools() {
 				return pressed(src.Actions.ModelRole(str(a["role"]), str(a["model"])))
 			}},
 		{name: "update_control",
-			description: "Continue a paused mesh update, or cancel the running one. Starting one takes the update password: ask_credentials update. " + noCreds,
-			schema:      object(map[string]any{"action": map[string]any{"type": "string", "enum": []any{"continue", "cancel"}}}, "action"),
+			description: "Start a mesh update (an admin's key), continue a paused one, or cancel the running one. " + noCreds,
+			schema:      object(map[string]any{"action": map[string]any{"type": "string", "enum": []any{"start", "continue", "cancel"}}}, "action"),
 			run: func(a map[string]any, m Meta) (any, error) {
 				if err := adminOf(m); err != nil {
 					return nil, err
@@ -679,10 +785,14 @@ func buildTools() {
 					return nil, err
 				}
 				act := str(a["action"])
-				if act != "continue" && act != "cancel" {
-					return nil, errors.New("action is continue or cancel")
+				if act != "start" && act != "continue" && act != "cancel" {
+					return nil, errors.New("action is start, continue or cancel")
 				}
-				return pressed(src.Actions.Update(act))
+				// a chat ask starts one only through ask_credentials, its password
+				if act == "start" && m.Caller == nil {
+					return nil, errors.New("starting one takes the update password: ask_credentials update")
+				}
+				return pressed(src.Actions.Update(act, m.Caller != nil && m.Caller.Admin))
 			}},
 		{name: "files_write",
 			description: "Write a text file in a share with w: the whole file as text (made if missing), or old replaced by new, " +
@@ -691,7 +801,8 @@ func buildTools() {
 			schema: object(map[string]any{"host": name, "share": map[string]any{"type": "string"},
 				"path": map[string]any{"type": "string", "description": "the file, relative to the share's root"},
 				"text": map[string]any{"type": "string", "description": "the whole file"},
-				"old":  map[string]any{"type": "string", "description": "the exact passage to replace"}, "new": map[string]any{"type": "string", "description": "what replaces it"}}, "host", "share", "path"),
+				"old":  map[string]any{"type": "string", "description": "the exact passage to replace"}, "new": map[string]any{"type": "string", "description": "what replaces it"},
+				"open": map[string]any{"type": "boolean", "description": "also open the file in an editor tab on their page", "default": false}}, "host", "share", "path"),
 			run: func(a map[string]any, m Meta) (any, error) {
 				who, err := askerOf(m)
 				if err != nil {
@@ -710,7 +821,7 @@ func buildTools() {
 				} else {
 					body["text"] = a["text"]
 				}
-				host, err := hostOf(a)
+				host, err := knownHost(a)
 				if err != nil {
 					return nil, err
 				}
@@ -723,7 +834,7 @@ func buildTools() {
 				if out == nil {
 					out = map[string]any{}
 				}
-				if util.Truthy(out["created"]) {
+				if a["open"] == true {
 					p := str(out["path"])
 					if p == "" {
 						p = str(body["path"])
@@ -748,7 +859,7 @@ func buildTools() {
 				if _, err := askerOf(m); err != nil {
 					return nil, err
 				}
-				host, err := hostOf(a)
+				host, err := knownHost(a)
 				if err != nil {
 					return nil, err
 				}
@@ -764,7 +875,13 @@ func buildTools() {
 					st := util.Obj(x)
 					op := str(st["op"])
 					if op != "mkdir" && op != "rename" && op != "delete" {
-						return nil, errors.New("op is mkdir, rename or delete")
+						return nil, errc("bad_input", "op is mkdir, rename or delete")
+					}
+					if str(st["path"]) == "" {
+						return nil, errc("bad_input", "missing 'path'")
+					}
+					if op == "rename" && str(st["to"]) == "" {
+						return nil, errc("bad_input", "missing 'to' for rename")
 					}
 					body := map[string]any{"path": str(st["path"])}
 					if op == "rename" {
@@ -782,7 +899,7 @@ func buildTools() {
 							e = fmt.Sprintf("status %d", status)
 						}
 						f["error"] = e
-						return map[string]any{"done": done, "failed": f}, nil
+						return nil, &toolError{code: codeOf(status), msg: fmt.Sprintf("%s %s failed: %s", op, str(st["path"]), e), data: map[string]any{"done": done, "failed": f}}
 					}
 					d := map[string]any{"op": op, "path": st["path"]}
 					if util.Truthy(o["path"]) && op != "delete" {
@@ -803,7 +920,7 @@ func buildTools() {
 			description: "Open a text or code file from a share in a code editor tab on the asker's page, highlighted, its syntax errors marked, to read and edit together. Nothing in it can be run.",
 			schema:      object(map[string]any{"host": name, "share": map[string]any{"type": "string"}, "path": map[string]any{"type": "string", "description": "the file, relative to the share's root"}}, "host", "share", "path"),
 			run: func(a map[string]any, m Meta) (any, error) {
-				host, err := hostOf(a)
+				host, err := knownHost(a)
 				if err != nil {
 					return nil, err
 				}
@@ -811,8 +928,11 @@ func buildTools() {
 				if err != nil {
 					return nil, err
 				}
+				if _, err := pressed(src.Actions.Files(m.Caller, host, "read", str(a["share"]), map[string]any{"path": str(a["path"])})); err != nil {
+					return nil, err
+				}
 				if !as.UI(map[string]any{"kind": "code", "host": host, "share": str(a["share"]), "path": str(a["path"])}) {
-					return nil, errors.New("their page is gone")
+					return nil, errc("unreachable", "no Phosphorus window of theirs is open")
 				}
 				return map[string]any{"opened": host + "/" + util.JSString(a["path"])}, nil
 			}},
@@ -837,7 +957,7 @@ func buildTools() {
 				"They log in themselves, phosphorus never types into it. " + noCreds,
 			schema: object(map[string]any{"host": name}, "host"),
 			run: func(a map[string]any, m Meta) (any, error) {
-				host, err := hostOf(a)
+				host, err := knownHost(a)
 				if err != nil {
 					return nil, err
 				}
@@ -846,9 +966,11 @@ func buildTools() {
 					return nil, err
 				}
 				if !as.UI(map[string]any{"kind": "terminal", "host": host, "share": true}) {
-					return nil, errors.New("their page is gone")
+					return nil, errc("unreachable", "no Phosphorus window of theirs is open")
 				}
-				return map[string]any{"opened": host, "note": "shared with phosphorus, terminal_screen with wait_s reads it once they log in"}, nil
+				noteOpened(as.Name, host)
+				return map[string]any{"opened": host, "state": "opened, waiting for login",
+					"note": "it shares with phosphorus once they log in; terminal_screen with wait_s reads it then"}, nil
 			}},
 		{name: "open_view",
 			description: "Bring a view up on the asker's page: home, files, status, about, chat (the chat tab), projects (the " +
@@ -868,7 +990,7 @@ func buildTools() {
 					return nil, err
 				}
 				if !as.UI(map[string]any{"kind": "view", "view": v}) {
-					return nil, errors.New("their page is gone")
+					return nil, errc("unreachable", "no Phosphorus window of theirs is open")
 				}
 				return map[string]any{"opened": v}, nil
 			}},
@@ -876,7 +998,7 @@ func buildTools() {
 			description: "Move the asker's page to be served by another phosphorus host, as the graph's switch host does.",
 			schema:      object(map[string]any{"host": name}, "host"),
 			run: func(a map[string]any, m Meta) (any, error) {
-				host, err := hostOf(a)
+				host, err := knownHost(a)
 				if err != nil {
 					return nil, err
 				}
@@ -885,7 +1007,7 @@ func buildTools() {
 					return nil, err
 				}
 				if !as.UI(map[string]any{"kind": "host", "host": host}) {
-					return nil, errors.New("their page is gone")
+					return nil, errc("unreachable", "no Phosphorus window of theirs is open")
 				}
 				return map[string]any{"switching": host}, nil
 			}},
@@ -896,8 +1018,19 @@ func buildTools() {
 				"channel": map[string]any{"type": "string", "description": "one channel only: mesh for the main one, or dm:<name>"},
 			}),
 			run: func(a map[string]any, m Meta) (any, error) {
-				lines := chatRows(m, strings.TrimPrefix(str(a["channel"]), "#"))
-				n := int(math.Max(1, math.Min(chatMax, numOr(a["limit"], 20))))
+				want := strings.TrimPrefix(str(a["channel"]), "#")
+				if err := channelKnown(m, want); err != nil {
+					return nil, err
+				}
+				n := 20
+				if l, ok := a["limit"]; ok {
+					x := files.JSNumber(l)
+					if math.IsNaN(x) || x < 1 || x > chatMax {
+						return nil, errc("bad_input", "limit is 1 to %d", chatMax)
+					}
+					n = int(x)
+				}
+				lines := chatRows(m, want)
 				if len(lines) > n {
 					lines = lines[len(lines)-n:]
 				}
@@ -915,11 +1048,14 @@ func buildTools() {
 				if err != nil {
 					return nil, err
 				}
-				to := strings.TrimSpace(str(a["to"]))
+				to := strings.TrimPrefix(strings.TrimSpace(str(a["to"])), "@")
 				if m.Direct && (to == "" || to == as.Name) {
 					return nil, errors.New("a direct conversation: answer in your reply, nothing goes to the group chat")
 				}
-				return pressed(src.Post(byOf(m), to, str(a["text"])))
+				if to != "" && !src.Known(to) {
+					return nil, errc("not_found", "no one called %s; people lists who's on, any user's name works", to)
+				}
+				return pressed(src.Post(byOf(m), to, str(a["text"]), viaOf(m)))
 			}},
 		{name: "show_file",
 			description: "Invite a person into a share's file in the shared editor, as /share does: a dialog and a notification for them, " +
@@ -930,12 +1066,19 @@ func buildTools() {
 				if _, err := askerOf(m); err != nil {
 					return nil, err
 				}
-				host, err := hostOf(a)
+				host, err := knownHost(a)
 				if err != nil {
 					return nil, err
 				}
+				to := strings.TrimPrefix(strings.TrimSpace(str(a["to"])), "@")
+				if !src.Known(to) {
+					return nil, errc("not_found", "no one called %s; people lists who's on, any user's name works", to)
+				}
 				p := str(a["path"])
-				return pressed(src.Show(byOf(m), str(a["to"]), map[string]any{"host": host, "share": str(a["share"]), "path": p, "label": host + "/" + p}))
+				if _, err := pressed(src.Actions.Files(m.Caller, host, "read", str(a["share"]), map[string]any{"path": p})); err != nil {
+					return nil, err
+				}
+				return pressed(src.Show(byOf(m), to, map[string]any{"host": host, "share": str(a["share"]), "path": p, "label": host + "/" + p}))
 			}},
 		{name: "update_status", read: true,
 			description: "The mesh update: whether one is running, who started it, and each host's result.",
@@ -1087,9 +1230,26 @@ func one(raw any, local bool, caller *Caller) map[string]any {
 			}
 			return t.run(args, m)
 		}()
-		if err != nil {
-			return reply(id, map[string]any{"content": []any{map[string]any{"type": "text", "text": err.Error()}}, "isError": true})
+		if !t.read && caller != nil {
+			audit(caller, t.name, args, err)
 		}
+		if err != nil {
+			code, msg := "failed", err.Error()
+			var data any
+			if te, ok := err.(*toolError); ok {
+				code, data = te.code, te.data
+			}
+			e := map[string]any{"code": code, "message": msg}
+			if data != nil {
+				e["data"] = toAny(data)
+			}
+			text := code + ": " + msg
+			if data != nil {
+				text += "\n" + string(util.Marshal(toAny(data)))
+			}
+			return reply(id, map[string]any{"content": []any{map[string]any{"type": "text", "text": text}}, "structuredContent": map[string]any{"error": e}, "isError": true})
+		}
+
 		return reply(id, map[string]any{"content": []any{map[string]any{"type": "text", "text": string(util.Marshal(toAny(out)))}}})
 	}
 	return fail(id, -32601, "no method "+method)

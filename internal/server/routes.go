@@ -275,12 +275,14 @@ func appHandler(w http.ResponseWriter, r *http.Request) {
 		// a user's key from anywhere, the ingress included; else the mesh's own, unkeyed
 		var caller *mcp.Caller
 		if key, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer "); ok {
-			s := users.OfMCPKey(strings.TrimSpace(key))
+			s, why := users.CheckMCPKey(strings.TrimSpace(key))
 			if s == nil {
-				sendJSON(w, 401, map[string]any{"error": "bad key"})
+				// the client shown needs-auth, never connected on a refused key
+				w.Header().Set("WWW-Authenticate", `Bearer realm="phosphorus", error="invalid_token", error_description="key `+why+`"`)
+				sendJSON(w, 401, map[string]any{"error": "key refused: " + why})
 				return
 			}
-			caller = &mcp.Caller{User: s.User, Admin: s.Admin}
+			caller = &mcp.Caller{User: s.User, Admin: s.Admin, Via: strings.ToLower(strings.TrimSpace(r.Header.Get("X-Phosphorus-Via")))}
 		} else if !isLoopback(r) && !isTailnet(r) {
 			forbidden(w)
 			return
@@ -731,7 +733,7 @@ func appHandler(w http.ResponseWriter, r *http.Request) {
 		onJSON(w, r, maxJSONBody, true, func(p map[string]any) (int, any) {
 			switch pathname {
 			case "/internal/logs":
-				return hostLogs(int(files.JSNumber(p["lines"])), str(p["match"]))
+				return hostLogs(p)
 			case "/internal/config":
 				return configOp(p)
 			}

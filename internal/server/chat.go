@@ -15,6 +15,7 @@ import (
 	"github.com/pmghartman/phosphorus/internal/chatmedia"
 	"github.com/pmghartman/phosphorus/internal/clock"
 	"github.com/pmghartman/phosphorus/internal/sysfs"
+	"github.com/pmghartman/phosphorus/internal/users"
 	"github.com/pmghartman/phosphorus/internal/util"
 	"github.com/pmghartman/phosphorus/internal/web"
 	"github.com/pmghartman/phosphorus/internal/wsock"
@@ -696,13 +697,40 @@ func sendHistory(c *chatClient) {
 	c.ws.JSON(Msg{"type": "history", "messages": out, "closed": closedAll(), "channels": channels()})
 }
 
-func postAs(by, to, text string) (int, any) {
+// knownPerson a user, someone on now, or anyone the chat has seen
+func knownPerson(name string) bool {
+	if name == "" {
+		return false
+	}
+	if users.Exists(name) {
+		return true
+	}
+	for _, p := range allPresence() {
+		if p["name"] == name {
+			return true
+		}
+	}
+	cmu.Lock()
+	defer cmu.Unlock()
+	for _, m := range mergedChat {
+		if m["name"] == name {
+			return true
+		}
+	}
+	return false
+}
+
+// postAs a line from by, via the agent that sent it on their key when one did
+func postAs(by, to, text, via string) (int, any) {
 	body := strings.TrimSpace(clipU(text, maxModelTextLen))
 	if body == "" {
 		return 400, Msg{"error": "nothing to send"}
 	}
 	dm := clipU(strings.TrimSpace(to), maxNameLen)
 	who := Msg{"name": by, "color": modelColor, "text": body}
+	if via != "" {
+		who["via"] = clipU(via, 24)
+	}
 	if dm != "" {
 		who["kind"], who["dm"] = "dm", dm
 	} else {

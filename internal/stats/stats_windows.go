@@ -30,6 +30,7 @@ var (
 type adapter struct {
 	name, vendor, luid string
 	total              float64
+	integrated         bool
 }
 
 // DXGI_ADAPTER_DESC1
@@ -70,12 +71,17 @@ var adapters = sync.OnceValue(func() []adapter {
 		ok := com(a, 10, uintptr(unsafe.Pointer(&d))) == 0
 		com(a, 2)
 		v := vendor["0x"+strings.ToLower(hex4(d.vendorID))]
-		// software adapter; under 1GB dedicated taken as an igpu's carve-out
-		if !ok || d.flags&2 != 0 || v == "" || float64(d.dedicated) < 1<<30 {
+		// software adapter left out; under 1GB dedicated taken as an igpu's carve-out, its memory the shared pool
+		if !ok || d.flags&2 != 0 || v == "" {
 			continue
 		}
+		igpu := float64(d.dedicated) < 1<<30
+		total := float64(d.dedicated)
+		if igpu {
+			total = float64(d.sharedSys)
+		}
 		out = append(out, adapter{
-			name: strings.ToLower(windows.UTF16ToString(d.desc[:])), vendor: v, total: float64(d.dedicated),
+			name: strings.ToLower(windows.UTF16ToString(d.desc[:])), vendor: v, total: total, integrated: igpu,
 			luid: strings.ToLower(hex8(uint32(d.luidHigh)) + "_" + hex8(d.luidLow)),
 		})
 	}
@@ -98,7 +104,7 @@ func hexN(v uint32, n int) string {
 const pdhMoreData = 0x800007d2
 
 var (
-	pq     struct{ query, engine, memory uintptr }
+	pq     struct{ query, engine, memory, shared uintptr }
 	pqOnce sync.Once
 	pqMu   sync.Mutex
 )
@@ -120,6 +126,7 @@ func openCounters() {
 		return c
 	}
 	pq.query, pq.engine, pq.memory = q, add(`\GPU Engine(*)\Utilization Percentage`), add(`\GPU Adapter Memory(*)\Dedicated Usage`)
+	pq.shared = add(`\GPU Adapter Memory(*)\Shared Usage`)
 	pdhRead.Call(q)
 }
 
@@ -162,10 +169,10 @@ func vendorGpus(haveNvidia bool) []map[string]any {
 	pqOnce.Do(openCounters)
 	pqMu.Lock()
 	defer pqMu.Unlock()
-	var eng, used map[string]float64
+	var eng, used, shared map[string]float64
 	if pq.query != 0 {
 		pdhRead.Call(pq.query)
-		eng, used = values(pq.engine), values(pq.memory)
+		eng, used, shared = values(pq.engine), values(pq.memory), values(pq.shared)
 	}
 	// an adapter's load its busiest engine's, summed over processes
 	busy, mem := map[string]map[string]float64{}, map[string]float64{}
@@ -185,6 +192,12 @@ func vendorGpus(haveNvidia bool) []map[string]any {
 			mem[strings.ToLower(m[1]+"_"+m[2])] += v
 		}
 	}
+	shMem := map[string]float64{}
+	for inst, v := range shared {
+		if m := luidRe.FindStringSubmatch(inst); m != nil {
+			shMem[strings.ToLower(m[1]+"_"+m[2])] += v
+		}
+	}
 	out := []map[string]any{}
 	for _, a := range as {
 		if a.vendor == "nvidia" && haveNvidia {
@@ -201,8 +214,32 @@ func vendorGpus(haveNvidia bool) []map[string]any {
 		if u, ok := mem[a.luid]; ok {
 			memUsed = u
 		}
+		if u, ok := shMem[a.luid]; ok && a.integrated {
+			memUsed = u
+		}
 		out = append(out, map[string]any{"name": a.name, "util": util, "memUsed": memUsed, "memTotal": a.total,
-			"mhz": nil, "mhzMax": nil, "temp": nil})
+			"mhz": nil, "mhzMax": nil, "temp": nil, "integrated": a.integrated})
 	}
 	return out
+}
+
+var (
+	psapi    = windows.NewLazySystemDLL("psapi.dll")
+	perfInfo = psapi.NewProc("GetPerformanceInfo")
+)
+
+// memCached the system file cache, GetPerformanceInfo's SystemCache pages
+func memCached(float64) float64 {
+	// PERFORMANCE_INFORMATION
+	var pi struct {
+		cb                                                            uint32
+		commitTotal, commitLimit, commitPeak, physTotal, physAvail    uintptr
+		systemCache, kernelTotal, kernelPaged, kernelNonpaged, pageSz uintptr
+		handles, procs, threads                                       uint32
+	}
+	pi.cb = uint32(unsafe.Sizeof(pi))
+	if r, _, _ := perfInfo.Call(uintptr(unsafe.Pointer(&pi)), uintptr(pi.cb)); r == 0 {
+		return 0
+	}
+	return float64(pi.systemCache) * float64(pi.pageSz)
 }

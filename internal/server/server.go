@@ -863,9 +863,9 @@ func initMCP() {
 				}
 				return st, out
 			},
-			Update: func(action string) (int, any) {
+			Update: func(action string, admin bool) (int, any) {
 				clock.MarkHot()
-				st, body := chainAction(action, "", false)
+				st, body := chainAction(action, "", admin)
 				if st == 409 {
 					return 409, map[string]any{"error": "no update started here to " + action}
 				}
@@ -881,7 +881,7 @@ func initMCP() {
 			Service:    svcRequest,
 			ModelColor: modelColor,
 		},
-		Post: postAs, Show: showAs, Locate: files.Locate,
+		Post: postAs, Show: showAs, Locate: files.Locate, Known: knownPerson,
 	})
 }
 
