@@ -1748,14 +1748,15 @@ function dkBellTray(anchor) {
 
 // --- the control panel: the mesh, the update, the theme, one button for all
 
+// the clock and the user one button, the panel the mesh, update, theme and account
 function dkControlTray() {
   const wrap = el('div', 'dk-tray-wrap dk-ctl');
-  const b = Object.assign(el('button', 'dk-tray'), { type: 'button', title: 'control panel', ariaLabel: 'control panel' });
+  const b = Object.assign(el('button', 'dk-tray dk-profile'), { type: 'button', title: `${acct?.user || 'profile'}${acct?.admin ? ', admin' : ''}`, ariaLabel: 'control panel' });
   b.setAttribute('aria-expanded', 'false');
-  b.appendChild(dkGlyph(DK_GLYPHS.sliders));
+  b.append(dk.clock, dkUserGlyph(), el('span', 'dk-profile-name', acct?.user || ''));
   const pop = Object.assign(el('div', 'dk-ctl-pop dk-pop'), { hidden: true });
   wrap.append(b, pop);
-  dkAnchor(pop, b, { fill: 260 });
+  dkAnchor(pop, b, { fill: 270 });
   const tile = (glyph, label, sub, act) => {
     const t = Object.assign(el('button', 'dk-ctl-tile'), { type: 'button' });
     t.append(dkGlyph(glyph), el('span', 'dk-ctl-label', label), el('span', 'dk-ctl-sub', sub));
@@ -1777,7 +1778,19 @@ function dkControlTray() {
       tb.addEventListener('click', () => { setTheme(t); draw(); });
       theme.append(tb);
     }
-    pop.replaceChildren(el('div', 'dk-ctl-head', 'control'), tiles, theme);
+    const rows = el('div', 'dk-ctl-rows');
+    const row = (label, act, cls = '') => {
+      const r = Object.assign(el('button', `dk-ctl-row ${cls}`, label), { type: 'button' });
+      r.addEventListener('click', () => { show(false); act(); });
+      rows.append(r);
+    };
+    row('settings', dkProfileWin);
+    if (acct?.admin) row('users', dkUsersWin);
+    if (clientInvoke && !acct?.boot) row('connect claude', claudeConnect);
+    row('log out', acctLogout, 'danger');
+    const head = el('div', 'dk-ctl-head');
+    head.append(el('span', '', acct?.user || 'profile'), el('span', 'dk-ctl-role', acct?.admin ? 'admin' : ''));
+    pop.replaceChildren(head, tiles, theme, rows);
   };
   const show = (on) => {
     if (!on && pop.hidden) return;
@@ -4160,10 +4173,10 @@ function dkDesktop() {
   const tasks = el('div', 'dk-tasks');
   const hosts = el('span', 'dk-hosts');
   const desk = el('div', 'dk-desk');
-  const bar = dkBar(tasks, hosts, dkProfileTray());
+  const bar = dkBar(tasks, hosts);
   const ctl = dkControlTray();
   bar.insertBefore(dkBellTray(), dkTray);
-  bar.insertBefore(ctl, dkTray);
+  bar.append(ctl);
   // the mesh and update panes opened from the panel, their own buttons out of sight
   ctl.append(dkMeshTray(dk.ctl.btn), dkTray, updateModal);
   dkAnchor(updateModal, dk.ctl.btn);
@@ -4235,7 +4248,7 @@ function dkClock() {
 
 function dkLogout() {
   dk.meshTray?.show(false);
-  dk.profileTray?.show(false);
+  dk.ctl?.show(false);
   for (const w of [...dk.wins.values()]) dkClose(w, true);
   dk.creds.clear();
   dk.desk = null;
@@ -4243,7 +4256,6 @@ function dkLogout() {
 
 const DK_GLYPHS = {
   bell: 'M8 2.2a3.1 3.1 0 0 0-3.1 3.1v2.2L3.4 10.2h9.2L11.1 7.5V5.3A3.1 3.1 0 0 0 8 2.2zM6.6 12.6a1.4 1.4 0 0 0 2.8 0',
-  sliders: 'M2.5 4.5h6M11.5 4.5h2M2.5 11.5h2M7.5 11.5h6M10 3v3M6 10v3',
   update: 'M13.5 8a5.5 5.5 0 1 1-1.6-3.9M12.5 1.5v3h-3',
   reload: 'M13.5 8a5.5 5.5 0 1 1-1.8-4.1M13.5 1.5v3.5h-3.5',
   doc: ICONS.file,
@@ -6263,32 +6275,13 @@ async function claudeConnect() {
 }
 
 // the task bar's profile: a menu of settings, users and log out
-function dkProfileTray() {
-  const b = Object.assign(el('button', 'dk-tray dk-profile'), { type: 'button', title: acct?.user || 'profile', ariaLabel: 'profile' });
-  if (acct?.admin) {
-    // the user's head lowered, the crown on it
-    const svg = dkGlyph('M8 4.6a2.6 2.6 0 1 0 0 5.2 2.6 2.6 0 0 0 0-5.2zM2.5 15c.6-2.8 2.8-4.2 5.5-4.2s4.9 1.4 5.5 4.2');
-    svg.appendChild(svgEl('path', { d: DK_GLYPHS.crown, class: 'dk-crown' }));
-    b.appendChild(svg);
-    b.title += ', admin';
-  } else b.appendChild(dkGlyph(DK_GLYPHS.user));
-  b.append(el('span', 'dk-profile-name', acct?.user || ''));
-  // a second press closing it
-  b.addEventListener('click', () => {
-    if (!dkMenuEl.hidden && dkMenuEl.owner === b) { dkMenuEl.hidden = true; return; }
-    dkPopsClose('menu');
-    dkMenu(0, 0, [
-      ['settings', dkProfileWin, true],
-      ...(acct?.admin ? [['users', dkUsersWin, true]] : []),
-      ...(clientInvoke && !acct?.boot ? [['connect claude', claudeConnect, true]] : []),
-      null,
-      ['log out', acctLogout, true, 'danger'],
-    ], null, acct?.user || 'profile');
-    dkMenuEl.owner = b;
-    dkMenuEl.classList.add('dk-pop');
-    dkAnchor(dkMenuEl, b);
-  });
-  return b;
+// the user's glyph, an admin's crowned
+function dkUserGlyph() {
+  if (!acct?.admin) return dkGlyph(DK_GLYPHS.user);
+  // the user's head lowered, the crown on it
+  const svg = dkGlyph('M8 4.6a2.6 2.6 0 1 0 0 5.2 2.6 2.6 0 0 0 0-5.2zM2.5 15c.6-2.8 2.8-4.2 5.5-4.2s4.9 1.4 5.5 4.2');
+  svg.appendChild(svgEl('path', { d: DK_GLYPHS.crown, class: 'dk-crown' }));
+  return svg;
 }
 
 // the profile window: saved hosts, page logins and the password
