@@ -326,18 +326,49 @@ jobs:
           path: out
           pattern: out-*
           merge-multiple: true
+      # GitHub lists a release's assets flat: the notes group them, each linked
+      - name: notes
+        env:
+          REPO: ${{ github.repository }}
+        run: |
+          cd out
+          U=https://github.com/$REPO/releases/download/v$VER
+          link() { for f in "$@"; do [ -e "$f" ] && echo "- [\`$f\`]($U/$f)"; done; true; }
+          {
+            h=$(link phosphorus-*-macos-universal.dmg phosphorus-*-windows-x86_64-setup.exe phosphorus_*.deb | grep -v phosphorus-client || true)
+            if [ -n "$h" ]; then
+              echo "## Phosphorus (the service)"
+              echo "Runs this machine as a host; the frontend opens in your browser, or in Phosphorus Client when it's installed."
+              echo
+              echo "$h"
+              echo
+              grep -qF macos-universal.dmg <<<"$h" && echo "- **macOS**: open the \`.dmg\`, drag the app to Applications and open it (first open: right-click > Open). It asks for its keys and needs the Tailscale app."
+              grep -qF windows-x86_64-setup.exe <<<"$h" && echo "- **Windows**: run the setup \`.exe\` (SmartScreen: More info > Run anyway). It asks for its keys and needs Tailscale for Windows."
+              grep -qF .deb <<<"$h" && echo "- **Linux**: \`sudo apt install ./phosphorus_${VER}_ARCH.deb\`, then \`sudo phosphorus\` and paste the keys it asks for (\`amd64\` or \`arm64\`)."
+              echo
+            fi
+            c=$(link phosphorus-client-*.dmg phosphorus-client-*-setup.exe phosphorus-client_*.deb)
+            if [ -n "$c" ]; then
+              echo "## Phosphorus Client"
+              echo "Optional, for any computer: a window on the mesh, updating itself."
+              echo
+              echo "$c"
+              echo
+              echo "- **macOS**: open the \`.dmg\` and drag the app to Applications. **Windows**: run the setup \`.exe\`. **Linux**: \`sudo apt install ./phosphorus-client_${VER}_ARCH.deb\`."
+              echo
+            fi
+            echo "## Misc files"
+            link THIRD_PARTY_LICENSES.txt forgejo-src-*.tar.gz
+            echo
+            echo "\`THIRD_PARTY_LICENSES.txt\` is in every installer too; Forgejo's source is here whenever a Linux host package is."
+          } > "$RUNNER_TEMP/notes.md"
+          cat "$RUNNER_TEMP/notes.md"
       - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
         with:
           tag_name: v${{ env.VER }}
           name: Phosphorus ${{ env.VER }}
           target_commitish: ${{ github.sha }}
-          body: |
-            Host installers (`phosphorus`) run this machine as a host; the frontend opens in your browser, or in Phosphorus Client when it's installed. ${{ inputs.client && 'Phosphorus Client (`phosphorus-client`) is an optional download for every OS: a window on the mesh, updating itself.' || '' }}
-            ${{ inputs.macos && '**MacOS host**: open the `.dmg`, drag the app to Applications and open it (first open: right-click > Open). It asks for its keys and needs the Tailscale app.' || '' }}
-            ${{ inputs.windows && '**Windows host**: run the setup `.exe` (SmartScreen: More info > Run anyway). It asks for its keys and needs Tailscale for Windows.' || '' }}
-            ${{ (inputs.linux_amd64 || inputs.linux_arm64) && format('**Linux host**: `sudo apt install ./phosphorus_{0}_ARCH.deb`, then `sudo phosphorus` and paste the keys it asks for (`amd64` or `arm64`).', env.VER) || '' }}
-            ${{ inputs.client && format('**Client**: macOS `.dmg`, Windows setup `.exe`, Linux `sudo apt install ./phosphorus-client_{0}_ARCH.deb`.', env.VER) || '' }}
-            Licenses: `THIRD_PARTY_LICENSES.txt` in every installer and on this release; Forgejo's source as `forgejo-src-*.tar.gz` here when a Linux package is.
+          body_path: ${{ runner.temp }}/notes.md
           files: out/*
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
