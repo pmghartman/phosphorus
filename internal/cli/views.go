@@ -55,55 +55,56 @@ func meshAddr() string {
 	return selfHost()
 }
 
-// header .dk-head: the window's title bar, the glyph and title left, version right
-func header(cols int, title string) string {
-	if title == "" {
-		title = "keys"
-		if !ui.keysOnly {
-			title = tabs[ui.tab]
-		}
+// topBar .dk-bar at the top: the wordmark, the apps as tabs, the hosts and
+// the version right, narrowed by dropping the hosts, then the tab names
+func topBar(cols int) string {
+	mark := " " + gradient("phosphorus", 0) + "  "
+	if ui.keysOnly {
+		return surface(pal["tabbar"])(mark + c("muted")("· ") + c("sage")("keys") + strings.Repeat(" ", max0(cols-vlen(mark)-6)))
 	}
-	left := " " + gradient("phosphorus", 0) + c("muted")(" · ") + c("sage")(title)
-	right := ""
-	if ui.state != nil {
-		right = c("muted")("v"+str(get(ui.state, "self", "version"))) + " "
-	}
-	return surface(pal["card"])(left + strings.Repeat(" ", max0(cols-vlen(left)-vlen(right))) + right)
-}
-
-// taskBar .dk-bar: the tabs as tasks, each host a chip, the clock
-func taskBar(cols int) string {
 	tasks := func(short bool) string {
 		parts := []string{}
-		for i, t := range tabs {
+		for i, t := range tabs[:shown] {
 			label := fmt.Sprintf(" %d %s ", i+1, t)
 			if short {
 				label = fmt.Sprintf(" %d ", i+1)
 			}
-			switch {
-			case i == ui.tab:
+			if i == ui.tab {
 				parts = append(parts, surface(pal["border"])(bold(fg(pal["accent"])+label[:2]+fg(pal["fg"])+label[2:])))
-			case i == updateTab && obj(get(ui.state, "lock")) != nil:
-				// a mesh update running, lit from any tab
-				parts = append(parts, c("accent")(label))
-			default:
-				parts = append(parts, c("muted")(label))
+				continue
 			}
+			parts = append(parts, c("muted")(label))
 		}
 		return strings.Join(parts, "")
 	}
-	clock := c("fg")(time.Now().Format("3:04 PM")) + " "
+	ver := ""
+	if ui.state != nil {
+		ver = c("dim")("v"+str(get(ui.state, "self", "version"))) + " "
+	}
+	// a mesh update running, lit from any tab; the update view's own name when open
+	upd := ""
+	switch {
+	case ui.tab == updateTab:
+		upd = surface(pal["border"])(bold(c("accent")(" mesh update "))) + "  "
+	case obj(get(ui.state, "lock")) != nil:
+		upd = c("accent")("● updating") + "  "
+	}
 	chips := hostChips()
+	if chips != "" {
+		chips += "  "
+	}
 	t := tasks(false)
-	right := chips + "  " + clock
-	if vlen(t)+vlen(right) > cols {
-		right = clock
+	for _, right := range []string{upd + chips + ver, upd + ver} {
+		if vlen(mark)+vlen(t)+vlen(right) <= cols {
+			return surface(pal["tabbar"])(mark + t + strings.Repeat(" ", cols-vlen(mark)-vlen(t)-vlen(right)) + right)
+		}
 	}
-	if vlen(t)+vlen(right) > cols {
-		t = tasks(true)
+	t = tasks(true)
+	right := upd + ver
+	if vlen(mark)+vlen(t)+vlen(right) > cols {
+		right = upd
 	}
-	fill := strings.Repeat(" ", max0(cols-vlen(t)-vlen(right)))
-	return surface(pal["tabbar"])(t + fill + right)
+	return surface(pal["tabbar"])(mark + t + strings.Repeat(" ", max0(cols-vlen(mark)-vlen(t)-vlen(right))) + right)
 }
 
 // .dk-chip: this host purple, the rest green, one not answering red
@@ -452,8 +453,34 @@ func statsView() view {
 		}
 		rbody = table([]string{"host", "name", "mode", "address", "port", "access", "status"}, rrows, -1, 0)
 	}
-	return view{lines: panels(lockCard, &card{"tailnet", table([]string{"host", "os", "version", "ping"}, trows, -1, 0)}, &card{"routes", rbody}),
+	return view{lines: panels(lockCard, overview(tail), &card{"tailnet", table([]string{"host", "os", "version", "ping"}, trows, -1, 0)}, &card{"routes", rbody}),
 		keys: []key{k("↑↓ scroll", "quiet")}, scroll: true}
+}
+
+// overview where to open the desktop and how many hosts answer
+func overview(tail []J) *card {
+	up, seen := 0, 0
+	for _, d := range tail {
+		if truthy(d["phosphorus"]) {
+			up++
+		}
+		if truthy(d["phosphorus"]) || truthy(d["phosphorusSeen"]) {
+			seen++
+		}
+	}
+	addr := "http://" + selfHost()
+	if baseDomain != "" {
+		addr = "https://" + baseDomain
+	}
+	tok := "online"
+	if up < seen {
+		tok = "warn"
+	}
+	lbl := func(s string) string { return c("muted")(fmt.Sprintf("%-6s", s)) }
+	return &card{"this mesh", plainRows(
+		lbl("open")+c("accent")(addr)+c("muted")("  in a browser on the tailnet"),
+		lbl("hosts")+c(tok)(fmt.Sprintf("%d of %d", up, seen))+c("muted")(" answering"),
+	)}
 }
 
 // phosphorus.ini's flag against what the mesh sees, the election as the git card draws it
@@ -1187,5 +1214,5 @@ func currentView() view {
 	if ui.form != nil {
 		return formView(ui.form)
 	}
-	return []func() view{statsView, servicesView, filesView, gitView, modelView, projectsView, updateView}[ui.tab]()
+	return []func() view{statsView, servicesView, filesView, projectsView, modelView, gitView, updateView}[ui.tab]()
 }

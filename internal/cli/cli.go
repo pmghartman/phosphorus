@@ -36,18 +36,21 @@ var (
 	client       = &http.Client{Timeout: 2 * time.Second}
 )
 
-// the frontend's apps and the mesh update, every one a tab
-var tabs = []string{"status", "services", "files", "git", "model", "projects", "update"}
+// the frontend's apps as tabs, the mesh update last, opened by u over them
+var tabs = []string{"status", "services", "files", "projects", "model", "git", "update"}
 
 const (
 	statsTab = iota
 	servicesTab
 	filesTab
-	gitTab
-	modelTab
 	projectsTab
+	modelTab
+	gitTab
 	updateTab
 )
+
+// shown the tabs on the bar, the update left off
+const shown = updateTab
 
 const (
 	// [files] and [git] host: rebuilt by the frontend on its own once saved
@@ -200,7 +203,9 @@ type prompt struct {
 }
 
 var ui = struct {
-	tab       int
+	tab int
+	// back the tab the update view returns to
+	back      int
 	state     J
 	offline   bool
 	filesInfo J
@@ -373,16 +378,13 @@ func size() (int, int) {
 	return cols, rows
 }
 
-// headTitle the last frame's, for the wordmark's own redraws
-var headTitle string
-
 // selAt the last frame's selected body line, -1 for none
 var selAt = -1
 
 // glow the header line alone redrawn, its wordmark's bands slid on
 func glow() {
 	cols, _ := size()
-	io.WriteString(out, "\x1b[H"+base+fit(header(cols, headTitle), cols)+"\x1b[K")
+	io.WriteString(out, "\x1b[H"+base+fit(topBar(cols), cols)+"\x1b[K")
 }
 
 func render() {
@@ -390,6 +392,9 @@ func render() {
 	var global []key
 	if ui.form == nil && !ui.keysOnly {
 		global = []key{k("u update", "quiet"), k("k keys", "quiet"), k("q quit", "quiet")}
+		if ui.tab == updateTab {
+			global = []key{k("esc back", "quiet"), k("q quit", "quiet")}
+		}
 	}
 	status := ""
 	var hint []key
@@ -424,14 +429,10 @@ func render() {
 		} else {
 			f = append(f, hints(v.keys, global, cols))
 		}
-		if !ui.keysOnly {
-			f = append(f, taskBar(cols))
-		}
 		return f
 	}
 	foot := footer()
-	headTitle = v.title
-	head := []string{header(cols, v.title), ""}
+	head := []string{topBar(cols), ""}
 	room := rows - len(head) - len(foot) - 1
 	if room < 1 {
 		room = 1
@@ -965,22 +966,29 @@ func onKey(e keyEv) {
 		return
 	case s == "k":
 		openForm(keysForm(false))
-	case s == "u":
+	case s == "u" && ui.tab != updateTab:
+		ui.back = ui.tab
 		switchTab(updateTab)
+	case ui.tab == updateTab && (e.name == "escape" || s == "u"):
+		switchTab(ui.back)
 	case ui.tab == updateTab && (e.name == "return" || s == "U"):
 		if ch, _ := liveChain(ui.state); ui.state != nil && ch == nil {
 			askStart()
 		}
 	case ui.tab == updateTab && (s == "c" || s == "x"):
 		updateKey(s)
-	case len(s) == 1 && s >= "1" && s <= "9" && int(s[0]-'0') <= len(tabs):
+	case len(s) == 1 && s >= "1" && s <= "9" && int(s[0]-'0') <= shown:
 		switchTab(int(s[0] - '1'))
 	case e.name == "tab" || e.name == "right" || e.name == "left":
 		step := 1
 		if e.shift || e.name == "left" {
-			step = len(tabs) - 1
+			step = shown - 1
 		}
-		switchTab((ui.tab + step) % len(tabs))
+		from := ui.tab
+		if from == updateTab {
+			from = ui.back
+		}
+		switchTab((from + step) % shown)
 	case !ui.offline && ui.state != nil:
 		listKey(s, e)
 	}
