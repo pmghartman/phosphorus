@@ -417,12 +417,14 @@ func table(headers []string, rows [][]string, sel, max int) []row {
 // selMark a selected row's tag, for render to scroll it into view; never written out
 const selMark = "\x1b[9999m"
 
+// panel a window: its title bar, the lines framed under it
 func panel(title string, lines []row, w int) []string {
 	b := c("border")
+	// .dk-head: the window's title on its own bar, as the desktop's windows
 	head := cut(title, w-1)
 	top := b("┌" + strings.Repeat("─", w+2) + "┐")
 	if title != "" {
-		top = b("┌─") + " " + c("sage")(head) + " " + b(strings.Repeat("─", max0(w-vlen(head)-1))+"┐")
+		top = surface(pal["card"])(" " + c("sage")(head) + strings.Repeat(" ", max0(w+3-vlen(head))))
 	}
 	out := []string{top}
 	for _, l := range lines {
