@@ -243,6 +243,7 @@ func rebuild() error {
 	if homeFrom != "" && strings.HasPrefix(homeTo+string(os.PathSeparator), filepath.Join(homeFrom, "home")+string(os.PathSeparator)) {
 		return fail("[home] dir can't be inside the folders it moves")
 	}
+	refreshGameKey()
 	env := bakeEnv(homeTo)
 	sig := signature(env)
 	if err := svcInstall(); err != nil {

@@ -15,6 +15,7 @@ import (
 
 	"github.com/pmghartman/phosphorus/internal/envfile"
 	"github.com/pmghartman/phosphorus/internal/procs"
+	"github.com/pmghartman/phosphorus/internal/util"
 )
 
 // child one process phosphorus run keeps, labelled by PHOSPHORUS_ROLE
@@ -218,7 +219,8 @@ func runMain(stop <-chan struct{}) error {
 
 	frontend := &child{role: "frontend", core: true, grace: 15 * time.Second, argv: []string{bin, "serve"}, env: env}
 	tunnel := &child{role: "cloudflared", core: true, grace: 10 * time.Second, prefix: true, env: env,
-		argv: []string{tool("cloudflared"), "tunnel", "--no-autoupdate", "--loglevel", "warn", "run"}}
+		argv: []string{tool("cloudflared"), "tunnel", "--no-autoupdate", "--loglevel", "warn",
+			"--protocol", util.Env("TUNNEL_PROTOCOL", "http2"), "--metrics", util.TunnelMetrics, "run"}}
 	kids := []*child{frontend}
 	extra := []*child{}
 	if isModelHost() {

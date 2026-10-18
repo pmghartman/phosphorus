@@ -49,7 +49,9 @@ func EnvInt(k string, def int) int {
 
 var (
 	FrontendPort = EnvInt("FRONTEND_PORT", 8090)
-	SelfHost     = os.Getenv("SELF_HOST")
+	// TunnelMetrics cloudflared's metrics and /ready, on loopback
+	TunnelMetrics = Env("TUNNEL_METRICS", "127.0.0.1:20241")
+	SelfHost      = os.Getenv("SELF_HOST")
 	// RepoDir the install, phosphorus run's PHOSPHORUS_HOME
 	RepoDir  = Env("PHOSPHORUS_REPO_DIR", Env("PHOSPHORUS_HOME", "/var/lib/phosphorus"))
 	StateDir = Env("STATE_DIR", filepath.Join(RepoDir, "state"))

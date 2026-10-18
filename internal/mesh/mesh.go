@@ -652,10 +652,12 @@ func tick() {
 	wg.Add(1)
 	go func() { defer wg.Done(); own = services.Refresh(ip) }()
 	for _, p := range peers {
-		if !p.online {
+		mu.Lock()
+		// tailscale's online flag flaps for idle peers: one still answering polled anyway
+		if !p.online && !stateFor(p.host).answered {
+			mu.Unlock()
 			continue
 		}
-		mu.Lock()
 		st := stateFor(p.host)
 		quiet := st.misses >= missThreshold
 		due := !quiet || (!st.trying && util.Now() >= st.nextTry)
@@ -703,23 +705,18 @@ func tick() {
 		}
 		for _, p := range peers {
 			st := stateFor(p.host)
-			if !p.online && st.answered {
-				st.answered = false
-				st.misses = 0
-				retire(st)
-				defer clock.MarkHot()
-			}
-			ph := p.online && st.answered && st.misses < missThreshold
+			// its routes kept until it misses polls, never dropped on tailscale's flag alone
+			ph := st.answered && st.misses < missThreshold
 			if !ph && !p.online {
 				continue
 			}
 			d := map[string]any{"name": p.host, "phosphorus": ph, "phosphorusSeen": st.everAnswered}
+			// the version the host last reported, kept while it isn't answering
+			d["version"] = st.version
 			if ph {
 				d["os"] = st.platform
-				d["version"] = st.version
 			} else {
 				d["os"] = p.os
-				d["version"] = ""
 			}
 			next = append(next, d)
 		}

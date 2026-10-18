@@ -100,9 +100,24 @@ func gameControlSetup() error {
 		name = name[i+1:]
 	}
 	os.WriteFile(filepath.Join(dir, "user"), []byte(name+"\n"), 0o644)
-	pub, err := os.ReadFile(key + ".pub")
+	changed, err := authorizeGameKey(u)
 	if err != nil {
 		return err
+	}
+	if !changed {
+		say("play/stop key already authorized for %s", name)
+		return nil
+	}
+	say("authorized the play/stop key for %s, it can only start and stop games in services.export", name)
+	return nil
+}
+
+// authorizeGameKey u's authorized_keys line for the key, pointed at this
+// binary; a stale one (an older key, or a script an old release shipped) swapped out
+func authorizeGameKey(u *user.User) (bool, error) {
+	pub, err := os.ReadFile(filepath.Join(at("state", "game-control"), "id_ed25519.pub"))
+	if err != nil {
+		return false, err
 	}
 	line := "restrict,command=" + strconv.Quote(binPath("phosphorus")+" game-control --home "+home) + " " + strings.TrimSpace(string(pub))
 	sshDir := filepath.Join(u.HomeDir, ".ssh")
@@ -110,21 +125,54 @@ func gameControlSetup() error {
 	os.MkdirAll(sshDir, 0o700)
 	b, _ := os.ReadFile(ak)
 	kept := []string{}
+	keyPart := strings.Join(strings.Fields(string(pub))[:min(2, len(strings.Fields(string(pub))))], " ")
 	for _, l := range strings.Split(strings.TrimRight(string(b), "\n"), "\n") {
 		if l == line {
-			say("play/stop key already authorized for %s", name)
-			return nil
+			return false, nil
 		}
-		// a stale line from an older key or path swapped out
-		if l != "" && !strings.Contains(l, gameTag) {
+		if l != "" && !strings.Contains(l, gameTag) && (keyPart == "" || !strings.Contains(l, keyPart)) {
 			kept = append(kept, l)
 		}
 	}
 	if err := os.WriteFile(ak, []byte(strings.Join(append(kept, line), "\n")+"\n"), 0o600); err != nil {
-		return err
+		return false, err
 	}
-	say("authorized the play/stop key for %s, it can only start and stop games in services.export", name)
-	return nil
+	return true, nil
+}
+
+// refreshGameKey at rebuild: a host already set up for play/stop kept pointed
+// at the binary in place, never a path an older release used
+func refreshGameKey() {
+	dir := at("state", "game-control")
+	b, err := os.ReadFile(filepath.Join(dir, "user"))
+	if err != nil || !fileExists(filepath.Join(dir, "id_ed25519.pub")) {
+		return
+	}
+	u, err := user.Lookup(strings.TrimSpace(string(b)))
+	if err != nil {
+		return
+	}
+	changed, err := authorizeGameKey(u)
+	if err != nil {
+		say("couldn't refresh the play/stop key for %s: %v", u.Username, err)
+		return
+	}
+	if changed {
+		chownUser(u, filepath.Join(u.HomeDir, ".ssh"), filepath.Join(u.HomeDir, ".ssh", "authorized_keys"))
+		say("play/stop key for %s pointed at %s", u.Username, binPath("phosphorus"))
+	}
+}
+
+// chownUser paths given to u, where ids mean anything
+func chownUser(u *user.User, paths ...string) {
+	uid, err1 := strconv.Atoi(u.Uid)
+	gid, err2 := strconv.Atoi(u.Gid)
+	if err1 != nil || err2 != nil {
+		return
+	}
+	for _, p := range paths {
+		os.Chown(p, uid, gid)
+	}
 }
 
 func writable(dir string) bool {
