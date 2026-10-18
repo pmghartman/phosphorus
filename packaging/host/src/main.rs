@@ -381,15 +381,13 @@ fn open_main(handle: &AppHandle) {
         open_keys(handle);
         return;
     }
+    // no domain: this host's own frontend, over the tailnet's
     let d = domain(&app);
-    if d.is_empty() {
-        alert(handle, "no mesh domain yet, see Edit Keys");
-        return;
-    }
+    let url = if d.is_empty() { "http://localhost/".to_string() } else { format!("https://{d}/") };
     // off the main thread: launching waits on the system
     std::thread::spawn(move || {
         if !launch_client() {
-            open_url(&format!("https://{d}/"));
+            open_url(&url);
         }
     });
 }

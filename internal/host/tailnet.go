@@ -21,7 +21,7 @@ func tailnetJoin(state string) error {
 		os.WriteFile(joined, []byte(time.Now().UTC().Format(time.RFC3339)+"\n"), 0o644)
 	}
 	// turned off (vpn off, or by hand): back up as the same node, no re-auth
-	if state == "Stopped" && (env["BASE_DOMAIN"] != "" || fileExists(joined)) {
+	if state == "Stopped" && (env["BASE_DOMAIN"] != "" || env["ADMIN_PASS"] != "" || fileExists(joined)) {
 		c := exec.Command(tailscaleCLI(), append([]string{"up"}, tailscaleUpFlags()...)...)
 		hide(c)
 		if c.Run() == nil {
@@ -30,7 +30,7 @@ func tailnetJoin(state string) error {
 		}
 	}
 	if state == "Running" {
-		if env["BASE_DOMAIN"] != "" || fileExists(joined) {
+		if env["BASE_DOMAIN"] != "" || env["ADMIN_PASS"] != "" || fileExists(joined) {
 			tailscaleKeepUp()
 			return nil
 		}

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"net/url"
+	"os"
 	"regexp"
 	"strings"
 	"sync"
@@ -399,10 +400,15 @@ func buildTools() {
 						if bp := strings.Trim(str(r["base_path"]), "/"); str(r["base_path"]) != "" {
 							base = bp + "/"
 						}
-						if r["mode"] == "subdomain" {
+						// no domain: this host's own name on the tailnet
+						at := "https://" + src.Domain()
+						if src.Domain() == "" {
+							at = "http://" + os.Getenv("SELF_HOST")
+						}
+						if r["mode"] == "subdomain" && src.Domain() != "" {
 							row["url"] = fmt.Sprintf("https://%s.%s/%s", str(r["name"]), src.Domain(), base)
 						} else {
-							row["url"] = fmt.Sprintf("https://%s/%s/%s/%s", src.Domain(), str(r["host"]), str(r["name"]), base)
+							row["url"] = fmt.Sprintf("%s/%s/%s/%s", at, str(r["host"]), str(r["name"]), base)
 						}
 					}
 					out = append(out, row)

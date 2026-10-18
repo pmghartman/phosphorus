@@ -191,7 +191,8 @@ func toRoute(r map[string]any, ip string) *Route {
 	if bp != "" {
 		base = "/" + bp
 	}
-	sub := r["mode"] == "subdomain"
+	// no domain: a subdomain service on a path instead
+	sub := r["mode"] == "subdomain" && baseDomain != ""
 	host, _ := r["host"].(string)
 	name := util.JSString(r["name"])
 	rt := &Route{Host: host, Name: name, Scheme: util.JSString(r["scheme"]), IP: ip, Proto: "http"}
@@ -328,6 +329,16 @@ func IsTailnetAddr(a string) bool {
 	return err == nil && n >= 64 && n <= 127
 }
 
+// Unrebindable an address, a bare name or a tailnet one
+func Unrebindable(host string) bool {
+	h := host
+	if x, _, err := net.SplitHostPort(host); err == nil {
+		h = x
+	}
+	h = strings.TrimSuffix(strings.ToLower(strings.Trim(h, "[]")), ".")
+	return net.ParseIP(h) != nil || !strings.Contains(h, ".") || strings.HasSuffix(h, ".ts.net")
+}
+
 func onMesh(r *http.Request) bool {
 	a := RemoteIP(r)
 	return IsLoopbackAddr(a) || IsTailnetAddr(a)
@@ -353,7 +364,9 @@ func resolve(r *http.Request) hit {
 		pathname, search = raw[:q], raw[q:]
 	}
 	t := tableV.Load()
-	if host == baseDomain {
+	// the domain, or on the tailnet any host's own name or address
+	main := host == baseDomain || (t.domains[host] == nil && pathname != "/healthz" && onMesh(r) && Unrebindable(host))
+	if main {
 		for _, x := range t.paths {
 			if under(pathname, x.Prefix) {
 				return hit{route: x, path: strip(pathname, x.Prefix) + search}
@@ -456,7 +469,11 @@ func frameable(csp string) string {
 			kept = append(kept, d)
 		}
 	}
-	return strings.Join(append(kept, "frame-ancestors 'self' https://"+baseDomain), "; ")
+	anc := "frame-ancestors 'self'"
+	if baseDomain != "" {
+		anc += " https://" + baseDomain
+	}
+	return strings.Join(append(kept, anc), "; ")
 }
 
 var errTooLarge = errors.New("request body too large")
@@ -778,7 +795,11 @@ func Listen(port int, app http.Handler, gate Gate) {
 		notes.Log(fmt.Sprintf("can't serve on port %d: %v", port, err))
 		os.Exit(1)
 	}
-	notes.Log(fmt.Sprintf("serving %s on port %d", baseDomain, port))
+	at := baseDomain
+	if at == "" {
+		at = "the tailnet"
+	}
+	notes.Log(fmt.Sprintf("serving %s on port %d", at, port))
 	go func() {
 		if err := srv.Serve(ln); err != nil {
 			notes.Log(fmt.Sprintf("can't serve on port %d: %v", port, err))

@@ -49,8 +49,8 @@
   const MAIN = ['TS_AUTHKEY', 'Tailscale auth key', 'Reusable, expires every 90 days. The only key a host joining an existing mesh needs.'];
   // the first host's, copied from a peer by every other
   const SETUP = [
-    ['BASE_DOMAIN', 'Domain', "The mesh's domain, services under it. Copied from a peer when blank."],
-    ['TUNNEL_TOKEN', 'Cloudflare tunnel token', "For a replica of the mesh's tunnel. Copied from a peer when blank."],
+    ['BASE_DOMAIN', 'Domain', 'Optional, for access off the tailnet. Copied from a peer when blank.'],
+    ['TUNNEL_TOKEN', 'Cloudflare tunnel token', 'Optional, with the domain. Copied from a peer when blank.'],
     ['TS_API_KEY', 'Tailscale API token', 'Game split DNS, expires every 90 days. Copied from a peer when blank.'],
     ['ADMIN_PASS', 'Admin password', "The setup admin's login and the gate on a mesh update. Copied from a peer when blank."],
   ];
@@ -86,7 +86,7 @@
 
   invoke('keys_status').then((set) => {
     if (!set.TS_AUTHKEY) {
-      document.getElementById('lead').textContent = 'First start. Joining an existing mesh needs only the Tailscale auth key, the rest is copied from a peer. A new mesh needs the domain and tunnel token too.';
+      document.getElementById('lead').textContent = 'First start. Only the Tailscale auth key is needed.';
     }
     const more = document.createElement('details');
     const sum = document.createElement('summary');
@@ -97,7 +97,7 @@
     count.textContent = `${n} of ${SETUP.length} set`;
     sum.append(count);
     const note = document.createElement('p');
-    note.textContent = 'Only the first host of a new mesh needs the domain and tunnel token. Every other host copies these from a peer, so leave them blank when joining.';
+    note.textContent = 'All optional. Joining hosts copy them from a peer.';
     more.append(sum, note, ...SETUP.map((k) => field(k, !!set[k[0]])));
     form.replaceChildren(field(MAIN, !!set.TS_AUTHKEY), more);
     form.querySelector('input').focus();

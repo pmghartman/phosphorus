@@ -252,7 +252,7 @@ func serviceForm(s *section) *form {
 		{key: "name", value: name, hint: "lowercase letters, digits, -"},
 		fl("port", "required, 1-65535"),
 		fl("scheme", "blank = http", "", "http", "https"),
-		fl("mode", "blank = path, subdomain = <name>."+baseDomain, "", "path", "subdomain"),
+		fl("mode", "blank = path, subdomain = <name>.<domain>, a path without one", "", "path", "subdomain"),
 		fl("base_path", "sub-path stripped before proxying"),
 		fl("extras", `JSON: {"max_body":"50MB","forwarded_proto":"https"}`),
 		fl("public", "true = no phosphorus login, the service's own only", "", "true", "false"),
