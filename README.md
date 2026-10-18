@@ -1,19 +1,30 @@
-<table align="center">
-  <tr>
-    <td align="center" valign="middle"><img src=".github/assets/phosphorus.svg" alt="phosphorus" width="260"></td>
-    <td align="center" valign="middle"><img src=".github/assets/wright-alchemist.jpg" alt="The Alchemist Discovering Phosphorus, Joseph Wright of Derby" width="220"></td>
-  </tr>
-  <tr>
-    <td colspan="2" align="center"><sub><i>The Alchymist, In Search of the Philosopher's Stone, Discovers Phosphorus</i>, Joseph Wright of Derby, 1771: Hennig Brand in 1669. Public domain, via <a href="https://commons.wikimedia.org/wiki/File:Joseph_Wright_of_Derby_The_Alchemist.jpg">Wikimedia Commons</a>.</sub></td>
-  </tr>
-</table>
+<p align="center">
+  <img src=".github/assets/phosphorus.svg" alt="phosphorus" width="200">
+</p>
 
-Every computer you own as one shared desktop in your browser: terminals, files, web services, game servers, chat, live status, git and a local AI model, across all your machines, at your own domain.
+<h1 align="center">Phosphorus</h1>
+
+<p align="center"><b>Every computer you own, as one desktop in your browser.</b></p>
+
+<p align="center">
+  <a href="https://github.com/pmghartman/phosphorus/releases/latest"><img alt="release" src="https://img.shields.io/github/v/release/pmghartman/phosphorus?style=flat-square&color=a371f7"></a>
+  <a href="LICENSE"><img alt="license" src="https://img.shields.io/github/license/pmghartman/phosphorus?style=flat-square&color=f0883e"></a>
+  <img alt="platforms" src="https://img.shields.io/badge/macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-555?style=flat-square">
+</p>
+
+<p align="center">
+  <a href="https://github.com/pmghartman/phosphorus/releases/latest">Download</a> ·
+  <a href="#install">Install</a> ·
+  <a href="#first-start">First start</a> ·
+  <a href="#architecture">Architecture</a>
+</p>
+
+Terminals, files, web services, game servers, chat, live status, git and a local AI model, across all your machines: on your tailnet, or at your own domain.
 
 ## What you need
 
 - A [Tailscale](https://tailscale.com) account (the free plan is enough) and a reusable auth key
-- A domain on [Cloudflare](https://cloudflare.com) and a Cloudflare tunnel token (only for the first host)
+- Optional: a domain on [Cloudflare](https://cloudflare.com) and a tunnel token, to reach the mesh off the tailnet and for git
 
 ## Install
 
@@ -27,16 +38,16 @@ Download from the [latest release](https://github.com/pmghartman/phosphorus/rele
 
 Tailscale is installed on first start if it's missing. On macOS, allow its VPN configuration when asked.
 
-**Client** (optional, a window onto the mesh from any computer): install `phosphorus-client` for your system and enter your domain. It updates itself. Hosts don't need it.
+**Client** (optional, a window onto the mesh from any computer): install `phosphorus-client` for your system and enter your domain, or any host's tailnet name. It updates itself. Hosts don't need it.
 
 ## First start
 
 Phosphorus asks for its keys:
 
 - **Tailscale auth key**: always needed. A machine joining an existing mesh needs nothing else; it copies the rest from the other hosts.
-- **First setup** (only for the first host of a new mesh): your domain, the Cloudflare tunnel token, and optionally a Tailscale API token (for game server DNS) and an admin password.
+- **First setup** (all optional, first host only): your domain and Cloudflare tunnel token, a Tailscale API token (for game server DNS) and an admin password.
 
-Then open `https://your-domain`. The first login is user `admin` with your admin password; create your own admin account and that login turns off.
+Then open `http://HOST` from any device on the tailnet (a host's name or tailnet IP), or `https://your-domain` with one. The first login is user `admin` with your admin password; create your own admin account and that login turns off.
 
 To change a key later: **Edit Keys** in the tray, or `phos keys`.
 
@@ -77,17 +88,17 @@ flowchart TB
     sshd["host sshd"]
     subgraph svc["phosphorus.service: phosphorus run"]
       ph["frontend<br/>phosphorus serve"]
-      cfd["cloudflared"]
+      cfd["cloudflared<br/>with a domain only"]
       model["model<br/>llama-server, opencode"]
-      git["git daemon<br/>forgejo, rsyncd, elector"]
+      git["git daemon, with a domain<br/>forgejo, rsyncd, elector"]
     end
   end
 
   subgraph mesh["Tailnet"]
     peers["other hosts, Linux, macOS and Windows"]
   end
-  cf["Cloudflare tunnel"]
-  browser["Browser or client app at BASE_DOMAIN"]
+  cf["Cloudflare tunnel (optional)"]
+  browser["Browser or client app<br/>http://host on the tailnet, or BASE_DOMAIN"]
 
   deb --> dpkg --> bin
   dmg & exe -->|"tray app: install, start, keys"| bin
@@ -114,7 +125,16 @@ flowchart TB
   client --> browser
   client -->|"self-update"| feed
   browser -->|"/api/ping/host, timed by the client"| ph
+  browser <-->|"tailnet, no domain"| ph
 ```
+
+## The name
+
+<p align="center">
+  <img src=".github/assets/wright-alchemist.jpg" alt="The Alchemist Discovering Phosphorus, Joseph Wright of Derby" width="420">
+</p>
+
+<p align="center"><sub><i>The Alchymist, In Search of the Philosopher's Stone, Discovers Phosphorus</i>, Joseph Wright of Derby, 1771: Hennig Brand in 1669. Public domain, via <a href="https://commons.wikimedia.org/wiki/File:Joseph_Wright_of_Derby_The_Alchemist.jpg">Wikimedia Commons</a>.</sub></p>
 
 ## License
 
