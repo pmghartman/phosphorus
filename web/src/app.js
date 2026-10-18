@@ -2473,7 +2473,17 @@ function convActions(c) {
       { label: 'clear conversation', sub: 'and its context, in this browser', key: 'd', danger: true, confirm: `clear ${c}?`, act: () => clearAgent(c) },
     ].filter(Boolean);
   }
-  return [read, { label: 'open', act: () => openConv(c) }].filter(Boolean);
+  const dm = dmWith(c);
+  return [read, { label: 'open', act: () => openConv(c) },
+    dm && { label: 'delete conversation', sub: 'its history gone for you, on every host', key: 'd', danger: true, confirm: `delete your dms with ${dm}?`, act: () => deleteDm(dm) },
+  ].filter(Boolean);
+}
+
+// the mesh drops it from this name's history and sends that history again
+function deleteDm(dm) {
+  if (conv === `dm:${dm}`) setConv('mesh');
+  news.delete(`dm:${dm}`);
+  send({ type: 'hide-dm', with: dm });
 }
 
 function convMenu(c, anchor, destructive) {

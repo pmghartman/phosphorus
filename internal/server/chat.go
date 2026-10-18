@@ -1,6 +1,8 @@
 package server
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -51,6 +53,7 @@ var (
 	typingRe  = regexp.MustCompile(`^(mesh|ch:[a-z0-9][a-z0-9-]{0,23}|dm:.{1,32})$`)
 	chHostRe  = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
 	chFileRe  = regexp.MustCompile(`^etc/chat/ch/([a-z0-9-]+)\.json$`)
+	dmFileRe  = regexp.MustCompile(`^etc/chat/dm/[0-9a-f]+\.json$`)
 )
 
 func colorForName(n string) string {
@@ -169,6 +172,27 @@ func setChannel(ch string, fields map[string]any) {
 
 func isDm(m Msg) bool { s, ok := m["dm"].(string); return ok && s != "" }
 
+// one person's deleted dms: the other end -> when, theirs alone
+func dmRel(name string) string {
+	h := sha256.Sum256([]byte(name))
+	return "etc/chat/dm/" + hex.EncodeToString(h[:16]) + ".json"
+}
+
+func dmHidden(name string) map[string]float64 {
+	var f struct{ Hid map[string]float64 }
+	sysfs.ReadInto(dmRel(name), &f)
+	return f.Hid
+}
+
+func hideDm(name, with string) {
+	hid := dmHidden(name)
+	if hid == nil {
+		hid = map[string]float64{}
+	}
+	hid[with] = nextClearTimestamp()
+	sysfs.Write(dmRel(name), map[string]any{"name": name, "hid": hid})
+}
+
 func survives(m Msg) bool {
 	if isDm(m) {
 		return true
@@ -180,7 +204,25 @@ func survives(m Msg) bool {
 }
 
 func sees(c *chatClient, m Msg) bool {
-	return !isDm(m) || (c.name != "" && (c.name == m["name"] || c.name == m["dm"]))
+	return seesDm(c, m, nil)
+}
+
+// hid: c's deleted dms, read once by a caller going over many lines
+func seesDm(c *chatClient, m Msg, hid map[string]float64) bool {
+	if !isDm(m) {
+		return true
+	}
+	if c.name == "" || (c.name != m["name"] && c.name != m["dm"]) {
+		return false
+	}
+	if hid == nil {
+		hid = dmHidden(c.name)
+	}
+	with := str(m["name"])
+	if with == c.name {
+		with = str(m["dm"])
+	}
+	return num(m["timestamp"]) > hid[with]
 }
 
 func filterMsgs(log []Msg, keep func(Msg) bool) []Msg {
@@ -233,6 +275,22 @@ func onSysChange(rel string) {
 			by = " by " + b
 		}
 		log.Printf("[frontend] chat cleared up to %s%s", time.UnixMilli(int64(at)).UTC().Format("2006-01-02T15:04:05.000Z"), by)
+		return
+	}
+	if dmFileRe.MatchString(rel) {
+		var f struct{ Name string }
+		sysfs.ReadInto(rel, &f)
+		cmu.Lock()
+		cs := []*chatClient{}
+		for c := range clients {
+			if f.Name != "" && c.name == f.Name && c.ws.Open() {
+				cs = append(cs, c)
+			}
+		}
+		cmu.Unlock()
+		for _, c := range cs {
+			sendHistory(c)
+		}
 		return
 	}
 	mm := chFileRe.FindStringSubmatch(rel)
@@ -682,10 +740,14 @@ func broadcastPresence() {
 }
 
 func sendHistory(c *chatClient) {
+	hid := dmHidden(c.name)
+	if hid == nil {
+		hid = map[string]float64{}
+	}
 	cmu.Lock()
 	msgs := []Msg{}
 	for _, m := range mergedChat {
-		if sees(c, m) {
+		if seesDm(c, m, hid) {
 			msgs = append(msgs, m)
 		}
 	}

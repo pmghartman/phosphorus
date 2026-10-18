@@ -540,6 +540,11 @@ func onChatMessage(c *chatClient, user string, msg Msg) {
 	case "clear":
 		setClear(nextClearTimestamp(), c.name)
 		return
+	case "hide-dm":
+		if with := clipU(strings.TrimSpace(str(msg["with"])), maxNameLen); with != "" && with != c.name {
+			hideDm(c.name, with)
+		}
+		return
 	case "close":
 		if ch := channelOf(msg["ch"]); ch != "" {
 			setChannel(ch, map[string]any{"closedAt": nextClearTimestamp(), "closedBy": c.name})
