@@ -263,7 +263,8 @@ const spdxTag = "v3.27.0"
 
 // chosen the license taken from an SPDX expression: MIT when offered, else the first
 func chosen(expr string) string {
-	opts := strings.Split(expr, " OR ")
+	// the old "MIT/Apache-2.0" form an OR too
+	opts := strings.Split(strings.ReplaceAll(expr, "/", " OR "), " OR ")
 	for _, o := range opts {
 		if strings.TrimSpace(o) == "MIT" {
 			return "MIT"

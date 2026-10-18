@@ -1217,6 +1217,7 @@ function applyState(state) {
   meshModels = nextModels;
   if ((gitChanged || modelChanged) && !meshAnimFrame) drawMesh();
   meshLock = state.lock && state.lock.initiator ? state.lock : null;
+  notifyMesh(state);
   renderUpdateButton();
   updateSeen = { tailnet: state.tailnet, selfVersion: state.self.version || '' };
   // ours with its buttons, else a peer's, to watch
@@ -1608,12 +1609,13 @@ function clearUnread() {
 document.addEventListener('visibilitychange', clearUnread);
 window.addEventListener('focus', clearUnread);
 
-// desktop notifications, opt-in per browser, secure context only, the bell
-// hidden on plain http
+// desktop notifications, opt-in per browser: the client's own, else the
+// browser's on a secure page, the bell hidden without either
 const chatBell = document.getElementById('chat-bell');
-const canNotify = 'Notification' in window;
-let notifyOn = canNotify && Notification.permission === 'granted'
-  && localStorage.getItem('phosphorus-chat-notify') === '1';
+const clientInvoke = window.__phosphorusClient && window.__TAURI__?.core?.invoke;
+const canNotify = !!clientInvoke || 'Notification' in window;
+const notifyGranted = () => !!clientInvoke || Notification.permission === 'granted';
+let notifyOn = canNotify && notifyGranted() && localStorage.getItem('phosphorus-chat-notify') === '1';
 
 function paintBell() {
   chatBell.setAttribute('aria-pressed', String(notifyOn));
@@ -1631,7 +1633,7 @@ chatBell.addEventListener('click', async () => {
     paintBell();
     return;
   }
-  let perm = Notification.permission;
+  let perm = clientInvoke ? 'granted' : Notification.permission;
   if (perm === 'default') perm = await Notification.requestPermission();
   if (perm !== 'granted') {
     chatNote('notifications blocked');
@@ -1645,11 +1647,32 @@ chatBell.addEventListener('click', async () => {
 // silent, one live popup replaced by the next, a burst never stacking
 // an invite to a file past the bell: asked of this person by name
 function notifyChat(m, invite = false) {
-  if ((!notifyOn && !invite) || !away() || !canNotify || Notification.permission !== 'granted') return;
+  if ((!notifyOn && !invite) || !away()) return;
+  notifyOs(m.name, m.text);
+}
+
+// one notification, the client's native one when there
+function notifyOs(title, body) {
+  if (!canNotify || !notifyGranted()) return;
+  if (clientInvoke) { clientInvoke('notify', { title, body: body || '' }).catch(() => {}); return; }
   try {
-    const n = new Notification(m.name, { body: m.text, tag: 'phosphorus-chat', silent: true });
+    const n = new Notification(title, { body, tag: 'phosphorus-chat', silent: true });
     n.onclick = () => { window.focus(); n.close(); };
   } catch {}
+}
+
+// mesh news past the chat: a host gone or back, an update done
+let seenHosts = null;
+let seenLock = false;
+function notifyMesh(state) {
+  const now = new Set((state.tailnet || []).filter((d) => d.phosphorus).map((d) => d.name));
+  if (notifyOn && seenHosts) {
+    for (const h of seenHosts) if (!now.has(h)) notifyOs(`${h} offline`, '');
+    for (const h of now) if (!seenHosts.has(h)) notifyOs(`${h} online`, '');
+    if (seenLock && !state.lock?.initiator) notifyOs('update done', '');
+  }
+  seenHosts = now;
+  seenLock = !!state.lock?.initiator;
 }
 
 // the log following its newest line, eased down rather than snapped, a jump
@@ -6100,6 +6123,15 @@ function dkForget(host) {
   dkIcons();
 }
 
+// a fresh key with this user's rights, written into Claude Desktop by the client
+async function claudeConnect() {
+  const r = await acctCall('/api/me/mcp-key', {});
+  if (!r.ok) { openConfirm(r.error || 'failed', { title: 'claude', hideCancel: true, actionLabel: 'ok', onAction: closeUpdateModal }); return; }
+  let msg;
+  try { msg = await clientInvoke('claude_setup', { key: r.key }); } catch (e) { msg = `failed: ${e}`; }
+  openConfirm(msg, { title: 'claude', hideCancel: true, actionLabel: 'ok', onAction: closeUpdateModal });
+}
+
 // the task bar's profile: a menu of settings, users and log out
 function dkProfileTray() {
   const b = Object.assign(el('button', 'dk-tray dk-profile'), { type: 'button', title: acct?.user || 'profile', ariaLabel: 'profile' });
@@ -6119,6 +6151,7 @@ function dkProfileTray() {
       ['settings', dkProfileWin, true],
       ...(acct?.admin ? [['users', dkUsersWin, true]] : []),
       ...(window.__phosphorusClient ? [['refresh page', () => location.reload(), true]] : []),
+      ...(clientInvoke && !acct?.boot ? [['connect claude', claudeConnect, true]] : []),
       null,
       ['log out', acctLogout, true, 'danger'],
     ], null, acct?.user || 'profile');

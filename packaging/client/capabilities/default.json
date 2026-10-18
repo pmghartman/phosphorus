@@ -6,6 +6,7 @@
     "connect"
   ],
   "permissions": [
-    "core:default"
+    "core:default",
+    "allow-set-domain"
   ]
 }

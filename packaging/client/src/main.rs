@@ -14,6 +14,7 @@ use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::webview::NewWindowResponse;
 use tauri::{AppHandle, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_updater::UpdaterExt;
 
 /// one update or uninstall at a time
@@ -109,7 +110,9 @@ fn open_main(handle: &AppHandle) {
         return;
     };
     let h = handle.clone();
+    // the page's own drops: files from the desktop uploaded by it, not the webview
     let b = WebviewWindowBuilder::new(handle, "main", WebviewUrl::External(url))
+        .disable_drag_drop_handler()
         .title("Phosphorus")
         .inner_size(1280.0, 820.0)
         .min_inner_size(480.0, 360.0)
@@ -120,15 +123,15 @@ fn open_main(handle: &AppHandle) {
     // macOS: no title bar, the traffic lights over the page and a strip above it to drag by
     #[cfg(target_os = "macos")]
     let b = b.title_bar_style(tauri::TitleBarStyle::Overlay).hidden_title(true).initialization_script(DRAG_STRIP);
+    // the page's calls back in: notifications, Claude's setup, the macOS drag strip
+    let cap = tauri::ipc::CapabilityBuilder::new("page")
+        .remote(format!("{}*", url_of(&d)))
+        .window("main")
+        .permission("allow-notify")
+        .permission("allow-claude-setup");
     #[cfg(target_os = "macos")]
-    {
-        let cap = tauri::ipc::CapabilityBuilder::new("drag")
-            .remote(format!("{}*", url_of(&d)))
-            .window("main")
-            .permission("core:window:allow-start-dragging")
-            .permission("core:window:allow-internal-toggle-maximize");
-        let _ = handle.add_capability(cap);
-    }
+    let cap = cap.permission("core:window:allow-start-dragging").permission("core:window:allow-internal-toggle-maximize");
+    let _ = handle.add_capability(cap);
     let _ = b.build();
 }
 
@@ -156,6 +159,7 @@ fn open_tab(handle: &AppHandle, url: tauri::Url) {
     let title = url.host_str().unwrap_or("Phosphorus").to_string();
     let h = handle.clone();
     let _ = WebviewWindowBuilder::new(handle, label, WebviewUrl::External(url))
+        .disable_drag_drop_handler()
         .title(title)
         .inner_size(1100.0, 760.0)
         .min_inner_size(360.0, 240.0)
@@ -180,6 +184,91 @@ fn open_connect(handle: &AppHandle) {
         .build();
     if let Ok(w) = w {
         let _ = w.set_focus();
+    }
+}
+
+/// a native notification from the page
+#[tauri::command]
+fn notify(handle: AppHandle, title: String, body: String) {
+    let _ = handle.notification().builder().title(title).body(body).show();
+}
+
+/// the client's own settings folder, the same with or without a window
+fn config_dir() -> PathBuf {
+    let home = PathBuf::from(std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).unwrap_or_default());
+    let base = if cfg!(windows) {
+        std::env::var_os("APPDATA").filter(|v| !v.is_empty()).map(PathBuf::from).unwrap_or_else(|| home.join("AppData/Roaming"))
+    } else if cfg!(target_os = "macos") {
+        home.join("Library/Application Support")
+    } else {
+        std::env::var_os("XDG_CONFIG_HOME").filter(|v| !v.is_empty()).map(PathBuf::from).unwrap_or_else(|| home.join(".config"))
+    };
+    base.join("dev.phosphorus.client")
+}
+
+/// Claude Desktop's config, wherever it keeps it
+fn claude_config() -> PathBuf {
+    config_dir().parent().unwrap_or(Path::new(".")).join("Claude/claude_desktop_config.json")
+}
+
+/// the mesh's mcp with this user's key, Claude Desktop pointed at this client as its bridge
+#[tauri::command]
+fn claude_setup(handle: AppHandle, key: String) -> Result<String, String> {
+    let d = domain(&handle.state::<App>());
+    if d.is_empty() || key.is_empty() {
+        return Err("no domain or key".into());
+    }
+    write_json(&config_dir().join("mcp.json"), &json!({"url": format!("{}api/mcp", url_of(&d)), "key": key}));
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let p = claude_config();
+    let mut cfg = serde_json::from_str::<Value>(&read(&p)).ok().filter(Value::is_object).unwrap_or_else(|| json!({}));
+    if !cfg["mcpServers"].is_object() {
+        cfg["mcpServers"] = json!({});
+    }
+    cfg["mcpServers"]["phosphorus"] = json!({"command": exe, "args": ["--mcp"]});
+    write_json(&p, &cfg);
+    Ok("restart claude".into())
+}
+
+/// `--mcp`: Claude Desktop's stdio, each message posted to the mesh with the saved key
+fn mcp_bridge() {
+    use std::io::{BufRead, Write};
+    let cfg = serde_json::from_str::<Value>(&read(&config_dir().join("mcp.json"))).unwrap_or_default();
+    let (url, key) = (cfg["url"].as_str().unwrap_or_default().to_string(), cfg["key"].as_str().unwrap_or_default().to_string());
+    let agent = ureq::AgentBuilder::new().timeout(Duration::from_secs(300)).build();
+    let mut out = std::io::stdout();
+    for line in std::io::stdin().lock().lines() {
+        let Ok(line) = line else { break };
+        if line.trim().is_empty() {
+            continue;
+        }
+        let res = agent
+            .post(&url)
+            .set("Content-Type", "application/json")
+            .set("Accept", "application/json")
+            .set("Authorization", &format!("Bearer {key}"))
+            .send_string(&line);
+        let text = match res {
+            Ok(r) if r.status() == 202 => continue,
+            Ok(r) => r.into_string().unwrap_or_default(),
+            Err(e) => {
+                // an error for a request, nothing for a notification
+                let id = serde_json::from_str::<Value>(&line).ok().map(|v| v["id"].clone()).unwrap_or(Value::Null);
+                if id.is_null() {
+                    continue;
+                }
+                let why = match e {
+                    ureq::Error::Status(401, _) => "phosphorus: key refused, connect claude again".to_string(),
+                    e => format!("phosphorus: {e}"),
+                };
+                json!({"jsonrpc": "2.0", "id": id, "error": {"code": -32000, "message": why}}).to_string()
+            }
+        };
+        if text.trim().is_empty() {
+            continue;
+        }
+        let _ = writeln!(out, "{}", text.trim());
+        let _ = out.flush();
     }
 }
 
@@ -374,13 +463,18 @@ fn menu_event(app: &AppHandle, id: &str) {
 }
 
 fn main() {
+    if std::env::args().any(|a| a == "--mcp") {
+        mcp_bridge();
+        return;
+    }
     let app = tauri::Builder::default()
         // opened again: the running one's window brought up instead
         .plugin(tauri_plugin_single_instance::init(|app, _, _| open_main(app)))
         .enable_macos_default_menu(false)
         .on_menu_event(|app, e| menu_event(app, e.id().as_ref()))
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![set_domain])
+        .plugin(tauri_plugin_notification::init())
+        .invoke_handler(tauri::generate_handler![set_domain, notify, claude_setup])
         .setup(|app| {
             let config = app.path().app_config_dir()?.join("client.json");
             app.manage(App { config });
