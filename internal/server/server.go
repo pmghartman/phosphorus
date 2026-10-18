@@ -879,7 +879,7 @@ func initMCP() {
 			Copy: func(c *mcp.Caller, from, to [3]string, move bool) (int, any) {
 				return copyAcross(c, Loc{from[0], from[1], from[2]}, Loc{to[0], to[1], to[2]}, move)
 			},
-			Logs:       hostLogsOn,
+			Logs: hostLogsOn,
 			Op: func(host, op string, p map[string]any) (int, any) {
 				if op == "mesh_health" {
 					return 200, meshHealth()
@@ -889,7 +889,7 @@ func initMCP() {
 				}
 				return opOn(host, op, p, 100*time.Second)
 			},
-			ChatEdit: chatEditAs,
+			ChatEdit:   chatEditAs,
 			Config:     hostConfig,
 			UserUI:     userUI,
 			Service:    svcRequest,

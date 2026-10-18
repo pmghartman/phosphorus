@@ -42,14 +42,14 @@ type Asker struct {
 
 // Actions the buttons phosphorus may press
 type Actions struct {
-	Game       func(host, name, action string) (int, any)
-	GitMaster  func(host string) (int, any)
-	ModelRole  func(role, model string) (int, any)
-	Update     func(action string, admin bool, only []string) (int, any)
+	Game      func(host, name, action string) (int, any)
+	GitMaster func(host string) (int, any)
+	ModelRole func(role, model string) (int, any)
+	Update    func(action string, admin bool, only []string) (int, any)
 	// Op a host operation: health, power, containers, container, term_close,
 	// service_health, or mesh-wide mesh_health and update_history
-	Op       func(host, op string, p map[string]any) (int, any)
-	ChatEdit func(user, ref, action, text string) (int, any)
+	Op         func(host, op string, p map[string]any) (int, any)
+	ChatEdit   func(user, ref, action, text string) (int, any)
 	Files      func(c *Caller, host, op, share string, body map[string]any) (int, any)
 	Copy       func(c *Caller, from, to [3]string, move bool) (int, any)
 	Logs       func(host string, p map[string]any) (int, any)
@@ -426,7 +426,7 @@ type tool struct {
 	open        bool
 	// admin a key's tool for admins only, kept off other keys' lists
 	admin bool
-	run         func(a map[string]any, m Meta) (any, error)
+	run   func(a map[string]any, m Meta) (any, error)
 }
 
 // visible whether a caller sees a tool: a key every tool but the chat's and a
