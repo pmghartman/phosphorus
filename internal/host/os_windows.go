@@ -214,21 +214,43 @@ func svcSince() string {
 	return ""
 }
 
+// svcStart on the binary now in place: one the recovery action already
+// brought back (sc's 1056) stopped to STOPPED first, then started fresh
 func svcStart() error {
 	quiet("sc", "config", svcName, "start=", "auto")
-	if err := run("sc", "start", svcName); err != nil && !svcActive() {
-		return err
+	if st := svcState(); st != 0 && st != svc.Stopped {
+		quiet("sc", "stop", svcName)
+		if !svcWait(svc.Stopped, 150*time.Second) {
+			return fmt.Errorf("the service never reached STOPPED to start again")
+		}
 	}
-	return nil
+	err := run("sc", "start", svcName)
+	if svcWait(svc.Running, 60*time.Second) {
+		return nil
+	}
+	if err == nil {
+		err = fmt.Errorf("the service never reached RUNNING")
+	}
+	return err
+}
+
+// svcWait true once the service is in want, false past wait
+func svcWait(want svc.State, wait time.Duration) bool {
+	for end := time.Now().Add(wait); ; time.Sleep(time.Second) {
+		if svcState() == want {
+			return true
+		}
+		if time.Now().After(end) {
+			return false
+		}
+	}
 }
 
 // svcStop kept off through reboots
 func svcStop() error {
 	quiet("sc", "config", svcName, "start=", "demand")
 	quiet("sc", "stop", svcName)
-	for i := 0; i < 150 && svcState() != svc.Stopped; i++ {
-		time.Sleep(time.Second)
-	}
+	svcWait(svc.Stopped, 150*time.Second)
 	return nil
 }
 
