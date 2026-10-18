@@ -867,11 +867,29 @@ func initMCP() {
 				}
 				return st, body
 			},
-			Files:      filesCall,
+			Files: filesCall,
+			Copy: func(c *mcp.Caller, from, to [3]string, move bool) (int, any) {
+				return copyAcross(c, Loc{from[0], from[1], from[2]}, Loc{to[0], to[1], to[2]}, move)
+			},
+			Logs:       hostLogsOn,
+			Config:     hostConfig,
+			UserUI:     userUI,
+			Service:    svcRequest,
 			ModelColor: modelColor,
 		},
 		Post: postAs, Show: showAs, Locate: files.Locate,
 	})
+}
+
+// homeFilterResults a search's hits cut to what who may reach
+func homeFilterResults(who *files.Who, rs []map[string]any) []map[string]any {
+	out := []map[string]any{}
+	for _, r := range rs {
+		if files.HomeGate(who, strings.TrimSuffix(str(r["path"]), "/"), users.Exists) == "" {
+			out = append(out, r)
+		}
+	}
+	return out
 }
 
 // whoHeader a keyed caller's home rights, sealed for a peer's files call
@@ -922,6 +940,13 @@ func filesCall(c *mcp.Caller, host, op, share string, body map[string]any) (int,
 				out["entries"] = files.HomeFilterTree(who, out["entries"].([]map[string]any), users.Exists)
 			}
 			return st, b
+		case "search":
+			st, b := files.Search(sh, p, str(body["query"]), util.Truthy(body["content"]), str(body["glob"]))
+			if who != nil && st == 200 {
+				out := b.(map[string]any)
+				out["results"] = homeFilterResults(who, out["results"].([]map[string]any))
+			}
+			return st, b
 		case "read":
 			return files.Read(sh, p)
 		case "save":
@@ -939,11 +964,11 @@ func filesCall(c *mcp.Caller, host, op, share string, body map[string]any) (int,
 	if ip == "" {
 		return 502, map[string]any{"error": "can't find " + host + " on the tailnet"}
 	}
-	get := op == "info" || op == "list" || op == "tree" || op == "read"
+	get := op == "info" || op == "list" || op == "tree" || op == "search" || op == "read"
 	q := "share=" + chatmedia.EncodeURIComponent(share)
 	params := ""
 	if get {
-		for _, k := range []string{"path", "depth", "match"} {
+		for _, k := range []string{"path", "depth", "match", "query", "content", "glob"} {
 			if util.Truthy(body[k]) {
 				params += "&" + k + "=" + chatmedia.EncodeURIComponent(util.JSString(body[k]))
 			}

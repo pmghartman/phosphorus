@@ -5609,7 +5609,8 @@ function dkPressed(a) {
     else if (DK_VIEWS[a.view]) dkOpenApp(DK_VIEWS[a.view]);
     else if (a.view === 'files' && dk.desk) filesWin();
     else if (a.view === 'update' && updateModal.hidden) openUpdateModal();
-  } else if (a.kind === 'creds') credsAsk(a);
+  } else if (a.kind === 'notify') notifyOs(String(a.title || ''), String(a.body || ''));
+  else if (a.kind === 'creds') credsAsk(a);
   else if (a.kind === 'creds-close') credsClose(a.id);
 }
 
@@ -6203,14 +6204,16 @@ function dkProfileWin() {
     pName.setAttribute('list', 'acct-page-names');
     const opts = el('datalist');
     opts.id = 'acct-page-names';
-    opts.replaceChildren(...dk.services.map((r) => Object.assign(el('option'), { value: r.name })));
+    // the mesh's services and its git (forgejo) login, each a page login's name
+    const loginable = [...dk.services, ...(gitRoute ? [gitRoute] : [])];
+    opts.replaceChildren(...loginable.map((r) => Object.assign(el('option'), { value: r.name })));
     const pUser = noFill(Object.assign(el('input'), { placeholder: 'user', spellcheck: false }));
     const pPass = noFill(Object.assign(el('input'), { placeholder: 'password' }), true);
     const pAdd = Object.assign(el('button', 'primary', 'save'), { type: 'button' });
     pAdd.addEventListener('click', () => {
       const k = pName.value.trim();
       if (!k || !pUser.value) return;
-      const svc = dk.services.find((r) => r.name === k);
+      const svc = loginable.find((r) => r.name === k);
       acct.vault.pages[k] = { url: svc ? serviceUrl(svc) : '', user: pUser.value, pass: pPass.value };
       acctSave();
       draw();

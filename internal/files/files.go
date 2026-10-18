@@ -512,6 +512,94 @@ func Tree(sh *Share, rel string, depth any, match string) (int, any) {
 	return 200, res
 }
 
+const (
+	searchMax      = 200
+	searchScanMax  = 50000
+	searchFileMax  = 1 << 20
+	searchPerFile  = 5
+	searchLineClip = 240
+)
+
+// Search names, or with content the text inside, holding query, case-insensitive,
+// under rel; glob narrows the names looked at
+func Search(sh *Share, rel, query string, content bool, glob string) (int, any) {
+	if !Can(sh, "r") {
+		return 403, errBody("this share is not readable")
+	}
+	root := SafePath(*sh, rel, true)
+	if root == "" {
+		return 400, errBody("bad path")
+	}
+	q := strings.ToLower(strings.TrimSpace(query))
+	if q == "" && glob == "" {
+		return 400, errBody("a query or a glob")
+	}
+	var want *regexp.Regexp
+	if glob != "" {
+		want = globRe(glob)
+	}
+	out := []map[string]any{}
+	scanned, truncated := 0, false
+	filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
+		if err != nil || p == root {
+			return nil
+		}
+		name := d.Name()
+		if strings.HasPrefix(name, uploadTmp) || (sh.ID != "home" && isHome(p)) {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if scanned++; scanned > searchScanMax || len(out) >= searchMax {
+			truncated = true
+			return filepath.SkipAll
+		}
+		if want != nil && !want.MatchString(name) {
+			return nil
+		}
+		rp := RelOf(*sh, p)
+		if !content || d.IsDir() {
+			if !content && (q == "" || strings.Contains(strings.ToLower(name), q)) {
+				if d.IsDir() {
+					rp += "/"
+				}
+				out = append(out, map[string]any{"path": rp})
+			}
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil || !info.Mode().IsRegular() || info.Size() > searchFileMax {
+			return nil
+		}
+		b, err := os.ReadFile(p)
+		if err != nil || looksBinary(b) {
+			return nil
+		}
+		hits := []map[string]any{}
+		for i, line := range strings.Split(util.UTF8(b), "\n") {
+			if strings.Contains(strings.ToLower(line), q) {
+				if r := []rune(strings.TrimSpace(line)); len(r) > searchLineClip {
+					line = string(r[:searchLineClip]) + "…"
+				}
+				hits = append(hits, map[string]any{"line": i + 1, "text": strings.TrimSpace(line)})
+				if len(hits) >= searchPerFile {
+					break
+				}
+			}
+		}
+		if len(hits) > 0 {
+			out = append(out, map[string]any{"path": rp, "matches": hits})
+		}
+		return nil
+	})
+	res := map[string]any{"path": RelOf(*sh, root), "results": out}
+	if truncated {
+		res["truncated"] = true
+	}
+	return 200, res
+}
+
 // JSNumber as JS Number(v): strings parsed, null/"" 0, else NaN
 func JSNumber(v any) float64 {
 	switch x := v.(type) {

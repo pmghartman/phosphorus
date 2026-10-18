@@ -590,3 +590,75 @@ func saveModel(f *form) string {
 	}
 	return writeModel(v)
 }
+
+// --- edits from the frontend: the same rewrites as the forms ---------------------
+
+var svcNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
+
+// SetService [name] written with fields, a blank one dropped, or removed; "" once saved
+func SetService(name string, fields map[string]string, remove bool) string {
+	if !svcNameRe.MatchString(name) {
+		return "name: lowercase letters, digits, -"
+	}
+	d := splitSections(readText(servicesFile))
+	s := d.find(name)
+	if remove {
+		if s == nil {
+			return "no service " + name
+		}
+		return deleteService(name)
+	}
+	v := fieldsOf(s)
+	for k, x := range fields {
+		known := false
+		for _, sk := range svcKeys {
+			known = known || sk == k
+		}
+		if !known {
+			return "no field " + k + ", only " + strings.Join(svcKeys, ", ")
+		}
+		v[k] = strings.TrimSpace(x)
+	}
+	if v["port"] == "" {
+		return "port is required"
+	}
+	if v["type"] == "game" && (v["start"] == "") != (v["stop"] == "") {
+		return "start and stop go together"
+	}
+	if v["type"] != "game" && (v["start"] != "" || v["stop"] != "") {
+		return "start and stop are for games only"
+	}
+	if s == nil {
+		s = d.appendSection(name)
+	}
+	vals := map[string]*string{}
+	for _, k := range svcKeys {
+		vals[k] = nil
+		if v[k] != "" {
+			vals[k] = sp(v[k])
+		}
+	}
+	s.lines = rewriteSection(s, name, vals, svcKeys)
+	return commitServices(d)
+}
+
+// SetIni phosphorus.ini's section key set, blank dropping it; "" once saved
+func SetIni(section, key, value string) string {
+	if strings.ContainsAny(section+key, "[]=\n\r") || strings.TrimSpace(section) == "" || strings.TrimSpace(key) == "" {
+		return "bad section or key"
+	}
+	if strings.ContainsAny(value, "\n\r") {
+		return "one line only"
+	}
+	d := splitSections(readText(iniFile))
+	s := iniSection(d, section)
+	var v *string
+	if value = strings.TrimSpace(value); value != "" {
+		v = sp(value)
+	}
+	s.lines = rewriteSection(s, section, map[string]*string{key: v}, []string{key})
+	return writeDoc(iniFile, d)
+}
+
+// ConfigText phosphorus.ini and services.export as they stand
+func ConfigText() (string, string) { return readText(iniFile), readText(servicesFile) }
