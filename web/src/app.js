@@ -1646,8 +1646,12 @@ chatBell.addEventListener('click', async () => {
 
 // silent, one live popup replaced by the next, a burst never stacking
 // an invite to a file past the bell: asked of this person by name
-function notifyChat(m, invite = false, kept = false) {
-  if (invite || kept) noteAdd(m.name, m.text);
+// a conversation on screen and being read: no bell entry for its lines
+const chatReading = (c) => !away() && c === conv && (!dk.desk || deskApps.has('chat'));
+
+// g groups a burst into one bell entry: a channel's, a person's, an agent's
+function notifyChat(m, invite = false, g = null) {
+  if (!g?.seen) noteAdd(m.name, m.text, g);
   if ((!notifyOn && !invite) || !away()) return;
   notifyOs(m.name, m.text);
 }
@@ -1683,8 +1687,18 @@ const NOTES_KEY = 'phosphorus-notes';
 const NOTES_MAX = 50;
 let notes = (() => { try { const v = JSON.parse(localStorage.getItem(NOTES_KEY)); return Array.isArray(v) ? v : []; } catch { return []; } })();
 
-function noteAdd(title, body) {
-  notes.unshift({ t: String(title || ''), b: String(body || ''), at: Date.now(), read: false });
+function noteAdd(title, body, g = null) {
+  // a burst still unread folded into its one entry, raised to the top
+  const at = g?.key ? notes.findIndex((n) => n.g === g.key && !n.read) : -1;
+  if (at >= 0) {
+    const n = notes.splice(at, 1)[0];
+    n.c = (n.c || 1) + 1;
+    Object.assign(n, { t: `${g.label} · ${n.c} new`, b: String(g.line || body || ''), at: Date.now() });
+    notes.unshift(n);
+    notesSave();
+    return;
+  }
+  notes.unshift({ t: String(title || ''), b: String(body || ''), at: Date.now(), read: false, ...(g?.key ? { g: g.key } : {}) });
   notes = notes.slice(0, NOTES_MAX);
   notesSave();
 }
@@ -2622,7 +2636,7 @@ function takeLine(m, live) {
   if (MARKS.includes(m.kind)) {
     const t = fold(m);
     if (t && live && convOf(t) === conv) redrawLine(t);
-    if (t && live && m.kind === 'react' && t.name === name && m.name !== name && m.on !== false) notifyChat({ name: m.name, text: `reacted ${m.emoji}` });
+    if (t && live && m.kind === 'react' && t.name === name && m.name !== name && m.on !== false) notifyChat({ name: m.name, text: `reacted ${m.emoji}` }, false, { key: 'reactions', label: 'reactions', line: `${m.name} ${m.emoji}` });
     return;
   }
   // an agent's invite: asked, not kept in its dm
@@ -2652,7 +2666,10 @@ function takeLine(m, live) {
   bumpUnread();
   const text = m.text || (m.files ? `shared ${m.files.map((f) => f.name).join(', ')}` : '');
   const atMe = name && new RegExp(`@${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(m.text || '');
-  notifyChat({ name: m.dm ? `${m.name} (direct)` : atMe ? `${m.name} mentioned you` : m.ch ? `${m.name} in #${m.ch}` : m.name, text }, false, !!(m.dm || atMe));
+  // a mention its own entry; the rest by channel or person, none for the one being read
+  const where = m.dm ? m.name : `#${m.ch || 'mesh'}`;
+  notifyChat({ name: m.dm ? `${m.name} (direct)` : atMe ? `${m.name} mentioned you` : m.ch ? `${m.name} in #${m.ch}` : m.name, text }, false,
+    atMe ? null : { key: m.dm ? `dm:${m.name}` : where, label: where, line: m.dm ? text : `${m.name}: ${text}`, seen: chatReading(c) });
 }
 
 // own lines drawn at once, swapped in place for the host's echo
@@ -2709,7 +2726,7 @@ function agentSaid(m, live) {
   if (!live) return;
   noteNews(m.name);
   bumpUnread();
-  notifyChat({ name: m.name, text: m.text });
+  notifyChat({ name: m.name, text: m.text }, false, { key: `dm:${m.name}`, label: m.name, line: m.text, seen: chatReading(m.name) });
 }
 
 // --- the agents' dms -------------------------------------------------------------
@@ -2807,7 +2824,7 @@ function agentAnswered(msg) {
   was?.remove();
   noteNews(w.agent);
   bumpUnread();
-  notifyChat({ name: by.by || w.agent, text: said });
+  notifyChat({ name: by.by || w.agent, text: said }, false, { key: `dm:${w.agent}`, label: w.agent, line: said, seen: chatReading(w.agent) });
 }
 
 // --- the socket -------------------------------------------------------------------
