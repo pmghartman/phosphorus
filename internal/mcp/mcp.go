@@ -44,7 +44,7 @@ type Actions struct {
 	GitMaster  func(host string) (int, any)
 	ModelRole  func(role, model string) (int, any)
 	Update     func(action string) (int, any)
-	Files      func(host, op, share string, body map[string]any) (int, any)
+	Files      func(c *Caller, host, op, share string, body map[string]any) (int, any)
 	ModelColor string
 }
 
@@ -240,16 +240,27 @@ func typeTerminal(host, text, id string, waitS int, by string) (any, error) {
 	return b, nil
 }
 
-// Meta an ask's context: its asker, role and project
+// Caller a user's own key, its rights theirs
+type Caller struct {
+	User  string
+	Admin bool
+}
+
+// Meta an ask's context: its asker, role and project, or a keyed caller
 type Meta struct {
 	Asker   string
 	Role    string
 	Direct  bool
 	Project string
 	Session string
+	Caller  *Caller
 }
 
 func askerOf(m Meta) (*Asker, error) {
+	if c := m.Caller; c != nil {
+		return &Asker{Name: c.User, UI: func(map[string]any) bool { return false },
+			Creds: func(string, string) any { return map[string]any{"done": false, "note": "never over a key"} }}, nil
+	}
 	a := src.Asker(m.Asker)
 	if a == nil {
 		return nil, errors.New("buttons are pressed only for a person asking phosphorus in the chat")
@@ -295,7 +306,18 @@ func projectOf(m Meta) (string, error) {
 	return m.Project, nil
 }
 
+// adminOf an error unless the caller, when keyed, is an admin
+func adminOf(m Meta) error {
+	if m.Caller != nil && !m.Caller.Admin {
+		return errors.New("admins only")
+	}
+	return nil
+}
+
 func byOf(m Meta) string {
+	if m.Caller != nil {
+		return m.Caller.User
+	}
 	if m.Role == "chimp" || m.Role == "orangutan" {
 		return m.Role
 	}
@@ -493,7 +515,7 @@ func buildTools() {
 				"depth": map[string]any{"type": "integer", "description": "levels to list, 1 to 8", "default": 1},
 				"match": map[string]any{"type": "string", "description": "name glob, * and ?, case-insensitive"},
 			}),
-			run: func(a map[string]any, _ Meta) (any, error) {
+			run: func(a map[string]any, m Meta) (any, error) {
 				if !util.Truthy(a["host"]) {
 					hosts := []string{str(src.Self()["host"])}
 					seen := map[string]bool{hosts[0]: true}
@@ -510,7 +532,7 @@ func buildTools() {
 						wg.Add(1)
 						go func(i int, h string) {
 							defer wg.Done()
-							st, body := src.Actions.Files(h, "info", "", map[string]any{})
+							st, body := src.Actions.Files(m.Caller, h, "info", "", map[string]any{})
 							b := util.Obj(toAny(body))
 							if st < 300 {
 								sh := b["shares"]
@@ -535,22 +557,22 @@ func buildTools() {
 					return nil, err
 				}
 				if !util.Truthy(a["share"]) {
-					return pressed(src.Actions.Files(host, "info", "", map[string]any{}))
+					return pressed(src.Actions.Files(m.Caller, host, "info", "", map[string]any{}))
 				}
 				body := map[string]any{"path": str(a["path"]), "depth": math.Min(8, math.Max(1, numOr(a["depth"], 1))), "match": str(a["match"])}
-				return pressed(src.Actions.Files(host, "tree", str(a["share"]), body))
+				return pressed(src.Actions.Files(m.Caller, host, "tree", str(a["share"]), body))
 			}},
 		{name: "files_read", read: true,
 			description: "Read a text file in a share, as the files tab's preview does, a page at a time, from: the next page's offset.",
 			schema: object(map[string]any{"host": name, "share": map[string]any{"type": "string"},
 				"path": map[string]any{"type": "string", "description": "the file, relative to the share's root"},
 				"from": map[string]any{"type": "integer", "description": "character offset to read from", "default": 0}}, "host", "share", "path"),
-			run: func(a map[string]any, _ Meta) (any, error) {
+			run: func(a map[string]any, m Meta) (any, error) {
 				host, err := hostOf(a)
 				if err != nil {
 					return nil, err
 				}
-				v, err := pressed(src.Actions.Files(host, "read", str(a["share"]), map[string]any{"path": str(a["path"])}))
+				v, err := pressed(src.Actions.Files(m.Caller, host, "read", str(a["share"]), map[string]any{"path": str(a["path"])}))
 				if err != nil {
 					return nil, err
 				}
@@ -599,6 +621,9 @@ func buildTools() {
 				"Returns once it leads (up to 30s), never press it again while one is under way.",
 			schema: object(map[string]any{"host": name}, "host"),
 			run: func(a map[string]any, m Meta) (any, error) {
+				if err := adminOf(m); err != nil {
+					return nil, err
+				}
 				if _, err := askerOf(m); err != nil {
 					return nil, err
 				}
@@ -613,6 +638,9 @@ func buildTools() {
 				"host's own as phosphorus/<host>, blank for the mesh's default. Only providers with a key set answer.",
 			schema: object(map[string]any{"role": map[string]any{"type": "string", "enum": []any{"chimp", "orangutan"}}, "model": map[string]any{"type": "string"}}, "role", "model"),
 			run: func(a map[string]any, m Meta) (any, error) {
+				if err := adminOf(m); err != nil {
+					return nil, err
+				}
 				if _, err := askerOf(m); err != nil {
 					return nil, err
 				}
@@ -622,6 +650,9 @@ func buildTools() {
 			description: "Continue a paused mesh update, or cancel the running one. Starting one takes the update password: ask_credentials update. " + noCreds,
 			schema:      object(map[string]any{"action": map[string]any{"type": "string", "enum": []any{"continue", "cancel"}}}, "action"),
 			run: func(a map[string]any, m Meta) (any, error) {
+				if err := adminOf(m); err != nil {
+					return nil, err
+				}
 				if _, err := askerOf(m); err != nil {
 					return nil, err
 				}
@@ -662,7 +693,7 @@ func buildTools() {
 					return nil, err
 				}
 				share := str(a["share"])
-				v, err := pressed(src.Actions.Files(host, "save", share, body))
+				v, err := pressed(src.Actions.Files(m.Caller, host, "save", share, body))
 				if err != nil {
 					return nil, err
 				}
@@ -717,7 +748,7 @@ func buildTools() {
 					if op == "rename" {
 						body = map[string]any{"from": str(st["path"]), "to": str(st["to"])}
 					}
-					status, out := src.Actions.Files(host, op, str(a["share"]), body)
+					status, out := src.Actions.Files(m.Caller, host, op, str(a["share"]), body)
 					o := util.Obj(toAny(out))
 					if status >= 300 {
 						f := map[string]any{}
@@ -842,7 +873,7 @@ func buildTools() {
 				"limit":   map[string]any{"type": "integer", "description": fmt.Sprintf("lines, at most %d", chatMax), "default": 20},
 				"channel": map[string]any{"type": "string", "description": "one channel only, mesh for the main one"},
 			}),
-			run: func(a map[string]any, _ Meta) (any, error) {
+			run: func(a map[string]any, m Meta) (any, error) {
 				want := strings.TrimPrefix(str(a["channel"]), "#")
 				lines := []map[string]any{}
 				for _, m := range src.Chat() {
@@ -941,7 +972,7 @@ func metaOf(ask, dir any) *Meta {
 	return &Meta{Asker: a.Asker, Role: a.Role, Direct: a.Direct, Project: a.Project, Session: a.Session}
 }
 
-func one(raw any, local bool) map[string]any {
+func one(raw any, local bool, caller *Caller) map[string]any {
 	msg := util.Obj(raw)
 	var id any
 	if msg != nil {
@@ -1049,7 +1080,7 @@ func one(raw any, local bool) map[string]any {
 					err = fmt.Errorf("%v", r)
 				}
 			}()
-			m := Meta{}
+			m := Meta{Caller: caller}
 			if local && util.Truthy(pa["_ask"]) {
 				if x := metaOf(pa["_ask"], pa["_dir"]); x != nil {
 					m = *x
@@ -1069,14 +1100,14 @@ func one(raw any, local bool) map[string]any {
 }
 
 // Handle a message or a batch: status and body, 202 and nil for notifications only
-func Handle(body any, local bool) (int, any) {
+func Handle(body any, local bool, caller *Caller) (int, any) {
 	toolsOnce.Do(buildTools)
 	if arr, ok := body.([]any); ok {
 		outs := make([]map[string]any, len(arr))
 		var wg sync.WaitGroup
 		for i, m := range arr {
 			wg.Add(1)
-			go func(i int, m any) { defer wg.Done(); outs[i] = one(m, local) }(i, m)
+			go func(i int, m any) { defer wg.Done(); outs[i] = one(m, local, caller) }(i, m)
 		}
 		wg.Wait()
 		res := []any{}
@@ -1090,7 +1121,7 @@ func Handle(body any, local bool) (int, any) {
 		}
 		return 200, res
 	}
-	if out := one(body, local); out != nil {
+	if out := one(body, local, caller); out != nil {
 		return 200, out
 	}
 	return 202, nil

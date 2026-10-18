@@ -635,6 +635,10 @@ func isOpen(r *http.Request, h hit) bool {
 	if !strings.HasPrefix(p, "/api/") && !strings.HasPrefix(p, "/internal/") {
 		return true
 	}
+	// a key checked by the frontend itself
+	if p == "/api/mcp" && strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") {
+		return true
+	}
 	return openAPI.MatchString(p)
 }
 

@@ -256,6 +256,10 @@ func homeWho(r *http.Request) *files.Who {
 	// a login from another host: the mesh's sys pulled when it's not here yet
 	s := users.Soon(r)
 	if s == nil {
+		// a peer's call for a keyed caller
+		if g := users.OpenGrant(r.Header.Get(whoHeader)); g != nil && isTailnet(r) && users.Exists(str(g["u"])) {
+			return &files.Who{User: str(g["u"]), Admin: users.IsAdmin(str(g["u"]))}
+		}
 		return nil
 	}
 	u := s.User
@@ -870,8 +874,11 @@ func initMCP() {
 	})
 }
 
-// filesCall a files call, here or on its host
-func filesCall(host, op, share string, body map[string]any) (int, any) {
+// whoHeader a keyed caller's home rights, sealed for a peer's files call
+const whoHeader = "X-Phosphorus-Who"
+
+// filesCall a files call, here or on its host; homes only for a keyed caller, as their user
+func filesCall(c *mcp.Caller, host, op, share string, body map[string]any) (int, any) {
 	if host == selfHost {
 		if op == "info" {
 			return 200, filesInfo()
@@ -883,15 +890,38 @@ func filesCall(host, op, share string, body map[string]any) (int, any) {
 		if sh == nil {
 			return 404, map[string]any{"error": selfHost + " has no such share"}
 		}
-		if sh.ID == "home" {
-			return 403, map[string]any{"error": "the homes are for their users only"}
-		}
 		p := str(body["path"])
+		var who *files.Who
+		if sh.ID == "home" {
+			if c == nil {
+				return 403, map[string]any{"error": "the homes are for their users only"}
+			}
+			who = &files.Who{User: c.User, Admin: c.Admin}
+			rels := []string{p}
+			if op == "rename" {
+				rels = []string{str(body["from"]), str(body["to"])}
+			}
+			for _, x := range rels {
+				if why := files.HomeGate(who, x, users.Exists); why != "" {
+					return 403, map[string]any{"error": why}
+				}
+			}
+		}
 		switch op {
 		case "list":
-			return files.List(sh, p)
+			st, b := files.List(sh, p)
+			if who != nil && st == 200 {
+				out := b.(map[string]any)
+				out["entries"] = files.HomeFilterList(who, p, out["entries"].([]files.Entry), users.Exists)
+			}
+			return st, b
 		case "tree":
-			return files.Tree(sh, p, body["depth"], str(body["match"]))
+			st, b := files.Tree(sh, p, body["depth"], str(body["match"]))
+			if who != nil && st == 200 {
+				out := b.(map[string]any)
+				out["entries"] = files.HomeFilterTree(who, out["entries"].([]map[string]any), users.Exists)
+			}
+			return st, b
 		case "read":
 			return files.Read(sh, p)
 		case "save":
@@ -924,8 +954,12 @@ func filesCall(host, op, share string, body map[string]any) (int, any) {
 	if get {
 		method, b = "GET", nil
 	}
+	var hdr map[string]string
+	if c != nil {
+		hdr = map[string]string{whoHeader: users.SealGrant(map[string]any{"u": c.User, "a": c.Admin}, 60*1000)}
+	}
 	return util.PeerCall(host, util.Req{Host: ip, Method: method, Timeout: 15 * time.Second, ConnectTimeout: 5 * time.Second, Body: b,
-		Path: fmt.Sprintf("/api/files/%s/%s?%s%s&hop=1", host, op, q, params)})
+		Path: fmt.Sprintf("/api/files/%s/%s?%s%s&hop=1", host, op, q, params), Headers: hdr})
 }
 
 func strPtr(v any) *string {
