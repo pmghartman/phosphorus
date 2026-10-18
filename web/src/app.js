@@ -1778,19 +1778,26 @@ function dkControlTray() {
       tb.addEventListener('click', () => { setTheme(t); draw(); });
       theme.append(tb);
     }
-    const rows = el('div', 'dk-ctl-rows');
-    const row = (label, act, cls = '') => {
-      const r = Object.assign(el('button', `dk-ctl-row ${cls}`, label), { type: 'button' });
-      r.addEventListener('click', () => { show(false); act(); });
-      rows.append(r);
+    // the account's own actions, small chips under the panel's big tiles
+    const chips = el('div', 'dk-ctl-chips');
+    const chip = (glyph, label, act) => {
+      const c = Object.assign(el('button', 'dk-ctl-chip'), { type: 'button' });
+      c.append(dkGlyph(glyph), el('span', '', label));
+      c.addEventListener('click', () => { show(false); act(); });
+      chips.append(c);
     };
-    row('settings', dkProfileWin);
-    if (acct?.admin) row('users', dkUsersWin);
-    if (clientInvoke && !acct?.boot) row('connect claude', claudeConnect);
-    row('log out', acctLogout, 'danger');
-    const head = el('div', 'dk-ctl-head');
-    head.append(el('span', '', acct?.user || 'profile'), el('span', 'dk-ctl-role', acct?.admin ? 'admin' : ''));
-    pop.replaceChildren(head, tiles, theme, rows);
+    chip(DK_GLYPHS.gear, 'settings', dkProfileWin);
+    if (acct?.admin) chip(DK_GLYPHS.users, 'users', dkUsersWin);
+    if (clientInvoke && !acct?.boot) chip(DK_GLYPHS.spark, 'claude', claudeConnect);
+    const head = el('div', 'dk-ctl-id');
+    const who = el('div', 'dk-ctl-who');
+    who.append(el('span', 'dk-ctl-name', acct?.user || 'profile'),
+      el('span', 'dk-ctl-role', acct?.admin ? 'admin' : 'user'));
+    const out = Object.assign(el('button', 'dk-ctl-out'), { type: 'button', title: 'log out', ariaLabel: 'log out' });
+    out.append(dkGlyph(DK_GLYPHS.power));
+    out.addEventListener('click', () => { show(false); acctLogout(); });
+    head.append(el('span', 'dk-ctl-avatar', (acct?.user || '?')[0].toUpperCase()), who, out);
+    pop.replaceChildren(head, tiles, theme, chips);
   };
   const show = (on) => {
     if (!on && pop.hidden) return;
@@ -4238,7 +4245,10 @@ function dkArt() {
 
 function dkClock() {
   if (!dk.clock) return;
-  dk.clock.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const d = new Date();
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })
+    .formatToParts(d).map((x) => [x.type, x.value]));
+  dk.clock.textContent = `${p.weekday} ${p.month} ${p.day} ${p.hour}:${p.minute}${p.dayPeriod}`;
 }
 // on each minute's turn, not up to 5s after it
 (function dkClockTick() {
@@ -4257,6 +4267,9 @@ function dkLogout() {
 const DK_GLYPHS = {
   bell: 'M8 2.2a3.1 3.1 0 0 0-3.1 3.1v2.2L3.4 10.2h9.2L11.1 7.5V5.3A3.1 3.1 0 0 0 8 2.2zM6.6 12.6a1.4 1.4 0 0 0 2.8 0',
   update: 'M13.5 8a5.5 5.5 0 1 1-1.6-3.9M12.5 1.5v3h-3',
+  gear: 'M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4',
+  power: 'M8 1.5v6M4.6 3.8a5 5 0 1 0 6.8 0',
+  spark: 'M8 1.5l1.4 5.1 5.1 1.4-5.1 1.4L8 14.5l-1.4-5.1L1.5 8l5.1-1.4z',
   reload: 'M13.5 8a5.5 5.5 0 1 1-1.8-4.1M13.5 1.5v3.5h-3.5',
   doc: ICONS.file,
   app: 'M2.5 2.5h11v11h-11zM2.5 5.5h11M4.25 4h.01M5.75 4h.01M6 8.5l-1.5 1.5L6 11.5M10 8.5l1.5 1.5-1.5 1.5',
@@ -5844,7 +5857,6 @@ function dkAnchor(pop, btn, { fill = 0, tall = 0 } = {}) {
     pop.dkPlace = () => {
       const a = pop.dkAnchor;
       if (!a || pop.hidden || !pop.isConnected || !a.btn.isConnected) return;
-      const r = a.btn.getBoundingClientRect();
       // the bar's edges the limits, so a popup lines up with it
       const bar = (a.btn.closest('.dk-bar') || a.btn).getBoundingClientRect();
       const lo = Math.max(DK_POP_EDGE, bar.left);
@@ -5855,10 +5867,9 @@ function dkAnchor(pop, btn, { fill = 0, tall = 0 } = {}) {
       pop.style.right = 'auto';
       pop.style.bottom = `${cb.bottom - bar.top + DK_POP_GAP}px`;
       if (a.tall) pop.style.height = `${Math.min(a.tall, bar.top - DK_POP_GAP - DK_POP_EDGE)}px`;
-      if (a.fill) pop.style.width = `${Math.min(hi - lo, Math.max(a.fill, hi - r.left))}px`;
-      // the button's left edge, else, short of room, its right edge
-      const w = pop.offsetWidth;
-      const left = r.left + w <= hi + 1 ? r.left : Math.max(lo, r.right - w);
+      if (a.fill) pop.style.width = `${Math.min(hi - lo, a.fill)}px`;
+      // every task bar popup against the screen's right edge, as the bar ends
+      const left = Math.max(lo, hi - pop.offsetWidth);
       pop.style.left = `${left - cb.left}px`;
     };
     // shown, grown or the screen resized: placed again
