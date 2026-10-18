@@ -4,9 +4,11 @@ package server
 // here or on a peer through /internal/op, every peer call carrying a sealed grant
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -16,6 +18,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/crypto/ssh"
 
 	"github.com/pmghartman/phosphorus/internal/cli"
 	"github.com/pmghartman/phosphorus/internal/mesh"
@@ -61,6 +65,8 @@ func localOp(op string, p map[string]any) (int, any) {
 			return 404, map[string]any{"error": err.Error()}
 		}
 		return 200, map[string]any{"closed": p["id"]}
+	case "exec":
+		return localExec(str(p["user"]), str(p["pass"]), str(p["cmd"]), int(num(p["timeout"])))
 	case "service_health":
 		ip := util.TailnetIP(selfHost)
 		if ip == "" {
@@ -240,4 +246,90 @@ func chainHistory() any {
 		json.Unmarshal(b, &all)
 	}
 	return map[string]any{"host": selfHost, "note": "chains started from this host; another host keeps its own", "chains": all}
+}
+
+const (
+	execMax    = 600
+	execOutMax = 256 << 10
+)
+
+// capped a writer keeping the first n bytes, the rest only marked cut
+type capped struct {
+	b   bytes.Buffer
+	n   int
+	cut bool
+}
+
+func (c *capped) Write(p []byte) (int, error) {
+	if room := c.n - c.b.Len(); room > 0 {
+		c.b.Write(p[:min(room, len(p))])
+	}
+	if c.b.Len() >= c.n {
+		c.cut = true
+	}
+	return len(p), nil
+}
+
+// localExec one command as user over this host's own sshd, no pty: its exit
+// code, stdout and stderr; killed past timeout seconds
+func localExec(user, pass, cmd string, timeout int) (int, any) {
+	if user == "" || strings.TrimSpace(cmd) == "" {
+		return 400, map[string]any{"error": "a login and a command"}
+	}
+	if timeout < 1 || timeout > execMax {
+		timeout = 60
+	}
+	cfg := &ssh.ClientConfig{
+		User: user,
+		Auth: []ssh.AuthMethod{ssh.Password(pass), ssh.KeyboardInteractive(func(_, _ string, qs []string, _ []bool) ([]string, error) {
+			out := make([]string, len(qs))
+			for i := range out {
+				out[i] = pass
+			}
+			return out, nil
+		})},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         10 * time.Second,
+	}
+	c, err := ssh.Dial("tcp", net.JoinHostPort(hostSSHHost, hostSSHPort), cfg)
+	if err != nil {
+		if strings.Contains(err.Error(), "unable to authenticate") {
+			return 403, map[string]any{"error": "the saved login for " + selfHost + " was refused"}
+		}
+		return 502, map[string]any{"error": "ssh to " + selfHost + ": " + err.Error()}
+	}
+	defer c.Close()
+	ss, err := c.NewSession()
+	if err != nil {
+		return 502, map[string]any{"error": err.Error()}
+	}
+	defer ss.Close()
+	stdout, stderr := &capped{n: execOutMax}, &capped{n: execOutMax}
+	ss.Stdout, ss.Stderr = stdout, stderr
+	t0 := time.Now()
+	done := make(chan error, 1)
+	go func() { done <- ss.Run(cmd) }()
+	code, timedOut := 0, false
+	select {
+	case err = <-done:
+	case <-time.After(time.Duration(timeout) * time.Second):
+		ss.Signal(ssh.SIGKILL)
+		c.Close()
+		timedOut = true
+	}
+	if ee, ok := err.(*ssh.ExitError); ok {
+		code = ee.ExitStatus()
+	} else if err != nil && !timedOut {
+		code = -1
+		stderr.Write([]byte(err.Error()))
+	}
+	out := map[string]any{"host": selfHost, "user": user, "exit": code, "stdout": util.UTF8(stdout.b.Bytes()),
+		"stderr": util.UTF8(stderr.b.Bytes()), "ms": time.Since(t0).Milliseconds()}
+	if timedOut {
+		out["exit"], out["timedOut"] = nil, true
+	}
+	if stdout.cut || stderr.cut {
+		out["truncated"] = true
+	}
+	return 200, out
 }

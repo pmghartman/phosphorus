@@ -887,7 +887,11 @@ func initMCP() {
 				if op == "update_history" {
 					return 200, chainHistory()
 				}
-				return opOn(host, op, p, 100*time.Second)
+				wait := 100 * time.Second
+				if op == "exec" {
+					wait = time.Duration(num(p["timeout"])+30) * time.Second
+				}
+				return opOn(host, op, p, wait)
 			},
 			ChatEdit:   chatEditAs,
 			Config:     hostConfig,
