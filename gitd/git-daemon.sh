@@ -80,10 +80,15 @@ FORGEJO_RETRY_MS="${FORGEJO_RETRY_MS:-5000}"
 am_master=false
 SNAP_SIG=""
 
+# a client gone mid-page (reset, broken pipe) not logged as forgejo's error
+forgejo_log() {
+  grep --line-buffered -v -E 'connection reset by peer|broken pipe|i/o timeout' || true
+}
+
 start_forgejo() {
   # a simple command, so $! is forgejo itself for the watchdog
   HOME="$DATA_ROOT" PHOSPHORUS_ROLE=forgejo setpriv --reuid="$GIT_USER" --regid="$GIT_GROUP" --init-groups \
-    "$FORGEJO_BIN" -w "$DATA_ROOT" -c "$APP_INI" web &
+    "$FORGEJO_BIN" -w "$DATA_ROOT" -c "$APP_INI" web > >(forgejo_log) 2>&1 &
   FORGEJO_PID="$!"
   now_ms; FORGEJO_STARTED_AT="$REPLY"
   say "forgejo started (pid $FORGEJO_PID)"
@@ -201,20 +206,47 @@ stamp_version() {
 
 log_rsync() { while read -r line; do say "rsync: $line"; done; }
 
+# rsync's exit codes worth naming in the log
+rsync_why() {
+  case "$1" in
+    4) REPLY="option refused by the master's rsyncd, retrying plain" ;;
+    5) REPLY="refused at start, the master promoting or rsyncd down" ;;
+    10) REPLY="socket i/o, the master unreachable" ;;
+    12) REPLY="protocol stream broke, the master's rsyncd restarted or a version mismatch" ;;
+    19|20) REPLY="stopped by a signal, a handoff or shutdown" ;;
+    23|24) REPLY="partial transfer, files changed under it" ;;
+    30|35) REPLY="timed out" ;;
+    *) REPLY="exit $1" ;;
+  esac
+}
+
+# set once a master's rsyncd refused -z or --delete-excluded (code 4)
+RSYNC_PLAIN=""
+
 # stamp last, vouching for the rest, TERM to rsync or a kill orphans a
 # --delete pull, git's locks and temp objects swept: a copied .lock jams a ref
 pull_from() {
   local src="rsync://${1}:8873/gitdata" pid=""
   trap '[ -n "$pid" ] && kill "$pid" 2>/dev/null; exit 143' TERM
   touch "$PULLED_FILE"
-  rsync -az --delete --delete-excluded --timeout=30 --contimeout=5 --exclude=/obj/tmp/ \
+  local opts=(-az --delete --delete-excluded) code=0
+  [ "$RSYNC_PLAIN" = "$1" ] && opts=(-a --delete)
+  rsync "${opts[@]}" --timeout=30 --contimeout=5 --exclude=/obj/tmp/ \
         --exclude='/obj/forgejo-repositories/**.lock' --exclude='/obj/forgejo-repositories/**/gc.pid' \
         --exclude='/obj/forgejo-repositories/**/objects/**/tmp_*' --exclude='/obj/forgejo-repositories/**/objects/tmp_*' \
         "$src/conf" "$src/custom" "$src/obj" "$src/snap" "$DATA_ROOT/" > >(log_rsync) 2>&1 &
-  pid="$!"; wait "$pid" || exit 1
+  pid="$!"; wait "$pid" || code=$?
+  if [ "$code" -ne 0 ]; then
+    rsync_why "$code"; say "pull from $1 failed: $REPLY"
+    [ "$code" -eq 4 ] && echo "$1" > "$STATE_DIR/git-rsync-plain"
+    exit "$code"
+  fi
   rsync -a --timeout=30 --contimeout=5 "$src/GIT_VERSION" "$DATA_ROOT/" > >(log_rsync) 2>&1 &
   pid="$!"; wait "$pid"
 }
+
+# a failed pull's wait, doubling to a minute, reset by a good one
+REPL_FAILS=0
 
 LAST_ROLE=""
 
@@ -239,6 +271,8 @@ stop_pull() {
   kill "$REPL_PID" 2>/dev/null
   wait "$REPL_PID" 2>/dev/null
   REPL_PID=""
+  # a new master tried at once
+  REPL_FAILS=0
 }
 
 # what the elector needs from us: data version, and whether we can vouch for it
@@ -335,10 +369,18 @@ replicate() {
   [ "$PROMOTING" = true ] && return
   if [ -n "$REPL_PID" ]; then
     kill -0 "$REPL_PID" 2>/dev/null && return
-    if wait "$REPL_PID"; then now_ms; LAST_GOOD="$REPLY"; fi
+    if wait "$REPL_PID"; then
+      now_ms; LAST_GOOD="$REPLY"; REPL_FAILS=0
+    else
+      REPL_FAILS=$((REPL_FAILS + 1))
+    fi
     REPL_PID=""
+    [ -r "$STATE_DIR/git-rsync-plain" ] && read -r RSYNC_PLAIN <"$STATE_DIR/git-rsync-plain"
   fi
-  [ $((EPOCHSECONDS - LAST_REPL)) -ge "$REPLICATE_INTERVAL" ] || return
+  local wait_s="$REPLICATE_INTERVAL" i
+  for ((i = 0; i < REPL_FAILS && wait_s < 60; i++)); do wait_s=$((wait_s * 2)); done
+  [ "$wait_s" -gt 60 ] && wait_s=60
+  [ $((EPOCHSECONDS - LAST_REPL)) -ge "$wait_s" ] || return
   if [ "$am_master" = true ]; then
     # stamp after the snapshot, vouching for it
     snapshot && stamp_version

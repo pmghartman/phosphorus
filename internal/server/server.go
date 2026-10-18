@@ -169,6 +169,10 @@ func runGameLocally(name, action string) (int, any) {
 		if why == "" {
 			why = action + " failed"
 		}
+		// the key's forced command still naming a file an old release had
+		if strings.Contains(why, "No such file") || strings.Contains(why, "not found") {
+			why += fmt.Sprintf("; the play/stop key on %s points at a missing program, run phos game-control-setup there or update it", selfHost)
+		}
 		log.Printf("[frontend] game %s: %s failed: %s", name, action, why)
 		return 502, map[string]any{"error": why}
 	}
