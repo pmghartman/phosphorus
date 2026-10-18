@@ -51,6 +51,12 @@ import {
 // or icons, a right click's menu, cut, copy and paste across hosts
 
 const fmKindLabel = (e) => (e.dir ? 'folder' : fmExt(e.name) ? `${fmExt(e.name)} file` : 'file');
+const fmWhere = (e) => (e.hosts ? (e.all ? 'all hosts' : e.hosts.join(', ')) : '');
+// list columns: key, label, default width; name's null for the rest of the row
+const FM_COLS = [['name', 'name', null], ['where', 'hosts', '7rem'], ['mtime', 'modified', '10.5rem'], ['size', 'size', '5rem'], ['kind', 'kind', '7rem']];
+const FM_WIDTHS_KEY = 'phosphorus-fm-widths';
+const fmWidths = (() => { try { return JSON.parse(localStorage.getItem(FM_WIDTHS_KEY)) || {}; } catch { return {}; } })();
+const fmSaveWidths = () => { try { localStorage.setItem(FM_WIDTHS_KEY, JSON.stringify(fmWidths)); } catch {} };
 const fmDate = (ms) => (ms ? new Date(ms).toLocaleString([], { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '');
 
 function dkFiles(at) {
@@ -223,7 +229,7 @@ const fmCan = (fm, perm) => !!fm.loc && may(fm.loc, perm);
 
 function fmSorted(fm) {
   const { key, dir } = fm.sort;
-  const val = (e) => (key === 'size' ? e.size ?? -1 : key === 'mtime' ? e.mtime ?? 0 : key === 'kind' ? fmKindLabel(e) : e.name.toLowerCase());
+  const val = (e) => (key === 'size' ? e.size ?? -1 : key === 'mtime' ? e.mtime ?? 0 : key === 'kind' ? fmKindLabel(e) : key === 'where' ? fmWhere(e) : e.name.toLowerCase());
   return fm.entries
     .filter((e) => !fm.filter || e.name.toLowerCase().includes(fm.filter))
     .sort((a, b) => (a.dir !== b.dir ? (a.dir ? -1 : 1) : (val(a) < val(b) ? -1 : val(a) > val(b) ? 1 : 0) * dir));
@@ -251,16 +257,26 @@ function fmRender(fm) {
   fm.w.task.textContent = fm.loc ? (fm.dir.split('/').pop() || fm.loc.root) : 'files';
   fm.w.head.querySelector('.tab-label').textContent = fm.w.task.textContent;
 
+  fm.cols = FM_COLS.filter(([key]) => key !== 'where' || fm.loc?.host === '*');
+  if (!fm.cols.some(([key]) => key === fm.sort.key)) fm.sort = { key: 'name', dir: 1 };
   fm.shown = fmSorted(fm);
   const items = el('div', `fm-items fm-${fm.mode}`);
   if (fm.mode === 'list') {
+    fmColWidths(fm, items);
     const head = el('div', 'fm-row fm-cols');
-    for (const [key, label] of [['name', 'name'], ['mtime', 'modified'], ['size', 'size'], ['kind', 'kind']]) {
+    fm.cols.forEach(([key, label], i) => {
       const c = Object.assign(el('button', `fm-col fm-c-${key}`, label), { type: 'button' });
       if (fm.sort.key === key) c.append(el('span', 'fm-arrow', fm.sort.dir > 0 ? ' ▴' : ' ▾'));
-      c.addEventListener('click', () => { fm.sort = { key, dir: fm.sort.key === key ? -fm.sort.dir : 1 }; fmRender(fm); });
+      const grip = Object.assign(el('span', 'fm-grip'), { title: 'drag to resize, double click to fit' });
+      c.append(grip);
+      fmGrip(fm, items, grip, key, i);
+      c.addEventListener('click', (e) => {
+        if (e.target === grip) return;
+        fm.sort = { key, dir: fm.sort.key === key ? -fm.sort.dir : 1 };
+        fmRender(fm);
+      });
       head.appendChild(c);
-    }
+    });
     items.appendChild(head);
   }
   for (const e of fm.shown) items.appendChild(fmItem(fm, e));
@@ -271,6 +287,40 @@ function fmRender(fm) {
   fmPaintSel(fm);
 }
 
+// the rows' grid from the widths dragged, name filling the rest until it's set
+function fmColWidths(fm, items) {
+  const cols = fm.cols.map(([key, , def]) => (fmWidths[key] ? `${fmWidths[key]}px` : def || 'minmax(8rem, 1fr)'));
+  items.style.setProperty('--fm-cols', cols.join(' '));
+  items.classList.toggle('fm-sized', !!fmWidths.name);
+}
+
+// a header's right edge: dragged for a width, double clicked to fit its cells
+function fmGrip(fm, items, grip, key, i) {
+  const cells = () => [...items.querySelectorAll('.fm-row')].map((r) => r.children[i]).filter(Boolean);
+  const set = (px) => {
+    fmWidths[key] = Math.max(40, Math.round(px));
+    for (const f of dkFms) if (f.mode === 'list' && f.main.firstChild) fmColWidths(f, f.main.firstChild);
+  };
+  grip.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    grip.setPointerCapture(e.pointerId);
+    const x0 = e.clientX;
+    const w0 = grip.parentElement.offsetWidth;
+    const move = (ev) => set(w0 + ev.clientX - x0);
+    const up = () => { grip.removeEventListener('pointermove', move); fmSaveWidths(); };
+    grip.addEventListener('pointermove', move);
+    grip.addEventListener('pointerup', up, { once: true });
+    grip.addEventListener('pointercancel', up, { once: true });
+  });
+  grip.addEventListener('dblclick', (e) => {
+    e.stopPropagation();
+    const fit = (c) => (key === 'name' ? [...c.children].reduce((t, k) => t + (k.scrollWidth || k.offsetWidth), 0) + 8 * (c.children.length - 1) : c.scrollWidth);
+    set(Math.max(...cells().map(fit)) + 4);
+    fmSaveWidths();
+  });
+}
+
 function fmItem(fm, e) {
   const kind = fmKind(e);
   const row = el('div', fm.mode === 'list' ? 'fm-row fm-item' : 'fm-tile fm-item');
@@ -278,13 +328,17 @@ function fmItem(fm, e) {
   row.draggable = true;
   const name = el('span', 'fm-name');
   name.append(fmIcon(kind), el('span', 'fm-label', e.name));
-  // the merged home: where it lives, greyed while only an offline host has it
-  if (e.hosts) {
-    name.append(el('span', 'fm-where', e.all ? 'all hosts' : e.hosts.join(', ')));
-    if (e.stale) { row.classList.add('fm-stale'); row.title = `on ${e.hosts.join(', ')}, offline`; }
-  }
+  // the merged home: greyed while only an offline host has it
+  if (e.stale) { row.classList.add('fm-stale'); row.title = `on ${e.hosts.join(', ')}, offline`; }
   if (fm.mode === 'list') {
-    row.append(name, el('span', 'fm-c-mtime', fmDate(e.mtime)), el('span', 'fm-c-size', e.dir ? '' : humanSize(e.size || 0)), el('span', 'fm-c-kind', fmKindLabel(e)));
+    const cell = {
+      name,
+      where: el('span', 'fm-c-where', fmWhere(e)),
+      mtime: el('span', 'fm-c-mtime', fmDate(e.mtime)),
+      size: el('span', 'fm-c-size', e.dir ? '' : humanSize(e.size || 0)),
+      kind: el('span', 'fm-c-kind', fmKindLabel(e)),
+    };
+    row.append(...fm.cols.map(([key]) => cell[key]));
   } else {
     row.append(name);
     row.title = `${e.name}\n${e.dir ? 'folder' : humanSize(e.size || 0)}\n${fmDate(e.mtime)}`;
