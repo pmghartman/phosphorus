@@ -1,5 +1,5 @@
 <p align="center">
-  <img src=".github/assets/phosphorus.svg" alt="phosphorus" width="200">
+  <img src=".github/assets/phosphorus.svg" alt="" width="180">
 </p>
 
 <h1 align="center">Phosphorus</h1>
@@ -14,54 +14,62 @@
 
 <p align="center">
   <a href="https://github.com/pmghartman/phosphorus/releases/latest">Download</a> ·
-  <a href="#install">Install</a> ·
-  <a href="#first-start">First start</a> ·
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#everyday-use">Everyday use</a> ·
   <a href="#architecture">Architecture</a>
 </p>
 
-Terminals, files, web services, game servers, chat, live status, git and a local AI model, across all your machines: on your tailnet, or at your own domain.
+## Features
 
-## What you need
+- **Terminals** on every host, in browser windows
+- **Files** across all hosts, as one home
+- **Services and game servers**, proxied and started from the desktop
+- **Chat**, live **status** and **git**, shared by the mesh
+- **A local AI model**, hosted on one machine for all of them
 
-- A [Tailscale](https://tailscale.com) account (the free plan is enough) and a reusable auth key
-- Optional: a domain on [Cloudflare](https://cloudflare.com) and a tunnel token, to reach the mesh off the tailnet and for git
+## Quick start
 
-## Install
+You need a [Tailscale](https://tailscale.com) account (the free plan works) and a reusable auth key.
 
-Download from the [latest release](https://github.com/pmghartman/phosphorus/releases/latest).
+1. **Download** the host installer from the [latest release](https://github.com/pmghartman/phosphorus/releases/latest).
+2. **Install** it:
 
-**Host** (a machine that joins the mesh):
+   | | |
+   |---|---|
+   | macOS | Open the `.dmg`, drag Phosphorus to Applications, open it (first time: right-click, Open) |
+   | Windows | Run the setup `.exe` (SmartScreen: More info, Run anyway) |
+   | Linux | `sudo apt install ./phosphorus_VERSION_ARCH.deb`, then `sudo phosphorus` |
 
-- **macOS**: open `phosphorus-VERSION-macos-universal.dmg`, drag Phosphorus to Applications and open it (the first time: right-click, Open).
-- **Windows**: run `phosphorus-VERSION-windows-x86_64-setup.exe` (if SmartScreen warns: More info, Run anyway).
-- **Linux**: `sudo apt install ./phosphorus_VERSION_ARCH.deb`, then `sudo phosphorus`.
+3. **Enter your Tailscale auth key.** Tailscale is installed if missing. Every other host copies the rest from the mesh.
+4. **Open** `http://HOST` from any device on the tailnet, using a host's name or tailnet IP.
 
-Tailscale is installed on first start if it's missing. On macOS, allow its VPN configuration when asked.
+The first login is `admin` with your admin password. Create your own admin account and that login turns off.
 
-**Client** (optional, a window onto the mesh from any computer): install `phosphorus-client` for your system and enter your domain, or any host's tailnet name. It updates itself. Hosts don't need it.
+### Optional
 
-## First start
+- **A domain:** a [Cloudflare](https://cloudflare.com) domain and tunnel token give you `https://your-domain` off the tailnet, plus git.
+- **Phosphorus Client:** a desktop window onto the mesh from any computer. Enter your domain or a host's tailnet name. It updates itself.
+- **More keys:** a Tailscale API token (game server DNS) and an admin password, set on the first host.
 
-Phosphorus asks for its keys:
-
-- **Tailscale auth key**: always needed. A machine joining an existing mesh needs nothing else; it copies the rest from the other hosts.
-- **First setup** (all optional, first host only): your domain and Cloudflare tunnel token, a Tailscale API token (for game server DNS) and an admin password.
-
-Then open `http://HOST` from any device on the tailnet (a host's name or tailnet IP), or `https://your-domain` with one. The first login is user `admin` with your admin password; create your own admin account and that login turns off.
-
-To change a key later: **Edit Keys** in the tray, or `phos keys`.
+Change keys later with **Edit Keys** in the tray, or `phos keys`.
 
 ## Everyday use
 
-**Tray icon** (macOS and Windows): Start, Stop, Check for Updates, Edit Keys, Uninstall, Quit.
+| | |
+|---|---|
+| Tray (macOS, Windows) | Start, Stop, Check for Updates, Edit Keys, Uninstall, Quit |
+| `phos` | Terminal UI |
+| `phos start` / `stop` / `status` | Control this host |
+| `phos vpn on` / `off` | Tailscale up, or Phosphorus and Tailscale down |
+| `phos update` / `update all` | Update this host, or the whole mesh |
+| `phos uninstall` | Remove Phosphorus and its data |
 
-**Command line** (any host): `phos` opens the terminal UI. Also `phos start`, `phos stop`, `phos status`, `phos vpn off`, `phos vpn on`, `phos update`, `phos update all`, `phos uninstall`.
-
-**Updating**: admins click the update icon in the web bar (or run `phos update all`) to update every host at once.
-
-**A model host downloads a lot**: llama.cpp's `llama-server` (plus NVIDIA's CUDA runtime on an NVIDIA card), opencode, and the model itself, often several GB. Turning `host` off removes them. You pick the model, so following its license is up to you.
+A model host downloads llama.cpp, opencode and the model, often several GB. You pick the model, so its license is yours to follow.
 
 ## Architecture
+
+<details>
+<summary>How the pieces fit</summary>
 
 ```mermaid
 flowchart TB
@@ -128,10 +136,11 @@ flowchart TB
   browser <-->|"tailnet, no domain"| ph
 ```
 
+</details>
+
 ## License
 
-Apache 2.0, see `LICENSE`. Everything phosphorus bundles or downloads keeps its own license; the full texts are in `THIRD_PARTY_LICENSES.txt`, included in every installer.
-
+Apache 2.0, see [`LICENSE`](LICENSE). Bundled software keeps its own license; full texts are in `THIRD_PARTY_LICENSES.txt`, included in every installer.
 
 <p align="center">
   <img src=".github/assets/wright-alchemist.jpg" alt="The Alchemist Discovering Phosphorus, Joseph Wright of Derby" width="420">

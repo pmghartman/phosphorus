@@ -347,7 +347,7 @@ jobs:
             for f in forgejo-src-*.tar.gz; do m+="${m:+ · }[Forgejo source]($U/$f)"; done
             echo "$m"
             echo
-            echo "Install steps: [README](https://github.com/$REPO#install)"
+            echo "Install steps: [README](https://github.com/$REPO#quick-start)"
           } > "$RUNNER_TEMP/notes.md"
           cat "$RUNNER_TEMP/notes.md"
       - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
