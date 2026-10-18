@@ -642,8 +642,9 @@ func Close(by, id string) error {
 	return nil
 }
 
-// Type a command typed into the owner's shared screen, left for them to run
-func Type(by, id, text string, waitS int) (map[string]any, error) {
+// Type a command typed into the owner's shared screen, left for them to run,
+// or with run entered at once as theirs, their key's own ask
+func Type(by, id, text string, waitS int, run bool) (map[string]any, error) {
 	mine := []*session{}
 	for _, s := range shared("") {
 		s.mu.Lock()
@@ -681,8 +682,15 @@ func Type(by, id, text string, waitS int) (map[string]any, error) {
 	s.mu.Lock()
 	in := s.stdin
 	s.mu.Unlock()
-	in.Write([]byte(cmd))
 	until := time.Now().Add(time.Duration(waitS) * time.Second)
+	if run {
+		s.mu.Lock()
+		s.lastOut = time.Now()
+		s.mu.Unlock()
+		in.Write([]byte(cmd + "\r"))
+		return settled(s, time.Now(), until), nil
+	}
+	in.Write([]byte(cmd))
 	keys := make(chan string, 1)
 	s.mu.Lock()
 	s.waiter = func(k string) {
@@ -710,7 +718,11 @@ func Type(by, id, text string, waitS int) (map[string]any, error) {
 			"timeout": fmt.Sprintf("no Enter in %ds, still typed there", waitS)}[key]
 		return map[string]any{"id": id6, "ran": false, "why": why, "screen": s.render()}, nil
 	}
-	entered := time.Now()
+	return settled(s, time.Now(), until), nil
+}
+
+// settled the screen once output stops for a moment after entered, or at until
+func settled(s *session, entered, until time.Time) map[string]any {
 	quiet := func() time.Duration {
 		s.mu.Lock()
 		last := s.lastOut
@@ -723,9 +735,9 @@ func Type(by, id, text string, waitS int) (map[string]any, error) {
 	for time.Now().Before(until) && quiet() < settle && live(s.sid) {
 		time.Sleep(250 * time.Millisecond)
 	}
-	out := map[string]any{"id": id6, "ran": true, "screen": s.render()}
+	out := map[string]any{"id": s.sid[:6], "ran": true, "screen": s.render()}
 	if quiet() < settle {
 		out["note"] = "still printing, terminal_screen with wait_s reads more"
 	}
-	return out, nil
+	return out
 }

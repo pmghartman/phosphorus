@@ -5145,12 +5145,12 @@ function dkNav(w, frame) {
 
 // --- the apps
 
-function dkTerminal(host, run = '') {
+function dkTerminal(host, run = '', shared = false) {
   const c = dk.creds.get(host);
   const w = dkWin(null, 'terminal', host, 'term');
   if (!w || !c) return;
   w.host = host;
-  const t = app('terminal').then((m) => m.startTerminal(w.body, host, newSid(), false, false, { ...c, run }));
+  const t = app('terminal').then((m) => m.startTerminal(w.body, host, newSid(), false, shared, { ...c, run }));
   w.onFocus = () => t.then((x) => x.focus());
   w.onClose = () => t.then((x) => x.close());
   dkFocus(w);
@@ -5839,14 +5839,15 @@ function dkBadge() {
 }
 
 // a shell from the chat or phosphorus, on a host this desktop is logged into
-function dkOpenTerminal(host) {
-  if (dk.desk && dk.creds.has(host)) dkTerminal(host);
+// one asked for by phosphorus: logged in with the saved login, shared with it
+function dkOpenTerminal(host, shared = false) {
+  if (dk.desk && dk.creds.has(host)) dkTerminal(host, '', shared);
 }
 
 // phosphorus's presses, each the app it names
 const DK_VIEWS = { status: 'status', about: 'about', projects: 'projects', chat: 'chat', git: 'git', games: 'games', home: 'games' };
 function dkPressed(a) {
-  if (a.kind === 'terminal') dkOpenTerminal(a.host);
+  if (a.kind === 'terminal') dkOpenTerminal(a.host, a.share === true);
   else if (a.kind === 'host' && phosphorusHosts().includes(a.host)) switchHost(a.host);
   else if (a.kind === 'code' && a.host && a.path) { if (dk.desk) dkCode({ host: a.host, share: a.share, path: a.path }); }
   else if (a.kind === 'view') {

@@ -154,6 +154,37 @@ func controlTools(local func(m Meta) bool) []tool {
 				}
 				return pressed(src.Actions.ChatEdit(m.Caller.User, str(a["ref"]), str(a["action"]), str(a["text"])))
 			}},
+		{name: "terminal_run", scope: "key", destructive: true,
+			description: "Run a command as you in your own shared, logged-in terminal on a host, with exactly the rights that login has, " +
+				"and return the screen once its output settles. open_terminal first opens one there, logged in with your saved login for " +
+				"that host (none saved: nothing opens). Read each result before the next command. Never types a password: a prompt " +
+				"asking for one is left for you. " + noCreds,
+			schema: object(map[string]any{"host": name,
+				"command": map[string]any{"type": "string", "description": "one line, run as typed"},
+				"id":      map[string]any{"type": "string", "description": "terminal id from terminal_screen, if several are shared"},
+				"wait_s":  map[string]any{"type": "integer", "description": "seconds to wait for output to settle, up to 120", "default": 30}}, "host", "command"),
+			run: func(a map[string]any, m Meta) (any, error) {
+				if m.Caller == nil {
+					return nil, errc("forbidden", "on a user's key only; the chat's model uses terminal_type")
+				}
+				h, err := knownHost(a)
+				if err != nil {
+					return nil, err
+				}
+				cmd := str(a["command"])
+				if strings.ContainsAny(cmd, "\r\n") {
+					return nil, errc("bad_input", "one line only")
+				}
+				w := int(numOr(a["wait_s"], 30))
+				if w < 1 || w > waitMaxS {
+					return nil, errc("bad_input", "wait_s is 1 to %d", waitMaxS)
+				}
+				out, err := typeTerminal(h, cmd, str(a["id"]), w, m.Caller.User, true)
+				if err != nil {
+					return nil, errc("not_found", "%s; open_terminal opens one logged in with your saved login", err.Error())
+				}
+				return out, nil
+			}},
 		{name: "terminal_close", scope: "key",
 			description: "Close one of your shared terminal tabs on a host by its id from terminal_screen; it ends for every window on it.",
 			schema:      object(map[string]any{"host": name, "id": map[string]any{"type": "string"}}, "host", "id"),
