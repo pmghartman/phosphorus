@@ -4120,7 +4120,7 @@ function dkTryIcons(tile, icons) {
     setTimeout(() => tile.classList.remove('dk-wait'), 600);
   }
   const img = Object.assign(el('img', 'dk-favicon'), { alt: '', decoding: 'async', draggable: false });
-  img.addEventListener('load', () => { tile.replaceChildren(img); tile.classList.add('dk-tile-img'); tile.classList.remove('dk-wait'); }, { once: true });
+  img.addEventListener('load', () => { tile.replaceChildren(img, ...tile.querySelectorAll('.dk-public, .dk-badge')); tile.classList.add('dk-tile-img'); tile.classList.remove('dk-wait'); }, { once: true });
   img.addEventListener('error', () => dkTryIcons(tile, rest), { once: true });
   img.src = first;
 }
@@ -4156,8 +4156,7 @@ function dkLiveHosts() {
 // a globe in the tile's corner: reachable without the phosphorus login
 function dkGlobe(b, why) {
   b.title += `, ${why}`;
-  const g = el('span', 'dk-public');
-  g.appendChild(dkGlyph(DK_GLYPHS.service));
+  const g = Object.assign(el('img', 'dk-public'), { src: '/globe.png', alt: '', draggable: false });
   b.querySelector('.dk-tile').appendChild(g);
   return b;
 }
@@ -4948,8 +4947,8 @@ function dkDeskMenu(icons) {
       ...(b ? [['open', () => b.dispatchEvent(new MouseEvent('dblclick')), true]] : []),
       ...(svc && acct?.admin ? [[svc.public ? 'make private' : 'make public', () => dkSetPublic(svc, !svc.public), true]] : []),
       ...(b ? [null] : []),
-      ...hosts.map((h) => [`terminal on ${h}`, () => dkTerminal(h), true]),
-      ...(hosts.length ? [null] : []),
+      ['new terminal', hosts.map((h) => [h, () => dkTerminal(h), true]), hosts.length > 0],
+      null,
       ['add file…', () => dkNewFile(e.clientX, e.clientY), !!dkDeskAt()],
       ['upload files…', () => dkPick('', true, (list) => { dkPlaceAt(e.clientX, e.clientY, list.map((f) => f.name)); dkAddFiles(list); }), homeOnline().length > 0],
       null,
@@ -5044,13 +5043,36 @@ function dkMenu(x, y, items, after, title) {
   dkMenuEl.classList.remove('dk-pop');
   dkMenuEl.dkAnchor = null;
   dkMenuEl.style.bottom = '';
-  dkMenuEl.replaceChildren(...(title ? [el('div', 'dk-menu-title', title)] : []), ...items.map((it) => {
+  const item = (it) => {
     if (!it) return el('div', 'dk-menu-sep');
     const [label, act, ok, cls] = it;
     const b = Object.assign(el('button', cls || '', label), { type: 'button', disabled: !ok });
-    b.addEventListener('click', () => { dkMenuEl.hidden = true; after?.(); act(); });
-    return b;
-  }));
+    if (!Array.isArray(act)) {
+      b.addEventListener('click', () => { dkMenuEl.hidden = true; after?.(); act(); });
+      return b;
+    }
+    // a list for its act: a submenu out to the side on hover, as Windows' own
+    b.classList.add('dk-menu-more');
+    const wrap = el('div', 'dk-menu-item');
+    const sub = el('div', 'dk-menu dk-submenu');
+    sub.append(...act.map(item));
+    wrap.append(b, sub);
+    const open = () => {
+      if (b.disabled) return;
+      for (const o of wrap.parentElement.querySelectorAll(':scope > .dk-menu-item.open')) if (o !== wrap) o.classList.remove('open');
+      wrap.classList.add('open');
+      const r = b.getBoundingClientRect();
+      sub.classList.toggle('left', r.right + sub.offsetWidth > innerWidth - 4);
+      sub.style.top = `${Math.min(0, innerHeight - 4 - r.top - sub.offsetHeight)}px`;
+    };
+    wrap.addEventListener('pointerenter', open);
+    wrap.addEventListener('pointerleave', () => wrap.classList.remove('open'));
+    b.addEventListener('click', open);
+    b.addEventListener('keydown', (e) => { if (e.key === 'ArrowRight') { open(); sub.querySelector('button:not(:disabled)')?.focus(); } });
+    sub.addEventListener('keydown', (e) => { if (e.key === 'ArrowLeft') { wrap.classList.remove('open'); b.focus(); } });
+    return wrap;
+  };
+  dkMenuEl.replaceChildren(...(title ? [el('div', 'dk-menu-title', title)] : []), ...items.map(item));
   dkMenuEl.hidden = false;
   dkMenuEl.style.left = `${Math.min(x, innerWidth - dkMenuEl.offsetWidth - 4)}px`;
   dkMenuEl.style.top = `${Math.min(y, innerHeight - dkMenuEl.offsetHeight - 4)}px`;
