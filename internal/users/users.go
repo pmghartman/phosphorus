@@ -850,6 +850,53 @@ func OpenGrant(token string) map[string]any {
 	return o
 }
 
+// --- mcp keys: one per user, its rights, a new one voiding the last ------
+
+func mcpFile(n string) string { return "home/" + n + "/mcp.json" }
+
+// MCPKey a fresh key for the session's user, a year long
+func MCPKey(s *Session, _ map[string]any) R {
+	if s == nil || s.Boot {
+		return errR(403, "log in as a user")
+	}
+	lu := live(s.User)
+	if lu == nil {
+		return errR(403, "no such user")
+	}
+	g := randHex(8)
+	sysfs.Write(mcpFile(s.User), map[string]string{"g": g})
+	o := map[string]any{"u": s.User, "p": lu.PwAt, "m": g}
+	return R{Status: 200, Body: map[string]any{"key": SealGrant(o, 365*24*3600*1000), "user": s.User}}
+}
+
+// MCPRevoke every key of the session's user void
+func MCPRevoke(s *Session, _ map[string]any) R {
+	if s == nil || s.Boot {
+		return errR(403, "log in as a user")
+	}
+	sysfs.Remove(mcpFile(s.User))
+	return R{Status: 200, Body: map[string]any{"ok": true}}
+}
+
+// OfMCPKey the user behind a key: live, its password and key unchanged
+func OfMCPKey(key string) *Session {
+	o := OpenGrant(key)
+	if o == nil {
+		return nil
+	}
+	u, _ := o["u"].(string)
+	g, _ := o["m"].(string)
+	lu := live(u)
+	if lu == nil || g == "" || o["p"] != lu.PwAt {
+		return nil
+	}
+	var cur map[string]string
+	if !sysfs.ReadInto(mcpFile(u), &cur) || cur["g"] != g {
+		return nil
+	}
+	return &Session{User: u, Admin: lu.Admin}
+}
+
 // Exists a live user
 func Exists(name string) bool { return live(name) != nil }
 

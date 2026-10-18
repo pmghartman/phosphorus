@@ -61,14 +61,16 @@ var userCalls = map[string]userCall{
 	"POST /api/logout": func(_ *users.Session, _ map[string]any, r *http.Request) users.R {
 		return users.R{Status: 200, Body: map[string]any{"ok": true}, Cookie: users.ClearCookie(r)}
 	},
-	"POST /api/me/vault":     func(s *users.Session, p map[string]any, _ *http.Request) users.R { return users.SetVault(s, p) },
-	"POST /api/me/prefs":     func(s *users.Session, p map[string]any, _ *http.Request) users.R { return users.SetPrefs(s, p) },
-	"POST /api/me/wallpaper": func(s *users.Session, p map[string]any, _ *http.Request) users.R { return users.SetWallpaper(s, p) },
-	"POST /api/me/password":  func(s *users.Session, p map[string]any, r *http.Request) users.R { return users.ChangePass(s, p, r) },
-	"GET /api/users":         func(s *users.Session, _ map[string]any, _ *http.Request) users.R { return users.List(s) },
-	"POST /api/users":        func(s *users.Session, p map[string]any, _ *http.Request) users.R { return users.Create(s, p) },
-	"POST /api/users/admin":  func(s *users.Session, p map[string]any, _ *http.Request) users.R { return users.SetAdmin(s, p) },
-	"POST /api/users/delete": func(s *users.Session, p map[string]any, _ *http.Request) users.R { return users.Remove(s, p) },
+	"POST /api/me/vault":      func(s *users.Session, p map[string]any, _ *http.Request) users.R { return users.SetVault(s, p) },
+	"POST /api/me/prefs":      func(s *users.Session, p map[string]any, _ *http.Request) users.R { return users.SetPrefs(s, p) },
+	"POST /api/me/wallpaper":  func(s *users.Session, p map[string]any, _ *http.Request) users.R { return users.SetWallpaper(s, p) },
+	"POST /api/me/password":   func(s *users.Session, p map[string]any, r *http.Request) users.R { return users.ChangePass(s, p, r) },
+	"POST /api/me/mcp-key":    func(s *users.Session, p map[string]any, _ *http.Request) users.R { return users.MCPKey(s, p) },
+	"POST /api/me/mcp-revoke": func(s *users.Session, p map[string]any, _ *http.Request) users.R { return users.MCPRevoke(s, p) },
+	"GET /api/users":          func(s *users.Session, _ map[string]any, _ *http.Request) users.R { return users.List(s) },
+	"POST /api/users":         func(s *users.Session, p map[string]any, _ *http.Request) users.R { return users.Create(s, p) },
+	"POST /api/users/admin":   func(s *users.Session, p map[string]any, _ *http.Request) users.R { return users.SetAdmin(s, p) },
+	"POST /api/users/delete":  func(s *users.Session, p map[string]any, _ *http.Request) users.R { return users.Remove(s, p) },
 }
 
 func hopErr(host string) (int, any) {
@@ -270,7 +272,16 @@ func appHandler(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	case pathname == "/api/mcp":
-		if !isLoopback(r) && !isTailnet(r) {
+		// a user's key from anywhere, the ingress included; else the mesh's own, unkeyed
+		var caller *mcp.Caller
+		if key, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer "); ok {
+			s := users.OfMCPKey(strings.TrimSpace(key))
+			if s == nil {
+				sendJSON(w, 401, map[string]any{"error": "bad key"})
+				return
+			}
+			caller = &mcp.Caller{User: s.User, Admin: s.Admin}
+		} else if !isLoopback(r) && !isTailnet(r) {
 			forbidden(w)
 			return
 		}
@@ -292,7 +303,7 @@ func appHandler(w http.ResponseWriter, r *http.Request) {
 			sendJSON(w, 400, map[string]any{"error": "invalid json"})
 			return
 		}
-		st, body := mcp.Handle(v, isLoopback(r))
+		st, body := mcp.Handle(v, isLoopback(r) && caller == nil, caller)
 		if body == nil {
 			body = map[string]any{}
 		}

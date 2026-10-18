@@ -251,6 +251,7 @@ type Req struct {
 	Timeout        time.Duration
 	ConnectTimeout time.Duration
 	Ctx            context.Context // nil: background
+	Headers        map[string]string
 }
 
 var plainTransport = &http.Transport{
@@ -293,6 +294,9 @@ func RequestJSON(r Req) (Response, error) {
 	}
 	if r.Body != nil {
 		req.Header.Set("Content-Type", "application/json")
+	}
+	for k, v := range r.Headers {
+		req.Header.Set(k, v)
 	}
 	client := HTTPClient
 	if r.ConnectTimeout > 0 {
