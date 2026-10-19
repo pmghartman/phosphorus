@@ -2158,6 +2158,26 @@ function reactsEl(m) {
   return row;
 }
 
+// on hover, over the bubble's top corner: the reactions, reply, and the rest of the menu
+const REPLY_GLYPH = 'M6.5 4L2.5 8l4 4M2.5 8h7a4 4 0 0 1 4 4v.5';
+function toolsEl(m) {
+  const bar = el('div', 'msg-tools');
+  for (const r of REACTIONS) {
+    const b = Object.assign(el('button', `mt-react${m.reacts?.get(`${name}\n${r}`)?.on ? ' on' : ''}`, r), { type: 'button', title: `react ${r}` });
+    b.dataset.act = 'react';
+    b.dataset.emoji = r;
+    bar.append(b);
+  }
+  bar.append(el('span', 'mt-sep'));
+  const re = Object.assign(el('button', 'mt-btn'), { type: 'button', title: 'reply', ariaLabel: 'reply' });
+  re.dataset.act = 'reply';
+  re.append(dkGlyph(REPLY_GLYPH));
+  const more = Object.assign(el('button', 'mt-btn mt-more', '⋯'), { type: 'button', title: 'more', ariaLabel: 'more' });
+  more.dataset.act = 'more';
+  bar.append(re, more);
+  return bar;
+}
+
 function quoteEl(ref) {
   const t = lines.get(ref);
   const q = el('button', 'msg-re');
@@ -2269,6 +2289,7 @@ function lineEl(m, prev) {
   if (m.files && !m.gone) bubble.append(filesEl(m.files));
   if (!body && !m.gone && m.files?.length && m.files.every((f) => (f.type || '').startsWith('image/'))) li.classList.add('just-img');
   li.append(bubble);
+  if (real) bubble.append(toolsEl(m));
   const reacts = !m.gone && reactsEl(m);
   if (reacts) li.append(reacts);
   return li;
@@ -3152,7 +3173,16 @@ chatLog.addEventListener('click', (e) => {
   } else if (act === 'show') {
     if (m.file) dkCode(m.file);
   } else if (act === 'react') react(m, b.dataset.emoji);
+  else if (act === 'reply') startReply(m);
+  else if (act === 'more') lineMenu(li, m, b);
 });
+
+function startReply(m) {
+  editing = null;
+  replyTo = m;
+  paintBar();
+  chatText.focus();
+}
 
 function react(m, emoji) {
   const on = m.reacts?.get(`${name}\n${emoji}`)?.on;
@@ -3165,8 +3195,13 @@ chatLog.addEventListener('contextmenu', (e) => {
   const m = li && lines.get(li.dataset.key);
   if (!m || e.target.closest('a')) return;
   e.preventDefault();
+  lineMenu(li, m, li, { x: e.clientX, y: e.clientY });
+});
+
+// a line's menu: reactions over reply, edit, delete; under the anchor or at the pointer
+function lineMenu(li, m, anchor, at = null) {
   const mine = li.dataset.acts === 'mine';
-  const items = [{ label: 'reply', act: () => { editing = null; replyTo = m; paintBar(); chatText.focus(); } }];
+  const items = [{ label: 'reply', act: () => startReply(m) }];
   if (mine && (!m.kind || m.kind === 'dm')) items.push({ label: 'edit', act: () => startEdit(m) });
   if (mine) items.push({ label: 'delete', sub: 'for everyone', danger: true, confirm: 'sure? delete it', act: () => send({ type: 'delete', ref: keyOf(m) }) });
   const row = el('div', 'pop-reacts');
@@ -3175,15 +3210,16 @@ chatLog.addEventListener('contextmenu', (e) => {
     x.addEventListener('click', () => { react(m, r); closePop(false); });
     row.append(x);
   }
-  popMenu(li, row, items, 0, { x: e.clientX, y: e.clientY });
-});
+  popMenu(anchor, row, items, 0, at);
+}
 
 // --- find ---------------------------------------------------------------------------
 
 function findIn(li) {
   const q = chatFindInput.value.trim().toLowerCase();
   if (!li.matches('.msg, .sys')) return;
-  li.classList.toggle('miss', !!q && !li.textContent.toLowerCase().includes(q));
+  const t = li.textContent.replace(li.querySelector('.msg-tools')?.textContent || '', '');
+  li.classList.toggle('miss', !!q && !t.toLowerCase().includes(q));
 }
 
 function runFind() {
@@ -4468,7 +4504,7 @@ const DK_GLYPHS = {
   update: 'M8 10.5v-8M4.8 5.5L8 2.5l3.2 3M2.5 9v4.5h11V9',
   gear: 'M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4',
   power: 'M8 1.5v6M4.6 3.8a5 5 0 1 0 6.8 0',
-  spark: 'M8 1.5v13M1.5 8h13M3.4 3.4l9.2 9.2M12.6 3.4L3.4 12.6',
+  spark: 'M8 1.5l1.4 5.1 5.1 1.4-5.1 1.4L8 14.5l-1.4-5.1L1.5 8l5.1-1.4z',
   reload: 'M13.5 8a5.5 5.5 0 1 1-1.8-4.1M13.5 1.5v3.5h-3.5',
   download: 'M8 2v8M4.5 7L8 10.5 11.5 7M2.5 13.5h11',
   doc: ICONS.file,
@@ -6504,11 +6540,23 @@ const claudeAgo = (ms) => {
 };
 const claudeMs = (ms) => (ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`);
 
+// the star with its own moving purple to orange, painted by css while claude runs
+function claudeGlyph() {
+  const svg = dkGlyph(DK_GLYPHS.spark);
+  const g = svgEl('linearGradient', { id: 'claude-grad', gradientUnits: 'userSpaceOnUse', x1: '0', y1: '0', x2: '16', y2: '16', spreadMethod: 'reflect' });
+  g.append(svgEl('stop', { offset: '0', class: 'phosphorus-grad-p' }), svgEl('stop', { offset: '1', class: 'phosphorus-grad-o' }),
+    svgEl('animateTransform', { attributeName: 'gradientTransform', type: 'translate', values: '-16 -16; 16 16; -16 -16', dur: '6s', repeatCount: 'indefinite' }));
+  const defs = svgEl('defs', {});
+  defs.append(g);
+  svg.prepend(defs);
+  return svg;
+}
+
 function dkClaudeTray() {
   const wrap = el('div', 'dk-tray-wrap dk-claude');
   const b = Object.assign(el('button', 'dk-tray dk-claude-btn'), { type: 'button', title: 'claude', ariaLabel: 'claude' });
   b.setAttribute('aria-expanded', 'false');
-  b.append(dkGlyph(DK_GLYPHS.spark));
+  b.append(claudeGlyph());
   const pop = Object.assign(el('div', 'dk-claude-pop dk-pop'), { hidden: true });
   wrap.append(b, pop);
   dkAnchor(pop, b, { fill: 300 });
@@ -6517,25 +6565,33 @@ function dkClaudeTray() {
     r.append(el('span', 'dk-cl-k', label), el('span', `dk-cl-v ${tone}`, value));
     return r;
   };
+  // a call as claude code shows one: a bullet, the tool and its argument, its outcome under it
   const callRow = (c, live) => {
     const li = el('li', `dk-cl-call ${live ? 'live' : c.ok ? 'ok' : 'bad'}`);
-    li.append(el('span', 'dk-cl-pip'), el('span', 'dk-cl-tool', c.tool),
-      el('span', 'dk-cl-t', live ? claudeMs(claudeStat.now - c.since) : `${claudeMs(c.ms)} · ${claudeAgo(claudeStat.now - c.at)}`));
-    if (!live && !c.ok && c.error) li.title = c.error;
+    const top = el('div', 'dk-cl-ln');
+    top.append(el('span', 'dk-cl-pip'), el('span', 'dk-cl-tool', c.tool));
+    if (c.detail) top.append(el('span', 'dk-cl-arg', `(${c.detail})`));
+    const out = live ? `running · ${claudeMs(claudeStat.now - c.since)}`
+      : `${c.ok ? 'done' : c.error || 'failed'} · ${claudeMs(c.ms)} · ${claudeAgo(claudeStat.now - c.at)} ago`;
+    li.append(top, el('div', 'dk-cl-out', out));
+    if (c.detail) li.title = c.detail;
     return li;
   };
+  // the history oldest first, live at the end, protocol chatter left out
+  const isTool = (c) => c.tool && !c.tool.includes('/') && c.tool !== 'initialize';
+  let list = null;
   const head = el('div', 'dk-cl-head');
   const stateLine = el('span', 'dk-cl-state');
   const bar = el('div', 'dk-cl-bar');
   const body = el('div', 'dk-cl-body');
   pop.append(bar, head, body);
   head.append(el('span', 'dk-cl-title', 'claude'), stateLine);
-  // the key button: connects, then refreshes after a confirm
+  // the key button: connects, then quiet until pointed at, refreshing after a confirm
   let btn = null;
   const drawBar = () => {
     const done = claudeStat.configured;
     if (btn && btn.dataset.done === String(done)) return;
-    btn = Object.assign(el('button', 'dk-cl-key', done ? 'refresh key' : 'connect claude'), { type: 'button' });
+    btn = Object.assign(el('button', `dk-cl-key${done ? ' quiet' : ''}`, done ? 'refresh key' : 'connect claude'), { type: 'button' });
     btn.dataset.done = String(done);
     btn.addEventListener('click', () => {
       show(false);
@@ -6544,7 +6600,17 @@ function dkClaudeTray() {
         title: 'refresh claude\'s key?', actionLabel: 'refresh', onAction: () => { closeUpdateModal(); claudeConnect(); },
       });
     });
-    bar.replaceChildren(btn);
+    if (!done) { bar.replaceChildren(btn); return; }
+    // the same key as one url, for claude on a phone or the web as a custom connector
+    const url = Object.assign(el('button', 'dk-cl-key quiet', 'copy phone url'), { type: 'button', title: 'add it in claude, settings, connectors; it holds your key' });
+    url.addEventListener('click', async () => {
+      try {
+        await copyText(await clientInvoke('claude_url'));
+        url.textContent = 'copied';
+      } catch (e) { url.textContent = String(e).includes('not allowed') ? 'update the client' : 'failed'; }
+      setTimeout(() => { url.textContent = 'copy phone url'; }, 1800);
+    });
+    bar.replaceChildren(btn, url);
   };
   const paint = () => {
     const st = claudeState();
@@ -6565,11 +6631,17 @@ function dkClaudeTray() {
       if (c.error) rows.push(row('last error', c.error, 'bad'));
       const calls = el('div', 'dk-cl-sec');
       calls.append(el('div', 'dk-cl-sec-t', 'calls'));
-      const list = el('ul', 'dk-cl-calls');
-      list.append(...c.calls.map((x) => callRow(x, true)), ...c.recent.slice(0, c.calls.length ? 4 : 6).map((x) => callRow(x, false)));
+      // kept across redraws so a scroll back holds, followed when at the end
+      const stick = !list || list.scrollHeight - list.scrollTop - list.clientHeight < 8;
+      const keep = list?.scrollTop || 0;
+      list = list || el('ul', 'dk-cl-calls');
+      list.replaceChildren(...[...c.recent].reverse().filter(isTool).map((x) => callRow(x, false)), ...c.calls.filter(isTool).map((x) => callRow(x, true)));
       if (!list.children.length) list.append(el('li', 'dk-cl-none', 'no calls yet'));
       calls.append(list);
       rows.push(calls);
+      body.replaceChildren(...rows);
+      list.scrollTop = stick ? list.scrollHeight : keep;
+      return;
     }
     body.replaceChildren(...rows);
   };
@@ -6578,7 +6650,7 @@ function dkClaudeTray() {
     if (on) dkPopsClose('claude');
     pop.hidden = !on;
     b.setAttribute('aria-expanded', String(on));
-    if (on) { btn = null; paint(); pollClaude(true); }
+    if (on) { btn = null; list = null; paint(); pollClaude(true); }
   };
   b.addEventListener('click', () => show(pop.hidden));
   document.addEventListener('pointerdown', (e) => { if (!pop.hidden && !wrap.contains(e.target) && !updateModal.contains(e.target)) show(false); }, true);
