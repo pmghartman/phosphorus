@@ -901,40 +901,34 @@ unicode-segmentation 1.13.3, MIT OR Apache-2.0, text [22] [117]
     https://github.com/unicode-rs/unicode-segmentation
 untrusted 0.9.0, ISC, text [247]
     https://github.com/briansmith/untrusted
-ureq 2.12.1, MIT OR Apache-2.0, text [112] [248]
-    https://github.com/algesten/ureq
 url 2.5.8, MIT OR Apache-2.0, text [22] [133]
     https://github.com/servo/rust-url
-urlpattern 0.6.0, MIT, text [249]
+urlpattern 0.6.0, MIT, text [248]
     https://github.com/denoland/rust-urlpattern
-utf8_iter 1.0.4, Apache-2.0 OR MIT, text [112] [250]
+utf8_iter 1.0.4, Apache-2.0 OR MIT, text [112] [249]
     https://github.com/hsivonen/utf8_iter
-uuid 1.28.0, Apache-2.0 OR MIT, text [22] [251]
+uuid 1.28.0, Apache-2.0 OR MIT, text [22] [250]
     https://github.com/uuid-rs/uuid
-version-compare 0.2.1, MIT, text [252]
+version-compare 0.2.1, MIT, text [251]
     https://gitlab.com/timvisee/version-compare
-version_check 0.9.5, MIT/Apache-2.0, text [22] [253]
+version_check 0.9.5, MIT/Apache-2.0, text [22] [252]
     https://github.com/SergioBenitez/version_check
-vswhom 0.1.0, MIT, text [254]
+vswhom 0.1.0, MIT, text [253]
     https://github.com/nabijaczleweli/vswhom.rs
-vswhom-sys 0.1.3, MIT, text [254]
+vswhom-sys 0.1.3, MIT, text [253]
     https://github.com/nabijaczleweli/vswhom-sys.rs
 walkdir 2.5.0, Unlicense/MIT, text [15] [16] [17]
     https://github.com/BurntSushi/walkdir
-want 0.3.2, MIT, text [255]
+want 0.3.2, MIT, text [254]
     https://github.com/seanmonstar/want
-web-time 1.1.0, MIT OR Apache-2.0, text [256] [257]
+web-time 1.1.0, MIT OR Apache-2.0, text [255] [256]
     https://github.com/daxpedda/web-time
 web_atoms 0.2.6, MIT OR Apache-2.0, text [22] [119]
     https://github.com/servo/html5ever
-webkit2gtk 2.0.2, MIT, text [258]
+webkit2gtk 2.0.2, MIT, text [257]
     https://github.com/tauri-apps/webkit2gtk-rs
-webkit2gtk-sys 2.0.2, MIT, text [259]
+webkit2gtk-sys 2.0.2, MIT, text [258]
     https://github.com/tauri-apps/webkit2gtk-rs
-webpki-roots 0.26.11, CDLA-Permissive-2.0, text [260]
-    https://github.com/rustls/webpki-roots
-webpki-roots 1.0.9, CDLA-Permissive-2.0, text [260]
-    https://github.com/rustls/webpki-roots
 webview2-com 0.39.1, MIT, standard MIT text in the appendix
     https://github.com/wravery/webview2-rs
 webview2-com-macros 0.8.1, MIT, standard MIT text in the appendix
@@ -943,51 +937,51 @@ webview2-com-sys 0.39.1, MIT, standard MIT text in the appendix
     https://github.com/wravery/webview2-rs
 winapi-util 0.1.11, Unlicense OR MIT, text [15] [199] [17]
     https://github.com/BurntSushi/winapi-util
-window-vibrancy 0.8.1, Apache-2.0 OR MIT, text [22] [261] [262]
+window-vibrancy 0.8.1, Apache-2.0 OR MIT, text [22] [259] [260]
     https://github.com/tauri-apps/tauri-plugin-vibrancy
-windows 0.62.2, MIT OR Apache-2.0, text [263] [264]
+windows 0.62.2, MIT OR Apache-2.0, text [261] [262]
     https://github.com/microsoft/windows-rs
-windows-collections 0.3.2, MIT OR Apache-2.0, text [263] [264]
+windows-collections 0.3.2, MIT OR Apache-2.0, text [261] [262]
     https://github.com/microsoft/windows-rs
-windows-core 0.62.2, MIT OR Apache-2.0, text [263] [264]
+windows-core 0.62.2, MIT OR Apache-2.0, text [261] [262]
     https://github.com/microsoft/windows-rs
-windows-future 0.3.2, MIT OR Apache-2.0, text [263] [264]
+windows-future 0.3.2, MIT OR Apache-2.0, text [261] [262]
     https://github.com/microsoft/windows-rs
-windows-implement 0.60.2, MIT OR Apache-2.0, text [263] [264]
+windows-implement 0.60.2, MIT OR Apache-2.0, text [261] [262]
     https://github.com/microsoft/windows-rs
-windows-interface 0.59.3, MIT OR Apache-2.0, text [263] [264]
+windows-interface 0.59.3, MIT OR Apache-2.0, text [261] [262]
     https://github.com/microsoft/windows-rs
-windows-link 0.2.1, MIT OR Apache-2.0, text [263] [264]
+windows-link 0.2.1, MIT OR Apache-2.0, text [261] [262]
     https://github.com/microsoft/windows-rs
-windows-numerics 0.3.1, MIT OR Apache-2.0, text [263] [264]
+windows-numerics 0.3.1, MIT OR Apache-2.0, text [261] [262]
     https://github.com/microsoft/windows-rs
-windows-registry 0.6.1, MIT OR Apache-2.0, text [263] [264]
+windows-registry 0.6.1, MIT OR Apache-2.0, text [261] [262]
     https://github.com/microsoft/windows-rs
-windows-result 0.4.1, MIT OR Apache-2.0, text [263] [264]
+windows-result 0.4.1, MIT OR Apache-2.0, text [261] [262]
     https://github.com/microsoft/windows-rs
-windows-strings 0.5.1, MIT OR Apache-2.0, text [263] [264]
+windows-strings 0.5.1, MIT OR Apache-2.0, text [261] [262]
     https://github.com/microsoft/windows-rs
-windows-sys 0.60.2, MIT OR Apache-2.0, text [263] [264]
+windows-sys 0.60.2, MIT OR Apache-2.0, text [261] [262]
     https://github.com/microsoft/windows-rs
-windows-sys 0.61.2, MIT OR Apache-2.0, text [263] [264]
+windows-sys 0.61.2, MIT OR Apache-2.0, text [261] [262]
     https://github.com/microsoft/windows-rs
-windows-targets 0.53.5, MIT OR Apache-2.0, text [263] [264]
+windows-targets 0.53.5, MIT OR Apache-2.0, text [261] [262]
     https://github.com/microsoft/windows-rs
-windows-threading 0.2.1, MIT OR Apache-2.0, text [263] [264]
+windows-threading 0.2.1, MIT OR Apache-2.0, text [261] [262]
     https://github.com/microsoft/windows-rs
-windows-version 0.1.7, MIT OR Apache-2.0, text [263] [264]
+windows-version 0.1.7, MIT OR Apache-2.0, text [261] [262]
     https://github.com/microsoft/windows-rs
-windows_x86_64_msvc 0.53.1, MIT OR Apache-2.0, text [263] [264]
+windows_x86_64_msvc 0.53.1, MIT OR Apache-2.0, text [261] [262]
     https://github.com/microsoft/windows-rs
-winnow 0.5.40, MIT, text [265]
+winnow 0.5.40, MIT, text [263]
     https://github.com/winnow-rs/winnow
-winnow 1.0.4, MIT, text [265]
+winnow 1.0.4, MIT, text [263]
     https://github.com/winnow-rs/winnow
-winreg 0.56.0, MIT, text [266]
+winreg 0.56.0, MIT, text [264]
     https://github.com/gentoo90/winreg-rs
 writeable 0.6.4, Unicode-3.0, text [131]
     https://github.com/unicode-org/icu4x
-wry 0.57.0, Apache-2.0 OR MIT, text [22] [267] [268]
+wry 0.57.0, Apache-2.0 OR MIT, text [22] [265] [266]
     https://github.com/tauri-apps/wry
 x11 2.21.0, MIT, text [14]
     https://github.com/AltF02/x11-rs.git
@@ -999,21 +993,21 @@ yoke 0.8.3, Unicode-3.0, text [131]
     https://github.com/unicode-org/icu4x
 yoke-derive 0.8.4, Unicode-3.0, text [131]
     https://github.com/unicode-org/icu4x
-zbus 5.19.0, MIT, text [269]
+zbus 5.19.0, MIT, text [267]
     https://github.com/z-galaxy/zbus/
-zbus_macros 5.19.0, MIT, text [269]
+zbus_macros 5.19.0, MIT, text [267]
     https://github.com/z-galaxy/zbus/
-zbus_names 4.3.4, MIT, text [269]
+zbus_names 4.3.4, MIT, text [267]
     https://github.com/z-galaxy/zbus/
-zcheapstr 1.1.0, MIT, text [270]
+zcheapstr 1.1.0, MIT, text [268]
     https://github.com/z-galaxy/zcheapstr/
-zerocopy 0.8.63, BSD-2-Clause OR Apache-2.0 OR MIT, text [271] [272] [273]
+zerocopy 0.8.63, BSD-2-Clause OR Apache-2.0 OR MIT, text [269] [270] [271]
     https://github.com/google/zerocopy
 zerofrom 0.1.8, Unicode-3.0, text [131]
     https://github.com/unicode-org/icu4x
 zerofrom-derive 0.1.8, Unicode-3.0, text [131]
     https://github.com/unicode-org/icu4x
-zeroize 1.9.1, Apache-2.0 OR MIT, text [112] [274]
+zeroize 1.9.1, Apache-2.0 OR MIT, text [112] [272]
     https://github.com/RustCrypto/utils
 zerotrie 0.2.5, Unicode-3.0, text [131]
     https://github.com/unicode-org/icu4x
@@ -1021,15 +1015,15 @@ zerovec 0.11.8, Unicode-3.0, text [131]
     https://github.com/unicode-org/icu4x
 zerovec-derive 0.11.6, Unicode-3.0, text [131]
     https://github.com/unicode-org/icu4x
-zip 4.6.1, MIT, text [275]
+zip 4.6.1, MIT, text [273]
     https://github.com/zip-rs/zip2.git
-zlib-rs 0.6.8, Zlib, text [276]
+zlib-rs 0.6.8, Zlib, text [274]
     https://github.com/trifectatechfoundation/zlib-rs
 zmij 1.0.23, MIT, text [14]
     https://github.com/dtolnay/zmij
-zvariant 5.15.0, MIT, text [269]
+zvariant 5.15.0, MIT, text [267]
     https://github.com/z-galaxy/zbus/
-zvariant_derive 5.15.0, MIT, text [269]
+zvariant_derive 5.15.0, MIT, text [267]
     https://github.com/z-galaxy/zbus/
 zvariant_utils 4.2.0, MIT, text [14]
     https://github.com/z-galaxy/zbus/
@@ -9117,7 +9111,7 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
----- [112] github.com/tklauser/numcpus v0.12.0, cloudflared 2026.9.3, embed_plist 1.2.2, rustls-platform-verifier 0.7.1, serialize-to-javascript 0.1.2, serialize-to-javascript-impl 0.1.2, siphasher 1.0.4, tinyvec 1.13.3, ureq 2.12.1, utf8_iter 1.0.4, zeroize 1.9.1 ----
+---- [112] github.com/tklauser/numcpus v0.12.0, cloudflared 2026.9.3, embed_plist 1.2.2, rustls-platform-verifier 0.7.1, serialize-to-javascript 0.1.2, serialize-to-javascript-impl 0.1.2, siphasher 1.0.4, tinyvec 1.13.3, utf8_iter 1.0.4, zeroize 1.9.1 ----
 
 Apache License
                            Version 2.0, January 2004
@@ -16563,32 +16557,7 @@ authorization of the copyright holder.
 // OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 
----- [248] ureq 2.12.1 ----
-
-MIT License
-
-Copyright (c) 2019 Martin Algesten
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
-
----- [249] urlpattern 0.6.0 ----
+---- [248] urlpattern 0.6.0 ----
 
 MIT License
 
@@ -16613,7 +16582,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
----- [250] utf8_iter 1.0.4 ----
+---- [249] utf8_iter 1.0.4 ----
 
 Copyright Mozilla Foundation
 
@@ -16642,7 +16611,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 
----- [251] uuid 1.28.0 ----
+---- [250] uuid 1.28.0 ----
 
 Copyright (c) 2014 The Rust Project Developers
 Copyright (c) 2018 Ashley Mannix, Christopher Armstrong, Dylan DPC, Hunar Roop Kahlon
@@ -16672,7 +16641,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 
----- [252] version-compare 0.2.1 ----
+---- [251] version-compare 0.2.1 ----
 
 Copyright (c) 2017 Tim Visée
 
@@ -16695,7 +16664,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
----- [253] version_check 0.9.5 ----
+---- [252] version_check 0.9.5 ----
 
 The MIT License (MIT)
 Copyright (c) 2017-2018 Sergio Benitez
@@ -16718,7 +16687,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
----- [254] vswhom 0.1.0, vswhom-sys 0.1.3 ----
+---- [253] vswhom 0.1.0, vswhom-sys 0.1.3 ----
 
 The MIT License (MIT)
 
@@ -16743,7 +16712,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
----- [255] want 0.3.2 ----
+---- [254] want 0.3.2 ----
 
 Copyright (c) 2018-2019 Sean McArthur
 
@@ -16766,7 +16735,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 
----- [256] web-time 1.1.0 ----
+---- [255] web-time 1.1.0 ----
 
 Apache License
                            Version 2.0, January 2004
@@ -16971,7 +16940,7 @@ Apache License
    limitations under the License.
 
 
----- [257] web-time 1.1.0 ----
+---- [256] web-time 1.1.0 ----
 
 MIT License
 
@@ -16996,7 +16965,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
----- [258] webkit2gtk 2.0.2 ----
+---- [257] webkit2gtk 2.0.2 ----
 
 Copyright (c) 2016 Boucher, Antoni <bouanto@zoho.com>
 Copyright (c) 2017-2021, The Gtk-rs Project Developers.
@@ -17020,7 +16989,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
----- [259] webkit2gtk-sys 2.0.2 ----
+---- [258] webkit2gtk-sys 2.0.2 ----
 
 Copyright (c) 2016 Boucher, Antoni <bouanto@zoho.com>
 
@@ -17042,72 +17011,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
----- [260] webpki-roots 0.26.11, webpki-roots 1.0.9 ----
-
-# Community Data License Agreement - Permissive - Version 2.0
-
-This is the Community Data License Agreement - Permissive, Version
-2.0 (the "agreement"). Data Provider(s) and Data Recipient(s) agree
-as follows:
-
-## 1. Provision of the Data
-
-1.1. A Data Recipient may use, modify, and share the Data made
-available by Data Provider(s) under this agreement if that Data
-Recipient follows the terms of this agreement.
-
-1.2. This agreement does not impose any restriction on a Data
-Recipient's use, modification, or sharing of any portions of the
-Data that are in the public domain or that may be used, modified,
-or shared under any other legal exception or limitation.
-
-## 2. Conditions for Sharing Data
-
-2.1. A Data Recipient may share Data, with or without modifications, so
-long as the Data Recipient makes available the text of this agreement
-with the shared Data.
-
-## 3. No Restrictions on Results
-
-3.1. This agreement does not impose any restriction or obligations
-with respect to the use, modification, or sharing of Results.
-
-## 4. No Warranty; Limitation of Liability
-
-4.1. All Data Recipients receive the Data subject to the following
-terms:
-
-THE DATA IS PROVIDED ON AN "AS IS" BASIS, WITHOUT REPRESENTATIONS,
-WARRANTIES OR CONDITIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED
-INCLUDING, WITHOUT LIMITATION, ANY WARRANTIES OR CONDITIONS OF TITLE,
-NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
-
-NO DATA PROVIDER SHALL HAVE ANY LIABILITY FOR ANY DIRECT, INDIRECT,
-INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING
-WITHOUT LIMITATION LOST PROFITS), HOWEVER CAUSED AND ON ANY THEORY OF
-LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE DATA OR RESULTS,
-EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
-
-## 5. Definitions
-
-5.1. "Data" means the material received by a Data Recipient under
-this agreement.
-
-5.2. "Data Provider" means any person who is the source of Data
-provided under this agreement and in reliance on a Data Recipient's
-agreement to its terms.
-
-5.3. "Data Recipient" means any person who receives Data directly
-or indirectly from a Data Provider and agrees to the terms of this
-agreement.
-
-5.4. "Results" means any outcome obtained by computational analysis
-of Data, including for example machine learning models and models'
-insights.
-
-
----- [261] window-vibrancy 0.8.1 ----
+---- [259] window-vibrancy 0.8.1 ----
 
 MIT License
 
@@ -17132,7 +17036,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
----- [262] window-vibrancy 0.8.1 ----
+---- [260] window-vibrancy 0.8.1 ----
 
 SPDXVersion: SPDX-2.1
 DataLicense: CC0-1.0
@@ -17155,7 +17059,7 @@ PackageDownloadLocation: git+ssh://github.com/tauri-apps/window-vibrancy.git
 Creator: Person: Daniel Thompson-Yvetot
 
 
----- [263] windows 0.62.2, windows-collections 0.3.2, windows-core 0.62.2, windows-future 0.3.2, windows-implement 0.60.2, windows-interface 0.59.3, windows-link 0.2.1, windows-numerics 0.3.1, windows-registry 0.6.1, windows-result 0.4.1, windows-strings 0.5.1, windows-sys 0.60.2, windows-sys 0.61.2, windows-targets 0.53.5, windows-threading 0.2.1, windows-version 0.1.7, windows_x86_64_msvc 0.53.1 ----
+---- [261] windows 0.62.2, windows-collections 0.3.2, windows-core 0.62.2, windows-future 0.3.2, windows-implement 0.60.2, windows-interface 0.59.3, windows-link 0.2.1, windows-numerics 0.3.1, windows-registry 0.6.1, windows-result 0.4.1, windows-strings 0.5.1, windows-sys 0.60.2, windows-sys 0.61.2, windows-targets 0.53.5, windows-threading 0.2.1, windows-version 0.1.7, windows_x86_64_msvc 0.53.1 ----
 
 Apache License
                            Version 2.0, January 2004
@@ -17360,7 +17264,7 @@ Apache License
    limitations under the License.
 
 
----- [264] windows 0.62.2, windows-collections 0.3.2, windows-core 0.62.2, windows-future 0.3.2, windows-implement 0.60.2, windows-interface 0.59.3, windows-link 0.2.1, windows-numerics 0.3.1, windows-registry 0.6.1, windows-result 0.4.1, windows-strings 0.5.1, windows-sys 0.60.2, windows-sys 0.61.2, windows-targets 0.53.5, windows-threading 0.2.1, windows-version 0.1.7, windows_x86_64_msvc 0.53.1 ----
+---- [262] windows 0.62.2, windows-collections 0.3.2, windows-core 0.62.2, windows-future 0.3.2, windows-implement 0.60.2, windows-interface 0.59.3, windows-link 0.2.1, windows-numerics 0.3.1, windows-registry 0.6.1, windows-result 0.4.1, windows-strings 0.5.1, windows-sys 0.60.2, windows-sys 0.61.2, windows-targets 0.53.5, windows-threading 0.2.1, windows-version 0.1.7, windows_x86_64_msvc 0.53.1 ----
 
 MIT License
 
@@ -17385,7 +17289,7 @@ MIT License
     SOFTWARE
 
 
----- [265] winnow 0.5.40, winnow 1.0.4 ----
+---- [263] winnow 0.5.40, winnow 1.0.4 ----
 
 Permission is hereby granted, free of charge, to any person obtaining
 a copy of this software and associated documentation files (the
@@ -17407,7 +17311,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
----- [266] winreg 0.56.0 ----
+---- [264] winreg 0.56.0 ----
 
 Copyright (c) 2015 Igor Shaula
 
@@ -17430,7 +17334,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 
----- [267] wry 0.57.0 ----
+---- [265] wry 0.57.0 ----
 
 MIT License
 
@@ -17455,7 +17359,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
----- [268] wry 0.57.0 ----
+---- [266] wry 0.57.0 ----
 
 SPDXVersion: SPDX-2.1
 DataLicense: CC0-1.0
@@ -17479,7 +17383,7 @@ PackageDownloadLocation: git+ssh://github.com/tauri-apps/wry.git
 Creator: Person: Daniel Thompson-Yvetot
 
 
----- [269] zbus 5.19.0, zbus_macros 5.19.0, zbus_names 4.3.4, zvariant 5.15.0, zvariant_derive 5.15.0 ----
+---- [267] zbus 5.19.0, zbus_macros 5.19.0, zbus_names 4.3.4, zvariant 5.15.0, zvariant_derive 5.15.0 ----
 
 Copyright (c) 2024 Zeeshan Ali Khan & zbus contributors
 
@@ -17508,7 +17412,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 
----- [270] zcheapstr 1.1.0 ----
+---- [268] zcheapstr 1.1.0 ----
 
 Copyright (c) 2026 Zeeshan Ali Khan & zcheapstr contributors
 
@@ -17537,7 +17441,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 
----- [271] zerocopy 0.8.63 ----
+---- [269] zerocopy 0.8.63 ----
 
 Apache License
                            Version 2.0, January 2004
@@ -17742,7 +17646,7 @@ Apache License
    limitations under the License.
 
 
----- [272] zerocopy 0.8.63 ----
+---- [270] zerocopy 0.8.63 ----
 
 Copyright 2019 The Fuchsia Authors.
 
@@ -17770,7 +17674,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
----- [273] zerocopy 0.8.63 ----
+---- [271] zerocopy 0.8.63 ----
 
 Copyright 2023 The Fuchsia Authors
 
@@ -17799,7 +17703,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 
----- [274] zeroize 1.9.1 ----
+---- [272] zeroize 1.9.1 ----
 
 Copyright (c) 2018-2026 The RustCrypto Project Developers
 
@@ -17828,7 +17732,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 
----- [275] zip 4.6.1 ----
+---- [273] zip 4.6.1 ----
 
 The MIT License (MIT)
 
@@ -17856,7 +17760,7 @@ Some files in the "tests/data" subdirectory of this repository are under other
 licences; see files named LICENSE.*.txt for details.
 
 
----- [276] zlib-rs 0.6.8 ----
+---- [274] zlib-rs 0.6.8 ----
 
 (C) 2024 Trifecta Tech Foundation 
 
