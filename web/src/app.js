@@ -6520,11 +6520,11 @@ function dkForget(host) {
   dkIcons();
 }
 
-// --- claude: its own tray beside the bell, on the web and in the client; the mcp's
-// url copied for claude anywhere, its calls on this host as they happen
+// --- claude: its own tray beside the bell; the mcp's url copied for claude anywhere,
+// its calls on this host as they happen
 
-// the user's key and calls from the mesh, the client's bridge and its url when there
-const claudeStat = { configured: false, running: false, seen: 0, at: 0, now: 0, calls: [], recent: [], url: '' };
+// the user's key and calls from the mesh, and its url once fetched
+const claudeStat = { configured: false, seen: 0, at: 0, now: 0, calls: [], recent: [], url: '' };
 const CLAUDE_ACTIVE_MS = 12000;
 // a connector heard from this recently counted connected
 const CLAUDE_SEEN_MS = 15 * 60000;
@@ -6535,7 +6535,7 @@ function claudeState() {
   const c = claudeStat;
   if (!c.configured) return 'off';
   if (c.calls.length || (c.at && c.now - c.at < CLAUDE_ACTIVE_MS)) return 'active';
-  return c.running || (c.seen && c.now - c.seen < CLAUDE_SEEN_MS) ? 'online' : 'idle';
+  return c.seen && c.now - c.seen < CLAUDE_SEEN_MS ? 'online' : 'idle';
 }
 
 const claudeAgo = (ms) => {
@@ -6608,7 +6608,7 @@ function dkClaudeTray() {
     hint.replaceChildren(f);
     f.focus();
   };
-  // the bar drawn again only when set up flips: connect, else copy, refresh, desktop
+  // the bar drawn again only when set up flips: connect, else copy and refresh
   let drawn = null;
   const drawBar = () => {
     const done = claudeStat.configured;
@@ -6641,10 +6641,7 @@ function dkClaudeTray() {
         },
       });
     });
-    const btns = [copy, refresh];
-    // the client writes claude desktop's config itself
-    if (clientInvoke) btns.push(button('set up desktop', 'quiet', async (x) => { if (await claudeDesktop()) flash(x, 'done, restart claude'); }));
-    bar.replaceChildren(...btns);
+    bar.replaceChildren(copy, refresh);
   };
   const paint = () => {
     const st = claudeState();
@@ -6657,7 +6654,6 @@ function dkClaudeTray() {
     stateLine.dataset.state = st;
     if (!c.configured) { body.replaceChildren(); list = null; return; }
     const rows = [row('last heard', c.seen ? `${claudeAgo(c.now - c.seen)} ago` : 'not yet', c.seen && c.now - c.seen < CLAUDE_SEEN_MS ? 'good' : '')];
-    if (clientInvoke) rows.push(row('claude desktop', c.running ? 'connected' : 'not running', c.running ? 'good' : ''));
     const calls = el('div', 'dk-cl-sec');
     calls.append(el('div', 'dk-cl-sec-t', 'calls'));
     // kept across redraws so a scroll back holds, followed when at the end
@@ -6699,15 +6695,12 @@ function dkClaudeTray() {
   return wrap;
 }
 
-// the user's key and calls from the mesh; the client's bridge, when there, for desktop
+// the user's key and calls from the mesh
 async function pollClaude() {
   const s = await acctCall('/api/me/claude');
   if (s.ok) {
     Object.assign(claudeStat, { configured: !!s.configured, seen: +s.seen || 0, at: +s.at || 0,
       now: +s.now || Date.now(), calls: s.calls || [], recent: s.recent || [] });
-  }
-  if (clientInvoke) {
-    try { claudeStat.running = !!(await clientInvoke('claude_status')).running; } catch {}
   }
   dk.claude?.paint();
 }
@@ -6724,8 +6717,6 @@ async function claudeKey(path, have = '') {
   if (!claudeStat.configured || path.endsWith('mcp-key')) {
     claudeStat.configured = true;
     noteAdd('claude connected', copied ? 'url copied' : 'copy the url');
-    // in the client, claude desktop set up too
-    if (clientInvoke) await claudeDesktop(r.key);
   }
   pollClaude();
   return { ...r, copied };
@@ -6735,23 +6726,6 @@ async function claudeKey(path, have = '') {
 function claudeFailed(why) {
   if (why) noteAdd('claude failed', String(why));
   openConfirm('claude failed', { title: 'claude', hideCancel: true, actionLabel: 'ok', onAction: closeUpdateModal });
-}
-
-// claude desktop's config written by the client, on the key in use
-async function claudeDesktop(key = '') {
-  if (!key) {
-    const r = await acctCall('/api/me/mcp-url', {});
-    if (!r.ok) { claudeFailed(r.error); return false; }
-    key = r.key;
-  }
-  try {
-    await clientInvoke('claude_setup', { key });
-    noteAdd('claude desktop set up', 'restart claude');
-    return true;
-  } catch (e) {
-    claudeFailed(e);
-    return false;
-  }
 }
 
 // the task bar's profile: a menu of settings, users and log out
