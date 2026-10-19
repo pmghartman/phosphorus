@@ -2261,17 +2261,12 @@ input, textarea { caret-color: var(--accent); }
 .dk-ctl-chip:hover, .dk-ctl-chip:focus-visible { border-color: var(--accent); outline: none; }
 .dk-ctl-chip:hover .ic { color: var(--accent); }
 /* --- claude's tray beside the bell: a dot on its glyph, a popup of status and calls ---- */
-.dk-claude-btn { position: relative; }
-.dk-claude-dot {
-  position: absolute; top: 0.55rem; right: 0.45rem; width: 0.4rem; height: 0.4rem; border-radius: 50%;
-  background: var(--muted); box-shadow: 0 0 0 1.5px var(--bg); display: none;
-}
-.dk-claude-btn[data-state="idle"] .dk-claude-dot { display: block; background: var(--dim); }
-.dk-claude-btn[data-state="online"] .dk-claude-dot { display: block; background: var(--online); }
-.dk-claude-btn[data-state="active"] .dk-claude-dot { display: block; background: var(--online); animation: claude-pulse 1.2s ease-in-out infinite; }
-.dk-claude-btn[data-state="error"] .dk-claude-dot { display: block; background: var(--accent-2); }
-.dk-claude-btn[data-state="active"], .dk-claude-btn[data-state="online"] { color: var(--fg); }
-@keyframes claude-pulse { 50% { box-shadow: 0 0 0 1.5px var(--bg), 0 0 0 4px color-mix(in srgb, var(--online) 35%, transparent); } }
+/* the glyph alone, tinted by state: off and waiting dim, online and working green, a fault orange */
+.dk-claude-btn[data-state="online"], .dk-claude-btn[data-state="active"] { color: var(--online); }
+.dk-claude-btn[data-state="active"] .ic { animation: claude-pulse 1.2s ease-in-out infinite; }
+.dk-claude-btn[data-state="error"] { color: var(--accent-2); }
+@keyframes claude-pulse { 50% { opacity: 0.45; } }
+.dk-claude-btn:hover, .dk-claude-btn[aria-expanded="true"] { color: var(--accent); }
 .dk-claude-pop {
   display: flex; flex-direction: column; background: var(--card); border: 1px solid var(--border);
   box-shadow: var(--drop); font-size: 0.75rem; animation: pop-in 0.12s ease-out;
@@ -2283,8 +2278,6 @@ input, textarea { caret-color: var(--accent); }
   background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); transition: border-color 0.15s, color 0.15s, background 0.15s;
 }
 .dk-cl-key:hover, .dk-cl-key:focus-visible { background: color-mix(in srgb, var(--accent) 24%, transparent); outline: none; }
-.dk-cl-key.grey { border-color: var(--border); background: none; color: var(--muted); }
-.dk-cl-key.grey:hover, .dk-cl-key.grey:focus-visible { border-color: var(--muted); color: var(--fg); }
 .dk-cl-head { display: flex; justify-content: space-between; align-items: baseline; padding: 0.65rem 0.7rem 0.3rem; }
 .dk-cl-title { color: var(--sage); letter-spacing: 0.04em; }
 .dk-cl-state { color: var(--muted); }
@@ -2323,7 +2316,7 @@ input, textarea { caret-color: var(--accent); }
 .toast-x { position: absolute; top: 0.2rem; right: 0.3rem; padding: 0 0.3rem; background: none; border: 0; color: var(--dim); font: inherit; font-size: 1rem; line-height: 1.2; cursor: pointer; }
 .toast-x:hover { color: var(--accent); }
 @keyframes toast-in { from { opacity: 0; transform: translateY(0.4rem); } }
-@media (prefers-reduced-motion: reduce) { .toast, .dk-claude-pop { animation: none; } .dk-claude-dot, .dk-cl-pip { animation: none !important; } }
+@media (prefers-reduced-motion: reduce) { .toast, .dk-claude-pop { animation: none; } .dk-claude-btn .ic, .dk-cl-pip { animation: none !important; } }
 .dk-ctl-theme { margin: 0.6rem; }
 /* the bar's right side: the hosts, a rule, the bell, then the clock and the user */
 .dk-bar .dk-tray-wrap:has(> .dk-bell)::before, .dk-bar .dk-tray-wrap:has(> .dk-claude-btn)::before { content: ''; align-self: center; width: 1px; height: 1.1rem; margin-right: 0.3rem; background: var(--border); }

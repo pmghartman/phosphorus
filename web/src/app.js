@@ -1731,12 +1731,18 @@ function toastShow(n) {
     const x = Object.assign(el('button', 'toast-x', '×'), { type: 'button', title: 'dismiss', ariaLabel: 'dismiss' });
     x.addEventListener('click', (e) => { e.stopPropagation(); toastClose(t); });
     t.append(el('div', 'toast-t'), el('div', 'toast-b'), x);
-    t.addEventListener('click', () => { toastClose(t); if (t.go) noteGo(t.go); });
+    t.addEventListener('click', () => {
+      toastClose(t);
+      notes = notes.filter((x) => x !== t.note);
+      notesSave();
+      if (t.go) noteGo(t.go);
+    });
     t.addEventListener('pointerenter', () => clearTimeout(t.timer));
     t.addEventListener('pointerleave', () => { t.timer = setTimeout(() => toastClose(t), TOAST_MS / 2); });
     toastHost.appendChild(t);
     while (toastHost.children.length > TOAST_MAX) toastHost.firstChild.remove();
   }
+  t.note = n;
   t.go = n.go || null;
   t.classList.toggle('go', !!n.go);
   t.querySelector('.toast-t').textContent = n.t;
@@ -1786,7 +1792,12 @@ function dkBellTray(anchor) {
     const list = el('ul', 'dk-note-list');
     list.replaceChildren(...(notes.length ? notes.map((n) => {
       const li = el('li', `dk-note${n.read ? '' : ' new'}${n.go ? ' go' : ''}`);
-      if (n.go) li.addEventListener('click', () => { show(false); noteGo(n.go); });
+      // clicked, an entry is gone, and goes where it leads when it leads anywhere
+      li.addEventListener('click', () => {
+        notes = notes.filter((x) => x !== n);
+        notesSave();
+        if (n.go) { show(false); noteGo(n.go); } else draw();
+      });
       const top = el('div', 'dk-note-top');
       top.append(el('span', 'dk-note-t', n.t), el('span', 'dk-note-at', ago2(n.at)));
       li.append(top);
@@ -2109,6 +2120,12 @@ function filesEl(files) {
     const kind = (f.type || '').split('/')[0];
     if (kind === 'image') {
       const a = Object.assign(el('a', 'msg-img'), { href: mediaUrl(f), target: '_blank', rel: 'noopener', title: f.name });
+      // on the desk, a window of its own in it; a plain link anywhere else
+      a.addEventListener('click', (e) => {
+        if (!dk.desk || e.ctrlKey || e.metaKey || e.shiftKey || e.button) return;
+        e.preventDefault();
+        dkImageWin(f);
+      });
       a.append(Object.assign(document.createElement('img'), { src: mediaUrl(f), alt: f.name, loading: 'lazy' }));
       box.append(a);
     } else if (kind === 'video' || kind === 'audio') {
@@ -2151,6 +2168,18 @@ function quoteEl(ref) {
   const text = (t.edited ?? t.text) || (t.files ? `[${t.files.map((f) => f.name).join(', ')}]` : '');
   q.append('↳ ', Object.assign(el('b', '', t.name), { style: `color: ${t.color || colorFor(t.name)}` }), ` ${text.replace(/\s+/g, ' ').slice(0, 120)}`);
   return q;
+}
+
+// a chat picture in a desk window, fit to it, a click for its own size and back
+function dkImageWin(f) {
+  const w = dkWin(`img:${f.host}:${f.id}`, f.name, 'chat', 'svc');
+  if (!w) return;
+  const box = el('div', 'dk-imgview');
+  const img = Object.assign(el('img'), { src: mediaUrl(f), alt: f.name, draggable: false });
+  box.addEventListener('click', () => box.classList.toggle('full'));
+  box.appendChild(img);
+  w.body.appendChild(box);
+  dkFocus(w);
 }
 
 // who a line is from, as notices and headers say it: claude from the user whose key it used
@@ -4436,10 +4465,10 @@ function dkLogout() {
 
 const DK_GLYPHS = {
   bell: 'M8 2.2a3.1 3.1 0 0 0-3.1 3.1v2.2L3.4 10.2h9.2L11.1 7.5V5.3A3.1 3.1 0 0 0 8 2.2zM6.6 12.6a1.4 1.4 0 0 0 2.8 0',
-  update: 'M13.5 8a5.5 5.5 0 1 1-1.6-3.9M12.5 1.5v3h-3',
+  update: 'M8 10.5v-8M4.8 5.5L8 2.5l3.2 3M2.5 9v4.5h11V9',
   gear: 'M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4',
   power: 'M8 1.5v6M4.6 3.8a5 5 0 1 0 6.8 0',
-  spark: 'M8 1.5l1.4 5.1 5.1 1.4-5.1 1.4L8 14.5l-1.4-5.1L1.5 8l5.1-1.4z',
+  spark: 'M8 1.5v13M1.5 8h13M3.4 3.4l9.2 9.2M12.6 3.4L3.4 12.6',
   reload: 'M13.5 8a5.5 5.5 0 1 1-1.8-4.1M13.5 1.5v3.5h-3.5',
   download: 'M8 2v8M4.5 7L8 10.5 11.5 7M2.5 13.5h11',
   doc: ICONS.file,
@@ -6479,7 +6508,7 @@ function dkClaudeTray() {
   const wrap = el('div', 'dk-tray-wrap dk-claude');
   const b = Object.assign(el('button', 'dk-tray dk-claude-btn'), { type: 'button', title: 'claude', ariaLabel: 'claude' });
   b.setAttribute('aria-expanded', 'false');
-  b.append(dkGlyph(DK_GLYPHS.spark), el('span', 'dk-claude-dot'));
+  b.append(dkGlyph(DK_GLYPHS.spark));
   const pop = Object.assign(el('div', 'dk-claude-pop dk-pop'), { hidden: true });
   wrap.append(b, pop);
   dkAnchor(pop, b, { fill: 300 });
@@ -6501,12 +6530,12 @@ function dkClaudeTray() {
   const body = el('div', 'dk-cl-body');
   pop.append(bar, head, body);
   head.append(el('span', 'dk-cl-title', 'claude'), stateLine);
-  // the key button: primary until set up, then grey and asked about first
+  // the key button: connects, then refreshes after a confirm
   let btn = null;
   const drawBar = () => {
     const done = claudeStat.configured;
     if (btn && btn.dataset.done === String(done)) return;
-    btn = Object.assign(el('button', `dk-cl-key${done ? ' grey' : ''}`, done ? 'refresh key' : 'connect claude'), { type: 'button' });
+    btn = Object.assign(el('button', 'dk-cl-key', done ? 'refresh key' : 'connect claude'), { type: 'button' });
     btn.dataset.done = String(done);
     btn.addEventListener('click', () => {
       show(false);
