@@ -2287,10 +2287,9 @@ input, textarea { caret-color: var(--accent); }
 .dk-ctl-chip:hover .ic { color: var(--accent); }
 /* --- claude's tray beside the bell: a dot on its glyph, a popup of status and calls ---- */
 /* the glyph alone, tinted by state: off and waiting dim, connected and running in phosphorus's
-   moving purple and orange, working pulsing too, a fault orange */
+   moving purple and orange, working pulsing too */
 .dk-claude-btn[data-state="online"] .ic path, .dk-claude-btn[data-state="active"] .ic path { stroke: url(#claude-grad); }
 .dk-claude-btn[data-state="active"] .ic { animation: claude-pulse 1.2s ease-in-out infinite; }
-.dk-claude-btn[data-state="error"] { color: var(--accent-2); }
 @keyframes claude-pulse { 50% { opacity: 0.45; } }
 .dk-claude-btn:hover, .dk-claude-btn[aria-expanded="true"] { color: var(--accent); }
 .dk-claude-pop {
@@ -2298,30 +2297,32 @@ input, textarea { caret-color: var(--accent); }
   box-shadow: var(--drop); font-size: 0.75rem; animation: pop-in 0.12s ease-out;
 }
 .dk-claude-pop[hidden] { display: none; }
-.dk-cl-bar { display: flex; gap: 0.4rem; padding: 0.6rem 0.6rem 0; }
+.dk-cl-bar { display: flex; flex-wrap: wrap; gap: 0.4rem; padding: 0.6rem 0.6rem 0; }
+.dk-cl-key.wide { flex-basis: 100%; }
+.dk-cl-hint:not(:empty) { padding: 0.45rem 0.6rem 0; }
+.dk-cl-url { width: 100%; box-sizing: border-box; padding: 0.4rem 0.5rem; border: 1px solid var(--accent); background: var(--bg); color: var(--fg); font: inherit; font-size: 0.7rem; }
 .dk-cl-key {
   flex: 1; min-width: 0; padding: 0.45rem 0.6rem; font: inherit; cursor: pointer; border: 1px solid var(--accent);
   background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); transition: border-color 0.15s, color 0.15s, background 0.15s;
 }
 .dk-cl-key:hover, .dk-cl-key:focus-visible { background: color-mix(in srgb, var(--accent) 24%, transparent); outline: none; }
-/* set up, the key button stays grey until pointed at or focused */
+/* set up, the key buttons stay grey until pointed at or focused; a finger's hover never sticks */
+@media (hover: hover) { .dk-cl-key.quiet:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); } }
 .dk-cl-key.quiet { border-color: var(--border); background: none; color: var(--muted); }
-.dk-cl-key.quiet:hover, .dk-cl-key.quiet:focus-visible, .dk-cl-key.quiet:active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
+.dk-cl-key.quiet:focus-visible, .dk-cl-key.quiet:active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
 .dk-cl-head { display: flex; justify-content: space-between; align-items: baseline; padding: 0.65rem 0.7rem 0.3rem; }
 .dk-cl-title { color: var(--sage); letter-spacing: 0.04em; }
 .dk-cl-state { color: var(--muted); }
 .dk-cl-state[data-state="online"], .dk-cl-state[data-state="active"] { color: var(--online); }
-.dk-cl-state[data-state="error"] { color: var(--accent-2); }
 .dk-cl-body { padding: 0 0 0.5rem; }
 .dk-cl-row { display: flex; justify-content: space-between; gap: 1rem; padding: 0.2rem 0.7rem; }
 .dk-cl-k { color: var(--muted); flex: none; }
 .dk-cl-v { text-align: right; overflow-wrap: anywhere; }
 .dk-cl-v.good { color: var(--online); }
-.dk-cl-v.bad { color: var(--accent-2); }
 .dk-cl-sec { margin-top: 0.4rem; border-top: 1px solid var(--border); }
 .dk-cl-sec-t { padding: 0.5rem 0.7rem 0.2rem; color: var(--sage); letter-spacing: 0.04em; }
 /* the calls a running log like claude code's: a bullet and the call, its outcome hung under it */
-.dk-cl-calls { list-style: none; margin: 0; padding: 0 0 0.2rem; max-height: min(45vh, 20rem); overflow-y: auto; overscroll-behavior: contain; }
+.dk-cl-calls { list-style: none; margin: 0; padding: 0 0 0.2rem; max-height: min(62vh, 30rem); overflow-y: auto; overscroll-behavior: contain; }
 .dk-cl-call { padding: 0.2rem 0.7rem; }
 .dk-cl-ln { display: flex; align-items: center; gap: 0.45rem; min-width: 0; }
 .dk-cl-pip { flex: none; width: 0.4rem; height: 0.4rem; border-radius: 50%; background: var(--dim); }
@@ -2364,7 +2365,7 @@ input, textarea { caret-color: var(--accent); }
 .dk-bar .dk-tray-wrap:has(> .dk-bell)::before, .dk-bar .dk-tray-wrap:has(> .dk-claude-btn)::before { margin-right: 0.15rem; }
 /* claude and the bell one pair: no gap between, each a narrower slot */
 .dk-bar .dk-tray-wrap:has(> .dk-claude-btn) + .dk-tray-wrap:has(> .dk-bell) { margin-left: -0.3rem; }
-.dk-bar .dk-tray.dk-claude-btn, .dk-bar .dk-tray.dk-bell:is(.dk-tray-wrap:has(> .dk-claude-btn) + .dk-tray-wrap > *) { width: 1.75rem; }
+.dk-bar .dk-tray.dk-claude-btn, .dk-bar .dk-claude + .dk-tray-wrap > .dk-tray.dk-bell { width: 1.75rem; }
 .dk-ctl > .dk-profile { padding: 0 0.55rem; gap: 0.4rem; }
 .dk-ctl > .dk-profile .dk-clock { margin-right: 0.15rem; }
 
@@ -2406,6 +2407,7 @@ input, textarea { caret-color: var(--accent); }
   .dk-task { max-width: 8rem; height: 2.3rem; padding: 0 0.75rem; border-color: var(--border); }
   .dk-task.active { background: color-mix(in srgb, var(--accent) 12%, transparent); }
   .dk-bar .dk-tray { padding: 0 0.75rem; }
+  .dk-bar .dk-tray.dk-claude-btn, .dk-bar .dk-claude + .dk-tray-wrap > .dk-tray.dk-bell { width: auto; padding: 0 0.6rem; }
   .dk-bar .dk-tray .ic { width: 1.1rem; height: 1.1rem; }
 
   /* windows: no frame, a tall title bar, minimize and close only */

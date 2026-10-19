@@ -855,10 +855,10 @@ func OpenGrant(token string) map[string]any {
 
 func mcpFile(n string) string { return "home/" + n + "/mcp.json" }
 
-// MCPKey a fresh key for the session's user, a year long
+// MCPKey a fresh key for the session's user, a year long, the last one void
 // the user's saved host logins ride along, sealed under a secret held only in
 // the key, its copy under the user's own key so a vault change reseals them
-func MCPKey(s *Session, _ map[string]any) R {
+func MCPKey(s *Session, _ map[string]any, r *http.Request) R {
 	if s == nil || s.Boot {
 		return errR(403, "log in as a user")
 	}
@@ -878,8 +878,54 @@ func MCPKey(s *Session, _ map[string]any) R {
 	pages, _ := cv["pages"].(map[string]any)
 	sysfs.Write(mcpFile(s.User), map[string]any{"g": g, "kk": Seal(s.Key, hex.EncodeToString(k)),
 		"c": Seal(k, string(util.Marshal(logins))), "p": Seal(k, string(util.Marshal(pages)))})
-	o := map[string]any{"u": s.User, "p": lu.PwAt, "m": g, "k": hex.EncodeToString(k)}
-	return R{Status: 200, Body: map[string]any{"key": SealGrant(o, 365*24*3600*1000), "user": s.User, "hosts": sortedKeys(logins), "pages": sortedKeys(pages)}}
+	return mcpGrant(s.User, lu.PwAt, g, k, logins, pages, r, true)
+}
+
+// MCPURL the user's key as its url: the one in use, sealed again so nothing using
+// it breaks, or a fresh one when there's none or it can't be opened
+func MCPURL(s *Session, p map[string]any, r *http.Request) R {
+	if s == nil || s.Boot {
+		return errR(403, "log in as a user")
+	}
+	lu := live(s.User)
+	if lu == nil {
+		return errR(403, "no such user")
+	}
+	rec := mcpRecord(s.User)
+	if rec.G == "" || rec.KK == nil {
+		return MCPKey(s, p, r)
+	}
+	kh, ok := Open(s.Key, *rec.KK)
+	k, err := hex.DecodeString(kh)
+	if !ok || err != nil || len(k) != 32 {
+		return MCPKey(s, p, r)
+	}
+	v, _ := vaultOf(s)
+	cv := cleanVault(v)
+	logins, _ := cv["hosts"].(map[string]any)
+	pages, _ := cv["pages"].(map[string]any)
+	return mcpGrant(s.User, lu.PwAt, rec.G, k, logins, pages, r, false)
+}
+
+// HasMCPKey whether the user has a key in use
+func HasMCPKey(u string) bool { return mcpRecord(u).G != "" }
+
+func mcpGrant(u, pwAt, g string, k []byte, logins, pages map[string]any, r *http.Request, fresh bool) R {
+	key := SealGrant(map[string]any{"u": u, "p": pwAt, "m": g, "k": hex.EncodeToString(k)}, 365*24*3600*1000)
+	return R{Status: 200, Body: map[string]any{"key": key, "url": mcpBase(r) + "/api/mcp/" + key, "fresh": fresh,
+		"user": u, "hosts": sortedKeys(logins), "pages": sortedKeys(pages)}}
+}
+
+// mcpBase where claude reaches the mesh: the base domain, else the host asked
+func mcpBase(r *http.Request) string {
+	if baseDomain != "" {
+		return "https://" + baseDomain
+	}
+	scheme := "https"
+	if r.TLS == nil && r.Header.Get("X-Forwarded-Proto") != "https" {
+		scheme = "http"
+	}
+	return scheme + "://" + r.Host
 }
 
 func sortedKeys(m map[string]any) []string {

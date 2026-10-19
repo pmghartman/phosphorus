@@ -28,3 +28,22 @@ func TestHandle(t *testing.T) {
 		t.Fatalf("notification answered %d", st)
 	}
 }
+
+func TestCallLog(t *testing.T) {
+	if d := callDetail(map[string]any{"host": "a", "command": "ls   -la\n/tmp"}); d != "ls -la /tmp" {
+		t.Fatalf("detail %q", d)
+	}
+	if d := callDetail(map[string]any{"n": 1.0, "zz": "z", "b": "b"}); d != "b" {
+		t.Fatalf("fallback %q", d)
+	}
+	id := callBegin("tester", "terminal_run", "ls")
+	if c := Calls("tester"); len(c["calls"].([]any)) != 1 {
+		t.Fatalf("live %v", c)
+	}
+	callEnd("tester", id, "boom")
+	c := Calls("tester")
+	rec := c["recent"].([]any)
+	if len(c["calls"].([]any)) != 0 || len(rec) != 1 || rec[0].(map[string]any)["error"] != "boom" {
+		t.Fatalf("done %v", c)
+	}
+}
