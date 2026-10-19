@@ -831,10 +831,12 @@ function askGitSwitch(name) {
     title: master ? 'switch git master' : 'force-promote', actionLabel: master ? 'make master' : 'force-promote',
     onAction: async () => {
       let msg = 'switching';
+      let why = '';
       try {
         const r = await fetch(`/api/githosts/${encodeURIComponent(name)}/force`, { method: 'POST' });
-        if (!r.ok) msg = `failed: ${(await r.json().catch(() => ({}))).error || r.status}`;
-      } catch (err) { msg = `failed: ${err.message}`; }
+        if (!r.ok) why = String((await r.json().catch(() => ({}))).error || r.status);
+      } catch (err) { why = err.message; }
+      if (why) { msg = 'failed'; noteAdd('git master failed', why); }
       openConfirm(msg, { title: 'git master', hideCancel: true, actionLabel: 'ok', onAction: closeUpdateModal });
     },
   });
@@ -2567,7 +2569,7 @@ function convActions(c) {
     ].filter(Boolean);
   }
   if (c === 'mesh') {
-    return [read, { label: 'clear for everyone', sub: "#mesh's history gone mesh-wide", key: 'd', danger: true, confirm: 'sure? clear #mesh for everyone', act: () => send({ type: 'clear' }) }].filter(Boolean);
+    return [read, { label: 'clear for everyone', sub: "#mesh's history gone mesh-wide", key: 'd', danger: true, confirm: 'clear all?', act: () => send({ type: 'clear' }) }].filter(Boolean);
   }
   if (isAgent(c)) {
     return [read, { label: 'open', act: () => openConv(c) },
@@ -3203,7 +3205,7 @@ function lineMenu(li, m, anchor, at = null) {
   const mine = li.dataset.acts === 'mine';
   const items = [{ label: 'reply', act: () => startReply(m) }];
   if (mine && (!m.kind || m.kind === 'dm')) items.push({ label: 'edit', act: () => startEdit(m) });
-  if (mine) items.push({ label: 'delete', sub: 'for everyone', danger: true, confirm: 'sure? delete it', act: () => send({ type: 'delete', ref: keyOf(m) }) });
+  if (mine) items.push({ label: 'delete', sub: 'for everyone', danger: true, confirm: 'delete it?', act: () => send({ type: 'delete', ref: keyOf(m) }) });
   const row = el('div', 'pop-reacts');
   for (const r of REACTIONS) {
     const x = Object.assign(el('button', m.reacts?.get(`${name}\n${r}`)?.on ? 'on' : '', r), { type: 'button' });
@@ -3374,7 +3376,7 @@ function showInvite(m) {
   showFile = m.file;
   showSeen = Math.max(showSeen, m.timestamp);
   try { localStorage.setItem('phosphorus-show-seen', String(showSeen)); } catch {}
-  document.getElementById('show-modal-text').replaceChildren(el('b', '', m.name), ' wants to work on ', el('code', '', m.file.label), ' with you, in a shared editor.');
+  document.getElementById('show-modal-text').replaceChildren(el('b', '', m.name), ' invites: ', el('code', '', m.file.label));
   showModal.hidden = false;
   document.getElementById('show-modal-go').focus();
 }
@@ -3941,7 +3943,7 @@ async function askToStart() {
     });
     return;
   }
-  openConfirm(`v${c.latest}?`, {
+  openConfirm(`${c.latest} is out. update?`, {
     title: 'update', actionLabel: 'update',
     onAction: () => startChain(),
   });
@@ -4402,7 +4404,7 @@ function dkDesktop() {
   const ctl = dkControlTray();
   const bell = dkBellTray();
   bar.insertBefore(bell, dkTray);
-  if (clientInvoke && !acct?.boot) bar.insertBefore(dkClaudeTray(), bell);
+  if (!acct?.boot) bar.insertBefore(dkClaudeTray(), bell);
   bar.append(ctl);
   // the mesh and update panes opened from the panel, their own buttons out of sight
   ctl.append(dkMeshTray(dk.ctl.btn), dkTray, updateModal);
@@ -6518,20 +6520,22 @@ function dkForget(host) {
   dkIcons();
 }
 
-// --- claude: its own tray beside the bell, the bridge's state and calls in a popup
+// --- claude: its own tray beside the bell, on the web and in the client; the mcp's
+// url copied for claude anywhere, its calls on this host as they happen
 
-// the client bridge's live state: set up, running, its calls and the mesh's answer
-const claudeStat = { configured: false, running: false, at: 0, ok: true, error: '', now: 0, calls: [], recent: [], mesh: null, probed: 0 };
+// the user's key and calls from the mesh, the client's bridge and its url when there
+const claudeStat = { configured: false, running: false, seen: 0, at: 0, now: 0, calls: [], recent: [], url: '' };
 const CLAUDE_ACTIVE_MS = 12000;
-const CLAUDE_PROBE_MS = 15000;
+// a connector heard from this recently counted connected
+const CLAUDE_SEEN_MS = 15 * 60000;
 
-// error, active, online (set up and the mesh answering), offline or off
+// active, online (claude connected), idle (a key, nothing heard) or off; a failed
+// call shown in the log, never the tray
 function claudeState() {
   const c = claudeStat;
   if (!c.configured) return 'off';
-  if (!c.ok || c.mesh?.online === false) return 'error';
   if (c.calls.length || (c.at && c.now - c.at < CLAUDE_ACTIVE_MS)) return 'active';
-  return c.running ? 'online' : 'idle';
+  return c.running || (c.seen && c.now - c.seen < CLAUDE_SEEN_MS) ? 'online' : 'idle';
 }
 
 const claudeAgo = (ms) => {
@@ -6577,118 +6581,177 @@ function dkClaudeTray() {
     if (c.detail) li.title = c.detail;
     return li;
   };
-  // the history oldest first, live at the end, protocol chatter left out
-  const isTool = (c) => c.tool && !c.tool.includes('/') && c.tool !== 'initialize';
   let list = null;
   const head = el('div', 'dk-cl-head');
   const stateLine = el('span', 'dk-cl-state');
   const bar = el('div', 'dk-cl-bar');
+  // the url itself, only when the clipboard refused it
+  const hint = el('div', 'dk-cl-hint');
   const body = el('div', 'dk-cl-body');
-  pop.append(bar, head, body);
+  pop.append(bar, hint, head, body);
   head.append(el('span', 'dk-cl-title', 'claude'), stateLine);
-  // the key button: connects, then quiet until pointed at, refreshing after a confirm
-  let btn = null;
+  const flash = (x, text) => {
+    const was = x.dataset.label;
+    x.textContent = text;
+    setTimeout(() => { x.textContent = was; }, 1800);
+  };
+  const button = (label, cls, act) => {
+    const x = Object.assign(el('button', `dk-cl-key ${cls}`, label), { type: 'button' });
+    x.dataset.label = label;
+    x.addEventListener('click', () => act(x));
+    return x;
+  };
+  const showUrl = (url, copied) => {
+    if (copied) { hint.replaceChildren(); return; }
+    const f = Object.assign(el('input', 'dk-cl-url'), { readOnly: true, value: url, spellcheck: false, title: 'copy, then paste into claude: settings, connectors, add custom connector' });
+    f.addEventListener('focus', () => f.select());
+    hint.replaceChildren(f);
+    f.focus();
+  };
+  // the bar drawn again only when set up flips: connect, else copy, refresh, desktop
+  let drawn = null;
   const drawBar = () => {
     const done = claudeStat.configured;
-    if (btn && btn.dataset.done === String(done)) return;
-    btn = Object.assign(el('button', `dk-cl-key${done ? ' quiet' : ''}`, done ? 'refresh key' : 'connect claude'), { type: 'button' });
-    btn.dataset.done = String(done);
-    btn.addEventListener('click', () => {
+    if (drawn === done) return;
+    drawn = done;
+    if (!done) {
+      bar.replaceChildren(button('connect claude', 'wide', async () => {
+        const r = await claudeKey('/api/me/mcp-url');
+        if (r) showUrl(r.url, r.copied);
+      }));
+      hint.replaceChildren();
+      return;
+    }
+    hint.replaceChildren();
+    const copy = button('copy mcp url', 'quiet wide', async (x) => {
+      const r = await claudeKey('/api/me/mcp-url', claudeStat.url);
+      if (!r) return;
+      flash(x, r.copied ? 'copied' : 'copy it below');
+      showUrl(r.url, r.copied);
+    });
+    copy.title = 'paste into claude: settings, connectors, add custom connector';
+    const refresh = button('refresh key', 'quiet', () => {
       show(false);
-      if (!claudeStat.configured) { claudeConnect(); return; }
-      openConfirm('The old key stops working and claude must be restarted.', {
-        title: 'refresh claude\'s key?', actionLabel: 'refresh', onAction: () => { closeUpdateModal(); claudeConnect(); },
+      openConfirm('old url dies', {
+        title: 'refresh key?', actionLabel: 'refresh',
+        onAction: async () => {
+          closeUpdateModal();
+          const r = await claudeKey('/api/me/mcp-key');
+          if (r) { show(true); showUrl(r.url, r.copied); }
+        },
       });
     });
-    if (!done) { bar.replaceChildren(btn); return; }
-    // the same key as one url, for claude on a phone or the web as a custom connector
-    const url = Object.assign(el('button', 'dk-cl-key quiet', 'copy phone url'), { type: 'button', title: 'add it in claude, settings, connectors; it holds your key' });
-    url.addEventListener('click', async () => {
-      try {
-        await copyText(await clientInvoke('claude_url'));
-        url.textContent = 'copied';
-      } catch (e) { url.textContent = String(e).includes('not allowed') ? 'update the client' : 'failed'; }
-      setTimeout(() => { url.textContent = 'copy phone url'; }, 1800);
-    });
-    bar.replaceChildren(btn, url);
+    const btns = [copy, refresh];
+    // the client writes claude desktop's config itself
+    if (clientInvoke) btns.push(button('set up desktop', 'quiet', async (x) => { if (await claudeDesktop()) flash(x, 'done, restart claude'); }));
+    bar.replaceChildren(...btns);
   };
   const paint = () => {
     const st = claudeState();
     b.dataset.state = st;
-    b.title = { off: 'claude, not connected', idle: 'claude, waiting to start', online: 'claude, online', active: 'claude, working', error: 'claude, needs attention' }[st];
+    b.title = { off: 'claude, not connected', idle: 'claude, nothing heard lately', online: 'claude, connected', active: 'claude, working' }[st];
     if (pop.hidden) return;
     drawBar();
     const c = claudeStat;
-    stateLine.textContent = { off: 'not connected', idle: 'waiting for claude desktop', online: 'online', active: 'working', error: 'attention' }[st];
+    stateLine.textContent = { off: 'not connected', idle: 'idle', online: 'connected', active: 'working' }[st];
     stateLine.dataset.state = st;
-    const rows = [];
-    if (!c.configured) {
-      rows.push(el('div', 'dk-cl-none', 'Connect to let claude desktop use this mesh as you.'));
-    } else {
-      const m = c.mesh;
-      rows.push(row('mcp', m ? (m.online ? `online · ${m.ms}ms` : m.error || 'offline') : 'checking', m ? (m.online ? 'good' : 'bad') : ''));
-      rows.push(row('claude desktop', c.running ? 'connected' : 'not running', c.running ? 'good' : ''));
-      if (c.error) rows.push(row('last error', c.error, 'bad'));
-      const calls = el('div', 'dk-cl-sec');
-      calls.append(el('div', 'dk-cl-sec-t', 'calls'));
-      // kept across redraws so a scroll back holds, followed when at the end
-      const stick = !list || list.scrollHeight - list.scrollTop - list.clientHeight < 8;
-      const keep = list?.scrollTop || 0;
-      list = list || el('ul', 'dk-cl-calls');
-      list.replaceChildren(...[...c.recent].reverse().filter(isTool).map((x) => callRow(x, false)), ...c.calls.filter(isTool).map((x) => callRow(x, true)));
-      if (!list.children.length) list.append(el('li', 'dk-cl-none', 'no calls yet'));
-      calls.append(list);
-      rows.push(calls);
-      body.replaceChildren(...rows);
-      list.scrollTop = stick ? list.scrollHeight : keep;
-      return;
-    }
+    if (!c.configured) { body.replaceChildren(); list = null; return; }
+    const rows = [row('last heard', c.seen ? `${claudeAgo(c.now - c.seen)} ago` : 'not yet', c.seen && c.now - c.seen < CLAUDE_SEEN_MS ? 'good' : '')];
+    if (clientInvoke) rows.push(row('claude desktop', c.running ? 'connected' : 'not running', c.running ? 'good' : ''));
+    const calls = el('div', 'dk-cl-sec');
+    calls.append(el('div', 'dk-cl-sec-t', 'calls'));
+    // kept across redraws so a scroll back holds, followed when at the end
+    const stick = !list || list.scrollHeight - list.scrollTop - list.clientHeight < 8;
+    const keep = list?.scrollTop || 0;
+    list = list || el('ul', 'dk-cl-calls');
+    list.replaceChildren(...[...c.recent].reverse().map((x) => callRow(x, false)), ...c.calls.map((x) => callRow(x, true)));
+    if (!list.children.length) list.append(el('li', 'dk-cl-none', 'no calls yet'));
+    calls.append(list);
+    rows.push(calls);
     body.replaceChildren(...rows);
+    list.scrollTop = stick ? list.scrollHeight : keep;
   };
   const show = (on) => {
     if (!on && pop.hidden) return;
     if (on) dkPopsClose('claude');
     pop.hidden = !on;
     b.setAttribute('aria-expanded', String(on));
-    if (on) { btn = null; list = null; paint(); pollClaude(true); }
+    if (on) {
+      drawn = null;
+      list = null;
+      paint();
+      if (claudeStat.configured) hint.replaceChildren();
+      pollClaude();
+      // the url ready before a tap, so copying it is the tap's own
+      if (claudeStat.configured) acctCall('/api/me/mcp-url', {}).then((r) => { if (r.ok) claudeStat.url = r.url; });
+    }
   };
   b.addEventListener('click', () => show(pop.hidden));
   document.addEventListener('pointerdown', (e) => { if (!pop.hidden && !wrap.contains(e.target) && !updateModal.contains(e.target)) show(false); }, true);
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !pop.hidden) show(false); });
-  dk.claude = { show, paint };
-  pollClaude();
-  clearInterval(dk.claudeTimer);
-  dk.claudeTimer = setInterval(() => pollClaude(), 1500);
+  dk.claude = { show, paint, open: () => !pop.hidden };
+  clearTimeout(dk.claudeTimer);
+  const tick = async () => {
+    if (!document.hidden) await pollClaude();
+    dk.claudeTimer = setTimeout(tick, pop.hidden ? 8000 : 2000);
+  };
+  tick();
   return wrap;
 }
 
-// the bridge polled while the client is open; the mesh probed now and then, or on demand
-async function pollClaude(probe = false) {
-  if (!clientInvoke) return;
-  try {
-    const s = await clientInvoke('claude_status');
-    Object.assign(claudeStat, { configured: !!s.configured, running: !!s.running, at: +s.at || 0, ok: s.ok !== false, error: s.error || '',
+// the user's key and calls from the mesh; the client's bridge, when there, for desktop
+async function pollClaude() {
+  const s = await acctCall('/api/me/claude');
+  if (s.ok) {
+    Object.assign(claudeStat, { configured: !!s.configured, seen: +s.seen || 0, at: +s.at || 0,
       now: +s.now || Date.now(), calls: s.calls || [], recent: s.recent || [] });
-  } catch {}
-  dk.claude?.paint();
-  if (!claudeStat.configured || (!probe && Date.now() - claudeStat.probed < CLAUDE_PROBE_MS)) return;
-  claudeStat.probed = Date.now();
-  try { claudeStat.mesh = await clientInvoke('claude_probe'); } catch { claudeStat.mesh = { online: false, error: 'client unreachable' }; }
+  }
+  if (clientInvoke) {
+    try { claudeStat.running = !!(await clientInvoke('claude_status')).running; } catch {}
+  }
   dk.claude?.paint();
 }
 
-// a fresh key with this user's rights, written into Claude Desktop by the client
-async function claudeConnect() {
-  const r = await acctCall('/api/me/mcp-key', {});
-  if (!r.ok) { openConfirm(r.error || 'failed', { title: 'claude', hideCancel: true, actionLabel: 'ok', onAction: closeUpdateModal }); return; }
+// the key's url from the mesh, copied: the one in use, or a fresh one voiding it.
+// a url already in hand copied in the tap itself, else once it lands
+async function claudeKey(path, have = '') {
+  let copied = false;
+  if (have) { try { await copyText(have); copied = true; } catch {} }
+  const r = have ? { ok: true, url: have } : await acctCall(path, {});
+  if (!r.ok) { claudeFailed(r.error); return null; }
+  if (!copied) { try { await copyText(r.url); copied = true; } catch {} }
+  claudeStat.url = r.url;
+  if (!claudeStat.configured || path.endsWith('mcp-key')) {
+    claudeStat.configured = true;
+    noteAdd('claude connected', copied ? 'url copied' : 'copy the url');
+    // in the client, claude desktop set up too
+    if (clientInvoke) await claudeDesktop(r.key);
+  }
+  pollClaude();
+  return { ...r, copied };
+}
+
+// a failure in two words, its why in the notes
+function claudeFailed(why) {
+  if (why) noteAdd('claude failed', String(why));
+  openConfirm('claude failed', { title: 'claude', hideCancel: true, actionLabel: 'ok', onAction: closeUpdateModal });
+}
+
+// claude desktop's config written by the client, on the key in use
+async function claudeDesktop(key = '') {
+  if (!key) {
+    const r = await acctCall('/api/me/mcp-url', {});
+    if (!r.ok) { claudeFailed(r.error); return false; }
+    key = r.key;
+  }
   try {
-    const at = await clientInvoke('claude_setup', { key: r.key });
-    const hs = r.hosts || [];
-    const git = (r.pages || []).includes(GIT_SERVICE) ? ', works on forgejo as you' : '';
-    noteAdd('claude connected', `quit claude fully and reopen it${hs.length ? `, runs commands as you on ${hs.join(', ')}` : ''}${git}; config: ${at}`);
-    claudeStat.mesh = null;
-    pollClaude(true);
-  } catch (e) { openConfirm(`failed: ${e}`, { title: 'claude', hideCancel: true, actionLabel: 'ok', onAction: closeUpdateModal }); }
+    await clientInvoke('claude_setup', { key });
+    noteAdd('claude desktop set up', 'restart claude');
+    return true;
+  } catch (e) {
+    claudeFailed(e);
+    return false;
+  }
 }
 
 // the task bar's profile: a menu of settings, users and log out

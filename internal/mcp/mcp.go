@@ -1298,12 +1298,20 @@ func runTool(t *tool, params map[string]any, local bool, caller *Caller) (out an
 }
 
 func callTool(id any, params map[string]any, local bool, caller *Caller) map[string]any {
+	errText := ""
 	name, _ := params["name"].(string)
 	t := toolIndex[name]
 	if t == nil || !visible(t, local, caller) {
 		return fail(id, -32602, fmt.Sprintf("no tool %s", util.JSString(params["name"])))
 	}
+	if caller != nil {
+		id := callBegin(caller.User, name, callDetail(util.Obj(params["arguments"])))
+		defer func() { callEnd(caller.User, id, errText) }()
+	}
 	out, err := runTool(t, params, local, caller)
+	if err != nil {
+		errText = err.Error()
+	}
 	if err == nil {
 		return reply(id, map[string]any{"content": []any{map[string]any{"type": "text", "text": string(util.Marshal(toAny(out)))}}})
 	}
@@ -1324,6 +1332,9 @@ func callTool(id any, params map[string]any, local bool, caller *Caller) map[str
 // Handle a message or a batch: status and body, 202 and nil for notifications only
 func Handle(body any, local bool, caller *Caller) (int, any) {
 	toolsOnce.Do(buildOnce)
+	if caller != nil {
+		markSeen(caller.User)
+	}
 	if arr, ok := body.([]any); ok {
 		outs := make([]map[string]any, len(arr))
 		var wg sync.WaitGroup

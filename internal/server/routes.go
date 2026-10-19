@@ -61,11 +61,20 @@ var userCalls = map[string]userCall{
 	"POST /api/logout": func(_ *users.Session, _ map[string]any, r *http.Request) users.R {
 		return users.R{Status: 200, Body: map[string]any{"ok": true}, Cookie: users.ClearCookie(r)}
 	},
-	"POST /api/me/vault":      func(s *users.Session, p map[string]any, _ *http.Request) users.R { return users.SetVault(s, p) },
-	"POST /api/me/prefs":      func(s *users.Session, p map[string]any, _ *http.Request) users.R { return users.SetPrefs(s, p) },
-	"POST /api/me/wallpaper":  func(s *users.Session, p map[string]any, _ *http.Request) users.R { return users.SetWallpaper(s, p) },
-	"POST /api/me/password":   func(s *users.Session, p map[string]any, r *http.Request) users.R { return users.ChangePass(s, p, r) },
-	"POST /api/me/mcp-key":    func(s *users.Session, p map[string]any, _ *http.Request) users.R { return users.MCPKey(s, p) },
+	"POST /api/me/vault":     func(s *users.Session, p map[string]any, _ *http.Request) users.R { return users.SetVault(s, p) },
+	"POST /api/me/prefs":     func(s *users.Session, p map[string]any, _ *http.Request) users.R { return users.SetPrefs(s, p) },
+	"POST /api/me/wallpaper": func(s *users.Session, p map[string]any, _ *http.Request) users.R { return users.SetWallpaper(s, p) },
+	"POST /api/me/password":  func(s *users.Session, p map[string]any, r *http.Request) users.R { return users.ChangePass(s, p, r) },
+	"POST /api/me/mcp-key":   func(s *users.Session, p map[string]any, r *http.Request) users.R { return users.MCPKey(s, p, r) },
+	"POST /api/me/mcp-url":   func(s *users.Session, p map[string]any, r *http.Request) users.R { return users.MCPURL(s, p, r) },
+	"GET /api/me/claude": func(s *users.Session, _ map[string]any, _ *http.Request) users.R {
+		if s == nil || s.Boot {
+			return users.R{Status: 403, Body: map[string]any{"error": "log in as a user"}}
+		}
+		out := mcp.Calls(s.User)
+		out["configured"] = users.HasMCPKey(s.User)
+		return users.R{Status: 200, Body: out}
+	},
 	"POST /api/me/mcp-revoke": func(s *users.Session, p map[string]any, _ *http.Request) users.R { return users.MCPRevoke(s, p) },
 	"GET /api/users":          func(s *users.Session, _ map[string]any, _ *http.Request) users.R { return users.List(s) },
 	"POST /api/users":         func(s *users.Session, p map[string]any, _ *http.Request) users.R { return users.Create(s, p) },
