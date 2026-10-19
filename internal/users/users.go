@@ -873,42 +873,50 @@ func MCPKey(s *Session, _ map[string]any) R {
 	g := randHex(8)
 	k := make([]byte, 32)
 	rand.Read(k)
-	logins, _ := cleanVault(v)["hosts"].(map[string]any)
-	hosts := []string{}
-	for h := range logins {
-		hosts = append(hosts, h)
-	}
-	sort.Strings(hosts)
-	sysfs.Write(mcpFile(s.User), map[string]any{"g": g, "kk": Seal(s.Key, hex.EncodeToString(k)), "c": Seal(k, string(util.Marshal(logins)))})
+	cv := cleanVault(v)
+	logins, _ := cv["hosts"].(map[string]any)
+	pages, _ := cv["pages"].(map[string]any)
+	sysfs.Write(mcpFile(s.User), map[string]any{"g": g, "kk": Seal(s.Key, hex.EncodeToString(k)),
+		"c": Seal(k, string(util.Marshal(logins))), "p": Seal(k, string(util.Marshal(pages)))})
 	o := map[string]any{"u": s.User, "p": lu.PwAt, "m": g, "k": hex.EncodeToString(k)}
-	return R{Status: 200, Body: map[string]any{"key": SealGrant(o, 365*24*3600*1000), "user": s.User, "hosts": hosts}}
+	return R{Status: 200, Body: map[string]any{"key": SealGrant(o, 365*24*3600*1000), "user": s.User, "hosts": sortedKeys(logins), "pages": sortedKeys(pages)}}
+}
+
+func sortedKeys(m map[string]any) []string {
+	out := []string{}
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+type mcpRec struct {
+	G  string `json:"g"`
+	KK *Box   `json:"kk"`
+	C  *Box   `json:"c"`
+	P  *Box   `json:"p,omitempty"`
 }
 
 // mcpRecord the user's key record, its boxes typed
-func mcpRecord(u string) (g string, kk, c *Box) {
-	var rec struct {
-		G  string `json:"g"`
-		KK *Box   `json:"kk"`
-		C  *Box   `json:"c"`
-	}
-	if !sysfs.ReadInto(mcpFile(u), &rec) {
-		return "", nil, nil
-	}
-	return rec.G, rec.KK, rec.C
+func mcpRecord(u string) (rec mcpRec) {
+	sysfs.ReadInto(mcpFile(u), &rec)
+	return rec
 }
 
 // resealMCP the key's host logins kept in step with a vault just saved
 func resealMCP(s *Session, vault map[string]any) {
-	g, kk, _ := mcpRecord(s.User)
-	if kk == nil {
+	rec := mcpRecord(s.User)
+	if rec.KK == nil {
 		return
 	}
-	kh, ok := Open(s.Key, *kk)
+	kh, ok := Open(s.Key, *rec.KK)
 	k, err := hex.DecodeString(kh)
 	if !ok || err != nil || len(k) != 32 {
 		return
 	}
-	sysfs.Write(mcpFile(s.User), map[string]any{"g": g, "kk": kk, "c": Seal(k, string(util.Marshal(vault["hosts"])))})
+	sysfs.Write(mcpFile(s.User), map[string]any{"g": rec.G, "kk": rec.KK,
+		"c": Seal(k, string(util.Marshal(vault["hosts"]))), "p": Seal(k, string(util.Marshal(vault["pages"])))})
 }
 
 // MCPLogin the host login a key carries, ok false when it carries none
@@ -920,7 +928,14 @@ func MCPLogin(key, host string) (user, pass string, ok bool) {
 }
 
 // MCPLogins every host login a key carries, by host
-func MCPLogins(key string) map[string]any {
+func MCPLogins(key string) map[string]any { return mcpOpen(key, func(r mcpRec) *Box { return r.C }) }
+
+// MCPPages every page login a key carries by its name: url, user and pass;
+// a key older than this carries none
+func MCPPages(key string) map[string]any { return mcpOpen(key, func(r mcpRec) *Box { return r.P }) }
+
+// mcpOpen one of a key's boxes opened with the secret the key holds
+func mcpOpen(key string, box func(mcpRec) *Box) map[string]any {
 	o := OpenGrant(key)
 	if o == nil {
 		return nil
@@ -931,8 +946,9 @@ func MCPLogins(key string) map[string]any {
 		return nil
 	}
 	u, _ := o["u"].(string)
-	g, _, c := mcpRecord(u)
-	if c == nil || g != o["m"] {
+	rec := mcpRecord(u)
+	c := box(rec)
+	if c == nil || rec.G != o["m"] {
 		return nil
 	}
 	text, ok := Open(k, *c)
@@ -982,7 +998,7 @@ func CheckMCPKey(key string) (*Session, string) {
 	case o["p"] != lu.PwAt:
 		return nil, "voided by a password change, make a new one"
 	}
-	if cur, _, _ := mcpRecord(u); cur == "" || cur != g {
+	if cur := mcpRecord(u).G; cur == "" || cur != g {
 		return nil, "revoked or replaced by a newer key"
 	}
 	return &Session{User: u, Admin: lu.Admin}, ""

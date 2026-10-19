@@ -66,7 +66,7 @@ func localOp(op string, p map[string]any) (int, any) {
 		}
 		return 200, map[string]any{"closed": p["id"]}
 	case "exec":
-		return localExec(str(p["user"]), str(p["pass"]), str(p["cmd"]), int(num(p["timeout"])))
+		return localExec(str(p["user"]), str(p["pass"]), str(p["cmd"]), str(p["stdin"]), int(num(p["timeout"])))
 	case "service_health":
 		ip := util.TailnetIP(selfHost)
 		if ip == "" {
@@ -270,9 +270,9 @@ func (c *capped) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// localExec one command as user over this host's own sshd, no pty: its exit
-// code, stdout and stderr; killed past timeout seconds
-func localExec(user, pass, cmd string, timeout int) (int, any) {
+// localExec one command as user over this host's own sshd, no pty, stdin fed
+// it: its exit code, stdout and stderr; killed past timeout seconds
+func localExec(user, pass, cmd, stdin string, timeout int) (int, any) {
 	if user == "" || strings.TrimSpace(cmd) == "" {
 		return 400, map[string]any{"error": "a login and a command"}
 	}
@@ -306,6 +306,9 @@ func localExec(user, pass, cmd string, timeout int) (int, any) {
 	defer ss.Close()
 	stdout, stderr := &capped{n: execOutMax}, &capped{n: execOutMax}
 	ss.Stdout, ss.Stderr = stdout, stderr
+	if stdin != "" {
+		ss.Stdin = strings.NewReader(stdin)
+	}
 	t0 := time.Now()
 	done := make(chan error, 1)
 	go func() { done <- ss.Run(cmd) }()
