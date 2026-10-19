@@ -155,12 +155,16 @@ func controlTools(local func(m Meta) bool) []tool {
 				return pressed(src.Actions.ChatEdit(m.Caller.User, str(a["ref"]), str(a["action"]), str(a["text"])))
 			}},
 		{name: "terminal_run", scope: "key", destructive: true,
-			description: "Run a command on a host as you, with exactly the rights of your saved login for it. With a login saved, " +
-				"it signs in over ssh on its own, no window needed, and returns the exit code, stdout and stderr (each command a fresh " +
-				"shell, so chain steps with && or ;). mode tab runs it instead in your shared, logged-in terminal tab (open_terminal " +
-				"opens one) and returns the screen, keeping its directory and state between commands. Never types a password. " + noCreds,
+			description: "Run a command or a whole script on a host as you, with exactly the rights of your saved login for it, as if " +
+				"you were at its shell. With a login saved, it signs in over ssh on its own, no window needed, and returns the exit code, " +
+				"stdout and stderr (each call a fresh shell, so cd within it). stdin feeds the command, e.g. cat > file to write any file " +
+				"the login may. git true hands git your forgejo login for clone, fetch and push over https (a posix shell). " +
+				"mode tab runs one line instead in your shared, logged-in terminal tab (open_terminal opens one) and returns the screen, " +
+				"keeping its directory and state between commands. Never types a password. " + noCreds,
 			schema: object(map[string]any{"host": name,
-				"command": map[string]any{"type": "string", "description": "one line, run as typed"},
+				"command": map[string]any{"type": "string", "description": "run as typed by the login's shell; several lines over ssh, one in a tab"},
+				"stdin":   map[string]any{"type": "string", "description": "ssh only: text fed to the command's stdin"},
+				"git":     map[string]any{"type": "boolean", "description": "ssh only: your forgejo login handed to git for the mesh's forgejo", "default": false},
 				"mode":    map[string]any{"type": "string", "enum": []any{"auto", "ssh", "tab"}, "description": "auto: ssh with a saved login, else a shared tab", "default": "auto"},
 				"id":      map[string]any{"type": "string", "description": "tab only: terminal id from terminal_screen, if several are shared"},
 				"wait_s":  map[string]any{"type": "integer", "description": "ssh: seconds before it's killed, up to 600; tab: seconds to wait for output to settle, up to 120", "default": 60}}, "host", "command"),
@@ -173,9 +177,6 @@ func controlTools(local func(m Meta) bool) []tool {
 					return nil, err
 				}
 				cmd := str(a["command"])
-				if strings.ContainsAny(cmd, "\r\n") {
-					return nil, errc("bad_input", "one line only")
-				}
 				if strings.TrimSpace(cmd) == "" {
 					return nil, errc("bad_input", "missing 'command'")
 				}
@@ -196,7 +197,21 @@ func controlTools(local func(m Meta) bool) []tool {
 					if w < 1 || w > 600 {
 						return nil, errc("bad_input", "wait_s is 1 to 600")
 					}
-					return pressed(src.Actions.Op(h, "exec", map[string]any{"user": user, "pass": pass, "cmd": cmd, "timeout": float64(w)}))
+					stdin := str(a["stdin"])
+					if a["git"] == true {
+						pre, creds, err := gitCreds(m.Caller)
+						if err != nil {
+							return nil, err
+						}
+						cmd, stdin = pre+cmd, creds+stdin
+					}
+					return pressed(src.Actions.Op(h, "exec", map[string]any{"user": user, "pass": pass, "cmd": cmd, "stdin": stdin, "timeout": float64(w)}))
+				}
+				if strings.ContainsAny(cmd, "\r\n") {
+					return nil, errc("bad_input", "one line only in a tab; save a login for %s to run scripts over ssh", h)
+				}
+				if str(a["stdin"]) != "" || a["git"] == true {
+					return nil, errc("bad_input", "stdin and git are over ssh only; save a login for %s", h)
 				}
 				w := int(numOr(a["wait_s"], 30))
 				if w < 1 || w > waitMaxS {

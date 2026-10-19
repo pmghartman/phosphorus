@@ -284,7 +284,8 @@ func appHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			k := strings.TrimSpace(key)
 			caller = &mcp.Caller{User: s.User, Admin: s.Admin, Via: strings.ToLower(strings.TrimSpace(r.Header.Get("X-Phosphorus-Via"))),
-				Login: func(host string) (string, string, bool) { return users.MCPLogin(k, host) }}
+				Login: func(host string) (string, string, bool) { return users.MCPLogin(k, host) },
+				Pages: func() map[string]any { return users.MCPPages(k) }}
 		} else if !isLoopback(r) && !isTailnet(r) {
 			forbidden(w)
 			return
@@ -732,7 +733,8 @@ func appHandler(w http.ResponseWriter, r *http.Request) {
 			forbidden(w)
 			return
 		}
-		onJSON(w, r, maxJSONBody, true, peerOp)
+		// a grant sealing an exec's stdin, past a plain body's cap
+		onJSON(w, r, maxSaveBody, true, peerOp)
 		return
 	}
 	if strings.HasPrefix(pathname, "/internal/") && method == "POST" && (pathname == "/internal/logs" || pathname == "/internal/config" || pathname == "/internal/ui") {

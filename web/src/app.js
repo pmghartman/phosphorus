@@ -6406,7 +6406,8 @@ async function claudeConnect() {
   try {
     const at = await clientInvoke('claude_setup', { key: r.key });
     const hs = r.hosts || [];
-    noteAdd('claude connected', `quit claude fully and reopen it${hs.length ? `, runs commands as you on ${hs.join(', ')}` : ''}; config: ${at}`);
+    const git = (r.pages || []).includes(GIT_SERVICE) ? ', works on forgejo as you' : '';
+    noteAdd('claude connected', `quit claude fully and reopen it${hs.length ? `, runs commands as you on ${hs.join(', ')}` : ''}${git}; config: ${at}`);
   } catch (e) { openConfirm(`failed: ${e}`, { title: 'claude', hideCancel: true, actionLabel: 'ok', onAction: closeUpdateModal }); }
 }
 

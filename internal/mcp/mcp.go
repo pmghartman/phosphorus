@@ -289,6 +289,8 @@ type Caller struct {
 	Via   string
 	// Login the host login the key carries, ok false for none
 	Login func(host string) (user, pass string, ok bool)
+	// Pages the page logins the key carries by name: url, user, pass
+	Pages func() map[string]any
 }
 
 // Meta an ask's context: its asker, role and project, or a keyed caller
@@ -465,6 +467,7 @@ func buildTools() {
 	defer func() {
 		tools = append(tools, agentTools()...)
 		tools = append(tools, controlTools(func(m Meta) bool { return m.Local })...)
+		tools = append(tools, forgejoTools()...)
 		describe()
 	}()
 	tools = []tool{
