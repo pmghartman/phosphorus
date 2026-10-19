@@ -44,6 +44,10 @@ func WriteConfig(file string, peers []Peer) error {
 	if err := os.WriteFile(file, []byte(text), 0o644); err != nil {
 		return err
 	}
+	// Windows OpenSSH refuses an included config others can write
+	if err := util.LockACL(file, true); err != nil {
+		return err
+	}
 	lastConfig = text
 	return nil
 }

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/pmghartman/phosphorus/internal/ini"
+	"github.com/pmghartman/phosphorus/internal/util"
 )
 
 const gameTag = "phosphorus-game-control"
@@ -120,14 +121,16 @@ func authorizeGameKey(u *user.User) (bool, error) {
 		return false, err
 	}
 	line := "restrict,command=" + strconv.Quote(binPath("phosphorus")+" game-control --home "+home) + " " + strings.TrimSpace(string(pub))
-	sshDir := filepath.Join(u.HomeDir, ".ssh")
-	ak := filepath.Join(sshDir, "authorized_keys")
-	os.MkdirAll(sshDir, 0o700)
+	ak, admin := authorizedKeysFile(u)
+	os.MkdirAll(filepath.Dir(ak), 0o700)
 	b, _ := os.ReadFile(ak)
 	kept := []string{}
 	keyPart := strings.Join(strings.Fields(string(pub))[:min(2, len(strings.Fields(string(pub))))], " ")
 	for _, l := range strings.Split(strings.TrimRight(string(b), "\n"), "\n") {
 		if l == line {
+			if admin {
+				util.LockACL(ak, false)
+			}
 			return false, nil
 		}
 		if l != "" && !strings.Contains(l, gameTag) && (keyPart == "" || !strings.Contains(l, keyPart)) {
@@ -137,7 +140,34 @@ func authorizeGameKey(u *user.User) (bool, error) {
 	if err := os.WriteFile(ak, []byte(strings.Join(append(kept, line), "\n")+"\n"), 0o600); err != nil {
 		return false, err
 	}
+	if admin {
+		return true, util.LockACL(ak, false)
+	}
 	return true, nil
+}
+
+// authorizedKeysFile where sshd reads u's keys: the profile's, but on Windows an
+// administrator's only from ProgramData, and only if just SYSTEM and Administrators hold it
+func authorizedKeysFile(u *user.User) (string, bool) {
+	if isWindows && inAdministrators(u.Username) {
+		pd := os.Getenv("ProgramData")
+		if pd == "" {
+			pd = `C:\ProgramData`
+		}
+		return filepath.Join(pd, "ssh", "administrators_authorized_keys"), true
+	}
+	return filepath.Join(u.HomeDir, ".ssh", "authorized_keys"), false
+}
+
+// inAdministrators whether the local Administrators group, by its SID, lists name
+func inAdministrators(name string) bool {
+	name = name[strings.LastIndex(name, `\`)+1:]
+	for _, m := range strings.Fields(output("powershell", "-NoProfile", "-Command", "(Get-LocalGroupMember -SID S-1-5-32-544).Name")) {
+		if strings.EqualFold(m[strings.LastIndex(m, `\`)+1:], name) {
+			return true
+		}
+	}
+	return false
 }
 
 // refreshGameKey at rebuild: a host already set up for play/stop kept pointed
@@ -158,7 +188,9 @@ func refreshGameKey() {
 		return
 	}
 	if changed {
-		chownUser(u, filepath.Join(u.HomeDir, ".ssh"), filepath.Join(u.HomeDir, ".ssh", "authorized_keys"))
+		if ak, admin := authorizedKeysFile(u); !admin {
+			chownUser(u, filepath.Dir(ak), ak)
+		}
 		say("play/stop key for %s pointed at %s", u.Username, binPath("phosphorus"))
 	}
 }
