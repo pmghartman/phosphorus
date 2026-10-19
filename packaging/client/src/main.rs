@@ -168,6 +168,7 @@ fn open_main(handle: &AppHandle) {
         .permission("allow-claude-setup")
         .permission("allow-claude-status")
         .permission("allow-claude-probe")
+        .permission("allow-claude-url")
         .permission("allow-client-update-check")
         .permission("allow-client-update");
     #[cfg(target_os = "macos")]
@@ -284,6 +285,16 @@ fn claude_status(handle: AppHandle) -> Value {
         "at": last["at"], "ok": last["ok"], "error": last["error"],
         "calls": if running { last["calls"].clone() } else { json!([]) }, "recent": last["recent"],
     })
+}
+
+/// the mcp as one url with the key in it, for claude's connectors that take no headers
+#[tauri::command]
+fn claude_url() -> Result<String, String> {
+    let cfg = calls::read(&config_dir().join("mcp.json"));
+    match (cfg["url"].as_str(), cfg["key"].as_str()) {
+        (Some(url), Some(key)) => Ok(format!("{}/{}", url.trim_end_matches('/'), key)),
+        _ => Err("not connected".into()),
+    }
 }
 
 /// whether the mesh's mcp answers on this user's key, and how fast
@@ -657,7 +668,7 @@ fn main() {
         .on_menu_event(|app, e| menu_event(app, e.id().as_ref()))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
-        .invoke_handler(tauri::generate_handler![set_domain, notify, claude_setup, claude_status, claude_probe, client_update_check, client_update])
+        .invoke_handler(tauri::generate_handler![set_domain, notify, claude_setup, claude_status, claude_probe, claude_url, client_update_check, client_update])
         .setup(|app| {
             let config = app.path().app_config_dir()?.join("client.json");
             app.manage(App { config });

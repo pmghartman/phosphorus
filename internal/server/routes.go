@@ -271,10 +271,19 @@ func appHandler(w http.ResponseWriter, r *http.Request) {
 			return 200, out
 		})
 		return
-	case pathname == "/api/mcp":
+	case pathname == "/api/mcp" || strings.HasPrefix(pathname, "/api/mcp/"):
 		// a user's key from anywhere, the ingress included; else the mesh's own, unkeyed
+		// in the path for a client with no headers of its own, claude's phone and web connectors
 		var caller *mcp.Caller
-		if key, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer "); ok {
+		key, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+		via := strings.ToLower(strings.TrimSpace(r.Header.Get("X-Phosphorus-Via")))
+		if k := strings.Trim(strings.TrimPrefix(pathname, "/api/mcp"), "/"); k != "" {
+			key, ok = k, true
+			if via == "" {
+				via = "claude"
+			}
+		}
+		if ok {
 			s, why := users.CheckMCPKey(strings.TrimSpace(key))
 			if s == nil {
 				// the client shown needs-auth, never connected on a refused key
@@ -283,7 +292,7 @@ func appHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			k := strings.TrimSpace(key)
-			caller = &mcp.Caller{User: s.User, Admin: s.Admin, Via: strings.ToLower(strings.TrimSpace(r.Header.Get("X-Phosphorus-Via"))),
+			caller = &mcp.Caller{User: s.User, Admin: s.Admin, Via: via,
 				Login: func(host string) (string, string, bool) { return users.MCPLogin(k, host) },
 				Pages: func() map[string]any { return users.MCPPages(k) }}
 		} else if !isLoopback(r) && !isTailnet(r) {

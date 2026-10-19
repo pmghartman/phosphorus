@@ -1393,6 +1393,31 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
 .msg-reacts .react.on { border-color: var(--accent); color: var(--accent); }
 .msg-reacts .react:hover { color: var(--fg); }
 
+/* a line's hover bar, teams style: over the bubble's top corner, reactions then reply and more */
+.bubble { position: relative; }
+.msg-tools {
+  --mt-w: 13.2rem;
+  position: absolute; top: -1.2rem; left: max(0.4rem, 100% - var(--mt-w) - 0.4rem); width: var(--mt-w); box-sizing: border-box;
+  z-index: 2; display: none; align-items: center; justify-content: space-between; gap: 0.05rem; padding: 0.1rem; user-select: none;
+  background: var(--card); border: 1px solid var(--border); box-shadow: var(--drop); font-size: 0.75rem; line-height: 1;
+}
+/* a short bubble's bar run out past it, into the free side: right for theirs, left for yours */
+.msg.mine .msg-tools { left: auto; right: max(0.4rem, 100% - var(--mt-w) - 0.4rem); }
+.chat-log .msg:hover .msg-tools, .chat-log .msg:focus-within .msg-tools { display: flex; animation: pop-in 0.1s ease-out; }
+.msg-tools button { display: flex; align-items: center; justify-content: center; min-width: 1.5rem; height: 1.4rem; padding: 0 0.25rem; border: 1px solid transparent; background: none; color: var(--fg); font: inherit; cursor: pointer; }
+.msg-tools button:hover, .msg-tools button:focus-visible { background: var(--tab-hover); outline: none; }
+.msg-tools .mt-react { transition: transform 0.1s; }
+.msg-tools .mt-react:hover { transform: scale(1.18); }
+.msg-tools .mt-react.on { border-color: var(--accent); color: var(--accent); }
+.msg-tools .mt-btn { color: var(--muted); }
+.msg-tools .mt-btn:hover, .msg-tools .mt-btn:focus-visible { color: var(--accent); }
+.msg-tools .mt-more { font-size: 0.95rem; letter-spacing: 0.05em; }
+.mt-sep { align-self: stretch; width: 1px; margin: 0.15rem 0.15rem; background: var(--border); }
+/* the bubble edged while its bar is up, so it's plain which line the bar acts on */
+.chat-log .msg[data-acts]:hover .bubble { box-shadow: var(--lift-sm), 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent); }
+.chat-log .msg.agent[data-acts]:hover .bubble { box-shadow: none; }
+@media (hover: none) { .msg-tools { display: none !important; } }
+
 /* attachments: pictures and players inline, anything else a download */
 .msg-files { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.3rem; }
 .msg-files:first-child { margin-top: 0.1rem; }
@@ -2261,8 +2286,9 @@ input, textarea { caret-color: var(--accent); }
 .dk-ctl-chip:hover, .dk-ctl-chip:focus-visible { border-color: var(--accent); outline: none; }
 .dk-ctl-chip:hover .ic { color: var(--accent); }
 /* --- claude's tray beside the bell: a dot on its glyph, a popup of status and calls ---- */
-/* the glyph alone, tinted by state: off and waiting dim, online and working green, a fault orange */
-.dk-claude-btn[data-state="online"], .dk-claude-btn[data-state="active"] { color: var(--online); }
+/* the glyph alone, tinted by state: off and waiting dim, connected and running in phosphorus's
+   moving purple and orange, working pulsing too, a fault orange */
+.dk-claude-btn[data-state="online"] .ic path, .dk-claude-btn[data-state="active"] .ic path { stroke: url(#claude-grad); }
 .dk-claude-btn[data-state="active"] .ic { animation: claude-pulse 1.2s ease-in-out infinite; }
 .dk-claude-btn[data-state="error"] { color: var(--accent-2); }
 @keyframes claude-pulse { 50% { opacity: 0.45; } }
@@ -2272,18 +2298,21 @@ input, textarea { caret-color: var(--accent); }
   box-shadow: var(--drop); font-size: 0.75rem; animation: pop-in 0.12s ease-out;
 }
 .dk-claude-pop[hidden] { display: none; }
-.dk-cl-bar { padding: 0.6rem 0.6rem 0; }
+.dk-cl-bar { display: flex; gap: 0.4rem; padding: 0.6rem 0.6rem 0; }
 .dk-cl-key {
-  width: 100%; padding: 0.45rem 0.6rem; font: inherit; cursor: pointer; border: 1px solid var(--accent);
+  flex: 1; min-width: 0; padding: 0.45rem 0.6rem; font: inherit; cursor: pointer; border: 1px solid var(--accent);
   background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); transition: border-color 0.15s, color 0.15s, background 0.15s;
 }
 .dk-cl-key:hover, .dk-cl-key:focus-visible { background: color-mix(in srgb, var(--accent) 24%, transparent); outline: none; }
+/* set up, the key button stays grey until pointed at or focused */
+.dk-cl-key.quiet { border-color: var(--border); background: none; color: var(--muted); }
+.dk-cl-key.quiet:hover, .dk-cl-key.quiet:focus-visible, .dk-cl-key.quiet:active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
 .dk-cl-head { display: flex; justify-content: space-between; align-items: baseline; padding: 0.65rem 0.7rem 0.3rem; }
 .dk-cl-title { color: var(--sage); letter-spacing: 0.04em; }
 .dk-cl-state { color: var(--muted); }
 .dk-cl-state[data-state="online"], .dk-cl-state[data-state="active"] { color: var(--online); }
 .dk-cl-state[data-state="error"] { color: var(--accent-2); }
-.dk-cl-body { padding: 0 0 0.5rem; max-height: min(55vh, 24rem); overflow-y: auto; }
+.dk-cl-body { padding: 0 0 0.5rem; }
 .dk-cl-row { display: flex; justify-content: space-between; gap: 1rem; padding: 0.2rem 0.7rem; }
 .dk-cl-k { color: var(--muted); flex: none; }
 .dk-cl-v { text-align: right; overflow-wrap: anywhere; }
@@ -2291,15 +2320,20 @@ input, textarea { caret-color: var(--accent); }
 .dk-cl-v.bad { color: var(--accent-2); }
 .dk-cl-sec { margin-top: 0.4rem; border-top: 1px solid var(--border); }
 .dk-cl-sec-t { padding: 0.5rem 0.7rem 0.2rem; color: var(--sage); letter-spacing: 0.04em; }
-.dk-cl-calls { list-style: none; margin: 0; padding: 0; }
-.dk-cl-call { display: flex; align-items: center; gap: 0.5rem; padding: 0.22rem 0.7rem; }
+/* the calls a running log like claude code's: a bullet and the call, its outcome hung under it */
+.dk-cl-calls { list-style: none; margin: 0; padding: 0 0 0.2rem; max-height: min(45vh, 20rem); overflow-y: auto; overscroll-behavior: contain; }
+.dk-cl-call { padding: 0.2rem 0.7rem; }
+.dk-cl-ln { display: flex; align-items: center; gap: 0.45rem; min-width: 0; }
 .dk-cl-pip { flex: none; width: 0.4rem; height: 0.4rem; border-radius: 50%; background: var(--dim); }
 .dk-cl-call.live .dk-cl-pip { background: var(--online); animation: claude-pulse 1.2s ease-in-out infinite; }
 .dk-cl-call.ok .dk-cl-pip { background: color-mix(in srgb, var(--online) 55%, var(--dim)); }
 .dk-cl-call.bad .dk-cl-pip { background: var(--accent-2); }
-.dk-cl-tool { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dk-cl-call:not(.live) .dk-cl-tool { color: var(--muted); }
-.dk-cl-t { flex: none; color: var(--dim); font-variant-numeric: tabular-nums; }
+.dk-cl-tool { flex: none; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); font-weight: 600; }
+.dk-cl-arg { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); margin-left: -0.35rem; }
+.dk-cl-out { position: relative; margin: 0.05rem 0 0 0.85rem; padding-left: 1.1rem; color: var(--dim); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.dk-cl-out::before { content: '⎿'; position: absolute; left: 0; color: var(--dim); }
+.dk-cl-call.live .dk-cl-out { color: var(--online); }
+.dk-cl-call.bad .dk-cl-out { color: var(--accent-2); }
 .dk-cl-none { padding: 0.3rem 0.7rem; color: var(--muted); }
 
 /* --- popups in the bottom corner, above the task bar ---------------------------------- */

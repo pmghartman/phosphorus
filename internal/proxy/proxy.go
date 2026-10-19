@@ -639,6 +639,9 @@ func isOpen(r *http.Request, h hit) bool {
 	if p == "/api/mcp" && strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") {
 		return true
 	}
+	if k, ok := strings.CutPrefix(p, "/api/mcp/"); ok && strings.Trim(k, "/") != "" {
+		return true
+	}
 	return openAPI.MatchString(p)
 }
 
