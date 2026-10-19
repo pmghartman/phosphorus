@@ -164,11 +164,12 @@ function renderRoutes(routes, tailnet) {
   dkHostsGone();
 }
 
-// a host gone from the mesh: its terminals closed, its chip red until it answers again
+// a host gone from the mesh: its terminals closed, its chip and places gone until it answers again
 function dkHostsGone() {
   const up = new Set([...terminalHosts, selfHost]);
   for (const w of [...dk.wins.values()]) if (w.kind === 'term' && w.host && !up.has(w.host)) dkClose(w, true);
   dkChips();
+  for (const fm of dkFms) appCall('files', false, (m) => m.fmHosts(fm));
 }
 
 // a bare POST's failure as text, blank when it went through
@@ -821,25 +822,43 @@ function renderMeshGit() {
   }
 }
 
-// a live master handing off, none force-promoting
-function askGitSwitch(name) {
-  const master = gitHostsList.find((h) => h.role === 'master' && h.reachable);
-  const text = master
-    ? `${name} master?`
-    : `force ${name}?`;
-  openConfirm(text, {
-    title: master ? 'switch git master' : 'force-promote', actionLabel: master ? 'make master' : 'force-promote',
-    onAction: async () => {
-      let msg = 'switching';
-      let why = '';
-      try {
-        const r = await fetch(`/api/githosts/${encodeURIComponent(name)}/force`, { method: 'POST' });
-        if (!r.ok) why = String((await r.json().catch(() => ({}))).error || r.status);
-      } catch (err) { why = err.message; }
-      if (why) { msg = 'failed'; noteAdd('git master failed', why); }
-      openConfirm(msg, { title: 'git master', hideCancel: true, actionLabel: 'ok', onAction: closeUpdateModal });
-    },
+// a box over the whole page, any user's: true for its action, false for cancel or esc
+function pageAsk({ title, message, action = 'ok', danger = false, cancel = true }) {
+  return new Promise((resolve) => {
+    const veil = el('div', 'fm-veil page-veil');
+    const box = el('form', 'fm-ask');
+    const go = Object.assign(el('button', danger ? 'danger' : 'primary', action), { type: 'submit' });
+    const acts = el('div', 'update-actions');
+    const end = (v) => { veil.remove(); resolve(v); };
+    if (cancel) {
+      const no = Object.assign(el('button', '', 'cancel'), { type: 'button' });
+      no.addEventListener('click', () => end(false));
+      acts.append(no);
+    }
+    acts.append(go);
+    box.append(el('div', 'fm-ask-title', title), el('p', '', message), acts);
+    box.addEventListener('submit', (e) => { e.preventDefault(); end(true); });
+    box.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Escape') end(false); });
+    veil.addEventListener('pointerdown', (e) => { if (e.target === veil) end(false); });
+    veil.appendChild(box);
+    document.body.appendChild(veil);
+    go.focus();
   });
+}
+
+// a live master handing off, none force-promoting
+async function askGitSwitch(name) {
+  const master = gitHostsList.find((h) => h.role === 'master' && h.reachable);
+  const ok = await pageAsk({ title: master ? 'switch git master' : 'force-promote', message: master ? `${name} master?` : `force ${name}?`,
+    action: master ? 'make master' : 'force-promote', danger: !master });
+  if (!ok) return;
+  let why = '';
+  try {
+    const r = await fetch(`/api/githosts/${encodeURIComponent(name)}/force`, { method: 'POST' });
+    if (!r.ok) why = String((await r.json().catch(() => ({}))).error || r.status);
+  } catch (err) { why = err.message; }
+  if (why) noteAdd('git master failed', why);
+  pageAsk({ title: 'git master', message: why ? 'failed' : 'switching', cancel: false });
 }
 
 // the one place a host is switched: its square in the graph or its row in the stats
@@ -1306,18 +1325,15 @@ function humanSize(n) {
 }
 
 // ---- the merged home: usr on every host as one, each entry carrying the
-// hosts that hold it, an offline host's last listing shown greyed
+// hosts that hold it, an offline host's left out
 
 const HOME = { host: '*', share: 'home', root: 'home', perms: 'rwd' };
 const isHome = (loc) => !!loc && loc.share === 'home';
 const homeAt = (host) => ({ host, share: 'home', root: 'home', perms: 'rwd' });
 // path -> hosts holding it, from the last listings
 const homeWhere = new Map();
-const homeCacheKey = () => `phosphorus-home-cache:${acct?.user || ''}`;
-let homeCache = null;
 
 const homeOnline = () => [...new Set([selfHost, ...phosphorusHosts()].filter(Boolean))];
-const homeOffline = () => meshTailnet.filter((d) => d.phosphorusSeen && !d.phosphorus).map((d) => d.name).filter((h) => h !== selfHost);
 
 // the holder to read a path from: this host first, then any online one
 function homePick(rel) {
@@ -1331,28 +1347,14 @@ const homeHolders = (rel) => {
   return has.length ? has : [selfHost];
 };
 
-function homeCached() {
-  if (!homeCache) { try { homeCache = JSON.parse(localStorage.getItem(homeCacheKey())) || {}; } catch { homeCache = {}; } }
-  return homeCache;
-}
-function homeRemember(host, dir, entries) {
-  const c = homeCached();
-  c[`${host}\n${dir}`] = entries.slice(0, 300).map(({ name, dir: d, size, mtime }) => ({ name, dir: d, size, mtime }));
-  const keys = Object.keys(c);
-  for (const k of keys.slice(0, Math.max(0, keys.length - 200))) delete c[k];
-  try { localStorage.setItem(homeCacheKey(), JSON.stringify(c)); } catch {}
-}
-
 async function homeList(dir) {
   const online = homeOnline();
   const got = await Promise.all(online.map(async (h) => {
     try {
       const body = await filesCall(homeAt(h), 'list', undefined, { path: dir });
-      homeRemember(h, dir, body.entries);
       return { h, entries: body.entries };
-    } catch { return { h, entries: homeCached()[`${h}\n${dir}`] || [], stale: true }; }
+    } catch { return { h, entries: [], stale: true }; }
   }));
-  for (const h of homeOffline()) got.push({ h, entries: homeCached()[`${h}\n${dir}`] || [], stale: true });
   const by = new Map();
   for (const { h, entries, stale } of got) {
     for (const e of entries) {
@@ -1723,9 +1725,10 @@ function toastShow(n) {
     toastHost.setAttribute('aria-live', 'polite');
     document.body.appendChild(toastHost);
   }
-  // clear of the task bar, wherever it sits
+  // clear of the task bar, wherever it sits; a phone's at the top, off the input and nav
   const bar = document.querySelector('.dk-bar')?.getBoundingClientRect();
-  toastHost.style.bottom = `${bar && bar.height ? Math.max(0, innerHeight - bar.top) + 10 : 12}px`;
+  toastHost.style.top = isMobile() ? 'calc(env(safe-area-inset-top) + 8px)' : '';
+  toastHost.style.bottom = isMobile() ? '' : `${bar && bar.height ? Math.max(0, innerHeight - bar.top) + 10 : 12}px`;
   let t = n.g ? toastHost.querySelector(`.toast[data-g="${CSS.escape(n.g)}"]`) : null;
   if (!t) {
     t = el('div', 'toast');
@@ -2204,7 +2207,7 @@ function dkImageWin(f) {
   dkFocus(w);
 }
 
-// who a line is from, as notices and headers say it: claude from the user whose key it used
+// who a line is from, as notices and headers say it: the agent from the user whose key it used
 const sender = (m) => (m.via ? `${m.via} from ${m.name}` : m.name);
 
 // the li for a line, prev the li before it, for its header and day
@@ -2240,7 +2243,7 @@ function lineEl(m, prev) {
     li.textContent = m.text ? `topic: ${m.text}` : `#${m.ch} opened`;
     return li;
   }
-  // a line sent by claude on someone's key: claude's, in the agents' colours, from that user
+  // a line sent by an agent on someone's key: the agent's, in the agents' colours, from that user
   const agent = MODEL_KINDS.includes(m.kind) || !!m.via;
   const mine = !agent && m.name === name;
   const real = m.host !== 'agent' && m.kind !== 'pending' && m.kind !== 'notice' && !m.gone && !m.sending;
@@ -3792,9 +3795,9 @@ function renderUpdateButton() {
 // /api/state itself, while a chain runs, in its order, each with its step
 function renderVersions() {
   const { tailnet, selfVersion } = updateSeen;
-  // one that answered before listed too, as not answering, ours always,
-  // even before this host is in its own tailnet view
-  const names = tailnet.filter((d) => d.phosphorus || d.phosphorusSeen).map((d) => d.name);
+  // the hosts answering, a gone one left out; ours always, even before this host
+  // is in its own tailnet view
+  const names = tailnet.filter((d) => d.phosphorus).map((d) => d.name);
   if (selfHost && !names.includes(selfHost)) names.push(selfHost);
   const order = updateChain ? [...updateChain.order, ...names.filter((n) => !updateChain.order.includes(n))] : names;
   const isQuiet = (host) => {
@@ -3898,13 +3901,15 @@ function closeUpdateModal() {
 
 // one/two-button prompt inside the pane itself instead of confirm()/alert(),
 // those outside the page, unstyleable, and flagged by some hosts
-function openConfirm(message, { title, hideCancel, actionLabel, onAction, password }) {
+// cancel back to the update pane only for the update's own asks
+function openConfirm(message, { title, hideCancel, actionLabel, onAction, onCancel = closeUpdateModal, password }) {
   updateModal.hidden = false;
   updateTitle.textContent = title;
   updateConfirmText.textContent = message;
   updateConfirmCancel.hidden = !!hideCancel;
   updateConfirmGo.textContent = actionLabel;
   updateConfirmGo.onclick = onAction;
+  updateConfirmCancel.onclick = onCancel;
   updateConfirm.hidden = false;
   updatePass.hidden = !password;
   setPass('');
@@ -3933,7 +3938,7 @@ async function askToStart() {
   if (!c.latest) {
     openConfirm('feed down', {
       title: 'update', actionLabel: 'update anyway',
-      onAction: () => startChain(),
+      onAction: () => startChain(), onCancel: openUpdateModal,
     });
     return;
   }
@@ -3945,7 +3950,7 @@ async function askToStart() {
   }
   openConfirm(`${c.latest} is out. update?`, {
     title: 'update', actionLabel: 'update',
-    onAction: () => startChain(),
+    onAction: () => startChain(), onCancel: openUpdateModal,
   });
 }
 
@@ -4066,7 +4071,6 @@ document.addEventListener('click', (e) => {
 new MutationObserver(() => topUpdate.setAttribute('aria-expanded', String(!updateModal.hidden))).observe(updateModal, { attributes: true, attributeFilter: ['hidden'] });
 
 // back to the host list, not out of the pane
-updateConfirmCancel.addEventListener('click', openUpdateModal);
 
 document.getElementById('update-cancel').addEventListener('click', () => {
   chainAction('cancel').then(pollState);
@@ -4404,7 +4408,7 @@ function dkDesktop() {
   const ctl = dkControlTray();
   const bell = dkBellTray();
   bar.insertBefore(bell, dkTray);
-  if (!acct?.boot) bar.insertBefore(dkClaudeTray(), bell);
+  if (!acct?.boot) bar.insertBefore(dkMcpTray(), bell);
   bar.append(ctl);
   // the mesh and update panes opened from the panel, their own buttons out of sight
   ctl.append(dkMeshTray(dk.ctl.btn), dkTray, updateModal);
@@ -4496,6 +4500,11 @@ function dkClock() {
 function dkLogout() {
   dk.meshTray?.show(false);
   dk.ctl?.show(false);
+  dk.mcp?.show(false);
+  // the last user's key and calls never shown to the next
+  dk.mcp = null;
+  clearTimeout(dk.mcpTimer);
+  Object.assign(mcpStat, { configured: false, seen: 0, at: 0, client: '', calls: [], recent: [], url: '' });
   for (const w of [...dk.wins.values()]) dkClose(w, true);
   dk.creds.clear();
   dk.desk = null;
@@ -4931,12 +4940,13 @@ function dkChips() {
   if (!hosts) return;
   const here = hostSwitch?.to || selfHost;
   const up = new Set([...terminalHosts, selfHost]);
-  // logged in first, then dropped off, the locked last
-  const rank = (h) => (!dk.creds.has(h) ? 2 : up.has(h) ? 0 : 1);
-  const names = [...new Set([...dk.creds.keys(), ...terminalHosts])]
+  // logged in first, the locked last
+  const rank = (h) => (!dk.creds.has(h) ? 1 : 0);
+  // a host off the mesh not shown at all
+  const names = [...new Set([...dk.creds.keys(), ...terminalHosts])].filter((h) => up.has(h))
     .sort((a, b) => rank(a) - rank(b) || (b === selfHost) - (a === selfHost) || a.localeCompare(b));
   dkChipsFold(hosts, names.length);
-  const sig = JSON.stringify([here, names, [...dk.creds.keys()], names.filter((h) => !up.has(h))]);
+  const sig = JSON.stringify([here, names, [...dk.creds.keys()]]);
   if (sig === dk.chips) return;
   dk.chips = sig;
   // every chip kept, the fold's class sliding all but the serving one shut
@@ -4947,7 +4957,6 @@ function dkChips() {
       b.addEventListener('click', () => dkUnlock(h, b));
       return b;
     }
-    if (!up.has(h)) return Object.assign(el('span', 'dk-chip down', h), { title: `${h} dropped off the mesh` });
     return Object.assign(el('span', `dk-chip${h === here ? ' here' : ''}`, h), { title: h === here ? `this page is served by ${h}` : `${h}, logged in` });
   });
   chips.forEach((c, i) => c.classList.toggle('cur', names[i] === here));
@@ -6071,7 +6080,7 @@ function dkPopsClose(keep) {
   if (keep !== 'mesh') dk.meshTray?.show(false);
   if (keep !== 'bell') dk.bell?.show(false);
   if (keep !== 'ctl') dk.ctl?.show(false);
-  if (keep !== 'claude') dk.claude?.show(false);
+  if (keep !== 'mcp') dk.mcp?.show(false);
   if (keep !== 'menu') dkMenuEl.hidden = true;
   if (keep !== 'update' && !updateModal.hidden) closeUpdateModal();
   if (keep !== 'theme') closeMenus();
@@ -6378,9 +6387,7 @@ function acctNext() {
   try { u = new URL(next); } catch { return false; }
   if (prev === next && Date.now() - at < 15000) {
     const why = q.get('why') === 'none' ? 'no cookie' : 'cookie refused';
-    setTimeout(() => openConfirm(why, {
-      title: u.host, hideCancel: true, actionLabel: 'ok', onAction: closeUpdateModal,
-    }));
+    setTimeout(() => pageAsk({ title: u.host, message: why, cancel: false }));
     return false;
   }
   const base = baseDomain || location.hostname;
@@ -6520,34 +6527,34 @@ function dkForget(host) {
   dkIcons();
 }
 
-// --- claude: its own tray beside the bell; the mcp's url copied for claude anywhere,
+// --- the agent tray beside the bell: the mcp's url copied for any agent's connector,
 // its calls on this host as they happen
 
 // the user's key and calls from the mesh, and its url once fetched
-const claudeStat = { configured: false, seen: 0, at: 0, now: 0, calls: [], recent: [], url: '' };
-const CLAUDE_ACTIVE_MS = 12000;
+const mcpStat = { configured: false, seen: 0, at: 0, now: 0, client: '', calls: [], recent: [], url: '' };
+const MCP_ACTIVE_MS = 12000;
 // a connector heard from this recently counted connected
-const CLAUDE_SEEN_MS = 15 * 60000;
+const MCP_SEEN_MS = 15 * 60000;
 
-// active, online (claude connected), idle (a key, nothing heard) or off; a failed
+// active, online (an agent connected), idle (a key, nothing heard) or off; a failed
 // call shown in the log, never the tray
-function claudeState() {
-  const c = claudeStat;
+function mcpState() {
+  const c = mcpStat;
   if (!c.configured) return 'off';
-  if (c.calls.length || (c.at && c.now - c.at < CLAUDE_ACTIVE_MS)) return 'active';
-  return c.seen && c.now - c.seen < CLAUDE_SEEN_MS ? 'online' : 'idle';
+  if (c.calls.length || (c.at && c.now - c.at < MCP_ACTIVE_MS)) return 'active';
+  return c.seen && c.now - c.seen < MCP_SEEN_MS ? 'online' : 'idle';
 }
 
-const claudeAgo = (ms) => {
+const mcpAgo = (ms) => {
   const s = Math.max(0, Math.round(ms / 1000));
   return s < 90 ? `${s}s` : s < 5400 ? `${Math.round(s / 60)}m` : `${Math.round(s / 3600)}h`;
 };
-const claudeMs = (ms) => (ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`);
+const mcpMs = (ms) => (ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`);
 
-// the star with its own moving purple to orange, painted by css while claude runs
-function claudeGlyph() {
+// the star with its own moving purple to orange, painted by css while an agent runs
+function mcpGlyph() {
   const svg = dkGlyph(DK_GLYPHS.spark);
-  const g = svgEl('linearGradient', { id: 'claude-grad', gradientUnits: 'userSpaceOnUse', x1: '0', y1: '0', x2: '16', y2: '16', spreadMethod: 'reflect' });
+  const g = svgEl('linearGradient', { id: 'mcp-grad', gradientUnits: 'userSpaceOnUse', x1: '0', y1: '0', x2: '16', y2: '16', spreadMethod: 'reflect' });
   g.append(svgEl('stop', { offset: '0', class: 'phosphorus-grad-p' }), svgEl('stop', { offset: '1', class: 'phosphorus-grad-o' }),
     svgEl('animateTransform', { attributeName: 'gradientTransform', type: 'translate', values: '-16 -16; 16 16; -16 -16', dur: '6s', repeatCount: 'indefinite' }));
   const defs = svgEl('defs', {});
@@ -6556,12 +6563,12 @@ function claudeGlyph() {
   return svg;
 }
 
-function dkClaudeTray() {
-  const wrap = el('div', 'dk-tray-wrap dk-claude');
-  const b = Object.assign(el('button', 'dk-tray dk-claude-btn'), { type: 'button', title: 'claude', ariaLabel: 'claude' });
+function dkMcpTray() {
+  const wrap = el('div', 'dk-tray-wrap dk-mcp');
+  const b = Object.assign(el('button', 'dk-tray dk-mcp-btn'), { type: 'button', title: 'agent', ariaLabel: 'agent' });
   b.setAttribute('aria-expanded', 'false');
-  b.append(claudeGlyph());
-  const pop = Object.assign(el('div', 'dk-claude-pop dk-pop'), { hidden: true });
+  b.append(mcpGlyph());
+  const pop = Object.assign(el('div', 'dk-mcp-pop dk-pop'), { hidden: true });
   wrap.append(b, pop);
   dkAnchor(pop, b, { fill: 300 });
   const row = (label, value, tone = '') => {
@@ -6569,14 +6576,14 @@ function dkClaudeTray() {
     r.append(el('span', 'dk-cl-k', label), el('span', `dk-cl-v ${tone}`, value));
     return r;
   };
-  // a call as claude code shows one: a bullet, the tool and its argument, its outcome under it
+  // a call as a coding agent's log shows one: a bullet, the tool and its argument, its outcome under it
   const callRow = (c, live) => {
     const li = el('li', `dk-cl-call ${live ? 'live' : c.ok ? 'ok' : 'bad'}`);
     const top = el('div', 'dk-cl-ln');
     top.append(el('span', 'dk-cl-pip'), el('span', 'dk-cl-tool', c.tool));
     if (c.detail) top.append(el('span', 'dk-cl-arg', `(${c.detail})`));
-    const out = live ? `running · ${claudeMs(claudeStat.now - c.since)}`
-      : `${c.ok ? 'done' : c.error || 'failed'} · ${claudeMs(c.ms)} · ${claudeAgo(claudeStat.now - c.at)} ago`;
+    const out = live ? `running · ${mcpMs(mcpStat.now - c.since)}`
+      : `${c.ok ? 'done' : c.error || 'failed'} · ${mcpMs(c.ms)} · ${mcpAgo(mcpStat.now - c.at)} ago`;
     li.append(top, el('div', 'dk-cl-out', out));
     if (c.detail) li.title = c.detail;
     return li;
@@ -6589,7 +6596,7 @@ function dkClaudeTray() {
   const hint = el('div', 'dk-cl-hint');
   const body = el('div', 'dk-cl-body');
   pop.append(bar, hint, head, body);
-  head.append(el('span', 'dk-cl-title', 'claude'), stateLine);
+  head.append(el('span', 'dk-cl-title', 'agent'), stateLine);
   const flash = (x, text) => {
     const was = x.dataset.label;
     x.textContent = text;
@@ -6603,7 +6610,7 @@ function dkClaudeTray() {
   };
   const showUrl = (url, copied) => {
     if (copied) { hint.replaceChildren(); return; }
-    const f = Object.assign(el('input', 'dk-cl-url'), { readOnly: true, value: url, spellcheck: false, title: 'copy, then paste into claude: settings, connectors, add custom connector' });
+    const f = Object.assign(el('input', 'dk-cl-url'), { readOnly: true, value: url, spellcheck: false, title: 'copy, then paste into your agent as a custom mcp connector' });
     f.addEventListener('focus', () => f.select());
     hint.replaceChildren(f);
     f.focus();
@@ -6611,12 +6618,12 @@ function dkClaudeTray() {
   // the bar drawn again only when set up flips: connect, else copy and refresh
   let drawn = null;
   const drawBar = () => {
-    const done = claudeStat.configured;
+    const done = mcpStat.configured;
     if (drawn === done) return;
     drawn = done;
     if (!done) {
-      bar.replaceChildren(button('connect claude', 'wide', async () => {
-        const r = await claudeKey('/api/me/mcp-url');
+      bar.replaceChildren(button('connect agent', 'wide', async () => {
+        const r = await mcpKey('/api/me/mcp-url');
         if (r) showUrl(r.url, r.copied);
       }));
       hint.replaceChildren();
@@ -6624,36 +6631,32 @@ function dkClaudeTray() {
     }
     hint.replaceChildren();
     const copy = button('copy mcp url', 'quiet wide', async (x) => {
-      const r = await claudeKey('/api/me/mcp-url', claudeStat.url);
+      const r = await mcpKey('/api/me/mcp-url', mcpStat.url);
       if (!r) return;
       flash(x, r.copied ? 'copied' : 'copy it below');
       showUrl(r.url, r.copied);
     });
-    copy.title = 'paste into claude: settings, connectors, add custom connector';
-    const refresh = button('refresh key', 'quiet', () => {
+    copy.title = 'paste into your agent as a custom mcp connector';
+    const refresh = button('refresh key', 'quiet', async () => {
       show(false);
-      openConfirm('old url dies', {
-        title: 'refresh key?', actionLabel: 'refresh',
-        onAction: async () => {
-          closeUpdateModal();
-          const r = await claudeKey('/api/me/mcp-key');
-          if (r) { show(true); showUrl(r.url, r.copied); }
-        },
-      });
+      if (!await pageAsk({ title: 'refresh key?', message: 'old url dies', action: 'refresh', danger: true })) return;
+      const r = await mcpKey('/api/me/mcp-key');
+      if (r) { show(true); showUrl(r.url, r.copied); }
     });
     bar.replaceChildren(copy, refresh);
   };
   const paint = () => {
-    const st = claudeState();
+    const st = mcpState();
     b.dataset.state = st;
-    b.title = { off: 'claude, not connected', idle: 'claude, nothing heard lately', online: 'claude, connected', active: 'claude, working' }[st];
+    b.title = { off: 'agent, not connected', idle: 'agent, nothing heard lately', online: 'agent, connected', active: 'agent, working' }[st];
     if (pop.hidden) return;
     drawBar();
-    const c = claudeStat;
+    const c = mcpStat;
     stateLine.textContent = { off: 'not connected', idle: 'idle', online: 'connected', active: 'working' }[st];
     stateLine.dataset.state = st;
     if (!c.configured) { body.replaceChildren(); list = null; return; }
-    const rows = [row('last heard', c.seen ? `${claudeAgo(c.now - c.seen)} ago` : 'not yet', c.seen && c.now - c.seen < CLAUDE_SEEN_MS ? 'good' : '')];
+    const rows = [row('last heard', c.seen ? `${mcpAgo(c.now - c.seen)} ago` : 'not yet', c.seen && c.now - c.seen < MCP_SEEN_MS ? 'good' : '')];
+    if (c.client) rows.push(row('client', c.client));
     const calls = el('div', 'dk-cl-sec');
     calls.append(el('div', 'dk-cl-sec-t', 'calls'));
     // kept across redraws so a scroll back holds, followed when at the end
@@ -6669,63 +6672,66 @@ function dkClaudeTray() {
   };
   const show = (on) => {
     if (!on && pop.hidden) return;
-    if (on) dkPopsClose('claude');
+    if (on) dkPopsClose('mcp');
     pop.hidden = !on;
     b.setAttribute('aria-expanded', String(on));
     if (on) {
       drawn = null;
       list = null;
       paint();
-      if (claudeStat.configured) hint.replaceChildren();
-      pollClaude();
+      if (mcpStat.configured) hint.replaceChildren();
+      pollMcp();
       // the url ready before a tap, so copying it is the tap's own
-      if (claudeStat.configured) acctCall('/api/me/mcp-url', {}).then((r) => { if (r.ok) claudeStat.url = r.url; });
+      if (mcpStat.configured) acctCall('/api/me/mcp-url', {}).then((r) => { if (r.ok) mcpStat.url = r.url; });
     }
   };
   b.addEventListener('click', () => show(pop.hidden));
   document.addEventListener('pointerdown', (e) => { if (!pop.hidden && !wrap.contains(e.target) && !updateModal.contains(e.target)) show(false); }, true);
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !pop.hidden) show(false); });
-  dk.claude = { show, paint, open: () => !pop.hidden };
-  clearTimeout(dk.claudeTimer);
+  const me = { show, paint };
+  dk.mcp = me;
+  clearTimeout(dk.mcpTimer);
+  // one loop, ended by a logout or a newer tray
   const tick = async () => {
-    if (!document.hidden) await pollClaude();
-    dk.claudeTimer = setTimeout(tick, pop.hidden ? 8000 : 2000);
+    if (dk.mcp !== me) return;
+    if (!document.hidden) await pollMcp();
+    if (dk.mcp === me) dk.mcpTimer = setTimeout(tick, pop.hidden ? 8000 : 2000);
   };
   tick();
   return wrap;
 }
 
 // the user's key and calls from the mesh
-async function pollClaude() {
-  const s = await acctCall('/api/me/claude');
+async function pollMcp() {
+  const s = await acctCall('/api/me/mcp');
   if (s.ok) {
-    Object.assign(claudeStat, { configured: !!s.configured, seen: +s.seen || 0, at: +s.at || 0,
+    Object.assign(mcpStat, { configured: !!s.configured, seen: +s.seen || 0, at: +s.at || 0, client: s.client || '',
       now: +s.now || Date.now(), calls: s.calls || [], recent: s.recent || [] });
   }
-  dk.claude?.paint();
+  dk.mcp?.paint();
 }
 
 // the key's url from the mesh, copied: the one in use, or a fresh one voiding it.
 // a url already in hand copied in the tap itself, else once it lands
-async function claudeKey(path, have = '') {
+async function mcpKey(path, have = '') {
   let copied = false;
   if (have) { try { await copyText(have); copied = true; } catch {} }
   const r = have ? { ok: true, url: have } : await acctCall(path, {});
-  if (!r.ok) { claudeFailed(r.error); return null; }
+  if (!r.ok) { mcpFailed(r.error); return null; }
   if (!copied) { try { await copyText(r.url); copied = true; } catch {} }
-  claudeStat.url = r.url;
-  if (!claudeStat.configured || path.endsWith('mcp-key')) {
-    claudeStat.configured = true;
-    noteAdd('claude connected', copied ? 'url copied' : 'copy the url');
+  mcpStat.url = r.url;
+  if (!mcpStat.configured || path.endsWith('mcp-key')) {
+    mcpStat.configured = true;
+    noteAdd('agent connected', copied ? 'url copied' : 'copy the url');
   }
-  pollClaude();
+  pollMcp();
   return { ...r, copied };
 }
 
 // a failure in two words, its why in the notes
-function claudeFailed(why) {
-  if (why) noteAdd('claude failed', String(why));
-  openConfirm('claude failed', { title: 'claude', hideCancel: true, actionLabel: 'ok', onAction: closeUpdateModal });
+function mcpFailed(why) {
+  if (why) noteAdd('agent failed', String(why));
+  pageAsk({ title: 'agent', message: 'agent failed', cancel: false });
 }
 
 // the task bar's profile: a menu of settings, users and log out

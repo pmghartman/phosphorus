@@ -1160,6 +1160,9 @@ func one(raw any, local bool, caller *Caller) map[string]any {
 	}
 	switch {
 	case method == "initialize":
+		if caller != nil {
+			noteClient(caller.User, str(util.Obj(params["clientInfo"])["name"]))
+		}
 		return initialize(id, params)
 	case method == "ping":
 		return reply(id, map[string]any{})
@@ -1180,7 +1183,8 @@ func initialize(id any, params map[string]any) map[string]any {
 	}
 	return reply(id, map[string]any{
 		"protocolVersion": pv, "capabilities": map[string]any{"tools": map[string]any{}},
-		"serverInfo": map[string]any{"name": "phosphorus", "version": src.Self()["version"]},
+		"serverInfo": map[string]any{"name": "phosphorus", "title": "Phosphorus", "version": src.Self()["version"],
+			"icons": []any{map[string]any{"src": iconURI, "mimeType": "image/png", "sizes": []any{"128x128"}}}},
 		"instructions": "phosphorus, a self-hosted mesh: search the web, read its hosts, services, stats, git, models, chat " +
 			"and updates, its buttons and messages pressed and sent only for a person asking phosphorus.",
 	})

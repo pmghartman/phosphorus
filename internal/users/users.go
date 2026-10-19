@@ -916,7 +916,7 @@ func mcpGrant(u, pwAt, g string, k []byte, logins, pages map[string]any, r *http
 		"user": u, "hosts": sortedKeys(logins), "pages": sortedKeys(pages)}}
 }
 
-// mcpBase where claude reaches the mesh: the base domain, else the host asked
+// mcpBase where an agent reaches the mesh: the base domain, else the host asked
 func mcpBase(r *http.Request) string {
 	if baseDomain != "" {
 		return "https://" + baseDomain
