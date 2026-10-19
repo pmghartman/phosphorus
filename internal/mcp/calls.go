@@ -1,6 +1,8 @@
 package mcp
 
 import (
+	_ "embed"
+	"encoding/base64"
 	"sort"
 	"strings"
 	"sync"
@@ -8,7 +10,7 @@ import (
 	"github.com/pmghartman/phosphorus/internal/util"
 )
 
-// a keyed user's calls on this host, in flight and just done, for the claude tray
+// a keyed user's calls on this host, in flight and just done, for the agent tray
 
 const recentCalls = 40
 
@@ -20,10 +22,11 @@ type liveCall struct {
 }
 
 type callLog struct {
-	live []liveCall
-	done []map[string]any
-	seen int64
-	at   int64
+	live   []liveCall
+	done   []map[string]any
+	seen   int64
+	at     int64
+	client string
 }
 
 var calls = struct {
@@ -41,11 +44,33 @@ func logOf(user string) *callLog {
 	return l
 }
 
-// markSeen any request on a user's key, claude's connector saying it's there
+// markSeen any request on a user's key, its agent's connector saying it's there
 func markSeen(user string) {
 	calls.Lock()
 	logOf(user).seen = util.Now()
 	calls.Unlock()
+}
+
+// noteClient the agent that last opened a session on a user's key, by the name it gives
+func noteClient(user, name string) {
+	calls.Lock()
+	logOf(user).client = name
+	calls.Unlock()
+}
+
+// clientOf that agent's name as a word, claude-ai or Claude Code as claude; blank for none
+func clientOf(user string) string {
+	calls.Lock()
+	defer calls.Unlock()
+	l := calls.by[user]
+	if l == nil {
+		return ""
+	}
+	w := strings.FieldsFunc(strings.ToLower(l.client), func(r rune) bool { return !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9') })
+	if len(w) == 0 {
+		return ""
+	}
+	return w[0]
 }
 
 func callBegin(user, tool, detail string) uint64 {
@@ -82,7 +107,7 @@ func Calls(user string) map[string]any {
 	defer calls.Unlock()
 	l := calls.by[user]
 	if l == nil {
-		return map[string]any{"calls": []any{}, "recent": []any{}, "seen": 0, "at": 0, "now": util.Now()}
+		return map[string]any{"calls": []any{}, "recent": []any{}, "seen": 0, "at": 0, "client": "", "now": util.Now()}
 	}
 	live := make([]any, 0, len(l.live))
 	for _, c := range l.live {
@@ -92,7 +117,7 @@ func Calls(user string) map[string]any {
 	for _, d := range l.done {
 		recent = append(recent, d)
 	}
-	return map[string]any{"calls": live, "recent": recent, "seen": l.seen, "at": l.at, "now": util.Now()}
+	return map[string]any{"calls": live, "recent": recent, "seen": l.seen, "at": l.at, "client": l.client, "now": util.Now()}
 }
 
 var detailKeys = []string{"command", "script", "path", "file", "url", "query", "host", "name", "repo", "text"}
@@ -125,3 +150,9 @@ func callDetail(args map[string]any) string {
 	}
 	return string(r)
 }
+
+//go:embed icon.png
+var iconPNG []byte
+
+// iconURI the mesh's mark for an agent's connector list, its background clear
+var iconURI = "data:image/png;base64," + base64.StdEncoding.EncodeToString(iconPNG)

@@ -572,6 +572,8 @@ span.dk-chip { cursor: default; }
 .fm-note { overflow: hidden; text-overflow: ellipsis; }
 .fm-note.bad { color: var(--offmesh); }
 .fm-veil { position: absolute; inset: 0; z-index: 5; display: flex; align-items: flex-start; justify-content: center; padding-top: 3rem; background: color-mix(in srgb, var(--bg) 55%, transparent); }
+/* the page's own ask, over everything, any user's */
+.fm-veil.page-veil { position: fixed; z-index: 1200; padding-top: 18vh; }
 .fm-ask { width: min(22rem, calc(100% - 2rem)); display: flex; flex-direction: column; gap: 0.5rem; padding: 0.7rem; background: var(--card); border: 1px solid var(--border); box-shadow: var(--drop); font-size: 0.78rem; animation: pop-in 0.1s ease-out; }
 .fm-ask p { margin: 0; color: var(--muted); word-break: break-word; }
 .fm-ask-title { color: var(--sage); }
@@ -2127,6 +2129,8 @@ input, textarea { caret-color: var(--accent); }
 .acct-pane button:hover:not(:disabled), .acct-users button:hover:not(:disabled), .acct-unlock button:hover:not(:disabled) { background: var(--fg); color: var(--bg); border-color: var(--fg); }
 .acct-pane button.danger, .acct-users button.danger { color: var(--offmesh); border-color: var(--offmesh); }
 .acct-pane button.danger:hover:not(:disabled), .acct-users button.danger:hover:not(:disabled) { background: var(--offmesh); color: var(--bg); }
+/* a danger button that can't be pressed, as you deleting yourself, greyed like any other */
+.acct-pane button.danger:disabled, .acct-users button.danger:disabled { color: var(--dim); border-color: var(--border); cursor: default; }
 .acct-pane button.primary, .acct-users button.primary, .acct-unlock button.primary { color: var(--accent); border-color: var(--accent); font-weight: 600; }
 .acct-pane button.primary:hover, .acct-users button.primary:hover, .acct-unlock button.primary:hover { background: var(--accent); color: var(--bg); }
 .acct-pane button:disabled, .acct-users button:disabled { opacity: 0.5; cursor: default; }
@@ -2285,18 +2289,18 @@ input, textarea { caret-color: var(--accent); }
 .dk-ctl-chip .ic { width: 0.8rem; height: 0.8rem; color: var(--muted); transition: color 0.15s; }
 .dk-ctl-chip:hover, .dk-ctl-chip:focus-visible { border-color: var(--accent); outline: none; }
 .dk-ctl-chip:hover .ic { color: var(--accent); }
-/* --- claude's tray beside the bell: a dot on its glyph, a popup of status and calls ---- */
+/* --- the agent tray beside the bell: its glyph tinted, a popup of status and calls ---- */
 /* the glyph alone, tinted by state: off and waiting dim, connected and running in phosphorus's
    moving purple and orange, working pulsing too */
-.dk-claude-btn[data-state="online"] .ic path, .dk-claude-btn[data-state="active"] .ic path { stroke: url(#claude-grad); }
-.dk-claude-btn[data-state="active"] .ic { animation: claude-pulse 1.2s ease-in-out infinite; }
-@keyframes claude-pulse { 50% { opacity: 0.45; } }
-.dk-claude-btn:hover, .dk-claude-btn[aria-expanded="true"] { color: var(--accent); }
-.dk-claude-pop {
+.dk-mcp-btn[data-state="online"] .ic path, .dk-mcp-btn[data-state="active"] .ic path { stroke: url(#mcp-grad); }
+.dk-mcp-btn[data-state="active"] .ic { animation: mcp-pulse 1.2s ease-in-out infinite; }
+@keyframes mcp-pulse { 50% { opacity: 0.45; } }
+.dk-mcp-btn:hover, .dk-mcp-btn[aria-expanded="true"] { color: var(--accent); }
+.dk-mcp-pop {
   display: flex; flex-direction: column; background: var(--card); border: 1px solid var(--border);
   box-shadow: var(--drop); font-size: 0.75rem; animation: pop-in 0.12s ease-out;
 }
-.dk-claude-pop[hidden] { display: none; }
+.dk-mcp-pop[hidden] { display: none; }
 .dk-cl-bar { display: flex; flex-wrap: wrap; gap: 0.4rem; padding: 0.6rem 0.6rem 0; }
 .dk-cl-key.wide { flex-basis: 100%; }
 .dk-cl-hint:not(:empty) { padding: 0.45rem 0.6rem 0; }
@@ -2321,12 +2325,12 @@ input, textarea { caret-color: var(--accent); }
 .dk-cl-v.good { color: var(--online); }
 .dk-cl-sec { margin-top: 0.4rem; border-top: 1px solid var(--border); }
 .dk-cl-sec-t { padding: 0.5rem 0.7rem 0.2rem; color: var(--sage); letter-spacing: 0.04em; }
-/* the calls a running log like claude code's: a bullet and the call, its outcome hung under it */
+/* the calls a running log like a coding agent's: a bullet and the call, its outcome hung under it */
 .dk-cl-calls { list-style: none; margin: 0; padding: 0 0 0.2rem; max-height: min(62vh, 30rem); overflow-y: auto; overscroll-behavior: contain; }
 .dk-cl-call { padding: 0.2rem 0.7rem; }
 .dk-cl-ln { display: flex; align-items: center; gap: 0.45rem; min-width: 0; }
 .dk-cl-pip { flex: none; width: 0.4rem; height: 0.4rem; border-radius: 50%; background: var(--dim); }
-.dk-cl-call.live .dk-cl-pip { background: var(--online); animation: claude-pulse 1.2s ease-in-out infinite; }
+.dk-cl-call.live .dk-cl-pip { background: var(--online); animation: mcp-pulse 1.2s ease-in-out infinite; }
 .dk-cl-call.ok .dk-cl-pip { background: color-mix(in srgb, var(--online) 55%, var(--dim)); }
 .dk-cl-call.bad .dk-cl-pip { background: var(--accent-2); }
 .dk-cl-tool { flex: none; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); font-weight: 600; }
@@ -2350,22 +2354,24 @@ input, textarea { caret-color: var(--accent); }
 .toast-b { margin-top: 0.15rem; color: var(--muted); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .toast-x { position: absolute; top: 0.2rem; right: 0.3rem; padding: 0 0.3rem; background: none; border: 0; color: var(--dim); font: inherit; font-size: 1rem; line-height: 1.2; cursor: pointer; }
 .toast-x:hover { color: var(--accent); }
+/* a popup open: the corner's popups out of its way */
+body:has(.dk-pop:not([hidden])) .toasts { opacity: 0; pointer-events: none; }
 @keyframes toast-in { from { opacity: 0; transform: translateY(0.4rem); } }
-@media (prefers-reduced-motion: reduce) { .toast, .dk-claude-pop { animation: none; } .dk-claude-btn .ic, .dk-cl-pip { animation: none !important; } }
+@media (prefers-reduced-motion: reduce) { .toast, .dk-mcp-pop { animation: none; } .dk-mcp-btn .ic, .dk-cl-pip { animation: none !important; } }
 .dk-ctl-theme { margin: 0.6rem; }
 /* the bar's right side: the hosts, a rule, the bell, then the clock and the user */
-.dk-bar .dk-tray-wrap:has(> .dk-bell)::before, .dk-bar .dk-tray-wrap:has(> .dk-claude-btn)::before { content: ''; align-self: center; width: 1px; height: 1.1rem; margin-right: 0.3rem; background: var(--border); }
-/* claude's tray leads the pair, so the bell needs no rule of its own after it */
-.dk-bar .dk-tray-wrap:has(> .dk-claude-btn) + .dk-tray-wrap:has(> .dk-bell)::before { display: none; }
-.dk-bar .dk-bell, .dk-bar .dk-claude-btn { width: 2rem; }
+.dk-bar .dk-tray-wrap:has(> .dk-bell)::before, .dk-bar .dk-tray-wrap:has(> .dk-mcp-btn)::before { content: ''; align-self: center; width: 1px; height: 1.1rem; margin-right: 0.3rem; background: var(--border); }
+/* the agent tray leads the pair, so the bell needs no rule of its own after it */
+.dk-bar .dk-tray-wrap:has(> .dk-mcp-btn) + .dk-tray-wrap:has(> .dk-bell)::before { display: none; }
+.dk-bar .dk-bell, .dk-bar .dk-mcp-btn { width: 2rem; }
 /* the bar's right end: hosts, bell and clock close together, the button flush to the edge */
 .dk-bar { gap: 0.3rem; padding-right: 0; }
 .dk-bar .dk-tasks { margin-right: 0.3rem; }
-.dk-bar .dk-bell, .dk-bar .dk-claude-btn { width: 1.9rem; }
-.dk-bar .dk-tray-wrap:has(> .dk-bell)::before, .dk-bar .dk-tray-wrap:has(> .dk-claude-btn)::before { margin-right: 0.15rem; }
-/* claude and the bell one pair: no gap between, each a narrower slot */
-.dk-bar .dk-tray-wrap:has(> .dk-claude-btn) + .dk-tray-wrap:has(> .dk-bell) { margin-left: -0.3rem; }
-.dk-bar .dk-tray.dk-claude-btn, .dk-bar .dk-claude + .dk-tray-wrap > .dk-tray.dk-bell { width: 1.75rem; }
+.dk-bar .dk-bell, .dk-bar .dk-mcp-btn { width: 1.9rem; }
+.dk-bar .dk-tray-wrap:has(> .dk-bell)::before, .dk-bar .dk-tray-wrap:has(> .dk-mcp-btn)::before { margin-right: 0.15rem; }
+/* the agent tray and the bell one pair: no gap between, each a narrower slot */
+.dk-bar .dk-tray-wrap:has(> .dk-mcp-btn) + .dk-tray-wrap:has(> .dk-bell) { margin-left: -0.3rem; }
+.dk-bar .dk-tray.dk-mcp-btn, .dk-bar .dk-mcp + .dk-tray-wrap > .dk-tray.dk-bell { width: 1.75rem; }
 .dk-ctl > .dk-profile { padding: 0 0.55rem; gap: 0.4rem; }
 .dk-ctl > .dk-profile .dk-clock { margin-right: 0.15rem; }
 
@@ -2407,7 +2413,7 @@ input, textarea { caret-color: var(--accent); }
   .dk-task { max-width: 8rem; height: 2.3rem; padding: 0 0.75rem; border-color: var(--border); }
   .dk-task.active { background: color-mix(in srgb, var(--accent) 12%, transparent); }
   .dk-bar .dk-tray { padding: 0 0.75rem; }
-  .dk-bar .dk-tray.dk-claude-btn, .dk-bar .dk-claude + .dk-tray-wrap > .dk-tray.dk-bell { width: auto; padding: 0 0.6rem; }
+  .dk-bar .dk-tray.dk-mcp-btn, .dk-bar .dk-mcp + .dk-tray-wrap > .dk-tray.dk-bell { width: auto; padding: 0 0.6rem; }
   .dk-bar .dk-tray .ic { width: 1.1rem; height: 1.1rem; }
 
   /* windows: no frame, a tall title bar, minimize and close only */

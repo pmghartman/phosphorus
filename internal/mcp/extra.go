@@ -41,7 +41,8 @@ func openedFor(who, host string) bool {
 	return ok && time.Since(at) < openedFor_
 }
 
-// viaOf the agent a keyed call came through, claude unless it says
+// viaOf the agent a keyed call came through: as it says, else the name its session
+// opened with, else just agent
 func viaOf(m Meta) string {
 	if m.Caller == nil {
 		return ""
@@ -49,7 +50,10 @@ func viaOf(m Meta) string {
 	if m.Caller.Via != "" {
 		return m.Caller.Via
 	}
-	return "claude"
+	if c := clientOf(m.Caller.User); c != "" {
+		return c
+	}
+	return "agent"
 }
 
 // channelKnown nil for blank, mesh, a known person's dm or a channel with lines

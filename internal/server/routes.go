@@ -67,7 +67,7 @@ var userCalls = map[string]userCall{
 	"POST /api/me/password":  func(s *users.Session, p map[string]any, r *http.Request) users.R { return users.ChangePass(s, p, r) },
 	"POST /api/me/mcp-key":   func(s *users.Session, p map[string]any, r *http.Request) users.R { return users.MCPKey(s, p, r) },
 	"POST /api/me/mcp-url":   func(s *users.Session, p map[string]any, r *http.Request) users.R { return users.MCPURL(s, p, r) },
-	"GET /api/me/claude": func(s *users.Session, _ map[string]any, _ *http.Request) users.R {
+	"GET /api/me/mcp": func(s *users.Session, _ map[string]any, _ *http.Request) users.R {
 		if s == nil || s.Boot {
 			return users.R{Status: 403, Body: map[string]any{"error": "log in as a user"}}
 		}
@@ -282,15 +282,12 @@ func appHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	case pathname == "/api/mcp" || strings.HasPrefix(pathname, "/api/mcp/"):
 		// a user's key from anywhere, the ingress included; else the mesh's own, unkeyed
-		// in the path for a client with no headers of its own, claude's phone and web connectors
+		// in the path for a client with no headers of its own, an agent's url connector
 		var caller *mcp.Caller
 		key, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 		via := strings.ToLower(strings.TrimSpace(r.Header.Get("X-Phosphorus-Via")))
 		if k := strings.Trim(strings.TrimPrefix(pathname, "/api/mcp"), "/"); k != "" {
 			key, ok = k, true
-			if via == "" {
-				via = "claude"
-			}
 		}
 		if ok {
 			s, why := users.CheckMCPKey(strings.TrimSpace(key))

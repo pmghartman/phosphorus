@@ -129,10 +129,10 @@ function dkFiles(at) {
   return fm;
 }
 
-// each online host's shares, asked once a window, as its own [files] perms allow
+// each online host's shares, asked once a host comes up, as its own [files] perms allow
 async function fmSide(fm) {
-  const hosts = [...new Set([...dk.creds.keys(), ...homeOnline()])];
   const render = () => {
+    const hosts = homeOnline();
     const home = el('div', `fm-place fm-share${fmSame(HOME, fm.loc) ? ' here' : ''}`);
     home.append(fmIcon('dir'), el('span', '', 'home'));
     home.title = 'every host\'s home as one';
@@ -159,7 +159,26 @@ async function fmSide(fm) {
   };
   fm.renderSide = render;
   render();
-  await Promise.all(hosts.map(async (h) => {
+  await fmHosts(fm);
+  // no place yet: the home, the boot admin's first share
+  if (!fm.loc) {
+    const first = [...fm.shares.values()].find((i) => i.shares?.length);
+    if (acct && !acct.boot) fmGo(fm, HOME, '');
+    else if (first) fmGo(fm, first.shares[0], '');
+  }
+}
+
+// the side kept to the hosts up: a new one's shares asked, a gone one's place left
+async function fmHosts(fm) {
+  const on = homeOnline();
+  // asked on every state push: nothing redrawn while the hosts up are the same
+  const sig = on.join('\n');
+  if (sig === fm.sideSig) return;
+  fm.sideSig = sig;
+  if (fm.loc && fm.loc.host !== '*' && !on.includes(fm.loc.host)) fmGo(fm, HOME, '');
+  else fm.renderSide?.();
+  await Promise.all(on.filter((h) => !fm.shares.has(h)).map(async (h) => {
+    fm.shares.set(h, null);
     try {
       // what the host published in sys, else asked
       const info = hostsInfo[h.toLowerCase()]?.files || await filesCall({ host: h }, 'info');
@@ -168,14 +187,9 @@ async function fmSide(fm) {
         ? { shares: info.shares.filter((sh) => sh.id !== 'home').map((sh) => ({ host: h, share: sh.id, root: sh.label, perms: sh.perms || '' })) }
         : { error: 'no files directory' });
     } catch (err) { fm.shares.set(h, { error: err.message }); }
-    render();
+    fm.renderSide?.();
   }));
-  // no place yet: the home, the boot admin's first share
-  if (!fm.loc) {
-    const first = [...fm.shares.values()].find((i) => i.shares?.length);
-    if (acct && !acct.boot) fmGo(fm, HOME, '');
-    else if (first) fmGo(fm, first.shares[0], '');
-  }
+  for (const h of [...fm.shares.keys()]) if (!on.includes(h)) fm.shares.delete(h);
 }
 
 function fmGo(fm, loc, dir, how) {
@@ -726,4 +740,4 @@ function dkViewer(loc, rel) {
 }
 
 
-export { dkChoose, dkFiles, dkViewer, fmGo, fmLoad };
+export { dkChoose, dkFiles, dkViewer, fmGo, fmHosts, fmLoad };
