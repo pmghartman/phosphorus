@@ -406,6 +406,17 @@ func start(sig string, s Setup) error {
 	return nil
 }
 
+// newSession a session made, tried again once after a timeout: the first call
+// starts opencode's project setup, which the second finds done
+func newSession(title, dir string) (any, error) {
+	body := map[string]any{"title": title}
+	r, err := call("POST", "/session", body, slowCall, dir)
+	if err != nil && strings.Contains(err.Error(), "timed out") {
+		r, err = call("POST", "/session", body, slowCall, dir)
+	}
+	return r, err
+}
+
 func closed(c chan struct{}) bool {
 	select {
 	case <-c:
@@ -542,7 +553,7 @@ func AskModel(messages []Msg, o AskOpts) (string, error) {
 	system, rest := messages[0], messages[1:]
 	last := rest[len(rest)-1]
 	rest = rest[:len(rest)-1]
-	s, err := call("POST", "/session", map[string]any{"title": Handle + " " + o.Role}, slowCall, "")
+	s, err := newSession(Handle+" "+o.Role, "")
 	if err != nil {
 		return "", err
 	}
@@ -602,7 +613,7 @@ func OpenProject(title, dir string, s Setup) (*Sess, error) {
 	if r := []rune(t); len(r) > 120 {
 		t = string(r[:120])
 	}
-	r, err := call("POST", "/session", map[string]any{"title": t}, slowCall, dir)
+	r, err := newSession(t, dir)
 	if err != nil {
 		return nil, err
 	}
