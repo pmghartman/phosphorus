@@ -219,6 +219,31 @@ fn claude_configs() -> Vec<PathBuf> {
     ps
 }
 
+/// where the bridge leaves its last-activity heartbeat, read by the GUI
+fn claude_status_file() -> PathBuf {
+    config_dir().join("claude-status.json")
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
+}
+
+/// the bridge records each call it answered, for the GUI's live indicator
+fn mark_claude(ok: bool, error: Option<String>) {
+    write_json(&claude_status_file(), &json!({"at": now_ms(), "ok": ok, "error": error}));
+}
+
+/// the bridge's state the GUI shows: whether Claude Desktop is set up, and when
+/// it last called, so the window can show connected, active or an error live
+#[tauri::command]
+fn claude_status(handle: AppHandle) -> Value {
+    let configured = std::fs::metadata(config_dir().join("mcp.json")).is_ok()
+        && handle.get_webview_window("main").is_some()
+        && !domain(&handle.state::<App>()).is_empty();
+    let last = serde_json::from_str::<Value>(&read(&claude_status_file())).ok().filter(Value::is_object).unwrap_or_else(|| json!({}));
+    json!({"configured": configured, "now": now_ms(), "at": last["at"], "ok": last["ok"], "error": last["error"]})
+}
+
 /// the mesh's mcp with this user's key, Claude Desktop pointed at this client as its bridge
 #[tauri::command]
 fn claude_setup(handle: AppHandle, key: String) -> Result<String, String> {
@@ -258,6 +283,7 @@ fn mcp_bridge() {
     let cfg = serde_json::from_str::<Value>(&read(&config_dir().join("mcp.json"))).unwrap_or_default();
     let (url, key) = (cfg["url"].as_str().unwrap_or_default().to_string(), cfg["key"].as_str().unwrap_or_default().to_string());
     let agent = ureq::AgentBuilder::new().timeout(Duration::from_secs(660)).build();
+    mark_claude(true, None);
     let out = Arc::new(Mutex::new(std::io::stdout()));
     for line in std::io::stdin().lock().lines() {
         let Ok(line) = line else { break };
@@ -275,17 +301,32 @@ fn mcp_bridge() {
                 .set("X-Phosphorus-Via", "claude")
                 .send_string(&line);
             let text = match res {
-                Ok(r) if r.status() == 202 => return,
-                Ok(r) => r.into_string().unwrap_or_default(),
-                // an error for a request, nothing for a notification
-                Err(_) if id.is_null() => return,
+                Ok(r) if r.status() == 202 => {
+                    mark_claude(true, None);
+                    return;
+                }
+                Ok(r) => {
+                    mark_claude(true, None);
+                    r.into_string().unwrap_or_default()
+                }
                 Err(ureq::Error::Status(code, r)) => {
                     let body = serde_json::from_str::<Value>(&r.into_string().unwrap_or_default()).unwrap_or_default();
                     let why = body["error"].as_str().map(str::to_string).unwrap_or_else(|| format!("status {code}"));
                     let why = if code == 401 { format!("phosphorus: {why}; connect claude again from the client") } else { format!("phosphorus: {why}") };
+                    mark_claude(false, Some(why.clone()));
+                    // an error answer for a request, nothing for a notification
+                    if id.is_null() {
+                        return;
+                    }
                     json!({"jsonrpc": "2.0", "id": id, "error": {"code": -32000, "message": why}}).to_string()
                 }
-                Err(e) => json!({"jsonrpc": "2.0", "id": id, "error": {"code": -32000, "message": format!("phosphorus: {e}")}}).to_string(),
+                Err(e) => {
+                    mark_claude(false, Some(format!("phosphorus: {e}")));
+                    if id.is_null() {
+                        return;
+                    }
+                    json!({"jsonrpc": "2.0", "id": id, "error": {"code": -32000, "message": format!("phosphorus: {e}")}}).to_string()
+                }
             };
             if text.trim().is_empty() {
                 return;
@@ -518,7 +559,7 @@ fn main() {
         .on_menu_event(|app, e| menu_event(app, e.id().as_ref()))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
-        .invoke_handler(tauri::generate_handler![set_domain, notify, claude_setup, client_update_check, client_update])
+        .invoke_handler(tauri::generate_handler![set_domain, notify, claude_setup, claude_status, client_update_check, client_update])
         .setup(|app| {
             let config = app.path().app_config_dir()?.join("client.json");
             app.manage(App { config });

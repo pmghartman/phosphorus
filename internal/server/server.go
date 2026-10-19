@@ -783,6 +783,11 @@ func Main() int {
 			syncDate()
 		}
 	}()
+	go func() {
+		for range time.Tick(time.Minute) {
+			reapShells()
+		}
+	}()
 
 	ln, err := net.Listen("tcp", ":"+strconv.Itoa(port))
 	if err != nil {
@@ -888,7 +893,7 @@ func initMCP() {
 					return 200, chainHistory()
 				}
 				wait := 100 * time.Second
-				if op == "exec" {
+				if op == "exec" || op == "shell" {
 					wait = time.Duration(num(p["timeout"])+30) * time.Second
 				}
 				return opOn(host, op, p, wait)

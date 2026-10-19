@@ -1818,7 +1818,7 @@ function dkControlTray() {
     };
     chip(DK_GLYPHS.gear, 'settings', dkProfileWin);
     if (acct?.admin) chip(DK_GLYPHS.users, 'users', dkUsersWin);
-    if (clientInvoke && !acct?.boot) chip(DK_GLYPHS.spark, 'claude', claudeConnect);
+    if (clientInvoke && !acct?.boot) chips.append(claudeChip());
     const head = el('div', 'dk-ctl-id');
     const who = el('div', 'dk-ctl-who');
     who.append(el('span', 'dk-ctl-name', acct?.user || 'profile'),
@@ -1843,6 +1843,7 @@ function dkControlTray() {
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !pop.hidden) show(false); });
   dk.ctl = { show, btn: b, wrap, draw: () => { if (!pop.hidden) draw(); } };
   setTimeout(checkUpdates, 3000);
+  if (clientInvoke) { pollClaude(); setInterval(pollClaude, 4000); }
   return wrap;
 }
 
@@ -6397,6 +6398,37 @@ function dkForget(host) {
   for (const w of [...dk.wins.values()]) if (w.host === host) dkClose(w, true);
   dkChips();
   dkIcons();
+}
+
+// the client bridge's live state: set up, when it last answered Claude, its error
+const claudeStat = { configured: false, at: 0, ok: true, error: '', now: 0 };
+
+// the claude chip in the control panel, its dot green when a call just landed,
+// amber when connected and idle, red on the bridge's last error
+function claudeChip() {
+  const active = claudeStat.ok && claudeStat.at && claudeStat.now - claudeStat.at < 12000;
+  const state = !claudeStat.ok ? 'error' : active ? 'active' : claudeStat.configured ? 'connected' : 'off';
+  const label = { error: 'claude error', active: 'claude active', connected: 'claude', off: 'connect claude' }[state];
+  const c = Object.assign(el('button', `dk-ctl-chip claude-${state}`), { type: 'button' });
+  if (claudeStat.error) c.title = claudeStat.error;
+  else if (state === 'connected' && claudeStat.at) {
+    const s = Math.max(0, Math.round((claudeStat.now - claudeStat.at) / 1000));
+    c.title = `last used ${s < 90 ? `${s}s` : `${Math.round(s / 60)}m`} ago`;
+  }
+  c.append(dkGlyph(DK_GLYPHS.spark), el('span', 'dk-ctl-dot', ''), el('span', '', label));
+  c.addEventListener('click', () => { dk.ctl?.show(false); claudeConnect(); });
+  return c;
+}
+
+// the bridge heartbeat polled while the client is open, the panel redrawn so the
+// chip tracks Claude's calls as they happen
+async function pollClaude() {
+  if (!clientInvoke) return;
+  try {
+    const s = await clientInvoke('claude_status');
+    Object.assign(claudeStat, { configured: !!s.configured, at: +s.at || 0, ok: s.ok !== false, error: s.error || '', now: +s.now || Date.now() });
+    dk.ctl?.draw();
+  } catch {}
 }
 
 // a fresh key with this user's rights, written into Claude Desktop by the client

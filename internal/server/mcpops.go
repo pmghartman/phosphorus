@@ -67,6 +67,8 @@ func localOp(op string, p map[string]any) (int, any) {
 		return 200, map[string]any{"closed": p["id"]}
 	case "exec":
 		return localExec(str(p["user"]), str(p["pass"]), str(p["cmd"]), str(p["stdin"]), int(num(p["timeout"])))
+	case "shell":
+		return shellExec(str(p["user"]), str(p["pass"]), str(p["cmd"]), str(p["stdin"]), int(num(p["timeout"])), p["reset"] == true)
 	case "service_health":
 		ip := util.TailnetIP(selfHost)
 		if ip == "" {
