@@ -1692,17 +1692,65 @@ let notes = (() => { try { const v = JSON.parse(localStorage.getItem(NOTES_KEY))
 function noteAdd(title, body, g = null, go = null) {
   // a burst still unread folded into its one entry, raised to the top
   const at = g?.key ? notes.findIndex((n) => n.g === g.key && !n.read) : -1;
+  let n;
   if (at >= 0) {
-    const n = notes.splice(at, 1)[0];
+    n = notes.splice(at, 1)[0];
     n.c = (n.c || 1) + 1;
     Object.assign(n, { t: `${g.label} · ${n.c} new`, b: String(g.line || body || ''), at: Date.now() }, go ? { go } : {});
     notes.unshift(n);
-    notesSave();
-    return;
+  } else {
+    n = { t: String(title || ''), b: String(body || ''), at: Date.now(), read: false, ...(g?.key ? { g: g.key } : {}), ...(go ? { go } : {}) };
+    notes.unshift(n);
+    notes = notes.slice(0, NOTES_MAX);
   }
-  notes.unshift({ t: String(title || ''), b: String(body || ''), at: Date.now(), read: false, ...(g?.key ? { g: g.key } : {}), ...(go ? { go } : {}) });
-  notes = notes.slice(0, NOTES_MAX);
   notesSave();
+  toastShow(n);
+}
+
+// --- popups in the bottom corner: each new entry shown a few seconds above the bar,
+// a burst's one entry updated in place, clicking one going where the entry leads
+
+const TOAST_MS = 6000;
+const TOAST_MAX = 4;
+let toastHost = null;
+
+function toastShow(n) {
+  if (away()) return;
+  if (!toastHost) {
+    toastHost = Object.assign(el('div', 'toasts'), { role: 'status' });
+    toastHost.setAttribute('aria-live', 'polite');
+    document.body.appendChild(toastHost);
+  }
+  // clear of the task bar, wherever it sits
+  const bar = document.querySelector('.dk-bar')?.getBoundingClientRect();
+  toastHost.style.bottom = `${bar && bar.height ? Math.max(0, innerHeight - bar.top) + 10 : 12}px`;
+  let t = n.g ? toastHost.querySelector(`.toast[data-g="${CSS.escape(n.g)}"]`) : null;
+  if (!t) {
+    t = el('div', 'toast');
+    if (n.g) t.dataset.g = n.g;
+    const x = Object.assign(el('button', 'toast-x', '×'), { type: 'button', title: 'dismiss', ariaLabel: 'dismiss' });
+    x.addEventListener('click', (e) => { e.stopPropagation(); toastClose(t); });
+    t.append(el('div', 'toast-t'), el('div', 'toast-b'), x);
+    t.addEventListener('click', () => { toastClose(t); if (t.go) noteGo(t.go); });
+    t.addEventListener('pointerenter', () => clearTimeout(t.timer));
+    t.addEventListener('pointerleave', () => { t.timer = setTimeout(() => toastClose(t), TOAST_MS / 2); });
+    toastHost.appendChild(t);
+    while (toastHost.children.length > TOAST_MAX) toastHost.firstChild.remove();
+  }
+  t.go = n.go || null;
+  t.classList.toggle('go', !!n.go);
+  t.querySelector('.toast-t').textContent = n.t;
+  const b = t.querySelector('.toast-b');
+  b.textContent = n.b;
+  b.hidden = !n.b;
+  clearTimeout(t.timer);
+  t.timer = setTimeout(() => toastClose(t), TOAST_MS);
+}
+
+function toastClose(t) {
+  clearTimeout(t.timer);
+  t.classList.add('out');
+  setTimeout(() => t.remove(), 180);
 }
 
 function noteGo(go) {
@@ -1818,7 +1866,6 @@ function dkControlTray() {
     };
     chip(DK_GLYPHS.gear, 'settings', dkProfileWin);
     if (acct?.admin) chip(DK_GLYPHS.users, 'users', dkUsersWin);
-    if (clientInvoke && !acct?.boot) chips.append(claudeChip());
     const head = el('div', 'dk-ctl-id');
     const who = el('div', 'dk-ctl-who');
     who.append(el('span', 'dk-ctl-name', acct?.user || 'profile'),
@@ -1843,7 +1890,6 @@ function dkControlTray() {
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !pop.hidden) show(false); });
   dk.ctl = { show, btn: b, wrap, draw: () => { if (!pop.hidden) draw(); } };
   setTimeout(checkUpdates, 3000);
-  if (clientInvoke) { pollClaude(); setInterval(pollClaude, 4000); }
   return wrap;
 }
 
@@ -2107,6 +2153,9 @@ function quoteEl(ref) {
   return q;
 }
 
+// who a line is from, as notices and headers say it: claude from the user whose key it used
+const sender = (m) => (m.via ? `${m.via} from ${m.name}` : m.name);
+
 // the li for a line, prev the li before it, for its header and day
 function lineEl(m, prev) {
   const li = el('li');
@@ -2125,8 +2174,8 @@ function lineEl(m, prev) {
   }
   if (m.kind === 'show') {
     li.className = 'sys show';
-    const by = m.via ? `${m.name} via ${m.via}` : m.name;
-    li.append(m.name === name ? `invited ${m.dm}${m.via ? ` via ${m.via}` : ''}: ` : `${by} invites: `, el('code', '', m.file?.label || m.text));
+    const by = m.via ? `${m.via} from ${m.name}` : m.name;
+    li.append(m.name === name && !m.via ? `invited ${m.dm}: ` : m.name === name ? `${m.via} from you invited ${m.dm}: ` : `${by} invites: `, el('code', '', m.file?.label || m.text));
     if (m.file) {
       const b = Object.assign(el('button', 'show-open', 'open'), { type: 'button', title: 'open it in a shared editor' });
       b.dataset.act = 'show';
@@ -2140,7 +2189,8 @@ function lineEl(m, prev) {
     li.textContent = m.text ? `topic: ${m.text}` : `#${m.ch} opened`;
     return li;
   }
-  const agent = MODEL_KINDS.includes(m.kind);
+  // a line sent by claude on someone's key: claude's, in the agents' colours, from that user
+  const agent = MODEL_KINDS.includes(m.kind) || !!m.via;
   const mine = !agent && m.name === name;
   const real = m.host !== 'agent' && m.kind !== 'pending' && m.kind !== 'notice' && !m.gone && !m.sending;
   li.className = `msg ${agent ? 'agent' : mine ? 'mine' : 'theirs'}`;
@@ -2152,10 +2202,10 @@ function lineEl(m, prev) {
   if (p && p.dataset.who === li.dataset.who && m.timestamp - Number(p.dataset.at) < GROUP_MS && !m.re) li.classList.add('cont');
 
   const head = el('div', 'msg-head');
-  const user = el('span', 'user', mine ? 'you' : m.name);
+  const user = el('span', 'user', mine ? 'you' : m.via || m.name);
   if (agent) user.classList.add('who-model');
   head.append(user);
-  if (m.via) head.append(el('span', 'via', `via ${m.via}`));
+  if (m.via) head.append(el('span', 'via', `from ${m.name}`));
   head.append(el('span', 'ts', formatTime(m.timestamp)));
   if (m.edited != null && !m.gone) head.append(el('span', 'edited', 'edited'));
   if (real) li.dataset.acts = mine ? 'mine' : 'theirs';
@@ -2693,7 +2743,7 @@ function takeLine(m, live) {
   const atMe = name && new RegExp(`@${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(m.text || '');
   // a mention its own entry; the rest by channel or person, none for the one being read
   const where = m.dm ? m.name : `#${m.ch || 'mesh'}`;
-  notifyChat({ name: m.dm ? `${m.name} (direct)` : atMe ? `${m.name} mentioned you` : m.ch ? `${m.name} in #${m.ch}` : m.name, text }, false,
+  notifyChat({ name: m.dm ? `${sender(m)} (direct)` : atMe ? `${sender(m)} mentioned you` : m.ch ? `${sender(m)} in #${m.ch}` : sender(m), text }, false,
     atMe ? null : { key: m.dm ? `dm:${m.name}` : where, label: where, line: m.dm ? text : `${m.name}: ${text}`, seen: chatReading(c) }, c);
 }
 
@@ -2751,7 +2801,7 @@ function agentSaid(m, live) {
   if (!live) return;
   noteNews(m.name);
   bumpUnread();
-  notifyChat({ name: m.name, text: m.text }, false, { key: `dm:${m.name}`, label: m.name, line: m.text, seen: chatReading(m.name) }, m.name);
+  notifyChat({ name: sender(m), text: m.text }, false, { key: `dm:${m.name}`, label: sender(m), line: m.text, seen: chatReading(m.name) }, m.name);
 }
 
 // --- the agents' dms -------------------------------------------------------------
@@ -4285,7 +4335,9 @@ function dkDesktop() {
   const bar = dkBar(tasks, hosts);
   bar.prepend(dkHomeBtn());
   const ctl = dkControlTray();
-  bar.insertBefore(dkBellTray(), dkTray);
+  const bell = dkBellTray();
+  bar.insertBefore(bell, dkTray);
+  if (clientInvoke && !acct?.boot) bar.insertBefore(dkClaudeTray(), bell);
   bar.append(ctl);
   // the mesh and update panes opened from the panel, their own buttons out of sight
   ctl.append(dkMeshTray(dk.ctl.btn), dkTray, updateModal);
@@ -5952,6 +6004,7 @@ function dkPopsClose(keep) {
   if (keep !== 'mesh') dk.meshTray?.show(false);
   if (keep !== 'bell') dk.bell?.show(false);
   if (keep !== 'ctl') dk.ctl?.show(false);
+  if (keep !== 'claude') dk.claude?.show(false);
   if (keep !== 'menu') dkMenuEl.hidden = true;
   if (keep !== 'update' && !updateModal.hidden) closeUpdateModal();
   if (keep !== 'theme') closeMenus();
@@ -6400,35 +6453,127 @@ function dkForget(host) {
   dkIcons();
 }
 
-// the client bridge's live state: set up, when it last answered Claude, its error
-const claudeStat = { configured: false, at: 0, ok: true, error: '', now: 0 };
+// --- claude: its own tray beside the bell, the bridge's state and calls in a popup
 
-// the claude chip in the control panel, its dot green when a call just landed,
-// amber when connected and idle, red on the bridge's last error
-function claudeChip() {
-  const active = claudeStat.ok && claudeStat.at && claudeStat.now - claudeStat.at < 12000;
-  const state = !claudeStat.ok ? 'error' : active ? 'active' : claudeStat.configured ? 'connected' : 'off';
-  const label = { error: 'claude error', active: 'claude active', connected: 'claude', off: 'connect claude' }[state];
-  const c = Object.assign(el('button', `dk-ctl-chip claude-${state}`), { type: 'button' });
-  if (claudeStat.error) c.title = claudeStat.error;
-  else if (state === 'connected' && claudeStat.at) {
-    const s = Math.max(0, Math.round((claudeStat.now - claudeStat.at) / 1000));
-    c.title = `last used ${s < 90 ? `${s}s` : `${Math.round(s / 60)}m`} ago`;
-  }
-  c.append(dkGlyph(DK_GLYPHS.spark), el('span', 'dk-ctl-dot', ''), el('span', '', label));
-  c.addEventListener('click', () => { dk.ctl?.show(false); claudeConnect(); });
-  return c;
+// the client bridge's live state: set up, running, its calls and the mesh's answer
+const claudeStat = { configured: false, running: false, at: 0, ok: true, error: '', now: 0, calls: [], recent: [], mesh: null, probed: 0 };
+const CLAUDE_ACTIVE_MS = 12000;
+const CLAUDE_PROBE_MS = 15000;
+
+// error, active, online (set up and the mesh answering), offline or off
+function claudeState() {
+  const c = claudeStat;
+  if (!c.configured) return 'off';
+  if (!c.ok || c.mesh?.online === false) return 'error';
+  if (c.calls.length || (c.at && c.now - c.at < CLAUDE_ACTIVE_MS)) return 'active';
+  return c.running ? 'online' : 'idle';
 }
 
-// the bridge heartbeat polled while the client is open, the panel redrawn so the
-// chip tracks Claude's calls as they happen
-async function pollClaude() {
+const claudeAgo = (ms) => {
+  const s = Math.max(0, Math.round(ms / 1000));
+  return s < 90 ? `${s}s` : s < 5400 ? `${Math.round(s / 60)}m` : `${Math.round(s / 3600)}h`;
+};
+const claudeMs = (ms) => (ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`);
+
+function dkClaudeTray() {
+  const wrap = el('div', 'dk-tray-wrap dk-claude');
+  const b = Object.assign(el('button', 'dk-tray dk-claude-btn'), { type: 'button', title: 'claude', ariaLabel: 'claude' });
+  b.setAttribute('aria-expanded', 'false');
+  b.append(dkGlyph(DK_GLYPHS.spark), el('span', 'dk-claude-dot'));
+  const pop = Object.assign(el('div', 'dk-claude-pop dk-pop'), { hidden: true });
+  wrap.append(b, pop);
+  dkAnchor(pop, b, { fill: 300 });
+  const row = (label, value, tone = '') => {
+    const r = el('div', 'dk-cl-row');
+    r.append(el('span', 'dk-cl-k', label), el('span', `dk-cl-v ${tone}`, value));
+    return r;
+  };
+  const callRow = (c, live) => {
+    const li = el('li', `dk-cl-call ${live ? 'live' : c.ok ? 'ok' : 'bad'}`);
+    li.append(el('span', 'dk-cl-pip'), el('span', 'dk-cl-tool', c.tool),
+      el('span', 'dk-cl-t', live ? claudeMs(claudeStat.now - c.since) : `${claudeMs(c.ms)} · ${claudeAgo(claudeStat.now - c.at)}`));
+    if (!live && !c.ok && c.error) li.title = c.error;
+    return li;
+  };
+  const head = el('div', 'dk-cl-head');
+  const stateLine = el('span', 'dk-cl-state');
+  const bar = el('div', 'dk-cl-bar');
+  const body = el('div', 'dk-cl-body');
+  pop.append(bar, head, body);
+  head.append(el('span', 'dk-cl-title', 'claude'), stateLine);
+  // the key button: primary until set up, then grey and asked about first
+  let btn = null;
+  const drawBar = () => {
+    const done = claudeStat.configured;
+    if (btn && btn.dataset.done === String(done)) return;
+    btn = Object.assign(el('button', `dk-cl-key${done ? ' grey' : ''}`, done ? 'refresh key' : 'connect claude'), { type: 'button' });
+    btn.dataset.done = String(done);
+    btn.addEventListener('click', () => {
+      show(false);
+      if (!claudeStat.configured) { claudeConnect(); return; }
+      openConfirm('The old key stops working and claude must be restarted.', {
+        title: 'refresh claude\'s key?', actionLabel: 'refresh', onAction: () => { closeUpdateModal(); claudeConnect(); },
+      });
+    });
+    bar.replaceChildren(btn);
+  };
+  const paint = () => {
+    const st = claudeState();
+    b.dataset.state = st;
+    b.title = { off: 'claude, not connected', idle: 'claude, waiting to start', online: 'claude, online', active: 'claude, working', error: 'claude, needs attention' }[st];
+    if (pop.hidden) return;
+    drawBar();
+    const c = claudeStat;
+    stateLine.textContent = { off: 'not connected', idle: 'waiting for claude desktop', online: 'online', active: 'working', error: 'attention' }[st];
+    stateLine.dataset.state = st;
+    const rows = [];
+    if (!c.configured) {
+      rows.push(el('div', 'dk-cl-none', 'Connect to let claude desktop use this mesh as you.'));
+    } else {
+      const m = c.mesh;
+      rows.push(row('mcp', m ? (m.online ? `online · ${m.ms}ms` : m.error || 'offline') : 'checking', m ? (m.online ? 'good' : 'bad') : ''));
+      rows.push(row('claude desktop', c.running ? 'connected' : 'not running', c.running ? 'good' : ''));
+      if (c.error) rows.push(row('last error', c.error, 'bad'));
+      const calls = el('div', 'dk-cl-sec');
+      calls.append(el('div', 'dk-cl-sec-t', 'calls'));
+      const list = el('ul', 'dk-cl-calls');
+      list.append(...c.calls.map((x) => callRow(x, true)), ...c.recent.slice(0, c.calls.length ? 4 : 6).map((x) => callRow(x, false)));
+      if (!list.children.length) list.append(el('li', 'dk-cl-none', 'no calls yet'));
+      calls.append(list);
+      rows.push(calls);
+    }
+    body.replaceChildren(...rows);
+  };
+  const show = (on) => {
+    if (!on && pop.hidden) return;
+    if (on) dkPopsClose('claude');
+    pop.hidden = !on;
+    b.setAttribute('aria-expanded', String(on));
+    if (on) { btn = null; paint(); pollClaude(true); }
+  };
+  b.addEventListener('click', () => show(pop.hidden));
+  document.addEventListener('pointerdown', (e) => { if (!pop.hidden && !wrap.contains(e.target) && !updateModal.contains(e.target)) show(false); }, true);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !pop.hidden) show(false); });
+  dk.claude = { show, paint };
+  pollClaude();
+  clearInterval(dk.claudeTimer);
+  dk.claudeTimer = setInterval(() => pollClaude(), 1500);
+  return wrap;
+}
+
+// the bridge polled while the client is open; the mesh probed now and then, or on demand
+async function pollClaude(probe = false) {
   if (!clientInvoke) return;
   try {
     const s = await clientInvoke('claude_status');
-    Object.assign(claudeStat, { configured: !!s.configured, at: +s.at || 0, ok: s.ok !== false, error: s.error || '', now: +s.now || Date.now() });
-    dk.ctl?.draw();
+    Object.assign(claudeStat, { configured: !!s.configured, running: !!s.running, at: +s.at || 0, ok: s.ok !== false, error: s.error || '',
+      now: +s.now || Date.now(), calls: s.calls || [], recent: s.recent || [] });
   } catch {}
+  dk.claude?.paint();
+  if (!claudeStat.configured || (!probe && Date.now() - claudeStat.probed < CLAUDE_PROBE_MS)) return;
+  claudeStat.probed = Date.now();
+  try { claudeStat.mesh = await clientInvoke('claude_probe'); } catch { claudeStat.mesh = { online: false, error: 'client unreachable' }; }
+  dk.claude?.paint();
 }
 
 // a fresh key with this user's rights, written into Claude Desktop by the client
@@ -6440,6 +6585,8 @@ async function claudeConnect() {
     const hs = r.hosts || [];
     const git = (r.pages || []).includes(GIT_SERVICE) ? ', works on forgejo as you' : '';
     noteAdd('claude connected', `quit claude fully and reopen it${hs.length ? `, runs commands as you on ${hs.join(', ')}` : ''}${git}; config: ${at}`);
+    claudeStat.mesh = null;
+    pollClaude(true);
   } catch (e) { openConfirm(`failed: ${e}`, { title: 'claude', hideCancel: true, actionLabel: 'ok', onAction: closeUpdateModal }); }
 }
 
