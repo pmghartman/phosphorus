@@ -440,8 +440,6 @@ func describe() {
 		if t, ok := d[tools[i].name]; ok {
 			tools[i].description = t
 		}
-	}
-	for i := range tools {
 		switch tools[i].name {
 		case "make_git_master", "set_model_role", "update_control", "host_logs", "host_config", "service_edit", "config_set":
 			tools[i].admin = true

@@ -366,7 +366,10 @@ func toAny(v any) any {
 	return v
 }
 
-var nameRe = regexp.MustCompile(`^[A-Za-z0-9-]{1,63}$`)
+var (
+	nameRe     = regexp.MustCompile(`^[A-Za-z0-9-]{1,63}$`)
+	gameNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
+)
 
 func hostOf(a map[string]any) (string, error) {
 	h := util.Str(a["host"])
@@ -459,8 +462,21 @@ func numOr(v any, def float64) float64 {
 var projectOK = map[string]bool{"fetch_page": true}
 var phases = []any{"plan", "execute", "test", "refine"}
 
-var tools []tool
-var toolsOnce sync.Once
+var (
+	tools     []tool
+	toolIndex map[string]*tool
+	toolsOnce sync.Once
+	// the tools/list answer per kind of caller, built once
+	listed sync.Map
+)
+
+func buildOnce() {
+	buildTools()
+	toolIndex = make(map[string]*tool, len(tools))
+	for i := range tools {
+		toolIndex[tools[i].name] = &tools[i]
+	}
+}
 
 func buildTools() {
 	views := []string{"home", "files", "status", "about", "chat", "projects", "update"}
@@ -655,15 +671,7 @@ func buildTools() {
 			}),
 			run: func(a map[string]any, m Meta) (any, error) {
 				if !util.Truthy(a["host"]) {
-					hosts := []string{str(src.Self()["host"])}
-					seen := map[string]bool{hosts[0]: true}
-					for _, h := range src.Tailnet() {
-						n := str(h["name"])
-						if h["phosphorus"] == true && !seen[n] {
-							seen[n] = true
-							hosts = append(hosts, n)
-						}
-					}
+					hosts := meshHosts()
 					out := make([]any, len(hosts))
 					var wg sync.WaitGroup
 					for i, h := range hosts {
@@ -752,7 +760,7 @@ func buildTools() {
 					return nil, err
 				}
 				act := str(a["action"])
-				if (act != "start" && act != "stop") || !regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`).MatchString(str(a["name"])) {
+				if (act != "start" && act != "stop") || !gameNameRe.MatchString(str(a["name"])) {
 					return nil, errors.New("bad name or action")
 				}
 				host, err := knownHost(a)
@@ -1152,23 +1160,45 @@ func one(raw any, local bool, caller *Caller) map[string]any {
 	}
 	switch {
 	case method == "initialize":
-		pv := params["protocolVersion"]
-		if !util.Truthy(pv) {
-			pv = protocol
-		}
-		return reply(id, map[string]any{
-			"protocolVersion": pv, "capabilities": map[string]any{"tools": map[string]any{}},
-			"serverInfo": map[string]any{"name": "phosphorus", "version": src.Self()["version"]},
-			"instructions": "phosphorus, a self-hosted mesh: search the web, read its hosts, services, stats, git, models, chat " +
-				"and updates, its buttons and messages pressed and sent only for a person asking phosphorus.",
-		})
+		return initialize(id, params)
 	case method == "ping":
 		return reply(id, map[string]any{})
-	case method == "phosphorus/created" && local:
-		var m *Meta
-		if util.Truthy(params["_ask"]) {
-			m = metaOf(params["_ask"], params["_dir"])
-		}
+	case local && strings.HasPrefix(method, "phosphorus/"):
+		return hook(id, method, params)
+	case method == "tools/list":
+		return reply(id, map[string]any{"tools": toolList(local, caller)})
+	case method == "tools/call":
+		return callTool(id, params, local, caller)
+	}
+	return fail(id, -32601, "no method "+method)
+}
+
+func initialize(id any, params map[string]any) map[string]any {
+	pv := params["protocolVersion"]
+	if !util.Truthy(pv) {
+		pv = protocol
+	}
+	return reply(id, map[string]any{
+		"protocolVersion": pv, "capabilities": map[string]any{"tools": map[string]any{}},
+		"serverInfo": map[string]any{"name": "phosphorus", "version": src.Self()["version"]},
+		"instructions": "phosphorus, a self-hosted mesh: search the web, read its hosts, services, stats, git, models, chat " +
+			"and updates, its buttons and messages pressed and sent only for a person asking phosphorus.",
+	})
+}
+
+// askMeta the ask a local call carries in _ask, nil for none
+func askMeta(p map[string]any) *Meta {
+	if !util.Truthy(p["_ask"]) {
+		return nil
+	}
+	return metaOf(p["_ask"], p["_dir"])
+}
+
+// hook the harness's own calls, from this host only
+func hook(id any, method string, params map[string]any) map[string]any {
+	m := askMeta(params)
+	switch method {
+	case "phosphorus/created":
 		opened := false
 		if m != nil {
 			if who := src.Asker(m.Asker); who != nil {
@@ -1178,11 +1208,7 @@ func one(raw any, local bool, caller *Caller) map[string]any {
 			}
 		}
 		return reply(id, map[string]any{"opened": opened})
-	case method == "phosphorus/tool" && local:
-		var m *Meta
-		if util.Truthy(params["_ask"]) {
-			m = metaOf(params["_ask"], params["_dir"])
-		}
+	case "phosphorus/tool":
 		if m == nil {
 			return fail(id, -32000, "no ask holds this session")
 		}
@@ -1201,92 +1227,103 @@ func one(raw any, local bool, caller *Caller) map[string]any {
 			return reply(id, map[string]any{"set": map[string]any{"url": FetchURL(str(args["url"]))}})
 		}
 		return reply(id, out)
-	case method == "phosphorus/todos" && local:
-		if util.Truthy(params["_ask"]) {
-			if m := metaOf(params["_ask"], params["_dir"]); m != nil && m.Project != "" && m.Session == params["_ask"] {
-				project.Todos(m.Project, params["todos"])
-			}
+	case "phosphorus/todos":
+		if m != nil && m.Project != "" && m.Session == params["_ask"] {
+			project.Todos(m.Project, params["todos"])
 		}
 		return reply(id, map[string]any{})
-	case method == "tools/list":
-		list := []any{}
-		for i := range tools {
-			t := &tools[i]
-			if !visible(t, local, caller) {
-				continue
-			}
-			x := map[string]any{"name": t.name, "description": t.description, "inputSchema": t.schema}
-			ann := map[string]any{"readOnlyHint": t.read, "openWorldHint": t.open}
-			if !t.read {
-				ann["destructiveHint"] = t.destructive
-			}
-			x["annotations"] = ann
-			list = append(list, x)
-		}
-		return reply(id, map[string]any{"tools": list})
-	case method == "tools/call":
-		var t *tool
-		for i := range tools {
-			if tools[i].name == params["name"] {
-				t = &tools[i]
-			}
-		}
-		if t == nil || !visible(t, local, caller) {
-			return fail(id, -32602, fmt.Sprintf("no tool %s", util.JSString(params["name"])))
-		}
-		args := map[string]any{}
-		for k, v := range util.Obj(params["arguments"]) {
-			if k != "_ask" && k != "_dir" {
-				args[k] = v
-			}
-		}
-		pa := util.Obj(params["arguments"])
-		out, err := func() (out any, err error) {
-			defer func() {
-				if r := recover(); r != nil {
-					err = fmt.Errorf("%v", r)
-				}
-			}()
-			m := Meta{Caller: caller, Local: local}
-			if local && util.Truthy(pa["_ask"]) {
-				if x := metaOf(pa["_ask"], pa["_dir"]); x != nil {
-					m = *x
-					m.Local = true
-				}
-			}
-			if m.Project != "" && !t.project && !projectOK[t.name] {
-				return nil, fmt.Errorf("%s isn't open to a project", t.name)
-			}
-			return t.run(args, m)
-		}()
-		if !t.read && caller != nil {
-			audit(caller, t.name, args, err)
-		}
-		if err != nil {
-			code, msg := "failed", err.Error()
-			var data any
-			if te, ok := err.(*toolError); ok {
-				code, data = te.code, te.data
-			}
-			e := map[string]any{"code": code, "message": msg}
-			if data != nil {
-				e["data"] = toAny(data)
-			}
-			text := code + ": " + msg
-			if data != nil {
-				text += "\n" + string(util.Marshal(toAny(data)))
-			}
-			return reply(id, map[string]any{"content": []any{map[string]any{"type": "text", "text": text}}, "structuredContent": map[string]any{"error": e}, "isError": true})
-		}
-
-		return reply(id, map[string]any{"content": []any{map[string]any{"type": "text", "text": string(util.Marshal(toAny(out)))}}})
 	}
 	return fail(id, -32601, "no method "+method)
 }
 
+// toolList the tools a caller sees, kept for the three kinds of caller
+func toolList(local bool, caller *Caller) []any {
+	key := "peer"
+	switch {
+	case caller != nil && caller.Admin:
+		key = "admin"
+	case caller != nil:
+		key = "key"
+	case local:
+		key = "local"
+	}
+	if v, ok := listed.Load(key); ok {
+		return v.([]any)
+	}
+	list := []any{}
+	for i := range tools {
+		t := &tools[i]
+		if !visible(t, local, caller) {
+			continue
+		}
+		ann := map[string]any{"readOnlyHint": t.read, "openWorldHint": t.open}
+		if !t.read {
+			ann["destructiveHint"] = t.destructive
+		}
+		list = append(list, map[string]any{"name": t.name, "description": t.description, "inputSchema": t.schema, "annotations": ann})
+	}
+	listed.Store(key, list)
+	return list
+}
+
+// runTool one tool's run, a panic in it an error
+func runTool(t *tool, params map[string]any, local bool, caller *Caller) (out any, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("%v", r)
+		}
+	}()
+	pa := util.Obj(params["arguments"])
+	args := make(map[string]any, len(pa))
+	for k, v := range pa {
+		if k != "_ask" && k != "_dir" {
+			args[k] = v
+		}
+	}
+	m := Meta{Caller: caller, Local: local}
+	if local {
+		if x := askMeta(pa); x != nil {
+			m = *x
+			m.Local = true
+		}
+	}
+	if m.Project != "" && !t.project && !projectOK[t.name] {
+		return nil, fmt.Errorf("%s isn't open to a project", t.name)
+	}
+	out, err = t.run(args, m)
+	if !t.read && caller != nil {
+		audit(caller, t.name, args, err)
+	}
+	return out, err
+}
+
+func callTool(id any, params map[string]any, local bool, caller *Caller) map[string]any {
+	name, _ := params["name"].(string)
+	t := toolIndex[name]
+	if t == nil || !visible(t, local, caller) {
+		return fail(id, -32602, fmt.Sprintf("no tool %s", util.JSString(params["name"])))
+	}
+	out, err := runTool(t, params, local, caller)
+	if err == nil {
+		return reply(id, map[string]any{"content": []any{map[string]any{"type": "text", "text": string(util.Marshal(toAny(out)))}}})
+	}
+	code := "failed"
+	var data any
+	if te, ok := err.(*toolError); ok {
+		code, data = te.code, te.data
+	}
+	e := map[string]any{"code": code, "message": err.Error()}
+	text := code + ": " + err.Error()
+	if data != nil {
+		e["data"] = toAny(data)
+		text += "\n" + string(util.Marshal(toAny(data)))
+	}
+	return reply(id, map[string]any{"content": []any{map[string]any{"type": "text", "text": text}}, "structuredContent": map[string]any{"error": e}, "isError": true})
+}
+
 // Handle a message or a batch: status and body, 202 and nil for notifications only
 func Handle(body any, local bool, caller *Caller) (int, any) {
-	toolsOnce.Do(buildTools)
+	toolsOnce.Do(buildOnce)
 	if arr, ok := body.([]any); ok {
 		outs := make([]map[string]any, len(arr))
 		var wg sync.WaitGroup
