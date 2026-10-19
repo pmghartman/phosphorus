@@ -2362,6 +2362,9 @@ input, textarea { caret-color: var(--accent); }
 .dk-bar .dk-tasks { margin-right: 0.3rem; }
 .dk-bar .dk-bell, .dk-bar .dk-claude-btn { width: 1.9rem; }
 .dk-bar .dk-tray-wrap:has(> .dk-bell)::before, .dk-bar .dk-tray-wrap:has(> .dk-claude-btn)::before { margin-right: 0.15rem; }
+/* claude and the bell one pair: no gap between, each a narrower slot */
+.dk-bar .dk-tray-wrap:has(> .dk-claude-btn) + .dk-tray-wrap:has(> .dk-bell) { margin-left: -0.3rem; }
+.dk-bar .dk-tray.dk-claude-btn, .dk-bar .dk-tray.dk-bell:is(.dk-tray-wrap:has(> .dk-claude-btn) + .dk-tray-wrap > *) { width: 1.75rem; }
 .dk-ctl > .dk-profile { padding: 0 0.55rem; gap: 0.4rem; }
 .dk-ctl > .dk-profile .dk-clock { margin-right: 0.15rem; }
 
