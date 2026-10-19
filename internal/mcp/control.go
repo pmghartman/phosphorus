@@ -155,19 +155,22 @@ func controlTools(local func(m Meta) bool) []tool {
 				return pressed(src.Actions.ChatEdit(m.Caller.User, str(a["ref"]), str(a["action"]), str(a["text"])))
 			}},
 		{name: "terminal_run", scope: "key", destructive: true,
-			description: "Run a command or a whole script on a host as you, with exactly the rights of your saved login for it, as if " +
-				"you were at its shell. With a login saved, it signs in over ssh on its own, no window needed, and returns the exit code, " +
-				"stdout and stderr (each call a fresh shell, so cd within it). stdin feeds the command, e.g. cat > file to write any file " +
-				"the login may. git true hands git your forgejo login for clone, fetch and push over https (a posix shell). " +
-				"mode tab runs one line instead in your shared, logged-in terminal tab (open_terminal opens one) and returns the screen, " +
-				"keeping its directory and state between commands. Never types a password. " + noCreds,
+			description: "Run a command or a whole script on a host as you, with exactly the rights of your saved login, as if you were " +
+				"at its shell. With a login saved it signs in over ssh on its own, no window needed, and returns the exit code and the " +
+				"combined output. With one saved it defaults to a persistent session: one login shell kept for you on the host, so cd, " +
+				"environment variables and background jobs carry from one call to the next, the way your own shell session does; reset " +
+				"starts it fresh. mode ssh runs each command in a fresh shell instead (no state kept); mode tab types one line into your " +
+				"shared, logged-in terminal tab (open_terminal opens one) and returns its screen. stdin feeds the command's input, e.g. " +
+				"cat > file to write any file the login may. git true hands git your forgejo login for clone, fetch and push over https. " +
+				"Never types a password. " + noCreds,
 			schema: object(map[string]any{"host": name,
 				"command": map[string]any{"type": "string", "description": "run as typed by the login's shell; several lines over ssh, one in a tab"},
-				"stdin":   map[string]any{"type": "string", "description": "ssh only: text fed to the command's stdin"},
-				"git":     map[string]any{"type": "boolean", "description": "ssh only: your forgejo login handed to git for the mesh's forgejo", "default": false},
-				"mode":    map[string]any{"type": "string", "enum": []any{"auto", "ssh", "tab"}, "description": "auto: ssh with a saved login, else a shared tab", "default": "auto"},
+				"stdin":   map[string]any{"type": "string", "description": "text fed to the command's stdin (not in a tab)"},
+				"git":     map[string]any{"type": "boolean", "description": "your forgejo login handed to git for the mesh's forgejo; runs in a fresh shell", "default": false},
+				"mode":    map[string]any{"type": "string", "enum": []any{"auto", "session", "ssh", "tab"}, "description": "auto: a persistent session with a saved login, else a shared tab; session: persistent; ssh: fresh shell each call; tab: the shared terminal", "default": "auto"},
+				"reset":   map[string]any{"type": "boolean", "description": "session: drop the kept shell and start a fresh one for this call", "default": false},
 				"id":      map[string]any{"type": "string", "description": "tab only: terminal id from terminal_screen, if several are shared"},
-				"wait_s":  map[string]any{"type": "integer", "description": "ssh: seconds before it's killed, up to 600; tab: seconds to wait for output to settle, up to 120", "default": 60}}, "host", "command"),
+				"wait_s":  map[string]any{"type": "integer", "description": "ssh/session: seconds before the command is killed, up to 600; tab: seconds to wait for output to settle, up to 120", "default": 60}}, "host", "command"),
 			run: func(a map[string]any, m Meta) (any, error) {
 				if m.Caller == nil {
 					return nil, errc("forbidden", "on a user's key only; the chat's model uses terminal_type")
@@ -189,7 +192,11 @@ func controlTools(local func(m Meta) bool) []tool {
 				if m.Caller.Login != nil {
 					user, pass, saved = m.Caller.Login(h)
 				}
-				if mode == "ssh" || mode == "auto" && saved {
+				// git is a fresh shell whatever the mode: its credential helper is
+				// scoped to that one process
+				oneShot := mode == "ssh" || a["git"] == true
+				persistent := mode == "session" || (mode == "auto" && saved && !oneShot)
+				if oneShot || persistent {
 					if !saved {
 						return nil, errc("forbidden", "your key carries no saved login for %s: save one in the browser, the key picks it up", h)
 					}
@@ -205,13 +212,16 @@ func controlTools(local func(m Meta) bool) []tool {
 						}
 						cmd, stdin = pre+cmd, creds+stdin
 					}
+					if persistent {
+						return pressed(src.Actions.Op(h, "shell", map[string]any{"user": user, "pass": pass, "cmd": cmd, "stdin": stdin, "timeout": float64(w), "reset": a["reset"] == true}))
+					}
 					return pressed(src.Actions.Op(h, "exec", map[string]any{"user": user, "pass": pass, "cmd": cmd, "stdin": stdin, "timeout": float64(w)}))
 				}
 				if strings.ContainsAny(cmd, "\r\n") {
 					return nil, errc("bad_input", "one line only in a tab; save a login for %s to run scripts over ssh", h)
 				}
-				if str(a["stdin"]) != "" || a["git"] == true {
-					return nil, errc("bad_input", "stdin and git are over ssh only; save a login for %s", h)
+				if str(a["stdin"]) != "" {
+					return nil, errc("bad_input", "stdin needs a saved login for %s", h)
 				}
 				w := int(numOr(a["wait_s"], 30))
 				if w < 1 || w > waitMaxS {

@@ -2260,6 +2260,14 @@ input, textarea { caret-color: var(--accent); }
 .dk-ctl-chip .ic { width: 0.8rem; height: 0.8rem; color: var(--muted); transition: color 0.15s; }
 .dk-ctl-chip:hover, .dk-ctl-chip:focus-visible { border-color: var(--accent); outline: none; }
 .dk-ctl-chip:hover .ic { color: var(--accent); }
+/* the claude chip's live dot: idle hidden, connected amber, active green, error red */
+.dk-ctl-dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--muted); flex: none; }
+.claude-off .dk-ctl-dot { display: none; }
+.claude-connected .dk-ctl-dot { background: var(--warn); }
+.claude-active .dk-ctl-dot { background: var(--online); box-shadow: 0 0 0 2px color-mix(in srgb, var(--online) 30%, transparent); }
+.claude-active { border-color: color-mix(in srgb, var(--online) 50%, var(--border)); }
+.claude-error .dk-ctl-dot { background: var(--accent-2); }
+.claude-error { border-color: color-mix(in srgb, var(--accent-2) 50%, var(--border)); }
 .dk-ctl-theme { margin: 0.6rem; }
 /* the bar's right side: the hosts, a rule, the bell, then the clock and the user */
 .dk-bar .dk-tray-wrap:has(> .dk-bell)::before { content: ''; align-self: center; width: 1px; height: 1.1rem; margin-right: 0.3rem; background: var(--border); }
