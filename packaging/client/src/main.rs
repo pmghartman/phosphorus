@@ -43,12 +43,10 @@ fn read(p: &Path) -> String {
     std::fs::read_to_string(p).map(|s| s.trim().to_string()).unwrap_or_default()
 }
 
-fn write_json(p: &Path, v: &Value) {
+fn write_json(p: &Path, v: &Value) -> bool {
     let tmp = p.with_extension("json.tmp");
     let _ = std::fs::create_dir_all(p.parent().unwrap_or(Path::new(".")));
-    if std::fs::write(&tmp, v.to_string()).is_ok() {
-        let _ = std::fs::rename(&tmp, p);
-    }
+    std::fs::write(&tmp, v.to_string()).is_ok() && std::fs::rename(&tmp, p).is_ok()
 }
 
 fn alert(handle: &AppHandle, text: &str) {
@@ -206,9 +204,19 @@ fn config_dir() -> PathBuf {
     base.join("dev.phosphorus.client")
 }
 
-/// Claude Desktop's config, wherever it keeps it
-fn claude_config() -> PathBuf {
-    config_dir().parent().unwrap_or(Path::new(".")).join("Claude/claude_desktop_config.json")
+/// Claude Desktop's configs, wherever it keeps them; the store build's own copy on Windows
+fn claude_configs() -> Vec<PathBuf> {
+    let roaming = config_dir().parent().unwrap_or(Path::new(".")).to_path_buf();
+    let mut ps = vec![roaming.join("Claude/claude_desktop_config.json")];
+    if cfg!(windows) {
+        let local = std::env::var_os("LOCALAPPDATA").map(PathBuf::from).unwrap_or_else(|| roaming.with_file_name("Local"));
+        for e in std::fs::read_dir(local.join("Packages")).into_iter().flatten().flatten() {
+            if e.file_name().to_string_lossy().starts_with("Claude_") {
+                ps.push(e.path().join("LocalCache/Roaming/Claude/claude_desktop_config.json"));
+            }
+        }
+    }
+    ps
 }
 
 /// the mesh's mcp with this user's key, Claude Desktop pointed at this client as its bridge
@@ -218,16 +226,28 @@ fn claude_setup(handle: AppHandle, key: String) -> Result<String, String> {
     if d.is_empty() || key.is_empty() {
         return Err("no domain or key".into());
     }
-    write_json(&config_dir().join("mcp.json"), &json!({"url": format!("{}api/mcp", url_of(&d)), "key": key}));
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let p = claude_config();
-    let mut cfg = serde_json::from_str::<Value>(&read(&p)).ok().filter(Value::is_object).unwrap_or_else(|| json!({}));
-    if !cfg["mcpServers"].is_object() {
-        cfg["mcpServers"] = json!({});
+    // a path that goes away: macOS's translocated copy or the open dmg
+    let e = exe.to_string_lossy();
+    if e.contains("/AppTranslocation/") || e.starts_with("/Volumes/") {
+        return Err("move Phosphorus Client to Applications, open it from there, then connect again".into());
     }
-    cfg["mcpServers"]["phosphorus"] = json!({"command": exe, "args": ["--mcp"]});
-    write_json(&p, &cfg);
-    Ok("restart claude".into())
+    write_json(&config_dir().join("mcp.json"), &json!({"url": format!("{}api/mcp", url_of(&d)), "key": key}));
+    let mut done = vec![];
+    for p in claude_configs() {
+        let mut cfg = serde_json::from_str::<Value>(&read(&p)).ok().filter(Value::is_object).unwrap_or_else(|| json!({}));
+        if !cfg["mcpServers"].is_object() {
+            cfg["mcpServers"] = json!({});
+        }
+        cfg["mcpServers"]["phosphorus"] = json!({"command": exe, "args": ["--mcp"]});
+        if write_json(&p, &cfg) {
+            done.push(p.display().to_string());
+        }
+    }
+    if done.is_empty() {
+        return Err("could not write claude_desktop_config.json".into());
+    }
+    Ok(done.join(", "))
 }
 
 /// `--mcp`: Claude Desktop's stdio, each message posted to the mesh with the saved key,
