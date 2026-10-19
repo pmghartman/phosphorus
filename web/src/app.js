@@ -6404,9 +6404,9 @@ async function claudeConnect() {
   const r = await acctCall('/api/me/mcp-key', {});
   if (!r.ok) { openConfirm(r.error || 'failed', { title: 'claude', hideCancel: true, actionLabel: 'ok', onAction: closeUpdateModal }); return; }
   try {
-    await clientInvoke('claude_setup', { key: r.key });
+    const at = await clientInvoke('claude_setup', { key: r.key });
     const hs = r.hosts || [];
-    noteAdd('claude connected', `on its next start${hs.length ? `, runs commands as you on ${hs.join(', ')}` : ''}`);
+    noteAdd('claude connected', `quit claude fully and reopen it${hs.length ? `, runs commands as you on ${hs.join(', ')}` : ''}; config: ${at}`);
   } catch (e) { openConfirm(`failed: ${e}`, { title: 'claude', hideCancel: true, actionLabel: 'ok', onAction: closeUpdateModal }); }
 }
 
