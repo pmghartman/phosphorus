@@ -66,12 +66,19 @@ var (
 	updating         atomic.Bool
 	platformMu       sync.RWMutex
 	platform         string
+	// the key the frontend ssh's with: a copy kept apart from the user's
+	// profile, under state on Windows where /root doesn't exist
+	gameKey = func() string {
+		if runtime.GOOS == "windows" {
+			return filepath.Join(gameKeyDir, "run-key")
+		}
+		return "/root/.ssh/game-control"
+	}()
 )
 
 const (
 	alertColor    = "#f85149"
 	updateWarning = "phosphorus updating"
-	gameKey       = "/root/.ssh/game-control"
 	runMS         = 12 * 3600 * 1000
 	runSandbox    = "sandbox allow-scripts allow-forms allow-modals allow-popups allow-pointer-lock allow-downloads"
 	maxTerms      = 16
@@ -142,8 +149,10 @@ func runGameLocally(name, action string) (int, any) {
 		os.MkdirAll(filepath.Dir(gameKey), 0o700)
 		var key []byte
 		if key, err = os.ReadFile(filepath.Join(gameKeyDir, "id_ed25519")); err == nil {
-			err = os.WriteFile(gameKey, key, 0o600)
-			os.Chmod(gameKey, 0o600)
+			if err = os.WriteFile(gameKey, key, 0o600); err == nil {
+				os.Chmod(gameKey, 0o600)
+				err = util.LockACL(gameKey, false)
+			}
 		}
 	}
 	if err != nil {
