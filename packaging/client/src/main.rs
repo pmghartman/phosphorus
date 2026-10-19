@@ -3,6 +3,8 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod calls;
+
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 #[cfg(any(target_os = "macos", windows))]
@@ -47,6 +49,45 @@ fn write_json(p: &Path, v: &Value) -> bool {
     let tmp = p.with_extension("json.tmp");
     let _ = std::fs::create_dir_all(p.parent().unwrap_or(Path::new(".")));
     std::fs::write(&tmp, v.to_string()).is_ok() && std::fs::rename(&tmp, p).is_ok()
+}
+
+/// write_json for a secret: readable by this user alone, set before it lands
+fn write_private(p: &Path, v: &Value) -> bool {
+    let tmp = p.with_extension("json.tmp");
+    let _ = std::fs::create_dir_all(p.parent().unwrap_or(Path::new(".")));
+    let ok = write_restricted(&tmp, v.to_string().as_bytes()) && std::fs::rename(&tmp, p).is_ok();
+    if !ok {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    ok
+}
+
+#[cfg(unix)]
+fn write_restricted(p: &Path, b: &[u8]) -> bool {
+    use std::io::Write;
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+    let f = std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(p);
+    // a leftover temp file keeps its old mode otherwise
+    f.and_then(|mut f| f.write_all(b)).is_ok() && std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o600)).is_ok()
+}
+
+/// Windows: this user and SYSTEM only, nothing inherited
+#[cfg(windows)]
+fn write_restricted(p: &Path, b: &[u8]) -> bool {
+    use std::os::windows::process::CommandExt;
+    if std::fs::write(p, b).is_err() {
+        return false;
+    }
+    let me = format!("{}:F", std::env::var("USERNAME").unwrap_or_default());
+    Command::new("icacls")
+        .arg(p)
+        .args(["/inheritance:r", "/grant:r", me.as_str(), "/grant:r", "*S-1-5-18:F"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .creation_flags(0x0800_0000)
+        .status()
+        .is_ok_and(|s| s.success())
 }
 
 fn alert(handle: &AppHandle, text: &str) {
@@ -125,6 +166,8 @@ fn open_main(handle: &AppHandle) {
         .window("main")
         .permission("allow-notify")
         .permission("allow-claude-setup")
+        .permission("allow-claude-status")
+        .permission("allow-claude-probe")
         .permission("allow-client-update-check")
         .permission("allow-client-update");
     #[cfg(target_os = "macos")]
@@ -219,29 +262,56 @@ fn claude_configs() -> Vec<PathBuf> {
     ps
 }
 
-/// where the bridge leaves its last-activity heartbeat, read by the GUI
+/// where the bridge leaves its heartbeat and calls, read by the GUI
 fn claude_status_file() -> PathBuf {
     config_dir().join("claude-status.json")
 }
 
-fn now_ms() -> u64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
-}
+use calls::now_ms;
 
-/// the bridge records each call it answered, for the GUI's live indicator
-fn mark_claude(ok: bool, error: Option<String>) {
-    write_json(&claude_status_file(), &json!({"at": now_ms(), "ok": ok, "error": error}));
-}
-
-/// the bridge's state the GUI shows: whether Claude Desktop is set up, and when
-/// it last called, so the window can show connected, active or an error live
+/// the bridge's state the GUI shows: whether Claude Desktop is set up, whether its
+/// bridge is running, and its calls in flight and just done
 #[tauri::command]
 fn claude_status(handle: AppHandle) -> Value {
     let configured = std::fs::metadata(config_dir().join("mcp.json")).is_ok()
         && handle.get_webview_window("main").is_some()
         && !domain(&handle.state::<App>()).is_empty();
-    let last = serde_json::from_str::<Value>(&read(&claude_status_file())).ok().filter(Value::is_object).unwrap_or_else(|| json!({}));
-    json!({"configured": configured, "now": now_ms(), "at": last["at"], "ok": last["ok"], "error": last["error"]})
+    let last = calls::read(&claude_status_file());
+    let now = now_ms();
+    let running = last["beat"].as_u64().is_some_and(|b| now.saturating_sub(b) < calls::BEAT_MS * 3);
+    json!({
+        "configured": configured, "running": running, "now": now,
+        "at": last["at"], "ok": last["ok"], "error": last["error"],
+        "calls": if running { last["calls"].clone() } else { json!([]) }, "recent": last["recent"],
+    })
+}
+
+/// whether the mesh's mcp answers on this user's key, and how fast
+#[tauri::command]
+async fn claude_probe() -> Value {
+    tauri::async_runtime::spawn_blocking(|| {
+        let cfg = calls::read(&config_dir().join("mcp.json"));
+        let (Some(url), Some(key)) = (cfg["url"].as_str(), cfg["key"].as_str()) else {
+            return json!({"online": false, "error": "not connected"});
+        };
+        let t = std::time::Instant::now();
+        let res = ureq::AgentBuilder::new()
+            .timeout(Duration::from_secs(5))
+            .build()
+            .post(url)
+            .set("Authorization", &format!("Bearer {key}"))
+            .set("X-Phosphorus-Via", "claude")
+            .send_json(json!({"jsonrpc": "2.0", "id": 1, "method": "ping"}));
+        let ms = t.elapsed().as_millis() as u64;
+        match res {
+            Ok(_) => json!({"online": true, "ms": ms}),
+            Err(ureq::Error::Status(401, _)) => json!({"online": false, "error": "key refused, refresh it"}),
+            Err(ureq::Error::Status(c, _)) => json!({"online": false, "error": format!("mesh answered {c}")}),
+            Err(e) => json!({"online": false, "error": e.to_string()}),
+        }
+    })
+    .await
+    .unwrap_or_else(|_| json!({"online": false}))
 }
 
 /// the mesh's mcp with this user's key, Claude Desktop pointed at this client as its bridge
@@ -257,7 +327,9 @@ fn claude_setup(handle: AppHandle, key: String) -> Result<String, String> {
     if e.contains("/AppTranslocation/") || e.starts_with("/Volumes/") {
         return Err("move Phosphorus Client to Applications, open it from there, then connect again".into());
     }
-    write_json(&config_dir().join("mcp.json"), &json!({"url": format!("{}api/mcp", url_of(&d)), "key": key}));
+    if !write_private(&config_dir().join("mcp.json"), &json!({"url": format!("{}api/mcp", url_of(&d)), "key": key})) {
+        return Err("could not save the key privately".into());
+    }
     let mut done = vec![];
     for p in claude_configs() {
         let mut cfg = serde_json::from_str::<Value>(&read(&p)).ok().filter(Value::is_object).unwrap_or_else(|| json!({}));
@@ -275,15 +347,42 @@ fn claude_setup(handle: AppHandle, key: String) -> Result<String, String> {
     Ok(done.join(", "))
 }
 
+/// the request posted to the mesh; a gateway that has not reached it (502, 503) tried
+/// again, a few times with a pause
+fn post_mesh(agent: &ureq::Agent, url: &str, key: &str, line: &str) -> Result<ureq::Response, ureq::Error> {
+    let mut tries = 0;
+    loop {
+        let res = agent
+            .post(url)
+            .set("Content-Type", "application/json")
+            .set("Accept", "application/json")
+            .set("Authorization", &format!("Bearer {key}"))
+            .set("X-Phosphorus-Via", "claude")
+            .send_string(line);
+        match res {
+            Err(ureq::Error::Status(502 | 503, _)) if tries < 3 => {
+                tries += 1;
+                std::thread::sleep(Duration::from_secs(tries));
+            }
+            r => return r,
+        }
+    }
+}
+
+/// an error answer for a request, nothing for a notification
+fn rpc_error(id: &Value, why: &str) -> Option<String> {
+    (!id.is_null()).then(|| json!({"jsonrpc": "2.0", "id": id, "error": {"code": -32000, "message": why}}).to_string())
+}
+
 /// `--mcp`: Claude Desktop's stdio, each message posted to the mesh with the saved key,
 /// each on its own thread so a long wait never holds the calls after it
 fn mcp_bridge() {
     use std::io::{BufRead, Write};
     use std::sync::{Arc, Mutex};
-    let cfg = serde_json::from_str::<Value>(&read(&config_dir().join("mcp.json"))).unwrap_or_default();
+    let cfg = calls::read(&config_dir().join("mcp.json"));
     let (url, key) = (cfg["url"].as_str().unwrap_or_default().to_string(), cfg["key"].as_str().unwrap_or_default().to_string());
     let agent = ureq::AgentBuilder::new().timeout(Duration::from_secs(660)).build();
-    mark_claude(true, None);
+    calls::start(claude_status_file());
     let out = Arc::new(Mutex::new(std::io::stdout()));
     for line in std::io::stdin().lock().lines() {
         let Ok(line) = line else { break };
@@ -292,40 +391,39 @@ fn mcp_bridge() {
         }
         let (agent, url, key, out) = (agent.clone(), url.clone(), key.clone(), out.clone());
         std::thread::spawn(move || {
-            let id = serde_json::from_str::<Value>(&line).ok().map(|v| v["id"].clone()).unwrap_or(Value::Null);
-            let res = agent
-                .post(&url)
-                .set("Content-Type", "application/json")
-                .set("Accept", "application/json")
-                .set("Authorization", &format!("Bearer {key}"))
-                .set("X-Phosphorus-Via", "claude")
-                .send_string(&line);
-            let text = match res {
+            let req = serde_json::from_str::<Value>(&line).unwrap_or_default();
+            let id = req["id"].clone();
+            let call = calls::label_of(&req).filter(|_| !id.is_null()).map(calls::begin);
+            let done = |error: Option<String>| {
+                if let Some(c) = call {
+                    calls::end(c, error);
+                }
+            };
+            let text = match post_mesh(&agent, &url, &key, &line) {
                 Ok(r) if r.status() == 202 => {
-                    mark_claude(true, None);
+                    done(None);
                     return;
                 }
                 Ok(r) => {
-                    mark_claude(true, None);
+                    done(None);
                     r.into_string().unwrap_or_default()
                 }
                 Err(ureq::Error::Status(code, r)) => {
                     let body = serde_json::from_str::<Value>(&r.into_string().unwrap_or_default()).unwrap_or_default();
-                    let why = body["error"].as_str().map(str::to_string).unwrap_or_else(|| format!("status {code}"));
-                    let why = if code == 401 { format!("phosphorus: {why}; connect claude again from the client") } else { format!("phosphorus: {why}") };
-                    mark_claude(false, Some(why.clone()));
-                    // an error answer for a request, nothing for a notification
-                    if id.is_null() {
-                        return;
-                    }
-                    json!({"jsonrpc": "2.0", "id": id, "error": {"code": -32000, "message": why}}).to_string()
+                    let why = body["error"].as_str().map(str::to_string).unwrap_or_else(|| match code {
+                        502 | 503 | 504 => format!("the mesh is unreachable (status {code})"),
+                        _ => format!("status {code}"),
+                    });
+                    let why = if code == 401 { format!("phosphorus: {why}; refresh claude's key from the client") } else { format!("phosphorus: {why}") };
+                    done(Some(why.clone()));
+                    let Some(e) = rpc_error(&id, &why) else { return };
+                    e
                 }
                 Err(e) => {
-                    mark_claude(false, Some(format!("phosphorus: {e}")));
-                    if id.is_null() {
-                        return;
-                    }
-                    json!({"jsonrpc": "2.0", "id": id, "error": {"code": -32000, "message": format!("phosphorus: {e}")}}).to_string()
+                    let why = format!("phosphorus: {e}");
+                    done(Some(why.clone()));
+                    let Some(e) = rpc_error(&id, &why) else { return };
+                    e
                 }
             };
             if text.trim().is_empty() {
@@ -334,7 +432,6 @@ fn mcp_bridge() {
             let mut o = out.lock().unwrap();
             let _ = writeln!(o, "{}", text.trim());
             let _ = o.flush();
-            eprintln!("phosphorus: answered {}", id);
         });
     }
 }
@@ -559,7 +656,7 @@ fn main() {
         .on_menu_event(|app, e| menu_event(app, e.id().as_ref()))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
-        .invoke_handler(tauri::generate_handler![set_domain, notify, claude_setup, claude_status, client_update_check, client_update])
+        .invoke_handler(tauri::generate_handler![set_domain, notify, claude_setup, claude_status, claude_probe, client_update_check, client_update])
         .setup(|app| {
             let config = app.path().app_config_dir()?.join("client.json");
             app.manage(App { config });
