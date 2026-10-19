@@ -300,8 +300,9 @@ async fn claude_probe() -> Value {
             .build()
             .post(url)
             .set("Authorization", &format!("Bearer {key}"))
+            .set("Content-Type", "application/json")
             .set("X-Phosphorus-Via", "claude")
-            .send_json(json!({"jsonrpc": "2.0", "id": 1, "method": "ping"}));
+            .send_string(r#"{"jsonrpc":"2.0","id":1,"method":"ping"}"#);
         let ms = t.elapsed().as_millis() as u64;
         match res {
             Ok(_) => json!({"online": true, "ms": ms}),

@@ -47,9 +47,9 @@ const (
 	readyMS    = 60000
 	askTimeout = time.Hour
 	// a call that waits on opencode's own work: a cold start on Windows takes it past seconds
-	slowCall = time.Minute
-	catalogMS  = 5 * 60 * 1000
-	toolMS     = 61 * 60 * 1000
+	slowCall  = time.Minute
+	catalogMS = 5 * 60 * 1000
+	toolMS    = 61 * 60 * 1000
 	// opencode's few hundred MB handed back after this long unasked
 	idleFor = 10 * time.Minute
 	// phosphorus-model picking a run up, its tick far shorter
