@@ -46,6 +46,8 @@ const (
 	user       = "phosphorus"
 	readyMS    = 60000
 	askTimeout = time.Hour
+	// a call that waits on opencode's own work: a cold start on Windows takes it past seconds
+	slowCall = time.Minute
 	catalogMS  = 5 * 60 * 1000
 	toolMS     = 61 * 60 * 1000
 	// opencode's few hundred MB handed back after this long unasked
@@ -307,7 +309,7 @@ func call(method, p string, body any, timeout time.Duration, dir string) (any, e
 	res, err := client.Do(req)
 	if err != nil {
 		if ctx.Err() != nil {
-			return nil, errors.New("opencode timed out")
+			return nil, fmt.Errorf("opencode timed out after %s on %s %s", timeout, method, p)
 		}
 		return nil, err
 	}
@@ -540,7 +542,7 @@ func AskModel(messages []Msg, o AskOpts) (string, error) {
 	system, rest := messages[0], messages[1:]
 	last := rest[len(rest)-1]
 	rest = rest[:len(rest)-1]
-	s, err := call("POST", "/session", map[string]any{"title": Handle + " " + o.Role}, 10*time.Second, "")
+	s, err := call("POST", "/session", map[string]any{"title": Handle + " " + o.Role}, slowCall, "")
 	if err != nil {
 		return "", err
 	}
@@ -600,7 +602,7 @@ func OpenProject(title, dir string, s Setup) (*Sess, error) {
 	if r := []rune(t); len(r) > 120 {
 		t = string(r[:120])
 	}
-	r, err := call("POST", "/session", map[string]any{"title": t}, 10*time.Second, dir)
+	r, err := call("POST", "/session", map[string]any{"title": t}, slowCall, dir)
 	if err != nil {
 		return nil, err
 	}
@@ -676,7 +678,7 @@ func parent(id, dir string) string {
 			continue
 		}
 		seen[d] = true
-		s, err := call("GET", "/session/"+url.PathEscape(id), nil, 10*time.Second, d)
+		s, err := call("GET", "/session/"+url.PathEscape(id), nil, slowCall, d)
 		if err == nil && s != nil {
 			return util.Str(util.Obj(s)["parentID"])
 		}
@@ -728,7 +730,7 @@ func Catalog(s Setup) (any, error) {
 	if err := ensure(s); err != nil {
 		return nil, err
 	}
-	r, err := call("GET", "/provider", nil, 30*time.Second, "")
+	r, err := call("GET", "/provider", nil, slowCall, "")
 	if err != nil {
 		return nil, err
 	}
