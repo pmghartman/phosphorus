@@ -6607,14 +6607,14 @@ function dkMcpTray() {
     const done = mcpStat.configured;
     if (drawn === done) return;
     drawn = done;
-    // the claude plugin, the key in use inside it, minted when there's none
+    // the claude plugin: skills and an agent, no key; the connector does the calling
     const plugin = button('claude plugin', 'quiet', async (x) => {
       x.disabled = true;
       const ok = await mcpPlugin();
       x.disabled = false;
       if (ok) flash(x, 'downloaded');
     });
-    plugin.title = 'skills, an agent and the mcp server for Claude Code or Cowork, keyed to you';
+    plugin.title = 'mesh skills and an agent for Claude Code or Cowork; add the connector with the mcp url'
     if (!done) {
       bar.replaceChildren(button('connect agent', 'wide', async () => {
         const r = await mcpKey('/api/me/mcp-url');
@@ -6734,9 +6734,6 @@ async function mcpPlugin() {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 30000);
-  if (!mcpStat.configured) noteAdd('agent connected', 'plugin downloaded');
-  mcpStat.configured = true;
-  pollMcp();
   return true;
 }
 

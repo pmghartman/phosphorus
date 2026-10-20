@@ -163,19 +163,18 @@ func appHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// the claude plugin, keyed with the url in use or a fresh one
+	// the claude plugin, no key in it: the user's connector does the calling
 	if pathname == "/api/me/mcp-plugin" && method == "POST" {
 		if !isLocalOrPeer(r) || !sameOrigin(r) {
 			forbidden(w)
 			return
 		}
 		s := users.Soon(r)
-		o := users.MCPURL(s, map[string]any{}, r)
-		if o.Status != 200 {
-			sendJSON(w, o.Status, o.Body)
+		if s == nil || s.Boot {
+			sendJSON(w, 403, map[string]any{"error": "log in as a user"})
 			return
 		}
-		b, err := mcp.Plugin(s.User, s.Admin, str(util.Obj(o.Body)["url"]))
+		b, err := mcp.Plugin(s.User, s.Admin, users.MCPBase(r))
 		if err != nil {
 			sendJSON(w, 500, map[string]any{"error": err.Error()})
 			return
