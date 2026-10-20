@@ -16,10 +16,11 @@ SetCompressor /SOLID lzma
 !define RUNKEY "Software\Microsoft\Windows\CurrentVersion\Run"
 
 ; the tray alone, by its full path: Windows names are case-blind, and phosphorus
-; itself runs as phosphorus.exe from the home, never to be stopped by this
+; itself runs as phosphorus.exe from the home, never to be stopped by this; the path
+; read through CIM, which a setup run from another session (ssh) can still see
 !macro StopTray
-  nsExec::Exec `powershell -NoProfile -NonInteractive -Command "Get-Process -Name Phosphorus -ErrorAction SilentlyContinue | Where-Object { $$_.Path -eq '$INSTDIR\Phosphorus.exe' } | Stop-Process -Force"`
-  Sleep 500
+  nsExec::Exec `powershell -NoProfile -NonInteractive -Command "Get-CimInstance Win32_Process -Filter \"Name='Phosphorus.exe'\" | Where-Object { $$_.ExecutablePath -eq '$INSTDIR\Phosphorus.exe' -or $$_.CommandLine -like '*$INSTDIR\Phosphorus.exe*' } | ForEach-Object { Stop-Process -Id $$_.ProcessId -Force -ErrorAction SilentlyContinue }"`
+  Sleep 800
 !macroend
 
 Name "${PRODUCT}"
@@ -49,6 +50,11 @@ Section "Install"
   SetOutPath "$INSTDIR"
   ; the old release's files gone, never mixed with this one's
   RMDir /r "$INSTDIR\release"
+  ; a tray still running moved aside, never left in place of the new one
+  Delete "$INSTDIR\Phosphorus.old.exe"
+  IfFileExists "$INSTDIR\Phosphorus.old.exe" +2 0
+    Rename "$INSTDIR\Phosphorus.exe" "$INSTDIR\Phosphorus.old.exe"
+  Delete /REBOOTOK "$INSTDIR\Phosphorus.old.exe"
   File "${STAGE}\Phosphorus.exe"
   File "${STAGE}\phosphorus-host.exe"
   File "${STAGE}\icon.ico"
