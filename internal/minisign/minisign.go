@@ -68,6 +68,12 @@ func ParsePublicKey(s string) (*PublicKey, error) {
 	return k, nil
 }
 
+// Encrypted whether a secret key needs a password to open
+func Encrypted(s string) bool {
+	b, _, err := unwrap(s, 1)
+	return err == nil && len(b) == 158 && bytes.Equal(b[2:4], kdfScrypt)
+}
+
 // ParseSecretKey a secret key file or base64 of one, opened with password when encrypted
 func ParseSecretKey(s, password string) (*SecretKey, error) {
 	b, _, err := unwrap(s, 1)
