@@ -18,6 +18,7 @@ type liveCall struct {
 	id     uint64
 	tool   string
 	detail string
+	host   string
 	since  int64
 }
 
@@ -73,12 +74,12 @@ func clientOf(user string) string {
 	return w[0]
 }
 
-func callBegin(user, tool, detail string) uint64 {
+func callBegin(user, tool, detail, host string) uint64 {
 	calls.Lock()
 	defer calls.Unlock()
 	calls.next++
 	l := logOf(user)
-	l.live = append(l.live, liveCall{id: calls.next, tool: tool, detail: detail, since: util.Now()})
+	l.live = append(l.live, liveCall{id: calls.next, tool: tool, detail: detail, host: host, since: util.Now()})
 	return calls.next
 }
 
@@ -92,7 +93,7 @@ func callEnd(user string, id uint64, errText string) {
 		}
 		l.live = append(l.live[:i], l.live[i+1:]...)
 		at := util.Now()
-		l.done = append([]map[string]any{{"tool": c.tool, "detail": c.detail, "at": at, "ms": at - c.since, "ok": errText == "", "error": errText}}, l.done...)
+		l.done = append([]map[string]any{{"tool": c.tool, "detail": c.detail, "host": c.host, "at": at, "ms": at - c.since, "ok": errText == "", "error": errText}}, l.done...)
 		if len(l.done) > recentCalls {
 			l.done = l.done[:recentCalls]
 		}
@@ -111,13 +112,26 @@ func Calls(user string) map[string]any {
 	}
 	live := make([]any, 0, len(l.live))
 	for _, c := range l.live {
-		live = append(live, map[string]any{"tool": c.tool, "detail": c.detail, "since": c.since})
+		live = append(live, map[string]any{"tool": c.tool, "detail": c.detail, "host": c.host, "since": c.since})
 	}
 	recent := make([]any, 0, len(l.done))
 	for _, d := range l.done {
 		recent = append(recent, d)
 	}
 	return map[string]any{"calls": live, "recent": recent, "seen": l.seen, "at": l.at, "client": l.client, "now": util.Now()}
+}
+
+// callHost the host a call acts on, a copy's source or destination when it names none
+func callHost(args map[string]any) string {
+	if h, ok := args["host"].(string); ok && h != "" {
+		return h
+	}
+	for _, k := range []string{"from", "to"} {
+		if h, ok := util.Obj(args[k])["host"].(string); ok && h != "" {
+			return h
+		}
+	}
+	return ""
 }
 
 var detailKeys = []string{"command", "script", "path", "file", "url", "query", "host", "name", "repo", "text"}

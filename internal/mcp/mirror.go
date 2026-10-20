@@ -30,7 +30,8 @@ var mirrors = struct {
 
 // mirror one step to user's pages on every host, dropped when they fall behind
 func mirror(user string, step map[string]any) {
-	if src.Actions.UserUI == nil {
+	send := src.Actions.UserUIAsync
+	if send == nil {
 		return
 	}
 	step["kind"] = "agent"
@@ -41,7 +42,7 @@ func mirror(user string, step map[string]any) {
 		mirrors.by[user] = ch
 		go func() {
 			for s := range ch {
-				src.Actions.UserUI(user, s)
+				send(user, s)
 			}
 		}()
 	}

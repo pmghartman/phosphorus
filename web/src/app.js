@@ -225,6 +225,25 @@ async function copyText(text) {
   if (!ok) throw new Error('copy failed');
 }
 
+// a copy button on each code block of a chat line, its text as written
+function codeCopies(root) {
+  for (const pre of root.querySelectorAll('pre')) {
+    if (pre.parentElement?.classList.contains('code-wrap')) continue;
+    const wrap = el('div', 'code-wrap');
+    pre.replaceWith(wrap);
+    const copy = Object.assign(el('button', 'game-copy code-copy'), { type: 'button', title: 'copy', ariaLabel: 'copy' });
+    copy.appendChild(gameIcon('copy'));
+    copy.addEventListener('click', (e) => {
+      e.stopPropagation();
+      copyText(pre.innerText.replace(/\n$/, '')).then(() => {
+        copy.replaceChildren(gameIcon('check'));
+        setTimeout(() => copy.replaceChildren(gameIcon('copy')), 1200);
+      }).catch(() => {});
+    });
+    wrap.append(pre, copy);
+  }
+}
+
 // one-use ephemeral tag:guest key, minted per click
 const joinKeyBtn = document.getElementById('join-key-btn');
 joinKeyBtn.addEventListener('click', async () => {
@@ -2267,9 +2286,11 @@ function lineEl(m, prev) {
     text.append(row);
   } else if (cmd) {
     const rest = el('span');
+    rest.addEventListener('md-painted', () => codeCopies(rest));
     renderMd(rest, body.slice(cmd[0].length).trimStart(), true, html);
     text.append(el('span', 'cmd', cmd[0]), ' ', rest);
   } else if (body) {
+    text.addEventListener('md-painted', () => codeCopies(text));
     renderMd(text, addressed(to, body), true, html);
   }
   if (!m.gone && markMentions(text)) li.classList.add('at-me');
@@ -5294,6 +5315,7 @@ function dkTerminal(host, run = '', shared = false) {
   w.onFocus = () => t.then((x) => x.focus());
   w.onClose = () => t.then((x) => x.close());
   dkFocus(w);
+  return w;
 }
 
 // --- the wallpaper: a picture of the user's, kept in their home on the mesh
@@ -5981,7 +6003,9 @@ function dkBadge() {
 // a shell from the chat or phosphorus, on a host this desktop is logged into
 // one asked for by phosphorus: logged in with the saved login, shared with it
 function dkOpenTerminal(host, shared = false) {
-  if (dk.desk && dk.creds.has(host)) dkTerminal(host, '', shared);
+  if (!dk.desk || !dk.creds.has(host)) return;
+  const w = dkTerminal(host, '', shared);
+  if (shared && agentViewOn()) { agentOwn(w); agentArm(); }
 }
 
 // phosphorus's presses, each the app it names
@@ -6563,12 +6587,14 @@ function dkMcpTray() {
   const callRow = (c, live) => {
     const li = el('li', `dk-cl-call ${live ? 'live' : c.ok ? 'ok' : 'bad'}`);
     const top = el('div', 'dk-cl-ln');
-    top.append(el('span', 'dk-cl-pip'), el('span', 'dk-cl-tool', c.tool));
+    top.append(el('span', 'dk-cl-pip'));
+    if (c.host) top.append(el('span', 'dk-cl-host', c.host));
+    top.append(el('span', 'dk-cl-tool', c.tool));
     if (c.detail) top.append(el('span', 'dk-cl-arg', `(${c.detail})`));
     const out = live ? `running · ${mcpMs(mcpStat.now - c.since)}`
       : `${c.ok ? 'done' : c.error || 'failed'} · ${mcpMs(c.ms)} · ${mcpAgo(mcpStat.now - c.at)} ago`;
     li.append(top, el('div', 'dk-cl-out', out));
-    if (c.detail) li.title = c.detail;
+    if (c.detail) li.title = c.host ? `${c.host}: ${c.detail}` : c.detail;
     return li;
   };
   let list = null;
@@ -6747,11 +6773,13 @@ const AGENT_VIEW_LS = PREF_LS.agentview;
 const agentViewOn = () => { try { return localStorage.getItem(AGENT_VIEW_LS) !== '0'; } catch { return true; } };
 function agentViewSet(on) {
   try { if (on) localStorage.removeItem(AGENT_VIEW_LS); else localStorage.setItem(AGENT_VIEW_LS, '0'); } catch {}
-  if (!on) agentHud.hide(true);
+  if (!on) agentCalls.clear();
 }
 
-// calls begun, by id, their arguments for the end
+// calls begun, by id, their arguments for the end and when they began
 const agentCalls = new Map();
+// a call whose end never came given up on after this, so its windows still close
+const AGENT_STALE_MS = 11 * 60000;
 // tools printed in a host's console: the command or the call, then what came back
 const AGENT_CONSOLE = new Set(['terminal_run', 'host_logs', 'containers', 'container_control', 'service_request', 'forgejo',
   'host_config', 'service_edit', 'config_set', 'host_power', 'service_health', 'game_power']);
@@ -6764,24 +6792,29 @@ const agentOwned = new Set();
 let agentCloseT = 0;
 
 function agentStep(a) {
-  if (!agentViewOn() || !dk.desk || !a.id) return;
-  clearTimeout(agentCloseT);
+  if (!a.id) return;
+  const begun = agentCalls.get(a.id);
+  agentCalls.delete(a.id);
+  if (!agentViewOn() || !dk.desk) return;
+  agentArm();
   if (a.phase === 'start') {
-    agentCalls.set(a.id, a);
-    agentHud.start(a);
+    agentCalls.set(a.id, { ...a, t: Date.now() });
     agentAct(a, a.args || {}, false);
     return;
   }
-  const begun = agentCalls.get(a.id);
-  agentCalls.delete(a.id);
-  agentHud.end(a);
   agentAct(a, begun?.args || {}, true);
-  if (!agentCalls.size) agentCloseT = setTimeout(agentTidy, AGENT_CLOSE_MS);
+}
+
+function agentArm() {
+  clearTimeout(agentCloseT);
+  agentCloseT = setTimeout(agentTidy, AGENT_CLOSE_MS);
 }
 
 // the agent's own windows put away once it stops; one a person touched is theirs
 function agentTidy() {
-  if (agentCalls.size) return;
+  const now = Date.now();
+  for (const [id, c] of agentCalls) if (now - c.t > AGENT_STALE_MS) agentCalls.delete(id);
+  if (agentCalls.size) { agentArm(); return; }
   for (const w of [...agentOwned]) {
     agentOwned.delete(w);
     if (w.node.isConnected) dkClose(w);
@@ -6792,7 +6825,11 @@ function agentTidy() {
 function agentOwn(w) {
   if (!w || agentOwned.has(w)) return;
   agentOwned.add(w);
-  const mine = () => agentOwned.delete(w);
+  w.node.classList.add('dk-agent');
+  const mine = () => {
+    agentOwned.delete(w);
+    if (!w.agentLit) w.node.classList.remove('dk-agent');
+  };
   w.node.addEventListener('pointerdown', mine, { once: true });
   w.node.addEventListener('keydown', mine, { once: true });
 }
@@ -6812,7 +6849,10 @@ function agentLit(w) {
   dkFocus(w);
   w.node.classList.add('dk-agent');
   clearTimeout(w.agentLit);
-  w.agentLit = setTimeout(() => w.node.classList.remove('dk-agent'), AGENT_LIT_MS);
+  w.agentLit = setTimeout(() => {
+    w.agentLit = 0;
+    if (!agentOwned.has(w)) w.node.classList.remove('dk-agent');
+  }, AGENT_LIT_MS);
 }
 const agentWin = (pred) => [...dk.wins.values()].find(pred);
 
@@ -6870,7 +6910,7 @@ async function agentPrint(a, args, done) {
   const host = args.host || (a.tool === 'forgejo' ? 'git' : 'mesh');
   let c = agentCons.get(host);
   if (!c || !c.w.node.isConnected) {
-    const w = dkWin(`agent:${host}`, 'agent', host, 'term dk-agent-con');
+    const w = dkWin(`agent:${host}`, 'terminal', host, 'term dk-agent-con');
     if (!w) return;
     const con = (await app('terminal')).agentConsole(w.body);
     c = { w, con };
@@ -6902,48 +6942,6 @@ function agentArgLine(args) {
   }
   return out.length ? ` ${out.join(' ')}` : '';
 }
-
-// the strip over the desk: what the agent is doing now, gone a moment after it stops
-const agentHud = (() => {
-  let node = null;
-  let text = null;
-  let hideT = 0;
-  const live = new Map();
-  const ensure = () => {
-    if (node?.isConnected) return;
-    node = el('div', 'agent-hud');
-    node.setAttribute('role', 'status');
-    node.append(mcpGlyph());
-    text = el('span', 'agent-hud-t');
-    node.append(text);
-    document.body.append(node);
-  };
-  const say = (a) => {
-    const args = agentCalls.get(a.id)?.args || a.args || {};
-    const where = [args.host, args.share && args.share !== 'home' ? args.share : '', args.path].filter(Boolean).join('/');
-    return `${a.tool}${where ? ` · ${where}` : ''}`;
-  };
-  const paint = () => {
-    ensure();
-    clearTimeout(hideT);
-    node.hidden = false;
-    node.classList.toggle('busy', live.size > 0);
-    if (live.size) node.classList.remove('bad');
-    const last = [...live.values()].pop();
-    if (last) text.textContent = say(last);
-    if (!live.size) hideT = setTimeout(() => { if (node) node.hidden = true; }, 3000);
-  };
-  return {
-    start: (a) => { live.set(a.id, a); paint(); },
-    end: (a) => {
-      live.delete(a.id);
-      ensure();
-      if (!live.size) { text.textContent = `${a.ok ? 'done' : 'failed'} · ${say(a)}`; node.classList.toggle('bad', !a.ok); }
-      paint();
-    },
-    hide: (clear) => { if (clear) live.clear(); if (node) node.hidden = true; },
-  };
-})();
 
 // a failure in two words, its why in the notes
 function mcpFailed(why) {

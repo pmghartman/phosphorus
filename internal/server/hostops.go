@@ -385,6 +385,42 @@ func userUI(user string, action map[string]any) bool {
 	return ok
 }
 
+// each peer's page actions in order, a slow or gone peer holding up only its own
+var uiPeers = struct {
+	sync.Mutex
+	by map[string]chan string
+}{by: map[string]chan string{}}
+
+const uiPeerQueue = 256
+
+// userUIAsync an action to user's pages here at once, to each peer's through its queue
+func userUIAsync(user string, action map[string]any) {
+	if !keyUI[str(action["kind"])] {
+		return
+	}
+	localUI(user, action)
+	grant := users.SealGrant(map[string]any{"u": user, "a": action}, 30*1000)
+	for _, ip := range mesh.PeerIPs() {
+		uiPeers.Lock()
+		ch := uiPeers.by[ip]
+		if ch == nil {
+			ch = make(chan string, uiPeerQueue)
+			uiPeers.by[ip] = ch
+			go func(ip string) {
+				for g := range ch {
+					util.RequestJSON(util.Req{Host: ip, Port: util.FrontendPort, Method: "POST", Path: "/internal/ui",
+						Body: map[string]any{"grant": g}, Timeout: 3 * time.Second})
+				}
+			}(ip)
+		}
+		uiPeers.Unlock()
+		select {
+		case ch <- grant:
+		default:
+		}
+	}
+}
+
 const svcOutMax = 512 << 10
 
 var svcClient = &http.Client{Timeout: 60 * time.Second, Transport: &http.Transport{Proxy: nil}}

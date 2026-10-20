@@ -48,15 +48,17 @@ type Actions struct {
 	Update    func(action string, admin bool, only []string) (int, any)
 	// Op a host operation: health, power, containers, container, term_close,
 	// service_health, or mesh-wide mesh_health and update_history
-	Op         func(host, op string, p map[string]any) (int, any)
-	ChatEdit   func(user, ref, action, text string) (int, any)
-	Files      func(c *Caller, host, op, share string, body map[string]any) (int, any)
-	Copy       func(c *Caller, from, to [3]string, move bool) (int, any)
-	Logs       func(host string, p map[string]any) (int, any)
-	Config     func(host string, p map[string]any) (int, any)
-	UserUI     func(user string, action map[string]any) bool
-	Service    func(host, name, method, path string, headers map[string]string, body string) (int, any)
-	ModelColor string
+	Op       func(host, op string, p map[string]any) (int, any)
+	ChatEdit func(user, ref, action, text string) (int, any)
+	Files    func(c *Caller, host, op, share string, body map[string]any) (int, any)
+	Copy     func(c *Caller, from, to [3]string, move bool) (int, any)
+	Logs     func(host string, p map[string]any) (int, any)
+	Config   func(host string, p map[string]any) (int, any)
+	UserUI   func(user string, action map[string]any) bool
+	// UserUIAsync the same, never waiting on a peer
+	UserUIAsync func(user string, action map[string]any)
+	Service     func(host, name, method, path string, headers map[string]string, body string) (int, any)
+	ModelColor  string
 }
 
 // Src server's views of the mesh
@@ -1312,7 +1314,7 @@ func callTool(id any, params map[string]any, local bool, caller *Caller) map[str
 	var err error
 	if caller != nil {
 		args := util.Obj(params["arguments"])
-		id := callBegin(caller.User, name, callDetail(args))
+		id := callBegin(caller.User, name, callDetail(args), callHost(args))
 		mirror(caller.User, map[string]any{"phase": "start", "id": id, "tool": name, "args": mirrorArgs(args), "read": t.read})
 		defer func() {
 			callEnd(caller.User, id, errText)
