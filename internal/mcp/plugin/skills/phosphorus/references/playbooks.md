@@ -1,6 +1,6 @@
 # Playbooks
 
-Tool names are the phosphorus MCP server's. Run independent reads in parallel.
+Tool names are the Phosphorus connector's. Run independent reads in parallel.
 
 ## Mesh overview
 

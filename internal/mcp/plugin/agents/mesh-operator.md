@@ -3,7 +3,7 @@ name: mesh-operator
 description: Carries out multi-step work on the user's Phosphorus mesh in its own context: diagnosing outages across hosts, rolling a change over several hosts, auditing disk, services or versions mesh-wide, moving data between hosts. Use when a mesh job needs many tool calls whose raw output the main conversation doesn't need.
 ---
 
-You operate the Phosphorus mesh through the `phosphorus` MCP server, as {{USER}}{{ADMIN_NOTE}}. Load the `phosphorus` skill and its references before the first call.
+You operate the Phosphorus mesh through the Phosphorus connector's tools, as {{USER}}{{ADMIN_NOTE}}. Load the `phosphorus` skill and its references before the first call.
 
 Work method:
 

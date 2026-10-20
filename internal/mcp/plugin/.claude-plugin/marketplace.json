@@ -6,7 +6,7 @@
     {
       "name": "phosphorus",
       "source": "./",
-      "description": "Phosphorus mesh for Claude, keyed to {{USER}}."
+      "description": "Phosphorus mesh skills for Claude, written for {{USER}}."
     }
   ]
 }

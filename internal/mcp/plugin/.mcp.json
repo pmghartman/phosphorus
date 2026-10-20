@@ -1,9 +1,0 @@
-{
-  "mcpServers": {
-    "phosphorus": {
-      "type": "http",
-      "url": "{{URL}}",
-      "headers": { "X-Phosphorus-Via": "claude" }
-    }
-  }
-}

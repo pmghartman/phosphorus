@@ -1,7 +1,8 @@
 package mcp
 
-// the claude plugin for one key: its files with the url and user filled in, and
-// the tool reference drawn from the list that key sees
+// the claude plugin for one user, no key or server in it: the connector they
+// already have does the calling; its files with the user filled in, and the tool
+// reference drawn from the list that user's key sees
 
 import (
 	"archive/zip"
@@ -22,10 +23,9 @@ var pluginFS embed.FS
 
 var semverRe = regexp.MustCompile(`^\d+\.\d+\.\d+([-+][0-9A-Za-z.-]+)?$`)
 
-// Plugin the zip for user's key at url, every file under the plugin's root
-func Plugin(user string, admin bool, url string) ([]byte, error) {
+// Plugin the zip for user on the mesh at base, every file under the plugin's root
+func Plugin(user string, admin bool, base string) ([]byte, error) {
 	toolsOnce.Do(buildOnce)
-	base, _, _ := strings.Cut(url, "/api/mcp/")
 	ver := strings.TrimPrefix(util.Str(src.Self()["version"]), "v")
 	if !semverRe.MatchString(ver) {
 		ver = "0.0.0"
@@ -34,7 +34,7 @@ func Plugin(user string, admin bool, url string) ([]byte, error) {
 	if admin {
 		note = " (an admin)"
 	}
-	r := strings.NewReplacer("{{URL}}", url, "{{BASE}}", base, "{{USER}}", user, "{{ADMIN_NOTE}}", note,
+	r := strings.NewReplacer("{{BASE}}", base, "{{USER}}", user, "{{ADMIN_NOTE}}", note,
 		"{{VERSION}}", ver, "{{BUILT}}", time.Now().UTC().Format("2006-01-02"))
 	var buf bytes.Buffer
 	z := zip.NewWriter(&buf)

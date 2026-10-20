@@ -912,12 +912,12 @@ func HasMCPKey(u string) bool { return mcpRecord(u).G != "" }
 
 func mcpGrant(u, pwAt, g string, k []byte, logins, pages map[string]any, r *http.Request, fresh bool) R {
 	key := SealGrant(map[string]any{"u": u, "p": pwAt, "m": g, "k": hex.EncodeToString(k)}, 365*24*3600*1000)
-	return R{Status: 200, Body: map[string]any{"key": key, "url": mcpBase(r) + "/api/mcp/" + key, "fresh": fresh,
+	return R{Status: 200, Body: map[string]any{"key": key, "url": MCPBase(r) + "/api/mcp/" + key, "fresh": fresh,
 		"user": u, "hosts": sortedKeys(logins), "pages": sortedKeys(pages)}}
 }
 
-// mcpBase where an agent reaches the mesh: the base domain, else the host asked
-func mcpBase(r *http.Request) string {
+// MCPBase where an agent reaches the mesh: the base domain, else the host asked
+func MCPBase(r *http.Request) string {
 	if baseDomain != "" {
 		return "https://" + baseDomain
 	}

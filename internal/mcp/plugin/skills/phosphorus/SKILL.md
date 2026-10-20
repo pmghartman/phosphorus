@@ -1,11 +1,11 @@
 ---
 name: phosphorus
-description: Operates the user's self-hosted Phosphorus mesh through its MCP server. Use whenever the user mentions phosphorus, the mesh, their hosts, servers, homelab, tailnet, a host by name, services, game servers, shared files, shares, terminals, logs, docker containers, forgejo or git on the mesh, the mesh chat, models (chimp, orangutan), projects, or a mesh update; also for "is X up", "why is X slow", "restart X", "what's on X", "find the file", "publish a service".
+description: Operates the user's self-hosted Phosphorus mesh through its Phosphorus connector. Use whenever the user mentions phosphorus, the mesh, their hosts, servers, homelab, tailnet, a host by name, services, game servers, shared files, shares, terminals, logs, docker containers, forgejo or git on the mesh, the mesh chat, models (chimp, orangutan), projects, or a mesh update; also for "is X up", "why is X slow", "restart X", "what's on X", "find the file", "publish a service".
 ---
 
 # Phosphorus
 
-Phosphorus is a mesh of the user's own machines on one tailnet. Every machine running phosphorus is a **host**: it shares folders, publishes web services and game servers, runs terminals, keeps logs, and may carry a Forgejo replica or a model. The `phosphorus` MCP server answers for the whole mesh from any host; every call is made as **{{USER}}**{{ADMIN_NOTE}}, with exactly that user's rights.
+Phosphorus is a mesh of the user's own machines on one tailnet. Every machine running phosphorus is a **host**: it shares folders, publishes web services and game servers, runs terminals, keeps logs, and may carry a Forgejo replica or a model. The Phosphorus connector (an MCP server, named phosphorus or Phosphorus) answers for the whole mesh from any host; every call is made as **{{USER}}**{{ADMIN_NOTE}}, with exactly that user's rights. Its tools may show with a prefix (`mcp__phosphorus__`, `Phosphorus:`); the bare names below are the same tools. No Phosphorus tools at all: tell the user to add the connector with the url from **copy mcp url** in the agent tray, and stop.
 
 Full tool reference, generated from the live server for this key: `references/tools.md`. Step by step jobs: `references/playbooks.md`. Read the reference before a tool you have not used yet in this session.
 
@@ -63,7 +63,7 @@ Failed calls return `code: message`, with `data` when there's more:
 - `not_found`: a host, share, path, service or person that isn't there; re-list instead of guessing.
 - `forbidden`: the key lacks the right (share perm, admin); say so and stop.
 - `unreachable`: the host is down or off the tailnet; check `mesh_health` and `host_logs` on another host.
-- `key refused` (HTTP 401): the key was refreshed or revoked; the user downloads the plugin again from the agent tray.
+- `key refused` (HTTP 401): the key was refreshed or revoked; the user pastes the new url from **copy mcp url** into the connector.
 
 ## Reporting
 
