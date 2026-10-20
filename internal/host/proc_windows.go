@@ -53,6 +53,7 @@ func logToFile() {
 	windows.SetStdHandle(windows.STD_OUTPUT_HANDLE, windows.Handle(f.Fd()))
 	windows.SetStdHandle(windows.STD_ERROR_HANDLE, windows.Handle(f.Fd()))
 	os.Stdout, os.Stderr = f, f
+	stamped = true
 }
 
 func tailscaleUpFlags() []string { return []string{"--unattended"} }

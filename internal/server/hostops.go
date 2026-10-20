@@ -57,13 +57,15 @@ func logTime(v string) (time.Time, error) {
 }
 
 // lineTime a log line's own leading timestamp, journal's iso or Go's log
-var lineTimeRe = regexp.MustCompile(`^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[^ ]*|\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2})`)
+// a line's time at its start, or after a third party's [tag]
+var lineTimeRe = regexp.MustCompile(`^(?:\[[^\]]*\] )?(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[^ ]*|\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2})`)
 
 func lineTime(l string) (time.Time, bool) {
-	m := lineTimeRe.FindString(l)
-	if m == "" {
+	sm := lineTimeRe.FindStringSubmatch(l)
+	if sm == nil {
 		return time.Time{}, false
 	}
+	m := sm[1]
 	for _, f := range []string{"2006-01-02T15:04:05-0700", time.RFC3339, "2006/01/02 15:04:05"} {
 		if t, err := time.ParseInLocation(f, m, time.Local); err == nil {
 			return t, true
@@ -153,14 +155,21 @@ func hostLogs(p map[string]any) (int, any) {
 	}
 	m := strings.ToLower(match)
 	kept := []string{}
+	// an untimed line, a trace or a child's own print, as old as the last timed one;
+	// none timed yet and a window asked, left out
+	var at time.Time
+	timed := false
 	for _, l := range all {
+		if t, ok := lineTime(l); ok {
+			at, timed = t, true
+		}
+		if (!since.IsZero() || !until.IsZero()) && (!timed || !since.IsZero() && at.Before(since) || !until.IsZero() && at.After(until)) {
+			continue
+		}
 		if m != "" && !strings.Contains(strings.ToLower(l), m) {
 			continue
 		}
 		if level != "" && !logLevel[level].MatchString(l) {
-			continue
-		}
-		if t, ok := lineTime(l); ok && (!since.IsZero() && t.Before(since) || !until.IsZero() && t.After(until)) {
 			continue
 		}
 		kept = append(kept, l)

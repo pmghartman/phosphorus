@@ -104,7 +104,7 @@ func prefixed(role string) io.Writer {
 		s := bufio.NewScanner(r)
 		s.Buffer(make([]byte, 64*1024), 1024*1024)
 		for s.Scan() {
-			fmt.Printf("[%s] %s\n", role, s.Text())
+			fmt.Printf("%s[%s] %s\n", stamp(), role, s.Text())
 		}
 	}()
 	return w
