@@ -2180,22 +2180,11 @@ function reactsEl(m) {
 
 // on hover, over the bubble's top corner: the reactions, reply, and the rest of the menu
 const REPLY_GLYPH = 'M6.5 4L2.5 8l4 4M2.5 8h7a4 4 0 0 1 4 4v.5';
-function toolsEl(m) {
-  const bar = el('div', 'msg-tools');
-  for (const r of REACTIONS) {
-    const b = Object.assign(el('button', `mt-react${m.reacts?.get(`${name}\n${r}`)?.on ? ' on' : ''}`, r), { type: 'button', title: `react ${r}` });
-    b.dataset.act = 'react';
-    b.dataset.emoji = r;
-    bar.append(b);
-  }
-  bar.append(el('span', 'mt-sep'));
-  const re = Object.assign(el('button', 'mt-btn'), { type: 'button', title: 'reply', ariaLabel: 'reply' });
-  re.dataset.act = 'reply';
-  re.append(dkGlyph(REPLY_GLYPH));
-  const more = Object.assign(el('button', 'mt-btn mt-more', '⋯'), { type: 'button', title: 'more', ariaLabel: 'more' });
+// a line's menu marked by a faint ⋯ in its corner; right click or the ⋯ opens it
+function toolsEl() {
+  const more = Object.assign(el('button', 'msg-more', '⋯'), { type: 'button', title: 'options, or right click', ariaLabel: 'options' });
   more.dataset.act = 'more';
-  bar.append(re, more);
-  return bar;
+  return more;
 }
 
 function quoteEl(ref) {
@@ -2311,7 +2300,7 @@ function lineEl(m, prev) {
   if (m.files && !m.gone) bubble.append(filesEl(m.files));
   if (!body && !m.gone && m.files?.length && m.files.every((f) => (f.type || '').startsWith('image/'))) li.classList.add('just-img');
   li.append(bubble);
-  if (real) bubble.append(toolsEl(m));
+  if (real) bubble.append(toolsEl());
   const reacts = !m.gone && reactsEl(m);
   if (reacts) li.append(reacts);
   return li;
@@ -3225,6 +3214,8 @@ chatLog.addEventListener('contextmenu', (e) => {
 function lineMenu(li, m, anchor, at = null) {
   const mine = li.dataset.acts === 'mine';
   const items = [{ label: 'reply', act: () => startReply(m) }];
+  const text = m.edited ?? m.text;
+  if (text) items.push({ label: 'copy', act: () => copyText(text).catch(() => {}) });
   if (mine && (!m.kind || m.kind === 'dm')) items.push({ label: 'edit', act: () => startEdit(m) });
   if (mine) items.push({ label: 'delete', sub: 'for everyone', danger: true, confirm: 'delete it?', act: () => send({ type: 'delete', ref: keyOf(m) }) });
   const row = el('div', 'pop-reacts');
@@ -3241,7 +3232,7 @@ function lineMenu(li, m, anchor, at = null) {
 function findIn(li) {
   const q = chatFindInput.value.trim().toLowerCase();
   if (!li.matches('.msg, .sys')) return;
-  const t = li.textContent.replace(li.querySelector('.msg-tools')?.textContent || '', '');
+  const t = li.textContent.replace(li.querySelector('.msg-more')?.textContent || '', '');
   li.classList.toggle('miss', !!q && !t.toLowerCase().includes(q));
 }
 
