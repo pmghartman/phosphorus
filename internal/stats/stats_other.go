@@ -210,7 +210,7 @@ func refreshProcs(now int64) {
 	}
 	sort.SliceStable(rl, func(i, j int) bool { return rl[i]["name"].(string) < rl[j]["name"].(string) })
 	dmu.Lock()
-	containers = rl
+	parts = rl
 	dmu.Unlock()
 }
 

@@ -1,7 +1,7 @@
 package mcp
 
 // the mesh's health and control past the files and chat: versions, tunnels,
-// services, power, containers, update history, terminals, the audit
+// services, power, update history, terminals, the audit
 
 import (
 	"crypto/sha256"
@@ -107,34 +107,6 @@ func controlTools(local func(m Meta) bool) []tool {
 					return nil, errc("bad_input", "confirm must be %s", h)
 				}
 				return pressed(src.Actions.Op(h, "power", map[string]any{"action": str(a["action"])}))
-			}},
-		{name: "containers", read: true, scope: "key", admin: true,
-			description: "A host's docker containers, running or stopped: name, image, state, status and ports. host_logs with " +
-				"source container:<name> reads one's log. Admins only.",
-			schema: object(map[string]any{"host": name}, "host"),
-			run: func(a map[string]any, m Meta) (any, error) {
-				if err := adminOf(m); err != nil {
-					return nil, err
-				}
-				h, err := knownHost(a)
-				if err != nil {
-					return nil, err
-				}
-				return pressed(src.Actions.Op(h, "containers", nil))
-			}},
-		{name: "container_control", scope: "key", admin: true, destructive: true,
-			description: "Start, stop or restart one docker container on a host; returns its state after. Admins only.",
-			schema: object(map[string]any{"host": name, "name": map[string]any{"type": "string"},
-				"action": map[string]any{"type": "string", "enum": []any{"start", "stop", "restart"}}}, "host", "name", "action"),
-			run: func(a map[string]any, m Meta) (any, error) {
-				if err := adminOf(m); err != nil {
-					return nil, err
-				}
-				h, err := knownHost(a)
-				if err != nil {
-					return nil, err
-				}
-				return pressed(src.Actions.Op(h, "container", map[string]any{"name": str(a["name"]), "action": str(a["action"])}))
 			}},
 		{name: "update_history", read: true, scope: "key",
 			description: "The mesh updates started from this host, the last fifty, newest last: when, each host's result and the error " +

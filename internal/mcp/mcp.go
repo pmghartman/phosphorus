@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"net/url"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -46,7 +48,7 @@ type Actions struct {
 	GitMaster func(host string) (int, any)
 	ModelRole func(role, model string) (int, any)
 	Update    func(action string, admin bool, only []string) (int, any)
-	// Op a host operation: health, power, containers, container, term_close,
+	// Op a host operation: health, power, term_close,
 	// service_health, or mesh-wide mesh_health and update_history
 	Op       func(host, op string, p map[string]any) (int, any)
 	ChatEdit func(user, ref, action, text string) (int, any)
@@ -88,6 +90,130 @@ var src Src
 
 // Init with server's views
 func Init(s Src) { src = s }
+
+// statsShape one host's sample trimmed for an agent: percents beside the bytes,
+// phosphorus's own processes as parts, the top six others with short command lines
+func statsShape(s map[string]any) map[string]any {
+	cpu := util.Obj(s["cpu"])
+	cores, _ := cpu["cores"].([]any)
+	parts := []any{}
+	// an older peer sends them as containers
+	cs, ok := s["parts"].([]any)
+	if !ok {
+		cs, ok = s["containers"].([]any)
+	}
+	if ok {
+		for _, c := range cs {
+			m := util.Obj(c)
+			parts = append(parts, map[string]any{"name": m["name"], "cpu": m["cpu"], "mem": m["mem"]})
+		}
+	}
+	var procs any
+	if p := util.Obj(s["procs"]); p != nil {
+		top, _ := p["top"].([]any)
+		if len(top) > 6 {
+			top = top[:6]
+		}
+		short := []any{}
+		for _, x := range top {
+			m := maps.Clone(util.Obj(x))
+			if c := []rune(util.Str(m["cmd"])); len(c) > 100 {
+				m["cmd"] = string(c[:100]) + "…"
+			}
+			short = append(short, m)
+		}
+		procs = map[string]any{"count": p["count"], "top": short}
+	}
+	var cpuOut any
+	if cpu != nil {
+		load := []any{}
+		for _, l := range arr(cpu["load"]) {
+			if f, ok := l.(float64); ok {
+				load = append(load, round(f, 2))
+			} else {
+				load = append(load, l)
+			}
+		}
+		cpuOut = map[string]any{"percent": cpu["total"], "cores": len(cores), "model": cpu["model"], "load": load}
+	}
+	var mem, disk any
+	if m := util.Obj(s["mem"]); m != nil {
+		mem = map[string]any{"total": m["total"], "used": m["used"], "avail": m["avail"], "usedPct": pctOf(m["used"], m["total"]),
+			"swapTotal": m["swapTotal"], "swapUsed": m["swapUsed"]}
+	}
+	if d := util.Obj(s["disk"]); d != nil {
+		disk = map[string]any{"count": d["count"], "total": d["total"], "used": d["used"], "usedPct": pctOf(d["used"], d["total"])}
+	}
+	gpus := []any{}
+	for _, g := range arr(s["gpus"]) {
+		m := map[string]any{}
+		for k, v := range util.Obj(g) {
+			if f, ok := v.(float64); ok {
+				m[k] = round(f, 1)
+			} else if v != nil {
+				m[k] = v
+			}
+		}
+		gpus = append(gpus, m)
+	}
+	return map[string]any{
+		"host": s["host"], "platform": s["platform"], "uptimeSec": s["uptime"], "cpu": cpuOut,
+		"mem": mem, "disk": disk, "gpus": gpus, "netDay": s["netDay"], "parts": parts, "procs": procs,
+	}
+}
+
+// statsRow one host's shaped sample as a single line of percents
+func statsRow(st map[string]any) map[string]any {
+	mem, disk, cpu := util.Obj(st["mem"]), util.Obj(st["disk"]), util.Obj(st["cpu"])
+	row := map[string]any{"host": st["host"], "platform": st["platform"], "uptimeSec": st["uptimeSec"],
+		"cpuPct": cpu["percent"], "memPct": mem["usedPct"], "diskPct": disk["usedPct"],
+		"swapPct": pctOf(mem["swapUsed"], mem["swapTotal"]), "procs": util.Obj(st["procs"])["count"]}
+	for _, g := range arr(st["gpus"]) {
+		if u, ok := util.Obj(g)["util"].(float64); ok {
+			row["gpuPct"] = math.Max(u, num(row["gpuPct"]))
+		}
+	}
+	return row
+}
+
+// statsAll every phosphorus host's row at once, a host that sent nothing given its error
+func statsAll() []any {
+	hosts := meshHosts()
+	out := make([]any, len(hosts))
+	var wg sync.WaitGroup
+	for i, h := range hosts {
+		wg.Add(1)
+		go func(i int, h string) {
+			defer wg.Done()
+			st, err := hostStats(h)
+			if err != nil {
+				out[i] = map[string]any{"host": h, "error": err.Error()}
+				return
+			}
+			out[i] = statsRow(st.(map[string]any))
+		}(i, h)
+	}
+	wg.Wait()
+	return out
+}
+
+func num(v any) float64 {
+	f, _ := v.(float64)
+	return f
+}
+
+func pctOf(a, b any) any {
+	x, y := num(a), num(b)
+	if y <= 0 {
+		return nil
+	}
+	return round(x/y*100, 1)
+}
+
+func round(f float64, places int) float64 {
+	p := math.Pow(10, float64(places))
+	return math.Round(f*p) / p
+}
 
 func object(props map[string]any, required ...string) map[string]any {
 	if props == nil {
@@ -146,34 +272,7 @@ func hostStats(host string) (any, error) {
 		if !ok {
 			return nil, fmt.Errorf("%s sent no stats", host)
 		}
-		cpu := util.Obj(s["cpu"])
-		cores, _ := cpu["cores"].([]any)
-		ctrs := []any{}
-		if cs, ok := s["containers"].([]any); ok {
-			for _, c := range cs {
-				m := util.Obj(c)
-				ctrs = append(ctrs, map[string]any{"name": m["name"], "cpu": m["cpu"], "mem": m["mem"]})
-			}
-		}
-		var procs any
-		if p := util.Obj(s["procs"]); p != nil {
-			top, _ := p["top"].([]any)
-			if len(top) > 8 {
-				top = top[:8]
-			}
-			if top == nil {
-				top = []any{}
-			}
-			procs = map[string]any{"count": p["count"], "top": top}
-		}
-		var cpuOut any
-		if cpu != nil {
-			cpuOut = map[string]any{"percent": cpu["total"], "cores": len(cores), "model": cpu["model"], "load": cpu["load"]}
-		}
-		return map[string]any{
-			"host": s["host"], "platform": s["platform"], "uptimeSec": s["uptime"], "cpu": cpuOut,
-			"mem": s["mem"], "disk": s["disk"], "gpus": s["gpus"], "netDay": s["netDay"], "containers": ctrs, "procs": procs,
-		}, nil
+		return statsShape(s), nil
 	case <-time.After(statsWait):
 		return nil, fmt.Errorf("%s sent no stats", host)
 	}
@@ -541,7 +640,17 @@ func buildTools() {
 			description: "Every host on the phosphorus mesh: whether it runs phosphorus, its OS and version.",
 			schema:      object(nil),
 			run: func(map[string]any, Meta) (any, error) {
-				return map[string]any{"self": src.Self(), "domain": src.Domain(), "hosts": src.Tailnet()}, nil
+				self := src.Self()
+				hosts := slices.Clone(src.Tailnet())
+				// this host's own row carries no version; copies so the mesh's stays as is
+				for i, d := range hosts {
+					if d["name"] == self["host"] && !util.Truthy(d["version"]) {
+						c := maps.Clone(d)
+						c["version"] = self["version"]
+						hosts[i] = c
+					}
+				}
+				return map[string]any{"self": self, "domain": src.Domain(), "hosts": hosts}, nil
 			}},
 		{name: "services", read: true,
 			description: "Every service published on the mesh, by host, with its name and where it is served.",
@@ -574,9 +683,13 @@ func buildTools() {
 				return out, nil
 			}},
 		{name: "host_stats", read: true,
-			description: "Live cpu, memory, disk, gpu, network, containers and top processes of one host.",
-			schema:      object(map[string]any{"host": name}, "host"),
+			description: "Live cpu, memory, disk, gpu, network, phosphorus's parts and top processes of one host; no host, a row of percents for every host.",
+			schema: object(map[string]any{"host": map[string]any{"type": "string",
+				"description": "host name, as mesh_hosts lists it; blank for every host's row at once"}}),
 			run: func(a map[string]any, _ Meta) (any, error) {
+				if util.Str(a["host"]) == "" {
+					return statsAll(), nil
+				}
 				h, err := knownHost(a)
 				if err != nil {
 					return nil, err

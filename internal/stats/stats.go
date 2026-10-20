@@ -245,10 +245,10 @@ func gpus() []map[string]any {
 	return append(nv, vendorGpus(len(nv) > 0)...)
 }
 
-// containers phosphorus's own processes by role, from refreshProcs
+// parts phosphorus's own processes by role, from refreshProcs
 var (
-	dmu        sync.Mutex
-	containers any = []any{}
+	dmu   sync.Mutex
+	parts any = []any{}
 )
 
 // --- own sampler -----------------------------------------------------------
@@ -320,7 +320,7 @@ func sample() map[string]any {
 	}
 	uptime := math.Round(uptimeSecs())
 	dmu.Lock()
-	ctr := containers
+	ctr := parts
 	dmu.Unlock()
 	out := Hooks.Self()
 	for k, v := range map[string]any{
@@ -328,7 +328,7 @@ func sample() map[string]any {
 		"cpu": map[string]any{"total": cpus[0], "cores": cpus[1:], "model": cpuModel(), "load": ld},
 		"mem": memInfo(), "net": nets, "netDay": netDayTotals(),
 		"io":   map[string]any{"r": rate(cur.r, last.r, true), "w": rate(cur.w, last.w, true)},
-		"disk": disk(), "gpus": gpus(), "uptime": uptime, "containers": ctr, "procs": procList,
+		"disk": disk(), "gpus": gpus(), "uptime": uptime, "parts": ctr, "procs": procList,
 	} {
 		out[k] = v
 	}

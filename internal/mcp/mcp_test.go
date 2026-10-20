@@ -3,7 +3,9 @@ package mcp
 import (
 	"archive/zip"
 	"bytes"
+	"encoding/json"
 	"io"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -54,6 +56,9 @@ func TestCallLog(t *testing.T) {
 	}
 }
 
+// backticked words in the skill that are arguments, not tools
+var skillWords = map[string]bool{"dry_run": true, "wait_s": true, "base_path": true, "clone_url": true, "mcp__phosphorus__": true, "bad_input": true, "not_found": true}
+
 func TestSkill(t *testing.T) {
 	Init(Src{Self: func() map[string]any { return map[string]any{"host": "h", "version": "1.2"} }})
 	b, err := Skill("pat", true, "https://mesh.example")
@@ -85,15 +90,65 @@ func TestSkill(t *testing.T) {
 	if !strings.HasPrefix(sk, "---\nname: phosphorus\ndescription: ") || !strings.Contains(sk, "https://mesh.example") {
 		t.Fatal("SKILL.md frontmatter or base missing")
 	}
-	for _, f := range []string{"tools", "playbooks", "status", "diagnose", "run", "files", "service", "update", "chat", "git"} {
+	for _, f := range []string{"status", "diagnose", "run", "files", "service", "update", "chat", "git"} {
 		if got["phosphorus/references/"+f+".md"] == "" {
 			t.Fatalf("no references/%s.md", f)
 		}
-		if f != "tools" && !strings.Contains(sk, "references/"+f+".md") {
+		if !strings.Contains(sk, "references/"+f+".md") {
 			t.Fatalf("SKILL.md never points at %s", f)
 		}
 	}
-	if !strings.Contains(got["phosphorus/references/tools.md"], "## host_power") {
-		t.Fatal("admin tools missing")
+	// every tool the skill names is one the server lists
+	toolsOnce.Do(buildOnce)
+	for _, body := range got {
+		for _, m := range regexp.MustCompile("`([a-z]+_[a-z_]+)`").FindAllStringSubmatch(body, -1) {
+			if toolIndex[m[1]] == nil && !skillWords[m[1]] {
+				t.Fatalf("the skill names %s, no tool", m[1])
+			}
+		}
+	}
+}
+
+func TestMeshHostsSelfVersion(t *testing.T) {
+	rows := []map[string]any{{"name": "h"}, {"name": "p", "version": "1"}}
+	Init(Src{Self: func() map[string]any { return map[string]any{"host": "h", "version": "2"} },
+		Domain: func() string { return "" }, Tailnet: func() []map[string]any { return rows }})
+	_, o := Handle(rpc("tools/call", map[string]any{"name": "mesh_hosts"}), false, &Caller{User: "u"})
+	text := o.(map[string]any)["result"].(map[string]any)["content"].([]any)[0].(map[string]any)["text"].(string)
+	var got struct{ Hosts []map[string]any }
+	json.Unmarshal([]byte(text), &got)
+	if got.Hosts[0]["version"] != "2" {
+		t.Fatalf("self row unversioned: %s", text)
+	}
+	if rows[0]["version"] != nil {
+		t.Fatal("the mesh's own row changed")
+	}
+}
+
+func TestStatsShape(t *testing.T) {
+	long := strings.Repeat("x", 300)
+	s := map[string]any{"host": "h", "cpu": map[string]any{"total": 12.5, "cores": []any{1.0, 2.0}, "load": []any{0.123456, nil, 1.0}},
+		"mem":   map[string]any{"total": 200.0, "used": 50.0, "avail": 150.0, "cached": 9.0, "swapTotal": 10.0, "swapUsed": 5.0},
+		"disk":  map[string]any{"count": 1.0, "total": 1000.0, "used": 778.0},
+		"gpus":  []any{map[string]any{"name": "g", "util": 38.886, "temp": nil}},
+		"procs": map[string]any{"count": 9.0, "top": []any{map[string]any{"name": "a", "cmd": long}, map[string]any{}, map[string]any{}, map[string]any{}, map[string]any{}, map[string]any{}, map[string]any{}}},
+		"parts": []any{map[string]any{"name": "frontend", "cpu": 1.0, "mem": 2.0, "pids": 3.0}}}
+	st := statsShape(s)
+	if st["containers"] != nil || len(st["parts"].([]any)) != 1 {
+		t.Fatalf("parts %v", st)
+	}
+	if m := st["mem"].(map[string]any); m["usedPct"] != 25.0 || m["cached"] != nil {
+		t.Fatalf("mem %v", m)
+	}
+	top := st["procs"].(map[string]any)["top"].([]any)
+	if len(top) != 6 || len([]rune(top[0].(map[string]any)["cmd"].(string))) != 101 {
+		t.Fatalf("procs %v", top)
+	}
+	if g := st["gpus"].([]any)[0].(map[string]any); g["util"] != 38.9 || g["temp"] != nil {
+		t.Fatalf("gpu %v", g)
+	}
+	r := statsRow(st)
+	if r["diskPct"] != 77.8 || r["swapPct"] != 50.0 || r["gpuPct"] != 38.9 || r["cpuPct"] != 12.5 {
+		t.Fatalf("row %v", r)
 	}
 }
