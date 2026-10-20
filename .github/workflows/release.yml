@@ -1,6 +1,5 @@
-# manual release: per checked OS a host installer (.deb, .dmg, setup .exe), with
-# Client every OS's Phosphorus Client, as vVERSION; feeds on release `update`, then
-# only the two newest releases and runs kept
+# manual release: per checked OS a host installer (.deb, .dmg, setup .exe), as
+# vVERSION; feeds on release `update`, then only the two newest releases and runs kept
 # app and apt feeds need TAURI_SIGNING_PRIVATE_KEY(_PASSWORD), APT_GPG_KEY, var TAURI_UPDATER_PUBKEY
 name: release
 
@@ -27,10 +26,6 @@ on:
         description: "Windows"
         type: boolean
         default: false
-      client:
-        description: "Client (every OS)"
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -41,7 +36,6 @@ jobs:
     outputs:
       ver: ${{ steps.v.outputs.ver }}
       builds: ${{ steps.plan.outputs.builds }}
-      clients: ${{ steps.plan.outputs.clients }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       # every run one past the highest vMAJOR.MINOR tag: minor, or major with .0
@@ -63,23 +57,21 @@ jobs:
           ARM64: ${{ inputs.linux_arm64 }}
           MAC: ${{ inputs.macos }}
           WIN: ${{ inputs.windows }}
-          CLIENT: ${{ inputs.client }}
         run: |
           on() { for v in "$@"; do [ "$v" = true ] && return 0; done; return 1; }
-          on "$AMD64" "$ARM64" "$MAC" "$WIN" "$CLIENT" || { echo "check at least one OS or Client" >&2; exit 1; }
+          on "$AMD64" "$ARM64" "$MAC" "$WIN" || { echo "check at least one OS" >&2; exit 1; }
           la='{"name":"linux-amd64","runner":"ubuntu-24.04","arch":"amd64","args":"--bundles deb"}'
           lb='{"name":"linux-arm64","runner":"ubuntu-24.04-arm","arch":"arm64","args":"--bundles deb"}'
           mc='{"name":"macos-universal","runner":"macos-14","arch":"universal","args":"--target universal-apple-darwin --bundles app,dmg"}'
           wn='{"name":"windows-x86_64","runner":"windows-2022","arch":"amd64","args":"--bundles nsis"}'
-          builds=() clients=()
+          builds=()
           [ "$AMD64" = true ] && builds+=("$la")
           [ "$ARM64" = true ] && builds+=("$lb")
           [ "$MAC" = true ] && builds+=("$mc")
           [ "$WIN" = true ] && builds+=("$wn")
-          [ "$CLIENT" = true ] && clients=("$la" "$lb" "$mc" "$wn")
           # an empty matrix fails its job: a placeholder the jobs' if skips
           j() { [ $# -gt 0 ] || set -- '{"name":"none"}'; local IFS=,; echo "[$*]"; }
-          { echo "builds=$(j "${builds[@]}")"; echo "clients=$(j "${clients[@]}")"; } | tee -a "$GITHUB_OUTPUT"
+          echo "builds=$(j "${builds[@]}")" | tee -a "$GITHUB_OUTPUT"
 
   # vet and tests, gating the release
   check:
@@ -101,7 +93,7 @@ jobs:
           go run ./cmd/licenses
           git diff --exit-code THIRD_PARTY_LICENSES.txt || { echo "THIRD_PARTY_LICENSES.txt is stale, run make licenses and commit it" >&2; exit 1; }
 
-  # one job per OS, the client apart: Linux's host the .deb around the Go binary
+  # one job per OS: Linux's host the .deb around the Go binary
   # alone (no Rust or webkit), macOS's and Windows' one tray app around it
   build:
     needs: [version]
@@ -233,86 +225,8 @@ jobs:
           compression-level: 0
           if-no-files-found: ignore
 
-  # Phosphorus Client on every OS, beside the hosts: Rust alone, no Go, web build or
-  # tools; signed for its own updater on every OS, Linux's .deb included
-  client:
-    needs: [version]
-    if: ${{ inputs.client }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include: ${{ fromJSON(needs.version.outputs.clients) }}
-    runs-on: ${{ matrix.runner }}
-    env:
-      VER: ${{ needs.version.outputs.ver }}
-      APP: packaging/client
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - name: webkit
-        if: startsWith(matrix.name, 'linux')
-        run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev patchelf
-      - name: rust
-        shell: bash
-        run: |
-          rustup toolchain install stable --profile minimal && rustup default stable
-          [ "${{ matrix.name }}" != macos-universal ] || rustup target add aarch64-apple-darwin x86_64-apple-darwin
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
-        with:
-          workspaces: packaging/client
-          prefix-key: v2-client
-          key: ${{ matrix.name }}
-      - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2
-        with:
-          tool: tauri-cli@2.12.3
-      - name: client app
-        shell: bash
-        env:
-          KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          PUB: ${{ vars.TAURI_UPDATER_PUBKEY }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: |
-          if [ -n "$KEY" ] && [ -n "$PUB" ]; then
-            CFG="{\"version\":\"$VER.0\",\"bundle\":{\"createUpdaterArtifacts\":true},\"plugins\":{\"updater\":{\"pubkey\":\"$PUB\",\"endpoints\":[\"https://github.com/${{ github.repository }}/releases/download/update/client-{{target}}-{{arch}}.json\"],\"windows\":{\"installMode\":\"passive\"}}}}"
-          else
-            CFG="{\"version\":\"$VER.0\"}"
-          fi
-          mkdir -p out upd && cp THIRD_PARTY_LICENSES.txt out/
-          cd $APP
-          cargo tauri build ${{ matrix.args }} --config "$CFG"
-          o=../../out u=../../upd
-          case "${{ matrix.name }}" in
-            linux-*)
-              for f in target/release/bundle/deb/*.deb; do
-                cp "$f" "$o/phosphorus-client_${VER}_${{ matrix.arch }}.deb"
-                [ -e "$f.sig" ] && cp "$f" $u/phosphorus-client-linux-${{ matrix.arch }}.deb && cp "$f.sig" $u/phosphorus-client-linux-${{ matrix.arch }}.deb.sig
-              done ;;
-            macos-universal)
-              d=target/universal-apple-darwin/release/bundle
-              cp $d/dmg/*.dmg "$o/phosphorus-client-$VER-macos-universal.dmg"
-              t="$d/macos/Phosphorus Client.app.tar.gz"
-              [ -e "$t.sig" ] && cp "$t" $u/phosphorus-client-macos-universal.app.tar.gz && cp "$t.sig" $u/phosphorus-client-macos-universal.app.tar.gz.sig ;;
-            windows-*)
-              for f in target/release/bundle/nsis/*-setup.exe; do
-                cp "$f" "$o/phosphorus-client-$VER-windows-x86_64-setup.exe"
-                [ -e "$f.sig" ] && cp "$f" $u/phosphorus-client-windows-x86_64-setup.exe && cp "$f.sig" $u/phosphorus-client-windows-x86_64-setup.exe.sig
-              done ;;
-          esac
-          rm -rf target/*/release/bundle target/release/bundle
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
-        with:
-          name: out-client-${{ matrix.name }}
-          path: out/
-          compression-level: 0
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
-        with:
-          name: upd-client-${{ matrix.name }}
-          path: upd/
-          compression-level: 0
-          if-no-files-found: ignore
-
   release:
-    needs: [version, check, build, client]
+    needs: [version, check, build]
     # runs with unchecked OSes skipped, not when anything failed
     if: ${{ !cancelled() && !failure() }}
     runs-on: ubuntu-24.04
@@ -339,7 +253,6 @@ jobs:
           {
             shopt -s nullglob
             table phosphorus-$VER phosphorus_$VER Phosphorus
-            table phosphorus-client-$VER phosphorus-client_$VER Client
             echo "## Misc"
             echo
             m=""
@@ -374,17 +287,12 @@ jobs:
           NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           printf '{"version":"%s","pub_date":"%s","notes":"https://github.com/%s/releases/tag/v%s"}\n' "$VER" "$NOW" "$GH_REPO" "$VER" > latest.json
           feed() { printf '{"version":"%s.0","pub_date":"%s","url":"%s/%s","signature":"%s","notes":""}\n' "$VER" "$NOW" "$BASE" "$2" "$(cat "$2.sig")" > "$1.json"; }
-          for p in "" client-; do
-            if [ -e phosphorus-${p}macos-universal.app.tar.gz ]; then
-              f=phosphorus-${p}macos-universal.app.tar.gz
-              feed ${p}darwin-x86_64 $f
-              feed ${p}darwin-aarch64 $f
-            fi
-            if [ -e phosphorus-${p}windows-x86_64-setup.exe ]; then feed ${p}windows-x86_64 phosphorus-${p}windows-x86_64-setup.exe; fi
-          done
-          # Linux hosts update over apt, Linux clients from their own .deb
-          [ -e phosphorus-client-linux-amd64.deb ] && feed client-linux-x86_64 phosphorus-client-linux-amd64.deb
-          [ -e phosphorus-client-linux-arm64.deb ] && feed client-linux-aarch64 phosphorus-client-linux-arm64.deb
+          if [ -e phosphorus-macos-universal.app.tar.gz ]; then
+            feed darwin-x86_64 phosphorus-macos-universal.app.tar.gz
+            feed darwin-aarch64 phosphorus-macos-universal.app.tar.gz
+          fi
+          if [ -e phosphorus-windows-x86_64-setup.exe ]; then feed windows-x86_64 phosphorus-windows-x86_64-setup.exe; fi
+          # Linux hosts update over apt
           # the apt feed: the host packages alone
           if [ -n "$KEY" ] && ls ../out/phosphorus_*.deb >/dev/null 2>&1; then
             command -v apt-ftparchive >/dev/null || { sudo apt-get update -q && sudo apt-get install -y -q apt-utils; }
@@ -403,7 +311,7 @@ jobs:
             echo "$KEY" | gpg --batch --import
             gpg --batch --yes --clearsign -o InRelease "$RUNNER_TEMP/Release"
           fi
-          gh release view update >/dev/null 2>&1 || gh release create update --prerelease --latest=false --title "Update feed" --notes "Files installed hosts and clients update from. Install from the numbered releases."
+          gh release view update >/dev/null 2>&1 || gh release create update --prerelease --latest=false --title "Update feed" --notes "Files installed hosts update from. Install from the numbered releases."
           gh release upload update * --clobber
 
   # only the two newest numbered releases and their tags kept, the `update` feed

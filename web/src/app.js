@@ -1613,12 +1613,11 @@ function clearUnread() {
 document.addEventListener('visibilitychange', clearUnread);
 window.addEventListener('focus', clearUnread);
 
-// desktop notifications, opt-in per browser: the client's own, else the
-// browser's on a secure page, the bell hidden without either
+// desktop notifications, opt-in per browser, on a secure page only, the bell
+// hidden without them
 const chatBell = document.getElementById('chat-bell');
-const clientInvoke = window.__phosphorusClient && window.__TAURI__?.core?.invoke;
-const canNotify = !!clientInvoke || 'Notification' in window;
-const notifyGranted = () => !!clientInvoke || Notification.permission === 'granted';
+const canNotify = 'Notification' in window;
+const notifyGranted = () => Notification.permission === 'granted';
 let notifyOn = canNotify && notifyGranted() && localStorage.getItem('phosphorus-chat-notify') === '1';
 
 function paintBell() {
@@ -1637,7 +1636,7 @@ chatBell.addEventListener('click', async () => {
     paintBell();
     return;
   }
-  let perm = clientInvoke ? 'granted' : Notification.permission;
+  let perm = Notification.permission;
   if (perm === 'default') perm = await Notification.requestPermission();
   if (perm !== 'granted') {
     chatNote('notifications blocked');
@@ -1661,10 +1660,9 @@ function notifyChat(m, invite = false, g = null, c = '') {
   notifyOs(m.name, m.text);
 }
 
-// one notification, the client's native one when there
+// one notification, the browser's
 function notifyOs(title, body) {
   if (!canNotify || !notifyGranted()) return;
-  if (clientInvoke) { clientInvoke('notify', { title, body: body || '' }).catch(() => {}); return; }
   try {
     const n = new Notification(title, { body, tag: 'phosphorus-chat', silent: true });
     n.onclick = () => { window.focus(); n.close(); };
@@ -1866,11 +1864,6 @@ function dkControlTray() {
       const busy = meshLock ? (meshLock.paused ? 'paused' : 'running') : updates.mesh ? `v${updates.mesh} out` : 'current';
       tiles.append(tile(DK_GLYPHS.update, 'mesh update', busy, () => { dkPopsClose('update'); openUpdateModal(); }, !!updates.mesh && !meshLock));
     }
-    if (clientInvoke) {
-      const sub = updates.clientBusy ? 'updating' : updates.client ? `v${updates.client} out` : updates.clientNow ? `v${updates.clientNow}` : 'client';
-      tiles.append(tile(DK_GLYPHS.download, 'client', sub, clientUpdate, !!updates.client));
-    }
-    if (window.__phosphorusClient) tiles.append(tile(DK_GLYPHS.reload, 'refresh', 'page', () => location.reload()));
     const theme = el('div', 'dk-ctl-theme');
     for (const t of THEMES) {
       const tb = Object.assign(el('button', `dk-ctl-seg${currentTheme() === t ? ' on' : ''}`), { type: 'button', title: t });
@@ -1916,28 +1909,27 @@ function dkControlTray() {
   return wrap;
 }
 
-// --- updates waiting: the mesh's release and this client's, a blue dot and one note each
+// --- updates waiting: the mesh's release, a blue dot and one note
 
-const updates = { mesh: '', client: '', clientNow: '', clientBusy: false };
+const updates = { mesh: '' };
 const UPDATE_NOTED = 'phosphorus-update-noted';
 
 function paintUpdates() {
-  dk.ctl?.btn.classList.toggle('has-update', !!(updates.mesh || updates.client));
+  dk.ctl?.btn.classList.toggle('has-update', !!updates.mesh);
   dk.ctl?.draw();
   let noted = {};
   try { noted = JSON.parse(localStorage.getItem(UPDATE_NOTED)) || {}; } catch {}
   const say = (k, title) => {
     if (!updates[k] || noted[k] === updates[k]) return;
     noted[k] = updates[k];
-    noteAdd(title, `v${updates[k]}`, null, { view: k === 'mesh' ? 'update' : 'control' });
+    noteAdd(title, `v${updates[k]}`, null, { view: 'update' });
     if (notifyOn) notifyOs(title, `v${updates[k]}`);
   };
   say('mesh', 'mesh update');
-  say('client', 'client update');
   try { localStorage.setItem(UPDATE_NOTED, JSON.stringify(noted)); } catch {}
 }
 
-// the release feed against every host, the client's own feed; asked, never acted on
+// the release feed against every host; asked, never acted on
 async function checkUpdates() {
   if (acct?.admin) {
     try {
@@ -1946,22 +1938,6 @@ async function checkUpdates() {
       updates.mesh = c.latest && versions.some((v) => newerVersion(c.latest, v)) ? c.latest : '';
     } catch {}
   }
-  if (clientInvoke) {
-    try {
-      const c = await clientInvoke('client_update_check');
-      updates.clientNow = c.current || '';
-      updates.client = c.latest || '';
-    } catch {}
-  }
-  paintUpdates();
-}
-
-async function clientUpdate() {
-  if (!updates.client) { await checkUpdates(); if (!updates.client) noteAdd('client current', updates.clientNow ? `v${updates.clientNow}` : '', null, { view: 'control' }); return; }
-  updates.clientBusy = true;
-  paintUpdates();
-  try { await clientInvoke('client_update'); } catch (e) { noteAdd('client update failed', String(e), null, { view: 'control' }); }
-  updates.clientBusy = false;
   paintUpdates();
 }
 // a look once the desk comes up, then every few hours
@@ -4453,12 +4429,6 @@ function dkDesktop() {
 
 // the page's update and theme buttons, moved into whichever bar is up
 const dkTray = document.querySelector('.top-mesh-wide');
-// the client apps' own reload, no browser bar of theirs to do it: the profile menu's item, F5 and ctrl/cmd+R
-if (window.__phosphorusClient) {
-  addEventListener('keydown', (e) => {
-    if (e.key === 'F5' || ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'r')) { e.preventDefault(); location.reload(); }
-  });
-}
 function dkBar(...before) {
   const bar = el('div', 'dk-bar');
   dk.clock = el('span', 'dk-clock');
@@ -6023,6 +5993,7 @@ function dkPressed(a) {
     else if (a.view === 'files' && dk.desk) filesWin();
     else if (a.view === 'update' && updateModal.hidden) openUpdateModal();
   } else if (a.kind === 'notify') { noteAdd(a.title, a.body); notifyOs(String(a.title || ''), String(a.body || '')); }
+  else if (a.kind === 'agent') agentStep(a);
   else if (a.kind === 'creds') credsAsk(a);
   else if (a.kind === 'creds-close') credsClose(a.id);
 }
@@ -6298,7 +6269,7 @@ async function acctSave() {
 }
 
 // the page's own settings in localStorage, mirrored to the user's home
-const PREF_LS = { icons: 'phosphorus-dk-icons', theme: 'phosphorus-theme', recent: 'phosphorus-recent-files', color: 'phosphorus-chat-color' };
+const PREF_LS = { icons: 'phosphorus-dk-icons', theme: 'phosphorus-theme', recent: 'phosphorus-recent-files', color: 'phosphorus-chat-color', agentview: 'phosphorus-agent-view' };
 const PREF_OF = Object.fromEntries(Object.entries(PREF_LS).map(([k, v]) => [v, k]));
 let prefsTimer = null;
 let prefsQuiet = false;
@@ -6604,7 +6575,13 @@ function dkMcpTray() {
   // the url itself, only when the clipboard refused it
   const hint = el('div', 'dk-cl-hint');
   const body = el('div', 'dk-cl-body');
-  pop.append(bar, hint, head, body);
+  // the agent's moves shown on this desk, or kept off it
+  const view = el('label', 'dk-cl-check');
+  const box = Object.assign(el('input'), { type: 'checkbox', checked: agentViewOn() });
+  box.addEventListener('change', () => agentViewSet(box.checked));
+  view.append(box, el('span', '', 'show agent on screen'));
+  view.title = 'open the files, editors, consoles and views the agent works in, as it works';
+  pop.append(bar, hint, view, head, body);
   head.append(el('span', 'dk-cl-title', 'agent'), stateLine);
   const flash = (x, text) => {
     const was = x.dataset.label;
@@ -6693,6 +6670,7 @@ function dkMcpTray() {
     pop.hidden = !on;
     b.setAttribute('aria-expanded', String(on));
     if (on) {
+      box.checked = agentViewOn();
       drawn = null;
       list = null;
       paint();
@@ -6761,6 +6739,177 @@ async function mcpPlugin() {
   pollMcp();
   return true;
 }
+
+// --- the agent on screen: each keyed call's start and end, the window it works in
+// brought up and lit, its shell work in a console per host; off by the tray's box
+
+const AGENT_VIEW_LS = PREF_LS.agentview;
+const agentViewOn = () => { try { return localStorage.getItem(AGENT_VIEW_LS) !== '0'; } catch { return true; } };
+function agentViewSet(on) {
+  try { if (on) localStorage.removeItem(AGENT_VIEW_LS); else localStorage.setItem(AGENT_VIEW_LS, '0'); } catch {}
+  if (!on) agentHud.hide(true);
+}
+
+// calls begun, by id, their arguments for the end
+const agentCalls = new Map();
+// tools printed in a host's console: the command or the call, then what came back
+const AGENT_CONSOLE = new Set(['terminal_run', 'host_logs', 'containers', 'container_control', 'service_request', 'forgejo',
+  'host_config', 'service_edit', 'config_set', 'host_power', 'service_health', 'game_power']);
+const AGENT_STATUS = new Set(['mesh_hosts', 'mesh_health', 'host_stats', 'services', 'models', 'set_model_role']);
+const AGENT_CHAT = new Set(['send_message', 'chat_history', 'chat_wait', 'chat_edit']);
+const AGENT_LIT_MS = 2400;
+
+function agentStep(a) {
+  if (!agentViewOn() || !dk.desk || !a.id) return;
+  if (a.phase === 'start') {
+    agentCalls.set(a.id, a);
+    agentHud.start(a);
+    agentAct(a, a.args || {}, false);
+    return;
+  }
+  const begun = agentCalls.get(a.id);
+  agentCalls.delete(a.id);
+  agentHud.end(a);
+  agentAct(a, begun?.args || {}, true);
+}
+
+// a window the agent touched, lit for a moment and brought forward
+function agentLit(w) {
+  if (!w) return;
+  dkFocus(w);
+  w.node.classList.add('dk-agent');
+  clearTimeout(w.agentLit);
+  w.agentLit = setTimeout(() => w.node.classList.remove('dk-agent'), AGENT_LIT_MS);
+}
+const agentWin = (pred) => [...dk.wins.values()].find(pred);
+
+function agentAct(a, args, done) {
+  const t = a.tool;
+  const tab = t === 'terminal_run' && args.mode === 'tab';
+  if (AGENT_CONSOLE.has(t) && !tab) { agentPrint(a, args, done); return; }
+  if (tab || t === 'terminal_type' || t === 'terminal_screen' || t === 'terminal_close') {
+    agentLit(agentWin((w) => w.kind === 'term' && w.host === args.host));
+    return;
+  }
+  if (t === 'files_read' && !done && args.host && args.path) { dkCode({ host: args.host, share: args.share, path: args.path }).then(() => agentLit(agentCodeWin(args))); return; }
+  if (t === 'files_write' && done && a.ok && args.host && args.path) {
+    if (args.open) return;
+    dkCode({ host: args.host, share: args.share, path: args.path }).then(() => agentLit(agentCodeWin(args)));
+    return;
+  }
+  if ((t === 'files_list' || t === 'files_search') && !done && args.host && args.share) { agentFiles(args.host, args.share, args.path || ''); return; }
+  if (t === 'files_change' && done) {
+    const p = args.steps?.[0]?.path ?? args.path ?? '';
+    if (args.host && args.share) agentFiles(args.host, args.share, filesParent(String(p)));
+    return;
+  }
+  if (t === 'files_copy' && done && args.to?.host) { agentFiles(args.to.host, args.to.share, filesParent(String(args.to.path || ''))); return; }
+  if (done) return;
+  if (AGENT_STATUS.has(t)) { dkOpenApp('status'); agentLit(dk.wins.get('app:status')); }
+  else if (t === 'projects') { dkOpenApp('projects'); agentLit(dk.wins.get('app:projects')); }
+  else if (t === 'git' || t === 'make_git_master') { dkOpenApp('git'); agentLit(dk.wins.get('app:git')); }
+  else if (AGENT_CHAT.has(t)) {
+    const c = args.to ? `dm:${String(args.to).replace(/^@/, '')}` : !args.channel || args.channel === 'mesh' ? 'mesh' : /^dm:/.test(args.channel) ? args.channel : `ch:${args.channel}`;
+    openConv(c);
+    agentLit(dk.wins.get('app:chat'));
+  } else if ((t === 'update_status' || t === 'update_control' || t === 'update_history') && acct?.admin && updateModal.hidden) openUpdateModal();
+}
+
+const agentCodeWin = (f) => dk.wins.get(`code:${codeKey({ host: f.host, share: String(f.share ?? ''), path: f.path })}`);
+
+// one files window the agent browses in, opened or moved to the place
+let agentFm = null;
+async function agentFiles(host, share, dir) {
+  const info = hostsInfo[String(host).toLowerCase()]?.files?.shares?.find((x) => x.id === share);
+  const loc = share === 'home' ? HOME : { host, share, root: info?.label || share, perms: info?.perms || '' };
+  if (agentFm?.w.node.isConnected) {
+    (await app('files')).fmGo(agentFm, loc, dir);
+    agentLit(agentFm.w);
+    return;
+  }
+  agentFm = await filesWin({ loc, dir });
+  agentLit(agentFm?.w);
+}
+
+// a host's console: the agent's command in the accent, its output, its outcome dimmed
+const agentCons = new Map();
+async function agentPrint(a, args, done) {
+  const host = args.host || (a.tool === 'forgejo' ? 'git' : 'mesh');
+  let c = agentCons.get(host);
+  if (!c || !c.w.node.isConnected) {
+    const w = dkWin(`agent:${host}`, 'agent', host, 'term dk-agent-con');
+    if (!w) return;
+    const con = (await app('terminal')).agentConsole(w.body);
+    c = { w, con };
+    w.onClose = () => { con.close(); agentCons.delete(host); };
+    agentCons.set(host, c);
+  }
+  agentLit(c.w);
+  const dim = (x) => `\x1b[2m${x}\x1b[0m`;
+  if (!done) {
+    const line = a.tool === 'terminal_run' ? `\x1b[35m$\x1b[0m ${args.command || ''}`
+      : `\x1b[35m›\x1b[0m ${a.tool}${agentArgLine(args)}`;
+    c.con.write(`${line}\n`);
+    return;
+  }
+  if (a.out) c.con.write(a.out.endsWith('\n') ? a.out : `${a.out}\n`);
+  const how = !a.ok ? `\x1b[31m✗ ${a.error || 'failed'}\x1b[0m` : a.timedOut ? '\x1b[33m⏱ timed out\x1b[0m'
+    : a.exit != null && a.exit !== 0 ? `\x1b[31m✗ exit ${a.exit}\x1b[0m` : '\x1b[32m✓\x1b[0m';
+  c.con.write(`${how} ${dim(a.tool)}\n\n`);
+}
+
+// a call's arguments as flags, the host and long text left out
+function agentArgLine(args) {
+  const out = [];
+  for (const [k, v] of Object.entries(args)) {
+    if (k === 'host' || v == null || v === '' || typeof v === 'object') continue;
+    const s = String(v).replace(/\s+/g, ' ');
+    out.push(`${k}=${s.length > 60 ? `${s.slice(0, 60)}…` : s}`);
+  }
+  return out.length ? ` ${out.join(' ')}` : '';
+}
+
+// the strip over the desk: what the agent is doing now, gone a moment after it stops
+const agentHud = (() => {
+  let node = null;
+  let text = null;
+  let hideT = 0;
+  const live = new Map();
+  const ensure = () => {
+    if (node?.isConnected) return;
+    node = el('div', 'agent-hud');
+    node.setAttribute('role', 'status');
+    node.append(mcpGlyph());
+    text = el('span', 'agent-hud-t');
+    node.append(text);
+    document.body.append(node);
+  };
+  const say = (a) => {
+    const args = agentCalls.get(a.id)?.args || a.args || {};
+    const where = [args.host, args.share && args.share !== 'home' ? args.share : '', args.path].filter(Boolean).join('/');
+    return `${a.tool}${where ? ` · ${where}` : ''}`;
+  };
+  const paint = () => {
+    ensure();
+    clearTimeout(hideT);
+    node.hidden = false;
+    node.classList.toggle('busy', live.size > 0);
+    if (live.size) node.classList.remove('bad');
+    const last = [...live.values()].pop();
+    if (last) text.textContent = say(last);
+    if (!live.size) hideT = setTimeout(() => { if (node) node.hidden = true; }, 3000);
+  };
+  return {
+    start: (a) => { live.set(a.id, a); paint(); },
+    end: (a) => {
+      live.delete(a.id);
+      ensure();
+      if (!live.size) { text.textContent = `${a.ok ? 'done' : 'failed'} · ${say(a)}`; node.classList.toggle('bad', !a.ok); }
+      paint();
+    },
+    hide: (clear) => { if (clear) live.clear(); if (node) node.hidden = true; },
+  };
+})();
 
 // a failure in two words, its why in the notes
 function mcpFailed(why) {

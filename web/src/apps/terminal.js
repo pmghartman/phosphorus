@@ -200,7 +200,34 @@ function startTerminal(view, host, sid, resume, shared = false, login = null) {
   };
 }
 
+// the agent's console on a host: read only, its commands and their output as written
+function agentConsole(view) {
+  let term = null;
+  let observer = null;
+  const queued = [];
+  const ready = loadXterm().then(() => {
+    term = new Terminal({
+      disableStdin: true, cursorBlink: false, cursorStyle: 'bar', cursorInactiveStyle: 'none', convertEol: true,
+      fontSize: 13, lineHeight: 1, scrollback: 5000,
+      fontFamily: getComputedStyle(document.documentElement).getPropertyValue('--font').trim(),
+      theme: termTheme(),
+    });
+    liveTerms.add(term);
+    const fit = new FitAddon.FitAddon();
+    term.loadAddon(fit);
+    term.open(view);
+    observer = new ResizeObserver(() => fit.fit());
+    observer.observe(view);
+    fit.fit();
+    for (const t of queued.splice(0)) term.write(t);
+  }).catch((err) => { view.textContent = err.message; });
+  return {
+    write: (t) => { if (term) term.write(t); else queued.push(t); },
+    close: () => ready.then(() => { observer?.disconnect(); liveTerms.delete(term); term?.dispose(); }),
+  };
+}
+
 // re-coloured with the page's theme
 function termsRetheme() { for (const t of liveTerms) t.options.theme = termTheme(); }
 
-export { startTerminal, termsRetheme };
+export { agentConsole, startTerminal, termsRetheme };

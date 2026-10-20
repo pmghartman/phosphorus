@@ -337,7 +337,7 @@ func hostLogsOn(host string, p map[string]any) (int, any) {
 }
 
 // the page actions a key may send: nothing that asks the person for anything
-var keyUI = map[string]bool{"notify": true, "code": true, "view": true, "terminal": true, "host": true}
+var keyUI = map[string]bool{"agent": true, "notify": true, "code": true, "view": true, "terminal": true, "host": true}
 
 // localUI an action to user's pages on this host, true when one took it
 func localUI(user string, action map[string]any) bool {

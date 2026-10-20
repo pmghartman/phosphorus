@@ -1308,11 +1308,20 @@ func callTool(id any, params map[string]any, local bool, caller *Caller) map[str
 	if t == nil || !visible(t, local, caller) {
 		return fail(id, -32602, fmt.Sprintf("no tool %s", util.JSString(params["name"])))
 	}
+	var out any
+	var err error
 	if caller != nil {
-		id := callBegin(caller.User, name, callDetail(util.Obj(params["arguments"])))
-		defer func() { callEnd(caller.User, id, errText) }()
+		args := util.Obj(params["arguments"])
+		id := callBegin(caller.User, name, callDetail(args))
+		mirror(caller.User, map[string]any{"phase": "start", "id": id, "tool": name, "args": mirrorArgs(args), "read": t.read})
+		defer func() {
+			callEnd(caller.User, id, errText)
+			end := map[string]any{"phase": "end", "id": id, "tool": name, "ok": errText == "", "error": errText}
+			mirrorEnd(end, name, out)
+			mirror(caller.User, end)
+		}()
 	}
-	out, err := runTool(t, params, local, caller)
+	out, err = runTool(t, params, local, caller)
 	if err != nil {
 		errText = err.Error()
 	}

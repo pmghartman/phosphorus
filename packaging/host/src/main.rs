@@ -1,6 +1,6 @@
 //! Phosphorus host app, macOS and Windows: bundled with the host binary and release,
 //! the host's tray: keys, install, start and stop, feed updates; the frontend opened
-//! in Phosphorus Client when it's installed, else the browser
+//! in the default browser
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -21,9 +21,6 @@ use tauri_plugin_updater::UpdaterExt;
 
 /// one install, start, stop or update at a time
 static BUSY: AtomicBool = AtomicBool::new(false);
-/// Phosphorus Client's identifier, the separate download opening the frontend
-#[cfg(target_os = "macos")]
-const CLIENT_ID: &str = "dev.phosphorus.client";
 /// the tray menu's first line: what the tooltip says, visible on macOS
 static STATUS: OnceLock<MenuItem<tauri::Wry>> = OnceLock::new();
 /// the tray's Start and Stop items, enabled by the host's state
@@ -373,8 +370,7 @@ fn domain(app: &App) -> String {
     out.lines().last().unwrap_or("").trim().to_string()
 }
 
-/// the keys asked for first when there are none, else the frontend: in Phosphorus
-/// Client when it's installed, else the default browser
+/// the keys asked for first when there are none, else the frontend in the default browser
 fn open_main(handle: &AppHandle) {
     let app = handle.state::<App>();
     if keys_missing(&app) {
@@ -385,29 +381,7 @@ fn open_main(handle: &AppHandle) {
     let d = domain(&app);
     let url = if d.is_empty() { "http://localhost/".to_string() } else { format!("https://{d}/") };
     // off the main thread: launching waits on the system
-    std::thread::spawn(move || {
-        if !launch_client() {
-            open_url(&url);
-        }
-    });
-}
-
-/// Phosphorus Client started, a running one brought up; false when it isn't installed
-fn launch_client() -> bool {
-    #[cfg(target_os = "macos")]
-    let ok = Command::new("/usr/bin/open").args(["-b", CLIENT_ID]).stderr(Stdio::null()).status().is_ok_and(|s| s.success());
-    // the client installer's per-user dir, then the copy older hosts made
-    #[cfg(windows)]
-    let ok = {
-        let local = PathBuf::from(std::env::var_os("LOCALAPPDATA").unwrap_or_default());
-        [local.join(r"Phosphorus Client\Phosphorus.exe"), local.join(r"Programs\Phosphorus Client\Phosphorus Client.exe")]
-            .into_iter()
-            .find(|p| p.exists())
-            .is_some_and(|p| Command::new(p).stdin(Stdio::null()).spawn().is_ok())
-    };
-    #[cfg(not(any(target_os = "macos", windows)))]
-    let ok = false;
-    ok
+    std::thread::spawn(move || open_url(&url));
 }
 
 fn open_url(url: &str) {

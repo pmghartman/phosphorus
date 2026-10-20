@@ -27,7 +27,7 @@
 - **Chat**, live **status** and notifications, shared by the mesh
 - **Git** on Forgejo, replicated to every host with an elected master
 - **A local AI model**, hosted on one machine for all of them, with projects it works on alone in a sandbox
-- **An MCP server** at `/api/mcp`: Claude or any MCP client reads the mesh and acts on it with your rights, running scripts on each host with your saved login and working on Forgejo with your saved git login; the agent button copies its url for any agent's MCP connector (web, desktop, phone), or downloads a Claude plugin (Claude Code, Cowork) with the mcp server, mesh skills and an operator agent keyed to you
+- **An MCP server** at `/api/mcp`: Claude or any MCP client reads the mesh and acts on it with your rights, running scripts on each host with your saved login and working on Forgejo with your saved git login; the agent button copies its url for any agent's MCP connector (web, desktop, phone), or downloads a Claude plugin (Claude Code, Cowork) with the mcp server, mesh skills and an operator agent keyed to you; with **show agent on screen** checked, every call it makes opens and lights the window it works in: editors for its files, the files window where it browses, a console per host for its commands and logs, the status, chat and git views
 - **Accounts** with admin roles and a per-user vault of host and page logins
 
 ## Quick start
@@ -51,7 +51,6 @@ The first login is `admin` with your admin password. Create your own admin accou
 ### Optional
 
 - **A domain:** a [Cloudflare](https://cloudflare.com) domain and tunnel token give you `https://your-domain` off the tailnet, plus git.
-- **Phosphorus Client:** a desktop window onto the mesh from any computer. Enter your domain or a host's tailnet name. It updates itself.
 - **More keys:** a Tailscale API token (game server DNS) and an admin password, set on the first host.
 
 Change keys later with **Edit Keys** in the tray, or `phos keys`.
@@ -80,7 +79,6 @@ flowchart TB
     deb[".deb (amd64, arm64)<br/>binary, tailscale, cloudflared, forgejo"]
     dmg[".dmg"]
     exe["setup .exe"]
-    client["client-only installers"]
     feed["update feed: apt repo, app feed, latest.json"]
   end
 
@@ -109,7 +107,7 @@ flowchart TB
     peers["other hosts, Linux, macOS and Windows"]
   end
   cf["Cloudflare tunnel (optional)"]
-  browser["Browser or client app<br/>http://host on the tailnet, or BASE_DOMAIN"]
+  browser["Browser<br/>http://host on the tailnet, or BASE_DOMAIN"]
 
   deb --> dpkg --> bin
   dmg & exe -->|"tray app: install, start, keys"| bin
@@ -133,9 +131,7 @@ flowchart TB
   git <-->|"rsync replication"| peers
   ph --> model
   ph --> cfd --> cf --> browser
-  client --> browser
-  client -->|"self-update"| feed
-  browser -->|"/api/ping/host, timed by the client"| ph
+  browser -->|"/api/ping/host, timed by the page"| ph
   browser <-->|"tailnet, no domain"| ph
 ```
 
