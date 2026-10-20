@@ -1397,30 +1397,18 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
 .msg-reacts .react.on { border-color: var(--accent); color: var(--accent); }
 .msg-reacts .react:hover { color: var(--fg); }
 
-/* a line's hover bar, teams style: over the bubble's top corner, reactions then reply and more */
+/* a line's menu: a faint ⋯ in the bubble's corner, the pointer saying right click works */
 .bubble { position: relative; }
-.msg-tools {
-  --mt-w: 13.2rem;
-  position: absolute; top: -1.2rem; left: max(0.4rem, 100% - var(--mt-w) - 0.4rem); width: var(--mt-w); box-sizing: border-box;
-  z-index: 2; display: none; align-items: center; justify-content: space-between; gap: 0.05rem; padding: 0.1rem; user-select: none;
-  background: var(--card); border: 1px solid var(--border); box-shadow: var(--drop); font-size: 0.75rem; line-height: 1;
+.chat-log .msg[data-acts] .bubble { cursor: context-menu; padding-right: 1.4rem; }
+.msg-more {
+  position: absolute; top: 0.1rem; right: 0.2rem; padding: 0 0.2rem; border: none; background: none; cursor: pointer;
+  color: var(--muted); font: inherit; font-size: 0.9rem; line-height: 1; opacity: 0.35; transition: opacity 0.15s, color 0.15s;
 }
-/* a short bubble's bar run out past it, into the free side: right for theirs, left for yours */
-.msg.mine .msg-tools { left: auto; right: max(0.4rem, 100% - var(--mt-w) - 0.4rem); }
-.chat-log .msg:hover .msg-tools, .chat-log .msg:focus-within .msg-tools { display: flex; animation: pop-in 0.1s ease-out; }
-.msg-tools button { display: flex; align-items: center; justify-content: center; min-width: 1.5rem; height: 1.4rem; padding: 0 0.25rem; border: 1px solid transparent; background: none; color: var(--fg); font: inherit; cursor: pointer; }
-.msg-tools button:hover, .msg-tools button:focus-visible { background: var(--tab-hover); outline: none; }
-.msg-tools .mt-react { transition: transform 0.1s; }
-.msg-tools .mt-react:hover { transform: scale(1.18); }
-.msg-tools .mt-react.on { border-color: var(--accent); color: var(--accent); }
-.msg-tools .mt-btn { color: var(--muted); }
-.msg-tools .mt-btn:hover, .msg-tools .mt-btn:focus-visible { color: var(--accent); }
-.msg-tools .mt-more { font-size: 0.95rem; letter-spacing: 0.05em; }
-.mt-sep { align-self: stretch; width: 1px; margin: 0.15rem 0.15rem; background: var(--border); }
-/* the bubble edged while its bar is up, so it's plain which line the bar acts on */
+.chat-log .msg:hover .msg-more, .msg-more:focus-visible { opacity: 0.9; }
+.msg-more:hover, .msg-more:focus-visible { color: var(--accent); outline: none; }
+/* the bubble edged under the pointer, so it's plain which line a right click acts on */
 .chat-log .msg[data-acts]:hover .bubble { box-shadow: var(--lift-sm), 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent); }
 .chat-log .msg.agent[data-acts]:hover .bubble { box-shadow: none; }
-@media (hover: none) { .msg-tools { display: none !important; } }
 
 /* attachments: pictures and players inline, anything else a download */
 .msg-files { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.3rem; }
