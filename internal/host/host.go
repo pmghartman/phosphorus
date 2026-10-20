@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/pmghartman/phosphorus/internal/envfile"
 	"github.com/pmghartman/phosphorus/internal/ini"
@@ -160,7 +161,18 @@ func homeDir() string {
 	return "/var/lib/phosphorus"
 }
 
-func say(f string, a ...any) { fmt.Printf("["+tag+"] "+f+"\n", a...) }
+func say(f string, a ...any) { fmt.Printf(stamp()+"["+tag+"] "+f+"\n", a...) }
+
+// stamped the log a file with no clock of its own, journald's on Linux
+var stamped bool
+
+// stamp a line's time where the log keeps none
+func stamp() string {
+	if !stamped {
+		return ""
+	}
+	return time.Now().Format("2006-01-02T15:04:05-0700 ")
+}
 
 func fail(f string, a ...any) error { return fmt.Errorf(f, a...) }
 

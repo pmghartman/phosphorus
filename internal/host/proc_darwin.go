@@ -26,6 +26,7 @@ func logToFile() {
 	syscall.Dup2(int(f.Fd()), 1)
 	syscall.Dup2(int(f.Fd()), 2)
 	os.Stdout, os.Stderr = f, f
+	stamped = true
 }
 
 func tailscaleUpFlags() []string { return nil }
