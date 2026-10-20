@@ -2,15 +2,13 @@ package mcp
 
 // the claude skill for one user, uploaded to claude.ai or dropped in a skills
 // folder; no key in it, the connector they already have doing the calling: its
-// files with the user filled in, and the tool reference that user's key sees
+// files with the user filled in, the tools' own descriptions their reference
 
 import (
 	"archive/zip"
 	"bytes"
 	"embed"
-	"fmt"
 	"io/fs"
-	"sort"
 	"strings"
 	"time"
 
@@ -22,7 +20,6 @@ var skillFS embed.FS
 
 // Skill the zip for user on the mesh at base: the phosphorus folder at its root
 func Skill(user string, admin bool, base string) ([]byte, error) {
-	toolsOnce.Do(buildOnce)
 	ver := strings.TrimPrefix(util.Str(src.Self()["version"]), "v")
 	note := ""
 	if admin {
@@ -51,104 +48,7 @@ func Skill(user string, admin bool, base string) ([]byte, error) {
 		return add(strings.TrimPrefix(p, "skill/"), r.Replace(string(b)))
 	})
 	if err == nil {
-		err = add("phosphorus/references/tools.md", toolsDoc(user, admin))
-	}
-	if err == nil {
 		err = z.Close()
 	}
 	return buf.Bytes(), err
-}
-
-// toolsDoc every tool the key sees: what it does, its kind, its arguments
-func toolsDoc(user string, admin bool) string {
-	var b strings.Builder
-	who := "a user's key"
-	if admin {
-		who = "an admin's key"
-	}
-	list := toolList(false, &Caller{User: user, Admin: admin})
-	fmt.Fprintf(&b, "# Tools\n\nThe %d tools the phosphorus MCP server lists for %s (%s), generated from the server. "+
-		"`version` names any tool kept off this list and why. Arguments marked * are required.\n\n", len(list), user, who)
-	for _, x := range list {
-		t := util.Obj(x)
-		fmt.Fprintf(&b, "## %s\n\n_%s_\n\n%s\n\n", util.Str(t["name"]), toolKind(util.Obj(t["annotations"])), util.Str(t["description"]))
-		args := argLines(util.Obj(t["inputSchema"]), "")
-		if len(args) == 0 {
-			b.WriteString("No arguments.\n\n")
-			continue
-		}
-		b.WriteString(strings.Join(args, "\n") + "\n\n")
-	}
-	return b.String()
-}
-
-func toolKind(a map[string]any) string {
-	switch {
-	case a["readOnlyHint"] == true && a["openWorldHint"] == true:
-		return "read only, reaches outside the mesh"
-	case a["readOnlyHint"] == true:
-		return "read only"
-	case a["destructiveHint"] == true:
-		return "destructive: the user's word for this target first"
-	}
-	return "writes"
-}
-
-// argLines a schema's properties as a list, objects' own nested under them
-func argLines(s map[string]any, indent string) []string {
-	props := util.Obj(s["properties"])
-	req := map[string]bool{}
-	if rs, ok := s["required"].([]string); ok {
-		for _, k := range rs {
-			req[k] = true
-		}
-	}
-	if rs, ok := s["required"].([]any); ok {
-		for _, k := range rs {
-			req[util.Str(k)] = true
-		}
-	}
-	keys := make([]string, 0, len(props))
-	for k := range props {
-		keys = append(keys, k)
-	}
-	// required first, then by name
-	sort.Slice(keys, func(i, j int) bool {
-		if req[keys[i]] != req[keys[j]] {
-			return req[keys[i]]
-		}
-		return keys[i] < keys[j]
-	})
-	var out []string
-	for _, k := range keys {
-		p := util.Obj(props[k])
-		line := indent + "- `" + k + "`"
-		if req[k] {
-			line += "*"
-		}
-		if t := util.Str(p["type"]); t != "" {
-			line += " " + t
-		}
-		if e, ok := p["enum"].([]any); ok {
-			vs := make([]string, len(e))
-			for i, v := range e {
-				vs[i] = util.Str(v)
-			}
-			line += " (" + strings.Join(vs, " | ") + ")"
-		}
-		if d, ok := p["default"]; ok {
-			line += fmt.Sprintf(", default %v", d)
-		}
-		if d := util.Str(p["description"]); d != "" {
-			line += ": " + d
-		}
-		out = append(out, line)
-		if util.Str(p["type"]) == "object" {
-			out = append(out, argLines(p, indent+"  ")...)
-		}
-		if it := util.Obj(p["items"]); util.Str(it["type"]) == "object" {
-			out = append(out, argLines(it, indent+"  ")...)
-		}
-	}
-	return out
 }

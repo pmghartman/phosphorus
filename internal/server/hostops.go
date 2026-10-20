@@ -75,8 +75,8 @@ func lineTime(l string) (time.Time, bool) {
 }
 
 // hostLogs this host's logs, their last lines filtered: source phosphorus (all
-// of it), frontend, cloudflared, git, model or another role's tag, container:<name>
-// for docker's, game:<name> for a game's start/stop output; match, level, since, until
+// of it), frontend, cloudflared, git, model or another role's tag, game:<name>
+// for a game's start/stop output; match, level, since, until
 func hostLogs(p map[string]any) (int, any) {
 	lines := int(files.JSNumber(p["lines"]))
 	if lines < 1 {
@@ -108,25 +108,6 @@ func hostLogs(p map[string]any) (int, any) {
 	var all []string
 	from := ""
 	switch {
-	case strings.HasPrefix(source, "container:"):
-		name := strings.TrimPrefix(source, "container:")
-		if !gameUserRe.MatchString(name) || strings.HasPrefix(name, "-") {
-			return 400, map[string]any{"error": "bad container name"}
-		}
-		args := []string{"logs", "--tail", fmt.Sprint(n), "--timestamps"}
-		if !since.IsZero() {
-			args = append(args, "--since", since.Format(time.RFC3339))
-		}
-		if !until.IsZero() {
-			args = append(args, "--until", until.Format(time.RFC3339))
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-		defer cancel()
-		out, err := exec.CommandContext(ctx, "docker", append(args, name)...).CombinedOutput()
-		if err != nil {
-			return 404, map[string]any{"error": "docker logs " + name + ": " + strings.TrimSpace(string(out)+" "+err.Error())}
-		}
-		all, from = splitLines(string(out)), "docker"
 	case strings.HasPrefix(source, "game:"):
 		name := strings.TrimPrefix(source, "game:")
 		if !gameUserRe.MatchString(name) || strings.Contains(name, "..") {

@@ -346,7 +346,7 @@ function drawMeshSum(names) {
   const ioR = sum((s) => s.io?.r);
   const ioW = sum((s) => s.io?.w);
   const load = sum((s) => s.cpu.load[0]);
-  const ctr = sum((s) => s.containers?.length);
+  const ctr = sum((s) => (s.parts || s.containers)?.length);
   const git = (stNet?.gitHosts || []).filter((g) => g.reachable);
   const master = git.find((g) => g.role === 'master');
   const svc = (stNet?.routes || []).filter((r) => r.type !== 'game').length;
@@ -783,7 +783,7 @@ function drawGpu(p, h) {
 
 function drawCtr(p, h) {
   // phosphorus's own processes, by role
-  const list = h.s.containers;
+  const list = h.s.parts || h.s.containers;
   p.ctrHead.innerHTML = `phosphorus <span class="st-dim">${list ? list.length : ''}</span>`;
   if (!list) { p.ctr.innerHTML = '<div class="st-dim">no process list</div>'; return; }
   p.ctr.innerHTML = '<div class="st-ctr-row st-dim"><span>name</span><span>cpu</span><span>mem</span><span>pids</span></div>'
