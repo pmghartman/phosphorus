@@ -211,6 +211,20 @@ jobs:
           {
             shopt -s nullglob
             table phosphorus-$VER phosphorus_$VER Phosphorus
+            # the install steps for the files above, each OS's only when built
+            echo "## Install"
+            echo
+            echo "You need a [Tailscale](https://tailscale.com) account and a reusable auth key."
+            echo
+            step() { echo "- $1"; }
+            [ -e phosphorus-$VER-macos-universal.dmg ] && step "**macOS:** open the \`.dmg\`, drag Phosphorus to Applications, open it (first time: right-click, Open). It lives in the menu bar."
+            [ -e phosphorus-$VER-windows-x86_64-setup.exe ] && step "**Windows:** run the setup \`.exe\` (SmartScreen: More info, Run anyway). It lives in the tray."
+            ls phosphorus_${VER}_*.deb >/dev/null 2>&1 && step "**Linux:** \`sudo apt install ./phosphorus_${VER}_ARCH.deb\`, then \`sudo phosphorus\`."
+            echo
+            echo "Then enter the Tailscale auth key when asked; every other host copies the rest from the mesh. Open \`http://HOST\` from any device on the tailnet, by a host's name or tailnet IP. The first login is \`admin\` with your admin password."
+            echo
+            echo "Installed hosts update themselves: **Check for Updates** in the menu bar or tray, \`phos update all\`, or the mesh update in the browser, every host at once."
+            echo
             echo "## Misc"
             echo
             m=""
@@ -218,7 +232,7 @@ jobs:
             for f in forgejo-src-*.tar.gz; do m+="${m:+ · }[Forgejo source]($U/$f)"; done
             echo "$m"
             echo
-            echo "Install steps: [README](https://github.com/$REPO#quick-start)"
+            echo "More: [README](https://github.com/$REPO#quick-start)"
           } > "$RUNNER_TEMP/notes.md"
           cat "$RUNNER_TEMP/notes.md"
       - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
