@@ -163,8 +163,8 @@ func appHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// the claude plugin, no key in it: the user's connector does the calling
-	if pathname == "/api/me/mcp-plugin" && method == "POST" {
+	// the claude skill, no key in it: the user's connector does the calling
+	if pathname == "/api/me/mcp-skill" && method == "POST" {
 		if !isLocalOrPeer(r) || !sameOrigin(r) {
 			forbidden(w)
 			return
@@ -174,13 +174,13 @@ func appHandler(w http.ResponseWriter, r *http.Request) {
 			sendJSON(w, 403, map[string]any{"error": "log in as a user"})
 			return
 		}
-		b, err := mcp.Plugin(s.User, s.Admin, users.MCPBase(r))
+		b, err := mcp.Skill(s.User, s.Admin, users.MCPBase(r))
 		if err != nil {
 			sendJSON(w, 500, map[string]any{"error": err.Error()})
 			return
 		}
 		w.Header().Set("Content-Type", "application/zip")
-		w.Header().Set("Content-Disposition", `attachment; filename="phosphorus.plugin"`)
+		w.Header().Set("Content-Disposition", `attachment; filename="phosphorus-skill.zip"`)
 		w.Header().Set("Cache-Control", "no-store")
 		w.Write(b)
 		return

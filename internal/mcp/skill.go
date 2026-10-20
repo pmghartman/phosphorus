@@ -1,8 +1,8 @@
 package mcp
 
-// the claude plugin for one user, no key or server in it: the connector they
-// already have does the calling; its files with the user filled in, and the tool
-// reference drawn from the list that user's key sees
+// the claude skill for one user, uploaded to claude.ai or dropped in a skills
+// folder; no key in it, the connector they already have doing the calling: its
+// files with the user filled in, and the tool reference that user's key sees
 
 import (
 	"archive/zip"
@@ -10,7 +10,6 @@ import (
 	"embed"
 	"fmt"
 	"io/fs"
-	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -18,18 +17,13 @@ import (
 	"github.com/pmghartman/phosphorus/internal/util"
 )
 
-//go:embed all:plugin
-var pluginFS embed.FS
+//go:embed all:skill
+var skillFS embed.FS
 
-var semverRe = regexp.MustCompile(`^\d+\.\d+\.\d+([-+][0-9A-Za-z.-]+)?$`)
-
-// Plugin the zip for user on the mesh at base, every file under the plugin's root
-func Plugin(user string, admin bool, base string) ([]byte, error) {
+// Skill the zip for user on the mesh at base: the phosphorus folder at its root
+func Skill(user string, admin bool, base string) ([]byte, error) {
 	toolsOnce.Do(buildOnce)
 	ver := strings.TrimPrefix(util.Str(src.Self()["version"]), "v")
-	if !semverRe.MatchString(ver) {
-		ver = "0.0.0"
-	}
 	note := ""
 	if admin {
 		note = " (an admin)"
@@ -46,18 +40,18 @@ func Plugin(user string, admin bool, base string) ([]byte, error) {
 		_, err = f.Write([]byte(body))
 		return err
 	}
-	err := fs.WalkDir(pluginFS, "plugin", func(p string, d fs.DirEntry, err error) error {
+	err := fs.WalkDir(skillFS, "skill", func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
 		}
-		b, err := pluginFS.ReadFile(p)
+		b, err := skillFS.ReadFile(p)
 		if err != nil {
 			return err
 		}
-		return add(strings.TrimPrefix(p, "plugin/"), r.Replace(string(b)))
+		return add(strings.TrimPrefix(p, "skill/"), r.Replace(string(b)))
 	})
 	if err == nil {
-		err = add("skills/phosphorus/references/tools.md", toolsDoc(user, admin))
+		err = add("phosphorus/references/tools.md", toolsDoc(user, admin))
 	}
 	if err == nil {
 		err = z.Close()

@@ -7,7 +7,23 @@ description: Operates the user's self-hosted Phosphorus mesh through its Phospho
 
 Phosphorus is a mesh of the user's own machines on one tailnet. Every machine running phosphorus is a **host**: it shares folders, publishes web services and game servers, runs terminals, keeps logs, and may carry a Forgejo replica or a model. The Phosphorus connector (an MCP server, named phosphorus or Phosphorus) answers for the whole mesh from any host; every call is made as **{{USER}}**{{ADMIN_NOTE}}, with exactly that user's rights. Its tools may show with a prefix (`mcp__phosphorus__`, `Phosphorus:`); the bare names below are the same tools. No Phosphorus tools at all: tell the user to add the connector with the url from **copy mcp url** in the agent tray, and stop.
 
-Full tool reference, generated from the live server for this key: `references/tools.md`. Step by step jobs: `references/playbooks.md`. Read the reference before a tool you have not used yet in this session.
+Full tool reference, generated from the live server for this user: `references/tools.md`. Read it before a tool you have not used yet in this session.
+
+Read the one job file that fits the request before the first call:
+
+| request | file |
+|---|---|
+| how's the mesh, is everything up, check on a host | `references/status.md` |
+| something is down, slow, failing or erroring | `references/diagnose.md` |
+| run a command or script on a host or every host | `references/run.md` |
+| find, read, edit, copy or organize files | `references/files.md` |
+| publish, change, remove or check a service or game server, call its API | `references/service.md` |
+| update the mesh, follow, retry or cancel an update | `references/update.md` |
+| read or post chat, message someone, wait for a reply | `references/chat.md` |
+| forgejo, repos, issues, pull requests, clone or push, replication | `references/git.md` |
+| anything longer: moving data, publishing, git work, models | `references/playbooks.md` |
+
+Multi-step work across many hosts: run independent calls in parallel and report only the outcome and its evidence, never every raw result.
 
 ## Ground rules
 
@@ -68,3 +84,5 @@ Failed calls return `code: message`, with `data` when there's more:
 ## Reporting
 
 Lead with the answer. Name hosts, services and paths exactly as phosphorus does. For a change: what, where, the before and after, how to undo. For a diagnosis: the evidence lines from logs or stats, the cause, the fix taken or proposed.
+
+Built {{BUILT}} for the mesh at {{BASE}}, phosphorus {{VERSION}}; `references/tools.md` matches that release. A newer mesh: download the skill again from the agent tray.

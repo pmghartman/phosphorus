@@ -1,10 +1,6 @@
----
-name: mesh-diagnose
-description: Root-causes a broken or slow host, service, container or game server on the Phosphorus mesh from its health, stats and logs. Use for "X is down", "X is slow", "why did X stop", "X won't load", "errors on X".
-argument-hint: "<host | service | container> [what's wrong]"
----
+# Diagnose
 
-Diagnose: `$ARGUMENTS`.
+Root-causes a broken or slow host, service, container or game server on the Phosphorus mesh from its health, stats and logs. Use for "X is down", "X is slow", "why did X stop", "X won't load", "errors on X".
 
 1. Resolve the target: `mesh_hosts` and `services` in parallel. A service name gives its host; a container name needs `containers` on the likely hosts. Ask only if it stays ambiguous.
 2. Gather in parallel, as they apply:

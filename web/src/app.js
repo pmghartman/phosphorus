@@ -6607,19 +6607,19 @@ function dkMcpTray() {
     const done = mcpStat.configured;
     if (drawn === done) return;
     drawn = done;
-    // the claude plugin: skills and an agent, no key; the connector does the calling
-    const plugin = button('claude plugin', 'quiet', async (x) => {
+    // the claude skill, no key: the connector does the calling
+    const skill = button('claude skill', 'quiet', async (x) => {
       x.disabled = true;
-      const ok = await mcpPlugin();
+      const ok = await mcpSkill();
       x.disabled = false;
       if (ok) flash(x, 'downloaded');
     });
-    plugin.title = 'mesh skills and an agent for Claude Code or Cowork; add the connector with the mcp url'
+    skill.title = 'the mesh skill: upload it in claude.ai, Settings, Capabilities, Skills; works through the connector'
     if (!done) {
       bar.replaceChildren(button('connect agent', 'wide', async () => {
         const r = await mcpKey('/api/me/mcp-url');
         if (r) showUrl(r.url, r.copied);
-      }), plugin);
+      }), skill);
       hint.replaceChildren();
       return;
     }
@@ -6637,7 +6637,7 @@ function dkMcpTray() {
       const r = await mcpKey('/api/me/mcp-key');
       if (r) { show(true); showUrl(r.url, r.copied); }
     });
-    bar.replaceChildren(copy, refresh, plugin);
+    bar.replaceChildren(copy, refresh, skill);
   };
   const paint = () => {
     const st = mcpState();
@@ -6723,13 +6723,13 @@ async function mcpKey(path, have = '') {
   return { ...r, copied };
 }
 
-// the plugin's zip from the mesh, saved as phosphorus.plugin
-async function mcpPlugin() {
+// the skill's zip from the mesh, saved for claude.ai's skill upload
+async function mcpSkill() {
   let res;
-  try { res = await fetch('/api/me/mcp-plugin', { method: 'POST' }); } catch (err) { mcpFailed(err.message); return false; }
+  try { res = await fetch('/api/me/mcp-skill', { method: 'POST' }); } catch (err) { mcpFailed(err.message); return false; }
   if (!res.ok) { mcpFailed((await res.json().catch(() => ({}))).error || `http ${res.status}`); return false; }
   const url = URL.createObjectURL(await res.blob());
-  const a = Object.assign(document.createElement('a'), { href: url, download: 'phosphorus.plugin' });
+  const a = Object.assign(document.createElement('a'), { href: url, download: 'phosphorus-skill.zip' });
   document.body.append(a);
   a.click();
   a.remove();

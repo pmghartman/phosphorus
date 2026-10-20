@@ -3,10 +3,7 @@ package mcp
 import (
 	"archive/zip"
 	"bytes"
-	"encoding/json"
 	"io"
-	"maps"
-	"slices"
 	"strings"
 	"testing"
 )
@@ -57,9 +54,9 @@ func TestCallLog(t *testing.T) {
 	}
 }
 
-func TestPlugin(t *testing.T) {
-	Init(Src{Self: func() map[string]any { return map[string]any{"host": "h", "version": "1.2.3"} }})
-	b, err := Plugin("pat", true, "https://mesh.example")
+func TestSkill(t *testing.T) {
+	Init(Src{Self: func() map[string]any { return map[string]any{"host": "h", "version": "1.2"} }})
+	b, err := Skill("pat", true, "https://mesh.example")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,23 +70,30 @@ func TestPlugin(t *testing.T) {
 		s, _ := io.ReadAll(r)
 		got[f.Name] = string(s)
 	}
-	for _, n := range []string{".claude-plugin/plugin.json", "skills/phosphorus/SKILL.md", "skills/phosphorus/references/tools.md", "agents/mesh-operator.md"} {
-		if got[n] == "" {
-			t.Fatalf("no %s", n)
-		}
-	}
 	for n, s := range got {
-		if strings.Contains(s, "{{") {
+		if !strings.HasPrefix(n, "phosphorus/") {
+			t.Fatalf("%s outside the skill's folder", n)
+		}
+		if strings.Contains(s, "{{") || strings.Contains(s, "$ARGUMENTS") {
 			t.Fatalf("%s left a placeholder", n)
 		}
-		if strings.HasSuffix(n, ".json") && !json.Valid([]byte(s)) {
-			t.Fatalf("%s isn't json", n)
+		if strings.Contains(s, "/api/mcp") {
+			t.Fatalf("%s carries a key", n)
 		}
 	}
-	if got[".mcp.json"] != "" || strings.Contains(strings.Join(slices.Collect(maps.Values(got)), ""), "/api/mcp") {
-		t.Fatal("a connector or key shipped")
+	sk := got["phosphorus/SKILL.md"]
+	if !strings.HasPrefix(sk, "---\nname: phosphorus\ndescription: ") || !strings.Contains(sk, "https://mesh.example") {
+		t.Fatal("SKILL.md frontmatter or base missing")
 	}
-	if !strings.Contains(got["README.md"], "https://mesh.example") || !strings.Contains(got["skills/phosphorus/references/tools.md"], "## host_power") {
-		t.Fatal("base or admin tools missing")
+	for _, f := range []string{"tools", "playbooks", "status", "diagnose", "run", "files", "service", "update", "chat", "git"} {
+		if got["phosphorus/references/"+f+".md"] == "" {
+			t.Fatalf("no references/%s.md", f)
+		}
+		if f != "tools" && !strings.Contains(sk, "references/"+f+".md") {
+			t.Fatalf("SKILL.md never points at %s", f)
+		}
+	}
+	if !strings.Contains(got["phosphorus/references/tools.md"], "## host_power") {
+		t.Fatal("admin tools missing")
 	}
 }

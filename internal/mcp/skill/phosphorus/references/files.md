@@ -1,10 +1,6 @@
----
-name: mesh-files
-description: Finds, reads, edits, copies and organizes files in the Phosphorus mesh's shares across hosts. Use for "find the file", "where is X", "open X", "edit X on the mesh", "copy X to <host>", "what's in <share>".
-argument-hint: "<what to find or do>"
----
+# Files
 
-Files on the mesh: `$ARGUMENTS`.
+Finds, reads, edits, copies and organizes files in the Phosphorus mesh's shares across hosts. Use for "find the file", "where is X", "open X", "edit X on the mesh", "copy X to <host>", "what's in <share>".
 
 1. Unknown location: `files_search` `query` (names) or `content: true` with a `glob`, no host to cover every host. Known location: `files_list` or `files_stat`.
 2. Read with `files_read`, paging with `from`. Binary or over 512KB: describe from `files_stat`, inspect with `terminal_run` if needed.

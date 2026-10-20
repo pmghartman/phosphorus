@@ -1,10 +1,6 @@
----
-name: mesh-status
-description: One-screen health report of the whole Phosphorus mesh, or of one host when named. Use for "mesh status", "is everything up", "how's the mesh", "check on <host>".
-argument-hint: "[host]"
----
+# Mesh status
 
-Report the state of the Phosphorus mesh. Target: `$ARGUMENTS` (blank for every host).
+One-screen health report of the whole Phosphorus mesh, or of one host when named. Use for "mesh status", "is everything up", "how's the mesh", "check on <host>".
 
 1. In parallel: `mesh_hosts`, `mesh_health`, `services`, `update_status`, `git`.
 2. With a host named: also `host_stats` on it and `host_logs` on it with `level: error`, `since: 1h`, `lines: 50`.

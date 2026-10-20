@@ -1,10 +1,6 @@
----
-name: mesh-update
-description: Checks, starts, follows, continues, retries or cancels a Phosphorus mesh update. Use for "update the mesh", "update phosphorus", "is the update done", "retry the failed hosts", "cancel the update".
-argument-hint: "[status | start | continue | cancel | retry]"
----
+# Mesh update
 
-Mesh update: `$ARGUMENTS` (blank means status).
+Checks, starts, follows, continues, retries or cancels a Phosphorus mesh update. Use for "update the mesh", "update phosphorus", "is the update done", "retry the failed hosts", "cancel the update".
 
 1. `update_status` and `update_history` in parallel, plus `mesh_health` for versions.
 2. `status`: what runs, who started it, each host's step and result; the last finished update and any errors.

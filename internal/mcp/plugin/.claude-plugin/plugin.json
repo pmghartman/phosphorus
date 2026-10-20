@@ -1,8 +1,0 @@
-{
-  "name": "phosphorus",
-  "version": "{{VERSION}}",
-  "description": "Phosphorus mesh for Claude: hosts, services, files, terminals, logs, git, chat and updates through the Phosphorus connector, as {{USER}}.",
-  "author": { "name": "phosphorus" },
-  "homepage": "{{BASE}}",
-  "keywords": ["phosphorus", "mesh", "tailnet", "self-hosted", "homelab", "ops"]
-}
