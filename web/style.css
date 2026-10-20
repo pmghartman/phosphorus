@@ -361,6 +361,18 @@ body {
   will-change: transform; contain: layout paint; animation: dk-open 0.16s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 .dk-win[hidden] { display: none; }
+/* the window the agent is working in, its border a solid line of the models' turning
+   purple and orange, square cornered; drawn over the border, the paint clip let out to reach it */
+@property --agent-turn { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+.dk-win.dk-agent { overflow-clip-margin: 1px; }
+.dk-win.dk-agent::after {
+  content: ""; position: absolute; inset: -1px; z-index: 10; pointer-events: none; padding: 1px;
+  background: conic-gradient(from var(--agent-turn), var(--glyph-purple), var(--glyph-orange), var(--glyph-purple), var(--glyph-orange), var(--glyph-purple));
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  animation: agent-turn 4s linear infinite;
+}
+.dk-win.dk-agent[data-snap="max"]::after { inset: 0; }
+@keyframes agent-turn { to { --agent-turn: 360deg; } }
 /* a picture fit to its window, at its own size once clicked */
 .dk-imgview { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; background: var(--bg); cursor: zoom-in; }
 .dk-imgview img { max-width: 100%; max-height: 100%; object-fit: contain; }
@@ -2306,8 +2318,6 @@ input, textarea { caret-color: var(--accent); }
 .dk-cl-check { display: flex; align-items: center; gap: 0.45rem; padding: 0.5rem 0.7rem 0; color: var(--muted); cursor: pointer; user-select: none; }
 .dk-cl-check input { margin: 0; accent-color: var(--accent); cursor: pointer; }
 .dk-cl-check:hover, .dk-cl-check:has(input:focus-visible) { color: var(--fg); }
-/* the window the agent is working in, lit purple to orange */
-.dk-win.dk-agent { border-color: transparent; box-shadow: var(--drop), 0 0 0 1px var(--glyph-purple), 0 0 0 3px color-mix(in srgb, var(--glyph-orange) 45%, transparent); transition: box-shadow 0.2s; }
 .dk-agent-con .dk-body { display: block; padding: 0.25rem 0 0 0.5rem; }
 .dk-cl-url { width: 100%; box-sizing: border-box; padding: 0.4rem 0.5rem; border: 1px solid var(--accent); background: var(--bg); color: var(--fg); font: inherit; font-size: 0.7rem; }
 .dk-cl-key {
@@ -2363,7 +2373,7 @@ input, textarea { caret-color: var(--accent); }
 /* a popup open: the corner's popups out of its way */
 body:has(.dk-pop:not([hidden])) .toasts { opacity: 0; pointer-events: none; }
 @keyframes toast-in { from { opacity: 0; transform: translateY(0.4rem); } }
-@media (prefers-reduced-motion: reduce) { .toast, .dk-mcp-pop { animation: none; } .dk-mcp-btn .ic, .dk-cl-pip { animation: none !important; } }
+@media (prefers-reduced-motion: reduce) { .toast, .dk-mcp-pop { animation: none; } .dk-mcp-btn .ic, .dk-cl-pip { animation: none !important; } .dk-win.dk-agent::after { animation: none; } }
 .dk-ctl-theme { margin: 0.6rem; }
 /* the bar's right side: the hosts, a rule, the bell, then the clock and the user */
 .dk-bar .dk-tray-wrap:has(> .dk-bell)::before, .dk-bar .dk-tray-wrap:has(> .dk-mcp-btn)::before { content: ''; align-self: center; width: 1px; height: 1.1rem; margin-right: 0.3rem; background: var(--border); }

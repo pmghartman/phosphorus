@@ -6801,7 +6801,7 @@ const agentCalls = new Map();
 // a call whose end never came given up on after this, so its windows still close
 const AGENT_STALE_MS = 11 * 60000;
 // tools printed in a host's console: the command or the call, then what came back
-const AGENT_CONSOLE = new Set(['terminal_run', 'host_logs', 'containers', 'container_control', 'service_request', 'forgejo',
+const AGENT_CONSOLE = new Set(['terminal_run', 'host_logs', 'service_request', 'forgejo',
   'host_config', 'service_edit', 'config_set', 'host_power', 'service_health', 'game_power']);
 const AGENT_STATUS = new Set(['mesh_hosts', 'mesh_health', 'host_stats', 'services', 'models', 'set_model_role']);
 const AGENT_CHAT = new Set(['send_message', 'chat_history', 'chat_wait', 'chat_edit']);

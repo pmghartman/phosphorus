@@ -204,11 +204,11 @@ func agentTools() []tool {
 			}},
 		{name: "host_logs", read: true, scope: "key",
 			description: "A host's logs: phosphorus's own (systemd's journal on Linux, phosphorus.log elsewhere), one part of it, " +
-				"a docker container's, or a game's start/stop output; the last lines, filtered. The first stop when something misbehaves. Admins only.",
+				"or a game's start/stop output; the last lines, filtered. The first stop when something misbehaves. Admins only.",
 			schema: object(map[string]any{"host": name,
 				"lines":  map[string]any{"type": "integer", "description": "how many, up to 2000", "default": 200},
 				"match":  map[string]any{"type": "string", "description": "only lines holding this, case-insensitive"},
-				"source": map[string]any{"type": "string", "description": "phosphorus (all, default), frontend, cloudflared, git, model, mesh, container:<name>, game:<name>"},
+				"source": map[string]any{"type": "string", "description": "phosphorus (all, default), frontend, cloudflared, git, model, mesh, game:<name>"},
 				"level":  map[string]any{"type": "string", "enum": []any{"error", "warn"}, "description": "only lines that read as errors, or as errors and warnings"},
 				"since":  map[string]any{"type": "string", "description": "RFC3339, a date, or an age like 30m, 2h, 1d"},
 				"until":  map[string]any{"type": "string", "description": "as since"}}, "host"),
@@ -405,8 +405,9 @@ func describe() {
 			"plus this host and the mesh's domain. Host names from here are what every other tool's host takes.",
 		"services": "Every web service and game server published on the mesh: host, name, port, mode, public, and the URL a person opens. " +
 			"service_request calls one's API; game_power starts or stops a game.",
-		"host_stats": "One host right now: cpu, memory, disk, gpu, network, containers and the top processes. For a slow or full host.",
-		"git":        "The git (Forgejo) hosts: which is master, which are replicas, how far behind each is, reachable or not.",
+		"host_stats": "One host right now: cpu, memory and disk with percents, gpu, network, phosphorus's own parts by role and the top processes. " +
+			"No host: one row of percents per host at once, the cheap way to scan the mesh before drilling into one.",
+		"git": "The git (Forgejo) hosts: which is master, which are replicas, how far behind each is, reachable or not.",
 		"files_list": "Browse files shared to the mesh. No host: every host's shares and their rwd perms. A host: its shares. A host and share: " +
 			"entries to depth levels (folders end in /), match a name glob like *.jpg. files_search finds things across everything at once.",
 		"files_read": "Read a text file from a share, 12000 characters a page; from is the next page's offset when there's more. Binary and over-512KB files are only described.",

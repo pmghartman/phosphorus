@@ -19,7 +19,7 @@ const (
 var mirrorHidden = map[string]bool{"headers": true}
 
 // tools whose output the page prints, as a console does
-var mirrorPrinted = map[string]bool{"terminal_run": true, "host_logs": true, "containers": true, "container_control": true,
+var mirrorPrinted = map[string]bool{"terminal_run": true, "host_logs": true,
 	"service_request": true, "forgejo": true, "host_config": true, "service_edit": true, "config_set": true, "host_power": true,
 	"service_health": true, "game_power": true, "terminal_screen": true}
 
