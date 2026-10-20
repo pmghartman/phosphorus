@@ -27,7 +27,7 @@
 - **Chat**, live **status** and notifications, shared by the mesh
 - **Git** on Forgejo, replicated to every host with an elected master
 - **A local AI model**, hosted on one machine for all of them, with projects it works on alone in a sandbox
-- **An MCP server** at `/api/mcp`: Claude or any MCP client reads the mesh and acts on it with your rights, running scripts on each host with your saved login and working on Forgejo with your saved git login; the agent button copies its url for any agent's MCP connector (web, desktop, phone)
+- **An MCP server** at `/api/mcp`: Claude or any MCP client reads the mesh and acts on it with your rights, running scripts on each host with your saved login and working on Forgejo with your saved git login; the agent button copies its url for any agent's MCP connector (web, desktop, phone), or downloads a Claude plugin (Claude Code, Cowork) with the mcp server, mesh skills and an operator agent keyed to you
 - **Accounts** with admin roles and a per-user vault of host and page logins
 
 ## Quick start

@@ -1,6 +1,13 @@
 package mcp
 
-import "testing"
+import (
+	"archive/zip"
+	"bytes"
+	"encoding/json"
+	"io"
+	"strings"
+	"testing"
+)
 
 func rpc(method string, params map[string]any) map[string]any {
 	return map[string]any{"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
@@ -45,5 +52,39 @@ func TestCallLog(t *testing.T) {
 	rec := c["recent"].([]any)
 	if len(c["calls"].([]any)) != 0 || len(rec) != 1 || rec[0].(map[string]any)["error"] != "boom" {
 		t.Fatalf("done %v", c)
+	}
+}
+
+func TestPlugin(t *testing.T) {
+	Init(Src{Self: func() map[string]any { return map[string]any{"host": "h", "version": "1.2.3"} }})
+	b, err := Plugin("pat", true, "https://mesh.example/api/mcp/KEY")
+	if err != nil {
+		t.Fatal(err)
+	}
+	z, err := zip.NewReader(bytes.NewReader(b), int64(len(b)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, f := range z.File {
+		r, _ := f.Open()
+		s, _ := io.ReadAll(r)
+		got[f.Name] = string(s)
+	}
+	for _, n := range []string{".claude-plugin/plugin.json", ".mcp.json", "skills/phosphorus/SKILL.md", "skills/phosphorus/references/tools.md", "agents/mesh-operator.md"} {
+		if got[n] == "" {
+			t.Fatalf("no %s", n)
+		}
+	}
+	for n, s := range got {
+		if strings.Contains(s, "{{") {
+			t.Fatalf("%s left a placeholder", n)
+		}
+		if strings.HasSuffix(n, ".json") && !json.Valid([]byte(s)) {
+			t.Fatalf("%s isn't json", n)
+		}
+	}
+	if !strings.Contains(got[".mcp.json"], "https://mesh.example/api/mcp/KEY") || !strings.Contains(got["skills/phosphorus/references/tools.md"], "## host_power") {
+		t.Fatal("url or admin tools missing")
 	}
 }
