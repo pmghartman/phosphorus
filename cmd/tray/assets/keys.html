@@ -27,8 +27,7 @@
   button { padding: 6px 16px; border-radius: 6px; border: 1px solid var(--line); background: var(--field); color: var(--fg); font: inherit; cursor: pointer; }
   button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
   button:disabled { opacity: .6; cursor: default; }
-  /* no title bar: the top strip drags the window */
-  .drag { position: fixed; top: 0; left: 0; right: 0; height: 28px; }
+  body { max-width: 520px; margin: 0 auto; }
   details { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 4px; }
   summary { cursor: pointer; font-weight: 600; margin-bottom: 4px; list-style-position: inside; }
   summary .count { font-weight: 400; color: var(--muted); font-size: 11px; margin-left: 6px; }
@@ -36,7 +35,6 @@
 </style>
 </head>
 <body>
-<div class="drag" data-tauri-drag-region></div>
 <h1>Keys</h1>
 <p class="lead" id="lead">Saved values are never shown. Paste a new one to replace it, leave a field blank to keep what's set.</p>
 <form id="f" autocomplete="off"></form>
@@ -54,7 +52,19 @@
     ['TS_API_KEY', 'Tailscale API token', 'Game split DNS, expires every 90 days. Copied from a peer when blank.'],
     ['ADMIN_PASS', 'Admin password', "The setup admin's login and the gate on a mesh update. Copied from a peer when blank."],
   ];
-  const { invoke } = window.__TAURI__.core;
+  // the tray's own server, on this machine only, behind this page's random path
+  const call = async (path, body) => {
+    const r = await fetch(path, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {});
+    const out = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(out.error || `failed (${r.status})`);
+    return out;
+  };
+  const done = (text) => {
+    document.getElementById('lead').textContent = text;
+    form.replaceChildren();
+    document.querySelector('.foot').hidden = true;
+    window.close();
+  };
   const form = document.getElementById('f');
   const err = document.getElementById('err');
   const save = document.getElementById('save');
@@ -84,7 +94,7 @@
     return l;
   }
 
-  invoke('keys_status').then((set) => {
+  call('status').then((set) => {
     if (!set.TS_AUTHKEY) {
       document.getElementById('lead').textContent = 'First start. Only the Tailscale auth key is needed.';
     }
@@ -109,14 +119,25 @@
     save.disabled = true;
     const values = Object.fromEntries([...form.querySelectorAll('input')].map((i) => [i.name, i.value.trim()]));
     try {
-      await invoke('save_keys', { values });
+      const r = await call('save', { values });
+      if (!r.starting) { done('Nothing changed. You can close this tab.'); return; }
+      document.getElementById('lead').textContent = 'Saved. Starting Phosphorus…';
+      form.replaceChildren();
+      document.querySelector('.foot').hidden = true;
+      // the frontend once phosphorus is up, in this tab
+      for (;;) {
+        await new Promise((ok) => setTimeout(ok, 1500));
+        const s = await call('started').catch(() => ({}));
+        if (s.error) { done(`Phosphorus didn't start: ${s.error}`); return; }
+        if (s.url) { location.href = s.url; return; }
+      }
     } catch (x) {
-      err.textContent = String(x);
+      err.textContent = x.message;
       save.disabled = false;
     }
   });
-  document.getElementById('cancel').addEventListener('click', () => invoke('close_keys'));
-  addEventListener('keydown', (e) => { if (e.key === 'Escape') invoke('close_keys'); });
+  document.getElementById('cancel').addEventListener('click', () => done('Nothing changed. You can close this tab.'));
+  addEventListener('keydown', (e) => { if (e.key === 'Escape') done('Nothing changed. You can close this tab.'); });
 </script>
 </body>
 </html>

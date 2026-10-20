@@ -53,17 +53,17 @@ The first login is `admin` with your admin password. Create your own admin accou
 - **A domain:** a [Cloudflare](https://cloudflare.com) domain and tunnel token give you `https://your-domain` off the tailnet, plus git.
 - **More keys:** a Tailscale API token (game server DNS) and an admin password, set on the first host.
 
-Change keys later with **Edit Keys** in the tray, or `phos keys`.
+Change keys later with **Edit Keys** in the menu bar or tray icon (a form in your browser, served on this machine only), or `phos keys`.
 
 ## Everyday use
 
 | | |
 |---|---|
-| Tray (macOS, Windows) | Start, Stop, Check for Updates, Edit Keys, Uninstall, Quit |
+| Menu bar / tray icon (macOS, Windows) | Open Phosphorus, Start, Stop, Check for Updates, Edit Keys, Uninstall, Quit; updates itself from the signed feed |
 | `phos` | Terminal UI |
 | `phos start` / `stop` / `status` | Control this host |
 | `phos vpn on` / `off` | Tailscale up, or Phosphorus and Tailscale down |
-| `phos update` / `update all` | Update this host, or the whole mesh |
+| `phos update` / `update all` | Update this host, or every host in the mesh at once |
 | `phos uninstall` | Remove Phosphorus and its data |
 
 A model host downloads llama.cpp, opencode and the model, often several GB. You pick the model, so its license is yours to follow.
@@ -110,7 +110,7 @@ flowchart TB
   browser["Browser<br/>http://host on the tailnet, or BASE_DOMAIN"]
 
   deb --> dpkg --> bin
-  dmg & exe -->|"tray app: install, start, keys"| bin
+  dmg & exe -->|"menu bar app: install, start, keys, self-update"| bin
   bin -->|"keys form"| env
   bin -->|"release synced, old files removed"| home
   bin -->|"admin setup once"| sshd

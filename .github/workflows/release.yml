@@ -60,10 +60,10 @@ jobs:
         run: |
           on() { for v in "$@"; do [ "$v" = true ] && return 0; done; return 1; }
           on "$AMD64" "$ARM64" "$MAC" "$WIN" || { echo "check at least one OS" >&2; exit 1; }
-          la='{"name":"linux-amd64","runner":"ubuntu-24.04","arch":"amd64","args":"--bundles deb"}'
-          lb='{"name":"linux-arm64","runner":"ubuntu-24.04-arm","arch":"arm64","args":"--bundles deb"}'
-          mc='{"name":"macos-universal","runner":"macos-14","arch":"universal","args":"--target universal-apple-darwin --bundles app,dmg"}'
-          wn='{"name":"windows-x86_64","runner":"windows-2022","arch":"amd64","args":"--bundles nsis"}'
+          la='{"name":"linux-amd64","runner":"ubuntu-24.04","arch":"amd64"}'
+          lb='{"name":"linux-arm64","runner":"ubuntu-24.04-arm","arch":"arm64"}'
+          mc='{"name":"macos-universal","runner":"macos-14","arch":"universal"}'
+          wn='{"name":"windows-x86_64","runner":"windows-2022","arch":"amd64"}'
           builds=()
           [ "$AMD64" = true ] && builds+=("$la")
           [ "$ARM64" = true ] && builds+=("$lb")
@@ -93,8 +93,8 @@ jobs:
           go run ./cmd/licenses
           git diff --exit-code THIRD_PARTY_LICENSES.txt || { echo "THIRD_PARTY_LICENSES.txt is stale, run make licenses and commit it" >&2; exit 1; }
 
-  # one job per OS: Linux's host the .deb around the Go binary
-  # alone (no Rust or webkit), macOS's and Windows' one tray app around it
+  # one job per OS, Go alone: Linux's host the .deb around the binary, macOS's
+  # and Windows' the menu bar app beside it, in a .dmg and a setup .exe
   build:
     needs: [version]
     if: ${{ inputs.linux_amd64 || inputs.linux_arm64 || inputs.macos || inputs.windows }}
@@ -107,28 +107,11 @@ jobs:
     env:
       VER: ${{ needs.version.outputs.ver }}
       APP: packaging/host
-      APP_TAURI: ${{ !startsWith(matrix.name, 'linux') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version-file: go.mod
-      - name: rust
-        if: env.APP_TAURI == 'true'
-        shell: bash
-        run: |
-          rustup toolchain install stable --profile minimal && rustup default stable
-          [ "${{ matrix.name }}" != macos-universal ] || rustup target add aarch64-apple-darwin x86_64-apple-darwin
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
-        if: env.APP_TAURI == 'true'
-        with:
-          workspaces: packaging/host
-          prefix-key: v2-host
-          key: ${{ matrix.name }}
-      - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2
-        if: env.APP_TAURI == 'true'
-        with:
-          tool: tauri-cli@2.12.3
       # apt key's public half, into the host package
       - name: apt key
         if: startsWith(matrix.name, 'linux')
@@ -149,13 +132,12 @@ jobs:
       - name: web
         shell: bash
         run: go generate ./internal/web && test -f internal/web/dist/index.html
-      # the release's tree (.github and packaging export-ignored), its bundled tools
-      # and the host binary, Linux's packaged at once, macOS's and Windows' the host app's sidecar;
-      # the tools fetched beside the Go builds
+      # the release's tree (.github and packaging export-ignored) and its bundled tools;
+      # Linux's packaged at once, the tools fetched beside the Go build
       - name: host binary
         shell: bash
         run: |
-          mkdir -p out upd art $APP/payload $APP/binaries
+          mkdir -p out upd art $APP/payload
           git archive HEAD | tar -x -C $APP/payload && echo "$VER" > $APP/payload/VERSION
           cp THIRD_PARTY_LICENSES.txt out/
           b() { CGO_ENABLED=0 GOOS=$1 GOARCH=$2 go build -trimpath -ldflags "-s -w" -o "$3" ./cmd/phosphorus; }
@@ -169,50 +151,26 @@ jobs:
               wait $s || { cat art/src.log; exit 1; }
               packaging/deb/build.sh "out/phosphorus_${VER}_${{ matrix.arch }}.deb" "$VER" $APP/payload ${{ matrix.arch }} art/phosphorus art/tools ;;
             macos-universal)
-              packaging/tools.sh darwin universal $APP/payload/tools > art/tools.log 2>&1 & t=$!
-              b darwin arm64 art/h-arm64 & a=$!
-              b darwin amd64 art/h-amd64
-              wait $a && wait $t || { cat art/tools.log; exit 1; }
-              lipo -create -output $APP/binaries/phosphorus-host-universal-apple-darwin art/h-arm64 art/h-amd64
-              # per-arch sidecars for the per-arch cargo builds of the universal target
-              mv art/h-arm64 $APP/binaries/phosphorus-host-aarch64-apple-darwin
-              mv art/h-amd64 $APP/binaries/phosphorus-host-x86_64-apple-darwin ;;
+              packaging/tools.sh darwin universal $APP/payload/tools > art/tools.log 2>&1 || { cat art/tools.log; exit 1; } ;;
             windows-*)
-              packaging/tools.sh windows amd64 $APP/payload/tools > art/tools.log 2>&1 & t=$!
-              b windows amd64 $APP/binaries/phosphorus-host-x86_64-pc-windows-msvc.exe
-              wait $t || { cat art/tools.log; exit 1; } ;;
+              packaging/tools.sh windows amd64 $APP/payload/tools > art/tools.log 2>&1 || { cat art/tools.log; exit 1; } ;;
           esac
-      # updater config and artifacts only with a signing key
+      # the menu bar app around the host binary and release; its own update, signed
+      # for the feed the installed apps trust, only with the signing key
       - name: host app
-        if: env.APP_TAURI == 'true'
+        if: ${{ !startsWith(matrix.name, 'linux') }}
         shell: bash
         env:
-          KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          PUB: ${{ vars.TAURI_UPDATER_PUBKEY }}
+          FEED_URL: https://github.com/${{ github.repository }}/releases/download/update
+          FEED_PUBKEY: ${{ vars.TAURI_UPDATER_PUBKEY }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
-          if [ -n "$KEY" ] && [ -n "$PUB" ]; then
-            CFG="{\"version\":\"$VER.0\",\"bundle\":{\"createUpdaterArtifacts\":true},\"plugins\":{\"updater\":{\"pubkey\":\"$PUB\",\"endpoints\":[\"https://github.com/${{ github.repository }}/releases/download/update/{{target}}-{{arch}}.json\"],\"windows\":{\"installMode\":\"passive\"}}}}"
-          else
-            CFG="{\"version\":\"$VER.0\"}"
-          fi
-          cd $APP
-          cargo tauri build ${{ matrix.args }} --config "$CFG"
-          o=../../out u=../../upd
           if [ "${{ matrix.name }}" = macos-universal ]; then
-            d=target/universal-apple-darwin/release/bundle
-            cp $d/dmg/*.dmg "$o/phosphorus-$VER-macos-universal.dmg"
-            t=$d/macos/Phosphorus.app.tar.gz
-            [ -e "$t.sig" ] && cp "$t" $u/phosphorus-macos-universal.app.tar.gz && cp "$t.sig" $u/phosphorus-macos-universal.app.tar.gz.sig
+            $APP/macos.sh "$VER" $APP/payload out upd
           else
-            for f in target/release/bundle/nsis/*-setup.exe; do
-              cp "$f" "$o/phosphorus-$VER-windows-x86_64-setup.exe"
-              [ -e "$f.sig" ] && cp "$f" $u/phosphorus-windows-x86_64-setup.exe && cp "$f.sig" $u/phosphorus-windows-x86_64-setup.exe.sig
-            done
+            $APP/windows.sh "$VER" "$PWD/$APP/payload" "$PWD/out" "$PWD/upd"
           fi
-          # stale bundles out of the saved rust cache
-          rm -rf target/*/release/bundle target/release/bundle
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: out-${{ matrix.name }}

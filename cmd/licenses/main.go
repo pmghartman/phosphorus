@@ -1,7 +1,7 @@
 // licenses: THIRD_PARTY_LICENSES.txt, every license text phosphorus ships
 // or fetches, one copy per distinct text. Go modules of every OS's binary,
-// the web client's npm packages (go generate ./internal/web first), the app's
-// Rust crates and the pinned tools. Run from the repo root: go run ./cmd/licenses
+// the menu bar app's included, the web client's npm packages (go generate
+// ./internal/web first) and the pinned tools. Run from the repo root: go run ./cmd/licenses
 package main
 
 import (
@@ -37,7 +37,6 @@ func main() {
 	log.SetPrefix("[licenses] ")
 	parts := goParts()
 	parts = append(parts, webParts()...)
-	parts = append(parts, rustParts()...)
 	parts = append(parts, toolParts()...)
 	must(os.WriteFile(*out, render(parts), 0o644))
 	log.Printf("%d components into %s", len(parts), *out)
@@ -80,7 +79,7 @@ func goParts() []part {
 	seen := map[string]part{}
 	for _, t := range [][2]string{{"linux", "amd64"}, {"linux", "arm64"}, {"darwin", "arm64"}, {"darwin", "amd64"}, {"windows", "amd64"}} {
 		b := run([]string{"GOOS=" + t[0], "GOARCH=" + t[1], "CGO_ENABLED=0"}, "go", "list", "-deps",
-			"-f", "{{with .Module}}{{if not .Main}}{{.Path}}\t{{.Version}}\t{{.Dir}}{{end}}{{end}}", "./cmd/phosphorus")
+			"-f", "{{with .Module}}{{if not .Main}}{{.Path}}\t{{.Version}}\t{{.Dir}}{{end}}{{end}}", "./cmd/phosphorus", "./cmd/tray")
 		for _, l := range strings.Split(strings.TrimSpace(string(b)), "\n") {
 			f := strings.Split(l, "\t")
 			if len(f) != 3 || seen[f[0]].name != "" {
@@ -119,87 +118,6 @@ func webParts() []part {
 		parts = append(parts, part{group: "npm packages in the web client", name: name, version: p.Version, source: "https://www.npmjs.com/package/" + name, texts: texts})
 	}
 	return parts
-}
-
-// --- rust ---------------------------------------------------------------------
-
-type crate struct {
-	ID, Name, Version, License, Repository string
-	ManifestPath                           string `json:"manifest_path"`
-}
-
-type meta struct {
-	Packages []crate
-	Resolve  struct {
-		Root  string
-		Nodes []struct {
-			ID   string
-			Deps []struct {
-				Pkg      string
-				DepKinds []struct{ Kind *string } `json:"dep_kinds"`
-			}
-		}
-	}
-}
-
-// rustParts the app's crates on every target it ships for, dev-dependencies left out
-func rustParts() []part {
-	seen := map[string]part{}
-	for _, t := range []string{"x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-pc-windows-msvc"} {
-		rustTarget("packaging/host/Cargo.toml", t, seen)
-	}
-	parts := []part{}
-	for _, p := range seen {
-		if len(p.texts) == 0 && p.spdx == "" {
-			log.Fatalf("crate %s %s names no license", p.name, p.version)
-		}
-		parts = append(parts, p)
-	}
-	return parts
-}
-
-// rustTarget one app's crates on one target into seen
-func rustTarget(manifest, target string, seen map[string]part) {
-	var m meta
-	must(json.Unmarshal(run(nil, "cargo", "metadata", "--format-version", "1", "--locked",
-		"--manifest-path", manifest, "--filter-platform", target), &m))
-	pkgs := map[string]crate{}
-	for _, p := range m.Packages {
-		pkgs[p.ID] = p
-	}
-	edges := map[string][]string{}
-	for _, n := range m.Resolve.Nodes {
-		for _, d := range n.Deps {
-			for _, k := range d.DepKinds {
-				if k.Kind == nil || *k.Kind == "build" {
-					edges[n.ID] = append(edges[n.ID], d.Pkg)
-					break
-				}
-			}
-		}
-	}
-	stack := []string{m.Resolve.Root}
-	visited := map[string]bool{}
-	for len(stack) > 0 {
-		id := stack[len(stack)-1]
-		stack = stack[:len(stack)-1]
-		if visited[id] {
-			continue
-		}
-		visited[id] = true
-		stack = append(stack, edges[id]...)
-		c := pkgs[id]
-		key := c.Name + "@" + c.Version
-		if id == m.Resolve.Root || seen[key].name != "" {
-			continue
-		}
-		src := c.Repository
-		if src == "" {
-			src = "https://crates.io/crates/" + c.Name
-		}
-		seen[key] = part{group: "Rust crates in the Phosphorus apps", name: c.Name, version: c.Version, source: src,
-			texts: filesIn(filepath.Dir(c.ManifestPath)), spdx: c.License}
-	}
 }
 
 // --- tools --------------------------------------------------------------------
@@ -280,7 +198,7 @@ func norm(s string) string {
 // render each component under its group, then each distinct text once with
 // every component it covers
 func render(parts []part) []byte {
-	groups := []string{"Go modules in the phosphorus binary", "npm packages in the web client", "Rust crates in the Phosphorus apps",
+	groups := []string{"Go modules in the phosphorus binary", "npm packages in the web client",
 		"Programs bundled with the host installers", "Programs a model host downloads at run time"}
 	sort.Slice(parts, func(i, j int) bool {
 		if parts[i].group != parts[j].group {

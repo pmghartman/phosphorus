@@ -1,4 +1,2 @@
-/target/
-/gen/
 /payload/
-/binaries/
+/stage/
