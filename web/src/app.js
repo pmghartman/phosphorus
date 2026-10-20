@@ -1624,6 +1624,7 @@ function bumpUnread() {
 
 // back on the tab: badge cleared, however many piled up
 function clearUnread() {
+  if (chatReading(conv)) notesReadConv(conv);
   if (away() || !unread) return;
   unread = 0;
   titleBadge();
@@ -1793,6 +1794,14 @@ function noteGo(go) {
   else if (go?.view === 'status') dkOpenApp('status');
   else if (go?.view === 'update') { if (updateModal.hidden) openUpdateModal(); }
   else if (go?.view === 'control') dk.ctl?.show(true);
+}
+
+// a conversation read: its entries gone from the bell
+function notesReadConv(c) {
+  const left = notes.filter((n) => !n.go?.conv || (n.go.conv !== c && `dm:${n.go.conv}` !== c));
+  if (left.length === notes.length) return;
+  notes = left;
+  notesSave();
 }
 
 function notesSave() {
@@ -2567,7 +2576,7 @@ window.addEventListener('resize', () => closePop(false));
 
 // what a conversation offers: read, leave, close or clear, the destructive one last
 function convActions(c) {
-  const read = news.get(c) && { label: 'mark read', act: () => { news.delete(c); paintConvs(); } };
+  const read = news.get(c) && { label: 'mark read', act: () => { news.delete(c); notesReadConv(c); paintConvs(); } };
   const ch = chOf(c);
   if (ch) {
     return [read, { label: 'open', act: () => openConv(c) },
@@ -2748,6 +2757,7 @@ function setConv(c) {
   conv = c;
   freshFrom = news.get(c) || 0;
   news.delete(c);
+  if (chatReading(c)) notesReadConv(c);
   if (was !== c) { cancelCompose(); setChatChip(''); typingSent = ''; }
   chatTitle.querySelector('.chat-title-text').textContent = convName(conv);
   if (!chatChip.textContent) chatText.placeholder = convHint();
