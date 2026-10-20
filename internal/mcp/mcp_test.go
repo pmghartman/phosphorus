@@ -42,7 +42,7 @@ func TestCallLog(t *testing.T) {
 	if d := callDetail(map[string]any{"n": 1.0, "zz": "z", "b": "b"}); d != "b" {
 		t.Fatalf("fallback %q", d)
 	}
-	id := callBegin("tester", "terminal_run", "ls")
+	id := callBegin("tester", "terminal_run", "ls", "")
 	if c := Calls("tester"); len(c["calls"].([]any)) != 1 {
 		t.Fatalf("live %v", c)
 	}

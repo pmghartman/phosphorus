@@ -1451,6 +1451,10 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
 .chat-log .md pre, .code-md .md pre { background: var(--bg); border: 1px solid var(--border); padding: 0.45em 0.7em; overflow-x: auto; white-space: pre; }
 .msg.agent .md code, .msg.agent .md pre { background: var(--card); }
 .chat-log .md pre code, .code-md .md pre code { background: none; padding: 0; }
+.chat-log .md .code-wrap { position: relative; }
+.chat-log .md .code-wrap pre { padding-right: 1.8em; }
+.code-copy { position: absolute; top: 0.7em; right: 0.35em; background: var(--bg); opacity: 0.7; }
+.code-copy:hover, .code-copy:focus-visible { opacity: 1; }
 /* highlighted code in the palette's muted hues, purple for the language's own words */
 .chat-log .hljs-keyword, .chat-log .hljs-selector-tag, .chat-log .hljs-doctag, .code-md .hljs-keyword, .code-md .hljs-selector-tag, .code-md .hljs-doctag { color: var(--accent); }
 .chat-log .hljs-string, .chat-log .hljs-regexp, .chat-log .hljs-addition, .code-md .hljs-string, .code-md .hljs-regexp, .code-md .hljs-addition { color: var(--sage); }
@@ -2311,18 +2315,6 @@ input, textarea { caret-color: var(--accent); }
 /* the window the agent is working in, lit purple to orange */
 .dk-win.dk-agent { border-color: transparent; box-shadow: var(--drop), 0 0 0 1px var(--glyph-purple), 0 0 0 3px color-mix(in srgb, var(--glyph-orange) 45%, transparent); transition: box-shadow 0.2s; }
 .dk-agent-con .dk-body { display: block; padding: 0.25rem 0 0 0.5rem; }
-.agent-hud {
-  position: fixed; top: 0.6rem; left: 50%; transform: translateX(-50%); z-index: 1100; display: flex; align-items: center; gap: 0.45rem;
-  max-width: min(32rem, calc(100vw - 2rem)); padding: 0.35rem 0.7rem; font-size: 0.72rem; color: var(--fg); pointer-events: none;
-  background: color-mix(in srgb, var(--card) 88%, transparent); backdrop-filter: blur(10px); border: 1px solid var(--glyph-purple);
-  box-shadow: var(--drop); animation: pop-in 0.12s ease-out;
-}
-.agent-hud[hidden] { display: none; }
-.agent-hud svg { flex: none; width: 0.95rem; height: 0.95rem; }
-.agent-hud .ic path { stroke: url(#mcp-grad); }
-.agent-hud-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.agent-hud.busy { border-color: var(--glyph-orange); }
-.agent-hud.bad { border-color: var(--offmesh); }
 .dk-cl-url { width: 100%; box-sizing: border-box; padding: 0.4rem 0.5rem; border: 1px solid var(--accent); background: var(--bg); color: var(--fg); font: inherit; font-size: 0.7rem; }
 .dk-cl-key {
   flex: 1; min-width: 0; padding: 0.45rem 0.6rem; font: inherit; cursor: pointer; border: 1px solid var(--accent);
@@ -2352,6 +2344,7 @@ input, textarea { caret-color: var(--accent); }
 .dk-cl-call.live .dk-cl-pip { background: var(--online); animation: mcp-pulse 1.2s ease-in-out infinite; }
 .dk-cl-call.ok .dk-cl-pip { background: color-mix(in srgb, var(--online) 55%, var(--dim)); }
 .dk-cl-call.bad .dk-cl-pip { background: var(--accent-2); }
+.dk-cl-host { flex: none; color: var(--sage); }
 .dk-cl-tool { flex: none; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); font-weight: 600; }
 .dk-cl-arg { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); margin-left: -0.35rem; }
 .dk-cl-out { position: relative; margin: 0.05rem 0 0 0.85rem; padding-left: 1.1rem; color: var(--dim); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }

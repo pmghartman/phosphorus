@@ -907,11 +907,12 @@ func initMCP() {
 				}
 				return opOn(host, op, p, wait)
 			},
-			ChatEdit:   chatEditAs,
-			Config:     hostConfig,
-			UserUI:     userUI,
-			Service:    svcRequest,
-			ModelColor: modelColor,
+			ChatEdit:    chatEditAs,
+			Config:      hostConfig,
+			UserUI:      userUI,
+			UserUIAsync: userUIAsync,
+			Service:     svcRequest,
+			ModelColor:  modelColor,
 		},
 		Post: postAs, Show: showAs, Locate: files.Locate, Known: knownPerson,
 	})
