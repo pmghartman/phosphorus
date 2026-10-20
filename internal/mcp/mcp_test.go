@@ -3,6 +3,7 @@ package mcp
 import (
 	"archive/zip"
 	"bytes"
+	"encoding/json"
 	"io"
 	"strings"
 	"testing"
@@ -95,5 +96,21 @@ func TestSkill(t *testing.T) {
 	}
 	if !strings.Contains(got["phosphorus/references/tools.md"], "## host_power") {
 		t.Fatal("admin tools missing")
+	}
+}
+
+func TestMeshHostsSelfVersion(t *testing.T) {
+	rows := []map[string]any{{"name": "h"}, {"name": "p", "version": "1"}}
+	Init(Src{Self: func() map[string]any { return map[string]any{"host": "h", "version": "2"} },
+		Domain: func() string { return "" }, Tailnet: func() []map[string]any { return rows }})
+	_, o := Handle(rpc("tools/call", map[string]any{"name": "mesh_hosts"}), false, &Caller{User: "u"})
+	text := o.(map[string]any)["result"].(map[string]any)["content"].([]any)[0].(map[string]any)["text"].(string)
+	var got struct{ Hosts []map[string]any }
+	json.Unmarshal([]byte(text), &got)
+	if got.Hosts[0]["version"] != "2" {
+		t.Fatalf("self row unversioned: %s", text)
+	}
+	if rows[0]["version"] != nil {
+		t.Fatal("the mesh's own row changed")
 	}
 }

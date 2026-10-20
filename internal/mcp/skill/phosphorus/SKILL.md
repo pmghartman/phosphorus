@@ -7,7 +7,7 @@ description: Operates the user's self-hosted Phosphorus mesh through the Phospho
 
 Phosphorus is a mesh of the user's own machines on one tailnet. Every machine running phosphorus is a **host**: it shares folders, publishes web services and game servers, runs terminals, keeps logs, and may carry a Forgejo replica or a model. The Phosphorus connector (an MCP server, named phosphorus or Phosphorus) answers for the whole mesh from any host; every call is made as **{{USER}}**{{ADMIN_NOTE}}, with exactly that user's rights. Its tools may show with a prefix (`mcp__phosphorus__`, `Phosphorus:`); the bare names below are the same tools. No Phosphorus tools at all: tell the user to add the connector with the url from **copy mcp url** in the agent tray, and stop.
 
-Full tool reference, generated from the live server for this user: `references/tools.md`. Read it before a tool you have not used yet in this session.
+Every tool's description and arguments come with the connector itself. `references/tools.md` holds the same text, generated for this user; read it only when a tool's schema isn't loaded.
 
 Read the one job file that fits the request before the first call:
 
@@ -21,7 +21,7 @@ Read the one job file that fits the request before the first call:
 | update the mesh, follow, retry or cancel an update | `references/update.md` |
 | read or post chat, message someone, wait for a reply | `references/chat.md` |
 | forgejo, repos, issues, pull requests, clone or push, replication | `references/git.md` |
-| anything longer: moving data, publishing, git work, models | `references/playbooks.md` |
+| a host slow, full or not answering, moving data between hosts, long jobs, models | `references/playbooks.md` |
 
 Multi-step work across many hosts: run independent calls in parallel and report only the outcome and its evidence, never every raw result.
 

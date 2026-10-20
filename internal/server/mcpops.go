@@ -40,7 +40,12 @@ func opOn(host, op string, p map[string]any, wait time.Duration) (int, any) {
 		return localOp(op, p)
 	}
 	grant := users.SealGrant(map[string]any{"op": op, "p": p}, int64(wait/time.Millisecond)+30000)
-	return onHost(host, "/internal/op", map[string]any{"grant": grant}, wait)
+	st, b := onHost(host, "/internal/op", map[string]any{"grant": grant}, wait)
+	// a peer's raw JSON decoded, so callers can read its fields
+	if r, ok := b.(json.RawMessage); ok {
+		b = util.Decode(r)
+	}
+	return st, b
 }
 
 // peerOp an /internal/op body opened and run

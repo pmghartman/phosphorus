@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"net/url"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -541,7 +543,17 @@ func buildTools() {
 			description: "Every host on the phosphorus mesh: whether it runs phosphorus, its OS and version.",
 			schema:      object(nil),
 			run: func(map[string]any, Meta) (any, error) {
-				return map[string]any{"self": src.Self(), "domain": src.Domain(), "hosts": src.Tailnet()}, nil
+				self := src.Self()
+				hosts := slices.Clone(src.Tailnet())
+				// this host's own row carries no version; copies so the mesh's stays as is
+				for i, d := range hosts {
+					if d["name"] == self["host"] && !util.Truthy(d["version"]) {
+						c := maps.Clone(d)
+						c["version"] = self["version"]
+						hosts[i] = c
+					}
+				}
+				return map[string]any{"self": self, "domain": src.Domain(), "hosts": hosts}, nil
 			}},
 		{name: "services", read: true,
 			description: "Every service published on the mesh, by host, with its name and where it is served.",
