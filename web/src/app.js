@@ -1725,10 +1725,7 @@ function toastShow(n) {
     toastHost.setAttribute('aria-live', 'polite');
     document.body.appendChild(toastHost);
   }
-  // clear of the task bar, wherever it sits; a phone's at the top, off the input and nav
-  const bar = document.querySelector('.dk-bar')?.getBoundingClientRect();
-  toastHost.style.top = isMobile() ? 'calc(env(safe-area-inset-top) + 8px)' : '';
-  toastHost.style.bottom = isMobile() ? '' : `${bar && bar.height ? Math.max(0, innerHeight - bar.top) + 10 : 12}px`;
+  toastPlace();
   let t = n.g ? toastHost.querySelector(`.toast[data-g="${CSS.escape(n.g)}"]`) : null;
   if (!t) {
     t = el('div', 'toast');
@@ -1757,6 +1754,16 @@ function toastShow(n) {
   clearTimeout(t.timer);
   t.timer = setTimeout(() => toastClose(t), TOAST_MS);
 }
+
+// right over the task bar that's showing, its clock never covered; under it were it on top
+function toastPlace() {
+  if (!toastHost) return;
+  const bar = [...document.querySelectorAll('.dk-bar')].map((b) => b.getBoundingClientRect()).find((r) => r.height > 0);
+  const top = bar && bar.top < innerHeight / 2;
+  toastHost.style.top = top ? `${bar.bottom + 8}px` : '';
+  toastHost.style.bottom = top ? '' : `${bar ? Math.max(0, innerHeight - bar.top) + 8 : 12}px`;
+}
+addEventListener('resize', toastPlace);
 
 function toastClose(t) {
   clearTimeout(t.timer);
