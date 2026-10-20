@@ -6630,11 +6630,19 @@ function dkMcpTray() {
     const done = mcpStat.configured;
     if (drawn === done) return;
     drawn = done;
+    // the claude plugin, the key in use inside it, minted when there's none
+    const plugin = button('claude plugin', 'quiet', async (x) => {
+      x.disabled = true;
+      const ok = await mcpPlugin();
+      x.disabled = false;
+      if (ok) flash(x, 'downloaded');
+    });
+    plugin.title = 'skills, an agent and the mcp server for Claude Code or Cowork, keyed to you';
     if (!done) {
       bar.replaceChildren(button('connect agent', 'wide', async () => {
         const r = await mcpKey('/api/me/mcp-url');
         if (r) showUrl(r.url, r.copied);
-      }));
+      }), plugin);
       hint.replaceChildren();
       return;
     }
@@ -6652,7 +6660,7 @@ function dkMcpTray() {
       const r = await mcpKey('/api/me/mcp-key');
       if (r) { show(true); showUrl(r.url, r.copied); }
     });
-    bar.replaceChildren(copy, refresh);
+    bar.replaceChildren(copy, refresh, plugin);
   };
   const paint = () => {
     const st = mcpState();
@@ -6735,6 +6743,23 @@ async function mcpKey(path, have = '') {
   }
   pollMcp();
   return { ...r, copied };
+}
+
+// the plugin's zip from the mesh, saved as phosphorus.plugin
+async function mcpPlugin() {
+  let res;
+  try { res = await fetch('/api/me/mcp-plugin', { method: 'POST' }); } catch (err) { mcpFailed(err.message); return false; }
+  if (!res.ok) { mcpFailed((await res.json().catch(() => ({}))).error || `http ${res.status}`); return false; }
+  const url = URL.createObjectURL(await res.blob());
+  const a = Object.assign(document.createElement('a'), { href: url, download: 'phosphorus.plugin' });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
+  if (!mcpStat.configured) noteAdd('agent connected', 'plugin downloaded');
+  mcpStat.configured = true;
+  pollMcp();
+  return true;
 }
 
 // a failure in two words, its why in the notes

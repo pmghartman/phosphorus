@@ -1,0 +1,12 @@
+{
+  "name": "phosphorus",
+  "owner": { "name": "{{USER}}" },
+  "description": "The phosphorus mesh at {{BASE}}, as {{USER}}.",
+  "plugins": [
+    {
+      "name": "phosphorus",
+      "source": "./",
+      "description": "Phosphorus mesh for Claude, keyed to {{USER}}."
+    }
+  ]
+}
