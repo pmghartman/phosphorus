@@ -1,19 +1,16 @@
 package server
 
-// the mesh tools' host operations: health, power, containers, terminals, run
+// the mesh tools' host operations: health, power, terminals, run
 // here or on a peer through /internal/op, every peer call carrying a sealed grant
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
-	"fmt"
 	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"sort"
 	"strings"
@@ -32,15 +29,18 @@ import (
 	"github.com/pmghartman/phosphorus/internal/util"
 )
 
-var containerRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$`)
-
 // opOn op here when host is this one, else on the peer, the grant sealed for it
 func opOn(host, op string, p map[string]any, wait time.Duration) (int, any) {
 	if host == selfHost {
 		return localOp(op, p)
 	}
 	grant := users.SealGrant(map[string]any{"op": op, "p": p}, int64(wait/time.Millisecond)+30000)
-	return onHost(host, "/internal/op", map[string]any{"grant": grant}, wait)
+	st, b := onHost(host, "/internal/op", map[string]any{"grant": grant}, wait)
+	// a peer's raw JSON decoded, so callers can read its fields
+	if r, ok := b.(json.RawMessage); ok {
+		b = util.Decode(r)
+	}
+	return st, b
 }
 
 // peerOp an /internal/op body opened and run
@@ -58,10 +58,6 @@ func localOp(op string, p map[string]any) (int, any) {
 		return 200, localHealth()
 	case "power":
 		return hostPower(str(p["action"]))
-	case "containers":
-		return containerList()
-	case "container":
-		return containerAct(str(p["name"]), str(p["action"]))
 	case "term_close":
 		if err := term.Close(str(p["by"]), str(p["id"])); err != nil {
 			return 404, map[string]any{"error": err.Error()}
@@ -179,46 +175,6 @@ func binSelf() string {
 	}
 	p, _ := os.Executable()
 	return p
-}
-
-func docker(wait time.Duration, args ...string) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), wait)
-	defer cancel()
-	out, err := exec.CommandContext(ctx, "docker", args...).CombinedOutput()
-	if err != nil {
-		return nil, fmt.Errorf("docker %s: %s", args[0], strings.TrimSpace(string(out)+" "+err.Error()))
-	}
-	return out, nil
-}
-
-// containerList docker's containers here, running or not
-func containerList() (int, any) {
-	b, err := docker(15*time.Second, "ps", "-a", "--format", "{{json .}}")
-	if err != nil {
-		return 503, map[string]any{"error": err.Error()}
-	}
-	out := []any{}
-	for _, l := range splitLines(string(b)) {
-		var r map[string]any
-		if json.Unmarshal([]byte(l), &r) == nil {
-			out = append(out, map[string]any{"name": r["Names"], "image": r["Image"], "state": r["State"], "status": r["Status"], "ports": r["Ports"]})
-		}
-	}
-	return 200, map[string]any{"host": selfHost, "containers": out}
-}
-
-func containerAct(name, action string) (int, any) {
-	if !containerRe.MatchString(name) {
-		return 400, map[string]any{"error": "bad container name"}
-	}
-	if action != "start" && action != "stop" && action != "restart" {
-		return 400, map[string]any{"error": "action is start, stop or restart"}
-	}
-	if _, err := docker(90*time.Second, action, name); err != nil {
-		return 502, map[string]any{"error": err.Error()}
-	}
-	b, _ := docker(10*time.Second, "inspect", "-f", "{{.State.Status}}", name)
-	return 200, map[string]any{"host": selfHost, "name": name, "action": action, "state": strings.TrimSpace(string(b))}
 }
 
 const historyMax = 50

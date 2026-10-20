@@ -172,7 +172,7 @@ func cpuModel() string {
 	return cpuModelV
 }
 
-// --- containers ----------------------------------------------------------------
+// --- parts ---------------------------------------------------------------------
 
 // roleOf the PHOSPHORUS_ROLE phosphorus run gave a process, its children inheriting it
 func roleOf(pid string) string {
@@ -334,7 +334,7 @@ func refreshProcs(now int64) {
 		}
 		sort.SliceStable(rl, func(i, j int) bool { return rl[i]["name"].(string) < rl[j]["name"].(string) })
 		dmu.Lock()
-		containers = rl
+		parts = rl
 		dmu.Unlock()
 	}
 	sort.SliceStable(list, func(i, j int) bool {
