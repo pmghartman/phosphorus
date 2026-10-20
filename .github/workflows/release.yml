@@ -197,22 +197,13 @@ jobs:
           path: out
           pattern: out-*
           merge-multiple: true
-      # GitHub lists a release's assets flat: the notes group them, each linked
+      # the notes: how to install, the assets listed by GitHub under them
       - name: notes
-        env:
-          REPO: ${{ github.repository }}
         run: |
           cd out
-          U=https://github.com/$REPO/releases/download/v$VER
-          # one table row per OS: its label, then each built file as a short link
-          row() { local os=$1 out=""; shift; for f in "$@"; do [ -e "$f" ] || continue; local l=${f##*.}; case $f in *amd64*) l="amd64 .$l";; *arm64*) l="arm64 .$l";; *) l=".$l";; esac; out+="${out:+ · }[$l]($U/$f)"; done; [ -n "$out" ] && echo "| $os | $out |"; true; }
-          table() { local rows; rows=$(row macOS $1-macos-universal.dmg; row Windows $1-windows-x86_64-setup.exe; row Linux $2_amd64.deb $2_arm64.deb); [ -n "$rows" ] && printf '| | |\n|---|---|\n%s\n\n' "$rows"; true; }
           {
             shopt -s nullglob
-            table phosphorus-$VER phosphorus_$VER
-            # the install steps for the files above, each OS's only when built
-            echo "## Install"
-            echo
+            # the install steps, each OS's only when built
             echo "You need a [Tailscale](https://tailscale.com) account and a reusable auth key."
             echo
             step() { echo "- $1"; }
@@ -223,13 +214,6 @@ jobs:
             echo "Then enter the Tailscale auth key when asked; every other host copies the rest from the mesh. Open \`http://HOST\` from any device on the tailnet, by a host's name or tailnet IP. The first login is \`admin\` with your admin password."
             echo
             echo "Installed hosts update themselves: **Check for Updates** in the menu bar or tray, \`phos update all\`, or the mesh update in the browser, every host at once."
-            echo
-            m=""
-            [ -e THIRD_PARTY_LICENSES.txt ] && m="[Licenses]($U/THIRD_PARTY_LICENSES.txt)"
-            for f in forgejo-src-*.tar.gz; do m+="${m:+ · }[Forgejo source]($U/$f)"; done
-            echo "$m"
-            echo
-            echo "More: [README](https://github.com/$REPO#quick-start)"
           } > "$RUNNER_TEMP/notes.md"
           cat "$RUNNER_TEMP/notes.md"
       - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
