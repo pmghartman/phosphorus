@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -22,6 +23,7 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	"github.com/pmghartman/phosphorus/internal/cli"
+	"github.com/pmghartman/phosphorus/internal/mcp"
 	"github.com/pmghartman/phosphorus/internal/mesh"
 	"github.com/pmghartman/phosphorus/internal/services"
 	"github.com/pmghartman/phosphorus/internal/term"
@@ -69,6 +71,8 @@ func localOp(op string, p map[string]any) (int, any) {
 		return localExec(str(p["user"]), str(p["pass"]), str(p["cmd"]), str(p["stdin"]), int(num(p["timeout"])))
 	case "shell":
 		return shellExec(str(p["user"]), str(p["pass"]), str(p["cmd"]), str(p["stdin"]), int(num(p["timeout"])), p["reset"] == true)
+	case "mcp_calls":
+		return 200, mcp.Calls(str(p["user"]))
 	case "service_health":
 		ip := util.TailnetIP(selfHost)
 		if ip == "" {
@@ -337,4 +341,58 @@ func localExec(user, pass, cmd, stdin string, timeout int) (int, any) {
 		out["truncated"] = true
 	}
 	return 200, out
+}
+
+// mcpCallsMesh a user's agent calls from every host, a connector reaching
+// whichever one its ingress picks: in flight from all, the recent merged newest first
+func mcpCallsMesh(user string) map[string]any {
+	out := mcp.Calls(user)
+	hosts := []string{}
+	for h := range mesh.PeerIPs() {
+		hosts = append(hosts, h)
+	}
+	got := make([]map[string]any, len(hosts))
+	var wg sync.WaitGroup
+	for i, h := range hosts {
+		wg.Add(1)
+		go func(i int, h string) {
+			defer wg.Done()
+			if st, b := opOn(h, "mcp_calls", map[string]any{"user": user}, 1500*time.Millisecond); st < 300 {
+				got[i] = util.Obj(b)
+			}
+		}(i, h)
+	}
+	wg.Wait()
+	calls, _ := out["calls"].([]any)
+	recent, _ := out["recent"].([]any)
+	seen := num(out["seen"])
+	for _, c := range got {
+		if c == nil {
+			continue
+		}
+		if l, ok := c["calls"].([]any); ok {
+			calls = append(calls, l...)
+		}
+		if l, ok := c["recent"].([]any); ok {
+			recent = append(recent, l...)
+		}
+		if num(c["at"]) > num(out["at"]) {
+			out["at"] = c["at"]
+		}
+		// the agent named by the host that heard it last
+		if s := num(c["seen"]); s > seen {
+			seen = s
+			out["seen"] = c["seen"]
+			if str(c["client"]) != "" {
+				out["client"] = c["client"]
+			}
+		}
+	}
+	sort.SliceStable(recent, func(i, j int) bool { return num(util.Obj(recent[i])["at"]) > num(util.Obj(recent[j])["at"]) })
+	if len(recent) > 40 {
+		recent = recent[:40]
+	}
+	sort.SliceStable(calls, func(i, j int) bool { return num(util.Obj(calls[i])["since"]) < num(util.Obj(calls[j])["since"]) })
+	out["calls"], out["recent"] = calls, recent
+	return out
 }

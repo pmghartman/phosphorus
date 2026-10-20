@@ -1,6 +1,6 @@
 // feedsign: the release's app updates signed for the feed, each FILE's
-// signature written to FILE.sig; the key in TAURI_SIGNING_PRIVATE_KEY, its
-// password in TAURI_SIGNING_PRIVATE_KEY_PASSWORD, as the installed apps trust it
+// signature written to FILE.sig; the minisign key in UPDATE_SIGNING_KEY, its
+// password in UPDATE_SIGNING_KEY_PASSWORD
 package main
 
 import (
@@ -16,7 +16,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "usage: feedsign FILE...")
 		os.Exit(2)
 	}
-	k, err := minisign.ParseSecretKey(os.Getenv("TAURI_SIGNING_PRIVATE_KEY"), os.Getenv("TAURI_SIGNING_PRIVATE_KEY_PASSWORD"))
+	k, err := minisign.ParseSecretKey(os.Getenv("UPDATE_SIGNING_KEY"), os.Getenv("UPDATE_SIGNING_KEY_PASSWORD"))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "feedsign:", err)
 		os.Exit(1)

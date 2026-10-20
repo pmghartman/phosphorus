@@ -1,6 +1,6 @@
 # manual release: per checked OS a host installer (.deb, .dmg, setup .exe), as
 # vVERSION; feeds on release `update`, then only the two newest releases and runs kept
-# app and apt feeds need TAURI_SIGNING_PRIVATE_KEY(_PASSWORD), APT_GPG_KEY, var TAURI_UPDATER_PUBKEY
+# app and apt feeds need UPDATE_SIGNING_KEY(_PASSWORD), APT_GPG_KEY, var UPDATE_PUBKEY
 name: release
 
 on:
@@ -156,15 +156,15 @@ jobs:
               packaging/tools.sh windows amd64 $APP/payload/tools > art/tools.log 2>&1 || { cat art/tools.log; exit 1; } ;;
           esac
       # the menu bar app around the host binary and release; its own update, signed
-      # for the feed the installed apps trust, only with the signing key
+      # for the feed, only with the signing key
       - name: host app
         if: ${{ !startsWith(matrix.name, 'linux') }}
         shell: bash
         env:
           FEED_URL: https://github.com/${{ github.repository }}/releases/download/update
-          FEED_PUBKEY: ${{ vars.TAURI_UPDATER_PUBKEY }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          FEED_PUBKEY: ${{ vars.UPDATE_PUBKEY }}
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+          UPDATE_SIGNING_KEY_PASSWORD: ${{ secrets.UPDATE_SIGNING_KEY_PASSWORD }}
         run: |
           if [ "${{ matrix.name }}" = macos-universal ]; then
             $APP/macos.sh "$VER" $APP/payload out upd
@@ -256,7 +256,7 @@ jobs:
           BASE=https://github.com/$GH_REPO/releases/download/update
           NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           printf '{"version":"%s","pub_date":"%s","notes":"https://github.com/%s/releases/tag/v%s"}\n' "$VER" "$NOW" "$GH_REPO" "$VER" > latest.json
-          feed() { printf '{"version":"%s.0","pub_date":"%s","url":"%s/%s","signature":"%s","notes":""}\n' "$VER" "$NOW" "$BASE" "$2" "$(cat "$2.sig")" > "$1.json"; }
+          feed() { printf '{"version":"%s","url":"%s/%s","signature":"%s"}\n' "$VER" "$BASE" "$2" "$(cat "$2.sig")" > "$1.json"; }
           if [ -e phosphorus-macos-universal.app.tar.gz ]; then
             feed darwin-x86_64 phosphorus-macos-universal.app.tar.gz
             feed darwin-aarch64 phosphorus-macos-universal.app.tar.gz

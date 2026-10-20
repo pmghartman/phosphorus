@@ -1,7 +1,7 @@
 ; Phosphorus for Windows, per user: the tray, the host binary and the release in
-; %LOCALAPPDATA%\Phosphorus, where the app has always lived, so an update lands in place
+; %LOCALAPPDATA%\Phosphorus, an update landing in place
 ; makensis /DVERSION=1.2 /DSTAGE=dir /DOUTFILE=setup.exe installer.nsi
-; /S silent, /P (the old app's updater) the same; either starts the tray after, at its login item's quiet
+; /S silent, the tray started after at its login item's quiet
 
 Unicode true
 ManifestDPIAware true
@@ -35,14 +35,6 @@ VIAddVersionKey "LegalCopyright" "Apache-2.0"
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
 !insertmacro MUI_LANGUAGE "English"
-
-Function .onInit
-  ${GetParameters} $R0
-  ClearErrors
-  ${GetOptions} $R0 "/P" $R1
-  IfErrors +2 0
-    SetSilent silent
-FunctionEnd
 
 Section "Install"
   ; a running tray let go of its files; phosphorus itself runs from the home, untouched
@@ -79,7 +71,6 @@ Section "Uninstall"
   nsExec::Exec 'taskkill /IM Phosphorus.exe /F'
   Sleep 500
   Delete "$SMPROGRAMS\${PRODUCT}.lnk"
-  Delete "$DESKTOP\${PRODUCT}.lnk"
   DeleteRegValue HKCU "${RUNKEY}" "${PRODUCT}"
   DeleteRegKey HKCU "${UNINSTKEY}"
   RMDir /r "$INSTDIR"

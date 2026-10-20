@@ -128,42 +128,25 @@ function startTerminal(view, host, sid, resume, shared = false, login = null) {
 
     // bytes so far, so a rejoin replays only what's missing, 0 after a reload
     let got = 0;
-    // true while the prompts are still being answered
-    let seen = '';
-    // the password's echoed line break dropped, the shell's first output at the top
-    let trim = false;
-    const loginStep = (data) => {
-      seen += new TextDecoder().decode(data);
-      if (/login: $/.test(seen)) { seen = ''; ws.send(enc.encode(`${login.user}\r`)); }
-      else if (/password: $/.test(seen)) {
-        ws.send(enc.encode(`${login.pass}\r`));
-        // a command asked for, typed ahead of the shell's prompt
-        if (login.run) ws.send(enc.encode(`${login.run}\r`));
-        login = null;
-        trim = true;
-      }
-      return true;
-    };
-    const trimStep = (data) => {
-      const bytes = new Uint8Array(data);
-      let i = 0;
-      while (i < bytes.length && (bytes[i] === 13 || bytes[i] === 10)) i += 1;
-      if (i < bytes.length) trim = false;
-      return bytes.subarray(i);
-    };
     let delay = RETRY_MIN_MS;
     const connect = () => {
       const q = new URLSearchParams({ sid, since: got });
       if (resume) q.set('resume', '1');
       ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/term/${encodeURIComponent(host)}?${q}`);
       ws.binaryType = 'arraybuffer';
-      // the share said again on every join, so a reload's choice holds
-      ws.onopen = () => { delay = RETRY_MIN_MS; sendSize(); ws.send(JSON.stringify({ type: 'share', on: shared, by: name })); };
+      // the share said again on every join, so a reload's choice holds; a saved
+      // login handed to the server once, its prompts answered there, never by screen
+      ws.onopen = () => {
+        delay = RETRY_MIN_MS;
+        sendSize();
+        ws.send(JSON.stringify({ type: 'share', on: shared, by: name }));
+        if (login && !resume) ws.send(JSON.stringify({ type: 'login', user: login.user, pass: login.pass, run: login.run || '' }));
+        login = null;
+      };
       ws.onmessage = (e) => {
         resume = true;
         got += e.data.byteLength;
-        if (login && loginStep(e.data)) return;
-        term.write(trim ? trimStep(e.data) : new Uint8Array(e.data));
+        term.write(new Uint8Array(e.data));
       };
       ws.onclose = (e) => {
         if (e.code === TERM_TAKEN) {

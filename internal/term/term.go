@@ -70,7 +70,11 @@ type session struct {
 	lastOut    time.Time
 	waiter     func(string)
 	streaming  bool
+	// a saved login handed over by the page, taken by the prompts in place of typing
+	auto chan login
 }
+
+type login struct{ user, pass, run string }
 
 var (
 	smu      sync.Mutex
@@ -192,6 +196,16 @@ func (s *session) join(ws *wsock.Conn, since int64) {
 			case "close":
 				s.end()
 				return
+			case "login":
+				u, _ := m["user"].(string)
+				p, _ := m["pass"].(string)
+				r, _ := m["run"].(string)
+				if u != "" && len(u) <= maxField && len(p) <= maxField {
+					select {
+					case s.auto <- login{u, p, r}:
+					default:
+					}
+				}
 			case "share":
 				s.mu.Lock()
 				s.shared = m["on"] == true
@@ -256,7 +270,7 @@ func Attach(ws *wsock.Conn, o Opts) {
 		go drain(ws)
 		return
 	}
-	s := &session{sid: o.SID, cols: 80, rows: 24}
+	s := &session{sid: o.SID, cols: 80, rows: 24, auto: make(chan login, 1)}
 	sessions[o.SID] = s
 	smu.Unlock()
 	s.join(ws, 0)
@@ -272,8 +286,15 @@ func Attach(ws *wsock.Conn, o Opts) {
 	s.mu.Unlock()
 
 	lines := make(chan string, 1)
+	// a saved login's password and command, once its user has answered the first prompt
+	var held *login
 	ask := func(label string, echo bool) (string, bool) {
 		s.out([]byte(label))
+		if !echo && held != nil {
+			p := held.pass
+			s.out([]byte("\r\n"))
+			return p, true
+		}
 		line := []rune{}
 		s.mu.Lock()
 		s.onInput = func(buf []byte) {
@@ -310,6 +331,17 @@ func Attach(ws *wsock.Conn, o Opts) {
 			select {
 			case l := <-lines:
 				return l, true
+			case a := <-s.auto:
+				if !echo {
+					s.out([]byte("\r\n"))
+					return a.pass, true
+				}
+				s.mu.Lock()
+				s.onInput = nil
+				s.mu.Unlock()
+				held = &a
+				s.out([]byte(a.user + "\r\n"))
+				return a.user, true
 			case <-time.After(time.Second):
 				if !live(o.SID) {
 					return "", false
@@ -334,6 +366,16 @@ func Attach(ws *wsock.Conn, o Opts) {
 				return
 			}
 			why := connect(s, o, user, pass)
+			if why == "" && held != nil && held.run != "" {
+				s.mu.Lock()
+				in := s.stdin
+				s.mu.Unlock()
+				if in != nil {
+					in.Write([]byte(held.run + "\r"))
+				}
+			}
+			// a refused saved login asked for by hand after
+			held = nil
 			if why == "" || !live(o.SID) {
 				return
 			}

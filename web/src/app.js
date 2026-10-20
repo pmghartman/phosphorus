@@ -4942,14 +4942,16 @@ function dkChips() {
   hosts.replaceChildren(dk.chipFold, ...chips);
 }
 
-// one chevron for good, so its turn and the chips' slide both animate
+// one chevron for good, so its turn and the chips' slide both animate; the
+// count read fresh on a press, never the one it was made with
 function dkChipsFold(hosts, n) {
+  dk.chipN = n;
   if (!dk.chipFold) {
     const b = Object.assign(el('button', 'dk-chip-fold'), { type: 'button' });
     b.appendChild(dkGlyph(DK_UI.back));
     b.addEventListener('click', () => {
       try { localStorage.setItem(DK_CHIPS_KEY, dkChipsOpen() ? '0' : '1'); } catch {}
-      dkChipsFold(hosts, n);
+      dkChipsFold(hosts, dk.chipN);
     });
     dk.chipFold = b;
   }
@@ -5284,8 +5286,9 @@ function dkNav(w, frame) {
 
 function dkTerminal(host, run = '', shared = false) {
   const c = dk.creds.get(host);
+  if (!c) return;
   const w = dkWin(null, 'terminal', host, 'term');
-  if (!w || !c) return;
+  if (!w) return;
   w.host = host;
   const t = app('terminal').then((m) => m.startTerminal(w.body, host, newSid(), false, shared, { ...c, run }));
   w.onFocus = () => t.then((x) => x.focus());
@@ -6755,9 +6758,14 @@ const AGENT_CONSOLE = new Set(['terminal_run', 'host_logs', 'containers', 'conta
 const AGENT_STATUS = new Set(['mesh_hosts', 'mesh_health', 'host_stats', 'services', 'models', 'set_model_role']);
 const AGENT_CHAT = new Set(['send_message', 'chat_history', 'chat_wait', 'chat_edit']);
 const AGENT_LIT_MS = 2400;
+// the windows the agent opened itself, closed this long after it goes quiet
+const AGENT_CLOSE_MS = 5000;
+const agentOwned = new Set();
+let agentCloseT = 0;
 
 function agentStep(a) {
   if (!agentViewOn() || !dk.desk || !a.id) return;
+  clearTimeout(agentCloseT);
   if (a.phase === 'start') {
     agentCalls.set(a.id, a);
     agentHud.start(a);
@@ -6768,6 +6776,34 @@ function agentStep(a) {
   agentCalls.delete(a.id);
   agentHud.end(a);
   agentAct(a, begun?.args || {}, true);
+  if (!agentCalls.size) agentCloseT = setTimeout(agentTidy, AGENT_CLOSE_MS);
+}
+
+// the agent's own windows put away once it stops; one a person touched is theirs
+function agentTidy() {
+  if (agentCalls.size) return;
+  for (const w of [...agentOwned]) {
+    agentOwned.delete(w);
+    if (w.node.isConnected) dkClose(w);
+  }
+}
+
+// a window just opened by the agent, its own until a person clicks or types in it
+function agentOwn(w) {
+  if (!w || agentOwned.has(w)) return;
+  agentOwned.add(w);
+  const mine = () => agentOwned.delete(w);
+  w.node.addEventListener('pointerdown', mine, { once: true });
+  w.node.addEventListener('keydown', mine, { once: true });
+}
+
+// a window by its key brought up: opened by the agent when it wasn't there, then lit
+async function agentOpen(key, open) {
+  const had = dk.wins.has(key);
+  await open();
+  const w = dk.wins.get(key);
+  if (!had) agentOwn(w);
+  agentLit(w);
 }
 
 // a window the agent touched, lit for a moment and brought forward
@@ -6788,10 +6824,10 @@ function agentAct(a, args, done) {
     agentLit(agentWin((w) => w.kind === 'term' && w.host === args.host));
     return;
   }
-  if (t === 'files_read' && !done && args.host && args.path) { dkCode({ host: args.host, share: args.share, path: args.path }).then(() => agentLit(agentCodeWin(args))); return; }
+  const code = () => agentOpen(agentCodeKey(args), () => dkCode({ host: args.host, share: args.share, path: args.path }));
+  if (t === 'files_read' && !done && args.host && args.path) { code(); return; }
   if (t === 'files_write' && done && a.ok && args.host && args.path) {
-    if (args.open) return;
-    dkCode({ host: args.host, share: args.share, path: args.path }).then(() => agentLit(agentCodeWin(args)));
+    if (!args.open) code();
     return;
   }
   if ((t === 'files_list' || t === 'files_search') && !done && args.host && args.share) { agentFiles(args.host, args.share, args.path || ''); return; }
@@ -6802,17 +6838,16 @@ function agentAct(a, args, done) {
   }
   if (t === 'files_copy' && done && args.to?.host) { agentFiles(args.to.host, args.to.share, filesParent(String(args.to.path || ''))); return; }
   if (done) return;
-  if (AGENT_STATUS.has(t)) { dkOpenApp('status'); agentLit(dk.wins.get('app:status')); }
-  else if (t === 'projects') { dkOpenApp('projects'); agentLit(dk.wins.get('app:projects')); }
-  else if (t === 'git' || t === 'make_git_master') { dkOpenApp('git'); agentLit(dk.wins.get('app:git')); }
+  if (AGENT_STATUS.has(t)) agentOpen('app:status', () => dkOpenApp('status'));
+  else if (t === 'projects') agentOpen('app:projects', () => dkOpenApp('projects'));
+  else if (t === 'git' || t === 'make_git_master') agentOpen('app:git', () => dkOpenApp('git'));
   else if (AGENT_CHAT.has(t)) {
     const c = args.to ? `dm:${String(args.to).replace(/^@/, '')}` : !args.channel || args.channel === 'mesh' ? 'mesh' : /^dm:/.test(args.channel) ? args.channel : `ch:${args.channel}`;
-    openConv(c);
-    agentLit(dk.wins.get('app:chat'));
+    agentOpen('app:chat', () => openConv(c));
   } else if ((t === 'update_status' || t === 'update_control' || t === 'update_history') && acct?.admin && updateModal.hidden) openUpdateModal();
 }
 
-const agentCodeWin = (f) => dk.wins.get(`code:${codeKey({ host: f.host, share: String(f.share ?? ''), path: f.path })}`);
+const agentCodeKey = (f) => `code:${codeKey({ host: f.host, share: String(f.share ?? ''), path: f.path })}`;
 
 // one files window the agent browses in, opened or moved to the place
 let agentFm = null;
@@ -6825,6 +6860,7 @@ async function agentFiles(host, share, dir) {
     return;
   }
   agentFm = await filesWin({ loc, dir });
+  agentOwn(agentFm?.w);
   agentLit(agentFm?.w);
 }
 
@@ -6840,6 +6876,7 @@ async function agentPrint(a, args, done) {
     c = { w, con };
     w.onClose = () => { con.close(); agentCons.delete(host); };
     agentCons.set(host, c);
+    agentOwn(w);
   }
   agentLit(c.w);
   const dim = (x) => `\x1b[2m${x}\x1b[0m`;

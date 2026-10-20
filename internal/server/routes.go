@@ -71,7 +71,7 @@ var userCalls = map[string]userCall{
 		if s == nil || s.Boot {
 			return users.R{Status: 403, Body: map[string]any{"error": "log in as a user"}}
 		}
-		out := mcp.Calls(s.User)
+		out := mcpCallsMesh(s.User)
 		out["configured"] = users.HasMCPKey(s.User)
 		return users.R{Status: 200, Body: out}
 	},

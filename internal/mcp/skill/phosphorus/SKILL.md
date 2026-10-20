@@ -1,6 +1,6 @@
 ---
 name: phosphorus
-description: Operates the user's self-hosted Phosphorus mesh through its Phosphorus connector. Use whenever the user mentions phosphorus, the mesh, their hosts, servers, homelab, tailnet, a host by name, services, game servers, shared files, shares, terminals, logs, docker containers, forgejo or git on the mesh, the mesh chat, models (chimp, orangutan), projects, or a mesh update; also for "is X up", "why is X slow", "restart X", "what's on X", "find the file", "publish a service".
+description: Operates the user's self-hosted Phosphorus mesh, and only through the Phosphorus connector's tools. Use when the user names phosphorus or the mesh, one of its hosts by name, or asks about their own servers, homelab or tailnet: hosts up or slow, services and game servers on the mesh, files in mesh shares, terminals or commands on a host, host or container logs, the mesh's forgejo, the mesh chat, its models (chimp, orangutan) or projects, or a mesh update. Not for email, calendars, cloud drives, documents or any other account.
 ---
 
 # Phosphorus
@@ -26,6 +26,8 @@ Read the one job file that fits the request before the first call:
 Multi-step work across many hosts: run independent calls in parallel and report only the outcome and its evidence, never every raw result.
 
 ## Ground rules
+
+- Phosphorus tools only. Never call another connector or app (Gmail, Google Drive, Calendar, Docs, Slack, GitHub or any other) for a mesh request, never to look something up, find a file, message someone or check a time. "Files" means mesh shares, "chat" and "message" mean the mesh chat, "projects" means the mesh's projects, "git" means the mesh's Forgejo. A request that needs anything outside the mesh: say so and stop.
 
 - Start with `mesh_hosts` once per session. Host names come only from it; never guess or shorten one. Only hosts with phosphorus can be acted on.
 - Read before acting: `host_config` before `config_set` or `service_edit`, `files_read` or `files_stat` before `files_write` with old/new, `containers` before `container_control`, `update_status` before `update_control`.
