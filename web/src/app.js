@@ -1689,19 +1689,23 @@ function notifyOs(title, body) {
   } catch {}
 }
 
-// mesh news past the chat: a host gone or back, an update done
-let seenHosts = null;
-let seenLock = false;
+// mesh news past the chat: one note when a mesh update this page watched ends,
+// the hosts that failed in it if any
+// kept across the reload a host's own update brings
+const CHAIN_SEEN = 'phosphorus-chain-running';
 function notifyMesh(state) {
-  const now = new Set((state.tailnet || []).filter((d) => d.phosphorus).map((d) => d.name));
-  const say = (t) => { noteAdd(t, '', null, { view: 'status' }); if (notifyOn) notifyOs(t, ''); };
-  if (seenHosts) {
-    for (const h of seenHosts) if (!now.has(h)) say(`${h} offline`);
-    for (const h of now) if (!seenHosts.has(h)) say(`${h} online`);
-    if (seenLock && !state.lock?.initiator) say('update done');
-  }
-  seenHosts = now;
-  seenLock = !!state.lock?.initiator;
+  const ch = state.chain;
+  if (!ch?.chainId) return;
+  let running = '';
+  try { running = sessionStorage.getItem(CHAIN_SEEN) || ''; } catch {}
+  if (!ch.done) { try { sessionStorage.setItem(CHAIN_SEEN, ch.chainId); } catch {} return; }
+  if (ch.chainId !== running) return;
+  try { sessionStorage.removeItem(CHAIN_SEEN); } catch {}
+  const failed = Object.entries(ch.results || {}).filter(([, r]) => r === 'fail' || r === 'unreachable').map(([h]) => h);
+  const t = failed.length ? `update failed on ${failed.join(', ')}` : 'update done';
+  const b = failed.map((h) => ch.errors?.[h]).filter(Boolean).join('; ');
+  noteAdd(t, b, null, { view: 'update' });
+  if (notifyOn) notifyOs(t, b);
 }
 
 // --- the notification center: what happened mesh-wide, newest first, kept per browser
