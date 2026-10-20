@@ -1,7 +1,7 @@
 ; Phosphorus for Windows, per user: the tray, the host binary and the release in
 ; %LOCALAPPDATA%\Phosphorus, an update landing in place
 ; makensis /DVERSION=1.2 /DSTAGE=dir /DOUTFILE=setup.exe installer.nsi
-; /S silent, the tray started after at its login item's quiet
+; /S silent, the tray started after on the desktop at its login item's quiet
 
 Unicode true
 ManifestDPIAware true
@@ -68,9 +68,11 @@ Section "Install"
   WriteRegDWORD HKCU "${UNINSTKEY}" "NoRepair" 1
   ${GetSize} "$INSTDIR" "/S=0K" $0 $1 $2
   WriteRegDWORD HKCU "${UNINSTKEY}" "EstimatedSize" $0
-  ; an update: the new tray back in the old one's place, quietly
+  ; an update: the new tray back in the old one's place, quietly, on the user's
+  ; desktop through a task, never a child of this (a waiting caller hangs on one,
+  ; and over ssh it would die with the session)
   IfSilent 0 +2
-    Exec '"$INSTDIR\Phosphorus.exe" --background'
+    nsExec::Exec `powershell -NoProfile -NonInteractive -Command "Register-ScheduledTask PhosphorusTray -Action (New-ScheduledTaskAction -Execute '$INSTDIR\Phosphorus.exe' -Argument '--background') -Force | Out-Null; Start-ScheduledTask PhosphorusTray; Start-Sleep 1; Unregister-ScheduledTask PhosphorusTray -Confirm:$$false"`
 SectionEnd
 
 Section "Uninstall"
