@@ -263,32 +263,40 @@ func fetchSelf(host string) selfInfo {
 	return selfInfo{util.Str(s["bootId"]), util.Str(s["version"]), util.Str(s["platform"])}
 }
 
+func peerAddr(host string) string {
+	if a := util.TailnetIP(host); a != "" {
+		return a
+	}
+	return host
+}
+
+// callPeerUpdate a peer's update asked for and followed; its boot and last
+// verdict noted first, so a watch picked up after this host restarts can tell
 func callPeerUpdate(host string, note func(map[string]string)) result {
-	addr := util.TailnetIP(host)
-	if addr == "" {
-		addr = host
-	}
+	addr := peerAddr(host)
 	before := fetchSelf(addr)
-	note(map[string]string{"from": before.version})
-	var baselineAt any
-	if s, err := fetchStatus(addr); err == nil {
-		baselineAt = s["at"]
+	base := ""
+	if s, err := fetchStatus(addr); err == nil && util.Truthy(s["at"]) {
+		base = fmt.Sprint(s["at"])
 	}
-	if !util.Truthy(baselineAt) {
-		baselineAt = nil
-	}
+	note(map[string]string{"from": before.version, "boot": before.bootID, "base": base})
 	if k := kickOff(addr); !k.ok {
 		return k
 	}
+	return watchPeer(host, before.version, before.bootID, base, "asked", note)
+}
+
+// watchPeer a peer's update followed to its verdict: its agent's, then its new boot
+func watchPeer(host, fromVersion, fromBoot, base, stage string, note func(map[string]string)) result {
+	addr := peerAddr(host)
 	// the stage each progress bar weighs the host by, every peer at once
-	stage := ""
 	at := func(s string) {
 		if s != stage {
 			stage = s
 			note(map[string]string{"stage": s})
 		}
 	}
-	at("asked")
+	note(map[string]string{"stage": stage})
 	capAt := util.Now() + peerCapMS
 	quietUntil := util.Now() + peerQuietMS
 	var swapDeadline int64
@@ -319,14 +327,14 @@ func callPeerUpdate(host string, note func(map[string]string)) result {
 		if status["state"] == "running" && stage == "asked" {
 			at("installing")
 		}
-		if status["state"] != "ok" || (baselineAt != nil && status["at"] == baselineAt) {
+		if status["state"] != "ok" || (base != "" && fmt.Sprint(status["at"]) == base) {
 			continue
 		}
 		if util.Truthy(status["current"]) {
-			return result{ok: true, current: true, to: before.version}
+			return result{ok: true, current: true, to: fromVersion}
 		}
 		after := fetchSelf(addr)
-		if before.bootID == "" || (after.bootID != "" && after.bootID != before.bootID) {
+		if fromBoot == "" || (after.bootID != "" && after.bootID != fromBoot) {
 			to := after.version
 			if to == "" {
 				to = util.Str(status["version"])
@@ -533,7 +541,8 @@ func Remember(alertSeq float64) {
 	saveLocked()
 }
 
-// RestoreChain own step the one nobody can report, closed out by this boot
+// RestoreChain a chain this host drove through its own restart: its own step
+// closed out by this boot, the peers still updating watched again to their verdicts
 func RestoreChain() {
 	var saved Chain
 	if !util.ReadJSON(chainFile, &saved) || saved.Done || saved.Order == nil {
@@ -545,7 +554,6 @@ func RestoreChain() {
 	cmu.Lock()
 	defer cmu.Unlock()
 	chain = &saved
-	chain.Cancelled = true
 	chain.Paused = false
 	if chain.Versions == nil {
 		chain.Versions = map[string]map[string]string{}
@@ -556,23 +564,46 @@ func RestoreChain() {
 	if chain.Results == nil {
 		chain.Results = map[string]string{}
 	}
-	running := ""
+	if chain.Results[selfHost] == "running" {
+		chain.Results[selfHost] = "ok"
+		noteLocked(selfHost, map[string]string{"to": ReadVersion(VersionFile), "stage": ""})
+	}
+	peers := []string{}
 	for _, m := range chain.Order {
-		if chain.Results[m] == "running" {
-			running = m
-			break
+		if m != selfHost && chain.Results[m] == "running" {
+			peers = append(peers, m)
 		}
 	}
-	if running == selfHost {
-		chain.Results[selfHost] = "ok"
-		noteLocked(selfHost, map[string]string{"to": ReadVersion(VersionFile)})
+	if len(peers) == 0 {
 		finishLocked("finished after the swap")
 		return
 	}
-	if running != "" {
-		chain.PauseReason = fmt.Sprintf("%s restarted while updating %s", selfHost, running)
-	}
-	finishLocked("interrupted by a restart")
+	logf("chain %s back after the swap, still watching %s", chain.ID[:8], strings.Join(peers, ", "))
+	go func() {
+		var wg sync.WaitGroup
+		for _, h := range peers {
+			cmu.Lock()
+			v := chain.Versions[h]
+			from, boot, base, stage := v["from"], v["boot"], v["base"], v["stage"]
+			cmu.Unlock()
+			if stage == "" {
+				stage = "asked"
+			}
+			wg.Add(1)
+			go func(host string) {
+				defer wg.Done()
+				r := watchPeer(host, from, boot, base, stage, func(f map[string]string) { cmu.Lock(); noteLocked(host, f); cmu.Unlock() })
+				cmu.Lock()
+				recordLocked(host, r)
+				cmu.Unlock()
+			}(h)
+		}
+		wg.Wait()
+		cmu.Lock()
+		chain.CurrentIndex = len(chain.Order)
+		finishLocked("finished")
+		cmu.Unlock()
+	}()
 }
 
 // record a host's outcome, under cmu
@@ -599,8 +630,8 @@ func recordLocked(host string, r result) bool {
 	return false
 }
 
-// runChain every peer at once, each through its own installer, then this
-// host, whose swap ends the chain's driver; a failure pausing before that
+// runChain every host at once, this one too, each through its own installer;
+// this host's swap ends the driver, RestoreChain picking the rest up on its boot
 func runChain() {
 	time.Sleep(StartGraceMS * time.Millisecond)
 	cmu.Lock()
@@ -609,72 +640,35 @@ func runChain() {
 		cmu.Unlock()
 		return
 	}
-	peers := []string{}
-	for _, h := range chain.Order {
-		if h != selfHost {
-			peers = append(peers, h)
-			chain.Results[h] = "running"
-			noteLocked(h, map[string]string{"from": ""})
-		}
+	hosts := slices.Clone(chain.Order)
+	for _, h := range hosts {
+		chain.Results[h] = "running"
 	}
 	cmu.Unlock()
-	logf("updating %s at once", strings.Join(peers, ", "))
+	logf("updating %s at once", strings.Join(hosts, ", "))
 	var wg sync.WaitGroup
-	failed := []string{}
-	for _, h := range peers {
+	for _, h := range hosts {
 		wg.Add(1)
 		go func(host string) {
 			defer wg.Done()
-			r := callPeerUpdate(host, func(f map[string]string) { cmu.Lock(); noteLocked(host, f); cmu.Unlock() })
+			var r result
+			if host == selfHost {
+				cmu.Lock()
+				noteLocked(selfHost, map[string]string{"from": ReadVersion(VersionFile), "stage": "installing"})
+				cmu.Unlock()
+				r = RunLocalUpdate()
+			} else {
+				r = callPeerUpdate(host, func(f map[string]string) { cmu.Lock(); noteLocked(host, f); cmu.Unlock() })
+			}
 			cmu.Lock()
 			if !recordLocked(host, r) {
-				failed = append(failed, host)
 				logf("%s: %s", host, r.error)
 			}
 			cmu.Unlock()
 		}(h)
 	}
 	wg.Wait()
-
 	cmu.Lock()
-	chain.CurrentIndex = len(peers)
-	if chain.Cancelled {
-		finishLocked("cancelled")
-		cmu.Unlock()
-		return
-	}
-	// a retry of some peers alone: this host left as it is
-	if !slices.Contains(chain.Order, selfHost) {
-		finishLocked("finished")
-		cmu.Unlock()
-		return
-	}
-	if len(failed) > 0 {
-		sort.Strings(failed)
-		chain.Paused = true
-		chain.PauseReason = fmt.Sprintf("%s failed, continue with %s?", strings.Join(failed, ", "), selfHost)
-		logf("paused, %s", chain.PauseReason)
-		saveLocked()
-		w := make(chan struct{})
-		wake = w
-		cmu.Unlock()
-		<-w
-		cmu.Lock()
-		if chain.Cancelled {
-			finishLocked("cancelled")
-			cmu.Unlock()
-			return
-		}
-		chain.Paused = false
-		chain.PauseReason = ""
-	}
-	chain.Results[selfHost] = "running"
-	noteLocked(selfHost, map[string]string{"from": ReadVersion(VersionFile), "stage": "installing"})
-	cmu.Unlock()
-	logf("updating %s", selfHost)
-	r := RunLocalUpdate()
-	cmu.Lock()
-	recordLocked(selfHost, r)
 	chain.CurrentIndex = len(chain.Order)
 	finishLocked("finished")
 	cmu.Unlock()
@@ -735,7 +729,7 @@ func StartOnly(gitHosts, only []string) map[string]any {
 	return map[string]any{"chainId": id, "order": order}
 }
 
-// Cancel stops before this host's own update
+// Cancel stops a chain still in its grace, before any host is asked
 func Cancel() bool {
 	cmu.Lock()
 	defer cmu.Unlock()
@@ -749,7 +743,7 @@ func Cancel() bool {
 	return true
 }
 
-// Proceed past a pause, on to this host
+// Proceed past a pause; a chain running every host at once never pauses
 func Proceed() bool {
 	cmu.Lock()
 	defer cmu.Unlock()
