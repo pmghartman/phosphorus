@@ -345,6 +345,29 @@ func localExec(user, pass, cmd, stdin string, timeout int) (int, any) {
 
 // mcpCallsMesh a user's agent calls from every host, a connector reaching
 // whichever one its ingress picks: in flight from all, the recent merged newest first
+// skewTimes a peer's call log shifted by d ms, its zero times left zero
+func skewTimes(c map[string]any, d float64) {
+	if d == 0 || num(c["now"]) == 0 {
+		return
+	}
+	shift := func(m map[string]any, k string) {
+		if v := num(m[k]); v != 0 {
+			m[k] = v + d
+		}
+	}
+	shift(c, "seen")
+	shift(c, "at")
+	for _, k := range []string{"calls", "recent"} {
+		l, _ := c[k].([]any)
+		for _, x := range l {
+			if m := util.Obj(x); m != nil {
+				shift(m, "since")
+				shift(m, "at")
+			}
+		}
+	}
+}
+
 func mcpCallsMesh(user string) map[string]any {
 	out := mcp.Calls(user)
 	hosts := []string{}
@@ -357,7 +380,7 @@ func mcpCallsMesh(user string) map[string]any {
 		wg.Add(1)
 		go func(i int, h string) {
 			defer wg.Done()
-			if st, b := opOn(h, "mcp_calls", map[string]any{"user": user}, 1500*time.Millisecond); st < 300 {
+			if st, b := opOn(h, "mcp_calls", map[string]any{"user": user}, 2500*time.Millisecond); st < 300 {
 				got[i] = util.Obj(b)
 			}
 		}(i, h)
@@ -370,6 +393,8 @@ func mcpCallsMesh(user string) map[string]any {
 		if c == nil {
 			continue
 		}
+		// a peer's times onto this host's clock
+		skewTimes(c, num(out["now"])-num(c["now"]))
 		if l, ok := c["calls"].([]any); ok {
 			calls = append(calls, l...)
 		}

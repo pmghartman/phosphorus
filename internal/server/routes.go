@@ -194,6 +194,8 @@ func appHandler(w http.ResponseWriter, r *http.Request) {
 			for _, c := range o.Cookie {
 				w.Header().Add("Set-Cookie", c)
 			}
+			// live state, never served from a cache
+			w.Header().Set("Cache-Control", "no-store")
 			sendJSON(w, o.Status, o.Body)
 		}
 		if method == "GET" {
