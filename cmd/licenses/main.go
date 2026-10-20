@@ -145,10 +145,8 @@ type meta struct {
 // rustParts the app's crates on every target it ships for, dev-dependencies left out
 func rustParts() []part {
 	seen := map[string]part{}
-	for _, mf := range []string{"packaging/host/Cargo.toml", "packaging/client/Cargo.toml"} {
-		for _, t := range []string{"x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-pc-windows-msvc"} {
-			rustTarget(mf, t, seen)
-		}
+	for _, t := range []string{"x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-pc-windows-msvc"} {
+		rustTarget("packaging/host/Cargo.toml", t, seen)
 	}
 	parts := []part{}
 	for _, p := range seen {

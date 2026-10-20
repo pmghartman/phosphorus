@@ -2044,7 +2044,6 @@ input, textarea { caret-color: var(--accent); }
 .layout { height: 100vh !important; height: 100dvh !important; }
 .dk-stage { flex: 1; min-height: 0; display: flex; overflow-y: auto; z-index: 1; }
 /* the macOS app: its top 28px a title bar to drag by, the traffic lights in it */
-.app-mac .dk-desk { padding-top: 28px; }
 
 /* the update and theme in the task bar, their popups opening upward */
 .dk-bar .top-mesh-wide { align-self: stretch; height: 100%; }
@@ -2306,6 +2305,24 @@ input, textarea { caret-color: var(--accent); }
 .dk-cl-bar { display: flex; flex-wrap: wrap; gap: 0.4rem; padding: 0.6rem 0.6rem 0; }
 .dk-cl-key.wide { flex-basis: 100%; }
 .dk-cl-hint:not(:empty) { padding: 0.45rem 0.6rem 0; }
+.dk-cl-check { display: flex; align-items: center; gap: 0.45rem; padding: 0.5rem 0.7rem 0; color: var(--muted); cursor: pointer; user-select: none; }
+.dk-cl-check input { margin: 0; accent-color: var(--accent); cursor: pointer; }
+.dk-cl-check:hover, .dk-cl-check:has(input:focus-visible) { color: var(--fg); }
+/* the window the agent is working in, lit purple to orange */
+.dk-win.dk-agent { border-color: transparent; box-shadow: var(--drop), 0 0 0 1px var(--glyph-purple), 0 0 0 3px color-mix(in srgb, var(--glyph-orange) 45%, transparent); transition: box-shadow 0.2s; }
+.dk-agent-con .dk-body { display: block; padding: 0.25rem 0 0 0.5rem; }
+.agent-hud {
+  position: fixed; top: 0.6rem; left: 50%; transform: translateX(-50%); z-index: 1100; display: flex; align-items: center; gap: 0.45rem;
+  max-width: min(32rem, calc(100vw - 2rem)); padding: 0.35rem 0.7rem; font-size: 0.72rem; color: var(--fg); pointer-events: none;
+  background: color-mix(in srgb, var(--card) 88%, transparent); backdrop-filter: blur(10px); border: 1px solid var(--glyph-purple);
+  box-shadow: var(--drop); animation: pop-in 0.12s ease-out;
+}
+.agent-hud[hidden] { display: none; }
+.agent-hud svg { flex: none; width: 0.95rem; height: 0.95rem; }
+.agent-hud .ic path { stroke: url(#mcp-grad); }
+.agent-hud-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-hud.busy { border-color: var(--glyph-orange); }
+.agent-hud.bad { border-color: var(--offmesh); }
 .dk-cl-url { width: 100%; box-sizing: border-box; padding: 0.4rem 0.5rem; border: 1px solid var(--accent); background: var(--bg); color: var(--fg); font: inherit; font-size: 0.7rem; }
 .dk-cl-key {
   flex: 1; min-width: 0; padding: 0.45rem 0.6rem; font: inherit; cursor: pointer; border: 1px solid var(--accent);
