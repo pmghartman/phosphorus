@@ -2066,8 +2066,9 @@ input, textarea { caret-color: var(--accent); }
 .dk-badge[hidden] { display: none; }
 .dk-tile .dk-public { position: absolute; bottom: -0.3rem; right: -0.4rem; width: 0.85rem; height: 0.85rem; pointer-events: none; }
 .dk-task { position: relative; }
-.dk-task:has(.dk-badge) { overflow: visible; }
-.dk-task .dk-badge { top: -0.45rem; right: -0.35rem; }
+/* inline beside the label: the task strip scrolls, so anything over its edge is clipped */
+.dk-task:has(.dk-badge:not([hidden])) { display: inline-flex; align-items: center; gap: 0.35rem; }
+.dk-task .dk-badge { position: static; flex: none; }
 .dk-app .dk-body > .view { padding: 0.9rem; }
 .dk-app-chat .dk-body > .view, .dk-app-projects .dk-body > .view { padding: 0.9rem 0.7rem 0.6rem; }
 
