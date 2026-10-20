@@ -1,6 +1,6 @@
 # manual release: per checked OS a host installer (.deb, .dmg, setup .exe), as
 # vVERSION; feeds on release `update`, then only the two newest releases and runs kept
-# app and apt feeds need UPDATE_SIGNING_KEY(_PASSWORD), APT_GPG_KEY, var UPDATE_PUBKEY
+# app and apt feeds need UPDATE_SIGNING_KEY (go run ./cmd/feedsign -keygen), APT_GPG_KEY, var UPDATE_PUBKEY
 name: release
 
 on:
@@ -164,7 +164,6 @@ jobs:
           FEED_URL: https://github.com/${{ github.repository }}/releases/download/update
           FEED_PUBKEY: ${{ vars.UPDATE_PUBKEY }}
           UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
-          UPDATE_SIGNING_KEY_PASSWORD: ${{ secrets.UPDATE_SIGNING_KEY_PASSWORD }}
         run: |
           if [ "${{ matrix.name }}" = macos-universal ]; then
             $APP/macos.sh "$VER" $APP/payload out upd

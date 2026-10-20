@@ -2,7 +2,7 @@
 # Phosphorus.app for macOS, universal: the tray and the host binary, the release
 # beside them; then its .dmg and, with a signing key, the feed's signed .app.tar.gz
 # usage: macos.sh VERSION PAYLOAD_DIR OUT_DIR UPDATE_DIR
-# env: FEED_URL and FEED_PUBKEY for the tray's own updates, UPDATE_SIGNING_KEY(_PASSWORD) to sign them
+# env: FEED_URL and FEED_PUBKEY for the tray's own updates, UPDATE_SIGNING_KEY to sign them
 set -euo pipefail
 VER=$1 PAYLOAD=$2 OUT=$3 UPD=$4
 HERE=$(cd "$(dirname "$0")" && pwd)

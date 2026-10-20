@@ -1,37 +1,38 @@
 // feedsign: the release's app updates signed for the feed, each FILE's
-// signature written to FILE.sig; the minisign key in UPDATE_SIGNING_KEY, its
-// password in UPDATE_SIGNING_KEY_PASSWORD
+// signature written to FILE.sig, with the key in UPDATE_SIGNING_KEY; -keygen
+// prints a fresh pair for the repo's secret and variable, no password to keep
 package main
 
 import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/pmghartman/phosphorus/internal/minisign"
 )
 
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == "-keygen" {
+		sec, pub, err := minisign.Generate()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "feedsign:", err)
+			os.Exit(1)
+		}
+		fmt.Printf("secret UPDATE_SIGNING_KEY:\n%s\n\nvariable UPDATE_PUBKEY:\n%s\n", sec, pub)
+		return
+	}
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: feedsign FILE...")
+		fmt.Fprintln(os.Stderr, "usage: feedsign FILE... | feedsign -keygen")
 		os.Exit(2)
 	}
-	key, pass := os.Getenv("UPDATE_SIGNING_KEY"), os.Getenv("UPDATE_SIGNING_KEY_PASSWORD")
-	k, err := minisign.ParseSecretKey(key, pass)
-	// a secret pasted with a line break or space around it
-	if t := strings.TrimSpace(pass); err != nil && t != pass {
-		k, err = minisign.ParseSecretKey(key, t)
+	key := os.Getenv("UPDATE_SIGNING_KEY")
+	if minisign.Encrypted(key) {
+		fmt.Fprintln(os.Stderr, "feedsign: UPDATE_SIGNING_KEY is password protected; make a new one with feedsign -keygen")
+		os.Exit(1)
 	}
+	k, err := minisign.ParseSecretKey(key, "")
 	if err != nil {
-		why := err.Error()
-		switch {
-		case minisign.Encrypted(key) && pass == "":
-			why = "the key is encrypted and UPDATE_SIGNING_KEY_PASSWORD is empty"
-		case minisign.Encrypted(key):
-			why = fmt.Sprintf("UPDATE_SIGNING_KEY_PASSWORD (%d characters) doesn't open UPDATE_SIGNING_KEY: not the password this key was made with", len(pass))
-		}
-		fmt.Fprintln(os.Stderr, "feedsign:", why)
+		fmt.Fprintln(os.Stderr, "feedsign:", err)
 		os.Exit(1)
 	}
 	// the key the installed apps check against, when the release names it
