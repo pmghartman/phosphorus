@@ -5,6 +5,7 @@ package minisign
 import (
 	"bytes"
 	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/base64"
 	"encoding/binary"
 	"errors"
@@ -107,6 +108,31 @@ func ParseSecretKey(s, password string) (*SecretKey, error) {
 	k := &SecretKey{Key: ed25519.PrivateKey(body[8:72])}
 	copy(k.ID[:], body[:8])
 	return k, nil
+}
+
+// Generate a fresh key pair, its secret unencrypted: base64 of each file
+func Generate() (secret, public string, err error) {
+	pub, priv, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		return "", "", err
+	}
+	var id [8]byte
+	if _, err := rand.Read(id[:]); err != nil {
+		return "", "", err
+	}
+	h, _ := blake2b.New256(nil)
+	h.Write(algLegacy)
+	h.Write(id[:])
+	h.Write(priv)
+	sk := append(append([]byte(nil), algLegacy...), 0, 0)
+	sk = append(sk, chkBlake...)
+	sk = append(sk, make([]byte, 48)...)
+	sk = append(append(append(sk, id[:]...), priv...), h.Sum(nil)...)
+	pk := append(append(append([]byte(nil), algLegacy...), id[:]...), pub...)
+	file := func(what string, b []byte) string {
+		return base64.StdEncoding.EncodeToString([]byte("untrusted comment: phosphorus update " + what + "\n" + base64.StdEncoding.EncodeToString(b) + "\n"))
+	}
+	return file("secret key", sk), file("public key", pk), nil
 }
 
 // scryptParams libsodium's choice of n (as log2), r and p from its ops and memory limits
