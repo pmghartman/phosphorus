@@ -4147,6 +4147,8 @@ function applyTheme(theme) {
     b.title = `theme: ${theme}`;
   }
   for (const li of document.querySelectorAll('.theme-menu li')) li.classList.toggle('current', li.dataset.theme === theme);
+  // Safari's bars tinted the page's own background
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', getComputedStyle(document.body || document.documentElement).getPropertyValue('--bg').trim() || '#141414');
   appCall('terminal', false, (m) => m.termsRetheme());
 }
 
