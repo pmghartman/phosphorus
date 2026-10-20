@@ -77,11 +77,9 @@ var (
 )
 
 const (
-	alertColor    = "#f85149"
-	updateWarning = "phosphorus updating"
-	runMS         = 12 * 3600 * 1000
-	runSandbox    = "sandbox allow-scripts allow-forms allow-modals allow-popups allow-pointer-lock allow-downloads"
-	maxTerms      = 16
+	runMS      = 12 * 3600 * 1000
+	runSandbox = "sandbox allow-scripts allow-forms allow-modals allow-popups allow-pointer-lock allow-downloads"
+	maxTerms   = 16
 )
 
 // Version this binary's release, the image's VERSION
@@ -632,8 +630,6 @@ func chainAction(action, password string, admin bool, only ...string) (int, any)
 		if e, ok := started["error"]; ok {
 			return 404, map[string]any{"error": e}
 		}
-		alert := postOwn(Msg{"kind": "alert", "name": "system", "color": alertColor, "text": updateWarning, "countdown": update.StartGraceMS / 1000})
-		update.Remember(num(alert["seq"]))
 		return 202, started
 	case "cancel":
 		if update.Cancel() {

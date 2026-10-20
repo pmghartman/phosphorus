@@ -1689,8 +1689,8 @@ function notifyOs(title, body) {
   } catch {}
 }
 
-// mesh news past the chat: one note when a mesh update this page watched ends,
-// the hosts that failed in it if any
+// mesh updates in the bell, never the chat: one note as one starts, one as it ends
+// with the hosts that failed in it if any
 // kept across the reload a host's own update brings
 const CHAIN_SEEN = 'phosphorus-chain-running';
 function notifyMesh(state) {
@@ -1698,7 +1698,13 @@ function notifyMesh(state) {
   if (!ch?.chainId) return;
   let running = '';
   try { running = sessionStorage.getItem(CHAIN_SEEN) || ''; } catch {}
-  if (!ch.done) { try { sessionStorage.setItem(CHAIN_SEEN, ch.chainId); } catch {} return; }
+  if (!ch.done) {
+    if (running === ch.chainId) return;
+    try { sessionStorage.setItem(CHAIN_SEEN, ch.chainId); } catch {}
+    noteAdd('mesh update started', (ch.order || []).join(', '), null, { view: 'update' });
+    if (notifyOn) notifyOs('mesh update started', '');
+    return;
+  }
   if (ch.chainId !== running) return;
   try { sessionStorage.removeItem(CHAIN_SEEN); } catch {}
   const failed = Object.entries(ch.results || {}).filter(([, r]) => r === 'fail' || r === 'unreachable').map(([h]) => h);
@@ -4509,7 +4515,7 @@ function dkLogout() {
   // the last user's key and calls never shown to the next
   dk.mcp = null;
   clearTimeout(dk.mcpTimer);
-  Object.assign(mcpStat, { configured: false, seen: 0, at: 0, client: '', calls: [], recent: [], url: '' });
+  Object.assign(mcpStat, { configured: false, seen: 0, at: 0, now: 0, got: 0, client: '', calls: [], recent: [], url: '' });
   for (const w of [...dk.wins.values()]) dkClose(w, true);
   dk.creds.clear();
   dk.desk = null;
@@ -6543,7 +6549,7 @@ function dkForget(host) {
 // its calls on this host as they happen
 
 // the user's key and calls from the mesh, and its url once fetched
-const mcpStat = { configured: false, seen: 0, at: 0, now: 0, client: '', calls: [], recent: [], url: '' };
+const mcpStat = { configured: false, seen: 0, at: 0, now: 0, got: 0, client: '', calls: [], recent: [], url: '' };
 const MCP_ACTIVE_MS = 12000;
 // a connector heard from this recently counted connected
 const MCP_SEEN_MS = 15 * 60000;
@@ -6553,8 +6559,9 @@ const MCP_SEEN_MS = 15 * 60000;
 function mcpState() {
   const c = mcpStat;
   if (!c.configured) return 'off';
-  if (c.calls.length || (c.at && c.now - c.at < MCP_ACTIVE_MS)) return 'active';
-  return c.seen && c.now - c.seen < MCP_SEEN_MS ? 'online' : 'idle';
+  const now = mcpNow();
+  if (c.calls.length || (c.at && now - c.at < MCP_ACTIVE_MS)) return 'active';
+  return c.seen && now - c.seen < MCP_SEEN_MS ? 'online' : 'idle';
 }
 
 const mcpAgo = (ms) => {
@@ -6596,8 +6603,8 @@ function dkMcpTray() {
     if (c.host) top.append(el('span', 'dk-cl-host', c.host));
     top.append(el('span', 'dk-cl-tool', c.tool));
     if (c.detail) top.append(el('span', 'dk-cl-arg', `(${c.detail})`));
-    const out = live ? `running · ${mcpMs(mcpStat.now - c.since)}`
-      : `${c.ok ? 'done' : c.error || 'failed'} · ${mcpMs(c.ms)} · ${mcpAgo(mcpStat.now - c.at)} ago`;
+    const out = live ? `running · ${mcpMs(Math.max(0, mcpNow() - c.since))}`
+      : `${c.ok ? 'done' : c.error || 'failed'} · ${mcpMs(c.ms)} · ${mcpAgo(mcpNow() - c.at)} ago`;
     li.append(top, el('div', 'dk-cl-out', out));
     if (c.detail) li.title = c.host ? `${c.host}: ${c.detail}` : c.detail;
     return li;
@@ -6683,7 +6690,8 @@ function dkMcpTray() {
     stateLine.textContent = { off: 'not connected', idle: 'idle', online: 'connected', active: 'working' }[st];
     stateLine.dataset.state = st;
     if (!c.configured) { body.replaceChildren(); list = null; return; }
-    const rows = [row('last heard', c.seen ? `${mcpAgo(c.now - c.seen)} ago` : 'not yet', c.seen && c.now - c.seen < MCP_SEEN_MS ? 'good' : '')];
+    const now = mcpNow();
+    const rows = [row('last heard', c.seen ? `${mcpAgo(now - c.seen)} ago` : 'not yet', c.seen && now - c.seen < MCP_SEEN_MS ? 'good' : '')];
     if (c.client) rows.push(row('client', c.client));
     const calls = el('div', 'dk-cl-sec');
     calls.append(el('div', 'dk-cl-sec-t', 'calls'));
@@ -6732,13 +6740,20 @@ function dkMcpTray() {
 
 // the user's key and calls from the mesh
 async function pollMcp() {
-  const s = await acctCall('/api/me/mcp');
+  let s = { ok: false };
+  try {
+    const r = await fetch('/api/me/mcp', { cache: 'no-store', signal: AbortSignal.timeout(6000) });
+    s = { ok: r.ok, ...(await r.json().catch(() => ({}))) };
+  } catch {}
   if (s.ok) {
     Object.assign(mcpStat, { configured: !!s.configured, seen: +s.seen || 0, at: +s.at || 0, client: s.client || '',
-      now: +s.now || Date.now(), calls: s.calls || [], recent: s.recent || [] });
+      now: +s.now || Date.now(), got: Date.now(), calls: s.calls || [], recent: s.recent || [] });
   }
   dk.mcp?.paint();
 }
+
+// the mesh's now, carried forward from the last answer so durations keep running
+const mcpNow = () => (mcpStat.now || Date.now()) + (mcpStat.got ? Date.now() - mcpStat.got : 0);
 
 // the key's url from the mesh, copied: the one in use, or a fresh one voiding it.
 // a url already in hand copied in the tap itself, else once it lands
