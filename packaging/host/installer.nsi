@@ -15,6 +15,13 @@ SetCompressor /SOLID lzma
 !define UNINSTKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT}"
 !define RUNKEY "Software\Microsoft\Windows\CurrentVersion\Run"
 
+; the tray alone, by its full path: Windows names are case-blind, and phosphorus
+; itself runs as phosphorus.exe from the home, never to be stopped by this
+!macro StopTray
+  nsExec::Exec `powershell -NoProfile -NonInteractive -Command "Get-Process -Name Phosphorus -ErrorAction SilentlyContinue | Where-Object { $$_.Path -eq '$INSTDIR\Phosphorus.exe' } | Stop-Process -Force"`
+  Sleep 500
+!macroend
+
 Name "${PRODUCT}"
 OutFile "${OUTFILE}"
 InstallDir "$LOCALAPPDATA\${PRODUCT}"
@@ -38,8 +45,7 @@ VIAddVersionKey "LegalCopyright" "Apache-2.0"
 
 Section "Install"
   ; a running tray let go of its files; phosphorus itself runs from the home, untouched
-  nsExec::Exec 'taskkill /IM Phosphorus.exe /F'
-  Sleep 500
+  !insertmacro StopTray
   SetOutPath "$INSTDIR"
   ; the old release's files gone, never mixed with this one's
   RMDir /r "$INSTDIR\release"
@@ -68,8 +74,7 @@ Section "Install"
 SectionEnd
 
 Section "Uninstall"
-  nsExec::Exec 'taskkill /IM Phosphorus.exe /F'
-  Sleep 500
+  !insertmacro StopTray
   Delete "$SMPROGRAMS\${PRODUCT}.lnk"
   DeleteRegValue HKCU "${RUNKEY}" "${PRODUCT}"
   DeleteRegKey HKCU "${UNINSTKEY}"
