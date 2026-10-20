@@ -2,7 +2,7 @@
 # Phosphorus's setup .exe for Windows: the tray, the host binary and the release,
 # by NSIS; with a signing key, the feed's signature beside a copy of it
 # usage: windows.sh VERSION PAYLOAD_DIR OUT_DIR UPDATE_DIR
-# env: FEED_URL and FEED_PUBKEY for the tray's own updates, TAURI_SIGNING_PRIVATE_KEY(_PASSWORD) to sign them
+# env: FEED_URL and FEED_PUBKEY for the tray's own updates, UPDATE_SIGNING_KEY(_PASSWORD) to sign them
 set -euo pipefail
 VER=$1 PAYLOAD=$2 OUT=$3 UPD=$4
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -32,7 +32,7 @@ PATH="$PATH:/c/Program Files (x86)/NSIS"
 command -v makensis >/dev/null || choco install nsis -y --no-progress >/dev/null
 makensis -V2 -DVERSION="$VER" -DSTAGE="$(cygpath -w "$STAGE")" -DOUTFILE="$(cygpath -w "$SETUP")" "$(cygpath -w "$HERE/installer.nsi")"
 
-if [ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ] && [ -n "${FEED_PUBKEY:-}" ]; then
+if [ -n "${UPDATE_SIGNING_KEY:-}" ] && [ -n "${FEED_PUBKEY:-}" ]; then
   cp "$SETUP" "$UPD/phosphorus-windows-x86_64-setup.exe"
   go run ./cmd/feedsign "$UPD/phosphorus-windows-x86_64-setup.exe"
 fi

@@ -2,7 +2,7 @@
 # Phosphorus.app for macOS, universal: the tray and the host binary, the release
 # beside them; then its .dmg and, with a signing key, the feed's signed .app.tar.gz
 # usage: macos.sh VERSION PAYLOAD_DIR OUT_DIR UPDATE_DIR
-# env: FEED_URL and FEED_PUBKEY for the tray's own updates, TAURI_SIGNING_PRIVATE_KEY(_PASSWORD) to sign them
+# env: FEED_URL and FEED_PUBKEY for the tray's own updates, UPDATE_SIGNING_KEY(_PASSWORD) to sign them
 set -euo pipefail
 VER=$1 PAYLOAD=$2 OUT=$3 UPD=$4
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -43,7 +43,7 @@ for i in 1 2 3; do
   sleep 5
 done
 
-if [ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ] && [ -n "${FEED_PUBKEY:-}" ]; then
+if [ -n "${UPDATE_SIGNING_KEY:-}" ] && [ -n "${FEED_PUBKEY:-}" ]; then
   tar -czf "$UPD/phosphorus-macos-universal.app.tar.gz" -C "$WORK" Phosphorus.app
   (cd "$ROOT" && go run ./cmd/feedsign "$UPD/phosphorus-macos-universal.app.tar.gz")
 fi

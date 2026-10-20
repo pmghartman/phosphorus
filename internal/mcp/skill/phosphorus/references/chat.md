@@ -7,4 +7,4 @@ Reads and posts to the Phosphorus mesh chat and direct messages, and waits for r
 - Send: `send_message` `text` (markdown), `to` for a direct message. It posts as {{USER}}; send exactly what the user asked, never invented content.
 - Wait for a reply: take `since` from the last line's `ms`, then `chat_wait` `channel` `since` `wait_s: 300`, repeating until a line from the other person lands or the user stops.
 - Fix or withdraw a line: `chat_edit` `ref` from `chat_history`.
-- Nudge the user elsewhere: `notify` `title`, `body`.
+- Nudge the user on their open Phosphorus windows: `notify` `title`, `body`. Never by email or any other app.

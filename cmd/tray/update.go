@@ -52,7 +52,6 @@ func feedCheck() (*release, error) {
 	if err := json.NewDecoder(io.LimitReader(res.Body, 1<<20)).Decode(&r); err != nil {
 		return nil, err
 	}
-	r.Version = strings.TrimSuffix(r.Version, ".0")
 	have := appVersion
 	if have == "" {
 		have = payloadVersion()

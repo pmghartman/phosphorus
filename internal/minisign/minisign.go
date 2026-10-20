@@ -1,5 +1,5 @@
-// Package minisign: the update feed's signatures, minisign's format as the
-// installed apps already trust it; keys and signatures as base64 of their files
+// Package minisign: the update feed's signatures in minisign's format; keys and
+// signatures as base64 of their files
 package minisign
 
 import (

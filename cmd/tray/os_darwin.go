@@ -18,7 +18,7 @@ import (
 //go:embed assets/tray.png
 var trayIcon []byte
 
-// the login item, the same file the app has always used
+// the login item
 const launchAgent = "Library/LaunchAgents/Phosphorus.plist"
 
 func homeDir() string {
