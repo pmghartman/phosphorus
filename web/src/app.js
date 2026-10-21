@@ -15,6 +15,10 @@ const APPS = {
 // the newest /api/state, handed to an app as it loads
 let lastState = null;
 const appMods = new Map();
+// the desktop's state, up here because code run at load (the chat's first
+// setConv) asks dk.desk long before the desktop section below
+// creds: host -> {user, pass}, this page's memory only
+const dk = { creds: new Map(), rows: new Map(), wins: new Map(), services: [], deskFiles: [], z: 10, n: 0, desk: null, sig: '' };
 function app(name) {
   if (!appMods.has(name)) appMods.set(name, APPS[name]().catch((e) => { appMods.delete(name); throw e; }));
   return appMods.get(name);
@@ -4283,8 +4287,6 @@ document.addEventListener('keydown', (e) => {
 const dkView = document.getElementById('view-desktop');
 const DK_USERS_KEY = 'phosphorus-dk-users';
 const wsBase = () => `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`;
-// creds: host -> {user, pass}, this page's memory only
-const dk = { creds: new Map(), rows: new Map(), wins: new Map(), services: [], deskFiles: [], z: 10, n: 0, desk: null, sig: '' };
 
 function dkUsers() {
   try { return JSON.parse(localStorage.getItem(DK_USERS_KEY)) || {}; } catch { return {}; }
