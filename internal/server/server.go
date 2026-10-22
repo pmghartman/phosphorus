@@ -746,6 +746,20 @@ func mintGuestKey() (int, any) {
 
 // --- startup -----------------------------------------------------------------
 
+// dropProjects what the old projects app kept: its runs in the state dir and
+// its workspaces in the shared home, gone once
+func dropProjects() {
+	gone := []string{}
+	for _, d := range []string{filepath.Join(util.StateDir, "project-runs"), filepath.Join(files.HomeRoot, files.Shared, "projects")} {
+		if _, err := os.Stat(d); err == nil && os.RemoveAll(d) == nil {
+			gone = append(gone, d)
+		}
+	}
+	if len(gone) > 0 {
+		log.Printf("[frontend] removed old project data: %s", strings.Join(gone, ", "))
+	}
+}
+
 // Main the frontend until SIGTERM
 func Main() int {
 	var pf map[string]any
@@ -764,6 +778,8 @@ func Main() int {
 		return out
 	}
 	sysfs.Start()
+	users.DropOldTokens()
+	dropProjects()
 	chatmedia.Init()
 	git.Init(updating.Load, bootID)
 	update.OnFinish(func(c *update.Chain) {

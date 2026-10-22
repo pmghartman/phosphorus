@@ -1,14 +1,15 @@
 package users
 
-// a user's own Anthropic subscription token (claude setup-token's), sealed
-// with the mesh key as the key's logins are reachable server side: any host
-// holding the mesh key can start that user's Code session; and what a Code
-// session needs of a logged in user: a host login, their mcp key
+// a user's own Anthropic subscription token (claude setup-token's), kept in
+// their vault under their password: only a request carrying their login
+// opens it; and what a Code session needs of a logged in user: a host
+// login, their mcp key, all from that same vault
 
 import (
 	"net/http"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/pmghartman/phosphorus/internal/sysfs"
 	"github.com/pmghartman/phosphorus/internal/util"
@@ -18,44 +19,62 @@ const maxToken = 512
 
 var tokenRe = regexp.MustCompile(`^[A-Za-z0-9_.:+/=-]+$`)
 
-func anthropicFile(n string) string { return "home/" + n + "/anthropic.json" }
-
-type anthropicRec struct {
-	T  *Box  `json:"t"`
-	At int64 `json:"at"`
+// cleanToken a token as kept, "" for none or a bad one
+func cleanToken(v any) string {
+	t := strings.TrimSpace(str(v))
+	if len(t) > maxToken || !tokenRe.MatchString(t) {
+		return ""
+	}
+	return t
 }
 
-// SetAnthropic the token sealed, "" clearing it
+// DropOldTokens the tokens older releases sealed with the mesh key, gone
+func DropOldTokens() {
+	for _, f := range sysfs.List("home") {
+		if strings.Count(f, "/") == 1 && strings.HasSuffix(f, "/anthropic.json") {
+			sysfs.Remove("home/" + f)
+		}
+	}
+}
+
+// dropOnce the old tokens gone on the first read too, any synced in late
+var dropOnce = sync.OnceFunc(DropOldTokens)
+
+// SetAnthropic the token sealed in the vault, "" clearing it
 func SetAnthropic(s *Session, p map[string]any) R {
-	if s == nil || s.Boot {
+	if s == nil || s.Boot || len(s.Key) == 0 {
 		return errR(403, "log in as a user")
 	}
+	dropOnce()
 	t := strings.TrimSpace(str(p["token"]))
-	if t == "" {
-		sysfs.Remove(anthropicFile(s.User))
-		return R{Status: 200, Body: map[string]any{"anthropic": false}}
-	}
-	if len(t) > maxToken || !tokenRe.MatchString(t) {
+	if t != "" && cleanToken(t) == "" {
 		return errR(400, "that isn't a token: run claude setup-token and paste what it prints")
 	}
-	b := Seal(MeshKey(), t)
-	sysfs.Write(anthropicFile(s.User), anthropicRec{T: &b, At: util.Now()})
-	return R{Status: 200, Body: map[string]any{"anthropic": true}}
+	v, ok := openVault(s)
+	if !ok {
+		pull()
+		if v, ok = openVault(s); !ok {
+			return errR(503, "this host hasn't your saved logins yet, try again shortly")
+		}
+	}
+	cv := cleanVault(v)
+	delete(cv, "anthropic")
+	if t != "" {
+		cv["anthropic"] = t
+	}
+	text := string(util.Marshal(cv))
+	if len(text) > maxVault {
+		return errR(413, "too many saved logins")
+	}
+	sysfs.Write(vaultFile(s.User), Seal(s.Key, text))
+	return R{Status: 200, Body: map[string]any{"anthropic": t != ""}}
 }
 
-// HasAnthropic whether the user saved a token this mesh can open
-func HasAnthropic(u string) bool { return AnthropicToken(u) != "" }
-
-// AnthropicToken the user's token, "" for none
-func AnthropicToken(u string) string {
-	var rec anthropicRec
-	if !nameRe.MatchString(u) || !sysfs.ReadInto(anthropicFile(u), &rec) || rec.T == nil {
-		return ""
-	}
-	t, ok := Open(MeshKey(), *rec.T)
-	if !ok {
-		return ""
-	}
+// AnthropicToken the session's user's token, "" for none
+func AnthropicToken(s *Session) string {
+	dropOnce()
+	v, _ := vaultOf(s)
+	t, _ := cleanVault(v)["anthropic"].(string)
 	return t
 }
 
@@ -74,6 +93,12 @@ func HostLogin(s *Session, host string) (user, pass string, ok bool) {
 	user, _ = l["user"].(string)
 	pass, _ = l["pass"].(string)
 	return user, pass, user != ""
+}
+
+// VaultOK whether this host could open the session's vault
+func VaultOK(s *Session) bool {
+	_, ok := vaultOf(s)
+	return ok
 }
 
 // KeyOf the session's user's mcp key: the one in use, a fresh one when

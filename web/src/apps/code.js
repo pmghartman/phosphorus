@@ -5,10 +5,7 @@ import {
   dkTerminal,
   el,
   esc,
-  filesCall,
-  filesWin,
   hostsInfo,
-  putFile,
   wsBase,
 } from '../app.js';
 import { renderMd } from '../md.js';
@@ -28,6 +25,10 @@ const PERMS = [
 const PICK_LS = 'phosphorus-code-pick';
 const DIR_LS = 'phosphorus-code-dirs';
 const LIST_MS = 4000;
+// an upload's bytes at most, as the server takes
+const UP_MAX = 50 * 1024 * 1024;
+const ANTH = ['opus', 'sonnet', 'haiku'];
+const provOf = (id) => (ANTH.includes(id) ? 'anthropic' : 'mesh');
 // a tool's output kept to this on screen, the rest counted
 const OUT_MAX = 16000;
 
@@ -42,6 +43,9 @@ const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } ca
 const shQuote = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
 const tilde = (d) => String(d || '').replace(/^\/(home|Users)\/[^/]+(?=\/|$)/, '~').replace(/^\/root(?=\/|$)/, '~');
 const base = (d) => String(d || '').replace(/\/+$/, '').split('/').pop() || '/';
+const parent = (d) => String(d || '').replace(/\/+$/, '').replace(/\/[^/]*$/, '') || '/';
+const qs = (o) => Object.entries(o).map(([k, v]) => `${k}=${encodeURIComponent(v ?? '')}`).join('&');
+const bytes = (n) => (n >= 1 << 30 ? `${(n / (1 << 30)).toFixed(1)}G` : n >= 1 << 20 ? `${(n / (1 << 20)).toFixed(1)}M` : n >= 1024 ? `${(n / 1024).toFixed(1)}K` : `${n || 0}B`);
 const kfmt = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}m` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}k` : String(n || 0));
 const ago = (ms) => {
   const m = Math.max(0, Math.round((Date.now() - ms) / 60000));
@@ -275,10 +279,8 @@ function paintHead() {
   term.addEventListener('click', () => dkTerminal(r.host, `cd ${shQuote(r.dir)}`));
   const folder = Object.assign(el('button', 'cd-icon'), { type: 'button', ariaLabel: 'open folder' });
   folder.innerHTML = svg(GL.folder);
-  const sh = shareOf(r.host, r.dir);
-  folder.disabled = !sh;
-  folder.title = sh ? `open ${r.host}:${r.dir} in files` : 'not inside a files share on that host';
-  folder.addEventListener('click', () => sh && filesWin({ loc: sh.loc, dir: sh.rel }));
+  folder.title = `browse ${r.host}:${r.dir}`;
+  folder.addEventListener('click', () => openBrowser(r.host, r.dir));
   tools.append(term, folder);
   top.append(sideBtn(), title, state, tools);
 
@@ -286,7 +288,7 @@ function paintHead() {
   const where = el('span', 'cd-where');
   where.append(el('span', 'cd-host', r.host), el('span', 'st-dim', ':'), tilde(r.dir));
   where.title = `${r.host}:${r.dir}`;
-  const model = modelSelect(opts, r.model);
+  const model = modelSelect(opts, r.model, true);
   model.addEventListener('change', () => {
     const v = model.value;
     call(sapi(r.id, 'model'), 'POST', { model: v }).then(() => { r.model = v; loadList(); }, (e) => { say(e.message); model.value = r.model; });
@@ -305,17 +307,22 @@ function paintHead() {
   composer?.state(r);
 }
 
-function modelSelect(opts, cur) {
+// the models by provider; lock, a running session's, the other provider's
+// shown but off: a switch across is a new session's
+function modelSelect(opts, cur, lock) {
   const s = el('select', 'cd-sel');
-  s.title = 'model';
+  const CROSS = 'start a new session to change provider';
+  s.title = lock ? `model; ${CROSS}` : 'model';
   const models = (opts?.models || []).filter((m) => m.provider !== 'anthropic' || opts.anthropic);
   const mesh = models.filter((m) => m.provider !== 'anthropic');
   const anth = models.filter((m) => m.provider === 'anthropic');
-  const opt = (m) => `<option value="${esc(m.id)}"${m.id === cur ? ' selected' : ''}${m.ready === false && m.id !== cur ? ' disabled' : ''}>`
-    + `${esc(m.label || m.id)}${m.ready === false ? ` · ${esc(m.why || 'not ready')}` : ''}</option>`;
+  const off = (m) => lock && provOf(m.id) !== provOf(cur);
+  const opt = (m) => `<option value="${esc(m.id)}"${m.id === cur ? ' selected' : ''}${(m.ready === false && m.id !== cur) || off(m) ? ' disabled' : ''}`
+    + `${off(m) ? ` title="${CROSS}"` : ''}>${esc(m.label || m.id)}${m.ready === false ? ` · ${esc(m.why || 'not ready')}` : ''}</option>`;
+  const group = (label, ms) => `<optgroup label="${label}"${ms.length && ms.every(off) ? ` title="${CROSS}"` : ''}>${ms.map(opt).join('')}</optgroup>`;
   let html = '';
-  if (mesh.length) html += `<optgroup label="mesh">${mesh.map(opt).join('')}</optgroup>`;
-  if (anth.length) html += `<optgroup label="anthropic">${anth.map(opt).join('')}</optgroup>`;
+  if (mesh.length) html += group('mesh', mesh);
+  if (anth.length) html += group('anthropic', anth);
   if (cur && !models.some((m) => m.id === cur)) html += `<option value="${esc(cur)}" selected>${esc(cur)}</option>`;
   s.innerHTML = html || '<option value="">no models</option>';
   return s;
@@ -809,36 +816,47 @@ function makeComposer(t) {
   const state = (r) => {
     const working = live(r);
     stop.hidden = !working;
-    const sh = r && shareOf(r.host, r.dir);
-    const can = !!sh && sh.loc.perms.includes('w');
-    attach.disabled = !can;
-    attach.title = can ? `attach files: uploaded into ${r.dir}` : 'attach needs the folder inside a files share you can write to';
+    attach.disabled = !r;
+    attach.title = r ? `attach files: uploaded into ${r.host}:${r.dir}` : 'attach files';
     form.classList.toggle('cd-busy', working);
   };
   state(rec(t.id));
   return { node, text, state };
 }
 
-// files sent into the session's folder through the files share holding it, an
-// existing name never overwritten, then @mentioned in the prompt
+// a file posted raw, its progress told
+function sendFile(url, f, progress) {
+  return new Promise((ok, bad) => {
+    const x = new XMLHttpRequest();
+    x.open('POST', url);
+    x.upload.onprogress = (e) => progress(e.loaded);
+    x.onload = () => {
+      let o = {};
+      try { o = JSON.parse(x.responseText); } catch {}
+      if (x.status >= 200 && x.status < 300) ok(o); else bad(new Error(o.error || `status ${x.status}`));
+    };
+    x.onerror = () => bad(new Error('upload failed'));
+    x.send(f);
+  });
+}
+
+// files sent into the session's folder over the user's login there, an
+// existing name never overwritten (the server picks "name (1).ext"), then
+// @mentioned in the prompt
 async function upload(t, files, atts, text, grow) {
   const r = rec(t.id);
-  const sh = r && shareOf(r.host, r.dir);
-  if (!sh || !sh.loc.perms.includes('w')) { say('the folder is not inside a files share you can write to'); return; }
-  let names = new Set();
-  try { names = new Set(((await filesCall(sh.loc, 'list', undefined, { path: sh.rel })).entries || []).map((e) => e.name)); } catch {}
+  if (!r) return;
   for (const f of files) {
-    let name = f.name || 'pasted';
-    const dot = name.lastIndexOf('.');
-    for (let i = 1; names.has(name); i++) name = dot > 0 ? `${f.name.slice(0, dot)} (${i})${f.name.slice(dot)}` : `${f.name} (${i})`;
-    names.add(name);
     const chip = el('span', 'cd-att');
     const st = el('span', 'cd-att-st', '0%');
-    chip.append(el('span', '', name), st);
+    chip.append(el('span', '', f.name || 'pasted'), st);
     atts.append(chip);
     try {
-      await putFile(sh.loc, sh.rel ? `${sh.rel}/${name}` : name, f, (n) => { st.textContent = `${Math.round((n / (f.size || 1)) * 100)}%`; });
+      if (f.size > UP_MAX) throw new Error('50MB at most');
+      const o = await sendFile(`/api/code/upload?${qs({ host: r.host, dir: r.dir, name: f.name || 'pasted' })}`, f,
+        (n) => { st.textContent = `${Math.round((n / (f.size || 1)) * 100)}%`; });
       chip.remove();
+      const name = base(o.path);
       const at = /\s/.test(name) ? `@"${name}"` : `@${name}`;
       text.value = `${text.value}${text.value && !/\s$/.test(text.value) ? ' ' : ''}${at} `;
       grow();
@@ -863,6 +881,18 @@ async function paintNew() {
   if (cd.pick !== 'new' || !form.isConnected) return;
   const top = el('div', 'cd-head-top');
   top.append(sideBtn(), el('span', 'cd-title', 'new session'));
+  // no login of the user's own on any computer: nowhere to run
+  if (opts.blocked) {
+    const box = el('div', 'cd-empty');
+    const again = Object.assign(el('button', 'cd-mini primary', 'check again'), { type: 'button' });
+    again.addEventListener('click', () => paintNew());
+    box.append(el('div', 'cd-empty-t', opts.blocked),
+      el('p', 'cd-intro', 'Code runs claude on one of your computers, signed in as you over ssh, so it needs a login of yours saved for that computer.'),
+      el('p', 'cd-intro', 'Open a terminal on a computer from the desktop, log in and save the login, then come back here.'),
+      again);
+    form.replaceChildren(top, box);
+    return;
+  }
   const hosts = opts.hosts || [];
   const dirs = lsGet(DIR_LS, {});
   const lastHost = lsGet(`${DIR_LS}-host`, '');
@@ -892,17 +922,16 @@ async function paintNew() {
   };
   const dirWrap = el('span', 'cd-dir-wrap');
   dirWrap.append(dir, browse);
-  const intro = el('p', 'pj-intro cd-intro');
+  const intro = el('p', 'cd-intro');
   intro.innerHTML = 'Claude Code runs on the host you pick, as your login there, in the folder you name. '
     + 'It gets your phosphorus connector and skill. '
     + (opts.anthropic ? '' : '<span class="st-dim">Add an anthropic token under the agent menu to use opus, sonnet and haiku.</span>');
-  const msg = el('span', 'pj-msg cd-msg');
+  const msg = el('span', 'cd-msg');
   const goBtn = Object.assign(el('button', 'primary', 'start'), { type: 'submit' });
   const acts = el('div', 'update-actions');
   acts.append(msg, goBtn);
   form.replaceChildren(top, intro);
-  if (opts.error) form.append(el('p', 'pj-intro cd-bad', `couldn't load options: ${opts.error}`));
-  if (!hosts.length) form.append(el('p', 'pj-intro cd-bad', 'no host has a saved login of yours; log into one on the desktop first'));
+  if (opts.error) form.append(el('p', 'cd-intro cd-bad', `couldn't load options: ${opts.error}`));
   form.append(row('host', host), install, row('folder', dirWrap), picker, row('model', model), row('mode', perm), prompt, acts);
   const valid = () => { goBtn.disabled = !host.value || !dir.value.trim() || !model.value || !prompt.value.trim() || install.dataset.missing === '1'; };
   form.addEventListener('input', valid);
@@ -937,7 +966,7 @@ async function paintNew() {
     valid();
   };
   host.addEventListener('change', () => { dir.value = dirs[host.value] || dir.value; picker.hidden = true; check(); });
-  browse.addEventListener('click', () => { picker.hidden = !picker.hidden; if (!picker.hidden) browseAt(picker, host.value, null, '', (p) => { dir.value = p; picker.hidden = true; valid(); }); });
+  browse.addEventListener('click', () => { picker.hidden = !picker.hidden; if (!picker.hidden) browseAt(picker, host.value, '', (p) => { dir.value = p; picker.hidden = true; valid(); }); });
   form.addEventListener('submit', (e) => {
     e.preventDefault();
     if (goBtn.disabled) return;
@@ -959,38 +988,90 @@ async function paintNew() {
   prompt.focus({ preventScroll: true });
 }
 
-// a folder picker over the host's files shares: a share, then folders down
-async function browseAt(box, host, loc, rel, pick) {
-  const shares = (hostsInfo[String(host).toLowerCase()]?.files?.shares || []);
+// a folder picker over the user's login on the host, from its home down
+async function browseAt(box, host, dir, pick) {
+  const seq = (box.seq = (box.seq || 0) + 1);
   const head = el('div', 'cd-picker-head');
   const listing = el('ul', 'cd-picker-list');
   box.replaceChildren(head, listing);
-  if (!loc) {
-    head.textContent = shares.length ? `${host}: pick a share` : `${host} shares no folders in files; type the path`;
-    for (const s of shares) {
-      const li = Object.assign(el('button', 'cd-picker-row', s.label), { type: 'button' });
-      li.addEventListener('click', () => browseAt(box, host, { host, share: s.id, root: s.label, perms: s.perms || '' }, '', pick));
-      listing.append(li);
-    }
+  head.append(el('span', 'cd-picker-path', dir || '~'));
+  listing.append(el('li', 'st-wait', 'loading'));
+  let r;
+  try { r = await call(`/api/code/ls?${qs({ host, dir })}`); } catch (e) {
+    if (box.seq !== seq) return;
+    const home = Object.assign(el('button', 'cd-mini', '~'), { type: 'button', title: 'home' });
+    home.addEventListener('click', () => browseAt(box, host, '', pick));
+    head.prepend(home);
+    listing.replaceChildren(el('li', 'cd-bad', e.message));
     return;
   }
-  const abs = `${String(loc.root).replace(/\/+$/, '')}${rel ? `/${rel}` : ''}`;
-  const up = Object.assign(el('button', 'cd-mini', '..'), { type: 'button' });
-  up.addEventListener('click', () => (rel ? browseAt(box, host, loc, rel.split('/').slice(0, -1).join('/'), pick) : browseAt(box, host, null, '', pick)));
+  if (box.seq !== seq) return;
+  const up = Object.assign(el('button', 'cd-mini', '..'), { type: 'button', title: 'up', disabled: r.dir === '/' });
+  up.addEventListener('click', () => browseAt(box, host, parent(r.dir), pick));
   const use = Object.assign(el('button', 'cd-mini primary', 'use this folder'), { type: 'button' });
-  use.addEventListener('click', () => pick(abs));
-  head.append(up, el('span', 'cd-picker-path', abs), use);
-  listing.append(el('li', 'st-wait', 'loading'));
-  try {
-    const r = await filesCall(loc, 'list', undefined, { path: rel });
-    const dirsOnly = (r.entries || []).filter((e) => e.dir && !e.name.startsWith('.')).sort((a, b) => a.name.localeCompare(b.name));
-    listing.replaceChildren(...dirsOnly.map((e) => {
-      const b = Object.assign(el('button', 'cd-picker-row', `${e.name}/`), { type: 'button' });
-      b.addEventListener('click', () => browseAt(box, host, loc, rel ? `${rel}/${e.name}` : e.name, pick));
-      return b;
+  use.addEventListener('click', () => pick(r.dir));
+  head.replaceChildren(up, el('span', 'cd-picker-path', r.dir), use);
+  const dirs = (r.entries || []).filter((e) => e.dir && !e.name.startsWith('.'));
+  listing.replaceChildren(...dirs.map((e) => {
+    const b = Object.assign(el('button', 'cd-picker-row', `${e.name}/`), { type: 'button' });
+    b.addEventListener('click', () => browseAt(box, host, `${r.dir.replace(/\/$/, '')}/${e.name}`, pick));
+    return b;
+  }));
+  if (!dirs.length) listing.append(el('li', 'st-dim', 'no folders'));
+  if (r.more) listing.append(el('li', 'st-dim', 'more not shown'));
+}
+
+// a session's folder browsed in a panel over the app, folders and files,
+// hidden ones on a toggle
+function openBrowser(host, dir) {
+  root.querySelector(':scope > .cd-browse')?.remove();
+  const wrap = el('div', 'cd-browse');
+  const panel = Object.assign(el('div', 'cd-browse-panel'), { role: 'dialog', ariaLabel: `${host} files` });
+  const head = el('div', 'cd-picker-head');
+  const listing = el('ul', 'cd-picker-list cd-browse-list');
+  panel.append(head, listing);
+  wrap.append(panel);
+  root.append(wrap);
+  let dots = false;
+  let seq = 0;
+  const close = () => { wrap.remove(); document.removeEventListener('keydown', key, true); };
+  const key = (e) => { if (e.key === 'Escape' && wrap.isConnected) { e.stopPropagation(); close(); } };
+  document.addEventListener('keydown', key, true);
+  wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
+  const shut = Object.assign(el('button', 'cd-mini', 'close'), { type: 'button' });
+  shut.addEventListener('click', close);
+  const nav = async (d) => {
+    const n = ++seq;
+    head.replaceChildren(el('span', 'cd-host', host), el('span', 'cd-picker-path', d || '~'), shut);
+    listing.replaceChildren(el('li', 'st-wait', 'loading'));
+    let r;
+    try { r = await call(`/api/code/ls?${qs({ host, dir: d })}`); } catch (e) {
+      if (n === seq) listing.replaceChildren(el('li', 'cd-bad', e.message));
+      return;
+    }
+    if (n !== seq || !wrap.isConnected) return;
+    const up = Object.assign(el('button', 'cd-mini', '..'), { type: 'button', title: 'up', disabled: r.dir === '/' });
+    up.addEventListener('click', () => nav(parent(r.dir)));
+    const hid = Object.assign(el('button', `cd-mini${dots ? ' primary' : ''}`, 'hidden'), { type: 'button', title: 'show hidden files' });
+    hid.addEventListener('click', () => { dots = !dots; nav(r.dir); });
+    const path = el('span', 'cd-picker-path', r.dir);
+    path.title = `${host}:${r.dir}`;
+    head.replaceChildren(up, el('span', 'cd-host', host), path, hid, shut);
+    const ents = (r.entries || []).filter((e) => dots || !e.name.startsWith('.'));
+    listing.replaceChildren(...ents.map((e) => {
+      const row = Object.assign(el(e.dir ? 'button' : 'div', `cd-browse-row${e.dir ? ' dir' : ''}`), e.dir ? { type: 'button' } : {});
+      row.append(el('span', 'cd-browse-name', e.dir ? `${e.name}/` : e.name), el('span', 'cd-browse-size', e.dir ? '' : bytes(e.size)),
+        el('span', 'cd-browse-at', e.mtime ? ago(e.mtime) : ''));
+      if (e.dir) row.addEventListener('click', () => nav(`${r.dir.replace(/\/$/, '')}/${e.name}`));
+      const li = el('li');
+      li.append(row);
+      return li;
     }));
-    if (!dirsOnly.length) listing.append(el('li', 'st-dim', 'no folders'));
-  } catch (e) { listing.replaceChildren(el('li', 'cd-bad', e.message)); }
+    if (!ents.length) listing.append(el('li', 'st-dim', 'empty'));
+    if (r.more) listing.append(el('li', 'st-dim', 'more not shown'));
+  };
+  nav(dir);
+  shut.focus();
 }
 
 // --- the window coming and going ---
