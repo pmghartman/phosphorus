@@ -93,7 +93,8 @@ func goParts() []part {
 		}
 	}
 	root := strings.TrimSpace(string(run(nil, "go", "env", "GOROOT")))
-	ver := strings.TrimSpace(string(run(nil, "go", "env", "GOVERSION")))
+	// go.mod's version, not the installed toolchain's, so any machine and ci write the same file
+	ver := "go" + strings.TrimSpace(string(run(nil, "go", "list", "-m", "-f", "{{.GoVersion}}")))
 	parts := []part{{group: "Go modules in the phosphorus binary", name: "Go standard library and runtime", version: ver, source: "https://go.dev", texts: filesIn(root)}}
 	for _, p := range seen {
 		parts = append(parts, p)
