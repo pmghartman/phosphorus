@@ -49,7 +49,7 @@ type Actions struct {
 	ModelRole func(role, model string) (int, any)
 	Update    func(action string, admin bool, only []string) (int, any)
 	// Op a host operation: health, power, term_close,
-	// service_health, or mesh-wide mesh_health and update_history
+	// service_health, or mesh-wide mesh_health and update_history (services, mesh_hosts, update_status)
 	Op       func(host, op string, p map[string]any) (int, any)
 	ChatEdit func(user, ref, action, text string) (int, any)
 	Files    func(c *Caller, host, op, share string, body map[string]any) (int, any)
@@ -582,7 +582,7 @@ func buildOnce() {
 func buildTools() {
 	defer func() {
 		tools = append(tools, agentTools()...)
-		tools = append(tools, controlTools(func(m Meta) bool { return m.Local })...)
+		tools = append(tools, controlTools()...)
 		tools = append(tools, forgejoTools()...)
 		describe()
 	}()
@@ -631,14 +631,15 @@ func buildTools() {
 				}
 				return project.Exec(id, str(a["command"]), a["timeout_s"], a["background"] == true)
 			}},
-		{name: "fetch_page", read: true,
+		{name: "fetch_page", read: true, scope: "ask",
 			description: "A web page's readable text, from public addresses only, for a link someone gave or an address known for sure.",
 			schema:      object(map[string]any{"url": map[string]any{"type": "string"}}, "url"),
 			run:         func(a map[string]any, _ Meta) (any, error) { return fetchPage(str(a["url"])) }},
 		{name: "mesh_hosts", read: true,
 			description: "Every host on the phosphorus mesh: whether it runs phosphorus, its OS and version.",
-			schema:      object(nil),
-			run: func(map[string]any, Meta) (any, error) {
+			schema: object(map[string]any{"health": map[string]any{"type": "boolean", "default": false,
+				"description": "key only: each phosphorus host's health too, answering, version, round trip and tunnel"}}),
+			run: func(a map[string]any, m Meta) (any, error) {
 				self := src.Self()
 				hosts := slices.Clone(src.Tailnet())
 				// this host's own row carries no version; copies so the mesh's stays as is
@@ -649,12 +650,34 @@ func buildTools() {
 						hosts[i] = c
 					}
 				}
-				return map[string]any{"self": self, "domain": src.Domain(), "hosts": hosts}, nil
+				out := map[string]any{"self": self, "domain": src.Domain(), "hosts": hosts}
+				if a["health"] == true {
+					if m.Caller == nil {
+						return nil, errc("forbidden", "health on a user's key only")
+					}
+					h, err := pressed(src.Actions.Op("", "mesh_health", nil))
+					if err != nil {
+						return nil, err
+					}
+					out["health"] = h
+				}
+				return out, nil
 			}},
 		{name: "services", read: true,
 			description: "Every service published on the mesh, by host, with its name and where it is served.",
-			schema:      object(nil),
-			run: func(map[string]any, Meta) (any, error) {
+			schema: object(map[string]any{"host": map[string]any{"type": "string", "description": "with name: the service's host"},
+				"name": map[string]any{"type": "string", "description": "key only: check this one service on host right now instead"}}),
+			run: func(a map[string]any, m Meta) (any, error) {
+				if str(a["name"]) != "" {
+					if m.Caller == nil {
+						return nil, errc("forbidden", "a service check on a user's key only")
+					}
+					h, err := knownHost(a)
+					if err != nil {
+						return nil, err
+					}
+					return pressed(src.Actions.Op(h, "service_health", map[string]any{"name": str(a["name"])}))
+				}
 				out := []any{}
 				for _, r := range src.Routes() {
 					row := map[string]any{}
@@ -762,8 +785,12 @@ func buildTools() {
 				"path":  map[string]any{"type": "string", "description": "folder in the share, blank for its root"},
 				"depth": map[string]any{"type": "integer", "description": "levels to list, 1 to 8", "default": 1},
 				"match": map[string]any{"type": "string", "description": "name glob, * and ?, case-insensitive"},
+				"stat":  map[string]any{"type": "boolean", "description": "path names one file or folder: whether it exists, its size and mtime", "default": false},
 			}),
 			run: func(a map[string]any, m Meta) (any, error) {
+				if a["stat"] == true {
+					return fileStat(a, m)
+				}
 				if !util.Truthy(a["host"]) {
 					hosts := meshHosts()
 					out := make([]any, len(hosts))
@@ -1107,11 +1134,19 @@ func buildTools() {
 			schema: object(map[string]any{
 				"limit":   map[string]any{"type": "integer", "description": fmt.Sprintf("lines, at most %d", chatMax), "default": 20},
 				"channel": map[string]any{"type": "string", "description": "one channel only: mesh for the main one, or dm:<name>"},
+				"wait_s":  map[string]any{"type": "integer", "description": fmt.Sprintf("key only: wait up to this many seconds (max %d) for lines newer than since", chatWaitMax), "default": 0},
+				"since":   map[string]any{"type": "integer", "description": "with wait_s: only lines after this ms, default now"},
 			}),
 			run: func(a map[string]any, m Meta) (any, error) {
 				want := strings.TrimPrefix(str(a["channel"]), "#")
 				if err := channelKnown(m, want); err != nil {
 					return nil, err
+				}
+				if numOr(a["wait_s"], 0) > 0 {
+					if m.Caller == nil {
+						return nil, errc("forbidden", "wait_s on a user's key only")
+					}
+					return chatWait(a, m, want), nil
 				}
 				n := 20
 				if l, ok := a["limit"]; ok {
@@ -1173,9 +1208,21 @@ func buildTools() {
 			}},
 		{name: "update_status", read: true,
 			description: "The mesh update: whether one is running, who started it, and each host's result.",
-			schema:      object(nil),
-			run: func(map[string]any, Meta) (any, error) {
-				return map[string]any{"lock": src.Lock(), "chain": src.Chain()}, nil
+			schema: object(map[string]any{"history": map[string]any{"type": "boolean", "default": false,
+				"description": "key only: also the last fifty updates started from this host, each host's result and error"}}),
+			run: func(a map[string]any, m Meta) (any, error) {
+				out := map[string]any{"lock": src.Lock(), "chain": src.Chain()}
+				if a["history"] == true {
+					if m.Caller == nil {
+						return nil, errc("forbidden", "history on a user's key only")
+					}
+					h, err := pressed(src.Actions.Op("", "update_history", nil))
+					if err != nil {
+						return nil, err
+					}
+					out["history"] = h
+				}
+				return out, nil
 			}},
 	}
 }

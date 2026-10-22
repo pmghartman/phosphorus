@@ -7,7 +7,7 @@ description: Operates the user's live, self-hosted Phosphorus mesh through the P
 
 Phosphorus is a mesh of the user's own machines on one tailnet. Each machine running it is a **host**: it shares folders, publishes web services and game servers, runs terminals, keeps logs, and may carry a Forgejo replica or a model. The Phosphorus connector answers for the whole mesh from any host, and every call runs as **{{USER}}**{{ADMIN_NOTE}} with exactly that user's rights. Tool names may carry a prefix (`mcp__phosphorus__`, `Phosphorus:`); each tool's own description is its full reference, so this skill covers only how to combine them.
 
-No Phosphorus tools at all: tell the user to add the connector with the url from **copy mcp url** in the agent tray, and stop. A tool missing from the list: `version` names the tools kept off this key and why.
+No Phosphorus tools at all: tell the user to add the connector with the url from **copy mcp url** in the agent tray, and stop. A tool missing from the list is admin-only or for the chat's own model.
 
 ## Job files
 
@@ -28,7 +28,7 @@ Read the one that fits before the first call; a one-tool question needs none.
 
 - **Mesh things go through Phosphorus.** Hosts, shares, services, terminals, logs, Forgejo, chat and projects are read and changed only with Phosphorus tools; "files" means mesh shares and "chat" the mesh chat unless the user says otherwise. Other connectors stay free for their own part (mail a summary, save a report).
 - **Real host names only.** Take them from `mesh_hosts`, once per session; never guess or shorten one. A device with `phosphorus: false` can't be acted on: say so.
-- **Batch and go narrow.** Load the tools a job needs in one tool search, run independent reads in one parallel batch. Prefer the cheap call: `host_stats` with no host before one host, `files_stat` before `files_read`, `files_search` over walking `files_list`, `service_health` over curl in `terminal_run`, `host_logs` filtered by `level`, `match`, `since`.
+- **Batch and go narrow.** Load the tools a job needs in one tool search, run independent reads in one parallel batch. Prefer the cheap call: `host_stats` with no host before one host, `files_list` `stat: true` before `files_read`, `files_search` over walking `files_list`, a `services` check over curl in `terminal_run`, `host_logs` filtered by `level`, `match`, `since`.
 - **Read before writing.** `host_config` before `config_set` or `service_edit`; read the passage before `files_write` with old/new; `update_status` before `update_control`.
 - **Changes need the user's word for that target.** `host_power`, `files_change` delete, `files_copy` move, `config_set`, `service_edit`, `update_control`, `make_git_master`, `game_power`, and any `terminal_run` that changes a machine. Use `dry_run` first where it exists and show the diff. `host_power` takes `confirm` equal to the host name; never press `make_git_master` twice.
 - **No secrets.** Never ask for, take or type a password, key or token. `terminal_run` and `forgejo` use the user's saved logins; a missing login is a finding to report, not a prompt.
@@ -37,8 +37,7 @@ Read the one that fits before the first call; a one-tool question needs none.
 ## Not covered by a job file
 
 - Models and projects: `models` shows each role's model (chimp chats, orangutan runs projects), `projects` the long projects; `set_model_role` changes a role (admin).
-- The user's own Phosphorus window: `open_file` opens a share's file in an editor tab, `show_file` invites someone else into one, `open_terminal` opens a shared terminal tab, `notify` nudges their open windows.
-- Outside the mesh: `fetch_page` for a public page only.
+- The user's own Phosphorus window: `open_file` opens a share's file in an editor tab, `show_file` invites someone else into one, `open_terminal` opens a shared terminal tab.
 
 ## Errors
 
@@ -47,7 +46,7 @@ Failed calls return `code: message`.
 - `bad_input`: fix the arguments from the message; never retry unchanged.
 - `not_found`: re-list (`mesh_hosts`, `services`, `files_list`, `people`) instead of guessing.
 - `forbidden`: the key lacks the right (share perm, admin, saved login); say so and stop.
-- `unreachable`: the host is down or off the tailnet; check `mesh_health`, and `host_logs` on another host.
+- `unreachable`: the host is down or off the tailnet; check `mesh_hosts` `health: true`, and `host_logs` on another host.
 - `key refused` (HTTP 401): the key was refreshed or revoked; the user pastes the new url from **copy mcp url** into the connector.
 
 ## Reporting
