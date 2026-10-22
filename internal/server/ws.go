@@ -179,7 +179,7 @@ func onUpgrade(w http.ResponseWriter, r *http.Request, pathname string, q url.Va
 			shell = `exec "$SHELL" -l`
 		}
 		p, _ := strconv.Atoi(hostSSHPort)
-		term.Attach(ws, term.Opts{Host: host, SID: q.Get("sid"), Since: since, Resume: resume, SSHHost: hostSSHHost, Port: p, Shell: shell})
+		term.Attach(ws, term.Opts{Host: host, SID: q.Get("sid"), Since: since, Resume: resume, SSHHost: hostSSHHost, Port: p, Shell: shell, Auto: q.Get("auto") == "1"})
 		<-ws.Done()
 		return
 	}
