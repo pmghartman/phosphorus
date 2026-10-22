@@ -1927,7 +1927,9 @@ input, textarea { caret-color: var(--accent); }
   position: absolute; inset: 0; width: 100%; height: 100%; border: 0; outline: none; resize: none; overflow: hidden;
   background: transparent; color: transparent; caret-color: var(--accent);
 }
-.code-ta::selection { background: color-mix(in srgb, var(--accent) 30%, transparent); color: transparent; }
+/* The textarea overlays the syntax layer. A selection must paint its own
+   readable text and opaque background instead of hiding the text beneath it. */
+.code-ta::selection { background: color-mix(in srgb, var(--accent) 30%, var(--card)); color: var(--fg); }
 .code-ta[readonly] { caret-color: transparent; }
 /* highlighted in the palette, as the chat's code is */
 .code-hl .hljs-keyword, .code-hl .hljs-selector-tag, .code-hl .hljs-doctag { color: var(--accent); }
@@ -2928,7 +2930,7 @@ body:has(.dk-pop:not([hidden])) .toasts { opacity: 0; pointer-events: none; }
 /* the squiggle and find layers only marks, their text never drawn */
 .ide .code-squig, .ide .code-finds { color: transparent; }
 .ide .code-ta { caret-color: var(--ide-caret); }
-.ide .code-ta::selection { background: var(--ide-ed-sel); color: transparent; }
+.ide .code-ta::selection { background: var(--ide-ed-sel); color: var(--ide-fg); }
 .ide .code-mark-err { background: var(--ide-err); }
 .ide .code-squig mark { text-decoration-color: var(--ide-err); }
 .ide .code-md { border: 0; box-shadow: none; background: var(--ide-bg); padding: 16px 32px; }
@@ -3601,7 +3603,7 @@ button.ide-fd-place:hover { background: var(--ide-hover); color: var(--ide-stron
   --ide-err: var(--offmesh); --ide-warn: var(--warn); --ide-info: var(--sky); --ide-ok: var(--online); --ide-hl: var(--accent);
   --ide-find: color-mix(in srgb, var(--accent-2) 32%, transparent); --ide-find-now: color-mix(in srgb, var(--accent-2) 60%, transparent);
   --ide-guide: var(--border); --ide-scroll: color-mix(in srgb, var(--muted) 40%, transparent); --ide-shadow: var(--drop);
-  --ide-ed-sel: color-mix(in srgb, var(--accent) 30%, transparent); --ide-line-nr: var(--dim); --ide-caret: var(--accent);
+  --ide-ed-sel: color-mix(in srgb, var(--accent) 30%, var(--ide-bg)); --ide-line-nr: var(--dim); --ide-caret: var(--accent);
   --ide-ui: var(--font);
 }
 .ide-win.ide-theme-phosphorus .ide { font-size: 12px; }
