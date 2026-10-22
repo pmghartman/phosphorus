@@ -366,7 +366,7 @@ body {
 @property --agent-turn { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
 .dk-win.dk-agent { overflow-clip-margin: 1px; }
 .dk-win.dk-agent::after {
-  content: ""; position: absolute; inset: -1px; z-index: 10; pointer-events: none; padding: 1px;
+  content: ""; position: absolute; inset: -1px; z-index: 10; pointer-events: none; padding: 2px;
   background: conic-gradient(from var(--agent-turn), var(--glyph-purple), var(--glyph-orange), var(--glyph-purple), var(--glyph-orange), var(--glyph-purple));
   mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
   animation: agent-turn 4s linear infinite;
@@ -1767,6 +1767,14 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
 /* on another version than this host */
 .update-versions .update-row.differs .update-ver { color: var(--warn); }
 .update-mesh .update-actions { padding: 0 0.75rem; }
+/* the newest release, asked on opening: a turning ring until the feed answers */
+.update-latest { margin: 0 0.75rem 0.4rem; display: flex; align-items: center; gap: 0.6ch; color: var(--muted); }
+.update-latest[data-state="ok"] { color: var(--online); }
+.update-latest[data-state="new"] { color: var(--accent); }
+.update-latest[data-state="bad"] { color: var(--warn); }
+.update-spin { width: 0.75em; height: 0.75em; border: 1.5px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: update-spin 0.8s linear infinite; }
+@keyframes update-spin { to { rotate: 360deg; } }
+@media (prefers-reduced-motion: reduce) { .update-spin { animation-duration: 2.4s; } }
 
 /* --- files tab ------------------------------------------------------------ */
 /* a tree per pane, split adding a second, rows dragged between them */
