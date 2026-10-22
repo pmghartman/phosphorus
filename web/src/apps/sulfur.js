@@ -13,6 +13,8 @@ import {
   editors,
   el,
   filesApi,
+  hostUrl,
+  otherHosts,
   filesCall,
   filesJoin,
   filesParent,
@@ -120,6 +122,8 @@ const IC = {
   scm: 'M4.5 1.75a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 0 0 0-3.5zM4.5 10.75a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 0 0 0-3.5zM11.5 1.75a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 0 0 0-3.5zM4.5 5.25v5.5M11.5 5.25c0 3.25-7 2-7 5.5',
   branch: 'M5 2.5a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5zM5 11a1.25 1.25 0 1 0 0 2.5A1.25 1.25 0 0 0 5 11zM11 2.5a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5zM5 5v6M11 5c0 3-6 1.75-6 6',
   minus: 'M3 8h10',
+  home: 'M2 7.5L8 2.5l6 5M3.5 6.5v7h3.5v-4h2v4h3.5v-7',
+  drive: 'M1.5 9.5l2-6h9l2 6v3.5h-13zM1.5 9.5h13M11.5 11.25h1',
   undo: 'M3 6.5h7a3 3 0 0 1 0 6H6M5.5 4L3 6.5 5.5 9',
 };
 const icon = (k, cls = '') => dkGlyph(IC[k], `ide-ic ${cls}`);
@@ -177,13 +181,15 @@ const offline = () => standalone?.mode === 'local';
 const meshApi = (path) => (standalone?.meshUrl ? standalone.meshUrl(path) : path);
 // offline with a mesh logged into: its models, agents and Forgejo here too
 const meshLinked = () => offline() && !!standalone.meshUser;
+// a place on the computer Sulfur's running on, not a mesh machine: offline all of them,
+// on a mesh this computer's own folders beside the mesh's
+const thisComputer = (l) => offline() || (!!standalone?.localHost && !isHomeLoc(l) && l.host === standalone.localHost && otherHosts().includes(l.host));
 const meshName = (s = standalone?.server) => String(s || '').replace(/^https?:\/\//, '');
 // offline in Sulfur's desktop app: this computer's own file dialogs, as any editor's
-const nativeFiles = () => offline() && !!standalone?.app && !!standalone.nativePick;
 // a folder or file picked in the system's dialog, as Sulfur's place and path; null if cancelled
 async function nativeOpen(directory, title) {
   const t = I.active;
-  const start = t?.rel ? hostPath(selfHost, isHomeLoc(t.loc) ? 'home' : t.loc.share, filesParent(t.rel)) : hostPath(selfHost, isHomeLoc() ? 'home' : locOf().share, I.st.root);
+  const start = !offline() ? '' : t?.rel ? hostPath(selfHost, isHomeLoc(t.loc) ? 'home' : t.loc.share, filesParent(t.rel)) : hostPath(selfHost, isHomeLoc() ? 'home' : locOf().share, I.st.root);
   let abs = null;
   try { abs = await standalone.nativePick({ directory, title, defaultPath: start }); } catch (err) { notify('error', `The ${directory ? 'folder' : 'file'} dialog failed: ${err.message || err}`); return null; }
   if (!abs || !I) return null;
@@ -370,6 +376,7 @@ const saveState = debounce(() => {
 export function ideStart(w, open) {
   if (I) teardown();
   migrateLocal();
+  if (standalone) standalone.onHosts = () => fdHostsSoon();
   const st = loadState();
   if (!isHomeLoc(st.loc) && !shareOf(st.loc.host, st.loc.share)) st.loc = HOME_LOC;
   if (!inScope(st.root, st.loc)) { st.loc = HOME_LOC; st.root = acct.user; }
@@ -735,7 +742,7 @@ function showSide(id, on = true, focus = false) {
 const MENUS = [
   ['File', () => [
     cmdItem('sulfur.project.new', 'New Project…'), cmdItem('explorer.newFile', 'New File…'), cmdItem('explorer.newFolder', 'New Folder…'), '-',
-    ...(nativeFiles() ? [cmdItem('workbench.action.files.openFile', 'Open File…')] : []),
+    cmdItem('workbench.action.files.openFile', 'Open File…'),
     cmdItem('workbench.action.files.openFolder', 'Open Folder…'),
     { label: 'Open Recent', sub: () => recentItems() },
     cmdItem('sulfur.project.transfer', 'Copy or Move Project to…'), cmdItem('sulfur.git.clone', 'Clone Repository…'), '-',
@@ -977,6 +984,7 @@ function setRoot(dir, first = false, l = locOf()) {
 
 const sortEntries = (list) => [...list].sort((a, b) => (b.dir - a.dir) || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
 
+const fdHostsSoon = debounce(() => { if (I) { I.fdPaint?.(); paintStatus(); } }, 200);
 const scmRefreshSoon = debounce(() => { if (I) scmRefresh(); }, 600);
 
 // the folders quick open and Find in Files never go into: search.exclude and files.exclude together
@@ -2240,9 +2248,9 @@ function registerCommands() {
   C('explorer.newFolder', 'New Folder…', () => startEdit('folder'), { category: 'File' });
   C('workbench.action.files.openFolder', 'Open Folder…', () => pickFolder(), { key: 'ctrl+k ctrl+o', category: 'File' });
   C('workbench.action.files.openFile', 'Open File…', async () => {
-    const at = await nativeOpen(false, 'Open File');
-    if (at) openFile(at.rel, { preview: false, loc: at.loc });
-  }, { key: 'ctrl+o', when: () => nativeFiles(), category: 'File' });
+    const at = await fileDialog({ files: true });
+    if (at && I) openFile(at.rel, { preview: false, loc: at.loc });
+  }, { key: 'ctrl+o', category: 'File' });
   C('workbench.action.openRecent', 'Open Recent…', () => pick(recentItems().map((x) => ({ ...x, value: x })), { placeholder: 'Select to open' }).then((x) => x?.run()), { key: 'ctrl+r', category: 'File' });
   C('workbench.action.files.save', 'Save', () => I.active?.ed && saveTab(I.active), { key: 'ctrl+s', when: hasEd, category: 'File', shell: true });
   C('workbench.action.files.saveAll', 'Save All', () => saveAll(), { key: 'ctrl+k s', category: 'File' });
@@ -2657,70 +2665,281 @@ function closeQuick(replacing = false) {
   if (!replacing && q.restore?.isConnected && I.root.contains(q.restore)) q.restore.focus({ preventScroll: true });
 }
 
-// a folder of the user's own or shared space, walked down to in the quick input
-// every place a project can be: the home, then each logged-in host's shares, this machine first
-function places() {
+// --- the folder and file dialog, as Phosphorus's Files: places on the side (this computer's
+// home and drives, the mesh's home and each of its machines), a folder's contents beside
+// them, its path typed or stepped up; the same whether offline or on a mesh
+
+// every place the dialog offers, grouped: this computer, then the mesh's machines
+function dialogPlaces() {
+  const groups = [];
+  const local = standalone ? standalone.localHost || selfHost : selfHost;
+  const localUser = standalone?.info?.user || acct.user;
+  const meshUser = standalone?.meshUser || acct.user;
   const live = new Set(dkLiveHosts());
-  const out = [{ loc: HOME_LOC, label: 'Home', description: offline() ? hostPath(selfHost, 'home', acct.user) : `synced across the mesh · ${acct.user}/` }];
-  const hosts = [...live].sort((a, b) => (b === selfHost) - (a === selfHost) || a.localeCompare(b));
-  for (const h of hosts) {
-    for (const sh of hostsInfo[h.toLowerCase()]?.files?.shares || []) {
-      if (sh.home) continue;
-      out.push({ loc: { host: h, share: String(sh.id) }, label: `${h}${h === selfHost ? ' (this machine)' : ''}`, description: sh.label, perms: sh.perms });
-    }
+  const sharesOf = (h) => hostsInfo[String(h).toLowerCase()]?.files?.shares || [];
+  const drives = (h) => sharesOf(h).filter((sh) => !sh.home).map((sh) => ({ loc: { host: h, share: String(sh.id) }, dir: '', label: sh.label, ic: 'drive', perms: sh.perms || 'rwd' }));
+  const ownHome = (h, user, label = 'Home') => {
+    const sh = sharesOf(h).find((x) => x.home);
+    return sh ? [{ loc: { host: h, share: String(sh.id) }, dir: user, label, ic: 'home', detail: hostPath(h, String(sh.id), user) }] : [];
+  };
+  if (offline()) {
+    groups.push({ head: `This Computer · ${local}`, items: [{ loc: HOME_LOC, dir: acct.user, label: 'Home', ic: 'home', detail: hostPath(selfHost, 'home', acct.user) }, ...drives(selfHost)] });
+  } else if (local && live.has(local) && !homeOnline().includes(local)) {
+    groups.push({ head: `This Computer · ${local}`, items: [...ownHome(local, localUser), ...drives(local)] });
   }
-  return out;
+  const mesh = offline() ? (meshLinked() ? meshName() : '') : meshName() || 'Mesh';
+  if (mesh) {
+    const items = offline() ? [] : [{ loc: HOME_LOC, dir: acct.user, label: 'Home', ic: 'home', detail: 'synced across the mesh' }];
+    const hosts = [...new Set([...(offline() ? otherHosts() : homeOnline()), ...live])].filter((h) => h && h !== local).sort();
+    for (const h of hosts) {
+      if (!live.has(h)) { items.push({ host: h, label: h, ic: 'host', off: true, detail: `log in ${loginWhere()}` }); continue; }
+      items.push({ host: h, label: h, ic: 'host', head: true });
+      // a machine's own home where the mesh's isn't merged over it here
+      if (offline()) items.push(...ownHome(h, meshUser).map((x) => ({ ...x, sub: true })));
+      items.push(...drives(h).map((x) => ({ ...x, sub: true })));
+    }
+    groups.push({ head: mesh, items });
+    if (acct.admin && !offline()) items.push({ label: 'Add a Folder of a Machine…', ic: 'plus', act: () => addFolderDialog(), detail: 'publish one, like D:\\Projects or ~/src' });
+  } else if (standalone) {
+    groups.push({ head: 'Phosphorus Mesh', items: [{ label: 'Log into your mesh…', ic: 'remote', run: () => run('sulfur.mesh.connect'), detail: 'its machines here too' }] });
+  }
+  return groups;
 }
 
-// a folder of the home or of a host's share, walked down to in the quick input
+// a folder (or with files, a file) picked: { loc, rel }, null if cancelled
+function fileDialog(o = {}) {
+  return new Promise((resolve) => {
+    if (!I) { resolve(null); return; }
+    const files = !!o.files;
+    const back = el('div', 'ide-dialog-back ide-fd-back');
+    const box = Object.assign(el('div', 'ide-dialog ide-fd'), { tabIndex: -1 });
+    box.setAttribute('role', 'dialog');
+    box.setAttribute('aria-modal', 'true');
+    const restore = document.activeElement;
+    const btn = (ic, title, fn) => { const b = Object.assign(el('button', 'ide-fd-tool'), { type: 'button', title }); b.append(icon(ic)); b.addEventListener('click', fn); return b; };
+    const title = el('div', 'ide-fd-title', o.title || (files ? 'Open File' : 'Open Folder'));
+    const st = { loc: null, dir: '', entries: [], sel: '', back: [], fwd: [], err: '', busy: false, filter: '' };
+    const backB = btn('left', 'Back', () => hist(-1));
+    const fwdB = btn('right', 'Forward', () => hist(1));
+    const upB = btn('up', 'Up a folder', () => up());
+    const refB = btn('refresh', 'Refresh', () => load());
+    const crumbs = el('div', 'ide-fd-crumbs');
+    const find = Object.assign(el('input', 'ide-input ide-fd-find'), { placeholder: 'Filter', spellcheck: false, autocomplete: 'off' });
+    const bar = el('div', 'ide-fd-bar');
+    bar.append(backB, fwdB, upB, refB, crumbs, find);
+    const side = el('nav', 'ide-fd-side');
+    const list = Object.assign(el('div', 'ide-fd-list'), { tabIndex: 0 });
+    list.setAttribute('role', 'listbox');
+    const split = el('div', 'ide-fd-split');
+    split.append(side, list);
+    const path = Object.assign(el('input', 'ide-input ide-fd-path'), { spellcheck: false, autocomplete: 'off', placeholder: files ? 'A file’s whole path, or pick one' : 'A folder’s whole path, or pick one' });
+    const note = el('div', 'ide-fd-note');
+    const foot = el('div', 'ide-fd-foot');
+    const sys = standalone?.app && standalone.nativePick && !o.noSystem ? Object.assign(el('button', 'ide-button secondary ide-fd-sys', 'System Dialog…'), { type: 'button', title: 'This computer’s own dialog' }) : null;
+    const ok = Object.assign(el('button', 'ide-button', o.okLabel || (files ? 'Open' : 'Open Folder')), { type: 'button' });
+    const cancel = Object.assign(el('button', 'ide-button secondary', 'Cancel'), { type: 'button' });
+    const fbtns = el('div', 'ide-fd-btns');
+    fbtns.append(...(sys ? [sys] : []), el('span', 'ide-fd-gap'), cancel, ok);
+    foot.append(path, note, fbtns);
+    box.append(title, bar, split, foot);
+    back.append(box);
+    I.layer.append(back);
+    I.dialog = back;
+
+    const done = (v) => {
+      back.remove();
+      if (I) I.dialog = null;
+      if (I?.fdPaint === paintSide) I.fdPaint = null;
+      restore?.focus?.({ preventScroll: true });
+      resolve(v);
+    };
+    const where = () => (st.loc ? (isHomeLoc(st.loc) ? hostPath(offline() ? selfHost : homePick(st.dir), 'home', st.dir) || st.dir : hostPath(st.loc.host, st.loc.share, st.dir)) : '');
+    const hostOf = (l) => (isHomeLoc(l) ? (offline() ? selfHost : homePick(st.dir)) : l.host);
+    const go = (loc, dir, how = '') => {
+      if (how !== 'hist' && st.loc) { st.back.push({ loc: st.loc, dir: st.dir }); st.fwd = []; }
+      const from = st.loc && sameLoc(st.loc, loc) ? st.dir : null;
+      st.loc = loc;
+      st.dir = dir;
+      st.sel = from !== null && filesParent(from) === dir ? baseName(from) : '';
+      st.filter = '';
+      find.value = '';
+      load();
+    };
+    const hist = (k) => {
+      const from = k < 0 ? st.back : st.fwd;
+      const to = k < 0 ? st.fwd : st.back;
+      const at = from.pop();
+      if (!at) return;
+      to.push({ loc: st.loc, dir: st.dir });
+      go(at.loc, at.dir, 'hist');
+    };
+    const up = () => { if (st.loc && st.dir) go(st.loc, st.dir.includes('/') ? filesParent(st.dir) : ''); };
+    async function load() {
+      paintSide();
+      if (!st.loc) { paint(); return; }
+      const want = `${st.loc.host}\n${st.loc.share}\n${st.dir}`;
+      st.want = want;
+      st.busy = true;
+      st.err = '';
+      paint();
+      let entries = [];
+      try {
+        // the merged home's top, the user's own folder and what's shared with them
+        if (isHomeLoc(st.loc) && !st.dir) entries = [{ name: acct.user, dir: true }, ...(offline() ? [] : [{ name: 'shared', dir: true }])];
+        else entries = (await filesCall(apiLoc(st.loc), 'list', undefined, { path: st.dir })).entries || [];
+      } catch (err) { if (st.want === want) st.err = err.message; }
+      if (!I || st.want !== want) return;
+      st.entries = sortEntries(entries);
+      st.busy = false;
+      paint();
+    }
+    function paintSide() {
+      const out = [];
+      for (const g of dialogPlaces()) {
+        out.push(el('div', 'ide-fd-head', g.head));
+        for (const x of g.items) {
+          const row = Object.assign(el(x.loc || x.run || x.act ? 'button' : 'div', `ide-fd-place${x.sub ? ' sub' : ''}${x.off ? ' off' : ''}${x.head ? ' host' : ''}`), x.loc || x.run || x.act ? { type: 'button' } : {});
+          row.append(icon(x.ic || 'folder'), el('span', 'ide-fd-place-name', x.label));
+          row.title = x.detail ? `${x.label} · ${x.detail}` : x.label;
+          if (x.loc && st.loc && sameLoc(x.loc, st.loc) && (isHomeLoc(x.loc) ? under(st.dir, x.dir) || !st.dir : true)) row.classList.add('here');
+          if (x.loc) row.addEventListener('click', () => go(x.loc, x.dir || ''));
+          else if (x.run) row.addEventListener('click', () => { done(null); x.run(); });
+          else if (x.act) row.addEventListener('click', async () => { const got = await x.act(); if (got && I) go(got, ''); });
+          out.push(row);
+        }
+      }
+      side.replaceChildren(...out);
+    }
+    I.fdPaint = paintSide;
+    function paint() {
+      backB.disabled = !st.back.length;
+      fwdB.disabled = !st.fwd.length;
+      upB.disabled = !st.loc || !st.dir;
+      // the path bar: the place, then each folder, any one a jump
+      const bits = [];
+      if (st.loc) {
+        const host = hostOf(st.loc);
+        const top = Object.assign(el('button', 'ide-fd-crumb'), { type: 'button' });
+        top.append(icon(isHomeLoc(st.loc) ? 'home' : 'host'), el('span', '', isHomeLoc(st.loc) ? (offline() ? 'Home' : 'Home (mesh)') : `${host}: ${shareOf(host, st.loc.share)?.label || st.loc.share}`));
+        top.addEventListener('click', () => go(st.loc, ''));
+        bits.push(top);
+        const segs = st.dir.split('/').filter(Boolean);
+        segs.forEach((s, i) => {
+          bits.push(icon('right', 'ide-fd-sep'));
+          const b = Object.assign(el('button', 'ide-fd-crumb', s), { type: 'button' });
+          b.addEventListener('click', () => go(st.loc, segs.slice(0, i + 1).join('/')));
+          bits.push(b);
+        });
+      }
+      crumbs.replaceChildren(...bits);
+      crumbs.scrollLeft = crumbs.scrollWidth;
+      const skip = excluded();
+      const f = st.filter.toLowerCase();
+      const shown = st.entries.filter((e) => (e.dir || files) && !skip(e.name) && (!f || e.name.toLowerCase().includes(f)));
+      const rows = shown.map((e) => {
+        const row = Object.assign(el('div', `ide-fd-row${e.dir ? ' dir' : ''}${e.name === st.sel ? ' sel' : ''}`), { title: e.name });
+        row.setAttribute('role', 'option');
+        row.dataset.name = e.name;
+        row.append(e.dir ? icon('folder') : fileIcon(e.name), el('span', 'ide-fd-name', e.name), el('span', 'ide-fd-meta', e.dir ? '' : humanSize(e.size)));
+        row.addEventListener('click', () => { st.sel = e.name; paintSel(); });
+        row.addEventListener('dblclick', () => enter(e));
+        return row;
+      });
+      if (!st.loc) rows.push(el('div', 'ide-fd-empty', 'Pick a place on the left.'));
+      else if (st.busy && !st.entries.length) rows.push(el('div', 'ide-fd-empty', 'Loading…'));
+      else if (st.err) rows.push(el('div', 'ide-fd-empty bad', st.err));
+      else if (!shown.length) rows.push(el('div', 'ide-fd-empty', f ? 'Nothing matches.' : files ? 'An empty folder.' : 'No folders in here.'));
+      list.replaceChildren(...rows);
+      list.querySelector('.sel')?.scrollIntoView({ block: 'nearest' });
+      paintSel();
+    }
+    function paintSel() {
+      for (const r of list.querySelectorAll('.ide-fd-row')) r.classList.toggle('sel', r.dataset.name === st.sel);
+      const e = st.entries.find((x) => x.name === st.sel);
+      const cur = where();
+      const sep = isWinPath(cur) ? '\\' : '/';
+      if (document.activeElement !== path) path.value = e ? `${cur.replace(/[\\/]+$/, '')}${sep}${e.name}` : cur;
+      // the folder Open takes: the one picked, else the one shown
+      const target = pickTarget();
+      ok.disabled = !target;
+      note.textContent = !st.loc ? '' : target ? '' : o.skip?.(st.loc) ? 'Somewhere else than where it is now.' : files ? 'Pick a file.' : !st.dir ? 'Pick a folder in it, not the whole drive.' : '';
+    }
+    const pickTarget = () => {
+      if (!st.loc) return null;
+      const e = st.entries.find((x) => x.name === st.sel);
+      if (files) return e && !e.dir ? { loc: st.loc, rel: filesJoin(st.dir, e.name) } : null;
+      const rel = e?.dir ? filesJoin(st.dir, e.name) : st.dir;
+      if (o.skip?.(st.loc)) return null;
+      if (!rel) return o.allowRoot && !isHomeLoc(st.loc) ? { loc: st.loc, rel: '' } : null;
+      return inScope(rel, st.loc) ? { loc: isHomeLoc(st.loc) ? HOME_LOC : st.loc, rel } : null;
+    };
+    const enter = (e) => {
+      if (e.dir) go(st.loc, filesJoin(st.dir, e.name));
+      else if (files) done({ loc: isHomeLoc(st.loc) ? HOME_LOC : st.loc, rel: filesJoin(st.dir, e.name) });
+    };
+    // a typed path: this computer's (or the machine shown's) folder or file, gone to
+    const typed = () => {
+      const v = path.value.trim().replace(/^~(?=[\\/]|$)/, () => hostPath(hostOf(st.loc || HOME_LOC), 'home', acct.user));
+      if (!v) return;
+      const hosts = [...new Set([st.loc ? hostOf(st.loc) : '', standalone?.localHost, selfHost].filter(Boolean))];
+      let at = null;
+      for (const h of hosts) { at = standalone?.locate?.(v, h); if (at) break; }
+      if (!at) { note.textContent = `${v} isn't in a place Sulfur reaches.`; return; }
+      const parent = at.rel.includes('/') ? filesParent(at.rel) : '';
+      const name = baseName(at.rel);
+      // a folder stepped into; a file's folder shown, the file picked
+      filesCall(apiLoc(at.loc), 'list', undefined, { path: at.rel }).then(() => go(at.loc, at.rel), () => {
+        go(at.loc, parent);
+        st.sel = name;
+      });
+    };
+    ok.addEventListener('click', () => { const t = pickTarget(); if (t) done(t); });
+    cancel.addEventListener('click', () => done(null));
+    sys?.addEventListener('click', async () => {
+      const got = await nativeOpen(!files, o.title || (files ? 'Open File' : 'Open Folder'));
+      if (got) done({ loc: got.loc, rel: got.rel });
+    });
+    find.addEventListener('input', () => { st.filter = find.value.trim(); paint(); });
+    path.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); typed(); } });
+    box.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Escape') { e.preventDefault(); done(null); return; }
+      if (e.target === path || e.target === find) { if (e.target === find && e.key === 'ArrowDown') { e.preventDefault(); list.focus(); } return; }
+      const rows = [...list.querySelectorAll('.ide-fd-row')];
+      const i = rows.findIndex((r) => r.dataset.name === st.sel);
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        const n = rows[Math.max(0, Math.min(rows.length - 1, i + (e.key === 'ArrowDown' ? 1 : -1)))];
+        if (n) { st.sel = n.dataset.name; paintSel(); n.scrollIntoView({ block: 'nearest' }); }
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        const x = st.entries.find((y) => y.name === st.sel);
+        if (x && (x.dir || files)) enter(x); else { const t = pickTarget(); if (t) done(t); }
+      } else if (e.key === 'Backspace' || (e.altKey && e.key === 'ArrowUp')) { e.preventDefault(); up(); }
+      else if (e.altKey && e.key === 'ArrowLeft') { e.preventDefault(); hist(-1); }
+      else if (e.altKey && e.key === 'ArrowRight') { e.preventDefault(); hist(1); }
+      else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        // typed letters jump to the next name starting so
+        const k = e.key.toLowerCase();
+        const n = [...rows.slice(i + 1), ...rows.slice(0, i + 1)].find((r) => r.dataset.name.toLowerCase().startsWith(k));
+        if (n) { st.sel = n.dataset.name; paintSel(); n.scrollIntoView({ block: 'nearest' }); }
+      }
+    });
+    back.addEventListener('pointerdown', (e) => { if (e.target === back) { e.preventDefault(); box.classList.add('shake'); setTimeout(() => box.classList.remove('shake'), 300); } });
+    // where it opens: the folder asked for, else the workspace's, else the first place
+    const start = o.start || (I.st.root ? { loc: locOf(), dir: files && I.active?.rel && sameLoc(I.active.loc, locOf()) ? filesParent(I.active.rel) : I.st.root } : null);
+    const first = dialogPlaces().flatMap((g) => g.items).find((x) => x.loc);
+    if (start?.loc) go(start.loc, start.dir || '');
+    else if (first) go(first.loc, first.dir || '');
+    else load();
+    list.focus({ preventScroll: true });
+  });
+}
+
+// Open Folder: the dialog, offline or on a mesh alike
 async function pickFolder(start, l = locOf()) {
-  // offline in the app, the system's own folder dialog, as VS Code's
-  if (nativeFiles()) {
-    const at = await nativeOpen(true, 'Open Folder');
-    if (at) setRoot(at.rel, false, at.loc);
-    return;
-  }
-  let place = start === null ? null : l;
-  let dir = start ?? I.st.root;
-  for (;;) {
-    if (!place) {
-      const ps = places();
-      const items = [...ps.map((x, i) => ({ label: x.label, description: x.description, ic: isHomeLoc(x.loc) ? 'folder' : 'host', value: i }))];
-      if (acct.admin && !offline()) items.push({ label: 'Add a Folder of a Machine…', description: 'publish one, like D:\\Projects or ~/src', ic: 'plus', value: 'add' });
-      const v = await pick(items, { title: 'Open Folder: where', placeholder: 'The home, or a folder of one of your machines', matchDescription: true });
-      if (v === undefined || !I) return;
-      if (v === 'add') { const got = await addFolderDialog(); if (got) { place = got; dir = ''; } continue; }
-      place = ps[v].loc;
-      dir = isHomeLoc(place) ? '' : '';
-    }
-    let entries = [];
-    const top = !dir;
-    if (!top || !isHomeLoc(place)) {
-      try { entries = (await filesCall(apiLoc(place), 'list', undefined, { path: dir })).entries || []; } catch (err) { notify('error', err.message); place = null; continue; }
-    }
-    if (!I) return;
-    const skip = excluded();
-    const subs = top && isHomeLoc(place) ? [{ name: acct.user, dir: true }, ...(offline() ? [] : [{ name: 'shared', dir: true }])] : sortEntries(entries).filter((e) => e.dir && !skip(e.name));
-    const where = isHomeLoc(place) ? dir : `${place.host}: ${hostPath(place.host, place.share, dir)}`;
-    const items = [
-      ...(dir ? [{ label: 'Open this folder', description: where, ic: 'check', value: '.' }] : []),
-      { label: '..', description: top ? 'another place' : 'up a folder', ic: 'up', value: '..' },
-      ...subs.map((e) => ({ label: e.name, ic: 'folder', value: filesJoin(dir, e.name) })),
-    ];
-    // offline, a folder typed whole, as C:\src\app or ~/src
-    const typed = offline() ? (q) => (/^([A-Za-z]:[\\/]?|\/|~[\\/]?)/.test(q) ? { label: `Open ${q}`, description: 'the folder typed', ic: 'folder', value: { abs: q } } : null) : null;
-    const v = await pick(items, { title: `Open Folder: ${where || locLabel(place)}`, placeholder: offline() ? 'Type to filter, or a folder’s whole path; Enter to step into one' : 'Type to filter, Enter to step into a folder', typed });
-    if (v === undefined || !I) return;
-    if (v?.abs) {
-      const at = standalone.locate(v.abs.replace(/^~(?=[\\/]|$)/, hostPath(selfHost, 'home', acct.user)));
-      if (!at?.rel) { notify('warning', at ? `Pick a folder on ${v.abs}, not the whole drive.` : `${v.abs} isn't on a drive Sulfur can reach.`); continue; }
-      setRoot(at.rel, false, at.loc);
-      return;
-    }
-    if (v === '.') { setRoot(dir, false, place); return; }
-    if (v === '..') { if (top) place = null; else dir = dir.includes('/') ? filesParent(dir) : ''; continue; }
-    dir = v;
-  }
+  const at = await fileDialog({ title: 'Open Folder', start: start != null ? { loc: l, dir: start } : null });
+  if (at && I) setRoot(at.rel, false, at.loc);
 }
 
 function recentItems() {
@@ -3439,6 +3658,7 @@ function buildStatus() {
   S.remote = sbItem('ide-sb-remote', standalone ? 'Offline or a Phosphorus mesh' : 'Select the host terminals and runs use', () => (standalone ? menu(S.remote, meshItems(true), { side: 'right', up: true }) : run('sulfur.selectHost')));
   S.problems = sbItem('ide-sb-problems', 'No Problems', () => run('workbench.actions.view.problems'));
   S.build = sbItem('ide-sb-build', 'Build toolchain', () => run('sulfur.build.select'));
+  S.config = sbItem('ide-sb-build ide-sb-config', 'Build configuration', () => run('sulfur.build.configuration'));
   S.people = sbItem('ide-sb-people', '');
   S.agent = sbItem('ide-sb-agent', 'Chat', () => showAux(true, true));
   S.flash = el('span', 'ide-sb-flash');
@@ -3453,7 +3673,7 @@ function buildStatus() {
   S.state = el('span', 'ide-sb ide-sb-state');
   S.extR = el('span', 'ide-sb-ext');
   S.bell = sbItem('ide-sb-bell', 'Notifications', (e) => notesPopup(e.currentTarget));
-  I.statusL.append(S.remote, S.problems, S.build, S.people, S.agent, S.extL, S.flash, S.chord);
+  I.statusL.append(S.remote, S.problems, S.build, S.config, S.people, S.agent, S.extL, S.flash, S.chord);
   I.statusR.append(S.pos, S.indent, S.enc, S.eol, S.lang, S.host, S.state, S.extR, S.bell);
   I.sb = S;
 }
@@ -3480,9 +3700,12 @@ function paintStatusNow() {
   S.problems.title = pc.errors || pc.warnings ? `${pc.errors} errors, ${pc.warnings} warnings` : 'No Problems';
   const bc = buildCfg();
   S.build.hidden = !bc?.toolchain;
+  S.config.hidden = !bc?.toolchain;
   if (bc?.toolchain) {
-    S.build.replaceChildren(icon('gear'), el('span', '', `${bc.toolchain.label.split(' · ').pop()} · ${bc.configuration || 'Debug'} · ${bc.host}`));
-    S.build.title = `Ctrl+B builds ${baseName(I.st.root)} with ${bc.toolchain.label} on ${bc.host}. Click to pick another toolchain.`;
+    S.build.replaceChildren(icon('gear'), el('span', '', `${bc.toolchain.label} · ${bc.host}`));
+    S.build.title = `Ctrl+B builds ${baseName(projDir())} with ${bc.toolchain.label} on ${bc.host}. Click to pick another toolchain.`;
+    S.config.replaceChildren(el('span', '', bc.configuration || 'Debug'), icon('down'));
+    S.config.title = `Configuration ${bc.configuration || 'Debug'}: click to pick another`;
   }
   const t = I.active;
   const info = t?.info;
@@ -4146,7 +4369,7 @@ async function agentAttach(S) {
     return;
   }
   if (!I) return;
-  S.where = { host: S.rec.host, dir: S.rec.dir, remote: offline() };
+  S.where = { host: S.rec.host, dir: S.rec.dir, remote: thisComputer(S.loc) };
   agentConnect(S);
   paintChat(true);
 }
@@ -4524,9 +4747,9 @@ function agentWhere(h) {
   if (o?.blocked) return { why: o.blocked };
   const logins = new Set(o?.hosts?.length ? o.hosts : dkLiveHosts());
   const n = harnessName(h);
-  // offline: the mesh's Code service, on one of its machines, the project copied there
-  if (offline()) {
-    if (!meshLinked()) return { why: `${n} runs on your mesh's machines: log into your mesh (the account menu, bottom left) to use it on this computer's files.` };
+  // offline, or a project on this computer: the mesh's Code service, on one of its machines, the project copied there
+  if (thisComputer(locOf())) {
+    if (offline() && !meshLinked()) return { why: `${n} runs on your mesh's machines: log into your mesh (the account menu, bottom left) to use it on this computer's files.` };
     if (o && !o.error && !(o.hosts || []).length) return { why: `Save a login for one of ${meshName()}'s Linux or macOS machines in Phosphorus (open a terminal on it there) for ${n} to work on it.` };
     return { mesh: true };
   }
@@ -4940,7 +5163,7 @@ async function git(args, o = {}) {
   if (!w) throw new Error(`no machine to run git on: log into one ${loginWhere()}`);
   const body = { host: w.host, dir: o.dir || w.dir, args };
   if (['clone', 'push', 'pull', 'fetch'].includes(args[0])) body.creds = await forgejoCreds().catch(() => null);
-  const r = await fetch('/api/sulfur/git', jsonPost(body));
+  const r = await fetch(hostUrl(w.host, '/api/sulfur/git'), jsonPost(body));
   const b = await r.json().catch(() => ({}));
   if (r.status === 404) throw new Error(`${w.host}'s Phosphorus is older than this Sulfur: update the mesh for Source Control there`);
   if (!r.ok) throw Object.assign(new Error(b.error || `status ${r.status}`), b);
@@ -5814,26 +6037,9 @@ const projectNameWhy = (v) => {
 
 // a place for a project: the home's own folder, or a machine's published folder
 async function pickPlace(title, o = {}) {
-  if (nativeFiles()) {
-    const at = await nativeOpen(true, title);
-    return at ? { loc: at.loc, dir: at.rel, label: at.abs } : null;
-  }
-  for (;;) {
-    const ps = places().filter((x) => !o.skip?.(x.loc) && (isHomeLoc(x.loc) || String(x.perms || 'rwd').includes('w')));
-    const items = ps.map((x, i) => ({ label: x.label, description: isHomeLoc(x.loc) ? (offline() ? hostPath(selfHost, 'home', acct.user) : `${acct.user}/ · synced across the mesh`) : x.description, ic: isHomeLoc(x.loc) ? 'folder' : 'host', value: i }));
-    if (acct.admin && !offline()) items.push({ label: 'Add a Folder of a Machine…', description: 'publish one, like D:\\Projects or ~/src', ic: 'plus', value: 'add', sep: 'more' });
-    else if (ps.length < 2) items.push({ label: 'A machine\'s own folders are published by an admin', ic: 'info', value: 'none', sep: 'more' });
-    const v = await pick(items, { title, placeholder: o.placeholder || 'Where the project goes', matchDescription: true });
-    if (v === undefined || v === 'none' || !I) return null;
-    if (v === 'add') {
-      const got = await addFolderDialog();
-      if (!I) return null;
-      if (got) return { loc: got, dir: '', label: `${got.host}: ${shareOf(got.host, got.share)?.label || ''}` };
-      continue;
-    }
-    const x = ps[v];
-    return { loc: x.loc, dir: isHomeLoc(x.loc) ? acct.user : '', label: isHomeLoc(x.loc) ? 'your home' : `${x.loc.host}: ${x.description}` };
-  }
+  const at = await fileDialog({ title, okLabel: 'Select Folder', allowRoot: true, skip: o.skip });
+  if (!at || !I) return null;
+  return { loc: at.loc, dir: at.rel, label: isHomeLoc(at.loc) ? (offline() ? hostPath(selfHost, 'home', at.rel) : 'your home') : `${at.loc.host}: ${hostPath(at.loc.host, at.loc.share, at.rel)}` };
 }
 
 // does a folder exist there: its listing answers
@@ -6295,7 +6501,7 @@ function paintWelcome(w) {
   const start = el('div', 'ide-welcome-col');
   start.append(el('h2', '', 'Start'));
   const f = (id) => keyLabel(keyFor(id) || '');
-  if (nativeFiles()) start.append(link('Open File…', 'workbench.action.files.openFile', 'file', f('workbench.action.files.openFile')));
+  start.append(link('Open File…', 'workbench.action.files.openFile', 'file', f('workbench.action.files.openFile')));
   start.append(link('Open Folder…', 'workbench.action.files.openFolder', 'folder', f('workbench.action.files.openFolder')),
     link('New Project…', 'sulfur.project.new', 'plus'), link('New File…', 'explorer.newFile', 'newFile'));
   if (I.commands.has('sulfur.git.clone')) start.append(link('Clone a Repository…', 'sulfur.git.clone', 'branch'));
@@ -6782,7 +6988,7 @@ async function activateExt(x) {
   const mainRel = cleanPath(filesJoin(x.dir, x.manifest.main || 'extension.js'));
   const code = mainRel && under(mainRel, x.dir) ? await readUser(mainRel) : null;
   if (!I) return;
-  if (code === null) { extFailed(x, `its main module ${x.manifest.main || 'extension.js'} wasn't found, or is over 512KB`); return; }
+  if (code === null) { extFailed(x, `its main module ${x.manifest.main || 'extension.js'} wasn't found, or is over 16MB`); return; }
   const frame = el('iframe', 'ide-ext-frame');
   frame.setAttribute('sandbox', 'allow-scripts');
   frame.setAttribute('aria-hidden', 'true');
@@ -6927,7 +7133,7 @@ const EXT_CALLS = {
     const t = I.tabs.find((y) => y.rel === path && sameLoc(y.loc, loc) && y.info?.ready);
     if (t) return t.ed.text();
     const text = await readAt(path, loc);
-    if (text === null) throw new Error(`${p}: not found, not text, or over 512KB`);
+    if (text === null) throw new Error(`${p}: not found, not text, or over 16MB`);
     return text;
   },
   'workspace.write': async (x, p, text) => {
@@ -7180,7 +7386,7 @@ async function toolchains(host, fresh = false) {
     if (had.err) throw new Error(had.err);
     return had.pr || had.v;
   }
-  const pr = fetch(`/api/sulfur/toolchains?host=${encodeURIComponent(host)}${fresh ? '&fresh=1' : ''}`, { cache: 'no-store' })
+  const pr = fetch(hostUrl(host, `/api/sulfur/toolchains?host=${encodeURIComponent(host)}${fresh ? '&fresh=1' : ''}`), { cache: 'no-store' })
     .then(async (r) => {
       const b = await r.json().catch(() => ({}));
       // a host whose Phosphorus predates Sulfur's builds has no such call
@@ -7211,6 +7417,16 @@ async function detectProject() {
     const p = await projectAt(dir);
     if (!I) return null;
     if (p.kinds.length || dir === root || !under(dir, root)) {
+      if (p.kinds.length && dir !== root && under(dir, root)) {
+        let top = '';
+        for (let d = filesParent(dir); under(d, root); d = filesParent(d)) {
+          const names = (await loadDir(d)).map((e) => e.name.toLowerCase());
+          if (!I) return null;
+          if ((p.kinds.includes('cmake') && names.includes('cmakelists.txt')) || names.some((n) => n.endsWith('.sln') || n.endsWith('.slnx'))) top = d;
+          if (d === root || !d) break;
+        }
+        if (top) { dir = top; continue; }
+      }
       const had = I.projHas;
       I.projHas = !!p.kinds.length;
       await useProject(p.kinds.length ? dir : root);
@@ -7755,7 +7971,7 @@ async function toggleConfiguration() {
   if (!cfg) { await pickToolchain(); return; }
   const proj = await detectProject();
   if (!I || !proj) return;
-  const v = await pick(configsFor(cfg, proj).map((c) => ({ label: c, value: c, ic: c === cfg.configuration ? 'check' : '' })), { title: 'Build Configuration', placeholder: 'As the project names them' });
+  const v = await pick(configsFor(cfg, proj).map((c) => ({ label: c, description: configDetail(cfg, proj, c), value: c, ic: c === cfg.configuration ? 'check' : '' })), { title: 'Build Configuration', placeholder: 'As the project names them', matchDescription: true });
   // a startup program built by another configuration is that one's: asked for again
   if (v && I) await saveBuildCfg({ ...cfg, configuration: v, startup: v !== cfg.configuration && cfg.startup?.build ? undefined : cfg.startup });
 }
@@ -7831,6 +8047,23 @@ async function startupItems(cfg, proj) {
     .filter((x) => tc.id !== 'msbuild' || new RegExp(`/(x64|Win32|ARM64)?/?${c}/`, 'i').test(`/${x}`) || !/\/(Debug|Release)\//i.test(`/${x}`));
   const rel = (x) => (x.startsWith(`${dir}/`) ? x.slice(dir.length + 1) : x);
   return progs.slice(0, 40).map((x) => ({ label: baseName(x), command: win ? q(rel(x).replace(/\//g, '\\')) : `./${q(rel(x))}`, build: true }));
+}
+
+// what a configuration is: a CMakeSettings one's build type, generator and folder, a preset's
+function configDetail(cfg, proj, c) {
+  const tc = cfg.toolchain || {};
+  if (tc.id === 'cmake-vs') {
+    const sc = (proj.cmakeSettings || []).find((x) => x.name === c);
+    if (!sc) return '';
+    const root = cmakeRoot(sc);
+    const there = (proj.trees || []).some((t) => samePath(t.dir, root));
+    return [sc.configurationType || 'Debug', sc.generator || 'Ninja', root, there ? '' : 'not configured yet'].filter(Boolean).join(' · ');
+  }
+  if (tc.id === 'cmake-preset') {
+    const pr = (proj.presets || []).find((x) => x.name === c);
+    return pr ? [pr.displayName !== pr.name ? pr.displayName : '', pr.generator, pr.binaryDir].filter(Boolean).join(' · ') : '';
+  }
+  return '';
 }
 
 // the configurations a build has: its CMakeSettings', its presets, its solution's, else Debug and Release

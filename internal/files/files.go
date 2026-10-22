@@ -30,7 +30,8 @@ var (
 )
 
 const (
-	MaxPreview   = 512 * 1024
+	// MaxText a text file read or saved whole: source as big as an amalgamation's
+	MaxText      = 16 << 20
 	MaxUpload    = 64 << 30
 	maxEntries   = 5000
 	treeDepthMax = 8
@@ -743,7 +744,7 @@ func Read(sh *Share, rel string) (int, any) {
 		return 400, errBody("that is a directory")
 	}
 	p := RelOf(*sh, abs)
-	if st.Size() > MaxPreview {
+	if st.Size() > MaxText {
 		return 200, map[string]any{"path": p, "size": st.Size(), "tooBig": true}
 	}
 	b, err := os.ReadFile(abs)
@@ -923,7 +924,7 @@ func Save(sh *Share, rel string, p SaveP) (int, any) {
 		c := cur.(map[string]any)
 		t, ok := c["text"].(string)
 		if !ok {
-			return 400, errBody("not a text file under 512KB")
+			return 400, errBody("not a text file under 16MB")
 		}
 		at := -1
 		if *p.Old != "" {
@@ -941,8 +942,8 @@ func Save(sh *Share, rel string, p SaveP) (int, any) {
 	if text == nil {
 		return 400, errBody("text, or old and new")
 	}
-	if len(*text) > MaxPreview {
-		return 413, errBody("over 512KB")
+	if len(*text) > MaxText {
+		return 413, errBody("over 16MB")
 	}
 	made := !exists(abs)
 	tmp := filepath.Join(filepath.Dir(abs), fmt.Sprintf("%s%d-%d", uploadTmp, os.Getpid(), util.Now()))

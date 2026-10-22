@@ -420,6 +420,14 @@ func api(w http.ResponseWriter, r *http.Request) {
 		l.ServeHTTP(w, r)
 		return
 	}
+	// this computer itself, whichever the mode: a mesh's page reaches its files,
+	// terminals and builds here, beside the mesh's machines
+	if strings.HasPrefix(r.URL.Path, "/api/local/") {
+		r2 := r.Clone(r.Context())
+		r2.URL.Path, r2.URL.RawPath = strings.TrimPrefix(r.URL.Path, "/api/local"), ""
+		localAPI(w, r2)
+		return
+	}
 	if mode == "mesh" && p != nil {
 		p.ServeHTTP(w, r)
 		return
@@ -428,6 +436,11 @@ func api(w http.ResponseWriter, r *http.Request) {
 		send(w, 409, errB("pick offline or a server first"))
 		return
 	}
+	localAPI(w, r)
+}
+
+// localAPI this computer's own answers: offline, and under /api/local/ always
+func localAPI(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
 	q := r.URL.Query()
 	switch {

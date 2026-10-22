@@ -9,6 +9,7 @@ import {
   editors,
   el,
   esc,
+  hostUrl,
   lines,
   name,
   shareMenu,
@@ -172,19 +173,28 @@ function codeEditor(view, file, btn, id, opts = {}) {
   // --- drawing ---
   let drawFrame = 0;
   let hlText = null;
-  const HL_MAX = 200 * 1024;
+  const HL_MAX = 8 * 1024 * 1024;
+  // past this, a file's highlighted again once typing stops, plain between
+  const HL_IDLE = 256 * 1024;
+  const SERVER_HL_MAX = 200 * 1024;
+  let bigTimer = 0;
+  let hlNow = false;
   function draw() {
     drawFrame = 0;
     const text = ta.value;
     // a tab shown again with the same text: its highlight kept
     if (text === hlText) { paintMarks(); return; }
-    hlText = text;
     const parser = text.length <= HL_MAX && parserNow(lang.check);
-    if (parser) code.innerHTML = `${highlight(parser, text)}\n`;
+    const big = text.length > HL_IDLE && hlText !== null && !hlNow;
+    hlText = text;
+    if (parser && !big) code.innerHTML = `${highlight(parser, text)}\n`;
     else {
       code.textContent = `${text}\n`;
-      if (lang.check && text.length <= HL_MAX) parserFor(lang.check).then((p) => { if (p) { hlText = null; redraw(); } });
-      else if (lang.hl !== 'plaintext' && text.length <= HL_MAX) serverHighlight(text);
+      if (parser) {
+        clearTimeout(bigTimer);
+        bigTimer = setTimeout(() => { if (closed || ta.value !== text) return; hlText = null; hlNow = true; draw(); hlNow = false; }, 400);
+      } else if (lang.check && text.length <= HL_MAX) parserFor(lang.check).then((p) => { if (p) { hlText = null; redraw(); } });
+      else if (lang.hl !== 'plaintext' && text.length <= SERVER_HL_MAX) serverHighlight(text);
     }
     const lines = text.split('\n').length;
     if (nums.dataset.n !== String(lines)) {
@@ -587,7 +597,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
   function connect() {
     if (closed) return;
     const q = new URLSearchParams({ share: file.share, path: file.path });
-    sock = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/code/${encodeURIComponent(file.host)}?${q}`);
+    sock = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${hostUrl(file.host, `/api/code/${encodeURIComponent(file.host)}`)}?${q}`);
     // the chat's name, else the user this desktop logged into the host as
     const who = name || dk.creds.get(file.host)?.user || 'anon';
     sock.onopen = () => { retry = 1000; say({ type: 'join', name: who, color: color || colorFor(who) }); };

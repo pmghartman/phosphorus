@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	maxText     = 512 * 1024
+	maxText     = files.MaxText
 	history     = 2000
 	idle        = 60 * time.Second
 	hopTimeout  = 5 * time.Second
@@ -142,7 +142,7 @@ func open(sh files.Share, rel string) (int, *session, any) {
 		return 415, nil, map[string]any{"error": "a binary file, not text"}
 	}
 	if m["tooBig"] == true {
-		return 413, nil, map[string]any{"error": "over 512KB, too big to edit here"}
+		return 413, nil, map[string]any{"error": "over 16MB, too big to edit here"}
 	}
 	return 200, newSession(key, sh, rel, m["text"].(string), 0), nil
 }
@@ -299,7 +299,7 @@ func (s *session) onMessage(c *client, msg map[string]any) {
 		return
 	}
 	if len(text) > maxText {
-		sendTo(c, map[string]any{"type": "error", "error": "over 512KB, the edit was not kept"})
+		sendTo(c, map[string]any{"type": "error", "error": "over 16MB, the edit was not kept"})
 		resync()
 		return
 	}
@@ -380,7 +380,7 @@ func Write(sh files.Share, rel string, p WriteP) (int, any) {
 	tgt := U16(*target)
 	if len(tgt) > maxText {
 		mu.Unlock()
-		return 413, map[string]any{"error": "over 512KB"}
+		return 413, map[string]any{"error": "over 16MB"}
 	}
 	name := p.ByName
 	if name == "" {

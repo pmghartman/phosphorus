@@ -2,6 +2,7 @@ import {
   ASSETS,
   copyText,
   cssVar,
+  hostUrl,
   name,
 } from '../app.js';
 
@@ -141,7 +142,7 @@ function startTerminal(view, host, sid, resume, shared = false, login = null, op
       if (resume) q.set('resume', '1');
       // a saved login on its way: the server waits for it, its prompts never drawn
       else if (login) q.set('auto', '1');
-      ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/term/${encodeURIComponent(host)}?${q}`);
+      ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${hostUrl(host, `/api/term/${encodeURIComponent(host)}`)}?${q}`);
       ws.binaryType = 'arraybuffer';
       // the share said again on every join, so a reload's choice holds; a saved
       // login handed to the server once, its prompts answered there, never by screen
@@ -269,7 +270,7 @@ function taskTerminal(view, host, task, opts = {}) {
     observer.observe(view);
     fit.fit();
     if (opts.banner) term.write(opts.banner);
-    ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/sulfur/run`);
+    ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${hostUrl(host, '/api/sulfur/run')}`);
     ws.binaryType = 'arraybuffer';
     let heard = false;
     ws.onopen = () => ws.send(JSON.stringify({ host, task: { ...task, cols: term.cols, rows: term.rows } }));
