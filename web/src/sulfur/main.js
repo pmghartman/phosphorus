@@ -80,7 +80,7 @@ const IC = {
   close: 'M4 4l8 8M12 4l-8 8',
 };
 const ic = (k, cls = '') => dkGlyph(IC[k], `sx-ic ${cls}`);
-const hostOf = (s) => String(s || '').replace(/^https?:\/\//, '');
+const hostOf = (s) => String(s || '').replace(/^http:\/\//, '');
 
 // the app's mark, as its icon draws it
 function mark(cls) {
@@ -134,7 +134,7 @@ function startPane(info, why = '') {
   };
   const offline = link('local', 'Start Offline', `Open folders on ${info.host}, with its own terminals and compilers`, () => choose({ mode: 'local' }, 'Starting…'));
   const form = Object.assign(el('form', 'sx-connect'), { hidden: true });
-  const input = Object.assign(el('input', 'ide-input'), { placeholder: 'A host of your mesh, like d6 or 100.64.0.7', spellcheck: false, autocomplete: 'off' });
+  const input = Object.assign(el('input', 'ide-input'), { placeholder: 'A host on your tailnet, like d6, or your mesh’s address, like https://mulab.dev', spellcheck: false, autocomplete: 'off' });
   input.setAttribute('aria-label', 'Phosphorus server');
   const go = Object.assign(el('button', 'ide-button'), { type: 'submit', textContent: 'Connect' });
   form.append(input, go);
@@ -143,7 +143,7 @@ function startPane(info, why = '') {
     if (!input.value.trim()) { input.focus(); return; }
     choose({ mode: 'mesh', server: input.value.trim() }, `Connecting to ${input.value.trim()}…`);
   });
-  const connect = link('mesh', 'Connect to a Phosphorus Mesh…', 'Your machines, their homes and the mesh’s agents', () => {
+  const connect = link('mesh', 'Connect to a Phosphorus Mesh…', 'On the tailnet or by its address: your machines, their homes and the mesh’s agents', () => {
     form.hidden = false;
     input.value = hostOf(info.server || info.servers?.[0] || '');
     input.focus();

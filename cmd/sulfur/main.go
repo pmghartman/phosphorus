@@ -275,11 +275,20 @@ func sidecar(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// serverURL what's typed as a server: a bare host taken as http
+// serverURL what's typed as a server: a bare tailnet name or address taken as
+// http, a bare domain (mulab.dev) as https, through the mesh's public side
 func serverURL(s string) (*url.URL, error) {
 	s = strings.TrimSpace(s)
 	if !strings.Contains(s, "://") {
-		s = "http://" + s
+		host := s
+		if h, _, err := net.SplitHostPort(s); err == nil {
+			host = h
+		}
+		if strings.Contains(host, ".") && net.ParseIP(host) == nil && !strings.HasSuffix(strings.ToLower(host), ".ts.net") {
+			s = "https://" + s
+		} else {
+			s = "http://" + s
+		}
 	}
 	u, err := url.Parse(s)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
@@ -296,7 +305,10 @@ func reach(u *url.URL) error {
 	}
 	c, err := net.DialTimeout("tcp", net.JoinHostPort(u.Hostname(), port), 5*time.Second)
 	if err != nil {
-		return errors.New(u.Host + " didn't answer: is this computer on your tailnet, and Phosphorus running there?")
+		if u.Scheme == "https" {
+			return errors.New(u.Host + " didn't answer: is the address right, and this computer online?")
+		}
+		return errors.New(u.Host + " didn't answer: is this computer on your tailnet, and Phosphorus running there? Off the tailnet, use your mesh's own address, like https://mulab.dev")
 	}
 	c.Close()
 	return nil

@@ -169,6 +169,21 @@ function cleanPath(p) {
 const HOME_LOC = { host: '*', share: 'home' };
 // offline in Sulfur's desktop app: one computer, no mesh
 const offline = () => standalone?.mode === 'local';
+// offline in Sulfur's desktop app: this computer's own file dialogs, as any editor's
+const nativeFiles = () => offline() && !!standalone?.app && !!standalone.nativePick;
+// a folder or file picked in the system's dialog, as Sulfur's place and path; null if cancelled
+async function nativeOpen(directory, title) {
+  const t = I.active;
+  const start = t?.rel ? hostPath(selfHost, isHomeLoc(t.loc) ? 'home' : t.loc.share, filesParent(t.rel)) : hostPath(selfHost, isHomeLoc() ? 'home' : locOf().share, I.st.root);
+  let abs = null;
+  try { abs = await standalone.nativePick({ directory, title, defaultPath: start }); } catch (err) { notify('error', `The ${directory ? 'folder' : 'file'} dialog failed: ${err.message || err}`); return null; }
+  if (!abs || !I) return null;
+  const at = standalone.locate(abs);
+  if (!at) { notify('warning', `${abs} isn't on a drive Sulfur can reach.`); return null; }
+  if (!at.rel) { notify('info', `Pick a folder on ${abs}, not the whole drive.`); return null; }
+  return { ...at, abs };
+}
+
 // where a host's login is given: Sulfur's own Machines when it runs alone, else the desktop's task bar
 const loginWhere = () => (standalone ? 'from Run and Build › Machines' : 'from its lock in the desktop’s task bar');
 const locOf = () => I?.st.loc || HOME_LOC;
@@ -704,6 +719,7 @@ function showSide(id, on = true, focus = false) {
 const MENUS = [
   ['File', () => [
     cmdItem('sulfur.project.new', 'New Project…'), cmdItem('explorer.newFile', 'New File…'), cmdItem('explorer.newFolder', 'New Folder…'), '-',
+    ...(nativeFiles() ? [cmdItem('workbench.action.files.openFile', 'Open File…')] : []),
     cmdItem('workbench.action.files.openFolder', 'Open Folder…'),
     { label: 'Open Recent', sub: () => recentItems() },
     cmdItem('sulfur.project.transfer', 'Copy or Move Project to…'), '-',
@@ -2198,6 +2214,10 @@ function registerCommands() {
   C('explorer.newFile', 'New File…', () => startEdit('file'), { key: 'ctrl+alt+n', category: 'File' });
   C('explorer.newFolder', 'New Folder…', () => startEdit('folder'), { category: 'File' });
   C('workbench.action.files.openFolder', 'Open Folder…', () => pickFolder(), { key: 'ctrl+k ctrl+o', category: 'File' });
+  C('workbench.action.files.openFile', 'Open File…', async () => {
+    const at = await nativeOpen(false, 'Open File');
+    if (at) openFile(at.rel, { preview: false, loc: at.loc });
+  }, { key: 'ctrl+o', when: () => nativeFiles(), category: 'File' });
   C('workbench.action.openRecent', 'Open Recent…', () => pick(recentItems().map((x) => ({ ...x, value: x })), { placeholder: 'Select to open' }).then((x) => x?.run()), { key: 'ctrl+r', category: 'File' });
   C('workbench.action.files.save', 'Save', () => I.active?.ed && saveTab(I.active), { key: 'ctrl+s', when: hasEd, category: 'File', shell: true });
   C('workbench.action.files.saveAll', 'Save All', () => saveAll(), { key: 'ctrl+k s', category: 'File' });
@@ -2296,7 +2316,7 @@ function registerCommands() {
   // projects: anywhere on the mesh, carried between machines
   C('sulfur.project.new', 'New Project…', () => newProject(), { key: 'ctrl+alt+shift+n', category: 'File' });
   C('sulfur.project.transfer', 'Copy or Move Project to Another Machine…', () => transferProject(), { category: 'File' });
-  C('sulfur.folder.add', 'Add a Folder of a Machine for Projects…', () => addFolderDialog(), { when: () => !!acct.admin, category: 'File' });
+  C('sulfur.folder.add', 'Add a Folder of a Machine for Projects…', () => addFolderDialog(), { when: () => !!acct.admin && !offline(), category: 'File' });
   // the desktop app's start pane again: offline, or another mesh
   C('sulfur.switch', 'Switch Between Offline and a Phosphorus Mesh…', async () => { if ((await saveAll()).every(Boolean)) location.replace('/sulfur/?start'); }, { when: () => !!standalone?.app, category: 'File' });
   C('workbench.action.selectTheme', 'Color Theme', () => pickTheme(), { key: 'ctrl+k ctrl+t', category: 'Preferences' });
@@ -2607,13 +2627,19 @@ function places() {
 
 // a folder of the home or of a host's share, walked down to in the quick input
 async function pickFolder(start, l = locOf()) {
+  // offline in the app, the system's own folder dialog, as VS Code's
+  if (nativeFiles()) {
+    const at = await nativeOpen(true, 'Open Folder');
+    if (at) setRoot(at.rel, false, at.loc);
+    return;
+  }
   let place = start === null ? null : l;
   let dir = start ?? I.st.root;
   for (;;) {
     if (!place) {
       const ps = places();
       const items = [...ps.map((x, i) => ({ label: x.label, description: x.description, ic: isHomeLoc(x.loc) ? 'folder' : 'host', value: i }))];
-      if (acct.admin) items.push({ label: 'Add a Folder of a Machine…', description: 'publish one, like D:\\Projects or ~/src', ic: 'plus', value: 'add' });
+      if (acct.admin && !offline()) items.push({ label: 'Add a Folder of a Machine…', description: 'publish one, like D:\\Projects or ~/src', ic: 'plus', value: 'add' });
       const v = await pick(items, { title: 'Open Folder: where', placeholder: 'The home, or a folder of one of your machines', matchDescription: true });
       if (v === undefined || !I) return;
       if (v === 'add') { const got = await addFolderDialog(); if (got) { place = got; dir = ''; } continue; }
@@ -5015,10 +5041,14 @@ const projectNameWhy = (v) => {
 
 // a place for a project: the home's own folder, or a machine's published folder
 async function pickPlace(title, o = {}) {
+  if (nativeFiles()) {
+    const at = await nativeOpen(true, title);
+    return at ? { loc: at.loc, dir: at.rel, label: at.abs } : null;
+  }
   for (;;) {
     const ps = places().filter((x) => !o.skip?.(x.loc) && (isHomeLoc(x.loc) || String(x.perms || 'rwd').includes('w')));
     const items = ps.map((x, i) => ({ label: x.label, description: isHomeLoc(x.loc) ? (offline() ? hostPath(selfHost, 'home', acct.user) : `${acct.user}/ · synced across the mesh`) : x.description, ic: isHomeLoc(x.loc) ? 'folder' : 'host', value: i }));
-    if (acct.admin) items.push({ label: 'Add a Folder of a Machine…', description: 'publish one, like D:\\Projects or ~/src', ic: 'plus', value: 'add', sep: 'more' });
+    if (acct.admin && !offline()) items.push({ label: 'Add a Folder of a Machine…', description: 'publish one, like D:\\Projects or ~/src', ic: 'plus', value: 'add', sep: 'more' });
     else if (ps.length < 2) items.push({ label: 'A machine\'s own folders are published by an admin', ic: 'info', value: 'none', sep: 'more' });
     const v = await pick(items, { title, placeholder: o.placeholder || 'Where the project goes', matchDescription: true });
     if (v === undefined || v === 'none' || !I) return null;
