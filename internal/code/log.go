@@ -1,4 +1,4 @@
-package claude
+package code
 
 // a session's event log: one JSON message a line, each with its seq, the
 // oldest dropped past logMax, read back from a seq on a socket's join

@@ -1,8 +1,7 @@
-// Package claude: Code sessions, the claude CLI run over ssh on a mesh host
-// as its user, on a mesh model or their own Anthropic subscription; its
-// stream-json logged, fanned out to the page's sockets, permission asks
-// answered from the page
-package claude
+// Package code: the code service's sessions, a harness (claude, opencode) run
+// over ssh on a mesh host as its user; its events logged as claude's
+// stream-json, fanned out to the page's sockets, permission asks answered there
+package code
 
 import (
 	"bufio"
@@ -424,7 +423,7 @@ func (s *session) exited(g, code int, errs string) {
 	case stopping || code == 0:
 		s.status("ended")
 	case code == 127:
-		s.fail(fmt.Sprintf("claude isn't installed on %s: install it from the Code app", s.rec.Host))
+		s.fail(missing(Claude, s.rec.Host))
 	case code == 3:
 		s.fail(fmt.Sprintf("no folder %s on %s", s.rec.Dir, s.rec.Host))
 	default:

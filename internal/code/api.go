@@ -1,4 +1,4 @@
-package claude
+package code
 
 // the page's calls, each answering a status and a body; a session another
 // user's is no session at all
@@ -8,7 +8,6 @@ import (
 	"os"
 	"sort"
 	"strings"
-	"sync"
 
 	"github.com/pmghartman/phosphorus/internal/util"
 )
@@ -102,10 +101,10 @@ func Create(user string, p map[string]any, creds CredsFn) (int, any) {
 	}
 	prompt := cleanText(p["prompt"], textMax)
 	switch {
-	case !has(Harnesses, harness):
-		return 400, errB("harness is one of " + strings.Join(Harnesses, ", "))
-	case harness == Opencode && provider(model) != "mesh":
-		return 400, errB("opencode runs on the mesh's models: " + strings.Join(Mesh, ", "))
+	case harnessByID(harness) == nil:
+		return 400, errB("harness is one of " + strings.Join(harnessIDs(), ", "))
+	case harnessByID(harness).MeshOnly && provider(model) != "mesh":
+		return 400, errB(harnessByID(harness).Label + " runs on the mesh's models: " + strings.Join(Mesh, ", "))
 	case !hostRe.MatchString(host):
 		return 400, errB("pick a host")
 	case dir == "" || len(dir) > dirMax || strings.ContainsAny(dir, "\x00\r\n"):
@@ -361,60 +360,4 @@ func Delete(user, id string) (int, any) {
 	s.log.remove()
 	os.Remove(recFile(id))
 	return 200, map[string]any{}
-}
-
-// Installed claude's version on host
-func Installed(host string, c Creds) (int, any) { return InstalledOf(host, c, Claude) }
-
-// InstalledOf a harness's version on host
-func InstalledOf(host string, c Creds, harness string) (int, any) {
-	if !hostRe.MatchString(host) {
-		return 400, errB("pick a host")
-	}
-	cmd := versionCommand()
-	if harness == Opencode {
-		cmd = ocVersionCommand()
-	}
-	v, err := version(host, c, cmd)
-	if err != nil {
-		return 502, errB(err.Error())
-	}
-	return 200, map[string]any{"installed": v != "", "version": v}
-}
-
-var (
-	installMu sync.Mutex
-	installs  = map[string]bool{}
-)
-
-// Install the official installer run on host as the login
-func Install(host string, c Creds) (int, any) { return InstallOf(host, c, Claude) }
-
-// InstallOf a harness's official installer run on host as the login
-func InstallOf(host string, c Creds, harness string) (int, any) {
-	if !hostRe.MatchString(host) {
-		return 400, errB("pick a host")
-	}
-	cmd := installCommand()
-	if harness == Opencode {
-		cmd = ocInstallCommand()
-	}
-	k := host + "|" + c.User + "|" + harness
-	installMu.Lock()
-	if installs[k] {
-		installMu.Unlock()
-		return 409, errB("already installing on " + host)
-	}
-	installs[k] = true
-	installMu.Unlock()
-	defer func() {
-		installMu.Lock()
-		delete(installs, k)
-		installMu.Unlock()
-	}()
-	ok, out, err := install(host, c, cmd)
-	if err != nil && out == "" {
-		return 502, errB(err.Error())
-	}
-	return 200, map[string]any{"ok": ok && err == nil, "out": out}
 }

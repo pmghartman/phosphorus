@@ -8,7 +8,7 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
-	"github.com/pmghartman/phosphorus/internal/claude"
+	"github.com/pmghartman/phosphorus/internal/code"
 )
 
 // posixPath where a user's toolchains install themselves, ahead of a
@@ -35,7 +35,7 @@ func (t Task) Line() (string, error) {
 		return "", errors.New("a command is one line")
 	}
 	if !t.Windows {
-		return "sh -c " + claude.Quote(posixPath+`cd -- "$1" || exit 3; eval "$2"`) + " sh " + claude.Quote(t.Dir) + " " + claude.Quote(t.Command), nil
+		return "sh -c " + code.Quote(posixPath+`cd -- "$1" || exit 3; eval "$2"`) + " sh " + code.Quote(t.Dir) + " " + code.Quote(t.Command), nil
 	}
 	if strings.Contains(t.Dir, `"`) || strings.Contains(t.VCVars, `"`) {
 		return "", errors.New("a folder or script with a quote in its name")
@@ -57,12 +57,12 @@ type Session struct {
 
 // Start t on host as c's login in a terminal of its own, its output to out
 // as it comes; the returned wait gives its exit once it's done
-func Start(host string, c claude.Creds, t Task, out io.Writer) (*Session, func() int, error) {
+func Start(host string, c code.Creds, t Task, out io.Writer) (*Session, func() int, error) {
 	line, err := t.Line()
 	if err != nil {
 		return nil, nil, err
 	}
-	cl, err := claude.Dial(host, c)
+	cl, err := code.Dial(host, c)
 	if err != nil {
 		return nil, nil, err
 	}

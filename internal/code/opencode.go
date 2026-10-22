@@ -1,4 +1,4 @@
-package claude
+package code
 
 // opencode as a session's harness: one `opencode run --format json` a prompt
 // in the session's folder, its own session resumed by id, the mesh's models
@@ -14,9 +14,6 @@ import (
 )
 
 const (
-	// Claude and Opencode the harnesses a session runs
-	Claude   = "claude"
-	Opencode = "opencode"
 	// ocDir opencode's config on the host, apart from the user's own
 	ocDir = `"$HOME/.phosphorus/opencode"`
 	// ocPath where opencode's installer puts it, ahead of a non-login PATH
@@ -24,17 +21,6 @@ const (
 	// ocArgMax a prompt opencode takes as an argument
 	ocArgMax = 100 * 1024
 )
-
-// Harnesses every harness a session may run
-var Harnesses = []string{Claude, Opencode}
-
-// harnessOf a record's harness, claude for the ones from before there was a choice
-func harnessOf(r Record) string {
-	if r.Harness == "" {
-		return Claude
-	}
-	return r.Harness
-}
 
 // ocRun what one opencode run has said so far
 type ocRun struct {
@@ -97,14 +83,6 @@ func ocLaunch(dir, model, perm, sid, prompt string) string {
 		"command -v opencode >/dev/null 2>&1 || exit 127; " +
 		"exec " + strings.Join(args, " ") + " </dev/null"
 	return "sh -c " + quote(script)
-}
-
-func ocVersionCommand() string {
-	return "sh -c " + quote(ocPath+"command -v opencode >/dev/null 2>&1 || exit 127; opencode --version")
-}
-
-func ocInstallCommand() string {
-	return "sh -c " + quote(ocPath+"curl -fsSL https://opencode.ai/install | bash 2>&1")
 }
 
 // ocBegin opencode's turn to start: nothing runs until a prompt does, the
@@ -189,7 +167,7 @@ func (s *session) ocExited(g, code int, errs string) {
 		s.on(map[string]any{"type": "result", "subtype": "success", "num_turns": r.steps, "duration_ms": time.Since(r.start).Milliseconds(),
 			"usage": map[string]any{"input_tokens": r.in, "output_tokens": r.out}, "total_cost_usd": r.cost})
 	case code == 127:
-		s.fail(fmt.Sprintf("opencode isn't installed on %s: install it from Sulfur's chat", s.rec.Host))
+		s.fail(missing(Opencode, s.rec.Host))
 	case code == 3:
 		s.fail(fmt.Sprintf("no folder %s on %s", s.rec.Dir, s.rec.Host))
 	default:
