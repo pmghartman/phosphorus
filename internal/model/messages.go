@@ -84,6 +84,47 @@ func chatShaped(p map[string]any) []any {
 	return out
 }
 
+// foldSystem system messages among the messages, as newer claude codes send,
+// moved to the top-level system: a chat template like Qwen's refuses a system
+// message anywhere but first
+func foldSystem(p map[string]any) map[string]any {
+	ms, _ := p["messages"].([]any)
+	keep := make([]any, 0, len(ms))
+	var extra []any
+	for _, m := range ms {
+		mm := util.Obj(m)
+		if util.Str(mm["role"]) != "system" {
+			keep = append(keep, m)
+			continue
+		}
+		switch c := mm["content"].(type) {
+		case string:
+			extra = append(extra, map[string]any{"type": "text", "text": c})
+		case []any:
+			extra = append(extra, c...)
+		}
+	}
+	if len(keep) == len(ms) {
+		return p
+	}
+	out := map[string]any{}
+	for k, v := range p {
+		out[k] = v
+	}
+	sys := []any{}
+	switch s := p["system"].(type) {
+	case string:
+		if s != "" {
+			sys = append(sys, map[string]any{"type": "text", "text": s})
+		}
+	case []any:
+		sys = append(sys, s...)
+	}
+	out["system"] = append(sys, extra...)
+	out["messages"] = keep
+	return out
+}
+
 // ServeMessages POST /api/model/v1/messages[/count_tokens]: sub "" or
 // "/count_tokens", peer a tailnet or loopback caller, user a logged-in user's
 // own page (the ide's chat), its login the pass a key is for anyone else
@@ -100,6 +141,7 @@ func ServeMessages(r *http.Request, p map[string]any, w http.ResponseWriter, sub
 		anthErr(w, 400, "invalid_request_error", "messages: an array")
 		return
 	}
+	p = foldSystem(p)
 	states := view()
 	var s map[string]any
 	if role != "" {

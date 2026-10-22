@@ -6365,9 +6365,6 @@ function dkMcpTray() {
   view.append(box, el('span', '', 'show agent on screen'));
   view.title = 'open the files, editors, consoles and views the agent works in, as it works';
   pop.append(bar, hint, view, head, body);
-  // the anthropic token for the code app, drawn by it
-  const anth = el('div', 'dk-cl-sec');
-  pop.append(anth);
   head.append(el('span', 'dk-cl-title', 'agent'), stateLine);
   const flash = (x, text) => {
     const was = x.dataset.label;
@@ -6449,6 +6446,9 @@ function dkMcpTray() {
     calls.append(list);
     rows.push(calls);
     body.replaceChildren(...rows);
+    // about five calls tall, the rest a scroll away
+    const last = [...list.children].slice(-5);
+    list.style.maxHeight = list.children.length > 5 ? `${last.reduce((h, x) => h + x.offsetHeight, 0) + 4}px` : '';
     list.scrollTop = stick ? list.scrollHeight : keep;
   };
   const show = (on) => {
@@ -6462,7 +6462,6 @@ function dkMcpTray() {
       list = null;
       paint();
       if (mcpStat.configured) hint.replaceChildren();
-      appCall('code', true, (m) => m.codeToken(anth));
       pollMcp();
       // the url ready before a tap, so copying it is the tap's own
       if (mcpStat.configured) acctCall('/api/me/mcp-url', {}).then((r) => { if (r.ok) mcpStat.url = r.url; });
@@ -6894,6 +6893,7 @@ export {
   name,
   news,
   newSid,
+  noFill,
   openMenu,
   pingClass,
   plural,
