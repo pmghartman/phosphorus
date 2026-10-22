@@ -43,14 +43,15 @@ const hexRgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
 const mixHex = (a, b, t) => `#${hexRgb(a).map((v, i) => Math.round(v + (hexRgb(b)[i] - v) * t).toString(16).padStart(2, '0')).join('')}`;
 
 // read fresh each time so a theme switch reaches open terminals,
-// light's tokens already inked for white, only its brights darker
-function termTheme() {
-  const css = getComputedStyle(document.documentElement);
+// light's tokens already inked for white, only its brights darker;
+// from: the element whose tokens it takes, clear: no background of its own
+function termTheme(from = document.documentElement, clear = false) {
+  const css = getComputedStyle(from.isConnected ? from : document.documentElement);
   const cssVar = (name) => css.getPropertyValue(name).trim();
   const light = document.documentElement.dataset.theme === 'light';
   const fg = cssVar('--fg');
   const theme = {
-    background: cssVar('--bg'), foreground: fg,
+    background: clear ? '#00000000' : cssVar('--bg'), foreground: fg,
     cursor: cssVar('--accent'), cursorAccent: cssVar('--bg'),
     selectionBackground: `${cssVar('--accent')}59`,
     black: light ? fg : cssVar('--border'),
@@ -66,7 +67,9 @@ function termTheme() {
   }
   return theme;
 }
-const liveTerms = new Set();
+// each open terminal and where its colors come from
+const liveTerms = new Map();
+const looks = (opts) => ({ from: opts.themeFrom || document.documentElement, clear: !!opts.transparent });
 
 // /api/term/<host>: keystrokes and output as binary frames, resize as JSON,
 // a dropped socket's rejoin by sid, until the server's ENDED
@@ -89,9 +92,10 @@ function startTerminal(view, host, sid, resume, shared = false, login = null, op
       fontFamily: getComputedStyle(document.documentElement).getPropertyValue('--font').trim(),
       lineHeight: 1,
       letterSpacing: 0,
-      theme: termTheme(),
+      allowTransparency: !!opts.transparent,
+      theme: termTheme(looks(opts).from, looks(opts).clear),
     });
-    liveTerms.add(term);
+    liveTerms.set(term, looks(opts));
     // shift+esc left to the page, which unfocuses, plain esc the terminal's;
     // off a mac ctrl+c copies a selection (else ^C) and ctrl+v pastes, as Windows Terminal
     term.attachCustomKeyEventHandler((e) => {
@@ -111,12 +115,14 @@ function startTerminal(view, host, sid, resume, shared = false, login = null, op
     fit = new FitAddon.FitAddon();
     term.loadAddon(fit);
     term.open(view);
-    // pixel exact block and box glyphs, DOM renderer if no WebGL2
-    try {
-      const gl = new WebglAddon.WebglAddon();
-      gl.onContextLoss(() => gl.dispose());
-      term.loadAddon(gl);
-    } catch {}
+    // pixel exact block and box glyphs, DOM renderer if no WebGL2 or the panel shows through
+    if (!opts.transparent) {
+      try {
+        const gl = new WebglAddon.WebglAddon();
+        gl.onContextLoss(() => gl.dispose());
+        term.loadAddon(gl);
+      } catch {}
+    }
     // 0x0 for hidden views, skipped by fit
     observer = new ResizeObserver(() => fit.fit());
     observer.observe(view);
@@ -208,7 +214,7 @@ function agentConsole(view) {
       fontFamily: getComputedStyle(document.documentElement).getPropertyValue('--font').trim(),
       theme: termTheme(),
     });
-    liveTerms.add(term);
+    liveTerms.set(term, looks({}));
     const fit = new FitAddon.FitAddon();
     term.loadAddon(fit);
     term.open(view);
@@ -223,7 +229,87 @@ function agentConsole(view) {
   };
 }
 
-// re-coloured with the page's theme
-function termsRetheme() { for (const t of liveTerms) t.options.theme = termTheme(); }
+// a task on a host through /api/sulfur/run, a build or a run: its output as a
+// terminal's, keys passed in while it runs, its exit told once it's over;
+// opts: fontSize, banner, onText (its output as text, for problem matchers), onExit
+function taskTerminal(view, host, task, opts = {}) {
+  let term = null;
+  let fit = null;
+  let ws = null;
+  let observer = null;
+  let ended = false;
+  const dec = new TextDecoder();
+  const enc = new TextEncoder();
+  const fontIn = document.fonts.load('14px "Geist Mono Variable"').catch(() => {});
+  const end = (code, why) => {
+    if (ended) return;
+    ended = true;
+    if (why) term?.write(`\r\n\x1b[31m${why}\x1b[0m`);
+    term?.write(`\r\n\x1b[2m[${code === 0 ? 'done' : code === -1 ? 'stopped' : `exited with ${code}`}]\x1b[0m\r\n`);
+    opts.onExit?.(code, why || '');
+  };
+  const ready = Promise.all([loadXterm(), fontIn]).then(() => {
+    term = new Terminal({
+      cursorBlink: false, cursorStyle: 'bar', fontSize: opts.fontSize || 14, lineHeight: 1, scrollback: 20000,
+      fontFamily: getComputedStyle(document.documentElement).getPropertyValue('--font').trim(),
+      allowTransparency: !!opts.transparent, theme: termTheme(looks(opts).from, looks(opts).clear),
+    });
+    liveTerms.set(term, looks(opts));
+    fit = new FitAddon.FitAddon();
+    term.loadAddon(fit);
+    term.open(view);
+    if (!opts.transparent) {
+      try {
+        const gl = new WebglAddon.WebglAddon();
+        gl.onContextLoss(() => gl.dispose());
+        term.loadAddon(gl);
+      } catch {}
+    }
+    observer = new ResizeObserver(() => fit.fit());
+    observer.observe(view);
+    fit.fit();
+    if (opts.banner) term.write(opts.banner);
+    ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/sulfur/run`);
+    ws.binaryType = 'arraybuffer';
+    ws.onopen = () => ws.send(JSON.stringify({ host, task: { ...task, cols: term.cols, rows: term.rows } }));
+    ws.onmessage = (e) => {
+      if (typeof e.data === 'string') {
+        let m = null;
+        try { m = JSON.parse(e.data); } catch { return; }
+        if (m.type === 'exit') end(m.code, m.error);
+        return;
+      }
+      const b = new Uint8Array(e.data);
+      term.write(b);
+      opts.onText?.(dec.decode(b, { stream: true }));
+    };
+    ws.onclose = () => end(-1, 'the connection closed');
+    term.onData((d) => { if (!ended && ws?.readyState === WebSocket.OPEN) ws.send(enc.encode(d)); });
+    term.onResize(() => { if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows })); });
+  }).catch((err) => { view.textContent = err.message; end(-1, err.message); });
+  return {
+    show: () => ready.then(() => { fit?.fit(); term?.focus(); }),
+    focus: () => term?.focus(),
+    fit: () => fit?.fit(),
+    clear: () => term?.clear(),
+    ended: () => ended,
+    send: (text) => {
+      if (ended || ws?.readyState !== WebSocket.OPEN) return false;
+      ws.send(enc.encode(text));
+      return true;
+    },
+    // a stop asked of the host, the socket closed after so nothing's left
+    kill: () => { if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'kill' })); },
+    close: () => ready.then(() => {
+      observer?.disconnect();
+      if (ws) { ws.onclose = null; try { ws.close(); } catch {} }
+      liveTerms.delete(term);
+      term?.dispose();
+    }),
+  };
+}
 
-export { agentConsole, startTerminal, termsRetheme };
+// re-coloured with the page's theme
+function termsRetheme() { for (const [t, l] of liveTerms) t.options.theme = termTheme(l.from, l.clear); }
+
+export { agentConsole, startTerminal, taskTerminal, termsRetheme };

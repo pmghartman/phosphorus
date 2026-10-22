@@ -31,11 +31,11 @@ import {
   shQuote,
 } from '../app.js';
 import { codeEditor } from './editor.js';
-import { startTerminal } from './terminal.js';
+import { startTerminal, taskTerminal, termsRetheme } from './terminal.js';
 import { renderMd } from '../md.js';
-import guideText from '../../../docs/ide-extensions.md';
+import guideText from '../../../docs/sulfur-extensions.md';
 
-// --- the ide ---------------------------------------------------------------------
+// --- sulfur, the code editor ----------------------------------------------------------
 // a workbench in one desktop window, laid out and keyed as VS Code is: a folder
 // of the user's own home (theirs or shared, nobody else's) its workspace, every
 // file in it one of the editor's live sessions on the host holding it, its
@@ -44,9 +44,12 @@ import guideText from '../../../docs/ide-extensions.md';
 // reaching the workbench only through the messages it answers
 
 const IS_MAC = /Mac|iPhone|iPad/.test(navigator.userAgentData?.platform || navigator.platform || '');
-const STATE_KEY = () => `phosphorus-ide:${acct?.user || ''}`;
+const STATE_KEY = () => `phosphorus-sulfur:${acct?.user || ''}`;
+// what the same browser kept before the name was Sulfur
+const OLD_STATE_KEY = () => `phosphorus-ide:${acct?.user || ''}`;
 // where the user's ide keeps what follows them across browsers
-const CONF_DIR = () => `${acct.user}/.ide`;
+const CONF_DIR = () => `${acct.user}/.sulfur`;
+const OLD_CONF_DIR = () => `${acct.user}/.ide`;
 const EXT_DIR = () => `${CONF_DIR()}/extensions`;
 const SETTINGS_PATH = () => `${CONF_DIR()}/settings.json`;
 const KEYS_PATH = () => `${CONF_DIR()}/keybindings.json`;
@@ -160,14 +163,56 @@ function cleanPath(p) {
   }
   return out.join('/');
 }
-// the user's own space and the shared one, nobody else's
-function inScope(rel) {
+// --- where a workspace lives: the merged home, every host's at once, or a
+// folder of one host's own disk published as a share (D:\Projects, /srv/code)
+const HOME_LOC = { host: '*', share: 'home' };
+const locOf = () => I?.st.loc || HOME_LOC;
+const isHomeLoc = (l = locOf()) => !l || l.host === '*';
+const sameLoc = (a, b) => (isHomeLoc(a) && isHomeLoc(b)) || (!!a && !!b && a.host === b.host && String(a.share) === String(b.share));
+const locKey = (l = locOf()) => (isHomeLoc(l) ? '*' : `${l.host}:${l.share}`);
+// a share as its host publishes it: its folder there and its perms
+function shareOf(host, id) {
+  return (hostsInfo[String(host || '').toLowerCase()]?.files?.shares || []).find((x) => String(x.id) === String(id)) || null;
+}
+const isWinPath = (p) => /^[A-Za-z]:[\\/]/.test(p || '');
+// the files api's place for a location: the merged home, or one host's share
+function apiLoc(l = locOf()) {
+  if (isHomeLoc(l)) return HOME;
+  const sh = shareOf(l.host, l.share);
+  return { host: l.host, share: String(l.share), root: sh?.label || '', perms: sh?.perms || 'rwd' };
+}
+// a path as the host's own shell names it: its share's folder, then rel
+function hostPath(host, shareId, rel) {
+  const label = shareOf(host, shareId)?.label || '';
+  if (!label) return '';
+  const sep = isWinPath(label) ? '\\' : '/';
+  const r = String(rel || '').split('/').filter(Boolean).join(sep);
+  const base = label.length > 3 ? label.replace(/[\\/]+$/, '') : label;
+  return r ? `${base}${base.endsWith(sep) ? '' : sep}${r}` : base;
+}
+const hostIsWindows = (host) => isWinPath(shareOf(host, 'home')?.label) || /win/i.test(hostsInfo[String(host).toLowerCase()]?.platform || '');
+// where a workspace file's session lives: the share's host, or the home's holder
+function fileLoc(rel, host, l = locOf()) {
+  return isHomeLoc(l) ? { host: host || homePick(rel), share: 'home' } : { host: l.host, share: String(l.share) };
+}
+// a location's name for people: the home, or host and folder
+function locLabel(l = locOf()) {
+  if (isHomeLoc(l)) return 'home, synced across the mesh';
+  return `${l.host} · ${shareOf(l.host, l.share)?.label || `share ${l.share}`}`;
+}
+// the user's own space and the shared one in the home; in a host's share, anything in it
+function inScope(rel, l = locOf()) {
   const c = cleanPath(rel);
   if (c === null || !acct) return false;
+  if (!isHomeLoc(l)) return c !== '';
   const top = c.split('/')[0];
   return top === acct.user || top === 'shared';
 }
 const under = (p, dir) => p === dir || p.startsWith(`${dir}/`);
+// the workspace's own name for a path in it
+const wsRel = (p) => (under(p, I.st.root) ? p.slice(I.st.root.length + 1) : p);
+// the workspace, place and folder, as one key
+const wsKey = () => `${locKey()}\n${I.st.root}`;
 // VS Code's JSON with comments and trailing commas, as its settings files are
 function parseJsonc(text) {
   let out = '';
@@ -228,10 +273,17 @@ const DEFAULTS = () => ({
   root: acct.user, tabs: [], active: '', recent: [], recentFolders: [],
   side: { view: 'explorer', w: 260, hidden: false },
   panel: { h: 260, hidden: true, view: 'terminal', max: false },
-  aux: { w: 360, hidden: true, agent: 'mesh:chimp' },
+  aux: { w: 360, hidden: true, agent: '', harness: 'chat', model: 'chimp', perm: 'acceptEdits' },
   expanded: {}, runHost: '', sections: { open: true, tree: true },
-  ext: { enabled: {} },
+  ext: { enabled: {} }, loc: HOME_LOC, build: {},
 });
+// the workbench's looks, each light and dark as the desktop is
+const THEMES = [
+  { id: 'vscode', label: 'VS Code', description: 'Dark Modern and Light Modern', group: 'Sulfur' },
+  { id: 'phosphorus', label: 'Phosphorus', description: 'the desktop\'s own colors and type', group: 'Sulfur' },
+  { id: 'medieval', label: 'Medieval Fantasy', description: 'parchment, oak and gilt', group: 'Extra Themes' },
+];
+
 const SETTINGS = {
   'editor.fontSize': { def: 13, type: 'number', min: 8, max: 40, title: 'Editor: Font Size', about: 'Controls the font size in pixels.' },
   'editor.enablePreview': { def: true, type: 'boolean', title: 'Workbench › Editor: Enable Preview', about: 'Controls whether a file opened from the explorer is shown as a preview, its tab reused until you edit it or double click.' },
@@ -239,24 +291,45 @@ const SETTINGS = {
   'explorer.autoReveal': { def: true, type: 'boolean', title: 'Explorer: Auto Reveal', about: 'Controls whether the explorer reveals and selects the active file.' },
   'files.exclude': { def: '.git, node_modules, __pycache__, .DS_Store', type: 'string', title: 'Files: Exclude', about: 'Comma separated names or simple globs (*.o) hidden from the explorer, quick open and search.' },
   'terminal.integrated.fontSize': { def: 13, type: 'number', min: 8, max: 40, title: 'Terminal › Integrated: Font Size', about: 'Controls the font size in pixels of the terminal. New terminals take it.' },
-  'workbench.restoreEditors': { def: true, type: 'boolean', title: 'Workbench: Restore Editors', about: 'Controls whether the open editors come back when the ide opens again.' },
-  'ide.runners': { def: {}, type: 'object', title: 'Run: Runners', about: 'Commands that run a file, by extension, over the built-in ones, as {"py": "python3 -u \\"$f\\""}: $f is the file, $o a fresh output path beside it.' },
+  'workbench.colorTheme': { def: 'vscode', type: 'enum', options: THEMES.map((t) => [t.id, t.label]), title: 'Workbench: Color Theme', about: 'Specifies the color theme used in the workbench: VS Code\'s own, Phosphorus\'s like the desktop\'s other apps, or one of the extra themes. Each follows the desktop\'s light or dark.' },
+  'workbench.restoreEditors': { def: true, type: 'boolean', title: 'Workbench: Restore Editors', about: 'Controls whether the open editors come back when Sulfur opens again.' },
+  'sulfur.runners': { def: {}, type: 'object', title: 'Run: Runners', about: 'Commands that run a file, by extension, over the built-in ones, as {"py": "python3 -u \\"$f\\""}: $f is the file, $o a fresh output path beside it.' },
   'chat.includeActiveFile': { def: true, type: 'boolean', title: 'Chat: Include Active File', about: 'Controls whether the mesh agents see the file you have open, and know "this file" means it.' },
 };
 const setting = (k) => (I?.settings && k in I.settings ? I.settings[k] : SETTINGS[k]?.def);
+
+// this browser's keeping from before the name was Sulfur, copied once
+function migrateLocal() {
+  try {
+    const old = OLD_STATE_KEY();
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (!k || (k !== old && !k.startsWith(`${old}:`))) continue;
+      const to = STATE_KEY() + k.slice(old.length);
+      if (localStorage.getItem(to) === null) localStorage.setItem(to, localStorage.getItem(k));
+      localStorage.removeItem(k);
+    }
+  } catch {}
+}
 
 function loadState() {
   let v = null;
   try { v = JSON.parse(localStorage.getItem(STATE_KEY())); } catch {}
   const d = DEFAULTS();
   if (!v || typeof v !== 'object') return d;
-  return { ...d, ...v, side: { ...d.side, ...v.side }, panel: { ...d.panel, ...v.panel }, aux: { ...d.aux, ...v.aux }, ext: { ...d.ext, ...v.ext }, sections: { ...d.sections, ...v.sections } };
+  const st = { ...d, ...v, side: { ...d.side, ...v.side }, panel: { ...d.panel, ...v.panel }, aux: { ...d.aux, ...v.aux }, ext: { ...d.ext, ...v.ext }, sections: { ...d.sections, ...v.sections } };
+  if (!st.loc || typeof st.loc !== 'object' || (!isHomeLoc(st.loc) && !st.loc.host)) st.loc = HOME_LOC;
+  if (!st.build || typeof st.build !== 'object') st.build = {};
+  return st;
 }
+// a tab as it's kept: its path, and where it lives unless the home
+const tabKept = (t) => (isHomeLoc(t.loc) ? t.rel : { rel: t.rel, host: t.loc.host, share: t.loc.share });
+const keptLoc = (x) => (typeof x === 'string' ? { rel: x, loc: HOME_LOC } : { rel: x?.rel, loc: x?.host ? { host: x.host, share: String(x.share) } : HOME_LOC });
 const saveState = debounce(() => {
   if (!I) return;
   const st = I.st;
-  st.tabs = I.tabs.filter((t) => t.kind === 'code' || t.kind === 'image').map((t) => t.rel);
-  st.active = I.active?.rel || '';
+  st.tabs = I.tabs.filter((t) => t.kind === 'code' || t.kind === 'image').map(tabKept);
+  st.active = I.active?.rel ? tabKept(I.active) : '';
   try { localStorage.setItem(STATE_KEY(), JSON.stringify(st)); } catch {}
 }, 300);
 
@@ -265,8 +338,10 @@ const saveState = debounce(() => {
 // the window's body made the workbench; open: {dir} a folder, {path} a file
 export function ideStart(w, open) {
   if (I) teardown();
+  migrateLocal();
   const st = loadState();
-  if (!inScope(st.root)) st.root = acct.user;
+  if (!isHomeLoc(st.loc) && !shareOf(st.loc.host, st.loc.share)) st.loc = HOME_LOC;
+  if (!inScope(st.root, st.loc)) { st.loc = HOME_LOC; st.root = acct.user; }
   let cached = {};
   try { cached = JSON.parse(localStorage.getItem(`${STATE_KEY()}:settings`)) || {}; } catch {}
   I = {
@@ -279,19 +354,19 @@ export function ideStart(w, open) {
   registerCommands();
   applySettings();
   for (const [ext, cmd] of Object.entries(DK_RUNNERS)) I.runners.set(ext, { cmd, by: '' });
-  log(`started as ${acct.user} on ${selfHost}, workspace ${st.root}`);
-  setRoot(st.root, true);
+  log(`started as ${acct.user} on ${selfHost}, workspace ${st.root} in ${locLabel(st.loc)}`);
+  setRoot(st.root, true, st.loc);
   if (setting('workbench.restoreEditors')) {
-    for (const rel of st.tabs) if (inScope(rel)) openFile(rel, { preview: false, focus: false, quiet: true });
-    const back = I.tabs.find((t) => t.rel === st.active);
+    for (const x of st.tabs.map(keptLoc)) if (x.rel && inScope(x.rel, x.loc)) openFile(x.rel, { preview: false, focus: false, quiet: true, loc: x.loc });
+    const a = st.active ? keptLoc(st.active) : null;
+    const back = a && I.tabs.find((t) => t.rel === a.rel && sameLoc(t.loc, a.loc));
     if (back) activate(back, false);
   }
   paintEditors();
   showSide(st.side.view, !st.side.hidden);
   showPanel(st.panel.view, !st.panel.hidden);
   showAux(!st.aux.hidden);
-  loadUserFiles();
-  loadExtensions();
+  loadUserFiles().then(() => I && loadExtensions());
   // the mesh's models looked at now and then, while the chat's in view
   refreshRoles();
   const roles = setInterval(() => { if (I && !I.st.aux.hidden) refreshRoles(); }, 30000);
@@ -309,14 +384,16 @@ export function ideStart(w, open) {
   };
 }
 
+// o: {dir} or {path}, in the home unless o.loc names a host's share
 function openRequest(o) {
   if (!I || !o) return;
+  const l = o.loc || HOME_LOC;
   if (o.dir !== undefined) {
     const d = cleanPath(o.dir);
-    if (d !== null && inScope(d)) setRoot(d); else notify('warning', `${o.dir} is outside your space`);
+    if (d && inScope(d, l)) setRoot(d, false, l); else notify('warning', `${o.dir} is outside your space`);
   } else if (o.path) {
     const p = cleanPath(o.path);
-    if (p && inScope(p)) openFile(p, { preview: false }); else notify('warning', `${o.path} is outside your space`);
+    if (p && inScope(p, l)) openFile(p, { preview: false, loc: l }); else notify('warning', `${o.path} is outside your space`);
   }
 }
 
@@ -346,6 +423,7 @@ function teardown() {
   was.w.node.classList.remove('ide-win', 'ide-narrow');
   was.root.remove();
   for (const c of was.chats.values()) c.ctrl?.abort();
+  for (const S of was.agents?.values() || []) { S.closed = true; try { S.sock?.close(); } catch {} }
 }
 
 // --- the layout -----------------------------------------------------------------------
@@ -523,7 +601,7 @@ function sash(node, axis, get, set, from = false) {
 const SIDE_VIEWS = [
   { id: 'explorer', title: 'Explorer', ic: 'files', cmd: 'workbench.view.explorer' },
   { id: 'search', title: 'Search', ic: 'search', cmd: 'workbench.action.findInFiles' },
-  { id: 'run', title: 'Run and Hosts', ic: 'runSide', cmd: 'workbench.view.run' },
+  { id: 'run', title: 'Run and Build', ic: 'runSide', cmd: 'workbench.view.run' },
   { id: 'extensions', title: 'Extensions', ic: 'ext', cmd: 'workbench.view.extensions' },
 ];
 
@@ -569,8 +647,9 @@ function buildActivity() {
     cmdItem('workbench.action.openSettingsJson', 'Settings (JSON)'),
     cmdItem('workbench.action.openGlobalKeybindings', 'Keyboard Shortcuts'),
     cmdItem('workbench.view.extensions', 'Extensions'),
+    cmdItem('workbench.action.selectTheme', 'Themes'),
     '-',
-    cmdItem('ide.extensions.guide', 'Extension Guide'),
+    cmdItem('sulfur.extensions.guide', 'Extension Guide'),
   ], { side: 'right', up: true }));
   I.actFoot.append(account, manage);
   buildExplorer();
@@ -613,18 +692,20 @@ function showSide(id, on = true, focus = false) {
 
 const MENUS = [
   ['File', () => [
-    cmdItem('explorer.newFile', 'New File…'), cmdItem('explorer.newFolder', 'New Folder…'), '-',
+    cmdItem('sulfur.project.new', 'New Project…'), cmdItem('explorer.newFile', 'New File…'), cmdItem('explorer.newFolder', 'New Folder…'), '-',
     cmdItem('workbench.action.files.openFolder', 'Open Folder…'),
-    { label: 'Open Recent', sub: () => recentItems() }, '-',
+    { label: 'Open Recent', sub: () => recentItems() },
+    cmdItem('sulfur.project.transfer', 'Copy or Move Project to…'), '-',
     cmdItem('workbench.action.files.save', 'Save'), cmdItem('workbench.action.files.saveAll', 'Save All'), '-',
     { label: 'Preferences', sub: () => [
       cmdItem('workbench.action.openSettings', 'Settings'), cmdItem('workbench.action.openSettingsJson', 'Settings (JSON)'),
+      cmdItem('workbench.action.selectTheme', 'Color Theme'),
       cmdItem('workbench.action.openGlobalKeybindings', 'Keyboard Shortcuts'), cmdItem('workbench.action.openGlobalKeybindingsFile', 'Keyboard Shortcuts (JSON)'),
       cmdItem('workbench.view.extensions', 'Extensions'),
     ] }, '-',
     cmdItem('workbench.action.revertFile', 'Revert File'),
     cmdItem('workbench.action.closeActiveEditor', 'Close Editor'), cmdItem('workbench.action.closeAllEditors', 'Close All Editors'), '-',
-    cmdItem('ide.closeWindow', 'Close Window'),
+    cmdItem('sulfur.closeWindow', 'Close Window'),
   ]],
   ['Edit', () => [
     cmdItem('undo', 'Undo'), cmdItem('redo', 'Redo'), '-',
@@ -640,7 +721,7 @@ const MENUS = [
   ]],
   ['View', () => [
     cmdItem('workbench.action.showCommands', 'Command Palette…'), '-',
-    cmdItem('workbench.view.explorer', 'Explorer'), cmdItem('workbench.view.search', 'Search'), cmdItem('workbench.view.run', 'Run and Hosts'),
+    cmdItem('workbench.view.explorer', 'Explorer'), cmdItem('workbench.view.search', 'Search'), cmdItem('workbench.view.run', 'Run and Build'),
     cmdItem('workbench.view.extensions', 'Extensions'), cmdItem('workbench.action.chat.open', 'Chat'), '-',
     cmdItem('workbench.actions.view.problems', 'Problems'), cmdItem('workbench.action.output.toggleOutput', 'Output'), cmdItem('workbench.action.terminal.toggleTerminal', 'Terminal'), '-',
     { label: 'Appearance', sub: () => [
@@ -658,20 +739,23 @@ const MENUS = [
     cmdItem('editor.action.marker.next', 'Next Problem'), cmdItem('editor.action.marker.prev', 'Previous Problem'),
   ]],
   ['Run', () => [
-    cmdItem('ide.run.file', 'Run Active File'), cmdItem('ide.run.fileOn', 'Run Active File On…'), '-',
-    cmdItem('ide.selectHost', 'Select Host…'), cmdItem('workbench.view.run', 'Run and Hosts'),
+    cmdItem('sulfur.build', 'Build'), cmdItem('sulfur.task.run', 'Run Task…'), cmdItem('sulfur.build.select', 'Select Toolchain…'),
+    cmdItem('sulfur.build.configuration', 'Select Configuration…'), '-',
+    cmdItem('sulfur.run.file', 'Run Active File'), cmdItem('sulfur.run.fileOn', 'Run Active File On…'), '-',
+    cmdItem('sulfur.selectHost', 'Select Host…'), cmdItem('workbench.view.run', 'Run and Build'),
   ]],
   ['Terminal', () => [
     cmdItem('workbench.action.terminal.new', 'New Terminal'), cmdItem('workbench.action.terminal.newOn', 'New Terminal On…'), '-',
-    cmdItem('ide.run.file', 'Run Active File'), cmdItem('workbench.action.terminal.runSelectedText', 'Run Selected Text'), '-',
+    cmdItem('sulfur.build', 'Run Build Task'), cmdItem('sulfur.task.run', 'Run Task…'),
+    cmdItem('sulfur.run.file', 'Run Active File'), cmdItem('workbench.action.terminal.runSelectedText', 'Run Selected Text'), '-',
     cmdItem('workbench.action.terminal.clear', 'Clear Terminal'), cmdItem('workbench.action.terminal.rename', 'Rename Terminal…'),
     cmdItem('workbench.action.terminal.kill', 'Kill Terminal'),
   ]],
   ['Help', () => [
     cmdItem('workbench.action.openWalkthrough', 'Welcome'), cmdItem('workbench.action.showCommands', 'Show All Commands'),
     cmdItem('workbench.action.openGlobalKeybindings', 'Keyboard Shortcuts Reference'), '-',
-    cmdItem('ide.extensions.guide', 'Extension Guide'), cmdItem('ide.extensions.create', 'Create an Extension…'), '-',
-    cmdItem('workbench.action.showOutput', 'Show Log'), cmdItem('ide.about', 'About'),
+    cmdItem('sulfur.extensions.guide', 'Extension Guide'), cmdItem('sulfur.extensions.create', 'Create an Extension…'), '-',
+    cmdItem('workbench.action.showOutput', 'Show Log'), cmdItem('sulfur.about', 'About'),
   ]],
 ];
 
@@ -815,22 +899,27 @@ function buildExplorer() {
 }
 
 // the folder the workspace is, its tree read afresh
-function setRoot(dir, first = false) {
+// l: the place it's in, the workspace's own when left out
+function setRoot(dir, first = false, l = locOf()) {
   const d = cleanPath(dir);
-  if (d === null || !inScope(d)) return;
+  if (!d || !inScope(d, l)) return;
   const st = I.st;
-  if (!first && d === st.root) { refreshTree(); return; }
+  if (!first && d === st.root && sameLoc(l, st.loc)) { refreshTree(); return; }
   st.root = d;
-  st.recentFolders = [d, ...st.recentFolders.filter((x) => x !== d)].slice(0, 12);
+  st.loc = isHomeLoc(l) ? HOME_LOC : { host: l.host, share: String(l.share) };
+  const rk = (x) => `${locKey(x.loc || HOME_LOC)}\n${x.root ?? x}`;
+  const here = { loc: st.loc, root: d };
+  st.recentFolders = [here, ...(st.recentFolders || []).filter((x) => rk(x) !== rk(here))].slice(0, 12);
   I.tree.clear();
-  I.expanded = new Set((st.expanded[d] || []).filter((p) => under(p, d)));
+  I.expanded = new Set((st.expanded[wsKey()] || st.expanded[d] || []).filter((p) => under(p, d)));
   I.expanded.add(d);
   I.sel = '';
   I.index = null;
   I.ex.treeHead.title.textContent = baseName(d).toUpperCase();
-  I.ex.treeHead.title.title = d;
-  I.ccText.textContent = baseName(d);
-  I.w.head.querySelector('.tab-label').textContent = `${baseName(d)} — ide`;
+  I.ex.treeHead.title.title = isHomeLoc() ? d : `${st.loc.host}: ${hostPath(st.loc.host, st.loc.share, d)}`;
+  I.ccText.textContent = isHomeLoc() ? baseName(d) : `${baseName(d)} · ${st.loc.host}`;
+  I.w.head.querySelector('.tab-label').textContent = `${baseName(d)} — Sulfur`;
+  loadBuildConfig();
   for (const p of I.expanded) loadDir(p);
   paintTree();
   saveState();
@@ -853,13 +942,14 @@ function loadDir(dir, force = false) {
   if (!force && I.tree.has(dir)) return Promise.resolve(I.tree.get(dir));
   if (I.loading.has(dir)) return I.loading.get(dir);
   const root = I.st.root;
-  const pr = filesCall(HOME, 'list', undefined, { path: dir }).then((b) => {
+  const key = wsKey();
+  const pr = filesCall(apiLoc(), 'list', undefined, { path: dir }).then((b) => {
     const list = sortEntries(b.entries || []);
-    if (I && I.st.root === root) I.tree.set(dir, list);
+    if (I && wsKey() === key) I.tree.set(dir, list);
     if (dir === root && I) I.ex.error = '';
     return list;
   }).catch((err) => {
-    if (I && I.st.root === root) {
+    if (I && wsKey() === key) {
       if (dir === root) I.ex.error = err.message;
       else if (!I.tree.has(dir)) I.tree.set(dir, []);
     }
@@ -932,7 +1022,7 @@ function paintTree() {
 }
 
 function saveExpanded() {
-  I.st.expanded[I.st.root] = [...I.expanded].filter((p) => p !== I.st.root);
+  I.st.expanded[wsKey()] = [...I.expanded].filter((p) => p !== I.st.root);
   saveState();
 }
 
@@ -942,12 +1032,13 @@ function treeRow(e, p, depth) {
   row.dataset.path = p;
   row.dataset.dir = e.dir ? '1' : '0';
   if (!e.dir && e.live?.length === 1) row.dataset.host = e.live[0];
+  else if (!e.dir && !isHomeLoc()) row.dataset.host = locOf().host;
   row.draggable = true;
   row.style.setProperty('--depth', depth);
   row.setAttribute('role', 'treeitem');
   row.setAttribute('aria-level', String(depth + 1));
   if (e.dir) row.setAttribute('aria-expanded', String(I.expanded.has(p)));
-  const holders = e.live?.length ? e.live : e.hosts || [];
+  const holders = isHomeLoc() ? (e.live?.length ? e.live : e.hosts || []) : [locOf().host];
   row.title = `${p}\n${e.all ? 'on every host' : `on ${holders.join(', ')}`}${e.stale ? ' (offline now)' : ''}${e.dir ? '' : ` · ${humanSize(e.size)}`}`;
   for (let i = 0; i < depth; i++) row.append(el('span', 'ide-guide'));
   const open = e.dir && I.expanded.has(p);
@@ -1032,9 +1123,11 @@ function explorerItems(p, dir) {
     dir && { label: 'New Folder…', run: () => startEdit('folder', p) },
     dir && { label: 'Open in Integrated Terminal', run: () => newTerminal({ cwd: p }) },
     dir && !isRoot && { label: 'Open as Workspace Folder', run: () => setRoot(p) },
+    isRoot && { label: 'Build', key: keyFor('sulfur.build'), run: () => run('sulfur.build') },
+    isRoot && { label: 'Copy or Move Project to…', run: () => run('sulfur.project.transfer') },
     runnable && { label: `Run on ${runHost() || 'a host'}`, run: () => runFile(p) },
     runnable && { label: 'Run On…', run: () => runFileOn(p) },
-    { label: 'Reveal in Files', run: () => filesWin({ loc: HOME, dir: dir ? p : filesParent(p) }) },
+    { label: 'Reveal in Files', run: () => filesWin({ loc: apiLoc(), dir: dir ? p : filesParent(p) }) },
     file && { label: 'Ask the Agent About This File', run: () => { openFile(p, { preview: false }); showAux(true, true); } },
     '-',
     { label: 'Copy Path', key: IS_MAC ? 'alt+ctrl+c' : 'shift+alt+c', run: () => copyPath(p, true) },
@@ -1047,9 +1140,9 @@ function explorerItems(p, dir) {
 
 // the path as its host's shell sees it, or as the workspace names it
 function copyPath(p, abs) {
-  const host = homePick(p);
-  const home = dkHomeOn(host);
-  const text = abs ? (home ? `${home}/${p}` : p) : (under(p, I.st.root) ? p.slice(I.st.root.length + 1) || '.' : p);
+  const at = fileLoc(p);
+  const full = hostPath(at.host, at.share, p);
+  const text = abs ? (full || p) : (under(p, I.st.root) ? p.slice(I.st.root.length + 1) || '.' : p);
   copyText(text).then(() => setStatusFlash(`copied ${text}`), () => notify('error', 'The clipboard refused the copy.'));
 }
 
@@ -1141,15 +1234,15 @@ async function createEntry(kind, dir, typed) {
   try {
     for (const seg of parts) {
       at = filesJoin(at, seg);
-      await filesCall(HOME, 'mkdir', jsonPost({ path: at })).catch(() => {});
+      await filesCall(apiLoc(), 'mkdir', jsonPost({ path: at })).catch(() => {});
       I.expanded.add(at);
     }
     const rel = filesJoin(at, leaf);
     if (kind === 'folder') {
-      await filesCall(HOME, 'mkdir', jsonPost({ path: rel }));
+      await filesCall(apiLoc(), 'mkdir', jsonPost({ path: rel }));
       I.expanded.add(rel);
     } else {
-      await putFile(homeAt(homePick(at)), rel, new Blob([]));
+      await putFile(isHomeLoc() ? homeAt(homePick(at)) : apiLoc(), rel, new Blob([]));
     }
     if (!I) return;
     await Promise.all([dir, ...parts.map((_, i) => filesJoin(dir, parts.slice(0, i + 1).join('/')))].map((d) => loadDir(d, true)));
@@ -1165,10 +1258,10 @@ async function createEntry(kind, dir, typed) {
 // the tabs under a path saved first, then moved with it
 async function renameEntry(from, to) {
   if (from === to) return;
-  const moving = I.tabs.filter((t) => t.rel && under(t.rel, from));
+  const moving = I.tabs.filter((t) => t.rel && sameLoc(t.loc, locOf()) && under(t.rel, from));
   await Promise.all(moving.filter((t) => t.ed?.dirty()).map((t) => saveTab(t)));
   try {
-    await filesCall(HOME, 'rename', jsonPost({ from, to }));
+    await filesCall(apiLoc(), 'rename', jsonPost({ from, to }));
   } catch (err) {
     notify('error', `Unable to rename '${baseName(from)}': ${err.message}`);
     return;
@@ -1196,20 +1289,22 @@ async function deleteEntry(p) {
   if (setting('explorer.confirmDelete')) {
     const ok = await ask({
       title: `Are you sure you want to permanently delete '${baseName(p)}'${e?.dir ? ' and its contents' : ''}?`,
-      detail: `It goes from every host holding it${e?.hosts?.length ? ` (${e.hosts.join(', ')})` : ''}. This action is irreversible: phosphorus keeps no trash.`,
+      detail: isHomeLoc()
+        ? `It goes from every host holding it${e?.hosts?.length ? ` (${e.hosts.join(', ')})` : ''}. This action is irreversible: phosphorus keeps no trash.`
+        : `It goes from ${locOf().host}'s disk. This action is irreversible: phosphorus keeps no trash.`,
       buttons: [{ label: 'Delete', primary: true, danger: true, value: 'y' }, { label: 'Cancel', value: '' }],
       check: { label: 'Do not ask me again', key: 'explorer.confirmDelete' },
     });
     if (ok !== 'y') return;
   }
   try {
-    await filesCall(HOME, 'delete', jsonPost({ path: p }));
+    await filesCall(apiLoc(), 'delete', jsonPost({ path: p }));
   } catch (err) {
     notify('error', `Unable to delete '${baseName(p)}': ${err.message}`);
     return;
   }
   if (!I) return;
-  for (const t of I.tabs.filter((x) => x.rel && under(x.rel, p))) closeTab(t, true);
+  for (const t of I.tabs.filter((x) => x.rel && sameLoc(x.loc, locOf()) && under(x.rel, p))) closeTab(t, true);
   for (const x of [...I.expanded]) if (under(x, p)) I.expanded.delete(x);
   const rows = I.ex.rows;
   const i = rows.findIndex((r) => r.dataset.path === p);
@@ -1234,12 +1329,13 @@ async function moveEntry(from, dir) {
 }
 
 async function uploadInto(dir, list) {
-  const host = homePick(dir);
+  const host = isHomeLoc() ? homePick(dir) : locOf().host;
+  const to = isHomeLoc() ? homeAt(host) : apiLoc();
   const note = notify('info', `Uploading ${list.length === 1 ? list[0].name : `${list.length} files`} to ${host}…`, { progress: true, sticky: true });
   let n = 0;
   for (const f of list) {
     try {
-      await putFile(homeAt(host), filesJoin(dir, f.name), f, (sent) => note.progress?.((n + (f.size ? sent / f.size : 1)) / list.length));
+      await putFile(to, filesJoin(dir, f.name), f, (sent) => note.progress?.((n + (f.size ? sent / f.size : 1)) / list.length));
     } catch (err) { notify('error', `${f.name}: ${err.message}`); }
     n += 1;
   }
@@ -1285,11 +1381,13 @@ function offsetOf(text, line, col = 1) {
   return Math.min(at + Math.max(0, col - 1), end < 0 ? text.length : end);
 }
 
-// o: preview, focus, host, line, col, select [from, to], index, quiet
+// o: preview, focus, host, line, col, select [from, to], index, quiet, loc (the
+// workspace's place when left out)
 function openFile(rel, o = {}) {
   const p = cleanPath(rel);
-  if (!p || !inScope(p)) { if (!o.quiet) notify('warning', `${rel} is outside your space`); return null; }
-  let t = I.tabs.find((x) => x.rel === p);
+  const l = o.loc || locOf();
+  if (!p || !inScope(p, l)) { if (!o.quiet) notify('warning', `${rel} is outside your space`); return null; }
+  let t = I.tabs.find((x) => x.rel === p && sameLoc(x.loc, l));
   if (t) {
     if (o.preview === false) pin(t);
     activate(t, o.focus !== false);
@@ -1304,14 +1402,15 @@ function openFile(rel, o = {}) {
   }
   const x = extOf(p);
   const kind = IMAGE_EXT.has(x) ? 'image' : BINARY_EXT.has(x) && !o.anyway ? 'binary' : 'code';
-  const known = o.host && homeOnline().includes(o.host) ? o.host : '';
-  t = addTab({ kind, rel: p, host: known || homePick(p), title: baseName(p), preview }, index);
+  const known = !isHomeLoc(l) ? l.host : o.host && homeOnline().includes(o.host) ? o.host : '';
+  const fl = fileLoc(p, known, l);
+  t = addTab({ kind, rel: p, host: known || fl.host, share: fl.share, loc: isHomeLoc(l) ? HOME_LOC : { host: l.host, share: String(l.share) }, title: baseName(p), preview }, index);
   // the session opened on a host holding the file: one named, else the folder
   // listed first, so a file only elsewhere never opens empty here
   if (known) mountKind(t);
   else {
     t.view.append(el('div', 'ide-loading', 'opening…'));
-    holdersOf(p).then((hs) => {
+    holdersOf(p, l).then((hs) => {
       if (!I || !I.tabs.includes(t)) return;
       t.host = hs.includes(selfHost) ? selfHost : hs[0] || homePick(p);
       t.view.replaceChildren();
@@ -1326,8 +1425,10 @@ function openFile(rel, o = {}) {
   t.wantFocus = o.focus !== false;
   placeCaret(t, o);
   emit('open', { path: p });
-  I.st.recent = [p, ...I.st.recent.filter((r) => r !== p)].slice(0, 30);
-  I.closed = I.closed.filter((r) => r !== p);
+  const kept = isHomeLoc(l) ? p : { rel: p, host: l.host, share: String(l.share) };
+  const same = (x) => { const y = keptLoc(x); return y.rel === p && sameLoc(y.loc, l); };
+  I.st.recent = [kept, ...I.st.recent.filter((r) => !same(r))].slice(0, 30);
+  I.closed = I.closed.filter((r) => !same(r));
   if (o.focus !== false || !I.active) activate(t, o.focus !== false);
   else paintEditors();
   saveState();
@@ -1398,7 +1499,8 @@ function mountKind(t) {
 }
 
 function mountCode(t) {
-  const file = { host: t.host, share: 'home', path: t.rel, label: `${t.host}/home/${t.rel}` };
+  const share = t.share ?? 'home';
+  const file = { host: t.host, share, path: t.rel, label: `${t.host}/${share === 'home' ? 'home' : shareOf(t.host, share)?.label || share}/${t.rel}` };
   t.edId = `ide-code-${(edSeq += 1)}`;
   t.ed = codeEditor(t.view, file, null, t.edId, { bare: true, onState: (info) => tabState(t, info) });
   editors.set(t.edId, t.ed);
@@ -1408,7 +1510,7 @@ function mountCode(t) {
 
 function mountImage(t) {
   const box = el('div', 'ide-image');
-  const img = Object.assign(el('img'), { alt: t.title, src: filesApi(homeAt(t.host), 'download', { path: t.rel, inline: '' }) });
+  const img = Object.assign(el('img'), { alt: t.title, src: filesApi({ host: t.host, share: t.share ?? 'home' }, 'download', { path: t.rel, inline: '' }) });
   const meta = el('div', 'ide-image-meta');
   img.addEventListener('load', () => { meta.textContent = `${img.naturalWidth} × ${img.naturalHeight} · on ${t.host}`; });
   img.addEventListener('error', () => { box.replaceChildren(el('p', 'ide-empty', `${t.title} couldn't be read from ${t.host}.`)); });
@@ -1426,9 +1528,9 @@ function mountBinary(t) {
   any.addEventListener('click', () => {
     const i = I.tabs.indexOf(t);
     closeTab(t, true, false);
-    openFile(t.rel, { preview: false, index: i, anyway: true, host: t.host });
+    openFile(t.rel, { preview: false, index: i, anyway: true, host: t.host, loc: t.loc });
   });
-  const dl = Object.assign(el('a', 'ide-link', 'Download'), { href: filesApi(homeAt(t.host), 'download', { path: t.rel }) });
+  const dl = Object.assign(el('a', 'ide-link', 'Download'), { href: filesApi({ host: t.host, share: t.share ?? 'home' }, 'download', { path: t.rel }) });
   box.append(any, dl);
   t.view.append(box);
   t.view.tabIndex = -1;
@@ -1464,6 +1566,8 @@ function tabState(t, info) {
   if (was?.dirty && !info.dirty) {
     emit('save', { path: t.rel });
     if (t.rel === SETTINGS_PATH() || t.rel === KEYS_PATH()) loadUserFiles();
+    // the project's build settings, as edited by hand
+    if (t.rel === `${I.st.root}/${BUILD_FILE}` && sameLoc(t.loc, locOf())) loadBuildConfig();
   }
 }
 const paintOpenEditorsSoon = debounce(() => I && paintOpenEditors(), 50);
@@ -1610,7 +1714,7 @@ function paintEditors() {
   if (I.chat) paintChatCtx();
   const t = I.active;
   const head = I.w.head.querySelector('.tab-label');
-  if (head) head.textContent = `${t ? `${t.title} — ` : ''}${baseName(I.st.root)} — ide`;
+  if (head) head.textContent = `${t ? `${t.title} — ` : ''}${baseName(I.st.root)} — Sulfur`;
 }
 
 function paintCrumbs() {
@@ -1654,7 +1758,7 @@ async function crumbMenu(anchor, dir, here) {
 function paintTabActions() {
   const t = I.active;
   const acts = [];
-  if (t?.ed && runnerFor(t.rel)) acts.push(btn('ide-run-btn', 'run', `Run ${t.title} on ${runHost() || 'a host'} (${keyLabel(keyFor('ide.run.file'))})`, () => run('ide.run.file')));
+  if (t?.ed && runnerFor(t.rel)) acts.push(btn('ide-run-btn', 'run', `Run ${t.title} on ${runHost() || 'a host'} (${keyLabel(keyFor('sulfur.run.file'))})`, () => run('sulfur.run.file')));
   if (t?.ed?.preview) acts.push(btn(t.ed.previewing() ? 'on' : '', 'preview', `${t.ed.previewing() ? 'Show Source' : 'Open Preview'} (${keyLabel(keyFor('markdown.showPreview'))})`, () => run('markdown.showPreview')));
   if (t) acts.push(btn('', 'more', 'More Actions…', (e) => menu(e.currentTarget, [
     cmdItem('actions.find', 'Find'),
@@ -1675,7 +1779,7 @@ function paintWatermark() {
   const list = el('dl', 'ide-wm-keys');
   for (const [label, cmd] of [['Show All Commands', 'workbench.action.showCommands'], ['Go to File', 'workbench.action.quickOpen'],
     ['Find in Files', 'workbench.action.findInFiles'], ['Toggle Terminal', 'workbench.action.terminal.toggleTerminal'],
-    ['Run Active File', 'ide.run.file'], ['Open Chat', 'workbench.action.chat.open'], ['Open Folder', 'workbench.action.files.openFolder']]) {
+    ['Run Active File', 'sulfur.run.file'], ['Open Chat', 'workbench.action.chat.open'], ['Open Folder', 'workbench.action.files.openFolder']]) {
     const k = keyFor(cmd);
     list.append(el('dt', '', label), el('dd'));
     list.lastChild.append(...(k ? k.split(' ').map((part) => el('kbd', '', keyLabel(part))) : []));
@@ -1982,7 +2086,7 @@ function nextProblem(d) {
 async function revertFile(t) {
   if (!t?.ed) return;
   try {
-    const b = await filesCall(homeAt(t.host), 'read', undefined, { path: t.rel });
+    const b = await filesCall({ host: t.host, share: t.share ?? 'home' }, 'read', undefined, { path: t.rel });
     if (typeof b.text !== 'string') throw new Error(b.tooBig ? 'too big to read back' : 'not text');
     const now = t.ed.text();
     if (now !== b.text) t.ed.edit(0, now.length, b.text, 0, 0);
@@ -2093,14 +2197,14 @@ function registerCommands() {
   C('workbench.files.action.showActiveFileInExplorer', 'Reveal Active File in Explorer View', () => { if (I.active?.rel) { showSide('explorer', true); revealPath(I.active.rel); } }, { category: 'File' });
   C('copyFilePath', 'Copy Path of Active File', () => I.active?.rel && copyPath(I.active.rel, true), { key: 'shift+alt+c', category: 'File' });
   C('copyRelativeFilePath', 'Copy Relative Path of Active File', () => I.active?.rel && copyPath(I.active.rel, false), { key: 'ctrl+k ctrl+shift+alt+c', category: 'File' });
-  C('ide.closeWindow', 'Close Window', () => I.w.node.querySelector('.dk-close')?.click(), { category: 'View' });
+  C('sulfur.closeWindow', 'Close Window', () => I.w.node.querySelector('.dk-close')?.click(), { category: 'View' });
   // views and layout
   C('workbench.view.explorer', 'Show Explorer', () => showSide('explorer', true, true), { key: 'ctrl+shift+e', category: 'View', shell: true });
   C('workbench.view.search', 'Show Search', () => showSide('search', true, true), { category: 'View' });
   C('workbench.action.findInFiles', 'Search: Find in Files', () => findInFiles(), { key: 'ctrl+shift+f', category: 'Search', shell: true });
-  C('workbench.view.run', 'Show Run and Hosts', () => showSide('run', true, true), { key: 'ctrl+shift+d', category: 'View', shell: true });
+  C('workbench.view.run', 'Show Run and Build', () => showSide('run', true, true), { key: 'ctrl+shift+d', category: 'View', shell: true });
   C('workbench.view.extensions', 'Show Extensions', () => showSide('extensions', true, true), { key: 'ctrl+shift+x', category: 'View', shell: true });
-  C('workbench.action.toggleSidebarVisibility', 'Toggle Primary Side Bar Visibility', () => showSide(I.st.side.view, I.st.side.hidden), { key: 'ctrl+b', category: 'View', shell: true });
+  C('workbench.action.toggleSidebarVisibility', 'Toggle Primary Side Bar Visibility', () => showSide(I.st.side.view, I.st.side.hidden), { key: 'ctrl+k b', category: 'View' });
   C('workbench.action.toggleAuxiliaryBar', 'Toggle Secondary Side Bar Visibility', () => showAux(I.st.aux.hidden, I.st.aux.hidden), { key: 'ctrl+alt+b', category: 'View', shell: true });
   C('workbench.action.chat.open', 'Open Chat', () => showAux(true, true), { key: 'ctrl+alt+i', category: 'Chat', shell: true });
   C('workbench.action.chat.newChat', 'New Chat', () => newChat(), { category: 'Chat' });
@@ -2163,19 +2267,32 @@ function registerCommands() {
   C('workbench.action.terminal.focusNext', 'Focus Next Terminal', () => stepTerm(1), { category: 'Terminal', shell: true });
   C('workbench.action.terminal.focusPrevious', 'Focus Previous Terminal', () => stepTerm(-1), { category: 'Terminal', shell: true });
   C('workbench.action.terminal.runSelectedText', 'Run Selected Text In Active Terminal', () => runSelection(), { when: hasEd, category: 'Terminal' });
-  C('ide.run.file', 'Run Active File', () => (I.active?.rel ? runFile(I.active.rel) : notify('info', 'Open a file to run it.')), { key: 'f5', alt: ['ctrl+f5'], category: 'Run', shell: true });
-  C('ide.run.fileOn', 'Run Active File On…', () => I.active?.rel && runFileOn(I.active.rel), { when: hasEd, category: 'Run' });
-  C('ide.selectHost', 'Select Host for Terminals and Runs…', () => pickHost('Select the host terminals and runs use').then((h) => h && setRunHost(h)), { category: 'Phosphorus' });
+  C('sulfur.run.file', 'Run Active File', () => (I.active?.rel ? runFile(I.active.rel) : notify('info', 'Open a file to run it.')), { key: 'f5', alt: ['ctrl+f5'], category: 'Run', shell: true });
+  C('sulfur.run.fileOn', 'Run Active File On…', () => I.active?.rel && runFileOn(I.active.rel), { when: hasEd, category: 'Run' });
+  // building, as VS Code's tasks are but asked for in a list, never a JSON file first
+  C('sulfur.build', 'Build', () => buildProject(), { key: 'ctrl+b', alt: ['ctrl+shift+b'], category: 'Build', shell: true });
+  C('sulfur.build.select', 'Select Toolchain…', () => pickToolchain(), { category: 'Build' });
+  C('sulfur.task.run', 'Run Task…', () => chooseTask(), { category: 'Build' });
+  C('sulfur.task.add', 'Add Task…', () => addTask(), { category: 'Build' });
+  C('sulfur.build.configuration', 'Select Configuration (Debug/Release)…', () => toggleConfiguration(), { category: 'Build' });
+  C('sulfur.build.editJson', 'Open Build Settings (JSON)', () => openBuildJson(), { category: 'Build' });
+  C('sulfur.toolchains.refresh', 'Look at Every Machine’s Toolchains Again', () => { I.tc = new Map(); paintRunView(true); }, { category: 'Build' });
+  // projects: anywhere on the mesh, carried between machines
+  C('sulfur.project.new', 'New Project…', () => newProject(), { key: 'ctrl+alt+shift+n', category: 'File' });
+  C('sulfur.project.transfer', 'Copy or Move Project to Another Machine…', () => transferProject(), { category: 'File' });
+  C('sulfur.folder.add', 'Add a Folder of a Machine for Projects…', () => addFolderDialog(), { when: () => !!acct.admin, category: 'File' });
+  C('workbench.action.selectTheme', 'Color Theme', () => pickTheme(), { key: 'ctrl+k ctrl+t', category: 'Preferences' });
+  C('sulfur.selectHost', 'Select Host for Terminals and Runs…', () => pickHost('Select the host terminals and runs use').then((h) => h && setRunHost(h)), { category: 'Phosphorus' });
   // preferences and help
   C('workbench.action.openSettings', 'Open Settings (UI)', () => openSettings(), { key: 'ctrl+,', category: 'Preferences', shell: true });
-  C('workbench.action.openSettingsJson', 'Open User Settings (JSON)', () => openUserFile(SETTINGS_PATH(), '{\n  // your ide settings, VS Code’s names: see Preferences: Open Settings (UI)\n}\n'), { category: 'Preferences' });
+  C('workbench.action.openSettingsJson', 'Open User Settings (JSON)', () => openUserFile(SETTINGS_PATH(), '{\n  // your Sulfur settings, VS Code’s names: see Preferences: Open Settings (UI)\n}\n'), { category: 'Preferences' });
   C('workbench.action.openGlobalKeybindings', 'Open Keyboard Shortcuts', () => openKeysPage(), { key: 'ctrl+k ctrl+s', category: 'Preferences' });
   C('workbench.action.openGlobalKeybindingsFile', 'Open Keyboard Shortcuts (JSON)', () => openUserFile(KEYS_PATH(), '// your keys, each {"key": "ctrl+alt+r", "command": "ide.run.file"}; a "-command" removes a default\n[\n]\n'), { category: 'Preferences' });
   C('workbench.action.openWalkthrough', 'Welcome', () => openWelcome(), { category: 'Help' });
-  C('ide.about', 'About', () => ask({ title: 'phosphorus ide', detail: `A VS Code-shaped workbench over your phosphorus home.\nUser: ${acct.user}\nServed by: ${selfHost}\nHosts online: ${homeOnline().join(', ')}\nTerminals on: ${dkLiveHosts().join(', ') || 'none logged into'}`, buttons: [{ label: 'OK', primary: true, value: 'ok' }] }), { category: 'Help' });
+  C('sulfur.about', 'About', () => ask({ title: 'Sulfur', detail: `A VS Code-shaped workbench over your phosphorus home.\nUser: ${acct.user}\nServed by: ${selfHost}\nHosts online: ${homeOnline().join(', ')}\nTerminals on: ${dkLiveHosts().join(', ') || 'none logged into'}`, buttons: [{ label: 'OK', primary: true, value: 'ok' }] }), { category: 'Help' });
   // extensions
-  C('ide.extensions.guide', 'Open the Extension Guide', () => openGuide(), { category: 'Extensions' });
-  C('ide.extensions.create', 'Create New Extension…', () => createExtension(), { category: 'Extensions' });
+  C('sulfur.extensions.guide', 'Open the Extension Guide', () => openGuide(), { category: 'Extensions' });
+  C('sulfur.extensions.create', 'Create New Extension…', () => createExtension(), { category: 'Extensions' });
   C('workbench.extensions.action.refreshExtension', 'Reload Extensions', () => loadExtensions(true), { category: 'Developer' });
   C('workbench.action.reloadWindow', 'Reload Window', () => { const w = I.w; const open = { dir: I.st.root }; teardown(); ideStart(w, open); }, { category: 'Developer' });
   buildKeys();
@@ -2222,10 +2339,11 @@ function hlText(text, hl = []) {
 
 // the workspace's files on every online host, for quick open: read once, kept a while
 async function fileIndex() {
-  const root = I.st.root;
+  const root = wsKey();
   if (I.index && I.index.root === root && Date.now() - I.index.at < INDEX_TTL) return I.index;
   if (I.indexing?.root === root) return I.indexing.pr;
-  const pr = Promise.all(homeOnline().map((h) => filesCall(homeAt(h), 'tree', undefined, { path: root, depth: 8 }).then((b) => ({ h, b }), () => null))).then((got) => {
+  const places = isHomeLoc() ? homeOnline().map((h) => [h, homeAt(h)]) : [[locOf().host, apiLoc()]];
+  const pr = Promise.all(places.map(([h, at]) => filesCall(at, 'tree', undefined, { path: I.st.root, depth: 8 }).then((b) => ({ h, b }), () => null))).then((got) => {
     const files = new Map();
     let truncated = false;
     const skip = excluded();
@@ -2302,10 +2420,11 @@ function fileItems(q) {
   const go = (p, hosts) => () => openFile(p, { preview: false, host: hosts?.includes(selfHost) ? selfHost : hosts?.[0], line: Number(line) || undefined });
   const rel = (p) => (under(p, I.st.root) ? p.slice(I.st.root.length + 1) : p);
   if (!name) {
-    const items = I.st.recent.filter((p) => inScope(p)).slice(0, 30).map((p, i) => ({ label: baseName(p), description: filesParent(rel(p)), ic: p, sep: i === 0 ? 'recently opened' : '', accept: go(p) }));
+    const here = I.st.recent.map(keptLoc).filter((x) => x.rel && sameLoc(x.loc, locOf()) && inScope(x.rel));
+    const items = here.slice(0, 30).map((x, i) => ({ label: baseName(x.rel), description: filesParent(rel(x.rel)), ic: x.rel, sep: i === 0 ? 'recently opened' : '', accept: go(x.rel) }));
     return { items, empty: 'Type to search the workspace’s files' };
   }
-  if (!I.index || I.index.root !== I.st.root) {
+  if (!I.index || I.index.root !== wsKey()) {
     return { items: [], message: 'Searching the workspace on every host…', wait: fileIndex().then(() => fileItems(q)) };
   }
   const hits = [];
@@ -2451,31 +2570,63 @@ function closeQuick(replacing = false) {
 }
 
 // a folder of the user's own or shared space, walked down to in the quick input
-async function pickFolder(start) {
+// every place a project can be: the home, then each logged-in host's shares, this machine first
+function places() {
+  const live = new Set(dkLiveHosts());
+  const out = [{ loc: HOME_LOC, label: 'Home', description: `synced across the mesh · ${acct.user}/` }];
+  const hosts = [...live].sort((a, b) => (b === selfHost) - (a === selfHost) || a.localeCompare(b));
+  for (const h of hosts) {
+    for (const sh of hostsInfo[h.toLowerCase()]?.files?.shares || []) {
+      if (sh.home) continue;
+      out.push({ loc: { host: h, share: String(sh.id) }, label: `${h}${h === selfHost ? ' (this machine)' : ''}`, description: sh.label, perms: sh.perms });
+    }
+  }
+  return out;
+}
+
+// a folder of the home or of a host's share, walked down to in the quick input
+async function pickFolder(start, l = locOf()) {
+  let place = start === null ? null : l;
   let dir = start ?? I.st.root;
   for (;;) {
+    if (!place) {
+      const ps = places();
+      const items = [...ps.map((x, i) => ({ label: x.label, description: x.description, ic: isHomeLoc(x.loc) ? 'folder' : 'host', value: i }))];
+      if (acct.admin) items.push({ label: 'Add a Folder of a Machine…', description: 'publish one, like D:\\Projects or ~/src', ic: 'plus', value: 'add' });
+      const v = await pick(items, { title: 'Open Folder: where', placeholder: 'The home, or a folder of one of your machines', matchDescription: true });
+      if (v === undefined || !I) return;
+      if (v === 'add') { const got = await addFolderDialog(); if (got) { place = got; dir = ''; } continue; }
+      place = ps[v].loc;
+      dir = isHomeLoc(place) ? '' : '';
+    }
     let entries = [];
-    if (dir) {
-      try { entries = (await filesCall(HOME, 'list', undefined, { path: dir })).entries || []; } catch (err) { notify('error', err.message); dir = ''; continue; }
+    const top = !dir;
+    if (!top || !isHomeLoc(place)) {
+      try { entries = (await filesCall(apiLoc(place), 'list', undefined, { path: dir })).entries || []; } catch (err) { notify('error', err.message); place = null; continue; }
     }
     if (!I) return;
     const skip = excluded();
-    const subs = dir ? sortEntries(entries).filter((e) => e.dir && !skip(e.name)) : [{ name: acct.user, dir: true }, { name: 'shared', dir: true }];
+    const subs = top && isHomeLoc(place) ? [{ name: acct.user, dir: true }, { name: 'shared', dir: true }] : sortEntries(entries).filter((e) => e.dir && !skip(e.name));
+    const where = isHomeLoc(place) ? dir : `${place.host}: ${hostPath(place.host, place.share, dir)}`;
     const items = [
-      ...(dir ? [{ label: 'Open this folder', description: dir, ic: 'check', value: '.' }] : []),
-      ...(dir ? [{ label: '..', description: 'up a folder', ic: 'up', value: '..' }] : []),
+      ...(dir ? [{ label: 'Open this folder', description: where, ic: 'check', value: '.' }] : []),
+      { label: '..', description: top ? 'another place' : 'up a folder', ic: 'up', value: '..' },
       ...subs.map((e) => ({ label: e.name, ic: 'folder', value: filesJoin(dir, e.name) })),
     ];
-    const v = await pick(items, { title: `Open Folder${dir ? `: ${dir}` : ''}`, placeholder: 'Type to filter, Enter to step into a folder' });
+    const v = await pick(items, { title: `Open Folder: ${where || locLabel(place)}`, placeholder: 'Type to filter, Enter to step into a folder' });
     if (v === undefined || !I) return;
-    if (v === '.') { setRoot(dir); return; }
-    dir = v === '..' ? (dir.includes('/') ? filesParent(dir) : '') : v;
+    if (v === '.') { setRoot(dir, false, place); return; }
+    if (v === '..') { if (top) place = null; else dir = dir.includes('/') ? filesParent(dir) : ''; continue; }
+    dir = v;
   }
 }
 
 function recentItems() {
-  const folders = (I.st.recentFolders || []).filter(inScope).map((d) => ({ label: baseName(d), description: d, ic: 'folder', run: () => setRoot(d) }));
-  const files = (I.st.recent || []).filter(inScope).slice(0, 10).map((p) => ({ label: baseName(p), description: filesParent(p), ic: p, run: () => openFile(p, { preview: false }) }));
+  const rk = (x) => (typeof x === 'string' ? { loc: HOME_LOC, root: x } : { loc: x.loc || HOME_LOC, root: x.root });
+  const folders = (I.st.recentFolders || []).map(rk).filter((x) => inScope(x.root, x.loc))
+    .map((x) => ({ label: baseName(x.root), description: isHomeLoc(x.loc) ? x.root : `${x.loc.host}: ${hostPath(x.loc.host, x.loc.share, x.root) || x.root}`, ic: 'folder', run: () => setRoot(x.root, false, x.loc) }));
+  const files = (I.st.recent || []).map(keptLoc).filter((x) => x.rel && inScope(x.rel, x.loc)).slice(0, 10)
+    .map((x) => ({ label: baseName(x.rel), description: filesParent(x.rel), ic: x.rel, run: () => openFile(x.rel, { preview: false, loc: x.loc }) }));
   const out = [...folders, ...(folders.length && files.length ? ['-'] : []), ...files];
   return out.length ? out : [{ label: 'Nothing opened yet', disabled: true }];
 }
@@ -2520,7 +2671,10 @@ function menu(at, items, o = {}) {
       const mark = el('span', 'ide-mi-check');
       if (x.checked) mark.append(icon('check'));
       else if (x.ic) mark.append(IC[x.ic] ? icon(x.ic, 'ide-fi') : fileIcon(x.ic));
-      row.append(mark, el('span', 'ide-mi-label', x.label));
+      const lab = el('span', 'ide-mi-label', x.label);
+      // a second line saying what it is, as VS Code's chat pickers have
+      if (x.detail) { lab.append(el('span', 'ide-mi-detail', x.detail)); row.classList.add('two'); }
+      row.append(mark, lab);
       if (x.key) row.append(el('span', 'ide-mi-key', keyLabel(x.key)));
       if (x.sub) { row.append(icon('right', 'ide-mi-sub')); row.setAttribute('aria-haspopup', 'true'); }
       row.item = x;
@@ -2799,7 +2953,7 @@ function buildPanel() {
   const plus = btn('', 'plus', `New Terminal (${keyLabel('ctrl+shift+`')})`, () => newTerminal());
   const pickOn = btn('ide-btn-narrow', 'down', 'Launch Profile…', (e) => menu(e.currentTarget, [
     ...dkLiveHosts().sort().map((h) => ({ label: h, ic: 'host', checked: h === runHost() ? true : undefined, run: () => newTerminal({ host: h }) })),
-    '-', { label: 'Select Default Host…', run: () => run('ide.selectHost') },
+    '-', { label: 'Select Default Host…', run: () => run('sulfur.selectHost') },
   ]));
   tv.acts = [plus, pickOn, btn('', 'trash', 'Kill Terminal', () => run('workbench.action.terminal.kill'))];
   I.panelMax = btn('', 'maximize', 'Maximize Panel Size', () => run('workbench.action.toggleMaximizedPanel'));
@@ -2841,32 +2995,46 @@ function showPanel(id, on = true, focus = false) {
 const paintProblemsSoon = debounce(() => I && paintProblems(), 150);
 function paintProblems() {
   const pv = I.panelViews.get('problems');
-  const files = I.tabs.filter((t) => t.info?.errors?.length);
-  const total = files.reduce((n, t) => n + t.info.errors.length, 0);
-  pv.badge.hidden = !total;
-  pv.badge.textContent = String(total);
+  // by file: the open files' syntax errors, then what the last build said
+  const byFile = new Map();
+  const at = (rel) => { if (!byFile.has(rel)) byFile.set(rel, []); return byFile.get(rel); };
+  for (const t of I.tabs) {
+    if (!t.info?.errors?.length || !sameLoc(t.loc, locOf())) continue;
+    for (const x of t.info.errors) at(t.rel).push({ sev: 'error', msg: x.what, src: 'syntax', line: x.line, col: x.col, go: () => { activate(t); t.ed.select(x.from, Math.max(x.to, x.from + 1)); } });
+  }
+  for (const x of I.buildProblems || []) {
+    at(x.rel).push({ sev: x.sev, msg: x.msg, src: x.code || 'build', line: x.line, col: x.col, go: () => openFile(x.rel, { preview: false, line: x.line, col: x.col }) });
+  }
+  const all = [...byFile.values()].flat();
+  const errs = all.filter((x) => x.sev === 'error').length;
+  pv.badge.hidden = !all.length;
+  pv.badge.textContent = String(all.length);
+  I.problemCounts = { errors: errs, warnings: all.filter((x) => x.sev === 'warning').length };
   paintStatus();
   if (pv.body.hidden) return;
   I.probShut ||= new Set();
-  if (!files.length) {
-    pv.list.replaceChildren(el('div', 'ide-empty-note', 'No problems have been detected in the open files.'));
+  if (!all.length) {
+    pv.list.replaceChildren(el('div', 'ide-empty-note', 'No problems have been detected in the open files or the last build.'));
     return;
   }
   const rows = [];
-  for (const t of files) {
-    const open = !I.probShut.has(t.rel);
+  const rank = { error: 0, warning: 1, info: 2 };
+  for (const [rel, list] of [...byFile].sort((a, b) => a[0].localeCompare(b[0]))) {
+    const open = !I.probShut.has(rel);
     const head = el('div', 'ide-prob-file');
     head.setAttribute('role', 'treeitem');
     head.setAttribute('aria-expanded', String(open));
-    head.append(icon(open ? 'down' : 'right', 'ide-chev-ic'), fileIcon(t.rel), el('span', 'ide-prob-name', t.title), el('span', 'ide-prob-dir', filesParent(t.rel)), el('span', 'ide-badge', String(t.info.errors.length)));
-    head.addEventListener('click', () => { if (open) I.probShut.add(t.rel); else I.probShut.delete(t.rel); paintProblems(); });
+    head.append(icon(open ? 'down' : 'right', 'ide-chev-ic'), fileIcon(rel), el('span', 'ide-prob-name', baseName(rel)), el('span', 'ide-prob-dir', filesParent(wsRel(rel))), el('span', 'ide-badge', String(list.length)));
+    head.addEventListener('click', () => { if (open) I.probShut.add(rel); else I.probShut.delete(rel); paintProblems(); });
     rows.push(head);
     if (!open) continue;
-    for (const x of t.info.errors) {
+    for (const x of [...list].sort((a, b) => rank[a.sev] - rank[b.sev] || a.line - b.line)) {
       const r = el('div', 'ide-prob');
       r.setAttribute('role', 'treeitem');
-      r.append(icon('error', 'ide-prob-ic'), el('span', 'ide-prob-what', x.what), el('span', 'ide-prob-src', 'syntax'), el('span', 'ide-prob-at', `[Ln ${x.line}, Col ${x.col}]`));
-      r.addEventListener('click', () => { activate(t); t.ed.select(x.from, Math.max(x.to, x.from + 1)); });
+      r.append(icon(x.sev === 'warning' ? 'warning' : x.sev === 'info' ? 'info' : 'error', `ide-prob-ic ${x.sev}`), el('span', 'ide-prob-what', x.msg), el('span', 'ide-prob-src', x.src), el('span', 'ide-prob-at', `[Ln ${x.line}, Col ${x.col}]`));
+      r.title = `${x.msg}
+${rel}:${x.line}:${x.col}`;
+      r.addEventListener('click', x.go);
       rows.push(r);
     }
   }
@@ -2917,7 +3085,8 @@ function paintOutputChannels() {
 function runHost() {
   const live = dkLiveHosts();
   if (live.includes(I.st.runHost)) return I.st.runHost;
-  return [selfHost, ...live.sort()].find((h) => live.includes(h) && dkHomeOn(h)) || live[0] || '';
+  if (!isHomeLoc() && live.includes(locOf().host)) return locOf().host;
+  return [selfHost, ...live.sort()].find((h) => live.includes(h)) || '';
 }
 function setRunHost(h) {
   I.st.runHost = h;
@@ -2934,7 +3103,7 @@ function pickHost(title) {
   const all = [...new Set([...homeOnline(), ...live])].sort((a, b) => (b === selfHost) - (a === selfHost) || a.localeCompare(b));
   const items = all.map((h) => ({
     label: h, ic: live.has(h) ? 'host' : 'lock', value: h,
-    description: [h === selfHost && 'this desktop’s host', h === runHost() && 'default', !live.has(h) && 'not logged in', live.has(h) && !dkHomeOn(h) && 'no runs (not a POSIX home)'].filter(Boolean).join(' · '),
+    description: [h === selfHost && 'this desktop’s host', h === runHost() && 'default', !live.has(h) && 'not logged in', live.has(h) && hostIsWindows(h) && 'Windows'].filter(Boolean).join(' · '),
   }));
   return pick(items, { title, placeholder: 'Select a host', matchDescription: true }).then((h) => {
     if (h && !live.has(h)) { notify('warning', `Log into ${h} first: its lock in the desktop's task bar takes its login.`); return undefined; }
@@ -2953,18 +3122,22 @@ function newTerminal(o = {}) {
   }
   const creds = dk.creds.get(host);
   if (!creds) { notify('warning', `Not logged into ${host}.`); return null; }
-  const home = dkHomeOn(host);
   const cwd = o.cwd ?? I.st.root;
   const kind = o.kind || 'shell';
-  const cd = home && cwd ? `cd ${shQuote(`${home}/${cwd}`)}` : '';
-  const line = kind === 'shell' ? (cd ? `${cd} && clear` : '') : [cd, o.run].filter(Boolean).join(' && ');
+  // the folder as that host names it: the workspace's share, or that host's home
+  const fl = isHomeLoc() ? { share: 'home' } : (host === locOf().host ? { share: locOf().share } : null);
+  const abs = cwd && fl ? hostPath(host, fl.share, cwd) : '';
+  const win = hostIsWindows(host);
+  // pushd works in cmd and PowerShell alike, whichever sshd gives
+  const cd = !abs ? '' : win ? `pushd "${abs}"` : `cd ${shQuote(abs)}`;
+  const line = kind === 'shell' ? (cd ? (win ? cd : `${cd} && clear`) : '') : [cd, o.run].filter(Boolean).join(win ? ' & ' : ' && ');
   const same = I.terms.filter((x) => x.base === (o.name || host)).length;
   const t = { id: `t${(I.termSeq += 1)}`, host, base: o.name || host, name: same ? `${o.name || host} (${same + 1})` : (o.name || host), kind, ended: false };
   t.view = el('div', 'ide-term-view');
   t.view.hidden = true;
   tv.views.append(t.view);
   t.h = startTerminal(t.view, host, newSid(), false, false, { ...creds, run: line }, {
-    fontSize: setting('terminal.integrated.fontSize'),
+    fontSize: setting('terminal.integrated.fontSize'), themeFrom: t.view, transparent: true,
     onEnd: () => { t.ended = true; paintTerms(); },
   });
   I.terms.push(t);
@@ -3059,12 +3232,14 @@ function runSelection() {
 function runnerFor(rel) {
   if (!rel) return '';
   const x = extOf(rel);
-  const mine = setting('ide.runners');
+  if (hostIsWindows(runHost()) && WIN_RUNNERS[x]) return WIN_RUNNERS[x];
+  const mine = setting('sulfur.runners') || I.settings['ide.runners'];
   if (mine && typeof mine === 'object' && typeof mine[x] === 'string') return mine[x];
   return I.runners.get(x)?.cmd || '';
 }
 
-async function holdersOf(rel) {
+async function holdersOf(rel, l = locOf()) {
+  if (!isHomeLoc(l)) return [l.host];
   try {
     const b = await filesCall(HOME, 'list', undefined, { path: filesParent(rel) });
     const e = (b.entries || []).find((x) => x.name === baseName(rel) && !x.dir);
@@ -3082,25 +3257,32 @@ async function runFile(rel, hostArg) {
   const runner = runnerFor(rel);
   if (!runner) {
     notify('info', `There's no runner for .${extOf(rel)} files yet.`, { actions: [
-      { label: 'Add One in Settings', run: () => openUserFile(SETTINGS_PATH(), '{\n  "ide.runners": {\n  }\n}\n') },
+      { label: 'Add One in Settings', run: () => openUserFile(SETTINGS_PATH(), '{\n  "sulfur.runners": {\n  }\n}\n') },
       { label: 'Extension Guide', run: () => openGuide() },
     ] });
     return;
   }
   let host = hostArg || runHost();
   if (!host) { notify('warning', 'Log into a host to run code: its lock in the desktop’s task bar takes its login.'); return; }
-  if (!dkHomeOn(host)) {
-    const other = dkLiveHosts().find((h) => dkHomeOn(h));
-    notify('warning', `${host} can't run files from the home: it isn't a POSIX host.`, other ? { actions: [{ label: `Run on ${other}`, run: () => runFile(rel, other) }] } : {});
+  if (hostIsWindows(host) && !WIN_RUNNERS[extOf(rel)] && !(setting('sulfur.runners') || {})[extOf(rel)]) {
+    const other = dkLiveHosts().find((h) => !hostIsWindows(h));
+    notify('warning', `${host} runs Windows, which has no runner for .${extOf(rel)} files yet.`, other ? { actions: [{ label: `Run on ${other}`, run: () => runFile(rel, other) }] } : {});
     return;
   }
-  const t = I.tabs.find((x) => x.rel === rel);
+  const t = I.tabs.find((x) => x.rel === rel && sameLoc(x.loc, locOf()));
   if (t?.ed?.dirty() && !(await saveTab(t))) return;
   const holders = await holdersOf(rel);
   if (!I) return;
   if (!holders.includes(host)) {
     if (!holders.length) { notify('error', `${rel} isn't on any host that's online.`); return; }
-    const there = holders.find((h) => dkLiveHosts().includes(h) && dkHomeOn(h));
+    if (!isHomeLoc()) {
+      notify('warning', `${rel} is on ${locOf().host}'s disk: run it there, or copy the project to ${host} first.`, { actions: [
+        { label: `Run on ${locOf().host}`, run: () => runFile(rel, locOf().host) },
+        { label: 'Copy Project…', run: () => run('sulfur.project.transfer') },
+      ] });
+      return;
+    }
+    const there = holders.find((h) => dkLiveHosts().includes(h));
     const v = await ask({
       title: `${baseName(rel)} isn't on ${host}`,
       detail: `It's on ${holders.join(', ')}. Copy it to ${host} and run it there${there ? `, or run it on ${there}` : ''}? A copy takes this file alone, not the files beside it.`,
@@ -3113,13 +3295,31 @@ async function runFile(rel, hostArg) {
     }
   }
   const stem = baseName(rel).replace(/\.[^.]+$/, '') || 'a.out';
-  const cmd = `f=${shQuote(`${dkHomeOn(host)}/${rel}`)}; o="$(mktemp -d)"/${shQuote(stem)}; cd "$(dirname "$f")" && ${runner}`;
-  log(`run ${rel} on ${host}: ${runner}`);
+  const fl = fileLoc(rel, host);
+  const abs = hostPath(host, fl.share, rel);
+  const dir = hostPath(host, fl.share, filesParent(rel));
+  if (!abs) { notify('error', `Can't tell where ${rel} is on ${host}.`); return; }
+  let command;
+  let vcvars = '';
+  if (hostIsWindows(host)) {
+    const w = (setting('sulfur.runners') || {})[extOf(rel)] || WIN_RUNNERS[extOf(rel)];
+    const out = `%TEMP%\\sulfur-${stem.replace(/[^\w.-]/g, '_')}.exe`;
+    command = w.replaceAll('{f}', abs).replaceAll('{o}', out);
+    if (/\bcl\b/.test(w)) vcvars = (await toolchains(host).catch(() => null))?.vs?.[0]?.vcvars || '';
+  } else {
+    command = `f=${shQuote(abs)}; o="$(mktemp -d)"/${shQuote(stem)}; ${runner}`;
+  }
+  log(`run ${rel} on ${host}: ${command}`);
   emit('run', { path: rel, host });
-  const term = I.terms.find((x) => x.kind === 'run' && x.host === host && !x.ended);
-  if (term && term.h.send(`${cmd}\r`)) { selectTerm(term, false); showPanel('terminal', true); return; }
-  newTerminal({ host, kind: 'run', name: `run: ${host}`, run: cmd, cwd: '', focus: false });
+  runTask({ host, abs: dir, command, vcvars, name: `Run: ${baseName(rel)}`, kind: 'run' });
 }
+
+// a file's run on a Windows host: {f} the file, {o} an output path
+const WIN_RUNNERS = {
+  py: 'python "{f}"', js: 'node "{f}"', mjs: 'node "{f}"', ts: 'npx --yes tsx "{f}"', ps1: 'powershell -NoProfile -ExecutionPolicy Bypass -File "{f}"',
+  bat: 'call "{f}"', cmd: 'call "{f}"', cs: 'dotnet run "{f}"', go: 'go run "{f}"', rs: 'rustc "{f}" -o "{o}" && "{o}"',
+  c: 'cl /nologo /W3 "{f}" /Fe:"{o}" && "{o}"', cpp: 'cl /nologo /W3 /EHsc /std:c++20 "{f}" /Fe:"{o}" && "{o}"',
+};
 
 // --- the status bar --------------------------------------------------------------------------
 
@@ -3131,8 +3331,9 @@ function sbItem(cls, title, onClick) {
 
 function buildStatus() {
   const S = {};
-  S.remote = sbItem('ide-sb-remote', 'Select the host terminals and runs use', () => run('ide.selectHost'));
+  S.remote = sbItem('ide-sb-remote', 'Select the host terminals and runs use', () => run('sulfur.selectHost'));
   S.problems = sbItem('ide-sb-problems', 'No Problems', () => run('workbench.actions.view.problems'));
+  S.build = sbItem('ide-sb-build', 'Build toolchain', () => run('sulfur.build.select'));
   S.people = sbItem('ide-sb-people', '');
   S.agent = sbItem('ide-sb-agent', 'Chat', () => showAux(true, true));
   S.flash = el('span', 'ide-sb-flash');
@@ -3147,7 +3348,7 @@ function buildStatus() {
   S.state = el('span', 'ide-sb ide-sb-state');
   S.extR = el('span', 'ide-sb-ext');
   S.bell = sbItem('ide-sb-bell', 'Notifications', (e) => notesPopup(e.currentTarget));
-  I.statusL.append(S.remote, S.problems, S.people, S.agent, S.extL, S.flash, S.chord);
+  I.statusL.append(S.remote, S.problems, S.build, S.people, S.agent, S.extL, S.flash, S.chord);
   I.statusR.append(S.pos, S.indent, S.enc, S.eol, S.lang, S.host, S.state, S.extR, S.bell);
   I.sb = S;
 }
@@ -3162,9 +3363,15 @@ function paintStatusNow() {
   const h = runHost();
   S.remote.replaceChildren(icon('remote'), el('span', '', h || 'no host'));
   S.remote.classList.toggle('none', !h);
-  const errs = I.tabs.reduce((n, t) => n + (t.info?.errors?.length || 0), 0);
-  S.problems.replaceChildren(icon('error'), el('span', '', String(errs)), icon('warning'), el('span', '', '0'));
-  S.problems.title = errs ? `${errs} error${errs === 1 ? '' : 's'} in the open files` : 'No Problems';
+  const pc = I.problemCounts || { errors: 0, warnings: 0 };
+  S.problems.replaceChildren(icon('error'), el('span', '', String(pc.errors)), icon('warning'), el('span', '', String(pc.warnings)));
+  S.problems.title = pc.errors || pc.warnings ? `${pc.errors} errors, ${pc.warnings} warnings` : 'No Problems';
+  const bc = buildCfg();
+  S.build.hidden = !bc?.toolchain;
+  if (bc?.toolchain) {
+    S.build.replaceChildren(icon('gear'), el('span', '', `${bc.toolchain.label.split(' · ').pop()} · ${bc.configuration || 'Debug'} · ${bc.host}`));
+    S.build.title = `Ctrl+B builds ${baseName(I.st.root)} with ${bc.toolchain.label} on ${bc.host}. Click to pick another toolchain.`;
+  }
   const t = I.active;
   const info = t?.info;
   const code = !!(t?.ed && info);
@@ -3228,11 +3435,9 @@ async function refreshRoles() {
 }
 
 // every agent on offer: the mesh's roles, then the extensions'
+// the extensions' agents, beside the harnesses
 function agentList() {
-  const roles = I.roles?.length ? I.roles : [{ id: 'chimp' }];
-  const mesh = roles.map((m) => ({ id: `mesh:${m.id}`, label: m.id, sub: ROLE_SUB[m.id] || 'mesh model', up: m.ready !== false, kind: 'mesh', role: m.id }));
-  const ext = [...I.providers.values()].map((p) => ({ id: p.key, label: p.label, sub: p.ext, up: true, kind: 'ext', p }));
-  return [...mesh, ...ext];
+  return [...I.providers.values()].map((p) => ({ id: p.key, label: p.label, sub: p.ext, up: true, kind: 'ext', p }));
 }
 
 // a conversation, a mesh one back from this browser's keeping
@@ -3253,48 +3458,67 @@ function keepChat(id) {
 }
 
 // the agent picked, as one shape for both kinds
+// the chat's agent as one shape for every harness: the mesh model, an agent session, an extension's
 function currentAgent() {
   if (!I) return null;
-  const list = agentList();
-  const a = list.find((x) => x.id === I.st.aux.agent) || list[0];
-  if (!a) return null;
-  const c = chatOf(a.id);
-  if (a.kind === 'mesh') {
+  const h = chatHarness();
+  if (h === 'ext') {
+    const a = agentList().find((x) => x.id === I.st.aux.agent);
+    if (a) {
+      const c = chatOf(a.id);
+      return {
+        ...a, harness: 'ext', turns: () => c.turns, busy: () => c.busy, ready: () => true,
+        send: (text) => providerAsk(a.p, c, text),
+        stop: () => { c.busy = false; c.req = null; c.turns.push({ role: 'notice', text: 'stopped', at: Date.now() }); paintChat(); },
+        clear: () => { c.turns = []; c.busy = false; c.req = null; paintChat(); },
+        sees: true,
+      };
+    }
+  }
+  if (h === 'claude' || h === 'opencode') {
+    const S = agentNow();
     return {
-      ...a,
-      turns: () => c.turns,
-      busy: () => c.busy,
-      ready: () => true,
-      send: (text) => meshAsk(a, c, text),
-      stop: () => c.ctrl?.abort(),
-      clear: () => { c.ctrl?.abort(); c.turns = []; keepChat(a.id); paintChat(true); },
+      id: S.key, kind: 'agent', harness: h, label: harnessName(h), sub: chatModel(), S,
+      busy: () => agentLive(S), ready: () => true,
+      send: (text) => agentSend(S, text),
+      stop: () => { if (S.id) codeCall(sapi(S.id, 'stop'), 'POST', {}).catch((err) => agentNote(S, err.message, 'bad')); else { S.pending = false; paintChat(); } },
+      clear: () => { agentForget(S); paintChat(true); },
       sees: true,
     };
   }
+  const role = provOf(chatModel()) === 'mesh' ? chatModel() : 'chimp';
+  const m = (I.roles || []).find((x) => x.id === role);
+  const a = { id: `mesh:${role}`, label: role, sub: ROLE_SUB[role] || 'mesh model', up: m ? m.ready !== false : true, kind: 'mesh', role, harness: 'chat' };
+  const c = chatOf(a.id);
   return {
     ...a,
     turns: () => c.turns,
     busy: () => c.busy,
     ready: () => true,
-    send: (text) => providerAsk(a.p, c, text),
-    stop: () => { c.busy = false; c.req = null; c.turns.push({ role: 'notice', text: 'stopped', at: Date.now() }); paintChat(); },
-    clear: () => { c.turns = []; c.busy = false; c.req = null; paintChat(); },
+    send: (text) => meshAsk(a, c, text),
+    stop: () => c.ctrl?.abort(),
+    clear: () => { c.ctrl?.abort(); c.turns = []; keepChat(a.id); paintChat(true); },
     sees: true,
   };
 }
 
 function buildAux() {
+  // an older keeping's agent: a mesh role is the model, an extension's its harness
+  const was = I.st.aux.agent || '';
+  if (was.startsWith('mesh:')) { I.st.aux.model = was.slice(5); I.st.aux.agent = ''; }
+  else if (was && I.st.aux.harness === 'chat') I.st.aux.harness = 'ext';
   const head = el('div', 'ide-aux-head');
   const title = el('span', 'ide-side-title', 'CHAT');
-  const who = Object.assign(el('button', 'ide-chat-who'), { type: 'button', title: 'Pick the agent' });
-  who.addEventListener('click', () => menu(who, agentList().map((a) => ({
-    label: `${a.label}${a.sub ? ` — ${a.sub}` : ''}${a.kind === 'mesh' && !a.up ? ' (offline)' : ''}`,
-    checked: a.id === currentAgent()?.id ? true : undefined, ic: a.kind === 'mesh' ? 'spark' : 'ext',
-    run: () => { I.st.aux.agent = a.id; saveState(); paintChat(true); },
-  }))));
   const acts = el('span', 'ide-actions');
   acts.append(btn('', 'plus', 'New Chat', () => run('workbench.action.chat.newChat')), btn('', 'close', 'Hide Secondary Side Bar', () => showAux(false)));
-  head.append(title, who, acts);
+  head.append(title, acts);
+  // the harness, the model, and for an agent how freely it works
+  const bar = el('div', 'ide-chat-bar');
+  const pill = (cls, title, onClick) => { const b = Object.assign(el('button', `ide-chat-pill ${cls}`), { type: 'button', title }); b.addEventListener('click', () => onClick(b)); return b; };
+  const harness = pill('harness', 'Harness: who answers', pickHarness);
+  const model = pill('model', 'Model', pickModel);
+  const perm = pill('perm', 'How freely the agent works', pickPerm);
+  bar.append(harness, model, perm);
   const banner = el('div', 'ide-chat-banner');
   banner.hidden = true;
   const log = Object.assign(el('div', 'ide-chat-log'), { tabIndex: -1 });
@@ -3306,11 +3530,11 @@ function buildAux() {
   const ta = Object.assign(el('textarea', 'ide-chat-input'), { rows: 1, spellcheck: true });
   ta.setAttribute('aria-label', 'Chat input');
   const send = btn('ide-chat-send', 'send', 'Send (Enter)', () => sendChat());
-  const stop = btn('ide-chat-stop', 'stop', 'Stop', () => currentAgent()?.stop());
+  const stop = btn('ide-chat-stop', 'stop', 'Stop (Escape)', () => currentAgent()?.stop());
   box.append(ta, send, stop);
   foot.append(ctx, box);
-  I.aux.append(head, banner, log, foot);
-  I.chat = { who, banner, log, ta, send, stop, ctx, sig: '' };
+  I.aux.append(head, bar, banner, log, foot);
+  I.chat = { harness, model, perm, banner, log, ta, send, stop, ctx, sig: '' };
   const grow = () => {
     ta.style.height = 'auto';
     ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
@@ -3323,6 +3547,7 @@ function buildAux() {
     else if (e.key === 'Escape' && currentAgent()?.busy()) { e.preventDefault(); e.stopPropagation(); currentAgent().stop(); }
   });
   I.chat.grow = grow;
+  if (['claude', 'opencode'].includes(chatHarness()) || provOf(chatModel()) === 'anthropic') loadCodeOpts();
 }
 
 function showAux(on, focus = false) {
@@ -3343,12 +3568,20 @@ function paintChatButtons() {
 }
 
 // redrawn only when the conversation's moved
+// redrawn only when the conversation's moved
 function paintChat(force = false) {
   if (!I?.chat) return;
   const a = currentAgent();
   const c = I.chat;
-  c.who.replaceChildren(icon(a?.kind === 'ext' ? 'ext' : 'spark'), el('span', '', a ? a.label : 'no agent'), icon('down'));
-  c.ta.placeholder = a ? `Ask ${a.label}…` : 'No agent';
+  const h = chatHarness();
+  const hx = HARNESSES.find((x) => x.id === h);
+  c.harness.replaceChildren(icon(h === 'ext' ? 'ext' : hx?.ic || 'chat'), el('span', '', h === 'ext' ? a?.label || 'Extension' : hx.label), icon('down'));
+  c.model.hidden = h === 'ext';
+  c.model.replaceChildren(icon('spark'), el('span', '', chatModel()), icon('down'));
+  const agent = a?.kind === 'agent';
+  c.perm.hidden = !agent;
+  if (agent) c.perm.replaceChildren(el('span', '', (AGENT_PERMS.find(([id]) => id === (I.st.aux.perm || 'acceptEdits')) || AGENT_PERMS[0])[1]), icon('down'));
+  c.ta.placeholder = !a ? 'No agent' : agent ? `Ask ${a.label} to work on ${baseName(I.st.root)}…` : `Ask ${a.label}…`;
   c.ta.title = 'Enter to send, Shift+Enter for a new line';
   paintChatCtx();
   paintChatButtons();
@@ -3357,15 +3590,30 @@ function paintChat(force = false) {
   let why = '';
   if (!a) why = 'No model is set up on the mesh. The status app’s model card picks one.';
   else if (a.kind === 'mesh' && !a.up) why = `${a.label} has no model answering right now. The status app’s model card shows why.`;
+  else if (agent && !a.S.id) why = agentWhere(h).why || '';
   c.banner.textContent = why;
   c.banner.hidden = !why;
   if (I.st.aux.hidden && !force) return;
+  const nearEnd = c.log.scrollTop + c.log.clientHeight >= c.log.scrollHeight - 40;
+  if (agent) {
+    const S = a.S;
+    const busy = agentLive(S);
+    const sig = `${S.key}\n${S.id}\n${S.node.childElementCount}\n${busy}`;
+    if (sig === c.sig && !force) return;
+    c.sig = sig;
+    if (!S.node.childElementCount && !busy) { c.log.replaceChildren(chatWelcome(a)); return; }
+    S.wait ||= el('div', 'ide-agent-wait');
+    S.wait.replaceChildren(el('span', 'ide-dots', ''), el('span', '', S.pending ? ` starting ${a.label}…` : ` ${a.label} is working`));
+    if (c.log.firstChild !== S.node) c.log.replaceChildren(S.node);
+    if (busy) c.log.append(S.wait); else S.wait.remove();
+    if (nearEnd || force) c.log.scrollTop = c.log.scrollHeight;
+    return;
+  }
   const turns = a ? a.turns() : [];
   const busy = !!a?.busy();
-  const sig = `${a?.id}\n${turns.length}\n${turns.at(-1)?.at}\n${busy}\n${I.chats.get(a?.id)?.live?.length || 0}`;
+  const sig = `${a?.id}\n${turns.length}\n${turns.at(-1)?.at}\n${turns.at(-1)?.edits?.length || 0}\n${busy}\n${I.chats.get(a?.id)?.live?.length || 0}`;
   if (sig === c.sig && !force) return;
   c.sig = sig;
-  const nearEnd = c.log.scrollTop + c.log.clientHeight >= c.log.scrollHeight - 40;
   if (!turns.length && !busy) { c.log.replaceChildren(chatWelcome(a)); return; }
   const rows = turns.map((t) => chatTurn(a, t));
   if (busy) {
@@ -3381,10 +3629,16 @@ function paintChat(force = false) {
 function chatWelcome(a) {
   const w = el('div', 'ide-chat-welcome');
   w.append(icon('spark', 'ide-chat-art'), el('h3', '', a ? `Ask ${a.label}` : 'Chat'));
-  w.append(el('p', '', a?.kind === 'mesh'
-    ? `${a.label} is the mesh’s ${a.sub} model, asked straight through its gateway. It sees the file you have open here; put its code at your caret or run it in a terminal from the buttons on each block.`
-    : 'Pick an agent above.'));
-  const tries = ['Explain this file', 'Find the bugs in this file', 'Write tests for this file', 'How do I build and run this?'];
+  let about = 'Pick a harness above.';
+  if (a?.kind === 'mesh') about = `${a.label} is the mesh’s ${a.sub} model, asked straight through its gateway. It sees the file you have open, and when you ask it to change code its edits are typed into the editor as it answers.`;
+  else if (a?.kind === 'agent') {
+    const where = agentWhere(a.harness);
+    about = where.why || `${a.label} works in ${baseName(I.st.root)} on ${where.host}, under your login there, on ${chatModel()}. It reads, runs commands and edits files itself, and each edit lands in the editor as it makes it.`;
+  } else if (a?.kind === 'ext') about = `${a.label}, from the ${a.sub} extension.`;
+  w.append(el('p', '', about));
+  const tries = a?.kind === 'agent'
+    ? ['Explain how this project is laid out', 'Find and fix the bug in this file', 'Add tests for this file and run them', 'Build it and fix what fails']
+    : ['Explain this file', 'Find the bugs in this file', 'Add comments to this file', 'How do I build and run this?'];
   const row = el('div', 'ide-chat-tries');
   for (const t of tries) {
     const b = Object.assign(el('button', 'ide-chip', t), { type: 'button' });
@@ -3406,10 +3660,28 @@ function chatTurn(a, t) {
   else if (t.role === 'notice') body.textContent = t.text;
   else if (t.pending) body.append(el('span', 'ide-dots', ''));
   else {
-    renderMd(body, t.text, true, t.html || null);
+    const edits = parseEdits(t.text).length;
+    renderMd(body, edits ? showEdits(t.text) : t.text, true, edits ? null : t.html || null);
     decorateCode(body);
   }
   row.append(body);
+  // what its edit blocks did in the editor, and a way back
+  if (t.edits?.length) {
+    const bar = el('div', 'ide-msg-edits');
+    for (const e of t.edits) {
+      const chip = Object.assign(el('button', `ide-edit-chip${e.bad ? ' bad' : ''}`), { type: 'button', title: e.bad ? `${e.rel}: ${e.bad}` : `Open ${e.rel}` });
+      chip.append(icon(e.bad ? 'warning' : 'check'), el('span', '', baseName(e.rel)));
+      if (!e.bad) chip.addEventListener('click', () => openFile(e.rel, { preview: false }));
+      bar.append(chip);
+    }
+    const undo = I.chatUndo?.get(t.at);
+    if (undo) {
+      const u = Object.assign(el('button', 'ide-link', 'Undo'), { type: 'button', title: 'Put back what was there before these edits' });
+      u.addEventListener('click', async () => { u.disabled = true; if (await undoEdits(undo)) { I.chatUndo.delete(t.at); u.replaceWith(el('span', 'ide-edit-undone', 'undone')); } else u.disabled = false; });
+      bar.append(u);
+    }
+    row.append(bar);
+  }
   return row;
 }
 
@@ -3498,12 +3770,16 @@ function askSelection() {
 }
 
 // what a mesh model's told: who it is, where, and the file open here if shared
+// what a mesh model's told: who it is, where, how to edit, and the file open here if shared
 function meshSystem(a) {
   const t = I.active;
   const parts = [
-    `You are ${a.label}, the phosphorus mesh's own assistant, answering ${name || acct.user} in the phosphorus ide, a code editor over their files on the mesh's hosts. `
-    + 'Answer plainly and exactly. Put code in fenced blocks with their language: the ide puts a block at the caret or runs it in a terminal.',
-    `Today is ${new Date().toDateString()}. The workspace is ${I.st.root} in the user's phosphorus home; terminals and runs go to ${runHost() || 'no host yet'}.`,
+    `You are ${a.label}, the phosphorus mesh's own assistant, answering ${name || acct.user} in Sulfur, the phosphorus code editor over their files on the mesh's machines. `
+    + 'Answer plainly and exactly. Put code in fenced blocks with their language: Sulfur puts a block at the caret or runs it in a terminal.',
+    `Today is ${new Date().toDateString()}. The workspace is ${I.st.root} in ${locLabel()}; terminals and runs go to ${runHost() || 'no machine yet'}.`,
+    'When asked to change code, change it yourself with edit blocks: Sulfur types each into the editor as soon as you finish. For each change write\n'
+    + '<<<<<<< SEARCH path/from/the/workspace\n(the exact lines there now, enough of them to be unique)\n=======\n(the lines to put in their place)\n>>>>>>> REPLACE\n'
+    + 'Leave the path off for the open file. An empty SEARCH starts a new file, or adds to the end of one. Keep each block small, then say in a sentence what you changed; don\'t repeat the code outside the blocks.',
   ];
   if (t?.ed && t.info?.ready && setting('chat.includeActiveFile')) {
     const text = t.ed.text();
@@ -3511,9 +3787,9 @@ function meshSystem(a) {
     const l1 = text.slice(0, s).split('\n').length;
     const l2 = text.slice(0, e).split('\n').length;
     const cut = text.length > SEEN_MAX ? `, its first ${SEEN_MAX} characters` : '';
-    parts.push(`They have ${t.rel} open (${LANG_NAMES[t.info.lang] || t.info.lang}, on ${t.host})${s !== e ? `, lines ${l1}-${l2} selected` : `, the caret on line ${l1}`}. `
+    parts.push(`They have ${under(t.rel, I.st.root) ? wsRel(t.rel) : t.rel} open (${LANG_NAMES[t.info.lang] || t.info.lang}, on ${t.host})${s !== e ? `, lines ${l1}-${l2} selected` : `, the caret on line ${l1}`}. `
       + 'When they say "this file", "this" or "here" without naming another, they mean it. '
-      + `Its text as they see it now${cut}:\n<file path="${t.rel}">\n${text.slice(0, SEEN_MAX)}\n</file>`);
+      + `Its text as they see it now${cut}:\n<file path="${under(t.rel, I.st.root) ? wsRel(t.rel) : t.rel}">\n${text.slice(0, SEEN_MAX)}\n</file>`);
   }
   return parts.join('\n\n');
 }
@@ -3569,7 +3845,20 @@ async function meshAsk(a, c, text) {
         }
       }
     }
-    c.turns.push({ role: 'assistant', text: out.trim() || '(no answer)', at: Date.now(), by: a.label });
+    const turn = { role: 'assistant', text: out.trim() || '(no answer)', at: Date.now(), by: a.label };
+    c.turns.push(turn);
+    const edits = parseEdits(out);
+    if (edits.length && I) {
+      c.busy = false;
+      c.live = '';
+      keepChat(a.id);
+      paintChat();
+      const done = await applyChatEdits(edits);
+      if (!I) return;
+      turn.edits = done.list;
+      if (done.undo.length) (I.chatUndo ||= new Map()).set(turn.at, done.undo);
+      keepChat(a.id);
+    }
   } catch (err) {
     if (out.trim()) c.turns.push({ role: 'assistant', text: out, at: Date.now(), by: a.label });
     c.turns.push({ role: 'notice', text: err.name === 'AbortError' ? 'stopped' : `${a.label}: ${err.message}`, at: Date.now() });
@@ -3609,6 +3898,648 @@ function providerAsk(p, c, text) {
   });
   paintChat(true);
   return true;
+}
+
+// --- the chat's harness and model: the mesh's models asked straight, or an agent at work in the project
+
+const HARNESSES = [
+  { id: 'chat', label: 'Chat', ic: 'chat', about: 'the mesh’s models, asked straight; their edits typed into the editor' },
+  { id: 'claude', label: 'Claude Code', ic: 'spark', about: 'an agent in the project: it reads, runs and edits' },
+  { id: 'opencode', label: 'opencode', ic: 'terminal', about: 'an open agent in the project, on the mesh’s models' },
+];
+const ANTH = ['opus', 'sonnet', 'haiku'];
+const provOf = (m) => (ANTH.includes(m) ? 'anthropic' : 'mesh');
+const AGENT_PERMS = [
+  ['acceptEdits', 'Edit Automatically', 'its edits land as it makes them; commands still ask'],
+  ['default', 'Ask First', 'every edit and command asks you first'],
+  ['plan', 'Plan Only', 'it reads and plans, and changes nothing'],
+  ['bypassPermissions', 'Full Access', 'nothing asks'],
+];
+// what Sulfur tells an agent with each prompt, left out of the transcript
+const CTX_RE = /^<sulfur>[\s\S]*?<\/sulfur>\n*/;
+const chatHarness = () => (['chat', 'claude', 'opencode', 'ext'].includes(I.st.aux.harness) ? I.st.aux.harness : 'chat');
+const chatModel = () => I.st.aux.model || 'chimp';
+const harnessName = (h) => HARNESSES.find((x) => x.id === h)?.label || h;
+
+async function codeCall(url, method = 'GET', body) {
+  const init = { method, cache: 'no-store' };
+  if (body !== undefined) { init.headers = { 'content-type': 'application/json' }; init.body = JSON.stringify(body); }
+  const r = await fetch(url, init);
+  const out = await r.json().catch(() => ({}));
+  if (!r.ok) throw Object.assign(new Error(out.error || `status ${r.status}`), { status: r.status });
+  return out;
+}
+const sapi = (id, op = '') => `/api/code/sessions/${encodeURIComponent(id)}${op ? `/${op}` : ''}`;
+
+// the Code app's options: the logins it can work under, the Claude models if a token's saved
+async function loadCodeOpts(fresh = false) {
+  if (I.codeOpts && !fresh) return I.codeOpts;
+  try { I.codeOpts = await codeCall('/api/code/options'); } catch (err) { I.codeOpts = { hosts: [], models: [], anthropic: false, error: err.message }; }
+  if (I) paintChat();
+  return I.codeOpts;
+}
+
+function pickHarness(anchor) {
+  const cur = chatHarness();
+  const items = HARNESSES.map((h) => ({ label: h.label, detail: h.about, ic: h.ic, checked: cur === h.id ? true : undefined, run: () => setHarness(h.id) }));
+  const ext = [...I.providers.values()];
+  if (ext.length) items.push('-', ...ext.map((p) => ({ label: p.label, detail: p.ext, ic: 'ext', checked: cur === 'ext' && I.st.aux.agent === p.key ? true : undefined, run: () => setHarness('ext', p.key) })));
+  menu(anchor, items);
+}
+
+function setHarness(h, ext = '') {
+  I.st.aux.harness = h;
+  I.st.aux.agent = h === 'ext' ? ext : '';
+  if ((h === 'chat' || h === 'opencode') && provOf(chatModel()) === 'anthropic') {
+    I.st.aux.model = 'chimp';
+    setStatusFlash(`Claude models run in Claude Code: ${harnessName(h)} is on chimp`);
+  }
+  saveState();
+  if (h === 'claude' || h === 'opencode') loadCodeOpts();
+  paintChat(true);
+}
+
+function pickModel(anchor) {
+  const cur = chatModel();
+  const roles = I.roles?.length ? I.roles : [{ id: 'chimp' }, { id: 'orangutan' }];
+  const items = roles.map((m) => ({ label: m.id, detail: `${ROLE_SUB[m.id] || 'mesh model'}${m.ready === false ? ' · offline' : ''}`, ic: 'spark', checked: cur === m.id ? true : undefined, run: () => setModel(m.id) }));
+  const anth = (I.codeOpts?.models || []).filter((m) => m.provider === 'anthropic');
+  items.push('-');
+  if (anth.length) items.push(...anth.map((m) => ({ label: m.label, detail: 'Claude, in Claude Code', ic: 'spark', checked: cur === m.id ? true : undefined, run: () => setModel(m.id) })));
+  else items.push({ label: 'Opus, Sonnet and Haiku', detail: 'save your Anthropic token in the Code app first', ic: 'lock', disabled: true });
+  menu(anchor, items);
+  if (!I.codeOpts) loadCodeOpts();
+}
+
+function setModel(m) {
+  I.st.aux.model = m;
+  if (provOf(m) === 'anthropic' && chatHarness() !== 'claude') {
+    I.st.aux.harness = 'claude';
+    setStatusFlash('Claude models run in Claude Code: the harness is Claude Code');
+  }
+  saveState();
+  // the same agent's session takes the new model; a switch between providers starts another
+  const S = agentNow();
+  if (S?.id && S.rec && S.rec.model !== m) {
+    codeCall(sapi(S.id, 'model'), 'POST', { model: m }).then(() => { S.rec.model = m; paintChat(); }, (err) => agentNote(S, err.message, 'bad'));
+  }
+  paintChat(true);
+}
+
+function pickPerm(anchor) {
+  const cur = I.st.aux.perm || 'acceptEdits';
+  menu(anchor, AGENT_PERMS.map(([id, label, about]) => ({ label, detail: about, checked: id === cur ? true : undefined, run: () => setPerm(id) })));
+}
+function setPerm(v) {
+  I.st.aux.perm = v;
+  saveState();
+  const S = agentNow();
+  if (S?.id) codeCall(sapi(S.id, 'perm'), 'POST', { mode: v }).then(() => { if (S.rec) S.rec.perm = v; }, (err) => agentNote(S, err.message, 'bad'));
+  paintChat();
+}
+
+// --- agents: Claude Code and opencode in the project, their edits landing in the editor ---------
+// a session of the Code app's on a machine holding the project, under your login there;
+// what it writes replayed into the open tabs as it writes it
+
+const agentKey = (h = chatHarness(), m = chatModel()) => `${h}:${provOf(m)}\n${wsKey()}`;
+const agentLive = (S) => !!S && (S.pending || S.rec?.status === 'working' || S.rec?.status === 'starting');
+
+// the session of the harness picked, for this project
+function agentNow() {
+  const h = chatHarness();
+  if (h !== 'claude' && h !== 'opencode') return null;
+  const key = agentKey();
+  I.agents ||= new Map();
+  let S = I.agents.get(key);
+  if (!S) {
+    S = { key, harness: h, root: I.st.root, loc: locOf(), id: (I.st.agentSess ||= {})[key] || '', rec: null, where: null, node: el('div', 'ide-agent-log'), seq: 0, sock: null, cards: new Map(), perms: new Map(), cur: null, liveText: null, pending: false, watching: false };
+    I.agents.set(key, S);
+    if (S.id) agentAttach(S);
+  }
+  return S;
+}
+
+async function agentAttach(S) {
+  try {
+    S.rec = await codeCall(sapi(S.id));
+  } catch (err) {
+    if (err.status === 404) agentForget(S);
+    else agentNote(S, `Couldn't reach the session: ${err.message}`, 'bad');
+    if (I) paintChat(true);
+    return;
+  }
+  if (!I) return;
+  S.where = { host: S.rec.host, dir: S.rec.dir };
+  agentConnect(S);
+  paintChat(true);
+}
+
+// the session let go here (the Code app still lists it), a fresh one taken on the next ask
+function agentForget(S) {
+  if (I.st.agentSess?.[S.key] === S.id) { delete I.st.agentSess[S.key]; saveState(); }
+  const ws = S.sock;
+  S.sock = null;
+  if (ws) { ws.onclose = null; try { ws.close(); } catch {} }
+  Object.assign(S, { id: '', rec: null, where: null, seq: 0, cur: null, liveText: null, pending: false, watching: false });
+  S.cards.clear();
+  S.perms.clear();
+  S.node.replaceChildren();
+}
+
+function agentConnect(S) {
+  if (S.sock || !S.id || !I) return;
+  const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/code/ws/${encodeURIComponent(S.id)}?since=${S.seq}`);
+  S.sock = ws;
+  ws.onopen = () => { S.retry = 0; };
+  ws.onmessage = (e) => {
+    let m = null;
+    try { m = JSON.parse(e.data); } catch { return; }
+    if (m.seq && m.seq <= S.seq) return;
+    const log = I?.chat?.log;
+    const stick = !!log && S.node.isConnected && log.scrollTop + log.clientHeight >= log.scrollHeight - 40;
+    agentTake(S, m);
+    if (m.seq) S.seq = m.seq;
+    if (stick) log.scrollTop = log.scrollHeight;
+    paintChatSoon();
+  };
+  ws.onclose = () => {
+    if (S.sock !== ws) return;
+    S.sock = null;
+    if (!I || !S.id || S.closed) return;
+    S.retry = Math.min(10000, (S.retry || 500) * 2);
+    setTimeout(() => { if (I && S.id && !S.closed) agentConnect(S); }, S.retry);
+  };
+}
+
+function agentNote(S, text, kind = '') {
+  const n = el('div', `ide-agent-note ${kind}`, text);
+  S.node.append(n);
+  paintChatSoon();
+  return n;
+}
+
+// the agent's reply so far: one message, its text, thoughts and tools in turn
+function agentBody(S) {
+  if (S.cur?.isConnected) return S.cur;
+  const row = el('div', 'ide-msg assistant');
+  const head = el('div', 'ide-msg-head');
+  head.append(icon('spark', 'ide-msg-av agent'), el('span', 'ide-msg-name agent', harnessName(S.harness)), el('span', 'ide-msg-model', S.rec?.model || chatModel()));
+  const body = el('div', 'ide-msg-body ide-agent-body');
+  row.append(head, body);
+  S.node.append(row);
+  S.cur = body;
+  return body;
+}
+
+function agentTake(S, m) {
+  if (m.truncated) return;
+  switch (m.kind) {
+    case 'claude': agentEv(S, m.ev || {}); break;
+    case 'user': {
+      S.cur = null;
+      S.liveText = null;
+      const row = el('div', 'ide-msg user');
+      const head = el('div', 'ide-msg-head');
+      head.append(el('span', 'ide-msg-av', (name || acct.user || '?')[0].toUpperCase()), el('span', 'ide-msg-name', name || acct.user));
+      row.append(head, el('div', 'ide-msg-body', String(m.text || '').replace(CTX_RE, '')));
+      S.node.append(row);
+      break;
+    }
+    case 'permission': agentPerm(S, m); break;
+    case 'permission_done': S.perms.get(m.reqId)?.(m.allow, m.cancelled); break;
+    case 'status': {
+      if (!m.record) break;
+      const was = agentLive(S);
+      S.rec = m.record;
+      if (S.rec.status === 'working' || S.rec.status === 'starting') { S.watching = true; S.pending = false; }
+      if (was && !agentLive(S)) { S.cur = null; S.liveText = null; }
+      paintChatButtons();
+      paintStatus();
+      break;
+    }
+    case 'error': S.pending = false; agentNote(S, m.text || 'error', 'bad'); break;
+    default:
+  }
+}
+
+function agentEv(S, ev) {
+  const nested = ev.parent_tool_use_id ? S.cards.get(ev.parent_tool_use_id) : null;
+  switch (ev.type) {
+    case 'system':
+      if (ev.subtype === 'init') agentNote(S, [ev.model, ev.cwd].filter(Boolean).join(' · ') || 'started', 'quiet');
+      else if (ev.subtype === 'api_retry') agentNote(S, `retrying: ${ev.error_status || ev.error || 'no answer'} (try ${ev.attempt || '?'} of ${ev.max_retries || '?'})`, 'warn');
+      break;
+    case 'stream_event': {
+      if (nested) break;
+      const e = ev.event || {};
+      if (e.type === 'content_block_start' && e.content_block?.type === 'text') {
+        S.liveText = el('div', 'ide-agent-text streaming');
+        S.liveText.raw = '';
+        agentBody(S).append(S.liveText);
+      } else if (e.type === 'content_block_delta' && e.delta?.type === 'text_delta' && S.liveText) {
+        S.liveText.raw += e.delta.text || '';
+        S.liveText.textContent = S.liveText.raw;
+      }
+      break;
+    }
+    case 'assistant':
+      for (const b of ev.message?.content || []) {
+        if (b.type === 'text') {
+          if (nested || !b.text?.trim()) continue;
+          const d = el('div', 'ide-agent-text md');
+          renderMd(d, b.text, true);
+          decorateCode(d);
+          if (S.liveText?.isConnected) S.liveText.replaceWith(d); else agentBody(S).append(d);
+          S.liveText = null;
+        } else if (b.type === 'thinking' && !nested) {
+          const d = el('details', 'ide-agent-think');
+          d.append(el('summary', '', 'Thought'), el('div', 'ide-agent-think-body', b.thinking || ''));
+          agentBody(S).append(d);
+        } else if (b.type === 'tool_use') agentCard(S, b, nested ? nested.body : agentBody(S));
+      }
+      break;
+    case 'user':
+      for (const b of Array.isArray(ev.message?.content) ? ev.message.content : []) if (b.type === 'tool_result') agentResult(S, b);
+      break;
+    case 'result': {
+      S.liveText?.remove();
+      S.liveText = null;
+      const u = ev.usage || {};
+      const tin = (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0);
+      const bad = ev.is_error || (ev.subtype && ev.subtype !== 'success');
+      const k = (n) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n || 0));
+      const bits = [bad ? String(ev.subtype || 'error').replace(/_/g, ' ') : 'done'];
+      if (ev.num_turns) bits.push(`${ev.num_turns} step${ev.num_turns === 1 ? '' : 's'}`);
+      if (ev.duration_ms) bits.push(`${(ev.duration_ms / 1000).toFixed(1)}s`);
+      if (tin || u.output_tokens) bits.push(`↑${k(tin)} ↓${k(u.output_tokens)}`);
+      agentNote(S, bits.join(' · '), bad ? 'bad foot' : 'foot');
+      if (bad && typeof ev.result === 'string' && ev.result) agentNote(S, ev.result, 'bad');
+      for (const e of Array.isArray(ev.errors) ? ev.errors : []) if (!/^\[ede_diagnostic\]/.test(String(e))) agentNote(S, String(e), 'bad');
+      S.cur = null;
+      S.pending = false;
+      if (S.watching) agentSyncTabs(S);
+      break;
+    }
+    default:
+  }
+}
+
+const EDIT_TOOLS = new Set(['Edit', 'MultiEdit', 'Write']);
+// a path the agent named as the workspace names it
+function agentRel(S, abs) {
+  if (!abs || !S.where?.dir) return '';
+  const norm = (p) => String(p).replace(/\\/g, '/').replace(/\/+$/, '');
+  const base = norm(S.where.dir);
+  const a = norm(abs);
+  const rest = a.startsWith(`${base}/`) ? a.slice(base.length + 1) : !a.startsWith('/') && !/^[A-Za-z]:/.test(a) && !a.startsWith('~') ? a : '';
+  const rel = rest ? cleanPath(`${S.root}/${rest}`) : null;
+  return rel && inScope(rel, S.loc) ? rel : '';
+}
+const agentHere = (S) => S.root === I.st.root && sameLoc(S.loc, locOf());
+
+function agentArg(S, n, x = {}) {
+  switch (n) {
+    case 'Bash': return x.description || x.command || '';
+    case 'Read': case 'Edit': case 'MultiEdit': case 'Write': { const r = agentRel(S, x.file_path); return r ? wsRel(r) : x.file_path || ''; }
+    case 'Glob': case 'Grep': return x.pattern || '';
+    case 'WebFetch': return x.url || '';
+    case 'WebSearch': return x.query || '';
+    case 'Task': case 'Agent': return x.description || '';
+    case 'TodoWrite': return `${(x.todos || []).filter((y) => y.status === 'completed').length}/${(x.todos || []).length} done`;
+    default: { const v = Object.values(x).find((y) => typeof y === 'string'); return v ? v.slice(0, 120) : ''; }
+  }
+}
+// an edit's lines out and in, as a short diff
+function agentDiff(a, b) {
+  const box = el('div', 'ide-agent-diff');
+  const add = (sign, l) => box.append(el('div', `ide-dl${sign === '+' ? ' add' : ' del'}`, `${sign} ${l}`));
+  const A = a ? String(a).replace(/\n$/, '').split('\n') : [];
+  const B = b ? String(b).replace(/\n$/, '').split('\n') : [];
+  let p = 0;
+  while (p < A.length && p < B.length && A[p] === B[p]) p++;
+  let q = 0;
+  while (q < A.length - p && q < B.length - p && A[A.length - 1 - q] === B[B.length - 1 - q]) q++;
+  const del = A.slice(p, A.length - q);
+  const ins = B.slice(p, B.length - q);
+  for (const l of del.slice(0, 200)) add('-', l);
+  for (const l of ins.slice(0, 200)) add('+', l);
+  if (del.length > 200 || ins.length > 200) box.append(el('div', 'ide-dl gap', '…'));
+  if (!del.length && !ins.length) box.append(el('div', 'ide-dl gap', 'no change'));
+  return box;
+}
+
+function agentCard(S, b, where) {
+  const n = b.name || 'tool';
+  const x = b.input || {};
+  const c = el('div', `ide-tool run${EDIT_TOOLS.has(n) ? ' edit' : ''}`);
+  const h = Object.assign(el('button', 'ide-tool-head'), { type: 'button' });
+  h.append(el('span', 'ide-tool-pip'), el('span', 'ide-tool-name', n.startsWith('mcp__') ? n.slice(5).replace('__', ' · ') : n), el('span', 'ide-tool-arg', agentArg(S, n, x)));
+  const out = el('div', 'ide-tool-out');
+  const body = el('div', 'ide-tool-body');
+  body.hidden = true;
+  if (n === 'Bash') body.append(el('pre', 'ide-tool-cmd', `$ ${x.command || ''}`));
+  else if (n === 'Edit') body.append(agentDiff(x.old_string, x.new_string));
+  else if (n === 'MultiEdit') for (const e of x.edits || []) body.append(agentDiff(e.old_string, e.new_string));
+  else if (n === 'Write') body.append(agentDiff('', x.content));
+  h.addEventListener('click', () => { body.hidden = !body.hidden; c.classList.toggle('open', !body.hidden); });
+  c.append(h, out, body);
+  where.append(c);
+  S.cards.set(b.id, { el: c, out, body, name: n, input: x });
+}
+
+function agentResult(S, b) {
+  const c = S.cards.get(b.tool_use_id);
+  if (!c) return;
+  const text = (typeof b.content === 'string' ? b.content : Array.isArray(b.content) ? b.content.map((p) => (p.type === 'text' ? p.text : '')).join('\n') : '').replace(/\s+$/, '');
+  const bad = !!b.is_error;
+  c.el.classList.remove('run');
+  c.el.classList.add(bad ? 'bad' : 'ok');
+  const first = text.split('\n')[0].slice(0, 160);
+  const lines = text ? text.split('\n').length : 0;
+  c.out.textContent = bad ? first || 'failed' : EDIT_TOOLS.has(c.name) ? 'edited' : c.name === 'Read' ? `${lines} lines` : first ? `${first}${lines > 1 ? `  (+${lines - 1} lines)` : ''}` : 'done';
+  if (text && (bad || !EDIT_TOOLS.has(c.name)) && c.name !== 'Read') c.body.append(el('pre', `ide-tool-res${bad ? ' bad' : ''}`, text.length > 16000 ? `${text.slice(0, 16000)}\n…` : text));
+  if (!bad && EDIT_TOOLS.has(c.name)) {
+    const rel = agentRel(S, c.input.file_path);
+    if (rel) {
+      const open = Object.assign(el('button', 'ide-link', 'Open'), { type: 'button' });
+      open.addEventListener('click', () => openFile(rel, { preview: false, loc: S.loc }));
+      c.out.append(' ', open);
+      if (S.watching && agentHere(S)) agentApply(S, c, rel);
+    }
+  }
+}
+
+// the agent's edit replayed into the file's tab, typed in where the user sees it;
+// a tab opened for it already has it from disk, so is only lit
+async function agentApply(S, c, rel) {
+  let t = I.tabs.find((x) => x.rel === rel && sameLoc(x.loc, S.loc) && x.kind === 'code');
+  const fresh = !t;
+  if (!t) t = openFile(rel, { preview: false, focus: false, host: isHomeLoc(S.loc) ? S.where?.host : undefined });
+  if (!t) return;
+  if (I.active !== t) activate(t, false);
+  for (let i = 0; i < 120 && I && I.tabs.includes(t) && !t.ed?.ready?.(); i++) await sleep(80);
+  if (!I || !t.ed?.ready?.()) return;
+  const wasDirty = t.ed.dirty();
+  const x = c.input;
+  const ops = c.name === 'Write' ? [{ write: String(x.content ?? '') }] : c.name === 'MultiEdit' ? (x.edits || []) : [x];
+  const undo = [];
+  let missed = 0;
+  for (const e of ops) {
+    const text = t.ed.text();
+    if ('write' in e) {
+      if (text === e.write) { if (fresh) await t.ed.agentFlash(0, Math.min(text.length, 20000)); continue; }
+      let p = 0;
+      while (p < text.length && p < e.write.length && text[p] === e.write[p]) p++;
+      let q = 0;
+      while (q < text.length - p && q < e.write.length - p && text[text.length - 1 - q] === e.write[e.write.length - 1 - q]) q++;
+      const old = text.slice(p, text.length - q);
+      const nu = e.write.slice(p, e.write.length - q);
+      if (fresh) { await t.ed.agentFlash(p, p + nu.length); continue; }
+      if (await t.ed.agentEdit(p, text.length - q, nu)) undo.push({ at: p, old, nu }); else missed += 1;
+      continue;
+    }
+    const from = String(e.old_string ?? '');
+    const to = String(e.new_string ?? '');
+    const at = from ? text.indexOf(from) : -1;
+    if (fresh || at < 0) {
+      const there = to ? text.indexOf(to) : -1;
+      if (there >= 0) await t.ed.agentFlash(there, there + to.length);
+      else if (!fresh && to) missed += 1;
+      continue;
+    }
+    let pos = at;
+    for (let k = 0; pos >= 0 && (k === 0 || e.replace_all); k++) {
+      if (!(await t.ed.agentEdit(pos, pos + from.length, to))) { missed += 1; break; }
+      undo.push({ at: pos, old: from, nu: to });
+      pos = t.ed.text().indexOf(from, pos + to.length);
+    }
+  }
+  if (!I) return;
+  if (missed) {
+    notify('warning', `${baseName(rel)} has changes here the agent didn't see, so its edit didn't land in the editor. Revert File shows the file as the agent left it.`, { actions: [{ label: 'Revert File', run: () => { activate(t); run('workbench.action.revertFile'); } }] });
+  } else if (!wasDirty) t.ed.save();
+  if (undo.length) {
+    const u = Object.assign(el('button', 'ide-link', 'Undo'), { type: 'button', title: 'Put back what was there before this edit' });
+    u.addEventListener('click', async () => { u.disabled = true; if (await undoEdits([{ t, list: undo }])) u.textContent = 'Undone'; else u.disabled = false; });
+    c.out.append(' ', u);
+  }
+}
+
+// a turn's end: a clean tab of the project the agent changed some other way (a command, a formatter) made what's on disk
+async function agentSyncTabs(S) {
+  if (!agentHere(S)) return;
+  for (const t of I.tabs.filter((x) => x.kind === 'code' && x.rel && sameLoc(x.loc, S.loc) && under(x.rel, S.root) && x.ed?.ready?.() && !x.ed.dirty())) {
+    let disk = null;
+    try {
+      const b = await filesCall(isHomeLoc(S.loc) ? homeAt(S.where?.host || homePick(t.rel)) : apiLoc(S.loc), 'read', undefined, { path: t.rel });
+      disk = typeof b.text === 'string' ? b.text : null;
+    } catch {}
+    if (!I || disk === null || !t.ed || t.ed.dirty()) continue;
+    const text = t.ed.text();
+    if (text === disk) continue;
+    let p = 0;
+    while (p < text.length && p < disk.length && text[p] === disk[p]) p++;
+    let q = 0;
+    while (q < text.length - p && q < disk.length - p && text[text.length - 1 - q] === disk[disk.length - 1 - q]) q++;
+    if (await t.ed.agentEdit(p, text.length - q, disk.slice(p, disk.length - q), { instant: disk.length - p - q > 4000 })) t.ed.save();
+  }
+}
+
+// edits taken back, newest first, each only where its text still is
+async function undoEdits(groups) {
+  let all = true;
+  for (const g of [...groups].reverse()) {
+    const { t } = g;
+    if (!I.tabs.includes(t) || !t.ed?.ready?.()) { all = false; continue; }
+    const wasDirty = t.ed.dirty();
+    for (const e of [...g.list].reverse()) {
+      const text = t.ed.text();
+      let at = text.startsWith(e.nu, e.at) ? e.at : text.indexOf(e.nu);
+      if (!e.nu) at = Math.min(e.at, text.length);
+      if (at < 0 || !(await t.ed.agentEdit(at, at + e.nu.length, e.old))) all = false;
+    }
+    if (!wasDirty && all) t.ed.save();
+  }
+  if (!all) notify('warning', 'Some of it had changed since, so not all of it went back.');
+  return all;
+}
+
+function agentPerm(S, m) {
+  const c = el('div', 'ide-perm');
+  const h = el('div', 'ide-perm-head');
+  h.append(icon('warning', 'ide-perm-ic'), el('span', 'ide-tool-name', m.tool || 'tool'), el('span', 'ide-tool-arg', agentArg(S, m.tool, m.input || {})));
+  c.append(h);
+  if (m.reason) c.append(el('div', 'ide-perm-why', m.reason));
+  const x = m.input || {};
+  if (m.tool === 'Bash') c.append(el('pre', 'ide-tool-cmd', `$ ${x.command || ''}`));
+  else if (m.tool === 'Edit') c.append(agentDiff(x.old_string, x.new_string));
+  else if (m.tool === 'Write') c.append(agentDiff('', x.content));
+  else if (m.tool === 'MultiEdit') for (const e of x.edits || []) c.append(agentDiff(e.old_string, e.new_string));
+  const acts = el('div', 'ide-perm-acts');
+  const msg = el('span', 'ide-perm-msg');
+  const answer = (allow, always) => {
+    for (const b of acts.querySelectorAll('button')) b.disabled = true;
+    msg.textContent = 'sending…';
+    codeCall(sapi(S.id, 'permission'), 'POST', { reqId: m.reqId, allow, always, message: '' })
+      .then(() => done(allow, false), (err) => { msg.textContent = err.message; for (const b of acts.querySelectorAll('button')) b.disabled = false; });
+  };
+  const mk = (label, cls, allow, always) => { const b = Object.assign(el('button', `ide-button ${cls}`, label), { type: 'button' }); b.addEventListener('click', () => answer(allow, always)); return b; };
+  acts.append(mk('Allow', '', true, false), mk('Always Allow', 'secondary', true, true), mk('Deny', 'secondary', false, false), msg);
+  c.append(acts);
+  const done = (allow, cancelled) => {
+    if (c.classList.contains('answered')) return;
+    c.classList.add('answered', allow ? 'allowed' : 'denied');
+    acts.replaceChildren(el('span', 'ide-perm-msg', allow ? 'allowed' : cancelled ? 'no longer asked' : 'denied'));
+  };
+  S.perms.set(m.reqId, done);
+  agentBody(S).append(c);
+}
+
+// where the agent works: the project's own machine, or a holder of the home; a Linux or macOS one
+function agentWhere(h) {
+  const o = I.codeOpts;
+  if (o?.blocked) return { why: o.blocked };
+  const logins = new Set(o?.hosts?.length ? o.hosts : dkLiveHosts());
+  const n = harnessName(h);
+  if (!isHomeLoc()) {
+    const host = locOf().host;
+    if (hostIsWindows(host)) return { why: `${n} runs on Linux and macOS machines, and ${baseName(I.st.root)} is on ${host}, a Windows one. Copy it to one (File › Copy or Move Project), or use Chat.` };
+    if (!logins.has(host)) return { why: `Log into ${host} for ${n} to work in ${baseName(I.st.root)} there.` };
+    return { host, dir: hostPath(host, locOf().share, I.st.root) };
+  }
+  const hosts = [runHost(), selfHost, ...homeOnline()].filter((x, i, a) => x && a.indexOf(x) === i && logins.has(x) && !hostIsWindows(x) && shareOf(x, 'home'));
+  if (!hosts.length) return { why: `${n} runs on a Linux or macOS machine holding your home: log into one from its lock in the task bar.` };
+  return { host: hosts[0], dir: hostPath(hosts[0], 'home', I.st.root) };
+}
+
+// the harness on that machine, or a card offering to install it
+async function agentInstalled(S, where, retry) {
+  I.installed ||= new Map();
+  const k = `${where.host}:${S.harness}`;
+  if (I.installed.get(k)) return true;
+  let r = null;
+  try { r = await codeCall(`/api/code/install?host=${encodeURIComponent(where.host)}&harness=${encodeURIComponent(S.harness)}`); } catch (err) { agentNote(S, `Couldn't look for ${harnessName(S.harness)} on ${where.host}: ${err.message}`, 'bad'); return false; }
+  if (!I) return false;
+  if (r.installed) { I.installed.set(k, true); return true; }
+  const card = el('div', 'ide-agent-note install');
+  card.append(el('span', '', `${harnessName(S.harness)} isn't installed on ${where.host} yet.`));
+  const b = Object.assign(el('button', 'ide-button'), { type: 'button' });
+  b.append(el('span', '', `Install on ${where.host}`));
+  b.addEventListener('click', async () => {
+    b.disabled = true;
+    b.textContent = 'Installing…';
+    try { await codeCall('/api/code/install', 'POST', { host: where.host, harness: S.harness }); } catch (err) { b.disabled = false; b.textContent = 'Try Again'; agentNote(S, err.message, 'bad'); return; }
+    if (!I) return;
+    I.installed.set(k, true);
+    card.replaceChildren(el('span', '', `${harnessName(S.harness)} is installed on ${where.host}.`));
+    retry?.();
+  });
+  card.append(b);
+  S.node.append(card);
+  return false;
+}
+
+// what the agent's told beside the ask: the file open here, the selection
+function agentPrompt(text) {
+  const t = I.active;
+  if (!t?.ed || !t.rel || !under(t.rel, I.st.root) || !setting('chat.includeActiveFile')) return text;
+  const all = t.ed.text();
+  const [s, e] = t.ed.selection();
+  const l1 = all.slice(0, s).split('\n').length;
+  const l2 = all.slice(0, e).split('\n').length;
+  return `<sulfur>The user has ${wsRel(t.rel)} open in Sulfur's editor${s !== e ? `, lines ${l1}-${l2} selected` : `, the caret on line ${l1}`}. "This file" means it. Your edits show in their editor as you make them.</sulfur>\n\n${text}`;
+}
+
+async function agentSend(S, text) {
+  const where = S.where && S.id ? S.where : agentWhere(S.harness);
+  if (where.why) { agentNote(S, where.why, 'bad'); paintChat(true); return true; }
+  const prompt = agentPrompt(text);
+  S.pending = true;
+  S.watching = true;
+  paintChat(true);
+  try {
+    if (S.id) {
+      try { await codeCall(sapi(S.id, 'send'), 'POST', { text: prompt }); paintChat(true); return true; } catch (err) { if (err.status !== 404) throw err; agentForget(S); }
+    }
+    if (!(await agentInstalled(S, where, () => agentSend(S, text)))) { S.pending = false; paintChat(true); return true; }
+    const rec = await codeCall('/api/code/sessions', 'POST', { host: where.host, dir: where.dir, model: chatModel(), perm: I.st.aux.perm || 'acceptEdits', harness: S.harness, prompt });
+    if (!I) return true;
+    Object.assign(S, { id: rec.id, rec, where: { host: rec.host, dir: rec.dir } });
+    (I.st.agentSess ||= {})[S.key] = rec.id;
+    saveState();
+    agentConnect(S);
+  } catch (err) {
+    S.pending = false;
+    agentNote(S, err.message, 'bad');
+  }
+  paintChat(true);
+  return true;
+}
+
+// --- the base chat's edits: blocks in its answer, typed into the editor once it's answered
+
+const EDIT_RE = /^<{7} SEARCH[ \t]*(.*)\n([\s\S]*?)^={7}[ \t]*\n([\s\S]*?)^>{7} REPLACE[ \t]*$/gm;
+const parseEdits = (text) => [...String(text).matchAll(EDIT_RE)].map((m) => ({ path: m[1].trim(), search: m[2].replace(/\n$/, ''), replace: m[3].replace(/\n$/, '') }));
+// an answer shown with its edit blocks as diffs
+const showEdits = (text) => String(text).replace(EDIT_RE, (_, p, a, b) => {
+  const lines = (s, sign) => (s.replace(/\n$/, '') ? s.replace(/\n$/, '').split('\n').map((l) => `${sign} ${l}`) : []);
+  return `\`\`\`diff\n${p.trim() ? `@@ ${p.trim()}\n` : ''}${[...lines(a, '-'), ...lines(b, '+')].join('\n')}\n\`\`\``;
+});
+
+// a search found as written, else line by line with trailing blanks, then indents, let go
+function findLoose(text, search) {
+  const at = text.indexOf(search);
+  if (at >= 0) return [at, at + search.length];
+  const lines = text.split('\n');
+  const starts = [];
+  let off = 0;
+  for (const l of lines) { starts.push(off); off += l.length + 1; }
+  for (const norm of [(l) => l.trimEnd(), (l) => l.trim()]) {
+    const want = search.split('\n').map(norm);
+    while (want.length && !want.at(-1)) want.pop();
+    while (want.length && !want[0]) want.shift();
+    if (!want.length) return null;
+    for (let i = 0; i + want.length <= lines.length; i++) {
+      let k = 0;
+      while (k < want.length && norm(lines[i + k]) === want[k]) k++;
+      if (k === want.length) return [starts[i], starts[i + want.length - 1] + lines[i + want.length - 1].length];
+    }
+  }
+  return null;
+}
+
+async function applyChatEdits(edits) {
+  const out = [];
+  const groups = new Map();
+  for (const e of edits) {
+    const p = e.path.replace(/^\.\//, '');
+    const rel = p ? cleanPath(under(p, I.st.root) ? p : `${I.st.root}/${p}`) : I.active?.rel;
+    if (!rel || !inScope(rel)) { out.push({ rel: e.path || '(no file open)', bad: 'outside the workspace' }); continue; }
+    let t = I.tabs.find((x) => x.rel === rel && sameLoc(x.loc, locOf()) && x.kind === 'code');
+    if (!t && !e.search && (await readAt(rel)) === null) {
+      try { await writeAt(rel, '', locOf(), name || acct.user); } catch (err) { out.push({ rel, bad: err.message }); continue; }
+      loadDir(filesParent(rel), true);
+    }
+    if (!I) return { list: out, undo: [] };
+    if (!t) t = openFile(rel, { preview: false, focus: false });
+    if (I.active !== t) activate(t, false);
+    for (let i = 0; i < 120 && I && I.tabs.includes(t) && !t.ed?.ready?.(); i++) await sleep(80);
+    if (!I) return { list: out, undo: [] };
+    if (!t.ed?.ready?.()) { out.push({ rel, bad: 'it didn’t open' }); continue; }
+    const text = t.ed.text();
+    let span = null;
+    if (!e.search) span = [text.length, text.length];
+    else span = findLoose(text, e.search);
+    if (!span) { out.push({ rel, bad: 'what it meant to change isn’t there' }); continue; }
+    const g = groups.get(t) || { t, list: [], wasDirty: t.ed.dirty() };
+    groups.set(t, g);
+    const old = text.slice(span[0], span[1]);
+    const nu = !e.search && text && !text.endsWith('\n') ? `\n${e.replace}` : e.replace;
+    if (await t.ed.agentEdit(span[0], span[1], nu)) { g.list.push({ at: span[0], old, nu }); out.push({ rel }); } else out.push({ rel, bad: 'the file is read-only here' });
+  }
+  for (const g of groups.values()) if (!g.wasDirty && g.list.length) g.t.ed.save();
+  return { list: out, undo: [...groups.values()].filter((g) => g.list.length) };
 }
 
 // --- search: the workspace's text on every online host ---------------------------------------
@@ -3662,7 +4593,8 @@ function buildSearch() {
     summary.textContent = 'Searching…';
     const glob = inc.value.trim().split(',')[0]?.trim() || '';
     const root = I.st.root;
-    const got = await Promise.all(homeOnline().map((h) => filesCall(homeAt(h), 'search', undefined, { path: root, query, content: 'true', ...(glob ? { glob } : {}) })
+    const where = isHomeLoc() ? homeOnline().map((h) => [h, homeAt(h)]) : [[locOf().host, apiLoc()]];
+    const got = await Promise.all(where.map(([h, at]) => filesCall(at, 'search', undefined, { path: root, query, content: 'true', ...(glob ? { glob } : {}) })
       .then((b) => ({ h, b }), () => null)));
     if (!I || gen !== S.gen) return;
     const skip = excluded();
@@ -3757,11 +4689,11 @@ function findInFiles() {
 function buildRunView() {
   const v = I.sideViews.get('run');
   v.onShow = () => paintRunView();
-  v.acts = [btn('', 'refresh', 'Refresh', () => paintRunView())];
+  v.acts = [btn('', 'refresh', 'Look at the machines again', () => run('sulfur.toolchains.refresh'))];
   v.focus = () => v.body.querySelector('button')?.focus();
 }
 
-function paintRunView() {
+function paintRunView(fresh = false) {
   const v = I.sideViews.get('run');
   if (!v || v.body.hidden) return;
   const live = new Set(dkLiveHosts());
@@ -3769,41 +4701,122 @@ function paintRunView() {
   const t = I.active;
   const runner = t?.rel ? runnerFor(t.rel) : '';
   const body = v.body;
+  const top = body.scrollTop;
   body.replaceChildren();
+  const ctrlB = keyLabel(keyFor('sulfur.build') || 'ctrl+b');
+
+  // the project's build: its toolchain on its machine, Ctrl+B, its tasks
+  const bc = buildCfg();
+  const bbox = el('div', 'ide-run-box');
+  const bgo = Object.assign(el('button', 'ide-button ide-run-go'), { type: 'button', title: `Build (${ctrlB})` });
+  bgo.append(icon('gear'), el('span', '', bc?.toolchain ? `Build ${baseName(I.st.root)}` : 'Pick a Toolchain and Build'));
+  bgo.addEventListener('click', () => run('sulfur.build'));
+  const bmore = Object.assign(el('button', 'ide-button secondary'), { type: 'button', title: 'Run Task…' });
+  bmore.append(icon('more'));
+  bmore.addEventListener('click', () => run('sulfur.task.run'));
+  const brow = el('div', 'ide-run-row');
+  brow.append(bgo, bmore);
+  bbox.append(brow);
+  if (bc?.toolchain) {
+    const pickRow = el('div', 'ide-build-pick');
+    const tcb = Object.assign(el('button', 'ide-link'), { type: 'button', title: 'Pick another toolchain or machine' });
+    tcb.append(icon('host'), el('span', '', `${bc.toolchain.label} · ${bc.host}`));
+    tcb.addEventListener('click', () => run('sulfur.build.select'));
+    const cfb = Object.assign(el('button', 'ide-link'), { type: 'button', title: 'Switch between Debug and Release' });
+    cfb.append(el('span', '', bc.configuration || 'Debug'));
+    cfb.addEventListener('click', () => run('sulfur.build.configuration'));
+    pickRow.append(tcb, cfb);
+    bbox.append(pickRow);
+    const tl = el('div', 'ide-task-list');
+    detectProject().then((proj) => {
+      if (!I || !proj || !tl.isConnected) return;
+      for (const task of tasksFor(bc, proj)) {
+        const r = Object.assign(el('div', 'ide-task'), { tabIndex: 0, title: task.command });
+        r.append(icon(task.group === 'test' ? 'check' : task.group === 'run' ? 'run' : 'gear'), el('span', 'ide-task-name', task.label));
+        const acts = el('span', 'ide-actions');
+        acts.append(btn('', 'run', `Run ${task.label}`, (e) => { e.stopPropagation(); runProjectTask(bc, task); }));
+        r.append(acts);
+        r.addEventListener('dblclick', () => runProjectTask(bc, task));
+        r.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); runProjectTask(bc, task); } });
+        tl.append(r);
+      }
+      const foot = el('div', 'ide-build-foot');
+      const add = Object.assign(el('button', 'ide-link'), { type: 'button' });
+      add.append(icon('plus'), el('span', '', 'Add a Task'));
+      add.addEventListener('click', () => run('sulfur.task.add'));
+      const json = Object.assign(el('button', 'ide-link'), { type: 'button', title: 'The build settings as JSON, kept with the project' });
+      json.append(icon('file'), el('span', '', BUILD_FILE));
+      json.addEventListener('click', () => run('sulfur.build.editJson'));
+      foot.append(add, json);
+      tl.append(foot);
+    });
+    bbox.append(tl);
+  } else {
+    bbox.append(el('p', 'ide-run-note', `${ctrlB} looks over your machines for compilers that suit this project and asks which to build with, once.`));
+  }
+  body.append(sectionTitle('Build'), bbox);
+
   const runBox = el('div', 'ide-run-box');
-  const go = Object.assign(el('button', 'ide-button ide-run-go'), { type: 'button', disabled: !runner || !def });
+  const go = Object.assign(el('button', 'ide-button secondary ide-run-go'), { type: 'button', disabled: !runner || !def });
   go.append(icon('run'), el('span', '', runner ? `Run ${t.title}` : 'Run Active File'));
-  go.addEventListener('click', () => run('ide.run.file'));
-  const on = Object.assign(el('button', 'ide-button secondary'), { type: 'button', disabled: !runner, title: 'Run on another host' });
+  go.addEventListener('click', () => run('sulfur.run.file'));
+  const on = Object.assign(el('button', 'ide-button secondary'), { type: 'button', disabled: !runner, title: 'Run on another machine' });
   on.append(icon('more'));
-  on.addEventListener('click', () => run('ide.run.fileOn'));
+  on.addEventListener('click', () => run('sulfur.run.fileOn'));
   const row = el('div', 'ide-run-row');
   row.append(go, on);
-  runBox.append(row, el('p', 'ide-run-note', !t?.rel ? 'Open a file to run it.' : runner ? `on ${def || 'no host'}: ${runner}` : `No runner for .${extOf(t.rel)} files: add one in your settings (ide.runners) or with an extension.`));
+  runBox.append(row, el('p', 'ide-run-note', !t?.rel ? 'Open a file to run it.' : runner ? `on ${def || 'no machine'}: ${runner}` : `No runner for .${extOf(t.rel)} files: add one in your settings (sulfur.runners) or with an extension.`));
   body.append(sectionTitle('Run'), runBox);
-  body.append(sectionTitle('Hosts'));
+
+  // every machine, and what it builds with as it tells your login
+  const th = sectionTitle('Machines');
+  th.append(btn('ide-sec-act', 'refresh', 'Look at the machines again', () => run('sulfur.toolchains.refresh')));
+  body.append(th);
   const hosts = [...new Set([...homeOnline(), ...live])].sort((a, b) => (b === selfHost) - (a === selfHost) || a.localeCompare(b));
   const list = el('div', 'ide-host-list');
+  I.hostOpen ||= new Set([selfHost, bc?.host].filter(Boolean));
   for (const h of hosts) {
-    const r = el('div', `ide-host${h === def ? ' on' : ''}${live.has(h) ? '' : ' locked'}`);
-    const info = hostsInfo[h.toLowerCase()];
-    const os = info?.platform || info?.os || '';
-    r.append(icon(live.has(h) ? 'host' : 'lock'), el('span', 'ide-host-name', h));
-    const tags = [h === selfHost && 'this host', h === def && 'default', os, !live.has(h) && 'not logged in', live.has(h) && !dkHomeOn(h) && 'no runs'].filter(Boolean);
+    const box = el('div', 'ide-host-box');
+    const open = live.has(h) && I.hostOpen.has(h);
+    const r = Object.assign(el('div', `ide-host${h === def ? ' on' : ''}${live.has(h) ? '' : ' locked'}`), { tabIndex: live.has(h) ? 0 : -1 });
+    r.append(icon(!live.has(h) ? 'lock' : open ? 'down' : 'right', 'ide-host-chev'), el('span', 'ide-host-name', h));
+    const tags = [h === selfHost && 'this machine', h === def && 'default', hostIsWindows(h) && 'Windows', !live.has(h) && 'not logged in'].filter(Boolean);
     r.append(el('span', 'ide-host-tags', tags.join(' · ')));
     const acts = el('span', 'ide-actions');
     if (live.has(h)) {
-      acts.append(btn('', 'terminal', `New Terminal on ${h}`, () => newTerminal({ host: h })));
-      if (h !== def) acts.append(btn('', 'check', `Use ${h} for Terminals and Runs`, () => setRunHost(h)));
+      acts.append(btn('', 'terminal', `New Terminal on ${h}`, (e) => { e.stopPropagation(); newTerminal({ host: h }); }));
+      if (h !== def) acts.append(btn('', 'check', `Use ${h} for Terminals and Runs`, (e) => { e.stopPropagation(); setRunHost(h); }));
     }
     r.append(acts);
-    r.title = live.has(h) ? `${h}: logged in` : `${h}: log in from its lock in the desktop's task bar`;
-    list.append(r);
+    r.title = live.has(h) ? `${h}: its compilers and build tools` : `${h}: log in from its lock in the desktop's task bar`;
+    if (live.has(h)) {
+      r.setAttribute('aria-expanded', String(open));
+      const flip = () => { if (I.hostOpen.has(h)) I.hostOpen.delete(h); else I.hostOpen.add(h); paintRunView(); };
+      r.addEventListener('click', flip);
+      r.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip(); } });
+    }
+    box.append(r);
+    if (open) {
+      const tcEl = el('div', 'ide-tc');
+      tcEl.append(el('span', 'ide-tc-note', 'looking…'));
+      box.append(tcEl);
+      toolchains(h, fresh).then((tc) => {
+        if (!tcEl.isConnected) return;
+        const chips = [];
+        for (const vs of tc?.vs || []) chips.push([`MSVC ${vs.msvc?.[0] || vs.version}`, `${vs.name} ${vs.version}\n${vs.path}`]);
+        const majors = [...new Set((tc?.dotnet || []).map((x) => x.split('.')[0]))];
+        if (majors.length) chips.push([`.NET ${majors.join(', ')}`, `SDKs ${tc.dotnet.join(', ')}`]);
+        for (const x of tc?.tools || []) if (!['dotnet', 'git'].includes(x.id)) chips.push([`${x.name} ${x.version}`.trim(), x.path]);
+        tcEl.replaceChildren(...(chips.length ? chips.map(([label, title]) => Object.assign(el('span', 'ide-tc-chip', label), { title })) : [el('span', 'ide-tc-note', 'no compilers or build tools found')]));
+      }, (err) => { if (tcEl.isConnected) tcEl.replaceChildren(el('span', 'ide-tc-note bad', err.message)); });
+    }
+    list.append(box);
   }
   body.append(list);
+
   body.append(sectionTitle('Runners'));
   const tbl = el('div', 'ide-runners');
-  const mine = setting('ide.runners') || {};
+  const mine = setting('sulfur.runners') || {};
   const all = new Map([...I.runners].map(([x, r]) => [x, { cmd: r.cmd, by: r.by || 'built in' }]));
   for (const [x, cmd] of Object.entries(mine)) if (typeof cmd === 'string') all.set(x, { cmd, by: 'settings' });
   for (const [x, r] of [...all].sort((a, b) => a[0].localeCompare(b[0]))) {
@@ -3812,13 +4825,291 @@ function paintRunView() {
     tbl.append(line);
   }
   const edit = Object.assign(el('button', 'ide-link', 'Edit in settings.json'), { type: 'button' });
-  edit.addEventListener('click', () => openUserFile(SETTINGS_PATH(), '{\n  "ide.runners": {\n  }\n}\n'));
+  edit.addEventListener('click', () => openUserFile(SETTINGS_PATH(), '{\n  "sulfur.runners": {\n  }\n}\n'));
   body.append(tbl, edit);
+  body.scrollTop = top;
+}
+
+// the project's build settings, written from the pick when there's no file yet
+async function openBuildJson() {
+  const path = `${I.st.root}/${BUILD_FILE}`;
+  if ((await readAt(path)) === null) {
+    const cfg = buildCfg() || {};
+    const keep = { host: cfg.host || runHost(), toolchain: cfg.toolchain || null, configuration: cfg.configuration || 'Debug', defaultTask: cfg.defaultTask || 'build', tasks: cfg.tasks || [] };
+    try { await writeAt(path, `${JSON.stringify(keep, null, 2)}\n`); } catch (err) { notify('error', `Couldn't write ${BUILD_FILE}: ${err.message}`); return; }
+    if (!I) return;
+    loadDir(`${I.st.root}/.sulfur`, true);
+  }
+  if (I) openFile(path, { preview: false });
+}
+
+// --- projects: started from a kind anywhere, copied or moved between machines ---------------
+
+const IGNORE = 'build/\nout/\nbin/\nobj/\ntarget/\nnode_modules/\n__pycache__/\n.vs/\n*.o\n*.obj\n*.pdb\n*.exe\n';
+const ident = (n) => n.replace(/[^A-Za-z0-9_]/g, '_').replace(/^(\d)/, '_$1');
+const TEMPLATES = [
+  { id: 'empty', label: 'Empty Folder', description: 'a folder, nothing in it yet', ic: 'folder', files: () => ({}) },
+  {
+    id: 'c', label: 'C', description: 'main.c and a Makefile: gcc or clang through make', ic: 'main.c', main: 'main.c',
+    files: (n) => ({
+      'main.c': `#include <stdio.h>\n\nint main(void) {\n  printf("hello from ${n}\\n");\n  return 0;\n}\n`,
+      Makefile: `CC ?= cc\nCFLAGS ?= -Wall -Wextra -O2 -g\n\n${ident(n)}: main.c\n\t$(CC) $(CFLAGS) -o $@ $^\n\nrun: ${ident(n)}\n\t./${ident(n)}\n\nclean:\n\trm -f ${ident(n)}\n\n.PHONY: run clean\n`,
+      '.gitignore': `${IGNORE}${ident(n)}\n`,
+    }),
+  },
+  {
+    id: 'cpp', label: 'C++ (CMake)', description: 'CMakeLists.txt and src/main.cpp: MSVC, gcc or clang', ic: 'main.cpp', main: 'src/main.cpp',
+    files: (n) => ({
+      'CMakeLists.txt': `cmake_minimum_required(VERSION 3.21)\nproject(${ident(n)} LANGUAGES CXX)\n\nset(CMAKE_CXX_STANDARD 20)\nset(CMAKE_CXX_STANDARD_REQUIRED ON)\n\nadd_executable(${ident(n)} src/main.cpp)\n\nenable_testing()\nadd_test(NAME runs COMMAND ${ident(n)})\n`,
+      'src/main.cpp': `#include <iostream>\n\nint main() {\n    std::cout << "hello from ${n}\\n";\n    return 0;\n}\n`,
+      '.gitignore': IGNORE,
+    }),
+  },
+  {
+    id: 'dotnet', label: '.NET 10 Console', description: 'a C# console app: dotnet build and run', ic: 'Program.cs', main: 'Program.cs',
+    files: (n) => ({
+      [`${ident(n)}.csproj`]: '<Project Sdk="Microsoft.NET.Sdk">\n\n  <PropertyGroup>\n    <OutputType>Exe</OutputType>\n    <TargetFramework>net10.0</TargetFramework>\n    <ImplicitUsings>enable</ImplicitUsings>\n    <Nullable>enable</Nullable>\n  </PropertyGroup>\n\n</Project>\n',
+      'Program.cs': `Console.WriteLine("hello from ${n}");\n`,
+      '.gitignore': IGNORE,
+    }),
+  },
+  {
+    id: 'python', label: 'Python', description: 'main.py, run where you pick', ic: 'main.py', main: 'main.py',
+    files: (n) => ({ 'main.py': `def main() -> None:\n    print("hello from ${n}")\n\n\nif __name__ == "__main__":\n    main()\n`, '.gitignore': IGNORE }),
+  },
+  {
+    id: 'node', label: 'Node.js', description: 'package.json and index.js: npm scripts', ic: 'index.js', main: 'index.js',
+    files: (n) => ({
+      'package.json': `${JSON.stringify({ name: n.toLowerCase().replace(/[^a-z0-9._-]/g, '-'), version: '0.1.0', private: true, type: 'module', scripts: { start: 'node index.js', test: 'node --test' } }, null, 2)}\n`,
+      'index.js': `console.log('hello from ${n.replace(/'/g, "\\'")}');\n`,
+      '.gitignore': IGNORE,
+    }),
+  },
+  {
+    id: 'go', label: 'Go', description: 'go.mod and main.go', ic: 'main.go', main: 'main.go',
+    files: (n) => ({
+      'go.mod': `module ${n.toLowerCase().replace(/[^a-z0-9._-]/g, '-')}\n\ngo 1.22\n`,
+      'main.go': `package main\n\nimport "fmt"\n\nfunc main() {\n\tfmt.Println("hello from ${n}")\n}\n`,
+    }),
+  },
+  {
+    id: 'rust', label: 'Rust', description: 'Cargo.toml and src/main.rs', ic: 'main.rs', main: 'src/main.rs',
+    files: (n) => ({
+      'Cargo.toml': `[package]\nname = "${n.toLowerCase().replace(/[^a-z0-9_-]/g, '-')}"\nversion = "0.1.0"\nedition = "2021"\n\n[dependencies]\n`,
+      'src/main.rs': `fn main() {\n    println!("hello from ${n}");\n}\n`,
+      '.gitignore': '/target\n',
+    }),
+  },
+];
+
+const projectNameWhy = (v) => {
+  const n = v.trim();
+  if (!n) return 'A name is needed.';
+  if (/[\\/:*?"<>|]/.test(n) || n === '.' || n === '..') return 'A folder name, without \\ / : * ? " < > |';
+  if (n.startsWith('.')) return 'A name that doesn\'t start with a dot.';
+  return '';
+};
+
+// a place for a project: the home's own folder, or a machine's published folder
+async function pickPlace(title, o = {}) {
+  for (;;) {
+    const ps = places().filter((x) => !o.skip?.(x.loc) && (isHomeLoc(x.loc) || String(x.perms || 'rwd').includes('w')));
+    const items = ps.map((x, i) => ({ label: x.label, description: isHomeLoc(x.loc) ? `${acct.user}/ · synced across the mesh` : x.description, ic: isHomeLoc(x.loc) ? 'folder' : 'host', value: i }));
+    if (acct.admin) items.push({ label: 'Add a Folder of a Machine…', description: 'publish one, like D:\\Projects or ~/src', ic: 'plus', value: 'add', sep: 'more' });
+    else if (ps.length < 2) items.push({ label: 'A machine\'s own folders are published by an admin', ic: 'info', value: 'none', sep: 'more' });
+    const v = await pick(items, { title, placeholder: o.placeholder || 'Where the project goes', matchDescription: true });
+    if (v === undefined || v === 'none' || !I) return null;
+    if (v === 'add') {
+      const got = await addFolderDialog();
+      if (!I) return null;
+      if (got) return { loc: got, dir: '', label: `${got.host}: ${shareOf(got.host, got.share)?.label || ''}` };
+      continue;
+    }
+    const x = ps[v];
+    return { loc: x.loc, dir: isHomeLoc(x.loc) ? acct.user : '', label: isHomeLoc(x.loc) ? 'your home' : `${x.loc.host}: ${x.description}` };
+  }
+}
+
+// does a folder exist there: its listing answers
+const dirThere = (l, path) => filesCall(apiLoc(l), 'list', undefined, { path }).then(() => true, () => false);
+
+async function newProject() {
+  const k = await pick(TEMPLATES.map((x, i) => ({ label: x.label, description: x.description, ic: x.ic, value: i })), { title: 'New Project', placeholder: 'What kind of project to start', matchDescription: true });
+  if (k === undefined || !I) return;
+  const tpl = TEMPLATES[k];
+  const where = await pickPlace(`New ${tpl.label} Project: where`, { placeholder: 'Where it lives: your home, synced across the mesh, or a folder on one machine' });
+  if (!where || !I) return;
+  const typed = await inputBox({ title: `New ${tpl.label} Project: its name`, value: tpl.id === 'empty' ? 'project' : `hello-${tpl.id}`, prompt: `A new folder in ${where.label}.`, validate: projectNameWhy });
+  if (typed === undefined || !I) return;
+  const n = typed.trim();
+  const root = filesJoin(where.dir, n);
+  if (await dirThere(where.loc, root)) { notify('error', `${n} is already there, in ${where.label}.`); return; }
+  if (!I) return;
+  const busy = notify('info', `Making ${n} in ${where.label}…`, { progress: true, sticky: true });
+  try {
+    await filesCall(apiLoc(where.loc), 'mkdir', jsonPost({ path: root }));
+    for (const [rel, text] of Object.entries(tpl.files(n))) await writeAt(`${root}/${rel}`, text, where.loc, 'Sulfur');
+  } catch (err) {
+    busy.close();
+    notify('error', `Couldn't make ${n}: ${err.message}`);
+    return;
+  }
+  busy.close();
+  if (!I) return;
+  setRoot(root, false, where.loc);
+  if (tpl.main) openFile(`${root}/${tpl.main}`, { preview: false });
+  const builds = !['empty', 'python'].includes(tpl.id);
+  notify('info', `${n} is ready in ${where.label}.${builds ? ` ${keyLabel(keyFor('sulfur.build') || 'ctrl+b')} builds it.` : ''}`, builds ? { actions: [{ label: 'Build', run: () => run('sulfur.build') }] } : {});
+}
+
+// what a copy leaves behind: what a build makes again
+const BUILD_DIRS = new Set(['build', 'out', 'obj', 'target', 'node_modules', '.vs', '__pycache__', '.pytest_cache', '.gradle']);
+const buildOutput = (name, siblings) => BUILD_DIRS.has(name) || name.startsWith('cmake-build-') || (name === 'bin' && siblings.has('obj'));
+
+async function transferProject() {
+  const from = { loc: locOf(), root: I.st.root };
+  const name0 = baseName(from.root);
+  const fromLabel = isHomeLoc(from.loc) ? 'your home' : `${from.loc.host}`;
+  const how = await pick([
+    { label: 'Copy', description: `keep ${name0} where it is too`, ic: 'copy', value: 'copy' },
+    { label: 'Move', description: `delete it from ${fromLabel} once it's copied`, ic: 'right', value: 'move' },
+  ], { title: `Copy or Move ${name0}`, placeholder: `From ${fromLabel} to another machine or the home` });
+  if (!how || !I) return;
+  const verb = how === 'move' ? 'Move' : 'Copy';
+  const where = await pickPlace(`${verb} ${name0}: to where`, { placeholder: 'The machine, or the home, it goes to' });
+  if (!where || !I) return;
+  const typed = await inputBox({ title: `${verb} ${name0}: its name there`, value: name0, prompt: `A new folder in ${where.label}.`, validate: projectNameWhy });
+  if (typed === undefined || !I) return;
+  const to = { loc: where.loc, root: filesJoin(where.dir, typed.trim()) };
+  if (sameLoc(to.loc, from.loc) && (under(to.root, from.root) || under(from.root, to.root))) { notify('error', 'That\'s the project itself, or a folder of it.'); return; }
+  if (await dirThere(to.loc, to.root)) { notify('error', `${baseName(to.root)} is already there, in ${where.label}.`); return; }
+  await saveAll();
+  if (!I) return;
+  const busy = notify('info', `Looking over ${name0}…`, { progress: true, sticky: true });
+  // the tree walked first, so the copy knows how far it's got
+  const files = [];
+  const dirs = [];
+  let skipped = 0;
+  try {
+    const walk = async (dir) => {
+      const entries = (await filesCall(apiLoc(from.loc), 'list', undefined, { path: dir })).entries || [];
+      const names = new Set(entries.filter((e) => e.dir).map((e) => e.name));
+      for (const e of entries) {
+        const rel = filesJoin(dir, e.name);
+        if (e.dir) {
+          if (buildOutput(e.name, names)) { skipped += 1; continue; }
+          dirs.push(rel);
+          await walk(rel);
+        } else files.push({ rel, size: e.size || 0 });
+      }
+    };
+    await walk(from.root);
+  } catch (err) { busy.close(); notify('error', `Couldn't read ${name0}: ${err.message}`); return; }
+  const total = files.reduce((n, f) => n + f.size, 0) || 1;
+  const dest = (rel) => `${to.root}${rel.slice(from.root.length)}`;
+  const fromAt = (rel) => (isHomeLoc(from.loc) ? homeAt(homePick(rel)) : apiLoc(from.loc));
+  const toAt = (rel) => (isHomeLoc(to.loc) ? homeAt(homePick(rel)) : apiLoc(to.loc));
+  let done = 0;
+  const failed = [];
+  try {
+    await filesCall(apiLoc(to.loc), 'mkdir', jsonPost({ path: to.root }));
+    for (const d of dirs) await filesCall(apiLoc(to.loc), 'mkdir', jsonPost({ path: dest(d) })).catch(() => {});
+    const queue = [...files];
+    const worker = async () => {
+      for (let f = queue.shift(); f; f = queue.shift()) {
+        if (!I) return;
+        busy.update(`${verb === 'Move' ? 'Moving' : 'Copying'} ${name0} to ${where.label}: ${wsRel(f.rel).replace(`${name0}/`, '')}`);
+        let part = 0;
+        try {
+          await copyFile(fromAt(f.rel), f.rel, toAt(dest(f.rel)), dest(f.rel), (x) => { part = x * f.size; busy.progress((done + part) / total); });
+        } catch (err) { failed.push(`${f.rel}: ${err.message}`); }
+        done += f.size;
+        busy.progress(done / total);
+      }
+    };
+    await Promise.all([worker(), worker(), worker(), worker()]);
+  } catch (err) { busy.close(); notify('error', `Couldn't ${verb.toLowerCase()} ${name0}: ${err.message}`); return; }
+  busy.close();
+  if (!I) return;
+  const left = skipped ? ` Build outputs (${skipped} folder${skipped === 1 ? '' : 's'}) stayed behind: a build makes them again.` : '';
+  if (failed.length) {
+    log(`copy of ${from.root} failed for:\n${failed.join('\n')}`);
+    notify('error', `${failed.length} of ${files.length} files didn't copy to ${where.label}${how === 'move' ? ', so nothing was deleted' : ''}: the Output panel has the list.`);
+    return;
+  }
+  if (how === 'move') {
+    const v = await ask({ title: `Delete ${name0} from ${fromLabel}?`, detail: `All ${files.length} files are in ${where.label} now. Deleting here is for good: there's no trash.`, buttons: [{ label: 'Delete', danger: true, primary: true, value: 'del' }, { label: 'Keep Both', value: 'keep' }] });
+    if (!I) return;
+    if (v === 'del') {
+      for (const t of I.tabs.filter((x) => sameLoc(x.loc, from.loc) && x.rel && under(x.rel, from.root))) await closeTab(t, true, false);
+      try { await filesCall(apiLoc(from.loc), 'delete', jsonPost({ path: from.root })); } catch (err) { notify('error', `Couldn't delete ${from.root}: ${err.message}`); }
+      if (!I) return;
+      setRoot(to.root, false, to.loc);
+      notify('info', `${name0} moved to ${where.label}.${left}`);
+      return;
+    }
+  }
+  notify('info', `${name0} copied to ${where.label}.${left}`, { actions: [{ label: 'Open It', run: () => setRoot(to.root, false, to.loc) }] });
+}
+
+// an admin's folder of a machine published for projects; resolves its place once the host has it
+async function addFolderDialog() {
+  if (!acct.admin) return null;
+  const hosts = [...new Set([...homeOnline(), ...dkLiveHosts()])].sort((a, b) => (b === selfHost) - (a === selfHost) || a.localeCompare(b));
+  const h = await pick(hosts.map((x) => ({ label: x, description: [x === selfHost && 'this machine', hostIsWindows(x) && 'Windows'].filter(Boolean).join(' · '), ic: 'host', value: x })), { title: 'Add a Folder: which machine', placeholder: 'The machine the folder is on' });
+  if (!h || !I) return null;
+  const win = hostIsWindows(h);
+  const typed = await inputBox({
+    title: `Add a Folder of ${h}`, value: win ? 'D:\\Projects' : '/srv/projects', placeholder: win ? 'D:\\Projects' : '/home/you/src',
+    prompt: `Its full path on ${h}. Every user of the mesh sees it as one of ${h}'s folders, read and write.`,
+    validate: (v) => (win ? /^[A-Za-z]:[\\/]./ : /^\/./).test(v.trim()) ? (v.includes(',') ? 'No commas in it.' : '') : `A full path, like ${win ? 'D:\\Projects' : '/srv/projects'}.`,
+  });
+  if (typed === undefined || !I) return null;
+  const dir = typed.trim().replace(/[\\/]+$/, '');
+  const busy = notify('info', `Publishing ${dir} on ${h}…`, { progress: true, sticky: true });
+  try {
+    const r = await fetch('/api/sulfur/share', jsonPost({ host: h, dir }));
+    const b = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(b.error || `status ${r.status}`);
+  } catch (err) { busy.close(); notify('error', `Couldn't publish ${dir}: ${err.message}`); return null; }
+  // the host takes its new config and says so in its next report
+  const norm = (x) => String(x || '').replace(/[\\/]+$/, '').toLowerCase();
+  for (let i = 0; i < 40 && I; i++) {
+    const sh = (hostsInfo[h.toLowerCase()]?.files?.shares || []).find((x) => !x.home && norm(x.label) === norm(dir));
+    if (sh) { busy.close(); notify('info', `${dir} is a folder of ${h} now.`); return { host: h, share: String(sh.id) }; }
+    busy.progress(i / 40);
+    await sleep(750);
+  }
+  busy.close();
+  if (I) notify('warning', `${h} took ${dir}, but hasn't listed it yet: it shows in Open Folder once it does.`);
+  return null;
+}
+
+// --- color themes ---------------------------------------------------------------------------
+
+async function pickTheme() {
+  const cur = setting('workbench.colorTheme');
+  const items = THEMES.map((t, i) => ({ label: t.label, description: t.description, detail: t.id === cur ? 'current' : '', value: t.id, sep: i === 0 || THEMES[i - 1].group !== t.group ? t.group : '' }));
+  const v = await pick(items, { title: 'Color Theme', placeholder: 'Select Color Theme (light or dark follows the desktop)' });
+  if (v && I) setSetting('workbench.colorTheme', v);
 }
 
 const sectionTitle = (t) => el('div', 'ide-sec-head static', t.toUpperCase());
 
 // --- settings and keys: the user's own files, VS Code's way ----------------------------------
+
+// a text file of a place, null when it isn't one
+async function readAt(path, l = locOf()) {
+  if (isHomeLoc(l)) return readUser(path);
+  try {
+    const b = await filesCall(apiLoc(l), 'read', undefined, { path });
+    return typeof b.text === 'string' ? b.text : null;
+  } catch { return null; }
+}
+async function writeAt(path, text, l = locOf(), by = '') {
+  if (isHomeLoc(l)) { await writeText(path, text, by); return; }
+  await filesCall(apiLoc(l), 'save', jsonPost({ path, text, by: { name: by || name || acct.user } }));
+}
 
 async function readUser(path) {
   try {
@@ -3829,9 +5120,19 @@ async function readUser(path) {
 }
 
 async function loadUserFiles() {
-  // the folder listed once, so only files that are there are read
-  let names = [];
+  // the folder listed once, so only files that are there are read; ~/.ide, its
+  // name before Sulfur, moved over the first time
+  let names = null;
   try { names = ((await filesCall(HOME, 'list', undefined, { path: CONF_DIR() })).entries || []).map((e) => e.name); } catch {}
+  if (!names) {
+    try {
+      await filesCall(HOME, 'list', undefined, { path: OLD_CONF_DIR() });
+      await filesCall(HOME, 'rename', jsonPost({ from: OLD_CONF_DIR(), to: CONF_DIR() }));
+      names = ((await filesCall(HOME, 'list', undefined, { path: CONF_DIR() })).entries || []).map((e) => e.name);
+      log(`moved ${OLD_CONF_DIR()} to ${CONF_DIR()}`);
+    } catch { names = []; }
+  }
+  if (!I) return;
   const read = (p) => (names.includes(baseName(p)) ? filesCall(HOME, 'read', undefined, { path: p }).then((b) => (typeof b.text === 'string' ? b.text : null), () => null) : null);
   const [s, k] = await Promise.all([read(SETTINGS_PATH()), read(KEYS_PATH())]);
   if (!I) return;
@@ -3856,6 +5157,9 @@ const cacheSettings = () => { try { localStorage.setItem(`${STATE_KEY()}:setting
 function applySettings() {
   const r = I.root;
   r.style.setProperty('--ide-code-font', `${setting('editor.fontSize')}px`);
+  const theme = THEMES.some((t) => t.id === setting('workbench.colorTheme')) ? setting('workbench.colorTheme') : 'vscode';
+  for (const t of THEMES) I.w.node.classList.toggle(`ide-theme-${t.id}`, t.id === theme && t.id !== 'vscode');
+  if (I.themeNow !== theme) { I.themeNow = theme; requestAnimationFrame(() => termsRetheme()); }
   I.exclude = null;
   paintTreeSoon();
   if (I.chat) paintChatCtx();
@@ -3928,6 +5232,12 @@ function paintSettingsPage() {
       box.addEventListener('change', () => setSetting(k, box.checked));
       lab.append(box, about);
       row.append(lab);
+    } else if (s.type === 'enum') {
+      row.append(about);
+      const sel = el('select', 'ide-input ide-select');
+      for (const [v, label] of s.options) sel.append(Object.assign(el('option', '', label), { value: v, selected: v === val }));
+      sel.addEventListener('change', () => setSetting(k, sel.value));
+      row.append(sel);
     } else if (s.type === 'object') {
       row.append(about);
       const b = Object.assign(el('button', 'ide-link', 'Edit in settings.json'), { type: 'button' });
@@ -4036,12 +5346,12 @@ function openWelcome() {
   openPage('welcome', 'Welcome', 'spark', (t) => {
     const w = el('div', 'ide-welcome');
     const hero = el('div', 'ide-welcome-hero');
-    hero.append(el('h1', '', 'phosphorus ide'), el('p', '', `Your home on the mesh, its hosts’ shells and its agents, in one workbench. Signed in as ${acct.user}.`));
+    hero.append(el('h1', '', 'Sulfur'), el('p', '', `Your home on the mesh, its hosts’ shells and its agents, in one workbench. Signed in as ${acct.user}.`));
     const cols = el('div', 'ide-welcome-cols');
     const start = el('div', 'ide-welcome-col');
     start.append(el('h2', '', 'Start'));
     for (const [label, cmd, ic] of [['New File…', 'explorer.newFile', 'newFile'], ['Open Folder…', 'workbench.action.files.openFolder', 'folder'],
-      ['New Terminal', 'workbench.action.terminal.new', 'terminal'], ['Ask the Agent', 'workbench.action.chat.open', 'spark'], ['Run Active File', 'ide.run.file', 'run']]) {
+      ['New Terminal', 'workbench.action.terminal.new', 'terminal'], ['Ask the Agent', 'workbench.action.chat.open', 'spark'], ['Run Active File', 'sulfur.run.file', 'run']]) {
       const b = Object.assign(el('button', 'ide-welcome-link'), { type: 'button' });
       b.append(icon(ic), el('span', '', label));
       b.addEventListener('click', () => run(cmd));
@@ -4059,7 +5369,7 @@ function openWelcome() {
     }
     const learn = el('div', 'ide-welcome-col');
     learn.append(el('h2', '', 'Learn'));
-    for (const [label, cmd, ic] of [['Extension Guide', 'ide.extensions.guide', 'book'], ['Create an Extension', 'ide.extensions.create', 'ext'],
+    for (const [label, cmd, ic] of [['Extension Guide', 'sulfur.extensions.guide', 'book'], ['Create an Extension', 'sulfur.extensions.create', 'ext'],
       ['Keyboard Shortcuts', 'workbench.action.openGlobalKeybindings', 'keyboard'], ['Settings', 'workbench.action.openSettings', 'gear']]) {
       const b = Object.assign(el('button', 'ide-welcome-link'), { type: 'button' });
       b.append(icon(ic), el('span', '', label));
@@ -4077,7 +5387,7 @@ function openGuide() {
     const bar = el('div', 'ide-page-head');
     const make = Object.assign(el('button', 'ide-button'), { type: 'button' });
     make.append(icon('plus'), el('span', '', 'Create New Extension'));
-    make.addEventListener('click', () => run('ide.extensions.create'));
+    make.addEventListener('click', () => run('sulfur.extensions.create'));
     bar.append(make);
     const doc = el('div', 'ide-md');
     renderMd(doc, guideText, false);
@@ -4086,7 +5396,7 @@ function openGuide() {
 }
 
 // --- extensions ---------------------------------------------------------------------------
-// each one a folder in ~/.ide/extensions with a package.json and its main module,
+// each one a folder in ~/.sulfur/extensions with a package.json and its main module,
 // run in a frame sandboxed off this origin (no cookies, no page, no phosphorus
 // api), talking to the workbench over one message port: what it can do is what
 // the workbench answers there, and that's the api in the guide
@@ -4265,7 +5575,7 @@ const extChannel = (x, n) => (n ? `${extName(x)}: ${n}` : `Extension: ${extName(
 
 function buildExtView() {
   const v = I.sideViews.get('extensions');
-  const q = Object.assign(el('input', 'ide-input ide-ext-search'), { placeholder: 'Search Extensions in ~/.ide/extensions', spellcheck: false });
+  const q = Object.assign(el('input', 'ide-input ide-ext-search'), { placeholder: 'Search Extensions in ~/.sulfur/extensions', spellcheck: false });
   const head = sectionHead('installed', 'Installed', []);
   const list = el('div', 'ide-ext-list');
   list.setAttribute('role', 'list');
@@ -4277,9 +5587,9 @@ function buildExtView() {
   q.addEventListener('input', () => paintExtView());
   v.focus = () => q.focus();
   v.acts = [
-    btn('', 'plus', 'Create New Extension…', () => run('ide.extensions.create')),
+    btn('', 'plus', 'Create New Extension…', () => run('sulfur.extensions.create')),
     btn('', 'refresh', 'Reload Extensions', () => run('workbench.extensions.action.refreshExtension')),
-    btn('', 'book', 'Extension Guide', () => run('ide.extensions.guide')),
+    btn('', 'book', 'Extension Guide', () => run('sulfur.extensions.guide')),
   ];
   I.extView = { q, head, list, note };
 }
@@ -4323,11 +5633,11 @@ function paintExtView() {
   }));
   E.note.replaceChildren();
   if (!all.length) {
-    E.note.append(el('p', '', 'No extensions yet. An extension is a folder in ~/.ide/extensions: a package.json and a module that exports activate(api).'));
+    E.note.append(el('p', '', 'No extensions yet. An extension is a folder in ~/.sulfur/extensions: a package.json and a module that exports activate(api).'));
     const make = Object.assign(el('button', 'ide-button', 'Create New Extension'), { type: 'button' });
-    make.addEventListener('click', () => run('ide.extensions.create'));
+    make.addEventListener('click', () => run('sulfur.extensions.create'));
     const read = Object.assign(el('button', 'ide-link', 'Read the Extension Guide'), { type: 'button' });
-    read.addEventListener('click', () => run('ide.extensions.guide'));
+    read.addEventListener('click', () => run('sulfur.extensions.guide'));
     E.note.append(make, read);
   }
   for (const t of I.tabs) if (t.page?.startsWith('ext:')) t.paint?.();
@@ -4402,7 +5712,7 @@ async function setExtEnabled(x, on) {
   if (on && !I.st.ext.enabled[x.id] && I.st.ext.enabled[x.id] !== false) {
     const v = await ask({
       title: `Enable the extension '${extName(x)}'?`,
-      detail: 'It runs sandboxed, away from this page and your login, but through the ide it can read and write the files in your space, type commands into terminals on the hosts you’re logged into, and answer as an agent. Enable only what you wrote or trust.',
+      detail: 'It runs sandboxed, away from this page and your login, but through Sulfur it can read and write the files in your space, type commands into terminals on the hosts you’re logged into, and answer as an agent. Enable only what you wrote or trust.',
       buttons: [{ label: 'Trust and Enable', primary: true, value: 'y' }, { label: 'Cancel', value: '' }],
     });
     if (v !== 'y') return;
@@ -4515,9 +5825,11 @@ function extMessage(x, d) {
 // an extension's path: from the workspace, or from the home's top with a leading slash
 function extPath(p) {
   const s = String(p || '');
-  const c = cleanPath(s.startsWith('/') ? s : filesJoin(I.st.root, s));
-  if (c === null || !inScope(c)) throw new Error(`${s} is outside your space`);
-  return c;
+  const home = s.startsWith('/');
+  const l = home ? HOME_LOC : locOf();
+  const c = cleanPath(home ? s : filesJoin(I.st.root, s));
+  if (c === null || !inScope(c, l)) throw new Error(`${s} is outside your space`);
+  return { path: c, loc: l };
 }
 
 const EXT_CALLS = {
@@ -4559,26 +5871,29 @@ const EXT_CALLS = {
   'output.show': (x, n) => { I.outCh = extChannel(x, n); if (!I.output.has(I.outCh)) outAppend(I.outCh, ''); paintOutputChannels(); showPanel('output', true); },
   'workspace.root': () => I.st.root,
   'workspace.read': async (x, p) => {
-    const path = extPath(p);
-    const t = I.tabs.find((y) => y.rel === path && y.info?.ready);
+    const { path, loc } = extPath(p);
+    const t = I.tabs.find((y) => y.rel === path && sameLoc(y.loc, loc) && y.info?.ready);
     if (t) return t.ed.text();
-    const text = await readUser(path);
+    const text = await readAt(path, loc);
     if (text === null) throw new Error(`${p}: not found, not text, or over 512KB`);
     return text;
   },
   'workspace.write': async (x, p, text) => {
-    const path = extPath(p);
-    await writeText(path, text, `${extName(x)} (extension)`);
-    loadDir(filesParent(path), true);
+    const { path, loc } = extPath(p);
+    await writeAt(path, text, loc, `${extName(x)} (extension)`);
+    if (sameLoc(loc, locOf())) loadDir(filesParent(path), true);
     I.index = null;
     return true;
   },
   'workspace.list': async (x, p) => {
-    const path = extPath(p);
-    const b = await filesCall(HOME, 'list', undefined, { path });
-    return (b.entries || []).map((e) => ({ name: e.name, dir: !!e.dir, size: e.size, mtime: e.mtime, hosts: e.live || e.hosts || [] }));
+    const { path, loc } = extPath(p);
+    const b = await filesCall(apiLoc(loc), 'list', undefined, { path });
+    return (b.entries || []).map((e) => ({ name: e.name, dir: !!e.dir, size: e.size, mtime: e.mtime, hosts: e.live || e.hosts || [loc.host].filter((h) => h !== '*') }));
   },
-  'workspace.open': (x, p, o) => { const t = openFile(extPath(p), { preview: false, line: Number(o?.line) || undefined, col: Number(o?.col) || undefined }); return !!t; },
+  'workspace.open': (x, p, o) => {
+    const { path, loc } = extPath(p);
+    return !!openFile(path, { preview: false, loc, line: Number(o?.line) || undefined, col: Number(o?.col) || undefined });
+  },
   'editor.active': () => {
     const t = I.active;
     if (!t?.ed || !t.info?.ready) return null;
@@ -4731,14 +6046,14 @@ async function uninstallExt(x) {
 // a working extension to start from, enabled at once: the user wrote it
 async function createExtension() {
   const id = await inputBox({
-    prompt: 'Name the extension (its folder in ~/.ide/extensions)', placeholder: 'e.g. word-count',
+    prompt: 'Name the extension (its folder in ~/.sulfur/extensions)', placeholder: 'e.g. word-count',
     validate: (v) => (!/^[a-z0-9][a-z0-9-]{0,40}$/.test(v) ? 'Lowercase letters, digits and dashes, starting with a letter or digit.' : I.exts.has(v) ? `An extension named ${v} already exists.` : ''),
   });
   if (!id || !I) return;
   const dir = filesJoin(EXT_DIR(), id);
   const files = {
     'package.json': `${JSON.stringify({
-      name: id, displayName: id, version: '0.0.1', description: 'A phosphorus ide extension.', main: 'extension.js',
+      name: id, displayName: id, version: '0.0.1', description: 'A Sulfur extension.', main: 'extension.js',
       contributes: {
         commands: [
           { command: `${id}.hello`, title: 'Say Hello', category: id },
@@ -4748,7 +6063,7 @@ async function createExtension() {
       },
     }, null, 2)}\n`,
     'extension.js': EXT_SAMPLE.replaceAll('NAME', id),
-    'README.md': `# ${id}\n\nA phosphorus ide extension. **Help: Extension Guide** in the ide says how it works.\n\n- \`${id}: Say Hello\` greets you.\n- \`${id}: Count Words in the Active File\` (ctrl+alt+w), its count kept in the status bar.\n`,
+    'README.md': `# ${id}\n\nA Sulfur extension. **Help: Extension Guide** in Sulfur says how it works.\n\n- \`${id}: Say Hello\` greets you.\n- \`${id}: Count Words in the Active File\` (ctrl+alt+w), its count kept in the status bar.\n`,
   };
   try {
     for (const [f, text] of Object.entries(files)) await writeText(`${dir}/${f}`, text);
@@ -4762,8 +6077,8 @@ async function createExtension() {
   notify('info', `Created ${id} in ${dir} and enabled it. Edit extension.js, then run Developer: Reload Extensions.`, { actions: [{ label: 'Open Extension Guide', run: () => openGuide() }] });
 }
 
-const EXT_SAMPLE = `// NAME: a phosphorus ide extension. It runs in a sandboxed frame of its own and
-// reaches the ide only through the api handed to activate; Help: Extension Guide
+const EXT_SAMPLE = `// NAME: a Sulfur extension. It runs in a sandboxed frame of its own and
+// reaches Sulfur only through the api handed to activate; Help: Extension Guide
 // lists all of it. Edit, save, then run "Developer: Reload Extensions".
 
 export function activate(api, context) {
@@ -4795,3 +6110,424 @@ export function activate(api, context) {
 
 export function deactivate() {}
 `;
+
+// --- building: a host's toolchains, the project's kind, its tasks run there ----------------
+// what a host can build with comes from the host itself, as the user's login sees
+// it; what the project is comes from its files; the two met in a pick kept in
+// the project's .sulfur/build.json, Ctrl+B running its build from then on
+
+const BUILD_FILE = '.sulfur/build.json';
+const CONFIGS = ['Debug', 'Release'];
+
+// a host's toolchains, kept a while; fresh asks the host again
+async function toolchains(host, fresh = false) {
+  I.tc ||= new Map();
+  const had = I.tc.get(host);
+  // a failure kept a little while, so a view painting over and over doesn't ask each time
+  if (had && !fresh && (had.pr || Date.now() - had.at < (had.err ? 30 * 1000 : 10 * 60 * 1000))) {
+    if (had.err) throw new Error(had.err);
+    return had.pr || had.v;
+  }
+  const pr = fetch(`/api/sulfur/toolchains?host=${encodeURIComponent(host)}${fresh ? '&fresh=1' : ''}`, { cache: 'no-store' })
+    .then(async (r) => {
+      const b = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(b.error || `status ${r.status}`);
+      return b;
+    });
+  I.tc.set(host, { pr });
+  try {
+    const v = await pr;
+    if (I) I.tc.set(host, { v, at: Date.now() });
+    return v;
+  } catch (err) {
+    if (I) I.tc.set(host, { err: err.message, at: Date.now(), v: null });
+    throw err;
+  }
+}
+const tool = (tc, id) => tc?.tools?.find((x) => x.id === id) || null;
+
+// what the project is, by its files: cmake, dotnet, msbuild, cargo, go, npm, make, python
+async function detectProject() {
+  const root = I.st.root;
+  const list = await loadDir(root);
+  if (!I) return null;
+  const names = list.map((e) => e.name);
+  const lower = names.map((n) => n.toLowerCase());
+  const has = (n) => lower.includes(n.toLowerCase());
+  const ext = (x) => names.filter((n) => n.toLowerCase().endsWith(x));
+  const p = { kinds: [], sln: [...ext('.sln'), ...ext('.slnx')], proj: [...ext('.csproj'), ...ext('.fsproj'), ...ext('.vbproj')], vcx: ext('.vcxproj'), presets: [], scripts: [], targets: [] };
+  if (has('CMakeLists.txt')) {
+    p.kinds.push('cmake');
+    if (has('CMakePresets.json')) {
+      try {
+        const j = parseJsonc(await readAt(`${root}/CMakePresets.json`) || '{}');
+        p.presets = (j.configurePresets || []).filter((x) => x && x.name && !x.hidden).map((x) => x.name);
+      } catch {}
+    }
+  }
+  if (p.proj.length || (p.sln.length && !p.vcx.length)) p.kinds.push('dotnet');
+  if (p.vcx.length) p.kinds.push('msbuild');
+  if (has('Cargo.toml')) p.kinds.push('cargo');
+  if (has('go.mod')) p.kinds.push('go');
+  if (has('package.json')) {
+    p.kinds.push('npm');
+    try { p.scripts = Object.keys(JSON.parse(await readAt(`${root}/package.json`) || '{}').scripts || {}); } catch {}
+  }
+  if (has('Makefile') || has('makefile') || has('GNUmakefile')) {
+    p.kinds.push('make');
+    const mk = await readAt(`${root}/${names[lower.indexOf('makefile')] || 'Makefile'}`) || '';
+    p.targets = [...new Set([...mk.matchAll(/^([A-Za-z0-9][\w.-]*)\s*:(?!=)/gm)].map((m) => m[1]))].filter((t) => !t.startsWith('.')).slice(0, 30);
+  }
+  if (has('meson.build')) p.kinds.push('meson');
+  if (has('pyproject.toml') || has('setup.py') || has('requirements.txt')) p.kinds.push('python');
+  return p;
+}
+
+const KIND_NAMES = { cmake: 'CMake', dotnet: '.NET', msbuild: 'MSBuild C++', cargo: 'Cargo', go: 'Go', npm: 'npm', make: 'Make', meson: 'Meson', python: 'Python' };
+
+// every way a host can build the project, each a toolchain choice
+function buildChoices(host, tc, proj) {
+  const out = [];
+  const add = (id, label, detail, extra = {}) => out.push({ id, host, label, detail, ...extra });
+  const vs = tc?.vs || [];
+  const cc = (id) => tool(tc, id);
+  for (const k of proj.kinds) {
+    if (k === 'cmake' && cc('cmake')) {
+      for (const v of vs) add('cmake-msvc', `CMake · MSVC ${v.msvc[0] || ''}`.trim(), `${v.name}, its own generator`, { vcvars: v.vcvars, vs: v.name });
+      const ninja = !!cc('ninja');
+      if (cc('gcc') || cc('g++')) add('cmake-gcc', `CMake · GCC ${cc('g++')?.version || cc('gcc')?.version || ''}`.trim(), ninja ? 'Ninja' : 'Makefiles', { ninja });
+      if (cc('clang') || cc('clang++')) add('cmake-clang', `CMake · Clang ${cc('clang++')?.version || cc('clang')?.version || ''}`.trim(), ninja ? 'Ninja' : 'Makefiles', { ninja });
+    }
+    if (k === 'dotnet' && cc('dotnet')) add('dotnet', `.NET ${tc.dotnet?.at(-1) || cc('dotnet').version}`, tc.dotnet?.length ? `SDKs ${tc.dotnet.join(', ')}` : '');
+    if (k === 'msbuild') for (const v of vs) add('msbuild', `MSBuild · MSVC ${v.msvc[0] || ''}`.trim(), v.name, { vcvars: v.vcvars, vs: v.name });
+    if (k === 'cargo' && cc('cargo')) add('cargo', `Cargo ${cc('cargo').version}`, cc('rustc') ? `rustc ${cc('rustc').version}` : '');
+    if (k === 'go' && cc('go')) add('go', `Go ${cc('go').version}`, '');
+    if (k === 'npm' && cc('npm')) add('npm', `npm ${cc('npm').version}`, cc('node') ? `Node ${cc('node').version}` : '');
+    if (k === 'make' && cc('make')) add('make', `Make ${cc('make').version}`, cc('gcc') ? `GCC ${cc('gcc').version}` : cc('clang') ? `Clang ${cc('clang').version}` : '');
+    if (k === 'meson' && cc('meson')) add('meson', `Meson ${cc('meson').version}`, cc('ninja') ? 'Ninja' : '');
+    if (k === 'python' && cc('python')) add('python', `Python ${cc('python').version}`, '');
+  }
+  return out;
+}
+
+// the project's build pick: kept in its own .sulfur/build.json, this browser's copy first
+function buildCfg() { return I.st.build[wsKey()] || null; }
+async function loadBuildConfig() {
+  const key = wsKey();
+  const text = await readAt(`${I.st.root}/${BUILD_FILE}`).catch(() => null);
+  if (!I || wsKey() !== key) return;
+  if (text) {
+    try {
+      const j = parseJsonc(text);
+      if (j && typeof j === 'object') I.st.build[key] = { ...I.st.build[key], ...j };
+    } catch (err) { notify('warning', `${BUILD_FILE}: ${err.message}`); }
+  }
+  paintStatus();
+  paintRunView();
+}
+async function saveBuildCfg(cfg) {
+  const key = wsKey();
+  I.st.build[key] = cfg;
+  saveState();
+  paintStatus();
+  paintRunView();
+  const keep = { host: cfg.host, toolchain: cfg.toolchain, configuration: cfg.configuration || 'Debug', defaultTask: cfg.defaultTask || 'build', tasks: cfg.tasks || [] };
+  try { await writeAt(`${I.st.root}/${BUILD_FILE}`, `${JSON.stringify(keep, null, 2)}\n`); } catch (err) { notify('warning', `Couldn't keep the pick in ${BUILD_FILE}: ${err.message}`); }
+}
+
+// the hosts the project can build on: a share's host alone, the home's holders
+async function buildHosts() {
+  const live = dkLiveHosts();
+  if (!isHomeLoc()) return live.includes(locOf().host) ? [locOf().host] : [];
+  const hs = await holdersOf(I.st.root);
+  const held = hs.length ? hs : homeOnline();
+  return live.filter((h) => held.includes(h)).sort((a, b) => (b === selfHost) - (a === selfHost) || a.localeCompare(b));
+}
+
+// the toolchain to build with, asked for: every host's that suits the project
+async function pickToolchain() {
+  const proj = await detectProject();
+  if (!I) return null;
+  if (!proj.kinds.length) {
+    notify('info', 'Nothing here to build: no CMakeLists.txt, .sln, .csproj, Cargo.toml, go.mod, package.json or Makefile in the workspace\u2019s folder.', { actions: [{ label: 'Add a Task…', run: () => run('sulfur.task.add') }] });
+    return null;
+  }
+  const hosts = await buildHosts();
+  if (!hosts.length) {
+    notify('warning', isHomeLoc() ? 'Log into a host that holds this project to build it.' : `Log into ${locOf().host} to build there.`);
+    return null;
+  }
+  const note = notify('info', `Looking at ${hosts.join(', ')} for toolchains…`, { progress: true, sticky: true });
+  const got = await Promise.all(hosts.map((h) => toolchains(h).then((tc) => ({ h, tc }), (err) => ({ h, err: err.message }))));
+  note.close();
+  if (!I) return null;
+  const items = [];
+  for (const { h, tc, err } of got) {
+    if (err) { items.push({ label: `${h}: couldn\u2019t look`, description: err, ic: 'warning', value: null, sep: h }); continue; }
+    const cs = buildChoices(h, tc, proj);
+    cs.forEach((c, i) => items.push({ label: c.label, description: c.detail, detail: `on ${h}${h === selfHost ? ' (this machine)' : ''}`, ic: 'host', value: c, sep: i === 0 ? h : '' }));
+    if (!cs.length) items.push({ label: `${h} has nothing for ${proj.kinds.map((k) => KIND_NAMES[k]).join(', ')}`, description: `it has ${(tc.tools || []).map((x) => x.name).join(', ') || 'no tools found'}`, ic: 'info', value: null, sep: h });
+  }
+  if (!isHomeLoc()) items.push({ label: 'Build on another machine…', description: 'copies the project there first', ic: 'remote', value: 'move' });
+  const v = await pick(items.map((x) => ({ ...x, value: x.value === null ? '__none' : x.value })), { title: `Build ${baseName(I.st.root)}: pick a toolchain`, placeholder: 'A compiler on one of your machines', matchDescription: true });
+  if (!I || v === undefined || v === '__none') return null;
+  if (v === 'move') { run('sulfur.project.transfer'); return null; }
+  const cfg = { host: v.host, toolchain: v, configuration: buildCfg()?.configuration || 'Debug', defaultTask: 'build', tasks: buildCfg()?.tasks || [] };
+  await saveBuildCfg(cfg);
+  setStatusFlash(`Building ${baseName(I.st.root)} with ${v.label} on ${v.host}`);
+  return cfg;
+}
+
+// the tasks a pick gives: build first, then the rest, the project's own after
+function tasksFor(cfg, proj) {
+  const c = cfg.configuration || 'Debug';
+  const tc = cfg.toolchain || {};
+  const out = [];
+  const add = (id, label, command, group = 'build', extra = {}) => out.push({ id, label, command, group, vcvars: tc.vcvars || '', ...extra });
+  const q = (s) => (/[\s"']/.test(s) ? `"${s}"` : s);
+  switch (tc.id) {
+    case 'cmake-msvc': {
+      const b = 'build/msvc';
+      add('build', `Build (${c})`, `cmake -S . -B ${b} && cmake --build ${b} --config ${c}`);
+      add('configure', 'Configure', `cmake -S . -B ${b}`);
+      add('rebuild', `Rebuild (${c})`, `cmake -S . -B ${b} && cmake --build ${b} --config ${c} --clean-first`);
+      add('test', 'Test (CTest)', `ctest --test-dir ${b} -C ${c} --output-on-failure`, 'test');
+      add('clean', 'Clean', `cmake --build ${b} --config ${c} --target clean`, 'other');
+      break;
+    }
+    case 'cmake-gcc': case 'cmake-clang': {
+      const b = `build/${tc.id.slice(6)}-${c.toLowerCase()}`;
+      const ccs = tc.id === 'cmake-gcc' ? '-DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++' : '-DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++';
+      const conf = `cmake -S . -B ${b}${tc.ninja ? ' -G Ninja' : ''} -DCMAKE_BUILD_TYPE=${c} -DCMAKE_EXPORT_COMPILE_COMMANDS=ON ${ccs}`;
+      add('build', `Build (${c})`, `${conf} && cmake --build ${b} -j`);
+      add('configure', 'Configure', conf);
+      add('rebuild', `Rebuild (${c})`, `${conf} && cmake --build ${b} -j --clean-first`);
+      add('test', 'Test (CTest)', `ctest --test-dir ${b} --output-on-failure`, 'test');
+      add('clean', 'Clean', `cmake --build ${b} --target clean`, 'other');
+      break;
+    }
+    case 'dotnet': {
+      const target = proj.sln[0] || proj.proj[0] || '';
+      const t = target ? ` ${q(target)}` : '';
+      add('build', `Build (${c})`, `dotnet build${t} -c ${c}`);
+      add('run', 'Run', `dotnet run${proj.proj[0] ? ` --project ${q(proj.proj[0])}` : ''} -c ${c}`, 'run');
+      add('test', 'Test', `dotnet test${t} -c ${c}`, 'test');
+      add('publish', 'Publish (Release)', `dotnet publish${t} -c Release`, 'other');
+      add('clean', 'Clean', `dotnet clean${t} -c ${c}`, 'other');
+      break;
+    }
+    case 'msbuild': {
+      const target = proj.sln[0] || proj.vcx[0];
+      add('build', `Build (${c}|x64)`, `msbuild ${q(target)} /m /nologo /p:Configuration=${c} /p:Platform=x64`);
+      add('rebuild', `Rebuild (${c}|x64)`, `msbuild ${q(target)} /m /nologo /t:Rebuild /p:Configuration=${c} /p:Platform=x64`);
+      add('clean', 'Clean', `msbuild ${q(target)} /m /nologo /t:Clean /p:Configuration=${c} /p:Platform=x64`, 'other');
+      break;
+    }
+    case 'cargo': {
+      const r = c === 'Release' ? ' --release' : '';
+      add('build', `Build (${c})`, `cargo build${r}`);
+      add('run', 'Run', `cargo run${r}`, 'run');
+      add('test', 'Test', `cargo test${r}`, 'test');
+      add('check', 'Check', 'cargo check', 'other');
+      add('clean', 'Clean', 'cargo clean', 'other');
+      break;
+    }
+    case 'go':
+      add('build', 'Build', 'go build ./...');
+      add('run', 'Run', 'go run .', 'run');
+      add('test', 'Test', 'go test ./...', 'test');
+      add('vet', 'Vet', 'go vet ./...', 'other');
+      break;
+    case 'npm':
+      add('install', 'Install', 'npm install', 'other');
+      if (proj.scripts.includes('build')) add('build', 'Build (npm run build)', 'npm run build');
+      for (const sc of proj.scripts.filter((x) => x !== 'build')) add(`npm:${sc}`, `npm run ${sc}`, `npm run ${sc}`, sc === 'test' ? 'test' : sc === 'start' || sc === 'dev' ? 'run' : 'other');
+      break;
+    case 'make':
+      add('build', 'Build (make)', 'make -j');
+      for (const t of proj.targets.filter((x) => x !== 'all')) add(`make:${t}`, `make ${t}`, `make ${t}`, t === 'test' || t === 'check' ? 'test' : t === 'clean' ? 'other' : 'build');
+      break;
+    case 'meson':
+      add('build', 'Build', 'meson setup build --reconfigure >/dev/null 2>&1 || meson setup build; meson compile -C build');
+      add('test', 'Test', 'meson test -C build', 'test');
+      break;
+    case 'python':
+      add('build', 'Install (pip, editable)', 'python -m pip install -e .');
+      add('test', 'Test (pytest)', 'python -m pytest', 'test');
+      break;
+    default:
+  }
+  for (const t of cfg.tasks || []) if (t && t.label && t.command) out.push({ id: `user:${t.label}`, label: t.label, command: t.command, group: t.group || 'other', vcvars: tc.vcvars || '', user: true });
+  return out;
+}
+
+// Ctrl+B: the project's build, a toolchain asked for the first time
+async function buildProject(taskId) {
+  let cfg = buildCfg();
+  if (!cfg?.toolchain?.id || !dkLiveHosts().includes(cfg.host)) cfg = await pickToolchain();
+  if (!cfg || !I) return;
+  const proj = await detectProject();
+  if (!I || !proj) return;
+  const tasks = tasksFor(cfg, proj);
+  const want = taskId || cfg.defaultTask || 'build';
+  const t = tasks.find((x) => x.id === want) || tasks.find((x) => x.group === 'build');
+  if (!t) { notify('warning', `${cfg.toolchain.label} has no build task for this project.`); return; }
+  await runProjectTask(cfg, t);
+}
+
+async function runProjectTask(cfg, t) {
+  await saveAll();
+  if (!I) return;
+  const abs = hostPath(cfg.host, isHomeLoc() ? 'home' : locOf().share, I.st.root);
+  if (!abs) { notify('error', `Can't tell where ${I.st.root} is on ${cfg.host}.`); return; }
+  runTask({ host: cfg.host, abs, command: t.command, vcvars: t.vcvars, name: `${t.label} · ${cfg.host}`, kind: 'task', problems: true, root: I.st.root, label: t.label });
+}
+
+async function chooseTask() {
+  const cfg = buildCfg() || await pickToolchain();
+  if (!cfg || !I) return;
+  const proj = await detectProject();
+  if (!I) return;
+  const tasks = tasksFor(cfg, proj);
+  const v = await pick([
+    ...tasks.map((t, i) => ({ label: t.label, description: t.command, detail: t.user ? 'yours' : '', ic: t.group === 'test' ? 'check' : t.group === 'run' ? 'run' : 'gear', value: t, sep: i === 0 ? `${cfg.toolchain.label} on ${cfg.host}` : '' })),
+    { label: 'Add a Task…', ic: 'plus', value: 'add', sep: 'more' },
+    { label: 'Pick Another Toolchain…', ic: 'host', value: 'pick' },
+  ], { title: 'Run Task', placeholder: 'Select the task to run', matchDescription: true });
+  if (!I || v === undefined) return;
+  if (v === 'add') { addTask(); return; }
+  if (v === 'pick') { await pickToolchain(); return; }
+  runProjectTask(cfg, v);
+}
+
+async function addTask() {
+  const cfg = buildCfg() || await pickToolchain();
+  if (!cfg || !I) return;
+  const label = await inputBox({ prompt: 'Name the task', placeholder: 'e.g. Package' });
+  if (!label?.trim() || !I) return;
+  const command = await inputBox({ prompt: `The command, run in the project's folder on ${cfg.host}`, placeholder: hostIsWindows(cfg.host) ? 'e.g. msbuild app.sln /t:Pack' : 'e.g. ./scripts/package.sh' });
+  if (!command?.trim() || !I) return;
+  await saveBuildCfg({ ...cfg, tasks: [...(cfg.tasks || []).filter((t) => t.label !== label.trim()), { label: label.trim(), command: command.trim(), group: 'other' }] });
+  setStatusFlash(`Added ${label.trim()} to ${BUILD_FILE}`);
+}
+
+async function toggleConfiguration() {
+  const cfg = buildCfg();
+  if (!cfg) { await pickToolchain(); return; }
+  const v = await pick(CONFIGS.map((c) => ({ label: c, value: c, ic: c === cfg.configuration ? 'check' : '' })), { title: 'Build Configuration' });
+  if (v && I) await saveBuildCfg({ ...cfg, configuration: v });
+}
+
+// a task in the Terminal panel, a terminal of its own named for it; one of the
+// same name that's done gives way to it
+function runTask(o) {
+  const host = o.host;
+  if (!dk.creds.get(host)) { notify('warning', `Not logged into ${host}: its lock in the desktop\u2019s task bar takes the login.`); return null; }
+  for (const old of I.terms.filter((x) => x.base === o.name && x.kind !== 'shell' && x.ended)) killTerm(old);
+  const tv = I.panelViews.get('terminal');
+  const same = I.terms.filter((x) => x.base === o.name).length;
+  const t = { id: `t${(I.termSeq += 1)}`, host, base: o.name, name: same ? `${o.name} (${same + 1})` : o.name, kind: o.kind || 'task', ended: false };
+  t.view = el('div', 'ide-term-view');
+  t.view.hidden = true;
+  tv.views.append(t.view);
+  const pm = o.problems ? problemMatcher(host, o.abs, o.root) : null;
+  if (pm) clearBuildProblems();
+  const started = Date.now();
+  t.h = taskTerminal(t.view, host, { dir: o.abs, command: o.command, vcvars: o.vcvars || '', windows: hostIsWindows(host) }, {
+    fontSize: setting('terminal.integrated.fontSize'), themeFrom: t.view, transparent: true,
+    banner: `\x1b[2m> ${o.command}\r\n  ${host}: ${o.abs}${o.vcvars ? '  (Visual Studio\u2019s environment)' : ''}\x1b[0m\r\n\r\n`,
+    onText: pm ? (s) => pm.feed(s) : null,
+    onExit: (code) => {
+      t.ended = true;
+      pm?.end();
+      paintTerms();
+      const secs = ((Date.now() - started) / 1000).toFixed(1);
+      if (o.kind === 'task') {
+        const errs = (I.buildProblems || []).filter((x) => x.sev === 'error').length;
+        if (code === 0) setStatusFlash(`${o.label || 'Task'} done in ${secs}s${errs ? `, ${errs} errors` : ''}`);
+        else notify(code === -1 ? 'warning' : 'error', `${o.label || 'Task'} on ${host} ${code === -1 ? 'stopped' : `failed (exit ${code})`}${errs ? `: ${errs} error${errs === 1 ? '' : 's'}` : ''}.`, errs ? { actions: [{ label: 'Show Problems', run: () => showPanel('problems', true, true) }] } : {});
+      }
+    },
+  });
+  I.terms.push(t);
+  log(`${o.kind || 'task'} on ${host} in ${o.abs}: ${o.command}`);
+  selectTerm(t, false);
+  showPanel('terminal', true);
+  return t;
+}
+
+// --- problems out of a task's output: MSVC, MSBuild and dotnet, GCC and Clang,
+// Rust, Go, CMake; their paths brought back into the workspace
+
+const ANSI_RE = /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07]*(\x07|\x1b\\)/g;
+const MATCHERS = [
+  // C:\p\a.cpp(12,5): error C2065: 'x': undeclared identifier [C:\p\a.vcxproj]
+  { re: /^\s*(.+?)\((\d+)(?:,(\d+))?(?:,\d+,\d+)?\)\s*:\s*(fatal error|error|warning)\s+([A-Z]+\d+)\s*:\s*(.*?)(?:\s+\[[^\]]+\])?\s*$/, f: 1, l: 2, c: 3, s: 4, code: 5, m: 6 },
+  // src/a.c:12:5: error: expected ';' (gcc, clang, and go's file:line:col: msg)
+  { re: /^(.+?\.[A-Za-z0-9+]+):(\d+):(\d+):\s*(fatal error|error|warning|note)?:?\s*(.*)$/, f: 1, l: 2, c: 3, s: 4, m: 5 },
+  // CMake Error at CMakeLists.txt:12 (add_executable):
+  { re: /^CMake (Error|Warning)(?: \(dev\))? at (.+?):(\d+)/, f: 2, l: 3, s: 1, m: 0 },
+];
+
+function problemMatcher(host, absRoot, root) {
+  let buf = '';
+  let rustSev = '';
+  let rustMsg = '';
+  let cmakeAt = null;
+  const win = hostIsWindows(host);
+  const norm = (p) => (win ? p.replace(/\//g, '\\').toLowerCase() : p);
+  const base = norm(absRoot).replace(/[\\/]+$/, '');
+  const sep = win ? '\\' : '/';
+  // a path as the workspace names it, or null for one outside it
+  const toRel = (p) => {
+    let a = p.trim();
+    if (!(win ? /^[A-Za-z]:[\\/]/.test(a) : a.startsWith('/'))) a = `${absRoot}${sep}${a}`;
+    const n = norm(a);
+    if (n !== base && !n.startsWith(base + sep)) return null;
+    const rest = a.slice(base.length + 1).replace(/\\/g, '/').split('/').filter((s) => s && s !== '.');
+    const out = [];
+    for (const s of rest) { if (s === '..') out.pop(); else out.push(s); }
+    return out.length ? `${root}/${out.join('/')}` : null;
+  };
+  const push = (x) => {
+    if (!x.rel) return;
+    const sev = /error/i.test(x.sev || '') ? 'error' : /warn/i.test(x.sev || '') ? 'warning' : x.sev === 'note' ? 'info' : 'error';
+    const key = `${x.rel}:${x.line}:${x.col}:${x.msg}`;
+    if (I.buildSeen.has(key)) return;
+    I.buildSeen.add(key);
+    I.buildProblems.push({ rel: x.rel, line: x.line, col: x.col || 1, sev, msg: x.msg, code: x.code || '', host });
+    paintProblemsSoon();
+  };
+  const line = (raw) => {
+    const s = raw.replace(ANSI_RE, '').replace(/\r$/, '');
+    // rust: "error[E0425]: msg" then "  --> src/main.rs:3:5"
+    const rh = s.match(/^(error|warning)(\[\w+\])?: (.*)$/);
+    if (rh) { rustSev = rh[1]; rustMsg = `${rh[2] ? `${rh[2].slice(1, -1)}: ` : ''}${rh[3]}`; return; }
+    const ra = s.match(/^\s*--> (.+?):(\d+):(\d+)$/);
+    if (ra && rustSev) { push({ rel: toRel(ra[1]), line: +ra[2], col: +ra[3], sev: rustSev, msg: rustMsg }); rustSev = ''; return; }
+    if (cmakeAt && s.trim()) { push({ ...cmakeAt, msg: s.trim() }); cmakeAt = null; return; }
+    for (const m of MATCHERS) {
+      const x = s.match(m.re);
+      if (!x) continue;
+      if (m.m === 0) { cmakeAt = { rel: toRel(x[m.f]), line: +x[m.l], col: 1, sev: x[m.s] }; return; }
+      if (m.s === 4 && m.re === MATCHERS[1].re && !x[m.s] && !/\.go$/.test(x[m.f])) return;
+      push({ rel: toRel(x[m.f]), line: +x[m.l], col: +(x[m.c] || 1), sev: x[m.s] || 'error', code: m.code ? x[m.code] : '', msg: x[m.m] });
+      return;
+    }
+  };
+  return {
+    feed: (text) => {
+      buf += text;
+      const parts = buf.split('\n');
+      buf = parts.pop();
+      for (const p of parts) line(p);
+    },
+    end: () => { if (buf) line(buf); buf = ''; paintProblemsSoon(); },
+  };
+}
+
+function clearBuildProblems() {
+  I.buildProblems = [];
+  I.buildSeen = new Set();
+  paintProblemsSoon();
+}

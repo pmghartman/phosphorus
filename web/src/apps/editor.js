@@ -128,10 +128,12 @@ function codeEditor(view, file, btn, id, opts = {}) {
   const squig = el('pre', 'code-hl code-squig');
   // a find's matches, the current one stronger, drawn as the squiggles are
   const finds = el('pre', 'code-hl code-finds');
+  // an agent's edit as it lands: what it wrote lit, its caret where it's writing
+  const agentL = el('pre', 'code-hl code-agent');
   const ta = Object.assign(document.createElement('textarea'), { className: 'code-ta', spellcheck: false, autocomplete: 'off', wrap: 'off' });
   ta.setAttribute('autocapitalize', 'off');
   ta.setAttribute('aria-label', file.label);
-  body.append(finds, pre, squig, ta);
+  body.append(agentL, finds, pre, squig, ta);
   scroller.append(gutter, body);
 
   const out = el('div', 'code-out');
@@ -191,6 +193,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
     }
     paintMarks();
     paintFinds();
+    paintAgent();
     checkSoon();
   }
   const redraw = () => { drawFrame ||= requestAnimationFrame(draw); mdSoon(); };
@@ -209,6 +212,106 @@ function codeEditor(view, file, btn, id, opts = {}) {
       at = b;
     });
     finds.innerHTML = `${html}${esc(text.slice(at))}\n`;
+  }
+
+  // --- an agent's edits, typed in a little at a time where the user sees them ---
+  let agentMarks = [];
+  let agentAt = -1;
+  let agentFade = 0;
+  let agentChain = Promise.resolve();
+  function paintAgent() {
+    if (!agentMarks.length && agentAt < 0) { if (agentL.firstChild) agentL.textContent = ''; return; }
+    const text = ta.value;
+    const pts = [...agentMarks.map(([a, b, cls]) => ({ a, b, cls })), ...(agentAt >= 0 ? [{ a: agentAt, b: agentAt, cls: 'caret' }] : [])]
+      .sort((x, y) => x.a - y.a || (x.cls === 'caret') - (y.cls === 'caret'));
+    let html = '';
+    let at = 0;
+    for (const x of pts) {
+      if (x.a < at || x.b > text.length) continue;
+      html += esc(text.slice(at, x.a));
+      html += x.cls === 'caret' ? '<span class="caret"></span>' : `<mark class="${x.cls}">${esc(text.slice(x.a, x.b))}</mark>`;
+      at = x.b;
+    }
+    agentL.innerHTML = `${html}${esc(text.slice(at))}\n`;
+  }
+  // a place in the text scrolled to, the user's own caret and selection left as they are
+  function revealAt(pos) {
+    const before = ta.value.slice(0, pos);
+    const line = before.split('\n').length - 1;
+    const cs = getComputedStyle(ta);
+    const lh = parseFloat(cs.lineHeight) || 18;
+    const y = parseFloat(cs.paddingTop) + line * lh;
+    if (y < scroller.scrollTop || y + lh > scroller.scrollTop + scroller.clientHeight) scroller.scrollTop = Math.max(0, y - scroller.clientHeight / 3);
+    const cw = chWidthIn(ta);
+    const x = gutter.offsetWidth + parseFloat(cs.paddingLeft) + (before.length - before.lastIndexOf('\n') - 1) * cw;
+    if (x > scroller.scrollLeft + scroller.clientWidth - cw * 2 || x < scroller.scrollLeft + gutter.offsetWidth) scroller.scrollLeft = Math.max(0, x - scroller.clientWidth / 2);
+  }
+  // from..to replaced with text: what goes lit red a moment, the new typed in
+  // over a second or so; one edit after another, resolved false if it can't land
+  function agentEdit(from, to, text, o = {}) {
+    const go = () => new Promise((resolve) => {
+      const t0 = Date.now();
+      const wait = () => {
+        if (closed) { resolve(false); return; }
+        if (!ready) { if (Date.now() - t0 < 8000) setTimeout(wait, 100); else resolve(false); return; }
+        if (ta.readOnly || from < 0 || to > ta.value.length || from > to) { resolve(false); return; }
+        start();
+      };
+      const put = (str, a, b) => { ta.setRangeText(str, a, b, 'preserve'); ta.dispatchEvent(new Event('input')); };
+      const finish = (n) => {
+        agentAt = -1;
+        agentMarks = n ? [[from, from + n, 'add done']] : [];
+        paintAgent();
+        clearTimeout(agentFade);
+        agentFade = setTimeout(() => { agentMarks = []; paintAgent(); }, 2200);
+        resolve(true);
+      };
+      const start = () => {
+        clearTimeout(agentFade);
+        revealAt(from);
+        agentMarks = to > from ? [[from, to, 'del']] : [];
+        agentAt = from;
+        paintAgent();
+        setTimeout(() => {
+          if (closed) { resolve(false); return; }
+          put('', from, to);
+          const total = text.length;
+          const ms = o.instant ? 0 : Math.min(1400, 6 * total + 150);
+          if (!ms || !total) { if (total) put(text, from, from); finish(total); return; }
+          const began = performance.now();
+          let n = 0;
+          const step = (now) => {
+            if (closed) { resolve(false); return; }
+            const want = Math.min(total, Math.max(n + 1, Math.ceil(total * Math.min(1, (now - began) / ms))));
+            put(text.slice(n, want), from + n, from + n);
+            n = want;
+            agentMarks = [[from, from + n, 'add']];
+            agentAt = from + n;
+            revealAt(agentAt);
+            paintAgent();
+            if (n < total) setTimeout(() => step(performance.now()), 16); else finish(n);
+          };
+          // timers, not frames: a hidden window still finishes its edit
+          setTimeout(() => step(performance.now()), 16);
+        }, to > from && !o.instant ? 260 : 0);
+      };
+      wait();
+    });
+    const p = agentChain.then(go, go);
+    agentChain = p;
+    return p;
+  }
+  // text an agent already wrote, there when the file opened: lit a moment
+  function agentFlash(from, to) {
+    agentChain = agentChain.then(() => {
+      if (closed || from < 0 || to > ta.value.length) return;
+      clearTimeout(agentFade);
+      revealAt(from);
+      agentMarks = [[from, to, 'add done']];
+      paintAgent();
+      agentFade = setTimeout(() => { agentMarks = []; paintAgent(); }, 2200);
+    });
+    return agentChain;
   }
 
   // --- the host told: state, caret and errors, once a frame at most ---
@@ -716,6 +819,9 @@ function codeEditor(view, file, btn, id, opts = {}) {
       tell();
     },
     selection: () => [ta.selectionStart, ta.selectionEnd],
+    agentEdit,
+    agentFlash,
+    ready: () => ready,
     setFinds: (ranges, at = -1) => { findRanges = ranges; findAt = at; paintFinds(); },
     preview: isMd ? (on) => setRendered(on ?? !rendered) : null,
     previewing: () => rendered,
