@@ -37,7 +37,7 @@ Read the one that fits before the first call; a one-tool question needs none.
 ## Not covered by a job file
 
 - Models: `models` shows which mesh host's model is each role (chimp the small, fast one, orangutan the big one); `set_model_role` changes a role (admin).
-- The user's own Phosphorus window: `open_file` opens a share's file in an editor tab, `show_file` invites someone else into one, `open_terminal` opens a shared terminal tab.
+- The user's own Phosphorus window: `open_file` opens a share's file in a Sulfur tab, `show_file` invites someone else into one, `open_terminal` opens a shared terminal tab.
 
 ## Errors
 

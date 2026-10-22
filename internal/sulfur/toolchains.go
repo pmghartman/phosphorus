@@ -15,7 +15,7 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
-	"github.com/pmghartman/phosphorus/internal/claude"
+	"github.com/pmghartman/phosphorus/internal/code"
 )
 
 // probeTTL a host's toolchains kept this long before they're looked at again
@@ -74,7 +74,7 @@ var (
 )
 
 // Probe host's toolchains as c's login, kept a while unless fresh
-func Probe(host string, c claude.Creds, fresh bool) (*Toolchains, error) {
+func Probe(host string, c code.Creds, fresh bool) (*Toolchains, error) {
 	key := c.User + "@" + host
 	cacheMu.Lock()
 	if t := cache[key]; t != nil && !fresh && time.Since(time.UnixMilli(t.At)) < probeTTL {
@@ -82,7 +82,7 @@ func Probe(host string, c claude.Creds, fresh bool) (*Toolchains, error) {
 		return t, nil
 	}
 	cacheMu.Unlock()
-	cl, err := claude.Dial(host, c)
+	cl, err := code.Dial(host, c)
 	if err != nil {
 		return nil, err
 	}
@@ -95,7 +95,7 @@ func Probe(host string, c claude.Creds, fresh bool) (*Toolchains, error) {
 	if win {
 		out, err = output(cl, PowerShell(windowsProbe()), 90*time.Second)
 	} else {
-		out, err = output(cl, "sh -c "+claude.Quote(posixProbe()), 90*time.Second)
+		out, err = output(cl, "sh -c "+code.Quote(posixProbe()), 90*time.Second)
 	}
 	if err != nil {
 		return nil, err
@@ -185,7 +185,7 @@ func posixProbe() string {
 		if k.ver == "" {
 			continue
 		}
-		s.WriteString(`p=$(command -v ` + claude.Quote(k.id) + ` 2>/dev/null) && echo "T|` + k.id + `|$p|$("$p" ` + k.ver + ` 2>&1 </dev/null | grep -v '^\s*$' | head -n 1)"; `)
+		s.WriteString(`p=$(command -v ` + code.Quote(k.id) + ` 2>/dev/null) && echo "T|` + k.id + `|$p|$("$p" ` + k.ver + ` 2>&1 </dev/null | grep -v '^\s*$' | head -n 1)"; `)
 	}
 	s.WriteString(`command -v dotnet >/dev/null 2>&1 && dotnet --list-sdks 2>/dev/null | while read -r v r; do echo "N|$v"; done; true`)
 	return s.String()

@@ -874,13 +874,13 @@ func buildTools() {
 			}},
 		{name: "files_write",
 			description: "Write a text file in a share with w: the whole file as text (made if missing), or old replaced by new, " +
-				"old an exact passage found once in it. files_read it first to edit. When someone has the file open in an editor, " +
+				"old an exact passage found once in it. files_read it first to edit. When someone has the file open in Sulfur, " +
 				"the change is typed into it live with your caret showing, and saved.",
 			schema: object(map[string]any{"host": name, "share": map[string]any{"type": "string"},
 				"path": map[string]any{"type": "string", "description": "the file, relative to the share's root"},
 				"text": map[string]any{"type": "string", "description": "the whole file"},
 				"old":  map[string]any{"type": "string", "description": "the exact passage to replace"}, "new": map[string]any{"type": "string", "description": "what replaces it"},
-				"open": map[string]any{"type": "boolean", "description": "also open the file in an editor tab on their page", "default": false}}, "host", "share", "path"),
+				"open": map[string]any{"type": "boolean", "description": "also open the file in a Sulfur tab on their page", "default": false}}, "host", "share", "path"),
 			run: func(a map[string]any, m Meta) (any, error) {
 				who, err := askerOf(m)
 				if err != nil {
@@ -918,7 +918,7 @@ func buildTools() {
 						p = str(body["path"])
 					}
 					if who.UI(map[string]any{"kind": "code", "host": host, "share": share, "path": p}) {
-						out["opened"] = "in an editor tab on their page"
+						out["opened"] = "in a Sulfur tab on their page"
 					}
 				}
 				return out, nil
@@ -1085,7 +1085,7 @@ func buildTools() {
 				return pressed(src.Post(byOf(m), to, str(a["text"]), viaOf(m)))
 			}},
 		{name: "show_file",
-			description: "Invite a person into a share's file in the shared editor, as /share does: a dialog and a notification for them, " +
+			description: "Invite a person into a share's file in Sulfur, edited live together, as /share does: a dialog and a notification for them, " +
 				"open in a tab on accepting. For when the asker wants someone to look at or work on a file with them.",
 			schema: object(map[string]any{"to": map[string]any{"type": "string", "description": "the person's chat name"},
 				"host": name, "share": map[string]any{"type": "string"}, "path": map[string]any{"type": "string", "description": "the file, relative to the share's root"}}, "to", "host", "share", "path"),

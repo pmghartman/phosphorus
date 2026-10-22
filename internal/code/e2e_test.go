@@ -1,4 +1,4 @@
-package claude
+package code
 
 // the real claude CLI against a fake mesh, run locally in place of ssh: set
 // CLAUDE_E2E=1 with claude on PATH

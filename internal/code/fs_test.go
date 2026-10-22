@@ -1,4 +1,4 @@
-package claude
+package code
 
 import (
 	"os"

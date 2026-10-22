@@ -9,12 +9,15 @@
 <link rel="preload" href="/vendor/geist-mono.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/style.css">
 <script>
-// Sulfur's own light or dark (its Appearance setting), else the system's, before paint
+// Sulfur's own light or dark (its Appearance setting), else the system's, and the color theme, before paint
 (() => {
   let pick = null;
   try { pick = localStorage.getItem('sulfur-appearance'); } catch {}
   const light = pick === 'light' || (pick !== 'dark' && matchMedia('(prefers-color-scheme: light)').matches);
   if (light) document.documentElement.dataset.theme = 'light';
+  let pal = null;
+  try { pal = localStorage.getItem('phosphorus-palette'); } catch {}
+  document.documentElement.dataset.palette = pal || 'vscode';
 })();
 </script>
 </head>

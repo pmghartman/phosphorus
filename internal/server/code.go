@@ -1,6 +1,6 @@
 package server
 
-// the Code app's calls: claude sessions on a mesh host, run from here
+// the code service's calls: harness sessions on a mesh host, run from here
 
 import (
 	"errors"
@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/pmghartman/phosphorus/internal/claude"
+	"github.com/pmghartman/phosphorus/internal/code"
 	"github.com/pmghartman/phosphorus/internal/mcp"
 	"github.com/pmghartman/phosphorus/internal/model"
 	"github.com/pmghartman/phosphorus/internal/users"
@@ -49,29 +49,29 @@ func codeBlocked(s *users.Session) string {
 }
 
 // codeLogin the session's vault login for host, as creds
-func codeLogin(s *users.Session, host string) (claude.Creds, error) {
+func codeLogin(s *users.Session, host string) (code.Creds, error) {
 	user, pass, ok := users.HostLogin(s, host)
 	if !ok {
-		return claude.Creds{}, fmt.Errorf("no saved login for %s: open a terminal on it and save the login", host)
+		return code.Creds{}, fmt.Errorf("no saved login for %s: open a terminal on it and save the login", host)
 	}
-	return claude.Creds{User: user, Pass: pass}, nil
+	return code.Creds{User: user, Pass: pass}, nil
 }
 
 // codeCreds what a start needs of the logged in user, read from their vault
 // at each call and handed to that start only
-func codeCreds(s *users.Session, r *http.Request) claude.CredsFn {
-	return func(host, _ string) (claude.Creds, error) {
+func codeCreds(s *users.Session, r *http.Request) code.CredsFn {
+	return func(host, _ string) (code.Creds, error) {
 		c, err := codeLogin(s, host)
 		if err != nil {
 			return c, err
 		}
 		key, ok := users.KeyOf(s, r)
 		if !ok {
-			return claude.Creds{}, errors.New("this host hasn't your mcp key yet, try again shortly")
+			return code.Creds{}, errors.New("this host hasn't your mcp key yet, try again shortly")
 		}
 		base, err := meshBase()
 		if err != nil {
-			return claude.Creds{}, err
+			return code.Creds{}, err
 		}
 		// the skill names the address the user knows, the base domain's when there is one
 		sb := base
@@ -80,7 +80,7 @@ func codeCreds(s *users.Session, r *http.Request) claude.CredsFn {
 		}
 		skill, err := mcp.Skill(s.User, s.Admin, sb)
 		if err != nil {
-			return claude.Creds{}, err
+			return code.Creds{}, err
 		}
 		c.Key, c.Token, c.Base, c.Skill = key, users.AnthropicToken(s), base, skill
 		return c, nil
@@ -91,17 +91,17 @@ func codeCreds(s *users.Session, r *http.Request) claude.CredsFn {
 func codeOptions(s *users.Session) map[string]any {
 	roles := util.Obj(model.Summary()["roles"])
 	models := []any{}
-	for _, m := range claude.Mesh {
+	for _, m := range code.Mesh {
 		ro := util.Obj(roles[m])
 		models = append(models, map[string]any{"id": m, "label": m, "provider": "mesh", "ready": ro["ready"] == true, "why": util.Str(ro["why"])})
 	}
 	has := users.AnthropicToken(s) != ""
 	if has {
-		for _, m := range claude.Anthropic {
+		for _, m := range code.Anthropic {
 			models = append(models, map[string]any{"id": m, "label": strings.ToUpper(m[:1]) + m[1:], "provider": "anthropic", "ready": true, "why": ""})
 		}
 	}
-	out := map[string]any{"hosts": users.HostLogins(s), "models": models, "anthropic": has}
+	out := map[string]any{"hosts": users.HostLogins(s), "models": models, "anthropic": has, "harnesses": code.Harnesses}
 	if why := codeBlocked(s); why != "" {
 		out["hosts"], out["blocked"] = []string{}, why
 	}
@@ -112,7 +112,7 @@ func codeOptions(s *users.Session) map[string]any {
 func codeRoute(w http.ResponseWriter, r *http.Request, pathname string, q url.Values) bool {
 	m := codeSessRe.FindStringSubmatch(pathname)
 	known := m != nil || pathname == "/api/code/options" || pathname == "/api/code/sessions" || pathname == "/api/code/install" ||
-		pathname == "/api/code/ls" || pathname == "/api/code/upload"
+		pathname == "/api/code/harnesses" || pathname == "/api/code/ls" || pathname == "/api/code/upload"
 	if !known {
 		return false
 	}
@@ -138,7 +138,7 @@ func codeRoute(w http.ResponseWriter, r *http.Request, pathname string, q url.Va
 	meth := r.Method
 	// whatever runs on a host needs a login of the user's own there
 	starts := (pathname == "/api/code/sessions" && meth == "POST") || pathname == "/api/code/install" ||
-		pathname == "/api/code/ls" || pathname == "/api/code/upload" || (m != nil && m[2] == "send" && meth == "POST")
+		pathname == "/api/code/harnesses" || pathname == "/api/code/ls" || pathname == "/api/code/upload" || (m != nil && m[2] == "send" && meth == "POST")
 	if starts {
 		if why := codeBlocked(s); why != "" {
 			reply(403, map[string]any{"error": why})
@@ -149,74 +149,67 @@ func codeRoute(w http.ResponseWriter, r *http.Request, pathname string, q url.Va
 	case pathname == "/api/code/options" && meth == "GET":
 		reply(200, codeOptions(s))
 	case pathname == "/api/code/sessions" && meth == "GET":
-		reply(claude.List(s.User))
+		reply(code.List(s.User))
 	case pathname == "/api/code/sessions" && meth == "POST":
 		p := body()
 		if anthropicOff(s, util.Str(p["model"])) {
 			reply(400, map[string]any{"error": "save your Anthropic token in settings first"})
 			return true
 		}
-		reply(claude.Create(s.User, p, codeCreds(s, r)))
-	case pathname == "/api/code/install":
-		host, harness := q.Get("host"), q.Get("harness")
-		var p map[string]any
-		if meth == "POST" {
-			p = body()
-			host, harness = util.Str(p["host"]), util.Str(p["harness"])
-		} else if meth != "GET" {
-			reply(405, map[string]any{"error": "method not allowed"})
+		reply(code.Create(s.User, p, codeCreds(s, r)))
+	case pathname == "/api/code/harnesses" && meth == "GET":
+		c, err := codeLogin(s, q.Get("host"))
+		if err != nil {
+			reply(400, map[string]any{"error": err.Error()})
 			return true
 		}
+		reply(code.HarnessesOn(q.Get("host"), c, q.Get("fresh") != ""))
+	case pathname == "/api/code/install" && meth == "POST":
+		p := body()
+		host := util.Str(p["host"])
 		c, err := codeLogin(s, host)
 		if err != nil {
 			reply(400, map[string]any{"error": err.Error()})
 			return true
 		}
-		if harness == "" {
-			harness = claude.Claude
-		}
-		if meth == "GET" {
-			reply(claude.InstalledOf(host, c, harness))
-		} else {
-			reply(claude.InstallOf(host, c, harness))
-		}
+		reply(code.InstallOf(host, c, util.Str(p["harness"])))
 	case pathname == "/api/code/ls" && meth == "GET":
 		c, err := codeLogin(s, q.Get("host"))
 		if err != nil {
 			reply(400, map[string]any{"error": err.Error()})
 			return true
 		}
-		reply(claude.Ls(q.Get("host"), q.Get("dir"), c))
+		reply(code.Ls(q.Get("host"), q.Get("dir"), c))
 	case pathname == "/api/code/upload" && meth == "POST":
 		c, err := codeLogin(s, q.Get("host"))
 		if err != nil {
 			reply(400, map[string]any{"error": err.Error()})
 			return true
 		}
-		reply(claude.Upload(q.Get("host"), q.Get("dir"), q.Get("name"), r.ContentLength, http.MaxBytesReader(w, r.Body, claude.UploadMax), c))
+		reply(code.Upload(q.Get("host"), q.Get("dir"), q.Get("name"), r.ContentLength, http.MaxBytesReader(w, r.Body, code.UploadMax), c))
 	case m != nil && m[2] == "" && meth == "GET":
-		reply(claude.Get(s.User, m[1]))
+		reply(code.Get(s.User, m[1]))
 	case m != nil && m[2] == "" && meth == "DELETE":
-		reply(claude.Delete(s.User, m[1]))
+		reply(code.Delete(s.User, m[1]))
 	case m != nil && m[2] != "" && meth == "POST":
 		id, p := m[1], body()
 		switch m[2] {
 		case "send":
-			reply(claude.Send(s.User, id, p, codeCreds(s, r)))
+			reply(code.Send(s.User, id, p, codeCreds(s, r)))
 		case "stop":
-			reply(claude.Stop(s.User, id))
+			reply(code.Stop(s.User, id))
 		case "model":
 			if anthropicOff(s, util.Str(p["model"])) {
 				reply(400, map[string]any{"error": "save your Anthropic token in settings first"})
 				return true
 			}
-			reply(claude.SetModel(s.User, id, p))
+			reply(code.SetModel(s.User, id, p))
 		case "perm":
-			reply(claude.SetPerm(s.User, id, p))
+			reply(code.SetPerm(s.User, id, p))
 		case "permission":
-			reply(claude.Answer(s.User, id, p))
+			reply(code.Answer(s.User, id, p))
 		case "rename":
-			reply(claude.Rename(s.User, id, p))
+			reply(code.Rename(s.User, id, p))
 		}
 	default:
 		reply(405, map[string]any{"error": "method not allowed"})
@@ -226,7 +219,7 @@ func codeRoute(w http.ResponseWriter, r *http.Request, pathname string, q url.Va
 
 // anthropicOff an Anthropic model asked for with no token saved
 func anthropicOff(s *users.Session, m string) bool {
-	for _, a := range claude.Anthropic {
+	for _, a := range code.Anthropic {
 		if a == m {
 			return users.AnthropicToken(s) == ""
 		}
@@ -249,7 +242,7 @@ func codeSocket(w http.ResponseWriter, r *http.Request, pathname string, q url.V
 		refuse(w, 401)
 		return true
 	}
-	if !claude.Owns(s.User, m[1]) {
+	if !code.Owns(s.User, m[1]) {
 		refuse(w, 404)
 		return true
 	}
@@ -259,7 +252,7 @@ func codeSocket(w http.ResponseWriter, r *http.Request, pathname string, q url.V
 		return true
 	}
 	go drainWS(ws)
-	if !claude.Attach(ws, ws.Done(), s.User, m[1], max(since, 0)) {
+	if !code.Attach(ws, ws.Done(), s.User, m[1], max(since, 0)) {
 		ws.Close(4000)
 	}
 	return true
