@@ -1607,7 +1607,7 @@ function bumpUnread() {
 
 // back on the tab: badge cleared, however many piled up
 function clearUnread() {
-  if (chatReading(conv)) notesReadConv(conv);
+  if (chatReading(conv)) { stampRead(conv); notesReadConv(conv); }
   if (away() || !unread) return;
   unread = 0;
   titleBadge();
@@ -2349,8 +2349,26 @@ const chOf = (c) => (c.startsWith('ch:') ? c.slice(3) : '');
 const convName = (c) => (c === 'mesh' ? '#mesh' : chOf(c) ? `#${chOf(c)}` : dmWith(c) ? `@${dmWith(c)}` : c);
 const convHint = () => `message ${convName(conv)}`;
 
+// per conversation, the newest line seen here, kept so a tab opened later
+// counts what came while it was closed
+const READ_KEY = 'phosphorus-chat-readat';
+const readAt = (() => { try { const v = JSON.parse(localStorage.getItem(READ_KEY)); return v && typeof v === 'object' ? v : {}; } catch { return {}; } })();
+
+function stampRead(c) {
+  const at = lastAt(c);
+  if (readAt[c] >= at) return;
+  readAt[c] = at;
+  try { localStorage.setItem(READ_KEY, JSON.stringify(readAt)); } catch {}
+}
+
+// a conversation read: its count gone, its place kept
+function readConv(c) {
+  news.delete(c);
+  stampRead(c);
+}
+
 function noteNews(c) {
-  if (c === conv && !away() && chatPanel.offsetParent) return;
+  if (c === conv && !away() && chatPanel.offsetParent) { stampRead(c); return; }
   news.set(c, (news.get(c) || 0) + 1);
   paintConvs();
 }
@@ -2526,7 +2544,7 @@ window.addEventListener('resize', () => closePop(false));
 
 // what a conversation offers: read, leave, close or clear, the destructive one last
 function convActions(c) {
-  const read = news.get(c) && { label: 'mark read', act: () => { news.delete(c); notesReadConv(c); paintConvs(); } };
+  const read = news.get(c) && { label: 'mark read', act: () => { readConv(c); notesReadConv(c); paintConvs(); } };
   const ch = chOf(c);
   if (ch) {
     return [read, { label: 'open', act: () => openConv(c) },
@@ -2660,7 +2678,7 @@ function setConv(c) {
   const was = conv;
   conv = c;
   freshFrom = news.get(c) || 0;
-  news.delete(c);
+  readConv(c);
   if (chatReading(c)) notesReadConv(c);
   if (was !== c) { cancelCompose(); setChatChip(''); typingSent = ''; }
   chatTitle.querySelector('.chat-title-text').textContent = convName(conv);
@@ -2747,6 +2765,17 @@ function renderHistory(messages, closed = {}) {
   convLines.clear();
   orphanMarks.clear();
   for (const m of messages) takeLine(m, false);
+  // lines that came while this browser was away, counted past what it last saw;
+  // a first visit has nothing to count
+  for (const [c, list] of convLines) {
+    if (readAt[c] === undefined || chatReading(c)) { stampRead(c); continue; }
+    const fresh = list.filter((m) => m.timestamp > readAt[c] && m.name !== name && m.kind !== 'sys' && m.kind !== 'topic');
+    if (!fresh.length) { news.delete(c); continue; }
+    news.set(c, fresh.length);
+    if (notes.some((n) => n.go?.conv === c)) continue;
+    const last = fresh.at(-1);
+    noteAdd(`${convName(c)} · ${fresh.length} new`, `${last.name}: ${last.text || (last.files ? 'shared a file' : '')}`, null, { conv: c });
+  }
   // one sent while this browser was away, asked now
   const missed = messages.filter(isInvite).pop();
   if (missed) { showInvite(missed); notifyChat({ name: `${missed.name} invited you`, text: `to work on ${missed.file.label} together` }, true, null, convOf(missed)); }

@@ -364,7 +364,9 @@ func (s *session) on(ev map[string]any) {
 		u := util.Obj(ev["usage"])
 		s.rec.Usage.In += int64(num(u["input_tokens"]) + num(u["cache_read_input_tokens"]) + num(u["cache_creation_input_tokens"]))
 		s.rec.Usage.Out += int64(num(u["output_tokens"]))
-		s.rec.Usage.CostUSD += num(ev["total_cost_usd"])
+		if provider(s.rec.Model) == "anthropic" {
+			s.rec.Usage.CostUSD += num(ev["total_cost_usd"])
+		}
 		s.rec.Err = ""
 		if ev["is_error"] == true {
 			s.rec.Err = clip(util.Str(ev["result"]), 500)
