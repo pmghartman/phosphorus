@@ -105,8 +105,7 @@ func main() {
 		NodePaths:         []string{modules},
 		External:          []string{"/vendor/*"},
 		Define:            map[string]string{"__ASSETS__": string(define)},
-		// the ide's extension guide, docs/ide-extensions.md, bundled as its text
-		Loader:            map[string]api.Loader{".md": api.LoaderText},
+		Loader:            map[string]api.Loader{".md": api.LoaderText}, // the ide's guide, docs/ide-extensions.md, as its text
 		Metafile:          true,
 		Write:             true,
 		LegalComments:     api.LegalCommentsLinked,
