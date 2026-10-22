@@ -451,6 +451,8 @@ func connect(s *session, o Opts, user, pass string) string {
 	s.streaming = true
 	s.onInput = func(b []byte) { stdin.Write(b) }
 	s.mu.Unlock()
+	// the login prompts wiped once in, the shell starting on a clean screen
+	s.out([]byte("\x1b[H\x1b[2J\x1b[3J"))
 	pump := func(r io.Reader, wg *sync.WaitGroup) {
 		defer wg.Done()
 		buf := make([]byte, 32*1024)

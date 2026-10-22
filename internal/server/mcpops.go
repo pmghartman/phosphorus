@@ -325,7 +325,8 @@ func skewTimes(c map[string]any, d float64) {
 }
 
 func mcpCallsMesh(user string) map[string]any {
-	out := mcp.Calls(user)
+	// through json, this host's int64 times read by num as the peers' float64 ones
+	out := util.Obj(util.Decode(util.Marshal(mcp.Calls(user))))
 	hosts := []string{}
 	for h := range mesh.PeerIPs() {
 		hosts = append(hosts, h)
