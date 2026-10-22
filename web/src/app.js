@@ -1,4 +1,5 @@
 import { renderMd, mdBlocks, fitMath } from './md.js';
+import { PALETTES, PALETTE_EVENT, paletteNow, setPalette } from './theme.js';
 import { parserFor, parserNow, highlight, syntaxErrors } from './lezer.js';
 
 // the page's vendor files, hashed by the build
@@ -11,7 +12,6 @@ const standalone = null;
 const APPS = {
   status: () => import('./apps/status.js'),
   terminal: () => import('./apps/terminal.js'),
-  editor: () => import('./apps/editor.js'),
   files: () => import('./apps/files.js'),
   code: () => import('./apps/code.js'),
   sulfur: () => import('./apps/sulfur.js'),
@@ -45,13 +45,6 @@ function newSid() {
 }
 
 // files opened in the editor, newest first, for the + menu
-const RECENT_FILES_KEY = 'phosphorus-recent-files';
-const RECENT_FILES_MAX = 3;
-function rememberFile(file) {
-  const list = loadJsonSafe(RECENT_FILES_KEY).filter((f) => f && codeKey(f) !== codeKey(file));
-  try { localStorage.setItem(RECENT_FILES_KEY, JSON.stringify([file, ...list].slice(0, RECENT_FILES_MAX))); } catch {}
-}
-
 const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 const plural = (n, word, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
@@ -85,13 +78,11 @@ const isCode = (p) => !!codeLang(p);
 // tab id -> its editor, host\nshare\npath -> its id
 const editors = new Map();
 const codeTabs = new Map();
-let codeSeq = 0;
 const codeKey = (f) => `${f.host}\n${f.share}\n${f.path}`;
 const codeName = (f) => f.path.split('/').pop() || f.path;
 
 // a file as the files tab names it: host, then the share's root, then the path
 const fileLabel = (host, root, rel) => filesPath(host, root, rel);
-function loadJsonSafe(key) { try { const v = JSON.parse(localStorage.getItem(key)); return Array.isArray(v) ? v : []; } catch { return []; } }
 
 // --- self / routes ------------------------------------------------------
 // everything from /api/state, pushed, see connectState at the bottom
@@ -1893,6 +1884,14 @@ function dkControlTray() {
       tb.addEventListener('click', () => { setTheme(t); draw(); });
       theme.append(tb);
     }
+    // the color theme, every app's and Sulfur's
+    const palette = el('div', 'dk-ctl-theme dk-ctl-palette');
+    for (const p of PALETTES) {
+      const pb = Object.assign(el('button', `dk-ctl-seg${paletteNow() === p.id ? ' on' : ''}`), { type: 'button', title: p.about });
+      pb.append(el('span', `dk-ctl-swatch sw-${p.id}`), p.label);
+      pb.addEventListener('click', () => { setPalette(p.id); draw(); });
+      palette.append(pb);
+    }
     // the account's own actions, small chips under the panel's big tiles
     const chips = el('div', 'dk-ctl-chips');
     const chip = (glyph, label, act) => {
@@ -1913,7 +1912,7 @@ function dkControlTray() {
     const avatar = el('span', 'dk-ctl-avatar');
     avatar.append(dkUserGlyph());
     head.append(avatar, who, out);
-    pop.replaceChildren(head, tiles, theme, chips);
+    pop.replaceChildren(head, tiles, theme, palette, chips);
   };
   const show = (on) => {
     if (!on && pop.hidden) return;
@@ -3958,6 +3957,8 @@ for (const b of themeToggles) {
   });
 }
 systemLight.addEventListener('change', (e) => { if (!themePick()) applyTheme(e.matches ? 'light' : 'dark'); });
+// a new color theme: the bar's color and the terminals' with it
+addEventListener(PALETTE_EVENT, () => applyTheme(currentTheme()));
 applyTheme(currentTheme());
 
 // --- keys and popups ------------------------------------------------------------
@@ -4221,8 +4222,8 @@ function dkBar(...before) {
 
 // a phone's way back to its icons: every window down into the bar
 function dkHomeBtn() {
-  const b = Object.assign(el('button', 'dk-home'), { type: 'button', title: 'home', ariaLabel: 'home' });
-  b.appendChild(dkGlyph(DK_UI.grid));
+  const b = Object.assign(el('button', 'dk-home'), { type: 'button', title: 'show desktop', ariaLabel: 'show desktop' });
+  b.appendChild(dkGlyph(DK_UI.desk));
   b.addEventListener('click', () => {
     for (const w of dk.wins.values()) if (!w.node.hidden && !w.leaving) dkMin(w);
   });
@@ -4279,7 +4280,6 @@ const DK_GLYPHS = {
   app: 'M2.5 2.5h11v11h-11zM2.5 5.5h11M4.25 4h.01M5.75 4h.01M6 8.5l-1.5 1.5L6 11.5M10 8.5l1.5 1.5-1.5 1.5',
   terminal: 'M2 3h12v10H2zM4.5 6.5l2 1.5-2 1.5M8 10h3.5',
   files: ICONS.folder,
-  editor: 'M3 1.5h7l3 3v10H3zM10 1.5v3h3M5 7.5h6M5 10h6M5 12.5h3.5',
   sulfur: 'M1.5 2.5h13v11h-13zM1.5 5h13M5.5 7.5L3.75 9.25 5.5 11M10.5 7.5l1.75 1.75L10.5 11M8.75 7l-1.5 4.5',
   service: 'M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM1.5 8h13M8 1.5c-2.2 2.4-2.2 10.6 0 13M8 1.5c2.2 2.4 2.2 10.6 0 13',
   chat: 'M2 2.5h12v8H6.5L3.5 13v-2.5H2zM4.5 5.5h7M4.5 8h4.5',
@@ -4306,7 +4306,8 @@ const DK_UI = {
   min: 'M4 11.5h8', max: 'M3.5 3.5h9v9h-9z', close: 'M4 4l8 8M12 4l-8 8',
   pop: 'M9 2.5h4.5V7M13.5 2.5L7.5 8.5M12 9.5v4H2.5V4h4',
   back: 'M10 3L5 8l5 5', fwd: 'M6 3l5 5-5 5', up: 'M3 10.5l5-5 5 5',
-  list: 'M2.5 4h11M2.5 8h11M2.5 12h11', grid: 'M2.5 2.5h4.5v4.5H2.5zM9 2.5h4.5v4.5H9zM2.5 9h4.5v4.5H2.5zM9 9h4.5v4.5H9z',
+  list: 'M2.5 4h11M2.5 8h11M2.5 12h11',
+  desk: 'M1.5 2.5h13v8.5h-13zM5.5 13.5h5M8 11v2.5M4 5h3M4 7.5h2',
 };
 
 // icons on a grid, any cell, kept per browser; a press selects, a drag moves
@@ -4394,7 +4395,6 @@ function dkIcons() {
   const want = [
     ...hosts.map((h) => [`terminal\n${h}`, () => dkIcon('terminal', 'terminal', h, () => dkTerminal(h))]),
     ['files', () => dkIcon('files', 'files', '', () => filesWin())],
-    ['editor', () => dkIcon('editor', 'editor', '', dkEditorPick)],
     ...(acct && !acct.boot ? [['sulfur', () => dkIcon('sulfur', 'sulfur', '', () => dkSulfur())]] : []),
     ['chat', () => dkIcon('chat', 'chat', '', () => dkOpenApp('chat'))],
     ['status', () => dkIcon('status', 'status', '', () => dkOpenApp('status'))],
@@ -4402,7 +4402,6 @@ function dkIcons() {
     ['code', () => dkIcon('code', 'code', '', () => dkOpenApp('code'))],
     ['games', () => dkIcon('games', 'games', '', () => dkOpenApp('games'))],
     ['about', () => dkIcon('about', 'about', '', () => dkOpenApp('about'))],
-    ...(acct?.admin ? [['users', () => dkIcon('users', 'users', '', dkUsersWin)]] : []),
     ...dk.services.map((r) => [JSON.stringify([r.host, r.name, !!r.public]), () => dkServiceIcon(r)]),
     ...[...files.values()].map((e) => [JSON.stringify([e.at, e.name, e.dir, e.mtime, e.hosts, e.stale, e.all, e.live]), () => dkFileIcon(e)]),
   ];
@@ -5540,7 +5539,7 @@ function dkFileMenu(e) {
   return [
     ['open', () => fileOpen(HOME, rel, e), !e.stale],
     e.dir && ['show in files', () => filesWin({ loc: HOME, dir: rel }), true],
-    !e.dir && ['open in editor', () => dkCode({ host: loc.host, share: loc.share, path: rel, label: fileLabel(loc.host, 'home', rel) }), !e.stale],
+    !e.dir && ['open in sulfur', () => dkCode({ host: loc.host, share: loc.share, path: rel, label: fileLabel(loc.host, 'home', rel) }), !e.stale],
     ['open in sulfur', () => dkSulfur(e.dir ? { dir: rel } : { path: rel }), !e.stale],
     !e.dir && ['download', () => { location.href = filesApi(loc, 'download', { path: rel }); }, !e.stale],
     ...(e.dir ? [] : dkRunItems(rel, e.all ? homeOnline() : e.live || [])),
@@ -5582,7 +5581,7 @@ async function dkRun(loc, rel) {
   dkFocus(w);
 }
 
-// --- the editor: the code tab's own editor, in a window
+// --- a file to edit: a tab in Sulfur
 
 // whether a file is still where it was: its folder listed, it in it
 async function fileThere(f) {
@@ -5592,62 +5591,13 @@ async function fileThere(f) {
   } catch { return false; }
 }
 
-// a file to edit, refused with a note when it's gone
+// a file to edit, refused with a note when it's gone: a tab in Sulfur, its home
+// file as the home's, any other share's as that host's
 async function dkCode(f) {
   if (!(await fileThere(f))) { dkMenuNote(`${f.path.split('/').pop()} is gone`); return; }
-  dkCodeNow(f);
-}
-
-function dkCodeNow(f) {
-  const file = { host: f.host, share: String(f.share ?? ''), path: f.path, label: f.label || `${f.host}/${f.path}` };
-  rememberFile(file);
-  if (!dk.desk) return;
-  const w = dkWin(`code:${codeKey(file)}`, codeName(file), file.host, 'code');
-  if (!w) return;
-  const id = `code-${codeSeq += 1}`;
-  codeTabs.set(codeKey(file), id);
-  let ed = null;
-  app('editor').then((m) => {
-    if (!w.node.isConnected) return;
-    ed = m.codeEditor(w.body, file, w.node, id);
-    editors.set(id, ed);
-    if (w.node.classList.contains('focused')) ed.focus();
-  }, (e) => { w.body.textContent = `failed: ${e.message}`; });
-  w.onFocus = () => {
-    if (ed && !w.body.contains(document.activeElement)) ed.focus();
-  };
-  w.holdClose = () => ed?.holdClose();
-  w.onClose = () => {
-    if (ed) ed.close();
-    else if (codeTabs.get(codeKey(file)) === id) codeTabs.delete(codeKey(file));
-  };
-  dkFocus(w);
-}
-
-// the editor's launcher: recent files, or a file manager to pick one
-function dkEditorPick() {
-  const w = dkWin('editor', 'editor', '', 'pick');
-  if (!w) return;
-  const list = el('ul', 'dk-recent');
-  const recent = loadJsonSafe(RECENT_FILES_KEY).filter((f) => f && f.host && f.path && homeOnline().includes(f.host));
-  for (const f of recent) {
-    const li = Object.assign(el('li'), { tabIndex: 0 });
-    li.append(fmIcon(isCode(f.path) ? 'code' : 'file'), el('span', 'fm-label', f.label || `${f.host}/${f.path}`));
-    const open = () => { dkClose(w); dkCode(f); };
-    li.addEventListener('click', open);
-    li.addEventListener('keydown', (e) => { if (e.key === 'Enter') open(); });
-    list.appendChild(li);
-  }
-  if (!recent.length) list.appendChild(el('li', 'empty', 'no recent files'));
-  const browse = Object.assign(el('button', 'primary', 'browse files'), { type: 'button' });
-  browse.addEventListener('click', () => { dkClose(w); filesWin(); });
-  const acts = el('div', 'update-actions');
-  acts.appendChild(browse);
-  w.body.append(el('div', 'dk-pick-head', 'recent'), list, el('p', 'dk-note', 'double click a text file in files to edit it, or right click a folder for a new one'), acts);
-  w.w = Math.min(w.w, 460);
-  w.h = Math.min(w.h, 340);
-  dkPlace(w);
-  dkFocus(w);
+  if (acct?.boot) { dkMenuNote('make your own account to edit files'); return; }
+  const share = String(f.share ?? '');
+  dkSulfur({ path: f.path, host: f.host, ...(share === 'home' ? {} : { loc: { host: f.host, share } }) });
 }
 
 // --- sulfur, the code editor: one window, a project folder its workspace, its
@@ -6395,7 +6345,7 @@ function dkMcpTray() {
   const box = Object.assign(el('input'), { type: 'checkbox', checked: agentViewOn() });
   box.addEventListener('change', () => agentViewSet(box.checked));
   view.append(box, el('span', '', 'show agent on screen'));
-  view.title = 'open the files, editors, consoles and views the agent works in, as it works';
+  view.title = 'open the files, sulfur, consoles and views the agent works in, as it works';
   pop.append(bar, hint, view, head, body);
   head.append(el('span', 'dk-cl-title', 'agent'), stateLine);
   const flash = (x, text) => {
@@ -6686,7 +6636,8 @@ function agentAct(a, args, done) {
   } else if (t === 'update_control' && acct?.admin && updateModal.hidden) openUpdateModal();
 }
 
-const agentCodeKey = (f) => `code:${codeKey({ host: f.host, share: String(f.share ?? ''), path: f.path })}`;
+// a file the agent touches opens in Sulfur, the one window lit
+const agentCodeKey = () => 'app:sulfur';
 
 // one files window the agent browses in, opened or moved to the place
 let agentFm = null;

@@ -340,6 +340,8 @@ function paintHead() {
   const where = el('span', 'cd-where');
   where.append(el('span', 'cd-host', r.host), el('span', 'st-dim', ':'), tilde(r.dir));
   where.title = `${r.host}:${r.dir}`;
+  const hx = (opts?.harnesses || []).find((h) => h.id === (r.harness || 'claude'));
+  if (hx) where.prepend(el('span', 'cd-harness', hx.label.toLowerCase()));
   const model = modelSelect(opts, r.model, true);
   model.addEventListener('change', () => {
     const v = model.value;
@@ -865,7 +867,7 @@ function makeComposer(t) {
   const node = el('div', 'cd-compose');
   const atts = el('div', 'cd-atts');
   const form = el('form', 'chat-form cd-form');
-  const text = Object.assign(el('textarea', 'cd-text-in'), { rows: 1, placeholder: 'ask claude', title: 'enter sends, shift+enter a new line, esc stops a turn', spellcheck: false });
+  const text = Object.assign(el('textarea', 'cd-text-in'), { rows: 1, placeholder: 'message', title: 'enter sends, shift+enter a new line, esc stops a turn', spellcheck: false });
   const attach = Object.assign(el('button', 'chat-icon chat-attach cd-attach'), { type: 'button', ariaLabel: 'attach' });
   attach.innerHTML = svg(GL.attach);
   const stop = Object.assign(el('button', 'cd-stop'), { type: 'button', title: 'stop this turn', ariaLabel: 'stop' });
@@ -1061,7 +1063,7 @@ async function paintNew() {
     const again = Object.assign(el('button', 'cd-mini primary', 'check again'), { type: 'button' });
     again.addEventListener('click', () => paintNew());
     box.append(el('div', 'cd-empty-t', opts.blocked),
-      el('p', 'cd-intro', 'Code runs claude on one of your computers, signed in as you over ssh, so it needs a login of yours saved for that computer.'),
+      el('p', 'cd-intro', 'Code runs an agent harness on one of your computers, signed in as you over ssh, so it needs a login of yours saved for that computer.'),
       el('p', 'cd-intro', 'Open a terminal on a computer from the desktop, log in and save the login, then come back here.'),
       again);
     form.replaceChildren(top, box);
@@ -1079,14 +1081,22 @@ async function paintNew() {
   const paintDir = () => {
     dirBtn.innerHTML = `<span class="cd-chip-ic">${svg(GL.folder)}</span>`;
     dirBtn.append(el('span', `cd-chip-t${dir ? '' : ' cd-chip-want'}`, dir ? base(tilde(dir)) || dir : 'pick a folder'));
-    dirBtn.title = dir ? `${host.value}:${dir}` : 'the folder claude works in';
+    dirBtn.title = dir ? `${host.value}:${dir}` : 'the folder the agent works in';
   };
+  // the harnesses the code service offers, the last one used picked
+  const harnesses = opts.harnesses || [];
+  const lastHarness = lsGet(`${DIR_LS}-harness`, '');
+  const harness = el('select');
+  harness.innerHTML = harnesses.map((h) => `<option value="${esc(h.id)}"${h.id === lastHarness ? ' selected' : ''}>${esc(h.label.toLowerCase())}</option>`).join('') || '<option value="">no harnesses</option>';
+  const hxOf = () => harnesses.find((h) => h.id === harness.value) || null;
+  // each host's harnesses as the code service found them
+  const found = new Map();
   const ready = (opts.models || []).filter((m) => m.ready !== false);
   const lastModel = lsGet(`${DIR_LS}-model`, '');
   let model = modelSelect(opts, (ready.find((m) => m.id === lastModel) || ready[0])?.id || '');
   const perm = el('select');
   perm.innerHTML = PERMS.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join('');
-  const prompt = Object.assign(el('textarea', 'cd-first'), { rows: 3, placeholder: 'What should Claude do?', spellcheck: false });
+  const prompt = Object.assign(el('textarea', 'cd-first'), { rows: 3, placeholder: 'What should it do?', spellcheck: false });
   const grow = () => { prompt.style.height = 'auto'; prompt.style.height = `${Math.min(prompt.scrollHeight, 320)}px`; };
   prompt.addEventListener('input', grow);
   prompt.addEventListener('keydown', (e) => {
@@ -1104,8 +1114,8 @@ async function paintNew() {
   goBtn.innerHTML = svg(GL.send);
   const modelChip = chip('model', model, 'model');
   const bar = el('div', 'cd-bar');
-  bar.append(chip('host', host, 'the computer claude runs on, as your login there'), dirBtn,
-    el('span', 'cd-bar-gap'), modelChip, chip('shield', perm, 'what claude may do without asking'), goBtn);
+  bar.append(chip('host', host, 'the computer the agent runs on, as your login there'), dirBtn,
+    el('span', 'cd-bar-gap'), chip('term', harness, 'the harness that runs the session'), modelChip, chip('shield', perm, 'what the agent may do without asking'), goBtn);
   const box = el('div', 'cd-box');
   box.append(prompt, picker, bar);
   const msg = el('span', 'cd-msg');
@@ -1141,9 +1151,12 @@ async function paintNew() {
 
   const why = () => {
     if (!host.value) return 'no computer to run on';
-    if (install.dataset.missing === '1') return `install claude on ${host.value} first`;
+    const hx = hxOf();
+    if (!hx) return 'no harness to run';
+    if (install.dataset.missing === '1') return `${hx.label.toLowerCase()} isn't on ${host.value}: install it or pick another harness`;
     if (!dir) return 'pick a folder';
     if (!model.value || model.value === '__login') return 'pick a model';
+    if (hx.meshOnly && provOf(model.value) === 'anthropic') return `${hx.label.toLowerCase()} runs on the mesh's models`;
     return '';
   };
   const valid = () => {
@@ -1153,33 +1166,47 @@ async function paintNew() {
     if (!msg.dataset.busy) msg.textContent = dir ? w : '';
   };
   form.addEventListener('input', valid);
-  const check = async () => {
+  // the harness picked looked for on the host; a warning and an optional install when it's not there
+  const check = async (fresh = false) => {
     const h = host.value;
+    const hx = hxOf();
     install.hidden = true;
     install.dataset.missing = '';
-    if (!h) { valid(); return; }
-    let r;
-    try { r = await call(`/api/code/install?host=${encodeURIComponent(h)}`); } catch (e) { r = { installed: true, error: e.message }; }
-    if (host.value !== h) return;
-    if (r.installed) { host.parentElement.title = r.version ? `claude ${r.version} on ${h}` : h; valid(); return; }
+    if (!h || !hx) { valid(); return; }
+    let r = found.get(h);
+    if (!r || fresh) {
+      try { r = await call(`/api/code/harnesses?${qs({ host: h, fresh: fresh ? '1' : '' })}`); } catch (e) { r = { error: e.message }; }
+      if (!r.error) found.set(h, r);
+    }
+    if (host.value !== h || hxOf() !== hx) return;
+    const on = (r.harnesses || []).find((x) => x.id === hx.id);
+    for (const o of harness.options) {
+      const x = (r.harnesses || []).find((y) => y.id === o.value);
+      const label = harnesses.find((y) => y.id === o.value)?.label.toLowerCase() || o.value;
+      o.textContent = x && !x.installed ? `${label} · not on ${h}` : label;
+    }
+    if (r.error) { host.parentElement.title = `couldn't look for harnesses on ${h}: ${r.error}`; valid(); return; }
+    if (on?.installed) { harness.parentElement.title = on.version ? `${hx.label.toLowerCase()} ${on.version} on ${h}` : h; valid(); return; }
     install.hidden = false;
     install.dataset.missing = '1';
-    const b = Object.assign(el('button', 'cd-mini primary', 'install claude'), { type: 'button' });
+    if (r.why) { install.replaceChildren(el('span', '', r.why)); valid(); return; }
+    const b = Object.assign(el('button', 'cd-mini primary', `install ${hx.label.toLowerCase()}`), { type: 'button' });
     const out = el('pre', 'cd-install-out');
     out.hidden = true;
     b.addEventListener('click', async () => {
       b.disabled = true;
       b.textContent = 'installing…';
       try {
-        const x = await call('/api/code/install', 'POST', { host: h });
+        const x = await call('/api/code/install', 'POST', { host: h, harness: hx.id });
         out.hidden = !x.out;
         out.textContent = x.out || '';
-        if (x.ok) { check(); return; }
+        if (x.ok) { check(true); return; }
         b.textContent = 'install failed, retry';
       } catch (e) { out.hidden = false; out.textContent = e.message; b.textContent = 'retry'; }
       b.disabled = false;
     });
-    install.replaceChildren(el('span', '', `Claude Code isn't installed on ${h}.`), b, out);
+    const others = (r.harnesses || []).filter((x) => x.installed).map((x) => x.label.toLowerCase());
+    install.replaceChildren(el('span', '', `${hx.label.toLowerCase()} isn't installed on ${h}${others.length ? `; it has ${others.join(', ')}` : ''}. installing it is optional, from ${hx.site}.`), b, out);
     valid();
   };
   const pick = (p) => { dir = p; picker.hidden = true; paintDir(); valid(); prompt.focus(); };
@@ -1213,6 +1240,7 @@ async function paintNew() {
   };
   dirBtn.addEventListener('click', () => { if (picker.hidden) openPicker(); else picker.hidden = true; });
   host.addEventListener('change', () => { dir = dirs[host.value] || ''; picker.hidden = true; paintDir(); check(); });
+  harness.addEventListener('change', () => { check(); valid(); });
   form.addEventListener('submit', (e) => {
     e.preventDefault();
     if (goBtn.disabled) { if (!dir) openPicker(); return; }
@@ -1223,8 +1251,9 @@ async function paintNew() {
     lsSet(DIR_LS, dirs);
     lsSet(`${DIR_LS}-host`, host.value);
     lsSet(`${DIR_LS}-model`, model.value);
+    lsSet(`${DIR_LS}-harness`, harness.value);
     lsSet(RECENT_LS, [{ host: host.value, dir }, ...lsGet(RECENT_LS, []).filter((x) => x.host !== host.value || x.dir !== dir)].slice(0, 30));
-    call('/api/code/sessions', 'POST', { host: host.value, dir, model: model.value, perm: perm.value, prompt: prompt.value.trim() })
+    call('/api/code/sessions', 'POST', { host: host.value, dir, harness: harness.value, model: model.value, perm: perm.value, prompt: prompt.value.trim() })
       .then((r) => {
         cd.list = [r, ...cd.list.filter((s) => s.id !== r.id)];
         go(r.id);

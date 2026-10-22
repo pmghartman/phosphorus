@@ -1,4 +1,4 @@
-package claude
+package code
 
 // what runs on the host: a setup script fed to sh -s (the skill, mcp.json),
 // then claude itself under sh -c, its secrets read off stdin before claude
@@ -210,16 +210,6 @@ func setupScript(skill []byte, base string) (string, error) {
 	}
 	s.WriteString(pathPrefix + "\ncommand -v claude >/dev/null 2>&1 || exit 127\n")
 	return s.String(), nil
-}
-
-// versionCommand claude's version, exit 127 when it isn't there
-func versionCommand() string {
-	return "sh -c " + quote(pathPrefix+"command -v claude >/dev/null 2>&1 || exit 127; claude --version")
-}
-
-// installCommand the official installer, as the login
-func installCommand() string {
-	return "sh -c " + quote(pathPrefix+"curl -fsSL https://claude.ai/install.sh | bash 2>&1")
 }
 
 func randHex(n int) string {

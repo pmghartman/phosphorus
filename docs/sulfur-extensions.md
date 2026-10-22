@@ -178,7 +178,7 @@ rs   rustc "$f" -o "$o" && "$o"
 
 ### api.agents
 
-`registerProvider({id, label}, handler)` adds a chat agent. It shows in the chat's **Harness** picker, under Chat, Claude Code and opencode. When someone asks it something, Sulfur calls:
+`registerProvider({id, label}, handler)` adds a chat agent. It shows in the chat's **Harness** picker, under Chat and the harnesses the mesh's code service offers. When someone asks it something, Sulfur calls:
 
 ```js
 handler({ text, history, file, progress }) // → Promise<string>
@@ -193,7 +193,7 @@ handler({ text, history, file, progress }) // → Promise<string>
 
 Resolve with the whole answer as markdown. Throw to show an error in the conversation. Stop is the user's: Sulfur drops the answer if it arrives after they stop it.
 
-Claude Code and opencode are built in: they run in the project on one of your machines, and their edits are typed into the editor as they make them. This hook is for anything else that answers over HTTP and allows the `null` origin. See the example below. To change files the way they do, call `api.workspace.writeFile`: an open file gets the write typed in live.
+The code service's harnesses (Claude Code, opencode) come from the mesh, each an optional install on a host: they run in the project on one of your machines, and their edits are typed into the editor as they make them. This hook is for anything else that answers over HTTP and allows the `null` origin. See the example below. To change files the way they do, call `api.workspace.writeFile`: an open file gets the write typed in live.
 
 ### api.onDidRunFile
 

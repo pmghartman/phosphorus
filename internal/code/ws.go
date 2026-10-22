@@ -1,4 +1,4 @@
-package claude
+package code
 
 // a page's socket on a session: the log replayed past since, then live
 
