@@ -23,6 +23,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pmghartman/phosphorus/internal/code"
 	"github.com/pmghartman/phosphorus/internal/collab"
 	"github.com/pmghartman/phosphorus/internal/files"
 	"github.com/pmghartman/phosphorus/internal/sulfur"
@@ -429,6 +430,10 @@ func localAPI(w http.ResponseWriter, r *http.Request) {
 		}
 		t.Host = me.Host
 		send(w, 200, t)
+	case path == "/api/sulfur/languages":
+		if ws := accept(w, r); ws != nil {
+			sulfur.LanguageSocket(ws, "", code.Creds{})
+		}
 	case path == "/api/sulfur/git" && r.Method == "POST":
 		var p struct {
 			Dir   string           `json:"dir"`

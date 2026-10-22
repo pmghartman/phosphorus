@@ -1,4 +1,4 @@
-import { opApply, opDiff, opMap, opTransform } from './text-operations.js';
+import { opApply, opDiff, opMap, opTransform, opInverse } from './text-operations.js';
 
 // Inverses belong to document versions, not to the browser's textarea value.
 // Rebase them through incoming operations so undo retains remote edits.
@@ -17,6 +17,13 @@ export class EditorHistory {
       this.group = group ? { id: group, entry, before } : null;
     }
     if (this.group) Object.assign(this.group, { at: now, after, selection: [...selectionAfter] });
+    this.redo = [];
+  }
+  recordOperation(before, ops, selectionBefore, selectionAfter) {
+    if (opApply(before, ops) === before) return;
+    this.boundary();
+    this.undo.push({ ops: opInverse(before, ops), selection: [...selectionBefore] });
+    if (this.undo.length > this.limit) this.undo.shift();
     this.redo = [];
   }
   remote(ops) {
@@ -38,7 +45,7 @@ export class EditorHistory {
       const entry = from.pop();
       const next = opApply(text, entry.ops);
       if (next === text) continue;
-      to.push({ ops: opDiff(next, text), selection: [...selection] });
+      to.push({ ops: opInverse(text, entry.ops), selection: [...selection] });
       return { text: next, selection: entry.selection.map((p) => Math.max(0, Math.min(next.length, p))) };
     }
     return null;

@@ -36,6 +36,7 @@ import {
   standalone,
 } from '../app.js';
 import { codeEditor } from './editor.js';
+import { createLanguageWorkbench } from '../sulfur/language-workbench.js';
 import { startTerminal, taskTerminal, termsRetheme } from './terminal.js';
 import { renderMd } from '../md.js';
 import { symbolsFor, identifierAt, enclosingSymbol } from '../symbols.js';
@@ -311,6 +312,43 @@ function keyLabel(k) {
 
 let I = null;
 
+const languages = createLanguageWorkbench({
+  el, join: filesJoin, log, pick, input: inputBox,
+  error: (e) => notify('error', e.message), notice: (text) => notify('info', text),
+  alive: (t) => !!I?.tabs.includes(t),
+  hosts: () => dkLiveHosts(),
+  url: (host) => new URL(hostUrl(host, `/api/sulfur/languages?host=${encodeURIComponent(host)}`), location.href).href,
+  problems: () => I && paintProblemsSoon(),
+  async context(t) {
+    if (!I || I.active !== t || !sameLoc(t.loc, locOf()) || !under(t.rel, I.st.root)) return null;
+    const current = I;
+    const workspace = wsKey();
+    const project = await detectProject();
+    if (I !== current || I.active !== t || wsKey() !== workspace || !project) return null;
+    const cfg = buildCfg();
+    const share = t.share ?? 'home';
+    const rootRel = project.dir;
+    const root = hostPath(t.host, share, rootRel);
+    const path = hostPath(t.host, share, t.rel);
+    if (!root || !path) return null;
+    const buildRoot = cfg?.host === t.host && cfg.toolchain ? tasksFor(cfg, project).buildRoot : '';
+    const buildDirectory = buildRoot ? absolutePath(buildRoot) ? buildRoot : hostPath(t.host, share, joinPath(rootRel, buildRoot)) : '';
+    return { host: t.host, root, rootRel, path, documentRel: t.rel.slice(rootRel.length + 1), loc: t.loc, workspace, configuration: cfg?.configuration || '', buildDirectory, settings: setting('sulfur.languageServerSettings') || {} };
+  },
+  open(path, context, range) {
+    if (!I || context.workspace !== wsKey()) return null;
+    return openFile(path, { host: context.host, loc: context.loc, preview: false, line: range.start.line + 1, col: range.start.character + 1 });
+  },
+  async prepare(path, context) {
+    if (!I || context.workspace !== wsKey()) throw new Error('Project changed during rename');
+    const tab = openFile(path, { host: context.host, loc: context.loc, preview: false, focus: false });
+    if (!tab) throw new Error(`Cannot open ${path}`);
+    for (let n = 0; !tab.ed?.ready() && n < 80 && I?.tabs.includes(tab); n++) await sleep(100);
+    if (!I?.tabs.includes(tab) || context.workspace !== wsKey() || !tab.ed?.ready() || tab.info?.readOnly) throw new Error(`${path} is not ready or writable`);
+    return tab;
+  },
+});
+
 const DEFAULTS = () => ({
   root: acct.user, tabs: [], active: '', recent: [], recentFolders: [],
   side: { view: 'explorer', w: 260, hidden: false },
@@ -321,6 +359,7 @@ const DEFAULTS = () => ({
 });
 
 const SETTINGS = {
+  'sulfur.languageServerSettings': { def: {}, type: 'object', title: 'Languages: Server Settings', about: 'Language-server settings, keyed by extension id (typescript, python, javascript, java, csharp, php, shell, cpp, hcl, go). Runtime prerequisites and installation are in Extensions.' },
   'editor.fontSize': { def: 13, type: 'number', min: 8, max: 40, title: 'Editor: Font Size', about: 'Controls the font size in pixels.' },
   'editor.enablePreview': { def: true, type: 'boolean', title: 'Workbench › Editor: Enable Preview', about: 'Controls whether a file opened from the explorer is shown as a preview, its tab reused until you edit it or double click.' },
   'explorer.confirmDelete': { def: true, type: 'boolean', title: 'Explorer: Confirm Delete', about: 'Controls whether the explorer asks before deleting a file or folder. A delete here is for good: there is no trash.' },
@@ -468,6 +507,7 @@ function holdClose(done) {
 
 function teardown() {
   if (!I) return;
+  languages.reset();
   const was = I;
   I = null;
   for (const off of was.offs) { try { off(); } catch {} }
@@ -933,6 +973,7 @@ function setRoot(dir, first = false, l = locOf()) {
   if (!d || !inScope(d, l)) return;
   const st = I.st;
   if (!first && d === st.root && sameLoc(l, st.loc)) { refreshTree(); return; }
+  languages.reset();
   st.root = d;
   st.loc = isHomeLoc(l) ? HOME_LOC : { host: l.host, share: String(l.share) };
   const rk = (x) => `${locKey(x.loc || HOME_LOC)}\n${x.root ?? x}`;
@@ -1544,6 +1585,7 @@ function mountCode(t) {
   editors.set(t.edId, t.ed);
   codeTabs.set(codeKey(file), t.edId);
   t.dispose = () => t.ed.close();
+  languages.attach(t);
   mountSymbolNavigation(t);
   t.view.addEventListener('contextmenu', (e) => {
     if (!e.target.closest('.code-ta')) return;
@@ -1654,6 +1696,7 @@ async function symbolDocuments(t, word, root = I.st.root) {
 }
 
 async function goToDefinition(t = I.active) {
+  if (t?.ed && await languages.navigate(t)) return;
   const state = I;
   const workspace = wsKey();
   const current = () => I === state && I.active === t && wsKey() === workspace;
@@ -1679,6 +1722,7 @@ async function goToDefinition(t = I.active) {
 }
 
 async function findReferences(t = I.active) {
+  if (t?.ed && await languages.navigate(t, true)) return;
   const word = t?.ed && identifierAt(t.ed.text(), t.ed.selection()[0]);
   if (!word) return;
   const result = await symbolDocuments(t, word.name);
@@ -1690,6 +1734,7 @@ async function findReferences(t = I.active) {
 }
 
 async function renameSymbol(t = I.active) {
+  if (t?.ed && await languages.rename(t)) return;
   const word = t?.ed && identifierAt(t.ed.text(), t.ed.selection()[0]);
   if (!word || t.info?.readOnly) return;
   const value = await inputBox({ title: `Rename ${word.name}`, value: word.name, prompt: 'Preview matching identifiers across the workspace.', validate: (s) => /^[$\p{L}_][$\p{L}\p{N}_]*$/u.test(s) ? '' : 'Enter an identifier' });
@@ -1799,6 +1844,8 @@ function tabState(t, info) {
   if (!I) return;
   const was = t.info;
   t.info = info;
+  languages.changed(t);
+  if (info.ready && !was?.ready && t === I.active) languages.get(t).catch((e) => log(e.message, 'Languages'));
   if (info.ready && !was?.ready) applyPending(t);
   if (info.dirty && t.preview) pin(t);
   if (!was || was.dirty !== info.dirty) { t.tabEl.classList.toggle('dirty', info.dirty); paintOpenEditorsSoon(); }
@@ -1808,6 +1855,7 @@ function tabState(t, info) {
   if (I.find?.open && t === I.active && was && was.length !== info.length) findSoon();
   // the user's settings and keys read again once their file's saved
   if (was?.dirty && !info.dirty) {
+    languages.saved(t);
     emit('save', { path: t.rel });
     if (t.rel === SETTINGS_PATH() || t.rel === KEYS_PATH()) loadUserFiles();
     scmRefreshSoon();
@@ -1842,6 +1890,7 @@ function activate(t, focus = true) {
   paintEditors();
   t.ed?.show();
   if (t.ed) paintSymbolNavSoon();
+  if (t.ed?.ready()) languages.get(t).catch((e) => log(e.message, 'Languages'));
   if (t !== was) paintRunView();
   if (focus) { drawersAway(); focusTab(t); }
   if (t !== was) {
@@ -3572,7 +3621,11 @@ function paintProblems() {
   const at = (rel) => { if (!byFile.has(rel)) byFile.set(rel, []); return byFile.get(rel); };
   for (const t of I.tabs) {
     if (!t.info?.errors?.length || !sameLoc(t.loc, locOf())) continue;
-    for (const x of t.info.errors) at(t.rel).push({ sev: 'error', msg: x.what, src: 'syntax', line: x.line, col: x.col, go: () => { activate(t); t.ed.select(x.from, Math.max(x.to, x.from + 1)); } });
+    for (const x of t.info.errors.filter((e) => !e.source)) at(t.rel).push({ sev: 'error', msg: x.what, src: 'syntax', line: x.line, col: x.col, go: () => { activate(t); t.ed.select(x.from, Math.max(x.to, x.from + 1)); } });
+  }
+  for (const x of languages.problems()) {
+    if (x.context.workspace !== wsKey()) continue;
+    at(x.path).push({ sev: x.severity === 1 ? 'error' : x.severity === 2 ? 'warning' : 'info', msg: x.message, src: x.source || 'language server', line: x.range.start.line + 1, col: x.range.start.character + 1, go: () => openFile(x.path, { host: x.context.host, loc: x.context.loc, preview: false, line: x.range.start.line + 1, col: x.range.start.character + 1 }) });
   }
   for (const x of I.buildProblems || []) {
     at(x.rel).push({ sev: x.sev, msg: x.msg, src: x.code || 'build', line: x.line, col: x.col, go: () => openFile(x.rel, { preview: false, line: x.line, col: x.col }) });
@@ -6557,7 +6610,7 @@ async function loadUserFiles() {
   if (s !== null) {
     try {
       const v = parseJsonc(s);
-      if (v && typeof v === 'object' && !Array.isArray(v)) { I.settings = v; cacheSettings(); applySettings(); }
+      if (v && typeof v === 'object' && !Array.isArray(v)) { if (JSON.stringify(I.settings?.['sulfur.languageServerSettings']) !== JSON.stringify(v['sulfur.languageServerSettings'])) languages.reset(); I.settings = v; cacheSettings(); applySettings(); }
     } catch (err) { notify('warning', `settings.json: ${err.message}`, { actions: [{ label: 'Open Settings (JSON)', run: () => openFile(SETTINGS_PATH(), { preview: false }) }] }); }
   }
   if (k !== null) {
@@ -7121,6 +7174,7 @@ const extChannel = (x, n) => (n ? `${extName(x)}: ${n}` : `Extension: ${extName(
 
 function buildExtView() {
   const v = I.sideViews.get('extensions');
+  v.body.classList.add('ide-extensions-body');
   const q = Object.assign(el('input', 'ide-input ide-ext-search'), { placeholder: 'Search Extensions in ~/.sulfur/extensions', spellcheck: false });
   const head = sectionHead('installed', 'Installed', []);
   const list = el('div', 'ide-ext-list');
@@ -7128,6 +7182,7 @@ function buildExtView() {
   const note = el('div', 'ide-tree-note');
   v.body.append(el('div', 'ide-search-form', ''), head.node, list, note);
   v.body.firstChild.append(q);
+  languages.mount(v.body);
   head.node.addEventListener('ide-section', () => { list.hidden = !head.open(); });
   head.paint();
   q.addEventListener('input', () => paintExtView());
@@ -8006,7 +8061,12 @@ async function loadBuildConfig(dir = projDir()) {
   if (text) {
     try {
       const j = parseJsonc(text);
-      if (j && typeof j === 'object') I.st.build[key] = { ...I.st.build[key], ...j };
+      if (j && typeof j === 'object') {
+        const old = I.st.build[key];
+        const next = { ...old, ...j };
+        if (old && JSON.stringify(old) !== JSON.stringify(next)) languages.reset();
+        I.st.build[key] = next;
+      }
     } catch (err) { notify('warning', `${BUILD_FILE}: ${err.message}`); }
   }
   I.runContext = { tabId: I.active?.id, workspace: wsKey(), pending: true };
@@ -8015,6 +8075,7 @@ async function loadBuildConfig(dir = projDir()) {
   refreshProjectSoon();
 }
 async function saveBuildCfg(cfg) {
+  languages.reset();
   const dir = projDir();
   const key = bkey(dir);
   I.st.build[key] = cfg;

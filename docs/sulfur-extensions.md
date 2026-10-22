@@ -6,6 +6,12 @@ This guide is also in Sulfur itself, under **Help → Extension Guide**.
 
 ## Quick start
 
+For optional completion, semantic navigation, rename, and diagnostics, open
+**Extensions → Optional language extensions**. Select languages and a host, then
+**Install selected**. These use native language servers on that host, with
+enable/disable/uninstall controls. See [Language servers](sulfur-language-servers.md)
+for the ten-language selection, runtime prerequisites, and offline behavior.
+
 1. Run **Extensions: Create New Extension…** from the command palette (`Ctrl+Shift+P`). Name it, for example `word-count`.
 2. Sulfur writes `~/.sulfur/extensions/word-count/` into your home: a `package.json`, an `extension.js` and a `README.md`. It enables the extension and opens `extension.js`.
 3. Edit `extension.js`, save, and run **Developer: Reload Extensions**.

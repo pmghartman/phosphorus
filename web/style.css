@@ -2908,7 +2908,24 @@ body:has(.dk-pop:not([hidden])) .toasts { opacity: 0; pointer-events: none; }
 .ide-crumb-sep { width: 14px; height: 14px; color: var(--ide-muted); margin: 0 2px; }
 
 .ide-views { position: relative; flex: 1; min-height: 0; display: flex; }
-.ide-view-ed { flex: 1; min-width: 0; display: flex; flex-direction: column; outline: none; }
+.ide-view-ed { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; outline: none; }
+.ide-completion { position: absolute; z-index: 30; top: 70px; left: 64px; width: min(580px, calc(100% - 80px)); max-height: 260px; overflow: auto; border: 1px solid var(--border); background: var(--bg); color: var(--fg); box-shadow: 0 5px 20px #0005; font: 13px monospace; }
+.ide-completion[hidden] { display: none; }
+.ide-completion-item { display: flex; justify-content: space-between; gap: 20px; padding: 5px 8px; cursor: pointer; }
+.ide-completion-item.on { background: var(--accent); color: var(--bg); }
+.ide-completion-item small { opacity: .75; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ide-language-manager { padding: 12px; border-top: 1px solid var(--border); }
+.ide-side-body.ide-extensions-body { display: block; overflow-y: auto; }
+.ide-extensions-body .ide-ext-list { overflow: visible; }
+.ide-language-manager > button { margin: 6px 6px 8px 0; }
+.ide-language-row { padding: 10px 0; border-top: 1px solid var(--border); }
+.ide-language-row label { display: flex; align-items: center; gap: 6px; }
+.ide-language-row small, .ide-language-status { display: block; margin: 5px 0; overflow-wrap: anywhere; }
+.ide-language-row small { opacity: .75; }
+.ide-language-row button { margin: 4px 6px 0 0; }
+.ide-language-error { color: var(--offmesh); overflow-wrap: anywhere; }
+.code-squig mark.code-warning { text-decoration-color: var(--sand); }
+.code-squig mark.code-hint { text-decoration-color: var(--accent); }
 .ide-symbol-nav { display: flex; align-items: center; flex: none; height: 28px; padding: 0 8px; border-bottom: 1px solid var(--ide-border); background: var(--ide-bg); }
 .ide-symbol-picker { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; max-width: 50%; height: 22px; padding: 0 6px; font: 12px var(--ide-ui); color: var(--ide-muted); background: none; border: 0; border-radius: 3px; text-align: left; cursor: pointer; }
 .ide-symbol-picker + .ide-symbol-picker { border-left: 1px solid var(--ide-border); margin-left: 6px; }
