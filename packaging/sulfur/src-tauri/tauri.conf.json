@@ -28,7 +28,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis", "msi", "app", "dmg", "deb", "appimage"],
+    "targets": ["nsis", "app", "dmg", "deb", "appimage"],
     "externalBin": ["binaries/sulfur-server"],
     "icon": [
       "icons/32x32.png",

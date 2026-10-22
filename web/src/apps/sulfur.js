@@ -29,11 +29,13 @@ import {
   putFile,
   selfHost,
   shQuote,
+  shareMenu,
   standalone,
 } from '../app.js';
 import { codeEditor } from './editor.js';
 import { startTerminal, taskTerminal, termsRetheme } from './terminal.js';
 import { renderMd } from '../md.js';
+import { PALETTES, PALETTE_EVENT, paletteNow, setPalette } from '../theme.js';
 import guideText from '../../../docs/sulfur-extensions.md';
 
 // --- sulfur, the code editor ----------------------------------------------------------
@@ -68,9 +70,10 @@ const IC = {
   files: 'M5.5 1.5h5l3 3v8h-8zM10.5 1.5v3h3M3.5 4.5v10h7',
   search: 'M6.75 2a4.75 4.75 0 1 0 0 9.5 4.75 4.75 0 0 0 0-9.5zM10.2 10.2L14 14',
   run: 'M4.5 2.5v11l9-5.5z',
-  runSide: 'M3.5 3v10l7-5zM11.5 9.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z',
-  ext: 'M2 2h5v5H2zM9.5 2.5l3.5 3.5-3.5 3.5L6 6zM2 9h5v5H2zM9 9h5v5H9z',
-  chat: 'M2 2.5h12v8.5H6.5L3.5 13.5V11H2zM5 6h6M5 8.5h4',
+  runSide: 'M3 2.5v10l6.5-5zM12 8.5c1.1 0 2 .9 2 2.2v1.6c0 1.2-.9 2.2-2 2.2s-2-1-2-2.2v-1.6c0-1.3.9-2.2 2-2.2zM10 11.5H8.5M15.5 11.5H14M12 8.5V7',
+  ext: 'M1.5 5h4.5v4.5H1.5zM6 9.5h4.5V14H6zM1.5 9.5H6V14H1.5zM9.5 1.5H14V6H9.5z',
+  chat: 'M1.5 2.5h9v6.5H5l-2.5 2V9h-1zM10.5 5.5h4v6.5h-1v2l-2.5-2H7V9',
+  tools: 'M10.8 1.6a3.4 3.4 0 0 0-3.3 4.5L2 11.6a1.5 1.5 0 0 0 2.1 2.1l5.5-5.5a3.4 3.4 0 0 0 4.5-3.3l-2 2-1.9-.5-.5-1.9z',
   gear: 'M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4',
   user: 'M8 2a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM2.5 14.5c.6-3 2.8-4.5 5.5-4.5s4.9 1.5 5.5 4.5',
   right: 'M6 3.5L10.5 8 6 12.5',
@@ -81,7 +84,7 @@ const IC = {
   newFile: 'M3.5 1.5h5l3 3v4M8.5 1.5v3h3M3.5 1.5v13h5M12 10v5M9.5 12.5h5',
   newFolder: 'M1.5 3h4l1.2 1.5h7.8V8M1.5 3v10h6.5M12 9.5v5M9.5 12h5',
   refresh: 'M13.5 8a5.5 5.5 0 1 1-1.8-4.1M13.5 1.5v3.5h-3.5',
-  collapse: 'M2.5 2.5h11v11h-11zM5 8h6',
+  collapse: 'M4.5 4.5h9v9h-9zM2.5 11.5v-9h9M6.5 9h5',
   more: 'M3.5 8h.01M8 8h.01M12.5 8h.01',
   plus: 'M8 3v10M3 8h10',
   trash: 'M2.5 4h11M6 4V2.2h4V4M4 4l.7 10h6.6L12 4M6.4 6.5v5M9.6 6.5v5',
@@ -111,9 +114,6 @@ const IC = {
   book: 'M2 2.5h4.5A1.5 1.5 0 0 1 8 4v10a1.5 1.5 0 0 0-1.5-1.5H2zM14 2.5H9.5A1.5 1.5 0 0 0 8 4v10a1.5 1.5 0 0 1 1.5-1.5H14z',
   keyboard: 'M1.5 4h13v8h-13zM4 6.5h.01M6.5 6.5h.01M9 6.5h.01M11.5 6.5h.01M4.5 9.5h7',
   preview: 'M1 8s2.5-4.5 7-4.5S15 8 15 8s-2.5 4.5-7 4.5S1 8 1 8zM8 6a2 2 0 1 0 0 4 2 2 0 0 0 0-4z',
-  layoutSide: 'M1.5 2.5h13v11h-13zM5.5 2.5v11',
-  layoutPanel: 'M1.5 2.5h13v11h-13zM1.5 9.5h13',
-  layoutAux: 'M1.5 2.5h13v11h-13zM10.5 2.5v11',
   replaceAll: 'M2 3.5h7M2 6.5h5M9.5 8.5l2.5 2.5 2.5-2.5M12 3v8M2 10.5h5M2 13.5h7',
   replaceOne: 'M2 4.5h7M2 8h5M9.5 9.5l2.5 2.5 2.5-2.5M12 4v8',
   word: 'M2 12.5h12M3.5 5l1.5 5.5L6.5 7l1.5 3.5L9.5 5M11 5.5h2M11 8h2',
@@ -306,12 +306,6 @@ const DEFAULTS = () => ({
   expanded: {}, runHost: '', sections: { open: true, tree: true },
   ext: { enabled: {} }, loc: HOME_LOC, build: {},
 });
-// the workbench's looks, each light and dark as the desktop is
-const THEMES = [
-  { id: 'vscode', label: 'VS Code', description: 'Dark Modern and Light Modern', group: 'Sulfur' },
-  { id: 'phosphorus', label: 'Phosphorus', description: 'the desktop\'s own colors and type', group: 'Sulfur' },
-  { id: 'medieval', label: 'Medieval Fantasy', description: 'parchment, oak and gilt', group: 'Extra Themes' },
-];
 
 const SETTINGS = {
   'editor.fontSize': { def: 13, type: 'number', min: 8, max: 40, title: 'Editor: Font Size', about: 'Controls the font size in pixels.' },
@@ -321,7 +315,6 @@ const SETTINGS = {
   'search.exclude': { def: 'build, out, bin, obj, target, .vs, .vscode, cmake-build-*, dist, .cache, .gradle, __pycache__, node_modules, .git', type: 'string', title: 'Search: Exclude', about: 'Comma separated folder names or simple globs left out of quick open (Ctrl+P) and Find in Files, as a big project’s build outputs and caches are; the explorer still shows them.' },
   'files.exclude': { def: '.git, node_modules, __pycache__, .DS_Store', type: 'string', title: 'Files: Exclude', about: 'Comma separated names or simple globs (*.o) hidden from the explorer, quick open and search.' },
   'terminal.integrated.fontSize': { def: 13, type: 'number', min: 8, max: 40, title: 'Terminal › Integrated: Font Size', about: 'Controls the font size in pixels of the terminal. New terminals take it.' },
-  'workbench.colorTheme': { def: 'vscode', type: 'enum', options: THEMES.map((t) => [t.id, t.label]), title: 'Workbench: Color Theme', about: 'Specifies the color theme used in the workbench: VS Code\'s own, Phosphorus\'s like the desktop\'s other apps, or one of the extra themes. Each follows the desktop\'s light or dark.' },
   'window.appearance': { def: 'system', type: 'enum', options: [['system', 'Follow the System'], ['light', 'Light'], ['dark', 'Dark']], title: 'Window: Appearance', about: 'Light or dark, whatever the system is set to, when Sulfur runs on its own. Inside the Phosphorus desktop, the desktop\'s own theme decides.' },
   'workbench.restoreEditors': { def: true, type: 'boolean', title: 'Workbench: Restore Editors', about: 'Controls whether the open editors come back when Sulfur opens again.' },
   'sulfur.runners': { def: {}, type: 'object', title: 'Run: Runners', about: 'Commands that run a file, by extension, over the built-in ones, as {"py": "python3 -u \\"$f\\""}: $f is the file, $o a fresh output path beside it.' },
@@ -377,7 +370,7 @@ export function ideStart(w, open) {
   try { cached = JSON.parse(localStorage.getItem(`${STATE_KEY()}:settings`)) || {}; } catch {}
   I = {
     w, st, settings: cached, userKeys: [], tabs: [], active: null, mru: [], closed: [], tree: new Map(), loading: new Map(),
-    sel: '', terms: [], term: null, termSeq: 0, output: new Map(), outCh: 'Phosphorus IDE', commands: new Map(), keys: new Map(),
+    sel: '', terms: [], term: null, termSeq: 0, output: new Map(), outCh: 'Sulfur', commands: new Map(), keys: new Map(),
     exts: new Map(), runners: new Map(), providers: new Map(), statusItems: new Map(), notes: [], chord: '', chats: new Map(),
     index: null, offs: [], seq: 0,
   };
@@ -389,6 +382,11 @@ export function ideStart(w, open) {
     systemLight.addEventListener('change', follow);
     I.offs.push(() => systemLight.removeEventListener('change', follow));
   }
+  if (standalone?.app) setTimeout(() => I && checkUpdate(false), 5000);
+  // the color theme phosphorus wide, picked here, in the desktop's account menu or another tab
+  const repaint = () => I && applySettings();
+  addEventListener(PALETTE_EVENT, repaint);
+  I.offs.push(() => removeEventListener(PALETTE_EVENT, repaint));
   for (const [ext, cmd] of Object.entries(DK_RUNNERS)) I.runners.set(ext, { cmd, by: '' });
   log(`started as ${acct.user} on ${selfHost}, workspace ${st.root} in ${locLabel(st.loc)}`);
   setRoot(st.root, true, st.loc);
@@ -433,7 +431,7 @@ function openRequest(o) {
     if (d && inScope(d, l)) setRoot(d, false, l); else notify('warning', `${o.dir} is outside your space`);
   } else if (o.path) {
     const p = cleanPath(o.path);
-    if (p && inScope(p, l)) openFile(p, { preview: false, loc: l }); else notify('warning', `${o.path} is outside your space`);
+    if (p && inScope(p, l)) openFile(p, { preview: false, loc: l, host: o.host }); else notify('warning', `${o.path} is outside your space`);
   }
 }
 
@@ -473,9 +471,7 @@ function teardown() {
 function build() {
   const root = Object.assign(el('div', 'ide'), { tabIndex: -1 });
   const layer = el('div', 'ide-layer');
-  // the title bar: menus, the command center, the layout's toggles
-  // the window's own title bar made VS Code's: its menus, its command center, its
-  // layout toggles, the window's buttons and drag kept
+  // the window's own title bar: its menus and the command center, the window's buttons and drag kept
   const title = el('div', 'ide-titlebar');
   const menubar = el('div', 'ide-menubar');
   menubar.setAttribute('role', 'menubar');
@@ -483,14 +479,7 @@ function build() {
   const ccText = el('span', 'ide-cc-text');
   cc.append(icon('search'), ccText);
   cc.addEventListener('click', () => quickOpen(''));
-  const layout = el('div', 'ide-layout-btns');
-  const lay = {
-    side: btn('', 'layoutSide', 'Toggle Primary Side Bar', () => run('workbench.action.toggleSidebarVisibility')),
-    panel: btn('', 'layoutPanel', 'Toggle Panel', () => run('workbench.action.togglePanel')),
-    aux: btn('', 'layoutAux', 'Toggle Secondary Side Bar', () => run('workbench.action.toggleAuxiliaryBar')),
-  };
-  layout.append(lay.side, lay.panel, lay.aux);
-  title.append(menubar, cc, layout);
+  title.append(menubar, cc);
 
   const main = el('div', 'ide-main');
   // the activity bar: a view per icon, the manage menus at its foot
@@ -546,7 +535,7 @@ function build() {
   I.w.head.insertBefore(title, I.w.head.querySelector('.dk-btns'));
   I.w.node.classList.add('ide-win');
   Object.assign(I, {
-    root, layer, titleBar: title, menubar, cc, ccText, lay, activity, actTop, actFoot, side, sideTitle, sideActs, sideBody, center, editorsPart,
+    root, layer, titleBar: title, menubar, cc, ccText, activity, actTop, actFoot, side, sideTitle, sideActs, sideBody, center, editorsPart,
     tabsEl: tabs, tabActs, crumbs, views, watermark, panel, panelTabs, panelActs, panelBody, sashH, aux, sashSide, sashAux,
     statusL, statusR, sideViews: new Map(), panelViews: new Map(), actBtns: new Map(),
   });
@@ -604,9 +593,6 @@ function paintLayout() {
   root.classList.toggle('ide-panel-off', st.panel.hidden);
   root.classList.toggle('ide-aux-off', st.aux.hidden);
   root.classList.toggle('ide-panel-max', !st.panel.hidden && st.panel.max);
-  I.lay.side.classList.toggle('on', !st.side.hidden);
-  I.lay.panel.classList.toggle('on', !st.panel.hidden);
-  I.lay.aux.classList.toggle('on', !st.aux.hidden);
   I.actChat?.classList.toggle('on', !st.aux.hidden);
   saveState();
 }
@@ -671,28 +657,17 @@ function buildActivity() {
   chat.addEventListener('click', () => run('workbench.action.toggleAuxiliaryBar'));
   I.actTop.append(chat);
   I.actChat = chat;
-  const account = Object.assign(el('button', 'ide-act'), { type: 'button', ariaLabel: 'Accounts', title: 'Accounts' });
-  account.append(icon('user'));
-  account.addEventListener('click', () => menu(account, standalone ? meshItems() : [
-    { label: `${acct.user}${acct.admin ? ' (admin)' : ''}`, disabled: true },
-    { label: `Desktop served by ${selfHost}`, disabled: true },
-    '-',
-    { label: 'Hosts and Logins', run: () => showSide('run', true, true) },
-  ], { side: 'right', up: true }));
+  // the gear names who's signed in; Sulfur alone signs in to a mesh from the status bar's remote item
   const manage = Object.assign(el('button', 'ide-act'), { type: 'button', ariaLabel: 'Manage', title: 'Manage' });
   manage.append(icon('gear'));
   manage.addEventListener('click', () => menu(manage, [
-    cmdItem('workbench.action.showCommands', 'Command Palette…'),
+    { label: offline() ? `${standalone.meshUser ? `${standalone.meshUser}, ` : ''}offline on ${selfHost}` : `${acct.user}${acct.admin ? ' (admin)' : ''} on ${selfHost}`, disabled: true },
     '-',
     cmdItem('workbench.action.openSettings', 'Settings'),
-    cmdItem('workbench.action.openSettingsJson', 'Settings (JSON)'),
     cmdItem('workbench.action.openGlobalKeybindings', 'Keyboard Shortcuts'),
-    cmdItem('workbench.view.extensions', 'Extensions'),
-    cmdItem('workbench.action.selectTheme', 'Themes'),
-    '-',
-    cmdItem('sulfur.extensions.guide', 'Extension Guide'),
+    cmdItem('workbench.action.selectTheme', 'Color Theme'),
   ], { side: 'right', up: true }));
-  I.actFoot.append(account, manage);
+  I.actFoot.append(manage);
   buildExplorer();
   buildSearch();
   buildScm();
@@ -740,13 +715,6 @@ const MENUS = [
     { label: 'Open Recent', sub: () => recentItems() },
     cmdItem('sulfur.project.transfer', 'Copy or Move Project to…'), cmdItem('sulfur.git.clone', 'Clone Repository…'), '-',
     cmdItem('workbench.action.files.save', 'Save'), cmdItem('workbench.action.files.saveAll', 'Save All'), '-',
-    { label: 'Preferences', sub: () => [
-      cmdItem('workbench.action.openSettings', 'Settings'), cmdItem('workbench.action.openSettingsJson', 'Settings (JSON)'),
-      cmdItem('workbench.action.selectTheme', 'Color Theme'),
-      ...(standalone ? [cmdItem('workbench.action.toggleLightDarkThemes', 'Toggle Light and Dark')] : []),
-      cmdItem('workbench.action.openGlobalKeybindings', 'Keyboard Shortcuts'), cmdItem('workbench.action.openGlobalKeybindingsFile', 'Keyboard Shortcuts (JSON)'),
-      cmdItem('workbench.view.extensions', 'Extensions'),
-    ] }, '-',
     cmdItem('workbench.action.revertFile', 'Revert File'),
     cmdItem('workbench.action.closeActiveEditor', 'Close Editor'), cmdItem('workbench.action.closeAllEditors', 'Close All Editors'), '-',
     ...(standalone?.app ? [offline() ? cmdItem('sulfur.mesh.connect', standalone.server ? `Connect to ${meshName()}…` : 'Connect to a Phosphorus Mesh…') : cmdItem('sulfur.mesh.offline', 'Work Offline'), '-'] : []),
@@ -754,54 +722,51 @@ const MENUS = [
   ]],
   ['Edit', () => [
     cmdItem('undo', 'Undo'), cmdItem('redo', 'Redo'), '-',
-    cmdItem('actions.find', 'Find'), cmdItem('editor.action.startFindReplaceAction', 'Replace'), '-',
+    cmdItem('actions.find', 'Find'), cmdItem('editor.action.startFindReplaceAction', 'Replace'),
     cmdItem('workbench.action.findInFiles', 'Find in Files'), '-',
-    cmdItem('editor.action.commentLine', 'Toggle Line Comment'),
-  ]],
-  ['Selection', () => [
-    cmdItem('editor.action.selectAll', 'Select All'), cmdItem('expandLineSelection', 'Expand Line Selection'), '-',
-    cmdItem('editor.action.copyLinesUpAction', 'Copy Line Up'), cmdItem('editor.action.copyLinesDownAction', 'Copy Line Down'),
-    cmdItem('editor.action.moveLinesUpAction', 'Move Line Up'), cmdItem('editor.action.moveLinesDownAction', 'Move Line Down'),
+    cmdItem('editor.action.selectAll', 'Select All'), cmdItem('expandLineSelection', 'Expand Line Selection'),
     cmdItem('editor.action.duplicateSelection', 'Duplicate Selection'),
+    { label: 'Line', sub: () => [
+      cmdItem('editor.action.commentLine', 'Toggle Line Comment'), '-',
+      cmdItem('editor.action.copyLinesUpAction', 'Copy Line Up'), cmdItem('editor.action.copyLinesDownAction', 'Copy Line Down'),
+      cmdItem('editor.action.moveLinesUpAction', 'Move Line Up'), cmdItem('editor.action.moveLinesDownAction', 'Move Line Down'),
+    ] },
   ]],
   ['View', () => [
     cmdItem('workbench.action.showCommands', 'Command Palette…'), '-',
-    cmdItem('workbench.view.explorer', 'Explorer'), cmdItem('workbench.view.search', 'Search'), cmdItem('workbench.view.run', 'Run and Build'),
-    cmdItem('workbench.view.extensions', 'Extensions'), cmdItem('workbench.action.chat.open', 'Chat'), '-',
     cmdItem('workbench.actions.view.problems', 'Problems'), cmdItem('workbench.action.output.toggleOutput', 'Output'), cmdItem('workbench.action.terminal.toggleTerminal', 'Terminal'), '-',
+    { label: 'Go', sub: () => [
+      cmdItem('workbench.action.gotoLine', 'Go to Line/Column…'), '-',
+      cmdItem('workbench.action.nextEditor', 'Next Editor'), cmdItem('workbench.action.previousEditor', 'Previous Editor'), '-',
+      cmdItem('editor.action.marker.next', 'Next Problem'), cmdItem('editor.action.marker.prev', 'Previous Problem'),
+    ] },
     { label: 'Appearance', sub: () => [
       cmdItem('workbench.action.toggleSidebarVisibility', 'Primary Side Bar', !I.st.side.hidden),
-      cmdItem('workbench.action.toggleAuxiliaryBar', 'Secondary Side Bar', !I.st.aux.hidden),
+      cmdItem('workbench.action.toggleAuxiliaryBar', 'Chat', !I.st.aux.hidden),
       cmdItem('workbench.action.togglePanel', 'Panel', !I.st.panel.hidden),
       cmdItem('workbench.action.toggleMaximizedPanel', 'Maximized Panel', I.st.panel.max), '-',
       cmdItem('editor.action.fontZoomIn', 'Zoom In'), cmdItem('editor.action.fontZoomOut', 'Zoom Out'), cmdItem('editor.action.fontZoomReset', 'Reset Zoom'),
     ] },
     cmdItem('markdown.showPreview', 'Toggle Markdown Preview'),
   ]],
-  ['Go', () => [
-    cmdItem('workbench.action.quickOpen', 'Go to File…'), cmdItem('workbench.action.gotoLine', 'Go to Line/Column…'), '-',
-    cmdItem('workbench.action.nextEditor', 'Next Editor'), cmdItem('workbench.action.previousEditor', 'Previous Editor'), '-',
-    cmdItem('editor.action.marker.next', 'Next Problem'), cmdItem('editor.action.marker.prev', 'Previous Problem'),
-  ]],
   ['Run', () => [
     cmdItem('sulfur.build', 'Build'), cmdItem('sulfur.task.run', 'Run Task…'), cmdItem('sulfur.build.select', 'Select Toolchain…'),
     cmdItem('sulfur.build.configuration', 'Select Configuration…'), '-',
     cmdItem('sulfur.run.start', 'Start Without Debugging'), cmdItem('sulfur.run.startup', 'Select Startup Item…'), '-',
-    cmdItem('sulfur.run.file', 'Run Active File'), cmdItem('sulfur.run.fileOn', 'Run Active File On…'), '-',
-    cmdItem('sulfur.selectHost', 'Select Host…'), cmdItem('workbench.view.run', 'Run and Build'),
-  ]],
-  ['Terminal', () => [
-    cmdItem('workbench.action.terminal.new', 'New Terminal'), cmdItem('workbench.action.terminal.newOn', 'New Terminal On…'), '-',
-    cmdItem('sulfur.build', 'Run Build Task'), cmdItem('sulfur.task.run', 'Run Task…'),
-    cmdItem('sulfur.run.file', 'Run Active File'), cmdItem('workbench.action.terminal.runSelectedText', 'Run Selected Text'), '-',
-    cmdItem('workbench.action.terminal.clear', 'Clear Terminal'), cmdItem('workbench.action.terminal.rename', 'Rename Terminal…'),
-    cmdItem('workbench.action.terminal.kill', 'Kill Terminal'),
+    cmdItem('sulfur.run.file', 'Run Active File'), cmdItem('sulfur.run.fileOn', 'Run Active File On…'),
+    cmdItem('workbench.action.terminal.runSelectedText', 'Run Selected Text in Terminal'), '-',
+    cmdItem('workbench.action.terminal.new', 'New Terminal'), cmdItem('workbench.action.terminal.newOn', 'New Terminal On…'),
+    { label: 'Terminal', sub: () => [
+      cmdItem('workbench.action.terminal.clear', 'Clear Terminal'), cmdItem('workbench.action.terminal.rename', 'Rename Terminal…'),
+      cmdItem('workbench.action.terminal.kill', 'Kill Terminal'),
+    ] }, '-',
+    cmdItem('sulfur.selectHost', 'Select Host…'),
   ]],
   ['Help', () => [
-    cmdItem('workbench.action.openWalkthrough', 'Welcome'), cmdItem('workbench.action.showCommands', 'Show All Commands'),
-    cmdItem('workbench.action.openGlobalKeybindings', 'Keyboard Shortcuts Reference'), '-',
+    cmdItem('workbench.action.openWalkthrough', 'Welcome'), '-',
     cmdItem('sulfur.extensions.guide', 'Extension Guide'), cmdItem('sulfur.extensions.create', 'Create an Extension…'), '-',
-    cmdItem('workbench.action.showOutput', 'Show Log'), cmdItem('sulfur.about', 'About'),
+    cmdItem('workbench.action.showOutput', 'Show Log'),
+    ...(standalone?.app ? [cmdItem('sulfur.update', 'Check for Updates…')] : []), cmdItem('sulfur.about', 'About'),
   ]],
 ];
 
@@ -883,13 +848,7 @@ function buildExplorer() {
   treeHead.paint();
   I.ex = { open, openList, treeHead, tree, note, edit: null, rows: [] };
   v.focus = () => { tree.focus(); if (!I.sel) selectRow(I.st.root, false); };
-  v.acts = [btn('', 'more', 'More Actions…', (e) => menu(e.currentTarget, [
-    cmdItem('workbench.action.files.openFolder', 'Open Folder…'),
-    cmdItem('workbench.files.action.refreshFilesExplorer', 'Refresh Explorer'),
-    cmdItem('workbench.files.action.collapseExplorerFolders', 'Collapse Folders in Explorer'),
-    '-',
-    { label: 'Show Open Editors', checked: open.open(), run: () => open.node.click() },
-  ]))];
+  v.acts = [];
   tree.addEventListener('click', (e) => {
     const row = e.target.closest('.ide-row');
     if (!row || row.classList.contains('ide-row-edit')) return;
@@ -1731,6 +1690,14 @@ async function closeMany(list) {
   for (const t of list) if (!(await closeTab(t))) return;
 }
 
+// the file invited to someone over the chat, as /share does: a dialog on their end,
+// the same live text once they accept
+function shareTab(t, anchor = t.tabEl || I.tabsEl) {
+  const f = t?.ed?.file;
+  if (!f) return;
+  shareMenu(anchor, f, (said) => setStatusFlash(said));
+}
+
 function tabItems(t) {
   const i = I.tabs.indexOf(t);
   return [
@@ -1742,6 +1709,7 @@ function tabItems(t) {
     '-',
     t.rel && { label: 'Copy Path', run: () => copyPath(t.rel, true) },
     t.rel && { label: 'Copy Relative Path', run: () => copyPath(t.rel, false) },
+    t.ed && !standalone && { label: 'Share With…', run: () => shareTab(t) },
     t.rel && '-',
     t.rel && { label: 'Reveal in Explorer View', run: () => { showSide('explorer', true); revealPath(t.rel); } },
     t.preview && { label: 'Keep Open', run: () => pin(t) },
@@ -1818,9 +1786,6 @@ function paintTabActions() {
   if (t?.ed && runnerFor(t.rel)) acts.push(btn('ide-run-btn', 'run', `Run ${t.title} on ${runHost() || 'a host'} (${keyLabel(keyFor('sulfur.run.file'))})`, () => run('sulfur.run.file')));
   if (t?.ed?.preview) acts.push(btn(t.ed.previewing() ? 'on' : '', 'preview', `${t.ed.previewing() ? 'Show Source' : 'Open Preview'} (${keyLabel(keyFor('markdown.showPreview'))})`, () => run('markdown.showPreview')));
   if (t) acts.push(btn('', 'more', 'More Actions…', (e) => menu(e.currentTarget, [
-    cmdItem('actions.find', 'Find'),
-    cmdItem('workbench.action.gotoLine', 'Go to Line/Column…'),
-    '-',
     cmdItem('workbench.action.closeAllEditors', 'Close All'),
     { label: 'Close Saved', run: () => closeMany(I.tabs.filter((x) => !x.ed?.dirty())) },
     cmdItem('workbench.action.reopenClosedEditor', 'Reopen Closed Editor'),
@@ -2256,6 +2221,7 @@ function registerCommands() {
   C('workbench.files.action.refreshFilesExplorer', 'Refresh Explorer', () => { I.index = null; refreshTree(); }, { category: 'File' });
   C('workbench.files.action.collapseExplorerFolders', 'Collapse Folders in Explorer', () => { I.expanded = new Set([I.st.root]); paintTree(); }, { category: 'File' });
   C('workbench.files.action.showActiveFileInExplorer', 'Reveal Active File in Explorer View', () => { if (I.active?.rel) { showSide('explorer', true); revealPath(I.active.rel); } }, { category: 'File' });
+  C('sulfur.share', 'Share Active File With…', () => shareTab(I.active), { when: () => !standalone && !!I.active?.ed, category: 'File' });
   C('copyFilePath', 'Copy Path of Active File', () => I.active?.rel && copyPath(I.active.rel, true), { key: 'shift+alt+c', category: 'File' });
   C('copyRelativeFilePath', 'Copy Relative Path of Active File', () => I.active?.rel && copyPath(I.active.rel, false), { key: 'ctrl+k ctrl+shift+alt+c', category: 'File' });
   C('sulfur.closeWindow', 'Close Window', () => I.w.node.querySelector('.dk-close')?.click(), { category: 'View' });
@@ -2372,6 +2338,7 @@ function registerCommands() {
   C('workbench.action.openGlobalKeybindings', 'Open Keyboard Shortcuts', () => openKeysPage(), { key: 'ctrl+k ctrl+s', category: 'Preferences' });
   C('workbench.action.openGlobalKeybindingsFile', 'Open Keyboard Shortcuts (JSON)', () => openUserFile(KEYS_PATH(), '// your keys, each {"key": "ctrl+alt+r", "command": "ide.run.file"}; a "-command" removes a default\n[\n]\n'), { category: 'Preferences' });
   C('workbench.action.openWalkthrough', 'Welcome', () => openWelcome(), { category: 'Help' });
+  C('sulfur.update', 'Check for Updates…', () => checkUpdate(true), { when: () => !!standalone?.app, category: 'Sulfur' });
   C('sulfur.about', 'About', () => ask({ title: 'Sulfur', detail: offline()
     ? `Sulfur ${standalone.info?.version || ''}, offline on ${selfHost}.\nUser: ${acct.user}\nHome: ${hostPath(selfHost, 'home', acct.user)}`
     : `A VS Code-shaped workbench over your phosphorus home.\nUser: ${acct.user}\nServed by: ${selfHost}\nHosts online: ${homeOnline().join(', ')}\nTerminals on: ${dkLiveHosts().join(', ') || 'none logged into'}`, buttons: [{ label: 'OK', primary: true, value: 'ok' }] }), { category: 'Help' });
@@ -2942,6 +2909,32 @@ function ask(o) {
   });
 }
 
+// --- the desktop app's own updates, off the signed feed on GitHub ---------------------------
+
+async function checkUpdate(ask) {
+  let r;
+  try { r = await (await fetch('/api/sidecar/update', { cache: 'no-store' })).json(); } catch (err) { if (ask) notify('error', `Couldn’t check for updates: ${err.message}`); return; }
+  if (!I) return;
+  if (!r.latest) {
+    if (ask) notify(r.error ? 'error' : 'info', r.error ? `Couldn’t check for updates: ${r.error}` : r.on ? `Sulfur ${r.version} is the latest.` : 'This build of Sulfur has no update feed.');
+    return;
+  }
+  notify('info', `Sulfur ${r.latest} is available; you have ${r.version}.`, { sticky: true, actions: [{ label: 'Update and Restart', run: applyUpdate }, { label: 'Later' }] });
+}
+
+async function applyUpdate() {
+  if (I.tabs.some((t) => t.ed?.dirty())) { notify('warning', 'Save or close your changed files first; the update restarts Sulfur.'); return; }
+  const h = notify('info', 'Downloading the update…', { progress: true });
+  let r;
+  let b = {};
+  try { r = await fetch('/api/sidecar/update', jsonPost({})); b = await r.json().catch(() => ({})); } catch (err) { b = { error: err.message }; }
+  h.close();
+  if (!I) return;
+  if (!r?.ok) { notify('error', `The update failed: ${b.error || `status ${r?.status}`}`); return; }
+  notify('info', `Sulfur ${b.version} is installing; it opens again in a moment.`);
+  setTimeout(() => standalone.quit?.(), 800);
+}
+
 // a toast in the corner, kept in the bell's list; o: actions [{label, run}], sticky, progress
 function notify(kind, text, o = {}) {
   const n = { id: (I ? (I.seq += 1) : 0), kind, text, at: Date.now(), source: o.source || '' };
@@ -3057,7 +3050,9 @@ function buildPanel() {
     ...dkLiveHosts().sort().map((h) => ({ label: h, ic: 'host', checked: h === runHost() ? true : undefined, run: () => newTerminal({ host: h }) })),
     '-', { label: 'Select Default Host…', run: () => run('sulfur.selectHost') },
   ]));
-  tv.acts = [plus, pickOn, btn('', 'trash', 'Kill Terminal', () => run('workbench.action.terminal.kill'))];
+  // one terminal killed from the title; with more, each from its own row
+  tv.kill = btn('', 'trash', 'Kill Terminal', () => run('workbench.action.terminal.kill'));
+  tv.acts = [plus, pickOn, tv.kill];
   I.panelMax = btn('', 'maximize', 'Maximize Panel Size', () => run('workbench.action.toggleMaximizedPanel'));
   I.panelClose = btn('', 'close', 'Hide Panel', () => showPanel(I.st.panel.view, false));
   I.output.set(I.outCh, { lines: [] });
@@ -3145,13 +3140,13 @@ ${rel}:${x.line}:${x.col}`;
 
 // --- output: the workbench's own log, and a channel per extension that asks -------------
 
-function log(text, ch = 'Phosphorus IDE') {
+function log(text, ch = 'Sulfur') {
   if (!I) return;
   let c = I.output.get(ch);
   if (!c) { c = { lines: [] }; I.output.set(ch, c); paintOutputChannels(); }
   const d = new Date();
   const ts = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}.${String(d.getMilliseconds()).padStart(3, '0')}`;
-  for (const line of String(text).split('\n')) c.lines.push(ch === 'Phosphorus IDE' ? `${ts} ${line}` : line);
+  for (const line of String(text).split('\n')) c.lines.push(ch === 'Sulfur' ? `${ts} ${line}` : line);
   if (c.lines.length > OUTPUT_MAX) c.lines.splice(0, c.lines.length - OUTPUT_MAX);
   if (I.outCh === ch) paintOutputSoon();
 }
@@ -3261,6 +3256,7 @@ function selectTerm(t, focus = true) {
 function paintTerms() {
   const tv = I.panelViews.get('terminal');
   const many = I.terms.length > 1;
+  tv.kill.hidden = many;
   tv.wrap.classList.toggle('many', many);
   tv.wrap.hidden = !I.terms.length;
   tv.empty.hidden = !!I.terms.length;
@@ -3481,7 +3477,7 @@ function paintStatusNow() {
   const bc = buildCfg();
   S.build.hidden = !bc?.toolchain;
   if (bc?.toolchain) {
-    S.build.replaceChildren(icon('gear'), el('span', '', `${bc.toolchain.label.split(' · ').pop()} · ${bc.configuration || 'Debug'} · ${bc.host}`));
+    S.build.replaceChildren(icon('tools'), el('span', '', `${bc.toolchain.label.split(' · ').pop()} · ${bc.configuration || 'Debug'} · ${bc.host}`));
     S.build.title = `Ctrl+B builds ${baseName(I.st.root)} with ${bc.toolchain.label} on ${bc.host}. Click to pick another toolchain.`;
   }
   const t = I.active;
@@ -3547,7 +3543,6 @@ async function refreshRoles() {
   if (I) paintChat();
 }
 
-// every agent on offer: the mesh's roles, then the extensions'
 // the extensions' agents, beside the harnesses
 function agentList() {
   return [...I.providers.values()].map((p) => ({ id: p.key, label: p.label, sub: p.ext, up: true, kind: 'ext', p }));
@@ -3570,7 +3565,6 @@ function keepChat(id) {
   try { localStorage.setItem(`${STATE_KEY()}:chat:${id}`, JSON.stringify(c.turns.slice(-CHAT_KEEP))); } catch {}
 }
 
-// the agent picked, as one shape for both kinds
 // the chat's agent as one shape for every harness: the mesh model, an agent session, an extension's
 function currentAgent() {
   if (!I) return null;
@@ -3588,7 +3582,7 @@ function currentAgent() {
       };
     }
   }
-  if (h === 'claude' || h === 'opencode') {
+  if (isAgent(h)) {
     const S = agentNow();
     return {
       id: S.key, kind: 'agent', harness: h, label: harnessName(h), sub: chatModel(), S,
@@ -3623,7 +3617,7 @@ function buildAux() {
   const head = el('div', 'ide-aux-head');
   const title = el('span', 'ide-side-title', 'CHAT');
   const acts = el('span', 'ide-actions');
-  acts.append(btn('', 'plus', 'New Chat', () => run('workbench.action.chat.newChat')), btn('', 'close', 'Hide Secondary Side Bar', () => showAux(false)));
+  acts.append(btn('', 'plus', 'New Chat', () => run('workbench.action.chat.newChat')));
   head.append(title, acts);
   // the harness, the model, and for an agent how freely it works
   const bar = el('div', 'ide-chat-bar');
@@ -3642,9 +3636,15 @@ function buildAux() {
   const box = el('div', 'ide-chat-box');
   const ta = Object.assign(el('textarea', 'ide-chat-input'), { rows: 1, spellcheck: true });
   ta.setAttribute('aria-label', 'Chat input');
-  const send = btn('ide-chat-send', 'send', 'Send (Enter)', () => sendChat());
-  const stop = btn('ide-chat-stop', 'stop', 'Stop (Escape)', () => currentAgent()?.stop());
-  box.append(ta, send, stop);
+  const go = (cls, d, title, fn) => {
+    const b = Object.assign(el('button', `chat-go ${cls}`), { type: 'button', title, ariaLabel: title });
+    b.append(dkGlyph(d));
+    b.addEventListener('click', fn);
+    return b;
+  };
+  const send = go('ide-chat-send', 'M8 12.5V3.5M4 7.5L8 3.5l4 4', 'Send (Enter)', () => sendChat());
+  const stop = go('ide-chat-stop', 'M5 5h6v6H5z', 'Stop (Escape)', () => currentAgent()?.stop());
+  box.append(el('span', 'chat-prompt', '>'), ta, send, stop);
   foot.append(ctx, box);
   I.aux.append(head, bar, banner, log, foot);
   I.chat = { harness, model, perm, banner, log, ta, send, stop, ctx, sig: '' };
@@ -3660,7 +3660,8 @@ function buildAux() {
     else if (e.key === 'Escape' && currentAgent()?.busy()) { e.preventDefault(); e.stopPropagation(); currentAgent().stop(); }
   });
   I.chat.grow = grow;
-  if (['claude', 'opencode'].includes(chatHarness()) || provOf(chatModel()) === 'anthropic') loadCodeOpts();
+  // the code service's harnesses, the picker's only agents
+  if (!offline() || meshLinked()) loadCodeOpts();
 }
 
 function showAux(on, focus = false) {
@@ -3681,14 +3682,13 @@ function paintChatButtons() {
 }
 
 // redrawn only when the conversation's moved
-// redrawn only when the conversation's moved
 function paintChat(force = false) {
   if (!I?.chat) return;
   const a = currentAgent();
   const c = I.chat;
   const h = chatHarness();
-  const hx = HARNESSES.find((x) => x.id === h);
-  c.harness.replaceChildren(icon(h === 'ext' ? 'ext' : hx?.ic || 'chat'), el('span', '', h === 'ext' ? a?.label || 'Extension' : hx.label), icon('down'));
+  const hx = harnessList().find((x) => x.id === h) || CHAT;
+  c.harness.replaceChildren(icon(h === 'ext' ? 'ext' : hx.ic), el('span', '', h === 'ext' ? a?.label || 'Extension' : hx.label), icon('down'));
   c.model.hidden = h === 'ext';
   c.model.replaceChildren(icon('spark'), el('span', '', chatModel()), icon('down'));
   const agent = a?.kind === 'agent';
@@ -3699,13 +3699,24 @@ function paintChat(force = false) {
   paintChatCtx();
   paintChatButtons();
   paintStatus();
-  // the banner: why an ask may not land
+  // the banner: why an ask may not land, and for a harness missing on its host an optional install
   let why = '';
-  if (offline() && !meshLinked() && a?.kind !== 'ext') why = standalone.server ? `The chat's models and agents come from ${meshName()}: log in to it (Accounts, at the bottom left) and they work on this computer's projects too.` : 'The chat\u2019s models and agents come from a Phosphorus mesh: connect to one (Accounts, at the bottom left) and they work on this computer\u2019s projects too.';
+  let fix = null;
+  if (offline() && !meshLinked() && a?.kind !== 'ext') why = standalone.server ? `The chat's models and agents come from ${meshName()}: log in to it (the remote item, bottom left of the status bar) and they work on this computer's projects too.` : 'The chat\u2019s models and agents come from a Phosphorus mesh: connect to one (the remote item, bottom left of the status bar) and they work on this computer\u2019s projects too.';
   else if (!a) why = 'No model is set up on the mesh. The status app’s model card picks one.';
   else if (a.kind === 'mesh' && !a.up) why = `${a.label} has no model answering right now. The status app’s model card shows why.`;
-  else if (agent && !a.S.id) why = agentWhere(h).why || '';
-  c.banner.textContent = why;
+  else if (agent && !a.S.id) {
+    const where = agentWhere(h);
+    why = where.why || '';
+    const st = where.host && harnessOn(where.host, h);
+    if (!why && st && st.why) why = st.why;
+    else if (!why && st && st.installed === false) {
+      why = `${hx.label} isn’t installed on ${where.host}. Installing it is optional; until then pick another harness.`;
+      fix = harnessInstallBtn(where.host, h);
+    }
+  }
+  c.banner.replaceChildren(why);
+  if (fix) c.banner.append(' ', fix);
   c.banner.hidden = !why;
   if (I.st.aux.hidden && !force) return;
   const nearEnd = c.log.scrollTop + c.log.clientHeight >= c.log.scrollHeight - 40;
@@ -3763,12 +3774,18 @@ function chatWelcome(a) {
   return w;
 }
 
+// a line's head as the chat app draws one: who, the model for an agent, when
+function msgHead(role, who, at, model = '') {
+  const head = el('div', 'ide-msg-head');
+  head.append(el('span', `ide-msg-name${role === 'user' ? '' : ' agent'}`, role === 'user' ? 'you' : who));
+  if (model) head.append(el('span', 'ide-msg-model', model));
+  if (at) head.append(el('span', 'ide-msg-ts', new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })));
+  return head;
+}
+
 function chatTurn(a, t) {
   const row = el('div', `ide-msg ${t.role}`);
-  const head = el('div', 'ide-msg-head');
-  if (t.role === 'user') head.append(el('span', 'ide-msg-av', (name || acct.user || '?')[0].toUpperCase()), el('span', 'ide-msg-name', name || acct.user));
-  else if (t.role === 'assistant') head.append(icon('spark', 'ide-msg-av agent'), el('span', 'ide-msg-name agent', t.by || a.label));
-  if (t.role !== 'notice') row.append(head);
+  if (t.role !== 'notice') row.append(msgHead(t.role, t.by || a.label, t.at));
   const body = el('div', 'ide-msg-body');
   if (t.role === 'user') body.textContent = t.text;
   else if (t.role === 'notice') body.textContent = t.text;
@@ -4018,11 +4035,11 @@ function providerAsk(p, c, text) {
 
 // --- the chat's harness and model: the mesh's models asked straight, or an agent at work in the project
 
-const HARNESSES = [
-  { id: 'chat', label: 'Chat', ic: 'chat', about: 'the mesh’s models, asked straight; their edits typed into the editor' },
-  { id: 'claude', label: 'Claude Code', ic: 'spark', about: 'an agent in the project: it reads, runs and edits' },
-  { id: 'opencode', label: 'opencode', ic: 'terminal', about: 'an open agent in the project, on the mesh’s models' },
-];
+// Chat the mesh's models asked here; every other harness the code service's own
+const CHAT = { id: 'chat', label: 'Chat', ic: 'chat', about: 'the mesh’s models, asked straight; their edits typed into the editor' };
+const harnessList = () => [CHAT, ...(I.codeOpts?.harnesses || []).map((h) => ({ id: h.id, label: h.label, ic: h.icon || 'spark', about: h.about, meshOnly: !!h.meshOnly }))];
+const isAgent = (h) => h !== 'chat' && h !== 'ext' && (I.codeOpts?.harnesses || []).some((x) => x.id === h);
+const meshOnly = (h) => h === 'chat' || !!(I.codeOpts?.harnesses || []).find((x) => x.id === h)?.meshOnly;
 const ANTH = ['opus', 'sonnet', 'haiku'];
 const provOf = (m) => (ANTH.includes(m) ? 'anthropic' : 'mesh');
 const AGENT_PERMS = [
@@ -4033,9 +4050,9 @@ const AGENT_PERMS = [
 ];
 // what Sulfur tells an agent with each prompt, left out of the transcript
 const CTX_RE = /^<sulfur>[\s\S]*?<\/sulfur>\n*/;
-const chatHarness = () => (['chat', 'claude', 'opencode', 'ext'].includes(I.st.aux.harness) ? I.st.aux.harness : 'chat');
+const chatHarness = () => (I.st.aux.harness === 'ext' || isAgent(I.st.aux.harness) ? I.st.aux.harness : 'chat');
 const chatModel = () => I.st.aux.model || 'chimp';
-const harnessName = (h) => HARNESSES.find((x) => x.id === h)?.label || h;
+const harnessName = (h) => harnessList().find((x) => x.id === h)?.label || h;
 
 async function codeCall(url, method = 'GET', body) {
   const init = { method, cache: 'no-store' };
@@ -4050,14 +4067,54 @@ const sapi = (id, op = '') => `/api/code/sessions/${encodeURIComponent(id)}${op 
 // the Code app's options: the logins it can work under, the Claude models if a token's saved
 async function loadCodeOpts(fresh = false) {
   if (I.codeOpts && !fresh) return I.codeOpts;
-  try { I.codeOpts = await codeCall('/api/code/options'); } catch (err) { I.codeOpts = { hosts: [], models: [], anthropic: false, error: err.message }; }
-  if (I) paintChat();
+  try { I.codeOpts = await codeCall('/api/code/options'); } catch (err) { I.codeOpts = { hosts: [], models: [], harnesses: [], anthropic: false, error: err.message }; }
+  if (I) { paintChat(); harnessCheck(); }
   return I.codeOpts;
+}
+
+// each host's harnesses as the code service finds them, looked for once a host
+function harnessOn(host, h) {
+  const x = I.hosted?.get(host);
+  if (!x) return null;
+  return x.why ? { why: x.why } : x.byId[h] || null;
+}
+async function harnessCheck(fresh = false, host = isAgent(chatHarness()) ? agentWhere(chatHarness()).host : '') {
+  if (!host) return;
+  I.hosted ||= new Map();
+  if (I.hosted.has(host) && !fresh) return;
+  I.hosted.set(host, { why: '', byId: {} });
+  let r;
+  try { r = await codeCall(`/api/code/harnesses?host=${encodeURIComponent(host)}${fresh ? '&fresh=1' : ''}`); } catch { I?.hosted?.delete(host); return; }
+  if (!I) return;
+  I.hosted.set(host, { why: r.why || '', byId: Object.fromEntries((r.harnesses || []).map((x) => [x.id, x])) });
+  paintChat(true);
+}
+
+// the harness's own installer run on host, the chat told once it's there
+function harnessInstallBtn(host, h) {
+  const b = Object.assign(el('button', 'ide-link'), { type: 'button', textContent: `Install on ${host}` });
+  b.addEventListener('click', async () => {
+    b.disabled = true;
+    b.textContent = 'Installing…';
+    let r;
+    try { r = await codeCall('/api/code/install', 'POST', { host, harness: h }); } catch (err) { r = { ok: false, out: err.message }; }
+    if (!I) return;
+    if (!r.ok) { b.disabled = false; b.textContent = 'Try Again'; setStatusFlash(`Installing ${harnessName(h)} on ${host} failed: ${String(r.out || '').trim().split('\n').pop()}`); return; }
+    setStatusFlash(`${harnessName(h)} is installed on ${host}`);
+    harnessCheck(true, host);
+  });
+  return b;
 }
 
 function pickHarness(anchor) {
   const cur = chatHarness();
-  const items = HARNESSES.map((h) => ({ label: h.label, detail: h.about, ic: h.ic, checked: cur === h.id ? true : undefined, run: () => setHarness(h.id) }));
+  const items = harnessList().map((h) => {
+    const host = h.id !== 'chat' && I.codeOpts ? agentWhere(h.id).host : '';
+    const st = host ? harnessOn(host, h.id) : null;
+    const detail = st && st.installed === false ? `not installed on ${host}` : h.about;
+    return { label: h.label, detail, ic: h.ic, checked: cur === h.id ? true : undefined, run: () => setHarness(h.id) };
+  });
+  if (I.codeOpts?.error && (!offline() || meshLinked())) items.push({ label: 'No agents', detail: `the code service didn’t answer: ${I.codeOpts.error}`, ic: 'lock', disabled: true });
   const ext = [...I.providers.values()];
   if (ext.length) items.push('-', ...ext.map((p) => ({ label: p.label, detail: p.ext, ic: 'ext', checked: cur === 'ext' && I.st.aux.agent === p.key ? true : undefined, run: () => setHarness('ext', p.key) })));
   menu(anchor, items);
@@ -4066,13 +4123,13 @@ function pickHarness(anchor) {
 function setHarness(h, ext = '') {
   I.st.aux.harness = h;
   I.st.aux.agent = h === 'ext' ? ext : '';
-  if ((h === 'chat' || h === 'opencode') && provOf(chatModel()) === 'anthropic') {
+  if (meshOnly(h) && provOf(chatModel()) === 'anthropic') {
     I.st.aux.model = 'chimp';
     setStatusFlash(`Claude models run in Claude Code: ${harnessName(h)} is on chimp`);
   }
   saveState();
-  if (h === 'claude' || h === 'opencode') loadCodeOpts();
   paintChat(true);
+  harnessCheck();
 }
 
 function pickModel(anchor) {
@@ -4089,9 +4146,11 @@ function pickModel(anchor) {
 
 function setModel(m) {
   I.st.aux.model = m;
-  if (provOf(m) === 'anthropic' && chatHarness() !== 'claude') {
-    I.st.aux.harness = 'claude';
-    setStatusFlash('Claude models run in Claude Code: the harness is Claude Code');
+  const any = harnessList().find((h) => !h.meshOnly);
+  if (provOf(m) === 'anthropic' && meshOnly(chatHarness()) && any) {
+    I.st.aux.harness = any.id;
+    setStatusFlash(`Claude models run in ${any.label}: the harness is ${any.label}`);
+    harnessCheck();
   }
   saveState();
   // the same agent's session takes the new model; a switch between providers starts another
@@ -4124,7 +4183,7 @@ const agentLive = (S) => !!S && (S.pending || S.rec?.status === 'working' || S.r
 // the session of the harness picked, for this project
 function agentNow() {
   const h = chatHarness();
-  if (h !== 'claude' && h !== 'opencode') return null;
+  if (!isAgent(h)) return null;
   const key = agentKey();
   I.agents ||= new Map();
   let S = I.agents.get(key);
@@ -4199,8 +4258,7 @@ function agentNote(S, text, kind = '') {
 function agentBody(S) {
   if (S.cur?.isConnected) return S.cur;
   const row = el('div', 'ide-msg assistant');
-  const head = el('div', 'ide-msg-head');
-  head.append(icon('spark', 'ide-msg-av agent'), el('span', 'ide-msg-name agent', harnessName(S.harness)), el('span', 'ide-msg-model', S.rec?.model || chatModel()));
+  const head = msgHead('assistant', harnessName(S.harness), Date.now(), S.rec?.model || chatModel());
   const body = el('div', 'ide-msg-body ide-agent-body');
   row.append(head, body);
   S.node.append(row);
@@ -4216,9 +4274,7 @@ function agentTake(S, m) {
       S.cur = null;
       S.liveText = null;
       const row = el('div', 'ide-msg user');
-      const head = el('div', 'ide-msg-head');
-      head.append(el('span', 'ide-msg-av', (name || acct.user || '?')[0].toUpperCase()), el('span', 'ide-msg-name', name || acct.user));
-      row.append(head, el('div', 'ide-msg-body', String(m.text || '').replace(CTX_RE, '')));
+      row.append(msgHead('user', '', m.at), el('div', 'ide-msg-body', String(m.text || '').replace(CTX_RE, '')));
       S.node.append(row);
       break;
     }
@@ -4526,7 +4582,7 @@ function agentWhere(h) {
   const n = harnessName(h);
   // offline: the mesh's Code service, on one of its machines, the project copied there
   if (offline()) {
-    if (!meshLinked()) return { why: `${n} runs on your mesh's machines: log into your mesh (the account menu, bottom left) to use it on this computer's files.` };
+    if (!meshLinked()) return { why: `${n} runs on your mesh's machines: log into your mesh (the remote item, bottom left of the status bar) to use it on this computer's files.` };
     if (o && !o.error && !(o.hosts || []).length) return { why: `Save a login for one of ${meshName()}'s Linux or macOS machines in Phosphorus (open a terminal on it there) for ${n} to work on it.` };
     return { mesh: true };
   }
@@ -4706,30 +4762,12 @@ async function meshSyncDown(S) {
   }
 }
 
-// the harness on that machine, or a card offering to install it
-async function agentInstalled(S, where, retry) {
-  I.installed ||= new Map();
-  const k = `${where.host}:${S.harness}`;
-  if (I.installed.get(k)) return true;
-  let r = null;
-  try { r = await codeCall(`/api/code/install?host=${encodeURIComponent(where.host)}&harness=${encodeURIComponent(S.harness)}`); } catch (err) { agentNote(S, `Couldn't look for ${harnessName(S.harness)} on ${where.host}: ${err.message}`, 'bad'); return false; }
-  if (!I) return false;
-  if (r.installed) { I.installed.set(k, true); return true; }
-  const card = el('div', 'ide-agent-note install');
-  card.append(el('span', '', `${harnessName(S.harness)} isn't installed on ${where.host} yet.`));
-  const b = Object.assign(el('button', 'ide-button'), { type: 'button' });
-  b.append(el('span', '', `Install on ${where.host}`));
-  b.addEventListener('click', async () => {
-    b.disabled = true;
-    b.textContent = 'Installing…';
-    try { await codeCall('/api/code/install', 'POST', { host: where.host, harness: S.harness }); } catch (err) { b.disabled = false; b.textContent = 'Try Again'; agentNote(S, err.message, 'bad'); return; }
-    if (!I) return;
-    I.installed.set(k, true);
-    card.replaceChildren(el('span', '', `${harnessName(S.harness)} is installed on ${where.host}.`));
-    retry?.();
-  });
-  card.append(b);
-  S.node.append(card);
+// the harness on that machine before a session starts there; the banner offers its install when not
+async function agentInstalled(S, where) {
+  await harnessCheck(false, where.host);
+  const st = harnessOn(where.host, S.harness);
+  if (!st || st.installed) return true;
+  agentNote(S, st.why || `${harnessName(S.harness)} isn’t installed on ${where.host}: install it from the banner above, or pick another harness.`, 'bad');
   return false;
 }
 
@@ -4760,7 +4798,7 @@ async function agentSend(S, text) {
     if (S.id) {
       try { await codeCall(sapi(S.id, 'send'), 'POST', { text: prompt }); paintChat(true); return true; } catch (err) { if (err.status !== 404) throw err; agentForget(S); }
     }
-    if (!(await agentInstalled(S, where, () => agentSend(S, text)))) { S.pending = false; paintChat(true); return true; }
+    if (!(await agentInstalled(S, where))) { S.pending = false; paintChat(true); return true; }
     const rec = await codeCall('/api/code/sessions', 'POST', { host: where.host, dir: where.dir, model: chatModel(), perm: I.st.aux.perm || 'acceptEdits', harness: S.harness, prompt });
     if (!I) return true;
     Object.assign(S, { id: rec.id, rec, where: { ...where, host: rec.host, dir: rec.dir } });
@@ -4962,7 +5000,6 @@ const top = (p) => `:(top)${p}`;
 function buildScm() {
   const v = I.sideViews.get('scm');
   v.acts = [
-    btn('', 'check', 'Commit (Ctrl+Enter)', () => scmCommit()),
     btn('', 'refresh', 'Refresh', () => scmRefresh(true)),
     btn('', 'more', 'More Actions…', (e) => menu(e.currentTarget, scmMenu(), { side: 'left' })),
   ];
@@ -5465,7 +5502,6 @@ function buildSearch() {
   }
   v.focus = () => { q.focus(); q.select(); };
   v.acts = [
-    btn('', 'refresh', 'Refresh', () => runSearch()),
     btn('', 'trash', 'Clear Search Results', () => { q.value = ''; S.results = []; paint(); q.focus(); }),
     btn('', 'collapse', 'Collapse All', () => { S.open = new Set(); paint(); }),
   ];
@@ -5574,7 +5610,7 @@ function findInFiles() {
 function buildRunView() {
   const v = I.sideViews.get('run');
   v.onShow = () => paintRunView();
-  v.acts = [btn('', 'refresh', 'Look at the machines again', () => run('sulfur.toolchains.refresh'))];
+  v.acts = [];
   v.focus = () => v.body.querySelector('button')?.focus();
 }
 
@@ -5994,15 +6030,15 @@ async function addFolderDialog() {
 // --- color themes ---------------------------------------------------------------------------
 
 async function pickTheme() {
-  const cur = setting('workbench.colorTheme');
+  const cur = paletteNow();
   const look = setting('window.appearance');
   // on its own, light and dark Sulfur's to pick; in the desktop, the desktop's
   const appearance = standalone ? [['system', 'Follow the System', 'light or dark as the system is'], ['light', 'Light', ''], ['dark', 'Dark', '']]
     .map(([id, label, description], i) => ({ label, description, detail: id === look ? 'current' : '', value: `look:${id}`, sep: i === 0 ? 'Appearance' : '' })) : [];
-  const items = [...appearance, ...THEMES.map((t, i) => ({ label: t.label, description: t.description, detail: t.id === cur ? 'current' : '', value: t.id, sep: i === 0 || THEMES[i - 1].group !== t.group ? t.group : '' }))];
+  const items = [...appearance, ...PALETTES.map((t, i) => ({ label: t.label, description: t.about, detail: t.id === cur ? 'current' : '', value: t.id, sep: i === 0 ? 'Color Theme, phosphorus wide' : '' }))];
   const v = await pick(items, { title: 'Color Theme', placeholder: standalone ? 'Select Color Theme, or Light or Dark' : 'Select Color Theme (light or dark follows the desktop)' });
   if (!v || !I) return;
-  if (v.startsWith('look:')) setSetting('window.appearance', v.slice(5)); else setSetting('workbench.colorTheme', v);
+  if (v.startsWith('look:')) setSetting('window.appearance', v.slice(5)); else setPalette(v);
 }
 
 const sectionTitle = (t) => el('div', 'ide-sec-head static', t.toUpperCase());
@@ -6082,8 +6118,9 @@ function applySettings() {
   const r = I.root;
   applyAppearance();
   r.style.setProperty('--ide-code-font', `${setting('editor.fontSize')}px`);
-  const theme = THEMES.some((t) => t.id === setting('workbench.colorTheme')) ? setting('workbench.colorTheme') : 'vscode';
-  for (const t of THEMES) I.w.node.classList.toggle(`ide-theme-${t.id}`, t.id === theme && t.id !== 'vscode');
+  // vs code Sulfur's own look; the others the desktop's tokens, medieval its own type too
+  const theme = paletteNow();
+  for (const t of PALETTES) I.w.node.classList.toggle(`ide-theme-${t.id}`, t.id === theme && t.id !== 'vscode');
   if (I.themeNow !== theme) { I.themeNow = theme; requestAnimationFrame(() => termsRetheme()); }
   I.exclude = null;
   paintTreeSoon();
@@ -6334,7 +6371,7 @@ function paintWelcome(w) {
     side.append(card);
   }
   side.append(el('h2', '', 'Learn'));
-  for (const [label, cmd, ic] of [['Extension Guide', 'sulfur.extensions.guide', 'book'], ['Keyboard Shortcuts', 'workbench.action.openGlobalKeybindings', 'keyboard'], ['Settings', 'workbench.action.openSettings', 'gear']]) side.append(link(label, cmd, ic));
+  for (const [label, cmd, ic] of [['Extension Guide', 'sulfur.extensions.guide', 'book'], ['Create an Extension', 'sulfur.extensions.create', 'ext']]) side.append(link(label, cmd, ic));
   cols.append(start, recent, side);
   w.replaceChildren(hero, cols);
 }
@@ -6350,8 +6387,6 @@ function meshItems(withHost = false) {
       { label: `${acct.user} on ${name}`, disabled: true },
       '-',
       ...(withHost ? [cmdItem('sulfur.selectHost', 'Select the Host for Terminals and Runs…')] : []),
-      { label: 'Hosts and Logins', run: () => showSide('run', true, true) },
-      '-',
       cmdItem('sulfur.mesh.offline', `Work Offline, on ${selfHost}`),
       cmdItem('sulfur.mesh.signOut', `Sign Out of ${name}`),
     ];
@@ -6431,7 +6466,7 @@ async function meshSignOut() {
   I.roles = [];
   paintChat(true);
   paintWelcomeSoon();
-  notify('info', `Signed out of ${name}. It's remembered: log in again from Accounts.`);
+  notify('info', `Signed out of ${name}. It's remembered: log in again from the remote item in the status bar.`);
 }
 
 function openGuide() {
@@ -6641,7 +6676,6 @@ function buildExtView() {
   v.acts = [
     btn('', 'plus', 'Create New Extension…', () => run('sulfur.extensions.create')),
     btn('', 'refresh', 'Reload Extensions', () => run('workbench.extensions.action.refreshExtension')),
-    btn('', 'book', 'Extension Guide', () => run('sulfur.extensions.guide')),
   ];
   I.extView = { q, head, list, note };
 }

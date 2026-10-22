@@ -22,12 +22,14 @@
 ## Features
 
 - **Terminals** on every host in browser windows, with `ssh <host>` to any peer
-- **Files** across all hosts as one home, with a shared live editor and chosen files mirrored to every host
+- **Files** across all hosts as one home, chosen files mirrored to every host
+- **Sulfur**, the code editor for every file, edited live together, in the browser or its own self-updating desktop app, building on each machine's own compilers
+- **Code sessions** on any host under your own login, run by an agent harness (Claude Code or opencode), each an optional install per host
 - **Services and game servers**, proxied by path or subdomain and started from the desktop
 - **Chat**, live **status** and notifications, shared by the mesh
 - **Git** on Forgejo, replicated to every host with an elected master
 - **A local AI model**, hosted on one machine for all of them
-- **An MCP server** at `/api/mcp`: Claude or any MCP client reads the mesh and acts on it with your rights, running scripts on each host with your saved login and working on Forgejo with your saved git login; the agent button copies its url for any agent's MCP connector (web, desktop, phone), or downloads the Phosphorus skill, no key inside, to upload in claude.ai (Settings, Capabilities, Skills) so every Claude chat knows how to drive the mesh through that connector; with **show agent on screen** checked, every call it makes opens and lights the window it works in: editors for its files, the files window where it browses, a console per host for its commands and logs, the status, chat and git views
+- **An MCP server** at `/api/mcp`, so Claude or any MCP client works the mesh with your rights
 - **Accounts** with admin roles and a per-user vault of host and page logins
 
 ## Quick start
@@ -60,13 +62,14 @@ Change keys later with **Edit Keys** in the menu bar or tray icon (a form in you
 | | |
 |---|---|
 | Menu bar / tray icon (macOS, Windows) | Open Phosphorus, Start, Stop, Check for Updates, Edit Keys, Uninstall, Quit; updates itself from the signed feed |
+| Sulfur app | Help, Check for Updates: the signed feed's newer Sulfur installed and the app reopened (an AppImage, `.exe` or `.app`; a `.deb` updates with apt) |
 | `phos` | Terminal UI |
 | `phos start` / `stop` / `status` | Control this host |
 | `phos vpn on` / `off` | Tailscale up, or Phosphorus and Tailscale down |
 | `phos update` / `update all` | Update this host, or every host in the mesh at once |
 | `phos uninstall` | Remove Phosphorus and its data |
 
-A model host downloads llama.cpp and the model, often several GB. You pick the model, so its license is yours to follow.
+A model host downloads llama.cpp and the model, often several GB. You pick the model, so its license is yours to follow. A harness (Claude Code, opencode) is installed on a host only when you ask for it from Code or Sulfur, by its own official installer.
 
 ## Architecture
 

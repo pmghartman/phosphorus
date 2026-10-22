@@ -11,7 +11,7 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
-	"github.com/pmghartman/phosphorus/internal/claude"
+	"github.com/pmghartman/phosphorus/internal/code"
 )
 
 // gitVerbs the git commands Sulfur's Source Control runs, and no others
@@ -105,11 +105,11 @@ func GitLocal(dir string, args []string, creds *GitCreds) (GitResult, error) {
 
 // GitRemote git in dir on host, as c's login there; creds handed to git for
 // its one https host, read from stdin so they're in no command line
-func GitRemote(host string, c claude.Creds, dir string, args []string, windows bool, creds *GitCreds) (GitResult, error) {
+func GitRemote(host string, c code.Creds, dir string, args []string, windows bool, creds *GitCreds) (GitResult, error) {
 	if err := GitCheck(args); err != nil {
 		return GitResult{}, err
 	}
-	cl, err := claude.Dial(host, c)
+	cl, err := code.Dial(host, c)
 	if err != nil {
 		return GitResult{}, err
 	}
@@ -131,17 +131,17 @@ func GitRemote(host string, c claude.Creds, dir string, args []string, windows b
 		}
 		line = `cmd /d /s /c "set GIT_TERMINAL_PROMPT=0&& ` + strings.Join(parts, " ") + `"`
 	} else {
-		parts := []string{"git", "-C", claude.Quote(dir)}
+		parts := []string{"git", "-C", code.Quote(dir)}
 		for _, a := range args {
-			parts = append(parts, claude.Quote(a))
+			parts = append(parts, code.Quote(a))
 		}
 		prefix := "export GIT_TERMINAL_PROMPT=0 LC_ALL=C; "
 		if env := creds.env(); env != nil {
 			prefix = "IFS= read -r PHOS_GIT_USER; IFS= read -r PHOS_GIT_PASS; export PHOS_GIT_USER PHOS_GIT_PASS GIT_TERMINAL_PROMPT=0 LC_ALL=C GIT_CONFIG_COUNT=1 " +
-				claude.Quote(env[4]) + " " + claude.Quote(env[5]) + "; "
+				code.Quote(env[4]) + " " + code.Quote(env[5]) + "; "
 			stdin = creds.User + "\n" + creds.Pass + "\n"
 		}
-		line = "sh -c " + claude.Quote(posixPath+prefix+strings.Join(parts, " "))
+		line = "sh -c " + code.Quote(posixPath+prefix+strings.Join(parts, " "))
 	}
 	var out, errb bytes.Buffer
 	ss.Stdout, ss.Stderr = &out, &errb

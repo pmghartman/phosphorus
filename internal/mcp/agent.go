@@ -369,17 +369,17 @@ func describe() {
 			"existence, size and mtime, cheaper than reading it. files_search finds things across everything at once.",
 		"files_read": "Read a text file from a share, 12000 characters a page; from is the next page's offset when there's more. Binary and over-512KB files are only described.",
 		"files_write": "Write a text file in a share with w perm: text for the whole file (made if missing), or old and new to replace one exact passage " +
-			"found once in it (read it first). If someone has it open in an editor, the change shows there live.",
+			"found once in it (read it first). If someone has it open in Sulfur, the change shows there live.",
 		"files_change": "Organize a share within its perms: mkdir, rename or move (to ending in / moves into that folder), delete (permanent). " +
 			"Several in steps run in order and stop at the first failure.",
 		"chat_history": "The last chat lines, oldest first: channels (mesh is the main one), and on a key your own direct messages as dm:<name>. " +
 			"Each line has its ms. On a key, wait_s waits for lines newer than since (that ms), returning as soon as one lands: " +
 			"for a reply after send_message.",
 		"send_message": "Post to the mesh chat, or a direct message to one person by their chat name. On a key it's posted as you.",
-		"open_file": "Open a share's text or code file in an editor tab on the person's Phosphorus window (on a key, every window of yours that's open). " +
+		"open_file": "Open a share's text or code file in a Sulfur tab on the person's Phosphorus window (on a key, every window of yours that's open). " +
 			"Highlighted, syntax errors marked; nothing in it runs.",
 		"open_terminal":   "Open a terminal tab to a host on the person's Phosphorus window, shared with phosphorus. On a key it logs in with their saved login for that host (none saved: nothing opens); terminal_run then runs commands in it. Else they log in themselves.",
-		"show_file":       "Invite a person into a share's file in the shared editor: they get a dialog and a notification, and it opens in a tab on accepting.",
+		"show_file":       "Invite a person into a share's file in Sulfur, edited live together: they get a dialog and a notification, and it opens in a tab on accepting.",
 		"terminal_screen": "Read the screen and recent scrollback of the person's terminal tabs that are shared with phosphorus on one host. wait_s waits for new output first.",
 		"game_power":      "Start or stop a game server, running only the start or stop command its service declares.",
 		"update_status":   "The mesh update: whether one runs, who started it, each host's step and result. history true adds the last fifty started from this host with any errors.",
