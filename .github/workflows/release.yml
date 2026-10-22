@@ -86,7 +86,7 @@ jobs:
           if [ "$SULFUR" = true ]; then
             sulfur+=('{"name":"linux-amd64","runner":"ubuntu-24.04","bundles":"deb,appimage","target":"","triple":"x86_64-unknown-linux-gnu"}')
             sulfur+=('{"name":"linux-arm64","runner":"ubuntu-24.04-arm","bundles":"deb","target":"","triple":"aarch64-unknown-linux-gnu"}')
-            sulfur+=('{"name":"macos-universal","runner":"macos-14","bundles":"dmg","target":"universal-apple-darwin","triple":"universal-apple-darwin"}')
+            sulfur+=('{"name":"macos-universal","runner":"macos-14","bundles":"app,dmg","target":"universal-apple-darwin","triple":"universal-apple-darwin"}')
             sulfur+=('{"name":"windows-x86_64","runner":"windows-2022","bundles":"nsis","target":"","triple":"x86_64-pc-windows-msvc"}')
           fi
           echo "sulfur=$(j "${sulfur[@]}")" | tee -a "$GITHUB_OUTPUT"
@@ -309,7 +309,10 @@ jobs:
             mkdir -p "$upd"
             case "${{ matrix.name }}" in
               windows-*) cp "$out/sulfur-$VER-${{ matrix.name }}-setup.exe" "$upd/sulfur-windows-x86_64-setup.exe" ;;
-              macos-*) tar -czf "$upd/sulfur-macos-universal.app.tar.gz" -C "$base/macos" Sulfur.app ;;
+              macos-*)
+                app=$(find "$base" -maxdepth 2 -name "Sulfur.app" -type d | head -n 1)
+                [ -n "$app" ] || { echo "no Sulfur.app under $base" >&2; exit 1; }
+                tar -czf "$upd/sulfur-macos-universal.app.tar.gz" -C "$(dirname "$app")" Sulfur.app ;;
               linux-amd64) cp "$out/sulfur-$VER-${{ matrix.name }}.AppImage" "$upd/sulfur-linux-x86_64.AppImage" ;;
             esac
             if [ -n "$(ls -A "$upd")" ]; then (cd "$GITHUB_WORKSPACE" && go run ./cmd/feedsign "$upd"/*); fi
