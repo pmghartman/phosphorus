@@ -30,13 +30,15 @@ type Tool struct {
 	Path    string `json:"path"`
 }
 
-// VS one Visual Studio install: its MSVC toolsets and the script that sets them up
+// VS one Visual Studio install: its MSVC toolsets, the script that sets them
+// up, and the CMake it brings, the one its CMake projects are configured by
 type VS struct {
 	Name    string   `json:"name"`
 	Version string   `json:"version"`
 	Path    string   `json:"path"`
 	VCVars  string   `json:"vcvars"`
 	MSVC    []string `json:"msvc"`
+	CMake   string   `json:"cmake,omitempty"`
 }
 
 // Toolchains what a host offers to build with, as its user's login sees it
@@ -199,7 +201,8 @@ func windowsProbe() string {
 	s.WriteString(`if (Test-Path $vw) { foreach ($i in (& $vw -all -products * -format json | ConvertFrom-Json)) { ` +
 		`$p = $i.installationPath; $vc = Join-Path $p 'VC\Auxiliary\Build\vcvars64.bat'; ` +
 		`$ms = (Get-ChildItem (Join-Path $p 'VC\Tools\MSVC') -Directory | ForEach-Object Name) -join ','; ` +
-		`if (-not (Test-Path $vc)) { $vc = '' }; "V|$($i.displayName)|$($i.installationVersion)|$p|$vc|$ms" } }; `)
+		`$cm = Join-Path $p 'Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe'; if (-not (Test-Path $cm)) { $cm = '' }; ` +
+		`if (-not (Test-Path $vc)) { $vc = '' }; "V|$($i.displayName)|$($i.installationVersion)|$p|$vc|$ms|$cm" } }; `)
 	s.WriteString(`foreach ($t in @(`)
 	ids := []string{}
 	for _, k := range known {
@@ -248,6 +251,9 @@ func parseProbe(out string) *Toolchains {
 			t.Tools = append(t.Tools, Tool{ID: id, Name: k.name, Kind: k.kind, Path: f[2], Version: v})
 		case len(f) >= 6 && f[0] == "V":
 			v := VS{Name: f[1], Version: f[2], Path: f[3], VCVars: f[4], MSVC: []string{}}
+			if len(f) >= 7 {
+				v.CMake = f[6]
+			}
 			for _, m := range strings.Split(f[5], ",") {
 				if m = strings.TrimSpace(m); m != "" {
 					v.MSVC = append(v.MSVC, m)

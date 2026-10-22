@@ -45,6 +45,8 @@ fn main() {
         .manage(Server(Mutex::new(child)))
         // the system's own folder and file dialogs, for Sulfur offline
         .plugin(tauri_plugin_dialog::init())
+        // links (Forgejo's pages) in the system's own browser
+        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let win = app.get_webview_window("main").expect("the main window");
             // the splash until the server answers, then Sulfur; said on the splash if it never does

@@ -2,8 +2,10 @@
 // It serves Sulfur alone, no desktop around it, and behind the page either
 // this computer (offline: its files, terminals, builds and compilers) or a
 // Phosphorus server it proxies, so the page is the same either way.
-// Only on 127.0.0.1, and only to its own page: every request's Host and
-// Origin held to it, so no other site in a browser reaches it.
+// It starts offline; a mesh once connected to is remembered, and stays reachable
+// offline under /api/mesh/, for its agents, models and Forgejo on this computer's
+// own projects. Only on 127.0.0.1, and only to its own page: every request's
+// Host and Origin held to it, so no other site in a browser reaches it.
 package main
 
 import (
@@ -62,6 +64,8 @@ func main() {
 	}
 	origin = "http://" + net.JoinHostPort(host, port)
 	me = whoAmI()
+	// one user's own machine: a big project's whole tree, for quick open
+	files.TreeMax = 60000
 	loadConfig()
 
 	mux := http.NewServeMux()
@@ -159,6 +163,8 @@ var (
 	cfgMu sync.Mutex
 	cfg   config
 	proxy *httputil.ReverseProxy
+	// the remembered mesh's proxy under /api/mesh/, offline
+	link *httputil.ReverseProxy
 )
 
 func configPath() string {
@@ -178,9 +184,12 @@ func loadConfig() {
 		json.Unmarshal(b, &cfg)
 	}
 	if cfg.Mode == "mesh" && cfg.Server != "" {
-		proxy = meshProxy(cfg.Server)
-	} else if cfg.Mode != "local" {
-		cfg.Mode = ""
+		proxy = meshProxy(cfg.Server, "")
+	} else {
+		cfg.Mode = "local"
+	}
+	if cfg.Server != "" {
+		link = meshProxy(cfg.Server, "/api/mesh")
 	}
 }
 
@@ -207,15 +216,15 @@ func sidecar(w http.ResponseWriter, r *http.Request) {
 		switch p.Mode {
 		case "local", "":
 			cfgMu.Lock()
-			cfg.Mode, proxy = p.Mode, nil
+			cfg.Mode, proxy = "local", nil
 			err := saveConfig()
 			cfgMu.Unlock()
 			if err != nil {
 				send(w, 500, errB(err.Error()))
 				return
 			}
-			send(w, 200, map[string]any{"mode": p.Mode})
-		case "mesh":
+			send(w, 200, map[string]any{"mode": "local"})
+		case "mesh", "link":
 			u, err := serverURL(p.Server)
 			if err != nil {
 				send(w, 400, errB(err.Error()))
@@ -226,7 +235,11 @@ func sidecar(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			cfgMu.Lock()
-			cfg.Mode, cfg.Server = "mesh", u.String()
+			// link: the mesh remembered and reachable under /api/mesh/, Sulfur kept offline
+			if p.Mode == "mesh" {
+				cfg.Mode = "mesh"
+			}
+			cfg.Server = u.String()
 			list := []string{cfg.Server}
 			for _, s := range cfg.Servers {
 				if s != cfg.Server && len(list) < 8 {
@@ -234,14 +247,17 @@ func sidecar(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			cfg.Servers = list
-			proxy = meshProxy(cfg.Server)
+			link = meshProxy(cfg.Server, "/api/mesh")
+			if cfg.Mode == "mesh" {
+				proxy = meshProxy(cfg.Server, "")
+			}
 			err = saveConfig()
 			cfgMu.Unlock()
 			if err != nil {
 				send(w, 500, errB(err.Error()))
 				return
 			}
-			send(w, 200, map[string]any{"mode": "mesh", "server": u.String()})
+			send(w, 200, map[string]any{"mode": cfg.Mode, "server": u.String()})
 		default:
 			send(w, 400, errB("mode is local or mesh"))
 		}
@@ -256,6 +272,12 @@ func sidecar(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		cfg.Servers = out
+		if cfg.Server == p.Server {
+			cfg.Server, link = "", nil
+			if cfg.Mode == "mesh" {
+				cfg.Mode, proxy = "local", nil
+			}
+		}
 		saveConfig()
 		cfgMu.Unlock()
 		send(w, 200, map[string]any{"servers": out})
@@ -333,11 +355,15 @@ func reveal(p string) error {
 // --- a mesh behind the page --------------------------------------------------------
 
 // meshProxy the server's API as if it were this page's: its name and origin
-// said for it, its cookies kept by this origin
-func meshProxy(server string) *httputil.ReverseProxy {
+// said for it, its cookies kept by this origin; strip a prefix it's under here
+func meshProxy(server, strip string) *httputil.ReverseProxy {
 	u, _ := url.Parse(server)
 	return &httputil.ReverseProxy{
 		Rewrite: func(pr *httputil.ProxyRequest) {
+			if strip != "" {
+				pr.Out.URL.Path = strings.TrimPrefix(pr.Out.URL.Path, strip)
+				pr.Out.URL.RawPath = ""
+			}
 			pr.SetURL(u)
 			pr.Out.Host = u.Host
 			if pr.In.Header.Get("Origin") != "" {
@@ -384,8 +410,16 @@ var (
 
 func api(w http.ResponseWriter, r *http.Request) {
 	cfgMu.Lock()
-	mode, p := cfg.Mode, proxy
+	mode, p, l := cfg.Mode, proxy, link
 	cfgMu.Unlock()
+	if strings.HasPrefix(r.URL.Path, "/api/mesh/") {
+		if l == nil {
+			send(w, 404, errB("no mesh to reach: connect to one once"))
+			return
+		}
+		l.ServeHTTP(w, r)
+		return
+	}
 	if mode == "mesh" && p != nil {
 		p.ServeHTTP(w, r)
 		return
@@ -411,6 +445,26 @@ func api(w http.ResponseWriter, r *http.Request) {
 		}
 		t.Host = me.Host
 		send(w, 200, t)
+	case path == "/api/sulfur/git" && r.Method == "POST":
+		var p struct {
+			Dir   string           `json:"dir"`
+			Args  []string         `json:"args"`
+			Creds *sulfur.GitCreds `json:"creds"`
+		}
+		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&p) != nil {
+			send(w, 400, errB("bad request"))
+			return
+		}
+		if !filepath.IsAbs(p.Dir) {
+			send(w, 400, errB("a full path to the folder"))
+			return
+		}
+		res, err := sulfur.GitLocal(p.Dir, p.Args, p.Creds)
+		if err != nil {
+			send(w, 502, map[string]any{"error": err.Error(), "out": res.Out, "err": res.Err})
+			return
+		}
+		send(w, 200, res)
 	case path == "/api/sulfur/run":
 		if ws := accept(w, r); ws != nil {
 			runTask(ws)
@@ -469,9 +523,9 @@ func filesOp(w http.ResponseWriter, r *http.Request, op string, q url.Values) {
 	case r.Method == "GET" && op == "list":
 		out(w)(files.List(sh, rel))
 	case r.Method == "GET" && op == "tree":
-		out(w)(files.Tree(sh, rel, q.Get("depth"), q.Get("match")))
+		out(w)(files.Tree(sh, rel, q.Get("depth"), q.Get("match"), q.Get("skip")))
 	case r.Method == "GET" && op == "search":
-		out(w)(files.Search(sh, rel, q.Get("query"), q.Get("content") == "true", q.Get("glob")))
+		out(w)(files.Search(sh, rel, q.Get("query"), q.Get("content") == "true", q.Get("glob"), q.Get("skip")))
 	case r.Method == "GET" && op == "read":
 		out(w)(files.Read(sh, rel))
 	case r.Method == "GET" && op == "download":

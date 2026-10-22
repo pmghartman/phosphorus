@@ -117,6 +117,10 @@ const IC = {
   replaceAll: 'M2 3.5h7M2 6.5h5M9.5 8.5l2.5 2.5 2.5-2.5M12 3v8M2 10.5h5M2 13.5h7',
   replaceOne: 'M2 4.5h7M2 8h5M9.5 9.5l2.5 2.5 2.5-2.5M12 4v8',
   word: 'M2 12.5h12M3.5 5l1.5 5.5L6.5 7l1.5 3.5L9.5 5M11 5.5h2M11 8h2',
+  scm: 'M4.5 1.75a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 0 0 0-3.5zM4.5 10.75a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 0 0 0-3.5zM11.5 1.75a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 0 0 0-3.5zM4.5 5.25v5.5M11.5 5.25c0 3.25-7 2-7 5.5',
+  branch: 'M5 2.5a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5zM5 11a1.25 1.25 0 1 0 0 2.5A1.25 1.25 0 0 0 5 11zM11 2.5a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5zM5 5v6M11 5c0 3-6 1.75-6 6',
+  minus: 'M3 8h10',
+  undo: 'M3 6.5h7a3 3 0 0 1 0 6H6M5.5 4L3 6.5 5.5 9',
 };
 const icon = (k, cls = '') => dkGlyph(IC[k], `ide-ic ${cls}`);
 
@@ -167,8 +171,13 @@ function cleanPath(p) {
 // --- where a workspace lives: the merged home, every host's at once, or a
 // folder of one host's own disk published as a share (D:\Projects, /srv/code)
 const HOME_LOC = { host: '*', share: 'home' };
-// offline in Sulfur's desktop app: one computer, no mesh
+// offline in Sulfur's desktop app: this computer's files; a mesh remembered, maybe logged into
 const offline = () => standalone?.mode === 'local';
+// a mesh API call's path: offline, the remembered mesh's, through the app's own server
+const meshApi = (path) => (standalone?.meshUrl ? standalone.meshUrl(path) : path);
+// offline with a mesh logged into: its models, agents and Forgejo here too
+const meshLinked = () => offline() && !!standalone.meshUser;
+const meshName = (s = standalone?.server) => String(s || '').replace(/^https?:\/\//, '');
 // offline in Sulfur's desktop app: this computer's own file dialogs, as any editor's
 const nativeFiles = () => offline() && !!standalone?.app && !!standalone.nativePick;
 // a folder or file picked in the system's dialog, as Sulfur's place and path; null if cancelled
@@ -309,6 +318,7 @@ const SETTINGS = {
   'editor.enablePreview': { def: true, type: 'boolean', title: 'Workbench › Editor: Enable Preview', about: 'Controls whether a file opened from the explorer is shown as a preview, its tab reused until you edit it or double click.' },
   'explorer.confirmDelete': { def: true, type: 'boolean', title: 'Explorer: Confirm Delete', about: 'Controls whether the explorer asks before deleting a file or folder. A delete here is for good: there is no trash.' },
   'explorer.autoReveal': { def: true, type: 'boolean', title: 'Explorer: Auto Reveal', about: 'Controls whether the explorer reveals and selects the active file.' },
+  'search.exclude': { def: 'build, out, bin, obj, target, .vs, .vscode, cmake-build-*, dist, .cache, .gradle, __pycache__, node_modules, .git', type: 'string', title: 'Search: Exclude', about: 'Comma separated folder names or simple globs left out of quick open (Ctrl+P) and Find in Files, as a big project’s build outputs and caches are; the explorer still shows them.' },
   'files.exclude': { def: '.git, node_modules, __pycache__, .DS_Store', type: 'string', title: 'Files: Exclude', about: 'Comma separated names or simple globs (*.o) hidden from the explorer, quick open and search.' },
   'terminal.integrated.fontSize': { def: 13, type: 'number', min: 8, max: 40, title: 'Terminal › Integrated: Font Size', about: 'Controls the font size in pixels of the terminal. New terminals take it.' },
   'workbench.colorTheme': { def: 'vscode', type: 'enum', options: THEMES.map((t) => [t.id, t.label]), title: 'Workbench: Color Theme', about: 'Specifies the color theme used in the workbench: VS Code\'s own, Phosphorus\'s like the desktop\'s other apps, or one of the extra themes. Each follows the desktop\'s light or dark.' },
@@ -388,6 +398,9 @@ export function ideStart(w, open) {
     const back = a && I.tabs.find((t) => t.rel === a.rel && sameLoc(t.loc, a.loc));
     if (back) activate(back, false);
   }
+  // Sulfur on its own opens ready to work: the welcome when nothing's open
+  if (standalone && !I.tabs.length && !open) openWelcome();
+  if (standalone?.signedOut) notify('warning', `Your session on ${meshName(standalone.signedOut)} ended, so Sulfur opened offline, on ${selfHost}.`, { actions: [{ label: 'Log In…', run: () => run('sulfur.mesh.connect') }] });
   paintEditors();
   showSide(st.side.view, !st.side.hidden);
   showPanel(st.panel.view, !st.panel.hidden);
@@ -413,6 +426,7 @@ export function ideStart(w, open) {
 // o: {dir} or {path}, in the home unless o.loc names a host's share
 function openRequest(o) {
   if (!I || !o) return;
+  if (o.welcome) { openWelcome(); return; }
   const l = o.loc || HOME_LOC;
   if (o.dir !== undefined) {
     const d = cleanPath(o.dir);
@@ -627,6 +641,7 @@ function sash(node, axis, get, set, from = false) {
 const SIDE_VIEWS = [
   { id: 'explorer', title: 'Explorer', ic: 'files', cmd: 'workbench.view.explorer' },
   { id: 'search', title: 'Search', ic: 'search', cmd: 'workbench.action.findInFiles' },
+  { id: 'scm', title: 'Source Control', ic: 'scm', cmd: 'workbench.view.scm' },
   { id: 'run', title: 'Run and Build', ic: 'runSide', cmd: 'workbench.view.run' },
   { id: 'extensions', title: 'Extensions', ic: 'ext', cmd: 'workbench.view.extensions' },
 ];
@@ -658,7 +673,7 @@ function buildActivity() {
   I.actChat = chat;
   const account = Object.assign(el('button', 'ide-act'), { type: 'button', ariaLabel: 'Accounts', title: 'Accounts' });
   account.append(icon('user'));
-  account.addEventListener('click', () => menu(account, [
+  account.addEventListener('click', () => menu(account, standalone ? meshItems() : [
     { label: `${acct.user}${acct.admin ? ' (admin)' : ''}`, disabled: true },
     { label: `Desktop served by ${selfHost}`, disabled: true },
     '-',
@@ -680,6 +695,7 @@ function buildActivity() {
   I.actFoot.append(account, manage);
   buildExplorer();
   buildSearch();
+  buildScm();
   buildRunView();
   buildExtView();
 }
@@ -722,7 +738,7 @@ const MENUS = [
     ...(nativeFiles() ? [cmdItem('workbench.action.files.openFile', 'Open File…')] : []),
     cmdItem('workbench.action.files.openFolder', 'Open Folder…'),
     { label: 'Open Recent', sub: () => recentItems() },
-    cmdItem('sulfur.project.transfer', 'Copy or Move Project to…'), '-',
+    cmdItem('sulfur.project.transfer', 'Copy or Move Project to…'), cmdItem('sulfur.git.clone', 'Clone Repository…'), '-',
     cmdItem('workbench.action.files.save', 'Save'), cmdItem('workbench.action.files.saveAll', 'Save All'), '-',
     { label: 'Preferences', sub: () => [
       cmdItem('workbench.action.openSettings', 'Settings'), cmdItem('workbench.action.openSettingsJson', 'Settings (JSON)'),
@@ -733,7 +749,7 @@ const MENUS = [
     ] }, '-',
     cmdItem('workbench.action.revertFile', 'Revert File'),
     cmdItem('workbench.action.closeActiveEditor', 'Close Editor'), cmdItem('workbench.action.closeAllEditors', 'Close All Editors'), '-',
-    ...(standalone?.app ? [cmdItem('sulfur.switch', offline() ? 'Connect to a Phosphorus Mesh…' : 'Work Offline or Switch Mesh…'), '-'] : []),
+    ...(standalone?.app ? [offline() ? cmdItem('sulfur.mesh.connect', standalone.server ? `Connect to ${meshName()}…` : 'Connect to a Phosphorus Mesh…') : cmdItem('sulfur.mesh.offline', 'Work Offline'), '-'] : []),
     cmdItem('sulfur.closeWindow', standalone?.app ? 'Exit' : 'Close Window'),
   ]],
   ['Edit', () => [
@@ -770,6 +786,7 @@ const MENUS = [
   ['Run', () => [
     cmdItem('sulfur.build', 'Build'), cmdItem('sulfur.task.run', 'Run Task…'), cmdItem('sulfur.build.select', 'Select Toolchain…'),
     cmdItem('sulfur.build.configuration', 'Select Configuration…'), '-',
+    cmdItem('sulfur.run.start', 'Start Without Debugging'), cmdItem('sulfur.run.startup', 'Select Startup Item…'), '-',
     cmdItem('sulfur.run.file', 'Run Active File'), cmdItem('sulfur.run.fileOn', 'Run Active File On…'), '-',
     cmdItem('sulfur.selectHost', 'Select Host…'), cmdItem('workbench.view.run', 'Run and Build'),
   ]],
@@ -949,6 +966,8 @@ function setRoot(dir, first = false, l = locOf()) {
   I.ccText.textContent = isHomeLoc() ? baseName(d) : `${baseName(d)} · ${st.loc.host}`;
   I.w.head.querySelector('.tab-label').textContent = `${baseName(d)} — Sulfur`;
   loadBuildConfig();
+  I.scm = null;
+  scmRefreshSoon();
   I.projHas = undefined;
   refreshProjectSoon();
   for (const p of I.expanded) loadDir(p);
@@ -957,6 +976,11 @@ function setRoot(dir, first = false, l = locOf()) {
 }
 
 const sortEntries = (list) => [...list].sort((a, b) => (b.dir - a.dir) || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+
+const scmRefreshSoon = debounce(() => { if (I) scmRefresh(); }, 600);
+
+// the folders quick open and Find in Files never go into: search.exclude and files.exclude together
+const searchSkip = () => [setting('search.exclude'), setting('files.exclude')].filter(Boolean).join(',');
 
 // the exclude setting as tests on a name
 function excluded() {
@@ -1597,6 +1621,7 @@ function tabState(t, info) {
   if (was?.dirty && !info.dirty) {
     emit('save', { path: t.rel });
     if (t.rel === SETTINGS_PATH() || t.rel === KEYS_PATH()) loadUserFiles();
+    scmRefreshSoon();
     // the project's build settings, as edited by hand
     if (t.rel.endsWith(`/${BUILD_FILE}`) && under(t.rel, I.st.root) && sameLoc(t.loc, locOf())) loadBuildConfig(filesParent(filesParent(t.rel)));
   }
@@ -2237,6 +2262,18 @@ function registerCommands() {
   // views and layout
   C('workbench.view.explorer', 'Show Explorer', () => showSide('explorer', true, true), { key: 'ctrl+shift+e', category: 'View', shell: true });
   C('workbench.view.search', 'Show Search', () => showSide('search', true, true), { category: 'View' });
+  C('workbench.view.scm', 'Show Source Control', () => showSide('scm', true, true), { key: 'ctrl+shift+g', category: 'View', shell: true });
+  C('sulfur.git.clone', 'Git: Clone…', () => gitClone(), { category: 'Git' });
+  C('sulfur.git.branch', 'Git: Checkout to…', () => scmBranchPick(), { category: 'Git' });
+  C('sulfur.git.commit', 'Git: Commit', () => scmCommit(), { category: 'Git' });
+  C('sulfur.git.pull', 'Git: Pull', () => scmOp(['pull'], 'Pulling'), { category: 'Git' });
+  C('sulfur.git.push', 'Git: Push', () => scmPush(), { category: 'Git' });
+  C('sulfur.git.sync', 'Git: Sync', () => scmSync(), { category: 'Git' });
+  C('sulfur.git.history', 'Git: View History…', () => scmHistory(), { category: 'Git' });
+  C('sulfur.forgejo.open', 'Forgejo: Open on Forgejo', () => forgejoOpen(I.active?.rel), { category: 'Forgejo' });
+  C('sulfur.forgejo.pr', 'Forgejo: Create Pull Request…', () => forgejoPR(), { category: 'Forgejo' });
+  C('sulfur.forgejo.prs', 'Forgejo: Pull Requests…', () => forgejoPRs(), { category: 'Forgejo' });
+  C('sulfur.forgejo.publish', 'Forgejo: Publish Repository…', () => forgejoPublish(), { category: 'Forgejo' });
   C('workbench.action.findInFiles', 'Search: Find in Files', () => findInFiles(), { key: 'ctrl+shift+f', category: 'Search', shell: true });
   C('workbench.view.run', 'Show Run and Build', () => showSide('run', true, true), { key: 'ctrl+shift+d', category: 'View', shell: true });
   C('workbench.view.extensions', 'Show Extensions', () => showSide('extensions', true, true), { key: 'ctrl+shift+x', category: 'View', shell: true });
@@ -2303,11 +2340,14 @@ function registerCommands() {
   C('workbench.action.terminal.focusNext', 'Focus Next Terminal', () => stepTerm(1), { category: 'Terminal', shell: true });
   C('workbench.action.terminal.focusPrevious', 'Focus Previous Terminal', () => stepTerm(-1), { category: 'Terminal', shell: true });
   C('workbench.action.terminal.runSelectedText', 'Run Selected Text In Active Terminal', () => runSelection(), { when: hasEd, category: 'Terminal' });
-  C('sulfur.run.file', 'Run Active File', () => (I.active?.rel ? runFile(I.active.rel) : notify('info', 'Open a file to run it.')), { key: 'f5', alt: ['ctrl+f5'], category: 'Run', shell: true });
+  C('sulfur.run.file', 'Run Active File', () => (I.active?.rel ? runFile(I.active.rel) : notify('info', 'Open a file to run it.')), { key: 'f5', category: 'Run', shell: true });
+  // Visual Studio's Ctrl+F5: the project built and its startup item run
+  C('sulfur.run.start', 'Start Without Debugging', () => startProject(), { key: 'ctrl+f5', category: 'Run', shell: true });
+  C('sulfur.run.startup', 'Select Startup Item…', () => startProject(true), { category: 'Run' });
   C('sulfur.run.fileOn', 'Run Active File On…', () => I.active?.rel && runFileOn(I.active.rel), { when: hasEd, category: 'Run' });
   // building, as VS Code's tasks are but asked for in a list, never a JSON file first
   C('sulfur.build', 'Build', () => buildProject(), { key: 'ctrl+b', alt: ['ctrl+shift+b'], category: 'Build', shell: true });
-  C('sulfur.build.select', 'Select Toolchain…', () => pickToolchain(), { category: 'Build' });
+  C('sulfur.build.select', 'Select Toolchain…', () => pickToolchain(null, true), { category: 'Build' });
   C('sulfur.task.run', 'Run Task…', () => chooseTask(), { category: 'Build' });
   C('sulfur.task.add', 'Add Task…', () => addTask(), { category: 'Build' });
   C('sulfur.build.configuration', 'Select Configuration (Debug/Release)…', () => toggleConfiguration(), { category: 'Build' });
@@ -2318,7 +2358,11 @@ function registerCommands() {
   C('sulfur.project.transfer', 'Copy or Move Project to Another Machine…', () => transferProject(), { category: 'File' });
   C('sulfur.folder.add', 'Add a Folder of a Machine for Projects…', () => addFolderDialog(), { when: () => !!acct.admin && !offline(), category: 'File' });
   // the desktop app's start pane again: offline, or another mesh
-  C('sulfur.switch', 'Switch Between Offline and a Phosphorus Mesh…', async () => { if ((await saveAll()).every(Boolean)) location.replace('/sulfur/?start'); }, { when: () => !!standalone?.app, category: 'File' });
+  C('sulfur.mesh.connect', 'Connect to a Phosphorus Mesh…', () => meshConnect(), { when: () => !!standalone?.app, category: 'Mesh' });
+  C('sulfur.mesh.other', 'Connect to Another Phosphorus Mesh…', () => meshConnect(true), { when: () => !!standalone?.app, category: 'Mesh' });
+  C('sulfur.mesh.open', 'Open the Mesh’s Machines', () => meshOpen(), { when: () => !!standalone?.app && offline() && !!standalone.meshUser, category: 'Mesh' });
+  C('sulfur.mesh.offline', 'Work Offline', () => meshOffline(), { when: () => !!standalone?.app && !offline(), category: 'Mesh' });
+  C('sulfur.mesh.signOut', 'Sign Out of the Mesh', () => meshSignOut(), { when: () => !!standalone?.app && !!standalone.meshUser, category: 'Mesh' });
   C('workbench.action.selectTheme', 'Color Theme', () => pickTheme(), { key: 'ctrl+k ctrl+t', category: 'Preferences' });
   C('workbench.action.toggleLightDarkThemes', 'Toggle between Light and Dark', () => setSetting('window.appearance', document.documentElement.dataset.theme === 'light' ? 'dark' : 'light'), { when: () => !!standalone, category: 'Preferences' });
   C('sulfur.selectHost', 'Select Host for Terminals and Runs…', () => pickHost('Select the host terminals and runs use').then((h) => h && setRunHost(h)), { category: 'Phosphorus' });
@@ -2384,7 +2428,7 @@ async function fileIndex() {
   if (I.index && I.index.root === root && Date.now() - I.index.at < INDEX_TTL) return I.index;
   if (I.indexing?.root === root) return I.indexing.pr;
   const places = isHomeLoc() ? homeOnline().map((h) => [h, homeAt(h)]) : [[locOf().host, apiLoc()]];
-  const pr = Promise.all(places.map(([h, at]) => filesCall(at, 'tree', undefined, { path: I.st.root, depth: 8 }).then((b) => ({ h, b }), () => null))).then((got) => {
+  const pr = Promise.all(places.map(([h, at]) => filesCall(at, 'tree', undefined, { path: I.st.root, depth: 8, skip: searchSkip() }).then((b) => ({ h, b }), () => null))).then((got) => {
     const files = new Map();
     let truncated = false;
     const skip = excluded();
@@ -2493,7 +2537,10 @@ function pick(items, o = {}) {
         const q = v.trim();
         const list = items.map((x) => (typeof x === 'string' ? { label: x, value: x } : x));
         const hits = q ? list.map((x) => ({ x, m: fuzzy(q, x.label) || (o.matchDescription && x.description && fuzzy(q, x.description) ? { score: -1, hl: [] } : null) })).filter((y) => y.m).sort((a, b) => b.m.score - a.m.score) : list.map((x) => ({ x, m: null }));
-        return { items: hits.map(({ x, m }) => ({ ...x, hl: m?.hl, accept: () => resolve(x.value !== undefined ? x.value : x) })), empty: 'No matching results' };
+        // a row of what was typed itself, as a path: the picker's own say
+        const own = q && o.typed ? o.typed(q) : null;
+        const rows = [...(own ? [{ x: own, m: null }] : []), ...hits];
+        return { items: rows.map(({ x, m }) => ({ ...x, hl: m?.hl, accept: () => resolve(x.value !== undefined ? x.value : x) })), empty: 'No matching results' };
       },
       onCancel: () => resolve(undefined),
     });
@@ -2660,8 +2707,16 @@ async function pickFolder(start, l = locOf()) {
       { label: '..', description: top ? 'another place' : 'up a folder', ic: 'up', value: '..' },
       ...subs.map((e) => ({ label: e.name, ic: 'folder', value: filesJoin(dir, e.name) })),
     ];
-    const v = await pick(items, { title: `Open Folder: ${where || locLabel(place)}`, placeholder: 'Type to filter, Enter to step into a folder' });
+    // offline, a folder typed whole, as C:\src\app or ~/src
+    const typed = offline() ? (q) => (/^([A-Za-z]:[\\/]?|\/|~[\\/]?)/.test(q) ? { label: `Open ${q}`, description: 'the folder typed', ic: 'folder', value: { abs: q } } : null) : null;
+    const v = await pick(items, { title: `Open Folder: ${where || locLabel(place)}`, placeholder: offline() ? 'Type to filter, or a folder’s whole path; Enter to step into one' : 'Type to filter, Enter to step into a folder', typed });
     if (v === undefined || !I) return;
+    if (v?.abs) {
+      const at = standalone.locate(v.abs.replace(/^~(?=[\\/]|$)/, hostPath(selfHost, 'home', acct.user)));
+      if (!at?.rel) { notify('warning', at ? `Pick a folder on ${v.abs}, not the whole drive.` : `${v.abs} isn't on a drive Sulfur can reach.`); continue; }
+      setRoot(at.rel, false, at.loc);
+      return;
+    }
     if (v === '.') { setRoot(dir, false, place); return; }
     if (v === '..') { if (top) place = null; else dir = dir.includes('/') ? filesParent(dir) : ''; continue; }
     dir = v;
@@ -3169,6 +3224,7 @@ function newTerminal(o = {}) {
   }
   const creds = dk.creds.get(host);
   if (!creds) { notify('warning', `Not logged into ${host}.`); return null; }
+  ensureHomeOwned(host);
   const cwd = o.cwd ?? I.st.root;
   const kind = o.kind || 'shell';
   // the folder as that host names it: the workspace's share, or that host's home
@@ -3379,7 +3435,8 @@ function sbItem(cls, title, onClick) {
 
 function buildStatus() {
   const S = {};
-  S.remote = sbItem('ide-sb-remote', 'Select the host terminals and runs use', () => run('sulfur.selectHost'));
+  S.branch = sbItem('ide-sb-branch', 'Checkout to…', () => run('sulfur.git.branch'));
+  S.remote = sbItem('ide-sb-remote', standalone ? 'Offline or a Phosphorus mesh' : 'Select the host terminals and runs use', () => (standalone ? menu(S.remote, meshItems(true), { side: 'right', up: true }) : run('sulfur.selectHost')));
   S.problems = sbItem('ide-sb-problems', 'No Problems', () => run('workbench.actions.view.problems'));
   S.build = sbItem('ide-sb-build', 'Build toolchain', () => run('sulfur.build.select'));
   S.people = sbItem('ide-sb-people', '');
@@ -3411,6 +3468,13 @@ function paintStatusNow() {
   const h = runHost();
   S.remote.replaceChildren(icon('remote'), el('span', '', h || 'no host'));
   S.remote.classList.toggle('none', !h);
+  const sc = I.scm;
+  S.branch.hidden = !sc?.top;
+  if (sc?.top) {
+    S.branch.replaceChildren(icon('branch'), el('span', '', `${sc.branch}${sc.staged.length + sc.changes.length ? '*' : ''}`));
+    if (sc.upstream && (sc.ahead || sc.behind)) S.branch.append(el('span', 'ide-sb-sync', `${sc.behind}↓ ${sc.ahead}↑`));
+    S.branch.title = `${sc.branch}${sc.upstream ? ` · ${sc.upstream}` : ' · not published'}: checkout to…`;
+  }
   const pc = I.problemCounts || { errors: 0, warnings: 0 };
   S.problems.replaceChildren(icon('error'), el('span', '', String(pc.errors)), icon('warning'), el('span', '', String(pc.warnings)));
   S.problems.title = pc.errors || pc.warnings ? `${pc.errors} errors, ${pc.warnings} warnings` : 'No Problems';
@@ -3474,7 +3538,8 @@ const SEEN_MAX = 24000;
 // the gateway's roles and whether each has a model answering
 async function refreshRoles() {
   try {
-    const r = await fetch('/api/model/v1/models', { cache: 'no-store' });
+    if (offline() && !meshLinked()) { I.roles = []; paintChat(); return; }
+    const r = await fetch(meshApi('/api/model/v1/models'), { cache: 'no-store' });
     const b = await r.json().catch(() => ({}));
     if (!I) return;
     if (r.ok) I.roles = (b.data || []).filter((m) => m && m.id).map((m) => ({ id: m.id, ready: !!m.ready }));
@@ -3636,7 +3701,7 @@ function paintChat(force = false) {
   paintStatus();
   // the banner: why an ask may not land
   let why = '';
-  if (offline() && a?.kind !== 'ext') why = 'Offline, there are no models or agents here: they come from a Phosphorus mesh. File › Connect to a Phosphorus Mesh… brings them in.';
+  if (offline() && !meshLinked() && a?.kind !== 'ext') why = standalone.server ? `The chat's models and agents come from ${meshName()}: log in to it (Accounts, at the bottom left) and they work on this computer's projects too.` : 'The chat\u2019s models and agents come from a Phosphorus mesh: connect to one (Accounts, at the bottom left) and they work on this computer\u2019s projects too.';
   else if (!a) why = 'No model is set up on the mesh. The status app’s model card picks one.';
   else if (a.kind === 'mesh' && !a.up) why = `${a.label} has no model answering right now. The status app’s model card shows why.`;
   else if (agent && !a.S.id) why = agentWhere(h).why || '';
@@ -3786,7 +3851,7 @@ function sendChat() {
   const a = currentAgent();
   const text = I.chat.ta.value.trim();
   if (!a || !text) return;
-  if (offline() && a.kind !== 'ext') { notify('info', 'Offline, the chat has no models or agents: connect to a Phosphorus mesh for them.', standalone.app ? { actions: [{ label: 'Connect…', run: () => run('sulfur.switch') }] } : {}); return; }
+  if (offline() && !meshLinked() && a.kind !== 'ext') { notify('info', `The chat's models and agents come from ${standalone.server ? meshName() : 'a Phosphorus mesh'}: ${standalone.server ? 'log in to it' : 'connect to one'} first.`, { actions: [{ label: standalone.server ? 'Log In…' : 'Connect…', run: () => run('sulfur.mesh.connect') }] }); return; }
   if (a.busy()) { setStatusFlash(`${a.label} is still answering`); return; }
   if (!a.ready()) { notify('warning', 'The mesh chat isn’t connected yet: try again in a moment.'); return; }
   if (a.send(text) === false) { notify('warning', `${a.label} didn’t take the message: the chat’s connection dropped.`); return; }
@@ -3869,7 +3934,7 @@ async function meshAsk(a, c, text) {
   paintChat(true);
   let out = '';
   try {
-    const r = await fetch('/api/model/v1/messages', {
+    const r = await fetch(meshApi('/api/model/v1/messages'), {
       method: 'POST', headers: { 'content-type': 'application/json' }, signal: c.ctrl.signal,
       body: JSON.stringify({ model: a.role, max_tokens: 8192, stream: true, system: meshSystem(a), messages: alternate(c.turns.slice(-60)) }),
     });
@@ -3975,7 +4040,7 @@ const harnessName = (h) => HARNESSES.find((x) => x.id === h)?.label || h;
 async function codeCall(url, method = 'GET', body) {
   const init = { method, cache: 'no-store' };
   if (body !== undefined) { init.headers = { 'content-type': 'application/json' }; init.body = JSON.stringify(body); }
-  const r = await fetch(url, init);
+  const r = await fetch(meshApi(url), init);
   const out = await r.json().catch(() => ({}));
   if (!r.ok) throw Object.assign(new Error(out.error || `status ${r.status}`), { status: r.status });
   return out;
@@ -4081,7 +4146,7 @@ async function agentAttach(S) {
     return;
   }
   if (!I) return;
-  S.where = { host: S.rec.host, dir: S.rec.dir };
+  S.where = { host: S.rec.host, dir: S.rec.dir, remote: offline() };
   agentConnect(S);
   paintChat(true);
 }
@@ -4100,7 +4165,7 @@ function agentForget(S) {
 
 function agentConnect(S) {
   if (S.sock || !S.id || !I) return;
-  const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/code/ws/${encodeURIComponent(S.id)}?since=${S.seq}`);
+  const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${meshApi(`/api/code/ws/${encodeURIComponent(S.id)}`)}?since=${S.seq}`);
   S.sock = ws;
   ws.onopen = () => { S.retry = 0; };
   ws.onmessage = (e) => {
@@ -4229,7 +4294,8 @@ function agentEv(S, ev) {
       for (const e of Array.isArray(ev.errors) ? ev.errors : []) if (!/^\[ede_diagnostic\]/.test(String(e))) agentNote(S, String(e), 'bad');
       S.cur = null;
       S.pending = false;
-      if (S.watching) agentSyncTabs(S);
+      if (S.where?.remote) meshSyncDown(S).finally(() => { if (I && S.watching) agentSyncTabs(S); });
+      else if (S.watching) agentSyncTabs(S);
       break;
     }
     default:
@@ -4325,8 +4391,13 @@ function agentResult(S, b) {
 // a tab opened for it already has it from disk, so is only lit
 async function agentApply(S, c, rel) {
   let t = I.tabs.find((x) => x.rel === rel && sameLoc(x.loc, S.loc) && x.kind === 'code');
-  const fresh = !t;
-  if (!t) t = openFile(rel, { preview: false, focus: false, host: isHomeLoc(S.loc) ? S.where?.host : undefined });
+  let fresh = !t;
+  if (!t && S.where?.remote) {
+    // the file here is as it was: an edit's typed in, a whole file written first
+    if (c.name === 'Write') { try { await writeAt(rel, String(c.input.content ?? ''), S.loc); } catch {} } else fresh = false;
+    if (!I) return;
+  }
+  if (!t) t = openFile(rel, { preview: false, focus: false, host: isHomeLoc(S.loc) && !S.where?.remote ? S.where?.host : undefined });
   if (!t) return;
   if (I.active !== t) activate(t, false);
   for (let i = 0; i < 120 && I && I.tabs.includes(t) && !t.ed?.ready?.(); i++) await sleep(80);
@@ -4383,7 +4454,7 @@ async function agentSyncTabs(S) {
   for (const t of I.tabs.filter((x) => x.kind === 'code' && x.rel && sameLoc(x.loc, S.loc) && under(x.rel, S.root) && x.ed?.ready?.() && !x.ed.dirty())) {
     let disk = null;
     try {
-      const b = await filesCall(isHomeLoc(S.loc) ? homeAt(S.where?.host || homePick(t.rel)) : apiLoc(S.loc), 'read', undefined, { path: t.rel });
+      const b = await filesCall(isHomeLoc(S.loc) && !S.where?.remote ? homeAt(S.where?.host || homePick(t.rel)) : apiLoc(S.loc), 'read', undefined, { path: t.rel });
       disk = typeof b.text === 'string' ? b.text : null;
     } catch {}
     if (!I || disk === null || !t.ed || t.ed.dirty()) continue;
@@ -4453,6 +4524,12 @@ function agentWhere(h) {
   if (o?.blocked) return { why: o.blocked };
   const logins = new Set(o?.hosts?.length ? o.hosts : dkLiveHosts());
   const n = harnessName(h);
+  // offline: the mesh's Code service, on one of its machines, the project copied there
+  if (offline()) {
+    if (!meshLinked()) return { why: `${n} runs on your mesh's machines: log into your mesh (the account menu, bottom left) to use it on this computer's files.` };
+    if (o && !o.error && !(o.hosts || []).length) return { why: `Save a login for one of ${meshName()}'s Linux or macOS machines in Phosphorus (open a terminal on it there) for ${n} to work on it.` };
+    return { mesh: true };
+  }
   if (!isHomeLoc()) {
     const host = locOf().host;
     if (hostIsWindows(host)) return { why: `${n} runs on Linux and macOS machines, and ${baseName(I.st.root)} is on ${host}, a Windows one. Copy it to one (File › Copy or Move Project), or use Chat.` };
@@ -4462,6 +4539,171 @@ function agentWhere(h) {
   const hosts = [runHost(), selfHost, ...homeOnline()].filter((x, i, a) => x && a.indexOf(x) === i && logins.has(x) && !hostIsWindows(x) && shareOf(x, 'home'));
   if (!hosts.length) return { why: `${n} runs on a Linux or macOS machine holding your home: log into one ${loginWhere()}.` };
   return { host: hosts[0], dir: hostPath(hosts[0], 'home', I.st.root) };
+}
+
+// --- offline, the mesh's Code service: this computer's project copied to a mesh machine
+// (its home, .sulfur/sync), the agent working there, what it changes brought back
+
+const SYNC_MAX = 32 * 1024 * 1024;
+const meshFilesUrl = (host, op, params = {}) => meshApi(`/api/files/${encodeURIComponent(host)}/${op}?${new URLSearchParams({ share: 'home', ...params })}`);
+async function meshJSON(url, init) {
+  const r = await fetch(url, init);
+  const b = await r.json().catch(() => ({}));
+  if (!r.ok) throw Object.assign(new Error(b.error || `status ${r.status}`), { status: r.status });
+  return b;
+}
+// a mesh machine's home folder, as its shell names it
+function meshHomeOf(host) {
+  I.meshHomes ||= new Map();
+  if (!I.meshHomes.has(host)) I.meshHomes.set(host, meshJSON(meshApi(`/api/files/${encodeURIComponent(host)}/info`)).then((b) => (b.shares || []).find((x) => x.id === 'home')?.label || '', () => ''));
+  return I.meshHomes.get(host);
+}
+// a short stamp of this computer's folder, so two projects of one name keep apart there
+const syncName = (S) => {
+  let h = 5381;
+  for (const ch of `${wsKey()}\n${S.root}`) h = ((h * 33) ^ ch.charCodeAt(0)) >>> 0;
+  return `${baseName(S.root) || 'project'}-${h.toString(36)}`;
+};
+// the mesh machine the agent works on: one the user has a login for, Linux or macOS, the last one first
+async function meshWhere(S) {
+  const n = harnessName(S.harness);
+  const o = await loadCodeOpts(true);
+  if (!I) return { why: '' };
+  if (o.error) return { why: `Couldn't reach ${meshName()}'s Code service: ${o.error}` };
+  if (o.blocked) return { why: o.blocked };
+  const homes = await Promise.all((o.hosts || []).map(async (h) => [h, await meshHomeOf(h)]));
+  const ok = homes.filter(([, l]) => l && !isWinPath(l));
+  if (!ok.length) return { why: `${n} needs a Linux or macOS machine on ${meshName()} with your login saved: ${(o.hosts || []).length ? `${o.hosts.join(', ')} ${o.hosts.length === 1 ? 'is' : 'are'} Windows or ${o.hosts.length === 1 ? 'has' : 'have'} no home folder` : 'save one in Phosphorus by opening a terminal on it'}.` };
+  const [host, label] = ok.find(([h]) => h === I.st.meshAgentHost) || ok[0];
+  const rel = `${standalone.meshUser}/.sulfur/sync/${syncName(S)}`;
+  return { host, rel, dir: `${label.replace(/\/+$/, '')}/${rel}`, remote: true };
+}
+// a mesh session's folder in its machine's home, from its absolute path
+async function meshRelOf(S) {
+  const w = S.where;
+  if (w.rel) return w.rel;
+  const label = String(await meshHomeOf(w.host)).replace(/\/+$/, '');
+  if (label && w.dir.startsWith(`${label}/`)) w.rel = w.dir.slice(label.length + 1);
+  return w.rel || '';
+}
+// what's been copied: this computer's files' size and time, the mesh's after
+function syncState(S, w) {
+  const k = `sulfur.meshSync:${w.host}:${w.dir}`;
+  I.syncs ||= new Map();
+  if (!I.syncs.has(k)) {
+    let v = null;
+    try { v = JSON.parse(localStorage.getItem(k) || 'null'); } catch {}
+    I.syncs.set(k, { k, local: v?.local || {}, remote: v?.remote || {} });
+  }
+  return I.syncs.get(k);
+}
+function syncKeep(st) { try { localStorage.setItem(st.k, JSON.stringify({ local: st.local, remote: st.remote })); } catch {} }
+const sigOf = (e) => `${e.size}:${e.mtime}`;
+async function localFiles(S) {
+  const b = await filesCall(apiLoc(S.loc), 'tree', undefined, { path: S.root, depth: 24, skip: searchSkip() });
+  const skip = excluded();
+  return (b.entries || []).filter((e) => !e.path.endsWith('/') && !e.path.split('/').some(skip));
+}
+async function meshFiles(w, rel) {
+  const b = await meshJSON(meshFilesUrl(w.host, 'tree', { path: rel, depth: 24, skip: searchSkip() }));
+  return (b.entries || []).filter((e) => !e.path.endsWith('/'));
+}
+// in parallel, a few at a time
+async function each(list, n, fn) {
+  let i = 0;
+  await Promise.all(Array.from({ length: Math.min(n, list.length) }, async () => { while (i < list.length && I) await fn(list[i++]); }));
+}
+async function meshPut(host, path, blob) {
+  const id = Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => (b % 36).toString(36)).join('');
+  const CH = 4 * 1024 * 1024;
+  let offset = 0;
+  do {
+    const end = Math.min(offset + CH, blob.size);
+    await meshJSON(meshFilesUrl(host, 'upload', { path, id, offset, total: blob.size }), { method: 'POST', body: blob.slice(offset, end) });
+    offset = end;
+  } while (offset < blob.size);
+}
+
+// this computer's project up to the mesh machine: what changed since the last copy
+async function meshSyncUp(S, w) {
+  const rel = await meshRelOf(S);
+  if (!I || !rel) { agentNote(S, `Can't tell where ${w.host}'s home is.`, 'bad'); return false; }
+  const st = syncState(S, w);
+  let files;
+  try { files = await localFiles(S); } catch (err) { agentNote(S, `Couldn't list ${baseName(S.root)}: ${err.message}`, 'bad'); return false; }
+  if (!I) return false;
+  const big = files.filter((e) => e.size > SYNC_MAX);
+  const todo = files.filter((e) => e.size <= SYNC_MAX && st.local[e.path] !== sigOf(e));
+  if (!todo.length) return true;
+  const bytes = todo.reduce((a, e) => a + (e.size || 0), 0);
+  if (!Object.keys(st.local).length && (todo.length > 3000 || bytes > 300 * 1024 * 1024)) {
+    const v = await ask({
+      title: `Copy ${baseName(S.root)} to ${w.host}?`,
+      detail: `${harnessName(S.harness)} works on ${meshName()}'s ${w.host}, so the project goes there first: ${todo.length.toLocaleString()} files, ${humanSize(bytes)} (build folders and Search: Exclude left out). Later prompts copy only what's changed.`,
+      buttons: [{ label: 'Copy and Ask', primary: true, value: 'go' }, { label: 'Cancel', value: '' }],
+    });
+    if (v !== 'go' || !I) return false;
+  }
+  // the home there its user's own login's, so the agent can write in it
+  if (!I.meshOwned?.has(w.host)) {
+    (I.meshOwned ||= new Set()).add(w.host);
+    await meshJSON(meshFilesUrl(w.host, 'own'), jsonPost({ path: standalone.meshUser })).catch(() => null);
+  }
+  const note = agentNote(S, `Copying ${todo.length.toLocaleString()} file${todo.length === 1 ? '' : 's'} (${humanSize(bytes)}) to ${w.host}…`, 'quiet');
+  let done = 0;
+  let bad = null;
+  await each(todo, 6, async (e) => {
+    if (bad) return;
+    try {
+      const r = await fetch(filesApi(apiLoc(S.loc), 'download', { path: e.path }));
+      if (!r.ok) throw new Error(`${e.path}: status ${r.status}`);
+      await meshPut(w.host, `${rel}/${e.path.slice(S.root.length + 1)}`, await r.blob());
+      st.local[e.path] = sigOf(e);
+      done += 1;
+      if (done % 25 === 0) note.textContent = `Copying to ${w.host}: ${done.toLocaleString()} of ${todo.length.toLocaleString()}…`;
+    } catch (err) { bad = err; }
+  });
+  if (!I) return false;
+  // what's there now, so a turn's end brings back only what the agent changed
+  try { for (const e of await meshFiles(w, rel)) st.remote[e.path] = sigOf(e); } catch {}
+  syncKeep(st);
+  if (bad) { note.textContent = `Copying to ${w.host} failed: ${bad.message}`; note.classList.add('bad'); return false; }
+  note.textContent = `Copied ${done.toLocaleString()} file${done === 1 ? '' : 's'} to ${w.host}${big.length ? ` (${big.length} over ${humanSize(SYNC_MAX)} left here)` : ''}.`;
+  return true;
+}
+
+// a turn's end: what the agent changed on the mesh machine brought back to this computer
+async function meshSyncDown(S) {
+  const w = S.where;
+  const rel = await meshRelOf(S);
+  if (!I || !rel) return;
+  const st = syncState(S, w);
+  let there;
+  try { there = await meshFiles(w, rel); } catch { return; }
+  const changed = there.filter((e) => st.remote[e.path] !== sigOf(e) && e.size <= SYNC_MAX);
+  if (!changed.length) return;
+  const back = [];
+  await each(changed, 6, async (e) => {
+    const local = cleanPath(`${S.root}/${e.path.slice(rel.length + 1)}`);
+    try {
+      const r = await fetch(meshFilesUrl(w.host, 'download', { path: e.path }));
+      if (!r.ok) return;
+      const blob = await r.blob();
+      const tab = I.tabs.find((x) => x.rel === local && sameLoc(x.loc, S.loc) && x.ed?.ready?.());
+      // a tab with the agent's edit typed in has it already, its save the same bytes
+      if (!(tab && !tab.ed.dirty() && tab.ed.text() === await blob.text())) await putFile(apiLoc(S.loc), local, blob);
+      st.remote[e.path] = sigOf(e);
+      back.push(local);
+    } catch {}
+  });
+  if (!I) return;
+  // this computer's copies are as the mesh's now: not copied up again
+  try { for (const e of await localFiles(S)) if (back.includes(e.path)) st.local[e.path] = sigOf(e); } catch {}
+  syncKeep(st);
+  if (back.length) {
+    agentNote(S, `Brought back ${back.length} changed file${back.length === 1 ? '' : 's'} from ${w.host}.`, 'quiet');
+    for (const d of new Set(back.map(filesParent))) if (I.tree.has(d)) loadDir(d, true);
+  }
 }
 
 // the harness on that machine, or a card offering to install it
@@ -4503,20 +4745,25 @@ function agentPrompt(text) {
 }
 
 async function agentSend(S, text) {
-  const where = S.where && S.id ? S.where : agentWhere(S.harness);
+  let where = S.where && S.id ? S.where : agentWhere(S.harness);
+  if (where.mesh) where = await meshWhere(S);
+  if (!I) return true;
   if (where.why) { agentNote(S, where.why, 'bad'); paintChat(true); return true; }
   const prompt = agentPrompt(text);
   S.pending = true;
   S.watching = true;
   paintChat(true);
   try {
+    // this computer's project copied up first: what's changed since the last prompt
+    if (where.remote && !(await meshSyncUp(S, where))) { S.pending = false; paintChat(true); return true; }
+    if (!I) return true;
     if (S.id) {
       try { await codeCall(sapi(S.id, 'send'), 'POST', { text: prompt }); paintChat(true); return true; } catch (err) { if (err.status !== 404) throw err; agentForget(S); }
     }
     if (!(await agentInstalled(S, where, () => agentSend(S, text)))) { S.pending = false; paintChat(true); return true; }
     const rec = await codeCall('/api/code/sessions', 'POST', { host: where.host, dir: where.dir, model: chatModel(), perm: I.st.aux.perm || 'acceptEdits', harness: S.harness, prompt });
     if (!I) return true;
-    Object.assign(S, { id: rec.id, rec, where: { host: rec.host, dir: rec.dir } });
+    Object.assign(S, { id: rec.id, rec, where: { ...where, host: rec.host, dir: rec.dir } });
     (I.st.agentSess ||= {})[S.key] = rec.id;
     saveState();
     agentConnect(S);
@@ -4654,6 +4901,532 @@ async function applyChatEdits(edits) {
   return { list: out, undo: [...groups.values()].filter((g) => g.list.length) };
 }
 
+// --- source control: git where the project is, the mesh's Forgejo beside it -----------------
+// git run by the app's own server offline, or by the mesh's over your login on the
+// project's machine; Forgejo as you, with the login your vault keeps for it
+
+const SCM_LETTER = { M: 'M', A: 'A', D: 'D', R: 'R', C: 'C', U: 'U', T: 'M', '?': 'U' };
+
+// where git runs: the project's machine and its folder there
+function gitWhere() {
+  if (offline()) return { host: selfHost, dir: hostPath(selfHost, isHomeLoc() ? 'home' : locOf().share, I.st.root) };
+  const host = isHomeLoc() ? runHost() : locOf().host;
+  if (!host) return null;
+  return { host, dir: hostPath(host, isHomeLoc() ? 'home' : locOf().share, I.st.root) };
+}
+
+// the mesh's Forgejo as you: its reply, and its domain and your name there kept
+async function forgejo(method, path, body) {
+  if (offline() && !meshLinked()) throw new Error(standalone.server ? `log in to ${meshName()} for its Forgejo` : 'connect to a Phosphorus mesh for its Forgejo');
+  const r = await fetch(meshApi('/api/sulfur/forgejo'), jsonPost({ method, path, body }));
+  const b = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(b.error || `status ${r.status}`);
+  I.forgejo = { domain: b.domain, host: b.host, user: b.user };
+  if (b.status >= 400) throw Object.assign(new Error(b.body?.message || (typeof b.body === 'string' ? b.body.slice(0, 200) : `Forgejo said ${b.status}`)), { status: b.status });
+  return b.body;
+}
+
+// your Forgejo login for git offline, from the mesh's vault, for its own host only
+async function forgejoCreds() {
+  const l = standalone?.meshVault?.pages?.git;
+  if (!offline() || !meshLinked() || !l?.user) return null;
+  if (!I.forgejo?.host) await forgejo('GET', '/user').catch(() => null);
+  return I.forgejo?.host ? { host: I.forgejo.host, user: l.user, pass: l.pass } : null;
+}
+
+// git in the project's folder: its output, or why it failed in git's own last lines
+async function git(args, o = {}) {
+  const w = o.where || gitWhere();
+  if (!w) throw new Error(`no machine to run git on: log into one ${loginWhere()}`);
+  const body = { host: w.host, dir: o.dir || w.dir, args };
+  if (['clone', 'push', 'pull', 'fetch'].includes(args[0])) body.creds = await forgejoCreds().catch(() => null);
+  const r = await fetch('/api/sulfur/git', jsonPost(body));
+  const b = await r.json().catch(() => ({}));
+  if (r.status === 404) throw new Error(`${w.host}'s Phosphorus is older than this Sulfur: update the mesh for Source Control there`);
+  if (!r.ok) throw Object.assign(new Error(b.error || `status ${r.status}`), b);
+  if (b.code !== 0 && !o.anyCode) {
+    const said = String(b.err || b.out || '').trim().split('\n').filter(Boolean).slice(-3).join('\n');
+    throw Object.assign(new Error(said || `git ${args[0]} failed (${b.code})`), b);
+  }
+  return b;
+}
+
+// a path git gives (from the repository's top) as the workspace's own, '' if outside it
+function scmRel(p) {
+  const pre = I.scm?.prefix || '';
+  if (pre && !p.startsWith(pre)) return '';
+  return `${I.st.root}/${p.slice(pre.length)}`;
+}
+const top = (p) => `:(top)${p}`;
+
+function buildScm() {
+  const v = I.sideViews.get('scm');
+  v.acts = [
+    btn('', 'check', 'Commit (Ctrl+Enter)', () => scmCommit()),
+    btn('', 'refresh', 'Refresh', () => scmRefresh(true)),
+    btn('', 'more', 'More Actions…', (e) => menu(e.currentTarget, scmMenu(), { side: 'left' })),
+  ];
+  v.onShow = () => scmRefresh();
+  v.focus = () => v.body.querySelector('textarea')?.focus();
+  I.scm = null;
+}
+
+function scmMenu() {
+  const s = I.scm;
+  const repo = !!s?.top;
+  return [
+    { label: 'Pull', disabled: !repo, run: () => scmOp(['pull'], 'Pulling') },
+    { label: 'Push', disabled: !repo, run: () => scmPush() },
+    { label: 'Sync (Pull, then Push)', disabled: !repo, run: () => scmSync() },
+    { label: 'Fetch', disabled: !repo, run: () => scmOp(['fetch', '--prune'], 'Fetching') },
+    '-',
+    { label: 'Checkout to…', disabled: !repo, run: () => run('sulfur.git.branch') },
+    { label: 'Create Branch…', disabled: !repo, run: () => scmNewBranch() },
+    { label: 'Stash Changes', disabled: !repo, run: () => scmOp(['stash', 'push', '--include-untracked'], 'Stashing') },
+    { label: 'Pop Latest Stash', disabled: !repo, run: () => scmOp(['stash', 'pop'], 'Unstashing') },
+    { label: 'View History…', disabled: !repo, run: () => scmHistory() },
+    '-',
+    { label: 'Open on Forgejo', disabled: !repo, run: () => run('sulfur.forgejo.open') },
+    { label: 'Create Pull Request…', disabled: !repo, run: () => run('sulfur.forgejo.pr') },
+    { label: 'Pull Requests…', disabled: !repo, run: () => run('sulfur.forgejo.prs') },
+    { label: 'Publish to Forgejo…', disabled: !repo || !!s?.upstream, run: () => run('sulfur.forgejo.publish') },
+    '-',
+    cmdItem('sulfur.git.clone', 'Clone Repository…'),
+  ];
+}
+
+// the repository's state read again: its top, its branch, what's staged and what's changed
+async function scmRefresh(loud = false) {
+  const v = I.sideViews.get('scm');
+  if (!v) return;
+  const key = wsKey();
+  let s = { key, top: '', prefix: '', branch: '', upstream: '', ahead: 0, behind: 0, staged: [], changes: [], why: '' };
+  try {
+    const where = await git(['rev-parse', '--show-toplevel', '--show-prefix'], { anyCode: true });
+    if (where.code !== 0) {
+      s.why = /not a git repository/i.test(where.err) ? 'none' : (where.err || 'git failed').trim();
+    } else {
+      const [t, pre = ''] = where.out.replace(/\r/g, '').split('\n');
+      s.top = t.trim();
+      s.prefix = pre.trim();
+      const st = await git(['status', '--porcelain=v1', '-b', '-z', '--untracked-files=all']);
+      const parts = st.out.split('\0');
+      for (let i = 0; i < parts.length; i++) {
+        const e = parts[i];
+        if (!e) continue;
+        if (e.startsWith('## ')) {
+          const h = e.slice(3);
+          const m = h.match(/^(?:No commits yet on )?([^.\s]+(?:\.(?!\.)[^.\s]*)*)(?:\.\.\.(\S+))?(?: \[(.*)\])?/);
+          s.branch = m?.[1] || h;
+          s.upstream = m?.[2] || '';
+          s.ahead = Number((m?.[3] || '').match(/ahead (\d+)/)?.[1] || 0);
+          s.behind = Number((m?.[3] || '').match(/behind (\d+)/)?.[1] || 0);
+          continue;
+        }
+        const x = e[0];
+        const y = e[1];
+        const path = e.slice(3);
+        let from = '';
+        if (x === 'R' || x === 'C') from = parts[++i] || '';
+        if (x === '?' && y === '?') { s.changes.push({ path, code: 'U', untracked: true }); continue; }
+        if (x === 'U' || y === 'U' || (x === 'A' && y === 'A') || (x === 'D' && y === 'D')) { s.changes.push({ path, code: '!', conflict: true }); continue; }
+        if (x !== ' ') s.staged.push({ path, from, code: SCM_LETTER[x] || x });
+        if (y !== ' ') s.changes.push({ path, code: SCM_LETTER[y] || y, deleted: y === 'D' });
+      }
+    }
+  } catch (err) {
+    s.why = err.message;
+  }
+  if (!I || wsKey() !== key) return;
+  I.scm = s;
+  if (loud && s.why && s.why !== 'none') notify('error', `Source Control: ${s.why}`);
+  paintScm();
+  paintStatus();
+}
+
+function paintScm() {
+  const v = I.sideViews.get('scm');
+  if (!v) return;
+  const s = I.scm;
+  const btnEl = I.actBtns.get('scm');
+  const n = (s?.staged.length || 0) + (s?.changes.length || 0);
+  btnEl?.querySelector('.ide-act-badge')?.remove();
+  if (n) btnEl?.append(el('span', 'ide-act-badge', n > 99 ? '99+' : String(n)));
+  if (v.body.hidden && v.body.childElementCount) return;
+  const body = v.body;
+  const keepMsg = body.querySelector('.ide-scm-msg')?.value || I.scmMsg || '';
+  body.replaceChildren();
+  if (!s) { body.append(el('p', 'ide-empty-note', 'Looking for a repository…')); return; }
+  if (!s.top) {
+    const box = el('div', 'ide-scm-empty');
+    if (s.why === 'none') {
+      box.append(el('p', '', `${baseName(I.st.root)} isn’t in a Git repository.`));
+      const init = Object.assign(el('button', 'ide-button'), { type: 'button', textContent: 'Initialize Repository' });
+      init.addEventListener('click', () => scmOp(['init'], 'Making a repository'));
+      box.append(init);
+    } else box.append(el('p', 'bad', s.why));
+    const clone = Object.assign(el('button', 'ide-button secondary'), { type: 'button', textContent: 'Clone Repository…' });
+    clone.addEventListener('click', () => run('sulfur.git.clone'));
+    box.append(clone, el('p', 'ide-run-note', 'Clone from your mesh’s Forgejo, or any address.'));
+    body.append(box);
+    return;
+  }
+  // the message and the commit, as VS Code's
+  const commitBox = el('div', 'ide-scm-commit');
+  const msg = Object.assign(el('textarea', 'ide-input ide-scm-msg'), { rows: 1, value: keepMsg, placeholder: `Message (Ctrl+Enter to commit on “${s.branch}”)`, spellcheck: true });
+  msg.addEventListener('input', () => { I.scmMsg = msg.value; msg.style.height = 'auto'; msg.style.height = `${Math.min(msg.scrollHeight, 160)}px`; });
+  msg.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); e.stopPropagation(); scmCommit(); } });
+  const row = el('div', 'ide-run-row');
+  const commit = Object.assign(el('button', 'ide-button ide-run-go'), { type: 'button' });
+  commit.append(icon('check'), el('span', '', s.staged.length || !s.changes.length ? 'Commit' : 'Commit All'));
+  commit.disabled = !s.staged.length && !s.changes.length;
+  commit.addEventListener('click', () => scmCommit());
+  const more = Object.assign(el('button', 'ide-button'), { type: 'button', title: 'More commit actions' });
+  more.append(icon('down'));
+  more.addEventListener('click', () => menu(more, [
+    { label: 'Commit & Push', run: () => scmCommit({ push: true }) },
+    { label: 'Commit & Sync', run: () => scmCommit({ sync: true }) },
+    { label: 'Commit All (Stage Everything)', run: () => scmCommit({ all: true }) },
+    { label: 'Amend Last Commit', run: () => scmCommit({ amend: true }) },
+  ]));
+  row.append(commit, more);
+  commitBox.append(msg, row);
+  // the branch and how far it is from its upstream
+  const br = el('div', 'ide-scm-branch');
+  const bname = Object.assign(el('button', 'ide-link'), { type: 'button', title: 'Checkout to…' });
+  bname.append(icon('branch'), el('span', '', s.branch || '(detached)'));
+  bname.addEventListener('click', () => run('sulfur.git.branch'));
+  br.append(bname);
+  const sync = Object.assign(el('button', 'ide-link'), { type: 'button', title: s.upstream ? `Sync with ${s.upstream}` : 'Publish this branch' });
+  sync.append(icon('refresh'), el('span', '', s.upstream ? `${s.behind}↓ ${s.ahead}↑` : 'Publish Branch'));
+  sync.addEventListener('click', () => (s.upstream ? scmSync() : scmPush()));
+  br.append(sync);
+  body.append(commitBox, br);
+
+  const section = (title, list, staged) => {
+    if (!list.length) return;
+    const head = el('div', 'ide-sec-head static ide-scm-head');
+    head.append(el('span', 'ide-sec-title', title), el('span', 'ide-badge', String(list.length)));
+    const acts = el('span', 'ide-actions');
+    if (staged) acts.append(btn('', 'minus', 'Unstage All Changes', () => scmOp(['restore', '--staged', '--', top('.')], 'Unstaging')));
+    else {
+      acts.append(btn('', 'undo', 'Discard All Changes', () => scmDiscard(list)));
+      acts.append(btn('', 'plus', 'Stage All Changes', () => scmOp(['add', '-A', '--', top('.')], 'Staging')));
+    }
+    head.append(acts);
+    body.append(head);
+    for (const x of list) body.append(scmRow(x, staged));
+  };
+  section('Staged Changes', s.staged, true);
+  section('Changes', s.changes, false);
+  if (!s.staged.length && !s.changes.length) body.append(el('p', 'ide-empty-note', `Nothing to commit on ${s.branch}: the working tree is clean.`));
+}
+
+function scmRow(x, staged) {
+  const rel = scmRel(x.path);
+  const r = Object.assign(el('div', `ide-scm-row c-${x.conflict ? 'conflict' : x.code}`), { tabIndex: 0, title: `${x.path}${x.from ? ` (from ${x.from})` : ''}` });
+  r.append(fileIcon(x.path), el('span', 'ide-scm-name', baseName(x.path)), el('span', 'ide-scm-dir', filesParent(x.path)));
+  const acts = el('span', 'ide-actions');
+  if (rel && !x.deleted) acts.append(btn('', 'file', 'Open File', (e) => { e.stopPropagation(); openFile(rel, { preview: false }); }));
+  if (staged) acts.append(btn('', 'minus', 'Unstage Changes', (e) => { e.stopPropagation(); scmOp(['restore', '--staged', '--', top(x.path)], 'Unstaging'); }));
+  else {
+    acts.append(btn('', 'undo', 'Discard Changes', (e) => { e.stopPropagation(); scmDiscard([x]); }));
+    acts.append(btn('', 'plus', 'Stage Changes', (e) => { e.stopPropagation(); scmOp(['add', '--', top(x.path)], 'Staging'); }));
+  }
+  r.append(acts, el('span', 'ide-scm-code', x.conflict ? '!' : x.code));
+  const open = () => (x.conflict && rel ? openFile(rel, { preview: false }) : openDiff(x, staged));
+  r.addEventListener('click', open);
+  r.addEventListener('keydown', (e) => { if (e.key === 'Enter') open(); });
+  return r;
+}
+
+// a git command that changes the tree: said while it runs, the view, the explorer and clean tabs after
+async function scmOp(args, doing, o = {}) {
+  const note = notify('info', `${doing}…`, { progress: true, sticky: true });
+  let r;
+  try { r = await git(args, o); } catch (err) { note.close(); notify('error', `${doing.replace(/ing$/, '')}: ${err.message}`); await scmAfter(); return null; }
+  note.close();
+  await scmAfter();
+  return r;
+}
+async function scmAfter() {
+  if (!I) return;
+  await scmRefresh();
+  if (!I) return;
+  loadDir(I.st.root, true);
+  for (const d of I.expanded) if (d !== I.st.root) loadDir(d, true);
+  syncCleanTabs();
+  I.index = null;
+}
+
+// every clean tab of the workspace made what its disk now holds: a pull's, a checkout's
+async function syncCleanTabs() {
+  for (const t of I.tabs.filter((x) => x.kind === 'code' && x.rel && sameLoc(x.loc, locOf()) && x.ed?.ready?.() && !x.ed.dirty())) {
+    let disk = null;
+    try {
+      const b = await filesCall(isHomeLoc() ? homeAt(t.host) : apiLoc(), 'read', undefined, { path: t.rel });
+      disk = typeof b.text === 'string' ? b.text : null;
+    } catch {}
+    if (!I || disk === null || t.ed.dirty()) continue;
+    const text = t.ed.text();
+    if (text === disk) continue;
+    let p = 0;
+    while (p < text.length && p < disk.length && text[p] === disk[p]) p++;
+    let q = 0;
+    while (q < text.length - p && q < disk.length - p && text[text.length - 1 - q] === disk[disk.length - 1 - q]) q++;
+    if (await t.ed.agentEdit(p, text.length - q, disk.slice(p, disk.length - q), { instant: true })) t.ed.save();
+  }
+}
+
+async function scmDiscard(list) {
+  const n = list.length;
+  const v = await ask({
+    title: n === 1 ? `Discard the changes in ${baseName(list[0].path)}?` : `Discard all ${n} changes?`,
+    detail: list.some((x) => x.untracked) ? 'New files are deleted. This can’t be undone.' : 'This can’t be undone.',
+    buttons: [{ label: n === 1 ? 'Discard File' : 'Discard All', danger: true, primary: true, value: 'yes' }, { label: 'Cancel', value: '' }],
+  });
+  if (v !== 'yes' || !I) return;
+  const tracked = list.filter((x) => !x.untracked).map((x) => top(x.path));
+  if (tracked.length) await scmOp(['restore', '--worktree', '--', ...tracked], 'Discarding');
+  for (const x of list.filter((y) => y.untracked)) {
+    const rel = scmRel(x.path);
+    if (rel) await filesCall(apiLoc(), 'delete', jsonPost({ path: rel })).catch((err) => notify('error', `${x.path}: ${err.message}`));
+  }
+  await scmAfter();
+}
+
+async function scmCommit(o = {}) {
+  const s = I.scm;
+  if (!s?.top) { notify('info', 'There’s no repository here to commit to.'); return; }
+  const box = I.sideViews.get('scm').body.querySelector('.ide-scm-msg');
+  let msg = (box?.value || I.scmMsg || '').trim();
+  if (!msg && !o.amend) {
+    msg = (await inputBox({ title: `Commit on ${s.branch}`, placeholder: 'The commit message' }))?.trim() || '';
+    if (!msg || !I) return;
+  }
+  await saveAll();
+  if (!I) return;
+  // nothing staged: everything, as VS Code's smart commit asks
+  if (o.all || (!s.staged.length && s.changes.length)) {
+    if (!o.all) {
+      const v = await ask({ title: 'There are no staged changes. Stage all your changes and commit them directly?', buttons: [{ label: 'Yes', primary: true, value: 'yes' }, { label: 'Cancel', value: '' }] });
+      if (v !== 'yes' || !I) return;
+    }
+    if (!(await scmOp(['add', '-A', '--', top('.')], 'Staging'))) return;
+  }
+  const paras = msg ? msg.split(/\n\s*\n/).flatMap((p) => ['-m', p]) : ['--no-edit'];
+  const done = await scmOp(['commit', ...(o.amend ? ['--amend'] : []), ...paras], o.amend ? 'Amending' : 'Committing');
+  if (!done || !I) return;
+  I.scmMsg = '';
+  const b = I.sideViews.get('scm').body.querySelector('.ide-scm-msg');
+  if (b) b.value = '';
+  setStatusFlash(`Committed on ${s.branch}`);
+  if (o.push) await scmPush();
+  else if (o.sync) await scmSync();
+}
+
+async function scmPush() {
+  const s = I.scm;
+  if (!s?.top) return;
+  if (s.upstream) await scmOp(['push'], 'Pushing');
+  else await scmOp(['push', '-u', 'origin', s.branch], `Publishing ${s.branch}`);
+}
+async function scmSync() {
+  if (await scmOp(['pull'], 'Pulling')) await scmPush();
+}
+
+async function scmNewBranch() {
+  const name = await inputBox({ title: 'Create Branch', placeholder: 'Branch name', validate: (v) => (/^[\w./-]+$/.test(v.trim()) && !v.includes('..') ? '' : 'Letters, digits, . / - and _') });
+  if (!name || !I) return;
+  await scmOp(['switch', '-c', name.trim()], `Creating ${name.trim()}`);
+}
+
+async function scmBranchPick() {
+  if (!I.scm?.top) await scmRefresh();
+  if (!I.scm?.top) { notify('info', 'There’s no repository here.'); return; }
+  let refs = [];
+  try { refs = (await git(['for-each-ref', '--sort=-committerdate', '--format=%(refname:short)%09%(refname)%09%(committerdate:relative)', 'refs/heads', 'refs/remotes'])).out.trim().split('\n').filter(Boolean).map((l) => l.split('\t')); } catch (err) { notify('error', err.message); return; }
+  const local = refs.filter((r) => r[1].startsWith('refs/heads/'));
+  const remote = refs.filter((r) => r[1].startsWith('refs/remotes/') && !r[0].endsWith('/HEAD') && !local.some((l) => r[0].endsWith(`/${l[0]}`)));
+  const v = await pick([
+    { label: 'Create New Branch…', ic: 'plus', value: { make: true } },
+    ...local.map((r, i) => ({ label: r[0], description: r[0] === I.scm.branch ? 'current' : '', detail: r[2], ic: 'branch', value: { name: r[0] }, sep: i === 0 ? 'branches' : '' })),
+    ...remote.map((r, i) => ({ label: r[0], detail: r[2], ic: 'remote', value: { remote: r[0] }, sep: i === 0 ? 'remote branches' : '' })),
+  ], { title: 'Checkout to…', placeholder: 'Select a branch to switch to', matchDescription: true });
+  if (!v || !I) return;
+  if (v.make) { await scmNewBranch(); return; }
+  await saveAll();
+  if (v.remote) await scmOp(['switch', '--track', v.remote], `Switching to ${v.remote}`);
+  else if (v.name !== I.scm.branch) await scmOp(['switch', v.name], `Switching to ${v.name}`);
+}
+
+async function scmHistory() {
+  let lines = [];
+  try { lines = (await git(['log', '-n', '200', '--format=%h%x09%s%x09%an%x09%ar'])).out.trim().split('\n').filter(Boolean).map((l) => l.split('\t')); } catch (err) { notify('error', err.message); return; }
+  const v = await pick(lines.map(([h, subj, who, when]) => ({ label: subj, description: `${h} · ${who}`, detail: when, ic: 'branch', value: h })), { title: `History of ${I.scm?.branch || 'this branch'}`, placeholder: 'Search the commits', matchDescription: true });
+  if (!v || !I) return;
+  const r = await git(['show', '--stat', '--patch', '--format=commit %H%nAuthor: %an <%ae>%nDate:   %ad%n%n%w(0,4,4)%B', v]).catch((err) => { notify('error', err.message); return null; });
+  if (r) showDiffPage(`commit:${v}`, `Commit ${v}`, r.out, null);
+}
+
+// a file's changes against its last commit, or what's staged, as a page
+async function openDiff(x, staged) {
+  const rel = scmRel(x.path);
+  let text = '';
+  if (x.untracked) {
+    const body = rel ? await readAt(rel) : null;
+    text = (body ?? '').split('\n').map((l) => `+${l}`).join('\n');
+    text = `@@ new file @@\n${text}`;
+  } else {
+    const r = await git(['diff', ...(staged ? ['--cached'] : []), '--', top(x.path)], { anyCode: true }).catch((err) => ({ out: '', err: err.message }));
+    text = r.out || r.err || '';
+  }
+  showDiffPage(`diff:${staged ? 'i' : 'w'}:${x.path}`, `${baseName(x.path)} (${x.untracked ? 'Untracked' : staged ? 'Index' : 'Working Tree'})`, text, rel && !x.deleted ? rel : null);
+}
+
+function showDiffPage(key, title, text, rel) {
+  const t = openPage(key, title, 'split', (p) => { p.diffBody = el('div', 'ide-diff'); p.view.append(p.diffBody); });
+  const head = el('div', 'ide-page-head');
+  if (rel) {
+    const open = Object.assign(el('button', 'ide-button secondary'), { type: 'button' });
+    open.append(icon('file'), el('span', '', 'Open File'));
+    open.addEventListener('click', () => openFile(rel, { preview: false }));
+    head.append(open);
+  }
+  const rows = [];
+  let a = 0;
+  let b = 0;
+  for (const l of String(text).replace(/\r/g, '').split('\n')) {
+    const hunk = l.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)/);
+    if (hunk) { a = +hunk[1]; b = +hunk[2]; rows.push(['hunk', '', '', l]); continue; }
+    if (/^(diff --git|index |--- |\+\+\+ |new file|deleted file|similarity|rename |commit |Author:|Date:)/.test(l) || (!a && !b && !/^[+-]/.test(l))) { rows.push(['meta', '', '', l]); continue; }
+    if (l.startsWith('+')) rows.push(['add', '', b++, l.slice(1)]);
+    else if (l.startsWith('-')) rows.push(['del', a++, '', l.slice(1)]);
+    else if (l.startsWith('\\')) rows.push(['meta', '', '', l]);
+    else rows.push(['', a++, b++, l.slice(1)]);
+  }
+  const box = el('div', 'ide-diff-lines');
+  for (const [k, x, y, l] of rows.slice(0, 20000)) {
+    const r = el('div', `ide-diff-l ${k}`);
+    r.append(el('span', 'ide-diff-n', String(x)), el('span', 'ide-diff-n', String(y)), el('span', 'ide-diff-t', l || ' '));
+    box.append(r);
+  }
+  if (!rows.length || rows.every((r) => r[0] === 'meta')) box.append(el('p', 'ide-empty-note', 'No changes.'));
+  t.diffBody?.replaceChildren(head, box);
+  return t;
+}
+
+// --- Forgejo: clone, publish, open, pull requests ----------------------------------------------
+
+// a web address, in the system's browser from the app
+function openExternal(url) {
+  const t = window.__TAURI__;
+  if (t?.opener?.openUrl) t.opener.openUrl(url).catch(() => window.open(url, '_blank', 'noopener'));
+  else if (t?.core?.invoke) t.core.invoke('plugin:opener|open_url', { url }).catch(() => window.open(url, '_blank', 'noopener'));
+  else window.open(url, '_blank', 'noopener');
+}
+
+// the repository's origin as Forgejo's owner and name, null if it isn't the mesh's Forgejo
+async function forgejoRepo() {
+  const r = await git(['remote', 'get-url', 'origin'], { anyCode: true });
+  const url = r.out.trim();
+  if (!url) return null;
+  if (!I.forgejo?.host) await forgejo('GET', '/user').catch(() => null);
+  const host = I.forgejo?.host;
+  const m = url.match(/^(?:https?:\/\/(?:[^@/]+@)?([^/:]+)(?::\d+)?\/|ssh:\/\/(?:[^@]+@)?([^/:]+)(?::\d+)?\/|[^@]+@([^:]+):)([^/]+)\/(.+?)(?:\.git)?\/?$/);
+  if (!m) return null;
+  const at = m[1] || m[2] || m[3];
+  if (host && at !== host) return null;
+  return { owner: m[4], repo: m[5], web: `https://${host || at}/${m[4]}/${m[5]}` };
+}
+
+async function forgejoOpen(rel) {
+  const r = await forgejoRepo().catch((err) => { notify('error', err.message); return null; });
+  if (!r) { notify('info', 'This repository’s origin isn’t on the mesh’s Forgejo.', { actions: [{ label: 'Publish to Forgejo…', run: () => run('sulfur.forgejo.publish') }] }); return; }
+  const branch = encodeURIComponent(I.scm?.branch || 'main');
+  const path = rel && under(rel, I.st.root) ? `${I.scm?.prefix || ''}${wsRel(rel)}` : (I.scm?.prefix || '').replace(/\/$/, '');
+  openExternal(`${r.web}/src/branch/${branch}${path ? `/${path.split('/').map(encodeURIComponent).join('/')}` : ''}`);
+}
+
+async function forgejoPublish() {
+  if (!I.scm?.top) await scmRefresh();
+  if (!I.scm?.top) { notify('info', 'Initialize a repository here first.'); return; }
+  let me;
+  try { me = await forgejo('GET', '/user'); } catch (err) { notify('error', `Forgejo: ${err.message}`); return; }
+  const name = await inputBox({ title: `Publish to ${I.forgejo.host}`, value: baseName(I.st.root), prompt: `A new repository of ${me.login}'s.`, validate: (v) => (/^[\w.-]+$/.test(v.trim()) ? '' : 'Letters, digits, . - and _') });
+  if (!name || !I) return;
+  const vis = await pick([{ label: 'Private', description: 'only you, and who you add', value: true }, { label: 'Public', description: 'everyone on the mesh can see it', value: false }], { title: `Publish ${name.trim()}` });
+  if (vis === undefined || !I) return;
+  let repo;
+  try { repo = await forgejo('POST', '/user/repos', { name: name.trim(), private: vis, auto_init: false }); } catch (err) { notify('error', `Forgejo: ${err.message}`); return; }
+  const hasOrigin = (await git(['remote'], { anyCode: true })).out.split('\n').includes('origin');
+  await git(['remote', hasOrigin ? 'set-url' : 'add', 'origin', repo.clone_url]).catch((err) => notify('error', err.message));
+  if (await scmOp(['push', '-u', 'origin', I.scm.branch || 'main'], `Publishing to ${repo.full_name}`)) notify('info', `Published ${repo.full_name} on Forgejo.`, { actions: [{ label: 'Open', run: () => openExternal(repo.html_url) }] });
+}
+
+async function forgejoPR() {
+  if (!I.scm?.top) await scmRefresh();
+  const s = I.scm;
+  if (!s?.top) return;
+  const r = await forgejoRepo().catch(() => null);
+  if (!r) { notify('info', 'This repository’s origin isn’t on the mesh’s Forgejo.'); return; }
+  let info;
+  try { info = await forgejo('GET', `/repos/${r.owner}/${r.repo}`); } catch (err) { notify('error', `Forgejo: ${err.message}`); return; }
+  if (s.branch === info.default_branch) { notify('info', `You're on ${s.branch}, the repository's default branch: create a branch for the pull request first.`, { actions: [{ label: 'Create Branch…', run: () => scmNewBranch() }] }); return; }
+  if (!s.upstream || s.ahead) await scmPush();
+  if (!I) return;
+  const subject = (await git(['log', '-1', '--format=%s'], { anyCode: true }).catch(() => ({ out: '' }))).out.trim();
+  const title = await inputBox({ title: `Pull request: ${s.branch} into ${info.default_branch}`, value: subject, placeholder: 'Its title' });
+  if (!title?.trim() || !I) return;
+  try {
+    const pr = await forgejo('POST', `/repos/${r.owner}/${r.repo}/pulls`, { base: info.default_branch, head: s.branch, title: title.trim() });
+    notify('info', `Pull request #${pr.number} opened on ${r.owner}/${r.repo}.`, { actions: [{ label: 'Open', run: () => openExternal(pr.html_url) }] });
+  } catch (err) { notify('error', `Forgejo: ${err.message}`); }
+}
+
+async function forgejoPRs() {
+  const r = await forgejoRepo().catch(() => null);
+  if (!r) { notify('info', 'This repository’s origin isn’t on the mesh’s Forgejo.'); return; }
+  let prs;
+  try { prs = await forgejo('GET', `/repos/${r.owner}/${r.repo}/pulls?state=open&limit=50`); } catch (err) { notify('error', `Forgejo: ${err.message}`); return; }
+  if (!prs?.length) { notify('info', `No open pull requests on ${r.owner}/${r.repo}.`, { actions: [{ label: 'Create One…', run: () => forgejoPR() }] }); return; }
+  const v = await pick(prs.map((p) => ({ label: `#${p.number} ${p.title}`, description: `${p.head?.ref} → ${p.base?.ref}`, detail: `by ${p.user?.login}`, ic: 'branch', value: p.html_url })), { title: `Pull Requests: ${r.owner}/${r.repo}`, matchDescription: true });
+  if (v) openExternal(v);
+}
+
+// a repository cloned: from the mesh's Forgejo or any address, into a folder picked, then opened
+async function gitClone() {
+  let url = '';
+  const items = [];
+  if (!offline() || meshLinked()) {
+    try {
+      const found = await forgejo('GET', '/repos/search?limit=50&sort=updated&order=desc');
+      for (const x of found?.data || []) items.push({ label: x.full_name, description: x.description || '', detail: x.private ? 'private' : '', ic: 'branch', value: x.clone_url, sep: items.length ? '' : `${I.forgejo.host}` });
+    } catch {}
+  }
+  items.push({ label: 'Clone from an Address…', description: 'https://, ssh:// or git@', ic: 'remote', value: '__url', sep: 'more' });
+  const v = await pick(items, { title: 'Clone Repository', placeholder: items.length > 1 ? 'A repository of your mesh’s Forgejo, or an address' : 'Clone from an address', matchDescription: true });
+  if (!v || !I) return;
+  url = v;
+  if (v === '__url') {
+    url = (await inputBox({ title: 'Clone from an Address', placeholder: 'https://git.example.com/owner/repo.git' }))?.trim() || '';
+    if (!url || !I) return;
+  }
+  const where = await pickPlace(`Clone ${url.split('/').pop().replace(/\.git$/, '')}: into`, { placeholder: 'The folder the repository goes in' });
+  if (!where || !I) return;
+  const name = await inputBox({ title: 'Its folder’s name', value: url.split('/').pop().replace(/\.git$/, ''), validate: projectNameWhy });
+  if (!name || !I) return;
+  const host = isHomeLoc(where.loc) ? (offline() ? selfHost : runHost()) : where.loc.host;
+  const parent = hostPath(host, isHomeLoc(where.loc) ? 'home' : where.loc.share, where.dir);
+  if (!parent) { notify('error', `Can't tell where ${where.dir} is on ${host}.`); return; }
+  const note = notify('info', `Cloning ${url}…`, { progress: true, sticky: true });
+  try { await git(['clone', '--progress', url, name.trim()], { where: { host }, dir: parent }); } catch (err) { note.close(); notify('error', `Clone: ${err.message}`); return; }
+  note.close();
+  if (!I) return;
+  setRoot(filesJoin(where.dir, name.trim()), false, where.loc);
+  notify('info', `Cloned into ${name.trim()}.`);
+}
+
 // --- search: the workspace's text on every online host ---------------------------------------
 // the hosts' own search, case-blind substrings with a name glob; case and whole
 // words narrowed here, so what's offered is only what's kept
@@ -4706,7 +5479,7 @@ function buildSearch() {
     const glob = inc.value.trim().split(',')[0]?.trim() || '';
     const root = I.st.root;
     const where = isHomeLoc() ? homeOnline().map((h) => [h, homeAt(h)]) : [[locOf().host, apiLoc()]];
-    const got = await Promise.all(where.map(([h, at]) => filesCall(at, 'search', undefined, { path: root, query, content: 'true', ...(glob ? { glob } : {}) })
+    const got = await Promise.all(where.map(([h, at]) => filesCall(at, 'search', undefined, { path: root, query, content: 'true', skip: searchSkip(), ...(glob ? { glob } : {}) })
       .then((b) => ({ h, b }), () => null)));
     if (!I || gen !== S.gen) return;
     const skip = excluded();
@@ -5497,41 +6270,168 @@ function recordKey(c) {
 function openWelcome() {
   openPage('welcome', 'Welcome', 'spark', (t) => {
     const w = el('div', 'ide-welcome');
-    const hero = el('div', 'ide-welcome-hero');
-    hero.append(el('h1', '', 'Sulfur'), el('p', '', `Your home on the mesh, its hosts’ shells and its agents, in one workbench. Signed in as ${acct.user}.`));
-    const cols = el('div', 'ide-welcome-cols');
-    const start = el('div', 'ide-welcome-col');
-    start.append(el('h2', '', 'Start'));
-    for (const [label, cmd, ic] of [['New File…', 'explorer.newFile', 'newFile'], ['Open Folder…', 'workbench.action.files.openFolder', 'folder'],
-      ['New Terminal', 'workbench.action.terminal.new', 'terminal'], ['Ask the Agent', 'workbench.action.chat.open', 'spark'], ['Run Active File', 'sulfur.run.file', 'run']]) {
-      const b = Object.assign(el('button', 'ide-welcome-link'), { type: 'button' });
-      b.append(icon(ic), el('span', '', label));
-      b.addEventListener('click', () => run(cmd));
-      start.append(b);
-    }
-    const recent = el('div', 'ide-welcome-col');
-    recent.append(el('h2', '', 'Recent'));
-    const folders = (I.st.recentFolders || []).filter(inScope).slice(0, 6);
-    if (!folders.length) recent.append(el('p', 'ide-empty-note', 'No recent folders'));
-    for (const d of folders) {
-      const b = Object.assign(el('button', 'ide-welcome-link'), { type: 'button' });
-      b.append(el('span', '', baseName(d)), el('span', 'ide-welcome-dim', filesParent(d)));
-      b.addEventListener('click', () => setRoot(d));
-      recent.append(b);
-    }
-    const learn = el('div', 'ide-welcome-col');
-    learn.append(el('h2', '', 'Learn'));
-    for (const [label, cmd, ic] of [['Extension Guide', 'sulfur.extensions.guide', 'book'], ['Create an Extension', 'sulfur.extensions.create', 'ext'],
-      ['Keyboard Shortcuts', 'workbench.action.openGlobalKeybindings', 'keyboard'], ['Settings', 'workbench.action.openSettings', 'gear']]) {
-      const b = Object.assign(el('button', 'ide-welcome-link'), { type: 'button' });
-      b.append(icon(ic), el('span', '', label));
-      b.addEventListener('click', () => run(cmd));
-      learn.append(b);
-    }
-    cols.append(start, recent, learn);
-    w.append(hero, cols);
     t.view.append(w);
+    t.paint = () => paintWelcome(w);
+    t.paint();
   });
+}
+
+function paintWelcome(w) {
+  const hero = el('div', 'ide-welcome-hero');
+  hero.append(Object.assign(el('img', 'ide-welcome-mark'), { src: '/sulfur/icon.svg', alt: '', draggable: false }));
+  const words = el('div');
+  words.append(el('h1', '', 'Sulfur'), el('p', '', offline()
+    ? `Open any file or folder on ${selfHost} and start: nothing to log into.`
+    : standalone ? `${meshName()}: your home, its machines’ shells and its agents. Signed in as ${acct.user}.` : `Your home on the mesh, its hosts’ shells and its agents, in one workbench. Signed in as ${acct.user}.`));
+  hero.append(words);
+  const link = (label, cmd, ic, detail = '') => {
+    const b = Object.assign(el('button', 'ide-welcome-link'), { type: 'button' });
+    b.append(icon(ic), el('span', '', label));
+    if (detail) b.append(el('span', 'ide-welcome-dim', detail));
+    b.addEventListener('click', () => (typeof cmd === 'function' ? cmd() : run(cmd)));
+    return b;
+  };
+  const cols = el('div', 'ide-welcome-cols');
+  const start = el('div', 'ide-welcome-col');
+  start.append(el('h2', '', 'Start'));
+  const f = (id) => keyLabel(keyFor(id) || '');
+  if (nativeFiles()) start.append(link('Open File…', 'workbench.action.files.openFile', 'file', f('workbench.action.files.openFile')));
+  start.append(link('Open Folder…', 'workbench.action.files.openFolder', 'folder', f('workbench.action.files.openFolder')),
+    link('New Project…', 'sulfur.project.new', 'plus'), link('New File…', 'explorer.newFile', 'newFile'));
+  if (I.commands.has('sulfur.git.clone')) start.append(link('Clone a Repository…', 'sulfur.git.clone', 'branch'));
+  start.append(link('New Terminal', 'workbench.action.terminal.new', 'terminal', f('workbench.action.terminal.new')));
+
+  const recent = el('div', 'ide-welcome-col');
+  recent.append(el('h2', '', 'Recent'));
+  const rk = (x) => (typeof x === 'string' ? { loc: HOME_LOC, root: x } : { loc: x.loc || HOME_LOC, root: x.root });
+  const folders = (I.st.recentFolders || []).map(rk).filter((x) => inScope(x.root, x.loc)).slice(0, 7);
+  if (!folders.length) recent.append(el('p', 'ide-empty-note', 'Folders you open show here.'));
+  for (const x of folders) {
+    const b = Object.assign(el('button', 'ide-welcome-link'), { type: 'button', title: isHomeLoc(x.loc) && !offline() ? x.root : `${x.loc.host === '*' ? selfHost : x.loc.host}: ${hostPath(x.loc.host === '*' ? selfHost : x.loc.host, x.loc.share, x.root)}` });
+    b.append(icon('folder'), el('span', '', baseName(x.root)), el('span', 'ide-welcome-dim', offline() ? hostPath(selfHost, isHomeLoc(x.loc) ? 'home' : x.loc.share, filesParent(x.root)) : filesParent(x.root)));
+    b.addEventListener('click', () => setRoot(x.root, false, x.loc));
+    recent.append(b);
+  }
+
+  const side = el('div', 'ide-welcome-col');
+  if (standalone) {
+    side.append(el('h2', '', 'Phosphorus Mesh'));
+    const card = el('div', 'ide-welcome-mesh');
+    const line = (text, cls = '') => card.append(el('p', cls, text));
+    if (!offline()) {
+      line(`Working on ${meshName()} as ${acct.user}: its machines and homes, their terminals and builds, its agents.`);
+      card.append(link('Work Offline', 'sulfur.mesh.offline', 'host', `this computer’s files, ${selfHost}`));
+    } else if (standalone.meshUser) {
+      line(`Logged in to ${meshName()} as ${standalone.meshUser}. Its models, agents and Forgejo work on this computer’s projects too.`);
+      card.append(link(`Open ${meshName()}’s Machines`, 'sulfur.mesh.open', 'remote', 'its homes and folders'), link('Sign Out', 'sulfur.mesh.signOut', 'lock'));
+    } else if (standalone.server) {
+      line(standalone.signedOut ? `Your session on ${meshName()} ended, so Sulfur opened offline.` : `${meshName()} is remembered. Log in for its machines, its agents in the chat, and its Forgejo.`);
+      card.append(link(`Log In to ${meshName()}…`, 'sulfur.mesh.connect', 'user'), link('Another Mesh…', 'sulfur.mesh.other', 'remote'));
+    } else {
+      line('Connect to your mesh for its machines and homes, its agents in the chat, and its Forgejo: by its address (https://mulab.dev) from anywhere, or a host’s name on the tailnet.');
+      card.append(link('Connect to a Phosphorus Mesh…', 'sulfur.mesh.connect', 'remote'));
+    }
+    side.append(card);
+  }
+  side.append(el('h2', '', 'Learn'));
+  for (const [label, cmd, ic] of [['Extension Guide', 'sulfur.extensions.guide', 'book'], ['Keyboard Shortcuts', 'workbench.action.openGlobalKeybindings', 'keyboard'], ['Settings', 'workbench.action.openSettings', 'gear']]) side.append(link(label, cmd, ic));
+  cols.append(start, recent, side);
+  w.replaceChildren(hero, cols);
+}
+// the welcome repainted where it's open, the mesh's state moved
+function paintWelcomeSoon() { const t = I?.tabs.find((x) => x.page === 'welcome'); t?.paint?.(); }
+
+// --- the mesh, from Sulfur on its own: connected to, logged into, remembered -----------
+
+function meshItems(withHost = false) {
+  const name = meshName();
+  if (!offline()) {
+    return [
+      { label: `${acct.user} on ${name}`, disabled: true },
+      '-',
+      ...(withHost ? [cmdItem('sulfur.selectHost', 'Select the Host for Terminals and Runs…')] : []),
+      { label: 'Hosts and Logins', run: () => showSide('run', true, true) },
+      '-',
+      cmdItem('sulfur.mesh.offline', `Work Offline, on ${selfHost}`),
+      cmdItem('sulfur.mesh.signOut', `Sign Out of ${name}`),
+    ];
+  }
+  if (standalone.meshUser) {
+    return [
+      { label: `Offline on ${selfHost}`, disabled: true },
+      { label: `Logged in to ${name} as ${standalone.meshUser}`, disabled: true },
+      '-',
+      cmdItem('sulfur.mesh.open', `Open ${name}’s Machines`),
+      cmdItem('sulfur.mesh.other', 'Connect to Another Mesh…'),
+      cmdItem('sulfur.mesh.signOut', `Sign Out of ${name}`),
+    ];
+  }
+  return [
+    { label: `Offline on ${selfHost}`, disabled: true },
+    '-',
+    standalone.server ? cmdItem('sulfur.mesh.connect', `Log In to ${name}…`) : cmdItem('sulfur.mesh.connect', 'Connect to a Phosphorus Mesh…'),
+    ...(standalone.server ? [cmdItem('sulfur.mesh.other', 'Connect to Another Mesh…')] : []),
+  ];
+}
+
+// a mesh connected to from offline: its address (the remembered one unless asked), its
+// login, then working on it or staying here with its agents
+async function meshConnect(other = false) {
+  let server = standalone.server;
+  if (!server || other) {
+    const typed = await inputBox({ title: 'Connect to a Phosphorus Mesh', value: other ? '' : meshName(), placeholder: 'https://mulab.dev, or a host on your tailnet like d6', prompt: 'Its address from anywhere, or a host’s name on your tailnet.' });
+    if (!typed?.trim() || !I) return;
+    const r = await standalone.sidecarMode('link', typed.trim());
+    if (!I) return;
+    if (!r.ok) { notify('error', r.error || `Couldn't reach ${typed.trim()}.`); return; }
+    server = r.server;
+    standalone.meshUser = '';
+  }
+  let me = await standalone.meshMe().catch(() => null);
+  if (!I) return;
+  if (!me) {
+    const user = await inputBox({ title: `Log In to ${meshName(server)}`, placeholder: 'User', prompt: `Your Phosphorus login on ${meshName(server)}.` });
+    if (!user?.trim() || !I) return;
+    const pass = await inputBox({ title: `Log In to ${meshName(server)}: ${user.trim()}`, placeholder: 'Password', password: true });
+    if (pass === undefined || !I) return;
+    const r = await standalone.meshLogIn(user.trim(), pass);
+    if (!I) return;
+    if (!r.ok) { notify('error', `${meshName(server)}: ${r.error || 'that login didn’t work'}`); return; }
+    me = r;
+  }
+  standalone.signedOut = '';
+  refreshRoles();
+  paintWelcomeSoon();
+  paintChat(true);
+  const v = await pick([
+    { label: 'Stay Offline', description: `this computer’s files, with ${meshName(server)}’s agents and Forgejo`, ic: 'host', value: 'stay' },
+    { label: `Open ${meshName(server)}’s Machines`, description: 'its homes and folders, their terminals and builds', ic: 'remote', value: 'mesh' },
+  ], { title: `Logged in to ${meshName(server)} as ${standalone.meshUser}`, placeholder: 'Where to work' });
+  if (v === 'mesh' && I) meshOpen();
+}
+
+async function meshOpen() {
+  if (!(await saveAll()).every(Boolean) || !I) return;
+  const r = await standalone.sidecarMode('mesh', standalone.server);
+  if (!r.ok) { notify('error', r.error || `Couldn't reach ${meshName()}.`); return; }
+  location.reload();
+}
+
+async function meshOffline() {
+  if (!(await saveAll()).every(Boolean) || !I) return;
+  await standalone.sidecarMode('local');
+  location.reload();
+}
+
+async function meshSignOut() {
+  const name = meshName();
+  await standalone.meshLogOut();
+  if (!offline()) { await standalone.sidecarMode('local'); location.reload(); return; }
+  if (!I) return;
+  I.roles = [];
+  paintChat(true);
+  paintWelcomeSoon();
+  notify('info', `Signed out of ${name}. It's remembered: log in again from Accounts.`);
 }
 
 function openGuide() {
@@ -6332,15 +7232,14 @@ async function projectAt(root) {
   const p = { dir: root, kinds: [], sln: [...ext('.sln'), ...ext('.slnx')], proj: [...ext('.csproj'), ...ext('.fsproj'), ...ext('.vbproj')], vcx: ext('.vcxproj'), presets: [], scripts: [], targets: [] };
   if (has('CMakeLists.txt')) {
     p.kinds.push('cmake');
-    if (has('CMakePresets.json')) {
-      try {
-        const j = parseJsonc(await readAt(`${root}/CMakePresets.json`) || '{}');
-        p.presets = (j.configurePresets || []).filter((x) => x && x.name && !x.hidden).map((x) => x.name);
-      } catch {}
-    }
+    await cmakeOf(root, names, p);
   }
-  if (p.proj.length || (p.sln.length && !p.vcx.length)) p.kinds.push('dotnet');
-  if (p.vcx.length) p.kinds.push('msbuild');
+  // a solution, as Visual Studio reads it: C++ in it builds with MSBuild, C# alone with dotnet
+  if (p.sln.length) await slnOf(root, p);
+  const cpp = p.vcx.length || p.slnCpp;
+  if (cpp) p.kinds.push('msbuild');
+  if (!cpp && (p.proj.length || p.sln.length)) p.kinds.push('dotnet');
+  if (has('global.json')) { try { p.sdk = JSON.parse(await readAt(`${root}/global.json`) || '{}').sdk?.version || ''; } catch {} }
   if (has('Cargo.toml')) p.kinds.push('cargo');
   if (has('go.mod')) p.kinds.push('go');
   if (has('package.json')) {
@@ -6356,6 +7255,97 @@ async function projectAt(root) {
   if (has('meson.build')) p.kinds.push('meson');
   if (has('pyproject.toml') || has('setup.py') || has('requirements.txt')) p.kinds.push('python');
   return p;
+}
+
+// CMake as Visual Studio drives it: CMakeSettings.json's configurations, CMakePresets'
+// presets, and the trees already configured (build, out/build/*, cmake-build-*)
+async function cmakeOf(root, names, p) {
+  p.cmakeSettings = [];
+  p.presets = [];
+  p.buildPresets = [];
+  p.trees = [];
+  if (names.includes('CMakeSettings.json')) {
+    try { p.cmakeSettings = (parseJsonc(await readAt(`${root}/CMakeSettings.json`) || '{}').configurations || []).filter((x) => x && x.name); } catch {}
+  }
+  const all = [];
+  for (const f of ['CMakePresets.json', 'CMakeUserPresets.json']) {
+    if (!names.includes(f)) continue;
+    try {
+      const j = parseJsonc(await readAt(`${root}/${f}`) || '{}');
+      all.push(...(j.configurePresets || []));
+      p.buildPresets.push(...(j.buildPresets || []).filter((x) => x && x.name && !x.hidden));
+    } catch {}
+  }
+  // a preset's own fields, else what it inherits
+  const field = (x, k, seen = new Set()) => {
+    if (!x || seen.has(x.name)) return undefined;
+    seen.add(x.name);
+    if (x[k] !== undefined) return x[k];
+    for (const n of [].concat(x.inherits || [])) { const v = field(all.find((y) => y.name === n), k, seen); if (v !== undefined) return v; }
+    return undefined;
+  };
+  p.presets = all.filter((x) => x && x.name && !x.hidden).map((x) => ({
+    name: x.name, displayName: x.displayName || x.name, generator: field(x, 'generator') || '',
+    binaryDir: String(field(x, 'binaryDir') || '').replaceAll('${sourceDir}', '.').replaceAll('${presetName}', x.name).replaceAll('${sourceParentDir}', '..').replaceAll('${sourceDirName}', baseName(root)),
+  }));
+  // configured trees: where a CMakeCache.txt says how it was configured
+  const dirs = new Set();
+  for (const n of names) if (n === 'build' || n.startsWith('cmake-build-')) dirs.add(n);
+  if (names.includes('out')) {
+    const ob = await loadDir(`${root}/out/build`).catch(() => null);
+    for (const e of ob || []) if (e.dir) dirs.add(`out/build/${e.name}`);
+  }
+  for (const x of p.cmakeSettings) dirs.add(cmakeRoot(x));
+  for (const x of p.presets) if (x.binaryDir) dirs.add(x.binaryDir.replace(/^\.\//, ''));
+  for (const d of dirs) {
+    const cache = await readAt(`${root}/${d}/CMakeCache.txt`).catch(() => null);
+    if (!cache) continue;
+    const v = (k) => (cache.match(new RegExp(`^${k}:[A-Z]+=(.*)$`, 'm')) || [])[1]?.trim() || '';
+    p.trees.push({ dir: d, generator: v('CMAKE_GENERATOR'), type: v('CMAKE_BUILD_TYPE'), cxx: v('CMAKE_CXX_COMPILER') || v('CMAKE_C_COMPILER'), platform: v('CMAKE_GENERATOR_PLATFORM') });
+  }
+}
+// a CMakeSettings configuration's build folder, from the project's
+const cmakeRoot = (x) => String(x.buildRoot || '${projectDir}\\out\\build\\${name}').replaceAll('${projectDir}', '.').replaceAll('${workspaceRoot}', '.').replaceAll('${name}', x.name)
+  .replace(/\\/g, '/').replace(/^\.\//, '');
+const samePath = (a, b) => String(a).replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '').toLowerCase() === String(b).replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '').toLowerCase();
+
+// a solution's projects and configurations, and the Visual Studio it was made with
+async function slnOf(root, p) {
+  const text = await readAt(`${root}/${p.sln[0]}`).catch(() => null);
+  if (!text) return;
+  p.slnProjects = [...text.matchAll(/^Project\("\{[^}]+\}"\)\s*=\s*"([^"]+)",\s*"([^"]+)"/gm)].map((m) => ({ name: m[1], path: m[2].replace(/\\/g, '/') })).filter((x) => /\.\w+proj$/i.test(x.path));
+  p.slnCpp = p.slnProjects.some((x) => /\.vcxproj$/i.test(x.path));
+  const sec = (text.match(/GlobalSection\(SolutionConfigurationPlatforms\)[^\n]*\n([\s\S]*?)EndGlobalSection/) || [])[1] || '';
+  p.slnConfigs = [...sec.matchAll(/^\s*([^=\n]+?)\s*=/gm)].map((m) => m[1].trim()).filter(Boolean);
+  p.slnVs = (text.match(/^# Visual Studio Version (\d+)/m) || text.match(/^VisualStudioVersion\s*=\s*(\d+)/m) || [])[1] || '';
+}
+
+// Visual Studio's year, by its major version
+const VS_YEARS = { 15: '2017', 16: '2019', 17: '2022', 18: '2026' };
+const vsYear = (v) => VS_YEARS[String(v.version || '').split('.')[0]] || String(v.version || '').split('.')[0];
+// the Visual Studio a project was made with: the compiler its trees were configured with (those
+// given first), else their generator's, its solution's version, else the newest
+function vsFor(tc, proj, trees = proj.trees || []) {
+  const vs = [...(tc?.vs || [])].sort((a, b) => String(b.version).localeCompare(String(a.version), undefined, { numeric: true }));
+  const norm = (x) => String(x || '').replace(/\\/g, '/').toLowerCase();
+  const all = [...trees, ...(proj.trees || []).filter((t) => !trees.includes(t))];
+  for (const t of all) {
+    const hit = vs.find((v) => v.path && norm(t.cxx).startsWith(`${norm(v.path)}/`));
+    if (hit) return hit;
+  }
+  for (const t of all) {
+    const gen = (t.generator.match(/Visual Studio (\d+)/) || [])[1];
+    const byGen = gen && vs.find((v) => String(v.version).startsWith(`${gen}.`));
+    if (byGen) return byGen;
+  }
+  if (proj.slnVs) { const hit = vs.find((v) => String(v.version).startsWith(`${proj.slnVs}.`)); if (hit) return hit; }
+  return vs[0] || null;
+}
+// the vcvars script an environment names: msvc_x64_x64, msvc_x86, msvc_arm64…
+function vcvarsFor(v, envs = []) {
+  const env = [].concat(envs).join(' ');
+  const script = /x86(?!_x64)|win32/i.test(env) ? 'vcvars32.bat' : /arm64/i.test(env) ? 'vcvarsamd64_arm64.bat' : 'vcvars64.bat';
+  return String(v.vcvars || '').replace(/vcvars64\.bat$/i, script);
 }
 
 // the project builds and the status bar talk of; its build settings read once it's known
@@ -6380,15 +7370,35 @@ function buildChoices(host, tc, proj) {
   const add = (id, label, detail, extra = {}) => out.push({ id, host, label, detail, ...extra });
   const vs = tc?.vs || [];
   const cc = (id) => tool(tc, id);
+  const vsBest = vsFor(tc, proj);
+  // CMakeSettings' own trees say which Visual Studio configured them
+  const vsCm = vsFor(tc, proj, (proj.trees || []).filter((t) => proj.cmakeSettings?.some((x) => samePath(cmakeRoot(x), t.dir))));
   for (const k of proj.kinds) {
+    if (k === 'cmake' && proj.cmakeSettings?.length && vsCm) {
+      add('cmake-vs', `Visual Studio ${vsYear(vsCm)} · CMake`, `${vsCm.name}, CMakeSettings.json: ${proj.cmakeSettings.map((x) => x.name).join(', ')}`, { vcvars: vsCm.vcvars, vs: vsCm.name, cmake: vsCm.cmake || '', rank: 1 });
+    }
+    if (k === 'cmake' && proj.presets?.length && (cc('cmake') || vsBest)) {
+      add('cmake-preset', 'CMake Presets', proj.presets.map((x) => x.name).join(', '), { vcvars: tc.vs?.length ? vsBest?.vcvars || '' : '', rank: 2 });
+    }
+    if (k === 'cmake') {
+      for (const t of proj.trees || []) {
+        if (proj.cmakeSettings?.some((x) => samePath(cmakeRoot(x), t.dir)) || proj.presets?.some((x) => samePath(x.binaryDir, t.dir))) continue;
+        const msvc = /cl\.exe$/i.test(t.cxx) || /Visual Studio/.test(t.generator);
+        if (!cc('cmake') && !(msvc && vsBest)) continue;
+        add('cmake-tree', `CMake · ${t.dir}`, `${t.generator}${t.type ? `, ${t.type}` : ''}, as it was configured`, { dir: t.dir, generator: t.generator, vcvars: msvc && /Ninja|NMake/.test(t.generator) ? vsBest?.vcvars || '' : '', rank: 3 });
+      }
+    }
     if (k === 'cmake' && cc('cmake')) {
       for (const v of vs) add('cmake-msvc', `CMake · MSVC ${v.msvc[0] || ''}`.trim(), `${v.name}, its own generator`, { vcvars: v.vcvars, vs: v.name });
       const ninja = !!cc('ninja');
       if (cc('gcc') || cc('g++')) add('cmake-gcc', `CMake · GCC ${cc('g++')?.version || cc('gcc')?.version || ''}`.trim(), ninja ? 'Ninja' : 'Makefiles', { ninja });
       if (cc('clang') || cc('clang++')) add('cmake-clang', `CMake · Clang ${cc('clang++')?.version || cc('clang')?.version || ''}`.trim(), ninja ? 'Ninja' : 'Makefiles', { ninja });
     }
-    if (k === 'dotnet' && cc('dotnet')) add('dotnet', `.NET ${tc.dotnet?.at(-1) || cc('dotnet').version}`, tc.dotnet?.length ? `SDKs ${tc.dotnet.join(', ')}` : '');
-    if (k === 'msbuild') for (const v of vs) add('msbuild', `MSBuild · MSVC ${v.msvc[0] || ''}`.trim(), v.name, { vcvars: v.vcvars, vs: v.name });
+    if (k === 'dotnet' && cc('dotnet')) {
+      const pinned = proj.sdk && !(tc.dotnet || []).some((x) => x === proj.sdk || x.startsWith(proj.sdk.replace(/\.\d+$/, '.')));
+      add('dotnet', `.NET ${proj.sdk || tc.dotnet?.at(-1) || cc('dotnet').version}`, pinned ? `global.json wants SDK ${proj.sdk}, not installed (${(tc.dotnet || []).join(', ')})` : tc.dotnet?.length ? `SDKs ${tc.dotnet.join(', ')}` : '', { rank: 1 });
+    }
+    if (k === 'msbuild') for (const v of vs) add('msbuild', `Visual Studio ${vsYear(v)} · MSBuild`, `${v.name}, MSVC ${v.msvc[0] || ''}`, { vcvars: v.vcvars, vs: v.name, rank: v === vsBest ? 1 : 4 });
     if (k === 'cargo' && cc('cargo')) add('cargo', `Cargo ${cc('cargo').version}`, cc('rustc') ? `rustc ${cc('rustc').version}` : '');
     if (k === 'go' && cc('go')) add('go', `Go ${cc('go').version}`, '');
     if (k === 'npm' && cc('npm')) add('npm', `npm ${cc('npm').version}`, cc('node') ? `Node ${cc('node').version}` : '');
@@ -6491,7 +7501,7 @@ async function saveBuildCfg(cfg) {
   saveState();
   paintStatus();
   paintRunView();
-  const keep = { host: cfg.host, toolchain: cfg.toolchain, configuration: cfg.configuration || 'Debug', defaultTask: cfg.defaultTask || 'build', tasks: cfg.tasks || [] };
+  const keep = { host: cfg.host, toolchain: cfg.toolchain, configuration: cfg.configuration || 'Debug', defaultTask: cfg.defaultTask || 'build', tasks: cfg.tasks || [], ...(cfg.startup ? { startup: cfg.startup } : {}) };
   try { await writeAt(`${dir}/${BUILD_FILE}`, `${JSON.stringify(keep, null, 2)}\n`); } catch (err) { notify('warning', `Couldn't keep the pick in ${BUILD_FILE}: ${err.message}`); }
 }
 
@@ -6505,7 +7515,7 @@ async function buildHosts() {
 }
 
 // the toolchain to build with, asked for: every host's that suits the project
-async function pickToolchain(known = null) {
+async function pickToolchain(known = null, ask = false) {
   const proj = known || await detectProject();
   if (!I || !proj) return null;
   if (!proj.kinds.length) {
@@ -6530,12 +7540,21 @@ async function pickToolchain(known = null) {
     if (!cs.length) items.push({ label: `${h} has nothing for ${proj.kinds.map((k) => KIND_NAMES[k]).join(', ')}`, description: `it has ${(tc.tools || []).map((x) => x.name).join(', ') || 'no tools found'}`, ic: 'info', value: null, sep: h });
   }
   if (singleBuilds(I.active?.rel)) items.push({ label: `Build ${baseName(I.active.rel)} Alone…`, description: 'with its machine’s own compiler, the build file left aside', ic: 'gear', value: 'alone', sep: 'more' });
+  // the project says how it builds (CMakeSettings, presets, a configured tree, a solution): no question
+  const own = got.filter((x) => x.tc).flatMap(({ h, tc }) => buildChoices(h, tc, proj)).filter((c) => (c.rank || 9) <= 3).sort((a, b) => (a.rank || 9) - (b.rank || 9) || (b.host === runHost()) - (a.host === runHost()));
+  if (!ask && own.length) {
+    const v = own[0];
+    const cfg = { host: v.host, toolchain: v, configuration: configsFor({ toolchain: v }, proj)[0] || 'Debug', defaultTask: 'build', tasks: buildCfg()?.tasks || [] };
+    await saveBuildCfg(cfg);
+    setStatusFlash(`Building ${baseName(projDir())} with ${v.label} (${cfg.configuration}) on ${v.host}, as the project says: Run › Select Toolchain… for another`);
+    return cfg;
+  }
   if (!isHomeLoc()) items.push({ label: 'Build on another machine…', description: 'copies the project there first', ic: 'remote', value: 'move', sep: singleBuilds(I.active?.rel) ? '' : 'more' });
   const v = await pick(items.map((x) => ({ ...x, value: x.value === null ? '__none' : x.value })), { title: `Build ${baseName(projDir())}: pick a toolchain`, placeholder: 'A compiler on one of your machines', matchDescription: true });
   if (!I || v === undefined || v === '__none') return null;
   if (v === 'move') { run('sulfur.project.transfer'); return null; }
   if (v === 'alone') { buildFile(true); return null; }
-  const cfg = { host: v.host, toolchain: v, configuration: buildCfg()?.configuration || 'Debug', defaultTask: 'build', tasks: buildCfg()?.tasks || [] };
+  const cfg = { host: v.host, toolchain: v, configuration: configsFor({ toolchain: v }, proj)[0] || 'Debug', defaultTask: 'build', tasks: buildCfg()?.tasks || [] };
   await saveBuildCfg(cfg);
   setStatusFlash(`Building ${baseName(projDir())} with ${v.label} on ${v.host}`);
   return cfg;
@@ -6549,6 +7568,56 @@ function tasksFor(cfg, proj) {
   const add = (id, label, command, group = 'build', extra = {}) => out.push({ id, label, command, group, vcvars: tc.vcvars || '', ...extra });
   const q = (s) => (/[\s"']/.test(s) ? `"${s}"` : s);
   switch (tc.id) {
+    case 'cmake-vs': {
+      const sc = (proj.cmakeSettings || []).find((x) => x.name === c) || (proj.cmakeSettings || [])[0];
+      if (!sc) break;
+      const root = cmakeRoot(sc);
+      const configured = (proj.trees || []).some((t) => samePath(t.dir, root));
+      const exp = (v) => String(v || '').replaceAll('${projectDir}', '.').replaceAll('${name}', sc.name);
+      const vars = (sc.variables || []).map((v) => ` -D${v.name}${v.type ? `:${v.type}` : ''}=${q(String(v.value))}`).join('');
+      const conf = `cmake -S . -B ${q(root)} -G ${q(sc.generator || 'Ninja')} -DCMAKE_BUILD_TYPE=${sc.configurationType || 'Debug'}${sc.installRoot ? ` -DCMAKE_INSTALL_PREFIX=${q(exp(sc.installRoot))}` : ''}${vars}${sc.cmakeCommandArgs ? ` ${sc.cmakeCommandArgs}` : ''}`;
+      const bargs = sc.buildCommandArgs ? ` -- ${sc.buildCommandArgs}` : '';
+      const vc = vcvarsFor({ vcvars: tc.vcvars }, sc.inheritEnvironments);
+      // Visual Studio's own CMake, as it configures the project with, not whichever's first on the PATH
+      const cm = tc.cmake ? q(tc.cmake) : 'cmake';
+      const ct = tc.cmake ? q(tc.cmake.replace(/cmake(\.exe)?$/i, 'ctest$1')) : 'ctest';
+      const confCmd = conf.replace(/^cmake /, `${cm} `);
+      add('build', `Build (${sc.name})`, `${configured ? '' : `${confCmd} && `}${cm} --build ${q(root)}${bargs}`, 'build', { vcvars: vc });
+      add('configure', 'Configure (Generate Cache)', confCmd, 'other', { vcvars: vc });
+      add('rebuild', `Rebuild (${sc.name})`, `${configured ? '' : `${confCmd} && `}${cm} --build ${q(root)} --clean-first${bargs}`, 'build', { vcvars: vc });
+      add('test', 'Test (CTest)', `${ct} --test-dir ${q(root)} --output-on-failure`, 'test', { vcvars: vc });
+      add('install', 'Install', `${cm} --install ${q(root)}`, 'other', { vcvars: vc });
+      add('clean', 'Clean', `${cm} --build ${q(root)} --target clean`, 'other', { vcvars: vc });
+      out.buildRoot = root;
+      break;
+    }
+    case 'cmake-preset': {
+      const pr = (proj.presets || []).find((x) => x.name === c) || (proj.presets || [])[0];
+      if (!pr) break;
+      const bp = (proj.buildPresets || []).find((x) => x.configurePreset === pr.name);
+      const root = pr.binaryDir || `build/${pr.name}`;
+      const configured = (proj.trees || []).some((t) => samePath(t.dir, root));
+      const conf = `cmake --preset ${q(pr.name)}`;
+      const build = bp ? `cmake --build --preset ${q(bp.name)}` : `cmake --build ${q(root)}`;
+      add('build', `Build (${pr.displayName})`, `${configured ? '' : `${conf} && `}${build}`);
+      add('configure', 'Configure', conf, 'other');
+      add('rebuild', `Rebuild (${pr.displayName})`, `${configured ? '' : `${conf} && `}${build} --clean-first`);
+      add('test', 'Test (CTest)', `ctest --test-dir ${q(root)} --output-on-failure`, 'test');
+      add('clean', 'Clean', `cmake --build ${q(root)} --target clean`, 'other');
+      out.buildRoot = root;
+      break;
+    }
+    case 'cmake-tree': {
+      const multi = /Visual Studio|Multi-Config|Xcode/.test(tc.generator || '');
+      const cf = multi ? ` --config ${c}` : '';
+      add('build', `Build (${tc.dir}${multi ? `, ${c}` : ''})`, `cmake --build ${q(tc.dir)}${cf}`);
+      add('rebuild', 'Rebuild', `cmake --build ${q(tc.dir)}${cf} --clean-first`);
+      add('configure', 'Configure Again', `cmake ${q(tc.dir)}`, 'other');
+      add('test', 'Test (CTest)', `ctest --test-dir ${q(tc.dir)}${multi ? ` -C ${c}` : ''} --output-on-failure`, 'test');
+      add('clean', 'Clean', `cmake --build ${q(tc.dir)}${cf} --target clean`, 'other');
+      out.buildRoot = tc.dir;
+      break;
+    }
     case 'cmake-msvc': {
       const b = 'build/msvc';
       add('build', `Build (${c})`, `cmake -S . -B ${b} && cmake --build ${b} --config ${c}`);
@@ -6572,18 +7641,22 @@ function tasksFor(cfg, proj) {
     case 'dotnet': {
       const target = proj.sln[0] || proj.proj[0] || '';
       const t = target ? ` ${q(target)}` : '';
-      add('build', `Build (${c})`, `dotnet build${t} -c ${c}`);
-      add('run', 'Run', `dotnet run${proj.proj[0] ? ` --project ${q(proj.proj[0])}` : ''} -c ${c}`, 'run');
-      add('test', 'Test', `dotnet test${t} -c ${c}`, 'test');
+      const [cn, plat] = c.split('|');
+      const pf = plat && plat.trim() !== 'Any CPU' ? ` -p:Platform=${q(plat.trim())}` : '';
+      add('build', `Build (${c})`, `dotnet build${t} -c ${cn}${pf}`);
+      add('rebuild', `Rebuild (${c})`, `dotnet build${t} -c ${cn}${pf} --no-incremental`);
+      add('test', 'Test', `dotnet test${t} -c ${cn}${pf}`, 'test');
       add('publish', 'Publish (Release)', `dotnet publish${t} -c Release`, 'other');
-      add('clean', 'Clean', `dotnet clean${t} -c ${c}`, 'other');
+      add('clean', 'Clean', `dotnet clean${t} -c ${cn}${pf}`, 'other');
       break;
     }
     case 'msbuild': {
       const target = proj.sln[0] || proj.vcx[0];
-      add('build', `Build (${c}|x64)`, `msbuild ${q(target)} /m /nologo /p:Configuration=${c} /p:Platform=x64`);
-      add('rebuild', `Rebuild (${c}|x64)`, `msbuild ${q(target)} /m /nologo /t:Rebuild /p:Configuration=${c} /p:Platform=x64`);
-      add('clean', 'Clean', `msbuild ${q(target)} /m /nologo /t:Clean /p:Configuration=${c} /p:Platform=x64`, 'other');
+      const [cn, plat = 'x64'] = c.includes('|') ? c.split('|') : [c, 'x64'];
+      const props = `/p:Configuration=${q(cn.trim())} ${q(`/p:Platform=${plat.trim()}`)}`;
+      add('build', `Build (${cn.trim()}|${plat.trim()})`, `msbuild ${q(target)} /m /nologo ${props}`);
+      add('rebuild', `Rebuild (${cn.trim()}|${plat.trim()})`, `msbuild ${q(target)} /m /nologo /t:Rebuild ${props}`);
+      add('clean', 'Clean', `msbuild ${q(target)} /m /nologo /t:Clean ${props}`, 'other');
       break;
     }
     case 'cargo': {
@@ -6662,7 +7735,7 @@ async function chooseTask() {
   ], { title: 'Run Task', placeholder: 'Select the task to run', matchDescription: true });
   if (!I || v === undefined) return;
   if (v === 'add') { addTask(); return; }
-  if (v === 'pick') { await pickToolchain(); return; }
+  if (v === 'pick') { await pickToolchain(null, true); return; }
   runProjectTask(cfg, v);
 }
 
@@ -6680,13 +7753,128 @@ async function addTask() {
 async function toggleConfiguration() {
   const cfg = buildCfg();
   if (!cfg) { await pickToolchain(); return; }
-  const v = await pick(CONFIGS.map((c) => ({ label: c, value: c, ic: c === cfg.configuration ? 'check' : '' })), { title: 'Build Configuration' });
-  if (v && I) await saveBuildCfg({ ...cfg, configuration: v });
+  const proj = await detectProject();
+  if (!I || !proj) return;
+  const v = await pick(configsFor(cfg, proj).map((c) => ({ label: c, value: c, ic: c === cfg.configuration ? 'check' : '' })), { title: 'Build Configuration', placeholder: 'As the project names them' });
+  // a startup program built by another configuration is that one's: asked for again
+  if (v && I) await saveBuildCfg({ ...cfg, configuration: v, startup: v !== cfg.configuration && cfg.startup?.build ? undefined : cfg.startup });
+}
+
+// Ctrl+F5: the project's startup item, built first where its toolchain doesn't build as it runs.
+// The item's asked for once, kept in the project's build settings
+async function startProject(choose = false) {
+  const proj = await detectProject();
+  if (!I || !proj) return;
+  if (!proj.kinds.length) { if (I.active?.rel) runFile(I.active.rel); else notify('info', 'Open a project or a file to start it.'); return; }
+  let cfg = buildCfg();
+  if (!cfg?.toolchain?.id || !dkLiveHosts().includes(cfg.host)) cfg = await pickToolchain(proj);
+  if (!cfg || !I) return;
+  let item = !choose && cfg.startup;
+  if (!item) {
+    const note = notify('info', 'Looking for what the project starts…', { progress: true, sticky: true });
+    const items = await startupItems(cfg, proj).catch(() => []);
+    note.close();
+    if (!I) return;
+    const win = hostIsWindows(cfg.host);
+    const v = await pick([
+      ...items.map((x, i) => ({ label: x.label, description: x.command, ic: 'run', value: x, sep: i === 0 ? `${cfg.toolchain.label} on ${cfg.host}` : '' })),
+      { label: 'Another Command…', description: 'run in the project’s folder after the build', ic: 'terminal', value: 'other', sep: 'more' },
+    ], { title: 'Select Startup Item', placeholder: items.length ? 'What Ctrl+F5 runs' : 'Nothing built to start yet: build first (Ctrl+B), or give the command', matchDescription: true });
+    if (!I || v === undefined) return;
+    item = v;
+    if (v === 'other') {
+      const command = await inputBox({ prompt: `The command that starts the project, in its folder on ${cfg.host}`, placeholder: win ? 'e.g. out\\build\\x64-Debug\\app.exe' : 'e.g. ./build/app' });
+      if (!command?.trim() || !I) return;
+      item = { label: command.trim(), command: command.trim(), build: true };
+    }
+    cfg = { ...cfg, startup: item };
+    await saveBuildCfg(cfg);
+    if (choose) { setStatusFlash(`Ctrl+F5 starts ${item.label}`); return; }
+  }
+  const build = item.build ? tasksFor(cfg, proj).find((x) => x.id === 'build') : null;
+  const command = build ? `${build.command} && ${item.command}` : item.command;
+  await runProjectTask(cfg, { label: `Start ${item.label}`, command, vcvars: build?.vcvars || (cfg.toolchain.vcvars || '') });
+}
+
+// what a build can start: .NET's programs, Cargo's and Go's own, npm's start, else the programs in its build folder
+async function startupItems(cfg, proj) {
+  const tc = cfg.toolchain || {};
+  const c = (cfg.configuration || 'Debug').split('|')[0].trim();
+  const q = (x) => (/[\s"']/.test(x) ? `"${x}"` : x);
+  const dir = projDir();
+  switch (tc.id) {
+    case 'dotnet': {
+      const projs = [...proj.proj];
+      for (const x of proj.slnProjects || []) if (/\.(cs|fs|vb)proj$/i.test(x.path) && !projs.includes(x.path)) projs.push(x.path);
+      const out = [];
+      for (const pr of projs) {
+        const text = await readAt(`${dir}/${pr}`).catch(() => null);
+        const kind = (String(text || '').match(/<OutputType>\s*(\w+)\s*<\/OutputType>/i) || [])[1] || '';
+        const web = /Sdk="Microsoft\.NET\.Sdk\.(Web|BlazorWebAssembly|Worker)"/i.test(text || '');
+        if (/^(Exe|WinExe)$/i.test(kind) || web) out.push({ label: baseName(pr).replace(/\.\w+proj$/i, ''), command: `dotnet run --project ${q(pr)} -c ${c}` });
+      }
+      return out;
+    }
+    case 'cargo': return [{ label: 'cargo run', command: `cargo run${/release/i.test(c) ? ' --release' : ''}` }];
+    case 'go': return [{ label: 'go run .', command: 'go run .' }];
+    case 'npm': return ['start', 'dev', 'serve', 'preview'].filter((x) => (proj.scripts || []).includes(x)).map((x) => ({ label: `npm run ${x}`, command: x === 'start' ? 'npm start' : `npm run ${x}` }));
+    case 'python': return [];
+  }
+  // a native build's programs: what its build folder holds
+  const root = tasksFor(cfg, proj).buildRoot || (tc.id === 'msbuild' ? '' : 'build');
+  const win = hostIsWindows(cfg.host);
+  const at = isHomeLoc() ? homeAt(cfg.host) : apiLoc();
+  const base = root ? `${dir}/${root}` : dir;
+  const b = await filesCall(at, 'tree', undefined, { path: base, depth: 6, match: win ? '*.exe' : '*', skip: 'CMakeFiles,.git,obj,_deps,vcpkg_installed,node_modules' }).catch(() => null);
+  const progs = (b?.entries || []).map((e) => e.path).filter((x) => !x.endsWith('/') && (win ? /\.exe$/i.test(x) : !/\.[^/]+$/.test(baseName(x)) && !/^(Makefile|GNUmakefile)$/.test(baseName(x))))
+    .filter((x) => !/(^|\/)(CompilerId|CMakeScratch|cmake-|test_|gtest)/i.test(x))
+    .filter((x) => tc.id !== 'msbuild' || new RegExp(`/(x64|Win32|ARM64)?/?${c}/`, 'i').test(`/${x}`) || !/\/(Debug|Release)\//i.test(`/${x}`));
+  const rel = (x) => (x.startsWith(`${dir}/`) ? x.slice(dir.length + 1) : x);
+  return progs.slice(0, 40).map((x) => ({ label: baseName(x), command: win ? q(rel(x).replace(/\//g, '\\')) : `./${q(rel(x))}`, build: true }));
+}
+
+// the configurations a build has: its CMakeSettings', its presets, its solution's, else Debug and Release
+function configsFor(cfg, proj) {
+  const tc = cfg.toolchain || {};
+  if (tc.id === 'cmake-vs' && proj.cmakeSettings?.length) return proj.cmakeSettings.map((x) => x.name);
+  if (tc.id === 'cmake-preset' && proj.presets?.length) return proj.presets.map((x) => x.name);
+  if (tc.id === 'cmake-tree') return /Visual Studio|Multi-Config|Xcode/.test(tc.generator || '') ? ['Debug', 'Release', 'RelWithDebInfo', 'MinSizeRel'] : [(proj.trees || []).find((t) => t.dir === tc.dir)?.type || 'Debug'];
+  if ((tc.id === 'msbuild' || tc.id === 'dotnet') && proj.slnConfigs?.length) return proj.slnConfigs;
+  return CONFIGS;
 }
 
 // a task in the Terminal panel, a terminal of its own named for it; one of the
 // same name that's done gives way to it
+// a mesh home on a Linux or macOS machine handed to your own login there, once:
+// Phosphorus writes homes as root, so without it a build there can't write its output
+async function ensureHomeOwned(host) {
+  if (offline() || !isHomeLoc() || !host || hostIsWindows(host)) return;
+  const login = dk.creds.get(host)?.user;
+  if (!login || login === 'root') return;
+  I.owned ||= new Set();
+  const k = `${host}
+${login}`;
+  if (I.owned.has(k)) return;
+  I.owned.add(k);
+  try {
+    const r = await fetch(filesApi(homeAt(host), 'own'), jsonPost({ path: acct.user, login }));
+    const b = await r.json().catch(() => ({}));
+    if (r.ok && !b.already) setStatusFlash(`Your home on ${host} is ${login}’s there now: builds and shells can write in it`);
+    else if (!r.ok && r.status !== 404 && r.status !== 409) { I.owned.delete(k); log(`couldn't hand the home on ${host} to ${login}: ${b.error || r.status}`); }
+  } catch { I.owned.delete(k); }
+}
+
+// a task once its machine can write where it runs
 function runTask(o) {
+  if (!offline() && isHomeLoc() && !hostIsWindows(o.host) && !I.owned?.has(`${o.host}
+${dk.creds.get(o.host)?.user}`)) {
+    ensureHomeOwned(o.host).finally(() => { if (I) runTaskNow(o); });
+    return;
+  }
+  runTaskNow(o);
+}
+
+function runTaskNow(o) {
   const host = o.host;
   if (!dk.creds.get(host)) { notify('warning', `Not logged into ${host}: log in ${loginWhere()}.`); return null; }
   for (const old of I.terms.filter((x) => x.base === o.name && x.kind !== 'shell' && x.ended)) killTerm(old);

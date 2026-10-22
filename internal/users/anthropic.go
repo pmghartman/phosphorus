@@ -6,6 +6,7 @@ package users
 // login, their mcp key, all from that same vault
 
 import (
+	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
@@ -90,6 +91,26 @@ func HostLogin(s *Session, host string) (user, pass string, ok bool) {
 	v, _ := vaultOf(s)
 	hs, _ := cleanVault(v)["hosts"].(map[string]any)
 	l, _ := hs[host].(map[string]any)
+	user, _ = l["user"].(string)
+	pass, _ = l["pass"].(string)
+	return user, pass, user != ""
+}
+
+// PageLogin the session's saved page login named name, else the first whose
+// url holds urlHas: a service's own login, as Forgejo's
+func PageLogin(s *Session, name, urlHas string) (user, pass string, ok bool) {
+	v, _ := vaultOf(s)
+	ps, _ := cleanVault(v)["pages"].(map[string]any)
+	l, _ := ps[name].(map[string]any)
+	if u, _ := l["user"].(string); u == "" && urlHas != "" {
+		for _, x := range ps {
+			p, _ := x.(map[string]any)
+			if u, _ := p["user"].(string); u != "" && strings.Contains(fmt.Sprint(p["url"]), urlHas) {
+				l = p
+				break
+			}
+		}
+	}
 	user, _ = l["user"].(string)
 	pass, _ = l["pass"].(string)
 	return user, pass, user != ""

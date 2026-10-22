@@ -12,7 +12,7 @@
     user-select: none; -webkit-user-select: none; cursor: default;
   }
   @media (prefers-color-scheme: light) { body { background: #ffffff; color: #616161; } }
-  svg { width: 88px; height: 88px; animation: in 0.4s ease-out; }
+  img { width: 112px; height: 112px; animation: in 0.4s ease-out; -webkit-user-drag: none; }
   .bar { width: 120px; height: 2px; overflow: hidden; border-radius: 1px; background: rgb(128 128 128 / 0.18); }
   .bar::after { content: ""; display: block; width: 40%; height: 100%; background: #ffb21f; animation: slide 1.1s ease-in-out infinite; }
   .why { display: none; max-width: 340px; text-align: center; line-height: 1.5; }
@@ -20,20 +20,11 @@
   body.fail .why { display: block; }
   @keyframes in { from { opacity: 0; transform: scale(0.94); } }
   @keyframes slide { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
-  @media (prefers-reduced-motion: reduce) { svg, .bar::after { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { img, .bar::after { animation: none; } }
 </style>
 </head>
 <body>
-  <svg viewBox="100 100 824 824" aria-hidden="true">
-    <defs>
-      <linearGradient id="g" x1=".15" y1="0" x2=".85" y2="1"><stop offset="0" stop-color="#fff07a"/><stop offset=".45" stop-color="#ffc22e"/><stop offset="1" stop-color="#ff7417"/></linearGradient>
-      <linearGradient id="s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".5"/><stop offset=".42" stop-color="#fff" stop-opacity=".06"/><stop offset=".43" stop-color="#fff" stop-opacity="0"/></linearGradient>
-      <clipPath id="c"><rect x="100" y="100" width="824" height="824" rx="186"/></clipPath>
-    </defs>
-    <rect x="100" y="100" width="824" height="824" rx="186" fill="url(#g)"/>
-    <ellipse cx="512" cy="150" rx="560" ry="420" fill="url(#s)" clip-path="url(#c)"/>
-    <g fill="none" stroke="#3a1c05" stroke-linecap="round" stroke-linejoin="round" stroke-width="66"><path d="M512 238 L690 536 L334 536 Z"/><path d="M512 536 V796 M402 676 H622"/></g>
-  </svg>
+  <img src="icon.svg" alt="">
   <div class="bar"></div>
   <p class="why">Sulfur’s own server didn’t start. Something else may be using port 47615; quit it and open Sulfur again.</p>
 </body>

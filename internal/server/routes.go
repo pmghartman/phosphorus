@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -37,10 +38,13 @@ var (
 	runRe      = regexp.MustCompile(`^/api/run/([a-z0-9][a-z0-9-]*)/([A-Za-z0-9_-]+)/(.*)$`)
 	mirrorRe   = regexp.MustCompile(`^/internal/mirror/([0-9a-f]{24})$`)
 	pingRe     = regexp.MustCompile(`^/api/ping/([a-z0-9-]+)$`)
-	filesRe    = regexp.MustCompile(`^/api/files/([a-z0-9][a-z0-9-]*)/(info|list|tree|search|read|download|upload|save|mkdir|rename|delete|run|mirror)$`)
+	filesRe    = regexp.MustCompile(`^/api/files/([a-z0-9][a-z0-9-]*)/(info|list|tree|search|read|download|upload|save|mkdir|rename|delete|run|mirror|own)$`)
 	publicRe   = regexp.MustCompile(`^/api/services/([a-z0-9][a-z0-9-]*)/([a-z0-9][a-z0-9-]*)/public$`)
 	faviconRe  = regexp.MustCompile(`^/api/favicon/([a-z0-9][a-z0-9-]*)/([a-z0-9][a-z0-9-]*)$`)
 )
+
+// loginRe a machine account's name, as a home is handed to one
+var loginRe = regexp.MustCompile(`^[a-z_][a-z0-9_.-]{0,31}$`)
 
 func urlUnescape(s string) (string, error) { return url.PathUnescape(s) }
 
@@ -768,7 +772,7 @@ func filesRoute(w http.ResponseWriter, r *http.Request, host, op string, q url.V
 		sendJSON(w, st, b)
 		return
 	case m == "GET" && op == "tree":
-		st, b := files.Tree(sh, rel, q.Get("depth"), q.Get("match"))
+		st, b := files.Tree(sh, rel, q.Get("depth"), q.Get("match"), q.Get("skip"))
 		if sh.ID == "home" && st == 200 {
 			out := b.(map[string]any)
 			out["entries"] = files.HomeFilterTree(who, out["entries"].([]map[string]any), users.Exists)
@@ -776,7 +780,7 @@ func filesRoute(w http.ResponseWriter, r *http.Request, host, op string, q url.V
 		sendJSON(w, st, b)
 		return
 	case m == "GET" && op == "search":
-		st, b := files.Search(sh, rel, q.Get("query"), q.Get("content") == "true", q.Get("glob"))
+		st, b := files.Search(sh, rel, q.Get("query"), q.Get("content") == "true", q.Get("glob"), q.Get("skip"))
 		if sh.ID == "home" && st == 200 {
 			out := b.(map[string]any)
 			out["results"] = homeFilterResults(who, out["results"].([]map[string]any))
@@ -830,6 +834,24 @@ func filesRoute(w http.ResponseWriter, r *http.Request, host, op string, q url.V
 				return mirror.Mark(str(p["path"]))
 			}
 			return mirror.Unmark(str(p["path"]))
+		})
+		return
+	// a user's own home here handed to their own login on this machine, so its
+	// builds and shells write in it as Phosphorus, root, does
+	case m == "POST" && op == "own":
+		onJSON(w, r, maxJSONBody, true, func(p map[string]any) (int, any) {
+			if sh.ID != "home" || who == nil || who.User == "" {
+				return 403, map[string]any{"error": "only your own home"}
+			}
+			login := str(p["login"])
+			// none named: the login the user saved for this machine, as the Code service's
+			if s := users.Soon(r); login == "" && s != nil {
+				login, _, _ = users.HostLogin(s, selfHost)
+			}
+			if !loginRe.MatchString(login) {
+				return 400, map[string]any{"error": "a login's name"}
+			}
+			return files.Own(filepath.Join(files.HomeDir(), who.User), login)
 		})
 		return
 	case m == "POST" && op == "run":
