@@ -21,7 +21,7 @@ phosphorus is not affiliated with or endorsed by any of them.
 
 == Go modules in the phosphorus binary ==
 
-Go standard library and runtime go1.26.10, text [10]
+Go standard library and runtime go1.26.0, text [10]
     https://go.dev
 fyne.io/systray v1.12.1, text [12]
     https://pkg.go.dev/fyne.io/systray
@@ -1112,7 +1112,7 @@ Public License instead of this License.  But first, please read
 <https://www.gnu.org/licenses/why-not-lgpl.html>.
 
 
----- [10] Go standard library and runtime go1.26.10, golang.org/x/crypto v0.58.0, golang.org/x/net v0.60.0, golang.org/x/sync v0.24.0, golang.org/x/sys v0.49.0, golang.org/x/term v0.47.0, golang.org/x/text v0.43.0 ----
+---- [10] Go standard library and runtime go1.26.0, golang.org/x/crypto v0.58.0, golang.org/x/net v0.60.0, golang.org/x/sync v0.24.0, golang.org/x/sys v0.49.0, golang.org/x/term v0.47.0, golang.org/x/text v0.43.0 ----
 
 Copyright 2009 The Go Authors.
 

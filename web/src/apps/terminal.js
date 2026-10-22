@@ -271,8 +271,10 @@ function taskTerminal(view, host, task, opts = {}) {
     if (opts.banner) term.write(opts.banner);
     ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/sulfur/run`);
     ws.binaryType = 'arraybuffer';
+    let heard = false;
     ws.onopen = () => ws.send(JSON.stringify({ host, task: { ...task, cols: term.cols, rows: term.rows } }));
     ws.onmessage = (e) => {
+      heard = true;
       if (typeof e.data === 'string') {
         let m = null;
         try { m = JSON.parse(e.data); } catch { return; }
@@ -283,7 +285,8 @@ function taskTerminal(view, host, task, opts = {}) {
       term.write(b);
       opts.onText?.(dec.decode(b, { stream: true }));
     };
-    ws.onclose = () => end(-1, 'the connection closed');
+    // closed before a word: the host has no runs to give, most likely a Phosphorus older than this Sulfur
+    ws.onclose = () => end(-1, heard ? 'the connection closed' : `${host} didn't take the run: its Phosphorus is likely older than this Sulfur. Update the mesh (the status app's update, or phos update all), then run it again.`);
     term.onData((d) => { if (!ended && ws?.readyState === WebSocket.OPEN) ws.send(enc.encode(d)); });
     term.onResize(() => { if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows })); });
   }).catch((err) => { view.textContent = err.message; end(-1, err.message); });
