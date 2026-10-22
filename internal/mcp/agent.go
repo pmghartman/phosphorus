@@ -385,11 +385,9 @@ func describe() {
 		"update_status":   "The mesh update: whether one runs, who started it, each host's step and result. history true adds the last fifty started from this host with any errors.",
 		"update_control":  "Start a mesh update on an admin's key, continue a paused one, or cancel the running one. update_status follows it. Admins only.",
 		"make_git_master": "Make a git host the master: the live one hands off, or with none it's force-promoted. Returns once it leads (up to 30s); never press it twice. Admins only.",
-		"set_model_role":  "Pick the chimp's (chat) or orangutan's (projects) model mesh-wide: provider/model, phosphorus/<host> for a mesh host's own, blank for the default. Admins only.",
-		"models":          "The models: each role's model chosen and answering, providers with a key, each mesh model host's file, state and memory, and the last ask's context use.",
-		"projects":        "The long projects the mesh's own model works on, on every host: title, who set it, status, phase, progress and deadline.",
+		"set_model_role":  "Pick which mesh host's model is the chimp (small, fast) or the orangutan (big), mesh-wide: phosphorus/<host>, blank for the default. Admins only.",
+		"models":          "The models: each role's mesh host chosen and answering, each mesh model host's file, state and memory, and the last call's context use.",
 		"people":          "Who is on phosphorus right now: each person, the host serving them, and whether they are typing.",
-		"fetch_page":      "A public web page's readable text, for a link someone gave or an address known for sure.",
 	}
 	for i := range tools {
 		if t, ok := d[tools[i].name]; ok {

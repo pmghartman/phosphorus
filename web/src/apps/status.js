@@ -456,7 +456,7 @@ let stModelHtml = '';
 
 function drawModelSum() {
   const blocks = [];
-  for (const role of roleOrder()) {
+  for (const role of MODEL_ROLES) {
     // off the mesh: its id alone
     const ext = stModel()?.roles?.[role]?.host === '' ? stModel().roles[role].model : '';
     const m = ext || stModels().find((x) => rolesOf(x).includes(role));
@@ -501,102 +501,47 @@ function miniHtml(m) {
 }
 
 // ---- model picker ------------------------------------------------------------
-// each role's model and the providers' api keys, in the full card only; a key
-// goes to this host and on over the tailnet, never shown here again
+// which mesh host's model each role is, in the full card only
 
 const stModelPick = stModelEl.querySelector('.st-model-pick');
-const CATALOG_MS = 5 * 60 * 1000;
-const CATALOG_RETRY_MS = 30000;
-let catalog = null;
-let catalogAt = 0;
-let catalogBusy = false;
-let catalogKeys = '';
 let pickSig = '';
 let pickError = '';
 
-// every provider opencode knows, the models of those it can use
-async function loadCatalog(force) {
-  if (catalogBusy || (!force && Date.now() - catalogAt < CATALOG_MS)) return;
-  catalogBusy = true;
-  try {
-    const r = await fetch('/api/model/catalog');
-    const body = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(body.error || `status ${r.status}`);
-    catalog = body;
-    catalogAt = Date.now();
-    if (pickError.startsWith('no catalog')) pickError = '';
-  } catch (err) {
-    pickError = `no catalog: ${err.message}`;
-    catalogAt = Date.now() - CATALOG_MS + CATALOG_RETRY_MS;
-  }
-  catalogBusy = false;
-  drawModelPick();
-}
-
-// every model a role can take, by provider, the mesh's own first; a role's
-// choice kept listed though its provider's key is gone
-function modelGroups(model) {
-  const groups = [{ id: 'phosphorus', name: 'mesh', models: stModels().map((m) => ({ id: `phosphorus/${m.host}`, name: m.file ? `${m.host} · ${m.file}` : m.host })) }];
-  for (const p of catalog || []) {
-    if (p.id !== 'phosphorus' && p.models.length) groups.push({ id: p.id, name: p.id, models: p.models.map((m) => ({ id: `${p.id}/${m.id}`, name: m.name.toLowerCase() })) });
-  }
+// every mesh host running a model, a role's choice kept listed though its host is gone
+function modelChoices(model) {
+  const out = stModels().map((m) => ({ id: `phosphorus/${m.host}`, name: m.file ? `${m.host} · ${m.file}` : m.host }));
   for (const r of MODEL_ROLES) {
     const id = model.roles?.[r]?.chosen;
-    if (!id || groups.some((g) => g.models.some((m) => m.id === id))) continue;
-    const p = id.slice(0, id.indexOf('/'));
-    const g = groups.find((x) => x.id === p) || groups[groups.push({ id: p, name: p, models: [] }) - 1];
-    g.models.push({ id, name: id.slice(p.length + 1) });
+    if (id && !out.some((m) => m.id === id)) out.push({ id, name: id.slice(id.indexOf('/') + 1) });
   }
-  return groups.filter((g) => g.models.length);
+  return out;
 }
 
 // a long model name cut short, whole on hover, so no pick widens the card
 const MODEL_LABEL_MAX = 28;
 const clipLabel = (t) => (t.length > MODEL_LABEL_MAX ? `${t.slice(0, MODEL_LABEL_MAX - 1)}…` : t);
 const option = (value, label, on) => `<option value="${esc(value)}"${label.length > MODEL_LABEL_MAX ? ` title="${esc(label)}"` : ''}${on ? ' selected' : ''}>${esc(clipLabel(label))}</option>`;
-const roleOrder = () => MODEL_ROLES;
-
-// the keys' list folded away until asked for
-let keysOpen = false;
 
 function drawModelPick() {
   const model = stModel();
   stModelPick.hidden = stModelEl.classList.contains('mini') || !model;
   if (stModelPick.hidden) return;
-  // a key set or cleared anywhere: the providers' models listed again
-  const keySig = JSON.stringify(model.keys || []);
-  loadCatalog(keySig !== catalogKeys);
-  catalogKeys = keySig;
-  // never redrawn under a typing hand
+  // never redrawn under a picking hand
   if (stModelPick.contains(document.activeElement)) return;
-  const groups = modelGroups(model);
-  const providers = (catalog || []).filter((p) => p.id !== 'phosphorus');
-  const keys = model.keys || [];
-  const order = roleOrder();
-  const sig = JSON.stringify([model.roles, keys, groups, providers.map((p) => p.id), pickError, keysOpen, order]);
+  const choices = modelChoices(model);
+  const sig = JSON.stringify([model.roles, choices, pickError]);
   if (sig === pickSig) return;
   pickSig = sig;
-  const roles = order.map((r) => {
+  const roles = MODEL_ROLES.map((r) => {
     const x = model.roles?.[r] || {};
     const fallback = `mesh default${x.chosen ? '' : x.model ? `: ${x.model}` : ', none loaded'}`;
     return `<div class="st-pick-row"><span class="st-key">${r}</span><select class="st-pick-in" data-role="${r}" aria-label="${r} model">`
       + option('', fallback, !x.chosen)
-      + groups.map((g) => `<optgroup label="${esc(g.name)}">${g.models.map((m) => option(m.id, m.name, m.id === x.chosen)).join('')}</optgroup>`).join('')
+      + choices.map((m) => option(m.id, m.name, m.id === x.chosen)).join('')
       + '</select></div>'
       + (x.ready || !x.why ? '' : `<div class="st-pick-row st-pick-why">${esc(x.why)}</div>`);
   }).join('');
-  const fold = `<div class="st-pick-row"><span class="st-key">keys</span><button type="button" class="st-pick-fold" data-fold aria-expanded="${keysOpen}">`
-    + `${keys.length ? `${keys.length} set` : 'none set'} <span class="st-dim">${keysOpen ? '▾' : '▸'}</span></button></div>`;
-  // a plain field drawn masked: no password manager offering to fill or save it
-  const open = !keysOpen ? '' : '<div class="st-pick-keys">'
-    + keys.map((p) => `<div class="st-pick-row"><span class="st-pick-key">${esc(p)}</span>`
-      + `<button type="button" class="st-pick-btn" data-clear="${esc(p)}" title="forget ${esc(p)}'s key">clear</button></div>`).join('')
-    + '<div class="st-pick-row"><select class="st-pick-in st-pick-provider" aria-label="provider">'
-    + `<option value="" disabled selected>provider</option>${providers.map((p) => option(p.id, p.id)).join('')}</select>`
-    + '<input class="st-pick-in st-pick-secret" type="text" name="phosphorus-provider-key" placeholder="api key" autocomplete="off" '
-    + 'autocorrect="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" aria-label="api key">'
-    + '<button type="button" class="st-pick-btn" data-save>save</button></div></div>';
-  stModelPick.innerHTML = roles + fold + open + (pickError ? `<div class="st-pick-row st-pick-err">${esc(pickError)}</div>` : '');
+  stModelPick.innerHTML = roles + (pickError ? `<div class="st-pick-row st-pick-err">${esc(pickError)}</div>` : '');
 }
 
 // shown at once on success, the next poll bringing the mesh's own
@@ -617,39 +562,11 @@ async function pickPost(url, body, shown) {
   }
 }
 
-function saveKey() {
-  const provider = stModelPick.querySelector('.st-pick-provider');
-  const secret = stModelPick.querySelector('.st-pick-secret');
-  if (!provider.value || !secret.value.trim()) { pickError = 'key missing'; pickSig = ''; drawModelPick(); return; }
-  const body = { provider: provider.value, key: secret.value.trim() };
-  secret.value = '';
-  document.activeElement?.blur();
-  pickPost('/api/model/key', body, (m) => { m.keys = [...new Set([...(m.keys || []), body.provider])].sort(); })
-    .then((ok) => { if (ok) loadCatalog(true); });
-}
-
 // a role's model set once picked
 stModelPick.addEventListener('change', (e) => {
   const role = e.target.dataset?.role;
   const model = e.target.value;
   if (role) pickPost('/api/model/role', { role, model }, (m) => { if (m.roles?.[role]) m.roles[role].chosen = model; });
-});
-stModelPick.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && e.target.classList.contains('st-pick-secret')) saveKey();
-});
-stModelPick.addEventListener('click', (e) => {
-  const b = e.target.closest('button');
-  if (!b) return;
-  const p = b.dataset.clear;
-  if (p) pickPost('/api/model/key', { provider: p, key: '' }, (m) => { m.keys = (m.keys || []).filter((k) => k !== p); }).then((ok) => { if (ok) loadCatalog(true); });
-  else if ('save' in b.dataset) saveKey();
-  else if ('fold' in b.dataset) {
-    keysOpen = !keysOpen;
-    pickSig = '';
-    b.blur();
-    drawModelPick();
-    if (keysOpen) stModelPick.querySelector('.st-pick-provider')?.focus();
-  }
 });
 stModelPick.addEventListener('focusout', () => setTimeout(() => { if (!stModelPick.contains(document.activeElement)) drawModelPick(); }));
 

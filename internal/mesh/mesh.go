@@ -262,7 +262,6 @@ type peerState struct {
 	everAnswered bool
 	fp           string
 	sys          string
-	projects     []any
 	answeredAt   int64
 	took         time.Duration
 	nextTry      int64
@@ -284,7 +283,6 @@ func retire(st *peerState) {
 	st.entries = []map[string]any{}
 	st.presence = []any{}
 	st.lock, st.chain, st.git, st.model = nil, nil, nil, nil
-	st.projects = []any{}
 }
 
 var pollClient = &http.Client{Transport: &http.Transport{Proxy: nil, MaxIdleConnsPerHost: 4}}
@@ -394,17 +392,9 @@ func pollPeer(p peer) {
 	st.git = objOrNil(snap["git"], "")
 	st.model = objOrNil(snap["model"], "")
 	st.sys, _ = snap["sysDigest"].(string)
-	st.projects = []any{}
-	if arr, ok := snap["projects"].([]any); ok {
-		for _, x := range arr {
-			if m, ok := x.(map[string]any); ok && m["host"] == p.host {
-				st.projects = append(st.projects, x)
-			}
-		}
-	}
 	st.answeredAt = util.Now()
 	st.took = took
-	fp := string(util.Marshal([]any{st.entries, st.presence, st.lock, st.chain, st.platform, st.version, st.sys, st.projects}))
+	fp := string(util.Marshal([]any{st.entries, st.presence, st.lock, st.chain, st.platform, st.version, st.sys}))
 	if fp != st.fp || len(st.chat) > 0 || !st.answered {
 		defer clock.MarkHot()
 	}
@@ -949,17 +939,6 @@ func PeerSys() []struct{ Host, Digest string } {
 		if st.sys != "" && st.answered {
 			out = append(out, struct{ Host, Digest string }{h, st.sys})
 		}
-	}
-	return out
-}
-
-// PeerProjects the orangutan's projects on each answering peer
-func PeerProjects() []any {
-	mu.RLock()
-	defer mu.RUnlock()
-	out := []any{}
-	for _, h := range sortedHosts() {
-		out = append(out, peerStates[h].projects...)
 	}
 	return out
 }

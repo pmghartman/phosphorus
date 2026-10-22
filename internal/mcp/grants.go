@@ -88,7 +88,7 @@ func keyNote(c *Caller) string {
 	off := []string{}
 	for i := range tools {
 		t := &tools[i]
-		if !t.project && t.scope != "ask" && withheld(t, c) != "" {
+		if withheld(t, c) != "" {
 			off = append(off, t.name)
 		}
 	}

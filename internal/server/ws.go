@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -12,8 +11,6 @@ import (
 
 	"github.com/pmghartman/phosphorus/internal/clock"
 	"github.com/pmghartman/phosphorus/internal/collab"
-	"github.com/pmghartman/phosphorus/internal/mesh"
-	"github.com/pmghartman/phosphorus/internal/project"
 	"github.com/pmghartman/phosphorus/internal/stats"
 	"github.com/pmghartman/phosphorus/internal/term"
 	"github.com/pmghartman/phosphorus/internal/users"
@@ -29,7 +26,6 @@ var (
 	hubMu     sync.Mutex
 	termConns int
 	stateWS   = map[*wsock.Conn]bool{}
-	projectWS = map[*wsock.Conn]*pjState{}
 )
 
 func refuse(w http.ResponseWriter, status int) { w.WriteHeader(status) }
@@ -77,11 +73,6 @@ func onUpgrade(w http.ResponseWriter, r *http.Request, pathname string, q url.Va
 			hubMu.Unlock()
 		}
 		return
-	case "/api/projects/ws":
-		if ws := accept(w, r); ws != nil {
-			onProjects(ws)
-		}
-		return
 	case "/api/stats":
 		_, own := q["own"]
 		if own && !isTailnet(r) && !isLoopback(r) {
@@ -91,6 +82,9 @@ func onUpgrade(w http.ResponseWriter, r *http.Request, pathname string, q url.Va
 		if ws := accept(w, r); ws != nil {
 			stats.Attach(ws, own)
 		}
+		return
+	}
+	if codeSocket(w, r, pathname, q) {
 		return
 	}
 	if m := codePathRe.FindStringSubmatch(pathname); m != nil {
@@ -230,199 +224,6 @@ func pushState() {
 	}
 }
 
-// --- the projects push ---------------------------------------------------------
-
-type pjState struct {
-	mu     sync.Mutex
-	pick   string
-	listFp string
-	oneFp  string
-}
-
-type pjDetail struct {
-	fp   string
-	done chan struct{}
-	st   int
-	body any
-}
-
-var (
-	pjMu      sync.Mutex
-	pjDetails = map[string]*pjDetail{}
-)
-
-func allProjects() []any { return append(project.Summaries(), mesh.PeerProjects()...) }
-
-func pjFp(x any) string {
-	var walk func(v any) any
-	walk = func(v any) any {
-		switch t := v.(type) {
-		case map[string]any:
-			out := map[string]any{}
-			for k, x := range t {
-				if k == "deadline" {
-					if f, ok := x.(float64); ok {
-						out[k] = float64(int64(f/60000 + 0.5))
-						continue
-					}
-				}
-				out[k] = walk(x)
-			}
-			return out
-		case []any:
-			out := make([]any, len(t))
-			for i, x := range t {
-				out[i] = walk(x)
-			}
-			return out
-		}
-		return v
-	}
-	return string(util.Marshal(walk(util.Decode(util.Marshal(x)))))
-}
-
-func detailOf(s map[string]any) *pjDetail {
-	key := str(s["host"]) + "/" + str(s["id"])
-	fp := pjFp(s)
-	pjMu.Lock()
-	if d := pjDetails[key]; d != nil && d.fp == fp {
-		pjMu.Unlock()
-		return d
-	}
-	d := &pjDetail{fp: fp, done: make(chan struct{})}
-	pjDetails[key] = d
-	pjMu.Unlock()
-	go func() {
-		host, id := str(s["host"]), str(s["id"])
-		if host == selfHost {
-			d.st, d.body = project.Detail(id)
-		} else if ip := util.TailnetIP(host); ip != "" {
-			d.st, d.body = util.PeerCall(host, util.Req{Host: ip, Path: fmt.Sprintf("/api/projects/%s/%s?hop=1", host, id), Timeout: 15 * time.Second})
-		} else {
-			d.st, d.body = 502, map[string]any{"error": "can't find " + host}
-		}
-		close(d.done)
-	}()
-	return d
-}
-
-func pushProjects(ws *wsock.Conn, st *pjState, list []any, listFp string) {
-	if !ws.Open() {
-		return
-	}
-	st.mu.Lock()
-	if st.listFp != listFp {
-		st.listFp = listFp
-		ws.JSON(map[string]any{"type": "list", "self": selfHost, "projects": list})
-	}
-	var s map[string]any
-	for _, x := range list {
-		m := util.Obj(x)
-		if str(m["host"])+"/"+str(m["id"]) == st.pick {
-			s = m
-			break
-		}
-	}
-	if s == nil {
-		st.mu.Unlock()
-		return
-	}
-	fp := pjFp(s)
-	if fp == st.oneFp {
-		st.mu.Unlock()
-		return
-	}
-	st.oneFp = fp
-	st.mu.Unlock()
-	d := detailOf(s)
-	go func() {
-		<-d.done
-		st.mu.Lock()
-		defer st.mu.Unlock()
-		if !ws.Open() || st.oneFp != fp {
-			return
-		}
-		if d.st == 200 {
-			ws.JSON(map[string]any{"type": "one", "project": d.body})
-		} else {
-			st.oneFp = ""
-		}
-	}()
-}
-
-func pushAllProjects() {
-	hubMu.Lock()
-	n := len(projectWS)
-	conns := map[*wsock.Conn]*pjState{}
-	for k, v := range projectWS {
-		conns[k] = v
-	}
-	hubMu.Unlock()
-	if n == 0 {
-		pjMu.Lock()
-		pjDetails = map[string]*pjDetail{}
-		pjMu.Unlock()
-		return
-	}
-	list := allProjects()
-	listFp := pjFp(list)
-	live := map[string]bool{}
-	for _, x := range list {
-		m := util.Obj(x)
-		live[str(m["host"])+"/"+str(m["id"])] = true
-	}
-	pjMu.Lock()
-	for k := range pjDetails {
-		if !live[k] {
-			delete(pjDetails, k)
-		}
-	}
-	pjMu.Unlock()
-	for ws, st := range conns {
-		pushProjects(ws, st, list, listFp)
-	}
-}
-
-func onProjects(ws *wsock.Conn) {
-	st := &pjState{}
-	hubMu.Lock()
-	projectWS[ws] = st
-	hubMu.Unlock()
-	defer func() {
-		hubMu.Lock()
-		delete(projectWS, ws)
-		hubMu.Unlock()
-	}()
-	list := allProjects()
-	pushProjects(ws, st, list, pjFp(list))
-	for {
-		b, _, err := ws.Read()
-		if err != nil {
-			return
-		}
-		var m map[string]any
-		if json.Unmarshal(b, &m) != nil || m == nil {
-			continue
-		}
-		pick, ok := m["pick"].(string)
-		if !ok {
-			continue
-		}
-		st.mu.Lock()
-		st.pick = clipU(pick, 100)
-		st.oneFp = ""
-		if util.Truthy(m["fresh"]) {
-			st.listFp = ""
-			pjMu.Lock()
-			delete(pjDetails, st.pick)
-			pjMu.Unlock()
-		}
-		st.mu.Unlock()
-		list := allProjects()
-		pushProjects(ws, st, list, pjFp(list))
-	}
-}
-
 func startPushes() {
 	clock.OnHot(func() {
 		pushMu.Lock()
@@ -443,11 +244,6 @@ func startPushes() {
 		for {
 			pushState()
 			time.Sleep(clock.Interval())
-		}
-	}()
-	go func() {
-		for range time.Tick(500 * time.Millisecond) {
-			pushAllProjects()
 		}
 	}()
 }
