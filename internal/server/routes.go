@@ -369,10 +369,10 @@ func appHandler(w http.ResponseWriter, r *http.Request) {
 			sendJSON(w, 400, map[string]any{"type": "error", "error": map[string]any{"type": "invalid_request_error", "message": "bad request"}})
 			return
 		}
-		model.ServeMessages(r, p, w, strings.TrimPrefix(pathname, "/api/model/v1/messages"), isLoopback(r) || isTailnet(r))
+		model.ServeMessages(r, p, w, strings.TrimPrefix(pathname, "/api/model/v1/messages"), isLoopback(r) || isTailnet(r), pageUser(r))
 		return
 	case pathname == "/api/model/v1/models" && method == "GET":
-		model.ServeModels(r, w, isLoopback(r) || isTailnet(r))
+		model.ServeModels(r, w, isLoopback(r) || isTailnet(r) || pageUser(r))
 		return
 	case pathname == "/api/model/purge" && method == "POST":
 		if !isLoopback(r) && !isTailnet(r) {

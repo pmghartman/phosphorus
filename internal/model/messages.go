@@ -85,14 +85,15 @@ func chatShaped(p map[string]any) []any {
 }
 
 // ServeMessages POST /api/model/v1/messages[/count_tokens]: sub "" or
-// "/count_tokens", peer a tailnet or loopback caller
-func ServeMessages(r *http.Request, p map[string]any, w http.ResponseWriter, sub string, peer bool) {
+// "/count_tokens", peer a tailnet or loopback caller, user a logged-in user's
+// own page (the ide's chat), its login the pass a key is for anyone else
+func ServeMessages(r *http.Request, p map[string]any, w http.ResponseWriter, sub string, peer, user bool) {
 	if sub != "" && sub != "/count_tokens" {
 		anthErr(w, 404, "not_found_error", "no such endpoint")
 		return
 	}
 	host, role := Target(util.Str(p["model"]))
-	if !gate(r, w, peer && host != "") {
+	if !gate(r, w, peer && host != "" || user) {
 		return
 	}
 	if _, ok := p["messages"].([]any); !ok {
