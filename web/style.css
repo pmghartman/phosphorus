@@ -2710,7 +2710,7 @@ body:has(.dk-pop:not([hidden])) .toasts { opacity: 0; pointer-events: none; }
 
 /* the window: its title bar VS Code's, its body the workbench */
 .dk-win.ide-win { background: var(--ide-bg); border-color: var(--ide-border); }
-.ide-win .dk-head { height: 35px; padding: 0 0 0 0.35rem; background: var(--ide-side); border-bottom: 1px solid var(--ide-border); font-family: var(--ide-ui); font-size: 13px; color: var(--ide-fg); gap: 0; position: relative; }
+.ide-win .dk-head { flex: 0 0 35px; min-width: 0; height: 35px; padding: 0 0 0 0.35rem; background: var(--ide-side); border-bottom: 1px solid var(--ide-border); font-family: var(--ide-ui); font-size: 13px; color: var(--ide-fg); gap: 0; position: relative; z-index: 4; }
 .ide-win .dk-title { display: none; }
 .ide-win .dk-btns button { width: 46px; height: 34px; color: var(--ide-fg); }
 .ide-win .dk-btns .ic { width: 0.8rem; height: 0.8rem; }
@@ -2734,7 +2734,7 @@ body:has(.dk-pop:not([hidden])) .toasts { opacity: 0; pointer-events: none; }
 .ide-narrow .ide-burger { display: flex; }
 .ide-narrow .ide-menu-top:not(.ide-burger) { display: none; }
 .ide-cc {
-  flex: 0 1 600px; min-width: 120px; height: 24px; margin: 0 auto; display: flex; align-items: center; justify-content: center; gap: 6px;
+  flex: 0 1 600px; min-width: 0; height: 24px; margin: 0 auto; display: flex; align-items: center; justify-content: center; gap: 6px;
   background: color-mix(in srgb, var(--ide-fg) 5%, transparent); border: 1px solid color-mix(in srgb, var(--ide-fg) 12%, transparent);
   color: var(--ide-muted); font: 12px var(--ide-ui); cursor: pointer; border-radius: 6px; overflow: hidden;
 }
@@ -2909,9 +2909,14 @@ body:has(.dk-pop:not([hidden])) .toasts { opacity: 0; pointer-events: none; }
 
 .ide-views { position: relative; flex: 1; min-height: 0; display: flex; }
 .ide-view-ed { flex: 1; min-width: 0; display: flex; flex-direction: column; outline: none; }
-.ide-symbol-nav { display: flex; flex: none; gap: 1px; padding: 3px 10px; border-bottom: 1px solid var(--ide-border); background: var(--ide-bg); }
-.ide-symbol-select { flex: 1; min-width: 0; max-width: 50%; font: inherit; font-size: 12px; padding: 3px 8px; color: var(--ide-fg); background: var(--ide-bg); border: 1px solid var(--ide-border); border-radius: 2px; }
-.ide-symbol-select:focus { outline: 1px solid var(--accent); }
+.ide-symbol-nav { display: flex; align-items: center; flex: none; height: 28px; padding: 0 8px; border-bottom: 1px solid var(--ide-border); background: var(--ide-bg); }
+.ide-symbol-picker { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; max-width: 50%; height: 22px; padding: 0 6px; font: 12px var(--ide-ui); color: var(--ide-muted); background: none; border: 0; border-radius: 3px; text-align: left; cursor: pointer; }
+.ide-symbol-picker + .ide-symbol-picker { border-left: 1px solid var(--ide-border); margin-left: 6px; }
+.ide-symbol-picker:hover { background: var(--ide-hover); color: var(--ide-fg); }
+.ide-symbol-picker:focus-visible { outline: 1px solid var(--ide-accent); outline-offset: -1px; }
+.ide-symbol-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ide-symbol-icon { width: 14px; height: 14px; color: var(--ide-info); }
+.ide-symbol-chevron { width: 12px; height: 12px; opacity: 0.7; }
 .ide-rename-files { padding: 8px 20px; overflow: auto; }
 .ide-rename-file { display: flex; align-items: center; gap: 8px; padding: 6px 0; }
 .ide-page { overflow: auto; }
@@ -3681,14 +3686,15 @@ button.ide-fd-place:hover { background: var(--ide-hover); color: var(--ide-stron
 /* --- Sulfur alone: its desktop app's window, and /sulfur/ on a host -------------------------- */
 
 /* the page the window: no desktop under it, its head the window's title bar */
-.sx-body { margin: 0; height: 100vh; overflow: hidden; background: #1f1f1f; }
-:root[data-theme="light"] .sx-body { background: #ffffff; }
+.sx-body { margin: 0; height: 100vh; height: 100dvh; overflow: hidden; background: var(--bg); }
 #sulfur { position: fixed; inset: 0; display: flex; }
-.sx-win.dk-win { position: relative; flex: 1; width: auto; height: auto; border: 0; box-shadow: none; animation: none; contain: none; will-change: auto; }
+.sx-win.dk-win { position: relative; flex: 1; min-width: 0; min-height: 0; width: auto; height: auto; overflow: hidden; border: 0; box-shadow: none; animation: none; contain: none; will-change: auto; }
 .sx-win .dk-head { user-select: none; -webkit-user-select: none; cursor: default; }
 /* before the workbench: the window's own title, centered, as VS Code's */
 .sx-win:not(.sx-wb) .dk-title { display: flex; flex: 1; justify-content: center; align-items: center; color: var(--ide-muted); font-size: 12px; }
 .sx-win .dk-btns[hidden] { display: none; }
+/* A narrow desktop window still has all three native window controls. */
+.sx-app .sx-win .dk-btns .dk-max { display: flex; }
 /* a Mac's own traffic lights over the title bar's left */
 .sx-mac .sx-win .dk-head { padding-left: 78px; }
 

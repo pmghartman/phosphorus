@@ -40,6 +40,7 @@ import { startTerminal, taskTerminal, termsRetheme } from './terminal.js';
 import { renderMd } from '../md.js';
 import { symbolsFor, identifierAt, enclosingSymbol } from '../symbols.js';
 import { singleFileCommand, configsFor } from '../sulfur/build-commands.js';
+import { cmakeTargets, cmakeConfiguration, targetForFile, executableCommand, absolutePath, joinPath } from '../sulfur/project-targets.js';
 import { PALETTES, PALETTE_EVENT, paletteNow, setPalette } from '../theme.js';
 import guideText from '../../../docs/sulfur-extensions.md';
 
@@ -128,6 +129,9 @@ const IC = {
   home: 'M2 7.5L8 2.5l6 5M3.5 6.5v7h3.5v-4h2v4h3.5v-7',
   drive: 'M1.5 9.5l2-6h9l2 6v3.5h-13zM1.5 9.5h13M11.5 11.25h1',
   undo: 'M3 6.5h7a3 3 0 0 1 0 6H6M5.5 4L3 6.5 5.5 9',
+  symbolType: 'M8 1.5l5.5 3v7L8 14.5l-5.5-3v-7zM2.5 4.5L8 8l5.5-3.5M8 8v6.5',
+  symbolMethod: 'M2 5l6-3.5L14 5l-6 3.5zM2 8l6 3.5L14 8M2 11l6 3.5L14 11',
+  symbolField: 'M8 2l6 6-6 6-6-6zM5 8h6',
 };
 const icon = (k, cls = '') => dkGlyph(IC[k], `ide-ic ${cls}`);
 
@@ -771,7 +775,7 @@ const MENUS = [
   ['Run', () => [
     cmdItem('sulfur.build', 'Build'), cmdItem('sulfur.task.run', 'Run Task…'), cmdItem('sulfur.build.select', 'Select Toolchain…'),
     cmdItem('sulfur.build.configuration', 'Select Configuration…'), '-',
-    cmdItem('sulfur.run.start', 'Start Without Debugging'), cmdItem('sulfur.run.startup', 'Select Startup Item…'), '-',
+    cmdItem('sulfur.run.context', 'Run Active Target'), cmdItem('sulfur.run.start', 'Start Without Debugging'), cmdItem('sulfur.run.startup', 'Select Startup Item…'), '-',
     cmdItem('sulfur.run.file', 'Run Active File'), cmdItem('sulfur.run.fileOn', 'Run Active File On…'),
     cmdItem('workbench.action.terminal.runSelectedText', 'Run Selected Text in Terminal'), '-',
     cmdItem('workbench.action.terminal.new', 'New Terminal'), cmdItem('workbench.action.terminal.newOn', 'New Terminal On…'),
@@ -1567,18 +1571,20 @@ function mountCode(t) {
 function mountSymbolNavigation(t) {
   const nav = el('div', 'ide-symbol-nav');
   nav.setAttribute('aria-label', 'Code navigation');
-  const types = Object.assign(el('select', 'ide-symbol-select'), { ariaLabel: 'Types' });
-  const members = Object.assign(el('select', 'ide-symbol-select'), { ariaLabel: 'Methods and fields' });
+  const control = (label, glyph) => {
+    const b = Object.assign(el('button', 'ide-symbol-picker'), { type: 'button', ariaLabel: label });
+    b.setAttribute('aria-haspopup', 'menu');
+    b.append(icon(glyph, 'ide-symbol-icon'), el('span', 'ide-symbol-label', label), icon('down', 'ide-symbol-chevron'));
+    return b;
+  };
+  const types = control('Types', 'symbolType');
+  const members = control('Methods and fields', 'symbolMethod');
   nav.append(types, members);
   t.view.prepend(nav);
   t.symbolNav = { nav, types, members };
-  types.addEventListener('change', () => {
-    const s = t.symbols?.symbols.find((x) => x.from === Number(types.value));
-    if (s) t.ed.select(s.from, s.to);
-  });
-  members.addEventListener('change', () => {
-    const s = t.symbols?.symbols.find((x) => x.from === Number(members.value));
-    if (s) t.ed.select(s.from, s.to);
+  for (const b of [types, members]) b.addEventListener('click', () => {
+    const items = b.symbolItems || [];
+    menu(b, items.length ? items.map((s) => ({ label: s.name, detail: `${s.kind} · line ${t.ed.text().slice(0, s.from).split('\n').length}`, ic: s.kind === 'type' ? 'symbolType' : s.kind === 'field' ? 'symbolField' : 'symbolMethod', checked: s === b.currentSymbol, run: () => t.ed.select(s.from, s.to) })) : [{ label: 'No symbols in this scope', disabled: true }], { search: items.length > 12 });
   });
 }
 
@@ -1602,12 +1608,10 @@ async function paintSymbolNav(t) {
   const type = enclosingSymbol(data.symbols, pos, 'type');
   const member = enclosingSymbol(data.symbols, pos);
   const fill = (select, items, prompt, selected) => {
-    const key = items.map((s) => s.from + ':' + s.name).join('|');
-    if (select.dataset.items !== key) {
-      select.replaceChildren(new Option(prompt, ''), ...items.map((s) => new Option(`${s.name} · ${s.kind}`, String(s.from))));
-      select.dataset.items = key;
-    }
-    select.value = selected ? String(selected.from) : '';
+    select.symbolItems = items;
+    select.currentSymbol = items.includes(selected) ? selected : null;
+    select.querySelector('.ide-symbol-label').textContent = select.currentSymbol?.name || prompt;
+    select.title = select.currentSymbol ? `${select.currentSymbol.kind}: ${select.currentSymbol.name}` : prompt;
   };
   fill(t.symbolNav.types, data.symbols.filter((s) => s.kind === 'type'), '(Global scope)', type);
   const members = data.symbols.filter((s) => s.kind !== 'type' && (!s.owner || s.owner.kind === 'type') && (!type || s.owner === type));
@@ -1623,49 +1627,55 @@ async function editorClipboard(t, action) {
   } catch (err) { notify('error', `Clipboard: ${err.message}`); }
 }
 
-async function symbolDocuments(t, word) {
+async function symbolDocuments(t, word, root = I.st.root) {
   const state = I;
   const key = wsKey();
   const loc = locOf();
-  const idx = await fileIndex();
-  if (I !== state || wsKey() !== key) return null;
   // Fetch matching files only, using the existing server search. Parse their
   // complete text so comments, strings and partial names are excluded.
   const places = isHomeLoc(loc) ? homeOnline().map((h) => [h, homeAt(h)]) : [[loc.host, apiLoc(loc)]];
-  const found = await Promise.all(places.map(async ([host, at]) => ({ host, body: await filesCall(at, 'search', undefined, { path: I.st.root, query: word, content: 'true', skip: searchSkip() }) })));
+  const found = await Promise.all(places.map(async ([host, at]) => ({ host, body: await filesCall(at, 'search', undefined, { path: root, query: word, content: 'true', skip: searchSkip() }) })));
   if (I !== state || wsKey() !== key) return null;
   const candidates = new Map();
   for (const { host, body } of found) for (const r of body.results || []) candidates.set(r.path, host);
-  for (const tab of I.tabs) if (tab.ed && sameLoc(tab.loc, loc)) candidates.set(tab.rel, tab.host);
+  for (const tab of I.tabs) if (tab.ed && sameLoc(tab.loc, loc) && under(tab.rel, root)) candidates.set(tab.rel, tab.host);
   const docs = [];
   for (const [path, host] of candidates) {
     if (I !== state || wsKey() !== key) return null;
     const tab = I.tabs.find((x) => x.rel === path && sameLoc(x.loc, loc) && x.ed);
-    const text = tab ? tab.ed.text() : await readAt(path, loc);
+    const text = tab ? tab.ed.text() : await filesCall(isHomeLoc(loc) ? homeAt(host) : apiLoc(loc), 'read', undefined, { path }).then((b) => typeof b.text === 'string' ? b.text : null, () => null);
     if (text === null || text.length > 2 * 1024 * 1024) continue;
     const lang = codeLang(path);
     const data = tab ? await tabSymbols(tab) : await symbolsFor(text, lang?.check, lang?.hl);
     docs.push({ path, host, loc, text, tab, ...data });
   }
   if (I !== state || wsKey() !== key) return null;
-  return { docs, truncated: idx.truncated || found.some((x) => x.body.truncated) };
+  return { docs, truncated: found.some((x) => x.body.truncated) };
 }
 
 async function goToDefinition(t = I.active) {
+  const state = I;
+  const workspace = wsKey();
+  const current = () => I === state && I.active === t && wsKey() === workspace;
   const word = t?.ed && identifierAt(t.ed.text(), t.ed.selection()[0]);
   if (!word) return;
   const local = await tabSymbols(t);
-  const defs = local.symbols.filter((s) => s.name === word.name);
+  if (!current()) return;
+  const defs = local.symbols.filter((s) => s.name === word.name && !s.declarationOnly);
   const pos = word.from;
   const scoped = defs.filter((s) => !s.owner || (s.owner.start <= pos && pos <= s.owner.end));
   const closest = scoped.length === 1 ? scoped[0] : scoped.find((s) => s.owner && s.owner === enclosingSymbol(local.symbols, pos));
   if (closest) { t.ed.select(closest.from, closest.to); return; }
-  const result = await symbolDocuments(t, word.name);
-  if (!result || !I) return;
-  const hits = result.docs.flatMap((d) => d.symbols.filter((s) => s.name === word.name).map((s) => ({ ...s, doc: d })));
+  const project = await detectProject();
+  if (!current()) return;
+  const result = await symbolDocuments(t, word.name, project?.kinds.length ? project.dir : I.st.root);
+  if (!result || !current()) return;
+  const candidates = result.docs.flatMap((d) => d.symbols.filter((s) => s.name === word.name && (d.tab === t || s.owner?.kind !== 'method')).map((s) => ({ ...s, doc: d })));
+  const definitions = candidates.filter((s) => !s.declarationOnly);
+  const hits = definitions.length ? definitions : candidates;
   if (!hits.length) { notify('info', `No declaration found for ${word.name}${result.truncated ? ' in the searched files (search was truncated)' : ''}.`); return; }
   const hit = hits.length === 1 ? hits[0] : await pick(hits.map((s) => ({ label: `${s.name} · ${s.kind}`, description: s.doc.path, value: s })), { title: `Definitions of ${word.name}` });
-  if (hit && I) openFile(hit.doc.path, { host: hit.doc.host, loc: hit.doc.loc, select: [hit.from, hit.to], preview: false });
+  if (hit && current()) openFile(hit.doc.path, { host: hit.doc.host, loc: hit.doc.loc, select: [hit.from, hit.to], preview: false });
 }
 
 async function findReferences(t = I.active) {
@@ -1818,6 +1828,10 @@ function activate(t, focus = true) {
   if (!t || !I.tabs.includes(t)) return;
   const was = I.active;
   I.active = t;
+  if (t !== was) {
+    I.projHas = undefined;
+    I.runContext = { tabId: t.id, workspace: wsKey(), pending: true };
+  }
   I.mru = [t, ...I.mru.filter((x) => x !== t)];
   for (const x of I.tabs) {
     x.view.hidden = x !== t;
@@ -1828,6 +1842,7 @@ function activate(t, focus = true) {
   paintEditors();
   t.ed?.show();
   if (t.ed) paintSymbolNavSoon();
+  if (t !== was) paintRunView();
   if (focus) { drawersAway(); focusTab(t); }
   if (t !== was) {
     if (I.find?.open) { if (t.ed) findSoon(); else closeFind(false); }
@@ -2004,7 +2019,13 @@ async function crumbMenu(anchor, dir, here) {
 function paintTabActions() {
   const t = I.active;
   const acts = [];
-  if (t?.ed && runnerFor(t.rel)) acts.push(btn('ide-run-btn', 'run', `Run ${t.title} on ${runHost() || 'a host'} (${keyLabel(keyFor('sulfur.run.file'))})`, () => run('sulfur.run.file')));
+  const context = activeRunContext();
+  if (context?.project || context?.pending || (t?.ed && runnerFor(t.rel))) {
+    const title = context?.pending ? 'Finding the active project target…' : context?.project ? `Run ${context.item?.label || baseName(projDir())} (${context.cfg?.configuration || 'select configuration'}) on ${context.cfg?.host || runHost()}` : `Run ${t.title} on ${runHost() || 'a host'}`;
+    const go = btn('ide-run-btn', 'run', `${title} (F5)`, () => run('sulfur.run.context'));
+    go.disabled = !!context?.pending;
+    acts.push(go);
+  }
   if (t?.ed?.preview) acts.push(btn(t.ed.previewing() ? 'on' : '', 'preview', `${t.ed.previewing() ? 'Show Source' : 'Open Preview'} (${keyLabel(keyFor('markdown.showPreview'))})`, () => run('markdown.showPreview')));
   if (t) acts.push(btn('', 'more', 'More Actions…', (e) => menu(e.currentTarget, [
     cmdItem('workbench.action.closeAllEditors', 'Close All'),
@@ -2022,7 +2043,7 @@ function paintWatermark() {
   const list = el('dl', 'ide-wm-keys');
   for (const [label, cmd] of [['Show All Commands', 'workbench.action.showCommands'], ['Go to File', 'workbench.action.quickOpen'],
     ['Find in Files', 'workbench.action.findInFiles'], ['Toggle Terminal', 'workbench.action.terminal.toggleTerminal'],
-    ['Run Active File', 'sulfur.run.file'], ['Open Chat', 'workbench.action.chat.open'], ['Open Folder', 'workbench.action.files.openFolder']]) {
+    ['Run Active Target', 'sulfur.run.context'], ['Open Chat', 'workbench.action.chat.open'], ['Open Folder', 'workbench.action.files.openFolder']]) {
     const k = keyFor(cmd);
     list.append(el('dt', '', label), el('dd'));
     list.lastChild.append(...(k ? k.split(' ').map((part) => el('kbd', '', keyLabel(part))) : []));
@@ -2483,8 +2504,8 @@ function registerCommands() {
   C('editor.action.nextMatchFindAction', 'Find Next', () => findStep(1), { key: 'f3', when: hasEd, category: 'Editor' });
   C('editor.action.previousMatchFindAction', 'Find Previous', () => findStep(-1), { key: 'shift+f3', when: hasEd, category: 'Editor' });
   C('closeFindWidget', 'Close Find Widget', () => closeFind(true), { key: 'escape', when: () => !!I.find?.open && I.active?.view.contains(document.activeElement), hidden: true });
-  C('undo', 'Undo', () => { I.active?.ed?.focus(); document.execCommand('undo'); }, { when: hasEd, category: 'Edit', hidden: true });
-  C('redo', 'Redo', () => { I.active?.ed?.focus(); document.execCommand('redo'); }, { when: hasEd, category: 'Edit', hidden: true });
+  C('undo', 'Undo', () => { I.active?.ed?.focus(); I.active?.ed?.undo(); }, { when: hasEd, category: 'Edit', hidden: true });
+  C('redo', 'Redo', () => { I.active?.ed?.focus(); I.active?.ed?.redo(); }, { when: hasEd, category: 'Edit', hidden: true });
   C('editor.action.selectAll', 'Select All', () => { const ed = I.active?.ed; if (ed) ed.select(0, ed.text().length); }, { when: hasEd, category: 'Selection', hidden: true });
   C('editor.action.commentLine', 'Toggle Line Comment', () => {
     const ta = I.active?.view.querySelector('.code-ta');
@@ -2530,10 +2551,11 @@ function registerCommands() {
   C('workbench.action.terminal.focusNext', 'Focus Next Terminal', () => stepTerm(1), { category: 'Terminal', shell: true });
   C('workbench.action.terminal.focusPrevious', 'Focus Previous Terminal', () => stepTerm(-1), { category: 'Terminal', shell: true });
   C('workbench.action.terminal.runSelectedText', 'Run Selected Text In Active Terminal', () => runSelection(), { when: hasEd, category: 'Terminal' });
-  C('sulfur.run.file', 'Run Active File', () => (I.active?.rel ? runFile(I.active.rel) : notify('info', 'Open a file to run it.')), { key: 'f5', category: 'Run', shell: true });
+  C('sulfur.run.context', 'Run Active Target', () => runActiveContext().catch((err) => notify('error', err.message)), { key: 'f5', category: 'Run', shell: true });
+  C('sulfur.run.file', 'Run Active File', () => (I.active?.rel ? runFile(I.active.rel) : notify('info', 'Open a file to run it.')), { category: 'Run', shell: true });
   // Visual Studio's Ctrl+F5: the project built and its startup item run
-  C('sulfur.run.start', 'Start Without Debugging', () => startProject(), { key: 'ctrl+f5', category: 'Run', shell: true });
-  C('sulfur.run.startup', 'Select Startup Item…', () => startProject(true), { category: 'Run' });
+  C('sulfur.run.start', 'Start Without Debugging', () => startProject().catch((err) => notify('error', err.message)), { key: 'ctrl+f5', category: 'Run', shell: true });
+  C('sulfur.run.startup', 'Select Startup Item…', () => startProject(true).catch((err) => notify('error', err.message)), { category: 'Run' });
   C('sulfur.run.fileOn', 'Run Active File On…', () => I.active?.rel && runFileOn(I.active.rel), { when: hasEd, category: 'Run' });
   // building, as VS Code's tasks are but asked for in a list, never a JSON file first
   C('sulfur.build', 'Build', () => buildProject(), { key: 'ctrl+b', alt: ['ctrl+shift+b'], category: 'Build', shell: true });
@@ -3024,7 +3046,7 @@ function fileDialog(o = {}) {
         row.setAttribute('role', 'option');
         row.dataset.name = e.name;
         row.append(e.dir ? icon('folder') : fileIcon(e.name), el('span', 'ide-fd-name', e.name), el('span', 'ide-fd-meta', e.dir ? '' : humanSize(e.size)));
-        row.addEventListener('click', () => { st.sel = e.name; paintSel(); });
+        row.addEventListener('click', () => { pathDirty = false; st.sel = e.name; paintSel(); });
         row.addEventListener('dblclick', () => enter(e));
         return row;
       });
@@ -3041,7 +3063,7 @@ function fileDialog(o = {}) {
       const e = st.entries.find((x) => x.name === st.sel);
       const cur = where();
       const sep = isWinPath(cur) ? '\\' : '/';
-      if (document.activeElement !== path) path.value = e ? `${cur.replace(/[\\/]+$/, '')}${sep}${e.name}` : cur;
+      if (!pathDirty && document.activeElement !== path) path.value = e ? `${cur.replace(/[\\/]+$/, '')}${sep}${e.name}` : cur;
       // the folder Open takes: the one picked, else the one shown
       const target = pickTarget();
       ok.disabled = !target;
@@ -3105,6 +3127,7 @@ function fileDialog(o = {}) {
       e.stopPropagation();
       if (e.key === 'Escape') { e.preventDefault(); done(null); return; }
       if (e.target === path || e.target === find) { if (e.target === find && e.key === 'ArrowDown') { e.preventDefault(); list.focus(); } return; }
+      if (e.target.closest('button')) return;
       const rows = [...list.querySelectorAll('.ide-fd-row')];
       const i = rows.findIndex((r) => r.dataset.name === st.sel);
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
@@ -6077,6 +6100,7 @@ function paintRunView(fresh = false) {
   const def = runHost();
   const t = I.active;
   const runner = t?.rel ? runnerFor(t.rel) : '';
+  const context = activeRunContext();
   const body = v.body;
   const top = body.scrollTop;
   body.replaceChildren();
@@ -6087,7 +6111,8 @@ function paintRunView(fresh = false) {
   const bbox = el('div', 'ide-run-box');
   const bgo = Object.assign(el('button', 'ide-button ide-run-go'), { type: 'button', title: `Build (${ctrlB})` });
   const alone = I.projHas === false && !!singleBuilds(I.active?.rel);
-  bgo.append(icon('gear'), el('span', '', alone ? `Build ${baseName(I.active.rel)}` : bc?.toolchain ? `Build ${baseName(projDir())}` : 'Pick a Toolchain and Build'));
+  bgo.append(icon('gear'), el('span', '', context?.pending ? 'Finding Project…' : alone ? `Build ${baseName(I.active.rel)}` : bc?.toolchain ? `Build ${baseName(projDir())}` : 'Pick a Toolchain and Build'));
+  bgo.disabled = !!context?.pending;
   bgo.addEventListener('click', () => run('sulfur.build'));
   const bmore = Object.assign(el('button', 'ide-button secondary'), { type: 'button', title: 'Run Task…' });
   bmore.append(icon('more'));
@@ -6095,7 +6120,9 @@ function paintRunView(fresh = false) {
   const brow = el('div', 'ide-run-row');
   brow.append(bgo, bmore);
   bbox.append(brow);
-  if (alone) {
+  if (context?.pending) {
+    bbox.append(el('p', 'ide-run-note', 'Finding the active file’s project.'));
+  } else if (alone) {
     bbox.append(el('p', 'ide-run-note', `No build file in ${baseName(filesParent(I.active.rel))} or above it: ${ctrlB} builds ${baseName(I.active.rel)} alone with its machine's compiler, its output in a writable temporary folder shown in the terminal.`));
   } else if (bc?.toolchain) {
     const pickRow = el('div', 'ide-build-pick');
@@ -6136,16 +6163,18 @@ function paintRunView(fresh = false) {
   }
   body.append(sectionTitle('Build'), bbox);
 
+  const projectRun = context?.project;
   const runBox = el('div', 'ide-run-box');
-  const go = Object.assign(el('button', 'ide-button secondary ide-run-go'), { type: 'button', disabled: !runner || !def });
-  go.append(icon('run'), el('span', '', runner ? `Run ${t.title}` : 'Run Active File'));
-  go.addEventListener('click', () => run('sulfur.run.file'));
-  const on = Object.assign(el('button', 'ide-button secondary'), { type: 'button', disabled: !runner, title: 'Run on another machine' });
+  const go = Object.assign(el('button', 'ide-button secondary ide-run-go'), { type: 'button', disabled: !!context?.pending || (!projectRun && (!runner || !def)) });
+  go.append(icon('run'), el('span', '', context?.pending ? 'Finding Run Target…' : projectRun ? `Run ${context.item?.label || baseName(projDir())}` : runner ? `Run ${t.title}` : 'Run Active File'));
+  go.addEventListener('click', () => run('sulfur.run.context'));
+  const on = Object.assign(el('button', 'ide-button secondary'), { type: 'button', disabled: !!context?.pending || (!projectRun && !runner), title: projectRun ? 'Select startup target' : 'Run on another machine' });
   on.append(icon('more'));
-  on.addEventListener('click', () => run('sulfur.run.fileOn'));
+  on.addEventListener('click', () => run(projectRun ? 'sulfur.run.startup' : 'sulfur.run.fileOn'));
   const row = el('div', 'ide-run-row');
   row.append(go, on);
-  runBox.append(row, el('p', 'ide-run-note', !t?.rel ? 'Open a file to run it.' : runner ? `on ${def || 'no machine'}: ${runner}` : `No runner for .${extOf(t.rel)} files: add one in your settings (sulfur.runners) or with an extension.`));
+  const detail = context?.pending ? 'Resolving the active file’s project and selected build configuration.' : context?.error ? context.error : projectRun ? `${context.cfg?.configuration || 'Select a toolchain'} · ${context.cfg?.host || def || ''}${context.item ? `\n${context.item.executable || context.item.command}` : `\n${context.targetMessage || 'Select a startup target for this project.'}`}` : !t?.rel ? 'Open a file to run it.' : runner ? `on ${def || 'no machine'}: ${runner}` : `No runner for .${extOf(t.rel)} files: add one in your settings (sulfur.runners) or with an extension.`;
+  runBox.append(row, el('p', 'ide-run-note', detail));
   body.append(sectionTitle('Run'), runBox);
 
   // every machine, and what it builds with as it tells your login
@@ -6472,12 +6501,15 @@ async function pickTheme() {
   const cur = paletteNow();
   const look = setting('window.appearance');
   // on its own, light and dark Sulfur's to pick; in the desktop, the desktop's
-  const appearance = standalone ? [['system', 'Follow the System', 'light or dark as the system is'], ['light', 'Light', ''], ['dark', 'Dark', '']]
+  const appearance = standalone ? [['system', 'Follow the System', 'light or dark as the system is'], ['light', 'Light', 'Phosphorus light'], ['dark', 'Dark', 'Phosphorus dark']]
     .map(([id, label, description], i) => ({ label, description, detail: id === look ? 'current' : '', value: `look:${id}`, sep: i === 0 ? 'Appearance' : '' })) : [];
   const items = [...appearance, ...PALETTES.map((t, i) => ({ label: t.label, description: t.about, detail: t.id === cur ? 'current' : '', value: t.id, sep: i === 0 ? 'Color Theme, phosphorus wide' : '' }))];
   const v = await pick(items, { title: 'Color Theme', placeholder: standalone ? 'Select Color Theme, or Light or Dark' : 'Select Color Theme (light or dark follows the desktop)' });
   if (!v || !I) return;
-  if (v.startsWith('look:')) setSetting('window.appearance', v.slice(5)); else setPalette(v);
+  if (v.startsWith('look:')) {
+    if (v !== 'look:system') setPalette('phosphorus');
+    setSetting('window.appearance', v.slice(5));
+  } else setPalette(v);
 }
 
 const sectionTitle = (t) => el('div', 'ide-sec-head static', t.toUpperCase());
@@ -7664,18 +7696,22 @@ const tool = (tc, id) => tc?.tools?.find((x) => x.id === id) || null;
 // the project the open file's in: its folder, or the nearest one above it up to the
 // workspace's, that has a build file; the workspace's own when none has
 async function detectProject() {
+  const state = I;
+  const workspace = wsKey();
+  const active = state.active;
+  const current = () => I === state && state.active === active && wsKey() === workspace;
   const root = I.st.root;
   const t = I.active;
   let dir = t?.rel && sameLoc(t.loc, locOf()) && under(t.rel, root) && t.rel !== root ? filesParent(t.rel) : root;
   for (;;) {
     const p = await projectAt(dir);
-    if (!I) return null;
+    if (!current()) return null;
     if (p.kinds.length || dir === root || !under(dir, root)) {
       if (p.kinds.length && dir !== root && under(dir, root)) {
         let top = '';
         for (let d = filesParent(dir); under(d, root); d = filesParent(d)) {
           const names = (await loadDir(d)).map((e) => e.name.toLowerCase());
-          if (!I) return null;
+          if (!current()) return null;
           if ((p.kinds.includes('cmake') && names.includes('cmakelists.txt')) || names.some((n) => n.endsWith('.sln') || n.endsWith('.slnx'))) top = d;
           if (d === root || !d) break;
         }
@@ -7684,6 +7720,7 @@ async function detectProject() {
       const had = I.projHas;
       I.projHas = !!p.kinds.length;
       await useProject(p.kinds.length ? dir : root);
+      if (!current()) return null;
       if (I && had !== I.projHas) { paintStatus(); paintRunView(); }
       return p.kinds.length ? p : { ...p, dir: root };
     }
@@ -7756,6 +7793,7 @@ async function cmakeOf(root, names, p) {
   };
   p.presets = all.filter((x) => x && x.name && !x.hidden).map((x) => ({
     name: x.name, displayName: x.displayName || x.name, generator: field(x, 'generator') || '',
+    configurationType: String(field(x, 'cacheVariables')?.CMAKE_BUILD_TYPE?.value || field(x, 'cacheVariables')?.CMAKE_BUILD_TYPE || ''),
     binaryDir: String(field(x, 'binaryDir') || '').replaceAll('${sourceDir}', '.').replaceAll('${presetName}', x.name).replaceAll('${sourceParentDir}', '..').replaceAll('${sourceDirName}', baseName(root)),
   }));
   // configured trees: where a CMakeCache.txt says how it was configured
@@ -7830,7 +7868,17 @@ async function useProject(dir) {
   paintRunView();
 }
 // the open file moved to another tab: maybe another project
-const refreshProjectSoon = debounce(() => { if (I) detectProject(); }, 250);
+const refreshProjectSoon = debounce(() => {
+  if (!I) return;
+  const state = I;
+  const pending = refreshRunContext();
+  const generation = state.runGeneration;
+  pending.catch((err) => {
+    if (I !== state || state.runGeneration !== generation) return;
+    state.runContext = { tabId: state.active?.id, workspace: wsKey(), project: !!state.projHas, error: err.message };
+    paintTabActions(); paintRunView();
+  });
+}, 150);
 
 const KIND_NAMES = { cmake: 'CMake', dotnet: '.NET', msbuild: 'MSBuild C++', cargo: 'Cargo', go: 'Go', npm: 'npm', make: 'Make', meson: 'Meson', python: 'Python' };
 
@@ -7961,16 +8009,20 @@ async function loadBuildConfig(dir = projDir()) {
       if (j && typeof j === 'object') I.st.build[key] = { ...I.st.build[key], ...j };
     } catch (err) { notify('warning', `${BUILD_FILE}: ${err.message}`); }
   }
+  I.runContext = { tabId: I.active?.id, workspace: wsKey(), pending: true };
   paintStatus();
   paintRunView();
+  refreshProjectSoon();
 }
 async function saveBuildCfg(cfg) {
   const dir = projDir();
   const key = bkey(dir);
   I.st.build[key] = cfg;
+  I.runContext = { tabId: I.active?.id, workspace: wsKey(), pending: true };
   saveState();
   paintStatus();
   paintRunView();
+  refreshProjectSoon();
   const keep = { host: cfg.host, toolchain: cfg.toolchain, configuration: cfg.configuration || 'Debug', defaultTask: cfg.defaultTask || 'build', tasks: cfg.tasks || [], ...(cfg.startup ? { startup: cfg.startup } : {}) };
   try { await writeAt(`${dir}/${BUILD_FILE}`, `${JSON.stringify(keep, null, 2)}\n`); } catch (err) { notify('warning', `Couldn't keep the pick in ${BUILD_FILE}: ${err.message}`); }
 }
@@ -8107,6 +8159,7 @@ function tasksFor(cfg, proj) {
       add('rebuild', `Rebuild (${c})`, `${conf} && cmake --build ${b} -j --clean-first`);
       add('test', 'Test (CTest)', `ctest --test-dir ${b} --output-on-failure`, 'test');
       add('clean', 'Clean', `cmake --build ${b} --target clean`, 'other');
+      out.buildRoot = b;
       break;
     }
     case 'dotnet': {
@@ -8185,12 +8238,28 @@ async function buildProject(taskId) {
 }
 
 async function runProjectTask(cfg, t) {
-  await saveAll();
-  if (!I) return;
+  const state = I;
   const dir = projDir();
+  const workspace = wsKey();
+  if (!(await saveAll()).every(Boolean) || I !== state || wsKey() !== workspace || projDir() !== dir) return;
+  if (cfg.toolchain?.id?.startsWith('cmake-') && ['build', 'rebuild', 'configure'].includes(t.id)) {
+    const project = await projectAt(dir);
+    const model = await cmakeModel(cfg, project);
+    if (I !== state || wsKey() !== workspace) return;
+    const root = tasksFor(cfg, project).buildRoot || 'build';
+    const where = buildFileLocation(cfg.host, joinPath(dir, `${root}/.cmake/api/v1/query/client-sulfur/codemodel-v2`));
+    await filesCall(where.at, 'save', jsonPost({ path: where.path, text: '' }));
+    if (!model.available && t.id !== 'configure' && !t.command.includes(' -S ') && !/^(?:"[^"]+"|\S+) --preset /.test(t.command)) {
+      const q = hostIsWindows(cfg.host) ? (s) => `"${s}"` : shQuote;
+      const cm = cfg.toolchain.cmake ? q(cfg.toolchain.cmake) : 'cmake';
+      const configure = cfg.toolchain.id === 'cmake-preset' ? `${cm} --preset ${q(cfg.configuration)}` : `${cm} -S . -B ${q(root)}`;
+      t = { ...t, command: `${configure} && ${t.command}` };
+    }
+  }
+  if (I !== state || wsKey() !== workspace) return;
   const abs = hostPath(cfg.host, isHomeLoc() ? 'home' : locOf().share, dir);
   if (!abs) { notify('error', `Can't tell where ${dir} is on ${cfg.host}.`); return; }
-  runTask({ host: cfg.host, abs, command: t.command, vcvars: t.vcvars, name: `${t.label} · ${cfg.host}`, kind: 'task', problems: true, root: dir, label: t.label, onDone: () => I && loadDir(dir, true) });
+  runTask({ host: cfg.host, abs, command: t.command, vcvars: t.vcvars, name: `${t.label} · ${cfg.host}`, kind: 'task', problems: true, root: dir, label: t.label, onDone: () => { if (I === state) { state.targetModels?.clear(); loadDir(dir, true); refreshProjectSoon(); } } });
 }
 
 async function chooseTask() {
@@ -8228,41 +8297,138 @@ async function toggleConfiguration() {
   if (!I || !proj) return;
   const v = await pick(configsFor(cfg, proj).map((c) => ({ label: c, description: configDetail(cfg, proj, c), value: c, ic: c === cfg.configuration ? 'check' : '' })), { title: 'Build Configuration', placeholder: 'As the project names them', matchDescription: true });
   // a startup program built by another configuration is that one's: asked for again
-  if (v && I) await saveBuildCfg({ ...cfg, configuration: v, startup: v !== cfg.configuration && cfg.startup?.build ? undefined : cfg.startup });
+  if (v && I) await saveBuildCfg({ ...cfg, configuration: v, startup: v !== cfg.configuration && cfg.startup?.build && !cfg.startup.target ? undefined : cfg.startup });
+}
+
+function activeRunContext() {
+  const context = I?.runContext;
+  return context?.tabId === I?.active?.id && context.workspace === wsKey() ? context : null;
+}
+
+async function refreshRunContext() {
+  const state = I;
+  if (!state) return null;
+  const tab = state.active;
+  const workspace = wsKey();
+  const generation = state.runGeneration = (state.runGeneration || 0) + 1;
+  const current = () => I === state && state.active === tab && wsKey() === workspace && state.runGeneration === generation;
+  state.runContext = { tabId: tab?.id, workspace, pending: true };
+  paintTabActions(); paintRunView();
+  const project = await detectProject();
+  if (!current()) return null;
+  const cfg = buildCfg();
+  const context = { tabId: tab?.id, workspace, project: !!project?.kinds.length, cfg, item: null, items: [] };
+  if (context.project && cfg?.toolchain) {
+    const items = await startupItems(cfg, project);
+    if (!current()) return null;
+    context.items = items;
+    if (items.targetModel && !items.length) context.targetMessage = `Configure/build ${cfg.configuration || 'Debug'} to discover its executable targets.`;
+    context.item = cfg.startup?.custom ? cfg.startup : items.targetModel ? targetForFile(items.targetModel, tab?.rel ? hostPath(cfg.host, isHomeLoc(tab.loc) ? 'home' : tab.loc.share, tab.rel) : '', cfg.startup, baseName(project.dir), hostIsWindows(cfg.host)) : items.find((x) => x.label === cfg.startup?.label) || (items.length === 1 ? items[0] : null);
+  }
+  if (!current()) return null;
+  state.runContext = context;
+  paintTabActions(); paintRunView();
+  return context;
+}
+
+async function runActiveContext() {
+  const context = await refreshRunContext();
+  if (!context || !I) return;
+  if (context.project) return startProject(false, false);
+  if (I.active?.rel) return runFile(I.active.rel);
+  notify('info', 'Open a project or a file to run it.');
+}
+
+// Resolve paths on the build host, including out-of-source build directories.
+function buildFileLocation(host, path, loc = locOf()) {
+  if (!absolutePath(path)) return { at: isHomeLoc(loc) ? homeAt(host) : apiLoc(loc), path };
+  const win = hostIsWindows(host);
+  const norm = (s) => { const p = String(s).replace(/\\/g, '/').replace(/\/+$/, ''); return win ? p.toLowerCase() : p; };
+  const absolute = norm(path);
+  const shares = hostsInfo[String(host).toLowerCase()]?.files?.shares || [];
+  const share = [...shares].sort((a, b) => b.label.length - a.label.length).find((s) => absolute === norm(s.label) || absolute.startsWith(norm(s.label) + '/'));
+  if (!share) throw new Error(`Can't read build metadata at ${path} on ${host}`);
+  return { at: { host, share: String(share.id) }, path: String(path).replace(/\\/g, '/').slice(norm(share.label).length).replace(/^\/+/, '') };
+}
+
+async function cmakeModel(cfg, project) {
+  const state = I;
+  const loc = locOf();
+  const root = joinPath(project.dir, tasksFor(cfg, project).buildRoot || 'build');
+  const configuration = cmakeConfiguration(cfg, project);
+  const key = `${locKey(loc)}\n${cfg.host}\n${root}\n${configuration}`;
+  state.targetModels ||= new Map();
+  const cached = state.targetModels.get(key);
+  if (cached && Date.now() - cached.at < 10000) return cached.promise;
+  const read = async (path) => {
+    const where = buildFileLocation(cfg.host, path, loc);
+    const b = await filesCall(where.at, 'read', undefined, { path: where.path });
+    if (typeof b.text !== 'string') throw new Error(`Couldn't read ${path}`);
+    return b.text;
+  };
+  const list = async (path) => {
+    const where = buildFileLocation(cfg.host, path, loc);
+    return (await filesCall(where.at, 'list', undefined, { path: where.path })).entries || [];
+  };
+  const promise = cmakeTargets({ read, list, root, configuration, windows: hostIsWindows(cfg.host) }).catch((error) => ({ available: false, items: [], error: error.message }));
+  state.targetModels.set(key, { at: Date.now(), promise });
+  const model = await promise;
+  for (const item of model.items) item.command = executableCommand(absolutePath(item.executable) ? item.executable : item.executable.slice(project.dir.length + 1), hostIsWindows(cfg.host));
+  return model;
 }
 
 // Ctrl+F5: the project's startup item, built first where its toolchain doesn't build as it runs.
 // The item's asked for once, kept in the project's build settings
-async function startProject(choose = false) {
+async function startProject(choose = false, buildFirst = true) {
+  const state = I;
+  const tab = state.active;
+  const workspace = wsKey();
+  const current = () => I === state && state.active === tab && wsKey() === workspace;
   const proj = await detectProject();
-  if (!I || !proj) return;
+  if (!current() || !proj) return;
   if (!proj.kinds.length) { if (I.active?.rel) runFile(I.active.rel); else notify('info', 'Open a project or a file to start it.'); return; }
   let cfg = buildCfg();
   if (!cfg?.toolchain?.id || !dkLiveHosts().includes(cfg.host)) cfg = await pickToolchain(proj);
-  if (!cfg || !I) return;
-  let item = !choose && cfg.startup;
+  if (!cfg || !current()) return;
+  const sameConfiguration = () => current() && buildCfg()?.configuration === cfg.configuration && buildCfg()?.host === cfg.host && buildCfg()?.toolchain?.id === cfg.toolchain.id;
+  const items = await startupItems(cfg, proj);
+  if (!sameConfiguration()) return;
+  if (!choose && items.targetModel && !items.length && !cfg.startup?.custom) {
+    notify('info', `Configure/build ${cfg.configuration || 'Debug'} first to discover its executable targets (Ctrl+B).`);
+    return;
+  }
+  const context = activeRunContext();
+  const activeTarget = items.targetModel ? targetForFile(items.targetModel, I.active?.rel ? hostPath(cfg.host, isHomeLoc(I.active.loc) ? 'home' : I.active.loc.share, I.active.rel) : '', cfg.startup, baseName(proj.dir), hostIsWindows(cfg.host)) : null;
+  let item = !choose && (cfg.startup?.custom ? cfg.startup : activeTarget || (context?.cfg?.configuration === cfg.configuration && context?.cfg?.host === cfg.host ? context.item : null) || items.find((x) => cfg.startup?.target ? x.target === cfg.startup.target : x.label === cfg.startup?.label) || (items.length === 1 ? items[0] : null));
   if (!item) {
     const note = notify('info', 'Looking for what the project starts…', { progress: true, sticky: true });
-    const items = await startupItems(cfg, proj).catch(() => []);
     note.close();
-    if (!I) return;
+    if (!current()) return;
     const win = hostIsWindows(cfg.host);
     const v = await pick([
       ...items.map((x, i) => ({ label: x.label, description: x.command, ic: 'run', value: x, sep: i === 0 ? `${cfg.toolchain.label} on ${cfg.host}` : '' })),
       { label: 'Another Command…', description: 'run in the project’s folder after the build', ic: 'terminal', value: 'other', sep: 'more' },
     ], { title: 'Select Startup Item', placeholder: items.length ? 'What Ctrl+F5 runs' : 'Nothing built to start yet: build first (Ctrl+B), or give the command', matchDescription: true });
-    if (!I || v === undefined) return;
+    if (!current() || v === undefined) return;
     item = v;
     if (v === 'other') {
       const command = await inputBox({ prompt: `The command that starts the project, in its folder on ${cfg.host}`, placeholder: win ? 'e.g. out\\build\\x64-Debug\\app.exe' : 'e.g. ./build/app' });
-      if (!command?.trim() || !I) return;
-      item = { label: command.trim(), command: command.trim(), build: true };
+      if (!command?.trim() || !current()) return;
+      item = { label: command.trim(), command: command.trim(), build: true, custom: true };
     }
+    if (!sameConfiguration()) return;
     cfg = { ...cfg, startup: item };
     await saveBuildCfg(cfg);
     if (choose) { setStatusFlash(`Ctrl+F5 starts ${item.label}`); return; }
   }
-  const build = item.build ? tasksFor(cfg, proj).find((x) => x.id === 'build') : null;
+  if (!buildFirst && item.executable) {
+    const where = buildFileLocation(cfg.host, item.executable);
+    const entries = (await filesCall(where.at, 'list', undefined, { path: filesParent(where.path) })).entries || [];
+    if (!current()) return;
+    if (!entries.some((e) => !e.dir && (hostIsWindows(cfg.host) ? e.name.toLowerCase() === baseName(where.path).toLowerCase() : e.name === baseName(where.path)))) { notify('info', `${item.label} (${cfg.configuration}) hasn't been built. Build it with Ctrl+B first.`); return; }
+  }
+  if (!sameConfiguration()) return;
+  const build = buildFirst && item.build ? tasksFor(cfg, proj).find((x) => x.id === 'build') : null;
   const command = build ? `${build.command} && ${item.command}` : item.command;
   await runProjectTask(cfg, { label: `Start ${item.label}`, command, vcvars: build?.vcvars || (cfg.toolchain.vcvars || '') });
 }
@@ -8273,6 +8439,12 @@ async function startupItems(cfg, proj) {
   const c = (cfg.configuration || 'Debug').split('|')[0].trim();
   const q = (x) => (/[\s"']/.test(x) ? `"${x}"` : x);
   const dir = projDir();
+  if (tc.id?.startsWith('cmake-')) {
+    const model = await cmakeModel(cfg, proj);
+    const items = [...model.items];
+    items.targetModel = model;
+    return items;
+  }
   switch (tc.id) {
     case 'dotnet': {
       const projs = [...proj.proj];

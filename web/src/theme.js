@@ -9,7 +9,7 @@ export const PALETTES = [
 const KEY = 'phosphorus-palette';
 export const PALETTE_EVENT = 'phosphorus-palette';
 
-// the page's palette, its default the page's own (the desktop phosphorus, Sulfur alone vs code)
+// The desktop and standalone Sulfur share Phosphorus as their default palette.
 export const paletteNow = () => document.documentElement.dataset.palette || 'phosphorus';
 
 export function setPalette(id) {
