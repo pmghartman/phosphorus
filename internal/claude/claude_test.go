@@ -66,7 +66,7 @@ func TestEnvLines(t *testing.T) {
 func TestLaunchCommand(t *testing.T) {
 	c := launchCommand("~/src/it's", "opus", "default", "sid-1")
 	for _, w := range []string{"--input-format stream-json", "--output-format stream-json", "--include-partial-messages",
-		"--permission-prompt-tool stdio", "--strict-mcp-config", "--model opus", "--resume"} {
+		"--permission-prompt-tool stdio", "--strict-mcp-config", "--allowedTools mcp__phosphorus", "--model opus", "--resume"} {
 		if !strings.Contains(c, w) {
 			t.Errorf("no %s in %s", w, c)
 		}

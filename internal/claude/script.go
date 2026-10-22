@@ -131,7 +131,7 @@ func envBlock(lines []string) string { return strings.Join(lines, "\n") + "\n\n"
 func launchCommand(dir, model, perm, resume string) string {
 	args := []string{"claude", "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
 		"--include-partial-messages", "--model", model, "--permission-prompt-tool", "stdio",
-		"--mcp-config", `"$CLAUDE_CONFIG_DIR/mcp.json"`, "--strict-mcp-config"}
+		"--mcp-config", `"$CLAUDE_CONFIG_DIR/mcp.json"`, "--strict-mcp-config", "--allowedTools", "mcp__phosphorus"}
 	if perm != "" && perm != "default" {
 		args = append(args, "--permission-mode", perm)
 	}

@@ -491,7 +491,8 @@ function claudeEv(t, ev) {
       if (ev.num_turns) bits.push(`${ev.num_turns} turn${ev.num_turns === 1 ? '' : 's'}`);
       if (ev.duration_ms) bits.push(`${(ev.duration_ms / 1000).toFixed(1)}s`);
       if (tin || u.output_tokens) bits.push(`↑${kfmt(tin)} ↓${kfmt(u.output_tokens)}`);
-      if (ev.total_cost_usd) bits.push(`$${ev.total_cost_usd.toFixed(4)}`);
+      const billed = Object.keys(ev.modelUsage || {}).some((k) => ANTH.includes(k) || k.startsWith('claude-'));
+      if (ev.total_cost_usd && billed) bits.push(`$${ev.total_cost_usd.toFixed(4)}`);
       const f = el('div', `cd-foot${bad ? ' bad' : ''}`);
       f.append(el('span', '', bits.join(' · ')));
       t.node.append(f);
