@@ -87,6 +87,9 @@ func onUpgrade(w http.ResponseWriter, r *http.Request, pathname string, q url.Va
 	if codeSocket(w, r, pathname, q) {
 		return
 	}
+	if sulfurSocket(w, r, pathname, q) {
+		return
+	}
 	if m := codePathRe.FindStringSubmatch(pathname); m != nil {
 		if !sameOrigin(r) {
 			refuse(w, 403)

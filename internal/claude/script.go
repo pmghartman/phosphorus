@@ -65,6 +65,9 @@ func provider(m string) string {
 // quote a word for sh, single quoted
 func quote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
+// Quote a word for sh, as the launch scripts quote theirs
+func Quote(s string) string { return quote(s) }
+
 // shDir a folder as sh reads it, ~ its home
 func shDir(d string) string {
 	d = strings.TrimSpace(d)

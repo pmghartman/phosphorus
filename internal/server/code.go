@@ -158,11 +158,11 @@ func codeRoute(w http.ResponseWriter, r *http.Request, pathname string, q url.Va
 		}
 		reply(claude.Create(s.User, p, codeCreds(s, r)))
 	case pathname == "/api/code/install":
-		host := q.Get("host")
+		host, harness := q.Get("host"), q.Get("harness")
 		var p map[string]any
 		if meth == "POST" {
 			p = body()
-			host = util.Str(p["host"])
+			host, harness = util.Str(p["host"]), util.Str(p["harness"])
 		} else if meth != "GET" {
 			reply(405, map[string]any{"error": "method not allowed"})
 			return true
@@ -172,10 +172,13 @@ func codeRoute(w http.ResponseWriter, r *http.Request, pathname string, q url.Va
 			reply(400, map[string]any{"error": err.Error()})
 			return true
 		}
+		if harness == "" {
+			harness = claude.Claude
+		}
 		if meth == "GET" {
-			reply(claude.Installed(host, c))
+			reply(claude.InstalledOf(host, c, harness))
 		} else {
-			reply(claude.Install(host, c))
+			reply(claude.InstallOf(host, c, harness))
 		}
 	case pathname == "/api/code/ls" && meth == "GET":
 		c, err := codeLogin(s, q.Get("host"))

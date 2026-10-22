@@ -64,6 +64,9 @@ func dial(host, user, pass string) (*ssh.Client, error) {
 	return c, nil
 }
 
+// Dial host as c's login, for Sulfur's builds and probes there
+func Dial(host string, c Creds) (*ssh.Client, error) { return dial(host, c.User, c.Pass) }
+
 // tail a writer keeping the last tailMax bytes
 type tail struct {
 	mu sync.Mutex
@@ -200,14 +203,14 @@ func setupErr(host string, code int, out string, err error) error {
 	return fmt.Errorf("setting up claude on %s failed (exit %d): %s", host, code, out)
 }
 
-// version claude's on host, "" when it isn't installed
-func version(host string, c Creds) (string, error) {
+// version a harness's on host by cmd, "" when it isn't installed
+func version(host string, c Creds, cmd string) (string, error) {
 	cl, err := dial(host, c.User, c.Pass)
 	if err != nil {
 		return "", err
 	}
 	defer cl.Close()
-	code, out, err := run(cl, versionCommand(), "", 30*time.Second)
+	code, out, err := run(cl, cmd, "", 30*time.Second)
 	if err != nil {
 		return "", err
 	}
@@ -217,14 +220,14 @@ func version(host string, c Creds) (string, error) {
 	return strings.TrimSpace(strings.SplitN(out, "\n", 2)[0]), nil
 }
 
-// install the official installer run as the login: ok and its output's tail
-func install(host string, c Creds) (bool, string, error) {
+// install an official installer, cmd, run as the login: ok and its output's tail
+func install(host string, c Creds, cmd string) (bool, string, error) {
 	cl, err := dial(host, c.User, c.Pass)
 	if err != nil {
 		return false, "", err
 	}
 	defer cl.Close()
-	code, out, err := run(cl, installCommand(), "", 10*time.Minute)
+	code, out, err := run(cl, cmd, "", 10*time.Minute)
 	if err != nil {
 		return false, out, err
 	}
