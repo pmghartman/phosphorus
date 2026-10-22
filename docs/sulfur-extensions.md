@@ -1,17 +1,17 @@
-# Writing extensions for the phosphorus ide
+# Writing extensions for Sulfur
 
-The ide is a VS Code-shaped workbench in a phosphorus desktop window. Extensions add commands, keys, status bar items, output channels, runners, webviews and chat agents to it. If you've written a VS Code extension, most of this will feel familiar. The API is smaller, and every call is asynchronous.
+Sulfur is phosphorus's code editor, a VS Code-shaped workbench in a phosphorus desktop window. Extensions add commands, keys, status bar items, output channels, runners, webviews and chat agents to it. If you've written a VS Code extension, most of this will feel familiar. The API is smaller, and every call is asynchronous.
 
-This guide is also in the ide itself, under **Help → Extension Guide**.
+This guide is also in Sulfur itself, under **Help → Extension Guide**.
 
 ## Quick start
 
 1. Run **Extensions: Create New Extension…** from the command palette (`Ctrl+Shift+P`). Name it, for example `word-count`.
-2. The ide writes `~/.ide/extensions/word-count/` into your home: a `package.json`, an `extension.js` and a `README.md`. It enables the extension and opens `extension.js`.
+2. Sulfur writes `~/.sulfur/extensions/word-count/` into your home: a `package.json`, an `extension.js` and a `README.md`. It enables the extension and opens `extension.js`.
 3. Edit `extension.js`, save, and run **Developer: Reload Extensions**.
 4. Find your commands in the palette under the extension's name. Its log is in the **Output** panel, under *Extension: word-count*.
 
-`~` here means your own folder in the phosphorus home (`<you>/.ide/extensions`). The home is merged across hosts, so your extensions follow you to every browser and every host.
+`~` here means your own folder in the phosphorus home (`<you>/.sulfur/extensions`). The home is merged across hosts, so your extensions follow you to every browser and every host.
 
 ## How an extension runs
 
@@ -21,7 +21,7 @@ Each enabled extension runs in a frame of its own, sandboxed off the page's orig
 - no access to the page, the other windows, or other extensions;
 - one message port to the workbench. The `api` object handed to `activate` is built on that port.
 
-Everything an extension does goes through that `api`. The ide answers each call with your rights, within your space (your folder and `shared/`). That is still a lot of power: an extension can write your files, type into terminals on the hosts you're logged into, and answer as an agent. So the first time you enable an extension, the ide asks you to trust it. Enable only extensions you wrote or trust.
+Everything an extension does goes through that `api`. Sulfur answers each call with your rights, within your space (your folder and `shared/`). That is still a lot of power: an extension can write your files, type into terminals on the hosts you're logged into, and answer as an agent. So the first time you enable an extension, Sulfur asks you to trust it. Enable only extensions you wrote or trust.
 
 An extension's main module is one ES module, loaded from a blob URL. That means:
 
@@ -32,10 +32,10 @@ An extension's main module is one ES module, loaded from a blob URL. That means:
 ## The folder
 
 ```
-~/.ide/extensions/word-count/
+~/.sulfur/extensions/word-count/
   package.json     the manifest
   extension.js     the main module (package.json's "main")
-  README.md        shown on the extension's page in the ide
+  README.md        shown on the extension's page in Sulfur
 ```
 
 The folder's name is the extension's id. It may contain letters, digits, `.`, `_` and `-`.
@@ -93,15 +93,15 @@ export function deactivate() {
 }
 ```
 
-`activate` may be `async`. The ide waits up to 15 seconds for it, then marks the extension failed and shows why in its output channel. Anything you `console.log` goes to the same output channel, *Extension: name*.
+`activate` may be `async`. Sulfur waits up to 15 seconds for it, then marks the extension failed and shows why in its output channel. Anything you `console.log` goes to the same output channel, *Extension: name*.
 
 `context` contains:
 
 | key | value |
 |---|---|
 | `id` | The folder's name. |
-| `extensionPath` | The folder's path in the home, e.g. `ryan/.ide/extensions/word-count`. |
-| `user` | The phosphorus user running the ide. |
+| `extensionPath` | The folder's path in the home, e.g. `ryan/.sulfur/extensions/word-count`. |
+| `user` | The phosphorus user running Sulfur. |
 | `workspace` | The workspace folder when the extension started. |
 | `host` | The host serving this desktop. |
 
@@ -117,8 +117,8 @@ Workspace paths are relative to the open workspace folder, e.g. `src/main.c`. A 
 
 | call | does |
 |---|---|
-| `register(id, fn)` | Adds a command. `fn(...args)` may return a value or a Promise. A command listed in `contributes.commands` gets its title and category from there; any other shows by its id. Registering an id that already belongs to the ide or another extension is refused. |
-| `execute(id, ...args)` | Runs any command: the ide's own (`workbench.action.terminal.new`, `ide.run.file`, `actions.find`, …) or another extension's. Resolves with what the command returned, if it can be cloned. **Help → Keyboard Shortcuts** lists every command's id. |
+| `register(id, fn)` | Adds a command. `fn(...args)` may return a value or a Promise. A command listed in `contributes.commands` gets its title and category from there; any other shows by its id. Registering an id that already belongs to Sulfur or another extension is refused. |
+| `execute(id, ...args)` | Runs any command: Sulfur's own (`workbench.action.terminal.new`, `sulfur.run.file`, `actions.find`, …) or another extension's. Resolves with what the command returned, if it can be cloned. **Help → Keyboard Shortcuts** lists every command's id. |
 
 ### api.window
 
@@ -139,10 +139,10 @@ Workspace paths are relative to the open workspace folder, e.g. `src/main.c`. A 
 
 | call | does |
 |---|---|
-| `root()` | The workspace folder's path in the home. |
+| `root()` | The workspace folder's path in its place: the home, or a folder a machine publishes. |
 | `readFile(path)` | The file's text. An open editor's live text if the file is open, else from disk. Text files up to 512 KB. |
 | `writeFile(path, text)` | Writes the file, making its folders. If someone has the file open, the write is typed into their editor live, as an agent's edit is. |
-| `list(path)` | `[{name, dir, size, mtime, hosts}]`, merged across every online host. |
+| `list(path)` | `[{name, dir, size, mtime, hosts}]`: in the home merged across every online host, in a machine's folder that machine's. |
 | `openFile(path, {line, col})` | Opens the file in an editor tab. |
 | `onDidSaveFile(fn)` | `fn({path})` after an open file's edits reach the disk. |
 | `onDidOpenFile(fn)` | `fn({path})` when a file gets a tab. |
@@ -174,11 +174,11 @@ py   python3 "$f"
 rs   rustc "$f" -o "$o" && "$o"
 ```
 
-`contributes.runners` in `package.json` does the same without code. Your own `ide.runners` setting overrides both.
+`contributes.runners` in `package.json` does the same without code. Your own `sulfur.runners` setting overrides both.
 
 ### api.agents
 
-`registerProvider({id, label}, handler)` adds a chat agent. It shows in the chat's agent picker next to the mesh's own. When someone asks it something, the ide calls:
+`registerProvider({id, label}, handler)` adds a chat agent. It shows in the chat's **Harness** picker, under Chat, Claude Code and opencode. When someone asks it something, Sulfur calls:
 
 ```js
 handler({ text, history, file, progress }) // → Promise<string>
@@ -191,23 +191,49 @@ handler({ text, history, file, progress }) // → Promise<string>
 | `file` | `{path, language, text}` of the active file, or `null` when the user keeps it out (the chip above the chat box). |
 | `progress(text)` | Optional. Call it with the answer so far to stream it into the chat. |
 
-Resolve with the whole answer as markdown. Throw to show an error in the conversation. Stop is the user's: the ide drops the answer if it arrives after they stop it.
+Resolve with the whole answer as markdown. Throw to show an error in the conversation. Stop is the user's: Sulfur drops the answer if it arrives after they stop it.
 
-This is the hook for bridging the agent harnesses into the ide: opencode, Claude Code, or anything else that answers over HTTP and allows the `null` origin. See the example below.
+Claude Code and opencode are built in: they run in the project on one of your machines, and their edits are typed into the editor as they make them. This hook is for anything else that answers over HTTP and allows the `null` origin. See the example below. To change files the way they do, call `api.workspace.writeFile`: an open file gets the write typed in live.
 
 ### api.onDidRunFile
 
 `onDidRunFile(fn)` calls `fn({path, host})` each time a file is run.
 
+## Builds and tasks
+
+**Ctrl+B** builds the project. The first time, Sulfur looks at what the project is (CMake, a .NET solution or project, MSBuild, Cargo, Go, npm, Make, Meson, Python) and at the compilers each of your machines has, then asks which to build with. The pick is kept in the project's `.sulfur/build.json`, so it goes with the project when it's copied:
+
+```json
+{
+  "host": "d6",
+  "toolchain": { "id": "cmake-msvc", "label": "CMake · MSVC 14.51.36231", "vcvars": "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat" },
+  "configuration": "Release",
+  "defaultTask": "build",
+  "tasks": [
+    { "label": "Package", "command": "cpack -C Release", "group": "other" }
+  ]
+}
+```
+
+| field | meaning |
+|---|---|
+| `host` | The machine the build runs on, under your login there. |
+| `toolchain` | What builds it, as the picker wrote it. Its `id` picks the built-in tasks: `cmake-msvc`, `cmake-gcc`, `cmake-clang`, `dotnet`, `msbuild`, `cargo`, `go`, `npm`, `make`, `meson` or `python`. An MSVC toolchain also carries `vcvars`, the Visual Studio script each task runs under. |
+| `configuration` | `Debug` or `Release`. |
+| `defaultTask` | The task Ctrl+B runs, by id: `build`, `rebuild`, `test`, … |
+| `tasks` | Your own tasks: `{label, command, group}`, the command run in the project's folder. `group` is `build`, `test`, `run` or `other`. |
+
+Each task runs in a terminal of its own in the Terminal panel. Errors and warnings from MSVC, MSBuild, dotnet, gcc, clang, Go, Rust and CMake land in the Problems panel, linked to their lines. Editing the file and saving it takes effect at once; **Run › Select Toolchain…** and **Add a Task** (under **Run › Run Task…** and in the Run and Build view) write it for you.
+
 ## Key syntax
 
 Keys are written as VS Code writes them: modifiers, then the key, joined by `+`. The modifiers are `ctrl`, `shift`, `alt`, and `cmd` (`meta` for the Ctrl key on a Mac). Two keys in a row, separated by a space, make a chord: `ctrl+k ctrl+c`. `ctrl` means `Cmd` on a Mac.
 
-The browser keeps some keys for itself, and no page can take them: `ctrl+n`, `ctrl+t`, `ctrl+w` and `ctrl+tab` in most browsers. Your own keybindings live in `~/.ide/keybindings.json`, which **Preferences: Open Keyboard Shortcuts (JSON)** opens:
+The browser keeps some keys for itself, and no page can take them: `ctrl+n`, `ctrl+t`, `ctrl+w` and `ctrl+tab` in most browsers. Your own keybindings live in `~/.sulfur/keybindings.json`, which **Preferences: Open Keyboard Shortcuts (JSON)** opens:
 
 ```json
 [
-  { "key": "ctrl+alt+r", "command": "ide.run.file" },
+  { "key": "ctrl+alt+r", "command": "sulfur.run.file" },
   { "key": "ctrl+r", "command": "-workbench.action.openRecent" }
 ]
 ```
@@ -232,7 +258,7 @@ view.onMessage(async (msg) => {
 });
 ```
 
-A webview's page runs sandboxed, like the extension. It gets `window.phosphorus.post(msg)` and `phosphorus.onMessage(fn)` to talk to its extension, plus the ide's colours as CSS variables: `--ide-bg`, `--ide-fg`, `--ide-muted`, `--ide-accent`, `--ide-border`, `--ide-input`, `--ide-button`, `--ide-button-fg`. `setHtml(html)` replaces the page; `dispose()` closes the tab.
+A webview's page runs sandboxed, like the extension. It gets `window.phosphorus.post(msg)` and `phosphorus.onMessage(fn)` to talk to its extension, plus Sulfur's colours as CSS variables: `--ide-bg`, `--ide-fg`, `--ide-muted`, `--ide-accent`, `--ide-border`, `--ide-input`, `--ide-button`, `--ide-button-fg`. `setHtml(html)` replaces the page; `dispose()` closes the tab.
 
 ## Examples
 
@@ -290,6 +316,6 @@ export function activate(api) {
 
 - Every API call is asynchronous and crosses a message port: `await` them.
 - There's no `vscode` module to import. The API is the `api` argument to `activate`.
-- One editor group, no language servers, decorations or debuggers. The ide checks syntax by parsing, as the desktop's editor does.
-- Settings live in `~/.ide/settings.json` and keys in `~/.ide/keybindings.json`, both in your phosphorus home. Enabling an extension is remembered per browser.
+- One editor group, no language servers, decorations or debuggers. Sulfur checks syntax by parsing, as the desktop's editor does.
+- Settings live in `~/.sulfur/settings.json` and keys in `~/.sulfur/keybindings.json`, both in your phosphorus home. Enabling an extension is remembered per browser.
 - Your editors are live sessions: anyone with the same file open, an agent included, edits the same text you see.

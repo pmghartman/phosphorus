@@ -116,7 +116,8 @@ func isWindows(cl *ssh.Client) (bool, error) {
 	if err == nil && strings.TrimSpace(out) != "" && !strings.Contains(strings.ToLower(out), "not recognized") {
 		return false, nil
 	}
-	ver, err2 := output(cl, "ver", 20*time.Second)
+	// cmd's ver, asked through cmd so a PowerShell login answers it too
+	ver, err2 := output(cl, "cmd /c ver", 20*time.Second)
 	if err2 == nil && strings.Contains(strings.ToLower(ver), "windows") {
 		return true, nil
 	}

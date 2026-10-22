@@ -11,7 +11,7 @@ const APPS = {
   editor: () => import('./apps/editor.js'),
   files: () => import('./apps/files.js'),
   code: () => import('./apps/code.js'),
-  ide: () => import('./apps/ide.js'),
+  sulfur: () => import('./apps/sulfur.js'),
 };
 // the newest /api/state, handed to an app as it loads
 let lastState = null;
@@ -4248,7 +4248,7 @@ const DK_GLYPHS = {
   terminal: 'M2 3h12v10H2zM4.5 6.5l2 1.5-2 1.5M8 10h3.5',
   files: ICONS.folder,
   editor: 'M3 1.5h7l3 3v10H3zM10 1.5v3h3M5 7.5h6M5 10h6M5 12.5h3.5',
-  ide: 'M1.5 2.5h13v11h-13zM1.5 5h13M5.5 7.5L3.75 9.25 5.5 11M10.5 7.5l1.75 1.75L10.5 11M8.75 7l-1.5 4.5',
+  sulfur: 'M1.5 2.5h13v11h-13zM1.5 5h13M5.5 7.5L3.75 9.25 5.5 11M10.5 7.5l1.75 1.75L10.5 11M8.75 7l-1.5 4.5',
   service: 'M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM1.5 8h13M8 1.5c-2.2 2.4-2.2 10.6 0 13M8 1.5c2.2 2.4 2.2 10.6 0 13',
   chat: 'M2 2.5h12v8H6.5L3.5 13v-2.5H2zM4.5 5.5h7M4.5 8h4.5',
   status: 'M1.5 8h3l1.5-4 3 8 1.5-4h4',
@@ -4363,7 +4363,7 @@ function dkIcons() {
     ...hosts.map((h) => [`terminal\n${h}`, () => dkIcon('terminal', 'terminal', h, () => dkTerminal(h))]),
     ['files', () => dkIcon('files', 'files', '', () => filesWin())],
     ['editor', () => dkIcon('editor', 'editor', '', dkEditorPick)],
-    ...(acct && !acct.boot ? [['ide', () => dkIcon('ide', 'ide', '', () => dkIde())]] : []),
+    ...(acct && !acct.boot ? [['sulfur', () => dkIcon('sulfur', 'sulfur', '', () => dkSulfur())]] : []),
     ['chat', () => dkIcon('chat', 'chat', '', () => dkOpenApp('chat'))],
     ['status', () => dkIcon('status', 'status', '', () => dkOpenApp('status'))],
     ...(git ? [['git', () => dkGlobe(dkIcon('git', 'git', '', () => dkOpenApp('git')), 'public: its own login only')]] : []),
@@ -5509,7 +5509,7 @@ function dkFileMenu(e) {
     ['open', () => fileOpen(HOME, rel, e), !e.stale],
     e.dir && ['show in files', () => filesWin({ loc: HOME, dir: rel }), true],
     !e.dir && ['open in editor', () => dkCode({ host: loc.host, share: loc.share, path: rel, label: fileLabel(loc.host, 'home', rel) }), !e.stale],
-    ['open in ide', () => dkIde(e.dir ? { dir: rel } : { path: rel }), !e.stale],
+    ['open in sulfur', () => dkSulfur(e.dir ? { dir: rel } : { path: rel }), !e.stale],
     !e.dir && ['download', () => { location.href = filesApi(loc, 'download', { path: rel }); }, !e.stale],
     ...(e.dir ? [] : dkRunItems(rel, e.all ? homeOnline() : e.live || [])),
     null,
@@ -5618,33 +5618,33 @@ function dkEditorPick() {
   dkFocus(w);
 }
 
-// --- the ide: one window, a folder of the user's own home its workspace, its
+// --- sulfur, the code editor: one window, a project folder its workspace, its
 // terminals on the hosts this desktop is logged into; open: {dir} or {path}
-let dkIdeNow = null;
-function dkIde(open = null) {
+let dkSulfurNow = null;
+function dkSulfur(open = null) {
   if (!dk.desk || !acct || acct.boot) return;
-  const had = dk.wins.get('app:ide');
+  const had = dk.wins.get('app:sulfur');
   if (had) {
     dkFocus(had);
-    if (open) dkIdeNow?.then((x) => x?.open(open));
+    if (open) dkSulfurNow?.then((x) => x?.open(open));
     return;
   }
-  const w = dkWin('app:ide', 'ide', '', 'ide');
+  const w = dkWin('app:sulfur', 'sulfur', '', 'ide');
   if (!w) return;
   w.node.classList.add('ide-win');
   dkSize(w, 1280, 800);
   w.body.append(el('div', 'ide-loading', 'loading'));
   let now = null;
-  const ide = app('ide').then((m) => {
+  const ide = app('sulfur').then((m) => {
     if (!w.node.isConnected) return null;
     now = m.ideStart(w, open);
     return now;
   }, (e) => { w.body.textContent = `failed: ${e.message}`; return null; });
-  dkIdeNow = ide;
+  dkSulfurNow = ide;
   w.onFocus = () => now?.focus();
   // unsaved files asked about first, the window closed for good once settled
   w.holdClose = () => !!now?.holdClose(() => dkClose(w, true));
-  w.onClose = () => { now?.close(); if (dkIdeNow === ide) dkIdeNow = null; };
+  w.onClose = () => { now?.close(); if (dkSulfurNow === ide) dkSulfurNow = null; };
   dkFocus(w);
 }
 
@@ -6845,7 +6845,7 @@ export {
   dkFocus,
   dkGlyph,
   dkHomeOn,
-  dkIde,
+  dkSulfur,
   dkLiveHosts,
   dkMenu,
   dkMenuEl,
