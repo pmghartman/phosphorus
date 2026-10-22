@@ -14,12 +14,15 @@
 <link rel="preload" href="/vendor/geist-mono.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/style.css">
 <script>
-// the browser's own light or dark unless a theme was picked, set before paint
+// the browser's own light or dark unless a theme was picked, and the color theme, set before paint
 (() => {
   let pick = null;
   try { pick = localStorage.getItem('phosphorus-theme'); } catch {}
   const theme = pick || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
   if (theme === 'light' || theme === 'oled') document.documentElement.dataset.theme = theme;
+  let pal = null;
+  try { pal = localStorage.getItem('phosphorus-palette'); } catch {}
+  document.documentElement.dataset.palette = pal || 'phosphorus';
 })();
 </script>
 </head>

@@ -1,6 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { singleFileCommand } from '../src/sulfur/build-commands.js';
+import { singleFileCommand, configsFor } from '../src/sulfur/build-commands.js';
+
+test('CMakeSettings profiles retain the project names and presets retain preset names', () => {
+  assert.deepEqual(configsFor({ toolchain: { id: 'cmake-vs' } }, { cmakeSettings: [{ name: 'x64-Debug' }, { name: 'x64-Release' }, { name: 'x64-Shipping' }] }), ['x64-Debug', 'x64-Release', 'x64-Shipping']);
+  assert.deepEqual(configsFor({ toolchain: { id: 'cmake-preset' } }, { presets: [{ name: 'linux-release' }] }), ['linux-release']);
+});
+
+test('configured CMake trees expose custom configurations and standard build types', () => {
+  const cfg = { toolchain: { id: 'cmake-tree', dir: 'build' } };
+  assert.deepEqual(configsFor(cfg, { trees: [{ dir: 'build', configs: ['Release', 'RelWithDebugInfo'] }] }), ['Release', 'RelWithDebugInfo']);
+  assert.ok(configsFor(cfg, { trees: [{ dir: 'build', type: 'Release' }] }).includes('RelWithDebInfo'));
+  assert.ok(configsFor({ toolchain: { id: 'cmake-clang' } }, {}).includes('RelWithDebInfo'));
+});
 
 test('POSIX builds use a writable scratch directory and quote the absolute source', () => {
   const command = singleFileCommand('cc -g "{f}" -o "{o}"', "/read-only/O'Brien/test.c", 'test', false, '123');

@@ -1,7 +1,7 @@
 # manual release: per checked OS a host installer (.deb, .dmg, setup .exe), as
 # vVERSION, and with Sulfur checked the Sulfur code editor's own app for every OS
-# (Tauri around its local server: setup .exe and .msi, .dmg, .deb and AppImage);
-# feeds on release `update` when a host was built, then only the two newest
+# (Tauri around its local server: setup .exe, .dmg, .deb and AppImage);
+# feeds on release `update` for the hosts and Sulfur built, then only the two newest
 # releases and runs kept
 # app and apt feeds need UPDATE_SIGNING_KEY (go run ./cmd/feedsign -keygen), APT_GPG_KEY, var UPDATE_PUBKEY
 name: release
@@ -30,9 +30,9 @@ on:
         type: boolean
         default: false
       sulfur:
-        description: "Sulfur code editor app, for every OS"
+        description: "Sulfur IDE"
         type: boolean
-        default: true
+        default: false
 
 permissions:
   contents: read
@@ -86,13 +86,40 @@ jobs:
           if [ "$SULFUR" = true ]; then
             sulfur+=('{"name":"linux-amd64","runner":"ubuntu-24.04","bundles":"deb,appimage","target":"","triple":"x86_64-unknown-linux-gnu"}')
             sulfur+=('{"name":"linux-arm64","runner":"ubuntu-24.04-arm","bundles":"deb","target":"","triple":"aarch64-unknown-linux-gnu"}')
-            sulfur+=('{"name":"macos-universal","runner":"macos-14","bundles":"dmg","target":"universal-apple-darwin","triple":"universal-apple-darwin"}')
-            sulfur+=('{"name":"windows-x86_64","runner":"windows-2022","bundles":"nsis,msi","target":"","triple":"x86_64-pc-windows-msvc"}')
+            sulfur+=('{"name":"macos-universal","runner":"macos-14","bundles":"app,dmg","target":"universal-apple-darwin","triple":"universal-apple-darwin"}')
+            sulfur+=('{"name":"windows-x86_64","runner":"windows-2022","bundles":"nsis","target":"","triple":"x86_64-pc-windows-msvc"}')
           fi
           echo "sulfur=$(j "${sulfur[@]}")" | tee -a "$GITHUB_OUTPUT"
 
+  # the web client built once, from pinned npm tarballs, for every job that embeds it
+  web:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: web/.vendor/cache
+          key: web-vendor-${{ hashFiles('web/vendor.lock') }}
+      # a binary without it serves nothing but 404s; Sulfur's page in it too
+      - run: go generate ./internal/web && test -f internal/web/dist/index.html && test -f internal/web/dist/sulfur/index.html
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: web-dist
+          path: internal/web/dist/
+          retention-days: 1
+      # the shipped license texts current with every dependency and pinned tool; here, where
+      # the npm packages are
+      - name: licenses
+        run: |
+          go run ./cmd/licenses
+          git diff --exit-code THIRD_PARTY_LICENSES.txt || { echo "THIRD_PARTY_LICENSES.txt is stale, run make licenses and commit it" >&2; exit 1; }
+
   # vet and tests, gating the release
   check:
+    needs: [web]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -101,22 +128,18 @@ jobs:
           go-version-file: go.mod
       # the module proxy drops streams now and then
       - run: for i in 1 2 3 4; do go mod download && exit 0; sleep $((i * 5)); done; exit 1
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      # the web client the web job built, into internal/web/dist before anything embeds it
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
-          path: web/.vendor/cache
-          key: web-vendor-${{ hashFiles('web/vendor.lock') }}
+          name: web-dist
+          path: internal/web/dist
       # every package cross-vetted too: macOS and Windows hosts run the same roles
-      - run: go generate ./internal/web && go vet ./... && go test ./... && GOOS=darwin go vet ./... && GOOS=windows go vet ./...
-      # the shipped license texts current with every dependency and pinned tool
-      - name: licenses
-        run: |
-          go run ./cmd/licenses
-          git diff --exit-code THIRD_PARTY_LICENSES.txt || { echo "THIRD_PARTY_LICENSES.txt is stale, run make licenses and commit it" >&2; exit 1; }
+      - run: go vet ./... && go test ./... && GOOS=darwin go vet ./... && GOOS=windows go vet ./...
 
   # one job per OS, Go alone: Linux's host the .deb around the binary, macOS's
   # and Windows' the menu bar app beside it, in a .dmg and a setup .exe
   build:
-    needs: [version]
+    needs: [version, web]
     if: ${{ inputs.linux_amd64 || inputs.linux_arm64 || inputs.macos || inputs.windows }}
     strategy:
       # one OS's failure leaves the others' builds, and their caches, finished
@@ -143,15 +166,11 @@ jobs:
           echo "$KEY" | gpg --batch --import
           gpg --export > "$RUNNER_TEMP/phosphorus.gpg"
           echo "PHOSPHORUS_APT_KEY=$RUNNER_TEMP/phosphorus.gpg" >> "$GITHUB_ENV"
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      # the web client the web job built, into internal/web/dist before anything embeds it
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
-          path: web/.vendor/cache
-          key: web-vendor-${{ hashFiles('web/vendor.lock') }}
-      # the web client built into internal/web/dist before any binary embeds it,
-      # a binary without it serving nothing but 404s
-      - name: web
-        shell: bash
-        run: go generate ./internal/web && test -f internal/web/dist/index.html
+          name: web-dist
+          path: internal/web/dist
       # the release's tree (.github and packaging export-ignored) and its bundled tools;
       # Linux's packaged at once, the tools fetched beside the Go build
       - name: host binary
@@ -205,7 +224,7 @@ jobs:
   # Sulfur's own app: Tauri around its local server (cmd/sulfur), which serves Sulfur
   # alone and this computer offline, or fronts a mesh; installers for every OS
   sulfur:
-    needs: [version]
+    needs: [version, web]
     if: ${{ inputs.sulfur }}
     strategy:
       fail-fast: false
@@ -223,17 +242,21 @@ jobs:
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version-file: go.mod
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      # the web client the web job built, into internal/web/dist before anything embeds it
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
-          path: web/.vendor/cache
-          key: web-vendor-${{ hashFiles('web/vendor.lock') }}
-      # the server the app runs, Sulfur's page built into it, named as Tauri finds a bundled binary
+          name: web-dist
+          path: internal/web/dist
+      # the server the app runs, Sulfur's page built into it, named as Tauri finds a bundled binary;
+      # the feed it updates from and the key its updates are signed with
       - name: server
+        env:
+          FEED_URL: https://github.com/${{ github.repository }}/releases/download/update
+          FEED_PUBKEY: ${{ vars.UPDATE_PUBKEY }}
         run: |
-          go generate ./internal/web && test -f internal/web/dist/sulfur/index.html
           bin=$APP/src-tauri/binaries
           mkdir -p "$bin"
-          b() { CGO_ENABLED=0 GOOS=$1 GOARCH=$2 go build -trimpath -ldflags "-s -w $3 -X main.version=$VER" -o "$4" ./cmd/sulfur; }
+          b() { CGO_ENABLED=0 GOOS=$1 GOARCH=$2 go build -trimpath -ldflags "-s -w $3 -X main.version=$VER -X main.feedURL=$FEED_URL -X main.feedPubkey=$FEED_PUBKEY" -o "$4" ./cmd/sulfur; }
           case "${{ matrix.name }}" in
             windows-*) b windows amd64 "-H windowsgui" "$bin/sulfur-server-${{ matrix.triple }}.exe" ;;
             linux-amd64) b linux amd64 "" "$bin/sulfur-server-${{ matrix.triple }}" ;;
@@ -256,37 +279,58 @@ jobs:
           rustup toolchain install stable --profile minimal
           rustup default stable
           if [ "${{ matrix.target }}" = universal-apple-darwin ]; then rustup target add aarch64-apple-darwin x86_64-apple-darwin; fi
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      # the crates and their builds kept across releases, pruned to what this lock still uses
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            ${{ env.APP }}/src-tauri/target
-          key: sulfur-${{ matrix.name }}-${{ hashFiles('packaging/sulfur/src-tauri/Cargo.lock') }}
-      # the release's version as semver; the bundles in out/ under the release's names
+          workspaces: packaging/sulfur/src-tauri
+          key: ${{ matrix.name }}
+      # the release's version as semver; the bundles in out/ under the release's names;
+      # the cli pinned, so a release builds the same each time
       - name: build
         working-directory: ${{ env.APP }}
         run: |
           args=(--bundles "${{ matrix.bundles }}" --config "{\"version\":\"$VER.0\"}")
           [ -n "${{ matrix.target }}" ] && args+=(--target "${{ matrix.target }}")
-          for i in 1 2 3; do npx --yes @tauri-apps/cli@2 build "${args[@]}" -- --locked && break; [ $i = 3 ] && exit 1; sleep $((i * 10)); done
+          for i in 1 2 3; do npx --yes @tauri-apps/cli@2.12.2 build "${args[@]}" -- --locked && break; [ $i = 3 ] && exit 1; sleep $((i * 10)); done
           out=$GITHUB_WORKSPACE/out
           mkdir -p "$out"
           base=src-tauri/target/${{ matrix.target }}/release/bundle
           [ -n "${{ matrix.target }}" ] || base=src-tauri/target/release/bundle
           shopt -s nullglob
           for f in "$base"/nsis/*-setup.exe; do cp "$f" "$out/sulfur-$VER-${{ matrix.name }}-setup.exe"; done
-          for f in "$base"/msi/*.msi; do cp "$f" "$out/sulfur-$VER-${{ matrix.name }}.msi"; done
           for f in "$base"/dmg/*.dmg; do cp "$f" "$out/sulfur-$VER-${{ matrix.name }}.dmg"; done
           for f in "$base"/deb/*.deb; do cp "$f" "$out/sulfur_${VER}_${f##*_}"; done
           for f in "$base"/appimage/*.AppImage; do cp "$f" "$out/sulfur-$VER-${{ matrix.name }}.AppImage"; done
           ls -l "$out"
           [ -n "$(ls -A "$out")" ] || { echo "no bundles made" >&2; exit 1; }
+          # the app's own update, signed for the feed: the setup .exe, the .app tarred, the AppImage
+          if [ -n "$UPDATE_SIGNING_KEY" ]; then
+            upd=$GITHUB_WORKSPACE/upd
+            mkdir -p "$upd"
+            case "${{ matrix.name }}" in
+              windows-*) cp "$out/sulfur-$VER-${{ matrix.name }}-setup.exe" "$upd/sulfur-windows-x86_64-setup.exe" ;;
+              macos-*)
+                app=$(find "$base" -maxdepth 2 -name "Sulfur.app" -type d | head -n 1)
+                [ -n "$app" ] || { echo "no Sulfur.app under $base" >&2; exit 1; }
+                tar -czf "$upd/sulfur-macos-universal.app.tar.gz" -C "$(dirname "$app")" Sulfur.app ;;
+              linux-amd64) cp "$out/sulfur-$VER-${{ matrix.name }}.AppImage" "$upd/sulfur-linux-x86_64.AppImage" ;;
+            esac
+            if [ -n "$(ls -A "$upd")" ]; then (cd "$GITHUB_WORKSPACE" && go run ./cmd/feedsign "$upd"/*); fi
+          fi
+        env:
+          FEED_PUBKEY: ${{ vars.UPDATE_PUBKEY }}
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: out-sulfur-${{ matrix.name }}
           path: out/
           compression-level: 0
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: upd-sulfur-${{ matrix.name }}
+          path: upd/
+          compression-level: 0
+          if-no-files-found: ignore
 
   release:
     needs: [version, check, build, sulfur]
@@ -323,7 +367,7 @@ jobs:
             # Sulfur's desktop app, when it was built
             if ls sulfur[-_]* >/dev/null 2>&1; then
               echo
-              echo "**Sulfur:** the code editor on its own, for any computer: **Start Offline** for its own files, terminals and compilers, or connect to your mesh for its machines and agents. Install the \`sulfur-…-setup.exe\` or \`.msi\`, the \`.dmg\` (first time: right-click, Open), or \`sudo apt install ./sulfur_${VER}_ARCH.deb\`."
+              echo "**Sulfur:** the code editor on its own, for any computer: **Start Offline** for its own files, terminals and compilers, or connect to your mesh for its machines and agents. Install the \`sulfur-…-setup.exe\`, the \`.dmg\` (first time: right-click, Open), or \`sudo apt install ./sulfur_${VER}_ARCH.deb\`."
             fi
           } > "$RUNNER_TEMP/notes.md"
           cat "$RUNNER_TEMP/notes.md"
@@ -340,9 +384,9 @@ jobs:
           pattern: upd-*
           merge-multiple: true
       # built OSes' files onto `update`; others: last release's. A release of Sulfur
-      # alone leaves the feed be, so no host's told of an update with nothing in it
+      # alone writes Sulfur's feed only, so no host's told of an update with nothing in it
       - name: update feed
-        if: ${{ inputs.linux_amd64 || inputs.linux_arm64 || inputs.macos || inputs.windows }}
+        if: ${{ inputs.linux_amd64 || inputs.linux_arm64 || inputs.macos || inputs.windows || inputs.sulfur }}
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -351,13 +395,22 @@ jobs:
           mkdir -p upd && cd upd
           BASE=https://github.com/$GH_REPO/releases/download/update
           NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          printf '{"version":"%s","pub_date":"%s","notes":"https://github.com/%s/releases/tag/v%s"}\n' "$VER" "$NOW" "$GH_REPO" "$VER" > latest.json
+          if ${{ inputs.linux_amd64 || inputs.linux_arm64 || inputs.macos || inputs.windows }}; then
+            printf '{"version":"%s","pub_date":"%s","notes":"https://github.com/%s/releases/tag/v%s"}\n' "$VER" "$NOW" "$GH_REPO" "$VER" > latest.json
+          fi
           feed() { printf '{"version":"%s","url":"%s/%s","signature":"%s"}\n' "$VER" "$BASE" "$2" "$(cat "$2.sig")" > "$1.json"; }
           if [ -e phosphorus-macos-universal.app.tar.gz ]; then
             feed darwin-x86_64 phosphorus-macos-universal.app.tar.gz
             feed darwin-aarch64 phosphorus-macos-universal.app.tar.gz
           fi
           if [ -e phosphorus-windows-x86_64-setup.exe ]; then feed windows-x86_64 phosphorus-windows-x86_64-setup.exe; fi
+          # Sulfur's app: its own feed files beside the host's
+          if [ -e sulfur-macos-universal.app.tar.gz ]; then
+            feed sulfur-darwin-x86_64 sulfur-macos-universal.app.tar.gz
+            feed sulfur-darwin-aarch64 sulfur-macos-universal.app.tar.gz
+          fi
+          if [ -e sulfur-windows-x86_64-setup.exe ]; then feed sulfur-windows-x86_64 sulfur-windows-x86_64-setup.exe; fi
+          if [ -e sulfur-linux-x86_64.AppImage ]; then feed sulfur-linux-x86_64 sulfur-linux-x86_64.AppImage; fi
           # Linux hosts update over apt
           # the apt feed: the host packages alone
           if [ -n "$KEY" ] && ls ../out/phosphorus_*.deb >/dev/null 2>&1; then

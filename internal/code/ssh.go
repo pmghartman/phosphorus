@@ -1,4 +1,4 @@
-package claude
+package code
 
 // the host reached over ssh with the user's saved login, as the terminal's:
 // this host's own sshd as the terminal finds it, a peer's on its tailnet address
@@ -191,7 +191,7 @@ func setupErr(host string, code int, out string, err error) error {
 	low := strings.ToLower(out)
 	switch {
 	case code == 127 && !strings.Contains(low, "not found") && !strings.Contains(low, "not recognized"):
-		return fmt.Errorf("claude isn't installed on %s: install it from the Code app", host)
+		return errors.New(missing(Claude, host))
 	case strings.Contains(low, "not recognized") || strings.Contains(low, "commandnotfound"):
 		return fmt.Errorf("%s runs Windows, which Code doesn't support yet", host)
 	case err != nil:
@@ -201,23 +201,6 @@ func setupErr(host string, code int, out string, err error) error {
 		out = out[len(out)-400:]
 	}
 	return fmt.Errorf("setting up claude on %s failed (exit %d): %s", host, code, out)
-}
-
-// version a harness's on host by cmd, "" when it isn't installed
-func version(host string, c Creds, cmd string) (string, error) {
-	cl, err := dial(host, c.User, c.Pass)
-	if err != nil {
-		return "", err
-	}
-	defer cl.Close()
-	code, out, err := run(cl, cmd, "", 30*time.Second)
-	if err != nil {
-		return "", err
-	}
-	if code != 0 {
-		return "", nil
-	}
-	return strings.TrimSpace(strings.SplitN(out, "\n", 2)[0]), nil
 }
 
 // install an official installer, cmd, run as the login: ok and its output's tail

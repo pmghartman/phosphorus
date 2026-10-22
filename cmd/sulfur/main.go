@@ -195,6 +195,8 @@ func saveConfig() error {
 
 func sidecar(w http.ResponseWriter, r *http.Request) {
 	switch {
+	case r.URL.Path == "/api/sidecar/update":
+		update(w, r)
 	case r.URL.Path == "/api/sidecar/info" && r.Method == "GET":
 		cfgMu.Lock()
 		c := cfg

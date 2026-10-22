@@ -67,6 +67,8 @@ function closeWindow() {
 appWin?.onCloseRequested?.((e) => {
   if (ide?.holdClose(() => appWin.destroy())) e.preventDefault();
 });
+// the app closed for its update to install, nothing asked
+standalone.quit = () => appWin?.destroy();
 
 // --- the workbench, offline at once or on the mesh last chosen ---------------------------
 

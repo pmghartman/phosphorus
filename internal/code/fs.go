@@ -1,4 +1,4 @@
-package claude
+package code
 
 // a host's folders over the user's own ssh login: a listing for the page's
 // picker and browser, files uploaded in without overwriting; sh -c with the
