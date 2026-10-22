@@ -6,6 +6,7 @@ import {
   el,
   esc,
   hostsInfo,
+  noFill,
   wsBase,
 } from '../app.js';
 import { renderMd } from '../md.js';
@@ -24,6 +25,8 @@ const PERMS = [
 ];
 const PICK_LS = 'phosphorus-code-pick';
 const DIR_LS = 'phosphorus-code-dirs';
+const RECENT_LS = 'phosphorus-code-recent';
+const SIDE_LS = 'phosphorus-code-side';
 const LIST_MS = 4000;
 // an upload's bytes at most, as the server takes
 const UP_MAX = 50 * 1024 * 1024;
@@ -60,6 +63,9 @@ const GL = {
   attach: 'M10.5 4.5l-4.8 4.8a1.4 1.4 0 0 0 2 2l5-5a2.8 2.8 0 0 0-4-4l-5 5a4.2 4.2 0 0 0 6 6l4.3-4.3',
   send: 'M8 12.5V3.5M4 7.5L8 3.5l4 4',
   stop: 'M4.5 4.5h7v7h-7z',
+  host: 'M2 3.5h12v7H2zM5.5 13h5M8 10.5V13',
+  model: 'M8 2l1.6 4.4L14 8l-4.4 1.6L8 14l-1.6-4.4L2 8l4.4-1.6z',
+  shield: 'M8 1.8l5 2v4c0 3-2.2 5.3-5 6.4-2.8-1.1-5-3.4-5-6.4v-4z',
 };
 
 async function call(url, method = 'GET', body) {
@@ -76,19 +82,65 @@ const sapi = (id, op = '') => `/api/code/sessions/${encodeURIComponent(id)}${op 
 
 const root = el('div', 'cd');
 const side = el('div', 'cd-side');
+const grip = Object.assign(el('div', 'cd-grip'), { tabIndex: 0, role: 'separator', title: 'drag to resize, double click to reset' });
+grip.setAttribute('aria-orientation', 'vertical');
 const main = el('div', 'cd-main');
 const scrim = el('div', 'cd-scrim');
-root.append(side, main, scrim);
+root.append(side, grip, main, scrim);
 view.replaceChildren(root);
 scrim.addEventListener('click', () => drawer(false));
 
-const sideHead = el('div', 'home-col-head', 'sessions');
+// the side's width dragged on its grip, kept per browser
+function sideWidth(px) {
+  if (!px) { root.style.removeProperty('--cd-side'); return 0; }
+  const w = Math.round(Math.min(Math.max(220, root.clientWidth * 0.45), Math.max(150, px)));
+  root.style.setProperty('--cd-side', `${w}px`);
+  return w;
+}
+if (lsGet(SIDE_LS, 0)) root.style.setProperty('--cd-side', `${lsGet(SIDE_LS, 0)}px`);
+grip.addEventListener('pointerdown', (e) => {
+  if (e.button !== 0) return;
+  e.preventDefault();
+  grip.setPointerCapture(e.pointerId);
+  const x0 = e.clientX;
+  const w0 = side.getBoundingClientRect().width;
+  root.classList.add('cd-resizing');
+  const move = (ev) => sideWidth(w0 + ev.clientX - x0);
+  const up = () => {
+    grip.removeEventListener('pointermove', move);
+    grip.removeEventListener('pointerup', up);
+    grip.removeEventListener('pointercancel', up);
+    root.classList.remove('cd-resizing');
+    lsSet(SIDE_LS, Math.round(side.getBoundingClientRect().width));
+  };
+  grip.addEventListener('pointermove', move);
+  grip.addEventListener('pointerup', up);
+  grip.addEventListener('pointercancel', up);
+});
+grip.addEventListener('keydown', (e) => {
+  const d = { ArrowLeft: -16, ArrowRight: 16 }[e.key];
+  if (!d) return;
+  e.preventDefault();
+  e.stopPropagation();
+  lsSet(SIDE_LS, sideWidth(side.getBoundingClientRect().width + d));
+});
+grip.addEventListener('dblclick', () => { sideWidth(0); lsSet(SIDE_LS, 0); });
+
 const sideTop = el('div', 'cd-side-top');
 const newBtn = Object.assign(el('button', 'cd-new', '+ new session'), { type: 'button', title: 'new session' });
-const find = Object.assign(el('input', 'cd-find'), { type: 'search', placeholder: 'filter', spellcheck: false, autocomplete: 'off' });
+// a plain text box: a search or password-looking field gets a saved login filled in
+const find = noFill(Object.assign(el('input', 'cd-find'), { placeholder: 'filter sessions', spellcheck: false }));
 sideTop.append(newBtn, find);
 const listEl = Object.assign(el('nav', 'cd-list'), { ariaLabel: 'sessions' });
-side.append(sideHead, sideTop, listEl);
+// the Claude account at the side's foot: its state, the token box opened over it
+const acct = el('div', 'cd-acct');
+const acctBox = el('div', 'cd-acct-box');
+acctBox.hidden = true;
+const acctBtn = Object.assign(el('button', 'cd-acct-btn'), { type: 'button', title: 'your Claude subscription, for Opus, Sonnet and Haiku' });
+acctBtn.setAttribute('aria-expanded', 'false');
+acct.append(acctBox, acctBtn);
+side.append(sideTop, listEl, acct);
+acctBtn.addEventListener('click', () => acctOpen(acctBox.hidden));
 newBtn.addEventListener('click', () => go('new'));
 find.addEventListener('input', () => { cd.filter = find.value.trim().toLowerCase(); cd.listSig = ''; paintList(); });
 find.addEventListener('keydown', (e) => e.stopPropagation());
@@ -410,7 +462,8 @@ function claudeEv(t, ev) {
       if (ev.subtype === 'init') {
         const bits = [ev.model, ev.permissionMode, ev.cwd && tilde(ev.cwd)].filter(Boolean);
         addNote(t, 'session', bits.join(' · ') || 'started').classList.add('cd-quiet');
-      } else if (ev.subtype && ev.subtype !== 'status') addNote(t, ev.subtype.replace(/_/g, ' '), ev.message || ev.content || '').classList.add('cd-quiet');
+      } else if (ev.subtype === 'api_retry') retryNote(t, ev);
+      else if (ev.subtype && ev.subtype !== 'status') addNote(t, ev.subtype.replace(/_/g, ' '), ev.message || ev.content || '').classList.add('cd-quiet');
       break;
     case 'stream_event': if (!ev.parent_tool_use_id) streamEv(t, ev.event || {}); break;
     case 'assistant': {
@@ -443,10 +496,52 @@ function claudeEv(t, ev) {
       f.append(el('span', '', bits.join(' · ')));
       t.node.append(f);
       if (bad && ev.result && typeof ev.result === 'string') addNote(t, 'error', ev.result);
-      if (bad && Array.isArray(ev.errors)) for (const e of ev.errors) addNote(t, 'error', String(e));
+      if (bad && Array.isArray(ev.errors)) {
+        for (const e of ev.errors) {
+          // claude's own diagnostic when no answer ever came: the last retry's reason in its place
+          if (/^\[ede_diagnostic\]/.test(String(e))) noAnswer(t, String(e));
+          else addNote(t, 'error', String(e));
+        }
+      }
+      t.apiWhy = null;
+      t.retryEl = null;
       break;
     }
     default: break;
+  }
+}
+
+// why an api call failed, by its status, in words that say where to look
+function apiWhy(t, status, kind) {
+  const anth = provOf(rec(t.id)?.model) === 'anthropic';
+  const who = anth ? 'Anthropic' : "the mesh's model gateway";
+  if (!status) return { text: `couldn't reach ${who}${anth ? '' : ` from ${rec(t.id)?.host || 'the host'}`}`, auth: false };
+  if (status === 401 || status === 403 || kind === 'authentication_failed') {
+    return { text: anth ? 'Anthropic refused the token: sign in to Claude again' : 'the model gateway refused your phosphorus key', auth: anth };
+  }
+  if (status === 429) return { text: `${who} is rate limiting (429)`, auth: false };
+  if (status === 529 || status === 503) return { text: anth ? 'Anthropic is overloaded (529)' : `the model isn't loaded or is busy (${status}): check models in status`, auth: false };
+  if (status === 404) return { text: `${who} has no such model (404)`, auth: false };
+  return { text: `${who} failed (${status}${kind && kind !== 'unknown' ? ` ${kind.replace(/_/g, ' ')}` : ''})`, auth: false };
+}
+
+// claude retrying a failed call: one line, kept current while nothing else lands
+function retryNote(t, ev) {
+  const why = apiWhy(t, ev.error_status, ev.error);
+  t.apiWhy = why;
+  const text = `${why.text} · try ${ev.attempt || '?'} of ${ev.max_retries || '?'}`;
+  if (t.retryEl && t.node.lastElementChild === t.retryEl) t.retryEl.querySelector('.cd-note-text').textContent = text;
+  else { t.retryEl = addNote(t, 'retrying', text); t.retryEl.classList.add('cd-note-warn'); }
+}
+
+function noAnswer(t, raw) {
+  const why = t.apiWhy;
+  const n = addNote(t, 'error', `no answer from the model${why ? `: ${why.text}` : ''}`);
+  n.title = raw;
+  if (why?.auth) {
+    const b = Object.assign(el('button', 'cd-mini primary', 'sign in to Claude'), { type: 'button' });
+    b.addEventListener('click', () => { cd.login = true; if (cd.pick === 'new') paintNew(); else go('new'); });
+    n.append(b);
   }
 }
 
@@ -869,7 +964,85 @@ async function upload(t, files, atts, text, grow) {
   }
 }
 
-// --- a new session ---
+// --- a new session: as the desktop app starts one, a prompt box with its
+// choices in a row of chips under it ---
+
+// a select dressed as a chip, its glyph before it
+function chip(glyph, sel, title) {
+  const c = el('label', 'cd-chip');
+  c.title = title;
+  const g = el('span', 'cd-chip-ic');
+  g.innerHTML = svg(GL[glyph]);
+  sel.classList.add('cd-chip-sel');
+  c.append(g, sel);
+  return c;
+}
+
+// the Anthropic token box: plain text masked by css, so no password manager fills it
+function tokenInput(cls = '') {
+  const i = noFill(Object.assign(el('input', cls), { placeholder: 'sk-ant-oat…', spellcheck: false }), true);
+  i.addEventListener('keydown', (e) => e.stopPropagation());
+  return i;
+}
+
+async function saveToken(token) {
+  const r = await call('/api/me/anthropic', 'POST', { token });
+  if (cd.opts) cd.opts.anthropic = !!r.anthropic;
+  paintAcct();
+  return !!r.anthropic;
+}
+
+// signing in to Claude: claude setup-token run in a terminal, its token pasted back
+function loginPanel(hostOf, done) {
+  const box = el('div', 'cd-login');
+  const shut = Object.assign(el('button', 'cd-mini', 'close'), { type: 'button' });
+  shut.addEventListener('click', () => { box.hidden = true; });
+  const t = el('div', 'cd-login-t');
+  t.append(el('span', '', 'Sign in to Claude'), shut);
+  const how = el('ol', 'cd-login-steps');
+  const s1 = el('li');
+  s1.innerHTML = 'Run <code>claude setup-token</code> in a terminal and finish signing in in the browser it opens.';
+  const run = Object.assign(el('button', 'cd-mini primary'), { type: 'button' });
+  const paintRun = () => {
+    const h = hostOf();
+    const can = h && dk.creds?.has(h);
+    run.textContent = can ? `run it on ${h}` : 'copy the command';
+    run.title = can ? `opens a terminal on ${h} running claude setup-token` : 'log into a computer on the desktop to run it here';
+  };
+  run.addEventListener('click', () => {
+    const h = hostOf();
+    // where claude's installer puts it, a non-login shell's PATH may lack it
+    if (h && dk.creds?.has(h)) dkTerminal(h, 'PATH="$HOME/.local/bin:$HOME/.claude/local:$PATH" claude setup-token');
+    else navigator.clipboard?.writeText('claude setup-token').then(() => { run.textContent = 'copied'; }, () => {});
+  });
+  s1.append(' ', run);
+  const s2 = el('li', '', 'Paste the token it prints (sk-ant-oat…) here.');
+  how.append(s1, s2);
+  const inp = tokenInput('update-pass cd-login-in');
+  const save = Object.assign(el('button', 'primary', 'save'), { type: 'button' });
+  const msg = el('span', 'cd-login-msg');
+  const bar = el('div', 'cd-login-bar');
+  bar.append(inp, save);
+  const put = async () => {
+    const v = inp.value.trim();
+    if (!v) { inp.focus(); return; }
+    save.disabled = true;
+    msg.textContent = 'saving';
+    try {
+      if (!(await saveToken(v))) throw new Error('not saved');
+      inp.value = '';
+      msg.textContent = '';
+      box.hidden = true;
+      done();
+    } catch (e) { msg.textContent = e.message; }
+    save.disabled = false;
+  };
+  inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); put(); } });
+  save.addEventListener('click', put);
+  box.append(t, el('p', 'cd-login-p', 'Opus, Sonnet and Haiku run on your own Claude subscription.'), how, bar, msg);
+  box.focusIn = () => { paintRun(); inp.focus(); };
+  return box;
+}
 
 async function paintNew() {
   head = null;
@@ -896,44 +1069,88 @@ async function paintNew() {
   const hosts = opts.hosts || [];
   const dirs = lsGet(DIR_LS, {});
   const lastHost = lsGet(`${DIR_LS}-host`, '');
-  const host = el('select', 'update-pass cd-sel');
+  const host = el('select');
   host.innerHTML = hosts.map((h) => `<option value="${esc(h)}"${h === lastHost ? ' selected' : ''}>${esc(h)}</option>`).join('') || '<option value="">no hosts</option>';
-  const dir = Object.assign(el('input', 'update-pass cd-dir'), { type: 'text', placeholder: '/home/you/src/project', spellcheck: false, autocomplete: 'off', required: true });
-  dir.value = dirs[host.value] || '';
-  const browse = Object.assign(el('button', 'cd-mini'), { type: 'button', textContent: 'browse' });
+  let dir = dirs[host.value] || '';
+  const dirBtn = Object.assign(el('button', 'cd-chip cd-chip-dir'), { type: 'button' });
   const picker = el('div', 'cd-picker');
   picker.hidden = true;
-  const model = modelSelect(opts, (opts.models || []).find((m) => m.ready !== false)?.id || '');
-  model.classList.add('update-pass');
-  const perm = el('select', 'update-pass cd-sel');
+  const paintDir = () => {
+    dirBtn.innerHTML = `<span class="cd-chip-ic">${svg(GL.folder)}</span>`;
+    dirBtn.append(el('span', `cd-chip-t${dir ? '' : ' cd-chip-want'}`, dir ? base(tilde(dir)) || dir : 'pick a folder'));
+    dirBtn.title = dir ? `${host.value}:${dir}` : 'the folder claude works in';
+  };
+  const ready = (opts.models || []).filter((m) => m.ready !== false);
+  const lastModel = lsGet(`${DIR_LS}-model`, '');
+  let model = modelSelect(opts, (ready.find((m) => m.id === lastModel) || ready[0])?.id || '');
+  const perm = el('select');
   perm.innerHTML = PERMS.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join('');
-  const prompt = Object.assign(el('textarea', 'update-pass cd-first'), { rows: 6, placeholder: 'what should claude do?', spellcheck: false, required: true });
+  const prompt = Object.assign(el('textarea', 'cd-first'), { rows: 3, placeholder: 'What should Claude do?', spellcheck: false });
+  const grow = () => { prompt.style.height = 'auto'; prompt.style.height = `${Math.min(prompt.scrollHeight, 320)}px`; };
+  prompt.addEventListener('input', grow);
   prompt.addEventListener('keydown', (e) => {
     e.stopPropagation();
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); form.requestSubmit(); }
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); form.requestSubmit(); }
   });
-  for (const i of [dir]) i.addEventListener('keydown', (e) => e.stopPropagation());
   const install = el('div', 'cd-install');
   install.hidden = true;
-  const row = (label, ...kids) => {
-    const r = el('label', 'cd-row');
-    r.append(el('span', 'st-key', label), ...kids);
-    return r;
-  };
-  const dirWrap = el('span', 'cd-dir-wrap');
-  dirWrap.append(dir, browse);
-  const intro = el('p', 'cd-intro');
-  intro.innerHTML = 'Claude Code runs on the host you pick, as your login there, in the folder you name. '
-    + 'It gets your phosphorus connector and skill. '
-    + (opts.anthropic ? '' : '<span class="st-dim">Add an anthropic token under the agent menu to use opus, sonnet and haiku.</span>');
+  const login = loginPanel(() => host.value, () => {
+    // the subscription's models in the list now, sonnet picked
+    loadOpts(true).then((o) => { swapModel(modelSelect(o, 'sonnet')); valid(); signin.hidden = !!o.anthropic; });
+  });
+  login.hidden = true;
+  const goBtn = Object.assign(el('button', 'chat-go cd-go'), { type: 'submit', title: 'start (enter)', ariaLabel: 'start' });
+  goBtn.innerHTML = svg(GL.send);
+  const modelChip = chip('model', model, 'model');
+  const bar = el('div', 'cd-bar');
+  bar.append(chip('host', host, 'the computer claude runs on, as your login there'), dirBtn,
+    el('span', 'cd-bar-gap'), modelChip, chip('shield', perm, 'what claude may do without asking'), goBtn);
+  const box = el('div', 'cd-box');
+  box.append(prompt, picker, bar);
   const msg = el('span', 'cd-msg');
-  const goBtn = Object.assign(el('button', 'primary', 'start'), { type: 'submit' });
-  const acts = el('div', 'update-actions');
-  acts.append(msg, goBtn);
-  form.replaceChildren(top, intro);
-  if (opts.error) form.append(el('p', 'cd-intro cd-bad', `couldn't load options: ${opts.error}`));
-  form.append(row('host', host), install, row('folder', dirWrap), picker, row('model', model), row('mode', perm), prompt, acts);
-  const valid = () => { goBtn.disabled = !host.value || !dir.value.trim() || !model.value || !prompt.value.trim() || install.dataset.missing === '1'; };
+  const signin = el('div', 'cd-signin');
+  const signBtn = Object.assign(el('button', 'cd-link', 'Sign in to Claude'), { type: 'button' });
+  signin.append('Using the mesh models. ', signBtn, ' to use Opus, Sonnet and Haiku.');
+  signin.hidden = !!opts.anthropic;
+  const openLogin = () => { login.hidden = false; login.focusIn(); };
+  signBtn.addEventListener('click', openLogin);
+  const foot = el('div', 'cd-start-foot');
+  foot.append(msg, signin);
+  const wrap = el('div', 'cd-start');
+  wrap.append(el('div', 'cd-hello', 'What are we working on?'), install, login, box, foot);
+  if (opts.error) wrap.prepend(el('p', 'cd-intro cd-bad', `couldn't load options: ${opts.error}`));
+  form.replaceChildren(top, wrap);
+
+  // a sign in offered as the last model, the choice put back once it's open
+  function swapModel(next) {
+    let was = next.value;
+    if (!opts.anthropic && !cd.opts?.anthropic) {
+      next.insertAdjacentHTML('beforeend', '<optgroup label="claude subscription"><option value="__login">Sign in for Opus, Sonnet, Haiku…</option></optgroup>');
+    }
+    next.addEventListener('change', () => {
+      if (next.value === '__login') { next.value = was; openLogin(); return; }
+      was = next.value;
+      valid();
+    });
+    next.classList.add('cd-chip-sel');
+    model.replaceWith(next);
+    model = next;
+  }
+  swapModel(model);
+
+  const why = () => {
+    if (!host.value) return 'no computer to run on';
+    if (install.dataset.missing === '1') return `install claude on ${host.value} first`;
+    if (!dir) return 'pick a folder';
+    if (!model.value || model.value === '__login') return 'pick a model';
+    return '';
+  };
+  const valid = () => {
+    const w = why();
+    goBtn.disabled = !!w || !prompt.value.trim();
+    // the folder chip says it already
+    if (!msg.dataset.busy) msg.textContent = dir ? w : '';
+  };
   form.addEventListener('input', valid);
   const check = async () => {
     const h = host.value;
@@ -943,10 +1160,9 @@ async function paintNew() {
     let r;
     try { r = await call(`/api/code/install?host=${encodeURIComponent(h)}`); } catch (e) { r = { installed: true, error: e.message }; }
     if (host.value !== h) return;
-    if (r.installed) { install.hidden = !r.version; install.className = 'cd-install ok'; install.textContent = r.version ? `claude ${r.version} on ${h}` : ''; valid(); return; }
+    if (r.installed) { host.parentElement.title = r.version ? `claude ${r.version} on ${h}` : h; valid(); return; }
     install.hidden = false;
     install.dataset.missing = '1';
-    install.className = 'cd-install';
     const b = Object.assign(el('button', 'cd-mini primary', 'install claude'), { type: 'button' });
     const out = el('pre', 'cd-install-out');
     out.hidden = true;
@@ -962,30 +1178,62 @@ async function paintNew() {
       } catch (e) { out.hidden = false; out.textContent = e.message; b.textContent = 'retry'; }
       b.disabled = false;
     });
-    install.replaceChildren(el('span', '', `claude isn't installed on ${h} `), b, out);
+    install.replaceChildren(el('span', '', `Claude Code isn't installed on ${h}.`), b, out);
     valid();
   };
-  host.addEventListener('change', () => { dir.value = dirs[host.value] || dir.value; picker.hidden = true; check(); });
-  browse.addEventListener('click', () => { picker.hidden = !picker.hidden; if (!picker.hidden) browseAt(picker, host.value, '', (p) => { dir.value = p; picker.hidden = true; valid(); }); });
+  const pick = (p) => { dir = p; picker.hidden = true; paintDir(); valid(); prompt.focus(); };
+  // the folder: typed, a recent one, or browsed to
+  const openPicker = () => {
+    const h = host.value;
+    const path = noFill(Object.assign(el('input', 'cd-path'), { placeholder: '~/src/project', spellcheck: false, value: dir }));
+    path.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') { e.preventDefault(); if (path.value.trim()) pick(path.value.trim()); }
+      if (e.key === 'Escape') { picker.hidden = true; prompt.focus(); }
+    });
+    const rows = [path];
+    const recent = lsGet(RECENT_LS, []).filter((x) => x.host === h).slice(0, 6);
+    if (recent.length) {
+      const ul = el('div', 'cd-recent');
+      ul.append(el('div', 'cd-recent-t', 'recent'));
+      for (const x of recent) {
+        const b = Object.assign(el('button', 'cd-picker-row', tilde(x.dir)), { type: 'button', title: x.dir });
+        b.addEventListener('click', () => pick(x.dir));
+        ul.append(b);
+      }
+      rows.push(ul);
+    }
+    const browser = el('div', 'cd-browser');
+    rows.push(browser);
+    picker.replaceChildren(...rows);
+    picker.hidden = false;
+    browseAt(browser, h, dir, pick);
+    path.focus();
+  };
+  dirBtn.addEventListener('click', () => { if (picker.hidden) openPicker(); else picker.hidden = true; });
+  host.addEventListener('change', () => { dir = dirs[host.value] || ''; picker.hidden = true; paintDir(); check(); });
   form.addEventListener('submit', (e) => {
     e.preventDefault();
-    if (goBtn.disabled) return;
+    if (goBtn.disabled) { if (!dir) openPicker(); return; }
     goBtn.disabled = true;
+    msg.dataset.busy = '1';
     msg.textContent = 'starting';
-    const d = dir.value.trim();
-    dirs[host.value] = d;
+    dirs[host.value] = dir;
     lsSet(DIR_LS, dirs);
     lsSet(`${DIR_LS}-host`, host.value);
-    call('/api/code/sessions', 'POST', { host: host.value, dir: d, model: model.value, perm: perm.value, prompt: prompt.value.trim() })
+    lsSet(`${DIR_LS}-model`, model.value);
+    lsSet(RECENT_LS, [{ host: host.value, dir }, ...lsGet(RECENT_LS, []).filter((x) => x.host !== host.value || x.dir !== dir)].slice(0, 30));
+    call('/api/code/sessions', 'POST', { host: host.value, dir, model: model.value, perm: perm.value, prompt: prompt.value.trim() })
       .then((r) => {
         cd.list = [r, ...cd.list.filter((s) => s.id !== r.id)];
         go(r.id);
         loadList();
-      }, (err) => { msg.textContent = err.message; goBtn.disabled = false; });
+      }, (err) => { delete msg.dataset.busy; msg.textContent = err.message; goBtn.disabled = false; });
   });
+  paintDir();
   valid();
   check();
-  prompt.focus({ preventScroll: true });
+  if (cd.login) { cd.login = false; openLogin(); } else prompt.focus({ preventScroll: true });
 }
 
 // a folder picker over the user's login on the host, from its home down
@@ -1084,7 +1332,7 @@ function codeWatch(on) {
     for (const t of cd.logs.values()) { t.closed = true; t.sock?.close(); t.sock = null; }
     return;
   }
-  loadOpts(true).then(() => paintHead());
+  loadOpts(true).then(() => { paintHead(); paintAcct(); });
   loadList().then(() => {
     if (cd.pick && cd.pick !== 'new' && !main.querySelector('.cd-log')) paintOne();
     else if (cd.pick !== 'new') { const t = cd.logs.get(cd.pick); if (t) { t.closed = false; connect(t); } }
@@ -1092,20 +1340,32 @@ function codeWatch(on) {
   cd.tick = setInterval(() => { if (!document.hidden && deskApps.has('code')) loadList(); }, LIST_MS);
 }
 
-// --- the anthropic token, in the agent menu: pasted, saved, cleared, never shown back ---
+// --- the Claude account at the side's foot ---
+
+function paintAcct() {
+  const on = !!cd.opts?.anthropic;
+  acctBtn.replaceChildren(el('span', `cd-acct-dot${on ? ' on' : ''}`), el('span', 'cd-acct-t', 'Claude account'),
+    el('span', 'cd-acct-st', on ? 'signed in' : 'sign in'));
+}
+
+function acctOpen(on) {
+  acctBox.hidden = !on;
+  acctBtn.setAttribute('aria-expanded', String(on));
+  if (on) codeToken(acctBox);
+}
+
+// --- the anthropic token: pasted, saved, cleared, never shown back ---
 
 function codeToken(box) {
-  box.className = 'dk-cl-sec cd-token';
-  const title = el('div', 'dk-cl-sec-t', 'anthropic');
+  box.classList.add('cd-token');
+  const title = el('div', 'dk-cl-sec-t', 'Claude subscription');
   const state = el('span', 'dk-cl-state', '…');
   title.append(' ', state);
-  const inp = Object.assign(el('input', 'dk-cl-url cd-token-in'), { type: 'password', placeholder: 'sk-ant-oat…', autocomplete: 'off', spellcheck: false });
-  inp.setAttribute('data-1p-ignore', '');
-  inp.setAttribute('data-lpignore', 'true');
+  const inp = tokenInput('dk-cl-url cd-token-in');
   const save = Object.assign(el('button', 'dk-cl-key', 'save token'), { type: 'button' });
   const clear = Object.assign(el('button', 'dk-cl-key quiet', 'clear'), { type: 'button' });
   const hint = el('div', 'cd-token-hint');
-  hint.innerHTML = 'run <code>claude setup-token</code> in a terminal and paste the token, for opus, sonnet and haiku in code';
+  hint.innerHTML = 'Run <code>claude setup-token</code> in a terminal and paste the token it prints, for Opus, Sonnet and Haiku.';
   const bar = el('div', 'dk-cl-bar cd-token-bar');
   bar.append(inp, save, clear);
   box.replaceChildren(title, hint, bar);
@@ -1118,18 +1378,20 @@ function codeToken(box) {
   const put = async (token) => {
     save.disabled = clear.disabled = true;
     try {
-      const r = await call('/api/me/anthropic', 'POST', { token });
+      const on = await saveToken(token);
       inp.value = '';
-      paint(!!r.anthropic);
-      if (cd.opts) cd.opts.anthropic = !!r.anthropic;
-      loadOpts(true).then(() => { headSig = ''; paintHead(); });
+      paint(on);
+      // saved: folded back into the account row, its dot saying so
+      if (on && box === acctBox) acctOpen(false);
+      loadOpts(true).then(() => { headSig = ''; paintHead(); paintAcct(); });
     } catch (e) { state.textContent = e.message; state.dataset.state = 'off'; }
     save.disabled = clear.disabled = false;
   };
-  inp.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter' && inp.value.trim()) put(inp.value.trim()); });
+  inp.addEventListener('keydown', (e) => { if (e.key === 'Enter' && inp.value.trim()) put(inp.value.trim()); });
   save.addEventListener('click', () => { if (inp.value.trim()) put(inp.value.trim()); else inp.focus(); });
   clear.addEventListener('click', () => put(''));
-  call('/api/code/options').then((o) => { cd.opts = o; paint(!!o.anthropic); }, () => paint(false));
+  call('/api/code/options').then((o) => { cd.opts = o; paint(!!o.anthropic); paintAcct(); }, () => paint(false));
+  inp.focus({ preventScroll: true });
 }
 
 // a file's path in a tool card opened in the editor when it sits in a share
@@ -1142,4 +1404,4 @@ view.addEventListener('dblclick', (e) => {
   if (sh) dkCode({ host: r.host, share: sh.loc.share, path: sh.rel, label: `${r.host}/${sh.rel}` });
 });
 
-export { codeToken, codeWatch };
+export { codeWatch };

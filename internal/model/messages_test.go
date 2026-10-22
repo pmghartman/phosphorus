@@ -63,3 +63,23 @@ func TestGateRefuses(t *testing.T) {
 		t.Fatal(keyOf(r2))
 	}
 }
+
+func TestFoldSystem(t *testing.T) {
+	p := map[string]any{"system": "be brief", "messages": []any{
+		map[string]any{"role": "user", "content": "hi"},
+		map[string]any{"role": "system", "content": []any{map[string]any{"type": "text", "text": "context"}}},
+	}}
+	out := foldSystem(p)
+	sys, _ := out["system"].([]any)
+	ms, _ := out["messages"].([]any)
+	if len(ms) != 1 || len(sys) != 2 || textOf(sys) != "be briefcontext" {
+		t.Fatal(out)
+	}
+	if len(p["messages"].([]any)) != 2 {
+		t.Fatal("the asker's body changed")
+	}
+	plain := map[string]any{"messages": []any{map[string]any{"role": "user", "content": "hi"}}}
+	if _, ok := foldSystem(plain)["system"]; ok {
+		t.Fatal("system added to a body with none to fold")
+	}
+}
