@@ -429,7 +429,8 @@ func render() {
 		} else {
 			f = append(f, hints(v.keys, global, cols))
 		}
-		return f
+		// a blank row under the bar, so a window's edge never cuts it
+		return append(f, "")
 	}
 	foot := footer()
 	head := []string{topBar(cols), ""}
