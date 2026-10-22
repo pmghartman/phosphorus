@@ -3767,6 +3767,7 @@ const updateProgressLabel = document.getElementById('update-progress-label');
 const updateMesh = document.getElementById('update-mesh');
 const updateStart = document.getElementById('update-start');
 const updateVersions = document.getElementById('update-versions');
+const updateLatest = document.getElementById('update-latest');
 
 // meshLock: whatever chain this host can see, own, or a peer's via the mesh poll
 let meshLock = null;
@@ -3910,6 +3911,31 @@ function openUpdateModal() {
   updateMesh.hidden = false;
   updateModal.hidden = false;
   pollState();
+  checkLatest();
+}
+
+// the release feed asked on opening, a spinner until it answers; held a minute
+const LATEST_HOLD_MS = 60000;
+let latestAt = 0;
+let latestRun = 0;
+async function checkLatest() {
+  if (meshLock) { updateLatest.hidden = true; return; }
+  updateLatest.hidden = false;
+  if (Date.now() - latestAt < LATEST_HOLD_MS) return;
+  const me = ++latestRun;
+  updateLatest.dataset.state = 'checking';
+  updateLatest.replaceChildren(el('span', 'update-spin'), 'checking for the newest version');
+  let c = {};
+  try {
+    const r = await fetch('/api/update/check?fresh=1', { cache: 'no-store', signal: AbortSignal.timeout(15000) });
+    if (r.ok) c = await r.json();
+  } catch {}
+  if (me !== latestRun) return;
+  const versions = [updateSeen.selfVersion, ...updateSeen.tailnet.filter((d) => d.phosphorus).map((d) => d.version)].filter(Boolean);
+  const behind = c.latest && versions.some((v) => newerVersion(c.latest, v));
+  updateLatest.dataset.state = !c.latest ? 'bad' : behind ? 'new' : 'ok';
+  updateLatest.textContent = !c.latest ? 'release feed unreachable' : behind ? `v${c.latest} is out` : `on latest · v${c.latest}`;
+  latestAt = c.latest ? Date.now() : 0;
 }
 
 function closeUpdateModal() {
@@ -6811,6 +6837,8 @@ const AGENT_LIT_MS = 2400;
 // the windows the agent opened itself, closed this long after it goes quiet
 const AGENT_CLOSE_MS = 5000;
 const agentOwned = new Set();
+// windows it opened that a person took over: kept, still ringed until it goes quiet
+const agentRinged = new Set();
 let agentCloseT = 0;
 
 function agentStep(a) {
@@ -6841,6 +6869,8 @@ function agentTidy() {
     agentOwned.delete(w);
     if (w.node.isConnected) dkClose(w);
   }
+  for (const w of agentRinged) if (!w.agentLit) w.node.classList.remove('dk-agent');
+  agentRinged.clear();
 }
 
 // a window just opened by the agent, its own until a person clicks or types in it
@@ -6849,8 +6879,7 @@ function agentOwn(w) {
   agentOwned.add(w);
   w.node.classList.add('dk-agent');
   const mine = () => {
-    agentOwned.delete(w);
-    if (!w.agentLit) w.node.classList.remove('dk-agent');
+    if (agentOwned.delete(w)) agentRinged.add(w);
   };
   w.node.addEventListener('pointerdown', mine, { once: true });
   w.node.addEventListener('keydown', mine, { once: true });
@@ -6873,7 +6902,7 @@ function agentLit(w) {
   clearTimeout(w.agentLit);
   w.agentLit = setTimeout(() => {
     w.agentLit = 0;
-    if (!agentOwned.has(w)) w.node.classList.remove('dk-agent');
+    if (!agentOwned.has(w) && !agentRinged.has(w)) w.node.classList.remove('dk-agent');
   }, AGENT_LIT_MS);
 }
 const agentWin = (pred) => [...dk.wins.values()].find(pred);
@@ -6882,7 +6911,7 @@ function agentAct(a, args, done) {
   const t = a.tool;
   const tab = t === 'terminal_run' && args.mode === 'tab';
   if (AGENT_CONSOLE.has(t) && !tab) { agentPrint(a, args, done); return; }
-  if (tab || t === 'terminal_type' || t === 'terminal_screen' || t === 'terminal_close') {
+  if (tab || t === 'terminal_screen') {
     agentLit(agentWin((w) => w.kind === 'term' && w.host === args.host));
     return;
   }
@@ -6906,7 +6935,7 @@ function agentAct(a, args, done) {
   else if (AGENT_CHAT.has(t)) {
     const c = args.to ? `dm:${String(args.to).replace(/^@/, '')}` : !args.channel || args.channel === 'mesh' ? 'mesh' : /^dm:/.test(args.channel) ? args.channel : `ch:${args.channel}`;
     agentOpen('app:chat', () => openConv(c));
-  } else if ((t === 'update_status' || t === 'update_control' || t === 'update_history') && acct?.admin && updateModal.hidden) openUpdateModal();
+  } else if (t === 'update_control' && acct?.admin && updateModal.hidden) openUpdateModal();
 }
 
 const agentCodeKey = (f) => `code:${codeKey({ host: f.host, share: String(f.share ?? ''), path: f.path })}`;

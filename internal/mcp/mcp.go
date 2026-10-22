@@ -580,7 +580,6 @@ func buildOnce() {
 }
 
 func buildTools() {
-	views := []string{"home", "files", "status", "about", "chat", "projects", "update"}
 	defer func() {
 		tools = append(tools, agentTools()...)
 		tools = append(tools, controlTools(func(m Meta) bool { return m.Local })...)
@@ -752,26 +751,6 @@ func buildTools() {
 					return r, nil
 				}
 				return out, err
-			}},
-		{name: "terminal_type",
-			description: "Type a command into the asker's shared, logged-in terminal on one host and leave it for them to run: " +
-				"they press Enter to send it or Ctrl-C to refuse. Returns the screen once it runs and the output settles. " +
-				"Use it to drive a terminal step by step, reading each result before the next command. " + noCreds,
-			schema: object(map[string]any{"host": name,
-				"text":   map[string]any{"type": "string", "description": "the command, one line, no newline, they add it with Enter"},
-				"id":     map[string]any{"type": "string", "description": "terminal id from terminal_screen, if several are shared"},
-				"wait_s": map[string]any{"type": "integer", "description": fmt.Sprintf("seconds to wait for Enter and the output, up to %d", waitMaxS), "default": 60}}, "host", "text"),
-			run: func(a map[string]any, m Meta) (any, error) {
-				as, err := askerOf(m)
-				if err != nil {
-					return nil, err
-				}
-				host, err := knownHost(a)
-				if err != nil {
-					return nil, err
-				}
-				w := int(math.Min(waitMaxS, math.Max(1, numOr(a["wait_s"], 60))))
-				return typeTerminal(host, str(a["text"]), str(a["id"]), w, as.Name, false)
 			}},
 		{name: "files_list", read: true,
 			description: "Files shared to the mesh. No host: every host's shares and perms at once. " +
@@ -1123,45 +1102,6 @@ func buildTools() {
 				return map[string]any{"opened": host, "state": "opened, waiting for login",
 					"note": "it shares with phosphorus once they log in; terminal_screen with wait_s reads it then"}, nil
 			}},
-		{name: "open_view",
-			description: "Bring a view up on the asker's page: home, files, status, about, chat (the chat tab), projects (the " +
-				"orangutan's), or update (the update's progress). " + noCreds,
-			schema: object(map[string]any{"view": map[string]any{"type": "string", "enum": []any{"home", "files", "status", "about", "chat", "projects", "update"}}}, "view"),
-			run: func(a map[string]any, m Meta) (any, error) {
-				v := str(a["view"])
-				okv := false
-				for _, x := range views {
-					okv = okv || x == v
-				}
-				if !okv {
-					return nil, errors.New("view is one of " + strings.Join(views, ", "))
-				}
-				as, err := askerOf(m)
-				if err != nil {
-					return nil, err
-				}
-				if !as.UI(map[string]any{"kind": "view", "view": v}) {
-					return nil, errc("unreachable", "no Phosphorus window of theirs is open")
-				}
-				return map[string]any{"opened": v}, nil
-			}},
-		{name: "switch_host",
-			description: "Move the asker's page to be served by another phosphorus host, as the graph's switch host does.",
-			schema:      object(map[string]any{"host": name}, "host"),
-			run: func(a map[string]any, m Meta) (any, error) {
-				host, err := knownHost(a)
-				if err != nil {
-					return nil, err
-				}
-				as, err := askerOf(m)
-				if err != nil {
-					return nil, err
-				}
-				if !as.UI(map[string]any{"kind": "host", "host": host}) {
-					return nil, errc("unreachable", "no Phosphorus window of theirs is open")
-				}
-				return map[string]any{"switching": host}, nil
-			}},
 		{name: "chat_history", read: true,
 			description: "",
 			schema: object(map[string]any{
@@ -1462,6 +1402,10 @@ func Handle(body any, local bool, caller *Caller) (int, any) {
 	toolsOnce.Do(buildOnce)
 	if caller != nil {
 		markSeen(caller.User)
+		// a harness naming itself on every request is the last used, sessions or not
+		if caller.Via != "" {
+			noteClient(caller.User, caller.Via)
+		}
 	}
 	if arr, ok := body.([]any); ok {
 		outs := make([]map[string]any, len(arr))

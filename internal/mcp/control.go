@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"math"
 	"path"
 	"sort"
 	"strings"
@@ -126,8 +127,10 @@ func controlTools(local func(m Meta) bool) []tool {
 				}
 				return pressed(src.Actions.ChatEdit(m.Caller.User, str(a["ref"]), str(a["action"]), str(a["text"])))
 			}},
-		{name: "terminal_run", scope: "key", destructive: true,
-			description: "Run a command or a whole script on a host as you, with exactly the rights of your saved login, as if you were " +
+		{name: "terminal_run", destructive: true,
+			description: "Without a key (the chat's own model): types one line into the asker's shared, logged-in terminal on the host and " +
+				"leaves it for them, Enter to run or Ctrl-C to refuse, returning the screen once it settles. " +
+				"On a key: run a command or a whole script on a host as you, with exactly the rights of your saved login, as if you were " +
 				"at its shell. With a login saved it signs in over ssh on its own, no window needed, and returns the exit code and the " +
 				"combined output. With one saved it defaults to a persistent session: one login shell kept for you on the host, so cd, " +
 				"environment variables and background jobs carry from one call to the next, the way your own shell session does; reset " +
@@ -144,9 +147,6 @@ func controlTools(local func(m Meta) bool) []tool {
 				"id":      map[string]any{"type": "string", "description": "tab only: terminal id from terminal_screen, if several are shared"},
 				"wait_s":  map[string]any{"type": "integer", "description": "ssh/session: seconds before the command is killed, up to 600; tab: seconds to wait for output to settle, up to 120", "default": 60}}, "host", "command"),
 			run: func(a map[string]any, m Meta) (any, error) {
-				if m.Caller == nil {
-					return nil, errc("forbidden", "on a user's key only; the chat's model uses terminal_type")
-				}
 				h, err := knownHost(a)
 				if err != nil {
 					return nil, err
@@ -154,6 +154,18 @@ func controlTools(local func(m Meta) bool) []tool {
 				cmd := str(a["command"])
 				if strings.TrimSpace(cmd) == "" {
 					return nil, errc("bad_input", "missing 'command'")
+				}
+				// the chat's model: a line left in the asker's tab for them to run or refuse
+				if m.Caller == nil {
+					as, err := askerOf(m)
+					if err != nil {
+						return nil, err
+					}
+					if strings.ContainsAny(cmd, "\r\n") || str(a["stdin"]) != "" || a["git"] == true {
+						return nil, errc("bad_input", "one line, no stdin or git, typed into their shared terminal")
+					}
+					w := int(math.Min(waitMaxS, math.Max(1, numOr(a["wait_s"], 60))))
+					return typeTerminal(h, cmd, str(a["id"]), w, as.Name, false)
 				}
 				mode := str(a["mode"])
 				if mode == "" {
@@ -204,20 +216,6 @@ func controlTools(local func(m Meta) bool) []tool {
 					return nil, errc("not_found", "%s; open_terminal opens one logged in with your saved login, or save a login so it runs over ssh", err.Error())
 				}
 				return out, nil
-			}},
-		{name: "terminal_close", scope: "key",
-			description: "Close one of your shared terminal tabs on a host by its id from terminal_screen; it ends for every window on it.",
-			schema:      object(map[string]any{"host": name, "id": map[string]any{"type": "string"}}, "host", "id"),
-			run: func(a map[string]any, m Meta) (any, error) {
-				as, err := askerOf(m)
-				if err != nil {
-					return nil, err
-				}
-				h, err := knownHost(a)
-				if err != nil {
-					return nil, err
-				}
-				return pressed(src.Actions.Op(h, "term_close", map[string]any{"by": as.Name, "id": str(a["id"])}))
 			}},
 		{name: "files_stat", read: true,
 			description: "One file or folder in a share: whether it exists, file or folder, size and modified time. Cheaper than reading it.",
