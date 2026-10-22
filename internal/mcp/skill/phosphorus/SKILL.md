@@ -1,6 +1,6 @@
 ---
 name: phosphorus
-description: Operates the user's live, self-hosted Phosphorus mesh through the Phosphorus connector's tools. Use whenever the user names phosphorus or the mesh, one of its hosts, or asks about their own servers, homelab or tailnet, even without saying "phosphorus": a host up, down, slow or full; services or game servers on the mesh; files in mesh shares; running a command on a host; host logs; the mesh's Forgejo; the mesh chat; its models (chimp, orangutan) or projects; a mesh update. Not for editing or building the phosphorus source code itself.
+description: Operates the user's live, self-hosted Phosphorus mesh through the Phosphorus connector's tools. Use whenever the user names phosphorus or the mesh, one of its hosts, or asks about their own servers, homelab or tailnet, even without saying "phosphorus": a host up, down, slow or full; services or game servers on the mesh; files in mesh shares; running a command on a host; host logs; the mesh's Forgejo; the mesh chat; its models (chimp, orangutan); a mesh update. Not for editing or building the phosphorus source code itself.
 ---
 
 # Phosphorus
@@ -26,7 +26,7 @@ Read the one that fits before the first call; a one-tool question needs none.
 
 ## Rules
 
-- **Mesh things go through Phosphorus.** Hosts, shares, services, terminals, logs, Forgejo, chat and projects are read and changed only with Phosphorus tools; "files" means mesh shares and "chat" the mesh chat unless the user says otherwise. Other connectors stay free for their own part (mail a summary, save a report).
+- **Mesh things go through Phosphorus.** Hosts, shares, services, terminals, logs, Forgejo and chat are read and changed only with Phosphorus tools; "files" means mesh shares and "chat" the mesh chat unless the user says otherwise. Other connectors stay free for their own part (mail a summary, save a report).
 - **Real host names only.** Take them from `mesh_hosts`, once per session; never guess or shorten one. A device with `phosphorus: false` can't be acted on: say so.
 - **Batch and go narrow.** Load the tools a job needs in one tool search, run independent reads in one parallel batch. Prefer the cheap call: `host_stats` with no host before one host, `files_list` `stat: true` before `files_read`, `files_search` over walking `files_list`, a `services` check over curl in `terminal_run`, `host_logs` filtered by `level`, `match`, `since`.
 - **Read before writing.** `host_config` before `config_set` or `service_edit`; read the passage before `files_write` with old/new; `update_status` before `update_control`.
@@ -36,7 +36,7 @@ Read the one that fits before the first call; a one-tool question needs none.
 
 ## Not covered by a job file
 
-- Models and projects: `models` shows each role's model (chimp chats, orangutan runs projects), `projects` the long projects; `set_model_role` changes a role (admin).
+- Models: `models` shows which mesh host's model is each role (chimp the small, fast one, orangutan the big one); `set_model_role` changes a role (admin).
 - The user's own Phosphorus window: `open_file` opens a share's file in an editor tab, `show_file` invites someone else into one, `open_terminal` opens a shared terminal tab.
 
 ## Errors

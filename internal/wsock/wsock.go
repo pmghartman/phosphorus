@@ -174,6 +174,9 @@ func (k *Conn) Terminate() {
 	k.finish()
 }
 
+// Queued frames waiting to go out, a long replay paced by it
+func (k *Conn) Queued() int { return len(k.out) }
+
 // Done closed once the socket is gone
 func (k *Conn) Done() <-chan struct{} { return k.done }
 

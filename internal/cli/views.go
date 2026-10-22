@@ -3,10 +3,8 @@ package cli
 import (
 	"fmt"
 	"math"
-	"os"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/pmghartman/phosphorus/internal/services"
 	"github.com/pmghartman/phosphorus/internal/util"
@@ -638,206 +636,6 @@ func modelView() view {
 		keys: []key{k("e edit", "primary")}}
 }
 
-// --- projects: the orangutan's, every host's ------------------------------------
-
-var (
-	phases = []string{"plan", "execute", "test", "refine"}
-	ended  = map[string]string{"done": "done", "blocked": "blocked", "expired": "out of time", "stopped": "stopped", "failed": "failed"}
-)
-
-func span(ms float64) string {
-	m := int(math.Max(0, math.Round(ms/60000)))
-	switch {
-	case m >= 1440:
-		return fmt.Sprintf("%dd %dh", m/1440, m%1440/60)
-	case m >= 60:
-		return fmt.Sprintf("%dh %dm", m/60, m%60)
-	}
-	return fmt.Sprintf("%dm", m)
-}
-
-func pickedProject() J {
-	if i := ui.sel[projectsTab]; i < len(ui.projects) {
-		return ui.projects[i]
-	}
-	return nil
-}
-
-func sortProjects(ps []J) {
-	sort.SliceStable(ps, func(i, j int) bool {
-		ri, rj := str(ps[i]["status"]) == "running", str(ps[j]["status"]) == "running"
-		if ri != rj {
-			return ri
-		}
-		return num(ps[i]["started"]) > num(ps[j]["started"])
-	})
-}
-
-func projectState(p J) string {
-	s := str(p["status"])
-	if s == "running" {
-		switch {
-		case truthy(p["working"]):
-			return c("accent")("working")
-		case truthy(p["paused"]):
-			return c("warn")("paused, " + or(str(p["waiting"]), "its model is away"))
-		}
-		return c("accent")("between rounds")
-	}
-	tok := "offmesh"
-	if s == "done" {
-		tok = "online"
-	} else if s == "blocked" || s == "expired" {
-		tok = "warn"
-	}
-	return c(tok)(or(ended[s], s))
-}
-
-func projectsView() view {
-	list := ui.projects
-	var p J
-	if pk := pickedProject(); ui.project != nil && pk != nil && str(ui.project["id"]) == str(pk["id"]) {
-		p = ui.project
-	}
-	now := float64(time.Now().UnixMilli())
-	rows := [][]string{}
-	for _, x := range list {
-		done := c("dim")("-")
-		t := span(or0(x["ended"], now) - num(x["started"]))
-		if str(x["status"]) == "running" {
-			done = str(x["progress"]) + "%"
-			t = span(num(x["deadline"])-now) + " left"
-		}
-		rows = append(rows, []string{str(x["title"]), c("sky")(str(x["host"])), projectState(x), done, c("muted")(t)})
-	}
-	var detail *card
-	if p != nil {
-		live := str(p["status"]) == "running"
-		total := num(p["deadline"]) - num(p["started"])
-		used := or0(p["ended"], now) - num(p["started"])
-		if live {
-			used = now - num(p["started"])
-		}
-		cyc := []string{}
-		for _, ph := range phases {
-			if live && ph == str(p["phase"]) {
-				cyc = append(cyc, bold(c("accent")(ph)))
-			} else {
-				cyc = append(cyc, c("muted")(ph))
-			}
-		}
-		lbl := func(s string) string { return c("muted")(fmt.Sprintf("%-6s", s)) }
-		state := lbl("state") + projectState(p)
-		if live {
-			state += c("muted")(" · round " + str(p["round"]))
-		}
-		if m := str(p["model"]); m != "" {
-			state += c("muted")(" · " + m)
-		}
-		frac := 1.0
-		if total != 0 {
-			frac = used / total
-		}
-		tm := span(used) + " of " + span(total)
-		if live {
-			tm = span(num(p["deadline"])-now) + " left of " + span(total)
-		}
-		head := []string{
-			state,
-			lbl("cycle") + strings.Join(cyc, c("dim")(" › ")),
-			lbl("done") + bar(num(p["progress"])/100, "") + "  " + str(p["progress"]) + "%",
-			lbl("time") + bar(frac, "") + "  " + c("muted")(tm),
-		}
-		if n := str(p["note"]); n != "" {
-			head = append(head, wrap(lbl("now")+n, inner()-4, 6)...)
-		}
-		if f := str(p["final"]); f != "" {
-			head = append(append(head, ""), wrap(f, inner()-4, 0)...)
-		}
-		tasks := []string{}
-		for _, t := range objs(p["tasks"]) {
-			if truthy(t["done"]) {
-				tasks = append(tasks, c("online")("[x]")+" "+c("muted")(str(t["text"])))
-			} else {
-				tasks = append(tasks, c("accent")("[ ]")+" "+str(t["text"]))
-			}
-		}
-		left := ui.room - len(rows) - len(head) - len(tasks) - 12
-		if left < 3 {
-			left = 3
-		}
-		evs := []J{}
-		for _, e := range objs(p["events"]) {
-			if str(e["kind"]) != "exec" {
-				evs = append(evs, e)
-			}
-		}
-		if len(evs) > left {
-			evs = evs[len(evs)-left:]
-		}
-		events := []string{}
-		for i := len(evs) - 1; i >= 0; i-- {
-			e := evs[i]
-			kind := str(e["kind"])
-			at := time.UnixMilli(int64(num(e["at"]))).Format("3:04 PM")
-			tag := kind
-			if kind == "report" {
-				tag = or(str(e["phase"]), "report")
-			} else if kind == "said" {
-				tag = "orangutan"
-			}
-			tok := "sage"
-			switch kind {
-			case "error", "failed", "stopped":
-				tok = "offmesh"
-			case "paused":
-				tok = "warn"
-			case "resumed":
-				tok = "online"
-			case "said":
-				tok = "accent"
-			}
-			events = append(events, c("dim")(fmt.Sprintf("%8s", at))+" "+c(tok)(fmt.Sprintf("%-9s", tag))+" "+strings.SplitN(str(e["text"]), "\n", 2)[0])
-		}
-		ls := head
-		if len(tasks) > 0 {
-			ls = append(append(ls, ""), tasks...)
-		}
-		ls = append(append(ls, ""), events...)
-		detail = &card{str(p["title"]), plainRows(ls...)}
-	}
-	body := plainRows(c("muted")("none yet, n starts one on the model host"))
-	if len(rows) > 0 {
-		body = table([]string{"title", "host", "state", "done", "time"}, rows, ui.sel[projectsTab], 8)
-	}
-	live := p != nil && str(p["status"]) == "running"
-	return view{lines: panels(&card{"projects", body}, detail),
-		keys: []key{k("n new", "primary"), kif(live, "o note"), kif(live, "s stop", "danger"), kif(p != nil && !live, "d delete", "danger")}}
-}
-
-// v as a number, else def
-func or0(v any, def float64) float64 {
-	if truthy(v) {
-		return num(v)
-	}
-	return def
-}
-
-func projectForm() *form {
-	return &form{kind: "project", title: "new project on the model host", fields: []*field{
-		{key: "title", hint: "a few words"},
-		{key: "brief", hint: "what to make and what done looks like, pasted or typed"},
-		{key: "hours", value: "72", hint: "how long the orangutan has, up to 336"},
-	}}
-}
-
-func noteForm(p J) *form {
-	return &form{kind: "note", title: "note for " + str(p["title"]), target: p,
-		fields: []*field{{key: "note", hint: "read by the orangutan at its next round"}}}
-}
-
-func user() string { return or(os.Getenv("USER"), "cli") }
-
 // the chain this host can see
 func liveChain(st J) (J, bool) {
 	if ch := obj(st["chain"]); ch != nil && !truthy(ch["done"]) {
@@ -1202,7 +1000,7 @@ func formView(f *form) view {
 }
 
 func currentView() view {
-	if ui.form != nil && (ui.keysOnly || ui.offline && localForm(ui.form)) {
+	if ui.form != nil && (ui.keysOnly || ui.offline) {
 		return formView(ui.form)
 	}
 	if ui.offline || ui.state == nil {
@@ -1214,5 +1012,5 @@ func currentView() view {
 	if ui.form != nil {
 		return formView(ui.form)
 	}
-	return []func() view{statsView, servicesView, filesView, projectsView, modelView, gitView, updateView}[ui.tab]()
+	return []func() view{statsView, servicesView, filesView, modelView, gitView, updateView}[ui.tab]()
 }

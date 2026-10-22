@@ -65,7 +65,7 @@ func TestInstall(t *testing.T) {
 func TestFailedFetch(t *testing.T) {
 	srv := httptest.NewServer(http.NotFoundHandler())
 	defer srv.Close()
-	dir := filepath.Join(t.TempDir(), "opencode-test")
+	dir := filepath.Join(t.TempDir(), "tool-test")
 	if err := install(fetch{dir, []string{srv.URL + "/x.tar.gz"}, 0}); err == nil {
 		t.Fatal("a 404 installed")
 	}
