@@ -55,6 +55,29 @@ export function opDiff(a, b) {
   o.retain(e);
   return o.ops;
 }
+// Disjoint replacements retain unchanged spans so undo can preserve peer edits.
+export function opEdits(text, edits) {
+  const o = opBuilder();
+  let at = 0;
+  for (const e of [...edits].sort((a, b) => a.from - b.from || a.to - b.to)) {
+    if (!Number.isInteger(e.from) || !Number.isInteger(e.to) || e.from < at || e.to < e.from || e.to > text.length || typeof e.text !== 'string') throw new Error('Overlapping or invalid text edits');
+    o.retain(e.from - at); o.insert(e.text); o.del(e.to - e.from); at = e.to;
+  }
+  o.retain(text.length - at);
+  return o.ops;
+}
+
+export function opInverse(text, ops) {
+  const o = opBuilder();
+  let at = 0;
+  for (const part of ops) {
+    if (opIns(part)) o.del(part.length);
+    else if (part > 0) { o.retain(part); at += part; }
+    else { o.insert(text.slice(at, at - part)); at -= part; }
+  }
+  return o.ops;
+}
+
 // where a place in the text lands after an edit
 export function opMap(ops, pos) {
   let i = 0;

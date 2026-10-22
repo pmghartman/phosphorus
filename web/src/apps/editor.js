@@ -16,7 +16,7 @@ import {
 } from '../app.js';
 import { ERR_MAX, highlight, parserFor, parserNow, syntaxErrors } from '../lezer.js';
 import { mdBlocks, renderMd } from '../md.js';
-import { opApply, opTransform, opDiff, opMap } from '../text-operations.js';
+import { opApply, opTransform, opDiff, opMap, opEdits } from '../text-operations.js';
 import { EditorHistory } from '../editor-history.js';
 
 // --- code editor ------------------------------------------------------------------
@@ -291,7 +291,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
       ready, dirty: dirty(), readOnly: ta.readOnly, state: stateEl.textContent, bad: stateEl.classList.contains('bad'),
       lang: lang.hl, line: lineAt(text, e), col: e - text.lastIndexOf('\n', e - 1), sel: Math.abs(e - s),
       indent: u === '\t' ? 'tab' : u.length, eol: text.includes('\r\n') ? 'CRLF' : 'LF', length: text.length,
-      errors: errs.map((x) => ({ from: x.from, to: x.to, what: x.what, line: lineAt(text, x.from), col: x.from - text.lastIndexOf('\n', x.from - 1) })),
+      errors: errs.map((x) => ({ from: x.from, to: x.to, what: x.what, source: x.source, severity: x.severity, line: lineAt(text, x.from), col: x.from - text.lastIndexOf('\n', x.from - 1) })),
       people: people.filter((p) => (me ? p.id !== me : p.name !== name)),
     };
   }
@@ -413,12 +413,14 @@ function codeEditor(view, file, btn, id, opts = {}) {
 
   // --- syntax errors: a squiggle under each, a mark in the gutter, a list to jump from ---
   let errs = [];
+  let languageErrors = null;
   let checkTimer = 0;
   const checkSoon = () => { clearTimeout(checkTimer); checkTimer = setTimeout(check, 300); };
   async function check() {
-    const parser = lang.check && ta.value.length <= HL_MAX && await parserFor(lang.check);
     const text = ta.value;
-    errs = parser ? syntaxErrors(parser, text) : [];
+    const parser = languageErrors === null && lang.check && text.length <= HL_MAX && await parserFor(lang.check);
+    if (closed || text !== ta.value) return;
+    errs = languageErrors === null ? parser ? syntaxErrors(parser, text) : [] : languageErrors;
     const esc = (t) => t.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
     let html = '';
     let at = 0;
@@ -426,7 +428,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
       const to = Math.max(e.to, Math.min(e.from + 1, text.length));
       if (e.from < at) continue;
       const bit = text.slice(e.from, to).replace(/\n/g, ' \n');
-      html += `${esc(text.slice(at, e.from))}<mark>${esc(bit) || ' '}</mark>`;
+      html += `${esc(text.slice(at, e.from))}<mark class="${e.severity === 2 ? 'code-warning' : e.severity > 2 ? 'code-hint' : ''}">${esc(bit) || ' '}</mark>`;
       at = to;
     }
     squig.innerHTML = `${html}${esc(text.slice(at))}\n`;
@@ -792,6 +794,18 @@ function codeEditor(view, file, btn, id, opts = {}) {
     show: () => { redraw(); },
     text: () => ta.value,
     info,
+    editMany: (edits, selection) => {
+      if (ta.readOnly || !ready) return false;
+      const before = ta.value;
+      const ops = opEdits(before, edits);
+      const next = opApply(before, ops);
+      const sel = selection || [opMap(ops, ta.selectionStart), opMap(ops, ta.selectionEnd)];
+      history.recordOperation(before, ops, [ta.selectionStart, ta.selectionEnd], sel);
+      ta.value = next; historyText = next; beforeSelection = sel;
+      ta.setSelectionRange(...sel);
+      redraw(); flush(); paintState(); caretInView(); sendCursor();
+      return true;
+    },
     // Programmatic edits share the same history as typing and agent edits.
     edit: (from, to, text, selFrom, selTo) => {
       if (ta.readOnly) return false;
@@ -812,6 +826,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
     agentEdit,
     agentFlash,
     ready: () => ready,
+    setDiagnostics: (errors) => { languageErrors = errors === null ? null : [...errors].sort((a, b) => a.from - b.from); check(); },
     setFinds: (ranges, at = -1) => { findRanges = ranges; findAt = at; paintFinds(); },
     preview: isMd ? (on) => setRendered(on ?? !rendered) : null,
     previewing: () => rendered,
