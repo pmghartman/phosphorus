@@ -254,6 +254,10 @@ func parseProbe(out string) *Toolchains {
 				}
 			}
 			sort.Sort(sort.Reverse(sort.StringSlice(v.MSVC)))
+			// an install with no C++ in it (Management Studio, a bare shell) builds nothing
+			if v.VCVars == "" || len(v.MSVC) == 0 {
+				continue
+			}
 			t.VS = append(t.VS, v)
 		case len(f) == 2 && f[0] == "N" && f[1] != "":
 			t.Dotnet = append(t.Dotnet, f[1])

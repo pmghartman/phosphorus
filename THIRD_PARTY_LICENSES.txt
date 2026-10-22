@@ -21,7 +21,7 @@ phosphorus is not affiliated with or endorsed by any of them.
 
 == Go modules in the phosphorus binary ==
 
-Go standard library and runtime go1.26.0, text [10]
+Go standard library and runtime go1.26.10, text [10]
     https://go.dev
 fyne.io/systray v1.12.1, text [12]
     https://pkg.go.dev/fyne.io/systray
@@ -35,6 +35,8 @@ github.com/charmbracelet/ultraviolet v0.0.0-20260303162955-0b88c25f3fff, text [1
     https://pkg.go.dev/github.com/charmbracelet/ultraviolet
 github.com/charmbracelet/x/ansi v0.11.7, text [17]
     https://pkg.go.dev/github.com/charmbracelet/x/ansi
+github.com/charmbracelet/x/conpty v0.2.0, text [17]
+    https://pkg.go.dev/github.com/charmbracelet/x/conpty
 github.com/charmbracelet/x/exp/ordered v0.1.0, text [17]
     https://pkg.go.dev/github.com/charmbracelet/x/exp/ordered
 github.com/charmbracelet/x/term v0.2.2, text [17]
@@ -45,43 +47,47 @@ github.com/charmbracelet/x/vt v0.1.0, text [17]
     https://pkg.go.dev/github.com/charmbracelet/x/vt
 github.com/charmbracelet/x/windows v0.2.2, text [17]
     https://pkg.go.dev/github.com/charmbracelet/x/windows
+github.com/charmbracelet/x/xpty v0.1.4, text [17]
+    https://pkg.go.dev/github.com/charmbracelet/x/xpty
 github.com/clipperhouse/displaywidth v0.11.0, text [18]
     https://pkg.go.dev/github.com/clipperhouse/displaywidth
 github.com/clipperhouse/uax29/v2 v2.7.0, text [19]
     https://pkg.go.dev/github.com/clipperhouse/uax29/v2
 github.com/coder/websocket v1.8.15, text [20]
     https://pkg.go.dev/github.com/coder/websocket
-github.com/dlclark/regexp2/v2 v2.2.1, text [21]
+github.com/creack/pty v1.1.24, text [21]
+    https://pkg.go.dev/github.com/creack/pty
+github.com/dlclark/regexp2/v2 v2.2.1, text [22]
     https://pkg.go.dev/github.com/dlclark/regexp2/v2
-github.com/ebitengine/purego v0.11.1, text [22]
+github.com/ebitengine/purego v0.11.1, text [23]
     https://pkg.go.dev/github.com/ebitengine/purego
-github.com/go-ole/go-ole v1.2.6, text [23]
+github.com/go-ole/go-ole v1.2.6, text [24]
     https://pkg.go.dev/github.com/go-ole/go-ole
-github.com/godbus/dbus/v5 v5.1.0, text [24]
+github.com/godbus/dbus/v5 v5.1.0, text [25]
     https://pkg.go.dev/github.com/godbus/dbus/v5
-github.com/gorilla/css v1.0.1, text [25]
+github.com/gorilla/css v1.0.1, text [26]
     https://pkg.go.dev/github.com/gorilla/css
-github.com/lucasb-eyer/go-colorful v1.4.0, text [26]
+github.com/lucasb-eyer/go-colorful v1.4.0, text [27]
     https://pkg.go.dev/github.com/lucasb-eyer/go-colorful
-github.com/mattn/go-runewidth v0.0.23, text [27]
+github.com/mattn/go-runewidth v0.0.23, text [28]
     https://pkg.go.dev/github.com/mattn/go-runewidth
-github.com/microcosm-cc/bluemonday v1.0.27, text [28]
+github.com/microcosm-cc/bluemonday v1.0.27, text [29]
     https://pkg.go.dev/github.com/microcosm-cc/bluemonday
-github.com/muesli/cancelreader v0.2.2, text [29]
+github.com/muesli/cancelreader v0.2.2, text [30]
     https://pkg.go.dev/github.com/muesli/cancelreader
-github.com/rivo/uniseg v0.4.7, text [30]
+github.com/rivo/uniseg v0.4.7, text [31]
     https://pkg.go.dev/github.com/rivo/uniseg
-github.com/shirou/gopsutil/v4 v4.26.9, text [31]
+github.com/shirou/gopsutil/v4 v4.26.9, text [32]
     https://pkg.go.dev/github.com/shirou/gopsutil/v4
-github.com/tklauser/go-sysconf v0.4.0, text [32]
+github.com/tklauser/go-sysconf v0.4.0, text [33]
     https://pkg.go.dev/github.com/tklauser/go-sysconf
-github.com/tklauser/numcpus v0.12.0, text [33]
+github.com/tklauser/numcpus v0.12.0, text [34]
     https://pkg.go.dev/github.com/tklauser/numcpus
-github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e, text [34]
+github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e, text [35]
     https://pkg.go.dev/github.com/xo/terminfo
-github.com/yuin/goldmark v1.8.6, text [35]
+github.com/yuin/goldmark v1.8.6, text [36]
     https://pkg.go.dev/github.com/yuin/goldmark
-github.com/yusufpapurcu/wmi v1.2.4, text [36]
+github.com/yusufpapurcu/wmi v1.2.4, text [37]
     https://pkg.go.dev/github.com/yusufpapurcu/wmi
 golang.org/x/crypto v0.58.0, text [10]
     https://pkg.go.dev/golang.org/x/crypto
@@ -137,7 +143,7 @@ golang.org/x/text v0.43.0, text [10]
     https://www.npmjs.com/package/@xterm/addon-webgl
 @xterm/xterm 6.0.0, text [8]
     https://www.npmjs.com/package/@xterm/xterm
-katex 0.18.10, text [37]
+katex 0.18.10, text [38]
     https://www.npmjs.com/package/katex
 
 
@@ -147,13 +153,13 @@ Forgejo 16.0.6, text [9]
     https://codeberg.org/forgejo/forgejo/src/tag/v16.0.6 (also forgejo-src-16.0.6.tar.gz on each phosphorus release that ships it)
 Tailscale 1.104.1, text [11]
     https://github.com/tailscale/tailscale
-cloudflared 2026.9.3, text [33]
+cloudflared 2026.9.3, text [34]
     https://github.com/cloudflare/cloudflared
 
 
 == Programs a model host downloads at run time ==
 
-llama.cpp b11284, text [38]
+llama.cpp b11284, text [39]
     https://github.com/ggml-org/llama.cpp
 
 
@@ -1106,7 +1112,7 @@ Public License instead of this License.  But first, please read
 <https://www.gnu.org/licenses/why-not-lgpl.html>.
 
 
----- [10] Go standard library and runtime go1.26.0, golang.org/x/crypto v0.58.0, golang.org/x/net v0.60.0, golang.org/x/sync v0.24.0, golang.org/x/sys v0.49.0, golang.org/x/term v0.47.0, golang.org/x/text v0.43.0 ----
+---- [10] Go standard library and runtime go1.26.10, golang.org/x/crypto v0.58.0, golang.org/x/net v0.60.0, golang.org/x/sync v0.24.0, golang.org/x/sys v0.49.0, golang.org/x/term v0.47.0, golang.org/x/text v0.43.0 ----
 
 Copyright 2009 The Go Authors.
 
@@ -1571,7 +1577,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
----- [17] github.com/charmbracelet/x/ansi v0.11.7, github.com/charmbracelet/x/exp/ordered v0.1.0, github.com/charmbracelet/x/term v0.2.2, github.com/charmbracelet/x/termios v0.1.1, github.com/charmbracelet/x/vt v0.1.0, github.com/charmbracelet/x/windows v0.2.2 ----
+---- [17] github.com/charmbracelet/x/ansi v0.11.7, github.com/charmbracelet/x/conpty v0.2.0, github.com/charmbracelet/x/exp/ordered v0.1.0, github.com/charmbracelet/x/term v0.2.2, github.com/charmbracelet/x/termios v0.1.1, github.com/charmbracelet/x/vt v0.1.0, github.com/charmbracelet/x/windows v0.2.2, github.com/charmbracelet/x/xpty v0.1.4 ----
 
 MIT License
 
@@ -1663,7 +1669,34 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 
----- [21] github.com/dlclark/regexp2/v2 v2.2.1 ----
+---- [21] github.com/creack/pty v1.1.24 ----
+
+Copyright (c) 2011 Keith Rarick
+
+Permission is hereby granted, free of charge, to any person
+obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without limitation
+the rights to use, copy, modify, merge, publish, distribute,
+sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so,
+subject to the following conditions:
+
+The above copyright notice and this permission notice shall
+be included in all copies or substantial portions of the
+Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
+KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS
+OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+
+---- [22] github.com/dlclark/regexp2/v2 v2.2.1 ----
 
 The MIT License (MIT)
 
@@ -1688,7 +1721,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
----- [22] github.com/ebitengine/purego v0.11.1 ----
+---- [23] github.com/ebitengine/purego v0.11.1 ----
 
 Apache License
                            Version 2.0, January 2004
@@ -1893,7 +1926,7 @@ Apache License
    limitations under the License.
 
 
----- [23] github.com/go-ole/go-ole v1.2.6 ----
+---- [24] github.com/go-ole/go-ole v1.2.6 ----
 
 The MIT License (MIT)
 
@@ -1918,7 +1951,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
----- [24] github.com/godbus/dbus/v5 v5.1.0 ----
+---- [25] github.com/godbus/dbus/v5 v5.1.0 ----
 
 Copyright (c) 2013, Georg Reinke (<guelfey at gmail dot com>), Google
 All rights reserved.
@@ -1947,7 +1980,7 @@ NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
----- [25] github.com/gorilla/css v1.0.1 ----
+---- [26] github.com/gorilla/css v1.0.1 ----
 
 Copyright (c) 2023 The Gorilla Authors. All rights reserved.
 
@@ -1978,7 +2011,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
----- [26] github.com/lucasb-eyer/go-colorful v1.4.0 ----
+---- [27] github.com/lucasb-eyer/go-colorful v1.4.0 ----
 
 Copyright (c) 2013 Lucas Beyer
 
@@ -1989,7 +2022,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
----- [27] github.com/mattn/go-runewidth v0.0.23 ----
+---- [28] github.com/mattn/go-runewidth v0.0.23 ----
 
 The MIT License (MIT)
 
@@ -2014,7 +2047,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
----- [28] github.com/microcosm-cc/bluemonday v1.0.27 ----
+---- [29] github.com/microcosm-cc/bluemonday v1.0.27 ----
 
 Copyright (c) 2014, David Kitchen <david@buro9.com>
 
@@ -2046,7 +2079,7 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
----- [29] github.com/muesli/cancelreader v0.2.2 ----
+---- [30] github.com/muesli/cancelreader v0.2.2 ----
 
 MIT License
 
@@ -2071,7 +2104,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
----- [30] github.com/rivo/uniseg v0.4.7 ----
+---- [31] github.com/rivo/uniseg v0.4.7 ----
 
 MIT License
 
@@ -2096,7 +2129,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
----- [31] github.com/shirou/gopsutil/v4 v4.26.9 ----
+---- [32] github.com/shirou/gopsutil/v4 v4.26.9 ----
 
 gopsutil is distributed under BSD license reproduced below.
 
@@ -2161,7 +2194,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
----- [32] github.com/tklauser/go-sysconf v0.4.0 ----
+---- [33] github.com/tklauser/go-sysconf v0.4.0 ----
 
 BSD 3-Clause License
 
@@ -2194,7 +2227,7 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
----- [33] github.com/tklauser/numcpus v0.12.0, cloudflared 2026.9.3 ----
+---- [34] github.com/tklauser/numcpus v0.12.0, cloudflared 2026.9.3 ----
 
 Apache License
                            Version 2.0, January 2004
@@ -2399,7 +2432,7 @@ Apache License
    limitations under the License.
 
 
----- [34] github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e ----
+---- [35] github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e ----
 
 The MIT License (MIT)
 
@@ -2424,7 +2457,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
----- [35] github.com/yuin/goldmark v1.8.6 ----
+---- [36] github.com/yuin/goldmark v1.8.6 ----
 
 MIT License
 
@@ -2449,7 +2482,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
----- [36] github.com/yusufpapurcu/wmi v1.2.4 ----
+---- [37] github.com/yusufpapurcu/wmi v1.2.4 ----
 
 The MIT License (MIT)
 
@@ -2473,7 +2506,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
----- [37] katex 0.18.10 ----
+---- [38] katex 0.18.10 ----
 
 The MIT License (MIT)
 
@@ -2498,7 +2531,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
----- [38] llama.cpp b11284 ----
+---- [39] llama.cpp b11284 ----
 
 MIT License
 

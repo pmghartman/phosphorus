@@ -400,10 +400,6 @@ body {
 [data-snap="bl"] { left: 0; top: 50%; width: 50% !important; height: 50% !important; }
 [data-snap="br"] { left: 50%; top: 50%; width: 50% !important; height: 50% !important; }
 .dk-win[data-snap="max"] { border-width: 0; box-shadow: none; }
-/* Sulfur alone, as its desktop app opens it: the one window filling the desk, the
-   OS's own frame its buttons, the bar kept for the hosts' locks and the bell */
-.dk-solo .dk-icons, .dk-solo .dk-art, .dk-solo .dk-home, .dk-solo .dk-tasks, .dk-solo .dk-edge, .dk-solo .ide-win .dk-btns { display: none; }
-.dk-solo .ide-win .dk-head { cursor: default; }
 .dk-snap {
   position: absolute; z-index: 99999; pointer-events: none; opacity: 0;
   border: 1px dashed var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent);
@@ -3532,3 +3528,61 @@ span.ide-sb:hover { background: none; }
 @media (prefers-reduced-motion: reduce) {
   .ide-find.open, .ide-toast, .ide-dialog.shake, .ide-row-wait, .ide-spin, .ide-dots::after { animation: none; }
 }
+
+/* --- Sulfur alone: its desktop app's window, and /sulfur/ on a host -------------------------- */
+
+/* the page the window: no desktop under it, its head the window's title bar */
+.sx-body { margin: 0; height: 100vh; overflow: hidden; background: #1f1f1f; }
+:root[data-theme="light"] .sx-body { background: #ffffff; }
+#sulfur { position: fixed; inset: 0; display: flex; }
+.sx-win.dk-win { position: relative; flex: 1; width: auto; height: auto; border: 0; box-shadow: none; animation: none; contain: none; will-change: auto; }
+.sx-win .dk-head { user-select: none; -webkit-user-select: none; cursor: default; }
+/* before the workbench: the window's own title, centered, as VS Code's */
+.sx-win:not(.sx-wb) .dk-title { display: flex; flex: 1; justify-content: center; align-items: center; color: var(--ide-muted); font-size: 12px; }
+.sx-win .dk-btns[hidden] { display: none; }
+/* a Mac's own traffic lights over the title bar's left */
+.sx-mac .sx-win .dk-head { padding-left: 78px; }
+
+.sx-ic { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* the start pane: VS Code's welcome, Sulfur's start */
+.ide.sx-start { flex: 1; overflow: auto; background: var(--ide-bg); }
+.sx-start-col { width: 100%; max-width: 1080px; margin: 0 auto; padding: max(48px, 9vh) 56px 32px; box-sizing: border-box; flex: 1; }
+.sx-hero { display: flex; align-items: center; gap: 22px; margin-bottom: 44px; }
+.sx-hero-mark { width: 72px; height: 72px; flex: none; filter: drop-shadow(0 8px 18px rgb(0 0 0 / 0.28)); }
+.sx-hero h1 { margin: 0; font-size: 2.6em; font-weight: 400; line-height: 1.1; color: var(--ide-strong); letter-spacing: -0.01em; }
+.sx-sub { margin: 6px 0 0; font-size: 1.15em; color: var(--ide-muted); }
+.sx-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 56px; }
+.sx-col h2 { margin: 0 0 10px; font-size: 1.15em; font-weight: 400; color: var(--ide-strong); }
+.sx-col * + h2 { margin-top: 30px; }
+.sx-link { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; padding: 4px 0; background: none; border: 0; color: var(--ide-link); font: inherit; text-align: left; cursor: pointer; }
+.sx-link:hover .sx-link-label, .sx-recent-row:hover .sx-link-label { text-decoration: underline; }
+.sx-link:focus-visible, .sx-recent-row:focus-visible { outline: 1px solid var(--ide-accent); outline-offset: 2px; }
+.sx-link:disabled { opacity: 0.6; cursor: default; }
+.sx-link-label { white-space: nowrap; }
+.sx-link-detail { min-width: 0; margin-left: 4px; color: var(--ide-muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sx-connect { display: flex; gap: 6px; max-width: 440px; margin: 6px 0 2px 24px; }
+.sx-connect[hidden] { display: none; }
+.sx-connect .ide-input { flex: 1; min-width: 0; height: 26px; }
+.sx-msg { min-height: 18px; margin: 8px 0 0 24px; font-size: 12px; color: var(--ide-muted); }
+.sx-msg.bad { color: var(--ide-err); }
+.sx-recent-row { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 4px 0; color: var(--ide-link); cursor: pointer; outline: none; }
+.sx-forget { visibility: hidden; margin-left: auto; padding: 2px; background: none; border: 0; color: var(--ide-muted); cursor: pointer; border-radius: 4px; display: flex; }
+.sx-forget:hover { color: var(--ide-fg); background: var(--ide-hover); }
+.sx-recent-row:hover .sx-forget, .sx-recent-row:focus-visible .sx-forget { visibility: visible; }
+.sx-card { display: flex; gap: 14px; padding: 14px 16px; margin-bottom: 8px; border-radius: 6px; background: color-mix(in srgb, var(--ide-fg) 4%, transparent); border: 1px solid var(--ide-border); }
+.sx-card-ic { width: 20px; height: 20px; margin-top: 1px; color: var(--ide-accent); }
+.sx-card-title { margin-bottom: 4px; color: var(--ide-strong); }
+.sx-card-detail { color: var(--ide-muted); font-size: 12px; line-height: 1.5; }
+.sx-foot { flex: none; padding: 12px 56px; color: var(--ide-dim); font-size: 12px; }
+@media (max-width: 760px) { .sx-cols { grid-template-columns: 1fr; gap: 24px; } .sx-start-col { padding: 32px 24px; } }
+
+/* a mesh's login */
+.ide.sx-login { align-items: center; justify-content: center; }
+.sx-login-box { width: 300px; display: flex; flex-direction: column; gap: 10px; text-align: center; }
+.sx-login-box h1 { margin: 6px 0 0; font-size: 1.6em; font-weight: 400; color: var(--ide-strong); }
+.sx-login-box .sx-sub { margin: 0 0 8px; font-size: 13px; }
+.sx-login-mark { width: 56px; height: 56px; align-self: center; filter: drop-shadow(0 6px 14px rgb(0 0 0 / 0.25)); }
+.sx-login-box .ide-input, .sx-login-box .ide-button { height: 30px; }
+.sx-login-box .sx-msg { margin: 0; }
+.sx-login-box .ide-link { align-self: center; font-size: 12px; }

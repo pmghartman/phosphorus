@@ -1,0 +1,274 @@
+// Sulfur's host when it runs on its own: in its desktop app, or at /sulfur/ on a
+// Phosphorus server. What app.js gives Sulfur inside the desktop, from this
+// computer offline (the app's own server, one host, its home and drives) or
+// from a mesh (its hosts, merged home and logins, through the same API)
+
+// the page's vendor files, hashed by the build
+export const ASSETS = __ASSETS__;
+
+// how Sulfur's running: mode 'local' (offline, this computer) or 'mesh'; app
+// says whether its desktop app's window is around it; null inside the desktop
+export const standalone = { mode: '', app: false, server: '', info: null, mac: /Mac/.test(navigator.platform || navigator.userAgent), logIn: null };
+
+export let acct = null;
+export let name = '';
+export const color = '';
+export let selfHost = '';
+export let hostsInfo = {};
+export const dk = { creds: new Map() };
+let meshHosts = [];
+
+// --- small helpers, as app.js's ------------------------------------------------------
+
+export const el = (tag, cls, text) => Object.assign(document.createElement(tag), cls ? { className: cls } : {}, text != null ? { textContent: text } : {});
+export const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+export const cssVar = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+export const isMobile = () => false;
+export const newSid = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('');
+export const shQuote = (v) => `'${String(v).replace(/'/g, "'\\''")}'`;
+export const jsonPost = (body) => ({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+export function humanSize(n) {
+  if (n === null || n === undefined) return '';
+  const u = ['b', 'k', 'm', 'g', 't'];
+  let i = 0;
+  let v = n;
+  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+  return `${i ? v.toFixed(1) : v}${u[i]}`;
+}
+export async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return; } catch {}
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  document.body.appendChild(ta);
+  ta.select();
+  const ok = document.execCommand('copy');
+  ta.remove();
+  if (!ok) throw new Error('copy failed');
+}
+const svgEl = (tag, attrs) => { const n = document.createElementNS('http://www.w3.org/2000/svg', tag); for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v); return n; };
+export function dkGlyph(d, cls = '') {
+  const svg = svgEl('svg', { viewBox: '0 0 16 16', class: `ic ${cls}`, 'aria-hidden': 'true' });
+  svg.appendChild(svgEl('path', { d }));
+  return svg;
+}
+
+const NAME_COLORS = ['#9f81cf', '#ce8755', '#6fb3a8', '#93ad7d', '#7fa0c9', '#c98ba0', '#c4ab78'];
+export function colorFor(n) {
+  let h = 0;
+  for (let i = 0; i < n.length; i++) h = (h * 31 + n.charCodeAt(i)) >>> 0;
+  return NAME_COLORS[h % NAME_COLORS.length];
+}
+
+// --- the editor's file kinds and open tabs ------------------------------------------
+
+const CODE_EXT = {
+  js: ['javascript', 'javascript', '//'], mjs: ['javascript', 'javascript', '//'], cjs: ['javascript', 'javascript', '//'], jsx: ['javascript', 'javascript:jsx', '//'],
+  ts: ['typescript', 'javascript:ts', '//'], mts: ['typescript', 'javascript:ts', '//'], tsx: ['typescript', 'javascript:jsx ts', '//'],
+  py: ['python', 'python', '#'], sh: ['bash', '', '#'], bash: ['bash', '', '#'], zsh: ['bash', '', '#'],
+  c: ['c', 'cpp', '//'], h: ['c', 'cpp', '//'], cpp: ['cpp', 'cpp', '//'], cc: ['cpp', 'cpp', '//'], cxx: ['cpp', 'cpp', '//'], hpp: ['cpp', 'cpp', '//'],
+  go: ['go', 'go', '//'], rs: ['rust', 'rust', '//'], java: ['java', 'java', '//'], rb: ['ruby', '', '#'], lua: ['lua', '', '--'],
+  cs: ['csharp', '', '//'], kt: ['kotlin', '', '//'], swift: ['swift', '', '//'], php: ['php', 'php', '//'], r: ['r', '', '#'],
+  scala: ['scala', '', '//'], dart: ['dart', '', '//'], ex: ['elixir', '', '#'], exs: ['elixir', '', '#'], hs: ['haskell', '', '--'],
+  jl: ['julia', '', '#'], nix: ['nix', '', '#'], ps1: ['powershell', '', '#'], sql: ['sql', '', '--'], proto: ['protobuf', '', '//'],
+  css: ['css', 'css', ''], scss: ['scss', '', '//'], html: ['xml', 'html', ''], htm: ['xml', 'html', ''], xml: ['xml', 'xml', ''], svg: ['xml', 'xml', ''],
+  json: ['json', 'json', ''], yml: ['yaml', 'yaml', '#'], yaml: ['yaml', 'yaml', '#'], toml: ['ini', '', '#'], ini: ['ini', '', ';'], conf: ['ini', '', '#'],
+  cfg: ['ini', '', '#'], env: ['bash', '', '#'], md: ['markdown', '', ''], tex: ['latex', '', '%'], cmake: ['cmake', '', '#'],
+  txt: ['plaintext', '', ''], log: ['plaintext', '', ''], csv: ['plaintext', '', ''], csproj: ['xml', 'xml', ''], sln: ['plaintext', '', ''],
+  bat: ['dos', '', 'REM'], cmd: ['dos', '', 'REM'],
+};
+const CODE_NAMES = { dockerfile: ['dockerfile', '', '#'], makefile: ['makefile', '', '#'], 'cmakelists.txt': ['cmake', '', '#'] };
+export function codeLang(p) {
+  const base = String(p || '').split('/').pop().toLowerCase();
+  const hit = CODE_NAMES[base] || (base.includes('.') && CODE_EXT[base.split('.').pop()]);
+  return hit ? { hl: hit[0], check: hit[1], comment: hit[2] } : null;
+}
+export const editors = new Map();
+export const codeTabs = new Map();
+export const codeKey = (f) => `${f.host}\n${f.share}\n${f.path}`;
+export const codeName = (f) => f.path.split('/').pop() || f.path;
+export const lines = new Map();
+// sharing a file with a mesh's people is the desktop's; here, nobody to share with
+export function shareMenu(anchor, f, done) { done('sharing is in the Phosphorus desktop'); }
+
+// a file run by extension when no settings say otherwise: $f the file, $o an output
+export const DK_RUNNERS = {
+  c: 'cc "$f" -o "$o" && "$o"', cpp: 'c++ "$f" -o "$o" && "$o"', cc: 'c++ "$f" -o "$o" && "$o"', cxx: 'c++ "$f" -o "$o" && "$o"',
+  rs: 'rustc "$f" -o "$o" && "$o"', go: 'go run "$f"', zig: 'zig run "$f"', java: 'java "$f"', swift: 'swift "$f"',
+  py: 'python3 "$f"', js: 'node "$f"', mjs: 'node "$f"', ts: 'npx --yes tsx "$f"', sh: 'bash "$f"', bash: 'bash "$f"',
+  rb: 'ruby "$f"', pl: 'perl "$f"', php: 'php "$f"', lua: 'lua "$f"', hs: 'runghc "$f"', r: 'Rscript "$f"',
+};
+
+// --- hosts: this computer alone offline, the mesh's phosphorus hosts connected -----------
+
+export const homeOnline = () => [...new Set([selfHost, ...meshHosts].filter(Boolean))];
+export function dkLiveHosts() {
+  const up = new Set(homeOnline());
+  return [...dk.creds.keys()].filter((h) => up.has(h));
+}
+export function dkHomeOn(host) {
+  const home = hostsInfo[String(host).toLowerCase()]?.files?.shares?.find((x) => x.home)?.label || '';
+  return home.startsWith('/') ? home : '';
+}
+
+// --- files: a host's share by its API, the home merged over every host holding it --------
+
+export const HOME = { host: '*', share: 'home', root: 'home', perms: 'rwd' };
+export const homeAt = (host) => ({ host, share: 'home', root: 'home', perms: 'rwd' });
+const homeWhere = new Map();
+export function homePick(rel) {
+  const on = homeOnline();
+  const has = [...(homeWhere.get(rel) || [])].filter((h) => on.includes(h));
+  return has.includes(selfHost) ? selfHost : has[0] || selfHost;
+}
+const homeHolders = (rel) => {
+  const on = homeOnline();
+  const has = [...(homeWhere.get(rel) || [])].filter((h) => on.includes(h));
+  return has.length ? has : [selfHost];
+};
+export const filesJoin = (a, b) => (a ? `${a}/${b}` : b);
+export const filesParent = (p) => p.split('/').slice(0, -1).join('/');
+export const filesApi = (loc, op, params) => {
+  const q = new URLSearchParams({ share: loc.share || '0', ...(params || {}) });
+  const host = loc.host === '*' ? homePick(params?.path || '') : loc.host;
+  return `/api/files/${encodeURIComponent(host)}/${op}?${q}`;
+};
+export async function filesCall(loc, op, init, params) {
+  if (loc.host === '*') return homeCall(op, init, params);
+  const res = await fetch(filesApi(loc, op, params), init);
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `status ${res.status}`);
+  return body;
+}
+async function homeList(dir) {
+  const got = await Promise.all(homeOnline().map(async (h) => {
+    try { return { h, entries: (await filesCall(homeAt(h), 'list', undefined, { path: dir })).entries }; } catch { return { h, entries: [], stale: true }; }
+  }));
+  const by = new Map();
+  for (const { h, entries, stale } of got) {
+    for (const e of entries) {
+      const m = by.get(e.name) || { ...e, hosts: [], live: [] };
+      m.hosts.push(h);
+      if (!stale) m.live.push(h);
+      m.mtime = Math.max(m.mtime || 0, e.mtime || 0);
+      m.dir ||= e.dir;
+      by.set(e.name, m);
+    }
+  }
+  const entries = [...by.values()].map((m) => ({ ...m, stale: !m.live.length }));
+  for (const e of entries) homeWhere.set(filesJoin(dir, e.name), new Set(e.live.length ? e.live : e.hosts));
+  if (!got.some((g) => !g.stale)) throw new Error('no host answered');
+  return { path: dir, entries };
+}
+async function homeCall(op, init, params) {
+  if (op === 'list') return homeList(params?.path || '');
+  const body = init?.body ? JSON.parse(init.body) : {};
+  const rel = op === 'rename' ? body.from : body.path ?? params?.path ?? '';
+  const hosts = op === 'mkdir' ? homeOnline() : ['delete', 'rename'].includes(op) ? homeHolders(rel) : [homePick(rel)];
+  const out = await Promise.allSettled(hosts.map((h) => filesCall(homeAt(h), op, init, params)));
+  const ok = out.find((r) => r.status === 'fulfilled');
+  if (!ok) throw out[0].reason;
+  if (op === 'delete') homeWhere.delete(rel);
+  return ok.value;
+}
+
+// uploads in chunks, as the desktop's
+const CHUNK = 4 * 1024 * 1024;
+export async function putFile(loc, path, body, onSent) {
+  const id = Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => (b % 36).toString(36)).join('');
+  const total = body.size;
+  let offset = 0;
+  let last = {};
+  do {
+    const end = Math.min(offset + CHUNK, total);
+    const res = await fetch(filesApi(loc, 'upload', { path, id, offset, total }), { method: 'POST', body: body.slice(offset, end) });
+    last = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(last.error || `status ${res.status}`);
+    offset = end;
+    onSent?.(offset);
+  } while (offset < total);
+  return last;
+}
+export async function copyFile(from, fromPath, to, toPath, tick = () => {}) {
+  const res = await fetch(filesApi(from, 'download', { path: fromPath }));
+  if (!res.ok) throw new Error(`couldn't read ${fromPath}`);
+  const blob = await res.blob();
+  tick(0.5);
+  await putFile(to, toPath, blob, (sent) => tick(0.5 + (blob.size ? (sent / blob.size) * 0.5 : 0.5)));
+}
+
+// a folder shown in the system's own file manager: offline only
+export let filesWin = null;
+
+// --- starting: which mode, who's logged in, the hosts' info ---------------------------
+
+async function getJSON(url, init) {
+  const r = await fetch(url, { cache: 'no-store', ...init });
+  const b = await r.json().catch(() => ({}));
+  return { ok: r.ok, status: r.status, ...b };
+}
+
+// the app's own server's say, null when the page is a mesh server's own
+export async function sidecarInfo() {
+  const r = await getJSON('/api/sidecar/info').catch(() => null);
+  return r?.ok && r.app === 'sulfur' ? r : null;
+}
+
+// offline: this computer as the only host, its user the account
+export function bootLocal(info) {
+  standalone.mode = 'local';
+  standalone.info = info;
+  acct = { user: info.user, admin: true, boot: false, local: true };
+  name = info.user;
+  selfHost = info.host;
+  hostsInfo = { [info.host]: info.info };
+  meshHosts = [];
+  dk.creds = new Map([[info.host, { user: info.user, pass: '' }]]);
+  filesWin = ({ loc, dir }) => {
+    const sh = hostsInfo[selfHost]?.files?.shares?.find((x) => x.id === String(loc.share));
+    if (!sh) return;
+    const sep = /^[A-Za-z]:/.test(sh.label) ? '\\' : '/';
+    const abs = [sh.label.replace(/[\\/]+$/, ''), ...String(dir || '').split('/').filter(Boolean)].join(sep);
+    fetch('/api/sidecar/reveal', jsonPost({ path: abs || sh.label })).catch(() => {});
+  };
+}
+
+// a mesh: its login, then its hosts as the state socket tells them; resolves
+// once the first state's in, null while nobody's logged in
+export async function bootMesh(server) {
+  standalone.mode = 'mesh';
+  standalone.server = server;
+  const me = await getJSON('/api/me');
+  if (me.status === 401 || !me.ok || me.boot) return null;
+  acct = { user: me.user, admin: !!me.admin, boot: false, vault: me.vault || { hosts: {} } };
+  name = me.user;
+  dk.creds = new Map(Object.entries(acct.vault.hosts || {}).map(([h, c]) => [h, { user: c.user, pass: c.pass }]));
+  standalone.logIn = async (host, user, pass) => {
+    acct.vault.hosts = { ...(acct.vault.hosts || {}), [host]: { user, pass } };
+    const r = await getJSON('/api/me/vault', jsonPost({ vault: acct.vault }));
+    if (!r.ok) throw new Error(r.error || 'not saved');
+    dk.creds.set(host, { user, pass });
+  };
+  await new Promise((resolve) => {
+    let first = true;
+    const connect = () => {
+      const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/state`);
+      ws.onmessage = (ev) => {
+        let st;
+        try { st = JSON.parse(ev.data); } catch { return; }
+        selfHost = st.self?.host || selfHost;
+        hostsInfo = st.hosts && typeof st.hosts === 'object' ? st.hosts : hostsInfo;
+        meshHosts = (st.tailnet || []).filter((d) => d.phosphorus).map((d) => d.name).sort();
+        if (first) { first = false; resolve(); }
+      };
+      ws.onclose = () => { setTimeout(connect, 2000); };
+      ws.onerror = () => ws.close();
+    };
+    connect();
+    setTimeout(resolve, 8000);
+  });
+  return acct;
+}
+
+export async function logIn(user, pass) {
+  return getJSON('/api/login', jsonPost({ user, pass }));
+}
