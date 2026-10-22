@@ -34,7 +34,6 @@ const (
 	MaxUpload    = 64 << 30
 	maxEntries   = 5000
 	treeDepthMax = 8
-	treeMax      = 2000
 	uploadTmp    = ".phosphorus-upload-"
 	fullPerms    = "rwd"
 	Home         = "home"
@@ -459,7 +458,28 @@ type TreeEntry struct {
 }
 
 // Tree every entry under rel to depth, breadth first
-func Tree(sh *Share, rel string, depth any, match string) (int, any) {
+// TreeMax a tree's entries at most; Sulfur's own server, one user's machine, takes more
+var TreeMax = 2000
+
+// skipper whether a folder's name is one of skip's (names, or globs as *.egg-info):
+// neither listed nor gone into, a build's outputs kept out of a big project's tree
+func skipper(skip string) func(string) bool {
+	res := []*regexp.Regexp{}
+	for _, s := range splitList(skip) {
+		res = append(res, globRe(s))
+	}
+	return func(name string) bool {
+		for _, re := range res {
+			if re.MatchString(name) {
+				return true
+			}
+		}
+		return false
+	}
+}
+
+// Tree the folders and files under rel, breadth first; skip's folders left out
+func Tree(sh *Share, rel string, depth any, match string, skip ...string) (int, any) {
 	if !Can(sh, "r") {
 		return 403, errBody("this share is not readable")
 	}
@@ -486,6 +506,7 @@ func Tree(sh *Share, rel string, depth any, match string) (int, any) {
 	if maxDepth > treeDepthMax {
 		maxDepth = treeDepthMax
 	}
+	skipped := skipper(strings.Join(skip, ","))
 	out := []map[string]any{}
 	truncated := false
 	level := []string{root}
@@ -509,6 +530,9 @@ func Tree(sh *Share, rel string, depth any, match string) (int, any) {
 			}
 			sort.SliceStable(names, func(i, j int) bool { return util.LocaleCompare(names[i], names[j]) < 0 })
 			for _, e := range entriesOf(dir, names) {
+				if e.Dir && skipped(e.Name) {
+					continue
+				}
 				rp := RelOf(*sh, filepath.Join(dir, e.Name))
 				if e.Dir && !e.Link {
 					next = append(next, filepath.Join(dir, e.Name))
@@ -516,7 +540,7 @@ func Tree(sh *Share, rel string, depth any, match string) (int, any) {
 				if want != nil && !want.MatchString(e.Name) {
 					continue
 				}
-				if len(out) >= treeMax {
+				if len(out) >= TreeMax {
 					truncated = true
 					break
 				}
@@ -549,7 +573,8 @@ const (
 
 // Search names, or with content the text inside, holding query, case-insensitive,
 // under rel; glob narrows the names looked at
-func Search(sh *Share, rel, query string, content bool, glob string) (int, any) {
+// Search names, or text in files, under rel; skip's folders left out
+func Search(sh *Share, rel, query string, content bool, glob string, skip ...string) (int, any) {
 	if !Can(sh, "r") {
 		return 403, errBody("this share is not readable")
 	}
@@ -565,6 +590,7 @@ func Search(sh *Share, rel, query string, content bool, glob string) (int, any) 
 	if glob != "" {
 		want = globRe(glob)
 	}
+	skipped := skipper(strings.Join(skip, ","))
 	out := []map[string]any{}
 	scanned, truncated := 0, false
 	filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
@@ -572,7 +598,7 @@ func Search(sh *Share, rel, query string, content bool, glob string) (int, any) 
 			return nil
 		}
 		name := d.Name()
-		if strings.HasPrefix(name, uploadTmp) || (sh.ID != "home" && isHome(p)) {
+		if strings.HasPrefix(name, uploadTmp) || (sh.ID != "home" && isHome(p)) || (d.IsDir() && skipped(name)) {
 			if d.IsDir() {
 				return filepath.SkipDir
 			}
@@ -680,7 +706,7 @@ func MakeParents(sh Share, rel string) {
 		dir = filepath.Dir(dir)
 	}
 	if real, err := filepath.EvalSymlinks(dir); err == nil && inside(sh, real) {
-		os.MkdirAll(filepath.Dir(abs), 0o755)
+		mkdirAll(filepath.Dir(abs))
 	}
 }
 
@@ -859,9 +885,11 @@ func Write(sh *Share, rel string, body io.Reader, q UploadQ) (int, any) {
 	if err := os.Truncate(tmp, tot); err != nil {
 		return 500, errBody(err.Error())
 	}
+	prev := ownerAt(abs)
 	if err := os.Rename(tmp, abs); err != nil {
 		return 500, errBody(err.Error())
 	}
+	adopt(abs, prev)
 	changed(*sh, "write", RelOf(*sh, abs), "")
 	return 200, map[string]any{"ok": true, "path": RelOf(*sh, abs)}
 }
@@ -922,10 +950,12 @@ func Save(sh *Share, rel string, p SaveP) (int, any) {
 		os.Remove(tmp)
 		return 500, errBody(err.Error())
 	}
+	prev := ownerAt(abs)
 	if err := os.Rename(tmp, abs); err != nil {
 		os.Remove(tmp)
 		return 500, errBody(err.Error())
 	}
+	adopt(abs, prev)
 	changed(*sh, "write", RelOf(*sh, abs), "")
 	out := map[string]any{"ok": true, "path": RelOf(*sh, abs), "size": len(*text)}
 	if made {
@@ -946,7 +976,7 @@ func Mkdir(sh *Share, rel string) (int, any) {
 	if exists(abs) {
 		return 409, errBody("already exists")
 	}
-	if err := os.MkdirAll(abs, 0o755); err != nil {
+	if err := mkdirAll(abs); err != nil {
 		return 500, errBody(err.Error())
 	}
 	return 200, map[string]any{"ok": true, "path": RelOf(*sh, abs)}
