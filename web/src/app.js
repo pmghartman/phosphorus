@@ -6,11 +6,11 @@ const ASSETS = __ASSETS__;
 
 // each app's own code in its own chunk, all fetched once the desktop is up
 const APPS = {
-  projects: () => import('./apps/projects.js'),
   status: () => import('./apps/status.js'),
   terminal: () => import('./apps/terminal.js'),
   editor: () => import('./apps/editor.js'),
   files: () => import('./apps/files.js'),
+  code: () => import('./apps/code.js'),
 };
 // the newest /api/state, handed to an app as it loads
 let lastState = null;
@@ -89,9 +89,6 @@ const codeName = (f) => f.path.split('/').pop() || f.path;
 const fileLabel = (host, root, rel) => filesPath(host, root, rel);
 function loadJsonSafe(key) { try { const v = JSON.parse(localStorage.getItem(key)); return Array.isArray(v) ? v : []; } catch { return []; } }
 
-// an editor tab gone: the chat no longer taking it as "this file"
-function editorGone(id) { if (seenEditor === id) { seenEditor = ''; paintSeen(); } }
-
 // --- self / routes ------------------------------------------------------
 // everything from /api/state, pushed, see connectState at the bottom
 let selfHost = '';
@@ -133,9 +130,6 @@ function pruneConnections() {
 
 // hosts whose frontend answers, each one terminal tab
 let terminalHosts = [];
-
-// model hosts whose opencode is up, the only ones running projects
-let harnessHosts = [];
 
 // a host's OS, from /api/state's tailnet (tailscale itself sees every
 // host as linux)
@@ -1253,8 +1247,6 @@ function applyState(state) {
   renderRoutes(state.routes, state.tailnet);
   lastState = state;
   appCall('status', false, (m) => m.statusState(state));
-  modelPresence(state.model);
-  harnessHosts = (state.model?.models || []).filter((x) => x.harness).map((x) => x.host);
   const nextModels = new Map((state.model?.models || []).map((x) => [x.host, { file: x.file, ready: x.ready, roles: modelRoles(x, state.model) }])
     .filter(([, v]) => v.roles.length));
   const modelChanged = JSON.stringify([...nextModels]) !== JSON.stringify([...meshModels]);
@@ -1555,10 +1547,7 @@ const chatPop = document.getElementById('chat-pop');
 
 // everyone on the mesh, peers merged in by the frontend
 let people = [];
-// the model as one of them while loaded and answering, from /api/state,
-// not the chat socket, so kept here for a redraw either way
 let chatOnline = false;
-let modelWho = [];
 
 const NAME_COLORS = [
   '#4f9eff', '#3fb950', '#f0883e', '#d2a8ff', '#ff7b72', '#79c0ff', '#ffa657',
@@ -1591,20 +1580,6 @@ function formatDay(ts) {
   if (days === 0) return 'today';
   if (days === 1) return 'yesterday';
   return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', ...(days > 300 ? { year: 'numeric' } : {}) });
-}
-
-// the chimp online while its model answers: a mesh host's loaded,
-// or one off the mesh
-function modelPresence(model) {
-  const next = AGENTS.map((r) => {
-    const x = model?.roles?.[r];
-    if (!x || !x.ready) return null;
-    const m = x.host && (model.models || []).find((y) => y.host === x.host);
-    return { name: r, host: x.host, file: m ? m.file : x.model };
-  }).filter(Boolean);
-  if (JSON.stringify(next) === JSON.stringify(modelWho)) return;
-  modelWho = next;
-  paintStatus();
 }
 
 // --- unread and notifications -------------------------------------------------
@@ -2022,8 +1997,8 @@ function alertCountdown(li, m, until) {
   if (left > 0) setTimeout(() => { if (li.isConnected) alertCountdown(li, m, until); }, (until - Date.now()) % 1000 || 1000);
 }
 
-// what the model posts: its answer, its spinner and why it can't
-const MODEL_KINDS = ['model', 'pending', 'notice'];
+// what an agent posts on someone's key, and the old chat agent's lines and notices
+const MODEL_KINDS = ['model', 'notice'];
 
 // a chat reply opened with who it's for, "Patrick, yes", a plain first word lowered,
 // a block (fence, list, heading, table, display math) on its own line
@@ -2119,10 +2094,7 @@ function dropLine(key) {
   if (list) list.splice(list.indexOf(m), 1);
   const li = chatLog.querySelector(`li[data-key="${CSS.escape(key)}"]`);
   if (!li) return;
-  // a model's spinner kept a beat for the answer that takes its place
-  if (m.kind !== 'pending' || !li.dataset.to) { li.remove(); return; }
-  li.classList.add('retired');
-  setTimeout(() => li.remove(), 1500);
+  li.remove();
 }
 
 // a passing note in the log: joins, leaves, renames, a mistyped command
@@ -2260,9 +2232,8 @@ function lineEl(m, prev) {
   // a line sent by an agent on someone's key: the agent's, in the agents' colours, from that user
   const agent = MODEL_KINDS.includes(m.kind) || !!m.via;
   const mine = !agent && m.name === name;
-  const real = m.host !== 'agent' && m.kind !== 'pending' && m.kind !== 'notice' && !m.gone && !m.sending;
+  const real = m.kind !== 'notice' && !m.gone && !m.sending;
   li.className = `msg ${agent ? 'agent' : mine ? 'mine' : 'theirs'}`;
-  if (m.kind === 'pending') li.classList.add('pending');
   // an agent's line on someone's key never grouped under their own
   li.dataset.who = m.via ? `${m.name}\u0000${m.via}` : m.name;
   li.style.setProperty('--who', m.color || colorFor(m.name));
@@ -2282,31 +2253,19 @@ function lineEl(m, prev) {
   const bubble = el('div', 'bubble');
   if (m.re && !m.gone) bubble.append(quoteEl(m.re));
   const text = el('div', 'text');
-  // who a model reply is for, since several can be written at once
-  const to = ['model', 'pending'].includes(m.kind) && typeof m.to === 'string' ? m.to : '';
-  if (to) li.dataset.to = to;
+  // who an old model reply was for
+  const to = m.kind === 'model' && typeof m.to === 'string' ? m.to : '';
   const body = m.edited ?? m.text;
   const html = m.edited != null ? m.editedHtml : m.html;
-  // an ask's /chimp or /orang coloured as the command it is, the rest as markdown
-  const cmd = !m.kind && typeof body === 'string' && body.match(/^\/chimp(?=\s|$)/i);
   if (m.gone) {
     text.classList.add('gone');
     text.textContent = 'message deleted';
-  } else if (m.kind === 'pending') {
-    const row = el('div', 'spin-row');
-    row.append(el('span', 'spin who-model'), el('span', 'spin-say', 'writing'));
-    text.append(row);
-  } else if (cmd) {
-    const rest = el('span');
-    rest.addEventListener('md-painted', () => codeCopies(rest));
-    renderMd(rest, body.slice(cmd[0].length).trimStart(), true, html);
-    text.append(el('span', 'cmd', cmd[0]), ' ', rest);
   } else if (body) {
     text.addEventListener('md-painted', () => codeCopies(text));
     renderMd(text, addressed(to, body), true, html);
   }
   if (!m.gone && markMentions(text)) li.classList.add('at-me');
-  if (body || m.gone || m.kind === 'pending') bubble.append(text);
+  if (body || m.gone) bubble.append(text);
   if (m.files && !m.gone) bubble.append(filesEl(m.files));
   if (!body && !m.gone && m.files?.length && m.files.every((f) => (f.type || '').startsWith('image/'))) li.classList.add('just-img');
   li.append(bubble);
@@ -2354,24 +2313,17 @@ function redrawLine(m) {
 }
 
 // --- conversations -------------------------------------------------------------
-// mesh and the channels anyone opens, the agents' dms (kept in this browser),
-// and people's dms (kept by the mesh, shown to their two ends)
+// mesh and the channels anyone opens, and people's dms (kept by the mesh,
+// shown to their two ends)
 
 const CHANNELS_KEY = 'phosphorus-chat-channels';
-// chat's agents, the orangutan kept for projects; both picked in the model card
-const AGENTS = ['chimp'];
+// the mesh models' roles, each picked in the model card
 const MODEL_ROLES = ['chimp', 'orangutan'];
-const AGENT_SUB = { chimp: 'quick' };
-const AGENT_KEY = 'phosphorus-agents';
-const AGENT_KEEP = 200;
-// mesh, ch:<name>, dm:<name> or chimp
+// mesh, ch:<name> or dm:<name>
 let conv = 'mesh';
 const loadJson = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } };
-// each agent's turns, and seen: its sent messages up to here already shown or forgotten
-const agents = (() => {
-  const kept = loadJson(AGENT_KEY, {}) || {};
-  return Object.fromEntries(AGENTS.map((r) => [r, { turns: [], seen: 0, ...kept[r] }]));
-})();
+// the old chat agent's conversations, kept in this browser, dropped
+try { localStorage.removeItem('phosphorus-agents'); } catch {}
 // channels opened here, kept listed before anyone has said a word in them
 let myChannels = loadJson(CHANNELS_KEY, []);
 // channels left here, by when, hidden until a line comes after
@@ -2383,8 +2335,6 @@ const saveChannels = () => {
     localStorage.setItem(LEFT_KEY, JSON.stringify(leftChannels));
   } catch {}
 };
-// answers in flight, id -> {agent, at}
-const agentWaiting = new Map();
 // unread lines by conversation
 const news = new Map();
 // the conversation the divider was drawn for, and how many lines it marks
@@ -2392,14 +2342,8 @@ let freshFrom = 0;
 
 const dmWith = (c) => (c.startsWith('dm:') ? c.slice(3) : '');
 const chOf = (c) => (c.startsWith('ch:') ? c.slice(3) : '');
-const isAgent = (c) => AGENTS.includes(c);
 const convName = (c) => (c === 'mesh' ? '#mesh' : chOf(c) ? `#${chOf(c)}` : dmWith(c) ? `@${dmWith(c)}` : c);
-const convHint = () => (isAgent(conv) ? `ask the ${conv}` : `message ${convName(conv)}`);
-const agentBusy = (r) => [...agentWaiting.values()].some((w) => w.agent === r);
-
-function saveAgents() {
-  try { localStorage.setItem(AGENT_KEY, JSON.stringify(agents)); } catch {}
-}
+const convHint = () => `message ${convName(conv)}`;
 
 function noteNews(c) {
   if (c === conv && !away() && chatPanel.offsetParent) return;
@@ -2429,12 +2373,12 @@ function topicOf(c) {
 // everyone to dm, by name so a new line never moves a chat
 function dmNames() {
   const talked = [...convLines.keys()].map(dmWith).filter(Boolean);
-  return [...new Set([...talked, ...people.map((p) => p.name)])].filter((n) => n !== name && !isAgent(n))
+  return [...new Set([...talked, ...people.map((p) => p.name)])].filter((n) => n !== name)
     .sort((a, b) => a.localeCompare(b));
 }
 
 // the conversations in the list's order
-const convOrder = () => ['mesh', ...channels().map((ch) => `ch:${ch}`), ...AGENTS, ...dmNames().map((n) => `dm:${n}`)];
+const convOrder = () => ['mesh', ...channels().map((ch) => `ch:${ch}`), ...dmNames().map((n) => `dm:${n}`)];
 
 // ctrl+↑↓: the one above or below in the list, wrapping
 function stepConv(step) {
@@ -2456,12 +2400,12 @@ function convItems() {
     }
     return h;
   };
-  const item = (c, label, { sub = '', dot, hue, model } = {}) => {
+  const item = (c, label, { sub = '', dot, hue } = {}) => {
     const row = el('div', 'cw-row');
     const b = Object.assign(el('button', `cw-item${c === conv ? ' on' : ''}`), { type: 'button' });
     b.dataset.conv = c;
     if (dot !== undefined) b.append(Object.assign(el('span', `cw-dot${dot ? ' up' : ''}`), { title: dot ? 'online' : 'offline' }));
-    const l = el('span', `cw-name${model ? ' who-model' : ''}`, label);
+    const l = el('span', 'cw-name', label);
     if (hue) l.style.color = hue;
     b.append(l);
     if (typers(c).length) b.append(el('span', 'cw-typing', '···'));
@@ -2479,7 +2423,6 @@ function convItems() {
     item('mesh', '# mesh', { sub: `${people.length} online` }),
     ...channels().map((ch) => item(`ch:${ch}`, `# ${ch}`)),
     head('direct'),
-    ...AGENTS.map((r) => item(r, r, { sub: AGENT_SUB[r], model: true })),
     ...names.map((n) => item(`dm:${n}`, n, { dot: online.has(n), hue: hueOf(n) })),
   ];
 }
@@ -2590,11 +2533,6 @@ function convActions(c) {
   if (c === 'mesh') {
     return [read, { label: 'clear for everyone', sub: "#mesh's history gone mesh-wide", key: 'd', danger: true, confirm: 'clear all?', act: () => send({ type: 'clear' }) }].filter(Boolean);
   }
-  if (isAgent(c)) {
-    return [read, { label: 'open', act: () => openConv(c) },
-      { label: 'clear conversation', sub: 'and its context, in this browser', key: 'd', danger: true, confirm: `clear ${c}?`, act: () => clearAgent(c) },
-    ].filter(Boolean);
-  }
   const dm = dmWith(c);
   return [read, { label: 'open', act: () => openConv(c) },
     dm && { label: 'delete conversation', sub: 'its history gone for you, on every host', key: 'd', danger: true, confirm: `delete your dms with ${dm}?`, act: () => deleteDm(dm) },
@@ -2637,8 +2575,8 @@ function channelClosed(ch, by) {
 // --- attachments ------------------------------------------------------------------
 
 // everything shared in this conversation, newest first, with who and when
-const convFiles = () => (isAgent(conv) ? [] : (convLines.get(conv) || []).filter((m) => m.files && !m.gone)
-  .flatMap((m) => m.files.map((f) => [f, m])).reverse());
+const convFiles = () => (convLines.get(conv) || []).filter((m) => m.files && !m.gone)
+  .flatMap((m) => m.files.map((f) => [f, m])).reverse();
 
 function paintFiles() {
   const n = convFiles().length;
@@ -2667,11 +2605,9 @@ function typers(c) {
 
 function paintTyping() {
   const who = [...new Set(typers(conv))];
-  const writing = isAgent(conv) && agentBusy(conv);
   chatTyping.textContent = '';
-  if (!who.length && !writing) return;
-  const text = writing ? 'writing…'
-    : who.length === 1 ? `${who[0]} typing` : `${who.length} typing`;
+  if (!who.length) return;
+  const text = who.length === 1 ? `${who[0]} typing` : `${who.length} typing`;
   chatTyping.append(text, el('span', 'dots'));
 }
 
@@ -2682,69 +2618,30 @@ function paintStatus() {
   label.textContent = '';
   if (!chatOnline) { label.textContent = 'offline'; return; }
   const dm = dmWith(conv);
-  const agent = isAgent(conv);
   const who = (p) => {
     const span = el('span', 'who', p.name);
     span.style.color = p.color || colorFor(p.name);
     if (p.host) span.title = `${p.name}: ${p.host}`;
     return span;
   };
-  const model = (a) => Object.assign(el('span', 'who who-model', a.name), { title: `${a.name}: ${a.file} on ${a.host}` });
   if (dm) {
     const p = people.find((x) => x.name === dm);
     label.append(p ? who(p) : el('span', 'who off', dm), el('span', 'st-dim', p ? ` on ${p.host}` : ' offline'));
-  } else if (agent) {
-    const host = agentHost(conv);
-    if (host) label.append(Object.assign(el('span', 'who who-model', conv), { title: `${conv} on ${host}` }), el('span', 'st-dim', ` on ${host}`));
-    else label.textContent = `no ${conv} loaded`;
   } else {
     const uniq = [...new Map(people.map((p) => [p.name, p])).values()];
-    if (!uniq.length && !modelWho.length) label.textContent = 'nobody online';
+    if (!uniq.length) label.textContent = 'nobody online';
     for (const p of uniq) label.append(who(p));
-    for (const a of modelWho) label.append(model(a));
   }
-  paintCtx();
   paintTyping();
-}
-
-// the host answering for an agent, with no chimp chosen, the one /chimp goes to
-const agentHost = (r) => modelWho.find((a) => a.name === r)?.host || '';
-
-// the editor last focused and still open: the file the models take "this file" to mean
-const chatSees = document.getElementById('chat-sees');
-const SEEN_MAX = 24000;
-let seenEditor = '';
-function seenFile() {
-  const ed = seenEditor && editors.get(seenEditor);
-  if (!ed) return undefined;
-  const text = ed.text();
-  return { ...ed.file, text: text.slice(0, SEEN_MAX), size: text.length };
-}
-function paintSeen() {
-  const f = seenEditor && editors.get(seenEditor)?.file;
-  chatSees.hidden = !f;
-  if (!f) return;
-  chatSees.textContent = codeName(f);
-  chatSees.title = `the chimp sees ${f.label}, the file you have open, and knows you mean it`;
-}
-
-function paintCtx() {
-  chatAttach.hidden = isAgent(conv);
 }
 
 function renderConv() {
   chatLog.replaceChildren();
   delete chatLog.dataset.day;
   const dm = dmWith(conv);
-  if (isAgent(conv)) {
-    chatNote('private');
-    agents[conv].turns.forEach((t, i) => putLine(turnLine(conv, t, i)));
-    for (const [id, w] of agentWaiting) if (w.agent === conv) putLine(agentPendingLine(id, w));
-  } else {
-    if (dm) chatNote('private');
-    else if (chOf(conv) && !convLines.get(conv)?.length) chatNote('empty');
-    for (const m of (convLines.get(conv) || []).slice(-CHAT_KEEP)) putLine(m);
-  }
+  if (dm) chatNote('private');
+  else if (chOf(conv) && !convLines.get(conv)?.length) chatNote('empty');
+  for (const m of (convLines.get(conv) || []).slice(-CHAT_KEEP)) putLine(m);
   // unread since last here, under a rule
   if (freshFrom > 0) {
     const msgs = [...chatLog.querySelectorAll('li.msg')];
@@ -2786,19 +2683,13 @@ function takeLine(m, live) {
     if (t && live && m.kind === 'react' && t.name === name && m.name !== name && m.on !== false) notifyChat({ name: m.name, text: `reacted ${m.emoji}` }, false, { key: 'reactions', label: 'reactions', line: `${m.name} ${m.emoji}` }, convOf(t));
     return;
   }
-  // an agent's invite: asked, not kept in its dm
-  if (m.kind === 'show' && isAgent(m.name)) {
-    if (live && isInvite(m)) { showInvite(m); notifyChat({ name: `${m.name} invited you`, text: `to work on ${m.file.label} together` }, true, null, m.name); }
-    return;
-  }
-  if (m.dm && isAgent(m.name)) { agentSaid(m, live); return; }
   if (live) m.live = true;
   const ghost = live && m.name === name && sendingLines.find((g) => g.text === (m.text || '') && convOf(g) === convOf(m));
   const c = holdLine(m);
   if (ghost) settleSending(ghost, m, c);
   if (!c || !live) return;
   if (c === conv && !ghost) putLine(m, true);
-  if (m.kind === 'topic') { paintConvs(); paintCtx(); return; }
+  if (m.kind === 'topic') { paintConvs(); return; }
   // an invite to this browser's name, fresh: asked as a dialog and notified past the bell
   if (isInvite(m)) {
     showInvite(m);
@@ -2808,7 +2699,7 @@ function takeLine(m, live) {
     return;
   }
   if (m.files && c === conv) paintFiles();
-  if (m.kind === 'pending' || m.name === name) { paintConvs(); return; }
+  if (m.name === name) { paintConvs(); return; }
   noteNews(c);
   bumpUnread();
   const text = m.text || (m.files ? `shared ${m.files.map((f) => f.name).join(', ')}` : '');
@@ -2864,72 +2755,6 @@ function renderHistory(messages, closed = {}) {
   paintFiles();
 }
 
-// an agent messaging this person on someone's ask: a line in its dm, once
-function agentSaid(m, live) {
-  const a = agents[m.name];
-  if (m.timestamp <= a.seen) return;
-  a.seen = m.timestamp;
-  addAgentTurn(m.name, { role: 'assistant', text: m.text, at: m.timestamp });
-  if (!live) return;
-  noteNews(m.name);
-  bumpUnread();
-  notifyChat({ name: sender(m), text: m.text }, false, { key: `dm:${m.name}`, label: sender(m), line: m.text, seen: chatReading(m.name) }, m.name);
-}
-
-// --- the agents' dms -------------------------------------------------------------
-
-// one turn as a chat line: theirs, the agent's, or a notice
-function turnLine(r, t, i) {
-  return {
-    host: 'agent', seq: `${r}-${i}`, timestamp: t.at, name: t.role === 'user' ? name : t.by || r, color: color || undefined,
-    kind: t.role === 'assistant' ? 'model' : t.role === 'notice' ? 'notice' : undefined, text: t.text, html: t.html,
-  };
-}
-
-const agentPendingLine = (id, w) => ({ host: 'agent', seq: id, timestamp: w.at, name: w.agent, kind: 'pending' });
-
-function addAgentTurn(r, t, was = null) {
-  const { turns } = agents[r];
-  turns.push(t);
-  if (turns.length > AGENT_KEEP) turns.splice(0, turns.length - AGENT_KEEP);
-  saveAgents();
-  if (conv === r) { putLine(turnLine(r, t, turns.length - 1), true, was); paintFiles(); }
-  paintConvs();
-}
-
-// its context forgotten, the conversation left open and empty
-function clearAgent(r) {
-  agents[r] = { turns: [], seen: Date.now() };
-  for (const [id, w] of agentWaiting) if (w.agent === r) agentWaiting.delete(id);
-  saveAgents();
-  if (conv === r) { renderConv(); paintFiles(); paintTyping(); }
-}
-
-// their line and the agent's spinner under it, until the answer lands
-function agentPending(r, id, text) {
-  addAgentTurn(r, { role: 'user', text, at: Date.now() });
-  agentWaiting.set(id, { agent: r, at: Date.now() });
-  if (conv === r) putLine(agentPendingLine(id, agentWaiting.get(id)), true);
-  paintTyping();
-}
-
-// the whole conversation as its context
-function sendAgent(r, text) {
-  if (agentBusy(r)) { if (conv === r) chatNote('busy'); return; }
-  const history = agents[r].turns.filter((t) => t.role !== 'notice').map(({ role, text: tx }) => ({ role, text: tx }));
-  const id = newSid().slice(0, 12);
-  agentPending(r, id, text);
-  send({ type: 'agent', id, to: r, text, history, open: seenFile() });
-}
-
-// its answer in the making dropped, the model told to stop
-function stopAgent(r) {
-  const id = [...agentWaiting].find(([, w]) => w.agent === r)?.[0];
-  if (!id) { chatNote('idle'); return; }
-  send({ type: 'agent-stop', id });
-  agentAnswered({ id, error: 'stopped' });
-}
-
 // the status card's clear buttons, its code fetched or not
 const stRolesEl = document.querySelector('#st-model .st-model-roles');
 stRolesEl.addEventListener('click', (e) => {
@@ -2937,41 +2762,16 @@ stRolesEl.addEventListener('click', (e) => {
   if (!b || b.disabled) return;
   b.disabled = true;
   b.textContent = 'clearing';
-  send({ type: 'agent-purge', id: `st:${b.dataset.role}`, to: b.dataset.role });
+  send({ type: 'model-purge', id: b.dataset.role, to: b.dataset.role });
 });
 
 // the llama-server slots on its host erased, a fresh start for its kv cache
-function purgeAgent(r) {
-  send({ type: 'agent-purge', id: r, to: r });
-  chatNote('purging');
-}
-function agentPurged(msg) {
-  const btn = stRolesEl.querySelector(`.st-clear[data-role="${CSS.escape(String(msg.id).replace(/^st:/, ''))}"]`);
-  if (btn && msg.id.startsWith('st:')) {
-    btn.disabled = false;
-    btn.textContent = msg.error ? `no clear: ${msg.error}` : 'cleared';
-    setTimeout(() => { btn.textContent = 'clear context'; }, 2500);
-    return;
-  }
-  if (conv !== msg.id) return;
-  if (msg.error) { chatNote(`no purge: ${msg.error}`); return; }
-  chatNote('purged');
-}
-
-// the answer, or why there's none, counted on the agent while away from it
-function agentAnswered(msg) {
-  const w = agentWaiting.get(msg.id);
-  if (!w) return;
-  agentWaiting.delete(msg.id);
-  const was = chatLog.querySelector(`li[data-key="${CSS.escape(`agent:${msg.id}`)}"]`);
-  paintTyping();
-  const by = isAgent(msg.by) && msg.by !== w.agent ? { by: msg.by } : {};
-  const said = String(msg.error || msg.text || '');
-  addAgentTurn(w.agent, msg.error ? { role: 'notice', text: said, at: Date.now() } : { role: 'assistant', text: said, html: msg.html, ...by, at: Date.now() }, was);
-  was?.remove();
-  noteNews(w.agent);
-  bumpUnread();
-  notifyChat({ name: by.by || w.agent, text: said }, false, { key: `dm:${w.agent}`, label: w.agent, line: said, seen: chatReading(w.agent) }, w.agent);
+function modelPurged(msg) {
+  const btn = stRolesEl.querySelector(`.st-clear[data-role="${CSS.escape(String(msg.id))}"]`);
+  if (!btn) return;
+  btn.disabled = false;
+  btn.textContent = msg.error ? `no clear: ${msg.error}` : 'cleared';
+  setTimeout(() => { btn.textContent = 'clear context'; }, 2500);
 }
 
 // --- the socket -------------------------------------------------------------------
@@ -3011,9 +2811,6 @@ function connectChat() {
     send({ type: 'join', name, color: color || undefined });
   };
   ws.onclose = () => {
-    // an answer in flight lost with the socket
-    for (const id of [...agentWaiting.keys()]) agentAnswered({ id, error: 'disconnected' });
-    credsClose();
     people = [];
     chatOnline = false;
     paintStatus();
@@ -3034,10 +2831,8 @@ function connectChat() {
       takeLine(m, true);
     } else if (msg.type === 'phosphorus-ui') {
       phosphorusPressed(msg.action);
-    } else if (msg.type === 'agent-reply') {
-      agentAnswered(msg);
-    } else if (msg.type === 'agent-purged') {
-      agentPurged(msg);
+    } else if (msg.type === 'model-purged') {
+      modelPurged(msg);
     } else if (msg.type === 'retract') {
       dropLine(`${msg.host}:${msg.seq}`);
     } else if (msg.type === 'presence') {
@@ -3056,7 +2851,7 @@ function connectChat() {
     } else if (msg.type === 'close') {
       if (typeof msg.ch === 'string') channelClosed(msg.ch, msg.by);
     } else if (msg.type === 'channel') {
-      if (typeof msg.ch === 'string' && msg.meta && typeof msg.meta === 'object') { chMetas[msg.ch] = msg.meta; paintConvs(); paintCtx(); }
+      if (typeof msg.ch === 'string' && msg.meta && typeof msg.meta === 'object') { chMetas[msg.ch] = msg.meta; paintConvs(); }
     }
   };
 }
@@ -3068,7 +2863,7 @@ const TYPING_EVERY_MS = 3000;
 let typingSent = '';
 let typingAt = 0;
 function typingTick() {
-  const busy = chatText.value.trim() && !chatText.value.startsWith('/') && !chatChip.textContent && !isAgent(conv);
+  const busy = chatText.value.trim() && !chatText.value.startsWith('/') && !chatChip.textContent;
   const where = busy ? conv : '';
   if (where === typingSent && (!where || Date.now() - typingAt < TYPING_EVERY_MS)) return;
   typingSent = where;
@@ -3095,7 +2890,7 @@ function paintAtts() {
 }
 
 function addFiles(list) {
-  if (!joined() || isAgent(conv)) return;
+  if (!joined()) return;
   for (const file of list) {
     const a = { file, state: 'up', pct: 0, meta: null, error: '' };
     const xhr = new XMLHttpRequest();
@@ -3129,7 +2924,7 @@ chatText.addEventListener('paste', (e) => {
 let dragDepth = 0;
 const dragsFiles = (e) => [...(e.dataTransfer?.types || [])].includes('Files');
 chatPanel.addEventListener('dragenter', (e) => {
-  if (!dragsFiles(e) || !joined() || isAgent(conv)) return;
+  if (!dragsFiles(e) || !joined()) return;
   dragDepth += 1;
   chatDrop.hidden = false;
 });
@@ -3287,24 +3082,13 @@ function joinChannel(arg) {
 function runCommand(input) {
   const [cmd, ...rest] = input.trim().split(/\s+/);
   const arg = rest.join(' ').trim();
-  const agentHere = isAgent(conv);
 
-  // in #mesh or a channel a line everyone sees, answered there or in a dm once
-  // long, anywhere else or bare: the agent's own dm
-  const agent = AGENT_CMDS[cmd.toLowerCase()];
-  if (agent) {
-    if ((conv === 'mesh' || chOf(conv)) && arg) { send({ type: 'message', text: input.trim(), ch: chOf(conv) || undefined, open: seenFile() }); return; }
-    openConv(agent);
-    if (arg) sendAgent(agent, arg);
-    return;
-  }
   if (cmd === '/share') {
     // in a dm, its other end unless another name leads
     let to = nameIn(arg);
     let what = arg.slice(to.length).trim();
     if (dmWith(conv) && !knownNames().includes(to)) { to = dmWith(conv); what = arg; }
     if (!to || to === name || !what) { chatNote('usage: /share name file'); return; }
-    if (isAgent(to)) { chatNote('ask it'); return; }
     resolveShow(what).then((f) => {
       if (!f) { chatNote(`no ${what}`); return; }
       chatNote(shareWith(to, f));
@@ -3316,15 +3100,11 @@ function runCommand(input) {
     const to = nameIn(arg);
     if (!to || to === name) { chatNote('usage: /dm name [message]'); return; }
     const text = arg.slice(to.length).trim();
-    if (isAgent(to)) { openConv(to); if (text) sendAgent(to, text); return; }
     openConv(`dm:${to}`);
     if (text) send({ type: 'dm', to, text });
     return;
   }
   if (cmd === '/chat') { setConv('mesh'); return; }
-  if (agentHere && cmd === '/clear') { clearAgent(conv); return; }
-  if (agentHere && cmd === '/stop') { stopAgent(conv); return; }
-  if (agentHere && cmd === '/purge') { purgeAgent(conv); return; }
   if (cmd === '/leave' && chOf(conv)) { leaveChannel(chOf(conv)); return; }
   // asked once more in the menu, never closed on one keystroke
   if (cmd === '/close' && chOf(conv)) { convMenu(conv, chatTitle, true); return; }
@@ -3345,7 +3125,7 @@ function runCommand(input) {
     send({ type: 'recolor', color });
     return;
   }
-  if (agentHere || dmWith(conv)) { chatNote('not here'); return; }
+  if (dmWith(conv)) { chatNote('not here'); return; }
   // the mesh channel's own, everyone's, not a local scrollback wipe
   if (cmd === '/clear' && conv === 'mesh') { send({ type: 'clear' }); return; }
   chatNote(`unknown ${cmd}`);
@@ -3353,7 +3133,7 @@ function runCommand(input) {
 
 // every name this browser knows of, and the longest of them an argument starts
 // with, names with spaces included
-const knownNames = () => [...new Set([...people.map((p) => p.name), ...[...convLines.keys()].map(dmWith).filter(Boolean), ...AGENTS])]
+const knownNames = () => [...new Set([...people.map((p) => p.name), ...[...convLines.keys()].map(dmWith).filter(Boolean)])]
   .filter((n) => n !== name);
 const nameIn = (arg) => knownNames().sort((a, b) => b.length - a.length).find((n) => arg === n || arg.startsWith(`${n} `)) || arg.split(/\s+/)[0];
 
@@ -3366,7 +3146,7 @@ function shareWith(to, f) {
 // the people to offer it to, those on first; done says how it went
 function shareMenu(anchor, f, done) {
   const on = (n) => people.some((p) => p.name === n);
-  const who = knownNames().filter((n) => !isAgent(n)).sort((a, b) => on(b) - on(a) || a.localeCompare(b));
+  const who = knownNames().sort((a, b) => on(b) - on(a) || a.localeCompare(b));
   popMenu(anchor, `share ${codeName(f)} with`, who.length
     ? who.map((n) => ({ label: n, sub: on(n) ? 'online' : 'asked when they are back', act: () => done(shareWith(n, f)) }))
     : [{ label: 'nobody', act: () => {} }]);
@@ -3412,12 +3192,12 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !showMod
 function argHints() {
   const cmd = chatChip.textContent;
   const v = chatText.value;
-  const online = (n) => (people.some((p) => p.name === n) ? 'online' : isAgent(n) ? 'agent' : 'offline');
+  const online = (n) => (people.some((p) => p.name === n) ? 'online' : 'offline');
   let prefix = '';
   let list = [];
   if (cmd === '/dm' || cmd === '/share') {
     const who = knownNames().sort((a, b) => b.length - a.length).find((n) => v.startsWith(`${n} `));
-    if (!who) list = knownNames().filter((n) => cmd === '/dm' || !isAgent(n)).map((n) => [n, online(n)]);
+    if (!who) list = knownNames().map((n) => [n, online(n)]);
     else if (cmd === '/share') {
       prefix = `${who} `;
       list = [...codeTabs.values()].map((id) => editors.get(id)?.file).filter(Boolean).map((f) => [f.label, 'open in an editor tab']);
@@ -3437,10 +3217,6 @@ function argHints() {
 
 // name, what it does, and the box's placeholder once chosen, none for a
 // command that takes nothing
-const AGENT_CMDS = { '/chimp': 'chimp' };
-const ASK_CMDS = [
-  ['/chimp', 'ask the chimp, small and quick', 'ask the chimp'],
-];
 const DM_CMD = ['/dm', 'message one person directly', 'name, then the message'];
 // not a command: the conversations' + asking for a channel's name
 const CHANNEL_CHIP = ['#', 'open or make a channel', 'channel name, then a topic'];
@@ -3448,13 +3224,9 @@ const SHARE_CMD = ['/share', 'work on a file together', 'name, then an open tab 
 const BACK_CMD = ['/chat', 'back to #mesh', ''];
 const ME_CMDS = [['/recolor', 'change your colour', COLOR_NAMES.join(', ')]];
 function commands() {
-  if (isAgent(conv)) {
-    return [BACK_CMD, ...ASK_CMDS, ['/stop', `stop the ${conv}'s answer`, ''], ['/clear', 'clear this conversation and its context', ''],
-      ['/purge', `clear the ${conv}'s cache on its host`, ''], DM_CMD, SHARE_CMD];
-  }
-  if (dmWith(conv)) return [BACK_CMD, SHARE_CMD, ...ASK_CMDS, DM_CMD];
+  if (dmWith(conv)) return [BACK_CMD, SHARE_CMD, DM_CMD];
   return [
-    ...ASK_CMDS, DM_CMD, SHARE_CMD,
+    DM_CMD, SHARE_CMD,
     ...(chOf(conv) ? [['/topic', 'describe this channel', 'topic'], ['/leave', 'hide it from your list', ''], ['/close', 'close it for everyone', ''], BACK_CMD] : [['/clear', 'clear #mesh for everyone', '']]),
     ...ME_CMDS,
   ];
@@ -3566,7 +3338,7 @@ chatText.addEventListener('keydown', (e) => {
     return;
   }
   // ↑ in an empty box: your last line here, to edit
-  if (e.key === 'ArrowUp' && !chatText.value && !chatChip.textContent && !isAgent(conv)) {
+  if (e.key === 'ArrowUp' && !chatText.value && !chatChip.textContent) {
     const m = (convLines.get(conv) || []).findLast((x) => x.name === name && (!x.kind || x.kind === 'dm') && !x.gone);
     if (m) { e.preventDefault(); startEdit(m); }
     return;
@@ -3613,25 +3385,17 @@ chatForm.addEventListener('submit', (e) => {
     runCommand(text);
     return;
   }
-  const agent = isAgent(conv) && conv;
-  // easter egg: chimp and orangutan answering, the main chat brought up
-  if (!agent && /^\s*apes? together strong\W*$/i.test(text)) {
-    send({ type: 'message', text });
-    openConv('mesh');
-    return;
-  }
   const re = replyTo ? keyOf(replyTo) : undefined;
   replyTo = null;
   paintBar();
   atts = [];
   paintAtts();
-  if (agent) { sendAgent(agent, text); return; }
   const files1 = files.length ? files : undefined;
   if (dmWith(conv)) {
     send({ type: 'dm', to: dmWith(conv), text, files, re });
     putSending({ kind: 'dm', dm: dmWith(conv), text, files: files1, re });
   } else {
-    send({ type: 'message', text, files, re, ch: chOf(conv) || undefined, open: /^\/chimp(?=\s|$)/i.test(text) ? seenFile() : undefined });
+    send({ type: 'message', text, files, re, ch: chOf(conv) || undefined });
     putSending({ text, files: files1, re, ch: chOf(conv) || undefined });
   }
 });
@@ -3664,85 +3428,6 @@ setConv('mesh');
 
 function phosphorusPressed(a) {
   if (a) dkPressed(a);
-}
-
-// --- credential boxes ---------------------------------------------------------
-// a model's ask_credentials: a box over the chat's own, what's typed carried
-// straight to the action from here, only whether it went through told back
-
-const chatCreds = document.getElementById('chat-creds');
-// fields as [name, masked]; run: {retry} keeps the box up, {error} ends it
-const CRED_ACTIONS = {
-  update: {
-    title: 'update the mesh',
-    fields: [['password', true]],
-    run: async ({ password }) => {
-      const res = await chainAction('start', password);
-      if (res.status === 401) return { retry: 'wrong password' };
-      if (res.status === 409) {
-        const body = await res.json().catch(() => ({}));
-        return { error: 'already updating' };
-      }
-      if (!res.ok) return { error: `the update didn't start (status ${res.status})` };
-      openUpdateModal();
-      return {};
-    },
-  },
-};
-
-let credsId = '';
-function credsClose(id) {
-  if (!credsId || (id && id !== credsId)) return;
-  credsId = '';
-  chatCreds.hidden = true;
-  chatCreds.replaceChildren();
-}
-
-function credsAsk(a) {
-  const spec = CRED_ACTIONS[a.action];
-  if (!spec || !a.id) return;
-  if (credsId) send({ type: 'creds-done', id: credsId, ok: false, error: 'another box took its place' });
-  credsId = a.id;
-  const done = (ok, error) => { send({ type: 'creds-done', id: a.id, ok, error }); credsClose(a.id); };
-  const fields = spec.fields.map(([key, masked]) => {
-    const input = Object.assign(el('input', 'creds-input'), { type: 'text', placeholder: key, autocomplete: 'off', spellcheck: false });
-    for (const k of ['autocapitalize', 'data-1p-ignore', 'data-lpignore', 'data-bwignore']) input.setAttribute(k, k === 'autocapitalize' ? 'off' : '');
-    const unbad = () => { input.classList.remove('bad'); input.placeholder = key; };
-    const field = masked ? maskField(input, unbad) : { get: () => input.value, set: (t) => { input.value = t; } };
-    if (!masked) input.addEventListener('input', unbad);
-    return { input, field, key };
-  });
-  const go = Object.assign(el('button', 'code-btn', 'enter'), { type: 'button' });
-  const cancel = Object.assign(el('button', 'code-btn', 'cancel'), { type: 'button' });
-  async function submit() {
-    const empty = fields.find((f) => !f.field.get());
-    if (empty) { empty.input.focus(); return; }
-    go.disabled = true;
-    let out;
-    try { out = await spec.run(Object.fromEntries(fields.map((f) => [f.key, f.field.get()]))); } catch { out = { error: 'unreachable' }; }
-    go.disabled = false;
-    if (!out.retry) { done(!out.error, out.error); return; }
-    const f = fields.at(-1);
-    f.field.set('');
-    f.input.placeholder = out.retry;
-    f.input.classList.add('bad');
-    f.input.focus();
-  }
-  fields.forEach((f, i) => f.input.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') { e.preventDefault(); done(false, 'they cancelled'); chatText.focus(); }
-    if (e.key !== 'Enter') return;
-    e.preventDefault();
-    if (fields[i + 1]) fields[i + 1].input.focus(); else submit();
-  }));
-  go.addEventListener('click', submit);
-  cancel.addEventListener('click', () => { done(false, 'they cancelled'); chatText.focus(); });
-  const head = el('div', 'creds-head');
-  head.append(el('span', 'creds-title', spec.title), el('span', 'creds-why', a.why || 'asked by the model, never shown to it'));
-  const acts = el('div', 'creds-acts');
-  acts.append(cancel, go);
-  chatCreds.replaceChildren(head, ...fields.map((f) => f.input), acts);
-  chatCreds.hidden = false;
-  fields[0].input.focus();
 }
 
 // --- mesh update ----------------------------------------------------------
@@ -4565,8 +4250,8 @@ const DK_GLYPHS = {
   service: 'M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM1.5 8h13M8 1.5c-2.2 2.4-2.2 10.6 0 13M8 1.5c2.2 2.4 2.2 10.6 0 13',
   chat: 'M2 2.5h12v8H6.5L3.5 13v-2.5H2zM4.5 5.5h7M4.5 8h4.5',
   status: 'M1.5 8h3l1.5-4 3 8 1.5-4h4',
-  projects: 'M2 3.5h12v10H2zM2 6.5h12M5 3.5v-2M11 3.5v-2M4.5 9h3M4.5 11h5',
   git: 'M4.5 2v8M4.5 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM11.5 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM11.5 6c0 3-7 2-7 4',
+  code: 'M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5M9 2.5l-2 11',
   games: 'M2.5 5h11a1 1 0 0 1 1 1v5a2 2 0 0 1-3.5 1.3L9.5 11h-3L5 12.3A2 2 0 0 1 1.5 11V6a1 1 0 0 1 1-1zM4.5 7v2.5M3.25 8.25h2.5M10.5 7.5h.01M12 9h.01',
   about: 'M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM8 7v4.5M8 4.75h.01',
   mesh: 'M6.5 1.5h3v3h-3zM1.5 11.5h3v3h-3zM11.5 11.5h3v3h-3zM7.2 4.5l-3.4 7M8.8 4.5l3.4 7M4.5 13h7',
@@ -4678,8 +4363,8 @@ function dkIcons() {
     ['editor', () => dkIcon('editor', 'editor', '', dkEditorPick)],
     ['chat', () => dkIcon('chat', 'chat', '', () => dkOpenApp('chat'))],
     ['status', () => dkIcon('status', 'status', '', () => dkOpenApp('status'))],
-    ['projects', () => dkIcon('projects', 'projects', '', () => dkOpenApp('projects'))],
     ...(git ? [['git', () => dkGlobe(dkIcon('git', 'git', '', () => dkOpenApp('git')), 'public: its own login only')]] : []),
+    ['code', () => dkIcon('code', 'code', '', () => dkOpenApp('code'))],
     ['games', () => dkIcon('games', 'games', '', () => dkOpenApp('games'))],
     ['about', () => dkIcon('about', 'about', '', () => dkOpenApp('about'))],
     ...(acct?.admin ? [['users', () => dkIcon('users', 'users', '', dkUsersWin)]] : []),
@@ -5892,11 +5577,8 @@ function dkCodeNow(f) {
     editors.set(id, ed);
     if (w.node.classList.contains('focused')) ed.focus();
   }, (e) => { w.body.textContent = `failed: ${e.message}`; });
-  // the file the chat's models take "this file" to mean
   w.onFocus = () => {
     if (ed && !w.body.contains(document.activeElement)) ed.focus();
-    seenEditor = id;
-    paintSeen();
   };
   w.holdClose = () => ed?.holdClose();
   w.onClose = () => {
@@ -5967,9 +5649,9 @@ function dkService(r) {
 const DK_APPS = {
   chat: { title: 'chat', view: 'view-chat', w: 880, h: 560 },
   status: { title: 'status', view: 'view-status', w: 920, h: 600 },
-  projects: { title: 'projects', view: 'view-projects', w: 920, h: 580 },
   about: { title: 'about', view: 'view-about', w: 700, h: 420 },
   games: { title: 'game servers', view: 'view-games', w: 460, h: 420 },
+  code: { title: 'code', view: 'view-code', w: 1040, h: 660 },
 };
 
 // a fresh window's size, centered, a phone's left filling the desk
@@ -6020,8 +5702,8 @@ function dkAppsChanged() {
     if (w && !w.node.hidden && !w.leaving) deskApps.add(id);
   }
   const up = (id) => deskApps.has(id) && !was.has(id);
-  if (deskApps.has('projects') !== was.has('projects')) appCall('projects', deskApps.has('projects'), (m) => m.pjWatch(deskApps.has('projects')));
   if (up('status')) appCall('status', true, (m) => m.statusWatch(lastState));
+  if (deskApps.has('code') !== was.has('code')) appCall('code', deskApps.has('code'), (m) => m.codeWatch(deskApps.has('code')));
   // the conversation's news read once it's on screen
   if (up('chat')) setConv(conv);
 }
@@ -6048,7 +5730,7 @@ function dkOpenTerminal(host, shared = false) {
 }
 
 // phosphorus's presses, each the app it names
-const DK_VIEWS = { status: 'status', about: 'about', projects: 'projects', chat: 'chat', git: 'git', games: 'games', home: 'games' };
+const DK_VIEWS = { status: 'status', about: 'about', chat: 'chat', git: 'git', games: 'games', home: 'games', code: 'code', projects: 'code' };
 function dkPressed(a) {
   if (a.kind === 'terminal') dkOpenTerminal(a.host, a.share === true);
   else if (a.kind === 'host' && phosphorusHosts().includes(a.host)) switchHost(a.host);
@@ -6060,8 +5742,6 @@ function dkPressed(a) {
     else if (a.view === 'update' && updateModal.hidden) openUpdateModal();
   } else if (a.kind === 'notify') { noteAdd(a.title, a.body); notifyOs(String(a.title || ''), String(a.body || '')); }
   else if (a.kind === 'agent') agentStep(a);
-  else if (a.kind === 'creds') credsAsk(a);
-  else if (a.kind === 'creds-close') credsClose(a.id);
 }
 
 // --- git: forgejo itself, the master host in the title
@@ -6651,6 +6331,9 @@ function dkMcpTray() {
   view.append(box, el('span', '', 'show agent on screen'));
   view.title = 'open the files, editors, consoles and views the agent works in, as it works';
   pop.append(bar, hint, view, head, body);
+  // the anthropic token for the code app, drawn by it
+  const anth = el('div', 'dk-cl-sec');
+  pop.append(anth);
   head.append(el('span', 'dk-cl-title', 'agent'), stateLine);
   const flash = (x, text) => {
     const was = x.dataset.label;
@@ -6745,6 +6428,7 @@ function dkMcpTray() {
       list = null;
       paint();
       if (mcpStat.configured) hint.replaceChildren();
+      appCall('code', true, (m) => m.codeToken(anth));
       pollMcp();
       // the url ready before a tap, so copying it is the tap's own
       if (mcpStat.configured) acctCall('/api/me/mcp-url', {}).then((r) => { if (r.ok) mcpStat.url = r.url; });
@@ -6930,7 +6614,6 @@ function agentAct(a, args, done) {
   if (t === 'files_copy' && done && args.to?.host) { agentFiles(args.to.host, args.to.share, filesParent(String(args.to.path || ''))); return; }
   if (done) return;
   if (AGENT_STATUS.has(t)) agentOpen('app:status', () => dkOpenApp('status'));
-  else if (t === 'projects') agentOpen('app:projects', () => dkOpenApp('projects'));
   else if (t === 'git' || t === 'make_git_master') agentOpen('app:git', () => dkOpenApp('git'));
   else if (AGENT_CHAT.has(t)) {
     const c = args.to ? `dm:${String(args.to).replace(/^@/, '')}` : !args.channel || args.channel === 'mesh' ? 'mesh' : /^dm:/.test(args.channel) ? args.channel : `ch:${args.channel}`;
@@ -7129,9 +6812,9 @@ export {
   dkMenu,
   dkMenuEl,
   dkRunItems,
+  dkTerminal,
   dkWallSet,
   dkWin,
-  editorGone,
   editors,
   el,
   esc,
@@ -7142,6 +6825,7 @@ export {
   filesJoin,
   filesParent,
   filesPath,
+  filesWin,
   fmChanged,
   fmExt,
   fmIcon,
@@ -7154,7 +6838,6 @@ export {
   fmUnspring,
   fmZones,
   fold,
-  harnessHosts,
   homeAt,
   homeHolders,
   homeOnline,

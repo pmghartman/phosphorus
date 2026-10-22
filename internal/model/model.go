@@ -1,15 +1,13 @@
 // Package model: the mesh's models, every host's claim, which is the chimp and
-// which the orangutan, opencode's calls passed to them
+// which the orangutan, the calls made to them passed to the host running them
 package model
 
 import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"math"
 	"net/http"
 	"os"
@@ -19,12 +17,9 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode"
 
-	"github.com/pmghartman/phosphorus/internal/harness"
 	"github.com/pmghartman/phosphorus/internal/mesh"
 	"github.com/pmghartman/phosphorus/internal/sysfs"
-	"github.com/pmghartman/phosphorus/internal/tools"
 	"github.com/pmghartman/phosphorus/internal/util"
 )
 
@@ -34,8 +29,6 @@ var (
 	claimFile  = filepath.Join(stateDir, "model-claim.json")
 	serverPort = util.EnvInt("MODEL_SERVER_PORT", 8791)
 	nameRe     = regexp.MustCompile(`^[A-Za-z0-9-]{1,63}$`)
-	providerRe = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
-	modelRe    = regexp.MustCompile(`(?i)^[a-z0-9][a-z0-9._-]{0,63}/[^\s/]\S{0,199}$`)
 	contextRe  = regexp.MustCompile(`<context>\n[\s\S]*?\n</context>\n\n`)
 	// Roles the roles a model is asked as
 	Roles = []string{"chimp", "orangutan"}
@@ -43,22 +36,14 @@ var (
 
 const (
 	claimMaxAge = 5 * time.Second
-	defaultCtx  = 65536
 	askTimeout  = 5 * time.Minute
 	gib         = 1 << 30
 	sentinel    = "\u0000ask\u0000"
+	// Mesh the prefix of a mesh host's own model, as phosphorus/<host>
+	Mesh = "phosphorus"
 )
 
 func roleFile(r string) string { return "etc/model/roles/" + r + ".json" }
-func keyFile(p string) string  { return "etc/model/keys/" + p + ".json" }
-
-var identity = map[string]string{
-	"chimp": "You are chimp, a chimpanzee: " + harness.Handle + "'s small, fast model, asked with /chimp. Your tools come first: " +
-		"reach for them before answering from memory, several at once when that is quicker, and when asked to do " +
-		"something, do it yourself with them (files, editors, terminals, views, games, models, messages). Then a short answer.",
-	"orangutan": "You are orangutan, an orangutan: " + harness.Handle + "'s big model, kept for long projects alone in a sandbox, " +
-		"days at a time, never for chat.",
-}
 
 type profile struct {
 	maxTokens int
@@ -155,8 +140,8 @@ func n(v any) float64 {
 // --- roles ------------------------------------------------------------------
 
 func meshHost(m string) string {
-	if strings.HasPrefix(m, harness.Mesh+"/") {
-		return m[len(harness.Mesh)+1:]
+	if h, ok := strings.CutPrefix(m, Mesh+"/"); ok && nameRe.MatchString(h) {
+		return h
 	}
 	return ""
 }
@@ -173,7 +158,8 @@ func roles() map[string]role {
 			Model *string `json:"model"`
 		}
 		m := ""
-		if sysfs.ReadInto(roleFile(r), &c) && c.Model != nil && (*c.Model == "" || modelRe.MatchString(*c.Model)) {
+		// a provider's model chosen before, none here to ask now: the default
+		if sysfs.ReadInto(roleFile(r), &c) && c.Model != nil && meshHost(*c.Model) != "" {
 			m = *c.Model
 		}
 		out[r] = role{m, sysfs.Stamp(roleFile(r))}
@@ -192,8 +178,11 @@ func Choose(p map[string]any) (int, any) {
 		return 400, map[string]any{"error": "role is " + strings.Join(Roles, " or ")}
 	}
 	m := strings.TrimSpace(util.Str(p["model"]))
-	if m != "" && !modelRe.MatchString(m) {
-		return 400, map[string]any{"error": "model is provider/model, as anthropic/claude-sonnet-5-5"}
+	if m != "" && !strings.Contains(m, "/") {
+		m = Mesh + "/" + m
+	}
+	if m != "" && meshHost(m) == "" {
+		return 400, map[string]any{"error": "model is a mesh host running one, as " + Mesh + "/<host>, blank for the default"}
 	}
 	if h := meshHost(m); h != "" {
 		found := false
@@ -245,93 +234,11 @@ func pick(states []map[string]any, r string) map[string]any {
 }
 
 func resolve(states []map[string]any, r string) (string, map[string]any) {
-	own := roles()[r].Model
-	if own != "" && meshHost(own) == "" {
-		return own, nil
-	}
 	s := pick(states, r)
 	if s == nil {
 		return "", nil
 	}
-	return harness.Mesh + "/" + util.JSString(s["host"]), s
-}
-
-// --- api keys -----------------------------------------------------------------
-
-func keyOf(p string) string {
-	var k struct {
-		Key string `json:"key"`
-	}
-	sysfs.ReadInto(keyFile(p), &k)
-	return k.Key
-}
-
-func keyList() []string {
-	out := []string{}
-	for _, f := range sysfs.List("etc/model/keys") {
-		p := strings.TrimSuffix(f, ".json")
-		if providerRe.MatchString(p) && keyOf(p) != "" {
-			out = append(out, p)
-		}
-	}
-	sort.Strings(out)
-	return out
-}
-
-func pullKeys() { sysfs.Pull() }
-
-// SetKey a provider's key, ” clearing it
-func SetKey(p map[string]any) (int, any) {
-	provider := strings.ToLower(strings.TrimSpace(util.Str(p["provider"])))
-	key := strings.TrimSpace(util.Str(p["key"]))
-	if !providerRe.MatchString(provider) || provider == harness.Mesh {
-		return 400, map[string]any{"error": "provider is its id as models.dev has it, as anthropic"}
-	}
-	if len(key) > 512 || strings.IndexFunc(key, unicode.IsSpace) >= 0 {
-		return 400, map[string]any{"error": "bad key"}
-	}
-	sysfs.Write(keyFile(provider), map[string]any{"key": key})
-	return 200, map[string]any{"provider": provider, "set": key != ""}
-}
-
-func setup(states []map[string]any) harness.Setup {
-	s := harness.Setup{Mesh: []harness.MeshModel{}, Keys: map[string]string{}}
-	for _, r := range runners(states) {
-		ctx := int(n(r["ctx"]))
-		if ctx == 0 {
-			ctx = defaultCtx
-		}
-		s.Mesh = append(s.Mesh, harness.MeshModel{Host: util.JSString(r["host"]), Ctx: ctx})
-	}
-	for _, p := range keyList() {
-		s.Keys[p] = keyOf(p)
-	}
-	return s
-}
-
-// Catalog every provider opencode knows, asked of the model host when
-// opencode isn't here; hop: already passed on once
-func Catalog(hop bool) (any, error) {
-	if HarnessHere() || hop {
-		return harness.Catalog(setup(view()))
-	}
-	h := HarnessHost("")
-	if h == nil {
-		return nil, noHarness()
-	}
-	res, err := util.RequestJSON(util.Req{Host: util.JSString(h["ip"]), Port: util.FrontendPort, Path: "/api/model/catalog?hop=1", Timeout: 40 * time.Second})
-	if err != nil {
-		return nil, fmt.Errorf("%s didn't answer: %v", util.JSString(h["host"]), err)
-	}
-	b := util.Decode(res.Body)
-	if res.Status != 200 {
-		e := util.Str(util.Obj(b)["error"])
-		if e == "" {
-			e = fmt.Sprintf("%s answered %d", util.JSString(h["host"]), res.Status)
-		}
-		return nil, errors.New(e)
-	}
-	return b, nil
+	return Mesh + "/" + util.JSString(s["host"]), s
 }
 
 var useKeys = []string{"system", "chat", "ask", "reply", "tps", "at"}
@@ -365,7 +272,7 @@ func row(s map[string]any, states []map[string]any) map[string]any {
 		"host": s["host"], "file": util.Str(s["file"]), "size": n(s["size"]),
 		"ctx": n(s["ctx"]), "slots": n(s["slots"]), "ready": ready, "loading": s["server"] == "loading",
 		"gpu": util.Truthy(s["gpu"]), "vram": n(s["vram"]), "total": n(s["total"]), "machine": n(s["machine"]), "need": n(s["need"]),
-		"why": why, "use": u, "download": dl, "harness": harnessReady(s), "tools": s["tools"],
+		"why": why, "use": u, "download": dl, "tools": s["tools"],
 	}
 }
 
@@ -376,7 +283,7 @@ func Summary() map[string]any {
 	for _, s := range runners(states) {
 		models = append(models, row(s, states))
 	}
-	out := map[string]any{"handle": harness.Handle, "roles": map[string]any{}, "models": models, "keys": keyList()}
+	out := map[string]any{"roles": map[string]any{}, "models": models}
 	rs := roles()
 	for _, r := range Roles {
 		m, s := resolve(states, r)
@@ -459,9 +366,6 @@ func tokens(content string) float64 {
 	}
 	return float64(len(arr))
 }
-
-// WithContext the ask's date, mesh and open file ahead of its text
-func WithContext(note, text string) string { return "<context>\n" + note + "\n</context>\n\n" + text }
 
 func textOf(c any) string {
 	switch x := c.(type) {
@@ -706,8 +610,8 @@ func forward(r *http.Request, host string, port int, p string, body any, who str
 	return fwdOut{res.StatusCode == 200, usage, g}
 }
 
-// ServeChat opencode's calls to a mesh model, answered here or passed on
-func ServeChat(r *http.Request, p map[string]any, w http.ResponseWriter, isLocal bool, ask string) {
+// ServeChat a call to a mesh model, answered here or passed on
+func ServeChat(r *http.Request, p map[string]any, w http.ResponseWriter, isLocal bool) {
 	fail := func(status int, msg string) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(status)
@@ -717,13 +621,6 @@ func ServeChat(r *http.Request, p map[string]any, w http.ResponseWriter, isLocal
 	if p == nil || !ok {
 		fail(400, "bad messages")
 		return
-	}
-	if isLocal && ask != "" {
-		r := ""
-		if a := harness.Context(ask, ""); a != nil {
-			r = a.Role
-		}
-		p = profiled(p, r)
 	}
 	host := util.Str(p["model"])
 	states := view()
@@ -752,184 +649,6 @@ func ServeChat(r *http.Request, p map[string]any, w http.ResponseWriter, isLocal
 			measure(msgs, p["tools"], out.usage, out.genMS)
 		}()
 	}
-}
-
-var emojiRe = regexp.MustCompile(`[\x{1F1E6}-\x{1F1FF}\x{1F3FB}-\x{1F3FF}\x{FE0F}\x{200D}\x{20E3}]`)
-
-func extPict(r rune) bool {
-	if r == 0xA9 || r == 0xAE || r == 0x2122 {
-		return false
-	}
-	i := sort.Search(len(extPictRanges), func(i int) bool { return extPictRanges[i][1] >= r })
-	return i < len(extPictRanges) && extPictRanges[i][0] <= r
-}
-
-// Plain no emoji ever reaching the chat
-func Plain(t string) string {
-	t = emojiRe.ReplaceAllString(t, "")
-	return strings.Map(func(r rune) rune {
-		if extPict(r) {
-			return -1
-		}
-		return r
-	}, t)
-}
-
-// Reply a role's answer
-type Reply struct {
-	Text string
-	By   string
-}
-
-// Ask the role's model through opencode, emoji stripped, passed to a model
-// host when opencode isn't here
-func Ask(messages []harness.Msg, r, asker string, direct bool, ctx context.Context) (Reply, error) {
-	if !HarnessHere() {
-		return askRemote(messages, r, asker, direct, ctx)
-	}
-	return AskHere(messages, r, asker, direct, ctx)
-}
-
-// AskHere the ask answered by this host's own opencode
-func AskHere(messages []harness.Msg, r, asker string, direct bool, ctx context.Context) (Reply, error) {
-	if r != "chimp" {
-		r = "chimp"
-	}
-	pullKeys()
-	states := view()
-	m, s := resolve(states, r)
-	if m == "" || (s != nil && s["server"] != "ready") {
-		return Reply{}, errors.New(excuse(states, s))
-	}
-	cast := append([]harness.Msg{{Role: messages[0].Role, Content: identity[r] + "\n\n" + messages[0].Content}}, messages[1:]...)
-	text, err := harness.AskModel(cast, harness.AskOpts{Model: m, Role: r, Asker: asker, Direct: direct, Ctx: ctx, Setup: setup(states)})
-	if err != nil {
-		return Reply{}, err
-	}
-	return Reply{strings.TrimSpace(Plain(text)), r}, nil
-}
-
-// HarnessHere opencode fetched and runnable on this host
-func HarnessHere() bool { return tools.OpencodeReady() }
-
-// opencode ready on a model host's claim
-func harnessReady(s map[string]any) bool { return util.Obj(s["tools"])["opencode"] == "ready" }
-
-// HarnessHost the model host answering asks and running projects, the one
-// running prefer's model first, nil when none has opencode up
-func HarnessHost(prefer string) map[string]any {
-	all := runners(view())
-	for _, s := range all {
-		if s["host"] == prefer && harnessReady(s) {
-			return s
-		}
-	}
-	for _, s := range all {
-		if harnessReady(s) {
-			return s
-		}
-	}
-	return nil
-}
-
-// why no host can take an ask, for the asker
-func noHarness() error {
-	all := runners(view())
-	if len(all) == 0 {
-		return errors.New("no host is the model host, set [model] host = true on one")
-	}
-	return errors.New("the model host is still fetching opencode")
-}
-
-// AskerRef an asker on this host as a model host names it
-func AskerRef(id string) string { return selfHost + "|" + id }
-
-func askRemote(messages []harness.Msg, r, asker string, direct bool, ctx context.Context) (Reply, error) {
-	_, rs := resolve(view(), r)
-	prefer := ""
-	if rs != nil {
-		prefer = util.JSString(rs["host"])
-	}
-	h := HarnessHost(prefer)
-	if h == nil {
-		return Reply{}, noHarness()
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	res, err := util.RequestJSON(util.Req{
-		Host: util.JSString(h["ip"]), Port: util.FrontendPort, Method: "POST", Path: "/api/model/ask", Ctx: ctx, Timeout: time.Hour,
-		Body: map[string]any{"messages": messages, "role": r, "asker": AskerRef(asker), "direct": direct},
-	})
-	if ctx.Err() != nil {
-		return Reply{}, errors.New("stopped")
-	}
-	if err != nil {
-		return Reply{}, fmt.Errorf("%s didn't answer: %v", util.JSString(h["host"]), err)
-	}
-	b := util.Obj(util.Decode(res.Body))
-	if res.Status != 200 {
-		e := util.Str(b["error"])
-		if e == "" {
-			e = fmt.Sprintf("%s answered %d", util.JSString(h["host"]), res.Status)
-		}
-		return Reply{}, errors.New(e)
-	}
-	return Reply{util.Str(b["text"]), util.Str(b["by"])}, nil
-}
-
-// ProjectModel the orangutan's model for a round
-type ProjectModel struct {
-	Model    string
-	Identity string
-	Setup    harness.Setup
-}
-
-// ErrWaiting the model away, a project paused rather than failed
-type ErrWaiting struct{ Msg string }
-
-func (e ErrWaiting) Error() string { return e.Msg }
-
-// ProjectHost the host running the orangutan's mesh model, blank for none
-func ProjectHost() string {
-	if _, s := resolve(view(), "orangutan"); s != nil {
-		return util.JSString(s["host"])
-	}
-	return ""
-}
-
-// ForProject a mesh host chosen, or the one the project ran on, waited for
-func ForProject(prefer string) (ProjectModel, error) {
-	if !HarnessHere() {
-		return ProjectModel{}, ErrWaiting{"projects run on the model host, " + selfHost + " isn't it"}
-	}
-	pullKeys()
-	states := view()
-	own := roles()["orangutan"].Model
-	host := meshHost(own)
-	if host == "" && own == "" {
-		host = meshHost(prefer)
-	}
-	if host != "" {
-		var s map[string]any
-		for _, x := range runners(states) {
-			if x["host"] == host {
-				s = x
-			}
-		}
-		if s == nil {
-			return ProjectModel{}, ErrWaiting{host + " is offline"}
-		}
-		if s["server"] != "ready" {
-			return ProjectModel{}, ErrWaiting{excuse(states, s)}
-		}
-		return ProjectModel{harness.Mesh + "/" + host, identity["orangutan"], setup(states)}, nil
-	}
-	m, s := resolve(states, "orangutan")
-	if m == "" || (s != nil && s["server"] != "ready") {
-		return ProjectModel{}, ErrWaiting{excuse(states, s)}
-	}
-	return ProjectModel{m, identity["orangutan"], setup(states)}, nil
 }
 
 // Purge the role's idle slots erased, asked of the host running it
@@ -998,6 +717,3 @@ func EraseSlots() (any, error) {
 	}
 	return map[string]any{"host": selfHost, "erased": erased, "busy": len(slots) - len(idle)}, nil
 }
-
-var _ = io.Discard
-var _ = json.Marshal

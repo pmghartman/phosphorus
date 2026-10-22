@@ -1,4 +1,4 @@
-// Package tools: opencode and llama-server, fetched on the model host alone
+// Package tools: llama-server, fetched on the model host alone
 // into the model volume, pinned to upstream's releases, gone once it stops
 // being the model host
 package tools
@@ -23,11 +23,9 @@ import (
 
 const (
 	// LlamaTag upstream's llama.cpp release
-	LlamaTag = "b11284"
-	// OpencodeTag upstream's opencode release
-	OpencodeTag = "v1.18.34"
-	retryAfter  = time.Minute
-	okStamp     = ".phosphorus-ok"
+	LlamaTag   = "b11284"
+	retryAfter = time.Minute
+	okStamp    = ".phosphorus-ok"
 )
 
 var (
@@ -37,32 +35,6 @@ var (
 
 // Root where every fetched tool lives
 func Root() string { return root }
-
-// OpencodeHome opencode's home on the model volume, the frontend and
-// phosphorus-model both mounting it
-func OpencodeHome() string {
-	return util.Env("OPENCODE_HOME", filepath.Join(filepath.Dir(root), "opencode"))
-}
-
-// OpencodeRun the opencode the frontend wants run by phosphorus-model, no Gen: none
-type OpencodeRun struct {
-	Gen  string   `json:"gen"`
-	Args []string `json:"args"`
-	Env  []string `json:"env"`
-	Dir  string   `json:"dir"`
-}
-
-// OpencodeState phosphorus-model's answer to a run
-type OpencodeState struct {
-	Gen string `json:"gen"`
-	Err string `json:"err,omitempty"`
-}
-
-// OpencodeRunFile the frontend's ask, read by phosphorus-model
-func OpencodeRunFile() string { return filepath.Join(OpencodeHome(), "run.json") }
-
-// OpencodeStateFile phosphorus-model's answer
-func OpencodeStateFile() string { return filepath.Join(OpencodeHome(), "state.json") }
 
 // Backend llama-server's gpu build: cuda on an nvidia gpu, vulkan for amd
 // and intel ones, metal on macOS, none with gpu off or off x64
@@ -125,27 +97,10 @@ func LlamaDir(gpu bool) string {
 	return filepath.Join(root, "llama-"+LlamaTag+"-"+llamaKind(gpu))
 }
 
-// OpencodeBin the opencode binary, OPENCODE_BIN overriding it
-func OpencodeBin() string {
-	if b := os.Getenv("OPENCODE_BIN"); b != "" {
-		return b
-	}
-	return filepath.Join(root, "opencode-"+OpencodeTag, exeName("opencode"))
-}
-
 // Ready a tool's folder fully unpacked
 func Ready(dir string) bool {
 	_, err := os.Stat(filepath.Join(dir, okStamp))
 	return err == nil
-}
-
-// OpencodeReady opencode here to run
-func OpencodeReady() bool {
-	if os.Getenv("OPENCODE_BIN") != "" {
-		_, err := os.Stat(OpencodeBin())
-		return err == nil
-	}
-	return Ready(filepath.Dir(OpencodeBin()))
 }
 
 type fetch struct {
@@ -174,20 +129,6 @@ func llamaFetch(gpu bool) fetch {
 	return fetch{LlamaDir(gpu), urls, 1}
 }
 
-func opencodeFetch() fetch {
-	base := "https://github.com/anomalyco/opencode/releases/download/" + OpencodeTag
-	var u string
-	switch runtime.GOOS {
-	case "darwin":
-		u = fmt.Sprintf("%s/opencode-darwin-%s.zip", base, map[string]string{"amd64": "x64", "arm64": "arm64"}[runtime.GOARCH])
-	case "windows":
-		u = base + "/opencode-windows-x64-baseline.zip"
-	default:
-		u = fmt.Sprintf("%s/opencode-linux-%s.tar.gz", base, map[string]string{"amd64": "x64-baseline", "arm64": "arm64"}[runtime.GOARCH])
-	}
-	return fetch{filepath.Dir(OpencodeBin()), []string{u}, 0}
-}
-
 // state of one tool: ready, fetching, or why it failed
 type state struct {
 	busy    bool
@@ -200,16 +141,27 @@ var (
 	states = map[string]*state{}
 )
 
-// Ensure both tools here, each fetched in the background once missing;
-// their states by name: ready, fetching or the failure
+// Ensure llama-server here, fetched in the background once missing; its
+// state by name: ready, fetching or the failure
 func Ensure(gpu bool) map[string]string {
-	out := map[string]string{}
-	for name, f := range map[string]fetch{"llama": llamaFetch(gpu), "opencode": opencodeFetch()} {
-		out[name] = ensure(f)
-	}
+	dropOpencode()
+	out := map[string]string{"llama": ensure(llamaFetch(gpu))}
 	prune(gpu)
 	return out
 }
+
+// dropOpencode, once per run, what older releases fetched for opencode: its
+// opencode-* folders under the tools root and its home on the model volume,
+// so the disk is handed back
+var dropOpencode = sync.OnceFunc(func() {
+	entries, _ := os.ReadDir(root)
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), "opencode-") {
+			os.RemoveAll(filepath.Join(root, e.Name()))
+		}
+	}
+	os.RemoveAll(filepath.Join(filepath.Dir(root), "opencode"))
+})
 
 func ensure(f fetch) string {
 	if Ready(f.dir) {
@@ -247,7 +199,7 @@ func ensure(f fetch) string {
 // every other version and build dropped, so an upgrade or a gpu switch
 // never leaves the old one on disk
 func prune(gpu bool) {
-	keep := map[string]bool{filepath.Base(LlamaDir(gpu)): true, filepath.Base(filepath.Dir(OpencodeBin())): true}
+	keep := map[string]bool{filepath.Base(LlamaDir(gpu)): true}
 	entries, _ := os.ReadDir(root)
 	mu.Lock()
 	defer mu.Unlock()
@@ -274,7 +226,7 @@ func Remove() {
 	if _, err := os.Stat(root); err == nil {
 		os.RemoveAll(root)
 	}
-	os.RemoveAll(OpencodeHome())
+	dropOpencode()
 }
 
 // install each tarball into dir.part, renamed to dir once all are in
