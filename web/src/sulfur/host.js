@@ -217,6 +217,8 @@ export async function sidecarInfo() {
 export function bootLocal(info) {
   standalone.mode = 'local';
   standalone.info = info;
+  standalone.server = info.server || '';
+  standalone.servers = info.servers || [];
   acct = { user: info.user, admin: true, boot: false, local: true };
   name = info.user;
   selfHost = info.host;
@@ -234,12 +236,16 @@ export function bootLocal(info) {
 
 // a mesh: its login, then its hosts as the state socket tells them; resolves
 // once the first state's in, null while nobody's logged in
-export async function bootMesh(server) {
+export async function bootMesh(server, info = null) {
   standalone.mode = 'mesh';
   standalone.server = server;
+  standalone.info = info;
+  standalone.servers = info?.servers || [];
   const me = await getJSON('/api/me');
   if (me.status === 401 || !me.ok || me.boot) return null;
   acct = { user: me.user, admin: !!me.admin, boot: false, vault: me.vault || { hosts: {} } };
+  standalone.meshUser = me.user;
+  standalone.meshVault = me.vault || { hosts: {}, pages: {} };
   name = me.user;
   dk.creds = new Map(Object.entries(acct.vault.hosts || {}).map(([h, c]) => [h, { user: c.user, pass: c.pass }]));
   standalone.logIn = async (host, user, pass) => {
@@ -304,3 +310,38 @@ export function locate(abs) {
 }
 standalone.nativePick = nativePick;
 standalone.locate = locate;
+
+// --- a mesh remembered while offline: its API under /api/mesh/ ------------------------
+
+// a mesh call's path: offline the remembered mesh's, through the app's own server
+export const meshUrl = (path) => (standalone.mode === 'local' ? `/api/mesh${path}` : path);
+
+// who the remembered mesh has logged in here, null if nobody (or no mesh)
+export async function meshMe() {
+  if (standalone.mode === 'local' && !standalone.server) return null;
+  const r = await getJSON(meshUrl('/api/me')).catch(() => null);
+  if (!r?.ok || r.boot) { standalone.meshUser = ''; return null; }
+  standalone.meshUser = r.user;
+  standalone.meshVault = r.vault || { hosts: {}, pages: {} };
+  return r;
+}
+export async function meshLogIn(user, pass) {
+  const r = await getJSON(meshUrl('/api/login'), jsonPost({ user, pass }));
+  if (r.ok) await meshMe();
+  return r;
+}
+export async function meshLogOut() {
+  await getJSON(meshUrl('/api/logout'), jsonPost({})).catch(() => null);
+  standalone.meshUser = '';
+}
+// the app's own server told: link (remember a mesh, stay offline), mesh (work on it), local
+export async function sidecarMode(mode, server = '') {
+  const r = await getJSON('/api/sidecar/mode', jsonPost({ mode, server }));
+  if (r.ok && r.server !== undefined) standalone.server = r.server;
+  return r;
+}
+standalone.meshUrl = meshUrl;
+standalone.meshMe = meshMe;
+standalone.meshLogIn = meshLogIn;
+standalone.meshLogOut = meshLogOut;
+standalone.sidecarMode = sidecarMode;

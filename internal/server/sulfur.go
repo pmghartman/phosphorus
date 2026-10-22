@@ -1,9 +1,11 @@
 package server
 
 // Sulfur's calls: a host's toolchains, a folder of a host published as a
-// share for projects, and a build streamed from a host as its own terminal
+// share for projects, a build streamed from a host as its own terminal, git in
+// a host's folder for Source Control, and the mesh's Forgejo as the user
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/url"
@@ -21,7 +23,7 @@ var absDirRe = regexp.MustCompile(`^(/|[A-Za-z]:\\)`)
 
 // sulfurRoute Sulfur's REST, false for a path that isn't one
 func sulfurRoute(w http.ResponseWriter, r *http.Request, pathname string, q url.Values) bool {
-	if pathname != "/api/sulfur/toolchains" && pathname != "/api/sulfur/share" {
+	if pathname != "/api/sulfur/toolchains" && pathname != "/api/sulfur/share" && pathname != "/api/sulfur/git" && pathname != "/api/sulfur/forgejo" {
 		return false
 	}
 	if !isLocalOrPeer(r) || (r.Method != "GET" && !sameOrigin(r)) {
@@ -48,6 +50,10 @@ func sulfurRoute(w http.ResponseWriter, r *http.Request, pathname string, q url.
 			return true
 		}
 		sendJSON(w, 200, t)
+	case pathname == "/api/sulfur/git" && r.Method == "POST":
+		onJSON(w, r, maxJSONBody, true, func(p map[string]any) (int, any) { return sulfurGit(s, p) })
+	case pathname == "/api/sulfur/forgejo" && r.Method == "POST":
+		onJSON(w, r, maxJSONBody, true, func(p map[string]any) (int, any) { return sulfurForgejo(s, p) })
 	case pathname == "/api/sulfur/share" && r.Method == "POST":
 		if !s.Admin {
 			sendJSON(w, 403, map[string]any{"error": "only an admin publishes a folder"})
@@ -197,4 +203,82 @@ func runTask(ws *wsock.Conn, s *users.Session) {
 	code := wait()
 	ws.JSON(map[string]any{"type": "exit", "code": code})
 	ws.Close(4000)
+}
+
+// gitLogin the user's Forgejo login, for git's https to the mesh's own Forgejo alone
+func gitLogin(s *users.Session) *sulfur.GitCreds {
+	if baseDomain == "" {
+		return nil
+	}
+	host := "git." + baseDomain
+	user, pass, ok := users.PageLogin(s, "git", "//"+host)
+	if !ok {
+		return nil
+	}
+	return &sulfur.GitCreds{Host: host, User: user, Pass: pass}
+}
+
+// sulfurGit {host, dir, args}: git in dir on host, as the user's saved login
+// there, their Forgejo login handed to git for the mesh's Forgejo
+func sulfurGit(s *users.Session, p map[string]any) (int, any) {
+	host, dir := str(p["host"]), str(p["dir"])
+	args := []string{}
+	for _, a := range anyList(p["args"]) {
+		args = append(args, str(a))
+	}
+	if !absDirRe.MatchString(dir) && !(len(args) > 0 && args[0] == "clone") {
+		return 400, map[string]any{"error": "a full path to the folder"}
+	}
+	c, err := codeLogin(s, host)
+	if err != nil {
+		return 400, map[string]any{"error": err.Error()}
+	}
+	r, err := sulfur.GitRemote(host, c, dir, args, absDirRe.MatchString(dir) && !strings.HasPrefix(dir, "/"), gitLogin(s))
+	if err != nil {
+		return 502, map[string]any{"error": err.Error(), "out": r.Out, "err": r.Err}
+	}
+	return 200, r
+}
+
+// sulfurForgejo {method, path, body}: the mesh's Forgejo API as the user, with
+// the Forgejo login saved in their vault; its domain and who it is said too
+func sulfurForgejo(s *users.Session, p map[string]any) (int, any) {
+	if baseDomain == "" {
+		return 503, map[string]any{"error": "the mesh has no domain, so no Forgejo"}
+	}
+	creds := gitLogin(s)
+	if creds == nil {
+		return 403, map[string]any{"error": "save your Forgejo login as the page login git in your vault (the desktop's settings), and Sulfur uses it"}
+	}
+	path := "/" + strings.TrimPrefix(strings.TrimPrefix(str(p["path"]), "/"), "api/v1/")
+	if strings.Contains(path, "..") {
+		return 400, map[string]any{"error": "path holds .."}
+	}
+	method := strings.ToUpper(str(p["method"]))
+	if method == "" {
+		method = "GET"
+	}
+	if method != "GET" && method != "POST" && method != "PATCH" && method != "PUT" && method != "DELETE" {
+		return 400, map[string]any{"error": "a method Forgejo takes"}
+	}
+	body := ""
+	switch b := p["body"].(type) {
+	case nil:
+	case string:
+		body = b
+	default:
+		body = string(util.Marshal(b))
+	}
+	hs := map[string]string{"Accept": "application/json", "Content-Type": "application/json",
+		"Authorization": "Basic " + base64.StdEncoding.EncodeToString([]byte(creds.User+":"+creds.Pass))}
+	st, out := svcRequest("", "git", method, "/api/v1"+path, hs, body)
+	o := util.Obj(out)
+	if st != 200 {
+		return st, o
+	}
+	reply := o["json"]
+	if reply == nil {
+		reply = o["text"]
+	}
+	return 200, map[string]any{"status": o["status"], "body": reply, "domain": baseDomain, "host": creds.Host, "user": creds.User}
 }

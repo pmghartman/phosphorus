@@ -1,54 +1,31 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
-  <!-- Sulfur's mark: the alchemists' sulfur, 🜍, a triangle over a cross, in deep
-       ink on a tile of sulfur's own yellow burning to orange, a glass sheen on
-       top; on the macOS icon grid (824 on 1024), the source every platform's
-       icon is made from (tauri icon icon.svg) -->
+  <!-- Sulfur's mark: the alchemists' sulfur, 🜍, a triangle over a cross, drawn as
+       folded bands in the manner of Visual Studio's: each of the triangle's bands
+       over one corner and under the next, the bar over the stem, each a flat facet
+       of one warm family with a soft shadow where it passes under, on nothing.
+       The source every platform's icon is made from (tauri icon icon.svg) -->
   <defs>
-    <linearGradient id="tile" x1="0.15" y1="0" x2="0.85" y2="1">
-      <stop offset="0" stop-color="#fff07a"/>
-      <stop offset="0.45" stop-color="#ffc22e"/>
-      <stop offset="1" stop-color="#ff7417"/>
-    </linearGradient>
-    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#ffffff" stop-opacity="0.55"/>
-      <stop offset="0.42" stop-color="#ffffff" stop-opacity="0.08"/>
-      <stop offset="0.43" stop-color="#ffffff" stop-opacity="0"/>
-    </linearGradient>
-    <radialGradient id="ember" cx="0.78" cy="0.92" r="0.75">
-      <stop offset="0" stop-color="#e2470a" stop-opacity="0.45"/>
-      <stop offset="1" stop-color="#e2470a" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="ink" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#4a2606"/>
-      <stop offset="1" stop-color="#2a1203"/>
-    </linearGradient>
-    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#ffffff" stop-opacity="0.7"/>
-      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0.1"/>
-      <stop offset="1" stop-color="#7a2c00" stop-opacity="0.25"/>
-    </linearGradient>
-    <filter id="lift" x="-20%" y="-20%" width="140%" height="150%">
-      <feDropShadow dx="0" dy="14" stdDeviation="16" flood-color="#2b1200" flood-opacity="0.32"/>
-    </filter>
-    <filter id="press" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="6" stdDeviation="6" flood-color="#9c3a00" flood-opacity="0.45"/>
-    </filter>
-    <clipPath id="sq"><rect x="100" y="100" width="824" height="824" rx="186"/></clipPath>
+    <linearGradient id="light" x1="1" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd760"/><stop offset="1" stop-color="#ffc845"/></linearGradient>
+    <linearGradient id="mid" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffb431"/><stop offset="1" stop-color="#fa9d1c"/></linearGradient>
+    <linearGradient id="deep" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#ee8017"/><stop offset="1" stop-color="#e36f10"/></linearGradient>
+    <linearGradient id="stem" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#dd6a0e"/><stop offset="1" stop-color="#e87a14"/></linearGradient>
+    <linearGradient id="bar" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffc64a"/><stop offset="1" stop-color="#fdb130"/></linearGradient>
+    <filter id="soft" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="16"/></filter>
+    <filter id="drop" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#5a2400" flood-opacity="0.2"/></filter>
+    <clipPath id="c-left"><polygon points="567.1,190.0 512.0,100.0 247.5,532.0 357.8,532.0"/></clipPath>
+    <clipPath id="c-base"><polygon points="247.5,532.0 190.0,626.0 723.8,626.0 666.2,532.0"/></clipPath>
+    <clipPath id="c-right"><polygon points="723.8,626.0 834.0,626.0 567.1,190.0 512.0,280.0"/></clipPath>
+    <clipPath id="c-stem"><polygon points="464.0,600.0 560.0,600.0 560.0,930.0 464.0,930.0"/></clipPath>
   </defs>
-
-  <!-- the tile, its glass and its edge -->
-  <g filter="url(#lift)">
-    <rect x="100" y="100" width="824" height="824" rx="186" fill="url(#tile)"/>
-  </g>
-  <g clip-path="url(#sq)">
-    <rect x="100" y="100" width="824" height="824" fill="url(#ember)"/>
-    <ellipse cx="512" cy="150" rx="560" ry="420" fill="url(#sheen)"/>
-  </g>
-  <rect x="102" y="102" width="820" height="820" rx="184" fill="none" stroke="url(#rim)" stroke-width="4"/>
-
-  <!-- the glyph, pressed into the tile -->
-  <g filter="url(#press)" fill="none" stroke="url(#ink)" stroke-linecap="round" stroke-linejoin="round" stroke-width="66">
-    <path d="M512 238 L690 536 L334 536 Z"/>
-    <path d="M512 536 V796 M402 676 H622"/>
+  <g filter="url(#drop)" stroke-linejoin="round" stroke-width="12">
+    <polygon points="464.0,600.0 560.0,600.0 560.0,930.0 464.0,930.0" fill="url(#stem)" stroke="url(#stem)"/>
+    <g clip-path="url(#c-stem)"><polygon points="464.0,738.0 560.0,738.0 560.0,684.0 464.0,684.0" fill="#6e2a00" opacity="0.24" filter="url(#soft)"/></g>
+    <polygon points="354.0,744.0 670.0,744.0 670.0,836.0 354.0,836.0" fill="url(#bar)" stroke="url(#bar)"/>
+    <polygon points="247.5,532.0 190.0,626.0 723.8,626.0 666.2,532.0" fill="url(#deep)" stroke="url(#deep)"/>
+    <g clip-path="url(#c-base)"><polygon points="723.8,626.0 666.2,532.0 596.2,532.0 653.8,626.0" fill="#6e2a00" opacity="0.22" filter="url(#soft)"/></g>
+    <polygon points="567.1,190.0 512.0,100.0 247.5,532.0 357.8,532.0" fill="url(#mid)" stroke="url(#mid)"/>
+    <g clip-path="url(#c-left)"><polygon points="247.5,532.0 357.8,532.0 394.3,472.3 284.1,472.3" fill="#6e2a00" opacity="0.2" filter="url(#soft)"/></g>
+    <polygon points="723.8,626.0 834.0,626.0 567.1,190.0 512.0,280.0" fill="url(#light)" stroke="url(#light)"/>
+    <g clip-path="url(#c-right)"><polygon points="567.1,190.0 512.0,280.0 548.5,339.7 603.7,249.7" fill="#6e2a00" opacity="0.2" filter="url(#soft)"/></g>
   </g>
 </svg>

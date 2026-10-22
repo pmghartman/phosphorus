@@ -201,7 +201,14 @@ Claude Code and opencode are built in: they run in the project on one of your ma
 
 ## Builds and tasks
 
-**Ctrl+B** builds the project. The first time, Sulfur looks at what the project is (CMake, a .NET solution or project, MSBuild, Cargo, Go, npm, Make, Meson, Python) and at the compilers each of your machines has, then asks which to build with. The pick is kept in the project's `.sulfur/build.json`, so it goes with the project when it's copied:
+**Ctrl+B** builds the project. The first time, Sulfur looks at what the project is (CMake, a .NET solution or project, MSBuild, Cargo, Go, npm, Make, Meson, Python) and at the compilers each of your machines has. Where the project says how it builds, as Visual Studio reads it, Sulfur builds that way without asking:
+
+- **CMakeSettings.json**: its configurations (`x64-Debug`, `x64-Release`, …) are the configurations, each built in its own `buildRoot` with its generator, variables and arguments, under the Visual Studio that configured its tree (the compiler in its `CMakeCache.txt`) and that Visual Studio's own CMake.
+- **CMakePresets.json** and **CMakeUserPresets.json**: the presets are the configurations, built with `cmake --preset` and their build presets.
+- **A tree already configured** (`build`, `out/build/*`, `cmake-build-*` with a `CMakeCache.txt`): built again as it was configured, incrementally.
+- **A solution**: C++ in it (`.vcxproj`) builds with MSBuild under the Visual Studio its `# Visual Studio Version` names; C# alone with `dotnet`. Its own configurations (`Debug|Any CPU`, `Release|x64`, …) are the configurations, and `global.json`'s SDK is said if it's not installed.
+
+Otherwise it asks which to build with. **Run › Select Toolchain…** always asks. The pick is kept in the project's `.sulfur/build.json`, so it goes with the project when it's copied:
 
 ```json
 {
@@ -218,8 +225,9 @@ Claude Code and opencode are built in: they run in the project on one of your ma
 | field | meaning |
 |---|---|
 | `host` | The machine the build runs on, under your login there. |
-| `toolchain` | What builds it, as the picker wrote it. Its `id` picks the built-in tasks: `cmake-msvc`, `cmake-gcc`, `cmake-clang`, `dotnet`, `msbuild`, `cargo`, `go`, `npm`, `make`, `meson` or `python`. An MSVC toolchain also carries `vcvars`, the Visual Studio script each task runs under. |
-| `configuration` | `Debug` or `Release`. |
+| `toolchain` | What builds it, as the picker wrote it. Its `id` picks the built-in tasks: `cmake-vs` (CMakeSettings.json), `cmake-preset`, `cmake-tree` (a configured tree, its `dir`), `cmake-msvc`, `cmake-gcc`, `cmake-clang`, `dotnet`, `msbuild`, `cargo`, `go`, `npm`, `make`, `meson` or `python`. An MSVC toolchain also carries `vcvars`, the Visual Studio script each task runs under, and `cmake`, that Visual Studio's own CMake. |
+| `configuration` | The project's own configuration: a CMakeSettings configuration or preset's name, a solution's `Debug\|Any CPU`, else `Debug` or `Release`. **Run › Select Configuration…** lists them. |
+| `startup` | What **Ctrl+F5** (Run › Start Without Debugging) runs: `{label, command, build}`, the project built first when `build` is true. Asked for the first time from what the build made (its programs, a .NET project's `dotnet run`, `cargo run`, `npm start`), **Run › Select Startup Item…** to change it. |
 | `defaultTask` | The task Ctrl+B runs, by id: `build`, `rebuild`, `test`, … |
 | `tasks` | Your own tasks: `{label, command, group}`, the command run in the project's folder. `group` is `build`, `test`, `run` or `other`. |
 
