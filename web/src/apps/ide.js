@@ -1302,11 +1302,23 @@ function openFile(rel, o = {}) {
   }
   const x = extOf(p);
   const kind = IMAGE_EXT.has(x) ? 'image' : BINARY_EXT.has(x) && !o.anyway ? 'binary' : 'code';
-  const host = o.host && homeOnline().includes(o.host) ? o.host : homePick(p);
-  t = addTab({ kind, rel: p, host, title: baseName(p), preview }, index);
-  if (kind === 'code') mountCode(t);
-  else if (kind === 'image') mountImage(t);
-  else mountBinary(t);
+  const known = o.host && homeOnline().includes(o.host) ? o.host : '';
+  t = addTab({ kind, rel: p, host: known || homePick(p), title: baseName(p), preview }, index);
+  // the session opened on a host holding the file: one named, else the folder
+  // listed first, so a file only elsewhere never opens empty here
+  if (known) mountKind(t);
+  else {
+    t.view.append(el('div', 'ide-loading', 'opening…'));
+    holdersOf(p).then((hs) => {
+      if (!I || !I.tabs.includes(t)) return;
+      t.host = hs.includes(selfHost) ? selfHost : hs[0] || homePick(p);
+      t.view.replaceChildren();
+      mountKind(t);
+      paintEditors();
+      if (t === I.active) { t.ed?.show(); if (t.wantFocus) focusTab(t); }
+    });
+  }
+  t.wantFocus = o.focus !== false;
   placeCaret(t, o);
   emit('open', { path: p });
   I.st.recent = [p, ...I.st.recent.filter((r) => r !== p)].slice(0, 30);
@@ -1374,6 +1386,12 @@ function addTab(t, index) {
   return t;
 }
 
+function mountKind(t) {
+  if (t.kind === 'code') mountCode(t);
+  else if (t.kind === 'image') mountImage(t);
+  else mountBinary(t);
+}
+
 function mountCode(t) {
   const file = { host: t.host, share: 'home', path: t.rel, label: `${t.host}/home/${t.rel}` };
   t.edId = `ide-code-${(edSeq += 1)}`;
@@ -1413,7 +1431,7 @@ function mountBinary(t) {
 
 // a jump asked for before the text's in: held until it is
 function placeCaret(t, o) {
-  if (!t.ed || (!o.select && !o.line)) return;
+  if (!o.select && !o.line) return;
   t.pendingSel = o.select || { line: o.line, col: o.col || 1 };
   if (t.info?.ready) applyPending(t);
 }
@@ -2272,7 +2290,7 @@ function helpItems() {
 
 function fileItems(q) {
   const [name, line] = q.split(':');
-  const go = (p, hosts) => () => openFile(p, { preview: false, host: hosts?.[0], line: Number(line) || undefined });
+  const go = (p, hosts) => () => openFile(p, { preview: false, host: hosts?.includes(selfHost) ? selfHost : hosts?.[0], line: Number(line) || undefined });
   const rel = (p) => (under(p, I.st.root) ? p.slice(I.st.root.length + 1) : p);
   if (!name) {
     const items = I.st.recent.filter((p) => inScope(p)).slice(0, 30).map((p, i) => ({ label: baseName(p), description: filesParent(rel(p)), ic: p, sep: i === 0 ? 'recently opened' : '', accept: go(p) }));
@@ -3701,7 +3719,7 @@ function buildSearch() {
 // a hit opened at its line, its match picked out once the text's in
 function openMatch(r, m) {
   const t = openFile(r.path, { preview: true, host: r.host, focus: true });
-  if (!t?.ed) return;
+  if (!t || t.kind !== 'code') return;
   const q = I.search.S.query;
   t.pendingSel = null;
   const place = () => {
