@@ -273,52 +273,6 @@ func agentTools() []tool {
 				}
 				return pressed(src.Actions.Config(h, map[string]any{"op": "ini", "section": a["section"], "key": a["key"], "value": a["value"], "dry_run": a["dry_run"]}))
 			}},
-		{name: "chat_wait", read: true, scope: "key",
-			description: "Wait for new chat lines: in a channel, a direct message with someone (dm:<name>), or anywhere you can read, " +
-				"returning as soon as one lands or after wait_s with none. Pass since (the ms of the last line you saw) to never miss one. " +
-				"For waiting on a reply after send_message.",
-			schema: object(map[string]any{
-				"channel": map[string]any{"type": "string", "description": "mesh, a channel, or dm:<name>; blank for all"},
-				"since":   map[string]any{"type": "integer", "description": "only lines after this ms, default now"},
-				"wait_s":  map[string]any{"type": "integer", "description": fmt.Sprintf("seconds to wait, up to %d", chatWaitMax), "default": 60}}),
-			run: func(a map[string]any, m Meta) (any, error) {
-				want := strings.TrimPrefix(str(a["channel"]), "#")
-				if err := channelKnown(m, want); err != nil {
-					return nil, err
-				}
-				// only a missing since means now, 0 the whole history
-				since := time.Now().UnixMilli()
-				if v, ok := a["since"]; ok && v != nil {
-					since = int64(files.JSNumber(v))
-				}
-				end := time.Now().Add(time.Duration(math.Min(chatWaitMax, math.Max(1, numOr(a["wait_s"], 60)))) * time.Second)
-				for {
-					fresh := []map[string]any{}
-					for _, r := range chatRows(m, want) {
-						if r["ms"].(int64) > since {
-							fresh = append(fresh, r)
-						}
-					}
-					if len(fresh) > 0 || time.Now().After(end) {
-						return map[string]any{"lines": fresh, "now": time.Now().UnixMilli()}, nil
-					}
-					time.Sleep(time.Second)
-				}
-			}},
-		{name: "notify", scope: "key",
-			description: "A notification on your own open Phosphorus windows: the client's native one, or the browser's when allowed. " +
-				"For telling the person something finished or needs them while they're elsewhere.",
-			schema: object(map[string]any{"title": map[string]any{"type": "string"}, "body": map[string]any{"type": "string"}}, "title"),
-			run: func(a map[string]any, m Meta) (any, error) {
-				as, err := askerOf(m)
-				if err != nil {
-					return nil, err
-				}
-				if !as.UI(map[string]any{"kind": "notify", "title": clip(str(a["title"]), 120), "body": clip(str(a["body"]), 400)}) {
-					return nil, errors.New("no Phosphorus window of yours is open")
-				}
-				return map[string]any{"sent": true}, nil
-			}},
 		{name: "service_request", scope: "key", open: true,
 			description: "One HTTP request to a web service published on the mesh, straight to it over the tailnet, past phosphorus's login: " +
 				"its API by path. headers carry the service's own auth when it wants one (e.g. an API token the person gave you). " +
@@ -402,21 +356,25 @@ func meshHosts() []string {
 func describe() {
 	d := map[string]string{
 		"mesh_hosts": "Start here. Every device on the mesh's tailnet: name, OS, whether it runs phosphorus (only those are hosts you can act on), " +
-			"plus this host and the mesh's domain. Host names from here are what every other tool's host takes.",
+			"plus this host and the mesh's domain. Host names from here are what every other tool's host takes. " +
+			"health true adds each phosphorus host's health: answering, version, round trip in ms and its Cloudflare tunnel.",
 		"services": "Every web service and game server published on the mesh: host, name, port, mode, public, and the URL a person opens. " +
+			"With host and name, that one service checked right now instead: listening, its HTTP status, published or why not. " +
 			"service_request calls one's API; game_power starts or stops a game.",
 		"host_stats": "One host right now: cpu, memory and disk with percents, gpu, network, phosphorus's own parts by role and the top processes. " +
 			"No host: one row of percents per host at once, the cheap way to scan the mesh before drilling into one.",
 		"git": "The git (Forgejo) hosts: which is master, which are replicas, how far behind each is, reachable or not.",
 		"files_list": "Browse files shared to the mesh. No host: every host's shares and their rwd perms. A host: its shares. A host and share: " +
-			"entries to depth levels (folders end in /), match a name glob like *.jpg. files_search finds things across everything at once.",
+			"entries to depth levels (folders end in /), match a name glob like *.jpg. stat true with a path: that one file or folder's " +
+			"existence, size and mtime, cheaper than reading it. files_search finds things across everything at once.",
 		"files_read": "Read a text file from a share, 12000 characters a page; from is the next page's offset when there's more. Binary and over-512KB files are only described.",
 		"files_write": "Write a text file in a share with w perm: text for the whole file (made if missing), or old and new to replace one exact passage " +
 			"found once in it (read it first). If someone has it open in an editor, the change shows there live.",
 		"files_change": "Organize a share within its perms: mkdir, rename or move (to ending in / moves into that folder), delete (permanent). " +
 			"Several in steps run in order and stop at the first failure.",
 		"chat_history": "The last chat lines, oldest first: channels (mesh is the main one), and on a key your own direct messages as dm:<name>. " +
-			"Each line has its ms for chat_wait's since.",
+			"Each line has its ms. On a key, wait_s waits for lines newer than since (that ms), returning as soon as one lands: " +
+			"for a reply after send_message.",
 		"send_message": "Post to the mesh chat, or a direct message to one person by their chat name. On a key it's posted as you.",
 		"open_file": "Open a share's text or code file in an editor tab on the person's Phosphorus window (on a key, every window of yours that's open). " +
 			"Highlighted, syntax errors marked; nothing in it runs.",
@@ -424,7 +382,7 @@ func describe() {
 		"show_file":       "Invite a person into a share's file in the shared editor: they get a dialog and a notification, and it opens in a tab on accepting.",
 		"terminal_screen": "Read the screen and recent scrollback of the person's terminal tabs that are shared with phosphorus on one host. wait_s waits for new output first.",
 		"game_power":      "Start or stop a game server, running only the start or stop command its service declares.",
-		"update_status":   "The mesh update: whether one runs, who started it, each host's step and result.",
+		"update_status":   "The mesh update: whether one runs, who started it, each host's step and result. history true adds the last fifty started from this host with any errors.",
 		"update_control":  "Start a mesh update on an admin's key, continue a paused one, or cancel the running one. update_status follows it. Admins only.",
 		"make_git_master": "Make a git host the master: the live one hands off, or with none it's force-promoted. Returns once it leads (up to 30s); never press it twice. Admins only.",
 		"set_model_role":  "Pick the chimp's (chat) or orangutan's (projects) model mesh-wide: provider/model, phosphorus/<host> for a mesh host's own, blank for the default. Admins only.",
@@ -455,4 +413,26 @@ func arr(v any) []any {
 	var out []any
 	json.Unmarshal(util.Marshal(v), &out)
 	return out
+}
+
+// chatWait chat lines after since in want, as soon as one lands or after wait_s with none
+func chatWait(a map[string]any, m Meta, want string) map[string]any {
+	// only a missing since means now, 0 the whole history
+	since := time.Now().UnixMilli()
+	if v, ok := a["since"]; ok && v != nil {
+		since = int64(files.JSNumber(v))
+	}
+	end := time.Now().Add(time.Duration(math.Min(chatWaitMax, math.Max(1, numOr(a["wait_s"], 60)))) * time.Second)
+	for {
+		fresh := []map[string]any{}
+		for _, r := range chatRows(m, want) {
+			if r["ms"].(int64) > since {
+				fresh = append(fresh, r)
+			}
+		}
+		if len(fresh) > 0 || time.Now().After(end) {
+			return map[string]any{"lines": fresh, "now": time.Now().UnixMilli()}
+		}
+		time.Sleep(time.Second)
+	}
 }
