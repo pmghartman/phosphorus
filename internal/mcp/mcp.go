@@ -392,6 +392,9 @@ type Caller struct {
 	Login func(host string) (user, pass string, ok bool)
 	// Pages the page logins the key carries by name: url, user, pass
 	Pages func() map[string]any
+	// Hosts the hosts the key carries a saved login for
+	Hosts func() []string
+	g     *grants
 }
 
 // Meta an ask's context: its asker, role and project, or a keyed caller
@@ -542,7 +545,7 @@ type tool struct {
 func visible(t *tool, local bool, caller *Caller) bool {
 	switch {
 	case caller != nil:
-		return !t.project && t.scope != "ask" && (!t.admin || caller.Admin)
+		return !t.project && t.scope != "ask" && withheld(t, caller) == ""
 	case local:
 		return t.scope != "key"
 	}
@@ -1265,7 +1268,7 @@ func one(raw any, local bool, caller *Caller) map[string]any {
 		if caller != nil {
 			noteClient(caller.User, str(util.Obj(params["clientInfo"])["name"]))
 		}
-		return initialize(id, params)
+		return initialize(id, params, caller)
 	case method == "ping":
 		return reply(id, map[string]any{})
 	case local && strings.HasPrefix(method, "phosphorus/"):
@@ -1278,7 +1281,7 @@ func one(raw any, local bool, caller *Caller) map[string]any {
 	return fail(id, -32601, "no method "+method)
 }
 
-func initialize(id any, params map[string]any) map[string]any {
+func initialize(id any, params map[string]any, caller *Caller) map[string]any {
 	pv := params["protocolVersion"]
 	if !util.Truthy(pv) {
 		pv = protocol
@@ -1287,9 +1290,18 @@ func initialize(id any, params map[string]any) map[string]any {
 		"protocolVersion": pv, "capabilities": map[string]any{"tools": map[string]any{}},
 		"serverInfo": map[string]any{"name": "phosphorus", "title": "Phosphorus", "version": src.Self()["version"],
 			"icons": []any{map[string]any{"src": iconURI, "mimeType": "image/png", "sizes": []any{"128x128"}}}},
-		"instructions": "phosphorus, a self-hosted mesh: search the web, read its hosts, services, stats, git, models, chat " +
-			"and updates, its buttons and messages pressed and sent only for a person asking phosphorus.",
+		"instructions": instructions(caller),
 	})
+}
+
+// instructions the server's, and on a key what that key can and can't do
+func instructions(caller *Caller) string {
+	s := "phosphorus, a self-hosted mesh: read its hosts, services, stats, git, models, chat and updates, its buttons " +
+		"and messages pressed and sent only for a person asking phosphorus."
+	if caller != nil {
+		s += keyNote(caller)
+	}
+	return s
 }
 
 // askMeta the ask a local call carries in _ask, nil for none
@@ -1346,10 +1358,8 @@ func hook(id any, method string, params map[string]any) map[string]any {
 func toolList(local bool, caller *Caller) []any {
 	key := "peer"
 	switch {
-	case caller != nil && caller.Admin:
-		key = "admin"
 	case caller != nil:
-		key = "key"
+		key = "key|" + caller.grants().sig()
 	case local:
 		key = "local"
 	}
@@ -1366,7 +1376,11 @@ func toolList(local bool, caller *Caller) []any {
 		if !t.read {
 			ann["destructiveHint"] = t.destructive
 		}
-		list = append(list, map[string]any{"name": t.name, "description": t.description, "inputSchema": t.schema, "annotations": ann})
+		desc := t.description
+		if caller != nil {
+			desc = keyDescription(t, caller)
+		}
+		list = append(list, map[string]any{"name": t.name, "description": desc, "inputSchema": t.schema, "annotations": ann})
 	}
 	listed.Store(key, list)
 	return list
@@ -1407,6 +1421,11 @@ func callTool(id any, params map[string]any, local bool, caller *Caller) map[str
 	errText := ""
 	name, _ := params["name"].(string)
 	t := toolIndex[name]
+	if t != nil && caller != nil && !t.project && t.scope != "ask" {
+		if why := withheld(t, caller); why != "" {
+			return fail(id, -32602, fmt.Sprintf("%s is off this key: %s", name, why))
+		}
+	}
 	if t == nil || !visible(t, local, caller) {
 		return fail(id, -32602, fmt.Sprintf("no tool %s", util.JSString(params["name"])))
 	}
