@@ -1,10 +1,7 @@
 // sulfur: Sulfur's own server on this computer, started by its desktop app.
-// It serves Sulfur alone, no desktop around it, and behind the page either
-// this computer (offline: its files, terminals, builds and compilers) or a
-// Phosphorus server it proxies, so the page is the same either way.
-// It starts offline; a mesh once connected to is remembered, and stays reachable
-// offline under /api/mesh/, for its agents, models and Forgejo on this computer's
-// own projects. Only on 127.0.0.1, and only to its own page: every request's
+// It serves this computer's files, terminals, builds and compilers at all times.
+// A remembered mesh is reachable beside them under /api/mesh/, for its machines,
+// agents, models and Forgejo. Only on 127.0.0.1, and only to its own page: every request's
 // Host and Origin held to it, so no other site in a browser reaches it.
 package main
 
@@ -162,8 +159,8 @@ type config struct {
 var (
 	cfgMu sync.Mutex
 	cfg   config
-	proxy *httputil.ReverseProxy
-	// the remembered mesh's proxy under /api/mesh/, offline
+	// the remembered mesh's proxy under /api/mesh/: its machines, agents and
+	// Forgejo beside this computer's own, never instead of them
 	link *httputil.ReverseProxy
 )
 
@@ -183,11 +180,8 @@ func loadConfig() {
 	if err == nil {
 		json.Unmarshal(b, &cfg)
 	}
-	if cfg.Mode == "mesh" && cfg.Server != "" {
-		proxy = meshProxy(cfg.Server, "")
-	} else {
-		cfg.Mode = "local"
-	}
+	// one mode: this computer always, a mesh beside it (an older "mesh" pick so too)
+	cfg.Mode = "local"
 	if cfg.Server != "" {
 		link = meshProxy(cfg.Server, "/api/mesh")
 	}
@@ -215,14 +209,6 @@ func sidecar(w http.ResponseWriter, r *http.Request) {
 		}
 		switch p.Mode {
 		case "local", "":
-			cfgMu.Lock()
-			cfg.Mode, proxy = "local", nil
-			err := saveConfig()
-			cfgMu.Unlock()
-			if err != nil {
-				send(w, 500, errB(err.Error()))
-				return
-			}
 			send(w, 200, map[string]any{"mode": "local"})
 		case "mesh", "link":
 			u, err := serverURL(p.Server)
@@ -235,10 +221,7 @@ func sidecar(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			cfgMu.Lock()
-			// link: the mesh remembered and reachable under /api/mesh/, Sulfur kept offline
-			if p.Mode == "mesh" {
-				cfg.Mode = "mesh"
-			}
+			// the mesh remembered and reachable under /api/mesh/
 			cfg.Server = u.String()
 			list := []string{cfg.Server}
 			for _, s := range cfg.Servers {
@@ -248,9 +231,6 @@ func sidecar(w http.ResponseWriter, r *http.Request) {
 			}
 			cfg.Servers = list
 			link = meshProxy(cfg.Server, "/api/mesh")
-			if cfg.Mode == "mesh" {
-				proxy = meshProxy(cfg.Server, "")
-			}
 			err = saveConfig()
 			cfgMu.Unlock()
 			if err != nil {
@@ -259,7 +239,7 @@ func sidecar(w http.ResponseWriter, r *http.Request) {
 			}
 			send(w, 200, map[string]any{"mode": cfg.Mode, "server": u.String()})
 		default:
-			send(w, 400, errB("mode is local or mesh"))
+			send(w, 400, errB("use link to connect a mesh"))
 		}
 	case r.URL.Path == "/api/sidecar/forget" && r.Method == "POST":
 		var p struct{ Server string }
@@ -274,9 +254,6 @@ func sidecar(w http.ResponseWriter, r *http.Request) {
 		cfg.Servers = out
 		if cfg.Server == p.Server {
 			cfg.Server, link = "", nil
-			if cfg.Mode == "mesh" {
-				cfg.Mode, proxy = "local", nil
-			}
 		}
 		saveConfig()
 		cfgMu.Unlock()
@@ -410,7 +387,7 @@ var (
 
 func api(w http.ResponseWriter, r *http.Request) {
 	cfgMu.Lock()
-	mode, p, l := cfg.Mode, proxy, link
+	l := link
 	cfgMu.Unlock()
 	if strings.HasPrefix(r.URL.Path, "/api/mesh/") {
 		if l == nil {
@@ -426,14 +403,6 @@ func api(w http.ResponseWriter, r *http.Request) {
 		r2 := r.Clone(r.Context())
 		r2.URL.Path, r2.URL.RawPath = strings.TrimPrefix(r.URL.Path, "/api/local"), ""
 		localAPI(w, r2)
-		return
-	}
-	if mode == "mesh" && p != nil {
-		p.ServeHTTP(w, r)
-		return
-	}
-	if mode != "local" {
-		send(w, 409, errB("pick offline or a server first"))
 		return
 	}
 	localAPI(w, r)
@@ -485,7 +454,7 @@ func localAPI(w http.ResponseWriter, r *http.Request) {
 	case filesRe.MatchString(path):
 		m := filesRe.FindStringSubmatch(path)
 		if m[1] != me.Host {
-			send(w, 404, errB(m[1]+" isn't this computer: offline, Sulfur reaches only its own"))
+			send(w, 404, errB(m[1]+" isn't this computer: use the linked mesh API for its machines"))
 			return
 		}
 		filesOp(w, r, m[2], q)
@@ -498,9 +467,9 @@ func localAPI(w http.ResponseWriter, r *http.Request) {
 			terminal(ws, q.Get("sid"), atoi(q.Get("since")))
 		}
 	case strings.HasPrefix(path, "/api/code/"):
-		send(w, 503, errB("Sulfur is offline: the chat's agents work through a Phosphorus mesh"))
+		send(w, 503, errB("The chat's agents work through a linked Phosphorus mesh"))
 	default:
-		send(w, 404, errB("offline, Sulfur has no "+path))
+		send(w, 404, errB("This computer has no "+path))
 	}
 }
 
