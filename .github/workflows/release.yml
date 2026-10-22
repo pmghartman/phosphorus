@@ -30,7 +30,7 @@ on:
         type: boolean
         default: false
       sulfur:
-        description: "Sulfur code editor app, for every OS"
+        description: "Sulfur IDE"
         type: boolean
         default: true
 
