@@ -253,7 +253,12 @@ type Opts struct {
 	SSHHost string
 	Port    int
 	Shell   string
+	// Auto a saved login follows on the socket: its prompts never drawn
+	Auto bool
 }
+
+// autoWait how long a tab promising a saved login is given to send it
+const autoWait = 5 * time.Second
 
 // Attach login and password prompts, then the host's own shell, or a rejoin
 func Attach(ws *wsock.Conn, o Opts) {
@@ -351,19 +356,31 @@ func Attach(ws *wsock.Conn, o Opts) {
 	}
 
 	go func() {
+		// a promised saved login signs in unseen, the screen blank until the shell
+		if o.Auto {
+			select {
+			case a := <-s.auto:
+				held = &a
+			case <-time.After(autoWait):
+			}
+		}
 		for i := 0; i < maxTries; i++ {
-			user, ok := ask(o.Host+" login: ", true)
-			if !ok || !live(o.SID) {
-				return
-			}
-			user = strings.TrimSpace(user)
-			if user == "" {
-				i--
-				continue
-			}
-			pass, ok := ask("password: ", false)
-			if !ok {
-				return
+			var user, pass string
+			if held != nil && i == 0 && o.Auto {
+				user, pass = held.user, held.pass
+			} else {
+				u, ok := ask(o.Host+" login: ", true)
+				if !ok || !live(o.SID) {
+					return
+				}
+				user = strings.TrimSpace(u)
+				if user == "" {
+					i--
+					continue
+				}
+				if pass, ok = ask("password: ", false); !ok {
+					return
+				}
 			}
 			why := connect(s, o, user, pass)
 			if why == "" && held != nil && held.run != "" {

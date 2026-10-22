@@ -132,6 +132,8 @@ function startTerminal(view, host, sid, resume, shared = false, login = null) {
     const connect = () => {
       const q = new URLSearchParams({ sid, since: got });
       if (resume) q.set('resume', '1');
+      // a saved login on its way: the server waits for it, its prompts never drawn
+      else if (login) q.set('auto', '1');
       ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/term/${encodeURIComponent(host)}?${q}`);
       ws.binaryType = 'arraybuffer';
       // the share said again on every join, so a reload's choice holds; a saved
