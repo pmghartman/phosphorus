@@ -29,6 +29,7 @@ import {
   putFile,
   selfHost,
   shQuote,
+  soloShell,
 } from '../app.js';
 import { codeEditor } from './editor.js';
 import { startTerminal, taskTerminal, termsRetheme } from './terminal.js';
@@ -705,7 +706,7 @@ const MENUS = [
     ] }, '-',
     cmdItem('workbench.action.revertFile', 'Revert File'),
     cmdItem('workbench.action.closeActiveEditor', 'Close Editor'), cmdItem('workbench.action.closeAllEditors', 'Close All Editors'), '-',
-    cmdItem('sulfur.closeWindow', 'Close Window'),
+    soloShell ? cmdItem('sulfur.changeServer', 'Change Server…') : cmdItem('sulfur.closeWindow', 'Close Window'),
   ]],
   ['Edit', () => [
     cmdItem('undo', 'Undo'), cmdItem('redo', 'Redo'), '-',
@@ -2281,6 +2282,8 @@ function registerCommands() {
   C('sulfur.project.new', 'New Project…', () => newProject(), { key: 'ctrl+alt+shift+n', category: 'File' });
   C('sulfur.project.transfer', 'Copy or Move Project to Another Machine…', () => transferProject(), { category: 'File' });
   C('sulfur.folder.add', 'Add a Folder of a Machine for Projects…', () => addFolderDialog(), { when: () => !!acct.admin, category: 'File' });
+  // the desktop app's own page again, to pick another phosphorus server
+  C('sulfur.changeServer', 'Change Phosphorus Server…', async () => { if ((await saveAll()).every(Boolean)) location.href = `${soloShell}/#change`; }, { when: () => !!soloShell, category: 'File' });
   C('workbench.action.selectTheme', 'Color Theme', () => pickTheme(), { key: 'ctrl+k ctrl+t', category: 'Preferences' });
   C('sulfur.selectHost', 'Select Host for Terminals and Runs…', () => pickHost('Select the host terminals and runs use').then((h) => h && setRunHost(h)), { category: 'Phosphorus' });
   // preferences and help
