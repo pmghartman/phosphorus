@@ -2878,6 +2878,11 @@ body:has(.dk-pop:not([hidden])) .toasts { opacity: 0; pointer-events: none; }
 
 .ide-views { position: relative; flex: 1; min-height: 0; display: flex; }
 .ide-view-ed { flex: 1; min-width: 0; display: flex; flex-direction: column; outline: none; }
+.ide-symbol-nav { display: flex; flex: none; gap: 1px; padding: 3px 10px; border-bottom: 1px solid var(--ide-border); background: var(--ide-bg); }
+.ide-symbol-select { flex: 1; min-width: 0; max-width: 50%; font: inherit; font-size: 12px; padding: 3px 8px; color: var(--ide-fg); background: var(--ide-bg); border: 1px solid var(--ide-border); border-radius: 2px; }
+.ide-symbol-select:focus { outline: 1px solid var(--accent); }
+.ide-rename-files { padding: 8px 20px; overflow: auto; }
+.ide-rename-file { display: flex; align-items: center; gap: 8px; padding: 6px 0; }
 .ide-page { overflow: auto; }
 
 /* the editor itself, flush and plain as VS Code's */

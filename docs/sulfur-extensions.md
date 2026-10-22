@@ -201,11 +201,13 @@ Claude Code and opencode are built in: they run in the project on one of your ma
 
 ## Builds and tasks
 
+The desktop app always serves this computer. Connecting a mesh adds its machines, models, agents and Forgejo beside it. **Open Folder** and **Open File** use the same folder dialog, with local and mesh places together; a typed path works with Enter or the Open button. Losing the mesh does not prevent local editing, terminals or builds.
+
 **Ctrl+B** builds the project. The first time, Sulfur looks at what the project is (CMake, a .NET solution or project, MSBuild, Cargo, Go, npm, Make, Meson, Python) and at the compilers each of your machines has. Where the project says how it builds, as Visual Studio reads it, Sulfur builds that way without asking:
 
 - **CMakeSettings.json**: its configurations (`x64-Debug`, `x64-Release`, …) are the configurations, each built in its own `buildRoot` with its generator, variables and arguments, under the Visual Studio that configured its tree (the compiler in its `CMakeCache.txt`) and that Visual Studio's own CMake.
 - **CMakePresets.json** and **CMakeUserPresets.json**: the presets are the configurations, built with `cmake --preset` and their build presets.
-- **A tree already configured** (`build`, `out/build/*`, `cmake-build-*` with a `CMakeCache.txt`): built again as it was configured, incrementally.
+- **A tree already configured** (`build`, `out/build/*`, `cmake-build-*` with a `CMakeCache.txt`): built incrementally with its generator. Multi-configuration trees offer their `CMAKE_CONFIGURATION_TYPES`; other trees offer their current build type and Debug, Release, RelWithDebInfo and MinSizeRel. Selecting another build type reconfigures the tree before building.
 - **A solution**: C++ in it (`.vcxproj`) builds with MSBuild under the Visual Studio its `# Visual Studio Version` names; C# alone with `dotnet`. Its own configurations (`Debug|Any CPU`, `Release|x64`, …) are the configurations, and `global.json`'s SDK is said if it's not installed.
 
 Otherwise it asks which to build with. **Run › Select Toolchain…** always asks. The pick is kept in the project's `.sulfur/build.json`, so it goes with the project when it's copied:
@@ -232,6 +234,14 @@ Otherwise it asks which to build with. **Run › Select Toolchain…** always as
 | `tasks` | Your own tasks: `{label, command, group}`, the command run in the project's folder. `group` is `build`, `test`, `run` or `other`. |
 
 Each task runs in a terminal of its own in the Terminal panel. Errors and warnings from MSVC, MSBuild, dotnet, gcc, clang, Go, Rust and CMake land in the Problems panel, linked to their lines. Editing the file and saving it takes effect at once; **Run › Select Toolchain…** and **Add a Task** (under **Run › Run Task…** and in the Run and Build view) write it for you.
+
+A source file without a project builds alone. Compiler output, including MSVC object and debug files, goes into a unique writable temporary folder; the terminal prints its location. The source folder can be read-only.
+
+## Code navigation
+
+The editor's **Types** and **Methods and fields** dropdowns follow the caret and jump to declarations in the current file. C/C++, JavaScript/TypeScript, Java, Python, Go and Rust use their syntax parsers; C# uses the Java grammar as an approximation. Navigation parses files up to 2 MB.
+
+Right-click a method or variable for **Go to Definition** (F12), **Find All References** (Shift+F12) and **Rename…** (Ctrl+R, Ctrl+R). Ctrl+click (Cmd+click on macOS) also goes to a declaration. References and rename search matching syntax identifiers in the workspace's searchable files, excluding comments and strings. These are syntax matches, so unrelated names can appear. Rename previews each occurrence with a checkbox, checks that files have not changed, and applies edits through the editor for review and undo. It refuses a truncated search. Server search excludes files over 1 MB and the configured search exclusions.
 
 ## Key syntax
 
