@@ -4,6 +4,16 @@ import { parserFor, parserNow, highlight, syntaxErrors } from './lezer.js';
 // the page's vendor files, hashed by the build
 const ASSETS = __ASSETS__;
 
+// ?app=sulfur: Sulfur alone, filling the page, as its desktop app opens it; the
+// app's own page (shell) given back to for another server, its origin and no other
+const soloQ = new URLSearchParams(location.search);
+const dkSolo = soloQ.get('app') === 'sulfur';
+const soloShell = /^(tauri:\/\/localhost|https?:\/\/tauri\.localhost)$/.test(soloQ.get('shell') || '') ? soloQ.get('shell') : '';
+if (dkSolo) {
+  document.documentElement.classList.add('dk-solo');
+  document.title = 'Sulfur';
+}
+
 // each app's own code in its own chunk, all fetched once the desktop is up
 const APPS = {
   status: () => import('./apps/status.js'),
@@ -4171,6 +4181,11 @@ function dkDesktop() {
   dk.sig = '';
   dkClock();
   dkIcons();
+  if (dkSolo) {
+    dkSulfur();
+    const w = dk.wins.get('app:sulfur');
+    if (w) dkSnap(w, 'max');
+  }
 }
 
 // the page's update and theme buttons, moved into whichever bar is up
@@ -4837,7 +4852,7 @@ function dkSnap(w, zone) {
 // pointer where it was held, a dashed outline showing the snap to come
 function dkMove(w, head) {
   head.addEventListener('pointerdown', (e) => {
-    if (e.button !== 0 || e.target.closest('button') || isMobile()) return;
+    if (e.button !== 0 || e.target.closest('button') || isMobile() || dkSolo) return;
     e.preventDefault();
     head.setPointerCapture(e.pointerId);
     const { wins } = dk.desk;
@@ -4974,7 +4989,7 @@ function dkRestore(w) {
 }
 
 function dkMax(w) {
-  if (isMobile()) return;
+  if (isMobile() || dkSolo) return;
   dkTween(w);
   dkSnap(w, w.snap === 'max' ? '' : 'max');
   dkFocus(w);
@@ -6823,6 +6838,7 @@ acctStart();
 // read by the apps loaded on first open
 export {
   ASSETS,
+  soloShell,
   DK_RUNNERS,
   DK_UI,
   HOME,

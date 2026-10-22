@@ -400,6 +400,10 @@ body {
 [data-snap="bl"] { left: 0; top: 50%; width: 50% !important; height: 50% !important; }
 [data-snap="br"] { left: 50%; top: 50%; width: 50% !important; height: 50% !important; }
 .dk-win[data-snap="max"] { border-width: 0; box-shadow: none; }
+/* Sulfur alone, as its desktop app opens it: the one window filling the desk, the
+   OS's own frame its buttons, the bar kept for the hosts' locks and the bell */
+.dk-solo .dk-icons, .dk-solo .dk-art, .dk-solo .dk-home, .dk-solo .dk-tasks, .dk-solo .dk-edge, .dk-solo .ide-win .dk-btns { display: none; }
+.dk-solo .ide-win .dk-head { cursor: default; }
 .dk-snap {
   position: absolute; z-index: 99999; pointer-events: none; opacity: 0;
   border: 1px dashed var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent);

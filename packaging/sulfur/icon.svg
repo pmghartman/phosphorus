@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Sulfur's mark: the alchemists' sulfur, 🜍, a triangle over a cross, drawn in
+       sulfur's own yellow burning to amber on a night tile; the source every
+       platform's icon is made from (tauri icon icon.svg) -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2a2140"/>
+      <stop offset="0.55" stop-color="#16121f"/>
+      <stop offset="1" stop-color="#0c0a10"/>
+    </linearGradient>
+    <radialGradient id="ember" cx="0.5" cy="0.62" r="0.55">
+      <stop offset="0" stop-color="#f0883e" stop-opacity="0.32"/>
+      <stop offset="0.6" stop-color="#a371f7" stop-opacity="0.08"/>
+      <stop offset="1" stop-color="#a371f7" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="ink" gradientUnits="userSpaceOnUse" x1="420" y1="214" x2="604" y2="812">
+      <stop offset="0" stop-color="#fff3a3"/>
+      <stop offset="0.35" stop-color="#ffd84d"/>
+      <stop offset="0.75" stop-color="#f6a531"/>
+      <stop offset="1" stop-color="#f0783e"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.16"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0.03"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="22"/>
+    </filter>
+    <clipPath id="sq">
+      <rect x="72" y="72" width="880" height="880" rx="200"/>
+    </clipPath>
+  </defs>
+
+  <!-- the tile, lit from below by the glyph's own ember -->
+  <g clip-path="url(#sq)">
+    <rect x="72" y="72" width="880" height="880" fill="url(#tile)"/>
+    <rect x="72" y="72" width="880" height="880" fill="url(#ember)"/>
+  </g>
+  <rect x="73.5" y="73.5" width="877" height="877" rx="198.5" fill="none" stroke="url(#rim)" stroke-width="3"/>
+
+  <!-- the glyph: its glow, a faint fill in the triangle, then the strokes -->
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <g stroke="#f6a531" stroke-width="60" opacity="0.55" filter="url(#glow)">
+      <path d="M512 214 L700 528 L324 528 Z"/>
+      <path d="M512 528 V812 M396 682 H628"/>
+    </g>
+    <path d="M512 214 L700 528 L324 528 Z" fill="url(#ink)" fill-opacity="0.12" stroke="none"/>
+    <g stroke="url(#ink)" stroke-width="58">
+      <path d="M512 214 L700 528 L324 528 Z"/>
+      <path d="M512 528 V812 M396 682 H628"/>
+    </g>
+  </g>
+</svg>
