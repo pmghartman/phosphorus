@@ -7,7 +7,7 @@ description: Operates the user's live, self-hosted Phosphorus mesh through the P
 
 Phosphorus is a mesh of the user's own machines on one tailnet. Each machine running it is a **host**: it shares folders, publishes web services and game servers, runs terminals, keeps logs, and may carry a Forgejo replica or a model. The Phosphorus connector answers for the whole mesh from any host, and every call runs as **{{USER}}**{{ADMIN_NOTE}} with exactly that user's rights. Tool names may carry a prefix (`mcp__phosphorus__`, `Phosphorus:`); each tool's own description is its full reference, so this skill covers only how to combine them.
 
-No Phosphorus tools at all: tell the user to add the connector with the url from **copy mcp url** in the agent tray, and stop. A tool missing from the list is admin-only or for the chat's own model.
+No Phosphorus tools at all: tell the user to add the connector with the url from **copy mcp url** in the agent tray, and stop. The connector's instructions say what this key can do: admin or not, its saved host logins, its forgejo login and the tools kept off it. Never offer those; say who could.
 
 ## Job files
 

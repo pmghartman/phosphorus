@@ -324,7 +324,16 @@ func appHandler(w http.ResponseWriter, r *http.Request) {
 			k := strings.TrimSpace(key)
 			caller = &mcp.Caller{User: s.User, Admin: s.Admin, Via: via,
 				Login: func(host string) (string, string, bool) { return users.MCPLogin(k, host) },
-				Pages: func() map[string]any { return users.MCPPages(k) }}
+				Pages: func() map[string]any { return users.MCPPages(k) },
+				Hosts: func() []string {
+					hs := []string{}
+					for h, l := range users.MCPLogins(k) {
+						if str(util.Obj(l)["user"]) != "" {
+							hs = append(hs, h)
+						}
+					}
+					return hs
+				}}
 		} else if !isLoopback(r) && !isTailnet(r) {
 			forbidden(w)
 			return

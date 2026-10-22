@@ -152,3 +152,37 @@ func TestStatsShape(t *testing.T) {
 		t.Fatalf("row %v", r)
 	}
 }
+
+func TestKeyGrants(t *testing.T) {
+	Init(Src{Self: func() map[string]any { return map[string]any{"host": "h", "version": "1"} }, Domain: func() string { return "mesh.example" }})
+	bare := func() *Caller { return &Caller{User: "u", Pages: func() map[string]any { return nil }} }
+	git := &Caller{User: "u", Hosts: func() []string { return []string{"b", "a"} },
+		Pages: func() map[string]any { return map[string]any{"git": map[string]any{"user": "u", "pass": "p"}} }}
+	names := func(c *Caller) map[string]string {
+		_, o := Handle(rpc("tools/list", nil), false, c)
+		out := map[string]string{}
+		for _, x := range o.(map[string]any)["result"].(map[string]any)["tools"].([]any) {
+			m := x.(map[string]any)
+			out[m["name"].(string)] = m["description"].(string)
+		}
+		return out
+	}
+	if _, ok := names(bare())["forgejo"]; ok {
+		t.Fatal("forgejo listed without a forgejo login")
+	}
+	g := names(git)
+	if _, ok := g["forgejo"]; !ok || !strings.Contains(g["terminal_run"], "saved logins: a, b;") {
+		t.Fatalf("forgejo or logins missing: %q", g["terminal_run"])
+	}
+	_, o := Handle(rpc("tools/call", map[string]any{"name": "forgejo"}), false, bare())
+	if e := o.(map[string]any)["error"].(map[string]any)["message"].(string); !strings.Contains(e, "off this key") {
+		t.Fatalf("withheld tool said %q", e)
+	}
+	_, o = Handle(rpc("initialize", nil), false, bare())
+	ins := o.(map[string]any)["result"].(map[string]any)["instructions"].(string)
+	for _, w := range []string{"acts as u, a user", "no saved host logins", "No forgejo login", "Off this key:", "host_power"} {
+		if !strings.Contains(ins, w) {
+			t.Fatalf("instructions lack %q: %s", w, ins)
+		}
+	}
+}
