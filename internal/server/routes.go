@@ -220,6 +220,10 @@ func appHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if strings.HasPrefix(pathname, "/api/sulfur/") && sulfurRoute(w, r, pathname, q) {
+		return
+	}
+
 	if strings.HasPrefix(pathname, "/api/git/") {
 		if !isTailnet(r) {
 			forbidden(w)

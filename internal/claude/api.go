@@ -96,8 +96,16 @@ func Create(user string, p map[string]any, creds CredsFn) (int, any) {
 	dir := strings.TrimSpace(util.Str(p["dir"]))
 	model := util.Str(p["model"])
 	perm := util.Str(p["perm"])
+	harness := util.Str(p["harness"])
+	if harness == "" {
+		harness = Claude
+	}
 	prompt := cleanText(p["prompt"], textMax)
 	switch {
+	case !has(Harnesses, harness):
+		return 400, errB("harness is one of " + strings.Join(Harnesses, ", "))
+	case harness == Opencode && provider(model) != "mesh":
+		return 400, errB("opencode runs on the mesh's models: " + strings.Join(Mesh, ", "))
 	case !hostRe.MatchString(host):
 		return 400, errB("pick a host")
 	case dir == "" || len(dir) > dirMax || strings.ContainsAny(dir, "\x00\r\n"):
@@ -119,7 +127,7 @@ func Create(user string, p map[string]any, creds CredsFn) (int, any) {
 		return 400, errB(err.Error())
 	}
 	now := util.Now()
-	rec := Record{ID: newID(), User: user, Host: host, Dir: dir, Model: model, Perm: perm, Status: "starting", Created: now, Updated: now}
+	rec := Record{ID: newID(), User: user, Host: host, Dir: dir, Model: model, Perm: perm, Harness: harness, Status: "starting", Created: now, Updated: now}
 	s := newSession(rec)
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -151,6 +159,13 @@ func (s *session) send(text string) {
 		s.rec.Title = clip(strings.Join(strings.Fields(text), " "), 80)
 	}
 	s.emit(map[string]any{"kind": "user", "text": text, "at": util.Now()}, true)
+	if harnessOf(s.rec) == Opencode {
+		// a run a prompt: queued, run once the one before is done
+		s.queue = append(s.queue, text)
+		s.ocKick()
+		s.status("")
+		return
+	}
 	if s.alive() && !s.starting {
 		s.prompt(text)
 	} else {
@@ -174,7 +189,7 @@ func Send(user, id string, p map[string]any, creds CredsFn) (int, any) {
 		return 400, errB("text: what to send, up to 256KB")
 	}
 	s.mu.Lock()
-	needs := !s.alive() && !s.starting && s.next == nil
+	needs := !s.alive() && !s.starting && s.next == nil && (harnessOf(s.rec) != Opencode || s.oc == nil)
 	host, model := s.rec.Host, s.rec.Model
 	s.mu.Unlock()
 	var c Creds
@@ -207,6 +222,13 @@ func Stop(user, id string) (int, any) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.queue = nil
+	if harnessOf(s.rec) == Opencode {
+		if s.p != nil {
+			s.stopping = true
+			s.p.kill()
+		}
+		return 200, map[string]any{}
+	}
 	if s.alive() {
 		s.control("interrupt", map[string]any{"subtype": "interrupt"})
 	}
@@ -236,7 +258,7 @@ func SetModel(user, id string, p map[string]any) (int, any) {
 		return 409, errB("start a new session to change provider")
 	}
 	s.rec.Model = m
-	if s.alive() {
+	if s.alive() && harnessOf(s.rec) == Claude {
 		s.control("model", map[string]any{"subtype": "set_model", "model": m})
 	}
 	s.status("")
@@ -256,7 +278,7 @@ func SetPerm(user, id string, p map[string]any) (int, any) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.rec.Perm = m
-	if s.alive() {
+	if s.alive() && harnessOf(s.rec) == Claude {
 		s.control("permission mode", map[string]any{"subtype": "set_permission_mode", "mode": m})
 	}
 	s.status("")
@@ -342,11 +364,18 @@ func Delete(user, id string) (int, any) {
 }
 
 // Installed claude's version on host
-func Installed(host string, c Creds) (int, any) {
+func Installed(host string, c Creds) (int, any) { return InstalledOf(host, c, Claude) }
+
+// InstalledOf a harness's version on host
+func InstalledOf(host string, c Creds, harness string) (int, any) {
 	if !hostRe.MatchString(host) {
 		return 400, errB("pick a host")
 	}
-	v, err := version(host, c)
+	cmd := versionCommand()
+	if harness == Opencode {
+		cmd = ocVersionCommand()
+	}
+	v, err := version(host, c, cmd)
 	if err != nil {
 		return 502, errB(err.Error())
 	}
@@ -359,11 +388,18 @@ var (
 )
 
 // Install the official installer run on host as the login
-func Install(host string, c Creds) (int, any) {
+func Install(host string, c Creds) (int, any) { return InstallOf(host, c, Claude) }
+
+// InstallOf a harness's official installer run on host as the login
+func InstallOf(host string, c Creds, harness string) (int, any) {
 	if !hostRe.MatchString(host) {
 		return 400, errB("pick a host")
 	}
-	k := host + "|" + c.User
+	cmd := installCommand()
+	if harness == Opencode {
+		cmd = ocInstallCommand()
+	}
+	k := host + "|" + c.User + "|" + harness
 	installMu.Lock()
 	if installs[k] {
 		installMu.Unlock()
@@ -376,7 +412,7 @@ func Install(host string, c Creds) (int, any) {
 		delete(installs, k)
 		installMu.Unlock()
 	}()
-	ok, out, err := install(host, c)
+	ok, out, err := install(host, c, cmd)
 	if err != nil && out == "" {
 		return 502, errB(err.Error())
 	}

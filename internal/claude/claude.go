@@ -57,6 +57,8 @@ type Record struct {
 	Created   int64  `json:"created"`
 	Updated   int64  `json:"updated"`
 	Usage     Usage  `json:"usage"`
+	// Harness what runs the session: claude, or opencode
+	Harness string `json:"harness,omitempty"`
 }
 
 // conn a page's socket, as wsock.Conn
@@ -92,6 +94,9 @@ type session struct {
 	perms map[string]map[string]any
 	ctl   map[string]string
 	idle  *time.Timer
+	// oc an opencode session's creds, each prompt its own run; run what the current one's said
+	oc  *Creds
+	run ocRun
 }
 
 func recFile(id string) string { return filepath.Join(runDir, id+".json") }
@@ -193,6 +198,9 @@ func (s *session) begin(c Creds) error {
 	if s.starting || s.deleted {
 		return nil
 	}
+	if harnessOf(s.rec) == Opencode {
+		return s.ocBegin(c)
+	}
 	if s.p != nil {
 		// the old one still going: started once it's gone
 		s.next = &c
@@ -290,7 +298,13 @@ func (s *session) read(p *proc, g int) {
 		}
 		s.mu.Lock()
 		if g == s.gen {
-			s.on(ev)
+			if harnessOf(s.rec) == Opencode {
+				for _, e := range s.ocEvents(ev) {
+					s.on(e)
+				}
+			} else {
+				s.on(ev)
+			}
 		}
 		s.mu.Unlock()
 	}
@@ -382,6 +396,10 @@ func (s *session) armIdle() {
 
 // exited the process gone: its asks void, the session ended or failed; under s.mu
 func (s *session) exited(g, code int, errs string) {
+	if harnessOf(s.rec) == Opencode {
+		s.ocExited(g, code, errs)
+		return
+	}
 	if g != s.gen {
 		return
 	}
