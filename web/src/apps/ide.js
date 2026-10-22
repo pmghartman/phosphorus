@@ -299,6 +299,8 @@ export function ideStart(w, open) {
   addEventListener('message', onWebviewMessage);
   I.offs.push(() => removeEventListener('message', onWebviewMessage));
   if (open) openRequest(open);
+  // the window up front: the focus in it, so its keys answer at once
+  requestAnimationFrame(() => { if (I && w.node.classList.contains('focused') && !I.root.contains(document.activeElement)) focusActive(); });
   return {
     focus: () => focusActive(),
     open: (o) => openRequest(o),
@@ -1315,7 +1317,10 @@ function openFile(rel, o = {}) {
       t.view.replaceChildren();
       mountKind(t);
       paintEditors();
-      if (t === I.active) { t.ed?.show(); if (t.wantFocus) focusTab(t); }
+      if (t === I.active) {
+        t.ed?.show();
+        if (t.wantFocus && (document.activeElement === I.root || !I.root.contains(document.activeElement))) focusTab(t);
+      }
     });
   }
   t.wantFocus = o.focus !== false;
@@ -1494,8 +1499,12 @@ function activate(t, focus = true) {
   emit('activeEditor');
 }
 
+// a code tab still finding its host: the workbench holds the focus, its keys
+// live, the editor taking it once it's there
 function focusTab(t) {
-  if (t.ed) t.ed.focus(); else t.view.focus({ preventScroll: true });
+  if (t.ed) t.ed.focus();
+  else if (t.kind === 'code') { t.wantFocus = true; I.root.focus({ preventScroll: true }); }
+  else t.view.focus({ preventScroll: true });
 }
 
 function focusActive() {
