@@ -1353,6 +1353,9 @@ const homeAt = (host) => ({ host, share: 'home', root: 'home', perms: 'rwd' });
 const homeWhere = new Map();
 
 const homeOnline = () => [...new Set([selfHost, ...phosphorusHosts()].filter(Boolean))];
+// Sulfur alone reaches hosts by other paths; the desktop's are all its server's own
+const hostUrl = (host, path) => path;
+const otherHosts = () => [];
 
 // the holder to read a path from: this host first, then any online one
 function homePick(rel) {
@@ -6912,6 +6915,8 @@ export {
   homeAt,
   homeHolders,
   homeOnline,
+  hostUrl,
+  otherHosts,
   homePick,
   homeTarget,
   hostsInfo,

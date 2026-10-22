@@ -815,7 +815,7 @@ func filesRoute(w http.ResponseWriter, r *http.Request, host, op string, q url.V
 		sendJSON(w, st, b)
 		return
 	case m == "POST" && op == "save":
-		onJSON(w, r, maxSaveBody, true, func(p map[string]any) (int, any) {
+		onJSON(w, r, maxTextBody, true, func(p map[string]any) (int, any) {
 			if st, b := gate(str(p["path"])); st != 0 {
 				return st, b
 			}
