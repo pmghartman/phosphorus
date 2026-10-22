@@ -16,6 +16,8 @@ import {
 } from '../app.js';
 import { ERR_MAX, highlight, parserFor, parserNow, syntaxErrors } from '../lezer.js';
 import { mdBlocks, renderMd } from '../md.js';
+import { opApply, opTransform, opDiff, opMap } from '../text-operations.js';
+import { EditorHistory } from '../editor-history.js';
 
 // --- code editor ------------------------------------------------------------------
 // a share's text or code file in a tab of its own, joined to the file's live
@@ -24,78 +26,6 @@ import { mdBlocks, renderMd } from '../md.js';
 // closed, syntax errors marked by a parse alone, saved once typing pauses;
 // nothing in it ever runs
 
-
-// --- the text operations the session speaks (collab.js's, here for the tab's end) ---
-
-const opIns = (o) => typeof o === 'string';
-const opDel = (o) => typeof o === 'number' && o < 0;
-function opBuilder() {
-  const ops = [];
-  const add = (o) => {
-    if (o === 0 || o === '') return;
-    const last = ops[ops.length - 1];
-    if (opIns(o) && opDel(last)) {
-      const before = ops[ops.length - 2];
-      if (opIns(before)) ops[ops.length - 2] = before + o; else ops.splice(ops.length - 1, 0, o);
-    } else if (last !== undefined && typeof last === typeof o && (opIns(o) || (o > 0) === (last > 0))) ops[ops.length - 1] = last + o;
-    else ops.push(o);
-  };
-  return { ops, retain: (n) => add(n), insert: (s) => add(s), del: (n) => add(-n) };
-}
-function opApply(doc, ops) {
-  let out = '';
-  let at = 0;
-  for (const o of ops) {
-    if (opIns(o)) out += o;
-    else if (o > 0) { out += doc.slice(at, at + o); at += o; } else at -= o;
-  }
-  return out;
-}
-function opTransform(a, b) {
-  const a1 = opBuilder();
-  const b1 = opBuilder();
-  let i = 0;
-  let j = 0;
-  let x = a[i++];
-  let y = b[j++];
-  for (;;) {
-    if (x === undefined && y === undefined) break;
-    if (opIns(x)) { a1.insert(x); b1.retain(x.length); x = a[i++]; continue; }
-    if (opIns(y)) { a1.retain(y.length); b1.insert(y); y = b[j++]; continue; }
-    if (x === undefined || y === undefined) throw new Error('operations of different lengths');
-    const n = Math.min(Math.abs(x), Math.abs(y));
-    if (x > 0 && y > 0) { a1.retain(n); b1.retain(n); } else if (x < 0 && y > 0) a1.del(n); else if (x > 0 && y < 0) b1.del(n);
-    x = Math.abs(x) === n ? a[i++] : x > 0 ? x - n : x + n;
-    y = Math.abs(y) === n ? b[j++] : y > 0 ? y - n : y + n;
-  }
-  return [a1.ops, b1.ops];
-}
-// one replace: what changed between two texts, by their common ends
-function opDiff(a, b) {
-  let s = 0;
-  while (s < a.length && s < b.length && a[s] === b[s]) s += 1;
-  let e = 0;
-  while (e < a.length - s && e < b.length - s && a[a.length - 1 - e] === b[b.length - 1 - e]) e += 1;
-  const o = opBuilder();
-  o.retain(s);
-  o.insert(b.slice(s, b.length - e));
-  o.del(a.length - s - e);
-  o.retain(e);
-  return o.ops;
-}
-// where a place in the text lands after an edit
-function opMap(ops, pos) {
-  let i = 0;
-  let j = 0;
-  for (const o of ops) {
-    if (opIns(o)) { j += o.length; continue; }
-    const n = Math.abs(o);
-    if (pos <= i + n) return o > 0 ? j + (pos - i) : j;
-    i += n;
-    if (o > 0) j += n;
-  }
-  return j;
-}
 
 // --- editors ---------------------------------------------------------------------
 
@@ -169,6 +99,24 @@ function codeEditor(view, file, btn, id, opts = {}) {
   let opSeq = 0;
   const canWrite = () => perms.includes('w');
   const say = (body) => sock && sock.readyState === WebSocket.OPEN && sock.send(JSON.stringify(body));
+  const history = new EditorHistory();
+  let historyText = '';
+  let historyReady = false;
+  let beforeSelection = [0, 0];
+  let historyGroup = '';
+  let agentSequence = 0;
+
+  function historyStep(redo = false) {
+    if (ta.readOnly) return false;
+    const next = history.step(ta.value, [ta.selectionStart, ta.selectionEnd], redo);
+    if (!next) return false;
+    ta.value = next.text;
+    historyText = next.text;
+    ta.setSelectionRange(...next.selection);
+    beforeSelection = next.selection;
+    redraw(); flush(); paintState(); caretInView(); sendCursor();
+    return true;
+  }
 
   // --- drawing ---
   let drawFrame = 0;
@@ -267,7 +215,13 @@ function codeEditor(view, file, btn, id, opts = {}) {
         if (ta.readOnly || from < 0 || to > ta.value.length || from > to) { resolve(false); return; }
         start();
       };
-      const put = (str, a, b) => { ta.setRangeText(str, a, b, 'preserve'); ta.dispatchEvent(new Event('input')); };
+      const group = `agent:${++agentSequence}`;
+      const put = (str, a, b) => {
+        beforeSelection = [ta.selectionStart, ta.selectionEnd];
+        historyGroup = group;
+        try { ta.setRangeText(str, a, b, 'preserve'); ta.dispatchEvent(new Event('input')); }
+        finally { historyGroup = ''; }
+      };
       const finish = (n) => {
         agentAt = -1;
         agentMarks = n ? [[from, from + n, 'add done']] : [];
@@ -574,12 +528,15 @@ function codeEditor(view, file, btn, id, opts = {}) {
 
   function setText(text, keepSel) {
     const [s0, s1] = [ta.selectionStart, ta.selectionEnd];
+    if (historyReady && ta.value !== text) history.remote(opDiff(ta.value, text));
+    historyReady = true;
     ta.value = text;
+    historyText = text;
     if (keepSel) ta.setSelectionRange(Math.min(s0, text.length), Math.min(s1, text.length));
     redraw();
   }
 
-  function remote(ops) {
+  function remote(ops, agent = '') {
     const C = ta.value;
     const P = inflight ? opApply(S, inflight.ops) : S;
     let r = ops;
@@ -587,7 +544,11 @@ function codeEditor(view, file, btn, id, opts = {}) {
     const [, r2] = opTransform(opDiff(P, C), r);
     const [s0, s1] = [ta.selectionStart, ta.selectionEnd];
     const top = scroller.scrollTop;
-    ta.value = opApply(C, r2);
+    const next = opApply(C, r2);
+    if (agent) history.record(C, next, [s0, s1], [opMap(r2, s0), opMap(r2, s1)], `agent:remote:${agent}`);
+    else history.remote(r2);
+    ta.value = next;
+    historyText = ta.value;
     ta.setSelectionRange(opMap(r2, s0), opMap(r2, s1));
     scroller.scrollTop = top;
     redraw();
@@ -626,7 +587,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
           inflight = null;
           flush();
         } else {
-          remote(msg.ops);
+          remote(msg.ops, msg.agent ? msg.agentEdit || msg.by || 'agent' : '');
           S = opApply(S, msg.ops);
           V = msg.v;
         }
@@ -668,8 +629,10 @@ function codeEditor(view, file, btn, id, opts = {}) {
     const w = Math.min(...m.map((s) => s.length - 1).filter((n) => n > 0), 8);
     return ' '.repeat(Number.isFinite(w) && w <= 8 && w > 0 ? (w >= 4 ? 4 : w) : 2);
   }
-  // typed in through the browser's own edit, so ctrl+z undoes it
+  // All edits go through the same history, including synthetic and agent edits.
   function typeIn(from, to, text, selFrom, selTo) {
+    beforeSelection = [ta.selectionStart, ta.selectionEnd];
+    history.boundary();
     ta.setSelectionRange(from, to);
     const ok = text ? document.execCommand('insertText', false, text) : document.execCommand('delete');
     if (!ok) { ta.setRangeText(text, from, to, 'end'); ta.dispatchEvent(new Event('input')); }
@@ -716,6 +679,11 @@ function codeEditor(view, file, btn, id, opts = {}) {
     const t = ta.selectionEnd;
     const v = ta.value;
     const mod = e.ctrlKey || e.metaKey;
+    if (mod && !e.altKey && ['z', 'y'].includes(e.key.toLowerCase())) {
+      e.preventDefault(); e.stopPropagation();
+      historyStep(e.key.toLowerCase() === 'y' || e.shiftKey);
+      return;
+    }
     // the ide's escape its own: a find closed, the focus kept
     if (e.key === 'Escape' && !bare) { e.preventDefault(); ta.blur(); return; }
     if (mod && e.key === '/') { e.preventDefault(); toggleComment(); return; }
@@ -771,7 +739,17 @@ function codeEditor(view, file, btn, id, opts = {}) {
     clearTimeout(cursorTimer);
     cursorTimer = setTimeout(() => say({ type: 'cursor', pos: ta.selectionStart }), 250);
   };
-  ta.addEventListener('input', () => { redraw(); flush(); paintState(); caretInView(); sendCursor(); });
+  ta.addEventListener('beforeinput', (e) => {
+    if (e.inputType === 'historyUndo' || e.inputType === 'historyRedo') { e.preventDefault(); historyStep(e.inputType === 'historyRedo'); return; }
+    beforeSelection = [ta.selectionStart, ta.selectionEnd];
+  });
+  ta.addEventListener('input', (e) => {
+    const group = historyGroup || (/^(insertText|deleteContentBackward|deleteContentForward)$/.test(e.inputType) ? e.inputType : '');
+    history.record(historyText, ta.value, beforeSelection, [ta.selectionStart, ta.selectionEnd], group);
+    historyText = ta.value;
+    beforeSelection = [ta.selectionStart, ta.selectionEnd];
+    redraw(); flush(); paintState(); caretInView(); sendCursor();
+  });
   for (const ev of ['keyup', 'click', 'select']) ta.addEventListener(ev, () => { caretInView(); sendCursor(); tell(); });
 
   function save() {
@@ -808,11 +786,13 @@ function codeEditor(view, file, btn, id, opts = {}) {
     dirty,
     save,
     holdClose,
+    undo: () => historyStep(),
+    redo: () => historyStep(true),
     focus: () => ta.focus(),
     show: () => { redraw(); },
     text: () => ta.value,
     info,
-    // the host's edits typed in as the browser's own, so ctrl+z undoes them
+    // Programmatic edits share the same history as typing and agent edits.
     edit: (from, to, text, selFrom, selTo) => {
       if (ta.readOnly) return false;
       ta.focus();

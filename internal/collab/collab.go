@@ -322,7 +322,7 @@ func (s *session) commit(ops []Op, id any, by *client) {
 	if by.who != nil {
 		name = by.who.name
 	}
-	s.toAll(map[string]any{"type": "op", "v": s.version, "ops": ops, "id": id, "by": name})
+	s.toAll(map[string]any{"type": "op", "v": s.version, "ops": ops, "id": id, "by": name, "agent": by.agent, "agentEdit": by.cid})
 	if by.agent {
 		s.toAll(map[string]any{"type": "people", "people": s.people()})
 	}
@@ -386,7 +386,8 @@ func Write(sh files.Share, rel string, p WriteP) (int, any) {
 	if name == "" {
 		name = "phosphorus"
 	}
-	agent := &client{agent: true, who: &who{clip(name, 32), clip(p.ByColor, 16)}}
+	clientSeq++
+	agent := &client{agent: true, cid: clientSeq, who: &who{clip(name, 32), clip(p.ByColor, 16)}}
 	if s.idle != nil {
 		s.idle.Stop()
 	}

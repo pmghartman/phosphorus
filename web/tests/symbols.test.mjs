@@ -32,6 +32,18 @@ test('identifier matches exclude comments, strings and partial names', async () 
   assert.equal(data.tokens.filter((t) => t.name === 'count').length, 2);
 });
 
+test('C++ function prototypes and forward types are distinguished from definitions', async () => {
+  const source = 'class Engine; void tick(); class Engine { public: void update(); }; void Engine::update() {} void tick() {}';
+  const { symbols } = await analyze('cpp', source);
+  for (const name of ['Engine', 'tick', 'update']) {
+    const matches = symbols.filter((s) => s.name === name);
+    assert.equal(matches.length, 2, name);
+    assert.equal(matches[0].declarationOnly, true, `${name} declaration`);
+    assert.equal(matches[1].declarationOnly, false, `${name} definition`);
+  }
+  assert.ok(symbols.filter((s) => s.name === 'tick' || s.name === 'update').every((s) => s.kind === 'method'));
+});
+
 test('the current method and type follow the caret, with locals scoped to methods', async () => {
   const source = 'class Cat { int age; void run() { int x; x = age; } };';
   const { symbols } = await analyze('cpp', source);

@@ -42,6 +42,8 @@ export function analyzeSymbols(parser, text) {
     if (/Comment|String|Character|TemplateString|RegExp/.test(node.name)) return;
     if (NAMES.test(node.name) && !node.firstChild) tokens.push({ name: text.slice(node.from, node.to), from: node.from, to: node.to });
     let kind = TYPES.test(node.name) ? 'type' : FUNCTIONS.test(node.name) ? 'method' : FIELDS.test(node.name) ? 'field' : VARIABLES.test(node.name) ? 'variable' : '';
+    const prototype = (kind === 'variable' || kind === 'field') && [...children(node)].some((c) => c.name === 'FunctionDeclarator');
+    if (prototype) kind = 'method';
     if (node.name === 'ImplItem') kind = 'type';
     let nextOwner = owner;
     if (kind) {
@@ -51,7 +53,8 @@ export function analyzeSymbols(parser, text) {
       for (const n of names) {
         const name = text.slice(n.from, n.to);
         if (!/^[$\p{L}_][$\p{L}\p{N}_]*$/u.test(name)) continue;
-        const s = { name, kind: kind === 'variable' && owner?.kind === 'type' ? 'field' : kind, from: n.from, to: n.to, start: node.from, end: node.to, owner };
+        const declarationOnly = prototype || (/^(ClassSpecifier|StructSpecifier|EnumSpecifier)$/.test(node.name) && ![...children(node)].some((c) => BODIES.test(c.name) || c.name === 'EnumeratorList'));
+        const s = { name, kind: kind === 'variable' && owner?.kind === 'type' ? 'field' : kind, from: n.from, to: n.to, start: node.from, end: node.to, owner, declarationOnly };
         if (!symbols.some((x) => x.from === s.from)) symbols.push(s);
         if (kind === 'type' || kind === 'method') nextOwner = s;
       }
