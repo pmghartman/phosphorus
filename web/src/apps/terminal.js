@@ -71,7 +71,8 @@ const liveTerms = new Set();
 // /api/term/<host>: keystrokes and output as binary frames, resize as JSON,
 // a dropped socket's rejoin by sid, until the server's ENDED
 // login: {user, pass} typed into the host's prompts, unseen
-function startTerminal(view, host, sid, resume, shared = false, login = null) {
+// opts: fontSize, and onEnd once the session's gone for good
+function startTerminal(view, host, sid, resume, shared = false, login = null, opts = {}) {
   let term = null;
   let fit = null;
   let ws = null;
@@ -84,7 +85,7 @@ function startTerminal(view, host, sid, resume, shared = false, login = null) {
     term = new Terminal({
       cursorBlink: true,
       cursorStyle: 'bar',
-      fontSize: 14,
+      fontSize: opts.fontSize || 14,
       fontFamily: getComputedStyle(document.documentElement).getPropertyValue('--font').trim(),
       lineHeight: 1,
       letterSpacing: 0,
@@ -153,10 +154,12 @@ function startTerminal(view, host, sid, resume, shared = false, login = null) {
       ws.onclose = (e) => {
         if (e.code === TERM_TAKEN) {
           term.write('\r\n\x1b[2m[opened in another tab]\x1b[0m\r\n');
+          opts.onEnd?.();
           return;
         }
         if (e.code === TERM_ENDED || !resume) {
           term.write('\r\n\x1b[2m[connection closed]\x1b[0m\r\n');
+          opts.onEnd?.();
           return;
         }
         retry = setTimeout(connect, delay);
@@ -171,6 +174,14 @@ function startTerminal(view, host, sid, resume, shared = false, login = null) {
   return {
     show: () => ready.then(() => { fit?.fit(); term?.focus(); }),
     focus: () => term?.focus(),
+    // typed in as if at the keyboard, false while the socket's down
+    send: (text) => {
+      if (ws?.readyState !== WebSocket.OPEN) return false;
+      ws.send(new TextEncoder().encode(text));
+      return true;
+    },
+    clear: () => term?.clear(),
+    fit: () => fit?.fit(),
     close: () => ready.then(() => {
       observer?.disconnect();
       clearTimeout(retry);

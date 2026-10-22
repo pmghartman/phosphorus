@@ -101,8 +101,11 @@ function opMap(ops, pos) {
 const anyCodeDirty = () => [...editors.values()].some((ed) => ed.dirty());
 window.addEventListener('beforeunload', (e) => { if (anyCodeDirty()) e.preventDefault(); });
 
-function codeEditor(view, file, btn, id) {
+// opts.bare: no bar of its own, for a host that draws its own (the ide), told
+// of every change by opts.onState
+function codeEditor(view, file, btn, id, opts = {}) {
   const lang = codeLang(file.path) || { hl: 'plaintext', check: '', comment: '' };
+  const bare = !!opts.bare;
   const bar = el('div', 'code-bar');
   const pathEl = el('span', 'code-path', file.label);
   const whoEl = el('span', 'code-who');
@@ -123,10 +126,12 @@ function codeEditor(view, file, btn, id) {
   const code = el('code', `hljs language-${lang.hl}`);
   pre.append(code);
   const squig = el('pre', 'code-hl code-squig');
+  // a find's matches, the current one stronger, drawn as the squiggles are
+  const finds = el('pre', 'code-hl code-finds');
   const ta = Object.assign(document.createElement('textarea'), { className: 'code-ta', spellcheck: false, autocomplete: 'off', wrap: 'off' });
   ta.setAttribute('autocapitalize', 'off');
   ta.setAttribute('aria-label', file.label);
-  body.append(pre, squig, ta);
+  body.append(finds, pre, squig, ta);
   scroller.append(gutter, body);
 
   const out = el('div', 'code-out');
@@ -140,6 +145,7 @@ function codeEditor(view, file, btn, id) {
   // markdown rendered, each block its source again on a double click
   const mdView = Object.assign(el('div', 'code-md'), { hidden: true, tabIndex: -1 });
   view.append(bar, scroller, mdView, out);
+  if (bare) bar.hidden = true;
 
   // the session: the server's text and version, the edit in flight to it
   let S = '';
@@ -184,9 +190,44 @@ function codeEditor(view, file, btn, id) {
       nums.textContent = Array.from({ length: lines }, (_, i) => i + 1).join('\n');
     }
     paintMarks();
+    paintFinds();
     checkSoon();
   }
   const redraw = () => { drawFrame ||= requestAnimationFrame(draw); mdSoon(); };
+
+  // --- a find's matches, set by the host, redrawn with the text ---
+  let findRanges = [];
+  let findAt = -1;
+  function paintFinds() {
+    if (!findRanges.length) { if (finds.firstChild) finds.textContent = ''; return; }
+    const text = ta.value;
+    let html = '';
+    let at = 0;
+    findRanges.forEach(([a, b], i) => {
+      if (a < at || b > text.length) return;
+      html += `${esc(text.slice(at, a))}<mark${i === findAt ? ' class="now"' : ''}>${esc(text.slice(a, b))}</mark>`;
+      at = b;
+    });
+    finds.innerHTML = `${html}${esc(text.slice(at))}\n`;
+  }
+
+  // --- the host told: state, caret and errors, once a frame at most ---
+  let tellFrame = 0;
+  const tell = () => { if (opts.onState && !tellFrame) tellFrame = requestAnimationFrame(() => { tellFrame = 0; if (!closed) opts.onState(info()); }); };
+  const lineAt = (text, p) => { let n = 1; for (let i = text.indexOf('\n'); i >= 0 && i < p; i = text.indexOf('\n', i + 1)) n += 1; return n; };
+  function info() {
+    const text = ta.value;
+    const s = ta.selectionStart;
+    const e = ta.selectionEnd;
+    const u = unit();
+    return {
+      ready, dirty: dirty(), readOnly: ta.readOnly, state: stateEl.textContent, bad: stateEl.classList.contains('bad'),
+      lang: lang.hl, line: lineAt(text, e), col: e - text.lastIndexOf('\n', e - 1), sel: Math.abs(e - s),
+      indent: u === '\t' ? 'tab' : u.length, eol: text.includes('\r\n') ? 'CRLF' : 'LF', length: text.length,
+      errors: errs.map((x) => ({ from: x.from, to: x.to, what: x.what, line: lineAt(text, x.from), col: x.from - text.lastIndexOf('\n', x.from - 1) })),
+      people: people.filter((p) => (me ? p.id !== me : p.name !== name)),
+    };
+  }
   // a grammar the page has no parser for: chroma's, once typing pauses
   let hlTimer = 0;
   function serverHighlight(text) {
@@ -334,6 +375,7 @@ function codeEditor(view, file, btn, id) {
     }));
     if (!errs.length) out.hidden = true;
     paintMarks();
+    tell();
   }
 
   // the others' carets as marks in the gutter, their colour, their name on hover
@@ -373,8 +415,10 @@ function codeEditor(view, file, btn, id) {
   const dirty = () => ready && !(saved < 0 && !ta.value) && (savedText === null || !!inflight || ta.value !== S || S !== savedText);
   function paintState(note) {
     const d = dirty();
-    btn.classList.toggle('dirty', d);
-    btn.querySelector('.tab-label').textContent = `${codeName(file)}${d ? ' •' : ''}`;
+    if (!bare) {
+      btn.classList.toggle('dirty', d);
+      btn.querySelector('.tab-label').textContent = `${codeName(file)}${d ? ' •' : ''}`;
+    }
     stateEl.textContent = note || (!ready ? 'connecting' : !canWrite() ? 'read-only' : saved < 0 && !ta.value ? 'new file' : d ? 'saving' : 'saved');
     stateEl.classList.toggle('bad', !!note);
     saveBtn.disabled = !ready || !canWrite();
@@ -386,10 +430,12 @@ function codeEditor(view, file, btn, id) {
       return s;
     }));
     whoEl.hidden = !others.length;
+    tell();
   }
 
   // the caret kept in view as it moves, the scroller being the editor, not the box
-  function caretInView() {
+  // center: a jump from afar put mid-view, as a find or a go to line wants
+  function caretInView(center = false) {
     const before = ta.value.slice(0, ta.selectionEnd);
     const line = before.split('\n').length - 1;
     const col = before.length - before.lastIndexOf('\n') - 1;
@@ -398,7 +444,9 @@ function codeEditor(view, file, btn, id) {
     const cw = chWidthIn(ta);
     const y = parseFloat(cs.paddingTop) + line * lh;
     const x = gutter.offsetWidth + parseFloat(cs.paddingLeft) + col * cw;
-    if (y < scroller.scrollTop) scroller.scrollTop = y;
+    const out = y < scroller.scrollTop || y + lh > scroller.scrollTop + scroller.clientHeight;
+    if (center && out) scroller.scrollTop = Math.max(0, y - scroller.clientHeight / 2);
+    else if (y < scroller.scrollTop) scroller.scrollTop = y;
     else if (y + lh > scroller.scrollTop + scroller.clientHeight) scroller.scrollTop = y + lh - scroller.clientHeight + 4;
     if (x < scroller.scrollLeft + gutter.offsetWidth) scroller.scrollLeft = Math.max(0, x - gutter.offsetWidth - cw * 4);
     else if (x > scroller.scrollLeft + scroller.clientWidth - cw * 2) scroller.scrollLeft = x - scroller.clientWidth + cw * 4;
@@ -555,7 +603,8 @@ function codeEditor(view, file, btn, id) {
     const t = ta.selectionEnd;
     const v = ta.value;
     const mod = e.ctrlKey || e.metaKey;
-    if (e.key === 'Escape') { e.preventDefault(); ta.blur(); return; }
+    // the ide's escape its own: a find closed, the focus kept
+    if (e.key === 'Escape' && !bare) { e.preventDefault(); ta.blur(); return; }
     if (mod && e.key === '/') { e.preventDefault(); toggleComment(); return; }
     if (ta.readOnly || mod || e.altKey) return;
     if (e.key === 'Tab') {
@@ -610,7 +659,7 @@ function codeEditor(view, file, btn, id) {
     cursorTimer = setTimeout(() => say({ type: 'cursor', pos: ta.selectionStart }), 250);
   };
   ta.addEventListener('input', () => { redraw(); flush(); paintState(); caretInView(); sendCursor(); });
-  for (const ev of ['keyup', 'click', 'select']) ta.addEventListener(ev, () => { caretInView(); sendCursor(); });
+  for (const ev of ['keyup', 'click', 'select']) ta.addEventListener(ev, () => { caretInView(); sendCursor(); tell(); });
 
   function save() {
     if (!ready || !canWrite()) return;
@@ -649,6 +698,27 @@ function codeEditor(view, file, btn, id) {
     focus: () => ta.focus(),
     show: () => { redraw(); },
     text: () => ta.value,
+    info,
+    // the host's edits typed in as the browser's own, so ctrl+z undoes them
+    edit: (from, to, text, selFrom, selTo) => {
+      if (ta.readOnly) return false;
+      ta.focus();
+      typeIn(from, to, text, selFrom, selTo);
+      caretInView();
+      return true;
+    },
+    // focus false: the caret moved and shown, the focus left where it is (a find's box)
+    select: (from, to = from, { focus = true } = {}) => {
+      if (focus) ta.focus();
+      ta.setSelectionRange(from, to);
+      caretInView(true);
+      sendCursor();
+      tell();
+    },
+    selection: () => [ta.selectionStart, ta.selectionEnd],
+    setFinds: (ranges, at = -1) => { findRanges = ranges; findAt = at; paintFinds(); },
+    preview: isMd ? (on) => setRendered(on ?? !rendered) : null,
+    previewing: () => rendered,
     close: () => {
       closed = true;
       if (sock) sock.close();
