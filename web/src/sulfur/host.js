@@ -272,3 +272,35 @@ export async function bootMesh(server) {
 export async function logIn(user, pass) {
   return getJSON('/api/login', jsonPost({ user, pass }));
 }
+
+// --- this computer's own dialogs, in Sulfur's desktop app -----------------------------
+
+// a folder or file picked in the system's dialog, as an absolute path; null when cancelled
+// or when there's no app around the page to ask
+export async function nativePick({ directory = false, title = '', defaultPath = '' } = {}) {
+  const t = window.__TAURI__;
+  if (!t?.core?.invoke) return null;
+  const options = { directory, multiple: false, title: title || undefined, defaultPath: defaultPath || undefined };
+  const got = t.dialog?.open ? await t.dialog.open(options) : await t.core.invoke('plugin:dialog|open', { options });
+  return typeof got === 'string' ? got : got?.path || null;
+}
+
+// an absolute path on this computer as Sulfur's place and path: the home's for the
+// user's own folder, a drive's for the rest
+export function locate(abs) {
+  const shares = hostsInfo[selfHost]?.files?.shares || [];
+  const win = /^[A-Za-z]:/.test(abs);
+  const norm = (p) => { const x = String(p).replace(/\\/g, '/').replace(/\/+$/, ''); return win ? x.toLowerCase() : x; };
+  const a = norm(abs);
+  const rel = (label) => String(abs).replace(/\\/g, '/').replace(/\/+$/, '').slice(norm(label).length).replace(/^\/+/, '');
+  const home = shares.find((s) => s.home);
+  if (home) {
+    const h = norm(home.label);
+    // the user's folder by its own name, however the path was cased
+    if (a === `${h}/${norm(acct.user)}` || a.startsWith(`${h}/${norm(acct.user)}/`)) return { loc: HOME, rel: [acct.user, ...rel(home.label).split('/').slice(1)].join('/') };
+  }
+  const drive = shares.filter((s) => !s.home).sort((x, y) => y.label.length - x.label.length).find((s) => { const d = norm(s.label); return a === d || a.startsWith(`${d}/`) || (d === '' && a.startsWith('/')); });
+  return drive ? { loc: { host: selfHost, share: String(drive.id) }, rel: rel(drive.label) } : null;
+}
+standalone.nativePick = nativePick;
+standalone.locate = locate;

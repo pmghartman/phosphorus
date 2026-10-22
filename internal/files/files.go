@@ -209,7 +209,9 @@ func Can(sh *Share, perm string) bool { return sh != nil && strings.Contains(sh.
 func Enabled() bool { return len(Shares()) > 0 }
 
 func inside(sh Share, p string) bool {
-	return p == sh.Real || strings.HasPrefix(p, sh.Real+string(filepath.Separator))
+	// a drive's or the system's root ends in its separator already: C:\, /
+	root := strings.TrimSuffix(sh.Real, string(filepath.Separator))
+	return p == sh.Real || strings.HasPrefix(p, root+string(filepath.Separator))
 }
 
 func toAbs(sh Share, rel string) string {

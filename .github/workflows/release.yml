@@ -1,7 +1,8 @@
 # manual release: per checked OS a host installer (.deb, .dmg, setup .exe), as
-# vVERSION, and with Sulfur checked the Sulfur code editor's own app too (Tauri around
-# its local server: setup .exe and .msi, .dmg, .deb and AppImage); feeds on release
-# `update`, then only the two newest releases and runs kept
+# vVERSION, and with Sulfur checked the Sulfur code editor's own app for every OS
+# (Tauri around its local server: setup .exe and .msi, .dmg, .deb and AppImage);
+# feeds on release `update` when a host was built, then only the two newest
+# releases and runs kept
 # app and apt feeds need UPDATE_SIGNING_KEY (go run ./cmd/feedsign -keygen), APT_GPG_KEY, var UPDATE_PUBKEY
 name: release
 
@@ -29,9 +30,9 @@ on:
         type: boolean
         default: false
       sulfur:
-        description: "Sulfur code editor app, for each checked OS"
+        description: "Sulfur code editor app, for every OS"
         type: boolean
-        default: false
+        default: true
 
 permissions:
   contents: read
@@ -67,7 +68,7 @@ jobs:
           SULFUR: ${{ inputs.sulfur }}
         run: |
           on() { for v in "$@"; do [ "$v" = true ] && return 0; done; return 1; }
-          on "$AMD64" "$ARM64" "$MAC" "$WIN" || { echo "check at least one OS" >&2; exit 1; }
+          on "$AMD64" "$ARM64" "$MAC" "$WIN" "$SULFUR" || { echo "check at least one OS, or Sulfur" >&2; exit 1; }
           la='{"name":"linux-amd64","runner":"ubuntu-24.04","arch":"amd64"}'
           lb='{"name":"linux-arm64","runner":"ubuntu-24.04-arm","arch":"arm64"}'
           mc='{"name":"macos-universal","runner":"macos-14","arch":"universal"}'
@@ -80,13 +81,13 @@ jobs:
           # an empty matrix fails its job: a placeholder the jobs' if skips
           j() { [ $# -gt 0 ] || set -- '{"name":"none"}'; local IFS=,; echo "[$*]"; }
           echo "builds=$(j "${builds[@]}")" | tee -a "$GITHUB_OUTPUT"
-          # Sulfur's desktop app on the same OSes, its own bundles per OS
+          # Sulfur's app on every OS, whichever hosts were checked: its own bundles per OS
           sulfur=()
           if [ "$SULFUR" = true ]; then
-            [ "$AMD64" = true ] && sulfur+=('{"name":"linux-amd64","runner":"ubuntu-24.04","bundles":"deb,appimage","target":"","triple":"x86_64-unknown-linux-gnu"}')
-            [ "$ARM64" = true ] && sulfur+=('{"name":"linux-arm64","runner":"ubuntu-24.04-arm","bundles":"deb","target":"","triple":"aarch64-unknown-linux-gnu"}')
-            [ "$MAC" = true ] && sulfur+=('{"name":"macos-universal","runner":"macos-14","bundles":"dmg","target":"universal-apple-darwin","triple":"universal-apple-darwin"}')
-            [ "$WIN" = true ] && sulfur+=('{"name":"windows-x86_64","runner":"windows-2022","bundles":"nsis,msi","target":"","triple":"x86_64-pc-windows-msvc"}')
+            sulfur+=('{"name":"linux-amd64","runner":"ubuntu-24.04","bundles":"deb,appimage","target":"","triple":"x86_64-unknown-linux-gnu"}')
+            sulfur+=('{"name":"linux-arm64","runner":"ubuntu-24.04-arm","bundles":"deb","target":"","triple":"aarch64-unknown-linux-gnu"}')
+            sulfur+=('{"name":"macos-universal","runner":"macos-14","bundles":"dmg","target":"universal-apple-darwin","triple":"universal-apple-darwin"}')
+            sulfur+=('{"name":"windows-x86_64","runner":"windows-2022","bundles":"nsis,msi","target":"","triple":"x86_64-pc-windows-msvc"}')
           fi
           echo "sulfur=$(j "${sulfur[@]}")" | tee -a "$GITHUB_OUTPUT"
 
@@ -202,10 +203,10 @@ jobs:
           if-no-files-found: ignore
 
   # Sulfur's own app: Tauri around its local server (cmd/sulfur), which serves Sulfur
-  # alone and this computer offline, or fronts a mesh; an installer per checked OS
+  # alone and this computer offline, or fronts a mesh; installers for every OS
   sulfur:
     needs: [version]
-    if: ${{ inputs.sulfur && (inputs.linux_amd64 || inputs.linux_arm64 || inputs.macos || inputs.windows) }}
+    if: ${{ inputs.sulfur }}
     strategy:
       fail-fast: false
       matrix:
@@ -338,8 +339,10 @@ jobs:
           path: upd
           pattern: upd-*
           merge-multiple: true
-      # built OSes' files onto `update`; others: last release's
+      # built OSes' files onto `update`; others: last release's. A release of Sulfur
+      # alone leaves the feed be, so no host's told of an update with nothing in it
       - name: update feed
+        if: ${{ inputs.linux_amd64 || inputs.linux_arm64 || inputs.macos || inputs.windows }}
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
