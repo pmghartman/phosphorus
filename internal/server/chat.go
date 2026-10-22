@@ -547,7 +547,6 @@ func cleanChatMessage(m Msg) Msg {
 var (
 	plainFirst = regexp.MustCompile(`^(?:Yes|No|The|It|Its|It's|That|This|There|These|Those|You|Your|A|An|Sure|Done|Here|Nothing|None|All|Both|Not|To|In|On|For|With|From|At|By|Use|Run|Try|Open|Ok|Okay|Each|One|Some|Only|Just)\b`)
 	blockFirst = regexp.MustCompile("^\\s*(?:```|[-*+] |\\d+\\. |#|>|\\||\\$\\$|\\\\\\[)")
-	cmdRe      = regexp.MustCompile(`(?i)^/chimp(\s|$)`)
 )
 
 // addressed a reply opened with who it's for, a plain first word lowered
@@ -565,17 +564,6 @@ func addressed(to, text string) string {
 	return to + ", " + text
 }
 
-func lineKind(ref string) any {
-	cmu.Lock()
-	defer cmu.Unlock()
-	for _, m := range mergedChat {
-		if keyOf(m) == ref && !isMark(m) {
-			return m["kind"]
-		}
-	}
-	return "?"
-}
-
 // forBrowser a line with its markdown rendered, never stored or peered
 func forBrowser(m Msg) Msg {
 	out := Msg{}
@@ -591,13 +579,6 @@ func forBrowser(m Msg) Msg {
 	case "", "dm", "model", "notice", "pending", "edit":
 	default:
 		return out
-	}
-	plainLine := k == ""
-	if k == "edit" {
-		plainLine = lineKind(str(m["ref"])) == nil
-	}
-	if plainLine && cmdRe.MatchString(text) {
-		text = strings.TrimLeft(text[len("/chimp"):], " \t\n\r")
 	}
 	if to, ok := m["to"].(string); ok && (k == "model" || k == "pending") {
 		text = addressed(to, text)

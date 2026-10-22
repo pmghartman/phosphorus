@@ -17,8 +17,6 @@ import (
 	"time"
 
 	"github.com/pmghartman/phosphorus/internal/files"
-	"github.com/pmghartman/phosphorus/internal/harness"
-	"github.com/pmghartman/phosphorus/internal/project"
 	"github.com/pmghartman/phosphorus/internal/term"
 	"github.com/pmghartman/phosphorus/internal/util"
 	"github.com/pmghartman/phosphorus/internal/wsock"
@@ -35,11 +33,10 @@ const (
 	noCreds     = "Never asks for, takes or types a password, key or any other credential."
 )
 
-// Asker the person behind a phosphorus ask
+// Asker the person behind a keyed call
 type Asker struct {
-	Name  string
-	UI    func(action map[string]any) bool
-	Creds func(action, why string) any
+	Name string
+	UI   func(action map[string]any) bool
 }
 
 // Actions the buttons phosphorus may press
@@ -76,8 +73,6 @@ type Src struct {
 	People   func() []map[string]any
 	Lock     func() any
 	Chain    func() any
-	Projects func() any
-	Asker    func(id string) *Asker
 	Actions  Actions
 	Post     func(by, to, text, via string) (int, any)
 	// Known a person by chat name: a user, or anyone the chat has seen
@@ -397,28 +392,18 @@ type Caller struct {
 	g     *grants
 }
 
-// Meta an ask's context: its asker, role and project, or a keyed caller
+// Meta a call's context: its keyed caller, if any
 type Meta struct {
-	Asker   string
-	Role    string
-	Direct  bool
-	Project string
-	Session string
-	Caller  *Caller
+	Caller *Caller
 	// Local an unkeyed call from this host itself
 	Local bool
 }
 
 func askerOf(m Meta) (*Asker, error) {
 	if c := m.Caller; c != nil {
-		return &Asker{Name: c.User, UI: func(a map[string]any) bool { return src.Actions.UserUI(c.User, a) },
-			Creds: func(string, string) any { return map[string]any{"done": false, "note": "never over a key"} }}, nil
+		return &Asker{Name: c.User, UI: func(a map[string]any) bool { return src.Actions.UserUI(c.User, a) }}, nil
 	}
-	a := src.Asker(m.Asker)
-	if a == nil {
-		return nil, errors.New("buttons are pressed only for a person asking phosphorus in the chat")
-	}
-	return a, nil
+	return nil, errc("forbidden", "buttons are pressed only on a user's key")
 }
 
 // toolError a failure with its short code: not_found, bad_input, forbidden,
@@ -500,13 +485,6 @@ func knownHost(a map[string]any) (string, error) {
 	return "", errc("not_found", "no phosphorus host %s answering on the mesh; mesh_hosts lists them", h)
 }
 
-func projectOf(m Meta) (string, error) {
-	if m.Project == "" {
-		return "", errors.New("only the orangutan, working on a project, has this")
-	}
-	return m.Project, nil
-}
-
 // adminOf an error unless the caller, when keyed, is an admin
 func adminOf(m Meta) error {
 	if m.Caller != nil && !m.Caller.Admin {
@@ -519,9 +497,6 @@ func byOf(m Meta) string {
 	if m.Caller != nil {
 		return m.Caller.User
 	}
-	if m.Role == "chimp" || m.Role == "orangutan" {
-		return m.Role
-	}
 	return "phosphorus"
 }
 
@@ -530,8 +505,7 @@ type tool struct {
 	description string
 	schema      map[string]any
 	read        bool
-	project     bool
-	// scope: "" any caller, "key" a user's key only, "ask" an ask in the chat only
+	// scope: "" any caller, "key" a user's key only
 	scope       string
 	destructive bool
 	open        bool
@@ -540,16 +514,16 @@ type tool struct {
 	run   func(a map[string]any, m Meta) (any, error)
 }
 
-// visible whether a caller sees a tool: a key every tool but the chat's and a
-// project's, the mesh's own model all but a key's, an unkeyed peer only reads
+// visible whether a caller sees a tool: a key every tool it isn't withheld,
+// this host unkeyed all but a key's, an unkeyed peer only reads
 func visible(t *tool, local bool, caller *Caller) bool {
 	switch {
 	case caller != nil:
-		return !t.project && t.scope != "ask" && withheld(t, caller) == ""
+		return withheld(t, caller) == ""
 	case local:
 		return t.scope != "key"
 	}
-	return t.read && t.scope == "" && !t.project
+	return t.read && t.scope == ""
 }
 
 var name = map[string]any{"type": "string", "description": "host name, as mesh_hosts lists it"}
@@ -562,9 +536,6 @@ func numOr(v any, def float64) float64 {
 	}
 	return n
 }
-
-var projectOK = map[string]bool{"fetch_page": true}
-var phases = []any{"plan", "execute", "test", "refine"}
 
 var (
 	tools     []tool
@@ -590,54 +561,6 @@ func buildTools() {
 		describe()
 	}()
 	tools = []tool{
-		{name: "project_report", project: true,
-			description: "Report your project's state, shown live to the people who set it: the phase you are in, a line or two " +
-				"on what you are doing and found, and progress 0-100 against the whole brief; 100 closes the project as done, so report it " +
-				"only once the brief is fully met and tested. The task list shown is your todowrite " +
-				"list; tasks here (the whole list) only replace it.",
-			schema: object(map[string]any{
-				"phase": map[string]any{"type": "string", "enum": phases}, "note": map[string]any{"type": "string"},
-				"progress": map[string]any{"type": "integer", "minimum": 0, "maximum": 100},
-				"tasks":    map[string]any{"type": "array", "items": object(map[string]any{"text": map[string]any{"type": "string"}, "done": map[string]any{"type": "boolean"}}, "text")},
-			}, "phase", "note", "progress"),
-			run: func(a map[string]any, m Meta) (any, error) {
-				id, err := projectOf(m)
-				if err != nil {
-					return nil, err
-				}
-				return project.Report(id, a)
-			}},
-		{name: "project_finish", project: true,
-			description: "End your project before its deadline: done once the brief is fully met and tested, blocked when it " +
-				"cannot be met. The summary says what was made, how to use it and what is left.",
-			schema: object(map[string]any{"outcome": map[string]any{"type": "string", "enum": []any{"done", "blocked"}}, "summary": map[string]any{"type": "string"}}, "outcome", "summary"),
-			run: func(a map[string]any, m Meta) (any, error) {
-				id, err := projectOf(m)
-				if err != nil {
-					return nil, err
-				}
-				return project.Finish(id, a)
-			}},
-		{name: "sandbox_exec", project: true,
-			description: "Run a bash command in your project's sandbox (debian, root, network), in your workspace: its exit code, " +
-				"stdout and stderr. For a command past your shell's 10 minutes, up to an hour, or with background a server under " +
-				"test, started and left running.",
-			schema: object(map[string]any{
-				"command":    map[string]any{"type": "string"},
-				"timeout_s":  map[string]any{"type": "integer", "description": "seconds before it is killed, up to 3600", "default": 300},
-				"background": map[string]any{"type": "boolean", "default": false},
-			}, "command"),
-			run: func(a map[string]any, m Meta) (any, error) {
-				id, err := projectOf(m)
-				if err != nil {
-					return nil, err
-				}
-				return project.Exec(id, str(a["command"]), a["timeout_s"], a["background"] == true)
-			}},
-		{name: "fetch_page", read: true, scope: "ask",
-			description: "A web page's readable text, from public addresses only, for a link someone gave or an address known for sure.",
-			schema:      object(map[string]any{"url": map[string]any{"type": "string"}}, "url"),
-			run:         func(a map[string]any, _ Meta) (any, error) { return fetchPage(str(a["url"])) }},
 		{name: "mesh_hosts", read: true,
 			description: "Every host on the phosphorus mesh: whether it runs phosphorus, its OS and version.",
 			schema: object(map[string]any{"health": map[string]any{"type": "boolean", "default": false,
@@ -726,15 +649,10 @@ func buildTools() {
 			schema:      object(nil),
 			run:         func(map[string]any, Meta) (any, error) { return src.GitHosts(), nil }},
 		{name: "models", read: true,
-			description: "The models: each role's (chimp for chat, orangutan for long projects) model as chosen and as answering, the providers with an api key, " +
-				"each mesh model host, its file, state and memory, and the last ask's context window in tokens (system prompt, chat, prompt, reply) and speed.",
+			description: "The models: each role's (chimp the small, fast one, orangutan the big one) mesh host as chosen and as answering, " +
+				"each mesh model host, its file, state and memory, and the last call's context window in tokens (system prompt, chat, prompt, reply) and speed.",
 			schema: object(nil),
 			run:    func(map[string]any, Meta) (any, error) { return src.Model(), nil }},
-		{name: "projects", read: true,
-			description: "The orangutan's long projects on every host: title, who set it, status, phase, progress, round and deadline. " +
-				"They are started from the web's projects tab, never from chat.",
-			schema: object(nil),
-			run:    func(map[string]any, Meta) (any, error) { return src.Projects(), nil }},
 		{name: "people", read: true,
 			description: "Who is on phosphorus right now: each person connected, the host they are on, and whether they are typing.",
 			schema:      object(nil),
@@ -911,8 +829,8 @@ func buildTools() {
 				return pressed(src.Actions.GitMaster(host))
 			}},
 		{name: "set_model_role",
-			description: "Make a model the chimp or the orangutan, mesh-wide: provider/model as opencode names it, a mesh " +
-				"host's own as phosphorus/<host>, blank for the mesh's default. Only providers with a key set answer.",
+			description: "Make a mesh host's model the chimp or the orangutan, mesh-wide: the host as phosphorus/<host> (or just " +
+				"<host>), blank for the mesh's default (the smallest ready model the chimp, the biggest the orangutan).",
 			schema: object(map[string]any{"role": map[string]any{"type": "string", "enum": []any{"chimp", "orangutan"}}, "model": map[string]any{"type": "string"}}, "role", "model"),
 			run: func(a map[string]any, m Meta) (any, error) {
 				if err := adminOf(m); err != nil {
@@ -1096,22 +1014,6 @@ func buildTools() {
 				}
 				return map[string]any{"opened": host + "/" + util.JSString(a["path"])}, nil
 			}},
-		{name: "ask_credentials", scope: "ask",
-			description: "For an action that needs a credential: a small box by the asker's chat asks them for it, and what they " +
-				"type goes from their page straight to the action, never to you. update: start a mesh update, its password. " +
-				"Waits up to two minutes for them and says whether the action went through.",
-			schema: object(map[string]any{"action": map[string]any{"type": "string", "enum": []any{"update"}},
-				"why": map[string]any{"type": "string", "description": "a few words over the box, what it is for"}}, "action"),
-			run: func(a map[string]any, m Meta) (any, error) {
-				if a["action"] != "update" {
-					return nil, errors.New("action is update")
-				}
-				as, err := askerOf(m)
-				if err != nil {
-					return nil, err
-				}
-				return as.Creds("update", clip(str(a["why"]), 120)), nil
-			}},
 		{name: "open_terminal",
 			description: "Open a terminal tab to a phosphorus host on the asker's page, shared with phosphorus from the start. " +
 				"They log in themselves, phosphorus never types into it. " + noCreds,
@@ -1173,14 +1075,10 @@ func buildTools() {
 				"to":   map[string]any{"type": "string", "description": "a person's chat name for a direct message, blank for the group chat"},
 			}, "text"),
 			run: func(a map[string]any, m Meta) (any, error) {
-				as, err := askerOf(m)
-				if err != nil {
+				if _, err := askerOf(m); err != nil {
 					return nil, err
 				}
 				to := strings.TrimPrefix(strings.TrimSpace(str(a["to"])), "@")
-				if m.Direct && (to == "" || to == as.Name) {
-					return nil, errors.New("a direct conversation: answer in your reply, nothing goes to the group chat")
-				}
 				if to != "" && !src.Known(to) {
 					return nil, errc("not_found", "no one called %s; people lists who's on, any user's name works", to)
 				}
@@ -1238,14 +1136,6 @@ func fail(id any, code int, msg string) map[string]any {
 	return map[string]any{"jsonrpc": "2.0", "id": id, "error": map[string]any{"code": code, "message": msg}}
 }
 
-func metaOf(ask, dir any) *Meta {
-	a := harness.Context(str(ask), str(dir))
-	if a == nil {
-		return nil
-	}
-	return &Meta{Asker: a.Asker, Role: a.Role, Direct: a.Direct, Project: a.Project, Session: a.Session}
-}
-
 func one(raw any, local bool, caller *Caller) map[string]any {
 	msg := util.Obj(raw)
 	var id any
@@ -1271,8 +1161,6 @@ func one(raw any, local bool, caller *Caller) map[string]any {
 		return initialize(id, params, caller)
 	case method == "ping":
 		return reply(id, map[string]any{})
-	case local && strings.HasPrefix(method, "phosphorus/"):
-		return hook(id, method, params)
 	case method == "tools/list":
 		return reply(id, map[string]any{"tools": toolList(local, caller)})
 	case method == "tools/call":
@@ -1302,56 +1190,6 @@ func instructions(caller *Caller) string {
 		s += keyNote(caller)
 	}
 	return s
-}
-
-// askMeta the ask a local call carries in _ask, nil for none
-func askMeta(p map[string]any) *Meta {
-	if !util.Truthy(p["_ask"]) {
-		return nil
-	}
-	return metaOf(p["_ask"], p["_dir"])
-}
-
-// hook the harness's own calls, from this host only
-func hook(id any, method string, params map[string]any) map[string]any {
-	m := askMeta(params)
-	switch method {
-	case "phosphorus/created":
-		opened := false
-		if m != nil {
-			if who := src.Asker(m.Asker); who != nil {
-				if f := src.Locate(str(params["path"])); f != nil {
-					opened = who.UI(map[string]any{"kind": "code", "host": src.Self()["host"], "share": f.Share, "path": f.Path})
-				}
-			}
-		}
-		return reply(id, map[string]any{"opened": opened})
-	case "phosphorus/tool":
-		if m == nil {
-			return fail(id, -32000, "no ask holds this session")
-		}
-		if m.Project == "" {
-			return reply(id, map[string]any{})
-		}
-		args := util.Obj(params["args"])
-		if args == nil {
-			args = map[string]any{}
-		}
-		out, err := project.Guard(m.Project, str(params["tool"]), args)
-		if err != nil {
-			return fail(id, -32000, err.Error())
-		}
-		if params["tool"] == "webfetch" {
-			return reply(id, map[string]any{"set": map[string]any{"url": FetchURL(str(args["url"]))}})
-		}
-		return reply(id, out)
-	case "phosphorus/todos":
-		if m != nil && m.Project != "" && m.Session == params["_ask"] {
-			project.Todos(m.Project, params["todos"])
-		}
-		return reply(id, map[string]any{})
-	}
-	return fail(id, -32601, "no method "+method)
 }
 
 // toolList the tools a caller sees, kept for the three kinds of caller
@@ -1393,24 +1231,11 @@ func runTool(t *tool, params map[string]any, local bool, caller *Caller) (out an
 			err = fmt.Errorf("%v", r)
 		}
 	}()
-	pa := util.Obj(params["arguments"])
-	args := make(map[string]any, len(pa))
-	for k, v := range pa {
-		if k != "_ask" && k != "_dir" {
-			args[k] = v
-		}
+	args := maps.Clone(util.Obj(params["arguments"]))
+	if args == nil {
+		args = map[string]any{}
 	}
-	m := Meta{Caller: caller, Local: local}
-	if local {
-		if x := askMeta(pa); x != nil {
-			m = *x
-			m.Local = true
-		}
-	}
-	if m.Project != "" && !t.project && !projectOK[t.name] {
-		return nil, fmt.Errorf("%s isn't open to a project", t.name)
-	}
-	out, err = t.run(args, m)
+	out, err = t.run(args, Meta{Caller: caller, Local: local})
 	if !t.read && caller != nil {
 		audit(caller, t.name, args, err)
 	}
@@ -1421,7 +1246,7 @@ func callTool(id any, params map[string]any, local bool, caller *Caller) map[str
 	errText := ""
 	name, _ := params["name"].(string)
 	t := toolIndex[name]
-	if t != nil && caller != nil && !t.project && t.scope != "ask" {
+	if t != nil && caller != nil {
 		if why := withheld(t, caller); why != "" {
 			return fail(id, -32602, fmt.Sprintf("%s is off this key: %s", name, why))
 		}
@@ -1468,7 +1293,7 @@ func Handle(body any, local bool, caller *Caller) (int, any) {
 	toolsOnce.Do(buildOnce)
 	if caller != nil {
 		markSeen(caller.User)
-		// a harness naming itself on every request is the last used, sessions or not
+		// a client naming itself on every request is the last used, sessions or not
 		if caller.Via != "" {
 			noteClient(caller.User, caller.Via)
 		}

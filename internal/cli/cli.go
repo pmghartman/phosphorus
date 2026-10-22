@@ -37,13 +37,12 @@ var (
 )
 
 // the frontend's apps as tabs, the mesh update last, opened by u over them
-var tabs = []string{"status", "services", "files", "projects", "model", "git", "update"}
+var tabs = []string{"status", "services", "files", "model", "git", "update"}
 
 const (
 	statsTab = iota
 	servicesTab
 	filesTab
-	projectsTab
 	modelTab
 	gitTab
 	updateTab
@@ -212,21 +211,18 @@ var ui = struct {
 	// each list tab's selected row, the model tab's set to this host once
 	sel         []int
 	modelPicked bool
-	// the orangutan's projects, every host's, and the picked one's whole record
-	projects []J
-	project  J
-	room     int
-	scroll   int
-	form     *form
-	confirm  *confirm
-	prompt   *prompt
-	flash    string
-	flashAt  time.Time
+	room        int
+	scroll      int
+	form        *form
+	confirm     *confirm
+	prompt      *prompt
+	flash       string
+	flashAt     time.Time
 	// the key form alone, before phosphorus runs
 	keysOnly bool
 	// this terminal's round trip to each host, timed here
 	rtt map[string]any
-}{sel: make([]int, len(tabs)), room: 20, projects: []J{}, rtt: map[string]any{}}
+}{sel: make([]int, len(tabs)), room: 20, rtt: map[string]any{}}
 
 // everything touching ui runs on the loop, other goroutines handing it work here
 var (
@@ -264,11 +260,9 @@ func poller() {
 }
 
 func pollOnce() time.Duration {
-	type snap struct {
-		tab, projSel int
-	}
+	type snap struct{ tab int }
 	ch := make(chan snap, 1)
-	onLoop(func() { ch <- snap{ui.tab, ui.sel[projectsTab]} })
+	onLoop(func() { ch <- snap{ui.tab} })
 	s := <-ch
 	r := call("GET", "/api/state", nil)
 	if r.status != 200 {
@@ -289,30 +283,11 @@ func pollOnce() time.Duration {
 			}
 		}
 	}
-	var projects []J
-	var project J
-	if s.tab == projectsTab {
-		if x := call("GET", "/api/projects", nil); x.status == 200 {
-			projects = objs(x.body["projects"])
-			sortProjects(projects)
-			if i := clampSel(s.projSel, len(projects)); i < len(projects) {
-				p := projects[i]
-				if y := call("GET", "/api/projects/"+url.PathEscape(str(p["host"]))+"/"+str(p["id"]), nil); y.status == 200 {
-					project = y.body
-				}
-			}
-		}
-	}
 	onLoop(func() {
 		ui.state = st
 		ui.offline = false
 		if s.tab == filesTab {
 			ui.filesInfo = info
-		}
-		if projects != nil {
-			ui.projects = projects
-			ui.sel[projectsTab] = clampSel(ui.sel[projectsTab], len(projects))
-			ui.project = project
 		}
 		render()
 	})
@@ -354,18 +329,6 @@ func pingHosts(st J) {
 	}
 	wg.Wait()
 	onLoop(func() { ui.rtt = got; render() })
-}
-
-// said a request's outcome on the flash line, back on the loop
-func said(r reply, ok string) {
-	onLoop(func() {
-		if r.status == 200 {
-			flash(c("online")(ok))
-		} else {
-			flash(c("offmesh")(or(str(r.body["error"]), fmt.Sprintf("status %d", r.status))))
-		}
-		poll()
-	})
 }
 
 // --- render ---------------------------------------------------------------------------
@@ -504,9 +467,6 @@ type keyEv struct {
 	ctrl, shift, meta bool
 }
 
-// localForm one writing files here alone, kept working with the frontend down
-func localForm(f *form) bool { return f.kind != "project" && f.kind != "note" }
-
 func formKey(s string, e keyEv) {
 	f := ui.form
 	if e.name == "escape" {
@@ -525,7 +485,7 @@ func formKey(s string, e keyEv) {
 		return
 	}
 	if e.name == "return" {
-		f.err = map[string]func(*form) string{"service": saveService, "share": saveShare, "model": saveModel, "project": saveProject, "note": saveNote, "keys": saveKeys}[f.kind](f)
+		f.err = map[string]func(*form) string{"service": saveService, "share": saveShare, "model": saveModel, "keys": saveKeys}[f.kind](f)
 		if f.err != "" {
 			return
 		}
@@ -538,9 +498,6 @@ func formKey(s string, e keyEv) {
 					break
 				}
 			}
-		}
-		if f.kind == "project" || f.kind == "note" {
-			return
 		}
 		if f.kind == "keys" {
 			if ui.keysOnly {
@@ -606,80 +563,6 @@ func fieldKey(f *form, s string, e keyEv) {
 	}
 	if s != "" && !e.ctrl && !e.meta && s >= " " && s != "\x7f" {
 		x.value += s
-	}
-}
-
-func saveProject(f *form) string {
-	v := f.vals()
-	if v["title"] == "" || v["brief"] == "" {
-		return "a project needs a title and a brief"
-	}
-	hours, err := strconv.ParseFloat(v["hours"], 64)
-	if err != nil || !(hours > 0) {
-		return "hours is a number above 0"
-	}
-	go said(post("/api/projects", J{"title": v["title"], "brief": v["brief"], "hours": hours, "by": user()}), "started, the orangutan is on it")
-	return ""
-}
-
-func saveNote(f *form) string {
-	text := strings.TrimSpace(f.fields[0].value)
-	if text == "" {
-		return "empty note"
-	}
-	p := f.target
-	go func() {
-		r := post(projectPath(p)+"/note", J{"by": user(), "text": text})
-		onLoop(func() {
-			if r.status == 200 {
-				flash(c("online")("noted, read next round"))
-			} else {
-				flash(c("offmesh")(or(str(r.body["error"]), fmt.Sprintf("status %d", r.status))))
-			}
-		})
-	}()
-	return ""
-}
-
-func projectPath(p J) string {
-	return "/api/projects/" + url.PathEscape(str(p["host"])) + "/" + str(p["id"])
-}
-
-func projectsKey(s string, e keyEv) {
-	p := pickedProject()
-	switch {
-	case e.name == "up":
-		ui.sel[projectsTab] = max0(ui.sel[projectsTab] - 1)
-	case e.name == "down":
-		ui.sel[projectsTab] = max0(min(len(ui.projects)-1, ui.sel[projectsTab]+1))
-	case s == "n":
-		openForm(projectForm())
-	case p == nil:
-		if s == "o" || s == "s" || s == "d" {
-			flash(c("offmesh")("no project picked"))
-		}
-		return
-	case s == "o" || s == "s":
-		if str(p["status"]) != "running" {
-			flash(c("offmesh")(str(p["title"]) + " isn't running"))
-			return
-		}
-		if s == "o" {
-			openForm(noteForm(p))
-		} else {
-			ui.confirm = &confirm{text: "stop " + str(p["title"]) + "? the orangutan's work so far stays in its workspace", danger: true,
-				onYes: func() { go said(post(projectPath(p)+"/stop", J{"by": user()}), "stopped") }}
-		}
-	case s == "d":
-		if str(p["status"]) == "running" {
-			flash(c("offmesh")("stop it first"))
-			return
-		}
-		ui.confirm = &confirm{text: "delete " + str(p["title"]) + " and its workspace?", danger: true,
-			onYes: func() { go said(post(projectPath(p)+"/delete", J{}), "deleted") }}
-	}
-	if e.name == "up" || e.name == "down" {
-		poll()
 	}
 }
 
@@ -813,8 +696,6 @@ func listKey(s string, e keyEv) {
 		}
 	case modelTab:
 		modelKey(s, e)
-	case projectsTab:
-		projectsKey(s, e)
 	}
 }
 
@@ -959,9 +840,8 @@ func onKey(e keyEv) {
 	case e.name == "pagedown":
 		ui.scroll += max(1, ui.room-2)
 	case ui.form != nil:
-		if !ui.offline || localForm(ui.form) {
-			formKey(s, e)
-		}
+		// every form writes files here alone, kept working with the frontend down
+		formKey(s, e)
 	case s == "q":
 		quit(0)
 		return
@@ -1005,7 +885,7 @@ func openForm(f *form) {
 func switchTab(i int) {
 	ui.tab = i
 	ui.scroll = 0
-	if i == filesTab || i == projectsTab {
+	if i == filesTab {
 		poll()
 	}
 }

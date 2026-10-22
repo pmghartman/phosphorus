@@ -132,13 +132,8 @@ outside #mesh-svg (emptied every redraw) so it never restarts -->
           <div class="cw-main" id="cw-main"></div>
         </div>
       </div>
-      <!-- the orangutan's long projects: the list, and the one picked or a new one -->
-      <div class="view" id="view-projects">
-        <div class="pj">
-          <div class="pj-side"><div class="home-col-head">projects</div><nav class="pj-list" id="pj-list" aria-label="projects"></nav></div>
-          <div class="pj-main" id="pj-main"><div class="home-col-head" id="pj-head">project</div><div class="pj-body" id="pj-body"></div></div>
-        </div>
-      </div>
+      <!-- claude code sessions on the mesh's hosts, drawn by apps/code.js -->
+      <div class="view" id="view-code"></div>
       <!-- a pretend remote desktop over the hosts' own terminals, files and services -->
       <div class="view dk active" id="view-desktop"></div>
       <div class="view" id="view-about">
@@ -170,7 +165,7 @@ outside #mesh-svg (emptied every redraw) so it never restarts -->
           <div class="about-info">
             <div class="about-row"><span class="about-key">copyright</span><span class="about-val">&copy; 2026 Patrick Hartman.</span></div>
             <div class="about-row"><span class="about-key">license</span><span class="about-val">Apache License 2.0; see LICENSE.</span></div>
-            <div class="about-row"><span class="about-key">packages</span><span class="about-val">Each bundled package keeps its own license: Apache-2.0 (cloudflared), BSD-3-Clause (Tailscale, gopsutil), MIT (xterm.js, KaTeX, llama.cpp, opencode), OFL-1.1 (Geist Mono), GPL-3.0-or-later (Forgejo). Full texts in THIRD_PARTY_LICENSES.txt.</span></div>
+            <div class="about-row"><span class="about-key">packages</span><span class="about-val">Each bundled package keeps its own license: Apache-2.0 (cloudflared), BSD-3-Clause (Tailscale, gopsutil), MIT (xterm.js, KaTeX, llama.cpp), OFL-1.1 (Geist Mono), GPL-3.0-or-later (Forgejo). Full texts in THIRD_PARTY_LICENSES.txt.</span></div>
           </div>
         </div>
       </div>
@@ -233,7 +228,6 @@ outside #mesh-svg (emptied every redraw) so it never restarts -->
         <button type="submit" class="chat-go" id="chat-join-go" aria-label="join" title="join" disabled><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 12.5V3.5M4 7.5L8 3.5l4 4"/></svg></button>
       </form>
       <div class="chat-compose" id="chat-compose" hidden>
-        <div class="chat-creds" id="chat-creds" role="dialog" hidden></div>
         <ul class="chat-cmds" id="chat-cmds" hidden></ul>
         <div class="chat-bar" id="chat-bar" hidden></div>
         <ul class="chat-atts" id="chat-atts" hidden></ul>
@@ -246,7 +240,7 @@ outside #mesh-svg (emptied every redraw) so it never restarts -->
           </button>
           <button type="submit" class="chat-go" id="chat-send" aria-label="send" title="send" disabled><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 12.5V3.5M4 7.5L8 3.5l4 4"/></svg></button>
         </form>
-        <div class="chat-foot"><span class="chat-typing" id="chat-typing"></span><span class="chat-sees" id="chat-sees" hidden></span></div>
+        <div class="chat-foot"><span class="chat-typing" id="chat-typing"></span></div>
         <input type="file" id="chat-file" multiple hidden>
       </div>
     </div>

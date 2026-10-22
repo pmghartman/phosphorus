@@ -7,7 +7,6 @@ import (
 	"net/url"
 	"os"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -17,12 +16,10 @@ import (
 	"github.com/pmghartman/phosphorus/internal/envfile"
 	"github.com/pmghartman/phosphorus/internal/files"
 	"github.com/pmghartman/phosphorus/internal/git"
-	"github.com/pmghartman/phosphorus/internal/harness"
 	"github.com/pmghartman/phosphorus/internal/mcp"
 	"github.com/pmghartman/phosphorus/internal/mesh"
 	"github.com/pmghartman/phosphorus/internal/mirror"
 	"github.com/pmghartman/phosphorus/internal/model"
-	"github.com/pmghartman/phosphorus/internal/project"
 	"github.com/pmghartman/phosphorus/internal/proxy"
 	"github.com/pmghartman/phosphorus/internal/services"
 	"github.com/pmghartman/phosphorus/internal/sysfs"
@@ -35,7 +32,6 @@ import (
 
 var (
 	gitForceRe = regexp.MustCompile(`^/api/githosts/([A-Za-z0-9-]{1,63})/force$`)
-	projectRe  = regexp.MustCompile(`(?i)^/api/projects/([a-z0-9][a-z0-9-]*)/([a-z0-9]{12})(?:/(stop|note|delete|extend|restart|events))?$`)
 	gameRe     = regexp.MustCompile(`^/api/games/([a-z0-9][a-z0-9-]*)/([a-z0-9][a-z0-9-]*)/(start|stop)$`)
 	mediaRe    = regexp.MustCompile(`^/api/chat/media/([a-z0-9][a-z0-9-]*)/([0-9a-f]{32})$`)
 	runRe      = regexp.MustCompile(`^/api/run/([a-z0-9][a-z0-9-]*)/([A-Za-z0-9_-]+)/(.*)$`)
@@ -76,6 +72,7 @@ var userCalls = map[string]userCall{
 		return users.R{Status: 200, Body: out}
 	},
 	"POST /api/me/mcp-revoke": func(s *users.Session, p map[string]any, _ *http.Request) users.R { return users.MCPRevoke(s, p) },
+	"POST /api/me/anthropic":  func(s *users.Session, p map[string]any, _ *http.Request) users.R { return users.SetAnthropic(s, p) },
 	"GET /api/users":          func(s *users.Session, _ map[string]any, _ *http.Request) users.R { return users.List(s) },
 	"POST /api/users":         func(s *users.Session, p map[string]any, _ *http.Request) users.R { return users.Create(s, p) },
 	"POST /api/users/admin":   func(s *users.Session, p map[string]any, _ *http.Request) users.R { return users.SetAdmin(s, p) },
@@ -219,6 +216,10 @@ func appHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if strings.HasPrefix(pathname, "/api/code/") && codeRoute(w, r, pathname, q) {
+		return
+	}
+
 	if strings.HasPrefix(pathname, "/api/git/") {
 		if !isTailnet(r) {
 			forbidden(w)
@@ -243,9 +244,9 @@ func appHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// mesh-wide model picks and keys: this machine, the tailnet, ingress admins
+	// mesh-wide model picks: this machine, the tailnet, ingress admins
 	if strings.HasPrefix(pathname, "/api/model/") && !isLoopback(r) && !isTailnet(r) {
-		pick := method == "POST" && (pathname == "/api/model/role" || pathname == "/api/model/key")
+		pick := method == "POST" && pathname == "/api/model/role"
 		if s := users.Of(r); !proxy.IsIngress(r) || pick && (s == nil || !s.Admin) {
 			forbidden(w)
 			return
@@ -261,24 +262,6 @@ func appHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			return st, out
 		})
-		return
-	case pathname == "/api/model/key" && method == "POST":
-		onJSON(w, r, maxJSONBody, true, func(p map[string]any) (int, any) {
-			st, out := model.SetKey(p)
-			if st == 200 {
-				clock.MarkHot()
-			}
-			return st, out
-		})
-		return
-	case pathname == "/api/model/catalog" && method == "GET":
-		_, hop := q["hop"]
-		b, err := model.Catalog(hop && isTailnet(r))
-		if err != nil {
-			sendJSON(w, 502, map[string]any{"error": err.Error()})
-			return
-		}
-		sendJSON(w, 200, b)
 		return
 	case pathname == "/api/terms/shared" && method == "GET":
 		if !isLoopback(r) && !isTailnet(r) {
@@ -362,26 +345,6 @@ func appHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		sendJSON(w, st, body)
 		return
-	case pathname == "/api/fetch" && method == "GET":
-		if !isLoopback(r) {
-			forbidden(w)
-			return
-		}
-		t, b, err := mcp.FetchRaw(q.Get("key"), q.Get("url"), r.Header.Get("Accept"))
-		if err != nil {
-			w.Header().Set("Content-Type", "text/plain")
-			w.WriteHeader(502)
-			io.WriteString(w, err.Error())
-			return
-		}
-		if t == "" {
-			t = "application/octet-stream"
-		}
-		w.Header().Set("Content-Type", t)
-		w.Header().Set("Content-Length", strconv.Itoa(len(b)))
-		w.WriteHeader(200)
-		w.Write(b)
-		return
 	case pathname == "/api/model/v1/chat/completions" && method == "POST":
 		if !isLoopback(r) && !isTailnet(r) {
 			forbidden(w)
@@ -396,54 +359,20 @@ func appHandler(w http.ResponseWriter, r *http.Request) {
 			sendJSON(w, 400, map[string]any{"error": "bad request"})
 			return
 		}
-		model.ServeChat(r, p, w, isLoopback(r), r.Header.Get("X-Phosphorus-Ask"))
+		model.ServeChat(r, p, w, isLoopback(r))
 		return
-	case pathname == "/api/model/ask" && method == "POST":
-		// a peer's ask, answered by this model host's opencode
-		if !isTailnet(r) {
-			forbidden(w)
+	case strings.HasPrefix(pathname, "/api/model/v1/messages") && method == "POST":
+		// claude code's Anthropic API on the mesh's models, a user's key its pass
+		b, err := readRaw(r, 32*1024*1024)
+		p := util.Obj(util.Decode(b))
+		if err != nil || p == nil {
+			sendJSON(w, 400, map[string]any{"type": "error", "error": map[string]any{"type": "invalid_request_error", "message": "bad request"}})
 			return
 		}
-		onJSON(w, r, 16*1024*1024, true, func(p map[string]any) (int, any) {
-			if !model.HarnessHere() {
-				return 409, map[string]any{"error": "opencode isn't on " + selfHost}
-			}
-			msgs := []harness.Msg{}
-			for _, x := range anyList(p["messages"]) {
-				m := util.Obj(x)
-				msgs = append(msgs, harness.Msg{Role: util.Str(m["role"]), Content: util.Str(m["content"])})
-			}
-			if len(msgs) < 2 {
-				return 400, map[string]any{"error": "an ask is a system turn and at least one more"}
-			}
-			rep, err := model.AskHere(msgs, util.Str(p["role"]), util.Str(p["asker"]), util.Truthy(p["direct"]), r.Context())
-			if err != nil {
-				return 502, map[string]any{"error": err.Error()}
-			}
-			return 200, map[string]any{"text": rep.Text, "by": rep.By}
-		})
+		model.ServeMessages(r, p, w, strings.TrimPrefix(pathname, "/api/model/v1/messages"), isLoopback(r) || isTailnet(r))
 		return
-	case pathname == "/api/model/asker" && method == "POST":
-		// the model host reaching an asker's page here: their name, a button, a login
-		if !isTailnet(r) {
-			forbidden(w)
-			return
-		}
-		onJSON(w, r, maxJSONBody, true, func(p map[string]any) (int, any) {
-			c := askerFor(util.Str(p["id"]))
-			if c == nil {
-				return 404, map[string]any{"error": "that ask is over"}
-			}
-			switch util.Str(p["op"]) {
-			case "name":
-				return 200, map[string]any{"name": c.name}
-			case "ui":
-				return 200, map[string]any{"ok": uiFor(c, util.Obj(p["action"]))}
-			case "creds":
-				return 200, map[string]any{"out": askCreds(c, util.Str(p["action"]), util.Str(p["why"]))}
-			}
-			return 400, map[string]any{"error": "op is name, ui or creds"}
-		})
+	case pathname == "/api/model/v1/models" && method == "GET":
+		model.ServeModels(r, w, isLoopback(r) || isTailnet(r))
 		return
 	case pathname == "/api/model/purge" && method == "POST":
 		if !isLoopback(r) && !isTailnet(r) {
@@ -537,114 +466,6 @@ func appHandler(w http.ResponseWriter, r *http.Request) {
 		st, b := mintGuestKey()
 		sendJSON(w, st, b)
 		return
-	case pathname == "/api/projects" && method == "GET":
-		if !isLocalOrPeer(r) {
-			forbidden(w)
-			return
-		}
-		sendJSON(w, 200, map[string]any{"self": selfHost, "projects": append(project.Summaries(), mesh.PeerProjects()...)})
-		return
-	case pathname == "/api/projects" && method == "POST":
-		_, hop := q["hop"]
-		if hop && !isLocalOrPeer(r) || !hop && !isBrowser(r) {
-			forbidden(w)
-			return
-		}
-		onJSON(w, r, maxJSONBody, true, func(p map[string]any) (int, any) {
-			if !project.Enabled {
-				return project.Soon()
-			}
-			host := selfHost
-			if h, ok := p["host"]; ok && util.Truthy(h) {
-				host = util.JSString(h)
-			} else if st, out := project.Check(p); st != 0 {
-				return st, out
-			} else if !model.HarnessHere() {
-				// projects run where opencode does: the model host
-				mh := model.HarnessHost(model.ProjectHost())
-				if mh == nil {
-					return 409, map[string]any{"error": "projects run on the model host, and none has opencode up yet"}
-				}
-				host = util.JSString(mh["host"])
-			}
-			if host != selfHost {
-				if hop {
-					return hopErr(host)
-				}
-				ip := util.TailnetIP(host)
-				if ip == "" {
-					return 502, map[string]any{"error": "can't find " + host + " on the tailnet"}
-				}
-				return util.PeerCall(host, util.Req{Host: ip, Method: "POST", Path: "/api/projects?hop=1", Body: p, Timeout: 15 * time.Second})
-			}
-			st, out := project.Start(p)
-			if st == 200 {
-				clock.MarkHot()
-			}
-			return st, out
-		})
-		return
-	}
-
-	if m := projectRe.FindStringSubmatch(pathname); m != nil {
-		host, id, op := m[1], m[2], m[3]
-		post := op != "" && op != "events"
-		if (post && method == "POST") || (!post && method == "GET") {
-			if !isLocalOrPeer(r) {
-				forbidden(w)
-				return
-			}
-			run := func(p map[string]any) (int, any) {
-				if host != selfHost {
-					if _, hop := q["hop"]; hop {
-						return hopErr(host)
-					}
-					ip := util.TailnetIP(host)
-					if ip == "" {
-						return 502, map[string]any{"error": "can't find " + host + " on the tailnet"}
-					}
-					qq := url.Values{}
-					for k, v := range q {
-						qq[k] = v
-					}
-					qq.Set("hop", "1")
-					var body any
-					if method == "POST" {
-						body = p
-					}
-					return util.PeerCall(host, util.Req{Host: ip, Method: method, Path: pathname + "?" + qq.Encode(), Body: body, Timeout: 15 * time.Second})
-				}
-				var st int
-				var out any
-				switch op {
-				case "stop":
-					st, out = project.Stop(id, p["by"])
-				case "note":
-					st, out = project.Note(id, p["by"], p["text"])
-				case "delete":
-					st, out = project.Remove(id)
-				case "extend":
-					st, out = project.Extend(id, p)
-				case "restart":
-					st, out = project.Restart(id, p)
-				case "events":
-					st, out = project.Events(id, q.Get("since"))
-				default:
-					st, out = project.Detail(id)
-				}
-				if method == "POST" && st == 200 {
-					clock.MarkHot()
-				}
-				return st, out
-			}
-			if method == "POST" {
-				onJSON(w, r, maxJSONBody, true, run)
-			} else {
-				st, out := run(map[string]any{})
-				sendJSON(w, st, out)
-			}
-			return
-		}
 	}
 
 	if m := publicRe.FindStringSubmatch(pathname); m != nil && method == "POST" {

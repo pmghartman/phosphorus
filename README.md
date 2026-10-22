@@ -26,7 +26,7 @@
 - **Services and game servers**, proxied by path or subdomain and started from the desktop
 - **Chat**, live **status** and notifications, shared by the mesh
 - **Git** on Forgejo, replicated to every host with an elected master
-- **A local AI model**, hosted on one machine for all of them, with projects it works on alone in a sandbox
+- **A local AI model**, hosted on one machine for all of them
 - **An MCP server** at `/api/mcp`: Claude or any MCP client reads the mesh and acts on it with your rights, running scripts on each host with your saved login and working on Forgejo with your saved git login; the agent button copies its url for any agent's MCP connector (web, desktop, phone), or downloads the Phosphorus skill, no key inside, to upload in claude.ai (Settings, Capabilities, Skills) so every Claude chat knows how to drive the mesh through that connector; with **show agent on screen** checked, every call it makes opens and lights the window it works in: editors for its files, the files window where it browses, a console per host for its commands and logs, the status, chat and git views
 - **Accounts** with admin roles and a per-user vault of host and page logins
 
@@ -66,7 +66,7 @@ Change keys later with **Edit Keys** in the menu bar or tray icon (a form in you
 | `phos update` / `update all` | Update this host, or every host in the mesh at once |
 | `phos uninstall` | Remove Phosphorus and its data |
 
-A model host downloads llama.cpp, opencode and the model, often several GB. You pick the model, so its license is yours to follow.
+A model host downloads llama.cpp and the model, often several GB. You pick the model, so its license is yours to follow.
 
 ## Architecture
 
@@ -98,7 +98,7 @@ flowchart TB
     subgraph svc["phosphorus.service: phosphorus run"]
       ph["frontend<br/>phosphorus serve"]
       cfd["cloudflared<br/>with a domain only"]
-      model["model<br/>llama-server, opencode"]
+      model["model<br/>llama-server"]
       git["git daemon, with a domain<br/>forgejo, rsyncd, elector"]
     end
   end

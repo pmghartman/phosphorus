@@ -6,7 +6,6 @@ import {
   color,
   colorFor,
   dk,
-  editorGone,
   editors,
   el,
   esc,
@@ -655,7 +654,6 @@ function codeEditor(view, file, btn, id) {
       if (sock) sock.close();
       if (codeTabs.get(codeKey(file)) === id) codeTabs.delete(codeKey(file));
       editors.delete(id);
-      editorGone(id);
     },
   };
 }

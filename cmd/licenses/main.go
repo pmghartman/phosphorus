@@ -158,7 +158,6 @@ func toolParts() []part {
 	cf := pinned("packaging/tools.sh", `(?m)^CLOUDFLARED=(\S+)`)
 	fj := pinned("packaging/tools.sh", `(?m)^FORGEJO=(\S+)`)
 	ll := pinned("internal/tools/tools.go", `LlamaTag\s*=\s*"([^"]+)"`)
-	oc := pinned("internal/tools/tools.go", `OpencodeTag\s*=\s*"([^"]+)"`)
 	bundled, fetched := "Programs bundled with the host installers", "Programs a model host downloads at run time"
 	return []part{
 		{group: bundled, name: "Tailscale", version: ts, source: "https://github.com/tailscale/tailscale",
@@ -169,8 +168,6 @@ func toolParts() []part {
 			texts: []string{fetch("https://codeberg.org/forgejo/forgejo/raw/tag/v" + fj + "/LICENSE")}},
 		{group: fetched, name: "llama.cpp", version: ll, source: "https://github.com/ggml-org/llama.cpp",
 			texts: []string{fetch("https://raw.githubusercontent.com/ggml-org/llama.cpp/" + ll + "/LICENSE")}},
-		{group: fetched, name: "opencode", version: oc, source: "https://github.com/anomalyco/opencode",
-			texts: []string{fetch("https://raw.githubusercontent.com/anomalyco/opencode/" + oc + "/LICENSE")}},
 	}
 }
 
