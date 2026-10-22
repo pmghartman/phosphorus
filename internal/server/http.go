@@ -12,6 +12,7 @@ import (
 
 	"github.com/pmghartman/phosphorus/internal/mesh"
 	"github.com/pmghartman/phosphorus/internal/proxy"
+	"github.com/pmghartman/phosphorus/internal/users"
 	"github.com/pmghartman/phosphorus/internal/util"
 )
 
@@ -49,6 +50,13 @@ func isLoopback(r *http.Request) bool {
 func isTailnet(r *http.Request) bool {
 	a := proxy.RemoteIP(r)
 	return !proxy.IsIngress(r) && proxy.IsTailnetAddr(a) && mesh.Trusted(a)
+}
+
+// pageUser a logged-in user's own page asking, never another site's: the
+// login a pass where a key would be for any other caller
+func pageUser(r *http.Request) bool {
+	s := users.Of(r)
+	return s != nil && !s.Boot && sameOrigin(r)
 }
 
 // meshOnly the frontend port: loopback and tailnet sockets alone, by a Host
