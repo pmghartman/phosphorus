@@ -37,6 +37,7 @@ var version = "dev"
 
 var (
 	addr   = flag.String("addr", "127.0.0.1:47615", "where to listen; loopback only")
+	cfgAt  = flag.String("config", "", "the app's settings file; the user's config folder's Sulfur/sulfur.json if empty")
 	origin string
 	me     local
 )
@@ -161,6 +162,9 @@ var (
 )
 
 func configPath() string {
+	if *cfgAt != "" {
+		return *cfgAt
+	}
 	dir, err := os.UserConfigDir()
 	if err != nil {
 		dir = os.TempDir()

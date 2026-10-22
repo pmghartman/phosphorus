@@ -297,6 +297,7 @@ const SETTINGS = {
   'files.exclude': { def: '.git, node_modules, __pycache__, .DS_Store', type: 'string', title: 'Files: Exclude', about: 'Comma separated names or simple globs (*.o) hidden from the explorer, quick open and search.' },
   'terminal.integrated.fontSize': { def: 13, type: 'number', min: 8, max: 40, title: 'Terminal › Integrated: Font Size', about: 'Controls the font size in pixels of the terminal. New terminals take it.' },
   'workbench.colorTheme': { def: 'vscode', type: 'enum', options: THEMES.map((t) => [t.id, t.label]), title: 'Workbench: Color Theme', about: 'Specifies the color theme used in the workbench: VS Code\'s own, Phosphorus\'s like the desktop\'s other apps, or one of the extra themes. Each follows the desktop\'s light or dark.' },
+  'window.appearance': { def: 'system', type: 'enum', options: [['system', 'Follow the System'], ['light', 'Light'], ['dark', 'Dark']], title: 'Window: Appearance', about: 'Light or dark, whatever the system is set to, when Sulfur runs on its own. Inside the Phosphorus desktop, the desktop\'s own theme decides.' },
   'workbench.restoreEditors': { def: true, type: 'boolean', title: 'Workbench: Restore Editors', about: 'Controls whether the open editors come back when Sulfur opens again.' },
   'sulfur.runners': { def: {}, type: 'object', title: 'Run: Runners', about: 'Commands that run a file, by extension, over the built-in ones, as {"py": "python3 -u \\"$f\\""}: $f is the file, $o a fresh output path beside it.' },
   'chat.includeActiveFile': { def: true, type: 'boolean', title: 'Chat: Include Active File', about: 'Controls whether the mesh agents see the file you have open, and know "this file" means it.' },
@@ -358,6 +359,11 @@ export function ideStart(w, open) {
   build();
   registerCommands();
   applySettings();
+  if (standalone) {
+    const follow = () => { if (setting('window.appearance') === 'system') applyAppearance(); };
+    systemLight.addEventListener('change', follow);
+    I.offs.push(() => systemLight.removeEventListener('change', follow));
+  }
   for (const [ext, cmd] of Object.entries(DK_RUNNERS)) I.runners.set(ext, { cmd, by: '' });
   log(`started as ${acct.user} on ${selfHost}, workspace ${st.root} in ${locLabel(st.loc)}`);
   setRoot(st.root, true, st.loc);
@@ -705,6 +711,7 @@ const MENUS = [
     { label: 'Preferences', sub: () => [
       cmdItem('workbench.action.openSettings', 'Settings'), cmdItem('workbench.action.openSettingsJson', 'Settings (JSON)'),
       cmdItem('workbench.action.selectTheme', 'Color Theme'),
+      ...(standalone ? [cmdItem('workbench.action.toggleLightDarkThemes', 'Toggle Light and Dark')] : []),
       cmdItem('workbench.action.openGlobalKeybindings', 'Keyboard Shortcuts'), cmdItem('workbench.action.openGlobalKeybindingsFile', 'Keyboard Shortcuts (JSON)'),
       cmdItem('workbench.view.extensions', 'Extensions'),
     ] }, '-',
@@ -926,6 +933,8 @@ function setRoot(dir, first = false, l = locOf()) {
   I.ccText.textContent = isHomeLoc() ? baseName(d) : `${baseName(d)} · ${st.loc.host}`;
   I.w.head.querySelector('.tab-label').textContent = `${baseName(d)} — Sulfur`;
   loadBuildConfig();
+  I.projHas = undefined;
+  refreshProjectSoon();
   for (const p of I.expanded) loadDir(p);
   paintTree();
   saveState();
@@ -1573,7 +1582,7 @@ function tabState(t, info) {
     emit('save', { path: t.rel });
     if (t.rel === SETTINGS_PATH() || t.rel === KEYS_PATH()) loadUserFiles();
     // the project's build settings, as edited by hand
-    if (t.rel === `${I.st.root}/${BUILD_FILE}` && sameLoc(t.loc, locOf())) loadBuildConfig();
+    if (t.rel.endsWith(`/${BUILD_FILE}`) && under(t.rel, I.st.root) && sameLoc(t.loc, locOf())) loadBuildConfig(filesParent(filesParent(t.rel)));
   }
 }
 const paintOpenEditorsSoon = debounce(() => I && paintOpenEditors(), 50);
@@ -1607,6 +1616,7 @@ function activate(t, focus = true) {
   t.tabEl.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   saveState();
   emit('activeEditor');
+  refreshProjectSoon();
 }
 
 // a code tab still finding its host: the workbench holds the focus, its keys
@@ -2290,6 +2300,7 @@ function registerCommands() {
   // the desktop app's start pane again: offline, or another mesh
   C('sulfur.switch', 'Switch Between Offline and a Phosphorus Mesh…', async () => { if ((await saveAll()).every(Boolean)) location.replace('/sulfur/?start'); }, { when: () => !!standalone?.app, category: 'File' });
   C('workbench.action.selectTheme', 'Color Theme', () => pickTheme(), { key: 'ctrl+k ctrl+t', category: 'Preferences' });
+  C('workbench.action.toggleLightDarkThemes', 'Toggle between Light and Dark', () => setSetting('window.appearance', document.documentElement.dataset.theme === 'light' ? 'dark' : 'light'), { when: () => !!standalone, category: 'Preferences' });
   C('sulfur.selectHost', 'Select Host for Terminals and Runs…', () => pickHost('Select the host terminals and runs use').then((h) => h && setRunHost(h)), { category: 'Phosphorus' });
   // preferences and help
   C('workbench.action.openSettings', 'Open Settings (UI)', () => openSettings(), { key: 'ctrl+,', category: 'Preferences', shell: true });
@@ -3790,9 +3801,10 @@ function meshSystem(a) {
     `You are ${a.label}, the phosphorus mesh's own assistant, answering ${name || acct.user} in Sulfur, the phosphorus code editor over their files on the mesh's machines. `
     + 'Answer plainly and exactly. Put code in fenced blocks with their language: Sulfur puts a block at the caret or runs it in a terminal.',
     `Today is ${new Date().toDateString()}. The workspace is ${I.st.root} in ${locLabel()}; terminals and runs go to ${runHost() || 'no machine yet'}.`,
-    'When asked to change code, change it yourself with edit blocks: Sulfur types each into the editor as soon as you finish. For each change write\n'
+    'When asked to create a file, or to rewrite one whole, put its path alone on a line and its whole text in a fenced block right under it, as\nMakefile\n```make\n(all of it)\n```\nSulfur writes it and opens it. Never just show a file you were asked to create: write it that way.\n'
+    + 'When asked to change part of a file, change it yourself with edit blocks: Sulfur types each into the editor as soon as you finish. For each change write\n'
     + '<<<<<<< SEARCH path/from/the/workspace\n(the exact lines there now, enough of them to be unique)\n=======\n(the lines to put in their place)\n>>>>>>> REPLACE\n'
-    + 'Leave the path off for the open file. An empty SEARCH starts a new file, or adds to the end of one. Keep each block small, then say in a sentence what you changed; don\'t repeat the code outside the blocks.',
+    + 'Leave the path off for the open file. Keep each block small, then say in a sentence what you changed; don\'t repeat the code outside the blocks.',
   ];
   if (t?.ed && t.info?.ready && setting('chat.includeActiveFile')) {
     const text = t.ed.text();
@@ -4492,13 +4504,61 @@ async function agentSend(S, text) {
 
 // --- the base chat's edits: blocks in its answer, typed into the editor once it's answered
 
-const EDIT_RE = /^<{7} SEARCH[ \t]*(.*)\n([\s\S]*?)^={7}[ \t]*\n([\s\S]*?)^>{7} REPLACE[ \t]*$/gm;
-const parseEdits = (text) => [...String(text).matchAll(EDIT_RE)].map((m) => ({ path: m[1].trim(), search: m[2].replace(/\n$/, ''), replace: m[3].replace(/\n$/, '') }));
+const EDIT_RE = /^<{5,9} ?SEARCH\b[ \t:]*(.*)\n([\s\S]*?)^={5,9}[ \t]*\n([\s\S]*?)^>{5,9} ?REPLACE\b.*$/gm;
+// a block's text, a fence the model put round it taken off
+const unfence = (t) => {
+  const x = String(t).replace(/\n$/, '');
+  const m = x.match(/^```[^\n]*\n([\s\S]*?)\n?```\s*$/);
+  return m ? m[1] : x;
+};
+// a path line before a SEARCH: "path/to/file" alone on the marker's next line, when the marker named none
+function editOf(m) {
+  let path = m[1].trim().replace(/^[`*]+|[`*:]+$/g, '');
+  let search = m[2];
+  if (!path) {
+    const first = search.split('\n')[0].trim();
+    if (FILE_NAME_RE.test(first) && !/[;{}()=]/.test(first)) { path = first; search = search.slice(search.indexOf('\n') + 1); }
+  }
+  return { path, search: unfence(search), replace: unfence(m[3]) };
+}
+// a name a model writes alone above a block, as a file's
+const FILE_NAME_RE = /^(?:[\w.-]+\/)*(?:[\w-][\w.-]*\.[A-Za-z0-9]{1,10}|makefile|gnumakefile|dockerfile|cmakelists\.txt|justfile|procfile)$/i;
+// a whole file in a fenced block: its path the line just above it (bare, `code`, **bold**, File: x, x:)
+// or in the fence's info string after its language (```c src/main.c, ```c title="main.c", ```make:Makefile)
+const NAMED_RE = /(?:^|\n)[ \t]*(?:(?:\*\*|`)?(?:file(?:name)?:\s*)?((?:[\w.-]+\/)*[\w.-]+)(?:\*\*|`)?:?[ \t]*\n)?```([^\n]*)\n([\s\S]*?)\n```/gi;
+function namedBlocks(text) {
+  const out = [];
+  for (const m of String(text).matchAll(NAMED_RE)) {
+    const info = m[2].trim();
+    const fromInfo = (info.match(/title=["']?([^"'\s]+)/) || info.match(/^[\w+-]*[\s:]+((?:[\w.-]+\/)*[\w.-]+\.\w+|(?:[\w.-]+\/)*(?:Makefile|makefile|Dockerfile|CMakeLists\.txt))$/) || [])[1];
+    const above = m[1] && FILE_NAME_RE.test(m[1]) ? m[1] : '';
+    const path = fromInfo || above;
+    if (!path || /^<{5,9} ?SEARCH/m.test(m[3])) continue;
+    out.push({ path, whole: m[3] });
+  }
+  return out;
+}
+const parseEdits = (text) => [...[...String(text).matchAll(EDIT_RE)].map(editOf), ...namedBlocks(String(text).replace(EDIT_RE, ''))];
 // an answer shown with its edit blocks as diffs
-const showEdits = (text) => String(text).replace(EDIT_RE, (_, p, a, b) => {
-  const lines = (s, sign) => (s.replace(/\n$/, '') ? s.replace(/\n$/, '').split('\n').map((l) => `${sign} ${l}`) : []);
-  return `\`\`\`diff\n${p.trim() ? `@@ ${p.trim()}\n` : ''}${[...lines(a, '-'), ...lines(b, '+')].join('\n')}\n\`\`\``;
+const showEdits = (text) => String(text).replace(EDIT_RE, (...m) => {
+  const e = editOf(m);
+  const lines = (s, sign) => (s ? s.split('\n').map((l) => `${sign} ${l}`) : []);
+  return `\`\`\`diff\n${e.path ? `@@ ${e.path}\n` : ''}${[...lines(e.search, '-'), ...lines(e.replace, '+')].join('\n')}\n\`\`\``;
 });
+
+// a Makefile's recipe lines tabbed, as make needs and models forget
+function makeTabs(rel, text) {
+  if (!/(^|\/)(gnu)?makefile$|\.mk$/i.test(rel)) return text;
+  let inRule = false;
+  return text.split('\n').map((l) => {
+    if (/^[^\s#][^=]*:(?!=)/.test(l)) { inRule = true; return l; }
+    if (inRule && /^ {2,}\S/.test(l)) return l.replace(/^ +/, '\t');
+    if (inRule && l.startsWith('\t')) return l;
+    if (!l.trim()) return l;
+    inRule = false;
+    return l;
+  }).join('\n');
+}
 
 // a search found as written, else line by line with trailing blanks, then indents, let go
 function findLoose(text, search) {
@@ -4530,6 +4590,8 @@ async function applyChatEdits(edits) {
     const rel = p ? cleanPath(under(p, I.st.root) ? p : `${I.st.root}/${p}`) : I.active?.rel;
     if (!rel || !inScope(rel)) { out.push({ rel: e.path || '(no file open)', bad: 'outside the workspace' }); continue; }
     let t = I.tabs.find((x) => x.rel === rel && sameLoc(x.loc, locOf()) && x.kind === 'code');
+    if (e.whole !== undefined) e.whole = makeTabs(rel, e.whole.endsWith('\n') ? e.whole : `${e.whole}\n`);
+    if (e.replace !== undefined) e.replace = makeTabs(rel, e.replace);
     if (!t && !e.search && (await readAt(rel)) === null) {
       try { await writeAt(rel, '', locOf(), name || acct.user); } catch (err) { out.push({ rel, bad: err.message }); continue; }
       loadDir(filesParent(rel), true);
@@ -4542,13 +4604,24 @@ async function applyChatEdits(edits) {
     if (!t.ed?.ready?.()) { out.push({ rel, bad: 'it didn’t open' }); continue; }
     const text = t.ed.text();
     let span = null;
-    if (!e.search) span = [text.length, text.length];
+    if (e.whole !== undefined) {
+      // the whole file: only where it differs changed, so the edit shows where it is
+      let p0 = 0;
+      while (p0 < text.length && p0 < e.whole.length && text[p0] === e.whole[p0]) p0++;
+      let q0 = 0;
+      while (q0 < text.length - p0 && q0 < e.whole.length - p0 && text[text.length - 1 - q0] === e.whole[e.whole.length - 1 - q0]) q0++;
+      if (p0 === text.length && p0 === e.whole.length) { out.push({ rel }); continue; }
+      span = [p0, text.length - q0];
+      e.replace = e.whole.slice(p0, e.whole.length - q0);
+      e.search = text.slice(p0, text.length - q0) || '\0';
+    } else if (!e.search) span = [text.length, text.length];
     else span = findLoose(text, e.search);
     if (!span) { out.push({ rel, bad: 'what it meant to change isn’t there' }); continue; }
     const g = groups.get(t) || { t, list: [], wasDirty: t.ed.dirty() };
     groups.set(t, g);
     const old = text.slice(span[0], span[1]);
     const nu = !e.search && text && !text.endsWith('\n') ? `\n${e.replace}` : e.replace;
+    if (e.search === '\0') e.search = '';
     if (await t.ed.agentEdit(span[0], span[1], nu)) { g.list.push({ at: span[0], old, nu }); out.push({ rel }); } else out.push({ rel, bad: 'the file is read-only here' });
   }
   for (const g of groups.values()) if (!g.wasDirty && g.list.length) g.t.ed.save();
@@ -4722,7 +4795,8 @@ function paintRunView(fresh = false) {
   const bc = buildCfg();
   const bbox = el('div', 'ide-run-box');
   const bgo = Object.assign(el('button', 'ide-button ide-run-go'), { type: 'button', title: `Build (${ctrlB})` });
-  bgo.append(icon('gear'), el('span', '', bc?.toolchain ? `Build ${baseName(I.st.root)}` : 'Pick a Toolchain and Build'));
+  const alone = I.projHas === false && !!singleBuilds(I.active?.rel);
+  bgo.append(icon('gear'), el('span', '', alone ? `Build ${baseName(I.active.rel)}` : bc?.toolchain ? `Build ${baseName(projDir())}` : 'Pick a Toolchain and Build'));
   bgo.addEventListener('click', () => run('sulfur.build'));
   const bmore = Object.assign(el('button', 'ide-button secondary'), { type: 'button', title: 'Run Task…' });
   bmore.append(icon('more'));
@@ -4730,7 +4804,9 @@ function paintRunView(fresh = false) {
   const brow = el('div', 'ide-run-row');
   brow.append(bgo, bmore);
   bbox.append(brow);
-  if (bc?.toolchain) {
+  if (alone) {
+    bbox.append(el('p', 'ide-run-note', `No build file in ${baseName(filesParent(I.active.rel))} or above it: ${ctrlB} builds ${baseName(I.active.rel)} alone with its machine's compiler, its program beside it.`));
+  } else if (bc?.toolchain) {
     const pickRow = el('div', 'ide-build-pick');
     const tcb = Object.assign(el('button', 'ide-link'), { type: 'button', title: 'Pick another toolchain or machine' });
     tcb.append(icon('host'), el('span', '', `${bc.toolchain.label} · ${bc.host}`));
@@ -4859,13 +4935,13 @@ async function hostLogIn(h) {
 
 // the project's build settings, written from the pick when there's no file yet
 async function openBuildJson() {
-  const path = `${I.st.root}/${BUILD_FILE}`;
+  const path = `${projDir()}/${BUILD_FILE}`;
   if ((await readAt(path)) === null) {
     const cfg = buildCfg() || {};
     const keep = { host: cfg.host || runHost(), toolchain: cfg.toolchain || null, configuration: cfg.configuration || 'Debug', defaultTask: cfg.defaultTask || 'build', tasks: cfg.tasks || [] };
     try { await writeAt(path, `${JSON.stringify(keep, null, 2)}\n`); } catch (err) { notify('error', `Couldn't write ${BUILD_FILE}: ${err.message}`); return; }
     if (!I) return;
-    loadDir(`${I.st.root}/.sulfur`, true);
+    loadDir(`${projDir()}/.sulfur`, true);
   }
   if (I) openFile(path, { preview: false });
 }
@@ -5116,9 +5192,14 @@ async function addFolderDialog() {
 
 async function pickTheme() {
   const cur = setting('workbench.colorTheme');
-  const items = THEMES.map((t, i) => ({ label: t.label, description: t.description, detail: t.id === cur ? 'current' : '', value: t.id, sep: i === 0 || THEMES[i - 1].group !== t.group ? t.group : '' }));
-  const v = await pick(items, { title: 'Color Theme', placeholder: 'Select Color Theme (light or dark follows the desktop)' });
-  if (v && I) setSetting('workbench.colorTheme', v);
+  const look = setting('window.appearance');
+  // on its own, light and dark Sulfur's to pick; in the desktop, the desktop's
+  const appearance = standalone ? [['system', 'Follow the System', 'light or dark as the system is'], ['light', 'Light', ''], ['dark', 'Dark', '']]
+    .map(([id, label, description], i) => ({ label, description, detail: id === look ? 'current' : '', value: `look:${id}`, sep: i === 0 ? 'Appearance' : '' })) : [];
+  const items = [...appearance, ...THEMES.map((t, i) => ({ label: t.label, description: t.description, detail: t.id === cur ? 'current' : '', value: t.id, sep: i === 0 || THEMES[i - 1].group !== t.group ? t.group : '' }))];
+  const v = await pick(items, { title: 'Color Theme', placeholder: standalone ? 'Select Color Theme, or Light or Dark' : 'Select Color Theme (light or dark follows the desktop)' });
+  if (!v || !I) return;
+  if (v.startsWith('look:')) setSetting('window.appearance', v.slice(5)); else setSetting('workbench.colorTheme', v);
 }
 
 const sectionTitle = (t) => el('div', 'ide-sec-head static', t.toUpperCase());
@@ -5181,8 +5262,22 @@ async function loadUserFiles() {
 
 const cacheSettings = () => { try { localStorage.setItem(`${STATE_KEY()}:settings`, JSON.stringify(I.settings)); } catch {} };
 
+// light or dark when Sulfur runs on its own, the system's unless picked; the desktop's own otherwise
+const systemLight = matchMedia('(prefers-color-scheme: light)');
+function applyAppearance() {
+  if (!standalone) return;
+  const a = setting('window.appearance');
+  const light = a === 'light' || (a !== 'dark' && systemLight.matches);
+  const root = document.documentElement;
+  const was = root.dataset.theme === 'light';
+  if (light) root.dataset.theme = 'light'; else delete root.dataset.theme;
+  try { localStorage.setItem('sulfur-appearance', a); } catch {}
+  if (was !== light) requestAnimationFrame(() => termsRetheme());
+}
+
 function applySettings() {
   const r = I.root;
+  applyAppearance();
   r.style.setProperty('--ide-code-font', `${setting('editor.fontSize')}px`);
   const theme = THEMES.some((t) => t.id === setting('workbench.colorTheme')) ? setting('workbench.colorTheme') : 'vscode';
   for (const t of THEMES) I.w.node.classList.toggle(`ide-theme-${t.id}`, t.id === theme && t.id !== 'vscode');
@@ -6158,6 +6253,8 @@ async function toolchains(host, fresh = false) {
   const pr = fetch(`/api/sulfur/toolchains?host=${encodeURIComponent(host)}${fresh ? '&fresh=1' : ''}`, { cache: 'no-store' })
     .then(async (r) => {
       const b = await r.json().catch(() => ({}));
+      // a host whose Phosphorus predates Sulfur's builds has no such call
+      if (r.status === 404) throw new Error(`${host}'s Phosphorus is older than this Sulfur: update the mesh to build there`);
       if (!r.ok) throw new Error(b.error || `status ${r.status}`);
       return b;
     });
@@ -6174,15 +6271,35 @@ async function toolchains(host, fresh = false) {
 const tool = (tc, id) => tc?.tools?.find((x) => x.id === id) || null;
 
 // what the project is, by its files: cmake, dotnet, msbuild, cargo, go, npm, make, python
+// the project the open file's in: its folder, or the nearest one above it up to the
+// workspace's, that has a build file; the workspace's own when none has
 async function detectProject() {
   const root = I.st.root;
+  const t = I.active;
+  let dir = t?.rel && sameLoc(t.loc, locOf()) && under(t.rel, root) && t.rel !== root ? filesParent(t.rel) : root;
+  for (;;) {
+    const p = await projectAt(dir);
+    if (!I) return null;
+    if (p.kinds.length || dir === root || !under(dir, root)) {
+      const had = I.projHas;
+      I.projHas = !!p.kinds.length;
+      await useProject(p.kinds.length ? dir : root);
+      if (I && had !== I.projHas) { paintStatus(); paintRunView(); }
+      return p.kinds.length ? p : { ...p, dir: root };
+    }
+    dir = filesParent(dir);
+  }
+}
+
+// a folder's own build files, as a project
+async function projectAt(root) {
   const list = await loadDir(root);
-  if (!I) return null;
-  const names = list.map((e) => e.name);
+  if (!I) return { kinds: [], dir: root };
+  const names = (list || []).map((e) => e.name);
   const lower = names.map((n) => n.toLowerCase());
   const has = (n) => lower.includes(n.toLowerCase());
   const ext = (x) => names.filter((n) => n.toLowerCase().endsWith(x));
-  const p = { kinds: [], sln: [...ext('.sln'), ...ext('.slnx')], proj: [...ext('.csproj'), ...ext('.fsproj'), ...ext('.vbproj')], vcx: ext('.vcxproj'), presets: [], scripts: [], targets: [] };
+  const p = { dir: root, kinds: [], sln: [...ext('.sln'), ...ext('.slnx')], proj: [...ext('.csproj'), ...ext('.fsproj'), ...ext('.vbproj')], vcx: ext('.vcxproj'), presets: [], scripts: [], targets: [] };
   if (has('CMakeLists.txt')) {
     p.kinds.push('cmake');
     if (has('CMakePresets.json')) {
@@ -6200,15 +6317,30 @@ async function detectProject() {
     p.kinds.push('npm');
     try { p.scripts = Object.keys(JSON.parse(await readAt(`${root}/package.json`) || '{}').scripts || {}); } catch {}
   }
-  if (has('Makefile') || has('makefile') || has('GNUmakefile')) {
+  const mkName = names.find((n) => ['makefile', 'gnumakefile'].includes(n.toLowerCase()));
+  if (mkName) {
     p.kinds.push('make');
-    const mk = await readAt(`${root}/${names[lower.indexOf('makefile')] || 'Makefile'}`) || '';
-    p.targets = [...new Set([...mk.matchAll(/^([A-Za-z0-9][\w.-]*)\s*:(?!=)/gm)].map((m) => m[1]))].filter((t) => !t.startsWith('.')).slice(0, 30);
+    const mk = await readAt(`${root}/${mkName}`) || '';
+    p.targets = [...new Set([...mk.matchAll(/^([A-Za-z0-9][\w.-]*)\s*:(?!=)/gm)].map((m) => m[1]))].filter((x) => !x.startsWith('.')).slice(0, 30);
   }
   if (has('meson.build')) p.kinds.push('meson');
   if (has('pyproject.toml') || has('setup.py') || has('requirements.txt')) p.kinds.push('python');
   return p;
 }
+
+// the project builds and the status bar talk of; its build settings read once it's known
+const projDir = () => (I.projDir && under(I.projDir, I.st.root) ? I.projDir : I.st.root);
+const bkey = (dir = projDir()) => (dir === I.st.root ? wsKey() : `${wsKey()}\n${dir}`);
+async function useProject(dir) {
+  if (I.projDir === dir) return;
+  I.projDir = dir;
+  if (!I.st.build[bkey(dir)]) await loadBuildConfig(dir);
+  if (!I) return;
+  paintStatus();
+  paintRunView();
+}
+// the open file moved to another tab: maybe another project
+const refreshProjectSoon = debounce(() => { if (I) detectProject(); }, 250);
 
 const KIND_NAMES = { cmake: 'CMake', dotnet: '.NET', msbuild: 'MSBuild C++', cargo: 'Cargo', go: 'Go', npm: 'npm', make: 'Make', meson: 'Meson', python: 'Python' };
 
@@ -6237,12 +6369,82 @@ function buildChoices(host, tc, proj) {
   return out;
 }
 
+// a source file with no project round it, built alone by its machine's own
+// compiler, its output beside it, as VS Code's Build Active File: {f} the file, {o} the output
+const SINGLE_BUILDS = {
+  c: [['gcc', 'GCC', 'gcc -g -Wall "{f}" -o "{o}"'], ['clang', 'Clang', 'clang -g -Wall "{f}" -o "{o}"'], ['msvc', 'MSVC', 'cl /nologo /W3 /Zi "{f}" /Fe:"{o}"']],
+  cpp: [['g++', 'G++', 'g++ -g -Wall -std=c++20 "{f}" -o "{o}"'], ['clang++', 'Clang++', 'clang++ -g -Wall -std=c++20 "{f}" -o "{o}"'], ['msvc', 'MSVC', 'cl /nologo /W3 /Zi /EHsc /std:c++20 "{f}" /Fe:"{o}"']],
+  rs: [['rustc', 'Rust', 'rustc -g "{f}" -o "{o}"']],
+  go: [['go', 'Go', 'go build -o "{o}" "{f}"']],
+  zig: [['zig', 'Zig', 'zig build-exe "{f}" -femit-bin="{o}"']],
+  cs: [['dotnet', '.NET', 'dotnet build "{f}"']],
+  java: [['javac', 'Java', 'javac "{f}"']],
+  swift: [['swift', 'Swift', 'swiftc "{f}" -o "{o}"']],
+};
+SINGLE_BUILDS.cc = SINGLE_BUILDS.cxx = SINGLE_BUILDS.cpp;
+const singleBuilds = (rel) => (rel ? SINGLE_BUILDS[extOf(rel)] || null : null);
+
+async function buildFile(asked = false) {
+  const t = I.active;
+  const rel = t?.rel;
+  const kinds = singleBuilds(rel);
+  if (!kinds) return;
+  await saveAll();
+  if (!I) return;
+  const live = dkLiveHosts();
+  const held = isHomeLoc() ? await holdersOf(rel) : [locOf().host];
+  if (!I) return;
+  const hosts = live.filter((h) => held.includes(h)).sort((a, b) => (b === runHost()) - (a === runHost()) || (b === selfHost) - (a === selfHost));
+  if (!hosts.length) { notify('warning', `Log into a machine that has ${baseName(rel)} to build it, ${loginWhere()}.`); return; }
+  const key = `${wsKey()}\n.${extOf(rel)}`;
+  I.st.fileBuild ||= {};
+  const kept = I.st.fileBuild[key];
+  const note = notify('info', `Looking at ${hosts.join(', ')} for a compiler…`, { progress: true, sticky: true });
+  const got = await Promise.all(hosts.map((h) => toolchains(h).then((tc) => ({ h, tc }), (err) => ({ h, err: err.message }))));
+  note.close();
+  if (!I) return;
+  const choices = [];
+  for (const { h, tc } of got) {
+    if (!tc) continue;
+    for (const [id, label, cmd] of kinds) {
+      const vs = id === 'msvc' ? (tc.vs || [])[0] : null;
+      const tl = id === 'msvc' ? null : tool(tc, id);
+      if (id === 'msvc' ? !vs : !tl) continue;
+      choices.push({ host: h, id, cmd, vcvars: vs?.vcvars || '', label: `${label} ${vs ? vs.msvc[0] || '' : tl.version}`.trim(), detail: vs ? vs.name : tl.path });
+    }
+  }
+  if (!choices.length) {
+    const why = got.find((x) => x.err)?.err;
+    notify('warning', `No compiler for .${extOf(rel)} files on ${hosts.join(', ')}${why ? ` (${why})` : ''}. Install one there, or add a build file.`);
+    return;
+  }
+  let c = kept && choices.find((x) => x.host === kept.host && x.id === kept.id);
+  if (!c && choices.length === 1) c = choices[0];
+  if (!c) {
+    const v = await pick(choices.map((x, i) => ({ label: x.label, description: x.detail, detail: `on ${x.host}${x.host === selfHost ? ' (this machine)' : ''}`, ic: 'host', value: i, sep: i === 0 || choices[i - 1].host !== x.host ? x.host : '' })),
+      { title: `Build ${baseName(rel)}: pick a compiler`, placeholder: 'No build file here: the file is built alone, its program beside it', matchDescription: true });
+    if (v === undefined || !I) return;
+    c = choices[v];
+  }
+  I.st.fileBuild[key] = { host: c.host, id: c.id };
+  saveState();
+  const win = hostIsWindows(c.host);
+  const stem = baseName(rel).replace(/\.[^.]+$/, '') || 'a.out';
+  const command = c.cmd.replaceAll('{f}', baseName(rel)).replaceAll('{o}', win ? `${stem}.exe` : stem);
+  const fl = fileLoc(rel, c.host);
+  const dir = filesParent(rel);
+  const abs = hostPath(c.host, fl.share, dir);
+  if (!abs) { notify('error', `Can't tell where ${dir} is on ${c.host}.`); return; }
+  if (asked && choices.length > 1) setStatusFlash(`No build file here: building ${baseName(rel)} alone with ${c.label} on ${c.host}`);
+  runTask({ host: c.host, abs, command, vcvars: c.vcvars, name: `Build ${baseName(rel)} · ${c.host}`, kind: 'task', problems: true, root: dir, label: `Build ${baseName(rel)}`, onDone: () => I && loadDir(dir, true) });
+}
+
 // the project's build pick: kept in its own .sulfur/build.json, this browser's copy first
-function buildCfg() { return I.st.build[wsKey()] || null; }
-async function loadBuildConfig() {
-  const key = wsKey();
-  const text = await readAt(`${I.st.root}/${BUILD_FILE}`).catch(() => null);
-  if (!I || wsKey() !== key) return;
+function buildCfg() { return I.st.build[bkey()] || null; }
+async function loadBuildConfig(dir = projDir()) {
+  const key = bkey(dir);
+  const text = await readAt(`${dir}/${BUILD_FILE}`).catch(() => null);
+  if (!I || bkey(dir) !== key) return;
   if (text) {
     try {
       const j = parseJsonc(text);
@@ -6253,30 +6455,32 @@ async function loadBuildConfig() {
   paintRunView();
 }
 async function saveBuildCfg(cfg) {
-  const key = wsKey();
+  const dir = projDir();
+  const key = bkey(dir);
   I.st.build[key] = cfg;
   saveState();
   paintStatus();
   paintRunView();
   const keep = { host: cfg.host, toolchain: cfg.toolchain, configuration: cfg.configuration || 'Debug', defaultTask: cfg.defaultTask || 'build', tasks: cfg.tasks || [] };
-  try { await writeAt(`${I.st.root}/${BUILD_FILE}`, `${JSON.stringify(keep, null, 2)}\n`); } catch (err) { notify('warning', `Couldn't keep the pick in ${BUILD_FILE}: ${err.message}`); }
+  try { await writeAt(`${dir}/${BUILD_FILE}`, `${JSON.stringify(keep, null, 2)}\n`); } catch (err) { notify('warning', `Couldn't keep the pick in ${BUILD_FILE}: ${err.message}`); }
 }
 
 // the hosts the project can build on: a share's host alone, the home's holders
 async function buildHosts() {
   const live = dkLiveHosts();
   if (!isHomeLoc()) return live.includes(locOf().host) ? [locOf().host] : [];
-  const hs = await holdersOf(I.st.root);
+  const hs = await holdersOf(projDir());
   const held = hs.length ? hs : homeOnline();
   return live.filter((h) => held.includes(h)).sort((a, b) => (b === selfHost) - (a === selfHost) || a.localeCompare(b));
 }
 
 // the toolchain to build with, asked for: every host's that suits the project
-async function pickToolchain() {
-  const proj = await detectProject();
-  if (!I) return null;
+async function pickToolchain(known = null) {
+  const proj = known || await detectProject();
+  if (!I || !proj) return null;
   if (!proj.kinds.length) {
-    notify('info', 'Nothing here to build: no CMakeLists.txt, .sln, .csproj, Cargo.toml, go.mod, package.json or Makefile in the workspace\u2019s folder.', { actions: [{ label: 'Add a Task…', run: () => run('sulfur.task.add') }] });
+    if (singleBuilds(I.active?.rel)) { buildFile(true); return null; }
+    notify('info', `Nothing here to build: no build file (CMakeLists.txt, a .sln or .csproj, Cargo.toml, go.mod, package.json, a Makefile) in ${baseName(I.active?.rel ? filesParent(I.active.rel) : I.st.root)} or above it, and ${I.active?.rel ? `.${extOf(I.active.rel)} files have no compiler to build them alone` : 'no file open to build alone'}.`, { actions: [{ label: 'Add a Task…', run: () => run('sulfur.task.add') }] });
     return null;
   }
   const hosts = await buildHosts();
@@ -6295,13 +6499,15 @@ async function pickToolchain() {
     cs.forEach((c, i) => items.push({ label: c.label, description: c.detail, detail: `on ${h}${h === selfHost ? ' (this machine)' : ''}`, ic: 'host', value: c, sep: i === 0 ? h : '' }));
     if (!cs.length) items.push({ label: `${h} has nothing for ${proj.kinds.map((k) => KIND_NAMES[k]).join(', ')}`, description: `it has ${(tc.tools || []).map((x) => x.name).join(', ') || 'no tools found'}`, ic: 'info', value: null, sep: h });
   }
-  if (!isHomeLoc()) items.push({ label: 'Build on another machine…', description: 'copies the project there first', ic: 'remote', value: 'move' });
-  const v = await pick(items.map((x) => ({ ...x, value: x.value === null ? '__none' : x.value })), { title: `Build ${baseName(I.st.root)}: pick a toolchain`, placeholder: 'A compiler on one of your machines', matchDescription: true });
+  if (singleBuilds(I.active?.rel)) items.push({ label: `Build ${baseName(I.active.rel)} Alone…`, description: 'with its machine’s own compiler, the build file left aside', ic: 'gear', value: 'alone', sep: 'more' });
+  if (!isHomeLoc()) items.push({ label: 'Build on another machine…', description: 'copies the project there first', ic: 'remote', value: 'move', sep: singleBuilds(I.active?.rel) ? '' : 'more' });
+  const v = await pick(items.map((x) => ({ ...x, value: x.value === null ? '__none' : x.value })), { title: `Build ${baseName(projDir())}: pick a toolchain`, placeholder: 'A compiler on one of your machines', matchDescription: true });
   if (!I || v === undefined || v === '__none') return null;
   if (v === 'move') { run('sulfur.project.transfer'); return null; }
+  if (v === 'alone') { buildFile(true); return null; }
   const cfg = { host: v.host, toolchain: v, configuration: buildCfg()?.configuration || 'Debug', defaultTask: 'build', tasks: buildCfg()?.tasks || [] };
   await saveBuildCfg(cfg);
-  setStatusFlash(`Building ${baseName(I.st.root)} with ${v.label} on ${v.host}`);
+  setStatusFlash(`Building ${baseName(projDir())} with ${v.label} on ${v.host}`);
   return cfg;
 }
 
@@ -6390,11 +6596,13 @@ function tasksFor(cfg, proj) {
 
 // Ctrl+B: the project's build, a toolchain asked for the first time
 async function buildProject(taskId) {
-  let cfg = buildCfg();
-  if (!cfg?.toolchain?.id || !dkLiveHosts().includes(cfg.host)) cfg = await pickToolchain();
-  if (!cfg || !I) return;
   const proj = await detectProject();
   if (!I || !proj) return;
+  // no build file: the open file built alone, as VS Code's Build Active File
+  if (!proj.kinds.length) { await pickToolchain(proj); return; }
+  let cfg = buildCfg();
+  if (!cfg?.toolchain?.id || !dkLiveHosts().includes(cfg.host)) cfg = await pickToolchain(proj);
+  if (!cfg || !I) return;
   const tasks = tasksFor(cfg, proj);
   const want = taskId || cfg.defaultTask || 'build';
   const t = tasks.find((x) => x.id === want) || tasks.find((x) => x.group === 'build');
@@ -6405,9 +6613,10 @@ async function buildProject(taskId) {
 async function runProjectTask(cfg, t) {
   await saveAll();
   if (!I) return;
-  const abs = hostPath(cfg.host, isHomeLoc() ? 'home' : locOf().share, I.st.root);
-  if (!abs) { notify('error', `Can't tell where ${I.st.root} is on ${cfg.host}.`); return; }
-  runTask({ host: cfg.host, abs, command: t.command, vcvars: t.vcvars, name: `${t.label} · ${cfg.host}`, kind: 'task', problems: true, root: I.st.root, label: t.label });
+  const dir = projDir();
+  const abs = hostPath(cfg.host, isHomeLoc() ? 'home' : locOf().share, dir);
+  if (!abs) { notify('error', `Can't tell where ${dir} is on ${cfg.host}.`); return; }
+  runTask({ host: cfg.host, abs, command: t.command, vcvars: t.vcvars, name: `${t.label} · ${cfg.host}`, kind: 'task', problems: true, root: dir, label: t.label, onDone: () => I && loadDir(dir, true) });
 }
 
 async function chooseTask() {
@@ -6467,6 +6676,7 @@ function runTask(o) {
     onExit: (code) => {
       t.ended = true;
       pm?.end();
+      o.onDone?.(code);
       paintTerms();
       const secs = ((Date.now() - started) / 1000).toFixed(1);
       if (o.kind === 'task') {
