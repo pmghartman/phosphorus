@@ -29,7 +29,7 @@ import {
   putFile,
   selfHost,
   shQuote,
-  soloShell,
+  standalone,
 } from '../app.js';
 import { codeEditor } from './editor.js';
 import { startTerminal, taskTerminal, termsRetheme } from './terminal.js';
@@ -167,6 +167,10 @@ function cleanPath(p) {
 // --- where a workspace lives: the merged home, every host's at once, or a
 // folder of one host's own disk published as a share (D:\Projects, /srv/code)
 const HOME_LOC = { host: '*', share: 'home' };
+// offline in Sulfur's desktop app: one computer, no mesh
+const offline = () => standalone?.mode === 'local';
+// where a host's login is given: Sulfur's own Machines when it runs alone, else the desktop's task bar
+const loginWhere = () => (standalone ? 'from Run and Build › Machines' : 'from its lock in the desktop’s task bar');
 const locOf = () => I?.st.loc || HOME_LOC;
 const isHomeLoc = (l = locOf()) => !l || l.host === '*';
 const sameLoc = (a, b) => (isHomeLoc(a) && isHomeLoc(b)) || (!!a && !!b && a.host === b.host && String(a.share) === String(b.share));
@@ -198,7 +202,7 @@ function fileLoc(rel, host, l = locOf()) {
 }
 // a location's name for people: the home, or host and folder
 function locLabel(l = locOf()) {
-  if (isHomeLoc(l)) return 'home, synced across the mesh';
+  if (isHomeLoc(l)) return offline() ? `your home folder on ${selfHost}` : 'home, synced across the mesh';
   return `${l.host} · ${shareOf(l.host, l.share)?.label || `share ${l.share}`}`;
 }
 // the user's own space and the shared one in the home; in a host's share, anything in it
@@ -706,7 +710,8 @@ const MENUS = [
     ] }, '-',
     cmdItem('workbench.action.revertFile', 'Revert File'),
     cmdItem('workbench.action.closeActiveEditor', 'Close Editor'), cmdItem('workbench.action.closeAllEditors', 'Close All Editors'), '-',
-    soloShell ? cmdItem('sulfur.changeServer', 'Change Server…') : cmdItem('sulfur.closeWindow', 'Close Window'),
+    ...(standalone?.app ? [cmdItem('sulfur.switch', offline() ? 'Connect to a Phosphorus Mesh…' : 'Work Offline or Switch Mesh…'), '-'] : []),
+    cmdItem('sulfur.closeWindow', standalone?.app ? 'Exit' : 'Close Window'),
   ]],
   ['Edit', () => [
     cmdItem('undo', 'Undo'), cmdItem('redo', 'Redo'), '-',
@@ -1128,7 +1133,7 @@ function explorerItems(p, dir) {
     isRoot && { label: 'Copy or Move Project to…', run: () => run('sulfur.project.transfer') },
     runnable && { label: `Run on ${runHost() || 'a host'}`, run: () => runFile(p) },
     runnable && { label: 'Run On…', run: () => runFileOn(p) },
-    { label: 'Reveal in Files', run: () => filesWin({ loc: apiLoc(), dir: dir ? p : filesParent(p) }) },
+    filesWin && { label: offline() ? (standalone.mac ? 'Reveal in Finder' : /Win/.test(navigator.platform) ? 'Reveal in File Explorer' : 'Open Containing Folder') : 'Reveal in Files', run: () => filesWin({ loc: apiLoc(), dir: dir ? p : filesParent(p) }) },
     file && { label: 'Ask the Agent About This File', run: () => { openFile(p, { preview: false }); showAux(true, true); } },
     '-',
     { label: 'Copy Path', key: IS_MAC ? 'alt+ctrl+c' : 'shift+alt+c', run: () => copyPath(p, true) },
@@ -2282,8 +2287,8 @@ function registerCommands() {
   C('sulfur.project.new', 'New Project…', () => newProject(), { key: 'ctrl+alt+shift+n', category: 'File' });
   C('sulfur.project.transfer', 'Copy or Move Project to Another Machine…', () => transferProject(), { category: 'File' });
   C('sulfur.folder.add', 'Add a Folder of a Machine for Projects…', () => addFolderDialog(), { when: () => !!acct.admin, category: 'File' });
-  // the desktop app's own page again, to pick another phosphorus server
-  C('sulfur.changeServer', 'Change Phosphorus Server…', async () => { if ((await saveAll()).every(Boolean)) location.href = `${soloShell}/#change`; }, { when: () => !!soloShell, category: 'File' });
+  // the desktop app's start pane again: offline, or another mesh
+  C('sulfur.switch', 'Switch Between Offline and a Phosphorus Mesh…', async () => { if ((await saveAll()).every(Boolean)) location.replace('/sulfur/?start'); }, { when: () => !!standalone?.app, category: 'File' });
   C('workbench.action.selectTheme', 'Color Theme', () => pickTheme(), { key: 'ctrl+k ctrl+t', category: 'Preferences' });
   C('sulfur.selectHost', 'Select Host for Terminals and Runs…', () => pickHost('Select the host terminals and runs use').then((h) => h && setRunHost(h)), { category: 'Phosphorus' });
   // preferences and help
@@ -2292,7 +2297,9 @@ function registerCommands() {
   C('workbench.action.openGlobalKeybindings', 'Open Keyboard Shortcuts', () => openKeysPage(), { key: 'ctrl+k ctrl+s', category: 'Preferences' });
   C('workbench.action.openGlobalKeybindingsFile', 'Open Keyboard Shortcuts (JSON)', () => openUserFile(KEYS_PATH(), '// your keys, each {"key": "ctrl+alt+r", "command": "ide.run.file"}; a "-command" removes a default\n[\n]\n'), { category: 'Preferences' });
   C('workbench.action.openWalkthrough', 'Welcome', () => openWelcome(), { category: 'Help' });
-  C('sulfur.about', 'About', () => ask({ title: 'Sulfur', detail: `A VS Code-shaped workbench over your phosphorus home.\nUser: ${acct.user}\nServed by: ${selfHost}\nHosts online: ${homeOnline().join(', ')}\nTerminals on: ${dkLiveHosts().join(', ') || 'none logged into'}`, buttons: [{ label: 'OK', primary: true, value: 'ok' }] }), { category: 'Help' });
+  C('sulfur.about', 'About', () => ask({ title: 'Sulfur', detail: offline()
+    ? `Sulfur ${standalone.info?.version || ''}, offline on ${selfHost}.\nUser: ${acct.user}\nHome: ${hostPath(selfHost, 'home', acct.user)}`
+    : `A VS Code-shaped workbench over your phosphorus home.\nUser: ${acct.user}\nServed by: ${selfHost}\nHosts online: ${homeOnline().join(', ')}\nTerminals on: ${dkLiveHosts().join(', ') || 'none logged into'}`, buttons: [{ label: 'OK', primary: true, value: 'ok' }] }), { category: 'Help' });
   // extensions
   C('sulfur.extensions.guide', 'Open the Extension Guide', () => openGuide(), { category: 'Extensions' });
   C('sulfur.extensions.create', 'Create New Extension…', () => createExtension(), { category: 'Extensions' });
@@ -2466,7 +2473,7 @@ function pick(items, o = {}) {
 function inputBox(o = {}) {
   return new Promise((resolve) => {
     quick({
-      value: o.value || '', placeholder: o.placeholder || '', title: o.title, select: o.select,
+      value: o.value || '', placeholder: o.placeholder || '', title: o.title, select: o.select, password: o.password,
       provide: (v) => {
         const why = o.validate?.(v) || '';
         return { items: [], message: why || `${o.prompt || ''}${o.prompt ? ' ' : ''}(Press 'Enter' to confirm or 'Escape' to cancel)`, bad: !!why, accept: why ? null : () => resolve(v) };
@@ -2482,7 +2489,7 @@ function quick(o) {
   box.setAttribute('role', 'dialog');
   const title = el('div', 'ide-quick-title', o.title || '');
   title.hidden = !o.title;
-  const input = Object.assign(el('input', 'ide-input ide-quick-input'), { value: o.value || '', placeholder: o.placeholder || '', spellcheck: false, autocomplete: 'off' });
+  const input = Object.assign(el('input', 'ide-input ide-quick-input'), { value: o.value || '', placeholder: o.placeholder || '', spellcheck: false, autocomplete: 'off', type: o.password ? 'password' : 'text' });
   input.setAttribute('role', 'combobox');
   input.setAttribute('aria-expanded', 'true');
   const msg = el('div', 'ide-quick-msg');
@@ -2576,7 +2583,7 @@ function closeQuick(replacing = false) {
 // every place a project can be: the home, then each logged-in host's shares, this machine first
 function places() {
   const live = new Set(dkLiveHosts());
-  const out = [{ loc: HOME_LOC, label: 'Home', description: `synced across the mesh · ${acct.user}/` }];
+  const out = [{ loc: HOME_LOC, label: 'Home', description: offline() ? hostPath(selfHost, 'home', acct.user) : `synced across the mesh · ${acct.user}/` }];
   const hosts = [...live].sort((a, b) => (b === selfHost) - (a === selfHost) || a.localeCompare(b));
   for (const h of hosts) {
     for (const sh of hostsInfo[h.toLowerCase()]?.files?.shares || []) {
@@ -2609,7 +2616,7 @@ async function pickFolder(start, l = locOf()) {
     }
     if (!I) return;
     const skip = excluded();
-    const subs = top && isHomeLoc(place) ? [{ name: acct.user, dir: true }, { name: 'shared', dir: true }] : sortEntries(entries).filter((e) => e.dir && !skip(e.name));
+    const subs = top && isHomeLoc(place) ? [{ name: acct.user, dir: true }, ...(offline() ? [] : [{ name: 'shared', dir: true }])] : sortEntries(entries).filter((e) => e.dir && !skip(e.name));
     const where = isHomeLoc(place) ? dir : `${place.host}: ${hostPath(place.host, place.share, dir)}`;
     const items = [
       ...(dir ? [{ label: 'Open this folder', description: where, ic: 'check', value: '.' }] : []),
@@ -3109,7 +3116,7 @@ function pickHost(title) {
     description: [h === selfHost && 'this desktop’s host', h === runHost() && 'default', !live.has(h) && 'not logged in', live.has(h) && hostIsWindows(h) && 'Windows'].filter(Boolean).join(' · '),
   }));
   return pick(items, { title, placeholder: 'Select a host', matchDescription: true }).then((h) => {
-    if (h && !live.has(h)) { notify('warning', `Log into ${h} first: its lock in the desktop's task bar takes its login.`); return undefined; }
+    if (h && !live.has(h)) { notify('warning', `Log into ${h} first, ${loginWhere()}.`); return undefined; }
     return h;
   });
 }
@@ -3120,7 +3127,7 @@ function newTerminal(o = {}) {
   const tv = I.panelViews.get('terminal');
   if (!host) {
     showPanel('terminal', true);
-    notify('warning', 'There is no host to open a terminal on: log into one from its lock in the desktop’s task bar.');
+    notify('warning', `There is no host to open a terminal on: log into one ${loginWhere()}.`);
     return null;
   }
   const creds = dk.creds.get(host);
@@ -3133,7 +3140,8 @@ function newTerminal(o = {}) {
   const win = hostIsWindows(host);
   // pushd works in cmd and PowerShell alike, whichever sshd gives
   const cd = !abs ? '' : win ? `pushd "${abs}"` : `cd ${shQuote(abs)}`;
-  const line = kind === 'shell' ? (cd ? (win ? cd : `${cd} && clear`) : '') : [cd, o.run].filter(Boolean).join(win ? ' & ' : ' && ');
+  const pwsh = hostsInfo[String(host).toLowerCase()]?.shell === 'powershell';
+  const line = kind === 'shell' ? (cd ? (win ? (pwsh ? `${cd}; Clear-Host` : cd) : `${cd} && clear`) : '') : [cd, o.run].filter(Boolean).join(pwsh ? '; ' : win ? ' & ' : ' && ');
   const same = I.terms.filter((x) => x.base === (o.name || host)).length;
   const t = { id: `t${(I.termSeq += 1)}`, host, base: o.name || host, name: same ? `${o.name || host} (${same + 1})` : (o.name || host), kind, ended: false };
   t.view = el('div', 'ide-term-view');
@@ -3169,7 +3177,7 @@ function paintTerms() {
       const b = Object.assign(el('button', 'ide-button', `New Terminal on ${runHost()}`), { type: 'button' });
       b.addEventListener('click', () => newTerminal());
       tv.empty.append(b);
-    } else tv.empty.append(el('p', '', 'No host to open a terminal on. Log into one from its lock in the desktop’s task bar, then come back.'));
+    } else tv.empty.append(el('p', '', `No host to open a terminal on. Log into one ${loginWhere()}, then come back.`));
   }
   tv.list.replaceChildren(...I.terms.map((t) => {
     const row = el('div', `ide-term-item${t === I.term ? ' on' : ''}${t.ended ? ' ended' : ''}`);
@@ -3266,7 +3274,7 @@ async function runFile(rel, hostArg) {
     return;
   }
   let host = hostArg || runHost();
-  if (!host) { notify('warning', 'Log into a host to run code: its lock in the desktop’s task bar takes its login.'); return; }
+  if (!host) { notify('warning', `Log into a host to run code, ${loginWhere()}.`); return; }
   if (hostIsWindows(host) && !WIN_RUNNERS[extOf(rel)] && !(setting('sulfur.runners') || {})[extOf(rel)]) {
     const other = dkLiveHosts().find((h) => !hostIsWindows(h));
     notify('warning', `${host} runs Windows, which has no runner for .${extOf(rel)} files yet.`, other ? { actions: [{ label: `Run on ${other}`, run: () => runFile(rel, other) }] } : {});
@@ -3347,7 +3355,7 @@ function buildStatus() {
   S.enc = sbItem('ide-sb-enc', 'Encoding');
   S.eol = sbItem('ide-sb-eol', 'End of Line Sequence');
   S.lang = sbItem('ide-sb-lang', 'Language Mode');
-  S.host = sbItem('ide-sb-host', 'The host the file’s session is on', () => I.active?.rel && filesWin({ loc: HOME, dir: filesParent(I.active.rel) }));
+  S.host = sbItem('ide-sb-host', 'The host the file’s session is on', () => I.active?.rel && filesWin?.({ loc: HOME, dir: filesParent(I.active.rel) }));
   S.state = el('span', 'ide-sb ide-sb-state');
   S.extR = el('span', 'ide-sb-ext');
   S.bell = sbItem('ide-sb-bell', 'Notifications', (e) => notesPopup(e.currentTarget));
@@ -3591,7 +3599,8 @@ function paintChat(force = false) {
   paintStatus();
   // the banner: why an ask may not land
   let why = '';
-  if (!a) why = 'No model is set up on the mesh. The status app’s model card picks one.';
+  if (offline() && a?.kind !== 'ext') why = 'Offline, there are no models or agents here: they come from a Phosphorus mesh. File › Connect to a Phosphorus Mesh… brings them in.';
+  else if (!a) why = 'No model is set up on the mesh. The status app’s model card picks one.';
   else if (a.kind === 'mesh' && !a.up) why = `${a.label} has no model answering right now. The status app’s model card shows why.`;
   else if (agent && !a.S.id) why = agentWhere(h).why || '';
   c.banner.textContent = why;
@@ -3740,6 +3749,7 @@ function sendChat() {
   const a = currentAgent();
   const text = I.chat.ta.value.trim();
   if (!a || !text) return;
+  if (offline() && a.kind !== 'ext') { notify('info', 'Offline, the chat has no models or agents: connect to a Phosphorus mesh for them.', standalone.app ? { actions: [{ label: 'Connect…', run: () => run('sulfur.switch') }] } : {}); return; }
   if (a.busy()) { setStatusFlash(`${a.label} is still answering`); return; }
   if (!a.ready()) { notify('warning', 'The mesh chat isn’t connected yet: try again in a moment.'); return; }
   if (a.send(text) === false) { notify('warning', `${a.label} didn’t take the message: the chat’s connection dropped.`); return; }
@@ -4412,7 +4422,7 @@ function agentWhere(h) {
     return { host, dir: hostPath(host, locOf().share, I.st.root) };
   }
   const hosts = [runHost(), selfHost, ...homeOnline()].filter((x, i, a) => x && a.indexOf(x) === i && logins.has(x) && !hostIsWindows(x) && shareOf(x, 'home'));
-  if (!hosts.length) return { why: `${n} runs on a Linux or macOS machine holding your home: log into one from its lock in the task bar.` };
+  if (!hosts.length) return { why: `${n} runs on a Linux or macOS machine holding your home: log into one ${loginWhere()}.` };
   return { host: hosts[0], dir: hostPath(hosts[0], 'home', I.st.root) };
 }
 
@@ -4791,7 +4801,8 @@ function paintRunView(fresh = false) {
       if (h !== def) acts.append(btn('', 'check', `Use ${h} for Terminals and Runs`, (e) => { e.stopPropagation(); setRunHost(h); }));
     }
     r.append(acts);
-    r.title = live.has(h) ? `${h}: its compilers and build tools` : `${h}: log in from its lock in the desktop's task bar`;
+    r.title = live.has(h) ? `${h}: its compilers and build tools` : `${h}: log in ${loginWhere()}`;
+    if (!live.has(h) && standalone?.logIn) acts.append(btn('', 'lock', `Log In to ${h}…`, (e) => { e.stopPropagation(); hostLogIn(h); }));
     if (live.has(h)) {
       r.setAttribute('aria-expanded', String(open));
       const flip = () => { if (I.hostOpen.has(h)) I.hostOpen.delete(h); else I.hostOpen.add(h); paintRunView(); };
@@ -4831,6 +4842,19 @@ function paintRunView(fresh = false) {
   edit.addEventListener('click', () => openUserFile(SETTINGS_PATH(), '{\n  "sulfur.runners": {\n  }\n}\n'));
   body.append(tbl, edit);
   body.scrollTop = top;
+}
+
+// a host's login, asked for here when Sulfur runs alone, kept as the desktop keeps it
+async function hostLogIn(h) {
+  const user = await inputBox({ title: `Log In to ${h}`, placeholder: 'User', prompt: `Your login on ${h}, for its terminals, runs and builds.`, value: acct.user });
+  if (!user?.trim() || !I) return;
+  const pass = await inputBox({ title: `Log In to ${h}: ${user.trim()}`, placeholder: 'Password', password: true });
+  if (pass === undefined || !I) return;
+  try { await standalone.logIn(h, user.trim(), pass); } catch (err) { notify('error', `Couldn't keep the login: ${err.message}`); return; }
+  if (!I) return;
+  notify('info', `Logged in to ${h} as ${user.trim()}.`);
+  paintRunView();
+  paintStatus();
 }
 
 // the project's build settings, written from the pick when there's no file yet
@@ -4917,7 +4941,7 @@ const projectNameWhy = (v) => {
 async function pickPlace(title, o = {}) {
   for (;;) {
     const ps = places().filter((x) => !o.skip?.(x.loc) && (isHomeLoc(x.loc) || String(x.perms || 'rwd').includes('w')));
-    const items = ps.map((x, i) => ({ label: x.label, description: isHomeLoc(x.loc) ? `${acct.user}/ · synced across the mesh` : x.description, ic: isHomeLoc(x.loc) ? 'folder' : 'host', value: i }));
+    const items = ps.map((x, i) => ({ label: x.label, description: isHomeLoc(x.loc) ? (offline() ? hostPath(selfHost, 'home', acct.user) : `${acct.user}/ · synced across the mesh`) : x.description, ic: isHomeLoc(x.loc) ? 'folder' : 'host', value: i }));
     if (acct.admin) items.push({ label: 'Add a Folder of a Machine…', description: 'publish one, like D:\\Projects or ~/src', ic: 'plus', value: 'add', sep: 'more' });
     else if (ps.length < 2) items.push({ label: 'A machine\'s own folders are published by an admin', ic: 'info', value: 'none', sep: 'more' });
     const v = await pick(items, { title, placeholder: o.placeholder || 'Where the project goes', matchDescription: true });
@@ -4940,7 +4964,7 @@ async function newProject() {
   const k = await pick(TEMPLATES.map((x, i) => ({ label: x.label, description: x.description, ic: x.ic, value: i })), { title: 'New Project', placeholder: 'What kind of project to start', matchDescription: true });
   if (k === undefined || !I) return;
   const tpl = TEMPLATES[k];
-  const where = await pickPlace(`New ${tpl.label} Project: where`, { placeholder: 'Where it lives: your home, synced across the mesh, or a folder on one machine' });
+  const where = await pickPlace(`New ${tpl.label} Project: where`, { placeholder: offline() ? 'Your home folder, or anywhere on this computer' : 'Where it lives: your home, synced across the mesh, or a folder on one machine' });
   if (!where || !I) return;
   const typed = await inputBox({ title: `New ${tpl.label} Project: its name`, value: tpl.id === 'empty' ? 'project' : `hello-${tpl.id}`, prompt: `A new folder in ${where.label}.`, validate: projectNameWhy });
   if (typed === undefined || !I) return;
@@ -6425,7 +6449,7 @@ async function toggleConfiguration() {
 // same name that's done gives way to it
 function runTask(o) {
   const host = o.host;
-  if (!dk.creds.get(host)) { notify('warning', `Not logged into ${host}: its lock in the desktop\u2019s task bar takes the login.`); return null; }
+  if (!dk.creds.get(host)) { notify('warning', `Not logged into ${host}: log in ${loginWhere()}.`); return null; }
   for (const old of I.terms.filter((x) => x.base === o.name && x.kind !== 'shell' && x.ended)) killTerm(old);
   const tv = I.panelViews.get('terminal');
   const same = I.terms.filter((x) => x.base === o.name).length;

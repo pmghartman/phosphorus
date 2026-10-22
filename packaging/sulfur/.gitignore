@@ -1,3 +1,4 @@
-# cargo's build and tauri's generated schemas, made again by every build
+# cargo's build, tauri's generated schemas and the server binary, made by every build
 /src-tauri/target/
 /src-tauri/gen/
+/src-tauri/binaries/

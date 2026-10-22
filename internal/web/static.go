@@ -50,9 +50,9 @@ func etagOf(name string, b []byte) string {
 	return e
 }
 
-// hashed: esbuild's [name]-[hash] files under assets/, cached for good
+// hashed: esbuild's [name]-[hash] files under assets/ and sulfur/assets/, cached for good
 func hashed(p string) bool {
-	return strings.HasPrefix(p, "assets/") || strings.HasPrefix(p, "vendor/h/")
+	return strings.HasPrefix(p, "assets/") || strings.HasPrefix(p, "sulfur/assets/") || strings.HasPrefix(p, "vendor/h/")
 }
 
 func accepts(r *http.Request, enc string) bool {
@@ -79,6 +79,10 @@ func ServeStatic(w http.ResponseWriter, r *http.Request) {
 		p = "/index.html"
 	}
 	name := strings.TrimPrefix(path.Clean(p), "/")
+	// Sulfur on its own, /sulfur/ its page
+	if name == "sulfur" {
+		name = "sulfur/index.html"
+	}
 	if name == "" || strings.HasSuffix(name, ".gz") {
 		http.Error(w, "not found", 404)
 		return

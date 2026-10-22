@@ -89,29 +89,63 @@ func main() {
 	}
 
 	define, _ := json.Marshal(assets)
-	res := api.Build(api.BuildOptions{
-		EntryPoints:       []string{filepath.Join(*src, "src/main.js"), filepath.Join(*src, "style.css")},
-		Bundle:            true,
-		Splitting:         true,
-		Format:            api.FormatESModule,
-		Outdir:            filepath.Join(*out, "assets"),
-		EntryNames:        "[name]-[hash]",
-		ChunkNames:        "chunk-[hash]",
-		AssetNames:        "[name]-[hash]",
-		MinifyWhitespace:  true,
-		MinifyIdentifiers: true,
-		MinifySyntax:      true,
-		Target:            api.ES2020,
-		NodePaths:         []string{modules},
-		External:          []string{"/vendor/*"},
-		Define:            map[string]string{"__ASSETS__": string(define)},
-		Loader:            map[string]api.Loader{".md": api.LoaderText}, // the ide's guide, docs/ide-extensions.md, as its text
-		Metafile:          true,
-		Write:             true,
-		LegalComments:     api.LegalCommentsLinked,
-		Charset:           api.CharsetUTF8,
-		LogLevel:          api.LogLevelWarning,
-	})
+	opts := func(entry, outdir string) api.BuildOptions {
+		return api.BuildOptions{
+			EntryPoints:       []string{filepath.Join(*src, entry), filepath.Join(*src, "style.css")},
+			Bundle:            true,
+			Splitting:         true,
+			Format:            api.FormatESModule,
+			Outdir:            filepath.Join(*out, outdir),
+			EntryNames:        "[name]-[hash]",
+			ChunkNames:        "chunk-[hash]",
+			AssetNames:        "[name]-[hash]",
+			MinifyWhitespace:  true,
+			MinifyIdentifiers: true,
+			MinifySyntax:      true,
+			Target:            api.ES2020,
+			NodePaths:         []string{modules},
+			External:          []string{"/vendor/*"},
+			Define:            map[string]string{"__ASSETS__": string(define)},
+			Loader:            map[string]api.Loader{".md": api.LoaderText}, // sulfur's guide, docs/sulfur-extensions.md, as its text
+			Metafile:          true,
+			Write:             true,
+			LegalComments:     api.LegalCommentsLinked,
+			Charset:           api.CharsetUTF8,
+			LogLevel:          api.LogLevelWarning,
+		}
+	}
+	// the desktop's page
+	page(*out, filepath.Join(*src, "index.html"), "index.html", "/src/main.js", api.Build(opts("src/main.js", "assets")))
+
+	// Sulfur alone, its desktop app's page and /sulfur/ on every host: app.js's
+	// place taken by its own host, so nothing of the desktop comes with it
+	host, _ := filepath.Abs(filepath.Join(*src, "src/sulfur/host.js"))
+	apps, _ := filepath.Abs(filepath.Join(*src, "src/apps"))
+	alone := opts("src/sulfur/main.js", "sulfur/assets")
+	alone.Plugins = []api.Plugin{{Name: "sulfur-host", Setup: func(b api.PluginBuild) {
+		b.OnResolve(api.OnResolveOptions{Filter: `^\.\./app\.js$`}, func(a api.OnResolveArgs) (api.OnResolveResult, error) {
+			if dir, err := filepath.Abs(a.ResolveDir); err == nil && dir == apps {
+				return api.OnResolveResult{Path: host}, nil
+			}
+			return api.OnResolveResult{}, nil
+		})
+	}}}
+	page(*out, filepath.Join(*src, "sulfur.html"), "sulfur/index.html", "/src/sulfur/main.js", api.Build(alone))
+	must(copyDir(filepath.Join(*src, "static"), *out, ""))
+
+	n := 0
+	must(filepath.Walk(*out, func(p string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() || !compressible.MatchString(p) {
+			return err
+		}
+		n++
+		return precompress(p, hashedPath(*out, p))
+	}))
+	log.Printf("built the desktop's page and Sulfur's, %d files precompressed", n)
+}
+
+// page a build's html: its entry and style put in, its entry's own chunks preloaded
+func page(out, from, to, script string, res api.BuildResult) {
 	if len(res.Errors) > 0 {
 		for _, e := range res.Errors {
 			log.Printf("%s", e.Text)
@@ -135,40 +169,29 @@ func main() {
 	preload := ""
 	for outFile, o := range meta.Outputs {
 		if o.EntryPoint != "" {
-			rel, _ := filepath.Rel(*out, outFile)
+			rel, _ := filepath.Rel(out, outFile)
 			entry[filepath.Base(o.EntryPoint)] = "/" + filepath.ToSlash(rel)
 		}
 		// the entry's own chunks asked for with it, not after it parses
 		if filepath.Base(o.EntryPoint) == "main.js" {
 			for _, im := range o.Imports {
 				if im.Kind == "import-statement" {
-					rel, _ := filepath.Rel(*out, im.Path)
+					rel, _ := filepath.Rel(out, im.Path)
 					preload += `<link rel="modulepreload" href="/` + filepath.ToSlash(rel) + `">` + "\n"
 				}
 			}
 		}
 	}
-
-	html, err := os.ReadFile(filepath.Join(*src, "index.html"))
+	html, err := os.ReadFile(from)
 	must(err)
-	page := strings.Replace(string(html), `href="/style.css"`, `href="`+entry["style.css"]+`"`, 1)
-	page = strings.Replace(page, `<script type="module" src="/src/main.js"></script>`, `<script type="module" src="`+entry["main.js"]+`"></script>`, 1)
-	page = strings.Replace(page, "</head>", preload+"</head>", 1)
-	if !strings.Contains(page, entry["main.js"]) || !strings.Contains(page, entry["style.css"]) {
-		log.Fatal("index.html lost its style.css or main.js tag")
+	p := strings.Replace(string(html), `href="/style.css"`, `href="`+entry["style.css"]+`"`, 1)
+	p = strings.Replace(p, `<script type="module" src="`+script+`"></script>`, `<script type="module" src="`+entry["main.js"]+`"></script>`, 1)
+	p = strings.Replace(p, "</head>", preload+"</head>", 1)
+	if !strings.Contains(p, entry["main.js"]) || !strings.Contains(p, entry["style.css"]) {
+		log.Fatalf("%s lost its style.css or main.js tag", filepath.Base(from))
 	}
-	must(os.WriteFile(filepath.Join(*out, "index.html"), []byte(page), 0o644))
-	must(copyDir(filepath.Join(*src, "static"), *out, ""))
-
-	n := 0
-	must(filepath.Walk(*out, func(p string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() || !compressible.MatchString(p) {
-			return err
-		}
-		n++
-		return precompress(p, hashedPath(*out, p))
-	}))
-	log.Printf("built %s and %s, %d files precompressed", entry["main.js"], entry["style.css"], n)
+	must(os.MkdirAll(filepath.Dir(filepath.Join(out, to)), 0o755))
+	must(os.WriteFile(filepath.Join(out, to), []byte(p), 0o644))
 }
 
 var compressible = regexp.MustCompile(`\.(js|css|html|svg|json|txt|map)$`)
@@ -285,11 +308,11 @@ func copyDir(from, to, ext string) error {
 	})
 }
 
-// hashedPath under assets/ or vendor/h/, the server's cached-for-good files
+// hashedPath under assets/, sulfur/assets/ or vendor/h/, the server's cached-for-good files
 func hashedPath(out, p string) bool {
 	rel, _ := filepath.Rel(out, p)
 	rel = filepath.ToSlash(rel)
-	return strings.HasPrefix(rel, "assets/") || strings.HasPrefix(rel, "vendor/h/")
+	return strings.HasPrefix(rel, "assets/") || strings.HasPrefix(rel, "sulfur/assets/") || strings.HasPrefix(rel, "vendor/h/")
 }
 
 // precompress p as .gz, a hashed file's own copy then dropped
