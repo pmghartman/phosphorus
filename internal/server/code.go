@@ -33,12 +33,37 @@ func meshBase() (string, error) {
 	return fmt.Sprintf("http://%s:%d", ip, util.FrontendPort), nil
 }
 
-// codeCreds what a start needs of the logged in user
+// codeBlockedMsg a user with no host login of their own: Code has nowhere to run
+const codeBlockedMsg = "no saved login on any computer"
+
+// codeBlocked why the user can't start anything, "" when they can: every
+// start runs as a login from their own vault, opened by their session
+func codeBlocked(s *users.Session) string {
+	if !users.VaultOK(s) {
+		return "this host hasn't your saved logins yet, try again shortly"
+	}
+	if len(users.HostLogins(s)) == 0 {
+		return codeBlockedMsg
+	}
+	return ""
+}
+
+// codeLogin the session's vault login for host, as creds
+func codeLogin(s *users.Session, host string) (claude.Creds, error) {
+	user, pass, ok := users.HostLogin(s, host)
+	if !ok {
+		return claude.Creds{}, fmt.Errorf("no saved login for %s: open a terminal on it and save the login", host)
+	}
+	return claude.Creds{User: user, Pass: pass}, nil
+}
+
+// codeCreds what a start needs of the logged in user, read from their vault
+// at each call and handed to that start only
 func codeCreds(s *users.Session, r *http.Request) claude.CredsFn {
 	return func(host, _ string) (claude.Creds, error) {
-		user, pass, ok := users.HostLogin(s, host)
-		if !ok {
-			return claude.Creds{}, fmt.Errorf("no saved login for %s: save one in your profile", host)
+		c, err := codeLogin(s, host)
+		if err != nil {
+			return c, err
 		}
 		key, ok := users.KeyOf(s, r)
 		if !ok {
@@ -57,7 +82,8 @@ func codeCreds(s *users.Session, r *http.Request) claude.CredsFn {
 		if err != nil {
 			return claude.Creds{}, err
 		}
-		return claude.Creds{User: user, Pass: pass, Key: key, Token: users.AnthropicToken(s.User), Base: base, Skill: skill}, nil
+		c.Key, c.Token, c.Base, c.Skill = key, users.AnthropicToken(s), base, skill
+		return c, nil
 	}
 }
 
@@ -69,19 +95,24 @@ func codeOptions(s *users.Session) map[string]any {
 		ro := util.Obj(roles[m])
 		models = append(models, map[string]any{"id": m, "label": m, "provider": "mesh", "ready": ro["ready"] == true, "why": util.Str(ro["why"])})
 	}
-	has := users.HasAnthropic(s.User)
+	has := users.AnthropicToken(s) != ""
 	if has {
 		for _, m := range claude.Anthropic {
 			models = append(models, map[string]any{"id": m, "label": strings.ToUpper(m[:1]) + m[1:], "provider": "anthropic", "ready": true, "why": ""})
 		}
 	}
-	return map[string]any{"hosts": users.HostLogins(s), "models": models, "anthropic": has}
+	out := map[string]any{"hosts": users.HostLogins(s), "models": models, "anthropic": has}
+	if why := codeBlocked(s); why != "" {
+		out["hosts"], out["blocked"] = []string{}, why
+	}
+	return out
 }
 
 // codeRoute the app's REST, false for a path that isn't one
 func codeRoute(w http.ResponseWriter, r *http.Request, pathname string, q url.Values) bool {
 	m := codeSessRe.FindStringSubmatch(pathname)
-	known := m != nil || pathname == "/api/code/options" || pathname == "/api/code/sessions" || pathname == "/api/code/install"
+	known := m != nil || pathname == "/api/code/options" || pathname == "/api/code/sessions" || pathname == "/api/code/install" ||
+		pathname == "/api/code/ls" || pathname == "/api/code/upload"
 	if !known {
 		return false
 	}
@@ -105,6 +136,15 @@ func codeRoute(w http.ResponseWriter, r *http.Request, pathname string, q url.Va
 	}
 	reply := func(st int, b any) { sendJSON(w, st, b) }
 	meth := r.Method
+	// whatever runs on a host needs a login of the user's own there
+	starts := (pathname == "/api/code/sessions" && meth == "POST") || pathname == "/api/code/install" ||
+		pathname == "/api/code/ls" || pathname == "/api/code/upload" || (m != nil && m[2] == "send" && meth == "POST")
+	if starts {
+		if why := codeBlocked(s); why != "" {
+			reply(403, map[string]any{"error": why})
+			return true
+		}
+	}
 	switch {
 	case pathname == "/api/code/options" && meth == "GET":
 		reply(200, codeOptions(s))
@@ -127,17 +167,30 @@ func codeRoute(w http.ResponseWriter, r *http.Request, pathname string, q url.Va
 			reply(405, map[string]any{"error": "method not allowed"})
 			return true
 		}
-		user, pass, ok := users.HostLogin(s, host)
-		if !ok {
-			reply(400, map[string]any{"error": "no saved login for " + host})
+		c, err := codeLogin(s, host)
+		if err != nil {
+			reply(400, map[string]any{"error": err.Error()})
 			return true
 		}
-		c := claude.Creds{User: user, Pass: pass}
 		if meth == "GET" {
 			reply(claude.Installed(host, c))
 		} else {
 			reply(claude.Install(host, c))
 		}
+	case pathname == "/api/code/ls" && meth == "GET":
+		c, err := codeLogin(s, q.Get("host"))
+		if err != nil {
+			reply(400, map[string]any{"error": err.Error()})
+			return true
+		}
+		reply(claude.Ls(q.Get("host"), q.Get("dir"), c))
+	case pathname == "/api/code/upload" && meth == "POST":
+		c, err := codeLogin(s, q.Get("host"))
+		if err != nil {
+			reply(400, map[string]any{"error": err.Error()})
+			return true
+		}
+		reply(claude.Upload(q.Get("host"), q.Get("dir"), q.Get("name"), r.ContentLength, http.MaxBytesReader(w, r.Body, claude.UploadMax), c))
 	case m != nil && m[2] == "" && meth == "GET":
 		reply(claude.Get(s.User, m[1]))
 	case m != nil && m[2] == "" && meth == "DELETE":
@@ -172,7 +225,7 @@ func codeRoute(w http.ResponseWriter, r *http.Request, pathname string, q url.Va
 func anthropicOff(s *users.Session, m string) bool {
 	for _, a := range claude.Anthropic {
 		if a == m {
-			return !users.HasAnthropic(s.User)
+			return users.AnthropicToken(s) == ""
 		}
 	}
 	return false

@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -300,5 +301,23 @@ func TestCreateValidates(t *testing.T) {
 	}
 	if newID() == newID() || !idRe.MatchString(newID()) {
 		t.Error("ids")
+	}
+}
+
+func TestSetModelSameProvider(t *testing.T) {
+	runDir = t.TempDir()
+	loadOnce.Do(func() {})
+	rec := Record{ID: newID(), User: "pmh", Host: "razer", Dir: "/x", Model: "chimp", Perm: "default", Status: "ended"}
+	allMu.Lock()
+	all[rec.ID] = newSession(rec)
+	allMu.Unlock()
+	if st, b := SetModel("pmh", rec.ID, map[string]any{"model": "opus"}); st != 409 || !strings.Contains(fmt.Sprint(b), "new session") {
+		t.Fatalf("across providers: %d %v", st, b)
+	}
+	if st, b := SetModel("pmh", rec.ID, map[string]any{"model": "orangutan"}); st != 200 || b.(Record).Model != "orangutan" {
+		t.Fatalf("within: %d %v", st, b)
+	}
+	if _, r := Get("pmh", rec.ID); r.(Record).Model != "orangutan" || r.(Record).Status != "ended" {
+		t.Fatalf("record %+v", r)
 	}
 }

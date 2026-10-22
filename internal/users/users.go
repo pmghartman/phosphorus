@@ -1,5 +1,5 @@
 // Package users: the mesh's people, scrypt hashes, each one's vault of host
-// and page logins sealed with a key from their own password
+// and page logins (and Anthropic token) sealed with a key from their own password
 package users
 
 import (
@@ -496,7 +496,7 @@ func Me(s *Session) map[string]any {
 			wall = sysfs.Stamp(wallFile(s.User))
 		}
 	}
-	return map[string]any{"user": s.User, "admin": s.Admin, "boot": s.Boot, "vault": vault, "vaultOK": vaultOK, "prefs": prefs, "prefsAt": prefsAt, "wallpaper": wall}
+	return map[string]any{"user": s.User, "admin": s.Admin, "boot": s.Boot, "vault": pageVault(vault), "vaultOK": vaultOK, "prefs": prefs, "prefsAt": prefsAt, "wallpaper": wall}
 }
 
 // Wallpaper the user's desktop picture
@@ -705,7 +705,22 @@ func cleanVault(v any) map[string]any {
 			}
 		}
 	}
-	return map[string]any{"hosts": hosts, "pages": pages}
+	out := map[string]any{"hosts": hosts, "pages": pages}
+	if t := cleanToken(o["anthropic"]); t != "" {
+		out["anthropic"] = t
+	}
+	return out
+}
+
+// pageVault the vault as the page holds it: the Anthropic token never sent
+func pageVault(v map[string]any) map[string]any {
+	out := map[string]any{}
+	for k, x := range v {
+		if k != "anthropic" {
+			out[k] = x
+		}
+	}
+	return out
 }
 
 // SetVault the page's saved logins, sealed
@@ -714,20 +729,26 @@ func SetVault(s *Session, p map[string]any) R {
 		return errR(403, "the setup admin keeps no logins")
 	}
 	// an unsynced host's empty vault never sealed over the mesh's
-	if _, ok := openVault(s); !ok {
+	old, ok := openVault(s)
+	if !ok {
 		pull()
-		if _, ok := openVault(s); !ok {
+		if old, ok = openVault(s); !ok {
 			return errR(503, "this host hasn't your saved logins yet, try again shortly")
 		}
 	}
 	vault := cleanVault(p["vault"])
+	// the token set only by SetAnthropic, the page's copy (it has none) ignored
+	delete(vault, "anthropic")
+	if t, _ := cleanVault(old)["anthropic"].(string); t != "" {
+		vault["anthropic"] = t
+	}
 	text := string(util.Marshal(vault))
 	if len(text) > maxVault {
 		return errR(413, "too many saved logins")
 	}
 	sysfs.Write(vaultFile(s.User), Seal(s.Key, text))
 	resealMCP(s, vault)
-	return R{Status: 200, Body: map[string]any{"vault": vault}}
+	return R{Status: 200, Body: map[string]any{"vault": pageVault(vault)}}
 }
 
 // ChangePass the vault resealed under the new password

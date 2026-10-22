@@ -213,8 +213,8 @@ func Stop(user, id string) (int, any) {
 	return 200, map[string]any{}
 }
 
-// SetModel within a provider claude's own switch, across one a restart that
-// resumes on the next prompt
+// SetModel within a provider claude's own switch; across one refused, a new
+// session's to make
 func SetModel(user, id string, p map[string]any) (int, any) {
 	s := of(user, id)
 	if s == nil {
@@ -232,14 +232,12 @@ func SetModel(user, id string, p map[string]any) (int, any) {
 	if s.starting {
 		return 409, errB("still starting, switch once it's up")
 	}
-	same := provider(m) == provider(s.rec.Model)
+	if provider(m) != provider(s.rec.Model) {
+		return 409, errB("start a new session to change provider")
+	}
 	s.rec.Model = m
-	switch {
-	case s.alive() && same:
+	if s.alive() {
 		s.control("model", map[string]any{"subtype": "set_model", "model": m})
-	case s.p != nil:
-		s.stopping = true
-		s.p.kill()
 	}
 	s.status("")
 	return 200, s.rec
