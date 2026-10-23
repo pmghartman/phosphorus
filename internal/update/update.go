@@ -370,7 +370,7 @@ func RestoreChain() {
 				defer wg.Done()
 				var r result
 				if host == selfHost {
-					r = settleSelf(id, from)
+					r = settleSelf(id)
 				} else {
 					r = watchPeer(host, id, from, boot, stage, func(f map[string]string) { cmu.Lock(); noteLocked(host, f); cmu.Unlock() })
 				}
