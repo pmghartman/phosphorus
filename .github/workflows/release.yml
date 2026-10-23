@@ -446,7 +446,8 @@ jobs:
           gh release upload update * --clobber
 
   # only the two newest numbered releases and their tags kept, the `update` feed
-  # aside; only this workflow's two newest runs, this one included
+  # aside; only this workflow's two newest runs, this one included, and the apt
+  # caches those two saved
   prune:
     needs: [release, feed]
     if: ${{ !cancelled() && needs.release.result == 'success' && contains(fromJSON('["success", "skipped"]'), needs.feed.result) }}
@@ -465,6 +466,14 @@ jobs:
           while read -r t; do
             echo "deleting release $t"
             gh release delete "$t" --yes --cleanup-tag
+          done
+      - name: caches
+        run: |
+          keep=$(gh run list --workflow release.yml --limit 200 --json databaseId,createdAt --jq 'sort_by(.createdAt) | reverse | .[:2] | map(.databaseId | tostring) | join("|")')
+          gh cache list --limit 200 --json id,key --jq ".[] | select(.key | test(\"^apt-.*-[0-9]+\$\")) | select(.key | test(\"-($keep)\$\") | not) | .id" |
+          while read -r id; do
+            echo "deleting cache $id"
+            gh cache delete "$id" || true
           done
       - name: runs
         run: |
