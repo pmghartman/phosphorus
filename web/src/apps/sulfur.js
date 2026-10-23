@@ -37,7 +37,9 @@ import {
 } from '../app.js';
 import { codeEditor } from './editor.js';
 import { createLanguageWorkbench } from '../sulfur/language-workbench.js';
-import { createInlineCompletions } from '../sulfur/inline-completion.js';
+import { createInlineCompletions, completionModels } from '../sulfur/inline-completion.js';
+import { diagnosticCounts, diagnosticSeverity } from '../sulfur/diagnostics.js';
+import { createBuildProblemMatcher } from '../sulfur/build-problems.js';
 import { startTerminal, taskTerminal, termsRetheme } from './terminal.js';
 import { renderMd } from '../md.js';
 import { symbolsFor, identifierAt, enclosingSymbol } from '../symbols.js';
@@ -328,6 +330,7 @@ const languages = createLanguageWorkbench({
   hosts: () => dkLiveHosts(),
   url: (host) => new URL(hostUrl(host, `/api/sulfur/languages?host=${encodeURIComponent(host)}`), location.href).href,
   problems: () => I && paintProblemsSoon(),
+  diagnosticDelay: () => setting('editor.diagnostics.delay'),
   async context(t) {
     if (!I || I.active !== t || !sameLoc(t.loc, locOf()) || !under(t.rel, I.st.root)) return null;
     const current = I;
@@ -342,7 +345,8 @@ const languages = createLanguageWorkbench({
     if (!root || !path) return null;
     const buildRoot = cfg?.host === t.host && cfg.toolchain ? tasksFor(cfg, project).buildRoot : '';
     const buildDirectory = buildRoot ? absolutePath(buildRoot) ? buildRoot : hostPath(t.host, share, joinPath(rootRel, buildRoot)) : '';
-    return { host: t.host, root, rootRel, path, documentRel: t.rel.slice(rootRel.length + 1), loc: t.loc, workspace, configuration: cfg?.configuration || '', buildDirectory, settings: setting('sulfur.languageServerSettings') || {} };
+    const solutionPath = project.sln?.[0] ? hostPath(t.host, share, filesJoin(rootRel, project.sln[0])) : '';
+    return { host: t.host, root, rootRel, path, solutionPath, documentRel: t.rel.slice(rootRel.length + 1), loc: t.loc, workspace, configuration: cfg?.configuration || '', buildDirectory, settings: setting('sulfur.languageServerSettings') || {} };
   },
   open(path, context, range) {
     if (!I || context.workspace !== wsKey()) return null;
@@ -379,8 +383,10 @@ const DEFAULTS = () => ({
 });
 
 const SETTINGS = {
-  'editor.inlineSuggest.enabled': { def: true, type: 'boolean', title: 'Editor: AI Inline Suggestions', about: 'Predict code with Chimp through the mesh using a dedicated completion harness. Sends bounded context from this file and up to two related open files. Tab accepts; Escape dismisses. Works independently of the chat harness.' },
-  'editor.inlineSuggest.delay': { def: 400, type: 'number', min: 200, max: 2000, title: 'Editor: AI Suggestion Delay', about: 'Idle time in milliseconds before asking Chimp for an inline suggestion.' },
+  'editor.inlineSuggest.enabled': { def: true, type: 'boolean', title: 'Editor: AI Inline Suggestions', about: 'Predict code with the selected completion model through the mesh using a dedicated harness. Sends bounded context from this file and up to two related open files. Tab accepts; Escape dismisses. Works independently of the chat harness.' },
+  'editor.inlineSuggest.model': { def: 'chimp', type: 'model', title: 'Editor: Completion Machine / Model', about: 'Choose automatic Chimp/Orangutan routing, or pin completion to a machine and its configured model. The machine must have that model ready; this does not change its model installation.' },
+  'editor.inlineSuggest.delay': { def: 750, type: 'number', min: 200, max: 5000, title: 'Editor: AI Suggestion Delay', about: 'Idle time in milliseconds after meaningful typing before asking the completion model. Blank lines, Enter, indentation, and deletion do not request AI suggestions; Alt+\\ still works anywhere.' },
+  'editor.diagnostics.delay': { def: 1000, type: 'number', min: 300, max: 5000, title: 'Editor: Diagnostic Delay', about: 'Idle time in milliseconds before checking syntax or requesting language-server diagnostics. Stale underlines clear while you edit incomplete lines.' },
   'sulfur.languageServerSettings': { def: {}, type: 'object', title: 'Languages: Server Settings', about: 'Language-server settings, keyed by extension id (typescript, python, javascript, java, csharp, php, shell, cpp, hcl, go). Runtime prerequisites and installation are in Extensions.' },
   'editor.fontSize': { def: 13, type: 'number', min: 8, max: 40, title: 'Editor: Font Size', about: 'Controls the font size in pixels.' },
   'editor.enablePreview': { def: true, type: 'boolean', title: 'Workbench › Editor: Enable Preview', about: 'Controls whether a file opened from the explorer is shown as a preview, its tab reused until you edit it or double click.' },
@@ -1148,7 +1154,11 @@ function treeRow(e, p, depth) {
   const t = !e.dir && I.tabs.find((x) => x.rel === p);
   if (e.all) row.append(el('span', 'ide-deco', 'A'));
   else if (e.stale) row.append(el('span', 'ide-deco ide-deco-off', 'offline'));
-  if (t?.info?.errors?.length) { row.classList.add('has-err'); row.append(el('span', 'ide-deco ide-deco-err', String(t.info.errors.length))); }
+  if (t?.info?.errors?.length) {
+    const counts = diagnosticCounts(t.info.errors);
+    const kind = counts.errors ? 'err' : counts.warnings ? 'warn' : 'info';
+    row.classList.add(`has-${kind}`); row.append(el('span', `ide-deco ide-deco-${kind}`, String(t.info.errors.length)));
+  }
   if (I.active?.rel === p) row.classList.add('active-file');
   return row;
 }
@@ -1601,7 +1611,7 @@ function mountCode(t) {
   const share = t.share ?? 'home';
   const file = { host: t.host, share, path: t.rel, label: `${t.host}/${share === 'home' ? 'home' : shareOf(t.host, share)?.label || share}/${t.rel}` };
   t.edId = `ide-code-${(edSeq += 1)}`;
-  t.ed = codeEditor(t.view, file, null, t.edId, { bare: true, onState: (info) => tabState(t, info) });
+  t.ed = codeEditor(t.view, file, null, t.edId, { bare: true, diagnosticDelay: () => setting('editor.diagnostics.delay'), onState: (info) => tabState(t, info) });
   editors.set(t.edId, t.ed);
   codeTabs.set(codeKey(file), t.edId);
   t.dispose = () => t.ed.close();
@@ -1878,7 +1888,7 @@ function tabState(t, info) {
   if (info.ready && !was?.ready) applyPending(t);
   if (info.dirty && t.preview) pin(t);
   if (!was || was.dirty !== info.dirty) { t.tabEl.classList.toggle('dirty', info.dirty); paintOpenEditorsSoon(); }
-  if (!was || was.errors.length !== info.errors.length) { paintProblemsSoon(); paintTreeSoon(); }
+  if (!was || JSON.stringify(was.errors) !== JSON.stringify(info.errors)) { paintProblemsSoon(); paintTreeSoon(); }
   if (t === I.active) paintStatus();
   if (t === I.active) paintSymbolNavSoon();
   if (I.find?.open && t === I.active && was && was.length !== info.length) findSoon();
@@ -3660,11 +3670,11 @@ function paintProblems() {
   const at = (rel) => { if (!byFile.has(rel)) byFile.set(rel, []); return byFile.get(rel); };
   for (const t of I.tabs) {
     if (!t.info?.errors?.length || !sameLoc(t.loc, locOf())) continue;
-    for (const x of t.info.errors.filter((e) => !e.source)) at(t.rel).push({ sev: 'error', msg: x.what, src: 'syntax', line: x.line, col: x.col, go: () => { activate(t); t.ed.select(x.from, Math.max(x.to, x.from + 1)); } });
+    for (const x of t.info.errors.filter((e) => !e.source)) at(t.rel).push({ sev: diagnosticSeverity(x) === 1 ? 'error' : diagnosticSeverity(x) === 2 ? 'warning' : 'info', msg: x.what, src: 'syntax', line: x.line, col: x.col, go: () => { activate(t); t.ed.select(x.from, Math.max(x.to, x.from + 1)); } });
   }
   for (const x of languages.problems()) {
     if (x.context.workspace !== wsKey()) continue;
-    at(x.path).push({ sev: x.severity === 1 ? 'error' : x.severity === 2 ? 'warning' : 'info', msg: x.message, src: x.source || 'language server', line: x.range.start.line + 1, col: x.range.start.character + 1, go: () => openFile(x.path, { host: x.context.host, loc: x.context.loc, preview: false, line: x.range.start.line + 1, col: x.range.start.character + 1 }) });
+    at(x.path).push({ sev: diagnosticSeverity(x) === 1 ? 'error' : diagnosticSeverity(x) === 2 ? 'warning' : 'info', msg: x.message, src: x.code || x.source || 'language server', line: x.range.start.line + 1, col: x.range.start.character + 1, go: () => openFile(x.path, { host: x.context.host, loc: x.context.loc, preview: false, line: x.range.start.line + 1, col: x.range.start.character + 1 }) });
   }
   for (const x of I.buildProblems || []) {
     at(x.rel).push({ sev: x.sev, msg: x.msg, src: x.code || 'build', line: x.line, col: x.col, go: () => openFile(x.rel, { preview: false, line: x.line, col: x.col }) });
@@ -6736,8 +6746,43 @@ function openSettings() {
     t.settingsList = list;
     q.addEventListener('input', () => paintSettingsPage());
     paintSettingsPage();
+    loadCompletionModels();
     setTimeout(() => q.focus(), 0);
   });
+}
+
+async function loadCompletionModels() {
+  const current = I;
+  if (!current || current.completionLoading) return;
+  current.completionLoading = true; current.completionModelError = '';
+  paintSettingsPage();
+  try {
+    if (localDesktop() && !meshLinked()) throw new Error('Connect to a mesh to select a completion machine.');
+    const response = await fetch(meshApi('/api/state'), { cache: 'no-store' });
+    if (!response.ok) throw new Error(`Model list: status ${response.status}`);
+    const state = await response.json();
+    if (I === current) current.completionModels = completionModels(state.model);
+  } catch (error) { if (I === current) current.completionModelError = error.message; }
+  finally { if (I === current) { current.completionLoading = false; paintSettingsPage(); } }
+}
+
+function completionModelSetting(row, about, value) {
+  row.append(about);
+  const machines = I.completionModels || [];
+  const host = value.startsWith('phosphorus/') ? value.slice('phosphorus/'.length) : '';
+  const machine = Object.assign(el('select', 'ide-input ide-select'), { ariaLabel: 'Completion machine', disabled: !!I.completionLoading });
+  machine.append(Object.assign(el('option', '', 'Automatic mesh routing'), { value: '', selected: !host }));
+  for (const m of machines) machine.append(Object.assign(el('option', '', `${m.host}${m.ready ? '' : ' · offline'}`), { value: m.host, selected: m.host === host }));
+  if (host && !machines.some((m) => m.host === host)) machine.append(Object.assign(el('option', '', `${host} · unavailable`), { value: host, selected: true }));
+  const model = Object.assign(el('select', 'ide-input ide-select'), { ariaLabel: 'Completion model' });
+  const options = host ? [[value, machines.find((m) => m.host === host)?.label || 'Configured model (unavailable)']] : [['chimp', 'Chimp · fast (default)'], ['orangutan', 'Orangutan · larger model']];
+  for (const [id, label] of options) model.append(Object.assign(el('option', '', label), { value: id, selected: id === value }));
+  machine.addEventListener('change', () => setSetting('editor.inlineSuggest.model', machine.value ? `phosphorus/${machine.value}` : 'chimp'));
+  model.addEventListener('change', () => setSetting('editor.inlineSuggest.model', model.value));
+  const refresh = Object.assign(el('button', 'ide-link', I.completionLoading ? 'Loading models…' : 'Refresh machines and models'), { type: 'button', disabled: !!I.completionLoading });
+  refresh.addEventListener('click', loadCompletionModels);
+  row.append(el('label', '', 'Machine'), machine, el('label', '', 'Model'), model, refresh);
+  if (I.completionModelError) row.append(el('p', 'ide-page-note', I.completionModelError));
 }
 
 function paintSettingsPage() {
@@ -6754,7 +6799,9 @@ function paintSettingsPage() {
     row.append(title);
     const about = el('div', 'ide-setting-about', s.about);
     const val = setting(k);
-    if (s.type === 'boolean') {
+    if (s.type === 'model') {
+      completionModelSetting(row, about, String(val));
+    } else if (s.type === 'boolean') {
       const lab = el('label', 'ide-check');
       const box = Object.assign(el('input'), { type: 'checkbox', checked: !!val });
       box.addEventListener('change', () => setSetting(k, box.checked));
@@ -8633,6 +8680,10 @@ function runTask(o) {
 }
 
 function runTaskNow(o) {
+  const state = I;
+  const noteKey = `${o.host}\n${o.name}`;
+  state.taskNotes ||= new Map();
+  state.taskNotes.get(noteKey)?.close(); state.taskNotes.delete(noteKey);
   const host = o.host;
   if (!dk.creds.get(host)) { notify('warning', `Not logged into ${host}: log in ${loginWhere()}.`); return null; }
   for (const old of I.terms.filter((x) => x.base === o.name && x.kind !== 'shell' && x.ended)) killTerm(old);
@@ -8653,12 +8704,13 @@ function runTaskNow(o) {
       t.ended = true;
       pm?.end();
       o.onDone?.(code);
+      if (I !== state) return;
       paintTerms();
       const secs = ((Date.now() - started) / 1000).toFixed(1);
       if (o.kind === 'task') {
-        const errs = (I.buildProblems || []).filter((x) => x.sev === 'error').length;
+        const errs = (pm?.problems || []).filter((x) => x.sev === 'error').length;
         if (code === 0) setStatusFlash(`${o.label || 'Task'} done in ${secs}s${errs ? `, ${errs} errors` : ''}`);
-        else notify(code === -1 ? 'warning' : 'error', `${o.label || 'Task'} on ${host} ${code === -1 ? 'stopped' : `failed (exit ${code})`}${errs ? `: ${errs} error${errs === 1 ? '' : 's'}` : ''}.`, errs ? { actions: [{ label: 'Show Problems', run: () => showPanel('problems', true, true) }] } : {});
+        else state.taskNotes.set(noteKey, notify(code === -1 ? 'warning' : 'error', `${o.label || 'Task'} on ${host} ${code === -1 ? 'stopped' : `failed (exit ${code})`}${errs ? `: ${errs} error${errs === 1 ? '' : 's'}` : ''}.`, errs ? { actions: [{ label: 'Show Problems', run: () => showPanel('problems', true, true) }] } : {}));
       }
     },
   });
@@ -8672,71 +8724,12 @@ function runTaskNow(o) {
 // --- problems out of a task's output: MSVC, MSBuild and dotnet, GCC and Clang,
 // Rust, Go, CMake; their paths brought back into the workspace
 
-const ANSI_RE = /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07]*(\x07|\x1b\\)/g;
-const MATCHERS = [
-  // C:\p\a.cpp(12,5): error C2065: 'x': undeclared identifier [C:\p\a.vcxproj]
-  { re: /^\s*(.+?)\((\d+)(?:,(\d+))?(?:,\d+,\d+)?\)\s*:\s*(fatal error|error|warning)\s+([A-Z]+\d+)\s*:\s*(.*?)(?:\s+\[[^\]]+\])?\s*$/, f: 1, l: 2, c: 3, s: 4, code: 5, m: 6 },
-  // src/a.c:12:5: error: expected ';' (gcc, clang, and go's file:line:col: msg)
-  { re: /^(.+?\.[A-Za-z0-9+]+):(\d+):(\d+):\s*(fatal error|error|warning|note)?:?\s*(.*)$/, f: 1, l: 2, c: 3, s: 4, m: 5 },
-  // CMake Error at CMakeLists.txt:12 (add_executable):
-  { re: /^CMake (Error|Warning)(?: \(dev\))? at (.+?):(\d+)/, f: 2, l: 3, s: 1, m: 0 },
-];
-
 function problemMatcher(host, absRoot, root) {
-  let buf = '';
-  let rustSev = '';
-  let rustMsg = '';
-  let cmakeAt = null;
-  const win = hostIsWindows(host);
-  const norm = (p) => (win ? p.replace(/\//g, '\\').toLowerCase() : p);
-  const base = norm(absRoot).replace(/[\\/]+$/, '');
-  const sep = win ? '\\' : '/';
-  // a path as the workspace names it, or null for one outside it
-  const toRel = (p) => {
-    let a = p.trim();
-    if (!(win ? /^[A-Za-z]:[\\/]/.test(a) : a.startsWith('/'))) a = `${absRoot}${sep}${a}`;
-    const n = norm(a);
-    if (n !== base && !n.startsWith(base + sep)) return null;
-    const rest = a.slice(base.length + 1).replace(/\\/g, '/').split('/').filter((s) => s && s !== '.');
-    const out = [];
-    for (const s of rest) { if (s === '..') out.pop(); else out.push(s); }
-    return out.length ? `${root}/${out.join('/')}` : null;
-  };
-  const push = (x) => {
-    if (!x.rel) return;
-    const sev = /error/i.test(x.sev || '') ? 'error' : /warn/i.test(x.sev || '') ? 'warning' : x.sev === 'note' ? 'info' : 'error';
-    const key = `${x.rel}:${x.line}:${x.col}:${x.msg}`;
-    if (I.buildSeen.has(key)) return;
-    I.buildSeen.add(key);
-    I.buildProblems.push({ rel: x.rel, line: x.line, col: x.col || 1, sev, msg: x.msg, code: x.code || '', host });
-    paintProblemsSoon();
-  };
-  const line = (raw) => {
-    const s = raw.replace(ANSI_RE, '').replace(/\r$/, '');
-    // rust: "error[E0425]: msg" then "  --> src/main.rs:3:5"
-    const rh = s.match(/^(error|warning)(\[\w+\])?: (.*)$/);
-    if (rh) { rustSev = rh[1]; rustMsg = `${rh[2] ? `${rh[2].slice(1, -1)}: ` : ''}${rh[3]}`; return; }
-    const ra = s.match(/^\s*--> (.+?):(\d+):(\d+)$/);
-    if (ra && rustSev) { push({ rel: toRel(ra[1]), line: +ra[2], col: +ra[3], sev: rustSev, msg: rustMsg }); rustSev = ''; return; }
-    if (cmakeAt && s.trim()) { push({ ...cmakeAt, msg: s.trim() }); cmakeAt = null; return; }
-    for (const m of MATCHERS) {
-      const x = s.match(m.re);
-      if (!x) continue;
-      if (m.m === 0) { cmakeAt = { rel: toRel(x[m.f]), line: +x[m.l], col: 1, sev: x[m.s] }; return; }
-      if (m.s === 4 && m.re === MATCHERS[1].re && !x[m.s] && !/\.go$/.test(x[m.f])) return;
-      push({ rel: toRel(x[m.f]), line: +x[m.l], col: +(x[m.c] || 1), sev: x[m.s] || 'error', code: m.code ? x[m.code] : '', msg: x[m.m] });
-      return;
-    }
-  };
-  return {
-    feed: (text) => {
-      buf += text;
-      const parts = buf.split('\n');
-      buf = parts.pop();
-      for (const p of parts) line(p);
-    },
-    end: () => { if (buf) line(buf); buf = ''; paintProblemsSoon(); },
-  };
+  const state = I, workspace = wsKey();
+  return createBuildProblemMatcher({ host, absRoot, root, windows: hostIsWindows(host), onProblem(problem) {
+    if (I !== state || wsKey() !== workspace) return;
+    state.buildProblems.push(problem); paintProblemsSoon();
+  } });
 }
 
 function clearBuildProblems() {

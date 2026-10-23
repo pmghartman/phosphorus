@@ -17,6 +17,14 @@ export function languageId(path, extension) {
   if (extension === 'cpp' && /\.(c|h)$/i.test(path)) return 'c';
   return ({ shell: 'shellscript', hcl: 'terraform' })[extension] || extension;
 }
+export function serverSettings(extension, context) {
+  const user = context.settings?.[extension] || {};
+  return {
+    ...user,
+    ...(extension === 'csharp' ? { csharp: { ...(context.solutionPath ? { solutionPathOverride: context.solutionPath } : {}), ...(user.csharp || {}) } } : {}),
+    sulfur: { configuration: context.configuration, buildDirectory: context.buildDirectory },
+  };
+}
 export function positionAt(text, offset) {
   const before = text.slice(0, Math.max(0, Math.min(text.length, offset)));
   return { line: before.split('\n').length - 1, character: before.length - before.lastIndexOf('\n') - 1 };
@@ -99,13 +107,14 @@ export function languageSocket(url, request, onEvent = () => {}) {
     },
     async initialize(settings = {}) {
       await ready;
+      client.settings = settings;
       const result = await client.request('initialize', {
         processId: null, clientInfo: { name: 'Sulfur', version: '1' }, rootUri: client.rootUri,
         workspaceFolders: [{ uri: client.rootUri, name: uriPath(client.rootUri).split('/').pop() }],
         initializationOptions: settings,
-        capabilities: { general: { positionEncodings: ['utf-16'] }, workspace: { configuration: true, workspaceFolders: true, workspaceEdit: { documentChanges: true, resourceOperations: [] } }, textDocument: {
+        capabilities: { general: { positionEncodings: ['utf-16'] }, workspace: { configuration: true, workspaceFolders: true, diagnostics: { refreshSupport: true }, workspaceEdit: { documentChanges: true, resourceOperations: [] } }, textDocument: {
           synchronization: { didSave: true }, completion: { contextSupport: true, completionItem: { snippetSupport: true, insertReplaceSupport: true, resolveSupport: { properties: ['textEdit', 'additionalTextEdits', 'documentation', 'detail'] } }, completionList: { itemDefaults: ['editRange', 'insertTextFormat', 'data'] } },
-          formatting: {}, rangeFormatting: {}, definition: { linkSupport: true }, publishDiagnostics: { versionSupport: true }, rename: { prepareSupport: false },
+          formatting: {}, rangeFormatting: {}, definition: { linkSupport: true }, publishDiagnostics: { versionSupport: true }, diagnostic: { dynamicRegistration: false, relatedDocumentSupport: false }, rename: { prepareSupport: false },
         } },
       }, { timeout: 90000 });
       client.capabilities = result.capabilities || {};
@@ -144,6 +153,7 @@ export function languageSocket(url, request, onEvent = () => {}) {
           : message.method === 'workspace/workspaceFolders' ? [{ uri: client.rootUri, name: uriPath(client.rootUri).split('/').pop() }]
             : message.method === 'workspace/applyEdit' ? { applied: false, failureReason: 'Use Rename to review edits in Sulfur' } : null;
         send({ jsonrpc: '2.0', id: message.id, result });
+        if (message.method === 'workspace/diagnostic/refresh') onEvent(message);
       } else onEvent(message);
     } else {
       const p = pending.get(message.id);

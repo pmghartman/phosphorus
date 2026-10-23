@@ -1,6 +1,7 @@
-import { LANGUAGE_EXTENSIONS, languageId, positionAt, offsetAt, relativeUri, applyTextEdits, textEditRanges, completionEdits, languageSocket } from './language-client.js';
+import { LANGUAGE_EXTENSIONS, languageId, positionAt, offsetAt, relativeUri, applyTextEdits, textEditRanges, completionEdits, languageSocket, serverSettings } from './language-client.js';
 import { isWordChar, wordBefore, rankCompletions, wordCompletions, kindOf, inCommentOrString, sameCompletionWord } from './completion.js';
 import { reindent } from './format.js';
+import { diagnosticDelay } from './diagnostics.js';
 
 const titles = ['TypeScript', 'Python', 'JavaScript', 'Java', 'C#', 'PHP', 'Shell (Bash)', 'C / C++', 'HCL / Terraform', 'Go'];
 const ids = ['typescript', 'python', 'javascript', 'java', 'csharp', 'php', 'shell', 'cpp', 'hcl', 'go'];
@@ -36,7 +37,7 @@ export function createLanguageWorkbench(api) {
   }
   function clearSession(session) {
     session.client?.close();
-    for (const [t, doc] of attached) if (doc.session === session) { attached.delete(t); t.ed?.setDiagnostics(null); }
+    for (const [t, doc] of attached) if (doc.session === session) { clearTimeout(doc.diagnosticTimer); doc.diagnosticController?.abort(); attached.delete(t); t.ed?.setDiagnostics(null); }
     for (const [key, value] of diagnostics) if (value.session === session) diagnostics.delete(key);
     api.problems();
   }
@@ -56,6 +57,10 @@ export function createLanguageWorkbench(api) {
       clearSession(session); return;
     }
     if (message.method === 'window/logMessage' || message.method === 'window/showMessage') api.log(message.params?.message || '', `Languages: ${session.context.host}`);
+    if (message.method === 'workspace/diagnostic/refresh') {
+      for (const [tab, doc] of attached) if (doc.session === session) scheduleDiagnostics(tab);
+      return;
+    }
     if (message.method !== 'textDocument/publishDiagnostics') return;
     const p = message.params;
     try {
@@ -66,9 +71,27 @@ export function createLanguageWorkbench(api) {
       if (tab && document?.text !== tab.ed.text()) return;
       const items = (p.diagnostics || []).map((d) => ({ ...d, path: api.join(session.context.rootRel, rel) }));
       diagnostics.set(session.key + '\n' + p.uri, { session, uri: p.uri, items });
-      if (tab) tab.ed.setDiagnostics(items.map((d) => ({ from: offsetAt(document.text, d.range.start), to: offsetAt(document.text, d.range.end), what: d.message, severity: d.severity, source: d.source || session.extension })));
+      if (tab) tab.ed.setDiagnostics(items.map((d) => ({ from: offsetAt(document.text, d.range.start), to: offsetAt(document.text, d.range.end), what: d.message, code: d.code, severity: d.severity ?? 1, source: d.source || session.extension })));
       api.problems();
     } catch (e) { api.log(e.message, `Languages: ${session.context.host}`); }
+  }
+  function scheduleDiagnostics(tab) {
+    const doc = attached.get(tab);
+    if (!doc?.session.client.capabilities.diagnosticProvider) return;
+    clearTimeout(doc.diagnosticTimer); doc.diagnosticController?.abort();
+    doc.diagnosticTimer = setTimeout(async () => {
+      const client = doc.session.client;
+      const snapshot = client.documents.get(doc.uri);
+      if (!snapshot || !api.alive(tab)) return;
+      const own = doc.diagnosticController = new AbortController();
+      try {
+        const report = await client.request('textDocument/diagnostic', { textDocument: { uri: doc.uri }, ...(client.capabilities.diagnosticProvider.identifier ? { identifier: client.capabilities.diagnosticProvider.identifier } : {}), ...(doc.resultId ? { previousResultId: doc.resultId } : {}) }, { signal: own.signal });
+        if (own.signal.aborted || attached.get(tab) !== doc || client.documents.get(doc.uri)?.version !== snapshot.version || tab.ed.text() !== snapshot.text) return;
+        if (report.kind === 'full') doc.pullItems = report.items || [];
+        doc.resultId = report.resultId;
+        receive(doc.session, { method: 'textDocument/publishDiagnostics', params: { uri: doc.uri, version: snapshot.version, diagnostics: doc.pullItems || [] } });
+      } catch (error) { if (!aborted(error) && !client.closed()) api.log(error.message, `Languages: ${doc.session.context.host}`); }
+    }, diagnosticDelay(api.diagnosticDelay?.()));
   }
   async function get(tab) {
     if (!tab?.ed?.ready() || tab.info?.readOnly) return null;
@@ -87,7 +110,7 @@ export function createLanguageWorkbench(api) {
       if (!s.loaded) return null;
     }
     if (epoch !== generation || !s.extensions.find((x) => x.id === extension)?.enabled) return null;
-    const key = JSON.stringify([context.host, context.root, extension, context.configuration, context.buildDirectory, context.settings]);
+    const key = JSON.stringify([context.host, context.root, extension, context.solutionPath, context.configuration, context.buildDirectory, context.settings]);
     // Reinitialization is intentional: servers cache active build settings.
     for (const [old, session] of sessions) if (old !== key && session.extension === extension && session.context.host === context.host && session.context.root === context.root) { clearSession(session); sessions.delete(old); }
     let session = sessions.get(key);
@@ -95,7 +118,7 @@ export function createLanguageWorkbench(api) {
       session = { key, context, extension };
       sessions.set(key, session);
       session.client = connect(context.host, { op: 'launch', language: extension, root: context.root, configuration: context.configuration, buildDirectory: context.buildDirectory }, (m) => receive(session, m));
-      session.promise = session.client.initialize({ ...(context.settings[extension] || {}), sulfur: { configuration: context.configuration, buildDirectory: context.buildDirectory } }).then(() => { panel?.paint(); return session; }).catch((e) => { state(context.host).errors[extension] = e.message; panel?.paint(); clearSession(session); return null; });
+      session.promise = session.client.initialize(serverSettings(extension, context)).then(() => { session.readyAt = Date.now(); panel?.paint(); return session; }).catch((e) => { state(context.host).errors[extension] = e.message; panel?.paint(); clearSession(session); return null; });
     }
     const ready = await session.promise;
     if (!ready || epoch !== generation || session.client.closed() || !api.alive(tab)) return null;
@@ -103,8 +126,9 @@ export function createLanguageWorkbench(api) {
     const previous = attached.get(tab);
     if (previous && (previous.uri !== uri || previous.session !== session)) previous.session.client.closeDocument(previous.uri);
     session.client.sync(uri, languageId(tab.rel, extension), tab.ed.text());
-    const result = { session, uri };
+    const result = previous?.session === session && previous.uri === uri ? previous : { session, uri };
     attached.set(tab, result);
+    if (result !== previous) scheduleDiagnostics(tab);
     return result;
   }
   function changed(tab) {
@@ -116,6 +140,7 @@ export function createLanguageWorkbench(api) {
       tab.ed.setDiagnostics(null);
       diagnostics.delete(doc.session.key + '\n' + doc.uri);
       api.problems();
+      scheduleDiagnostics(tab);
     }
   }
   async function request(tab, method, extra = {}, signal) {
@@ -197,7 +222,7 @@ export function createLanguageWorkbench(api) {
       const line = before.slice(before.lastIndexOf('\n') + 1);
       const tabSize = parseInt(style.tabSize, 10) || 4;
       const columns = [...line].reduce((n, ch) => ch === '\t' ? n + tabSize - n % tabSize : n + 1, 0);
-      const measure = document.createElement('canvas').getContext('2d'); measure.font = style.font;
+      const measure = document.createElement('canvas').getContext('2d'); measure.font = style.font || `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
       const rect = ta.getBoundingClientRect(); const outer = tab.view.getBoundingClientRect();
       const lineHeight = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.4;
       const y = rect.top - outer.top + parseFloat(style.paddingTop) + before.split('\n').length * lineHeight - ta.scrollTop;
@@ -217,10 +242,11 @@ export function createLanguageWorkbench(api) {
       selected = 0; box.hidden = false; ta.setAttribute('aria-expanded', 'true');
       paint(); place(text, session.from);
     }
-    async function trigger(triggerKind, triggerCharacter = '', explicit = false) {
+    async function trigger(triggerKind, triggerCharacter = '', explicit = false, retry = 0) {
       api.onSuggest?.();
       controller?.abort();
       const own = controller = new AbortController();
+      clearTimeout(timer);
       const text = tab.ed.text();
       const caret = ta.selectionStart;
       if (ta !== document.activeElement || caret !== ta.selectionEnd || tab.info?.readOnly) return;
@@ -243,7 +269,10 @@ export function createLanguageWorkbench(api) {
       if (ta.selectionStart !== ta.selectionEnd || !sameCompletionWord(text, caret, from, now, ta.selectionStart)) { hide(); return; }
       if (lsp && !sameCompletionWord(lsp.text, lsp.caret, from, now, ta.selectionStart)) { hide(); return; }
       if (!items.length) {
-        if (triggerCharacter) { hide(); return; }
+        const warming = lsp?.doc.session.extension === 'csharp' && Date.now() - lsp.doc.session.readyAt < 10000;
+        if (warming && retry < 3) timer = setTimeout(() => trigger(3, triggerCharacter, explicit, retry + 1), [300, 900, 1800][retry]);
+        incomplete = !!warming;
+        if (triggerCharacter && !warming) { hide(); return; }
         items = wordCompletions(api.documents?.(tab) || [], now, ta.selectionStart);
         lsp = null;
       }
@@ -316,7 +345,7 @@ export function createLanguageWorkbench(api) {
     }, true);
     completers.set(tab, { hide, trigger, symbols: () => shown.map((x) => x.item) });
     const dispose = tab.dispose;
-    tab.dispose = () => { hide(); completers.delete(tab); document.removeEventListener('selectionchange', selectionChanged); const doc = attached.get(tab); if (doc) { doc.session.client.closeDocument(doc.uri); attached.delete(tab); diagnostics.delete(doc.session.key + '\n' + doc.uri); } dispose(); box.remove(); api.problems(); };
+    tab.dispose = () => { hide(); completers.delete(tab); document.removeEventListener('selectionchange', selectionChanged); const doc = attached.get(tab); if (doc) { clearTimeout(doc.diagnosticTimer); doc.diagnosticController?.abort(); doc.session.client.closeDocument(doc.uri); attached.delete(tab); diagnostics.delete(doc.session.key + '\n' + doc.uri); } dispose(); box.remove(); api.problems(); };
   }
   async function navigate(tab, references = false) {
     const result = await request(tab, references ? 'references' : 'definition', references ? { context: { includeDeclaration: true } } : {});

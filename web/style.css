@@ -2778,6 +2778,8 @@ body:has(.dk-pop:not([hidden])) .toasts { opacity: 0; pointer-events: none; }
 .ide-deco { flex: none; margin-left: 6px; font-size: 11px; color: var(--ide-muted); }
 .ide-deco-off { font-style: italic; }
 .ide-deco-err { color: var(--ide-err); }
+.ide-deco-warn, .ide-row.has-warn .ide-row-name { color: var(--ide-warn); }
+.ide-deco-info { color: var(--ide-info, var(--ide-muted)); }
 .ide-row-wait { background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--ide-fg) 6%, transparent), transparent) 0 0 / 200% 100%; animation: ide-shimmer 1.2s linear infinite; }
 @keyframes ide-shimmer { to { background-position: -200% 0; } }
 .ide-row-edit { cursor: default; overflow: visible; z-index: 2; }
@@ -2894,6 +2896,14 @@ body:has(.dk-pop:not([hidden])) .toasts { opacity: 0; pointer-events: none; }
 .ide .code-ta::selection { background: var(--ide-ed-sel); color: var(--ide-fg); }
 .ide .code-mark-err { background: var(--ide-err); }
 .ide .code-squig mark { text-decoration-color: var(--ide-err); }
+.ide .code-squig mark.code-warning { text-decoration-color: var(--ide-warn, #cca700); }
+.ide .code-squig mark.code-hint { text-decoration-color: var(--ide-info, #75beff); }
+.code-mark-err.code-mark-warning, .ide .code-mark-err.code-mark-warning { background: var(--ide-warn, var(--sand)); }
+.code-mark-err.code-mark-hint, .ide .code-mark-err.code-mark-hint { background: var(--ide-info, var(--accent)); }
+.code-out-err.code-warning { color: var(--ide-warn, var(--sand)); }
+.code-out-err.code-hint { color: var(--ide-info, var(--accent)); }
+.code-diagnostic-hover { position: fixed; z-index: 100; max-width: min(600px, calc(100vw - 24px)); max-height: 240px; overflow: hidden; padding: 8px 12px; border: 1px solid var(--ide-widget-border, var(--border)); border-radius: 3px; background: var(--ide-widget, var(--bg)); color: var(--ide-fg, var(--fg)); box-shadow: 0 4px 16px #0005; font: 12px/1.5 var(--font, monospace); white-space: pre-wrap; pointer-events: none; }
+.code-diagnostic-hover[hidden] { display: none; }
 .ide .code-md { border: 0; box-shadow: none; background: var(--ide-bg); padding: 16px 32px; }
 .code-finds { position: absolute; inset: 0; color: transparent; }
 .code-finds mark { background: var(--ide-find, rgb(234 92 0 / 0.33)); color: transparent; }

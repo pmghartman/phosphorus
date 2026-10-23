@@ -1,10 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { positionAt, offsetAt, fileUri, uriPath, relativeUri, applyTextEdits, completionEdits, languageSocket, LANGUAGE_EXTENSIONS, languageId } from '../src/sulfur/language-client.js';
+import { positionAt, offsetAt, fileUri, uriPath, relativeUri, applyTextEdits, completionEdits, languageSocket, LANGUAGE_EXTENSIONS, languageId, serverSettings } from '../src/sulfur/language-client.js';
 import { EditorHistory } from '../src/editor-history.js';
 import { opDiff } from '../src/text-operations.js';
 
 const range = (from, to) => ({ start: { line: 0, character: from }, end: { line: 0, character: to } });
+
+test('C# configuration has a real section and uses the detected solution while preserving user overrides', () => {
+  const context = {solutionPath:'C:/game/game.sln', configuration:'Debug|Any CPU', settings:{}};
+  assert.equal(serverSettings('csharp', context).csharp.solutionPathOverride, context.solutionPath);
+  context.settings.csharp = {csharp:{solutionPathOverride:'custom.sln',analyzersEnabled:true}};
+  assert.equal(serverSettings('csharp',context).csharp.solutionPathOverride,'custom.sln');
+  assert.equal(serverSettings('csharp',context).csharp.analyzersEnabled,true);
+});
 
 test('UTF-16 positions preserve surrogate pairs and CRLF offsets', () => {
   const text = '😀a\r\nβeta';
