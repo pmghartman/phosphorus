@@ -28,19 +28,6 @@ var Root = filepath.Join(files.HomeRoot, files.Sys)
 
 var relRe = regexp.MustCompile(`^(etc|home)(/[a-z0-9][a-z0-9._-]{0,63}){1,5}\.json$`)
 
-// migrate a folder from before the system's was hidden, home/sys, now home/.sys
-func migrate() {
-	old := filepath.Join(files.HomeRoot, "sys")
-	if _, err := os.Stat(Root); err == nil {
-		return
-	}
-	if fi, err := os.Stat(old); err == nil && fi.IsDir() {
-		if err := os.Rename(old, Root); err != nil {
-			log.Printf("[sys] couldn't move %s to %s: %v", old, Root, err)
-		}
-	}
-}
-
 // ValidRel a replicated path
 func ValidRel(rel string) bool { return relRe.MatchString(rel) }
 
@@ -460,7 +447,6 @@ var startOnce sync.Once
 // Start the tree loaded, pulled every second
 func Start() {
 	startOnce.Do(func() {
-		migrate()
 		mu.Lock()
 		load(Root, "")
 		mu.Unlock()

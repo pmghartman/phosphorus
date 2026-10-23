@@ -129,22 +129,15 @@ func TestStatusIdle(t *testing.T) {
 
 func TestSettleSelf(t *testing.T) {
 	setup(t)
-	if r := settleSelf("", ""); r.ok || r.error == "" {
+	if r := settleSelf(""); r.ok || r.error == "" {
 		t.Fatalf("a restart with no request settled as %+v", r)
 	}
-	if r := settleSelf("", "1.0"); r.ok {
-		t.Fatalf("an unchanged version settled as %+v", r)
-	}
-	os.WriteFile(VersionFile, []byte("1.1\n"), 0o644)
-	if r := settleSelf("", "1.0"); !r.ok || r.to != "1.1" {
-		t.Fatalf("a chain from before ids, version moved: %+v", r)
-	}
 	agent(t, "x", "ok", "1.1", "", false)
-	if r := settleSelf("x", ""); !r.ok || r.to != "1.1" {
+	if r := settleSelf("x"); !r.ok || r.to != "1.1" {
 		t.Fatalf("verdict = %+v", r)
 	}
 	agent(t, "y", "failed", "", "build failed", false)
-	if r := settleSelf("y", ""); r.ok || r.error != "build failed" {
+	if r := settleSelf("y"); r.ok || r.error != "build failed" {
 		t.Fatalf("verdict = %+v", r)
 	}
 }
@@ -330,21 +323,6 @@ func TestRestoreWatchesPeersAgain(t *testing.T) {
 		map[string]map[string]string{"a": {"id": "u1"}, "p": {"id": "p1", "boot": "old", "from": "1.0", "stage": "installing"}},
 	))
 	if c.Results["a"] != "ok" || c.Results["p"] != "ok" || c.Results["q"] != "ok" {
-		t.Fatalf("results = %v", c.Results)
-	}
-}
-
-func TestRestoreFollowsPeersOfAChainSavedBeforeIds(t *testing.T) {
-	setup(t)
-	f := &fakePeer{states: []map[string]any{st("p-new", "ok")}, boots: []string{"new"}}
-	peerState, peerSelf = f.state, f.self
-	t.Cleanup(func() { peerState, peerSelf = peerStateHTTP, peerSelfHTTP })
-	os.WriteFile(VersionFile, []byte("1.1\n"), 0o644)
-	c := restored(t, savedChain(
-		map[string]string{"a": "running", "p": "running"},
-		map[string]map[string]string{"a": {"from": "1.0"}, "p": {"boot": "old", "from": "1.0", "stage": "restarting"}},
-	))
-	if c.Results["a"] != "ok" || c.Results["p"] != "ok" {
 		t.Fatalf("results = %v", c.Results)
 	}
 }
