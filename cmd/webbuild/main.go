@@ -1,6 +1,6 @@
 // webbuild: web/ into internal/web/dist, run by go generate. Pinned npm
 // tarballs fetched over HTTP and checked against vendor.lock, the client
-// bundled and split by esbuild, every text file precompressed. No node.
+// bundled by esbuild, every text file precompressed. No node.
 package main
 
 import (
@@ -115,11 +115,9 @@ func main() {
 		return api.BuildOptions{
 			EntryPoints:       []string{filepath.Join(*src, entry), filepath.Join(*src, "style.css")},
 			Bundle:            true,
-			Splitting:         true,
 			Format:            api.FormatESModule,
 			Outdir:            filepath.Join(*out, outdir),
 			EntryNames:        "[name]-[hash]",
-			ChunkNames:        "chunk-[hash]",
 			AssetNames:        "[name]-[hash]",
 			MinifyWhitespace:  true,
 			MinifyIdentifiers: true,
@@ -157,7 +155,7 @@ func main() {
 	log.Printf("built the desktop's page and Sulfur's, %d files precompressed", n)
 }
 
-// page a build's html: its entry and style put in, its entry's own chunks preloaded
+// page a build's html: its entry and style put in
 func page(out, from, to, script string, res api.BuildResult) {
 	if len(res.Errors) > 0 {
 		for _, e := range res.Errors {
@@ -171,35 +169,20 @@ func page(out, from, to, script string, res api.BuildResult) {
 	var meta struct {
 		Outputs map[string]struct {
 			EntryPoint string `json:"entryPoint"`
-			Imports    []struct {
-				Path string `json:"path"`
-				Kind string `json:"kind"`
-			} `json:"imports"`
 		} `json:"outputs"`
 	}
 	must(json.Unmarshal([]byte(res.Metafile), &meta))
 	entry := map[string]string{}
-	preload := ""
 	for outFile, o := range meta.Outputs {
 		if o.EntryPoint != "" {
 			rel, _ := filepath.Rel(out, outFile)
 			entry[filepath.Base(o.EntryPoint)] = "/" + filepath.ToSlash(rel)
-		}
-		// the entry's own chunks asked for with it, not after it parses
-		if filepath.Base(o.EntryPoint) == "main.js" {
-			for _, im := range o.Imports {
-				if im.Kind == "import-statement" {
-					rel, _ := filepath.Rel(out, im.Path)
-					preload += `<link rel="modulepreload" href="/` + filepath.ToSlash(rel) + `">` + "\n"
-				}
-			}
 		}
 	}
 	html, err := os.ReadFile(from)
 	must(err)
 	p := strings.Replace(string(html), `href="/style.css"`, `href="`+entry["style.css"]+`"`, 1)
 	p = strings.Replace(p, `<script type="module" src="`+script+`"></script>`, `<script type="module" src="`+entry["main.js"]+`"></script>`, 1)
-	p = strings.Replace(p, "</head>", preload+"</head>", 1)
 	if !strings.Contains(p, entry["main.js"]) || !strings.Contains(p, entry["style.css"]) {
 		log.Fatalf("%s lost its style.css or main.js tag", filepath.Base(from))
 	}

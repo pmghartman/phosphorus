@@ -9,7 +9,7 @@ const ASSETS = __ASSETS__;
 // Sulfur's own host when it runs alone (web/src/sulfur/host.js); inside the desktop, none
 const standalone = null;
 
-// each app's own code in its own chunk, all fetched once the desktop is up
+// each app's module, set up on first use; one bundle holds them all, no fetch
 const APPS = {
   status: () => import('./apps/status.js'),
   terminal: () => import('./apps/terminal.js'),
@@ -23,7 +23,7 @@ const appMods = new Map();
 // the desktop's state, up here because code run at load (the chat's first
 // setConv) asks dk.desk long before the desktop section below
 // creds: host -> {user, pass}, this page's memory only
-const dk = { creds: new Map(), rows: new Map(), wins: new Map(), services: [], deskFiles: [], z: 10, n: 0, desk: null, sig: '' };
+const dk = { creds: new Map(), rows: new Map(), wins: new Map(), services: [], deskFiles: [], deskHosts: new Map(), z: 10, n: 0, desk: null, sig: '' };
 function app(name) {
   if (!appMods.has(name)) appMods.set(name, APPS[name]().catch((e) => { appMods.delete(name); throw e; }));
   return appMods.get(name);
@@ -32,7 +32,7 @@ function app(name) {
 function appCall(name, on, call) {
   if (on || appMods.has(name)) app(name).then(call, (e) => console.error(`${name} failed to load`, e));
 }
-// past first paint, so opening one never waits on the network
+// past first paint, so opening one never waits on its setup
 addEventListener('load', () => (self.requestIdleCallback || setTimeout)(() => {
   for (const n of Object.keys(APPS)) app(n).catch(() => {});
 }));
@@ -809,7 +809,7 @@ function renderMeshGit() {
     const cls = master ? 'master' : !h.reachable ? 'down' : !h.eligible ? 'catching' : '';
     const text = gitBackupText(h, masterGen);
     const behind = h.reachable && !master && h.ageSec != null
-      ? `<span class="git-lag" title="green to 8s, yellow to 15s, red to 60s">${lagMeter(h.ageSec)}</span><span class="git-ago">${ago(h.ageSec)}</span>` : '';
+      ? `<span class="git-lag" title="last matched the master's stamp, checked every 5s and copied only on change: green to 8s, yellow to 15s, red to 60s">${lagMeter(h.ageSec)}</span><span class="git-ago">${ago(h.ageSec)}</span>` : '';
     return `<div class="mesh-git-row ${cls}"><span class="mesh-stat-name"><span class="mesh-git-dot"></span>`
       + `<span class="mesh-stat-nm">${esc(h.host)}</span><span class="mesh-git-text">${text === 'downloading' ? '<span class="git-spin"></span>' : ''}${esc(text)}</span></span>`
       + `<span class="mesh-git-behind">${behind}${h.reachable && !master && acct?.admin
@@ -1340,14 +1340,17 @@ const homeHolders = (rel) => {
   return has.length ? has : [selfHost];
 };
 
-async function homeList(dir) {
-  const online = homeOnline();
-  const got = await Promise.all(online.map(async (h) => {
-    try {
-      const body = await filesCall(homeAt(h), 'list', undefined, { path: dir });
-      return { h, entries: body.entries };
-    } catch { return { h, entries: [], stale: true }; }
-  }));
+// one host's listing of a home folder, stale and empty when it didn't answer
+async function homeHostList(h, dir) {
+  try {
+    const body = await filesCall(homeAt(h), 'list', undefined, { path: dir });
+    return { h, entries: body.entries };
+  } catch { return { h, entries: [], stale: true }; }
+}
+
+// the hosts' listings merged; `got` the listings already in hand, else every online host asked
+async function homeList(dir, got) {
+  got ||= await Promise.all(homeOnline().map((h) => homeHostList(h, dir)));
   const by = new Map();
   for (const { h, entries, stale } of got) {
     for (const e of entries) {
@@ -3009,7 +3012,7 @@ window.addEventListener('online', () => chatAwake(true));
 
 function connectChat() {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  ws = new WebSocket(`${proto}//${location.host}/ws`);
+  ws = new WebSocket(`${proto}//${location.host}/api/chat`);
   ws.onopen = () => {
     reconnectDelay = 300;
     chatHeard = Date.now();
@@ -5450,7 +5453,7 @@ const fmSame = (a, b) => a && b && a.host === b.host && a.share === b.share;
 function fmChanged(loc, ...dirs) {
   const same = (a) => fmSame(a, loc) || (isHome(a) && isHome(loc));
   for (const fm of dkFms) if (same(fm.loc) && dirs.includes(fm.dir)) appCall('files', false, (m) => m.fmLoad(fm));
-  if (isHome(loc) && dkDeskDirs().some((d) => dirs.includes(d))) dkDeskLoad();
+  if (isHome(loc) && dkDeskDirs().some((d) => dirs.includes(d))) dkDeskLoad(true);
 }
 
 // pages, wasm and NAME.app folders run, text edits, the rest shown
@@ -5636,25 +5639,38 @@ function dkDeskWatch() {
   if (key === dk.deskKey) return;
   dk.deskKey = key;
   dk.deskFiles = [];
+  dk.deskHosts = new Map();
   dk.deskReady = false;
   if (key) dkDeskLoad();
 }
 
-// each online host's Desktop stamps, pushed with the state: a change rereads them
-const dkDeskStampNow = () => JSON.stringify(homeOnline().sort()
-  .map((h) => [h, dkDeskDirs().map((d) => hostsInfo[h.toLowerCase()]?.desk?.[d] ?? '')]));
+// each online host's Desktop stamps, pushed with the state: a change rereads that host's
+const dkDeskStamp = (h, dir) => hostsInfo[h.toLowerCase()]?.desk?.[dir] ?? '';
+const dkDeskStampNow = () => JSON.stringify(homeOnline().sort().map((h) => [h, dkDeskDirs().map((d) => dkDeskStamp(h, d))]));
 
 function dkDeskStamps() {
   if (dk.deskReady && dkDeskStampNow() !== dk.deskStamp) dkDeskLoad();
 }
 
-async function dkDeskLoad() {
+// force: a change made here, every host's listing asked again
+async function dkDeskLoad(force) {
   if (!dkDeskAt()) return;
   dk.deskStamp = dkDeskStampNow();
   const key = dk.deskKey;
+  const online = homeOnline();
+  const cache = dk.deskHosts;
   // a folder no host answered for: its last icons kept, never blinking out
-  const lists = await Promise.all(dkDeskDirs().map((dir) => homeList(dir)
-    .then((b) => b.entries.map((e) => ({ ...e, at: dir })), () => dk.deskFiles.filter((e) => e.at === dir))));
+  const lists = await Promise.all(dkDeskDirs().map(async (dir) => {
+    const got = await Promise.all(online.map(async (h) => {
+      const stamp = dkDeskStamp(h, dir);
+      const hit = cache.get(`${h}\n${dir}`);
+      if (!force && hit && !hit.got.stale && hit.stamp === stamp) return hit.got;
+      const fresh = await homeHostList(h, dir);
+      cache.set(`${h}\n${dir}`, { stamp, got: fresh });
+      return fresh;
+    }));
+    return homeList(dir, got).then((b) => b.entries.map((e) => ({ ...e, at: dir })), () => dk.deskFiles.filter((e) => e.at === dir));
+  }));
   if (key !== dk.deskKey) return;
   dk.deskFiles = lists.flat();
   dk.deskReady = true;

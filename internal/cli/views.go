@@ -301,7 +301,8 @@ func ago(sec float64) string {
 	return fmt.Sprintf("%dd", s/86400)
 }
 
-// the git card's transfer bar: five cells a band, green to 8s, yellow to 15s, red to 60s
+// the git card's age since the master's stamp was last matched (data copied only on change):
+// five cells a band, green to 8s, yellow to 15s, red to 60s
 func lagMeter(age float64) string {
 	out := ""
 	empty := 0

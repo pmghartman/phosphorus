@@ -18,6 +18,11 @@ RSYNCD_PID="${RSYNCD_PID:-/run/phosphorus/rsyncd.pid}"
 # touch to let this host lead without proof it has the newest data
 FORCE_FILE="${FORCE_FILE:-$STATE_DIR/git-force-promote}"
 VERSION_FILE="$DATA_ROOT/GIT_VERSION"
+# the master's token for its data, new on every change; a servant's is the one
+# its last full copy matched, its mtime that copy's time
+CHANGE_FILE="$DATA_ROOT/GIT_CHANGE"
+# the master's last change walk, what a newer file is measured against
+CHANGE_REF="$DATA_ROOT/.change-ref"
 # set by any pull: forgejo's per-node indexers and queues predating that data,
 # snap/ the db to lead on
 PULLED_FILE="$DATA_ROOT/GIT_PULLED"
@@ -49,6 +54,8 @@ DECISION_MAX_AGE_MS="${DECISION_MAX_AGE_MS:-2000}"
 # synced this recently: may lead without seeing every other git host
 IN_SYNC_SECS="${IN_SYNC_SECS:-30}"
 REPLICATE_INTERVAL="${REPLICATE_INTERVAL:-5}"
+# a servant copies the data only when the master's change token moved, or this often regardless
+FULL_PULL_SECS="${FULL_PULL_SECS:-60}"
 
 say() { echo "[git-daemon] $*"; }
 
@@ -204,6 +211,29 @@ stamp_version() {
   MY_STAMP="$EPOCHSECONDS"
 }
 
+# set on election: pulled files keep the old master's mtimes, the walk would miss them
+CHANGE_FORCE=""
+
+# a new token when the db snapshot moved or anything under conf, custom or obj
+# is newer than the last walk; the ref taken before the walk, no write between lost
+note_change() {
+  local hit=""
+  touch "$CHANGE_REF.new" 2>/dev/null
+  if [ -n "$CHANGE_FORCE" ] || [ ! -e "$CHANGE_REF" ] || [ ! -s "$CHANGE_FILE" ] || [ "$SNAP_SIG" != "$1" ]; then
+    hit=1
+  else
+    hit="$(find "$DATA_ROOT/conf" "$DATA_ROOT/custom" "$DATA_ROOT/obj" \
+             \( -path '*/obj/tmp' -o -name '*.lock' -o -name gc.pid \) -prune -o \
+             -newer "$CHANGE_REF" -print -quit 2>/dev/null)"
+  fi
+  if [ -n "$hit" ]; then
+    mv "$CHANGE_REF.new" "$CHANGE_REF" && write_file "$CHANGE_FILE" "$SELF_HOST-$EPOCHSECONDS-$RANDOM"
+    CHANGE_FORCE=""
+  else
+    rm -f "$CHANGE_REF.new"
+  fi
+}
+
 log_rsync() { while read -r line; do say "rsync: $line"; done; }
 
 # rsync's exit codes worth naming in the log
@@ -223,11 +253,25 @@ rsync_why() {
 # set once a master's rsyncd refused -z or --delete-excluded (code 4)
 RSYNC_PLAIN=""
 
-# stamp last, vouching for the rest, TERM to rsync or a kill orphans a
+# the master's tiny stamp and change token first, the data copied only when the
+# token moved or the last copy is FULL_PULL_SECS old (FULL_PULL=1 skips the peek's
+# shortcut); stamp last, vouching for the rest, TERM to rsync or a kill orphans a
 # --delete pull, git's locks and temp objects swept: a copied .lock jams a ref
 pull_from() {
-  local src="rsync://${1}:8873/gitdata" pid=""
+  local src="rsync://${1}:8873/gitdata" pid="" tok="" mine="" peek="$DATA_ROOT/.peek"
   trap '[ -n "$pid" ] && kill "$pid" 2>/dev/null; exit 143' TERM
+  mkdir -p "$peek" && rm -f "$peek/GIT_VERSION" "$peek/GIT_CHANGE"
+  rsync -a --timeout=30 --contimeout=5 "$src/GIT_VERSION" "$src/GIT_CHANGE" "$peek/" >/dev/null 2>&1 &
+  pid="$!"
+  wait "$pid" && read -r tok <"$peek/GIT_CHANGE"
+  if [ -z "${FULL_PULL:-}" ] && [ -n "$tok" ] && [ -d "$DATA_ROOT/obj" ] && [ -s "$CHANGE_FILE" ] \
+     && read -r mine <"$CHANGE_FILE" && [ "$mine" = "$tok" ] \
+     && [ $((EPOCHSECONDS - $(stat -c %Y "$CHANGE_FILE"))) -lt "$FULL_PULL_SECS" ]; then
+    mv "$peek/GIT_VERSION" "$VERSION_FILE"
+    return 0
+  fi
+  # unmatched until this copy lands whole
+  rm -f "$CHANGE_FILE"
   touch "$PULLED_FILE"
   local opts=(-az --delete --delete-excluded) code=0
   [ "$RSYNC_PLAIN" = "$1" ] && opts=(-a --delete)
@@ -242,7 +286,10 @@ pull_from() {
     exit "$code"
   fi
   rsync -a --timeout=30 --contimeout=5 "$src/GIT_VERSION" "$DATA_ROOT/" > >(log_rsync) 2>&1 &
-  pid="$!"; wait "$pid"
+  pid="$!"; wait "$pid" || exit $?
+  # the token read before the copy: a change during it shows as a mismatch next tick
+  [ -n "$tok" ] && write_file "$CHANGE_FILE" "$tok"
+  return 0
 }
 
 # a failed pull's wait, doubling to a minute, reset by a good one
@@ -329,12 +376,13 @@ apply_decision() {
         MY_GEN="$gen"
         rm -f "$FORCE_FILE"
         am_master=true
+        CHANGE_FORCE=1
         PROMOTING=true
         AUTHORITATIVE="$SELF_HOST"
         # the handing-off master, forgejo already down: nothing pushed lost
         if [ -n "$from" ]; then
           say "final pull from $from"
-          pull_from "$from" &
+          FULL_PULL=1 pull_from "$from" &
           REPL_PID="$!"
         fi
       fi
@@ -383,7 +431,8 @@ replicate() {
   [ $((EPOCHSECONDS - LAST_REPL)) -ge "$wait_s" ] || return
   if [ "$am_master" = true ]; then
     # stamp after the snapshot, vouching for it
-    snapshot && stamp_version
+    local before="$SNAP_SIG"
+    snapshot && note_change "$before" && stamp_version
   elif [ -n "$AUTHORITATIVE" ]; then
     pull_from "$AUTHORITATIVE" &
     REPL_PID="$!"

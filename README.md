@@ -96,7 +96,7 @@ flowchart TB
   ph --- tsd
   ph <-->|"snapshots, files, chat, updates"| peers
   ph -->|"missing keys from /internal/keys"| peers
-  git <-->|"rsync replication"| peers
+  git <-->|"rsync replication, on change only"| peers
   ph --> model
   ph --> cfd --> cf --> browser
   browser -->|"/api/ping/host, timed by the page"| ph

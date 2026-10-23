@@ -53,7 +53,7 @@ func onUpgrade(w http.ResponseWriter, r *http.Request, pathname string, q url.Va
 		return
 	}
 	switch pathname {
-	case "/ws":
+	case "/api/chat":
 		s := users.Of(r)
 		if ws := accept(w, r); ws != nil {
 			onChat(ws, s)
