@@ -27,4 +27,7 @@ func killTree(p *os.Process) {
 	}
 }
 
+// ownGroup its own process group, so killTree takes what it started too
+func ownGroup(cmd *exec.Cmd) { cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} }
+
 func hideWindow(*exec.Cmd) {}

@@ -44,3 +44,6 @@ func hideWindow(cmd *exec.Cmd) {
 	cmd.SysProcAttr.HideWindow = true
 	cmd.SysProcAttr.CreationFlags |= 0x08000000 // CREATE_NO_WINDOW
 }
+
+// ownGroup no console window of its own; taskkill /T takes the tree
+func ownGroup(cmd *exec.Cmd) { hideWindow(cmd) }

@@ -30,6 +30,10 @@ has been made. The detection name alone does not identify the triggering code.
 - Remote PowerShell commands no longer request `ExecutionPolicy Bypass`.
   UTF-16 encoding remains solely for reliable command argument transport over SSH.
 
+- The local toolchain probe no longer starts a hidden, base64-encoded PowerShell from `Sulfur.exe`. It looks up each tool on PATH, runs its version flag directly and reads `vswhere` JSON in Go. A GUI program spawning such a script is the pattern behind `Trojan:Script/Wacatac` machine-learning verdicts; remote hosts still get the PowerShell probe over ssh, where this app starts nothing.
+- The installer no longer runs PowerShell to stop the app (`taskkill` by name) or to download and run the WebView2 bootstrapper (a message and Microsoft's page instead, skipped in a silent update).
+- The detached updater launch no longer sets `CREATE_NO_WINDOW`/`HideWindow`.
+
 The Go desktop and installer architecture, update-feed signature verification,
 language features and user-initiated update flow remain in place. These changes
 make execution easier to inspect and reduce unnecessary process/packing work;
