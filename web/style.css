@@ -2764,33 +2764,16 @@ body:has(.dk-pop:not([hidden])) .toasts { opacity: 0; pointer-events: none; }
   flex: none; height: 22px; display: flex; align-items: center; gap: 2px; padding: 0 8px 0 2px; cursor: pointer; user-select: none;
   font-size: 11px; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; color: var(--ide-fg); border-top: 1px solid transparent;
 }
-.ide-sec-head + .ide-open-list + .ide-sec-head, .ide-open-list + .ide-sec-head { border-top-color: var(--ide-border); }
 .ide-sec-head.static { padding-left: 20px; cursor: default; margin-top: 6px; }
 .ide-sec-head:focus-visible { outline: 1px solid var(--ide-accent); outline-offset: -1px; }
 .ide-chev { display: flex; width: 20px; justify-content: center; }
 .ide-chev .ide-ic { width: 14px; height: 14px; }
 .ide-sec-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ide-sec-count { margin-left: 6px; font-weight: 400; color: var(--ide-muted); text-transform: none; }
 .ide-sec-acts { margin-left: auto; visibility: hidden; }
 .ide-sec-head:hover .ide-sec-acts, .ide-sec-head:focus-within .ide-sec-acts, .ide-side:focus-within .ide-sec-acts { visibility: visible; }
 .ide-sec-acts .ide-btn { width: 20px; height: 20px; padding: 2px; }
 
-/* the explorer's tree and its open editors */
-.ide-open-list { flex: none; max-height: 30%; overflow-y: auto; }
-.ide-open {
-  display: flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px 0 4px; cursor: pointer; white-space: nowrap; color: var(--ide-fg);
-}
-.ide-open:hover { background: var(--ide-hover); }
-.ide-open.on { background: var(--ide-sel-off); }
-.ide-open.preview .ide-open-name { font-style: italic; }
-.ide-open-x { visibility: hidden; width: 18px; height: 18px; padding: 2px; }
-.ide-open:hover .ide-open-x, .ide-open.on .ide-open-x { visibility: visible; }
-.ide-open.dirty .ide-open-x { visibility: visible; }
-.ide-open.dirty:not(:hover) .ide-open-x .ide-ic { display: none; }
-.ide-open.dirty:not(:hover) .ide-open-x::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--ide-fg); }
-.ide-open-name { overflow: hidden; text-overflow: ellipsis; }
-.ide-open-dir { color: var(--ide-muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
-
+/* the explorer's file tree */
 .ide-tree { flex: 1; min-height: 0; overflow: auto; outline: none; padding-bottom: 20px; }
 .ide-tree.drop { background: color-mix(in srgb, var(--ide-accent) 12%, transparent); }
 .ide-row {

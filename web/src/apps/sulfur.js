@@ -410,7 +410,7 @@ const DEFAULTS = () => ({
   side: { view: 'explorer', w: 260, hidden: false },
   panel: { h: 260, hidden: true, view: 'terminal', max: false },
   aux: { w: 360, hidden: true, agent: '', harness: 'chat', model: 'chimp', perm: 'acceptEdits' },
-  expanded: {}, runHost: '', sections: { open: true, tree: true }, bookmarks: [],
+  expanded: {}, runHost: '', sections: { tree: true }, bookmarks: [],
   ext: { enabled: {} }, loc: HOME_LOC, build: {},
 });
 
@@ -1136,12 +1136,6 @@ function sectionHead(key, label, acts) {
 
 function buildExplorer() {
   const v = I.sideViews.get('explorer');
-  const open = sectionHead('open', 'Open Editors', [
-    btn('', 'check', 'Save All', () => run('workbench.action.files.saveAll')),
-    btn('', 'close', 'Close All Editors', () => run('workbench.action.closeAllEditors')),
-  ]);
-  const openList = el('div', 'ide-open-list');
-  openList.setAttribute('role', 'listbox');
   const treeHead = sectionHead('tree', '', [
     btn('', 'newFile', 'New File…', () => run('explorer.newFile')),
     btn('', 'newFolder', 'New Folder…', () => run('explorer.newFolder')),
@@ -1152,12 +1146,10 @@ function buildExplorer() {
   tree.setAttribute('role', 'tree');
   tree.setAttribute('aria-label', 'Files Explorer');
   const note = el('div', 'ide-tree-note');
-  v.body.append(open.node, openList, treeHead.node, tree, note);
-  open.node.addEventListener('ide-section', () => { openList.hidden = !open.open(); });
+  v.body.append(treeHead.node, tree, note);
   treeHead.node.addEventListener('ide-section', () => { tree.hidden = !treeHead.open(); });
-  open.paint();
   treeHead.paint();
-  I.ex = { open, openList, treeHead, tree, note, edit: null, rows: [] };
+  I.ex = { treeHead, tree, note, edit: null, rows: [] };
   v.focus = () => { tree.focus(); if (!I.sel) selectRow(I.st.root, false); };
   v.acts = [];
   tree.addEventListener('click', (e) => {
@@ -1674,27 +1666,6 @@ async function uploadInto(dir, list) {
   if (!I) return;
   await loadDir(dir, true);
   I.index = null;
-}
-
-// --- open editors, in the explorer's first section ---
-
-function paintOpenEditors() {
-  const list = I.ex.openList;
-  list.replaceChildren(...I.tabs.map((t) => {
-    const row = Object.assign(el('div', `ide-open${t === I.active ? ' on' : ''}${t.info?.dirty ? ' dirty' : ''}${t.preview ? ' preview' : ''}`), { title: t.rel || t.title });
-    row.setAttribute('role', 'option');
-    const x = btn('ide-open-x', 'close', 'Close', (e) => { e.stopPropagation(); closeTab(t); });
-    row.append(x, t.rel ? fileIcon(t.rel) : icon(t.ic || 'file', 'ide-fi'), el('span', 'ide-open-name', t.title));
-    if (t.rel) row.append(el('span', 'ide-open-dir', filesParent(t.rel).slice(I.st.root.length + 1) || (under(t.rel, I.st.root) ? '' : filesParent(t.rel))));
-    row.addEventListener('click', () => activate(t));
-    row.addEventListener('auxclick', (e) => { if (e.button === 1) closeTab(t); });
-    row.addEventListener('contextmenu', (e) => { e.preventDefault(); menu({ x: e.clientX, y: e.clientY }, tabItems(t)); });
-    return row;
-  }));
-  I.ex.open.title.textContent = 'Open Editors';
-  const dirty = I.tabs.filter((t) => t.info?.dirty).length;
-  I.ex.open.node.querySelector('.ide-sec-count')?.remove();
-  if (dirty) I.ex.open.title.after(el('span', 'ide-sec-count', `${dirty} unsaved`));
 }
 
 // --- editors: one group of tabs, a file's tab its live session ---------------------------
@@ -2303,7 +2274,7 @@ function tabState(t, info) {
   if (info.ready && !was?.ready && t === I.active) languages.get(t).catch((e) => log(e.message, 'Languages'));
   if (info.ready && !was?.ready) applyPending(t);
   if (info.dirty && t.preview) pin(t);
-  if (!was || was.dirty !== info.dirty) { t.tabEl.classList.toggle('dirty', info.dirty); paintOpenEditorsSoon(); }
+  if (!was || was.dirty !== info.dirty) t.tabEl.classList.toggle('dirty', info.dirty);
   if (!was || JSON.stringify(was.errors) !== JSON.stringify(info.errors)) { paintProblemsSoon(); paintTreeSoon(); }
   if (t === I.active) paintStatus();
   if (t === I.active) navNote(t);
@@ -2319,7 +2290,6 @@ function tabState(t, info) {
     if (t.rel.endsWith(`/${BUILD_FILE}`) && under(t.rel, I.st.root) && sameLoc(t.loc, locOf())) loadBuildConfig(filesParent(filesParent(t.rel)));
   }
 }
-const paintOpenEditorsSoon = debounce(() => I && paintOpenEditors(), 50);
 
 // --- where the user's been: a file and a line, walked back and forward ---------------------
 
@@ -2366,7 +2336,6 @@ function pin(t) {
   if (!t.preview) return;
   t.preview = false;
   t.tabEl.classList.remove('preview');
-  paintOpenEditorsSoon();
 }
 
 function activate(t, focus = true) {
@@ -2519,7 +2488,6 @@ function paintEditors() {
   if (!has) paintWatermark();
   paintCrumbs();
   paintTabActions();
-  paintOpenEditors();
   paintStatus();
   if (I.chat) paintChatCtx();
   const t = I.active;
