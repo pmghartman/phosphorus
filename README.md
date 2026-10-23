@@ -32,6 +32,13 @@
 - **An MCP server** at `/api/mcp`, so Claude or any MCP client works the mesh with your rights
 - **Accounts** with admin roles and a per-user vault of host and page logins
 
+### Sulfur
+
+<img src="packaging/sulfur/icon.svg" alt="Sulfur icon" width="96" align="left">
+
+Sulfur's icon is the alchemists' sulfur, 🜍: a triangle over a cross, folded in the manner of Visual Studio Code. Each of the triangle's bands passes over one corner and under the next, and the bar crosses over the stem, in flat tones of one amber hue.
+<br clear="left">
+
 ## Quick start
 
 You need a [Tailscale](https://tailscale.com) account (the free plan works) and a reusable auth key.
