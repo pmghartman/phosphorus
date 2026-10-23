@@ -4,7 +4,7 @@
   <img alt="platforms" src="https://img.shields.io/badge/macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-555?style=flat-square">
 </p>
 
-<p align="center"><img src=".github/assets/phosphorus.svg" alt="" width="160"></p>
+<p align="center"><img src=".github/assets/phosphorus-ascii.svg" alt="" width="160"></p>
 
 <h2 align="center">Phosphorus</h2>
 

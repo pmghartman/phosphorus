@@ -389,11 +389,7 @@ func statsView() view {
 	self := selfHost()
 	var lockCard *card
 	if lock := obj(st["lock"]); lock != nil {
-		state := "running"
-		if truthy(lock["paused"]) {
-			state = "paused"
-		}
-		lockCard = &card{"mesh update", plainRows(c("accent")(state + ", started by " + str(lock["initiator"])))}
+		lockCard = &card{"mesh update", plainRows(c("accent")("running, started by " + str(lock["initiator"])))}
 	}
 	tail := objs(st["tailnet"])
 	has := false
@@ -716,8 +712,6 @@ func updateView() view {
 	switch {
 	case chain == nil && last != nil:
 		title = "mesh update finished"
-	case chain != nil && truthy(chain["paused"]):
-		title = "mesh update paused"
 	case chain != nil:
 		title = "updating the mesh"
 	}
@@ -827,7 +821,7 @@ func updateView() view {
 	if chain != nil {
 		keys = nil
 		if mine {
-			keys = []key{kif(truthy(chain["paused"]), "c continue", "primary"), k("x cancel", "danger")}
+			keys = []key{k("x cancel", "danger")}
 		}
 	}
 	var failed *card

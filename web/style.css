@@ -4219,28 +4219,28 @@ button.ide-fd-place:hover { background: var(--ide-hover); color: var(--ide-stron
   /* the dock sized to what's in it: a lone window a tile, never a stretched pill */
   :root[data-l-bar-style="dock"] .dk-bar:not(.dk-menubar) { min-width: 3.4rem; }
 
-  /* auto-hide: the bar off its edge, clear of the menu bar, until the pointer, a keyboard focus or an open
+  /* auto-hide, only while a window is maximized: the bar off its edge, clear of the menu bar, until the pointer, a keyboard focus or an open
      popup reaches it; its strip over the menu bar's inner edge */
   :root[data-l-menubar="top"] { --bar-top: 1.65rem; }
   :root[data-l-menubar="bottom"] { --bar-bot: 1.65rem; }
-  :root[data-l-autohide="on"] .dk-desk { overflow: hidden; }
-  :root[data-l-autohide="on"] .dk-bar:not(.dk-menubar) { position: absolute; z-index: 40; transition: transform 0.18s ease; }
-  :root[data-l-autohide="on"] .dk-bar.dk-menubar { z-index: 41; }
+  :root[data-l-autohide="on"][data-maxed] .dk-desk { overflow: hidden; }
+  :root[data-l-autohide="on"][data-maxed] .dk-bar:not(.dk-menubar) { position: absolute; z-index: 40; transition: transform 0.18s ease; }
+  :root[data-l-autohide="on"][data-maxed] .dk-bar.dk-menubar { z-index: 41; }
   /* a dock keeps its own width, centered on its edge */
-  :root[data-l-autohide="on"][data-l-bar-style="dock"]:is([data-l-bar="bottom"], [data-l-bar="top"]) .dk-bar:not(.dk-menubar) { width: fit-content; }
-  :root[data-l-autohide="on"] .dk-bar:not(.dk-menubar)::after { content: ""; position: absolute; }
-  :root[data-l-autohide="on"][data-l-bar="bottom"] .dk-bar:not(.dk-menubar) { left: 0; right: 0; bottom: var(--bar-bot, 0px); transform: translateY(calc(100% + var(--bar-bot, 0px) + 1rem)); }
-  :root[data-l-autohide="on"][data-l-bar="bottom"] .dk-bar:not(.dk-menubar)::after { left: 0; right: 0; top: calc(-22px - var(--bar-bot, 0px)); height: 22px; }
-  :root[data-l-autohide="on"][data-l-bar="top"] .dk-bar:not(.dk-menubar) { left: 0; right: 0; top: var(--bar-top, 0px); transform: translateY(calc(-100% - var(--bar-top, 0px) - 1rem)); }
-  :root[data-l-autohide="on"][data-l-bar="top"] .dk-bar:not(.dk-menubar)::after { left: 0; right: 0; bottom: calc(-22px - var(--bar-top, 0px)); height: 22px; }
-  :root[data-l-autohide="on"][data-l-bar="left"] .dk-bar:not(.dk-menubar) { left: 0; top: var(--bar-top, 0px); bottom: var(--bar-bot, 0px); transform: translateX(calc(-100% - 1rem)); }
-  :root[data-l-autohide="on"][data-l-bar="left"] .dk-bar:not(.dk-menubar)::after { right: -22px; width: 22px; top: 0; bottom: 0; }
-  :root[data-l-autohide="on"][data-l-bar="right"] .dk-bar:not(.dk-menubar) { right: 0; top: var(--bar-top, 0px); bottom: var(--bar-bot, 0px); transform: translateX(calc(100% + 1rem)); }
-  :root[data-l-autohide="on"][data-l-bar="right"] .dk-bar:not(.dk-menubar)::after { left: -22px; width: 22px; top: 0; bottom: 0; }
-  :root[data-l-autohide="on"] .dk-bar:not(.dk-menubar):is(:hover, :has(:focus-visible), :has([aria-expanded="true"]:not(.dk-chip-fold))) { transform: none; }
+  :root[data-l-autohide="on"][data-maxed][data-l-bar-style="dock"]:is([data-l-bar="bottom"], [data-l-bar="top"]) .dk-bar:not(.dk-menubar) { width: fit-content; }
+  :root[data-l-autohide="on"][data-maxed] .dk-bar:not(.dk-menubar)::after { content: ""; position: absolute; }
+  :root[data-l-autohide="on"][data-maxed][data-l-bar="bottom"] .dk-bar:not(.dk-menubar) { left: 0; right: 0; bottom: var(--bar-bot, 0px); transform: translateY(calc(100% + var(--bar-bot, 0px) + 1rem)); }
+  :root[data-l-autohide="on"][data-maxed][data-l-bar="bottom"] .dk-bar:not(.dk-menubar)::after { left: 0; right: 0; top: calc(-22px - var(--bar-bot, 0px)); height: 22px; }
+  :root[data-l-autohide="on"][data-maxed][data-l-bar="top"] .dk-bar:not(.dk-menubar) { left: 0; right: 0; top: var(--bar-top, 0px); transform: translateY(calc(-100% - var(--bar-top, 0px) - 1rem)); }
+  :root[data-l-autohide="on"][data-maxed][data-l-bar="top"] .dk-bar:not(.dk-menubar)::after { left: 0; right: 0; bottom: calc(-22px - var(--bar-top, 0px)); height: 22px; }
+  :root[data-l-autohide="on"][data-maxed][data-l-bar="left"] .dk-bar:not(.dk-menubar) { left: 0; top: var(--bar-top, 0px); bottom: var(--bar-bot, 0px); transform: translateX(calc(-100% - 1rem)); }
+  :root[data-l-autohide="on"][data-maxed][data-l-bar="left"] .dk-bar:not(.dk-menubar)::after { right: -22px; width: 22px; top: 0; bottom: 0; }
+  :root[data-l-autohide="on"][data-maxed][data-l-bar="right"] .dk-bar:not(.dk-menubar) { right: 0; top: var(--bar-top, 0px); bottom: var(--bar-bot, 0px); transform: translateX(calc(100% + 1rem)); }
+  :root[data-l-autohide="on"][data-maxed][data-l-bar="right"] .dk-bar:not(.dk-menubar)::after { left: -22px; width: 22px; top: 0; bottom: 0; }
+  :root[data-l-autohide="on"][data-maxed] .dk-bar:not(.dk-menubar):is(:hover, :has(:focus-visible), :has([aria-expanded="true"]:not(.dk-chip-fold))) { transform: none; }
 }
 @media (prefers-reduced-motion: reduce) {
-  :root[data-l-autohide="on"] .dk-bar:not(.dk-menubar) { transition: none; }
+  :root[data-l-autohide="on"][data-maxed] .dk-bar:not(.dk-menubar) { transition: none; }
 }
 
 /* the phosphorus and cli looks draw the mark as ascii art (theme.js sets --mark), on the desk and in about */

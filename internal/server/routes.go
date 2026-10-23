@@ -117,11 +117,7 @@ func appHandler(w http.ResponseWriter, r *http.Request) {
 		case "/api/mesh/snapshot":
 			sendJSON(w, 200, snapshot(q))
 		default:
-			st := util.ReadJSONMap(updateResultFile)
-			if st == nil {
-				st = map[string]any{"state": "ok"}
-			}
-			sendJSON(w, 200, st)
+			sendJSON(w, 200, update.Status())
 		}
 		return
 	case pathname == "/api/sys/stamps" && method == "GET":
@@ -442,8 +438,12 @@ func appHandler(w http.ResponseWriter, r *http.Request) {
 			forbidden(w)
 			return
 		}
-		sendJSON(w, 202, map[string]any{"status": "started"})
-		go update.RunLocalUpdate()
+		q, err := update.Ask()
+		if err != nil {
+			sendJSON(w, 500, map[string]any{"error": err.Error()})
+			return
+		}
+		sendJSON(w, 202, map[string]any{"id": q.ID})
 		return
 	case pathname == "/api/update/check" && method == "GET":
 		if !isLocalOrPeer(r) {
