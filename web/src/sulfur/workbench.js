@@ -39,6 +39,7 @@ import { codeEditor } from './editor.js';
 import { createLanguageWorkbench } from './language-workbench.js';
 import { formatWhitespace, formattingEdits, saveEdits } from './formatting.js';
 import { expandSelection } from './smart-select.js';
+import { excludeMatcher } from './excludes.js';
 import { applyTextEdits } from './language-client.js';
 import { sidebarRight, runTargetName, moveBookmarks } from './navigation.js';
 import { fileKind, renderFileIcon } from './file-icons.js';
@@ -104,6 +105,7 @@ const IC = {
   refresh: 'M13.5 8a5.5 5.5 0 1 1-1.8-4.1M13.5 1.5v3.5h-3.5',
   update: 'M8 1.5v8.5M4.5 6.5L8 10l3.5-3.5M2.5 11v3h11v-3',
   collapse: 'M4.5 4.5h9v9h-9zM2.5 11.5v-9h9M6.5 9h5',
+  filter: 'M2 3h12l-4.5 5.5V13l-3 1.5V8.5z',
   more: 'M3.5 8h.01M8 8h.01M12.5 8h.01',
   plus: 'M8 3v10M3 8h10',
   trash: 'M2.5 4h11M6 4V2.2h4V4M4 4l.7 10h6.6L12 4M6.4 6.5v5M9.6 6.5v5',
@@ -448,7 +450,7 @@ const SETTINGS = {
   'explorer.confirmDelete': { def: true, type: 'boolean', title: 'Explorer: Confirm Delete', about: 'Controls whether the explorer asks before deleting a file or folder. A delete here is for good: there is no trash.' },
   'explorer.autoReveal': { def: true, type: 'boolean', title: 'Explorer: Auto Reveal', about: 'Controls whether the explorer reveals and selects the active file.' },
   'search.exclude': { def: 'build, out, bin, obj, target, .vs, .vscode, cmake-build-*, dist, .cache, .gradle, __pycache__, node_modules, .git', type: 'string', title: 'Search: Exclude', about: 'Comma separated folder names or simple globs left out of quick open (Ctrl+P) and Find in Files, as a big project’s build outputs and caches are; the explorer still shows them.' },
-  'files.exclude': { def: '.git, node_modules, __pycache__, .DS_Store', type: 'string', title: 'Files: Exclude', about: 'Comma separated names or simple globs (*.o) hidden from the explorer, quick open and search.' },
+  'files.exclude': { def: '.git, node_modules, __pycache__, .DS_Store', type: 'string', title: 'Files: Exclude', about: 'Comma separated names (node_modules), extensions (.meta hides every *.meta file), globs (*.o, *.{png,jpg}) or paths (build/cache) hidden from the explorer, quick open and search. VS Code\'s **/ forms work too.' },
   'terminal.integrated.fontSize': { def: 13, type: 'number', min: 8, max: 40, title: 'Terminal › Integrated: Font Size', about: 'Controls the font size in pixels of the terminal. New terminals take it.' },
   'window.appearance': { def: 'system', type: 'enum', options: [['system', 'Follow the System'], ['light', 'Light'], ['dark', 'Dark']], title: 'Window: Appearance', about: 'Light or dark, whatever the system is set to, when Sulfur runs on its own. Inside the Phosphorus desktop, the desktop\'s own theme decides.' },
   'workbench.restoreEditors': { def: true, type: 'boolean', title: 'Workbench: Restore Editors', about: 'Controls whether the open editors come back when Sulfur opens again.' },
@@ -1274,13 +1276,11 @@ const scmRefreshSoon = debounce(() => { if (I) scmRefresh(); }, 600);
 // the folders quick open and Find in Files never go into: search.exclude and files.exclude together
 const searchSkip = () => [setting('search.exclude'), setting('files.exclude')].filter(Boolean).join(',');
 
-// the exclude setting as tests on a name
+// the exclude setting as tests: skip(name, dir) for a file or folder, skip.path(rel) for a path
 function excluded() {
   const raw = String(setting('files.exclude') || '');
   if (I.exclude?.raw === raw) return I.exclude.test;
-  const res = raw.split(',').map((s) => s.trim()).filter(Boolean)
-    .map((g) => new RegExp(`^${g.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.')}$`));
-  const test = (n) => res.some((r) => r.test(n));
+  const test = excludeMatcher(raw);
   I.exclude = { raw, test };
   return test;
 }
@@ -1349,7 +1349,7 @@ function paintTree() {
       return;
     }
     for (const e of list) {
-      if (skip(e.name)) continue;
+      if (skip(e.name, e.dir)) continue;
       const p = filesJoin(dir, e.name);
       if (edit?.kind === 'rename' && edit.path === p) { editRow(depth); continue; }
       rows.push(treeRow(e, p, depth, changes));
@@ -1883,6 +1883,7 @@ function mountCode(t) {
       return d;
     },
     openLink: (u) => openExternal(u),
+    quickFix: () => run('editor.action.quickFix'),
     get quickFixHint() { return languages.hasCodeActions(t) ? `Quick Fix… (${keyLabel(keyFor('editor.action.quickFix'))})` : ''; },
   });
   editors.set(t.edId, t.ed);
@@ -2434,6 +2435,7 @@ function activate(t, focus = true) {
   if (t !== was) inlineCompletions.dismiss();
   I.active = t;
   if (t !== was) {
+    if (I.st.probFilter?.active) paintProblemsSoon();
     languages.cancelCompletions();
     I.projHas = undefined;
     I.runContext = { tabId: t.id, workspace: wsKey(), pending: true };
@@ -2626,7 +2628,7 @@ async function crumbMenu(anchor, dir, here) {
   const list = await loadDir(dir);
   if (!I) return;
   const skip = excluded();
-  menu(anchor, list.filter((e) => !skip(e.name)).slice(0, 200).map((e) => {
+  menu(anchor, list.filter((e) => !skip(e.name, e.dir)).slice(0, 200).map((e) => {
     const p = filesJoin(dir, e.name);
     return { label: e.name, checked: p === here, ic: e.dir ? 'folder' : 'file', run: () => {
       if (!e.dir) { openFile(p, { preview: false }); return; }
@@ -3464,7 +3466,7 @@ async function fileIndex() {
       truncated ||= !!g.b.truncated;
       for (const e of g.b.entries || []) {
         if (e.path.endsWith('/')) continue;
-        if (e.path.split('/').some(skip)) continue;
+        if (skip.path(e.path)) continue;
         const x = files.get(e.path) || { path: e.path, hosts: [] };
         x.hosts.push(g.h);
         files.set(e.path, x);
@@ -3878,7 +3880,7 @@ function fileDialog(o = {}) {
       crumbs.scrollLeft = crumbs.scrollWidth;
       const skip = excluded();
       const f = st.filter.toLowerCase();
-      const shown = st.entries.filter((e) => (e.dir || files) && !skip(e.name) && (!f || e.name.toLowerCase().includes(f)));
+      const shown = st.entries.filter((e) => (e.dir || files) && !skip(e.name, e.dir) && (!f || e.name.toLowerCase().includes(f)));
       const rows = shown.map((e) => {
         const row = Object.assign(el('div', `ide-fd-row${e.dir ? ' dir' : ''}${e.name === st.sel ? ' sel' : ''}`), { title: e.name });
         row.setAttribute('role', 'option');
@@ -4387,7 +4389,15 @@ function buildPanel() {
   pv.list = Object.assign(el('div', 'ide-problems'), { tabIndex: 0 });
   pv.list.setAttribute('role', 'tree');
   pv.body.append(pv.list);
-  pv.acts = [btn('', 'collapse', 'Collapse All', () => { I.probShut = new Set(I.tabs.map((t) => t.rel).filter(Boolean)); paintProblems(); })];
+  // the filter as VS Code's: text in a message, its source or its file; globs for files
+  // (**/*.cs), ! before either to leave them out; the kinds and the active file from its menu
+  pv.filter = Object.assign(el('input', 'ide-input ide-prob-filter'), { placeholder: 'Filter (e.g. text, **/*.cs, !**/obj/**)', spellcheck: false, value: problemFilter().text });
+  pv.filter.setAttribute('aria-label', 'Filter problems');
+  const refilter = debounce(() => { problemFilter().text = pv.filter.value; paintProblems(); }, 120);
+  pv.filter.addEventListener('input', refilter);
+  pv.filter.addEventListener('keydown', (e) => { if (e.key === 'Escape' && pv.filter.value) { e.preventDefault(); e.stopPropagation(); pv.filter.value = ''; refilter(); } });
+  pv.kinds = btn('ide-prob-kinds', 'filter', 'Filter Problems by Kind', (e) => menu(e.currentTarget, problemFilterItems()));
+  pv.acts = [pv.filter, pv.kinds, btn('', 'collapse', 'Collapse All', () => { I.probShut = new Set(I.probRels || []); paintProblems(); })];
   // output
   const ov = I.panelViews.get('output');
   ov.pick = el('select', 'ide-select');
@@ -4450,6 +4460,38 @@ function showPanel(id, on = true, focus = false) {
 // --- problems: the syntax errors of every open file --------------------------------------
 
 const paintProblemsSoon = debounce(() => I && paintProblems(), 150);
+// what the Problems view shows, kept with the workspace's state
+function problemFilter() {
+  const f = I.st.probFilter;
+  if (f && typeof f === 'object') return f;
+  return (I.st.probFilter = { error: true, warning: true, info: true, active: false, text: '' });
+}
+function problemFilterItems() {
+  const f = problemFilter();
+  const flip = (k) => () => { f[k] = !f[k]; paintProblems(); };
+  return [
+    { label: 'Show Errors', checked: f.error, run: flip('error') },
+    { label: 'Show Warnings', checked: f.warning, run: flip('warning') },
+    { label: 'Show Infos', checked: f.info, run: flip('info') }, '-',
+    { label: 'Show Active File Only', checked: f.active, run: flip('active') }, '-',
+    { label: 'Clear Filters', disabled: f.error && f.warning && f.info && !f.active && !f.text, run: () => { Object.assign(f, { error: true, warning: true, info: true, active: false, text: '' }); const pv = I.panelViews.get('problems'); pv.filter.value = ''; paintProblems(); } },
+  ];
+}
+// the filter's text as tests: a term a substring of the message, source or path, or a glob
+// on the path; ! before a term leaves out what it matches
+function problemFilterTest(text) {
+  const terms = String(text || '').split(',').map((t) => t.trim()).filter(Boolean);
+  const keep = [], drop = [];
+  for (const term of terms) {
+    const neg = term.startsWith('!');
+    const t = neg ? term.slice(1).trim() : term;
+    if (!t) continue;
+    const glob = /[*?/{]/.test(t) ? excludeMatcher(t) : null;
+    const lower = t.toLowerCase();
+    (neg ? drop : keep).push((x, rel) => (glob ? glob.path(rel) : `${x.msg}\n${x.src}\n${rel}`.toLowerCase().includes(lower)));
+  }
+  return (x, rel) => (!keep.length || keep.some((m) => m(x, rel))) && !drop.some((m) => m(x, rel));
+}
 function paintProblems() {
   const pv = I.panelViews.get('problems');
   // by file: the open files' syntax errors, then what the last build said
@@ -4472,15 +4514,37 @@ function paintProblems() {
   pv.badge.textContent = String(all.length);
   I.problemCounts = { errors: errs, warnings: all.filter((x) => x.sev === 'warning').length };
   paintStatus();
+  // the filter button lit while it hides something
+  const f = problemFilter();
+  const filtering = !f.error || !f.warning || !f.info || f.active || !!f.text.trim();
+  pv.kinds?.classList.toggle('on', !f.error || !f.warning || !f.info || f.active);
   if (pv.body.hidden) return;
   I.probShut ||= new Set();
   if (!all.length) {
     pv.list.replaceChildren(el('div', 'ide-empty-note', 'No problems have been detected in the open files or the last build.'));
     return;
   }
+  const matches = problemFilterTest(f.text);
+  const activeRel = I.active?.rel;
+  const shown = new Map();
+  let count = 0;
+  for (const [rel, list] of byFile) {
+    if (f.active && rel !== activeRel) continue;
+    const kept = list.filter((x) => f[x.sev] !== false && matches(x, rel));
+    if (kept.length) { shown.set(rel, kept); count += kept.length; }
+  }
+  I.probRels = [...shown.keys()];
   const rows = [];
+  if (filtering) {
+    const note = el('div', 'ide-prob-showing', `Showing ${count} of ${all.length}`);
+    const clear = Object.assign(el('button', 'ide-link', 'Clear Filters'), { type: 'button' });
+    clear.addEventListener('click', () => problemFilterItems().at(-1).run());
+    note.append(clear);
+    rows.push(note);
+  }
+  if (!count) rows.push(el('div', 'ide-empty-note', 'No results found with the provided filter criteria.'));
   const rank = { error: 0, warning: 1, info: 2 };
-  for (const [rel, list] of [...byFile].sort((a, b) => a[0].localeCompare(b[0]))) {
+  for (const [rel, list] of [...shown].sort((a, b) => a[0].localeCompare(b[0]))) {
     const open = !I.probShut.has(rel);
     const head = el('div', 'ide-prob-file');
     head.setAttribute('role', 'treeitem');
@@ -6092,7 +6156,7 @@ const sigOf = (e) => `${e.size}:${e.mtime}`;
 async function localFiles(S) {
   const b = await filesCall(apiLoc(S.loc), 'tree', undefined, { path: S.root, depth: 24, skip: searchSkip() });
   const skip = excluded();
-  return (b.entries || []).filter((e) => !e.path.endsWith('/') && !e.path.split('/').some(skip));
+  return (b.entries || []).filter((e) => !e.path.endsWith('/') && !skip.path(e.path));
 }
 async function meshFiles(w, rel) {
   const b = await meshJSON(meshFilesUrl(w.host, 'tree', { path: rel, depth: 24, skip: searchSkip() }));
@@ -6938,8 +7002,7 @@ function buildSearch() {
       .then((b) => ({ h, b }), () => null)));
     if (!I || gen !== S.gen) return;
     const skip = excluded();
-    const exGlobs = exc.value.split(',').map((s) => s.trim()).filter(Boolean)
-      .map((g) => new RegExp(`^${g.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.')}$`));
+    const exGlobs = excludeMatcher(exc.value);
     const word = S.word ? new RegExp(`(^|[^\\p{L}\\p{N}_])${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[^\\p{L}\\p{N}_])`, S.caseS ? 'u' : 'iu') : null;
     const by = new Map();
     let truncated = false;
@@ -6948,7 +7011,7 @@ function buildSearch() {
       truncated ||= !!g.b.truncated;
       for (const r of g.b.results || []) {
         const segs = r.path.split('/');
-        if (segs.some(skip) || segs.some((s) => exGlobs.some((re) => re.test(s)))) continue;
+        if (skip.path(r.path) || exGlobs.path(r.path)) continue;
         const hits = (r.matches || []).filter((m) => (!S.caseS || m.text.includes(query)) && (!word || word.test(m.text)));
         if (!hits.length) continue;
         if (!by.has(r.path)) by.set(r.path, { path: r.path, host: g.h, matches: hits });

@@ -435,7 +435,10 @@
 .code-hover-md :is(.hljs-comment, .hljs-meta) { color: var(--hl-cmt, #6a9955); }
 .code-hover-md hr { border: 0; border-top: 1px solid var(--ide-widget-border, var(--border)); margin: 6px 0; }
 .code-hover-problems { white-space: pre-wrap; }
-.code-hover-hint { margin-top: 4px; color: var(--ide-link, var(--accent)); font-size: 11px; }
+.code-hover-hint { display: block; margin-top: 4px; padding: 0; border: 0; background: none; color: var(--ide-link, var(--accent)); font: 11px var(--ide-ui, var(--font)); cursor: pointer; }
+.code-hover-hint:hover { text-decoration: underline; }
+/* the tooltip takes the mouse, so its Quick Fix and links can be reached */
+.code-diagnostic-hover { pointer-events: auto; }
 .code-hover-md { font-family: var(--ide-ui, var(--font)); }
 .code-hover-problems + .code-hover-md, .code-hover-hint + .code-hover-md { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--ide-widget-border, var(--border)); }
 .code-hover-md > :first-child { margin-top: 0; }
@@ -652,6 +655,10 @@
 .ide-select { height: 22px; padding: 0 6px; background: var(--ide-input); color: var(--ide-fg); border: 1px solid var(--ide-input-border); font: 12px var(--ide-ui); max-width: 220px; border-radius: 2px; }
 .ide-output { flex: 1; margin: 0; padding: 4px 20px; overflow: auto; font: 12px/1.45 var(--mono); white-space: pre-wrap; word-break: break-word; color: var(--ide-fg); outline: none; user-select: text; background: var(--ide-side); }
 .ide-problems { flex: 1; overflow: auto; outline: none; padding-bottom: 8px; }
+/* the Problems filter in the panel's title, as VS Code's */
+.ide-prob-filter { width: min(320px, 30vw); height: 24px; margin-right: 2px; font-size: 12px; }
+.ide-prob-kinds.on { color: var(--ide-accent); background: color-mix(in srgb, var(--ide-accent) 18%, transparent); }
+.ide-prob-showing { display: flex; align-items: center; gap: 10px; padding: 4px 12px; color: var(--ide-muted); font-size: 12px; }
 .ide-prob-file, .ide-prob { display: flex; align-items: center; gap: 6px; height: 22px; padding: 0 12px; cursor: pointer; white-space: nowrap; }
 .ide-prob-file:hover, .ide-prob:hover { background: var(--ide-hover); }
 .ide-prob { padding-left: 36px; }
