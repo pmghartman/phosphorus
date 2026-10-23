@@ -1,3 +1,6 @@
+/* the theme library's tokens, generated from internal/theme/themes.json by the build */
+@import "phosphorus:themes";
+
 /* Geist Mono, served from node_modules: thin and even at every weight,
    latin and its extension here, anything else from the fallback */
 @font-face {
@@ -12,140 +15,16 @@
 }
 
 :root {
-  color-scheme: dark;
-  --bg: #141414;
-  --fg: #e0e0e0;
-  --muted: #9d9d9d;
-  --accent: #9f81cf;
-  --accent-2: #ce8755;
-  --dim: #555555;
-  --glyph-purple: #a371f7;
-  --glyph-orange: #f0883e;
-  --border: #2e2e2e;
-  --card: #1b1b1b;
-  --tabbar: #0c0c0c;
   --header-h: 1.5rem;
   --mobile-tabbar-h: 2.75rem;
   /* the side column's width, the rail's beside it */
   --side-w: 25vw;
   --rail-w: 1.7rem;
-  --online: #3fb950;
-  --offmesh: #f85149;
-  --warn: #d29922;
-  --tab-hover: #121212;
-  /* soft shadows: a card lifted off the page, a popup further, a bubble or
-     the prompt barely */
-  --shadow: #050505;
-  --lift: 0 1px 2px rgb(0 0 0 / 0.3), 0 14px 30px -18px rgb(0 0 0 / 0.8);
-  --drop: 0 2px 6px rgb(0 0 0 / 0.35), 0 18px 40px -16px rgb(0 0 0 / 0.85);
-  --lift-sm: 0 1px 2px rgb(0 0 0 / 0.35);
-  /* muted companions to the purple and orange, one per kind of thing */
-  --teal: #6fb3a8;
-  --sage: #93ad7d;
-  --sky: #7fa0c9;
-  --rose: #c98ba0;
-  --sand: #c4ab78;
-  /* graph nodes: self and serving hosts far apart in hue and lightness */
-  --mesh-self: #b48cff;
-  --mesh-active: #4fc98a;
-  /* page and terminal alike */
-  --font: "Geist Mono Variable", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 }
 
-/* the color themes, phosphorus wide (theme.js): each palette's dark here, its
-   light under the light theme below; oled keeps a palette's hues on black */
-:root[data-palette="vscode"] {
-  --bg: #1f1f1f; --fg: #cccccc; --muted: #9d9d9d; --dim: #6e7681; --border: #2b2b2b; --card: #181818;
-  --tabbar: #181818; --tab-hover: #2a2d2e; --shadow: #0b0b0b;
-  --accent: #0078d4; --accent-2: #ce9178; --teal: #4ec9b0; --sage: #89d185; --sky: #4daafc; --rose: #c586c0; --sand: #dcdcaa;
-  --online: #89d185; --offmesh: #f14c4c; --warn: #cca700; --mesh-self: #3794ff; --mesh-active: #4ec9b0;
-}
-:root[data-palette="medieval"] {
-  --bg: #1e1711; --fg: #e6d8bb; --muted: #a8957a; --dim: #76664f; --border: #3b2d20; --card: #241b14;
-  --tabbar: #17110c; --tab-hover: #2a2018; --shadow: #0d0906;
-  --accent: #c9a24a; --accent-2: #e0533f; --teal: #7fb5a3; --sage: #9cb36b; --sky: #8fb3c9; --rose: #c39bd0; --sand: #d98b5f;
-  --online: #8aa857; --offmesh: #e0533f; --warn: #d9a441; --mesh-self: #e0bd66; --mesh-active: #8aa857;
-}
-/* Pyxra's own chrome (pyxra/css/app.css): its Dark by night and its Cozy pixel by day, both in its
-   default rose; hard 1px bevels and offset shadows that never blur. --px-* are its surface tiers */
-:root[data-palette="pyxra"] {
-  --bg: #101219; --fg: #ccd2de; --muted: #7b8496; --dim: #565d70; --border: #333a4c; --card: #20242f;
-  --tabbar: #191c24; --tab-hover: #2b3141; --shadow: #080a0e;
-  --accent: #de839c; --accent-2: #e5a93c; --teal: #74b9a5; --sage: #a6c98b; --sky: #729bd1; --rose: #ad95ce; --sand: #e4a47c;
-  --online: #74b9a5; --offmesh: #d9534f; --warn: #e5a93c; --mesh-self: #de839c; --mesh-active: #74b9a5;
-  --lift: 2px 2px 0 rgb(0 0 0 / 0.5); --drop: 3px 3px 0 rgb(0 0 0 / 0.55); --lift-sm: 1px 1px 0 rgb(0 0 0 / 0.5);
-  --px-editor: #101219; --px-panel: #191c24; --px-head: #20242f; --px-raised: #2a3040; --px-sunken: #111319;
-  --px-line: #080a0e; --px-line-soft: #333a4c; --px-bevel-hi: #3d4559; --px-bevel-lo: #0a0c11; --px-strong: #eef2f8;
-  --px-button: #a84e71; --px-thumb: #39415a; --px-dither: repeating-linear-gradient(45deg, rgb(255 255 255 / 0.022) 0 1px, transparent 1px 2px);
-}
-
-/* light: clean neutral surfaces, the accents inked darker to hold up on white */
-:root[data-theme="light"] {
-  color-scheme: light;
-  --accent: #6a4bb0;
-  --accent-2: #a65a1e;
-  --glyph-purple: #7c4ddb;
-  --glyph-orange: #c4621a;
-  --online: #1a7f37;
-  --offmesh: #cf222e;
-  --warn: #9a6700;
-  --teal: #2f7f72;
-  --sage: #577a3c;
-  --sky: #3d6a9e;
-  --rose: #a8506f;
-  --sand: #8a6a2c;
-  --bg: #ffffff;
-  --fg: #1f1f23;
-  --muted: #6b6b73;
-  --dim: #b4b4bb;
-  --border: #e4e4e7;
-  --card: #f4f4f5;
-  --tabbar: #f7f7f8;
-  --tab-hover: #efeff1;
-  --shadow: #d4d4d8;
-  --lift: 0 1px 2px rgb(24 24 27 / 0.05), 0 14px 30px -20px rgb(24 24 27 / 0.22);
-  --drop: 0 2px 6px rgb(24 24 27 / 0.08), 0 18px 40px -18px rgb(24 24 27 / 0.3);
-  --lift-sm: 0 1px 2px rgb(24 24 27 / 0.08);
-  --mesh-self: #7a4fd6;
-  --mesh-active: #2c9a5c;
-}
-
-:root[data-palette="vscode"][data-theme="light"] {
-  --bg: #ffffff; --fg: #3b3b3b; --muted: #767676; --dim: #b4b4b4; --border: #e5e5e5; --card: #f8f8f8;
-  --tabbar: #f8f8f8; --tab-hover: #f2f2f2; --shadow: #d4d4d4;
-  --accent: #005fb8; --accent-2: #a31515; --teal: #267f99; --sage: #388a34; --sky: #0070c1; --rose: #af00db; --sand: #795e26;
-  --online: #388a34; --offmesh: #e51400; --warn: #bf8803; --mesh-self: #005fb8; --mesh-active: #267f99;
-}
-:root[data-palette="medieval"][data-theme="light"] {
-  --bg: #f4ead3; --fg: #3a2a1a; --muted: #7a6448; --dim: #a08a6a; --border: #d6c39b; --card: #eadcbc;
-  --tabbar: #eadcbc; --tab-hover: #e6d6b2; --shadow: #d6c39b;
-  --accent: #8e2a1f; --accent-2: #7a4f12; --teal: #1f5e57; --sage: #4b6b2a; --sky: #2f5d7c; --rose: #5b3a7a; --sand: #9a4f1a;
-  --online: #4b6b2a; --offmesh: #b02a1a; --warn: #9a6a10; --mesh-self: #8e2a1f; --mesh-active: #4b6b2a;
-}
-:root[data-palette="pyxra"][data-theme="light"] {
-  --bg: #fffaf0; --fg: #333b4c; --muted: #686c78; --dim: #9aa8ad; --border: #9aa8ad; --card: #fff3da;
-  --tabbar: #dce5e8; --tab-hover: #e9eef0; --shadow: #9aa8ad;
-  --accent: #a84e71; --accent-2: #9b6734; --teal: #397c70; --sage: #4f7f3c; --sky: #426d9d; --rose: #755b9e; --sand: #a86747;
-  --online: #397c70; --offmesh: #b6586c; --warn: #9b6734; --mesh-self: #a84e71; --mesh-active: #397c70;
-  --lift: 2px 2px 0 rgb(96 112 134 / 0.3); --drop: 3px 3px 0 rgb(96 112 134 / 0.38); --lift-sm: 1px 1px 0 rgb(96 112 134 / 0.3);
-  --px-editor: #fffdf5; --px-panel: #fffaf0; --px-head: #dce5e8; --px-raised: #fff3da; --px-sunken: #fffdf5;
-  --px-line: #56657c; --px-line-soft: #9aa8ad; --px-bevel-hi: #ffffff; --px-bevel-lo: #607086; --px-strong: #242f40;
-  --px-button: #a84e71; --px-thumb: #9aa8ad; --px-dither: repeating-linear-gradient(45deg, rgb(68 82 98 / 0.035) 0 1px, transparent 1px 3px);
-}
-
-/* oled: true black surfaces, the dark theme's accents unchanged */
-:root[data-theme="oled"] {
-  --bg: #000000;
-  --border: #1c1c1c;
-  --card: #080808;
-  --tabbar: #000000;
-  --tab-hover: #0e0e0e;
-  --shadow: #161616;
-  /* nothing darker than black: a faint rim instead */
-  --lift: 0 0 0 1px rgb(255 255 255 / 0.015), 0 14px 30px -18px rgb(255 255 255 / 0.05);
-  --drop: 0 0 0 1px rgb(255 255 255 / 0.03), 0 18px 40px -16px rgb(255 255 255 / 0.07);
-  --lift-sm: none;
-}
+/* every color, font, shadow and corner token comes from the theme library, internal/theme/themes.json,
+   its rules bundled in here by the build (webbuild); this sheet holds structure, keyed by a theme's
+   look (data-palette), rounded controls (data-round) and a proportional page font (data-sans) */
 
 * { box-sizing: border-box; }
 /* square corners everywhere, the browser's own controls included */
@@ -398,7 +277,7 @@ body {
 .dk-icon.dk-files .ic { color: var(--sand); }
 .dk-icon.dk-editor .ic { color: var(--sky); }
 .dk-icon.dk-service .ic { color: var(--teal); }
-.dk-mono text { fill: currentColor; stroke: none; font: 600 8.5px var(--font); }
+.dk-mono text { fill: currentColor; stroke: none; font: 600 8.5px var(--mono); }
 .dk-label, .dk-icon .dk-sub { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* a file's whole name over two lines, its extension kept */
 .dk-icon[data-file] .dk-label { white-space: normal; overflow-wrap: anywhere; text-align: center; line-height: 1.2; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
@@ -1936,7 +1815,7 @@ input, textarea { caret-color: var(--accent); }
 /* as wide as its longest line, so the textarea never scrolls inside itself */
 .code-body { position: relative; width: max-content; min-width: 100%; }
 .code-nums, .code-hl, .code-ta {
-  font-family: var(--font); font-size: var(--code-font); line-height: var(--code-lh); tab-size: 4; font-variant-ligatures: none;
+  font-family: var(--mono); font-size: var(--code-font); line-height: var(--code-lh); tab-size: 4; font-variant-ligatures: none;
   text-rendering: auto; font-kerning: none;
 }
 /* the textarea's own font, never the browser's monospace for code */
@@ -2232,12 +2111,44 @@ input, textarea { caret-color: var(--accent); }
 .dk-ctl-tile.fresh .ic { color: var(--sky); }
 .dk-ctl-seg { display: flex; align-items: center; justify-content: center; gap: 0.35rem; }
 .dk-ctl-seg .theme-icon { display: block; width: 0.8rem; height: 0.8rem; }
-.dk-ctl-theme.dk-ctl-palette { margin-top: 0; }
 .dk-ctl-swatch { width: 0.6rem; height: 0.6rem; flex: none; }
-.dk-ctl-swatch.sw-phosphorus { background: linear-gradient(135deg, #9f81cf 50%, #141414 50%); }
-.dk-ctl-swatch.sw-vscode { background: linear-gradient(135deg, #0078d4 50%, #1f1f1f 50%); }
-.dk-ctl-swatch.sw-medieval { background: linear-gradient(135deg, #c9a24a 50%, #1e1711 50%); }
-.dk-ctl-swatch.sw-pyxra { background: linear-gradient(135deg, #de839c 50%, #191c24 50%); }
+/* the theme a dropdown under the light and dark: its list opened in the panel, under its button */
+.dk-ctl-drop { margin: 0 0.6rem 0.6rem; }
+.dk-ctl-drop-btn {
+  width: 100%; display: flex; align-items: center; gap: 0.45rem; padding: 0.35rem 0.55rem;
+  background: none; border: 1px solid var(--border); color: var(--fg); font: inherit; cursor: pointer; transition: border-color 0.15s;
+}
+.dk-ctl-drop-btn:hover, .dk-ctl-drop-btn:focus-visible, .dk-ctl-drop.open .dk-ctl-drop-btn { border-color: var(--accent); outline: none; }
+.dk-ctl-drop-k { margin-right: auto; color: var(--muted); }
+.dk-ctl-drop-ch { width: 0.75rem; height: 0.75rem; color: var(--muted); transition: transform 0.2s; }
+.dk-ctl-drop.open .dk-ctl-drop-ch { transform: rotate(180deg); }
+.dk-ctl-drop-list {
+  list-style: none; margin: 0; padding: 0.2rem 0; max-height: min(42vh, 20rem); overflow-y: auto; overscroll-behavior: contain;
+  border: 1px solid var(--accent); border-top: 0; animation: pop-in 0.12s ease-out;
+}
+.dk-ctl-drop-opt { display: flex; align-items: flex-start; gap: 0.5rem; padding: 0.35rem 0.55rem; cursor: pointer; outline: none; }
+.dk-ctl-drop-opt .dk-ctl-swatch { margin-top: 0.3em; }
+.dk-ctl-drop-opt:hover, .dk-ctl-drop-opt:focus { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.dk-ctl-drop-text { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+.dk-ctl-drop-name { color: var(--fg); }
+.dk-ctl-drop-opt.on .dk-ctl-drop-name { color: var(--accent); }
+.dk-ctl-drop-opt.on .dk-ctl-drop-name::after { content: " \2713"; }
+.dk-ctl-drop-about { color: var(--muted); font-size: 0.68rem; line-height: 1.3; }
+.dk-ctl-drop-act { border-top: 1px solid var(--border); margin-top: 0.2rem; padding-top: 0.45rem; }
+.dk-ctl-drop-ic { width: 0.75rem; height: 0.75rem; flex: none; margin-top: 0.2em; color: var(--muted); }
+/* the custom theme's editor: a label, its control, a note under */
+.dk-theme-pane { display: flex; flex-direction: column; gap: 0.55rem; padding: 0.9rem; font-size: 0.8rem; }
+.dk-theme-pane .dk-note { margin: 0 0 0.3rem; }
+.dk-theme-row { display: grid; grid-template-columns: 6.5rem minmax(0, 1fr); align-items: center; gap: 0.15rem 0.7rem; }
+.dk-theme-k { color: var(--muted); }
+.dk-theme-note { grid-column: 2; color: var(--dim); font-size: 0.7rem; }
+.dk-theme-in { min-width: 0; padding: 0.25rem 0.4rem; background: var(--card); border: 1px solid var(--border); color: var(--fg); font: inherit; }
+.dk-theme-in:focus { border-color: var(--accent); outline: none; }
+.dk-theme-color { display: flex; align-items: center; gap: 0.5rem; }
+.dk-theme-color input[type="color"] { width: 2.4rem; height: 1.7rem; padding: 0.1rem; cursor: pointer; }
+.dk-theme-color button { padding: 0.2rem 0.5rem; background: none; border: 1px solid var(--border); color: var(--muted); font: inherit; font-size: 0.72rem; cursor: pointer; }
+.dk-theme-color button:disabled { opacity: 0.5; cursor: default; }
+.dk-theme-pane .update-actions { display: flex; justify-content: flex-end; margin-top: 0.4rem; }
 .dk-ctl-who { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
 .dk-ctl-name { color: var(--fg); font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dk-ctl-out {
@@ -2709,27 +2620,8 @@ body:has(.dk-pop:not([hidden])) .toasts { opacity: 0; pointer-events: none; }
 
 /* --- ide ---------------------------------------------------------------------------------- */
 
-/* VS Code's Dark Modern and Light Modern, the page's theme picking between them;
-   its own system font for the chrome, the page's mono for code and terminals */
-.ide-win {
-  --ide-bg: #1f1f1f; --ide-side: #181818; --ide-fg: #cccccc; --ide-strong: #ffffff; --ide-muted: #9d9d9d; --ide-dim: #6e7681;
-  --ide-border: #2b2b2b; --ide-accent: #0078d4; --ide-link: #4daafc; --ide-hover: #2a2d2e; --ide-sel: #04395e; --ide-sel-off: #37373d;
-  --ide-input: #313131; --ide-input-border: #3c3c3c; --ide-button: #0078d4; --ide-button-hover: #026ec1; --ide-button-fg: #ffffff;
-  --ide-second: #313131; --ide-second-hover: #3c3c3c; --ide-second-fg: #cccccc; --ide-widget: #202020; --ide-widget-border: #454545;
-  --ide-badge: #616161; --ide-badge-fg: #f8f8f8; --ide-err: #f85149; --ide-warn: #cca700; --ide-info: #3794ff; --ide-ok: #2ea043;
-  --ide-hl: #2aaaff; --ide-find: rgb(234 92 0 / 0.33); --ide-find-now: #9e6a03; --ide-guide: #404040; --ide-scroll: rgb(121 121 121 / 0.4);
-  --ide-shadow: 0 0 8px 2px rgb(0 0 0 / 0.36); --ide-ed-sel: #264f78; --ide-line-nr: #6e7681; --ide-caret: #aeafad;
-  --ide-ui: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", system-ui, Ubuntu, "Droid Sans", sans-serif;
-}
-:root[data-theme="light"] .ide-win {
-  --ide-bg: #ffffff; --ide-side: #f8f8f8; --ide-fg: #3b3b3b; --ide-strong: #000000; --ide-muted: #616161; --ide-dim: #8b8b8b;
-  --ide-border: #e5e5e5; --ide-accent: #005fb8; --ide-link: #005fb8; --ide-hover: #f2f2f2; --ide-sel: #e8e8e8; --ide-sel-off: #e4e6f1;
-  --ide-input: #ffffff; --ide-input-border: #cecece; --ide-button: #005fb8; --ide-button-hover: #0258a8; --ide-second: #e5e5e5;
-  --ide-second-hover: #cccccc; --ide-second-fg: #3b3b3b; --ide-widget: #f8f8f8; --ide-widget-border: #e5e5e5; --ide-badge: #cccccc;
-  --ide-badge-fg: #3b3b3b; --ide-err: #e51400; --ide-warn: #bf8803; --ide-info: #1a85ff; --ide-hl: #0066bf; --ide-find: rgb(234 92 0 / 0.25);
-  --ide-find-now: #a8ac94; --ide-guide: #d3d3d3; --ide-scroll: rgb(100 100 100 / 0.4); --ide-shadow: 0 0 8px 2px rgb(0 0 0 / 0.16);
-  --ide-ed-sel: #add6ff; --ide-line-nr: #6e7681; --ide-caret: #000000;
-}
+/* the workbench's --ide-* tokens are the theme library's: VS Code's Dark and Light Modern by
+   default, each theme's own over them; its chrome in a system font, code and terminals in mono */
 
 /* the window: its title bar VS Code's, its body the workbench */
 .dk-win.ide-win { background: var(--ide-bg); border-color: var(--ide-border); }
@@ -2764,6 +2656,19 @@ body:has(.dk-pop:not([hidden])) .toasts { opacity: 0; pointer-events: none; }
 .ide-cc:hover { background: color-mix(in srgb, var(--ide-fg) 10%, transparent); color: var(--ide-fg); }
 .ide-cc .ide-ic { width: 14px; height: 14px; }
 .ide-cc-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* the title bar's own buttons: the chat at its left, the update at its right */
+.ide-tb {
+  flex: none; height: 26px; display: inline-flex; align-items: center; gap: 6px; padding: 0 8px;
+  background: none; border: none; color: var(--ide-fg); font: 12px var(--ide-ui); cursor: pointer; border-radius: 5px;
+}
+.ide-tb:hover { background: color-mix(in srgb, var(--ide-fg) 12%, transparent); }
+.ide-tb:focus-visible { outline: 1px solid var(--ide-accent); outline-offset: -1px; }
+.ide-tb .ide-ic { width: 15px; height: 15px; }
+.ide-tb-ai { width: 30px; padding: 0; justify-content: center; }
+.ide-tb-ai.on { color: var(--ide-accent); background: color-mix(in srgb, var(--ide-fg) 8%, transparent); }
+.ide-tb-update { margin-right: 4px; color: var(--ide-muted); }
+.ide-tb-update:hover { color: var(--ide-fg); }
+.ide-narrow .ide-tb-text { display: none; }
 
 /* --- the workbench ------------------------------------------------------------------------ */
 
@@ -2792,7 +2697,7 @@ body:has(.dk-pop:not([hidden])) .toasts { opacity: 0; pointer-events: none; }
 
 /* activity bar */
 .ide-activity { flex: none; width: 48px; display: flex; flex-direction: column; justify-content: space-between; background: var(--ide-side); border-right: 1px solid var(--ide-border); }
-.ide-act-top, .ide-act-foot { display: flex; flex-direction: column; }
+.ide-act-top { display: flex; flex-direction: column; }
 .ide-act {
   position: relative; width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; padding: 0;
   background: none; border: none; color: var(--ide-dim); cursor: pointer;
@@ -3137,8 +3042,8 @@ body:has(.dk-pop:not([hidden])) .toasts { opacity: 0; pointer-events: none; }
 .ide-md h2 { font-size: 20px; margin-top: 28px; padding-bottom: 4px; border-bottom: 1px solid var(--ide-border); }
 .ide-md h3 { font-size: 16px; margin-top: 22px; }
 .ide-md a { color: var(--ide-link); }
-.ide-md code { font-family: var(--font); font-size: 0.92em; padding: 1px 4px; background: color-mix(in srgb, var(--ide-fg) 10%, transparent); border-radius: 3px; }
-.ide-md pre { font-family: var(--font); padding: 12px 14px; overflow-x: auto; background: var(--ide-side); border: 1px solid var(--ide-border); border-radius: 4px; line-height: 1.5; }
+.ide-md code { font-family: var(--mono); font-size: 0.92em; padding: 1px 4px; background: color-mix(in srgb, var(--ide-fg) 10%, transparent); border-radius: 3px; }
+.ide-md pre { font-family: var(--mono); padding: 12px 14px; overflow-x: auto; background: var(--ide-side); border: 1px solid var(--ide-border); border-radius: 4px; line-height: 1.5; }
 .ide-md pre code { padding: 0; background: none; }
 .ide-md table { border-collapse: collapse; display: block; overflow-x: auto; }
 .ide-md th, .ide-md td { border: 1px solid var(--ide-border); padding: 4px 10px; text-align: left; vertical-align: top; }
@@ -3175,7 +3080,7 @@ body:has(.dk-pop:not([hidden])) .toasts { opacity: 0; pointer-events: none; }
 .ide-panel-body { flex: 1; min-height: 0; display: flex; }
 .ide-pview { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .ide-select { height: 22px; padding: 0 6px; background: var(--ide-input); color: var(--ide-fg); border: 1px solid var(--ide-input-border); font: 12px var(--ide-ui); max-width: 220px; border-radius: 2px; }
-.ide-output { flex: 1; margin: 0; padding: 4px 20px; overflow: auto; font: 12px/1.45 var(--font); white-space: pre-wrap; word-break: break-word; color: var(--ide-fg); outline: none; user-select: text; background: var(--ide-side); }
+.ide-output { flex: 1; margin: 0; padding: 4px 20px; overflow: auto; font: 12px/1.45 var(--mono); white-space: pre-wrap; word-break: break-word; color: var(--ide-fg); outline: none; user-select: text; background: var(--ide-side); }
 .ide-problems { flex: 1; overflow: auto; outline: none; padding-bottom: 8px; }
 .ide-prob-file, .ide-prob { display: flex; align-items: center; gap: 6px; height: 22px; padding: 0 12px; cursor: pointer; white-space: nowrap; }
 .ide-prob-file:hover, .ide-prob:hover { background: var(--ide-hover); }
@@ -3233,8 +3138,8 @@ body:has(.dk-pop:not([hidden])) .toasts { opacity: 0; pointer-events: none; }
 .ide-msg-body.md p { margin: 0 0 8px; }
 .ide-msg-body.md p:last-child { margin-bottom: 0; }
 .ide-msg-body.md ul, .ide-msg-body.md ol { padding-left: 20px; margin: 4px 0 8px; }
-.ide-msg-body.md code { font-family: var(--font); font-size: 0.92em; padding: 1px 4px; background: color-mix(in srgb, var(--ide-fg) 10%, transparent); border-radius: 3px; }
-.ide-msg-body.md pre { margin: 0; padding: 10px 12px; overflow-x: auto; font: 12px/1.5 var(--font); background: var(--ide-bg); border: 1px solid var(--ide-border); border-radius: 4px; }
+.ide-msg-body.md code { font-family: var(--mono); font-size: 0.92em; padding: 1px 4px; background: color-mix(in srgb, var(--ide-fg) 10%, transparent); border-radius: 3px; }
+.ide-msg-body.md pre { margin: 0; padding: 10px 12px; overflow-x: auto; font: 12px/1.5 var(--mono); background: var(--ide-bg); border: 1px solid var(--ide-border); border-radius: 4px; }
 .ide-msg-body.md pre code { padding: 0; background: none; }
 .ide-msg-body.md a { color: var(--ide-link); }
 .ide-code-wrap { position: relative; margin: 6px 0 10px; }
@@ -3289,8 +3194,8 @@ body:has(.dk-pop:not([hidden])) .toasts { opacity: 0; pointer-events: none; }
 .ide-agent-text.md p { margin: 0 0 8px; }
 .ide-agent-text.md p:last-child { margin-bottom: 0; }
 .ide-agent-text.md ul, .ide-agent-text.md ol { padding-left: 20px; margin: 4px 0 8px; }
-.ide-agent-text.md code { font-family: var(--font); font-size: 0.92em; padding: 1px 4px; background: color-mix(in srgb, var(--ide-fg) 10%, transparent); border-radius: 3px; }
-.ide-agent-text.md pre { margin: 0; padding: 10px 12px; overflow-x: auto; font: 12px/1.5 var(--font); background: var(--ide-bg); border: 1px solid var(--ide-border); border-radius: 4px; }
+.ide-agent-text.md code { font-family: var(--mono); font-size: 0.92em; padding: 1px 4px; background: color-mix(in srgb, var(--ide-fg) 10%, transparent); border-radius: 3px; }
+.ide-agent-text.md pre { margin: 0; padding: 10px 12px; overflow-x: auto; font: 12px/1.5 var(--mono); background: var(--ide-bg); border: 1px solid var(--ide-border); border-radius: 4px; }
 .ide-agent-text.md pre code { padding: 0; background: none; }
 .ide-agent-think summary { cursor: pointer; color: var(--ide-muted); font-size: 12px; font-style: italic; }
 .ide-agent-think-body { margin-top: 4px; padding-left: 10px; border-left: 2px solid var(--ide-border); color: var(--ide-muted); font-size: 12px; white-space: pre-wrap; }
@@ -3309,16 +3214,16 @@ body:has(.dk-pop:not([hidden])) .toasts { opacity: 0; pointer-events: none; }
 .ide-tool.bad .ide-tool-pip { background: var(--ide-err); }
 @keyframes ide-pip { to { opacity: 0.3; } }
 .ide-tool-name { flex: none; font-weight: 600; }
-.ide-tool-arg { flex: 1; min-width: 0; color: var(--ide-muted); font-family: var(--font); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ide-tool-arg { flex: 1; min-width: 0; color: var(--ide-muted); font-family: var(--mono); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ide-tool-out { padding: 0 8px 4px 21px; color: var(--ide-muted); font-size: 11px; overflow-wrap: anywhere; }
 .ide-tool-out:empty { display: none; }
 .ide-tool.bad .ide-tool-out { color: var(--ide-err); }
 .ide-tool-out .ide-link { font-size: 11px; }
 .ide-tool-body { padding: 0 8px 8px; }
 .ide-tool-body > * + * { margin-top: 6px; }
-.ide-tool-cmd, .ide-tool-res { margin: 0; padding: 6px 8px; max-height: 240px; overflow: auto; font: 11px/1.45 var(--font); white-space: pre-wrap; overflow-wrap: anywhere; background: var(--ide-bg); border: 1px solid var(--ide-border); border-radius: 3px; }
+.ide-tool-cmd, .ide-tool-res { margin: 0; padding: 6px 8px; max-height: 240px; overflow: auto; font: 11px/1.45 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; background: var(--ide-bg); border: 1px solid var(--ide-border); border-radius: 3px; }
 .ide-tool-res.bad { color: var(--ide-err); }
-.ide-agent-diff { max-height: 280px; overflow: auto; font: 11px/1.45 var(--font); background: var(--ide-bg); border: 1px solid var(--ide-border); border-radius: 3px; }
+.ide-agent-diff { max-height: 280px; overflow: auto; font: 11px/1.45 var(--mono); background: var(--ide-bg); border: 1px solid var(--ide-border); border-radius: 3px; }
 .ide-dl { padding: 0 8px; white-space: pre; }
 .ide-dl.add { background: color-mix(in srgb, var(--ide-ok) 16%, transparent); }
 .ide-dl.del { background: color-mix(in srgb, var(--ide-err) 16%, transparent); }
@@ -3372,7 +3277,7 @@ body:has(.dk-pop:not([hidden])) .toasts { opacity: 0; pointer-events: none; }
 .ide-runners { padding: 0 12px 8px 20px; }
 .ide-runner { display: grid; grid-template-columns: 54px 1fr auto; gap: 8px; align-items: baseline; padding: 3px 0; font-size: 12px; }
 .ide-runner-ext { color: var(--ide-strong); }
-.ide-runner-cmd { font: 11px var(--font); color: var(--ide-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ide-runner-cmd { font: 11px var(--mono); color: var(--ide-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ide-runner-by { color: var(--ide-dim); font-size: 11px; }
 .ide-sec-head .ide-sec-act { margin-left: auto; width: 20px; height: 20px; padding: 2px; font-weight: 400; }
 /* the build: what it builds with, where, and its tasks */
@@ -3462,7 +3367,7 @@ body:has(.dk-pop:not([hidden])) .toasts { opacity: 0; pointer-events: none; }
 /* a diff as a page: both sides' line numbers, the change coloured */
 .ide-diff { display: flex; flex-direction: column; min-height: 100%; }
 .ide-diff .ide-page-head { padding: 8px 16px; }
-.ide-diff-lines { flex: 1; overflow: auto; font: var(--ide-code-font, 13px) var(--font); line-height: 1.5; padding-bottom: 24px; }
+.ide-diff-lines { flex: 1; overflow: auto; font: var(--ide-code-font, 13px) var(--mono); line-height: 1.5; padding-bottom: 24px; }
 .ide-diff-l { display: flex; white-space: pre; min-width: max-content; }
 .ide-diff-n { flex: none; width: 52px; padding-right: 10px; text-align: right; color: var(--ide-line-nr); user-select: none; }
 .ide-diff-t { flex: 1; padding: 0 12px; }
@@ -3647,92 +3552,38 @@ button.ide-fd-place:hover { background: var(--ide-hover); color: var(--ide-stron
 
 /* --- color themes: Phosphorus's, and the extra ones ------------------------------------------ */
 
-/* Phosphorus: the desktop's own tokens and type, light or dark as the page is, square-cornered
-   (:root so it outranks the light theme's VS Code tokens) */
-:root .ide-win.ide-theme-phosphorus {
-  --ide-bg: var(--bg); --ide-side: var(--tabbar); --ide-fg: var(--fg); --ide-strong: var(--fg); --ide-muted: var(--muted); --ide-dim: var(--dim);
-  --ide-border: var(--border); --ide-accent: var(--accent); --ide-link: var(--accent); --ide-hover: color-mix(in srgb, var(--fg) 6%, transparent);
-  --ide-sel: color-mix(in srgb, var(--accent) 24%, transparent); --ide-sel-off: color-mix(in srgb, var(--fg) 9%, transparent);
-  --ide-input: var(--card); --ide-input-border: var(--border); --ide-button: var(--accent); --ide-button-hover: color-mix(in srgb, var(--accent) 85%, var(--fg));
-  --ide-button-fg: var(--bg); --ide-second: var(--card); --ide-second-hover: color-mix(in srgb, var(--fg) 10%, var(--card)); --ide-second-fg: var(--fg);
-  --ide-widget: var(--card); --ide-widget-border: var(--border); --ide-badge: var(--accent); --ide-badge-fg: var(--bg);
-  --ide-err: var(--offmesh); --ide-warn: var(--warn); --ide-info: var(--sky); --ide-ok: var(--online); --ide-hl: var(--accent);
-  --ide-find: color-mix(in srgb, var(--accent-2) 32%, transparent); --ide-find-now: color-mix(in srgb, var(--accent-2) 60%, transparent);
-  --ide-guide: var(--border); --ide-scroll: color-mix(in srgb, var(--muted) 40%, transparent); --ide-shadow: var(--drop);
-  --ide-ed-sel: color-mix(in srgb, var(--accent) 30%, var(--ide-bg)); --ide-line-nr: var(--dim); --ide-caret: var(--accent);
-  --ide-ui: var(--font);
-}
-.ide-win.ide-theme-phosphorus .ide { font-size: 12px; }
-.ide-win.ide-theme-phosphorus .ide * { border-radius: 0; }
-.ide-win.ide-theme-phosphorus .ide-tab.on { box-shadow: inset 0 2px 0 var(--ide-accent); }
-.ide-win.ide-theme-phosphorus .ide-sec-head { letter-spacing: 0.06em; }
-:root .ide-win.ide-theme-phosphorus .ide .code-hl :is(.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-doctag, .hljs-name, .hljs-tag) { color: var(--accent); }
-:root .ide-win.ide-theme-phosphorus .ide .code-hl :is(.hljs-string, .hljs-regexp, .hljs-addition) { color: var(--sage); }
-:root .ide-win.ide-theme-phosphorus .ide .code-hl :is(.hljs-number, .hljs-symbol, .hljs-bullet) { color: var(--sand); }
-:root .ide-win.ide-theme-phosphorus .ide .code-hl :is(.hljs-title, .hljs-section, .hljs-selector-id) { color: var(--sky); }
-:root .ide-win.ide-theme-phosphorus .ide .code-hl :is(.hljs-type, .hljs-built_in, .hljs-selector-class) { color: var(--teal); }
-:root .ide-win.ide-theme-phosphorus .ide .code-hl :is(.hljs-attr, .hljs-attribute, .hljs-variable, .hljs-variable.language_) { color: var(--rose); }
-:root .ide-win.ide-theme-phosphorus .ide .code-hl .hljs-meta { color: var(--accent-2); }
-:root .ide-win.ide-theme-phosphorus .ide .code-hl :is(.hljs-comment, .hljs-quote) { color: var(--muted); font-style: italic; }
-:root .ide-win.ide-theme-phosphorus .ide .code-hl .hljs-deletion { color: var(--offmesh); }
+/* Phosphorus: the desktop's own tokens and type, light or dark as the page is, square-cornered;
+   cli, macos and windows 11 build on it */
+.ide-win:is(.ide-theme-phosphorus, .ide-theme-cli) .ide { font-size: 12px; }
+.ide-win:is(.ide-theme-phosphorus, .ide-theme-cli) .ide * { border-radius: 0; }
+.ide-win:is(.ide-theme-phosphorus, .ide-theme-cli, .ide-theme-macos, .ide-theme-win11) .ide-tab.on { box-shadow: inset 0 2px 0 var(--ide-accent); }
+.ide-win:is(.ide-theme-phosphorus, .ide-theme-cli, .ide-theme-macos, .ide-theme-win11) .ide-sec-head { letter-spacing: 0.06em; }
+/* every theme but vs code its own syntax colors, the library's --hl-* tokens */
+:root .ide-win[class*="ide-theme-"] .ide .code-hl :is(.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-doctag, .hljs-name, .hljs-tag) { color: var(--hl-kw); }
+:root .ide-win[class*="ide-theme-"] .ide .code-hl :is(.hljs-string, .hljs-regexp, .hljs-addition) { color: var(--hl-str); }
+:root .ide-win[class*="ide-theme-"] .ide .code-hl :is(.hljs-number, .hljs-symbol, .hljs-bullet) { color: var(--hl-num); }
+:root .ide-win[class*="ide-theme-"] .ide .code-hl :is(.hljs-title, .hljs-section, .hljs-selector-id) { color: var(--hl-title); }
+:root .ide-win[class*="ide-theme-"] .ide .code-hl :is(.hljs-type, .hljs-built_in, .hljs-selector-class) { color: var(--hl-type); }
+:root .ide-win[class*="ide-theme-"] .ide .code-hl :is(.hljs-attr, .hljs-attribute, .hljs-variable, .hljs-variable.language_) { color: var(--hl-attr); }
+:root .ide-win[class*="ide-theme-"] .ide .code-hl .hljs-meta { color: var(--hl-meta); }
+:root .ide-win[class*="ide-theme-"] .ide .code-hl :is(.hljs-comment, .hljs-quote) { color: var(--hl-cmt); font-style: var(--hl-cmt-style, italic); }
+:root .ide-win[class*="ide-theme-"] .ide .code-hl .hljs-deletion { color: var(--hl-del); }
 
 /* Medieval Fantasy: oak and candlelight by night, parchment and iron-gall ink by day, gilt and rubric red */
-.ide-win.ide-theme-medieval {
-  --ide-bg: #1e1711; --ide-side: #17110c; --ide-fg: #e6d8bb; --ide-strong: #fbf0d6; --ide-muted: #a8957a; --ide-dim: #76664f;
-  --ide-border: #3b2d20; --ide-accent: #c9a24a; --ide-link: #e0bd66; --ide-hover: #2a2018; --ide-sel: #4a3518; --ide-sel-off: #33271c;
-  --ide-input: #120d09; --ide-input-border: #4a3a28; --ide-button: #8e2a1f; --ide-button-hover: #a5352a; --ide-button-fg: #fbf0d6;
-  --ide-second: #33271c; --ide-second-hover: #43342a; --ide-second-fg: #e6d8bb; --ide-widget: #1a140e; --ide-widget-border: #5a4630;
-  --ide-badge: #8e2a1f; --ide-badge-fg: #fbf0d6; --ide-err: #e0533f; --ide-warn: #d9a441; --ide-info: #8fb3c9; --ide-ok: #8aa857;
-  --ide-hl: #e0bd66; --ide-find: rgb(201 162 74 / 0.3); --ide-find-now: rgb(201 162 74 / 0.6); --ide-guide: #3b2d20;
-  --ide-scroll: rgb(168 149 122 / 0.35); --ide-shadow: 0 0 10px 2px rgb(0 0 0 / 0.5); --ide-ed-sel: #5a4220; --ide-line-nr: #76664f; --ide-caret: #e0bd66;
-  --ide-ui: "Palatino Linotype", "Book Antiqua", Palatino, "URW Palladio L", "P052", Georgia, serif;
-  --mv-kw: #d9a441; --mv-str: #9cb36b; --mv-num: #d98b5f; --mv-title: #ecd08f; --mv-type: #7fb5a3; --mv-attr: #c39bd0; --mv-meta: #e0533f; --mv-cmt: #8a7a60;
-}
-:root[data-theme="light"] .ide-win.ide-theme-medieval {
-  --ide-bg: #f4ead3; --ide-side: #eadcbc; --ide-fg: #3a2a1a; --ide-strong: #1e140a; --ide-muted: #7a6448; --ide-dim: #a08a6a;
-  --ide-border: #d6c39b; --ide-accent: #8e2a1f; --ide-link: #7a4f12; --ide-hover: #e6d6b2; --ide-sel: #e3cd98; --ide-sel-off: #e2d3b0;
-  --ide-input: #fbf4e2; --ide-input-border: #cdb68a; --ide-button: #8e2a1f; --ide-button-hover: #a5352a; --ide-button-fg: #fbf0d6;
-  --ide-second: #e2d3b0; --ide-second-hover: #d8c59c; --ide-second-fg: #3a2a1a; --ide-widget: #f7eedb; --ide-widget-border: #cdb68a;
-  --ide-badge: #8e2a1f; --ide-badge-fg: #fbf0d6; --ide-err: #b02a1a; --ide-warn: #9a6a10; --ide-info: #2f5d7c; --ide-ok: #4b6b2a;
-  --ide-hl: #8e2a1f; --ide-find: rgb(176 120 20 / 0.25); --ide-find-now: rgb(176 120 20 / 0.5); --ide-guide: #dccaa4;
-  --ide-scroll: rgb(122 100 72 / 0.35); --ide-shadow: 0 0 10px 2px rgb(60 40 10 / 0.2); --ide-ed-sel: #ead09a; --ide-line-nr: #a08a6a; --ide-caret: #8e2a1f;
-  --mv-kw: #8e2a1f; --mv-str: #4b6b2a; --mv-num: #9a4f1a; --mv-title: #6b4a12; --mv-type: #1f5e57; --mv-attr: #5b3a7a; --mv-meta: #b02a1a; --mv-cmt: #8a7656;
-}
 .ide-win.ide-theme-medieval .dk-head { border-bottom: 3px double var(--ide-accent); }
 .ide-win.ide-theme-medieval .ide-sec-head { font-variant: small-caps; text-transform: none; font-size: 13px; letter-spacing: 0.08em; }
 .ide-win.ide-theme-medieval .ide-tab.on { box-shadow: inset 0 2px 0 var(--ide-accent); }
 .ide-win.ide-theme-medieval .ide-tab.on .ide-tab-label { font-style: italic; }
 .ide-win.ide-theme-medieval .ide-editors { background-image: radial-gradient(ellipse at 50% 0%, color-mix(in srgb, var(--ide-accent) 7%, transparent), transparent 65%); }
 .ide-win.ide-theme-medieval .ide-button:not(.secondary) { border: 1px solid color-mix(in srgb, var(--ide-accent) 60%, transparent); }
-:root .ide-win.ide-theme-medieval .ide .code-hl :is(.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-doctag, .hljs-name, .hljs-tag) { color: var(--mv-kw); }
-:root .ide-win.ide-theme-medieval .ide .code-hl :is(.hljs-string, .hljs-regexp, .hljs-addition) { color: var(--mv-str); }
-:root .ide-win.ide-theme-medieval .ide .code-hl :is(.hljs-number, .hljs-symbol, .hljs-bullet) { color: var(--mv-num); }
-:root .ide-win.ide-theme-medieval .ide .code-hl :is(.hljs-title, .hljs-section, .hljs-selector-id) { color: var(--mv-title); }
-:root .ide-win.ide-theme-medieval .ide .code-hl :is(.hljs-type, .hljs-built_in, .hljs-selector-class) { color: var(--mv-type); }
-:root .ide-win.ide-theme-medieval .ide .code-hl :is(.hljs-attr, .hljs-attribute, .hljs-variable, .hljs-variable.language_) { color: var(--mv-attr); }
-:root .ide-win.ide-theme-medieval .ide .code-hl .hljs-meta { color: var(--mv-meta); }
-:root .ide-win.ide-theme-medieval .ide .code-hl :is(.hljs-comment, .hljs-quote) { color: var(--mv-cmt); font-style: italic; }
 /* its terminals in the same inks */
 .ide-win.ide-theme-medieval .ide-term-view {
-  --accent: var(--ide-caret); --offmesh: var(--ide-err); --online: var(--ide-ok); --accent-2: var(--mv-kw); --sky: var(--ide-info); --teal: var(--mv-type);
+  --accent: var(--ide-caret); --offmesh: var(--ide-err); --online: var(--ide-ok); --accent-2: var(--hl-kw); --sky: var(--ide-info); --teal: var(--hl-type);
   --muted: var(--ide-muted); --dim: var(--ide-dim); --border: var(--ide-border); --bg: var(--ide-bg);
 }
 
 /* Pyxra: the palette's tokens on Pyxra's surface tiers, its pixel type for the chrome (code keeps the
    page's mono), square bevels lit top-left, dithered bars and offset shadows that never blur */
-:root .ide-win.ide-theme-pyxra {
-  --ide-bg: var(--px-editor); --ide-side: var(--px-panel); --ide-fg: var(--fg); --ide-strong: var(--px-strong); --ide-muted: var(--muted); --ide-dim: var(--dim);
-  --ide-border: var(--px-line); --ide-accent: var(--accent); --ide-link: var(--accent); --ide-hover: var(--tab-hover);
-  --ide-sel: color-mix(in srgb, var(--accent) 26%, transparent); --ide-sel-off: color-mix(in srgb, var(--fg) 9%, transparent);
-  --ide-input: var(--px-sunken); --ide-input-border: var(--px-bevel-lo); --ide-button: var(--px-button); --ide-button-hover: color-mix(in srgb, var(--px-button) 82%, #fff);
-  --ide-button-fg: #ffffff; --ide-second: var(--px-raised); --ide-second-hover: color-mix(in srgb, var(--fg) 8%, var(--px-raised)); --ide-second-fg: var(--fg);
-  --ide-widget: var(--px-head); --ide-widget-border: var(--px-line-soft); --ide-badge: var(--px-button); --ide-badge-fg: #ffffff;
-  --ide-err: var(--offmesh); --ide-warn: var(--warn); --ide-info: var(--sky); --ide-ok: var(--online); --ide-hl: var(--accent);
-  --ide-find: color-mix(in srgb, var(--warn) 30%, transparent); --ide-find-now: color-mix(in srgb, var(--warn) 60%, transparent);
-  --ide-guide: var(--px-line-soft); --ide-scroll: var(--px-thumb); --ide-shadow: var(--drop);
-  --ide-ed-sel: color-mix(in srgb, var(--accent) 30%, var(--ide-bg)); --ide-line-nr: var(--dim); --ide-caret: var(--accent);
-  --ide-ui: "Fixedsys Excelsior 3.01", Fixedsys, "Lucida Console", "Courier New", ui-monospace, monospace;
-}
 .ide-win.ide-theme-pyxra .ide { font-size: 12px; -webkit-font-smoothing: none; }
 .ide-win.ide-theme-pyxra .ide * { border-radius: 0; }
 .ide-win.ide-theme-pyxra * { scrollbar-color: var(--px-thumb) var(--px-sunken); }
@@ -3747,15 +3598,6 @@ button.ide-fd-place:hover { background: var(--ide-hover); color: var(--ide-stron
 .ide-win.ide-theme-pyxra .ide-button:not(.secondary) { border-top-color: color-mix(in srgb, var(--px-button) 55%, #fff); border-left-color: color-mix(in srgb, var(--px-button) 55%, #fff); }
 .ide-win.ide-theme-pyxra .ide-input { border-color: var(--px-bevel-lo) var(--px-bevel-hi) var(--px-bevel-hi) var(--px-bevel-lo); }
 .ide-win.ide-theme-pyxra .ide-sb-remote { background: var(--px-button); }
-:root .ide-win.ide-theme-pyxra .ide .code-hl :is(.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-doctag, .hljs-name, .hljs-tag) { color: var(--accent); }
-:root .ide-win.ide-theme-pyxra .ide .code-hl :is(.hljs-string, .hljs-regexp, .hljs-addition) { color: var(--sage); }
-:root .ide-win.ide-theme-pyxra .ide .code-hl :is(.hljs-number, .hljs-symbol, .hljs-bullet) { color: var(--sand); }
-:root .ide-win.ide-theme-pyxra .ide .code-hl :is(.hljs-title, .hljs-section, .hljs-selector-id) { color: var(--sky); }
-:root .ide-win.ide-theme-pyxra .ide .code-hl :is(.hljs-type, .hljs-built_in, .hljs-selector-class) { color: var(--teal); }
-:root .ide-win.ide-theme-pyxra .ide .code-hl :is(.hljs-attr, .hljs-attribute, .hljs-variable, .hljs-variable.language_) { color: var(--rose); }
-:root .ide-win.ide-theme-pyxra .ide .code-hl .hljs-meta { color: var(--accent-2); }
-:root .ide-win.ide-theme-pyxra .ide .code-hl :is(.hljs-comment, .hljs-quote) { color: var(--muted); font-style: italic; }
-:root .ide-win.ide-theme-pyxra .ide .code-hl .hljs-deletion { color: var(--offmesh); }
 
 /* --- narrow: the side bars over the editors ------------------------------------------------ */
 
@@ -3790,3 +3632,392 @@ button.ide-fd-place:hover { background: var(--ide-hover); color: var(--ide-stron
 
 .sx-ic { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linecap: round; stroke-linejoin: round; }
 
+/* --- whole looks: cli, macos and windows 11 (their tokens the library's) ---------------------- */
+
+/* Each its own type, corners, shadows and chrome, kept as plain as the systems they follow:
+   solid desks, no gradients, no glow, short fades. cli a plain terminal, the bar tmux's status line;
+   macos san francisco, traffic lights and a dock; windows 11 segoe, caption buttons and a centered taskbar */
+
+/* --- any theme with rounded controls (data-round: macos, windows 11, a custom one) -------------- */
+
+/* --r-* the corners: ctl a control's, pop a popup's, card a panel's, win a window's */
+/* every control rounded; zero specificity, so a class's own corners (round pips) still win */
+:where(:root[data-round]) :where(button, input, select, textarea, .dk-task, .dk-tray, .dk-chip,
+  .tab-menu-list li, .fm-row, .fm-crumbs, .fm-find, .toast, .msg-file, .chat-find, .chat-bar, .dk-snap, .dk-band, .dk-badge, .update-row,
+  .cw-item, .fm-share, .fm-tile, .cd-pick, .cd-att, .dk-ctl-drop-opt) { border-radius: var(--r-ctl); }
+:where(:root[data-round]) :where(.msg-img img, .chat-log .md pre, .code-md .md pre, .home-note, .chat-form, .chat-join, .cd-diff, .cd-perm,
+  .home-col, .st-card, .st-mesh, .about-info, .cw-side, .mesh-panel, .chat-panel, .st-box, .bubble, .cd-user, .cd-box) { border-radius: var(--r-card); }
+:where(:root[data-round]) :where(.dk-note-pop, .dk-ctl-pop, .dk-menu, .tab-menu, .update-pane, .modal-box, .dk-mcp-pop, .dk-login, .acct-unlock,
+  .dk-mesh-pop > .mesh-panel, .dk-ctl-tile, .dk-ctl-chip, .dk-ctl-out, .dk-ctl-theme, .dk-ctl-drop-btn, .dk-ctl-drop-list, .dk-icon .dk-tile) { border-radius: var(--r-pop); }
+:root[data-round] .dk-ctl-theme { overflow: hidden; }
+:root[data-round] .dk-ctl-swatch { border-radius: 50%; }
+:root[data-round] .dk-win { overflow: clip; }
+:root[data-round] .dk-win.dk-agent::after { border-radius: inherit; }
+@media (min-width: 721px) {
+  :root[data-round] .dk-win:not([data-snap="max"]) { border-radius: var(--r-win); }
+}
+/* tables, gauges and art laid out in character cells: mono whatever the page's type (data-sans) */
+:root[data-sans] :is(code, pre, kbd, samp, .st-body, .st-probe, .st-sum, .st-model, .st-mesh-grid, .st-ctx,
+  .st-mini, .st-cores, .st-ctr-row, .st-proc-row, .about-art, .keybar, .dk-cl-calls, .dk-cl-out, .cd-tool-out, .cd-dl) { font-family: var(--mono); }
+
+/* a custom theme's own desk color, whatever look it starts from */
+:root[data-custom-desk] .dk-desk:not(.dk-walled *) { background: var(--desk); }
+:root[data-custom-desk] .dk-art:not(.dk-walled *) { display: none; }
+
+/* --- macos and windows 11 alike: filled panels, opaque popups ------------------------------- */
+
+:root:is([data-palette="macos"], [data-palette="win11"]) { accent-color: var(--accent); }
+:root:is([data-palette="macos"], [data-palette="win11"]) ::selection { background: color-mix(in srgb, var(--accent) 35%, transparent); }
+/* the desk one plain color, no dots or art; a picture of the user's still wins */
+:root:is([data-palette="macos"], [data-palette="win11"]) .dk-desk:not(.dk-walled *) { background: var(--desk); }
+:root:is([data-palette="macos"], [data-palette="win11"]) .dk-art:not(.dk-walled *) { display: none; }
+/* panels filled and rounded, their titles inside over the content, not cut into the frame */
+:root:is([data-palette="macos"], [data-palette="win11"]) :is(.home-col, .st-card, .st-mesh, .about-info) {
+  --edge: var(--card); background: var(--card); border-color: var(--border); border-radius: var(--r-card); box-shadow: none;
+}
+:root:is([data-palette="macos"], [data-palette="win11"]) .st-box { border: 0; border-radius: var(--r-ctl); background: color-mix(in srgb, var(--fg) 4%, transparent); }
+:root:is([data-palette="macos"], [data-palette="win11"]) :is(.home-col-head, .st-card-head, .st-head),
+:root:is([data-palette="macos"], [data-palette="win11"]) .about-info::before {
+  position: static; transform: none; width: auto; max-width: none; padding: 0 0 0.4rem; background: none;
+  font-size: 0.8rem; font-weight: 600; letter-spacing: 0; color: var(--fg);
+}
+:root:is([data-palette="macos"], [data-palette="win11"]) .st-head { padding-bottom: 0.25rem; font-size: 0.72rem; }
+:root:is([data-palette="macos"], [data-palette="win11"]) :is(.home-col, .st-card, .st-mesh, .about-info) { padding-top: 0.65rem; }
+:root:is([data-palette="macos"], [data-palette="win11"]) :is(.home-col-head, .mesh-stats-head, .tab-menu-title, .dk-menu-title, .cw-head, .fm-side-head,
+  .dk-note-head, .dk-ctl-head, .dk-cl-title, .dk-cl-sec-t, .update-pane-header > span, .modal-header > span, .about-key) { color: var(--muted); letter-spacing: 0; }
+/* the theme list its own rounded flyout under the button */
+:root:is([data-palette="macos"], [data-palette="win11"]) .dk-ctl-drop-list { margin-top: 4px; border: 1px solid var(--border); border-radius: var(--r-pop); padding: 4px; background: var(--pop-bg); }
+/* windows: system shadows, corners on everything but a maximized one */
+:root:is([data-palette="macos"], [data-palette="win11"]) .dk-win { box-shadow: var(--win-shadow); }
+:root:is([data-palette="macos"], [data-palette="win11"]) .dk-win:not(.focused) { box-shadow: var(--win-shadow-off); }
+:root:is([data-palette="macos"], [data-palette="win11"]) .dk-win[data-snap="max"] { box-shadow: none; }
+:root:is([data-palette="macos"], [data-palette="win11"]) .dk-win:not(.dk-leaving, .dk-minimizing, .dk-restoring) { animation: os-open 0.14s ease-out; }
+@keyframes os-open { from { opacity: 0; scale: 0.98; } }
+/* popups and menus: opaque, rounded, a hairline edge */
+:root:is([data-palette="macos"], [data-palette="win11"]) :is(.dk-note-pop, .dk-ctl-pop, .dk-menu, .tab-menu, .update-pane, .modal-box, .dk-mcp-pop, .dk-login, .acct-unlock, .toast) {
+  border: 1px solid var(--pop-edge); border-radius: var(--r-pop); background: var(--pop-bg); box-shadow: var(--drop); animation: os-pop 0.1s ease-out;
+}
+@keyframes os-pop { from { opacity: 0; } }
+:root:is([data-palette="macos"], [data-palette="win11"]) .toast { border-left: 1px solid var(--pop-edge); }
+:root:is([data-palette="macos"], [data-palette="win11"]) .dk-mesh-pop > .mesh-panel { border-radius: var(--r-pop); box-shadow: var(--drop); }
+:root:is([data-palette="macos"], [data-palette="win11"]) .dk-menu { padding: 4px; min-width: 12rem; font-size: 0.82rem; }
+:root:is([data-palette="macos"], [data-palette="win11"]) .dk-menu button { padding: 0.28rem 0.7rem; border-radius: calc(var(--r-ctl) - 1px); }
+:root:is([data-palette="macos"], [data-palette="win11"]) .dk-menu-sep { margin: 4px 6px; }
+/* push buttons: filled, the primary in the accent */
+:root:is([data-palette="macos"], [data-palette="win11"]) :is(.update-actions button, .acct-pane button, .acct-users button, .acct-unlock button, .cd-mini, .join-key-btn) {
+  padding: 0.25rem 0.8rem; background: var(--ctl); color: var(--fg); font-weight: 400;
+  border: 1px solid var(--ctl-edge); border-bottom-color: var(--ctl-edge-lo);
+}
+:root:is([data-palette="macos"], [data-palette="win11"]) :is(.update-actions button, .acct-pane button, .acct-users button, .acct-unlock button, .cd-mini, .join-key-btn):hover:not(:disabled) {
+  background: var(--ctl-hover); color: var(--fg); border-color: var(--ctl-edge); border-bottom-color: var(--ctl-edge-lo);
+}
+:root:is([data-palette="macos"], [data-palette="win11"]) :is(.update-actions button, .acct-pane button, .acct-users button, .acct-unlock button, .cd-mini):is(.primary, .primary:hover:not(:disabled)) {
+  background: var(--accent); color: var(--on-accent); border-color: transparent; font-weight: 500;
+}
+:root:is([data-palette="macos"], [data-palette="win11"]) :is(.update-actions button, .acct-pane button, .acct-users button, .cd-mini).danger { color: var(--offmesh); }
+:root:is([data-palette="macos"], [data-palette="win11"]) :is(.update-actions button, .acct-pane button, .acct-users button, .cd-mini).danger:hover:not(:disabled) { background: var(--offmesh); color: #fff; }
+:root:is([data-palette="macos"], [data-palette="win11"]) :is(.update-actions button, .acct-pane button, .acct-users button, .acct-unlock button):active:not(:disabled) { transform: none; }
+/* fields */
+:root:is([data-palette="macos"], [data-palette="win11"]) :is(.dk-row input, .fm-ask input, .fm-find, .update-pass, .st-pick-in, .dk-cl-url, .acct-pane input, .acct-users input, .acct-unlock input, .dk-login input, .cd-find, .cd-sel, .st-pick-row select) {
+  border-radius: var(--r-ctl); border: 1px solid var(--border); background: var(--bg); color: var(--fg);
+}
+/* the accent's own ink wherever the page fills with it */
+:root:is([data-palette="macos"], [data-palette="win11"]) :is(.dk-badge, .dk-ghost-n, .cw-item .chat-badge, .dk-icon.sel .dk-label) { color: var(--on-accent); }
+/* desktop icons: plain glyphs, a rounded box when picked */
+:root:is([data-palette="macos"], [data-palette="win11"]) .dk-icon .dk-label { border-radius: 4px; }
+
+/* --- macos ------------------------------------------------------------------------------------ */
+
+:root[data-palette="macos"] body { font-size: 13px; }
+:root[data-palette="macos"] .dk-win { border: 0; }
+@media (min-width: 721px) {
+  /* the title bar: traffic lights at the left, the title centered */
+  :root[data-palette="macos"] .dk-head { height: 28px; padding: 0 6px 0 12px; gap: 8px; background: var(--tabbar); border-bottom: 1px solid var(--border); font-size: 13px; }
+  :root[data-palette="macos"] .dk-win:not(.focused) .dk-head { background: var(--bg); }
+  :root[data-palette="macos"] .dk-title { flex: 1; min-width: 0; margin: 0; text-align: center; font-weight: 600; }
+  :root[data-palette="macos"] .dk-win .dk-title, :root[data-palette="macos"] .dk-win.focused .dk-title { color: var(--fg); }
+  :root[data-palette="macos"] .dk-win:not(.focused) .dk-title { color: var(--dim); }
+  :root[data-palette="macos"] .dk-title .dk-sub { font-weight: 400; color: var(--muted); }
+  :root[data-palette="macos"] .dk-btns { display: contents; }
+  :root[data-palette="macos"] .dk-close { order: -5; }
+  :root[data-palette="macos"] .dk-min { order: -4; }
+  :root[data-palette="macos"] .dk-max { order: -3; }
+  :root[data-palette="macos"] .dk-back { order: -2; margin: 0; }
+  :root[data-palette="macos"] .dk-title { order: 0; }
+  :root[data-palette="macos"] .dk-out { order: 1; }
+  :root[data-palette="macos"] .dk-btns :is(.dk-close, .dk-min, .dk-max) {
+    flex: none; width: 12px; height: 12px; padding: 0; border-radius: 50%; box-shadow: inset 0 0 0 0.5px rgb(0 0 0 / 0.2);
+  }
+  :root[data-palette="macos"] .dk-btns .dk-close, :root[data-palette="macos"] .dk-btns .dk-close:hover { background: #ff5f57; color: rgb(77 0 0 / 0.75); }
+  :root[data-palette="macos"] .dk-btns .dk-min, :root[data-palette="macos"] .dk-btns .dk-min:hover { background: #febc2e; color: rgb(90 50 0 / 0.75); }
+  :root[data-palette="macos"] .dk-btns .dk-max, :root[data-palette="macos"] .dk-btns .dk-max:hover { background: #28c840; color: rgb(0 70 0 / 0.75); }
+  :root[data-palette="macos"] .dk-btns :is(.dk-close, .dk-min, .dk-max) .ic { width: 8px; height: 8px; stroke-width: 2.2; opacity: 0; }
+  /* their glyphs only while the pointer's on one of them; grey in a window behind */
+  :root[data-palette="macos"] .dk-head:has(:is(.dk-close, .dk-min, .dk-max):hover) :is(.dk-close, .dk-min, .dk-max) .ic { opacity: 1; }
+  :root[data-palette="macos"] .dk-win:not(.focused) .dk-head:not(:has(:is(.dk-close, .dk-min, .dk-max):hover)) :is(.dk-close, .dk-min, .dk-max) { background: var(--light-off); }
+  :root[data-palette="macos"] :is(.dk-back, .dk-out) { width: 22px; height: 20px; border-radius: 5px; }
+
+  /* the bar a dock: floating, centered, a dot under each open window */
+  :root[data-palette="macos"] .dk-bar {
+    align-self: center; max-width: calc(100% - 2rem); height: 2.9rem; margin: 0.3rem auto 0.4rem; padding: 0 0.4rem; gap: 0.3rem;
+    border: 1px solid var(--pop-edge); border-radius: 14px; background: color-mix(in srgb, var(--tabbar) 88%, transparent);
+    backdrop-filter: blur(20px); box-shadow: var(--drop); font-size: 12px;
+  }
+  :root[data-palette="macos"] .dk-tasks { align-self: stretch; align-items: center; gap: 0.2rem; }
+  :root[data-palette="macos"] .dk-task { height: 2.2rem; padding: 0 0.8rem; border: 0; border-radius: 8px; color: var(--fg); }
+  :root[data-palette="macos"] .dk-task:hover { background: var(--tab-hover); }
+  :root[data-palette="macos"] .dk-task.active { background: var(--tab-hover); }
+  :root[data-palette="macos"] .dk-task::after {
+    content: ""; position: absolute; left: 50%; bottom: 1px; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: var(--dim);
+  }
+  :root[data-palette="macos"] .dk-task.active::after { background: var(--fg); }
+  :root[data-palette="macos"] .dk-bar .dk-tray { margin: 0.3rem 0; border-radius: 8px; }
+  :root[data-palette="macos"] .dk-bar :is(.dk-tray:hover, .dk-tray[aria-expanded="true"]) { background: var(--tab-hover); color: var(--fg); }
+}
+/* menus: the picked item a blue pill, white on it */
+:root[data-palette="macos"] .dk-menu button { padding: 0.2rem 0.65rem; }
+:root[data-palette="macos"] :is(.dk-menu button:hover:not(:disabled), .dk-menu-item.open > .dk-menu-more:not(:disabled), .tab-menu-list li:not(.empty):hover, .tab-menu-list li.sel) { background: var(--accent); color: #fff; }
+:root[data-palette="macos"] .dk-menu button.danger:hover:not(:disabled) { background: var(--offmesh); color: #fff; }
+:root[data-palette="macos"] :is(.dk-ctl-drop-opt:hover, .dk-ctl-drop-opt:focus) { background: var(--accent); }
+:root[data-palette="macos"] .dk-ctl-drop-opt:is(:hover, :focus) :is(.dk-ctl-drop-name, .dk-ctl-drop-about) { color: #fff; }
+:root[data-palette="macos"] :is(.update-actions button, .acct-pane button, .acct-users button, .acct-unlock button, .cd-mini, .join-key-btn) { box-shadow: 0 0 0 0.5px rgb(0 0 0 / 0.2), 0 0.5px 1px rgb(0 0 0 / 0.12); }
+/* fields: a soft blue ring while focused */
+:root[data-palette="macos"] :is(.dk-row input, .fm-ask input, .fm-find, .update-pass, .st-pick-in, .dk-cl-url, .acct-pane input, .acct-users input, .acct-unlock input, .dk-login input, .cd-find, .cd-sel):focus,
+:root[data-palette="macos"] :is(.chat-form, .chat-join, .cd-form, .cd-box):focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent); }
+/* icons: a grey box round the picked glyph, its label a blue pill */
+:root[data-palette="macos"] .dk-icon:hover .dk-tile { background: var(--tab-hover); }
+:root[data-palette="macos"] .dk-icon.sel .dk-tile { background: color-mix(in srgb, var(--fg) 12%, transparent); border-color: transparent; }
+:root[data-palette="macos"] .dk-icon.sel .dk-label { background: var(--accent); }
+:root[data-palette="macos"] .dk-snap { border: 0; border-radius: var(--r-win); background: color-mix(in srgb, var(--fg) 12%, transparent); }
+:root[data-palette="macos"] .dk-band { border-color: color-mix(in srgb, var(--fg) 40%, transparent); background: color-mix(in srgb, var(--fg) 10%, transparent); }
+
+/* --- windows 11 ------------------------------------------------------------------------------ */
+
+:root[data-palette="win11"] .dk-win, :root[data-palette="win11"] .dk-win.focused { border: 0; }
+@media (min-width: 721px) {
+  /* mica title bar: the title at the left in 12px, caption buttons 46 by 32 */
+  :root[data-palette="win11"] .dk-head { height: 32px; padding: 0 0 0 12px; gap: 8px; background: var(--tabbar); border-bottom: 0; font-size: 12px; }
+  :root[data-palette="win11"] .dk-win:not(.focused) .dk-head { background: var(--bg); }
+  :root[data-palette="win11"] .dk-win .dk-title, :root[data-palette="win11"] .dk-win.focused .dk-title { color: var(--fg); }
+  :root[data-palette="win11"] .dk-win:not(.focused) .dk-title { color: var(--dim); }
+  :root[data-palette="win11"] .dk-title .dk-sub { color: var(--muted); }
+  :root[data-palette="win11"] .dk-btns { align-self: stretch; }
+  :root[data-palette="win11"] .dk-btns button { width: 46px; height: 100%; border-radius: 0; color: var(--fg); }
+  :root[data-palette="win11"] .dk-win:not(.focused) .dk-btns button { color: var(--dim); }
+  :root[data-palette="win11"] .dk-btns .ic { width: 10px; height: 10px; stroke-width: 1.1; }
+  :root[data-palette="win11"] .dk-btns button:hover { background: color-mix(in srgb, var(--fg) 7%, transparent); color: var(--fg); }
+  :root[data-palette="win11"] .dk-btns .dk-close:hover { background: #c42b1c; color: #fff; }
+  :root[data-palette="win11"] .dk-back { width: 28px; height: 24px; margin-left: -6px; margin-right: 0; border-radius: 4px; }
+
+  /* the taskbar: full width, tasks centered, a short line under each, longer and in the accent for the focused */
+  :root[data-palette="win11"] .dk-bar {
+    height: 48px; margin: 0; padding: 0 0 0 12px; gap: 4px; border: 0; border-top: 1px solid var(--border);
+    background: color-mix(in srgb, var(--tabbar) 92%, transparent); backdrop-filter: blur(20px); box-shadow: none; font-size: 12px;
+  }
+  :root[data-palette="win11"] .dk-tasks { align-self: stretch; align-items: center; gap: 4px; }
+  /* centered while they fit, from the left once they scroll */
+  :root[data-palette="win11"] .dk-task:first-child { margin-left: auto; }
+  :root[data-palette="win11"] .dk-task:last-child { margin-right: auto; }
+  :root[data-palette="win11"] .dk-task { height: 40px; max-width: 11rem; padding: 0 12px; border: 0; border-radius: 4px; color: var(--fg); }
+  :root[data-palette="win11"] .dk-task:hover, :root[data-palette="win11"] .dk-task.active { background: color-mix(in srgb, var(--fg) 7%, transparent); }
+  :root[data-palette="win11"] .dk-task::after {
+    content: ""; position: absolute; left: 50%; bottom: 2px; width: 6px; height: 3px; margin-left: -3px; border-radius: 2px; background: var(--dim);
+  }
+  :root[data-palette="win11"] .dk-task.active::after { width: 16px; margin-left: -8px; background: var(--accent); }
+  :root[data-palette="win11"] .dk-bar .dk-tray { margin: 4px 0; border-radius: 4px; }
+  :root[data-palette="win11"] .dk-bar :is(.dk-tray:hover, .dk-tray[aria-expanded="true"]) { background: color-mix(in srgb, var(--fg) 7%, transparent); color: var(--fg); }
+  :root[data-palette="win11"] .dk-ctl > .dk-profile { margin-right: 4px; }
+}
+/* menus: items a subtle fill, the current one a short accent line at its left */
+:root[data-palette="win11"] :is(.dk-menu button:hover:not(:disabled), .dk-menu-item.open > .dk-menu-more:not(:disabled), .tab-menu-list li:not(.empty):hover, .tab-menu-list li.sel,
+  .dk-ctl-drop-opt:hover, .dk-ctl-drop-opt:focus) { background: color-mix(in srgb, var(--fg) 6%, transparent); color: var(--fg); }
+:root[data-palette="win11"] .dk-menu button.danger:hover:not(:disabled) { color: var(--offmesh); }
+:root[data-palette="win11"] .dk-ctl-drop-opt { position: relative; }
+:root[data-palette="win11"] .dk-ctl-drop-opt.on::before {
+  content: ""; position: absolute; left: 0; top: 50%; width: 3px; height: 16px; margin-top: -8px; border-radius: 2px; background: var(--accent);
+}
+:root[data-palette="win11"] .dk-ctl-drop-opt.on .dk-ctl-drop-name { color: var(--fg); font-weight: 600; }
+:root[data-palette="win11"] .dk-ctl-drop-opt.on .dk-ctl-drop-name::after { content: none; }
+/* fields: a line under them, the accent's while focused */
+:root[data-palette="win11"] :is(.dk-row input, .fm-ask input, .fm-find, .update-pass, .st-pick-in, .dk-cl-url, .acct-pane input, .acct-users input, .acct-unlock input, .dk-login input, .cd-find) {
+  border-color: var(--ctl-edge); border-bottom-color: var(--muted); background: var(--ctl);
+}
+:root[data-palette="win11"] :is(.dk-row input, .fm-ask input, .fm-find, .update-pass, .st-pick-in, .dk-cl-url, .acct-pane input, .acct-users input, .acct-unlock input, .dk-login input, .cd-find):focus,
+:root[data-palette="win11"] :is(.chat-form, .chat-join, .cd-form, .cd-box):focus-within { border-bottom-color: var(--accent); box-shadow: inset 0 -1px 0 var(--accent); }
+/* icons: the whole cell lit, as the desktop's own */
+:root[data-palette="win11"] .dk-icon { border-radius: 4px; }
+:root[data-palette="win11"] .dk-icon:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+:root[data-palette="win11"] .dk-icon.sel { background: color-mix(in srgb, var(--accent) 22%, transparent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+:root[data-palette="win11"] .dk-icon .dk-tile, :root[data-palette="win11"] .dk-icon:is(:hover, :focus-visible, .sel) .dk-tile { background: none; border-color: transparent; }
+:root[data-palette="win11"] .dk-icon.sel .dk-label { background: none; color: var(--fg); }
+:root[data-palette="win11"] .dk-snap { border: 1px solid color-mix(in srgb, var(--fg) 20%, transparent); border-radius: var(--r-win); background: color-mix(in srgb, var(--fg) 8%, transparent); }
+
+/* --- the apps under macos and windows 11: each as the system's own counterpart --------------- */
+
+/* files: finder's sidebar and stripes, or file explorer's command bar and navigation pane */
+:root:is([data-palette="macos"], [data-palette="win11"]) .fm-tools { gap: 4px; padding: 6px 8px; background: var(--tabbar); border-bottom: 1px solid var(--border); }
+:root:is([data-palette="macos"], [data-palette="win11"]) .fm-btn { width: 28px; height: 26px; background: none; border: 0; border-radius: var(--r-ctl); color: var(--fg); }
+:root:is([data-palette="macos"], [data-palette="win11"]) .fm-btn:hover:not(:disabled) { background: var(--tab-hover); color: var(--fg); }
+:root:is([data-palette="macos"], [data-palette="win11"]) .fm-crumbs { height: 26px; background: var(--bg); border-color: var(--border); }
+:root:is([data-palette="macos"], [data-palette="win11"]) .fm-crumb:hover { border-color: transparent; background: var(--tab-hover); }
+:root:is([data-palette="macos"], [data-palette="win11"]) :is(.fm-crumb:last-child, .fm-crumb-host) { color: var(--fg); }
+:root:is([data-palette="macos"], [data-palette="win11"]) .fm-find { height: 26px; }
+:root:is([data-palette="macos"], [data-palette="win11"]) .fm-side { padding: 6px; background: var(--tabbar); border-right: 1px solid var(--border); }
+:root:is([data-palette="macos"], [data-palette="win11"]) .fm-side-head { padding: 0.5rem 0.5rem 0.2rem; font-weight: 600; font-size: 0.68rem; }
+:root:is([data-palette="macos"], [data-palette="win11"]) .fm-place { padding: 0.25rem 0.5rem; }
+:root:is([data-palette="macos"], [data-palette="win11"]) .fm-share { padding-left: 1.3rem; color: var(--fg); }
+:root:is([data-palette="macos"], [data-palette="win11"]) .fm-place .fm-host { color: var(--muted); }
+:root:is([data-palette="macos"], [data-palette="win11"]) .fm-share:hover { background: var(--tab-hover); }
+:root:is([data-palette="macos"], [data-palette="win11"]) .fm-share.here { background: color-mix(in srgb, var(--fg) 10%, transparent); box-shadow: none; }
+:root:is([data-palette="macos"], [data-palette="win11"]) .fm-cols { background: var(--bg); }
+:root:is([data-palette="macos"], [data-palette="win11"]) .fm-col { font-weight: 600; }
+:root:is([data-palette="macos"], [data-palette="win11"]) .fm-arrow { color: var(--muted); }
+:root:is([data-palette="macos"], [data-palette="win11"]) .fm-status { background: var(--bg); }
+:root:is([data-palette="macos"], [data-palette="win11"]) :is(.fm-dir, .fm-file, .fm-code, .fm-image, .fm-video, .fm-pdf, .fm-audio, .fm-archive) { color: var(--muted); }
+:root:is([data-palette="macos"], [data-palette="win11"]) .fm-dir { color: var(--accent); }
+:root[data-palette="macos"] .fm-list .fm-item:nth-child(even of .fm-item) { background: color-mix(in srgb, var(--fg) 4%, transparent); }
+:root[data-palette="macos"] .fm-list .fm-item { margin: 0 8px; border-radius: 5px; }
+:root[data-palette="macos"] :is(.fm-item.sel, .fm-main:focus .fm-item.sel) { background: var(--accent); color: #fff; }
+:root[data-palette="macos"] :is(.fm-item.sel, .fm-main:focus .fm-item.sel) :is(.ic, .fm-c-where, .fm-c-mtime, .fm-c-size, .fm-c-kind) { color: #fff; }
+:root[data-palette="macos"] .fm-main:not(:focus) .fm-item.sel { background: color-mix(in srgb, var(--fg) 14%, transparent); color: var(--fg); }
+:root[data-palette="macos"] .fm-main:not(:focus) .fm-item.sel :is(.ic, .fm-c-where, .fm-c-mtime, .fm-c-size, .fm-c-kind) { color: var(--muted); }
+:root[data-palette="macos"] .fm-status { justify-content: center; }
+:root[data-palette="win11"] .fm-list .fm-item { margin: 0 4px; border-radius: 4px; }
+:root[data-palette="win11"] .fm-item:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); }
+:root[data-palette="win11"] :is(.fm-item.sel, .fm-main:focus .fm-item.sel) { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+:root[data-palette="win11"] .fm-share.here { position: relative; }
+:root[data-palette="win11"] .fm-share.here::before { content: ""; position: absolute; left: 2px; top: 25%; bottom: 25%; width: 3px; border-radius: 2px; background: var(--accent); }
+
+/* chat: messages' bubbles, or a chat app's flat list; the conversations a sidebar */
+:root:is([data-palette="macos"], [data-palette="win11"]) .cw-side { border: 0; border-radius: var(--r-card); background: var(--tabbar); padding-top: 0.6rem; }
+:root:is([data-palette="macos"], [data-palette="win11"]) .cw-side > .home-col-head { display: none; }
+:root:is([data-palette="macos"], [data-palette="win11"]) :is(.cw-side, .chat-panel, .mesh-panel) { box-shadow: none; }
+:root:is([data-palette="macos"], [data-palette="win11"]) .cw-head { font-weight: 600; }
+:root:is([data-palette="macos"], [data-palette="win11"]) .cw-item:hover { background: var(--tab-hover); }
+:root:is([data-palette="macos"], [data-palette="win11"]) .cw-item.on { background: color-mix(in srgb, var(--fg) 10%, transparent); box-shadow: none; }
+:root:is([data-palette="macos"], [data-palette="win11"]) .chat-panel { border-color: transparent; }
+:root:is([data-palette="macos"], [data-palette="win11"]) :is(.mesh-header, .chat-header) > * { background: var(--bg); }
+:root:is([data-palette="macos"], [data-palette="win11"]) .chat-header .chat-title { color: var(--fg); font-weight: 600; }
+:root:is([data-palette="macos"], [data-palette="win11"]) :is(.chat-form, .chat-join) { border-color: var(--border); background: var(--bg); box-shadow: none; }
+:root:is([data-palette="macos"], [data-palette="win11"]) .chat-prompt { display: none; }
+:root[data-palette="macos"] .bubble { border: 0; border-radius: 16px; padding: 0.4rem 0.75rem; background: var(--card); box-shadow: none; }
+:root[data-palette="macos"] .msg.mine .bubble { border: 0; background: var(--accent); color: #fff; }
+:root[data-palette="macos"] .msg.mine .bubble a { color: #fff; }
+:root[data-palette="macos"] :is(.chat-form, .chat-join) { border-radius: 18px; }
+:root[data-palette="win11"] .bubble { border: 0; border-radius: 6px; background: var(--card); box-shadow: var(--lift-sm); }
+:root[data-palette="win11"] .msg.mine .bubble { border: 0; background: color-mix(in srgb, var(--accent) 16%, var(--card)); }
+
+/* status and about: plain panels, the about's art in the accent */
+:root:is([data-palette="macos"], [data-palette="win11"]) .about-art, :root:is([data-palette="macos"], [data-palette="win11"]) .about-version {
+  background: none; color: var(--accent); animation: none; -webkit-background-clip: border-box; background-clip: border-box;
+}
+:root:is([data-palette="macos"], [data-palette="win11"]) .st-card { cursor: default; }
+:root:is([data-palette="macos"], [data-palette="win11"]) .st-card:hover { border-color: var(--border); }
+
+/* terminal: terminal.app's basic profile, light or dark as the system; windows terminal's campbell, always dark */
+:root[data-palette="macos"] .dk-term .dk-body { background: var(--bg); }
+
+:root[data-palette="win11"] .dk-term .dk-body { background: #0c0c0c; }
+:root[data-palette="win11"] .dk-term .dk-head { background: #1f1f1f; color: #ffffff; }
+:root[data-palette="win11"] .dk-term .dk-title, :root[data-palette="win11"] .dk-term .dk-btns button { color: #ffffff; }
+
+/* code: the claude app's own look in either, warm neutrals and clay, rounded and quiet */
+:root:is([data-palette="macos"], [data-palette="win11"]) .dk-app-code .dk-body { --edge: var(--bg); background: var(--bg); color: var(--fg); }
+:root:is([data-palette="macos"], [data-palette="win11"]) .dk-app-code .cd-side { padding: 0.5rem; gap: 0.4rem; }
+:root:is([data-palette="macos"], [data-palette="win11"]) .dk-app-code .cd-grip::before { background: transparent; }
+:root:is([data-palette="macos"], [data-palette="win11"]) .dk-app-code .cd-new { border: 0; border-radius: 8px; padding: 0.45rem 0.6rem; color: var(--fg); font-weight: 500; }
+:root:is([data-palette="macos"], [data-palette="win11"]) .dk-app-code .cd-new:is(:hover, :focus-visible) { background: var(--tab-hover); color: var(--fg); }
+:root:is([data-palette="macos"], [data-palette="win11"]) .dk-app-code .cd-find { border-radius: 8px; border-color: var(--border); background: var(--bg); }
+:root:is([data-palette="macos"], [data-palette="win11"]) .dk-app-code .cd-pick { border-radius: 8px; padding: 0.4rem 0.6rem; }
+:root:is([data-palette="macos"], [data-palette="win11"]) .dk-app-code .cd-pick:hover { background: var(--tab-hover); }
+:root:is([data-palette="macos"], [data-palette="win11"]) .dk-app-code .cd-item.on .cd-pick { background: var(--tab-hover); box-shadow: none; }
+:root:is([data-palette="macos"], [data-palette="win11"]) .dk-app-code :is(.cd-host, .cd-harness, .cd-model) { color: var(--muted); }
+:root:is([data-palette="macos"], [data-palette="win11"]) .dk-app-code :is(.cd-head, .cd-newform > .cd-head-top) { background: var(--bg); border-bottom-color: transparent; }
+:root:is([data-palette="macos"], [data-palette="win11"]) .dk-app-code .cd-icon { border: 0; border-radius: 6px; }
+:root:is([data-palette="macos"], [data-palette="win11"]) .dk-app-code .cd-icon:hover:not(:disabled) { background: var(--tab-hover); color: var(--fg); }
+:root:is([data-palette="macos"], [data-palette="win11"]) .dk-app-code .cd-log { padding: 1rem max(1rem, calc((100% - 46rem) / 2)); gap: 0.8rem; }
+:root:is([data-palette="macos"], [data-palette="win11"]) .dk-app-code .cd-user { border: 0; border-radius: 14px; padding: 0.55rem 0.85rem; background: var(--card); box-shadow: 0 0 0 1px var(--border); }
+:root:is([data-palette="macos"], [data-palette="win11"]) .dk-app-code .cd-log > .cd-text { padding: 0; border: 0; border-image: none; }
+:root:is([data-palette="macos"], [data-palette="win11"]) .dk-app-code .cd-text.md h1,
+:root:is([data-palette="macos"], [data-palette="win11"]) .dk-app-code .cd-text.md :is(h2, h3, h4) { color: var(--fg); }
+:root:is([data-palette="macos"], [data-palette="win11"]) .dk-app-code .cd-text.md pre { border-radius: 8px; }
+:root:is([data-palette="macos"], [data-palette="win11"]) .dk-app-code .cd-compose { border-top: 0; padding: 0.4rem max(0.8rem, calc((100% - 46rem) / 2)) 0.6rem; }
+:root:is([data-palette="macos"], [data-palette="win11"]) .dk-app-code :is(.cd-form, .cd-box) { border: 1px solid var(--border); border-radius: 14px; background: var(--card); box-shadow: 0 1px 3px rgb(0 0 0 / 0.08); }
+:root:is([data-palette="macos"], [data-palette="win11"]) .dk-app-code :is(.cd-form, .cd-box):focus-within { border-color: color-mix(in srgb, var(--fg) 30%, var(--border)); box-shadow: 0 1px 3px rgb(0 0 0 / 0.08); }
+:root:is([data-palette="macos"], [data-palette="win11"]) .dk-app-code .cd-hello { font-family: "Tiempos Headline", "Iowan Old Style", Georgia, serif; font-weight: 400; font-size: 1.6rem; }
+:root:is([data-palette="macos"], [data-palette="win11"]) .dk-app-code .cd-stop { border-radius: 8px; }
+:root:is([data-palette="macos"], [data-palette="win11"]) .dk-app-code .cd-sel { border-radius: 6px; background: var(--bg); }
+
+/* --- cli ------------------------------------------------------------------------------------- */
+
+:root[data-palette="cli"] .dk-desk:not(.dk-walled *) { background: var(--bg); }
+:root[data-palette="cli"] .dk-win { border-color: var(--border); box-shadow: none; }
+:root[data-palette="cli"] .dk-win.focused { border-color: var(--muted); }
+:root[data-palette="cli"] .dk-win:not(.dk-leaving, .dk-minimizing, .dk-restoring) { animation: none; }
+:root[data-palette="cli"] .dk-head { background: var(--bg); border-bottom-color: var(--border); }
+:root[data-palette="cli"] .dk-win.focused .dk-title { color: var(--fg); }
+:root[data-palette="cli"] :is(.dk-note-pop, .dk-ctl-pop, .dk-menu, .tab-menu, .update-pane, .modal-box, .dk-mcp-pop, .dk-login, .acct-unlock, .toast) {
+  border-color: var(--muted); box-shadow: none; animation: none;
+}
+:root[data-palette="cli"] :is(.dk-menu button:hover:not(:disabled), .dk-menu-item.open > .dk-menu-more:not(:disabled), .tab-menu-list li:not(.empty):hover,
+  .tab-menu-list li.sel, .dk-ctl-drop-opt:hover, .dk-ctl-drop-opt:focus) { background: var(--fg); color: var(--bg); }
+:root[data-palette="cli"] .dk-ctl-drop-opt:is(:hover, :focus) :is(.dk-ctl-drop-name, .dk-ctl-drop-about) { color: var(--bg); }
+:root[data-palette="cli"] .dk-ctl-drop-opt.on .dk-ctl-drop-name::after { content: " *"; }
+:root[data-palette="cli"] .dk-ctl-seg.on { background: var(--fg); color: var(--bg); }
+:root[data-palette="cli"] .dk-icon.sel .dk-label { background: var(--fg); color: var(--bg); }
+:root[data-palette="cli"] .dk-icon .ic { color: var(--muted); }
+@media (min-width: 721px) {
+  /* tmux's status line: flush, the windows numbered, the current one inverse and starred */
+  :root[data-palette="cli"] .dk-bar { height: 1.6rem; margin: 0; padding: 0; gap: 0.6rem; border: 0; border-top: 1px solid var(--border); background: var(--tabbar); backdrop-filter: none; box-shadow: none; }
+}
+:root[data-palette="cli"] .dk-tasks { counter-reset: dk-task; gap: 0; }
+:root[data-palette="cli"] .dk-task { border: 0; padding: 0.15rem 1ch; color: var(--muted); }
+:root[data-palette="cli"] .dk-task::before { counter-increment: dk-task; content: counter(dk-task) ":"; }
+:root[data-palette="cli"] .dk-task.active { background: var(--fg); color: var(--bg); }
+:root[data-palette="cli"] .dk-task.active::after { content: "*"; }
+:root[data-palette="cli"] .dk-task:not(.active):hover { background: var(--tab-hover); color: var(--fg); }
+:root[data-palette="cli"] .about-art, :root[data-palette="cli"] .about-version { background: none; color: var(--accent); animation: none; -webkit-background-clip: border-box; background-clip: border-box; }
+
+/* --- sulfur: visual studio under windows 11, xcode under macos, a plain terminal's under cli ----- */
+
+/* visual studio 2022: segoe chrome, the blue status bar, teal line numbers, its own syntax colors */
+
+
+/* xcode: its default dark and light, neutral bars, no colored status, its syntax colors */
+
+
+
+
+.ide-win:is(.ide-theme-macos, .ide-theme-win11) .ide { font-size: 13px; }
+.ide-win:is(.ide-theme-macos, .ide-theme-win11) .ide-sec-head { letter-spacing: 0; font-weight: 600; }
+.ide-win:is(.ide-theme-macos, .ide-theme-win11) .dk-head { background: var(--ide-chrome); }
+.ide-win:is(.ide-theme-macos, .ide-theme-win11) .ide-status { background: var(--ide-status); color: var(--ide-status-fg); border-top-color: var(--ide-border); }
+.ide-win:is(.ide-theme-macos, .ide-theme-win11) .ide-status .ide-sb:hover { background: color-mix(in srgb, var(--ide-status-fg) 14%, transparent); }
+.ide-win:is(.ide-theme-macos, .ide-theme-win11) .ide-sb-remote { background: none; color: inherit; }
+.ide-win:is(.ide-theme-macos, .ide-theme-win11) .ide-sb-remote.none { background: none; color: inherit; }
+.ide-win.ide-theme-win11 .ide-status { border-top: 0; }
+.ide-win.ide-theme-win11 .ide-sb-bell.dot::after { background: #ffffff; }
+/* visual studio: document tabs flat, the open one lifted in the accent's line; tool window captions in the chrome's color */
+.ide-win.ide-theme-win11 .ide-tabs-row { background: var(--ide-chrome); }
+.ide-win.ide-theme-win11 .ide-tab.on { box-shadow: inset 0 -2px 0 var(--ide-accent); }
+.ide-win.ide-theme-win11 :is(.ide-side-head, .ide-aux-head) { background: var(--ide-side); }
+.ide-win.ide-theme-win11 .ide-activity { background: var(--ide-chrome); }
+.ide-win.ide-theme-win11 .ide-act.on::before { width: 3px; top: 12px; bottom: 12px; border-radius: 2px; }
+.ide-win.ide-theme-win11 .ide-cc { flex-basis: 320px; margin: 0 auto 0 8px; justify-content: flex-start; padding: 0 8px; border-radius: 4px; }
+/* xcode: the navigator's vibrant sidebar, tabs as rounded pills, the picked row the accent */
+.ide-win.ide-theme-macos .ide-activity { border-right-color: var(--ide-border); }
+.ide-win.ide-theme-macos .ide-act.on { color: var(--ide-accent); }
+.ide-win.ide-theme-macos .ide-act.on::before { content: none; }
+.ide-win.ide-theme-macos .ide-tabs-row { background: var(--ide-chrome); padding: 3px 4px; gap: 2px; height: 32px; }
+.ide-win.ide-theme-macos .ide-tab { border-radius: 6px; border: 0; height: 26px; }
+.ide-win.ide-theme-macos .ide-tab.on { height: 26px; margin: 0; border: 0; box-shadow: none; background: color-mix(in srgb, var(--ide-fg) 12%, transparent); }
+.ide-win.ide-theme-macos .ide-cc { border-radius: 6px; }
+/* their own syntax colors */
+.ide-win.ide-theme-macos .ide .code-hl .hljs-keyword { font-weight: 600; }
+/* the cli's: square, its picked tab inverse */
+.ide-win.ide-theme-cli .ide-tab.on { background: var(--fg); color: var(--bg); box-shadow: none; }
+.ide-win.ide-theme-cli .ide-tab.on * { color: inherit; }
+
+@media (prefers-reduced-motion: reduce) {
+  :root:is([data-palette="macos"], [data-palette="win11"]) :is(.dk-win:not(.dk-leaving, .dk-minimizing, .dk-restoring), .dk-menu, .dk-pop, .tab-menu, .update-pane, .modal-box, .toast) { animation: none; }
+}
