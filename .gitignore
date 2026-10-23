@@ -19,5 +19,7 @@
 /internal/web/dist/*
 !/internal/web/dist/README
 /web/.vendor/
+# installed JavaScript dependencies; keep dependency manifests and locks tracked
+node_modules/
 /phosphorus
 /out/
