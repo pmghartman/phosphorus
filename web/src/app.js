@@ -4241,7 +4241,7 @@ mobileQuery.addEventListener('change', () => {
 function dkArt() {
   dkWallPaint();
   const art = el('div', 'dk-art');
-  art.appendChild(document.querySelector('.about-art').cloneNode(true));
+  art.appendChild(document.querySelector('.about-mark').cloneNode(true));
   return art;
 }
 
@@ -4398,7 +4398,7 @@ function dkIcons() {
   const want = [
     ...hosts.map((h) => [`terminal\n${h}`, () => dkIcon('terminal', 'terminal', h, () => dkTerminal(h))]),
     ['files', () => dkIcon('files', 'files', '', () => filesWin())],
-    ...(acct && !acct.boot ? [['sulfur', () => dkIcon('sulfur', 'sulfur', '', () => dkSulfur())]] : []),
+    ...(acct && !acct.boot ? [['sulfur', () => dkIcon('sulfur', 'sulfur', '', () => dkSulfur(), '/sulfur/icon.svg')]] : []),
     ['chat', () => dkIcon('chat', 'chat', '', () => dkOpenApp('chat'))],
     ['status', () => dkIcon('status', 'status', '', () => dkOpenApp('status'))],
     ...(git ? [['git', () => dkGlobe(dkIcon('git', 'git', '', () => dkOpenApp('git')), 'public: its own login only')]] : []),
