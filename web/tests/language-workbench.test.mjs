@@ -39,14 +39,58 @@ async function setup(t, server = false, pull = false, csharp = false, capabiliti
   return { ...f, opened, notices, workbench, socket: Socket.instances.at(-1), box: f.view.querySelector('.ide-completion') };
 }
 
-test('word suggestions are immediately tab-completable while the semantic provider is pending', async (t) => {
+const rows = (box) => box.children.filter((row) => row.className.startsWith('ide-completion-item'));
+
+test('a language server list is waited for instead of words that it would replace under the caret', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
   const f = await setup(t, true);
-  const pending = f.workbench.suggest(f.tab);
+  const pending = f.workbench.suggest(f.tab); await settle();
+  assert.equal(f.box.hidden, true);
+  f.socket.reply('textDocument/completion', [{ label: 'require', kind: 3 }, { label: 'return', kind: 14 }]); await pending;
+  assert.equal(f.box.hidden, false);
+  assert.deepEqual(rows(f.box).map((row) => row.children[1].children.map((x) => x.textContent ?? x).join('')), ['require', 'return']);
+});
+
+test('words are tab-completable once a slow language server has kept the list waiting', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const f = await setup(t, true);
+  const pending = f.workbench.suggest(f.tab); await settle();
+  t.mock.timers.tick(1200);
   assert.equal(f.box.hidden, false);
   const event = f.ta.emit('keydown', { key: 'Tab' });
   assert.equal(event.defaultPrevented, true);
   assert.equal(f.tab.ed.text(), 'readFile();\nreadFile');
-  await pending;
+  f.socket.reply('textDocument/completion', [{ label: 'ready' }]); await pending;
+  assert.equal(f.box.hidden, true);
+});
+
+test('an incomplete list asked again keeps its items meanwhile, and stays where it opened', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const f = await setup(t, true);
+  const pending = f.workbench.suggest(f.tab); await settle();
+  f.socket.reply('textDocument/completion', { isIncomplete: true, items: [{ label: 'readFile' }, { label: 'ready' }, { label: 'react' }] }); await pending;
+  const top = f.box.style.top;
+  f.setText('readFile();\nrea'); f.ta.emit('input', { inputType: 'insertText', data: 'a' });
+  t.mock.timers.tick(10); await settle();
+  assert.equal(f.box.hidden, false);
+  assert.equal(rows(f.box).length, 3);
+  f.socket.reply('textDocument/completion', { isIncomplete: true, items: [{ label: 'readFile' }, { label: 'ready' }] }); await settle();
+  assert.equal(rows(f.box).length, 2);
+  assert.equal(f.box.style.top, top);
+});
+
+test('long lists draw only the rows in view', async (t) => {
+  const f = await setup(t);
+  f.setText('x');
+  await f.workbench.suggest(f.tab);
+  assert.equal(f.box.hidden, true);
+  const many = Array.from({ length: 500 }, (_, i) => `xname${i}`).join(' ');
+  f.setText(`${many}\nx`);
+  await f.workbench.suggest(f.tab);
+  assert.equal(f.box.hidden, false);
+  assert.ok(rows(f.box).length <= 16);
+  for (let i = 0; i < 30; i++) f.ta.emit('keydown', { key: 'ArrowDown' });
+  assert.ok(rows(f.box).some((row) => row.className.includes(' on')));
 });
 
 test('null semantic responses retain colors while explicit empty tokens clear them', async (t) => {
@@ -84,7 +128,8 @@ test('pull-only language servers retain warning severity and diagnostic codes an
   f.socket.reply('textDocument/diagnostic', { kind: 'full', resultId: 'a', items: [{ range: { start: {line:0,character:0}, end: {line:0,character:4} }, severity: 2, code: 'CS0649', message: 'Never assigned' }] }); await settle();
   assert.equal(f.diagnostics.at(-1)[0].severity, 2); assert.equal(f.diagnostics.at(-1)[0].code, 'CS0649');
   f.setText('readFile();\nrea'); f.workbench.changed(f.tab);
-  assert.equal(f.diagnostics.at(-1), null);
+  // the report stays (the editor moves it with the edit) until the next replaces it
+  assert.equal(f.diagnostics.at(-1)[0].code, 'CS0649');
   t.mock.timers.tick(1000); await settle();
   const req = f.socket.sent.findLast(x => x.method === 'textDocument/diagnostic');
   assert.equal(req.params.previousResultId, 'a');

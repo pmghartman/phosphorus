@@ -42,12 +42,24 @@ export function opTransform(a, b) {
   }
   return [a1.ops, b1.ops];
 }
+// The lengths of the head and tail two texts share, the tail never overlapping the head.
+// Compared a block at a time first: every keystroke diffs the whole document several
+// times (session, history, parse, highlight), so this stays native speed on big files.
+const BLOCK = 1024;
+export function commonEnds(a, b) {
+  const max = Math.min(a.length, b.length);
+  let head = 0;
+  while (head + BLOCK <= max && a.slice(head, head + BLOCK) === b.slice(head, head + BLOCK)) head += BLOCK;
+  while (head < max && a.charCodeAt(head) === b.charCodeAt(head)) head += 1;
+  const room = max - head;
+  let tail = 0;
+  while (tail + BLOCK <= room && a.slice(a.length - tail - BLOCK, a.length - tail) === b.slice(b.length - tail - BLOCK, b.length - tail)) tail += BLOCK;
+  while (tail < room && a.charCodeAt(a.length - 1 - tail) === b.charCodeAt(b.length - 1 - tail)) tail += 1;
+  return { head, tail };
+}
 // one replace: what changed between two texts, by their common ends
 export function opDiff(a, b) {
-  let s = 0;
-  while (s < a.length && s < b.length && a[s] === b[s]) s += 1;
-  let e = 0;
-  while (e < a.length - s && e < b.length - s && a[a.length - 1 - e] === b[b.length - 1 - e]) e += 1;
+  const { head: s, tail: e } = commonEnds(a, b);
   const o = opBuilder();
   o.retain(s);
   o.insert(b.slice(s, b.length - e));

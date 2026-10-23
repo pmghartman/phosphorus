@@ -1,3 +1,5 @@
+import { commonEnds } from '../text-operations.js';
+
 export const TOKEN_TYPES = ['namespace', 'type', 'class', 'enum', 'interface', 'struct', 'typeParameter', 'parameter', 'variable', 'property', 'enumMember', 'event', 'function', 'method', 'macro', 'keyword', 'modifier', 'comment', 'string', 'number', 'regexp', 'operator', 'decorator'];
 export const TOKEN_MODIFIERS = ['declaration', 'definition', 'readonly', 'static', 'deprecated', 'abstract', 'async', 'modification', 'documentation', 'defaultLibrary'];
 const classes = {
@@ -55,11 +57,9 @@ export function rangesFromHighlight(html, text) {
 }
 // Keep classifications for unchanged text while a newer parse/server response is
 // pending. Only an edited token is invalidated; identifier typing keeps its color.
-export function rebaseHighlightRanges(before, after, ranges) {
+export function rebaseHighlightRanges(before, after, ranges, change = null) {
   if (before === after || !ranges.length) return ranges;
-  let from = 0, tail = 0;
-  while (from < before.length && from < after.length && before[from] === after[from]) from++;
-  while (tail < before.length - from && tail < after.length - from && before[before.length - tail - 1] === after[after.length - tail - 1]) tail++;
+  const { head: from, tail } = change || commonEnds(before, after);
   const end = before.length - tail, added = after.slice(from, after.length - tail), delta = after.length - before.length;
   const identifier = /^@?[$\p{L}_][$\p{L}\p{N}\p{M}_]*$/u;
   const continuation = /^[$\p{L}\p{N}\p{M}_]*$/u.test(added);
@@ -68,15 +68,29 @@ export function rebaseHighlightRanges(before, after, ranges) {
     const inside = from >= range.from && end <= range.to;
     const joined = inside && continuation && identifier.test(before.slice(range.from, range.to));
     if (joined && /hljs-(type|variable|title|attr|literal)/.test(range.cls)) {
-      if (range.to + delta > range.from) out.push({ ...range, to: range.to + delta });
+      // stale until the next classification: a keyword the typing completes wins over it
+      if (range.to + delta > range.from) out.push({ ...range, to: range.to + delta, stale: true });
     } else if (range.to <= from && !(joined && added)) out.push(range);
     else if (range.from >= end && !(joined && added)) out.push({ ...range, from: range.from + delta, to: range.to + delta });
   }
   return out;
 }
-export function highlightRanges(text, syntax = [], semantic = []) {
+// the first range ending after offset, by bisection: ranges are sorted and disjoint
+export function rangeIndex(ranges, offset) {
+  let lo = 0, hi = ranges.length;
+  while (lo < hi) { const mid = (lo + hi) >>> 1; if (ranges[mid].to <= offset) lo = mid + 1; else hi = mid; }
+  return lo;
+}
+// the class drawn at offset, '' where nothing is
+export function classAt(ranges, offset) {
+  const range = ranges[rangeIndex(ranges, offset)];
+  return range && range.from <= offset ? range.cls : '';
+}
+// text from..to as highlighted html: semantic classes over syntax ones, except inside
+// comments, strings and regexps, whose lexical class always wins
+export function highlightRanges(text, syntax = [], semantic = [], start = 0, end = text.length) {
   const html = [];
-  let a = 0, b = 0, from = 0, start = 0, active = '';
+  let a = rangeIndex(syntax, start), b = rangeIndex(semantic, start), from = start, active = '';
   const emit = (to) => {
     if (to > start) {
       const content = escape(text.slice(start, to));
@@ -84,16 +98,16 @@ export function highlightRanges(text, syntax = [], semantic = []) {
     }
     start = to;
   };
-  while (from < text.length) {
+  while (from < end) {
     while (a < syntax.length && syntax[a].to <= from) a++;
     while (b < semantic.length && semantic[b].to <= from) b++;
     const sa = syntax[a], sb = semantic[b];
-    const to = Math.min(text.length, sa ? sa.from > from ? sa.from : sa.to : text.length, sb ? sb.from > from ? sb.from : sb.to : text.length);
+    const to = Math.min(end, sa ? sa.from > from ? sa.from : sa.to : end, sb ? sb.from > from ? sb.from : sb.to : end);
     const lexical = sa?.from <= from ? sa.cls : '';
-    const cls = /hljs-(comment|string|regexp)/.test(lexical) ? lexical : sb?.from <= from ? sb.cls : lexical;
+    const cls = /hljs-(comment|string|regexp)/.test(lexical) || (sb?.stale && /hljs-(keyword|literal|type|number)/.test(lexical)) ? lexical : sb?.from <= from ? sb.cls : lexical;
     if (cls !== active) { emit(from); active = cls; }
     from = to;
   }
-  emit(text.length);
+  emit(end);
   return html.join('');
 }

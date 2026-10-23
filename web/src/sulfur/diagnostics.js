@@ -21,6 +21,15 @@ export function offsetAtColumn(text, line, column, tabSize = 4) {
   }
   return column === visual ? at : null;
 }
+// Diagnostics moved with an edit, as VS Code's markers move: kept until the next report
+// replaces them, so squiggles don't blink off on every keystroke. One inside the
+// edited span is stretched over what replaced it.
+export function rebaseDiagnostics(items, change, delta) {
+  const { head, tail, before } = change;
+  const end = before - tail, endNew = end + delta;
+  const at = (p, side) => p < head || (side < 0 && p === head) ? p : p >= end ? p + delta : side < 0 ? head : endNew;
+  return items.map((d) => ({ ...d, from: at(d.from, -1), to: Math.max(at(d.from, -1), at(d.to, 1)) }));
+}
 export function diagnosticsAt(items, offset) {
   return offset == null ? [] : items.filter((d) => offset >= d.from && offset < Math.max(d.to, d.from + 1)).sort((a, b) => diagnosticSeverity(a) - diagnosticSeverity(b));
 }

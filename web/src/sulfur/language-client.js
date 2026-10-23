@@ -1,7 +1,7 @@
 // LSP 3.17 client. Positions and offsets are UTF-16, as in the custom editor.
 // The socket belongs to one host, root and active configuration. It never
 // downloads packages or starts a server until an installed extension is used.
-import { opEdits, opApply } from '../text-operations.js';
+import { opEdits, opApply, commonEnds } from '../text-operations.js';
 import { TOKEN_TYPES, TOKEN_MODIFIERS } from './semantic-tokens.js';
 import { expandSnippet } from './completion.js';
 
@@ -123,10 +123,8 @@ export function completionEdits(item, text, caret, defaults = {}) {
 }
 
 export function incrementalChange(before, after) {
-  let from = 0, tail = 0;
-  while (from < before.length && from < after.length && before[from] === after[from]) from++;
+  let { head: from, tail } = commonEnds(before, after);
   if (from && ((before.charCodeAt(from - 1) >= 0xD800 && before.charCodeAt(from - 1) <= 0xDBFF) || before[from - 1] === '\r' && before[from] === '\n')) from--;
-  while (tail < before.length - from && tail < after.length - from && before[before.length - tail - 1] === after[after.length - tail - 1]) tail++;
   const end = before.length - tail;
   if (tail && ((before.charCodeAt(end) >= 0xDC00 && before.charCodeAt(end) <= 0xDFFF) || before[end - 1] === '\r' && before[end] === '\n')) tail--;
   return { range: { start: positionAt(before, from), end: positionAt(before, before.length - tail) }, text: after.slice(from, after.length - tail) };

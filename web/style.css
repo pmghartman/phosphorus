@@ -1815,6 +1815,8 @@ input, textarea { caret-color: var(--accent); }
 }
 /* the textarea's own font, never the browser's monospace for code */
 .code-hl code { font: inherit; background: none; padding: 0; }
+/* each layer draws only the lines on screen, padded to the whole text's height (editor.js) */
+.code-hl > code, .code-nums > div { display: block; }
 .code-hl, .code-ta { margin: 0; padding: 0.6rem 1.2ch; white-space: pre; overflow-wrap: normal; word-break: normal; letter-spacing: 0; }
 .code-hl { min-width: 100%; width: max-content; min-height: 100%; color: var(--fg); pointer-events: none; }
 .code-squig { position: absolute; inset: 0; color: transparent; }

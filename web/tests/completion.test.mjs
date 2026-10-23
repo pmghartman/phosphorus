@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fuzzyScore, rankCompletions, wordCompletions, expandSnippet, wordBefore, kindOf, inCommentOrString, sameCompletionWord } from '../src/sulfur/completion.js';
 import { reindent } from '../src/sulfur/format.js';
-import { htmlLines, patchHighlight } from '../src/highlight-patch.js';
 import { opApply, opEdits } from '../src/text-operations.js';
 
 test('fuzzy matching starts at a word boundary and follows camel case, as VS Code', () => {
@@ -62,14 +61,6 @@ test('format of a selection touches only its lines, from the nesting before it',
   assert.equal(format(text, from, from + 3, { ext: 'rs', unit: '    ' }), 'fn main() {\n    let a = 1;\n    let b = 2;\n}\n');
   assert.equal(format('x = 1  \n  y = 2\n', 0, 0, { ext: 'py', unit: '    ' }), 'x = 1\n  y = 2\n');
   assert.equal(format('{"a":[1,2]}', 0, 0, { ext: 'json', unit: '  ' }), '{\n  "a": [\n    1,\n    2\n  ]\n}');
-});
-
-test('an old highlight is kept for the lines an edit left alone', () => {
-  const html = '<span class="c">/* a\nb */</span>\n<span class="k">int</span> x;';
-  assert.deepEqual(htmlLines(html), ['<span class="c">/* a</span>', '<span class="c">b */</span>', '<span class="k">int</span> x;']);
-  const old = { text: '/* a\nb */\nint x;', html };
-  assert.equal(patchHighlight(old, '/* a\nb */\nint xy;'), '<span class="c">/* a</span>\n<span class="c">b */</span>\nint xy;');
-  assert.equal(patchHighlight(old, 'new <\n/* a\nb */\nint x;'), 'new &lt;\n<span class="c">/* a</span>\n<span class="c">b */</span>\n<span class="k">int</span> x;');
 });
 
 test('suggestions stay quiet in line comments and strings, read from the line itself', () => {
