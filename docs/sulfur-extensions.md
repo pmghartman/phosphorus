@@ -6,6 +6,12 @@ This guide is also in Sulfur itself, under **Help → Extension Guide**.
 
 ## Quick start
 
+For optional completion, semantic navigation, rename, and diagnostics, open
+**Extensions → Optional language extensions**. Select languages and a host, then
+**Install selected**. These use native language servers on that host, with
+enable/disable/uninstall controls. See [Language servers](sulfur-language-servers.md)
+for the ten-language selection, runtime prerequisites, and offline behavior.
+
 1. Run **Extensions: Create New Extension…** from the command palette (`Ctrl+Shift+P`). Name it, for example `word-count`.
 2. Sulfur writes `~/.sulfur/extensions/word-count/` into your home: a `package.json`, an `extension.js` and a `README.md`. It enables the extension and opens `extension.js`.
 3. Edit `extension.js`, save, and run **Developer: Reload Extensions**.
@@ -166,7 +172,7 @@ These act on the active editor tab, if it's a text file.
 
 ### api.runners
 
-`register(ext, command)` sets what **Run Active File** (`F5`) does for files ending `.ext`. In `command`, `$f` is the file's absolute path on the host, and `$o` is a fresh output path in a temporary folder (for compilers). The command runs in the file's folder. Examples from the built-in set:
+`register(ext, command)` sets what **Run Active File** does for files ending `.ext`. **F5** uses this runner when the active file has no project; project files use their active target. In `command`, `$f` is the file's absolute path on the host, and `$o` is a fresh output path in a temporary folder (for compilers). The command runs in the file's folder. Examples from the built-in set:
 
 ```
 c    gcc "$f" -O2 -o "$o" && "$o"
@@ -201,11 +207,15 @@ The code service's harnesses (Claude Code, opencode) come from the mesh, each an
 
 ## Builds and tasks
 
+The desktop app always serves this computer. Connecting a mesh adds its machines, models, agents and Forgejo beside it. **Open Folder** and **Open File** use the same folder dialog, with local and mesh places together; a typed path works with Enter or the Open button. Losing the mesh does not prevent local editing, terminals or builds.
+
+Standalone Sulfur defaults to the same Phosphorus palette as the desktop. **Light** and **Dark** in the Color Theme picker select Phosphorus's corresponding appearance; every other theme in the library (`internal/theme/themes.json`), and a custom one made in the desktop, remain available separately. The titlebar keeps its height and window controls visible as the window narrows or shortens.
+
 **Ctrl+B** builds the project. The first time, Sulfur looks at what the project is (CMake, a .NET solution or project, MSBuild, Cargo, Go, npm, Make, Meson, Python) and at the compilers each of your machines has. Where the project says how it builds, as Visual Studio reads it, Sulfur builds that way without asking:
 
 - **CMakeSettings.json**: its configurations (`x64-Debug`, `x64-Release`, …) are the configurations, each built in its own `buildRoot` with its generator, variables and arguments, under the Visual Studio that configured its tree (the compiler in its `CMakeCache.txt`) and that Visual Studio's own CMake.
 - **CMakePresets.json** and **CMakeUserPresets.json**: the presets are the configurations, built with `cmake --preset` and their build presets.
-- **A tree already configured** (`build`, `out/build/*`, `cmake-build-*` with a `CMakeCache.txt`): built again as it was configured, incrementally.
+- **A tree already configured** (`build`, `out/build/*`, `cmake-build-*` with a `CMakeCache.txt`): built incrementally with its generator. Multi-configuration trees offer their `CMAKE_CONFIGURATION_TYPES`; other trees offer their current build type and Debug, Release, RelWithDebInfo and MinSizeRel. Selecting another build type reconfigures the tree before building.
 - **A solution**: C++ in it (`.vcxproj`) builds with MSBuild under the Visual Studio its `# Visual Studio Version` names; C# alone with `dotnet`. Its own configurations (`Debug|Any CPU`, `Release|x64`, …) are the configurations, and `global.json`'s SDK is said if it's not installed.
 
 Otherwise it asks which to build with. **Run › Select Toolchain…** always asks. The pick is kept in the project's `.sulfur/build.json`, so it goes with the project when it's copied:
@@ -232,6 +242,18 @@ Otherwise it asks which to build with. **Run › Select Toolchain…** always as
 | `tasks` | Your own tasks: `{label, command, group}`, the command run in the project's folder. `group` is `build`, `test`, `run` or `other`. |
 
 Each task runs in a terminal of its own in the Terminal panel. Errors and warnings from MSVC, MSBuild, dotnet, gcc, clang, Go, Rust and CMake land in the Problems panel, linked to their lines. Editing the file and saving it takes effect at once; **Run › Select Toolchain…** and **Add a Task** (under **Run › Run Task…** and in the Run and Build view) write it for you.
+
+The green **Run** arrow and **F5** follow the active file's project and selected configuration. CMake projects use the [CMake File API](https://cmake.org/cmake/help/latest/manual/cmake-file-api.7.html) to map executable targets to their actual output paths, including `OUTPUT_NAME`, custom output directories and multi-configuration builds. Source files in libraries follow their dependencies to an application target. A remembered startup target or the application matching the project name takes precedence when several applications share a library; **Select Startup Item…** chooses another target. Switching from a standalone source file to a project file updates the Run view and arrow immediately. Run launches an already-built executable; **Ctrl+F5** retains the build-then-run workflow. An unbuilt executable prompts you to build with Ctrl+B. Older CMake trees without metadata acquire a Sulfur codemodel query on the next requested build or configure.
+
+A source file without a project builds alone. Compiler output, including MSVC object and debug files, goes into a unique writable temporary folder; the terminal prints its location. The source folder can be read-only.
+
+## Code navigation
+
+The editor's flat **Types** and **Methods and fields** pickers follow the caret and open workbench menus to jump to declarations in the current file. Longer symbol lists have a search box. C/C++, JavaScript/TypeScript, Java, Python, Go and Rust use their syntax parsers; C# uses the Java grammar as an approximation. Navigation parses files up to 2 MB.
+
+Undo and redo belong to the document rather than the browser's textarea buffer. An animated agent replacement is one undo step, earlier local edits remain undoable, and incoming collaborator changes rebase the history instead of clearing it. Incoming agent edits are recognized on hosts with the updated collaboration service.
+
+Right-click a method or variable for **Go to Definition** (F12), **Find All References** (Shift+F12) and **Rename…** (Ctrl+R, Ctrl+R). Ctrl+click (Cmd+click on macOS) searches the active project and opens the definition, including in a different file. C++ function prototypes and forward declarations defer to definitions when available. Multiple matching definitions show a picker. References and rename search matching syntax identifiers in the workspace's searchable files, excluding comments and strings. These are syntax matches, so unrelated names can appear. Rename previews each occurrence with a checkbox, checks that files have not changed, and applies edits through the editor for review and undo. It refuses a truncated search. Server search excludes files over 1 MB and the configured search exclusions.
 
 ## Key syntax
 

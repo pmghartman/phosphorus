@@ -122,7 +122,7 @@ func anySlice(v any) []any {
 // message the task, then keys and sizes in, the host's output out as it
 // comes, its exit last
 func sulfurSocket(w http.ResponseWriter, r *http.Request, pathname string, _ url.Values) bool {
-	if pathname != "/api/sulfur/run" {
+	if pathname != "/api/sulfur/run" && pathname != "/api/sulfur/languages" {
 		return false
 	}
 	if !sameOrigin(r) {
@@ -138,7 +138,17 @@ func sulfurSocket(w http.ResponseWriter, r *http.Request, pathname string, _ url
 	if ws == nil {
 		return true
 	}
-	runTask(ws, s)
+	if pathname == "/api/sulfur/languages" {
+		creds, err := codeLogin(s, r.URL.Query().Get("host"))
+		if err != nil {
+			ws.JSON(map[string]any{"_sulfur": "error", "error": err.Error()})
+			ws.Close(4000)
+			return true
+		}
+		sulfur.LanguageSocket(ws, r.URL.Query().Get("host"), creds)
+	} else {
+		runTask(ws, s)
+	}
 	return true
 }
 

@@ -17,6 +17,8 @@ export let selfHost = '';
 export let hostsInfo = {};
 export const dk = { creds: new Map() };
 let meshHosts = [];
+// offline, the remembered mesh's machines, while its login holds
+let linkHosts = [];
 
 // --- small helpers, as app.js's ------------------------------------------------------
 
@@ -101,9 +103,20 @@ export const DK_RUNNERS = {
 // --- hosts: this computer alone offline, the mesh's phosphorus hosts connected -----------
 
 export const homeOnline = () => [...new Set([selfHost, ...meshHosts].filter(Boolean))];
+// this computer on a mesh's page, unless it's one of the mesh's own machines
+const localExtra = () => (standalone.mode === 'mesh' && standalone.localHost && !meshHosts.includes(standalone.localHost) ? [standalone.localHost] : []);
+// the machines Sulfur reaches beside the home's: this computer, and offline a remembered mesh's
+export const otherHosts = () => [...localExtra(), ...(standalone.mode === 'local' ? linkHosts : [])];
 export function dkLiveHosts() {
-  const up = new Set(homeOnline());
+  const up = new Set([...homeOnline(), ...otherHosts()]);
   return [...dk.creds.keys()].filter((h) => up.has(h));
+}
+// a host's API path as this page reaches it: this computer through the app's own
+// server under /api/local/ on a mesh's page, a mesh's machine under /api/mesh/ offline
+export function hostUrl(host, path) {
+  if (localExtra().includes(host)) return `/api/local${path}`;
+  if (standalone.mode === 'local' && host !== selfHost) return `/api/mesh${path}`;
+  return path;
 }
 export function dkHomeOn(host) {
   const home = hostsInfo[String(host).toLowerCase()]?.files?.shares?.find((x) => x.home)?.label || '';
@@ -130,7 +143,7 @@ export const filesParent = (p) => p.split('/').slice(0, -1).join('/');
 export const filesApi = (loc, op, params) => {
   const q = new URLSearchParams({ share: loc.share || '0', ...(params || {}) });
   const host = loc.host === '*' ? homePick(params?.path || '') : loc.host;
-  return `/api/files/${encodeURIComponent(host)}/${op}?${q}`;
+  return hostUrl(host, `/api/files/${encodeURIComponent(host)}/${op}?${q}`);
 };
 export async function filesCall(loc, op, init, params) {
   if (loc.host === '*') return homeCall(op, init, params);
@@ -202,7 +215,7 @@ export let filesWin = null;
 // --- starting: which mode, who's logged in, the hosts' info ---------------------------
 
 async function getJSON(url, init) {
-  const r = await fetch(url, { cache: 'no-store', ...init });
+  const r = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(8000), ...init });
   const b = await r.json().catch(() => ({}));
   return { ok: r.ok, status: r.status, ...b };
 }
@@ -219,12 +232,20 @@ export function bootLocal(info) {
   standalone.info = info;
   standalone.server = info.server || '';
   standalone.servers = info.servers || [];
+  standalone.localHost = info.host;
   acct = { user: info.user, admin: true, boot: false, local: true };
   name = info.user;
   selfHost = info.host;
   hostsInfo = { [info.host]: info.info };
   meshHosts = [];
   dk.creds = new Map([[info.host, { user: info.user, pass: '' }]]);
+  standalone.logIn = async (host, user, pass) => {
+    const vault = { ...standalone.meshVault, hosts: { ...standalone.meshVault?.hosts, [host]: { user, pass } } };
+    const r = await getJSON(meshUrl('/api/me/vault'), jsonPost({ vault }));
+    if (!r.ok) throw new Error(r.error || 'not saved');
+    standalone.meshVault = vault;
+    dk.creds.set(host, { user, pass });
+  };
   filesWin = ({ loc, dir }) => {
     const sh = hostsInfo[selfHost]?.files?.shares?.find((x) => x.id === String(loc.share));
     if (!sh) return;
@@ -248,6 +269,14 @@ export async function bootMesh(server, info = null) {
   standalone.meshVault = me.vault || { hosts: {}, pages: {} };
   name = me.user;
   dk.creds = new Map(Object.entries(acct.vault.hosts || {}).map(([h, c]) => [h, { user: c.user, pass: c.pass }]));
+  // this computer beside the mesh's machines, through the app's own server
+  standalone.localHost = info?.host || '';
+  const local = () => {
+    const h = standalone.localHost;
+    if (!h || meshHosts.includes(h)) return;
+    hostsInfo[h] = info.info;
+    if (!dk.creds.has(h)) dk.creds.set(h, { user: info.user, pass: '' });
+  };
   standalone.logIn = async (host, user, pass) => {
     acct.vault.hosts = { ...(acct.vault.hosts || {}), [host]: { user, pass } };
     const r = await getJSON('/api/me/vault', jsonPost({ vault: acct.vault }));
@@ -264,6 +293,7 @@ export async function bootMesh(server, info = null) {
         selfHost = st.self?.host || selfHost;
         hostsInfo = st.hosts && typeof st.hosts === 'object' ? st.hosts : hostsInfo;
         meshHosts = (st.tailnet || []).filter((d) => d.phosphorus).map((d) => d.name).sort();
+        local();
         if (first) { first = false; resolve(); }
       };
       ws.onclose = () => { setTimeout(connect, 2000); };
@@ -293,8 +323,9 @@ export async function nativePick({ directory = false, title = '', defaultPath = 
 
 // an absolute path on this computer as Sulfur's place and path: the home's for the
 // user's own folder, a drive's for the rest
-export function locate(abs) {
-  const shares = hostsInfo[selfHost]?.files?.shares || [];
+// user's own folder, a drive's for the rest; this computer's unless another host's named
+export function locate(abs, host = standalone.localHost || selfHost) {
+  const shares = hostsInfo[String(host).toLowerCase()]?.files?.shares || [];
   const win = /^[A-Za-z]:/.test(abs);
   const norm = (p) => { const x = String(p).replace(/\\/g, '/').replace(/\/+$/, ''); return win ? x.toLowerCase() : x; };
   const a = norm(abs);
@@ -302,11 +333,14 @@ export function locate(abs) {
   const home = shares.find((s) => s.home);
   if (home) {
     const h = norm(home.label);
+    // the merged home where the host's part of it, else that host's own home folder
+    const merged = homeOnline().includes(host) && (standalone.mode !== 'mesh' || host !== standalone.localHost || meshHosts.includes(host));
+    const user = host === standalone.localHost ? standalone.info?.user || acct.user : standalone.meshUser || acct.user;
     // the user's folder by its own name, however the path was cased
-    if (a === `${h}/${norm(acct.user)}` || a.startsWith(`${h}/${norm(acct.user)}/`)) return { loc: HOME, rel: [acct.user, ...rel(home.label).split('/').slice(1)].join('/') };
+    if (a === `${h}/${norm(user)}` || a.startsWith(`${h}/${norm(user)}/`)) return { loc: merged ? HOME : { host, share: String(home.id) }, rel: [user, ...rel(home.label).split('/').slice(1)].join('/') };
   }
   const drive = shares.filter((s) => !s.home).sort((x, y) => y.label.length - x.label.length).find((s) => { const d = norm(s.label); return a === d || a.startsWith(`${d}/`) || (d === '' && a.startsWith('/')); });
-  return drive ? { loc: { host: selfHost, share: String(drive.id) }, rel: rel(drive.label) } : null;
+  return drive ? { loc: { host, share: String(drive.id) }, rel: rel(drive.label) } : null;
 }
 standalone.nativePick = nativePick;
 standalone.locate = locate;
@@ -320,10 +354,53 @@ export const meshUrl = (path) => (standalone.mode === 'local' ? `/api/mesh${path
 export async function meshMe() {
   if (standalone.mode === 'local' && !standalone.server) return null;
   const r = await getJSON(meshUrl('/api/me')).catch(() => null);
-  if (!r?.ok || r.boot) { standalone.meshUser = ''; return null; }
+  if (!r?.ok || r.boot) { standalone.meshUser = ''; unlinkHosts(); return null; }
+  if (standalone.meshUser && standalone.meshUser !== r.user) unlinkHosts();
   standalone.meshUser = r.user;
   standalone.meshVault = r.vault || { hosts: {}, pages: {} };
+  linkMesh();
   return r;
+}
+
+// offline, the mesh's machines beside this computer's: its state's hosts, the
+// user's saved logins for them, each reached through the app's own server
+let linkWs = null;
+function linkMesh() {
+  if (standalone.mode !== 'local' || !standalone.meshUser) return;
+  for (const [h, c] of Object.entries(standalone.meshVault?.hosts || {})) if (h !== selfHost && c?.user) dk.creds.set(h, { user: c.user, pass: c.pass });
+  if (linkWs) return;
+  const connect = () => {
+    for (const [h, c] of Object.entries(standalone.meshVault?.hosts || {})) if (h !== selfHost && c?.user) dk.creds.set(h, { user: c.user, pass: c.pass });
+    const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/mesh/api/state`);
+    linkWs = ws;
+    ws.onmessage = (ev) => {
+      let st;
+      try { st = JSON.parse(ev.data); } catch { return; }
+      const hs = (st.tailnet || []).filter((d) => d.phosphorus && d.name !== selfHost).map((d) => d.name).sort();
+      const was = linkHosts.join('\n');
+      linkHosts = hs;
+      for (const h of hs) if (st.hosts?.[h]) hostsInfo[h] = st.hosts[h];
+      if (was !== hs.join('\n')) standalone.onHosts?.();
+    };
+    ws.onclose = () => {
+      if (linkWs !== ws) return;
+      linkWs = null;
+      // A disconnected mesh must not leave stale machines looking available.
+      unlinkHosts();
+      if (standalone.mode === 'local' && standalone.meshUser) setTimeout(() => { if (!linkWs && standalone.meshUser) connect(); }, 3000);
+    };
+    ws.onerror = () => ws.close();
+  };
+  connect();
+}
+function unlinkHosts() {
+  const ws = linkWs;
+  linkWs = null;
+  ws?.close();
+  for (const h of linkHosts) { dk.creds.delete(h); if (h !== selfHost) delete hostsInfo[h]; }
+  const had = linkHosts.length;
+  linkHosts = [];
+  if (had) standalone.onHosts?.();
 }
 export async function meshLogIn(user, pass) {
   const r = await getJSON(meshUrl('/api/login'), jsonPost({ user, pass }));
@@ -333,11 +410,15 @@ export async function meshLogIn(user, pass) {
 export async function meshLogOut() {
   await getJSON(meshUrl('/api/logout'), jsonPost({})).catch(() => null);
   standalone.meshUser = '';
+  unlinkHosts();
 }
 // the app's own server told: link (remember a mesh, stay offline), mesh (work on it), local
 export async function sidecarMode(mode, server = '') {
   const r = await getJSON('/api/sidecar/mode', jsonPost({ mode, server }));
-  if (r.ok && r.server !== undefined) standalone.server = r.server;
+  if (r.ok && r.server !== undefined) {
+    if (r.server !== standalone.server) { unlinkHosts(); standalone.meshUser = ''; standalone.meshVault = null; }
+    standalone.server = r.server;
+  }
   return r;
 }
 standalone.meshUrl = meshUrl;

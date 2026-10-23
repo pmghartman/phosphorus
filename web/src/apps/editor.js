@@ -9,12 +9,17 @@ import {
   editors,
   el,
   esc,
+  hostUrl,
   lines,
   name,
   shareMenu,
 } from '../app.js';
 import { ERR_MAX, highlight, parserFor, parserNow, syntaxErrors } from '../lezer.js';
+import { patchHighlight } from '../highlight-patch.js';
 import { mdBlocks, renderMd } from '../md.js';
+import { opApply, opTransform, opDiff, opMap, opEdits } from '../text-operations.js';
+import { EditorHistory } from '../editor-history.js';
+import { diagnosticSeverity, diagnosticCounts, diagnosticText, diagnosticsAt, offsetAtColumn, diagnosticDelay } from '../sulfur/diagnostics.js';
 
 // --- code editor ------------------------------------------------------------------
 // a share's text or code file in a tab of its own, joined to the file's live
@@ -23,78 +28,6 @@ import { mdBlocks, renderMd } from '../md.js';
 // closed, syntax errors marked by a parse alone, saved once typing pauses;
 // nothing in it ever runs
 
-
-// --- the text operations the session speaks (collab.js's, here for the tab's end) ---
-
-const opIns = (o) => typeof o === 'string';
-const opDel = (o) => typeof o === 'number' && o < 0;
-function opBuilder() {
-  const ops = [];
-  const add = (o) => {
-    if (o === 0 || o === '') return;
-    const last = ops[ops.length - 1];
-    if (opIns(o) && opDel(last)) {
-      const before = ops[ops.length - 2];
-      if (opIns(before)) ops[ops.length - 2] = before + o; else ops.splice(ops.length - 1, 0, o);
-    } else if (last !== undefined && typeof last === typeof o && (opIns(o) || (o > 0) === (last > 0))) ops[ops.length - 1] = last + o;
-    else ops.push(o);
-  };
-  return { ops, retain: (n) => add(n), insert: (s) => add(s), del: (n) => add(-n) };
-}
-function opApply(doc, ops) {
-  let out = '';
-  let at = 0;
-  for (const o of ops) {
-    if (opIns(o)) out += o;
-    else if (o > 0) { out += doc.slice(at, at + o); at += o; } else at -= o;
-  }
-  return out;
-}
-function opTransform(a, b) {
-  const a1 = opBuilder();
-  const b1 = opBuilder();
-  let i = 0;
-  let j = 0;
-  let x = a[i++];
-  let y = b[j++];
-  for (;;) {
-    if (x === undefined && y === undefined) break;
-    if (opIns(x)) { a1.insert(x); b1.retain(x.length); x = a[i++]; continue; }
-    if (opIns(y)) { a1.retain(y.length); b1.insert(y); y = b[j++]; continue; }
-    if (x === undefined || y === undefined) throw new Error('operations of different lengths');
-    const n = Math.min(Math.abs(x), Math.abs(y));
-    if (x > 0 && y > 0) { a1.retain(n); b1.retain(n); } else if (x < 0 && y > 0) a1.del(n); else if (x > 0 && y < 0) b1.del(n);
-    x = Math.abs(x) === n ? a[i++] : x > 0 ? x - n : x + n;
-    y = Math.abs(y) === n ? b[j++] : y > 0 ? y - n : y + n;
-  }
-  return [a1.ops, b1.ops];
-}
-// one replace: what changed between two texts, by their common ends
-function opDiff(a, b) {
-  let s = 0;
-  while (s < a.length && s < b.length && a[s] === b[s]) s += 1;
-  let e = 0;
-  while (e < a.length - s && e < b.length - s && a[a.length - 1 - e] === b[b.length - 1 - e]) e += 1;
-  const o = opBuilder();
-  o.retain(s);
-  o.insert(b.slice(s, b.length - e));
-  o.del(a.length - s - e);
-  o.retain(e);
-  return o.ops;
-}
-// where a place in the text lands after an edit
-function opMap(ops, pos) {
-  let i = 0;
-  let j = 0;
-  for (const o of ops) {
-    if (opIns(o)) { j += o.length; continue; }
-    const n = Math.abs(o);
-    if (pos <= i + n) return o > 0 ? j + (pos - i) : j;
-    i += n;
-    if (o > 0) j += n;
-  }
-  return j;
-}
 
 // --- editors ---------------------------------------------------------------------
 
@@ -131,9 +64,12 @@ function codeEditor(view, file, btn, id, opts = {}) {
   // an agent's edit as it lands: what it wrote lit, its caret where it's writing
   const agentL = el('pre', 'code-hl code-agent');
   const ta = Object.assign(document.createElement('textarea'), { className: 'code-ta', spellcheck: false, autocomplete: 'off', wrap: 'off' });
+  const inlineLayer = Object.assign(el('pre', 'code-hl code-inline'), { hidden: true });
+  inlineLayer.setAttribute('aria-hidden', 'true');
+  let inlineSuggestion = null;
   ta.setAttribute('autocapitalize', 'off');
   ta.setAttribute('aria-label', file.label);
-  body.append(agentL, finds, pre, squig, ta);
+  body.append(agentL, finds, pre, squig, inlineLayer, ta);
   scroller.append(gutter, body);
 
   const out = el('div', 'code-out');
@@ -147,6 +83,26 @@ function codeEditor(view, file, btn, id, opts = {}) {
   // markdown rendered, each block its source again on a double click
   const mdView = Object.assign(el('div', 'code-md'), { hidden: true, tabIndex: -1 });
   view.append(bar, scroller, mdView, out);
+  const diagnosticHover = el('div', 'code-diagnostic-hover');
+  diagnosticHover.hidden = true;
+  diagnosticHover.setAttribute('role', 'tooltip');
+  view.append(diagnosticHover);
+  function hideDiagnosticHover() { diagnosticHover.hidden = true; }
+  ta.addEventListener('mousemove', (event) => {
+    if (inlineSuggestion) { hideDiagnosticHover(); return; }
+    const rect = ta.getBoundingClientRect(), style = getComputedStyle(ta);
+    const line = Math.floor((event.clientY - rect.top - parseFloat(style.paddingTop)) / (parseFloat(style.lineHeight) || 18));
+    const column = Math.floor((event.clientX - rect.left - parseFloat(style.paddingLeft)) / chWidthIn(ta));
+    const hit = diagnosticsAt(errs, offsetAtColumn(ta.value, line, column, parseInt(style.tabSize, 10) || 4));
+    if (!hit.length) { hideDiagnosticHover(); return; }
+    diagnosticHover.textContent = hit.map(diagnosticText).join('\n\n');
+    diagnosticHover.hidden = false;
+    const bounds = diagnosticHover.getBoundingClientRect();
+    diagnosticHover.style.left = `${Math.max(4, Math.min(event.clientX + 12, window.innerWidth - bounds.width - 8))}px`;
+    diagnosticHover.style.top = `${Math.max(4, Math.min(event.clientY + 20, window.innerHeight - bounds.height - 8))}px`;
+  });
+  for (const event of ['mouseleave', 'blur', 'input', 'keydown']) ta.addEventListener(event, hideDiagnosticHover);
+  scroller.addEventListener('scroll', hideDiagnosticHover);
   if (bare) bar.hidden = true;
 
   // the session: the server's text and version, the edit in flight to it
@@ -168,23 +124,98 @@ function codeEditor(view, file, btn, id, opts = {}) {
   let opSeq = 0;
   const canWrite = () => perms.includes('w');
   const say = (body) => sock && sock.readyState === WebSocket.OPEN && sock.send(JSON.stringify(body));
+  const history = new EditorHistory();
+  let historyText = '';
+  let historyReady = false;
+  let beforeSelection = [0, 0];
+  let historyGroup = '';
+  let agentSequence = 0;
+
+  function historyStep(redo = false) {
+    if (ta.readOnly) return false;
+    const next = history.step(ta.value, [ta.selectionStart, ta.selectionEnd], redo);
+    if (!next) return false;
+    ta.value = next.text;
+    historyText = next.text;
+    ta.setSelectionRange(...next.selection);
+    beforeSelection = next.selection;
+    redraw(); flush(); paintState(); caretInView(); sendCursor();
+    return true;
+  }
 
   // --- drawing ---
   let drawFrame = 0;
   let hlText = null;
-  const HL_MAX = 200 * 1024;
+  const HL_MAX = 8 * 1024 * 1024;
+  // past this, a file's highlighted again once typing stops, plain between
+  const HL_IDLE = 256 * 1024;
+  const SERVER_HL_MAX = 200 * 1024;
+  let bigTimer = 0;
+  let hlNow = false;
+  // the last whole highlight, its unchanged lines drawn again while a new one's on its way
+  let lastHl = null;
+  let diagnosticSnapshot = '', lastTextChange = 0;
+  function paintInline() {
+    const s = inlineSuggestion;
+    if (!s || s.text !== ta.value || s.caret !== ta.selectionStart || s.caret !== ta.selectionEnd || ta.readOnly) {
+      inlineSuggestion = null;
+      inlineLayer.hidden = true;
+      inlineLayer.replaceChildren();
+      gutter.querySelector('.code-inline-nums')?.remove();
+      body.classList.remove('code-has-inline');
+      nums.style.visibility = '';
+      return;
+    }
+    // Clone the current syntax spans and insert ghost text with DOM text APIs.
+    // It can contain arbitrary source, including HTML, without becoming markup.
+    const copy = code.cloneNode(true);
+    const walk = document.createTreeWalker(copy, NodeFilter.SHOW_TEXT);
+    let at = 0, found = false;
+    const ghost = el('span', 'code-inline-text', s.insert);
+    for (let node = walk.nextNode(); node; node = walk.nextNode()) {
+      if (s.caret <= at + node.length) {
+        const range = document.createRange();
+        range.setStart(node, s.caret - at); range.collapse(true); range.insertNode(ghost);
+        found = true; break;
+      }
+      at += node.length;
+    }
+    if (!found) copy.append(ghost);
+    inlineLayer.replaceChildren(copy);
+    inlineLayer.hidden = false;
+    body.classList.add('code-has-inline');
+    // Keep line numbers aligned when a preview inserts virtual lines.
+    const line = s.text.slice(0, s.caret).split('\n').length;
+    const virtual = s.insert.split('\n').length - 1;
+    const numberCopy = el('pre', 'code-nums code-inline-nums');
+    numberCopy.textContent = Array.from({ length: s.text.split('\n').length }, (_, i) => String(i + 1) + (i + 1 === line ? '\n'.repeat(virtual) : '')).join('\n');
+    gutter.querySelector('.code-inline-nums')?.remove();
+    if (virtual) { gutter.append(numberCopy); nums.style.visibility = 'hidden'; }
+    else nums.style.visibility = '';
+  }
   function draw() {
     drawFrame = 0;
     const text = ta.value;
+    if (text !== diagnosticSnapshot) { diagnosticSnapshot = text; lastTextChange = Date.now(); clearDiagnostics(); }
+    if (inlineSuggestion && inlineSuggestion.text !== text) setInlineSuggestion(null);
     // a tab shown again with the same text: its highlight kept
     if (text === hlText) { paintMarks(); return; }
-    hlText = text;
     const parser = text.length <= HL_MAX && parserNow(lang.check);
-    if (parser) code.innerHTML = `${highlight(parser, text)}\n`;
-    else {
-      code.textContent = `${text}\n`;
-      if (lang.check && text.length <= HL_MAX) parserFor(lang.check).then((p) => { if (p) { hlText = null; redraw(); } });
-      else if (lang.hl !== 'plaintext' && text.length <= HL_MAX) serverHighlight(text);
+    const big = text.length > HL_IDLE && hlText !== null && !hlNow;
+    hlText = text;
+    if (parser && !big) {
+      const html = highlight(parser, text);
+      code.innerHTML = `${html}\n`;
+      lastHl = { text, html };
+    } else {
+      const kept = lastHl && text.length <= HL_MAX ? patchHighlight(lastHl, text) : null;
+      if (kept === null) code.textContent = `${text}\n`;
+      else code.innerHTML = `${kept}\n`;
+      if (parser) {
+        clearTimeout(bigTimer);
+        bigTimer = setTimeout(() => { if (closed || ta.value !== text) return; hlText = null; hlNow = true; draw(); hlNow = false; }, 400);
+      } else if (lang.check && text.length <= HL_MAX) parserFor(lang.check).then((p) => { if (p) { hlText = null; redraw(); } });
+      else if (lang.hl !== 'plaintext' && text.length <= SERVER_HL_MAX) serverHighlight(text);
     }
     const lines = text.split('\n').length;
     if (nums.dataset.n !== String(lines)) {
@@ -194,7 +225,13 @@ function codeEditor(view, file, btn, id, opts = {}) {
     paintMarks();
     paintFinds();
     paintAgent();
+    if (inlineSuggestion) paintInline();
     checkSoon();
+  }
+  function setInlineSuggestion(value) {
+    inlineSuggestion = value;
+    if (!value) { inlineLayer.replaceChildren(); gutter.querySelector('.code-inline-nums')?.remove(); }
+    paintInline();
   }
   const redraw = () => { drawFrame ||= requestAnimationFrame(draw); mdSoon(); };
 
@@ -257,7 +294,13 @@ function codeEditor(view, file, btn, id, opts = {}) {
         if (ta.readOnly || from < 0 || to > ta.value.length || from > to) { resolve(false); return; }
         start();
       };
-      const put = (str, a, b) => { ta.setRangeText(str, a, b, 'preserve'); ta.dispatchEvent(new Event('input')); };
+      const group = `agent:${++agentSequence}`;
+      const put = (str, a, b) => {
+        beforeSelection = [ta.selectionStart, ta.selectionEnd];
+        historyGroup = group;
+        try { ta.setRangeText(str, a, b, 'preserve'); ta.dispatchEvent(new Event('input')); }
+        finally { historyGroup = ''; }
+      };
       const finish = (n) => {
         agentAt = -1;
         agentMarks = n ? [[from, from + n, 'add done']] : [];
@@ -327,7 +370,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
       ready, dirty: dirty(), readOnly: ta.readOnly, state: stateEl.textContent, bad: stateEl.classList.contains('bad'),
       lang: lang.hl, line: lineAt(text, e), col: e - text.lastIndexOf('\n', e - 1), sel: Math.abs(e - s),
       indent: u === '\t' ? 'tab' : u.length, eol: text.includes('\r\n') ? 'CRLF' : 'LF', length: text.length,
-      errors: errs.map((x) => ({ from: x.from, to: x.to, what: x.what, line: lineAt(text, x.from), col: x.from - text.lastIndexOf('\n', x.from - 1) })),
+      errors: errs.map((x) => ({ from: x.from, to: x.to, what: x.what, source: x.source, code: x.code, severity: diagnosticSeverity(x), line: lineAt(text, x.from), col: x.from - text.lastIndexOf('\n', x.from - 1) })),
       people: people.filter((p) => (me ? p.id !== me : p.name !== name)),
     };
   }
@@ -339,7 +382,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
       try {
         const r = await fetch('/api/md', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ highlight: lang.hl, text }) });
         const { html } = r.ok ? await r.json() : {};
-        if (typeof html === 'string' && ta.value === text) code.innerHTML = `${html}\n`;
+        if (typeof html === 'string' && ta.value === text) { code.innerHTML = `${html}\n`; lastHl = { text, html }; }
       } catch {}
     }, 150);
   }
@@ -449,12 +492,18 @@ function codeEditor(view, file, btn, id, opts = {}) {
 
   // --- syntax errors: a squiggle under each, a mark in the gutter, a list to jump from ---
   let errs = [];
+  let languageErrors = null;
   let checkTimer = 0;
-  const checkSoon = () => { clearTimeout(checkTimer); checkTimer = setTimeout(check, 300); };
+  const diagnosticsDelay = () => diagnosticDelay(opts.diagnosticDelay?.());
+  const checkSoon = () => { clearTimeout(checkTimer); checkTimer = setTimeout(check, diagnosticsDelay()); };
+  function clearDiagnostics() { errs = []; squig.replaceChildren(); errEl.hidden = true; out.hidden = true; hideDiagnosticHover(); paintMarks(); tell(); }
   async function check() {
-    const parser = lang.check && ta.value.length <= HL_MAX && await parserFor(lang.check);
+    if (Date.now() - lastTextChange < diagnosticsDelay()) { checkSoon(); return; }
+    hideDiagnosticHover();
     const text = ta.value;
-    errs = parser ? syntaxErrors(parser, text) : [];
+    const parser = languageErrors === null && lang.check && text.length <= HL_MAX && await parserFor(lang.check);
+    if (closed || text !== ta.value) return;
+    errs = languageErrors === null ? parser ? syntaxErrors(parser, text) : [] : languageErrors;
     const esc = (t) => t.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
     let html = '';
     let at = 0;
@@ -462,17 +511,18 @@ function codeEditor(view, file, btn, id, opts = {}) {
       const to = Math.max(e.to, Math.min(e.from + 1, text.length));
       if (e.from < at) continue;
       const bit = text.slice(e.from, to).replace(/\n/g, ' \n');
-      html += `${esc(text.slice(at, e.from))}<mark>${esc(bit) || ' '}</mark>`;
+      html += `${esc(text.slice(at, e.from))}<mark class="${e.severity === 2 ? 'code-warning' : e.severity > 2 ? 'code-hint' : ''}">${esc(bit) || ' '}</mark>`;
       at = to;
     }
     squig.innerHTML = `${html}${esc(text.slice(at))}\n`;
     const lineOf = (p) => text.slice(0, p).split('\n').length;
     errEl.hidden = !errs.length;
-    errEl.textContent = `${errs.length}${errs.length >= ERR_MAX ? '+' : ''} error${errs.length === 1 ? '' : 's'}`;
+    const counts = diagnosticCounts(errs);
+    errEl.textContent = [['errors', 'error'], ['warnings', 'warning'], ['info', 'info']].filter(([k]) => counts[k]).map(([k, label]) => `${counts[k]} ${label}${counts[k] !== 1 && k !== 'info' ? 's' : ''}`).join(', ');
     outTitle.textContent = errEl.textContent;
     outList.replaceChildren(...errs.map((e) => {
       const row = Object.assign(el('button', 'code-err-row'), { type: 'button' });
-      row.append(el('span', 'code-out-dim', `line ${lineOf(e.from)}`), el('span', 'code-out-err', e.what));
+      row.append(el('span', 'code-out-dim', `line ${lineOf(e.from)}`), el('span', `code-out-err${diagnosticSeverity(e) === 2 ? ' code-warning' : diagnosticSeverity(e) > 2 ? ' code-hint' : ''}`, diagnosticText(e)));
       row.addEventListener('click', () => { ta.focus(); ta.setSelectionRange(e.from, e.from); caretInView(); });
       return row;
     }));
@@ -487,7 +537,9 @@ function codeEditor(view, file, btn, id, opts = {}) {
     const lh = parseFloat(getComputedStyle(nums).lineHeight) || 18;
     const padTop = parseFloat(getComputedStyle(nums).paddingTop) || 0;
     for (const line of new Set(errs.map((e) => ta.value.slice(0, Math.min(e.from, ta.value.length)).split('\n').length - 1))) {
-      const mk = Object.assign(el('div', 'code-mark code-mark-err'), { title: 'syntax error' });
+      const onLine = errs.filter((e) => ta.value.slice(0, Math.min(e.from, ta.value.length)).split('\n').length - 1 === line).sort((a, b) => diagnosticSeverity(a) - diagnosticSeverity(b));
+      const severity = diagnosticSeverity(onLine[0]);
+      const mk = Object.assign(el('div', `code-mark code-mark-err${severity === 2 ? ' code-mark-warning' : severity > 2 ? ' code-mark-hint' : ''}`), { title: onLine.map(diagnosticText).join('\n') });
       mk.style.top = `${padTop + line * lh}px`;
       mk.style.height = `${lh}px`;
       gutter.append(mk);
@@ -564,12 +616,15 @@ function codeEditor(view, file, btn, id, opts = {}) {
 
   function setText(text, keepSel) {
     const [s0, s1] = [ta.selectionStart, ta.selectionEnd];
+    if (historyReady && ta.value !== text) history.remote(opDiff(ta.value, text));
+    historyReady = true;
     ta.value = text;
+    historyText = text;
     if (keepSel) ta.setSelectionRange(Math.min(s0, text.length), Math.min(s1, text.length));
     redraw();
   }
 
-  function remote(ops) {
+  function remote(ops, agent = '') {
     const C = ta.value;
     const P = inflight ? opApply(S, inflight.ops) : S;
     let r = ops;
@@ -577,7 +632,11 @@ function codeEditor(view, file, btn, id, opts = {}) {
     const [, r2] = opTransform(opDiff(P, C), r);
     const [s0, s1] = [ta.selectionStart, ta.selectionEnd];
     const top = scroller.scrollTop;
-    ta.value = opApply(C, r2);
+    const next = opApply(C, r2);
+    if (agent) history.record(C, next, [s0, s1], [opMap(r2, s0), opMap(r2, s1)], `agent:remote:${agent}`);
+    else history.remote(r2);
+    ta.value = next;
+    historyText = ta.value;
     ta.setSelectionRange(opMap(r2, s0), opMap(r2, s1));
     scroller.scrollTop = top;
     redraw();
@@ -587,7 +646,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
   function connect() {
     if (closed) return;
     const q = new URLSearchParams({ share: file.share, path: file.path });
-    sock = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/code/${encodeURIComponent(file.host)}?${q}`);
+    sock = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${hostUrl(file.host, `/api/code/${encodeURIComponent(file.host)}`)}?${q}`);
     // the chat's name, else the user this desktop logged into the host as
     const who = name || dk.creds.get(file.host)?.user || 'anon';
     sock.onopen = () => { retry = 1000; say({ type: 'join', name: who, color: color || colorFor(who) }); };
@@ -616,7 +675,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
           inflight = null;
           flush();
         } else {
-          remote(msg.ops);
+          remote(msg.ops, msg.agent ? msg.agentEdit || msg.by || 'agent' : '');
           S = opApply(S, msg.ops);
           V = msg.v;
         }
@@ -658,8 +717,10 @@ function codeEditor(view, file, btn, id, opts = {}) {
     const w = Math.min(...m.map((s) => s.length - 1).filter((n) => n > 0), 8);
     return ' '.repeat(Number.isFinite(w) && w <= 8 && w > 0 ? (w >= 4 ? 4 : w) : 2);
   }
-  // typed in through the browser's own edit, so ctrl+z undoes it
+  // All edits go through the same history, including synthetic and agent edits.
   function typeIn(from, to, text, selFrom, selTo) {
+    beforeSelection = [ta.selectionStart, ta.selectionEnd];
+    history.boundary();
     ta.setSelectionRange(from, to);
     const ok = text ? document.execCommand('insertText', false, text) : document.execCommand('delete');
     if (!ok) { ta.setRangeText(text, from, to, 'end'); ta.dispatchEvent(new Event('input')); }
@@ -706,6 +767,11 @@ function codeEditor(view, file, btn, id, opts = {}) {
     const t = ta.selectionEnd;
     const v = ta.value;
     const mod = e.ctrlKey || e.metaKey;
+    if (mod && !e.altKey && ['z', 'y'].includes(e.key.toLowerCase())) {
+      e.preventDefault(); e.stopPropagation();
+      historyStep(e.key.toLowerCase() === 'y' || e.shiftKey);
+      return;
+    }
     // the ide's escape its own: a find closed, the focus kept
     if (e.key === 'Escape' && !bare) { e.preventDefault(); ta.blur(); return; }
     if (mod && e.key === '/') { e.preventDefault(); toggleComment(); return; }
@@ -761,7 +827,17 @@ function codeEditor(view, file, btn, id, opts = {}) {
     clearTimeout(cursorTimer);
     cursorTimer = setTimeout(() => say({ type: 'cursor', pos: ta.selectionStart }), 250);
   };
-  ta.addEventListener('input', () => { redraw(); flush(); paintState(); caretInView(); sendCursor(); });
+  ta.addEventListener('beforeinput', (e) => {
+    if (e.inputType === 'historyUndo' || e.inputType === 'historyRedo') { e.preventDefault(); historyStep(e.inputType === 'historyRedo'); return; }
+    beforeSelection = [ta.selectionStart, ta.selectionEnd];
+  });
+  ta.addEventListener('input', (e) => {
+    const group = historyGroup || (/^(insertText|deleteContentBackward|deleteContentForward)$/.test(e.inputType) ? e.inputType : '');
+    history.record(historyText, ta.value, beforeSelection, [ta.selectionStart, ta.selectionEnd], group);
+    historyText = ta.value;
+    beforeSelection = [ta.selectionStart, ta.selectionEnd];
+    redraw(); flush(); paintState(); caretInView(); sendCursor();
+  });
   for (const ev of ['keyup', 'click', 'select']) ta.addEventListener(ev, () => { caretInView(); sendCursor(); tell(); });
 
   function save() {
@@ -798,11 +874,26 @@ function codeEditor(view, file, btn, id, opts = {}) {
     dirty,
     save,
     holdClose,
+    undo: () => historyStep(),
+    redo: () => historyStep(true),
     focus: () => ta.focus(),
     show: () => { redraw(); },
     text: () => ta.value,
+    setInlineSuggestion,
     info,
-    // the host's edits typed in as the browser's own, so ctrl+z undoes them
+    editMany: (edits, selection) => {
+      if (ta.readOnly || !ready) return false;
+      const before = ta.value;
+      const ops = opEdits(before, edits);
+      const next = opApply(before, ops);
+      const sel = selection || [opMap(ops, ta.selectionStart), opMap(ops, ta.selectionEnd)];
+      history.recordOperation(before, ops, [ta.selectionStart, ta.selectionEnd], sel);
+      ta.value = next; historyText = next; beforeSelection = sel;
+      ta.setSelectionRange(...sel);
+      redraw(); flush(); paintState(); caretInView(); sendCursor();
+      return true;
+    },
+    // Programmatic edits share the same history as typing and agent edits.
     edit: (from, to, text, selFrom, selTo) => {
       if (ta.readOnly) return false;
       ta.focus();
@@ -822,6 +913,10 @@ function codeEditor(view, file, btn, id, opts = {}) {
     agentEdit,
     agentFlash,
     ready: () => ready,
+    setDiagnostics: (errors) => {
+      languageErrors = errors === null ? null : [...errors].sort((a, b) => a.from - b.from);
+      if (errors === null) { clearDiagnostics(); checkSoon(); } else check();
+    },
     setFinds: (ranges, at = -1) => { findRanges = ranges; findAt = at; paintFinds(); },
     preview: isMd ? (on) => setRendered(on ?? !rendered) : null,
     previewing: () => rendered,
@@ -837,7 +932,8 @@ function codeEditor(view, file, btn, id, opts = {}) {
 // a monospace advance, measured once per element's font
 const chWidths = new Map();
 function chWidthIn(node) {
-  const font = getComputedStyle(node).font;
+  const style = getComputedStyle(node);
+  const font = style.font || `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
   if (chWidths.has(font)) return chWidths.get(font);
   const probe = Object.assign(document.createElement('span'), { textContent: '0'.repeat(50) });
   probe.style.cssText = `font:${font};position:absolute;visibility:hidden;white-space:pre`;

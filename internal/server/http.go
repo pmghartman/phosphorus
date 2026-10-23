@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/pmghartman/phosphorus/internal/files"
 	"github.com/pmghartman/phosphorus/internal/mesh"
 	"github.com/pmghartman/phosphorus/internal/proxy"
 	"github.com/pmghartman/phosphorus/internal/users"
@@ -19,6 +20,8 @@ import (
 const (
 	maxJSONBody = 64 * 1024
 	maxSaveBody = 2 * 1024 * 1024
+	// a whole text file saved, its JSON escapes and all
+	maxTextBody = 3 * files.MaxText
 )
 
 func sendJSON(w http.ResponseWriter, status int, body any) {
