@@ -50,7 +50,7 @@ func runWindow(url string) error {
 	if cache == "" {
 		cache = filepath.Join(home, ".cache")
 	}
-	// the app's own identifier as the old app's folder
+	// the app's identifier names its folders
 	d, c := filepath.Join(data, "dev.phosphorus.sulfur"), filepath.Join(cache, "dev.phosphorus.sulfur")
 	os.MkdirAll(d, 0o700)
 	os.MkdirAll(c, 0o700)

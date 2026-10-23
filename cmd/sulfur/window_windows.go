@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sync/atomic"
+	"time"
 	"unsafe"
 
 	webview2 "github.com/jchv/go-webview2"
@@ -36,20 +37,23 @@ var (
 	comdlg32 = windows.NewLazySystemDLL("comdlg32.dll")
 	ole32    = windows.NewLazySystemDLL("ole32.dll")
 
-	pShowWindow        = user32.NewProc("ShowWindow")
-	pIsZoomed          = user32.NewProc("IsZoomed")
-	pSendMessage       = user32.NewProc("SendMessageW")
-	pReleaseCapture    = user32.NewProc("ReleaseCapture")
-	pSetWindowLongPtr  = user32.NewProc("SetWindowLongPtrW")
-	pCallWindowProc    = user32.NewProc("CallWindowProcW")
-	pMonitorFromWindow = user32.NewProc("MonitorFromWindow")
-	pGetMonitorInfo    = user32.NewProc("GetMonitorInfoW")
-	pSetWindowPos      = user32.NewProc("SetWindowPos")
-	pCreateIconFromRes = user32.NewProc("CreateIconFromResourceEx")
-	pBrowseForFolder   = shell32.NewProc("SHBrowseForFolderW")
-	pPathFromIDList    = shell32.NewProc("SHGetPathFromIDListW")
-	pGetOpenFileName   = comdlg32.NewProc("GetOpenFileNameW")
-	pCoTaskMemFree     = ole32.NewProc("CoTaskMemFree")
+	pShowWindow          = user32.NewProc("ShowWindow")
+	pIsZoomed            = user32.NewProc("IsZoomed")
+	pSendMessage         = user32.NewProc("SendMessageW")
+	pReleaseCapture      = user32.NewProc("ReleaseCapture")
+	pSetWindowLongPtr    = user32.NewProc("SetWindowLongPtrW")
+	pCallWindowProc      = user32.NewProc("CallWindowProcW")
+	pMonitorFromWindow   = user32.NewProc("MonitorFromWindow")
+	pGetMonitorInfo      = user32.NewProc("GetMonitorInfoW")
+	pSetForegroundWindow = user32.NewProc("SetForegroundWindow")
+	pSetWindowPos        = user32.NewProc("SetWindowPos")
+	pCreateIconFromRes   = user32.NewProc("CreateIconFromResourceEx")
+	pSetClassLongPtr     = user32.NewProc("SetClassLongPtrW")
+	pCreateSolidBrush    = windows.NewLazySystemDLL("gdi32.dll").NewProc("CreateSolidBrush")
+	pBrowseForFolder     = shell32.NewProc("SHBrowseForFolderW")
+	pPathFromIDList      = shell32.NewProc("SHGetPathFromIDListW")
+	pGetOpenFileName     = comdlg32.NewProc("GetOpenFileNameW")
+	pCoTaskMemFree       = ole32.NewProc("CoTaskMemFree")
 
 	forceClose atomic.Bool
 	oldProc    uintptr
@@ -113,8 +117,14 @@ func wndProc(sh *shell, h *webHost) uintptr {
 	})
 }
 
+// the window's own dark, under the page: the web view's background, the class's brush
+const darkBg = 0x1f1f1f
+
 func runWindow(url string) error {
-	// the old app's web view folder, so the page's layout and open tabs carry over
+	if os.Getenv("WEBVIEW2_DEFAULT_BACKGROUND_COLOR") == "" {
+		os.Setenv("WEBVIEW2_DEFAULT_BACKGROUND_COLOR", "FF1F1F1F")
+	}
+	// the web view's data folder, named by the app's identifier: the page's layout and open tabs live in it
 	local := os.Getenv("LOCALAPPDATA")
 	w := webview2.NewWithOptions(webview2.WebViewOptions{
 		AutoFocus: true,
@@ -128,6 +138,11 @@ func runWindow(url string) error {
 	}
 	defer w.Destroy()
 	appHwnd = uintptr(w.Window())
+	// hidden until the page has drawn, so the web view's white start never shows; the brush
+	// meanwhile dark for a window that does
+	pShowWindow.Call(appHwnd, 0)
+	brush, _, _ := pCreateSolidBrush.Call(darkBg)
+	pSetClassLongPtr.Call(appHwnd, ^uintptr(9), brush) // GCLP_HBRBACKGROUND, -10
 	setIcons(appHwnd)
 
 	var host webHost = w
@@ -141,6 +156,7 @@ func runWindow(url string) error {
 			pSendMessage.Call(appHwnd, wmNCLButtonDown, htCaption, 0)
 		},
 		pick: pickWindows,
+		show: showWindow,
 	}
 	oldProc, _, _ = pSetWindowLongPtr.Call(appHwnd, ^uintptr(3), wndProc(&sh, &host)) // GWLP_WNDPROC, -4
 	// the frame recalculated now: the title bar out of the client area
@@ -150,8 +166,15 @@ func runWindow(url string) error {
 		return err
 	}
 	w.Navigate(url)
+	// a page that never says it's ready (the server's error page) shown anyway
+	time.AfterFunc(8*time.Second, func() { w.Dispatch(showWindow) })
 	w.Run()
 	return nil
+}
+
+func showWindow() {
+	pShowWindow.Call(appHwnd, 5)
+	pSetForegroundWindow.Call(appHwnd)
 }
 
 func toggleMax() {

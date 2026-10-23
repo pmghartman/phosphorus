@@ -55,9 +55,29 @@ export const LAYOUT_CHOICES = {
   btnStyle: ['glyphs', 'lights', 'caption'],
   title: ['left', 'center'],
   density: ['normal', 'compact', 'roomy'],
+  autohide: ['off', 'on'],
+  // what the bar's windows and the menu bar's app show: an icon, a title, both
+  labels: ['both', 'icons', 'titles'],
 };
 export const BAR_ITEMS = ['hosts', 'agent', 'bell', 'clock', 'profile'];
-export const CUSTOM_DEFAULT = { base: 'phosphorus', accent: '', font: '', mono: '', corners: '', shadows: '', desk: '', layout: {} };
+// a built-in theme's own whole config, every value concrete: what the custom theme starts as and
+// what a reset sets it to
+export function themeConfig(id) {
+  const t = builtIn(id) || builtIn('phosphorus');
+  const tok = tokensOf(t);
+  const px = parseFloat(String(tok['--r-pop'] || ''));
+  const corners = Number.isFinite(px) ? CUSTOM_CORNERS.reduce((a, b) => (Math.abs(b - px) < Math.abs(a - px) ? b : a)) : t.round ? '8' : '0';
+  return {
+    base: t.id,
+    accent: hex(tok['--accent']) || '#9f81cf',
+    font: t.sans ? 'system' : 'mono',
+    mono: t.id === 'win11' ? 'cascadia' : 'geist',
+    corners: String(corners),
+    shadows: tok['--lift'] === 'none' ? 'none' : 'soft',
+    desk: hex(tok['--desk']) || hex(tok['--bg']) || '#141414',
+    layout: themeLayout(t.id),
+  };
+}
 
 // a layout made whole: each key valid, the profile never hidden (it opens the settings)
 function cleanLayout(l, under) {
@@ -72,45 +92,45 @@ function cleanLayout(l, under) {
 export const themeLayout = (id) => cleanLayout({ ...LIB.base.layout, ...(builtIn(id) || builtIn('phosphorus')).layout });
 
 const hex = (v) => (/^#[0-9a-f]{6}$/i.test(v || '') ? v.toLowerCase() : '');
-// a stored custom theme made safe: unknown keys and values dropped, a bad base the default
+// a stored custom theme made whole and safe: unknown keys and values dropped, anything missing (or
+// left blank by an older save) the theme it was last reset to, a bad one the default's
 function cleanCustom(c) {
-  const o = { ...CUSTOM_DEFAULT, layout: {} };
-  if (!c || typeof c !== 'object') return o;
-  if (builtIn(c.base)) o.base = c.base;
-  o.accent = hex(c.accent);
-  o.desk = hex(c.desk);
-  if (CUSTOM_FONTS[c.font]) o.font = c.font;
-  if (CUSTOM_MONOS[c.mono]) o.mono = c.mono;
-  if (CUSTOM_CORNERS.includes(String(c.corners))) o.corners = String(c.corners);
-  if (CUSTOM_SHADOWS[c.shadows]) o.shadows = c.shadows;
-  // only what differs from the base theme's, '' or absent its own
-  if (c.layout && typeof c.layout === 'object') {
-    for (const [k, vals] of Object.entries(LAYOUT_CHOICES)) if (vals.includes(c.layout[k])) o.layout[k] = c.layout[k];
-    if (Array.isArray(c.layout.items)) o.layout.items = cleanLayout({ items: c.layout.items }).items;
-  }
-  return o;
+  const src = c && typeof c === 'object' ? c : {};
+  const own = themeConfig(builtIn(src.base) ? src.base : 'phosphorus');
+  return {
+    base: own.base,
+    accent: hex(src.accent) || own.accent,
+    desk: hex(src.desk) || own.desk,
+    font: CUSTOM_FONTS[src.font] ? src.font : own.font,
+    mono: CUSTOM_MONOS[src.mono] ? src.mono : own.mono,
+    corners: CUSTOM_CORNERS.includes(String(src.corners)) ? String(src.corners) : own.corners,
+    shadows: CUSTOM_SHADOWS[src.shadows] ? src.shadows : own.shadows,
+    layout: cleanLayout(src.layout, own.layout),
+  };
 }
 
 export function customNow() {
   try { return cleanCustom(JSON.parse(localStorage.getItem(CUSTOM_KEY) || 'null')); } catch { return cleanCustom(null); }
 }
 
-// the custom theme's overrides as rules over the library's (theirs at a single class's weight)
+// the custom theme's overrides as rules over the library's (theirs at a single class's weight):
+// only what differs from the theme it was last reset to, so the rest keeps its light and dark
 function customCss(c) {
+  const own = themeConfig(c.base);
   const page = {};
   const ide = {};
-  if (c.accent) {
+  if (c.accent !== own.accent) {
     Object.assign(page, { '--accent': c.accent, '--mesh-self': c.accent, '--glyph-purple': c.accent });
     Object.assign(ide, { '--ide-accent': c.accent, '--ide-button': c.accent, '--ide-badge': c.accent, '--ide-hl': c.accent, '--ide-link': c.accent, '--ide-caret': c.accent });
   }
-  if (c.font) { page['--font'] = CUSTOM_FONTS[c.font]; ide['--ide-ui'] = CUSTOM_FONTS[c.font]; }
-  if (c.mono) page['--mono'] = CUSTOM_MONOS[c.mono];
-  if (c.corners) {
+  if (c.font !== own.font) { page['--font'] = CUSTOM_FONTS[c.font]; ide['--ide-ui'] = CUSTOM_FONTS[c.font]; }
+  if (c.mono !== own.mono) page['--mono'] = CUSTOM_MONOS[c.mono];
+  if (c.corners !== own.corners) {
     const n = Number(c.corners);
     Object.assign(page, { '--r-ctl': `${Math.round(n * 0.6)}px`, '--r-pop': `${n}px`, '--r-card': `${n}px`, '--r-win': `${n ? n + 2 : 0}px` });
   }
-  if (c.shadows) Object.assign(page, CUSTOM_SHADOWS[c.shadows]);
-  if (c.desk) page['--desk'] = c.desk;
+  if (c.shadows !== own.shadows) Object.assign(page, CUSTOM_SHADOWS[c.shadows]);
+  if (c.desk !== own.desk) page['--desk'] = c.desk;
   const rule = (sel, t) => (Object.keys(t).length ? `${sel} { ${Object.entries(t).map(([k, v]) => `${k}: ${v};`).join(' ')} }\n` : '');
   return rule(':root[data-custom]', page) + rule(':root[data-custom] .ide-win', ide);
 }
@@ -132,8 +152,8 @@ function apply(id) {
   const r = document.documentElement;
   const c = id === 'custom' ? customNow() : null;
   const t = builtIn(c ? c.base : id) || builtIn('phosphorus');
-  const round = c?.corners ? c.corners !== '0' : !!t.round;
-  const sans = c?.font ? c.font !== 'mono' : !!t.sans;
+  const round = c ? c.corners !== '0' : !!t.round;
+  const sans = c ? c.font !== 'mono' : !!t.sans;
   const css = c ? customCss(c) : '';
   layout = cleanLayout(c?.layout, themeLayout(t.id));
   // each as data-l-*: barStyle as data-l-bar-style
@@ -141,14 +161,17 @@ function apply(id) {
   for (const [k, v] of Object.entries(attrs)) r.dataset[`l${k[0].toUpperCase()}${k.slice(1)}`] = v;
   r.dataset.palette = t.id;
   r.dataset.themeId = id;
+  // the phosphorus and cli looks draw the mark as ascii art
+  if (t.id === 'phosphorus' || t.id === 'cli') r.style.setProperty('--mark', 'url(/phosphorus-ascii.svg?v=1)');
+  else r.style.removeProperty('--mark');
   r.toggleAttribute('data-round', round);
   r.toggleAttribute('data-sans', sans);
   r.toggleAttribute('data-custom', !!c);
-  r.toggleAttribute('data-custom-desk', !!c?.desk);
+  r.toggleAttribute('data-custom-desk', !!c && c.desk !== themeConfig(c.base).desk);
   let tag = document.getElementById('phosphorus-custom');
   if (css && !tag) { tag = Object.assign(document.createElement('style'), { id: 'phosphorus-custom' }); document.head.append(tag); }
   if (tag) tag.textContent = css;
-  try { localStorage.setItem(APPLIED_KEY, JSON.stringify({ id, look: t.id, round, sans, desk: !!c?.desk, css, layout: attrs })); } catch {}
+  try { localStorage.setItem(APPLIED_KEY, JSON.stringify({ id, look: t.id, round, sans, desk: !!c && c.desk !== themeConfig(c.base).desk, css, layout: attrs })); } catch {}
 }
 
 export function setPalette(id) {

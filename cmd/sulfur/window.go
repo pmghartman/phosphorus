@@ -37,6 +37,7 @@ type shell struct {
 	drag                              func(x, y int)
 	pick                              func(pick) string
 	decorated                         bool
+	show                              func() // the window shown once the page is up; nil where it's shown at once
 }
 
 // closeReady whether the page has said it can ask about unsaved files; until then a close just closes
@@ -54,9 +55,14 @@ func bridge(h webHost, origin string, s shell) error {
 		"sx_drag":     func(x, y int) { ui(func() { s.drag(x, y) }) },
 		"sx_title":    func(t string) { ui(func() { h.SetTitle(t) }) },
 		"sx_destroy":  func() { ui(s.destroy) },
-		"sx_ready":    func() { closeReady.Store(true) },
-		"sx_open":     func(u string) error { return openURL(u) },
-		"sx_pick":     func(p pick) string { return s.pick(p) },
+		"sx_ready": func() {
+			closeReady.Store(true)
+			if s.show != nil {
+				ui(s.show)
+			}
+		},
+		"sx_open": func(u string) error { return openURL(u) },
+		"sx_pick": func(p pick) string { return s.pick(p) },
 	} {
 		if err := on(name, f); err != nil {
 			return err
