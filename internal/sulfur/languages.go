@@ -2,16 +2,10 @@ package sulfur
 
 import (
 	"bufio"
-	"context"
-	_ "embed"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
-	"os/exec"
-	"runtime"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -19,12 +13,10 @@ import (
 	"github.com/pmghartman/phosphorus/internal/wsock"
 )
 
-// The same small host adapter runs under the desktop user or the saved SSH
-// login. No daemon, system installation, PTY, or network is needed to launch an
-// installed server. Python is an explicit prerequisite, never auto-installed.
-//
-//go:embed languages.py
-var languageHelper string
+// The same language host (languages_host.go) runs in this process for the
+// desktop user, or as `phosphorus sulfur-language` under the saved SSH login on
+// a mesh host. No daemon, system installation, PTY, or network is needed to
+// launch an installed server.
 
 type LanguageRequest struct {
 	Op             string `json:"op"`
@@ -52,77 +44,23 @@ func LanguageSocket(ws *wsock.Conn, remote string, creds code.Creds) {
 		fail(errors.New("unknown language operation"))
 		return
 	}
-	arg, _ := json.Marshal(request)
-	payload := base64.StdEncoding.EncodeToString(arg)
-	// Send the adapter over stdin to stay below Windows sshd/cmd command limits.
-	// Plain UTF-8 source with a byte-length header keeps the embedded adapter
-	// inspectable, without compressed/encoded executable payloads. Only the JSON
-	// request argument is base64, for consistent quoting across remote shells.
-	bootstrap := "import sys;exec(compile(sys.stdin.buffer.read(int(sys.stdin.buffer.readline())), '<sulfur-language-adapter>', 'exec'))"
-	exited := make(chan struct{})
-	killLater := func(kill func()) {
-		time.AfterFunc(5*time.Second, func() {
-			select {
-			case <-exited:
-				return
-			default:
-				kill()
-			}
-		})
-	}
 	var in io.WriteCloser
 	var out io.Reader
 	var stop func()
 	var wait func() error
 	if remote == "" {
-		python := ""
-		for _, name := range []string{"python3", "python", "py"} {
-			p, e := exec.LookPath(name)
-			if e != nil {
-				continue
-			}
-			if strings.Contains(strings.ToLower(p), `microsoft\windowsapps`) {
-				continue
-			}
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			probe := exec.CommandContext(ctx, p, "-c", "import sys;assert sys.version_info >= (3,10)")
-			hideWindow(probe)
-			e = probe.Run()
-			cancel()
-			if e == nil {
-				python = p
-				break
-			}
-		}
-		if python == "" {
-			fail(errors.New("Install Python 3.10+ on this host and add it to PATH, then retry"))
-			return
-		}
-		cmd := exec.Command(python, "-u", "-c", bootstrap, payload)
-		hideWindow(cmd)
-		in, err = cmd.StdinPipe()
-		if err == nil {
-			out, err = cmd.StdoutPipe()
-		}
-		cmd.Stderr = &languageLog{ws: ws}
-		if err == nil {
-			err = cmd.Start()
-		}
-		if err != nil {
-			fail(err)
-			return
-		}
-		stop = func() {
-			in.Close()
-			killLater(func() {
-				if runtime.GOOS == "windows" {
-					killTree(cmd.Process)
-				} else {
-					cmd.Process.Kill()
-				}
-			})
-		}
-		wait = func() error { e := cmd.Wait(); close(exited); return e }
+		inR, inW := io.Pipe()
+		outR, outW := io.Pipe()
+		done := make(chan struct{})
+		go func() {
+			// its error already sent down the socket
+			ServeLanguage(request, inR, outW, &languageLog{ws: ws})
+			outW.Close()
+			close(done)
+		}()
+		in, out = inW, outR
+		stop = func() { inW.Close() }
+		wait = func() error { outR.Close(); <-done; inR.Close(); return nil }
 	} else {
 		cl, e := code.Dial(remote, creds)
 		if e != nil {
@@ -133,22 +71,6 @@ func LanguageSocket(ws *wsock.Conn, remote string, creds code.Creds) {
 		if e != nil {
 			cl.Close()
 			fail(e)
-			return
-		}
-		python := ""
-		for _, name := range []string{"python3", "python", "py"} {
-			probe := name + ` -c "import sys;assert sys.version_info >= (3,10);print('SULFUR_PYTHON_OK')"`
-			if !win {
-				probe = "sh -c " + code.Quote(posixPath+probe)
-			}
-			if result, e := output(cl, probe, 15*time.Second); e == nil && strings.Contains(result, "SULFUR_PYTHON_OK") {
-				python = name
-				break
-			}
-		}
-		if python == "" {
-			cl.Close()
-			fail(errors.New("Install Python 3.10+ on the project host and add it to the SSH login's PATH"))
 			return
 		}
 		ss, e := cl.NewSession()
@@ -162,10 +84,8 @@ func LanguageSocket(ws *wsock.Conn, remote string, creds code.Creds) {
 			out, err = ss.StdoutPipe()
 		}
 		ss.Stderr = &languageLog{ws: ws}
-		line := python + " -u -c " + code.Quote(bootstrap) + " " + code.Quote(payload)
-		if win {
-			line = PowerShell("& " + python + " -u -c '" + strings.ReplaceAll(bootstrap, "'", "''") + "' '" + payload + "'")
-		}
+		arg, _ := json.Marshal(request)
+		line := "phosphorus sulfur-language " + base64.StdEncoding.EncodeToString(arg)
 		if !win {
 			line = "sh -c " + code.Quote(posixPath+line)
 		}
@@ -177,17 +97,23 @@ func LanguageSocket(ws *wsock.Conn, remote string, creds code.Creds) {
 			fail(err)
 			return
 		}
-		stop = func() { in.Close(); killLater(func() { ss.Close(); cl.Close() }) }
+		exited := make(chan struct{})
+		stop = func() {
+			in.Close()
+			time.AfterFunc(5*time.Second, func() {
+				select {
+				case <-exited:
+				default:
+					ss.Close()
+					cl.Close()
+				}
+			})
+		}
 		wait = func() error { e := ss.Wait(); close(exited); cl.Close(); return e }
 	}
 	var once sync.Once
 	closeProcess := func() { once.Do(stop) }
 	defer closeProcess()
-	if _, err = io.WriteString(in, strconv.Itoa(len(languageHelper))+"\n"+languageHelper); err != nil {
-		closeProcess()
-		fail(err)
-		return
-	}
 	go func() {
 		for {
 			b, _, e := ws.Read()
@@ -216,6 +142,7 @@ func LanguageSocket(ws *wsock.Conn, remote string, creds code.Creds) {
 		closeProcess()
 		fail(e)
 	}
+	closeProcess()
 	if e := wait(); e != nil && ws.Open() {
 		fail(e)
 	}

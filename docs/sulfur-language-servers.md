@@ -24,11 +24,10 @@ consistent repository-activity measure rather than mixing the two rankings.
 
 ## Servers and runtime prerequisites
 
-Every host needs **Python 3.10+** on its user's PATH. Sulfur sends a small embedded
-adapter to that interpreter; Python itself is never downloaded automatically.
-Windows recognizes `python3`, `python`, or `py`; Linux/macOS also recognize
-`python3` and `python`. Windows Store launcher placeholders are ignored locally.
-An SSH host must expose the interpreter to the saved login. All installation
+The language host is Go, in the phosphorus binary: Sulfur runs it in its own
+process for this computer, and as `phosphorus sulfur-language` over the saved
+login on a mesh host, which needs `phosphorus` on that login's PATH (the
+installers put it there). No interpreter is required. All installation
 directories belong to that login, at `~/.sulfur/languages/<extension id>` in its
 actual OS home. These executable packages are separate from the merged-home
 sandboxed JavaScript extensions.
@@ -244,12 +243,11 @@ uses smaller keyboard steps. Narrow windows retain the existing drawer layout.
 
 ```text
 node --test web/tests/*.test.mjs
-python -B -m unittest discover -s internal/sulfur/tests -v
+go test ./internal/sulfur
 ```
 
-With `SULFUR_LSP_SMOKE=1`, the Python test also downloads Pyright and the
-TypeScript server into a temporary directory and checks real LSP completion
-through the same embedded adapter/bootstrap. It removes these test packages
-afterward. It does not compile the application. The other platform-specific
+The Go tests cover the installer, the manifest and lock handling, archive
+safety, document gating and UTF-8 framing through a stand-in server. They never
+download a real language server or compile the application. The other platform-specific
 servers and mesh SSH transport should additionally be exercised on the user's
 target hosts after the user builds the application.
