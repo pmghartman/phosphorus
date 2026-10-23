@@ -36,6 +36,8 @@ type Layout struct {
 	BtnStyle string   `json:"btnStyle,omitempty"` // glyphs, lights, caption
 	Title    string   `json:"title,omitempty"`    // left, center
 	Density  string   `json:"density,omitempty"`  // compact, normal, roomy
+	Autohide string   `json:"autohide,omitempty"` // off, on: the bar tucked away until its edge is reached
+	Labels   string   `json:"labels,omitempty"`   // both, icons, titles: what the bar's windows and the menu bar's app show
 }
 
 // Theme one entry: Look names the page's structural styles, Layout its bars and window chrome,
@@ -151,6 +153,8 @@ func (l *Library) Layout(id string) Layout {
 	pick(&o.BtnStyle, t.BtnStyle)
 	pick(&o.Title, t.Title)
 	pick(&o.Density, t.Density)
+	pick(&o.Autohide, t.Autohide)
+	pick(&o.Labels, t.Labels)
 	if t.Items != nil {
 		o.Items = t.Items
 	}

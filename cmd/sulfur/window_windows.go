@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sync/atomic"
+	"time"
 	"unsafe"
 
 	webview2 "github.com/jchv/go-webview2"
@@ -36,22 +37,31 @@ var (
 	comdlg32 = windows.NewLazySystemDLL("comdlg32.dll")
 	ole32    = windows.NewLazySystemDLL("ole32.dll")
 
-	pShowWindow        = user32.NewProc("ShowWindow")
-	pIsZoomed          = user32.NewProc("IsZoomed")
-	pSendMessage       = user32.NewProc("SendMessageW")
-	pReleaseCapture    = user32.NewProc("ReleaseCapture")
-	pSetWindowLongPtr  = user32.NewProc("SetWindowLongPtrW")
-	pCallWindowProc    = user32.NewProc("CallWindowProcW")
-	pMonitorFromWindow = user32.NewProc("MonitorFromWindow")
-	pGetMonitorInfo    = user32.NewProc("GetMonitorInfoW")
-	pSetWindowPos      = user32.NewProc("SetWindowPos")
-	pCreateIconFromRes = user32.NewProc("CreateIconFromResourceEx")
-	pBrowseForFolder   = shell32.NewProc("SHBrowseForFolderW")
-	pPathFromIDList    = shell32.NewProc("SHGetPathFromIDListW")
-	pGetOpenFileName   = comdlg32.NewProc("GetOpenFileNameW")
-	pCoTaskMemFree     = ole32.NewProc("CoTaskMemFree")
+	pShowWindow          = user32.NewProc("ShowWindow")
+	pIsZoomed            = user32.NewProc("IsZoomed")
+	pSendMessage         = user32.NewProc("SendMessageW")
+	pReleaseCapture      = user32.NewProc("ReleaseCapture")
+	pSetWindowLongPtr    = user32.NewProc("SetWindowLongPtrW")
+	pCallWindowProc      = user32.NewProc("CallWindowProcW")
+	pMonitorFromWindow   = user32.NewProc("MonitorFromWindow")
+	pGetMonitorInfo      = user32.NewProc("GetMonitorInfoW")
+	pSetForegroundWindow = user32.NewProc("SetForegroundWindow")
+	pSetWindowPos        = user32.NewProc("SetWindowPos")
+	pCreateIconFromRes   = user32.NewProc("CreateIconFromResourceEx")
+	pSetWindowsHookEx    = user32.NewProc("SetWindowsHookExW")
+	pUnhookWindowsHook   = user32.NewProc("UnhookWindowsHookEx")
+	pCallNextHook        = user32.NewProc("CallNextHookEx")
+	pGetThreadID         = windows.NewLazySystemDLL("kernel32.dll").NewProc("GetCurrentThreadId")
+	pGetSystemMetrics    = user32.NewProc("GetSystemMetrics")
+	pSetClassLongPtr     = user32.NewProc("SetClassLongPtrW")
+	pCreateSolidBrush    = windows.NewLazySystemDLL("gdi32.dll").NewProc("CreateSolidBrush")
+	pBrowseForFolder     = shell32.NewProc("SHBrowseForFolderW")
+	pPathFromIDList      = shell32.NewProc("SHGetPathFromIDListW")
+	pGetOpenFileName     = comdlg32.NewProc("GetOpenFileNameW")
+	pCoTaskMemFree       = ole32.NewProc("CoTaskMemFree")
 
 	forceClose atomic.Bool
+	shown      atomic.Bool
 	oldProc    uintptr
 	appHwnd    uintptr
 )
@@ -113,12 +123,48 @@ func wndProc(sh *shell, h *webHost) uintptr {
 	})
 }
 
+// the window's own dark, under the page: the web view's background, the class's brush
+const darkBg = 0x1f1f1f
+
+// offscreen where the library's window is made: it shows the window the moment it's created,
+// a white one with a title bar, long before the page is up; made out of sight it never does
+func makeOffscreen() func() {
+	done := false
+	var hook uintptr
+	cb := windows.NewCallback(func(code int32, wp, lp uintptr) uintptr {
+		// HCBT_CREATEWND: a top-level window's CREATESTRUCT, its place moved before it's made
+		if code == 3 && !done {
+			cbt := *(*unsafe.Pointer)(unsafe.Pointer(&lp)) // CBT_CREATEWND, its first field the CREATESTRUCT
+			cs := *(*unsafe.Pointer)(cbt)
+			if *(*uintptr)(unsafe.Add(cs, 24)) == 0 { // no parent
+				*(*int32)(unsafe.Add(cs, 40)) = -32000 // y
+				*(*int32)(unsafe.Add(cs, 44)) = -32000 // x
+				done = true
+			}
+		}
+		r, _, _ := pCallNextHook.Call(hook, uintptr(code), wp, lp)
+		return r
+	})
+	tid, _, _ := pGetThreadID.Call()
+	hook, _, _ = pSetWindowsHookEx.Call(5, cb, 0, tid) // WH_CBT
+	return func() { pUnhookWindowsHook.Call(hook) }
+}
+
 func runWindow(url string) error {
-	// the old app's web view folder, so the page's layout and open tabs carry over
+	if os.Getenv("WEBVIEW2_DEFAULT_BACKGROUND_COLOR") == "" {
+		os.Setenv("WEBVIEW2_DEFAULT_BACKGROUND_COLOR", "FF1F1F1F")
+	}
+	// the web view's data folder, named by the app's identifier: the page's layout and open tabs live in it
 	local := os.Getenv("LOCALAPPDATA")
+	data := filepath.Join(local, "dev.phosphorus.sulfur", "EBWebView")
+	// a folder of its own for a second copy beside the installed one: web views sharing a folder must agree on their options
+	if d := os.Getenv("SULFUR_WEBVIEW_DATA"); d != "" {
+		data = d
+	}
+	unhook := makeOffscreen()
 	w := webview2.NewWithOptions(webview2.WebViewOptions{
 		AutoFocus: true,
-		DataPath:  filepath.Join(local, "dev.phosphorus.sulfur", "EBWebView"),
+		DataPath:  data,
 		WindowOptions: webview2.WindowOptions{
 			Title: "Sulfur", Width: 1320, Height: 860, Center: true,
 		},
@@ -126,8 +172,14 @@ func runWindow(url string) error {
 	if w == nil {
 		return errors.New("WebView2 didn't start; its runtime is from https://developer.microsoft.com/microsoft-edge/webview2/")
 	}
+	unhook()
 	defer w.Destroy()
 	appHwnd = uintptr(w.Window())
+	// hidden until the page has drawn, so the web view's white start never shows; the brush
+	// meanwhile dark for a window that does
+	pShowWindow.Call(appHwnd, 0)
+	brush, _, _ := pCreateSolidBrush.Call(darkBg)
+	pSetClassLongPtr.Call(appHwnd, ^uintptr(9), brush) // GCLP_HBRBACKGROUND, -10
 	setIcons(appHwnd)
 
 	var host webHost = w
@@ -141,6 +193,7 @@ func runWindow(url string) error {
 			pSendMessage.Call(appHwnd, wmNCLButtonDown, htCaption, 0)
 		},
 		pick: pickWindows,
+		show: showWindow,
 	}
 	oldProc, _, _ = pSetWindowLongPtr.Call(appHwnd, ^uintptr(3), wndProc(&sh, &host)) // GWLP_WNDPROC, -4
 	// the frame recalculated now: the title bar out of the client area
@@ -150,8 +203,28 @@ func runWindow(url string) error {
 		return err
 	}
 	w.Navigate(url)
+	// a page that never says it's ready (the server's error page) shown anyway
+	time.AfterFunc(8*time.Second, func() { w.Dispatch(showWindow) })
 	w.Run()
 	return nil
+}
+
+// showWindow brought to its place on the screen's middle, then shown
+func showWindow() {
+	if !shown.Swap(true) {
+		sw, _, _ := pGetSystemMetrics.Call(0) // SM_CXSCREEN
+		sh, _, _ := pGetSystemMetrics.Call(1)
+		x, y := (int(sw)-1320)/2, (int(sh)-860)/2
+		if x < 0 {
+			x = 0
+		}
+		if y < 0 {
+			y = 0
+		}
+		pSetWindowPos.Call(appHwnd, 0, uintptr(x), uintptr(y), 0, 0, 0x0001|0x0004|0x0010) // no size, no z order, no activate
+	}
+	pShowWindow.Call(appHwnd, 5)
+	pSetForegroundWindow.Call(appHwnd)
 }
 
 func toggleMax() {

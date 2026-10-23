@@ -1,5 +1,5 @@
 import { renderMd, mdBlocks, fitMath } from './md.js';
-import { BAR_ITEMS, CUSTOM_CORNERS, CUSTOM_DEFAULT, CUSTOM_SHADOWS, LAYOUT_CHOICES, PALETTES, PALETTE_EVENT, customNow, layoutNow, paletteNow, setCustom, setPalette, themeFromStorage, themeLayout } from './theme.js';
+import { BAR_ITEMS, CUSTOM_CORNERS, CUSTOM_SHADOWS, LAYOUT_CHOICES, PALETTES, PALETTE_EVENT, customNow, layoutNow, paletteNow, setCustom, setPalette, themeConfig, themeFromStorage } from './theme.js';
 import { parserFor, parserNow, highlight, syntaxErrors } from './lezer.js';
 
 // the page's vendor files, hashed by the build
@@ -1877,56 +1877,52 @@ function dkSwatch(p) {
 const DK_LAYOUT_NAMES = {
   bottom: 'bottom', top: 'top', left: 'left', right: 'right', off: 'none', panel: 'floating panel', dock: 'dock', full: 'edge to edge',
   line: 'status line', glyphs: 'glyphs', lights: 'traffic lights', caption: 'caption buttons', center: 'centered',
-  normal: 'normal', compact: 'compact', roomy: 'roomy',
+  normal: 'normal', compact: 'compact', roomy: 'roomy', on: 'on', both: 'icons and titles', icons: 'icons', titles: 'titles',
 };
 const DK_ITEM_NAMES = { hosts: 'hosts', agent: 'agent', bell: 'notifications', clock: 'clock', profile: 'profile and settings' };
 
-// the custom theme, made here: worn as it's changed, kept with the user's settings on every host
+// the custom theme, made here: every setting its own value, worn once saved, then kept with the
+// user's settings on every host; a reset sets them all to one of the built-in themes'
 function dkThemeWin() {
   const w = dkWin('app:theme', 'theme', 'custom', 'app dk-app-theme');
   if (!w) return;
-  const body = el('div', 'acct-pane dk-theme-pane');
-  w.body.appendChild(body);
+  const pane = el('div', 'dk-theme-pane');
+  const body = el('div', 'dk-theme-body');
+  const foot = el('div', 'dk-theme-foot');
+  pane.append(body, foot);
+  w.body.appendChild(pane);
   dkSize(w, 480, 640);
   let c = customNow();
-  const save = () => { c = setCustom(c); draw(); };
+  let dirty = false;
+  let resets = false;
+  const touch = () => { dirty = true; paintFoot(); };
   const row = (label, input, note) => {
     const r = el('label', 'dk-theme-row');
     r.append(el('span', 'dk-theme-k', label), input);
     if (note) r.append(el('span', 'dk-theme-note', note));
     return r;
   };
-  const pick = (key, choices) => {
+  const select = (choices, now, set) => {
     const s = el('select', 'dk-theme-in');
-    for (const [v, label] of choices) s.append(Object.assign(el('option', '', label), { value: v, selected: c[key] === v }));
-    s.addEventListener('change', () => { c[key] = s.value; save(); });
+    for (const [v, label] of choices) s.append(Object.assign(el('option', '', label), { value: v, selected: now === v }));
+    s.addEventListener('change', () => { set(s.value); touch(); });
     return s;
   };
-  // a color, or the theme's own when cleared
-  const color = (key, fallback) => {
+  const pick = (key, choices) => select(choices, c[key], (v) => { c[key] = v; });
+  const color = (key) => {
     const box = el('span', 'dk-theme-color');
-    const inp = Object.assign(el('input', 'dk-theme-in'), { type: 'color', value: c[key] || fallback });
-    const own = Object.assign(el('button', '', c[key] ? 'use the theme’s' : 'the theme’s'), { type: 'button', disabled: !c[key] });
-    inp.addEventListener('input', () => { c[key] = inp.value; c = setCustom(c); own.disabled = false; own.textContent = 'use the theme’s'; });
-    inp.addEventListener('change', () => draw());
-    own.addEventListener('click', () => { c[key] = ''; save(); });
-    box.append(inp, own);
+    const inp = Object.assign(el('input', 'dk-theme-in'), { type: 'color', value: c[key] });
+    const hexNote = el('span', 'dk-theme-note', c[key]);
+    inp.addEventListener('input', () => { c[key] = inp.value; hexNote.textContent = inp.value; touch(); });
+    box.append(inp, hexNote);
     return box;
   };
-  // a layout choice, the theme's own unless picked
-  const lay = (key) => {
-    const own = themeLayout(c.base)[key];
-    const s = el('select', 'dk-theme-in');
-    s.append(Object.assign(el('option', '', `the theme’s: ${DK_LAYOUT_NAMES[own]}`), { value: '', selected: !c.layout[key] }));
-    for (const v of LAYOUT_CHOICES[key]) s.append(Object.assign(el('option', '', DK_LAYOUT_NAMES[v]), { value: v, selected: c.layout[key] === v }));
-    s.addEventListener('change', () => { c.layout = { ...c.layout, [key]: s.value || undefined }; save(); });
-    return s;
-  };
+  const lay = (key) => select(LAYOUT_CHOICES[key].map((v) => [v, DK_LAYOUT_NAMES[v]]), c.layout[key], (v) => { c.layout = { ...c.layout, [key]: v }; });
   // the status items: each shown or not, moved up or down; the profile always, the way to settings
   const items = () => {
-    const now = c.layout.items || themeLayout(c.base).items;
+    const now = c.layout.items;
     const all = [...now, ...BAR_ITEMS.filter((i) => !now.includes(i))];
-    const set = (next) => { c.layout = { ...c.layout, items: next }; save(); };
+    const set = (next) => { c.layout = { ...c.layout, items: next }; touch(); draw(); };
     const list = el('div', 'dk-theme-items');
     all.forEach((id, i) => {
       const r = el('div', 'dk-theme-item');
@@ -1946,38 +1942,53 @@ function dkThemeWin() {
     r.append(el('span', 'dk-theme-k', 'bar items'), list);
     return r;
   };
+  // the bottom: a reset to a built-in theme's config, and the save that wears it
+  const paintFoot = () => {
+    const worn = paletteNow() === 'custom';
+    const reset = Object.assign(el('button', 'dk-theme-reset', 'reset…'), { type: 'button' });
+    reset.setAttribute('aria-expanded', String(resets));
+    reset.addEventListener('click', () => { resets = !resets; paintFoot(); });
+    const save = Object.assign(el('button', 'dk-theme-save', dirty || !worn ? 'save and apply' : 'saved'), { type: 'button', disabled: !dirty && worn });
+    save.addEventListener('click', () => { c = setCustom(c); dirty = false; resets = false; draw(); });
+    const acts = el('div', 'dk-theme-acts');
+    acts.append(reset, save);
+    const kids = [];
+    if (resets) {
+      const list = el('div', 'dk-theme-resets');
+      list.append(el('span', 'dk-theme-note', 'reset every setting to the config of'));
+      for (const p of PALETTES.filter((x) => !x.custom)) {
+        const b = Object.assign(el('button', '', p.label), { type: 'button', title: p.about });
+        b.addEventListener('click', () => { c = themeConfig(p.id); dirty = true; resets = false; draw(); });
+        list.append(b);
+      }
+      kids.push(list);
+    }
+    foot.replaceChildren(...kids, acts);
+  };
   const draw = () => {
-    const css = getComputedStyle(document.documentElement);
-    const base = pick('base', PALETTES.filter((p) => !p.custom).map((p) => [p.id, p.label]));
-    const theme = [['', 'the theme’s']];
-    const rows = [
-      row('start from', base, 'its colors, layout and chrome'),
-      row('accent', color('accent', css.getPropertyValue('--accent').trim() || '#9f81cf')),
-      row('page font', pick('font', [...theme, ['system', 'system sans'], ['mono', 'monospaced'], ['serif', 'serif']])),
-      row('code font', pick('mono', [...theme, ['geist', 'geist mono'], ['system', 'system mono'], ['cascadia', 'cascadia'], ['jetbrains', 'jetbrains mono']])),
-      row('corners', pick('corners', [...theme, ...CUSTOM_CORNERS.map((n) => [n, n === '0' ? 'square' : `${n}px`])])),
-      row('shadows', pick('shadows', [...theme, ...Object.keys(CUSTOM_SHADOWS).map((k) => [k, k])])),
-      row('desk', color('desk', css.getPropertyValue('--bg').trim() || '#141414'), 'under the icons, unless a picture is set'),
+    body.replaceChildren(
+      el('p', 'dk-note', 'Your theme, kept with your settings on every host. Changes are worn when you save and apply.'),
+      row('accent', color('accent')),
+      row('page font', pick('font', [['system', 'system sans'], ['mono', 'monospaced'], ['serif', 'serif']])),
+      row('code font', pick('mono', [['geist', 'geist mono'], ['system', 'system mono'], ['cascadia', 'cascadia'], ['jetbrains', 'jetbrains mono']])),
+      row('corners', pick('corners', CUSTOM_CORNERS.map((n) => [n, n === '0' ? 'square' : `${n}px`]))),
+      row('shadows', pick('shadows', Object.keys(CUSTOM_SHADOWS).map((k) => [k, k]))),
+      row('desk', color('desk'), 'under the icons, unless a picture is set'),
       el('div', 'dk-theme-head', 'layout'),
       row('task bar', lay('bar')),
       row('bar style', lay('barStyle')),
+      row('auto-hide bar', lay('autohide'), 'tucked away until the pointer reaches its edge'),
       row('menu bar', lay('menubar'), 'the status items along an edge of their own'),
+      row('app labels', lay('labels'), 'on the bar’s windows and the menu bar’s app'),
       items(),
       row('window buttons', lay('btns')),
       row('button style', lay('btnStyle')),
       row('title', lay('title')),
       row('title bar', lay('density')),
-    ];
-    const acts = el('div', 'update-actions');
-    const reset = Object.assign(el('button', '', 'start over'), { type: 'button' });
-    reset.addEventListener('click', () => { c = { ...CUSTOM_DEFAULT, layout: {}, base: c.base }; save(); });
-    const relay = Object.assign(el('button', '', 'the theme’s layout'), { type: 'button', disabled: !Object.keys(c.layout).length });
-    relay.addEventListener('click', () => { c = { ...c, layout: {} }; save(); });
-    acts.append(relay, reset);
-    body.replaceChildren(el('p', 'dk-note', 'Your theme, kept with your settings on every host. Anything left at the theme’s follows the one you start from.'), ...rows, acts);
+    );
+    paintFoot();
   };
   draw();
-  if (paletteNow() !== 'custom') setCustom(c);
   dkFocus(w);
 }
 function dkPaletteDrop(redraw) {
@@ -4364,7 +4375,8 @@ function dkDesktop() {
   ctl.append(dkMeshTray(dk.ctl.btn), dkTray, updateModal);
   dkAnchor(updateModal, dk.ctl.btn);
   const menubar = el('div', 'dk-bar dk-menubar');
-  const app = el('span', 'dk-menubar-app', 'phosphorus');
+  const app = el('span', 'dk-menubar-app');
+  app.append(dkGlyph(DK_GLYPHS.mesh, 'dk-menubar-app-ic'), el('span', 'dk-menubar-app-t', 'phosphorus'));
   menubar.append(app);
   desk.append(dkArt(), icons, wins, menubar, bar);
   dkView.replaceChildren(desk);
@@ -4954,6 +4966,17 @@ function dkChipsFold(hosts, n) {
   dk.chipFold.setAttribute('aria-expanded', String(open));
 }
 
+// the glyph a window's task button wears, by what it is
+function dkWinGlyph(key, kind) {
+  const k = String(key || '');
+  if (k.startsWith('app:')) { const id = k.slice(4); return { theme: 'gear', profile: 'user' }[id] || (DK_GLYPHS[id] ? id : 'app'); }
+  if (String(kind).startsWith('term')) return 'terminal';
+  if (kind === 'fm') return 'files';
+  if (k.startsWith('svc:')) return 'service';
+  if (k.startsWith('img:') || k.startsWith('view:')) return 'doc';
+  return 'app';
+}
+
 // one window, key: a single instance's, else a fresh one per open
 function dkWin(key, title, sub, kind) {
   if (key && dk.wins.has(key)) { dkFocus(dk.wins.get(key)); return null; }
@@ -4982,8 +5005,10 @@ function dkWin(key, title, sub, kind) {
     return d;
   });
   node.append(head, body, ...edges);
-  const task = Object.assign(el('button', 'dk-task', title), { type: 'button', title: sub ? `${title} ${sub}` : title });
-  const w = { key: key || `w${++dk.n}`, node, body, head, task, kind, onFocus: null, onClose: null };
+  const glyph = DK_GLYPHS[dkWinGlyph(key, kind)];
+  const task = Object.assign(el('button', 'dk-task'), { type: 'button', title: sub ? `${title} ${sub}` : title });
+  task.append(dkGlyph(glyph, 'dk-task-ic'), el('span', 'dk-task-t', title));
+  const w = { key: key || `w${++dk.n}`, node, body, head, task, kind, glyph, onFocus: null, onClose: null };
   // cascaded from the icons, a phone's filling the desk
   const step = (dk.n++ % 8) * 24;
   const W = wins.clientWidth;
@@ -5166,7 +5191,10 @@ function dkFocus(w) {
     o.node.classList.toggle('focused', o === w);
     o.task.classList.toggle('active', o === w);
   }
-  if (dk.desk?.app) dk.desk.app.textContent = w ? w.task.textContent : 'phosphorus';
+  if (dk.desk?.app) {
+    dk.desk.app.querySelector('.dk-menubar-app-t').textContent = w ? w.task.querySelector('.dk-task-t').textContent : 'phosphorus';
+    dk.desk.app.querySelector('path').setAttribute('d', w ? w.glyph : DK_GLYPHS.mesh);
+  }
   if (!w) return;
   if (w.node.hidden) dkRestore(w);
   if (w.node.style.zIndex !== String(dk.z)) w.node.style.zIndex = ++dk.z;

@@ -1,7 +1,7 @@
 {
   "about": "phosphorus's themes, the one source for the desktop, sulfur, terminals, the cli and the tray. Each theme lays its dark over base.dark; light over that and base.light; oled over that and base.oled. look names the page's structural styles (style.css keys them by data-palette); layout where its bars sit and how windows wear their chrome, over base.layout (data-l-*); round and sans mark rounded controls and a proportional page font.",
   "base": {
-    "layout": { "bar": "bottom", "barStyle": "panel", "menubar": "off", "items": ["hosts", "agent", "bell", "clock", "profile"], "btns": "right", "btnStyle": "glyphs", "title": "left", "density": "normal" },
+    "layout": { "bar": "bottom", "barStyle": "panel", "menubar": "off", "items": ["hosts", "agent", "bell", "clock", "profile"], "btns": "right", "btnStyle": "glyphs", "title": "left", "density": "normal", "autohide": "off", "labels": "both" },
     "dark": {
       "color-scheme": "dark",
       "--bg": "#141414",
@@ -782,7 +782,7 @@
       "label": "macos",
       "about": "san francisco, traffic lights, a dock; sulfur as xcode",
       "look": "macos",
-      "layout": { "barStyle": "dock", "menubar": "top", "btns": "left", "btnStyle": "lights", "title": "center" },
+      "layout": { "barStyle": "dock", "menubar": "top", "btns": "left", "btnStyle": "lights", "title": "center", "labels": "icons" },
       "dark": {
         "--font": "-apple-system, BlinkMacSystemFont, \"SF Pro Text\", \"Helvetica Neue\", Inter, system-ui, sans-serif",
         "--mono": "\"SF Mono\", ui-monospace, Menlo, Monaco, \"Geist Mono Variable\", monospace",

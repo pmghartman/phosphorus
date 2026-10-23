@@ -2138,7 +2138,8 @@ input, textarea { caret-color: var(--accent); }
 .dk-ctl-drop-act { border-top: 1px solid var(--border); margin-top: 0.2rem; padding-top: 0.45rem; }
 .dk-ctl-drop-ic { width: 0.75rem; height: 0.75rem; flex: none; margin-top: 0.2em; color: var(--muted); }
 /* the custom theme's editor: a label, its control, a note under */
-.dk-theme-pane { display: flex; flex-direction: column; gap: 0.55rem; padding: 0.9rem; font-size: 0.8rem; }
+.dk-theme-pane { display: flex; flex-direction: column; height: 100%; min-height: 0; font-size: 0.8rem; }
+.dk-theme-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 0.55rem; padding: 0.9rem; overflow-y: auto; }
 .dk-theme-pane .dk-note { margin: 0 0 0.3rem; }
 .dk-theme-row { display: grid; grid-template-columns: 6.5rem minmax(0, 1fr); align-items: center; gap: 0.15rem 0.7rem; }
 .dk-theme-k { color: var(--muted); }
@@ -2146,7 +2147,6 @@ input, textarea { caret-color: var(--accent); }
 .dk-theme-in { min-width: 0; padding: 0.25rem 0.4rem; background: var(--card); border: 1px solid var(--border); color: var(--fg); font: inherit; }
 .dk-theme-in:focus { border-color: var(--accent); outline: none; }
 .dk-theme-color { display: flex; align-items: center; gap: 0.5rem; }
-.dk-theme-pane { overflow-y: auto; }
 .dk-theme-head { margin-top: 0.4rem; padding-bottom: 0.2rem; border-bottom: 1px solid var(--border); color: var(--fg); font-weight: 600; }
 .dk-theme-row:has(> .dk-theme-items) { align-items: start; }
 .dk-theme-items { display: flex; flex-direction: column; border: 1px solid var(--border); }
@@ -2158,9 +2158,15 @@ input, textarea { caret-color: var(--accent); }
 :root .dk-theme-pane .dk-theme-item .dk-theme-mv:hover:not(:disabled) { background: var(--tab-hover); color: var(--fg); }
 :root .dk-theme-pane .dk-theme-item .dk-theme-mv:disabled { opacity: 0.3; cursor: default; }
 .dk-theme-color input[type="color"] { width: 2.4rem; height: 1.7rem; padding: 0.1rem; cursor: pointer; }
-.dk-theme-color button { padding: 0.2rem 0.5rem; background: none; border: 1px solid var(--border); color: var(--muted); font: inherit; font-size: 0.72rem; cursor: pointer; }
-.dk-theme-color button:disabled { opacity: 0.5; cursor: default; }
-.dk-theme-pane .update-actions { display: flex; justify-content: flex-end; margin-top: 0.4rem; }
+/* the bottom, always in reach: a reset to a built-in theme's config on the left, the save on the right */
+.dk-theme-foot { flex: none; display: flex; flex-direction: column; gap: 0.5rem; padding: 0.6rem 0.9rem; border-top: 1px solid var(--border); background: var(--card); }
+.dk-theme-acts { display: flex; justify-content: space-between; gap: 0.5rem; }
+.dk-theme-resets { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
+.dk-theme-resets .dk-theme-note { grid-column: auto; width: 100%; }
+.dk-theme-foot button { padding: 0.3rem 0.8rem; background: none; border: 1px solid var(--border); color: var(--fg); font: inherit; cursor: pointer; }
+.dk-theme-foot button:hover:not(:disabled) { background: var(--tab-hover); }
+.dk-theme-foot .dk-theme-save:not(:disabled) { background: var(--accent); border-color: var(--accent); color: var(--on-accent, var(--bg)); }
+.dk-theme-foot button:disabled { opacity: 0.5; cursor: default; }
 .dk-ctl-who { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
 .dk-ctl-name { color: var(--fg); font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dk-ctl-out {
@@ -4209,3 +4215,54 @@ button.ide-fd-place:hover { background: var(--ide-hover); color: var(--ide-stron
 .ide-hierarchy-sites { color: var(--ide-dim); font-size: 12px; }
 .ide-hierarchy-site { display: block; }
 .ide-hierarchy-empty { color: var(--ide-dim); margin: 4px 0; }
+
+/* --- the bar's windows and the menu bar's app: an icon, a title, both (data-l-labels) ------------ */
+
+.dk-task { display: inline-flex; align-items: center; gap: 0.4rem; }
+.dk-task-ic, .dk-menubar-app-ic { width: 1rem; height: 1rem; flex: none; }
+.dk-task-t, .dk-menubar-app-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.dk-menubar-app { display: inline-flex; align-items: center; gap: 0.4rem; }
+:root[data-l-labels="icons"] :is(.dk-task-t, .dk-menubar-app-t) { display: none; }
+:root[data-l-labels="titles"] :is(.dk-task-ic, .dk-menubar-app-ic) { display: none; }
+/* icons alone: a square tile, the icon larger */
+:root[data-l-labels="icons"] .dk-task { justify-content: center; min-width: 2.2rem; padding-left: 0.5rem; padding-right: 0.5rem; }
+:root[data-l-labels="icons"] .dk-task-ic { width: 1.25rem; height: 1.25rem; }
+
+@media (min-width: 721px) {
+  /* a bar with no windows in it and its status items in the menu bar has nothing to show, and no sliver of itself */
+  :root:is([data-l-menubar="top"], [data-l-menubar="bottom"]) .dk-bar:not(.dk-menubar):not(:has(.dk-task)) { display: none; }
+  /* the dock sized to what's in it: a lone window a tile, never a stretched pill */
+  :root[data-l-bar-style="dock"] .dk-bar:not(.dk-menubar) { min-width: 3.4rem; }
+
+  /* auto-hide: the bar over the windows' area, off its edge until the pointer reaches it (a strip of its own
+     past its edge) or something in it is open or focused */
+  :root[data-l-menubar="top"] { --bar-top: 1.65rem; }
+  :root[data-l-menubar="bottom"] { --bar-bot: 1.65rem; }
+  :root[data-l-autohide="on"] .dk-desk { overflow: hidden; }
+  :root[data-l-autohide="on"] .dk-bar:not(.dk-menubar) { position: absolute; z-index: 40; transition: transform 0.18s ease; }
+  /* a dock keeps its own width, centered on its edge */
+  :root[data-l-autohide="on"][data-l-bar-style="dock"]:is([data-l-bar="bottom"], [data-l-bar="top"]) .dk-bar:not(.dk-menubar) { width: fit-content; }
+  :root[data-l-autohide="on"] .dk-bar:not(.dk-menubar)::after { content: ""; position: absolute; }
+  :root[data-l-autohide="on"] .dk-bar:not(.dk-menubar):is(:hover, :focus-within, :has([aria-expanded="true"])) { transform: none; }
+  :root[data-l-autohide="on"][data-l-bar="bottom"] .dk-bar:not(.dk-menubar) { left: 0; right: 0; bottom: var(--bar-bot, 0); transform: translateY(calc(100% + 0.5rem)); }
+  :root[data-l-autohide="on"][data-l-bar="bottom"] .dk-bar:not(.dk-menubar)::after { left: 0; right: 0; top: -12px; height: 12px; }
+  :root[data-l-autohide="on"][data-l-bar="top"] .dk-bar:not(.dk-menubar) { left: 0; right: 0; top: var(--bar-top, 0); transform: translateY(calc(-100% - 0.5rem)); }
+  :root[data-l-autohide="on"][data-l-bar="top"] .dk-bar:not(.dk-menubar)::after { left: 0; right: 0; bottom: -12px; height: 12px; }
+  :root[data-l-autohide="on"][data-l-bar="left"] .dk-bar:not(.dk-menubar) { left: 0; top: var(--bar-top, 0); bottom: var(--bar-bot, 0); transform: translateX(calc(-100% - 0.5rem)); }
+  :root[data-l-autohide="on"][data-l-bar="left"] .dk-bar:not(.dk-menubar)::after { right: -12px; width: 12px; top: 0; bottom: 0; }
+  :root[data-l-autohide="on"][data-l-bar="right"] .dk-bar:not(.dk-menubar) { right: 0; top: var(--bar-top, 0); bottom: var(--bar-bot, 0); transform: translateX(calc(100% + 0.5rem)); }
+  :root[data-l-autohide="on"][data-l-bar="right"] .dk-bar:not(.dk-menubar)::after { left: -12px; width: 12px; top: 0; bottom: 0; }
+  :root[data-l-autohide="on"] .dk-bar:not(.dk-menubar):is(:hover, :focus-within, :has([aria-expanded="true"])) { transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-l-autohide="on"] .dk-bar:not(.dk-menubar) { transition: none; }
+}
+
+/* the phosphorus and cli looks draw the mark as ascii art (theme.js sets --mark), on the desk and in about */
+.about-mark { content: var(--mark); object-fit: contain; }
+
+/* the status bar's mesh link: an icon alone, bright when linked, dim when not or while asking */
+.ide-sb-mesh { padding: 0 8px; }
+.ide-sb-mesh .ide-ic { width: 14px; height: 14px; }
+.ide-sb-mesh:not(.linked) { opacity: 0.6; }
+.ide-sb-mesh.checking { opacity: 0.45; }

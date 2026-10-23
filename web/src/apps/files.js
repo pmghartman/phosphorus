@@ -269,8 +269,9 @@ function fmRender(fm) {
     });
   }
   fm.crumbs.replaceChildren(...crumbs);
-  fm.w.task.textContent = fm.loc ? (fm.dir.split('/').pop() || fm.loc.root) : 'files';
-  fm.w.head.querySelector('.tab-label').textContent = fm.w.task.textContent;
+  const name = fm.loc ? (fm.dir.split('/').pop() || fm.loc.root) : 'files';
+  fm.w.task.querySelector('.dk-task-t').textContent = name;
+  fm.w.head.querySelector('.tab-label').textContent = name;
 
   fm.cols = FM_COLS.filter(([key]) => key !== 'where' || fm.loc?.host === '*');
   if (!fm.cols.some(([key]) => key === fm.sort.key)) fm.sort = { key: 'name', dir: 1 };

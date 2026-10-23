@@ -87,9 +87,6 @@ func installUpdate(file string) error {
 	switch runtime.GOOS {
 	case "windows":
 		app := filepath.Join(dir, "Sulfur.exe")
-		if _, err := os.Stat(app); err != nil {
-			app = filepath.Join(dir, "sulfur.exe")
-		}
 		// the installer once the window's closed, then the app again
 		return detachedLine(`cmd /c timeout /t 3 /nobreak >nul & "` + file + `" /S & start "" "` + app + `"`)
 	case "darwin":
