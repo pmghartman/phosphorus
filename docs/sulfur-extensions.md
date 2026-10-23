@@ -249,7 +249,17 @@ A source file without a project builds alone. Compiler output, including MSVC ob
 
 ## Code navigation
 
-The editor's flat **Types** and **Methods and fields** pickers follow the caret and open workbench menus to jump to declarations in the current file. Longer symbol lists have a search box. C/C++, JavaScript/TypeScript, Java, Python, Go and Rust use their syntax parsers; C# uses the Java grammar as an approximation. Navigation parses files up to 2 MB.
+The editor's **Types** and **Methods and fields** pickers follow the caret and jump to declarations in the current file. Longer lists have a search box. Installed language servers supply semantic document symbols, including Roslyn's C# declarations and scopes. Without a server, syntax parsers provide navigation for C/C++, JavaScript/TypeScript, Java, Python, Go and Rust; C# falls back to the Java grammar as an approximation. Navigation parses files up to 2 MB.
+
+**Go → Go to Symbol in File…** (Ctrl+Shift+O) searches the file's symbols. **Go to Workspace Symbol…** (Ctrl+T) searches the language server's project index. **Go to Declaration**, **Go to Type Definition**, **Go to Implementation** (Ctrl+F12), and **Call Hierarchy…** (Shift+Alt+H) use the installed server when it supports those requests. Call Hierarchy expands incoming or outgoing calls on demand; click a symbol to open its definition or expand **Call sites** to jump to a particular call. Refresh recomputes the displayed tree. Changing its direction discards pending requests from the previous tree.
+
+**Go → Bookmarks** works with or without language servers: toggle with Ctrl+K, Ctrl+K; next with Ctrl+K, Ctrl+N; previous with Ctrl+K, Ctrl+P; clear this workspace's bookmarks with Ctrl+K, Ctrl+L. Gutter marks follow edits and undo, are saved in this browser's workbench state, and can be listed by file and line.
+
+## Layout modes
+
+**Appearance → Layout Mode** or **Settings → Layout: Mode** selects **Default (activity bar)** or **Visual Studio (compact toolbar)**. Default remains the initial layout. The compact mode replaces the activity rail with a thin toolbar for file actions, history, undo/redo, workspace machine, build configuration, the named run target, all sidebar views, symbols and bookmarks. Both layouts expose the same actions through menus, shortcuts and the command palette. The run button names its selected target in both modes.
+
+Layout mode is independent of the theme. **Layout: Primary Sidebar → Layout default** places Explorer on the left in Default mode and the right in Visual Studio mode. Explicit left/right choices and **Layout: Console Span** remain effective in either mode. Narrow windows scroll the toolbar horizontally instead of overlapping controls.
 
 Undo and redo belong to the document rather than the browser's textarea buffer. An animated agent replacement is one undo step, earlier local edits remain undoable, and incoming collaborator changes rebase the history instead of clearing it. Incoming agent edits are recognized on hosts with the updated collaboration service.
 

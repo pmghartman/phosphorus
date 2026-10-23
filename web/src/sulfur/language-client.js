@@ -168,9 +168,11 @@ export function languageSocket(url, request, onEvent = () => {}) {
         processId: null, clientInfo: { name: 'Sulfur', version: '1' }, rootUri: client.rootUri,
         workspaceFolders: [{ uri: client.rootUri, name: uriPath(client.rootUri).split('/').pop() }],
         initializationOptions: settings,
-        capabilities: { experimental: { csharp: { metadataUris: true } }, general: { positionEncodings: ['utf-16'] }, workspace: { configuration: true, workspaceFolders: true, semanticTokens: { refreshSupport: true }, diagnostics: { refreshSupport: true }, workspaceEdit: { documentChanges: true, resourceOperations: [] } }, textDocument: {
+        capabilities: { experimental: { csharp: { metadataUris: true } }, general: { positionEncodings: ['utf-16'] }, workspace: { configuration: true, workspaceFolders: true, symbol: { dynamicRegistration: false, resolveSupport: { properties: ['location.range'] } }, semanticTokens: { refreshSupport: true }, diagnostics: { refreshSupport: true }, workspaceEdit: { documentChanges: true, resourceOperations: [] } }, textDocument: {
           synchronization: { didSave: true }, completion: { contextSupport: true, completionItem: { snippetSupport: true, insertReplaceSupport: true, resolveSupport: { properties: ['textEdit', 'additionalTextEdits', 'documentation', 'detail'] } }, completionList: { itemDefaults: ['editRange', 'insertTextFormat', 'data'] } },
-          definition: { linkSupport: true }, publishDiagnostics: { versionSupport: true }, rename: { prepareSupport: false },
+          definition: { linkSupport: true }, declaration: { linkSupport: true }, typeDefinition: { linkSupport: true }, implementation: { linkSupport: true },
+          documentSymbol: { hierarchicalDocumentSymbolSupport: true }, callHierarchy: { dynamicRegistration: false },
+          publishDiagnostics: { versionSupport: true }, rename: { prepareSupport: false },
           formatting: { dynamicRegistration: false }, rangeFormatting: {},
           diagnostic: { dynamicRegistration: false, relatedDocumentSupport: true },
           semanticTokens: { dynamicRegistration: false, requests: { full: true }, tokenTypes: TOKEN_TYPES, tokenModifiers: TOKEN_MODIFIERS, formats: ['relative'], overlappingTokenSupport: false, multilineTokenSupport: false },

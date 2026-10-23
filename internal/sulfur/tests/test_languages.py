@@ -116,11 +116,17 @@ class AdapterTests(unittest.TestCase):
 
 
 class HelperProcess:
-    def __init__(self, request, home):
+    def __init__(self, request, home, *, command=None, stdin_encoding=None):
         bootstrap = "import sys,base64,zlib;exec(zlib.decompress(base64.b64decode(sys.stdin.buffer.readline())))"
         payload = base64.b64encode(json.dumps(request).encode()).decode()
-        self.process = subprocess.Popen([sys.executable, "-u", "-c", bootstrap, payload], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=dict(os.environ, SULFUR_LANGUAGE_HOME=str(home), PYTHONDONTWRITEBYTECODE="1"), text=True, encoding="utf-8")
-        self.process.stdin.write(base64.b64encode(zlib.compress(SOURCE.read_bytes())).decode() + "\n")
+        env = dict(os.environ, SULFUR_LANGUAGE_HOME=str(home), PYTHONDONTWRITEBYTECODE="1")
+        if stdin_encoding:
+            env["PYTHONIOENCODING"] = stdin_encoding
+        source = SOURCE.read_bytes()
+        if command:
+            source = source.replace(b'\nif __name__ == "__main__":', ("\ncommand = lambda *args: " + repr(command) + '\nif __name__ == "__main__":').encode("utf-8"))
+        self.process = subprocess.Popen([sys.executable, "-u", "-c", bootstrap, payload], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, text=True, encoding="utf-8")
+        self.process.stdin.write(base64.b64encode(zlib.compress(source)).decode() + "\n")
         self.process.stdin.flush()
         self.messages = queue.Queue()
         self.seen = []
@@ -135,7 +141,7 @@ class HelperProcess:
         self.reader.start()
 
     def send(self, message):
-        self.process.stdin.write(json.dumps(message) + "\n")
+        self.process.stdin.write(json.dumps(message, ensure_ascii=False) + "\n")
         self.process.stdin.flush()
 
     def until(self, predicate, timeout=90):
@@ -168,6 +174,44 @@ class HelperProcess:
         self.reader.join(timeout=2)
         self.process.stdout.close()
         self.process.stderr.close()
+
+
+class TransportTests(unittest.TestCase):
+    def test_utf8_documents_survive_a_windows_legacy_stdin_encoding(self):
+        # Echo the framed payload after it passes through the real bootstrap and
+        # adapter. Browser JSON contains literal UTF-8, unlike json.dumps' default.
+        echo = """import json, sys
+while True:
+    size = None
+    while True:
+        line = sys.stdin.buffer.readline()
+        if not line: sys.exit()
+        if line == b'\\r\\n': break
+        if line.lower().startswith(b'content-length:'): size = int(line.split(b':', 1)[1])
+    message = json.loads(sys.stdin.buffer.read(size))
+    data = json.dumps(dict(jsonrpc='2.0', id=message['id'], result=message['params']), ensure_ascii=False).encode('utf-8')
+    sys.stdout.buffer.write(b'Content-Length: ' + str(len(data)).encode() + b'\\r\\n\\r\\n' + data)
+    sys.stdout.buffer.flush()
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp) / "project-café"
+            root.mkdir()
+            home = pathlib.Path(tmp) / "languages"
+            (home / "csharp").mkdir(parents=True)
+            (home / "csharp" / "manifest.json").write_text('{"enabled":true}')
+            server = HelperProcess(dict(op="launch", language="csharp", root=str(root)), home,
+                                   command=[sys.executable, "-u", "-c", echo], stdin_encoding="cp1252")
+            try:
+                server.until(lambda m: m.get("_sulfur") == "ready")
+                uri = (root / "Type-π-😀.cs").as_uri()
+                for sequence, method in enumerate(("textDocument/didOpen", "textDocument/didChange"), 1):
+                    text = "\ufeffusing System;\r\n// café π 😀 漢字\r\nclass C {}\r\n" + " " * sequence
+                    params = dict(textDocument=dict(uri=uri, languageId="csharp", version=sequence, text=text)) if sequence == 1 else dict(textDocument=dict(uri=uri, version=sequence), contentChanges=[dict(text=text)])
+                    server.send(dict(jsonrpc="2.0", id=sequence, method=method, params=params))
+                    result = server.until(lambda m: m.get("id") == sequence)
+                    self.assertEqual(result["result"], params)
+            finally:
+                server.close()
 
 
 @unittest.skipUnless(os.environ.get("SULFUR_LSP_SMOKE") == "1", "Set SULFUR_LSP_SMOKE=1 for real npm LSP checks")

@@ -6,20 +6,23 @@ import { editorFixture, Element, settle } from './helpers/editor-fixture.mjs';
 class Socket {
   static instances = [];
   static diagnosticProvider = null;
+  static navigationCapabilities = {};
   constructor() { this.readyState = 1; this.sent = []; Socket.instances.push(this); queueMicrotask(() => this.onopen()); }
   deliver(message) { this.onmessage({ data: JSON.stringify(message) }); }
   send(data) {
     const message = JSON.parse(data); this.sent.push(message);
     if (message.op === 'status') queueMicrotask(() => this.deliver({ _sulfur: 'status', extensions: [{ id: 'javascript', enabled: true }, { id: 'csharp', enabled: true }] }));
     if (message.op === 'launch') queueMicrotask(() => this.deliver({ _sulfur: 'ready', rootUri: 'file:///project' }));
-    if (message.method === 'initialize') queueMicrotask(() => this.deliver({ id: message.id, result: { capabilities: { textDocumentSync: 1, completionProvider: { resolveProvider: true, triggerCharacters: ['.'] }, diagnosticProvider: Socket.diagnosticProvider } } }));
+    if (message.method === 'initialize') queueMicrotask(() => this.deliver({ id: message.id, result: { capabilities: { textDocumentSync: 1, completionProvider: { resolveProvider: true, triggerCharacters: ['.'] }, diagnosticProvider: Socket.diagnosticProvider, ...Socket.navigationCapabilities } } }));
   }
   close() { this.readyState = 3; this.onclose?.(); }
   reply(method, result) { const message = this.sent.findLast((x) => x.method === method); assert.ok(message, method); this.deliver({ id: message.id, result }); }
 }
 
-async function setup(t, server = false, pull = false, csharp = false) {
+async function setup(t, server = false, pull = false, csharp = false, capabilities = {}) {
   Socket.diagnosticProvider = pull ? { identifier: 'csharp' } : null;
+  Socket.navigationCapabilities = capabilities;
+  const opened = [], notices = [];
   const f = editorFixture(t, 'readFile();\nre');
   if (csharp) f.tab.rel = 'src/test.cs';
   globalThis.WebSocket = Socket;
@@ -27,12 +30,13 @@ async function setup(t, server = false, pull = false, csharp = false) {
     el: (tag, cls, text) => new Element(tag, cls, text), alive: f.alive,
     context: async () => server ? { host: 'pc', root: '/project', rootRel: 'src', documentRel: 'test.js', settings: {} } : null,
     join: (a, b) => a ? `${a}/${b}` : b,
+    open: (path, context, range) => opened.push({ path, context, range }), notice: (text) => notices.push(text),
     url: () => 'http://localhost/languages', problems() {}, documents: () => [], log() {}, error: (error) => { throw error; },
   });
   workbench.attach(f.tab);
   f.cleanups.push(() => { f.tab.dispose(); workbench.reset(); });
   if (server) await workbench.get(f.tab);
-  return { ...f, workbench, socket: Socket.instances.at(-1), box: f.view.querySelector('.ide-completion') };
+  return { ...f, opened, notices, workbench, socket: Socket.instances.at(-1), box: f.view.querySelector('.ide-completion') };
 }
 
 test('word suggestions are immediately tab-completable while the semantic provider is pending', async (t) => {
@@ -132,4 +136,60 @@ test('automatic routing favors project members over weak keyword completions', a
   t.mock.timers.tick(10); await settle();
   f.socket.reply('textDocument/completion', [{ label: 'Transform', kind: 10 }]); await settle();
   assert.equal(f.workbench.preferLanguage(f.tab), true);
+});
+
+test('symbol outlines discard stale edits and use a document-only request', async (t) => {
+  const f = await setup(t, true, false, false, { documentSymbolProvider: true });
+  const pending = f.workbench.documentOutline(f.tab); await settle();
+  const req = f.socket.sent.findLast(x => x.method === 'textDocument/documentSymbol');
+  assert.deepEqual(req.params, { textDocument: { uri: 'file:///project/test.js' } });
+  f.setText('different');
+  f.socket.reply('textDocument/documentSymbol', [{ name: 'readFile', kind: 12, location: { uri: 'file:///project/test.js', range: { start: { line: 0, character: 0 }, end: { line: 0, character: 8 } } } }]);
+  assert.equal(await pending, null);
+});
+
+test('type and implementation navigation use the server method and route validated project paths', async (t) => {
+  const f = await setup(t, true, false, false, { implementationProvider: true, typeDefinitionProvider: true });
+  const range = { start: { line: 2, character: 4 }, end: { line: 2, character: 8 } };
+  for (const method of ['implementation', 'typeDefinition']) {
+    const pending = f.workbench.navigate(f.tab, method); await settle();
+    f.socket.reply('textDocument/' + method, [{ targetUri: 'file:///project/lib/base.js', targetSelectionRange: range }]);
+    assert.equal(await pending, true);
+    assert.equal(f.opened.at(-1).path, 'src/lib/base.js');
+    assert.deepEqual(f.opened.at(-1).range, range);
+  }
+  assert.equal(await f.workbench.navigate(f.tab, 'declaration'), false);
+});
+
+test('call hierarchy preserves opaque item data, cancels requests and rejects old sessions', async (t) => {
+  const f = await setup(t, true, false, false, { callHierarchyProvider: true });
+  f.tab.ed.setSemanticTokens = () => {};
+  const item = { name: 'readFile', kind: 12, uri: 'file:///project/test.js', range: { start: { line: 0, character: 0 }, end: { line: 0, character: 10 } }, selectionRange: { start: { line: 0, character: 0 }, end: { line: 0, character: 8 } }, data: { id: 'opaque-token' } };
+  const prepare = f.workbench.callHierarchy(f.tab); await settle();
+  f.socket.reply('textDocument/prepareCallHierarchy', [item]);
+  const handle = await prepare;
+  const incoming = f.workbench.hierarchyCalls(handle, handle.items[0], 'incoming'); await settle();
+  assert.deepEqual(f.socket.sent.findLast(x => x.method === 'callHierarchy/incomingCalls').params.item.data, item.data);
+  f.socket.reply('callHierarchy/incomingCalls', [{ from: item, fromRanges: [item.range] }]);
+  assert.deepEqual((await incoming)[0].fromRanges, [item.range]);
+  const controller = new AbortController();
+  const outgoing = f.workbench.hierarchyCalls(handle, handle.items[0], 'outgoing', controller.signal); await settle();
+  controller.abort();
+  await assert.rejects(outgoing, { name: 'AbortError' });
+  assert.ok(f.socket.sent.some(x => x.method === '$/cancelRequest'));
+  f.workbench.reset();
+  await assert.rejects(f.workbench.hierarchyCalls(handle, item, 'incoming'), /session changed/);
+});
+
+test('workspace symbol resolution stays in its session and refuses paths outside the project', async (t) => {
+  const f = await setup(t, true, false, false, { workspaceSymbolProvider: { resolveProvider: true } });
+  const pending = f.workbench.workspaceSymbols(f.tab, 'Player'); await settle();
+  f.socket.reply('workspace/symbol', [{ name: 'Player', kind: 5, location: { uri: 'file:///project/types.js' }, data: 27 }]);
+  const [hit] = await pending;
+  const open = f.workbench.openWorkspaceSymbol(hit); await settle();
+  const range = { start: { line: 0, character: 6 }, end: { line: 0, character: 12 } };
+  f.socket.reply('workspaceSymbol/resolve', { ...hit.item, location: { uri: 'file:///project/types.js', range } });
+  await open;
+  assert.equal(f.opened.at(-1).path, 'src/types.js');
+  await assert.rejects(f.workbench.openLocation(hit.doc, 'file:///private/secrets.js', range), /outside/);
 });

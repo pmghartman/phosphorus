@@ -39,7 +39,9 @@ import { codeEditor } from './editor.js';
 import { createLanguageWorkbench } from '../sulfur/language-workbench.js';
 import { formatWhitespace, formattingEdits } from '../sulfur/formatting.js';
 import { applyTextEdits } from '../sulfur/language-client.js';
+import { sidebarRight, runTargetName, moveBookmarks } from '../sulfur/navigation.js';
 import { parserFor } from '../lezer.js';
+import { readBrowserFile, saveBrowserFile } from '../sulfur/browser-files.js';
 import { createInlineCompletions, completionModels } from '../sulfur/inline-completion.js';
 import { diagnosticCounts, diagnosticSeverity } from '../sulfur/diagnostics.js';
 import { createBuildProblemMatcher } from '../sulfur/build-problems.js';
@@ -137,6 +139,14 @@ const IC = {
   home: 'M2 7.5L8 2.5l6 5M3.5 6.5v7h3.5v-4h2v4h3.5v-7',
   drive: 'M1.5 9.5l2-6h9l2 6v3.5h-13zM1.5 9.5h13M11.5 11.25h1',
   undo: 'M3 6.5h7a3 3 0 0 1 0 6H6M5.5 4L3 6.5 5.5 9',
+  redo: 'M13 6.5H6a3 3 0 0 0 0 6h4M10.5 4L13 6.5 10.5 9',
+  save: 'M2 2h10l2 2v10H2zM5 2v4h6V2M5 14V9h6v5',
+  saveAll: 'M5 1h8l2 2v9M2 4h8l2 2v9H2zM5 4v4h4V4M5 15v-4h4v4',
+  bookmark: 'M4 2h8v12l-4-3-4 3z',
+  bookmarkPrev: 'M8 2h6v12l-3-2-3 2zM5 5L2 8l3 3',
+  bookmarkNext: 'M2 2h6v12l-3-2-3 2zM11 5l3 3-3 3',
+  bookmarkClear: 'M2 2h7v12l-3.5-2.5L2 14zM11 5l4 4M15 5l-4 4',
+  hierarchy: 'M6 1h4v4H6zM1 11h4v4H1zM11 11h4v4h-4zM8 5v3M3 11V8h10v3',
   symbolType: 'M8 1.5l5.5 3v7L8 14.5l-5.5-3v-7zM2.5 4.5L8 8l5.5-3.5M8 8v6.5',
   symbolMethod: 'M2 5l6-3.5L14 5l-6 3.5zM2 8l6 3.5L14 8M2 11l6 3.5L14 11',
   symbolField: 'M8 2l6 6-6 6-6-6zM5 8h6',
@@ -396,12 +406,13 @@ const DEFAULTS = () => ({
   side: { view: 'explorer', w: 260, hidden: false },
   panel: { h: 260, hidden: true, view: 'terminal', max: false },
   aux: { w: 360, hidden: true, agent: '', harness: 'chat', model: 'chimp', perm: 'acceptEdits' },
-  expanded: {}, runHost: '', sections: { open: true, tree: true },
+  expanded: {}, runHost: '', sections: { open: true, tree: true }, bookmarks: [],
   ext: { enabled: {} }, loc: HOME_LOC, build: {},
 });
 
 const SETTINGS = {
-  'workbench.sideBar.location': { def: 'left', type: 'enum', options: [['left', 'Left'], ['right', 'Right']], title: 'Layout: Primary Sidebar', about: 'Choose which side holds Explorer, Search, Run and Extensions. Chat moves to the opposite side.' },
+  'workbench.layout.mode': { def: 'default', type: 'enum', options: [['default', 'Default (activity bar)'], ['visualStudio', 'Visual Studio (compact toolbar)']], title: 'Layout: Mode', about: 'Keep the activity bar or move its operations into a compact toolbar with machine, configuration and named run target selectors. Independent of the color theme.' },
+  'workbench.sideBar.location': { def: 'auto', type: 'enum', options: [['auto', 'Layout default'], ['left', 'Left'], ['right', 'Right']], title: 'Layout: Primary Sidebar', about: 'Layout default places Explorer on the left in Default mode and the right in Visual Studio mode. An explicit side applies in either layout. Chat moves to the opposite side.' },
   'workbench.panel.alignment': { def: 'center', type: 'enum', options: [['center', 'Editor width'], ['left', 'Editor and left sidebar'], ['right', 'Editor and right sidebar'], ['justify', 'Full width']], title: 'Layout: Console Span', about: 'Choose how far Terminal, Output and Problems extend beneath the sidebars.' },
   'editor.suggest.inlinePreview': { def: true, type: 'boolean', title: 'Completion: IntelliSense Inline Preview', about: 'Preview the selected language completion in the editor. Tab or Enter accepts; Escape dismisses; Ctrl+Space requests IntelliSense.' },
   'editor.detectIndentation': { def: true, type: 'boolean', title: 'Formatting: Detect Indentation', about: 'Use the file’s existing indentation while typing. Turn off to use Insert Spaces and Tab Size.' },
@@ -428,6 +439,7 @@ const SETTINGS = {
   'chat.includeActiveFile': { def: true, type: 'boolean', title: 'Chat: Include Active File', about: 'Controls whether the mesh agents see the file you have open, and know "this file" means it.' },
 };
 function setting(k) { return I?.settings && k in I.settings ? I.settings[k] : SETTINGS[k]?.def; }
+const primarySideRight = () => sidebarRight(setting('workbench.layout.mode'), setting('workbench.sideBar.location'));
 function formattingOptions() {
   return { detectIndentation: setting('editor.detectIndentation'), insertSpaces: setting('editor.insertSpaces'), tabSize: Math.max(1, Math.min(16, Math.trunc(Number(setting('editor.tabSize'))) || 4)), braceStyle: setting('editor.format.braceStyle'), indentBlocks: setting('editor.format.indentBlocks') };
 }
@@ -454,6 +466,7 @@ function loadState() {
   const st = { ...d, ...v, side: { ...d.side, ...v.side }, panel: { ...d.panel, ...v.panel }, aux: { ...d.aux, ...v.aux }, ext: { ...d.ext, ...v.ext }, sections: { ...d.sections, ...v.sections } };
   if (!st.loc || typeof st.loc !== 'object' || (!isHomeLoc(st.loc) && !st.loc.host)) st.loc = HOME_LOC;
   if (!st.build || typeof st.build !== 'object') st.build = {};
+  if (!Array.isArray(st.bookmarks)) st.bookmarks = [];
   return st;
 }
 // a tab as it's kept: its path, and where it lives unless the home
@@ -666,23 +679,28 @@ function build() {
   const statusL = el('div', 'ide-status-l');
   const statusR = el('div', 'ide-status-r');
   status.append(statusL, statusR);
-  root.append(main, status, layer);
+  const toolbar = el('div', 'ide-toolbar');
+  toolbar.setAttribute('role', 'toolbar');
+  toolbar.setAttribute('aria-label', 'Workbench toolbar');
+  toolbar.hidden = true;
+  root.append(toolbar, main, status, layer);
   I.w.body.replaceChildren(root);
   I.w.head.insertBefore(title, I.w.head.querySelector('.dk-btns'));
   I.w.node.classList.add('ide-win');
   Object.assign(I, {
-    root, main, layer, titleBar: title, menubar, cc, ccText, activity, actTop, side, sideTitle, sideActs, sideBody, center, editorsPart,
+    root, toolbar, main, layer, titleBar: title, menubar, cc, ccText, activity, actTop, side, sideTitle, sideActs, sideBody, center, editorsPart,
     tabsEl: tabs, tabActs, crumbs, views, watermark, panel, panelTabs, panelActs, panelBody, sashH, aux, sashSide, sashAux,
     statusL, statusR, sideViews: new Map(), panelViews: new Map(), actBtns: new Map(), actChat: ai, updBtn: upd, navBack: back, navFwd: fwd,
   });
 
   buildMenubar();
   buildActivity();
+  buildToolbar();
   buildPanel();
   buildAux();
   buildStatus();
-  sash(sashSide, 'x', () => I.st.side.w, (v) => { I.st.side.w = Math.max(170, Math.min(v, root.clientWidth * 0.6)); paintLayout(); }, () => setting('workbench.sideBar.location') === 'right');
-  sash(sashAux, 'x', () => I.st.aux.w, (v) => { I.st.aux.w = Math.max(240, Math.min(v, root.clientWidth * 0.6)); paintLayout(); }, () => setting('workbench.sideBar.location') !== 'right');
+  sash(sashSide, 'x', () => I.st.side.w, (v) => { I.st.side.w = Math.max(170, Math.min(v, root.clientWidth * 0.6)); paintLayout(); }, primarySideRight);
+  sash(sashAux, 'x', () => I.st.aux.w, (v) => { I.st.aux.w = Math.max(240, Math.min(v, root.clientWidth * 0.6)); paintLayout(); }, () => !primarySideRight());
   sash(sashH, 'y', () => I.st.panel.h, (v) => { I.st.panel.h = Math.max(90, Math.min(v, main.clientHeight - 80)); paintLayout(); }, true);
   // narrow: the side bars over the editors, never squeezing them to nothing
   const ro = new ResizeObserver(() => {
@@ -722,7 +740,12 @@ function drawersAway() {
 
 function paintLayout() {
   const { st, root } = I;
-  const right = setting('workbench.sideBar.location') === 'right';
+  const right = primarySideRight();
+  const compact = setting('workbench.layout.mode') === 'visualStudio';
+  root.classList.toggle('ide-layout-visualStudio', compact);
+  I.w.node.classList.toggle('ide-compact-layout', compact);
+  I.toolbar.hidden = !compact;
+  I.activity.hidden = compact;
   const alignment = setting('workbench.panel.alignment');
   root.classList.toggle('ide-side-right', right);
   root.dataset.panelAlignment = ['left', 'right', 'justify'].includes(alignment) ? alignment : 'center';
@@ -743,6 +766,7 @@ function paintLayout() {
   root.classList.toggle('ide-panel-max', !st.panel.hidden && st.panel.max);
   for (const [node, value] of [[I.sashSide, st.side.w], [I.sashAux, st.aux.w], [I.sashH, st.panel.h]]) node.setAttribute('aria-valuenow', String(Math.round(value)));
   I.actChat?.classList.toggle('on', !st.aux.hidden);
+  paintToolbar();
   saveState();
 }
 
@@ -792,6 +816,83 @@ const SIDE_VIEWS = [
   { id: 'run', title: 'Run and Build', ic: 'runSide', cmd: 'workbench.view.run' },
   { id: 'extensions', title: 'Extensions', ic: 'ext', cmd: 'workbench.view.extensions' },
 ];
+
+function buildToolbar() {
+  const bar = I.toolbar;
+  const actions = [];
+  const action = (id, glyph, label) => {
+    const b = btn('', glyph, label, () => run(id));
+    b.dataset.cmd = id;
+    b.setAttribute('aria-label', label);
+    bar.append(b); actions.push(b);
+    return b;
+  };
+  const dropdown = (label, glyph, items) => {
+    const b = btn('ide-toolbar-select', glyph, label, (e) => menu(e.currentTarget, items()));
+    b.setAttribute('aria-label', label);
+    b.setAttribute('aria-haspopup', 'menu');
+    const text = el('span', 'ide-toolbar-label', label);
+    b.append(text, icon('down'));
+    bar.append(b);
+    return { button: b, text };
+  };
+  const separator = () => bar.append(el('span', 'ide-toolbar-sep'));
+  const back = action('workbench.action.navigateBack', 'left', 'Go Back');
+  const forward = action('workbench.action.navigateForward', 'right', 'Go Forward');
+  dropdown('Navigation History', 'down', () => I.nav.stack.map((entry, index) => ({ label: `${entry.tab.title}:${entry.line}`, checked: index === I.nav.at, disabled: !I.tabs.includes(entry.tab), run: () => { I.nav.at = index; const n = I.nav; n.busy = true; activate(entry.tab); placeCaret(entry.tab, { line: entry.line }); n.busy = false; paintNav(); } })).reverse());
+  separator();
+  action('explorer.newFile', 'newFile', 'New File…');
+  dropdown('Open', 'folder', () => MENUS.find(([name]) => name === 'File')[1]());
+  action('workbench.action.files.save', 'save', 'Save');
+  action('workbench.action.files.saveAll', 'saveAll', 'Save All');
+  separator();
+  action('undo', 'undo', 'Undo'); action('redo', 'redo', 'Redo');
+  separator();
+  const machine = dropdown('Workspace Machine', 'host', machineItems);
+  const configuration = dropdown('Build Configuration', 'gear', () => [cmdItem('sulfur.build.configuration', 'Select Configuration…'), cmdItem('sulfur.build.select', 'Select Toolchain…'), cmdItem('sulfur.build', 'Build'), cmdItem('sulfur.task.run', 'Run Task…')]);
+  const go = action('sulfur.run.context', 'run', 'Run Active Target');
+  go.classList.add('ide-toolbar-run');
+  const target = el('span', 'ide-toolbar-label'); go.append(target);
+  dropdown('Startup Target', 'down', () => [cmdItem('sulfur.run.startup', 'Select Startup Item…'), cmdItem('sulfur.run.start', 'Start Without Debugging'), cmdItem('sulfur.run.file', 'Run Active File'), cmdItem('sulfur.run.fileOn', 'Run Active File On…')]);
+  separator();
+  dropdown('Views', 'files', () => [...SIDE_VIEWS.map((v) => cmdItem(v.cmd, v.title, !I.st.side.hidden && I.st.side.view === v.id)), '-', cmdItem('workbench.action.chat.open', 'Chat'), cmdItem('workbench.actions.view.problems', 'Problems'), cmdItem('workbench.action.output.toggleOutput', 'Output'), cmdItem('workbench.action.terminal.toggleTerminal', 'Terminal'), '-', cmdItem('workbench.action.configureLayout', 'Customize Layout…')]);
+  dropdown('Symbols', 'symbolType', symbolMenuItems);
+  separator();
+  action('sulfur.bookmark.toggle', 'bookmark', 'Toggle Bookmark');
+  action('sulfur.bookmark.previous', 'bookmarkPrev', 'Previous Bookmark');
+  action('sulfur.bookmark.next', 'bookmarkNext', 'Next Bookmark');
+  action('sulfur.bookmark.clear', 'bookmarkClear', 'Clear Workspace Bookmarks');
+  I.toolbarControls = { actions, back, forward, machine, configuration, go, target };
+}
+
+function paintToolbar() {
+  const controls = I?.toolbarControls;
+  if (!controls || I.toolbar.hidden) return;
+  const context = activeRunContext();
+  const cfg = context?.cfg || buildCfg();
+  controls.machine.text.textContent = !isHomeLoc() ? locOf().host : runHost() || 'Select machine…';
+  controls.configuration.text.textContent = cfg?.configuration || 'Configuration…';
+  controls.target.textContent = runTargetName(context, I.active);
+  controls.go.title = `Run ${controls.target.textContent} on ${cfg?.host || runHost() || 'selected machine'} (F5)`;
+  controls.go.setAttribute('aria-label', controls.go.title);
+  for (const b of controls.actions) {
+    const c = I.commands.get(b.dataset.cmd);
+    b.disabled = !c || !!(c.when && !c.when());
+    if (c) b.title = `${b === controls.go ? controls.go.title : c.title}${keyFor(c.id) && b !== controls.go ? ` (${keyLabel(keyFor(c.id))})` : ''}`;
+  }
+  controls.go.disabled ||= !!context?.pending;
+  controls.back.disabled = I.navBack.disabled;
+  controls.forward.disabled = I.navFwd.disabled;
+  controls.actions.find((b) => b.dataset.cmd === 'sulfur.bookmark.toggle')?.setAttribute('aria-pressed', String(!!activeBookmark()));
+}
+
+function symbolMenuItems() {
+  return [cmdItem('workbench.action.gotoSymbol', 'Go to Symbol in File…'), cmdItem('workbench.action.showAllSymbols', 'Go to Workspace Symbol…'), '-',
+    cmdItem('editor.action.revealDefinition', 'Go to Definition'), cmdItem('editor.action.revealDeclaration', 'Go to Declaration'), cmdItem('editor.action.goToTypeDefinition', 'Go to Type Definition'), cmdItem('editor.action.goToImplementation', 'Go to Implementation'),
+    cmdItem('editor.action.referenceSearch.trigger', 'Find All References'), cmdItem('editor.action.rename', 'Rename Symbol…'), '-',
+    cmdItem('editor.showCallHierarchy', 'Call Hierarchy…'), cmdItem('sulfur.callHierarchy.outgoing', 'Outgoing Calls…'), '-',
+    { label: 'Bookmarks', sub: () => [cmdItem('sulfur.bookmark.toggle', 'Toggle Bookmark'), cmdItem('sulfur.bookmark.previous', 'Previous Bookmark'), cmdItem('sulfur.bookmark.next', 'Next Bookmark'), cmdItem('sulfur.bookmark.list', 'Bookmarks…'), cmdItem('sulfur.bookmark.clear', 'Clear Workspace Bookmarks')] }];
+}
 
 function buildActivity() {
   for (const v of SIDE_VIEWS) {
@@ -900,6 +1001,7 @@ const MENUS = [
   ]],
   ['View', () => [
     cmdItem('workbench.action.showCommands', 'Command Palette…'), '-',
+    ...SIDE_VIEWS.map((v) => cmdItem(v.cmd, v.title, !I.st.side.hidden && I.st.side.view === v.id)), '-',
     cmdItem('workbench.actions.view.problems', 'Problems'), cmdItem('workbench.action.output.toggleOutput', 'Output'), cmdItem('workbench.action.terminal.toggleTerminal', 'Terminal'), '-',
     { label: 'Go', sub: () => [
       cmdItem('workbench.action.gotoLine', 'Go to Line/Column…'), '-',
@@ -916,6 +1018,7 @@ const MENUS = [
     cmdItem('markdown.showPreview', 'Toggle Markdown Preview'),
   ]],
   ['Appearance', () => [
+    { label: 'Layout Mode', sub: () => SETTINGS['workbench.layout.mode'].options.map(([v, label]) => ({ label, checked: setting('workbench.layout.mode') === v, run: () => setSetting('workbench.layout.mode', v) })) },
     { label: 'Color Theme', sub: () => PALETTES.map((t) => ({ label: t.label, detail: t.about, checked: paletteNow() === t.id, run: () => setPalette(t.id) })) },
     // on its own, light or dark Sulfur's; in the desktop, the desktop's
     standalone
@@ -935,7 +1038,7 @@ const MENUS = [
   ['Go', () => [
     cmdItem('workbench.action.navigateBack', 'Back'), cmdItem('workbench.action.navigateForward', 'Forward'), '-',
     cmdItem('workbench.action.quickOpen', 'Go to File…'), cmdItem('workbench.action.gotoLine', 'Go to Line/Column…'), '-',
-    cmdItem('editor.action.revealDefinition', 'Go to Definition'), cmdItem('editor.action.referenceSearch.trigger', 'Find All References'), '-',
+    ...symbolMenuItems(), '-',
     cmdItem('workbench.action.nextEditor', 'Next Editor'), cmdItem('workbench.action.previousEditor', 'Previous Editor'), '-',
     cmdItem('editor.action.marker.next', 'Next Problem'), cmdItem('editor.action.marker.prev', 'Previous Problem'),
   ]],
@@ -1659,6 +1762,24 @@ function openFile(rel, o = {}) {
   return t;
 }
 
+async function openBrowserFile(file) {
+  const state = I;
+  const local = await readBrowserFile(file);
+  if (!I || I !== state) return;
+  const t = openPage(`browser-file:${newSid()}`, file.name, 'file', (t) => {
+    t.localName = file.name;
+    t.view.classList.remove('ide-page');
+    t.ed = codeEditor(t.view, { host: '', share: '', path: file.name, label: `${file.name} (browser local file)` }, null, t.id, {
+      bare: true, localText: local.text, formatting: formattingOptions,
+      saveText: (text) => saveBrowserFile(local, text),
+      onError: (error) => notify('error', error.message), onState: (info) => tabState(t, info),
+    });
+    editors.set(t.id, t.ed);
+    t.dispose = () => t.ed.close();
+  });
+  t.tabEl.title = `${file.name} · browser local file; Save chooses a local destination or downloads a copy`;
+}
+
 // a page of the workbench's own (settings, welcome, a guide) in a tab, one per key
 function openPage(key, title, ic, mount) {
   let t = I.tabs.find((x) => x.page === key);
@@ -1738,9 +1859,7 @@ function mountCode(t) {
     e.preventDefault();
     activate(t, false);
     menu({ x: e.clientX, y: e.clientY }, [
-      cmdItem('editor.action.revealDefinition', 'Go to Definition'),
-      cmdItem('editor.action.referenceSearch.trigger', 'Find All References'),
-      cmdItem('editor.action.rename', 'Rename…'), '-',
+      ...symbolMenuItems(), '-',
       { label: 'Cut', key: 'ctrl+x', disabled: t.info?.readOnly || !t.info?.sel, run: () => editorClipboard(t, 'cut') },
       { label: 'Copy', key: 'ctrl+c', disabled: !t.info?.sel, run: () => editorClipboard(t, 'copy') },
       { label: 'Paste', key: 'ctrl+v', disabled: t.info?.readOnly, run: () => editorClipboard(t, 'paste') }, '-',
@@ -1770,6 +1889,8 @@ function mountSymbolNavigation(t) {
   nav.append(types, members);
   t.view.prepend(nav);
   t.symbolNav = { nav, types, members };
+  const dispose = t.dispose;
+  t.dispose = () => { t.symbolController?.abort(); dispose?.(); };
   for (const b of [types, members]) b.addEventListener('click', () => {
     const items = b.symbolItems || [];
     menu(b, items.length ? items.map((s) => ({ label: s.name, detail: `${s.kind} · line ${t.ed.text().slice(0, s.from).split('\n').length}`, ic: s.kind === 'type' ? 'symbolType' : s.kind === 'field' ? 'symbolField' : 'symbolMethod', checked: s === b.currentSymbol, run: () => t.ed.select(s.from, s.to) })) : [{ label: 'No symbols in this scope', disabled: true }], { search: items.length > 12 });
@@ -1779,12 +1900,165 @@ function mountSymbolNavigation(t) {
 async function tabSymbols(t) {
   const text = t.ed.text();
   if (t.symbolText === text && t.symbolPromise) return t.symbolPromise;
+  t.symbolController?.abort();
+  const controller = t.symbolController = new AbortController();
   t.symbolText = text;
-  const lang = codeLang(t.rel);
+  const lang = codeLang(t.rel || t.localName || t.ed.file?.path || t.title);
   t.symbolPromise = text.length > 2 * 1024 * 1024 ? Promise.resolve({ symbols: [], tokens: [] }) : t.ed.syntaxTree().then((tree) => symbolsFor(text, lang?.check, lang?.hl, tree || undefined));
   const data = await t.symbolPromise;
   if (t.ed.text() === text) t.symbols = data;
+  if (!controller.signal.aborted && t.rel && text.length <= 2 * 1024 * 1024) languages.documentOutline(t, controller.signal).then((symbols) => {
+    if (!I?.tabs.includes(t) || t.ed.text() !== text || symbols === null) return;
+    t.symbols = { ...data, symbols };
+    t.symbolPromise = Promise.resolve(t.symbols);
+    if (I.active === t) paintSymbolNavSoon();
+  }).catch((error) => { if (error.name !== 'AbortError') log(error.message, 'Languages'); });
   return data;
+}
+
+async function goToSymbol(workspace = false) {
+  const t = I.active;
+  const state = I;
+  if (!t?.ed) return;
+  if (workspace) {
+    const query = await inputBox({ title: 'Workspace Symbols', prompt: 'Symbol name', placeholder: 'Type a type, method or field name' });
+    if (!query?.trim() || I !== state || !state.tabs.includes(t)) return;
+    const symbols = await languages.workspaceSymbols(t, query.trim());
+    if (I !== state || !state.tabs.includes(t)) return;
+    if (symbols === null) { notify('info', 'Workspace symbols require a language server that supports symbol search. Enable the language in Extensions.'); return; }
+    const hit = await pick(symbols.map((hit) => ({ label: hit.item.name, description: hit.item.containerName || '', detail: hit.item.location?.uri || '', value: hit })), { title: 'Workspace Symbols', placeholder: query, matchDescription: true });
+    if (hit && I === state) await languages.openWorkspaceSymbol(hit);
+  } else {
+    const before = t.ed.text();
+    const data = await tabSymbols(t);
+    const symbols = t.symbols?.symbols || data.symbols;
+    if (I !== state || !state.tabs.includes(t) || before !== t.ed.text()) return;
+    const hit = await pick(symbols.map((s) => ({ label: s.name, description: `${s.kind}${s.owner ? ` · ${s.owner.name}` : ''}`, detail: `Line ${before.slice(0, s.from).split('\n').length}`, value: s })), { title: 'Go to Symbol in File', matchDescription: true });
+    if (hit && I === state && state.tabs.includes(t) && t.ed.text() === before) { activate(t); t.ed.select(hit.from, hit.to); }
+  }
+}
+
+async function showCallHierarchy(direction = 'incoming') {
+  const source = I.active;
+  const state = I;
+  const handle = await languages.callHierarchy(source);
+  if (I !== state || !state.tabs.includes(source)) return;
+  if (!handle) { notify('info', 'Call Hierarchy requires a language server that supports it. Enable the language in Extensions.'); return; }
+  if (!handle.items.length) { setStatusFlash('No callable symbol at the cursor.'); return; }
+  const root = handle.items.length === 1 ? handle.items[0] : await pick(handle.items.map((item) => ({ label: item.name, detail: item.detail || '', value: item })), { title: 'Call Hierarchy', placeholder: 'Choose a callable symbol' });
+  if (!root || I !== state) return;
+  const page = openPage('callHierarchy', 'Call Hierarchy', 'hierarchy', (t) => {
+    const head = el('div', 'ide-hierarchy-head');
+    const title = el('strong');
+    const mode = Object.assign(el('select', 'ide-input'), { ariaLabel: 'Call Hierarchy direction' });
+    for (const [value, label] of [['incoming', 'Incoming calls'], ['outgoing', 'Outgoing calls']]) mode.append(Object.assign(el('option', '', label), { value }));
+    const refresh = btn('', 'refresh', 'Refresh Call Hierarchy', () => t.loadHierarchy(t.hierarchyHandle, t.hierarchyRoot, mode.value));
+    head.append(title, mode, refresh);
+    const body = el('div', 'ide-hierarchy-tree');
+    t.view.append(head, body);
+    let controller;
+    t.dispose = () => controller?.abort();
+    mode.addEventListener('change', () => t.loadHierarchy(t.hierarchyHandle, t.hierarchyRoot, mode.value));
+    t.loadHierarchy = (handle, root, direction) => {
+      controller?.abort(); controller = new AbortController();
+      const { signal } = controller;
+      Object.assign(t, { hierarchyHandle: handle, hierarchyRoot: root });
+      title.textContent = root.name; mode.value = direction;
+      const open = (item, range = item.selectionRange || item.range) => languages.openLocation(handle.doc, item.uri, range).catch((error) => notify('error', error.message));
+      const branch = (item, parent = null, sites = []) => {
+        const details = el('details', 'ide-hierarchy-branch');
+        const summary = el('summary');
+        const label = Object.assign(el('button', 'ide-hierarchy-symbol', item.name), { type: 'button', title: `Open definition: ${item.name}` });
+        label.addEventListener('click', (event) => { event.preventDefault(); open(item); });
+        const file = String(item.uri).split(/[\\/]/).pop();
+        summary.append(icon('symbolMethod'), label, el('span', 'ide-hierarchy-detail', `${item.detail || ''} · ${file}:${(item.selectionRange || item.range).start.line + 1}`));
+        const children = el('div', 'ide-hierarchy-children');
+        if (sites.length) {
+          const calls = el('details', 'ide-hierarchy-sites');
+          calls.append(el('summary', '', `Call sites (${sites.length})`));
+          for (const range of sites) {
+            const target = direction === 'incoming' ? item : parent;
+            const go = Object.assign(el('button', 'ide-hierarchy-site', `Line ${range.start.line + 1}, column ${range.start.character + 1}`), { type: 'button' });
+            go.addEventListener('click', () => open(target, range)); calls.append(go);
+          }
+          children.append(calls);
+        }
+        const nested = el('div'); children.append(nested);
+        details.append(summary, children);
+        let loaded = false;
+        details.addEventListener('toggle', async () => {
+          if (!details.open || loaded || signal.aborted) return;
+          loaded = true; nested.textContent = 'Loading calls…';
+          try {
+            const calls = await languages.hierarchyCalls(handle, item, direction, signal);
+            if (signal.aborted) return;
+            nested.replaceChildren(...calls.slice(0, 500).map((call) => branch(direction === 'incoming' ? call.from : call.to, item, call.fromRanges || [])));
+            if (!calls.length) nested.append(el('p', 'ide-hierarchy-empty', 'No calls found.'));
+            if (calls.length > 500) nested.append(el('p', 'ide-hierarchy-empty', 'Showing the first 500 entries.'));
+          } catch (error) {
+            if (signal.aborted) return;
+            loaded = false; nested.textContent = `${error.message} Collapse and expand to retry.`;
+          }
+        });
+        return details;
+      };
+      const tree = branch(root);
+      body.replaceChildren(tree); tree.open = true;
+    };
+  });
+  page.loadHierarchy(handle, root, direction);
+}
+
+function workspaceBookmarks() {
+  const list = I.st.bookmarks ||= [];
+  return list.filter((bookmark) => bookmark?.rel && sameLoc(bookmark.loc, locOf()) && under(bookmark.rel, I.st.root));
+}
+function tabBookmarks(t) { return (I.st.bookmarks || []).filter((b) => b.rel === t.rel && sameLoc(b.loc, t.loc)); }
+function activeBookmark() {
+  const t = I?.active;
+  return t?.rel && t.ed && tabBookmarks(t).find((bookmark) => bookmark.line === t.ed.text().slice(0, t.ed.selection()[0]).split('\n').length);
+}
+function updateBookmarks(t) {
+  if (!t.rel || !t.ed?.ready()) return;
+  const text = t.ed.text();
+  const bookmarks = tabBookmarks(t);
+  if (t.bookmarkText === undefined) for (const b of bookmarks) { b.offset = offsetOf(text, Math.max(1, b.line || 1), 1); b.line = text.slice(0, b.offset).split('\n').length; }
+  else if (t.bookmarkText !== text && bookmarks.length) { moveBookmarks(bookmarks, t.bookmarkText, text); saveState(); }
+  t.bookmarkText = text;
+  t.ed.setBookmarks(bookmarks.map((b) => b.offset));
+}
+function toggleBookmark() {
+  const t = I.active;
+  const current = activeBookmark();
+  if (current) I.st.bookmarks.splice(I.st.bookmarks.indexOf(current), 1);
+  else {
+    const line = t.ed.text().slice(0, t.ed.selection()[0]).split('\n').length;
+    (I.st.bookmarks ||= []).push({ loc: t.loc, rel: t.rel, line, offset: offsetOf(t.ed.text(), line, 1) });
+  }
+  updateBookmarks(t); paintToolbar(); saveState();
+}
+async function visitBookmark(bookmark) {
+  const t = openFile(bookmark.rel, { loc: bookmark.loc, preview: false, line: bookmark.line });
+  if (t) { activate(t); placeCaret(t, { line: bookmark.line }); }
+}
+async function nextBookmark(direction) {
+  const list = workspaceBookmarks().sort((a, b) => a.rel.localeCompare(b.rel) || a.line - b.line);
+  if (!list.length) { setStatusFlash('No bookmarks in this workspace.'); return; }
+  const t = I.active;
+  const line = t?.ed ? t.ed.text().slice(0, t.ed.selection()[0]).split('\n').length : 0;
+  const ordered = direction > 0 ? list : [...list].reverse();
+  const next = ordered.find((b) => !t?.rel || direction * (b.rel.localeCompare(t.rel) || b.line - line) > 0) || ordered[0];
+  await visitBookmark(next);
+}
+async function listBookmarks() {
+  const chosen = await pick(workspaceBookmarks().map((b) => ({ label: `${baseName(b.rel)}:${b.line}`, detail: b.rel, value: b })), { title: 'Workspace Bookmarks', matchDescription: true });
+  if (chosen) await visitBookmark(chosen);
+}
+function clearBookmarks() {
+  const remove = new Set(workspaceBookmarks());
+  I.st.bookmarks = (I.st.bookmarks || []).filter((b) => !remove.has(b));
+  for (const t of I.tabs) if (t.ed) updateBookmarks(t);
+  paintToolbar(); saveState();
 }
 
 const paintSymbolNavSoon = debounce(() => { if (I?.active?.ed) paintSymbolNav(I.active); }, 180);
@@ -1870,7 +2144,7 @@ async function goToDefinition(t = I.active) {
 async function formatActive(whole = true) {
   if (!whole) return languages.format(I.active, false);
   const t = I.active;
-  if (!t?.rel || !t.ed?.ready() || t.info?.readOnly) return;
+  if (!(t?.rel || t?.localName) || !t.ed?.ready() || t.info?.readOnly) return;
   if (t.formatting) return;
   t.formatting = true;
   const state = I, before = t.ed.text(), selection = t.ed.selection();
@@ -1879,7 +2153,7 @@ async function formatActive(whole = true) {
     const result = await languages.request(t, 'formatting', { options: { tabSize: options.tabSize, insertSpaces: options.insertSpaces } });
     if (I !== state || !I.tabs.includes(t) || t.ed.text() !== before || result?.stale) { if (I === state) notify('info', 'The file changed while formatting. Format again.'); return; }
     let text = result?.value ? applyTextEdits(before, result.value) : before;
-    const lang = codeLang(t.rel);
+    const lang = codeLang(t.rel || t.localName);
     const parser = await parserFor(lang?.check);
     text = formatWhitespace(text, lang?.hl, { ...options, preserveContinuation: !!result }, parser?.parse(text), parser ? (source) => parser.parse(source) : null);
     if (I !== state || !I.tabs.includes(t) || t.ed.text() !== before || t.info?.readOnly) return;
@@ -2019,6 +2293,7 @@ function tabState(t, info) {
   if (!I) return;
   const was = t.info;
   t.info = info;
+  updateBookmarks(t);
   languages.changed(t);
   inlineCompletions.changed(t);
   if (info.ready && !was?.ready && t === I.active) languages.get(t).catch((e) => log(e.message, 'Languages'));
@@ -2031,7 +2306,7 @@ function tabState(t, info) {
   if (t === I.active) paintSymbolNavSoon();
   if (I.find?.open && t === I.active && was && was.length !== info.length) findSoon();
   // the user's settings and keys read again once their file's saved
-  if (was?.dirty && !info.dirty) {
+  if (t.rel && was?.dirty && !info.dirty) {
     languages.saved(t);
     emit('save', { path: t.rel });
     if (t.rel === SETTINGS_PATH() || t.rel === KEYS_PATH()) loadUserFiles();
@@ -2080,6 +2355,7 @@ function paintNav() {
   const live = (d) => { for (let i = n.at + d; n.stack[i]; i += d) if (I.tabs.includes(n.stack[i].tab)) return true; return false; };
   I.navBack.disabled = !live(-1);
   I.navFwd.disabled = !live(1);
+  paintToolbar();
 }
 
 function pin(t) {
@@ -2139,7 +2415,7 @@ function focusActive() {
 
 async function saveTab(t) {
   if (!t.ed) return true;
-  t.ed.save();
+  if (await t.ed.save() === false) return false;
   for (let i = 0; i < 50 && t.ed.dirty(); i++) await sleep(100);
   if (t.ed.dirty()) { notify('error', `Failed to save '${t.title}': ${t.info?.state || 'no answer from its host'}.`); return false; }
   return true;
@@ -2188,7 +2464,7 @@ async function closeMany(list) {
       buttons: [{ label: 'Save All', primary: true, value: 'save' }, { label: 'Don’t Save', value: 'drop' }, { label: 'Cancel', value: '' }],
     });
     if (!v) return;
-    if (v === 'save') await Promise.all(dirty.map(saveTab));
+    if (v === 'save' && (await Promise.all(dirty.map(saveTab))).some((saved) => !saved)) return;
     for (const t of list) await closeTab(t, true);
     return;
   }
@@ -2230,7 +2506,7 @@ function paintEditors() {
     t.labelEl.textContent = t.title;
     t.descEl.textContent = t.rel && counts.get(t.title) > 1 ? baseName(filesParent(t.rel)) : '';
     t.tabEl.classList.toggle('preview', !!t.preview);
-    t.tabEl.title = t.rel ? `${t.rel}\non ${t.host}` : t.title;
+    t.tabEl.title = t.rel ? `${t.rel}\non ${t.host}` : t.localName ? `${t.localName} · browser local file; Save chooses a local destination or downloads a copy` : t.title;
   }
   const order = I.tabs.map((t) => t.tabEl);
   if (order.some((n, i) => I.tabsEl.children[i] !== n) || I.tabsEl.children.length !== order.length) I.tabsEl.replaceChildren(...order);
@@ -2289,9 +2565,11 @@ function paintTabActions() {
   const t = I.active;
   const acts = [];
   const context = activeRunContext();
+  paintToolbar();
   if (context?.project || context?.pending || (t?.ed && runnerFor(t.rel))) {
     const title = context?.pending ? 'Finding the active project target…' : context?.project ? `Run ${context.item?.label || baseName(projDir())} (${context.cfg?.configuration || 'select configuration'}) on ${context.cfg?.host || runHost()}` : `Run ${t.title} on ${runHost() || 'a host'}`;
     const go = btn('ide-run-btn', 'run', `${title} (F5)`, () => run('sulfur.run.context'));
+    go.append(el('span', 'ide-run-label', runTargetName(context, t)));
     go.disabled = !!context?.pending;
     acts.push(go);
   }
@@ -2773,6 +3051,21 @@ function registerCommands() {
   C('editor.action.formatSelection', 'Format Selection', () => formatActive(false).catch((err) => notify('error', err.message)), { key: 'ctrl+k ctrl+f', when: hasEd, category: 'Editor' });
   C('editor.action.startFindReplaceAction', 'Replace', () => openFind(true), { key: 'ctrl+h', when: hasEd, category: 'Editor' });
   C('editor.action.revealDefinition', 'Go to Definition', () => goToDefinition().catch((err) => notify('error', err.message)), { key: 'f12', when: hasEd, category: 'Go' });
+  C('workbench.action.gotoSymbol', 'Go to Symbol in File…', () => goToSymbol().catch((err) => notify('error', err.message)), { key: 'ctrl+shift+o', when: hasEd, category: 'Go' });
+  C('workbench.action.showAllSymbols', 'Go to Workspace Symbol…', () => goToSymbol(true).catch((err) => notify('error', err.message)), { key: 'ctrl+t', when: hasEd, category: 'Go' });
+  for (const [id, title, method, key] of [
+    ['editor.action.revealDeclaration', 'Go to Declaration', 'declaration', ''],
+    ['editor.action.goToTypeDefinition', 'Go to Type Definition', 'typeDefinition', ''],
+    ['editor.action.goToImplementation', 'Go to Implementation', 'implementation', 'ctrl+f12'],
+  ]) C(id, title, () => languages.navigate(I.active, method).then((handled) => { if (!handled) notify('info', `${title} requires a language server that supports it. Enable the language in Extensions.`); }).catch((err) => notify('error', err.message)), { key, when: hasEd, category: 'Go' });
+  C('editor.showCallHierarchy', 'Show Call Hierarchy', () => showCallHierarchy().catch((err) => notify('error', err.message)), { key: 'shift+alt+h', when: hasEd, category: 'Go' });
+  C('sulfur.callHierarchy.outgoing', 'Show Outgoing Calls', () => showCallHierarchy('outgoing').catch((err) => notify('error', err.message)), { when: hasEd, category: 'Go' });
+  const bookmarkable = () => !!I.active?.rel && !!I.active?.ed?.ready();
+  C('sulfur.bookmark.toggle', 'Toggle Bookmark', toggleBookmark, { key: 'ctrl+k ctrl+k', when: bookmarkable, category: 'Go' });
+  C('sulfur.bookmark.next', 'Next Bookmark', () => nextBookmark(1), { key: 'ctrl+k ctrl+n', category: 'Go' });
+  C('sulfur.bookmark.previous', 'Previous Bookmark', () => nextBookmark(-1), { key: 'ctrl+k ctrl+p', category: 'Go' });
+  C('sulfur.bookmark.list', 'Show Workspace Bookmarks…', listBookmarks, { category: 'Go' });
+  C('sulfur.bookmark.clear', 'Clear Workspace Bookmarks', clearBookmarks, { key: 'ctrl+k ctrl+l', category: 'Go' });
   C('editor.action.referenceSearch.trigger', 'Find All References', () => findReferences().catch((err) => notify('error', err.message)), { key: 'shift+f12', when: hasEd, category: 'Go' });
   C('editor.action.rename', 'Rename Symbol…', () => renameSymbol().catch((err) => notify('error', err.message)), { key: 'ctrl+r ctrl+r', when: hasEd, category: 'Editor' });
   C('editor.action.nextMatchFindAction', 'Find Next', () => findStep(1), { key: 'f3', when: hasEd, category: 'Editor' });
@@ -2853,7 +3146,8 @@ function registerCommands() {
   C('sulfur.mesh.signOut', 'Sign Out of the Mesh', () => meshSignOut(), { when: () => !!standalone?.app && !!standalone.meshUser, category: 'Mesh' });
   C('workbench.action.selectTheme', 'Color Theme', () => pickTheme(), { key: 'ctrl+k ctrl+t', category: 'Preferences' });
   C('workbench.action.toggleLightDarkThemes', 'Toggle between Light and Dark', () => setSetting('window.appearance', document.documentElement.dataset.theme === 'light' ? 'dark' : 'light'), { when: () => !!standalone, category: 'Preferences' });
-  C('sulfur.selectHost', 'Select Host for Terminals and Runs…', () => pickHost('Select the host terminals and runs use').then((h) => h && setRunHost(h)), { category: 'Phosphorus' });
+  C('sulfur.selectHost', 'Switch Workspace Machine…', () => pickHost('Switch workspace and execution to a machine').then((h) => h && switchMachine(h)), { category: 'Phosphorus' });
+  C('sulfur.selectRunHost', 'Select Default Host for New Terminals and Runs…', () => pickHost('Select the host new terminals and runs use').then((h) => h && setRunHost(h)), { category: 'Phosphorus' });
   // preferences and help
   C('workbench.action.openSettings', 'Open Settings (UI)', () => openSettings(), { key: 'ctrl+,', category: 'Preferences', shell: true });
   C('workbench.action.openSettingsJson', 'Open User Settings (JSON)', () => openUserFile(SETTINGS_PATH(), '{\n  // your Sulfur settings, VS Code’s names: see Preferences: Open Settings (UI)\n}\n'), { category: 'Preferences' });
@@ -3205,10 +3499,12 @@ function fileDialog(o = {}) {
     const fwdB = btn('right', 'Forward', () => hist(1));
     const upB = btn('up', 'Up a folder', () => up());
     const refB = btn('refresh', 'Refresh', () => load());
+    const newB = btn('newFolder', 'New Folder', () => createFolder());
+    const deleteB = btn('trash', 'Delete Folder', () => removeFolder());
     const crumbs = el('div', 'ide-fd-crumbs');
     const find = Object.assign(el('input', 'ide-input ide-fd-find'), { placeholder: 'Filter', spellcheck: false, autocomplete: 'off' });
     const bar = el('div', 'ide-fd-bar');
-    bar.append(backB, fwdB, upB, refB, crumbs, find);
+    bar.append(backB, fwdB, upB, refB, newB, deleteB, crumbs, find);
     const side = el('nav', 'ide-fd-side');
     const list = Object.assign(el('div', 'ide-fd-list'), { tabIndex: 0 });
     list.setAttribute('role', 'listbox');
@@ -3221,14 +3517,25 @@ function fileDialog(o = {}) {
     const ok = Object.assign(el('button', 'ide-button', o.okLabel || (files ? 'Open' : 'Open Folder')), { type: 'button' });
     const cancel = Object.assign(el('button', 'ide-button secondary', 'Cancel'), { type: 'button' });
     const fbtns = el('div', 'ide-fd-btns');
-    fbtns.append(...(sys ? [sys] : []), el('span', 'ide-fd-gap'), cancel, ok);
+    const localFile = files && !standalone?.app ? Object.assign(el('button', 'ide-button secondary', 'Open from This Device…'), { type: 'button', title: 'Open a browser-local file without uploading it to a machine' }) : null;
+    const localInput = localFile ? Object.assign(el('input'), { type: 'file', hidden: true }) : null;
+    if (localFile) {
+      localFile.addEventListener('click', () => localInput.click());
+      localInput.addEventListener('change', () => { const file = localInput.files?.[0]; if (file) { done(null); openBrowserFile(file).catch((error) => notify('error', error.message)); } });
+      box.append(localInput);
+    }
+    fbtns.append(...(localFile ? [localFile] : []), ...(sys ? [sys] : []), el('span', 'ide-fd-gap'), cancel, ok);
     foot.append(path, note, fbtns);
     box.append(title, bar, split, foot);
     back.append(box);
     I.layer.append(back);
     I.dialog = back;
 
+    const state = I;
+    let closed = false;
     const done = (v) => {
+      if (closed) return;
+      closed = true; st.want = null;
       back.remove();
       if (I) I.dialog = null;
       if (I?.fdPaint === paintSide) I.fdPaint = null;
@@ -3271,7 +3578,7 @@ function fileDialog(o = {}) {
         if (isHomeLoc(st.loc) && !st.dir) entries = [{ name: acct.user, dir: true }, ...(localDesktop() ? [] : [{ name: 'shared', dir: true }])];
         else entries = (await filesCall(apiLoc(st.loc), 'list', undefined, { path: st.dir })).entries || [];
       } catch (err) { if (st.want === want) st.err = err.message; }
-      if (!I || st.want !== want) return;
+      if (closed || I !== state || st.want !== want) return;
       st.entries = sortEntries(entries);
       st.busy = false;
       paint();
@@ -3279,8 +3586,10 @@ function fileDialog(o = {}) {
     function paintSide() {
       const out = [];
       for (const g of dialogPlaces()) {
+        const places = o.machine ? g.items.filter((x) => x.loc?.host === o.machine) : g.items;
+        if (!places.length) continue;
         out.push(el('div', 'ide-fd-head', g.head));
-        for (const x of g.items) {
+        for (const x of places) {
           const row = Object.assign(el(x.loc || x.run || x.act ? 'button' : 'div', `ide-fd-place${x.sub ? ' sub' : ''}${x.off ? ' off' : ''}${x.head ? ' host' : ''}`), x.loc || x.run || x.act ? { type: 'button' } : {});
           row.append(icon(x.ic || 'folder'), el('span', 'ide-fd-place-name', x.label));
           row.title = x.detail ? `${x.label} · ${x.detail}` : x.label;
@@ -3339,6 +3648,9 @@ function fileDialog(o = {}) {
     function paintSel() {
       for (const r of list.querySelectorAll('.ide-fd-row')) r.classList.toggle('sel', r.dataset.name === st.sel);
       const e = st.entries.find((x) => x.name === st.sel);
+      const mutable = !st.busy && !closed && st.loc && (inScope(st.dir, st.loc) || !st.dir && !isHomeLoc(st.loc)) && (apiLoc(st.loc).perms || 'rwd').includes('w');
+      newB.disabled = !mutable;
+      deleteB.disabled = !mutable || !e?.dir || !(apiLoc(st.loc).perms || 'rwd').includes('d');
       const cur = where();
       const sep = isWinPath(cur) ? '\\' : '/';
       if (!pathDirty && document.activeElement !== path) path.value = e ? `${cur.replace(/[\\/]+$/, '')}${sep}${e.name}` : cur;
@@ -3346,6 +3658,38 @@ function fileDialog(o = {}) {
       const target = pickTarget();
       ok.disabled = !target;
       note.textContent = !st.loc ? '' : target ? '' : o.skip?.(st.loc) ? 'Somewhere else than where it is now.' : files ? 'Pick a file.' : !st.dir ? 'Pick a folder in it, not the whole drive.' : '';
+    }
+    async function createFolder() {
+      if (newB.disabled) return;
+      const loc = st.loc, dir = st.dir;
+      const name = await inputBox({ title: `New Folder on ${hostOf(loc)}`, placeholder: 'Folder name', validate: (value) => !value.trim() || /[\\/:*?"<>|]/.test(value) || ['.', '..'].includes(value.trim()) ? 'Enter a single folder name.' : '' });
+      if (closed || I !== state) return;
+      I.dialog = back;
+      if (!name?.trim()) return;
+      const rel = filesJoin(dir, name.trim());
+      if (!inScope(rel, loc)) return;
+      try {
+        await filesCall(apiLoc(loc), 'mkdir', jsonPost({ path: rel }));
+        if (closed || I !== state || !sameLoc(st.loc, loc) || st.dir !== dir) return;
+        st.sel = name.trim(); await load();
+        if (sameLoc(loc, locOf())) { I.tree.delete(dir); loadDir(dir, true).then(paintTree); }
+      } catch (error) { if (!closed) { st.err = error.message; note.textContent = error.message; } }
+    }
+    async function removeFolder() {
+      const entry = st.entries.find((x) => x.name === st.sel);
+      if (deleteB.disabled || !entry?.dir) return;
+      const loc = st.loc, dir = st.dir, rel = filesJoin(dir, entry.name);
+      const answer = await ask({ title: `Permanently delete '${entry.name}'?`, detail: `The folder and its contents will be deleted from ${hostOf(loc)}. This machine has no trash recovery for this action.`, buttons: [{ label: 'Delete Folder', danger: true, primary: true, value: 'delete' }, { label: 'Cancel', value: '' }] });
+      if (closed || I !== state) return;
+      I.dialog = back;
+      if (answer !== 'delete') return;
+      try {
+        await filesCall(apiLoc(loc), 'delete', jsonPost({ path: rel }));
+        if (closed || I !== state) return;
+        for (const tab of I.tabs.filter((t) => t.rel && sameLoc(t.loc, loc) && under(t.rel, rel))) await closeTab(tab, true);
+        if (sameLoc(st.loc, loc) && st.dir === dir) { st.sel = ''; await load(); }
+        if (sameLoc(loc, locOf())) { I.tree.delete(dir); loadDir(dir, true).then(paintTree); }
+      } catch (error) { if (!closed) note.textContent = error.message; }
     }
     const pickTarget = () => {
       if (!st.loc) return null;
@@ -3404,6 +3748,7 @@ function fileDialog(o = {}) {
     box.addEventListener('keydown', (e) => {
       e.stopPropagation();
       if (e.key === 'Escape') { e.preventDefault(); done(null); return; }
+      if (e.key === 'Delete' && e.target === list) { e.preventDefault(); removeFolder(); return; }
       if (e.target === path || e.target === find) { if (e.target === find && e.key === 'ArrowDown') { e.preventDefault(); list.focus(); } return; }
       if (e.target.closest('button')) return;
       const rows = [...list.querySelectorAll('.ide-fd-row')];
@@ -3428,8 +3773,8 @@ function fileDialog(o = {}) {
     });
     back.addEventListener('pointerdown', (e) => { if (e.target === back) { e.preventDefault(); box.classList.add('shake'); setTimeout(() => box.classList.remove('shake'), 300); } });
     // where it opens: the folder asked for, else the workspace's, else the first place
-    const start = o.start || (I.st.root ? { loc: locOf(), dir: files && I.active?.rel && sameLoc(I.active.loc, locOf()) ? filesParent(I.active.rel) : I.st.root } : null);
-    const first = dialogPlaces().flatMap((g) => g.items).find((x) => x.loc);
+    const start = o.start || (!o.machine && I.st.root ? { loc: locOf(), dir: files && I.active?.rel && sameLoc(I.active.loc, locOf()) ? filesParent(I.active.rel) : I.st.root } : null);
+    const first = dialogPlaces().flatMap((g) => g.items).find((x) => x.loc && (!o.machine || x.loc.host === o.machine));
     if (start?.loc) go(start.loc, start.dir || '');
     else if (first) go(first.loc, first.dir || '');
     else load();
@@ -3804,7 +4149,7 @@ function buildPanel() {
   const plus = btn('', 'plus', `New Terminal (${keyLabel('ctrl+shift+`')})`, () => newTerminal());
   const pickOn = btn('ide-btn-narrow', 'down', 'Launch Profile…', (e) => menu(e.currentTarget, [
     ...dkLiveHosts().sort().map((h) => ({ label: h, ic: 'host', checked: h === runHost() ? true : undefined, run: () => newTerminal({ host: h }) })),
-    '-', { label: 'Select Default Host…', run: () => run('sulfur.selectHost') },
+    '-', { label: 'Select Default Host…', run: () => run('sulfur.selectRunHost') },
   ]));
   // one terminal killed from the title; with more, each from its own row
   tv.kill = btn('', 'trash', 'Kill Terminal', () => run('workbench.action.terminal.kill'));
@@ -3945,6 +4290,43 @@ function runHost() {
   if (!isHomeLoc() && live.includes(locOf().host)) return locOf().host;
   return [selfHost, ...live.sort()].find((h) => live.includes(h)) || '';
 }
+function machineItems() {
+  const active = !isHomeLoc() ? locOf().host : runHost();
+  const machines = dkLiveHosts().sort().map((host) => ({ label: host, ic: 'host', checked: host === active,
+    run: () => switchMachine(host).catch((error) => notify('error', error.message)) }));
+  return [...machines, ...(machines.length ? ['-'] : []), ...(standalone ? [{ label: 'Mesh Connections', sub: () => meshItems(true) }] : [{ label: 'Hosts and Logins', run: () => showSide('run', true, true) }])];
+}
+
+async function switchMachine(host) {
+  if (!dkLiveHosts().includes(host)) throw new Error(`Log into ${host} before switching machines.`);
+  const state = I;
+  const revision = state.machineSwitch = (state.machineSwitch || 0) + 1;
+  const current = () => I === state && state.machineSwitch === revision;
+  const share = hostsInfo[host.toLowerCase()]?.files?.shares?.find((x) => x.home);
+  const user = host === (standalone?.localHost || selfHost) ? standalone?.info?.user || acct.user : dk.creds.get(host)?.user || standalone?.meshUser || acct.user;
+  const recent = (I.st.recentFolders || []).find((x) => x.loc?.host === host && x.root);
+  const candidates = [...(recent ? [{ loc: recent.loc, rel: recent.root }] : []), ...(share ? [{ loc: { host, share: String(share.id) }, rel: user }] : [])];
+  let target = null;
+  for (const candidate of candidates) {
+    try { await filesCall(apiLoc(candidate.loc), 'list', undefined, { path: candidate.rel }); target = candidate; }
+    catch { /* A removed or inaccessible folder falls back to the user's home. */ }
+    if (!current()) return;
+    if (target) break;
+  }
+  if (!target) target = await fileDialog({ title: `Open Workspace on ${host}`, machine: host });
+  if (!target || !current()) return;
+  setRunHost(host);
+  setRoot(target.rel, false, target.loc);
+  const tab = I.tabs.find((t) => t.rel && sameLoc(t.loc, target.loc) && under(t.rel, target.rel));
+  if (tab) activate(tab); else openWelcome();
+  // The active terminal follows the connection while old sessions stay alive.
+  const terminal = I.terms.find((t) => t.host === host && t.kind === 'shell' && !t.ended);
+  if (terminal) selectTerm(terminal);
+  else await newTerminal({ host, contextCheck: current });
+  if (!current()) return;
+  setStatusFlash(`Workspace and new runs now use ${host}`);
+}
+
 function setRunHost(h) {
   I.st.runHost = h;
   saveState();
@@ -4193,7 +4575,7 @@ function sbItem(cls, title, onClick) {
 function buildStatus() {
   const S = {};
   S.branch = sbItem('ide-sb-branch', 'Checkout to…', () => run('sulfur.git.branch'));
-  S.remote = sbItem('ide-sb-remote', standalone ? 'This computer and linked mesh machines' : 'Select the host terminals and runs use', () => (standalone ? menu(S.remote, meshItems(true), { side: 'right', up: true }) : run('sulfur.selectHost')));
+  S.remote = sbItem('ide-sb-remote', 'Switch workspace and execution machine', () => menu(S.remote, machineItems(), { side: 'right', up: true }));
   S.problems = sbItem('ide-sb-problems', 'No Problems', () => run('workbench.actions.view.problems'));
   S.build = sbItem('ide-sb-build', 'Build toolchain', () => run('sulfur.build.select'));
   S.config = sbItem('ide-sb-build ide-sb-config', 'Build configuration', () => run('sulfur.build.configuration'));
@@ -4223,6 +4605,7 @@ function paintStatus() {
   sbFrame = requestAnimationFrame(() => { sbFrame = 0; if (I) paintStatusNow(); });
 }
 function paintStatusNow() {
+  paintToolbar();
   const S = I.sb;
   const completionOn = !!setting('editor.inlineSuggest.enabled');
   S.completion.textContent = `AI ${completionOn ? 'On' : 'Off'}`;
@@ -5863,7 +6246,11 @@ function paintScm() {
   if (n) btnEl?.append(el('span', 'ide-act-badge', n > 99 ? '99+' : String(n)));
   if (v.body.hidden && v.body.childElementCount) return;
   const body = v.body;
-  const keepMsg = body.querySelector('.ide-scm-msg')?.value || I.scmMsg || '';
+  body.classList.add('ide-scm-body');
+  const previousMsg = body.querySelector('.ide-scm-msg');
+  const keepMsg = previousMsg?.value ?? I.scmMsg ?? '';
+  const messageSelection = previousMsg === document.activeElement ? [previousMsg.selectionStart, previousMsg.selectionEnd] : null;
+  if (previousMsg?.offsetHeight) I.scmMsgHeight = previousMsg.offsetHeight;
   body.replaceChildren();
   if (!s) { body.append(el('p', 'ide-empty-note', 'Looking for a repository…')); return; }
   if (!s.top) {
@@ -5882,8 +6269,9 @@ function paintScm() {
   }
   // the message and the commit, as VS Code's
   const commitBox = el('div', 'ide-scm-commit');
-  const msg = Object.assign(el('textarea', 'ide-input ide-scm-msg'), { rows: 1, value: keepMsg, placeholder: `Message (Ctrl+Enter to commit on “${s.branch}”)`, spellcheck: true });
-  msg.addEventListener('input', () => { I.scmMsg = msg.value; msg.style.height = 'auto'; msg.style.height = `${Math.min(msg.scrollHeight, 160)}px`; });
+  const msg = Object.assign(el('textarea', 'ide-input ide-scm-msg'), { rows: 3, value: keepMsg, ariaLabel: 'Commit message', placeholder: `Message (Ctrl+Enter to commit on “${s.branch}”)`, spellcheck: true });
+  msg.style.height = `${I.scmMsgHeight || 76}px`;
+  msg.addEventListener('input', () => { I.scmMsg = msg.value; });
   msg.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); e.stopPropagation(); scmCommit(); } });
   const row = el('div', 'ide-run-row');
   const commit = Object.assign(el('button', 'ide-button ide-run-go'), { type: 'button' });
@@ -5911,6 +6299,7 @@ function paintScm() {
   sync.addEventListener('click', () => (s.upstream ? scmSync() : scmPush()));
   br.append(sync);
   body.append(commitBox, br);
+  if (messageSelection) { msg.focus({ preventScroll: true }); msg.setSelectionRange(...messageSelection); }
 
   const section = (title, list, staged) => {
     if (!list.length) return;
@@ -8347,7 +8736,12 @@ async function buildFile(asked = false) {
 }
 
 // the project's build pick: kept in its own .sulfur/build.json, this browser's copy first
-function buildCfg() { return I.st.build[bkey()] || null; }
+function buildCfg() {
+  const cfg = I.st.build[bkey()] || null;
+  // A machine-specific workspace must not reuse another machine's compiler
+  // paths or execute there because its copied build.json still names that host.
+  return cfg && !isHomeLoc() && cfg.host !== locOf().host ? null : cfg;
+}
 async function loadBuildConfig(dir = projDir()) {
   const key = bkey(dir);
   const text = await readAt(`${dir}/${BUILD_FILE}`).catch(() => null);

@@ -348,7 +348,9 @@ def launch(item, manifest, request):
     reader = threading.Thread(target=read_server, daemon=True)
     reader.start()
     try:
-        for line in sys.stdin:
+        # Go forwards browser JSON as UTF-8 bytes. Windows Python's text stdin
+        # can use a legacy code page, corrupting BOMs, identifiers and positions.
+        for line in sys.stdin.buffer:
             message = json.loads(line)
             # Client-provided document URIs must remain in this actual project,
             # including through symlinks. Server locations are also gated by UI.

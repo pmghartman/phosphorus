@@ -39,14 +39,25 @@ function frame(title) {
     const bare = (t) => !t.closest('button, input, select, textarea, a, [role="menuitem"], [role="menubar"] > *, .ide-cc');
     head.addEventListener('mousedown', (e) => { if (e.button === 0 && e.detail === 1 && bare(e.target)) appWin.startDragging(); });
     head.addEventListener('dblclick', (e) => { if (bare(e.target)) appWin.toggleMaximize(); });
+    let maxFrame = 0, maxPending = false, maxRevision = 0, lastMax = null;
     const paintMax = async () => {
+      maxFrame = 0; maxPending = true;
+      const revision = maxRevision;
       const on = await appWin.isMaximized().catch(() => false);
+      maxPending = false;
+      if (revision !== maxRevision) { maxFrame = requestAnimationFrame(paintMax); return; }
+      if (on === lastMax) return;
+      lastMax = on;
       max.replaceChildren(dkGlyph(on ? UI.restore : UI.max));
       max.title = on ? 'Restore' : 'Maximize';
       document.documentElement.classList.toggle('sx-max', on);
     };
-    window.addEventListener('resize', paintMax);
-    paintMax();
+    const resized = () => {
+      maxRevision++;
+      if (!maxFrame && !maxPending) maxFrame = requestAnimationFrame(paintMax);
+    };
+    window.addEventListener('resize', resized);
+    resized();
   }
   // the title the window's, so the task bar and the dock say what's open
   new MutationObserver(() => {
