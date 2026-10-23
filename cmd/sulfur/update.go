@@ -86,9 +86,9 @@ func installUpdate(file string) error {
 	dir := filepath.Dir(exe)
 	switch runtime.GOOS {
 	case "windows":
-		app := filepath.Join(dir, "Sulfur.exe")
-		// the installer once the window's closed, then the app again
-		return detachedLine(`cmd /c timeout /t 3 /nobreak >nul & "` + file + `" /S & start "" "` + app + `"`)
+		// The verified installer owns the delay and restart. Launch it directly
+		// rather than handing a downloaded path to a hidden cmd command chain.
+		return detached(file, "/S", "/RESTART")
 	case "darwin":
 		// Contents/MacOS/Sulfur, in Sulfur.app
 		bundle := filepath.Dir(filepath.Dir(dir))

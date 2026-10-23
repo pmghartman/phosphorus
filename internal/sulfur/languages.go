@@ -2,8 +2,6 @@ package sulfur
 
 import (
 	"bufio"
-	"bytes"
-	"compress/zlib"
 	"context"
 	_ "embed"
 	"encoding/base64"
@@ -12,6 +10,7 @@ import (
 	"io"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -55,12 +54,11 @@ func LanguageSocket(ws *wsock.Conn, remote string, creds code.Creds) {
 	}
 	arg, _ := json.Marshal(request)
 	payload := base64.StdEncoding.EncodeToString(arg)
-	var packed bytes.Buffer
-	z := zlib.NewWriter(&packed)
-	z.Write([]byte(languageHelper))
-	z.Close()
 	// Send the adapter over stdin to stay below Windows sshd/cmd command limits.
-	bootstrap := "import sys,base64,zlib;exec(zlib.decompress(base64.b64decode(sys.stdin.buffer.readline())))"
+	// Plain UTF-8 source with a byte-length header keeps the embedded adapter
+	// inspectable, without compressed/encoded executable payloads. Only the JSON
+	// request argument is base64, for consistent quoting across remote shells.
+	bootstrap := "import sys;exec(compile(sys.stdin.buffer.read(int(sys.stdin.buffer.readline())), '<sulfur-language-adapter>', 'exec'))"
 	exited := make(chan struct{})
 	killLater := func(kill func()) {
 		time.AfterFunc(5*time.Second, func() {
@@ -185,7 +183,7 @@ func LanguageSocket(ws *wsock.Conn, remote string, creds code.Creds) {
 	var once sync.Once
 	closeProcess := func() { once.Do(stop) }
 	defer closeProcess()
-	if _, err = in.Write([]byte(base64.StdEncoding.EncodeToString(packed.Bytes()) + "\n")); err != nil {
+	if _, err = io.WriteString(in, strconv.Itoa(len(languageHelper))+"\n"+languageHelper); err != nil {
 		closeProcess()
 		fail(err)
 		return

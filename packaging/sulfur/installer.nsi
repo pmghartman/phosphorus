@@ -1,7 +1,7 @@
 ; Sulfur for Windows, per user: its one .exe in %LOCALAPPDATA%\Sulfur, an update
 ; landing in place
 ; makensis /DVERSION=1.2 /DSTAGE=dir /DOUTFILE=setup.exe installer.nsi
-; /S silent: the app's own update, which starts the app again itself
+; /S silent; /RESTART additionally waits for the app to close and reopens it
 
 Unicode true
 ManifestDPIAware true
@@ -44,6 +44,22 @@ VIAddVersionKey "LegalCopyright" "Apache-2.0"
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
 !insertmacro MUI_LANGUAGE "English"
+
+Function .onInit
+  ${GetParameters} $0
+  ClearErrors
+  ${GetOptions} $0 "/RESTART" $1
+  IfErrors +2 0
+    Sleep 3000
+FunctionEnd
+
+Function .onInstSuccess
+  ${GetParameters} $0
+  ClearErrors
+  ${GetOptions} $0 "/RESTART" $1
+  IfErrors +2 0
+    Exec '"$INSTDIR\Sulfur.exe"'
+FunctionEnd
 
 Section "Install"
   !insertmacro StopApp
