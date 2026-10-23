@@ -409,6 +409,8 @@
 .code-line-now[hidden], .code-nr-now[hidden], .code-overview[hidden] { display: none; }
 .code-rulers > div { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--ide-ruler, var(--ide-guide, var(--border))); }
 .code-deco-marks { position: absolute; inset: 0; color: transparent; }
+/* only the marks drawn, never the text they carry: over .ide .code-hl's own color */
+.ide .code-hl.code-deco-marks, .ide .code-deco-marks * { color: transparent; font-style: normal; }
 .code-deco-marks mark { color: transparent; background: none; border-radius: 2px; }
 .code-deco-marks mark.word { background: var(--ide-word-hl, color-mix(in srgb, var(--ide-fg, var(--fg)) 14%, transparent)); }
 .code-deco-marks mark.bracket { border-radius: 0; background: var(--ide-bracket, rgb(0 100 0 / 0.1)); box-shadow: inset 0 0 0 1px var(--ide-bracket-border, #888); }
