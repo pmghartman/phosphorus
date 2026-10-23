@@ -130,8 +130,8 @@ function codeEditor(view, file, btn, id, opts = {}) {
   function hideDiagnosticHover() { diagnosticHover.hidden = true; }
   // the hover: the problems under the mouse at once, then what the language server says of
   // the word there (opts.hover) once the mouse rests on it, in one tooltip as VS Code's
-  let hoverTimer = 0, hoverAbort = null, hoverWord = null;
-  function hideHover() { clearTimeout(hoverTimer); hoverAbort?.abort(); hoverAbort = null; hoverWord = null; hideDiagnosticHover(); }
+  let hoverTimer = 0, hoverAbort = null, hoverWord = null, moveTimer = 0;
+  function hideHover() { clearTimeout(hoverTimer); clearTimeout(moveTimer); moveTimer = 0; hoverAbort?.abort(); hoverAbort = null; hoverWord = null; hideDiagnosticHover(); }
   let lastPlace = null;
   function placeHover(x, y, below = true) {
     lastPlace = [x, y, below];
@@ -144,7 +144,13 @@ function codeEditor(view, file, btn, id, opts = {}) {
     if (!problems.length && !extra) { hideDiagnosticHover(); return; }
     diagnosticHover.replaceChildren();
     if (problems.length) diagnosticHover.append(el('div', 'code-hover-problems', problems.map(diagnosticText).join('\n\n')));
-    if (problems.length && opts.quickFixHint) diagnosticHover.append(el('div', 'code-hover-hint', opts.quickFixHint));
+    const hint = problems.length && opts.quickFixHint;
+    if (hint) {
+      // the problem's Quick Fix, run from the tooltip with the caret put on the problem
+      const b = Object.assign(el('button', 'code-hover-hint', hint), { type: 'button' });
+      b.addEventListener('click', () => { const at = problems[0].from; hideHover(); ta.focus(); ta.setSelectionRange(at, at); tell(); opts.quickFix?.(); });
+      diagnosticHover.append(b);
+    }
     if (extra) diagnosticHover.append(extra);
     diagnosticHover.classList.toggle('code-hover-rich', !!extra);
     diagnosticHover.hidden = false;
@@ -188,15 +194,25 @@ function codeEditor(view, file, btn, id, opts = {}) {
     const ws = wordStart(text, at), we = wordEnd(text, at);
     const hit = errsText === text ? diagnosticsAt(errs, at) : [];
     const key = `${ws}:${we}:${hit.length}`;
-    if (hoverWord === key && (!diagnosticHover.hidden || hoverTimer)) return;
+    if (hoverWord === key && (!diagnosticHover.hidden || hoverTimer)) { clearTimeout(moveTimer); moveTimer = 0; return; }
+    const x = event.clientX + 12, y = event.clientY + 20;
+    // a tooltip showing stays a moment as the mouse moves off its word: it may be on its way
+    // into it (to a Quick Fix, a link), crossing other text below the word
+    if (!diagnosticHover.hidden) {
+      clearTimeout(moveTimer);
+      moveTimer = setTimeout(() => { moveTimer = 0; if (!diagnosticHover.matches(':hover')) startHover(at, ws, we, hit, key, x, y); }, 300);
+      return;
+    }
+    startHover(at, ws, we, hit, key, x, y);
+  });
+  function startHover(at, ws, we, hit, key, x, y) {
     hideHover();
     if (we === ws && !hit.length) return;
     hoverWord = key;
-    const x = event.clientX + 12, y = event.clientY + 20;
     if (hit.length) showHover(hit, null, x, y, true);
     // the language server asked once the mouse rests, VS Code's 300ms
     if (opts.hover && we > ws) hoverTimer = setTimeout(() => { hoverTimer = 0; hoverAt(at, x, y); }, 300);
-  });
+  }
   for (const event of ['blur', 'input', 'keydown']) ta.addEventListener(event, hideHover);
   scroller.addEventListener('scroll', hideHover);
   // a rich hover takes the mouse: moved into, it stays to be read, scrolled and its links
@@ -205,7 +221,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
   ta.addEventListener('mouseleave', () => { clearTimeout(leaveTimer); leaveTimer = setTimeout(() => { if (!diagnosticHover.matches(':hover')) hideHover(); }, 250); });
   ta.addEventListener('mouseenter', () => clearTimeout(leaveTimer));
   diagnosticHover.addEventListener('mouseleave', () => { clearTimeout(leaveTimer); leaveTimer = setTimeout(hideHover, 250); });
-  diagnosticHover.addEventListener('mouseenter', () => clearTimeout(leaveTimer));
+  diagnosticHover.addEventListener('mouseenter', () => { clearTimeout(leaveTimer); clearTimeout(moveTimer); moveTimer = 0; });
   diagnosticHover.addEventListener('mousedown', (e) => e.preventDefault());
   diagnosticHover.addEventListener('click', (e) => {
     const a = e.target.closest('a[href]');
