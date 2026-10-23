@@ -74,6 +74,11 @@ const highlighter = tagHighlighter([
 const escape = (s) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
 
 // text as highlighted html off the parser's tree
+export function syntaxRanges(parser, text, tree = parser.parse(text)) {
+  const ranges = [];
+  highlightTree(tree, highlighter, (from, to, cls) => ranges.push({ from, to, cls }));
+  return ranges;
+}
 export function highlight(parser, text, tree = parser.parse(text), semantic = []) {
   if (semantic.length) {
     const ranges = [];

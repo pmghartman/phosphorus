@@ -31,16 +31,69 @@ export function semanticRanges(text, data, legend) {
 }
 
 const escape = (s) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
+// Chroma emits only escaped text and flat hljs spans. Decode that restricted
+// format into ranges so fallback syntax and semantic tokens can coexist and
+// survive edits. Reject anything that does not reproduce the exact document.
+export function rangesFromHighlight(html, text) {
+  const ranges = [];
+  let at = 0, cls = '', start = 0;
+  for (const [part] of html.matchAll(/<[^>]*>|[^<]+/g)) {
+    if (part.startsWith('<')) {
+      if (part === '</span>' && cls) { ranges.push({ from: start, to: at, cls }); cls = ''; }
+      else {
+        const match = /^<span class="(hljs-[a-z_-]+)">$/.exec(part);
+        if (!match || cls) return null;
+        cls = match[1]; start = at;
+      }
+    } else {
+      const decoded = part.replace(/&(amp|lt|gt|quot|apos|#34|#39);/g, (_, entity) => ({ amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", '#34': '"', '#39': "'" })[entity]);
+      if (text.slice(at, at + decoded.length) !== decoded) return null;
+      at += decoded.length;
+    }
+  }
+  return !cls && at === text.length ? ranges : null;
+}
+// Keep classifications for unchanged text while a newer parse/server response is
+// pending. Only an edited token is invalidated; identifier typing keeps its color.
+export function rebaseHighlightRanges(before, after, ranges) {
+  if (before === after || !ranges.length) return ranges;
+  let from = 0, tail = 0;
+  while (from < before.length && from < after.length && before[from] === after[from]) from++;
+  while (tail < before.length - from && tail < after.length - from && before[before.length - tail - 1] === after[after.length - tail - 1]) tail++;
+  const end = before.length - tail, added = after.slice(from, after.length - tail), delta = after.length - before.length;
+  const identifier = /^@?[$\p{L}_][$\p{L}\p{N}\p{M}_]*$/u;
+  const continuation = /^[$\p{L}\p{N}\p{M}_]*$/u.test(added);
+  const out = [];
+  for (const range of ranges) {
+    const inside = from >= range.from && end <= range.to;
+    const joined = inside && continuation && identifier.test(before.slice(range.from, range.to));
+    if (joined && /hljs-(type|variable|title|attr|literal)/.test(range.cls)) {
+      if (range.to + delta > range.from) out.push({ ...range, to: range.to + delta });
+    } else if (range.to <= from && !(joined && added)) out.push(range);
+    else if (range.from >= end && !(joined && added)) out.push({ ...range, from: range.from + delta, to: range.to + delta });
+  }
+  return out;
+}
 export function highlightRanges(text, syntax = [], semantic = []) {
-  const cuts = [...new Set([0, text.length, ...syntax.flatMap((r) => [r.from, r.to]), ...semantic.flatMap((r) => [r.from, r.to])])].sort((a, b) => a - b);
-  let html = '', a = 0, b = 0;
-  for (let i = 0; i < cuts.length - 1; i++) {
-    const from = cuts[i], to = cuts[i + 1];
+  const html = [];
+  let a = 0, b = 0, from = 0, start = 0, active = '';
+  const emit = (to) => {
+    if (to > start) {
+      const content = escape(text.slice(start, to));
+      html.push(active ? `<span class="${active}">${content}</span>` : content);
+    }
+    start = to;
+  };
+  while (from < text.length) {
     while (a < syntax.length && syntax[a].to <= from) a++;
     while (b < semantic.length && semantic[b].to <= from) b++;
-    const cls = semantic[b]?.from <= from ? semantic[b].cls : syntax[a]?.from <= from ? syntax[a].cls : '';
-    const content = escape(text.slice(from, to));
-    html += cls ? `<span class="${cls}">${content}</span>` : content;
+    const sa = syntax[a], sb = semantic[b];
+    const to = Math.min(text.length, sa ? sa.from > from ? sa.from : sa.to : text.length, sb ? sb.from > from ? sb.from : sb.to : text.length);
+    const lexical = sa?.from <= from ? sa.cls : '';
+    const cls = /hljs-(comment|string|regexp)/.test(lexical) ? lexical : sb?.from <= from ? sb.cls : lexical;
+    if (cls !== active) { emit(from); active = cls; }
+    from = to;
   }
-  return html;
+  emit(text.length);
+  return html.join('');
 }

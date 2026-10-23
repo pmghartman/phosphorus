@@ -4,6 +4,9 @@ Sulfur is phosphorus's code editor, a VS Code-shaped workbench in a phosphorus d
 
 This guide is also in Sulfur itself, under **Help → Extension Guide**.
 
+For indentation guides, whitespace markers and external-file reloads, see
+[Editor display and external changes](sulfur-editor.md).
+
 ## Quick start
 
 For optional completion, semantic navigation, rename, and diagnostics, open
@@ -362,6 +365,6 @@ export function activate(api) {
 
 - Every API call is asynchronous and crosses a message port: `await` them.
 - There's no `vscode` module to import. The API is the `api` argument to `activate`.
-- One editor group, no language servers, decorations or debuggers. Sulfur checks syntax by parsing, as the desktop's editor does.
+- One editor group. Optional native language servers provide completion, semantic colors, navigation and diagnostics; the extension API does not expose VS Code's language-provider, decoration or debugger APIs.
 - Settings live in `~/.sulfur/settings.json` and keys in `~/.sulfur/keybindings.json`, both in your phosphorus home. Enabling an extension is remembered per browser.
 - Your editors are live sessions: anyone with the same file open, an agent included, edits the same text you see.

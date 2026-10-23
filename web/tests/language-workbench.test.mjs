@@ -49,6 +49,21 @@ test('word suggestions are immediately tab-completable while the semantic provid
   await pending;
 });
 
+test('null semantic responses retain colors while explicit empty tokens clear them', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const f = await setup(t, true, false, true, { semanticTokensProvider: { full: true, legend: { tokenTypes: ['class'], tokenModifiers: [] } } });
+  t.mock.timers.tick(1000); await settle();
+  f.socket.reply('textDocument/semanticTokens/full', { data: [0, 0, 8, 0, 0] }); await settle();
+  assert.equal(f.semantics.at(-1).ranges.length, 1);
+  const before = f.semantics.length;
+  f.setText('readFile();\nrea'); f.workbench.changed(f.tab); t.mock.timers.tick(1000); await settle();
+  f.socket.reply('textDocument/semanticTokens/full', null); await settle();
+  assert.equal(f.semantics.length, before);
+  f.setText('readFile();\nread'); f.workbench.changed(f.tab); t.mock.timers.tick(1000); await settle();
+  f.socket.reply('textDocument/semanticTokens/full', { data: [] }); await settle();
+  assert.deepEqual(f.semantics.at(-1).ranges, []);
+});
+
 test('C# completion retries an empty startup response so DLL symbols can replace the word fallback', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const f = await setup(t, true, false, true);
