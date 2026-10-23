@@ -33,7 +33,6 @@ import {
   selfHost,
   shQuote,
   shareMenu,
-  meshUpdate,
   standalone,
 } from '../app.js';
 import { codeEditor } from './editor.js';
@@ -92,6 +91,7 @@ const IC = {
   newFile: 'M3.5 1.5h5l3 3v4M8.5 1.5v3h3M3.5 1.5v13h5M12 10v5M9.5 12.5h5',
   newFolder: 'M1.5 3h4l1.2 1.5h7.8V8M1.5 3v10h6.5M12 9.5v5M9.5 12h5',
   refresh: 'M13.5 8a5.5 5.5 0 1 1-1.8-4.1M13.5 1.5v3.5h-3.5',
+  update: 'M8 1.5v8.5M4.5 6.5L8 10l3.5-3.5M2.5 11v3h11v-3',
   collapse: 'M4.5 4.5h9v9h-9zM2.5 11.5v-9h9M6.5 9h5',
   more: 'M3.5 8h.01M8 8h.01M12.5 8h.01',
   plus: 'M8 3v10M3 8h10',
@@ -542,18 +542,18 @@ function build() {
   const ccText = el('span', 'ide-cc-text');
   cc.append(icon('search'), ccText);
   cc.addEventListener('click', () => quickOpen(''));
-  // the chat at the bar's left, the update at its right: each its own button, nothing to dig for
+  // the update and the chat at the bar's right, by the window's buttons: each its own, nothing to dig for
   const ai = Object.assign(el('button', 'ide-tb ide-tb-ai'), { type: 'button', ariaLabel: 'Chat' });
   ai.dataset.cmd = 'workbench.action.chat.open';
   ai.dataset.label = 'Chat';
   ai.append(icon('spark'));
   ai.addEventListener('click', () => run('workbench.action.toggleAuxiliaryBar'));
-  const upd = Object.assign(el('button', 'ide-tb ide-tb-update'), { type: 'button' });
-  upd.append(icon('refresh'), el('span', 'ide-tb-text', standalone?.app ? 'Check for Updates' : 'Mesh Update'));
-  upd.title = standalone?.app ? 'Check for Sulfur updates' : 'The mesh update, Sulfur with it';
-  upd.hidden = !(standalone?.app || (!standalone && acct.admin && meshUpdate));
-  upd.addEventListener('click', () => (standalone?.app ? checkUpdate(true) : meshUpdate?.()));
-  title.append(ai, menubar, cc, upd);
+  // Sulfur's own update, the desktop app's alone: in the desktop or on a host it updates with the mesh
+  const upd = Object.assign(el('button', 'ide-tb ide-tb-update'), { type: 'button', title: 'Check for Sulfur Updates', ariaLabel: 'Check for Sulfur Updates' });
+  upd.append(icon('update'));
+  upd.hidden = !standalone?.app;
+  upd.addEventListener('click', () => checkUpdate(true));
+  title.append(menubar, cc, upd, ai);
 
   const main = el('div', 'ide-main');
   // the activity bar: a view per icon; the chat, settings and update are the title bar's
@@ -610,7 +610,7 @@ function build() {
   Object.assign(I, {
     root, layer, titleBar: title, menubar, cc, ccText, activity, actTop, side, sideTitle, sideActs, sideBody, center, editorsPart,
     tabsEl: tabs, tabActs, crumbs, views, watermark, panel, panelTabs, panelActs, panelBody, sashH, aux, sashSide, sashAux,
-    statusL, statusR, sideViews: new Map(), panelViews: new Map(), actBtns: new Map(), actChat: ai,
+    statusL, statusR, sideViews: new Map(), panelViews: new Map(), actBtns: new Map(), actChat: ai, updBtn: upd,
   });
 
   buildMenubar();
@@ -3453,6 +3453,9 @@ async function checkUpdate(ask) {
   let r;
   try { r = await (await fetch('/api/sidecar/update', { cache: 'no-store' })).json(); } catch (err) { if (ask) notify('error', `Couldn’t check for updates: ${err.message}`); return; }
   if (!I) return;
+  // a newer one waiting: the title bar's button marked until it's taken
+  I.updBtn?.classList.toggle('ready', !!r.latest);
+  if (I.updBtn) I.updBtn.title = r.latest ? `Sulfur ${r.latest} is available: update and restart` : 'Check for Sulfur Updates';
   if (!r.latest) {
     if (ask) notify(r.error ? 'error' : 'info', r.error ? `Couldn’t check for updates: ${r.error}` : r.on ? `Sulfur ${r.version} is the latest.` : 'This build of Sulfur has no update feed.');
     return;

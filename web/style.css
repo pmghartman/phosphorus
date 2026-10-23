@@ -2649,7 +2649,7 @@ body:has(.dk-pop:not([hidden])) .toasts { opacity: 0; pointer-events: none; }
 .ide-cc:hover { background: color-mix(in srgb, var(--ide-fg) 10%, transparent); color: var(--ide-fg); }
 .ide-cc .ide-ic { width: 14px; height: 14px; }
 .ide-cc-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* the title bar's own buttons: the chat at its left, the update at its right */
+/* the title bar's own buttons at its right: the update, then the chat */
 .ide-tb {
   flex: none; height: 26px; display: inline-flex; align-items: center; gap: 6px; padding: 0 8px;
   background: none; border: none; color: var(--ide-fg); font: 12px var(--ide-ui); cursor: pointer; border-radius: 5px;
@@ -2657,11 +2657,13 @@ body:has(.dk-pop:not([hidden])) .toasts { opacity: 0; pointer-events: none; }
 .ide-tb:hover { background: color-mix(in srgb, var(--ide-fg) 12%, transparent); }
 .ide-tb:focus-visible { outline: 1px solid var(--ide-accent); outline-offset: -1px; }
 .ide-tb .ide-ic { width: 15px; height: 15px; }
-.ide-tb-ai { width: 30px; padding: 0; justify-content: center; }
+.ide-tb-ai { width: 30px; padding: 0; justify-content: center; margin-right: 4px; }
 .ide-tb-ai.on { color: var(--ide-accent); background: color-mix(in srgb, var(--ide-fg) 8%, transparent); }
-.ide-tb-update { margin-right: 4px; color: var(--ide-muted); }
+.ide-tb-update { position: relative; width: 30px; padding: 0; justify-content: center; margin-right: 4px; color: var(--ide-muted); }
 .ide-tb-update:hover { color: var(--ide-fg); }
-.ide-narrow .ide-tb-text { display: none; }
+/* an update waiting: the arrow in the accent, a dot on it */
+.ide-tb-update.ready { color: var(--ide-accent); }
+.ide-tb-update.ready::after { content: ""; position: absolute; top: 4px; right: 5px; width: 6px; height: 6px; border-radius: 50%; background: var(--ide-accent); }
 
 /* --- the workbench ------------------------------------------------------------------------ */
 
@@ -3653,7 +3655,7 @@ button.ide-fd-place:hover { background: var(--ide-hover); color: var(--ide-stron
 }
 /* tables, gauges and art laid out in character cells: mono whatever the page's type (data-sans) */
 :root[data-sans] :is(code, pre, kbd, samp, .st-body, .st-probe, .st-sum, .st-model, .st-mesh-grid, .st-ctx,
-  .st-mini, .st-cores, .st-ctr-row, .st-proc-row, .about-art, .keybar, .dk-cl-calls, .dk-cl-out, .cd-tool-out, .cd-dl) { font-family: var(--mono); }
+  .st-mini, .st-cores, .st-ctr-row, .st-proc-row, .keybar, .dk-cl-calls, .dk-cl-out, .cd-tool-out, .cd-dl) { font-family: var(--mono); }
 
 /* a custom theme's own desk color, whatever look it starts from */
 :root[data-custom-desk] .dk-desk:not(.dk-walled *) { background: var(--desk); }
@@ -3902,9 +3904,10 @@ button.ide-fd-place:hover { background: var(--ide-hover); color: var(--ide-stron
 :root[data-palette="win11"] .bubble { border: 0; border-radius: 6px; background: var(--card); box-shadow: var(--lift-sm); }
 :root[data-palette="win11"] .msg.mine .bubble { border: 0; background: color-mix(in srgb, var(--accent) 16%, var(--card)); }
 
-/* status and about: plain panels, the about's art in the accent */
-:root:is([data-palette="macos"], [data-palette="win11"]) .about-art, :root:is([data-palette="macos"], [data-palette="win11"]) .about-version {
-  background: none; color: var(--accent); animation: none; -webkit-background-clip: border-box; background-clip: border-box;
+/* status and about: plain panels; the mark in its own colors, as an app's about window shows its icon,
+   the version a plain caption under it */
+:root:is([data-palette="macos"], [data-palette="win11"]) .about-version {
+  position: static; margin-top: 0.4rem; background: none; color: var(--muted); animation: none; -webkit-background-clip: border-box; background-clip: border-box;
 }
 :root:is([data-palette="macos"], [data-palette="win11"]) .st-card { cursor: default; }
 :root:is([data-palette="macos"], [data-palette="win11"]) .st-card:hover { border-color: var(--border); }
@@ -3971,7 +3974,9 @@ button.ide-fd-place:hover { background: var(--ide-hover); color: var(--ide-stron
 :root[data-palette="cli"] .dk-task.active { background: var(--fg); color: var(--bg); }
 :root[data-palette="cli"] .dk-task.active::after { content: "*"; }
 :root[data-palette="cli"] .dk-task:not(.active):hover { background: var(--tab-hover); color: var(--fg); }
-:root[data-palette="cli"] .about-art, :root[data-palette="cli"] .about-version { background: none; color: var(--accent); animation: none; -webkit-background-clip: border-box; background-clip: border-box; }
+:root[data-palette="cli"] .about-version { background: none; color: var(--accent); animation: none; -webkit-background-clip: border-box; background-clip: border-box; }
+/* the marks and app icons in the terminal's own grey, nothing in color but the text */
+:root[data-palette="cli"] :is(.about-mark, .ide-mark, .dk-tile-img .dk-favicon) { filter: grayscale(1); }
 
 /* --- sulfur: visual studio under windows 11, xcode under macos, a plain terminal's under cli ----- */
 
