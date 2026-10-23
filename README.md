@@ -108,7 +108,7 @@ flowchart TB
 
 ## License
 
-Apache 2.0, see [`LICENSE`](LICENSE). Bundled software keeps its own license; full texts are in `THIRD_PARTY_LICENSES.txt`, included in every installer.
+Apache 2.0, see [`LICENSE`](LICENSE). Bundled software keeps its own license; full texts are in [`THIRD_PARTY_LICENSES.txt`](THIRD_PARTY_LICENSES.txt).
 
 <p align="center">
   <img src=".github/assets/wright-alchemist.jpg" alt="The Alchemist Discovering Phosphorus, Joseph Wright of Derby" width="420">
