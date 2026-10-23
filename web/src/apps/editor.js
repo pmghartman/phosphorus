@@ -15,6 +15,7 @@ import {
   shareMenu,
 } from '../app.js';
 import { ERR_MAX, highlight, parserFor, parserNow, syntaxErrors } from '../lezer.js';
+import { patchHighlight } from '../highlight-patch.js';
 import { mdBlocks, renderMd } from '../md.js';
 import { opApply, opTransform, opDiff, opMap, opEdits } from '../text-operations.js';
 import { EditorHistory } from '../editor-history.js';
@@ -127,6 +128,8 @@ function codeEditor(view, file, btn, id, opts = {}) {
   const SERVER_HL_MAX = 200 * 1024;
   let bigTimer = 0;
   let hlNow = false;
+  // the last whole highlight, its unchanged lines drawn again while a new one's on its way
+  let lastHl = null;
   function draw() {
     drawFrame = 0;
     const text = ta.value;
@@ -135,9 +138,14 @@ function codeEditor(view, file, btn, id, opts = {}) {
     const parser = text.length <= HL_MAX && parserNow(lang.check);
     const big = text.length > HL_IDLE && hlText !== null && !hlNow;
     hlText = text;
-    if (parser && !big) code.innerHTML = `${highlight(parser, text)}\n`;
-    else {
-      code.textContent = `${text}\n`;
+    if (parser && !big) {
+      const html = highlight(parser, text);
+      code.innerHTML = `${html}\n`;
+      lastHl = { text, html };
+    } else {
+      const kept = lastHl && text.length <= HL_MAX ? patchHighlight(lastHl, text) : null;
+      if (kept === null) code.textContent = `${text}\n`;
+      else code.innerHTML = `${kept}\n`;
       if (parser) {
         clearTimeout(bigTimer);
         bigTimer = setTimeout(() => { if (closed || ta.value !== text) return; hlText = null; hlNow = true; draw(); hlNow = false; }, 400);
@@ -303,7 +311,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
       try {
         const r = await fetch('/api/md', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ highlight: lang.hl, text }) });
         const { html } = r.ok ? await r.json() : {};
-        if (typeof html === 'string' && ta.value === text) code.innerHTML = `${html}\n`;
+        if (typeof html === 'string' && ta.value === text) { code.innerHTML = `${html}\n`; lastHl = { text, html }; }
       } catch {}
     }, 150);
   }

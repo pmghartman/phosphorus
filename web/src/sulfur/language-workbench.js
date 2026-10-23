@@ -1,4 +1,6 @@
 import { LANGUAGE_EXTENSIONS, languageId, positionAt, offsetAt, relativeUri, applyTextEdits, textEditRanges, completionEdits, languageSocket } from './language-client.js';
+import { isWordChar, wordBefore, rankCompletions, wordCompletions, kindOf, inCommentOrString } from './completion.js';
+import { reindent } from './format.js';
 
 const titles = ['TypeScript', 'Python', 'JavaScript', 'Java', 'C#', 'PHP', 'Shell (Bash)', 'C / C++', 'HCL / Terraform', 'Go'];
 const ids = ['typescript', 'python', 'javascript', 'java', 'csharp', 'php', 'shell', 'cpp', 'hcl', 'go'];
@@ -122,23 +124,61 @@ export function createLanguageWorkbench(api) {
     const caret = tab.ed.selection()[0];
     const version = doc.session.client.documents.get(doc.uri).version;
     const value = await doc.session.client.request(`textDocument/${method}`, { textDocument: { uri: doc.uri }, position: positionAt(text, caret), ...extra }, { signal });
-    if (!api.alive(tab) || text !== tab.ed.text() || version !== doc.session.client.documents.get(doc.uri)?.version || (method === 'completion' && tab.ed.selection()[0] !== caret)) return { stale: true };
+    if (!api.alive(tab) || text !== tab.ed.text() || version !== doc.session.client.documents.get(doc.uri)?.version || (method === 'completion' && tab.ed.selection()[0] !== caret)) return { stale: true, value, doc, text, caret, version };
     return { value, doc, text, caret, version };
   }
+  // an item's ranges, given for the text it was asked of, moved onto the text now: what came
+  // before the caret then is where it was, what came after shifted by what's been typed since
+  function rebase(range, was, wasCaret, text, caret) {
+    if (!range) return range;
+    if (range.insert) return { insert: rebase(range.insert, was, wasCaret, text, caret), replace: rebase(range.replace, was, wasCaret, text, caret) };
+    const move = (p) => { const o = offsetAt(was, p); return positionAt(text, o >= wasCaret ? o + caret - wasCaret : o); };
+    return { start: move(range.start), end: move(range.end) };
+  }
+  // Completion as VS Code runs it: suggestions on typing a word (not in comments or strings),
+  // on a server's trigger characters and on Ctrl+Space; one request per word, its items
+  // filtered and ranked here as typing goes on, asked again only when the server said they
+  // were incomplete; the open documents' words when there's no server or it has nothing.
   function attach(tab) {
     const ta = tab.view.querySelector('.code-ta');
     const box = api.el('div', 'ide-completion');
     box.hidden = true; box.setAttribute('role', 'listbox'); box.id = `${tab.id}-completions`;
     ta.setAttribute('aria-controls', box.id); ta.setAttribute('aria-autocomplete', 'list');
     tab.view.append(box);
-    let timer, controller, items = [], selected = 0, snapshot, defaults;
-    function hide() { clearTimeout(timer); controller?.abort(); box.hidden = true; ta.setAttribute('aria-expanded', 'false'); ta.removeAttribute('aria-activedescendant'); }
+    // session: the items asked for the word starting at from; shown: those matching what's typed
+    let session = null, shown = [], selected = 0, timer, controller;
+    function close() { box.hidden = true; ta.setAttribute('aria-expanded', 'false'); ta.removeAttribute('aria-activedescendant'); }
+    function hide() { clearTimeout(timer); controller?.abort(); session = null; shown = []; close(); }
+    // the highlight's class at a place before the caret: VS Code's quick suggestions stay out of comments and strings
+    function quiet(offset) {
+      if (offset < 0) return false;
+      const pre = tab.view.querySelector('pre.code-hl:not(.code-agent):not(.code-finds):not(.code-squig)');
+      if (!pre) return false;
+      const walk = document.createTreeWalker(pre, NodeFilter.SHOW_TEXT);
+      for (let at = 0, node = walk.nextNode(); node; node = walk.nextNode()) {
+        if (offset < at + node.length) return !!node.parentElement?.closest('.hljs-comment, .hljs-string, .hljs-regexp');
+        at += node.length;
+      }
+      return false;
+    }
     function paint() {
-      box.replaceChildren(...items.map((item, index) => {
+      box.replaceChildren(...shown.map(({ item, matches }, index) => {
         const row = api.el('div', `ide-completion-item${index === selected ? ' on' : ''}`);
         row.id = `${box.id}-${index}`; row.setAttribute('role', 'option'); row.setAttribute('aria-selected', String(index === selected));
-        row.append(api.el('span', '', item.label), api.el('small', '', item.detail || item.labelDetails?.description || ''));
-        row.addEventListener('mousedown', (e) => { e.preventDefault(); selected = index; insert().catch(api.error); });
+        const { kind, glyph } = kindOf(item);
+        const label = api.el('span', 'ide-completion-label');
+        const text = String(item.label);
+        const hit = new Set(text === String(item.filterText || item.label) ? matches : []);
+        for (let i = 0; i < text.length;) {
+          let j = i + 1;
+          while (j < text.length && hit.has(j) === hit.has(i)) j++;
+          label.append(hit.has(i) ? api.el('b', '', text.slice(i, j)) : text.slice(i, j));
+          i = j;
+        }
+        row.append(api.el('span', `ide-completion-kind k-${kind}`, glyph), label, api.el('small', '', item.detail || item.labelDetails?.description || ''));
+        const docs = typeof item.documentation === 'string' ? item.documentation : item.documentation?.value;
+        if (docs) row.title = docs;
+        row.addEventListener('mousedown', (e) => { e.preventDefault(); selected = index; accept().catch(api.error); });
         return row;
       }));
       ta.setAttribute('aria-activedescendant', `${box.id}-${selected}`);
@@ -146,61 +186,120 @@ export function createLanguageWorkbench(api) {
       if (row && row.offsetTop < box.scrollTop) box.scrollTop = row.offsetTop;
       else if (row && row.offsetTop + row.offsetHeight > box.scrollTop + box.clientHeight) box.scrollTop = row.offsetTop + row.offsetHeight - box.clientHeight;
     }
-    async function insert() {
-      const current = snapshot;
-      const item = items[selected];
+    // the list under the word's start, above it when there's no room below
+    function place(text, from) {
+      const style = getComputedStyle(ta);
+      const before = text.slice(0, from);
+      const line = before.slice(before.lastIndexOf('\n') + 1);
+      const tabSize = parseInt(style.tabSize, 10) || 4;
+      const columns = [...line].reduce((n, ch) => ch === '\t' ? n + tabSize - n % tabSize : n + 1, 0);
+      const measure = document.createElement('canvas').getContext('2d'); measure.font = style.font;
+      const rect = ta.getBoundingClientRect(); const outer = tab.view.getBoundingClientRect();
+      const lineHeight = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.4;
+      const y = rect.top - outer.top + parseFloat(style.paddingTop) + before.split('\n').length * lineHeight - ta.scrollTop;
+      box.style.left = `${Math.max(0, Math.min(outer.width - box.offsetWidth, rect.left - outer.left + parseFloat(style.paddingLeft) + columns * measure.measureText('M').width - ta.scrollLeft))}px`;
+      box.style.top = `${Math.max(0, y + box.offsetHeight > outer.height ? y - box.offsetHeight - lineHeight : y)}px`;
+    }
+    function refilter() {
+      if (!session) return;
+      const text = tab.ed.text();
+      const caret = ta.selectionStart;
+      const typed = text.slice(session.from, caret);
+      if (caret !== ta.selectionEnd || caret < session.from || /[^\p{L}\p{N}_$]/u.test(typed) || (!typed && !session.anchored)) { hide(); return; }
+      shown = rankCompletions(session.items, typed);
+      // a word that's already whole is nothing to suggest
+      if (!session.lsp && shown.length === 1 && shown[0].item.label === typed) shown = [];
+      if (!shown.length) { close(); return; }
+      selected = 0; box.hidden = false; ta.setAttribute('aria-expanded', 'true');
+      paint(); place(text, session.from);
+    }
+    async function trigger(triggerKind, triggerCharacter = '', explicit = false) {
+      controller?.abort();
+      const own = controller = new AbortController();
+      const text = tab.ed.text();
+      const caret = ta.selectionStart;
+      if (ta !== document.activeElement || caret !== ta.selectionEnd || tab.info?.readOnly) return;
+      const from = caret - wordBefore(text, caret).length;
+      let items = [], lsp = null, defaults = {}, incomplete = false;
+      try {
+        const result = await request(tab, 'completion', { context: triggerCharacter ? { triggerKind: 2, triggerCharacter } : { triggerKind } }, own.signal);
+        if (result?.value) {
+          lsp = result; defaults = result.value.itemDefaults || {};
+          items = Array.isArray(result.value) ? result.value : result.value.items || [];
+          incomplete = !!result.value.isIncomplete;
+        }
+      } catch (e) { if (!aborted(e) && explicit) api.error(e); }
+      if (own.signal.aborted || document.activeElement !== ta) return;
+      const now = tab.ed.text();
+      // typed since the request: fine while it only went on with the same word
+      if (now.slice(0, from) !== text.slice(0, from) || ta.selectionStart < from) return;
+      if (!items.length) {
+        if (triggerCharacter) return;
+        items = wordCompletions(api.documents?.(tab) || [], now, ta.selectionStart);
+        lsp = null;
+      }
+      session = { from, items, lsp, defaults, incomplete, anchored: explicit || !!triggerCharacter };
+      refilter();
+    }
+    async function accept() {
+      const pick = shown[selected];
+      const s = session;
       hide();
-      if (!current || current.stale || current.text !== tab.ed.text() || current.caret !== tab.ed.selection()[0] || tab.info?.readOnly) return;
-      const client = current.doc.session.client;
-      let resolved = item;
-      if (client.capabilities.completionProvider?.resolveProvider) resolved = await client.request('completionItem/resolve', { ...item, data: item.data ?? defaults?.data });
-      if (current.text !== tab.ed.text() || current.caret !== tab.ed.selection()[0] || !api.alive(tab)) return;
-      const applied = completionEdits(resolved, current.text, current.caret, defaults);
-      tab.ed.editMany(applied.edits, [applied.caret, applied.caret]);
+      if (!pick || !s || tab.info?.readOnly) return;
+      let item = pick.item;
+      if (!s.lsp) { const end = s.from + String(item.label).length; tab.ed.editMany([{ from: s.from, to: ta.selectionStart, text: String(item.label) }], [end, end]); changed(tab); return; }
+      const client = s.lsp.doc.session.client;
+      if (client.capabilities.completionProvider?.resolveProvider) {
+        try { item = { ...item, ...await client.request('completionItem/resolve', { ...item, data: item.data ?? s.defaults.data }) }; } catch (e) { api.log(e.message, `Languages: ${s.lsp.doc.session.context.host}`); }
+      }
+      const text = tab.ed.text();
+      const caret = ta.selectionStart;
+      if (!api.alive(tab) || caret < s.from || text.slice(0, s.from) !== s.lsp.text.slice(0, s.from)) return;
+      const move = (r) => rebase(r, s.lsp.text, s.lsp.caret, text, caret);
+      const moved = { ...item, ...(item.textEdit ? { textEdit: { ...item.textEdit, ...(item.textEdit.range ? { range: move(item.textEdit.range) } : move({ insert: item.textEdit.insert, replace: item.textEdit.replace })) } } : {}), additionalTextEdits: (item.additionalTextEdits || []).map((e) => ({ ...e, range: move(e.range) })) };
+      const defaults = s.defaults.editRange ? { ...s.defaults, editRange: move(s.defaults.editRange) } : s.defaults;
+      const applied = completionEdits(moved, text, caret, defaults);
+      tab.ed.editMany(applied.edits, applied.selection);
       changed(tab);
     }
-    async function complete(explicit = false) {
-      hide();
-      if (ta !== document.activeElement || ta.selectionStart !== ta.selectionEnd || tab.info?.readOnly) return;
-      controller = new AbortController();
-      const own = controller;
-      try {
-        const result = await request(tab, 'completion', { context: { triggerKind: 1 } }, own.signal);
-        if (!result || result.stale || own.signal.aborted || document.activeElement !== ta) return;
-        defaults = result.value?.itemDefaults || {};
-        const prefix = result.text.slice(0, result.caret).match(/[\p{L}\p{N}_$]*$/u)[0].toLowerCase();
-        items = (Array.isArray(result.value) ? result.value : result.value?.items || []).filter((x) => (x.insertTextFormat || defaults.insertTextFormat) !== 2 && (!prefix || String(x.filterText || x.label).toLowerCase().startsWith(prefix))).sort((a, b) => String(a.sortText || a.label).localeCompare(String(b.sortText || b.label))).slice(0, 100);
-        if (!items.length) return;
-        snapshot = result; selected = 0; box.hidden = false; ta.setAttribute('aria-expanded', 'true'); paint();
-        const style = getComputedStyle(ta);
-        const before = result.text.slice(0, result.caret);
-        const line = before.slice(before.lastIndexOf('\n') + 1);
-        const tabSize = parseInt(style.tabSize, 10) || 4;
-        const columns = [...line].reduce((n, ch) => ch === '\t' ? n + tabSize - n % tabSize : n + 1, 0);
-        const canvas = document.createElement('canvas'); const measure = canvas.getContext('2d'); measure.font = style.font;
-        const rect = ta.getBoundingClientRect(); const outer = tab.view.getBoundingClientRect();
-        const lineHeight = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.4;
-        const y = rect.top - outer.top + parseFloat(style.paddingTop) + before.split('\n').length * lineHeight - ta.scrollTop;
-        box.style.left = `${Math.max(0, Math.min(outer.width - box.offsetWidth, rect.left - outer.left + parseFloat(style.paddingLeft) + columns * measure.measureText('M').width - ta.scrollLeft))}px`;
-        box.style.top = `${Math.max(0, y + box.offsetHeight > outer.height ? y - box.offsetHeight - lineHeight : y)}px`;
-      } catch (e) { if (!aborted(e) && explicit) api.error(e); }
-    }
-    ta.addEventListener('input', (e) => { hide(); if (!e.isComposing) timer = setTimeout(() => complete(), 180); });
+    const triggers = () => attached.get(tab)?.session.client.capabilities.completionProvider?.triggerCharacters || [];
+    ta.addEventListener('input', (e) => {
+      if (e.isComposing) return;
+      clearTimeout(timer);
+      // the last character typed (a pasted text never asks)
+      const ch = e.inputType === 'insertText' && e.data ? [...e.data].at(-1) : '';
+      if (ch && triggers().includes(ch)) { hide(); timer = setTimeout(() => trigger(2, ch), 10); return; }
+      if (session) {
+        // an incomplete list asked again for the longer word, the old one filtered meanwhile
+        if (session.incomplete && isWordChar(ch)) timer = setTimeout(() => trigger(3, '', session?.anchored), 10);
+        refilter();
+        return;
+      }
+      if (!isWordChar(ch)) return;
+      const text = tab.ed.text();
+      const start = ta.selectionStart - wordBefore(text, ta.selectionStart).length;
+      if (!inCommentOrString(text, start, tab.rel.split('.').pop().toLowerCase()) && !quiet(start - 1)) timer = setTimeout(() => trigger(1), 10);
+    });
     ta.addEventListener('compositionstart', hide);
     ta.addEventListener('blur', hide);
-    ta.addEventListener('scroll', hide);
+    ta.addEventListener('scroll', () => { if (!box.hidden) hide(); });
     ta.addEventListener('pointerdown', hide);
-    const selectionChanged = () => { if (document.activeElement === ta && !box.hidden && snapshot && (snapshot.caret !== ta.selectionStart || ta.selectionStart !== ta.selectionEnd)) hide(); };
+    const selectionChanged = () => { if (document.activeElement === ta && session && (ta.selectionStart !== ta.selectionEnd || ta.selectionStart < session.from)) hide(); };
     document.addEventListener('selectionchange', selectionChanged);
     ta.addEventListener('keydown', (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.code === 'Space') { e.preventDefault(); e.stopImmediatePropagation(); complete(true); return; }
+      if ((e.ctrlKey || e.metaKey) && e.code === 'Space') { e.preventDefault(); e.stopImmediatePropagation(); trigger(1, '', true); return; }
       if (box.hidden) { if (['ArrowLeft', 'ArrowRight', 'Home', 'End', 'Escape'].includes(e.key)) hide(); return; }
-      if (['ArrowDown', 'ArrowUp', 'Enter', 'Tab', 'Escape'].includes(e.key)) {
+      if (['ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', 'Enter', 'Tab', 'Escape'].includes(e.key) && !e.altKey && !e.ctrlKey && !e.metaKey) {
         e.preventDefault(); e.stopImmediatePropagation();
         if (e.key === 'Escape') hide();
-        else if (e.key === 'Enter' || e.key === 'Tab') insert().catch(api.error);
-        else { selected = (selected + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length; paint(); }
-      } else if (['ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown'].includes(e.key)) hide();
+        else if (e.key === 'Enter' || e.key === 'Tab') accept().catch(api.error);
+        else {
+          const page = Math.max(1, Math.floor(box.clientHeight / (box.firstChild?.offsetHeight || 22)) - 1);
+          const step = { ArrowDown: 1, ArrowUp: -1, PageDown: page, PageUp: -page }[e.key];
+          selected = e.key.startsWith('Page') ? Math.max(0, Math.min(shown.length - 1, selected + step)) : (selected + step + shown.length) % shown.length;
+          paint();
+        }
+      } else if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) hide();
     }, true);
     const dispose = tab.dispose;
     tab.dispose = () => { hide(); document.removeEventListener('selectionchange', selectionChanged); const doc = attached.get(tab); if (doc) { doc.session.client.closeDocument(doc.uri); attached.delete(tab); diagnostics.delete(doc.session.key + '\n' + doc.uri); } dispose(); box.remove(); api.problems(); };
@@ -298,7 +397,28 @@ export function createLanguageWorkbench(api) {
     container.firstChild?.after(wrap);
     panel = { paint }; paint(); action('status');
   }
+  // Format Selection (the document with nothing selected): the language server's formatter
+  // when one runs, else Sulfur's own reindent; one undo step either way
+  async function format(tab, whole = false) {
+    if (!tab?.ed?.ready() || tab.info?.readOnly) return false;
+    const text = tab.ed.text();
+    const [from, to] = whole ? [0, 0] : tab.ed.selection();
+    const indent = tab.ed.info().indent;
+    const options = { tabSize: indent === 'tab' ? 4 : indent, insertSpaces: indent !== 'tab' };
+    const doc = await get(tab).catch(() => null);
+    const caps = doc?.session.client.capabilities || {};
+    const ranged = from !== to;
+    if (doc && (ranged ? caps.documentRangeFormattingProvider : caps.documentFormattingProvider)) {
+      const edits = await doc.session.client.request(ranged ? 'textDocument/rangeFormatting' : 'textDocument/formatting', { textDocument: { uri: doc.uri }, options, ...(ranged ? { range: { start: positionAt(text, from), end: positionAt(text, to) } } : {}) });
+      if (!api.alive(tab) || text !== tab.ed.text()) throw new Error('The file changed while formatting. Format it again.');
+      if (edits?.length) { tab.ed.editMany(textEditRanges(text, edits)); changed(tab); }
+      return true;
+    }
+    const edits = reindent(text, from, to, { ext: tab.rel.split('.').pop().toLowerCase(), unit: indent === 'tab' ? '\t' : ' '.repeat(indent) });
+    if (edits.length) { tab.ed.editMany(edits); changed(tab); }
+    return true;
+  }
   // the Extensions view's search box narrows this list as well as the installed one
   function filter(text) { query = String(text || '').trim().toLowerCase(); panel?.paint(); }
-  return { mount, filter, attach, changed, navigate, rename, reset, get, problems: () => [...diagnostics.values()].flatMap((d) => d.items.map((item) => ({ ...item, context: d.session.context }))), saved(tab) { const d = attached.get(tab); if (d) { changed(tab); const save = d.session.client.capabilities.textDocumentSync?.save; if (save) d.session.client.notify('textDocument/didSave', { textDocument: { uri: d.uri }, ...(save.includeText ? { text: tab.ed.text() } : {}) }); } } };
+  return { mount, filter, format, attach, changed, navigate, rename, reset, get, problems: () => [...diagnostics.values()].flatMap((d) => d.items.map((item) => ({ ...item, context: d.session.context }))), saved(tab) { const d = attached.get(tab); if (d) { changed(tab); const save = d.session.client.capabilities.textDocumentSync?.save; if (save) d.session.client.notify('textDocument/didSave', { textDocument: { uri: d.uri }, ...(save.includeText ? { text: tab.ed.text() } : {}) }); } } };
 }

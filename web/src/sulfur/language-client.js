@@ -2,6 +2,7 @@
 // The socket belongs to one host, root and active configuration. It never
 // downloads packages or starts a server until an installed extension is used.
 import { opEdits, opApply } from '../text-operations.js';
+import { expandSnippet } from './completion.js';
 
 export const LANGUAGE_EXTENSIONS = {
   ts: 'typescript', tsx: 'typescript', mts: 'typescript', cts: 'typescript',
@@ -54,15 +55,16 @@ export function relativeUri(rootUri, uri) {
 export const textEditRanges = (text, edits) => edits.map((e) => ({ from: offsetAt(text, e.range.start), to: offsetAt(text, e.range.end), text: e.newText }));
 export const applyTextEdits = (text, edits) => opApply(text, opEdits(text, textEditRanges(text, edits)));
 export function completionEdits(item, text, caret, defaults = {}) {
-  // snippetSupport is false; do not insert snippet syntax from a nonconforming server.
-  if ((item.insertTextFormat || defaults.insertTextFormat) === 2) throw new Error('This completion requires snippets, which this editor does not support');
   const edit = item.textEdit;
   const prefix = text.slice(0, caret).match(/[\p{L}\p{N}_$]*$/u)[0];
   const range = edit?.range || edit?.replace || defaults.editRange?.replace || defaults.editRange || { start: positionAt(text, caret - prefix.length), end: positionAt(text, caret) };
-  const newText = edit?.newText ?? item.textEditText ?? item.insertText ?? item.label;
+  // a snippet goes in as its text, its first tab stop selected
+  const raw = edit?.newText ?? item.textEditText ?? item.insertText ?? item.label;
+  const { text: newText, selection: [selFrom, selTo] } = (item.insertTextFormat || defaults.insertTextFormat) === 2 ? expandSnippet(raw) : { text: raw, selection: [raw.length, raw.length] };
   const edits = textEditRanges(text, [{ range, newText }, ...(item.additionalTextEdits || [])]);
   const ops = opEdits(text, edits);
-  return { edits, ops, text: opApply(text, ops), caret: offsetAt(text, range.start) + newText.length + (item.additionalTextEdits || []).reduce((sum, e) => offsetAt(text, e.range.end) <= offsetAt(text, range.start) ? sum + e.newText.length - (offsetAt(text, e.range.end) - offsetAt(text, e.range.start)) : sum, 0) };
+  const start = offsetAt(text, range.start) + (item.additionalTextEdits || []).reduce((sum, e) => offsetAt(text, e.range.end) <= offsetAt(text, range.start) ? sum + e.newText.length - (offsetAt(text, e.range.end) - offsetAt(text, e.range.start)) : sum, 0);
+  return { edits, ops, text: opApply(text, ops), caret: start + selTo, selection: [start + selFrom, start + selTo] };
 }
 
 export function languageSocket(url, request, onEvent = () => {}) {
@@ -101,8 +103,8 @@ export function languageSocket(url, request, onEvent = () => {}) {
         workspaceFolders: [{ uri: client.rootUri, name: uriPath(client.rootUri).split('/').pop() }],
         initializationOptions: settings,
         capabilities: { general: { positionEncodings: ['utf-16'] }, workspace: { configuration: true, workspaceFolders: true, workspaceEdit: { documentChanges: true, resourceOperations: [] } }, textDocument: {
-          synchronization: { didSave: true }, completion: { completionItem: { snippetSupport: false, insertReplaceSupport: true, resolveSupport: { properties: ['textEdit', 'additionalTextEdits', 'documentation', 'detail'] } }, completionList: { itemDefaults: ['editRange', 'insertTextFormat', 'data'] } },
-          definition: { linkSupport: true }, publishDiagnostics: { versionSupport: true }, rename: { prepareSupport: false },
+          synchronization: { didSave: true }, completion: { contextSupport: true, completionItem: { snippetSupport: true, insertReplaceSupport: true, resolveSupport: { properties: ['textEdit', 'additionalTextEdits', 'documentation', 'detail'] } }, completionList: { itemDefaults: ['editRange', 'insertTextFormat', 'data'] } },
+          formatting: {}, rangeFormatting: {}, definition: { linkSupport: true }, publishDiagnostics: { versionSupport: true }, rename: { prepareSupport: false },
         } },
       }, { timeout: 90000 });
       client.capabilities = result.capabilities || {};
