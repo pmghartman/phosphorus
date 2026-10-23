@@ -1,5 +1,5 @@
 import { renderMd, mdBlocks, fitMath } from './md.js';
-import { CUSTOM_CORNERS, CUSTOM_DEFAULT, CUSTOM_SHADOWS, PALETTES, PALETTE_EVENT, customNow, paletteNow, setCustom, setPalette, themeFromStorage } from './theme.js';
+import { BAR_ITEMS, CUSTOM_CORNERS, CUSTOM_DEFAULT, CUSTOM_SHADOWS, LAYOUT_CHOICES, PALETTES, PALETTE_EVENT, customNow, layoutNow, paletteNow, setCustom, setPalette, themeFromStorage, themeLayout } from './theme.js';
 import { parserFor, parserNow, highlight, syntaxErrors } from './lezer.js';
 
 // the page's vendor files, hashed by the build
@@ -1760,11 +1760,14 @@ function toastShow(n) {
   t.timer = setTimeout(() => toastClose(t), TOAST_MS);
 }
 
-// right over the task bar that's showing, its clock never covered; under it were it on top
+// right over the task bar that's showing, its clock never covered; under it were it on top, the
+// screen's corner by a side bar
 function toastPlace() {
   if (!toastHost) return;
-  const bar = [...document.querySelectorAll('.dk-bar')].map((b) => b.getBoundingClientRect()).find((r) => r.height > 0);
-  const top = bar && bar.top < innerHeight / 2;
+  const el = [...document.querySelectorAll('.dk-bar:not(.dk-menubar)')].find((b) => b.getBoundingClientRect().height > 0);
+  const side = el ? dkBarSide(el) : 'bottom';
+  const bar = el && side !== 'left' && side !== 'right' ? el.getBoundingClientRect() : null;
+  const top = side === 'top';
   toastHost.style.top = top ? `${bar.bottom + 8}px` : '';
   toastHost.style.bottom = top ? '' : `${bar ? Math.max(0, innerHeight - bar.top) + 8 : 12}px`;
 }
@@ -1870,13 +1873,21 @@ function dkSwatch(p) {
   return sw;
 }
 
+// the layout's choices by name, and the bar's status items
+const DK_LAYOUT_NAMES = {
+  bottom: 'bottom', top: 'top', left: 'left', right: 'right', off: 'none', panel: 'floating panel', dock: 'dock', full: 'edge to edge',
+  line: 'status line', glyphs: 'glyphs', lights: 'traffic lights', caption: 'caption buttons', center: 'centered',
+  normal: 'normal', compact: 'compact', roomy: 'roomy',
+};
+const DK_ITEM_NAMES = { hosts: 'hosts', agent: 'agent', bell: 'notifications', clock: 'clock', profile: 'profile and settings' };
+
 // the custom theme, made here: worn as it's changed, kept with the user's settings on every host
 function dkThemeWin() {
   const w = dkWin('app:theme', 'theme', 'custom', 'app dk-app-theme');
   if (!w) return;
   const body = el('div', 'acct-pane dk-theme-pane');
   w.body.appendChild(body);
-  dkSize(w, 460, 470);
+  dkSize(w, 480, 640);
   let c = customNow();
   const save = () => { c = setCustom(c); draw(); };
   const row = (label, input, note) => {
@@ -1902,6 +1913,39 @@ function dkThemeWin() {
     box.append(inp, own);
     return box;
   };
+  // a layout choice, the theme's own unless picked
+  const lay = (key) => {
+    const own = themeLayout(c.base)[key];
+    const s = el('select', 'dk-theme-in');
+    s.append(Object.assign(el('option', '', `the theme’s: ${DK_LAYOUT_NAMES[own]}`), { value: '', selected: !c.layout[key] }));
+    for (const v of LAYOUT_CHOICES[key]) s.append(Object.assign(el('option', '', DK_LAYOUT_NAMES[v]), { value: v, selected: c.layout[key] === v }));
+    s.addEventListener('change', () => { c.layout = { ...c.layout, [key]: s.value || undefined }; save(); });
+    return s;
+  };
+  // the status items: each shown or not, moved up or down; the profile always, the way to settings
+  const items = () => {
+    const now = c.layout.items || themeLayout(c.base).items;
+    const all = [...now, ...BAR_ITEMS.filter((i) => !now.includes(i))];
+    const set = (next) => { c.layout = { ...c.layout, items: next }; save(); };
+    const list = el('div', 'dk-theme-items');
+    all.forEach((id, i) => {
+      const r = el('div', 'dk-theme-item');
+      const shown = now.includes(id);
+      const on = Object.assign(el('input'), { type: 'checkbox', checked: shown, disabled: id === 'profile', id: `dk-theme-item-${id}` });
+      on.addEventListener('change', () => set(on.checked ? all.filter((x) => x === id || now.includes(x)) : now.filter((x) => x !== id)));
+      const name = Object.assign(el('label', '', DK_ITEM_NAMES[id]), { htmlFor: on.id });
+      const mv = (d, glyph, label) => {
+        const b = Object.assign(el('button', 'dk-theme-mv', glyph), { type: 'button', title: label, ariaLabel: `${DK_ITEM_NAMES[id]} ${label}`, disabled: !shown || !now.includes(all[i + d]) });
+        b.addEventListener('click', () => { const next = [...now]; [next[i], next[i + d]] = [next[i + d], next[i]]; set(next); });
+        return b;
+      };
+      r.append(on, name, mv(-1, '↑', 'earlier'), mv(1, '↓', 'later'));
+      list.append(r);
+    });
+    const r = el('div', 'dk-theme-row');
+    r.append(el('span', 'dk-theme-k', 'bar items'), list);
+    return r;
+  };
   const draw = () => {
     const css = getComputedStyle(document.documentElement);
     const base = pick('base', PALETTES.filter((p) => !p.custom).map((p) => [p.id, p.label]));
@@ -1914,11 +1958,22 @@ function dkThemeWin() {
       row('corners', pick('corners', [...theme, ...CUSTOM_CORNERS.map((n) => [n, n === '0' ? 'square' : `${n}px`])])),
       row('shadows', pick('shadows', [...theme, ...Object.keys(CUSTOM_SHADOWS).map((k) => [k, k])])),
       row('desk', color('desk', css.getPropertyValue('--bg').trim() || '#141414'), 'under the icons, unless a picture is set'),
+      el('div', 'dk-theme-head', 'layout'),
+      row('task bar', lay('bar')),
+      row('bar style', lay('barStyle')),
+      row('menu bar', lay('menubar'), 'the status items along an edge of their own'),
+      items(),
+      row('window buttons', lay('btns')),
+      row('button style', lay('btnStyle')),
+      row('title', lay('title')),
+      row('title bar', lay('density')),
     ];
     const acts = el('div', 'update-actions');
     const reset = Object.assign(el('button', '', 'start over'), { type: 'button' });
-    reset.addEventListener('click', () => { c = { ...CUSTOM_DEFAULT, base: c.base }; save(); });
-    acts.append(reset);
+    reset.addEventListener('click', () => { c = { ...CUSTOM_DEFAULT, layout: {}, base: c.base }; save(); });
+    const relay = Object.assign(el('button', '', 'the theme’s layout'), { type: 'button', disabled: !Object.keys(c.layout).length });
+    relay.addEventListener('click', () => { c = { ...c, layout: {} }; save(); });
+    acts.append(relay, reset);
     body.replaceChildren(el('p', 'dk-note', 'Your theme, kept with your settings on every host. Anything left at the theme’s follows the one you start from.'), ...rows, acts);
   };
   draw();
@@ -1952,7 +2007,7 @@ function dkPaletteDrop(redraw) {
   const edit = Object.assign(el('li', 'dk-ctl-drop-opt dk-ctl-drop-act'), { tabIndex: -1 });
   edit.setAttribute('role', 'option');
   const editText = el('span', 'dk-ctl-drop-text');
-  editText.append(el('span', 'dk-ctl-drop-name', 'customize…'), el('span', 'dk-ctl-drop-about', 'start from any theme, then your own accent, type, corners and shadows'));
+  editText.append(el('span', 'dk-ctl-drop-name', 'customize…'), el('span', 'dk-ctl-drop-about', 'start from any theme, then your own accent, type, corners, shadows and layout'));
   edit.append(dkGlyph(DK_GLYPHS.gear, 'dk-ctl-drop-ic'), editText);
   edit.addEventListener('click', () => { dkThemeDrop.open = false; dk.ctl?.show(false); dkThemeWin(); });
   list.append(edit);
@@ -4302,16 +4357,21 @@ function dkDesktop() {
   const ctl = dkControlTray();
   const bell = dkBellTray();
   bar.insertBefore(bell, dkTray);
-  if (!acct?.boot) bar.insertBefore(dkMcpTray(), bell);
+  const agent = acct?.boot ? null : dkMcpTray();
+  if (agent) bar.insertBefore(agent, bell);
   bar.append(ctl);
   // the mesh and update panes opened from the panel, their own buttons out of sight
   ctl.append(dkMeshTray(dk.ctl.btn), dkTray, updateModal);
   dkAnchor(updateModal, dk.ctl.btn);
-  desk.append(dkArt(), icons, wins, bar);
+  const menubar = el('div', 'dk-bar dk-menubar');
+  const app = el('span', 'dk-menubar-app', 'phosphorus');
+  menubar.append(app);
+  desk.append(dkArt(), icons, wins, menubar, bar);
   dkView.replaceChildren(desk);
   dkBand(icons);
   dkDeskMenu(icons);
-  dk.desk = { el: desk, icons, wins, tasks, hosts };
+  dk.desk = { el: desk, icons, wins, tasks, hosts, bar, menubar, app, items: { hosts, agent, bell, clock: dk.clock, profile: ctl } };
+  dkPlaceItems();
   dk.chips = '';
   dkChips();
   new ResizeObserver(() => dkLayout()).observe(icons);
@@ -4363,7 +4423,30 @@ function dkHomeBtn() {
 // a phone's windows always filling the screen
 mobileQuery.addEventListener('change', () => {
   if (isMobile()) for (const w of dk.wins.values()) dkSnap(w, 'max');
+  dkPlaceItems();
 });
+
+// the status items where the layout puts them: the menu bar while one's up (never a phone's), else
+// the bar; in the layout's order, the rest hidden
+function dkPlaceItems() {
+  const d = dk.desk;
+  if (!d?.bar) return;
+  const L = layoutNow();
+  const home = !isMobile() && L.menubar !== 'off' ? d.menubar : d.bar;
+  for (const id of [...L.items, ...BAR_ITEMS.filter((i) => !L.items.includes(i))]) {
+    const n = d.items[id];
+    if (!n) continue;
+    n.classList.toggle('dk-unshown', !L.items.includes(id));
+    home.append(n);
+  }
+  for (const p of document.querySelectorAll('.dk-pop')) p.dkPlace?.();
+  toastPlace();
+}
+addEventListener(PALETTE_EVENT, dkPlaceItems);
+
+// the edge a bar sits on: a phone's always the bottom
+const dkBarSide = (bar) => (isMobile() || !bar.classList.contains('dk-bar') ? 'bottom'
+  : bar.classList.contains('dk-menubar') ? layoutNow().menubar : layoutNow().bar);
 
 function dkArt() {
   dkWallPaint();
@@ -5083,6 +5166,7 @@ function dkFocus(w) {
     o.node.classList.toggle('focused', o === w);
     o.task.classList.toggle('active', o === w);
   }
+  if (dk.desk?.app) dk.desk.app.textContent = w ? w.task.textContent : 'phosphorus';
   if (!w) return;
   if (w.node.hidden) dkRestore(w);
   if (w.node.style.zIndex !== String(dk.z)) w.node.style.zIndex = ++dk.z;
@@ -5669,8 +5753,7 @@ function dkFileMenu(e) {
   return [
     ['open', () => fileOpen(HOME, rel, e), !e.stale],
     e.dir && ['show in files', () => filesWin({ loc: HOME, dir: rel }), true],
-    !e.dir && ['open in sulfur', () => dkCode({ host: loc.host, share: loc.share, path: rel, label: fileLabel(loc.host, 'home', rel) }), !e.stale],
-    ['open in sulfur', () => dkSulfur(e.dir ? { dir: rel } : { path: rel }), !e.stale],
+    ['open in sulfur', () => (e.dir ? dkSulfur({ dir: rel }) : dkCode({ host: loc.host, share: loc.share, path: rel, label: fileLabel(loc.host, 'home', rel) })), !e.stale],
     !e.dir && ['download', () => { location.href = filesApi(loc, 'download', { path: rel }); }, !e.stale],
     ...(e.dir ? [] : dkRunItems(rel, e.all ? homeOnline() : e.live || [])),
     null,
@@ -5970,10 +6053,10 @@ function dkFixedFrame(node) {
     if (cs.transform !== 'none' || cs.filter !== 'none' || cs.backdropFilter !== 'none' || cs.perspective !== 'none'
       || /paint|layout|strict|content/.test(cs.contain) || /transform|filter|perspective/.test(cs.willChange)) {
       const r = a.getBoundingClientRect();
-      return { left: r.left + a.clientLeft, bottom: r.top + a.clientTop + a.clientHeight };
+      return { left: r.left + a.clientLeft, top: r.top + a.clientTop, bottom: r.top + a.clientTop + a.clientHeight };
     }
   }
-  return { left: 0, bottom: innerHeight };
+  return { left: 0, top: 0, bottom: innerHeight };
 }
 
 function dkAnchor(pop, btn, { fill = 0, tall = 0 } = {}) {
@@ -5984,15 +6067,30 @@ function dkAnchor(pop, btn, { fill = 0, tall = 0 } = {}) {
       const a = pop.dkAnchor;
       if (!a || pop.hidden || !pop.isConnected || !a.btn.isConnected) return;
       // the bar's edges the limits, so a popup lines up with it
-      const bar = (a.btn.closest('.dk-bar') || a.btn).getBoundingClientRect();
-      const lo = Math.max(DK_POP_EDGE, bar.left);
-      const hi = Math.min(innerWidth - DK_POP_EDGE, bar.right);
+      const barEl = a.btn.closest('.dk-bar') || a.btn;
+      const bar = barEl.getBoundingClientRect();
+      const side = dkBarSide(barEl);
       // fixed, but inside the bar its blur makes the bar the frame of reference
       const cb = dkFixedFrame(pop);
       pop.style.top = 'auto';
       pop.style.right = 'auto';
-      pop.style.bottom = `${cb.bottom - bar.top + DK_POP_GAP}px`;
-      if (a.tall) pop.style.height = `${Math.min(a.tall, bar.top - DK_POP_GAP - DK_POP_EDGE)}px`;
+      pop.style.bottom = 'auto';
+      // a side bar's beside it, level with its button and kept on the screen
+      if (side === 'left' || side === 'right') {
+        if (a.tall) pop.style.height = `${Math.min(a.tall, innerHeight - 2 * DK_POP_EDGE)}px`;
+        if (a.fill) pop.style.width = `${Math.min(innerWidth - bar.width - DK_POP_GAP - 2 * DK_POP_EDGE, a.fill)}px`;
+        const x = side === 'left' ? bar.right + DK_POP_GAP : bar.left - DK_POP_GAP - pop.offsetWidth;
+        const y = Math.max(DK_POP_EDGE, Math.min(innerHeight - DK_POP_EDGE - pop.offsetHeight, a.btn.getBoundingClientRect().top));
+        pop.style.left = `${x - cb.left}px`;
+        pop.style.top = `${y - cb.top}px`;
+        return;
+      }
+      const lo = Math.max(DK_POP_EDGE, bar.left);
+      const hi = Math.min(innerWidth - DK_POP_EDGE, bar.right);
+      if (side === 'top') pop.style.top = `${bar.bottom + DK_POP_GAP - cb.top}px`;
+      else pop.style.bottom = `${cb.bottom - bar.top + DK_POP_GAP}px`;
+      const room = side === 'top' ? innerHeight - bar.bottom : bar.top;
+      if (a.tall) pop.style.height = `${Math.min(a.tall, room - DK_POP_GAP - DK_POP_EDGE)}px`;
       if (a.fill) pop.style.width = `${Math.min(hi - lo, a.fill)}px`;
       // every task bar popup against the screen's right edge, as the bar ends
       const left = Math.max(lo, hi - pop.offsetWidth);

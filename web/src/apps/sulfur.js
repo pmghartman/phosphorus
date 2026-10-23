@@ -784,6 +784,23 @@ function showSide(id, on = true, focus = false) {
 
 // --- the title bar's menus ---------------------------------------------------------------
 
+// a setting in a menu: a boolean toggled in place, anything else its row in Settings
+const settingItem = (k, label) => (SETTINGS[k].type === 'boolean'
+  ? { label, checked: !!setting(k), run: () => setSetting(k, !setting(k)) }
+  : { label: `${label}…`, run: () => openSettings(k) });
+// a font size a pixel up or down, or back to its default
+const sizeItems = (k) => {
+  const s = SETTINGS[k];
+  const at = setting(k);
+  return [
+    { label: 'Larger', detail: `${at + 1}px`, disabled: at >= s.max, run: () => setSetting(k, Math.min(s.max, at + 1)) },
+    { label: 'Smaller', detail: `${at - 1}px`, disabled: at <= s.min, run: () => setSetting(k, Math.max(s.min, at - 1)) },
+    { label: 'Reset', detail: `${s.def}px`, disabled: at === s.def, run: () => setSetting(k, s.def) },
+  ];
+};
+
+// every setting under the menu it belongs to: Appearance its looks, View the explorer's and editors',
+// Edit search's, Run the runners, Agents the chat's, Extensions the language servers, Help updates
 const MENUS = [
   ['File', () => [
     cmdItem('sulfur.project.new', 'New Project…'), cmdItem('explorer.newFile', 'New File…'), cmdItem('explorer.newFolder', 'New Folder…'), '-',
@@ -795,8 +812,8 @@ const MENUS = [
     { label: 'Preferences', sub: () => [
       // who's signed in; Sulfur alone signs in to a mesh from the status bar's remote item
       { label: localDesktop() ? `${standalone.meshUser ? `${standalone.meshUser}, ` : ''}on ${selfHost}` : `${acct.user}${acct.admin ? ' (admin)' : ''} on ${selfHost}`, disabled: true }, '-',
-      cmdItem('workbench.action.openSettings', 'Settings'), cmdItem('workbench.action.openGlobalKeybindings', 'Keyboard Shortcuts'),
-      cmdItem('workbench.action.selectTheme', 'Theme'),
+      cmdItem('workbench.action.openSettings', 'Settings'), cmdItem('workbench.action.openSettingsJson', 'Settings (JSON)'), '-',
+      cmdItem('workbench.action.openGlobalKeybindings', 'Keyboard Shortcuts'), cmdItem('workbench.action.openGlobalKeybindingsFile', 'Keyboard Shortcuts (JSON)'),
     ] }, '-',
     cmdItem('workbench.action.revertFile', 'Revert File'),
     cmdItem('workbench.action.closeActiveEditor', 'Close Editor'), cmdItem('workbench.action.closeAllEditors', 'Close All Editors'), '-',
@@ -806,7 +823,7 @@ const MENUS = [
   ['Edit', () => [
     cmdItem('undo', 'Undo'), cmdItem('redo', 'Redo'), '-',
     cmdItem('actions.find', 'Find'), cmdItem('editor.action.startFindReplaceAction', 'Replace'),
-    cmdItem('workbench.action.findInFiles', 'Find in Files'), '-',
+    cmdItem('workbench.action.findInFiles', 'Find in Files'), settingItem('search.exclude', 'Find in Files Exclusions'), '-',
     cmdItem('editor.action.selectAll', 'Select All'), cmdItem('expandLineSelection', 'Expand Line Selection'),
     cmdItem('editor.action.duplicateSelection', 'Duplicate Selection'),
     { label: 'Line', sub: () => [
@@ -823,14 +840,30 @@ const MENUS = [
       cmdItem('workbench.action.nextEditor', 'Next Editor'), cmdItem('workbench.action.previousEditor', 'Previous Editor'), '-',
       cmdItem('editor.action.marker.next', 'Next Problem'), cmdItem('editor.action.marker.prev', 'Previous Problem'),
     ] },
-    { label: 'Appearance', sub: () => [
-      cmdItem('workbench.action.toggleSidebarVisibility', 'Primary Side Bar', !I.st.side.hidden),
-      cmdItem('workbench.action.toggleAuxiliaryBar', 'Chat', !I.st.aux.hidden),
-      cmdItem('workbench.action.togglePanel', 'Panel', !I.st.panel.hidden),
-      cmdItem('workbench.action.toggleMaximizedPanel', 'Maximized Panel', I.st.panel.max), '-',
-      cmdItem('editor.action.fontZoomIn', 'Zoom In'), cmdItem('editor.action.fontZoomOut', 'Zoom Out'), cmdItem('editor.action.fontZoomReset', 'Reset Zoom'),
+    { label: 'Explorer', sub: () => [
+      settingItem('explorer.autoReveal', 'Reveal the Active File'), settingItem('explorer.confirmDelete', 'Confirm Before Deleting'), '-',
+      settingItem('files.exclude', 'Hidden Files'),
+    ] },
+    { label: 'Editors', sub: () => [
+      settingItem('editor.enablePreview', 'Open Files as Previews'), settingItem('workbench.restoreEditors', 'Reopen Editors at Start'),
     ] },
     cmdItem('markdown.showPreview', 'Toggle Markdown Preview'),
+  ]],
+  ['Appearance', () => [
+    { label: 'Color Theme', sub: () => PALETTES.map((t) => ({ label: t.label, detail: t.about, checked: paletteNow() === t.id, run: () => setPalette(t.id) })) },
+    // on its own, light or dark Sulfur's; in the desktop, the desktop's
+    standalone
+      ? { label: 'Light or Dark', sub: () => SETTINGS['window.appearance'].options.map(([v, label]) => ({ label, checked: setting('window.appearance') === v, run: () => setSetting('window.appearance', v) })) }
+      : { label: 'Light or Dark', detail: 'the desktop’s', disabled: true },
+    cmdItem('workbench.action.selectTheme', 'Pick a Theme…'), '-',
+    { label: 'Editor Font Size', detail: `${setting('editor.fontSize')}px`, sub: () => [
+      cmdItem('editor.action.fontZoomIn', 'Larger'), cmdItem('editor.action.fontZoomOut', 'Smaller'), cmdItem('editor.action.fontZoomReset', 'Reset'),
+    ] },
+    { label: 'Terminal Font Size', detail: `${setting('terminal.integrated.fontSize')}px`, sub: () => sizeItems('terminal.integrated.fontSize') }, '-',
+    cmdItem('workbench.action.toggleSidebarVisibility', 'Primary Side Bar', !I.st.side.hidden),
+    cmdItem('workbench.action.toggleAuxiliaryBar', 'Chat', !I.st.aux.hidden),
+    cmdItem('workbench.action.togglePanel', 'Panel', !I.st.panel.hidden),
+    cmdItem('workbench.action.toggleMaximizedPanel', 'Maximized Panel', I.st.panel.max),
   ]],
   ['Go', () => [
     cmdItem('workbench.action.quickOpen', 'Go to File…'), cmdItem('workbench.action.gotoLine', 'Go to Line/Column…'), '-',
@@ -849,11 +882,25 @@ const MENUS = [
       cmdItem('workbench.action.terminal.clear', 'Clear Terminal'), cmdItem('workbench.action.terminal.rename', 'Rename Terminal…'),
       cmdItem('workbench.action.terminal.kill', 'Kill Terminal'),
     ] }, '-',
-    cmdItem('sulfur.selectHost', 'Select Host…'),
+    cmdItem('sulfur.selectHost', 'Select Host…'), '-',
+    settingItem('sulfur.runners', 'Runners for Files'), cmdItem('sulfur.build.editJson', 'Build Settings (JSON)'),
+  ]],
+  ['Agents', () => [
+    cmdItem('workbench.action.chat.open', 'Open Chat'), cmdItem('workbench.action.chat.newChat', 'New Chat'), '-',
+    { label: 'Harness', detail: harnessName(chatHarness()), sub: () => harnessItems() },
+    { label: 'Model', detail: chatModel(), sub: () => modelItems() },
+    { label: 'Permissions', detail: isAgent(chatHarness()) ? '' : 'agents only', disabled: !isAgent(chatHarness()), sub: () => permItems() }, '-',
+    settingItem('chat.includeActiveFile', 'Include the Active File'),
+    ...(standalone?.app ? ['-', cmdItem('sulfur.mesh.connect', standalone.server ? `Connect to ${meshName()}…` : 'Connect to a Phosphorus Mesh…'), cmdItem('sulfur.mesh.signOut', 'Sign Out of the Mesh')] : []),
+  ]],
+  ['Extensions', () => [
+    cmdItem('workbench.view.extensions', 'Show Extensions'), settingItem('sulfur.languageServerSettings', 'Language Server Settings'), '-',
+    cmdItem('workbench.extensions.action.refreshExtension', 'Reload Extensions'), '-',
+    cmdItem('sulfur.extensions.guide', 'Extension Guide'), cmdItem('sulfur.extensions.create', 'Create an Extension…'),
   ]],
   ['Help', () => [
     cmdItem('workbench.action.openWalkthrough', 'Welcome'), '-',
-    cmdItem('sulfur.extensions.guide', 'Extension Guide'), cmdItem('sulfur.extensions.create', 'Create an Extension…'), '-',
+    ...(standalone?.app ? [cmdItem('sulfur.update', 'Check for Updates…'), '-'] : []),
     cmdItem('workbench.action.showOutput', 'Show Log'),
     cmdItem('sulfur.about', 'About'),
   ]],
@@ -4688,7 +4735,8 @@ function harnessInstallBtn(host, h) {
   return b;
 }
 
-function pickHarness(anchor) {
+function pickHarness(anchor) { menu(anchor, harnessItems()); }
+function harnessItems() {
   const cur = chatHarness();
   const items = harnessList().map((h) => {
     const host = h.id !== 'chat' && I.codeOpts ? agentWhere(h.id).host : '';
@@ -4699,7 +4747,7 @@ function pickHarness(anchor) {
   if (I.codeOpts?.error && (!localDesktop() || meshLinked())) items.push({ label: 'No agents', detail: `the code service didn’t answer: ${I.codeOpts.error}`, ic: 'lock', disabled: true });
   const ext = [...I.providers.values()];
   if (ext.length) items.push('-', ...ext.map((p) => ({ label: p.label, detail: p.ext, ic: 'ext', checked: cur === 'ext' && I.st.aux.agent === p.key ? true : undefined, run: () => setHarness('ext', p.key) })));
-  menu(anchor, items);
+  return items;
 }
 
 function setHarness(h, ext = '') {
@@ -4714,7 +4762,8 @@ function setHarness(h, ext = '') {
   harnessCheck();
 }
 
-function pickModel(anchor) {
+function pickModel(anchor) { menu(anchor, modelItems()); }
+function modelItems() {
   const cur = chatModel();
   const roles = I.roles?.length ? I.roles : [{ id: 'chimp' }, { id: 'orangutan' }];
   const items = roles.map((m) => ({ label: m.id, detail: `${ROLE_SUB[m.id] || 'mesh model'}${m.ready === false ? ' · offline' : ''}`, ic: 'spark', checked: cur === m.id ? true : undefined, run: () => setModel(m.id) }));
@@ -4722,8 +4771,8 @@ function pickModel(anchor) {
   items.push('-');
   if (anth.length) items.push(...anth.map((m) => ({ label: m.label, detail: 'Claude, in Claude Code', ic: 'spark', checked: cur === m.id ? true : undefined, run: () => setModel(m.id) })));
   else items.push({ label: 'Opus, Sonnet and Haiku', detail: 'save your Anthropic token in the Code app first', ic: 'lock', disabled: true });
-  menu(anchor, items);
   if (!I.codeOpts) loadCodeOpts();
+  return items;
 }
 
 function setModel(m) {
@@ -4743,9 +4792,10 @@ function setModel(m) {
   paintChat(true);
 }
 
-function pickPerm(anchor) {
+function pickPerm(anchor) { menu(anchor, permItems()); }
+function permItems() {
   const cur = I.st.aux.perm || 'acceptEdits';
-  menu(anchor, AGENT_PERMS.map(([id, label, about]) => ({ label, detail: about, checked: id === cur ? true : undefined, run: () => setPerm(id) })));
+  return AGENT_PERMS.map(([id, label, about]) => ({ label, detail: about, checked: id === cur ? true : undefined, run: () => setPerm(id) }));
 }
 function setPerm(v) {
   I.st.aux.perm = v;
@@ -6732,8 +6782,9 @@ async function openUserFile(path, template) {
 
 // --- the workbench's own pages ----------------------------------------------------------------
 
-function openSettings() {
-  openPage('settings', 'Settings', 'gear', (t) => {
+// q: the search to open on, a setting's key to show just it
+function openSettings(q = '') {
+  const t = openPage('settings', 'Settings', 'gear', (t) => {
     const head = el('div', 'ide-page-head');
     const q = Object.assign(el('input', 'ide-input ide-page-search'), { placeholder: 'Search settings', spellcheck: false });
     const json = Object.assign(el('button', 'ide-link'), { type: 'button', title: 'Open Settings (JSON)' });
@@ -6749,6 +6800,7 @@ function openSettings() {
     loadCompletionModels();
     setTimeout(() => q.focus(), 0);
   });
+  if (q || t.settingsQ.value) { t.settingsQ.value = q; paintSettingsPage(); }
 }
 
 async function loadCompletionModels() {
@@ -8452,7 +8504,7 @@ async function toggleConfiguration() {
 
 function activeRunContext() {
   const context = I?.runContext;
-  return context?.tabId === I?.active?.id && context.workspace === wsKey() ? context : null;
+  return context && context.tabId === I.active?.id && context.workspace === wsKey() ? context : null;
 }
 
 async function refreshRunContext() {

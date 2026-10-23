@@ -6,7 +6,7 @@ import LIB from '../../internal/theme/themes.json';
 
 const KEY = 'phosphorus-palette';
 const CUSTOM_KEY = 'phosphorus-theme-custom';
-// what the head script sets before paint: the look, its flags, a custom theme's css
+// what the head script sets before paint: the look, its flags and layout, a custom theme's css
 const APPLIED_KEY = 'phosphorus-theme-applied';
 export const PALETTE_EVENT = 'phosphorus-palette';
 
@@ -16,7 +16,7 @@ export const PALETTES = [
     id: t.id, label: t.label, about: t.about, look: t.look, round: !!t.round, sans: !!t.sans,
     swatch: [tokensOf(t)['--accent'], tokensOf(t)['--bg']],
   })),
-  { id: 'custom', label: 'custom', about: 'yours: a theme to start from, with your accent, type, corners and shadows', look: '', custom: true },
+  { id: 'custom', label: 'custom', about: 'yours: a theme to start from, with your accent, type, corners, shadows and layout', look: '', custom: true },
 ];
 const LOOKS = LIB.themes.map((t) => t.id);
 const builtIn = (id) => LIB.themes.find((t) => t.id === id);
@@ -46,12 +46,35 @@ export const CUSTOM_SHADOWS = {
   },
 };
 export const CUSTOM_CORNERS = ['0', '4', '8', '12'];
-export const CUSTOM_DEFAULT = { base: 'phosphorus', accent: '', font: '', mono: '', corners: '', shadows: '', desk: '' };
+// the layout's choices, each key's first its fallback; items the bar's status items, in order
+export const LAYOUT_CHOICES = {
+  bar: ['bottom', 'top', 'left', 'right'],
+  barStyle: ['panel', 'dock', 'full', 'line'],
+  menubar: ['off', 'top', 'bottom'],
+  btns: ['right', 'left'],
+  btnStyle: ['glyphs', 'lights', 'caption'],
+  title: ['left', 'center'],
+  density: ['normal', 'compact', 'roomy'],
+};
+export const BAR_ITEMS = ['hosts', 'agent', 'bell', 'clock', 'profile'];
+export const CUSTOM_DEFAULT = { base: 'phosphorus', accent: '', font: '', mono: '', corners: '', shadows: '', desk: '', layout: {} };
+
+// a layout made whole: each key valid, the profile never hidden (it opens the settings)
+function cleanLayout(l, under) {
+  const o = {};
+  for (const [k, vals] of Object.entries(LAYOUT_CHOICES)) o[k] = vals.includes(l?.[k]) ? l[k] : under?.[k] || vals[0];
+  const items = Array.isArray(l?.items) ? l.items : under?.items || BAR_ITEMS;
+  o.items = [...new Set(items.filter((i) => BAR_ITEMS.includes(i)))];
+  if (!o.items.includes('profile')) o.items.push('profile');
+  return o;
+}
+// a built-in theme's own layout, over the base's
+export const themeLayout = (id) => cleanLayout({ ...LIB.base.layout, ...(builtIn(id) || builtIn('phosphorus')).layout });
 
 const hex = (v) => (/^#[0-9a-f]{6}$/i.test(v || '') ? v.toLowerCase() : '');
 // a stored custom theme made safe: unknown keys and values dropped, a bad base the default
 function cleanCustom(c) {
-  const o = { ...CUSTOM_DEFAULT };
+  const o = { ...CUSTOM_DEFAULT, layout: {} };
   if (!c || typeof c !== 'object') return o;
   if (builtIn(c.base)) o.base = c.base;
   o.accent = hex(c.accent);
@@ -60,6 +83,11 @@ function cleanCustom(c) {
   if (CUSTOM_MONOS[c.mono]) o.mono = c.mono;
   if (CUSTOM_CORNERS.includes(String(c.corners))) o.corners = String(c.corners);
   if (CUSTOM_SHADOWS[c.shadows]) o.shadows = c.shadows;
+  // only what differs from the base theme's, '' or absent its own
+  if (c.layout && typeof c.layout === 'object') {
+    for (const [k, vals] of Object.entries(LAYOUT_CHOICES)) if (vals.includes(c.layout[k])) o.layout[k] = c.layout[k];
+    if (Array.isArray(c.layout.items)) o.layout.items = cleanLayout({ items: c.layout.items }).items;
+  }
   return o;
 }
 
@@ -96,6 +124,9 @@ const stored = () => { try { const v = localStorage.getItem(KEY); return valid(v
 export const paletteNow = () => document.documentElement.dataset.themeId || stored();
 export const lookNow = () => document.documentElement.dataset.palette || 'phosphorus';
 export const LOOK_IDS = LOOKS;
+let layout = themeLayout('phosphorus');
+// the layout worn: the theme's, a custom one's choices over it
+export const layoutNow = () => layout;
 
 function apply(id) {
   const r = document.documentElement;
@@ -104,6 +135,10 @@ function apply(id) {
   const round = c?.corners ? c.corners !== '0' : !!t.round;
   const sans = c?.font ? c.font !== 'mono' : !!t.sans;
   const css = c ? customCss(c) : '';
+  layout = cleanLayout(c?.layout, themeLayout(t.id));
+  // each as data-l-*: barStyle as data-l-bar-style
+  const attrs = Object.fromEntries(Object.keys(LAYOUT_CHOICES).map((k) => [k, layout[k]]));
+  for (const [k, v] of Object.entries(attrs)) r.dataset[`l${k[0].toUpperCase()}${k.slice(1)}`] = v;
   r.dataset.palette = t.id;
   r.dataset.themeId = id;
   r.toggleAttribute('data-round', round);
@@ -113,7 +148,7 @@ function apply(id) {
   let tag = document.getElementById('phosphorus-custom');
   if (css && !tag) { tag = Object.assign(document.createElement('style'), { id: 'phosphorus-custom' }); document.head.append(tag); }
   if (tag) tag.textContent = css;
-  try { localStorage.setItem(APPLIED_KEY, JSON.stringify({ id, look: t.id, round, sans, desk: !!c?.desk, css })); } catch {}
+  try { localStorage.setItem(APPLIED_KEY, JSON.stringify({ id, look: t.id, round, sans, desk: !!c?.desk, css, layout: attrs })); } catch {}
 }
 
 export function setPalette(id) {
