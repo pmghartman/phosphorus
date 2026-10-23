@@ -68,8 +68,8 @@ clangd on PATH is left alone. JDT workspace caches are kept separately under
 - Completion opens while typing, or with `Ctrl+Space` (`Cmd+Space` on macOS if
   the OS does not reserve it). Use Up/Down, Enter or Tab to insert, Escape to
   dismiss. Plain-text insert/replace edits and additional edits such as imports
-  are supported. Sulfur advertises that snippets are unsupported and does not
-  insert snippet placeholders as literal code.
+  are supported. Snippets expand to code with the first tab stop selected;
+  subsequent linked placeholder editing and Tab navigation are not yet supported.
 - **Go to Definition** and Ctrl+click (Cmd+click on macOS) use server locations,
   including other project files. **Find All References** uses server results.
   Locations outside the project and virtual/decompiled documents are refused.
@@ -116,6 +116,46 @@ configuration changes and disable/uninstall stop the associated sessions.
 Websocket closure terminates the host adapter's server process tree. Remote
 connections use the existing saved SSH login and linked-mesh API routing;
 local sessions never depend on a mesh connection.
+
+## AI inline completion
+
+Web and desktop Sulfur also share a dedicated AI completion harness. IntelliSense
+continues to use the owning host's optional language server for symbols, types,
+members, and imports. The AI predicts insertions, from an expression to a short
+function, displayed as muted ghost text. Both use the editor's existing batch
+operations, collaboration, and undo history.
+
+AI suggestions are enabled by default in **Settings → Editor: AI Inline
+Suggestions** (`editor.inlineSuggest.enabled`). After a typing pause of 400 ms
+(`editor.inlineSuggest.delay`, configurable from 200–2000 ms), Sulfur asks the
+`chimp` role through the existing mesh Messages gateway. The gateway uses the
+configured Chimp when ready, otherwise another ready mesh model. Its Chimp
+profile disables thinking. A desktop client uses the linked mesh proxy and login;
+without a connected mesh, host-local IntelliSense and word suggestions still work.
+
+- **Tab** accepts a visible IntelliSense choice first, or an AI suggestion when
+  the list is closed. Without a suggestion, Tab keeps its usual indentation.
+- **Escape** dismisses the visible suggestion. **Enter** accepts an IntelliSense
+  choice; it does not accept AI ghost text. Shift+Tab keeps outdenting.
+- **Ctrl+Space** requests IntelliSense. **Alt+\\** requests an AI suggestion
+  explicitly. Both commands are in the command palette, including when the OS
+  reserves a shortcut. **Toggle AI Inline Suggestions** turns AI prediction off.
+
+The fixed `v1` harness has its own instructions, no conversation history, and no
+tools. It is independent of the Chat/Claude Code/opencode selection. It sends up
+to 6,000 characters before the caret, 2,000 after it, two related open files of
+the same language (1,500 characters each), and up to twelve available symbol
+hints. It does not scan the repository or start an agent session. Disable inline
+suggestions to stop these requests; `chat.includeActiveFile` controls chat only.
+
+One request can run at a time in the workbench. Text streams into the preview,
+with a 512-token budget and an eight-second deadline. Typing, selection changes,
+collaborator edits, focus changes, acceptance, and workspace changes invalidate
+or cancel the prediction. A small, one-minute cache stays in memory and clears
+with workspace/settings resets. Automatic failures back off briefly; explicit
+requests show the error in the status bar. Source is not added to chat history
+or persisted in the prediction cache. Latency and code quality depend on the
+loaded mesh model and host hardware.
 
 ## Focused verification without an application build
 

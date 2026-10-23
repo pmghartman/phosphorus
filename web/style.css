@@ -1953,6 +1953,12 @@ input, textarea { caret-color: var(--accent); }
    readable text and opaque background instead of hiding the text beneath it. */
 .code-ta::selection { background: color-mix(in srgb, var(--accent) 30%, var(--card)); color: var(--fg); }
 .code-ta[readonly] { caret-color: transparent; }
+.code-inline { position: absolute; inset: 0; pointer-events: none; }
+.code-inline[hidden] { display: none; }
+.code-has-inline > .code-hl:not(.code-inline) { visibility: hidden; }
+.code-inline-text { color: var(--ide-muted, var(--muted)); opacity: .8; font-style: italic; }
+.code-gutter { position: relative; }
+.code-inline-nums { position: absolute; inset: 0; pointer-events: none; }
 /* highlighted in the palette, as the chat's code is */
 .code-hl .hljs-keyword, .code-hl .hljs-selector-tag, .code-hl .hljs-doctag { color: var(--accent); }
 .code-hl .hljs-string, .code-hl .hljs-regexp, .code-hl .hljs-addition { color: var(--sage); }

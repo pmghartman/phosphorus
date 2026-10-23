@@ -46,6 +46,7 @@ test('completion replaces its server range, applies imports, and retains earlier
 
 test('completion list defaults, insert/replace edits and plain identifier fallback work', () => {
   assert.equal(completionEdits({ label: 'hello' }, 'he', 2).text, 'hello');
+  assert.equal(completionEdits({ label: 'hello' }, 'hexx', 2).text, 'hello');
   assert.equal(completionEdits({ label: 'hello', textEditText: 'hello' }, 'he', 2, { editRange: range(0, 2) }).text, 'hello');
   assert.equal(completionEdits({ label: 'hello', textEdit: { insert: range(0, 2), replace: range(0, 4), newText: 'hello' } }, 'hexx', 2).text, 'hello');
   const snippet = completionEdits({ label: 'fn', insertText: 'fn(${1:a}, $2)$0', insertTextFormat: 2 }, 'f', 1);

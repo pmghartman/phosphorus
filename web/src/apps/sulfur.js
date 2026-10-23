@@ -37,6 +37,7 @@ import {
 } from '../app.js';
 import { codeEditor } from './editor.js';
 import { createLanguageWorkbench } from '../sulfur/language-workbench.js';
+import { createInlineCompletions } from '../sulfur/inline-completion.js';
 import { startTerminal, taskTerminal, termsRetheme } from './terminal.js';
 import { renderMd } from '../md.js';
 import { symbolsFor, identifierAt, enclosingSymbol } from '../symbols.js';
@@ -314,6 +315,8 @@ let I = null;
 
 const languages = createLanguageWorkbench({
   el, join: filesJoin, log, pick, input: inputBox,
+  onReset: () => inlineCompletions.reset(),
+  onSuggest: () => inlineCompletions.dismiss(),
   error: (e) => notify('error', e.message), notice: (text) => notify('info', text),
   alive: (t) => !!I?.tabs.includes(t),
   // the other open files of t's kind, for word-based suggestions
@@ -351,6 +354,17 @@ const languages = createLanguageWorkbench({
   },
 });
 
+const inlineCompletions = createInlineCompletions({
+  setting: (key) => setting(key), available: () => !localDesktop() || meshLinked(),
+  alive: (t) => !!I && I.active === t && I.tabs.includes(t),
+  url: () => meshApi('/api/model/v1/messages'),
+  scope: (t) => [acct.user, standalone?.meshUser, standalone?.server, wsKey(), locKey(t.loc)],
+  related: (t) => I.tabs.filter((x) => x !== t && x.ed?.ready() && sameLoc(x.loc, t.loc) && under(x.rel, I.st.root) && x.info?.lang === t.info?.lang).slice(0, 2).map((x) => ({ path: wsRel(x.rel), text: x.ed.text() })),
+  suggesting: (t) => languages.suggesting(t), dismissSuggest: (t) => languages.dismissSuggest(t),
+  symbols: (t) => [...languages.symbols(t), ...(t.symbolText === t.ed.text() ? t.symbols?.symbols || [] : []).map((s) => ({ label: s.name, detail: s.kind }))],
+  notice: (text) => setStatusFlash(text), log: (text) => log(text, 'AI Completion'),
+});
+
 const DEFAULTS = () => ({
   root: acct.user, tabs: [], active: '', recent: [], recentFolders: [],
   side: { view: 'explorer', w: 260, hidden: false },
@@ -361,6 +375,8 @@ const DEFAULTS = () => ({
 });
 
 const SETTINGS = {
+  'editor.inlineSuggest.enabled': { def: true, type: 'boolean', title: 'Editor: AI Inline Suggestions', about: 'Predict code with Chimp through the mesh using a dedicated completion harness. Sends bounded context from this file and up to two related open files. Tab accepts; Escape dismisses. Works independently of the chat harness.' },
+  'editor.inlineSuggest.delay': { def: 400, type: 'number', min: 200, max: 2000, title: 'Editor: AI Suggestion Delay', about: 'Idle time in milliseconds before asking Chimp for an inline suggestion.' },
   'sulfur.languageServerSettings': { def: {}, type: 'object', title: 'Languages: Server Settings', about: 'Language-server settings, keyed by extension id (typescript, python, javascript, java, csharp, php, shell, cpp, hcl, go). Runtime prerequisites and installation are in Extensions.' },
   'editor.fontSize': { def: 13, type: 'number', min: 8, max: 40, title: 'Editor: Font Size', about: 'Controls the font size in pixels.' },
   'editor.enablePreview': { def: true, type: 'boolean', title: 'Workbench › Editor: Enable Preview', about: 'Controls whether a file opened from the explorer is shown as a preview, its tab reused until you edit it or double click.' },
@@ -1588,6 +1604,7 @@ function mountCode(t) {
   codeTabs.set(codeKey(file), t.edId);
   t.dispose = () => t.ed.close();
   languages.attach(t);
+  inlineCompletions.attach(t);
   mountSymbolNavigation(t);
   t.view.addEventListener('contextmenu', (e) => {
     if (!e.target.closest('.code-ta')) return;
@@ -1854,6 +1871,7 @@ function tabState(t, info) {
   const was = t.info;
   t.info = info;
   languages.changed(t);
+  inlineCompletions.changed(t);
   if (info.ready && !was?.ready && t === I.active) languages.get(t).catch((e) => log(e.message, 'Languages'));
   if (info.ready && !was?.ready) applyPending(t);
   if (info.dirty && t.preview) pin(t);
@@ -1884,6 +1902,7 @@ function pin(t) {
 function activate(t, focus = true) {
   if (!t || !I.tabs.includes(t)) return;
   const was = I.active;
+  if (t !== was) inlineCompletions.dismiss();
   I.active = t;
   if (t !== was) {
     I.projHas = undefined;
@@ -2596,6 +2615,9 @@ function registerCommands() {
   for (const id of ['editor.action.duplicateSelection', 'editor.action.sortLinesAscending', 'editor.action.sortLinesDescending', 'editor.action.transformToUppercase',
     'editor.action.transformToLowercase', 'editor.action.transformToTitlecase', 'editor.action.joinLines', 'editor.action.trimTrailingWhitespace']) I.commands.get(id).when = hasEd;
   C('editor.action.marker.next', 'Go to Next Problem (Error, Warning, Info)', () => nextProblem(1), { key: 'f8', when: hasEd, category: 'Go' });
+  C('editor.action.triggerSuggest', 'Trigger IntelliSense', () => languages.suggest(I.active), { key: 'ctrl+space', when: hasEd, category: 'Editor' });
+  C('editor.action.inlineSuggest.trigger', 'Trigger AI Inline Suggestion', () => { I.active.ed.focus(); return inlineCompletions.trigger(I.active, true); }, { key: 'alt+\\', when: hasEd, category: 'Editor' });
+  C('editor.action.inlineSuggest.toggle', 'Toggle AI Inline Suggestions', () => setSetting('editor.inlineSuggest.enabled', !setting('editor.inlineSuggest.enabled')), { category: 'Editor' });
   C('editor.action.marker.prev', 'Go to Previous Problem (Error, Warning, Info)', () => nextProblem(-1), { key: 'shift+f8', when: hasEd, category: 'Go' });
   C('markdown.showPreview', 'Markdown: Toggle Preview', () => { I.active?.ed?.preview?.(); paintTabActions(); }, { key: 'ctrl+shift+v', when: () => !!I.active?.ed?.preview, category: 'Markdown' });
   const zoom = (d) => { setSetting('editor.fontSize', d ? Math.max(8, Math.min(40, setting('editor.fontSize') + d)) : SETTINGS['editor.fontSize'].def); };
@@ -6652,6 +6674,7 @@ function applyAppearance() {
 
 function applySettings() {
   const r = I.root;
+  inlineCompletions.reset();
   applyAppearance();
   r.style.setProperty('--ide-code-font', `${setting('editor.fontSize')}px`);
   // vs code Sulfur's own look; the others the desktop's tokens, medieval its own type too

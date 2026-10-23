@@ -57,7 +57,8 @@ export const applyTextEdits = (text, edits) => opApply(text, opEdits(text, textE
 export function completionEdits(item, text, caret, defaults = {}) {
   const edit = item.textEdit;
   const prefix = text.slice(0, caret).match(/[\p{L}\p{N}_$]*$/u)[0];
-  const range = edit?.range || edit?.replace || defaults.editRange?.replace || defaults.editRange || { start: positionAt(text, caret - prefix.length), end: positionAt(text, caret) };
+  const suffix = text.slice(caret).match(/^[\p{L}\p{N}_$]*/u)[0];
+  const range = edit?.range || edit?.replace || defaults.editRange?.replace || defaults.editRange || { start: positionAt(text, caret - prefix.length), end: positionAt(text, caret + suffix.length) };
   // a snippet goes in as its text, its first tab stop selected
   const raw = edit?.newText ?? item.textEditText ?? item.insertText ?? item.label;
   const { text: newText, selection: [selFrom, selTo] } = (item.insertTextFormat || defaults.insertTextFormat) === 2 ? expandSnippet(raw) : { text: raw, selection: [raw.length, raw.length] };

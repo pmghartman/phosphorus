@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fuzzyScore, rankCompletions, wordCompletions, expandSnippet, wordBefore, kindOf, inCommentOrString } from '../src/sulfur/completion.js';
+import { fuzzyScore, rankCompletions, wordCompletions, expandSnippet, wordBefore, kindOf, inCommentOrString, sameCompletionWord } from '../src/sulfur/completion.js';
 import { reindent } from '../src/sulfur/format.js';
 import { htmlLines, patchHighlight } from '../src/highlight-patch.js';
 import { opApply, opEdits } from '../src/text-operations.js';
@@ -28,11 +28,22 @@ test('word suggestions come from every open document and leave out the word bein
   assert.equal(wordBefore(current, current.length), 'play');
 });
 
+test('cached completions allow continued typing but refuse moved carets and collaborator edits anywhere else', () => {
+  const was = 'const value = re;\nother();';
+  const caret = was.indexOf(';'), from = caret - 2;
+  assert.equal(sameCompletionWord(was, caret, from, was.replace('re;', 'read;'), caret + 2), true);
+  assert.equal(sameCompletionWord(was, caret, from, was.replace('other', 'peer'), caret), false);
+  assert.equal(sameCompletionWord(was, caret, from, '// peer\n' + was, caret + 8), false);
+  assert.equal(sameCompletionWord(was, caret, from, was, caret - 1), false);
+  assert.equal(sameCompletionWord(was, caret, from, was.replace('re;', 're();'), caret + 2), false);
+});
+
 test('snippets expand to their text with the first tab stop selected', () => {
-  assert.deepEqual(expandSnippet('for (${1:i} = 0; $1 < ${2:n}; $1++) {\n\t$0\n}'), { text: 'for (i = 0;  < n; ++) {\n\t\n}', selection: [5, 6] });
+  assert.deepEqual(expandSnippet('for (${1:i} = 0; $1 < ${2:n}; $1++) {\n\t$0\n}'), { text: 'for (i = 0; i < n; i++) {\n\t\n}', selection: [5, 6] });
   assert.deepEqual(expandSnippet('log($0)'), { text: 'log()', selection: [4, 4] });
   assert.deepEqual(expandSnippet('${1|public,private|} \\$x $y'), { text: 'public $x ', selection: [0, 6] });
   assert.deepEqual(expandSnippet('done'), { text: 'done', selection: [4, 4] });
+  assert.deepEqual(expandSnippet('${1:name} = $1 + ${1};'), { text: 'name = name + name;', selection: [0, 4] });
   assert.equal(kindOf({ kind: 2 }).kind, 'method');
 });
 
