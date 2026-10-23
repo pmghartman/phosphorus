@@ -724,7 +724,12 @@ export function createLanguageWorkbench(api) {
     const handle = await codeActions(tab, only);
     if (!handle) return false;
     if (!handle.actions.length) { api.notice(only ? `No ${title.toLowerCase()} actions available` : 'No code actions available'); return true; }
-    const sorted = [...handle.actions].sort((a, b) => (b.isPreferred ? 1 : 0) - (a.isPreferred ? 1 : 0));
+    // as VS Code's menu: Quick Fix shows fixes, then refactorings, the preferred first in each,
+    // and leaves source actions (whole-file operations) to Source Action
+    const rank = (a) => (!a.kind ? 1 : a.kind.startsWith('quickfix') ? 0 : a.kind.startsWith('refactor') ? 2 : 3);
+    const offered = only ? handle.actions : handle.actions.filter((a) => !a.kind?.startsWith('source'));
+    if (!offered.length) { api.notice('No quick fixes available'); return true; }
+    const sorted = [...offered].sort((a, b) => rank(a) - rank(b) || (b.isPreferred ? 1 : 0) - (a.isPreferred ? 1 : 0));
     const action = sorted.length === 1 && only === 'source.organizeImports' ? sorted[0]
       : await api.pick(sorted.map((a) => ({ label: a.title, description: a.kind || '', detail: a.isPreferred ? 'preferred' : '', value: a })), { title, placeholder: 'Select a code action' });
     if (action && api.alive(tab)) await runCodeAction(handle, action);

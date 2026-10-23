@@ -134,6 +134,7 @@ const IC = {
   keyboard: 'M1.5 4h13v8h-13zM4 6.5h.01M6.5 6.5h.01M9 6.5h.01M11.5 6.5h.01M4.5 9.5h7',
   preview: 'M1 8s2.5-4.5 7-4.5S15 8 15 8s-2.5 4.5-7 4.5S1 8 1 8zM8 6a2 2 0 1 0 0 4 2 2 0 0 0 0-4z',
   replaceAll: 'M2 3.5h7M2 6.5h5M9.5 8.5l2.5 2.5 2.5-2.5M12 3v8M2 10.5h5M2 13.5h7',
+  selection: 'M2.5 2.5h11v11h-11zM5 6h6M5 8.5h6M5 11h3',
   replaceOne: 'M2 4.5h7M2 8h5M9.5 9.5l2.5 2.5 2.5-2.5M12 4v8',
   word: 'M2 12.5h12M3.5 5l1.5 5.5L6.5 7l1.5 3.5L9.5 5M11 5.5h2M11 8h2',
   scm: 'M4.5 1.75a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 0 0 0-3.5zM4.5 10.75a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 0 0 0-3.5zM11.5 1.75a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 0 0 0-3.5zM4.5 5.25v5.5M11.5 5.25c0 3.25-7 2-7 5.5',
@@ -1881,6 +1882,7 @@ function mountCode(t) {
       renderMd(d, md, false);
       return d;
     },
+    openLink: (u) => openExternal(u),
     get quickFixHint() { return languages.hasCodeActions(t) ? `Quick Fix… (${keyLabel(keyFor('editor.action.quickFix'))})` : ''; },
   });
   editors.set(t.edId, t.ed);
@@ -1893,15 +1895,22 @@ function mountCode(t) {
     if (!e.target.closest('.code-ta')) return;
     e.preventDefault();
     activate(t, false);
+    // VS Code's editor menu: navigation, then changes to the code, then the clipboard
     menu({ x: e.clientX, y: e.clientY }, [
-      ...symbolMenuItems(), '-',
+      cmdItem('editor.action.revealDefinition', 'Go to Definition'), cmdItem('editor.action.revealDeclaration', 'Go to Declaration'),
+      cmdItem('editor.action.goToTypeDefinition', 'Go to Type Definition'), cmdItem('editor.action.goToImplementation', 'Go to Implementations'),
+      cmdItem('editor.action.referenceSearch.trigger', 'Find All References'), cmdItem('editor.showCallHierarchy', 'Show Call Hierarchy'), '-',
+      cmdItem('editor.action.rename', 'Rename Symbol…'), cmdItem('editor.action.formatDocument', 'Format Document'),
       cmdItem('editor.action.quickFix', 'Quick Fix…'), cmdItem('editor.action.refactor', 'Refactor…'), cmdItem('editor.action.sourceAction', 'Source Action…'), '-',
       { label: 'Cut', key: 'ctrl+x', disabled: t.info?.readOnly || (!t.info?.sel && !setting('editor.emptySelectionClipboard')), run: () => editorClipboard(t, 'cut') },
       { label: 'Copy', key: 'ctrl+c', disabled: !t.info?.sel && !setting('editor.emptySelectionClipboard'), run: () => editorClipboard(t, 'copy') },
       { label: 'Paste', key: 'ctrl+v', disabled: t.info?.readOnly, run: () => editorClipboard(t, 'paste') }, '-',
       cmdItem('editor.action.selectAll', 'Select All'),
       cmdItem('editor.action.commentLine', 'Toggle Line Comment'),
-      cmdItem('editor.action.blockComment', 'Toggle Block Comment'),
+      cmdItem('editor.action.blockComment', 'Toggle Block Comment'), '-',
+      cmdItem('workbench.action.gotoSymbol', 'Go to Symbol in File…'),
+      { label: 'Bookmarks', sub: () => [cmdItem('sulfur.bookmark.toggle', 'Toggle Bookmark'), cmdItem('sulfur.bookmark.previous', 'Previous Bookmark'), cmdItem('sulfur.bookmark.next', 'Next Bookmark'), cmdItem('sulfur.bookmark.list', 'Bookmarks…')] }, '-',
+      cmdItem('workbench.action.showCommands', 'Command Palette…'),
     ]);
   });
   t.view.addEventListener('click', (e) => {
@@ -2687,17 +2696,26 @@ function buildFind() {
   wordB.classList.add('ide-opt-word');
   const reB = opt('.*', `Use Regular Expression (${keyLabel('alt+r')})`, 're');
   field.append(q, caseB, wordB, reB);
+  // matches only inside the selection the toggle was turned on with
+  const selB = btn('ide-find-sel', 'selection', `Find in Selection (${keyLabel('alt+l')})`, () => toggleFindInSelection());
+  selB.setAttribute('aria-pressed', 'false');
   const count = el('span', 'ide-find-count', 'No results');
   const prev = btn('', 'up', `Previous Match (${keyLabel('shift+enter')})`, () => findStep(-1));
   const next = btn('', 'down', `Next Match (${keyLabel('enter')})`, () => findStep(1));
   const close = btn('', 'close', `Close (${keyLabel('escape')})`, () => closeFind(true));
-  r1.append(field, count, prev, next, close);
+  r1.append(field, count, prev, next, selB, close);
   const r2 = el('div', 'ide-find-row ide-find-rep');
   const rq = Object.assign(el('input', 'ide-input'), { placeholder: 'Replace', spellcheck: false, autocomplete: 'off' });
   rq.setAttribute('aria-label', 'Replace');
+  const rfield = el('div', 'ide-find-field');
+  // the replacement takes each match's case: all caps, capitalized or lower, as VS Code's AB
+  const caseP = Object.assign(el('button', 'ide-opt', 'AB'), { type: 'button', title: `Preserve Case (${keyLabel('alt+p')})` });
+  caseP.setAttribute('aria-pressed', 'false');
+  caseP.addEventListener('click', () => { I.find.preserve = !I.find.preserve; caseP.classList.toggle('on', I.find.preserve); caseP.setAttribute('aria-pressed', String(I.find.preserve)); rq.focus(); });
+  rfield.append(rq, caseP);
   const one = btn('', 'replaceOne', `Replace (${keyLabel('ctrl+shift+1')})`, () => replaceOne());
   const all = btn('', 'replaceAll', `Replace All (${keyLabel('ctrl+alt+enter')})`, () => replaceAll());
-  r2.append(rq, one, all);
+  r2.append(rfield, one, all);
   rows.append(r1, r2);
   box.append(toggle, rows);
   I.views.append(box);
@@ -2709,6 +2727,10 @@ function buildFind() {
     else if (k === 'alt+c') { e.preventDefault(); caseB.click(); }
     else if (k === 'alt+w') { e.preventDefault(); wordB.click(); }
     else if (k === 'alt+r') { e.preventDefault(); reB.click(); }
+    else if (k === 'alt+l') { e.preventDefault(); toggleFindInSelection(); }
+    else if (k === 'alt+p') { e.preventDefault(); caseP.click(); }
+    // the searches before, as VS Code's find history
+    else if ((k === 'up' || k === 'down') && (e.target === q || e.target === rq)) { e.preventDefault(); findHistoryStep(e.target, k === 'up' ? -1 : 1); }
     else if (k === 'ctrl+alt+enter') { e.preventDefault(); replaceAll(); }
     else if (k === 'ctrl+shift+1') { e.preventDefault(); replaceOne(); }
     else if (k === 'tab' && e.target === q && I.find.replace) { e.preventDefault(); rq.focus(); }
@@ -2717,7 +2739,7 @@ function buildFind() {
   q.addEventListener('keydown', keys);
   rq.addEventListener('keydown', keys);
   q.addEventListener('input', () => findNow(true));
-  I.find = { box, q, rq, count, toggle, field, open: false, replace: false, caseS: false, word: false, re: false, ranges: [], at: -1 };
+  I.find = { box, q, rq, count, toggle, field, selB, open: false, replace: false, caseS: false, word: false, re: false, preserve: false, scope: null, ranges: [], at: -1, history: { find: [], replace: [] }, historyAt: -1 };
 }
 
 function openFind(replace = false) {
@@ -2731,6 +2753,8 @@ function openFind(replace = false) {
   const [s, e] = t.ed.selection();
   const sel = t.ed.text().slice(s, e);
   if (sel && !sel.includes('\n')) f.q.value = sel;
+  // kept for Find in Selection: typing a search moves the selection onto its matches
+  f.openSel = [s, e];
   // the replace box first once there's something to find; select() focuses, so only the one
   const box = replace && f.q.value ? f.rq : f.q;
   box.focus();
@@ -2749,7 +2773,9 @@ function setReplace(on) {
 function closeFind(focus) {
   const f = I.find;
   if (!f?.open) return;
+  rememberFind();
   f.open = false;
+  if (f.scope) { f.scope = null; f.selB.classList.remove('on'); f.selB.setAttribute('aria-pressed', 'false'); }
   f.box.classList.remove('open');
   const t = I.active;
   if (t?.ed) {
@@ -2782,8 +2808,11 @@ function findNow(fromTyping = false) {
   f.ranges = [];
   f.field.classList.toggle('bad', re === undefined);
   if (re) {
+    const [from, to] = f.scope && f.scope[1] <= text.length ? f.scope : [0, text.length];
+    re.lastIndex = from;
     for (let m = re.exec(text); m && f.ranges.length < 20000; m = re.exec(text)) {
       if (m[0] === '') { re.lastIndex += 1; continue; }
+      if (m.index + m[0].length > to) break;
       f.ranges.push([m.index, m.index + m[0].length]);
     }
   }
@@ -2804,9 +2833,40 @@ function paintFind(reveal) {
   if (r && reveal) t.ed.select(r[0], r[1], { focus: false });
 }
 
+function rememberFind() {
+  const f = I.find;
+  const add = (list, v) => { if (!v) return; const i = list.indexOf(v); if (i >= 0) list.splice(i, 1); list.push(v); if (list.length > 30) list.shift(); };
+  add(f.history.find, f.q.value);
+  if (f.replace) add(f.history.replace, f.rq.value);
+  f.historyAt = -1;
+}
+function findHistoryStep(input, d) {
+  const f = I.find;
+  const list = input === f.q ? f.history.find : f.history.replace;
+  if (!list.length) return;
+  let i = list.indexOf(input.value);
+  i = i < 0 ? (d < 0 ? list.length - 1 : -1) : i + d;
+  if (i < 0 || i >= list.length) return;
+  input.value = list[i];
+  input.select();
+  if (input === f.q) findNow(true);
+}
+// Find in Selection: the selection when it's turned on is where matches are looked for
+function toggleFindInSelection() {
+  const f = I.find, t = I.active;
+  if (!f || !t?.ed) return;
+  let [s, e] = t.ed.selection();
+  if (f.openSel && f.ranges.some(([a, b]) => a === s && b === e)) [s, e] = f.openSel;
+  f.scope = f.scope ? null : s !== e ? [s, e] : (() => { const text = t.ed.text(); return lineSpan(text, s, s); })();
+  f.selB.classList.toggle('on', !!f.scope);
+  f.selB.setAttribute('aria-pressed', String(!!f.scope));
+  findNow();
+  f.q.focus();
+}
 function findStep(d) {
   const f = I.find;
   if (!f?.open) { openFind(); return; }
+  rememberFind();
   if (!f.ranges.length) return;
   f.at = (f.at + d + f.ranges.length) % f.ranges.length;
   paintFind(true);
@@ -2828,13 +2888,21 @@ function expandReplacement(template, m, text) {
     return all;
   });
 }
+// the replacement in the match's case, with Preserve Case on
+function caseLike(match, put) {
+  if (!I.find.preserve || !/\p{L}/u.test(match)) return put;
+  if (match === match.toUpperCase() && match !== match.toLowerCase()) return put.toUpperCase();
+  if (match[0] === match[0].toUpperCase() && match[0] !== match[0].toLowerCase()) return put[0] ? put[0].toUpperCase() + put.slice(1) : put;
+  if (match === match.toLowerCase()) return put.toLowerCase();
+  return put;
+}
 function replacement(text, at) {
   const f = I.find;
-  if (!f.re) return f.rq.value;
   const re = findRegex();
   re.lastIndex = at;
   const m = re.exec(text);
-  return m && m.index === at ? expandReplacement(f.rq.value, m, text) : f.rq.value;
+  if (!m || m.index !== at) return f.rq.value;
+  return caseLike(m[0], f.re ? expandReplacement(f.rq.value, m, text) : f.rq.value);
 }
 
 function replaceOne() {
@@ -2845,6 +2913,7 @@ function replaceOne() {
   const text = t.ed.text();
   const put = replacement(text, r[0]);
   if (!t.ed.edit(r[0], r[1], put)) { notify('warning', 'The file is read-only here.'); return; }
+  if (f.scope) f.scope = [f.scope[0], f.scope[1] + put.length - (r[1] - r[0])];
   f.rq.focus();
   findNow();
 }
@@ -2859,9 +2928,12 @@ function replaceAll() {
   // each match replaced where it is, one undo step: the caret, the scroll and the others'
   // carets stay put, and the session sends the matches rather than the whole file
   const edits = [];
-  for (const m of text.matchAll(re)) if (m[0]) edits.push({ from: m.index, to: m.index + m[0].length, text: f.re ? expandReplacement(f.rq.value, m, text) : f.rq.value });
+  const [from, to] = f.scope && f.scope[1] <= text.length ? f.scope : [0, text.length];
+  for (const m of text.matchAll(re)) if (m[0] && m.index >= from && m.index + m[0].length <= to) edits.push({ from: m.index, to: m.index + m[0].length, text: caseLike(m[0], f.re ? expandReplacement(f.rq.value, m, text) : f.rq.value) });
+  rememberFind();
   if (!edits.length) return;
   if (!t.ed.editMany(edits)) { notify('warning', 'The file is read-only here.'); return; }
+  if (f.scope) f.scope = [from, to + edits.reduce((d, e) => d + e.text.length - (e.to - e.from), 0)];
   setStatusFlash(`Replaced ${n} occurrence${n === 1 ? '' : 's'}`);
   f.rq.focus();
   findNow();
@@ -3499,9 +3571,12 @@ function pick(items, o = {}) {
         // a row of what was typed itself, as a path: the picker's own say
         const own = q && o.typed ? o.typed(q) : null;
         const rows = [...(own ? [{ x: own, m: null }] : []), ...hits];
-        return { items: rows.map(({ x, m }) => ({ ...x, hl: m?.hl, accept: () => resolve(x.value !== undefined ? x.value : x) })), empty: 'No matching results' };
+        // the item asked to be lit first (the current one), until something's typed
+        const at = !q && o.selected !== undefined ? rows.findIndex(({ x }) => (x.value !== undefined ? x.value : x) === o.selected) : -1;
+        return { items: rows.map(({ x, m }) => ({ ...x, hl: m?.hl, accept: () => resolve(x.value !== undefined ? x.value : x) })), empty: 'No matching results', at: Math.max(0, at) };
       },
       onCancel: () => resolve(undefined),
+      onActive: o.onActive ? (x) => o.onActive(x && (x.value !== undefined ? x.value : x)) : null,
     });
   });
 }
@@ -3545,7 +3620,7 @@ function quick(o) {
       if (gen !== q.gen || I?.quick !== q) return;
       q.items = r.items || [];
       q.accept = r.accept || null;
-      q.at = 0;
+      q.at = Math.max(0, Math.min(q.items.length - 1, r.at || 0));
       msg.textContent = r.message || (!q.items.length ? r.empty || '' : '');
       msg.hidden = !msg.textContent;
       msg.classList.toggle('bad', !!r.bad);
@@ -3577,6 +3652,8 @@ function quick(o) {
     const r = rows[q.at];
     input.setAttribute('aria-activedescendant', r ? r.id : '');
     r?.scrollIntoView({ block: 'nearest' });
+    // the lit item told, for a live preview (the color theme picker's)
+    if (o.onActive && q.items[q.at] !== q.lit) { q.lit = q.items[q.at]; o.onActive(q.lit); }
   };
   const accept = (i) => {
     const x = q.items[i];
@@ -3990,7 +4067,9 @@ function menu(at, items, o = {}) {
   const away = (e) => { if (![node, ...m.subs.map((s) => s.node)].some((n) => n.contains(e.target)) && !(m.anchor && m.anchor.contains(e.target))) closeMenu(); };
   document.addEventListener('pointerdown', away, true);
   m.off = () => document.removeEventListener('pointerdown', away, true);
-  if (o.focusFirst || !(at instanceof Element) || o.search) focusItem(node, 0);
+  // a right click's menu takes the keys with nothing lit, as VS Code's: Down lights the first
+  if (o.focusFirst || o.search) focusItem(node, 0);
+  else if (!(at instanceof Element)) node.focus({ preventScroll: true });
   else node.focus({ preventScroll: true });
 
   function open(list, anchor, opts, depth) {
@@ -4786,9 +4865,14 @@ function paintStatusNow() {
   paintToolbar();
   const S = I.sb;
   const completionOn = !!setting('editor.inlineSuggest.enabled');
-  S.completion.textContent = `AI ${completionOn ? 'On' : 'Off'}`;
+  // offline with no mesh linked there's no model to ask: said so, not shown as working
+  const modelReach = !localDesktop() || meshLinked();
+  S.completion.textContent = `AI ${completionOn ? modelReach ? 'On' : 'Offline' : 'Off'}`;
   S.completion.setAttribute('aria-pressed', String(completionOn));
-  S.completion.title = `Agent code completions ${completionOn ? 'enabled' : 'disabled'}. Click to toggle. IntelliSense handles strong symbol matches; AI fills in new code.`;
+  S.completion.classList.toggle('none', completionOn && !modelReach);
+  S.completion.title = completionOn && !modelReach
+    ? 'Agent code completions need a Phosphorus mesh for their model. Connect to one from the remote menu; everything else works offline. Click to turn them off.'
+    : `Agent code completions ${completionOn ? 'enabled' : 'disabled'}. Click to toggle. IntelliSense handles strong symbol matches; AI fills in new code.`;
   const h = runHost();
   S.remote.replaceChildren(icon('remote'), el('span', '', h || 'no host'));
   S.remote.classList.toggle('none', !h);
@@ -7355,7 +7439,10 @@ async function pickTheme() {
   const appearance = standalone ? [['system', 'Follow the System', 'light or dark as the system is'], ['light', 'Light', 'Phosphorus light'], ['dark', 'Dark', 'Phosphorus dark']]
     .map(([id, label, description], i) => ({ label, description, detail: id === look ? 'current' : '', value: `look:${id}`, sep: i === 0 ? 'Appearance' : '' })) : [];
   const items = [...appearance, ...PALETTES.map((t, i) => ({ label: t.label, description: t.about, detail: t.id === cur ? 'current' : '', value: t.id, sep: i === 0 ? 'Color Theme, phosphorus wide' : '' }))];
-  const v = await pick(items, { title: 'Color Theme', placeholder: standalone ? 'Select Color Theme, or Light or Dark' : 'Select Color Theme (light or dark follows the desktop)' });
+  // each theme worn while it's lit, as VS Code previews them; the one before back on Escape
+  const preview = (id) => { if (I && id && !String(id).startsWith('look:') && id !== paletteNow()) setPalette(id); };
+  const v = await pick(items, { title: 'Color Theme', placeholder: standalone ? 'Select Color Theme, or Light or Dark' : 'Select Color Theme (light or dark follows the desktop)', onActive: preview, selected: cur });
+  if ((!v || v === 'look:system') && I && paletteNow() !== cur) setPalette(cur);
   if (!v || !I) return;
   if (v.startsWith('look:')) {
     if (v !== 'look:system') setPalette('phosphorus');
@@ -7500,9 +7587,14 @@ function openSettings(q = '') {
     json.addEventListener('click', () => run('workbench.action.openSettingsJson'));
     head.append(q, json);
     const list = el('div', 'ide-settings');
-    t.view.append(head, el('p', 'ide-page-note', `Saved to ${SETTINGS_PATH()} in your home, so they follow you to every browser.`), list);
+    const toc = el('nav', 'ide-settings-toc');
+    toc.setAttribute('aria-label', 'Settings sections');
+    const body = el('div', 'ide-settings-body');
+    body.append(toc, list);
+    t.view.append(head, el('p', 'ide-page-note', `Saved to ${SETTINGS_PATH()} in your home, so they follow you to every browser.`), body);
     t.settingsQ = q;
     t.settingsList = list;
+    t.settingsToc = toc;
     q.addEventListener('input', () => paintSettingsPage());
     paintSettingsPage();
     loadCompletionModels();
@@ -7545,13 +7637,26 @@ function completionModelSetting(row, about, value) {
   if (I.completionModelError) row.append(el('p', 'ide-page-note', I.completionModelError));
 }
 
+// the settings page's sections, as VS Code's table of contents: by the key's first part
+const SETTING_SECTIONS = [['Text Editor', ['editor']], ['Files', ['files']], ['Workbench', ['workbench', 'window']], ['Explorer and Search', ['explorer', 'search']], ['Terminal', ['terminal']], ['Chat', ['chat']], ['Sulfur', ['sulfur']]];
+const sectionOf = (k) => SETTING_SECTIONS.find(([, keys]) => keys.includes(k.split('.')[0]))?.[0] || 'Other';
 function paintSettingsPage() {
   const t = I.tabs.find((x) => x.page === 'settings');
   if (!t) return;
   const v = t.settingsQ.value.toLowerCase();
   const rows = [];
-  for (const [k, s] of Object.entries(SETTINGS)) {
+  const order = [...SETTING_SECTIONS.map(([name]) => name), 'Other'];
+  const entries = Object.entries(SETTINGS).sort(([a, x], [b, y]) => order.indexOf(sectionOf(a)) - order.indexOf(sectionOf(b)) || x.title.localeCompare(y.title));
+  const sections = [];
+  for (const [k, s] of entries) {
     if (v && !`${k} ${s.title} ${s.about}`.toLowerCase().includes(v)) continue;
+    const section = sectionOf(k);
+    if (sections.at(-1) !== section) {
+      sections.push(section);
+      const head = el('h3', 'ide-settings-section', section);
+      head.id = `${t.id}-section-${sections.length}`;
+      rows.push(head);
+    }
     const row = el('div', `ide-setting${k in I.settings ? ' changed' : ''}`);
     const [cat, name] = s.title.includes(': ') ? [s.title.slice(0, s.title.lastIndexOf(': ') + 1), s.title.slice(s.title.lastIndexOf(': ') + 2)] : ['', s.title];
     const title = el('div', 'ide-setting-title');
@@ -7604,6 +7709,12 @@ function paintSettingsPage() {
     rows.push(row);
   }
   t.settingsList.replaceChildren(...(rows.length ? rows : [el('p', 'ide-empty-note', 'No settings found')]));
+  // the table of contents: each section's heading scrolled to
+  t.settingsToc.replaceChildren(...sections.map((name, i) => {
+    const b = Object.assign(el('button', 'ide-settings-toc-item', name), { type: 'button' });
+    b.addEventListener('click', () => document.getElementById(`${t.id}-section-${i + 1}`)?.scrollIntoView({ block: 'start' }));
+    return b;
+  }));
 }
 
 function openKeysPage() {
