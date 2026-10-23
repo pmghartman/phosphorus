@@ -733,10 +733,7 @@ func filesRoute(w http.ResponseWriter, r *http.Request, host, op string, q url.V
 		}
 		for _, x := range rels {
 			if why := files.HomeGate(who, x, users.Exists); why != "" {
-				if who == nil {
-					return 401, map[string]any{"error": why}
-				}
-				return 403, map[string]any{"error": why}
+				return files.GateCode(who, why), map[string]any{"error": why}
 			}
 		}
 		return 0, nil

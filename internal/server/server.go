@@ -344,7 +344,7 @@ func serveRun(w http.ResponseWriter, r *http.Request, host, token, rest string, 
 			who = &files.Who{User: u, Admin: users.IsAdmin(u)}
 		}
 		if why := files.HomeGate(who, rel, users.Exists); why != "" {
-			sendJSON(w, 403, map[string]any{"error": why})
+			sendJSON(w, files.GateCode(who, why), map[string]any{"error": why})
 			return
 		}
 	}
@@ -944,7 +944,7 @@ func filesCall(c *mcp.Caller, host, op, share string, body map[string]any) (int,
 			}
 			for _, x := range rels {
 				if why := files.HomeGate(who, x, users.Exists); why != "" {
-					return 403, map[string]any{"error": why}
+					return files.GateCode(who, why), map[string]any{"error": why}
 				}
 			}
 		}

@@ -41,7 +41,9 @@ const (
 	Home         = "home"
 	Desktop      = "Desktop"
 	Shared       = "shared"
-	Sys          = "sys"
+	Sys          = ".sys"
+	// what a path nobody may see answers, the same as one that is not there
+	Gone = "no such file or folder"
 	statWidth    = 64
 )
 
@@ -1096,8 +1098,12 @@ func HomeGate(who *Who, rel string, isUser func(string) bool) string {
 	if who.User != "" {
 		ensureHome(who.User)
 	}
+	// the system's folder: admins see it, everyone else gets nothing, as if it were not there
 	if seg == Sys {
-		return "the system's alone"
+		if who.Admin {
+			return ""
+		}
+		return Gone
 	}
 	if seg == "" || seg == who.User || seg == Shared {
 		return ""
@@ -1109,6 +1115,17 @@ func HomeGate(who *Who, rel string, isUser func(string) bool) string {
 		return ""
 	}
 	return "admins only"
+}
+
+// GateCode the status for a HomeGate refusal: a hidden path not found, no login 401, else 403
+func GateCode(who *Who, why string) int {
+	switch {
+	case why == Gone:
+		return 404
+	case who == nil:
+		return 401
+	}
+	return 403
 }
 
 // HomeFilterList a listing cut to what who may reach
