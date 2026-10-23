@@ -21,6 +21,7 @@ import { EditorHistory } from '../editor-history.js';
 import { highlightRanges } from '../sulfur/semantic-tokens.js';
 import { patchHighlight } from '../highlight-patch.js';
 import { diagnosticSeverity, diagnosticCounts, diagnosticText, diagnosticsAt, offsetAtColumn, diagnosticDelay } from '../sulfur/diagnostics.js';
+import { definitionIdentifier, mountDefinitionLinks } from '../sulfur/definition-links.js';
 
 // --- code editor ------------------------------------------------------------------
 // a share's text or code file in a tab of its own, joined to the file's live
@@ -69,10 +70,13 @@ function codeEditor(view, file, btn, id, opts = {}) {
   const ta = Object.assign(document.createElement('textarea'), { className: 'code-ta', spellcheck: false, autocomplete: 'off', wrap: 'off' });
   const inlineLayer = Object.assign(el('pre', 'code-hl code-inline'), { hidden: true });
   inlineLayer.setAttribute('aria-hidden', 'true');
+  const definitionLayer = Object.assign(el('pre', 'code-hl code-definition-link'), { hidden: true });
+  definitionLayer.setAttribute('aria-hidden', 'true');
+  let definitionHover = null;
   let inlineSuggestion = null;
   ta.setAttribute('autocapitalize', 'off');
   ta.setAttribute('aria-label', file.label);
-  body.append(agentL, finds, pre, squig, inlineLayer, ta);
+  body.append(agentL, finds, pre, squig, inlineLayer, definitionLayer, ta);
   scroller.append(gutter, body);
 
   const out = el('div', 'code-out');
@@ -106,6 +110,44 @@ function codeEditor(view, file, btn, id, opts = {}) {
   });
   for (const event of ['mouseleave', 'blur', 'input', 'keydown']) ta.addEventListener(event, hideDiagnosticHover);
   scroller.addEventListener('scroll', hideDiagnosticHover);
+  function clearDefinitionHover() {
+    if (!definitionHover) return;
+    definitionHover = null; definitionLayer.hidden = true; definitionLayer.replaceChildren();
+    ta.classList.remove('code-definition-target');
+  }
+  function definitionTarget(event) {
+    if (inlineSuggestion) setInlineSuggestion(null);
+    const rect = ta.getBoundingClientRect(), style = getComputedStyle(ta);
+    const line = Math.floor((event.clientY - rect.top - parseFloat(style.paddingTop || 0)) / (parseFloat(style.lineHeight) || 18));
+    const column = Math.floor((event.clientX - rect.left - parseFloat(style.paddingLeft || 0)) / chWidthIn(ta));
+    lineAt(ta.value, 0);
+    const start = lineStarts[line];
+    if (start === undefined) return null;
+    const local = offsetAtColumn(ta.value.slice(start, lineStarts[line + 1] ?? ta.value.length), 0, column, parseInt(style.tabSize, 10) || 4);
+    const at = local == null ? null : start + local;
+    const parser = ta.value.length <= HL_MAX && parserNow(lang.check);
+    return definitionIdentifier(ta.value, at, { tree: parser ? syntax.parse(parser, ta.value) : null, extension: file.path.split('.').pop().toLowerCase() });
+  }
+  const definitionLinks = opts.definitionLinks ? mountDefinitionLinks({
+    target: ta, document, window, enabled: () => ready && !closed && !view.hidden,
+    locate: definitionTarget, clear: clearDefinitionHover,
+    mac: /Mac|iPhone|iPad/.test(navigator.userAgentData?.platform || navigator.platform || ''),
+    show(target) {
+      if (!target) { clearDefinitionHover(); return; }
+      if (definitionHover?.from === target.from && definitionHover.to === target.to && definitionHover.text === ta.value) return;
+      hideDiagnosticHover();
+      definitionHover = { ...target, text: ta.value };
+      const style = getComputedStyle(ta);
+      const line = lineAt(ta.value, target.from) - 1, tabSize = parseInt(style.tabSize, 10) || 4;
+      const column = [...ta.value.slice(lineStarts[line], target.from)].reduce((n, ch) => ch === '\t' ? n + tabSize - n % tabSize : n + 1, 0);
+      const underline = el('span', '', target.name);
+      underline.style.left = `${parseFloat(style.paddingLeft || 0) + column * chWidthIn(ta)}px`;
+      underline.style.top = `${parseFloat(style.paddingTop || 0) + line * (parseFloat(style.lineHeight) || 18)}px`;
+      definitionLayer.replaceChildren(underline);
+      definitionLayer.hidden = false; ta.classList.add('code-definition-target');
+    },
+  }) : null;
+  scroller.addEventListener('scroll', () => definitionLinks?.leave());
   if (bare) bar.hidden = true;
 
   // the session: the server's text and version, the edit in flight to it
@@ -203,6 +245,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
     drawFrame = 0;
     if (closed) return;
     const text = ta.value;
+    if (definitionHover && definitionHover.text !== text) clearDefinitionHover();
     if (semanticText !== text) semantic = [];
     if (text !== diagnosticSnapshot) { diagnosticSnapshot = text; lastTextChange = Date.now(); clearDiagnostics(); }
     if (inlineSuggestion && inlineSuggestion.text !== text) setInlineSuggestion(null);
@@ -971,6 +1014,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
       tell();
     },
     selection: () => [ta.selectionStart, ta.selectionEnd],
+    definitionTarget,
     agentEdit,
     agentFlash,
     ready: () => ready,
@@ -985,6 +1029,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
     previewing: () => rendered,
     close: () => {
       closed = true;
+      definitionLinks?.dispose();
       for (const timer of [bigTimer, hlTimer, mdTimer, checkTimer, cursorTimer, agentFade, armed]) clearTimeout(timer);
       cancelAnimationFrame(drawFrame); cancelAnimationFrame(tellFrame);
       syntax.clear();

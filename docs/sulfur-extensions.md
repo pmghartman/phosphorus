@@ -249,6 +249,8 @@ A source file without a project builds alone. Compiler output, including MSVC ob
 
 ## Code navigation
 
+Hold **Ctrl** (**Cmd** on macOS) over a source identifier to underline the definition link before clicking it. The underline follows the pointer without moving the caret or requesting definitions; Ctrl+click routes to that same identifier. Releasing the modifier, leaving the editor, scrolling or editing clears the preview.
+
 The editor's **Types** and **Methods and fields** pickers follow the caret and jump to declarations in the current file. Longer lists have a search box. Installed language servers supply semantic document symbols, including Roslyn's C# declarations and scopes. Without a server, syntax parsers provide navigation for C/C++, JavaScript/TypeScript, Java, Python, Go and Rust; C# falls back to the Java grammar as an approximation. Navigation parses files up to 2 MB.
 
 **Go → Go to Symbol in File…** (Ctrl+Shift+O) searches the file's symbols. **Go to Workspace Symbol…** (Ctrl+T) searches the language server's project index. **Go to Declaration**, **Go to Type Definition**, **Go to Implementation** (Ctrl+F12), and **Call Hierarchy…** (Shift+Alt+H) use the installed server when it supports those requests. Call Hierarchy expands incoming or outgoing calls on demand; click a symbol to open its definition or expand **Call sites** to jump to a particular call. Refresh recomputes the displayed tree. Changing its direction discards pending requests from the previous tree.
@@ -256,6 +258,10 @@ The editor's **Types** and **Methods and fields** pickers follow the caret and j
 **Go → Bookmarks** works with or without language servers: toggle with Ctrl+K, Ctrl+K; next with Ctrl+K, Ctrl+N; previous with Ctrl+K, Ctrl+P; clear this workspace's bookmarks with Ctrl+K, Ctrl+L. Gutter marks follow edits and undo, are saved in this browser's workbench state, and can be listed by file and line.
 
 ## Layout modes
+
+Explorer, tabs, breadcrumbs, search results and source-control rows use descriptive inline file icons: source-language badges, separate header/project/solution icons, and recognizable build, configuration, document and asset glyphs. A folder whose loaded listing contains a project file receives that project's icon without additional directory scans.
+
+In a Git workspace, Explorer colors changed file names and shows status badges: **M** modified, **A** added, **U** untracked, **R** renamed, **C** copied, and **!** conflicted. Parent folders show a colored dot and a tooltip with their changed-file count and statuses, including deleted files that are no longer present in the tree. Decorations refresh with Source Control, saves and Explorer refresh; clean files retain their normal color. A workspace opened beneath a repository root only decorates paths inside that workspace.
 
 **Appearance → Layout Mode** or **Settings → Layout: Mode** selects **Default (activity bar)** or **Visual Studio (compact toolbar)**. Default remains the initial layout. The compact mode replaces the activity rail with a thin toolbar for file actions, history, undo/redo, workspace machine, build configuration, the named run target, all sidebar views, symbols and bookmarks. Both layouts expose the same actions through menus, shortcuts and the command palette. The run button names its selected target in both modes.
 
