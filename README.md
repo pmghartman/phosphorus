@@ -1,80 +1,44 @@
 <p align="center">
-  <img src=".github/assets/phosphorus.svg" alt="" width="210">
-</p>
-
-<h1 align="center">Phosphorus</h1>
-
-<p align="center"><b>Every computer you own, as one desktop in your browser.</b></p>
-
-<p align="center">
   <a href="https://github.com/pmghartman/phosphorus/releases/latest"><img alt="release" src="https://img.shields.io/github/v/release/pmghartman/phosphorus?style=flat-square&color=a371f7"></a>
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/github/license/pmghartman/phosphorus?style=flat-square&color=f0883e"></a>
   <img alt="platforms" src="https://img.shields.io/badge/macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-555?style=flat-square">
 </p>
 
-<p align="center">
-  <a href="https://github.com/pmghartman/phosphorus/releases/latest">Download</a> ·
-  <a href="#quick-start">Quick start</a> ·
-  <a href="#everyday-use">Everyday use</a> ·
-  <a href="#architecture">Architecture</a>
-</p>
+<p align="center"><img src=".github/assets/phosphorus.svg" alt="" width="160"></p>
 
-## Features
+<h2 align="center">Phosphorus</h2>
 
-- **Terminals** on every host in browser windows, with `ssh <host>` to any peer
-- **Files** across all hosts as one home, chosen files mirrored to every host
-- **Sulfur**, the code editor for every file, edited live together, in the browser or its own self-updating desktop app, building on each machine's own compilers
-- **Code sessions** on any host under your own login, run by an agent harness (Claude Code or opencode), each an optional install per host
-- **Services and game servers**, proxied by path or subdomain and started from the desktop
-- **Chat**, live **status** and notifications, shared by the mesh
-- **Git** on Forgejo, replicated to every host with an elected master
-- **A local AI model**, hosted on one machine for all of them
-- **An MCP server** at `/api/mcp`, so Claude or any MCP client works the mesh with your rights
-- **Accounts** with admin roles and a per-user vault of host and page logins
+<p align="center"><b>Every computer you own, as one desktop in your browser.</b></p>
+
+Install it on each machine and they find each other. No servers to rent, no config files: one key, and your Macs, PCs and Linux boxes become one private mesh you can open from anywhere.
+
+- **Terminals** on every host, a click away
+- **One home folder** across every machine
+- **Services and game servers**, started from the desktop
+- **Git, chat and a local AI model**, shared by the whole mesh
+- **Code sessions** with Claude Code or opencode on any host
+- **An MCP server**, so Claude can work your mesh for you
+
+<p align="center"><img src="packaging/sulfur/icon.svg" alt="" width="140"></p>
+
+<h2 align="center">Sulfur</h2>
+
+<p align="center"><b>A code editor that lives on every machine at once.</b></p>
+
+Open any file on any host and edit it live, together. Build with each machine's own compilers. Run it in the browser or as its own desktop app, on the mesh or fully offline.
+
+- **Feels like VS Code**: palette, completion, extensions, themes
+- **Live collaboration** on every file
+- **Language servers** for ten languages, installed per host
+- **Claude Code and opencode** agents in the editor
+- **Self-updating** apps for macOS, Windows and Linux
 
 ## Quick start
 
-You need a [Tailscale](https://tailscale.com) account (the free plan works) and a reusable auth key.
-
-1. **Download** the host installer from the [latest release](https://github.com/pmghartman/phosphorus/releases/latest).
-2. **Install** it:
-
-   | | |
-   |---|---|
-   | macOS | Open the `.dmg`, drag Phosphorus to Applications, open it (first time: right-click, Open) |
-   | Windows | Run the setup `.exe` (SmartScreen: More info, Run anyway) |
-   | Linux | `sudo apt install ./phosphorus_VERSION_ARCH.deb`, then `sudo phosphorus` |
-
-3. **Enter your Tailscale auth key.** Tailscale is installed if missing. Every other host copies the rest from the mesh.
-4. **Open** `http://HOST` from any device on the tailnet, using a host's name or tailnet IP.
-
-The first login is `admin` with your admin password. Create your own admin account and that login turns off.
-
-### Optional
-
-- **A domain:** a [Cloudflare](https://cloudflare.com) domain and tunnel token give you `https://your-domain` off the tailnet, plus git.
-- **More keys:** a Tailscale API token (game server DNS) and an admin password, set on the first host.
-
-Change keys later with **Edit Keys** in the menu bar or tray icon (a form in your browser, served on this machine only), or `phos keys`.
-
-## Everyday use
-
-| | |
-|---|---|
-| Menu bar / tray icon (macOS, Windows) | Open Phosphorus, Start, Stop, Check for Updates, Edit Keys, Uninstall, Quit; updates itself from the signed feed |
-| Sulfur app | Help, Check for Updates: the signed feed's newer Sulfur installed and the app reopened (an AppImage, `.exe` or `.app`; a `.deb` updates with apt) |
-| `phos` | Terminal UI |
-| `phos start` / `stop` / `status` | Control this host |
-| `phos vpn on` / `off` | Tailscale up, or Phosphorus and Tailscale down |
-| `phos update` / `update all` | Update this host, or every host in the mesh at once |
-| `phos uninstall` | Remove Phosphorus and its data |
-
-A model host downloads llama.cpp and the model, often several GB. You pick the model, so its license is yours to follow. A harness (Claude Code, opencode) is installed on a host only when you ask for it from Code or Sulfur, by its own official installer.
-
-## Architecture
+Grab Phosphorus or Sulfur from the [**latest release**](https://github.com/pmghartman/phosphorus/releases/latest), which has install steps for every platform. Phosphorus needs a free [Tailscale](https://tailscale.com) auth key; then open `http://HOST` from any device on your tailnet.
 
 <details>
-<summary>How the pieces fit</summary>
+<summary><h2>Architecture</h2></summary>
 
 ```mermaid
 flowchart TB
@@ -82,12 +46,13 @@ flowchart TB
     deb[".deb (amd64, arm64)<br/>binary, tailscale, cloudflared, forgejo"]
     dmg[".dmg"]
     exe["setup .exe"]
+    sulf["Sulfur app<br/>.exe, .dmg, .deb, AppImage"]
     feed["update feed: apt repo, app feed, latest.json"]
   end
 
   subgraph host["Host (Linux shown)"]
     dpkg["apt + postinst"]
-    bin["phosphorus binary<br/>install, start, stop, keys, status, vpn, rebuild, upgrade, ps"]
+    bin["phosphorus binary<br/>install, start, stop, keys, status, vpn, rebuild, upgrade, uninstall, ps"]
     agent["update agent<br/>phosphorus-update.path"]
     tsd["tailscaled<br/>the machine's, or phosphorus-tailscaled.service"]
     subgraph home["/var/lib/phosphorus"]
@@ -136,13 +101,14 @@ flowchart TB
   ph --> cfd --> cf --> browser
   browser -->|"/api/ping/host, timed by the page"| ph
   browser <-->|"tailnet, no domain"| ph
+  sulf <-->|"mesh login, or offline"| ph
 ```
 
 </details>
 
 ## License
 
-Apache 2.0, see [`LICENSE`](LICENSE). Bundled software keeps its own license; full texts are in `THIRD_PARTY_LICENSES.txt`, included in every installer.
+Apache 2.0, see [`LICENSE`](LICENSE). Bundled software keeps its own license; full texts are in [`THIRD_PARTY_LICENSES.txt`](THIRD_PARTY_LICENSES.txt).
 
 <p align="center">
   <img src=".github/assets/wright-alchemist.jpg" alt="The Alchemist Discovering Phosphorus, Joseph Wright of Derby" width="420">

@@ -3,6 +3,7 @@ import {
   HOME,
   acct,
   codeKey,
+  codeLang,
   codeTabs,
   copyFile,
   copyText,
@@ -13,6 +14,8 @@ import {
   editors,
   el,
   filesApi,
+  hostUrl,
+  otherHosts,
   filesCall,
   filesJoin,
   filesParent,
@@ -33,9 +36,16 @@ import {
   standalone,
 } from '../app.js';
 import { codeEditor } from './editor.js';
+import { createLanguageWorkbench } from '../sulfur/language-workbench.js';
+import { createInlineCompletions, completionModels } from '../sulfur/inline-completion.js';
+import { diagnosticCounts, diagnosticSeverity } from '../sulfur/diagnostics.js';
+import { createBuildProblemMatcher } from '../sulfur/build-problems.js';
 import { startTerminal, taskTerminal, termsRetheme } from './terminal.js';
 import { renderMd } from '../md.js';
-import { PALETTES, PALETTE_EVENT, paletteNow, setPalette } from '../theme.js';
+import { symbolsFor, identifierAt, enclosingSymbol } from '../symbols.js';
+import { singleFileCommand, configsFor } from '../sulfur/build-commands.js';
+import { cmakeTargets, cmakeConfiguration, targetForFile, executableCommand, absolutePath, joinPath } from '../sulfur/project-targets.js';
+import { LOOK_IDS, PALETTES, PALETTE_EVENT, lookNow, paletteNow, setPalette } from '../theme.js';
 import guideText from '../../../docs/sulfur-extensions.md';
 
 // --- sulfur, the code editor ----------------------------------------------------------
@@ -84,6 +94,7 @@ const IC = {
   newFile: 'M3.5 1.5h5l3 3v4M8.5 1.5v3h3M3.5 1.5v13h5M12 10v5M9.5 12.5h5',
   newFolder: 'M1.5 3h4l1.2 1.5h7.8V8M1.5 3v10h6.5M12 9.5v5M9.5 12h5',
   refresh: 'M13.5 8a5.5 5.5 0 1 1-1.8-4.1M13.5 1.5v3.5h-3.5',
+  update: 'M8 1.5v8.5M4.5 6.5L8 10l3.5-3.5M2.5 11v3h11v-3',
   collapse: 'M4.5 4.5h9v9h-9zM2.5 11.5v-9h9M6.5 9h5',
   more: 'M3.5 8h.01M8 8h.01M12.5 8h.01',
   plus: 'M8 3v10M3 8h10',
@@ -120,9 +131,17 @@ const IC = {
   scm: 'M4.5 1.75a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 0 0 0-3.5zM4.5 10.75a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 0 0 0-3.5zM11.5 1.75a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 0 0 0-3.5zM4.5 5.25v5.5M11.5 5.25c0 3.25-7 2-7 5.5',
   branch: 'M5 2.5a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5zM5 11a1.25 1.25 0 1 0 0 2.5A1.25 1.25 0 0 0 5 11zM11 2.5a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5zM5 5v6M11 5c0 3-6 1.75-6 6',
   minus: 'M3 8h10',
+  home: 'M2 7.5L8 2.5l6 5M3.5 6.5v7h3.5v-4h2v4h3.5v-7',
+  drive: 'M1.5 9.5l2-6h9l2 6v3.5h-13zM1.5 9.5h13M11.5 11.25h1',
   undo: 'M3 6.5h7a3 3 0 0 1 0 6H6M5.5 4L3 6.5 5.5 9',
+  symbolType: 'M8 1.5l5.5 3v7L8 14.5l-5.5-3v-7zM2.5 4.5L8 8l5.5-3.5M8 8v6.5',
+  symbolMethod: 'M2 5l6-3.5L14 5l-6 3.5zM2 8l6 3.5L14 8M2 11l6 3.5L14 11',
+  symbolField: 'M8 2l6 6-6 6-6-6zM5 8h6',
 };
-const icon = (k, cls = '') => dkGlyph(IC[k], `ide-ic ${cls}`);
+// 'sulfur' is the app's own mark, drawn in full, every other glyph a line icon
+const icon = (k, cls = '') => (k === 'sulfur'
+  ? Object.assign(el('img', `ide-ic ide-mark ${cls}`), { src: '/sulfur/icon.svg', alt: '', draggable: false })
+  : dkGlyph(IC[k], `ide-ic ${cls}`));
 
 // a file kind's glyph and hue, by extension, the explorer's and the tabs'
 const FILE_HUES = {
@@ -172,18 +191,20 @@ function cleanPath(p) {
 // folder of one host's own disk published as a share (D:\Projects, /srv/code)
 const HOME_LOC = { host: '*', share: 'home' };
 // offline in Sulfur's desktop app: this computer's files; a mesh remembered, maybe logged into
-const offline = () => standalone?.mode === 'local';
+const localDesktop = () => standalone?.mode === 'local';
 // a mesh API call's path: offline, the remembered mesh's, through the app's own server
 const meshApi = (path) => (standalone?.meshUrl ? standalone.meshUrl(path) : path);
 // offline with a mesh logged into: its models, agents and Forgejo here too
-const meshLinked = () => offline() && !!standalone.meshUser;
+const meshLinked = () => localDesktop() && !!standalone.meshUser;
+// a place on the computer Sulfur's running on, not a mesh machine: offline all of them,
+// on a mesh this computer's own folders beside the mesh's
+const thisComputer = (l) => !!standalone?.localHost && (isHomeLoc(l) ? localDesktop() : l.host === standalone.localHost);
 const meshName = (s = standalone?.server) => String(s || '').replace(/^https?:\/\//, '');
 // offline in Sulfur's desktop app: this computer's own file dialogs, as any editor's
-const nativeFiles = () => offline() && !!standalone?.app && !!standalone.nativePick;
 // a folder or file picked in the system's dialog, as Sulfur's place and path; null if cancelled
 async function nativeOpen(directory, title) {
   const t = I.active;
-  const start = t?.rel ? hostPath(selfHost, isHomeLoc(t.loc) ? 'home' : t.loc.share, filesParent(t.rel)) : hostPath(selfHost, isHomeLoc() ? 'home' : locOf().share, I.st.root);
+  const start = !localDesktop() ? '' : t?.rel ? hostPath(selfHost, isHomeLoc(t.loc) ? 'home' : t.loc.share, filesParent(t.rel)) : hostPath(selfHost, isHomeLoc() ? 'home' : locOf().share, I.st.root);
   let abs = null;
   try { abs = await standalone.nativePick({ directory, title, defaultPath: start }); } catch (err) { notify('error', `The ${directory ? 'folder' : 'file'} dialog failed: ${err.message || err}`); return null; }
   if (!abs || !I) return null;
@@ -226,7 +247,7 @@ function fileLoc(rel, host, l = locOf()) {
 }
 // a location's name for people: the home, or host and folder
 function locLabel(l = locOf()) {
-  if (isHomeLoc(l)) return offline() ? `your home folder on ${selfHost}` : 'home, synced across the mesh';
+  if (isHomeLoc(l)) return localDesktop() ? `your home folder on ${selfHost}` : 'home, synced across the mesh';
   return `${l.host} · ${shareOf(l.host, l.share)?.label || `share ${l.share}`}`;
 }
 // the user's own space and the shared one in the home; in a host's share, anything in it
@@ -298,6 +319,60 @@ function keyLabel(k) {
 
 let I = null;
 
+const languages = createLanguageWorkbench({
+  el, join: filesJoin, log, pick, input: inputBox,
+  onReset: () => inlineCompletions.reset(),
+  onSuggest: () => inlineCompletions.dismiss(),
+  error: (e) => notify('error', e.message), notice: (text) => notify('info', text),
+  alive: (t) => !!I?.tabs.includes(t),
+  // the other open files of t's kind, for word-based suggestions
+  documents: (t) => (I ? I.tabs.filter((x) => x !== t && x.ed?.ready() && extOf(x.rel) === extOf(t.rel)).map((x) => x.ed.text()) : []),
+  hosts: () => dkLiveHosts(),
+  url: (host) => new URL(hostUrl(host, `/api/sulfur/languages?host=${encodeURIComponent(host)}`), location.href).href,
+  problems: () => I && paintProblemsSoon(),
+  diagnosticDelay: () => setting('editor.diagnostics.delay'),
+  async context(t) {
+    if (!I || I.active !== t || !sameLoc(t.loc, locOf()) || !under(t.rel, I.st.root)) return null;
+    const current = I;
+    const workspace = wsKey();
+    const project = await detectProject();
+    if (I !== current || I.active !== t || wsKey() !== workspace || !project) return null;
+    const cfg = buildCfg();
+    const share = t.share ?? 'home';
+    const rootRel = project.dir;
+    const root = hostPath(t.host, share, rootRel);
+    const path = hostPath(t.host, share, t.rel);
+    if (!root || !path) return null;
+    const buildRoot = cfg?.host === t.host && cfg.toolchain ? tasksFor(cfg, project).buildRoot : '';
+    const buildDirectory = buildRoot ? absolutePath(buildRoot) ? buildRoot : hostPath(t.host, share, joinPath(rootRel, buildRoot)) : '';
+    const solutionPath = project.sln?.[0] ? hostPath(t.host, share, filesJoin(rootRel, project.sln[0])) : '';
+    return { host: t.host, root, rootRel, path, solutionPath, documentRel: t.rel.slice(rootRel.length + 1), loc: t.loc, workspace, configuration: cfg?.configuration || '', buildDirectory, settings: setting('sulfur.languageServerSettings') || {} };
+  },
+  open(path, context, range) {
+    if (!I || context.workspace !== wsKey()) return null;
+    return openFile(path, { host: context.host, loc: context.loc, preview: false, line: range.start.line + 1, col: range.start.character + 1 });
+  },
+  async prepare(path, context) {
+    if (!I || context.workspace !== wsKey()) throw new Error('Project changed during rename');
+    const tab = openFile(path, { host: context.host, loc: context.loc, preview: false, focus: false });
+    if (!tab) throw new Error(`Cannot open ${path}`);
+    for (let n = 0; !tab.ed?.ready() && n < 80 && I?.tabs.includes(tab); n++) await sleep(100);
+    if (!I?.tabs.includes(tab) || context.workspace !== wsKey() || !tab.ed?.ready() || tab.info?.readOnly) throw new Error(`${path} is not ready or writable`);
+    return tab;
+  },
+});
+
+const inlineCompletions = createInlineCompletions({
+  setting: (key) => setting(key), available: () => !localDesktop() || meshLinked(),
+  alive: (t) => !!I && I.active === t && I.tabs.includes(t),
+  url: () => meshApi('/api/model/v1/messages'),
+  scope: (t) => [acct.user, standalone?.meshUser, standalone?.server, wsKey(), locKey(t.loc)],
+  related: (t) => I.tabs.filter((x) => x !== t && x.ed?.ready() && sameLoc(x.loc, t.loc) && under(x.rel, I.st.root) && x.info?.lang === t.info?.lang).slice(0, 2).map((x) => ({ path: wsRel(x.rel), text: x.ed.text() })),
+  suggesting: (t) => languages.suggesting(t), dismissSuggest: (t) => languages.dismissSuggest(t),
+  symbols: (t) => [...languages.symbols(t), ...(t.symbolText === t.ed.text() ? t.symbols?.symbols || [] : []).map((s) => ({ label: s.name, detail: s.kind }))],
+  notice: (text) => setStatusFlash(text), log: (text) => log(text, 'AI Completion'),
+});
+
 const DEFAULTS = () => ({
   root: acct.user, tabs: [], active: '', recent: [], recentFolders: [],
   side: { view: 'explorer', w: 260, hidden: false },
@@ -308,6 +383,11 @@ const DEFAULTS = () => ({
 });
 
 const SETTINGS = {
+  'editor.inlineSuggest.enabled': { def: true, type: 'boolean', title: 'Editor: AI Inline Suggestions', about: 'Predict code with the selected completion model through the mesh using a dedicated harness. Sends bounded context from this file and up to two related open files. Tab accepts; Escape dismisses. Works independently of the chat harness.' },
+  'editor.inlineSuggest.model': { def: 'chimp', type: 'model', title: 'Editor: Completion Machine / Model', about: 'Choose automatic Chimp/Orangutan routing, or pin completion to a machine and its configured model. The machine must have that model ready; this does not change its model installation.' },
+  'editor.inlineSuggest.delay': { def: 750, type: 'number', min: 200, max: 5000, title: 'Editor: AI Suggestion Delay', about: 'Idle time in milliseconds after meaningful typing before asking the completion model. Blank lines, Enter, indentation, and deletion do not request AI suggestions; Alt+\\ still works anywhere.' },
+  'editor.diagnostics.delay': { def: 1000, type: 'number', min: 300, max: 5000, title: 'Editor: Diagnostic Delay', about: 'Idle time in milliseconds before checking syntax or requesting language-server diagnostics. Stale underlines clear while you edit incomplete lines.' },
+  'sulfur.languageServerSettings': { def: {}, type: 'object', title: 'Languages: Server Settings', about: 'Language-server settings, keyed by extension id (typescript, python, javascript, java, csharp, php, shell, cpp, hcl, go). Runtime prerequisites and installation are in Extensions.' },
   'editor.fontSize': { def: 13, type: 'number', min: 8, max: 40, title: 'Editor: Font Size', about: 'Controls the font size in pixels.' },
   'editor.enablePreview': { def: true, type: 'boolean', title: 'Workbench › Editor: Enable Preview', about: 'Controls whether a file opened from the explorer is shown as a preview, its tab reused until you edit it or double click.' },
   'explorer.confirmDelete': { def: true, type: 'boolean', title: 'Explorer: Confirm Delete', about: 'Controls whether the explorer asks before deleting a file or folder. A delete here is for good: there is no trash.' },
@@ -363,6 +443,10 @@ const saveState = debounce(() => {
 export function ideStart(w, open) {
   if (I) teardown();
   migrateLocal();
+  if (standalone) {
+    standalone.onHosts = () => { fdHostsSoon(); paintRunView(); paintStatus(); };
+    standalone.onMesh = () => { if (I) { refreshRoles(); paintWelcomeSoon(); paintRunView(); paintChat(true); } };
+  }
   const st = loadState();
   if (!isHomeLoc(st.loc) && !shareOf(st.loc.host, st.loc.share)) st.loc = HOME_LOC;
   if (!inScope(st.root, st.loc)) { st.loc = HOME_LOC; st.root = acct.user; }
@@ -398,7 +482,7 @@ export function ideStart(w, open) {
   }
   // Sulfur on its own opens ready to work: the welcome when nothing's open
   if (standalone && !I.tabs.length && !open) openWelcome();
-  if (standalone?.signedOut) notify('warning', `Your session on ${meshName(standalone.signedOut)} ended, so Sulfur opened offline, on ${selfHost}.`, { actions: [{ label: 'Log In…', run: () => run('sulfur.mesh.connect') }] });
+  if (standalone?.signedOut) notify('warning', `Your session on ${meshName(standalone.signedOut)} ended. This computer (${selfHost}) is still available.`, { actions: [{ label: 'Log In…', run: () => run('sulfur.mesh.connect') }] });
   paintEditors();
   showSide(st.side.view, !st.side.hidden);
   showPanel(st.panel.view, !st.panel.hidden);
@@ -451,6 +535,7 @@ function holdClose(done) {
 
 function teardown() {
   if (!I) return;
+  languages.reset();
   const was = I;
   I = null;
   for (const off of was.offs) { try { off(); } catch {} }
@@ -479,16 +564,26 @@ function build() {
   const ccText = el('span', 'ide-cc-text');
   cc.append(icon('search'), ccText);
   cc.addEventListener('click', () => quickOpen(''));
-  title.append(menubar, cc);
+  // the update and the chat at the bar's right, by the window's buttons: each its own, nothing to dig for
+  const ai = Object.assign(el('button', 'ide-tb ide-tb-ai'), { type: 'button', ariaLabel: 'Chat' });
+  ai.dataset.cmd = 'workbench.action.chat.open';
+  ai.dataset.label = 'Chat';
+  ai.append(icon('spark'));
+  ai.addEventListener('click', () => run('workbench.action.toggleAuxiliaryBar'));
+  // Sulfur's own update, the desktop app's alone: in the desktop or on a host it updates with the mesh
+  const upd = Object.assign(el('button', 'ide-tb ide-tb-update'), { type: 'button', title: 'Check for Sulfur Updates', ariaLabel: 'Check for Sulfur Updates' });
+  upd.append(icon('update'));
+  upd.hidden = !standalone?.app;
+  upd.addEventListener('click', () => checkUpdate(true));
+  title.append(menubar, cc, upd, ai);
 
   const main = el('div', 'ide-main');
-  // the activity bar: a view per icon, the manage menus at its foot
+  // the activity bar: a view per icon; the chat, settings and update are the title bar's
   const activity = el('div', 'ide-activity');
   activity.setAttribute('role', 'tablist');
   activity.setAttribute('aria-orientation', 'vertical');
   const actTop = el('div', 'ide-act-top');
-  const actFoot = el('div', 'ide-act-foot');
-  activity.append(actTop, actFoot);
+  activity.append(actTop);
 
   const side = el('div', 'ide-side');
   const sideHead = el('div', 'ide-side-head');
@@ -535,9 +630,9 @@ function build() {
   I.w.head.insertBefore(title, I.w.head.querySelector('.dk-btns'));
   I.w.node.classList.add('ide-win');
   Object.assign(I, {
-    root, layer, titleBar: title, menubar, cc, ccText, activity, actTop, actFoot, side, sideTitle, sideActs, sideBody, center, editorsPart,
+    root, layer, titleBar: title, menubar, cc, ccText, activity, actTop, side, sideTitle, sideActs, sideBody, center, editorsPart,
     tabsEl: tabs, tabActs, crumbs, views, watermark, panel, panelTabs, panelActs, panelBody, sashH, aux, sashSide, sashAux,
-    statusL, statusR, sideViews: new Map(), panelViews: new Map(), actBtns: new Map(),
+    statusL, statusR, sideViews: new Map(), panelViews: new Map(), actBtns: new Map(), actChat: ai, updBtn: upd,
   });
 
   buildMenubar();
@@ -650,24 +745,6 @@ function buildActivity() {
     I.sideBody.append(body);
     I.sideViews.set(v.id, { ...v, body, acts: [] });
   }
-  const chat = Object.assign(el('button', 'ide-act ide-act-chat'), { type: 'button', ariaLabel: 'Chat' });
-  chat.dataset.cmd = 'workbench.action.chat.open';
-  chat.dataset.label = 'Chat';
-  chat.append(icon('chat'));
-  chat.addEventListener('click', () => run('workbench.action.toggleAuxiliaryBar'));
-  I.actTop.append(chat);
-  I.actChat = chat;
-  // the gear names who's signed in; Sulfur alone signs in to a mesh from the status bar's remote item
-  const manage = Object.assign(el('button', 'ide-act'), { type: 'button', ariaLabel: 'Manage', title: 'Manage' });
-  manage.append(icon('gear'));
-  manage.addEventListener('click', () => menu(manage, [
-    { label: offline() ? `${standalone.meshUser ? `${standalone.meshUser}, ` : ''}offline on ${selfHost}` : `${acct.user}${acct.admin ? ' (admin)' : ''} on ${selfHost}`, disabled: true },
-    '-',
-    cmdItem('workbench.action.openSettings', 'Settings'),
-    cmdItem('workbench.action.openGlobalKeybindings', 'Keyboard Shortcuts'),
-    cmdItem('workbench.action.selectTheme', 'Color Theme'),
-  ], { side: 'right', up: true }));
-  I.actFoot.append(manage);
   buildExplorer();
   buildSearch();
   buildScm();
@@ -707,23 +784,46 @@ function showSide(id, on = true, focus = false) {
 
 // --- the title bar's menus ---------------------------------------------------------------
 
+// a setting in a menu: a boolean toggled in place, anything else its row in Settings
+const settingItem = (k, label) => (SETTINGS[k].type === 'boolean'
+  ? { label, checked: !!setting(k), run: () => setSetting(k, !setting(k)) }
+  : { label: `${label}…`, run: () => openSettings(k) });
+// a font size a pixel up or down, or back to its default
+const sizeItems = (k) => {
+  const s = SETTINGS[k];
+  const at = setting(k);
+  return [
+    { label: 'Larger', detail: `${at + 1}px`, disabled: at >= s.max, run: () => setSetting(k, Math.min(s.max, at + 1)) },
+    { label: 'Smaller', detail: `${at - 1}px`, disabled: at <= s.min, run: () => setSetting(k, Math.max(s.min, at - 1)) },
+    { label: 'Reset', detail: `${s.def}px`, disabled: at === s.def, run: () => setSetting(k, s.def) },
+  ];
+};
+
+// every setting under the menu it belongs to: Appearance its looks, View the explorer's and editors',
+// Edit search's, Run the runners, Agents the chat's, Extensions the language servers, Help updates
 const MENUS = [
   ['File', () => [
     cmdItem('sulfur.project.new', 'New Project…'), cmdItem('explorer.newFile', 'New File…'), cmdItem('explorer.newFolder', 'New Folder…'), '-',
-    ...(nativeFiles() ? [cmdItem('workbench.action.files.openFile', 'Open File…')] : []),
+    cmdItem('workbench.action.files.openFile', 'Open File…'),
     cmdItem('workbench.action.files.openFolder', 'Open Folder…'),
     { label: 'Open Recent', sub: () => recentItems() },
     cmdItem('sulfur.project.transfer', 'Copy or Move Project to…'), cmdItem('sulfur.git.clone', 'Clone Repository…'), '-',
     cmdItem('workbench.action.files.save', 'Save'), cmdItem('workbench.action.files.saveAll', 'Save All'), '-',
+    { label: 'Preferences', sub: () => [
+      // who's signed in; Sulfur alone signs in to a mesh from the status bar's remote item
+      { label: localDesktop() ? `${standalone.meshUser ? `${standalone.meshUser}, ` : ''}on ${selfHost}` : `${acct.user}${acct.admin ? ' (admin)' : ''} on ${selfHost}`, disabled: true }, '-',
+      cmdItem('workbench.action.openSettings', 'Settings'), cmdItem('workbench.action.openSettingsJson', 'Settings (JSON)'), '-',
+      cmdItem('workbench.action.openGlobalKeybindings', 'Keyboard Shortcuts'), cmdItem('workbench.action.openGlobalKeybindingsFile', 'Keyboard Shortcuts (JSON)'),
+    ] }, '-',
     cmdItem('workbench.action.revertFile', 'Revert File'),
     cmdItem('workbench.action.closeActiveEditor', 'Close Editor'), cmdItem('workbench.action.closeAllEditors', 'Close All Editors'), '-',
-    ...(standalone?.app ? [offline() ? cmdItem('sulfur.mesh.connect', standalone.server ? `Connect to ${meshName()}…` : 'Connect to a Phosphorus Mesh…') : cmdItem('sulfur.mesh.offline', 'Work Offline'), '-'] : []),
+    ...(standalone?.app ? [cmdItem('sulfur.mesh.connect', standalone.server ? `Connect to ${meshName()}…` : 'Connect to a Phosphorus Mesh…'), '-'] : []),
     cmdItem('sulfur.closeWindow', standalone?.app ? 'Exit' : 'Close Window'),
   ]],
   ['Edit', () => [
     cmdItem('undo', 'Undo'), cmdItem('redo', 'Redo'), '-',
     cmdItem('actions.find', 'Find'), cmdItem('editor.action.startFindReplaceAction', 'Replace'),
-    cmdItem('workbench.action.findInFiles', 'Find in Files'), '-',
+    cmdItem('workbench.action.findInFiles', 'Find in Files'), settingItem('search.exclude', 'Find in Files Exclusions'), '-',
     cmdItem('editor.action.selectAll', 'Select All'), cmdItem('expandLineSelection', 'Expand Line Selection'),
     cmdItem('editor.action.duplicateSelection', 'Duplicate Selection'),
     { label: 'Line', sub: () => [
@@ -740,19 +840,41 @@ const MENUS = [
       cmdItem('workbench.action.nextEditor', 'Next Editor'), cmdItem('workbench.action.previousEditor', 'Previous Editor'), '-',
       cmdItem('editor.action.marker.next', 'Next Problem'), cmdItem('editor.action.marker.prev', 'Previous Problem'),
     ] },
-    { label: 'Appearance', sub: () => [
-      cmdItem('workbench.action.toggleSidebarVisibility', 'Primary Side Bar', !I.st.side.hidden),
-      cmdItem('workbench.action.toggleAuxiliaryBar', 'Chat', !I.st.aux.hidden),
-      cmdItem('workbench.action.togglePanel', 'Panel', !I.st.panel.hidden),
-      cmdItem('workbench.action.toggleMaximizedPanel', 'Maximized Panel', I.st.panel.max), '-',
-      cmdItem('editor.action.fontZoomIn', 'Zoom In'), cmdItem('editor.action.fontZoomOut', 'Zoom Out'), cmdItem('editor.action.fontZoomReset', 'Reset Zoom'),
+    { label: 'Explorer', sub: () => [
+      settingItem('explorer.autoReveal', 'Reveal the Active File'), settingItem('explorer.confirmDelete', 'Confirm Before Deleting'), '-',
+      settingItem('files.exclude', 'Hidden Files'),
+    ] },
+    { label: 'Editors', sub: () => [
+      settingItem('editor.enablePreview', 'Open Files as Previews'), settingItem('workbench.restoreEditors', 'Reopen Editors at Start'),
     ] },
     cmdItem('markdown.showPreview', 'Toggle Markdown Preview'),
+  ]],
+  ['Appearance', () => [
+    { label: 'Color Theme', sub: () => PALETTES.map((t) => ({ label: t.label, detail: t.about, checked: paletteNow() === t.id, run: () => setPalette(t.id) })) },
+    // on its own, light or dark Sulfur's; in the desktop, the desktop's
+    standalone
+      ? { label: 'Light or Dark', sub: () => SETTINGS['window.appearance'].options.map(([v, label]) => ({ label, checked: setting('window.appearance') === v, run: () => setSetting('window.appearance', v) })) }
+      : { label: 'Light or Dark', detail: 'the desktop’s', disabled: true },
+    cmdItem('workbench.action.selectTheme', 'Pick a Theme…'), '-',
+    { label: 'Editor Font Size', detail: `${setting('editor.fontSize')}px`, sub: () => [
+      cmdItem('editor.action.fontZoomIn', 'Larger'), cmdItem('editor.action.fontZoomOut', 'Smaller'), cmdItem('editor.action.fontZoomReset', 'Reset'),
+    ] },
+    { label: 'Terminal Font Size', detail: `${setting('terminal.integrated.fontSize')}px`, sub: () => sizeItems('terminal.integrated.fontSize') }, '-',
+    cmdItem('workbench.action.toggleSidebarVisibility', 'Primary Side Bar', !I.st.side.hidden),
+    cmdItem('workbench.action.toggleAuxiliaryBar', 'Chat', !I.st.aux.hidden),
+    cmdItem('workbench.action.togglePanel', 'Panel', !I.st.panel.hidden),
+    cmdItem('workbench.action.toggleMaximizedPanel', 'Maximized Panel', I.st.panel.max),
+  ]],
+  ['Go', () => [
+    cmdItem('workbench.action.quickOpen', 'Go to File…'), cmdItem('workbench.action.gotoLine', 'Go to Line/Column…'), '-',
+    cmdItem('editor.action.revealDefinition', 'Go to Definition'), cmdItem('editor.action.referenceSearch.trigger', 'Find All References'), '-',
+    cmdItem('workbench.action.nextEditor', 'Next Editor'), cmdItem('workbench.action.previousEditor', 'Previous Editor'), '-',
+    cmdItem('editor.action.marker.next', 'Next Problem'), cmdItem('editor.action.marker.prev', 'Previous Problem'),
   ]],
   ['Run', () => [
     cmdItem('sulfur.build', 'Build'), cmdItem('sulfur.task.run', 'Run Task…'), cmdItem('sulfur.build.select', 'Select Toolchain…'),
     cmdItem('sulfur.build.configuration', 'Select Configuration…'), '-',
-    cmdItem('sulfur.run.start', 'Start Without Debugging'), cmdItem('sulfur.run.startup', 'Select Startup Item…'), '-',
+    cmdItem('sulfur.run.context', 'Run Active Target'), cmdItem('sulfur.run.start', 'Start Without Debugging'), cmdItem('sulfur.run.startup', 'Select Startup Item…'), '-',
     cmdItem('sulfur.run.file', 'Run Active File'), cmdItem('sulfur.run.fileOn', 'Run Active File On…'),
     cmdItem('workbench.action.terminal.runSelectedText', 'Run Selected Text in Terminal'), '-',
     cmdItem('workbench.action.terminal.new', 'New Terminal'), cmdItem('workbench.action.terminal.newOn', 'New Terminal On…'),
@@ -760,13 +882,27 @@ const MENUS = [
       cmdItem('workbench.action.terminal.clear', 'Clear Terminal'), cmdItem('workbench.action.terminal.rename', 'Rename Terminal…'),
       cmdItem('workbench.action.terminal.kill', 'Kill Terminal'),
     ] }, '-',
-    cmdItem('sulfur.selectHost', 'Select Host…'),
+    cmdItem('sulfur.selectHost', 'Select Host…'), '-',
+    settingItem('sulfur.runners', 'Runners for Files'), cmdItem('sulfur.build.editJson', 'Build Settings (JSON)'),
+  ]],
+  ['Agents', () => [
+    cmdItem('workbench.action.chat.open', 'Open Chat'), cmdItem('workbench.action.chat.newChat', 'New Chat'), '-',
+    { label: 'Harness', detail: harnessName(chatHarness()), sub: () => harnessItems() },
+    { label: 'Model', detail: chatModel(), sub: () => modelItems() },
+    { label: 'Permissions', detail: isAgent(chatHarness()) ? '' : 'agents only', disabled: !isAgent(chatHarness()), sub: () => permItems() }, '-',
+    settingItem('chat.includeActiveFile', 'Include the Active File'),
+    ...(standalone?.app ? ['-', cmdItem('sulfur.mesh.connect', standalone.server ? `Connect to ${meshName()}…` : 'Connect to a Phosphorus Mesh…'), cmdItem('sulfur.mesh.signOut', 'Sign Out of the Mesh')] : []),
+  ]],
+  ['Extensions', () => [
+    cmdItem('workbench.view.extensions', 'Show Extensions'), settingItem('sulfur.languageServerSettings', 'Language Server Settings'), '-',
+    cmdItem('workbench.extensions.action.refreshExtension', 'Reload Extensions'), '-',
+    cmdItem('sulfur.extensions.guide', 'Extension Guide'), cmdItem('sulfur.extensions.create', 'Create an Extension…'),
   ]],
   ['Help', () => [
     cmdItem('workbench.action.openWalkthrough', 'Welcome'), '-',
-    cmdItem('sulfur.extensions.guide', 'Extension Guide'), cmdItem('sulfur.extensions.create', 'Create an Extension…'), '-',
+    ...(standalone?.app ? [cmdItem('sulfur.update', 'Check for Updates…'), '-'] : []),
     cmdItem('workbench.action.showOutput', 'Show Log'),
-    ...(standalone?.app ? [cmdItem('sulfur.update', 'Check for Updates…')] : []), cmdItem('sulfur.about', 'About'),
+    cmdItem('sulfur.about', 'About'),
   ]],
 ];
 
@@ -910,6 +1046,7 @@ function setRoot(dir, first = false, l = locOf()) {
   if (!d || !inScope(d, l)) return;
   const st = I.st;
   if (!first && d === st.root && sameLoc(l, st.loc)) { refreshTree(); return; }
+  languages.reset();
   st.root = d;
   st.loc = isHomeLoc(l) ? HOME_LOC : { host: l.host, share: String(l.share) };
   const rk = (x) => `${locKey(x.loc || HOME_LOC)}\n${x.root ?? x}`;
@@ -936,6 +1073,7 @@ function setRoot(dir, first = false, l = locOf()) {
 
 const sortEntries = (list) => [...list].sort((a, b) => (b.dir - a.dir) || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
 
+const fdHostsSoon = debounce(() => { if (I) { I.fdPaint?.(); paintStatus(); } }, 200);
 const scmRefreshSoon = debounce(() => { if (I) scmRefresh(); }, 600);
 
 // the folders quick open and Find in Files never go into: search.exclude and files.exclude together
@@ -1063,7 +1201,11 @@ function treeRow(e, p, depth) {
   const t = !e.dir && I.tabs.find((x) => x.rel === p);
   if (e.all) row.append(el('span', 'ide-deco', 'A'));
   else if (e.stale) row.append(el('span', 'ide-deco ide-deco-off', 'offline'));
-  if (t?.info?.errors?.length) { row.classList.add('has-err'); row.append(el('span', 'ide-deco ide-deco-err', String(t.info.errors.length))); }
+  if (t?.info?.errors?.length) {
+    const counts = diagnosticCounts(t.info.errors);
+    const kind = counts.errors ? 'err' : counts.warnings ? 'warn' : 'info';
+    row.classList.add(`has-${kind}`); row.append(el('span', `ide-deco ide-deco-${kind}`, String(t.info.errors.length)));
+  }
   if (I.active?.rel === p) row.classList.add('active-file');
   return row;
 }
@@ -1141,7 +1283,7 @@ function explorerItems(p, dir) {
     isRoot && { label: 'Copy or Move Project to…', run: () => run('sulfur.project.transfer') },
     runnable && { label: `Run on ${runHost() || 'a host'}`, run: () => runFile(p) },
     runnable && { label: 'Run On…', run: () => runFileOn(p) },
-    filesWin && { label: offline() ? (standalone.mac ? 'Reveal in Finder' : /Win/.test(navigator.platform) ? 'Reveal in File Explorer' : 'Open Containing Folder') : 'Reveal in Files', run: () => filesWin({ loc: apiLoc(), dir: dir ? p : filesParent(p) }) },
+    filesWin && { label: localDesktop() ? (standalone.mac ? 'Reveal in Finder' : /Win/.test(navigator.platform) ? 'Reveal in File Explorer' : 'Open Containing Folder') : 'Reveal in Files', run: () => filesWin({ loc: apiLoc(), dir: dir ? p : filesParent(p) }) },
     file && { label: 'Ask the Agent About This File', run: () => { openFile(p, { preview: false }); showAux(true, true); } },
     '-',
     { label: 'Copy Path', key: IS_MAC ? 'alt+ctrl+c' : 'shift+alt+c', run: () => copyPath(p, true) },
@@ -1516,10 +1658,227 @@ function mountCode(t) {
   const share = t.share ?? 'home';
   const file = { host: t.host, share, path: t.rel, label: `${t.host}/${share === 'home' ? 'home' : shareOf(t.host, share)?.label || share}/${t.rel}` };
   t.edId = `ide-code-${(edSeq += 1)}`;
-  t.ed = codeEditor(t.view, file, null, t.edId, { bare: true, onState: (info) => tabState(t, info) });
+  t.ed = codeEditor(t.view, file, null, t.edId, { bare: true, diagnosticDelay: () => setting('editor.diagnostics.delay'), onState: (info) => tabState(t, info) });
   editors.set(t.edId, t.ed);
   codeTabs.set(codeKey(file), t.edId);
   t.dispose = () => t.ed.close();
+  languages.attach(t);
+  inlineCompletions.attach(t);
+  mountSymbolNavigation(t);
+  t.view.addEventListener('contextmenu', (e) => {
+    if (!e.target.closest('.code-ta')) return;
+    e.preventDefault();
+    activate(t, false);
+    menu({ x: e.clientX, y: e.clientY }, [
+      cmdItem('editor.action.revealDefinition', 'Go to Definition'),
+      cmdItem('editor.action.referenceSearch.trigger', 'Find All References'),
+      cmdItem('editor.action.rename', 'Rename…'), '-',
+      { label: 'Cut', key: 'ctrl+x', disabled: t.info?.readOnly || !t.info?.sel, run: () => editorClipboard(t, 'cut') },
+      { label: 'Copy', key: 'ctrl+c', disabled: !t.info?.sel, run: () => editorClipboard(t, 'copy') },
+      { label: 'Paste', key: 'ctrl+v', disabled: t.info?.readOnly, run: () => editorClipboard(t, 'paste') }, '-',
+      cmdItem('editor.action.selectAll', 'Select All'),
+      cmdItem('editor.action.commentLine', 'Toggle Line Comment'),
+    ]);
+  });
+  t.view.addEventListener('click', (e) => {
+    if (!(IS_MAC ? e.metaKey : e.ctrlKey) || !e.target.closest('.code-ta')) return;
+    e.preventDefault();
+    activate(t, false);
+    goToDefinition(t).catch((err) => notify('error', err.message));
+  });
+}
+
+function mountSymbolNavigation(t) {
+  const nav = el('div', 'ide-symbol-nav');
+  nav.setAttribute('aria-label', 'Code navigation');
+  const control = (label, glyph) => {
+    const b = Object.assign(el('button', 'ide-symbol-picker'), { type: 'button', ariaLabel: label });
+    b.setAttribute('aria-haspopup', 'menu');
+    b.append(icon(glyph, 'ide-symbol-icon'), el('span', 'ide-symbol-label', label), icon('down', 'ide-symbol-chevron'));
+    return b;
+  };
+  const types = control('Types', 'symbolType');
+  const members = control('Methods and fields', 'symbolMethod');
+  nav.append(types, members);
+  t.view.prepend(nav);
+  t.symbolNav = { nav, types, members };
+  for (const b of [types, members]) b.addEventListener('click', () => {
+    const items = b.symbolItems || [];
+    menu(b, items.length ? items.map((s) => ({ label: s.name, detail: `${s.kind} · line ${t.ed.text().slice(0, s.from).split('\n').length}`, ic: s.kind === 'type' ? 'symbolType' : s.kind === 'field' ? 'symbolField' : 'symbolMethod', checked: s === b.currentSymbol, run: () => t.ed.select(s.from, s.to) })) : [{ label: 'No symbols in this scope', disabled: true }], { search: items.length > 12 });
+  });
+}
+
+async function tabSymbols(t) {
+  const text = t.ed.text();
+  if (t.symbolText === text && t.symbolPromise) return t.symbolPromise;
+  t.symbolText = text;
+  const lang = codeLang(t.rel);
+  t.symbolPromise = text.length > 2 * 1024 * 1024 ? Promise.resolve({ symbols: [], tokens: [] }) : symbolsFor(text, lang?.check, lang?.hl);
+  const data = await t.symbolPromise;
+  if (t.ed.text() === text) t.symbols = data;
+  return data;
+}
+
+const paintSymbolNavSoon = debounce(() => { if (I?.active?.ed) paintSymbolNav(I.active); }, 180);
+async function paintSymbolNav(t) {
+  if (!t.info?.ready || !t.symbolNav) return;
+  const data = await tabSymbols(t);
+  if (!I || I.active !== t || t.symbolText !== t.ed.text()) return;
+  const pos = t.ed.selection()[1];
+  const type = enclosingSymbol(data.symbols, pos, 'type');
+  const member = enclosingSymbol(data.symbols, pos);
+  const fill = (select, items, prompt, selected) => {
+    select.symbolItems = items;
+    select.currentSymbol = items.includes(selected) ? selected : null;
+    select.querySelector('.ide-symbol-label').textContent = select.currentSymbol?.name || prompt;
+    select.title = select.currentSymbol ? `${select.currentSymbol.kind}: ${select.currentSymbol.name}` : prompt;
+  };
+  fill(t.symbolNav.types, data.symbols.filter((s) => s.kind === 'type'), '(Global scope)', type);
+  const members = data.symbols.filter((s) => s.kind !== 'type' && (!s.owner || s.owner.kind === 'type') && (!type || s.owner === type));
+  fill(t.symbolNav.members, members, 'Methods and fields', member);
+  t.symbolNav.nav.title = t.ed.text().length > 2 * 1024 * 1024 ? 'Symbol navigation is limited to files up to 2 MB' : 'Types, methods and fields in this file';
+}
+
+async function editorClipboard(t, action) {
+  const [from, to] = t.ed.selection();
+  try {
+    if (action === 'paste') t.ed.edit(from, to, await navigator.clipboard.readText());
+    else { await copyText(t.ed.text().slice(from, to)); if (action === 'cut') t.ed.edit(from, to, ''); }
+  } catch (err) { notify('error', `Clipboard: ${err.message}`); }
+}
+
+async function symbolDocuments(t, word, root = I.st.root) {
+  const state = I;
+  const key = wsKey();
+  const loc = locOf();
+  // Fetch matching files only, using the existing server search. Parse their
+  // complete text so comments, strings and partial names are excluded.
+  const places = isHomeLoc(loc) ? homeOnline().map((h) => [h, homeAt(h)]) : [[loc.host, apiLoc(loc)]];
+  const found = await Promise.all(places.map(async ([host, at]) => ({ host, body: await filesCall(at, 'search', undefined, { path: root, query: word, content: 'true', skip: searchSkip() }) })));
+  if (I !== state || wsKey() !== key) return null;
+  const candidates = new Map();
+  for (const { host, body } of found) for (const r of body.results || []) candidates.set(r.path, host);
+  for (const tab of I.tabs) if (tab.ed && sameLoc(tab.loc, loc) && under(tab.rel, root)) candidates.set(tab.rel, tab.host);
+  const docs = [];
+  for (const [path, host] of candidates) {
+    if (I !== state || wsKey() !== key) return null;
+    const tab = I.tabs.find((x) => x.rel === path && sameLoc(x.loc, loc) && x.ed);
+    const text = tab ? tab.ed.text() : await filesCall(isHomeLoc(loc) ? homeAt(host) : apiLoc(loc), 'read', undefined, { path }).then((b) => typeof b.text === 'string' ? b.text : null, () => null);
+    if (text === null || text.length > 2 * 1024 * 1024) continue;
+    const lang = codeLang(path);
+    const data = tab ? await tabSymbols(tab) : await symbolsFor(text, lang?.check, lang?.hl);
+    docs.push({ path, host, loc, text, tab, ...data });
+  }
+  if (I !== state || wsKey() !== key) return null;
+  return { docs, truncated: found.some((x) => x.body.truncated) };
+}
+
+async function goToDefinition(t = I.active) {
+  if (t?.ed && await languages.navigate(t)) return;
+  const state = I;
+  const workspace = wsKey();
+  const current = () => I === state && I.active === t && wsKey() === workspace;
+  const word = t?.ed && identifierAt(t.ed.text(), t.ed.selection()[0]);
+  if (!word) return;
+  const local = await tabSymbols(t);
+  if (!current()) return;
+  const defs = local.symbols.filter((s) => s.name === word.name && !s.declarationOnly);
+  const pos = word.from;
+  const scoped = defs.filter((s) => !s.owner || (s.owner.start <= pos && pos <= s.owner.end));
+  const closest = scoped.length === 1 ? scoped[0] : scoped.find((s) => s.owner && s.owner === enclosingSymbol(local.symbols, pos));
+  if (closest) { t.ed.select(closest.from, closest.to); return; }
+  const project = await detectProject();
+  if (!current()) return;
+  const result = await symbolDocuments(t, word.name, project?.kinds.length ? project.dir : I.st.root);
+  if (!result || !current()) return;
+  const candidates = result.docs.flatMap((d) => d.symbols.filter((s) => s.name === word.name && (d.tab === t || s.owner?.kind !== 'method')).map((s) => ({ ...s, doc: d })));
+  const definitions = candidates.filter((s) => !s.declarationOnly);
+  const hits = definitions.length ? definitions : candidates;
+  if (!hits.length) { notify('info', `No declaration found for ${word.name}${result.truncated ? ' in the searched files (search was truncated)' : ''}.`); return; }
+  const hit = hits.length === 1 ? hits[0] : await pick(hits.map((s) => ({ label: `${s.name} · ${s.kind}`, description: s.doc.path, value: s })), { title: `Definitions of ${word.name}` });
+  if (hit && current()) openFile(hit.doc.path, { host: hit.doc.host, loc: hit.doc.loc, select: [hit.from, hit.to], preview: false });
+}
+
+async function findReferences(t = I.active) {
+  if (t?.ed && await languages.navigate(t, true)) return;
+  const word = t?.ed && identifierAt(t.ed.text(), t.ed.selection()[0]);
+  if (!word) return;
+  const result = await symbolDocuments(t, word.name);
+  if (!result || !I) return;
+  const hits = result.docs.flatMap((d) => d.tokens.filter((s) => s.name === word.name).map((s) => ({ ...s, doc: d })));
+  const hit = await pick(hits.map((s) => ({ label: `${baseName(s.doc.path)}:${s.doc.text.slice(0, s.from).split('\n').length}`, description: s.doc.path, value: s })),
+    { title: `${word.name}: ${hits.length} identifier matches${result.truncated ? ' (search truncated)' : ''}`, placeholder: 'Syntax matches across the workspace; names can refer to different symbols', matchDescription: true });
+  if (hit && I) openFile(hit.doc.path, { host: hit.doc.host, loc: hit.doc.loc, select: [hit.from, hit.to], preview: false });
+}
+
+// the selection formatted, or the whole file
+function formatActive(whole = false) {
+  const t = I.active;
+  if (!t?.ed) return;
+  languages.format(t, whole).then((done) => { if (!done && t.info?.readOnly) notify('info', 'This file is read-only.'); }).catch((err) => notify('error', err.message));
+}
+
+async function renameSymbol(t = I.active) {
+  if (t?.ed && await languages.rename(t)) return;
+  const word = t?.ed && identifierAt(t.ed.text(), t.ed.selection()[0]);
+  if (!word || t.info?.readOnly) return;
+  const value = await inputBox({ title: `Rename ${word.name}`, value: word.name, prompt: 'Preview matching identifiers across the workspace.', validate: (s) => /^[$\p{L}_][$\p{L}\p{N}_]*$/u.test(s) ? '' : 'Enter an identifier' });
+  if (!I || !value || value === word.name) return;
+  const result = await symbolDocuments(t, word.name);
+  if (!result || !I) return;
+  if (result.truncated) { notify('warning', 'The workspace search was truncated. Narrow the open folder before renaming.'); return; }
+  const docs = result.docs.map((d) => ({ ...d, hits: d.tokens.filter((s) => s.name === word.name) })).filter((d) => d.hits.length);
+  if (!docs.length) { notify('info', 'No matching identifiers found.'); return; }
+  openPage(`rename-preview:${newSid()}`, `Rename ${word.name}`, 'replaceAll', (page) => {
+    const head = el('div', 'ide-page-head');
+    const apply = Object.assign(el('button', 'ide-button', 'Apply Rename'), { type: 'button' });
+    const note = el('p', 'ide-run-note', 'Syntax matches may include unrelated symbols with the same name. Select the occurrences to change. Comments and strings are excluded. Changes stay in editor tabs for review and undo.');
+    const rows = el('div', 'ide-rename-files');
+    const selected = new Map(docs.map((d) => [d, new Set(d.hits)]));
+    for (const d of docs) {
+      rows.append(el('strong', 'ide-rename-file', `${d.path} (${d.hits.length})`));
+      for (const h of d.hits) {
+        const row = el('label', 'ide-rename-file');
+        const check = Object.assign(el('input'), { type: 'checkbox', checked: true });
+        check.addEventListener('change', () => check.checked ? selected.get(d).add(h) : selected.get(d).delete(h));
+        const line = d.text.slice(0, h.from).split('\n').length;
+        const start = d.text.lastIndexOf('\n', h.from - 1) + 1;
+        const end = d.text.indexOf('\n', h.to);
+        row.append(check, el('code', '', `${line}: ${d.text.slice(start, end < 0 ? d.text.length : end).trim()}`));
+        rows.append(row);
+      }
+    }
+    apply.addEventListener('click', async () => {
+      apply.disabled = true;
+      try {
+        const chosen = [...selected].filter(([, hits]) => hits.size);
+        if (!chosen.length) { apply.disabled = false; return; }
+        for (const [d] of chosen) {
+          const tab = I.tabs.find((x) => x.rel === d.path && sameLoc(x.loc, d.loc) && x.ed);
+          const current = tab ? tab.ed.text() : await readAt(d.path, d.loc);
+          if (current !== d.text) throw new Error(`${d.path} changed since the preview. Run Rename again.`);
+        }
+        const prepared = [];
+        for (const [d, hits] of chosen) {
+          const tab = openFile(d.path, { host: d.host, loc: d.loc, preview: false });
+          if (!tab) throw new Error(`Couldn't open ${d.path}`);
+          for (let n = 0; !tab.ed?.ready() && n < 80; n++) await sleep(100);
+          if (!I || !tab.ed) throw new Error(`Couldn't open ${d.path}`);
+          if (!tab.ed.ready() || tab.ed.text() !== d.text || tab.info?.readOnly) throw new Error(`${d.path} changed or isn't writable. Run Rename again.`);
+          prepared.push({ d, hits, tab });
+        }
+        for (const { d, hits, tab } of prepared) {
+          if (tab.ed.text() !== d.text) throw new Error(`${d.path} changed during rename. Review the open tabs and run Rename again.`);
+          let text = d.text;
+          for (const h of [...hits].sort((a, b) => b.from - a.from)) text = text.slice(0, h.from) + value + text.slice(h.to);
+          if (!tab.ed.edit(0, d.text.length, text)) throw new Error(`Couldn't edit ${d.path}`);
+        }
+        notify('info', `Renamed ${word.name} to ${value} in ${chosen.length} files. Review the open tabs.`);
+      } catch (err) { notify('error', err.message); apply.disabled = false; }
+    });
+    head.append(el('span', '', `${word.name} → ${value}`), apply);
+    page.view.append(head, note, rows);
+  });
 }
 
 function mountImage(t) {
@@ -1570,14 +1929,19 @@ function tabState(t, info) {
   if (!I) return;
   const was = t.info;
   t.info = info;
+  languages.changed(t);
+  inlineCompletions.changed(t);
+  if (info.ready && !was?.ready && t === I.active) languages.get(t).catch((e) => log(e.message, 'Languages'));
   if (info.ready && !was?.ready) applyPending(t);
   if (info.dirty && t.preview) pin(t);
   if (!was || was.dirty !== info.dirty) { t.tabEl.classList.toggle('dirty', info.dirty); paintOpenEditorsSoon(); }
-  if (!was || was.errors.length !== info.errors.length) { paintProblemsSoon(); paintTreeSoon(); }
+  if (!was || JSON.stringify(was.errors) !== JSON.stringify(info.errors)) { paintProblemsSoon(); paintTreeSoon(); }
   if (t === I.active) paintStatus();
+  if (t === I.active) paintSymbolNavSoon();
   if (I.find?.open && t === I.active && was && was.length !== info.length) findSoon();
   // the user's settings and keys read again once their file's saved
   if (was?.dirty && !info.dirty) {
+    languages.saved(t);
     emit('save', { path: t.rel });
     if (t.rel === SETTINGS_PATH() || t.rel === KEYS_PATH()) loadUserFiles();
     scmRefreshSoon();
@@ -1597,7 +1961,12 @@ function pin(t) {
 function activate(t, focus = true) {
   if (!t || !I.tabs.includes(t)) return;
   const was = I.active;
+  if (t !== was) inlineCompletions.dismiss();
   I.active = t;
+  if (t !== was) {
+    I.projHas = undefined;
+    I.runContext = { tabId: t.id, workspace: wsKey(), pending: true };
+  }
   I.mru = [t, ...I.mru.filter((x) => x !== t)];
   for (const x of I.tabs) {
     x.view.hidden = x !== t;
@@ -1607,6 +1976,9 @@ function activate(t, focus = true) {
   // painted first: an editor in a hidden view takes no focus
   paintEditors();
   t.ed?.show();
+  if (t.ed) paintSymbolNavSoon();
+  if (t.ed?.ready()) languages.get(t).catch((e) => log(e.message, 'Languages'));
+  if (t !== was) paintRunView();
   if (focus) { drawersAway(); focusTab(t); }
   if (t !== was) {
     if (I.find?.open) { if (t.ed) findSoon(); else closeFind(false); }
@@ -1783,7 +2155,13 @@ async function crumbMenu(anchor, dir, here) {
 function paintTabActions() {
   const t = I.active;
   const acts = [];
-  if (t?.ed && runnerFor(t.rel)) acts.push(btn('ide-run-btn', 'run', `Run ${t.title} on ${runHost() || 'a host'} (${keyLabel(keyFor('sulfur.run.file'))})`, () => run('sulfur.run.file')));
+  const context = activeRunContext();
+  if (context?.project || context?.pending || (t?.ed && runnerFor(t.rel))) {
+    const title = context?.pending ? 'Finding the active project target…' : context?.project ? `Run ${context.item?.label || baseName(projDir())} (${context.cfg?.configuration || 'select configuration'}) on ${context.cfg?.host || runHost()}` : `Run ${t.title} on ${runHost() || 'a host'}`;
+    const go = btn('ide-run-btn', 'run', `${title} (F5)`, () => run('sulfur.run.context'));
+    go.disabled = !!context?.pending;
+    acts.push(go);
+  }
   if (t?.ed?.preview) acts.push(btn(t.ed.previewing() ? 'on' : '', 'preview', `${t.ed.previewing() ? 'Show Source' : 'Open Preview'} (${keyLabel(keyFor('markdown.showPreview'))})`, () => run('markdown.showPreview')));
   if (t) acts.push(btn('', 'more', 'More Actions…', (e) => menu(e.currentTarget, [
     cmdItem('workbench.action.closeAllEditors', 'Close All'),
@@ -1797,11 +2175,11 @@ function paintWatermark() {
   const wm = I.watermark;
   if (wm.childElementCount) return;
   const art = el('div', 'ide-wm-art');
-  art.append(icon('spark'));
+  art.append(icon('sulfur'));
   const list = el('dl', 'ide-wm-keys');
   for (const [label, cmd] of [['Show All Commands', 'workbench.action.showCommands'], ['Go to File', 'workbench.action.quickOpen'],
     ['Find in Files', 'workbench.action.findInFiles'], ['Toggle Terminal', 'workbench.action.terminal.toggleTerminal'],
-    ['Run Active File', 'sulfur.run.file'], ['Open Chat', 'workbench.action.chat.open'], ['Open Folder', 'workbench.action.files.openFolder']]) {
+    ['Run Active Target', 'sulfur.run.context'], ['Open Chat', 'workbench.action.chat.open'], ['Open Folder', 'workbench.action.files.openFolder']]) {
     const k = keyFor(cmd);
     list.append(el('dt', '', label), el('dd'));
     list.lastChild.append(...(k ? k.split(' ').map((part) => el('kbd', '', keyLabel(part))) : []));
@@ -2205,9 +2583,9 @@ function registerCommands() {
   C('explorer.newFolder', 'New Folder…', () => startEdit('folder'), { category: 'File' });
   C('workbench.action.files.openFolder', 'Open Folder…', () => pickFolder(), { key: 'ctrl+k ctrl+o', category: 'File' });
   C('workbench.action.files.openFile', 'Open File…', async () => {
-    const at = await nativeOpen(false, 'Open File');
-    if (at) openFile(at.rel, { preview: false, loc: at.loc });
-  }, { key: 'ctrl+o', when: () => nativeFiles(), category: 'File' });
+    const at = await fileDialog({ files: true });
+    if (at && I) openFile(at.rel, { preview: false, loc: at.loc });
+  }, { key: 'ctrl+o', category: 'File' });
   C('workbench.action.openRecent', 'Open Recent…', () => pick(recentItems().map((x) => ({ ...x, value: x })), { placeholder: 'Select to open' }).then((x) => x?.run()), { key: 'ctrl+r', category: 'File' });
   C('workbench.action.files.save', 'Save', () => I.active?.ed && saveTab(I.active), { key: 'ctrl+s', when: hasEd, category: 'File', shell: true });
   C('workbench.action.files.saveAll', 'Save All', () => saveAll(), { key: 'ctrl+k s', category: 'File' });
@@ -2254,13 +2632,19 @@ function registerCommands() {
   C('workbench.action.output.toggleOutput', 'Toggle Output', () => (I.st.panel.view === 'output' && !I.st.panel.hidden ? showPanel('output', false) : showPanel('output', true, true)), { key: 'ctrl+shift+u', category: 'View', shell: true });
   C('workbench.action.showOutput', 'Show Output', () => showPanel('output', true, true), { category: 'Output', hidden: true });
   // the editor
-  C('actions.find', 'Find', () => openFind(false), { key: 'ctrl+f', when: hasEd, category: 'Editor' });
+  // Ctrl+F with text selected formats it; with nothing selected it finds
+  C('actions.find', 'Find', () => (I.active?.ed?.info().sel ? formatActive() : openFind(false)), { key: 'ctrl+f', when: hasEd, category: 'Editor' });
+  C('editor.action.formatSelection', 'Format Selection', () => formatActive(), { key: 'ctrl+k ctrl+f', when: hasEd, category: 'Editor' });
+  C('editor.action.formatDocument', 'Format Document', () => formatActive(true), { key: 'shift+alt+f', when: hasEd, category: 'Editor' });
   C('editor.action.startFindReplaceAction', 'Replace', () => openFind(true), { key: 'ctrl+h', when: hasEd, category: 'Editor' });
+  C('editor.action.revealDefinition', 'Go to Definition', () => goToDefinition().catch((err) => notify('error', err.message)), { key: 'f12', when: hasEd, category: 'Go' });
+  C('editor.action.referenceSearch.trigger', 'Find All References', () => findReferences().catch((err) => notify('error', err.message)), { key: 'shift+f12', when: hasEd, category: 'Go' });
+  C('editor.action.rename', 'Rename Symbol…', () => renameSymbol().catch((err) => notify('error', err.message)), { key: 'ctrl+r ctrl+r', when: hasEd, category: 'Editor' });
   C('editor.action.nextMatchFindAction', 'Find Next', () => findStep(1), { key: 'f3', when: hasEd, category: 'Editor' });
   C('editor.action.previousMatchFindAction', 'Find Previous', () => findStep(-1), { key: 'shift+f3', when: hasEd, category: 'Editor' });
   C('closeFindWidget', 'Close Find Widget', () => closeFind(true), { key: 'escape', when: () => !!I.find?.open && I.active?.view.contains(document.activeElement), hidden: true });
-  C('undo', 'Undo', () => { I.active?.ed?.focus(); document.execCommand('undo'); }, { when: hasEd, category: 'Edit', hidden: true });
-  C('redo', 'Redo', () => { I.active?.ed?.focus(); document.execCommand('redo'); }, { when: hasEd, category: 'Edit', hidden: true });
+  C('undo', 'Undo', () => { I.active?.ed?.focus(); I.active?.ed?.undo(); }, { when: hasEd, category: 'Edit', hidden: true });
+  C('redo', 'Redo', () => { I.active?.ed?.focus(); I.active?.ed?.redo(); }, { when: hasEd, category: 'Edit', hidden: true });
   C('editor.action.selectAll', 'Select All', () => { const ed = I.active?.ed; if (ed) ed.select(0, ed.text().length); }, { when: hasEd, category: 'Selection', hidden: true });
   C('editor.action.commentLine', 'Toggle Line Comment', () => {
     const ta = I.active?.view.querySelector('.code-ta');
@@ -2290,6 +2674,9 @@ function registerCommands() {
   for (const id of ['editor.action.duplicateSelection', 'editor.action.sortLinesAscending', 'editor.action.sortLinesDescending', 'editor.action.transformToUppercase',
     'editor.action.transformToLowercase', 'editor.action.transformToTitlecase', 'editor.action.joinLines', 'editor.action.trimTrailingWhitespace']) I.commands.get(id).when = hasEd;
   C('editor.action.marker.next', 'Go to Next Problem (Error, Warning, Info)', () => nextProblem(1), { key: 'f8', when: hasEd, category: 'Go' });
+  C('editor.action.triggerSuggest', 'Trigger IntelliSense', () => languages.suggest(I.active), { key: 'ctrl+space', when: hasEd, category: 'Editor' });
+  C('editor.action.inlineSuggest.trigger', 'Trigger AI Inline Suggestion', () => { I.active.ed.focus(); return inlineCompletions.trigger(I.active, true); }, { key: 'alt+\\', when: hasEd, category: 'Editor' });
+  C('editor.action.inlineSuggest.toggle', 'Toggle AI Inline Suggestions', () => setSetting('editor.inlineSuggest.enabled', !setting('editor.inlineSuggest.enabled')), { category: 'Editor' });
   C('editor.action.marker.prev', 'Go to Previous Problem (Error, Warning, Info)', () => nextProblem(-1), { key: 'shift+f8', when: hasEd, category: 'Go' });
   C('markdown.showPreview', 'Markdown: Toggle Preview', () => { I.active?.ed?.preview?.(); paintTabActions(); }, { key: 'ctrl+shift+v', when: () => !!I.active?.ed?.preview, category: 'Markdown' });
   const zoom = (d) => { setSetting('editor.fontSize', d ? Math.max(8, Math.min(40, setting('editor.fontSize') + d)) : SETTINGS['editor.fontSize'].def); };
@@ -2306,28 +2693,28 @@ function registerCommands() {
   C('workbench.action.terminal.focusNext', 'Focus Next Terminal', () => stepTerm(1), { category: 'Terminal', shell: true });
   C('workbench.action.terminal.focusPrevious', 'Focus Previous Terminal', () => stepTerm(-1), { category: 'Terminal', shell: true });
   C('workbench.action.terminal.runSelectedText', 'Run Selected Text In Active Terminal', () => runSelection(), { when: hasEd, category: 'Terminal' });
-  C('sulfur.run.file', 'Run Active File', () => (I.active?.rel ? runFile(I.active.rel) : notify('info', 'Open a file to run it.')), { key: 'f5', category: 'Run', shell: true });
+  C('sulfur.run.context', 'Run Active Target', () => runActiveContext().catch((err) => notify('error', err.message)), { key: 'f5', category: 'Run', shell: true });
+  C('sulfur.run.file', 'Run Active File', () => (I.active?.rel ? runFile(I.active.rel) : notify('info', 'Open a file to run it.')), { category: 'Run', shell: true });
   // Visual Studio's Ctrl+F5: the project built and its startup item run
-  C('sulfur.run.start', 'Start Without Debugging', () => startProject(), { key: 'ctrl+f5', category: 'Run', shell: true });
-  C('sulfur.run.startup', 'Select Startup Item…', () => startProject(true), { category: 'Run' });
+  C('sulfur.run.start', 'Start Without Debugging', () => startProject().catch((err) => notify('error', err.message)), { key: 'ctrl+f5', category: 'Run', shell: true });
+  C('sulfur.run.startup', 'Select Startup Item…', () => startProject(true).catch((err) => notify('error', err.message)), { category: 'Run' });
   C('sulfur.run.fileOn', 'Run Active File On…', () => I.active?.rel && runFileOn(I.active.rel), { when: hasEd, category: 'Run' });
   // building, as VS Code's tasks are but asked for in a list, never a JSON file first
   C('sulfur.build', 'Build', () => buildProject(), { key: 'ctrl+b', alt: ['ctrl+shift+b'], category: 'Build', shell: true });
   C('sulfur.build.select', 'Select Toolchain…', () => pickToolchain(null, true), { category: 'Build' });
   C('sulfur.task.run', 'Run Task…', () => chooseTask(), { category: 'Build' });
   C('sulfur.task.add', 'Add Task…', () => addTask(), { category: 'Build' });
-  C('sulfur.build.configuration', 'Select Configuration (Debug/Release)…', () => toggleConfiguration(), { category: 'Build' });
+  C('sulfur.build.configuration', 'Select Configuration…', () => toggleConfiguration(), { category: 'Build' });
   C('sulfur.build.editJson', 'Open Build Settings (JSON)', () => openBuildJson(), { category: 'Build' });
   C('sulfur.toolchains.refresh', 'Look at Every Machine’s Toolchains Again', () => { I.tc = new Map(); paintRunView(true); }, { category: 'Build' });
   // projects: anywhere on the mesh, carried between machines
   C('sulfur.project.new', 'New Project…', () => newProject(), { key: 'ctrl+alt+shift+n', category: 'File' });
   C('sulfur.project.transfer', 'Copy or Move Project to Another Machine…', () => transferProject(), { category: 'File' });
-  C('sulfur.folder.add', 'Add a Folder of a Machine for Projects…', () => addFolderDialog(), { when: () => !!acct.admin && !offline(), category: 'File' });
+  C('sulfur.folder.add', 'Add a Folder of a Machine for Projects…', () => addFolderDialog(), { when: () => !!acct.admin && !localDesktop(), category: 'File' });
   // the desktop app's start pane again: offline, or another mesh
   C('sulfur.mesh.connect', 'Connect to a Phosphorus Mesh…', () => meshConnect(), { when: () => !!standalone?.app, category: 'Mesh' });
   C('sulfur.mesh.other', 'Connect to Another Phosphorus Mesh…', () => meshConnect(true), { when: () => !!standalone?.app, category: 'Mesh' });
-  C('sulfur.mesh.open', 'Open the Mesh’s Machines', () => meshOpen(), { when: () => !!standalone?.app && offline() && !!standalone.meshUser, category: 'Mesh' });
-  C('sulfur.mesh.offline', 'Work Offline', () => meshOffline(), { when: () => !!standalone?.app && !offline(), category: 'Mesh' });
+  C('sulfur.mesh.open', 'Open the Mesh’s Machines', () => meshOpen(), { when: () => !!standalone?.app && localDesktop() && !!standalone.meshUser, category: 'Mesh' });
   C('sulfur.mesh.signOut', 'Sign Out of the Mesh', () => meshSignOut(), { when: () => !!standalone?.app && !!standalone.meshUser, category: 'Mesh' });
   C('workbench.action.selectTheme', 'Color Theme', () => pickTheme(), { key: 'ctrl+k ctrl+t', category: 'Preferences' });
   C('workbench.action.toggleLightDarkThemes', 'Toggle between Light and Dark', () => setSetting('window.appearance', document.documentElement.dataset.theme === 'light' ? 'dark' : 'light'), { when: () => !!standalone, category: 'Preferences' });
@@ -2339,8 +2726,8 @@ function registerCommands() {
   C('workbench.action.openGlobalKeybindingsFile', 'Open Keyboard Shortcuts (JSON)', () => openUserFile(KEYS_PATH(), '// your keys, each {"key": "ctrl+alt+r", "command": "ide.run.file"}; a "-command" removes a default\n[\n]\n'), { category: 'Preferences' });
   C('workbench.action.openWalkthrough', 'Welcome', () => openWelcome(), { category: 'Help' });
   C('sulfur.update', 'Check for Updates…', () => checkUpdate(true), { when: () => !!standalone?.app, category: 'Sulfur' });
-  C('sulfur.about', 'About', () => ask({ title: 'Sulfur', detail: offline()
-    ? `Sulfur ${standalone.info?.version || ''}, offline on ${selfHost}.\nUser: ${acct.user}\nHome: ${hostPath(selfHost, 'home', acct.user)}`
+  C('sulfur.about', 'About', () => ask({ title: 'Sulfur', detail: localDesktop()
+    ? `Sulfur ${standalone.info?.version || ''} on ${selfHost}.\nUser: ${acct.user}\nHome: ${hostPath(selfHost, 'home', acct.user)}`
     : `A VS Code-shaped workbench over your phosphorus home.\nUser: ${acct.user}\nServed by: ${selfHost}\nHosts online: ${homeOnline().join(', ')}\nTerminals on: ${dkLiveHosts().join(', ') || 'none logged into'}`, buttons: [{ label: 'OK', primary: true, value: 'ok' }] }), { category: 'Help' });
   // extensions
   C('sulfur.extensions.guide', 'Open the Extension Guide', () => openGuide(), { category: 'Extensions' });
@@ -2624,70 +3011,300 @@ function closeQuick(replacing = false) {
   if (!replacing && q.restore?.isConnected && I.root.contains(q.restore)) q.restore.focus({ preventScroll: true });
 }
 
-// a folder of the user's own or shared space, walked down to in the quick input
-// every place a project can be: the home, then each logged-in host's shares, this machine first
-function places() {
+// --- the folder and file dialog, as Phosphorus's Files: places on the side (this computer's
+// home and drives, the mesh's home and each of its machines), a folder's contents beside
+// them, its path typed or stepped up; the same whether offline or on a mesh
+
+// every place the dialog offers, grouped: this computer, then the mesh's machines
+function dialogPlaces() {
+  const groups = [];
+  const local = standalone?.localHost || '';
+  const localUser = standalone?.info?.user || acct.user;
+  const meshUser = standalone?.meshUser || acct.user;
   const live = new Set(dkLiveHosts());
-  const out = [{ loc: HOME_LOC, label: 'Home', description: offline() ? hostPath(selfHost, 'home', acct.user) : `synced across the mesh · ${acct.user}/` }];
-  const hosts = [...live].sort((a, b) => (b === selfHost) - (a === selfHost) || a.localeCompare(b));
-  for (const h of hosts) {
-    for (const sh of hostsInfo[h.toLowerCase()]?.files?.shares || []) {
-      if (sh.home) continue;
-      out.push({ loc: { host: h, share: String(sh.id) }, label: `${h}${h === selfHost ? ' (this machine)' : ''}`, description: sh.label, perms: sh.perms });
-    }
+  const sharesOf = (h) => hostsInfo[String(h).toLowerCase()]?.files?.shares || [];
+  const drives = (h) => sharesOf(h).filter((sh) => !sh.home).map((sh) => ({ loc: { host: h, share: String(sh.id) }, dir: '', label: sh.label, ic: 'drive', perms: sh.perms || 'rwd' }));
+  const ownHome = (h, user, label = 'Home') => {
+    const sh = sharesOf(h).find((x) => x.home);
+    return sh ? [{ loc: { host: h, share: String(sh.id) }, dir: user, label, ic: 'home', detail: hostPath(h, String(sh.id), user) }] : [];
+  };
+  if (localDesktop()) {
+    groups.push({ head: `This Computer · ${local}`, items: [{ loc: HOME_LOC, dir: acct.user, label: 'Home', ic: 'home', detail: hostPath(selfHost, 'home', acct.user) }, ...drives(selfHost)] });
+  } else if (local && live.has(local) && !homeOnline().includes(local)) {
+    groups.push({ head: `This Computer · ${local}`, items: [...ownHome(local, localUser), ...drives(local)] });
   }
-  return out;
+  const mesh = localDesktop() ? (meshLinked() ? meshName() : '') : meshName() || 'Mesh';
+  if (mesh) {
+    const items = localDesktop() ? [] : [{ loc: HOME_LOC, dir: acct.user, label: 'Home', ic: 'home', detail: 'synced across the mesh' }];
+    const hosts = [...new Set([...(localDesktop() ? otherHosts() : homeOnline()), ...live])].filter((h) => h && h !== local).sort();
+    for (const h of hosts) {
+      if (!live.has(h)) { items.push({ host: h, label: h, ic: 'host', off: true, detail: `log in ${loginWhere()}` }); continue; }
+      items.push({ host: h, label: h, ic: 'host', head: true });
+      // a machine's own home where the mesh's isn't merged over it here
+      if (localDesktop()) items.push(...ownHome(h, meshUser).map((x) => ({ ...x, sub: true })));
+      items.push(...drives(h).map((x) => ({ ...x, sub: true })));
+    }
+    groups.push({ head: mesh, items });
+    if (acct.admin && !localDesktop()) items.push({ label: 'Add a Folder of a Machine…', ic: 'plus', act: () => addFolderDialog(), detail: 'publish one, like D:\\Projects or ~/src' });
+  } else if (standalone) {
+    groups.push({ head: 'Phosphorus Mesh', items: [{ label: 'Log into your mesh…', ic: 'remote', run: () => run('sulfur.mesh.connect'), detail: 'its machines here too' }] });
+  }
+  return groups;
 }
 
-// a folder of the home or of a host's share, walked down to in the quick input
+// a folder (or with files, a file) picked: { loc, rel }, null if cancelled
+function fileDialog(o = {}) {
+  return new Promise((resolve) => {
+    if (!I) { resolve(null); return; }
+    const files = !!o.files;
+    const back = el('div', 'ide-dialog-back ide-fd-back');
+    const box = Object.assign(el('div', 'ide-dialog ide-fd'), { tabIndex: -1 });
+    box.setAttribute('role', 'dialog');
+    box.setAttribute('aria-modal', 'true');
+    const restore = document.activeElement;
+    const btn = (ic, title, fn) => { const b = Object.assign(el('button', 'ide-fd-tool'), { type: 'button', title }); b.append(icon(ic)); b.addEventListener('click', fn); return b; };
+    const title = el('div', 'ide-fd-title', o.title || (files ? 'Open File' : 'Open Folder'));
+    const st = { loc: null, dir: '', entries: [], sel: '', back: [], fwd: [], err: '', busy: false, filter: '' };
+    const backB = btn('left', 'Back', () => hist(-1));
+    const fwdB = btn('right', 'Forward', () => hist(1));
+    const upB = btn('up', 'Up a folder', () => up());
+    const refB = btn('refresh', 'Refresh', () => load());
+    const crumbs = el('div', 'ide-fd-crumbs');
+    const find = Object.assign(el('input', 'ide-input ide-fd-find'), { placeholder: 'Filter', spellcheck: false, autocomplete: 'off' });
+    const bar = el('div', 'ide-fd-bar');
+    bar.append(backB, fwdB, upB, refB, crumbs, find);
+    const side = el('nav', 'ide-fd-side');
+    const list = Object.assign(el('div', 'ide-fd-list'), { tabIndex: 0 });
+    list.setAttribute('role', 'listbox');
+    const split = el('div', 'ide-fd-split');
+    split.append(side, list);
+    const path = Object.assign(el('input', 'ide-input ide-fd-path'), { spellcheck: false, autocomplete: 'off', placeholder: files ? 'A file’s whole path, or pick one' : 'A folder’s whole path, or pick one' });
+    const note = el('div', 'ide-fd-note');
+    const foot = el('div', 'ide-fd-foot');
+    const sys = standalone?.app && standalone.nativePick && !o.noSystem ? Object.assign(el('button', 'ide-button secondary ide-fd-sys', 'System Dialog…'), { type: 'button', title: 'This computer’s own dialog' }) : null;
+    const ok = Object.assign(el('button', 'ide-button', o.okLabel || (files ? 'Open' : 'Open Folder')), { type: 'button' });
+    const cancel = Object.assign(el('button', 'ide-button secondary', 'Cancel'), { type: 'button' });
+    const fbtns = el('div', 'ide-fd-btns');
+    fbtns.append(...(sys ? [sys] : []), el('span', 'ide-fd-gap'), cancel, ok);
+    foot.append(path, note, fbtns);
+    box.append(title, bar, split, foot);
+    back.append(box);
+    I.layer.append(back);
+    I.dialog = back;
+
+    const done = (v) => {
+      back.remove();
+      if (I) I.dialog = null;
+      if (I?.fdPaint === paintSide) I.fdPaint = null;
+      restore?.focus?.({ preventScroll: true });
+      resolve(v);
+    };
+    const where = () => (st.loc ? (isHomeLoc(st.loc) ? hostPath(localDesktop() ? selfHost : homePick(st.dir), 'home', st.dir) || st.dir : hostPath(st.loc.host, st.loc.share, st.dir)) : '');
+    const hostOf = (l) => (isHomeLoc(l) ? (localDesktop() ? selfHost : homePick(st.dir)) : l.host);
+    const go = (loc, dir, how = '') => {
+      if (how !== 'hist' && st.loc) { st.back.push({ loc: st.loc, dir: st.dir }); st.fwd = []; }
+      const from = st.loc && sameLoc(st.loc, loc) ? st.dir : null;
+      pathDirty = false;
+      st.loc = loc;
+      st.dir = dir;
+      st.sel = from !== null && filesParent(from) === dir ? baseName(from) : '';
+      st.filter = '';
+      find.value = '';
+      return load();
+    };
+    const hist = (k) => {
+      const from = k < 0 ? st.back : st.fwd;
+      const to = k < 0 ? st.fwd : st.back;
+      const at = from.pop();
+      if (!at) return;
+      to.push({ loc: st.loc, dir: st.dir });
+      go(at.loc, at.dir, 'hist');
+    };
+    const up = () => { if (st.loc && st.dir) go(st.loc, st.dir.includes('/') ? filesParent(st.dir) : ''); };
+    async function load() {
+      paintSide();
+      if (!st.loc) { paint(); return; }
+      const want = `${st.loc.host}\n${st.loc.share}\n${st.dir}`;
+      st.want = want;
+      st.busy = true;
+      st.err = '';
+      paint();
+      let entries = [];
+      try {
+        // the merged home's top, the user's own folder and what's shared with them
+        if (isHomeLoc(st.loc) && !st.dir) entries = [{ name: acct.user, dir: true }, ...(localDesktop() ? [] : [{ name: 'shared', dir: true }])];
+        else entries = (await filesCall(apiLoc(st.loc), 'list', undefined, { path: st.dir })).entries || [];
+      } catch (err) { if (st.want === want) st.err = err.message; }
+      if (!I || st.want !== want) return;
+      st.entries = sortEntries(entries);
+      st.busy = false;
+      paint();
+    }
+    function paintSide() {
+      const out = [];
+      for (const g of dialogPlaces()) {
+        out.push(el('div', 'ide-fd-head', g.head));
+        for (const x of g.items) {
+          const row = Object.assign(el(x.loc || x.run || x.act ? 'button' : 'div', `ide-fd-place${x.sub ? ' sub' : ''}${x.off ? ' off' : ''}${x.head ? ' host' : ''}`), x.loc || x.run || x.act ? { type: 'button' } : {});
+          row.append(icon(x.ic || 'folder'), el('span', 'ide-fd-place-name', x.label));
+          row.title = x.detail ? `${x.label} · ${x.detail}` : x.label;
+          if (x.loc && st.loc && sameLoc(x.loc, st.loc) && (isHomeLoc(x.loc) ? under(st.dir, x.dir) || !st.dir : true)) row.classList.add('here');
+          if (x.loc) row.addEventListener('click', () => go(x.loc, x.dir || ''));
+          else if (x.run) row.addEventListener('click', () => { done(null); x.run(); });
+          else if (x.act) row.addEventListener('click', async () => { const got = await x.act(); if (got && I) go(got, ''); });
+          out.push(row);
+        }
+      }
+      side.replaceChildren(...out);
+    }
+    I.fdPaint = paintSide;
+    function paint() {
+      backB.disabled = !st.back.length;
+      fwdB.disabled = !st.fwd.length;
+      upB.disabled = !st.loc || !st.dir;
+      // the path bar: the place, then each folder, any one a jump
+      const bits = [];
+      if (st.loc) {
+        const host = hostOf(st.loc);
+        const top = Object.assign(el('button', 'ide-fd-crumb'), { type: 'button' });
+        top.append(icon(isHomeLoc(st.loc) ? 'home' : 'host'), el('span', '', isHomeLoc(st.loc) ? (localDesktop() ? 'Home' : 'Home (mesh)') : `${host}: ${shareOf(host, st.loc.share)?.label || st.loc.share}`));
+        top.addEventListener('click', () => go(st.loc, ''));
+        bits.push(top);
+        const segs = st.dir.split('/').filter(Boolean);
+        segs.forEach((s, i) => {
+          bits.push(icon('right', 'ide-fd-sep'));
+          const b = Object.assign(el('button', 'ide-fd-crumb', s), { type: 'button' });
+          b.addEventListener('click', () => go(st.loc, segs.slice(0, i + 1).join('/')));
+          bits.push(b);
+        });
+      }
+      crumbs.replaceChildren(...bits);
+      crumbs.scrollLeft = crumbs.scrollWidth;
+      const skip = excluded();
+      const f = st.filter.toLowerCase();
+      const shown = st.entries.filter((e) => (e.dir || files) && !skip(e.name) && (!f || e.name.toLowerCase().includes(f)));
+      const rows = shown.map((e) => {
+        const row = Object.assign(el('div', `ide-fd-row${e.dir ? ' dir' : ''}${e.name === st.sel ? ' sel' : ''}`), { title: e.name });
+        row.setAttribute('role', 'option');
+        row.dataset.name = e.name;
+        row.append(e.dir ? icon('folder') : fileIcon(e.name), el('span', 'ide-fd-name', e.name), el('span', 'ide-fd-meta', e.dir ? '' : humanSize(e.size)));
+        row.addEventListener('click', () => { pathDirty = false; st.sel = e.name; paintSel(); });
+        row.addEventListener('dblclick', () => enter(e));
+        return row;
+      });
+      if (!st.loc) rows.push(el('div', 'ide-fd-empty', 'Pick a place on the left.'));
+      else if (st.busy && !st.entries.length) rows.push(el('div', 'ide-fd-empty', 'Loading…'));
+      else if (st.err) rows.push(el('div', 'ide-fd-empty bad', st.err));
+      else if (!shown.length) rows.push(el('div', 'ide-fd-empty', f ? 'Nothing matches.' : files ? 'An empty folder.' : 'No folders in here.'));
+      list.replaceChildren(...rows);
+      list.querySelector('.sel')?.scrollIntoView({ block: 'nearest' });
+      paintSel();
+    }
+    function paintSel() {
+      for (const r of list.querySelectorAll('.ide-fd-row')) r.classList.toggle('sel', r.dataset.name === st.sel);
+      const e = st.entries.find((x) => x.name === st.sel);
+      const cur = where();
+      const sep = isWinPath(cur) ? '\\' : '/';
+      if (!pathDirty && document.activeElement !== path) path.value = e ? `${cur.replace(/[\\/]+$/, '')}${sep}${e.name}` : cur;
+      // the folder Open takes: the one picked, else the one shown
+      const target = pickTarget();
+      ok.disabled = !target;
+      note.textContent = !st.loc ? '' : target ? '' : o.skip?.(st.loc) ? 'Somewhere else than where it is now.' : files ? 'Pick a file.' : !st.dir ? 'Pick a folder in it, not the whole drive.' : '';
+    }
+    const pickTarget = () => {
+      if (!st.loc) return null;
+      const e = st.entries.find((x) => x.name === st.sel);
+      if (files) return e && !e.dir ? { loc: st.loc, rel: filesJoin(st.dir, e.name) } : null;
+      const rel = e?.dir ? filesJoin(st.dir, e.name) : st.dir;
+      if (o.skip?.(st.loc)) return null;
+      if (!rel) return o.allowRoot && !isHomeLoc(st.loc) ? { loc: st.loc, rel: '' } : null;
+      return inScope(rel, st.loc) ? { loc: isHomeLoc(st.loc) ? HOME_LOC : st.loc, rel } : null;
+    };
+    const enter = (e) => {
+      if (e.dir) go(st.loc, filesJoin(st.dir, e.name));
+      else if (files) done({ loc: isHomeLoc(st.loc) ? HOME_LOC : st.loc, rel: filesJoin(st.dir, e.name) });
+    };
+    // Accept a typed path on Open as well as Enter; never silently open the
+    // folder that happened to be selected before the path was typed.
+    let pathDirty = false;
+    const typed = async (open = false) => {
+      const host = hostOf(st.loc || HOME_LOC);
+      const user = host === standalone?.localHost ? standalone.info.user : standalone?.meshUser || acct.user;
+      const v = path.value.trim().replace(/^~(?=[\\/]|$)/, () => hostPath(host, 'home', user));
+      if (!v) return;
+      const hosts = [...new Set([st.loc ? hostOf(st.loc) : '', standalone?.localHost, selfHost].filter(Boolean))];
+      let at = null;
+      for (const h of hosts) { at = standalone?.locate?.(v, h); if (at) break; }
+      if (!at || o.skip?.(at.loc) || (at.rel && !inScope(at.rel, at.loc))) { note.textContent = `${v} isn't in a place Sulfur reaches.`; return; }
+      try {
+        await filesCall(apiLoc(at.loc), 'list', undefined, { path: at.rel });
+        if (open && !files && (at.rel || o.allowRoot)) { done(at); return; }
+        pathDirty = false;
+        go(at.loc, at.rel);
+      } catch {
+        if (!files) { note.textContent = `Couldn't open folder ${v}.`; return; }
+        const parent = filesParent(at.rel);
+        const name = baseName(at.rel);
+        try {
+          const b = await filesCall(apiLoc(at.loc), 'list', undefined, { path: parent });
+          if (!b.entries?.some((e) => e.name === name && !e.dir)) throw new Error('not a file');
+          if (open) { done(at); return; }
+          pathDirty = false;
+          await go(at.loc, parent);
+          st.sel = name;
+          paintSel();
+        } catch { note.textContent = `Couldn't open file ${v}.`; }
+      }
+    };
+    path.addEventListener('input', () => { pathDirty = true; ok.disabled = !path.value.trim(); });
+    ok.addEventListener('click', () => { if (pathDirty) { typed(true); return; } const t = pickTarget(); if (t) done(t); });
+    cancel.addEventListener('click', () => done(null));
+    sys?.addEventListener('click', async () => {
+      const got = await nativeOpen(!files, o.title || (files ? 'Open File' : 'Open Folder'));
+      if (got) done({ loc: got.loc, rel: got.rel });
+    });
+    find.addEventListener('input', () => { st.filter = find.value.trim(); paint(); });
+    path.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); typed(); } });
+    box.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Escape') { e.preventDefault(); done(null); return; }
+      if (e.target === path || e.target === find) { if (e.target === find && e.key === 'ArrowDown') { e.preventDefault(); list.focus(); } return; }
+      if (e.target.closest('button')) return;
+      const rows = [...list.querySelectorAll('.ide-fd-row')];
+      const i = rows.findIndex((r) => r.dataset.name === st.sel);
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        const n = rows[Math.max(0, Math.min(rows.length - 1, i + (e.key === 'ArrowDown' ? 1 : -1)))];
+        if (n) { st.sel = n.dataset.name; paintSel(); n.scrollIntoView({ block: 'nearest' }); }
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        const x = st.entries.find((y) => y.name === st.sel);
+        if (x && (x.dir || files)) enter(x); else { const t = pickTarget(); if (t) done(t); }
+      } else if (e.key === 'Backspace' || (e.altKey && e.key === 'ArrowUp')) { e.preventDefault(); up(); }
+      else if (e.altKey && e.key === 'ArrowLeft') { e.preventDefault(); hist(-1); }
+      else if (e.altKey && e.key === 'ArrowRight') { e.preventDefault(); hist(1); }
+      else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        // typed letters jump to the next name starting so
+        const k = e.key.toLowerCase();
+        const n = [...rows.slice(i + 1), ...rows.slice(0, i + 1)].find((r) => r.dataset.name.toLowerCase().startsWith(k));
+        if (n) { st.sel = n.dataset.name; paintSel(); n.scrollIntoView({ block: 'nearest' }); }
+      }
+    });
+    back.addEventListener('pointerdown', (e) => { if (e.target === back) { e.preventDefault(); box.classList.add('shake'); setTimeout(() => box.classList.remove('shake'), 300); } });
+    // where it opens: the folder asked for, else the workspace's, else the first place
+    const start = o.start || (I.st.root ? { loc: locOf(), dir: files && I.active?.rel && sameLoc(I.active.loc, locOf()) ? filesParent(I.active.rel) : I.st.root } : null);
+    const first = dialogPlaces().flatMap((g) => g.items).find((x) => x.loc);
+    if (start?.loc) go(start.loc, start.dir || '');
+    else if (first) go(first.loc, first.dir || '');
+    else load();
+    list.focus({ preventScroll: true });
+  });
+}
+
+// Open Folder: the dialog, offline or on a mesh alike
 async function pickFolder(start, l = locOf()) {
-  // offline in the app, the system's own folder dialog, as VS Code's
-  if (nativeFiles()) {
-    const at = await nativeOpen(true, 'Open Folder');
-    if (at) setRoot(at.rel, false, at.loc);
-    return;
-  }
-  let place = start === null ? null : l;
-  let dir = start ?? I.st.root;
-  for (;;) {
-    if (!place) {
-      const ps = places();
-      const items = [...ps.map((x, i) => ({ label: x.label, description: x.description, ic: isHomeLoc(x.loc) ? 'folder' : 'host', value: i }))];
-      if (acct.admin && !offline()) items.push({ label: 'Add a Folder of a Machine…', description: 'publish one, like D:\\Projects or ~/src', ic: 'plus', value: 'add' });
-      const v = await pick(items, { title: 'Open Folder: where', placeholder: 'The home, or a folder of one of your machines', matchDescription: true });
-      if (v === undefined || !I) return;
-      if (v === 'add') { const got = await addFolderDialog(); if (got) { place = got; dir = ''; } continue; }
-      place = ps[v].loc;
-      dir = isHomeLoc(place) ? '' : '';
-    }
-    let entries = [];
-    const top = !dir;
-    if (!top || !isHomeLoc(place)) {
-      try { entries = (await filesCall(apiLoc(place), 'list', undefined, { path: dir })).entries || []; } catch (err) { notify('error', err.message); place = null; continue; }
-    }
-    if (!I) return;
-    const skip = excluded();
-    const subs = top && isHomeLoc(place) ? [{ name: acct.user, dir: true }, ...(offline() ? [] : [{ name: 'shared', dir: true }])] : sortEntries(entries).filter((e) => e.dir && !skip(e.name));
-    const where = isHomeLoc(place) ? dir : `${place.host}: ${hostPath(place.host, place.share, dir)}`;
-    const items = [
-      ...(dir ? [{ label: 'Open this folder', description: where, ic: 'check', value: '.' }] : []),
-      { label: '..', description: top ? 'another place' : 'up a folder', ic: 'up', value: '..' },
-      ...subs.map((e) => ({ label: e.name, ic: 'folder', value: filesJoin(dir, e.name) })),
-    ];
-    // offline, a folder typed whole, as C:\src\app or ~/src
-    const typed = offline() ? (q) => (/^([A-Za-z]:[\\/]?|\/|~[\\/]?)/.test(q) ? { label: `Open ${q}`, description: 'the folder typed', ic: 'folder', value: { abs: q } } : null) : null;
-    const v = await pick(items, { title: `Open Folder: ${where || locLabel(place)}`, placeholder: offline() ? 'Type to filter, or a folder’s whole path; Enter to step into one' : 'Type to filter, Enter to step into a folder', typed });
-    if (v === undefined || !I) return;
-    if (v?.abs) {
-      const at = standalone.locate(v.abs.replace(/^~(?=[\\/]|$)/, hostPath(selfHost, 'home', acct.user)));
-      if (!at?.rel) { notify('warning', at ? `Pick a folder on ${v.abs}, not the whole drive.` : `${v.abs} isn't on a drive Sulfur can reach.`); continue; }
-      setRoot(at.rel, false, at.loc);
-      return;
-    }
-    if (v === '.') { setRoot(dir, false, place); return; }
-    if (v === '..') { if (top) place = null; else dir = dir.includes('/') ? filesParent(dir) : ''; continue; }
-    dir = v;
-  }
+  const at = await fileDialog({ title: 'Open Folder', start: start != null ? { loc: l, dir: start } : null });
+  if (at && I) setRoot(at.rel, false, at.loc);
 }
 
 function recentItems() {
@@ -2915,6 +3532,9 @@ async function checkUpdate(ask) {
   let r;
   try { r = await (await fetch('/api/sidecar/update', { cache: 'no-store' })).json(); } catch (err) { if (ask) notify('error', `Couldn’t check for updates: ${err.message}`); return; }
   if (!I) return;
+  // a newer one waiting: the title bar's button marked until it's taken
+  I.updBtn?.classList.toggle('ready', !!r.latest);
+  if (I.updBtn) I.updBtn.title = r.latest ? `Sulfur ${r.latest} is available: update and restart` : 'Check for Sulfur Updates';
   if (!r.latest) {
     if (ask) notify(r.error ? 'error' : 'info', r.error ? `Couldn’t check for updates: ${r.error}` : r.on ? `Sulfur ${r.version} is the latest.` : 'This build of Sulfur has no update feed.');
     return;
@@ -3097,7 +3717,11 @@ function paintProblems() {
   const at = (rel) => { if (!byFile.has(rel)) byFile.set(rel, []); return byFile.get(rel); };
   for (const t of I.tabs) {
     if (!t.info?.errors?.length || !sameLoc(t.loc, locOf())) continue;
-    for (const x of t.info.errors) at(t.rel).push({ sev: 'error', msg: x.what, src: 'syntax', line: x.line, col: x.col, go: () => { activate(t); t.ed.select(x.from, Math.max(x.to, x.from + 1)); } });
+    for (const x of t.info.errors.filter((e) => !e.source)) at(t.rel).push({ sev: diagnosticSeverity(x) === 1 ? 'error' : diagnosticSeverity(x) === 2 ? 'warning' : 'info', msg: x.what, src: 'syntax', line: x.line, col: x.col, go: () => { activate(t); t.ed.select(x.from, Math.max(x.to, x.from + 1)); } });
+  }
+  for (const x of languages.problems()) {
+    if (x.context.workspace !== wsKey()) continue;
+    at(x.path).push({ sev: diagnosticSeverity(x) === 1 ? 'error' : diagnosticSeverity(x) === 2 ? 'warning' : 'info', msg: x.message, src: x.code || x.source || 'language server', line: x.range.start.line + 1, col: x.range.start.character + 1, go: () => openFile(x.path, { host: x.context.host, loc: x.context.loc, preview: false, line: x.range.start.line + 1, col: x.range.start.character + 1 }) });
   }
   for (const x of I.buildProblems || []) {
     at(x.rel).push({ sev: x.sev, msg: x.msg, src: x.code || 'build', line: x.line, col: x.col, go: () => openFile(x.rel, { preview: false, line: x.line, col: x.col }) });
@@ -3209,7 +3833,7 @@ function pickHost(title) {
 }
 
 // o: host, cwd (a home path), run (typed once logged in), name, kind (shell or run), focus
-function newTerminal(o = {}) {
+async function newTerminal(o = {}) {
   const host = o.host || runHost();
   const tv = I.panelViews.get('terminal');
   if (!host) {
@@ -3219,7 +3843,8 @@ function newTerminal(o = {}) {
   }
   const creds = dk.creds.get(host);
   if (!creds) { notify('warning', `Not logged into ${host}.`); return null; }
-  ensureHomeOwned(host);
+  await ensureHomeOwned(host);
+  if (!I) return null;
   const cwd = o.cwd ?? I.st.root;
   const kind = o.kind || 'shell';
   // the folder as that host names it: the workspace's share, or that host's home
@@ -3313,7 +3938,7 @@ function toggleTerminal() {
 }
 
 // the selection, or the caret's line, typed into the terminal
-function runSelection() {
+async function runSelection() {
   const t = I.active;
   if (!t?.ed) return;
   const text = t.ed.text();
@@ -3321,7 +3946,7 @@ function runSelection() {
   if (s === e) [s, e] = lineSpan(text, s, s);
   const chunk = text.slice(s, e).replace(/\n+$/, '');
   if (!chunk) return;
-  const term = I.term && !I.term.ended ? I.term : newTerminal({ focus: false });
+  const term = I.term && !I.term.ended ? I.term : await newTerminal({ focus: false });
   if (!term) return;
   if (!term.h.send(`${chunk.replace(/\r?\n/g, '\r')}\r`)) notify('warning', 'The terminal is still connecting: try again in a moment.');
   showPanel('terminal', true);
@@ -3432,9 +4057,10 @@ function sbItem(cls, title, onClick) {
 function buildStatus() {
   const S = {};
   S.branch = sbItem('ide-sb-branch', 'Checkout to…', () => run('sulfur.git.branch'));
-  S.remote = sbItem('ide-sb-remote', standalone ? 'Offline or a Phosphorus mesh' : 'Select the host terminals and runs use', () => (standalone ? menu(S.remote, meshItems(true), { side: 'right', up: true }) : run('sulfur.selectHost')));
+  S.remote = sbItem('ide-sb-remote', standalone ? 'This computer and linked mesh machines' : 'Select the host terminals and runs use', () => (standalone ? menu(S.remote, meshItems(true), { side: 'right', up: true }) : run('sulfur.selectHost')));
   S.problems = sbItem('ide-sb-problems', 'No Problems', () => run('workbench.actions.view.problems'));
   S.build = sbItem('ide-sb-build', 'Build toolchain', () => run('sulfur.build.select'));
+  S.config = sbItem('ide-sb-build ide-sb-config', 'Build configuration', () => run('sulfur.build.configuration'));
   S.people = sbItem('ide-sb-people', '');
   S.agent = sbItem('ide-sb-agent', 'Chat', () => showAux(true, true));
   S.flash = el('span', 'ide-sb-flash');
@@ -3449,7 +4075,7 @@ function buildStatus() {
   S.state = el('span', 'ide-sb ide-sb-state');
   S.extR = el('span', 'ide-sb-ext');
   S.bell = sbItem('ide-sb-bell', 'Notifications', (e) => notesPopup(e.currentTarget));
-  I.statusL.append(S.remote, S.problems, S.build, S.people, S.agent, S.extL, S.flash, S.chord);
+  I.statusL.append(S.remote, S.problems, S.build, S.config, S.people, S.agent, S.extL, S.flash, S.chord);
   I.statusR.append(S.pos, S.indent, S.enc, S.eol, S.lang, S.host, S.state, S.extR, S.bell);
   I.sb = S;
 }
@@ -3476,9 +4102,12 @@ function paintStatusNow() {
   S.problems.title = pc.errors || pc.warnings ? `${pc.errors} errors, ${pc.warnings} warnings` : 'No Problems';
   const bc = buildCfg();
   S.build.hidden = !bc?.toolchain;
+  S.config.hidden = !bc?.toolchain;
   if (bc?.toolchain) {
-    S.build.replaceChildren(icon('tools'), el('span', '', `${bc.toolchain.label.split(' · ').pop()} · ${bc.configuration || 'Debug'} · ${bc.host}`));
-    S.build.title = `Ctrl+B builds ${baseName(I.st.root)} with ${bc.toolchain.label} on ${bc.host}. Click to pick another toolchain.`;
+    S.build.replaceChildren(icon('tools'), el('span', '', `${bc.toolchain.label} · ${bc.host}`));
+    S.build.title = `Ctrl+B builds ${baseName(projDir())} with ${bc.toolchain.label} on ${bc.host}. Click to pick another toolchain.`;
+    S.config.replaceChildren(el('span', '', bc.configuration || 'Debug'), icon('down'));
+    S.config.title = `Configuration ${bc.configuration || 'Debug'}: click to pick another`;
   }
   const t = I.active;
   const info = t?.info;
@@ -3534,7 +4163,7 @@ const SEEN_MAX = 24000;
 // the gateway's roles and whether each has a model answering
 async function refreshRoles() {
   try {
-    if (offline() && !meshLinked()) { I.roles = []; paintChat(); return; }
+    if (localDesktop() && !meshLinked()) { I.roles = []; paintChat(); return; }
     const r = await fetch(meshApi('/api/model/v1/models'), { cache: 'no-store' });
     const b = await r.json().catch(() => ({}));
     if (!I) return;
@@ -3661,7 +4290,7 @@ function buildAux() {
   });
   I.chat.grow = grow;
   // the code service's harnesses, the picker's only agents
-  if (!offline() || meshLinked()) loadCodeOpts();
+  if (!localDesktop() || meshLinked()) loadCodeOpts();
 }
 
 function showAux(on, focus = false) {
@@ -3702,7 +4331,7 @@ function paintChat(force = false) {
   // the banner: why an ask may not land, and for a harness missing on its host an optional install
   let why = '';
   let fix = null;
-  if (offline() && !meshLinked() && a?.kind !== 'ext') why = standalone.server ? `The chat's models and agents come from ${meshName()}: log in to it (the remote item, bottom left of the status bar) and they work on this computer's projects too.` : 'The chat\u2019s models and agents come from a Phosphorus mesh: connect to one (the remote item, bottom left of the status bar) and they work on this computer\u2019s projects too.';
+  if (localDesktop() && !meshLinked() && a?.kind !== 'ext') why = standalone.server ? `The chat's models and agents come from ${meshName()}: log in to it (the remote item, bottom left of the status bar) and they work on this computer's projects too.` : 'The chat\u2019s models and agents come from a Phosphorus mesh: connect to one (the remote item, bottom left of the status bar) and they work on this computer\u2019s projects too.';
   else if (!a) why = 'No model is set up on the mesh. The status app’s model card picks one.';
   else if (a.kind === 'mesh' && !a.up) why = `${a.label} has no model answering right now. The status app’s model card shows why.`;
   else if (agent && !a.S.id) {
@@ -3832,8 +4461,8 @@ function decorateCode(body) {
           const [s, e] = t.ed.selection();
           if (!t.ed.edit(s, e, code())) notify('warning', 'The file is read-only here.');
         }),
-        btn('', 'terminal', 'Run in Terminal', () => {
-          const term = I.term && !I.term.ended ? I.term : newTerminal({ focus: false });
+        btn('', 'terminal', 'Run in Terminal', async () => {
+          const term = I.term && !I.term.ended ? I.term : await newTerminal({ focus: false });
           if (term && !term.h.send(`${code().replace(/\n+$/, '').replace(/\r?\n/g, '\r')}\r`)) notify('warning', 'The terminal is still connecting.');
           showPanel('terminal', true);
         }),
@@ -3868,7 +4497,7 @@ function sendChat() {
   const a = currentAgent();
   const text = I.chat.ta.value.trim();
   if (!a || !text) return;
-  if (offline() && !meshLinked() && a.kind !== 'ext') { notify('info', `The chat's models and agents come from ${standalone.server ? meshName() : 'a Phosphorus mesh'}: ${standalone.server ? 'log in to it' : 'connect to one'} first.`, { actions: [{ label: standalone.server ? 'Log In…' : 'Connect…', run: () => run('sulfur.mesh.connect') }] }); return; }
+  if (localDesktop() && !meshLinked() && a.kind !== 'ext') { notify('info', `The chat's models and agents come from ${standalone.server ? meshName() : 'a Phosphorus mesh'}: ${standalone.server ? 'log in to it' : 'connect to one'} first.`, { actions: [{ label: standalone.server ? 'Log In…' : 'Connect…', run: () => run('sulfur.mesh.connect') }] }); return; }
   if (a.busy()) { setStatusFlash(`${a.label} is still answering`); return; }
   if (!a.ready()) { notify('warning', 'The mesh chat isn’t connected yet: try again in a moment.'); return; }
   if (a.send(text) === false) { notify('warning', `${a.label} didn’t take the message: the chat’s connection dropped.`); return; }
@@ -4106,7 +4735,8 @@ function harnessInstallBtn(host, h) {
   return b;
 }
 
-function pickHarness(anchor) {
+function pickHarness(anchor) { menu(anchor, harnessItems()); }
+function harnessItems() {
   const cur = chatHarness();
   const items = harnessList().map((h) => {
     const host = h.id !== 'chat' && I.codeOpts ? agentWhere(h.id).host : '';
@@ -4114,10 +4744,10 @@ function pickHarness(anchor) {
     const detail = st && st.installed === false ? `not installed on ${host}` : h.about;
     return { label: h.label, detail, ic: h.ic, checked: cur === h.id ? true : undefined, run: () => setHarness(h.id) };
   });
-  if (I.codeOpts?.error && (!offline() || meshLinked())) items.push({ label: 'No agents', detail: `the code service didn’t answer: ${I.codeOpts.error}`, ic: 'lock', disabled: true });
+  if (I.codeOpts?.error && (!localDesktop() || meshLinked())) items.push({ label: 'No agents', detail: `the code service didn’t answer: ${I.codeOpts.error}`, ic: 'lock', disabled: true });
   const ext = [...I.providers.values()];
   if (ext.length) items.push('-', ...ext.map((p) => ({ label: p.label, detail: p.ext, ic: 'ext', checked: cur === 'ext' && I.st.aux.agent === p.key ? true : undefined, run: () => setHarness('ext', p.key) })));
-  menu(anchor, items);
+  return items;
 }
 
 function setHarness(h, ext = '') {
@@ -4132,7 +4762,8 @@ function setHarness(h, ext = '') {
   harnessCheck();
 }
 
-function pickModel(anchor) {
+function pickModel(anchor) { menu(anchor, modelItems()); }
+function modelItems() {
   const cur = chatModel();
   const roles = I.roles?.length ? I.roles : [{ id: 'chimp' }, { id: 'orangutan' }];
   const items = roles.map((m) => ({ label: m.id, detail: `${ROLE_SUB[m.id] || 'mesh model'}${m.ready === false ? ' · offline' : ''}`, ic: 'spark', checked: cur === m.id ? true : undefined, run: () => setModel(m.id) }));
@@ -4140,8 +4771,8 @@ function pickModel(anchor) {
   items.push('-');
   if (anth.length) items.push(...anth.map((m) => ({ label: m.label, detail: 'Claude, in Claude Code', ic: 'spark', checked: cur === m.id ? true : undefined, run: () => setModel(m.id) })));
   else items.push({ label: 'Opus, Sonnet and Haiku', detail: 'save your Anthropic token in the Code app first', ic: 'lock', disabled: true });
-  menu(anchor, items);
   if (!I.codeOpts) loadCodeOpts();
+  return items;
 }
 
 function setModel(m) {
@@ -4161,9 +4792,10 @@ function setModel(m) {
   paintChat(true);
 }
 
-function pickPerm(anchor) {
+function pickPerm(anchor) { menu(anchor, permItems()); }
+function permItems() {
   const cur = I.st.aux.perm || 'acceptEdits';
-  menu(anchor, AGENT_PERMS.map(([id, label, about]) => ({ label, detail: about, checked: id === cur ? true : undefined, run: () => setPerm(id) })));
+  return AGENT_PERMS.map(([id, label, about]) => ({ label, detail: about, checked: id === cur ? true : undefined, run: () => setPerm(id) }));
 }
 function setPerm(v) {
   I.st.aux.perm = v;
@@ -4205,7 +4837,7 @@ async function agentAttach(S) {
     return;
   }
   if (!I) return;
-  S.where = { host: S.rec.host, dir: S.rec.dir, remote: offline() };
+  S.where = { host: S.rec.host, dir: S.rec.dir, remote: thisComputer(S.loc) };
   agentConnect(S);
   paintChat(true);
 }
@@ -4580,9 +5212,9 @@ function agentWhere(h) {
   if (o?.blocked) return { why: o.blocked };
   const logins = new Set(o?.hosts?.length ? o.hosts : dkLiveHosts());
   const n = harnessName(h);
-  // offline: the mesh's Code service, on one of its machines, the project copied there
-  if (offline()) {
-    if (!meshLinked()) return { why: `${n} runs on your mesh's machines: log into your mesh (the remote item, bottom left of the status bar) to use it on this computer's files.` };
+  // offline, or a project on this computer: the mesh's Code service, on one of its machines, the project copied there
+  if (thisComputer(locOf())) {
+    if (localDesktop() && !meshLinked()) return { why: `${n} runs on your mesh's machines: log into your mesh (the remote item, bottom left of the status bar) to use it on this computer's files.` };
     if (o && !o.error && !(o.hosts || []).length) return { why: `Save a login for one of ${meshName()}'s Linux or macOS machines in Phosphorus (open a terminal on it there) for ${n} to work on it.` };
     return { mesh: true };
   }
@@ -4947,7 +5579,6 @@ const SCM_LETTER = { M: 'M', A: 'A', D: 'D', R: 'R', C: 'C', U: 'U', T: 'M', '?'
 
 // where git runs: the project's machine and its folder there
 function gitWhere() {
-  if (offline()) return { host: selfHost, dir: hostPath(selfHost, isHomeLoc() ? 'home' : locOf().share, I.st.root) };
   const host = isHomeLoc() ? runHost() : locOf().host;
   if (!host) return null;
   return { host, dir: hostPath(host, isHomeLoc() ? 'home' : locOf().share, I.st.root) };
@@ -4955,7 +5586,7 @@ function gitWhere() {
 
 // the mesh's Forgejo as you: its reply, and its domain and your name there kept
 async function forgejo(method, path, body) {
-  if (offline() && !meshLinked()) throw new Error(standalone.server ? `log in to ${meshName()} for its Forgejo` : 'connect to a Phosphorus mesh for its Forgejo');
+  if (localDesktop() && !meshLinked()) throw new Error(standalone.server ? `log in to ${meshName()} for its Forgejo` : 'connect to a Phosphorus mesh for its Forgejo');
   const r = await fetch(meshApi('/api/sulfur/forgejo'), jsonPost({ method, path, body }));
   const b = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(b.error || `status ${r.status}`);
@@ -4967,7 +5598,7 @@ async function forgejo(method, path, body) {
 // your Forgejo login for git offline, from the mesh's vault, for its own host only
 async function forgejoCreds() {
   const l = standalone?.meshVault?.pages?.git;
-  if (!offline() || !meshLinked() || !l?.user) return null;
+  if (!localDesktop() || !meshLinked() || !l?.user) return null;
   if (!I.forgejo?.host) await forgejo('GET', '/user').catch(() => null);
   return I.forgejo?.host ? { host: I.forgejo.host, user: l.user, pass: l.pass } : null;
 }
@@ -4978,7 +5609,7 @@ async function git(args, o = {}) {
   if (!w) throw new Error(`no machine to run git on: log into one ${loginWhere()}`);
   const body = { host: w.host, dir: o.dir || w.dir, args };
   if (['clone', 'push', 'pull', 'fetch'].includes(args[0])) body.creds = await forgejoCreds().catch(() => null);
-  const r = await fetch('/api/sulfur/git', jsonPost(body));
+  const r = await fetch(hostUrl(w.host, '/api/sulfur/git'), jsonPost(body));
   const b = await r.json().catch(() => ({}));
   if (r.status === 404) throw new Error(`${w.host}'s Phosphorus is older than this Sulfur: update the mesh for Source Control there`);
   if (!r.ok) throw Object.assign(new Error(b.error || `status ${r.status}`), b);
@@ -5435,7 +6066,7 @@ async function forgejoPRs() {
 async function gitClone() {
   let url = '';
   const items = [];
-  if (!offline() || meshLinked()) {
+  if (!localDesktop() || meshLinked()) {
     try {
       const found = await forgejo('GET', '/repos/search?limit=50&sort=updated&order=desc');
       for (const x of found?.data || []) items.push({ label: x.full_name, description: x.description || '', detail: x.private ? 'private' : '', ic: 'branch', value: x.clone_url, sep: items.length ? '' : `${I.forgejo.host}` });
@@ -5453,7 +6084,7 @@ async function gitClone() {
   if (!where || !I) return;
   const name = await inputBox({ title: 'Its folder’s name', value: url.split('/').pop().replace(/\.git$/, ''), validate: projectNameWhy });
   if (!name || !I) return;
-  const host = isHomeLoc(where.loc) ? (offline() ? selfHost : runHost()) : where.loc.host;
+  const host = isHomeLoc(where.loc) ? (localDesktop() ? selfHost : runHost()) : where.loc.host;
   const parent = hostPath(host, isHomeLoc(where.loc) ? 'home' : where.loc.share, where.dir);
   if (!parent) { notify('error', `Can't tell where ${where.dir} is on ${host}.`); return; }
   const note = notify('info', `Cloning ${url}…`, { progress: true, sticky: true });
@@ -5621,6 +6252,7 @@ function paintRunView(fresh = false) {
   const def = runHost();
   const t = I.active;
   const runner = t?.rel ? runnerFor(t.rel) : '';
+  const context = activeRunContext();
   const body = v.body;
   const top = body.scrollTop;
   body.replaceChildren();
@@ -5631,7 +6263,8 @@ function paintRunView(fresh = false) {
   const bbox = el('div', 'ide-run-box');
   const bgo = Object.assign(el('button', 'ide-button ide-run-go'), { type: 'button', title: `Build (${ctrlB})` });
   const alone = I.projHas === false && !!singleBuilds(I.active?.rel);
-  bgo.append(icon('gear'), el('span', '', alone ? `Build ${baseName(I.active.rel)}` : bc?.toolchain ? `Build ${baseName(projDir())}` : 'Pick a Toolchain and Build'));
+  bgo.append(icon('gear'), el('span', '', context?.pending ? 'Finding Project…' : alone ? `Build ${baseName(I.active.rel)}` : bc?.toolchain ? `Build ${baseName(projDir())}` : 'Pick a Toolchain and Build'));
+  bgo.disabled = !!context?.pending;
   bgo.addEventListener('click', () => run('sulfur.build'));
   const bmore = Object.assign(el('button', 'ide-button secondary'), { type: 'button', title: 'Run Task…' });
   bmore.append(icon('more'));
@@ -5639,8 +6272,10 @@ function paintRunView(fresh = false) {
   const brow = el('div', 'ide-run-row');
   brow.append(bgo, bmore);
   bbox.append(brow);
-  if (alone) {
-    bbox.append(el('p', 'ide-run-note', `No build file in ${baseName(filesParent(I.active.rel))} or above it: ${ctrlB} builds ${baseName(I.active.rel)} alone with its machine's compiler, its program beside it.`));
+  if (context?.pending) {
+    bbox.append(el('p', 'ide-run-note', 'Finding the active file’s project.'));
+  } else if (alone) {
+    bbox.append(el('p', 'ide-run-note', `No build file in ${baseName(filesParent(I.active.rel))} or above it: ${ctrlB} builds ${baseName(I.active.rel)} alone with its machine's compiler, its output in a writable temporary folder shown in the terminal.`));
   } else if (bc?.toolchain) {
     const pickRow = el('div', 'ide-build-pick');
     const tcb = Object.assign(el('button', 'ide-link'), { type: 'button', title: 'Pick another toolchain or machine' });
@@ -5680,16 +6315,18 @@ function paintRunView(fresh = false) {
   }
   body.append(sectionTitle('Build'), bbox);
 
+  const projectRun = context?.project;
   const runBox = el('div', 'ide-run-box');
-  const go = Object.assign(el('button', 'ide-button secondary ide-run-go'), { type: 'button', disabled: !runner || !def });
-  go.append(icon('run'), el('span', '', runner ? `Run ${t.title}` : 'Run Active File'));
-  go.addEventListener('click', () => run('sulfur.run.file'));
-  const on = Object.assign(el('button', 'ide-button secondary'), { type: 'button', disabled: !runner, title: 'Run on another machine' });
+  const go = Object.assign(el('button', 'ide-button secondary ide-run-go'), { type: 'button', disabled: !!context?.pending || (!projectRun && (!runner || !def)) });
+  go.append(icon('run'), el('span', '', context?.pending ? 'Finding Run Target…' : projectRun ? `Run ${context.item?.label || baseName(projDir())}` : runner ? `Run ${t.title}` : 'Run Active File'));
+  go.addEventListener('click', () => run('sulfur.run.context'));
+  const on = Object.assign(el('button', 'ide-button secondary'), { type: 'button', disabled: !!context?.pending || (!projectRun && !runner), title: projectRun ? 'Select startup target' : 'Run on another machine' });
   on.append(icon('more'));
-  on.addEventListener('click', () => run('sulfur.run.fileOn'));
+  on.addEventListener('click', () => run(projectRun ? 'sulfur.run.startup' : 'sulfur.run.fileOn'));
   const row = el('div', 'ide-run-row');
   row.append(go, on);
-  runBox.append(row, el('p', 'ide-run-note', !t?.rel ? 'Open a file to run it.' : runner ? `on ${def || 'no machine'}: ${runner}` : `No runner for .${extOf(t.rel)} files: add one in your settings (sulfur.runners) or with an extension.`));
+  const detail = context?.pending ? 'Resolving the active file’s project and selected build configuration.' : context?.error ? context.error : projectRun ? `${context.cfg?.configuration || 'Select a toolchain'} · ${context.cfg?.host || def || ''}${context.item ? `\n${context.item.executable || context.item.command}` : `\n${context.targetMessage || 'Select a startup target for this project.'}`}` : !t?.rel ? 'Open a file to run it.' : runner ? `on ${def || 'no machine'}: ${runner}` : `No runner for .${extOf(t.rel)} files: add one in your settings (sulfur.runners) or with an extension.`;
+  runBox.append(row, el('p', 'ide-run-note', detail));
   body.append(sectionTitle('Run'), runBox);
 
   // every machine, and what it builds with as it tells your login
@@ -5850,26 +6487,9 @@ const projectNameWhy = (v) => {
 
 // a place for a project: the home's own folder, or a machine's published folder
 async function pickPlace(title, o = {}) {
-  if (nativeFiles()) {
-    const at = await nativeOpen(true, title);
-    return at ? { loc: at.loc, dir: at.rel, label: at.abs } : null;
-  }
-  for (;;) {
-    const ps = places().filter((x) => !o.skip?.(x.loc) && (isHomeLoc(x.loc) || String(x.perms || 'rwd').includes('w')));
-    const items = ps.map((x, i) => ({ label: x.label, description: isHomeLoc(x.loc) ? (offline() ? hostPath(selfHost, 'home', acct.user) : `${acct.user}/ · synced across the mesh`) : x.description, ic: isHomeLoc(x.loc) ? 'folder' : 'host', value: i }));
-    if (acct.admin && !offline()) items.push({ label: 'Add a Folder of a Machine…', description: 'publish one, like D:\\Projects or ~/src', ic: 'plus', value: 'add', sep: 'more' });
-    else if (ps.length < 2) items.push({ label: 'A machine\'s own folders are published by an admin', ic: 'info', value: 'none', sep: 'more' });
-    const v = await pick(items, { title, placeholder: o.placeholder || 'Where the project goes', matchDescription: true });
-    if (v === undefined || v === 'none' || !I) return null;
-    if (v === 'add') {
-      const got = await addFolderDialog();
-      if (!I) return null;
-      if (got) return { loc: got, dir: '', label: `${got.host}: ${shareOf(got.host, got.share)?.label || ''}` };
-      continue;
-    }
-    const x = ps[v];
-    return { loc: x.loc, dir: isHomeLoc(x.loc) ? acct.user : '', label: isHomeLoc(x.loc) ? 'your home' : `${x.loc.host}: ${x.description}` };
-  }
+  const at = await fileDialog({ title, okLabel: 'Select Folder', allowRoot: true, skip: o.skip });
+  if (!at || !I) return null;
+  return { loc: at.loc, dir: at.rel, label: isHomeLoc(at.loc) ? (localDesktop() ? hostPath(selfHost, 'home', at.rel) : 'your home') : `${at.loc.host}: ${hostPath(at.loc.host, at.loc.share, at.rel)}` };
 }
 
 // does a folder exist there: its listing answers
@@ -5879,7 +6499,7 @@ async function newProject() {
   const k = await pick(TEMPLATES.map((x, i) => ({ label: x.label, description: x.description, ic: x.ic, value: i })), { title: 'New Project', placeholder: 'What kind of project to start', matchDescription: true });
   if (k === undefined || !I) return;
   const tpl = TEMPLATES[k];
-  const where = await pickPlace(`New ${tpl.label} Project: where`, { placeholder: offline() ? 'Your home folder, or anywhere on this computer' : 'Where it lives: your home, synced across the mesh, or a folder on one machine' });
+  const where = await pickPlace(`New ${tpl.label} Project: where`, { placeholder: localDesktop() ? 'Your home folder, or anywhere on this computer' : 'Where it lives: your home, synced across the mesh, or a folder on one machine' });
   if (!where || !I) return;
   const typed = await inputBox({ title: `New ${tpl.label} Project: its name`, value: tpl.id === 'empty' ? 'project' : `hello-${tpl.id}`, prompt: `A new folder in ${where.label}.`, validate: projectNameWhy });
   if (typed === undefined || !I) return;
@@ -6033,12 +6653,15 @@ async function pickTheme() {
   const cur = paletteNow();
   const look = setting('window.appearance');
   // on its own, light and dark Sulfur's to pick; in the desktop, the desktop's
-  const appearance = standalone ? [['system', 'Follow the System', 'light or dark as the system is'], ['light', 'Light', ''], ['dark', 'Dark', '']]
+  const appearance = standalone ? [['system', 'Follow the System', 'light or dark as the system is'], ['light', 'Light', 'Phosphorus light'], ['dark', 'Dark', 'Phosphorus dark']]
     .map(([id, label, description], i) => ({ label, description, detail: id === look ? 'current' : '', value: `look:${id}`, sep: i === 0 ? 'Appearance' : '' })) : [];
   const items = [...appearance, ...PALETTES.map((t, i) => ({ label: t.label, description: t.about, detail: t.id === cur ? 'current' : '', value: t.id, sep: i === 0 ? 'Color Theme, phosphorus wide' : '' }))];
   const v = await pick(items, { title: 'Color Theme', placeholder: standalone ? 'Select Color Theme, or Light or Dark' : 'Select Color Theme (light or dark follows the desktop)' });
   if (!v || !I) return;
-  if (v.startsWith('look:')) setSetting('window.appearance', v.slice(5)); else setPalette(v);
+  if (v.startsWith('look:')) {
+    if (v !== 'look:system') setPalette('phosphorus');
+    setSetting('window.appearance', v.slice(5));
+  } else setPalette(v);
 }
 
 const sectionTitle = (t) => el('div', 'ide-sec-head static', t.toUpperCase());
@@ -6086,7 +6709,7 @@ async function loadUserFiles() {
   if (s !== null) {
     try {
       const v = parseJsonc(s);
-      if (v && typeof v === 'object' && !Array.isArray(v)) { I.settings = v; cacheSettings(); applySettings(); }
+      if (v && typeof v === 'object' && !Array.isArray(v)) { if (JSON.stringify(I.settings?.['sulfur.languageServerSettings']) !== JSON.stringify(v['sulfur.languageServerSettings'])) languages.reset(); I.settings = v; cacheSettings(); applySettings(); }
     } catch (err) { notify('warning', `settings.json: ${err.message}`, { actions: [{ label: 'Open Settings (JSON)', run: () => openFile(SETTINGS_PATH(), { preview: false }) }] }); }
   }
   if (k !== null) {
@@ -6116,11 +6739,14 @@ function applyAppearance() {
 
 function applySettings() {
   const r = I.root;
+  inlineCompletions.reset();
   applyAppearance();
   r.style.setProperty('--ide-code-font', `${setting('editor.fontSize')}px`);
-  // vs code Sulfur's own look; the others the desktop's tokens, medieval its own type too
-  const theme = paletteNow();
-  for (const t of PALETTES) I.w.node.classList.toggle(`ide-theme-${t.id}`, t.id === theme && t.id !== 'vscode');
+  // vs code Sulfur's own look, the others their own tokens; a custom theme wears the one it starts from
+  const look = lookNow();
+  for (const t of LOOK_IDS) I.w.node.classList.toggle(`ide-theme-${t}`, t === look && t !== 'vscode');
+  // the terminals recolored once the theme, or a custom one's overrides, changed
+  const theme = paletteNow() + (document.getElementById('phosphorus-custom')?.textContent || '');
   if (I.themeNow !== theme) { I.themeNow = theme; requestAnimationFrame(() => termsRetheme()); }
   I.exclude = null;
   paintTreeSoon();
@@ -6156,8 +6782,9 @@ async function openUserFile(path, template) {
 
 // --- the workbench's own pages ----------------------------------------------------------------
 
-function openSettings() {
-  openPage('settings', 'Settings', 'gear', (t) => {
+// q: the search to open on, a setting's key to show just it
+function openSettings(q = '') {
+  const t = openPage('settings', 'Settings', 'gear', (t) => {
     const head = el('div', 'ide-page-head');
     const q = Object.assign(el('input', 'ide-input ide-page-search'), { placeholder: 'Search settings', spellcheck: false });
     const json = Object.assign(el('button', 'ide-link'), { type: 'button', title: 'Open Settings (JSON)' });
@@ -6170,8 +6797,44 @@ function openSettings() {
     t.settingsList = list;
     q.addEventListener('input', () => paintSettingsPage());
     paintSettingsPage();
+    loadCompletionModels();
     setTimeout(() => q.focus(), 0);
   });
+  if (q || t.settingsQ.value) { t.settingsQ.value = q; paintSettingsPage(); }
+}
+
+async function loadCompletionModels() {
+  const current = I;
+  if (!current || current.completionLoading) return;
+  current.completionLoading = true; current.completionModelError = '';
+  paintSettingsPage();
+  try {
+    if (localDesktop() && !meshLinked()) throw new Error('Connect to a mesh to select a completion machine.');
+    const response = await fetch(meshApi('/api/state'), { cache: 'no-store' });
+    if (!response.ok) throw new Error(`Model list: status ${response.status}`);
+    const state = await response.json();
+    if (I === current) current.completionModels = completionModels(state.model);
+  } catch (error) { if (I === current) current.completionModelError = error.message; }
+  finally { if (I === current) { current.completionLoading = false; paintSettingsPage(); } }
+}
+
+function completionModelSetting(row, about, value) {
+  row.append(about);
+  const machines = I.completionModels || [];
+  const host = value.startsWith('phosphorus/') ? value.slice('phosphorus/'.length) : '';
+  const machine = Object.assign(el('select', 'ide-input ide-select'), { ariaLabel: 'Completion machine', disabled: !!I.completionLoading });
+  machine.append(Object.assign(el('option', '', 'Automatic mesh routing'), { value: '', selected: !host }));
+  for (const m of machines) machine.append(Object.assign(el('option', '', `${m.host}${m.ready ? '' : ' · offline'}`), { value: m.host, selected: m.host === host }));
+  if (host && !machines.some((m) => m.host === host)) machine.append(Object.assign(el('option', '', `${host} · unavailable`), { value: host, selected: true }));
+  const model = Object.assign(el('select', 'ide-input ide-select'), { ariaLabel: 'Completion model' });
+  const options = host ? [[value, machines.find((m) => m.host === host)?.label || 'Configured model (unavailable)']] : [['chimp', 'Chimp · fast (default)'], ['orangutan', 'Orangutan · larger model']];
+  for (const [id, label] of options) model.append(Object.assign(el('option', '', label), { value: id, selected: id === value }));
+  machine.addEventListener('change', () => setSetting('editor.inlineSuggest.model', machine.value ? `phosphorus/${machine.value}` : 'chimp'));
+  model.addEventListener('change', () => setSetting('editor.inlineSuggest.model', model.value));
+  const refresh = Object.assign(el('button', 'ide-link', I.completionLoading ? 'Loading models…' : 'Refresh machines and models'), { type: 'button', disabled: !!I.completionLoading });
+  refresh.addEventListener('click', loadCompletionModels);
+  row.append(el('label', '', 'Machine'), machine, el('label', '', 'Model'), model, refresh);
+  if (I.completionModelError) row.append(el('p', 'ide-page-note', I.completionModelError));
 }
 
 function paintSettingsPage() {
@@ -6188,7 +6851,9 @@ function paintSettingsPage() {
     row.append(title);
     const about = el('div', 'ide-setting-about', s.about);
     const val = setting(k);
-    if (s.type === 'boolean') {
+    if (s.type === 'model') {
+      completionModelSetting(row, about, String(val));
+    } else if (s.type === 'boolean') {
       const lab = el('label', 'ide-check');
       const box = Object.assign(el('input'), { type: 'checkbox', checked: !!val });
       box.addEventListener('change', () => setSetting(k, box.checked));
@@ -6305,7 +6970,7 @@ function recordKey(c) {
 }
 
 function openWelcome() {
-  openPage('welcome', 'Welcome', 'spark', (t) => {
+  openPage('welcome', 'Welcome', 'sulfur', (t) => {
     const w = el('div', 'ide-welcome');
     t.view.append(w);
     t.paint = () => paintWelcome(w);
@@ -6317,7 +6982,7 @@ function paintWelcome(w) {
   const hero = el('div', 'ide-welcome-hero');
   hero.append(Object.assign(el('img', 'ide-welcome-mark'), { src: '/sulfur/icon.svg', alt: '', draggable: false }));
   const words = el('div');
-  words.append(el('h1', '', 'Sulfur'), el('p', '', offline()
+  words.append(el('h1', '', 'Sulfur'), el('p', '', localDesktop()
     ? `Open any file or folder on ${selfHost} and start: nothing to log into.`
     : standalone ? `${meshName()}: your home, its machines’ shells and its agents. Signed in as ${acct.user}.` : `Your home on the mesh, its hosts’ shells and its agents, in one workbench. Signed in as ${acct.user}.`));
   hero.append(words);
@@ -6332,7 +6997,7 @@ function paintWelcome(w) {
   const start = el('div', 'ide-welcome-col');
   start.append(el('h2', '', 'Start'));
   const f = (id) => keyLabel(keyFor(id) || '');
-  if (nativeFiles()) start.append(link('Open File…', 'workbench.action.files.openFile', 'file', f('workbench.action.files.openFile')));
+  start.append(link('Open File…', 'workbench.action.files.openFile', 'file', f('workbench.action.files.openFile')));
   start.append(link('Open Folder…', 'workbench.action.files.openFolder', 'folder', f('workbench.action.files.openFolder')),
     link('New Project…', 'sulfur.project.new', 'plus'), link('New File…', 'explorer.newFile', 'newFile'));
   if (I.commands.has('sulfur.git.clone')) start.append(link('Clone a Repository…', 'sulfur.git.clone', 'branch'));
@@ -6344,8 +7009,8 @@ function paintWelcome(w) {
   const folders = (I.st.recentFolders || []).map(rk).filter((x) => inScope(x.root, x.loc)).slice(0, 7);
   if (!folders.length) recent.append(el('p', 'ide-empty-note', 'Folders you open show here.'));
   for (const x of folders) {
-    const b = Object.assign(el('button', 'ide-welcome-link'), { type: 'button', title: isHomeLoc(x.loc) && !offline() ? x.root : `${x.loc.host === '*' ? selfHost : x.loc.host}: ${hostPath(x.loc.host === '*' ? selfHost : x.loc.host, x.loc.share, x.root)}` });
-    b.append(icon('folder'), el('span', '', baseName(x.root)), el('span', 'ide-welcome-dim', offline() ? hostPath(selfHost, isHomeLoc(x.loc) ? 'home' : x.loc.share, filesParent(x.root)) : filesParent(x.root)));
+    const b = Object.assign(el('button', 'ide-welcome-link'), { type: 'button', title: isHomeLoc(x.loc) && !localDesktop() ? x.root : `${x.loc.host === '*' ? selfHost : x.loc.host}: ${hostPath(x.loc.host === '*' ? selfHost : x.loc.host, x.loc.share, x.root)}` });
+    b.append(icon('folder'), el('span', '', baseName(x.root)), el('span', 'ide-welcome-dim', localDesktop() ? hostPath(selfHost, isHomeLoc(x.loc) ? 'home' : x.loc.share, filesParent(x.root)) : filesParent(x.root)));
     b.addEventListener('click', () => setRoot(x.root, false, x.loc));
     recent.append(b);
   }
@@ -6355,14 +7020,13 @@ function paintWelcome(w) {
     side.append(el('h2', '', 'Phosphorus Mesh'));
     const card = el('div', 'ide-welcome-mesh');
     const line = (text, cls = '') => card.append(el('p', cls, text));
-    if (!offline()) {
+    if (!localDesktop()) {
       line(`Working on ${meshName()} as ${acct.user}: its machines and homes, their terminals and builds, its agents.`);
-      card.append(link('Work Offline', 'sulfur.mesh.offline', 'host', `this computer’s files, ${selfHost}`));
     } else if (standalone.meshUser) {
       line(`Logged in to ${meshName()} as ${standalone.meshUser}. Its models, agents and Forgejo work on this computer’s projects too.`);
       card.append(link(`Open ${meshName()}’s Machines`, 'sulfur.mesh.open', 'remote', 'its homes and folders'), link('Sign Out', 'sulfur.mesh.signOut', 'lock'));
     } else if (standalone.server) {
-      line(standalone.signedOut ? `Your session on ${meshName()} ended, so Sulfur opened offline.` : `${meshName()} is remembered. Log in for its machines, its agents in the chat, and its Forgejo.`);
+      line(standalone.signedOut ? `Your session on ${meshName()} ended. This computer is still available.` : `${meshName()} is remembered. Log in for its machines, its agents in the chat, and its Forgejo.`);
       card.append(link(`Log In to ${meshName()}…`, 'sulfur.mesh.connect', 'user'), link('Another Mesh…', 'sulfur.mesh.other', 'remote'));
     } else {
       line('Connect to your mesh for its machines and homes, its agents in the chat, and its Forgejo: by its address (https://mulab.dev) from anywhere, or a host’s name on the tailnet.');
@@ -6382,18 +7046,19 @@ function paintWelcomeSoon() { const t = I?.tabs.find((x) => x.page === 'welcome'
 
 function meshItems(withHost = false) {
   const name = meshName();
-  if (!offline()) {
+  if (!localDesktop()) {
     return [
       { label: `${acct.user} on ${name}`, disabled: true },
       '-',
       ...(withHost ? [cmdItem('sulfur.selectHost', 'Select the Host for Terminals and Runs…')] : []),
-      cmdItem('sulfur.mesh.offline', `Work Offline, on ${selfHost}`),
+      { label: 'Hosts and Logins', run: () => showSide('run', true, true) },
+      '-',
       cmdItem('sulfur.mesh.signOut', `Sign Out of ${name}`),
     ];
   }
   if (standalone.meshUser) {
     return [
-      { label: `Offline on ${selfHost}`, disabled: true },
+      { label: `This Computer · ${selfHost}`, disabled: true },
       { label: `Logged in to ${name} as ${standalone.meshUser}`, disabled: true },
       '-',
       cmdItem('sulfur.mesh.open', `Open ${name}’s Machines`),
@@ -6402,7 +7067,7 @@ function meshItems(withHost = false) {
     ];
   }
   return [
-    { label: `Offline on ${selfHost}`, disabled: true },
+    { label: `This Computer · ${selfHost}`, disabled: true },
     '-',
     standalone.server ? cmdItem('sulfur.mesh.connect', `Log In to ${name}…`) : cmdItem('sulfur.mesh.connect', 'Connect to a Phosphorus Mesh…'),
     ...(standalone.server ? [cmdItem('sulfur.mesh.other', 'Connect to Another Mesh…')] : []),
@@ -6438,30 +7103,18 @@ async function meshConnect(other = false) {
   refreshRoles();
   paintWelcomeSoon();
   paintChat(true);
-  const v = await pick([
-    { label: 'Stay Offline', description: `this computer’s files, with ${meshName(server)}’s agents and Forgejo`, ic: 'host', value: 'stay' },
-    { label: `Open ${meshName(server)}’s Machines`, description: 'its homes and folders, their terminals and builds', ic: 'remote', value: 'mesh' },
-  ], { title: `Logged in to ${meshName(server)} as ${standalone.meshUser}`, placeholder: 'Where to work' });
-  if (v === 'mesh' && I) meshOpen();
+  paintRunView();
+  notify('info', `Logged in to ${meshName(server)} as ${standalone.meshUser}. Open Folder includes this computer and the mesh’s machines.`);
 }
 
 async function meshOpen() {
-  if (!(await saveAll()).every(Boolean) || !I) return;
-  const r = await standalone.sidecarMode('mesh', standalone.server);
-  if (!r.ok) { notify('error', r.error || `Couldn't reach ${meshName()}.`); return; }
-  location.reload();
-}
-
-async function meshOffline() {
-  if (!(await saveAll()).every(Boolean) || !I) return;
-  await standalone.sidecarMode('local');
-  location.reload();
+  await pickFolder();
 }
 
 async function meshSignOut() {
   const name = meshName();
   await standalone.meshLogOut();
-  if (!offline()) { await standalone.sidecarMode('local'); location.reload(); return; }
+  if (!localDesktop()) { await standalone.sidecarMode('local'); location.reload(); return; }
   if (!I) return;
   I.roles = [];
   paintChat(true);
@@ -6662,6 +7315,7 @@ const extChannel = (x, n) => (n ? `${extName(x)}: ${n}` : `Extension: ${extName(
 
 function buildExtView() {
   const v = I.sideViews.get('extensions');
+  v.body.classList.add('ide-extensions-body');
   const q = Object.assign(el('input', 'ide-input ide-ext-search'), { placeholder: 'Search Extensions in ~/.sulfur/extensions', spellcheck: false });
   const head = sectionHead('installed', 'Installed', []);
   const list = el('div', 'ide-ext-list');
@@ -6669,9 +7323,10 @@ function buildExtView() {
   const note = el('div', 'ide-tree-note');
   v.body.append(el('div', 'ide-search-form', ''), head.node, list, note);
   v.body.firstChild.append(q);
+  languages.mount(v.body);
   head.node.addEventListener('ide-section', () => { list.hidden = !head.open(); });
   head.paint();
-  q.addEventListener('input', () => paintExtView());
+  q.addEventListener('input', () => { paintExtView(); languages.filter(q.value); });
   v.focus = () => q.focus();
   v.acts = [
     btn('', 'plus', 'Create New Extension…', () => run('sulfur.extensions.create')),
@@ -6683,7 +7338,7 @@ function buildExtView() {
 function paintExtView() {
   const E = I.extView;
   if (!E) return;
-  const v = E.q.value.toLowerCase();
+  const v = E.q.value.trim().toLowerCase();
   const all = [...I.exts.values()].sort((a, b) => extName(a).localeCompare(extName(b)));
   const shown = all.filter((x) => !v || `${extName(x)} ${x.id} ${x.manifest?.description || ''}`.toLowerCase().includes(v));
   E.head.title.textContent = `Installed`;
@@ -6816,7 +7471,7 @@ async function activateExt(x) {
   const mainRel = cleanPath(filesJoin(x.dir, x.manifest.main || 'extension.js'));
   const code = mainRel && under(mainRel, x.dir) ? await readUser(mainRel) : null;
   if (!I) return;
-  if (code === null) { extFailed(x, `its main module ${x.manifest.main || 'extension.js'} wasn't found, or is over 512KB`); return; }
+  if (code === null) { extFailed(x, `its main module ${x.manifest.main || 'extension.js'} wasn't found, or is over 16MB`); return; }
   const frame = el('iframe', 'ide-ext-frame');
   frame.setAttribute('sandbox', 'allow-scripts');
   frame.setAttribute('aria-hidden', 'true');
@@ -6961,7 +7616,7 @@ const EXT_CALLS = {
     const t = I.tabs.find((y) => y.rel === path && sameLoc(y.loc, loc) && y.info?.ready);
     if (t) return t.ed.text();
     const text = await readAt(path, loc);
-    if (text === null) throw new Error(`${p}: not found, not text, or over 512KB`);
+    if (text === null) throw new Error(`${p}: not found, not text, or over 16MB`);
     return text;
   },
   'workspace.write': async (x, p, text) => {
@@ -6989,13 +7644,13 @@ const EXT_CALLS = {
   'editor.insert': (x, text) => { const t = I.active; if (!t?.ed) return false; const [s, e] = t.ed.selection(); return t.ed.edit(s, e, text); },
   'editor.select': (x, from, to) => { const t = I.active; if (!t?.ed) return false; const n = t.ed.text().length; t.ed.select(Math.max(0, Math.min(n, from)), Math.max(0, Math.min(n, to))); return true; },
   'terminal.hosts': () => dkLiveHosts(),
-  'terminal.run': (x, cmd, o) => {
+  'terminal.run': async (x, cmd, o) => {
     const host = o?.host || runHost();
     if (!dkLiveHosts().includes(host)) throw new Error(`not logged into ${host || 'any host'}`);
     const nm = o?.name ? String(o.name) : `${extName(x)}: ${host}`;
     const term = I.terms.find((t) => t.base === nm && t.host === host && !t.ended);
     if (term && term.h.send(`${cmd}\r`)) { selectTerm(term, false); showPanel('terminal', true); return true; }
-    return !!newTerminal({ host, kind: 'run', name: nm, run: cmd, cwd: o?.cwd !== undefined ? extPath(o.cwd) : I.st.root, focus: false });
+    return !!(await newTerminal({ host, kind: 'run', name: nm, run: cmd, cwd: o?.cwd !== undefined ? extPath(o.cwd) : I.st.root, focus: false }));
   },
   'runners.register': (x, ext, cmd) => { const e = ext.replace(/^\./, ''); I.runners.set(e, { cmd, by: extName(x) }); x.runners.add(e); paintRunView(); paintTabActions(); },
   'runners.unregister': (x, ext) => { const e = ext.replace(/^\./, ''); if (I.runners.get(e)?.by === extName(x)) { if (DK_RUNNERS[e]) I.runners.set(e, { cmd: DK_RUNNERS[e], by: '' }); else I.runners.delete(e); } x.runners.delete(e); paintRunView(); },
@@ -7203,7 +7858,6 @@ export function deactivate() {}
 // the project's .sulfur/build.json, Ctrl+B running its build from then on
 
 const BUILD_FILE = '.sulfur/build.json';
-const CONFIGS = ['Debug', 'Release'];
 
 // a host's toolchains, kept a while; fresh asks the host again
 async function toolchains(host, fresh = false) {
@@ -7214,7 +7868,7 @@ async function toolchains(host, fresh = false) {
     if (had.err) throw new Error(had.err);
     return had.pr || had.v;
   }
-  const pr = fetch(`/api/sulfur/toolchains?host=${encodeURIComponent(host)}${fresh ? '&fresh=1' : ''}`, { cache: 'no-store' })
+  const pr = fetch(hostUrl(host, `/api/sulfur/toolchains?host=${encodeURIComponent(host)}${fresh ? '&fresh=1' : ''}`), { cache: 'no-store' })
     .then(async (r) => {
       const b = await r.json().catch(() => ({}));
       // a host whose Phosphorus predates Sulfur's builds has no such call
@@ -7238,16 +7892,31 @@ const tool = (tc, id) => tc?.tools?.find((x) => x.id === id) || null;
 // the project the open file's in: its folder, or the nearest one above it up to the
 // workspace's, that has a build file; the workspace's own when none has
 async function detectProject() {
+  const state = I;
+  const workspace = wsKey();
+  const active = state.active;
+  const current = () => I === state && state.active === active && wsKey() === workspace;
   const root = I.st.root;
   const t = I.active;
   let dir = t?.rel && sameLoc(t.loc, locOf()) && under(t.rel, root) && t.rel !== root ? filesParent(t.rel) : root;
   for (;;) {
     const p = await projectAt(dir);
-    if (!I) return null;
+    if (!current()) return null;
     if (p.kinds.length || dir === root || !under(dir, root)) {
+      if (p.kinds.length && dir !== root && under(dir, root)) {
+        let top = '';
+        for (let d = filesParent(dir); under(d, root); d = filesParent(d)) {
+          const names = (await loadDir(d)).map((e) => e.name.toLowerCase());
+          if (!current()) return null;
+          if ((p.kinds.includes('cmake') && names.includes('cmakelists.txt')) || names.some((n) => n.endsWith('.sln') || n.endsWith('.slnx'))) top = d;
+          if (d === root || !d) break;
+        }
+        if (top) { dir = top; continue; }
+      }
       const had = I.projHas;
       I.projHas = !!p.kinds.length;
       await useProject(p.kinds.length ? dir : root);
+      if (!current()) return null;
       if (I && had !== I.projHas) { paintStatus(); paintRunView(); }
       return p.kinds.length ? p : { ...p, dir: root };
     }
@@ -7320,6 +7989,7 @@ async function cmakeOf(root, names, p) {
   };
   p.presets = all.filter((x) => x && x.name && !x.hidden).map((x) => ({
     name: x.name, displayName: x.displayName || x.name, generator: field(x, 'generator') || '',
+    configurationType: String(field(x, 'cacheVariables')?.CMAKE_BUILD_TYPE?.value || field(x, 'cacheVariables')?.CMAKE_BUILD_TYPE || ''),
     binaryDir: String(field(x, 'binaryDir') || '').replaceAll('${sourceDir}', '.').replaceAll('${presetName}', x.name).replaceAll('${sourceParentDir}', '..').replaceAll('${sourceDirName}', baseName(root)),
   }));
   // configured trees: where a CMakeCache.txt says how it was configured
@@ -7335,7 +8005,7 @@ async function cmakeOf(root, names, p) {
     const cache = await readAt(`${root}/${d}/CMakeCache.txt`).catch(() => null);
     if (!cache) continue;
     const v = (k) => (cache.match(new RegExp(`^${k}:[A-Z]+=(.*)$`, 'm')) || [])[1]?.trim() || '';
-    p.trees.push({ dir: d, generator: v('CMAKE_GENERATOR'), type: v('CMAKE_BUILD_TYPE'), cxx: v('CMAKE_CXX_COMPILER') || v('CMAKE_C_COMPILER'), platform: v('CMAKE_GENERATOR_PLATFORM') });
+    p.trees.push({ dir: d, generator: v('CMAKE_GENERATOR'), type: v('CMAKE_BUILD_TYPE'), configs: v('CMAKE_CONFIGURATION_TYPES').split(';').filter(Boolean), cxx: v('CMAKE_CXX_COMPILER') || v('CMAKE_C_COMPILER'), platform: v('CMAKE_GENERATOR_PLATFORM') });
   }
 }
 // a CMakeSettings configuration's build folder, from the project's
@@ -7394,7 +8064,17 @@ async function useProject(dir) {
   paintRunView();
 }
 // the open file moved to another tab: maybe another project
-const refreshProjectSoon = debounce(() => { if (I) detectProject(); }, 250);
+const refreshProjectSoon = debounce(() => {
+  if (!I) return;
+  const state = I;
+  const pending = refreshRunContext();
+  const generation = state.runGeneration;
+  pending.catch((err) => {
+    if (I !== state || state.runGeneration !== generation) return;
+    state.runContext = { tabId: state.active?.id, workspace: wsKey(), project: !!state.projHas, error: err.message };
+    paintTabActions(); paintRunView();
+  });
+}, 150);
 
 const KIND_NAMES = { cmake: 'CMake', dotnet: '.NET', msbuild: 'MSBuild C++', cargo: 'Cargo', go: 'Go', npm: 'npm', make: 'Make', meson: 'Meson', python: 'Python' };
 
@@ -7451,8 +8131,8 @@ const SINGLE_BUILDS = {
   rs: [['rustc', 'Rust', 'rustc -g "{f}" -o "{o}"']],
   go: [['go', 'Go', 'go build -o "{o}" "{f}"']],
   zig: [['zig', 'Zig', 'zig build-exe "{f}" -femit-bin="{o}"']],
-  cs: [['dotnet', '.NET', 'dotnet build "{f}"']],
-  java: [['javac', 'Java', 'javac "{f}"']],
+  cs: [['dotnet', '.NET', 'dotnet build "{f}" --artifacts-path .']],
+  java: [['javac', 'Java', 'javac -d . "{f}"']],
   swift: [['swift', 'Swift', 'swiftc "{f}" -o "{o}"']],
 };
 SINGLE_BUILDS.cc = SINGLE_BUILDS.cxx = SINGLE_BUILDS.cpp;
@@ -7463,8 +8143,7 @@ async function buildFile(asked = false) {
   const rel = t?.rel;
   const kinds = singleBuilds(rel);
   if (!kinds) return;
-  await saveAll();
-  if (!I) return;
+  if (!(await saveAll()).every(Boolean) || !I) return;
   const live = dkLiveHosts();
   const held = isHomeLoc() ? await holdersOf(rel) : [locOf().host];
   if (!I) return;
@@ -7492,11 +8171,11 @@ async function buildFile(asked = false) {
     notify('warning', `No compiler for .${extOf(rel)} files on ${hosts.join(', ')}${why ? ` (${why})` : ''}. Install one there, or add a build file.`);
     return;
   }
-  let c = kept && choices.find((x) => x.host === kept.host && x.id === kept.id);
-  if (!c && choices.length === 1) c = choices[0];
+  let c = !asked && kept && choices.find((x) => x.host === kept.host && x.id === kept.id);
+  if (!asked && !c && choices.length === 1) c = choices[0];
   if (!c) {
     const v = await pick(choices.map((x, i) => ({ label: x.label, description: x.detail, detail: `on ${x.host}${x.host === selfHost ? ' (this machine)' : ''}`, ic: 'host', value: i, sep: i === 0 || choices[i - 1].host !== x.host ? x.host : '' })),
-      { title: `Build ${baseName(rel)}: pick a compiler`, placeholder: 'No build file here: the file is built alone, its program beside it', matchDescription: true });
+      { title: `Build ${baseName(rel)}: pick a compiler`, placeholder: 'Build the file alone in a writable temporary folder', matchDescription: true });
     if (v === undefined || !I) return;
     c = choices[v];
   }
@@ -7504,11 +8183,12 @@ async function buildFile(asked = false) {
   saveState();
   const win = hostIsWindows(c.host);
   const stem = baseName(rel).replace(/\.[^.]+$/, '') || 'a.out';
-  const command = c.cmd.replaceAll('{f}', baseName(rel)).replaceAll('{o}', win ? `${stem}.exe` : stem);
   const fl = fileLoc(rel, c.host);
   const dir = filesParent(rel);
   const abs = hostPath(c.host, fl.share, dir);
   if (!abs) { notify('error', `Can't tell where ${dir} is on ${c.host}.`); return; }
+  const source = hostPath(c.host, fl.share, rel);
+  const command = singleFileCommand(c.cmd, source, win ? `${stem}.exe` : stem, win, newSid());
   if (asked && choices.length > 1) setStatusFlash(`No build file here: building ${baseName(rel)} alone with ${c.label} on ${c.host}`);
   runTask({ host: c.host, abs, command, vcvars: c.vcvars, name: `Build ${baseName(rel)} · ${c.host}`, kind: 'task', problems: true, root: dir, label: `Build ${baseName(rel)}`, onDone: () => I && loadDir(dir, true) });
 }
@@ -7522,19 +8202,29 @@ async function loadBuildConfig(dir = projDir()) {
   if (text) {
     try {
       const j = parseJsonc(text);
-      if (j && typeof j === 'object') I.st.build[key] = { ...I.st.build[key], ...j };
+      if (j && typeof j === 'object') {
+        const old = I.st.build[key];
+        const next = { ...old, ...j };
+        if (old && JSON.stringify(old) !== JSON.stringify(next)) languages.reset();
+        I.st.build[key] = next;
+      }
     } catch (err) { notify('warning', `${BUILD_FILE}: ${err.message}`); }
   }
+  I.runContext = { tabId: I.active?.id, workspace: wsKey(), pending: true };
   paintStatus();
   paintRunView();
+  refreshProjectSoon();
 }
 async function saveBuildCfg(cfg) {
+  languages.reset();
   const dir = projDir();
   const key = bkey(dir);
   I.st.build[key] = cfg;
+  I.runContext = { tabId: I.active?.id, workspace: wsKey(), pending: true };
   saveState();
   paintStatus();
   paintRunView();
+  refreshProjectSoon();
   const keep = { host: cfg.host, toolchain: cfg.toolchain, configuration: cfg.configuration || 'Debug', defaultTask: cfg.defaultTask || 'build', tasks: cfg.tasks || [], ...(cfg.startup ? { startup: cfg.startup } : {}) };
   try { await writeAt(`${dir}/${BUILD_FILE}`, `${JSON.stringify(keep, null, 2)}\n`); } catch (err) { notify('warning', `Couldn't keep the pick in ${BUILD_FILE}: ${err.message}`); }
 }
@@ -7644,8 +8334,9 @@ function tasksFor(cfg, proj) {
     case 'cmake-tree': {
       const multi = /Visual Studio|Multi-Config|Xcode/.test(tc.generator || '');
       const cf = multi ? ` --config ${c}` : '';
-      add('build', `Build (${tc.dir}${multi ? `, ${c}` : ''})`, `cmake --build ${q(tc.dir)}${cf}`);
-      add('rebuild', 'Rebuild', `cmake --build ${q(tc.dir)}${cf} --clean-first`);
+      const configure = !multi ? `cmake -S . -B ${q(tc.dir)} -DCMAKE_BUILD_TYPE=${q(c)} && ` : '';
+      add('build', `Build (${tc.dir}, ${c})`, `${configure}cmake --build ${q(tc.dir)}${cf}`);
+      add('rebuild', 'Rebuild', `${configure}cmake --build ${q(tc.dir)}${cf} --clean-first`);
       add('configure', 'Configure Again', `cmake ${q(tc.dir)}`, 'other');
       add('test', 'Test (CTest)', `ctest --test-dir ${q(tc.dir)}${multi ? ` -C ${c}` : ''} --output-on-failure`, 'test');
       add('clean', 'Clean', `cmake --build ${q(tc.dir)}${cf} --target clean`, 'other');
@@ -7670,6 +8361,7 @@ function tasksFor(cfg, proj) {
       add('rebuild', `Rebuild (${c})`, `${conf} && cmake --build ${b} -j --clean-first`);
       add('test', 'Test (CTest)', `ctest --test-dir ${b} --output-on-failure`, 'test');
       add('clean', 'Clean', `cmake --build ${b} --target clean`, 'other');
+      out.buildRoot = b;
       break;
     }
     case 'dotnet': {
@@ -7748,12 +8440,28 @@ async function buildProject(taskId) {
 }
 
 async function runProjectTask(cfg, t) {
-  await saveAll();
-  if (!I) return;
+  const state = I;
   const dir = projDir();
+  const workspace = wsKey();
+  if (!(await saveAll()).every(Boolean) || I !== state || wsKey() !== workspace || projDir() !== dir) return;
+  if (cfg.toolchain?.id?.startsWith('cmake-') && ['build', 'rebuild', 'configure'].includes(t.id)) {
+    const project = await projectAt(dir);
+    const model = await cmakeModel(cfg, project);
+    if (I !== state || wsKey() !== workspace) return;
+    const root = tasksFor(cfg, project).buildRoot || 'build';
+    const where = buildFileLocation(cfg.host, joinPath(dir, `${root}/.cmake/api/v1/query/client-sulfur/codemodel-v2`));
+    await filesCall(where.at, 'save', jsonPost({ path: where.path, text: '' }));
+    if (!model.available && t.id !== 'configure' && !t.command.includes(' -S ') && !/^(?:"[^"]+"|\S+) --preset /.test(t.command)) {
+      const q = hostIsWindows(cfg.host) ? (s) => `"${s}"` : shQuote;
+      const cm = cfg.toolchain.cmake ? q(cfg.toolchain.cmake) : 'cmake';
+      const configure = cfg.toolchain.id === 'cmake-preset' ? `${cm} --preset ${q(cfg.configuration)}` : `${cm} -S . -B ${q(root)}`;
+      t = { ...t, command: `${configure} && ${t.command}` };
+    }
+  }
+  if (I !== state || wsKey() !== workspace) return;
   const abs = hostPath(cfg.host, isHomeLoc() ? 'home' : locOf().share, dir);
   if (!abs) { notify('error', `Can't tell where ${dir} is on ${cfg.host}.`); return; }
-  runTask({ host: cfg.host, abs, command: t.command, vcvars: t.vcvars, name: `${t.label} · ${cfg.host}`, kind: 'task', problems: true, root: dir, label: t.label, onDone: () => I && loadDir(dir, true) });
+  runTask({ host: cfg.host, abs, command: t.command, vcvars: t.vcvars, name: `${t.label} · ${cfg.host}`, kind: 'task', problems: true, root: dir, label: t.label, onDone: () => { if (I === state) { state.targetModels?.clear(); loadDir(dir, true); refreshProjectSoon(); } } });
 }
 
 async function chooseTask() {
@@ -7789,43 +8497,140 @@ async function toggleConfiguration() {
   if (!cfg) { await pickToolchain(); return; }
   const proj = await detectProject();
   if (!I || !proj) return;
-  const v = await pick(configsFor(cfg, proj).map((c) => ({ label: c, value: c, ic: c === cfg.configuration ? 'check' : '' })), { title: 'Build Configuration', placeholder: 'As the project names them' });
+  const v = await pick(configsFor(cfg, proj).map((c) => ({ label: c, description: configDetail(cfg, proj, c), value: c, ic: c === cfg.configuration ? 'check' : '' })), { title: 'Build Configuration', placeholder: 'As the project names them', matchDescription: true });
   // a startup program built by another configuration is that one's: asked for again
-  if (v && I) await saveBuildCfg({ ...cfg, configuration: v, startup: v !== cfg.configuration && cfg.startup?.build ? undefined : cfg.startup });
+  if (v && I) await saveBuildCfg({ ...cfg, configuration: v, startup: v !== cfg.configuration && cfg.startup?.build && !cfg.startup.target ? undefined : cfg.startup });
+}
+
+function activeRunContext() {
+  const context = I?.runContext;
+  return context && context.tabId === I.active?.id && context.workspace === wsKey() ? context : null;
+}
+
+async function refreshRunContext() {
+  const state = I;
+  if (!state) return null;
+  const tab = state.active;
+  const workspace = wsKey();
+  const generation = state.runGeneration = (state.runGeneration || 0) + 1;
+  const current = () => I === state && state.active === tab && wsKey() === workspace && state.runGeneration === generation;
+  state.runContext = { tabId: tab?.id, workspace, pending: true };
+  paintTabActions(); paintRunView();
+  const project = await detectProject();
+  if (!current()) return null;
+  const cfg = buildCfg();
+  const context = { tabId: tab?.id, workspace, project: !!project?.kinds.length, cfg, item: null, items: [] };
+  if (context.project && cfg?.toolchain) {
+    const items = await startupItems(cfg, project);
+    if (!current()) return null;
+    context.items = items;
+    if (items.targetModel && !items.length) context.targetMessage = `Configure/build ${cfg.configuration || 'Debug'} to discover its executable targets.`;
+    context.item = cfg.startup?.custom ? cfg.startup : items.targetModel ? targetForFile(items.targetModel, tab?.rel ? hostPath(cfg.host, isHomeLoc(tab.loc) ? 'home' : tab.loc.share, tab.rel) : '', cfg.startup, baseName(project.dir), hostIsWindows(cfg.host)) : items.find((x) => x.label === cfg.startup?.label) || (items.length === 1 ? items[0] : null);
+  }
+  if (!current()) return null;
+  state.runContext = context;
+  paintTabActions(); paintRunView();
+  return context;
+}
+
+async function runActiveContext() {
+  const context = await refreshRunContext();
+  if (!context || !I) return;
+  if (context.project) return startProject(false, false);
+  if (I.active?.rel) return runFile(I.active.rel);
+  notify('info', 'Open a project or a file to run it.');
+}
+
+// Resolve paths on the build host, including out-of-source build directories.
+function buildFileLocation(host, path, loc = locOf()) {
+  if (!absolutePath(path)) return { at: isHomeLoc(loc) ? homeAt(host) : apiLoc(loc), path };
+  const win = hostIsWindows(host);
+  const norm = (s) => { const p = String(s).replace(/\\/g, '/').replace(/\/+$/, ''); return win ? p.toLowerCase() : p; };
+  const absolute = norm(path);
+  const shares = hostsInfo[String(host).toLowerCase()]?.files?.shares || [];
+  const share = [...shares].sort((a, b) => b.label.length - a.label.length).find((s) => absolute === norm(s.label) || absolute.startsWith(norm(s.label) + '/'));
+  if (!share) throw new Error(`Can't read build metadata at ${path} on ${host}`);
+  return { at: { host, share: String(share.id) }, path: String(path).replace(/\\/g, '/').slice(norm(share.label).length).replace(/^\/+/, '') };
+}
+
+async function cmakeModel(cfg, project) {
+  const state = I;
+  const loc = locOf();
+  const root = joinPath(project.dir, tasksFor(cfg, project).buildRoot || 'build');
+  const configuration = cmakeConfiguration(cfg, project);
+  const key = `${locKey(loc)}\n${cfg.host}\n${root}\n${configuration}`;
+  state.targetModels ||= new Map();
+  const cached = state.targetModels.get(key);
+  if (cached && Date.now() - cached.at < 10000) return cached.promise;
+  const read = async (path) => {
+    const where = buildFileLocation(cfg.host, path, loc);
+    const b = await filesCall(where.at, 'read', undefined, { path: where.path });
+    if (typeof b.text !== 'string') throw new Error(`Couldn't read ${path}`);
+    return b.text;
+  };
+  const list = async (path) => {
+    const where = buildFileLocation(cfg.host, path, loc);
+    return (await filesCall(where.at, 'list', undefined, { path: where.path })).entries || [];
+  };
+  const promise = cmakeTargets({ read, list, root, configuration, windows: hostIsWindows(cfg.host) }).catch((error) => ({ available: false, items: [], error: error.message }));
+  state.targetModels.set(key, { at: Date.now(), promise });
+  const model = await promise;
+  for (const item of model.items) item.command = executableCommand(absolutePath(item.executable) ? item.executable : item.executable.slice(project.dir.length + 1), hostIsWindows(cfg.host));
+  return model;
 }
 
 // Ctrl+F5: the project's startup item, built first where its toolchain doesn't build as it runs.
 // The item's asked for once, kept in the project's build settings
-async function startProject(choose = false) {
+async function startProject(choose = false, buildFirst = true) {
+  const state = I;
+  const tab = state.active;
+  const workspace = wsKey();
+  const current = () => I === state && state.active === tab && wsKey() === workspace;
   const proj = await detectProject();
-  if (!I || !proj) return;
+  if (!current() || !proj) return;
   if (!proj.kinds.length) { if (I.active?.rel) runFile(I.active.rel); else notify('info', 'Open a project or a file to start it.'); return; }
   let cfg = buildCfg();
   if (!cfg?.toolchain?.id || !dkLiveHosts().includes(cfg.host)) cfg = await pickToolchain(proj);
-  if (!cfg || !I) return;
-  let item = !choose && cfg.startup;
+  if (!cfg || !current()) return;
+  const sameConfiguration = () => current() && buildCfg()?.configuration === cfg.configuration && buildCfg()?.host === cfg.host && buildCfg()?.toolchain?.id === cfg.toolchain.id;
+  const items = await startupItems(cfg, proj);
+  if (!sameConfiguration()) return;
+  if (!choose && items.targetModel && !items.length && !cfg.startup?.custom) {
+    notify('info', `Configure/build ${cfg.configuration || 'Debug'} first to discover its executable targets (Ctrl+B).`);
+    return;
+  }
+  const context = activeRunContext();
+  const activeTarget = items.targetModel ? targetForFile(items.targetModel, I.active?.rel ? hostPath(cfg.host, isHomeLoc(I.active.loc) ? 'home' : I.active.loc.share, I.active.rel) : '', cfg.startup, baseName(proj.dir), hostIsWindows(cfg.host)) : null;
+  let item = !choose && (cfg.startup?.custom ? cfg.startup : activeTarget || (context?.cfg?.configuration === cfg.configuration && context?.cfg?.host === cfg.host ? context.item : null) || items.find((x) => cfg.startup?.target ? x.target === cfg.startup.target : x.label === cfg.startup?.label) || (items.length === 1 ? items[0] : null));
   if (!item) {
     const note = notify('info', 'Looking for what the project starts…', { progress: true, sticky: true });
-    const items = await startupItems(cfg, proj).catch(() => []);
     note.close();
-    if (!I) return;
+    if (!current()) return;
     const win = hostIsWindows(cfg.host);
     const v = await pick([
       ...items.map((x, i) => ({ label: x.label, description: x.command, ic: 'run', value: x, sep: i === 0 ? `${cfg.toolchain.label} on ${cfg.host}` : '' })),
       { label: 'Another Command…', description: 'run in the project’s folder after the build', ic: 'terminal', value: 'other', sep: 'more' },
     ], { title: 'Select Startup Item', placeholder: items.length ? 'What Ctrl+F5 runs' : 'Nothing built to start yet: build first (Ctrl+B), or give the command', matchDescription: true });
-    if (!I || v === undefined) return;
+    if (!current() || v === undefined) return;
     item = v;
     if (v === 'other') {
       const command = await inputBox({ prompt: `The command that starts the project, in its folder on ${cfg.host}`, placeholder: win ? 'e.g. out\\build\\x64-Debug\\app.exe' : 'e.g. ./build/app' });
-      if (!command?.trim() || !I) return;
-      item = { label: command.trim(), command: command.trim(), build: true };
+      if (!command?.trim() || !current()) return;
+      item = { label: command.trim(), command: command.trim(), build: true, custom: true };
     }
+    if (!sameConfiguration()) return;
     cfg = { ...cfg, startup: item };
     await saveBuildCfg(cfg);
     if (choose) { setStatusFlash(`Ctrl+F5 starts ${item.label}`); return; }
   }
-  const build = item.build ? tasksFor(cfg, proj).find((x) => x.id === 'build') : null;
+  if (!buildFirst && item.executable) {
+    const where = buildFileLocation(cfg.host, item.executable);
+    const entries = (await filesCall(where.at, 'list', undefined, { path: filesParent(where.path) })).entries || [];
+    if (!current()) return;
+    if (!entries.some((e) => !e.dir && (hostIsWindows(cfg.host) ? e.name.toLowerCase() === baseName(where.path).toLowerCase() : e.name === baseName(where.path)))) { notify('info', `${item.label} (${cfg.configuration}) hasn't been built. Build it with Ctrl+B first.`); return; }
+  }
+  if (!sameConfiguration()) return;
+  const build = buildFirst && item.build ? tasksFor(cfg, proj).find((x) => x.id === 'build') : null;
   const command = build ? `${build.command} && ${item.command}` : item.command;
   await runProjectTask(cfg, { label: `Start ${item.label}`, command, vcvars: build?.vcvars || (cfg.toolchain.vcvars || '') });
 }
@@ -7836,6 +8641,12 @@ async function startupItems(cfg, proj) {
   const c = (cfg.configuration || 'Debug').split('|')[0].trim();
   const q = (x) => (/[\s"']/.test(x) ? `"${x}"` : x);
   const dir = projDir();
+  if (tc.id?.startsWith('cmake-')) {
+    const model = await cmakeModel(cfg, proj);
+    const items = [...model.items];
+    items.targetModel = model;
+    return items;
+  }
   switch (tc.id) {
     case 'dotnet': {
       const projs = [...proj.proj];
@@ -7867,48 +8678,64 @@ async function startupItems(cfg, proj) {
   return progs.slice(0, 40).map((x) => ({ label: baseName(x), command: win ? q(rel(x).replace(/\//g, '\\')) : `./${q(rel(x))}`, build: true }));
 }
 
-// the configurations a build has: its CMakeSettings', its presets, its solution's, else Debug and Release
-function configsFor(cfg, proj) {
+// what a configuration is: a CMakeSettings one's build type, generator and folder, a preset's
+function configDetail(cfg, proj, c) {
   const tc = cfg.toolchain || {};
-  if (tc.id === 'cmake-vs' && proj.cmakeSettings?.length) return proj.cmakeSettings.map((x) => x.name);
-  if (tc.id === 'cmake-preset' && proj.presets?.length) return proj.presets.map((x) => x.name);
-  if (tc.id === 'cmake-tree') return /Visual Studio|Multi-Config|Xcode/.test(tc.generator || '') ? ['Debug', 'Release', 'RelWithDebInfo', 'MinSizeRel'] : [(proj.trees || []).find((t) => t.dir === tc.dir)?.type || 'Debug'];
-  if ((tc.id === 'msbuild' || tc.id === 'dotnet') && proj.slnConfigs?.length) return proj.slnConfigs;
-  return CONFIGS;
+  if (tc.id === 'cmake-vs') {
+    const sc = (proj.cmakeSettings || []).find((x) => x.name === c);
+    if (!sc) return '';
+    const root = cmakeRoot(sc);
+    const there = (proj.trees || []).some((t) => samePath(t.dir, root));
+    return [sc.configurationType || 'Debug', sc.generator || 'Ninja', root, there ? '' : 'not configured yet'].filter(Boolean).join(' · ');
+  }
+  if (tc.id === 'cmake-preset') {
+    const pr = (proj.presets || []).find((x) => x.name === c);
+    return pr ? [pr.displayName !== pr.name ? pr.displayName : '', pr.generator, pr.binaryDir].filter(Boolean).join(' · ') : '';
+  }
+  return '';
 }
+
+// the configurations a build has: its CMakeSettings', its presets, its solution's, else Debug and Release
 
 // a task in the Terminal panel, a terminal of its own named for it; one of the
 // same name that's done gives way to it
 // a mesh home on a Linux or macOS machine handed to your own login there, once:
 // Phosphorus writes homes as root, so without it a build there can't write its output
 async function ensureHomeOwned(host) {
-  if (offline() || !isHomeLoc() || !host || hostIsWindows(host)) return;
+  const local = standalone?.localHost;
+  if (!host || host === local || hostIsWindows(host)) return;
+  const home = isHomeLoc() || String(locOf().share) === 'home';
+  if (!home) return;
   const login = dk.creds.get(host)?.user;
   if (!login || login === 'root') return;
-  I.owned ||= new Set();
-  const k = `${host}
-${login}`;
-  if (I.owned.has(k)) return;
-  I.owned.add(k);
-  try {
-    const r = await fetch(filesApi(homeAt(host), 'own'), jsonPost({ path: acct.user, login }));
-    const b = await r.json().catch(() => ({}));
-    if (r.ok && !b.already) setStatusFlash(`Your home on ${host} is ${login}’s there now: builds and shells can write in it`);
-    else if (!r.ok && r.status !== 404 && r.status !== 409) { I.owned.delete(k); log(`couldn't hand the home on ${host} to ${login}: ${b.error || r.status}`); }
-  } catch { I.owned.delete(k); }
+  const user = localDesktop() ? standalone.meshUser : acct.user;
+  if (!user) return;
+  I.owned ||= new Map();
+  const owned = I.owned;
+  const k = `${host}\n${login}\n${user}`;
+  if (owned.has(k)) return owned.get(k);
+  const pending = (async () => {
+    try {
+      const r = await fetch(filesApi(homeAt(host), 'own'), jsonPost({ path: user, login }));
+      const b = await r.json().catch(() => ({}));
+      if (!r.ok) { owned.delete(k); if (r.status !== 404 && r.status !== 409) log(`couldn't hand the home on ${host} to ${login}: ${b.error || r.status}`); }
+    } catch { owned.delete(k); }
+  })();
+  owned.set(k, pending);
+  await pending;
 }
 
-// a task once its machine can write where it runs
+// Start after ownership has settled, including remote home shares in the
+// desktop's unified host list.
 function runTask(o) {
-  if (!offline() && isHomeLoc() && !hostIsWindows(o.host) && !I.owned?.has(`${o.host}
-${dk.creds.get(o.host)?.user}`)) {
-    ensureHomeOwned(o.host).finally(() => { if (I) runTaskNow(o); });
-    return;
-  }
-  runTaskNow(o);
+  ensureHomeOwned(o.host).finally(() => { if (I) runTaskNow(o); });
 }
 
 function runTaskNow(o) {
+  const state = I;
+  const noteKey = `${o.host}\n${o.name}`;
+  state.taskNotes ||= new Map();
+  state.taskNotes.get(noteKey)?.close(); state.taskNotes.delete(noteKey);
   const host = o.host;
   if (!dk.creds.get(host)) { notify('warning', `Not logged into ${host}: log in ${loginWhere()}.`); return null; }
   for (const old of I.terms.filter((x) => x.base === o.name && x.kind !== 'shell' && x.ended)) killTerm(old);
@@ -7929,12 +8756,13 @@ function runTaskNow(o) {
       t.ended = true;
       pm?.end();
       o.onDone?.(code);
+      if (I !== state) return;
       paintTerms();
       const secs = ((Date.now() - started) / 1000).toFixed(1);
       if (o.kind === 'task') {
-        const errs = (I.buildProblems || []).filter((x) => x.sev === 'error').length;
+        const errs = (pm?.problems || []).filter((x) => x.sev === 'error').length;
         if (code === 0) setStatusFlash(`${o.label || 'Task'} done in ${secs}s${errs ? `, ${errs} errors` : ''}`);
-        else notify(code === -1 ? 'warning' : 'error', `${o.label || 'Task'} on ${host} ${code === -1 ? 'stopped' : `failed (exit ${code})`}${errs ? `: ${errs} error${errs === 1 ? '' : 's'}` : ''}.`, errs ? { actions: [{ label: 'Show Problems', run: () => showPanel('problems', true, true) }] } : {});
+        else state.taskNotes.set(noteKey, notify(code === -1 ? 'warning' : 'error', `${o.label || 'Task'} on ${host} ${code === -1 ? 'stopped' : `failed (exit ${code})`}${errs ? `: ${errs} error${errs === 1 ? '' : 's'}` : ''}.`, errs ? { actions: [{ label: 'Show Problems', run: () => showPanel('problems', true, true) }] } : {}));
       }
     },
   });
@@ -7948,71 +8776,12 @@ function runTaskNow(o) {
 // --- problems out of a task's output: MSVC, MSBuild and dotnet, GCC and Clang,
 // Rust, Go, CMake; their paths brought back into the workspace
 
-const ANSI_RE = /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07]*(\x07|\x1b\\)/g;
-const MATCHERS = [
-  // C:\p\a.cpp(12,5): error C2065: 'x': undeclared identifier [C:\p\a.vcxproj]
-  { re: /^\s*(.+?)\((\d+)(?:,(\d+))?(?:,\d+,\d+)?\)\s*:\s*(fatal error|error|warning)\s+([A-Z]+\d+)\s*:\s*(.*?)(?:\s+\[[^\]]+\])?\s*$/, f: 1, l: 2, c: 3, s: 4, code: 5, m: 6 },
-  // src/a.c:12:5: error: expected ';' (gcc, clang, and go's file:line:col: msg)
-  { re: /^(.+?\.[A-Za-z0-9+]+):(\d+):(\d+):\s*(fatal error|error|warning|note)?:?\s*(.*)$/, f: 1, l: 2, c: 3, s: 4, m: 5 },
-  // CMake Error at CMakeLists.txt:12 (add_executable):
-  { re: /^CMake (Error|Warning)(?: \(dev\))? at (.+?):(\d+)/, f: 2, l: 3, s: 1, m: 0 },
-];
-
 function problemMatcher(host, absRoot, root) {
-  let buf = '';
-  let rustSev = '';
-  let rustMsg = '';
-  let cmakeAt = null;
-  const win = hostIsWindows(host);
-  const norm = (p) => (win ? p.replace(/\//g, '\\').toLowerCase() : p);
-  const base = norm(absRoot).replace(/[\\/]+$/, '');
-  const sep = win ? '\\' : '/';
-  // a path as the workspace names it, or null for one outside it
-  const toRel = (p) => {
-    let a = p.trim();
-    if (!(win ? /^[A-Za-z]:[\\/]/.test(a) : a.startsWith('/'))) a = `${absRoot}${sep}${a}`;
-    const n = norm(a);
-    if (n !== base && !n.startsWith(base + sep)) return null;
-    const rest = a.slice(base.length + 1).replace(/\\/g, '/').split('/').filter((s) => s && s !== '.');
-    const out = [];
-    for (const s of rest) { if (s === '..') out.pop(); else out.push(s); }
-    return out.length ? `${root}/${out.join('/')}` : null;
-  };
-  const push = (x) => {
-    if (!x.rel) return;
-    const sev = /error/i.test(x.sev || '') ? 'error' : /warn/i.test(x.sev || '') ? 'warning' : x.sev === 'note' ? 'info' : 'error';
-    const key = `${x.rel}:${x.line}:${x.col}:${x.msg}`;
-    if (I.buildSeen.has(key)) return;
-    I.buildSeen.add(key);
-    I.buildProblems.push({ rel: x.rel, line: x.line, col: x.col || 1, sev, msg: x.msg, code: x.code || '', host });
-    paintProblemsSoon();
-  };
-  const line = (raw) => {
-    const s = raw.replace(ANSI_RE, '').replace(/\r$/, '');
-    // rust: "error[E0425]: msg" then "  --> src/main.rs:3:5"
-    const rh = s.match(/^(error|warning)(\[\w+\])?: (.*)$/);
-    if (rh) { rustSev = rh[1]; rustMsg = `${rh[2] ? `${rh[2].slice(1, -1)}: ` : ''}${rh[3]}`; return; }
-    const ra = s.match(/^\s*--> (.+?):(\d+):(\d+)$/);
-    if (ra && rustSev) { push({ rel: toRel(ra[1]), line: +ra[2], col: +ra[3], sev: rustSev, msg: rustMsg }); rustSev = ''; return; }
-    if (cmakeAt && s.trim()) { push({ ...cmakeAt, msg: s.trim() }); cmakeAt = null; return; }
-    for (const m of MATCHERS) {
-      const x = s.match(m.re);
-      if (!x) continue;
-      if (m.m === 0) { cmakeAt = { rel: toRel(x[m.f]), line: +x[m.l], col: 1, sev: x[m.s] }; return; }
-      if (m.s === 4 && m.re === MATCHERS[1].re && !x[m.s] && !/\.go$/.test(x[m.f])) return;
-      push({ rel: toRel(x[m.f]), line: +x[m.l], col: +(x[m.c] || 1), sev: x[m.s] || 'error', code: m.code ? x[m.code] : '', msg: x[m.m] });
-      return;
-    }
-  };
-  return {
-    feed: (text) => {
-      buf += text;
-      const parts = buf.split('\n');
-      buf = parts.pop();
-      for (const p of parts) line(p);
-    },
-    end: () => { if (buf) line(buf); buf = ''; paintProblemsSoon(); },
-  };
+  const state = I, workspace = wsKey();
+  return createBuildProblemMatcher({ host, absRoot, root, windows: hostIsWindows(host), onProblem(problem) {
+    if (I !== state || wsKey() !== workspace) return;
+    state.buildProblems.push(problem); paintProblemsSoon();
+  } });
 }
 
 function clearBuildProblems() {

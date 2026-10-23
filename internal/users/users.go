@@ -58,7 +58,7 @@ var (
 	triesMu    sync.Mutex
 	tries      = map[string][]int64{}
 	triesOrder []string
-	prefKeys   = []string{"icons", "theme", "recent", "color", "agentview"}
+	prefKeys   = []string{"icons", "theme", "palette", "custom", "recent", "color", "agentview"}
 	wallTypes  = []string{"image/png", "image/jpeg", "image/webp", "image/gif"}
 )
 

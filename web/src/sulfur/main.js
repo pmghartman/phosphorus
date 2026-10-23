@@ -89,16 +89,11 @@ async function start() {
     if (me) workbench(null); else location.replace('/?next=' + encodeURIComponent(location.href));
     return;
   }
-  // the mesh last worked on, if its login still holds; else offline, said so
-  if (info.mode === 'mesh') {
-    const me = await bootMesh(info.server, info);
-    if (me) { workbench(null); return; }
-    await fetch('/api/sidecar/mode', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'local' }) }).catch(() => {});
-    standalone.signedOut = info.server;
-  }
+  // Always start on this computer; the remembered mesh contributes its hosts.
   bootLocal({ ...info, mode: 'local' });
-  await meshMe().catch(() => null);
   workbench(q.has('welcome') ? { welcome: true } : null);
+  // An unreachable mesh must never delay this computer's editor.
+  meshMe().catch(() => null).finally(() => standalone.onMesh?.());
 }
 
 start().catch((err) => {
