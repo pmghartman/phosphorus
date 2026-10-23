@@ -174,12 +174,16 @@ export function languageSocket(url, request, onEvent = () => {}) {
         processId: null, clientInfo: { name: 'Sulfur', version: '1' }, rootUri: client.rootUri,
         workspaceFolders: [{ uri: client.rootUri, name: uriPath(client.rootUri).split('/').pop() }],
         initializationOptions: settings,
-        capabilities: { experimental: { csharp: { metadataUris: true } }, general: { positionEncodings: ['utf-16'] }, workspace: { configuration: true, workspaceFolders: true, symbol: { dynamicRegistration: false, resolveSupport: { properties: ['location.range'] } }, semanticTokens: { refreshSupport: true }, diagnostics: { refreshSupport: true }, workspaceEdit: { documentChanges: true, resourceOperations: [] } }, textDocument: {
+        capabilities: { experimental: { csharp: { metadataUris: true } }, general: { positionEncodings: ['utf-16'] }, workspace: { configuration: true, workspaceFolders: true, symbol: { dynamicRegistration: false, resolveSupport: { properties: ['location.range'] } }, semanticTokens: { refreshSupport: true }, diagnostics: { refreshSupport: true }, workspaceEdit: { documentChanges: true, resourceOperations: [] }, applyEdit: true, executeCommand: { dynamicRegistration: false } }, textDocument: {
           synchronization: { didSave: true }, completion: { contextSupport: true, completionItem: { snippetSupport: true, insertReplaceSupport: true, resolveSupport: { properties: ['textEdit', 'additionalTextEdits', 'documentation', 'detail'] } }, completionList: { itemDefaults: ['editRange', 'insertTextFormat', 'data'] } },
           definition: { linkSupport: true }, declaration: { linkSupport: true }, typeDefinition: { linkSupport: true }, implementation: { linkSupport: true },
           documentSymbol: { hierarchicalDocumentSymbolSupport: true }, callHierarchy: { dynamicRegistration: false },
           publishDiagnostics: { versionSupport: true }, rename: { prepareSupport: false },
           formatting: { dynamicRegistration: false }, rangeFormatting: {},
+          hover: { dynamicRegistration: false, contentFormat: ['markdown', 'plaintext'] },
+          signatureHelp: { dynamicRegistration: false, contextSupport: true, signatureInformation: { documentationFormat: ['markdown', 'plaintext'], parameterInformation: { labelOffsetSupport: true }, activeParameterSupport: true } },
+          codeAction: { dynamicRegistration: false, isPreferredSupport: true, disabledSupport: true, dataSupport: true, resolveSupport: { properties: ['edit'] }, codeActionLiteralSupport: { codeActionKind: { valueSet: ['', 'quickfix', 'refactor', 'refactor.extract', 'refactor.inline', 'refactor.rewrite', 'source', 'source.organizeImports', 'source.fixAll'] } } },
+          documentHighlight: { dynamicRegistration: false },
           diagnostic: { dynamicRegistration: false, relatedDocumentSupport: true },
           semanticTokens: { dynamicRegistration: false, requests: { full: true }, tokenTypes: TOKEN_TYPES, tokenModifiers: TOKEN_MODIFIERS, formats: ['relative'], overlappingTokenSupport: false, multilineTokenSupport: false },
         } },
@@ -215,7 +219,11 @@ export function languageSocket(url, request, onEvent = () => {}) {
       if (message._sulfur === 'stopped') client.close();
       onEvent(message);
     } else if (message.method) {
-      if (message.id !== undefined) {
+      if (message.id !== undefined && message.method === 'workspace/applyEdit' && client.applyEdit) {
+        // a code action's command editing files: applied through the editors, answered once done
+        Promise.resolve().then(() => client.applyEdit(message.params?.edit, message.params?.label)).then(
+          () => ({ applied: true }), (e) => ({ applied: false, failureReason: e.message })).then((result) => { try { send({ jsonrpc: '2.0', id: message.id, result }); } catch {} });
+      } else if (message.id !== undefined) {
         if (['workspace/semanticTokens/refresh', 'workspace/diagnostic/refresh'].includes(message.method)) onEvent(message);
         const result = message.method === 'workspace/configuration' ? (message.params?.items || []).map((x) => x.section ? x.section.split('.').reduce((v, key) => v?.[key], client.settings) ?? null : client.settings || {})
           : message.method === 'workspace/workspaceFolders' ? [{ uri: client.rootUri, name: uriPath(client.rootUri).split('/').pop() }]

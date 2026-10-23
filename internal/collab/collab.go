@@ -43,6 +43,7 @@ type session struct {
 	rel            string
 	text           []uint16
 	eol            string
+	eolPending     bool // the line ending changed since the last save: written though the text is the same
 	version        int
 	saved          int
 	history        [][]Op
@@ -199,7 +200,7 @@ func (s *session) saveDisk(by string, reviewed bool) (int, any) {
 		s.autosave.Stop()
 	}
 	s.dirtyAt = time.Time{}
-	if s.saved == s.version && !reviewed && !s.diskConflict {
+	if s.saved == s.version && !reviewed && !s.diskConflict && !s.eolPending {
 		return 200, map[string]any{"path": s.rel}
 	}
 	if !files.Can(&s.share, "w") {
@@ -227,6 +228,7 @@ func (s *session) saveDisk(by string, reviewed bool) (int, any) {
 		return status, out
 	}
 	s.saved = s.version
+	s.eolPending = false
 	s.diskText = Str(s.text)
 	s.diskGeneration++
 	s.diskInfo = nil // verify the actual disk snapshot on the next metadata check
@@ -296,6 +298,27 @@ func (s *session) onMessage(c *client, msg map[string]any) {
 			sendTo(c, map[string]any{"type": "error", "error": "this share is read-only"})
 			return
 		}
+		by := ""
+		if c.who != nil {
+			by = c.who.name
+		}
+		s.saveNow(by)
+		return
+	case "eol":
+		// Change End of Line Sequence: the text stays LF here, the file written with the new one
+		if !files.Can(&s.share, "w") {
+			sendTo(c, map[string]any{"type": "error", "error": "this share is read-only"})
+			return
+		}
+		eol := "\n"
+		if v := str(msg["eol"], ""); v == "\r\n" || v == "CRLF" {
+			eol = "\r\n"
+		}
+		if s.eol == eol {
+			return
+		}
+		s.eol, s.eolPending = eol, true
+		s.toAll(map[string]any{"type": "eol", "eol": eol})
 		by := ""
 		if c.who != nil {
 			by = c.who.name

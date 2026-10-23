@@ -132,6 +132,8 @@ export function createLanguageWorkbench(api) {
       session = { key, context, extension };
       sessions.set(key, session);
       session.client = connect(context.host, { op: 'launch', language: extension, root: context.root, configuration: context.configuration, buildDirectory: context.buildDirectory }, (m) => receive(session, m));
+      // a code action's command editing files (workspace/applyEdit), through the editors
+      session.client.applyEdit = (edit) => applyEdit(session, edit);
       session.promise = session.client.initialize(serverSettings(extension, { ...context, analyzersEnabled: api.setting?.('sulfur.csharp.analyzersEnabled') })).then(() => { session.readyAt = Date.now(); panel?.paint(); return session; }).catch((e) => { state(context.host).errors[extension] = e.message; panel?.paint(); clearSession(session); return null; });
     }
     const ready = await session.promise;
@@ -223,12 +225,12 @@ export function createLanguageWorkbench(api) {
     if (signal?.aborted) return null;
     const doc = await get(tab);
     if (!doc || signal?.aborted) return null;
-    const capability = { completion: 'completionProvider', definition: 'definitionProvider', declaration: 'declarationProvider', typeDefinition: 'typeDefinitionProvider', implementation: 'implementationProvider', references: 'referencesProvider', rename: 'renameProvider', formatting: 'documentFormattingProvider', documentSymbol: 'documentSymbolProvider', prepareCallHierarchy: 'callHierarchyProvider' }[method];
+    const capability = { completion: 'completionProvider', definition: 'definitionProvider', declaration: 'declarationProvider', typeDefinition: 'typeDefinitionProvider', implementation: 'implementationProvider', references: 'referencesProvider', rename: 'renameProvider', formatting: 'documentFormattingProvider', documentSymbol: 'documentSymbolProvider', prepareCallHierarchy: 'callHierarchyProvider', hover: 'hoverProvider', signatureHelp: 'signatureHelpProvider', codeAction: 'codeActionProvider', documentHighlight: 'documentHighlightProvider' }[method];
     if (!doc.session.client.capabilities[capability]) return null;
     const text = tab.ed.text();
     const caret = tab.ed.selection()[0];
     const version = doc.session.client.documents.get(doc.uri).version;
-    const value = await doc.session.client.request(`textDocument/${method}`, { textDocument: { uri: doc.uri }, ...(method === 'documentSymbol' ? {} : { position: positionAt(text, caret) }), ...extra }, { signal });
+    const value = await doc.session.client.request(`textDocument/${method}`, { textDocument: { uri: doc.uri }, ...(method === 'documentSymbol' || method === 'codeAction' ? {} : { position: positionAt(text, caret) }), ...extra }, { signal });
     if (!api.alive(tab) || text !== tab.ed.text() || version !== doc.session.client.documents.get(doc.uri)?.version || (method === 'completion' && tab.ed.selection()[0] !== caret)) return { stale: true, value, doc, text, caret, version };
     return { value, doc, text, caret, version };
   }
@@ -431,6 +433,67 @@ export function createLanguageWorkbench(api) {
       changed(tab);
     }
     const triggers = () => attached.get(tab)?.session.client.capabilities.completionProvider?.triggerCharacters || [];
+
+    // Signature help, as VS Code's parameter hints: asked on the server's trigger characters
+    // (an opening parenthesis), asked again as the arguments are typed and the caret moves,
+    // gone once the server has none for the caret (the call closed) or on Escape
+    const sig = api.el('div', 'ide-signature');
+    sig.hidden = true; sig.setAttribute('role', 'tooltip');
+    tab.view.append(sig);
+    let sigController = null, sigActive = null, sigTimer = 0;
+    function hideSignature() { clearTimeout(sigTimer); sigController?.abort(); sigController = null; sigActive = null; sig.hidden = true; }
+    async function askSignature(triggerKind, triggerCharacter = '') {
+      clearTimeout(sigTimer);
+      sigController?.abort();
+      const own = sigController = new AbortController();
+      const context = { triggerKind, isRetrigger: !!sigActive, ...(triggerCharacter ? { triggerCharacter } : {}), ...(sigActive ? { activeSignatureHelp: sigActive } : {}) };
+      let result = null;
+      try { result = await signatureHelp(tab, context, own.signal); } catch (e) { if (!aborted(e)) api.log(e.message, 'Languages'); }
+      if (own.signal.aborted || !api.alive(tab) || document.activeElement !== ta) return;
+      if (!result) { hideSignature(); return; }
+      sigActive = result.help;
+      paintSignature();
+    }
+    const signatureSoon = (kind = 3, ch = '') => { clearTimeout(sigTimer); sigTimer = setTimeout(() => askSignature(kind, ch), 120); };
+    const docText = (d) => (typeof d === 'string' ? d : d?.value || '');
+    function paintSignature() {
+      const help = sigActive;
+      const n = Math.max(0, Math.min(help.activeSignature ?? 0, help.signatures.length - 1));
+      const signature = help.signatures[n];
+      const label = String(signature.label);
+      const param = signature.parameters?.[signature.activeParameter ?? help.activeParameter ?? 0];
+      let range = null;
+      if (Array.isArray(param?.label)) range = param.label;
+      else if (param?.label) { const at = label.indexOf(param.label); if (at >= 0) range = [at, at + param.label.length]; }
+      const head = api.el('div', 'ide-signature-label');
+      if (help.signatures.length > 1) head.append(api.el('span', 'ide-signature-count', `${n + 1}/${help.signatures.length}`));
+      if (range) head.append(label.slice(0, range[0]), api.el('b', '', label.slice(range[0], range[1])), label.slice(range[1]));
+      else head.append(label);
+      sig.replaceChildren(head, api.el('div', 'ide-signature-doc', [docText(param?.documentation), docText(signature.documentation)].filter(Boolean).join('\n\n')));
+      sig.hidden = false;
+      // above the caret's line, below it when there's no room
+      const p = tab.ed.pointAt?.(ta.selectionStart);
+      if (!p) return;
+      const outer = tab.view.getBoundingClientRect();
+      sig.style.left = `${Math.max(0, Math.min(outer.width - sig.offsetWidth - 4, p.x - outer.left - 8))}px`;
+      const above = p.top - outer.top - sig.offsetHeight - 2;
+      sig.style.top = `${above >= 0 ? above : p.bottom - outer.top + 2}px`;
+    }
+    ta.addEventListener('input', (e) => {
+      if (e.isComposing) return;
+      const caps = api.setting?.('editor.parameterHints.enabled') === false ? null : signatureTriggers(tab);
+      if (!caps) return;
+      const ch = e.inputType === 'insertText' && e.data ? [...e.data].at(-1) : '';
+      if (ch && caps.trigger.includes(ch)) signatureSoon(2, ch);
+      else if (sigActive) signatureSoon(3, caps.retrigger.includes(ch) ? ch : '');
+    });
+    ta.addEventListener('blur', hideSignature);
+    ta.addEventListener('pointerdown', hideSignature);
+    ta.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !sig.hidden && box.hidden) { e.preventDefault(); e.stopImmediatePropagation(); hideSignature(); return; }
+      if (sigActive && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) signatureSoon(3);
+    }, true);
+    tab.view.querySelector('.code-ed')?.addEventListener('scroll', () => { if (!sig.hidden) paintSignature(); }, { passive: true });
     ta.addEventListener('input', (e) => {
       if (e.isComposing) { hide(); return; }
       clearTimeout(timer);
@@ -475,9 +538,9 @@ export function createLanguageWorkbench(api) {
         }
       } else if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) hide();
     }, true);
-    completers.set(tab, { hide, trigger, manual: () => !!session?.anchored && !box.hidden, symbols: () => shown.map((x) => x.item) });
+    completers.set(tab, { hide, trigger, manual: () => !!session?.anchored && !box.hidden, symbols: () => shown.map((x) => x.item), signature: () => askSignature(1), hideSignature });
     const dispose = tab.dispose;
-    tab.dispose = () => { hide(); stopAnalysis(tab); completers.delete(tab); document.removeEventListener('selectionchange', selectionChanged); const doc = attached.get(tab); if (doc) { clearTimeout(doc.diagnosticTimer); doc.diagnosticController?.abort(); doc.session.client.closeDocument(doc.uri); attached.delete(tab); diagnostics.delete(doc.session.key + '\n' + doc.uri); } dispose(); box.remove(); api.problems(); };
+    tab.dispose = () => { hide(); hideSignature(); sig.remove(); stopAnalysis(tab); completers.delete(tab); document.removeEventListener('selectionchange', selectionChanged); const doc = attached.get(tab); if (doc) { clearTimeout(doc.diagnosticTimer); doc.diagnosticController?.abort(); doc.session.client.closeDocument(doc.uri); attached.delete(tab); diagnostics.delete(doc.session.key + '\n' + doc.uri); } dispose(); box.remove(); api.problems(); };
   }
   async function navigate(tab, references = false) {
     const method = typeof references === 'string' ? references : references ? 'references' : 'definition';
@@ -559,31 +622,112 @@ export function createLanguageWorkbench(api) {
     if (!value) return true;
     const result = await request(tab, 'rename', { newName: value });
     if (!result || result.stale || !result.value) return true;
-    const edit = result.value;
-    const groups = [];
-    if (edit.changes) for (const [uri, edits] of Object.entries(edit.changes)) groups.push({ textDocument: { uri }, edits });
-    if (edit.documentChanges) groups.push(...edit.documentChanges);
-    if (groups.some((x) => !x.textDocument || !Array.isArray(x.edits))) throw new Error('This rename includes file operations, which Sulfur cannot apply.');
-    const prepared = [];
-    const seen = new Set();
-    for (const group of groups) {
-      const uri = group.textDocument.uri;
-      if (seen.has(uri)) throw new Error('Duplicate document edits in rename');
-      seen.add(uri);
-      const path = api.join(doc.session.context.rootRel, relativeUri(doc.session.client.rootUri, uri));
-      const target = await api.prepare(path, doc.session.context);
-      const version = group.textDocument.version;
-      if (version != null && doc.session.client.documents.get(uri)?.version !== version) throw new Error(`Document version changed: ${path}`);
-      const before = target.ed.text();
-      prepared.push({ target, before, after: applyTextEdits(before, group.edits), edits: textEditRanges(before, group.edits) });
-    }
+    const prepared = await prepareEdit(doc.session, result.value);
     if (!prepared.length) return true;
     // Review in open tabs, as with Sulfur's syntax rename. Validate all before
     // any mutation; each file gets a single undo entry.
     const apply = await api.pick([{ label: `Apply rename to ${prepared.length} files`, value: true }, { label: 'Cancel', value: false }], { title: 'Rename from language server', placeholder: prepared.map((x) => x.target.rel).join(', ') });
     if (!apply) return true;
-    if (prepared.some((x) => !api.alive(x.target) || x.target.ed.text() !== x.before || x.target.info?.readOnly)) throw new Error('Files changed while reviewing rename. Run Rename again.');
+    applyPrepared(prepared, 'Files changed while reviewing rename. Run Rename again.');
+    return true;
+  }
+  // A WorkspaceEdit's text edits made ready in open tabs: every file validated (versions,
+  // writable, positions) before any is touched, each file then one undo step
+  async function prepareEdit(session, edit) {
+    const groups = [];
+    if (edit?.changes) for (const [uri, edits] of Object.entries(edit.changes)) groups.push({ textDocument: { uri }, edits });
+    if (edit?.documentChanges) groups.push(...edit.documentChanges);
+    if (groups.some((x) => !x.textDocument || !Array.isArray(x.edits))) throw new Error('This edit creates, renames or deletes files, which Sulfur cannot apply.');
+    const prepared = [];
+    const seen = new Set();
+    for (const group of groups) {
+      const uri = group.textDocument.uri;
+      if (seen.has(uri)) throw new Error('Duplicate document edits');
+      seen.add(uri);
+      const path = api.join(session.context.rootRel, relativeUri(session.client.rootUri, uri));
+      const target = await api.prepare(path, session.context);
+      const version = group.textDocument.version;
+      if (version != null && session.client.documents.get(uri)?.version !== version) throw new Error(`Document version changed: ${path}`);
+      const before = target.ed.text();
+      // snippet edits (AnnotatedTextEdit and the like) go in as their text
+      const edits = group.edits.map((e) => ({ range: e.range, newText: e.newText ?? e.snippet?.value ?? '' }));
+      prepared.push({ target, before, after: applyTextEdits(before, edits), edits: textEditRanges(before, edits) });
+    }
+    return prepared;
+  }
+  function applyPrepared(prepared, stale = 'Files changed while the edit was prepared. Try again.') {
+    if (prepared.some((x) => !api.alive(x.target) || x.target.ed.text() !== x.before || x.target.info?.readOnly)) throw new Error(stale);
     for (const x of prepared) { x.target.ed.editMany(x.edits); changed(x.target); }
+  }
+  async function applyEdit(session, edit) {
+    if (sessions.get(session.key) !== session) throw new Error('The language session changed');
+    applyPrepared(await prepareEdit(session, edit));
+  }
+
+  // --- hover, signature help, code actions: asked of an attached document only, so moving
+  // the mouse or typing never starts a server ---
+  const markdownOf = (contents) => (Array.isArray(contents) ? contents : [contents]).map((x) => {
+    if (!x) return '';
+    if (typeof x === 'string') return x;
+    if (x.kind) return x.kind === 'markdown' ? x.value : String(x.value).replace(/[\\`*_{}[\]()#+\-.!|<>]/g, '\\$&');
+    if (x.language) return `\`\`\`${x.language}\n${x.value}\n\`\`\``;
+    return x.value || '';
+  }).filter((x) => x.trim()).join('\n\n---\n\n');
+  async function hover(tab, offset, signal) {
+    if (!attached.has(tab) || !attached.get(tab).session.client.capabilities.hoverProvider) return null;
+    const result = await request(tab, 'hover', { position: positionAt(tab.ed.text(), offset) }, signal);
+    if (!result || result.stale || !result.value?.contents) return null;
+    return markdownOf(result.value.contents) || null;
+  }
+  // context: { triggerKind, triggerCharacter, isRetrigger, activeSignatureHelp }
+  async function signatureHelp(tab, context, signal) {
+    if (!attached.has(tab)) return null;
+    const caps = attached.get(tab).session.client.capabilities.signatureHelpProvider;
+    if (!caps) return null;
+    const result = await request(tab, 'signatureHelp', { context }, signal);
+    if (!result || result.stale || !result.value?.signatures?.length) return null;
+    return { help: result.value, text: result.text, caret: result.caret };
+  }
+  function signatureTriggers(tab) {
+    const caps = attached.get(tab)?.session.client.capabilities.signatureHelpProvider;
+    return caps ? { trigger: caps.triggerCharacters || ['('], retrigger: caps.retriggerCharacters || [','] } : null;
+  }
+  const before = (a, b) => a.line < b.line || (a.line === b.line && a.character < b.character);
+  async function codeActions(tab, only) {
+    const doc = await get(tab);
+    if (!doc?.session.client.capabilities.codeActionProvider) return null;
+    const text = tab.ed.text();
+    const [from, to] = tab.ed.selection();
+    const range = { start: positionAt(text, from), end: positionAt(text, to) };
+    // the problems the selection touches (the caret's line with nothing selected), as published
+    const entry = diagnostics.get(doc.session.key + '\n' + doc.uri);
+    const touches = (d) => (from === to ? d.range.start.line <= range.start.line && range.start.line <= d.range.end.line : !before(d.range.end, range.start) && !before(range.end, d.range.start));
+    const items = (entry?.items || []).filter(touches).map(({ path, ...d }) => d);
+    const result = await request(tab, 'codeAction', { range, context: { diagnostics: items, triggerKind: 1, ...(only ? { only: [only] } : {}) } });
+    if (!result || result.stale) return null;
+    return { doc: result.doc, actions: (result.value || []).filter((a) => a && !a.disabled) };
+  }
+  async function runCodeAction(handle, action) {
+    const { client } = handle.doc.session;
+    let a = action;
+    if (typeof a.command === 'string' && !a.edit && !a.kind) {
+      await client.request('workspace/executeCommand', { command: a.command, arguments: a.arguments });
+      return;
+    }
+    if (!a.edit && client.capabilities.codeActionProvider?.resolveProvider) a = await client.request('codeAction/resolve', a);
+    if (a.edit) await applyEdit(handle.doc.session, a.edit);
+    if (a.command?.command) await client.request('workspace/executeCommand', { command: a.command.command, arguments: a.command.arguments });
+  }
+  // Quick Fix (Ctrl+.) and the Refactor / Source Action menus: the server's actions for the
+  // selection, preferred first, picked from a list
+  async function quickFix(tab, only = '', title = 'Quick Fix') {
+    const handle = await codeActions(tab, only);
+    if (!handle) return false;
+    if (!handle.actions.length) { api.notice(only ? `No ${title.toLowerCase()} actions available` : 'No code actions available'); return true; }
+    const sorted = [...handle.actions].sort((a, b) => (b.isPreferred ? 1 : 0) - (a.isPreferred ? 1 : 0));
+    const action = sorted.length === 1 && only === 'source.organizeImports' ? sorted[0]
+      : await api.pick(sorted.map((a) => ({ label: a.title, description: a.kind || '', detail: a.isPreferred ? 'preferred' : '', value: a })), { title, placeholder: 'Select a code action' });
+    if (action && api.alive(tab)) await runCodeAction(handle, action);
     return true;
   }
   function mount(container) {
@@ -655,10 +799,12 @@ export function createLanguageWorkbench(api) {
   function suggesting(tab) { return tab?.view.querySelector('.ide-completion')?.hidden === false; }
   function dismissSuggest(tab) { completers.get(tab)?.hide(); }
   function suggest(tab) { tab?.ed?.focus(); return completers.get(tab)?.trigger(1, '', true); }
+  function signature(tab) { tab?.ed?.focus(); return completers.get(tab)?.signature(); }
   function symbols(tab) { return completers.get(tab)?.symbols() || []; }
   function preferLanguage(tab) {
     const c = completers.get(tab);
     return !!c?.manual?.() || preferLanguageCompletion(tab.ed.text(), tab.ed.selection()[0], c?.symbols() || []);
   }
-  return { documentOutline, workspaceSymbols, openWorkspaceSymbol, callHierarchy, hierarchyCalls, openLocation, mount, filter, format, attach, changed, navigate, rename, reset, get, request, suggest, complete: suggest, cancelCompletions: () => { for (const c of completers.values()) c.hide(); api.onSuggest?.(); }, suggesting, dismissSuggest, symbols, preferLanguage, problems: () => [...diagnostics.values()].flatMap((d) => d.items.map((item) => ({ ...item, context: d.session.context }))), saved(tab) { const d = attached.get(tab); if (d) { changed(tab); const save = d.session.client.capabilities.textDocumentSync?.save; if (save) d.session.client.notify('textDocument/didSave', { textDocument: { uri: d.uri }, ...(save.includeText ? { text: tab.ed.text() } : {}) }); } } };
+  const hasCodeActions = (tab) => !!attached.get(tab)?.session.client.capabilities.codeActionProvider;
+  return { hover, signatureHelp, signatureTriggers, signature, quickFix, hasCodeActions, documentOutline, workspaceSymbols, openWorkspaceSymbol, callHierarchy, hierarchyCalls, openLocation, mount, filter, format, attach, changed, navigate, rename, reset, get, request, suggest, complete: suggest, cancelCompletions: () => { for (const c of completers.values()) c.hide(); api.onSuggest?.(); }, suggesting, dismissSuggest, symbols, preferLanguage, problems: () => [...diagnostics.values()].flatMap((d) => d.items.map((item) => ({ ...item, context: d.session.context }))), saved(tab) { const d = attached.get(tab); if (d) { changed(tab); const save = d.session.client.capabilities.textDocumentSync?.save; if (save) d.session.client.notify('textDocument/didSave', { textDocument: { uri: d.uri }, ...(save.includeText ? { text: tab.ed.text() } : {}) }); } } };
 }

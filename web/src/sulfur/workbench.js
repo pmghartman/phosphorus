@@ -37,7 +37,8 @@ import {
 } from '#host';
 import { codeEditor } from './editor.js';
 import { createLanguageWorkbench } from './language-workbench.js';
-import { formatWhitespace, formattingEdits } from './formatting.js';
+import { formatWhitespace, formattingEdits, saveEdits } from './formatting.js';
+import { expandSelection } from './smart-select.js';
 import { applyTextEdits } from './language-client.js';
 import { sidebarRight, runTargetName, moveBookmarks } from './navigation.js';
 import { fileKind, renderFileIcon } from './file-icons.js';
@@ -307,6 +308,9 @@ function keyOf(e) {
   else if (code === 'Minus') k = '-';
   else if (code === 'Comma') k = ',';
   else if (code === 'Period') k = '.';
+  else if (code === 'Backslash') k = '\\';
+  else if (code === 'Semicolon') k = ';';
+  else if (code === 'Quote') k = "'";
   else if (k === ' ') k = 'space';
   else k = k.toLowerCase().replace(/^arrow/, '');
   const mod = IS_MAC ? e.metaKey : e.ctrlKey;
@@ -426,6 +430,19 @@ const SETTINGS = {
   'editor.diagnostics.delay': { def: 1000, type: 'number', min: 300, max: 5000, title: 'Editor: Diagnostic Delay', about: 'Idle time in milliseconds before checking syntax or requesting language-server diagnostics. Stale underlines clear while you edit incomplete lines.' },
   'sulfur.languageServerSettings': { def: {}, type: 'object', title: 'Languages: Server Settings', about: 'Language-server settings, keyed by extension id (typescript, python, javascript, java, csharp, php, shell, cpp, hcl, go). Runtime prerequisites and installation are in Extensions.' },
   'editor.fontSize': { def: 13, type: 'number', min: 8, max: 40, title: 'Editor: Font Size', about: 'Controls the font size in pixels.' },
+  'editor.renderLineHighlight': { def: 'line', type: 'enum', options: [['line', 'Line and line number'], ['gutter', 'Line number only'], ['none', 'None']], title: 'Editor: Render Line Highlight', about: 'How the caret\'s line is shown. The line is lit only while nothing is selected.' },
+  'editor.rulers': { def: '', type: 'string', title: 'Editor: Rulers', about: 'Columns to draw vertical rulers at, comma separated (80, 120). An array in settings.json works too.' },
+  'editor.matchBrackets': { def: true, type: 'boolean', title: 'Editor: Match Brackets', about: 'Highlight the bracket matching the one beside the caret. Brackets in strings and comments are skipped.' },
+  'editor.occurrencesHighlight': { def: true, type: 'boolean', title: 'Editor: Occurrences Highlight', about: 'Highlight the other occurrences of the word at the caret, in the text and the overview ruler.' },
+  'editor.selectionHighlight': { def: true, type: 'boolean', title: 'Editor: Selection Highlight', about: 'Highlight the other occurrences of a short single-line selection.' },
+  'editor.overviewRuler.enabled': { def: true, type: 'boolean', title: 'Editor: Overview Ruler', about: 'Mark problems, find matches, bookmarks, occurrences and the caret over the vertical scrollbar.' },
+  'editor.emptySelectionClipboard': { def: true, type: 'boolean', title: 'Editor: Empty Selection Clipboard', about: 'Copy or cut the whole line when nothing is selected. Pasting that line with nothing selected inserts it above the caret\'s line.' },
+  'editor.hover.enabled': { def: true, type: 'boolean', title: 'Editor: Hover', about: 'Show the language server\'s information for the symbol under the mouse, below its problems. Ctrl+K Ctrl+I shows it at the caret.' },
+  'editor.parameterHints.enabled': { def: true, type: 'boolean', title: 'Editor: Parameter Hints', about: 'Show the signature of the call being typed and its current parameter, from the language server.' },
+  'editor.formatOnSave': { def: false, type: 'boolean', title: 'Editor: Format On Save', about: 'Format the file (language server, or Sulfur\'s reindent) before saving it with Ctrl+S.' },
+  'files.trimTrailingWhitespace': { def: false, type: 'boolean', title: 'Files: Trim Trailing Whitespace', about: 'Remove spaces and tabs at the ends of lines when saving with Ctrl+S. Markdown line breaks (two trailing spaces) are kept.' },
+  'files.insertFinalNewline': { def: false, type: 'boolean', title: 'Files: Insert Final Newline', about: 'End the file with a newline when saving with Ctrl+S.' },
+  'files.trimFinalNewlines': { def: false, type: 'boolean', title: 'Files: Trim Final Newlines', about: 'Remove blank lines after the last line when saving with Ctrl+S.' },
   'editor.enablePreview': { def: true, type: 'boolean', title: 'Workbench › Editor: Enable Preview', about: 'Controls whether a file opened from the explorer is shown as a preview, its tab reused until you edit it or double click.' },
   'explorer.confirmDelete': { def: true, type: 'boolean', title: 'Explorer: Confirm Delete', about: 'Controls whether the explorer asks before deleting a file or folder. A delete here is for good: there is no trash.' },
   'explorer.autoReveal': { def: true, type: 'boolean', title: 'Explorer: Auto Reveal', about: 'Controls whether the explorer reveals and selects the active file.' },
@@ -442,7 +459,13 @@ const primarySideRight = () => sidebarRight(setting('workbench.layout.mode'), se
 function formattingOptions() {
   return { detectIndentation: setting('editor.detectIndentation'), insertSpaces: setting('editor.insertSpaces'), tabSize: Math.max(1, Math.min(16, Math.trunc(Number(setting('editor.tabSize'))) || 4)), braceStyle: setting('editor.format.braceStyle'), indentBlocks: setting('editor.format.indentBlocks') };
 }
-const editorDisplayOptions = () => ({ indentationGuides: setting('editor.guides.indentation'), whitespace: setting('editor.renderWhitespace') });
+const rulerColumns = (v) => (Array.isArray(v) ? v : String(v || '').split(/[\s,]+/)).map((x) => Number(typeof x === 'object' ? x?.column : x)).filter((n) => Number.isInteger(n) && n > 0 && n < 1000);
+const editorDisplayOptions = () => ({
+  indentationGuides: setting('editor.guides.indentation'), whitespace: setting('editor.renderWhitespace'),
+  lineHighlight: setting('editor.renderLineHighlight'), rulers: rulerColumns(setting('editor.rulers')), matchBrackets: setting('editor.matchBrackets'),
+  occurrencesHighlight: setting('editor.occurrencesHighlight'), selectionHighlight: setting('editor.selectionHighlight'),
+  overviewRuler: setting('editor.overviewRuler.enabled'), emptySelectionClipboard: setting('editor.emptySelectionClipboard'),
+});
 
 // this browser's keeping from before the name was Sulfur, copied once
 function migrateLocal() {
@@ -992,16 +1015,21 @@ const MENUS = [
     cmdItem('actions.find', 'Find'), cmdItem('editor.action.startFindReplaceAction', 'Replace'),
     cmdItem('workbench.action.findInFiles', 'Find in Files'), settingItem('search.exclude', 'Find in Files Exclusions'), '-',
     cmdItem('editor.action.selectAll', 'Select All'), cmdItem('expandLineSelection', 'Expand Line Selection'),
-    cmdItem('editor.action.duplicateSelection', 'Duplicate Selection'),
+    cmdItem('editor.action.smartSelect.expand', 'Expand Selection'), cmdItem('editor.action.smartSelect.shrink', 'Shrink Selection'),
+    cmdItem('editor.action.selectToBracket', 'Select to Bracket'),
+    cmdItem('editor.action.duplicateSelection', 'Duplicate Selection'), '-',
+    cmdItem('editor.action.formatDocument', 'Format Document'), cmdItem('editor.action.quickFix', 'Quick Fix…'), cmdItem('editor.action.organizeImports', 'Organize Imports'),
     { label: 'Line', sub: () => [
-      cmdItem('editor.action.commentLine', 'Toggle Line Comment'), '-',
+      cmdItem('editor.action.commentLine', 'Toggle Line Comment'), cmdItem('editor.action.blockComment', 'Toggle Block Comment'), '-',
       cmdItem('editor.action.copyLinesUpAction', 'Copy Line Up'), cmdItem('editor.action.copyLinesDownAction', 'Copy Line Down'),
       cmdItem('editor.action.moveLinesUpAction', 'Move Line Up'), cmdItem('editor.action.moveLinesDownAction', 'Move Line Down'),
     ] },
   ]],
   ['View', () => [
     cmdItem('editor.action.toggleIndentationGuides', 'Indentation Guides', setting('editor.guides.indentation')),
-    cmdItem('editor.action.toggleRenderWhitespace', 'Whitespace Markers', setting('editor.renderWhitespace') !== 'none'), '-',
+    cmdItem('editor.action.toggleRenderWhitespace', 'Whitespace Markers', setting('editor.renderWhitespace') !== 'none'),
+    settingItem('editor.overviewRuler.enabled', 'Overview Ruler'), settingItem('editor.occurrencesHighlight', 'Occurrences Highlight'), '-',
+    cmdItem('workbench.action.toggleFullScreen', 'Full Screen', !!document.fullscreenElement), '-',
     cmdItem('workbench.action.showCommands', 'Command Palette…'), '-',
     ...SIDE_VIEWS.map((v) => cmdItem(v.cmd, v.title, !I.st.side.hidden && I.st.side.view === v.id)), '-',
     cmdItem('workbench.actions.view.problems', 'Problems'), cmdItem('workbench.action.output.toggleOutput', 'Output'), cmdItem('workbench.action.terminal.toggleTerminal', 'Terminal'), '-',
@@ -1041,6 +1069,7 @@ const MENUS = [
     cmdItem('workbench.action.navigateBack', 'Back'), cmdItem('workbench.action.navigateForward', 'Forward'), '-',
     cmdItem('workbench.action.quickOpen', 'Go to File…'), cmdItem('workbench.action.gotoLine', 'Go to Line/Column…'), '-',
     ...symbolMenuItems(), '-',
+    cmdItem('editor.action.jumpToBracket', 'Go to Bracket'), '-',
     cmdItem('workbench.action.nextEditor', 'Next Editor'), cmdItem('workbench.action.previousEditor', 'Previous Editor'), '-',
     cmdItem('editor.action.marker.next', 'Next Problem'), cmdItem('editor.action.marker.prev', 'Previous Problem'),
   ]],
@@ -1841,7 +1870,19 @@ function mountCode(t) {
   const share = t.share ?? 'home';
   const file = { host: t.host, share, path: t.rel, label: `${t.host}/${share === 'home' ? 'home' : shareOf(t.host, share)?.label || share}/${t.rel}` };
   t.edId = `ide-code-${(edSeq += 1)}`;
-  t.ed = codeEditor(t.view, file, null, t.edId, { bare: true, definitionLinks: true, formatting: formattingOptions, display: editorDisplayOptions, diagnosticDelay: () => setting('editor.diagnostics.delay'), onState: (info) => tabState(t, info) });
+  t.ed = codeEditor(t.view, file, null, t.edId, {
+    bare: true, definitionLinks: true, formatting: formattingOptions, display: editorDisplayOptions, diagnosticDelay: () => setting('editor.diagnostics.delay'), onState: (info) => tabState(t, info),
+    // the language server's word on the symbol under the mouse, as markdown under its problems
+    hover: async (offset, signal) => {
+      if (!setting('editor.hover.enabled')) return null;
+      const md = await languages.hover(t, offset, signal);
+      if (!md) return null;
+      const d = el('div', 'code-hover-md');
+      renderMd(d, md, false);
+      return d;
+    },
+    get quickFixHint() { return languages.hasCodeActions(t) ? `Quick Fix… (${keyLabel(keyFor('editor.action.quickFix'))})` : ''; },
+  });
   editors.set(t.edId, t.ed);
   codeTabs.set(codeKey(file), t.edId);
   t.dispose = () => t.ed.close();
@@ -1854,11 +1895,13 @@ function mountCode(t) {
     activate(t, false);
     menu({ x: e.clientX, y: e.clientY }, [
       ...symbolMenuItems(), '-',
-      { label: 'Cut', key: 'ctrl+x', disabled: t.info?.readOnly || !t.info?.sel, run: () => editorClipboard(t, 'cut') },
-      { label: 'Copy', key: 'ctrl+c', disabled: !t.info?.sel, run: () => editorClipboard(t, 'copy') },
+      cmdItem('editor.action.quickFix', 'Quick Fix…'), cmdItem('editor.action.refactor', 'Refactor…'), cmdItem('editor.action.sourceAction', 'Source Action…'), '-',
+      { label: 'Cut', key: 'ctrl+x', disabled: t.info?.readOnly || (!t.info?.sel && !setting('editor.emptySelectionClipboard')), run: () => editorClipboard(t, 'cut') },
+      { label: 'Copy', key: 'ctrl+c', disabled: !t.info?.sel && !setting('editor.emptySelectionClipboard'), run: () => editorClipboard(t, 'copy') },
       { label: 'Paste', key: 'ctrl+v', disabled: t.info?.readOnly, run: () => editorClipboard(t, 'paste') }, '-',
       cmdItem('editor.action.selectAll', 'Select All'),
       cmdItem('editor.action.commentLine', 'Toggle Line Comment'),
+      cmdItem('editor.action.blockComment', 'Toggle Block Comment'),
     ]);
   });
   t.view.addEventListener('click', (e) => {
@@ -2079,10 +2122,19 @@ async function paintSymbolNav(t) {
 }
 
 async function editorClipboard(t, action) {
-  const [from, to] = t.ed.selection();
+  let [from, to] = t.ed.selection();
   try {
-    if (action === 'paste') t.ed.edit(from, to, await navigator.clipboard.readText());
-    else { await copyText(t.ed.text().slice(from, to)); if (action === 'cut') t.ed.edit(from, to, ''); }
+    if (action === 'paste') { t.ed.edit(from, to, await navigator.clipboard.readText()); return; }
+    const text = t.ed.text();
+    let copied = text.slice(from, to);
+    // nothing selected: the whole line, as the keys do
+    if (from === to && setting('editor.emptySelectionClipboard')) {
+      const [a, b] = lineSpan(text, from, from);
+      copied = `${text.slice(a, b)}\n`;
+      [from, to] = b < text.length ? [a, b + 1] : [Math.max(0, a - 1), b];
+    }
+    await copyText(copied);
+    if (action === 'cut' && to > from) t.ed.edit(from, to, '');
   } catch (err) { notify('error', `Clipboard: ${err.message}`); }
 }
 
@@ -2415,8 +2467,19 @@ function focusActive() {
   if (I.active) focusTab(I.active); else I.root.focus({ preventScroll: true });
 }
 
+// what VS Code does as a file saves: format it, trim trailing whitespace, settle its last
+// lines; one undo step, only for a save asked for (Ctrl+S, Save All), not autosave
+async function beforeSave(t) {
+  if (!t.ed?.ready() || t.info?.readOnly) return;
+  if (setting('editor.formatOnSave')) await languages.format(t, true).catch((err) => log(`format on save: ${err.message}`, 'Languages'));
+  const text = t.ed.text();
+  const md = /\.(md|markdown)$/i.test(t.rel || '');
+  const edits = saveEdits(text, { trim: setting('files.trimTrailingWhitespace'), keepMarkdownBreaks: md, finalNewline: setting('files.insertFinalNewline'), trimFinal: setting('files.trimFinalNewlines') });
+  if (edits.length) t.ed.editMany(edits);
+}
 async function saveTab(t) {
   if (!t.ed) return true;
+  await beforeSave(t);
   if (await t.ed.save() === false) return false;
   for (let i = 0; i < 50 && t.ed.dirty(); i++) await sleep(100);
   if (t.ed.dirty()) { notify('error', `Failed to save '${t.title}': ${t.info?.state || 'no answer from its host'}.`); return false; }
@@ -2918,6 +2981,77 @@ function nextProblem(d) {
   setStatusFlash(`Ln ${hit.line}, Col ${hit.col}: ${hit.what}`);
 }
 
+// Expand and Shrink Selection: each expansion kept, so shrinking walks back the same way
+async function smartSelect(d) {
+  const t = I.active;
+  if (!t?.ed) return;
+  const text = t.ed.text();
+  const [from, to] = t.ed.selection();
+  let st = t.selectStack;
+  const top = st?.ranges.at(-1);
+  if (!st || st.text !== text || !top || top[0] !== from || top[1] !== to) st = t.selectStack = { text, ranges: [[from, to]] };
+  if (d < 0) {
+    if (st.ranges.length > 1) { st.ranges.pop(); const [a, b] = st.ranges.at(-1); t.ed.select(a, b); }
+    return;
+  }
+  const tree = await t.ed.syntaxTree().catch(() => null);
+  if (!I || I.active !== t || t.ed.text() !== text) return;
+  const next = expandSelection(text, from, to, tree);
+  if (!next) return;
+  st.ranges.push(next);
+  t.ed.select(next[0], next[1]);
+}
+
+// every line's leading whitespace rewritten as tabs or spaces, its width kept
+function convertIndentation(tabs) {
+  const t = I.active;
+  if (!t?.ed?.ready() || t.info?.readOnly) { setStatusFlash('read-only'); return; }
+  const tabSize = formattingOptions().tabSize;
+  const width = t.info?.indent === 'tab' || !t.info?.indent ? tabSize : t.info.indent;
+  const text = t.ed.text();
+  const edits = [];
+  for (const m of text.matchAll(/^[ \t]+/gm)) {
+    let w = 0;
+    for (const ch of m[0]) w = ch === '\t' ? w + tabSize - (w % tabSize) : w + 1;
+    const put = tabs ? '\t'.repeat(Math.floor(w / width)) + ' '.repeat(w % width) : ' '.repeat(w);
+    if (put !== m[0]) edits.push({ from: m.index, to: m.index + m[0].length, text: put });
+  }
+  if (edits.length) t.ed.editMany(edits);
+  t.ed.indentChanged?.();
+  setStatusFlash(edits.length ? `Converted ${edits.length} line${edits.length === 1 ? '' : 's'} to ${tabs ? 'tabs' : 'spaces'}` : 'Indentation already as asked');
+}
+function indentationItems() {
+  const detect = setting('editor.detectIndentation');
+  return [
+    cmdItem('editor.action.indentationToSpaces', 'Convert Indentation to Spaces'),
+    cmdItem('editor.action.indentationToTabs', 'Convert Indentation to Tabs'), '-',
+    { label: 'Detect Indentation from Content', checked: detect, run: () => { setSetting('editor.detectIndentation', !detect); I.active?.ed?.indentChanged?.(); } },
+    { label: 'Indent Using Spaces', checked: !detect && setting('editor.insertSpaces'), run: () => { setSetting('editor.detectIndentation', false); setSetting('editor.insertSpaces', true); } },
+    { label: 'Indent Using Tabs', checked: !detect && !setting('editor.insertSpaces'), run: () => { setSetting('editor.detectIndentation', false); setSetting('editor.insertSpaces', false); } },
+    { label: 'Change Tab Display Size…', run: async () => {
+      const n = await pick([1, 2, 3, 4, 5, 6, 7, 8].map((x) => ({ label: String(x), detail: x === formattingOptions().tabSize ? 'current' : '', value: x })), { title: 'Tab Display Size' });
+      if (n) setSetting('editor.tabSize', n);
+    } },
+  ];
+}
+
+async function changeEol() {
+  const t = I.active;
+  if (!t?.ed?.setEol || !t.info?.ready) return;
+  if (t.info.readOnly) { setStatusFlash('read-only'); return; }
+  const now = t.info.eol;
+  const v = await pick([{ label: 'LF', description: 'Line Feed (Linux, macOS)', detail: now === 'LF' ? 'current' : '', value: 'LF' }, { label: 'CRLF', description: 'Carriage Return Line Feed (Windows)', detail: now === 'CRLF' ? 'current' : '', value: 'CRLF' }], { title: 'Select End of Line Sequence' });
+  if (v && v !== now && I?.tabs.includes(t)) t.ed.setEol(v);
+}
+
+// the window full screen: the app's own window through the page's Fullscreen API, as a browser's
+async function toggleFullScreen() {
+  try {
+    if (document.fullscreenElement) await document.exitFullscreen();
+    else await document.documentElement.requestFullscreen();
+  } catch (err) { notify('warning', `Full screen isn't available here: ${err.message}`); }
+}
+
 async function revertFile(t) {
   if (!t?.ed) return;
   try {
@@ -3100,12 +3234,23 @@ function registerCommands() {
   C('undo', 'Undo', () => { I.active?.ed?.focus(); I.active?.ed?.undo(); }, { when: hasEd, category: 'Edit', hidden: true });
   C('redo', 'Redo', () => { I.active?.ed?.focus(); I.active?.ed?.redo(); }, { when: hasEd, category: 'Edit', hidden: true });
   C('editor.action.selectAll', 'Select All', () => { const ed = I.active?.ed; if (ed) ed.select(0, ed.text().length); }, { when: hasEd, category: 'Selection', hidden: true });
-  C('editor.action.commentLine', 'Toggle Line Comment', () => {
-    const ta = I.active?.view.querySelector('.code-ta');
-    if (!ta) return;
-    ta.focus();
-    ta.dispatchEvent(new KeyboardEvent('keydown', { key: '/', code: 'Slash', ctrlKey: !IS_MAC, metaKey: IS_MAC, bubbles: true, cancelable: true }));
-  }, { when: hasEd, category: 'Editor' });
+  C('editor.action.commentLine', 'Toggle Line Comment', () => { I.active.ed.focus(); if (!I.active.ed.toggleComment()) setStatusFlash('This language has no comments'); }, { when: hasEd, category: 'Editor' });
+  C('editor.action.blockComment', 'Toggle Block Comment', () => { I.active.ed.focus(); if (!I.active.ed.toggleBlockComment()) setStatusFlash('This language has no block comments'); }, { key: 'shift+alt+a', when: hasEd, category: 'Editor' });
+  C('editor.action.jumpToBracket', 'Go to Bracket', () => { if (!I.active.ed.goToBracket()) setStatusFlash('No bracket pair at the caret'); }, { key: 'ctrl+shift+\\', when: hasEd, category: 'Go' });
+  C('editor.action.selectToBracket', 'Select to Bracket', () => { if (!I.active.ed.goToBracket(true)) setStatusFlash('No bracket pair at the caret'); }, { when: hasEd, category: 'Editor' });
+  C('editor.action.smartSelect.expand', 'Expand Selection', () => smartSelect(1), { key: 'shift+alt+right', when: edFocused, category: 'Editor' });
+  C('editor.action.smartSelect.shrink', 'Shrink Selection', () => smartSelect(-1), { key: 'shift+alt+left', when: edFocused, category: 'Editor' });
+  C('editor.action.showHover', 'Show or Focus Hover', () => I.active.ed.showHover(), { key: 'ctrl+k ctrl+i', when: hasEd, category: 'Editor' });
+  C('editor.action.triggerParameterHints', 'Trigger Parameter Hints', () => languages.signature(I.active), { key: 'ctrl+shift+space', when: hasEd, category: 'Editor' });
+  const actions = (only, title) => () => languages.quickFix(I.active, only, title).then((ran) => { if (ran === false) setStatusFlash('No language server with code actions for this file'); }).catch((err) => notify('error', `${title}: ${err.message}`));
+  C('editor.action.quickFix', 'Quick Fix…', actions('', 'Quick Fix'), { key: 'ctrl+.', when: hasEd, category: 'Editor' });
+  C('editor.action.refactor', 'Refactor…', actions('refactor', 'Refactor'), { key: 'ctrl+shift+r', when: hasEd, category: 'Editor' });
+  C('editor.action.sourceAction', 'Source Action…', actions('source', 'Source Action'), { when: hasEd, category: 'Editor' });
+  C('editor.action.organizeImports', 'Organize Imports', actions('source.organizeImports', 'Organize Imports'), { key: 'shift+alt+o', when: hasEd, category: 'Editor' });
+  C('editor.action.indentationToSpaces', 'Convert Indentation to Spaces', () => convertIndentation(false), { when: hasEd, category: 'Editor' });
+  C('editor.action.indentationToTabs', 'Convert Indentation to Tabs', () => convertIndentation(true), { when: hasEd, category: 'Editor' });
+  C('workbench.action.editor.changeEOL', 'Change End of Line Sequence', () => changeEol(), { when: () => hasEd() && !!I.active.ed.setEol, category: 'Editor' });
+  C('workbench.action.toggleFullScreen', 'Toggle Full Screen', () => toggleFullScreen(), { key: 'f11', category: 'View', shell: true });
   const L = (id, title, fn, key, alt) => C(id, title, () => lineCmd(LINE_CMDS[fn]), { key, alt, when: edFocused, category: 'Editor' });
   L('editor.action.moveLinesUpAction', 'Move Line Up', 'moveUp', 'alt+up');
   L('editor.action.moveLinesDownAction', 'Move Line Down', 'moveDown', 'alt+down');
@@ -4619,9 +4764,9 @@ function buildStatus() {
   S.chord = el('span', 'ide-sb-flash ide-sb-chord');
   S.extL = el('span', 'ide-sb-ext');
   S.pos = sbItem('ide-sb-pos', 'Go to Line/Column', () => run('workbench.action.gotoLine'));
-  S.indent = sbItem('ide-sb-indent', 'Indentation, as the file has it');
+  S.indent = sbItem('ide-sb-indent', 'Select Indentation', () => menu(S.indent, indentationItems(), { side: 'right', up: true }));
   S.enc = sbItem('ide-sb-enc', 'Encoding');
-  S.eol = sbItem('ide-sb-eol', 'End of Line Sequence');
+  S.eol = sbItem('ide-sb-eol', 'Select End of Line Sequence', () => run('workbench.action.editor.changeEOL'));
   S.lang = sbItem('ide-sb-lang', 'Language Mode');
   S.host = sbItem('ide-sb-host', 'The host the file’s session is on', () => I.active?.rel && filesWin?.({ loc: HOME, dir: filesParent(I.active.rel) }));
   S.state = el('span', 'ide-sb ide-sb-state');

@@ -401,6 +401,43 @@
 .code-diagnostic-hover { position: fixed; z-index: 100; max-width: min(600px, calc(100vw - 24px)); max-height: 240px; overflow: hidden; padding: 8px 12px; border: 1px solid var(--ide-widget-border, var(--border)); border-radius: 3px; background: var(--ide-widget, var(--bg)); color: var(--ide-fg, var(--fg)); box-shadow: 0 4px 16px #0005; font: 12px/1.5 var(--font, monospace); white-space: pre-wrap; pointer-events: none; }
 .code-diagnostic-hover[hidden] { display: none; }
 .ide .code-md { border: 0; box-shadow: none; background: var(--ide-bg); padding: 16px 32px; }
+/* under the text (the body a stacking context of its own): the caret's line, rulers, the
+   bracket pair and the caret's word elsewhere; the caret's line number lit in the gutter */
+.code-body { z-index: 0; }
+.code-deco { position: absolute; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
+.code-line-now { position: absolute; left: 0; right: 0; box-sizing: border-box; background: var(--ide-line-hl, transparent); border-block: 1px solid var(--ide-line-border, transparent); }
+.code-line-now[hidden], .code-nr-now[hidden], .code-overview[hidden] { display: none; }
+.code-rulers > div { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--ide-ruler, var(--ide-guide, var(--border))); }
+.code-deco-marks { position: absolute; inset: 0; color: transparent; }
+.code-deco-marks mark { color: transparent; background: none; border-radius: 2px; }
+.code-deco-marks mark.word { background: var(--ide-word-hl, color-mix(in srgb, var(--ide-fg, var(--fg)) 14%, transparent)); }
+.code-deco-marks mark.bracket { border-radius: 0; background: var(--ide-bracket, rgb(0 100 0 / 0.1)); box-shadow: inset 0 0 0 1px var(--ide-bracket-border, #888); }
+.code-nr-now {
+  position: absolute; left: 0; right: 0; box-sizing: border-box; padding: 0 0.7ch 0 1.2ch; text-align: right; white-space: pre; pointer-events: none;
+  font-family: var(--mono); font-size: var(--code-font); font-variant-ligatures: none; color: var(--ide-line-nr-now, var(--fg)); background: var(--card);
+}
+.ide .code-nr-now { padding: 0 1.4ch 0 2.4ch; background: var(--ide-bg); }
+/* the overview ruler, over the scrollbar's track: the whole file's marks at once */
+.code-overview { position: absolute; right: 0; width: 10px; z-index: 3; pointer-events: none; }
+/* the hover: problems first, then the language server's word on the symbol */
+.code-diagnostic-hover.code-hover-rich { max-height: min(50vh, 420px); white-space: normal; }
+.code-hover-problems { white-space: pre-wrap; }
+.code-hover-hint { margin-top: 4px; color: var(--ide-link, var(--accent)); font-size: 11px; }
+.code-hover-md { font-family: var(--ide-ui, var(--font)); }
+.code-hover-problems + .code-hover-md, .code-hover-hint + .code-hover-md { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--ide-widget-border, var(--border)); }
+.code-hover-md > :first-child { margin-top: 0; }
+.code-hover-md > :last-child { margin-bottom: 0; }
+.code-hover-md pre { margin: 4px 0; padding: 0; background: none; border: 0; white-space: pre-wrap; font-family: var(--mono); font-size: 12px; }
+.code-hover-md code { font-family: var(--mono); font-size: 12px; }
+.code-hover-md p { margin: 4px 0; }
+/* signature help: above the caret's line, the active parameter strong */
+.ide-signature { position: absolute; z-index: 40; max-width: min(640px, calc(100% - 16px)); padding: 4px 8px; border: 1px solid var(--ide-widget-border); border-radius: 3px; background: var(--ide-widget); color: var(--ide-fg); box-shadow: var(--ide-shadow); font: 12px/1.5 var(--ide-ui); pointer-events: none; }
+.ide-signature[hidden] { display: none; }
+.ide-signature-label { font-family: var(--mono); white-space: pre-wrap; }
+.ide-signature-label b { color: var(--ide-link, var(--ide-accent)); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+.ide-signature-count { margin-right: 6px; color: var(--ide-muted); }
+.ide-signature-doc { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--ide-widget-border); color: var(--ide-muted); white-space: pre-wrap; }
+.ide-signature-doc:empty { display: none; }
 .code-finds { position: absolute; inset: 0; color: transparent; }
 .code-finds mark { background: var(--ide-find, rgb(234 92 0 / 0.33)); color: transparent; }
 .code-finds mark.now { background: var(--ide-find-now, #9e6a03); outline: 1px solid var(--ide-warn, #cca700); }
