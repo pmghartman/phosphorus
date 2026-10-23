@@ -521,13 +521,15 @@ func filesOp(w http.ResponseWriter, r *http.Request, op string, q url.Values) {
 	}
 	switch {
 	case r.Method == "GET" && op == "list":
-		out(w)(files.List(sh, rel))
+		st, b := files.List(sh, rel)
+		out(w)(files.Quiet(q, st, b))
 	case r.Method == "GET" && op == "tree":
 		out(w)(files.Tree(sh, rel, q.Get("depth"), q.Get("match"), q.Get("skip")))
 	case r.Method == "GET" && op == "search":
 		out(w)(files.Search(sh, rel, q.Get("query"), q.Get("content") == "true", q.Get("glob"), q.Get("skip")))
 	case r.Method == "GET" && op == "read":
-		out(w)(files.Read(sh, rel))
+		st, b := files.Read(sh, rel)
+		out(w)(files.Quiet(q, st, b))
 	case r.Method == "GET" && op == "download":
 		abs := files.DownloadPath(sh, rel)
 		if abs == "" {
