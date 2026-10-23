@@ -2664,8 +2664,13 @@ body:has(.dk-pop:not([hidden])) .toasts { opacity: 0; pointer-events: none; }
 .ide-burger { display: none; width: 30px; padding: 0; align-items: center; justify-content: center; }
 .ide-narrow .ide-burger { display: flex; }
 .ide-narrow .ide-menu-top:not(.ide-burger) { display: none; }
+/* bare stretches either side of the search, to take the window by; the search never fills the bar */
+.ide-drag { flex: 1 1 0; min-width: 56px; height: 100%; }
+.ide-tb-nav { width: 28px; padding: 0; justify-content: center; }
+.ide-tb-nav:disabled { opacity: 0.35; cursor: default; background: none; }
+.ide-tb-nav .ide-ic { width: 16px; height: 16px; }
 .ide-cc {
-  flex: 0 1 600px; min-width: 0; height: 24px; margin: 0 auto; display: flex; align-items: center; justify-content: center; gap: 6px;
+  flex: 0 1 520px; min-width: 0; height: 24px; margin: 0 4px; display: flex; align-items: center; justify-content: center; gap: 6px;
   background: color-mix(in srgb, var(--ide-fg) 5%, transparent); border: 1px solid color-mix(in srgb, var(--ide-fg) 12%, transparent);
   color: var(--ide-muted); font: 12px var(--ide-ui); cursor: pointer; border-radius: 6px; overflow: hidden;
 }
@@ -3588,7 +3593,7 @@ button.ide-fd-place:hover { background: var(--ide-hover); color: var(--ide-stron
 .ide-win:is(.ide-theme-phosphorus, .ide-theme-cli) .ide * { border-radius: 0; }
 .ide-win:is(.ide-theme-phosphorus, .ide-theme-cli, .ide-theme-macos, .ide-theme-win11) .ide-tab.on { box-shadow: inset 0 2px 0 var(--ide-accent); }
 .ide-win:is(.ide-theme-phosphorus, .ide-theme-cli, .ide-theme-macos, .ide-theme-win11) .ide-sec-head { letter-spacing: 0.06em; }
-/* every theme but vs code its own syntax colors, the library's --hl-* tokens */
+/* every theme its own syntax colors, the library's --hl-* tokens */
 :root .ide-win[class*="ide-theme-"] .ide .code-hl :is(.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-doctag, .hljs-name, .hljs-tag) { color: var(--hl-kw); }
 :root .ide-win[class*="ide-theme-"] .ide .code-hl :is(.hljs-string, .hljs-regexp, .hljs-addition) { color: var(--hl-str); }
 :root .ide-win[class*="ide-theme-"] .ide .code-hl :is(.hljs-number, .hljs-symbol, .hljs-bullet) { color: var(--hl-num); }
@@ -3635,6 +3640,7 @@ button.ide-fd-place:hover { background: var(--ide-hover); color: var(--ide-stron
 .ide-narrow .ide-aux { position: absolute; right: 0; top: 0; bottom: 0; z-index: 8; width: min(var(--aux-w), 100%); box-shadow: var(--ide-shadow); }
 .ide-narrow .ide-sash-side, .ide-narrow .ide-sash-aux { display: none; }
 .ide-narrow .ide-cc { flex-basis: auto; }
+.ide-narrow .ide-drag { min-width: 12px; }
 .ide-narrow .ide-sb-enc, .ide-narrow .ide-sb-eol, .ide-narrow .ide-sb-indent, .ide-narrow .ide-sb-host, .ide-narrow .ide-sb-people { display: none; }
 .ide-narrow .ide-find { right: 4px; left: 4px; }
 .ide-narrow .ide-find-field, .ide-narrow .ide-find-row > .ide-input { width: auto; flex: 1; }
@@ -3657,7 +3663,7 @@ button.ide-fd-place:hover { background: var(--ide-hover); color: var(--ide-stron
 .sx-win .dk-btns[hidden] { display: none; }
 /* A narrow desktop window still has all three native window controls. */
 .sx-app .sx-win .dk-btns .dk-max { display: flex; }
-/* the title bar 35px under every theme, over any look's own (tauri.macos.conf.json centers the
+/* the title bar 35px under every theme, over any look's own (window_darwin.m centers the
    Mac's traffic lights in it), their room at its left kept */
 :root .sx-win.dk-win > .dk-head { flex: 0 0 35px; height: 35px; min-height: 35px; padding: 0 0 0 0.35rem; gap: 0; }
 :root.sx-mac .sx-win.dk-win > .dk-head { padding-left: 78px; }
@@ -3980,7 +3986,7 @@ button.ide-fd-place:hover { background: var(--ide-hover); color: var(--ide-stron
 .ide-win.ide-theme-win11 :is(.ide-side-head, .ide-aux-head) { background: var(--ide-side); }
 .ide-win.ide-theme-win11 .ide-activity { background: var(--ide-chrome); }
 .ide-win.ide-theme-win11 .ide-act.on::before { width: 3px; top: 12px; bottom: 12px; border-radius: 2px; }
-.ide-win.ide-theme-win11 .ide-cc { flex-basis: 320px; margin: 0 auto 0 8px; justify-content: flex-start; padding: 0 8px; border-radius: 4px; }
+.ide-win.ide-theme-win11 .ide-cc { flex-basis: 320px; justify-content: flex-start; padding: 0 8px; border-radius: 4px; }
 /* xcode: the navigator's vibrant sidebar, tabs as rounded pills, the picked row the accent */
 .ide-win.ide-theme-macos .ide-activity { border-right-color: var(--ide-border); }
 .ide-win.ide-theme-macos .ide-act.on { color: var(--ide-accent); }

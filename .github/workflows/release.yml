@@ -1,6 +1,6 @@
 # manual release: per checked OS a host installer (.deb, .dmg, setup .exe), as
 # vVERSION, and with Sulfur checked the Sulfur code editor's own app for every OS
-# (Tauri around its local server: setup .exe, .dmg, .deb and AppImage);
+# (one Go binary around the system's web view: setup .exe, .dmg and .deb);
 # feeds on release `update` for the hosts and Sulfur built, then only the two newest
 # releases and runs kept
 # app and apt feeds need UPDATE_SIGNING_KEY (go run ./cmd/feedsign -keygen), APT_GPG_KEY, var UPDATE_PUBKEY
@@ -81,13 +81,13 @@ jobs:
           # an empty matrix fails its job: a placeholder the jobs' if skips
           j() { [ $# -gt 0 ] || set -- '{"name":"none"}'; local IFS=,; echo "[$*]"; }
           echo "builds=$(j "${builds[@]}")" | tee -a "$GITHUB_OUTPUT"
-          # Sulfur's app on every OS, whichever hosts were checked: its own bundles per OS
+          # Sulfur's app on every OS, whichever hosts were checked: built on a runner of its own, its window native
           sulfur=()
           if [ "$SULFUR" = true ]; then
-            sulfur+=('{"name":"linux-amd64","runner":"ubuntu-24.04","bundles":"deb,appimage","target":"","triple":"x86_64-unknown-linux-gnu"}')
-            sulfur+=('{"name":"linux-arm64","runner":"ubuntu-24.04-arm","bundles":"deb","target":"","triple":"aarch64-unknown-linux-gnu"}')
-            sulfur+=('{"name":"macos-universal","runner":"macos-14","bundles":"app,dmg","target":"universal-apple-darwin","triple":"universal-apple-darwin"}')
-            sulfur+=('{"name":"windows-x86_64","runner":"windows-2022","bundles":"nsis","target":"","triple":"x86_64-pc-windows-msvc"}')
+            sulfur+=('{"name":"linux-amd64","runner":"ubuntu-24.04","arch":"amd64"}')
+            sulfur+=('{"name":"linux-arm64","runner":"ubuntu-24.04-arm","arch":"arm64"}')
+            sulfur+=('{"name":"macos-universal","runner":"macos-14"}')
+            sulfur+=('{"name":"windows-x86_64","runner":"windows-2022"}')
           fi
           echo "sulfur=$(j "${sulfur[@]}")" | tee -a "$GITHUB_OUTPUT"
 
@@ -133,6 +133,8 @@ jobs:
         with:
           name: web-dist
           path: internal/web/dist
+      # Sulfur's window on Linux is GTK and WebKitGTK through cgo
+      - run: sudo apt-get update -q && sudo apt-get install -y -q libgtk-3-dev libwebkit2gtk-4.1-dev
       # every package cross-vetted too: macOS and Windows hosts run the same roles
       - run: go vet ./... && go test ./... && GOOS=darwin go vet ./... && GOOS=windows go vet ./...
 
@@ -217,8 +219,8 @@ jobs:
           compression-level: 0
           if-no-files-found: ignore
 
-  # Sulfur's own app: Tauri around its local server (cmd/sulfur), which serves Sulfur
-  # alone and this computer offline, or fronts a mesh; installers for every OS
+  # Sulfur's own app: one Go binary, its server and its window in one, on the system's
+  # web view; installers for every OS, each built on its own, as cgo draws the window
   sulfur:
     needs: [version, web]
     if: ${{ inputs.sulfur }}
@@ -230,6 +232,9 @@ jobs:
     env:
       VER: ${{ needs.version.outputs.ver }}
       APP: packaging/sulfur
+      FEED_URL: https://github.com/${{ github.repository }}/releases/download/update
+      FEED_PUBKEY: ${{ vars.UPDATE_PUBKEY }}
+      UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
     defaults:
       run:
         shell: bash
@@ -243,26 +248,6 @@ jobs:
         with:
           name: web-dist
           path: internal/web/dist
-      # the server the app runs, Sulfur's page built into it, named as Tauri finds a bundled binary;
-      # the feed it updates from and the key its updates are signed with
-      - name: server
-        env:
-          FEED_URL: https://github.com/${{ github.repository }}/releases/download/update
-          FEED_PUBKEY: ${{ vars.UPDATE_PUBKEY }}
-        run: |
-          bin=$APP/src-tauri/binaries
-          mkdir -p "$bin"
-          b() { CGO_ENABLED=0 GOOS=$1 GOARCH=$2 go build -trimpath -ldflags "-s -w $3 -X main.version=$VER -X main.feedURL=$FEED_URL -X main.feedPubkey=$FEED_PUBKEY" -o "$4" ./cmd/sulfur; }
-          case "${{ matrix.name }}" in
-            windows-*) b windows amd64 "-H windowsgui" "$bin/sulfur-server-${{ matrix.triple }}.exe" ;;
-            linux-amd64) b linux amd64 "" "$bin/sulfur-server-${{ matrix.triple }}" ;;
-            linux-arm64) b linux arm64 "" "$bin/sulfur-server-${{ matrix.triple }}" ;;
-            macos-*)
-              b darwin arm64 "" "$bin/sulfur-server-aarch64-apple-darwin"
-              b darwin amd64 "" "$bin/sulfur-server-x86_64-apple-darwin"
-              lipo -create -output "$bin/sulfur-server-universal-apple-darwin" "$bin/sulfur-server-aarch64-apple-darwin" "$bin/sulfur-server-x86_64-apple-darwin" ;;
-          esac
-          ls -l "$bin"
       # the .debs kept across releases: the runners' mirror has crawled at 70 kB/s for 15 minutes
       - name: apt cache
         if: startsWith(matrix.name, 'linux')
@@ -271,62 +256,25 @@ jobs:
           path: ~/apt-archives/*.deb
           key: apt-${{ matrix.name }}-${{ github.run_id }}
           restore-keys: apt-${{ matrix.name }}-
-      # WebKitGTK and the AppImage's tools, Tauri's Linux needs; only what the cache lacks downloaded
+      # GTK and WebKitGTK, the window's; only what the cache lacks downloaded
       - name: linux deps
         if: startsWith(matrix.name, 'linux')
         timeout-minutes: 10
         run: |
           mkdir -p ~/apt-archives/partial
           sudo apt-get update -q
-          sudo apt-get install -y -q -o Dir::Cache::Archives="$HOME/apt-archives" -o Acquire::Retries=3 \
-            libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev patchelf file
-      # the runner's own rustup, both Mac architectures for a universal app
-      - name: rust
-        run: |
-          rustup toolchain install stable --profile minimal
-          rustup default stable
-          if [ "${{ matrix.target }}" = universal-apple-darwin ]; then rustup target add aarch64-apple-darwin x86_64-apple-darwin; fi
-      # the crates and their builds kept across releases, pruned to what this lock still uses
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          workspaces: packaging/sulfur/src-tauri
-          key: ${{ matrix.name }}
-      # the release's version as semver; the bundles in out/ under the release's names;
-      # the cli pinned, so a release builds the same each time
+          sudo apt-get install -y -q -o Dir::Cache::Archives="$HOME/apt-archives" -o Acquire::Retries=3 libgtk-3-dev libwebkit2gtk-4.1-dev
+      # the packages in out/ under the release's names, the app's own update, signed for the feed, in upd/
       - name: build
-        working-directory: ${{ env.APP }}
         run: |
-          args=(--bundles "${{ matrix.bundles }}" --config "{\"version\":\"$VER.0\"}")
-          [ -n "${{ matrix.target }}" ] && args+=(--target "${{ matrix.target }}")
-          for i in 1 2 3; do npx --yes @tauri-apps/cli@2.12.2 build "${args[@]}" -- --locked && break; [ $i = 3 ] && exit 1; sleep $((i * 10)); done
-          out=$GITHUB_WORKSPACE/out
-          mkdir -p "$out"
-          base=src-tauri/target/${{ matrix.target }}/release/bundle
-          [ -n "${{ matrix.target }}" ] || base=src-tauri/target/release/bundle
-          shopt -s nullglob
-          for f in "$base"/nsis/*-setup.exe; do cp "$f" "$out/sulfur-$VER-${{ matrix.name }}-setup.exe"; done
-          for f in "$base"/dmg/*.dmg; do cp "$f" "$out/sulfur-$VER-${{ matrix.name }}.dmg"; done
-          for f in "$base"/deb/*.deb; do cp "$f" "$out/sulfur_${VER}_${f##*_}"; done
-          for f in "$base"/appimage/*.AppImage; do cp "$f" "$out/sulfur-$VER-${{ matrix.name }}.AppImage"; done
-          ls -l "$out"
-          [ -n "$(ls -A "$out")" ] || { echo "no bundles made" >&2; exit 1; }
-          # the app's own update, signed for the feed: the setup .exe, the .app tarred, the AppImage
-          if [ -n "$UPDATE_SIGNING_KEY" ]; then
-            upd=$GITHUB_WORKSPACE/upd
-            mkdir -p "$upd"
-            case "${{ matrix.name }}" in
-              windows-*) cp "$out/sulfur-$VER-${{ matrix.name }}-setup.exe" "$upd/sulfur-windows-x86_64-setup.exe" ;;
-              macos-*)
-                app=$(find "$base" -maxdepth 2 -name "Sulfur.app" -type d | head -n 1)
-                [ -n "$app" ] || { echo "no Sulfur.app under $base" >&2; exit 1; }
-                tar -czf "$upd/sulfur-macos-universal.app.tar.gz" -C "$(dirname "$app")" Sulfur.app ;;
-              linux-amd64) cp "$out/sulfur-$VER-${{ matrix.name }}.AppImage" "$upd/sulfur-linux-x86_64.AppImage" ;;
-            esac
-            if [ -n "$(ls -A "$upd")" ]; then (cd "$GITHUB_WORKSPACE" && go run ./cmd/feedsign "$upd"/*); fi
-          fi
-        env:
-          FEED_PUBKEY: ${{ vars.UPDATE_PUBKEY }}
-          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+          mkdir -p out upd
+          case "${{ matrix.name }}" in
+            windows-*) $APP/windows.sh "$VER" "$PWD/out" "$PWD/upd" ;;
+            macos-*) $APP/macos.sh "$VER" "$PWD/out" "$PWD/upd" ;;
+            linux-*) $APP/linux.sh "$VER" ${{ matrix.arch }} "$PWD/out" ;;
+          esac
+          ls -l out
+          [ -n "$(ls -A out)" ] || { echo "no packages made" >&2; exit 1; }
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: out-sulfur-${{ matrix.name }}
@@ -380,7 +328,7 @@ jobs:
             # Sulfur's desktop app, when it was built
             if ls sulfur[-_]* >/dev/null 2>&1; then
               echo
-              echo "**Sulfur:** the code editor on its own, for any computer: **Start Offline** for its own files, terminals and compilers, or connect to your mesh for its machines and agents. Install the \`sulfur-…-setup.exe\`, the \`.dmg\` (first time: right-click, Open), or \`sudo apt install ./sulfur_${VER}_ARCH.deb\`."
+              echo "**Sulfur:** the code editor on its own, for any computer: **Start Offline** for its own files, terminals and compilers, or connect to your mesh for its machines and agents. Install the \`sulfur-…-setup.exe\`, the \`.dmg\` (first time: right-click, Open), or \`sudo apt install ./sulfur_${VER}_ARCH.deb\`. The Windows and Mac apps update themselves; the .deb updates with apt."
             fi
           } > "$RUNNER_TEMP/notes.md"
           cat "$RUNNER_TEMP/notes.md"
@@ -423,7 +371,6 @@ jobs:
             feed sulfur-darwin-aarch64 sulfur-macos-universal.app.tar.gz
           fi
           if [ -e sulfur-windows-x86_64-setup.exe ]; then feed sulfur-windows-x86_64 sulfur-windows-x86_64-setup.exe; fi
-          if [ -e sulfur-linux-x86_64.AppImage ]; then feed sulfur-linux-x86_64 sulfur-linux-x86_64.AppImage; fi
           # Linux hosts update over apt
           # the apt feed: the host packages alone
           if [ -n "$KEY" ] && ls ../out/phosphorus_*.deb >/dev/null 2>&1; then

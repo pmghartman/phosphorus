@@ -46,7 +46,7 @@ flowchart TB
     deb[".deb (amd64, arm64)<br/>binary, tailscale, cloudflared, forgejo"]
     dmg[".dmg"]
     exe["setup .exe"]
-    sulf["Sulfur app<br/>.exe, .dmg, .deb, AppImage"]
+    sulf["Sulfur app<br/>.exe, .dmg, .deb"]
     feed["update feed: apt repo, app feed, latest.json"]
   end
 

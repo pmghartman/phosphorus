@@ -3,7 +3,7 @@
        Code's: one amber hue in flat tones, each of the triangle's bands over one corner and under
        the next, the bar over the stem, a soft shadow on each band where it passes under, rounded
        outer corners and one white sheen over the whole, on nothing.
-       The source every platform's icon is made from (tauri icon icon.svg) -->
+       The source every platform's icon is made from -->
   <defs>
     <linearGradient id="light" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffc53d"/><stop offset="1" stop-color="#fbab22"/></linearGradient>
     <linearGradient id="mid" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f28c16"/><stop offset="1" stop-color="#e47811"/></linearGradient>
