@@ -159,6 +159,7 @@
       "label": "phosphorus",
       "about": "the mesh’s own purple, square and monospaced",
       "look": "phosphorus",
+      "icons": "default",
       "ide": {
         "dark": {
           "--ide-bg": "var(--bg)",
@@ -217,6 +218,7 @@
       "label": "vs code",
       "about": "the 2026 dark and 2026 light themes",
       "look": "vscode",
+      "icons": "default",
       "dark": {
         "--bg": "#121314",
         "--fg": "#bfbfbf",
@@ -367,6 +369,7 @@
       "label": "medieval",
       "about": "parchment, oak and gilt",
       "look": "medieval",
+      "icons": "default",
       "dark": {
         "--bg": "#1e1711",
         "--fg": "#e6d8bb",
@@ -518,6 +521,7 @@
       "label": "pyxra",
       "about": "the sprite editor’s: navy by night, cozy cream by day, rose, bevelled",
       "look": "pyxra",
+      "icons": "default",
       "dark": {
         "--bg": "#101219",
         "--fg": "#ccd2de",
@@ -654,6 +658,7 @@
       "label": "cli",
       "about": "a plain terminal: monospaced, square, a tmux status line",
       "look": "cli",
+      "icons": "default",
       "layout": { "barStyle": "line" },
       "ide": {
         "dark": {
@@ -782,6 +787,7 @@
       "label": "macos",
       "about": "san francisco, traffic lights, a dock; sulfur as xcode",
       "look": "macos",
+      "icons": "default",
       "layout": { "barStyle": "dock", "menubar": "top", "btns": "left", "btnStyle": "lights", "title": "center", "labels": "icons" },
       "dark": {
         "--font": "-apple-system, BlinkMacSystemFont, \"SF Pro Text\", \"Helvetica Neue\", Inter, system-ui, sans-serif",
@@ -1025,6 +1031,7 @@
       "label": "windows 11",
       "about": "segoe, mica, caption buttons, a centered taskbar; sulfur as visual studio 2026",
       "look": "win11",
+      "icons": "default",
       "layout": { "barStyle": "full", "btnStyle": "caption" },
       "dark": {
         "--font": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", system-ui, -apple-system, \"Helvetica Neue\", sans-serif",
