@@ -27,6 +27,7 @@ import (
 	"github.com/pmghartman/phosphorus/internal/update"
 	"github.com/pmghartman/phosphorus/internal/users"
 	"github.com/pmghartman/phosphorus/internal/util"
+	"github.com/pmghartman/phosphorus/internal/wsock"
 )
 
 // opOn op here when host is this one, else on the peer, the grant sealed for it
@@ -325,8 +326,11 @@ func skewTimes(c map[string]any, d float64) {
 }
 
 func mcpCallsMesh(user string) map[string]any {
-	// through json, this host's int64 times read by num as the peers' float64 ones
-	out := util.Obj(util.Decode(util.Marshal(mcp.Calls(user))))
+	return mcpMerge(mcp.Calls(user), mcpPeers(user))
+}
+
+// mcpPeers every peer's calls for a user, their times already on this host's clock
+func mcpPeers(user string) []map[string]any {
 	hosts := []string{}
 	for h := range mesh.PeerIPs() {
 		hosts = append(hosts, h)
@@ -343,6 +347,19 @@ func mcpCallsMesh(user string) map[string]any {
 		}(i, h)
 	}
 	wg.Wait()
+	now := float64(util.Now())
+	for _, c := range got {
+		if c != nil {
+			skewTimes(c, now-num(c["now"]))
+		}
+	}
+	return got
+}
+
+// mcpMerge this host's calls with the peers' fetched earlier
+func mcpMerge(local map[string]any, got []map[string]any) map[string]any {
+	// through json, this host's int64 times read by num as the peers' float64 ones
+	out := util.Obj(util.Decode(util.Marshal(local)))
 	calls, _ := out["calls"].([]any)
 	recent, _ := out["recent"].([]any)
 	seen := num(out["seen"])
@@ -350,8 +367,6 @@ func mcpCallsMesh(user string) map[string]any {
 		if c == nil {
 			continue
 		}
-		// a peer's times onto this host's clock
-		skewTimes(c, num(out["now"])-num(c["now"]))
 		if l, ok := c["calls"].([]any); ok {
 			calls = append(calls, l...)
 		}
@@ -377,4 +392,51 @@ func mcpCallsMesh(user string) map[string]any {
 	sort.SliceStable(calls, func(i, j int) bool { return num(util.Obj(calls[i])["since"]) < num(util.Obj(calls[j])["since"]) })
 	out["calls"], out["recent"] = calls, recent
 	return out
+}
+
+// mcpPeerLook how often the peers' calls are looked at while a page watches
+const mcpPeerLook = 5 * time.Second
+
+// mcpSocket pushes a user's agent status only when it changes: this host's calls at
+// once, the peers' on a slow look, nothing while it holds still
+func mcpSocket(ws *wsock.Conn, user string) {
+	poke, stop := mcp.Watch(user)
+	defer stop()
+	go func() { drainWS(ws); ws.Close(1000) }()
+	peers := mcpPeers(user)
+	last := ""
+	push := func() {
+		out := mcpMerge(mcp.Calls(user), peers)
+		out["configured"] = users.HasMCPKey(user)
+		// the clock ticks every call, so left out of the comparison
+		now := out["now"]
+		delete(out, "now")
+		sig := string(util.Marshal(out))
+		if sig == last {
+			return
+		}
+		last = sig
+		out["now"] = now
+		ws.JSON(out)
+	}
+	push()
+	tick := time.NewTicker(mcpPeerLook)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ws.Done():
+			return
+		case <-tick.C:
+			peers = mcpPeers(user)
+			push()
+		case <-poke:
+			// a burst of calls one message
+			select {
+			case <-time.After(100 * time.Millisecond):
+			case <-ws.Done():
+				return
+			}
+			push()
+		}
+	}
 }
