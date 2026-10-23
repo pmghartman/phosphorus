@@ -1,10 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { positionAt, offsetAt, fileUri, uriPath, relativeUri, applyTextEdits, completionEdits, snippetText, incrementalChange, languageSocket, LANGUAGE_EXTENSIONS, languageId } from '../src/sulfur/language-client.js';
+import { positionAt, offsetAt, fileUri, uriPath, relativeUri, applyTextEdits, completionEdits, snippetText, incrementalChange, languageSocket, LANGUAGE_EXTENSIONS, languageId, serverSettings } from '../src/sulfur/language-client.js';
 import { EditorHistory } from '../src/editor-history.js';
 import { opDiff } from '../src/text-operations.js';
 
 const range = (from, to) => ({ start: { line: 0, character: from }, end: { line: 0, character: to } });
+
+test('C# configuration has a real section and uses the detected solution while preserving user overrides', () => {
+  const context = {solutionPath:'C:/game/game.sln', configuration:'Debug|Any CPU', settings:{}};
+  assert.equal(serverSettings('csharp', context).csharp.solutionPathOverride, context.solutionPath);
+  context.settings.csharp = {csharp:{solutionPathOverride:'custom.sln',analyzersEnabled:true}};
+  assert.equal(serverSettings('csharp',context).csharp.solutionPathOverride,'custom.sln');
+  assert.equal(serverSettings('csharp',context).csharp.analyzersEnabled,true);
+});
 
 test('UTF-16 positions preserve surrogate pairs and CRLF offsets', () => {
   const text = '😀a\r\nβeta';
@@ -48,10 +56,14 @@ test('completion list defaults, insert/replace edits and plain identifier fallba
   assert.equal(completionEdits({ label: 'hello' }, 'he', 2).text, 'hello');
   assert.equal(completionEdits({ label: 'hello', textEditText: 'hello' }, 'he', 2, { editRange: range(0, 2) }).text, 'hello');
   assert.equal(completionEdits({ label: 'hello', textEdit: { insert: range(0, 2), replace: range(0, 4), newText: 'hello' } }, 'hexx', 2).text, 'hello');
+  const snippet = completionEdits({ label: 'fn', insertText: 'fn(${1:a}, $2)$0', insertTextFormat: 2 }, 'f', 1);
+  assert.equal(snippet.text, 'fn(a, )');
+  assert.deepEqual(snippet.selection, [3, 4]);
   assert.equal(completionEdits({ label: 'fn', insertText: 'fn(${1:a})$0', insertTextFormat: 2 }, '', 0).text, 'fn(a)');
   assert.equal(snippetText('fn(${1:${2:value}}, ${3|left,right|})\\$0'), 'fn(value, left)$0');
   assert.equal(snippetText('fn($1, ${1:arg}, ${1})'), 'fn(arg, arg, arg)');
   assert.throws(() => snippetText('${1/a/b/}'), /transform/);
+  assert.throws(() => completionEdits({ label: 'fn', insertText: '${1/a/b/}', insertTextFormat: 2 }, '', 0), /transform/);
   assert.throws(() => snippetText('${1:unfinished'), /Invalid/);
 });
 
@@ -81,12 +93,12 @@ class FakeSocket {
 }
 const setup = async (t) => { const original = globalThis.WebSocket; globalThis.WebSocket = FakeSocket; t.after(() => { globalThis.WebSocket = original; }); const client = languageSocket('http://localhost/api/sulfur/languages', { op: 'launch' }); await client.initialize({ python: { analysis: { typeCheckingMode: 'strict' } } }); t.after(() => client.close()); return { client, ws: FakeSocket.instances.at(-1) }; };
 
-test('initialization advertises UTF-16, disables snippets and completes the LSP handshake', async (t) => {
+test('initialization advertises UTF-16, snippet expansion and semantic tokens and completes the LSP handshake', async (t) => {
   const { ws } = await setup(t);
   assert.ok(ws.url.startsWith('ws://'));
   const init = ws.sent.find((x) => x.method === 'initialize');
   assert.deepEqual(init.params.capabilities.general.positionEncodings, ['utf-16']);
-  assert.equal(init.params.capabilities.textDocument.completion.completionItem.snippetSupport, false);
+  assert.equal(init.params.capabilities.textDocument.completion.completionItem.snippetSupport, true);
   assert.equal(init.params.capabilities.experimental.csharp.metadataUris, true);
   assert.equal(init.params.capabilities.textDocument.semanticTokens.requests.full, true);
   assert.equal(init.params.capabilities.textDocument.diagnostic.dynamicRegistration, false);

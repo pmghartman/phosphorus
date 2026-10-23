@@ -19,6 +19,8 @@ import { mdBlocks, renderMd } from '../md.js';
 import { opApply, opTransform, opDiff, opMap, opEdits } from '../text-operations.js';
 import { EditorHistory } from '../editor-history.js';
 import { highlightRanges } from '../sulfur/semantic-tokens.js';
+import { patchHighlight } from '../highlight-patch.js';
+import { diagnosticSeverity, diagnosticCounts, diagnosticText, diagnosticsAt, offsetAtColumn, diagnosticDelay } from '../sulfur/diagnostics.js';
 
 // --- code editor ------------------------------------------------------------------
 // a share's text or code file in a tab of its own, joined to the file's live
@@ -64,9 +66,12 @@ function codeEditor(view, file, btn, id, opts = {}) {
   const agentL = el('pre', 'code-hl code-agent');
   for (const layer of [gutter, pre, squig, finds, agentL]) layer.setAttribute('aria-hidden', 'true');
   const ta = Object.assign(document.createElement('textarea'), { className: 'code-ta', spellcheck: false, autocomplete: 'off', wrap: 'off' });
+  const inlineLayer = Object.assign(el('pre', 'code-hl code-inline'), { hidden: true });
+  inlineLayer.setAttribute('aria-hidden', 'true');
+  let inlineSuggestion = null;
   ta.setAttribute('autocapitalize', 'off');
   ta.setAttribute('aria-label', file.label);
-  body.append(agentL, finds, pre, squig, ta);
+  body.append(agentL, finds, pre, squig, inlineLayer, ta);
   scroller.append(gutter, body);
 
   const out = el('div', 'code-out');
@@ -80,6 +85,26 @@ function codeEditor(view, file, btn, id, opts = {}) {
   // markdown rendered, each block its source again on a double click
   const mdView = Object.assign(el('div', 'code-md'), { hidden: true, tabIndex: -1 });
   view.append(bar, scroller, mdView, out);
+  const diagnosticHover = el('div', 'code-diagnostic-hover');
+  diagnosticHover.hidden = true;
+  diagnosticHover.setAttribute('role', 'tooltip');
+  view.append(diagnosticHover);
+  function hideDiagnosticHover() { diagnosticHover.hidden = true; }
+  ta.addEventListener('mousemove', (event) => {
+    if (inlineSuggestion) { hideDiagnosticHover(); return; }
+    const rect = ta.getBoundingClientRect(), style = getComputedStyle(ta);
+    const line = Math.floor((event.clientY - rect.top - parseFloat(style.paddingTop)) / (parseFloat(style.lineHeight) || 18));
+    const column = Math.floor((event.clientX - rect.left - parseFloat(style.paddingLeft)) / chWidthIn(ta));
+    const hit = diagnosticsAt(errs, offsetAtColumn(ta.value, line, column, parseInt(style.tabSize, 10) || 4));
+    if (!hit.length) { hideDiagnosticHover(); return; }
+    diagnosticHover.textContent = hit.map(diagnosticText).join('\n\n');
+    diagnosticHover.hidden = false;
+    const bounds = diagnosticHover.getBoundingClientRect();
+    diagnosticHover.style.left = `${Math.max(4, Math.min(event.clientX + 12, window.innerWidth - bounds.width - 8))}px`;
+    diagnosticHover.style.top = `${Math.max(4, Math.min(event.clientY + 20, window.innerHeight - bounds.height - 8))}px`;
+  });
+  for (const event of ['mouseleave', 'blur', 'input', 'keydown']) ta.addEventListener(event, hideDiagnosticHover);
+  scroller.addEventListener('scroll', hideDiagnosticHover);
   if (bare) bar.hidden = true;
 
   // the session: the server's text and version, the edit in flight to it
@@ -131,20 +156,68 @@ function codeEditor(view, file, btn, id, opts = {}) {
   const SERVER_HL_MAX = 200 * 1024;
   let bigTimer = 0;
   let hlNow = false;
+  // the last whole highlight, its unchanged lines drawn again while a new one's on its way
+  let lastHl = null;
+  let diagnosticSnapshot = '', lastTextChange = 0;
+  function paintInline() {
+    const s = inlineSuggestion;
+    if (!s || s.text !== ta.value || s.caret !== ta.selectionStart || s.caret !== ta.selectionEnd || ta.readOnly) {
+      inlineSuggestion = null;
+      inlineLayer.hidden = true;
+      inlineLayer.replaceChildren();
+      gutter.querySelector('.code-inline-nums')?.remove();
+      body.classList.remove('code-has-inline');
+      nums.style.visibility = '';
+      return;
+    }
+    // Clone the current syntax spans and insert ghost text with DOM text APIs.
+    // It can contain arbitrary source, including HTML, without becoming markup.
+    const copy = code.cloneNode(true);
+    const walk = document.createTreeWalker(copy, NodeFilter.SHOW_TEXT);
+    let at = 0, found = false;
+    const ghost = el('span', 'code-inline-text', s.insert);
+    for (let node = walk.nextNode(); node; node = walk.nextNode()) {
+      if (s.caret <= at + node.length) {
+        const range = document.createRange();
+        range.setStart(node, s.caret - at); range.collapse(true); range.insertNode(ghost);
+        found = true; break;
+      }
+      at += node.length;
+    }
+    if (!found) copy.append(ghost);
+    inlineLayer.replaceChildren(copy);
+    inlineLayer.hidden = false;
+    body.classList.add('code-has-inline');
+    // Keep line numbers aligned when a preview inserts virtual lines.
+    const line = s.text.slice(0, s.caret).split('\n').length;
+    const virtual = s.insert.split('\n').length - 1;
+    const numberCopy = el('pre', 'code-nums code-inline-nums');
+    numberCopy.textContent = Array.from({ length: s.text.split('\n').length }, (_, i) => String(i + 1) + (i + 1 === line ? '\n'.repeat(virtual) : '')).join('\n');
+    gutter.querySelector('.code-inline-nums')?.remove();
+    if (virtual) { gutter.append(numberCopy); nums.style.visibility = 'hidden'; }
+    else nums.style.visibility = '';
+  }
   function draw() {
     drawFrame = 0;
     if (closed) return;
     const text = ta.value;
     if (semanticText !== text) semantic = [];
+    if (text !== diagnosticSnapshot) { diagnosticSnapshot = text; lastTextChange = Date.now(); clearDiagnostics(); }
+    if (inlineSuggestion && inlineSuggestion.text !== text) setInlineSuggestion(null);
     // a tab shown again with the same text: its highlight kept
     if (text === hlText) { paintMarks(); return; }
     const parser = text.length <= HL_MAX && parserNow(lang.check);
     const big = text.length > HL_IDLE && hlText !== null && !hlNow;
     hlText = text;
-    if (parser && !big) code.innerHTML = `${highlight(parser, text, syntax.parse(parser, text), semantic)}\n`;
-    else if (semantic.length) code.innerHTML = `${highlightRanges(text, [], semantic)}\n`;
+    if (parser && !big) {
+      const html = highlight(parser, text, syntax.parse(parser, text), semantic);
+      code.innerHTML = `${html}\n`;
+      lastHl = { text, html };
+    } else if (semantic.length) code.innerHTML = `${highlightRanges(text, [], semantic)}\n`;
     else {
-      code.textContent = `${text}\n`;
+      const kept = lastHl && text.length <= HL_MAX ? patchHighlight(lastHl, text) : null;
+      if (kept === null) code.textContent = `${text}\n`;
+      else code.innerHTML = `${kept}\n`;
       if (parser) {
         clearTimeout(bigTimer);
         bigTimer = setTimeout(() => { if (closed || ta.value !== text) return; hlText = null; hlNow = true; draw(); hlNow = false; }, 400);
@@ -163,7 +236,13 @@ function codeEditor(view, file, btn, id, opts = {}) {
     paintMarks();
     paintFinds();
     paintAgent();
+    if (inlineSuggestion) paintInline();
     checkSoon();
+  }
+  function setInlineSuggestion(value) {
+    inlineSuggestion = value;
+    if (!value) { inlineLayer.replaceChildren(); gutter.querySelector('.code-inline-nums')?.remove(); }
+    paintInline();
   }
   const redraw = () => { drawFrame ||= requestAnimationFrame(draw); mdSoon(); };
 
@@ -311,7 +390,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
       ready, dirty: dirty(), readOnly: ta.readOnly, state: stateEl.textContent, bad: stateEl.classList.contains('bad'),
       lang: lang.hl, line: lineAt(text, e), col: e - text.lastIndexOf('\n', e - 1), sel: Math.abs(e - s),
       indent: u === '\t' ? 'tab' : u.length, eol: text.includes('\r\n') ? 'CRLF' : 'LF', length: text.length,
-      errors: errs.map((x) => ({ from: x.from, to: x.to, what: x.what, source: x.source, severity: x.severity, line: lineAt(text, x.from), col: x.from - text.lastIndexOf('\n', x.from - 1) })),
+      errors: errs.map((x) => ({ from: x.from, to: x.to, what: x.what, source: x.source, code: x.code, severity: diagnosticSeverity(x), line: lineAt(text, x.from), col: x.from - text.lastIndexOf('\n', x.from - 1) })),
       people: people.filter((p) => (me ? p.id !== me : p.name !== name)),
     };
   }
@@ -323,7 +402,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
       try {
         const r = await fetch('/api/md', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ highlight: lang.hl, text }) });
         const { html } = r.ok ? await r.json() : {};
-        if (!closed && typeof html === 'string' && ta.value === text && !semantic.length) code.innerHTML = `${html}\n`;
+        if (!closed && typeof html === 'string' && ta.value === text && !semantic.length) { code.innerHTML = `${html}\n`; lastHl = { text, html }; }
       } catch {}
     }, 150);
   }
@@ -435,8 +514,12 @@ function codeEditor(view, file, btn, id, opts = {}) {
   let errs = [];
   let languageErrors = null;
   let checkTimer = 0;
-  const checkSoon = () => { clearTimeout(checkTimer); checkTimer = setTimeout(check, 300); };
+  const diagnosticsDelay = () => diagnosticDelay(opts.diagnosticDelay?.());
+  const checkSoon = () => { clearTimeout(checkTimer); checkTimer = setTimeout(check, diagnosticsDelay()); };
+  function clearDiagnostics() { errs = []; squig.replaceChildren(); errEl.hidden = true; out.hidden = true; hideDiagnosticHover(); paintMarks(); tell(); }
   async function check() {
+    if (Date.now() - lastTextChange < diagnosticsDelay()) { checkSoon(); return; }
+    hideDiagnosticHover();
     const text = ta.value;
     const parser = languageErrors === null && lang.check && text.length <= HL_MAX && await parserFor(lang.check);
     if (closed || text !== ta.value) return;
@@ -454,11 +537,12 @@ function codeEditor(view, file, btn, id, opts = {}) {
     squig.innerHTML = `${html}${esc(text.slice(at))}\n`;
     const lineOf = (p) => lineAt(text, p);
     errEl.hidden = !errs.length;
-    errEl.textContent = `${errs.length}${errs.length >= ERR_MAX ? '+' : ''} error${errs.length === 1 ? '' : 's'}`;
+    const counts = diagnosticCounts(errs);
+    errEl.textContent = [['errors', 'error'], ['warnings', 'warning'], ['info', 'info']].filter(([k]) => counts[k]).map(([k, label]) => `${counts[k]} ${label}${counts[k] !== 1 && k !== 'info' ? 's' : ''}`).join(', ');
     outTitle.textContent = errEl.textContent;
     outList.replaceChildren(...errs.map((e) => {
       const row = Object.assign(el('button', 'code-err-row'), { type: 'button' });
-      row.append(el('span', 'code-out-dim', `line ${lineOf(e.from)}`), el('span', 'code-out-err', e.what));
+      row.append(el('span', 'code-out-dim', `line ${lineOf(e.from)}`), el('span', `code-out-err${diagnosticSeverity(e) === 2 ? ' code-warning' : diagnosticSeverity(e) > 2 ? ' code-hint' : ''}`, diagnosticText(e)));
       row.addEventListener('click', () => { ta.focus(); ta.setSelectionRange(e.from, e.from); caretInView(); });
       return row;
     }));
@@ -476,7 +560,9 @@ function codeEditor(view, file, btn, id, opts = {}) {
     const lh = parseFloat(getComputedStyle(nums).lineHeight) || 18;
     const padTop = parseFloat(getComputedStyle(nums).paddingTop) || 0;
     for (const line of new Set(errs.map((e) => lineAt(ta.value, Math.min(e.from, ta.value.length)) - 1))) {
-      const mk = Object.assign(el('div', 'code-mark code-mark-err'), { title: 'syntax error' });
+      const onLine = errs.filter((e) => lineAt(ta.value, Math.min(e.from, ta.value.length)) - 1 === line).sort((a, b) => diagnosticSeverity(a) - diagnosticSeverity(b));
+      const severity = diagnosticSeverity(onLine[0]);
+      const mk = Object.assign(el('div', `code-mark code-mark-err${severity === 2 ? ' code-mark-warning' : severity > 2 ? ' code-mark-hint' : ''}`), { title: onLine.map(diagnosticText).join('\n') });
       mk.style.top = `${padTop + line * lh}px`;
       mk.style.height = `${lh}px`;
       gutter.append(mk);
@@ -828,6 +914,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
     focus: () => ta.focus(),
     show: () => { redraw(); },
     text: () => ta.value,
+    setInlineSuggestion,
     info,
     async syntaxTree() { const text = ta.value; const p = text.length <= HL_MAX && await parserFor(lang.check); return !closed && p && ta.value === text ? syntax.parse(p, text) : null; },
     editMany: (edits, selection) => {
@@ -863,7 +950,10 @@ function codeEditor(view, file, btn, id, opts = {}) {
     agentFlash,
     ready: () => ready,
     setSemanticTokens: (ranges, text) => { if (text !== ta.value || closed) return; semantic = ranges; semanticText = text; hlText = null; redraw(); },
-    setDiagnostics: (errors) => { languageErrors = errors === null ? null : [...errors].sort((a, b) => a.from - b.from); check(); },
+    setDiagnostics: (errors) => {
+      languageErrors = errors === null ? null : [...errors].sort((a, b) => a.from - b.from);
+      if (errors === null) { clearDiagnostics(); checkSoon(); } else check();
+    },
     setFinds: (ranges, at = -1) => { findRanges = ranges; findAt = at; paintFinds(); },
     preview: isMd ? (on) => setRendered(on ?? !rendered) : null,
     previewing: () => rendered,
@@ -882,7 +972,8 @@ function codeEditor(view, file, btn, id, opts = {}) {
 // a monospace advance, measured once per element's font
 const chWidths = new Map();
 function chWidthIn(node) {
-  const font = getComputedStyle(node).font;
+  const style = getComputedStyle(node);
+  const font = style.font || `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
   if (chWidths.has(font)) return chWidths.get(font);
   const probe = Object.assign(document.createElement('span'), { textContent: '0'.repeat(50) });
   probe.style.cssText = `font:${font};position:absolute;visibility:hidden;white-space:pre`;

@@ -68,10 +68,9 @@ clangd on PATH is left alone. JDT workspace caches are kept separately under
 - Completion opens while typing, or with `Ctrl+Space` (`Cmd+Space` on macOS if
   the OS does not reserve it). Use Up/Down, Enter or Tab to insert, Escape to
   dismiss. Plain-text insert/replace edits and additional edits such as imports
-  are supported. The selected candidate is also previewed inline. Sulfur
-  advertises that snippet navigation is unsupported; servers that still return
-  basic snippets have their defaults and choices inserted as plain code.
-  Unsupported snippet transforms are filtered out.
+  are supported. Snippets expand to code with the first tab stop selected;
+  subsequent linked placeholder editing and Tab navigation are not yet supported.
+  The selected candidate is also previewed inline when **Completion: IntelliSense Inline Preview** is enabled.
 - **Go to Definition** and Ctrl+click (Cmd+click on macOS) use server locations,
   including other project files. **Find All References** uses server results.
   C# DLL types open as read-only decompiled source through `csharp/metadata`.
@@ -90,6 +89,14 @@ clangd on PATH is left alone. JDT workspace caches are kept separately under
   assemblies. Document analysis is debounced and obsolete responses are ignored.
   Servers supporting workspace diagnostics also supply errors in unopened
   project files, with cached result IDs and no continuous polling loop.
+- Pull diagnostics are also supported, including current csharp-ls releases.
+  Errors, warnings, and informational hints keep their severity in the explorer,
+  gutter, underlines, and Problems. Hover an underline to see its diagnostic code,
+  source, and message; gutter markers also show messages on hover.
+- Diagnostics wait until typing has paused for one second by default. Old
+  underlines clear as the buffer changes, so unfinished lines are not immediately
+  flagged. Adjust **Editor: Diagnostic Delay** (`editor.diagnostics.delay`,
+  300–5000 ms) to change this quiet period.
 - Completion and rename use the custom editor's batch-edit history. Unchanged
   spans remain retained operations, so undo/redo can preserve collaborator edits
   between a completion and its additional import edits.
@@ -153,23 +160,66 @@ For multiple solutions or advanced configuration:
 }
 ```
 
-## Inline completion and formatting
+## AI inline completion
 
-**Completion: IntelliSense Inline Preview** controls language-completion ghost
-text. **Completion: Agent Suggestions**, or **AI On/Off** in the status bar,
-enables the mesh model for generated code. It is off by default. Settings choose
-the model role/host and idle delay. Only the nearby prefix (up to 12,000
-characters) and suffix (4,000 characters), file path and language are sent.
+Web and desktop Sulfur also share a dedicated AI completion harness. IntelliSense
+continues to use the owning host's optional language server for symbols, types,
+members, and imports. The AI predicts insertions, from an expression to a short
+function, displayed as muted ghost text. Both use the editor's existing batch
+operations, collaboration, and undo history.
 
-Routing uses the current context and language-server candidates: member access,
-imports and strong non-keyword prefix matches favor IntelliSense; expression
-boundaries, new statements and weak/no symbol matches allow generation. Explicit
-IntelliSense requests and navigating its list take priority. `Ctrl+Space` requests
-IntelliSense; `Alt+\` requests an agent suggestion when enabled. Tab accepts a
-suggestion, Escape dismisses it. Responses are discarded after text/selection
-changes, blur, disable or tab closure. Generated text becomes a normal,
-collaborative undoable edit only after acceptance. Multiline previews are shown
-at the end of a line; suggestions before existing code are limited to one line.
+AI suggestions are enabled by default in **Settings → Editor: AI Inline
+Suggestions** (`editor.inlineSuggest.enabled`). After a typing pause of 750 ms
+(`editor.inlineSuggest.delay`, configurable from 200–5000 ms), Sulfur asks the
+selected completion model through the existing mesh Messages gateway. The
+default is `chimp`. The gateway uses the
+configured Chimp when ready, otherwise another ready mesh model. Its Chimp
+profile disables thinking. A desktop client uses the linked mesh proxy and login;
+without a connected mesh, host-local IntelliSense and word suggestions still work.
+Automatic requests follow meaningful typed characters. Creating blank lines,
+pressing Enter, adding indentation, and deleting text do not request predictions.
+Explicit AI completion remains available at those positions.
+
+**Settings → Editor: Completion Machine / Model** has separate Machine and Model
+selectors. Automatic routing offers Chimp and Orangutan; selecting a machine
+pins completion to its configured model, shown by filename, and requires that
+machine to have the model ready. This selection does not change the machine's
+model installation or the chat model. The saved `editor.inlineSuggest.model`
+value is `chimp`, `orangutan`, or `phosphorus/<host>`. Use **Refresh machines and
+models** to refresh availability.
+
+- **Tab** accepts a visible IntelliSense choice first, or an AI suggestion when
+  the list is closed. Without a suggestion, Tab keeps its usual indentation.
+- **Escape** dismisses the visible suggestion. **Enter** accepts an IntelliSense
+  choice; it does not accept AI ghost text. Shift+Tab keeps outdenting.
+- **Ctrl+Space** requests IntelliSense. **Alt+\\** requests an AI suggestion
+  explicitly. Both commands are in the command palette, including when the OS
+  reserves a shortcut. **Toggle AI Inline Suggestions** turns AI prediction off.
+
+The fixed `v2` harness has its own instructions, no conversation history, and no
+tools. It is independent of the Chat/Claude Code/opencode selection. It sends up
+to 6,000 characters before the caret, 2,000 after it, two related open files of
+the same language (1,500 characters each), and up to twelve available symbol
+hints. It does not scan the repository or start an agent session. Disable inline
+suggestions to stop these requests; `chat.includeActiveFile` controls chat only.
+
+One request can run at a time in the workbench. Predictions appear as a complete
+ghost-text suggestion, with a 512-token budget and a fifteen-second deadline.
+Input JSON echoed by a model is discarded. Typing, selection changes,
+collaborator edits, focus changes, acceptance, and workspace changes invalidate
+or cancel the prediction. A small, one-minute cache stays in memory and clears
+with workspace/settings resets. Automatic failures back off briefly; explicit
+requests show the error in the status bar. Source is not added to chat history
+or persisted in the prediction cache. Latency and code quality depend on the
+loaded mesh model and host hardware.
+
+**Completion: IntelliSense Inline Preview** (`editor.suggest.inlinePreview`) controls
+language completion ghost text independently of AI. The **AI On/Off** status item
+also toggles AI suggestions. Member access, imports and strong symbol prefixes
+favor IntelliSense; weak matches at expression and statement boundaries allow
+AI generation. Explicit IntelliSense requests and list navigation take priority.
+
+## Formatting and pane layout
 
 `Ctrl+F` formats the document; `Shift+Alt+F` is an alternative. Find remains in
 the Edit menu and on `Ctrl+Alt+F`. **Formatting** settings control tabs/spaces,
@@ -183,7 +233,7 @@ the project-aware server's formatter.
 
 ## Pane layout
 
-Use **View → Appearance → Customize Layout**, or search Settings for **Layout**.
+Use **Appearance → Customize Layout**, or search Settings for **Layout**.
 The primary sidebar can be left or right, with Chat on the opposite side.
 Terminal, Output and Problems can span the editor, extend under either sidebar,
 or span both sidebars. Preferences use the same user settings file in the web

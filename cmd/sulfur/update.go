@@ -93,7 +93,7 @@ func installUpdate(file string) error {
 		// the installer once the window's closed, then the app again
 		return detachedLine(`cmd /c timeout /t 3 /nobreak >nul & "` + file + `" /S & start "" "` + app + `"`)
 	case "darwin":
-		// Contents/MacOS/sulfur-server, in Sulfur.app
+		// Contents/MacOS/Sulfur, in Sulfur.app
 		bundle := filepath.Dir(filepath.Dir(dir))
 		if !strings.HasSuffix(bundle, ".app") {
 			return errors.New("not running from Sulfur.app")
@@ -101,11 +101,8 @@ func installUpdate(file string) error {
 		return detached("/bin/sh", "-c", `sleep 3; S=$(mktemp -d "$2.update.XXXXXX") && /usr/bin/tar -xzf "$1" -C "$S" && `+
 			`N=$(ls -d "$S"/*.app | head -n 1) && [ -n "$N" ] && mv "$2" "$S/old.app" && mv "$N" "$2" && rm -rf "$S"; /usr/bin/open "$2"`, "sh", file, bundle)
 	default:
-		img := os.Getenv("APPIMAGE")
-		if img == "" {
-			return errors.New("Sulfur from a .deb updates with apt: sudo apt install ./sulfur_VERSION_ARCH.deb from the latest release")
-		}
-		return detached("/bin/sh", "-c", `sleep 3; cp "$1" "$2.new" && chmod 755 "$2.new" && mv "$2.new" "$2"; exec "$2"`, "sh", file, img)
+		// Linux has no feed: the .deb is the app, and apt updates it
+		return errors.New("Sulfur on Linux updates with apt: sudo apt install ./sulfur_VERSION_ARCH.deb from the latest release")
 	}
 }
 

@@ -37,16 +37,18 @@ import {
 } from '../app.js';
 import { codeEditor } from './editor.js';
 import { createLanguageWorkbench } from '../sulfur/language-workbench.js';
-import { completionPrompt, completionText } from '../sulfur/inline-completion.js';
 import { formatWhitespace, formattingEdits } from '../sulfur/formatting.js';
 import { applyTextEdits } from '../sulfur/language-client.js';
 import { parserFor } from '../lezer.js';
+import { createInlineCompletions, completionModels } from '../sulfur/inline-completion.js';
+import { diagnosticCounts, diagnosticSeverity } from '../sulfur/diagnostics.js';
+import { createBuildProblemMatcher } from '../sulfur/build-problems.js';
 import { startTerminal, taskTerminal, termsRetheme } from './terminal.js';
 import { renderMd } from '../md.js';
 import { symbolsFor, identifierAt, enclosingSymbol } from '../symbols.js';
 import { singleFileCommand, configsFor } from '../sulfur/build-commands.js';
 import { cmakeTargets, cmakeConfiguration, targetForFile, executableCommand, absolutePath, joinPath } from '../sulfur/project-targets.js';
-import { PALETTES, PALETTE_EVENT, paletteNow, setPalette } from '../theme.js';
+import { LOOK_IDS, PALETTES, PALETTE_EVENT, lookNow, paletteNow, setPalette } from '../theme.js';
 import guideText from '../../../docs/sulfur-extensions.md';
 
 // --- sulfur, the code editor ----------------------------------------------------------
@@ -95,6 +97,7 @@ const IC = {
   newFile: 'M3.5 1.5h5l3 3v4M8.5 1.5v3h3M3.5 1.5v13h5M12 10v5M9.5 12.5h5',
   newFolder: 'M1.5 3h4l1.2 1.5h7.8V8M1.5 3v10h6.5M12 9.5v5M9.5 12h5',
   refresh: 'M13.5 8a5.5 5.5 0 1 1-1.8-4.1M13.5 1.5v3.5h-3.5',
+  update: 'M8 1.5v8.5M4.5 6.5L8 10l3.5-3.5M2.5 11v3h11v-3',
   collapse: 'M4.5 4.5h9v9h-9zM2.5 11.5v-9h9M6.5 9h5',
   more: 'M3.5 8h.01M8 8h.01M12.5 8h.01',
   plus: 'M8 3v10M3 8h10',
@@ -138,7 +141,10 @@ const IC = {
   symbolMethod: 'M2 5l6-3.5L14 5l-6 3.5zM2 8l6 3.5L14 8M2 11l6 3.5L14 11',
   symbolField: 'M8 2l6 6-6 6-6-6zM5 8h6',
 };
-const icon = (k, cls = '') => dkGlyph(IC[k], `ide-ic ${cls}`);
+// 'sulfur' is the app's own mark, drawn in full, every other glyph a line icon
+const icon = (k, cls = '') => (k === 'sulfur'
+  ? Object.assign(el('img', `ide-ic ide-mark ${cls}`), { src: '/sulfur/icon.svg', alt: '', draggable: false })
+  : dkGlyph(IC[k], `ide-ic ${cls}`));
 
 // a file kind's glyph and hue, by extension, the explorer's and the tabs'
 const FILE_HUES = {
@@ -319,21 +325,16 @@ let I = null;
 const languages = createLanguageWorkbench({
   el, join: filesJoin, log, pick, input: inputBox,
   setting,
-  async suggest(t, text, caret, signal) {
-    if (localDesktop() && !meshLinked()) throw new Error('Connect to a Phosphorus mesh to use agent completions.');
-    const response = await fetch(meshApi('/api/model/v1/messages'), {
-      method: 'POST', headers: { 'content-type': 'application/json' }, signal,
-      body: JSON.stringify({ model: setting('sulfur.agentCompletion.model'), max_tokens: 384, stream: false, ...completionPrompt(t.rel, t.info?.lang, text, caret) }),
-    });
-    const body = await response.json();
-    if (!response.ok) throw new Error(body.error?.message || `Completion failed (${response.status})`);
-    return completionText(body);
-  },
+  onReset: () => inlineCompletions.reset(),
+  onSuggest: () => inlineCompletions.dismiss(),
   error: (e) => notify('error', e.message), notice: (text) => notify('info', text),
   alive: (t) => !!I?.tabs.includes(t),
+  // the other open files of t's kind, for word-based suggestions
+  documents: (t) => (I ? I.tabs.filter((x) => x !== t && x.ed?.ready() && extOf(x.rel) === extOf(t.rel)).map((x) => x.ed.text()) : []),
   hosts: () => dkLiveHosts(),
   url: (host) => new URL(hostUrl(host, `/api/sulfur/languages?host=${encodeURIComponent(host)}`), location.href).href,
   problems: () => I && paintProblemsSoon(),
+  diagnosticDelay: () => setting('editor.diagnostics.delay'),
   async context(t) {
     if (!I || I.active !== t || !sameLoc(t.loc, locOf()) || !under(t.rel, I.st.root)) return null;
     const current = I;
@@ -348,7 +349,8 @@ const languages = createLanguageWorkbench({
     if (!root || !path) return null;
     const buildRoot = cfg?.host === t.host && cfg.toolchain ? tasksFor(cfg, project).buildRoot : '';
     const buildDirectory = buildRoot ? absolutePath(buildRoot) ? buildRoot : hostPath(t.host, share, joinPath(rootRel, buildRoot)) : '';
-    return { host: t.host, root, rootRel, path, documentRel: t.rel.slice(rootRel ? rootRel.length + 1 : 0), loc: t.loc, workspace, configuration: cfg?.configuration || '', buildDirectory, settings: setting('sulfur.languageServerSettings') || {} };
+    const solutionPath = project.sln?.[0] ? hostPath(t.host, share, filesJoin(rootRel, project.sln[0])) : '';
+    return { host: t.host, root, rootRel, path, solutionPath, documentRel: t.rel.slice(rootRel ? rootRel.length + 1 : 0), loc: t.loc, workspace, configuration: cfg?.configuration || '', buildDirectory, settings: setting('sulfur.languageServerSettings') || {} };
   },
   open(path, context, range) {
     if (!I || context.workspace !== wsKey()) return null;
@@ -377,6 +379,18 @@ const languages = createLanguageWorkbench({
   },
 });
 
+const inlineCompletions = createInlineCompletions({
+  setting: (key) => setting(key), available: () => !localDesktop() || meshLinked(),
+  alive: (t) => !!I && I.active === t && I.tabs.includes(t),
+  url: () => meshApi('/api/model/v1/messages'),
+  scope: (t) => [acct.user, standalone?.meshUser, standalone?.server, wsKey(), locKey(t.loc)],
+  related: (t) => I.tabs.filter((x) => x !== t && x.ed?.ready() && sameLoc(x.loc, t.loc) && under(x.rel, I.st.root) && x.info?.lang === t.info?.lang).slice(0, 2).map((x) => ({ path: wsRel(x.rel), text: x.ed.text() })),
+  preferLanguage: (t) => languages.preferLanguage(t),
+  suggesting: (t) => languages.suggesting(t), dismissSuggest: (t) => languages.dismissSuggest(t),
+  symbols: (t) => [...languages.symbols(t), ...(t.symbolText === t.ed.text() ? t.symbols?.symbols || [] : []).map((s) => ({ label: s.name, detail: s.kind }))],
+  notice: (text) => setStatusFlash(text), log: (text) => log(text, 'AI Completion'),
+});
+
 const DEFAULTS = () => ({
   root: acct.user, tabs: [], active: '', recent: [], recentFolders: [],
   side: { view: 'explorer', w: 260, hidden: false },
@@ -389,16 +403,17 @@ const DEFAULTS = () => ({
 const SETTINGS = {
   'workbench.sideBar.location': { def: 'left', type: 'enum', options: [['left', 'Left'], ['right', 'Right']], title: 'Layout: Primary Sidebar', about: 'Choose which side holds Explorer, Search, Run and Extensions. Chat moves to the opposite side.' },
   'workbench.panel.alignment': { def: 'center', type: 'enum', options: [['center', 'Editor width'], ['left', 'Editor and left sidebar'], ['right', 'Editor and right sidebar'], ['justify', 'Full width']], title: 'Layout: Console Span', about: 'Choose how far Terminal, Output and Problems extend beneath the sidebars.' },
-  'editor.inlineSuggest.enabled': { def: true, type: 'boolean', title: 'Completion: IntelliSense Inline Preview', about: 'Preview the selected language completion in the editor. Tab or Enter accepts; Escape dismisses; Ctrl+Space requests IntelliSense.' },
-  'sulfur.agentCompletion.enabled': { def: false, type: 'boolean', title: 'Completion: Agent Suggestions', about: 'Use the mesh model for expressions and new code when IntelliSense has no strong symbol match. Sends nearby file context after a pause; Tab accepts and Escape dismisses.' },
-  'sulfur.agentCompletion.model': { def: 'chimp', type: 'string', title: 'Completion: Agent Model', about: 'Mesh model role or phosphorus/host used for code completion.' },
-  'sulfur.agentCompletion.delay': { def: 700, type: 'number', min: 300, max: 5000, title: 'Completion: Agent Delay', about: 'Idle time in milliseconds before requesting generated code. IntelliSense is checked first.' },
+  'editor.suggest.inlinePreview': { def: true, type: 'boolean', title: 'Completion: IntelliSense Inline Preview', about: 'Preview the selected language completion in the editor. Tab or Enter accepts; Escape dismisses; Ctrl+Space requests IntelliSense.' },
   'editor.detectIndentation': { def: true, type: 'boolean', title: 'Formatting: Detect Indentation', about: 'Use the file’s existing indentation while typing. Turn off to use Insert Spaces and Tab Size.' },
   'editor.insertSpaces': { def: true, type: 'boolean', title: 'Formatting: Insert Spaces', about: 'Indent with spaces instead of tab characters when formatting or when indentation detection is disabled.' },
   'editor.tabSize': { def: 4, type: 'number', min: 1, max: 16, integer: true, title: 'Formatting: Tab Size', about: 'Number of spaces per indentation level and the display width of a tab.' },
   'editor.format.braceStyle': { def: 'preserve', type: 'enum', options: [['preserve', 'Preserve / language default'], ['sameLine', 'Opening brace on the same line'], ['nextLine', 'Opening brace on its own line']], title: 'Formatting: Brace Placement', about: 'Block brace placement for supported brace languages. Python and Go retain their language’s syntax rules.' },
   'editor.format.indentBlocks': { def: true, type: 'boolean', title: 'Formatting: Indent Block Contents', about: 'Indent code inside block braces one level deeper. Turn off to align it with the braces.' },
   'sulfur.csharp.analyzersEnabled': { def: true, type: 'boolean', title: 'C#: Roslyn Analyzers', about: 'Include Roslyn and project analyzer diagnostics for C# solutions. Analysis uses more CPU than compiler diagnostics alone.' },
+  'editor.inlineSuggest.enabled': { def: true, type: 'boolean', title: 'Editor: AI Inline Suggestions', about: 'Predict code with the selected completion model through the mesh using a dedicated harness. Sends bounded context from this file and up to two related open files. Tab accepts; Escape dismisses. Works independently of the chat harness.' },
+  'editor.inlineSuggest.model': { def: 'chimp', type: 'model', title: 'Editor: Completion Machine / Model', about: 'Choose automatic Chimp/Orangutan routing, or pin completion to a machine and its configured model. The machine must have that model ready; this does not change its model installation.' },
+  'editor.inlineSuggest.delay': { def: 750, type: 'number', min: 200, max: 5000, title: 'Editor: AI Suggestion Delay', about: 'Idle time in milliseconds after meaningful typing before asking the completion model. Blank lines, Enter, indentation, and deletion do not request AI suggestions; Alt+\\ still works anywhere.' },
+  'editor.diagnostics.delay': { def: 1000, type: 'number', min: 300, max: 5000, title: 'Editor: Diagnostic Delay', about: 'Idle time in milliseconds before checking syntax or requesting language-server diagnostics. Stale underlines clear while you edit incomplete lines.' },
   'sulfur.languageServerSettings': { def: {}, type: 'object', title: 'Languages: Server Settings', about: 'Language-server settings, keyed by extension id (typescript, python, javascript, java, csharp, php, shell, cpp, hcl, go). Runtime prerequisites and installation are in Extensions.' },
   'editor.fontSize': { def: 13, type: 'number', min: 8, max: 40, title: 'Editor: Font Size', about: 'Controls the font size in pixels.' },
   'editor.enablePreview': { def: true, type: 'boolean', title: 'Workbench › Editor: Enable Preview', about: 'Controls whether a file opened from the explorer is shown as a preview, its tab reused until you edit it or double click.' },
@@ -471,7 +486,7 @@ export function ideStart(w, open) {
     w, st, settings: cached, userKeys: [], tabs: [], active: null, mru: [], closed: [], tree: new Map(), loading: new Map(),
     sel: '', terms: [], term: null, termSeq: 0, output: new Map(), outCh: 'Sulfur', commands: new Map(), keys: new Map(),
     exts: new Map(), runners: new Map(), providers: new Map(), statusItems: new Map(), notes: [], chord: '', chats: new Map(),
-    index: null, offs: [], seq: 0,
+    index: null, offs: [], seq: 0, nav: { stack: [], at: -1, busy: false },
   };
   build();
   registerCommands();
@@ -579,16 +594,37 @@ function build() {
   const ccText = el('span', 'ide-cc-text');
   cc.append(icon('search'), ccText);
   cc.addEventListener('click', () => quickOpen(''));
-  title.append(menubar, cc);
+  // the update and the chat at the bar's right, by the window's buttons: each its own, nothing to dig for
+  const ai = Object.assign(el('button', 'ide-tb ide-tb-ai'), { type: 'button', ariaLabel: 'Chat' });
+  ai.dataset.cmd = 'workbench.action.chat.open';
+  ai.dataset.label = 'Chat';
+  ai.append(icon('spark'));
+  ai.addEventListener('click', () => run('workbench.action.toggleAuxiliaryBar'));
+  // Sulfur's own update, the desktop app's alone: in the desktop or on a host it updates with the mesh
+  const upd = Object.assign(el('button', 'ide-tb ide-tb-update'), { type: 'button', title: 'Check for Sulfur Updates', ariaLabel: 'Check for Sulfur Updates' });
+  upd.append(icon('update'));
+  upd.hidden = !standalone?.app;
+  upd.addEventListener('click', () => checkUpdate(true));
+  // back and forward through where the user's been, either side of the search a bare stretch of the bar to drag the window by
+  const navBtn = (cls, glyph, label, cmd) => {
+    const b = Object.assign(el('button', `ide-tb ide-tb-nav ${cls}`), { type: 'button', ariaLabel: label, disabled: true });
+    b.dataset.cmd = cmd;
+    b.dataset.label = label;
+    b.append(icon(glyph));
+    b.addEventListener('click', () => run(cmd));
+    return b;
+  };
+  const back = navBtn('ide-tb-back', 'left', 'Go Back', 'workbench.action.navigateBack');
+  const fwd = navBtn('ide-tb-fwd', 'right', 'Go Forward', 'workbench.action.navigateForward');
+  title.append(menubar, el('div', 'ide-drag'), back, fwd, cc, el('div', 'ide-drag'), upd, ai);
 
   const main = el('div', 'ide-main');
-  // the activity bar: a view per icon, the manage menus at its foot
+  // the activity bar: a view per icon; the chat, settings and update are the title bar's
   const activity = el('div', 'ide-activity');
   activity.setAttribute('role', 'tablist');
   activity.setAttribute('aria-orientation', 'vertical');
   const actTop = el('div', 'ide-act-top');
-  const actFoot = el('div', 'ide-act-foot');
-  activity.append(actTop, actFoot);
+  activity.append(actTop);
 
   const side = el('div', 'ide-side');
   const sideHead = el('div', 'ide-side-head');
@@ -635,9 +671,9 @@ function build() {
   I.w.head.insertBefore(title, I.w.head.querySelector('.dk-btns'));
   I.w.node.classList.add('ide-win');
   Object.assign(I, {
-    root, main, layer, titleBar: title, menubar, cc, ccText, activity, actTop, actFoot, side, sideTitle, sideActs, sideBody, center, editorsPart,
+    root, main, layer, titleBar: title, menubar, cc, ccText, activity, actTop, side, sideTitle, sideActs, sideBody, center, editorsPart,
     tabsEl: tabs, tabActs, crumbs, views, watermark, panel, panelTabs, panelActs, panelBody, sashH, aux, sashSide, sashAux,
-    statusL, statusR, sideViews: new Map(), panelViews: new Map(), actBtns: new Map(),
+    statusL, statusR, sideViews: new Map(), panelViews: new Map(), actBtns: new Map(), actChat: ai, updBtn: upd, navBack: back, navFwd: fwd,
   });
 
   buildMenubar();
@@ -775,24 +811,6 @@ function buildActivity() {
     I.sideBody.append(body);
     I.sideViews.set(v.id, { ...v, body, acts: [] });
   }
-  const chat = Object.assign(el('button', 'ide-act ide-act-chat'), { type: 'button', ariaLabel: 'Chat' });
-  chat.dataset.cmd = 'workbench.action.chat.open';
-  chat.dataset.label = 'Chat';
-  chat.append(icon('chat'));
-  chat.addEventListener('click', () => run('workbench.action.toggleAuxiliaryBar'));
-  I.actTop.append(chat);
-  I.actChat = chat;
-  // the gear names who's signed in; Sulfur alone signs in to a mesh from the status bar's remote item
-  const manage = Object.assign(el('button', 'ide-act'), { type: 'button', ariaLabel: 'Manage', title: 'Manage' });
-  manage.append(icon('gear'));
-  manage.addEventListener('click', () => menu(manage, [
-    { label: localDesktop() ? `${standalone.meshUser ? `${standalone.meshUser}, ` : ''}on ${selfHost}` : `${acct.user}${acct.admin ? ' (admin)' : ''} on ${selfHost}`, disabled: true },
-    '-',
-    cmdItem('workbench.action.openSettings', 'Settings'),
-    cmdItem('workbench.action.openGlobalKeybindings', 'Keyboard Shortcuts'),
-    cmdItem('workbench.action.selectTheme', 'Color Theme'),
-  ], { side: 'right', up: true }));
-  I.actFoot.append(manage);
   buildExplorer();
   buildSearch();
   buildScm();
@@ -802,7 +820,7 @@ function buildActivity() {
 
 // the activity bar's titles, once the keys are known
 function paintActivityTitles() {
-  for (const b of [...I.actBtns.values(), I.actChat]) {
+  for (const b of [...I.actBtns.values(), I.actChat, I.navBack, I.navFwd]) {
     const k = keyLabel(keyFor(b.dataset.cmd));
     b.title = k ? `${b.dataset.label} (${k})` : b.dataset.label;
   }
@@ -832,6 +850,23 @@ function showSide(id, on = true, focus = false) {
 
 // --- the title bar's menus ---------------------------------------------------------------
 
+// a setting in a menu: a boolean toggled in place, anything else its row in Settings
+const settingItem = (k, label) => (SETTINGS[k].type === 'boolean'
+  ? { label, checked: !!setting(k), run: () => setSetting(k, !setting(k)) }
+  : { label: `${label}…`, run: () => openSettings(k) });
+// a font size a pixel up or down, or back to its default
+const sizeItems = (k) => {
+  const s = SETTINGS[k];
+  const at = setting(k);
+  return [
+    { label: 'Larger', detail: `${at + 1}px`, disabled: at >= s.max, run: () => setSetting(k, Math.min(s.max, at + 1)) },
+    { label: 'Smaller', detail: `${at - 1}px`, disabled: at <= s.min, run: () => setSetting(k, Math.max(s.min, at - 1)) },
+    { label: 'Reset', detail: `${s.def}px`, disabled: at === s.def, run: () => setSetting(k, s.def) },
+  ];
+};
+
+// every setting under the menu it belongs to: Appearance its looks, View the explorer's and editors',
+// Edit search's, Run the runners, Agents the chat's, Extensions the language servers, Help updates
 const MENUS = [
   ['File', () => [
     cmdItem('sulfur.project.new', 'New Project…'), cmdItem('explorer.newFile', 'New File…'), cmdItem('explorer.newFolder', 'New Folder…'), '-',
@@ -840,6 +875,12 @@ const MENUS = [
     { label: 'Open Recent', sub: () => recentItems() },
     cmdItem('sulfur.project.transfer', 'Copy or Move Project to…'), cmdItem('sulfur.git.clone', 'Clone Repository…'), '-',
     cmdItem('workbench.action.files.save', 'Save'), cmdItem('workbench.action.files.saveAll', 'Save All'), '-',
+    { label: 'Preferences', sub: () => [
+      // who's signed in; Sulfur alone signs in to a mesh from the status bar's remote item
+      { label: localDesktop() ? `${standalone.meshUser ? `${standalone.meshUser}, ` : ''}on ${selfHost}` : `${acct.user}${acct.admin ? ' (admin)' : ''} on ${selfHost}`, disabled: true }, '-',
+      cmdItem('workbench.action.openSettings', 'Settings'), cmdItem('workbench.action.openSettingsJson', 'Settings (JSON)'), '-',
+      cmdItem('workbench.action.openGlobalKeybindings', 'Keyboard Shortcuts'), cmdItem('workbench.action.openGlobalKeybindingsFile', 'Keyboard Shortcuts (JSON)'),
+    ] }, '-',
     cmdItem('workbench.action.revertFile', 'Revert File'),
     cmdItem('workbench.action.closeActiveEditor', 'Close Editor'), cmdItem('workbench.action.closeAllEditors', 'Close All Editors'), '-',
     ...(standalone?.app ? [cmdItem('sulfur.mesh.connect', standalone.server ? `Connect to ${meshName()}…` : 'Connect to a Phosphorus Mesh…'), '-'] : []),
@@ -848,7 +889,7 @@ const MENUS = [
   ['Edit', () => [
     cmdItem('undo', 'Undo'), cmdItem('redo', 'Redo'), '-',
     cmdItem('actions.find', 'Find'), cmdItem('editor.action.startFindReplaceAction', 'Replace'),
-    cmdItem('workbench.action.findInFiles', 'Find in Files'), '-',
+    cmdItem('workbench.action.findInFiles', 'Find in Files'), settingItem('search.exclude', 'Find in Files Exclusions'), '-',
     cmdItem('editor.action.selectAll', 'Select All'), cmdItem('expandLineSelection', 'Expand Line Selection'),
     cmdItem('editor.action.duplicateSelection', 'Duplicate Selection'),
     { label: 'Line', sub: () => [
@@ -865,17 +906,34 @@ const MENUS = [
       cmdItem('workbench.action.nextEditor', 'Next Editor'), cmdItem('workbench.action.previousEditor', 'Previous Editor'), '-',
       cmdItem('editor.action.marker.next', 'Next Problem'), cmdItem('editor.action.marker.prev', 'Previous Problem'),
     ] },
-    { label: 'Appearance', sub: () => [
-      cmdItem('workbench.action.toggleSidebarVisibility', 'Primary Side Bar', !I.st.side.hidden),
-      cmdItem('workbench.action.toggleAuxiliaryBar', 'Chat', !I.st.aux.hidden),
-      cmdItem('workbench.action.togglePanel', 'Panel', !I.st.panel.hidden),
-      cmdItem('workbench.action.toggleMaximizedPanel', 'Maximized Panel', I.st.panel.max), '-',
-      cmdItem('workbench.action.configureLayout', 'Customize Layout…'), '-',
-      cmdItem('editor.action.fontZoomIn', 'Zoom In'), cmdItem('editor.action.fontZoomOut', 'Zoom Out'), cmdItem('editor.action.fontZoomReset', 'Reset Zoom'),
+    { label: 'Explorer', sub: () => [
+      settingItem('explorer.autoReveal', 'Reveal the Active File'), settingItem('explorer.confirmDelete', 'Confirm Before Deleting'), '-',
+      settingItem('files.exclude', 'Hidden Files'),
+    ] },
+    { label: 'Editors', sub: () => [
+      settingItem('editor.enablePreview', 'Open Files as Previews'), settingItem('workbench.restoreEditors', 'Reopen Editors at Start'),
     ] },
     cmdItem('markdown.showPreview', 'Toggle Markdown Preview'),
   ]],
+  ['Appearance', () => [
+    { label: 'Color Theme', sub: () => PALETTES.map((t) => ({ label: t.label, detail: t.about, checked: paletteNow() === t.id, run: () => setPalette(t.id) })) },
+    // on its own, light or dark Sulfur's; in the desktop, the desktop's
+    standalone
+      ? { label: 'Light or Dark', sub: () => SETTINGS['window.appearance'].options.map(([v, label]) => ({ label, checked: setting('window.appearance') === v, run: () => setSetting('window.appearance', v) })) }
+      : { label: 'Light or Dark', detail: 'the desktop’s', disabled: true },
+    cmdItem('workbench.action.selectTheme', 'Pick a Theme…'), '-',
+    { label: 'Editor Font Size', detail: `${setting('editor.fontSize')}px`, sub: () => [
+      cmdItem('editor.action.fontZoomIn', 'Larger'), cmdItem('editor.action.fontZoomOut', 'Smaller'), cmdItem('editor.action.fontZoomReset', 'Reset'),
+    ] },
+    { label: 'Terminal Font Size', detail: `${setting('terminal.integrated.fontSize')}px`, sub: () => sizeItems('terminal.integrated.fontSize') }, '-',
+    cmdItem('workbench.action.toggleSidebarVisibility', 'Primary Side Bar', !I.st.side.hidden),
+    cmdItem('workbench.action.toggleAuxiliaryBar', 'Chat', !I.st.aux.hidden),
+    cmdItem('workbench.action.togglePanel', 'Panel', !I.st.panel.hidden),
+    cmdItem('workbench.action.toggleMaximizedPanel', 'Maximized Panel', I.st.panel.max),
+    cmdItem('workbench.action.configureLayout', 'Customize Layout…'),
+  ]],
   ['Go', () => [
+    cmdItem('workbench.action.navigateBack', 'Back'), cmdItem('workbench.action.navigateForward', 'Forward'), '-',
     cmdItem('workbench.action.quickOpen', 'Go to File…'), cmdItem('workbench.action.gotoLine', 'Go to Line/Column…'), '-',
     cmdItem('editor.action.revealDefinition', 'Go to Definition'), cmdItem('editor.action.referenceSearch.trigger', 'Find All References'), '-',
     cmdItem('workbench.action.nextEditor', 'Next Editor'), cmdItem('workbench.action.previousEditor', 'Previous Editor'), '-',
@@ -892,13 +950,27 @@ const MENUS = [
       cmdItem('workbench.action.terminal.clear', 'Clear Terminal'), cmdItem('workbench.action.terminal.rename', 'Rename Terminal…'),
       cmdItem('workbench.action.terminal.kill', 'Kill Terminal'),
     ] }, '-',
-    cmdItem('sulfur.selectHost', 'Select Host…'),
+    cmdItem('sulfur.selectHost', 'Select Host…'), '-',
+    settingItem('sulfur.runners', 'Runners for Files'), cmdItem('sulfur.build.editJson', 'Build Settings (JSON)'),
+  ]],
+  ['Agents', () => [
+    cmdItem('workbench.action.chat.open', 'Open Chat'), cmdItem('workbench.action.chat.newChat', 'New Chat'), '-',
+    { label: 'Harness', detail: harnessName(chatHarness()), sub: () => harnessItems() },
+    { label: 'Model', detail: chatModel(), sub: () => modelItems() },
+    { label: 'Permissions', detail: isAgent(chatHarness()) ? '' : 'agents only', disabled: !isAgent(chatHarness()), sub: () => permItems() }, '-',
+    settingItem('chat.includeActiveFile', 'Include the Active File'),
+    ...(standalone?.app ? ['-', cmdItem('sulfur.mesh.connect', standalone.server ? `Connect to ${meshName()}…` : 'Connect to a Phosphorus Mesh…'), cmdItem('sulfur.mesh.signOut', 'Sign Out of the Mesh')] : []),
+  ]],
+  ['Extensions', () => [
+    cmdItem('workbench.view.extensions', 'Show Extensions'), settingItem('sulfur.languageServerSettings', 'Language Server Settings'), '-',
+    cmdItem('workbench.extensions.action.refreshExtension', 'Reload Extensions'), '-',
+    cmdItem('sulfur.extensions.guide', 'Extension Guide'), cmdItem('sulfur.extensions.create', 'Create an Extension…'),
   ]],
   ['Help', () => [
     cmdItem('workbench.action.openWalkthrough', 'Welcome'), '-',
-    cmdItem('sulfur.extensions.guide', 'Extension Guide'), cmdItem('sulfur.extensions.create', 'Create an Extension…'), '-',
+    ...(standalone?.app ? [cmdItem('sulfur.update', 'Check for Updates…'), '-'] : []),
     cmdItem('workbench.action.showOutput', 'Show Log'),
-    ...(standalone?.app ? [cmdItem('sulfur.update', 'Check for Updates…')] : []), cmdItem('sulfur.about', 'About'),
+    cmdItem('sulfur.about', 'About'),
   ]],
 ];
 
@@ -1197,7 +1269,11 @@ function treeRow(e, p, depth) {
   const t = !e.dir && I.tabs.find((x) => x.rel === p);
   if (e.all) row.append(el('span', 'ide-deco', 'A'));
   else if (e.stale) row.append(el('span', 'ide-deco ide-deco-off', 'offline'));
-  if (t?.info?.errors?.length) { row.classList.add('has-err'); row.append(el('span', 'ide-deco ide-deco-err', String(t.info.errors.length))); }
+  if (t?.info?.errors?.length) {
+    const counts = diagnosticCounts(t.info.errors);
+    const kind = counts.errors ? 'err' : counts.warnings ? 'warn' : 'info';
+    row.classList.add(`has-${kind}`); row.append(el('span', `ide-deco ide-deco-${kind}`, String(t.info.errors.length)));
+  }
   if (I.active?.rel === p) row.classList.add('active-file');
   return row;
 }
@@ -1650,11 +1726,12 @@ function mountCode(t) {
   const share = t.share ?? 'home';
   const file = { host: t.host, share, path: t.rel, label: `${t.host}/${share === 'home' ? 'home' : shareOf(t.host, share)?.label || share}/${t.rel}` };
   t.edId = `ide-code-${(edSeq += 1)}`;
-  t.ed = codeEditor(t.view, file, null, t.edId, { bare: true, formatting: formattingOptions, onState: (info) => tabState(t, info) });
+  t.ed = codeEditor(t.view, file, null, t.edId, { bare: true, formatting: formattingOptions, diagnosticDelay: () => setting('editor.diagnostics.delay'), onState: (info) => tabState(t, info) });
   editors.set(t.edId, t.ed);
   codeTabs.set(codeKey(file), t.edId);
   t.dispose = () => t.ed.close();
   languages.attach(t);
+  inlineCompletions.attach(t);
   mountSymbolNavigation(t);
   t.view.addEventListener('contextmenu', (e) => {
     if (!e.target.closest('.code-ta')) return;
@@ -1790,7 +1867,8 @@ async function goToDefinition(t = I.active) {
   if (hit && current()) openFile(hit.doc.path, { host: hit.doc.host, loc: hit.doc.loc, select: [hit.from, hit.to], preview: false });
 }
 
-async function formatActive() {
+async function formatActive(whole = true) {
+  if (!whole) return languages.format(I.active, false);
   const t = I.active;
   if (!t?.rel || !t.ed?.ready() || t.info?.readOnly) return;
   if (t.formatting) return;
@@ -1942,12 +2020,14 @@ function tabState(t, info) {
   const was = t.info;
   t.info = info;
   languages.changed(t);
+  inlineCompletions.changed(t);
   if (info.ready && !was?.ready && t === I.active) languages.get(t).catch((e) => log(e.message, 'Languages'));
   if (info.ready && !was?.ready) applyPending(t);
   if (info.dirty && t.preview) pin(t);
   if (!was || was.dirty !== info.dirty) { t.tabEl.classList.toggle('dirty', info.dirty); paintOpenEditorsSoon(); }
-  if (!was || was.errors.length !== info.errors.length) { paintProblemsSoon(); paintTreeSoon(); }
+  if (!was || JSON.stringify(was.errors) !== JSON.stringify(info.errors)) { paintProblemsSoon(); paintTreeSoon(); }
   if (t === I.active) paintStatus();
+  if (t === I.active) navNote(t);
   if (t === I.active) paintSymbolNavSoon();
   if (I.find?.open && t === I.active && was && was.length !== info.length) findSoon();
   // the user's settings and keys read again once their file's saved
@@ -1962,6 +2042,46 @@ function tabState(t, info) {
 }
 const paintOpenEditorsSoon = debounce(() => I && paintOpenEditors(), 50);
 
+// --- where the user's been: a file and a line, walked back and forward ---------------------
+
+// a place noted: a small move updates the current one, a jump of ten lines or another file adds a new one
+function navNote(t) {
+  const n = I.nav;
+  if (!t?.rel || n.busy) return;
+  const line = t.info?.line || 1;
+  const cur = n.stack[n.at];
+  if (cur?.tab === t && Math.abs(cur.line - line) < 10) { cur.line = line; return; }
+  n.stack.length = n.at + 1;
+  n.stack.push({ tab: t, line });
+  if (n.stack.length > 50) n.stack.shift();
+  n.at = n.stack.length - 1;
+  paintNav();
+}
+
+// a step through them, the places whose files were closed passed over
+function navGo(d) {
+  const n = I.nav;
+  const open = (e) => I.tabs.includes(e.tab);
+  let i = n.at + d;
+  while (n.stack[i] && !open(n.stack[i])) i += d;
+  const e = n.stack[i];
+  if (!e) return;
+  n.at = i;
+  n.busy = true;
+  activate(e.tab);
+  placeCaret(e.tab, { line: e.line });
+  n.busy = false;
+  paintNav();
+}
+
+function paintNav() {
+  if (!I?.navBack) return;
+  const n = I.nav;
+  const live = (d) => { for (let i = n.at + d; n.stack[i]; i += d) if (I.tabs.includes(n.stack[i].tab)) return true; return false; };
+  I.navBack.disabled = !live(-1);
+  I.navFwd.disabled = !live(1);
+}
+
 function pin(t) {
   if (!t.preview) return;
   t.preview = false;
@@ -1972,6 +2092,7 @@ function pin(t) {
 function activate(t, focus = true) {
   if (!t || !I.tabs.includes(t)) return;
   const was = I.active;
+  if (t !== was) inlineCompletions.dismiss();
   I.active = t;
   if (t !== was) {
     languages.cancelCompletions();
@@ -1979,6 +2100,7 @@ function activate(t, focus = true) {
     I.runContext = { tabId: t.id, workspace: wsKey(), pending: true };
   }
   I.mru = [t, ...I.mru.filter((x) => x !== t)];
+  if (t !== was) navNote(t);
   for (const x of I.tabs) {
     x.view.hidden = x !== t;
     x.tabEl.classList.toggle('on', x === t);
@@ -2186,7 +2308,7 @@ function paintWatermark() {
   const wm = I.watermark;
   if (wm.childElementCount) return;
   const art = el('div', 'ide-wm-art');
-  art.append(icon('spark'));
+  art.append(icon('sulfur'));
   const list = el('dl', 'ide-wm-keys');
   for (const [label, cmd] of [['Show All Commands', 'workbench.action.showCommands'], ['Go to File', 'workbench.action.quickOpen'],
     ['Find in Files', 'workbench.action.findInFiles'], ['Toggle Terminal', 'workbench.action.terminal.toggleTerminal'],
@@ -2604,6 +2726,8 @@ function registerCommands() {
   C('workbench.action.closeActiveEditor', 'Close Editor', () => I.active && closeTab(I.active), { key: 'ctrl+w', alt: ['ctrl+f4'], category: 'View' });
   C('workbench.action.closeAllEditors', 'Close All Editors', () => closeMany([...I.tabs]), { key: 'ctrl+k ctrl+w', category: 'View' });
   C('workbench.action.reopenClosedEditor', 'Reopen Closed Editor', () => { const p = I.closed[0]; if (p) openFile(p, { preview: false }); }, { category: 'View' });
+  C('workbench.action.navigateBack', 'Go Back', () => navGo(-1), { key: standalone?.mac ? 'ctrl+-' : 'alt+left', category: 'Go' });
+  C('workbench.action.navigateForward', 'Go Forward', () => navGo(1), { key: standalone?.mac ? 'ctrl+shift+-' : 'alt+right', category: 'Go' });
   C('workbench.action.nextEditor', 'Open Next Editor', () => stepTab(1), { key: 'ctrl+pagedown', alt: ['alt+pagedown'], category: 'View' });
   C('workbench.action.previousEditor', 'Open Previous Editor', () => stepTab(-1), { key: 'ctrl+pageup', alt: ['alt+pageup'], category: 'View' });
   C('workbench.action.keepEditor', 'Keep Editor', () => I.active && pin(I.active), { key: 'ctrl+k enter', category: 'View' });
@@ -2637,9 +2761,7 @@ function registerCommands() {
   C('workbench.action.chat.open', 'Open Chat', () => showAux(true, true), { key: 'ctrl+alt+i', category: 'Chat', shell: true });
   C('workbench.action.chat.newChat', 'New Chat', () => newChat(), { category: 'Chat' });
   C('inlineChat.start', 'Ask the Agent About the Selection', () => askSelection(), { key: 'ctrl+i', when: hasEd, category: 'Chat' });
-  C('sulfur.completion.toggleAgent', 'Toggle Agent Code Completions', () => setSetting('sulfur.agentCompletion.enabled', !setting('sulfur.agentCompletion.enabled')), { category: 'Completion' });
-  C('editor.action.triggerSuggest', 'Trigger IntelliSense', () => languages.complete(I.active), { key: 'ctrl+space', when: edFocused, category: 'Completion' });
-  C('editor.action.inlineSuggest.trigger', 'Request Agent Code Completion', () => languages.agentComplete(I.active), { key: 'alt+\\', when: edFocused, category: 'Completion' });
+  C('sulfur.completion.toggleAgent', 'Toggle Agent Code Completions', () => setSetting('editor.inlineSuggest.enabled', !setting('editor.inlineSuggest.enabled')), { category: 'Completion' });
   C('workbench.action.togglePanel', 'Toggle Panel Visibility', () => showPanel(I.st.panel.view, I.st.panel.hidden), { key: 'ctrl+j', category: 'View', shell: true });
   C('workbench.action.toggleMaximizedPanel', 'Toggle Maximized Panel', () => { I.st.panel.max = !I.st.panel.max; showPanel(I.st.panel.view, true); }, { category: 'View' });
   C('workbench.actions.view.problems', 'Focus on Problems View', () => showPanel('problems', true, true), { key: 'ctrl+shift+m', category: 'View', shell: true });
@@ -2647,7 +2769,8 @@ function registerCommands() {
   C('workbench.action.showOutput', 'Show Output', () => showPanel('output', true, true), { category: 'Output', hidden: true });
   // the editor
   C('actions.find', 'Find', () => openFind(false), { key: 'ctrl+alt+f', when: hasEd, category: 'Editor' });
-  C('editor.action.formatDocument', 'Format Document', () => formatActive().catch((err) => notify('error', err.message)), { key: 'ctrl+f', alt: ['shift+alt+f'], when: edFocused, category: 'Editor' });
+  C('editor.action.formatDocument', 'Format Document', () => formatActive(true).catch((err) => notify('error', err.message)), { key: 'ctrl+f', alt: ['shift+alt+f'], when: edFocused, category: 'Editor' });
+  C('editor.action.formatSelection', 'Format Selection', () => formatActive(false).catch((err) => notify('error', err.message)), { key: 'ctrl+k ctrl+f', when: hasEd, category: 'Editor' });
   C('editor.action.startFindReplaceAction', 'Replace', () => openFind(true), { key: 'ctrl+h', when: hasEd, category: 'Editor' });
   C('editor.action.revealDefinition', 'Go to Definition', () => goToDefinition().catch((err) => notify('error', err.message)), { key: 'f12', when: hasEd, category: 'Go' });
   C('editor.action.referenceSearch.trigger', 'Find All References', () => findReferences().catch((err) => notify('error', err.message)), { key: 'shift+f12', when: hasEd, category: 'Go' });
@@ -2686,6 +2809,9 @@ function registerCommands() {
   for (const id of ['editor.action.duplicateSelection', 'editor.action.sortLinesAscending', 'editor.action.sortLinesDescending', 'editor.action.transformToUppercase',
     'editor.action.transformToLowercase', 'editor.action.transformToTitlecase', 'editor.action.joinLines', 'editor.action.trimTrailingWhitespace']) I.commands.get(id).when = hasEd;
   C('editor.action.marker.next', 'Go to Next Problem (Error, Warning, Info)', () => nextProblem(1), { key: 'f8', when: hasEd, category: 'Go' });
+  C('editor.action.triggerSuggest', 'Trigger IntelliSense', () => languages.suggest(I.active), { key: 'ctrl+space', when: hasEd, category: 'Editor' });
+  C('editor.action.inlineSuggest.trigger', 'Trigger AI Inline Suggestion', () => { I.active.ed.focus(); return inlineCompletions.trigger(I.active, true); }, { key: 'alt+\\', when: hasEd, category: 'Editor' });
+  C('editor.action.inlineSuggest.toggle', 'Toggle AI Inline Suggestions', () => setSetting('editor.inlineSuggest.enabled', !setting('editor.inlineSuggest.enabled')), { category: 'Editor' });
   C('editor.action.marker.prev', 'Go to Previous Problem (Error, Warning, Info)', () => nextProblem(-1), { key: 'shift+f8', when: hasEd, category: 'Go' });
   C('markdown.showPreview', 'Markdown: Toggle Preview', () => { I.active?.ed?.preview?.(); paintTabActions(); }, { key: 'ctrl+shift+v', when: () => !!I.active?.ed?.preview, category: 'Markdown' });
   const zoom = (d) => { setSetting('editor.fontSize', d ? Math.max(8, Math.min(40, setting('editor.fontSize') + d)) : SETTINGS['editor.fontSize'].def); };
@@ -3542,6 +3668,9 @@ async function checkUpdate(ask) {
   let r;
   try { r = await (await fetch('/api/sidecar/update', { cache: 'no-store' })).json(); } catch (err) { if (ask) notify('error', `Couldn’t check for updates: ${err.message}`); return; }
   if (!I) return;
+  // a newer one waiting: the title bar's button marked until it's taken
+  I.updBtn?.classList.toggle('ready', !!r.latest);
+  if (I.updBtn) I.updBtn.title = r.latest ? `Sulfur ${r.latest} is available: update and restart` : 'Check for Sulfur Updates';
   if (!r.latest) {
     if (ask) notify(r.error ? 'error' : 'info', r.error ? `Couldn’t check for updates: ${r.error}` : r.on ? `Sulfur ${r.version} is the latest.` : 'This build of Sulfur has no update feed.');
     return;
@@ -3724,11 +3853,11 @@ function paintProblems() {
   const at = (rel) => { if (!byFile.has(rel)) byFile.set(rel, []); return byFile.get(rel); };
   for (const t of I.tabs) {
     if (!t.info?.errors?.length || !sameLoc(t.loc, locOf())) continue;
-    for (const x of t.info.errors.filter((e) => !e.source)) at(t.rel).push({ sev: 'error', msg: x.what, src: 'syntax', line: x.line, col: x.col, go: () => { activate(t); t.ed.select(x.from, Math.max(x.to, x.from + 1)); } });
+    for (const x of t.info.errors.filter((e) => !e.source)) at(t.rel).push({ sev: diagnosticSeverity(x) === 1 ? 'error' : diagnosticSeverity(x) === 2 ? 'warning' : 'info', msg: x.what, src: 'syntax', line: x.line, col: x.col, go: () => { activate(t); t.ed.select(x.from, Math.max(x.to, x.from + 1)); } });
   }
   for (const x of languages.problems()) {
     if (x.context.workspace !== wsKey()) continue;
-    at(x.path).push({ sev: x.severity === 1 ? 'error' : x.severity === 2 ? 'warning' : 'info', msg: x.message, src: x.source || 'language server', line: x.range.start.line + 1, col: x.range.start.character + 1, go: () => openFile(x.path, { host: x.context.host, loc: x.context.loc, preview: false, line: x.range.start.line + 1, col: x.range.start.character + 1 }) });
+    at(x.path).push({ sev: diagnosticSeverity(x) === 1 ? 'error' : diagnosticSeverity(x) === 2 ? 'warning' : 'info', msg: x.message, src: x.code || x.source || 'language server', line: x.range.start.line + 1, col: x.range.start.character + 1, go: () => openFile(x.path, { host: x.context.host, loc: x.context.loc, preview: false, line: x.range.start.line + 1, col: x.range.start.character + 1 }) });
   }
   for (const x of I.buildProblems || []) {
     at(x.rel).push({ sev: x.sev, msg: x.msg, src: x.code || 'build', line: x.line, col: x.col, go: () => openFile(x.rel, { preview: false, line: x.line, col: x.col }) });
@@ -4095,7 +4224,7 @@ function paintStatus() {
 }
 function paintStatusNow() {
   const S = I.sb;
-  const completionOn = !!setting('sulfur.agentCompletion.enabled');
+  const completionOn = !!setting('editor.inlineSuggest.enabled');
   S.completion.textContent = `AI ${completionOn ? 'On' : 'Off'}`;
   S.completion.setAttribute('aria-pressed', String(completionOn));
   S.completion.title = `Agent code completions ${completionOn ? 'enabled' : 'disabled'}. Click to toggle. IntelliSense handles strong symbol matches; AI fills in new code.`;
@@ -4747,7 +4876,8 @@ function harnessInstallBtn(host, h) {
   return b;
 }
 
-function pickHarness(anchor) {
+function pickHarness(anchor) { menu(anchor, harnessItems()); }
+function harnessItems() {
   const cur = chatHarness();
   const items = harnessList().map((h) => {
     const host = h.id !== 'chat' && I.codeOpts ? agentWhere(h.id).host : '';
@@ -4758,7 +4888,7 @@ function pickHarness(anchor) {
   if (I.codeOpts?.error && (!localDesktop() || meshLinked())) items.push({ label: 'No agents', detail: `the code service didn’t answer: ${I.codeOpts.error}`, ic: 'lock', disabled: true });
   const ext = [...I.providers.values()];
   if (ext.length) items.push('-', ...ext.map((p) => ({ label: p.label, detail: p.ext, ic: 'ext', checked: cur === 'ext' && I.st.aux.agent === p.key ? true : undefined, run: () => setHarness('ext', p.key) })));
-  menu(anchor, items);
+  return items;
 }
 
 function setHarness(h, ext = '') {
@@ -4773,7 +4903,8 @@ function setHarness(h, ext = '') {
   harnessCheck();
 }
 
-function pickModel(anchor) {
+function pickModel(anchor) { menu(anchor, modelItems()); }
+function modelItems() {
   const cur = chatModel();
   const roles = I.roles?.length ? I.roles : [{ id: 'chimp' }, { id: 'orangutan' }];
   const items = roles.map((m) => ({ label: m.id, detail: `${ROLE_SUB[m.id] || 'mesh model'}${m.ready === false ? ' · offline' : ''}`, ic: 'spark', checked: cur === m.id ? true : undefined, run: () => setModel(m.id) }));
@@ -4781,8 +4912,8 @@ function pickModel(anchor) {
   items.push('-');
   if (anth.length) items.push(...anth.map((m) => ({ label: m.label, detail: 'Claude, in Claude Code', ic: 'spark', checked: cur === m.id ? true : undefined, run: () => setModel(m.id) })));
   else items.push({ label: 'Opus, Sonnet and Haiku', detail: 'save your Anthropic token in the Code app first', ic: 'lock', disabled: true });
-  menu(anchor, items);
   if (!I.codeOpts) loadCodeOpts();
+  return items;
 }
 
 function setModel(m) {
@@ -4802,9 +4933,10 @@ function setModel(m) {
   paintChat(true);
 }
 
-function pickPerm(anchor) {
+function pickPerm(anchor) { menu(anchor, permItems()); }
+function permItems() {
   const cur = I.st.aux.perm || 'acceptEdits';
-  menu(anchor, AGENT_PERMS.map(([id, label, about]) => ({ label, detail: about, checked: id === cur ? true : undefined, run: () => setPerm(id) })));
+  return AGENT_PERMS.map(([id, label, about]) => ({ label, detail: about, checked: id === cur ? true : undefined, run: () => setPerm(id) }));
 }
 function setPerm(v) {
   I.st.aux.perm = v;
@@ -5997,9 +6129,8 @@ function showDiffPage(key, title, text, rel) {
 
 // a web address, in the system's browser from the app
 function openExternal(url) {
-  const t = window.__TAURI__;
-  if (t?.opener?.openUrl) t.opener.openUrl(url).catch(() => window.open(url, '_blank', 'noopener'));
-  else if (t?.core?.invoke) t.core.invoke('plugin:opener|open_url', { url }).catch(() => window.open(url, '_blank', 'noopener'));
+  const app = window.sulfurApp;
+  if (app?.openUrl) app.openUrl(url).catch(() => {});
   else window.open(url, '_blank', 'noopener');
 }
 
@@ -6751,15 +6882,18 @@ function applyAppearance() {
 
 function applySettings() {
   const r = I.root;
+  inlineCompletions.reset();
   applyAppearance();
   r.style.setProperty('--ide-code-font', `${setting('editor.fontSize')}px`);
   r.style.setProperty('--ide-tab-size', String(formattingOptions().tabSize));
   languages.cancelCompletions();
   paintLayout();
   paintStatus();
-  // vs code Sulfur's own look; the others the desktop's tokens, medieval its own type too
-  const theme = paletteNow();
-  for (const t of PALETTES) I.w.node.classList.toggle(`ide-theme-${t.id}`, t.id === theme && t.id !== 'vscode');
+  // vs code Sulfur's own look, the others their own tokens; a custom theme wears the one it starts from
+  const look = lookNow();
+  for (const t of LOOK_IDS) I.w.node.classList.toggle(`ide-theme-${t}`, t === look);
+  // the terminals recolored once the theme, or a custom one's overrides, changed
+  const theme = paletteNow() + (document.getElementById('phosphorus-custom')?.textContent || '');
   if (I.themeNow !== theme) { I.themeNow = theme; requestAnimationFrame(() => termsRetheme()); }
   I.exclude = null;
   paintTreeSoon();
@@ -6796,8 +6930,9 @@ async function openUserFile(path, template) {
 
 // --- the workbench's own pages ----------------------------------------------------------------
 
-function openSettings() {
-  openPage('settings', 'Settings', 'gear', (t) => {
+// q: the search to open on, a setting's key to show just it
+function openSettings(q = '') {
+  const t = openPage('settings', 'Settings', 'gear', (t) => {
     const head = el('div', 'ide-page-head');
     const q = Object.assign(el('input', 'ide-input ide-page-search'), { placeholder: 'Search settings', spellcheck: false });
     const json = Object.assign(el('button', 'ide-link'), { type: 'button', title: 'Open Settings (JSON)' });
@@ -6810,8 +6945,44 @@ function openSettings() {
     t.settingsList = list;
     q.addEventListener('input', () => paintSettingsPage());
     paintSettingsPage();
+    loadCompletionModels();
     setTimeout(() => q.focus(), 0);
   });
+  if (q || t.settingsQ.value) { t.settingsQ.value = q; paintSettingsPage(); }
+}
+
+async function loadCompletionModels() {
+  const current = I;
+  if (!current || current.completionLoading) return;
+  current.completionLoading = true; current.completionModelError = '';
+  paintSettingsPage();
+  try {
+    if (localDesktop() && !meshLinked()) throw new Error('Connect to a mesh to select a completion machine.');
+    const response = await fetch(meshApi('/api/state'), { cache: 'no-store' });
+    if (!response.ok) throw new Error(`Model list: status ${response.status}`);
+    const state = await response.json();
+    if (I === current) current.completionModels = completionModels(state.model);
+  } catch (error) { if (I === current) current.completionModelError = error.message; }
+  finally { if (I === current) { current.completionLoading = false; paintSettingsPage(); } }
+}
+
+function completionModelSetting(row, about, value) {
+  row.append(about);
+  const machines = I.completionModels || [];
+  const host = value.startsWith('phosphorus/') ? value.slice('phosphorus/'.length) : '';
+  const machine = Object.assign(el('select', 'ide-input ide-select'), { ariaLabel: 'Completion machine', disabled: !!I.completionLoading });
+  machine.append(Object.assign(el('option', '', 'Automatic mesh routing'), { value: '', selected: !host }));
+  for (const m of machines) machine.append(Object.assign(el('option', '', `${m.host}${m.ready ? '' : ' · offline'}`), { value: m.host, selected: m.host === host }));
+  if (host && !machines.some((m) => m.host === host)) machine.append(Object.assign(el('option', '', `${host} · unavailable`), { value: host, selected: true }));
+  const model = Object.assign(el('select', 'ide-input ide-select'), { ariaLabel: 'Completion model' });
+  const options = host ? [[value, machines.find((m) => m.host === host)?.label || 'Configured model (unavailable)']] : [['chimp', 'Chimp · fast (default)'], ['orangutan', 'Orangutan · larger model']];
+  for (const [id, label] of options) model.append(Object.assign(el('option', '', label), { value: id, selected: id === value }));
+  machine.addEventListener('change', () => setSetting('editor.inlineSuggest.model', machine.value ? `phosphorus/${machine.value}` : 'chimp'));
+  model.addEventListener('change', () => setSetting('editor.inlineSuggest.model', model.value));
+  const refresh = Object.assign(el('button', 'ide-link', I.completionLoading ? 'Loading models…' : 'Refresh machines and models'), { type: 'button', disabled: !!I.completionLoading });
+  refresh.addEventListener('click', loadCompletionModels);
+  row.append(el('label', '', 'Machine'), machine, el('label', '', 'Model'), model, refresh);
+  if (I.completionModelError) row.append(el('p', 'ide-page-note', I.completionModelError));
 }
 
 function paintSettingsPage() {
@@ -6828,7 +6999,9 @@ function paintSettingsPage() {
     row.append(title);
     const about = el('div', 'ide-setting-about', s.about);
     const val = setting(k);
-    if (s.type === 'boolean') {
+    if (s.type === 'model') {
+      completionModelSetting(row, about, String(val));
+    } else if (s.type === 'boolean') {
       const lab = el('label', 'ide-check');
       const box = Object.assign(el('input'), { type: 'checkbox', checked: !!val });
       box.setAttribute('aria-label', s.title);
@@ -6950,7 +7123,7 @@ function recordKey(c) {
 }
 
 function openWelcome() {
-  openPage('welcome', 'Welcome', 'spark', (t) => {
+  openPage('welcome', 'Welcome', 'sulfur', (t) => {
     const w = el('div', 'ide-welcome');
     t.view.append(w);
     t.paint = () => paintWelcome(w);
@@ -7306,7 +7479,7 @@ function buildExtView() {
   languages.mount(v.body);
   head.node.addEventListener('ide-section', () => { list.hidden = !head.open(); });
   head.paint();
-  q.addEventListener('input', () => paintExtView());
+  q.addEventListener('input', () => { paintExtView(); languages.filter(q.value); });
   v.focus = () => q.focus();
   v.acts = [
     btn('', 'plus', 'Create New Extension…', () => run('sulfur.extensions.create')),
@@ -7318,7 +7491,7 @@ function buildExtView() {
 function paintExtView() {
   const E = I.extView;
   if (!E) return;
-  const v = E.q.value.toLowerCase();
+  const v = E.q.value.trim().toLowerCase();
   const all = [...I.exts.values()].sort((a, b) => extName(a).localeCompare(extName(b)));
   const shown = all.filter((x) => !v || `${extName(x)} ${x.id} ${x.manifest?.description || ''}`.toLowerCase().includes(v));
   E.head.title.textContent = `Installed`;
@@ -8484,7 +8657,7 @@ async function toggleConfiguration() {
 
 function activeRunContext() {
   const context = I?.runContext;
-  return context?.tabId === I?.active?.id && context.workspace === wsKey() ? context : null;
+  return context && context.tabId === I.active?.id && context.workspace === wsKey() ? context : null;
 }
 
 async function refreshRunContext() {
@@ -8712,6 +8885,10 @@ function runTask(o) {
 }
 
 function runTaskNow(o) {
+  const state = I;
+  const noteKey = `${o.host}\n${o.name}`;
+  state.taskNotes ||= new Map();
+  state.taskNotes.get(noteKey)?.close(); state.taskNotes.delete(noteKey);
   const host = o.host;
   if (!dk.creds.get(host)) { notify('warning', `Not logged into ${host}: log in ${loginWhere()}.`); return null; }
   for (const old of I.terms.filter((x) => x.base === o.name && x.kind !== 'shell' && x.ended)) killTerm(old);
@@ -8732,12 +8909,13 @@ function runTaskNow(o) {
       t.ended = true;
       pm?.end();
       o.onDone?.(code);
+      if (I !== state) return;
       paintTerms();
       const secs = ((Date.now() - started) / 1000).toFixed(1);
       if (o.kind === 'task') {
-        const errs = (I.buildProblems || []).filter((x) => x.sev === 'error').length;
+        const errs = (pm?.problems || []).filter((x) => x.sev === 'error').length;
         if (code === 0) setStatusFlash(`${o.label || 'Task'} done in ${secs}s${errs ? `, ${errs} errors` : ''}`);
-        else notify(code === -1 ? 'warning' : 'error', `${o.label || 'Task'} on ${host} ${code === -1 ? 'stopped' : `failed (exit ${code})`}${errs ? `: ${errs} error${errs === 1 ? '' : 's'}` : ''}.`, errs ? { actions: [{ label: 'Show Problems', run: () => showPanel('problems', true, true) }] } : {});
+        else state.taskNotes.set(noteKey, notify(code === -1 ? 'warning' : 'error', `${o.label || 'Task'} on ${host} ${code === -1 ? 'stopped' : `failed (exit ${code})`}${errs ? `: ${errs} error${errs === 1 ? '' : 's'}` : ''}.`, errs ? { actions: [{ label: 'Show Problems', run: () => showPanel('problems', true, true) }] } : {}));
       }
     },
   });
@@ -8751,71 +8929,12 @@ function runTaskNow(o) {
 // --- problems out of a task's output: MSVC, MSBuild and dotnet, GCC and Clang,
 // Rust, Go, CMake; their paths brought back into the workspace
 
-const ANSI_RE = /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07]*(\x07|\x1b\\)/g;
-const MATCHERS = [
-  // C:\p\a.cpp(12,5): error C2065: 'x': undeclared identifier [C:\p\a.vcxproj]
-  { re: /^\s*(.+?)\((\d+)(?:,(\d+))?(?:,\d+,\d+)?\)\s*:\s*(fatal error|error|warning)\s+([A-Z]+\d+)\s*:\s*(.*?)(?:\s+\[[^\]]+\])?\s*$/, f: 1, l: 2, c: 3, s: 4, code: 5, m: 6 },
-  // src/a.c:12:5: error: expected ';' (gcc, clang, and go's file:line:col: msg)
-  { re: /^(.+?\.[A-Za-z0-9+]+):(\d+):(\d+):\s*(fatal error|error|warning|note)?:?\s*(.*)$/, f: 1, l: 2, c: 3, s: 4, m: 5 },
-  // CMake Error at CMakeLists.txt:12 (add_executable):
-  { re: /^CMake (Error|Warning)(?: \(dev\))? at (.+?):(\d+)/, f: 2, l: 3, s: 1, m: 0 },
-];
-
 function problemMatcher(host, absRoot, root) {
-  let buf = '';
-  let rustSev = '';
-  let rustMsg = '';
-  let cmakeAt = null;
-  const win = hostIsWindows(host);
-  const norm = (p) => (win ? p.replace(/\//g, '\\').toLowerCase() : p);
-  const base = norm(absRoot).replace(/[\\/]+$/, '');
-  const sep = win ? '\\' : '/';
-  // a path as the workspace names it, or null for one outside it
-  const toRel = (p) => {
-    let a = p.trim();
-    if (!(win ? /^[A-Za-z]:[\\/]/.test(a) : a.startsWith('/'))) a = `${absRoot}${sep}${a}`;
-    const n = norm(a);
-    if (n !== base && !n.startsWith(base + sep)) return null;
-    const rest = a.slice(base.length + 1).replace(/\\/g, '/').split('/').filter((s) => s && s !== '.');
-    const out = [];
-    for (const s of rest) { if (s === '..') out.pop(); else out.push(s); }
-    return out.length ? `${root}/${out.join('/')}` : null;
-  };
-  const push = (x) => {
-    if (!x.rel) return;
-    const sev = /error/i.test(x.sev || '') ? 'error' : /warn/i.test(x.sev || '') ? 'warning' : x.sev === 'note' ? 'info' : 'error';
-    const key = `${x.rel}:${x.line}:${x.col}:${x.msg}`;
-    if (I.buildSeen.has(key)) return;
-    I.buildSeen.add(key);
-    I.buildProblems.push({ rel: x.rel, line: x.line, col: x.col || 1, sev, msg: x.msg, code: x.code || '', host });
-    paintProblemsSoon();
-  };
-  const line = (raw) => {
-    const s = raw.replace(ANSI_RE, '').replace(/\r$/, '');
-    // rust: "error[E0425]: msg" then "  --> src/main.rs:3:5"
-    const rh = s.match(/^(error|warning)(\[\w+\])?: (.*)$/);
-    if (rh) { rustSev = rh[1]; rustMsg = `${rh[2] ? `${rh[2].slice(1, -1)}: ` : ''}${rh[3]}`; return; }
-    const ra = s.match(/^\s*--> (.+?):(\d+):(\d+)$/);
-    if (ra && rustSev) { push({ rel: toRel(ra[1]), line: +ra[2], col: +ra[3], sev: rustSev, msg: rustMsg }); rustSev = ''; return; }
-    if (cmakeAt && s.trim()) { push({ ...cmakeAt, msg: s.trim() }); cmakeAt = null; return; }
-    for (const m of MATCHERS) {
-      const x = s.match(m.re);
-      if (!x) continue;
-      if (m.m === 0) { cmakeAt = { rel: toRel(x[m.f]), line: +x[m.l], col: 1, sev: x[m.s] }; return; }
-      if (m.s === 4 && m.re === MATCHERS[1].re && !x[m.s] && !/\.go$/.test(x[m.f])) return;
-      push({ rel: toRel(x[m.f]), line: +x[m.l], col: +(x[m.c] || 1), sev: x[m.s] || 'error', code: m.code ? x[m.code] : '', msg: x[m.m] });
-      return;
-    }
-  };
-  return {
-    feed: (text) => {
-      buf += text;
-      const parts = buf.split('\n');
-      buf = parts.pop();
-      for (const p of parts) line(p);
-    },
-    end: () => { if (buf) line(buf); buf = ''; paintProblemsSoon(); },
-  };
+  const state = I, workspace = wsKey();
+  return createBuildProblemMatcher({ host, absRoot, root, windows: hostIsWindows(host), onProblem(problem) {
+    if (I !== state || wsKey() !== workspace) return;
+    state.buildProblems.push(problem); paintProblemsSoon();
+  } });
 }
 
 function clearBuildProblems() {

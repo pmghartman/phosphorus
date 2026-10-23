@@ -1,57 +1,22 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="378" height="332" viewBox="0 0 378 332" role="img" aria-label="phosphorus">
-<defs>
-<linearGradient id="g" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="189" y2="363" spreadMethod="repeat">
-<stop offset="0" stop-color="#a371f7"/><stop offset="0.5" stop-color="#f0883e"/><stop offset="1" stop-color="#a371f7"/>
-</linearGradient>
-<clipPath id="t" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="13">
-<text x="111.4" y="21" textLength="156.0" lengthAdjust="spacingAndGlyphs">-@@@@@@@@@@@@@@@@@@=</text>
-<text x="119.2" y="36" textLength="140.4" lengthAdjust="spacingAndGlyphs">..-=*@@@@@@@@+-:..</text>
-<text x="158.2" y="51" textLength="62.4" lengthAdjust="spacingAndGlyphs">-@@@@@@=</text>
-<text x="88.0" y="66" textLength="202.8" lengthAdjust="spacingAndGlyphs">.:-=++***#@@@@@@%****+=-:.</text>
-<text x="56.8" y="81" textLength="265.2" lengthAdjust="spacingAndGlyphs">:+#@@@@@#*+==*@@@@@@*==+*#@@@@@#+:</text>
-<text x="33.4" y="96" textLength="78.0" lengthAdjust="spacingAndGlyphs">.+@@@@@@*:</text>
-<text x="158.2" y="96" textLength="62.4" lengthAdjust="spacingAndGlyphs">:@@@@@@-</text>
-<text x="267.4" y="96" textLength="78.0" lengthAdjust="spacingAndGlyphs">.+@@@@@@*.</text>
-<text x="25.6" y="111" textLength="70.2" lengthAdjust="spacingAndGlyphs">+@@@@@@#.</text>
-<text x="158.2" y="111" textLength="62.4" lengthAdjust="spacingAndGlyphs">:@@@@@@-</text>
-<text x="290.8" y="111" textLength="62.4" lengthAdjust="spacingAndGlyphs">*@@@@@@*</text>
-<text x="17.8" y="126" textLength="62.4" lengthAdjust="spacingAndGlyphs">#@@@@@@#</text>
-<text x="158.2" y="126" textLength="62.4" lengthAdjust="spacingAndGlyphs">:@@@@@@-</text>
-<text x="298.6" y="126" textLength="62.4" lengthAdjust="spacingAndGlyphs">*@@@@@@%</text>
-<text x="10.0" y="141" textLength="70.2" lengthAdjust="spacingAndGlyphs">=@@@@@@@.</text>
-<text x="158.2" y="141" textLength="62.4" lengthAdjust="spacingAndGlyphs">:@@@@@@-</text>
-<text x="306.4" y="141" textLength="62.4" lengthAdjust="spacingAndGlyphs">@@@@@@@+</text>
-<text x="10.0" y="156" textLength="62.4" lengthAdjust="spacingAndGlyphs">%@@@@@@%</text>
-<text x="158.2" y="156" textLength="62.4" lengthAdjust="spacingAndGlyphs">:@@@@@@-</text>
-<text x="306.4" y="156" textLength="62.4" lengthAdjust="spacingAndGlyphs">#@@@@@@%</text>
-<text x="10.0" y="171" textLength="62.4" lengthAdjust="spacingAndGlyphs">%@@@@@@#</text>
-<text x="158.2" y="171" textLength="62.4" lengthAdjust="spacingAndGlyphs">:@@@@@@-</text>
-<text x="306.4" y="171" textLength="62.4" lengthAdjust="spacingAndGlyphs">+@@@@@@%</text>
-<text x="10.0" y="186" textLength="62.4" lengthAdjust="spacingAndGlyphs">*@@@@@@%</text>
-<text x="158.2" y="186" textLength="62.4" lengthAdjust="spacingAndGlyphs">:@@@@@@-</text>
-<text x="306.4" y="186" textLength="62.4" lengthAdjust="spacingAndGlyphs">#@@@@@@*</text>
-<text x="10.0" y="201" textLength="70.2" lengthAdjust="spacingAndGlyphs">.@@@@@@@.</text>
-<text x="158.2" y="201" textLength="62.4" lengthAdjust="spacingAndGlyphs">:@@@@@@-</text>
-<text x="298.6" y="201" textLength="70.2" lengthAdjust="spacingAndGlyphs">.@@@@@@@:</text>
-<text x="17.8" y="216" textLength="70.2" lengthAdjust="spacingAndGlyphs">:@@@@@@%.</text>
-<text x="158.2" y="216" textLength="62.4" lengthAdjust="spacingAndGlyphs">:@@@@@@-</text>
-<text x="298.6" y="216" textLength="62.4" lengthAdjust="spacingAndGlyphs">%@@@@@@-</text>
-<text x="25.6" y="231" textLength="70.2" lengthAdjust="spacingAndGlyphs">.#@@@@@@-</text>
-<text x="158.2" y="231" textLength="62.4" lengthAdjust="spacingAndGlyphs">:@@@@@@-</text>
-<text x="283.0" y="231" textLength="70.2" lengthAdjust="spacingAndGlyphs">-%@@@@@#.</text>
-<text x="41.2" y="246" textLength="78.0" lengthAdjust="spacingAndGlyphs">:*@@@@@%=.</text>
-<text x="158.2" y="246" textLength="62.4" lengthAdjust="spacingAndGlyphs">:@@@@@@-</text>
-<text x="259.6" y="246" textLength="78.0" lengthAdjust="spacingAndGlyphs">.=%@@@@@*:</text>
-<text x="64.6" y="261" textLength="249.6" lengthAdjust="spacingAndGlyphs">:+#@@@@@%**+*@@@@@@#++*%@@@@@#+:</text>
-<text x="95.8" y="276" textLength="187.2" lengthAdjust="spacingAndGlyphs">.:-=++**#@@@@@@#**++=-:.</text>
-<text x="158.2" y="291" textLength="62.4" lengthAdjust="spacingAndGlyphs">:@@@@@@-</text>
-<text x="134.8" y="306" textLength="109.2" lengthAdjust="spacingAndGlyphs">.:=%@@@@@@%=:.</text>
-<text x="111.4" y="321" textLength="156.0" lengthAdjust="spacingAndGlyphs">:@@@@@@@@@@@@@@@@@@%</text>
-</clipPath>
-</defs>
-<g clip-path="url(#t)">
-<rect x="-189" y="-363" width="567" height="726" fill="url(#g)">
-<animateTransform attributeName="transform" type="translate" values="0 0;189 363;0 0" keyTimes="0;0.5;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1" dur="6s" repeatCount="indefinite"/>
-</rect>
-</g>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="100 150 824 724" width="824" height="724" role="img" aria-label="phosphorus">
+  <!-- README's Φ: web/static/phosphorus.svg without filters, masks or blend modes, so it stays
+       crisp and animated in any viewer; the oval crosses over the stem at the crown -->
+  <defs>
+    <linearGradient id="flow" gradientUnits="userSpaceOnUse" x1="95.3" y1="144.6" x2="511.1" y2="943.2" spreadMethod="repeat">
+      <stop offset="0" stop-color="#a371f7"/><stop offset="0.5" stop-color="#f0883e"/><stop offset="1" stop-color="#a371f7"/>
+      <animateTransform attributeName="gradientTransform" type="translate" values="0 0;415.8 798.6;0 0" keyTimes="0;0.5;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1" dur="6s" repeatCount="indefinite"/>
+    </linearGradient>
+    <linearGradient id="tone" gradientUnits="userSpaceOnUse" x1="117" y1="0" x2="907" y2="0"><stop offset="0" stop-color="#2a0a3a" stop-opacity="0.24"/><stop offset="0.55" stop-color="#2a0a3a" stop-opacity="0"/><stop offset="1" stop-color="#fff" stop-opacity="0.12"/></linearGradient>
+    <path id="ring" fill-rule="evenodd" d="M117,512 A395,236 0 1,0 907,512 A395,236 0 1,0 117,512 Z M263,512 A249,172 0 1,1 761,512 A249,172 0 1,1 263,512 Z"/>
+    <polygon id="stem" stroke-width="16" stroke-linejoin="round" points="340,169 684,169 684,205 581,252 581,772 684,819 684,855 340,855 340,819 443,772 443,252 340,205"/>
+    <g id="serifs" stroke-width="16" stroke-linejoin="round"><rect x="340" y="169" width="344" height="36"/><rect x="340" y="819" width="344" height="36"/></g>
+    <clipPath id="cross"><rect x="380" y="200" width="264" height="220"/></clipPath>
+  </defs>
+  <use xlink:href="#ring" fill="url(#flow)"/>
+  <use xlink:href="#ring" fill="url(#tone)"/>
+  <use xlink:href="#stem" fill="url(#flow)" stroke="url(#flow)"/>
+  <use xlink:href="#stem" fill="#2a0a3a" stroke="#2a0a3a" opacity="0.32"/>
+  <use xlink:href="#serifs" fill="url(#flow)" stroke="url(#flow)"/>
+  <use xlink:href="#serifs" fill="#fff" stroke="#fff" opacity="0.1"/>
+  <g clip-path="url(#cross)"><use xlink:href="#ring" fill="url(#flow)"/><use xlink:href="#ring" fill="url(#tone)"/></g>
 </svg>
