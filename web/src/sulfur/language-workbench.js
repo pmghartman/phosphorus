@@ -9,6 +9,8 @@ import { documentSymbols } from './navigation.js';
 const titles = ['TypeScript', 'Python', 'JavaScript', 'Java', 'C#', 'PHP', 'Shell (Bash)', 'C / C++', 'HCL / Terraform', 'Go'];
 const ids = ['typescript', 'python', 'javascript', 'java', 'csharp', 'php', 'shell', 'cpp', 'hcl', 'go'];
 const aborted = (e) => e?.name === 'AbortError';
+// how long a server still starting is waited for before words are suggested instead
+const WORD_WAIT = 1200;
 
 // Keep the editor independent of hosts and installers. All text mutations use
 // its edit() API, so completion/rename participate in collaboration and undo.
@@ -151,10 +153,9 @@ export function createLanguageWorkbench(api) {
     if (!doc || doc.session.client.closed()) return;
     const client = doc.session.client;
     if (client.documents.get(doc.uri)?.text !== tab.ed.text()) {
+      // the last report stays, moved with the edits by the editor, until the next one
+      // replaces it: squiggles never blink off as you type, as in VS Code
       client.sync(doc.uri, languageId(tab.rel, doc.session.extension), tab.ed.text());
-      tab.ed.setDiagnostics(null);
-      diagnostics.delete(doc.session.key + '\n' + doc.uri);
-      api.problems();
       scheduleAnalysis(tab);
       scheduleWorkspaceAnalysis(doc.session);
       scheduleDiagnostics(tab);
@@ -182,7 +183,12 @@ export function createLanguageWorkbench(api) {
       } catch (e) { if (!aborted(e) && !session.client.closed()) api.log(e.message, `Languages: ${session.context.host}`); }
     }, 1200);
   }
+  // Semantic tokens as VS Code asks for them: one request at a time, never cancelled by
+  // typing; a reply for text since edited is moved onto the text now by the editor, and
+  // asked again once it lands, so colors keep up instead of waiting for a pause.
   function scheduleAnalysis(tab) {
+    const running = analyses.get(tab);
+    if (running?.inflight) { running.again = true; return; }
     stopAnalysis(tab);
     if (!attached.has(tab)) return;
     const task = { controller: new AbortController() };
@@ -191,20 +197,26 @@ export function createLanguageWorkbench(api) {
       const doc = attached.get(tab);
       if (!doc || !api.alive(tab) || doc.session.client.closed()) return;
       const { client } = doc.session;
-      const text = tab.ed.text(), version = client.documents.get(doc.uri)?.version;
-      const current = () => analyses.get(tab) === task && !task.controller.signal.aborted && api.alive(tab) && attached.get(tab) === doc && text === tab.ed.text() && version === client.documents.get(doc.uri)?.version;
+      const text = client.documents.get(doc.uri)?.text ?? tab.ed.text();
+      const current = () => analyses.get(tab) === task && !task.controller.signal.aborted && api.alive(tab) && attached.get(tab) === doc && !client.closed();
       const options = { signal: task.controller.signal, timeout: 60000 };
       const requests = [];
       if (client.capabilities.semanticTokensProvider?.full) requests.push((async () => {
         const result = await client.request('textDocument/semanticTokens/full', { textDocument: { uri: doc.uri } }, options);
         if (current() && result?.data) tab.ed.setSemanticTokens(semanticRanges(text, result.data, client.capabilities.semanticTokensProvider.legend), text);
       })());
+      task.inflight = true;
       const results = await Promise.allSettled(requests);
+      task.inflight = false;
       if (current() && requests.length) {
         doc.session.analysisReady = results.every((r) => r.status === 'fulfilled');
         panel?.paint();
       }
       for (const result of results) if (result.status === 'rejected' && !aborted(result.reason) && current()) api.log(result.reason.message, `Languages: ${doc.session.context.host}`);
+      if (current()) {
+        analyses.delete(tab);
+        if (task.again || text !== tab.ed.text()) scheduleAnalysis(tab);
+      }
     }, 350);
   }
   async function request(tab, method, extra = {}, signal) {
@@ -240,21 +252,18 @@ export function createLanguageWorkbench(api) {
     ta.setAttribute('aria-controls', box.id); ta.setAttribute('aria-autocomplete', 'both');
     tab.view.append(box);
     // session: the items asked for the word starting at from; shown: those matching what's typed
-    let session = null, shown = [], selected = 0, timer, controller;
+    let session = null, shown = [], selected = 0, timer, controller, wordTimer;
     let languagePreview = false;
-    function close() { if (languagePreview) { tab.ed.setInlineSuggestion?.(null); languagePreview = false; } box.hidden = true; ta.setAttribute('aria-expanded', 'false'); ta.removeAttribute('aria-activedescendant'); }
-    function hide() { clearTimeout(timer); controller?.abort(); session = null; shown = []; close(); }
+    // VS Code's list: rows of one height, only those in view drawn, above or below the
+    // word as decided when it opens and kept there while typing narrows it
+    const ROW = 22, ROWS = 12;
+    let placement = '';
+    const spacer = api.el('div', 'ide-completion-spacer');
+    function close() { if (languagePreview) { tab.ed.setInlineSuggestion?.(null); languagePreview = false; } box.hidden = true; placement = ''; ta.setAttribute('aria-expanded', 'false'); ta.removeAttribute('aria-activedescendant'); }
+    function hide() { clearTimeout(timer); clearTimeout(wordTimer); controller?.abort(); session = null; shown = []; close(); }
     // the highlight's class at a place before the caret: VS Code's quick suggestions stay out of comments and strings
     function quiet(offset) {
-      if (offset < 0) return false;
-      const pre = tab.view.querySelector('pre.code-hl:not(.code-agent):not(.code-finds):not(.code-squig)');
-      if (!pre) return false;
-      const walk = document.createTreeWalker(pre, NodeFilter.SHOW_TEXT);
-      for (let at = 0, node = walk.nextNode(); node; node = walk.nextNode()) {
-        if (offset < at + node.length) return !!node.parentElement?.closest('.hljs-comment, .hljs-string, .hljs-regexp');
-        at += node.length;
-      }
-      return false;
+      return offset >= 0 && !!tab.ed.tokenClass && /hljs-(comment|string|regexp)/.test(tab.ed.tokenClass(offset));
     }
     function paintPreview() {
       if (api.setting?.('editor.suggest.inlinePreview') === false || !session || !shown[selected]) { if (languagePreview) tab.ed.setInlineSuggestion?.(null); languagePreview = false; return; }
@@ -267,8 +276,26 @@ export function createLanguageWorkbench(api) {
         tab.ed.setInlineSuggestion?.(insert ? { text, caret, insert } : null);
       } catch { if (languagePreview) tab.ed.setInlineSuggestion?.(null); languagePreview = false; }
     }
+    // the selection scrolled into view, then the rows in view drawn; the list's scroll kept
+    // here rather than read back, so typing into an open list forces no layout
+    let listTop = 0;
+    const scrollList = (top) => { listTop = Math.max(0, top); box.scrollTop = listTop; };
+    box.addEventListener('scroll', () => { listTop = box.scrollTop; if (!box.hidden) paintRows(); }, { passive: true });
     function paint() {
-      box.replaceChildren(...shown.map(({ item, matches }, index) => {
+      const height = ROW * Math.min(ROWS, shown.length);
+      if (selected * ROW < listTop) scrollList(selected * ROW);
+      else if ((selected + 1) * ROW > listTop + height) scrollList((selected + 1) * ROW - height);
+      paintRows();
+      ta.setAttribute('aria-activedescendant', `${box.id}-${selected}`);
+      paintPreview();
+    }
+    function paintRows() {
+      const first = Math.max(0, Math.min(shown.length - 1, Math.floor(listTop / ROW) - 2));
+      const last = Math.min(shown.length, first + ROWS + 4);
+      box.style.paddingTop = `${first * ROW}px`;
+      spacer.style.height = `${(shown.length - last) * ROW}px`;
+      box.replaceChildren(...shown.slice(first, last).map(({ item, matches }, n) => {
+        const index = first + n;
         const row = api.el('div', `ide-completion-item${index === selected ? ' on' : ''}`);
         row.id = `${box.id}-${index}`; row.setAttribute('role', 'option'); row.setAttribute('aria-selected', String(index === selected));
         const { kind, glyph } = kindOf(item);
@@ -286,26 +313,27 @@ export function createLanguageWorkbench(api) {
         if (docs) row.title = docs;
         row.addEventListener('mousedown', (e) => { e.preventDefault(); selected = index; accept().catch(api.error); });
         return row;
-      }));
-      ta.setAttribute('aria-activedescendant', `${box.id}-${selected}`);
-      const row = box.children[selected];
-      if (row && row.offsetTop < box.scrollTop) box.scrollTop = row.offsetTop;
-      else if (row && row.offsetTop + row.offsetHeight > box.scrollTop + box.clientHeight) box.scrollTop = row.offsetTop + row.offsetHeight - box.clientHeight;
-      paintPreview();
+      }), spacer);
     }
-    // the list under the word's start, above it when there's no room below
+    // the list under the word's start, above it when there's no room below for a full list
+    let measure;
     function place(text, from) {
       const style = getComputedStyle(ta);
-      const before = text.slice(0, from);
-      const line = before.slice(before.lastIndexOf('\n') + 1);
+      const lineStart = text.lastIndexOf('\n', from - 1) + 1;
+      let row = 0;
+      for (let at = text.indexOf('\n'); at >= 0 && at < lineStart; at = text.indexOf('\n', at + 1)) row++;
       const tabSize = parseInt(style.tabSize, 10) || 4;
-      const columns = [...line].reduce((n, ch) => ch === '\t' ? n + tabSize - n % tabSize : n + 1, 0);
-      const measure = document.createElement('canvas').getContext('2d'); measure.font = style.font || `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+      const columns = [...text.slice(lineStart, from)].reduce((n, ch) => ch === '\t' ? n + tabSize - n % tabSize : n + 1, 0);
+      measure ||= document.createElement('canvas').getContext('2d');
+      measure.font = style.font || `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
       const rect = ta.getBoundingClientRect(); const outer = tab.view.getBoundingClientRect();
-      const lineHeight = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.4;
-      const y = rect.top - outer.top + parseFloat(style.paddingTop) + before.split('\n').length * lineHeight - ta.scrollTop;
+      const lineHeight = tab.ed.lineHeight?.() || parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.4;
+      const y = rect.top - outer.top + parseFloat(style.paddingTop) + (row + 1) * lineHeight - ta.scrollTop;
+      const full = ROW * ROWS + 2;
+      placement ||= y + full > outer.height && y - lineHeight - full >= 0 ? 'above' : 'below';
       box.style.left = `${Math.max(0, Math.min(outer.width - box.offsetWidth, rect.left - outer.left + parseFloat(style.paddingLeft) + columns * measure.measureText('M').width - ta.scrollLeft))}px`;
-      box.style.top = `${Math.max(0, y + box.offsetHeight > outer.height ? y - box.offsetHeight - lineHeight : y)}px`;
+      if (placement === 'above') { box.style.top = ''; box.style.bottom = `${Math.max(0, outer.height - (y - lineHeight))}px`; }
+      else { box.style.bottom = ''; box.style.top = `${Math.max(0, y)}px`; }
     }
     function refilter() {
       if (!session) return;
@@ -317,9 +345,13 @@ export function createLanguageWorkbench(api) {
       // a word that's already whole is nothing to suggest
       if (!session.lsp && shown.length === 1 && shown[0].item.label === typed) shown = [];
       if (!shown.length) { close(); return; }
+      // placed when it opens or its word moves, never while typing narrows the list
+      const opening = box.hidden || session.placedAt !== session.from;
       selected = 0; box.hidden = false; ta.setAttribute('aria-expanded', 'true');
       if (session.anchored || preferLanguageCompletion(text, caret, shown.map((x) => x.item))) api.onSuggest?.();
-      paint(); place(text, session.from);
+      if (opening) scrollList(0);
+      paint();
+      if (opening) { place(text, session.from); session.placedAt = session.from; }
     }
     async function trigger(triggerKind, triggerCharacter = '', explicit = false, retry = 0) {
       api.onSuggest?.();
@@ -330,9 +362,21 @@ export function createLanguageWorkbench(api) {
       const caret = ta.selectionStart;
       if (ta !== document.activeElement || caret !== ta.selectionEnd || tab.info?.readOnly) return;
       const from = caret - wordBefore(text, caret).length;
-      // Words are available immediately, even while the host's server starts.
-      session = { from, text, caret, items: triggerCharacter ? [] : wordCompletions(api.documents?.(tab) || [], text, caret), lsp: null, defaults: {}, incomplete: false, anchored: explicit || !!triggerCharacter };
-      refilter();
+      clearTimeout(wordTimer);
+      // asked again for an incomplete list: the old one stays, filtered, until the new
+      // one comes, rather than words flashing up between them
+      const placedAt = session?.placedAt;
+      if (!(session && session.from === from && triggerKind === 3)) {
+        // With a language server, its list is waited for, as VS Code waits for its
+        // providers: words shown first and swapped for the server's list under the caret
+        // are what made the list jump. Words come at once only without a server, or
+        // after a while for one still starting.
+        const server = !!attached.get(tab)?.session.client.capabilities.completionProvider;
+        const words = () => triggerCharacter ? [] : wordCompletions(api.documents?.(tab) || [], tab.ed.text(), ta.selectionStart);
+        const waiting = session = { from, text, caret, items: server ? [] : words(), lsp: null, defaults: {}, incomplete: false, anchored: explicit || !!triggerCharacter, placedAt };
+        refilter();
+        if (server && !triggerCharacter) wordTimer = setTimeout(() => { if (session === waiting) { waiting.items = words(); refilter(); } }, WORD_WAIT);
+      }
       let items = [], lsp = null, defaults = {}, incomplete = false;
       try {
         const result = await request(tab, 'completion', { context: triggerCharacter ? { triggerKind: 2, triggerCharacter } : { triggerKind } }, own.signal);
@@ -360,7 +404,8 @@ export function createLanguageWorkbench(api) {
         items = wordCompletions(api.documents?.(tab) || [], now, ta.selectionStart);
         lsp = null;
       }
-      session = { from, text, caret, items, lsp, defaults, incomplete, anchored: explicit || !!triggerCharacter };
+      clearTimeout(wordTimer);
+      session = { from, text, caret, items, lsp, defaults, incomplete, anchored: explicit || !!triggerCharacter || (session?.from === from && !!session.anchored), placedAt: session?.from === from ? session.placedAt : undefined };
       refilter();
     }
     async function accept() {

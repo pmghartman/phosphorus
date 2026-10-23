@@ -14,13 +14,14 @@ import {
   name,
   shareMenu,
 } from '../app.js';
-import { ERR_MAX, syntaxRanges, parserFor, parserNow, syntaxErrors, syntaxCache } from '../lezer.js';
+import { syntaxRanges, errorPositions, parserFor, parserNow, syntaxErrors, syntaxCache } from '../lezer.js';
 import { mdBlocks, renderMd } from '../md.js';
-import { opApply, opTransform, opDiff, opMap, opEdits } from '../text-operations.js';
+import { opApply, opTransform, opDiff, opMap, opEdits, commonEnds } from '../text-operations.js';
 import { EditorHistory } from '../editor-history.js';
-import { highlightRanges, rebaseHighlightRanges, rangesFromHighlight } from '../sulfur/semantic-tokens.js';
-import { patchHighlight } from '../highlight-patch.js';
-import { diagnosticSeverity, diagnosticCounts, diagnosticText, diagnosticsAt, offsetAtColumn, diagnosticDelay } from '../sulfur/diagnostics.js';
+import { highlightRanges, rebaseHighlightRanges, rangesFromHighlight, classAt, rangeIndex } from '../sulfur/semantic-tokens.js';
+import { quickLex, lexStateAt } from '../sulfur/quick-lex.js';
+import { rebaseLexical, settleLexical } from '../sulfur/stable-highlight.js';
+import { diagnosticSeverity, diagnosticCounts, diagnosticText, diagnosticsAt, offsetAtColumn, diagnosticDelay, rebaseDiagnostics } from '../sulfur/diagnostics.js';
 import { definitionIdentifier, mountDefinitionLinks } from '../sulfur/definition-links.js';
 import { editorDecorations } from '../sulfur/editor-guides.js';
 
@@ -113,7 +114,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
   ta.addEventListener('mousemove', (event) => {
     if (inlineSuggestion) { hideDiagnosticHover(); return; }
     const rect = ta.getBoundingClientRect(), style = getComputedStyle(ta);
-    const line = Math.floor((event.clientY - rect.top - parseFloat(style.paddingTop)) / (parseFloat(style.lineHeight) || 18));
+    const line = Math.floor((event.clientY - rect.top - parseFloat(style.paddingTop)) / lineHeightIn(ta));
     const column = Math.floor((event.clientX - rect.left - parseFloat(style.paddingLeft)) / chWidthIn(ta));
     const hit = diagnosticsAt(errs, offsetAtColumn(ta.value, line, column, parseInt(style.tabSize, 10) || 4));
     if (!hit.length) { hideDiagnosticHover(); return; }
@@ -133,7 +134,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
   function definitionTarget(event) {
     if (inlineSuggestion) setInlineSuggestion(null);
     const rect = ta.getBoundingClientRect(), style = getComputedStyle(ta);
-    const line = Math.floor((event.clientY - rect.top - parseFloat(style.paddingTop || 0)) / (parseFloat(style.lineHeight) || 18));
+    const line = Math.floor((event.clientY - rect.top - parseFloat(style.paddingTop || 0)) / lineHeightIn(ta));
     const column = Math.floor((event.clientX - rect.left - parseFloat(style.paddingLeft || 0)) / chWidthIn(ta));
     lineAt(ta.value, 0);
     const start = lineStarts[line];
@@ -157,7 +158,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
       const column = [...ta.value.slice(lineStarts[line], target.from)].reduce((n, ch) => ch === '\t' ? n + tabSize - n % tabSize : n + 1, 0);
       const underline = el('span', '', target.name);
       underline.style.left = `${parseFloat(style.paddingLeft || 0) + column * chWidthIn(ta)}px`;
-      underline.style.top = `${parseFloat(style.paddingTop || 0) + line * (parseFloat(style.lineHeight) || 18)}px`;
+      underline.style.top = `${parseFloat(style.paddingTop || 0) + line * lineHeightIn(ta)}px`;
       definitionLayer.replaceChildren(underline);
       definitionLayer.hidden = false; ta.classList.add('code-definition-target');
     },
@@ -205,29 +206,202 @@ function codeEditor(view, file, btn, id, opts = {}) {
   }
 
   // --- drawing ---
+  // Only the lines on screen (and a screen above and below) are drawn: a keystroke
+  // costs the same in a file of any length, as in VS Code. Every layer under the
+  // textarea draws the same window, padded above and below to the full text's height.
   let drawFrame = 0;
   let hlText = null;
+  let hlForce = false;
   const syntax = syntaxCache();
   let semantic = [], semanticText = null;
-  let lexical = [], lexicalText = null;
-  let lexicalParsedText = null, lexicalParser = null;
+  // a grammar's colors kept steady across half-typed code (stable-highlight.js)
+  let lexState = null, lexText = null, lexParsedText = null;
+  // the server's colors for a grammar the page has no parser for, the whole text's, and
+  // the span edited since they came (quick-lex.js colors those lines meanwhile)
+  let lexical = [], lexicalText = null, lexicalDirty = null;
   const HL_MAX = 8 * 1024 * 1024;
   // Past this, parse after typing pauses, retaining rebased colors between.
-  const HL_IDLE = 256 * 1024;
+  const HL_IDLE = 1024 * 1024;
   const SERVER_HL_MAX = 200 * 1024;
   let bigTimer = 0;
   let hlNow = false;
-  // the last whole highlight, its unchanged lines drawn again while a new one's on its way
-  let lastHl = null;
+  // the text last drawn, and the window of it drawn
+  let shownText = null;
+  let drawn = { first: 0, last: 0, from: 0, to: 0, lines: 1, lh: 18 };
+  let wantCaret = false;
+  // what changed between two texts, worked out once for every layer that moves with it
+  let lastChange = null;
+  const changeOf = (before, after) => {
+    if (lastChange?.before === before && lastChange.after === after) return lastChange.change;
+    const change = commonEnds(before, after);
+    lastChange = { before, after, change };
+    return change;
+  };
+  const numsWin = el('div'), squigWin = el('code'), findsWin = el('code'), agentWin = el('code');
+  nums.append(numsWin); squig.append(squigWin); finds.append(findsWin); agentL.append(agentWin);
+  // the widest line in columns, so the body is as wide as the text without drawing it all
+  let maxCols = 0, widthTab = 0;
+  function widest(text, from, to, tabSize) {
+    let most = 0, column = 0;
+    for (let i = from; i < to; i++) {
+      const c = text.charCodeAt(i);
+      if (c === 10) { most = Math.max(most, column); column = 0; } else if (c === 9) column += tabSize - column % tabSize;
+      // wide and astral characters counted double, never narrower than drawn
+      else column += c < 0x1100 ? 1 : 2;
+    }
+    return Math.max(most, column);
+  }
+  function measureWidth(before, after) {
+    const tabSize = parseInt(getComputedStyle(ta).tabSize, 10) || 4;
+    if (before === null || tabSize !== widthTab) { widthTab = tabSize; maxCols = widest(after, 0, after.length, tabSize); return; }
+    const { head, tail } = changeOf(before, after);
+    const lineFrom = (t) => t.lastIndexOf('\n', head - 1) + 1;
+    const lineTo = (t, p) => { const e = t.indexOf('\n', p); return e < 0 ? t.length : e; };
+    const was = widest(before, lineFrom(before), lineTo(before, before.length - tail), tabSize);
+    const now = widest(after, lineFrom(after), lineTo(after, after.length - tail), tabSize);
+    if (now >= maxCols) maxCols = now;
+    else if (was >= maxCols) maxCols = widest(after, 0, after.length, tabSize);
+  }
+  // what's kept for the text last drawn moved onto the text now
+  function textChanged(before, text) {
+    shownText = text;
+    measureWidth(before, text);
+    if (before === null) return;
+    const change = changeOf(before, text);
+    lastTextChange = Date.now();
+    hideDiagnosticHover();
+    const moved = { head: change.head, tail: change.tail, before: before.length };
+    if (errsText === before) { errs = rebaseDiagnostics(errs, moved, text.length - before.length); errsText = text; }
+    if (languageErrors && languageErrorsText === before) { languageErrors = rebaseDiagnostics(languageErrors, moved, text.length - before.length); languageErrorsText = text; }
+  }
+  function syncColors(text) {
+    if (semanticText !== text) { if (semanticText !== null) semantic = rebaseHighlightRanges(semanticText, text, semantic, changeOf(semanticText, text)); semanticText = text; }
+    if (lexicalText !== text) {
+      if (lexicalText !== null) {
+        const { head, tail } = changeOf(lexicalText, text), endA = lexicalText.length - tail, delta = text.length - lexicalText.length;
+        lexical = rebaseHighlightRanges(lexicalText, text, lexical, { head, tail });
+        const at = (p) => p < head ? p : p >= endA ? p + delta : head;
+        lexicalDirty = { from: Math.min(head, lexicalDirty ? at(lexicalDirty.from) : head), to: Math.max(text.length - tail, lexicalDirty ? (lexicalDirty.to >= endA ? lexicalDirty.to + delta : text.length - tail) : 0) };
+      }
+      lexicalText = text;
+    }
+    if (lexText !== text) { if (lexText !== null) lexState = rebaseLexical(lexState, lexText, text, changeOf(lexText, text)); lexText = text; }
+  }
+  // The scroller's metrics as last laid out, kept from its own scroll and resize events:
+  // drawing a keystroke then never forces a layout of its own, which in a long file costs
+  // as much as the textarea's whole text (the one layout per frame the browser does anyway)
+  const metrics = { top: 0, left: 0, height: 0, width: 0, gutter: 0 };
+  const scrollTo = (top, left = metrics.left) => {
+    if (top !== metrics.top) scroller.scrollTop = metrics.top = Math.max(0, top);
+    if (left !== metrics.left) scroller.scrollLeft = metrics.left = Math.max(0, left);
+  };
+  scroller.addEventListener('scroll', () => { metrics.top = scroller.scrollTop; metrics.left = scroller.scrollLeft; }, { passive: true });
+  // the lines to draw: those on screen and as many again above and below
+  function viewWindow(text) {
+    lineAt(text, 0);
+    const n = lineStarts.length, lh = lineHeightIn(ta);
+    const top = metrics.top - (parseFloat(getComputedStyle(pre).paddingTop) || 0);
+    const height = metrics.height || 900;
+    const margin = Math.max(40, Math.ceil(height / lh));
+    const first = Math.max(0, Math.min(n - 1, Math.floor(top / lh) - margin));
+    const last = Math.max(first + 1, Math.min(n, Math.ceil((top + height) / lh) + margin));
+    return { first, last, from: lineStarts[first], to: last < n ? lineStarts[last] - 1 : text.length, lines: n, lh };
+  }
+  // a layer's window placed: as tall and wide as the whole text, its lines where they lie
+  function placeWindow(node, w) {
+    node.style.paddingTop = `${w.first * w.lh}px`;
+    node.style.paddingBottom = `${(w.lines - w.last) * w.lh}px`;
+    node.style.minWidth = `${maxCols + 2}ch`;
+  }
+  // the window's text with marks over some ranges (sorted); wrap(raw) gives a mark's html
+  function markedHtml(text, marks, w) {
+    let html = '', at = w.from;
+    for (const m of marks) {
+      if (m.to < w.from || m.from > w.to) continue;
+      const a = Math.max(m.from, w.from), b = Math.min(m.to, w.to);
+      if (a < at) continue;
+      html += esc(text.slice(at, a)) + m.wrap(text.slice(a, b));
+      at = b;
+    }
+    return `${html}${esc(text.slice(at, w.to))}\n`;
+  }
+  function paintText() {
+    const text = ta.value;
+    syncColors(text);
+    const w = drawn = viewWindow(text);
+    const parser = text.length <= HL_MAX && parserNow(lang.check);
+    let colors = lexical;
+    if (parser) {
+      // a big file parsed once typing pauses, its colors moved with the edits meanwhile
+      if (text.length > HL_IDLE && lexParsedText !== null && lexParsedText !== text && !hlNow) {
+        clearTimeout(bigTimer);
+        bigTimer = setTimeout(() => { if (closed || ta.value !== text) return; hlNow = true; paintText(); hlNow = false; }, 400);
+      } else {
+        const tree = syntax.parse(parser, text);
+        lexState = settleLexical(lexState, syntaxRanges(parser, text, tree, w.from, w.to), errorPositions(tree, w.from, w.to), w.from, w.to, text);
+        lexParsedText = text;
+      }
+      colors = lexState?.ranges || [];
+    } else if (text.length <= HL_MAX) {
+      if (lang.check) parserFor(lang.check).then((p) => {
+        if (closed || ta.value !== text) return;
+        if (p) redraw(true);
+        else if (lang.hl !== 'plaintext' && text.length <= SERVER_HL_MAX) serverHighlight(text);
+      });
+      else if (lang.hl !== 'plaintext' && text.length <= SERVER_HL_MAX) serverHighlight(text);
+      if (lexicalDirty && lang.hl !== 'plaintext' && lang.hl !== 'markdown') colors = quickColors(text, w);
+    }
+    code.innerHTML = `${highlightRanges(text, colors, semantic, w.from, w.to)}\n`;
+    placeWindow(code, w);
+    numsWin.textContent = Array.from({ length: w.last - w.first }, (_, i) => w.first + i + 1).join('\n');
+    numsWin.style.paddingTop = `${w.first * w.lh}px`; numsWin.style.paddingBottom = `${(w.lines - w.last) * w.lh}px`;
+    numsWin.style.minWidth = `${String(w.lines).length}ch`;
+    hlText = text;
+    paintSquiggles(); paintFinds(); paintAgent();
+    if (inlineSuggestion) paintInline();
+  }
+  // the lines edited since the server's colors came, lexed here, the rest as it colored them
+  function quickColors(text, w) {
+    lineAt(text, 0);
+    const a = Math.max(w.from, lineStarts[lineAt(text, lexicalDirty.from) - 1]);
+    const endLine = lineAt(text, Math.min(lexicalDirty.to, text.length));
+    const b = Math.min(w.to, endLine < lineStarts.length ? lineStarts[endLine] : text.length);
+    if (b <= a) return lexical;
+    const before = rangeIndex(lexical, a), after = rangeIndex(lexical, b);
+    const head = lexical.slice(rangeIndex(lexical, w.from), before);
+    if (lexical[before]?.from < a) head.push({ ...lexical[before], to: a });
+    const tail = lexical.slice(after, rangeIndex(lexical, w.to) + 1).map((r) => r.from < b ? { ...r, from: b } : r).filter((r) => r.to > r.from);
+    return [...head, ...quickLex(text, a, b, { lang: lang.hl, comment: lang.comment, state: lexStateAt(lexical, before, a) }), ...tail];
+  }
+  // the class drawn at an offset, for completion to stay out of comments and strings
+  function tokenClass(offset) {
+    const text = ta.value;
+    syncColors(text);
+    const line = { from: text.lastIndexOf('\n', offset - 1) + 1, to: Math.min(text.length, offset + 1) };
+    const lexicalClass = classAt(parserNow(lang.check) ? lexState?.ranges || [] : lexicalDirty ? quickColors(text, line) : lexical, offset);
+    return /hljs-(comment|string|regexp)/.test(lexicalClass) ? lexicalClass : classAt(semantic, offset) || lexicalClass;
+  }
+  // scrolled past what's drawn: the new lines drawn on the next frame
+  let viewFrame = 0;
+  scroller.addEventListener('scroll', () => {
+    if (viewFrame || hlText === null) return;
+    viewFrame = requestAnimationFrame(() => {
+      viewFrame = 0;
+      if (closed || view.hidden) return;
+      if (ta.value !== hlText) { redraw(); return; }
+      const w = viewWindow(ta.value), margin = Math.max(10, (w.last - w.first) / 6);
+      if ((drawn.first > 0 && w.first + margin < drawn.first) || (drawn.last < w.lines && w.last - margin > drawn.last)) { paintText(); paintMarks(); }
+    });
+  }, { passive: true });
   let guideFrame = 0, guideSnapshot = null;
   function paintGuides() {
     guideFrame = 0;
     if (closed || !ready || view.hidden) return;
     const options = opts.display?.() || {};
-    const text = ta.value, style = getComputedStyle(ta), rect = ta.getBoundingClientRect(), viewport = scroller.getBoundingClientRect();
-    const lh = parseFloat(style.lineHeight) || 18, cw = chWidthIn(ta), x = parseFloat(style.paddingLeft) || 0, y = parseFloat(style.paddingTop) || 0;
-    const first = Math.max(0, Math.floor((viewport.top - rect.top - y) / lh) - 1), last = Math.ceil((viewport.bottom - rect.top - y) / lh) + 1;
-    const left = Math.max(0, Math.floor((viewport.left + gutter.offsetWidth - rect.left - x) / cw) - 1), right = left + Math.ceil(viewport.width / cw) + 2;
+    const text = ta.value, style = getComputedStyle(ta);
+    const lh = lineHeightIn(ta), cw = chWidthIn(ta), x = parseFloat(style.paddingLeft) || 0, y = parseFloat(style.paddingTop) || 0;
+    const first = Math.max(0, Math.floor((metrics.top - y) / lh) - 1), last = Math.ceil((metrics.top + metrics.height - y) / lh) + 1;
+    const left = Math.max(0, Math.floor((metrics.left - x) / cw) - 1), right = left + Math.ceil(metrics.width / cw) + 2;
     const tabSize = parseInt(style.tabSize, 10) || 4, indent = unit(), indentSize = indent === '\t' ? tabSize : indent.length;
     const key = JSON.stringify([first, last, left, right, tabSize, indentSize, cw, lh, x, y, options]);
     if (guideSnapshot?.text === text && guideSnapshot.key === key) return;
@@ -251,11 +425,19 @@ function codeEditor(view, file, btn, id, opts = {}) {
   }
   const guidesSoon = () => { guideFrame ||= requestAnimationFrame(paintGuides); };
   scroller.addEventListener('scroll', guidesSoon, { passive: true });
-  const guideResize = new ResizeObserver(guidesSoon); guideResize.observe(scroller);
-  let diagnosticSnapshot = '', lastTextChange = 0;
+  // a taller pane shows more lines: the window drawn again for it
+  // read after layout, before paint: free, unlike a read in the middle of drawing
+  const guideResize = new ResizeObserver(() => {
+    const taller = scroller.clientHeight > metrics.height;
+    Object.assign(metrics, { top: scroller.scrollTop, left: scroller.scrollLeft, height: scroller.clientHeight, width: scroller.clientWidth, gutter: gutter.offsetWidth });
+    guidesSoon();
+    if (hlText !== null && taller) redraw(true);
+  });
+  guideResize.observe(scroller); guideResize.observe(gutter);
+  let lastTextChange = 0;
   function paintInline() {
     const s = inlineSuggestion;
-    if (!s || s.text !== ta.value || s.caret !== ta.selectionStart || s.caret !== ta.selectionEnd || ta.readOnly) {
+    if (!s || s.text !== ta.value || s.caret !== ta.selectionStart || s.caret !== ta.selectionEnd || ta.readOnly || s.caret < drawn.from || s.caret > drawn.to) {
       inlineSuggestion = null;
       inlineLayer.hidden = true;
       inlineLayer.replaceChildren();
@@ -264,11 +446,11 @@ function codeEditor(view, file, btn, id, opts = {}) {
       nums.style.visibility = '';
       return;
     }
-    // Clone the current syntax spans and insert ghost text with DOM text APIs.
+    // Clone the drawn syntax spans and insert ghost text with DOM text APIs.
     // It can contain arbitrary source, including HTML, without becoming markup.
     const copy = code.cloneNode(true);
     const walk = document.createTreeWalker(copy, NodeFilter.SHOW_TEXT);
-    let at = 0, found = false;
+    let at = drawn.from, found = false;
     const ghost = el('span', 'code-inline-text', s.insert);
     for (let node = walk.nextNode(); node; node = walk.nextNode()) {
       if (s.caret <= at + node.length) {
@@ -283,73 +465,32 @@ function codeEditor(view, file, btn, id, opts = {}) {
     inlineLayer.hidden = false;
     body.classList.add('code-has-inline');
     // Keep line numbers aligned when a preview inserts virtual lines.
-    const line = s.text.slice(0, s.caret).split('\n').length;
+    const line = lineAt(s.text, s.caret);
     const virtual = s.insert.split('\n').length - 1;
-    const numberCopy = el('pre', 'code-nums code-inline-nums');
-    numberCopy.textContent = Array.from({ length: s.text.split('\n').length }, (_, i) => String(i + 1) + (i + 1 === line ? '\n'.repeat(virtual) : '')).join('\n');
     gutter.querySelector('.code-inline-nums')?.remove();
-    if (virtual) { gutter.append(numberCopy); nums.style.visibility = 'hidden'; }
-    else nums.style.visibility = '';
+    if (virtual) {
+      const numberCopy = el('pre', 'code-nums code-inline-nums');
+      const numbers = el('div');
+      numbers.textContent = Array.from({ length: drawn.last - drawn.first }, (_, i) => String(drawn.first + i + 1) + (drawn.first + i + 1 === line ? '\n'.repeat(virtual) : '')).join('\n');
+      Object.assign(numbers.style, { paddingTop: numsWin.style.paddingTop, paddingBottom: numsWin.style.paddingBottom, minWidth: numsWin.style.minWidth });
+      numberCopy.append(numbers);
+      gutter.append(numberCopy); nums.style.visibility = 'hidden';
+    } else nums.style.visibility = '';
   }
   function draw() {
     drawFrame = 0;
     if (closed) return;
     const text = ta.value;
     if (definitionHover && definitionHover.text !== text) clearDefinitionHover();
-    if (semanticText !== text) { semantic = rebaseHighlightRanges(semanticText || '', text, semantic); semanticText = text; }
-    if (lexicalText !== text) { lexical = rebaseHighlightRanges(lexicalText || '', text, lexical); lexicalText = text; lexicalParsedText = null; }
-    if (text !== diagnosticSnapshot) { diagnosticSnapshot = text; lastTextChange = Date.now(); clearDiagnostics(); }
+    const changed = text !== shownText;
+    if (changed) textChanged(shownText, text);
     if (inlineSuggestion && inlineSuggestion.text !== text) setInlineSuggestion(null);
-    // a tab shown again with the same text: its highlight kept
-    if (text === hlText) { paintMarks(); guidesSoon(); return; }
-    const parser = text.length <= HL_MAX && parserNow(lang.check);
-    const big = text.length > HL_IDLE && hlText !== null && !hlNow;
-    hlText = text;
-    if (parser && !big) {
-      if (lexicalParsedText !== text || lexicalParser !== parser) {
-        lexical = syntaxRanges(parser, text, syntax.parse(parser, text)); lexicalText = text;
-        lexicalParsedText = text; lexicalParser = parser;
-      }
-      const html = highlightRanges(text, lexical, semantic);
-      code.innerHTML = `${html}\n`;
-      lastHl = { text, html };
-    } else if (semantic.length || lexical.length) {
-      const html = highlightRanges(text, lexical, semantic);
-      code.innerHTML = `${html}\n`; lastHl = { text, html };
-      if (parser && big) {
-        clearTimeout(bigTimer);
-        bigTimer = setTimeout(() => { if (closed || ta.value !== text) return; hlText = null; hlNow = true; draw(); hlNow = false; }, 400);
-      }
-    }
-    else {
-      const kept = lastHl && text.length <= HL_MAX ? patchHighlight(lastHl, text) : null;
-      if (kept === null) code.textContent = `${text}\n`;
-      else code.innerHTML = `${kept}\n`;
-      if (parser) {
-        clearTimeout(bigTimer);
-        bigTimer = setTimeout(() => { if (closed || ta.value !== text) return; hlText = null; hlNow = true; draw(); hlNow = false; }, 400);
-      }
-    }
-    if (!parser && text.length <= HL_MAX) {
-      if (lang.check) parserFor(lang.check).then((p) => {
-        if (closed || ta.value !== text) return;
-        if (p) { hlText = null; redraw(); }
-        else if (lang.hl !== 'plaintext' && text.length <= SERVER_HL_MAX) serverHighlight(text);
-      });
-      else if (lang.hl !== 'plaintext' && text.length <= SERVER_HL_MAX) serverHighlight(text);
-    }
-    lineAt(text, 0);
-    const lines = lineStarts.length;
-    if (nums.dataset.n !== String(lines)) {
-      nums.dataset.n = String(lines);
-      nums.textContent = Array.from({ length: lines }, (_, i) => i + 1).join('\n');
-    }
+    if (changed || hlForce || hlText !== text) paintText();
+    hlForce = false;
     paintMarks();
-    paintFinds();
-    paintAgent();
-    if (inlineSuggestion) paintInline();
     guidesSoon();
-    checkSoon();
+    if (changed) checkSoon();
+    if (wantCaret) { wantCaret = false; caretInView(); }
   }
   function setInlineSuggestion(value) {
     inlineSuggestion = value;
@@ -357,22 +498,19 @@ function codeEditor(view, file, btn, id, opts = {}) {
     paintInline();
     guideSnapshot = null; guidesSoon();
   }
-  const redraw = () => { drawFrame ||= requestAnimationFrame(draw); mdSoon(); };
+  // force: drawn again though the text's the same (new colors, a resize, a tab shown)
+  const redraw = (force = false) => { hlForce ||= force; drawFrame ||= requestAnimationFrame(draw); mdSoon(); };
 
   // --- a find's matches, set by the host, redrawn with the text ---
   let findRanges = [];
   let findAt = -1;
   function paintFinds() {
-    if (!findRanges.length) { if (finds.firstChild) finds.textContent = ''; return; }
+    if (!findRanges.length) { if (findsWin.firstChild) findsWin.textContent = ''; return; }
     const text = ta.value;
-    let html = '';
-    let at = 0;
-    findRanges.forEach(([a, b], i) => {
-      if (a < at || b > text.length) return;
-      html += `${esc(text.slice(at, a))}<mark${i === findAt ? ' class="now"' : ''}>${esc(text.slice(a, b))}</mark>`;
-      at = b;
-    });
-    finds.innerHTML = `${html}${esc(text.slice(at))}\n`;
+    if (text !== hlText) { redraw(); return; }
+    const marks = findRanges.filter(([a, b]) => b <= text.length).map(([from, to], i) => ({ from, to, wrap: (raw) => `<mark${i === findAt ? ' class="now"' : ''}>${esc(raw)}</mark>` }));
+    findsWin.innerHTML = markedHtml(text, marks, drawn);
+    placeWindow(findsWin, drawn);
   }
 
   // --- an agent's edits, typed in a little at a time where the user sees them ---
@@ -381,31 +519,26 @@ function codeEditor(view, file, btn, id, opts = {}) {
   let agentFade = 0;
   let agentChain = Promise.resolve();
   function paintAgent() {
-    if (!agentMarks.length && agentAt < 0) { if (agentL.firstChild) agentL.textContent = ''; return; }
+    if (!agentMarks.length && agentAt < 0) { if (agentWin.firstChild) agentWin.textContent = ''; return; }
     const text = ta.value;
-    const pts = [...agentMarks.map(([a, b, cls]) => ({ a, b, cls })), ...(agentAt >= 0 ? [{ a: agentAt, b: agentAt, cls: 'caret' }] : [])]
-      .sort((x, y) => x.a - y.a || (x.cls === 'caret') - (y.cls === 'caret'));
-    let html = '';
-    let at = 0;
-    for (const x of pts) {
-      if (x.a < at || x.b > text.length) continue;
-      html += esc(text.slice(at, x.a));
-      html += x.cls === 'caret' ? '<span class="caret"></span>' : `<mark class="${x.cls}">${esc(text.slice(x.a, x.b))}</mark>`;
-      at = x.b;
-    }
-    agentL.innerHTML = `${html}${esc(text.slice(at))}\n`;
+    if (text !== hlText) { redraw(); return; }
+    const marks = [...agentMarks.map(([from, to, cls]) => ({ from, to, wrap: (raw) => `<mark class="${cls}">${esc(raw)}</mark>` })),
+      ...(agentAt >= 0 ? [{ from: agentAt, to: agentAt, caret: true, wrap: () => '<span class="caret"></span>' }] : [])]
+      .filter((x) => x.to <= text.length)
+      .sort((x, y) => x.from - y.from || !!x.caret - !!y.caret);
+    agentWin.innerHTML = markedHtml(text, marks, drawn);
+    placeWindow(agentWin, drawn);
   }
   // a place in the text scrolled to, the user's own caret and selection left as they are
   function revealAt(pos) {
-    const before = ta.value.slice(0, pos);
-    const line = before.split('\n').length - 1;
+    const line = lineAt(ta.value, pos) - 1;
     const cs = getComputedStyle(ta);
-    const lh = parseFloat(cs.lineHeight) || 18;
+    const lh = lineHeightIn(ta);
     const y = parseFloat(cs.paddingTop) + line * lh;
-    if (y < scroller.scrollTop || y + lh > scroller.scrollTop + scroller.clientHeight) scroller.scrollTop = Math.max(0, y - scroller.clientHeight / 3);
+    if (y < metrics.top || y + lh > metrics.top + metrics.height) scrollTo(y - metrics.height / 3);
     const cw = chWidthIn(ta);
-    const x = gutter.offsetWidth + parseFloat(cs.paddingLeft) + (before.length - before.lastIndexOf('\n') - 1) * cw;
-    if (x > scroller.scrollLeft + scroller.clientWidth - cw * 2 || x < scroller.scrollLeft + gutter.offsetWidth) scroller.scrollLeft = Math.max(0, x - scroller.clientWidth / 2);
+    const x = metrics.gutter + parseFloat(cs.paddingLeft) + (pos - lineStarts[line]) * cw;
+    if (x > metrics.left + metrics.width - cw * 2 || x < metrics.left + metrics.gutter) scrollTo(metrics.top, x - metrics.width / 2);
   }
   // from..to replaced with text: what goes lit red a moment, the new typed in
   // over a second or so; one edit after another, resolved false if it can't land
@@ -519,14 +652,9 @@ function codeEditor(view, file, btn, id, opts = {}) {
       try {
         const r = await fetch('/api/md', { method: 'POST', signal: controller.signal, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ highlight: lang.hl, text }) });
         const { html } = r.ok ? await r.json() : {};
-        if (!closed && typeof html === 'string' && ta.value === text) {
-          const ranges = rangesFromHighlight(html, text);
-          if (ranges !== null) {
-            lexical = ranges; lexicalText = text; hlApplied = text;
-            const merged = highlightRanges(text, lexical, semantic);
-            code.innerHTML = `${merged}\n`; lastHl = { text, html: merged };
-          }
-        }
+        // a reply for text since typed on still applies, moved onto the text now
+        const ranges = !closed && typeof html === 'string' ? rangesFromHighlight(html, text) : null;
+        if (ranges !== null) { lexical = ranges; lexicalText = text; lexicalDirty = null; hlApplied = text; redraw(true); }
       } catch {} finally { if (hlRequested === text) hlRequested = null; if (hlAbort === controller) hlAbort = null; }
     }, 150);
   }
@@ -635,30 +763,31 @@ function codeEditor(view, file, btn, id, opts = {}) {
   viewBtn.addEventListener('click', () => setRendered(!rendered));
 
   // --- syntax errors: a squiggle under each, a mark in the gutter, a list to jump from ---
-  let errs = [];
-  let languageErrors = null;
+  // errs and languageErrors move with edits until the next check replaces them
+  let errs = [], errsText = null;
+  let languageErrors = null, languageErrorsText = null;
   let checkTimer = 0;
   const diagnosticsDelay = () => diagnosticDelay(opts.diagnosticDelay?.());
   const checkSoon = () => { clearTimeout(checkTimer); checkTimer = setTimeout(check, diagnosticsDelay()); };
-  function clearDiagnostics() { errs = []; squig.replaceChildren(); errEl.hidden = true; out.hidden = true; hideDiagnosticHover(); paintMarks(); tell(); }
+  function clearDiagnostics() { errs = []; errsText = ta.value; squigWin.replaceChildren(); errEl.hidden = true; out.hidden = true; hideDiagnosticHover(); paintMarks(); tell(); }
+  function paintSquiggles() {
+    const text = ta.value;
+    if (!errs.length || errsText !== text) { if (squigWin.firstChild) squigWin.replaceChildren(); return; }
+    if (text !== hlText) { redraw(); return; }
+    const marks = errs.map((e) => ({ from: e.from, to: Math.max(e.to, Math.min(e.from + 1, text.length)),
+      wrap: (raw) => `<mark class="${e.severity === 2 ? 'code-warning' : e.severity > 2 ? 'code-hint' : ''}">${esc(raw.replace(/\n/g, ' \n')) || ' '}</mark>` }));
+    squigWin.innerHTML = markedHtml(text, marks, drawn);
+    placeWindow(squigWin, drawn);
+  }
   async function check() {
     if (Date.now() - lastTextChange < diagnosticsDelay()) { checkSoon(); return; }
     hideDiagnosticHover();
     const text = ta.value;
     const parser = languageErrors === null && lang.check && text.length <= HL_MAX && await parserFor(lang.check);
     if (closed || text !== ta.value) return;
-    errs = languageErrors === null ? parser ? syntaxErrors(parser, text, syntax.parse(parser, text)) : [] : languageErrors;
-    const esc = (t) => t.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
-    let html = '';
-    let at = 0;
-    for (const e of errs) {
-      const to = Math.max(e.to, Math.min(e.from + 1, text.length));
-      if (e.from < at) continue;
-      const bit = text.slice(e.from, to).replace(/\n/g, ' \n');
-      html += `${esc(text.slice(at, e.from))}<mark class="${e.severity === 2 ? 'code-warning' : e.severity > 2 ? 'code-hint' : ''}">${esc(bit) || ' '}</mark>`;
-      at = to;
-    }
-    squig.innerHTML = `${html}${esc(text.slice(at))}\n`;
+    errs = languageErrors === null ? parser ? syntaxErrors(parser, text, syntax.parse(parser, text)) : [] : languageErrorsText === text ? languageErrors : [];
+    errsText = text;
+    paintSquiggles();
     const lineOf = (p) => lineAt(text, p);
     errEl.hidden = !errs.length;
     const counts = diagnosticCounts(errs);
@@ -681,16 +810,23 @@ function codeEditor(view, file, btn, id, opts = {}) {
     for (const c of body.querySelectorAll('.code-caret')) c.remove();
     const others = people.filter((p) => me ? p.id !== me : p.name !== name);
     if (!errs.length && !others.length && !bookmarks.length) return;
-    const lh = parseFloat(getComputedStyle(nums).lineHeight) || 18;
+    const text = ta.value;
+    const lh = lineHeightIn(ta);
     const padTop = parseFloat(getComputedStyle(nums).paddingTop) || 0;
-    for (const line of new Set(bookmarks.map((at) => lineAt(ta.value, Math.min(at, ta.value.length)) - 1))) {
+    for (const line of new Set(bookmarks.map((at) => lineAt(text, Math.min(at, text.length)) - 1))) {
       const mark = Object.assign(el('div', 'code-mark code-mark-bookmark'), { title: `Bookmark: line ${line + 1}` });
       mark.style.top = `${padTop + line * lh}px`;
       mark.style.height = `${lh}px`;
       gutter.append(mark);
     }
-    for (const line of new Set(errs.map((e) => lineAt(ta.value, Math.min(e.from, ta.value.length)) - 1))) {
-      const onLine = errs.filter((e) => lineAt(ta.value, Math.min(e.from, ta.value.length)) - 1 === line).sort((a, b) => diagnosticSeverity(a) - diagnosticSeverity(b));
+    const byLine = new Map();
+    for (const e of errsText === text ? errs : []) {
+      const line = lineAt(text, Math.min(e.from, text.length)) - 1;
+      if (!byLine.has(line)) byLine.set(line, []);
+      byLine.get(line).push(e);
+    }
+    for (const [line, onLine] of byLine) {
+      onLine.sort((a, b) => diagnosticSeverity(a) - diagnosticSeverity(b));
       const severity = diagnosticSeverity(onLine[0]);
       const mk = Object.assign(el('div', `code-mark code-mark-err${severity === 2 ? ' code-mark-warning' : severity > 2 ? ' code-mark-hint' : ''}`), { title: onLine.map(diagnosticText).join('\n') });
       mk.style.top = `${padTop + line * lh}px`;
@@ -700,10 +836,10 @@ function codeEditor(view, file, btn, id, opts = {}) {
     const cs = getComputedStyle(ta);
     const cw = chWidthIn(ta);
     for (const p of others) {
-      const before = ta.value.slice(0, Math.min(p.pos, ta.value.length));
-      const line = before.split('\n').length - 1;
+      const at = Math.min(p.pos, text.length);
+      const line = lineAt(text, at) - 1;
       const tabSize = parseInt(cs.tabSize, 10) || 4;
-      const col = [...before.slice(before.lastIndexOf('\n') + 1)].reduce((n, ch) => (ch === '\t' ? n + tabSize - (n % tabSize) : n + 1), 0);
+      const col = [...text.slice(lineStarts[line], at)].reduce((n, ch) => (ch === '\t' ? n + tabSize - (n % tabSize) : n + 1), 0);
       const tint = p.color || colorFor(p.name);
       const mk = Object.assign(el('div', p.agent ? 'code-mark agent' : 'code-mark'), { title: p.name });
       mk.style.top = `${padTop + line * lh}px`;
@@ -750,13 +886,14 @@ function codeEditor(view, file, btn, id, opts = {}) {
     const lh = parseFloat(cs.lineHeight) || 18;
     const cw = chWidthIn(ta);
     const y = parseFloat(cs.paddingTop) + line * lh;
-    const x = gutter.offsetWidth + parseFloat(cs.paddingLeft) + col * cw;
-    const out = y < scroller.scrollTop || y + lh > scroller.scrollTop + scroller.clientHeight;
-    if (center && out) scroller.scrollTop = Math.max(0, y - scroller.clientHeight / 2);
-    else if (y < scroller.scrollTop) scroller.scrollTop = y;
-    else if (y + lh > scroller.scrollTop + scroller.clientHeight) scroller.scrollTop = y + lh - scroller.clientHeight + 4;
-    if (x < scroller.scrollLeft + gutter.offsetWidth) scroller.scrollLeft = Math.max(0, x - gutter.offsetWidth - cw * 4);
-    else if (x > scroller.scrollLeft + scroller.clientWidth - cw * 2) scroller.scrollLeft = x - scroller.clientWidth + cw * 4;
+    const x = metrics.gutter + parseFloat(cs.paddingLeft) + col * cw;
+    const { top, left, height, width, gutter: gw } = metrics;
+    const out = y < top || y + lh > top + height;
+    if (center && out) scrollTo(y - height / 2);
+    else if (y < top) scrollTo(y);
+    else if (y + lh > top + height) scrollTo(y + lh - height + 4);
+    if (x < left + gw) scrollTo(metrics.top, x - gw - cw * 4);
+    else if (x > left + width - cw * 2) scrollTo(metrics.top, x - width + cw * 4);
   }
 
   // --- the session ---
@@ -1008,7 +1145,9 @@ function codeEditor(view, file, btn, id, opts = {}) {
     history.record(historyText, ta.value, beforeSelection, [ta.selectionStart, ta.selectionEnd], group);
     historyText = ta.value;
     beforeSelection = [ta.selectionStart, ta.selectionEnd];
-    redraw(); flush(); paintState(); caretInView(); sendCursor();
+    // the caret scrolled to in the frame that draws the edit: one layout per keystroke
+    wantCaret = true;
+    redraw(); flush(); paintState(); sendCursor();
   });
   for (const ev of ['keyup', 'click', 'select']) ta.addEventListener(ev, () => { caretInView(); sendCursor(); tell(); });
 
@@ -1067,7 +1206,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
     undo: () => historyStep(),
     redo: () => historyStep(true),
     focus: () => ta.focus(),
-    show: () => { redraw(); },
+    show: () => { redraw(true); },
     text: () => ta.value,
     setInlineSuggestion,
     info,
@@ -1105,11 +1244,15 @@ function codeEditor(view, file, btn, id, opts = {}) {
     agentEdit,
     agentFlash,
     ready: () => ready,
-    setSemanticTokens: (ranges, text) => { if (text !== ta.value || closed) return; semantic = ranges; semanticText = text; hlText = null; redraw(); },
+    // tokens for an older text still apply: moved onto the text now, as VS Code moves them
+    setSemanticTokens: (ranges, text) => { if (closed) return; semantic = ranges; semanticText = text; redraw(true); },
     setDiagnostics: (errors) => {
       languageErrors = errors === null ? null : [...errors].sort((a, b) => a.from - b.from);
+      languageErrorsText = ta.value;
       if (errors === null) { clearDiagnostics(); checkSoon(); } else check();
     },
+    tokenClass,
+    lineHeight: () => lineHeightIn(ta),
     setFinds: (ranges, at = -1) => { findRanges = ranges; findAt = at; paintFinds(); },
     setBookmarks: (offsets) => { if (bookmarks.length === offsets.length && bookmarks.every((at, i) => at === offsets[i])) return; bookmarks = offsets; paintMarks(); },
     preview: isMd ? (on) => setRendered(on ?? !rendered) : null,
@@ -1120,7 +1263,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
       guideResize.disconnect(); cancelAnimationFrame(guideFrame);
       hlAbort?.abort();
       for (const timer of [bigTimer, hlTimer, mdTimer, checkTimer, cursorTimer, agentFade, armed]) clearTimeout(timer);
-      cancelAnimationFrame(drawFrame); cancelAnimationFrame(tellFrame);
+      cancelAnimationFrame(drawFrame); cancelAnimationFrame(tellFrame); cancelAnimationFrame(viewFrame);
       syntax.clear();
       if (sock) sock.close();
       if (codeTabs.get(codeKey(file)) === id) codeTabs.delete(codeKey(file));
@@ -1143,7 +1286,23 @@ function chWidthIn(node) {
   if (w) chWidths.set(font, w);
   return w || 8;
 }
-document.fonts.addEventListener('loadingdone', () => chWidths.clear());
+// a line's height as laid out: measured over many lines, since engines round each
+// line box and a computed 20.15px drifts from the text a few hundred lines down
+const lineHeights = new Map();
+function lineHeightIn(node) {
+  const style = getComputedStyle(node);
+  const font = style.font || `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+  const key = `${font}|${style.lineHeight}`;
+  if (lineHeights.has(key)) return lineHeights.get(key);
+  const probe = Object.assign(document.createElement('pre'), { textContent: '\n'.repeat(999) + '0' });
+  probe.style.cssText = `font:${font};line-height:${style.lineHeight};position:absolute;visibility:hidden;white-space:pre;margin:0;padding:0;border:0`;
+  document.body.append(probe);
+  const h = probe.getBoundingClientRect().height / 1000;
+  probe.remove();
+  if (h) lineHeights.set(key, h);
+  return h || parseFloat(style.lineHeight) || 18;
+}
+document.fonts.addEventListener('loadingdone', () => { chWidths.clear(); lineHeights.clear(); });
 
 // the editor tabs from the last visit, back on their sessions
 

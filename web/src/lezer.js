@@ -73,11 +73,18 @@ const highlighter = tagHighlighter([
 
 const escape = (s) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
 
-// text as highlighted html off the parser's tree
-export function syntaxRanges(parser, text, tree = parser.parse(text)) {
+// the tree's highlight classes as ranges, of from..to only when given: the editor
+// asks for what's on screen, so a keystroke costs the same in any size of file
+export function syntaxRanges(parser, text, tree = parser.parse(text), from = 0, to = text.length) {
   const ranges = [];
-  highlightTree(tree, highlighter, (from, to, cls) => ranges.push({ from, to, cls }));
+  highlightTree(tree, highlighter, (a, b, cls) => ranges.push({ from: a, to: b, cls }), from, to);
   return ranges;
+}
+// where the tree's error nodes start within from..to
+export function errorPositions(tree, from, to) {
+  const out = [];
+  tree.iterate({ from, to, enter: (n) => { if (n.type.isError && out.length < ERR_MAX * 4) out.push(n.from); } });
+  return out;
 }
 export function highlight(parser, text, tree = parser.parse(text), semantic = []) {
   if (semantic.length) {
