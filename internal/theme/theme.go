@@ -26,13 +26,27 @@ type Modes struct {
 	Oled  Tokens `json:"oled"`
 }
 
-// Theme one entry: Look names the page's structural styles, Round and Sans mark rounded
-// controls and a proportional page font, Scopes tokens for a part of the page alone
+// Layout where the desktop's bars sit and how windows wear their chrome; empty fields the base's
+type Layout struct {
+	Bar      string   `json:"bar,omitempty"`      // bottom, top, left, right
+	BarStyle string   `json:"barStyle,omitempty"` // panel, dock, full, line
+	Menubar  string   `json:"menubar,omitempty"`  // off, top, bottom
+	Items    []string `json:"items,omitempty"`    // status items shown, in order
+	Btns     string   `json:"btns,omitempty"`     // left, right
+	BtnStyle string   `json:"btnStyle,omitempty"` // glyphs, lights, caption
+	Title    string   `json:"title,omitempty"`    // left, center
+	Density  string   `json:"density,omitempty"`  // compact, normal, roomy
+}
+
+// Theme one entry: Look names the page's structural styles, Layout its bars and window chrome,
+// Round and Sans mark rounded controls and a proportional page font, Scopes tokens for a part
+// of the page alone
 type Theme struct {
 	ID     string           `json:"id"`
 	Label  string           `json:"label"`
 	About  string           `json:"about"`
 	Look   string           `json:"look"`
+	Layout Layout           `json:"layout"`
 	Round  bool             `json:"round"`
 	Sans   bool             `json:"sans"`
 	Dark   Tokens           `json:"dark"`
@@ -45,10 +59,11 @@ type Theme struct {
 // Library the whole file: the base every theme lays over, then the themes in their order
 type Library struct {
 	Base struct {
-		Dark  Tokens `json:"dark"`
-		Light Tokens `json:"light"`
-		Oled  Tokens `json:"oled"`
-		IDE   Modes  `json:"ide"`
+		Layout Layout `json:"layout"`
+		Dark   Tokens `json:"dark"`
+		Light  Tokens `json:"light"`
+		Oled   Tokens `json:"oled"`
+		IDE    Modes  `json:"ide"`
 	} `json:"base"`
 	Themes []Theme `json:"themes"`
 }
@@ -119,6 +134,27 @@ func (l *Library) IDE(id, mode string) Tokens {
 		return merge(b.Dark, b.Oled, t.IDE.Dark, t.IDE.Oled)
 	}
 	return merge(b.Dark, t.IDE.Dark)
+}
+
+// Layout a theme's layout, its own fields over the base's
+func (l *Library) Layout(id string) Layout {
+	o, t := l.Base.Layout, l.Get(id).Layout
+	pick := func(a *string, b string) {
+		if b != "" {
+			*a = b
+		}
+	}
+	pick(&o.Bar, t.Bar)
+	pick(&o.BarStyle, t.BarStyle)
+	pick(&o.Menubar, t.Menubar)
+	pick(&o.Btns, t.Btns)
+	pick(&o.BtnStyle, t.BtnStyle)
+	pick(&o.Title, t.Title)
+	pick(&o.Density, t.Density)
+	if t.Items != nil {
+		o.Items = t.Items
+	}
+	return o
 }
 
 func scope(m Modes, mode string) Tokens {

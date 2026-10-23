@@ -44,6 +44,16 @@ func TestLayers(t *testing.T) {
 	}
 }
 
+func TestLayout(t *testing.T) {
+	l := Load()
+	if got := l.Layout("macos"); got.BtnStyle != "lights" || got.Menubar != "top" || got.Bar != "bottom" || len(got.Items) == 0 {
+		t.Errorf("macos layout %+v: its own over the base's", got)
+	}
+	if got := l.Layout(Default); got.BarStyle != "panel" || got.Btns != "right" {
+		t.Errorf("default layout %+v", got)
+	}
+}
+
 func TestCSS(t *testing.T) {
 	css := Load().CSS()
 	for _, want := range []string{

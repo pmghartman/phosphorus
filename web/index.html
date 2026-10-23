@@ -30,6 +30,8 @@
   if (a?.id) r.dataset.themeId = a.id;
   r.toggleAttribute('data-round', !!a?.round);
   r.toggleAttribute('data-sans', !!a?.sans);
+  // its layout: bars and window chrome, as data-l-*
+  for (const [k, v] of Object.entries(a?.layout || {})) if (typeof v === 'string') r.dataset[`l${k[0].toUpperCase()}${k.slice(1)}`] = v;
   if (a?.css) {
     r.setAttribute('data-custom', '');
     r.toggleAttribute('data-custom-desk', !!a.desk);
