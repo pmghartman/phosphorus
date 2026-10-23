@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { completionPrompt, completionText, streamCompletion, createInlineCompletions } from '../src/sulfur/inline-completion.js';
+import { completionPrompt, completionText, streamCompletion, createInlineCompletions, completionModels, completionModel, autoCompletionInput } from '../src/sulfur/inline-completion.js';
 import { editorFixture, settle } from './helpers/editor-fixture.mjs';
 
 test('the fixed Chimp harness bounds context and output without tools or conversation history', () => {
   const p = completionPrompt({ path: 'a.js', language: 'javascript', text: 'x'.repeat(30000), caret: 15000, related: Array(8).fill({ path: 'b.js', text: 'y'.repeat(9000) }), symbols: Array(50).fill({ label: 'run', detail: 'z'.repeat(900) }) });
-  assert.equal(p.model, 'chimp'); assert.equal(p.max_tokens, 512); assert.equal(p.stream, true);
+  assert.equal(p.model, 'chimp'); assert.equal(p.max_tokens, 512); assert.equal(p.stream, false);
   assert.equal(p.tools, undefined); assert.equal(p.messages.length, 1);
   const context = JSON.parse(p.messages[0].content);
   assert.equal(context.prefix.length, 6000); assert.equal(context.suffix.length, 2000);
@@ -20,6 +20,7 @@ test('ghost code strips complete fences and duplicate delimiters and refuses rea
   assert.equal(completionText('run())', ')', false), 'run()');
   assert.equal(completionText('get', 'the'), 'get', 'a shared word character is not a duplicate delimiter');
   assert.equal(completionText('abc\0def'), '');
+  assert.equal(completionText('{"path":"Tree.cs","prefix":"class Tree {","suffix":"}"}'), '');
   assert.equal(completionText('x'.repeat(9000)).length, 6000);
 });
 
@@ -42,18 +43,19 @@ function setup(t, options = {}) {
   const requests = [], notices = [], logs = [];
   let suggesting = !!options.suggesting;
   let isEnabled = true;
+  let selectedModel = 'chimp';
   globalThis.fetch = (url, init) => new Promise((resolve, reject) => {
     requests.push({ url, init, resolve });
     init.signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true });
   });
   const engine = createInlineCompletions({
-    setting: (key) => key.endsWith('.enabled') ? isEnabled : 400, alive: f.alive,
+    setting: (key) => key.endsWith('.enabled') ? isEnabled : key.endsWith('.model') ? selectedModel : 400, alive: f.alive,
     available: () => options.available !== false, url: () => options.url || '/api/model/v1/messages', scope: () => 'mesh:user:workspace', related: () => [], symbols: () => [],
     suggesting: () => suggesting, dismissSuggest: () => { suggesting = false; }, notice: (text) => notices.push(text), log: (text) => logs.push(text),
   });
   engine.attach(f.tab);
   f.cleanups.push(() => { f.tab.dispose(); engine.reset(); });
-  return { ...f, engine, requests, notices, logs, disable() { isEnabled = false; }, reply(text, index = requests.length - 1) { requests[index].resolve(Response.json({ content: [{ type: 'text', text }] })); } };
+  return { ...f, engine, requests, notices, logs, setModel(value) { selectedModel = value; }, disable() { isEnabled = false; }, reply(text, index = requests.length - 1) { requests[index].resolve(Response.json({ content: [{ type: 'text', text }] })); } };
 }
 
 test('Tab accepts a multiline AI suggestion as one collaborative undo operation', async (t) => {
@@ -78,7 +80,7 @@ test('AI ghost text never consumes Enter, Shift+Tab or composing keys', async (t
   }
 });
 
-test('a streamed partial is usable immediately and acceptance cancels further inference', async (t) => {
+test('even a streaming gateway response appears atomically only when complete', async (t) => {
   const f = setup(t);
   let stream;
   const pending = f.engine.trigger(f.tab, true);
@@ -87,11 +89,25 @@ test('a streamed partial is usable immediately and acceptance cancels further in
   f.requests[0].resolve(new Response(body, { headers: { 'content-type': 'text/event-stream' } }));
   stream.enqueue(new TextEncoder().encode('data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"42;"}}\n\n'));
   await settle();
-  assert.equal(f.previews.at(-1).insert, '42;');
-  assert.equal(f.ta.emit('keydown', { key: 'Tab' }).defaultPrevented, true);
+  assert.equal(f.previews.filter(Boolean).length, 0);
+  stream.enqueue(new TextEncoder().encode('data: {"type":"content_block_delta","delta":{"type":"text_delta","text":" // complete"}}\n\ndata: {"type":"message_stop"}\n\n'));
   await pending;
-  assert.equal(f.requests[0].init.signal.aborted, true);
-  assert.equal(f.tab.ed.text(), 'const answer = 42;');
+  assert.equal(f.previews.at(-1).insert, '42; // complete');
+  assert.equal(f.edits.length, 0);
+});
+
+test('machine/model selection pins the gateway target and keeps model caches separate', async (t) => {
+  const f = setup(t);
+  const a = f.engine.trigger(f.tab, true); f.reply('1;'); await a;
+  f.setModel('phosphorus/d6');
+  const b = f.engine.trigger(f.tab, true);
+  assert.equal(JSON.parse(f.requests[1].init.body).model, 'phosphorus/d6');
+  f.reply('2;'); await b;
+  assert.equal(f.previews.at(-1).insert, '2;');
+  f.setModel('chimp'); await f.engine.trigger(f.tab, true);
+  assert.equal(f.requests.length, 2); assert.equal(f.previews.at(-1).insert, '1;');
+  assert.deepEqual(completionModels({models:[{host:'d6',file:'C:\\models\\coder.gguf',ready:true}]}), [{id:'phosphorus/d6',host:'d6',label:'coder.gguf',ready:true}]);
+  assert.throws(() => completionModel('unknown'), /Settings/);
 });
 
 test('multiline insertion preserves Windows line endings', async (t) => {
@@ -142,6 +158,18 @@ test('debounce sends one request after typing settles and blur stops inference',
   t.mock.timers.tick(1); assert.equal(f.requests.length, 1);
   f.ta.emit('blur'); await settle();
   assert.equal(f.requests[0].init.signal.aborted, true);
+});
+
+test('blank lines, indentation, deletion, and auto-paired newlines never trigger automatic AI', async (t) => {
+  t.mock.timers.enable({apis:['setTimeout']});
+  const f = setup(t);
+  for (const [inputType, data] of [['insertLineBreak',null],['insertParagraph',null],['insertText','\n  \n'],['insertText','\t'],['insertText',' '],['deleteContentBackward',null]]) {
+    f.ta.emit('input',{inputType,data}); t.mock.timers.tick(5000);
+  }
+  assert.equal(f.requests.length,0);
+  assert.equal(autoCompletionInput('insertText','}', '}'),false);
+  const pending = f.engine.trigger(f.tab,true); f.reply('42;'); await pending;
+  assert.equal(f.requests.length,1,'manual completion remains available');
 });
 
 test('offline and disabled completion make no requests; unmodified Tab and IME keys remain available', async (t) => {

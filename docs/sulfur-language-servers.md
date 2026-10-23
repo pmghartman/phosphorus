@@ -82,6 +82,14 @@ clangd on PATH is left alone. JDT workspace caches are kept separately under
   underlines. Versioned diagnostics that do not match the current document
   version are ignored. Syntax parsing remains the fallback when no enabled
   server supplies diagnostics.
+- Pull diagnostics are also supported, including current csharp-ls releases.
+  Errors, warnings, and informational hints keep their severity in the explorer,
+  gutter, underlines, and Problems. Hover an underline to see its diagnostic code,
+  source, and message; gutter markers also show messages on hover.
+- Diagnostics wait until typing has paused for one second by default. Old
+  underlines clear as the buffer changes, so unfinished lines are not immediately
+  flagged. Adjust **Editor: Diagnostic Delay** (`editor.diagnostics.delay`,
+  300–5000 ms) to change this quiet period.
 - Completion and rename use the custom editor's batch-edit history. Unchanged
   spans remain retained operations, so undo/redo can preserve collaborator edits
   between a completion and its additional import edits.
@@ -117,6 +125,13 @@ Websocket closure terminates the host adapter's server process tree. Remote
 connections use the existing saved SSH login and linked-mesh API routing;
 local sessions never depend on a mesh connection.
 
+For C#, Sulfur supplies the detected solution path to csharp-ls and exposes its
+`csharp` configuration section during initialization. The server loads project
+references, including DLLs named by `<Reference>` / `<HintPath>` in the `.csproj`.
+Sulfur briefly retries empty completions while the C# workspace first loads,
+rather than keeping the initial word fallback for the rest of the word. Restore
+project dependencies and ensure referenced DLLs exist on the file's owning host.
+
 ## AI inline completion
 
 Web and desktop Sulfur also share a dedicated AI completion harness. IntelliSense
@@ -126,12 +141,24 @@ function, displayed as muted ghost text. Both use the editor's existing batch
 operations, collaboration, and undo history.
 
 AI suggestions are enabled by default in **Settings → Editor: AI Inline
-Suggestions** (`editor.inlineSuggest.enabled`). After a typing pause of 400 ms
-(`editor.inlineSuggest.delay`, configurable from 200–2000 ms), Sulfur asks the
-`chimp` role through the existing mesh Messages gateway. The gateway uses the
+Suggestions** (`editor.inlineSuggest.enabled`). After a typing pause of 750 ms
+(`editor.inlineSuggest.delay`, configurable from 200–5000 ms), Sulfur asks the
+selected completion model through the existing mesh Messages gateway. The
+default is `chimp`. The gateway uses the
 configured Chimp when ready, otherwise another ready mesh model. Its Chimp
 profile disables thinking. A desktop client uses the linked mesh proxy and login;
 without a connected mesh, host-local IntelliSense and word suggestions still work.
+Automatic requests follow meaningful typed characters. Creating blank lines,
+pressing Enter, adding indentation, and deleting text do not request predictions.
+Explicit AI completion remains available at those positions.
+
+**Settings → Editor: Completion Machine / Model** has separate Machine and Model
+selectors. Automatic routing offers Chimp and Orangutan; selecting a machine
+pins completion to its configured model, shown by filename, and requires that
+machine to have the model ready. This selection does not change the machine's
+model installation or the chat model. The saved `editor.inlineSuggest.model`
+value is `chimp`, `orangutan`, or `phosphorus/<host>`. Use **Refresh machines and
+models** to refresh availability.
 
 - **Tab** accepts a visible IntelliSense choice first, or an AI suggestion when
   the list is closed. Without a suggestion, Tab keeps its usual indentation.
@@ -141,15 +168,16 @@ without a connected mesh, host-local IntelliSense and word suggestions still wor
   explicitly. Both commands are in the command palette, including when the OS
   reserves a shortcut. **Toggle AI Inline Suggestions** turns AI prediction off.
 
-The fixed `v1` harness has its own instructions, no conversation history, and no
+The fixed `v2` harness has its own instructions, no conversation history, and no
 tools. It is independent of the Chat/Claude Code/opencode selection. It sends up
 to 6,000 characters before the caret, 2,000 after it, two related open files of
 the same language (1,500 characters each), and up to twelve available symbol
 hints. It does not scan the repository or start an agent session. Disable inline
 suggestions to stop these requests; `chat.includeActiveFile` controls chat only.
 
-One request can run at a time in the workbench. Text streams into the preview,
-with a 512-token budget and an eight-second deadline. Typing, selection changes,
+One request can run at a time in the workbench. Predictions appear as a complete
+ghost-text suggestion, with a 512-token budget and a fifteen-second deadline.
+Input JSON echoed by a model is discarded. Typing, selection changes,
 collaborator edits, focus changes, acceptance, and workspace changes invalidate
 or cancel the prediction. A small, one-minute cache stays in memory and clears
 with workspace/settings resets. Automatic failures back off briefly; explicit
