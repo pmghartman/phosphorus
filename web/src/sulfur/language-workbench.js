@@ -197,7 +197,7 @@ export function createLanguageWorkbench(api) {
       const requests = [];
       if (client.capabilities.semanticTokensProvider?.full) requests.push((async () => {
         const result = await client.request('textDocument/semanticTokens/full', { textDocument: { uri: doc.uri } }, options);
-        if (current()) tab.ed.setSemanticTokens(semanticRanges(text, result?.data || [], client.capabilities.semanticTokensProvider.legend), text);
+        if (current() && result?.data) tab.ed.setSemanticTokens(semanticRanges(text, result.data, client.capabilities.semanticTokensProvider.legend), text);
       })());
       const results = await Promise.allSettled(requests);
       if (current() && requests.length) {

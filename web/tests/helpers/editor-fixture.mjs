@@ -31,11 +31,12 @@ export function editorFixture(t, text = 'const answer = ') {
   const view = new Element('div', 'ide-view-ed');
   view.querySelector = (selector) => selector === '.code-ta' ? ta : selector === '.code-ed' ? scroller : view.children.find((x) => x.className === selector.slice(1)) || null;
   const history = new EditorHistory();
-  const edits = [], previews = [], diagnostics = [];
+  const edits = [], previews = [], diagnostics = [], semantics = [];
   const tab = { id: 'test', rel: 'src/test.js', view, info: { lang: 'javascript' }, dispose: () => { tab.disposed = true; } };
   tab.ed = {
     text: () => text, selection: () => [ta.selectionStart, ta.selectionEnd], ready: () => true,
     focus: () => ta.focus(), setDiagnostics(value) { diagnostics.push(value); },
+    setSemanticTokens(ranges, source) { semantics.push({ ranges, source }); },
     setInlineSuggestion: (value) => previews.push(value),
     editMany(batch, selection) {
       edits.push(batch);
@@ -49,7 +50,7 @@ export function editorFixture(t, text = 'const answer = ') {
   setText(text); ta.focus();
   const cleanups = [];
   t.after(() => { try { for (const cleanup of cleanups) cleanup(); } finally { Object.assign(globalThis, original); } });
-  return { tab, ta, view, doc, scroller, setText, edits, previews, diagnostics, history, cleanups, alive: (target) => target === tab && !tab.disposed };
+  return { tab, ta, view, doc, scroller, setText, edits, previews, diagnostics, semantics, history, cleanups, alive: (target) => target === tab && !tab.disposed };
 }
 
 export const settle = async () => { for (let i = 0; i < 10; i++) await new Promise(setImmediate); };

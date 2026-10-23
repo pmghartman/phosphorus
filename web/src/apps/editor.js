@@ -14,14 +14,15 @@ import {
   name,
   shareMenu,
 } from '../app.js';
-import { ERR_MAX, highlight, parserFor, parserNow, syntaxErrors, syntaxCache } from '../lezer.js';
+import { ERR_MAX, syntaxRanges, parserFor, parserNow, syntaxErrors, syntaxCache } from '../lezer.js';
 import { mdBlocks, renderMd } from '../md.js';
 import { opApply, opTransform, opDiff, opMap, opEdits } from '../text-operations.js';
 import { EditorHistory } from '../editor-history.js';
-import { highlightRanges } from '../sulfur/semantic-tokens.js';
+import { highlightRanges, rebaseHighlightRanges, rangesFromHighlight } from '../sulfur/semantic-tokens.js';
 import { patchHighlight } from '../highlight-patch.js';
 import { diagnosticSeverity, diagnosticCounts, diagnosticText, diagnosticsAt, offsetAtColumn, diagnosticDelay } from '../sulfur/diagnostics.js';
 import { definitionIdentifier, mountDefinitionLinks } from '../sulfur/definition-links.js';
+import { editorDecorations } from '../sulfur/editor-guides.js';
 
 // --- code editor ------------------------------------------------------------------
 // a share's text or code file in a tab of its own, joined to the file's live
@@ -73,10 +74,12 @@ function codeEditor(view, file, btn, id, opts = {}) {
   const definitionLayer = Object.assign(el('pre', 'code-hl code-definition-link'), { hidden: true });
   definitionLayer.setAttribute('aria-hidden', 'true');
   let definitionHover = null;
+  const guidesLayer = el('div', 'code-guide-layer');
+  guidesLayer.setAttribute('aria-hidden', 'true');
   let inlineSuggestion = null;
   ta.setAttribute('autocapitalize', 'off');
   ta.setAttribute('aria-label', file.label);
-  body.append(agentL, finds, pre, squig, inlineLayer, definitionLayer, ta);
+  body.append(agentL, finds, pre, guidesLayer, squig, inlineLayer, definitionLayer, ta);
   scroller.append(gutter, body);
 
   const out = el('div', 'code-out');
@@ -90,6 +93,18 @@ function codeEditor(view, file, btn, id, opts = {}) {
   // markdown rendered, each block its source again on a double click
   const mdView = Object.assign(el('div', 'code-md'), { hidden: true, tabIndex: -1 });
   view.append(bar, scroller, mdView, out);
+  const diskNotice = Object.assign(el('div', 'code-disk-notice'), { hidden: true });
+  const diskMessage = el('span');
+  const diskCompare = el('details');
+  diskCompare.append(el('summary', '', 'Review disk version'));
+  const diskText = el('pre'); diskCompare.append(diskText);
+  const keepEditor = Object.assign(el('button', 'code-btn', 'Keep editor version'), { type: 'button' });
+  const reloadDisk = Object.assign(el('button', 'code-btn', 'Reload disk version'), { type: 'button' });
+  const diskActions = el('div', 'code-disk-actions'); diskActions.append(keepEditor, reloadDisk);
+  diskNotice.append(diskMessage, diskActions, diskCompare); view.prepend(diskNotice);
+  let diskRevision = 0;
+  keepEditor.addEventListener('click', () => say({ type: 'resolveDisk', choice: 'keep', revision: diskRevision }));
+  reloadDisk.addEventListener('click', () => say({ type: 'resolveDisk', choice: 'reload', revision: diskRevision }));
   const diagnosticHover = el('div', 'code-diagnostic-hover');
   diagnosticHover.hidden = true;
   diagnosticHover.setAttribute('role', 'tooltip');
@@ -194,14 +209,49 @@ function codeEditor(view, file, btn, id, opts = {}) {
   let hlText = null;
   const syntax = syntaxCache();
   let semantic = [], semanticText = null;
+  let lexical = [], lexicalText = null;
+  let lexicalParsedText = null, lexicalParser = null;
   const HL_MAX = 8 * 1024 * 1024;
-  // past this, a file's highlighted again once typing stops, plain between
+  // Past this, parse after typing pauses, retaining rebased colors between.
   const HL_IDLE = 256 * 1024;
   const SERVER_HL_MAX = 200 * 1024;
   let bigTimer = 0;
   let hlNow = false;
   // the last whole highlight, its unchanged lines drawn again while a new one's on its way
   let lastHl = null;
+  let guideFrame = 0, guideSnapshot = null;
+  function paintGuides() {
+    guideFrame = 0;
+    if (closed || !ready || view.hidden) return;
+    const options = opts.display?.() || {};
+    const text = ta.value, style = getComputedStyle(ta), rect = ta.getBoundingClientRect(), viewport = scroller.getBoundingClientRect();
+    const lh = parseFloat(style.lineHeight) || 18, cw = chWidthIn(ta), x = parseFloat(style.paddingLeft) || 0, y = parseFloat(style.paddingTop) || 0;
+    const first = Math.max(0, Math.floor((viewport.top - rect.top - y) / lh) - 1), last = Math.ceil((viewport.bottom - rect.top - y) / lh) + 1;
+    const left = Math.max(0, Math.floor((viewport.left + gutter.offsetWidth - rect.left - x) / cw) - 1), right = left + Math.ceil(viewport.width / cw) + 2;
+    const tabSize = parseInt(style.tabSize, 10) || 4, indent = unit(), indentSize = indent === '\t' ? tabSize : indent.length;
+    const key = JSON.stringify([first, last, left, right, tabSize, indentSize, cw, lh, x, y, options]);
+    if (guideSnapshot?.text === text && guideSnapshot.key === key) return;
+    guideSnapshot = { text, key };
+    if (!options.indentationGuides && (!options.whitespace || options.whitespace === 'none') || inlineSuggestion?.insert.includes('\n')) { guidesLayer.replaceChildren(); return; }
+    lineAt(text, 0);
+    const decorations = editorDecorations(text, lineStarts, { first, last, left, right, tabSize, whitespace: options.whitespace || 'none', guides: options.indentationGuides });
+    guidesLayer.style.font = style.font || `${style.fontSize} ${style.fontFamily}`;
+    guidesLayer.replaceChildren(...decorations.map((item) => {
+      const row = el('div', 'code-guide-row');
+      row.style.top = `${y + item.line * lh}px`; row.style.left = `${x}px`; row.style.height = `${lh}px`;
+      if (options.indentationGuides && item.indent) {
+        const guides = el('span', 'code-indent-guides');
+        guides.style.width = `${item.indent * cw}px`; guides.style.backgroundSize = `${indentSize * cw}px 100%`; row.append(guides);
+      }
+      for (const marker of item.markers) {
+        const mark = el('span', 'code-whitespace-mark', marker.text); mark.style.left = `${marker.column * cw}px`; row.append(mark);
+      }
+      return row;
+    }));
+  }
+  const guidesSoon = () => { guideFrame ||= requestAnimationFrame(paintGuides); };
+  scroller.addEventListener('scroll', guidesSoon, { passive: true });
+  const guideResize = new ResizeObserver(guidesSoon); guideResize.observe(scroller);
   let diagnosticSnapshot = '', lastTextChange = 0;
   function paintInline() {
     const s = inlineSuggestion;
@@ -246,19 +296,31 @@ function codeEditor(view, file, btn, id, opts = {}) {
     if (closed) return;
     const text = ta.value;
     if (definitionHover && definitionHover.text !== text) clearDefinitionHover();
-    if (semanticText !== text) semantic = [];
+    if (semanticText !== text) { semantic = rebaseHighlightRanges(semanticText || '', text, semantic); semanticText = text; }
+    if (lexicalText !== text) { lexical = rebaseHighlightRanges(lexicalText || '', text, lexical); lexicalText = text; lexicalParsedText = null; }
     if (text !== diagnosticSnapshot) { diagnosticSnapshot = text; lastTextChange = Date.now(); clearDiagnostics(); }
     if (inlineSuggestion && inlineSuggestion.text !== text) setInlineSuggestion(null);
     // a tab shown again with the same text: its highlight kept
-    if (text === hlText) { paintMarks(); return; }
+    if (text === hlText) { paintMarks(); guidesSoon(); return; }
     const parser = text.length <= HL_MAX && parserNow(lang.check);
     const big = text.length > HL_IDLE && hlText !== null && !hlNow;
     hlText = text;
     if (parser && !big) {
-      const html = highlight(parser, text, syntax.parse(parser, text), semantic);
+      if (lexicalParsedText !== text || lexicalParser !== parser) {
+        lexical = syntaxRanges(parser, text, syntax.parse(parser, text)); lexicalText = text;
+        lexicalParsedText = text; lexicalParser = parser;
+      }
+      const html = highlightRanges(text, lexical, semantic);
       code.innerHTML = `${html}\n`;
       lastHl = { text, html };
-    } else if (semantic.length) code.innerHTML = `${highlightRanges(text, [], semantic)}\n`;
+    } else if (semantic.length || lexical.length) {
+      const html = highlightRanges(text, lexical, semantic);
+      code.innerHTML = `${html}\n`; lastHl = { text, html };
+      if (parser && big) {
+        clearTimeout(bigTimer);
+        bigTimer = setTimeout(() => { if (closed || ta.value !== text) return; hlText = null; hlNow = true; draw(); hlNow = false; }, 400);
+      }
+    }
     else {
       const kept = lastHl && text.length <= HL_MAX ? patchHighlight(lastHl, text) : null;
       if (kept === null) code.textContent = `${text}\n`;
@@ -266,14 +328,18 @@ function codeEditor(view, file, btn, id, opts = {}) {
       if (parser) {
         clearTimeout(bigTimer);
         bigTimer = setTimeout(() => { if (closed || ta.value !== text) return; hlText = null; hlNow = true; draw(); hlNow = false; }, 400);
-      } else if (lang.check && text.length <= HL_MAX) parserFor(lang.check).then((p) => {
+      }
+    }
+    if (!parser && text.length <= HL_MAX) {
+      if (lang.check) parserFor(lang.check).then((p) => {
         if (closed || ta.value !== text) return;
         if (p) { hlText = null; redraw(); }
         else if (lang.hl !== 'plaintext' && text.length <= SERVER_HL_MAX) serverHighlight(text);
       });
       else if (lang.hl !== 'plaintext' && text.length <= SERVER_HL_MAX) serverHighlight(text);
     }
-    const lines = text.split('\n').length;
+    lineAt(text, 0);
+    const lines = lineStarts.length;
     if (nums.dataset.n !== String(lines)) {
       nums.dataset.n = String(lines);
       nums.textContent = Array.from({ length: lines }, (_, i) => i + 1).join('\n');
@@ -282,12 +348,14 @@ function codeEditor(view, file, btn, id, opts = {}) {
     paintFinds();
     paintAgent();
     if (inlineSuggestion) paintInline();
+    guidesSoon();
     checkSoon();
   }
   function setInlineSuggestion(value) {
     inlineSuggestion = value;
     if (!value) { inlineLayer.replaceChildren(); gutter.querySelector('.code-inline-nums')?.remove(); }
     paintInline();
+    guideSnapshot = null; guidesSoon();
   }
   const redraw = () => { drawFrame ||= requestAnimationFrame(draw); mdSoon(); };
 
@@ -440,16 +508,26 @@ function codeEditor(view, file, btn, id, opts = {}) {
     };
   }
   // a grammar the page has no parser for: chroma's, once typing pauses
-  let hlTimer = 0;
+  let hlTimer = 0, hlRequested = null, hlApplied = null, hlAbort = null;
   function serverHighlight(text) {
-    if (localOnly) return;
+    if (localOnly || hlRequested === text || hlApplied === text) return;
     clearTimeout(hlTimer);
+    hlAbort?.abort();
+    hlRequested = text;
     hlTimer = setTimeout(async () => {
+      const controller = new AbortController(); hlAbort = controller;
       try {
-        const r = await fetch('/api/md', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ highlight: lang.hl, text }) });
+        const r = await fetch('/api/md', { method: 'POST', signal: controller.signal, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ highlight: lang.hl, text }) });
         const { html } = r.ok ? await r.json() : {};
-        if (!closed && typeof html === 'string' && ta.value === text && !semantic.length) { code.innerHTML = `${html}\n`; lastHl = { text, html }; }
-      } catch {}
+        if (!closed && typeof html === 'string' && ta.value === text) {
+          const ranges = rangesFromHighlight(html, text);
+          if (ranges !== null) {
+            lexical = ranges; lexicalText = text; hlApplied = text;
+            const merged = highlightRanges(text, lexical, semantic);
+            code.innerHTML = `${merged}\n`; lastHl = { text, html: merged };
+          }
+        }
+      } catch {} finally { if (hlRequested === text) hlRequested = null; if (hlAbort === controller) hlAbort = null; }
     }, 150);
   }
 
@@ -761,6 +839,15 @@ function codeEditor(view, file, btn, id, opts = {}) {
         saved = msg.v;
         if (saved === V) savedText = S;
         paintState();
+      } else if (msg.type === 'disk') {
+        diskRevision = msg.revision;
+        diskNotice.hidden = !msg.conflict;
+        diskMessage.textContent = msg.problem || 'This file changed outside Sulfur while the editor had unsaved changes. Review both versions before saving.';
+        diskText.textContent = msg.conflict ? msg.text || '' : '';
+        diskCompare.hidden = !!msg.problem;
+        reloadDisk.disabled = !!msg.problem;
+        keepEditor.disabled = !canWrite();
+        paintState(msg.conflict ? 'disk changes need review' : '');
       } else if (msg.type === 'people') {
         people = Array.isArray(msg.people) ? msg.people : [];
         paintState();
@@ -1030,6 +1117,8 @@ function codeEditor(view, file, btn, id, opts = {}) {
     close: () => {
       closed = true;
       definitionLinks?.dispose();
+      guideResize.disconnect(); cancelAnimationFrame(guideFrame);
+      hlAbort?.abort();
       for (const timer of [bigTimer, hlTimer, mdTimer, checkTimer, cursorTimer, agentFade, armed]) clearTimeout(timer);
       cancelAnimationFrame(drawFrame); cancelAnimationFrame(tellFrame);
       syntax.clear();

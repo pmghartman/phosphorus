@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"regexp"
 	"strings"
 	"sync"
@@ -37,19 +38,27 @@ type client struct {
 }
 
 type session struct {
-	key      string
-	share    files.Share
-	rel      string
-	text     []uint16
-	eol      string
-	version  int
-	saved    int
-	history  [][]Op
-	clients  map[*client]bool
-	order    []*client
-	idle     *time.Timer
-	autosave *time.Timer
-	dirtyAt  time.Time
+	key            string
+	share          files.Share
+	rel            string
+	text           []uint16
+	eol            string
+	version        int
+	saved          int
+	history        [][]Op
+	clients        map[*client]bool
+	order          []*client
+	idle           *time.Timer
+	autosave       *time.Timer
+	dirtyAt        time.Time
+	diskInfo       os.FileInfo
+	diskText       string
+	diskPending    string
+	diskProblem    string
+	diskConflict   bool
+	diskRevision   int
+	diskCRLF       bool
+	diskGeneration uint64
 }
 
 var (
@@ -71,6 +80,7 @@ func clip(s string, n int) string {
 func (s *session) add(c *client) {
 	s.clients[c] = true
 	s.order = append(s.order, c)
+	startDiskWatch()
 }
 
 func (s *session) remove(c *client) {
@@ -130,6 +140,7 @@ func open(sh files.Share, rel string) (int, *session, any) {
 		}
 		return 200, held, nil
 	}
+	before := diskStat(sh, rel)
 	status, f := files.Read(&sh, rel)
 	if status == 404 {
 		return 404, nil, map[string]any{"error": "no such file: renamed, moved or deleted"}
@@ -144,7 +155,9 @@ func open(sh files.Share, rel string) (int, *session, any) {
 	if m["tooBig"] == true {
 		return 413, nil, map[string]any{"error": "over 16MB, too big to edit here"}
 	}
-	return 200, newSession(key, sh, rel, m["text"].(string), 0), nil
+	s := newSession(key, sh, rel, m["text"].(string), 0)
+	s.diskInfo = before
+	return 200, s, nil
 }
 
 func newSession(key string, sh files.Share, rel, text string, saved int) *session {
@@ -153,6 +166,7 @@ func newSession(key string, sh files.Share, rel, text string, saved int) *sessio
 		eol = "\r\n"
 	}
 	s := &session{key: key, share: sh, rel: rel, text: U16(lf(text)), eol: eol, saved: saved, clients: map[*client]bool{}}
+	s.diskText = lf(text)
 	sessions[key] = s
 	return s
 }
@@ -167,22 +181,40 @@ func (s *session) leave(c *client) {
 			if len(s.clients) > 0 {
 				return
 			}
-			s.saveNow("")
+			if status, _ := s.saveNow(""); status != 200 {
+				// Retain drafts when an external edit needs review or saving fails.
+				return
+			}
 			delete(sessions, s.key)
 		})
 	}
 }
 
 func (s *session) saveNow(by string) (int, any) {
+	return s.saveDisk(by, false)
+}
+
+func (s *session) saveDisk(by string, reviewed bool) (int, any) {
 	if s.autosave != nil {
 		s.autosave.Stop()
 	}
 	s.dirtyAt = time.Time{}
-	if s.saved == s.version {
+	if s.saved == s.version && !reviewed && !s.diskConflict {
 		return 200, map[string]any{"path": s.rel}
 	}
 	if !files.Can(&s.share, "w") {
 		return 403, map[string]any{"error": "this share is read-only"}
+	}
+	if !reviewed {
+		observed := readDisk(s.share, s.rel)
+		if !observed.valid {
+			s.saveSoon()
+			return 409, map[string]any{"error": "file is changing on disk; saving will retry"}
+		}
+		s.observeDisk(observed)
+		if s.diskConflict {
+			return 409, map[string]any{"error": "file changed outside Sulfur; review both versions before saving"}
+		}
 	}
 	t := s.onDisk()
 	status, out := files.Save(&s.share, s.rel, files.SaveP{Text: &t})
@@ -195,12 +227,17 @@ func (s *session) saveNow(by string) (int, any) {
 		return status, out
 	}
 	s.saved = s.version
+	s.diskText = Str(s.text)
+	s.diskGeneration++
+	s.diskInfo = nil // verify the actual disk snapshot on the next metadata check
+	s.diskConflict, s.diskProblem = false, ""
+	s.diskPending = ""
 	s.toAll(map[string]any{"type": "saved", "v": s.version, "by": by})
 	return status, out
 }
 
 func (s *session) saveSoon() {
-	if !files.Can(&s.share, "w") {
+	if !files.Can(&s.share, "w") || s.diskConflict {
 		return
 	}
 	if s.autosave != nil {
@@ -235,6 +272,9 @@ func (s *session) onMessage(c *client, msg map[string]any) {
 		return x
 	}
 	switch msg["type"] {
+	case "resolveDisk":
+		s.resolveDisk(c, msg)
+		return
 	case "join":
 		c.who = &who{clip(str(msg["name"], "anon"), 32), clip(str(msg["color"], ""), 16)}
 		s.toAll(map[string]any{"type": "people", "people": s.people()})
@@ -498,6 +538,9 @@ func Attach(ws *wsock.Conn, shareID, rel string, w *files.Who) {
 	c := &client{ws: ws, cid: clientSeq}
 	s.add(c)
 	sendTo(c, map[string]any{"type": "init", "text": Str(s.text), "v": s.version, "saved": s.saved, "perms": sh.Perms, "people": s.people(), "you": c.cid})
+	if s.diskConflict {
+		sendTo(c, s.diskMessage())
+	}
 	mu.Unlock()
 	for {
 		raw, _, err := ws.Read()

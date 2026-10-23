@@ -369,7 +369,7 @@ const languages = createLanguageWorkbench({
     const t = openPage(`metadata:${context.host}:${uri}`, title, 'symbolType', (t) => {
       t.view.classList.remove('ide-page');
       const file = { host: context.host, share: 'metadata', path: `${metadata.symbolName || 'Assembly'}.cs`, label: `${metadata.assemblyName} · ${title} (read only)` };
-      t.ed = codeEditor(t.view, file, null, t.id, { bare: true, readOnlyText: metadata.source, formatting: formattingOptions, onState: (info) => tabState(t, info) });
+      t.ed = codeEditor(t.view, file, null, t.id, { bare: true, readOnlyText: metadata.source, formatting: formattingOptions, display: editorDisplayOptions, onState: (info) => tabState(t, info) });
       t.dispose = () => t.ed.close();
     });
     const at = offsetOf(metadata.source, range.start.line + 1, range.start.character + 1);
@@ -408,6 +408,8 @@ const DEFAULTS = () => ({
 });
 
 const SETTINGS = {
+  'editor.guides.indentation': { def: true, type: 'boolean', title: 'Editor: Indentation Guides', about: 'Draw vertical guides at indentation levels, including blank lines inside a block.' },
+  'editor.renderWhitespace': { def: 'none', type: 'enum', options: [['none', 'Hidden'], ['boundary', 'Indentation, trailing and repeated spaces'], ['all', 'All spaces and tabs']], title: 'Editor: Whitespace Markers', about: 'Show space dots and tab arrows without changing file contents.' },
   'workbench.layout.mode': { def: 'default', type: 'enum', options: [['default', 'Default (activity bar)'], ['visualStudio', 'Visual Studio (compact toolbar)']], title: 'Layout: Mode', about: 'Keep the activity bar or move its operations into a compact toolbar with machine, configuration and named run target selectors. Independent of the color theme.' },
   'workbench.sideBar.location': { def: 'auto', type: 'enum', options: [['auto', 'Layout default'], ['left', 'Left'], ['right', 'Right']], title: 'Layout: Primary Sidebar', about: 'Layout default places Explorer on the left in Default mode and the right in Visual Studio mode. An explicit side applies in either layout. Chat moves to the opposite side.' },
   'workbench.panel.alignment': { def: 'center', type: 'enum', options: [['center', 'Editor width'], ['left', 'Editor and left sidebar'], ['right', 'Editor and right sidebar'], ['justify', 'Full width']], title: 'Layout: Console Span', about: 'Choose how far Terminal, Output and Problems extend beneath the sidebars.' },
@@ -440,6 +442,7 @@ const primarySideRight = () => sidebarRight(setting('workbench.layout.mode'), se
 function formattingOptions() {
   return { detectIndentation: setting('editor.detectIndentation'), insertSpaces: setting('editor.insertSpaces'), tabSize: Math.max(1, Math.min(16, Math.trunc(Number(setting('editor.tabSize'))) || 4)), braceStyle: setting('editor.format.braceStyle'), indentBlocks: setting('editor.format.indentBlocks') };
 }
+const editorDisplayOptions = () => ({ indentationGuides: setting('editor.guides.indentation'), whitespace: setting('editor.renderWhitespace') });
 
 // this browser's keeping from before the name was Sulfur, copied once
 function migrateLocal() {
@@ -997,6 +1000,8 @@ const MENUS = [
     ] },
   ]],
   ['View', () => [
+    cmdItem('editor.action.toggleIndentationGuides', 'Indentation Guides', setting('editor.guides.indentation')),
+    cmdItem('editor.action.toggleRenderWhitespace', 'Whitespace Markers', setting('editor.renderWhitespace') !== 'none'), '-',
     cmdItem('workbench.action.showCommands', 'Command Palette…'), '-',
     ...SIDE_VIEWS.map((v) => cmdItem(v.cmd, v.title, !I.st.side.hidden && I.st.side.view === v.id)), '-',
     cmdItem('workbench.actions.view.problems', 'Problems'), cmdItem('workbench.action.output.toggleOutput', 'Output'), cmdItem('workbench.action.terminal.toggleTerminal', 'Terminal'), '-',
@@ -1759,7 +1764,7 @@ async function openBrowserFile(file) {
     t.localName = file.name;
     t.view.classList.remove('ide-page');
     t.ed = codeEditor(t.view, { host: '', share: '', path: file.name, label: `${file.name} (browser local file)` }, null, t.id, {
-      bare: true, localText: local.text, formatting: formattingOptions,
+      bare: true, localText: local.text, formatting: formattingOptions, display: editorDisplayOptions,
       saveText: (text) => saveBrowserFile(local, text),
       onError: (error) => notify('error', error.message), onState: (info) => tabState(t, info),
     });
@@ -1836,7 +1841,7 @@ function mountCode(t) {
   const share = t.share ?? 'home';
   const file = { host: t.host, share, path: t.rel, label: `${t.host}/${share === 'home' ? 'home' : shareOf(t.host, share)?.label || share}/${t.rel}` };
   t.edId = `ide-code-${(edSeq += 1)}`;
-  t.ed = codeEditor(t.view, file, null, t.edId, { bare: true, definitionLinks: true, formatting: formattingOptions, diagnosticDelay: () => setting('editor.diagnostics.delay'), onState: (info) => tabState(t, info) });
+  t.ed = codeEditor(t.view, file, null, t.edId, { bare: true, definitionLinks: true, formatting: formattingOptions, display: editorDisplayOptions, diagnosticDelay: () => setting('editor.diagnostics.delay'), onState: (info) => tabState(t, info) });
   editors.set(t.edId, t.ed);
   codeTabs.set(codeKey(file), t.edId);
   t.dispose = () => t.ed.close();
@@ -3031,6 +3036,8 @@ function registerCommands() {
   C('workbench.action.chat.newChat', 'New Chat', () => newChat(), { category: 'Chat' });
   C('inlineChat.start', 'Ask the Agent About the Selection', () => askSelection(), { key: 'ctrl+i', when: hasEd, category: 'Chat' });
   C('sulfur.completion.toggleAgent', 'Toggle Agent Code Completions', () => setSetting('editor.inlineSuggest.enabled', !setting('editor.inlineSuggest.enabled')), { category: 'Completion' });
+  C('editor.action.toggleIndentationGuides', 'Toggle Indentation Guides', () => setSetting('editor.guides.indentation', !setting('editor.guides.indentation')), { category: 'View' });
+  C('editor.action.toggleRenderWhitespace', 'Toggle Whitespace Markers', () => setSetting('editor.renderWhitespace', setting('editor.renderWhitespace') === 'none' ? 'all' : 'none'), { key: 'ctrl+r ctrl+w', category: 'View' });
   C('workbench.action.togglePanel', 'Toggle Panel Visibility', () => showPanel(I.st.panel.view, I.st.panel.hidden), { key: 'ctrl+j', category: 'View', shell: true });
   C('workbench.action.toggleMaximizedPanel', 'Toggle Maximized Panel', () => { I.st.panel.max = !I.st.panel.max; showPanel(I.st.panel.view, true); }, { category: 'View' });
   C('workbench.actions.view.problems', 'Focus on Problems View', () => showPanel('problems', true, true), { key: 'ctrl+shift+m', category: 'View', shell: true });
@@ -7261,6 +7268,7 @@ function applySettings() {
   applyAppearance();
   r.style.setProperty('--ide-code-font', `${setting('editor.fontSize')}px`);
   r.style.setProperty('--ide-tab-size', String(formattingOptions().tabSize));
+  for (const t of I.tabs) if (t.ed) t.ed.show();
   languages.cancelCompletions();
   paintLayout();
   paintStatus();
