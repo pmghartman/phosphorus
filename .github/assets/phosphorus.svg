@@ -1,41 +1,22 @@
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-label="phosphorus">
-  <!-- Phosphorus's mark: Φ, slab serifs on a bracketed stem through a stressed oval, folded as
-       Sulfur's and Visual Studio Code's: one unbroken oval over the stem at the crown and under it
-       at the foot, the serifs over the stem, a soft shadow wherever a band passes under, the oval
-       shading dark to light, one white sheen over the whole; the violet-orange-violet gradient
-       drifting through every fold. The source every platform's icon is made from -->
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="100 150 824 724" width="824" height="724" role="img" aria-label="phosphorus">
+  <!-- README's Φ: web/static/phosphorus.svg without filters, masks or blend modes, so it stays
+       crisp and animated in any viewer; the oval crosses over the stem at the crown -->
   <defs>
     <linearGradient id="flow" gradientUnits="userSpaceOnUse" x1="95.3" y1="144.6" x2="511.1" y2="943.2" spreadMethod="repeat">
       <stop offset="0" stop-color="#a371f7"/><stop offset="0.5" stop-color="#f0883e"/><stop offset="1" stop-color="#a371f7"/>
       <animateTransform attributeName="gradientTransform" type="translate" values="0 0;415.8 798.6;0 0" keyTimes="0;0.5;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1" dur="6s" repeatCount="indefinite"/>
     </linearGradient>
     <linearGradient id="tone" gradientUnits="userSpaceOnUse" x1="117" y1="0" x2="907" y2="0"><stop offset="0" stop-color="#2a0a3a" stop-opacity="0.24"/><stop offset="0.55" stop-color="#2a0a3a" stop-opacity="0"/><stop offset="1" stop-color="#fff" stop-opacity="0.12"/></linearGradient>
-    <linearGradient id="sheen" gradientUnits="userSpaceOnUse" x1="0" y1="160" x2="0" y2="880"><stop offset="0" stop-color="#fff" stop-opacity="1"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
-    <filter id="soft" filterUnits="userSpaceOnUse" x="-200" y="-200" width="1424" height="1424"><feGaussianBlur stdDeviation="18"/></filter>
-    <filter id="drop" filterUnits="userSpaceOnUse" x="-200" y="-200" width="1424" height="1424"><feDropShadow dx="0" dy="14" stdDeviation="20" flood-color="#2a0a3a" flood-opacity="0.24"/></filter>
     <path id="ring" fill-rule="evenodd" d="M117,512 A395,236 0 1,0 907,512 A395,236 0 1,0 117,512 Z M263,512 A249,172 0 1,1 761,512 A249,172 0 1,1 263,512 Z"/>
     <polygon id="stem" stroke-width="16" stroke-linejoin="round" points="340,169 684,169 684,205 581,252 581,772 684,819 684,855 340,855 340,819 443,772 443,252 340,205"/>
     <g id="serifs" stroke-width="16" stroke-linejoin="round"><rect x="340" y="169" width="344" height="36"/><rect x="340" y="819" width="344" height="36"/></g>
-    <!-- the crown's crossing, where the oval is drawn again over the stem: same fills, so no seam -->
     <clipPath id="cross"><rect x="380" y="200" width="264" height="220"/></clipPath>
-    <clipPath id="foot"><rect x="300" y="600" width="424" height="300"/></clipPath>
-    <mask id="m-all" maskUnits="userSpaceOnUse" x="-100" y="-100" width="1224" height="1224"><g fill="#fff" stroke="#fff"><use xlink:href="#ring"/><use xlink:href="#stem"/></g></mask>
-    <mask id="m-ring" maskUnits="userSpaceOnUse" x="-100" y="-100" width="1224" height="1224"><use xlink:href="#ring" fill="#fff"/></mask>
-    <mask id="m-stem" maskUnits="userSpaceOnUse" x="-100" y="-100" width="1224" height="1224"><use xlink:href="#stem" fill="#fff" stroke="#fff"/></mask>
   </defs>
-  <g style="isolation:isolate">
-    <g filter="url(#drop)">
-      <use xlink:href="#ring" fill="url(#flow)"/>
-      <use xlink:href="#ring" fill="url(#tone)"/>
-      <g clip-path="url(#foot)"><g mask="url(#m-ring)"><use xlink:href="#stem" fill="#2a0a3a" stroke="#2a0a3a" opacity="0.42" filter="url(#soft)"/></g></g>
-      <use xlink:href="#stem" fill="url(#flow)" stroke="url(#flow)"/>
-      <use xlink:href="#stem" fill="#2a0a3a" stroke="#2a0a3a" opacity="0.32"/>
-      <g mask="url(#m-stem)"><use xlink:href="#serifs" fill="#2a0a3a" stroke="#2a0a3a" opacity="0.5" filter="url(#soft)"/></g>
-      <use xlink:href="#serifs" fill="url(#flow)" stroke="url(#flow)"/>
-      <use xlink:href="#serifs" fill="#fff" stroke="#fff" opacity="0.1"/>
-      <g mask="url(#m-stem)"><g filter="url(#soft)"><g clip-path="url(#cross)"><use xlink:href="#ring" fill="#2a0a3a" opacity="0.5"/></g></g></g>
-      <g clip-path="url(#cross)"><use xlink:href="#ring" fill="url(#flow)"/><use xlink:href="#ring" fill="url(#tone)"/></g>
-    </g>
-    <rect x="0" y="0" width="1024" height="1024" fill="url(#sheen)" opacity="0.22" mask="url(#m-all)" style="mix-blend-mode:overlay"/>
-  </g>
+  <use xlink:href="#ring" fill="url(#flow)"/>
+  <use xlink:href="#ring" fill="url(#tone)"/>
+  <use xlink:href="#stem" fill="url(#flow)" stroke="url(#flow)"/>
+  <use xlink:href="#stem" fill="#2a0a3a" stroke="#2a0a3a" opacity="0.32"/>
+  <use xlink:href="#serifs" fill="url(#flow)" stroke="url(#flow)"/>
+  <use xlink:href="#serifs" fill="#fff" stroke="#fff" opacity="0.1"/>
+  <g clip-path="url(#cross)"><use xlink:href="#ring" fill="url(#flow)"/><use xlink:href="#ring" fill="url(#tone)"/></g>
 </svg>
