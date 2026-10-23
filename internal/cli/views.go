@@ -278,7 +278,7 @@ func filesView() view {
 		}
 		lines = append(lines, row{text: lead + star(true) + " " + c("muted")(fallback) + " " + c("muted")("(default)")})
 	}
-	lines = append(lines, plainRows("", c("muted")("★ holds home/: each user's folder, shared/ and sys/"))...)
+	lines = append(lines, plainRows("", c("muted")("★ holds home/: each user's folder, shared/ and .sys/"))...)
 	n := len(shares) > 0
 	return view{lines: panels(&card{"phosphorus.ini [files]", lines}, published),
 		keys: []key{k("a add", "primary"), kif(n, "e edit"), kif(n, "d delete", "danger"), kif(n, "h home")}}
