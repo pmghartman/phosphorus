@@ -87,7 +87,8 @@ func keysURL() (string, error) {
 			if keysSrv.done && keysSrv.err != "" {
 				st["error"] = keysSrv.err
 			} else if keysSrv.done {
-				st["url"] = frontendURL()
+				_, d := keyState()
+				st["url"] = frontendURL(d)
 			}
 			keysSrv.Unlock()
 			reply(w, 200, st)

@@ -141,13 +141,21 @@ func lastError(text string) string {
 	return e
 }
 
-// which keys .env holds, never their values
-func keyStatus() map[string]bool {
-	_, out := hostRun("keys", "keys", "--status")
+// which keys .env holds, never their values, and the mesh's domain: one host run
+func keyState() (map[string]bool, string) {
+	_, out := hostRun("keys", "keys", "--state")
 	ls := strings.Split(strings.TrimSpace(out), "\n")
-	m := map[string]bool{}
+	var m struct {
+		Keys   map[string]bool
+		Domain string
+	}
 	json.Unmarshal([]byte(ls[len(ls)-1]), &m)
-	return m
+	return m.Keys, m.Domain
+}
+
+func keyStatus() map[string]bool {
+	k, _ := keyState()
+	return k
 }
 
 func keysMissing() bool { return !keyStatus()["TS_AUTHKEY"] }
@@ -169,7 +177,7 @@ func hostState() (running, vpn bool) {
 	return v.Running, v.VPN
 }
 
-func statusTip() string {
+func statusTip(running, vpn bool) string {
 	v := read(filepath.Join(a.home, ".phosphorus-installed"))
 	if v == "" {
 		return "Phosphorus not set up"
@@ -177,7 +185,6 @@ func statusTip() string {
 	if keysMissing() {
 		return "Phosphorus " + v + ": no keys yet"
 	}
-	running, vpn := hostState()
 	svc, net := "stopped", "VPN off"
 	if running {
 		svc = "running"
@@ -193,8 +200,9 @@ func refresh() {
 	b := busy.Load()
 	running := false
 	if !b {
-		running, _ = hostState()
-		setTip(statusTip())
+		var vpn bool
+		running, vpn = hostState()
+		setTip(statusTip(running, vpn))
 	}
 	enable(start, !b && !running)
 	enable(stop, !b && running)
@@ -331,11 +339,14 @@ func startup(background bool) {
 		}
 		busy.Store(false)
 	}
+	// the menu's state beside the browser's opening, neither waiting on the other
+	go refresh()
 	// opened by hand: the frontend (or the keys); at login: the tray alone
-	if !background || keysMissing() {
-		openMain()
+	if keys, domain := keyState(); !keys["TS_AUTHKEY"] {
+		openKeys()
+	} else if !background {
+		openURL(frontendURL(domain))
 	}
-	refresh()
 	req := filepath.Join(a.home, "state/update-request.json")
 	// the menu kept current with changes made elsewhere (the cli, the Tailscale app)
 	for tick := 1; ; tick++ {
@@ -354,25 +365,19 @@ func startup(background bool) {
 	}
 }
 
-// the mesh's domain, from the host's .env
-func domain() string {
-	_, out := hostRun("keys", "keys", "--domain")
-	ls := strings.Split(strings.TrimSpace(out), "\n")
-	return strings.TrimSpace(ls[len(ls)-1])
-}
-
 // the keys asked for first when there are none, else the frontend in the browser
 func openMain() {
-	if keysMissing() {
+	keys, domain := keyState()
+	if !keys["TS_AUTHKEY"] {
 		openKeys()
 		return
 	}
-	openURL(frontendURL())
+	openURL(frontendURL(domain))
 }
 
 // a domain's https, else this host's own frontend over the tailnet's port
-func frontendURL() string {
-	if d := domain(); d != "" {
+func frontendURL(d string) string {
+	if d != "" {
 		return "https://" + d + "/"
 	}
 	return "http://localhost/"
