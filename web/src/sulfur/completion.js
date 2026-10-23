@@ -7,6 +7,14 @@ export const isWordChar = (ch) => !!ch && WORD.test(ch);
 // the word the caret ends, from its start
 export const wordBefore = (text, caret) => text.slice(0, caret).match(/[\p{L}\p{N}_$]*$/u)[0];
 
+// Reuse a provider result only while the same word is being typed. Edits by
+// collaborators elsewhere in the document cannot be rebased by a caret delta.
+export function sameCompletionWord(was, wasCaret, from, text, caret) {
+  return caret >= from && text.slice(0, from) === was.slice(0, from)
+    && text.slice(caret) === was.slice(wasCaret)
+    && !/[^\p{L}\p{N}_$]/u.test(text.slice(from, caret));
+}
+
 // where a match may start: the word's first character, after a separator, or a capital after a lower
 const boundary = (word, i) => i === 0 || !isWordChar(word[i - 1]) || word[i - 1] === '_' || word[i - 1] === '$'
   || (word[i] !== word[i].toLowerCase() && word[i - 1] === word[i - 1].toLowerCase());
@@ -86,7 +94,11 @@ export function expandSnippet(snippet) {
         const simple = snippet.slice(i + 1).match(/^(\d+|[A-Za-z_][A-Za-z0-9_]*)/);
         if (simple) {
           i += 1 + simple[1].length;
-          if (/^\d/.test(simple[1]) && !stops.has(+simple[1])) stops.set(+simple[1], [text.length, text.length]);
+          if (/^\d/.test(simple[1])) {
+            const prior = stops.get(+simple[1]);
+            if (prior) text += text.slice(...prior);
+            else stops.set(+simple[1], [text.length, text.length]);
+          }
           continue;
         }
         const braced = snippet.slice(i + 1).match(/^\{(\d+|[A-Za-z_][A-Za-z0-9_]*)([:|}])/);
@@ -99,7 +111,11 @@ export function expandSnippet(snippet) {
             const choices = snippet.slice(i + 1, close < 0 ? snippet.length : close);
             text += choices.split(',')[0];
             i = close < 0 ? snippet.length : close + 2;
-          } else i += 1;
+          } else {
+            const prior = stops.get(+braced[1]);
+            if (/^\d/.test(braced[1]) && prior) text += text.slice(...prior);
+            i += 1;
+          }
           if (/^\d/.test(braced[1]) && !stops.has(+braced[1])) stops.set(+braced[1], [from, text.length]);
           continue;
         }

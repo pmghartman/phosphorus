@@ -1,5 +1,5 @@
 import { LANGUAGE_EXTENSIONS, languageId, positionAt, offsetAt, relativeUri, applyTextEdits, textEditRanges, completionEdits, languageSocket } from './language-client.js';
-import { isWordChar, wordBefore, rankCompletions, wordCompletions, kindOf, inCommentOrString } from './completion.js';
+import { isWordChar, wordBefore, rankCompletions, wordCompletions, kindOf, inCommentOrString, sameCompletionWord } from './completion.js';
 import { reindent } from './format.js';
 
 const titles = ['TypeScript', 'Python', 'JavaScript', 'Java', 'C#', 'PHP', 'Shell (Bash)', 'C / C++', 'HCL / Terraform', 'Go'];
@@ -13,6 +13,7 @@ export function createLanguageWorkbench(api) {
   const sessions = new Map();
   const attached = new Map();
   const diagnostics = new Map();
+  const completers = new Map();
   let generation = 0;
   let panel;
   let query = '';
@@ -44,6 +45,8 @@ export function createLanguageWorkbench(api) {
   }
   function reset() {
     generation++;
+    api.onReset?.();
+    for (const c of completers.values()) c.hide();
     for (const s of sessions.values()) clearSession(s);
     sessions.clear(); attached.clear(); diagnostics.clear();
   }
@@ -143,6 +146,7 @@ export function createLanguageWorkbench(api) {
     const ta = tab.view.querySelector('.code-ta');
     const box = api.el('div', 'ide-completion');
     box.hidden = true; box.setAttribute('role', 'listbox'); box.id = `${tab.id}-completions`;
+    ta.setAttribute('aria-expanded', 'false');
     ta.setAttribute('aria-controls', box.id); ta.setAttribute('aria-autocomplete', 'list');
     tab.view.append(box);
     // session: the items asked for the word starting at from; shown: those matching what's typed
@@ -205,7 +209,7 @@ export function createLanguageWorkbench(api) {
       const text = tab.ed.text();
       const caret = ta.selectionStart;
       const typed = text.slice(session.from, caret);
-      if (caret !== ta.selectionEnd || caret < session.from || /[^\p{L}\p{N}_$]/u.test(typed) || (!typed && !session.anchored)) { hide(); return; }
+      if (caret !== ta.selectionEnd || !sameCompletionWord(session.text, session.caret, session.from, text, caret) || (!typed && !session.anchored)) { hide(); return; }
       shown = rankCompletions(session.items, typed);
       // a word that's already whole is nothing to suggest
       if (!session.lsp && shown.length === 1 && shown[0].item.label === typed) shown = [];
@@ -214,12 +218,16 @@ export function createLanguageWorkbench(api) {
       paint(); place(text, session.from);
     }
     async function trigger(triggerKind, triggerCharacter = '', explicit = false) {
+      api.onSuggest?.();
       controller?.abort();
       const own = controller = new AbortController();
       const text = tab.ed.text();
       const caret = ta.selectionStart;
       if (ta !== document.activeElement || caret !== ta.selectionEnd || tab.info?.readOnly) return;
       const from = caret - wordBefore(text, caret).length;
+      // Words are available immediately, even while the host's server starts.
+      session = { from, text, caret, items: triggerCharacter ? [] : wordCompletions(api.documents?.(tab) || [], text, caret), lsp: null, defaults: {}, incomplete: false, anchored: explicit || !!triggerCharacter };
+      refilter();
       let items = [], lsp = null, defaults = {}, incomplete = false;
       try {
         const result = await request(tab, 'completion', { context: triggerCharacter ? { triggerKind: 2, triggerCharacter } : { triggerKind } }, own.signal);
@@ -229,32 +237,35 @@ export function createLanguageWorkbench(api) {
           incomplete = !!result.value.isIncomplete;
         }
       } catch (e) { if (!aborted(e) && explicit) api.error(e); }
-      if (own.signal.aborted || document.activeElement !== ta) return;
+      if (own.signal.aborted || document.activeElement !== ta || !api.alive(tab)) return;
       const now = tab.ed.text();
       // typed since the request: fine while it only went on with the same word
-      if (now.slice(0, from) !== text.slice(0, from) || ta.selectionStart < from) return;
+      if (ta.selectionStart !== ta.selectionEnd || !sameCompletionWord(text, caret, from, now, ta.selectionStart)) { hide(); return; }
+      if (lsp && !sameCompletionWord(lsp.text, lsp.caret, from, now, ta.selectionStart)) { hide(); return; }
       if (!items.length) {
-        if (triggerCharacter) return;
+        if (triggerCharacter) { hide(); return; }
         items = wordCompletions(api.documents?.(tab) || [], now, ta.selectionStart);
         lsp = null;
       }
-      session = { from, items, lsp, defaults, incomplete, anchored: explicit || !!triggerCharacter };
+      session = { from, text, caret, items, lsp, defaults, incomplete, anchored: explicit || !!triggerCharacter };
       refilter();
     }
     async function accept() {
       const pick = shown[selected];
       const s = session;
-      hide();
-      if (!pick || !s || tab.info?.readOnly) return;
-      let item = pick.item;
-      if (!s.lsp) { const end = s.from + String(item.label).length; tab.ed.editMany([{ from: s.from, to: ta.selectionStart, text: String(item.label) }], [end, end]); changed(tab); return; }
-      const client = s.lsp.doc.session.client;
-      if (client.capabilities.completionProvider?.resolveProvider) {
-        try { item = { ...item, ...await client.request('completionItem/resolve', { ...item, data: item.data ?? s.defaults.data }) }; } catch (e) { api.log(e.message, `Languages: ${s.lsp.doc.session.context.host}`); }
-      }
       const text = tab.ed.text();
       const caret = ta.selectionStart;
-      if (!api.alive(tab) || caret < s.from || text.slice(0, s.from) !== s.lsp.text.slice(0, s.from)) return;
+      hide();
+      if (!pick || !s || tab.info?.readOnly || caret !== ta.selectionEnd || !sameCompletionWord(s.text, s.caret, s.from, text, caret)) return;
+      let item = pick.item;
+      if (!s.lsp) { const applied = completionEdits(item, text, caret); tab.ed.editMany(applied.edits, applied.selection); changed(tab); return; }
+      const client = s.lsp.doc.session.client;
+      const epoch = generation;
+      const own = controller = new AbortController();
+      if (client.capabilities.completionProvider?.resolveProvider) {
+        try { item = { ...item, ...await client.request('completionItem/resolve', { ...item, data: item.data ?? s.defaults.data }, { signal: own.signal }) }; } catch (e) { if (!aborted(e)) api.log(e.message, `Languages: ${s.lsp.doc.session.context.host}`); }
+      }
+      if (own.signal.aborted || epoch !== generation || !api.alive(tab) || client.closed() || attached.get(tab)?.session !== s.lsp.doc.session || document.activeElement !== ta || tab.info?.readOnly || text !== tab.ed.text() || caret !== ta.selectionStart || caret !== ta.selectionEnd) return;
       const move = (r) => rebase(r, s.lsp.text, s.lsp.caret, text, caret);
       const moved = { ...item, ...(item.textEdit ? { textEdit: { ...item.textEdit, ...(item.textEdit.range ? { range: move(item.textEdit.range) } : move({ insert: item.textEdit.insert, replace: item.textEdit.replace })) } } : {}), additionalTextEdits: (item.additionalTextEdits || []).map((e) => ({ ...e, range: move(e.range) })) };
       const defaults = s.defaults.editRange ? { ...s.defaults, editRange: move(s.defaults.editRange) } : s.defaults;
@@ -264,7 +275,7 @@ export function createLanguageWorkbench(api) {
     }
     const triggers = () => attached.get(tab)?.session.client.capabilities.completionProvider?.triggerCharacters || [];
     ta.addEventListener('input', (e) => {
-      if (e.isComposing) return;
+      if (e.isComposing) { hide(); return; }
       clearTimeout(timer);
       // the last character typed (a pasted text never asks)
       const ch = e.inputType === 'insertText' && e.data ? [...e.data].at(-1) : '';
@@ -287,8 +298,10 @@ export function createLanguageWorkbench(api) {
     const selectionChanged = () => { if (document.activeElement === ta && session && (ta.selectionStart !== ta.selectionEnd || ta.selectionStart < session.from)) hide(); };
     document.addEventListener('selectionchange', selectionChanged);
     ta.addEventListener('keydown', (e) => {
+      if (e.isComposing || e.keyCode === 229) return;
       if ((e.ctrlKey || e.metaKey) && e.code === 'Space') { e.preventDefault(); e.stopImmediatePropagation(); trigger(1, '', true); return; }
       if (box.hidden) { if (['ArrowLeft', 'ArrowRight', 'Home', 'End', 'Escape'].includes(e.key)) hide(); return; }
+      if (e.shiftKey && (e.key === 'Tab' || e.key === 'Enter')) { hide(); return; }
       if (['ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', 'Enter', 'Tab', 'Escape'].includes(e.key) && !e.altKey && !e.ctrlKey && !e.metaKey) {
         e.preventDefault(); e.stopImmediatePropagation();
         if (e.key === 'Escape') hide();
@@ -301,8 +314,9 @@ export function createLanguageWorkbench(api) {
         }
       } else if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) hide();
     }, true);
+    completers.set(tab, { hide, trigger, symbols: () => shown.map((x) => x.item) });
     const dispose = tab.dispose;
-    tab.dispose = () => { hide(); document.removeEventListener('selectionchange', selectionChanged); const doc = attached.get(tab); if (doc) { doc.session.client.closeDocument(doc.uri); attached.delete(tab); diagnostics.delete(doc.session.key + '\n' + doc.uri); } dispose(); box.remove(); api.problems(); };
+    tab.dispose = () => { hide(); completers.delete(tab); document.removeEventListener('selectionchange', selectionChanged); const doc = attached.get(tab); if (doc) { doc.session.client.closeDocument(doc.uri); attached.delete(tab); diagnostics.delete(doc.session.key + '\n' + doc.uri); } dispose(); box.remove(); api.problems(); };
   }
   async function navigate(tab, references = false) {
     const result = await request(tab, references ? 'references' : 'definition', references ? { context: { includeDeclaration: true } } : {});
@@ -420,5 +434,9 @@ export function createLanguageWorkbench(api) {
   }
   // the Extensions view's search box narrows this list as well as the installed one
   function filter(text) { query = String(text || '').trim().toLowerCase(); panel?.paint(); }
-  return { mount, filter, format, attach, changed, navigate, rename, reset, get, problems: () => [...diagnostics.values()].flatMap((d) => d.items.map((item) => ({ ...item, context: d.session.context }))), saved(tab) { const d = attached.get(tab); if (d) { changed(tab); const save = d.session.client.capabilities.textDocumentSync?.save; if (save) d.session.client.notify('textDocument/didSave', { textDocument: { uri: d.uri }, ...(save.includeText ? { text: tab.ed.text() } : {}) }); } } };
+  function suggesting(tab) { return tab?.view.querySelector('.ide-completion')?.hidden === false; }
+  function dismissSuggest(tab) { completers.get(tab)?.hide(); }
+  function suggest(tab) { tab?.ed?.focus(); return completers.get(tab)?.trigger(1, '', true); }
+  function symbols(tab) { return completers.get(tab)?.symbols() || []; }
+  return { mount, filter, format, attach, changed, navigate, rename, reset, get, suggest, suggesting, dismissSuggest, symbols, problems: () => [...diagnostics.values()].flatMap((d) => d.items.map((item) => ({ ...item, context: d.session.context }))), saved(tab) { const d = attached.get(tab); if (d) { changed(tab); const save = d.session.client.capabilities.textDocumentSync?.save; if (save) d.session.client.notify('textDocument/didSave', { textDocument: { uri: d.uri }, ...(save.includeText ? { text: tab.ed.text() } : {}) }); } } };
 }

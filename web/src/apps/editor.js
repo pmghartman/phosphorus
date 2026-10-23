@@ -63,9 +63,12 @@ function codeEditor(view, file, btn, id, opts = {}) {
   // an agent's edit as it lands: what it wrote lit, its caret where it's writing
   const agentL = el('pre', 'code-hl code-agent');
   const ta = Object.assign(document.createElement('textarea'), { className: 'code-ta', spellcheck: false, autocomplete: 'off', wrap: 'off' });
+  const inlineLayer = Object.assign(el('pre', 'code-hl code-inline'), { hidden: true });
+  inlineLayer.setAttribute('aria-hidden', 'true');
+  let inlineSuggestion = null;
   ta.setAttribute('autocapitalize', 'off');
   ta.setAttribute('aria-label', file.label);
-  body.append(agentL, finds, pre, squig, ta);
+  body.append(agentL, finds, pre, squig, inlineLayer, ta);
   scroller.append(gutter, body);
 
   const out = el('div', 'code-out');
@@ -130,9 +133,48 @@ function codeEditor(view, file, btn, id, opts = {}) {
   let hlNow = false;
   // the last whole highlight, its unchanged lines drawn again while a new one's on its way
   let lastHl = null;
+  function paintInline() {
+    const s = inlineSuggestion;
+    if (!s || s.text !== ta.value || s.caret !== ta.selectionStart || s.caret !== ta.selectionEnd || ta.readOnly) {
+      inlineSuggestion = null;
+      inlineLayer.hidden = true;
+      inlineLayer.replaceChildren();
+      gutter.querySelector('.code-inline-nums')?.remove();
+      body.classList.remove('code-has-inline');
+      nums.style.visibility = '';
+      return;
+    }
+    // Clone the current syntax spans and insert ghost text with DOM text APIs.
+    // It can contain arbitrary source, including HTML, without becoming markup.
+    const copy = code.cloneNode(true);
+    const walk = document.createTreeWalker(copy, NodeFilter.SHOW_TEXT);
+    let at = 0, found = false;
+    const ghost = el('span', 'code-inline-text', s.insert);
+    for (let node = walk.nextNode(); node; node = walk.nextNode()) {
+      if (s.caret <= at + node.length) {
+        const range = document.createRange();
+        range.setStart(node, s.caret - at); range.collapse(true); range.insertNode(ghost);
+        found = true; break;
+      }
+      at += node.length;
+    }
+    if (!found) copy.append(ghost);
+    inlineLayer.replaceChildren(copy);
+    inlineLayer.hidden = false;
+    body.classList.add('code-has-inline');
+    // Keep line numbers aligned when a preview inserts virtual lines.
+    const line = s.text.slice(0, s.caret).split('\n').length;
+    const virtual = s.insert.split('\n').length - 1;
+    const numberCopy = el('pre', 'code-nums code-inline-nums');
+    numberCopy.textContent = Array.from({ length: s.text.split('\n').length }, (_, i) => String(i + 1) + (i + 1 === line ? '\n'.repeat(virtual) : '')).join('\n');
+    gutter.querySelector('.code-inline-nums')?.remove();
+    if (virtual) { gutter.append(numberCopy); nums.style.visibility = 'hidden'; }
+    else nums.style.visibility = '';
+  }
   function draw() {
     drawFrame = 0;
     const text = ta.value;
+    if (inlineSuggestion && inlineSuggestion.text !== text) setInlineSuggestion(null);
     // a tab shown again with the same text: its highlight kept
     if (text === hlText) { paintMarks(); return; }
     const parser = text.length <= HL_MAX && parserNow(lang.check);
@@ -160,7 +202,13 @@ function codeEditor(view, file, btn, id, opts = {}) {
     paintMarks();
     paintFinds();
     paintAgent();
+    if (inlineSuggestion) paintInline();
     checkSoon();
+  }
+  function setInlineSuggestion(value) {
+    inlineSuggestion = value;
+    if (!value) { inlineLayer.replaceChildren(); gutter.querySelector('.code-inline-nums')?.remove(); }
+    paintInline();
   }
   const redraw = () => { drawFrame ||= requestAnimationFrame(draw); mdSoon(); };
 
@@ -801,6 +849,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
     focus: () => ta.focus(),
     show: () => { redraw(); },
     text: () => ta.value,
+    setInlineSuggestion,
     info,
     editMany: (edits, selection) => {
       if (ta.readOnly || !ready) return false;
