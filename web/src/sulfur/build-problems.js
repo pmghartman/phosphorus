@@ -66,4 +66,3 @@ export function createBuildProblemMatcher({ host, absRoot, root, windows: win, o
     end: () => { if (buf) line(buf); buf = ''; },
   };
 }
-
