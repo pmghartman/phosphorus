@@ -66,6 +66,18 @@
   --accent: #c9a24a; --accent-2: #e0533f; --teal: #7fb5a3; --sage: #9cb36b; --sky: #8fb3c9; --rose: #c39bd0; --sand: #d98b5f;
   --online: #8aa857; --offmesh: #e0533f; --warn: #d9a441; --mesh-self: #e0bd66; --mesh-active: #8aa857;
 }
+/* Pyxra's own chrome (pyxra/css/app.css): its Dark by night and its Cozy pixel by day, both in its
+   default rose; hard 1px bevels and offset shadows that never blur. --px-* are its surface tiers */
+:root[data-palette="pyxra"] {
+  --bg: #101219; --fg: #ccd2de; --muted: #7b8496; --dim: #565d70; --border: #333a4c; --card: #20242f;
+  --tabbar: #191c24; --tab-hover: #2b3141; --shadow: #080a0e;
+  --accent: #de839c; --accent-2: #e5a93c; --teal: #74b9a5; --sage: #a6c98b; --sky: #729bd1; --rose: #ad95ce; --sand: #e4a47c;
+  --online: #74b9a5; --offmesh: #d9534f; --warn: #e5a93c; --mesh-self: #de839c; --mesh-active: #74b9a5;
+  --lift: 2px 2px 0 rgb(0 0 0 / 0.5); --drop: 3px 3px 0 rgb(0 0 0 / 0.55); --lift-sm: 1px 1px 0 rgb(0 0 0 / 0.5);
+  --px-editor: #101219; --px-panel: #191c24; --px-head: #20242f; --px-raised: #2a3040; --px-sunken: #111319;
+  --px-line: #080a0e; --px-line-soft: #333a4c; --px-bevel-hi: #3d4559; --px-bevel-lo: #0a0c11; --px-strong: #eef2f8;
+  --px-button: #a84e71; --px-thumb: #39415a; --px-dither: repeating-linear-gradient(45deg, rgb(255 255 255 / 0.022) 0 1px, transparent 1px 2px);
+}
 
 /* light: clean neutral surfaces, the accents inked darker to hold up on white */
 :root[data-theme="light"] {
@@ -109,6 +121,16 @@
   --tabbar: #eadcbc; --tab-hover: #e6d6b2; --shadow: #d6c39b;
   --accent: #8e2a1f; --accent-2: #7a4f12; --teal: #1f5e57; --sage: #4b6b2a; --sky: #2f5d7c; --rose: #5b3a7a; --sand: #9a4f1a;
   --online: #4b6b2a; --offmesh: #b02a1a; --warn: #9a6a10; --mesh-self: #8e2a1f; --mesh-active: #4b6b2a;
+}
+:root[data-palette="pyxra"][data-theme="light"] {
+  --bg: #fffaf0; --fg: #333b4c; --muted: #686c78; --dim: #9aa8ad; --border: #9aa8ad; --card: #fff3da;
+  --tabbar: #dce5e8; --tab-hover: #e9eef0; --shadow: #9aa8ad;
+  --accent: #a84e71; --accent-2: #9b6734; --teal: #397c70; --sage: #4f7f3c; --sky: #426d9d; --rose: #755b9e; --sand: #a86747;
+  --online: #397c70; --offmesh: #b6586c; --warn: #9b6734; --mesh-self: #a84e71; --mesh-active: #397c70;
+  --lift: 2px 2px 0 rgb(96 112 134 / 0.3); --drop: 3px 3px 0 rgb(96 112 134 / 0.38); --lift-sm: 1px 1px 0 rgb(96 112 134 / 0.3);
+  --px-editor: #fffdf5; --px-panel: #fffaf0; --px-head: #dce5e8; --px-raised: #fff3da; --px-sunken: #fffdf5;
+  --px-line: #56657c; --px-line-soft: #9aa8ad; --px-bevel-hi: #ffffff; --px-bevel-lo: #607086; --px-strong: #242f40;
+  --px-button: #a84e71; --px-thumb: #9aa8ad; --px-dither: repeating-linear-gradient(45deg, rgb(68 82 98 / 0.035) 0 1px, transparent 1px 3px);
 }
 
 /* oled: true black surfaces, the dark theme's accents unchanged */
@@ -2215,6 +2237,7 @@ input, textarea { caret-color: var(--accent); }
 .dk-ctl-swatch.sw-phosphorus { background: linear-gradient(135deg, #9f81cf 50%, #141414 50%); }
 .dk-ctl-swatch.sw-vscode { background: linear-gradient(135deg, #0078d4 50%, #1f1f1f 50%); }
 .dk-ctl-swatch.sw-medieval { background: linear-gradient(135deg, #c9a24a 50%, #1e1711 50%); }
+.dk-ctl-swatch.sw-pyxra { background: linear-gradient(135deg, #de839c 50%, #191c24 50%); }
 .dk-ctl-who { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
 .dk-ctl-name { color: var(--fg); font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dk-ctl-out {
@@ -2915,7 +2938,7 @@ body:has(.dk-pop:not([hidden])) .toasts { opacity: 0; pointer-events: none; }
 .ide-completion-item.on { background: var(--accent); color: var(--bg); }
 .ide-completion-item small { opacity: .75; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .ide-language-manager { padding: 12px; border-top: 1px solid var(--border); }
-.ide-side-body.ide-extensions-body { display: block; overflow-y: auto; }
+.ide-view.ide-extensions-body { display: block; overflow-y: auto; }
 .ide-extensions-body .ide-ext-list { overflow: visible; }
 .ide-language-manager > button { margin: 6px 6px 8px 0; }
 .ide-language-row { padding: 10px 0; border-top: 1px solid var(--border); }
@@ -3614,8 +3637,9 @@ button.ide-fd-place:hover { background: var(--ide-hover); color: var(--ide-stron
 
 /* --- color themes: Phosphorus's, and the extra ones ------------------------------------------ */
 
-/* Phosphorus: the desktop's own tokens and type, light or dark as the page is, square-cornered */
-.ide-win.ide-theme-phosphorus {
+/* Phosphorus: the desktop's own tokens and type, light or dark as the page is, square-cornered
+   (:root so it outranks the light theme's VS Code tokens) */
+:root .ide-win.ide-theme-phosphorus {
   --ide-bg: var(--bg); --ide-side: var(--tabbar); --ide-fg: var(--fg); --ide-strong: var(--fg); --ide-muted: var(--muted); --ide-dim: var(--dim);
   --ide-border: var(--border); --ide-accent: var(--accent); --ide-link: var(--accent); --ide-hover: color-mix(in srgb, var(--fg) 6%, transparent);
   --ide-sel: color-mix(in srgb, var(--accent) 24%, transparent); --ide-sel-off: color-mix(in srgb, var(--fg) 9%, transparent);
@@ -3683,6 +3707,45 @@ button.ide-fd-place:hover { background: var(--ide-hover); color: var(--ide-stron
   --accent: var(--ide-caret); --offmesh: var(--ide-err); --online: var(--ide-ok); --accent-2: var(--mv-kw); --sky: var(--ide-info); --teal: var(--mv-type);
   --muted: var(--ide-muted); --dim: var(--ide-dim); --border: var(--ide-border); --bg: var(--ide-bg);
 }
+
+/* Pyxra: the palette's tokens on Pyxra's surface tiers, its pixel type for the chrome (code keeps the
+   page's mono), square bevels lit top-left, dithered bars and offset shadows that never blur */
+:root .ide-win.ide-theme-pyxra {
+  --ide-bg: var(--px-editor); --ide-side: var(--px-panel); --ide-fg: var(--fg); --ide-strong: var(--px-strong); --ide-muted: var(--muted); --ide-dim: var(--dim);
+  --ide-border: var(--px-line); --ide-accent: var(--accent); --ide-link: var(--accent); --ide-hover: var(--tab-hover);
+  --ide-sel: color-mix(in srgb, var(--accent) 26%, transparent); --ide-sel-off: color-mix(in srgb, var(--fg) 9%, transparent);
+  --ide-input: var(--px-sunken); --ide-input-border: var(--px-bevel-lo); --ide-button: var(--px-button); --ide-button-hover: color-mix(in srgb, var(--px-button) 82%, #fff);
+  --ide-button-fg: #ffffff; --ide-second: var(--px-raised); --ide-second-hover: color-mix(in srgb, var(--fg) 8%, var(--px-raised)); --ide-second-fg: var(--fg);
+  --ide-widget: var(--px-head); --ide-widget-border: var(--px-line-soft); --ide-badge: var(--px-button); --ide-badge-fg: #ffffff;
+  --ide-err: var(--offmesh); --ide-warn: var(--warn); --ide-info: var(--sky); --ide-ok: var(--online); --ide-hl: var(--accent);
+  --ide-find: color-mix(in srgb, var(--warn) 30%, transparent); --ide-find-now: color-mix(in srgb, var(--warn) 60%, transparent);
+  --ide-guide: var(--px-line-soft); --ide-scroll: var(--px-thumb); --ide-shadow: var(--drop);
+  --ide-ed-sel: color-mix(in srgb, var(--accent) 30%, var(--ide-bg)); --ide-line-nr: var(--dim); --ide-caret: var(--accent);
+  --ide-ui: "Fixedsys Excelsior 3.01", Fixedsys, "Lucida Console", "Courier New", ui-monospace, monospace;
+}
+.ide-win.ide-theme-pyxra .ide { font-size: 12px; -webkit-font-smoothing: none; }
+.ide-win.ide-theme-pyxra .ide * { border-radius: 0; }
+.ide-win.ide-theme-pyxra * { scrollbar-color: var(--px-thumb) var(--px-sunken); }
+.ide-win.ide-theme-pyxra :is(.dk-head, .ide-tabs-row, .ide-status, .ide-side-head, .ide-aux-head) {
+  background-color: var(--px-head); background-image: var(--px-dither); box-shadow: inset 0 1px 0 var(--px-bevel-hi);
+}
+.ide-win.ide-theme-pyxra .ide-tab.on { background: var(--ide-bg); box-shadow: inset 0 2px 0 var(--ide-accent); }
+.ide-win.ide-theme-pyxra .ide-sec-head { letter-spacing: 0.1em; font-size: 10px; color: var(--muted); }
+.ide-win.ide-theme-pyxra :is(.ide-button, .ide-menu-top.on) {
+  border: 1px solid var(--px-bevel-lo); border-top-color: var(--px-bevel-hi); border-left-color: var(--px-bevel-hi);
+}
+.ide-win.ide-theme-pyxra .ide-button:not(.secondary) { border-top-color: color-mix(in srgb, var(--px-button) 55%, #fff); border-left-color: color-mix(in srgb, var(--px-button) 55%, #fff); }
+.ide-win.ide-theme-pyxra .ide-input { border-color: var(--px-bevel-lo) var(--px-bevel-hi) var(--px-bevel-hi) var(--px-bevel-lo); }
+.ide-win.ide-theme-pyxra .ide-sb-remote { background: var(--px-button); }
+:root .ide-win.ide-theme-pyxra .ide .code-hl :is(.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-doctag, .hljs-name, .hljs-tag) { color: var(--accent); }
+:root .ide-win.ide-theme-pyxra .ide .code-hl :is(.hljs-string, .hljs-regexp, .hljs-addition) { color: var(--sage); }
+:root .ide-win.ide-theme-pyxra .ide .code-hl :is(.hljs-number, .hljs-symbol, .hljs-bullet) { color: var(--sand); }
+:root .ide-win.ide-theme-pyxra .ide .code-hl :is(.hljs-title, .hljs-section, .hljs-selector-id) { color: var(--sky); }
+:root .ide-win.ide-theme-pyxra .ide .code-hl :is(.hljs-type, .hljs-built_in, .hljs-selector-class) { color: var(--teal); }
+:root .ide-win.ide-theme-pyxra .ide .code-hl :is(.hljs-attr, .hljs-attribute, .hljs-variable, .hljs-variable.language_) { color: var(--rose); }
+:root .ide-win.ide-theme-pyxra .ide .code-hl .hljs-meta { color: var(--accent-2); }
+:root .ide-win.ide-theme-pyxra .ide .code-hl :is(.hljs-comment, .hljs-quote) { color: var(--muted); font-style: italic; }
+:root .ide-win.ide-theme-pyxra .ide .code-hl .hljs-deletion { color: var(--offmesh); }
 
 /* --- narrow: the side bars over the editors ------------------------------------------------ */
 
