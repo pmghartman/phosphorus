@@ -105,7 +105,7 @@ async function start() {
   bootLocal({ ...info, mode: 'local' });
   workbench(q.has('welcome') ? { welcome: true } : null);
   // An unreachable mesh must never delay this computer's editor.
-  meshMe().catch(() => null).finally(() => standalone.onMesh?.());
+  meshMe().catch(() => null).finally(() => { standalone.meshChecking = false; standalone.onMesh?.(); });
 }
 
 start().catch((err) => {

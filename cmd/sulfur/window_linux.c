@@ -51,6 +51,11 @@ void sx_new(const char *title, int w, int h, int minw, int minh, const char *dat
 	gtk_widget_set_size_request(win, minw, minh);
 	gtk_window_set_position(GTK_WINDOW(win), GTK_WIN_POS_CENTER);
 	gtk_window_set_icon_name(GTK_WINDOW(win), "sulfur");
+	// the window's own dark under the page, so its start isn't a flash of white
+	GtkCssProvider *css = gtk_css_provider_new();
+	gtk_css_provider_load_from_data(css, "window { background-color: #1f1f1f; }", -1, NULL);
+	gtk_style_context_add_provider_for_screen(gdk_screen_get_default(), GTK_STYLE_PROVIDER(css), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+	g_object_unref(css);
 	gtk_container_add(GTK_CONTAINER(win), GTK_WIDGET(view));
 	g_signal_connect(win, "delete-event", G_CALLBACK(on_delete), NULL);
 	g_signal_connect(win, "destroy", G_CALLBACK(gtk_main_quit), NULL);

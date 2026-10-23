@@ -1,5 +1,5 @@
 ; Sulfur for Windows, per user: its one .exe in %LOCALAPPDATA%\Sulfur, an update
-; landing in place; the Tauri app's install upgraded where it was, its files cleared
+; landing in place
 ; makensis /DVERSION=1.2 /DSTAGE=dir /DOUTFILE=setup.exe installer.nsi
 ; /S silent: the app's own update, which starts the app again itself
 
@@ -12,12 +12,12 @@ SetCompressor /SOLID lzma
 !include "FileFunc.nsh"
 
 !define PRODUCT "Sulfur"
-; the keys the Tauri app wrote, kept so this one is the same install
+; the keys an install is known by, so an update is the same install
 !define UNINSTKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT}"
 !define INSTKEY "Software\Phosphorus\${PRODUCT}"
 !define WEBVIEW2KEY "SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
 
-; Sulfur's own processes by their full path, the old app's server too; the path read through CIM
+; Sulfur's own processes by their full path, read through CIM
 !macro StopApp
   nsExec::Exec `powershell -NoProfile -NonInteractive -Command "Get-CimInstance Win32_Process | Where-Object { $$_.ExecutablePath -like '$INSTDIR\*' } | ForEach-Object { Stop-Process -Id $$_.ProcessId -Force -ErrorAction SilentlyContinue }"`
   Sleep 800
@@ -48,9 +48,6 @@ VIAddVersionKey "LegalCopyright" "Apache-2.0"
 Section "Install"
   !insertmacro StopApp
   SetOutPath "$INSTDIR"
-  ; the Tauri app's server and the files only it had
-  Delete "$INSTDIR\sulfur-server.exe"
-  Delete "$INSTDIR\sulfur.exe.old"
   ; an app still running moved aside, never left in place of the new one
   Delete "$INSTDIR\Sulfur.old.exe"
   IfFileExists "$INSTDIR\Sulfur.old.exe" +2 0
@@ -63,7 +60,6 @@ Section "Install"
   WriteUninstaller "$INSTDIR\uninstall.exe"
   CreateShortcut "$SMPROGRAMS\${PRODUCT}.lnk" "$INSTDIR\Sulfur.exe" "" "$INSTDIR\icon.ico"
   WriteRegStr HKCU "${INSTKEY}" "" "$INSTDIR"
-  DeleteRegValue HKCU "${UNINSTKEY}" "MainBinaryName"
   WriteRegStr HKCU "${UNINSTKEY}" "DisplayName" "${PRODUCT}"
   WriteRegStr HKCU "${UNINSTKEY}" "DisplayVersion" "${VERSION}"
   WriteRegStr HKCU "${UNINSTKEY}" "DisplayIcon" "$INSTDIR\icon.ico"
