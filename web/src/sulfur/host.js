@@ -3,6 +3,8 @@
 // computer offline (the app's own server, one host, its home and drives) or
 // from a mesh (its hosts, merged home and logins, through the same API)
 
+import { themeFromStorage } from '../theme.js';
+
 // the page's vendor files, hashed by the build
 export const ASSETS = __ASSETS__;
 
@@ -267,6 +269,7 @@ export async function bootMesh(server, info = null) {
   acct = { user: me.user, admin: !!me.admin, boot: false, vault: me.vault || { hosts: {} } };
   standalone.meshUser = me.user;
   standalone.meshVault = me.vault || { hosts: {}, pages: {} };
+  takeMeshTheme(me.prefs);
   name = me.user;
   dk.creds = new Map(Object.entries(acct.vault.hosts || {}).map(([h, c]) => [h, { user: c.user, pass: c.pass }]));
   // this computer beside the mesh's machines, through the app's own server
@@ -314,11 +317,9 @@ export async function logIn(user, pass) {
 // a folder or file picked in the system's dialog, as an absolute path; null when cancelled
 // or when there's no app around the page to ask
 export async function nativePick({ directory = false, title = '', defaultPath = '' } = {}) {
-  const t = window.__TAURI__;
-  if (!t?.core?.invoke) return null;
-  const options = { directory, multiple: false, title: title || undefined, defaultPath: defaultPath || undefined };
-  const got = t.dialog?.open ? await t.dialog.open(options) : await t.core.invoke('plugin:dialog|open', { options });
-  return typeof got === 'string' ? got : got?.path || null;
+  const app = window.sulfurApp;
+  if (!app?.pick) return null;
+  return (await app.pick({ directory, title, defaultPath })) || null;
 }
 
 // an absolute path on this computer as Sulfur's place and path: the home's for the
@@ -351,6 +352,21 @@ standalone.locate = locate;
 export const meshUrl = (path) => (standalone.mode === 'local' ? `/api/mesh${path}` : path);
 
 // who the remembered mesh has logged in here, null if nobody (or no mesh)
+// --- the user's custom theme, from their mesh ----------------------------------------------
+
+// the mesh keeps the user's custom theme with their settings, and Sulfur wears it when it's
+// picked here; which theme Sulfur wears is its own pick, never the website's, so nothing
+// goes back and the mesh's pick isn't taken
+function takeMeshTheme(prefs) {
+  const custom = prefs && typeof prefs === 'object' ? prefs.custom : '';
+  if (!custom) return;
+  try {
+    if (localStorage.getItem('phosphorus-theme-custom') === custom) return;
+    localStorage.setItem('phosphorus-theme-custom', custom);
+  } catch { return; }
+  themeFromStorage();
+}
+
 export async function meshMe() {
   if (standalone.mode === 'local' && !standalone.server) return null;
   const r = await getJSON(meshUrl('/api/me')).catch(() => null);
@@ -358,6 +374,7 @@ export async function meshMe() {
   if (standalone.meshUser && standalone.meshUser !== r.user) unlinkHosts();
   standalone.meshUser = r.user;
   standalone.meshVault = r.vault || { hosts: {}, pages: {} };
+  takeMeshTheme(r.prefs);
   linkMesh();
   return r;
 }

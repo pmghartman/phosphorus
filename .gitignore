@@ -20,3 +20,4 @@
 !/internal/web/dist/README
 /web/.vendor/
 /phosphorus
+/out/

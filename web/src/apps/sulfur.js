@@ -456,7 +456,7 @@ export function ideStart(w, open) {
     w, st, settings: cached, userKeys: [], tabs: [], active: null, mru: [], closed: [], tree: new Map(), loading: new Map(),
     sel: '', terms: [], term: null, termSeq: 0, output: new Map(), outCh: 'Sulfur', commands: new Map(), keys: new Map(),
     exts: new Map(), runners: new Map(), providers: new Map(), statusItems: new Map(), notes: [], chord: '', chats: new Map(),
-    index: null, offs: [], seq: 0,
+    index: null, offs: [], seq: 0, nav: { stack: [], at: -1, busy: false },
   };
   build();
   registerCommands();
@@ -575,7 +575,18 @@ function build() {
   upd.append(icon('update'));
   upd.hidden = !standalone?.app;
   upd.addEventListener('click', () => checkUpdate(true));
-  title.append(menubar, cc, upd, ai);
+  // back and forward through where the user's been, either side of the search a bare stretch of the bar to drag the window by
+  const navBtn = (cls, glyph, label, cmd) => {
+    const b = Object.assign(el('button', `ide-tb ide-tb-nav ${cls}`), { type: 'button', ariaLabel: label, disabled: true });
+    b.dataset.cmd = cmd;
+    b.dataset.label = label;
+    b.append(icon(glyph));
+    b.addEventListener('click', () => run(cmd));
+    return b;
+  };
+  const back = navBtn('ide-tb-back', 'left', 'Go Back', 'workbench.action.navigateBack');
+  const fwd = navBtn('ide-tb-fwd', 'right', 'Go Forward', 'workbench.action.navigateForward');
+  title.append(menubar, el('div', 'ide-drag'), back, fwd, cc, el('div', 'ide-drag'), upd, ai);
 
   const main = el('div', 'ide-main');
   // the activity bar: a view per icon; the chat, settings and update are the title bar's
@@ -632,7 +643,7 @@ function build() {
   Object.assign(I, {
     root, layer, titleBar: title, menubar, cc, ccText, activity, actTop, side, sideTitle, sideActs, sideBody, center, editorsPart,
     tabsEl: tabs, tabActs, crumbs, views, watermark, panel, panelTabs, panelActs, panelBody, sashH, aux, sashSide, sashAux,
-    statusL, statusR, sideViews: new Map(), panelViews: new Map(), actBtns: new Map(), actChat: ai, updBtn: upd,
+    statusL, statusR, sideViews: new Map(), panelViews: new Map(), actBtns: new Map(), actChat: ai, updBtn: upd, navBack: back, navFwd: fwd,
   });
 
   buildMenubar();
@@ -754,7 +765,7 @@ function buildActivity() {
 
 // the activity bar's titles, once the keys are known
 function paintActivityTitles() {
-  for (const b of [...I.actBtns.values(), I.actChat]) {
+  for (const b of [...I.actBtns.values(), I.actChat, I.navBack, I.navFwd]) {
     const k = keyLabel(keyFor(b.dataset.cmd));
     b.title = k ? `${b.dataset.label} (${k})` : b.dataset.label;
   }
@@ -866,6 +877,7 @@ const MENUS = [
     cmdItem('workbench.action.toggleMaximizedPanel', 'Maximized Panel', I.st.panel.max),
   ]],
   ['Go', () => [
+    cmdItem('workbench.action.navigateBack', 'Back'), cmdItem('workbench.action.navigateForward', 'Forward'), '-',
     cmdItem('workbench.action.quickOpen', 'Go to File…'), cmdItem('workbench.action.gotoLine', 'Go to Line/Column…'), '-',
     cmdItem('editor.action.revealDefinition', 'Go to Definition'), cmdItem('editor.action.referenceSearch.trigger', 'Find All References'), '-',
     cmdItem('workbench.action.nextEditor', 'Next Editor'), cmdItem('workbench.action.previousEditor', 'Previous Editor'), '-',
@@ -1937,6 +1949,7 @@ function tabState(t, info) {
   if (!was || was.dirty !== info.dirty) { t.tabEl.classList.toggle('dirty', info.dirty); paintOpenEditorsSoon(); }
   if (!was || JSON.stringify(was.errors) !== JSON.stringify(info.errors)) { paintProblemsSoon(); paintTreeSoon(); }
   if (t === I.active) paintStatus();
+  if (t === I.active) navNote(t);
   if (t === I.active) paintSymbolNavSoon();
   if (I.find?.open && t === I.active && was && was.length !== info.length) findSoon();
   // the user's settings and keys read again once their file's saved
@@ -1950,6 +1963,46 @@ function tabState(t, info) {
   }
 }
 const paintOpenEditorsSoon = debounce(() => I && paintOpenEditors(), 50);
+
+// --- where the user's been: a file and a line, walked back and forward ---------------------
+
+// a place noted: a small move updates the current one, a jump of ten lines or another file adds a new one
+function navNote(t) {
+  const n = I.nav;
+  if (!t?.rel || n.busy) return;
+  const line = t.info?.line || 1;
+  const cur = n.stack[n.at];
+  if (cur?.tab === t && Math.abs(cur.line - line) < 10) { cur.line = line; return; }
+  n.stack.length = n.at + 1;
+  n.stack.push({ tab: t, line });
+  if (n.stack.length > 50) n.stack.shift();
+  n.at = n.stack.length - 1;
+  paintNav();
+}
+
+// a step through them, the places whose files were closed passed over
+function navGo(d) {
+  const n = I.nav;
+  const open = (e) => I.tabs.includes(e.tab);
+  let i = n.at + d;
+  while (n.stack[i] && !open(n.stack[i])) i += d;
+  const e = n.stack[i];
+  if (!e) return;
+  n.at = i;
+  n.busy = true;
+  activate(e.tab);
+  placeCaret(e.tab, { line: e.line });
+  n.busy = false;
+  paintNav();
+}
+
+function paintNav() {
+  if (!I?.navBack) return;
+  const n = I.nav;
+  const live = (d) => { for (let i = n.at + d; n.stack[i]; i += d) if (I.tabs.includes(n.stack[i].tab)) return true; return false; };
+  I.navBack.disabled = !live(-1);
+  I.navFwd.disabled = !live(1);
+}
 
 function pin(t) {
   if (!t.preview) return;
@@ -1968,6 +2021,7 @@ function activate(t, focus = true) {
     I.runContext = { tabId: t.id, workspace: wsKey(), pending: true };
   }
   I.mru = [t, ...I.mru.filter((x) => x !== t)];
+  if (t !== was) navNote(t);
   for (const x of I.tabs) {
     x.view.hidden = x !== t;
     x.tabEl.classList.toggle('on', x === t);
@@ -2593,6 +2647,8 @@ function registerCommands() {
   C('workbench.action.closeActiveEditor', 'Close Editor', () => I.active && closeTab(I.active), { key: 'ctrl+w', alt: ['ctrl+f4'], category: 'View' });
   C('workbench.action.closeAllEditors', 'Close All Editors', () => closeMany([...I.tabs]), { key: 'ctrl+k ctrl+w', category: 'View' });
   C('workbench.action.reopenClosedEditor', 'Reopen Closed Editor', () => { const p = I.closed[0]; if (p) openFile(p, { preview: false }); }, { category: 'View' });
+  C('workbench.action.navigateBack', 'Go Back', () => navGo(-1), { key: standalone?.mac ? 'ctrl+-' : 'alt+left', category: 'Go' });
+  C('workbench.action.navigateForward', 'Go Forward', () => navGo(1), { key: standalone?.mac ? 'ctrl+shift+-' : 'alt+right', category: 'Go' });
   C('workbench.action.nextEditor', 'Open Next Editor', () => stepTab(1), { key: 'ctrl+pagedown', alt: ['alt+pagedown'], category: 'View' });
   C('workbench.action.previousEditor', 'Open Previous Editor', () => stepTab(-1), { key: 'ctrl+pageup', alt: ['alt+pageup'], category: 'View' });
   C('workbench.action.keepEditor', 'Keep Editor', () => I.active && pin(I.active), { key: 'ctrl+k enter', category: 'View' });
@@ -5988,9 +6044,8 @@ function showDiffPage(key, title, text, rel) {
 
 // a web address, in the system's browser from the app
 function openExternal(url) {
-  const t = window.__TAURI__;
-  if (t?.opener?.openUrl) t.opener.openUrl(url).catch(() => window.open(url, '_blank', 'noopener'));
-  else if (t?.core?.invoke) t.core.invoke('plugin:opener|open_url', { url }).catch(() => window.open(url, '_blank', 'noopener'));
+  const app = window.sulfurApp;
+  if (app?.openUrl) app.openUrl(url).catch(() => {});
   else window.open(url, '_blank', 'noopener');
 }
 
@@ -6744,7 +6799,7 @@ function applySettings() {
   r.style.setProperty('--ide-code-font', `${setting('editor.fontSize')}px`);
   // vs code Sulfur's own look, the others their own tokens; a custom theme wears the one it starts from
   const look = lookNow();
-  for (const t of LOOK_IDS) I.w.node.classList.toggle(`ide-theme-${t}`, t === look && t !== 'vscode');
+  for (const t of LOOK_IDS) I.w.node.classList.toggle(`ide-theme-${t}`, t === look);
   // the terminals recolored once the theme, or a custom one's overrides, changed
   const theme = paletteNow() + (document.getElementById('phosphorus-custom')?.textContent || '');
   if (I.themeNow !== theme) { I.themeNow = theme; requestAnimationFrame(() => termsRetheme()); }

@@ -36,10 +36,11 @@ import (
 var version = "dev"
 
 var (
-	addr   = flag.String("addr", "127.0.0.1:47615", "where to listen; loopback only")
-	cfgAt  = flag.String("config", "", "the app's settings file; the user's config folder's Sulfur/sulfur.json if empty")
-	origin string
-	me     local
+	headless = flag.Bool("headless", false, "serve only, with no window; for a browser or a test")
+	addr     = flag.String("addr", "127.0.0.1:47615", "where to listen; loopback only")
+	cfgAt    = flag.String("config", "", "the app's settings file; the user's config folder's Sulfur/sulfur.json if empty")
+	origin   string
+	me       local
 )
 
 // local this computer as Sulfur sees it: one host, its user's home and its drives
@@ -77,8 +78,30 @@ func main() {
 		web.ServeStatic(w, r)
 	})
 	srv := &http.Server{Addr: *addr, Handler: guard(mux), ReadHeaderTimeout: 10 * time.Second}
+	ln, err := net.Listen("tcp", *addr)
+	if err != nil {
+		// another Sulfur already serving this computer: this window opens on it
+		if c, e := net.DialTimeout("tcp", *addr, 250*time.Millisecond); e == nil && !*headless {
+			c.Close()
+			window()
+			return
+		}
+		log.Fatal(err)
+	}
 	log.Printf("Sulfur %s on %s, %s", version, origin, me.Host)
-	log.Fatal(srv.ListenAndServe())
+	if *headless {
+		log.Fatal(srv.Serve(ln))
+	}
+	go func() { log.Fatal(srv.Serve(ln)) }()
+	window()
+}
+
+// window Sulfur's own, until it's closed
+func window() {
+	if err := runWindow(origin + "/sulfur/"); err != nil {
+		showError(err.Error())
+		log.Fatal(err)
+	}
 }
 
 // guard every request to this server's own name, every write and socket to its own page

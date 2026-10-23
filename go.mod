@@ -10,6 +10,7 @@ require (
 	github.com/charmbracelet/x/xpty v0.1.4
 	github.com/coder/websocket v1.8.15
 	github.com/evanw/esbuild v0.28.2
+	github.com/jchv/go-webview2 v0.0.0-20260205173254-56598839c808
 	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/shirou/gopsutil/v4 v4.26.9
 	github.com/yuin/goldmark v1.8.6
@@ -36,6 +37,7 @@ require (
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/gorilla/css v1.0.1 // indirect
+	github.com/jchv/go-winloader v0.0.0-20250406163304-c1995be93bd1 // indirect
 	github.com/lucasb-eyer/go-colorful v1.4.0 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
 	github.com/mattn/go-runewidth v0.0.23 // indirect

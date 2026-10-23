@@ -79,7 +79,7 @@ func goParts() []part {
 	seen := map[string]part{}
 	for _, t := range [][2]string{{"linux", "amd64"}, {"linux", "arm64"}, {"darwin", "arm64"}, {"darwin", "amd64"}, {"windows", "amd64"}} {
 		b := run([]string{"GOOS=" + t[0], "GOARCH=" + t[1], "CGO_ENABLED=0"}, "go", "list", "-deps",
-			"-f", "{{with .Module}}{{if not .Main}}{{.Path}}\t{{.Version}}\t{{.Dir}}{{end}}{{end}}", "./cmd/phosphorus", "./cmd/tray")
+			"-f", "{{with .Module}}{{if not .Main}}{{.Path}}\t{{.Version}}\t{{.Dir}}{{end}}{{end}}", "./cmd/phosphorus", "./cmd/tray", "./cmd/sulfur")
 		for _, l := range strings.Split(strings.TrimSpace(string(b)), "\n") {
 			f := strings.Split(l, "\t")
 			if len(f) != 3 || seen[f[0]].name != "" {
