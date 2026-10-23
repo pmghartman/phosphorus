@@ -24,7 +24,6 @@ function loadXterm() {
     .catch((e) => { xtermLoaded = null; throw e; });
   return xtermLoaded;
 }
-loadXterm().catch(() => {});
 
 // server's close codes: session gone for good, or taken by another tab
 const TERM_ENDED = 4000;

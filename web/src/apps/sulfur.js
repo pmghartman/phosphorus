@@ -37,6 +37,10 @@ import {
 } from '../app.js';
 import { codeEditor } from './editor.js';
 import { createLanguageWorkbench } from '../sulfur/language-workbench.js';
+import { completionPrompt, completionText } from '../sulfur/inline-completion.js';
+import { formatWhitespace, formattingEdits } from '../sulfur/formatting.js';
+import { applyTextEdits } from '../sulfur/language-client.js';
+import { parserFor } from '../lezer.js';
 import { startTerminal, taskTerminal, termsRetheme } from './terminal.js';
 import { renderMd } from '../md.js';
 import { symbolsFor, identifierAt, enclosingSymbol } from '../symbols.js';
@@ -314,6 +318,17 @@ let I = null;
 
 const languages = createLanguageWorkbench({
   el, join: filesJoin, log, pick, input: inputBox,
+  setting,
+  async suggest(t, text, caret, signal) {
+    if (localDesktop() && !meshLinked()) throw new Error('Connect to a Phosphorus mesh to use agent completions.');
+    const response = await fetch(meshApi('/api/model/v1/messages'), {
+      method: 'POST', headers: { 'content-type': 'application/json' }, signal,
+      body: JSON.stringify({ model: setting('sulfur.agentCompletion.model'), max_tokens: 384, stream: false, ...completionPrompt(t.rel, t.info?.lang, text, caret) }),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error?.message || `Completion failed (${response.status})`);
+    return completionText(body);
+  },
   error: (e) => notify('error', e.message), notice: (text) => notify('info', text),
   alive: (t) => !!I?.tabs.includes(t),
   hosts: () => dkLiveHosts(),
@@ -333,11 +348,24 @@ const languages = createLanguageWorkbench({
     if (!root || !path) return null;
     const buildRoot = cfg?.host === t.host && cfg.toolchain ? tasksFor(cfg, project).buildRoot : '';
     const buildDirectory = buildRoot ? absolutePath(buildRoot) ? buildRoot : hostPath(t.host, share, joinPath(rootRel, buildRoot)) : '';
-    return { host: t.host, root, rootRel, path, documentRel: t.rel.slice(rootRel.length + 1), loc: t.loc, workspace, configuration: cfg?.configuration || '', buildDirectory, settings: setting('sulfur.languageServerSettings') || {} };
+    return { host: t.host, root, rootRel, path, documentRel: t.rel.slice(rootRel ? rootRel.length + 1 : 0), loc: t.loc, workspace, configuration: cfg?.configuration || '', buildDirectory, settings: setting('sulfur.languageServerSettings') || {} };
   },
   open(path, context, range) {
     if (!I || context.workspace !== wsKey()) return null;
     return openFile(path, { host: context.host, loc: context.loc, preview: false, line: range.start.line + 1, col: range.start.character + 1 });
+  },
+  openMetadata(uri, metadata, context, range) {
+    if (!I || context.workspace !== wsKey()) return null;
+    const title = `${metadata.symbolName || uri.split('/').pop()} [metadata]`;
+    const t = openPage(`metadata:${context.host}:${uri}`, title, 'symbolType', (t) => {
+      t.view.classList.remove('ide-page');
+      const file = { host: context.host, share: 'metadata', path: `${metadata.symbolName || 'Assembly'}.cs`, label: `${metadata.assemblyName} · ${title} (read only)` };
+      t.ed = codeEditor(t.view, file, null, t.id, { bare: true, readOnlyText: metadata.source, formatting: formattingOptions, onState: (info) => tabState(t, info) });
+      t.dispose = () => t.ed.close();
+    });
+    const at = offsetOf(metadata.source, range.start.line + 1, range.start.character + 1);
+    t.ed.select(at, at);
+    return t;
   },
   async prepare(path, context) {
     if (!I || context.workspace !== wsKey()) throw new Error('Project changed during rename');
@@ -359,6 +387,18 @@ const DEFAULTS = () => ({
 });
 
 const SETTINGS = {
+  'workbench.sideBar.location': { def: 'left', type: 'enum', options: [['left', 'Left'], ['right', 'Right']], title: 'Layout: Primary Sidebar', about: 'Choose which side holds Explorer, Search, Run and Extensions. Chat moves to the opposite side.' },
+  'workbench.panel.alignment': { def: 'center', type: 'enum', options: [['center', 'Editor width'], ['left', 'Editor and left sidebar'], ['right', 'Editor and right sidebar'], ['justify', 'Full width']], title: 'Layout: Console Span', about: 'Choose how far Terminal, Output and Problems extend beneath the sidebars.' },
+  'editor.inlineSuggest.enabled': { def: true, type: 'boolean', title: 'Completion: IntelliSense Inline Preview', about: 'Preview the selected language completion in the editor. Tab or Enter accepts; Escape dismisses; Ctrl+Space requests IntelliSense.' },
+  'sulfur.agentCompletion.enabled': { def: false, type: 'boolean', title: 'Completion: Agent Suggestions', about: 'Use the mesh model for expressions and new code when IntelliSense has no strong symbol match. Sends nearby file context after a pause; Tab accepts and Escape dismisses.' },
+  'sulfur.agentCompletion.model': { def: 'chimp', type: 'string', title: 'Completion: Agent Model', about: 'Mesh model role or phosphorus/host used for code completion.' },
+  'sulfur.agentCompletion.delay': { def: 700, type: 'number', min: 300, max: 5000, title: 'Completion: Agent Delay', about: 'Idle time in milliseconds before requesting generated code. IntelliSense is checked first.' },
+  'editor.detectIndentation': { def: true, type: 'boolean', title: 'Formatting: Detect Indentation', about: 'Use the file’s existing indentation while typing. Turn off to use Insert Spaces and Tab Size.' },
+  'editor.insertSpaces': { def: true, type: 'boolean', title: 'Formatting: Insert Spaces', about: 'Indent with spaces instead of tab characters when formatting or when indentation detection is disabled.' },
+  'editor.tabSize': { def: 4, type: 'number', min: 1, max: 16, integer: true, title: 'Formatting: Tab Size', about: 'Number of spaces per indentation level and the display width of a tab.' },
+  'editor.format.braceStyle': { def: 'preserve', type: 'enum', options: [['preserve', 'Preserve / language default'], ['sameLine', 'Opening brace on the same line'], ['nextLine', 'Opening brace on its own line']], title: 'Formatting: Brace Placement', about: 'Block brace placement for supported brace languages. Python and Go retain their language’s syntax rules.' },
+  'editor.format.indentBlocks': { def: true, type: 'boolean', title: 'Formatting: Indent Block Contents', about: 'Indent code inside block braces one level deeper. Turn off to align it with the braces.' },
+  'sulfur.csharp.analyzersEnabled': { def: true, type: 'boolean', title: 'C#: Roslyn Analyzers', about: 'Include Roslyn and project analyzer diagnostics for C# solutions. Analysis uses more CPU than compiler diagnostics alone.' },
   'sulfur.languageServerSettings': { def: {}, type: 'object', title: 'Languages: Server Settings', about: 'Language-server settings, keyed by extension id (typescript, python, javascript, java, csharp, php, shell, cpp, hcl, go). Runtime prerequisites and installation are in Extensions.' },
   'editor.fontSize': { def: 13, type: 'number', min: 8, max: 40, title: 'Editor: Font Size', about: 'Controls the font size in pixels.' },
   'editor.enablePreview': { def: true, type: 'boolean', title: 'Workbench › Editor: Enable Preview', about: 'Controls whether a file opened from the explorer is shown as a preview, its tab reused until you edit it or double click.' },
@@ -372,7 +412,10 @@ const SETTINGS = {
   'sulfur.runners': { def: {}, type: 'object', title: 'Run: Runners', about: 'Commands that run a file, by extension, over the built-in ones, as {"py": "python3 -u \\"$f\\""}: $f is the file, $o a fresh output path beside it.' },
   'chat.includeActiveFile': { def: true, type: 'boolean', title: 'Chat: Include Active File', about: 'Controls whether the mesh agents see the file you have open, and know "this file" means it.' },
 };
-const setting = (k) => (I?.settings && k in I.settings ? I.settings[k] : SETTINGS[k]?.def);
+function setting(k) { return I?.settings && k in I.settings ? I.settings[k] : SETTINGS[k]?.def; }
+function formattingOptions() {
+  return { detectIndentation: setting('editor.detectIndentation'), insertSpaces: setting('editor.insertSpaces'), tabSize: Math.max(1, Math.min(16, Math.trunc(Number(setting('editor.tabSize'))) || 4)), braceStyle: setting('editor.format.braceStyle'), indentBlocks: setting('editor.format.indentBlocks') };
+}
 
 // this browser's keeping from before the name was Sulfur, copied once
 function migrateLocal() {
@@ -592,7 +635,7 @@ function build() {
   I.w.head.insertBefore(title, I.w.head.querySelector('.dk-btns'));
   I.w.node.classList.add('ide-win');
   Object.assign(I, {
-    root, layer, titleBar: title, menubar, cc, ccText, activity, actTop, actFoot, side, sideTitle, sideActs, sideBody, center, editorsPart,
+    root, main, layer, titleBar: title, menubar, cc, ccText, activity, actTop, actFoot, side, sideTitle, sideActs, sideBody, center, editorsPart,
     tabsEl: tabs, tabActs, crumbs, views, watermark, panel, panelTabs, panelActs, panelBody, sashH, aux, sashSide, sashAux,
     statusL, statusR, sideViews: new Map(), panelViews: new Map(), actBtns: new Map(),
   });
@@ -602,9 +645,9 @@ function build() {
   buildPanel();
   buildAux();
   buildStatus();
-  sash(sashSide, 'x', () => I.st.side.w, (v) => { I.st.side.w = Math.max(170, Math.min(v, root.clientWidth * 0.6)); paintLayout(); });
-  sash(sashAux, 'x', () => I.st.aux.w, (v) => { I.st.aux.w = Math.max(240, Math.min(v, root.clientWidth * 0.6)); paintLayout(); }, true);
-  sash(sashH, 'y', () => I.st.panel.h, (v) => { I.st.panel.h = Math.max(90, Math.min(v, center.clientHeight - 80)); paintLayout(); }, true);
+  sash(sashSide, 'x', () => I.st.side.w, (v) => { I.st.side.w = Math.max(170, Math.min(v, root.clientWidth * 0.6)); paintLayout(); }, () => setting('workbench.sideBar.location') === 'right');
+  sash(sashAux, 'x', () => I.st.aux.w, (v) => { I.st.aux.w = Math.max(240, Math.min(v, root.clientWidth * 0.6)); paintLayout(); }, () => setting('workbench.sideBar.location') !== 'right');
+  sash(sashH, 'y', () => I.st.panel.h, (v) => { I.st.panel.h = Math.max(90, Math.min(v, main.clientHeight - 80)); paintLayout(); }, true);
   // narrow: the side bars over the editors, never squeezing them to nothing
   const ro = new ResizeObserver(() => {
     if (!I) return;
@@ -643,6 +686,18 @@ function drawersAway() {
 
 function paintLayout() {
   const { st, root } = I;
+  const right = setting('workbench.sideBar.location') === 'right';
+  const alignment = setting('workbench.panel.alignment');
+  root.classList.toggle('ide-side-right', right);
+  root.dataset.panelAlignment = ['left', 'right', 'justify'].includes(alignment) ? alignment : 'center';
+  const left = right ? st.aux : st.side, far = right ? st.side : st.aux;
+  root.style.setProperty('--left-w', left.hidden ? '0px' : `${left.w}px`);
+  root.style.setProperty('--right-w', far.hidden ? '0px' : `${far.w}px`);
+  root.style.setProperty('--left-sash', left.hidden ? '0px' : '4px');
+  root.style.setProperty('--right-sash', far.hidden ? '0px' : '4px');
+  root.style.setProperty('--console-row', st.panel.hidden ? '0px' : st.panel.max ? 'minmax(0, 1fr)' : `${Math.min(st.panel.h, Math.max(90, I.main.clientHeight - 80))}px`);
+  root.style.setProperty('--console-sash', st.panel.hidden || st.panel.max ? '0px' : '4px');
+  root.style.setProperty('--editor-row', !st.panel.hidden && st.panel.max ? '0px' : 'minmax(0, 1fr)');
   root.style.setProperty('--side-w', `${st.side.w}px`);
   root.style.setProperty('--aux-w', `${st.aux.w}px`);
   root.style.setProperty('--panel-h', `${st.panel.h}px`);
@@ -650,12 +705,23 @@ function paintLayout() {
   root.classList.toggle('ide-panel-off', st.panel.hidden);
   root.classList.toggle('ide-aux-off', st.aux.hidden);
   root.classList.toggle('ide-panel-max', !st.panel.hidden && st.panel.max);
+  for (const [node, value] of [[I.sashSide, st.side.w], [I.sashAux, st.aux.w], [I.sashH, st.panel.h]]) node.setAttribute('aria-valuenow', String(Math.round(value)));
   I.actChat?.classList.toggle('on', !st.aux.hidden);
   saveState();
 }
 
 // a drag on a sash: the size it governs, from the far side when from is set
 function sash(node, axis, get, set, from = false) {
+  node.tabIndex = 0;
+  node.setAttribute('role', 'separator');
+  node.setAttribute('aria-orientation', axis === 'x' ? 'vertical' : 'horizontal');
+  node.setAttribute('aria-label', axis === 'y' ? 'Resize console' : node.classList.contains('ide-sash-side') ? 'Resize primary sidebar' : 'Resize chat sidebar');
+  const direction = () => (typeof from === 'function' ? from() : from) ? -1 : 1;
+  node.addEventListener('keydown', (e) => {
+    const delta = axis === 'x' ? ({ ArrowLeft: -1, ArrowRight: 1 })[e.key] : ({ ArrowUp: -1, ArrowDown: 1 })[e.key];
+    if (!delta) return;
+    e.preventDefault(); e.stopPropagation(); set(get() + delta * direction() * (e.shiftKey ? 1 : 10));
+  });
   node.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
     e.preventDefault();
@@ -666,10 +732,12 @@ function sash(node, axis, get, set, from = false) {
     I.root.classList.add('ide-dragging', axis === 'x' ? 'ide-drag-x' : 'ide-drag-y');
     const move = (ev) => {
       const d = (axis === 'x' ? ev.clientX : ev.clientY) - start;
-      set(was + (from ? -d : d));
+      set(was + direction() * d);
     };
     const up = () => {
       node.removeEventListener('pointermove', move);
+      node.removeEventListener('pointerup', up);
+      node.removeEventListener('pointercancel', up);
       node.classList.remove('on');
       I?.root.classList.remove('ide-dragging', 'ide-drag-x', 'ide-drag-y');
     };
@@ -802,6 +870,7 @@ const MENUS = [
       cmdItem('workbench.action.toggleAuxiliaryBar', 'Chat', !I.st.aux.hidden),
       cmdItem('workbench.action.togglePanel', 'Panel', !I.st.panel.hidden),
       cmdItem('workbench.action.toggleMaximizedPanel', 'Maximized Panel', I.st.panel.max), '-',
+      cmdItem('workbench.action.configureLayout', 'Customize Layout…'), '-',
       cmdItem('editor.action.fontZoomIn', 'Zoom In'), cmdItem('editor.action.fontZoomOut', 'Zoom Out'), cmdItem('editor.action.fontZoomReset', 'Reset Zoom'),
     ] },
     cmdItem('markdown.showPreview', 'Toggle Markdown Preview'),
@@ -1581,7 +1650,7 @@ function mountCode(t) {
   const share = t.share ?? 'home';
   const file = { host: t.host, share, path: t.rel, label: `${t.host}/${share === 'home' ? 'home' : shareOf(t.host, share)?.label || share}/${t.rel}` };
   t.edId = `ide-code-${(edSeq += 1)}`;
-  t.ed = codeEditor(t.view, file, null, t.edId, { bare: true, onState: (info) => tabState(t, info) });
+  t.ed = codeEditor(t.view, file, null, t.edId, { bare: true, formatting: formattingOptions, onState: (info) => tabState(t, info) });
   editors.set(t.edId, t.ed);
   codeTabs.set(codeKey(file), t.edId);
   t.dispose = () => t.ed.close();
@@ -1635,7 +1704,7 @@ async function tabSymbols(t) {
   if (t.symbolText === text && t.symbolPromise) return t.symbolPromise;
   t.symbolText = text;
   const lang = codeLang(t.rel);
-  t.symbolPromise = text.length > 2 * 1024 * 1024 ? Promise.resolve({ symbols: [], tokens: [] }) : symbolsFor(text, lang?.check, lang?.hl);
+  t.symbolPromise = text.length > 2 * 1024 * 1024 ? Promise.resolve({ symbols: [], tokens: [] }) : t.ed.syntaxTree().then((tree) => symbolsFor(text, lang?.check, lang?.hl, tree || undefined));
   const data = await t.symbolPromise;
   if (t.ed.text() === text) t.symbols = data;
   return data;
@@ -1719,6 +1788,34 @@ async function goToDefinition(t = I.active) {
   if (!hits.length) { notify('info', `No declaration found for ${word.name}${result.truncated ? ' in the searched files (search was truncated)' : ''}.`); return; }
   const hit = hits.length === 1 ? hits[0] : await pick(hits.map((s) => ({ label: `${s.name} · ${s.kind}`, description: s.doc.path, value: s })), { title: `Definitions of ${word.name}` });
   if (hit && current()) openFile(hit.doc.path, { host: hit.doc.host, loc: hit.doc.loc, select: [hit.from, hit.to], preview: false });
+}
+
+async function formatActive() {
+  const t = I.active;
+  if (!t?.rel || !t.ed?.ready() || t.info?.readOnly) return;
+  if (t.formatting) return;
+  t.formatting = true;
+  const state = I, before = t.ed.text(), selection = t.ed.selection();
+  try {
+    const options = formattingOptions();
+    const result = await languages.request(t, 'formatting', { options: { tabSize: options.tabSize, insertSpaces: options.insertSpaces } });
+    if (I !== state || !I.tabs.includes(t) || t.ed.text() !== before || result?.stale) { if (I === state) notify('info', 'The file changed while formatting. Format again.'); return; }
+    let text = result?.value ? applyTextEdits(before, result.value) : before;
+    const lang = codeLang(t.rel);
+    const parser = await parserFor(lang?.check);
+    text = formatWhitespace(text, lang?.hl, { ...options, preserveContinuation: !!result }, parser?.parse(text), parser ? (source) => parser.parse(source) : null);
+    if (I !== state || !I.tabs.includes(t) || t.ed.text() !== before || t.info?.readOnly) return;
+    const edits = formattingEdits(before, text);
+    if (!result && text === before && !['csharp', 'c', 'cpp', 'java', 'javascript', 'typescript', 'rust', 'css', 'scss', 'json'].includes(lang?.hl)) {
+      notify('info', 'Install a formatting-capable language extension in Extensions for this file.'); return;
+    }
+    if (edits.length) {
+      // Map the caret through all whitespace edits and keep one undo entry.
+      const map = (pos) => edits.reduce((out, edit) => pos >= edit.to ? out + edit.text.length - (edit.to - edit.from) : pos > edit.from ? out + edit.from + Math.min(pos - edit.from, edit.text.length) - pos : out, pos);
+      t.ed.editMany(edits, selection.map(map)); languages.changed(t);
+      setStatusFlash('Document formatted');
+    } else setStatusFlash('Document is already formatted');
+  } finally { t.formatting = false; }
 }
 
 async function findReferences(t = I.active) {
@@ -1877,6 +1974,7 @@ function activate(t, focus = true) {
   const was = I.active;
   I.active = t;
   if (t !== was) {
+    languages.cancelCompletions();
     I.projHas = undefined;
     I.runContext = { tabId: t.id, workspace: wsKey(), pending: true };
   }
@@ -2539,13 +2637,17 @@ function registerCommands() {
   C('workbench.action.chat.open', 'Open Chat', () => showAux(true, true), { key: 'ctrl+alt+i', category: 'Chat', shell: true });
   C('workbench.action.chat.newChat', 'New Chat', () => newChat(), { category: 'Chat' });
   C('inlineChat.start', 'Ask the Agent About the Selection', () => askSelection(), { key: 'ctrl+i', when: hasEd, category: 'Chat' });
+  C('sulfur.completion.toggleAgent', 'Toggle Agent Code Completions', () => setSetting('sulfur.agentCompletion.enabled', !setting('sulfur.agentCompletion.enabled')), { category: 'Completion' });
+  C('editor.action.triggerSuggest', 'Trigger IntelliSense', () => languages.complete(I.active), { key: 'ctrl+space', when: edFocused, category: 'Completion' });
+  C('editor.action.inlineSuggest.trigger', 'Request Agent Code Completion', () => languages.agentComplete(I.active), { key: 'alt+\\', when: edFocused, category: 'Completion' });
   C('workbench.action.togglePanel', 'Toggle Panel Visibility', () => showPanel(I.st.panel.view, I.st.panel.hidden), { key: 'ctrl+j', category: 'View', shell: true });
   C('workbench.action.toggleMaximizedPanel', 'Toggle Maximized Panel', () => { I.st.panel.max = !I.st.panel.max; showPanel(I.st.panel.view, true); }, { category: 'View' });
   C('workbench.actions.view.problems', 'Focus on Problems View', () => showPanel('problems', true, true), { key: 'ctrl+shift+m', category: 'View', shell: true });
   C('workbench.action.output.toggleOutput', 'Toggle Output', () => (I.st.panel.view === 'output' && !I.st.panel.hidden ? showPanel('output', false) : showPanel('output', true, true)), { key: 'ctrl+shift+u', category: 'View', shell: true });
   C('workbench.action.showOutput', 'Show Output', () => showPanel('output', true, true), { category: 'Output', hidden: true });
   // the editor
-  C('actions.find', 'Find', () => openFind(false), { key: 'ctrl+f', when: hasEd, category: 'Editor' });
+  C('actions.find', 'Find', () => openFind(false), { key: 'ctrl+alt+f', when: hasEd, category: 'Editor' });
+  C('editor.action.formatDocument', 'Format Document', () => formatActive().catch((err) => notify('error', err.message)), { key: 'ctrl+f', alt: ['shift+alt+f'], when: edFocused, category: 'Editor' });
   C('editor.action.startFindReplaceAction', 'Replace', () => openFind(true), { key: 'ctrl+h', when: hasEd, category: 'Editor' });
   C('editor.action.revealDefinition', 'Go to Definition', () => goToDefinition().catch((err) => notify('error', err.message)), { key: 'f12', when: hasEd, category: 'Go' });
   C('editor.action.referenceSearch.trigger', 'Find All References', () => findReferences().catch((err) => notify('error', err.message)), { key: 'shift+f12', when: hasEd, category: 'Go' });
@@ -2629,6 +2731,7 @@ function registerCommands() {
   // preferences and help
   C('workbench.action.openSettings', 'Open Settings (UI)', () => openSettings(), { key: 'ctrl+,', category: 'Preferences', shell: true });
   C('workbench.action.openSettingsJson', 'Open User Settings (JSON)', () => openUserFile(SETTINGS_PATH(), '{\n  // your Sulfur settings, VS Code’s names: see Preferences: Open Settings (UI)\n}\n'), { category: 'Preferences' });
+  C('workbench.action.configureLayout', 'Customize Layout', () => { openSettings(); const t = I.tabs.find((t) => t.page === 'settings'); t.settingsQ.value = 'Layout'; paintSettingsPage(); }, { category: 'View' });
   C('workbench.action.openGlobalKeybindings', 'Open Keyboard Shortcuts', () => openKeysPage(), { key: 'ctrl+k ctrl+s', category: 'Preferences' });
   C('workbench.action.openGlobalKeybindingsFile', 'Open Keyboard Shortcuts (JSON)', () => openUserFile(KEYS_PATH(), '// your keys, each {"key": "ctrl+alt+r", "command": "ide.run.file"}; a "-command" removes a default\n[\n]\n'), { category: 'Preferences' });
   C('workbench.action.openWalkthrough', 'Welcome', () => openWelcome(), { category: 'Help' });
@@ -3967,6 +4070,7 @@ function buildStatus() {
   S.config = sbItem('ide-sb-build ide-sb-config', 'Build configuration', () => run('sulfur.build.configuration'));
   S.people = sbItem('ide-sb-people', '');
   S.agent = sbItem('ide-sb-agent', 'Chat', () => showAux(true, true));
+  S.completion = sbItem('ide-sb-completion', 'Toggle agent code completions', () => run('sulfur.completion.toggleAgent'));
   S.flash = el('span', 'ide-sb-flash');
   S.chord = el('span', 'ide-sb-flash ide-sb-chord');
   S.extL = el('span', 'ide-sb-ext');
@@ -3980,7 +4084,7 @@ function buildStatus() {
   S.extR = el('span', 'ide-sb-ext');
   S.bell = sbItem('ide-sb-bell', 'Notifications', (e) => notesPopup(e.currentTarget));
   I.statusL.append(S.remote, S.problems, S.build, S.config, S.people, S.agent, S.extL, S.flash, S.chord);
-  I.statusR.append(S.pos, S.indent, S.enc, S.eol, S.lang, S.host, S.state, S.extR, S.bell);
+  I.statusR.append(S.completion, S.pos, S.indent, S.enc, S.eol, S.lang, S.host, S.state, S.extR, S.bell);
   I.sb = S;
 }
 
@@ -3991,6 +4095,10 @@ function paintStatus() {
 }
 function paintStatusNow() {
   const S = I.sb;
+  const completionOn = !!setting('sulfur.agentCompletion.enabled');
+  S.completion.textContent = `AI ${completionOn ? 'On' : 'Off'}`;
+  S.completion.setAttribute('aria-pressed', String(completionOn));
+  S.completion.title = `Agent code completions ${completionOn ? 'enabled' : 'disabled'}. Click to toggle. IntelliSense handles strong symbol matches; AI fills in new code.`;
   const h = runHost();
   S.remote.replaceChildren(icon('remote'), el('span', '', h || 'no host'));
   S.remote.classList.toggle('none', !h);
@@ -4021,7 +4129,7 @@ function paintStatusNow() {
   if (t?.rel) S.host.replaceChildren(icon('host'), el('span', '', t.host));
   if (code) {
     S.pos.textContent = `Ln ${info.line}, Col ${info.col}${info.sel ? ` (${info.sel} selected)` : ''}`;
-    S.indent.textContent = info.indent === 'tab' ? 'Tab Size: 4' : `Spaces: ${info.indent}`;
+    S.indent.textContent = info.indent === 'tab' ? `Tab Size: ${formattingOptions().tabSize}` : `Spaces: ${info.indent}`;
     S.enc.textContent = 'UTF-8';
     S.eol.textContent = info.eol;
     S.lang.textContent = LANG_NAMES[info.lang] || info.lang;
@@ -6610,7 +6718,10 @@ async function loadUserFiles() {
   if (s !== null) {
     try {
       const v = parseJsonc(s);
-      if (v && typeof v === 'object' && !Array.isArray(v)) { if (JSON.stringify(I.settings?.['sulfur.languageServerSettings']) !== JSON.stringify(v['sulfur.languageServerSettings'])) languages.reset(); I.settings = v; cacheSettings(); applySettings(); }
+      if (v && typeof v === 'object' && !Array.isArray(v)) {
+        if (JSON.stringify(I.settings?.['sulfur.languageServerSettings']) !== JSON.stringify(v['sulfur.languageServerSettings']) || setting('sulfur.csharp.analyzersEnabled') !== (v['sulfur.csharp.analyzersEnabled'] ?? SETTINGS['sulfur.csharp.analyzersEnabled'].def)) languages.reset();
+        I.settings = v; cacheSettings(); applySettings();
+      }
     } catch (err) { notify('warning', `settings.json: ${err.message}`, { actions: [{ label: 'Open Settings (JSON)', run: () => openFile(SETTINGS_PATH(), { preview: false }) }] }); }
   }
   if (k !== null) {
@@ -6642,6 +6753,10 @@ function applySettings() {
   const r = I.root;
   applyAppearance();
   r.style.setProperty('--ide-code-font', `${setting('editor.fontSize')}px`);
+  r.style.setProperty('--ide-tab-size', String(formattingOptions().tabSize));
+  languages.cancelCompletions();
+  paintLayout();
+  paintStatus();
   // vs code Sulfur's own look; the others the desktop's tokens, medieval its own type too
   const theme = paletteNow();
   for (const t of PALETTES) I.w.node.classList.toggle(`ide-theme-${t.id}`, t.id === theme && t.id !== 'vscode');
@@ -6656,6 +6771,7 @@ function setSetting(k, v) {
   const def = SETTINGS[k]?.def;
   if (JSON.stringify(v) === JSON.stringify(def)) delete I.settings[k]; else I.settings[k] = v;
   cacheSettings();
+  if (k === 'sulfur.csharp.analyzersEnabled') { languages.reset(); if (I.active?.ed) languages.get(I.active).catch((e) => log(e.message, 'Languages')); }
   applySettings();
   writeSettings();
 }
@@ -6715,12 +6831,14 @@ function paintSettingsPage() {
     if (s.type === 'boolean') {
       const lab = el('label', 'ide-check');
       const box = Object.assign(el('input'), { type: 'checkbox', checked: !!val });
+      box.setAttribute('aria-label', s.title);
       box.addEventListener('change', () => setSetting(k, box.checked));
       lab.append(box, about);
       row.append(lab);
     } else if (s.type === 'enum') {
       row.append(about);
       const sel = el('select', 'ide-input ide-select');
+      sel.setAttribute('aria-label', s.title);
       for (const [v, label] of s.options) sel.append(Object.assign(el('option', '', label), { value: v, selected: v === val }));
       sel.addEventListener('change', () => setSetting(k, sel.value));
       row.append(sel);
@@ -6732,14 +6850,17 @@ function paintSettingsPage() {
     } else {
       row.append(about);
       const input = Object.assign(el('input', 'ide-input'), { type: s.type === 'number' ? 'number' : 'text', value: String(val), spellcheck: false });
+      input.setAttribute('aria-label', s.title);
       if (s.type === 'number') Object.assign(input, { min: s.min, max: s.max, step: 1 });
-      input.addEventListener('change', () => {
+      const commit = () => {
         if (s.type === 'number') {
           const n = Number(input.value);
-          if (!Number.isFinite(n) || n < s.min || n > s.max) { input.value = String(setting(k)); notify('warning', `${s.title} takes ${s.min} to ${s.max}.`); return; }
-          setSetting(k, n);
-        } else setSetting(k, input.value);
-      });
+          if (!Number.isFinite(n) || n < s.min || n > s.max || s.integer && !Number.isInteger(n)) { input.value = String(setting(k)); notify('warning', `${s.title} takes ${s.integer ? 'whole numbers from ' : ''}${s.min} to ${s.max}.`); return; }
+          if (n !== setting(k)) setSetting(k, n);
+        } else if (input.value !== setting(k)) setSetting(k, input.value);
+      };
+      input.addEventListener('change', commit);
+      input.addEventListener('blur', commit);
       row.append(input);
     }
     if (k in I.settings) {

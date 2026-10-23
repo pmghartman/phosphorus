@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { positionAt, offsetAt, fileUri, uriPath, relativeUri, applyTextEdits, completionEdits, languageSocket, LANGUAGE_EXTENSIONS, languageId } from '../src/sulfur/language-client.js';
+import { positionAt, offsetAt, fileUri, uriPath, relativeUri, applyTextEdits, completionEdits, snippetText, incrementalChange, languageSocket, LANGUAGE_EXTENSIONS, languageId } from '../src/sulfur/language-client.js';
 import { EditorHistory } from '../src/editor-history.js';
 import { opDiff } from '../src/text-operations.js';
 
@@ -48,7 +48,11 @@ test('completion list defaults, insert/replace edits and plain identifier fallba
   assert.equal(completionEdits({ label: 'hello' }, 'he', 2).text, 'hello');
   assert.equal(completionEdits({ label: 'hello', textEditText: 'hello' }, 'he', 2, { editRange: range(0, 2) }).text, 'hello');
   assert.equal(completionEdits({ label: 'hello', textEdit: { insert: range(0, 2), replace: range(0, 4), newText: 'hello' } }, 'hexx', 2).text, 'hello');
-  assert.throws(() => completionEdits({ label: 'fn', insertText: 'fn(${1:a})', insertTextFormat: 2 }, '', 0), /snippets/);
+  assert.equal(completionEdits({ label: 'fn', insertText: 'fn(${1:a})$0', insertTextFormat: 2 }, '', 0).text, 'fn(a)');
+  assert.equal(snippetText('fn(${1:${2:value}}, ${3|left,right|})\\$0'), 'fn(value, left)$0');
+  assert.equal(snippetText('fn($1, ${1:arg}, ${1})'), 'fn(arg, arg, arg)');
+  assert.throws(() => snippetText('${1/a/b/}'), /transform/);
+  assert.throws(() => snippetText('${1:unfinished'), /Invalid/);
 });
 
 test('rename edits use original positions and reject overlaps before changing text', () => {
@@ -83,10 +87,25 @@ test('initialization advertises UTF-16, disables snippets and completes the LSP 
   const init = ws.sent.find((x) => x.method === 'initialize');
   assert.deepEqual(init.params.capabilities.general.positionEncodings, ['utf-16']);
   assert.equal(init.params.capabilities.textDocument.completion.completionItem.snippetSupport, false);
+  assert.equal(init.params.capabilities.experimental.csharp.metadataUris, true);
+  assert.equal(init.params.capabilities.textDocument.semanticTokens.requests.full, true);
+  assert.equal(init.params.capabilities.textDocument.diagnostic.dynamicRegistration, false);
   assert.equal(ws.sent.filter((x) => x.method === 'initialized').length, 1);
 });
 
-test('document versions increase only for changes and incremental servers receive a valid full-range replacement', async (t) => {
+test('incremental changes send only edited text and retain valid UTF-16 and CRLF ranges', () => {
+  for (const [before, after] of [
+    ['const answer = 4;\n', 'const answer = 42;\n'],
+    ['😀 hello\r\nworld', '😁 hello\r\nworld'],
+    ['a\r\nb', 'a\nb'], ['a\r\nb', 'a\r\nnew b'], ['', 'new'], ['abc', ''],
+  ]) {
+    const change = incrementalChange(before, after);
+    assert.equal(applyTextEdits(before, [{ ...change, newText: change.text }]), after);
+  }
+  assert.deepEqual(incrementalChange('x'.repeat(100000) + 'a', 'x'.repeat(100000) + 'ab').text, 'b');
+});
+
+test('document versions increase only for changes and incremental servers receive a valid replacement', async (t) => {
   const { client, ws } = await setup(t);
   assert.equal(client.sync('file:///project/a.py', 'python', '😀a\n'), 1);
   assert.equal(client.sync('file:///project/a.py', 'python', '😀a\n'), 1);
@@ -95,6 +114,14 @@ test('document versions increase only for changes and incremental servers receiv
   assert.deepEqual(change.params.contentChanges[0].range.end, { line: 1, character: 0 });
   client.closeDocument('file:///project/a.py');
   assert.equal(client.documents.size, 0);
+});
+
+test('closing disconnected documents remains safe and releases cached text', async (t) => {
+  const { client, ws } = await setup(t);
+  client.sync('file:///project/a.py', 'python', 'cached text');
+  ws.close();
+  assert.equal(client.documents.size, 0);
+  assert.doesNotThrow(() => client.closeDocument('file:///project/a.py'));
 });
 
 test('cancelled requests send $/cancelRequest and discard late replies', async (t) => {
