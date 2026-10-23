@@ -56,6 +56,7 @@ func bridge(h webHost, origin string, s shell) error {
 		"sx_title":    func(t string) { ui(func() { h.SetTitle(t) }) },
 		"sx_destroy":  func() { ui(s.destroy) },
 		"sx_ready": func() {
+			trace("page ready")
 			closeReady.Store(true)
 			if s.show != nil {
 				ui(s.show)

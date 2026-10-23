@@ -124,24 +124,26 @@ func tui(args []string) error {
 	return attach(args)
 }
 
-// keys replaced in .env, never shown; the app's through --status, --stdin and --domain
+// keySet which keys .env holds, never their values
+func keySet(have map[string]string) map[string]bool {
+	set := map[string]bool{}
+	for _, k := range envfile.Keys {
+		set[k.Name] = have[k.Name] != ""
+	}
+	return set
+}
+
+// keys replaced in .env, never shown; the app's through --state and --stdin
 func keys(opts []string) error {
 	if err := envfile.Ensure(envPath()); err != nil {
 		return fail("can't write %s: %v", envPath(), err)
 	}
 	for _, o := range opts {
 		switch o {
-		case "--domain":
-			// not secret: the app's window opened on it
-			fmt.Println(envfile.Read(envPath())["BASE_DOMAIN"])
-			return nil
-		case "--status":
-			set := map[string]bool{}
+		case "--state":
+			// not secret, the domain: the app's window opened on it
 			have := envfile.Read(envPath())
-			for _, k := range envfile.Keys {
-				set[k.Name] = have[k.Name] != ""
-			}
-			b, _ := json.Marshal(set)
+			b, _ := json.Marshal(map[string]any{"keys": keySet(have), "domain": have["BASE_DOMAIN"]})
 			fmt.Println(string(b))
 			return nil
 		case "--stdin":

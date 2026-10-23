@@ -138,41 +138,32 @@ jobs:
           go run ./cmd/licenses
           git diff --exit-code THIRD_PARTY_LICENSES.txt || { echo "THIRD_PARTY_LICENSES.txt is stale, run make licenses and commit it" >&2; exit 1; }
 
-  # vet and tests, gating the release
+  # vet and tests gating the release, a job per target in parallel; no web client or
+  # cgo needed, Sulfur's window compiled by its own build
   check:
-    needs: [web]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux, goos: linux }
+          - { name: darwin, goos: darwin }
+          - { name: windows, goos: windows }
+    name: check (${{ matrix.name }})
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    env:
+      CGO_ENABLED: 0
+      GOOS: ${{ matrix.goos }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version-file: go.mod
-      # the module proxy drops streams now and then
-      - run: for i in 1 2 3 4; do go mod download && exit 0; sleep $((i * 5)); done; exit 1
-      # the web client the web job built, into internal/web/dist before anything embeds it
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
-        with:
-          name: web-dist
-          path: internal/web/dist
-      # Sulfur's window on Linux is GTK and WebKitGTK through cgo; their .debs kept across runs
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: ~/apt-archives/*.deb
-          key: apt-check-${{ github.run_id }}
-          restore-keys: apt-check-
-      - run: |
-          mkdir -p ~/apt-archives/partial
-          sudo apt-get update -q
-          sudo apt-get install -y -q -o Dir::Cache::Archives="$HOME/apt-archives" -o Acquire::Retries=3 libgtk-3-dev libwebkit2gtk-4.1-dev
-      # every package cross-vetted too: macOS and Windows hosts run the same roles
-      # the tests' own report kept to what ran: packages with none aren't listed
+      # tests' own vet off, run above; packages with no tests not listed
       - run: |
           set -o pipefail
           go vet ./...
-          go test ./... | awk '!/no test files/'
-          GOOS=darwin go vet ./...
-          GOOS=windows go vet ./...
+          if [ "$GOOS" = linux ]; then go test -vet=off ./... | awk '!/no test files/'; fi
 
   # one job per OS, Go alone: Linux's host the .deb around the binary, macOS's
   # and Windows' the menu bar app beside it, in a .dmg and a setup .exe

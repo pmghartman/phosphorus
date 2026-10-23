@@ -86,8 +86,8 @@ standalone.quit = () => appWin?.destroy();
 function workbench(open) {
   const w = frame('Sulfur');
   w.node.classList.add('sx-wb');
-  ide = ideStart(w, open);
-  appWin?.ready();
+  // the window shown even if the workbench throws, its error on screen at once, not after the 8s fallback
+  try { ide = ideStart(w, open); } finally { appWin?.ready(); }
   window.addEventListener('focus', () => ide?.focus());
 }
 
