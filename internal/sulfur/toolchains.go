@@ -173,7 +173,7 @@ func PowerShell(script string) string {
 	for i, r := range u {
 		b[2*i], b[2*i+1] = byte(r), byte(r>>8)
 	}
-	return "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand " + base64.StdEncoding.EncodeToString(b)
+	return "powershell -NoProfile -NonInteractive -EncodedCommand " + base64.StdEncoding.EncodeToString(b)
 }
 
 // posixProbe a line per finding: O|os|arch, T|id|path|version, N|sdk

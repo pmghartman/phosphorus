@@ -20,7 +20,6 @@ import time
 import unittest
 from unittest.mock import patch
 import zipfile
-import zlib
 
 SOURCE = pathlib.Path(__file__).resolve().parents[1] / "languages.py"
 spec = importlib.util.spec_from_file_location("languages", SOURCE)
@@ -117,7 +116,7 @@ class AdapterTests(unittest.TestCase):
 
 class HelperProcess:
     def __init__(self, request, home, *, command=None, stdin_encoding=None):
-        bootstrap = "import sys,base64,zlib;exec(zlib.decompress(base64.b64decode(sys.stdin.buffer.readline())))"
+        bootstrap = "import sys;exec(compile(sys.stdin.buffer.read(int(sys.stdin.buffer.readline())), '<sulfur-language-adapter>', 'exec'))"
         payload = base64.b64encode(json.dumps(request).encode()).decode()
         env = dict(os.environ, SULFUR_LANGUAGE_HOME=str(home), PYTHONDONTWRITEBYTECODE="1")
         if stdin_encoding:
@@ -126,7 +125,10 @@ class HelperProcess:
         if command:
             source = source.replace(b'\nif __name__ == "__main__":', ("\ncommand = lambda *args: " + repr(command) + '\nif __name__ == "__main__":').encode("utf-8"))
         self.process = subprocess.Popen([sys.executable, "-u", "-c", bootstrap, payload], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, text=True, encoding="utf-8")
-        self.process.stdin.write(base64.b64encode(zlib.compress(source)).decode() + "\n")
+        # Popen's text pipe translates newlines on Windows; send the length-
+        # framed source as bytes so its byte count stays exact on every host.
+        self.process.stdin.buffer.write(str(len(source)).encode() + b"\n" + source)
+        self.process.stdin.buffer.flush()
         self.process.stdin.flush()
         self.messages = queue.Queue()
         self.seen = []
