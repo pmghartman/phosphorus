@@ -4249,3 +4249,20 @@ button.ide-fd-place:hover { background: var(--ide-hover); color: var(--ide-stron
 .ide-sb-mesh .ide-ic { width: 14px; height: 14px; }
 .ide-sb-mesh:not(.linked) { opacity: 0.6; }
 .ide-sb-mesh.checking { opacity: 0.45; }
+
+/* File type glyphs retain their language color beside Git name decorations. */
+.ide-file-icon { flex: none; vertical-align: middle; }
+.ide-file-icon text { paint-order: stroke; }
+.ide { --ide-git-modified: #e2c08d; --ide-git-added: #73c991; --ide-git-untracked: #73c991; --ide-git-deleted: #e47768; --ide-git-renamed: #73c991; --ide-git-conflict: #f48771; }
+:root[data-theme="light"] .ide { --ide-git-modified: #895503; --ide-git-added: #39772b; --ide-git-untracked: #39772b; --ide-git-deleted: #a1260d; --ide-git-renamed: #39772b; --ide-git-conflict: #b52020; }
+.ide [data-git-status="modified"] { --ide-git-color: var(--ide-git-modified); }
+.ide [data-git-status="added"] { --ide-git-color: var(--ide-git-added); }
+.ide [data-git-status="untracked"] { --ide-git-color: var(--ide-git-untracked); }
+.ide [data-git-status="deleted"] { --ide-git-color: var(--ide-git-deleted); }
+.ide [data-git-status="renamed"] { --ide-git-color: var(--ide-git-renamed); }
+.ide [data-git-status="conflict"] { --ide-git-color: var(--ide-git-conflict); }
+.ide-row[data-git-status] > .ide-row-name, .ide-sec-head[data-git-status] > .ide-sec-title { color: var(--ide-git-color); }
+.ide-git-badge { flex: none; margin-left: 6px; color: var(--ide-git-color); font: 600 11px var(--mono); line-height: 16px; }
+.code-definition-link, .ide .code-definition-link { position: absolute; inset: 0; color: transparent; pointer-events: none; }
+.code-definition-link span { position: absolute; color: var(--ide-info, var(--accent)); text-decoration: underline; text-underline-offset: 2px; text-decoration-thickness: 1px; }
+.code-ta.code-definition-target { cursor: pointer; }

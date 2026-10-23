@@ -40,6 +40,8 @@ import { createLanguageWorkbench } from '../sulfur/language-workbench.js';
 import { formatWhitespace, formattingEdits } from '../sulfur/formatting.js';
 import { applyTextEdits } from '../sulfur/language-client.js';
 import { sidebarRight, runTargetName, moveBookmarks } from '../sulfur/navigation.js';
+import { fileKind, renderFileIcon } from '../sulfur/file-icons.js';
+import { parseGitStatus, explorerChanges } from '../sulfur/source-control.js';
 import { parserFor } from '../lezer.js';
 import { readBrowserFile, saveBrowserFile } from '../sulfur/browser-files.js';
 import { createInlineCompletions, completionModels } from '../sulfur/inline-completion.js';
@@ -158,18 +160,9 @@ const icon = (k, cls = '') => (k === 'sulfur'
   ? Object.assign(el('img', `ide-ic ide-mark ${cls}`), { src: '/sulfur/icon.svg', alt: '', draggable: false })
   : dkGlyph(IC[k], `ide-ic ${cls}`));
 
-// a file kind's glyph and hue, by extension, the explorer's and the tabs'
-const FILE_HUES = {
-  js: 'y', mjs: 'y', cjs: 'y', jsx: 'b', ts: 'b', tsx: 'b', json: 'y', py: 'b', go: 'c', rs: 'o', c: 'b', h: 'p', cpp: 'b',
-  cc: 'b', hpp: 'p', java: 'r', rb: 'r', php: 'p', sh: 'g', bash: 'g', zsh: 'g', md: 'b', html: 'o', htm: 'o', css: 'b',
-  scss: 'p', yml: 'p', yaml: 'p', toml: 'o', xml: 'o', svg: 'y', lua: 'b', sql: 'p', txt: '', log: '', lock: '', swift: 'o',
-  kt: 'p', cs: 'p', zig: 'y', ex: 'p', exs: 'p', hs: 'p', ps1: 'b', dockerfile: 'b', makefile: 'o', r: 'b', dart: 'c',
-};
 const extOf = (p) => { const b = String(p).split('/').pop().toLowerCase(); return b.includes('.') ? b.split('.').pop() : b; };
 function fileIcon(p, dir = false, open = false) {
-  if (dir) return icon(open ? 'folderOpen' : 'folder', 'ide-fi ide-fi-dir');
-  const x = extOf(p);
-  return icon(IMAGE_EXT.has(x) ? 'image' : 'file', `ide-fi ide-hue-${FILE_HUES[x] ?? 'n'}`);
+  return renderFileIcon(document, fileKind(p, { directory: dir, open, entries: dir ? I?.tree.get(p) || [] : [] }));
 }
 
 // the editor's language names as VS Code says them in its status bar
@@ -1282,6 +1275,7 @@ function loadDir(dir, force = false) {
 // every folder shown read again, an open one gone dropped from the open set
 async function refreshTree() {
   if (!I) return;
+  scmRefreshSoon();
   const dirs = [...I.expanded].filter((p) => p === I.st.root || I.tree.has(p));
   await Promise.all(dirs.map((d) => loadDir(d, true)));
   if (!I) return;
@@ -1298,6 +1292,16 @@ function paintTreeSoon() { if (!treeFrame) treeFrame = requestAnimationFrame(() 
 
 function paintTree() {
   const { tree, note } = I.ex;
+  const changes = I.scm?.key === wsKey() && I.scm?.host === gitWhere()?.host ? I.scm.decorations : null;
+  const rootChange = changes?.folders.get(I.st.root);
+  const rootHead = I.ex.treeHead.node;
+  rootHead.querySelector('.ide-git-badge')?.remove();
+  rootHead.removeAttribute('data-git-status');
+  if (rootChange) {
+    rootHead.dataset.gitStatus = rootChange.color;
+    const badge = el('span', 'ide-git-badge', rootChange.badge); badge.title = rootChange.title;
+    rootHead.insertBefore(badge, rootHead.querySelector('.ide-sec-acts'));
+  }
   const skip = excluded();
   const rows = [];
   const edit = I.ex.edit;
@@ -1313,7 +1317,7 @@ function paintTree() {
       if (skip(e.name)) continue;
       const p = filesJoin(dir, e.name);
       if (edit?.kind === 'rename' && edit.path === p) { editRow(depth); continue; }
-      rows.push(treeRow(e, p, depth));
+      rows.push(treeRow(e, p, depth, changes));
       if (e.dir && I.expanded.has(p)) walk(p, depth + 1);
     }
   };
@@ -1345,7 +1349,7 @@ function saveExpanded() {
   saveState();
 }
 
-function treeRow(e, p, depth) {
+function treeRow(e, p, depth, changes) {
   const row = el('div', `ide-row${e.dir ? ' ide-dir' : ''}${e.stale ? ' stale' : ''}`);
   row.id = `ide-r-${(I.seq += 1)}`;
   row.dataset.path = p;
@@ -1365,6 +1369,16 @@ function treeRow(e, p, depth) {
   if (e.dir) twist.append(icon(open ? 'down' : 'right'));
   row.append(twist);
   row.append(fileIcon(p, e.dir, open), el('span', 'ide-row-name', e.name));
+  const change = !e.dir && e.live?.length && !e.live.includes(I.scm?.host) ? null : (e.dir ? changes?.folders : changes?.files)?.get(p);
+  if (change) {
+    row.dataset.gitStatus = change.color;
+    const badge = el('span', 'ide-git-badge', change.badge);
+    badge.title = change.title;
+    badge.setAttribute('aria-hidden', 'true');
+    row.append(badge);
+    row.title += `\nGit: ${change.title}`;
+    row.setAttribute('aria-label', `${e.name}, ${change.title}`);
+  }
   const t = !e.dir && I.tabs.find((x) => x.rel === p);
   if (e.all) row.append(el('span', 'ide-deco', 'A'));
   else if (e.stale) row.append(el('span', 'ide-deco ide-deco-off', 'offline'));
@@ -1780,7 +1794,7 @@ function addTab(t, index) {
   const label = el('span', 'ide-tab-label', t.title);
   const desc = el('span', 'ide-tab-desc');
   const x = btn('ide-tab-x', 'close', `Close (${keyLabel(keyFor('workbench.action.closeActiveEditor'))})`, (e) => { e.stopPropagation(); closeTab(t); });
-  tab.append(t.rel ? fileIcon(t.rel) : icon(t.ic || 'file', 'ide-fi'), label, desc, x);
+  tab.append(t.rel || t.localName ? fileIcon(t.rel || t.localName) : icon(t.ic || 'file', 'ide-fi'), label, desc, x);
   tab.addEventListener('mousedown', (e) => { if (e.button === 1) e.preventDefault(); });
   tab.addEventListener('click', () => activate(t));
   tab.addEventListener('auxclick', (e) => { if (e.button === 1) closeTab(t); });
@@ -1806,7 +1820,7 @@ function addTab(t, index) {
     paintEditors();
     saveState();
   });
-  Object.assign(t, { tabEl: tab, labelEl: label, descEl: desc, info: null });
+  Object.assign(t, { tabEl: tab, labelEl: label, descEl: desc, iconPath: t.rel || t.localName || '', info: null });
   I.tabs.splice(Math.max(0, Math.min(index, I.tabs.length)), 0, t);
   I.views.append(t.view);
   return t;
@@ -1822,7 +1836,7 @@ function mountCode(t) {
   const share = t.share ?? 'home';
   const file = { host: t.host, share, path: t.rel, label: `${t.host}/${share === 'home' ? 'home' : shareOf(t.host, share)?.label || share}/${t.rel}` };
   t.edId = `ide-code-${(edSeq += 1)}`;
-  t.ed = codeEditor(t.view, file, null, t.edId, { bare: true, formatting: formattingOptions, diagnosticDelay: () => setting('editor.diagnostics.delay'), onState: (info) => tabState(t, info) });
+  t.ed = codeEditor(t.view, file, null, t.edId, { bare: true, definitionLinks: true, formatting: formattingOptions, diagnosticDelay: () => setting('editor.diagnostics.delay'), onState: (info) => tabState(t, info) });
   editors.set(t.edId, t.ed);
   codeTabs.set(codeKey(file), t.edId);
   t.dispose = () => t.ed.close();
@@ -1844,8 +1858,11 @@ function mountCode(t) {
   });
   t.view.addEventListener('click', (e) => {
     if (!(IS_MAC ? e.metaKey : e.ctrlKey) || !e.target.closest('.code-ta')) return;
+    const target = t.ed.definitionTarget(e);
+    if (!target) return;
     e.preventDefault();
     activate(t, false);
+    t.ed.select(target.from, target.from);
     goToDefinition(t).catch((err) => notify('error', err.message));
   });
 }
@@ -2476,6 +2493,8 @@ function paintEditors() {
   const counts = new Map();
   for (const t of I.tabs) counts.set(t.title, (counts.get(t.title) || 0) + 1);
   for (const t of I.tabs) {
+    const iconPath = t.rel || t.localName;
+    if (iconPath && t.iconPath !== iconPath) { t.tabEl.querySelector('.ide-fi')?.replaceWith(fileIcon(iconPath)); t.iconPath = iconPath; }
     t.labelEl.textContent = t.title;
     t.descEl.textContent = t.rel && counts.get(t.title) > 1 ? baseName(filesParent(t.rel)) : '';
     t.tabEl.classList.toggle('preview', !!t.preview);
@@ -4301,6 +4320,8 @@ async function switchMachine(host) {
 
 function setRunHost(h) {
   I.st.runHost = h;
+  paintTreeSoon();
+  scmRefreshSoon();
   saveState();
   paintStatus();
   paintTabActions();
@@ -6083,8 +6104,6 @@ async function applyChatEdits(edits) {
 // git run by the app's own server offline, or by the mesh's over your login on the
 // project's machine; Forgejo as you, with the login your vault keeps for it
 
-const SCM_LETTER = { M: 'M', A: 'A', D: 'D', R: 'R', C: 'C', U: 'U', T: 'M', '?': 'U' };
-
 // where git runs: the project's machine and its folder there
 function gitWhere() {
   const host = isHomeLoc() ? runHost() : locOf().host;
@@ -6175,46 +6194,29 @@ function scmMenu() {
 async function scmRefresh(loud = false) {
   const v = I.sideViews.get('scm');
   if (!v) return;
+  const state = I;
+  const revision = I.scmRevision = (I.scmRevision || 0) + 1;
+  const where = gitWhere();
   const key = wsKey();
-  let s = { key, top: '', prefix: '', branch: '', upstream: '', ahead: 0, behind: 0, staged: [], changes: [], why: '' };
+  let s = { key, host: where?.host, top: '', prefix: '', branch: '', upstream: '', ahead: 0, behind: 0, staged: [], changes: [], why: '' };
   try {
-    const where = await git(['rev-parse', '--show-toplevel', '--show-prefix'], { anyCode: true });
-    if (where.code !== 0) {
-      s.why = /not a git repository/i.test(where.err) ? 'none' : (where.err || 'git failed').trim();
+    const repo = await git(['rev-parse', '--show-toplevel', '--show-prefix'], { anyCode: true, where });
+    if (repo.code !== 0) {
+      s.why = /not a git repository/i.test(repo.err) ? 'none' : (repo.err || 'git failed').trim();
     } else {
-      const [t, pre = ''] = where.out.replace(/\r/g, '').split('\n');
+      const [t, pre = ''] = repo.out.replace(/\r/g, '').split('\n');
       s.top = t.trim();
       s.prefix = pre.trim();
-      const st = await git(['status', '--porcelain=v1', '-b', '-z', '--untracked-files=all']);
-      const parts = st.out.split('\0');
-      for (let i = 0; i < parts.length; i++) {
-        const e = parts[i];
-        if (!e) continue;
-        if (e.startsWith('## ')) {
-          const h = e.slice(3);
-          const m = h.match(/^(?:No commits yet on )?([^.\s]+(?:\.(?!\.)[^.\s]*)*)(?:\.\.\.(\S+))?(?: \[(.*)\])?/);
-          s.branch = m?.[1] || h;
-          s.upstream = m?.[2] || '';
-          s.ahead = Number((m?.[3] || '').match(/ahead (\d+)/)?.[1] || 0);
-          s.behind = Number((m?.[3] || '').match(/behind (\d+)/)?.[1] || 0);
-          continue;
-        }
-        const x = e[0];
-        const y = e[1];
-        const path = e.slice(3);
-        let from = '';
-        if (x === 'R' || x === 'C') from = parts[++i] || '';
-        if (x === '?' && y === '?') { s.changes.push({ path, code: 'U', untracked: true }); continue; }
-        if (x === 'U' || y === 'U' || (x === 'A' && y === 'A') || (x === 'D' && y === 'D')) { s.changes.push({ path, code: '!', conflict: true }); continue; }
-        if (x !== ' ') s.staged.push({ path, from, code: SCM_LETTER[x] || x });
-        if (y !== ' ') s.changes.push({ path, code: SCM_LETTER[y] || y, deleted: y === 'D' });
-      }
+      const st = await git(['status', '--porcelain=v1', '-b', '-z', '--untracked-files=all'], { where });
+      Object.assign(s, parseGitStatus(st.out));
     }
   } catch (err) {
     s.why = err.message;
   }
-  if (!I || wsKey() !== key) return;
+  if (I !== state || I.scmRevision !== revision || wsKey() !== key || gitWhere()?.host !== where?.host) return;
+  s.decorations = explorerChanges(s, I.st.root);
   I.scm = s;
+  paintTreeSoon();
   if (loud && s.why && s.why !== 'none') notify('error', `Source Control: ${s.why}`);
   paintScm();
   paintStatus();
