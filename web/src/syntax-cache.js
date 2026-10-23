@@ -14,6 +14,8 @@ export function createSyntaxCache(TreeFragment) {
       tree = parser.parse(text, fragments); previous = text; grammar = parser;
       return tree;
     },
+    // the tree when it's already been parsed for this text, else null: never parses
+    current(parser, text) { return tree && grammar === parser && previous === text ? tree : null; },
     clear() { tree = null; grammar = null; previous = ''; },
   };
 }

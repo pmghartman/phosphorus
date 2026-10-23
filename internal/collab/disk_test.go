@@ -142,3 +142,36 @@ func TestDiskDiffSurvivesJSONForUnicode(t *testing.T) {
 		}
 	}
 }
+
+func TestEOLChangeWritesTheFileWithItsNewLineEnding(t *testing.T) {
+	s, path := diskFixture(t, "a\nb\n")
+	if status, _ := s.saveNow(""); status != 200 {
+		t.Fatal("initial save failed")
+	}
+	s.onMessage(&client{}, map[string]any{"type": "eol", "eol": "\r\n"})
+	b, _ := os.ReadFile(path)
+	if string(b) != "a\r\nb\r\n" || s.eol != "\r\n" || s.eolPending || s.saved != s.version {
+		t.Fatalf("CRLF not written: %q pending=%v", b, s.eolPending)
+	}
+	if Str(s.text) != "a\nb\n" {
+		t.Fatal("the session's text should stay LF")
+	}
+	// a file written this second reads as still changing: aged, as a later save would find it
+	quiet := time.Now().Add(-time.Second)
+	if err := os.Chtimes(path, quiet, quiet); err != nil {
+		t.Fatal(err)
+	}
+	s.onMessage(&client{}, map[string]any{"type": "eol", "eol": "\n"})
+	if b, _ = os.ReadFile(path); string(b) != "a\nb\n" {
+		t.Fatalf("LF not written back: %q", b)
+	}
+}
+
+func TestEOLChangeRefusedOnAReadOnlyShare(t *testing.T) {
+	s, path := diskFixture(t, "a\nb\n")
+	s.share.Perms = "r"
+	s.onMessage(&client{}, map[string]any{"type": "eol", "eol": "\r\n"})
+	if b, _ := os.ReadFile(path); string(b) != "a\nb\n" || s.eol != "\n" {
+		t.Fatal("a read-only file's line endings changed")
+	}
+}

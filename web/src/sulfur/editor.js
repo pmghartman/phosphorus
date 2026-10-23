@@ -197,8 +197,22 @@ function codeEditor(view, file, btn, id, opts = {}) {
     // the language server asked once the mouse rests, VS Code's 300ms
     if (opts.hover && we > ws) hoverTimer = setTimeout(() => { hoverTimer = 0; hoverAt(at, x, y); }, 300);
   });
-  for (const event of ['mouseleave', 'blur', 'input', 'keydown']) ta.addEventListener(event, hideHover);
+  for (const event of ['blur', 'input', 'keydown']) ta.addEventListener(event, hideHover);
   scroller.addEventListener('scroll', hideHover);
+  // a rich hover takes the mouse: moved into, it stays to be read, scrolled and its links
+  // followed; focus stays in the text throughout
+  let leaveTimer = 0;
+  ta.addEventListener('mouseleave', () => { clearTimeout(leaveTimer); leaveTimer = setTimeout(() => { if (!diagnosticHover.matches(':hover')) hideHover(); }, 250); });
+  ta.addEventListener('mouseenter', () => clearTimeout(leaveTimer));
+  diagnosticHover.addEventListener('mouseleave', () => { clearTimeout(leaveTimer); leaveTimer = setTimeout(hideHover, 250); });
+  diagnosticHover.addEventListener('mouseenter', () => clearTimeout(leaveTimer));
+  diagnosticHover.addEventListener('mousedown', (e) => e.preventDefault());
+  diagnosticHover.addEventListener('click', (e) => {
+    const a = e.target.closest('a[href]');
+    if (!a) return;
+    e.preventDefault();
+    if (/^https?:/i.test(a.href)) (opts.openLink || ((u) => window.open(u, '_blank', 'noopener')))(a.href);
+  });
   function clearDefinitionHover() {
     if (!definitionHover) return;
     definitionHover = null; definitionLayer.hidden = true; definitionLayer.replaceChildren();
@@ -277,7 +291,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
     const next = history.step(ta.value, [ta.selectionStart, ta.selectionEnd], redo);
     if (!next) return false;
     ta.value = next.text;
-    historyText = next.text;
+    historyText = ta.value;
     ta.setSelectionRange(...next.selection);
     beforeSelection = next.selection;
     redraw(); flush(); paintState(); caretInView(); sendCursor();
@@ -572,9 +586,18 @@ function codeEditor(view, file, btn, id, opts = {}) {
       gutter.append(numberCopy); nums.style.visibility = 'hidden';
     } else nums.style.visibility = '';
   }
-  function draw() {
+  // the selection read once a frame, before the frame's writes, so the layers drawn after it
+  // don't each force a layout of the textarea to read it again
+  let frameSel = null, decoStamp = -1;
+  const selNow = () => frameSel || [ta.selectionStart, ta.selectionEnd];
+  function draw(stamp) {
     drawFrame = 0;
     if (closed) return;
+    frameSel = [ta.selectionStart, ta.selectionEnd];
+    decoStamp = stamp;
+    try { drawFrame0(); } finally { frameSel = null; }
+  }
+  function drawFrame0() {
     const text = ta.value;
     if (definitionHover && definitionHover.text !== text) clearDefinitionHover();
     const changed = text !== shownText;
@@ -602,10 +625,9 @@ function codeEditor(view, file, btn, id, opts = {}) {
   // the drawn colors
   function isCode(text) {
     const parser = text.length <= HL_MAX && parserNow(lang.check);
-    if (parser) {
-      const tree = syntax.parse(parser, text);
-      return (i) => !/String|Comment|Regex|Template|Char/.test(tree.resolveInner(i, 1).name);
-    }
+    // a long file is parsed once typing pauses (HL_IDLE): its tree used only when it's current
+    const tree = parser && (text.length > HL_IDLE ? syntax.current(parser, text) : syntax.parse(parser, text));
+    if (tree) return (i) => !/String|Comment|Regex|Template|Char/.test(tree.resolveInner(i, 1).name);
     return (i) => !/hljs-(comment|string|regexp)/.test(tokenClass(i));
   }
   // the caret's word (or a short selection) found through the file once the caret rests
@@ -642,7 +664,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
   const decoSoon = () => { decoFrame ||= requestAnimationFrame(() => { decoFrame = 0; paintDeco(); }); };
   function paintDeco() {
     if (closed || view.hidden) return;
-    const text = ta.value, s = ta.selectionStart, e = ta.selectionEnd;
+    const text = ta.value, [s, e] = selNow();
     const display = opts.display?.() || {};
     const g = geom();
     const line = lineAt(text, e) - 1;
@@ -824,7 +846,8 @@ function codeEditor(view, file, btn, id, opts = {}) {
 
   // --- the host told: state, caret and errors, once a frame at most ---
   let tellFrame = 0;
-  const tell = () => { if (!tellFrame) tellFrame = requestAnimationFrame(() => { tellFrame = 0; if (closed) return; paintDeco(); opts.onState?.(info()); }); };
+  // decorations follow the caret; drawn already this frame if the text was
+  const tell = () => { if (!tellFrame) tellFrame = requestAnimationFrame((stamp) => { tellFrame = 0; if (closed) return; if (stamp !== decoStamp) paintDeco(); opts.onState?.(info()); }); };
   let indexedText, lineStarts = [];
   const firstAbove = (p) => { let lo = 0, hi = lineStarts.length; while (lo < hi) { const mid = (lo + hi) >>> 1; if (lineStarts[mid] <= p) lo = mid + 1; else hi = mid; } return lo; };
   // the line starts kept for the text: an edit's lines found again where it changed, the
@@ -1110,7 +1133,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
   function caretInView(center = false) {
     // the line from the kept index and the column as drawn: the measured line height, so a
     // caret far down a long file is scrolled to where its line is drawn
-    const text = ta.value, end = ta.selectionEnd;
+    const text = ta.value, end = selNow()[1];
     const line = lineAt(text, end) - 1;
     const { lh, cw, top: padY, left: padX } = geom();
     const col = columnOf(text, lineStarts[line], end);
@@ -1522,7 +1545,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
       const next = opApply(before, ops);
       const sel = selection || [opMap(ops, ta.selectionStart), opMap(ops, ta.selectionEnd)];
       history.recordOperation(before, ops, [ta.selectionStart, ta.selectionEnd], sel);
-      ta.value = next; historyText = next; beforeSelection = sel;
+      ta.value = next; historyText = ta.value; beforeSelection = sel;
       ta.setSelectionRange(...sel);
       redraw(); flush(); paintState(); caretInView(); sendCursor();
       return true;
@@ -1596,7 +1619,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
       definitionLinks?.dispose();
       guideResize.disconnect(); hoverResize.disconnect(); cancelAnimationFrame(guideFrame);
       hlAbort?.abort();
-      for (const timer of [bigTimer, hlTimer, mdTimer, checkTimer, cursorTimer, agentFade, armed, occurrenceTimer, hoverTimer]) clearTimeout(timer);
+      for (const timer of [bigTimer, hlTimer, mdTimer, checkTimer, cursorTimer, agentFade, armed, occurrenceTimer, hoverTimer, leaveTimer]) clearTimeout(timer);
       hoverAbort?.abort();
       for (const frame of [drawFrame, tellFrame, viewFrame, decoFrame, overviewFrame]) cancelAnimationFrame(frame);
       syntax.clear();

@@ -152,7 +152,9 @@ func (s *session) observeDisk(snapshot diskSnapshot) {
 		was := s.diskConflict
 		s.diskConflict, s.diskProblem = false, ""
 		s.diskPending = ""
-		if strings.Contains(snapshot.text, "\r\n") {
+		// the disk's line ending, unless one chosen in the editor is waiting to be written
+		if s.eolPending {
+		} else if strings.Contains(snapshot.text, "\r\n") {
 			s.eol = "\r\n"
 		} else {
 			s.eol = "\n"
@@ -183,6 +185,8 @@ func (s *session) observeDisk(snapshot diskSnapshot) {
 		return
 	}
 	s.applyDiskText(text)
+	// another program's save wins over a line ending chosen and not yet written
+	s.eolPending = false
 	if strings.Contains(snapshot.text, "\r\n") {
 		s.eol = "\r\n"
 	} else {
