@@ -1,14 +1,14 @@
-<p align="center">
-  <a href="https://github.com/pmghartman/phosphorus/releases/latest"><img alt="release" src="https://img.shields.io/github/v/release/pmghartman/phosphorus?style=flat-square&color=a371f7"></a>
-  <a href="LICENSE"><img alt="license" src="https://img.shields.io/github/license/pmghartman/phosphorus?style=flat-square&color=f0883e"></a>
-  <img alt="platforms" src="https://img.shields.io/badge/macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-555?style=flat-square">
-</p>
-
 <p align="center"><img src=".github/assets/phosphorus-ascii.svg" alt="" width="160"></p>
 
 <h2 align="center">Phosphorus</h2>
 
 <p align="center"><b>Every computer you own, as one desktop in your browser.</b></p>
+
+<p align="center">
+  <a href="https://github.com/pmghartman/phosphorus/releases/latest"><img alt="release" src="https://img.shields.io/github/v/release/pmghartman/phosphorus?style=flat-square&color=a371f7"></a>
+  <a href="LICENSE"><img alt="license" src="https://img.shields.io/github/license/pmghartman/phosphorus?style=flat-square&color=f0883e"></a>
+  <img alt="platforms" src="https://img.shields.io/badge/macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-555?style=flat-square">
+</p>
 
 Install it on each machine and they find each other. No servers to rent, no config files: one key, and your Macs, PCs and Linux boxes become one private mesh you can open from anywhere.
 
