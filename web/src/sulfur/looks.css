@@ -1,0 +1,45 @@
+/* Sulfur under the whole looks: visual studio under windows 11, xcode under macos, a terminal's under cli */
+
+/* --- sulfur: visual studio under windows 11, xcode under macos, a plain terminal's under cli ----- */
+
+/* visual studio 2022: segoe chrome, the blue status bar, teal line numbers, its own syntax colors */
+
+
+/* xcode: its default dark and light, neutral bars, no colored status, its syntax colors */
+
+
+
+
+.ide-win:is(.ide-theme-macos, .ide-theme-win11) .ide { font-size: 13px; }
+.ide-win:is(.ide-theme-macos, .ide-theme-win11) .ide-sec-head { letter-spacing: 0; font-weight: 600; }
+.ide-win:is(.ide-theme-macos, .ide-theme-win11) .dk-head { background: var(--ide-chrome); }
+.ide-win:is(.ide-theme-macos, .ide-theme-win11) .ide-status { background: var(--ide-status); color: var(--ide-status-fg); border-top-color: var(--ide-border); }
+.ide-win:is(.ide-theme-macos, .ide-theme-win11) .ide-status .ide-sb:hover { background: color-mix(in srgb, var(--ide-status-fg) 14%, transparent); }
+.ide-win:is(.ide-theme-macos, .ide-theme-win11) .ide-sb-remote { background: none; color: inherit; }
+.ide-win:is(.ide-theme-macos, .ide-theme-win11) .ide-sb-remote.none { background: none; color: inherit; }
+.ide-win.ide-theme-win11 .ide-status { border-top: 0; }
+.ide-win.ide-theme-win11 .ide-sb-bell.dot::after { background: #ffffff; }
+/* visual studio: document tabs flat, the open one lifted in the accent's line; tool window captions in the chrome's color */
+.ide-win.ide-theme-win11 .ide-tabs-row { background: var(--ide-chrome); }
+.ide-win.ide-theme-win11 .ide-tab.on { box-shadow: inset 0 -2px 0 var(--ide-accent); }
+.ide-win.ide-theme-win11 :is(.ide-side-head, .ide-aux-head) { background: var(--ide-side); }
+.ide-win.ide-theme-win11 .ide-activity { background: var(--ide-chrome); }
+.ide-win.ide-theme-win11 .ide-act.on::before { width: 3px; top: 12px; bottom: 12px; border-radius: 2px; }
+.ide-win.ide-theme-win11 .ide-cc { flex-basis: 320px; justify-content: flex-start; padding: 0 8px; border-radius: 4px; }
+/* xcode: the navigator's vibrant sidebar, tabs as rounded pills, the picked row the accent */
+.ide-win.ide-theme-macos .ide-activity { border-right-color: var(--ide-border); }
+.ide-win.ide-theme-macos .ide-act.on { color: var(--ide-accent); }
+.ide-win.ide-theme-macos .ide-act.on::before { content: none; }
+.ide-win.ide-theme-macos .ide-tabs-row { background: var(--ide-chrome); padding: 2px 4px; gap: 2px; height: 28px; }
+.ide-win.ide-theme-macos .ide-tab { border-radius: 6px; border: 0; height: 23px; }
+.ide-win.ide-theme-macos .ide-tab.on { height: 23px; margin: 0; border: 0; box-shadow: none; background: color-mix(in srgb, var(--ide-fg) 12%, transparent); }
+.ide-win.ide-theme-macos .ide-cc { border-radius: 6px; }
+/* their own syntax colors */
+.ide-win.ide-theme-macos .ide .code-hl .hljs-keyword { font-weight: 600; }
+/* the cli's: square, its picked tab inverse */
+.ide-win.ide-theme-cli .ide-tab.on { background: var(--fg); color: var(--bg); box-shadow: none; }
+.ide-win.ide-theme-cli .ide-tab.on * { color: inherit; }
+
+@media (prefers-reduced-motion: reduce) {
+  :root:is([data-palette="macos"], [data-palette="win11"]) :is(.dk-win:not(.dk-leaving, .dk-minimizing, .dk-restoring), .dk-menu, .dk-pop, .tab-menu, .update-pane, .modal-box, .toast) { animation: none; }
+}

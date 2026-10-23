@@ -4,7 +4,7 @@ import {
   cssVar,
   hostUrl,
   name,
-} from '../app.js';
+} from '#host';
 
 // --- terminals --------------------------------------------------------------
 

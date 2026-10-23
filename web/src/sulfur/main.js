@@ -3,7 +3,7 @@
 // bar the window's own, as VS Code's is. It opens ready to work offline on this
 // computer's files; a mesh is connected to from it, and remembered
 import { standalone, sidecarInfo, bootLocal, bootMesh, meshMe, el, dkGlyph } from './host.js';
-import { ideStart } from '../apps/sulfur.js';
+import { ideStart } from './workbench.js';
 
 // the desktop app's window, from its Go shell; none in a browser
 const appWin = window.sulfurApp || null;

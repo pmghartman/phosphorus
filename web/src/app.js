@@ -14,7 +14,7 @@ const APPS = {
   terminal: () => import('./apps/terminal.js'),
   files: () => import('./apps/files.js'),
   code: () => import('./apps/code.js'),
-  sulfur: () => import('./apps/sulfur.js'),
+  sulfur: () => import('./sulfur/workbench.js'),
 };
 // the newest /api/state, handed to an app as it loads
 let lastState = null;

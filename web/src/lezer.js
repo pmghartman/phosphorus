@@ -5,7 +5,7 @@
 import { highlightTree, tagHighlighter, tags as t } from '@lezer/highlight';
 import { TreeFragment } from '@lezer/common';
 import { createSyntaxCache } from './syntax-cache.js';
-import { highlightRanges } from './sulfur/semantic-tokens.js';
+import { highlightRanges } from './highlight-ranges.js';
 export const syntaxCache = () => createSyntaxCache(TreeFragment);
 
 const GRAMMARS = {
