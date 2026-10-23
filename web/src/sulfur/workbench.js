@@ -1116,7 +1116,7 @@ function buildMenubar() {
     b.setAttribute('aria-haspopup', 'true');
     const openIt = (focusFirst = false) => {
       for (const o of tops) o.classList.toggle('on', o === b);
-      menu(b, items(), { onClose: () => b.classList.remove('on'), bar: tops, focusFirst });
+      menu(b, items(), { onClose: () => b.classList.remove('on'), bar: tops, focusFirst, reopen: true });
     };
     b.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
@@ -4058,9 +4058,14 @@ const cmdItem = (id, label, checked) => ({
 
 // at: an element (below it, or beside with side) or {x, y}
 function menu(at, items, o = {}) {
+  // the button whose menu is open clicked again closes it, as every dropdown's does; the
+  // outside-click handler leaves its own anchor alone, so this is where that's decided
+  const again = at instanceof Element && I.menuOpen?.anchor === at;
   closeMenu();
+  if (again && !o.reopen) return;
   const m = { anchor: at instanceof Element ? at : null, bar: o.bar, onClose: o.onClose, subs: [] };
   I.menuOpen = m;
+  m.anchor?.setAttribute('aria-expanded', 'true');
   const node = open(items, at, o, 0);
   m.node = node;
   const away = (e) => { if (![node, ...m.subs.map((s) => s.node)].some((n) => n.contains(e.target)) && !(m.anchor && m.anchor.contains(e.target))) closeMenu(); };
@@ -4191,6 +4196,7 @@ function closeMenu() {
   const m = I?.menuOpen;
   if (!m) return;
   I.menuOpen = null;
+  m.anchor?.setAttribute('aria-expanded', 'false');
   clearTimeout(m.hover);
   m.off?.();
   m.node?.remove();

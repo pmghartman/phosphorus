@@ -132,6 +132,8 @@
 .ide-toolbar > .ide-btn { flex: none; min-width: 26px; height: 27px; border-radius: 3px; }
 .ide-toolbar > :is(.ide-toolbar-select, .ide-toolbar-run) { width: auto; }
 .ide-toolbar .ide-toolbar-select { display: flex; align-items: center; gap: 5px; padding: 0 6px; }
+/* a dropdown whose menu is open stays pressed until it closes */
+.ide-toolbar .ide-toolbar-select[aria-expanded="true"] { background: var(--ide-sel-off, var(--ide-hover)); }
 .ide-toolbar-select > .ide-ic:last-child { width: 11px; }
 .ide-toolbar-label { flex: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; }
 .ide-toolbar-select[aria-label="Navigation History"], .ide-toolbar-select[aria-label="Startup Target"] { gap: 0; padding: 0 3px; min-width: 16px; }
