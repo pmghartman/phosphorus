@@ -769,6 +769,7 @@ func filesRoute(w http.ResponseWriter, r *http.Request, host, op string, q url.V
 			}
 			out["entries"] = ents
 		}
+		st, b = files.Quiet(q, st, b)
 		sendJSON(w, st, b)
 		return
 	case m == "GET" && op == "tree":
@@ -789,6 +790,7 @@ func filesRoute(w http.ResponseWriter, r *http.Request, host, op string, q url.V
 		return
 	case m == "GET" && op == "read":
 		st, b := files.Read(sh, rel)
+		st, b = files.Quiet(q, st, b)
 		sendJSON(w, st, b)
 		return
 	case m == "GET" && op == "download":

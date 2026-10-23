@@ -149,9 +149,11 @@ export const filesApi = (loc, op, params) => {
 };
 export async function filesCall(loc, op, init, params) {
   if (loc.host === '*') return homeCall(op, init, params);
-  const res = await fetch(filesApi(loc, op, params), init);
+  // a missing path answered 200 with missing set, so probing a host without it logs no 404
+  const quiet = op === 'list' || op === 'read' ? { quiet: '1' } : null;
+  const res = await fetch(filesApi(loc, op, quiet ? { ...params, ...quiet } : params), init);
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.error || `status ${res.status}`);
+  if (!res.ok || body.missing) throw new Error(body.error || `status ${res.status}`);
   return body;
 }
 async function homeList(dir) {

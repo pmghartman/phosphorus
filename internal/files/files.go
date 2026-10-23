@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/fs"
 	"math"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -1135,4 +1136,13 @@ func HomeFilterTree(who *Who, entries []map[string]any, isUser func(string) bool
 		}
 	}
 	return out
+}
+
+// Quiet turns a missing path into a 200 flagged missing, for probes of paths a host may lack
+func Quiet(q url.Values, st int, b any) (int, any) {
+	if _, on := q["quiet"]; !on || st != 404 {
+		return st, b
+	}
+	e, _ := b.(E)
+	return 200, E{"missing": true, "error": e["error"]}
 }
