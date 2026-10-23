@@ -54,6 +54,7 @@ type local struct {
 }
 
 func main() {
+	trace("launched")
 	flag.Parse()
 	log.SetFlags(0)
 	log.SetPrefix("[sulfur] ")
@@ -63,6 +64,7 @@ func main() {
 	}
 	origin = "http://" + net.JoinHostPort(host, port)
 	me = whoAmI()
+	trace("this computer read")
 	// one user's own machine: a big project's whole tree, for quick open
 	files.TreeMax = 60000
 	loadConfig()
@@ -88,6 +90,7 @@ func main() {
 		}
 		log.Fatal(err)
 	}
+	trace("listening")
 	log.Printf("Sulfur %s on %s, %s", version, origin, me.Host)
 	if *headless {
 		log.Fatal(srv.Serve(ln))
@@ -155,21 +158,6 @@ func whoAmI() local {
 	}
 	l.Info = map[string]any{"platform": runtime.GOOS, "shell": l.Shell, "files": map[string]any{"shares": shares}}
 	return l
-}
-
-// drives every fixed drive on Windows, the root elsewhere
-func drives() []string {
-	if runtime.GOOS != "windows" {
-		return []string{"/"}
-	}
-	out := []string{}
-	for c := 'C'; c <= 'Z'; c++ {
-		d := string(c) + `:\`
-		if st, err := os.Stat(d); err == nil && st.IsDir() {
-			out = append(out, d)
-		}
-	}
-	return out
 }
 
 // --- the app's own settings: offline or which server ------------------------------
