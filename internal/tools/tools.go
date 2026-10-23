@@ -23,7 +23,7 @@ import (
 
 const (
 	// LlamaTag upstream's llama.cpp release
-	LlamaTag   = "b11284"
+	LlamaTag   = "b11838"
 	retryAfter = time.Minute
 	okStamp    = ".phosphorus-ok"
 )

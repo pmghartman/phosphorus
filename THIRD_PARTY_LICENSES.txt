@@ -162,7 +162,7 @@ cloudflared 2026.9.3, text [36]
 
 == Programs a model host downloads at run time ==
 
-llama.cpp b11284, text [41]
+llama.cpp b11838, text [41]
     https://github.com/ggml-org/llama.cpp
 
 
@@ -2571,7 +2571,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
----- [41] llama.cpp b11284 ----
+---- [41] llama.cpp b11838 ----
 
 MIT License
 
