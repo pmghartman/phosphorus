@@ -136,7 +136,13 @@ jobs:
       # Sulfur's window on Linux is GTK and WebKitGTK through cgo
       - run: sudo apt-get update -q && sudo apt-get install -y -q libgtk-3-dev libwebkit2gtk-4.1-dev
       # every package cross-vetted too: macOS and Windows hosts run the same roles
-      - run: go vet ./... && go test ./... && GOOS=darwin go vet ./... && GOOS=windows go vet ./...
+      # the tests' own report kept to what ran: packages with none aren't listed
+      - run: |
+          set -o pipefail
+          go vet ./...
+          go test ./... | awk '!/no test files/'
+          GOOS=darwin go vet ./...
+          GOOS=windows go vet ./...
 
   # one job per OS, Go alone: Linux's host the .deb around the binary, macOS's
   # and Windows' the menu bar app beside it, in a .dmg and a setup .exe
