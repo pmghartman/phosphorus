@@ -20,9 +20,24 @@
   try { pick = localStorage.getItem('phosphorus-theme'); } catch {}
   const theme = pick || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
   if (theme === 'light' || theme === 'oled') document.documentElement.dataset.theme = theme;
-  let pal = null;
-  try { pal = localStorage.getItem('phosphorus-palette'); } catch {}
-  document.documentElement.dataset.palette = pal || 'phosphorus';
+  // the theme as theme.js last put it up: its look, rounded corners, page font, a custom one's css
+  const r = document.documentElement;
+  let a = null;
+  try { a = JSON.parse(localStorage.getItem('phosphorus-theme-applied')); } catch {}
+  let look = a?.look;
+  try { look = look || localStorage.getItem('phosphorus-palette'); } catch {}
+  r.dataset.palette = look && look !== 'custom' ? look : 'phosphorus';
+  if (a?.id) r.dataset.themeId = a.id;
+  r.toggleAttribute('data-round', !!a?.round);
+  r.toggleAttribute('data-sans', !!a?.sans);
+  if (a?.css) {
+    r.setAttribute('data-custom', '');
+    r.toggleAttribute('data-custom-desk', !!a.desk);
+    const s = document.createElement('style');
+    s.id = 'phosphorus-custom';
+    s.textContent = a.css;
+    document.head.append(s);
+  }
 })();
 </script>
 </head>

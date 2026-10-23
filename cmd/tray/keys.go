@@ -10,15 +10,30 @@ import (
 	_ "embed"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/pmghartman/phosphorus/internal/theme"
 )
 
 //go:embed assets/keys.html
-var keysPage []byte
+var keysHTML string
+
+// the form in the theme library's colors, the mesh's own, light or dark as the system is
+var keysPage = []byte(strings.Replace(keysHTML, "/*theme*/", keysTheme(), 1))
+
+func keysTheme() string {
+	l := theme.Load()
+	vars := func(t theme.Tokens) string {
+		return fmt.Sprintf("--bg: %s; --fg: %s; --muted: %s; --line: %s; --field: %s; --accent: %s; --ok: %s; --bad: %s;",
+			t["--bg"], t["--fg"], t["--muted"], t["--border"], t["--card"], t["--accent"], t["--online"], t["--offmesh"])
+	}
+	return ":root { " + vars(l.Tokens(theme.Default, "light")) + " }\n  @media (prefers-color-scheme: dark) { :root { " + vars(l.Tokens(theme.Default, "dark")) + " } }"
+}
 
 var keysSrv struct {
 	sync.Mutex
