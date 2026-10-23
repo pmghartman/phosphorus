@@ -4,6 +4,7 @@ import { reindent } from './format.js';
 import { diagnosticDelay } from './diagnostics.js';
 import { inlineSuffix, preferLanguageCompletion } from './inline-completion.js';
 import { semanticRanges } from './semantic-tokens.js';
+import { documentSymbols } from './navigation.js';
 
 const titles = ['TypeScript', 'Python', 'JavaScript', 'Java', 'C#', 'PHP', 'Shell (Bash)', 'C / C++', 'HCL / Terraform', 'Go'];
 const ids = ['typescript', 'python', 'javascript', 'java', 'csharp', 'php', 'shell', 'cpp', 'hcl', 'go'];
@@ -210,12 +211,12 @@ export function createLanguageWorkbench(api) {
     if (signal?.aborted) return null;
     const doc = await get(tab);
     if (!doc || signal?.aborted) return null;
-    const capability = { completion: 'completionProvider', definition: 'definitionProvider', references: 'referencesProvider', rename: 'renameProvider', formatting: 'documentFormattingProvider' }[method];
+    const capability = { completion: 'completionProvider', definition: 'definitionProvider', declaration: 'declarationProvider', typeDefinition: 'typeDefinitionProvider', implementation: 'implementationProvider', references: 'referencesProvider', rename: 'renameProvider', formatting: 'documentFormattingProvider', documentSymbol: 'documentSymbolProvider', prepareCallHierarchy: 'callHierarchyProvider' }[method];
     if (!doc.session.client.capabilities[capability]) return null;
     const text = tab.ed.text();
     const caret = tab.ed.selection()[0];
     const version = doc.session.client.documents.get(doc.uri).version;
-    const value = await doc.session.client.request(`textDocument/${method}`, { textDocument: { uri: doc.uri }, position: positionAt(text, caret), ...extra }, { signal });
+    const value = await doc.session.client.request(`textDocument/${method}`, { textDocument: { uri: doc.uri }, ...(method === 'documentSymbol' ? {} : { position: positionAt(text, caret) }), ...extra }, { signal });
     if (!api.alive(tab) || text !== tab.ed.text() || version !== doc.session.client.documents.get(doc.uri)?.version || (method === 'completion' && tab.ed.selection()[0] !== caret)) return { stale: true, value, doc, text, caret, version };
     return { value, doc, text, caret, version };
   }
@@ -435,7 +436,8 @@ export function createLanguageWorkbench(api) {
     tab.dispose = () => { hide(); stopAnalysis(tab); completers.delete(tab); document.removeEventListener('selectionchange', selectionChanged); const doc = attached.get(tab); if (doc) { clearTimeout(doc.diagnosticTimer); doc.diagnosticController?.abort(); doc.session.client.closeDocument(doc.uri); attached.delete(tab); diagnostics.delete(doc.session.key + '\n' + doc.uri); } dispose(); box.remove(); api.problems(); };
   }
   async function navigate(tab, references = false) {
-    const result = await request(tab, references ? 'references' : 'definition', references ? { context: { includeDeclaration: true } } : {});
+    const method = typeof references === 'string' ? references : references ? 'references' : 'definition';
+    const result = await request(tab, method, method === 'references' ? { context: { includeDeclaration: true } } : {});
     if (!result) return false;
     if (result.stale) return true;
     const locations = (Array.isArray(result.value) ? result.value : result.value ? [result.value] : []).flatMap((x) => {
@@ -447,7 +449,7 @@ export function createLanguageWorkbench(api) {
       } catch { return []; }
     });
     if (!locations.length) { api.notice('No project locations returned by the language server.'); return true; }
-    const hit = locations.length === 1 ? locations[0] : await api.pick(locations.map((x) => ({ label: `${x.rel}:${x.range.start.line + 1}`, value: x })), { title: references ? 'References' : 'Definitions' });
+    const hit = locations.length === 1 ? locations[0] : await api.pick(locations.map((x) => ({ label: `${x.rel}:${x.range.start.line + 1}`, value: x })), { title: method === 'references' ? 'References' : method === 'implementation' ? 'Implementations' : 'Definitions' });
     if (hit && api.alive(tab)) {
       if (hit.metadata) {
         const metadata = await result.doc.session.client.request('csharp/metadata', { textDocument: { uri: hit.uri } });
@@ -463,6 +465,48 @@ export function createLanguageWorkbench(api) {
       } else api.open(hit.rel, result.doc.session.context, hit.range);
     }
     return true;
+  }
+  async function documentOutline(tab, signal) {
+    const result = await request(tab, 'documentSymbol', {}, signal);
+    return result && !result.stale ? documentSymbols(result.text, result.value, result.doc.uri) : null;
+  }
+  const sessionCurrent = (doc) => sessions.get(doc.session.key) === doc.session;
+  async function openLocation(doc, uri, range) {
+    if (!sessionCurrent(doc)) throw new Error('The language session changed. Run navigation again.');
+    if (doc.session.extension === 'csharp' && uri.startsWith('csharp:/')) {
+      const metadata = await doc.session.client.request('csharp/metadata', { textDocument: { uri } });
+      if (!metadata?.source) throw new Error('The C# server could not decompile this assembly.');
+      if (sessionCurrent(doc)) {
+        const target = api.openMetadata(uri, metadata, doc.session.context, range);
+        const client = doc.session.client;
+        if (target && client.capabilities.semanticTokensProvider?.full) {
+          const tokens = await client.request('textDocument/semanticTokens/full', { textDocument: { uri } });
+          if (api.alive(target)) target.ed.setSemanticTokens(semanticRanges(metadata.source, tokens?.data || [], client.capabilities.semanticTokensProvider.legend), metadata.source);
+        }
+      }
+    } else api.open(api.join(doc.session.context.rootRel, relativeUri(doc.session.client.rootUri, uri)), doc.session.context, range);
+  }
+  async function workspaceSymbols(tab, query) {
+    const doc = await get(tab);
+    if (!doc?.session.client.capabilities.workspaceSymbolProvider) return null;
+    const result = await doc.session.client.request('workspace/symbol', { query });
+    if (!sessionCurrent(doc) || !api.alive(tab)) return [];
+    return (result || []).map((item) => ({ item, doc }));
+  }
+  async function openWorkspaceSymbol(hit) {
+    let { item } = hit;
+    if (!item.location?.range && hit.doc.session.client.capabilities.workspaceSymbolProvider?.resolveProvider) item = await hit.doc.session.client.request('workspaceSymbol/resolve', item);
+    if (!item.location?.range) throw new Error('The language server did not return a location for this symbol.');
+    return openLocation(hit.doc, item.location.uri, item.location.range);
+  }
+  async function callHierarchy(tab) {
+    const result = await request(tab, 'prepareCallHierarchy');
+    return result && !result.stale ? { doc: result.doc, items: result.value || [] } : null;
+  }
+  async function hierarchyCalls(handle, item, direction, signal) {
+    if (!sessionCurrent(handle.doc)) throw new Error('The language session changed. Open Call Hierarchy again.');
+    const calls = await handle.doc.session.client.request(direction === 'outgoing' ? 'callHierarchy/outgoingCalls' : 'callHierarchy/incomingCalls', { item }, { signal });
+    return sessionCurrent(handle.doc) ? calls || [] : [];
   }
   async function rename(tab) {
     const doc = await get(tab);
@@ -572,5 +616,5 @@ export function createLanguageWorkbench(api) {
     const c = completers.get(tab);
     return !!c?.manual?.() || preferLanguageCompletion(tab.ed.text(), tab.ed.selection()[0], c?.symbols() || []);
   }
-  return { mount, filter, format, attach, changed, navigate, rename, reset, get, request, suggest, complete: suggest, cancelCompletions: () => { for (const c of completers.values()) c.hide(); api.onSuggest?.(); }, suggesting, dismissSuggest, symbols, preferLanguage, problems: () => [...diagnostics.values()].flatMap((d) => d.items.map((item) => ({ ...item, context: d.session.context }))), saved(tab) { const d = attached.get(tab); if (d) { changed(tab); const save = d.session.client.capabilities.textDocumentSync?.save; if (save) d.session.client.notify('textDocument/didSave', { textDocument: { uri: d.uri }, ...(save.includeText ? { text: tab.ed.text() } : {}) }); } } };
+  return { documentOutline, workspaceSymbols, openWorkspaceSymbol, callHierarchy, hierarchyCalls, openLocation, mount, filter, format, attach, changed, navigate, rename, reset, get, request, suggest, complete: suggest, cancelCompletions: () => { for (const c of completers.values()) c.hide(); api.onSuggest?.(); }, suggesting, dismissSuggest, symbols, preferLanguage, problems: () => [...diagnostics.values()].flatMap((d) => d.items.map((item) => ({ ...item, context: d.session.context }))), saved(tab) { const d = attached.get(tab); if (d) { changed(tab); const save = d.session.client.capabilities.textDocumentSync?.save; if (save) d.session.client.notify('textDocument/didSave', { textDocument: { uri: d.uri }, ...(save.includeText ? { text: tab.ed.text() } : {}) }); } } };
 }

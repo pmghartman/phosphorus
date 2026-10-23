@@ -40,13 +40,14 @@ window.addEventListener('beforeunload', (e) => { if (anyCodeDirty()) e.preventDe
 function codeEditor(view, file, btn, id, opts = {}) {
   const lang = codeLang(file.path) || { hl: 'plaintext', check: '', comment: '' };
   const bare = !!opts.bare;
+  const localOnly = typeof opts.localText === 'string';
   const bar = el('div', 'code-bar');
   const pathEl = el('span', 'code-path', file.label);
   const whoEl = el('span', 'code-who');
   const stateEl = el('span', 'code-state', 'connecting');
   const errEl = Object.assign(el('button', 'code-errs-btn'), { type: 'button', title: 'show the syntax errors', hidden: true });
   const saveBtn = Object.assign(el('button', 'code-btn', 'save'), { type: 'button', title: 'save to the share now' });
-  const isMd = lang.hl === 'markdown';
+  const isMd = !localOnly && lang.hl === 'markdown';
   const viewBtn = Object.assign(el('button', 'code-btn'), { type: 'button', hidden: !isMd });
   const shareBtn = Object.assign(el('button', 'code-btn', 'share'), { type: 'button', title: 'invite someone to work on it with you' });
   bar.append(pathEl, el('span', 'code-lang', lang.hl), whoEl, errEl, stateEl, viewBtn, shareBtn, saveBtn);
@@ -121,6 +122,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
   let closed = false;
   let retry = 1000;
   let people = [];
+  let bookmarks = [];
   // this tab's own id in the session, its own caret never drawn
   let me = 0;
   let opSeq = 0;
@@ -397,6 +399,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
   // a grammar the page has no parser for: chroma's, once typing pauses
   let hlTimer = 0;
   function serverHighlight(text) {
+    if (localOnly) return;
     clearTimeout(hlTimer);
     hlTimer = setTimeout(async () => {
       try {
@@ -556,9 +559,15 @@ function codeEditor(view, file, btn, id, opts = {}) {
     for (const m of gutter.querySelectorAll('.code-mark')) m.remove();
     for (const c of body.querySelectorAll('.code-caret')) c.remove();
     const others = people.filter((p) => me ? p.id !== me : p.name !== name);
-    if (!errs.length && !others.length) return;
+    if (!errs.length && !others.length && !bookmarks.length) return;
     const lh = parseFloat(getComputedStyle(nums).lineHeight) || 18;
     const padTop = parseFloat(getComputedStyle(nums).paddingTop) || 0;
+    for (const line of new Set(bookmarks.map((at) => lineAt(ta.value, Math.min(at, ta.value.length)) - 1))) {
+      const mark = Object.assign(el('div', 'code-mark code-mark-bookmark'), { title: `Bookmark: line ${line + 1}` });
+      mark.style.top = `${padTop + line * lh}px`;
+      mark.style.height = `${lh}px`;
+      gutter.append(mark);
+    }
     for (const line of new Set(errs.map((e) => lineAt(ta.value, Math.min(e.from, ta.value.length)) - 1))) {
       const onLine = errs.filter((e) => lineAt(ta.value, Math.min(e.from, ta.value.length)) - 1 === line).sort((a, b) => diagnosticSeverity(a) - diagnosticSeverity(b));
       const severity = diagnosticSeverity(onLine[0]);
@@ -596,7 +605,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
       btn.classList.toggle('dirty', d);
       btn.querySelector('.tab-label').textContent = `${codeName(file)}${d ? ' •' : ''}`;
     }
-    stateEl.textContent = note || (!ready ? 'connecting' : !canWrite() ? 'read-only' : saved < 0 && !ta.value ? 'new file' : d ? 'saving' : 'saved');
+    stateEl.textContent = note || (!ready ? 'connecting' : !canWrite() ? 'read-only' : saved < 0 && !ta.value ? 'new file' : d ? (localOnly ? 'unsaved local changes' : 'saving') : 'saved');
     stateEl.classList.toggle('bad', !!note);
     saveBtn.disabled = !ready || !canWrite();
     ta.readOnly = !ready || !canWrite();
@@ -631,6 +640,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
 
   // --- the session ---
   function flush() {
+    if (localOnly) return;
     if (inflight || !ready || !canWrite() || ta.value === S) return;
     inflight = { id: `${id}-${opSeq += 1}`, ops: opDiff(S, ta.value) };
     say({ type: 'op', base: V, ops: inflight.ops, id: inflight.id });
@@ -872,8 +882,23 @@ function codeEditor(view, file, btn, id, opts = {}) {
   });
   for (const ev of ['keyup', 'click', 'select']) ta.addEventListener(ev, () => { caretInView(); sendCursor(); tell(); });
 
+  let localSave = null;
   function save() {
     if (!ready || !canWrite()) return;
+    if (localOnly) {
+      if (localSave) return localSave;
+      const text = ta.value;
+      localSave = Promise.resolve().then(() => opts.saveText(text)).then(() => {
+        S = savedText = text;
+        if (!closed) paintState();
+        return true;
+      }).catch((error) => {
+        if (error.name !== 'AbortError') opts.onError?.(error);
+        paintState(error.name === 'AbortError' ? 'save cancelled' : error.message);
+        return false;
+      }).finally(() => { localSave = null; });
+      return localSave;
+    }
     if (inflight || ta.value !== S) { wantSave = true; flush(); return; }
     say({ type: 'save' });
   }
@@ -898,8 +923,8 @@ function codeEditor(view, file, btn, id, opts = {}) {
     return true;
   }
 
-  if (typeof opts.readOnlyText === 'string') {
-    S = opts.readOnlyText; V = 0; saved = 0; savedText = S; ready = true; perms = 'r';
+  if (typeof opts.readOnlyText === 'string' || localOnly) {
+    S = localOnly ? opts.localText : opts.readOnlyText; V = 0; saved = 0; savedText = S; ready = true; perms = localOnly ? 'rw' : 'r';
     setText(S, false);
   } else connect();
   redraw();
@@ -955,6 +980,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
       if (errors === null) { clearDiagnostics(); checkSoon(); } else check();
     },
     setFinds: (ranges, at = -1) => { findRanges = ranges; findAt = at; paintFinds(); },
+    setBookmarks: (offsets) => { if (bookmarks.length === offsets.length && bookmarks.every((at, i) => at === offsets[i])) return; bookmarks = offsets; paintMarks(); },
     preview: isMd ? (on) => setRendered(on ?? !rendered) : null,
     previewing: () => rendered,
     close: () => {
