@@ -46,7 +46,7 @@ static int maxed;
 	bar.frame = f;
 	CGFloat x = 13;
 	for (NSNumber *k in @[@(NSWindowCloseButton), @(NSWindowMiniaturizeButton), @(NSWindowZoomButton)]) {
-		NSButton *b = [win standardWindowButton:(NSWindowButtonType)k.integerValue];
+		NSButton *b = [win standardWindowButton:(NSWindowButton)k.integerValue];
 		NSRect r = b.frame;
 		r.origin.x = x;
 		r.origin.y = (h - r.size.height) / 2;
