@@ -1,5 +1,5 @@
 <p align="center">
-  <img src=".github/assets/phosphorus.svg" alt="" width="210">
+  <img src=".github/assets/phosphorus.svg" alt="" width="200">
 </p>
 
 <h1 align="center">Phosphorus</h1>

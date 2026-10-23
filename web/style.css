@@ -366,7 +366,7 @@ body {
 .dk-walled .dk-desk { background: var(--dk-wall) center / cover no-repeat, var(--bg); }
 .dk-walled .dk-art { display: none; }
 .dk-art { position: absolute; inset: 0 0 3.3rem; display: flex; align-items: center; justify-content: center; opacity: 0.06; pointer-events: none; user-select: none; overflow: hidden; }
-.dk-art .about-art { overflow: visible; max-width: none; }
+.dk-art .about-mark { width: 26rem; height: 26rem; max-width: none; }
 .dk-icons { position: absolute; inset: 0 0 3.3rem 0; z-index: 1; touch-action: none; user-select: none; }
 .dk-icons > .dk-icon { position: absolute; top: 0; left: 0; touch-action: none; transition: transform 0.12s ease-out; }
 .dk-icon.dk-lift { z-index: 2; opacity: 0.75; transition: none; }
@@ -943,17 +943,10 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
 /* the version tucked into the glyph's bottom right corner */
 .about-brand { flex: none; max-width: 100%; display: flex; flex-direction: column; align-items: center; position: relative; }
 
-.about-art {
-  margin: 0;
-  font-size: 0.9rem;
-  line-height: 1.05;
-  white-space: pre;
-  overflow-x: auto;
-  max-width: 100%;
-}
+.about-mark { display: block; width: 16rem; height: 16rem; max-width: 100%; user-select: none; }
 
 .about-version { position: absolute; right: 0; bottom: 0; font-size: 0.72rem; line-height: 1.3; letter-spacing: 0.04em; }
-.about-art, .about-version, .who-model, .st-model-mark {
+.about-version, .who-model, .st-model-mark {
   background: linear-gradient(120deg, var(--glyph-purple), var(--glyph-orange), var(--glyph-purple), var(--glyph-orange), var(--glyph-purple));
   background-size: 200% 200%;
   -webkit-background-clip: text;
@@ -1543,7 +1536,7 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
 
   /* too narrow for the glyph beside the text, stacked instead */
   .about-wrap { flex-direction: column; }
-  .about-art { font-size: 0.55rem; }
+  .about-mark { width: 11rem; height: 11rem; }
 
   /* services above game servers, each full width */
   /* game servers stretched to the bottom, the note at the screen's foot */
@@ -3030,6 +3023,8 @@ body:has(.dk-pop:not([hidden])) .toasts { opacity: 0; pointer-events: none; }
 .ide-watermark { display: none; }
 .ide-editors.empty .ide-watermark { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px; padding: 20px; }
 .ide-wm-art .ide-ic { width: 140px; height: 140px; stroke-width: 0.35; color: color-mix(in srgb, var(--ide-fg) 10%, transparent); }
+.ide-wm-art .ide-mark { opacity: 0.35; }
+.ide-mark { object-fit: contain; -webkit-user-drag: none; }
 .ide-wm-keys { display: grid; grid-template-columns: auto auto; gap: 10px 14px; margin: 0; color: var(--ide-muted); }
 .ide-wm-keys dt { text-align: right; }
 .ide-wm-keys dd { margin: 0; display: flex; gap: 4px; }

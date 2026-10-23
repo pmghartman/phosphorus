@@ -134,7 +134,10 @@ const IC = {
   symbolMethod: 'M2 5l6-3.5L14 5l-6 3.5zM2 8l6 3.5L14 8M2 11l6 3.5L14 11',
   symbolField: 'M8 2l6 6-6 6-6-6zM5 8h6',
 };
-const icon = (k, cls = '') => dkGlyph(IC[k], `ide-ic ${cls}`);
+// 'sulfur' is the app's own mark, drawn in full, every other glyph a line icon
+const icon = (k, cls = '') => (k === 'sulfur'
+  ? Object.assign(el('img', `ide-ic ide-mark ${cls}`), { src: '/sulfur/icon.svg', alt: '', draggable: false })
+  : dkGlyph(IC[k], `ide-ic ${cls}`));
 
 // a file kind's glyph and hue, by extension, the explorer's and the tabs'
 const FILE_HUES = {
@@ -2097,7 +2100,7 @@ function paintWatermark() {
   const wm = I.watermark;
   if (wm.childElementCount) return;
   const art = el('div', 'ide-wm-art');
-  art.append(icon('spark'));
+  art.append(icon('sulfur'));
   const list = el('dl', 'ide-wm-keys');
   for (const [label, cmd] of [['Show All Commands', 'workbench.action.showCommands'], ['Go to File', 'workbench.action.quickOpen'],
     ['Find in Files', 'workbench.action.findInFiles'], ['Toggle Terminal', 'workbench.action.terminal.toggleTerminal'],
@@ -6841,7 +6844,7 @@ function recordKey(c) {
 }
 
 function openWelcome() {
-  openPage('welcome', 'Welcome', 'spark', (t) => {
+  openPage('welcome', 'Welcome', 'sulfur', (t) => {
     const w = el('div', 'ide-welcome');
     t.view.append(w);
     t.paint = () => paintWelcome(w);
