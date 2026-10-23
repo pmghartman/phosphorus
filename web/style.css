@@ -4210,3 +4210,9 @@ button.ide-fd-place:hover { background: var(--ide-hover); color: var(--ide-stron
 
 /* the phosphorus and cli looks draw the mark as ascii art (theme.js sets --mark), on the desk and in about */
 .about-mark { content: var(--mark); object-fit: contain; }
+
+/* the status bar's mesh link: an icon alone, bright when linked, dim when not or while asking */
+.ide-sb-mesh { padding: 0 8px; }
+.ide-sb-mesh .ide-ic { width: 14px; height: 14px; }
+.ide-sb-mesh:not(.linked) { opacity: 0.6; }
+.ide-sb-mesh.checking { opacity: 0.45; }
