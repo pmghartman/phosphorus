@@ -81,15 +81,6 @@ func main() {
 	must(copyDir(filepath.Join(modules, "katex/dist/fonts"), filepath.Join(*out, kdir, "fonts"), ".woff2"))
 	must(os.WriteFile(filepath.Join(*out, kdir, "katex.css"), kcss, 0o644))
 	assets["katex.css"] = "/" + kdir + "/katex.css"
-	for from, to := range map[string]string{
-		"@fontsource-variable/geist-mono/files/geist-mono-latin-wght-normal.woff2":     "geist-mono.woff2",
-		"@fontsource-variable/geist-mono/files/geist-mono-latin-ext-wght-normal.woff2": "geist-mono-ext.woff2",
-	} {
-		data, err := os.ReadFile(filepath.Join(modules, from))
-		must(err)
-		must(os.WriteFile(filepath.Join(*out, "vendor", to), data, 0o644))
-	}
-
 	define, _ := json.Marshal(assets)
 	// the theme library's tokens as CSS, the first thing style.css imports
 	themes := api.Plugin{Name: "phosphorus-themes", Setup: func(b api.PluginBuild) {

@@ -30,8 +30,8 @@
       "--sand": "#c4ab78",
       "--mesh-self": "#b48cff",
       "--mesh-active": "#4fc98a",
-      "--font": "\"Geist Mono Variable\", ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, monospace",
-      "--mono": "\"Geist Mono Variable\", ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, monospace"
+      "--font": "ui-monospace, SFMono-Regular, \"SF Mono\", \"Cascadia Mono\", Menlo, Consolas, \"DejaVu Sans Mono\", monospace",
+      "--mono": "ui-monospace, SFMono-Regular, \"SF Mono\", \"Cascadia Mono\", Menlo, Consolas, \"DejaVu Sans Mono\", monospace"
     },
     "light": {
       "color-scheme": "light",
@@ -772,7 +772,7 @@
         }
       },
       "dark": {
-        "--font": "\"JetBrains Mono\", \"IBM Plex Mono\", \"Geist Mono Variable\", ui-monospace, Menlo, Consolas, monospace",
+        "--font": "\"JetBrains Mono\", \"IBM Plex Mono\", ui-monospace, Menlo, Consolas, monospace",
         "--mono": "var(--font)",
         "--bg": "#0c0c0c",
         "--fg": "#d0d0d0",
@@ -850,7 +850,7 @@
       "layout": { "barStyle": "dock", "menubar": "top", "btns": "left", "btnStyle": "lights", "title": "center", "labels": "icons" },
       "dark": {
         "--font": "-apple-system, BlinkMacSystemFont, \"SF Pro Text\", \"Helvetica Neue\", Inter, system-ui, sans-serif",
-        "--mono": "\"SF Mono\", ui-monospace, Menlo, Monaco, \"Geist Mono Variable\", monospace",
+        "--mono": "\"SF Mono\", ui-monospace, Menlo, Monaco, monospace",
         "--bg": "#1e1e1e",
         "--fg": "#e5e5e7",
         "--muted": "#98989d",
@@ -1107,7 +1107,7 @@
       "layout": { "barStyle": "full", "btnStyle": "caption" },
       "dark": {
         "--font": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", system-ui, -apple-system, \"Helvetica Neue\", sans-serif",
-        "--mono": "\"Cascadia Mono\", \"Cascadia Code\", Consolas, \"Geist Mono Variable\", ui-monospace, monospace",
+        "--mono": "\"Cascadia Mono\", \"Cascadia Code\", Consolas, ui-monospace, monospace",
         "--bg": "#202020",
         "--fg": "#ffffff",
         "--muted": "#c5c5c5",

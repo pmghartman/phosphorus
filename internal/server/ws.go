@@ -59,6 +59,16 @@ func onUpgrade(w http.ResponseWriter, r *http.Request, pathname string, q url.Va
 			onChat(ws, s)
 		}
 		return
+	case "/api/me/mcp":
+		s := users.Of(r)
+		if s == nil || s.Boot || !sameOrigin(r) {
+			refuse(w, 403)
+			return
+		}
+		if ws := accept(w, r); ws != nil {
+			mcpSocket(ws, s.User)
+		}
+		return
 	case "/api/state":
 		if ws := accept(w, r); ws != nil {
 			s := buildState()

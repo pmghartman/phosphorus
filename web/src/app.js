@@ -1953,7 +1953,7 @@ function dkThemeWin() {
       el('p', 'dk-note', 'Your theme, kept with your settings on every host. Changes are worn when you save and apply.'),
       row('accent', color('accent')),
       row('page font', pick('font', [['system', 'system sans'], ['mono', 'monospaced'], ['serif', 'serif']])),
-      row('code font', pick('mono', [['geist', 'geist mono'], ['system', 'system mono'], ['cascadia', 'cascadia'], ['jetbrains', 'jetbrains mono']])),
+      row('code font', pick('mono', [['system', 'system mono'], ['cascadia', 'cascadia'], ['jetbrains', 'jetbrains mono']])),
       row('corners', pick('corners', CUSTOM_CORNERS.map((n) => [n, n === '0' ? 'square' : `${n}px`]))),
       row('shadows', pick('shadows', Object.keys(CUSTOM_SHADOWS).map((k) => [k, k]))),
       row('desk', color('desk'), 'under the icons, unless a picture is set'),
@@ -4466,7 +4466,7 @@ function dkLogout() {
   dk.mcp?.show(false);
   // the last user's key and calls never shown to the next
   dk.mcp = null;
-  clearTimeout(dk.mcpTimer);
+  dk.mcpStop?.();
   Object.assign(mcpStat, { configured: false, seen: 0, at: 0, now: 0, got: 0, client: '', calls: [], recent: [], url: '' });
   for (const w of [...dk.wins.values()]) dkClose(w, true);
   dk.creds.clear();
@@ -6661,7 +6661,6 @@ function dkMcpTray() {
       list = null;
       paint();
       if (mcpStat.configured) hint.replaceChildren();
-      pollMcp();
       // the url ready before a tap, so copying it is the tap's own
       if (mcpStat.configured) acctCall('/api/me/mcp-url', {}).then((r) => { if (r.ok) mcpStat.url = r.url; });
     }
@@ -6671,29 +6670,61 @@ function dkMcpTray() {
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !pop.hidden) show(false); });
   const me = { show, paint };
   dk.mcp = me;
-  clearTimeout(dk.mcpTimer);
-  // one loop, ended by a logout or a newer tray
-  const tick = async () => {
-    if (dk.mcp !== me) return;
-    if (!document.hidden) await pollMcp();
-    if (dk.mcp === me) dk.mcpTimer = setTimeout(tick, pop.hidden ? 8000 : 2000);
+  dk.mcpStop?.();
+  // one socket while the page is visible, the server pushing on a change; ended by a
+  // logout or a newer tray, a dropped one retried and read once over fetch meanwhile
+  let sock = null;
+  let retry = null;
+  let retryMs = 1000;
+  const open = () => {
+    if (dk.mcp !== me || document.hidden || sock) return;
+    const s = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/api/me/mcp`);
+    sock = s;
+    s.onmessage = (ev) => {
+      retryMs = 1000;
+      try { mcpApply(JSON.parse(ev.data)); } catch { return; }
+      me.paint();
+    };
+    s.onclose = () => {
+      if (sock === s) sock = null;
+      if (dk.mcp !== me || document.hidden) return;
+      pollMcp();
+      retry = setTimeout(open, retryMs);
+      retryMs = Math.min(retryMs * 2, 15000);
+    };
+    s.onerror = () => s.close();
   };
-  tick();
+  const seen = () => {
+    if (dk.mcp !== me) return;
+    if (document.hidden) { clearTimeout(retry); sock?.close(); return; }
+    open();
+  };
+  document.addEventListener('visibilitychange', seen);
+  dk.mcpStop = () => {
+    document.removeEventListener('visibilitychange', seen);
+    clearTimeout(retry);
+    const s = sock;
+    sock = null;
+    s?.close();
+  };
+  open();
   return wrap;
 }
 
-// the user's key and calls from the mesh
+// the user's key and calls from the mesh, read once: after a key change, a dropped socket
 async function pollMcp() {
   let s = { ok: false };
   try {
     const r = await fetch('/api/me/mcp', { cache: 'no-store', signal: AbortSignal.timeout(6000) });
     s = { ok: r.ok, ...(await r.json().catch(() => ({}))) };
   } catch {}
-  if (s.ok) {
-    Object.assign(mcpStat, { configured: !!s.configured, seen: +s.seen || 0, at: +s.at || 0, client: s.client || '',
-      now: +s.now || Date.now(), got: Date.now(), calls: s.calls || [], recent: s.recent || [] });
-  }
+  if (s.ok) mcpApply(s);
   dk.mcp?.paint();
+}
+
+function mcpApply(s) {
+  Object.assign(mcpStat, { configured: !!s.configured, seen: +s.seen || 0, at: +s.at || 0, client: s.client || '',
+    now: +s.now || Date.now(), got: Date.now(), calls: s.calls || [], recent: s.recent || [] });
 }
 
 // the mesh's now, carried forward from the last answer so durations keep running
