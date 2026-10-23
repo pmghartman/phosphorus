@@ -13,17 +13,17 @@ import {
   lines,
   name,
   shareMenu,
-} from '../app.js';
+} from '#host';
 import { syntaxRanges, errorPositions, parserFor, parserNow, syntaxErrors, syntaxCache } from '../lezer.js';
 import { mdBlocks, renderMd } from '../md.js';
 import { opApply, opTransform, opDiff, opMap, opEdits, commonEnds } from '../text-operations.js';
 import { EditorHistory } from '../editor-history.js';
-import { highlightRanges, rebaseHighlightRanges, rangesFromHighlight, classAt, rangeIndex } from '../sulfur/semantic-tokens.js';
-import { quickLex, lexStateAt } from '../sulfur/quick-lex.js';
-import { rebaseLexical, settleLexical } from '../sulfur/stable-highlight.js';
-import { diagnosticSeverity, diagnosticCounts, diagnosticText, diagnosticsAt, offsetAtColumn, diagnosticDelay, rebaseDiagnostics } from '../sulfur/diagnostics.js';
-import { definitionIdentifier, mountDefinitionLinks } from '../sulfur/definition-links.js';
-import { editorDecorations } from '../sulfur/editor-guides.js';
+import { highlightRanges, rebaseHighlightRanges, rangesFromHighlight, classAt, rangeIndex } from './semantic-tokens.js';
+import { quickLex, lexStateAt } from './quick-lex.js';
+import { rebaseLexical, settleLexical } from './stable-highlight.js';
+import { diagnosticSeverity, diagnosticCounts, diagnosticText, diagnosticsAt, offsetAtColumn, diagnosticDelay, rebaseDiagnostics } from './diagnostics.js';
+import { definitionIdentifier, mountDefinitionLinks } from './definition-links.js';
+import { editorDecorations } from './editor-guides.js';
 
 // --- code editor ------------------------------------------------------------------
 // a share's text or code file in a tab of its own, joined to the file's live

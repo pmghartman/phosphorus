@@ -34,24 +34,24 @@ import {
   shQuote,
   shareMenu,
   standalone,
-} from '../app.js';
+} from '#host';
 import { codeEditor } from './editor.js';
-import { createLanguageWorkbench } from '../sulfur/language-workbench.js';
-import { formatWhitespace, formattingEdits } from '../sulfur/formatting.js';
-import { applyTextEdits } from '../sulfur/language-client.js';
-import { sidebarRight, runTargetName, moveBookmarks } from '../sulfur/navigation.js';
-import { fileKind, renderFileIcon } from '../sulfur/file-icons.js';
-import { parseGitStatus, explorerChanges } from '../sulfur/source-control.js';
+import { createLanguageWorkbench } from './language-workbench.js';
+import { formatWhitespace, formattingEdits } from './formatting.js';
+import { applyTextEdits } from './language-client.js';
+import { sidebarRight, runTargetName, moveBookmarks } from './navigation.js';
+import { fileKind, renderFileIcon } from './file-icons.js';
+import { parseGitStatus, explorerChanges } from './source-control.js';
 import { parserFor } from '../lezer.js';
-import { readBrowserFile, saveBrowserFile } from '../sulfur/browser-files.js';
-import { createInlineCompletions, completionModels } from '../sulfur/inline-completion.js';
-import { diagnosticCounts, diagnosticSeverity } from '../sulfur/diagnostics.js';
-import { createBuildProblemMatcher } from '../sulfur/build-problems.js';
-import { startTerminal, taskTerminal, termsRetheme } from './terminal.js';
+import { readBrowserFile, saveBrowserFile } from './browser-files.js';
+import { createInlineCompletions, completionModels } from './inline-completion.js';
+import { diagnosticCounts, diagnosticSeverity } from './diagnostics.js';
+import { createBuildProblemMatcher } from './build-problems.js';
+import { startTerminal, taskTerminal, termsRetheme } from '../apps/terminal.js';
 import { renderMd } from '../md.js';
 import { symbolsFor, identifierAt, enclosingSymbol } from '../symbols.js';
-import { singleFileCommand, configsFor } from '../sulfur/build-commands.js';
-import { cmakeTargets, cmakeConfiguration, targetForFile, executableCommand, absolutePath, joinPath } from '../sulfur/project-targets.js';
+import { singleFileCommand, configsFor } from './build-commands.js';
+import { cmakeTargets, cmakeConfiguration, targetForFile, executableCommand, absolutePath, joinPath } from './project-targets.js';
 import { LOOK_IDS, PALETTES, PALETTE_EVENT, lookNow, paletteNow, setPalette } from '../theme.js';
 import guideText from '../../../docs/sulfur-extensions.md';
 

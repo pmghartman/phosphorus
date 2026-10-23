@@ -1,7 +1,8 @@
 // Sulfur's host when it runs on its own: in its desktop app, or at /sulfur/ on a
-// Phosphorus server. What app.js gives Sulfur inside the desktop, from this
-// computer offline (the app's own server, one host, its home and drives) or
-// from a mesh (its hosts, merged home and logins, through the same API)
+// Phosphorus server; '#host' on Sulfur's own page. Every name of host/contract.js,
+// as the desktop gives them inside it (host/desktop.js), from this computer offline
+// (the app's own server, one host, its home and drives) or from a mesh (its hosts,
+// merged home and logins, through the same API). Its boot functions are main.js's.
 
 import { themeFromStorage } from '../theme.js';
 

@@ -101,7 +101,17 @@ func main() {
 			return api.OnLoadResult{Contents: &css, Loader: api.LoaderCSS}, nil
 		})
 	}}
-	opts := func(entry, outdir string) api.BuildOptions {
+	// '#host', the one way Sulfur and the components it shares reach whatever hosts them
+	// (web/src/host/contract.js): bound per page to that page's host, never left to a default
+	hostOf := func(impl string) api.Plugin {
+		abs, _ := filepath.Abs(filepath.Join(*src, impl))
+		return api.Plugin{Name: "sulfur-host", Setup: func(b api.PluginBuild) {
+			b.OnResolve(api.OnResolveOptions{Filter: `^#host$`}, func(api.OnResolveArgs) (api.OnResolveResult, error) {
+				return api.OnResolveResult{Path: abs}, nil
+			})
+		}}
+	}
+	opts := func(entry, outdir, host string) api.BuildOptions {
 		return api.BuildOptions{
 			EntryPoints:       []string{filepath.Join(*src, entry), filepath.Join(*src, "style.css")},
 			Bundle:            true,
@@ -124,25 +134,15 @@ func main() {
 			LegalComments:     api.LegalCommentsLinked,
 			Charset:           api.CharsetUTF8,
 			LogLevel:          api.LogLevelWarning,
-			Plugins:           []api.Plugin{themes},
+			Plugins:           []api.Plugin{themes, hostOf(host)},
 		}
 	}
-	// the desktop's page
-	page(*out, filepath.Join(*src, "index.html"), "index.html", "/src/main.js", api.Build(opts("src/main.js", "assets")))
+	// the desktop's page, Sulfur's host the desktop itself
+	page(*out, filepath.Join(*src, "index.html"), "index.html", "/src/main.js", api.Build(opts("src/main.js", "assets", "src/host/desktop.js")))
 
-	// Sulfur alone, its desktop app's page and /sulfur/ on every host: app.js's
-	// place taken by its own host, so nothing of the desktop comes with it
-	host, _ := filepath.Abs(filepath.Join(*src, "src/sulfur/host.js"))
-	apps, _ := filepath.Abs(filepath.Join(*src, "src/apps"))
-	alone := opts("src/sulfur/main.js", "sulfur/assets")
-	alone.Plugins = append(alone.Plugins, api.Plugin{Name: "sulfur-host", Setup: func(b api.PluginBuild) {
-		b.OnResolve(api.OnResolveOptions{Filter: `^\.\./app\.js$`}, func(a api.OnResolveArgs) (api.OnResolveResult, error) {
-			if dir, err := filepath.Abs(a.ResolveDir); err == nil && dir == apps {
-				return api.OnResolveResult{Path: host}, nil
-			}
-			return api.OnResolveResult{}, nil
-		})
-	}})
+	// Sulfur alone, its desktop app's page and /sulfur/ on every host: its own host, so
+	// nothing of the desktop comes with it
+	alone := opts("src/sulfur/main.js", "sulfur/assets", "src/sulfur/host.js")
 	page(*out, filepath.Join(*src, "sulfur.html"), "sulfur/index.html", "/src/sulfur/main.js", api.Build(alone))
 	must(copyDir(filepath.Join(*src, "static"), *out, ""))
 
