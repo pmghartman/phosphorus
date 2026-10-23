@@ -37,9 +37,15 @@ on:
 permissions:
   contents: read
 
+# one release at a time: the next version is read off the tags
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   version:
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     outputs:
       ver: ${{ steps.v.outputs.ver }}
       builds: ${{ steps.plan.outputs.builds }}
@@ -94,6 +100,7 @@ jobs:
   # the web client built once, from pinned npm tarballs, for every job that embeds it
   web:
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
@@ -110,8 +117,22 @@ jobs:
           name: web-dist
           path: internal/web/dist/
           retention-days: 1
-      # the shipped license texts current with every dependency and pinned tool; here, where
-      # the npm packages are
+
+  # the shipped license texts current with every dependency and pinned tool, beside the
+  # builds, not before them; needs the npm packages, so the web build's cache
+  licenses:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: web/.vendor/cache
+          key: web-vendor-${{ hashFiles('web/vendor.lock') }}
+      - run: go generate ./internal/web
       - name: licenses
         run: |
           go run ./cmd/licenses
@@ -121,6 +142,7 @@ jobs:
   check:
     needs: [web]
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
@@ -133,8 +155,16 @@ jobs:
         with:
           name: web-dist
           path: internal/web/dist
-      # Sulfur's window on Linux is GTK and WebKitGTK through cgo
-      - run: sudo apt-get update -q && sudo apt-get install -y -q libgtk-3-dev libwebkit2gtk-4.1-dev
+      # Sulfur's window on Linux is GTK and WebKitGTK through cgo; their .debs kept across runs
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/apt-archives/*.deb
+          key: apt-check-${{ github.run_id }}
+          restore-keys: apt-check-
+      - run: |
+          mkdir -p ~/apt-archives/partial
+          sudo apt-get update -q
+          sudo apt-get install -y -q -o Dir::Cache::Archives="$HOME/apt-archives" -o Acquire::Retries=3 libgtk-3-dev libwebkit2gtk-4.1-dev
       # every package cross-vetted too: macOS and Windows hosts run the same roles
       # the tests' own report kept to what ran: packages with none aren't listed
       - run: |
@@ -155,6 +185,7 @@ jobs:
       matrix:
         include: ${{ fromJSON(needs.version.outputs.builds) }}
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
     env:
       VER: ${{ needs.version.outputs.ver }}
       APP: packaging/host
@@ -218,11 +249,13 @@ jobs:
           name: out-${{ matrix.name }}
           path: out/
           compression-level: 0
+          retention-days: 1
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: upd-${{ matrix.name }}
           path: upd/
           compression-level: 0
+          retention-days: 1
           if-no-files-found: ignore
 
   # Sulfur's own app: one Go binary, its server and its window in one, on the system's
@@ -235,6 +268,7 @@ jobs:
       matrix:
         include: ${{ fromJSON(needs.version.outputs.sulfur) }}
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
     env:
       VER: ${{ needs.version.outputs.ver }}
       APP: packaging/sulfur
@@ -286,18 +320,21 @@ jobs:
           name: out-sulfur-${{ matrix.name }}
           path: out/
           compression-level: 0
+          retention-days: 1
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: upd-sulfur-${{ matrix.name }}
           path: upd/
           compression-level: 0
+          retention-days: 1
           if-no-files-found: ignore
 
   release:
-    needs: [version, check, build, sulfur]
+    needs: [version, licenses, check, build, sulfur]
     # runs with unchecked OSes skipped, not when anything failed
     if: ${{ !cancelled() && !failure() }}
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     permissions:
       contents: write
     env:
@@ -405,6 +442,7 @@ jobs:
     needs: [release]
     if: ${{ !cancelled() && needs.release.result == 'success' }}
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     permissions:
       contents: write
       actions: write
