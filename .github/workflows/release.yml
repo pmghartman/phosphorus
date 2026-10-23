@@ -178,16 +178,12 @@ jobs:
         run: |
           mkdir -p out upd art $APP/payload
           git archive HEAD | tar -x -C $APP/payload && echo "$VER" > $APP/payload/VERSION
-          cp THIRD_PARTY_LICENSES.txt out/
           b() { CGO_ENABLED=0 GOOS=$1 GOARCH=$2 go build -trimpath -ldflags "-s -w" -o "$3" ./cmd/phosphorus; }
           case "${{ matrix.name }}" in
             linux-*)
               packaging/tools.sh linux ${{ matrix.arch }} art/tools > art/tools.log 2>&1 & t=$!
-              # forgejo's corresponding source beside the package carrying its binary
-              packaging/tools.sh source any out > art/src.log 2>&1 & s=$!
               b linux ${{ matrix.arch }} art/phosphorus
               wait $t || { cat art/tools.log; exit 1; }
-              wait $s || { cat art/src.log; exit 1; }
               packaging/deb/build.sh "out/phosphorus_${VER}_${{ matrix.arch }}.deb" "$VER" $APP/payload ${{ matrix.arch }} art/phosphorus art/tools ;;
             macos-universal)
               packaging/tools.sh darwin universal $APP/payload/tools > art/tools.log 2>&1 || { cat art/tools.log; exit 1; } ;;
@@ -267,12 +263,23 @@ jobs:
               lipo -create -output "$bin/sulfur-server-universal-apple-darwin" "$bin/sulfur-server-aarch64-apple-darwin" "$bin/sulfur-server-x86_64-apple-darwin" ;;
           esac
           ls -l "$bin"
-      # WebKitGTK and the AppImage's tools, Tauri's Linux needs
+      # the .debs kept across releases: the runners' mirror has crawled at 70 kB/s for 15 minutes
+      - name: apt cache
+        if: startsWith(matrix.name, 'linux')
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/apt-archives/*.deb
+          key: apt-${{ matrix.name }}-${{ github.run_id }}
+          restore-keys: apt-${{ matrix.name }}-
+      # WebKitGTK and the AppImage's tools, Tauri's Linux needs; only what the cache lacks downloaded
       - name: linux deps
         if: startsWith(matrix.name, 'linux')
+        timeout-minutes: 10
         run: |
+          mkdir -p ~/apt-archives/partial
           sudo apt-get update -q
-          sudo apt-get install -y -q libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev patchelf file
+          sudo apt-get install -y -q -o Dir::Cache::Archives="$HOME/apt-archives" -o Acquire::Retries=3 \
+            libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev patchelf file
       # the runner's own rustup, both Mac architectures for a universal app
       - name: rust
         run: |
@@ -342,6 +349,11 @@ jobs:
     env:
       VER: ${{ needs.version.outputs.ver }}
     steps:
+      # tools.sh alone, for the pinned Forgejo version the notes link the source of
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          sparse-checkout: packaging/tools.sh
+          sparse-checkout-cone-mode: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           path: out
@@ -350,6 +362,7 @@ jobs:
       # the notes: how to install, the assets listed by GitHub under them
       - name: notes
         run: |
+          FJ=$(sed -n 's/^FORGEJO=//p' packaging/tools.sh)
           cd out
           {
             shopt -s nullglob
@@ -359,7 +372,7 @@ jobs:
             step() { echo "- $1"; }
             [ -e phosphorus-$VER-macos-universal.dmg ] && step "**macOS:** open the \`.dmg\`, drag Phosphorus to Applications, open it (first time: right-click, Open). It lives in the menu bar."
             [ -e phosphorus-$VER-windows-x86_64-setup.exe ] && step "**Windows:** run the setup \`.exe\` (SmartScreen: More info, Run anyway). It lives in the tray."
-            ls phosphorus_${VER}_*.deb >/dev/null 2>&1 && step "**Linux:** \`sudo apt install ./phosphorus_${VER}_ARCH.deb\`, then \`sudo phosphorus\`."
+            ls phosphorus_${VER}_*.deb >/dev/null 2>&1 && step "**Linux:** \`sudo apt install ./phosphorus_${VER}_ARCH.deb\`, then \`sudo phosphorus\`. It bundles Forgejo ${FJ} (GPL-3.0), source: [forgejo-src-${FJ}.tar.gz](https://codeberg.org/forgejo/forgejo/releases/download/v${FJ}/forgejo-src-${FJ}.tar.gz)."
             echo
             echo "Then enter the Tailscale auth key when asked; every other host copies the rest from the mesh. Open \`http://HOST\` from any device on the tailnet, by a host's name or tailnet IP. The first login is \`admin\` with your admin password."
             echo
