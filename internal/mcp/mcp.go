@@ -842,8 +842,8 @@ func buildTools() {
 				return pressed(src.Actions.ModelRole(str(a["role"]), str(a["model"])))
 			}},
 		{name: "update_control",
-			description: "Start a mesh update (an admin's key), continue a paused one, or cancel the running one. " + noCreds,
-			schema: object(map[string]any{"action": map[string]any{"type": "string", "enum": []any{"start", "continue", "cancel"}},
+			description: "Start a mesh update (an admin's key), or cancel the running one. " + noCreds,
+			schema: object(map[string]any{"action": map[string]any{"type": "string", "enum": []any{"start", "cancel"}},
 				"hosts": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "start only: just these hosts, to retry the ones that failed"}}, "action"),
 			run: func(a map[string]any, m Meta) (any, error) {
 				if err := adminOf(m); err != nil {
@@ -853,8 +853,8 @@ func buildTools() {
 					return nil, err
 				}
 				act := str(a["action"])
-				if act != "start" && act != "continue" && act != "cancel" {
-					return nil, errors.New("action is start, continue or cancel")
+				if act != "start" && act != "cancel" {
+					return nil, errors.New("action is start or cancel")
 				}
 				// a chat ask starts one only through ask_credentials, its password
 				if act == "start" && m.Caller == nil {

@@ -17,9 +17,9 @@ SetCompressor /SOLID lzma
 !define INSTKEY "Software\Phosphorus\${PRODUCT}"
 !define WEBVIEW2KEY "SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
 
-; Sulfur's own processes by their full path, read through CIM
+; Sulfur's own processes by name, no script: a setup running PowerShell is read as a dropper
 !macro StopApp
-  nsExec::Exec `powershell -NoProfile -NonInteractive -Command "Get-CimInstance Win32_Process | Where-Object { $$_.ExecutablePath -like '$INSTDIR\*' } | ForEach-Object { Stop-Process -Id $$_.ProcessId -Force -ErrorAction SilentlyContinue }"`
+  nsExec::Exec `taskkill /F /T /IM Sulfur.exe`
   Sleep 800
 !macroend
 
@@ -87,13 +87,14 @@ Section "Install"
   WriteRegDWORD HKCU "${UNINSTKEY}" "NoRepair" 1
   ${GetSize} "$INSTDIR" "/S=0K" $0 $1 $2
   WriteRegDWORD HKCU "${UNINSTKEY}" "EstimatedSize" $0
-  ; the web view the window is, when the computer has none: Microsoft's own bootstrapper
+  ; the web view the window is, when the computer has none: Microsoft's own page, nothing downloaded and run from here
   ReadRegStr $3 HKLM "${WEBVIEW2KEY}" "pv"
   ReadRegStr $4 HKCU "${WEBVIEW2KEY}" "pv"
   StrCmp $3 "" 0 done
   StrCmp $4 "" 0 done
-    DetailPrint "Installing the WebView2 runtime"
-    nsExec::Exec `powershell -NoProfile -NonInteractive -Command "$$f = Join-Path $$env:TEMP 'MicrosoftEdgeWebview2Setup.exe'; Invoke-WebRequest -UseBasicParsing 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $$f; Start-Process $$f -ArgumentList '/silent','/install' -Wait"`
+    IfSilent done
+    MessageBox MB_OK|MB_ICONINFORMATION "Sulfur needs Microsoft's WebView2 runtime, which this computer doesn't have. Setup will open Microsoft's download page; install it, then start Sulfur."
+    ExecShell "open" "https://developer.microsoft.com/microsoft-edge/webview2/"
   done:
 SectionEnd
 

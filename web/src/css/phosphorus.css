@@ -89,7 +89,7 @@ body {
 /* open: joined to the page over the bar's rule, as an active tab */
 .top-side > button[aria-expanded="true"], .update-wrap > button[aria-expanded="true"] { color: var(--fg); background: var(--bg); border-top-color: var(--accent); box-shadow: 0 1px 0 var(--bg); }
 #top-update { color: var(--sky); }
-.top-side svg { width: 0.85rem; height: 0.85rem; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+.top-side svg { width: 0.85rem; height: 0.85rem; fill: none; stroke: currentColor; stroke-width: calc(var(--ic-w, 1.3) + 0.1); stroke-linecap: var(--ic-cap, round); stroke-linejoin: var(--ic-join, round); }
 
 /* news for the update: hosts on different versions, or one under way */
 #top-update { position: relative; }
@@ -121,7 +121,7 @@ body {
 }
 .theme-toggle:hover { color: var(--accent); }
 /* dark a filled moon, light a sun, oled a hollow thin moon, on the button and beside each pick */
-.theme-icon { flex: none; width: 0.85rem; height: 0.85rem; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+.theme-icon { flex: none; width: 0.85rem; height: 0.85rem; fill: none; stroke: currentColor; stroke-width: calc(var(--ic-w, 1.3) + 0.1); stroke-linecap: var(--ic-cap, round); stroke-linejoin: var(--ic-join, round); }
 .theme-icon.moon { fill: currentColor; }
 .theme-icon.moon-thin { stroke-width: 0.9; }
 .theme-toggle .sun, .theme-toggle .moon-thin { display: none; }
@@ -267,7 +267,7 @@ body {
   background: none; border: 0; color: var(--muted);
 }
 /* bare glyphs, the icon's own box the only highlight */
-.dk-tile .ic { width: 1.6rem; height: 1.6rem; stroke-width: 1.6; }
+.dk-tile .ic { width: 1.6rem; height: 1.6rem; stroke-width: calc(var(--ic-w, 1.3) + 0.3); }
 .dk-tile-img .dk-favicon { width: 1.6rem; height: 1.6rem; }
 /* the glyph box and the label's own text the only highlight, never the whole cell */
 .dk-icon .dk-label { padding: 0 0.2rem; border: 1px solid transparent; }
@@ -501,7 +501,7 @@ span.dk-chip { cursor: default; }
 .fm-grid { display: grid; grid-template-columns: repeat(auto-fill, 6.2rem); gap: 0.3rem; align-content: start; padding: 0.5rem; }
 .fm-tile { display: flex; flex-direction: column; align-items: center; padding: 0.45rem 0.2rem 0.35rem; border: 1px solid transparent; }
 .fm-tile .fm-name { flex-direction: column; gap: 0.35rem; width: 100%; }
-.fm-tile .ic { width: 2rem; height: 2rem; stroke-width: 0.8; }
+.fm-tile .ic { width: 2rem; height: 2rem; stroke-width: calc(var(--ic-w, 1.3) - 0.5); }
 .fm-tile .fm-label { max-width: 100%; text-align: center; white-space: normal; word-break: break-word; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .fm-empty { padding: 1.5rem; text-align: center; color: var(--muted); grid-column: 1 / -1; }
 .fm-dir { color: var(--sand); }
@@ -1162,7 +1162,7 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
 .chat-header .chat-icon { width: 1.1rem; }
 .chat-header .chat-files-btn { width: auto; display: inline-flex; align-items: center; gap: 0.3ch; font: inherit; font-size: 0.7rem; }
 .chat-icon[hidden] { display: none; }
-.chat-icon svg { width: 0.8rem; height: 0.8rem; fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linecap: round; stroke-linejoin: round; }
+.chat-icon svg { width: 0.8rem; height: 0.8rem; fill: none; stroke: currentColor; stroke-width: calc(var(--ic-w, 1.3) - 0.1); stroke-linecap: var(--ic-cap, round); stroke-linejoin: var(--ic-join, round); }
 .chat-icon:hover { color: var(--fg); }
 .chat-bell[aria-pressed="true"] { color: var(--accent); }
 .chat-bell[aria-pressed="true"] .slash { display: none; }
@@ -1592,7 +1592,7 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
 /* --- files tab ------------------------------------------------------------ */
 /* a tree per pane, split adding a second, rows dragged between them */
 
-.ic { width: 0.85rem; height: 0.85rem; flex: none; fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
+.ic { width: 0.85rem; height: 0.85rem; flex: none; fill: none; stroke: currentColor; stroke-width: var(--ic-w, 1.3); stroke-linecap: var(--ic-cap, round); stroke-linejoin: var(--ic-join, round); }
 /* each kind of thing its own muted hue */
 .ic-host { color: var(--rose); }
 .ic-folder, .ic-mkdir, .ic-rename { color: var(--sand); }
@@ -1647,7 +1647,7 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
   width: 1.4rem; height: 1.4rem; margin: 0 0.45rem 0.4rem 0; padding: 0;
   border: none; background: var(--accent); color: var(--bg); cursor: pointer;
 }
-.chat-go svg { width: 0.8rem; height: 0.8rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.chat-go svg { width: 0.8rem; height: 0.8rem; fill: none; stroke: currentColor; stroke-width: calc(var(--ic-w, 1.3) + 0.7); stroke-linecap: var(--ic-cap, round); stroke-linejoin: var(--ic-join, round); }
 .chat-go:disabled { background: var(--border); color: var(--muted); cursor: default; }
 
 /* slash commands over the box while one is being typed */

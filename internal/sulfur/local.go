@@ -122,27 +122,28 @@ func ProbeLocal(fresh bool) (*Toolchains, error) {
 	}
 	cacheMu.Unlock()
 	win := runtime.GOOS == "windows"
-	var cmd *exec.Cmd
+	var out string
 	if win {
-		cmd = exec.Command("powershell", strings.Fields(strings.TrimPrefix(PowerShell(windowsProbe()), "powershell "))...)
+		out = localWindowsProbe()
 	} else {
-		cmd = exec.Command("/bin/sh", "-c", posixProbe())
+		cmd := exec.Command("/bin/sh", "-c", posixProbe())
+		hideWindow(cmd)
+		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+		defer cancel()
+		var b strings.Builder
+		w := &capped{b: &b, max: 1 << 20}
+		cmd.Stdout, cmd.Stderr = w, w
+		if err := cmd.Start(); err != nil {
+			return nil, err
+		}
+		go func() { <-ctx.Done(); cmd.Process.Kill() }()
+		cmd.Wait()
+		if ctx.Err() == context.DeadlineExceeded {
+			return nil, errors.New("timed out")
+		}
+		out = b.String()
 	}
-	hideWindow(cmd)
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
-	defer cancel()
-	var b strings.Builder
-	w := &capped{b: &b, max: 1 << 20}
-	cmd.Stdout, cmd.Stderr = w, w
-	if err := cmd.Start(); err != nil {
-		return nil, err
-	}
-	go func() { <-ctx.Done(); cmd.Process.Kill() }()
-	cmd.Wait()
-	if ctx.Err() == context.DeadlineExceeded {
-		return nil, errors.New("timed out")
-	}
-	t := parseProbe(b.String())
+	t := parseProbe(out)
 	t.Host, _ = os.Hostname()
 	t.At = time.Now().UnixMilli()
 	if win {

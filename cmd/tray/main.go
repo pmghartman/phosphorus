@@ -261,6 +261,7 @@ func hostAction(action string, thenOpen bool) {
 // next launch), else this release's images and config re-applied
 func handleUpdate(id string, ask bool) {
 	if busy.Swap(true) {
+		report(id, "failed", false, "", "busy starting, stopping or installing; try again once it's done")
 		if ask {
 			notify("Phosphorus is busy starting, stopping or installing; try again once it's done.")
 		}
@@ -279,10 +280,9 @@ func handleUpdate(id string, ask bool) {
 			return
 		}
 		setTip("Phosphorus downloading " + rel.Version + "…")
-		pending := filepath.Join(a.home, "state/update-pending.json")
-		writeJSON(pending, map[string]any{"id": id, "version": rel.Version})
+		// running with the release named: the next launch finishes it
+		report(id, "running", false, rel.Version, "")
 		if err := installRelease(rel); err != nil {
-			os.Remove(pending)
 			report(id, "failed", false, "", err.Error())
 			if ask {
 				alert("update failed: " + err.Error())
@@ -326,16 +326,17 @@ func startup(background bool) {
 			args = append(args, "--update")
 		}
 		ok, out := hostRun("install", args...)
-		pending := filepath.Join(a.home, "state/update-pending.json")
-		if b, err := os.ReadFile(pending); err == nil {
-			var p struct{ ID string }
+		// an update this launch finishes: running, with the release it was for
+		if b, err := os.ReadFile(filepath.Join(a.home, "state/update-agent.json")); err == nil {
+			var p struct{ ID, State, Version string }
 			json.Unmarshal(b, &p)
-			if ok {
-				report(p.ID, "ok", false, ver, "")
-			} else {
-				report(p.ID, "failed", false, "", lastError(out))
+			if p.State == "running" && p.Version != "" {
+				if ok {
+					report(p.ID, "ok", false, ver, "")
+				} else {
+					report(p.ID, "failed", false, "", lastError(out))
+				}
 			}
-			os.Remove(pending)
 		}
 		busy.Store(false)
 	}

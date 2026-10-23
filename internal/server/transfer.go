@@ -37,7 +37,7 @@ func localShare(c *mcp.Caller, share string, rels ...string) (*files.Share, int,
 		who := &files.Who{User: c.User, Admin: c.Admin}
 		for _, r := range rels {
 			if why := files.HomeGate(who, r, users.Exists); why != "" {
-				return nil, 403, map[string]any{"error": why}
+				return nil, files.GateCode(who, why), map[string]any{"error": why}
 			}
 		}
 	}

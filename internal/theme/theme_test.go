@@ -67,3 +67,11 @@ func TestCSS(t *testing.T) {
 		}
 	}
 }
+
+func TestIcons(t *testing.T) {
+	for _, th := range Load().Themes {
+		if th.Icons == "" {
+			t.Errorf("%s names no icon set", th.ID)
+		}
+	}
+}

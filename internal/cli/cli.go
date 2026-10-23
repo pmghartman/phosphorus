@@ -793,10 +793,8 @@ func startChain(password string) {
 }
 
 func updateKey(s string) {
-	chain, mine := liveChain(ui.state)
-	if s == "c" && mine && truthy(chain["paused"]) {
-		go func() { chainPost("continue", nil); poll() }()
-	} else if s == "x" && mine {
+	_, mine := liveChain(ui.state)
+	if s == "x" && mine {
 		ui.confirm = &confirm{danger: true, text: "cancel the mesh update? hosts already updating still finish",
 			onYes: func() { go func() { chainPost("cancel", nil); poll() }() }}
 	}
