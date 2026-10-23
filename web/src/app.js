@@ -433,18 +433,6 @@ function animateMeshT(target) {
   meshAnimFrame = requestAnimationFrame(step);
 }
 
-// snap: straight to the end, no table fading in or out on the way
-function setMeshExpanded(willExpand, snap) {
-  if (willExpand === meshPanel.classList.contains('expanded')) return;
-  meshPanel.classList.toggle('expanded', willExpand);
-  if (!snap) { animateMeshT(willExpand ? 1 : 0); return; }
-  if (meshAnimFrame) cancelAnimationFrame(meshAnimFrame);
-  meshAnimFrame = null;
-  meshT = willExpand ? 1 : 0;
-  meshDims = null;
-  drawMesh();
-}
-
 // always expanded, its table always up
 meshPanel.classList.add('expanded');
 meshT = 1;
@@ -2074,7 +2062,7 @@ function dkControlTray() {
     const tiles = el('div', 'dk-ctl-tiles');
     tiles.append(tile(DK_GLYPHS.mesh, 'mesh', `${n} host${n === 1 ? '' : 's'}`, () => dk.meshTray?.show(true)));
     if (acct?.admin) {
-      const busy = meshLock ? (meshLock.paused ? 'paused' : 'running') : updates.mesh ? `v${updates.mesh} out` : 'current';
+      const busy = meshLock ? 'running' : updates.mesh ? `v${updates.mesh} out` : 'current';
       tiles.append(tile(DK_GLYPHS.update, 'mesh update', busy, () => { dkPopsClose('update'); openUpdateModal(); }, !!updates.mesh && !meshLock));
     }
     const theme = el('div', 'dk-ctl-theme');
@@ -2360,7 +2348,6 @@ function reactsEl(m) {
 }
 
 // on hover, over the bubble's top corner: the reactions, reply, and the rest of the menu
-const REPLY_GLYPH = 'M6.5 4L2.5 8l4 4M2.5 8h7a4 4 0 0 1 4 4v.5';
 // a line's menu marked by a faint ⋯ in its corner; right click or the ⋯ opens it
 function toolsEl() {
   const more = Object.assign(el('button', 'msg-more', '⋯'), { type: 'button', title: 'options, or right click', ariaLabel: 'options' });
@@ -3672,7 +3659,6 @@ const updateConfirmCancel = document.getElementById('update-confirm-cancel');
 const updateConfirmGo = document.getElementById('update-confirm-go');
 const updatePass = document.getElementById('update-pass');
 const updateFoot = document.getElementById('update-foot');
-const updateContinue = document.getElementById('update-continue');
 const updateProgress = document.getElementById('update-progress');
 const updateProgressCells = document.getElementById('update-progress-cells');
 const updateProgressLabel = document.getElementById('update-progress-label');
@@ -3720,7 +3706,7 @@ const stepLabel = (chain, host, step) => (!step ? ''
 // nothing new while a chain is in flight, its own continue and cancel above
 function renderUpdateButton() {
   updateBtn.disabled = !!meshLock;
-  updateBtn.textContent = !meshLock ? 'update' : meshLock.paused ? 'paused' : 'updating';
+  updateBtn.textContent = !meshLock ? 'update' : 'updating';
   updateBtn.title = meshLock ? `started by ${meshLock.initiator}` : 'update every host on the mesh at once';
 }
 
@@ -3811,9 +3797,8 @@ function applyChain(status, mine) {
   if (live) renderProgress(live);
   updateStart.hidden = !!live;
   updateFoot.hidden = !live || !mine;
-  updateContinue.hidden = !live || !live.paused;
   const clean = status && status.order.every((m) => ['ok', 'current'].includes(status.results[m]));
-  updateTitle.textContent = live ? (live.paused ? 'mesh update paused' : 'updating the mesh')
+  updateTitle.textContent = live ? 'updating the mesh'
     : status ? (clean ? 'mesh update done' : 'mesh update ended') : 'mesh update';
   renderVersions();
 }
@@ -3831,6 +3816,7 @@ function openUpdateModal() {
 const LATEST_HOLD_MS = 60000;
 let latestAt = 0;
 let latestRun = 0;
+let latestFeed = null;
 async function checkLatest() {
   if (meshLock) { updateLatest.hidden = true; return; }
   updateLatest.hidden = false;
@@ -3849,6 +3835,7 @@ async function checkLatest() {
   updateLatest.dataset.state = !c.latest ? 'bad' : behind ? 'new' : 'ok';
   updateLatest.textContent = !c.latest ? 'release feed unreachable' : behind ? `v${c.latest} is out` : `on latest · v${c.latest}`;
   latestAt = c.latest ? Date.now() : 0;
+  latestFeed = c.latest ? c : null;
 }
 
 function closeUpdateModal() {
@@ -3884,11 +3871,14 @@ function openConfirm(message, { title, hideCancel, actionLabel, onAction, onCanc
 async function askToStart() {
   updateBtn.disabled = true;
   updateBtn.textContent = 'checking';
-  let c = {};
-  try {
-    const r = await fetch('/api/update/check?fresh=1');
-    c = r.ok ? await r.json() : { error: `${r.status} ${(await r.text()).slice(0, 80)}`.trim() };
-  } catch (err) { c = { error: err.message }; }
+  // the feed as the pane just read it, else asked again
+  let c = latestFeed && Date.now() - latestAt < LATEST_HOLD_MS ? latestFeed : {};
+  if (!c.latest) {
+    try {
+      const r = await fetch('/api/update/check?fresh=1');
+      c = r.ok ? await r.json() : { error: `${r.status} ${(await r.text()).slice(0, 80)}`.trim() };
+    } catch (err) { c = { error: err.message }; }
+  }
   renderUpdateButton();
   const versions = [updateSeen.selfVersion, ...updateSeen.tailnet.filter((d) => d.phosphorus).map((d) => d.version)]
     .filter(Boolean);
@@ -4032,11 +4022,6 @@ new MutationObserver(() => topUpdate.setAttribute('aria-expanded', String(!updat
 
 document.getElementById('update-cancel').addEventListener('click', () => {
   chainAction('cancel').then(pollState);
-});
-
-updateContinue.addEventListener('click', () => {
-  updateContinue.hidden = true;
-  chainAction('continue').then(pollState);
 });
 
 // cap on one read, so a hung fetch can't stall a caller for good
@@ -5100,6 +5085,7 @@ function dkSnap(w, zone) {
   w.snap = zone || '';
   if (zone) w.node.dataset.snap = zone; else delete w.node.dataset.snap;
   w.node.querySelector('.dk-max').title = zone === 'max' ? 'restore' : 'maximize';
+  dkMaxed();
 }
 
 // a title bar's drag: a snapped window let go of its snap first, under the
@@ -5951,7 +5937,14 @@ function dkOpenApp(id) {
 }
 
 // which apps are up, each view's watcher told of a change
+// the auto-hide bar steps aside only while a window is maximized
+function dkMaxed() {
+  const on = [...dk.wins.values()].some((w) => w.snap === 'max' && !w.node.hidden && !w.leaving);
+  document.documentElement.toggleAttribute('data-maxed', on);
+}
+
 function dkAppsChanged() {
+  dkMaxed();
   const was = new Set(deskApps);
   deskApps.clear();
   for (const id of [...Object.keys(DK_APPS), 'git']) {

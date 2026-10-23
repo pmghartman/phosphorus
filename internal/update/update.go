@@ -3,7 +3,6 @@
 package update
 
 import (
-	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -19,7 +18,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pmghartman/phosphorus/internal/clock"
 	"github.com/pmghartman/phosphorus/internal/mesh"
 	"github.com/pmghartman/phosphorus/internal/util"
 )
@@ -36,6 +34,7 @@ var (
 
 const (
 	feedTTLMS       = 600000
+	feedRetryMS     = 30000
 	agentPickupMS   = 60000
 	updateTimeoutMS = 1200000
 	connectTimeout  = 2 * time.Second
@@ -44,8 +43,6 @@ const (
 	peerCapMS       = 1800000
 	chainMaxAgeMS   = 1800000
 	chainLingerMS   = 120000
-	// StartGraceMS nothing moving until they pass
-	StartGraceMS = 5000
 )
 
 func logf(f string, a ...any) { log.Printf("[update] "+f, a...) }
@@ -119,7 +116,8 @@ func Check(force bool) map[string]any {
 			return nil
 		}()
 		if err != nil {
-			feed.at = util.Now()
+			// retried soon, not held for the whole ttl
+			feed.at = util.Now() - feedTTLMS + feedRetryMS
 			feed.error = err.Error()
 		}
 	}
@@ -128,225 +126,6 @@ func Check(force bool) map[string]any {
 		"current": cur, "latest": feed.latest, "notes": feed.notes, "error": feed.error,
 		"available": feed.latest != "" && cur != "" && Newer(feed.latest, cur), "checkedAt": feed.at,
 	}
-}
-
-// --- this host's own update ------------------------------------------------
-
-type result struct {
-	ok          bool
-	current     bool
-	to          string
-	error       string
-	unreachable bool
-}
-
-var (
-	outcomeHook = func(map[string]any) {}
-	finishHook  = func(*Chain) {}
-)
-
-// OnOutcome server's, for disk and chat
-func OnOutcome(fn func(map[string]any)) { outcomeHook = fn }
-
-// OnFinish a chain ending, however it ended
-func OnFinish(fn func(*Chain)) { finishHook = fn }
-
-func uuid() string {
-	b := make([]byte, 16)
-	rand.Read(b)
-	b[6] = b[6]&0x0f | 0x40
-	b[8] = b[8]&0x3f | 0x80
-	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
-}
-
-// UUID a random v4 id
-func UUID() string { return uuid() }
-
-// RunLocalUpdate hands the update to the host's agent and waits for its verdict
-func RunLocalUpdate() result {
-	outcomeHook(map[string]any{"state": "running"})
-	done := func(r result) result {
-		if r.ok {
-			outcomeHook(map[string]any{"state": "ok", "current": r.current, "version": r.to})
-		} else {
-			outcomeHook(map[string]any{"state": "failed", "error": r.error})
-		}
-		return r
-	}
-	id := uuid()
-	if err := util.WriteJSONAtomic(requestFile, map[string]any{"id": id, "at": util.Now()}); err != nil {
-		return done(result{error: "couldn't request the update: " + err.Error()})
-	}
-	started := util.Now()
-	for util.Now()-started < updateTimeoutMS {
-		time.Sleep(2 * time.Second)
-		a := util.ReadJSONMap(agentFile)
-		if a == nil || a["id"] != id {
-			if util.Now()-started > agentPickupMS {
-				if _, err := os.Stat(requestFile); err == nil {
-					os.Remove(requestFile)
-					return done(result{error: "no update agent on this host: reinstall from the latest release"})
-				}
-			}
-			continue
-		}
-		switch a["state"] {
-		case "ok":
-			to := util.Str(a["version"])
-			if to == "" {
-				to = ReadVersion(VersionFile)
-			}
-			return done(result{ok: true, current: util.Truthy(a["current"]), to: to})
-		case "failed":
-			e := util.Str(a["error"])
-			if e == "" {
-				e = "update failed"
-			}
-			if len(e) > 500 {
-				e = e[:500]
-			}
-			return done(result{error: e})
-		}
-	}
-	return done(result{error: "update timed out"})
-}
-
-// --- peers ------------------------------------------------------------------
-
-func peerReq(host string, r util.Req) (util.Response, error) {
-	r.Host = host
-	r.Port = util.FrontendPort
-	if r.Timeout == 0 {
-		r.Timeout = connectTimeout
-	}
-	return util.RequestJSON(r)
-}
-
-func kickOff(host string) result {
-	r, err := peerReq(host, util.Req{Method: "POST", Path: "/api/update/local", Body: map[string]any{}, ConnectTimeout: connectTimeout})
-	if err != nil {
-		return result{unreachable: true, error: err.Error()}
-	}
-	if r.Status == 202 {
-		return result{ok: true}
-	}
-	e := fmt.Sprintf("status %d", r.Status)
-	if m := util.Obj(util.Decode(r.Body)); m != nil && util.Truthy(m["error"]) {
-		e = util.JSString(m["error"])
-	}
-	if len(e) > 500 {
-		e = e[:500]
-	}
-	return result{error: e}
-}
-
-func fetchStatus(host string) (map[string]any, error) {
-	r, err := peerReq(host, util.Req{Path: "/api/update/local/status"})
-	if err != nil {
-		return nil, err
-	}
-	m := util.Obj(util.Decode(r.Body))
-	if m == nil {
-		return nil, fmt.Errorf("unreadable status")
-	}
-	return m, nil
-}
-
-type selfInfo struct{ bootID, version, platform string }
-
-func fetchSelf(host string) selfInfo {
-	r, err := peerReq(host, util.Req{Path: "/api/mesh/snapshot"})
-	if err != nil {
-		return selfInfo{}
-	}
-	s := util.Obj(util.Obj(util.Decode(r.Body))["self"])
-	return selfInfo{util.Str(s["bootId"]), util.Str(s["version"]), util.Str(s["platform"])}
-}
-
-func peerAddr(host string) string {
-	if a := util.TailnetIP(host); a != "" {
-		return a
-	}
-	return host
-}
-
-// callPeerUpdate a peer's update asked for and followed; its boot and last
-// verdict noted first, so a watch picked up after this host restarts can tell
-func callPeerUpdate(host string, note func(map[string]string)) result {
-	addr := peerAddr(host)
-	before := fetchSelf(addr)
-	base := ""
-	if s, err := fetchStatus(addr); err == nil && util.Truthy(s["at"]) {
-		base = fmt.Sprint(s["at"])
-	}
-	note(map[string]string{"from": before.version, "boot": before.bootID, "base": base})
-	if k := kickOff(addr); !k.ok {
-		return k
-	}
-	return watchPeer(host, before.version, before.bootID, base, "asked", note)
-}
-
-// watchPeer a peer's update followed to its verdict: its agent's, then its new boot
-func watchPeer(host, fromVersion, fromBoot, base, stage string, note func(map[string]string)) result {
-	addr := peerAddr(host)
-	// the stage each progress bar weighs the host by, every peer at once
-	at := func(s string) {
-		if s != stage {
-			stage = s
-			note(map[string]string{"stage": s})
-		}
-	}
-	note(map[string]string{"stage": stage})
-	capAt := util.Now() + peerCapMS
-	quietUntil := util.Now() + peerQuietMS
-	var swapDeadline int64
-	for util.Now() < capAt {
-		time.Sleep(clock.Interval())
-		status, err := fetchStatus(addr)
-		if err != nil {
-			// silent once installing: its service restarting onto the new release
-			if stage == "installing" {
-				at("restarting")
-			}
-			if util.Now() > quietUntil {
-				return result{unreachable: true, error: "stopped answering during its update"}
-			}
-			continue
-		}
-		quietUntil = util.Now() + peerQuietMS
-		if swapDeadline != 0 && util.Now() > swapDeadline {
-			return result{error: "the restart never landed, see that host's phosphorus log"}
-		}
-		if status["state"] == "failed" {
-			e := util.Str(status["error"])
-			if e == "" {
-				e = "update failed"
-			}
-			return result{error: e}
-		}
-		if status["state"] == "running" && stage == "asked" {
-			at("installing")
-		}
-		if status["state"] != "ok" || (base != "" && fmt.Sprint(status["at"]) == base) {
-			continue
-		}
-		if util.Truthy(status["current"]) {
-			return result{ok: true, current: true, to: fromVersion}
-		}
-		after := fetchSelf(addr)
-		if fromBoot == "" || (after.bootID != "" && after.bootID != fromBoot) {
-			to := after.version
-			if to == "" {
-				to = util.Str(status["version"])
-			}
-			return result{ok: true, to: to}
-		}
-		at("restarting")
-		if swapDeadline == 0 {
-			swapDeadline = util.Now() + swapTimeoutMS
-		}
-	}
-	return result{unreachable: true, error: "gave up waiting for the update to finish"}
 }
 
 // --- chain state ------------------------------------------------------------
@@ -360,9 +139,6 @@ type Chain struct {
 	Errors       map[string]string            `json:"errors"`
 	Details      map[string]string            `json:"details,omitempty"`
 	Target       string                       `json:"target"`
-	CurrentIndex int                          `json:"currentIndex"`
-	Paused       bool                         `json:"paused"`
-	PauseReason  string                       `json:"pauseReason"`
 	Cancelled    bool                         `json:"cancelled"`
 	Done         bool                         `json:"done"`
 	StartedAt    string                       `json:"startedAt"`
@@ -371,10 +147,17 @@ type Chain struct {
 	AlertSeq     *float64                     `json:"alertSeq,omitempty"`
 }
 
+// nothing moving until it passes
+var startGraceMS = 5000
+
+var finishHook = func(*Chain) {}
+
+// OnFinish a chain ending, however it ended
+func OnFinish(fn func(*Chain)) { finishHook = fn }
+
 var (
 	cmu   sync.Mutex
 	chain *Chain
-	wake  chan struct{}
 )
 
 func chainStatusLocked() map[string]any {
@@ -386,8 +169,7 @@ func chainStatusLocked() map[string]any {
 	}
 	return map[string]any{
 		"chainId": chain.ID, "order": chain.Order, "results": chain.Results, "versions": chain.Versions,
-		"target": chain.Target, "currentIndex": chain.CurrentIndex, "paused": chain.Paused,
-		"pauseReason": chain.PauseReason, "errors": chain.Errors, "done": chain.Done, "finishedAt": chain.FinishedAt,
+		"target": chain.Target, "errors": chain.Errors, "done": chain.Done, "finishedAt": chain.FinishedAt,
 	}
 }
 
@@ -396,8 +178,8 @@ func sharedLocked() map[string]any {
 		return nil
 	}
 	return map[string]any{
-		"initiator": selfHost, "chainId": chain.ID, "startedAt": chain.StartedAt, "paused": chain.Paused, "done": chain.Done,
-		"pauseReason": chain.PauseReason, "order": chain.Order, "results": chain.Results, "errors": chain.Errors,
+		"initiator": selfHost, "chainId": chain.ID, "startedAt": chain.StartedAt, "done": chain.Done,
+		"order": chain.Order, "results": chain.Results, "errors": chain.Errors,
 	}
 }
 
@@ -498,7 +280,6 @@ func finishLocked(reason string) {
 			chain.Results[m] = "skipped"
 		}
 	}
-	chain.Paused = false
 	chain.Done = true
 	chain.FinishedAt = util.Now()
 	saveLocked()
@@ -541,8 +322,8 @@ func Remember(alertSeq float64) {
 	saveLocked()
 }
 
-// RestoreChain a chain this host drove through its own restart: its own step
-// closed out by this boot, the peers still updating watched again to their verdicts
+// RestoreChain a chain this host drove through its own restart: every host
+// still running followed to its verdict again, this one's read from its agent
 func RestoreChain() {
 	var saved Chain
 	if !util.ReadJSON(chainFile, &saved) || saved.Done || saved.Order == nil {
@@ -554,7 +335,6 @@ func RestoreChain() {
 	cmu.Lock()
 	defer cmu.Unlock()
 	chain = &saved
-	chain.Paused = false
 	if chain.Versions == nil {
 		chain.Versions = map[string]map[string]string{}
 	}
@@ -564,27 +344,23 @@ func RestoreChain() {
 	if chain.Results == nil {
 		chain.Results = map[string]string{}
 	}
-	if chain.Results[selfHost] == "running" {
-		chain.Results[selfHost] = "ok"
-		noteLocked(selfHost, map[string]string{"to": ReadVersion(VersionFile), "stage": ""})
-	}
-	peers := []string{}
+	running := []string{}
 	for _, m := range chain.Order {
-		if m != selfHost && chain.Results[m] == "running" {
-			peers = append(peers, m)
+		if chain.Results[m] == "running" {
+			running = append(running, m)
 		}
 	}
-	if len(peers) == 0 {
+	if len(running) == 0 {
 		finishLocked("finished after the swap")
 		return
 	}
-	logf("chain %s back after the swap, still watching %s", chain.ID[:8], strings.Join(peers, ", "))
+	logf("chain %s back after the swap, still watching %s", chain.ID[:8], strings.Join(running, ", "))
 	go func() {
 		var wg sync.WaitGroup
-		for _, h := range peers {
+		for _, h := range running {
 			cmu.Lock()
 			v := chain.Versions[h]
-			from, boot, base, stage := v["from"], v["boot"], v["base"], v["stage"]
+			id, from, boot, stage := v["id"], v["from"], v["boot"], v["stage"]
 			cmu.Unlock()
 			if stage == "" {
 				stage = "asked"
@@ -592,7 +368,12 @@ func RestoreChain() {
 			wg.Add(1)
 			go func(host string) {
 				defer wg.Done()
-				r := watchPeer(host, from, boot, base, stage, func(f map[string]string) { cmu.Lock(); noteLocked(host, f); cmu.Unlock() })
+				var r result
+				if host == selfHost {
+					r = settleSelf(id)
+				} else {
+					r = watchPeer(host, id, from, boot, stage, func(f map[string]string) { cmu.Lock(); noteLocked(host, f); cmu.Unlock() })
+				}
 				cmu.Lock()
 				recordLocked(host, r)
 				cmu.Unlock()
@@ -600,7 +381,6 @@ func RestoreChain() {
 		}
 		wg.Wait()
 		cmu.Lock()
-		chain.CurrentIndex = len(chain.Order)
 		finishLocked("finished")
 		cmu.Unlock()
 	}()
@@ -613,7 +393,7 @@ func recordLocked(host string, r result) bool {
 		if r.current {
 			chain.Results[host] = "current"
 		}
-		noteLocked(host, map[string]string{"to": r.to})
+		noteLocked(host, map[string]string{"to": r.to, "stage": ""})
 		return true
 	}
 	chain.Results[host] = "fail"
@@ -630,10 +410,10 @@ func recordLocked(host string, r result) bool {
 	return false
 }
 
-// runChain every host at once, this one too, each through its own installer;
-// this host's swap ends the driver, RestoreChain picking the rest up on its boot
+// runChain every host at once, this one too, each through its own agent; this
+// host's swap ends the driver, RestoreChain picking the rest up on its boot
 func runChain() {
-	time.Sleep(StartGraceMS * time.Millisecond)
+	time.Sleep(time.Duration(startGraceMS) * time.Millisecond)
 	cmu.Lock()
 	if chain.Cancelled {
 		finishLocked("cancelled")
@@ -651,41 +431,32 @@ func runChain() {
 		wg.Add(1)
 		go func(host string) {
 			defer wg.Done()
+			note := func(f map[string]string) { cmu.Lock(); noteLocked(host, f); cmu.Unlock() }
 			var r result
 			if host == selfHost {
-				cmu.Lock()
-				noteLocked(selfHost, map[string]string{"from": ReadVersion(VersionFile), "stage": "installing"})
-				cmu.Unlock()
-				r = RunLocalUpdate()
+				if q, err := Ask(); err != nil {
+					r = result{error: err.Error()}
+				} else {
+					note(map[string]string{"from": ReadVersion(VersionFile), "stage": "installing", "id": q.ID})
+					r = q.wait()
+				}
 			} else {
-				r = callPeerUpdate(host, func(f map[string]string) { cmu.Lock(); noteLocked(host, f); cmu.Unlock() })
+				r = callPeerUpdate(host, note)
 			}
 			cmu.Lock()
-			if !recordLocked(host, r) {
-				logf("%s: %s", host, r.error)
-			}
+			recordLocked(host, r)
 			cmu.Unlock()
 		}(h)
 	}
 	wg.Wait()
 	cmu.Lock()
-	chain.CurrentIndex = len(chain.Order)
 	finishLocked("finished")
 	cmu.Unlock()
 }
 
-func resumeLocked() {
-	if wake != nil {
-		close(wake)
-		wake = nil
-	}
-}
-
-// Start a chain, or who holds the lock
-func Start(gitHosts []string) map[string]any { return StartOnly(gitHosts, nil) }
-
-// StartOnly a chain over only those hosts, every host when only is empty
-func StartOnly(gitHosts, only []string) map[string]any {
+// Start a chain over only those hosts, every host when only is empty, or who
+// holds the lock
+func Start(gitHosts, only []string) map[string]any {
 	if held := util.Obj(MeshLock()); held != nil {
 		return map[string]any{"locked": held["initiator"]}
 	}
@@ -737,19 +508,5 @@ func Cancel() bool {
 		return false
 	}
 	chain.Cancelled = true
-	if chain.Paused {
-		resumeLocked()
-	}
-	return true
-}
-
-// Proceed past a pause; a chain running every host at once never pauses
-func Proceed() bool {
-	cmu.Lock()
-	defer cmu.Unlock()
-	if chain == nil || chain.Done || !chain.Paused {
-		return false
-	}
-	resumeLocked()
 	return true
 }
