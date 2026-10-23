@@ -24,6 +24,9 @@ import { rebaseLexical, settleLexical } from './stable-highlight.js';
 import { diagnosticSeverity, diagnosticCounts, diagnosticText, diagnosticsAt, offsetAtColumn, diagnosticDelay, rebaseDiagnostics } from './diagnostics.js';
 import { definitionIdentifier, mountDefinitionLinks } from './definition-links.js';
 import { editorDecorations } from './editor-guides.js';
+import { bracketPair, enclosingPair, outdentFor } from './brackets.js';
+import { toggleLineComment, toggleBlockComment, docCommentEnter, blockCommentFor } from './comments.js';
+import { wordStart, wordEnd } from './completion.js';
 
 // --- code editor ------------------------------------------------------------------
 // a share's text or code file in a tab of its own, joined to the file's live
@@ -80,7 +83,21 @@ function codeEditor(view, file, btn, id, opts = {}) {
   let inlineSuggestion = null;
   ta.setAttribute('autocapitalize', 'off');
   ta.setAttribute('aria-label', file.label);
-  body.append(agentL, finds, pre, guidesLayer, squig, inlineLayer, definitionLayer, ta);
+  // under the text: the caret's line, rulers, the bracket pair and the caret's word elsewhere
+  const deco = el('div', 'code-deco');
+  const lineNow = el('div', 'code-line-now');
+  const rulersEl = el('div', 'code-rulers');
+  const decoMarks = el('pre', 'code-hl code-deco-marks');
+  const decoWin = el('code');
+  decoMarks.append(decoWin);
+  deco.append(lineNow, rulersEl, decoMarks);
+  // the caret's line number, lit over the gutter's
+  const nrNow = el('div', 'code-nr-now');
+  // the overview ruler over the scrollbar: problems, matches, bookmarks, the caret, the whole file at once
+  const overview = el('canvas', 'code-overview');
+  for (const layer of [deco, nrNow, overview]) layer.setAttribute('aria-hidden', 'true');
+  gutter.append(nrNow);
+  body.append(deco, agentL, finds, pre, guidesLayer, squig, inlineLayer, definitionLayer, ta);
   scroller.append(gutter, body);
 
   const out = el('div', 'code-out');
@@ -93,7 +110,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
   out.append(outHead, outList);
   // markdown rendered, each block its source again on a double click
   const mdView = Object.assign(el('div', 'code-md'), { hidden: true, tabIndex: -1 });
-  view.append(bar, scroller, mdView, out);
+  view.append(bar, scroller, mdView, out, overview);
   const diskNotice = Object.assign(el('div', 'code-disk-notice'), { hidden: true });
   const diskMessage = el('span');
   const diskCompare = el('details');
@@ -111,9 +128,53 @@ function codeEditor(view, file, btn, id, opts = {}) {
   diagnosticHover.setAttribute('role', 'tooltip');
   view.append(diagnosticHover);
   function hideDiagnosticHover() { diagnosticHover.hidden = true; }
+  // the hover: the problems under the mouse at once, then what the language server says of
+  // the word there (opts.hover) once the mouse rests on it, in one tooltip as VS Code's
+  let hoverTimer = 0, hoverAbort = null, hoverWord = null;
+  function hideHover() { clearTimeout(hoverTimer); hoverAbort?.abort(); hoverAbort = null; hoverWord = null; hideDiagnosticHover(); }
+  let lastPlace = null;
+  function placeHover(x, y, below = true) {
+    lastPlace = [x, y, below];
+    const bounds = diagnosticHover.getBoundingClientRect();
+    diagnosticHover.style.left = `${Math.max(4, Math.min(x, window.innerWidth - bounds.width - 8))}px`;
+    const top = below ? y : y - bounds.height;
+    diagnosticHover.style.top = `${Math.max(4, Math.min(top, window.innerHeight - bounds.height - 8))}px`;
+  }
+  function showHover(problems, extra, x, y, below) {
+    if (!problems.length && !extra) { hideDiagnosticHover(); return; }
+    diagnosticHover.replaceChildren();
+    if (problems.length) diagnosticHover.append(el('div', 'code-hover-problems', problems.map(diagnosticText).join('\n\n')));
+    if (problems.length && opts.quickFixHint) diagnosticHover.append(el('div', 'code-hover-hint', opts.quickFixHint));
+    if (extra) diagnosticHover.append(extra);
+    diagnosticHover.classList.toggle('code-hover-rich', !!extra);
+    diagnosticHover.hidden = false;
+    placeHover(x, y, below);
+  }
+  // markdown rendered after it's shown changes its size: placed again within the window
+  const hoverResize = new ResizeObserver(() => { if (!diagnosticHover.hidden && lastPlace) placeHover(...lastPlace); });
+  hoverResize.observe(diagnosticHover);
+  // a place's screen point: the caret's, for a hover or signature asked from the keyboard
+  function pointAt(offset) {
+    const text = ta.value, g = geom();
+    const line = lineAt(text, offset) - 1;
+    const rect = ta.getBoundingClientRect();
+    return { x: rect.left + g.left + columnOf(text, lineStarts[line], offset) * g.cw, top: rect.top + g.top + line * g.lh, bottom: rect.top + g.top + (line + 1) * g.lh };
+  }
+  async function hoverAt(offset, x, y, below = true) {
+    const text = ta.value;
+    const problems = errsText === text ? diagnosticsAt(errs, offset) : [];
+    showHover(problems, null, x, y, below);
+    if (!opts.hover) return;
+    hoverAbort?.abort();
+    const own = hoverAbort = new AbortController();
+    let extra = null;
+    try { extra = await opts.hover(offset, own.signal); } catch {}
+    if (own.signal.aborted || closed || ta.value !== text || hoverAbort !== own) return;
+    if (extra || problems.length) showHover(problems, extra, x, y, below);
+  }
   ta.addEventListener('mousemove', (event) => {
-    if (inlineSuggestion) { hideDiagnosticHover(); return; }
-    if (!errs.length) { hideDiagnosticHover(); return; }
+    if (inlineSuggestion) { hideHover(); return; }
+    if (!errs.length && !opts.hover) { hideHover(); return; }
     const rect = ta.getBoundingClientRect(), g = geom();
     const line = Math.floor((event.clientY - rect.top - g.top) / g.lh);
     const column = Math.floor((event.clientX - rect.left - g.left) / g.cw);
@@ -121,16 +182,23 @@ function codeEditor(view, file, btn, id, opts = {}) {
     lineAt(text, 0);
     const start = lineStarts[line];
     const local = start === undefined ? null : offsetAtColumn(text.slice(start, lineStarts[line + 1] ?? text.length), 0, column, g.tab);
-    const hit = local == null ? [] : diagnosticsAt(errs, start + local);
-    if (!hit.length) { hideDiagnosticHover(); return; }
-    diagnosticHover.textContent = hit.map(diagnosticText).join('\n\n');
-    diagnosticHover.hidden = false;
-    const bounds = diagnosticHover.getBoundingClientRect();
-    diagnosticHover.style.left = `${Math.max(4, Math.min(event.clientX + 12, window.innerWidth - bounds.width - 8))}px`;
-    diagnosticHover.style.top = `${Math.max(4, Math.min(event.clientY + 20, window.innerHeight - bounds.height - 8))}px`;
+    if (local == null) { hideHover(); return; }
+    const at = start + local;
+    // the word or problem under the mouse: the same one keeps its tooltip where it is
+    const ws = wordStart(text, at), we = wordEnd(text, at);
+    const hit = errsText === text ? diagnosticsAt(errs, at) : [];
+    const key = `${ws}:${we}:${hit.length}`;
+    if (hoverWord === key && (!diagnosticHover.hidden || hoverTimer)) return;
+    hideHover();
+    if (we === ws && !hit.length) return;
+    hoverWord = key;
+    const x = event.clientX + 12, y = event.clientY + 20;
+    if (hit.length) showHover(hit, null, x, y, true);
+    // the language server asked once the mouse rests, VS Code's 300ms
+    if (opts.hover && we > ws) hoverTimer = setTimeout(() => { hoverTimer = 0; hoverAt(at, x, y); }, 300);
   });
-  for (const event of ['mouseleave', 'blur', 'input', 'keydown']) ta.addEventListener(event, hideDiagnosticHover);
-  scroller.addEventListener('scroll', hideDiagnosticHover);
+  for (const event of ['mouseleave', 'blur', 'input', 'keydown']) ta.addEventListener(event, hideHover);
+  scroller.addEventListener('scroll', hideHover);
   function clearDefinitionHover() {
     if (!definitionHover) return;
     definitionHover = null; definitionLayer.hidden = true; definitionLayer.replaceChildren();
@@ -515,6 +583,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
     if (changed || hlForce || hlText !== text) paintText();
     hlForce = false;
     paintMarks();
+    paintDeco();
     guidesSoon();
     if (changed) checkSoon();
     if (wantCaret) { wantCaret = false; caretInView(); }
@@ -527,6 +596,120 @@ function codeEditor(view, file, btn, id, opts = {}) {
   }
   // force: drawn again though the text's the same (new colors, a resize, a tab shown)
   const redraw = (force = false) => { hlForce ||= force; drawFrame ||= requestAnimationFrame(draw); mdSoon(); };
+
+  // --- decorations: the caret's line and number, rulers, the bracket pair, the caret's word ---
+  // whether an offset is code, not a string or comment: the parse when there is one, else
+  // the drawn colors
+  function isCode(text) {
+    const parser = text.length <= HL_MAX && parserNow(lang.check);
+    if (parser) {
+      const tree = syntax.parse(parser, text);
+      return (i) => !/String|Comment|Regex|Template|Char/.test(tree.resolveInner(i, 1).name);
+    }
+    return (i) => !/hljs-(comment|string|regexp)/.test(tokenClass(i));
+  }
+  // the caret's word (or a short selection) found through the file once the caret rests
+  let occurrences = null, occurrenceTimer = 0;
+  const OCCURRENCE_MAX = 2000;
+  function findOccurrences() {
+    occurrenceTimer = 0;
+    if (closed || !ready) return;
+    const text = ta.value, s = ta.selectionStart, e = ta.selectionEnd;
+    const display = opts.display?.() || {};
+    let needle = '', whole = false;
+    if (s === e && display.occurrencesHighlight !== false) {
+      const ws = wordStart(text, s), we = wordEnd(text, s);
+      if (we > ws && !/^\d/.test(text.slice(ws, we))) { needle = text.slice(ws, we); whole = true; }
+    } else if (s !== e && display.selectionHighlight !== false && e - s <= 200) {
+      const sel = text.slice(s, e);
+      if (!sel.includes('\n') && sel.trim()) needle = sel;
+    }
+    const ranges = [];
+    if (needle && text.length <= HL_MAX) {
+      for (let i = text.indexOf(needle); i >= 0 && ranges.length < OCCURRENCE_MAX; i = text.indexOf(needle, i + 1)) {
+        // a whole word only: no word character either side
+        if (whole && (wordStart(text, i) !== i || wordEnd(text, i + needle.length) !== i + needle.length)) continue;
+        // the selection itself left plain, as VS Code leaves it
+        if (!whole && i === s) continue;
+        ranges.push([i, i + needle.length]);
+      }
+    }
+    // a lone word marks nothing
+    occurrences = { text, s, e, ranges: whole && ranges.length < 2 ? [] : ranges };
+    paintDeco();
+  }
+  let decoFrame = 0, rulersKey = '';
+  const decoSoon = () => { decoFrame ||= requestAnimationFrame(() => { decoFrame = 0; paintDeco(); }); };
+  function paintDeco() {
+    if (closed || view.hidden) return;
+    const text = ta.value, s = ta.selectionStart, e = ta.selectionEnd;
+    const display = opts.display?.() || {};
+    const g = geom();
+    const line = lineAt(text, e) - 1;
+    const highlight = display.lineHighlight ?? 'line';
+    lineNow.hidden = !ready || highlight === 'none' || highlight === 'gutter' || s !== e;
+    lineNow.style.top = `${g.top + line * g.lh}px`; lineNow.style.height = `${g.lh}px`;
+    nrNow.hidden = !ready || highlight === 'none';
+    nrNow.textContent = String(line + 1);
+    nrNow.style.top = `${g.numsTop + line * g.lh}px`; nrNow.style.height = nrNow.style.lineHeight = `${g.lh}px`;
+    const rulers = Array.isArray(display.rulers) ? display.rulers.filter((n) => Number.isFinite(n) && n > 0) : [];
+    const key = `${rulers}|${g.left}|${g.cw}`;
+    if (key !== rulersKey) {
+      rulersKey = key;
+      rulersEl.replaceChildren(...rulers.map((n) => { const r = el('div'); r.style.left = `${g.left + n * g.cw}px`; return r; }));
+    }
+    const marks = [];
+    if (ready && s === e && display.matchBrackets !== false && text.length <= HL_MAX) {
+      const pair = bracketPair(text, s, isCode(text));
+      if (pair) for (const at of [pair.open, pair.close]) marks.push({ from: at, to: at + 1, wrap: (raw) => `<mark class="bracket">${esc(raw)}</mark>` });
+    }
+    const occ = occurrences;
+    if (occ && occ.text === text && occ.s === s && occ.e === e) {
+      for (const [from, to] of occ.ranges) if (to >= drawn.from && from <= drawn.to) marks.push({ from, to, wrap: (raw) => `<mark class="word">${esc(raw)}</mark>` });
+    } else {
+      clearTimeout(occurrenceTimer);
+      if (ready) occurrenceTimer = setTimeout(findOccurrences, 250);
+    }
+    marks.sort((a, b) => a.from - b.from);
+    if (marks.length) { decoWin.innerHTML = markedHtml(text, marks, drawn); placeWindow(decoWin, drawn); } else if (decoWin.firstChild) decoWin.textContent = '';
+    overviewSoon();
+  }
+
+  // --- the overview ruler: the whole file's problems, matches, bookmarks and caret at a glance ---
+  let overviewFrame = 0, overviewColors = null, overviewEpoch = -1;
+  const overviewSoon = () => { overviewFrame ||= requestAnimationFrame(paintOverview); };
+  function paintOverview() {
+    overviewFrame = 0;
+    if (closed || view.hidden || !ready || (opts.display?.() || {}).overviewRuler === false) { overview.hidden = true; return; }
+    const h = metrics.height, w = 10, dpr = window.devicePixelRatio || 1;
+    if (!h) return;
+    overview.hidden = false;
+    overview.style.top = `${scroller.offsetTop}px`;
+    overview.style.height = `${h}px`;
+    if (overview.width !== w * dpr || overview.height !== Math.round(h * dpr)) { overview.width = w * dpr; overview.height = Math.round(h * dpr); }
+    if (!overviewColors || overviewEpoch !== fontEpoch) {
+      const cs = getComputedStyle(view);
+      const v = (name, fall) => cs.getPropertyValue(name).trim() || fall;
+      overviewColors = { err: v('--ide-err', '#f14c4c'), warn: v('--ide-warn', '#cca700'), info: v('--ide-info', '#3794ff'), find: v('--ide-find-now', '#d18616'), mark: v('--ide-accent', '#3794ff'), word: v('--ide-word-hl-ruler', v('--ide-muted', '#888')), caret: v('--ide-caret', '#ccc') };
+      overviewEpoch = fontEpoch;
+    }
+    const c = overview.getContext('2d');
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    c.clearRect(0, 0, w, h);
+    const text = ta.value, g = geom();
+    lineAt(text, 0);
+    const total = lineStarts.length * g.lh + h / 2;
+    const y = (offset) => Math.min(h - 2, (lineAt(text, Math.min(offset, text.length)) - 1) * g.lh / total * h);
+    const bar = (offset, color, x, width, height = 2) => { c.fillStyle = color; c.fillRect(x, Math.round(y(offset)), width, height); };
+    const occ = occurrences;
+    if (occ && occ.text === text) for (const [from] of occ.ranges) bar(from, overviewColors.word, 3, 4);
+    if (findRanges.length) for (const [from] of findRanges.slice(0, 5000)) bar(from, overviewColors.find, 3, 4);
+    for (const at of bookmarks) bar(at, overviewColors.mark, 0, 3, 3);
+    if (errsText === text) for (const x of errs) bar(x.from, x.severity === 2 ? overviewColors.warn : x.severity > 2 ? overviewColors.info : overviewColors.err, 6, 4, 3);
+    c.globalAlpha = 0.7;
+    bar(ta.selectionEnd, overviewColors.caret, 0, w, 1);
+    c.globalAlpha = 1;
+  }
 
   // --- a find's matches, set by the host, redrawn with the text ---
   let findRanges = [];
@@ -641,7 +824,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
 
   // --- the host told: state, caret and errors, once a frame at most ---
   let tellFrame = 0;
-  const tell = () => { if (opts.onState && !tellFrame) tellFrame = requestAnimationFrame(() => { tellFrame = 0; if (!closed) opts.onState(info()); }); };
+  const tell = () => { if (!tellFrame) tellFrame = requestAnimationFrame(() => { tellFrame = 0; if (closed) return; paintDeco(); opts.onState?.(info()); }); };
   let indexedText, lineStarts = [];
   const firstAbove = (p) => { let lo = 0, hi = lineStarts.length; while (lo < hi) { const mid = (lo + hi) >>> 1; if (lineStarts[mid] <= p) lo = mid + 1; else hi = mid; } return lo; };
   // the line starts kept for the text: an edit's lines found again where it changed, the
@@ -849,6 +1032,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
     }));
     if (!errs.length) out.hidden = true;
     paintMarks();
+    overviewSoon();
     tell();
   }
 
@@ -1022,6 +1206,9 @@ function codeEditor(view, file, btn, id, opts = {}) {
         }
         if (wantSave && !inflight && ta.value === S) { wantSave = false; say({ type: 'save' }); }
         paintState();
+      } else if (msg.type === 'eol') {
+        eolMode = msg.eol === '\r\n' ? 'CRLF' : 'LF';
+        tell();
       } else if (msg.type === 'saved') {
         saved = msg.v;
         if (saved === V) savedText = S;
@@ -1103,21 +1290,74 @@ function codeEditor(view, file, btn, id, opts = {}) {
     typeIn(a, b, next, a, a + next.length);
   }
 
+  // a line comment per line, as VS Code's Ctrl+/; a language with only block comments (CSS,
+  // HTML, XML) takes those instead
   function toggleComment() {
-    if (!lang.comment) return;
-    const c = lang.comment;
-    const a = lineStart(ta.selectionStart);
-    const b = lineEnd(ta.selectionEnd);
-    const lines = ta.value.slice(a, b).split('\n');
-    const on = lines.filter((l) => l.trim()).every((l) => l.trimStart().startsWith(c));
-    const next = lines.map((l) => {
-      if (!l.trim()) return l;
-      if (on) return l.replace(new RegExp(`^(\\s*)${c.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')} ?`), '$1');
-      const ind = l.match(/^\s*/)[0];
-      return `${ind}${c} ${l.slice(ind.length)}`;
-    }).join('\n');
-    typeIn(a, b, next, a, a + next.length);
+    if (ta.readOnly) return false;
+    if (!lang.comment) return toggleBlock();
+    const s = ta.selectionStart, e = ta.selectionEnd;
+    const edit = toggleLineComment(ta.value, s, e, lang.comment);
+    const whole = s !== e;
+    typeIn(edit.from, edit.to, edit.text, whole ? edit.from : undefined, whole ? edit.from + edit.text.length : undefined);
+    if (!whole) {
+      // the caret kept on its text, moved by what went in or out before it on its line
+      const delta = edit.text.indexOf('\n') < 0 ? edit.text.length - (edit.to - edit.from) : 0;
+      const at = Math.max(edit.from, s + delta);
+      ta.setSelectionRange(at, at);
+    }
+    return true;
   }
+  function toggleBlock() {
+    const pair = blockCommentFor(lang.hl);
+    if (!pair || ta.readOnly) return false;
+    const edit = toggleBlockComment(ta.value, ta.selectionStart, ta.selectionEnd, pair);
+    typeIn(edit.from, edit.to, edit.text, ...edit.select);
+    return true;
+  }
+  // the caret's active end and the selection's anchor, as the textarea's direction says
+  const anchorHead = () => {
+    const s = ta.selectionStart, e = ta.selectionEnd;
+    return ta.selectionDirection === 'backward' ? [e, s] : [s, e];
+  };
+  // Home as VS Code's: the line's first non-blank character, then its start, and back
+  function smartHome(extend) {
+    const v = ta.value;
+    const [anchor, head] = anchorHead();
+    const ls = lineStart(head);
+    const ind = ls + v.slice(ls, lineEnd(ls)).match(/^[ \t]*/)[0].length;
+    const to = head === ind ? ls : ind;
+    if (extend) ta.setSelectionRange(Math.min(anchor, to), Math.max(anchor, to), to < anchor ? 'backward' : 'forward');
+    else ta.setSelectionRange(to, to);
+    caretInView(); sendCursor(); tell();
+  }
+  // copy and cut with nothing selected take the whole line, as VS Code's do; pasting that
+  // line back with nothing selected puts it above the caret's line
+  let lineClip = null;
+  const lineRange = (p) => { const a = lineStart(p), b = lineEnd(p); return [a, b]; };
+  ta.addEventListener('copy', (e) => {
+    if (ta.selectionStart !== ta.selectionEnd || (opts.display?.() || {}).emptySelectionClipboard === false) { lineClip = null; return; }
+    const [a, b] = lineRange(ta.selectionStart);
+    lineClip = `${ta.value.slice(a, b)}\n`;
+    e.clipboardData.setData('text/plain', lineClip);
+    e.preventDefault();
+  });
+  ta.addEventListener('cut', (e) => {
+    if (ta.selectionStart !== ta.selectionEnd || (opts.display?.() || {}).emptySelectionClipboard === false) { lineClip = null; return; }
+    e.preventDefault();
+    const v = ta.value, [a, b] = lineRange(ta.selectionStart);
+    lineClip = `${v.slice(a, b)}\n`;
+    e.clipboardData.setData('text/plain', lineClip);
+    if (ta.readOnly) return;
+    const from = b < v.length ? a : Math.max(0, a - 1), to = b < v.length ? b + 1 : b;
+    typeIn(from, to, '', from);
+  });
+  ta.addEventListener('paste', (e) => {
+    const text = e.clipboardData?.getData('text/plain');
+    if (ta.readOnly || !lineClip || text?.replace(/\r\n/g, '\n') !== lineClip || ta.selectionStart !== ta.selectionEnd) return;
+    e.preventDefault();
+    const s = ta.selectionStart, a = lineStart(s);
+    typeIn(a, a, lineClip, s + lineClip.length);
+  });
 
   // ctrl+s the file's save, never the browser's save page
   view.addEventListener('keydown', (e) => {
@@ -1137,6 +1377,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
     // the ide's escape its own: a find closed, the focus kept
     if (e.key === 'Escape' && !bare) { e.preventDefault(); ta.blur(); return; }
     if (mod && e.key === '/') { e.preventDefault(); toggleComment(); return; }
+    if (e.key === 'Home' && !mod && !e.altKey) { e.preventDefault(); smartHome(e.shiftKey); return; }
     if (ta.readOnly || mod || e.altKey) return;
     if (e.key === 'Tab') {
       e.preventDefault();
@@ -1149,11 +1390,16 @@ function codeEditor(view, file, btn, id, opts = {}) {
       const ls = lineStart(s);
       const ind = v.slice(ls, s).match(/^[ \t]*/)[0];
       const before = v.slice(ls, s).trimEnd();
+      // a doc comment carried on, or closed under a fresh /**
+      const doc = s === t && docCommentEnter(v, s, lang.hl);
+      if (doc) { typeIn(s, t, doc.text, s + doc.caret); return; }
       const opens = /[{[(]$/.test(before) || (lang.hl === 'python' && before.endsWith(':'));
       const u = unit();
+      // a line left holding only indentation is left empty, as VS Code trims what it put in
+      const from = !before && s === t && lineEnd(s) === s ? ls : s;
       if (opens && CLOSERS.has(v[t])) {
-        typeIn(s, t, `\n${ind}${u}\n${ind}`, s + 1 + ind.length + u.length);
-      } else typeIn(s, t, `\n${ind}${opens ? u : ''}`);
+        typeIn(from, t, `\n${ind}${u}\n${ind}`, from + 1 + ind.length + u.length);
+      } else typeIn(from, t, `\n${ind}${opens ? u : ''}`);
       return;
     }
     if (e.key === 'Backspace' && s === t && s > 0) {
@@ -1173,6 +1419,11 @@ function codeEditor(view, file, btn, id, opts = {}) {
       e.preventDefault();
       ta.setSelectionRange(s + 1, s + 1);
       return;
+    }
+    // a closer typed on a line of only indentation outdented to its opener's line
+    if (CLOSERS.has(e.key) && s === t && v.length <= HL_MAX) {
+      const o = outdentFor(v, s, e.key, isCode(v));
+      if (o) { e.preventDefault(); typeIn(o.from, o.to, `${o.indent}${e.key}`, o.from + o.indent.length + 1); return; }
     }
     if (PAIRS[e.key]) {
       const quote = `"'\``.includes(e.key);
@@ -1259,7 +1510,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
     undo: () => historyStep(),
     redo: () => historyStep(true),
     focus: () => ta.focus(),
-    show: () => { regeom(); guideSnapshot = null; redraw(true); },
+    show: () => { regeom(); overviewColors = null; rulersKey = ''; guideSnapshot = null; redraw(true); },
     text: () => ta.value,
     setInlineSuggestion,
     info,
@@ -1293,6 +1544,36 @@ function codeEditor(view, file, btn, id, opts = {}) {
       tell();
     },
     selection: () => [ta.selectionStart, ta.selectionEnd],
+    toggleComment: () => toggleComment(),
+    // the file's line ending changed by its host, which writes it; a browser file keeps its own
+    setEol: localOnly ? null : (mode) => { if (!ready || !canWrite()) return false; say({ type: 'eol', eol: mode === 'CRLF' ? '\r\n' : '\n' }); return true; },
+    // the indentation detected again, after it was converted
+    indentChanged: () => { indentText = null; guideSnapshot = null; tell(); },
+    toggleBlockComment: () => toggleBlock(),
+    // Go to Bracket: to the partner of the bracket at the caret, else to the enclosing pair's
+    // closer (its opener from there); select: everything from one bracket to the other
+    goToBracket(select = false) {
+      const text = ta.value, code = isCode(text);
+      const [s, e] = [ta.selectionStart, ta.selectionEnd];
+      const pair = bracketPair(text, e, code) || enclosingPair(text, e, code);
+      if (!pair) return false;
+      if (select) ta.setSelectionRange(pair.open, pair.close + 1);
+      else {
+        // from at or just after one bracket to just before the other, as VS Code jumps
+        const to = e === pair.close || e === pair.close + 1 ? pair.open : pair.close;
+        ta.setSelectionRange(to, to);
+      }
+      ta.focus(); caretInView(); sendCursor(); tell();
+      return s !== ta.selectionStart || e !== ta.selectionEnd;
+    },
+    // the hover at the caret, from the keyboard (Show Hover)
+    showHover() {
+      const at = ta.selectionEnd, p = pointAt(at);
+      hoverAt(at, p.x, p.bottom + 4, true);
+    },
+    hideHover: () => hideHover(),
+    // a place's screen coordinates: { x, top, bottom } of its line
+    pointAt: (offset = ta.selectionEnd) => pointAt(offset),
     definitionTarget,
     agentEdit,
     agentFlash,
@@ -1306,17 +1587,18 @@ function codeEditor(view, file, btn, id, opts = {}) {
     },
     tokenClass,
     lineHeight: () => geom().lh,
-    setFinds: (ranges, at = -1) => { findRanges = ranges; findAt = at; paintFinds(); },
-    setBookmarks: (offsets) => { if (bookmarks.length === offsets.length && bookmarks.every((at, i) => at === offsets[i])) return; bookmarks = offsets; paintMarks(); },
+    setFinds: (ranges, at = -1) => { findRanges = ranges; findAt = at; paintFinds(); overviewSoon(); },
+    setBookmarks: (offsets) => { if (bookmarks.length === offsets.length && bookmarks.every((at, i) => at === offsets[i])) return; bookmarks = offsets; paintMarks(); overviewSoon(); },
     preview: isMd ? (on) => setRendered(on ?? !rendered) : null,
     previewing: () => rendered,
     close: () => {
       closed = true;
       definitionLinks?.dispose();
-      guideResize.disconnect(); cancelAnimationFrame(guideFrame);
+      guideResize.disconnect(); hoverResize.disconnect(); cancelAnimationFrame(guideFrame);
       hlAbort?.abort();
-      for (const timer of [bigTimer, hlTimer, mdTimer, checkTimer, cursorTimer, agentFade, armed]) clearTimeout(timer);
-      cancelAnimationFrame(drawFrame); cancelAnimationFrame(tellFrame); cancelAnimationFrame(viewFrame);
+      for (const timer of [bigTimer, hlTimer, mdTimer, checkTimer, cursorTimer, agentFade, armed, occurrenceTimer, hoverTimer]) clearTimeout(timer);
+      hoverAbort?.abort();
+      for (const frame of [drawFrame, tellFrame, viewFrame, decoFrame, overviewFrame]) cancelAnimationFrame(frame);
       syntax.clear();
       if (sock) sock.close();
       if (codeTabs.get(codeKey(file)) === id) codeTabs.delete(codeKey(file));

@@ -148,3 +148,29 @@ export function formattingEdits(before, after) {
   }
   return edits;
 }
+
+// The edits a save makes, as VS Code's files.trimTrailingWhitespace, insertFinalNewline and
+// trimFinalNewlines: { from, to, text } in document order. A markdown line's two trailing
+// spaces are a line break, so kept.
+export function saveEdits(text, { trim = false, keepMarkdownBreaks = false, finalNewline = false, trimFinal = false } = {}) {
+  const edits = [];
+  let end = text.length;
+  if (trimFinal) {
+    // the blank lines after the last line with text: one newline left
+    let at = text.length;
+    while (at > 0 && /[\n\r \t]/.test(text[at - 1])) at--;
+    const nl = text.indexOf('\n', at);
+    if (nl >= 0 && nl + 1 < text.length && !text.slice(nl + 1).trim()) end = nl + 1;
+  }
+  if (trim) {
+    const re = /[ \t]+(?=\r?\n|$)/g;
+    for (let m = re.exec(text); m; m = re.exec(text)) {
+      if (m.index >= end) break;
+      if (keepMarkdownBreaks && m[0] === '  ' && text.slice(0, m.index).trim() && text[m.index + 2] !== undefined) continue;
+      edits.push({ from: m.index, to: m.index + m[0].length, text: '' });
+    }
+  }
+  if (end < text.length) edits.push({ from: end, to: text.length, text: '' });
+  else if (finalNewline && text.length && !text.endsWith('\n')) edits.push({ from: text.length, to: text.length, text: '\n' });
+  return edits;
+}
