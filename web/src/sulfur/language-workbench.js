@@ -13,6 +13,7 @@ export function createLanguageWorkbench(api) {
   const diagnostics = new Map();
   let generation = 0;
   let panel;
+  let query = '';
   const state = (host) => { if (!states.has(host)) states.set(host, { extensions: ids.map((id, n) => ({ id, name: titles[n] })), errors: {}, busy: new Set() }); return states.get(host); };
   const connect = (host, request, event) => languageSocket(api.url(host), request, (m) => { if (m._sulfur === 'log') api.log(m.text, `Languages: ${host}`); event?.(m); });
   async function manage(host, op = 'status', language) {
@@ -273,7 +274,8 @@ export function createLanguageWorkbench(api) {
       const s = state(host.value);
       install.disabled = batch || !selected.size || !!s.busy.size; refresh.disabled = batch || !!s.busy.size; host.disabled = batch || !!s.busy.size;
       error.textContent = s.errors['*'] || '';
-      rows.replaceChildren(...s.extensions.map((item) => {
+      const shown = s.extensions.filter((item) => !query || `${item.name} ${item.id} ${item.server || ''} ${(item.manifest?.packages || []).join(' ')}`.toLowerCase().includes(query));
+      rows.replaceChildren(...(s.extensions.length && !shown.length ? [api.el('p', 'ide-run-note', 'No language extensions match.')] : []), ...shown.map((item) => {
         const row = api.el('div', 'ide-language-row');
         const label = api.el('label');
         const check = Object.assign(api.el('input'), { type: 'checkbox', checked: selected.has(item.id), disabled: item.installed || batch || s.busy.size > 0 });
@@ -296,5 +298,7 @@ export function createLanguageWorkbench(api) {
     container.firstChild?.after(wrap);
     panel = { paint }; paint(); action('status');
   }
-  return { mount, attach, changed, navigate, rename, reset, get, problems: () => [...diagnostics.values()].flatMap((d) => d.items.map((item) => ({ ...item, context: d.session.context }))), saved(tab) { const d = attached.get(tab); if (d) { changed(tab); const save = d.session.client.capabilities.textDocumentSync?.save; if (save) d.session.client.notify('textDocument/didSave', { textDocument: { uri: d.uri }, ...(save.includeText ? { text: tab.ed.text() } : {}) }); } } };
+  // the Extensions view's search box narrows this list as well as the installed one
+  function filter(text) { query = String(text || '').trim().toLowerCase(); panel?.paint(); }
+  return { mount, filter, attach, changed, navigate, rename, reset, get, problems: () => [...diagnostics.values()].flatMap((d) => d.items.map((item) => ({ ...item, context: d.session.context }))), saved(tab) { const d = attached.get(tab); if (d) { changed(tab); const save = d.session.client.capabilities.textDocumentSync?.save; if (save) d.session.client.notify('textDocument/didSave', { textDocument: { uri: d.uri }, ...(save.includeText ? { text: tab.ed.text() } : {}) }); } } };
 }
