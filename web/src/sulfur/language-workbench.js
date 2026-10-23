@@ -739,7 +739,7 @@ export function createLanguageWorkbench(api) {
     const wrap = api.el('div', 'ide-language-manager');
     wrap.append(api.el('h3', '', 'Optional language extensions'));
     const host = api.el('select', 'ide-input'); host.setAttribute('aria-label', 'Language extension host');
-    const note = api.el('p', 'ide-run-note', 'Install only the languages you use. Servers run as your user on the selected host. Python 3.10+ is required on every host. Installed servers work offline with cached project dependencies.');
+    const note = api.el('p', 'ide-run-note', 'Install only the languages you use. Servers run as your user on the selected host. Installed servers work offline with cached project dependencies.');
     const rows = api.el('div', 'ide-language-list');
     const install = api.el('button', 'ide-button', 'Install selected'); install.type = 'button';
     const refresh = api.el('button', 'ide-button secondary', 'Refresh status'); refresh.type = 'button';

@@ -3,6 +3,7 @@
 // style.css; here the pick, a custom theme over any of them, and what the page's head needs to
 // put them up before paint. Kept per user across the mesh with the rest of their settings.
 import LIB from '../../internal/theme/themes.json';
+import { setIconSet } from './icons.js';
 
 const KEY = 'phosphorus-palette';
 const CUSTOM_KEY = 'phosphorus-theme-custom';
@@ -160,6 +161,7 @@ function apply(id) {
   const attrs = Object.fromEntries(Object.keys(LAYOUT_CHOICES).map((k) => [k, layout[k]]));
   for (const [k, v] of Object.entries(attrs)) r.dataset[`l${k[0].toUpperCase()}${k.slice(1)}`] = v;
   r.dataset.palette = t.id;
+  setIconSet(t.icons);
   r.dataset.themeId = id;
   // the phosphorus and cli looks draw the mark as ascii art
   if (t.id === 'phosphorus' || t.id === 'cli') r.style.setProperty('--mark', 'url(/phosphorus-ascii.svg?v=1)');

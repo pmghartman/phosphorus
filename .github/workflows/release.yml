@@ -373,6 +373,25 @@ jobs:
           target_commitish: ${{ github.sha }}
           body_path: ${{ runner.temp }}/notes.md
           files: out/*
+
+  # the update feed beside the release, not after it: nothing in it waits on the numbered
+  # release's upload, and the upload nothing on it
+  feed:
+    needs: [version, licenses, check, build, sulfur]
+    if: ${{ !cancelled() && !failure() && (inputs.linux_amd64 || inputs.linux_arm64 || inputs.macos || inputs.windows || inputs.sulfur) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    env:
+      VER: ${{ needs.version.outputs.ver }}
+    steps:
+      # the .debs, for the apt index
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          path: out
+          pattern: out-*
+          merge-multiple: true
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           path: upd
@@ -381,7 +400,6 @@ jobs:
       # built OSes' files onto `update`; others: last release's. A release of Sulfur
       # alone writes Sulfur's feed only, so no host's told of an update with nothing in it
       - name: update feed
-        if: ${{ inputs.linux_amd64 || inputs.linux_arm64 || inputs.macos || inputs.windows || inputs.sulfur }}
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -430,8 +448,8 @@ jobs:
   # only the two newest numbered releases and their tags kept, the `update` feed
   # aside; only this workflow's two newest runs, this one included
   prune:
-    needs: [release]
-    if: ${{ !cancelled() && needs.release.result == 'success' }}
+    needs: [release, feed]
+    if: ${{ !cancelled() && needs.release.result == 'success' && contains(fromJSON('["success", "skipped"]'), needs.feed.result) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:

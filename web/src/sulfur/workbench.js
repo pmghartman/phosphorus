@@ -3175,7 +3175,6 @@ function run(id, ...args) {
 
 const edFocused = () => !!I.active?.ed && document.activeElement?.classList.contains('code-ta') && I.active.view.contains(document.activeElement);
 const hasEd = () => !!I.active?.ed;
-const termFocused = () => !!document.activeElement?.closest?.('.ide-term-view');
 
 // one handler, capturing, for the whole workbench: chords, then a key's commands
 // in order, the first that applies taking it; a focused terminal keeps its keys

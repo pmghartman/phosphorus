@@ -40,7 +40,7 @@ type Layout struct {
 	Labels   string   `json:"labels,omitempty"`   // both, icons, titles: what the bar's windows and the menu bar's app show
 }
 
-// Theme one entry: Look names the page's structural styles, Layout its bars and window chrome,
+// Theme one entry: Look names the page's structural styles, Icons its icon set (web/src/icons/), Layout its bars and window chrome,
 // Round and Sans mark rounded controls and a proportional page font, Scopes tokens for a part
 // of the page alone
 type Theme struct {
@@ -48,6 +48,7 @@ type Theme struct {
 	Label  string           `json:"label"`
 	About  string           `json:"about"`
 	Look   string           `json:"look"`
+	Icons  string           `json:"icons"`
 	Layout Layout           `json:"layout"`
 	Round  bool             `json:"round"`
 	Sans   bool             `json:"sans"`

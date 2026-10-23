@@ -455,7 +455,7 @@ func saveShare(f *form) string {
 }
 
 // --- phosphorus.ini [home] ------------------------------------------------------
-// the [files] dir whose home/ holds the users, shared/ and sys/, blank the home's
+// the [files] dir whose home/ holds the users, shared/ and .sys/, blank the home's
 // files/, a change moving home/ there on the rebuild
 
 func homeKey(d string) string { return strings.TrimRight(strings.TrimSpace(d), `/\`) }
