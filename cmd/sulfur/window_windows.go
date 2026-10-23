@@ -161,6 +161,7 @@ func runWindow(url string) error {
 	if d := os.Getenv("SULFUR_WEBVIEW_DATA"); d != "" {
 		data = d
 	}
+	trace("web view starting")
 	unhook := makeOffscreen()
 	w := webview2.NewWithOptions(webview2.WebViewOptions{
 		AutoFocus: true,
@@ -173,6 +174,7 @@ func runWindow(url string) error {
 		return errors.New("WebView2 didn't start; its runtime is from https://developer.microsoft.com/microsoft-edge/webview2/")
 	}
 	unhook()
+	trace("web view made")
 	defer w.Destroy()
 	appHwnd = uintptr(w.Window())
 	// hidden until the page has drawn, so the web view's white start never shows; the brush
@@ -202,6 +204,7 @@ func runWindow(url string) error {
 	if err := bridge(host, originOf(url), sh); err != nil {
 		return err
 	}
+	trace("navigating")
 	w.Navigate(url)
 	// a page that never says it's ready (the server's error page) shown anyway
 	time.AfterFunc(8*time.Second, func() { w.Dispatch(showWindow) })
@@ -211,6 +214,7 @@ func runWindow(url string) error {
 
 // showWindow brought to its place on the screen's middle, then shown
 func showWindow() {
+	trace("window shown")
 	if !shown.Swap(true) {
 		sw, _, _ := pGetSystemMetrics.Call(0) // SM_CXSCREEN
 		sh, _, _ := pGetSystemMetrics.Call(1)
