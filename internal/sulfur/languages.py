@@ -284,6 +284,15 @@ def command(item, manifest, request):
     return [entry] + (["serve"] if item["id"] == "hcl" else [])
 
 
+def document_allowed(uri, method, root, virtual_documents):
+    if uri in virtual_documents and method in (
+            "csharp/metadata", "textDocument/semanticTokens/full", "textDocument/definition", "textDocument/hover", "textDocument/documentSymbol"):
+        return True
+    parsed = urllib.parse.urlparse(uri)
+    path = urllib.request.url2pathname(parsed.path)
+    return parsed.scheme == "file" and not parsed.netloc and pathlib.Path(path).resolve().is_relative_to(root)
+
+
 def launch(item, manifest, request):
     if not manifest or not manifest.get("enabled"):
         raise RuntimeError("Extension is not installed and enabled")
@@ -293,6 +302,21 @@ def launch(item, manifest, request):
     root = root.resolve()
     request["root"] = str(root)
     child = subprocess.Popen(command(item, manifest, request), cwd=root, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=None, start_new_session=os.name != "nt")
+    # Virtual documents are only readable after this server has returned them
+    # as a location. They are not arbitrary paths on the host's filesystem.
+    virtual_documents = set()
+    virtual_lock = threading.Lock()
+    def remember_locations(value):
+        if isinstance(value, dict):
+            for key, part in value.items():
+                if key in ("uri", "targetUri") and isinstance(part, str) and part.startswith("csharp:/"):
+                    with virtual_lock:
+                        virtual_documents.add(part)
+                elif isinstance(part, (dict, list)):
+                    remember_locations(part)
+        elif isinstance(value, list):
+            for part in value:
+                remember_locations(part)
     emit("ready", rootUri=root.as_uri())
     def read_server():
         try:
@@ -312,6 +336,8 @@ def launch(item, manifest, request):
                 if len(data) != size:
                     return
                 message = json.loads(data)
+                if item["id"] == "csharp":
+                    remember_locations(message)
                 with write_lock:
                     print(json.dumps(message), flush=True)
         except Exception as error:
@@ -328,9 +354,9 @@ def launch(item, manifest, request):
             # including through symlinks. Server locations are also gated by UI.
             doc = (message.get("params") or {}).get("textDocument", {})
             if "uri" in doc:
-                parsed = urllib.parse.urlparse(doc["uri"])
-                path = urllib.request.url2pathname(parsed.path)
-                if parsed.scheme != "file" or parsed.netloc or not pathlib.Path(path).resolve().is_relative_to(root):
+                with virtual_lock:
+                    allowed = document_allowed(doc["uri"], message.get("method"), root, virtual_documents)
+                if not allowed:
                     raise ValueError("Document is outside the project")
             data = json.dumps(message, ensure_ascii=False).encode("utf-8")
             child.stdin.write(b"Content-Length: " + str(len(data)).encode() + b"\r\n\r\n" + data)

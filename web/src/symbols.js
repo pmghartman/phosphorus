@@ -7,14 +7,13 @@ const BODIES = /^(ClassBody|FieldDeclarationList|StructBody|DeclarationList|Comp
 
 // Syntax-based navigation works without a language server, including disconnected
 // projects. References are identifier matches, never a claim of semantic binding.
-export async function symbolsFor(text, check, language = '') {
+export async function symbolsFor(text, check, language = '', tree) {
   const { parserFor } = await import('./lezer.js');
   const parser = await parserFor(check || (language === 'csharp' ? 'java' : ''));
-  return parser ? analyzeSymbols(parser, text) : { symbols: [], tokens: [] };
+  return parser ? analyzeSymbols(parser, text, tree) : { symbols: [], tokens: [] };
 }
 
-export function analyzeSymbols(parser, text) {
-  const tree = parser.parse(text);
+export function analyzeSymbols(parser, text, tree = parser.parse(text)) {
   const symbols = [];
   const tokens = [];
   const headerNames = (node) => {

@@ -14,10 +14,11 @@ import {
   name,
   shareMenu,
 } from '../app.js';
-import { ERR_MAX, highlight, parserFor, parserNow, syntaxErrors } from '../lezer.js';
+import { ERR_MAX, highlight, parserFor, parserNow, syntaxErrors, syntaxCache } from '../lezer.js';
 import { mdBlocks, renderMd } from '../md.js';
 import { opApply, opTransform, opDiff, opMap, opEdits } from '../text-operations.js';
 import { EditorHistory } from '../editor-history.js';
+import { highlightRanges } from '../sulfur/semantic-tokens.js';
 
 // --- code editor ------------------------------------------------------------------
 // a share's text or code file in a tab of its own, joined to the file's live
@@ -61,6 +62,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
   const finds = el('pre', 'code-hl code-finds');
   // an agent's edit as it lands: what it wrote lit, its caret where it's writing
   const agentL = el('pre', 'code-hl code-agent');
+  for (const layer of [gutter, pre, squig, finds, agentL]) layer.setAttribute('aria-hidden', 'true');
   const ta = Object.assign(document.createElement('textarea'), { className: 'code-ta', spellcheck: false, autocomplete: 'off', wrap: 'off' });
   ta.setAttribute('autocapitalize', 'off');
   ta.setAttribute('aria-label', file.label);
@@ -121,6 +123,8 @@ function codeEditor(view, file, btn, id, opts = {}) {
   // --- drawing ---
   let drawFrame = 0;
   let hlText = null;
+  const syntax = syntaxCache();
+  let semantic = [], semanticText = null;
   const HL_MAX = 8 * 1024 * 1024;
   // past this, a file's highlighted again once typing stops, plain between
   const HL_IDLE = 256 * 1024;
@@ -129,19 +133,26 @@ function codeEditor(view, file, btn, id, opts = {}) {
   let hlNow = false;
   function draw() {
     drawFrame = 0;
+    if (closed) return;
     const text = ta.value;
+    if (semanticText !== text) semantic = [];
     // a tab shown again with the same text: its highlight kept
     if (text === hlText) { paintMarks(); return; }
     const parser = text.length <= HL_MAX && parserNow(lang.check);
     const big = text.length > HL_IDLE && hlText !== null && !hlNow;
     hlText = text;
-    if (parser && !big) code.innerHTML = `${highlight(parser, text)}\n`;
+    if (parser && !big) code.innerHTML = `${highlight(parser, text, syntax.parse(parser, text), semantic)}\n`;
+    else if (semantic.length) code.innerHTML = `${highlightRanges(text, [], semantic)}\n`;
     else {
       code.textContent = `${text}\n`;
       if (parser) {
         clearTimeout(bigTimer);
         bigTimer = setTimeout(() => { if (closed || ta.value !== text) return; hlText = null; hlNow = true; draw(); hlNow = false; }, 400);
-      } else if (lang.check && text.length <= HL_MAX) parserFor(lang.check).then((p) => { if (p) { hlText = null; redraw(); } });
+      } else if (lang.check && text.length <= HL_MAX) parserFor(lang.check).then((p) => {
+        if (closed || ta.value !== text) return;
+        if (p) { hlText = null; redraw(); }
+        else if (lang.hl !== 'plaintext' && text.length <= SERVER_HL_MAX) serverHighlight(text);
+      });
       else if (lang.hl !== 'plaintext' && text.length <= SERVER_HL_MAX) serverHighlight(text);
     }
     const lines = text.split('\n').length;
@@ -281,7 +292,16 @@ function codeEditor(view, file, btn, id, opts = {}) {
   // --- the host told: state, caret and errors, once a frame at most ---
   let tellFrame = 0;
   const tell = () => { if (opts.onState && !tellFrame) tellFrame = requestAnimationFrame(() => { tellFrame = 0; if (!closed) opts.onState(info()); }); };
-  const lineAt = (text, p) => { let n = 1; for (let i = text.indexOf('\n'); i >= 0 && i < p; i = text.indexOf('\n', i + 1)) n += 1; return n; };
+  let indexedText, lineStarts = [];
+  const lineAt = (text, p) => {
+    if (text !== indexedText) {
+      indexedText = text; lineStarts = [0];
+      for (let i = text.indexOf('\n'); i >= 0; i = text.indexOf('\n', i + 1)) lineStarts.push(i + 1);
+    }
+    let lo = 0, hi = lineStarts.length;
+    while (lo < hi) { const mid = (lo + hi) >>> 1; if (lineStarts[mid] <= p) lo = mid + 1; else hi = mid; }
+    return Math.max(1, lo);
+  };
   function info() {
     const text = ta.value;
     const s = ta.selectionStart;
@@ -303,7 +323,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
       try {
         const r = await fetch('/api/md', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ highlight: lang.hl, text }) });
         const { html } = r.ok ? await r.json() : {};
-        if (typeof html === 'string' && ta.value === text) code.innerHTML = `${html}\n`;
+        if (!closed && typeof html === 'string' && ta.value === text && !semantic.length) code.innerHTML = `${html}\n`;
       } catch {}
     }, 150);
   }
@@ -420,7 +440,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
     const text = ta.value;
     const parser = languageErrors === null && lang.check && text.length <= HL_MAX && await parserFor(lang.check);
     if (closed || text !== ta.value) return;
-    errs = languageErrors === null ? parser ? syntaxErrors(parser, text) : [] : languageErrors;
+    errs = languageErrors === null ? parser ? syntaxErrors(parser, text, syntax.parse(parser, text)) : [] : languageErrors;
     const esc = (t) => t.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
     let html = '';
     let at = 0;
@@ -432,7 +452,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
       at = to;
     }
     squig.innerHTML = `${html}${esc(text.slice(at))}\n`;
-    const lineOf = (p) => text.slice(0, p).split('\n').length;
+    const lineOf = (p) => lineAt(text, p);
     errEl.hidden = !errs.length;
     errEl.textContent = `${errs.length}${errs.length >= ERR_MAX ? '+' : ''} error${errs.length === 1 ? '' : 's'}`;
     outTitle.textContent = errEl.textContent;
@@ -450,22 +470,24 @@ function codeEditor(view, file, btn, id, opts = {}) {
   // the others' carets as marks in the gutter, their colour, their name on hover
   function paintMarks() {
     for (const m of gutter.querySelectorAll('.code-mark')) m.remove();
+    for (const c of body.querySelectorAll('.code-caret')) c.remove();
+    const others = people.filter((p) => me ? p.id !== me : p.name !== name);
+    if (!errs.length && !others.length) return;
     const lh = parseFloat(getComputedStyle(nums).lineHeight) || 18;
     const padTop = parseFloat(getComputedStyle(nums).paddingTop) || 0;
-    for (const line of new Set(errs.map((e) => ta.value.slice(0, Math.min(e.from, ta.value.length)).split('\n').length - 1))) {
+    for (const line of new Set(errs.map((e) => lineAt(ta.value, Math.min(e.from, ta.value.length)) - 1))) {
       const mk = Object.assign(el('div', 'code-mark code-mark-err'), { title: 'syntax error' });
       mk.style.top = `${padTop + line * lh}px`;
       mk.style.height = `${lh}px`;
       gutter.append(mk);
     }
-    for (const c of body.querySelectorAll('.code-caret')) c.remove();
     const cs = getComputedStyle(ta);
     const cw = chWidthIn(ta);
-    for (const p of people) {
-      if (me ? p.id === me : p.name === name) continue;
+    for (const p of others) {
       const before = ta.value.slice(0, Math.min(p.pos, ta.value.length));
       const line = before.split('\n').length - 1;
-      const col = [...before.slice(before.lastIndexOf('\n') + 1)].reduce((n, ch) => (ch === '\t' ? n + 4 - (n % 4) : n + 1), 0);
+      const tabSize = parseInt(cs.tabSize, 10) || 4;
+      const col = [...before.slice(before.lastIndexOf('\n') + 1)].reduce((n, ch) => (ch === '\t' ? n + tabSize - (n % tabSize) : n + 1), 0);
       const tint = p.color || colorFor(p.name);
       const mk = Object.assign(el('div', p.agent ? 'code-mark agent' : 'code-mark'), { title: p.name });
       mk.style.top = `${padTop + line * lh}px`;
@@ -565,6 +587,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
     const who = name || dk.creds.get(file.host)?.user || 'anon';
     sock.onopen = () => { retry = 1000; say({ type: 'join', name: who, color: color || colorFor(who) }); };
     sock.onmessage = (ev) => {
+      if (closed) return;
       let msg;
       try { msg = JSON.parse(ev.data); } catch { return; }
       if (msg.type === 'init' || msg.type === 'resync') {
@@ -623,8 +646,17 @@ function codeEditor(view, file, btn, id, opts = {}) {
   // --- editing ---
   const PAIRS = { '(': ')', '[': ']', '{': '}', '"': '"', "'": "'", '`': '`' };
   const CLOSERS = new Set([')', ']', '}']);
+  let indentText, indentUnit;
   function unit() {
     const t = ta.value;
+    const options = opts.formatting?.();
+    if (options && !options.detectIndentation) return options.insertSpaces ? ' '.repeat(options.tabSize) : '\t';
+    if (indentText === t) return indentUnit;
+    indentText = t;
+    indentUnit = detectUnit(t);
+    return indentUnit;
+  }
+  function detectUnit(t) {
     if (/^\t/m.test(t) && !/^ {2}/m.test(t)) return '\t';
     if (lang.hl === 'python') return '    ';
     const m = t.slice(0, 20000).match(/^( +)\S/gm) || [];
@@ -780,7 +812,10 @@ function codeEditor(view, file, btn, id, opts = {}) {
     return true;
   }
 
-  connect();
+  if (typeof opts.readOnlyText === 'string') {
+    S = opts.readOnlyText; V = 0; saved = 0; savedText = S; ready = true; perms = 'r';
+    setText(S, false);
+  } else connect();
   redraw();
   paintState();
   return {
@@ -794,6 +829,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
     show: () => { redraw(); },
     text: () => ta.value,
     info,
+    async syntaxTree() { const text = ta.value; const p = text.length <= HL_MAX && await parserFor(lang.check); return !closed && p && ta.value === text ? syntax.parse(p, text) : null; },
     editMany: (edits, selection) => {
       if (ta.readOnly || !ready) return false;
       const before = ta.value;
@@ -826,12 +862,16 @@ function codeEditor(view, file, btn, id, opts = {}) {
     agentEdit,
     agentFlash,
     ready: () => ready,
+    setSemanticTokens: (ranges, text) => { if (text !== ta.value || closed) return; semantic = ranges; semanticText = text; hlText = null; redraw(); },
     setDiagnostics: (errors) => { languageErrors = errors === null ? null : [...errors].sort((a, b) => a.from - b.from); check(); },
     setFinds: (ranges, at = -1) => { findRanges = ranges; findAt = at; paintFinds(); },
     preview: isMd ? (on) => setRendered(on ?? !rendered) : null,
     previewing: () => rendered,
     close: () => {
       closed = true;
+      for (const timer of [bigTimer, hlTimer, mdTimer, checkTimer, cursorTimer, agentFade, armed]) clearTimeout(timer);
+      cancelAnimationFrame(drawFrame); cancelAnimationFrame(tellFrame);
+      syntax.clear();
       if (sock) sock.close();
       if (codeTabs.get(codeKey(file)) === id) codeTabs.delete(codeKey(file));
       editors.delete(id);

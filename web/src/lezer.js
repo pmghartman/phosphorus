@@ -3,6 +3,10 @@
 // each grammar its own chunk, fetched on first use
 
 import { highlightTree, tagHighlighter, tags as t } from '@lezer/highlight';
+import { TreeFragment } from '@lezer/common';
+import { createSyntaxCache } from './syntax-cache.js';
+import { highlightRanges } from './sulfur/semantic-tokens.js';
+export const syntaxCache = () => createSyntaxCache(TreeFragment);
 
 const GRAMMARS = {
   javascript: () => import('@lezer/javascript'),
@@ -70,8 +74,12 @@ const highlighter = tagHighlighter([
 const escape = (s) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
 
 // text as highlighted html off the parser's tree
-export function highlight(parser, text) {
-  const tree = parser.parse(text);
+export function highlight(parser, text, tree = parser.parse(text), semantic = []) {
+  if (semantic.length) {
+    const ranges = [];
+    highlightTree(tree, highlighter, (from, to, cls) => ranges.push({ from, to, cls }));
+    return highlightRanges(text, ranges, semantic);
+  }
   let out = '';
   let at = 0;
   highlightTree(tree, highlighter, (from, to, cls) => {
@@ -84,9 +92,9 @@ export function highlight(parser, text) {
 }
 
 export const ERR_MAX = 50;
-export function syntaxErrors(parser, text) {
+export function syntaxErrors(parser, text, tree = parser.parse(text)) {
   const out = [];
-  parser.parse(text).iterate({
+  tree.iterate({
     enter: (n) => {
       if (!n.type.isError || out.length >= ERR_MAX) return;
       const near = n.to > n.from ? text.slice(n.from, n.to) : (text.slice(n.from).match(/^\s*(\S{1,16})/) || [])[1];

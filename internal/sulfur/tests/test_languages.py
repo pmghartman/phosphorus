@@ -29,6 +29,18 @@ spec.loader.exec_module(languages)
 
 
 class AdapterTests(unittest.TestCase):
+    def test_metadata_reads_require_a_server_returned_uri_and_do_not_enable_writes(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp).resolve()
+            virtual = "csharp:/project.csproj/decompiled/Engine.cs"
+            self.assertTrue(languages.document_allowed((root / "App.cs").as_uri(), "textDocument/didOpen", root, set()))
+            self.assertFalse(languages.document_allowed((root.parent / "outside.cs").as_uri(), "textDocument/didOpen", root, set()))
+            self.assertFalse(languages.document_allowed(virtual, "csharp/metadata", root, set()))
+            self.assertTrue(languages.document_allowed(virtual, "csharp/metadata", root, {virtual}))
+            self.assertTrue(languages.document_allowed(virtual, "textDocument/semanticTokens/full", root, {virtual}))
+            for method in ("textDocument/didOpen", "textDocument/didChange", "textDocument/rename", "textDocument/formatting"):
+                self.assertFalse(languages.document_allowed(virtual, method, root, {virtual}))
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)

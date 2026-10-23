@@ -2914,6 +2914,13 @@ body:has(.dk-pop:not([hidden])) .toasts { opacity: 0; pointer-events: none; }
 .ide-completion-item { display: flex; justify-content: space-between; gap: 20px; padding: 5px 8px; cursor: pointer; }
 .ide-completion-item.on { background: var(--accent); color: var(--bg); }
 .ide-completion-item small { opacity: .75; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ide-completion { background: var(--ide-bg); color: var(--ide-fg); border-color: var(--ide-border); max-width: calc(100% - 8px); }
+.ide-completion-item { white-space: nowrap; }
+.ide-completion-item > span { overflow: hidden; text-overflow: ellipsis; }
+.ide-completion-item.on { background: var(--ide-ed-sel); color: var(--ide-fg); }
+.ide-inline-ghost { position: absolute; pointer-events: none; white-space: pre; color: var(--ide-muted); background: var(--ide-bg); font-family: var(--font); font-size: var(--code-font); line-height: var(--code-lh); font-variant-ligatures: none; tab-size: var(--ide-tab-size, 4); z-index: 1; }
+.ide-inline-tail { color: var(--ide-fg); }
+.ide-inline-ghost[hidden] { display: none; }
 .ide-language-manager { padding: 12px; border-top: 1px solid var(--border); }
 .ide-side-body.ide-extensions-body { display: block; overflow-y: auto; }
 .ide-extensions-body .ide-ext-list { overflow: visible; }
@@ -2952,6 +2959,7 @@ body:has(.dk-pop:not([hidden])) .toasts { opacity: 0; pointer-events: none; }
 /* the squiggle and find layers only marks, their text never drawn */
 .ide .code-squig, .ide .code-finds { color: transparent; }
 .ide .code-ta { caret-color: var(--ide-caret); }
+.ide :is(.code-ta, .code-hl, .code-nums) { tab-size: var(--ide-tab-size, 4); }
 .ide .code-ta::selection { background: var(--ide-ed-sel); color: var(--ide-fg); }
 .ide .code-mark-err { background: var(--ide-err); }
 .ide .code-squig mark { text-decoration-color: var(--ide-err); }
@@ -3686,7 +3694,38 @@ button.ide-fd-place:hover { background: var(--ide-hover); color: var(--ide-stron
 
 /* --- narrow: the side bars over the editors ------------------------------------------------ */
 
+/* Explicit grid placement keeps panel span independent of sidebar location. */
+.ide-main { display: grid; grid-template-columns: 48px var(--left-w, var(--side-w)) var(--left-sash, 4px) minmax(0, 1fr) var(--right-sash, 4px) var(--right-w, var(--aux-w)); grid-template-rows: var(--editor-row, minmax(0, 1fr)) var(--console-sash, 4px) var(--console-row, var(--panel-h)); }
+.ide-center { display: contents; }
+.ide-activity { grid-column: 1; grid-row: 1 / 4; }
+.ide-side { grid-column: 2; grid-row: 1 / 4; width: auto; }
+.ide-sash-side { grid-column: 3; grid-row: 1 / 4; }
+.ide-editors { grid-column: 4; grid-row: 1; min-width: 0; }
+.ide-sash-h { grid-column: 4; grid-row: 2; }
+.ide-panel { grid-column: 4; grid-row: 3; height: auto; max-height: none; min-width: 0; min-height: 0; }
+.ide-sash-aux { grid-column: 5; grid-row: 1 / 4; }
+.ide-aux { grid-column: 6; grid-row: 1 / 4; width: auto; }
+.ide-side-right .ide-side { grid-column: 6; border-left: 1px solid var(--ide-border); border-right: 0; }
+.ide-side-right .ide-sash-side { grid-column: 5; }
+.ide-side-right .ide-aux { grid-column: 2; border-right: 1px solid var(--ide-border); border-left: 0; }
+.ide-side-right .ide-sash-aux { grid-column: 3; }
+.ide[data-panel-alignment="left"] :is(.ide-panel, .ide-sash-h) { grid-column: 2 / 5; }
+.ide[data-panel-alignment="right"] :is(.ide-panel, .ide-sash-h) { grid-column: 4 / 7; }
+.ide[data-panel-alignment="justify"] :is(.ide-panel, .ide-sash-h) { grid-column: 2 / 7; }
+.ide[data-panel-alignment="left"] > .ide-main > :is(.ide-side, .ide-sash-side),
+.ide[data-panel-alignment="justify"] > .ide-main > :is(.ide-side, .ide-aux, .ide-sash-side, .ide-sash-aux),
+.ide[data-panel-alignment="right"] > .ide-main > :is(.ide-aux, .ide-sash-aux) { grid-row: 1; }
+.ide-side-right[data-panel-alignment="left"] > .ide-main > :is(.ide-side, .ide-sash-side),
+.ide-side-right[data-panel-alignment="right"] > .ide-main > :is(.ide-aux, .ide-sash-aux) { grid-row: 1 / 4; }
+.ide-side-right[data-panel-alignment="left"] > .ide-main > :is(.ide-aux, .ide-sash-aux),
+.ide-side-right[data-panel-alignment="right"] > .ide-main > :is(.ide-side, .ide-sash-side) { grid-row: 1; }
+.ide-panel-off > .ide-main > :is(.ide-side, .ide-aux, .ide-sash-side, .ide-sash-aux) { grid-row: 1 / 4; }
+.ide-sash:focus-visible { outline: 1px solid var(--ide-accent); outline-offset: -1px; background: var(--ide-accent); }
+.ide-narrow .ide-main { grid-template-columns: 48px 0 0 minmax(0, 1fr) 0 0; }
+.ide-narrow .ide :is(.ide-panel, .ide-sash-h) { grid-column: 4; }
 .ide-narrow .ide-side { position: absolute; left: 48px; top: 0; bottom: 0; z-index: 8; width: min(var(--side-w), calc(100% - 64px)); box-shadow: var(--ide-shadow); }
+.ide-narrow .ide-side-right .ide-side { left: auto; right: 0; }
+.ide-narrow .ide-side-right .ide-aux { right: auto; left: 48px; }
 .ide-narrow .ide-aux { position: absolute; right: 0; top: 0; bottom: 0; z-index: 8; width: min(var(--aux-w), 100%); box-shadow: var(--ide-shadow); }
 .ide-narrow .ide-sash-side, .ide-narrow .ide-sash-aux { display: none; }
 .ide-narrow .ide-cc { flex-basis: auto; }

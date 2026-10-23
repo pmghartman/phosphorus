@@ -2,6 +2,7 @@
 // The socket belongs to one host, root and active configuration. It never
 // downloads packages or starts a server until an installed extension is used.
 import { opEdits, opApply } from '../text-operations.js';
+import { TOKEN_TYPES, TOKEN_MODIFIERS } from './semantic-tokens.js';
 
 export const LANGUAGE_EXTENSIONS = {
   ts: 'typescript', tsx: 'typescript', mts: 'typescript', cts: 'typescript',
@@ -18,7 +19,9 @@ export function languageId(path, extension) {
 }
 export function positionAt(text, offset) {
   const before = text.slice(0, Math.max(0, Math.min(text.length, offset)));
-  return { line: before.split('\n').length - 1, character: before.length - before.lastIndexOf('\n') - 1 };
+  let line = 0;
+  for (let at = before.indexOf('\n'); at >= 0; at = before.indexOf('\n', at + 1)) line++;
+  return { line, character: before.length - before.lastIndexOf('\n') - 1 };
 }
 export function offsetAt(text, position) {
   if (!position || !Number.isInteger(position.line) || !Number.isInteger(position.character) || position.line < 0 || position.character < 0) throw new Error('Invalid language-server position');
@@ -53,16 +56,68 @@ export function relativeUri(rootUri, uri) {
 }
 export const textEditRanges = (text, edits) => edits.map((e) => ({ from: offsetAt(text, e.range.start), to: offsetAt(text, e.range.end), text: e.newText }));
 export const applyTextEdits = (text, edits) => opApply(text, opEdits(text, textEditRanges(text, edits)));
+// Some servers send snippets even when snippetSupport is false. Insert their
+// literal defaults instead of dropping all function/code candidates. Unsupported
+// transforms are rejected, never inserted as raw snippet syntax.
+export function snippetText(source) {
+  let at = 0;
+  const values = new Map();
+  function read(end = '') {
+    let out = '';
+    while (at < source.length) {
+      const ch = source[at++];
+      if (end && ch === end) return out;
+      if (ch === '\\' && /[\\$}]/.test(source[at] || ' ')) { out += source[at++]; continue; }
+      if (ch !== '$') { out += ch; continue; }
+      const id = source.slice(at).match(/^(?:\d+|[A-Za-z_][\w]*)/);
+      if (id) { at += id[0].length; out += values.get(id[0]) || ''; continue; }
+      if (source[at] !== '{') { out += ch; continue; }
+      at++;
+      const name = source.slice(at).match(/^(?:\d+|[A-Za-z_][\w]*)/);
+      if (!name) throw new Error('Unsupported completion snippet');
+      at += name[0].length;
+      const kind = source[at++];
+      if (kind === '}') { out += values.get(name[0]) || ''; continue; }
+      if (kind === ':') { const value = read('}'); values.set(name[0], value); out += value; continue; }
+      if (kind === '|') {
+        let choice = '', first = true, done = false;
+        while (at < source.length) {
+          const c = source[at++];
+          if (c === '\\') { if (first) choice += source[at]; at++; }
+          else if (c === '|' && source[at] === '}') { at++; done = true; break; }
+          else if (c === ',') first = false;
+          else if (first) choice += c;
+        }
+        if (!done) throw new Error('Invalid completion snippet');
+        values.set(name[0], choice); out += choice; continue;
+      }
+      throw new Error('Unsupported completion snippet transform');
+    }
+    if (end) throw new Error('Invalid completion snippet');
+    return out;
+  }
+  read(); at = 0;
+  return read();
+}
 export function completionEdits(item, text, caret, defaults = {}) {
-  // snippetSupport is false; do not insert snippet syntax from a nonconforming server.
-  if ((item.insertTextFormat || defaults.insertTextFormat) === 2) throw new Error('This completion requires snippets, which this editor does not support');
   const edit = item.textEdit;
   const prefix = text.slice(0, caret).match(/[\p{L}\p{N}_$]*$/u)[0];
   const range = edit?.range || edit?.replace || defaults.editRange?.replace || defaults.editRange || { start: positionAt(text, caret - prefix.length), end: positionAt(text, caret) };
-  const newText = edit?.newText ?? item.textEditText ?? item.insertText ?? item.label;
+  const raw = edit?.newText ?? item.textEditText ?? item.insertText ?? item.label;
+  const newText = (item.insertTextFormat || defaults.insertTextFormat) === 2 ? snippetText(raw) : raw;
   const edits = textEditRanges(text, [{ range, newText }, ...(item.additionalTextEdits || [])]);
   const ops = opEdits(text, edits);
   return { edits, ops, text: opApply(text, ops), caret: offsetAt(text, range.start) + newText.length + (item.additionalTextEdits || []).reduce((sum, e) => offsetAt(text, e.range.end) <= offsetAt(text, range.start) ? sum + e.newText.length - (offsetAt(text, e.range.end) - offsetAt(text, e.range.start)) : sum, 0) };
+}
+
+export function incrementalChange(before, after) {
+  let from = 0, tail = 0;
+  while (from < before.length && from < after.length && before[from] === after[from]) from++;
+  if (from && ((before.charCodeAt(from - 1) >= 0xD800 && before.charCodeAt(from - 1) <= 0xDBFF) || before[from - 1] === '\r' && before[from] === '\n')) from--;
+  while (tail < before.length - from && tail < after.length - from && before[before.length - tail - 1] === after[after.length - tail - 1]) tail++;
+  const end = before.length - tail;
+  if (tail && ((before.charCodeAt(end) >= 0xDC00 && before.charCodeAt(end) <= 0xDFFF) || before[end - 1] === '\r' && before[end] === '\n')) tail--;
+  return { range: { start: positionAt(before, from), end: positionAt(before, before.length - tail) }, text: after.slice(from, after.length - tail) };
 }
 
 export function languageSocket(url, request, onEvent = () => {}) {
@@ -77,7 +132,7 @@ export function languageSocket(url, request, onEvent = () => {}) {
   const send = (message) => { if (ws.readyState !== 1) throw new Error('Language server disconnected'); ws.send(JSON.stringify(message)); };
   const rejectAll = (error) => { for (const p of pending.values()) p.reject(error); pending.clear(); readyReject(error); };
   ws.onopen = () => ws.send(JSON.stringify(request));
-  ws.onclose = () => { closed = true; rejectAll(new Error('Language server disconnected')); onEvent({ _sulfur: 'closed' }); };
+  ws.onclose = () => { closed = true; client.documents.clear(); rejectAll(new Error('Language server disconnected')); onEvent({ _sulfur: 'closed' }); };
   ws.onerror = () => rejectAll(new Error('Unable to connect to the project host'));
   const client = {
     ready, rootUri: '', capabilities: {}, documents: new Map(), closed: () => closed,
@@ -100,9 +155,12 @@ export function languageSocket(url, request, onEvent = () => {}) {
         processId: null, clientInfo: { name: 'Sulfur', version: '1' }, rootUri: client.rootUri,
         workspaceFolders: [{ uri: client.rootUri, name: uriPath(client.rootUri).split('/').pop() }],
         initializationOptions: settings,
-        capabilities: { general: { positionEncodings: ['utf-16'] }, workspace: { configuration: true, workspaceFolders: true, workspaceEdit: { documentChanges: true, resourceOperations: [] } }, textDocument: {
+        capabilities: { experimental: { csharp: { metadataUris: true } }, general: { positionEncodings: ['utf-16'] }, workspace: { configuration: true, workspaceFolders: true, semanticTokens: { refreshSupport: true }, diagnostics: { refreshSupport: true }, workspaceEdit: { documentChanges: true, resourceOperations: [] } }, textDocument: {
           synchronization: { didSave: true }, completion: { completionItem: { snippetSupport: false, insertReplaceSupport: true, resolveSupport: { properties: ['textEdit', 'additionalTextEdits', 'documentation', 'detail'] } }, completionList: { itemDefaults: ['editRange', 'insertTextFormat', 'data'] } },
           definition: { linkSupport: true }, publishDiagnostics: { versionSupport: true }, rename: { prepareSupport: false },
+          formatting: { dynamicRegistration: false },
+          diagnostic: { dynamicRegistration: false, relatedDocumentSupport: true },
+          semanticTokens: { dynamicRegistration: false, requests: { full: true }, tokenTypes: TOKEN_TYPES, tokenModifiers: TOKEN_MODIFIERS, formats: ['relative'], overlappingTokenSupport: false, multilineTokenSupport: false },
         } },
       }, { timeout: 90000 });
       client.capabilities = result.capabilities || {};
@@ -119,12 +177,12 @@ export function languageSocket(url, request, onEvent = () => {}) {
       const sync = client.capabilities.textDocumentSync;
       const mode = typeof sync === 'number' ? sync : sync?.change;
       if (!old) client.notify('textDocument/didOpen', { textDocument: { uri, languageId: language, version, text } });
-      else if (mode !== 0) client.notify('textDocument/didChange', { textDocument: { uri, version }, contentChanges: mode === 2 ? [{ range: { start: { line: 0, character: 0 }, end: positionAt(old.text, old.text.length) }, text }] : [{ text }] });
+      else if (mode !== 0) client.notify('textDocument/didChange', { textDocument: { uri, version }, contentChanges: mode === 2 ? [incrementalChange(old.text, text)] : [{ text }] });
       client.documents.set(uri, { text, version });
       return version;
     },
-    closeDocument(uri) { if (client.documents.delete(uri)) client.notify('textDocument/didClose', { textDocument: { uri } }); },
-    close() { if (closed) return; closed = true; rejectAll(new Error('Language session stopped')); ws.close(); },
+    closeDocument(uri) { if (client.documents.delete(uri) && !closed && ws.readyState === 1) client.notify('textDocument/didClose', { textDocument: { uri } }); },
+    close() { if (closed) return; closed = true; client.documents.clear(); rejectAll(new Error('Language session stopped')); ws.close(); },
   };
   ws.onmessage = (event) => {
     let message;
@@ -137,6 +195,7 @@ export function languageSocket(url, request, onEvent = () => {}) {
       onEvent(message);
     } else if (message.method) {
       if (message.id !== undefined) {
+        if (['workspace/semanticTokens/refresh', 'workspace/diagnostic/refresh'].includes(message.method)) onEvent(message);
         const result = message.method === 'workspace/configuration' ? (message.params?.items || []).map((x) => x.section ? x.section.split('.').reduce((v, key) => v?.[key], client.settings) ?? null : client.settings || {})
           : message.method === 'workspace/workspaceFolders' ? [{ uri: client.rootUri, name: uriPath(client.rootUri).split('/').pop() }]
             : message.method === 'workspace/applyEdit' ? { applied: false, failureReason: 'Use Rename to review edits in Sulfur' } : null;
