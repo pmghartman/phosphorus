@@ -154,8 +154,12 @@ func Busy() bool {
 
 // settleSelf this host's update after its own restart: the agent's verdict on
 // the request the chain made, never assumed from the restart alone
-func settleSelf(id string) result {
+func settleSelf(id, from string) result {
 	if id == "" {
+		// a chain saved by a release before ids: the installed version is the only word
+		if now := ReadVersion(VersionFile); from != "" && now != "" && now != from {
+			return result{ok: true, to: now}
+		}
 		return result{error: "restarted before the update was asked for"}
 	}
 	for until := util.Now() + peerQuietMS; util.Now() < until; pause() {
@@ -282,7 +286,8 @@ func watchPeer(host, id, fromVersion, fromBoot, stage string, note func(map[stri
 			continue
 		}
 		quietUntil = util.Now() + peerQuietMS
-		if status["id"] != id {
+		// no id for a chain saved by a release before ids: any status will do
+		if id != "" && status["id"] != id {
 			continue
 		}
 		if swapDeadline != 0 && util.Now() > swapDeadline {
