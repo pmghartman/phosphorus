@@ -8,32 +8,36 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/pmghartman/phosphorus/internal/theme"
 )
 
-// --- the web's look ----------------------------------------------------------
+// --- the web's look, from the theme library ---------------------------------------
 
 type palette map[string]string
 
-var dark = palette{
-	"bg": "#141414", "fg": "#e0e0e0", "muted": "#9d9d9d", "accent": "#9f81cf", "accent2": "#ce8755", "dim": "#555555",
-	"glyphPurple": "#a371f7", "glyphOrange": "#f0883e", "border": "#2e2e2e", "card": "#1b1b1b", "tabbar": "#0c0c0c",
-	"online": "#3fb950", "offmesh": "#f85149", "warn": "#d29922",
-	"teal": "#6fb3a8", "sage": "#93ad7d", "sky": "#7fa0c9", "rose": "#c98ba0", "sand": "#c4ab78",
+// the cli's names for the library's tokens
+var cliTokens = map[string]string{
+	"bg": "--bg", "fg": "--fg", "muted": "--muted", "accent": "--accent", "accent2": "--accent-2", "dim": "--dim",
+	"glyphPurple": "--glyph-purple", "glyphOrange": "--glyph-orange", "border": "--border", "card": "--card", "tabbar": "--tabbar",
+	"online": "--online", "offmesh": "--offmesh", "warn": "--warn",
+	"teal": "--teal", "sage": "--sage", "sky": "--sky", "rose": "--rose", "sand": "--sand",
 }
 
-var light = func() palette {
+func paletteOf(id, mode string) palette {
+	t := theme.Load().Tokens(id, mode)
 	p := palette{}
-	for k, v := range dark {
-		p[k] = v
-	}
-	for k, v := range map[string]string{"bg": "#ffffff", "fg": "#1f1f23", "muted": "#6b6b73", "dim": "#b4b4bb", "border": "#e4e4e7", "card": "#f4f4f5", "tabbar": "#f7f7f8",
-		"accent": "#6a4bb0", "accent2": "#a65a1e", "glyphPurple": "#7c4ddb", "glyphOrange": "#c4621a",
-		"online": "#1a7f37", "offmesh": "#cf222e", "warn": "#9a6700",
-		"teal": "#2f7f72", "sage": "#577a3c", "sky": "#3d6a9e", "rose": "#a8506f", "sand": "#8a6a2c"} {
-		p[k] = v
+	for k, v := range cliTokens {
+		p[k] = t[v]
 	}
 	return p
-}()
+}
+
+// PHOSPHORUS_THEME any of the library's themes, the mesh's own unless set
+var (
+	dark  = paletteOf(os.Getenv("PHOSPHORUS_THEME"), "dark")
+	light = paletteOf(os.Getenv("PHOSPHORUS_THEME"), "light")
+)
 
 var (
 	pal       = dark
