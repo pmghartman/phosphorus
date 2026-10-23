@@ -231,6 +231,7 @@ export async function sidecarInfo() {
 // offline: this computer as the only host, its user the account
 export function bootLocal(info) {
   standalone.mode = 'local';
+  standalone.meshChecking = !!info.server;
   standalone.info = info;
   standalone.server = info.server || '';
   standalone.servers = info.servers || [];
@@ -367,7 +368,11 @@ function takeMeshTheme(prefs) {
   themeFromStorage();
 }
 
+// the remembered mesh asked after, so nothing asks to log in before it has answered
 export async function meshMe() {
+  try { return await meshMeNow(); } finally { standalone.meshChecking = false; }
+}
+async function meshMeNow() {
   if (standalone.mode === 'local' && !standalone.server) return null;
   const r = await getJSON(meshUrl('/api/me')).catch(() => null);
   if (!r?.ok || r.boot) { standalone.meshUser = ''; unlinkHosts(); return null; }

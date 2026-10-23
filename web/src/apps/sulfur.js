@@ -140,6 +140,8 @@ const IC = {
   symbolType: 'M8 1.5l5.5 3v7L8 14.5l-5.5-3v-7zM2.5 4.5L8 8l5.5-3.5M8 8v6.5',
   symbolMethod: 'M2 5l6-3.5L14 5l-6 3.5zM2 8l6 3.5L14 8M2 11l6 3.5L14 11',
   symbolField: 'M8 2l6 6-6 6-6-6zM5 8h6',
+  mesh: 'M6.5 1.5h3v3h-3zM1.5 11.5h3v3h-3zM11.5 11.5h3v3h-3zM7.2 4.5l-3.4 7M8.8 4.5l3.4 7M4.5 13h7',
+  meshOff: 'M6.5 1.5h3v3h-3zM1.5 11.5h3v3h-3zM11.5 11.5h3v3h-3zM7.2 4.5l-3.4 7M8.8 4.5l3.4 7M4.5 13h7M1.5 1.5l13 13',
 };
 // 'sulfur' is the app's own mark, drawn in full, every other glyph a line icon
 const icon = (k, cls = '') => (k === 'sulfur'
@@ -199,6 +201,8 @@ const localDesktop = () => standalone?.mode === 'local';
 const meshApi = (path) => (standalone?.meshUrl ? standalone.meshUrl(path) : path);
 // offline with a mesh logged into: its models, agents and Forgejo here too
 const meshLinked = () => localDesktop() && !!standalone.meshUser;
+// the remembered mesh not yet answered: nothing asks to log in or connect while it's asked
+const meshChecking = () => localDesktop() && !!standalone.meshChecking;
 // a place on the computer Sulfur's running on, not a mesh machine: offline all of them,
 // on a mesh this computer's own folders beside the mesh's
 const thisComputer = (l) => !!standalone?.localHost && (isHomeLoc(l) ? localDesktop() : l.host === standalone.localHost);
@@ -475,7 +479,7 @@ export function ideStart(w, open) {
   migrateLocal();
   if (standalone) {
     standalone.onHosts = () => { fdHostsSoon(); paintRunView(); paintStatus(); };
-    standalone.onMesh = () => { if (I) { refreshRoles(); paintWelcomeSoon(); paintRunView(); paintChat(true); } };
+    standalone.onMesh = () => { if (I) { refreshRoles(); paintWelcomeSoon(); paintRunView(); paintChat(true); paintStatus(); } };
   }
   const st = loadState();
   if (!isHomeLoc(st.loc) && !shareOf(st.loc.host, st.loc.share)) st.loc = HOME_LOC;
@@ -883,7 +887,7 @@ const MENUS = [
     ] }, '-',
     cmdItem('workbench.action.revertFile', 'Revert File'),
     cmdItem('workbench.action.closeActiveEditor', 'Close Editor'), cmdItem('workbench.action.closeAllEditors', 'Close All Editors'), '-',
-    ...(standalone?.app ? [cmdItem('sulfur.mesh.connect', standalone.server ? `Connect to ${meshName()}…` : 'Connect to a Phosphorus Mesh…'), '-'] : []),
+    ...(standalone?.app && !meshLinked() && !meshChecking() ? [cmdItem('sulfur.mesh.connect', standalone.server ? `Connect to ${meshName()}…` : 'Connect to a Phosphorus Mesh…'), '-'] : []),
     cmdItem('sulfur.closeWindow', standalone?.app ? 'Exit' : 'Close Window'),
   ]],
   ['Edit', () => [
@@ -959,7 +963,7 @@ const MENUS = [
     { label: 'Model', detail: chatModel(), sub: () => modelItems() },
     { label: 'Permissions', detail: isAgent(chatHarness()) ? '' : 'agents only', disabled: !isAgent(chatHarness()), sub: () => permItems() }, '-',
     settingItem('chat.includeActiveFile', 'Include the Active File'),
-    ...(standalone?.app ? ['-', cmdItem('sulfur.mesh.connect', standalone.server ? `Connect to ${meshName()}…` : 'Connect to a Phosphorus Mesh…'), cmdItem('sulfur.mesh.signOut', 'Sign Out of the Mesh')] : []),
+    ...(standalone?.app ? ['-', ...(meshLinked() || meshChecking() ? [] : [cmdItem('sulfur.mesh.connect', standalone.server ? `Connect to ${meshName()}…` : 'Connect to a Phosphorus Mesh…')]), ...(meshLinked() ? [cmdItem('sulfur.mesh.signOut', 'Sign Out of the Mesh')] : [])] : []),
   ]],
   ['Extensions', () => [
     cmdItem('workbench.view.extensions', 'Show Extensions'), settingItem('sulfur.languageServerSettings', 'Language Server Settings'), '-',
@@ -3182,7 +3186,7 @@ function dialogPlaces() {
     }
     groups.push({ head: mesh, items });
     if (acct.admin && !localDesktop()) items.push({ label: 'Add a Folder of a Machine…', ic: 'plus', act: () => addFolderDialog(), detail: 'publish one, like D:\\Projects or ~/src' });
-  } else if (standalone) {
+  } else if (standalone && !meshChecking()) {
     groups.push({ head: 'Phosphorus Mesh', items: [{ label: 'Log into your mesh…', ic: 'remote', run: () => run('sulfur.mesh.connect'), detail: 'its machines here too' }] });
   }
   return groups;
@@ -4194,6 +4198,7 @@ function buildStatus() {
   const S = {};
   S.branch = sbItem('ide-sb-branch', 'Checkout to…', () => run('sulfur.git.branch'));
   S.remote = sbItem('ide-sb-remote', standalone ? 'This computer and linked mesh machines' : 'Select the host terminals and runs use', () => (standalone ? menu(S.remote, meshItems(true), { side: 'right', up: true }) : run('sulfur.selectHost')));
+  S.mesh = sbItem('ide-sb-mesh', 'Mesh link', () => menu(S.mesh, meshItems(), { side: 'right', up: true }));
   S.problems = sbItem('ide-sb-problems', 'No Problems', () => run('workbench.actions.view.problems'));
   S.build = sbItem('ide-sb-build', 'Build toolchain', () => run('sulfur.build.select'));
   S.config = sbItem('ide-sb-build ide-sb-config', 'Build configuration', () => run('sulfur.build.configuration'));
@@ -4213,7 +4218,7 @@ function buildStatus() {
   S.extR = el('span', 'ide-sb-ext');
   S.bell = sbItem('ide-sb-bell', 'Notifications', (e) => notesPopup(e.currentTarget));
   I.statusL.append(S.remote, S.problems, S.build, S.config, S.people, S.agent, S.extL, S.flash, S.chord);
-  I.statusR.append(S.completion, S.pos, S.indent, S.enc, S.eol, S.lang, S.host, S.state, S.extR, S.bell);
+  I.statusR.append(S.completion, S.pos, S.indent, S.enc, S.eol, S.lang, S.host, S.state, S.extR, S.mesh, S.bell);
   I.sb = S;
 }
 
@@ -4231,6 +4236,17 @@ function paintStatusNow() {
   const h = runHost();
   S.remote.replaceChildren(icon('remote'), el('span', '', h || 'no host'));
   S.remote.classList.toggle('none', !h);
+  // the mesh link: an icon alone, its state in its look and its title; there when Sulfur runs on its own
+  S.mesh.hidden = !standalone;
+  if (standalone) {
+    const linked = !localDesktop() || meshLinked();
+    const checking = meshChecking();
+    S.mesh.replaceChildren(icon(linked || checking ? 'mesh' : 'meshOff'));
+    S.mesh.classList.toggle('linked', linked);
+    S.mesh.classList.toggle('checking', checking);
+    S.mesh.title = linked ? `Linked to ${meshName()}` : checking ? 'Checking the mesh link' : standalone.server ? `Not linked to ${meshName()}` : 'Not linked to a mesh';
+    S.mesh.setAttribute('aria-label', S.mesh.title);
+  }
   const sc = I.scm;
   S.branch.hidden = !sc?.top;
   if (sc?.top) {
@@ -4472,7 +4488,7 @@ function paintChat(force = false) {
   // the banner: why an ask may not land, and for a harness missing on its host an optional install
   let why = '';
   let fix = null;
-  if (localDesktop() && !meshLinked() && a?.kind !== 'ext') why = standalone.server ? `The chat's models and agents come from ${meshName()}: log in to it (the remote item, bottom left of the status bar) and they work on this computer's projects too.` : 'The chat\u2019s models and agents come from a Phosphorus mesh: connect to one (the remote item, bottom left of the status bar) and they work on this computer\u2019s projects too.';
+  if (localDesktop() && !meshLinked() && !meshChecking() && a?.kind !== 'ext') why = standalone.server ? `The chat's models and agents come from ${meshName()}: log in to it (the remote item, bottom left of the status bar) and they work on this computer's projects too.` : 'The chat\u2019s models and agents come from a Phosphorus mesh: connect to one (the remote item, bottom left of the status bar) and they work on this computer\u2019s projects too.';
   else if (!a) why = 'No model is set up on the mesh. The status app’s model card picks one.';
   else if (a.kind === 'mesh' && !a.up) why = `${a.label} has no model answering right now. The status app’s model card shows why.`;
   else if (agent && !a.S.id) {
@@ -4638,7 +4654,7 @@ function sendChat() {
   const a = currentAgent();
   const text = I.chat.ta.value.trim();
   if (!a || !text) return;
-  if (localDesktop() && !meshLinked() && a.kind !== 'ext') { notify('info', `The chat's models and agents come from ${standalone.server ? meshName() : 'a Phosphorus mesh'}: ${standalone.server ? 'log in to it' : 'connect to one'} first.`, { actions: [{ label: standalone.server ? 'Log In…' : 'Connect…', run: () => run('sulfur.mesh.connect') }] }); return; }
+  if (localDesktop() && !meshLinked() && !meshChecking() && a.kind !== 'ext') { notify('info', `The chat's models and agents come from ${standalone.server ? meshName() : 'a Phosphorus mesh'}: ${standalone.server ? 'log in to it' : 'connect to one'} first.`, { actions: [{ label: standalone.server ? 'Log In…' : 'Connect…', run: () => run('sulfur.mesh.connect') }] }); return; }
   if (a.busy()) { setStatusFlash(`${a.label} is still answering`); return; }
   if (!a.ready()) { notify('warning', 'The mesh chat isn’t connected yet: try again in a moment.'); return; }
   if (a.send(text) === false) { notify('warning', `${a.label} didn’t take the message: the chat’s connection dropped.`); return; }
@@ -5355,7 +5371,7 @@ function agentWhere(h) {
   const n = harnessName(h);
   // offline, or a project on this computer: the mesh's Code service, on one of its machines, the project copied there
   if (thisComputer(locOf())) {
-    if (localDesktop() && !meshLinked()) return { why: `${n} runs on your mesh's machines: log into your mesh (the remote item, bottom left of the status bar) to use it on this computer's files.` };
+    if (localDesktop() && !meshLinked() && !meshChecking()) return { why: `${n} runs on your mesh's machines: log into your mesh (the remote item, bottom left of the status bar) to use it on this computer's files.` };
     if (o && !o.error && !(o.hosts || []).length) return { why: `Save a login for one of ${meshName()}'s Linux or macOS machines in Phosphorus (open a terminal on it there) for ${n} to work on it.` };
     return { mesh: true };
   }
@@ -7169,7 +7185,7 @@ function paintWelcome(w) {
   }
 
   const side = el('div', 'ide-welcome-col');
-  if (standalone) {
+  if (standalone && !meshChecking()) {
     side.append(el('h2', '', 'Phosphorus Mesh'));
     const card = el('div', 'ide-welcome-mesh');
     const line = (text, cls = '') => card.append(el('p', cls, text));
@@ -7177,7 +7193,7 @@ function paintWelcome(w) {
       line(`Working on ${meshName()} as ${acct.user}: its machines and homes, their terminals and builds, its agents.`);
     } else if (standalone.meshUser) {
       line(`Logged in to ${meshName()} as ${standalone.meshUser}. Its models, agents and Forgejo work on this computer’s projects too.`);
-      card.append(link(`Open ${meshName()}’s Machines`, 'sulfur.mesh.open', 'remote', 'its homes and folders'), link('Sign Out', 'sulfur.mesh.signOut', 'lock'));
+      card.append(link(`Open ${meshName()}’s Machines`, 'sulfur.mesh.open', 'remote', 'its homes and folders'));
     } else if (standalone.server) {
       line(standalone.signedOut ? `Your session on ${meshName()} ended. This computer is still available.` : `${meshName()} is remembered. Log in for its machines, its agents in the chat, and its Forgejo.`);
       card.append(link(`Log In to ${meshName()}…`, 'sulfur.mesh.connect', 'user'), link('Another Mesh…', 'sulfur.mesh.other', 'remote'));
