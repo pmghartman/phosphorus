@@ -7,6 +7,7 @@ package main
 
 /*
 #cgo pkg-config: gtk+-3.0 webkit2gtk-4.1
+#cgo CFLAGS: -Wno-deprecated-declarations
 #include <stdlib.h>
 #include "window_linux.h"
 */
