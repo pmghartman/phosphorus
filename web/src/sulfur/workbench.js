@@ -2297,7 +2297,11 @@ function tabState(t, info) {
   if (info.ready && !was?.ready) applyPending(t);
   if (info.dirty && t.preview) pin(t);
   if (!was || was.dirty !== info.dirty) t.tabEl.classList.toggle('dirty', info.dirty);
-  if (!was || JSON.stringify(was.errors) !== JSON.stringify(info.errors)) { paintProblemsSoon(); paintTreeSoon(); }
+  // typing moves every diagnostic after the caret: the problems list redrawn when what it
+  // shows changed (a line, a column, a message), the explorer only when the counts did
+  const shown = errorSignature(info.errors), counted = errorCounts(info.errors);
+  if (!was || t.errorsShown !== shown) { t.errorsShown = shown; paintProblemsSoon(); }
+  if (!was || t.errorsCounted !== counted) { t.errorsCounted = counted; paintTreeSoon(); }
   if (t === I.active) paintStatus();
   if (t === I.active) navNote(t);
   if (t === I.active) paintSymbolNavSoon();
@@ -2312,6 +2316,9 @@ function tabState(t, info) {
     if (t.rel.endsWith(`/${BUILD_FILE}`) && under(t.rel, I.st.root) && sameLoc(t.loc, locOf())) loadBuildConfig(filesParent(filesParent(t.rel)));
   }
 }
+
+const errorSignature = (errors = []) => errors.map((e) => `${e.line}:${e.col}:${e.severity}:${e.source || ''}:${e.code ?? ''}:${e.what}`).join('\n');
+const errorCounts = (errors = []) => { const c = diagnosticCounts(errors); return `${c.errors}/${c.warnings}/${c.info}`; };
 
 // --- where the user's been: a file and a line, walked back and forward ---------------------
 
@@ -2742,12 +2749,29 @@ function findStep(d) {
   paintFind(true);
 }
 
-// $1 and the rest for a regular expression's groups, as VS Code's replace takes them
-function replacement(match) {
+// $1, $&, $<name> and $$ for a regular expression's match, as VS Code's replace takes
+// them; the match found in the whole text, so anchors and lookarounds hold as they did
+function expandReplacement(template, m, text) {
+  return template.replace(/\$(\$|&|`|'|<([^>]*)>|(\d{1,2}))/g, (all, what, name, num) => {
+    if (what === '$') return '$';
+    if (what === '&') return m[0];
+    if (what === '`') return text.slice(0, m.index);
+    if (what === "'") return text.slice(m.index + m[0].length);
+    if (name !== undefined) return m.groups?.[name] ?? '';
+    const n = Number(num);
+    if (n >= 1 && n < m.length) return m[n] ?? '';
+    // $12 with fewer groups: $1 then the 2, as String.replace reads it
+    if (num.length === 2 && Number(num[0]) >= 1 && Number(num[0]) < m.length) return (m[Number(num[0])] ?? '') + num[1];
+    return all;
+  });
+}
+function replacement(text, at) {
   const f = I.find;
   if (!f.re) return f.rq.value;
   const re = findRegex();
-  return match.replace(new RegExp(re.source, re.flags.replace('g', '')), f.rq.value);
+  re.lastIndex = at;
+  const m = re.exec(text);
+  return m && m.index === at ? expandReplacement(f.rq.value, m, text) : f.rq.value;
 }
 
 function replaceOne() {
@@ -2756,7 +2780,7 @@ function replaceOne() {
   const r = f.ranges[f.at];
   if (!r || !t?.ed) return;
   const text = t.ed.text();
-  const put = replacement(text.slice(r[0], r[1]));
+  const put = replacement(text, r[0]);
   if (!t.ed.edit(r[0], r[1], put)) { notify('warning', 'The file is read-only here.'); return; }
   f.rq.focus();
   findNow();
@@ -2769,8 +2793,12 @@ function replaceAll() {
   if (!re || !f.ranges.length || !t?.ed) return;
   const text = t.ed.text();
   const n = f.ranges.length;
-  const next = text.replace(re, f.re ? f.rq.value : () => f.rq.value);
-  if (!t.ed.edit(0, text.length, next)) { notify('warning', 'The file is read-only here.'); return; }
+  // each match replaced where it is, one undo step: the caret, the scroll and the others'
+  // carets stay put, and the session sends the matches rather than the whole file
+  const edits = [];
+  for (const m of text.matchAll(re)) if (m[0]) edits.push({ from: m.index, to: m.index + m[0].length, text: f.re ? expandReplacement(f.rq.value, m, text) : f.rq.value });
+  if (!edits.length) return;
+  if (!t.ed.editMany(edits)) { notify('warning', 'The file is read-only here.'); return; }
   setStatusFlash(`Replaced ${n} occurrence${n === 1 ? '' : 's'}`);
   f.rq.focus();
   findNow();
@@ -3174,10 +3202,11 @@ function stepTab(d) {
 // --- the quick input: files, commands, a line, a choice -----------------------------------
 
 // subsequence match, word starts and runs scored up, the base name before the path
-function fuzzy(q, s) {
+// sl: s lowercased, when the caller keeps it; a quick pass first turns away what can't match
+function fuzzy(q, s, sl = s.toLowerCase()) {
   if (!q) return { score: 0, hl: [] };
   const ql = q.toLowerCase();
-  const sl = s.toLowerCase();
+  for (let i = 0, at = 0; i < ql.length; i++) { at = sl.indexOf(ql[i], at); if (at < 0) return null; at++; }
   let qi = 0;
   let score = 0;
   let run = 0;
@@ -3266,7 +3295,8 @@ function gotoItems(q) {
   const t = I.active;
   if (!t?.ed) return { items: [], empty: 'Open a text editor first to go to a line.' };
   const text = t.ed.text();
-  const lines = text.split('\n').length;
+  let lines = 1;
+  for (let i = text.indexOf('\n'); i >= 0; i = text.indexOf('\n', i + 1)) lines++;
   const m = q.match(/^(\d+)?(?:[:,](\d+))?$/);
   if (!q || !m || !m[1]) return { items: [], message: `Current Line: ${t.info?.line || 1}, Character: ${t.info?.col || 1}. Type a line number between 1 and ${lines} to navigate to.` };
   const line = Math.min(Number(m[1]), lines);
@@ -3295,12 +3325,14 @@ function fileItems(q) {
     return { items: [], message: 'Searching the workspace on every host…', wait: fileIndex().then(() => fileItems(q)) };
   }
   const hits = [];
+  // each path's relative form and lowercase kept on the index: typing re-ranks tens of
+  // thousands of files a keystroke
+  const pathQuery = name.replace(/\\/g, '/');
   for (const f of I.index.files) {
-    const r = rel(f.path);
-    const b = baseName(r);
-    const mb = fuzzy(name, b);
-    const m = mb ? { score: mb.score + 100, hl: mb.hl } : fuzzy(name.replace(/\\/g, '/'), r);
-    if (m) hits.push({ f, r, b, m, inBase: !!mb });
+    if (f.relRoot !== I.st.root) { f.relRoot = I.st.root; f.r = rel(f.path); f.b = baseName(f.r); f.rl = f.r.toLowerCase(); f.bl = f.b.toLowerCase(); }
+    const mb = fuzzy(name, f.b, f.bl);
+    const m = mb ? { score: mb.score + 100, hl: mb.hl } : fuzzy(pathQuery, f.r, f.rl);
+    if (m) hits.push({ f, r: f.r, b: f.b, m, inBase: !!mb });
   }
   hits.sort((a, b) => b.m.score - a.m.score || a.r.length - b.r.length);
   const items = hits.slice(0, 200).map((x) => ({
@@ -4196,7 +4228,7 @@ function paintProblems() {
   const at = (rel) => { if (!byFile.has(rel)) byFile.set(rel, []); return byFile.get(rel); };
   for (const t of I.tabs) {
     if (!t.info?.errors?.length || !sameLoc(t.loc, locOf())) continue;
-    for (const x of t.info.errors.filter((e) => !e.source)) at(t.rel).push({ sev: diagnosticSeverity(x) === 1 ? 'error' : diagnosticSeverity(x) === 2 ? 'warning' : 'info', msg: x.what, src: 'syntax', line: x.line, col: x.col, go: () => { activate(t); t.ed.select(x.from, Math.max(x.to, x.from + 1)); } });
+    for (const x of t.info.errors.filter((e) => !e.source)) at(t.rel).push({ sev: diagnosticSeverity(x) === 1 ? 'error' : diagnosticSeverity(x) === 2 ? 'warning' : 'info', msg: x.what, src: 'syntax', line: x.line, col: x.col, go: () => { activate(t); const at = offsetOf(t.ed.text(), x.line, x.col); t.ed.select(at, at + Math.max(1, x.to - x.from)); } });
   }
   for (const x of languages.problems()) {
     if (x.context.workspace !== wsKey()) continue;
