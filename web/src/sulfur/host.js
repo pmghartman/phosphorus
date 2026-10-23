@@ -16,8 +16,6 @@ export const color = '';
 export let selfHost = '';
 export let hostsInfo = {};
 export const dk = { creds: new Map() };
-// the desktop's mesh update; Sulfur alone updates itself
-export const meshUpdate = null;
 let meshHosts = [];
 // offline, the remembered mesh's machines, while its login holds
 let linkHosts = [];

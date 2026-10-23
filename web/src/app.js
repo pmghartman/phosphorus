@@ -3752,9 +3752,6 @@ function applyChain(status, mine) {
   renderVersions();
 }
 
-// the update pane from outside the bar, as Sulfur's title bar opens it
-const meshUpdate = () => { dkPopsClose('update'); openUpdateModal(); };
-
 function openUpdateModal() {
   if (!acct?.admin) return;
   updateConfirm.hidden = true;
@@ -6941,7 +6938,6 @@ acctStart();
 // read by the apps loaded on first open
 export {
   ASSETS,
-  meshUpdate,
   standalone,
   DK_RUNNERS,
   DK_UI,
