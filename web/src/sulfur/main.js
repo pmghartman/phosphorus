@@ -5,8 +5,8 @@
 import { standalone, sidecarInfo, bootLocal, bootMesh, meshMe, el, dkGlyph } from './host.js';
 import { ideStart } from '../apps/sulfur.js';
 
-const tauri = window.__TAURI__;
-const appWin = tauri?.window?.getCurrentWindow?.() || null;
+// the desktop app's window, from its Go shell; none in a browser
+const appWin = window.sulfurApp || null;
 standalone.app = !!appWin;
 const root = document.getElementById('sulfur');
 document.documentElement.classList.toggle('sx-mac', standalone.mac && standalone.app);
@@ -30,7 +30,7 @@ function frame(title) {
   };
   const max = b('dk-max', UI.max, 'Maximize', () => appWin?.toggleMaximize());
   btns.append(b('dk-min', UI.min, 'Minimize', () => appWin?.minimize()), max, b('dk-close', UI.close, 'Close', () => closeWindow()));
-  btns.hidden = !appWin || standalone.mac;
+  btns.hidden = !appWin || standalone.mac || appWin.decorated;
   head.append(name, btns);
   const body = el('div', 'dk-body');
   node.append(head, body);
@@ -45,7 +45,7 @@ function frame(title) {
       max.title = on ? 'Restore' : 'Maximize';
       document.documentElement.classList.toggle('sx-max', on);
     };
-    appWin.onResized?.(paintMax);
+    window.addEventListener('resize', paintMax);
     paintMax();
   }
   // the title the window's, so the task bar and the dock say what's open
@@ -63,9 +63,9 @@ function closeWindow() {
   if (ide?.holdClose(() => appWin.destroy())) return;
   appWin?.destroy();
 }
-// Alt+F4, the task bar's close: unsaved files asked about first
-appWin?.onCloseRequested?.((e) => {
-  if (ide?.holdClose(() => appWin.destroy())) e.preventDefault();
+// Alt+F4, the task bar's close, Cmd+Q: unsaved files asked about first
+window.addEventListener('sulfur-close', () => {
+  if (!ide?.holdClose(() => appWin.destroy())) appWin.destroy();
 });
 // the app closed for its update to install, nothing asked
 standalone.quit = () => appWin?.destroy();
@@ -76,6 +76,7 @@ function workbench(open) {
   const w = frame('Sulfur');
   w.node.classList.add('sx-wb');
   ide = ideStart(w, open);
+  appWin?.ready();
   window.addEventListener('focus', () => ide?.focus());
 }
 

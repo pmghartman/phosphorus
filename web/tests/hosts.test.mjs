@@ -22,7 +22,7 @@ test('a linked mesh stays beside local files and is cleared on disconnect or swi
     return Response.json({ ok: true });
   };
   try {
-    const source = "const location = { protocol: 'http:', host: 'localhost' };\n" + (await readFile(new URL('../src/sulfur/host.js', import.meta.url), 'utf8')).replace('__ASSETS__', '{}') + '\n//# sourceURL=sulfur-host-fixture.mjs';
+    const source = "const location = { protocol: 'http:', host: 'localhost' };\n" + (await readFile(new URL('../src/sulfur/host.js', import.meta.url), 'utf8')).replace('__ASSETS__', '{}').replace("import { themeFromStorage } from '../theme.js';", 'const themeFromStorage = () => {};') + '\n//# sourceURL=sulfur-host-fixture.mjs';
     const host = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
     host.bootLocal({ mode: 'mesh', host: 'pc', user: 'tester', server: 'https://mesh', info: { files: { shares: [] } } });
     assert.equal(host.selfHost, 'pc');

@@ -3,6 +3,7 @@
 // downloads packages or starts a server until an installed extension is used.
 import { opEdits, opApply } from '../text-operations.js';
 import { TOKEN_TYPES, TOKEN_MODIFIERS } from './semantic-tokens.js';
+import { expandSnippet } from './completion.js';
 
 export const LANGUAGE_EXTENSIONS = {
   ts: 'typescript', tsx: 'typescript', mts: 'typescript', cts: 'typescript',
@@ -16,6 +17,14 @@ export function languageId(path, extension) {
   if (/\.jsx$/i.test(path)) return 'javascriptreact';
   if (extension === 'cpp' && /\.(c|h)$/i.test(path)) return 'c';
   return ({ shell: 'shellscript', hcl: 'terraform' })[extension] || extension;
+}
+export function serverSettings(extension, context) {
+  const user = context.settings?.[extension] || {};
+  return {
+    ...user,
+    ...(extension === 'csharp' ? { csharp: { analyzersEnabled: context.analyzersEnabled ?? true, useMetadataUris: true, applyFormattingOptions: true, ...(context.solutionPath ? { solutionPathOverride: context.solutionPath } : {}), ...(user.csharp || user) } } : {}),
+    sulfur: { configuration: context.configuration, buildDirectory: context.buildDirectory },
+  };
 }
 export function positionAt(text, offset) {
   const before = text.slice(0, Math.max(0, Math.min(text.length, offset)));
@@ -56,9 +65,8 @@ export function relativeUri(rootUri, uri) {
 }
 export const textEditRanges = (text, edits) => edits.map((e) => ({ from: offsetAt(text, e.range.start), to: offsetAt(text, e.range.end), text: e.newText }));
 export const applyTextEdits = (text, edits) => opApply(text, opEdits(text, textEditRanges(text, edits)));
-// Some servers send snippets even when snippetSupport is false. Insert their
-// literal defaults instead of dropping all function/code candidates. Unsupported
-// transforms are rejected, never inserted as raw snippet syntax.
+// Validate snippet defaults and choices before expansion. Unsupported transforms
+// are rejected, never inserted as raw snippet syntax.
 export function snippetText(source) {
   let at = 0;
   const values = new Map();
@@ -102,12 +110,16 @@ export function snippetText(source) {
 export function completionEdits(item, text, caret, defaults = {}) {
   const edit = item.textEdit;
   const prefix = text.slice(0, caret).match(/[\p{L}\p{N}_$]*$/u)[0];
-  const range = edit?.range || edit?.replace || defaults.editRange?.replace || defaults.editRange || { start: positionAt(text, caret - prefix.length), end: positionAt(text, caret) };
+  const suffix = text.slice(caret).match(/^[\p{L}\p{N}_$]*/u)[0];
+  const range = edit?.range || edit?.replace || defaults.editRange?.replace || defaults.editRange || { start: positionAt(text, caret - prefix.length), end: positionAt(text, caret + suffix.length) };
+  // a snippet goes in as its text, its first tab stop selected
   const raw = edit?.newText ?? item.textEditText ?? item.insertText ?? item.label;
-  const newText = (item.insertTextFormat || defaults.insertTextFormat) === 2 ? snippetText(raw) : raw;
+  if ((item.insertTextFormat || defaults.insertTextFormat) === 2) snippetText(raw);
+  const { text: newText, selection: [selFrom, selTo] } = (item.insertTextFormat || defaults.insertTextFormat) === 2 ? expandSnippet(raw) : { text: raw, selection: [raw.length, raw.length] };
   const edits = textEditRanges(text, [{ range, newText }, ...(item.additionalTextEdits || [])]);
   const ops = opEdits(text, edits);
-  return { edits, ops, text: opApply(text, ops), caret: offsetAt(text, range.start) + newText.length + (item.additionalTextEdits || []).reduce((sum, e) => offsetAt(text, e.range.end) <= offsetAt(text, range.start) ? sum + e.newText.length - (offsetAt(text, e.range.end) - offsetAt(text, e.range.start)) : sum, 0) };
+  const start = offsetAt(text, range.start) + (item.additionalTextEdits || []).reduce((sum, e) => offsetAt(text, e.range.end) <= offsetAt(text, range.start) ? sum + e.newText.length - (offsetAt(text, e.range.end) - offsetAt(text, e.range.start)) : sum, 0);
+  return { edits, ops, text: opApply(text, ops), caret: start + selTo, selection: [start + selFrom, start + selTo] };
 }
 
 export function incrementalChange(before, after) {
@@ -151,14 +163,15 @@ export function languageSocket(url, request, onEvent = () => {}) {
     },
     async initialize(settings = {}) {
       await ready;
+      client.settings = settings;
       const result = await client.request('initialize', {
         processId: null, clientInfo: { name: 'Sulfur', version: '1' }, rootUri: client.rootUri,
         workspaceFolders: [{ uri: client.rootUri, name: uriPath(client.rootUri).split('/').pop() }],
         initializationOptions: settings,
         capabilities: { experimental: { csharp: { metadataUris: true } }, general: { positionEncodings: ['utf-16'] }, workspace: { configuration: true, workspaceFolders: true, semanticTokens: { refreshSupport: true }, diagnostics: { refreshSupport: true }, workspaceEdit: { documentChanges: true, resourceOperations: [] } }, textDocument: {
-          synchronization: { didSave: true }, completion: { completionItem: { snippetSupport: false, insertReplaceSupport: true, resolveSupport: { properties: ['textEdit', 'additionalTextEdits', 'documentation', 'detail'] } }, completionList: { itemDefaults: ['editRange', 'insertTextFormat', 'data'] } },
+          synchronization: { didSave: true }, completion: { contextSupport: true, completionItem: { snippetSupport: true, insertReplaceSupport: true, resolveSupport: { properties: ['textEdit', 'additionalTextEdits', 'documentation', 'detail'] } }, completionList: { itemDefaults: ['editRange', 'insertTextFormat', 'data'] } },
           definition: { linkSupport: true }, publishDiagnostics: { versionSupport: true }, rename: { prepareSupport: false },
-          formatting: { dynamicRegistration: false },
+          formatting: { dynamicRegistration: false }, rangeFormatting: {},
           diagnostic: { dynamicRegistration: false, relatedDocumentSupport: true },
           semanticTokens: { dynamicRegistration: false, requests: { full: true }, tokenTypes: TOKEN_TYPES, tokenModifiers: TOKEN_MODIFIERS, formats: ['relative'], overlappingTokenSupport: false, multilineTokenSupport: false },
         } },
@@ -200,6 +213,7 @@ export function languageSocket(url, request, onEvent = () => {}) {
           : message.method === 'workspace/workspaceFolders' ? [{ uri: client.rootUri, name: uriPath(client.rootUri).split('/').pop() }]
             : message.method === 'workspace/applyEdit' ? { applied: false, failureReason: 'Use Rename to review edits in Sulfur' } : null;
         send({ jsonrpc: '2.0', id: message.id, result });
+        if (message.method === 'workspace/diagnostic/refresh') onEvent(message);
       } else onEvent(message);
     } else {
       const p = pending.get(message.id);

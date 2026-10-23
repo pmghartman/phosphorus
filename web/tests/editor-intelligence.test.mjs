@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { preferLanguageCompletion, inlineSuffix, completionPrompt, completionText, attachAgentCompletion } from '../src/sulfur/inline-completion.js';
+import { preferLanguageCompletion, inlineSuffix, completionPrompt, completionText } from '../src/sulfur/inline-completion.js';
 import { semanticRanges, highlightRanges } from '../src/sulfur/semantic-tokens.js';
 import { createSyntaxCache } from '../src/syntax-cache.js';
 import { formatWhitespace, formattingEdits } from '../src/sulfur/formatting.js';
@@ -21,9 +21,9 @@ test('inline previews only extend the prefix and prompts bound shared context', 
   assert.equal(inlineSuffix({ edits: [{ from: 0, to: 3, text: 'readFile()' }] }, 'rea', 3), 'dFile()');
   assert.equal(inlineSuffix({ edits: [{ from: 0, to: 3, text: 'writeFile()' }] }, 'rea', 3), '');
   assert.equal(inlineSuffix({ edits: [{ from: 0, to: 5, text: 'readFile()' }] }, 'reaxx', 3), '');
-  const context = JSON.parse(completionPrompt('a.cs', 'csharp', 'x'.repeat(30000), 15000).messages[0].content);
-  assert.equal(context.prefix.length, 12000); assert.equal(context.suffix.length, 4000);
-  assert.equal(completionText({ content: [{ type: 'text', text: '```cs\nFoo();\n```' }] }), 'Foo();');
+  const context = JSON.parse(completionPrompt({ path: 'a.cs', language: 'csharp', text: 'x'.repeat(30000), caret: 15000 }).messages[0].content);
+  assert.equal(context.prefix.length, 6000); assert.equal(context.suffix.length, 2000);
+  assert.equal(completionText('```cs\nFoo();\n```'), 'Foo();');
 });
 
 test('semantic tokens decode Roslyn type classifications, CRLF, and UTF-16 safely', () => {
@@ -88,31 +88,4 @@ test('formatting retains server-formatted continuation alignment', () => {
   const text = 'class C\n{\n  var value = one\n    ?? two;\n}';
   assert.equal(format(text, { ...options, braceStyle: 'preserve', preserveContinuation: true }), text);
   assert.equal(formatWhitespace('{\n"values": [\n1,\n2\n]\n}', 'json', { ...options, braceStyle: 'preserve' }), '{\n  "values": [\n    1,\n    2\n  ]\n}');
-});
-
-test('agent requests abort on edits, caret movement, disable and disposal; only Tab accepts current code', async () => {
-  const originalDocument = globalThis.document;
-  const doc = new EventTarget(), ta = new EventTarget();
-  doc.hidden = false; doc.activeElement = ta;
-  Object.assign(ta, { readOnly: false, selectionStart: 4, selectionEnd: 4 });
-  globalThis.document = doc;
-  let text = 'var ', value = null, pending, enabled = true, calls = 0;
-  const tab = { view: { querySelector: () => ta }, ed: { ready: () => true, text: () => text, editMany(edits) { text = opApply(text, opEdits(text, edits)); return true; } } };
-  const preview = { current: () => value, clear: () => { value = null; }, show(t, caret, suffix, source) { value = { text: t, caret, suffix, source }; return true; } };
-  const agent = attachAgentCompletion(tab, { alive: () => true, enabled: () => enabled, delay: () => 1, preferLanguage: () => false, beforeShow() {}, listVisible: () => false, error(e) { throw e; }, suggest(t, source, caret, signal) { calls++; return new Promise((resolve) => { pending = { resolve, signal }; }); } }, preview);
-  try {
-    let task = agent.complete();
-    text = 'var x'; ta.selectionStart = ta.selectionEnd = 5; agent.changed();
-    assert.equal(pending.signal.aborted, true); pending.resolve('stale'); await task; assert.equal(value, null);
-    task = agent.complete(); ta.selectionStart = ta.selectionEnd = 0; doc.dispatchEvent(new Event('selectionchange'));
-    assert.equal(pending.signal.aborted, true); pending.resolve('stale'); await task; assert.equal(value, null);
-    ta.selectionStart = ta.selectionEnd = text.length;
-    task = agent.complete(); enabled = false; agent.cancel(); pending.resolve('stale'); await task; assert.equal(value, null);
-    enabled = true; task = agent.complete(); pending.resolve(' = 42;'); await task; assert.equal(value.suffix, ' = 42;');
-    const key = Object.assign(new Event('keydown', { cancelable: true }), { key: 'Tab' }); ta.dispatchEvent(key);
-    assert.equal(key.defaultPrevented, true); assert.equal(text, 'var x = 42;'); assert.equal(value, null);
-    ta.selectionStart = ta.selectionEnd = text.length;
-    task = agent.complete(); agent.dispose(); assert.equal(pending.signal.aborted, true); pending.resolve('stale'); await task;
-    const count = calls; await agent.complete(); assert.equal(calls, count);
-  } finally { agent.dispose(); globalThis.document = originalDocument; }
 });
