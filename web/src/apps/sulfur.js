@@ -7185,7 +7185,7 @@ function buildExtView() {
   languages.mount(v.body);
   head.node.addEventListener('ide-section', () => { list.hidden = !head.open(); });
   head.paint();
-  q.addEventListener('input', () => paintExtView());
+  q.addEventListener('input', () => { paintExtView(); languages.filter(q.value); });
   v.focus = () => q.focus();
   v.acts = [
     btn('', 'plus', 'Create New Extension…', () => run('sulfur.extensions.create')),
@@ -7197,7 +7197,7 @@ function buildExtView() {
 function paintExtView() {
   const E = I.extView;
   if (!E) return;
-  const v = E.q.value.toLowerCase();
+  const v = E.q.value.trim().toLowerCase();
   const all = [...I.exts.values()].sort((a, b) => extName(a).localeCompare(extName(b)));
   const shown = all.filter((x) => !v || `${extName(x)} ${x.id} ${x.manifest?.description || ''}`.toLowerCase().includes(v));
   E.head.title.textContent = `Installed`;

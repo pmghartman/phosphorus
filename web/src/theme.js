@@ -5,6 +5,7 @@ export const PALETTES = [
   { id: 'phosphorus', label: 'phosphorus', about: 'the mesh’s own purple, square and monospaced' },
   { id: 'vscode', label: 'vs code', about: 'dark modern and light modern' },
   { id: 'medieval', label: 'medieval', about: 'parchment, oak and gilt' },
+  { id: 'pyxra', label: 'pyxra', about: 'the sprite editor’s: navy by night, cozy cream by day, rose, bevelled' },
 ];
 const KEY = 'phosphorus-palette';
 export const PALETTE_EVENT = 'phosphorus-palette';
