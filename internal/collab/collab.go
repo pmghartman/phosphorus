@@ -537,7 +537,7 @@ func Attach(ws *wsock.Conn, shareID, rel string, w *files.Who) {
 	clientSeq++
 	c := &client{ws: ws, cid: clientSeq}
 	s.add(c)
-	sendTo(c, map[string]any{"type": "init", "text": Str(s.text), "v": s.version, "saved": s.saved, "perms": sh.Perms, "people": s.people(), "you": c.cid})
+	sendTo(c, map[string]any{"type": "init", "text": Str(s.text), "v": s.version, "saved": s.saved, "perms": sh.Perms, "people": s.people(), "you": c.cid, "eol": s.eol})
 	if s.diskConflict {
 		sendTo(c, s.diskMessage())
 	}

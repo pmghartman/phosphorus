@@ -3,7 +3,7 @@
 // downloads packages or starts a server until an installed extension is used.
 import { opEdits, opApply, commonEnds } from '../text-operations.js';
 import { TOKEN_TYPES, TOKEN_MODIFIERS } from './semantic-tokens.js';
-import { expandSnippet } from './completion.js';
+import { expandSnippet, wordStart, wordEnd } from './completion.js';
 
 export const LANGUAGE_EXTENSIONS = {
   ts: 'typescript', tsx: 'typescript', mts: 'typescript', cts: 'typescript',
@@ -26,22 +26,30 @@ export function serverSettings(extension, context) {
     sulfur: { configuration: context.configuration, buildDirectory: context.buildDirectory },
   };
 }
+// Line starts of the last few texts asked about: diagnostics, edits and every keystroke's
+// sync convert many positions of the same text, each a bisection rather than a scan
+const lineIndexes = [];
+function lineIndex(text) {
+  for (const x of lineIndexes) if (x.text === text) return x.starts;
+  const starts = [0];
+  for (let i = text.indexOf('\n'); i >= 0; i = text.indexOf('\n', i + 1)) starts.push(i + 1);
+  lineIndexes.unshift({ text, starts });
+  if (lineIndexes.length > 3) lineIndexes.pop();
+  return starts;
+}
 export function positionAt(text, offset) {
-  const before = text.slice(0, Math.max(0, Math.min(text.length, offset)));
-  let line = 0;
-  for (let at = before.indexOf('\n'); at >= 0; at = before.indexOf('\n', at + 1)) line++;
-  return { line, character: before.length - before.lastIndexOf('\n') - 1 };
+  const at = Math.max(0, Math.min(text.length, offset));
+  const starts = lineIndex(text);
+  let lo = 0, hi = starts.length;
+  while (lo < hi) { const mid = (lo + hi) >>> 1; if (starts[mid] <= at) lo = mid + 1; else hi = mid; }
+  return { line: lo - 1, character: at - starts[lo - 1] };
 }
 export function offsetAt(text, position) {
   if (!position || !Number.isInteger(position.line) || !Number.isInteger(position.character) || position.line < 0 || position.character < 0) throw new Error('Invalid language-server position');
-  let at = 0;
-  for (let n = 0; n < position.line; n++) {
-    const end = text.indexOf('\n', at);
-    if (end < 0) throw new Error('Language-server line is outside the document');
-    at = end + 1;
-  }
-  let end = text.indexOf('\n', at);
-  if (end < 0) end = text.length;
+  const starts = lineIndex(text);
+  if (position.line >= starts.length) throw new Error('Language-server line is outside the document');
+  const at = starts[position.line];
+  let end = position.line + 1 < starts.length ? starts[position.line + 1] - 1 : text.length;
   if (text[end - 1] === '\r') end--;
   if (at + position.character > end) throw new Error('Language-server column is outside the line');
   return at + position.character;
@@ -109,8 +117,8 @@ export function snippetText(source) {
 }
 export function completionEdits(item, text, caret, defaults = {}) {
   const edit = item.textEdit;
-  const prefix = text.slice(0, caret).match(/[\p{L}\p{N}_$]*$/u)[0];
-  const suffix = text.slice(caret).match(/^[\p{L}\p{N}_$]*/u)[0];
+  const prefix = text.slice(wordStart(text, caret), caret);
+  const suffix = text.slice(caret, wordEnd(text, caret));
   const range = edit?.range || edit?.replace || defaults.editRange?.replace || defaults.editRange || { start: positionAt(text, caret - prefix.length), end: positionAt(text, caret + suffix.length) };
   // a snippet goes in as its text, its first tab stop selected
   const raw = edit?.newText ?? item.textEditText ?? item.insertText ?? item.label;

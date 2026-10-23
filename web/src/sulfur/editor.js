@@ -113,10 +113,15 @@ function codeEditor(view, file, btn, id, opts = {}) {
   function hideDiagnosticHover() { diagnosticHover.hidden = true; }
   ta.addEventListener('mousemove', (event) => {
     if (inlineSuggestion) { hideDiagnosticHover(); return; }
-    const rect = ta.getBoundingClientRect(), style = getComputedStyle(ta);
-    const line = Math.floor((event.clientY - rect.top - parseFloat(style.paddingTop)) / lineHeightIn(ta));
-    const column = Math.floor((event.clientX - rect.left - parseFloat(style.paddingLeft)) / chWidthIn(ta));
-    const hit = diagnosticsAt(errs, offsetAtColumn(ta.value, line, column, parseInt(style.tabSize, 10) || 4));
+    if (!errs.length) { hideDiagnosticHover(); return; }
+    const rect = ta.getBoundingClientRect(), g = geom();
+    const line = Math.floor((event.clientY - rect.top - g.top) / g.lh);
+    const column = Math.floor((event.clientX - rect.left - g.left) / g.cw);
+    const text = ta.value;
+    lineAt(text, 0);
+    const start = lineStarts[line];
+    const local = start === undefined ? null : offsetAtColumn(text.slice(start, lineStarts[line + 1] ?? text.length), 0, column, g.tab);
+    const hit = local == null ? [] : diagnosticsAt(errs, start + local);
     if (!hit.length) { hideDiagnosticHover(); return; }
     diagnosticHover.textContent = hit.map(diagnosticText).join('\n\n');
     diagnosticHover.hidden = false;
@@ -133,13 +138,13 @@ function codeEditor(view, file, btn, id, opts = {}) {
   }
   function definitionTarget(event) {
     if (inlineSuggestion) setInlineSuggestion(null);
-    const rect = ta.getBoundingClientRect(), style = getComputedStyle(ta);
-    const line = Math.floor((event.clientY - rect.top - parseFloat(style.paddingTop || 0)) / lineHeightIn(ta));
-    const column = Math.floor((event.clientX - rect.left - parseFloat(style.paddingLeft || 0)) / chWidthIn(ta));
+    const rect = ta.getBoundingClientRect(), g = geom();
+    const line = Math.floor((event.clientY - rect.top - g.top) / g.lh);
+    const column = Math.floor((event.clientX - rect.left - g.left) / g.cw);
     lineAt(ta.value, 0);
     const start = lineStarts[line];
     if (start === undefined) return null;
-    const local = offsetAtColumn(ta.value.slice(start, lineStarts[line + 1] ?? ta.value.length), 0, column, parseInt(style.tabSize, 10) || 4);
+    const local = offsetAtColumn(ta.value.slice(start, lineStarts[line + 1] ?? ta.value.length), 0, column, g.tab);
     const at = local == null ? null : start + local;
     const parser = ta.value.length <= HL_MAX && parserNow(lang.check);
     return definitionIdentifier(ta.value, at, { tree: parser ? syntax.parse(parser, ta.value) : null, extension: file.path.split('.').pop().toLowerCase() });
@@ -153,12 +158,12 @@ function codeEditor(view, file, btn, id, opts = {}) {
       if (definitionHover?.from === target.from && definitionHover.to === target.to && definitionHover.text === ta.value) return;
       hideDiagnosticHover();
       definitionHover = { ...target, text: ta.value };
-      const style = getComputedStyle(ta);
-      const line = lineAt(ta.value, target.from) - 1, tabSize = parseInt(style.tabSize, 10) || 4;
-      const column = [...ta.value.slice(lineStarts[line], target.from)].reduce((n, ch) => ch === '\t' ? n + tabSize - n % tabSize : n + 1, 0);
+      const g = geom();
+      const line = lineAt(ta.value, target.from) - 1;
+      const column = columnOf(ta.value, lineStarts[line], target.from);
       const underline = el('span', '', target.name);
-      underline.style.left = `${parseFloat(style.paddingLeft || 0) + column * chWidthIn(ta)}px`;
-      underline.style.top = `${parseFloat(style.paddingTop || 0) + line * lineHeightIn(ta)}px`;
+      underline.style.left = `${g.left + column * g.cw}px`;
+      underline.style.top = `${g.top + line * g.lh}px`;
       definitionLayer.replaceChildren(underline);
       definitionLayer.hidden = false; ta.classList.add('code-definition-target');
     },
@@ -168,6 +173,12 @@ function codeEditor(view, file, btn, id, opts = {}) {
 
   // the session: the server's text and version, the edit in flight to it
   let S = '';
+  // the file's line ending on disk, as its host said: the editor's text is always LF
+  let eolMode = 'LF';
+  // S made the textarea's own string object once their contents match: V8 compares strings
+  // by pointer first, so every later comparison of the two (dirty, flush, a save) is then
+  // immediate rather than a scan of the whole file
+  const sameS = () => { const v = ta.value; if (S === v) { if (savedText === v) savedText = v; S = v; } };
   let V = 0;
   let saved = -1;
   // the text as last saved, when this tab knows it, so an undo back to it is clean
@@ -252,7 +263,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
     return Math.max(most, column);
   }
   function measureWidth(before, after) {
-    const tabSize = parseInt(getComputedStyle(ta).tabSize, 10) || 4;
+    const tabSize = geom().tab;
     if (before === null || tabSize !== widthTab) { widthTab = tabSize; maxCols = widest(after, 0, after.length, tabSize); return; }
     const { head, tail } = changeOf(before, after);
     const lineFrom = (t) => t.lastIndexOf('\n', head - 1) + 1;
@@ -291,6 +302,21 @@ function codeEditor(view, file, btn, id, opts = {}) {
   // drawing a keystroke then never forces a layout of its own, which in a long file costs
   // as much as the textarea's whole text (the one layout per frame the browser does anyway)
   const metrics = { top: 0, left: 0, height: 0, width: 0, gutter: 0 };
+  // The text's geometry: line height, advance, paddings, tab size. Read from computed style
+  // once and kept until the font, a setting or the size changes (show(), a resize, fonts
+  // loading), since a style read after the frame's edits forces a style recalculation.
+  let geomCache = null, geomEpoch = -1;
+  function geom() {
+    if (geomCache && geomEpoch === fontEpoch) return geomCache;
+    const cs = getComputedStyle(ta);
+    geomEpoch = fontEpoch;
+    return (geomCache = {
+      lh: lineHeightIn(ta), cw: chWidthIn(ta), top: parseFloat(cs.paddingTop) || 0, left: parseFloat(cs.paddingLeft) || 0,
+      tab: parseInt(cs.tabSize, 10) || 4, font: cs.font || `${cs.fontSize} ${cs.fontFamily}`,
+      preTop: parseFloat(getComputedStyle(pre).paddingTop) || 0, numsTop: parseFloat(getComputedStyle(nums).paddingTop) || 0,
+    });
+  }
+  const regeom = () => { geomCache = null; };
   const scrollTo = (top, left = metrics.left) => {
     if (top !== metrics.top) scroller.scrollTop = metrics.top = Math.max(0, top);
     if (left !== metrics.left) scroller.scrollLeft = metrics.left = Math.max(0, left);
@@ -299,8 +325,8 @@ function codeEditor(view, file, btn, id, opts = {}) {
   // the lines to draw: those on screen and as many again above and below
   function viewWindow(text) {
     lineAt(text, 0);
-    const n = lineStarts.length, lh = lineHeightIn(ta);
-    const top = metrics.top - (parseFloat(getComputedStyle(pre).paddingTop) || 0);
+    const n = lineStarts.length, lh = geom().lh;
+    const top = metrics.top - geom().preTop;
     const height = metrics.height || 900;
     const margin = Math.max(40, Math.ceil(height / lh));
     const first = Math.max(0, Math.min(n - 1, Math.floor(top / lh) - margin));
@@ -398,18 +424,18 @@ function codeEditor(view, file, btn, id, opts = {}) {
     guideFrame = 0;
     if (closed || !ready || view.hidden) return;
     const options = opts.display?.() || {};
-    const text = ta.value, style = getComputedStyle(ta);
-    const lh = lineHeightIn(ta), cw = chWidthIn(ta), x = parseFloat(style.paddingLeft) || 0, y = parseFloat(style.paddingTop) || 0;
+    const text = ta.value, g = geom();
+    const lh = g.lh, cw = g.cw, x = g.left, y = g.top;
     const first = Math.max(0, Math.floor((metrics.top - y) / lh) - 1), last = Math.ceil((metrics.top + metrics.height - y) / lh) + 1;
     const left = Math.max(0, Math.floor((metrics.left - x) / cw) - 1), right = left + Math.ceil(metrics.width / cw) + 2;
-    const tabSize = parseInt(style.tabSize, 10) || 4, indent = unit(), indentSize = indent === '\t' ? tabSize : indent.length;
+    const tabSize = g.tab, indent = unit(), indentSize = indent === '\t' ? tabSize : indent.length;
     const key = JSON.stringify([first, last, left, right, tabSize, indentSize, cw, lh, x, y, options]);
     if (guideSnapshot?.text === text && guideSnapshot.key === key) return;
     guideSnapshot = { text, key };
     if (!options.indentationGuides && (!options.whitespace || options.whitespace === 'none') || inlineSuggestion?.insert.includes('\n')) { guidesLayer.replaceChildren(); return; }
     lineAt(text, 0);
     const decorations = editorDecorations(text, lineStarts, { first, last, left, right, tabSize, whitespace: options.whitespace || 'none', guides: options.indentationGuides });
-    guidesLayer.style.font = style.font || `${style.fontSize} ${style.fontFamily}`;
+    guidesLayer.style.font = g.font;
     guidesLayer.replaceChildren(...decorations.map((item) => {
       const row = el('div', 'code-guide-row');
       row.style.top = `${y + item.line * lh}px`; row.style.left = `${x}px`; row.style.height = `${lh}px`;
@@ -428,6 +454,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
   // a taller pane shows more lines: the window drawn again for it
   // read after layout, before paint: free, unlike a read in the middle of drawing
   const guideResize = new ResizeObserver(() => {
+    regeom();
     const taller = scroller.clientHeight > metrics.height;
     Object.assign(metrics, { top: scroller.scrollTop, left: scroller.scrollLeft, height: scroller.clientHeight, width: scroller.clientWidth, gutter: gutter.offsetWidth });
     guidesSoon();
@@ -532,12 +559,10 @@ function codeEditor(view, file, btn, id, opts = {}) {
   // a place in the text scrolled to, the user's own caret and selection left as they are
   function revealAt(pos) {
     const line = lineAt(ta.value, pos) - 1;
-    const cs = getComputedStyle(ta);
-    const lh = lineHeightIn(ta);
-    const y = parseFloat(cs.paddingTop) + line * lh;
+    const { lh, cw, top, left } = geom();
+    const y = top + line * lh;
     if (y < metrics.top || y + lh > metrics.top + metrics.height) scrollTo(y - metrics.height / 3);
-    const cw = chWidthIn(ta);
-    const x = metrics.gutter + parseFloat(cs.paddingLeft) + (pos - lineStarts[line]) * cw;
+    const x = metrics.gutter + left + columnOf(ta.value, lineStarts[line], pos) * cw;
     if (x > metrics.left + metrics.width - cw * 2 || x < metrics.left + metrics.gutter) scrollTo(metrics.top, x - metrics.width / 2);
   }
   // from..to replaced with text: what goes lit red a moment, the new typed in
@@ -618,14 +643,37 @@ function codeEditor(view, file, btn, id, opts = {}) {
   let tellFrame = 0;
   const tell = () => { if (opts.onState && !tellFrame) tellFrame = requestAnimationFrame(() => { tellFrame = 0; if (!closed) opts.onState(info()); }); };
   let indexedText, lineStarts = [];
-  const lineAt = (text, p) => {
-    if (text !== indexedText) {
-      indexedText = text; lineStarts = [0];
+  const firstAbove = (p) => { let lo = 0, hi = lineStarts.length; while (lo < hi) { const mid = (lo + hi) >>> 1; if (lineStarts[mid] <= p) lo = mid + 1; else hi = mid; } return lo; };
+  // the line starts kept for the text: an edit's lines found again where it changed, the
+  // rest moved by its length, rather than every newline of a long file sought per keystroke
+  function reindex(text) {
+    const before = indexedText;
+    indexedText = text;
+    if (before == null || Math.abs(text.length - before.length) > 65536) {
+      lineStarts = [0];
       for (let i = text.indexOf('\n'); i >= 0; i = text.indexOf('\n', i + 1)) lineStarts.push(i + 1);
+      return;
     }
-    let lo = 0, hi = lineStarts.length;
-    while (lo < hi) { const mid = (lo + hi) >>> 1; if (lineStarts[mid] <= p) lo = mid + 1; else hi = mid; }
-    return Math.max(1, lo);
+    const { head, tail } = changeOf(before, text);
+    const endA = before.length - tail, endB = text.length - tail, delta = endB - endA;
+    const lo = firstAbove(head), hi = firstAbove(endA);
+    const fresh = [];
+    for (let i = text.indexOf('\n', head); i >= 0 && i < endB; i = text.indexOf('\n', i + 1)) fresh.push(i + 1);
+    const moved = lineStarts.slice(hi);
+    if (delta) for (let i = 0; i < moved.length; i++) moved[i] += delta;
+    lineStarts.length = lo;
+    for (const x of fresh) lineStarts.push(x);
+    for (const x of moved) lineStarts.push(x);
+  }
+  const lineAt = (text, p) => {
+    if (text !== indexedText) reindex(text);
+    return Math.max(1, firstAbove(p));
+  };
+  // a place's column as drawn, tabs to their stops
+  const columnOf = (text, from, to, tabSize = geom().tab) => {
+    let n = 0;
+    for (let i = from; i < to; i++) n = text.charCodeAt(i) === 9 ? n + tabSize - n % tabSize : n + 1;
+    return n;
   };
   function info() {
     const text = ta.value;
@@ -635,7 +683,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
     return {
       ready, dirty: dirty(), readOnly: ta.readOnly, state: stateEl.textContent, bad: stateEl.classList.contains('bad'),
       lang: lang.hl, line: lineAt(text, e), col: e - text.lastIndexOf('\n', e - 1), sel: Math.abs(e - s),
-      indent: u === '\t' ? 'tab' : u.length, eol: text.includes('\r\n') ? 'CRLF' : 'LF', length: text.length,
+      indent: u === '\t' ? 'tab' : u.length, eol: eolMode, length: text.length,
       errors: errs.map((x) => ({ from: x.from, to: x.to, what: x.what, source: x.source, code: x.code, severity: diagnosticSeverity(x), line: lineAt(text, x.from), col: x.from - text.lastIndexOf('\n', x.from - 1) })),
       people: people.filter((p) => (me ? p.id !== me : p.name !== name)),
     };
@@ -811,8 +859,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
     const others = people.filter((p) => me ? p.id !== me : p.name !== name);
     if (!errs.length && !others.length && !bookmarks.length) return;
     const text = ta.value;
-    const lh = lineHeightIn(ta);
-    const padTop = parseFloat(getComputedStyle(nums).paddingTop) || 0;
+    const { lh, numsTop: padTop } = geom();
     for (const line of new Set(bookmarks.map((at) => lineAt(text, Math.min(at, text.length)) - 1))) {
       const mark = Object.assign(el('div', 'code-mark code-mark-bookmark'), { title: `Bookmark: line ${line + 1}` });
       mark.style.top = `${padTop + line * lh}px`;
@@ -833,13 +880,11 @@ function codeEditor(view, file, btn, id, opts = {}) {
       mk.style.height = `${lh}px`;
       gutter.append(mk);
     }
-    const cs = getComputedStyle(ta);
-    const cw = chWidthIn(ta);
+    const { cw, top: padY, left: padX } = geom();
     for (const p of others) {
       const at = Math.min(p.pos, text.length);
       const line = lineAt(text, at) - 1;
-      const tabSize = parseInt(cs.tabSize, 10) || 4;
-      const col = [...text.slice(lineStarts[line], at)].reduce((n, ch) => (ch === '\t' ? n + tabSize - (n % tabSize) : n + 1), 0);
+      const col = columnOf(text, lineStarts[line], at);
       const tint = p.color || colorFor(p.name);
       const mk = Object.assign(el('div', p.agent ? 'code-mark agent' : 'code-mark'), { title: p.name });
       mk.style.top = `${padTop + line * lh}px`;
@@ -848,7 +893,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
       gutter.append(mk);
       // their caret in the text, their name over it
       const caret = el('div', p.agent ? 'code-caret agent' : 'code-caret');
-      caret.style.cssText = `top:${parseFloat(cs.paddingTop) + line * lh}px;left:${parseFloat(cs.paddingLeft) + col * cw}px;height:${lh}px;--who:${tint}`;
+      caret.style.cssText = `top:${padY + line * lh}px;left:${padX + col * cw}px;height:${lh}px;--who:${tint}`;
       const flag = caret.appendChild(el('span', 'code-caret-name', p.agent ? '' : p.name));
       if (p.agent) flag.append(el('span', 'who-model', p.name));
       body.append(caret);
@@ -879,14 +924,14 @@ function codeEditor(view, file, btn, id, opts = {}) {
   // the caret kept in view as it moves, the scroller being the editor, not the box
   // center: a jump from afar put mid-view, as a find or a go to line wants
   function caretInView(center = false) {
-    const before = ta.value.slice(0, ta.selectionEnd);
-    const line = before.split('\n').length - 1;
-    const col = before.length - before.lastIndexOf('\n') - 1;
-    const cs = getComputedStyle(ta);
-    const lh = parseFloat(cs.lineHeight) || 18;
-    const cw = chWidthIn(ta);
-    const y = parseFloat(cs.paddingTop) + line * lh;
-    const x = metrics.gutter + parseFloat(cs.paddingLeft) + col * cw;
+    // the line from the kept index and the column as drawn: the measured line height, so a
+    // caret far down a long file is scrolled to where its line is drawn
+    const text = ta.value, end = ta.selectionEnd;
+    const line = lineAt(text, end) - 1;
+    const { lh, cw, top: padY, left: padX } = geom();
+    const col = columnOf(text, lineStarts[line], end);
+    const y = padY + line * lh;
+    const x = metrics.gutter + padX + col * cw;
     const { top, left, height, width, gutter: gw } = metrics;
     const out = y < top || y + lh > top + height;
     if (center && out) scrollTo(y - height / 2);
@@ -905,6 +950,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
   }
 
   function setText(text, keepSel) {
+    indentText = null;
     const [s0, s1] = [ta.selectionStart, ta.selectionEnd];
     if (historyReady && ta.value !== text) history.remote(opDiff(ta.value, text));
     historyReady = true;
@@ -954,9 +1000,11 @@ function codeEditor(view, file, btn, id, opts = {}) {
         if (msg.perms !== undefined) perms = file.share !== 'home' && !dk.creds.has(file.host) ? msg.perms.replace(/[^r]/g, '') : msg.perms;
         if (msg.people) people = msg.people;
         if (msg.you) me = msg.you;
+        if (msg.eol) eolMode = msg.eol === '\r\n' ? 'CRLF' : 'LF';
         inflight = null;
         ready = true;
         setText(S, true);
+        sameS();
         paintState(lost ? 'edit dropped' : '');
         if (msg.type === 'init' && !view.dataset.seen) { view.dataset.seen = '1'; ta.setSelectionRange(0, 0); }
       } else if (msg.type === 'op') {
@@ -964,11 +1012,13 @@ function codeEditor(view, file, btn, id, opts = {}) {
           S = opApply(S, msg.ops);
           V = msg.v;
           inflight = null;
+          sameS();
           flush();
         } else {
           remote(msg.ops, msg.agent ? msg.agentEdit || msg.by || 'agent' : '');
           S = opApply(S, msg.ops);
           V = msg.v;
+          if (!inflight) sameS();
         }
         if (wantSave && !inflight && ta.value === S) { wantSave = false; say({ type: 'save' }); }
         paintState();
@@ -1009,12 +1059,15 @@ function codeEditor(view, file, btn, id, opts = {}) {
   // --- editing ---
   const PAIRS = { '(': ')', '[': ']', '{': '}', '"': '"', "'": "'", '`': '`' };
   const CLOSERS = new Set([')', ']', '}']);
-  let indentText, indentUnit;
+  // the indentation detected as VS Code does it, from the file as it opened (or came back
+  // from its host), not again every keystroke; a small file still being started is read
+  // again as it grows, so its first indented lines decide
+  let indentText = null, indentUnit;
   function unit() {
     const t = ta.value;
     const options = opts.formatting?.();
     if (options && !options.detectIndentation) return options.insertSpaces ? ' '.repeat(options.tabSize) : '\t';
-    if (indentText === t) return indentUnit;
+    if (indentText === t || (indentText !== null && indentText.length > 20000)) return indentUnit;
     indentText = t;
     indentUnit = detectUnit(t);
     return indentUnit;
@@ -1206,7 +1259,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
     undo: () => historyStep(),
     redo: () => historyStep(true),
     focus: () => ta.focus(),
-    show: () => { redraw(true); },
+    show: () => { regeom(); guideSnapshot = null; redraw(true); },
     text: () => ta.value,
     setInlineSuggestion,
     info,
@@ -1252,7 +1305,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
       if (errors === null) { clearDiagnostics(); checkSoon(); } else check();
     },
     tokenClass,
-    lineHeight: () => lineHeightIn(ta),
+    lineHeight: () => geom().lh,
     setFinds: (ranges, at = -1) => { findRanges = ranges; findAt = at; paintFinds(); },
     setBookmarks: (offsets) => { if (bookmarks.length === offsets.length && bookmarks.every((at, i) => at === offsets[i])) return; bookmarks = offsets; paintMarks(); },
     preview: isMd ? (on) => setRendered(on ?? !rendered) : null,
@@ -1302,7 +1355,9 @@ function lineHeightIn(node) {
   if (h) lineHeights.set(key, h);
   return h || parseFloat(style.lineHeight) || 18;
 }
-document.fonts.addEventListener('loadingdone', () => { chWidths.clear(); lineHeights.clear(); });
+// bumped as fonts arrive: every editor's kept geometry read again
+let fontEpoch = 0;
+document.fonts.addEventListener('loadingdone', () => { chWidths.clear(); lineHeights.clear(); fontEpoch++; });
 
 // the editor tabs from the last visit, back on their sessions
 

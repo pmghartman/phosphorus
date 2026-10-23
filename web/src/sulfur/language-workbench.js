@@ -320,8 +320,7 @@ export function createLanguageWorkbench(api) {
     function place(text, from) {
       const style = getComputedStyle(ta);
       const lineStart = text.lastIndexOf('\n', from - 1) + 1;
-      let row = 0;
-      for (let at = text.indexOf('\n'); at >= 0 && at < lineStart; at = text.indexOf('\n', at + 1)) row++;
+      const row = positionAt(text, lineStart).line;
       const tabSize = parseInt(style.tabSize, 10) || 4;
       const columns = [...text.slice(lineStart, from)].reduce((n, ch) => ch === '\t' ? n + tabSize - n % tabSize : n + 1, 0);
       measure ||= document.createElement('canvas').getContext('2d');

@@ -3,9 +3,46 @@
 // documents when it has nothing, snippets expanded to their text and first tab stop.
 
 const WORD = /[\p{L}\p{N}_$]/u;
-export const isWordChar = (ch) => !!ch && WORD.test(ch);
+// ASCII answered without a regex: typing asks this for nearly every character
+const asciiWord = (c) => (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95 || c === 36;
+export const isWordChar = (ch) => {
+  if (!ch) return false;
+  const c = ch.charCodeAt(0);
+  return c < 128 ? asciiWord(c) : WORD.test(ch);
+};
+// the code point ending at i (its length 1 or 2), as the u flag reads it
+function charBefore(text, i) {
+  const lo = text.charCodeAt(i - 1);
+  if (lo >= 0xDC00 && lo <= 0xDFFF && i > 1) { const hi = text.charCodeAt(i - 2); if (hi >= 0xD800 && hi <= 0xDBFF) return text.slice(i - 2, i); }
+  return text[i - 1];
+}
+// where the word the caret ends starts. Walked back from the caret: a regex anchored at the
+// end of text.slice(0, caret) is tried from every position, quadratic in a long file
+export function wordStart(text, caret) {
+  let i = caret;
+  while (i > 0) {
+    const c = text.charCodeAt(i - 1);
+    if (c < 128) { if (!asciiWord(c)) break; i--; continue; }
+    const ch = charBefore(text, i);
+    if (!WORD.test(ch)) break;
+    i -= ch.length;
+  }
+  return i;
+}
+// where the word the caret is in ends
+export function wordEnd(text, caret) {
+  let i = caret;
+  while (i < text.length) {
+    const c = text.charCodeAt(i);
+    if (c < 128) { if (!asciiWord(c)) break; i++; continue; }
+    const ch = String.fromCodePoint(text.codePointAt(i));
+    if (!WORD.test(ch)) break;
+    i += ch.length;
+  }
+  return i;
+}
 // the word the caret ends, from its start
-export const wordBefore = (text, caret) => text.slice(0, caret).match(/[\p{L}\p{N}_$]*$/u)[0];
+export const wordBefore = (text, caret) => text.slice(wordStart(text, caret), caret);
 
 // Reuse a provider result only while the same word is being typed. Edits by
 // collaborators elsewhere in the document cannot be rebased by a caret delta.
@@ -64,17 +101,31 @@ export function rankCompletions(items, typed, limit = 200) {
 
 // VS Code's word-based suggestions: every word in the documents, the one at the caret left
 // out, as plain text items
+// The document being typed in is read around the caret only once it's long (VS Code bounds
+// its word scan too); the others' words are kept per text, as they rarely change meanwhile.
+const WORD_WINDOW = 128 * 1024;
+const wordCache = new Map();
+function wordsOf(text) {
+  let words = wordCache.get(text);
+  if (words) { wordCache.delete(text); wordCache.set(text, words); return words; }
+  words = new Set();
+  for (const [word] of text.matchAll(/[\p{L}_$][\p{L}\p{N}_$]*/gu)) if (word.length >= 2) words.add(word);
+  words = [...words];
+  wordCache.set(text, words);
+  if (wordCache.size > 16) wordCache.delete(wordCache.keys().next().value);
+  return words;
+}
 export function wordCompletions(documents, current, caret, max = 5000) {
   const seen = new Set();
-  const typing = wordBefore(current, caret);
-  const end = caret + (current.slice(caret).match(/^[\p{L}\p{N}_$]*/u)[0].length);
-  const skip = current.slice(caret - typing.length, end);
-  for (const text of [current, ...documents]) {
-    for (const [word] of text.matchAll(/[\p{L}_$][\p{L}\p{N}_$]*/gu)) {
-      if (word.length < 2 || word === skip || seen.has(word)) continue;
-      seen.add(word);
-      if (seen.size >= max) break;
-    }
+  const skip = current.slice(wordStart(current, caret), wordEnd(current, caret));
+  const add = (word) => { if (word.length >= 2 && word !== skip) seen.add(word); return seen.size >= max; };
+  // the window's edges moved off any word they'd cut in two
+  const near = current.length <= 2 * WORD_WINDOW ? current
+    : current.slice(wordStart(current, Math.max(0, caret - WORD_WINDOW)), wordEnd(current, Math.min(current.length, caret + WORD_WINDOW)));
+  for (const [word] of near.matchAll(/[\p{L}_$][\p{L}\p{N}_$]*/gu)) if (add(word)) break;
+  for (const text of documents) {
+    if (seen.size >= max) break;
+    for (const word of wordsOf(text)) if (add(word)) break;
   }
   return [...seen].map((label) => ({ label, kind: 'word' }));
 }

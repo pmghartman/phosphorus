@@ -1,4 +1,5 @@
 // Sulfur's completion harness, v2. Stateless, no tools or chat history.
+import { wordBefore } from './completion.js';
 export const COMPLETION_SYSTEM = `You are Sulfur's inline code completion engine.
 Return only the code to INSERT at the caret between prefix and suffix. Never repeat
 the prefix or suffix. No markdown fences, explanations, reasoning, or tool calls.
@@ -222,7 +223,7 @@ export function inlineSuffix(applied, text, caret) {
 
 export function preferLanguageCompletion(text, caret, items = []) {
   const before = text.slice(Math.max(0, caret - 1000), caret);
-  const prefix = before.match(/[\p{L}\p{N}_$]*$/u)[0].toLowerCase();
+  const prefix = wordBefore(before, before.length).toLowerCase();
   const line = before.slice(before.lastIndexOf('\n') + 1);
   if (!items.length || /^\s*(?:\/\/|#|\/\*|\*)/.test(line)) return false;
   // Member access and module paths need the project's exact symbols. A new

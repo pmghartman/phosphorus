@@ -43,17 +43,23 @@ export function opTransform(a, b) {
   return [a1.ops, b1.ops];
 }
 // The lengths of the head and tail two texts share, the tail never overlapping the head.
-// Compared a block at a time first: every keystroke diffs the whole document several
-// times (session, history, parse, highlight), so this stays native speed on big files.
+// Compared a block at a time, the block doubling while it matches and halving at a miss:
+// every keystroke diffs the whole document several times (session, history, parse,
+// highlight), so a long file costs a few dozen native string compares, not thousands.
 const BLOCK = 1024;
+const MAX_BLOCK = 1 << 20;
 export function commonEnds(a, b) {
   const max = Math.min(a.length, b.length);
   let head = 0;
-  while (head + BLOCK <= max && a.slice(head, head + BLOCK) === b.slice(head, head + BLOCK)) head += BLOCK;
+  for (let step = BLOCK; step >= 16;) {
+    if (head + step <= max && a.slice(head, head + step) === b.slice(head, head + step)) { head += step; step = Math.min(step * 2, MAX_BLOCK); } else step >>= 1;
+  }
   while (head < max && a.charCodeAt(head) === b.charCodeAt(head)) head += 1;
   const room = max - head;
   let tail = 0;
-  while (tail + BLOCK <= room && a.slice(a.length - tail - BLOCK, a.length - tail) === b.slice(b.length - tail - BLOCK, b.length - tail)) tail += BLOCK;
+  for (let step = BLOCK; step >= 16;) {
+    if (tail + step <= room && a.slice(a.length - tail - step, a.length - tail) === b.slice(b.length - tail - step, b.length - tail)) { tail += step; step = Math.min(step * 2, MAX_BLOCK); } else step >>= 1;
+  }
   while (tail < room && a.charCodeAt(a.length - 1 - tail) === b.charCodeAt(b.length - 1 - tail)) tail += 1;
   return { head, tail };
 }
