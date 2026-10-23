@@ -49,7 +49,9 @@ const mixHex = (a, b, t) => `#${hexRgb(a).map((v, i) => Math.round(v + (hexRgb(b
 function termTheme(from = document.documentElement, clear = false) {
   const css = getComputedStyle(from.isConnected ? from : document.documentElement);
   const cssVar = (name) => css.getPropertyValue(name).trim();
-  const light = document.documentElement.dataset.theme === 'light';
+  // a window may set its own scheme, a theme's terminal dark on a light desktop
+  const scheme = cssVar('--term-scheme');
+  const light = scheme ? scheme === 'light' : document.documentElement.dataset.theme === 'light';
   const fg = cssVar('--fg');
   const theme = {
     background: clear ? '#00000000' : cssVar('--bg'), foreground: fg,
@@ -71,6 +73,8 @@ function termTheme(from = document.documentElement, clear = false) {
 // each open terminal and where its colors come from
 const liveTerms = new Map();
 const looks = (opts) => ({ from: opts.themeFrom || document.documentElement, clear: !!opts.transparent });
+// the mono of where its colors come from, a theme's terminal its own face
+const monoOf = (from) => getComputedStyle(from?.isConnected ? from : document.documentElement).getPropertyValue('--mono').trim();
 
 // /api/term/<host>: keystrokes and output as binary frames, resize as JSON,
 // a dropped socket's rejoin by sid, until the server's ENDED
@@ -90,7 +94,7 @@ function startTerminal(view, host, sid, resume, shared = false, login = null, op
       cursorBlink: true,
       cursorStyle: 'bar',
       fontSize: opts.fontSize || 14,
-      fontFamily: getComputedStyle(document.documentElement).getPropertyValue('--font').trim(),
+      fontFamily: monoOf(looks(opts).from),
       lineHeight: 1,
       letterSpacing: 0,
       allowTransparency: !!opts.transparent,
@@ -115,6 +119,7 @@ function startTerminal(view, host, sid, resume, shared = false, login = null, op
     });
     fit = new FitAddon.FitAddon();
     term.loadAddon(fit);
+    liveTerms.get(term).fit = fit;
     term.open(view);
     // pixel exact block and box glyphs, DOM renderer if no WebGL2 or the panel shows through
     if (!opts.transparent) {
@@ -212,12 +217,13 @@ function agentConsole(view) {
     term = new Terminal({
       disableStdin: true, cursorBlink: false, cursorStyle: 'bar', cursorInactiveStyle: 'none', convertEol: true,
       fontSize: 13, lineHeight: 1, scrollback: 5000,
-      fontFamily: getComputedStyle(document.documentElement).getPropertyValue('--font').trim(),
+      fontFamily: getComputedStyle(document.documentElement).getPropertyValue('--mono').trim(),
       theme: termTheme(),
     });
     liveTerms.set(term, looks({}));
     const fit = new FitAddon.FitAddon();
     term.loadAddon(fit);
+    liveTerms.get(term).fit = fit;
     term.open(view);
     observer = new ResizeObserver(() => fit.fit());
     observer.observe(view);
@@ -252,12 +258,13 @@ function taskTerminal(view, host, task, opts = {}) {
   const ready = Promise.all([loadXterm(), fontIn]).then(() => {
     term = new Terminal({
       cursorBlink: false, cursorStyle: 'bar', fontSize: opts.fontSize || 14, lineHeight: 1, scrollback: 20000,
-      fontFamily: getComputedStyle(document.documentElement).getPropertyValue('--font').trim(),
+      fontFamily: monoOf(looks(opts).from),
       allowTransparency: !!opts.transparent, theme: termTheme(looks(opts).from, looks(opts).clear),
     });
     liveTerms.set(term, looks(opts));
     fit = new FitAddon.FitAddon();
     term.loadAddon(fit);
+    liveTerms.get(term).fit = fit;
     term.open(view);
     if (!opts.transparent) {
       try {
@@ -314,6 +321,13 @@ function taskTerminal(view, host, task, opts = {}) {
 }
 
 // re-coloured with the page's theme
-function termsRetheme() { for (const [t, l] of liveTerms) t.options.theme = termTheme(l.from, l.clear); }
+// a theme's own mono too, the cells measured again for it
+function termsRetheme() {
+  for (const [t, l] of liveTerms) {
+    const font = monoOf(l.from);
+    t.options.theme = termTheme(l.from, l.clear);
+    if (font && t.options.fontFamily !== font) { t.options.fontFamily = font; l.fit?.fit(); }
+  }
+}
 
 export { agentConsole, startTerminal, taskTerminal, termsRetheme };

@@ -6,9 +6,8 @@ listed by group, then every distinct license text follows once, with the
 components it covers.
 
 Forgejo runs as a separate, unmodified program; phosphorus only writes its
-configuration. Its complete corresponding source, forgejo-src-16.0.6.tar.gz, is
-attached to every phosphorus release that carries a Linux package, and is at
-https://codeberg.org/forgejo/forgejo/releases/tag/v16.0.6.
+configuration. Its complete corresponding source, forgejo-src-16.0.6.tar.gz, is at:
+https://codeberg.org/forgejo/forgejo/releases/download/v16.0.6/forgejo-src-16.0.6.tar.gz
 
 With [model] gpu on an nvidia gpu, the model host also downloads NVIDIA's CUDA
 runtime from llama.cpp's releases, under the NVIDIA CUDA EULA
@@ -150,7 +149,7 @@ katex 0.18.10, text [38]
 == Programs bundled with the host installers ==
 
 Forgejo 16.0.6, text [9]
-    https://codeberg.org/forgejo/forgejo/src/tag/v16.0.6 (also forgejo-src-16.0.6.tar.gz on each phosphorus release that ships it)
+    https://codeberg.org/forgejo/forgejo/src/tag/v16.0.6
 Tailscale 1.104.1, text [11]
     https://github.com/tailscale/tailscale
 cloudflared 2026.9.3, text [34]

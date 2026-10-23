@@ -7,10 +7,10 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>phosphorus</title>
-<link rel="icon" href="/favicon.ico?v=12" sizes="32x32">
-<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=12">
-<link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png?v=12">
-<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=12">
+<link rel="icon" href="/favicon.ico?v=13" sizes="32x32">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=13">
+<link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png?v=13">
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=13">
 <link rel="preload" href="/vendor/geist-mono.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/style.css">
 <script>
@@ -20,9 +20,24 @@
   try { pick = localStorage.getItem('phosphorus-theme'); } catch {}
   const theme = pick || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
   if (theme === 'light' || theme === 'oled') document.documentElement.dataset.theme = theme;
-  let pal = null;
-  try { pal = localStorage.getItem('phosphorus-palette'); } catch {}
-  document.documentElement.dataset.palette = pal || 'phosphorus';
+  // the theme as theme.js last put it up: its look, rounded corners, page font, a custom one's css
+  const r = document.documentElement;
+  let a = null;
+  try { a = JSON.parse(localStorage.getItem('phosphorus-theme-applied')); } catch {}
+  let look = a?.look;
+  try { look = look || localStorage.getItem('phosphorus-palette'); } catch {}
+  r.dataset.palette = look && look !== 'custom' ? look : 'phosphorus';
+  if (a?.id) r.dataset.themeId = a.id;
+  r.toggleAttribute('data-round', !!a?.round);
+  r.toggleAttribute('data-sans', !!a?.sans);
+  if (a?.css) {
+    r.setAttribute('data-custom', '');
+    r.toggleAttribute('data-custom-desk', !!a.desk);
+    const s = document.createElement('style');
+    s.id = 'phosphorus-custom';
+    s.textContent = a.css;
+    document.head.append(s);
+  }
 })();
 </script>
 </head>
@@ -142,27 +157,7 @@ outside #mesh-svg (emptied every redraw) so it never restarts -->
       <div class="view" id="view-about">
         <div class="about-wrap">
           <div class="about-brand">
-          <pre class="about-art" aria-hidden="true">             -@@@@@@@@@@@@@@@@@@=
-              ..-=*@@@@@@@@+-:..
-                   -@@@@@@=
-          .:-=++***#@@@@@@%****+=-:.
-      :+#@@@@@#*+==*@@@@@@*==+*#@@@@@#+:
-   .+@@@@@@*:      :@@@@@@-      .+@@@@@@*.
-  +@@@@@@#.        :@@@@@@-         *@@@@@@*
- #@@@@@@#          :@@@@@@-          *@@@@@@%
-=@@@@@@@.          :@@@@@@-           @@@@@@@+
-%@@@@@@%           :@@@@@@-           #@@@@@@%
-%@@@@@@#           :@@@@@@-           +@@@@@@%
-*@@@@@@%           :@@@@@@-           #@@@@@@*
-.@@@@@@@.          :@@@@@@-          .@@@@@@@:
- :@@@@@@%.         :@@@@@@-          %@@@@@@-
-  .#@@@@@@-        :@@@@@@-        -%@@@@@#.
-    :*@@@@@%=.     :@@@@@@-     .=%@@@@@*:
-       :+#@@@@@%**+*@@@@@@#++*%@@@@@#+:
-           .:-=++**#@@@@@@#**++=-:.
-                   :@@@@@@-
-                .:=%@@@@@@%=:.
-             :@@@@@@@@@@@@@@@@@@%</pre>
+          <img class="about-mark" src="/phosphorus.svg?v=1" alt="" aria-hidden="true" draggable="false">
             <div class="about-version" id="about-version"></div>
           </div>
           <div class="about-info">

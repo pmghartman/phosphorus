@@ -1,5 +1,5 @@
 import { renderMd, mdBlocks, fitMath } from './md.js';
-import { PALETTES, PALETTE_EVENT, paletteNow, setPalette } from './theme.js';
+import { CUSTOM_CORNERS, CUSTOM_DEFAULT, CUSTOM_SHADOWS, PALETTES, PALETTE_EVENT, customNow, paletteNow, setCustom, setPalette, themeFromStorage } from './theme.js';
 import { parserFor, parserNow, highlight, syntaxErrors } from './lezer.js';
 
 // the page's vendor files, hashed by the build
@@ -1856,6 +1856,138 @@ function dkBellTray(anchor) {
 
 // --- the control panel: the mesh, the update, the theme, one button for all
 
+// the themes a dropdown: the current one on its button, the list opened under it in the panel,
+// arrows, home and end through it, enter or a click to pick, escape closing just the list;
+// open and focused as it was across the panel's redraws
+const dkThemeDrop = { open: false, at: -1 };
+// a theme's swatch, its accent over its ground; the custom one's from what it starts from
+function dkSwatch(p) {
+  const c = p.custom ? customNow() : null;
+  const base = c ? PALETTES.find((x) => x.id === c.base) : p;
+  const [accent, bg] = base?.swatch || ['#888888', '#222222'];
+  const sw = el('span', 'dk-ctl-swatch');
+  sw.style.background = `linear-gradient(135deg, ${c?.accent || accent} 50%, ${bg} 50%)`;
+  return sw;
+}
+
+// the custom theme, made here: worn as it's changed, kept with the user's settings on every host
+function dkThemeWin() {
+  const w = dkWin('app:theme', 'theme', 'custom', 'app dk-app-theme');
+  if (!w) return;
+  const body = el('div', 'acct-pane dk-theme-pane');
+  w.body.appendChild(body);
+  dkSize(w, 460, 470);
+  let c = customNow();
+  const save = () => { c = setCustom(c); draw(); };
+  const row = (label, input, note) => {
+    const r = el('label', 'dk-theme-row');
+    r.append(el('span', 'dk-theme-k', label), input);
+    if (note) r.append(el('span', 'dk-theme-note', note));
+    return r;
+  };
+  const pick = (key, choices) => {
+    const s = el('select', 'dk-theme-in');
+    for (const [v, label] of choices) s.append(Object.assign(el('option', '', label), { value: v, selected: c[key] === v }));
+    s.addEventListener('change', () => { c[key] = s.value; save(); });
+    return s;
+  };
+  // a color, or the theme's own when cleared
+  const color = (key, fallback) => {
+    const box = el('span', 'dk-theme-color');
+    const inp = Object.assign(el('input', 'dk-theme-in'), { type: 'color', value: c[key] || fallback });
+    const own = Object.assign(el('button', '', c[key] ? 'use the theme’s' : 'the theme’s'), { type: 'button', disabled: !c[key] });
+    inp.addEventListener('input', () => { c[key] = inp.value; c = setCustom(c); own.disabled = false; own.textContent = 'use the theme’s'; });
+    inp.addEventListener('change', () => draw());
+    own.addEventListener('click', () => { c[key] = ''; save(); });
+    box.append(inp, own);
+    return box;
+  };
+  const draw = () => {
+    const css = getComputedStyle(document.documentElement);
+    const base = pick('base', PALETTES.filter((p) => !p.custom).map((p) => [p.id, p.label]));
+    const theme = [['', 'the theme’s']];
+    const rows = [
+      row('start from', base, 'its colors, layout and chrome'),
+      row('accent', color('accent', css.getPropertyValue('--accent').trim() || '#9f81cf')),
+      row('page font', pick('font', [...theme, ['system', 'system sans'], ['mono', 'monospaced'], ['serif', 'serif']])),
+      row('code font', pick('mono', [...theme, ['geist', 'geist mono'], ['system', 'system mono'], ['cascadia', 'cascadia'], ['jetbrains', 'jetbrains mono']])),
+      row('corners', pick('corners', [...theme, ...CUSTOM_CORNERS.map((n) => [n, n === '0' ? 'square' : `${n}px`])])),
+      row('shadows', pick('shadows', [...theme, ...Object.keys(CUSTOM_SHADOWS).map((k) => [k, k])])),
+      row('desk', color('desk', css.getPropertyValue('--bg').trim() || '#141414'), 'under the icons, unless a picture is set'),
+    ];
+    const acts = el('div', 'update-actions');
+    const reset = Object.assign(el('button', '', 'start over'), { type: 'button' });
+    reset.addEventListener('click', () => { c = { ...CUSTOM_DEFAULT, base: c.base }; save(); });
+    acts.append(reset);
+    body.replaceChildren(el('p', 'dk-note', 'Your theme, kept with your settings on every host. Anything left at the theme’s follows the one you start from.'), ...rows, acts);
+  };
+  draw();
+  if (paletteNow() !== 'custom') setCustom(c);
+  dkFocus(w);
+}
+function dkPaletteDrop(redraw) {
+  const hadFocus = !!document.activeElement?.closest?.('.dk-ctl-drop');
+  const now = paletteNow();
+  const cur = PALETTES.find((p) => p.id === now) || PALETTES[0];
+  const wrap = el('div', 'dk-ctl-drop');
+  const btn = Object.assign(el('button', 'dk-ctl-drop-btn'), { type: 'button', title: cur.about });
+  btn.setAttribute('aria-haspopup', 'listbox');
+  btn.setAttribute('aria-expanded', 'false');
+  btn.append(el('span', 'dk-ctl-drop-k', 'theme'), dkSwatch(cur), el('span', 'dk-ctl-drop-label', cur.label), dkGlyph(DK_UI.down, 'dk-ctl-drop-ch'));
+  const list = Object.assign(el('ul', 'dk-ctl-drop-list'), { hidden: true });
+  list.setAttribute('role', 'listbox');
+  list.setAttribute('aria-label', 'theme');
+  const opts = PALETTES.map((p) => {
+    const li = Object.assign(el('li', `dk-ctl-drop-opt${p.id === cur.id ? ' on' : ''}`), { tabIndex: -1 });
+    li.setAttribute('role', 'option');
+    li.setAttribute('aria-selected', String(p.id === cur.id));
+    const text = el('span', 'dk-ctl-drop-text');
+    text.append(el('span', 'dk-ctl-drop-name', p.label), el('span', 'dk-ctl-drop-about', p.about));
+    li.append(dkSwatch(p), text);
+    li.addEventListener('click', () => { dkThemeDrop.open = false; if (p.id !== paletteNow()) setPalette(p.id); redraw(); });
+    list.append(li);
+    return li;
+  });
+  // the custom theme's editor, last in the list
+  const edit = Object.assign(el('li', 'dk-ctl-drop-opt dk-ctl-drop-act'), { tabIndex: -1 });
+  edit.setAttribute('role', 'option');
+  const editText = el('span', 'dk-ctl-drop-text');
+  editText.append(el('span', 'dk-ctl-drop-name', 'customize…'), el('span', 'dk-ctl-drop-about', 'start from any theme, then your own accent, type, corners and shadows'));
+  edit.append(dkGlyph(DK_GLYPHS.gear, 'dk-ctl-drop-ic'), editText);
+  edit.addEventListener('click', () => { dkThemeDrop.open = false; dk.ctl?.show(false); dkThemeWin(); });
+  list.append(edit);
+  opts.push(edit);
+  for (const [i, li] of opts.entries()) li.addEventListener('focus', () => { dkThemeDrop.at = i; });
+  const open = (on, focus = true) => {
+    dkThemeDrop.open = on;
+    dkThemeDrop.at = -1;
+    list.hidden = !on;
+    wrap.classList.toggle('open', on);
+    btn.setAttribute('aria-expanded', String(on));
+    if (on && focus) opts[Math.max(0, PALETTES.indexOf(cur))].focus();
+    if (!on && focus) btn.focus();
+  };
+  btn.addEventListener('click', () => open(list.hidden, false));
+  btn.addEventListener('keydown', (e) => {
+    if (!['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(e.key)) return;
+    e.preventDefault();
+    open(true);
+  });
+  list.addEventListener('keydown', (e) => {
+    const i = opts.indexOf(document.activeElement);
+    const to = { ArrowDown: i + 1, ArrowUp: i - 1, Home: 0, End: opts.length - 1 }[e.key];
+    if (to !== undefined) { e.preventDefault(); opts[(to + opts.length) % opts.length].focus(); return; }
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); opts[i]?.click(); document.querySelector('.dk-ctl-drop-btn')?.focus(); return; }
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); open(false); }
+  });
+  wrap.append(btn, list);
+  const at = dkThemeDrop.at;
+  if (dkThemeDrop.open) open(true, false);
+  // the focus put back once the panel holds the new one
+  if (hadFocus) queueMicrotask(() => (dkThemeDrop.open && at >= 0 ? opts[at] : btn).focus());
+  return wrap;
+}
+
 // the clock and the user one button, the panel the mesh, update, theme and account
 function dkControlTray() {
   const wrap = el('div', 'dk-tray-wrap dk-ctl');
@@ -1887,14 +2019,8 @@ function dkControlTray() {
       tb.addEventListener('click', () => { setTheme(t); draw(); });
       theme.append(tb);
     }
-    // the color theme, every app's and Sulfur's
-    const palette = el('div', 'dk-ctl-theme dk-ctl-palette');
-    for (const p of PALETTES) {
-      const pb = Object.assign(el('button', `dk-ctl-seg${paletteNow() === p.id ? ' on' : ''}`), { type: 'button', title: p.about });
-      pb.append(el('span', `dk-ctl-swatch sw-${p.id}`), p.label);
-      pb.addEventListener('click', () => { setPalette(p.id); draw(); });
-      palette.append(pb);
-    }
+    // the theme, every app's and Sulfur's, its whole look
+    const palette = dkPaletteDrop(draw);
     // the account's own actions, small chips under the panel's big tiles
     const chips = el('div', 'dk-ctl-chips');
     const chip = (glyph, label, act) => {
@@ -1920,6 +2046,7 @@ function dkControlTray() {
   const show = (on) => {
     if (!on && pop.hidden) return;
     if (on) dkPopsClose('ctl');
+    else dkThemeDrop.open = false;
     pop.hidden = !on;
     b.setAttribute('aria-expanded', String(on));
     if (on) draw();
@@ -4241,7 +4368,7 @@ mobileQuery.addEventListener('change', () => {
 function dkArt() {
   dkWallPaint();
   const art = el('div', 'dk-art');
-  art.appendChild(document.querySelector('.about-art').cloneNode(true));
+  art.appendChild(document.querySelector('.about-mark').cloneNode(true));
   return art;
 }
 
@@ -4308,7 +4435,7 @@ function dkGlyph(d, cls = '') {
 const DK_UI = {
   min: 'M4 11.5h8', max: 'M3.5 3.5h9v9h-9z', close: 'M4 4l8 8M12 4l-8 8',
   pop: 'M9 2.5h4.5V7M13.5 2.5L7.5 8.5M12 9.5v4H2.5V4h4',
-  back: 'M10 3L5 8l5 5', fwd: 'M6 3l5 5-5 5', up: 'M3 10.5l5-5 5 5',
+  back: 'M10 3L5 8l5 5', fwd: 'M6 3l5 5-5 5', up: 'M3 10.5l5-5 5 5', down: 'M3 5.5l5 5 5-5',
   list: 'M2.5 4h11M2.5 8h11M2.5 12h11',
   desk: 'M1.5 2.5h13v8.5h-13zM5.5 13.5h5M8 11v2.5M4 5h3M4 7.5h2',
 };
@@ -4398,7 +4525,7 @@ function dkIcons() {
   const want = [
     ...hosts.map((h) => [`terminal\n${h}`, () => dkIcon('terminal', 'terminal', h, () => dkTerminal(h))]),
     ['files', () => dkIcon('files', 'files', '', () => filesWin())],
-    ...(acct && !acct.boot ? [['sulfur', () => dkIcon('sulfur', 'sulfur', '', () => dkSulfur())]] : []),
+    ...(acct && !acct.boot ? [['sulfur', () => dkIcon('sulfur', 'sulfur', '', () => dkSulfur(), '/sulfur/icon.svg')]] : []),
     ['chat', () => dkIcon('chat', 'chat', '', () => dkOpenApp('chat'))],
     ['status', () => dkIcon('status', 'status', '', () => dkOpenApp('status'))],
     ...(git ? [['git', () => dkGlobe(dkIcon('git', 'git', '', () => dkOpenApp('git')), 'public: its own login only')]] : []),
@@ -5072,7 +5199,7 @@ function dkTerminal(host, run = '', shared = false) {
   const w = dkWin(null, 'terminal', host, 'term');
   if (!w) return;
   w.host = host;
-  const t = app('terminal').then((m) => m.startTerminal(w.body, host, newSid(), false, shared, { ...c, run }));
+  const t = app('terminal').then((m) => m.startTerminal(w.body, host, newSid(), false, shared, { ...c, run }, { themeFrom: w.body }));
   w.onFocus = () => t.then((x) => x.focus());
   w.onClose = () => t.then((x) => x.close());
   dkFocus(w);
@@ -6034,7 +6161,8 @@ async function acctSave() {
 }
 
 // the page's own settings in localStorage, mirrored to the user's home
-const PREF_LS = { icons: 'phosphorus-dk-icons', theme: 'phosphorus-theme', recent: 'phosphorus-recent-files', color: 'phosphorus-chat-color', agentview: 'phosphorus-agent-view' };
+// the theme with them: light or dark, the theme picked and a custom one, alike on every host
+const PREF_LS = { icons: 'phosphorus-dk-icons', theme: 'phosphorus-theme', palette: 'phosphorus-palette', custom: 'phosphorus-theme-custom', recent: 'phosphorus-recent-files', color: 'phosphorus-chat-color', agentview: 'phosphorus-agent-view' };
 const PREF_OF = Object.fromEntries(Object.entries(PREF_LS).map(([k, v]) => [v, k]));
 let prefsTimer = null;
 let prefsQuiet = false;
@@ -6089,6 +6217,7 @@ function acctPrefs(prefs, at = 0) {
   if (seed) prefsSoon();
   let theme = null;
   try { theme = localStorage.getItem(PREF_LS.theme); color = localStorage.getItem(PREF_LS.color) || color; } catch {}
+  themeFromStorage();
   applyTheme(theme || (systemLight.matches ? 'light' : 'dark'));
 }
 
