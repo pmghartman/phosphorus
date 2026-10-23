@@ -33,6 +33,7 @@ import {
   selfHost,
   shQuote,
   shareMenu,
+  meshUpdate,
   standalone,
 } from '../app.js';
 import { codeEditor } from './editor.js';
@@ -42,7 +43,7 @@ import { renderMd } from '../md.js';
 import { symbolsFor, identifierAt, enclosingSymbol } from '../symbols.js';
 import { singleFileCommand, configsFor } from '../sulfur/build-commands.js';
 import { cmakeTargets, cmakeConfiguration, targetForFile, executableCommand, absolutePath, joinPath } from '../sulfur/project-targets.js';
-import { PALETTES, PALETTE_EVENT, paletteNow, setPalette } from '../theme.js';
+import { LOOK_IDS, PALETTES, PALETTE_EVENT, lookNow, paletteNow, setPalette } from '../theme.js';
 import guideText from '../../../docs/sulfur-extensions.md';
 
 // --- sulfur, the code editor ----------------------------------------------------------
@@ -541,16 +542,26 @@ function build() {
   const ccText = el('span', 'ide-cc-text');
   cc.append(icon('search'), ccText);
   cc.addEventListener('click', () => quickOpen(''));
-  title.append(menubar, cc);
+  // the chat at the bar's left, the update at its right: each its own button, nothing to dig for
+  const ai = Object.assign(el('button', 'ide-tb ide-tb-ai'), { type: 'button', ariaLabel: 'Chat' });
+  ai.dataset.cmd = 'workbench.action.chat.open';
+  ai.dataset.label = 'Chat';
+  ai.append(icon('spark'));
+  ai.addEventListener('click', () => run('workbench.action.toggleAuxiliaryBar'));
+  const upd = Object.assign(el('button', 'ide-tb ide-tb-update'), { type: 'button' });
+  upd.append(icon('refresh'), el('span', 'ide-tb-text', standalone?.app ? 'Check for Updates' : 'Mesh Update'));
+  upd.title = standalone?.app ? 'Check for Sulfur updates' : 'The mesh update, Sulfur with it';
+  upd.hidden = !(standalone?.app || (!standalone && acct.admin && meshUpdate));
+  upd.addEventListener('click', () => (standalone?.app ? checkUpdate(true) : meshUpdate?.()));
+  title.append(ai, menubar, cc, upd);
 
   const main = el('div', 'ide-main');
-  // the activity bar: a view per icon, the manage menus at its foot
+  // the activity bar: a view per icon; the chat, settings and update are the title bar's
   const activity = el('div', 'ide-activity');
   activity.setAttribute('role', 'tablist');
   activity.setAttribute('aria-orientation', 'vertical');
   const actTop = el('div', 'ide-act-top');
-  const actFoot = el('div', 'ide-act-foot');
-  activity.append(actTop, actFoot);
+  activity.append(actTop);
 
   const side = el('div', 'ide-side');
   const sideHead = el('div', 'ide-side-head');
@@ -597,9 +608,9 @@ function build() {
   I.w.head.insertBefore(title, I.w.head.querySelector('.dk-btns'));
   I.w.node.classList.add('ide-win');
   Object.assign(I, {
-    root, layer, titleBar: title, menubar, cc, ccText, activity, actTop, actFoot, side, sideTitle, sideActs, sideBody, center, editorsPart,
+    root, layer, titleBar: title, menubar, cc, ccText, activity, actTop, side, sideTitle, sideActs, sideBody, center, editorsPart,
     tabsEl: tabs, tabActs, crumbs, views, watermark, panel, panelTabs, panelActs, panelBody, sashH, aux, sashSide, sashAux,
-    statusL, statusR, sideViews: new Map(), panelViews: new Map(), actBtns: new Map(),
+    statusL, statusR, sideViews: new Map(), panelViews: new Map(), actBtns: new Map(), actChat: ai,
   });
 
   buildMenubar();
@@ -712,24 +723,6 @@ function buildActivity() {
     I.sideBody.append(body);
     I.sideViews.set(v.id, { ...v, body, acts: [] });
   }
-  const chat = Object.assign(el('button', 'ide-act ide-act-chat'), { type: 'button', ariaLabel: 'Chat' });
-  chat.dataset.cmd = 'workbench.action.chat.open';
-  chat.dataset.label = 'Chat';
-  chat.append(icon('chat'));
-  chat.addEventListener('click', () => run('workbench.action.toggleAuxiliaryBar'));
-  I.actTop.append(chat);
-  I.actChat = chat;
-  // the gear names who's signed in; Sulfur alone signs in to a mesh from the status bar's remote item
-  const manage = Object.assign(el('button', 'ide-act'), { type: 'button', ariaLabel: 'Manage', title: 'Manage' });
-  manage.append(icon('gear'));
-  manage.addEventListener('click', () => menu(manage, [
-    { label: localDesktop() ? `${standalone.meshUser ? `${standalone.meshUser}, ` : ''}on ${selfHost}` : `${acct.user}${acct.admin ? ' (admin)' : ''} on ${selfHost}`, disabled: true },
-    '-',
-    cmdItem('workbench.action.openSettings', 'Settings'),
-    cmdItem('workbench.action.openGlobalKeybindings', 'Keyboard Shortcuts'),
-    cmdItem('workbench.action.selectTheme', 'Color Theme'),
-  ], { side: 'right', up: true }));
-  I.actFoot.append(manage);
   buildExplorer();
   buildSearch();
   buildScm();
@@ -777,6 +770,12 @@ const MENUS = [
     { label: 'Open Recent', sub: () => recentItems() },
     cmdItem('sulfur.project.transfer', 'Copy or Move Project to…'), cmdItem('sulfur.git.clone', 'Clone Repository…'), '-',
     cmdItem('workbench.action.files.save', 'Save'), cmdItem('workbench.action.files.saveAll', 'Save All'), '-',
+    { label: 'Preferences', sub: () => [
+      // who's signed in; Sulfur alone signs in to a mesh from the status bar's remote item
+      { label: localDesktop() ? `${standalone.meshUser ? `${standalone.meshUser}, ` : ''}on ${selfHost}` : `${acct.user}${acct.admin ? ' (admin)' : ''} on ${selfHost}`, disabled: true }, '-',
+      cmdItem('workbench.action.openSettings', 'Settings'), cmdItem('workbench.action.openGlobalKeybindings', 'Keyboard Shortcuts'),
+      cmdItem('workbench.action.selectTheme', 'Theme'),
+    ] }, '-',
     cmdItem('workbench.action.revertFile', 'Revert File'),
     cmdItem('workbench.action.closeActiveEditor', 'Close Editor'), cmdItem('workbench.action.closeAllEditors', 'Close All Editors'), '-',
     ...(standalone?.app ? [cmdItem('sulfur.mesh.connect', standalone.server ? `Connect to ${meshName()}…` : 'Connect to a Phosphorus Mesh…'), '-'] : []),
@@ -834,7 +833,7 @@ const MENUS = [
     cmdItem('workbench.action.openWalkthrough', 'Welcome'), '-',
     cmdItem('sulfur.extensions.guide', 'Extension Guide'), cmdItem('sulfur.extensions.create', 'Create an Extension…'), '-',
     cmdItem('workbench.action.showOutput', 'Show Log'),
-    ...(standalone?.app ? [cmdItem('sulfur.update', 'Check for Updates…')] : []), cmdItem('sulfur.about', 'About'),
+    cmdItem('sulfur.about', 'About'),
   ]],
 ];
 
@@ -6657,9 +6656,11 @@ function applySettings() {
   const r = I.root;
   applyAppearance();
   r.style.setProperty('--ide-code-font', `${setting('editor.fontSize')}px`);
-  // vs code Sulfur's own look; the others the desktop's tokens, medieval its own type too
-  const theme = paletteNow();
-  for (const t of PALETTES) I.w.node.classList.toggle(`ide-theme-${t.id}`, t.id === theme && t.id !== 'vscode');
+  // vs code Sulfur's own look, the others their own tokens; a custom theme wears the one it starts from
+  const look = lookNow();
+  for (const t of LOOK_IDS) I.w.node.classList.toggle(`ide-theme-${t}`, t === look && t !== 'vscode');
+  // the terminals recolored once the theme, or a custom one's overrides, changed
+  const theme = paletteNow() + (document.getElementById('phosphorus-custom')?.textContent || '');
   if (I.themeNow !== theme) { I.themeNow = theme; requestAnimationFrame(() => termsRetheme()); }
   I.exclude = null;
   paintTreeSoon();

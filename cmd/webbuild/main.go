@@ -24,6 +24,8 @@ import (
 	"strings"
 
 	"github.com/evanw/esbuild/pkg/api"
+
+	"github.com/pmghartman/phosphorus/internal/theme"
 )
 
 type pkg struct {
@@ -89,6 +91,16 @@ func main() {
 	}
 
 	define, _ := json.Marshal(assets)
+	// the theme library's tokens as CSS, the first thing style.css imports
+	themes := api.Plugin{Name: "phosphorus-themes", Setup: func(b api.PluginBuild) {
+		b.OnResolve(api.OnResolveOptions{Filter: `^phosphorus:themes$`}, func(api.OnResolveArgs) (api.OnResolveResult, error) {
+			return api.OnResolveResult{Path: "themes.css", Namespace: "phosphorus-themes"}, nil
+		})
+		b.OnLoad(api.OnLoadOptions{Filter: `.*`, Namespace: "phosphorus-themes"}, func(api.OnLoadArgs) (api.OnLoadResult, error) {
+			css := theme.Load().CSS()
+			return api.OnLoadResult{Contents: &css, Loader: api.LoaderCSS}, nil
+		})
+	}}
 	opts := func(entry, outdir string) api.BuildOptions {
 		return api.BuildOptions{
 			EntryPoints:       []string{filepath.Join(*src, entry), filepath.Join(*src, "style.css")},
@@ -112,6 +124,7 @@ func main() {
 			LegalComments:     api.LegalCommentsLinked,
 			Charset:           api.CharsetUTF8,
 			LogLevel:          api.LogLevelWarning,
+			Plugins:           []api.Plugin{themes},
 		}
 	}
 	// the desktop's page
@@ -122,14 +135,14 @@ func main() {
 	host, _ := filepath.Abs(filepath.Join(*src, "src/sulfur/host.js"))
 	apps, _ := filepath.Abs(filepath.Join(*src, "src/apps"))
 	alone := opts("src/sulfur/main.js", "sulfur/assets")
-	alone.Plugins = []api.Plugin{{Name: "sulfur-host", Setup: func(b api.PluginBuild) {
+	alone.Plugins = append(alone.Plugins, api.Plugin{Name: "sulfur-host", Setup: func(b api.PluginBuild) {
 		b.OnResolve(api.OnResolveOptions{Filter: `^\.\./app\.js$`}, func(a api.OnResolveArgs) (api.OnResolveResult, error) {
 			if dir, err := filepath.Abs(a.ResolveDir); err == nil && dir == apps {
 				return api.OnResolveResult{Path: host}, nil
 			}
 			return api.OnResolveResult{}, nil
 		})
-	}}}
+	}})
 	page(*out, filepath.Join(*src, "sulfur.html"), "sulfur/index.html", "/src/sulfur/main.js", api.Build(alone))
 	must(copyDir(filepath.Join(*src, "static"), *out, ""))
 

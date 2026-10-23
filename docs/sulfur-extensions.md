@@ -209,7 +209,7 @@ The code service's harnesses (Claude Code, opencode) come from the mesh, each an
 
 The desktop app always serves this computer. Connecting a mesh adds its machines, models, agents and Forgejo beside it. **Open Folder** and **Open File** use the same folder dialog, with local and mesh places together; a typed path works with Enter or the Open button. Losing the mesh does not prevent local editing, terminals or builds.
 
-Standalone Sulfur defaults to the same Phosphorus palette as the desktop. **Light** and **Dark** in the Color Theme picker select Phosphorus's corresponding appearance; the VS Code and Medieval palettes remain available separately. The titlebar keeps its height and window controls visible as the window narrows or shortens.
+Standalone Sulfur defaults to the same Phosphorus palette as the desktop. **Light** and **Dark** in the Color Theme picker select Phosphorus's corresponding appearance; every other theme in the library (`internal/theme/themes.json`), and a custom one made in the desktop, remain available separately. The titlebar keeps its height and window controls visible as the window narrows or shortens.
 
 **Ctrl+B** builds the project. The first time, Sulfur looks at what the project is (CMake, a .NET solution or project, MSBuild, Cargo, Go, npm, Make, Meson, Python) and at the compilers each of your machines has. Where the project says how it builds, as Visual Studio reads it, Sulfur builds that way without asking:
 
