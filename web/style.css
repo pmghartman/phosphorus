@@ -2932,14 +2932,24 @@ body:has(.dk-pop:not([hidden])) .toasts { opacity: 0; pointer-events: none; }
 
 .ide-views { position: relative; flex: 1; min-height: 0; display: flex; }
 .ide-view-ed { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; outline: none; }
-.ide-completion { position: absolute; z-index: 30; top: 70px; left: 64px; width: min(580px, calc(100% - 80px)); max-height: 260px; overflow: auto; border: 1px solid var(--border); background: var(--bg); color: var(--fg); box-shadow: 0 5px 20px #0005; font: 13px monospace; }
+/* the suggest widget, as VS Code's: a kind glyph, the label with what's typed in bold, its detail at the right */
+.ide-completion { position: absolute; z-index: 30; top: 70px; left: 64px; width: min(430px, calc(100% - 80px)); max-height: 264px; overflow: auto; border: 1px solid var(--ide-widget-border, var(--border)); border-radius: 3px; background: var(--ide-widget, var(--bg)); color: var(--ide-fg, var(--fg)); box-shadow: var(--ide-shadow, 0 5px 20px #0005); font: 13px/22px var(--font, monospace); }
 .ide-completion[hidden] { display: none; }
-.ide-completion-item { display: flex; justify-content: space-between; gap: 20px; padding: 5px 8px; cursor: pointer; }
-.ide-completion-item.on { background: var(--accent); color: var(--bg); }
-.ide-completion-item small { opacity: .75; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ide-completion-item { display: flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px 0 4px; cursor: pointer; white-space: nowrap; }
+.ide-completion-item:hover { background: var(--ide-hover); }
+.ide-completion-item.on { background: var(--ide-sel, var(--accent)); color: var(--ide-strong, var(--fg)); }
+.ide-completion-kind { flex: none; width: 18px; text-align: center; font-size: 11px; color: var(--ide-muted); }
+.ide-completion-kind:is(.k-method, .k-function, .k-constructor) { color: #b180d7; }
+.ide-completion-kind:is(.k-field, .k-variable, .k-property, .k-enum-member, .k-constant) { color: #75beff; }
+.ide-completion-kind:is(.k-class, .k-interface, .k-enum, .k-struct, .k-type-parameter, .k-event) { color: #ee9d28; }
+.ide-completion-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.ide-completion-label b { color: var(--ide-hl, var(--accent)); font-weight: 700; }
+.ide-completion-item small { flex: 0 1 auto; max-width: 50%; opacity: .7; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .ide-language-manager { padding: 12px; border-top: 1px solid var(--border); }
 .ide-view.ide-extensions-body { display: block; overflow-y: auto; }
 .ide-extensions-body .ide-ext-list { overflow: visible; }
+/* the search box kept in view as the view scrolls, as VS Code's */
+.ide-extensions-body > .ide-search-form { position: sticky; top: 0; z-index: 2; padding-top: 4px; background: var(--ide-side); }
 .ide-language-manager > button { margin: 6px 6px 8px 0; }
 .ide-language-row { padding: 10px 0; border-top: 1px solid var(--border); }
 .ide-language-row label { display: flex; align-items: center; gap: 6px; }

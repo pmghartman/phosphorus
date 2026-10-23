@@ -48,7 +48,9 @@ test('completion list defaults, insert/replace edits and plain identifier fallba
   assert.equal(completionEdits({ label: 'hello' }, 'he', 2).text, 'hello');
   assert.equal(completionEdits({ label: 'hello', textEditText: 'hello' }, 'he', 2, { editRange: range(0, 2) }).text, 'hello');
   assert.equal(completionEdits({ label: 'hello', textEdit: { insert: range(0, 2), replace: range(0, 4), newText: 'hello' } }, 'hexx', 2).text, 'hello');
-  assert.throws(() => completionEdits({ label: 'fn', insertText: 'fn(${1:a})', insertTextFormat: 2 }, '', 0), /snippets/);
+  const snippet = completionEdits({ label: 'fn', insertText: 'fn(${1:a}, $2)$0', insertTextFormat: 2 }, 'f', 1);
+  assert.equal(snippet.text, 'fn(a, )');
+  assert.deepEqual(snippet.selection, [3, 4]);
 });
 
 test('rename edits use original positions and reject overlaps before changing text', () => {
@@ -77,12 +79,13 @@ class FakeSocket {
 }
 const setup = async (t) => { const original = globalThis.WebSocket; globalThis.WebSocket = FakeSocket; t.after(() => { globalThis.WebSocket = original; }); const client = languageSocket('http://localhost/api/sulfur/languages', { op: 'launch' }); await client.initialize({ python: { analysis: { typeCheckingMode: 'strict' } } }); t.after(() => client.close()); return { client, ws: FakeSocket.instances.at(-1) }; };
 
-test('initialization advertises UTF-16, disables snippets and completes the LSP handshake', async (t) => {
+test('initialization advertises UTF-16, snippets and formatting and completes the LSP handshake', async (t) => {
   const { ws } = await setup(t);
   assert.ok(ws.url.startsWith('ws://'));
   const init = ws.sent.find((x) => x.method === 'initialize');
   assert.deepEqual(init.params.capabilities.general.positionEncodings, ['utf-16']);
-  assert.equal(init.params.capabilities.textDocument.completion.completionItem.snippetSupport, false);
+  assert.equal(init.params.capabilities.textDocument.completion.completionItem.snippetSupport, true);
+  assert.ok(init.params.capabilities.textDocument.rangeFormatting);
   assert.equal(ws.sent.filter((x) => x.method === 'initialized').length, 1);
 });
 

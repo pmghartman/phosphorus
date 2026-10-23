@@ -316,6 +316,8 @@ const languages = createLanguageWorkbench({
   el, join: filesJoin, log, pick, input: inputBox,
   error: (e) => notify('error', e.message), notice: (text) => notify('info', text),
   alive: (t) => !!I?.tabs.includes(t),
+  // the other open files of t's kind, for word-based suggestions
+  documents: (t) => (I ? I.tabs.filter((x) => x !== t && x.ed?.ready() && extOf(x.rel) === extOf(t.rel)).map((x) => x.ed.text()) : []),
   hosts: () => dkLiveHosts(),
   url: (host) => new URL(hostUrl(host, `/api/sulfur/languages?host=${encodeURIComponent(host)}`), location.href).href,
   problems: () => I && paintProblemsSoon(),
@@ -1733,6 +1735,13 @@ async function findReferences(t = I.active) {
   if (hit && I) openFile(hit.doc.path, { host: hit.doc.host, loc: hit.doc.loc, select: [hit.from, hit.to], preview: false });
 }
 
+// the selection formatted, or the whole file
+function formatActive(whole = false) {
+  const t = I.active;
+  if (!t?.ed) return;
+  languages.format(t, whole).then((done) => { if (!done && t.info?.readOnly) notify('info', 'This file is read-only.'); }).catch((err) => notify('error', err.message));
+}
+
 async function renameSymbol(t = I.active) {
   if (t?.ed && await languages.rename(t)) return;
   const word = t?.ed && identifierAt(t.ed.text(), t.ed.selection()[0]);
@@ -2545,7 +2554,10 @@ function registerCommands() {
   C('workbench.action.output.toggleOutput', 'Toggle Output', () => (I.st.panel.view === 'output' && !I.st.panel.hidden ? showPanel('output', false) : showPanel('output', true, true)), { key: 'ctrl+shift+u', category: 'View', shell: true });
   C('workbench.action.showOutput', 'Show Output', () => showPanel('output', true, true), { category: 'Output', hidden: true });
   // the editor
-  C('actions.find', 'Find', () => openFind(false), { key: 'ctrl+f', when: hasEd, category: 'Editor' });
+  // Ctrl+F with text selected formats it; with nothing selected it finds
+  C('actions.find', 'Find', () => (I.active?.ed?.info().sel ? formatActive() : openFind(false)), { key: 'ctrl+f', when: hasEd, category: 'Editor' });
+  C('editor.action.formatSelection', 'Format Selection', () => formatActive(), { key: 'ctrl+k ctrl+f', when: hasEd, category: 'Editor' });
+  C('editor.action.formatDocument', 'Format Document', () => formatActive(true), { key: 'shift+alt+f', when: hasEd, category: 'Editor' });
   C('editor.action.startFindReplaceAction', 'Replace', () => openFind(true), { key: 'ctrl+h', when: hasEd, category: 'Editor' });
   C('editor.action.revealDefinition', 'Go to Definition', () => goToDefinition().catch((err) => notify('error', err.message)), { key: 'f12', when: hasEd, category: 'Go' });
   C('editor.action.referenceSearch.trigger', 'Find All References', () => findReferences().catch((err) => notify('error', err.message)), { key: 'shift+f12', when: hasEd, category: 'Go' });
