@@ -89,3 +89,24 @@ test('formatting retains server-formatted continuation alignment', () => {
   assert.equal(format(text, { ...options, braceStyle: 'preserve', preserveContinuation: true }), text);
   assert.equal(formatWhitespace('{\n"values": [\n1,\n2\n]\n}', 'json', { ...options, braceStyle: 'preserve' }), '{\n  "values": [\n    1,\n    2\n  ]\n}');
 });
+
+test('a parse made a screen at a time, then in slices, ends as the whole parse does, edits between included', async () => {
+  const { parser } = await import('../.vendor/node_modules/@lezer/javascript/dist/index.js');
+  const chunk = 'class P extends T {\n  run(x) { return [x, { a: 1, b: `t${x}` }].map((y) => y * 2); } // c\n}\n';
+  let text = chunk.repeat(4000);
+  const cache = createSyntaxCache(TreeFragment);
+  // the screen's worth first: a tree reaching past it, not yet the whole
+  let r = cache.parseTo(parser, text, 2000, 0);
+  assert.equal(r.complete, false);
+  assert.ok(r.tree.length >= 2000 && r.tree.length < text.length);
+  assert.equal(cache.current(parser, text), null);
+  // an edit before the rest is parsed, then slices to the end
+  text = text.slice(0, 500) + 'let q = 1;\n' + text.slice(500);
+  for (let n = 0; n < 10000 && !(r = cache.parseTo(parser, text, 0, 1)).complete; n++);
+  assert.ok(r.complete);
+  assert.equal(cache.current(parser, text).toString(), parser.parse(text).toString());
+  // and parse() finishes a partial one as the same tree
+  const other = createSyntaxCache(TreeFragment);
+  other.parseTo(parser, text, 100, 0);
+  assert.equal(other.parse(parser, text).toString(), parser.parse(text).toString());
+});

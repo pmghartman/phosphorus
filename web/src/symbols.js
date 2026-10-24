@@ -37,30 +37,49 @@ export function analyzeSymbols(parser, text, tree = parser.parse(text)) {
     }
     return out;
   };
-  const walk = (node, owner = null) => {
-    if (/Comment|String|Character|TemplateString|RegExp/.test(node.name)) return;
-    if (NAMES.test(node.name) && !node.firstChild) tokens.push({ name: text.slice(node.from, node.to), from: node.from, to: node.to });
-    let kind = TYPES.test(node.name) ? 'type' : FUNCTIONS.test(node.name) ? 'method' : FIELDS.test(node.name) ? 'field' : VARIABLES.test(node.name) ? 'variable' : '';
-    const prototype = (kind === 'variable' || kind === 'field') && [...children(node)].some((c) => c.name === 'FunctionDeclarator');
-    if (prototype) kind = 'method';
-    if (node.name === 'ImplItem') kind = 'type';
+  // each node type's part, worked out once per type rather than tested again at every node
+  const parts = new Map();
+  const partOf = (type) => {
+    let x = parts.get(type.id);
+    if (!x) {
+      const n = type.name;
+      x = { skip: /Comment|String|Character|TemplateString|RegExp/.test(n), name: NAMES.test(n), impl: n === 'ImplItem',
+        kind: TYPES.test(n) ? 'type' : FUNCTIONS.test(n) ? 'method' : FIELDS.test(n) ? 'field' : VARIABLES.test(n) ? 'variable' : '' };
+      parts.set(type.id, x);
+    }
+    return x;
+  };
+  const seen = new Set();
+  // the tree walked with a cursor, nodes made only for the declarations
+  const cursor = tree.cursor();
+  const walk = (owner) => {
+    const part = partOf(cursor.type);
+    if (part.skip) return;
     let nextOwner = owner;
-    if (kind) {
+    if (part.kind || part.impl) {
+      const node = cursor.node;
+      let kind = part.kind;
+      const prototype = (kind === 'variable' || kind === 'field') && [...children(node)].some((c) => c.name === 'FunctionDeclarator');
+      if (prototype) kind = 'method';
+      if (part.impl) kind = 'type';
       let names = headerNames(node);
-      if (node.name === 'ImplItem') names = [...children(node)].filter((c) => c.name === 'TypeIdentifier').slice(-1);
+      if (part.impl) names = [...children(node)].filter((c) => c.name === 'TypeIdentifier').slice(-1);
       if (kind === 'type' || kind === 'method') names = names.slice(0, 1);
       for (const n of names) {
         const name = text.slice(n.from, n.to);
         if (!/^[$\p{L}_][$\p{L}\p{N}_]*$/u.test(name)) continue;
         const declarationOnly = prototype || (/^(ClassSpecifier|StructSpecifier|EnumSpecifier)$/.test(node.name) && ![...children(node)].some((c) => BODIES.test(c.name) || c.name === 'EnumeratorList'));
         const s = { name, kind: kind === 'variable' && owner?.kind === 'type' ? 'field' : kind, from: n.from, to: n.to, start: node.from, end: node.to, owner, declarationOnly };
-        if (!symbols.some((x) => x.from === s.from)) symbols.push(s);
+        if (!seen.has(s.from)) { seen.add(s.from); symbols.push(s); }
         if (kind === 'type' || kind === 'method') nextOwner = s;
       }
     }
-    for (let c = node.firstChild; c; c = c.nextSibling) walk(c, nextOwner);
+    if (cursor.firstChild()) {
+      do walk(nextOwner); while (cursor.nextSibling());
+      cursor.parent();
+    } else if (part.name) tokens.push({ name: text.slice(cursor.from, cursor.to), from: cursor.from, to: cursor.to });
   };
-  walk(tree.topNode);
+  walk(null);
   return { symbols: symbols.sort((a, b) => a.from - b.from), tokens };
 }
 
