@@ -25,6 +25,10 @@ SetCompressor /SOLID lzma
 
 Name "${PRODUCT}"
 OutFile "${OUTFILE}"
+; the uninstaller code-signed as it's written, as the setup is after it (packaging/winsign.sh)
+!ifdef SIGN
+  !uninstfinalize '${SIGN} "%1"' = 0
+!endif
 InstallDir "$LOCALAPPDATA\${PRODUCT}"
 BrandingText "${PRODUCT} ${VERSION}"
 VIProductVersion "${VERSION}.0.0"

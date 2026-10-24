@@ -14,7 +14,7 @@ mkdir -p "$STAGE" "$OUT" "$UPD"
 cd "$ROOT"
 # the tray's icon and manifest into its .exe
 go run github.com/tc-hib/go-winres@v0.3.3 simply --arch amd64 --out cmd/tray/rsrc --icon cmd/tray/assets/icon.ico \
-  --manifest gui --product-name Phosphorus --file-description Phosphorus --file-version "$VER.0.0" --product-version "$VER.0.0"
+  --manifest gui --product-name Phosphorus --file-description "Phosphorus tray" --copyright "Phosphorus contributors, Apache-2.0" --original-filename Phosphorus.exe --file-version "$VER.0.0" --product-version "$VER.0.0"
 export GOOS=windows GOARCH=amd64 CGO_ENABLED=0
 go build -trimpath -ldflags "-s -w -H windowsgui -X main.appVersion=$VER -X main.feedURL=${FEED_URL:-} -X main.feedPubkey=${FEED_PUBKEY:-}" \
   -o "$STAGE/Phosphorus.exe" ./cmd/tray &
@@ -24,13 +24,21 @@ wait $t
 unset GOOS GOARCH
 rm -f cmd/tray/rsrc_windows_*.syso
 
+# Authenticode-signed (packaging/winsign.sh), the uninstaller and setup too below, so
+# SmartScreen and Defender know who made them
+SIGNER=$ROOT/packaging/winsign.sh
+"$SIGNER" "$STAGE/Phosphorus.exe" "$STAGE/phosphorus-host.exe"
+SIGN=()
+if [ -n "${AZURE_SIGNING_ENDPOINT:-}${WINDOWS_CERT_PFX:-}" ]; then SIGN=(-DSIGN="\"$(cygpath -w "$BASH")\" \"$(cygpath -w "$SIGNER")\""); fi
+
 cp -R "$PAYLOAD" "$STAGE/release"
 cp LICENSE THIRD_PARTY_LICENSES.txt cmd/tray/assets/icon.ico "$STAGE/"
 SETUP=$OUT/phosphorus-$VER-windows-x86_64-setup.exe
 # NSIS on the runner's image, else from chocolatey
 PATH="$PATH:/c/Program Files (x86)/NSIS"
 command -v makensis >/dev/null || choco install nsis -y --no-progress >/dev/null
-makensis -V2 -DVERSION="$VER" -DSTAGE="$(cygpath -w "$STAGE")" -DOUTFILE="$(cygpath -w "$SETUP")" "$(cygpath -w "$HERE/installer.nsi")"
+makensis -V2 "${SIGN[@]}" -DVERSION="$VER" -DSTAGE="$(cygpath -w "$STAGE")" -DOUTFILE="$(cygpath -w "$SETUP")" "$(cygpath -w "$HERE/installer.nsi")"
+"$SIGNER" "$SETUP"
 
 if [ -n "${UPDATE_SIGNING_KEY:-}" ] && [ -n "${FEED_PUBKEY:-}" ]; then
   cp "$SETUP" "$UPD/phosphorus-windows-x86_64-setup.exe"
