@@ -22,6 +22,8 @@
   --code-font: 13px; --code-lh: 1.5;
   flex: 1 1 auto; min-height: 0; overflow: auto; display: grid; grid-template-columns: auto 1fr;
   border: 1px solid var(--border); background: var(--card); box-shadow: var(--lift);
+  /* the layers' windows are moved by the editor itself; the browser's own anchoring would move them twice */
+  overflow-anchor: none;
 }
 .code-ed:focus-within { border-color: var(--accent); }
 .code-gutter { position: sticky; left: 0; z-index: 2; background: var(--card); border-right: 1px solid var(--border); }
@@ -59,11 +61,16 @@
 .code-ta {
   position: absolute; inset: 0; width: 100%; height: 100%; border: 0; outline: none; resize: none; overflow: hidden;
   background: transparent; color: transparent; caret-color: var(--accent);
+  /* a long file's textarea holds a window of its lines, drawn from the window's first line (text-window.js) */
+  padding-top: calc(0.6rem + var(--code-window, 0px));
 }
 /* The textarea overlays the syntax layer. A selection must paint its own
    readable text and opaque background instead of hiding the text beneath it. */
 .code-ta::selection { background: color-mix(in srgb, var(--accent) 30%, var(--card)); color: var(--fg); }
 .code-ta[readonly] { caret-color: transparent; }
+/* the selection kept away from a long file's textarea (text-window.js): its caret not drawn
+   where the textarea holds it meanwhile, the selection drawn under the text instead */
+.code-ta.code-ta-away, .ide .code-ta.code-ta-away { caret-color: transparent; }
 .code-inline { position: absolute; inset: 0; pointer-events: none; }
 .code-inline[hidden] { display: none; }
 .code-has-inline > .code-hl:not(.code-inline) { visibility: hidden; }
@@ -376,13 +383,14 @@
 
 /* the editor itself, flush and plain as VS Code's */
 .ide .code-ed {
-  --code-font: var(--ide-code-font, 13px); --code-lh: 1.55;
+  --code-font: var(--ide-code-font, 13px); --code-lh: var(--ide-code-lh, 20px);
   border: 0; box-shadow: none; background: var(--ide-bg);
 }
 .ide .code-ed:focus-within { border: 0; }
 .ide .code-gutter { background: var(--ide-bg); border-right: 0; }
 .ide .code-nums { color: var(--ide-line-nr); padding: 0 1.4ch 0 2.4ch; }
 .ide .code-hl, .ide .code-ta { padding-top: 0; padding-bottom: 50vh; }
+.ide .code-ta { padding-top: var(--code-window, 0px); }
 .ide .code-nums { padding-bottom: 50vh; }
 .ide .code-hl { color: var(--ide-fg); }
 /* the squiggle and find layers only marks, their text never drawn */
@@ -414,6 +422,7 @@
 .code-deco-marks mark { color: transparent; background: none; border-radius: 2px; }
 .code-deco-marks mark.word { background: var(--ide-word-hl, color-mix(in srgb, var(--ide-fg, var(--fg)) 14%, transparent)); }
 .code-deco-marks mark.bracket { border-radius: 0; background: var(--ide-bracket, rgb(0 100 0 / 0.1)); box-shadow: inset 0 0 0 1px var(--ide-bracket-border, #888); }
+.code-deco-marks mark.sel { background: var(--ide-ed-sel, color-mix(in srgb, var(--accent) 30%, var(--card))); }
 .code-nr-now {
   position: absolute; left: 0; right: 0; box-sizing: border-box; padding: 0 0.7ch 0 1.2ch; text-align: right; white-space: pre; pointer-events: none;
   font-family: var(--mono); font-size: var(--code-font); font-variant-ligatures: none; color: var(--ide-line-nr-now, var(--fg)); background: var(--card);

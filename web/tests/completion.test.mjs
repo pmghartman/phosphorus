@@ -73,3 +73,22 @@ test('suggestions stay quiet in line comments and strings, read from the line it
   assert.equal(at("print('it''s', He", 'py'), false);
   assert.equal(at('a\nint He', 'cs'), false);
 });
+
+test('word suggestions follow edits to the document: words typed in come, words deleted go', () => {
+  const base = Array.from({ length: 3000 }, (_, i) => `const value${i} = compute${i % 7}(input);`).join('\n');
+  const labels = (text, caret = text.length) => new Set(wordCompletions([], text, caret).map((x) => x.label));
+  assert.ok(labels(base).has('value2999') && labels(base).has('compute6'));
+  // a word typed in the middle, then taken out again
+  const at = base.indexOf('value1500');
+  const typed = `${base.slice(0, at)}freshWord ${base.slice(at)}`;
+  assert.ok(labels(typed).has('freshWord'));
+  const removed = typed.replace('value1500 ', '');
+  assert.ok(!labels(removed).has('value1500') && labels(removed).has('freshWord'));
+  // a word split by an edit inside it: both halves counted, the whole gone
+  const split = removed.replace('const value1501', 'const val ue1501');
+  const words = labels(split);
+  assert.ok(words.has('val') && words.has('ue1501') && !words.has('value1501'));
+  // and the same as a fresh scan of that text
+  const fresh = new Set([...split.matchAll(/[\p{L}_$][\p{L}\p{N}_$]*/gu)].map(([w]) => w).filter((w) => w.length >= 2));
+  assert.deepEqual(new Set([...words].sort()), new Set([...fresh].sort()));
+});

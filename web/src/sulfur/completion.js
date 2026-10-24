@@ -1,3 +1,5 @@
+import { commonEnds } from '../text-operations.js';
+
 // Completion as VS Code does it: a provider's items filtered and ranked on the client by
 // a fuzzy score as typing goes on, a language server first and words from the open
 // documents when it has nothing, snippets expanded to their text and first tab stop.
@@ -100,34 +102,64 @@ export function rankCompletions(items, typed, limit = 200) {
 }
 
 // VS Code's word-based suggestions: every word in the documents, the one at the caret left
-// out, as plain text items
-// The document being typed in is read around the caret only once it's long (VS Code bounds
-// its word scan too); the others' words are kept per text, as they rarely change meanwhile.
-const WORD_WINDOW = 128 * 1024;
+// out, as plain text items. The document being typed in is indexed once, as a count of each
+// word, and the index moved with each edit by the words of its span alone, so a keystroke
+// costs the same in a file of any length; the others' words are kept per text, as they
+// rarely change meanwhile.
+const WORDS = /[\p{L}_$][\p{L}\p{N}_$]*/gu;
 const wordCache = new Map();
 function wordsOf(text) {
   let words = wordCache.get(text);
   if (words) { wordCache.delete(text); wordCache.set(text, words); return words; }
   words = new Set();
-  for (const [word] of text.matchAll(/[\p{L}_$][\p{L}\p{N}_$]*/gu)) if (word.length >= 2) words.add(word);
+  for (const [word] of text.matchAll(WORDS)) if (word.length >= 2) words.add(word);
   words = [...words];
   wordCache.set(text, words);
   if (wordCache.size > 16) wordCache.delete(wordCache.keys().next().value);
   return words;
 }
+const count = (counts, text, d) => { for (const [word] of text.matchAll(WORDS)) if (word.length >= 2) { const n = (counts.get(word) || 0) + d; if (n > 0) counts.set(word, n); else counts.delete(word); } };
+// the documents' indexes, the most recently used first
+const indexes = [];
+const INDEX_EDIT = 256 * 1024;
+function indexOf(text) {
+  let at = indexes.findIndex((x) => x.text === text);
+  if (at < 0) {
+    // the index of a text this one was edited from: moved by the edit's words
+    at = indexes.findIndex((x) => { const { head, tail } = commonEnds(x.text, text); return Math.max(x.text.length, text.length) - head - tail < INDEX_EDIT; });
+    if (at >= 0) {
+      const x = indexes[at], { head, tail } = commonEnds(x.text, text);
+      const a = wordStart(x.text, head);
+      count(x.counts, x.text.slice(a, wordEnd(x.text, x.text.length - tail)), -1);
+      count(x.counts, text.slice(a, wordEnd(text, text.length - tail)), 1);
+      x.text = text; x.items = null;
+    } else {
+      const counts = new Map();
+      count(counts, text, 1);
+      indexes.unshift({ text, counts, items: null, skip: null, docs: [] });
+      if (indexes.length > 4) indexes.pop();
+      return indexes[0];
+    }
+  }
+  const [x] = indexes.splice(at, 1);
+  indexes.unshift(x);
+  return x;
+}
 export function wordCompletions(documents, current, caret, max = 5000) {
-  const seen = new Set();
   const skip = current.slice(wordStart(current, caret), wordEnd(current, caret));
-  const add = (word) => { if (word.length >= 2 && word !== skip) seen.add(word); return seen.size >= max; };
-  // the window's edges moved off any word they'd cut in two
-  const near = current.length <= 2 * WORD_WINDOW ? current
-    : current.slice(wordStart(current, Math.max(0, caret - WORD_WINDOW)), wordEnd(current, Math.min(current.length, caret + WORD_WINDOW)));
-  for (const [word] of near.matchAll(/[\p{L}_$][\p{L}\p{N}_$]*/gu)) if (add(word)) break;
+  const index = indexOf(current);
+  // the same list again while the same word's typed and the other documents are as they were
+  if (index.items && index.skip === skip && index.docs.length === documents.length && index.docs.every((d, i) => d === documents[i])) return index.items;
+  const seen = new Set();
+  const add = (word) => { if (word !== skip) seen.add(word); return seen.size >= max; };
+  for (const word of index.counts.keys()) if (add(word)) break;
   for (const text of documents) {
     if (seen.size >= max) break;
     for (const word of wordsOf(text)) if (add(word)) break;
   }
-  return [...seen].map((label) => ({ label, kind: 'word' }));
+  const items = [...seen].map((label) => ({ label, kind: 'word' }));
+  Object.assign(index, { items, skip, docs: [...documents] });
+  return items;
 }
 
 // a snippet as plain text: its placeholders' defaults in, the first tab stop (else $0, else
