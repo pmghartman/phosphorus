@@ -5081,78 +5081,86 @@ function paintStatus() {
   if (!I?.sb || sbFrame) return;
   sbFrame = requestAnimationFrame(() => { sbFrame = 0; if (I) paintStatusNow(); });
 }
+// a status item's content rebuilt only when what it shows changes: a caret move rewrites
+// the position and nothing else, its icons left in place
+function sbPut(node, key, make) {
+  if (node.sbKey === key) return;
+  node.sbKey = key;
+  node.replaceChildren(...make());
+}
+function sbSet(node, key, value) { if (node[key] !== value) node[key] = value; }
 function paintStatusNow() {
   paintToolbar();
   const S = I.sb;
   const completionOn = !!setting('editor.inlineSuggest.enabled');
   // offline with no mesh linked there's no model to ask: said so, not shown as working
   const modelReach = !localDesktop() || meshLinked();
-  S.completion.textContent = `AI ${completionOn ? modelReach ? 'On' : 'Offline' : 'Off'}`;
+  sbSet(S.completion, 'textContent', `AI ${completionOn ? modelReach ? 'On' : 'Offline' : 'Off'}`);
   S.completion.setAttribute('aria-pressed', String(completionOn));
   S.completion.classList.toggle('none', completionOn && !modelReach);
-  S.completion.title = completionOn && !modelReach
+  sbSet(S.completion, 'title', completionOn && !modelReach
     ? 'Agent code completions need a Phosphorus mesh for their model. Connect to one from the remote menu; everything else works offline. Click to turn them off.'
-    : `Agent code completions ${completionOn ? 'enabled' : 'disabled'}. Click to toggle. IntelliSense handles strong symbol matches; AI fills in new code.`;
+    : `Agent code completions ${completionOn ? 'enabled' : 'disabled'}. Click to toggle. IntelliSense handles strong symbol matches; AI fills in new code.`);
   const h = runHost();
-  S.remote.replaceChildren(icon('remote'), el('span', '', h || 'no host'));
+  sbPut(S.remote, h || 'no host', () => [icon('remote'), el('span', '', h || 'no host')]);
   S.remote.classList.toggle('none', !h);
   // the mesh link: an icon alone, its state in its look and its title; there when Sulfur runs on its own
   S.mesh.hidden = !standalone;
   if (standalone) {
     const linked = !localDesktop() || meshLinked();
     const checking = meshChecking();
-    S.mesh.replaceChildren(icon(linked || checking ? 'mesh' : 'meshOff'));
+    sbPut(S.mesh, linked || checking, () => [icon(linked || checking ? 'mesh' : 'meshOff')]);
     S.mesh.classList.toggle('linked', linked);
     S.mesh.classList.toggle('checking', checking);
-    S.mesh.title = linked ? `Linked to ${meshName()}` : checking ? 'Checking the mesh link' : standalone.server ? `Not linked to ${meshName()}` : 'Not linked to a mesh';
+    sbSet(S.mesh, 'title', linked ? `Linked to ${meshName()}` : checking ? 'Checking the mesh link' : standalone.server ? `Not linked to ${meshName()}` : 'Not linked to a mesh');
     S.mesh.setAttribute('aria-label', S.mesh.title);
   }
   const sc = I.scm;
   S.branch.hidden = !sc?.top;
   if (sc?.top) {
-    S.branch.replaceChildren(icon('branch'), el('span', '', `${sc.branch}${sc.staged.length + sc.changes.length ? '*' : ''}`));
-    if (sc.upstream && (sc.ahead || sc.behind)) S.branch.append(el('span', 'ide-sb-sync', `${sc.behind}↓ ${sc.ahead}↑`));
-    S.branch.title = `${sc.branch}${sc.upstream ? ` · ${sc.upstream}` : ' · not published'}: checkout to…`;
+    const label = `${sc.branch}${sc.staged.length + sc.changes.length ? '*' : ''}`, sync = sc.upstream && (sc.ahead || sc.behind) ? `${sc.behind}↓ ${sc.ahead}↑` : '';
+    sbPut(S.branch, `${label}|${sync}`, () => [icon('branch'), el('span', '', label), ...(sync ? [el('span', 'ide-sb-sync', sync)] : [])]);
+    sbSet(S.branch, 'title', `${sc.branch}${sc.upstream ? ` · ${sc.upstream}` : ' · not published'}: checkout to…`);
   }
   const pc = I.problemCounts || { errors: 0, warnings: 0 };
-  S.problems.replaceChildren(icon('error'), el('span', '', String(pc.errors)), icon('warning'), el('span', '', String(pc.warnings)));
-  S.problems.title = pc.errors || pc.warnings ? `${pc.errors} errors, ${pc.warnings} warnings` : 'No Problems';
+  sbPut(S.problems, `${pc.errors}|${pc.warnings}`, () => [icon('error'), el('span', '', String(pc.errors)), icon('warning'), el('span', '', String(pc.warnings))]);
+  sbSet(S.problems, 'title', pc.errors || pc.warnings ? `${pc.errors} errors, ${pc.warnings} warnings` : 'No Problems');
   const bc = buildCfg();
   S.build.hidden = !bc?.toolchain;
   S.config.hidden = !bc?.toolchain;
   if (bc?.toolchain) {
-    S.build.replaceChildren(icon('tools'), el('span', '', `${bc.toolchain.label} · ${bc.host}`));
-    S.build.title = `Ctrl+B builds ${baseName(projDir())} with ${bc.toolchain.label} on ${bc.host}. Click to pick another toolchain.`;
-    S.config.replaceChildren(el('span', '', bc.configuration || 'Debug'), icon('down'));
-    S.config.title = `Configuration ${bc.configuration || 'Debug'}: click to pick another`;
+    sbPut(S.build, `${bc.toolchain.label} · ${bc.host}`, () => [icon('tools'), el('span', '', `${bc.toolchain.label} · ${bc.host}`)]);
+    sbSet(S.build, 'title', `Ctrl+B builds ${baseName(projDir())} with ${bc.toolchain.label} on ${bc.host}. Click to pick another toolchain.`);
+    sbPut(S.config, bc.configuration || 'Debug', () => [el('span', '', bc.configuration || 'Debug'), icon('down')]);
+    sbSet(S.config, 'title', `Configuration ${bc.configuration || 'Debug'}: click to pick another`);
   }
   const t = I.active;
   const info = t?.info;
   const code = !!(t?.ed && info);
   for (const n of [S.pos, S.indent, S.enc, S.eol, S.lang, S.state]) n.hidden = !code;
   S.host.hidden = !t?.rel;
-  if (t?.rel) S.host.replaceChildren(icon('host'), el('span', '', t.host));
+  if (t?.rel) sbPut(S.host, t.host, () => [icon('host'), el('span', '', t.host)]);
   if (code) {
-    S.pos.textContent = `Ln ${info.line}, Col ${info.col}${info.sel ? ` (${info.sel} selected)` : ''}`;
-    S.indent.textContent = info.indent === 'tab' ? `Tab Size: ${formattingOptions().tabSize}` : `Spaces: ${info.indent}`;
-    S.enc.textContent = 'UTF-8';
-    S.eol.textContent = info.eol;
-    S.lang.textContent = LANG_NAMES[info.lang] || info.lang;
-    S.state.textContent = info.readOnly && info.ready ? 'read-only' : info.state;
+    sbSet(S.pos, 'textContent', `Ln ${info.line}, Col ${info.col}${info.sel ? ` (${info.sel} selected)` : ''}`);
+    sbSet(S.indent, 'textContent', info.indent === 'tab' ? `Tab Size: ${formattingOptions().tabSize}` : `Spaces: ${info.indent}`);
+    sbSet(S.enc, 'textContent', 'UTF-8');
+    sbSet(S.eol, 'textContent', info.eol);
+    sbSet(S.lang, 'textContent', LANG_NAMES[info.lang] || info.lang);
+    sbSet(S.state, 'textContent', info.readOnly && info.ready ? 'read-only' : info.state);
     S.state.classList.toggle('bad', info.bad);
   }
   const people = info?.people || [];
   S.people.hidden = !people.length;
   if (people.length) {
-    S.people.replaceChildren(icon('people'), el('span', '', people.map((p) => p.name).join(', ')));
-    S.people.title = `${people.map((p) => p.name).join(', ')} ${people.length === 1 ? 'is' : 'are'} in this file with you`;
+    sbPut(S.people, people.map((p) => p.name).join(', '), () => [icon('people'), el('span', '', people.map((p) => p.name).join(', '))]);
+    sbSet(S.people, 'title', `${people.map((p) => p.name).join(', ')} ${people.length === 1 ? 'is' : 'are'} in this file with you`);
   }
   const busy = currentAgent()?.busy();
   S.agent.hidden = !busy;
-  if (busy) S.agent.replaceChildren(icon('spark', 'ide-spin'), el('span', '', `${currentAgent().label} is answering`));
-  S.bell.replaceChildren(icon('bell'));
+  if (busy) sbPut(S.agent, currentAgent().label, () => [icon('spark', 'ide-spin'), el('span', '', `${currentAgent().label} is answering`)]);
+  sbPut(S.bell, 'bell', () => [icon('bell')]);
   S.bell.classList.toggle('dot', !!I.unseen);
-  S.bell.title = I.unseen ? `${I.unseen} new notification${I.unseen === 1 ? '' : 's'}` : 'No new notifications';
+  sbSet(S.bell, 'title', I.unseen ? `${I.unseen} new notification${I.unseen === 1 ? '' : 's'}` : 'No new notifications');
   for (const [, x] of [...I.statusItems].sort((a, b) => (b[1].priority || 0) - (a[1].priority || 0))) {
     (x.align === 'right' ? S.extR : S.extL).append(x.el);
   }
