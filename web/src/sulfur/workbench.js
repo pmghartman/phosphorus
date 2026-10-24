@@ -489,10 +489,17 @@ function loadState() {
   try { v = JSON.parse(localStorage.getItem(STATE_KEY())); } catch {}
   const d = DEFAULTS();
   if (!v || typeof v !== 'object') return d;
-  const st = { ...d, ...v, side: { ...d.side, ...v.side }, panel: { ...d.panel, ...v.panel }, aux: { ...d.aux, ...v.aux }, ext: { ...d.ext, ...v.ext }, sections: { ...d.sections, ...v.sections } };
+  // each part as its kind, whatever an older version or a hand edit left: a part of the wrong
+  // kind back to its default, never a workbench that can't start
+  const obj = (x) => (x && typeof x === 'object' && !Array.isArray(x) ? x : {});
+  const st = { ...d, ...v, side: { ...d.side, ...obj(v.side) }, panel: { ...d.panel, ...obj(v.panel) }, aux: { ...d.aux, ...obj(v.aux) }, ext: { ...d.ext, ...obj(v.ext) }, sections: { ...d.sections, ...obj(v.sections) } };
   if (!st.loc || typeof st.loc !== 'object' || (!isHomeLoc(st.loc) && !st.loc.host)) st.loc = HOME_LOC;
-  if (!st.build || typeof st.build !== 'object') st.build = {};
-  if (!Array.isArray(st.bookmarks)) st.bookmarks = [];
+  for (const k of ['tabs', 'recent', 'recentFolders', 'bookmarks']) if (!Array.isArray(st[k])) st[k] = [];
+  for (const k of ['build', 'expanded']) st[k] = obj(st[k]);
+  st.ext.enabled = obj(st.ext.enabled);
+  for (const [k, list] of Object.entries(st.expanded)) if (!Array.isArray(list)) delete st.expanded[k];
+  if (typeof st.root !== 'string') st.root = d.root;
+  if (typeof st.active !== 'string' && (!st.active || typeof st.active !== 'object')) st.active = '';
   return st;
 }
 // a tab as it's kept: its path, and where it lives unless the home
