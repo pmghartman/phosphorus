@@ -75,7 +75,6 @@
 .code-inline[hidden] { display: none; }
 .code-has-inline > .code-hl:not(.code-inline) { visibility: hidden; }
 .code-inline-text { color: var(--ide-muted, var(--muted)); opacity: .8; font-style: italic; }
-.code-gutter { position: relative; }
 .code-inline-nums { position: absolute; inset: 0; pointer-events: none; }
 /* highlighted in the palette, as the chat's code is */
 .code-hl .hljs-keyword, .code-hl .hljs-selector-tag, .code-hl .hljs-doctag { color: var(--accent); }
@@ -918,6 +917,9 @@
 
 .ide-act { position: relative; }
 .ide-act-badge { position: absolute; right: 7px; bottom: 7px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--ide-accent); color: #fff; font: 600 9px/16px var(--ide-ui); text-align: center; pointer-events: none; }
+/* a setting with two pickers (Completion Machine / Model), each label beside its own */
+.ide-setting-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 2px 0 4px; }
+.ide-setting-pick label:not(:first-child) { margin-left: 8px; }
 .ide-scm-body { overflow-y: auto; }
 .ide-scm-body > * { flex-shrink: 0; }
 .ide-scm-commit { flex: none; min-height: min-content; padding: 6px 12px 8px 20px; display: flex; flex-direction: column; gap: 6px; }

@@ -321,6 +321,17 @@ export function textWindow(ta, o) {
 
   return {
     check,
+    // a..b selected and held in the window whatever its length, for the browser's own edit
+    // of it (execCommand) to follow
+    grab(a, b, dir) {
+      sync();
+      const n = text.length;
+      a = Math.max(0, Math.min(n, a)); b = Math.max(a, Math.min(n, b));
+      if (fits(a, b)) { const was = away; away = null; setNative(a - from, b - from, dir); if (was) o.placed(line, away); return; }
+      away = null;
+      const [l0, l1] = around([a, b]);
+      place(l0, l1, [a, b, dir]);
+    },
     // the first line the textarea holds, for drawing it from there
     line: () => line,
     // the selection when it's kept away from the window, for the editor to draw it
