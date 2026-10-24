@@ -334,6 +334,16 @@
 .ide-tab.drop-r { box-shadow: inset -2px 0 0 var(--ide-accent); }
 .ide-tab-acts { padding: 0 6px; }
 .ide-run-btn { color: var(--ide-ok); }
+/* the run target a pill of its own, kept off the row's edge, as VS's start button */
+.ide-tab-acts .ide-run-btn {
+  width: auto; gap: 6px; padding: 0 10px 0 8px; margin: 0 6px 0 2px; height: 22px; align-self: center;
+  border-radius: 4px; background: color-mix(in srgb, var(--ide-fg) 7%, transparent); border: 1px solid color-mix(in srgb, var(--ide-fg) 10%, transparent);
+}
+.ide-tab-acts .ide-run-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--ide-fg) 13%, transparent); }
+.ide-run-label { color: var(--ide-fg); white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+.ide-ext-langs:empty { display: none; }
+.ide-ext-langs { padding: 0 12px; }
+.ide-ext-langs input[type="checkbox"] { display: none; }
 .ide-run-btn .ide-ic { fill: currentColor; }
 
 .ide-crumbs { flex: none; display: flex; align-items: center; height: 22px; padding: 0 12px; overflow: hidden; background: var(--ide-bg); white-space: nowrap; }

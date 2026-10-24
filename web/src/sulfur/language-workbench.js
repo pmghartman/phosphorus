@@ -752,9 +752,11 @@ export function createLanguageWorkbench(api) {
     if (action && api.alive(tab)) await runCodeAction(handle, action);
     return true;
   }
-  function mount(container) {
+  // the catalog, the languages not yet installed; those installed listed under the Extensions
+  // view's Installed instead (o.installed, their count told o.count)
+  function mount(container, o = {}) {
     const wrap = api.el('div', 'ide-language-manager');
-    wrap.append(api.el('h3', '', 'Optional language extensions'));
+    wrap.append(api.el('h3', '', o.installed ? 'Available language extensions' : 'Optional language extensions'));
     const host = api.el('select', 'ide-input'); host.setAttribute('aria-label', 'Language extension host');
     const note = api.el('p', 'ide-run-note', 'Install only the languages you use. Servers run as your user on the selected host. Installed servers work offline with cached project dependencies.');
     const rows = api.el('div', 'ide-language-list');
@@ -772,7 +774,7 @@ export function createLanguageWorkbench(api) {
       install.disabled = batch || !selected.size || !!s.busy.size; refresh.disabled = batch || !!s.busy.size; host.disabled = batch || !!s.busy.size;
       error.textContent = s.errors['*'] || '';
       const shown = s.extensions.filter((item) => !query || `${item.name} ${item.id} ${item.server || ''} ${(item.manifest?.packages || []).join(' ')}`.toLowerCase().includes(query));
-      rows.replaceChildren(...(s.extensions.length && !shown.length ? [api.el('p', 'ide-run-note', 'No language extensions match.')] : []), ...shown.map((item) => {
+      const made = shown.map((item) => {
         const row = api.el('div', 'ide-language-row');
         const label = api.el('label');
         const check = Object.assign(api.el('input'), { type: 'checkbox', checked: selected.has(item.id), disabled: item.installed || batch || s.busy.size > 0 });
@@ -785,14 +787,19 @@ export function createLanguageWorkbench(api) {
           const button = api.el('button', 'ide-button small secondary', title); button.type = 'button'; button.disabled = batch || !!s.busy.size;
           button.addEventListener('click', () => action(op, item.id)); row.append(button);
         }
-        return row;
-      }));
+        return [item, row];
+      });
+      const mine = made.filter(([item]) => item.installed), rest = made.filter(([item]) => !item.installed);
+      rows.replaceChildren(...(s.extensions.length && !shown.length ? [api.el('p', 'ide-run-note', 'No language extensions match.')] : []), ...rest.map(([, row]) => row));
+      if (o.installed) o.installed.replaceChildren(...mine.map(([, row]) => row)); else rows.prepend(...mine.map(([, row]) => row));
+      o.count?.(s.extensions.filter((item) => item.installed).length);
     };
     host.addEventListener('change', () => { selected.clear(); action('status'); });
     refresh.addEventListener('click', () => action('status'));
     install.addEventListener('click', async () => { const target = host.value; batch = true; paint(); for (const id of [...selected]) { try { await manage(target, 'install', id); selected.delete(id); } catch {} } batch = false; paint(); });
     wrap.append(host, note, install, refresh, error, rows); container.append(wrap);
-    container.firstChild?.after(wrap);
+    // below what's installed when that's listed apart, else first under the search box
+    if (!o.installed) container.firstChild?.after(wrap);
     panel = { paint }; paint(); action('status');
   }
   // Format Selection (the document with nothing selected): the language server's formatter
