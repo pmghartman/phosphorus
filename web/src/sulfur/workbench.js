@@ -6650,7 +6650,10 @@ function scmRel(p) {
   if (pre && !p.startsWith(pre)) return '';
   return `${I.st.root}/${p.slice(pre.length)}`;
 }
-const top = (p) => `:(top)${p}`;
+// git run from the repository's top, its paths (git's own, from there) passed plainly: no
+// :(top) pathspec magic, which some Windows setups lose on the way to git. A Windows top as
+// git writes it (C:/x) put as the hosts take a folder (C:\x)
+const atTop = () => ({ dir: /^[A-Za-z]:\//.test(I.scm?.top || '') ? I.scm.top.replace(/\//g, '\\') : I.scm?.top || undefined });
 // git's args taking paths out of the index: before the first commit there's no HEAD to
 // restore them from, so they're dropped from it instead (forced: --cached never touches the files)
 const unstageArgs = (paths) => (I.scm?.unborn ? ['rm', '--cached', '-r', '-f', '-q', '--', ...paths] : ['restore', '--staged', '--', ...paths]);
@@ -6804,10 +6807,10 @@ function paintScm() {
     const head = el('div', 'ide-sec-head static ide-scm-head');
     head.append(el('span', 'ide-sec-title', title), el('span', 'ide-badge', String(list.length)));
     const acts = el('span', 'ide-actions');
-    if (staged) acts.append(btn('', 'minus', 'Unstage All Changes', () => scmOp(unstageArgs([top('.')]), 'Unstaging')));
+    if (staged) acts.append(btn('', 'minus', 'Unstage All Changes', () => scmOp(unstageArgs(['.']), 'Unstaging', atTop())));
     else {
       acts.append(btn('', 'undo', 'Discard All Changes', () => scmDiscard(list)));
-      acts.append(btn('', 'plus', 'Stage All Changes', () => scmOp(['add', '-A', '--', top('.')], 'Staging')));
+      acts.append(btn('', 'plus', 'Stage All Changes', () => scmOp(['add', '-A'], 'Staging', atTop())));
     }
     head.append(acts);
     const rows = el('div', 'ide-scm-rows');
@@ -6863,10 +6866,10 @@ function scmRow(x, staged) {
   r.append(fileIcon(x.path), el('span', 'ide-scm-name', baseName(x.path)), el('span', 'ide-scm-dir', filesParent(x.path)));
   const acts = el('span', 'ide-actions');
   if (rel && !x.deleted) acts.append(btn('', 'file', 'Open File', (e) => { e.stopPropagation(); openFile(rel, { preview: false }); }));
-  if (staged) acts.append(btn('', 'minus', 'Unstage Changes', (e) => { e.stopPropagation(); scmOp(unstageArgs([top(x.path)]), 'Unstaging'); }));
+  if (staged) acts.append(btn('', 'minus', 'Unstage Changes', (e) => { e.stopPropagation(); scmOp(unstageArgs([x.path]), 'Unstaging', atTop()); }));
   else {
     acts.append(btn('', 'undo', 'Discard Changes', (e) => { e.stopPropagation(); scmDiscard([x]); }));
-    acts.append(btn('', 'plus', 'Stage Changes', (e) => { e.stopPropagation(); scmOp(['add', '--', top(x.path)], 'Staging'); }));
+    acts.append(btn('', 'plus', 'Stage Changes', (e) => { e.stopPropagation(); scmOp(['add', '--', x.path], 'Staging', atTop()); }));
   }
   r.append(acts, el('span', 'ide-scm-code', x.conflict ? '!' : x.code));
   const open = () => (x.conflict && rel ? openFile(rel, { preview: false }) : openDiff(x, staged));
@@ -6879,7 +6882,7 @@ function scmRow(x, staged) {
 async function scmOp(args, doing, o = {}) {
   const note = notify('info', `${doing}…`, { progress: true, sticky: true });
   let r;
-  try { r = await git(args, o); } catch (err) { note.close(); notify('error', `${doing.replace(/ing$/, '')}: ${err.message}`); await scmAfter(); return null; }
+  try { r = await git(args, o); } catch (err) { note.close(); notify('error', `${doing} failed: ${err.message}`); await scmAfter(); return null; }
   note.close();
   await scmAfter();
   return r;
@@ -6921,8 +6924,8 @@ async function scmDiscard(list) {
     buttons: [{ label: n === 1 ? 'Discard File' : 'Discard All', danger: true, primary: true, value: 'yes' }, { label: 'Cancel', value: '' }],
   });
   if (v !== 'yes' || !I) return;
-  const tracked = list.filter((x) => !x.untracked).map((x) => top(x.path));
-  if (tracked.length) await scmOp(['restore', '--worktree', '--', ...tracked], 'Discarding');
+  const tracked = list.filter((x) => !x.untracked).map((x) => x.path);
+  if (tracked.length) await scmOp(['restore', '--worktree', '--', ...tracked], 'Discarding', atTop());
   for (const x of list.filter((y) => y.untracked)) {
     const rel = scmRel(x.path);
     if (rel) await filesCall(apiLoc(), 'delete', jsonPost({ path: rel })).catch((err) => notify('error', `${x.path}: ${err.message}`));
@@ -6931,7 +6934,7 @@ async function scmDiscard(list) {
 }
 
 async function scmCommit(o = {}) {
-  const s = I.scm;
+  let s = I.scm;
   if (!s?.top) { notify('info', 'There’s no repository here to commit to.'); return; }
   const box = I.sideViews.get('scm').body.querySelector('.ide-scm-msg');
   let msg = (box?.value || I.scmMsg || '').trim();
@@ -6941,14 +6944,21 @@ async function scmCommit(o = {}) {
   }
   await saveAll();
   if (!I) return;
+  // what's staged read again first: a view a moment old must not decide what's committed
+  await scmRefresh();
+  if (!I?.scm?.top) return;
+  s = I.scm;
   // nothing staged: everything, as VS Code's smart commit asks
   if (o.all || (!s.staged.length && s.changes.length)) {
     if (!o.all) {
       const v = await ask({ title: 'There are no staged changes. Stage all your changes and commit them directly?', buttons: [{ label: 'Yes', primary: true, value: 'yes' }, { label: 'Cancel', value: '' }] });
       if (v !== 'yes' || !I) return;
     }
-    if (!(await scmOp(['add', '-A', '--', top('.')], 'Staging'))) return;
+    if (!(await scmOp(['add', '-A'], 'Staging', atTop()))) return;
+    if (!I) return;
+    if (!I.scm?.staged.length) { notify('error', 'Staging found nothing to stage: check the files aren’t ignored (.gitignore) or in a repository of their own.'); return; }
   }
+  if (!o.amend && !s.staged.length && !s.changes.length) { notify('info', `Nothing to commit on ${s.branch}.`); return; }
   const paras = msg ? msg.split(/\n\s*\n/).flatMap((p) => ['-m', p]) : ['--no-edit'];
   const done = await scmOp(['commit', ...(o.amend ? ['--amend'] : []), ...paras], o.amend ? 'Amending' : 'Committing');
   if (!done || !I) return;
@@ -7013,7 +7023,7 @@ async function openDiff(x, staged) {
     text = (body ?? '').split('\n').map((l) => `+${l}`).join('\n');
     text = `@@ new file @@\n${text}`;
   } else {
-    const r = await git(['diff', ...(staged ? ['--cached'] : []), '--', top(x.path)], { anyCode: true }).catch((err) => ({ out: '', err: err.message }));
+    const r = await git(['diff', ...(staged ? ['--cached'] : []), '--', x.path], { anyCode: true, ...atTop() }).catch((err) => ({ out: '', err: err.message }));
     text = r.out || r.err || '';
   }
   showDiffPage(`diff:${staged ? 'i' : 'w'}:${x.path}`, `${baseName(x.path)} (${x.untracked ? 'Untracked' : staged ? 'Index' : 'Working Tree'})`, text, rel && !x.deleted ? rel : null);
