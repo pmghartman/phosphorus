@@ -428,7 +428,9 @@ function codeEditor(view, file, btn, id, opts = {}) {
     if (top !== metrics.top) { scroller.scrollTop = Math.max(0, top); metrics.top = scroller.scrollTop; }
     if (left !== metrics.left) { scroller.scrollLeft = Math.max(0, left); metrics.left = scroller.scrollLeft; }
   };
-  scroller.addEventListener('scroll', () => { if (!scroller.clientHeight) return; metrics.top = scroller.scrollTop; metrics.left = scroller.scrollLeft; }, { passive: true });
+  // (the textarea's window follows the view in the scroll itself, not a frame later: a press
+  // on the lines now on screen must find them there, and an engine may hold its frames back)
+  scroller.addEventListener('scroll', () => { if (!scroller.clientHeight) return; metrics.top = scroller.scrollTop; metrics.left = scroller.scrollLeft; tw?.check(); }, { passive: true });
   // the lines to draw: those on screen and as many again above and below
   function viewWindow(text) {
     lineAt(text, 0);
@@ -547,7 +549,6 @@ function codeEditor(view, file, btn, id, opts = {}) {
     viewFrame = requestAnimationFrame(() => {
       viewFrame = 0;
       if (closed || view.hidden) return;
-      tw?.check();
       if (ta.value !== hlText) { redraw(); return; }
       // the lines on screen, and half a screen beyond, must lie inside what's drawn
       const g = geom(), top = metrics.top - g.preTop;
