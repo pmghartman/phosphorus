@@ -468,7 +468,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
         bigTimer = setTimeout(() => { if (closed || ta.value !== text) return; hlNow = true; paintText(); hlNow = false; }, 400);
       } else {
         const tree = syntax.parse(parser, text);
-        lexState = settleLexical(lexState, syntaxRanges(parser, text, tree, w.from, w.to), errorPositions(tree, w.from, w.to), w.from, w.to, text);
+        lexState = settleLexical(lexState, syntaxRanges(parser, text, tree, w.from, w.to), errorPositions(tree, w.from, w.to, parser, text), w.from, w.to, text);
         lexParsedText = text;
       }
       colors = lexState?.ranges || [];

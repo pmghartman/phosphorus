@@ -6,6 +6,7 @@ import { highlightTree, tagHighlighter, tags as t } from '@lezer/highlight';
 import { TreeFragment } from '@lezer/common';
 import { createSyntaxCache } from './syntax-cache.js';
 import { highlightRanges } from './highlight-ranges.js';
+import { quirksFor, eachSyntaxError } from './syntax-quirks.js';
 export const syntaxCache = () => createSyntaxCache(TreeFragment);
 
 const GRAMMARS = {
@@ -25,6 +26,13 @@ const GRAMMARS = {
 
 const parsers = new Map();
 const ready = new Map();
+// a parser's grammar gaps (syntax-quirks.js), and the grammars whose errors aren't reported,
+// valid code too often read as wrong: C and C++ through a preprocessor a grammar can't see,
+// and TypeScript, whose grammar here lacks much of the language (call and index signatures,
+// type predicates, declare global); their language servers report them instead
+const quirkOf = new WeakMap();
+const unchecked = new WeakSet();
+const UNCHECKED = /^cpp$|^javascript:(.* )?ts$/;
 
 // the parser for a check name (javascript:jsx ts), null when there's none
 export function parserFor(check) {
@@ -35,6 +43,8 @@ export function parserFor(check) {
     parsers.set(check, (load ? load() : Promise.resolve(null))
       .then((m) => {
         const p = m ? (dialect ? m.parser.configure({ dialect }) : m.parser) : null;
+        if (p && quirksFor(check)) quirkOf.set(p, quirksFor(check));
+        if (p && UNCHECKED.test(check)) unchecked.add(p);
         ready.set(check, p);
         return p;
       }).catch(() => null));
@@ -81,9 +91,9 @@ export function syntaxRanges(parser, text, tree = parser.parse(text), from = 0, 
   return ranges;
 }
 // where the tree's error nodes start within from..to
-export function errorPositions(tree, from, to) {
+export function errorPositions(tree, from, to, parser = null, text = '') {
   const out = [];
-  tree.iterate({ from, to, enter: (n) => { if (n.type.isError && out.length < ERR_MAX * 4) out.push(n.from); } });
+  eachSyntaxError(parser && quirkOf.get(parser), text, tree, from, to, (n) => { if (out.length < ERR_MAX * 4) out.push(n.from); });
   return out;
 }
 export function highlight(parser, text, tree = parser.parse(text), semantic = []) {
@@ -106,13 +116,12 @@ export function highlight(parser, text, tree = parser.parse(text), semantic = []
 export const ERR_MAX = 50;
 export function syntaxErrors(parser, text, tree = parser.parse(text)) {
   const out = [];
-  tree.iterate({
-    enter: (n) => {
-      if (!n.type.isError || out.length >= ERR_MAX) return;
-      const near = n.to > n.from ? text.slice(n.from, n.to) : (text.slice(n.from).match(/^\s*(\S{1,16})/) || [])[1];
-      const what = near ? `unexpected ${near.trim().slice(0, 24)}` : 'unexpected end of file';
-      if (!out.some((e) => e.from === n.from)) out.push({ from: n.from, to: n.to, what });
-    },
+  if (unchecked.has(parser)) return out;
+  eachSyntaxError(quirkOf.get(parser), text, tree, 0, text.length, (n) => {
+    if (out.length >= ERR_MAX) return;
+    const near = n.to > n.from ? text.slice(n.from, n.to) : (text.slice(n.from).match(/^\s*(\S{1,16})/) || [])[1];
+    const what = near ? `unexpected ${near.trim().slice(0, 24)}` : 'unexpected end of file';
+    if (!out.some((e) => e.from === n.from)) out.push({ from: n.from, to: n.to, what });
   });
   return out;
 }

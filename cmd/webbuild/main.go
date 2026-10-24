@@ -1,5 +1,5 @@
 // webbuild: web/ into internal/web/dist, run by go generate. Pinned npm
-// tarballs fetched over HTTP and checked against vendor.lock, the client
+// tarballs fetched over HTTP and checked against vendor.lock (patches.go put in), the client
 // bundled by esbuild, every text file precompressed. No node.
 package main
 
@@ -192,7 +192,8 @@ func must(err error) {
 func fetch(name string, p pkg, vendor, modules string) error {
 	dir := filepath.Join(modules, name)
 	stamp := filepath.Join(dir, ".integrity")
-	if b, err := os.ReadFile(stamp); err == nil && string(b) == p.Integrity {
+	want := patchStamp(name, p.Integrity)
+	if b, err := os.ReadFile(stamp); err == nil && string(b) == want {
 		return nil
 	}
 	cache := filepath.Join(vendor, "cache", strings.ReplaceAll(name, "/", "_")+"-"+p.Version+".tgz")
@@ -222,7 +223,10 @@ func fetch(name string, p pkg, vendor, modules string) error {
 	if err := untar(data, dir); err != nil {
 		return fmt.Errorf("%s: %w", name, err)
 	}
-	return os.WriteFile(stamp, []byte(p.Integrity), 0o644)
+	if err := applyPatches(name, dir); err != nil {
+		return err
+	}
+	return os.WriteFile(stamp, []byte(want), 0o644)
 }
 
 func verify(data []byte, integrity string) error {
