@@ -246,7 +246,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
     const local = offsetAtColumn(ta.value.slice(start, lineStarts[line + 1] ?? ta.value.length), 0, column, g.tab);
     const at = local == null ? null : start + local;
     const parser = ta.value.length <= HL_MAX && parserNow(lang.check);
-    return definitionIdentifier(ta.value, at, { tree: parser ? syntax.parse(parser, ta.value) : null, extension: file.path.split('.').pop().toLowerCase() });
+    return definitionIdentifier(ta.value, at, { tree: parser ? syntax.current(parser, ta.value) : null, extension: file.path.split('.').pop().toLowerCase() });
   }
   const definitionLinks = opts.definitionLinks ? mountDefinitionLinks({
     target: ta, document, window, enabled: () => ready && !closed && !view.hidden,
@@ -470,7 +470,10 @@ function codeEditor(view, file, btn, id, opts = {}) {
         clearTimeout(bigTimer);
         bigTimer = setTimeout(() => { if (closed || ta.value !== text) return; hlNow = true; paintText(); hlNow = false; }, 400);
       } else {
-        const tree = syntax.parse(parser, text);
+        // parsed as far as the screen at once, the rest in slices while the page is idle: a
+        // long file opens colored without waiting for its whole parse
+        const { tree, complete } = syntax.parseTo(parser, text, w.to + 4096, 3);
+        if (!complete) parseRest();
         lexState = settleLexical(lexState, syntaxRanges(parser, text, tree, w.from, w.to), errorPositions(tree, w.from, w.to, parser, text), w.from, w.to, text);
         lexParsedText = text;
       }
@@ -492,6 +495,29 @@ function codeEditor(view, file, btn, id, opts = {}) {
     hlText = text;
     paintSquiggles(); paintFinds(); paintAgent();
     if (inlineSuggestion) paintInline();
+  }
+  // the parse finished a slice at a time, the page answering between: then the brackets and
+  // the syntax check, which need the whole tree, see it
+  let restTimer = 0;
+  // the whole tree for text, its parse finished a slice at a time rather than in one long
+  // task; null once the text has moved on
+  async function wholeTree(parser, text) {
+    for (let n = 0; !closed && ta.value === text && !syntax.current(parser, text) && n < 100000; n++) {
+      syntax.parseTo(parser, text, 0, 8);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    return !closed && ta.value === text ? syntax.current(parser, text) : null;
+  }
+  function parseRest() {
+    if (restTimer) return;
+    const slice = () => {
+      restTimer = 0;
+      const text = ta.value, parser = !closed && text.length <= HL_MAX && parserNow(lang.check);
+      if (!parser) return;
+      if (!syntax.parseTo(parser, text, 0, 8).complete) restTimer = setTimeout(slice, 0);
+      else decoSoon();
+    };
+    restTimer = setTimeout(slice, 0);
   }
   // the lines edited since the server's colors came, lexed here, the rest as it colored them
   function quickColors(text, w) {
@@ -663,7 +689,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
   function isCode(text) {
     const parser = text.length <= HL_MAX && parserNow(lang.check);
     // a long file is parsed once typing pauses (HL_IDLE): its tree used only when it's current
-    const tree = parser && (text.length > HL_IDLE ? syntax.current(parser, text) : syntax.parse(parser, text));
+    const tree = parser && syntax.current(parser, text);
     if (tree) return (i) => !/String|Comment|Regex|Template|Char/.test(tree.resolveInner(i, 1).name);
     return (i) => !/hljs-(comment|string|regexp)/.test(tokenClass(i));
   }
@@ -1119,7 +1145,9 @@ function codeEditor(view, file, btn, id, opts = {}) {
     const text = ta.value;
     const parser = lang.check && text.length <= HL_MAX && await parserFor(lang.check);
     if (closed || text !== ta.value || languageErrors !== null) return;
-    publishErrors(parser ? syntaxErrors(parser, text, syntax.parse(parser, text)) : [], text);
+    const tree = parser && await wholeTree(parser, text);
+    if (closed || text !== ta.value || languageErrors !== null || (parser && !tree)) return;
+    publishErrors(tree ? syntaxErrors(parser, text, tree) : [], text);
   }
   function publishErrors(list = languageErrorsText === ta.value ? languageErrors : [], text = ta.value) {
     errs = list;
@@ -1690,7 +1718,11 @@ function codeEditor(view, file, btn, id, opts = {}) {
     text: () => ta.value,
     setInlineSuggestion,
     info,
-    async syntaxTree() { const text = ta.value; const p = text.length <= HL_MAX && await parserFor(lang.check); return !closed && p && ta.value === text ? syntax.parse(p, text) : null; },
+    async syntaxTree() {
+      const text = ta.value;
+      const p = text.length <= HL_MAX && await parserFor(lang.check);
+      return !closed && p && ta.value === text ? wholeTree(p, text) : null;
+    },
     editMany: (edits, selection) => {
       if (ta.readOnly || !ready) return false;
       const before = ta.value;
@@ -1781,7 +1813,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
       definitionLinks?.dispose();
       guideResize.disconnect(); hoverResize.disconnect(); cancelAnimationFrame(guideFrame);
       hlAbort?.abort();
-      for (const timer of [bigTimer, hlTimer, mdTimer, checkTimer, cursorTimer, agentFade, armed, occurrenceTimer, hoverTimer, leaveTimer]) clearTimeout(timer);
+      for (const timer of [bigTimer, hlTimer, mdTimer, checkTimer, cursorTimer, agentFade, armed, occurrenceTimer, hoverTimer, leaveTimer, restTimer]) clearTimeout(timer);
       hoverAbort?.abort();
       for (const frame of [drawFrame, tellFrame, viewFrame, decoFrame, overviewFrame]) cancelAnimationFrame(frame);
       syntax.clear();
