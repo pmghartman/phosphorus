@@ -255,6 +255,7 @@
 
 /* the explorer's file tree */
 .ide-tree { flex: 1; min-height: 0; overflow: auto; outline: none; padding-bottom: 20px; }
+.ide-tree-space { pointer-events: none; }
 .ide-tree.drop { background: color-mix(in srgb, var(--ide-accent) 12%, transparent); }
 .ide-row {
   --depth: 0; position: relative; display: flex; align-items: center; height: 22px; padding-left: 8px; padding-right: 8px;

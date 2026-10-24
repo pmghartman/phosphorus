@@ -43,8 +43,8 @@ const (
 	Shared       = "shared"
 	Sys          = ".sys"
 	// what a path nobody may see answers, the same as one that is not there
-	Gone = "no such file or folder"
-	statWidth    = 64
+	Gone      = "no such file or folder"
+	statWidth = 64
 )
 
 // E an error body, {error}

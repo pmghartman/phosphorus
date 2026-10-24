@@ -57,12 +57,12 @@ var (
 	adminPass   = util.Env("ADMIN_PASS", os.Getenv("PHOSPHORUS_UPDATE_PASSWORD"))
 	tsAPIKey    = os.Getenv("TS_API_KEY")
 
-	platformFile     = filepath.Join(stateDir, "platform.json")
-	gameKeyDir       = filepath.Join(stateDir, "game-control")
-	bootID           = update.UUID()
-	updating         atomic.Bool
-	platformMu       sync.RWMutex
-	platform         string
+	platformFile = filepath.Join(stateDir, "platform.json")
+	gameKeyDir   = filepath.Join(stateDir, "game-control")
+	bootID       = update.UUID()
+	updating     atomic.Bool
+	platformMu   sync.RWMutex
+	platform     string
 	// the key the frontend ssh's with: a copy kept apart from the user's
 	// profile, under state on Windows where /root doesn't exist
 	gameKey = func() string {
