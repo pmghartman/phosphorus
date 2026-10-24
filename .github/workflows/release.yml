@@ -3,7 +3,9 @@
 # (one Go binary around the system's web view: setup .exe, .dmg and .deb);
 # feeds on release `update` for the hosts and Sulfur built, then only the two newest
 # releases and runs kept
-# app and apt feeds need UPDATE_SIGNING_KEY (go run ./cmd/feedsign -keygen), APT_GPG_KEY, var UPDATE_PUBKEY
+# app and apt feeds need UPDATE_SIGNING_KEY (go run ./cmd/feedsign -keygen), APT_GPG_KEY, var UPDATE_PUBKEY;
+# Windows' code signing vars AZURE_SIGNING_ENDPOINT/ACCOUNT/PROFILE and secrets AZURE_TENANT_ID/
+# CLIENT_ID/CLIENT_SECRET (Trusted Signing), or secrets WINDOWS_CERT_PFX/PASSWORD (packaging/winsign.sh)
 name: release
 
 on:
@@ -229,6 +231,17 @@ jobs:
           FEED_URL: https://github.com/${{ github.repository }}/releases/download/update
           FEED_PUBKEY: ${{ vars.UPDATE_PUBKEY }}
           UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+          # Authenticode for the Windows .exes (packaging/winsign.sh): Trusted Signing's account
+          # (vars) and the app registration it signs as (secrets), or a .pfx certificate
+          AZURE_SIGNING_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          AZURE_SIGNING_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          AZURE_SIGNING_PROFILE: ${{ vars.AZURE_SIGNING_PROFILE }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          WINDOWS_CERT_PFX: ${{ secrets.WINDOWS_CERT_PFX }}
+          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+          WINDOWS_SIGNING_REQUIRED: ${{ vars.WINDOWS_SIGNING_REQUIRED }}
         run: |
           if [ "${{ matrix.name }}" = macos-universal ]; then
             $APP/macos.sh "$VER" $APP/payload out upd
@@ -297,6 +310,18 @@ jobs:
           sudo apt-get install -y -q -o Dir::Cache::Archives="$HOME/apt-archives" -o Acquire::Retries=3 libgtk-3-dev libwebkit2gtk-4.1-dev
       # the packages in out/ under the release's names, the app's own update, signed for the feed, in upd/
       - name: build
+        env:
+          # Authenticode for the Windows .exes (packaging/winsign.sh): Trusted Signing's account
+          # (vars) and the app registration it signs as (secrets), or a .pfx certificate
+          AZURE_SIGNING_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          AZURE_SIGNING_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          AZURE_SIGNING_PROFILE: ${{ vars.AZURE_SIGNING_PROFILE }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          WINDOWS_CERT_PFX: ${{ secrets.WINDOWS_CERT_PFX }}
+          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+          WINDOWS_SIGNING_REQUIRED: ${{ vars.WINDOWS_SIGNING_REQUIRED }}
         run: |
           mkdir -p out upd
           case "${{ matrix.name }}" in
