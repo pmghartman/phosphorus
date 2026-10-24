@@ -7654,6 +7654,9 @@ function applySettings() {
   inlineCompletions.reset();
   applyAppearance();
   r.style.setProperty('--ide-code-font', `${setting('editor.fontSize')}px`);
+  // a whole number of pixels: a fractional line height is rounded differently by the textarea
+  // and the highlighted text under it, the two drifting apart a pixel every 64 lines
+  r.style.setProperty('--ide-code-lh', `${Math.max(1, Math.round(Number(setting('editor.fontSize')) * 1.55)) || 20}px`);
   r.style.setProperty('--ide-tab-size', String(formattingOptions().tabSize));
   for (const t of I.tabs) if (t.ed) t.ed.show();
   languages.cancelCompletions();

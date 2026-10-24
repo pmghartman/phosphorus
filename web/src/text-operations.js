@@ -48,7 +48,27 @@ export function opTransform(a, b) {
 // highlight), so a long file costs a few dozen native string compares, not thousands.
 const BLOCK = 1024;
 const MAX_BLOCK = 1 << 20;
+// edits whose span their maker already knows (the editor's textarea knows what was typed into
+// it), so the diff of the same two texts is answered without comparing them: by identity, as a
+// keystroke's two texts are the very strings it made
+// Kept for the latest text alone, from each of the texts before it: two edits in a row are one
+// whose head and tail are the lesser of theirs, so a frame drawing several keystrokes at once,
+// or an undo group diffing back to where its typing began, still diffs nothing. Either way
+// round, as the history diffs a text back to the one before it.
+let known = [];
+const KNOWN = 48;
+export function knownEdit(before, after, head, tail) {
+  if (head < 0 || tail < 0 || head + tail > Math.min(before.length, after.length)) { known = []; return; }
+  const next = [{ before, after, head, tail }];
+  if (known.length && known[0].after === before) for (const k of known.slice(0, KNOWN - 1)) next.push({ before: k.before, after, head: Math.min(k.head, head), tail: Math.min(k.tail, tail) });
+  known = next;
+}
 export function commonEnds(a, b) {
+  if (known.length) {
+    const latest = known[0].after;
+    if (latest === b) { for (const k of known) if (k.before === a) return { head: k.head, tail: k.tail }; }
+    else if (latest === a) { for (const k of known) if (k.before === b) return { head: k.head, tail: k.tail }; }
+  }
   const max = Math.min(a.length, b.length);
   let head = 0;
   for (let step = BLOCK; step >= 16;) {

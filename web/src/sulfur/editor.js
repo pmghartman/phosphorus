@@ -27,6 +27,7 @@ import { editorDecorations } from './editor-guides.js';
 import { bracketPair, enclosingPair, outdentFor } from './brackets.js';
 import { toggleLineComment, toggleBlockComment, docCommentEnter, blockCommentFor } from './comments.js';
 import { wordStart, wordEnd } from './completion.js';
+import { textWindow } from './text-window.js';
 
 // --- code editor ------------------------------------------------------------------
 // a share's text or code file in a tab of its own, joined to the file's live
@@ -294,6 +295,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
   let me = 0;
   let opSeq = 0;
   const canWrite = () => perms.includes('w');
+  const sameOps = (a, b) => Array.isArray(a) && a.length === b.length && a.every((x, i) => x === b[i]);
   const say = (body) => sock && sock.readyState === WebSocket.OPEN && sock.send(JSON.stringify(body));
   const history = new EditorHistory();
   let historyText = '';
@@ -409,12 +411,13 @@ function codeEditor(view, file, btn, id, opts = {}) {
     const cs = getComputedStyle(ta);
     geomEpoch = fontEpoch;
     return (geomCache = {
-      lh: lineHeightIn(ta), cw: chWidthIn(ta), top: parseFloat(cs.paddingTop) || 0, left: parseFloat(cs.paddingLeft) || 0,
+      // the top padding the highlight layer's: the textarea's own also carries its window's offset
+      lh: lineHeightIn(ta), cw: chWidthIn(ta), top: parseFloat(getComputedStyle(pre).paddingTop) || 0, left: parseFloat(cs.paddingLeft) || 0,
       tab: parseInt(cs.tabSize, 10) || 4, font: cs.font || `${cs.fontSize} ${cs.fontFamily}`,
       preTop: parseFloat(getComputedStyle(pre).paddingTop) || 0, numsTop: parseFloat(getComputedStyle(nums).paddingTop) || 0,
     });
   }
-  const regeom = () => { geomCache = null; };
+  const regeom = () => { geomCache = null; placeWindowTa(); };
   // the place kept while the editor is hidden: a hidden scroller can't scroll, and the browser
   // forgets its offset, so it's put back once the editor shows again
   let hiddenScroll = null;
@@ -518,6 +521,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
     viewFrame = requestAnimationFrame(() => {
       viewFrame = 0;
       if (closed || view.hidden) return;
+      tw?.check();
       if (ta.value !== hlText) { redraw(); return; }
       // the lines on screen, and half a screen beyond, must lie inside what's drawn
       const g = geom(), top = metrics.top - g.preTop;
@@ -620,11 +624,13 @@ function codeEditor(view, file, btn, id, opts = {}) {
   // the selection read once a frame, before the frame's writes, so the layers drawn after it
   // don't each force a layout of the textarea to read it again
   let frameSel = null, decoStamp = -1;
-  const selNow = () => frameSel || [ta.selectionStart, ta.selectionEnd];
+  const selNow = () => frameSel || [ta.selectionStart, ta.selectionEnd, ta.selectionDirection];
+  // the caret: the selection's active end, its start when it was made backward (Shift+Up)
+  const headOf = (sel) => (sel[2] === 'backward' ? sel[0] : sel[1]);
   function draw(stamp) {
     drawFrame = 0;
     if (closed) return;
-    frameSel = [ta.selectionStart, ta.selectionEnd];
+    frameSel = [ta.selectionStart, ta.selectionEnd, ta.selectionDirection];
     decoStamp = stamp;
     try { drawFrame0(); } finally { frameSel = null; }
   }
@@ -695,10 +701,11 @@ function codeEditor(view, file, btn, id, opts = {}) {
   const decoSoon = () => { decoFrame ||= requestAnimationFrame(() => { decoFrame = 0; paintDeco(); }); };
   function paintDeco() {
     if (closed || view.hidden) return;
-    const text = ta.value, [s, e] = selNow();
+    const sel = selNow(), [s, e] = sel;
+    const text = ta.value;
     const display = opts.display?.() || {};
     const g = geom();
-    const line = lineAt(text, e) - 1;
+    const line = lineAt(text, headOf(sel)) - 1;
     const highlight = display.lineHighlight ?? 'line';
     lineNow.hidden = !ready || highlight === 'none' || highlight === 'gutter' || s !== e;
     lineNow.style.top = `${g.top + line * g.lh}px`; lineNow.style.height = `${g.lh}px`;
@@ -723,6 +730,8 @@ function codeEditor(view, file, btn, id, opts = {}) {
       clearTimeout(occurrenceTimer);
       if (ready) occurrenceTimer = setTimeout(findOccurrences, 250);
     }
+    // a selection the textarea doesn't hold (text-window.js), drawn here instead, over the rest
+    if (tw?.away() && s !== e) { for (let i = marks.length - 1; i >= 0; i--) if (marks[i].to > s && marks[i].from < e) marks.splice(i, 1); marks.push({ from: s, to: e, wrap: (raw) => `<mark class="sel">${esc(raw)}</mark>` }); }
     marks.sort((a, b) => a.from - b.from);
     if (marks.length) { decoWin.innerHTML = markedHtml(text, marks, drawn); placeWindow(decoWin, drawn); } else if (decoWin.firstChild) decoWin.textContent = '';
     overviewSoon();
@@ -760,7 +769,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
     for (const at of bookmarks) bar(at, overviewColors.mark, 0, 3, 3);
     if (errsText === text) for (const x of errs) bar(x.from, x.severity === 2 ? overviewColors.warn : x.severity > 2 ? overviewColors.info : overviewColors.err, 6, 4, 3);
     c.globalAlpha = 0.7;
-    bar(ta.selectionEnd, overviewColors.caret, 0, w, 1);
+    bar(headOf(selNow()), overviewColors.caret, 0, w, 1);
     c.globalAlpha = 1;
   }
 
@@ -878,7 +887,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
   // --- the host told: state, caret and errors, once a frame at most ---
   let tellFrame = 0;
   // decorations follow the caret; drawn already this frame if the text was
-  const tell = () => { if (!tellFrame) tellFrame = requestAnimationFrame((stamp) => { tellFrame = 0; if (closed) return; if (stamp !== decoStamp) paintDeco(); opts.onState?.(info()); }); };
+  const tell = () => { if (!tellFrame) tellFrame = requestAnimationFrame((stamp) => { tellFrame = 0; if (closed) return; tw?.check(); if (stamp !== decoStamp) paintDeco(); opts.onState?.(info()); }); };
   let indexedText, lineStarts = [];
   const firstAbove = (p) => { let lo = 0, hi = lineStarts.length; while (lo < hi) { const mid = (lo + hi) >>> 1; if (lineStarts[mid] <= p) lo = mid + 1; else hi = mid; } return lo; };
   // the line starts kept for the text: an edit's lines found again where it changed, the
@@ -906,6 +915,42 @@ function codeEditor(view, file, btn, id, opts = {}) {
     if (text !== indexedText) reindex(text);
     return Math.max(1, firstAbove(p));
   };
+  // a long file's textarea holding only the lines around the view and the selection
+  // (text-window.js): its value and selection still the whole text's
+  const tw = textWindow(ta, {
+    view: () => {
+      const g = geom(), top = metrics.top - g.top, h = metrics.height || 900;
+      return { first: Math.max(0, Math.floor(top / g.lh)), last: Math.max(1, Math.ceil((top + h) / g.lh)) };
+    },
+    lines: (text) => { lineAt(text, 0); return lineStarts.length; },
+    lineOf: (text, p) => lineAt(text, p) - 1,
+    lineStart: (text, l) => { lineAt(text, 0); return lineStarts[l]; },
+    placed: (line, away) => {
+      placeWindowTa();
+      ta.classList.toggle('code-ta-away', !!away);
+      if (away || awayWas) decoSoon();
+      awayWas = !!away;
+    },
+    // the offset under the mouse, as the hover finds it
+    offsetAt: (event) => {
+      const rect = ta.getBoundingClientRect(), g = geom(), text = ta.value;
+      lineAt(text, 0);
+      const line = Math.max(0, Math.min(lineStarts.length - 1, Math.floor((event.clientY - rect.top - g.top) / g.lh)));
+      const column = Math.max(0, Math.round((event.clientX - rect.left - g.left) / g.cw));
+      const start = lineStarts[line], end = line + 1 < lineStarts.length ? lineStarts[line + 1] - 1 : text.length;
+      return start + (offsetAtColumn(text.slice(start, end), 0, column, g.tab) ?? end - start);
+    },
+    moved: () => { caretInView(); sendCursor(); tell(); },
+  });
+  let awayWas = false;
+  // the textarea's lines drawn from its window's first line down
+  let taWindowAt = -1;
+  function placeWindowTa() {
+    const at = tw ? tw.line() * geom().lh : 0;
+    if (at === taWindowAt) return;
+    taWindowAt = at;
+    ta.style.setProperty('--code-window', `${at}px`);
+  }
   // a place's column as drawn, tabs to their stops
   const columnOf = (text, from, to, tabSize = geom().tab) => {
     let n = 0;
@@ -915,11 +960,12 @@ function codeEditor(view, file, btn, id, opts = {}) {
   function info() {
     const text = ta.value;
     const s = ta.selectionStart;
-    const e = ta.selectionEnd;
+    // line and column the caret's, as VS Code's status bar has them
+    const e = headOf(selNow());
     const u = unit();
     return {
       ready, dirty: dirty(), readOnly: ta.readOnly, state: stateEl.textContent, bad: stateEl.classList.contains('bad'),
-      lang: lang.hl, line: lineAt(text, e), col: e - text.lastIndexOf('\n', e - 1), sel: Math.abs(e - s),
+      lang: lang.hl, line: lineAt(text, e), col: e - text.lastIndexOf('\n', e - 1), sel: ta.selectionEnd - s,
       indent: u === '\t' ? 'tab' : u.length, eol: eolMode, length: text.length,
       errors: errs.map((x) => ({ from: x.from, to: x.to, what: x.what, source: x.source, code: x.code, severity: diagnosticSeverity(x), line: lineAt(text, x.from), col: x.from - text.lastIndexOf('\n', x.from - 1) })),
       people: people.filter((p) => (me ? p.id !== me : p.name !== name)),
@@ -1097,20 +1143,15 @@ function codeEditor(view, file, btn, id, opts = {}) {
     tell();
   }
 
-  // the others' carets as marks in the gutter, their colour, their name on hover
+  // the others' carets as marks in the gutter, their colour, their name on hover; problems and
+  // bookmarks marked beside their lines. Built again only when what they show has moved
+  let marksKey = '';
   function paintMarks() {
-    for (const m of gutter.querySelectorAll('.code-mark')) m.remove();
-    for (const c of body.querySelectorAll('.code-caret')) c.remove();
     const others = people.filter((p) => me ? p.id !== me : p.name !== name);
-    if (!errs.length && !others.length && !bookmarks.length) return;
     const text = ta.value;
-    const { lh, numsTop: padTop } = geom();
-    for (const line of new Set(bookmarks.map((at) => lineAt(text, Math.min(at, text.length)) - 1))) {
-      const mark = Object.assign(el('div', 'code-mark code-mark-bookmark'), { title: `Bookmark: line ${line + 1}` });
-      mark.style.top = `${padTop + line * lh}px`;
-      mark.style.height = `${lh}px`;
-      gutter.append(mark);
-    }
+    const { lh, numsTop: padTop, cw, top: padY, left: padX } = geom();
+    const want = [];
+    for (const line of new Set(bookmarks.map((at) => lineAt(text, Math.min(at, text.length)) - 1))) want.push({ kind: 'bookmark', line });
     const byLine = new Map();
     for (const e of errsText === text ? errs : []) {
       const line = lineAt(text, Math.min(e.from, text.length)) - 1;
@@ -1119,29 +1160,43 @@ function codeEditor(view, file, btn, id, opts = {}) {
     }
     for (const [line, onLine] of byLine) {
       onLine.sort((a, b) => diagnosticSeverity(a) - diagnosticSeverity(b));
-      const severity = diagnosticSeverity(onLine[0]);
-      const mk = Object.assign(el('div', `code-mark code-mark-err${severity === 2 ? ' code-mark-warning' : severity > 2 ? ' code-mark-hint' : ''}`), { title: onLine.map(diagnosticText).join('\n') });
-      mk.style.top = `${padTop + line * lh}px`;
-      mk.style.height = `${lh}px`;
-      gutter.append(mk);
+      want.push({ kind: 'err', line, severity: diagnosticSeverity(onLine[0]), title: onLine.map(diagnosticText).join('\n') });
     }
-    const { cw, top: padY, left: padX } = geom();
     for (const p of others) {
       const at = Math.min(p.pos, text.length);
       const line = lineAt(text, at) - 1;
-      const col = columnOf(text, lineStarts[line], at);
-      const tint = p.color || colorFor(p.name);
-      const mk = Object.assign(el('div', p.agent ? 'code-mark agent' : 'code-mark'), { title: p.name });
-      mk.style.top = `${padTop + line * lh}px`;
-      mk.style.height = `${lh}px`;
-      if (!p.agent) mk.style.background = tint;
-      gutter.append(mk);
-      // their caret in the text, their name over it
-      const caret = el('div', p.agent ? 'code-caret agent' : 'code-caret');
-      caret.style.cssText = `top:${padY + line * lh}px;left:${padX + col * cw}px;height:${lh}px;--who:${tint}`;
-      const flag = caret.appendChild(el('span', 'code-caret-name', p.agent ? '' : p.name));
-      if (p.agent) flag.append(el('span', 'who-model', p.name));
-      body.append(caret);
+      want.push({ kind: 'person', line, col: columnOf(text, lineStarts[line], at), p, tint: p.color || colorFor(p.name) });
+    }
+    const key = `${lh}|${padTop}|${cw}|${padY}|${padX}|` + want.map((m) => m.kind === 'person' ? `p${m.line}:${m.col}:${m.p.name}:${m.tint}:${!!m.p.agent}` : `${m.kind}${m.line}:${m.severity ?? ''}:${m.title ?? ''}`).join('|');
+    if (key === marksKey) return;
+    marksKey = key;
+    for (const m of gutter.querySelectorAll('.code-mark')) m.remove();
+    for (const c of body.querySelectorAll('.code-caret')) c.remove();
+    for (const m of want) {
+      if (m.kind === 'bookmark') {
+        const mark = Object.assign(el('div', 'code-mark code-mark-bookmark'), { title: `Bookmark: line ${m.line + 1}` });
+        mark.style.top = `${padTop + m.line * lh}px`;
+        mark.style.height = `${lh}px`;
+        gutter.append(mark);
+      } else if (m.kind === 'err') {
+        const mk = Object.assign(el('div', `code-mark code-mark-err${m.severity === 2 ? ' code-mark-warning' : m.severity > 2 ? ' code-mark-hint' : ''}`), { title: m.title });
+        mk.style.top = `${padTop + m.line * lh}px`;
+        mk.style.height = `${lh}px`;
+        gutter.append(mk);
+      } else {
+        const { p, tint, line, col } = m;
+        const mk = Object.assign(el('div', p.agent ? 'code-mark agent' : 'code-mark'), { title: p.name });
+        mk.style.top = `${padTop + line * lh}px`;
+        mk.style.height = `${lh}px`;
+        if (!p.agent) mk.style.background = tint;
+        gutter.append(mk);
+        // their caret in the text, their name over it
+        const caret = el('div', p.agent ? 'code-caret agent' : 'code-caret');
+        caret.style.cssText = `top:${padY + line * lh}px;left:${padX + col * cw}px;height:${lh}px;--who:${tint}`;
+        const flag = caret.appendChild(el('span', 'code-caret-name', p.agent ? '' : p.name));
+        if (p.agent) flag.append(el('span', 'who-model', p.name));
+        body.append(caret);
+      }
     }
   }
 
@@ -1171,7 +1226,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
   function caretInView(center = false) {
     // the line from the kept index and the column as drawn: the measured line height, so a
     // caret far down a long file is scrolled to where its line is drawn
-    const text = ta.value, end = selNow()[1];
+    const text = ta.value, end = headOf(selNow());
     const line = lineAt(text, end) - 1;
     const { lh, cw, top: padY, left: padX } = geom();
     const col = columnOf(text, lineStarts[line], end);
@@ -1190,7 +1245,8 @@ function codeEditor(view, file, btn, id, opts = {}) {
   function flush() {
     if (localOnly) return;
     if (inflight || !ready || !canWrite() || ta.value === S) return;
-    inflight = { id: `${id}-${opSeq += 1}`, ops: opDiff(S, ta.value) };
+    const text = ta.value;
+    inflight = { id: `${id}-${opSeq += 1}`, ops: opDiff(S, text), text };
     say({ type: 'op', base: V, ops: inflight.ops, id: inflight.id });
   }
 
@@ -1209,7 +1265,8 @@ function codeEditor(view, file, btn, id, opts = {}) {
     const C = ta.value;
     const P = inflight ? opApply(S, inflight.ops) : S;
     let r = ops;
-    if (inflight) [inflight.ops, r] = opTransform(inflight.ops, r);
+    // (the edit in flight moved past theirs: the text it made no longer the one it will make)
+    if (inflight) { [inflight.ops, r] = opTransform(inflight.ops, r); inflight.text = null; }
     const [, r2] = opTransform(opDiff(P, C), r);
     const [s0, s1] = [ta.selectionStart, ta.selectionEnd];
     const top = scroller.scrollTop;
@@ -1254,7 +1311,8 @@ function codeEditor(view, file, btn, id, opts = {}) {
         if (msg.type === 'init' && !view.dataset.seen) { view.dataset.seen = '1'; ta.setSelectionRange(0, 0); }
       } else if (msg.type === 'op') {
         if (inflight && msg.id === inflight.id) {
-          S = opApply(S, msg.ops);
+          // our own edit as sent: the text it made, the very string, rather than made again
+          S = inflight.text !== null && sameOps(msg.ops, inflight.ops) ? inflight.text : opApply(S, msg.ops);
           V = msg.v;
           inflight = null;
           sameS();
@@ -1401,6 +1459,31 @@ function codeEditor(view, file, btn, id, opts = {}) {
     else ta.setSelectionRange(to, to);
     caretInView(); sendCursor(); tell();
   }
+  // Up, Down, PageUp and PageDown as VS Code's: the caret a line (or a screen of lines) on, at
+  // the column it set out from however short the lines it passes, the first line's start or the
+  // last's end when there's no line further; a page scrolling the view with it (the browser's
+  // only scrolls, the textarea not being the scroller)
+  let goal = null;
+  function verticalMove(d, extend, page) {
+    const v = ta.value, g = geom();
+    const [anchor, head] = anchorHead();
+    const line = lineAt(v, head) - 1, n = lineStarts.length;
+    const col = goal?.at === head ? goal.col : columnOf(v, lineStarts[line], head);
+    const step = page ? Math.max(1, Math.floor(metrics.height / g.lh) - 1) : 1;
+    const to = Math.max(0, Math.min(n - 1, line + d * step));
+    let at;
+    if (to === line) at = d > 0 ? v.length : 0;
+    else {
+      const start = lineStarts[to], end = to + 1 < n ? lineStarts[to + 1] - 1 : v.length;
+      at = start + (offsetAtColumn(v.slice(start, end), 0, col, g.tab) ?? end - start);
+    }
+    // without shift, a selection collapses to where its active end moves
+    if (extend) ta.setSelectionRange(Math.min(anchor, at), Math.max(anchor, at), at < anchor ? 'backward' : 'forward');
+    else ta.setSelectionRange(at, at);
+    goal = { at, col };
+    if (page) scrollTo(metrics.top + (to - line) * g.lh);
+    caretInView(); sendCursor(); tell();
+  }
   // copy and cut with nothing selected take the whole line, as VS Code's do; pasting that
   // line back with nothing selected puts it above the caret's line
   let lineClip = null;
@@ -1449,6 +1532,8 @@ function codeEditor(view, file, btn, id, opts = {}) {
     if (e.key === 'Escape' && !bare) { e.preventDefault(); ta.blur(); return; }
     if (mod && e.key === '/') { e.preventDefault(); toggleComment(); return; }
     if (e.key === 'Home' && !mod && !e.altKey) { e.preventDefault(); smartHome(e.shiftKey); return; }
+    if ((e.key === 'PageDown' || e.key === 'PageUp') && !mod && !e.altKey) { e.preventDefault(); verticalMove(e.key === 'PageDown' ? 1 : -1, e.shiftKey, true); return; }
+    if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && !mod && !e.altKey && !e.isComposing) { e.preventDefault(); verticalMove(e.key === 'ArrowDown' ? 1 : -1, e.shiftKey, false); return; }
     if (ta.readOnly || mod || e.altKey) return;
     if (e.key === 'Tab') {
       e.preventDefault();
@@ -1526,17 +1611,20 @@ function codeEditor(view, file, btn, id, opts = {}) {
     history.record(historyText, ta.value, beforeSelection, [ta.selectionStart, ta.selectionEnd], group);
     historyText = ta.value;
     beforeSelection = [ta.selectionStart, ta.selectionEnd];
-    // the caret scrolled to in the frame that draws the edit: one layout per keystroke
-    wantCaret = true;
+    // the caret scrolled to in the frame that draws the edit: one layout per keystroke. Only for
+    // the user's own typing: an edit made elsewhere (an agent's, a task ticked in the rendered
+    // markdown) leaves the view where it is
+    if (e.isTrusted) wantCaret = true;
     redraw(); flush(); paintState(); sendCursor();
   });
   // the caret brought into view when it moved, not on any key let go: a key released into
   // an editor just focused (Enter from quick open) would scroll a tab coming back to its caret
   let seenSel = [-1, -1];
   ta.addEventListener('focus', () => { seenSel = [ta.selectionStart, ta.selectionEnd]; });
+  // (a select event the same: the textarea's window moving fires one for a selection unchanged)
   for (const ev of ['keyup', 'click', 'select']) ta.addEventListener(ev, () => {
     const s = ta.selectionStart, e = ta.selectionEnd;
-    if (ev !== 'keyup' || s !== seenSel[0] || e !== seenSel[1]) caretInView();
+    if (ev === 'click' || s !== seenSel[0] || e !== seenSel[1]) caretInView();
     seenSel = [s, e];
     sendCursor(); tell();
   });
