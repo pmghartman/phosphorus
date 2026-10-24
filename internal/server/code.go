@@ -89,11 +89,15 @@ func codeCreds(s *users.Session, r *http.Request) code.CredsFn {
 
 // codeOptions the new session form's choices
 func codeOptions(s *users.Session) map[string]any {
-	roles := util.Obj(model.Summary()["roles"])
+	ro := map[string]any{}
+	for _, a := range model.Summary()["agents"].([]any) {
+		if util.Obj(a)["id"] == "code" {
+			ro = util.Obj(util.Obj(util.Obj(a)["slots"])["model"])
+		}
+	}
 	models := []any{}
 	for _, m := range code.Mesh {
-		ro := util.Obj(roles[m])
-		models = append(models, map[string]any{"id": m, "label": m, "provider": "mesh", "ready": ro["ready"] == true, "why": util.Str(ro["why"])})
+		models = append(models, map[string]any{"id": m, "label": "Mesh model", "provider": "mesh", "ready": ro["ready"] == true, "why": util.Str(ro["why"])})
 	}
 	has := users.AnthropicToken(s) != ""
 	if has {

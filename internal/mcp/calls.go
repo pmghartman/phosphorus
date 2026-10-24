@@ -36,6 +36,42 @@ var calls = struct {
 	by   map[string]*callLog
 }{by: map[string]*callLog{}}
 
+// watchers wanting a nudge when a user's status moves
+var watchers = struct {
+	sync.Mutex
+	by map[string]map[chan struct{}]bool
+}{by: map[string]map[chan struct{}]bool{}}
+
+// Watch a channel nudged on any change to a user's calls, and its stop
+func Watch(user string) (<-chan struct{}, func()) {
+	ch := make(chan struct{}, 1)
+	watchers.Lock()
+	if watchers.by[user] == nil {
+		watchers.by[user] = map[chan struct{}]bool{}
+	}
+	watchers.by[user][ch] = true
+	watchers.Unlock()
+	return ch, func() {
+		watchers.Lock()
+		delete(watchers.by[user], ch)
+		if len(watchers.by[user]) == 0 {
+			delete(watchers.by, user)
+		}
+		watchers.Unlock()
+	}
+}
+
+func poke(user string) {
+	watchers.Lock()
+	defer watchers.Unlock()
+	for ch := range watchers.by[user] {
+		select {
+		case ch <- struct{}{}:
+		default:
+		}
+	}
+}
+
 func logOf(user string) *callLog {
 	l := calls.by[user]
 	if l == nil {
@@ -50,6 +86,7 @@ func markSeen(user string) {
 	calls.Lock()
 	logOf(user).seen = util.Now()
 	calls.Unlock()
+	poke(user)
 }
 
 // noteClient the agent that last opened a session on a user's key, by the name it gives
@@ -57,6 +94,7 @@ func noteClient(user, name string) {
 	calls.Lock()
 	logOf(user).client = name
 	calls.Unlock()
+	poke(user)
 }
 
 // clientOf that agent's name as a word, claude-ai or Claude Code as claude; blank for none
@@ -76,16 +114,24 @@ func clientOf(user string) string {
 
 func callBegin(user, tool, detail, host string) uint64 {
 	calls.Lock()
-	defer calls.Unlock()
 	calls.next++
 	l := logOf(user)
 	l.live = append(l.live, liveCall{id: calls.next, tool: tool, detail: detail, host: host, since: util.Now()})
-	return calls.next
+	id := calls.next
+	calls.Unlock()
+	poke(user)
+	return id
 }
 
 func callEnd(user string, id uint64, errText string) {
 	calls.Lock()
-	defer calls.Unlock()
+	ended := false
+	defer func() {
+		calls.Unlock()
+		if ended {
+			poke(user)
+		}
+	}()
 	l := logOf(user)
 	for i, c := range l.live {
 		if c.id != id {
@@ -98,6 +144,7 @@ func callEnd(user string, id uint64, errText string) {
 			l.done = l.done[:recentCalls]
 		}
 		l.at = at
+		ended = true
 		return
 	}
 }

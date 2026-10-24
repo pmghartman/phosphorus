@@ -1,5 +1,5 @@
-// Package model: the mesh's models, every host's claim, which is the chimp and
-// which the orangutan, the calls made to them passed to the host running them
+// Package model: the mesh's models, every host's claim, which agents each is
+// assigned to, the calls made to them passed to the host running them
 package model
 
 import (
@@ -19,7 +19,6 @@ import (
 	"time"
 
 	"github.com/pmghartman/phosphorus/internal/mesh"
-	"github.com/pmghartman/phosphorus/internal/sysfs"
 	"github.com/pmghartman/phosphorus/internal/util"
 )
 
@@ -30,8 +29,6 @@ var (
 	serverPort = util.EnvInt("MODEL_SERVER_PORT", 8791)
 	nameRe     = regexp.MustCompile(`^[A-Za-z0-9-]{1,63}$`)
 	contextRe  = regexp.MustCompile(`<context>\n[\s\S]*?\n</context>\n\n`)
-	// Roles the roles a model is asked as
-	Roles = []string{"chimp", "orangutan"}
 )
 
 const (
@@ -43,8 +40,6 @@ const (
 	Mesh = "phosphorus"
 )
 
-func roleFile(r string) string { return "etc/model/roles/" + r + ".json" }
-
 type profile struct {
 	maxTokens int
 	thinking  bool
@@ -53,8 +48,8 @@ type profile struct {
 }
 
 var profiles = map[string]profile{
-	"chimp":     {4096, false, "low", map[string]any{"temperature": 0.7, "top_p": 0.8, "top_k": 20, "min_p": 0, "presence_penalty": 1.5}},
-	"orangutan": {32768, true, "high", nil},
+	"small": {4096, false, "low", map[string]any{"temperature": 0.7, "top_p": 0.8, "top_k": 20, "min_p": 0, "presence_penalty": 1.5}},
+	"large": {32768, true, "high", nil},
 }
 
 // --- claims ----------------------------------------------------------------
@@ -137,7 +132,7 @@ func n(v any) float64 {
 	return 0
 }
 
-// --- roles ------------------------------------------------------------------
+// --- tiers -------------------------------------------------------------------
 
 func meshHost(m string) string {
 	if h, ok := strings.CutPrefix(m, Mesh+"/"); ok && nameRe.MatchString(h) {
@@ -146,62 +141,13 @@ func meshHost(m string) string {
 	return ""
 }
 
-type role struct {
-	Model string  `json:"model"`
-	At    float64 `json:"at"`
-}
-
-func roles() map[string]role {
-	out := map[string]role{}
-	for _, r := range Roles {
-		var c struct {
-			Model *string `json:"model"`
-		}
-		m := ""
-		// a provider's model chosen before, none here to ask now: the default
-		if sysfs.ReadInto(roleFile(r), &c) && c.Model != nil && meshHost(*c.Model) != "" {
-			m = *c.Model
-		}
-		out[r] = role{m, sysfs.Stamp(roleFile(r))}
-	}
-	return out
-}
-
-// Choose a model as a role, mesh-wide
-func Choose(p map[string]any) (int, any) {
-	r, _ := p["role"].(string)
-	ok := false
-	for _, x := range Roles {
-		ok = ok || x == r
-	}
-	if !ok {
-		return 400, map[string]any{"error": "role is " + strings.Join(Roles, " or ")}
-	}
-	m := strings.TrimSpace(util.Str(p["model"]))
-	if m != "" && !strings.Contains(m, "/") {
-		m = Mesh + "/" + m
-	}
-	if m != "" && meshHost(m) == "" {
-		return 400, map[string]any{"error": "model is a mesh host running one, as " + Mesh + "/<host>, blank for the default"}
-	}
-	if h := meshHost(m); h != "" {
-		found := false
-		for _, s := range runners(view()) {
-			found = found || s["host"] == h
-		}
-		if !found {
-			return 409, map[string]any{"error": h + " runs no model"}
-		}
-	}
-	sysfs.Write(roleFile(r), map[string]any{"model": m})
-	return 200, roles()[r]
-}
-
-func pick(states []map[string]any, r string) map[string]any {
+// pick the model for a tier: pref's host when it's ready, else the smallest
+// ready model for the small tier and the biggest for the large
+func pick(states []map[string]any, r, pref string) map[string]any {
 	all := runners(states)
 	var want map[string]any
 	for _, s := range all {
-		if s["host"] == meshHost(roles()[r].Model) {
+		if pref != "" && s["host"] == meshHost(pref) {
 			want = s
 			break
 		}
@@ -217,7 +163,7 @@ func pick(states []map[string]any, r string) map[string]any {
 	}
 	sort.SliceStable(up, func(i, j int) bool { return n(up[i]["size"]) < n(up[j]["size"]) })
 	if len(up) > 0 {
-		if r == "chimp" {
+		if r == "small" {
 			return up[0]
 		}
 		return up[len(up)-1]
@@ -233,8 +179,8 @@ func pick(states []map[string]any, r string) map[string]any {
 	return nil
 }
 
-func resolve(states []map[string]any, r string) (string, map[string]any) {
-	s := pick(states, r)
+func resolve(states []map[string]any, r, pref string) (string, map[string]any) {
+	s := pick(states, r, pref)
 	if s == nil {
 		return "", nil
 	}
@@ -276,28 +222,17 @@ func row(s map[string]any, states []map[string]any) map[string]any {
 	}
 }
 
-// Summary every model, each role's choice, what it answers with and why not
+// Summary every model with the agents on it, each agent's assignment, what it answers with and why not
 func Summary() map[string]any {
 	states := view()
 	models := []any{}
 	for _, s := range runners(states) {
 		models = append(models, row(s, states))
 	}
-	out := map[string]any{"roles": map[string]any{}, "models": models}
-	rs := roles()
-	for _, r := range Roles {
-		m, s := resolve(states, r)
-		ready := m != "" && (s == nil || s["server"] == "ready")
-		host := ""
-		if s != nil {
-			host = util.JSString(s["host"])
-		}
-		why := ""
-		if !ready {
-			why = excuse(states, s)
-		}
-		out["roles"].(map[string]any)[r] = map[string]any{"chosen": rs[r].Model, "model": m, "host": host, "ready": ready, "why": why}
-		out[r] = host
+	out := map[string]any{"agents": agentRows(states), "models": models}
+	for _, m := range models {
+		x := m.(map[string]any)
+		x["agents"] = agentsOn(out["agents"].([]any), util.JSString(x["host"]))
 	}
 	return out
 }
@@ -651,17 +586,20 @@ func ServeChat(r *http.Request, p map[string]any, w http.ResponseWriter, isLocal
 	}
 }
 
-// Purge the role's idle slots erased, asked of the host running it
-func Purge(r string) (any, error) {
-	if r != "orangutan" {
-		r = "chimp"
+// Purge a mesh host's idle slots erased, asked of the host running it
+func Purge(host string) (any, error) {
+	host = meshHost(Mesh + "/" + strings.TrimPrefix(host, Mesh+"/"))
+	var s map[string]any
+	for _, x := range runners(view()) {
+		if x["host"] == host {
+			s = x
+		}
 	}
-	_, s := resolve(view(), r)
 	if s == nil {
-		return nil, fmt.Errorf("the %s isn't a mesh model, nothing here to purge", r)
+		return nil, fmt.Errorf("%q isn't a mesh model, nothing here to purge", host)
 	}
 	if s["server"] != "ready" {
-		return nil, fmt.Errorf("no %s loaded", r)
+		return nil, fmt.Errorf("no model loaded on %s", host)
 	}
 	if s["host"] == selfHost {
 		return EraseSlots()

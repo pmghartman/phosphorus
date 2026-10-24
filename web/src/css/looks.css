@@ -28,8 +28,8 @@
   :root[data-round] .dk-win:not([data-snap="max"]) { border-radius: var(--r-win); }
 }
 /* tables, gauges and art laid out in character cells: mono whatever the page's type (data-sans) */
-:root[data-sans] :is(code, pre, kbd, samp, .st-body, .st-probe, .st-sum, .st-model, .st-mesh-grid, .st-ctx,
-  .st-mini, .st-cores, .st-ctr-row, .st-proc-row, .keybar, .dk-cl-calls, .dk-cl-out, .cd-tool-out, .cd-dl) { font-family: var(--mono); }
+:root[data-sans] :is(code, pre, kbd, samp, .st-body, .st-probe, .st-sum, .st-chip, .st-mesh-grid, .st-ctx,
+  .st-cores, .st-ctr-row, .st-proc-row, .keybar, .dk-cl-calls, .dk-cl-out, .cd-tool-out, .cd-dl) { font-family: var(--mono); }
 
 /* a custom theme's own desk color, whatever look it starts from */
 :root[data-custom-desk] .dk-desk:not(.dk-walled *) { background: var(--desk); }
@@ -89,7 +89,7 @@
 :root:is([data-palette="macos"], [data-palette="win11"]) :is(.update-actions button, .acct-pane button, .acct-users button, .cd-mini).danger:hover:not(:disabled) { background: var(--offmesh); color: #fff; }
 :root:is([data-palette="macos"], [data-palette="win11"]) :is(.update-actions button, .acct-pane button, .acct-users button, .acct-unlock button):active:not(:disabled) { transform: none; }
 /* fields */
-:root:is([data-palette="macos"], [data-palette="win11"]) :is(.dk-row input, .fm-ask input, .fm-find, .update-pass, .st-pick-in, .dk-cl-url, .acct-pane input, .acct-users input, .acct-unlock input, .dk-login input, .cd-find, .cd-sel, .st-pick-row select) {
+:root:is([data-palette="macos"], [data-palette="win11"]) :is(.dk-row input, .fm-ask input, .fm-find, .update-pass, .dk-cl-url, .acct-pane input, .acct-users input, .acct-unlock input, .dk-login input, .cd-find, .cd-sel) {
   border-radius: var(--r-ctl); border: 1px solid var(--border); background: var(--bg); color: var(--fg);
 }
 /* the accent's own ink wherever the page fills with it */
@@ -119,7 +119,7 @@
 :root[data-palette="macos"] .dk-ctl-drop-opt:is(:hover, :focus) :is(.dk-ctl-drop-name, .dk-ctl-drop-about) { color: #fff; }
 :root[data-palette="macos"] :is(.update-actions button, .acct-pane button, .acct-users button, .acct-unlock button, .cd-mini, .join-key-btn) { box-shadow: 0 0 0 0.5px rgb(0 0 0 / 0.2), 0 0.5px 1px rgb(0 0 0 / 0.12); }
 /* fields: a soft blue ring while focused */
-:root[data-palette="macos"] :is(.dk-row input, .fm-ask input, .fm-find, .update-pass, .st-pick-in, .dk-cl-url, .acct-pane input, .acct-users input, .acct-unlock input, .dk-login input, .cd-find, .cd-sel):focus,
+:root[data-palette="macos"] :is(.dk-row input, .fm-ask input, .fm-find, .update-pass, .dk-cl-url, .acct-pane input, .acct-users input, .acct-unlock input, .dk-login input, .cd-find, .cd-sel):focus,
 :root[data-palette="macos"] :is(.chat-form, .chat-join, .cd-form, .cd-box):focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent); }
 /* icons: a grey box round the picked glyph, its label a blue pill */
 :root[data-palette="macos"] .dk-icon:hover .dk-tile { background: var(--tab-hover); }
@@ -152,10 +152,10 @@
 :root[data-palette="win11"] .dk-ctl-drop-opt.on .dk-ctl-drop-name { color: var(--fg); font-weight: 600; }
 :root[data-palette="win11"] .dk-ctl-drop-opt.on .dk-ctl-drop-name::after { content: none; }
 /* fields: a line under them, the accent's while focused */
-:root[data-palette="win11"] :is(.dk-row input, .fm-ask input, .fm-find, .update-pass, .st-pick-in, .dk-cl-url, .acct-pane input, .acct-users input, .acct-unlock input, .dk-login input, .cd-find) {
+:root[data-palette="win11"] :is(.dk-row input, .fm-ask input, .fm-find, .update-pass, .dk-cl-url, .acct-pane input, .acct-users input, .acct-unlock input, .dk-login input, .cd-find) {
   border-color: var(--ctl-edge); border-bottom-color: var(--muted); background: var(--ctl);
 }
-:root[data-palette="win11"] :is(.dk-row input, .fm-ask input, .fm-find, .update-pass, .st-pick-in, .dk-cl-url, .acct-pane input, .acct-users input, .acct-unlock input, .dk-login input, .cd-find):focus,
+:root[data-palette="win11"] :is(.dk-row input, .fm-ask input, .fm-find, .update-pass, .dk-cl-url, .acct-pane input, .acct-users input, .acct-unlock input, .dk-login input, .cd-find):focus,
 :root[data-palette="win11"] :is(.chat-form, .chat-join, .cd-form, .cd-box):focus-within { border-bottom-color: var(--accent); box-shadow: inset 0 -1px 0 var(--accent); }
 /* icons: the whole cell lit, as the desktop's own */
 :root[data-palette="win11"] .dk-icon { border-radius: 4px; }

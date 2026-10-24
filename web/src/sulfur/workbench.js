@@ -409,7 +409,7 @@ const DEFAULTS = () => ({
   root: acct.user, tabs: [], active: '', recent: [], recentFolders: [],
   side: { view: 'explorer', w: 260, hidden: false },
   panel: { h: 260, hidden: true, view: 'terminal', max: false },
-  aux: { w: 360, hidden: true, agent: '', harness: 'chat', model: 'chimp', perm: 'acceptEdits' },
+  aux: { w: 360, hidden: true, agent: '', harness: 'chat', model: 'agent-chat', perm: 'acceptEdits' },
   expanded: {}, runHost: '', sections: { tree: true }, bookmarks: [],
   ext: { enabled: {} }, loc: HOME_LOC, build: {},
 });
@@ -428,7 +428,7 @@ const SETTINGS = {
   'editor.format.indentBlocks': { def: true, type: 'boolean', title: 'Formatting: Indent Block Contents', about: 'Indent code inside block braces one level deeper. Turn off to align it with the braces.' },
   'sulfur.csharp.analyzersEnabled': { def: true, type: 'boolean', title: 'C#: Roslyn Analyzers', about: 'Include Roslyn and project analyzer diagnostics for C# solutions. Analysis uses more CPU than compiler diagnostics alone.' },
   'editor.inlineSuggest.enabled': { def: true, type: 'boolean', title: 'Editor: AI Inline Suggestions', about: 'Predict code with the selected completion model through the mesh using a dedicated harness. Sends bounded context from this file and up to two related open files. Tab accepts; Escape dismisses. Works independently of the chat harness.' },
-  'editor.inlineSuggest.model': { def: 'chimp', type: 'model', title: 'Editor: Completion Machine / Model', about: 'Choose automatic Chimp/Orangutan routing, or pin completion to a machine and its configured model. The machine must have that model ready; this does not change its model installation.' },
+  'editor.inlineSuggest.model': { def: 'agent-inline', type: 'model', title: 'Editor: Completion Machine / Model', about: 'Use the model the Agents app assigns to inline suggestions, or pin completion to a machine and its configured model. The machine must have that model ready; this does not change its model installation.' },
   'editor.inlineSuggest.delay': { def: 750, type: 'number', min: 200, max: 5000, title: 'Editor: AI Suggestion Delay', about: 'Idle time in milliseconds after meaningful typing before asking the completion model. Blank lines, Enter, indentation, and deletion do not request AI suggestions; Alt+\\ still works anywhere.' },
   'editor.diagnostics.delay': { def: 500, type: 'number', min: 300, max: 5000, title: 'Editor: Syntax Check Delay', about: 'Idle time in milliseconds before Sulfur\'s own syntax check marks half-typed code. A language server\'s problems show as soon as it reports them.' },
   'sulfur.languageServerSettings': { def: {}, type: 'object', title: 'Languages: Server Settings', about: 'Language-server settings, keyed by extension id (typescript, python, javascript, java, csharp, php, shell, cpp, hcl, go). Runtime prerequisites and installation are in Extensions.' },
@@ -5064,12 +5064,13 @@ function setStatusFlash(text) {
 function setChord(text) { if (I?.sb) I.sb.chord.textContent = text; }
 
 // --- the chat: the secondary side bar ----------------------------------------------------
-// the mesh's models, chimp first, asked straight through the model gateway as
+// the chat agent's model, asked straight through the model gateway as
 // claude code asks them, each seeing the file that's open here; an extension's
 // agent (a harness bridged in, say) beside them; each conversation kept per
 // user in this browser
 
-const ROLE_SUB = { chimp: 'quick', orangutan: 'thorough' };
+// the agent a bare chat asks as, its model assigned in the Agents app
+const CHAT_AGENT = 'agent-chat';
 // a conversation's open file at most this much of its text
 const SEEN_MAX = 24000;
 
@@ -5080,7 +5081,7 @@ async function refreshRoles() {
     const r = await fetch(meshApi('/api/model/v1/models'), { cache: 'no-store' });
     const b = await r.json().catch(() => ({}));
     if (!I) return;
-    if (r.ok) I.roles = (b.data || []).filter((m) => m && m.id).map((m) => ({ id: m.id, ready: !!m.ready }));
+    if (r.ok) I.roles = (b.data || []).filter((m) => m && m.id === CHAT_AGENT).map((m) => ({ id: m.id, name: m.display_name || m.id, ready: !!m.ready }));
   } catch {}
   if (I) paintChat();
 }
@@ -5135,9 +5136,9 @@ function currentAgent() {
       sees: true,
     };
   }
-  const role = provOf(chatModel()) === 'mesh' ? chatModel() : 'chimp';
+  const role = provOf(chatModel()) === 'mesh' ? chatModel() : CHAT_AGENT;
   const m = (I.roles || []).find((x) => x.id === role);
-  const a = { id: `mesh:${role}`, label: role, sub: ROLE_SUB[role] || 'mesh model', up: m ? m.ready !== false : true, kind: 'mesh', role, harness: 'chat' };
+  const a = { id: `mesh:${role}`, label: m?.name || role, sub: 'assigned in Agents', up: m ? m.ready !== false : true, kind: 'mesh', role, harness: 'chat' };
   const c = chatOf(a.id);
   return {
     ...a,
@@ -5593,7 +5594,7 @@ const AGENT_PERMS = [
 // what Sulfur tells an agent with each prompt, left out of the transcript
 const CTX_RE = /^<sulfur>[\s\S]*?<\/sulfur>\n*/;
 const chatHarness = () => (I.st.aux.harness === 'ext' || isAgent(I.st.aux.harness) ? I.st.aux.harness : 'chat');
-const chatModel = () => I.st.aux.model || 'chimp';
+const chatModel = () => (['chimp', 'orangutan', ''].includes(I.st.aux.model) ? CHAT_AGENT : I.st.aux.model || CHAT_AGENT);
 const harnessName = (h) => harnessList().find((x) => x.id === h)?.label || h;
 
 async function codeCall(url, method = 'GET', body) {
@@ -5667,8 +5668,8 @@ function setHarness(h, ext = '') {
   I.st.aux.harness = h;
   I.st.aux.agent = h === 'ext' ? ext : '';
   if (meshOnly(h) && provOf(chatModel()) === 'anthropic') {
-    I.st.aux.model = 'chimp';
-    setStatusFlash(`Claude models run in Claude Code: ${harnessName(h)} is on chimp`);
+    I.st.aux.model = CHAT_AGENT;
+    setStatusFlash(`Claude models run in Claude Code: ${harnessName(h)} is on the mesh model`);
   }
   saveState();
   paintChat(true);
@@ -5678,8 +5679,8 @@ function setHarness(h, ext = '') {
 function pickModel(anchor) { menu(anchor, modelItems()); }
 function modelItems() {
   const cur = chatModel();
-  const roles = I.roles?.length ? I.roles : [{ id: 'chimp' }, { id: 'orangutan' }];
-  const items = roles.map((m) => ({ label: m.id, detail: `${ROLE_SUB[m.id] || 'mesh model'}${m.ready === false ? ' · offline' : ''}`, ic: 'spark', checked: cur === m.id ? true : undefined, run: () => setModel(m.id) }));
+  const roles = I.roles?.length ? I.roles : [{ id: CHAT_AGENT, name: 'Chat' }];
+  const items = roles.map((m) => ({ label: m.name || m.id, detail: `assigned in Agents${m.ready === false ? ' · offline' : ''}`, ic: 'spark', checked: cur === m.id ? true : undefined, run: () => setModel(m.id) }));
   const anth = (I.codeOpts?.models || []).filter((m) => m.provider === 'anthropic');
   items.push('-');
   if (anth.length) items.push(...anth.map((m) => ({ label: m.label, detail: 'Claude, in Claude Code', ic: 'spark', checked: cur === m.id ? true : undefined, run: () => setModel(m.id) })));
@@ -7742,9 +7743,9 @@ function completionModelSetting(row, about, value) {
   for (const m of machines) machine.append(Object.assign(el('option', '', `${m.host}${m.ready ? '' : ' · offline'}`), { value: m.host, selected: m.host === host }));
   if (host && !machines.some((m) => m.host === host)) machine.append(Object.assign(el('option', '', `${host} · unavailable`), { value: host, selected: true }));
   const model = Object.assign(el('select', 'ide-input ide-select'), { ariaLabel: 'Completion model' });
-  const options = host ? [[value, machines.find((m) => m.host === host)?.label || 'Configured model (unavailable)']] : [['chimp', 'Chimp · fast (default)'], ['orangutan', 'Orangutan · larger model']];
+  const options = host ? [[value, machines.find((m) => m.host === host)?.label || 'Configured model (unavailable)']] : [['agent-inline', 'As assigned in Agents']];
   for (const [id, label] of options) model.append(Object.assign(el('option', '', label), { value: id, selected: id === value }));
-  machine.addEventListener('change', () => setSetting('editor.inlineSuggest.model', machine.value ? `phosphorus/${machine.value}` : 'chimp'));
+  machine.addEventListener('change', () => setSetting('editor.inlineSuggest.model', machine.value ? `phosphorus/${machine.value}` : 'agent-inline'));
   model.addEventListener('change', () => setSetting('editor.inlineSuggest.model', model.value));
   const refresh = Object.assign(el('button', 'ide-link', I.completionLoading ? 'Loading models…' : 'Refresh machines and models'), { type: 'button', disabled: !!I.completionLoading });
   refresh.addEventListener('click', loadCompletionModels);

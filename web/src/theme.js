@@ -26,12 +26,11 @@ const builtIn = (id) => LIB.themes.find((t) => t.id === id);
 
 export const CUSTOM_FONTS = {
   system: '-apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", system-ui, "Helvetica Neue", sans-serif',
-  mono: '"Geist Mono Variable", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
+  mono: 'ui-monospace, SFMono-Regular, "SF Mono", "Cascadia Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace',
   serif: '"Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif',
 };
 export const CUSTOM_MONOS = {
-  geist: '"Geist Mono Variable", ui-monospace, monospace',
-  system: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
+  system: 'ui-monospace, SFMono-Regular, "SF Mono", "Cascadia Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace',
   cascadia: '"Cascadia Mono", "Cascadia Code", Consolas, ui-monospace, monospace',
   jetbrains: '"JetBrains Mono", "IBM Plex Mono", ui-monospace, monospace',
 };
@@ -72,7 +71,7 @@ export function themeConfig(id) {
     base: t.id,
     accent: hex(tok['--accent']) || '#9f81cf',
     font: t.sans ? 'system' : 'mono',
-    mono: t.id === 'win11' ? 'cascadia' : 'geist',
+    mono: t.id === 'win11' ? 'cascadia' : 'system',
     corners: String(corners),
     shadows: tok['--lift'] === 'none' ? 'none' : 'soft',
     desk: hex(tok['--desk']) || hex(tok['--bg']) || '#141414',

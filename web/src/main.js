@@ -1,2 +1,2 @@
-// the page's entry: the desktop and its apps, each heavy part its own chunk
+// the page's entry: the desktop and its apps, one bundle
 import './app.js';

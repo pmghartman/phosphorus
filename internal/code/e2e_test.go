@@ -237,7 +237,7 @@ func TestE2E(t *testing.T) {
 	creds := func(host, model string) (Creds, error) {
 		return Creds{Key: "testkey", Base: api.URL, Skill: zb.Bytes()}, nil
 	}
-	st, body := Create("pmh", map[string]any{"host": "here", "dir": "~", "model": "orangutan", "perm": "default", "prompt": "run it"}, creds)
+	st, body := Create("pmh", map[string]any{"host": "here", "dir": "~", "model": "mesh", "perm": "default", "prompt": "run it"}, creds)
 	if st != 200 {
 		t.Fatal(st, body)
 	}
@@ -281,7 +281,7 @@ func TestE2E(t *testing.T) {
 		t.Error("no claude session id")
 	}
 	// a switch within the mesh in band
-	if st, b := SetModel("pmh", id, map[string]any{"model": "chimp"}); st != 200 {
+	if st, b := SetModel("pmh", id, map[string]any{"model": "mesh"}); st != 200 {
 		t.Fatal(st, b)
 	}
 	if st, b := SetPerm("pmh", id, map[string]any{"mode": "acceptEdits"}); st != 200 {

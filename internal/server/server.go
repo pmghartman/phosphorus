@@ -565,7 +565,7 @@ func stateFp(s map[string]any) string {
 		tn = append(tn, []any{d["name"], d["os"], d["phosphorus"], d["phosphorusSeen"], d["version"]})
 	}
 	m := s["model"].(map[string]any)
-	return string(util.Marshal([]any{s["self"], s["routes"], s["lock"], s["chain"], tn, git.RowsFp(git.Rows()), m["roles"], m["keys"], s["hosts"]}))
+	return string(util.Marshal([]any{s["self"], s["routes"], s["lock"], s["chain"], tn, git.RowsFp(git.Rows()), m["agents"], m["keys"], s["hosts"]}))
 }
 
 func noteState(s map[string]any) string {
@@ -860,8 +860,8 @@ func initMCP() {
 				return forwardGame(host, name, action)
 			},
 			GitMaster: func(host string) (int, any) { clock.MarkHot(); return git.MakeMaster(host) },
-			ModelRole: func(role, m string) (int, any) {
-				st, out := model.Choose(map[string]any{"role": role, "model": m})
+			AgentModel: func(agent, slot, m string) (int, any) {
+				st, out := model.Assign(map[string]any{"agent": agent, "slot": slot, "model": m})
 				if st == 200 {
 					clock.MarkHot()
 				}

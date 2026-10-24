@@ -11,7 +11,6 @@
 <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=14">
 <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png?v=14">
 <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=14">
-<link rel="preload" href="/vendor/geist-mono.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/style.css">
 <script>
 // the browser's own light or dark unless a theme was picked, and the color theme, set before paint
@@ -126,7 +125,6 @@ outside #mesh-svg (emptied every redraw) so it never restarts -->
       <div class="view" id="view-status">
         <div class="st-top" id="st-top">
           <section class="st-mesh" id="st-mesh" hidden><div class="st-card-head">mesh</div><div class="st-mesh-grid"><div><div></div><canvas class="st-graph st-mesh-g"></canvas></div><div><div></div><div class="st-sum-net st-mesh-g"><canvas class="st-graph"></canvas><canvas class="st-graph"></canvas></div></div></div></section>
-          <section class="st-mesh st-model" id="st-model" hidden><div class="st-card-head">model</div><div class="st-model-pick" hidden></div><div class="st-model-roles"></div></section>
         </div>
         <div class="st-hosts" id="st-hosts"><div class="st-wait">connecting</div></div>
       </div>
@@ -153,6 +151,7 @@ outside #mesh-svg (emptied every redraw) so it never restarts -->
       </div>
       <!-- claude code sessions on the mesh's hosts, drawn by apps/code.js -->
       <div class="view" id="view-code"></div>
+      <div class="view" id="view-agents"></div>
       <!-- a pretend remote desktop over the hosts' own terminals, files and services -->
       <div class="view dk active" id="view-desktop"></div>
       <div class="view" id="view-about">
@@ -164,7 +163,7 @@ outside #mesh-svg (emptied every redraw) so it never restarts -->
           <div class="about-info">
             <div class="about-row"><span class="about-key">copyright</span><span class="about-val">&copy; 2026 Patrick Hartman.</span></div>
             <div class="about-row"><span class="about-key">license</span><span class="about-val">Apache License 2.0; see LICENSE.</span></div>
-            <div class="about-row"><span class="about-key">packages</span><span class="about-val">Each bundled package keeps its own license: Apache-2.0 (cloudflared), BSD-3-Clause (Tailscale, gopsutil), MIT (xterm.js, KaTeX, llama.cpp), OFL-1.1 (Geist Mono), GPL-3.0-or-later (Forgejo). Full texts in THIRD_PARTY_LICENSES.txt.</span></div>
+            <div class="about-row"><span class="about-key">packages</span><span class="about-val">Each bundled package keeps its own license: Apache-2.0 (cloudflared), BSD-3-Clause (Tailscale, gopsutil), MIT (xterm.js, KaTeX, llama.cpp), GPL-3.0-or-later (Forgejo). Full texts in THIRD_PARTY_LICENSES.txt.</span></div>
           </div>
         </div>
       </div>
@@ -182,8 +181,7 @@ outside #mesh-svg (emptied every redraw) so it never restarts -->
           <div class="mesh-legend" aria-hidden="true">
             <span><span class="mesh-legend-star">*</span> git servant</span>
             <span class="mesh-legend-git">git master</span>
-            <span><span class="mesh-legend-model">c</span> chimp model</span>
-            <span><span class="mesh-legend-model">o</span> orangutan model</span>
+            <span><span class="mesh-legend-model">3</span> agents asking a model</span>
           </div>
         </div>
         <div class="mesh-stats" id="mesh-stats">

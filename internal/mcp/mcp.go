@@ -41,10 +41,10 @@ type Asker struct {
 
 // Actions the buttons phosphorus may press
 type Actions struct {
-	Game      func(host, name, action string) (int, any)
-	GitMaster func(host string) (int, any)
-	ModelRole func(role, model string) (int, any)
-	Update    func(action string, admin bool, only []string) (int, any)
+	Game       func(host, name, action string) (int, any)
+	GitMaster  func(host string) (int, any)
+	AgentModel func(agent, slot, model string) (int, any)
+	Update     func(action string, admin bool, only []string) (int, any)
 	// Op a host operation: health, power, term_close,
 	// service_health, or mesh-wide mesh_health and update_history (services, mesh_hosts, update_status)
 	Op       func(host, op string, p map[string]any) (int, any)
@@ -649,8 +649,8 @@ func buildTools() {
 			schema:      object(nil),
 			run:         func(map[string]any, Meta) (any, error) { return src.GitHosts(), nil }},
 		{name: "models", read: true,
-			description: "The models: each role's (chimp the small, fast one, orangutan the big one) mesh host as chosen and as answering, " +
-				"each mesh model host, its file, state and memory, and the last call's context window in tokens (system prompt, chat, prompt, reply) and speed.",
+			description: "The models: each agent's (chat, inline, code, claude-code, opencode) assigned mesh host and the one answering, " +
+				"each mesh model host, its file, state, memory and the agents on it, and the last call's context window in tokens (system prompt, chat, prompt, reply) and speed.",
 			schema: object(nil),
 			run:    func(map[string]any, Meta) (any, error) { return src.Model(), nil }},
 		{name: "people", read: true,
@@ -828,10 +828,11 @@ func buildTools() {
 				}
 				return pressed(src.Actions.GitMaster(host))
 			}},
-		{name: "set_model_role",
-			description: "Make a mesh host's model the chimp or the orangutan, mesh-wide: the host as phosphorus/<host> (or just " +
-				"<host>), blank for the mesh's default (the smallest ready model the chimp, the biggest the orangutan).",
-			schema: object(map[string]any{"role": map[string]any{"type": "string", "enum": []any{"chimp", "orangutan"}}, "model": map[string]any{"type": "string"}}, "role", "model"),
+		{name: "set_agent_model",
+			description: "Assign a mesh host's model to an agent, mesh-wide: the host as phosphorus/<host> (or just <host>), blank for the " +
+				"automatic pick. slot fast is the small model an agent uses for background work (code, claude-code, opencode only).",
+			schema: object(map[string]any{"agent": map[string]any{"type": "string", "enum": []any{"chat", "inline", "code", "claude-code", "opencode"}},
+				"slot": map[string]any{"type": "string", "enum": []any{"model", "fast"}}, "model": map[string]any{"type": "string"}}, "agent", "model"),
 			run: func(a map[string]any, m Meta) (any, error) {
 				if err := adminOf(m); err != nil {
 					return nil, err
@@ -839,7 +840,7 @@ func buildTools() {
 				if _, err := askerOf(m); err != nil {
 					return nil, err
 				}
-				return pressed(src.Actions.ModelRole(str(a["role"]), str(a["model"])))
+				return pressed(src.Actions.AgentModel(str(a["agent"]), str(a["slot"]), str(a["model"])))
 			}},
 		{name: "update_control",
 			description: "Start a mesh update (an admin's key), or cancel the running one. " + noCreds,

@@ -538,8 +538,6 @@ func writeModel(vals map[string]string) string {
 	return writeDoc(iniFile, d)
 }
 
-var roles = []string{"chimp", "orangutan"}
-
 func modelForm() *form {
 	m := readModel()
 	fl := func(key, hint string, choices ...string) *field {
