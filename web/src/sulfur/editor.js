@@ -65,7 +65,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
   gutter.append(nums);
   const body = el('div', 'code-body');
   const pre = el('pre', 'code-hl');
-  const code = el('code', `hljs language-${lang.hl}`);
+  const code = el('code', `hljs language-${lang.hl} code-lines`);
   pre.append(code);
   const squig = el('pre', 'code-hl code-squig');
   // a find's matches, the current one stronger, drawn as the squiggles are
@@ -444,9 +444,11 @@ function codeEditor(view, file, btn, id, opts = {}) {
   }
   // a layer's window placed: as tall and wide as the whole text, its lines where they lie
   function placeWindow(node, w) {
-    node.style.paddingTop = `${w.first * w.lh}px`;
-    node.style.paddingBottom = `${(w.lines - w.last) * w.lh}px`;
-    node.style.minWidth = `${maxCols + 2}ch`;
+    const top = `${w.first * w.lh}px`, bottom = `${(w.lines - w.last) * w.lh}px`, width = `${maxCols + 2}ch`;
+    if (node.style.paddingTop !== top) node.style.paddingTop = top;
+    if (node.style.paddingBottom !== bottom) node.style.paddingBottom = bottom;
+    if (node.style.minWidth !== width) node.style.minWidth = width;
+    if (node === code) { const lh = `${w.lh}px`; if (node.style.getPropertyValue('--code-line') !== lh) node.style.setProperty('--code-line', lh); }
   }
   // the window's text with marks over some ranges (sorted); wrap(raw) gives a mark's html
   function markedHtml(text, marks, w) {
@@ -489,11 +491,15 @@ function codeEditor(view, file, btn, id, opts = {}) {
       else if (lang.hl !== 'plaintext' && text.length <= SERVER_HL_MAX) serverHighlight(text);
       if (lexicalDirty && lang.hl !== 'plaintext' && lang.hl !== 'markdown') colors = quickColors(text, w);
     }
-    code.innerHTML = `${highlightRanges(text, colors, semantic, w.from, w.to)}\n`;
+    paintLines(text, colors, w);
     placeWindow(code, w);
-    numsWin.textContent = Array.from({ length: w.last - w.first }, (_, i) => w.first + i + 1).join('\n');
-    numsWin.style.paddingTop = `${w.first * w.lh}px`; numsWin.style.paddingBottom = `${(w.lines - w.last) * w.lh}px`;
-    numsWin.style.minWidth = `${String(w.lines).length}ch`;
+    const numsKey = `${w.first}|${w.last}|${w.lines}|${w.lh}`;
+    if (numsKey !== numsDrawn) {
+      numsDrawn = numsKey;
+      numsWin.textContent = Array.from({ length: w.last - w.first }, (_, i) => w.first + i + 1).join('\n');
+      numsWin.style.paddingTop = `${w.first * w.lh}px`; numsWin.style.paddingBottom = `${(w.lines - w.last) * w.lh}px`;
+      numsWin.style.minWidth = `${String(w.lines).length}ch`;
+    }
     hlText = text;
     paintSquiggles(); paintFinds(); paintAgent();
     if (inlineSuggestion) paintInline();
@@ -520,6 +526,50 @@ function codeEditor(view, file, btn, id, opts = {}) {
       else decoSoon();
     };
     restTimer = setTimeout(slice, 0);
+  }
+  // The highlighted text a block per line, each drawn again only when its own html changed:
+  // a keystroke redraws its line, not the screen (as VS Code's view lines). Lines are matched
+  // to those drawn before through the edit between: above it the same line, below it moved by
+  // the lines it added or took away.
+  let lineNodes = [], linesFirst = 0, linesText = null, linesCount = 0, numsDrawn = '';
+  function paintLines(text, colors, w) {
+    lineAt(text, 0);
+    let headLine = Infinity, endLine = -1, delta = 0;
+    if (linesText !== null && linesText !== text) {
+      const { head, tail } = changeOf(linesText, text);
+      headLine = lineAt(text, head) - 1;
+      endLine = lineAt(text, text.length - tail) - 1;
+      delta = lineStarts.length - linesCount;
+    }
+    const old = new Map();
+    for (let i = 0; i < lineNodes.length; i++) old.set(linesFirst + i, lineNodes[i]);
+    const next = [], spare = [];
+    for (let l = w.first; l < w.last; l++) {
+      const a = lineStarts[l], b = l + 1 < lineStarts.length ? lineStarts[l + 1] - 1 : text.length;
+      const html = highlightRanges(text, colors, semantic, a, b);
+      const was = l < headLine ? l : l > endLine ? l - delta : -1;
+      let node = was >= 0 ? old.get(was) : null;
+      if (node) old.delete(was);
+      if (node && node.lineHtml !== html) { node.innerHTML = html; node.lineHtml = html; }
+      next.push(node || { html });
+    }
+    for (const node of old.values()) spare.push(node);
+    // the lines not kept: the nodes left over made them, else new ones
+    for (let i = 0; i < next.length; i++) {
+      if (next[i].nodeType) continue;
+      const node = spare.pop() || document.createElement('div');
+      if (node.lineHtml !== next[i].html) { node.innerHTML = next[i].html; node.lineHtml = next[i].html; }
+      next[i] = node;
+    }
+    for (const node of spare) node.remove();
+    // into the layer in order, moving only what's out of place
+    let at = code.firstChild;
+    for (const node of next) {
+      if (node === at) { at = at.nextSibling; continue; }
+      code.insertBefore(node, at);
+    }
+    while (at) { const after = at.nextSibling; at.remove(); at = after; }
+    lineNodes = next; linesFirst = w.first; linesText = text; linesCount = lineStarts.length;
   }
   // the lines edited since the server's colors came, lexed here, the rest as it colored them
   function quickColors(text, w) {
@@ -573,19 +623,31 @@ function codeEditor(view, file, btn, id, opts = {}) {
     if (!options.indentationGuides && (!options.whitespace || options.whitespace === 'none') || inlineSuggestion?.insert.includes('\n')) { guidesLayer.replaceChildren(); return; }
     lineAt(text, 0);
     const decorations = editorDecorations(text, lineStarts, { first, last, left, right, tabSize, whitespace: options.whitespace || 'none', guides: options.indentationGuides });
-    guidesLayer.style.font = g.font;
-    guidesLayer.replaceChildren(...decorations.map((item) => {
-      const row = el('div', 'code-guide-row');
-      row.style.top = `${y + item.line * lh}px`; row.style.left = `${x}px`; row.style.height = `${lh}px`;
-      if (options.indentationGuides && item.indent) {
-        const guides = el('span', 'code-indent-guides');
-        guides.style.width = `${item.indent * cw}px`; guides.style.backgroundSize = `${indentSize * cw}px 100%`; row.append(guides);
+    setStyle(guidesLayer, 'font', g.font);
+    // a row kept for each kind of row drawn (its guides and marks), moved to its line: a
+    // keystroke or a scroll moves rows rather than making them again
+    const spare = new Map();
+    for (const row of guidesLayer.children) { const list = spare.get(row.guideKey) || []; list.push(row); spare.set(row.guideKey, list); }
+    const rows = decorations.map((item) => {
+      const key = `${options.indentationGuides ? item.indent : 0}|${item.markers.map((m) => `${m.column}${m.text}`).join(',')}|${indentSize}|${cw}|${lh}|${x}`;
+      let row = spare.get(key)?.pop();
+      if (!row) {
+        row = el('div', 'code-guide-row');
+        row.guideKey = key;
+        row.style.left = `${x}px`; row.style.height = `${lh}px`;
+        if (options.indentationGuides && item.indent) {
+          const guides = el('span', 'code-indent-guides');
+          guides.style.width = `${item.indent * cw}px`; guides.style.backgroundSize = `${indentSize * cw}px 100%`; row.append(guides);
+        }
+        for (const marker of item.markers) {
+          const mark = el('span', 'code-whitespace-mark', marker.text); mark.style.left = `${marker.column * cw}px`; row.append(mark);
+        }
       }
-      for (const marker of item.markers) {
-        const mark = el('span', 'code-whitespace-mark', marker.text); mark.style.left = `${marker.column * cw}px`; row.append(mark);
-      }
+      setStyle(row, 'top', `${y + item.line * lh}px`);
       return row;
-    }));
+    });
+    for (const list of spare.values()) for (const row of list) row.remove();
+    for (const row of rows) if (row.parentNode !== guidesLayer) guidesLayer.append(row);
   }
   const guidesSoon = () => { guideFrame ||= requestAnimationFrame(paintGuides); };
   scroller.addEventListener('scroll', guidesSoon, { passive: true });
@@ -620,8 +682,11 @@ function codeEditor(view, file, btn, id, opts = {}) {
     // Clone the drawn syntax spans and insert ghost text with DOM text APIs.
     // It can contain arbitrary source, including HTML, without becoming markup.
     const copy = code.cloneNode(true);
-    const walk = document.createTreeWalker(copy, NodeFilter.SHOW_TEXT);
-    let at = drawn.from, found = false;
+    // the caret's line among the drawn line blocks, its text walked to the caret
+    const lineIndex = lineAt(s.text, s.caret) - 1;
+    const block = copy.children[lineIndex - drawn.first] || copy.lastElementChild || copy;
+    const walk = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+    let at = lineStarts[lineIndex] ?? drawn.from, found = false;
     const ghost = el('span', 'code-inline-text', s.insert);
     for (let node = walk.nextNode(); node; node = walk.nextNode()) {
       if (s.caret <= at + node.length) {
@@ -631,7 +696,9 @@ function codeEditor(view, file, btn, id, opts = {}) {
       }
       at += node.length;
     }
-    if (!found) copy.append(ghost);
+    if (!found) block.append(ghost);
+    // a suggestion of several lines: its line block as tall as they are
+    if (s.insert.includes('\n') && block !== copy) block.style.height = 'auto';
     inlineLayer.replaceChildren(copy);
     inlineLayer.hidden = false;
     body.classList.add('code-has-inline');
@@ -725,6 +792,8 @@ function codeEditor(view, file, btn, id, opts = {}) {
     paintDeco();
   }
   let decoFrame = 0, rulersKey = '';
+  const set = (node, key, value) => { if (node[key] !== value) node[key] = value; };
+  const setStyle = (node, key, value) => { if (node.style[key] !== value) node.style[key] = value; };
   const decoSoon = () => { decoFrame ||= requestAnimationFrame(() => { decoFrame = 0; paintDeco(); }); };
   function paintDeco() {
     if (closed || view.hidden) return;
@@ -734,11 +803,13 @@ function codeEditor(view, file, btn, id, opts = {}) {
     const g = geom();
     const line = lineAt(text, headOf(sel)) - 1;
     const highlight = display.lineHighlight ?? 'line';
-    lineNow.hidden = !ready || highlight === 'none' || highlight === 'gutter' || s !== e;
-    lineNow.style.top = `${g.top + line * g.lh}px`; lineNow.style.height = `${g.lh}px`;
-    nrNow.hidden = !ready || highlight === 'none';
-    nrNow.textContent = String(line + 1);
-    nrNow.style.top = `${g.numsTop + line * g.lh}px`; nrNow.style.height = nrNow.style.lineHeight = `${g.lh}px`;
+    // each written only when it changes: a write of the same value still costs an engine
+    // (WebKit) a repaint of the whole screen under it
+    set(lineNow, 'hidden', !ready || highlight === 'none' || highlight === 'gutter' || s !== e);
+    setStyle(lineNow, 'top', `${g.top + line * g.lh}px`); setStyle(lineNow, 'height', `${g.lh}px`);
+    set(nrNow, 'hidden', !ready || highlight === 'none');
+    set(nrNow, 'textContent', String(line + 1));
+    setStyle(nrNow, 'top', `${g.numsTop + line * g.lh}px`); setStyle(nrNow, 'height', `${g.lh}px`); setStyle(nrNow, 'lineHeight', `${g.lh}px`);
     const rulers = Array.isArray(display.rulers) ? display.rulers.filter((n) => Number.isFinite(n) && n > 0) : [];
     const key = `${rulers}|${g.left}|${g.cw}`;
     if (key !== rulersKey) {
