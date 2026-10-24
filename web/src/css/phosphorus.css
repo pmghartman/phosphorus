@@ -631,34 +631,16 @@ span.dk-chip { cursor: default; }
 .st-top { display: flex; flex-wrap: wrap; align-items: stretch; gap: 1.2rem 1rem; margin-bottom: 1.2rem; }
 .st-top:not(:has(> :not([hidden]))) { display: none; }
 .st-mesh { position: relative; border: 1px solid var(--border); padding: 0.9rem 0.6rem 0.5rem; flex: 3 1 22rem; min-width: 0; }
-.st-model { flex: 1 0 auto; max-width: min(100%, 36rem); font-size: 0.72rem; line-height: 1.35; white-space: pre; }
-/* room for "orangutan" and "chimp + orangutan" */
-.st-model .st-key { width: 10ch; }
-.st-model .st-row.st-wrap { padding-left: 10ch; text-indent: -10ch; }
+/* room for a few agents joined, as "chat + inline" */
 /* stretched beside the model box: the graphs taking the spare height */
-.st-top > .st-mesh:not(.st-model) { display: flex; flex-direction: column; }
-.st-top > .st-mesh:not(.st-model) > .st-mesh-grid { flex: 1 1 auto; }
 .st-mesh-grid > * { display: flex; flex-direction: column; }
 /* basis 0: a canvas's own 150px never sets the height, only the spare room does */
 .st-mesh .st-mesh-g.st-mesh-g { flex: 1 1 0; height: auto; min-height: 1.6rem; }
-.st-model-role + .st-model-role { margin-top: 1.4rem; }
 /* each role's model and the api keys, ruled off over the roles' blocks */
-.st-model-pick { margin-bottom: 1.1rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border); white-space: normal; }
-.st-model-pick[hidden] { display: none; }
-.st-pick-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 1ch; min-width: 0; }
-.st-pick-row + .st-pick-row { margin-top: 0.4rem; }
-.st-pick-row > .st-key { flex: none; }
-.st-pick-in { flex: 1 1 16ch; min-width: 0; height: 1.75rem; padding: 0 0.5rem; border: 1px solid var(--border); background: var(--bg); color: var(--fg); font: inherit; }
-select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
-.st-pick-in:is( :focus) { outline: none; border-color: var(--accent); }
-.st-pick-in option { color: var(--fg); }
 .no-fill-secret { -webkit-text-security: disc; text-security: disc; }
-.st-pick-why { padding-left: 11ch; color: var(--sand); }
-.st-pick-err { color: var(--offmesh); overflow-wrap: anywhere; }
 .st-mesh > .st-card-head { color: var(--accent); }
 .st-mesh { container-type: inline-size; }
 /* sized by its text, so no containment */
-.st-model.st-mesh { container-type: normal; }
 .st-mesh-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.3rem 1.6rem; font-size: 0.72rem; line-height: 1.35; white-space: pre; }
 .st-mesh-grid > * { min-width: 0; }
 .st-mesh .st-mesh-g { height: 1.6rem; margin: 4px 0 0 0; }
@@ -672,29 +654,11 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
 .st-ctx-legend { flex: 1 1 36ch; min-width: 0; }
 .st-ctx-legend .st-row { white-space: pre-wrap; }
 /* beside the chat: the grid over its legend, the cpu beside the grid, the gpu beside the legend */
-.st-ctx.st-ctx-chip { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.9rem 1.2rem; align-items: start; }
-.st-ctx-key { grid-column: 1; }
-.st-ctx-load { display: contents; }
-.st-ctx-load > .st-box { grid-column: 2; min-width: 0; margin: 0; }
-.st-ctx-load > .st-cpu { grid-row: 1; }
-.st-ctx-load > .st-gpu { grid-row: 2; }
-.st-ctx-load .st-graph-cpu { margin-bottom: 0.3rem; }
 .st-ctx i { display: inline-block; width: 1.1ch; height: 1.1ch; border: 1px solid var(--border); vertical-align: -0.1em; }
 .st-ctx i.full { border-color: currentColor; background: currentColor; }
 .st-ctx i.half { border-color: currentColor; background: linear-gradient(to top, currentColor 50%, transparent 50%); }
 /* the corner's: the chat tab's shrunk, the grid beside small graphs, one legend line */
-.st-model .st-ctx.st-mini { gap: 0.4rem 0.8rem; margin-top: 0.4rem; }
-.st-mini .st-ctx-grid { grid-template-columns: repeat(10, 0.6ch); gap: 0.2ch; padding-top: 0; }
-.st-mini i { width: 0.6ch; height: 0.6ch; }
 /* the grid's height (ten cells, nine gaps): a line each for cpu and gpu */
-.st-mini-load { flex: 1; min-width: 0; height: 7.8ch; display: flex; flex-direction: column; gap: 0.15rem; }
-.st-mini-k { flex: 1 1 0; min-height: 0; display: flex; align-items: stretch; gap: 0.8ch; }
-.st-mini-k > span { align-self: center; width: 3ch; }
-.st-mini-k .st-graph { flex: 1; min-width: 0; min-height: 0; height: auto; }
-.st-mini-k .st-row { align-self: center; width: 6ch; text-align: right; }
-.st-mini-key { flex: 1 1 100%; white-space: normal; }
-.st-mini-key > span { white-space: nowrap; margin-right: 1ch; }
-.st-mini-key i { width: 1.1ch; height: 1.1ch; margin-right: 0.4ch; }
 .st-ctx .ctx-system { color: var(--sky); }
 .st-ctx .ctx-chat { color: var(--teal); }
 .st-ctx .ctx-ask { color: var(--accent); }
@@ -883,7 +847,7 @@ select.st-pick-in { max-width: 100%; cursor: pointer; text-overflow: ellipsis; }
 .cw-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 0.1rem; }
 .cw-head { display: flex; align-items: center; margin: 0.8rem 0.6rem 0.25rem; font-size: 0.7rem; letter-spacing: 0.04em; color: var(--sage); }
 .cw-head:first-child { margin-top: 0; }
-.st-clear { margin-top: 0.4rem; padding: 0; background: none; border: 0; color: var(--muted); font: inherit; font-size: 0.72rem; cursor: pointer; }
+.st-clear { padding: 0; background: none; border: 0; color: var(--muted); font: inherit; font-size: 0.72rem; cursor: pointer; }
 .st-clear:hover:not(:disabled) { color: var(--accent); }
 .st-clear:disabled { cursor: default; }
 .cw-add { margin-left: auto; padding: 0 0.3rem; background: none; border: 0; color: var(--muted); font: inherit; font-size: 0.85rem; line-height: 1; cursor: pointer; }
@@ -2519,3 +2483,60 @@ body:has(.dk-pop:not([hidden])) .toasts { opacity: 0; pointer-events: none; }
 }
 @media (prefers-reduced-motion: reduce) { .cd-dot, .cd-state, .cd-tool.run .cd-pip, .cd-streaming.cd-text::after { animation: none !important; } }
 /* --- end code ------------------------------------------------------------------ */
+
+/* a model host's chip on its tile: phase and speed, file, context window, its agents */
+.st-chip { margin-top: 0.55rem; padding-top: 0.5rem; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.7rem; line-height: 1.4; white-space: normal; cursor: default; }
+.st-chip-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 1ch; }
+.st-chip-t { color: var(--accent); letter-spacing: 0.04em; }
+.st-chip-file { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-chip-ctx { margin-top: 0; align-items: center; gap: 0.4rem 1.2ch; }
+.st-chip .st-ctx-grid { grid-template-columns: repeat(10, 0.8ch); gap: 0.2ch; padding-top: 0; }
+.st-chip .st-ctx i { width: 0.8ch; height: 0.8ch; }
+.st-chip-key { flex: 1 1 12ch; min-width: 0; }
+.st-chip-key > span { display: inline-block; white-space: nowrap; margin-right: 1ch; }
+.st-chip-key i { margin-right: 0.4ch; }
+.st-chip-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.3rem 1ch; }
+.st-chip-agents { display: flex; flex-wrap: wrap; gap: 0.25rem; min-width: 0; }
+.st-chip-a { padding: 0 0.5ch; border: 1px solid var(--border); color: var(--accent); }
+/* a model host's tile twice as wide, where three or more columns fit */
+.st-hosts.wide-chips .st-card.has-model:not(.open) { grid-column: span 2; }
+.st-hosts.wide-chips .st-card.has-model:not(.open) .st-chip { flex-direction: row; flex-wrap: wrap; align-items: center; column-gap: 1.6ch; }
+.st-hosts.wide-chips .st-card.has-model:not(.open) .st-chip-head { flex: 1 1 100%; }
+
+/* --- agents: which model each agent asks (apps/agents.js) -------------------- */
+.dk-icon.dk-agents .ic { color: var(--accent); }
+.dk-app-agents .dk-body > .view { padding: 1rem 1rem 1.2rem; overflow-y: auto; }
+.ag { display: flex; flex-direction: column; gap: 1.5rem; max-width: 60rem; margin: 0 auto; font-size: 0.8rem; line-height: 1.45; }
+.ag-dim { color: var(--muted); }
+.ag-group { display: flex; flex-direction: column; gap: 0.7rem; }
+.ag-group-head { display: flex; align-items: baseline; gap: 1ch; color: var(--accent); font-size: 0.72rem; letter-spacing: 0.04em; }
+.ag-group-head::after { content: ""; flex: 1; border-top: 1px solid var(--border); align-self: center; }
+.ag-group-head .ag-dim { order: 2; letter-spacing: 0; }
+.ag-models { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 0.6rem; }
+.ag-model { border: 1px solid var(--border); padding: 0.55rem 0.7rem; display: flex; flex-direction: column; gap: 0.3rem; min-width: 0; }
+.ag-model-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0 1ch; min-width: 0; }
+.ag-model-head b { color: var(--fg); font-weight: 600; }
+.ag-model-head .ag-spd { margin-left: auto; color: var(--fg); }
+.ag-file { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.72rem; }
+.ag-dot { flex: none; display: inline-block; width: 0.5rem; height: 0.5rem; background: var(--offmesh); }
+.ag-model.on .ag-dot, .ag-line.on .ag-dot { background: var(--online); }
+.ag-model.mid .ag-dot { background: var(--sand); }
+.ag-chips { display: flex; flex-wrap: wrap; gap: 0.25rem; }
+.ag-chip { padding: 0 0.5ch; border: 1px solid var(--border); color: var(--accent); font-size: 0.7rem; }
+.ag-why { color: var(--sand); font-size: 0.72rem; overflow-wrap: anywhere; }
+.ag-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr)); gap: 0.8rem; }
+.ag-card { border: 1px solid var(--border); padding: 0.75rem 0.85rem; display: flex; flex-direction: column; gap: 0.7rem; min-width: 0; }
+.ag-card-head { display: flex; flex-direction: column; gap: 0.1rem; }
+.ag-card-head b { color: var(--fg); font-weight: 600; }
+.ag-about { color: var(--muted); font-size: 0.72rem; }
+.ag-slot { display: flex; flex-direction: column; gap: 0.4rem; }
+.ag-slot-k { color: var(--muted); font-size: 0.68rem; letter-spacing: 0.04em; }
+.ag-pills { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.ag-pill { padding: 0.15rem 0.65rem; background: none; border: 1px solid var(--border); color: var(--muted); font: inherit; cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: border-color 0.15s, color 0.15s; }
+.ag-pill:is(:hover, :focus-visible) { border-color: var(--accent); color: var(--fg); }
+.ag-pill.on { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.ag-line { display: flex; flex-wrap: wrap; align-items: center; gap: 0 1ch; font-size: 0.72rem; color: var(--muted); }
+.ag-line.off { color: var(--sand); }
+.ag-line b { color: var(--fg); font-weight: 400; }
+.ag-empty { color: var(--muted); padding: 0.4rem 0; }
+.ag-err { color: var(--offmesh); overflow-wrap: anywhere; }

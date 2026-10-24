@@ -17,6 +17,7 @@ Install it on each machine and they find each other. No servers to rent, no conf
 - **Services and game servers**, started from the desktop
 - **Git, chat and a local AI model**, shared by the whole mesh
 - **Code sessions** with Claude Code or opencode on any host
+- **Agents**: assign each mesh model to chat, inline suggestions, Claude Code and opencode from one page
 - **An MCP server**, so Claude can work your mesh for you
 
 <p align="center"><img src="packaging/sulfur/icon.svg" alt="" width="140"></p>

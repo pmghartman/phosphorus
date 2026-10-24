@@ -45,22 +45,22 @@ func gate(r *http.Request, w http.ResponseWriter, open bool) bool {
 	return true
 }
 
-// Target the model asked for as a role or a pinned host: chimp, orangutan,
-// phosphorus/<host>; any other name (claude's own) its nearest role
-func Target(m string) (host, role string) {
+// Target the model asked for as an agent or a pinned host: agent-<id>[-fast]
+// (pref its assigned model), phosphorus/<host>; any other name (claude's own)
+// its nearest tier
+func Target(m string) (host, tier, pref string) {
 	m = strings.TrimSpace(strings.ToLower(m))
 	if h := meshHost(m); h != "" {
-		return h, ""
+		return h, "", ""
 	}
-	for _, r := range Roles {
-		if m == r {
-			return "", r
-		}
+	if a, slot := agentOf(m); a != nil {
+		pref, _ = assigned(a, slot)
+		return "", tierOf(a, slot), pref
 	}
 	if strings.Contains(m, "haiku") || strings.Contains(m, "small") || strings.Contains(m, "fast") {
-		return "", "chimp"
+		return "", "small", ""
 	}
-	return "", "orangutan"
+	return "", "large", ""
 }
 
 // anthUsage the Anthropic usage as measure reads chat's
@@ -133,7 +133,7 @@ func ServeMessages(r *http.Request, p map[string]any, w http.ResponseWriter, sub
 		anthErr(w, 404, "not_found_error", "no such endpoint")
 		return
 	}
-	host, role := Target(util.Str(p["model"]))
+	host, role, pref := Target(util.Str(p["model"]))
 	if !gate(r, w, peer && host != "" || user) {
 		return
 	}
@@ -145,7 +145,7 @@ func ServeMessages(r *http.Request, p map[string]any, w http.ResponseWriter, sub
 	states := view()
 	var s map[string]any
 	if role != "" {
-		_, s = resolve(states, role)
+		_, s = resolve(states, role, pref)
 	} else {
 		for _, x := range runners(states) {
 			if x["host"] == host {
@@ -181,7 +181,7 @@ func ServeMessages(r *http.Request, p map[string]any, w http.ResponseWriter, sub
 	}
 }
 
-// ServeModels GET /api/model/v1/models: the roles, as the Anthropic API lists models
+// ServeModels GET /api/model/v1/models: the agents' names, as the Anthropic API lists models
 func ServeModels(r *http.Request, w http.ResponseWriter, peer bool) {
 	if !gate(r, w, peer) {
 		return
@@ -189,13 +189,18 @@ func ServeModels(r *http.Request, w http.ResponseWriter, peer bool) {
 	states := view()
 	data := []any{}
 	at := time.Now().UTC().Format(time.RFC3339)
-	for _, ro := range Roles {
-		_, s := resolve(states, ro)
-		data = append(data, map[string]any{"type": "model", "id": ro, "display_name": ro, "created_at": at,
+	add := func(id, name, tier, pref string) {
+		_, s := resolve(states, tier, pref)
+		data = append(data, map[string]any{"type": "model", "id": id, "display_name": name, "created_at": at,
 			"ready": s != nil && s["server"] == "ready"})
+	}
+	for i := range Agents {
+		a := &Agents[i]
+		pref, _ := assigned(a, "model")
+		add(AgentName(a.ID, false), a.Label, a.Tier, pref)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(200)
-	w.Write(util.Marshal(map[string]any{"data": data, "has_more": false, "first_id": Roles[0], "last_id": Roles[len(Roles)-1]}))
+	w.Write(util.Marshal(map[string]any{"data": data, "has_more": false, "first_id": util.Str(util.Obj(data[0])["id"]), "last_id": util.Str(util.Obj(data[len(data)-1])["id"])}))
 }

@@ -250,7 +250,7 @@ func appHandler(w http.ResponseWriter, r *http.Request) {
 
 	// mesh-wide model picks: this machine, the tailnet, ingress admins
 	if strings.HasPrefix(pathname, "/api/model/") && !isLoopback(r) && !isTailnet(r) {
-		pick := method == "POST" && pathname == "/api/model/role"
+		pick := method == "POST" && pathname == "/api/model/agent"
 		if s := users.Of(r); !proxy.IsIngress(r) || pick && (s == nil || !s.Admin) {
 			forbidden(w)
 			return
@@ -258,9 +258,9 @@ func appHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch {
-	case pathname == "/api/model/role" && method == "POST":
+	case pathname == "/api/model/agent" && method == "POST":
 		onJSON(w, r, maxJSONBody, true, func(p map[string]any) (int, any) {
-			st, out := model.Choose(p)
+			st, out := model.Assign(p)
 			if st == 200 {
 				clock.MarkHot()
 			}
