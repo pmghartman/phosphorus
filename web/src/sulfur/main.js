@@ -5,6 +5,15 @@
 import { standalone, sidecarInfo, bootLocal, bootMesh, meshMe, el, dkGlyph } from './host.js';
 import { ideStart } from './workbench.js';
 
+// WebKitGTK (the Linux app's window) reports Shift+Tab as key "Unidentified", GTK's
+// ISO_Left_Tab: named Tab again before any handler reads it, so it outdents and accepts a
+// completion as it does everywhere else
+for (const type of ['keydown', 'keyup']) {
+  window.addEventListener(type, (e) => {
+    if (e.key === 'Unidentified' && e.code === 'Tab') Object.defineProperty(e, 'key', { value: 'Tab', configurable: true });
+  }, true);
+}
+
 // the desktop app's window, from its Go shell; none in a browser
 const appWin = window.sulfurApp || null;
 standalone.app = !!appWin;
