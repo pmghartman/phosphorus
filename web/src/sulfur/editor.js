@@ -1729,6 +1729,11 @@ function codeEditor(view, file, btn, id, opts = {}) {
   let seenSel = [-1, -1];
   ta.addEventListener('focus', () => { seenSel = [ta.selectionStart, ta.selectionEnd]; });
   // (a select event the same: the textarea's window moving fires one for a selection unchanged)
+  // the line highlight, brackets and status moved with the caret the frame it moves: a press
+  // places it (click comes only on release), and a drag or the keyboard moves it on
+  ta.addEventListener('mousedown', () => tell());
+  const selectionMoved = () => { if (document.activeElement === ta) tell(); };
+  document.addEventListener('selectionchange', selectionMoved);
   for (const ev of ['keyup', 'click', 'select']) ta.addEventListener(ev, () => {
     const s = ta.selectionStart, e = ta.selectionEnd;
     if (ev === 'click' || s !== seenSel[0] || e !== seenSel[1]) caretInView();
@@ -1891,6 +1896,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
     previewing: () => rendered,
     close: () => {
       closed = true;
+      document.removeEventListener('selectionchange', selectionMoved);
       definitionLinks?.dispose();
       guideResize.disconnect(); hoverResize.disconnect(); cancelAnimationFrame(guideFrame);
       hlAbort?.abort();
