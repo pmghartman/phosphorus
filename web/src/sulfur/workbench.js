@@ -572,7 +572,8 @@ export function ideStart(w, open) {
   I.offs.push(() => removeEventListener('message', onWebviewMessage));
   if (open) openRequest(open);
   // the window up front: the focus in it, so its keys answer at once
-  requestAnimationFrame(() => { if (I && w.node.classList.contains('focused') && !I.root.contains(document.activeElement)) focusActive(); });
+  // (Sulfur on its own is always the window up front)
+  requestAnimationFrame(() => { if (I && (standalone || w.node.classList.contains('focused')) && !I.root.contains(document.activeElement)) focusActive(); });
   return {
     focus: () => focusActive(),
     open: (o) => openRequest(o),
@@ -749,6 +750,13 @@ function build() {
   // narrow: a tap on the editors or the panel puts the side bars away, as a phone's drawer goes
   center.addEventListener('pointerdown', () => drawersAway());
   root.addEventListener('keydown', onKey, true);
+  // Sulfur on its own is the whole page: a key pressed with nothing focused (the page just
+  // loaded, a dialog closed onto the body) is the workbench's too
+  if (standalone) {
+    const loose = (e) => { if (e.target === document.body || e.target === document.documentElement) onKey(e); };
+    document.addEventListener('keydown', loose, true);
+    I.offs.push(() => document.removeEventListener('keydown', loose, true));
+  }
   // Ctrl (Cmd on a Mac) let go: a Ctrl+Tab walk ends where it stands
   root.addEventListener('keyup', (e) => {
     if (!I?.mruWalk || (e.key !== 'Control' && e.key !== 'Meta')) return;
@@ -7140,6 +7148,8 @@ function findInFiles() {
     const sel = t.ed.text().slice(s, e);
     if (sel && !sel.includes('\n')) { I.search.q.value = sel; I.search.q.dispatchEvent(new Event('input')); }
   }
+  // what's in the box selected, as VS Code leaves it: typing replaces it
+  I.search.q.select();
 }
 
 // --- run and hosts: where terminals and runs go, and what runs what -------------------------
@@ -7759,7 +7769,9 @@ function completionModelSetting(row, about, value) {
   model.addEventListener('change', () => setSetting('editor.inlineSuggest.model', model.value));
   const refresh = Object.assign(el('button', 'ide-link', I.completionLoading ? 'Loading models…' : 'Refresh machines and models'), { type: 'button', disabled: !!I.completionLoading });
   refresh.addEventListener('click', loadCompletionModels);
-  row.append(el('label', '', 'Machine'), machine, el('label', '', 'Model'), model, refresh);
+  const pick = el('div', 'ide-setting-pick');
+  pick.append(el('label', '', 'Machine'), machine, el('label', '', 'Model'), model);
+  row.append(pick, refresh);
   if (I.completionModelError) row.append(el('p', 'ide-page-note', I.completionModelError));
 }
 

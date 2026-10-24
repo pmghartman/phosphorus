@@ -1414,12 +1414,18 @@ function codeEditor(view, file, btn, id, opts = {}) {
     return ' '.repeat(Number.isFinite(w) && w <= 8 && w > 0 ? (w >= 4 ? 4 : w) : 2);
   }
   // All edits go through the same history, including synthetic and agent edits.
+  // A short edit is the browser's own (execCommand: its events, the caret shown); a long one is
+  // put in directly, as the browser's editing takes time quadratic in the lines it inserts (an
+  // indent of 100KB took it 3s, of 540KB two and a half minutes; setRangeText 8ms)
+  const NATIVE_EDIT = 4096;
   function typeIn(from, to, text, selFrom, selTo) {
     beforeSelection = [ta.selectionStart, ta.selectionEnd];
     history.boundary();
-    ta.setSelectionRange(from, to);
-    const ok = text ? document.execCommand('insertText', false, text) : document.execCommand('delete');
-    if (!ok) { ta.setRangeText(text, from, to, 'end'); ta.dispatchEvent(new Event('input')); }
+    const native = text.length + (to - from) <= NATIVE_EDIT;
+    // the range in the textarea's window, however long, for the browser's own edit of it
+    if (native) { if (tw) tw.grab(from, to); else ta.setSelectionRange(from, to); }
+    const ok = native && (text ? document.execCommand('insertText', false, text) : document.execCommand('delete'));
+    if (!ok) { ta.setRangeText(text, from, to, 'end'); wantCaret = true; ta.dispatchEvent(new Event('input')); }
     if (selFrom !== undefined) ta.setSelectionRange(selFrom, selTo ?? selFrom);
   }
   const lineStart = (p) => ta.value.lastIndexOf('\n', p - 1) + 1;
