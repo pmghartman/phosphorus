@@ -982,6 +982,8 @@ function showSide(id, on = true, focus = false) {
   I.st.side.view = id;
   I.st.side.hidden = !on;
   for (const [k, v] of I.sideViews) {
+    // where a view leaving was scrolled, kept for its return: a hidden one forgets
+    if ((k !== id || !on) && !v.body.hidden && v.body.clientHeight) v.top = v.body.scrollTop;
     v.body.hidden = k !== id;
     I.actBtns.get(k).classList.toggle('on', k === id && on);
     I.actBtns.get(k).setAttribute('aria-selected', String(k === id && on));
@@ -1424,6 +1426,11 @@ function paintTree() {
   I.ex.rows = rows.filter((r) => r.path);
   I.ex.changes = changes;
   I.ex.drawn = null;
+  // a box just opened scrolled to, so only the rows around it are made
+  if (edit?.focus) {
+    const i = rows.findIndex((x) => x.edit), h = I.ex.rowH || 22, y = i * h;
+    if (i >= 0 && (y < tree.scrollTop || y + h > tree.scrollTop + tree.clientHeight)) tree.scrollTop = Math.max(0, y - (tree.clientHeight >> 1));
+  }
   renderTree();
   if (edit?.input && document.activeElement !== edit.input && edit.focus) { edit.focus = false; edit.input.focus(); }
   saveExpanded();
@@ -6636,6 +6643,9 @@ function scmRel(p) {
   return `${I.st.root}/${p.slice(pre.length)}`;
 }
 const top = (p) => `:(top)${p}`;
+// git's args taking paths out of the index: before the first commit there's no HEAD to
+// restore them from, so they're dropped from it instead (forced: --cached never touches the files)
+const unstageArgs = (paths) => (I.scm?.unborn ? ['rm', '--cached', '-r', '-f', '-q', '--', ...paths] : ['restore', '--staged', '--', ...paths]);
 
 function buildScm() {
   const v = I.sideViews.get('scm');
@@ -6643,8 +6653,15 @@ function buildScm() {
     btn('', 'refresh', 'Refresh', () => scmRefresh(true)),
     btn('', 'more', 'More Actions…', (e) => menu(e.currentTarget, scmMenu(), { side: 'left' })),
   ];
-  v.onShow = () => scmRefresh();
-  v.focus = () => v.body.querySelector('textarea')?.focus();
+  // where its list was scrolled kept, a hidden view forgetting it
+  v.onShow = () => {
+    if (v.stale) paintScm();
+    else if (v.top != null) { v.body.scrollTop = v.top; v.top = null; }
+    scmRefresh();
+  };
+  v.focus = () => v.body.querySelector('textarea')?.focus({ preventScroll: true });
+  v.body.addEventListener('scroll', renderScmSoon, { passive: true });
+  new ResizeObserver(renderScmSoon).observe(v.body);
   I.scm = null;
 }
 
@@ -6712,14 +6729,19 @@ function paintScm() {
   const n = (s?.staged.length || 0) + (s?.changes.length || 0);
   btnEl?.querySelector('.ide-act-badge')?.remove();
   if (n) btnEl?.append(el('span', 'ide-act-badge', n > 99 ? '99+' : String(n)));
-  if (v.body.hidden && v.body.childElementCount) return;
+  // a hidden view painted when it shows: a repository of thousands of changes is never drawn unseen
+  if (v.body.hidden) { v.stale = true; return; }
+  v.stale = false;
   const body = v.body;
+  const keepTop = v.top ?? body.scrollTop;
+  v.top = null;
   body.classList.add('ide-scm-body');
   const previousMsg = body.querySelector('.ide-scm-msg');
   const keepMsg = previousMsg?.value ?? I.scmMsg ?? '';
   const messageSelection = previousMsg === document.activeElement ? [previousMsg.selectionStart, previousMsg.selectionEnd] : null;
   if (previousMsg?.offsetHeight) I.scmMsgHeight = previousMsg.offsetHeight;
   body.replaceChildren();
+  I.scmLists = [];
   if (!s) { body.append(el('p', 'ide-empty-note', 'Looking for a repository…')); return; }
   if (!s.top) {
     const box = el('div', 'ide-scm-empty');
@@ -6774,19 +6796,58 @@ function paintScm() {
     const head = el('div', 'ide-sec-head static ide-scm-head');
     head.append(el('span', 'ide-sec-title', title), el('span', 'ide-badge', String(list.length)));
     const acts = el('span', 'ide-actions');
-    if (staged) acts.append(btn('', 'minus', 'Unstage All Changes', () => scmOp(['restore', '--staged', '--', top('.')], 'Unstaging')));
+    if (staged) acts.append(btn('', 'minus', 'Unstage All Changes', () => scmOp(unstageArgs([top('.')]), 'Unstaging')));
     else {
       acts.append(btn('', 'undo', 'Discard All Changes', () => scmDiscard(list)));
       acts.append(btn('', 'plus', 'Stage All Changes', () => scmOp(['add', '-A', '--', top('.')], 'Staging')));
     }
     head.append(acts);
-    body.append(head);
-    for (const x of list) body.append(scmRow(x, staged));
+    const rows = el('div', 'ide-scm-rows');
+    rows.style.height = `${list.length * (I.scmRowH || 22)}px`;
+    body.append(head, rows);
+    I.scmLists.push({ rows, list, staged, drawn: new Map() });
   };
   section('Staged Changes', s.staged, true);
   section('Changes', s.changes, false);
   if (!s.staged.length && !s.changes.length) body.append(el('p', 'ide-empty-note', `Nothing to commit on ${s.branch}: the working tree is clean.`));
+  body.scrollTop = keepTop;
+  renderScm();
 }
+
+// Only the rows in view (and a screen's worth either side) made, as the explorer's: a
+// checkout of thousands of new files is a list of thousands, each section a box of their
+// full height with its rows placed in it
+const SCM_SPARE = 30;
+function renderScm() {
+  const v = I?.sideViews.get('scm');
+  if (!v || v.body.hidden || !I.scmLists?.length) return;
+  const body = v.body;
+  const h = I.scmRowH || 22;
+  const top = body.scrollTop, bottom = top + (body.clientHeight || 800);
+  for (const L of I.scmLists) {
+    L.rows.style.height = `${L.list.length * h}px`;
+    const at = L.rows.offsetTop;
+    const first = Math.max(0, Math.floor((top - at) / h) - SCM_SPARE);
+    const last = Math.min(L.list.length, Math.ceil((bottom - at) / h) + SCM_SPARE);
+    const drawn = new Map();
+    for (let i = first; i < last; i++) {
+      const x = L.list[i];
+      let r = L.drawn.get(x);
+      if (!r) { r = scmRow(x, L.staged); r.style.top = `${i * h}px`; L.rows.append(r); }
+      drawn.set(x, r);
+    }
+    // a focused row kept, wherever it's scrolled: its keys still reach it
+    for (const [x, r] of L.drawn) if (!drawn.has(x)) { if (r.contains(document.activeElement)) drawn.set(x, r); else r.remove(); }
+    L.drawn = drawn;
+    // a row's height read once, from the first made
+    if (!I.scmRowH && drawn.size) {
+      const rh = drawn.values().next().value.offsetHeight;
+      if (rh) { I.scmRowH = rh; if (rh !== h) { for (const M of I.scmLists) { for (const r of M.drawn.values()) r.remove(); M.drawn = new Map(); } renderScm(); return; } }
+    }
+  }
+}
+let scmScrollFrame = 0;
+const renderScmSoon = () => { scmScrollFrame ||= requestAnimationFrame(() => { scmScrollFrame = 0; renderScm(); }); };
 
 function scmRow(x, staged) {
   const rel = scmRel(x.path);
@@ -6794,7 +6855,7 @@ function scmRow(x, staged) {
   r.append(fileIcon(x.path), el('span', 'ide-scm-name', baseName(x.path)), el('span', 'ide-scm-dir', filesParent(x.path)));
   const acts = el('span', 'ide-actions');
   if (rel && !x.deleted) acts.append(btn('', 'file', 'Open File', (e) => { e.stopPropagation(); openFile(rel, { preview: false }); }));
-  if (staged) acts.append(btn('', 'minus', 'Unstage Changes', (e) => { e.stopPropagation(); scmOp(['restore', '--staged', '--', top(x.path)], 'Unstaging'); }));
+  if (staged) acts.append(btn('', 'minus', 'Unstage Changes', (e) => { e.stopPropagation(); scmOp(unstageArgs([top(x.path)]), 'Unstaging'); }));
   else {
     acts.append(btn('', 'undo', 'Discard Changes', (e) => { e.stopPropagation(); scmDiscard([x]); }));
     acts.append(btn('', 'plus', 'Stage Changes', (e) => { e.stopPropagation(); scmOp(['add', '--', top(x.path)], 'Staging'); }));
@@ -7750,7 +7811,7 @@ function applySettings() {
   // and the highlighted text under it, the two drifting apart a pixel every 64 lines
   r.style.setProperty('--ide-code-lh', `${Math.max(1, Math.round(Number(setting('editor.fontSize')) * 1.55)) || 20}px`);
   r.style.setProperty('--ide-tab-size', String(formattingOptions().tabSize));
-  for (const t of I.tabs) if (t.ed) t.ed.show();
+  for (const t of I.tabs) if (t.ed) t.ed.show(true);
   languages.cancelCompletions();
   paintLayout();
   paintStatus();

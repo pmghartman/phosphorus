@@ -409,7 +409,8 @@ function codeEditor(view, file, btn, id, opts = {}) {
   function geom() {
     if (geomCache && geomEpoch === fontEpoch) return geomCache;
     const cs = getComputedStyle(ta);
-    geomEpoch = fontEpoch;
+    // not kept until the editor's in the page: a detached one's style is empty
+    geomEpoch = ta.isConnected ? fontEpoch : -1;
     return (geomCache = {
       // the top padding the highlight layer's: the textarea's own also carries its window's offset
       lh: lineHeightIn(ta), cw: chWidthIn(ta), top: parseFloat(getComputedStyle(pre).paddingTop) || 0, left: parseFloat(cs.paddingLeft) || 0,
@@ -1792,7 +1793,9 @@ function codeEditor(view, file, btn, id, opts = {}) {
     // focus never scrolls: the browser would bring the textarea's caret into view, undoing
     // the place a tab coming back was put; caretInView scrolls where a move asks for it
     focus: () => ta.focus({ preventScroll: true }),
-    show: () => { regeom(); overviewColors = null; rulersKey = ''; guideSnapshot = null; redraw(true); },
+    // shown again (its tab's), or restyled (a setting): only a restyle reads the geometry again,
+    // a read of computed style forcing the whole page's style to be worked out mid-switch
+    show: (restyle = false) => { if (restyle || !geomCache) regeom(); overviewColors = null; rulersKey = ''; guideSnapshot = null; redraw(true); },
     text: () => ta.value,
     setInlineSuggestion,
     info,

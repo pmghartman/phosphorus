@@ -13,6 +13,13 @@ test('Git porcelain paths retain spaces/newlines and rename sources do not becom
   assert.equal(status.staged.length + status.changes.length, 5);
 });
 
+test('a repository with no commits yet is known by its header, its branch still read', () => {
+  const fresh = parseGitStatus('## No commits yet on main\0A  a.txt\0?? b.txt\0');
+  assert.equal(fresh.unborn, true); assert.equal(fresh.branch, 'main');
+  assert.equal(fresh.staged[0].path, 'a.txt');
+  assert.equal(parseGitStatus('## main...origin/main\0').unborn, false);
+});
+
 test('Explorer decorations combine staging states, aggregate folders and prioritize conflicts', () => {
   const parsed = parseGitStatus('## main\0AM src/Player.cs\0?? src/New.cs\0 D src/Deleted.cs\0UU src/Conflict.cs\0');
   const changes = explorerChanges({ ...parsed, top: '/repo' }, 'tester/game');
