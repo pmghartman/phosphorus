@@ -12,7 +12,7 @@ export const SCM_STATES = {
 // Porcelain -z paths are raw (including spaces and newlines); a rename/copy's
 // destination comes first and its source occupies the next NUL-delimited field.
 export function parseGitStatus(output) {
-  const state = { branch: '', upstream: '', ahead: 0, behind: 0, staged: [], changes: [] };
+  const state = { branch: '', upstream: '', ahead: 0, behind: 0, unborn: false, staged: [], changes: [] };
   const parts = output.split('\0');
   for (let i = 0; i < parts.length; i++) {
     const entry = parts[i];
@@ -21,6 +21,8 @@ export function parseGitStatus(output) {
       const header = entry.slice(3);
       const match = header.match(/^(?:(?:No commits yet on|Initial commit on) )?([^.\s]+(?:\.(?!\.)[^.\s]*)*)(?:\.\.\.(\S+))?(?: \[(.*)\])?/);
       state.branch = match?.[1] || header;
+      // a repository with no commits yet: nothing to restore the index from
+      state.unborn = /^(No commits yet on|Initial commit on) /.test(header);
       state.upstream = match?.[2] || '';
       state.ahead = Number((match?.[3] || '').match(/ahead (\d+)/)?.[1] || 0);
       state.behind = Number((match?.[3] || '').match(/behind (\d+)/)?.[1] || 0);
