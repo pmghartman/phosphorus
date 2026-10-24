@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { completionPrompt, completionText, streamCompletion, createInlineCompletions, completionModels, completionModel, autoCompletionInput } from '../src/sulfur/inline-completion.js';
 import { editorFixture, settle } from './helpers/editor-fixture.mjs';
 
-test('the fixed Chimp harness bounds context and output without tools or conversation history', () => {
+test('the fixed inline harness bounds context and output without tools or conversation history', () => {
   const p = completionPrompt({ path: 'a.js', language: 'javascript', text: 'x'.repeat(30000), caret: 15000, related: Array(8).fill({ path: 'b.js', text: 'y'.repeat(9000) }), symbols: Array(50).fill({ label: 'run', detail: 'z'.repeat(900) }) });
-  assert.equal(p.model, 'chimp'); assert.equal(p.max_tokens, 512); assert.equal(p.stream, false);
+  assert.equal(p.model, 'agent-inline'); assert.equal(p.max_tokens, 512); assert.equal(p.stream, false);
   assert.equal(p.tools, undefined); assert.equal(p.messages.length, 1);
   const context = JSON.parse(p.messages[0].content);
   assert.equal(context.prefix.length, 6000); assert.equal(context.suffix.length, 2000);
@@ -43,7 +43,7 @@ function setup(t, options = {}) {
   const requests = [], notices = [], logs = [];
   let suggesting = !!options.suggesting;
   let isEnabled = true;
-  let selectedModel = 'chimp';
+  let selectedModel = 'agent-inline';
   globalThis.fetch = (url, init) => new Promise((resolve, reject) => {
     requests.push({ url, init, resolve });
     init.signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true });
@@ -105,7 +105,7 @@ test('machine/model selection pins the gateway target and keeps model caches sep
   assert.equal(JSON.parse(f.requests[1].init.body).model, 'phosphorus/d6');
   f.reply('2;'); await b;
   assert.equal(f.previews.at(-1).insert, '2;');
-  f.setModel('chimp'); await f.engine.trigger(f.tab, true);
+  f.setModel('agent-inline'); await f.engine.trigger(f.tab, true);
   assert.equal(f.requests.length, 2); assert.equal(f.previews.at(-1).insert, '1;');
   assert.deepEqual(completionModels({models:[{host:'d6',file:'C:\\models\\coder.gguf',ready:true}]}), [{id:'phosphorus/d6',host:'d6',label:'coder.gguf',ready:true}]);
   assert.throws(() => completionModel('unknown'), /Settings/);

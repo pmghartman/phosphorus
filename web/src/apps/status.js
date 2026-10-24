@@ -1,14 +1,11 @@
 import {
-  MODEL_ROLES,
   cssVar,
   deskApps,
   el,
   esc,
   fold,
   humanSize,
-  jsonPost,
   modalOpen,
-  modelRoles,
   name,
   openMenu,
   pingClass,
@@ -211,9 +208,9 @@ function stCard(name) {
   card.dataset.host = name;
   card.innerHTML = '<div class="st-card-head"></div><div class="st-sum"><canvas class="st-graph st-sum-cpu"></canvas>'
     + '<div class="st-sum-rows"></div><div class="st-row st-sum-netrow"><span class="st-key">net</span><span></span>'
-    + '<div class="st-sum-net"><canvas class="st-graph"></canvas><canvas class="st-graph"></canvas></div></div></div><div class="st-grid"></div>';
+    + '<div class="st-sum-net"><canvas class="st-graph"></canvas><canvas class="st-graph"></canvas></div></div></div><div class="st-chip" hidden></div><div class="st-grid"></div>';
   const grid = card.querySelector('.st-grid');
-  const parts = { head: card.querySelector('.st-card-head') };
+  const parts = { head: card.querySelector('.st-card-head'), chip: card.querySelector('.st-chip'), chipHtml: '' };
   const [cpuGraph, rows, netRow] = card.querySelector('.st-sum').children;
   parts.sum = rows;
   parts.sumCpu = cpuGraph;
@@ -244,8 +241,6 @@ const hostServices = (name) => (stNet?.routes || []).filter((r) => r.host === na
 const stModel = () => stNet?.model || null;
 const stModels = () => stModel()?.models || [];
 const modelOf = (host) => stModels().find((x) => x.host === host) || null;
-const rolesOf = (m) => (m && stModel() ? modelRoles(m, stModel()) : []);
-const roleMark = (m) => (rolesOf(m).length ? rolesOf(m).join(' + ') : 'model');
 
 // loaded, loading, downloading with its share done, else not loaded
 function modelPhase(m) {
@@ -269,8 +264,7 @@ function headLine(name, h, open) {
     open && s.uptime && `up ${uptime(s.uptime)}`,
     typeof rtt === 'number' && `<span class="mesh-stat-ping ${pingClass(rtt)}">${rtt}ms</span>`,
     open && git?.role && `<span class="st-git">git ${esc(git.role)}</span>`,
-    // a host running llama-server, marked with its role on its tile as well
-    modelOf(name) && `<span class="st-model-mark">${roleMark(modelOf(name))}</span>`,
+    modelOf(name) && '<span class="st-model-mark">model</span>',
     open && svc.length && plural(svc.length, 'service'),
     // a tile's whole head the click, only an open card showing its fold
     open && '<span class="st-dim">▴</span>',
@@ -324,7 +318,6 @@ function sumHist(live, k, weight = () => 1) {
 
 function drawMeshSum(names) {
   const live = names.map((n) => stHosts.get(n)).filter((h) => h?.s?.cpu && Date.now() - h.at <= ST_STALE_MS);
-  drawModelSum();
   stMeshEl.hidden = !live.length;
   if (!live.length) return;
   const sum = (f) => live.reduce((a, h) => a + (f(h.s) || 0), 0);
@@ -408,167 +401,34 @@ function ctxCells(m) {
   return { cells: cells.join(''), parts, used };
 }
 
-// one model's window as its last ask left it, nothing while it isn't loaded;
-// beside the chat: the grid over its legend, the cpu and gpu to their right
-function contextHtml(m) {
-  if (!(m && m.ready && m.ctx)) return '';
-  const { cells, parts, used } = ctxCells(m);
-
-  const line = (cls, label, n) => `<div class="st-row"><i class="${cls}"></i> ${label.padEnd(14)}`
-    + `<span class="st-dim">${kTok(n).padStart(5)} tokens (${tenth(n / m.ctx)})</span></div>`;
-  const legend = [
-    `<div class="st-row">${kTok(used)}/${kTok(m.ctx)} tokens (${pct(used / m.ctx)})</div>`,
-    ...parts.map(([k, label, n]) => line(`ctx-${k} full`, label, n)),
-    line('', 'free', m.ctx - used),
-  ].join('');
-  return `<div class="st-ctx"><div class="st-ctx-grid">${cells}</div><div class="st-ctx-legend">${legend}</div></div>`;
-}
-
-// the model host's cpu and, where one reports load, gpu, as the status tab's boxes
-// (the chat tab's card only)
-const loadKinds = (host) => ['cpu', ...(stHosts.get(host)?.gpu ? ['gpu'] : [])];
-// the status tab's cpu graph for both, 0 to 100% by heat, a spin up a climb
-function drawLoads(el) {
-  for (const c of el.querySelectorAll('canvas[data-k]')) {
-    const h = stHosts.get(c.dataset.host);
-    const v = h?.hist[c.dataset.k] || [];
-    // the corner card's small graphs at triple resolution
-    const mini = c.closest('.st-mini');
-    dotGraph(c, v, 100, heatVar, false, mini ? 3 : 1);
-    const gpus = h?.s?.gpus || [];
-    const vramU = gpus.reduce((a, g) => a + (g.memUsed || 0), 0);
-    const vramT = gpus.reduce((a, g) => a + (g.memTotal || 0), 0);
-    // the corner card's: the percentage alone
-    const extra = mini ? '' : c.dataset.k === 'cpu' ? h?.s?.cpu && `<span class="st-dim"> load </span>${h.s.cpu.load[0].toFixed(2)}`
-      : vramT && `<span class="st-dim"> vram </span>${humanSize(vramU)}/${humanSize(vramT)}`;
-    c.nextElementSibling.innerHTML = v.length
-      ? `<span class="${heat(v.at(-1) / 100)}">${v.at(-1).toFixed(1)}%</span>${extra || ''}` : '<span class="st-dim">waiting for stats</span>';
+// a model host's chip on its tile: phase and speed, its file, the context
+// window as its last ask left it, the agents asking it
+function chipHtml(m) {
+  const [cls, phase] = modelPhase(m);
+  const head = dotJoin([`<span class="${cls}">${esc(phase)}</span>`, m.ready && m.use?.tps && `<b>${m.use.tps}</b> <span class="st-dim">tok/s</span>`]);
+  const agents = m.agents?.length ? m.agents.map((a) => `<span class="st-chip-a">${esc(a)}</span>`).join('') : '<span class="st-dim">no agents</span>';
+  let ctx = '';
+  if (m.ready && m.ctx) {
+    const { cells, parts, used } = ctxCells(m);
+    // counts by colour alone, the names on hover
+    const legend = [
+      `<span>${kTok(used)}/${kTok(m.ctx)} <span class="st-dim">${pct(used / m.ctx)}</span></span>`,
+      ...parts.map(([k, label, n]) => `<span title="${label}"><i class="ctx-${k} full"></i>${kTok(n)}</span>`),
+      `<span title="free"><i></i>${kTok(m.ctx - used)}</span>`,
+    ].join(' ');
+    ctx = `<div class="st-ctx st-chip-ctx"><div class="st-ctx-grid">${cells}</div><div class="st-chip-key">${legend}</div></div>`;
   }
+  const file = m.file ? `<div class="st-chip-file st-dim" title="${esc(m.file)}">${esc(String(m.file).replace(/\\/g, '/').split('/').pop())}</div>` : '';
+  const clear = m.ready ? `<button type="button" class="st-clear" data-host="${esc(m.host)}" title="erase ${esc(m.host)}'s context windows">clear context</button>` : '';
+  return `<div class="st-chip-head"><span class="st-chip-t">model</span>${head}</div>${file}${ctx}<div class="st-chip-foot"><div class="st-chip-agents">${agents}</div>${clear}</div>`;
 }
 
-// ---- model summary ---------------------------------------------------------
-// the chimp and the orangutan, each its state, host, file and speed over its own
-// context window, one block when one model holds both roles
-
-const stModelEl = document.getElementById('st-model');
-const stModelRoles = stModelEl.querySelector('.st-model-roles');
-let stModelHtml = '';
-
-function drawModelSum() {
-  const blocks = [];
-  for (const role of MODEL_ROLES) {
-    // off the mesh: its id alone
-    const ext = stModel()?.roles?.[role]?.host === '' ? stModel().roles[role].model : '';
-    const m = ext || stModels().find((x) => rolesOf(x).includes(role));
-    if (!m) continue;
-    const same = blocks.find((b) => b.m === m);
-    if (same) same.roles.push(role);
-    else blocks.push({ m, roles: [role] });
-  }
-  // up even empty, the place a role's model is picked
-  stModelEl.hidden = false;
-  drawModelPick();
-  const corner = stModelEl.classList.contains('mini');
-  const html = !blocks.length ? '<div class="st-dim">no model answering</div>' : blocks.map(({ m, roles }) => {
-    const who = roles.join(' + ');
-    if (typeof m === 'string') return `<div class="st-model-role">${wrapRow(who, dotJoin(['<span class="st-lo">api</span>', esc(m)]))}</div>`;
-    const [cls, phase] = modelPhase(m);
-    return `<div class="st-model-role">${wrapRow(who, dotJoin([`<span class="${cls}">${esc(phase)}</span>`,
-      esc(m.host), m.ready && m.use?.tps && `${m.use.tps} tok/s`]))}`
-      + (corner ? miniHtml(m) : `${m.file ? wrapRow('file', `<span class="st-dim">${esc(m.file)}</span>`) : ''}${contextHtml(m)}`)
-      + (m.ready ? `<button type="button" class="st-clear" data-role="${roles[0]}" title="erase ${esc(m.host)}'s context windows">clear context</button>` : '') + '</div>';
-  }).join('');
-  // unchanged, untouched: no reflow a tick
-  if (html !== stModelHtml) { stModelHtml = html; stModelRoles.innerHTML = html; }
-  drawLoads(stModelRoles);
+// the chip drawn only when its html changed, no reflow a tick
+function drawChip(p, m) {
+  p.chip.hidden = !m;
+  const html = m ? chipHtml(m) : '';
+  if (html !== p.chipHtml) { p.chipHtml = html; p.chip.innerHTML = html; }
 }
-
-// the corner's card, the chat tab's shrunk: the grid beside small load graphs,
-// its legend one line under them
-function miniHtml(m) {
-  if (!(m.ready && m.ctx)) return '';
-  const { cells, parts, used } = ctxCells(m);
-  const loads = loadKinds(m.host).map((k) => `<div class="st-mini-k"><span class="st-dim">${k}</span>`
-    + `<canvas class="st-graph" data-host="${esc(m.host)}" data-k="${k}"></canvas><div class="st-row"></div></div>`).join('');
-  // counts by colour alone, the names on hover
-  const legend = [
-    `<span>${kTok(used)}/${kTok(m.ctx)} <span class="st-dim">${pct(used / m.ctx)}</span></span>`,
-    ...parts.map(([k, label, n]) => `<span title="${label}"><i class="ctx-${k} full"></i>${kTok(n)}</span>`),
-    `<span title="free"><i></i>${kTok(m.ctx - used)}</span>`,
-  ].join(' ');
-  return `<div class="st-ctx st-mini"><div class="st-ctx-grid">${cells}</div><div class="st-mini-load">${loads}</div>`
-    + `<div class="st-mini-key">${legend}</div></div>`;
-}
-
-// ---- model picker ------------------------------------------------------------
-// which mesh host's model each role is, in the full card only
-
-const stModelPick = stModelEl.querySelector('.st-model-pick');
-let pickSig = '';
-let pickError = '';
-
-// every mesh host running a model, a role's choice kept listed though its host is gone
-function modelChoices(model) {
-  const out = stModels().map((m) => ({ id: `phosphorus/${m.host}`, name: m.file ? `${m.host} · ${m.file}` : m.host }));
-  for (const r of MODEL_ROLES) {
-    const id = model.roles?.[r]?.chosen;
-    if (id && !out.some((m) => m.id === id)) out.push({ id, name: id.slice(id.indexOf('/') + 1) });
-  }
-  return out;
-}
-
-// a long model name cut short, whole on hover, so no pick widens the card
-const MODEL_LABEL_MAX = 28;
-const clipLabel = (t) => (t.length > MODEL_LABEL_MAX ? `${t.slice(0, MODEL_LABEL_MAX - 1)}…` : t);
-const option = (value, label, on) => `<option value="${esc(value)}"${label.length > MODEL_LABEL_MAX ? ` title="${esc(label)}"` : ''}${on ? ' selected' : ''}>${esc(clipLabel(label))}</option>`;
-
-function drawModelPick() {
-  const model = stModel();
-  stModelPick.hidden = stModelEl.classList.contains('mini') || !model;
-  if (stModelPick.hidden) return;
-  // never redrawn under a picking hand
-  if (stModelPick.contains(document.activeElement)) return;
-  const choices = modelChoices(model);
-  const sig = JSON.stringify([model.roles, choices, pickError]);
-  if (sig === pickSig) return;
-  pickSig = sig;
-  const roles = MODEL_ROLES.map((r) => {
-    const x = model.roles?.[r] || {};
-    const fallback = `mesh default${x.chosen ? '' : x.model ? `: ${x.model}` : ', none loaded'}`;
-    return `<div class="st-pick-row"><span class="st-key">${r}</span><select class="st-pick-in" data-role="${r}" aria-label="${r} model">`
-      + option('', fallback, !x.chosen)
-      + choices.map((m) => option(m.id, m.name, m.id === x.chosen)).join('')
-      + '</select></div>'
-      + (x.ready || !x.why ? '' : `<div class="st-pick-row st-pick-why">${esc(x.why)}</div>`);
-  }).join('');
-  stModelPick.innerHTML = roles + (pickError ? `<div class="st-pick-row st-pick-err">${esc(pickError)}</div>` : '');
-}
-
-// shown at once on success, the next poll bringing the mesh's own
-async function pickPost(url, body, shown) {
-  try {
-    const r = await fetch(url, jsonPost(body));
-    const out = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(out.error || `status ${r.status}`);
-    pickError = '';
-    if (stModel()) shown(stModel());
-    return true;
-  } catch (err) {
-    pickError = err.message;
-    return false;
-  } finally {
-    pickSig = '';
-    drawModelPick();
-  }
-}
-
-// a role's model set once picked
-stModelPick.addEventListener('change', (e) => {
-  const role = e.target.dataset?.role;
-  const model = e.target.value;
-  if (role) pickPost('/api/model/role', { role, model }, (m) => { if (m.roles?.[role]) m.roles[role].chosen = model; });
-});
-stModelPick.addEventListener('focusout', () => setTimeout(() => { if (!stModelPick.contains(document.activeElement)) drawModelPick(); }));
 
 // tile widths in rem: the narrowest still legible, the widest before another column
 const ST_TILE_MIN = 15;
@@ -581,7 +441,7 @@ const ST_GRAPH_MAX = 160;
 let stFit = '';
 function fitTiles(names) {
   const view = stHostsEl.parentElement;
-  const tile = stHostsEl.querySelector('.st-card:not(.open):not(.waiting)');
+  const tile = stHostsEl.querySelector('.st-card:not(.open):not(.waiting):not(.has-model)') || stHostsEl.querySelector('.st-card:not(.open):not(.waiting)');
   if (!tile) return;
   // a host open: the page scrolling anyway, the rest kept compact
   if (stOpenHost) {
@@ -595,7 +455,7 @@ function fitTiles(names) {
   const rowGap = parseFloat(css.rowGap) || 0;
   const vs = getComputedStyle(view);
   const avail = view.clientHeight - parseFloat(vs.paddingTop) - parseFloat(vs.paddingBottom)
-    - (stMeshEl.hidden && stModelEl.hidden ? 0 : stTopEl.offsetHeight + parseFloat(getComputedStyle(stTopEl).marginBottom));
+    - (stMeshEl.hidden ? 0 : stTopEl.offsetHeight + parseFloat(getComputedStyle(stTopEl).marginBottom));
   const width = stHostsEl.clientWidth;
   const graph = tile.querySelector('.st-sum-cpu');
   const base = tile.offsetHeight - graph.offsetHeight;
@@ -612,6 +472,8 @@ function fitTiles(names) {
   if (fit === stFit) return;
   stFit = fit;
   stHostsEl.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+  // a model host's tile twice as wide where three columns or more fit
+  stHostsEl.classList.toggle('wide-chips', cols >= 3);
   stHostsEl.style.setProperty('--st-sum-graph', `${h}px`);
   statusDraw();
 }
@@ -739,6 +601,9 @@ function statusRender() {
     const open = name === stOpenHost;
     card.classList.toggle('open', open);
     parts.head.innerHTML = headLine(name, h, open);
+    const model = modelOf(name);
+    card.classList.toggle('has-model', !!model);
+    drawChip(parts, model);
     card.classList.toggle('stale', !!h.s?.cpu && Date.now() - h.at > ST_STALE_MS);
     card.classList.toggle('waiting', !h.s?.cpu);
     if (!h.s?.cpu) {

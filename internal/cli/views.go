@@ -301,7 +301,8 @@ func ago(sec float64) string {
 	return fmt.Sprintf("%dd", s/86400)
 }
 
-// the git card's transfer bar: five cells a band, green to 8s, yellow to 15s, red to 60s
+// the git card's age since the master's stamp was last matched (data copied only on change):
+// five cells a band, green to 8s, yellow to 15s, red to 60s
 func lagMeter(age float64) string {
 	out := ""
 	empty := 0
@@ -519,13 +520,11 @@ func gitView() view {
 		keys: []key{k("h toggle host", "primary"), kif(target != nil && truthy(target["reachable"]) && str(target["role"]) != "master", "p make master")}}
 }
 
-// a model host's roles, as each now answers
-func rolesOf(x, model J) []string {
+// the agents asking a model host's model, as the frontend assigns them
+func agentsOf(x J) []string {
 	out := []string{}
-	for _, r := range roles {
-		if str(x["host"]) == str(model[r]) {
-			out = append(out, r)
-		}
+	for _, a := range anys(x["agents"]) {
+		out = append(out, str(a))
 	}
 	return out
 }
@@ -554,9 +553,9 @@ func modelView() view {
 		if str(x["host"]) == selfHost() {
 			name = selfMark(str(x["host"]))
 		}
-		role := c("dim")("-")
-		if rs := rolesOf(x, model); len(rs) > 0 {
-			role = c("accent")(strings.Join(rs, " + "))
+		agents := c("dim")("-")
+		if as := agentsOf(x); len(as) > 0 {
+			agents = c("accent")(strings.Join(as, " + "))
 		}
 		dl := obj(x["download"])
 		var state string
@@ -578,7 +577,7 @@ func modelView() view {
 		if f := str(x["file"]); f != "" {
 			file = c("muted")(f)
 		}
-		rows = append(rows, []string{name, role, state, speed, file})
+		rows = append(rows, []string{name, agents, state, speed, file})
 	}
 	hostOn := cfg["host"] == "true"
 	first := selfMark(selfHost()) + "  model host "
@@ -608,9 +607,10 @@ func modelView() view {
 	if ui.sel[modelTab] < len(all) {
 		picked = all[ui.sel[modelTab]]
 	}
+	// read-only: the frontend's Agents page assigns
 	rl := []string{}
-	for _, r := range roles {
-		x := obj(get(model, "roles", r))
+	for _, a := range objs(model["agents"]) {
+		x := obj(get(a, "slots", "model"))
 		name := c("dim")("none")
 		if s := str(x["model"]); s != "" {
 			name = s
@@ -619,16 +619,17 @@ func modelView() view {
 		if !truthy(x["ready"]) && str(x["why"]) != "" {
 			why = "  " + c("warn")(str(x["why"]))
 		}
-		rl = append(rl, c("accent")(fmt.Sprintf("%-10s", r))+name+why)
+		rl = append(rl, c("accent")(fmt.Sprintf("%-12s", str(a["id"])))+name+why)
 	}
+	rl = append(rl, c("dim")("assigned in the frontend's Agents page"))
 	models := plainRows(c("muted")("no host runs a model"))
 	if len(all) > 0 {
-		models = table([]string{"host", "role", "state", "speed", "file"}, rows, ui.sel[modelTab], 0)
+		models = table([]string{"host", "agents", "state", "speed", "file"}, rows, ui.sel[modelTab], 0)
 		if picked != nil && mi != ui.sel[modelTab] && !truthy(picked["ready"]) && str(picked["why"]) != "" {
 			models = append(models, row{text: c("warn")(str(picked["why"]))})
 		}
 	}
-	return view{lines: panels(&card{"roles", plainRows(rl...)}, &card{"this host", plainRows(here...)}, &card{"models", models}),
+	return view{lines: panels(&card{"agents", plainRows(rl...)}, &card{"this host", plainRows(here...)}, &card{"models", models}),
 		keys: []key{k("e edit", "primary")}}
 }
 
@@ -1007,4 +1008,9 @@ func currentView() view {
 		return formView(ui.form)
 	}
 	return []func() view{statsView, servicesView, filesView, modelView, gitView, updateView}[ui.tab]()
+}
+
+func anys(v any) []any {
+	a, _ := v.([]any)
+	return a
 }

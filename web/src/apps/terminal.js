@@ -86,9 +86,7 @@ function startTerminal(view, host, sid, resume, shared = false, login = null, op
   let observer = null;
   let retry = null;
 
-  // the page's font in before xterm measures its cells
-  const fontIn = document.fonts.load('14px "Geist Mono Variable"').catch(() => {});
-  const ready = Promise.all([loadXterm(), fontIn]).then(() => {
+  const ready = loadXterm().then(() => {
     term = new Terminal({
       cursorBlink: true,
       cursorStyle: 'bar',
@@ -246,7 +244,6 @@ function taskTerminal(view, host, task, opts = {}) {
   let ended = false;
   const dec = new TextDecoder();
   const enc = new TextEncoder();
-  const fontIn = document.fonts.load('14px "Geist Mono Variable"').catch(() => {});
   const end = (code, why) => {
     if (ended) return;
     ended = true;
@@ -254,7 +251,7 @@ function taskTerminal(view, host, task, opts = {}) {
     term?.write(`\r\n\x1b[2m[${code === 0 ? 'done' : code === -1 ? 'stopped' : `exited with ${code}`}]\x1b[0m\r\n`);
     opts.onExit?.(code, why || '');
   };
-  const ready = Promise.all([loadXterm(), fontIn]).then(() => {
+  const ready = loadXterm().then(() => {
     term = new Terminal({
       cursorBlink: false, cursorStyle: 'bar', fontSize: opts.fontSize || 14, lineHeight: 1, scrollback: 20000,
       fontFamily: monoOf(looks(opts).from),

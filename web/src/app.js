@@ -9,12 +9,13 @@ const ASSETS = __ASSETS__;
 // Sulfur's own host when it runs alone (web/src/sulfur/host.js); inside the desktop, none
 const standalone = null;
 
-// each app's own code in its own chunk, all fetched once the desktop is up
+// each app's module, set up on first use; one bundle holds them all, no fetch
 const APPS = {
   status: () => import('./apps/status.js'),
   terminal: () => import('./apps/terminal.js'),
   files: () => import('./apps/files.js'),
   code: () => import('./apps/code.js'),
+  agents: () => import('./apps/agents.js'),
   sulfur: () => import('./sulfur/workbench.js'),
 };
 // the newest /api/state, handed to an app as it loads
@@ -23,7 +24,7 @@ const appMods = new Map();
 // the desktop's state, up here because code run at load (the chat's first
 // setConv) asks dk.desk long before the desktop section below
 // creds: host -> {user, pass}, this page's memory only
-const dk = { creds: new Map(), rows: new Map(), wins: new Map(), services: [], deskFiles: [], z: 10, n: 0, desk: null, sig: '' };
+const dk = { creds: new Map(), rows: new Map(), wins: new Map(), services: [], deskFiles: [], deskHosts: new Map(), z: 10, n: 0, desk: null, sig: '' };
 function app(name) {
   if (!appMods.has(name)) appMods.set(name, APPS[name]().catch((e) => { appMods.delete(name); throw e; }));
   return appMods.get(name);
@@ -32,7 +33,7 @@ function app(name) {
 function appCall(name, on, call) {
   if (on || appMods.has(name)) app(name).then(call, (e) => console.error(`${name} failed to load`, e));
 }
-// past first paint, so opening one never waits on the network
+// past first paint, so opening one never waits on its setup
 addEventListener('load', () => (self.requestIdleCallback || setTimeout)(() => {
   for (const n of Object.keys(APPS)) app(n).catch(() => {});
 }));
@@ -618,28 +619,23 @@ const syncMotion = () => (reduceMotion.matches ? svgDefs.pauseAnimations() : svg
 reduceMotion.addEventListener('change', syncMotion);
 syncMotion();
 
-// left of a model host, mirroring the git mark: c the chimp, o the orangutan,
-// in the glyph's colours, dimmed while not loaded
+// left of a model host, mirroring the git mark: how many agents ask it, in
+// the glyph's colours, dimmed while not loaded
 function drawModelMarker(x, y, mm, scale = 1, opacity = 1) {
   const mark = svgEl('text', {
     x: x - 4.5 * scale, y: y - 1.2 * scale, 'text-anchor': 'end', class: `mesh-model-mark${mm.ready ? '' : ' down'}`,
     style: `font-size:${7 * scale}px;opacity:${opacity}`,
   });
-  mark.textContent = mm.roles.map((r) => r[0]).join('');
+  mark.textContent = mm.agents.length || 'm';
   const title = svgEl('title', {});
-  title.textContent = `${mm.roles.join(' and ')} model: ${mm.file || 'no model yet'}${mm.ready ? '' : ', not loaded'}`;
+  title.textContent = `${mm.agents.length ? mm.agents.join(', ') : 'no agents'} on ${mm.file || 'no model yet'}${mm.ready ? '' : ', not loaded'}`;
   mark.appendChild(title);
   meshSvg.appendChild(mark);
 }
 
-// a model host's roles, as each now answers
-function modelRoles(x, model) {
-  return [x.host === model.chimp && 'chimp', x.host === model.orangutan && 'orangutan'].filter(Boolean);
-}
-
 let meshRoutes = [];
 let meshTailnet = [];
-// the chimp's and orangutan's hosts, marked in the glyph's colours
+// the model hosts, marked in the glyph's colours
 let meshModels = new Map();
 let meshSig = '';
 
@@ -809,7 +805,7 @@ function renderMeshGit() {
     const cls = master ? 'master' : !h.reachable ? 'down' : !h.eligible ? 'catching' : '';
     const text = gitBackupText(h, masterGen);
     const behind = h.reachable && !master && h.ageSec != null
-      ? `<span class="git-lag" title="green to 8s, yellow to 15s, red to 60s">${lagMeter(h.ageSec)}</span><span class="git-ago">${ago(h.ageSec)}</span>` : '';
+      ? `<span class="git-lag" title="last matched the master's stamp, checked every 5s and copied only on change: green to 8s, yellow to 15s, red to 60s">${lagMeter(h.ageSec)}</span><span class="git-ago">${ago(h.ageSec)}</span>` : '';
     return `<div class="mesh-git-row ${cls}"><span class="mesh-stat-name"><span class="mesh-git-dot"></span>`
       + `<span class="mesh-stat-nm">${esc(h.host)}</span><span class="mesh-git-text">${text === 'downloading' ? '<span class="git-spin"></span>' : ''}${esc(text)}</span></span>`
       + `<span class="mesh-git-behind">${behind}${h.reachable && !master && acct?.admin
@@ -1231,8 +1227,8 @@ function applyState(state) {
   renderRoutes(state.routes, state.tailnet);
   lastState = state;
   appCall('status', false, (m) => m.statusState(state));
-  const nextModels = new Map((state.model?.models || []).map((x) => [x.host, { file: x.file, ready: x.ready, roles: modelRoles(x, state.model) }])
-    .filter(([, v]) => v.roles.length));
+  appCall('agents', false, (m) => m.agentsState(state));
+  const nextModels = new Map((state.model?.models || []).map((x) => [x.host, { file: x.file, ready: x.ready, agents: x.agents || [] }]));
   const modelChanged = JSON.stringify([...nextModels]) !== JSON.stringify([...meshModels]);
   meshModels = nextModels;
   if ((gitChanged || modelChanged) && !meshAnimFrame) drawMesh();
@@ -1340,14 +1336,17 @@ const homeHolders = (rel) => {
   return has.length ? has : [selfHost];
 };
 
-async function homeList(dir) {
-  const online = homeOnline();
-  const got = await Promise.all(online.map(async (h) => {
-    try {
-      const body = await filesCall(homeAt(h), 'list', undefined, { path: dir });
-      return { h, entries: body.entries };
-    } catch { return { h, entries: [], stale: true }; }
-  }));
+// one host's listing of a home folder, stale and empty when it didn't answer
+async function homeHostList(h, dir) {
+  try {
+    const body = await filesCall(homeAt(h), 'list', undefined, { path: dir });
+    return { h, entries: body.entries };
+  } catch { return { h, entries: [], stale: true }; }
+}
+
+// the hosts' listings merged; `got` the listings already in hand, else every online host asked
+async function homeList(dir, got) {
+  got ||= await Promise.all(homeOnline().map((h) => homeHostList(h, dir)));
   const by = new Map();
   for (const { h, entries, stale } of got) {
     for (const e of entries) {
@@ -1950,7 +1949,7 @@ function dkThemeWin() {
       el('p', 'dk-note', 'Your theme, kept with your settings on every host. Changes are worn when you save and apply.'),
       row('accent', color('accent')),
       row('page font', pick('font', [['system', 'system sans'], ['mono', 'monospaced'], ['serif', 'serif']])),
-      row('code font', pick('mono', [['geist', 'geist mono'], ['system', 'system mono'], ['cascadia', 'cascadia'], ['jetbrains', 'jetbrains mono']])),
+      row('code font', pick('mono', [['system', 'system mono'], ['cascadia', 'cascadia'], ['jetbrains', 'jetbrains mono']])),
       row('corners', pick('corners', CUSTOM_CORNERS.map((n) => [n, n === '0' ? 'square' : `${n}px`]))),
       row('shadows', pick('shadows', Object.keys(CUSTOM_SHADOWS).map((k) => [k, k]))),
       row('desk', color('desk'), 'under the icons, unless a picture is set'),
@@ -2495,8 +2494,6 @@ function redrawLine(m) {
 // shown to their two ends)
 
 const CHANNELS_KEY = 'phosphorus-chat-channels';
-// the mesh models' roles, each picked in the model card
-const MODEL_ROLES = ['chimp', 'orangutan'];
 // mesh, ch:<name> or dm:<name>
 let conv = 'mesh';
 const loadJson = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } };
@@ -2963,18 +2960,21 @@ function renderHistory(messages, closed = {}) {
 }
 
 // the status card's clear buttons, its code fetched or not
-const stRolesEl = document.querySelector('#st-model .st-model-roles');
-stRolesEl.addEventListener('click', (e) => {
+const stHostsEl = document.getElementById('st-hosts');
+// captured, a card's own click opening it never seeing this one
+stHostsEl.addEventListener('click', (e) => {
   const b = e.target.closest('.st-clear');
-  if (!b || b.disabled) return;
+  if (!b) return;
+  e.stopPropagation();
+  if (b.disabled) return;
   b.disabled = true;
   b.textContent = 'clearing';
-  send({ type: 'model-purge', id: b.dataset.role, to: b.dataset.role });
-});
+  send({ type: 'model-purge', id: b.dataset.host, to: b.dataset.host });
+}, true);
 
 // the llama-server slots on its host erased, a fresh start for its kv cache
 function modelPurged(msg) {
-  const btn = stRolesEl.querySelector(`.st-clear[data-role="${CSS.escape(String(msg.id))}"]`);
+  const btn = stHostsEl.querySelector(`.st-clear[data-host="${CSS.escape(String(msg.id))}"]`);
   if (!btn) return;
   btn.disabled = false;
   btn.textContent = msg.error ? `no clear: ${msg.error}` : 'cleared';
@@ -3009,7 +3009,7 @@ window.addEventListener('online', () => chatAwake(true));
 
 function connectChat() {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  ws = new WebSocket(`${proto}//${location.host}/ws`);
+  ws = new WebSocket(`${proto}//${location.host}/api/chat`);
   ws.onopen = () => {
     reconnectDelay = 300;
     chatHeard = Date.now();
@@ -4463,7 +4463,7 @@ function dkLogout() {
   dk.mcp?.show(false);
   // the last user's key and calls never shown to the next
   dk.mcp = null;
-  clearTimeout(dk.mcpTimer);
+  dk.mcpStop?.();
   Object.assign(mcpStat, { configured: false, seen: 0, at: 0, now: 0, got: 0, client: '', calls: [], recent: [], url: '' });
   for (const w of [...dk.wins.values()]) dkClose(w, true);
   dk.creds.clear();
@@ -4568,6 +4568,7 @@ function dkIcons() {
     ['status', () => dkIcon('status', 'status', '', () => dkOpenApp('status'))],
     ...(git ? [['git', () => dkGlobe(dkIcon('git', 'git', '', () => dkOpenApp('git')), 'public: its own login only')]] : []),
     ['code', () => dkIcon('code', 'code', '', () => dkOpenApp('code'))],
+    ['agents', () => dkIcon('agents', 'agents', '', () => dkOpenApp('agents'))],
     ['games', () => dkIcon('games', 'games', '', () => dkOpenApp('games'))],
     ['about', () => dkIcon('about', 'about', '', () => dkOpenApp('about'))],
     ...dk.services.map((r) => [JSON.stringify([r.host, r.name, !!r.public]), () => dkServiceIcon(r)]),
@@ -5450,7 +5451,7 @@ const fmSame = (a, b) => a && b && a.host === b.host && a.share === b.share;
 function fmChanged(loc, ...dirs) {
   const same = (a) => fmSame(a, loc) || (isHome(a) && isHome(loc));
   for (const fm of dkFms) if (same(fm.loc) && dirs.includes(fm.dir)) appCall('files', false, (m) => m.fmLoad(fm));
-  if (isHome(loc) && dkDeskDirs().some((d) => dirs.includes(d))) dkDeskLoad();
+  if (isHome(loc) && dkDeskDirs().some((d) => dirs.includes(d))) dkDeskLoad(true);
 }
 
 // pages, wasm and NAME.app folders run, text edits, the rest shown
@@ -5636,25 +5637,38 @@ function dkDeskWatch() {
   if (key === dk.deskKey) return;
   dk.deskKey = key;
   dk.deskFiles = [];
+  dk.deskHosts = new Map();
   dk.deskReady = false;
   if (key) dkDeskLoad();
 }
 
-// each online host's Desktop stamps, pushed with the state: a change rereads them
-const dkDeskStampNow = () => JSON.stringify(homeOnline().sort()
-  .map((h) => [h, dkDeskDirs().map((d) => hostsInfo[h.toLowerCase()]?.desk?.[d] ?? '')]));
+// each online host's Desktop stamps, pushed with the state: a change rereads that host's
+const dkDeskStamp = (h, dir) => hostsInfo[h.toLowerCase()]?.desk?.[dir] ?? '';
+const dkDeskStampNow = () => JSON.stringify(homeOnline().sort().map((h) => [h, dkDeskDirs().map((d) => dkDeskStamp(h, d))]));
 
 function dkDeskStamps() {
   if (dk.deskReady && dkDeskStampNow() !== dk.deskStamp) dkDeskLoad();
 }
 
-async function dkDeskLoad() {
+// force: a change made here, every host's listing asked again
+async function dkDeskLoad(force) {
   if (!dkDeskAt()) return;
   dk.deskStamp = dkDeskStampNow();
   const key = dk.deskKey;
+  const online = homeOnline();
+  const cache = dk.deskHosts;
   // a folder no host answered for: its last icons kept, never blinking out
-  const lists = await Promise.all(dkDeskDirs().map((dir) => homeList(dir)
-    .then((b) => b.entries.map((e) => ({ ...e, at: dir })), () => dk.deskFiles.filter((e) => e.at === dir))));
+  const lists = await Promise.all(dkDeskDirs().map(async (dir) => {
+    const got = await Promise.all(online.map(async (h) => {
+      const stamp = dkDeskStamp(h, dir);
+      const hit = cache.get(`${h}\n${dir}`);
+      if (!force && hit && !hit.got.stale && hit.stamp === stamp) return hit.got;
+      const fresh = await homeHostList(h, dir);
+      cache.set(`${h}\n${dir}`, { stamp, got: fresh });
+      return fresh;
+    }));
+    return homeList(dir, got).then((b) => b.entries.map((e) => ({ ...e, at: dir })), () => dk.deskFiles.filter((e) => e.at === dir));
+  }));
   if (key !== dk.deskKey) return;
   dk.deskFiles = lists.flat();
   dk.deskReady = true;
@@ -5852,6 +5866,7 @@ const DK_APPS = {
   about: { title: 'about', view: 'view-about', w: 700, h: 420 },
   games: { title: 'game servers', view: 'view-games', w: 460, h: 420 },
   code: { title: 'code', view: 'view-code', w: 1040, h: 660 },
+  agents: { title: 'agents', view: 'view-agents', w: 860, h: 640 },
 };
 
 // a fresh window's size, centered, a phone's left filling the desk
@@ -5903,6 +5918,7 @@ function dkAppsChanged() {
   }
   const up = (id) => deskApps.has(id) && !was.has(id);
   if (up('status')) appCall('status', true, (m) => m.statusWatch(lastState));
+  if (up('agents')) appCall('agents', true, (m) => { m.agentsState(lastState); m.agentsWatch(true); });
   if (deskApps.has('code') !== was.has('code')) appCall('code', deskApps.has('code'), (m) => m.codeWatch(deskApps.has('code')));
   // the conversation's news read once it's on screen
   if (up('chat')) setConv(conv);
@@ -5930,7 +5946,7 @@ function dkOpenTerminal(host, shared = false) {
 }
 
 // phosphorus's presses, each the app it names
-const DK_VIEWS = { status: 'status', about: 'about', chat: 'chat', git: 'git', games: 'games', home: 'games', code: 'code', projects: 'code' };
+const DK_VIEWS = { status: 'status', about: 'about', chat: 'chat', git: 'git', games: 'games', home: 'games', code: 'code', projects: 'code', agents: 'agents', models: 'agents' };
 function dkPressed(a) {
   if (a.kind === 'terminal') dkOpenTerminal(a.host, a.share === true);
   else if (a.kind === 'host' && phosphorusHosts().includes(a.host)) switchHost(a.host);
@@ -6645,7 +6661,6 @@ function dkMcpTray() {
       list = null;
       paint();
       if (mcpStat.configured) hint.replaceChildren();
-      pollMcp();
       // the url ready before a tap, so copying it is the tap's own
       if (mcpStat.configured) acctCall('/api/me/mcp-url', {}).then((r) => { if (r.ok) mcpStat.url = r.url; });
     }
@@ -6655,29 +6670,61 @@ function dkMcpTray() {
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !pop.hidden) show(false); });
   const me = { show, paint };
   dk.mcp = me;
-  clearTimeout(dk.mcpTimer);
-  // one loop, ended by a logout or a newer tray
-  const tick = async () => {
-    if (dk.mcp !== me) return;
-    if (!document.hidden) await pollMcp();
-    if (dk.mcp === me) dk.mcpTimer = setTimeout(tick, pop.hidden ? 8000 : 2000);
+  dk.mcpStop?.();
+  // one socket while the page is visible, the server pushing on a change; ended by a
+  // logout or a newer tray, a dropped one retried and read once over fetch meanwhile
+  let sock = null;
+  let retry = null;
+  let retryMs = 1000;
+  const open = () => {
+    if (dk.mcp !== me || document.hidden || sock) return;
+    const s = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/api/me/mcp`);
+    sock = s;
+    s.onmessage = (ev) => {
+      retryMs = 1000;
+      try { mcpApply(JSON.parse(ev.data)); } catch { return; }
+      me.paint();
+    };
+    s.onclose = () => {
+      if (sock === s) sock = null;
+      if (dk.mcp !== me || document.hidden) return;
+      pollMcp();
+      retry = setTimeout(open, retryMs);
+      retryMs = Math.min(retryMs * 2, 15000);
+    };
+    s.onerror = () => s.close();
   };
-  tick();
+  const seen = () => {
+    if (dk.mcp !== me) return;
+    if (document.hidden) { clearTimeout(retry); sock?.close(); return; }
+    open();
+  };
+  document.addEventListener('visibilitychange', seen);
+  dk.mcpStop = () => {
+    document.removeEventListener('visibilitychange', seen);
+    clearTimeout(retry);
+    const s = sock;
+    sock = null;
+    s?.close();
+  };
+  open();
   return wrap;
 }
 
-// the user's key and calls from the mesh
+// the user's key and calls from the mesh, read once: after a key change, a dropped socket
 async function pollMcp() {
   let s = { ok: false };
   try {
     const r = await fetch('/api/me/mcp', { cache: 'no-store', signal: AbortSignal.timeout(6000) });
     s = { ok: r.ok, ...(await r.json().catch(() => ({}))) };
   } catch {}
-  if (s.ok) {
-    Object.assign(mcpStat, { configured: !!s.configured, seen: +s.seen || 0, at: +s.at || 0, client: s.client || '',
-      now: +s.now || Date.now(), got: Date.now(), calls: s.calls || [], recent: s.recent || [] });
-  }
+  if (s.ok) mcpApply(s);
   dk.mcp?.paint();
+}
+
+function mcpApply(s) {
+  Object.assign(mcpStat, { configured: !!s.configured, seen: +s.seen || 0, at: +s.at || 0, client: s.client || '',
+    now: +s.now || Date.now(), got: Date.now(), calls: s.calls || [], recent: s.recent || [] });
 }
 
 // the mesh's now, carried forward from the last answer so durations keep running
@@ -6731,7 +6778,7 @@ const AGENT_STALE_MS = 11 * 60000;
 // tools printed in a host's console: the command or the call, then what came back
 const AGENT_CONSOLE = new Set(['terminal_run', 'host_logs', 'service_request', 'forgejo',
   'host_config', 'service_edit', 'config_set', 'host_power', 'game_power']);
-const AGENT_STATUS = new Set(['mesh_hosts', 'host_stats', 'services', 'models', 'set_model_role']);
+const AGENT_STATUS = new Set(['mesh_hosts', 'host_stats', 'services', 'models', 'set_agent_model']);
 const AGENT_CHAT = new Set(['send_message', 'chat_history', 'chat_edit']);
 const AGENT_LIT_MS = 2400;
 // the windows the agent opened itself, closed this long after it goes quiet
@@ -7011,7 +7058,6 @@ export {
   DK_RUNNERS,
   DK_UI,
   HOME,
-  MODEL_ROLES,
   acct,
   codeKey,
   codeLang,
@@ -7076,7 +7122,6 @@ export {
   lines,
   may,
   modalOpen,
-  modelRoles,
   name,
   news,
   newSid,

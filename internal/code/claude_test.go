@@ -29,12 +29,12 @@ func TestRecordShape(t *testing.T) {
 
 func TestEnvLines(t *testing.T) {
 	c := Creds{Key: "k1", Base: "http://100.1.2.3:8090", Token: "tok"}
-	mesh, err := envLines("orangutan", c)
+	mesh, err := envLines("mesh", c)
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := []string{"PHOSPHORUS_MCP_KEY=k1", "ANTHROPIC_BASE_URL=http://100.1.2.3:8090/api/model", "ANTHROPIC_AUTH_TOKEN=k1",
-		"ANTHROPIC_MODEL=orangutan", "ANTHROPIC_SMALL_FAST_MODEL=chimp", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1"}
+		"ANTHROPIC_MODEL=agent-claude-code", "ANTHROPIC_SMALL_FAST_MODEL=agent-claude-code-fast", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1"}
 	for _, w := range want {
 		if !has(mesh, w) {
 			t.Errorf("mesh env lacks %s", w)
@@ -52,7 +52,7 @@ func TestEnvLines(t *testing.T) {
 	if _, err := envLines("opus", Creds{Key: "k"}); err == nil {
 		t.Error("anthropic without a token")
 	}
-	if _, err := envLines("chimp", Creds{Key: "k\nX=1", Base: "b"}); err == nil {
+	if _, err := envLines("mesh", Creds{Key: "k\nX=1", Base: "b"}); err == nil {
 		t.Error("a line break let through")
 	}
 	if _, err := envLines("gpt", c); err == nil {
@@ -74,10 +74,10 @@ func TestLaunchCommand(t *testing.T) {
 	if strings.Contains(c, "--permission-mode") {
 		t.Error("default mode passed")
 	}
-	if !strings.Contains(launchCommand("/x", "chimp", "plan", ""), "--permission-mode plan") {
+	if !strings.Contains(launchCommand("/x", "mesh", "plan", ""), "--permission-mode plan") {
 		t.Error("plan mode dropped")
 	}
-	if strings.Contains(launchCommand("/x", "chimp", "plan", ""), "--resume") {
+	if strings.Contains(launchCommand("/x", "mesh", "plan", ""), "--resume") {
 		t.Error("resume with no session")
 	}
 }
@@ -93,7 +93,7 @@ func TestLaunchScriptRuns(t *testing.T) {
 	os.MkdirAll(filepath.Join(home, "it's here"), 0o755)
 	// a fake claude printing its env, args and stdin's rest
 	os.WriteFile(filepath.Join(bin, "claude"), []byte("#!/bin/sh\necho \"dir=$PWD\"\necho \"key=$PHOSPHORUS_MCP_KEY cfg=$CLAUDE_CONFIG_DIR api=$ANTHROPIC_API_KEY\"\necho \"args=$*\"\ncat\n"), 0o755)
-	cmd := exec.Command("sh", "-c", launchCommand("~/it's here", "chimp", "acceptEdits", "s'1"))
+	cmd := exec.Command("sh", "-c", launchCommand("~/it's here", "mesh", "acceptEdits", "s'1"))
 	cmd.Env = []string{"HOME=" + home, "PATH=/usr/bin:/bin", "ANTHROPIC_API_KEY=leak"}
 	cmd.Stdin = strings.NewReader(envBlock([]string{"PHOSPHORUS_MCP_KEY=sec ret"}) + "{\"type\":\"user\"}\n")
 	out, err := cmd.CombinedOutput()
@@ -108,14 +108,14 @@ func TestLaunchScriptRuns(t *testing.T) {
 		}
 	}
 	// no claude: 127; no folder: 3
-	cmd = exec.Command("sh", "-c", launchCommand("/nowhere/at/all", "chimp", "", ""))
+	cmd = exec.Command("sh", "-c", launchCommand("/nowhere/at/all", "mesh", "", ""))
 	cmd.Env = []string{"HOME=" + home, "PATH=/usr/bin:/bin"}
 	cmd.Stdin = strings.NewReader("\n")
 	if err := cmd.Run(); cmd.ProcessState.ExitCode() != 3 {
 		t.Errorf("no folder: %v", err)
 	}
 	os.Remove(filepath.Join(bin, "claude"))
-	cmd = exec.Command("sh", "-c", launchCommand("~", "chimp", "", ""))
+	cmd = exec.Command("sh", "-c", launchCommand("~", "mesh", "", ""))
 	cmd.Env = []string{"HOME=" + home, "PATH=/usr/bin:/bin"}
 	cmd.Stdin = strings.NewReader("\n")
 	if err := cmd.Run(); cmd.ProcessState.ExitCode() != 127 {
@@ -286,11 +286,11 @@ func TestCreateValidates(t *testing.T) {
 	runDir = t.TempDir()
 	never := func(string, string) (Creds, error) { t.Fatal("creds asked"); return Creds{}, nil }
 	for _, p := range []map[string]any{
-		{"host": "", "dir": "/x", "model": "chimp"},
-		{"host": "razer", "dir": "", "model": "chimp"},
-		{"host": "razer", "dir": "/x\ny", "model": "chimp"},
+		{"host": "", "dir": "/x", "model": "mesh"},
+		{"host": "razer", "dir": "", "model": "mesh"},
+		{"host": "razer", "dir": "/x\ny", "model": "mesh"},
 		{"host": "razer", "dir": "/x", "model": "gpt-5"},
-		{"host": "razer", "dir": "/x", "model": "chimp", "perm": "yolo"},
+		{"host": "razer", "dir": "/x", "model": "mesh", "perm": "yolo"},
 	} {
 		if st, _ := Create("pmh", p, never); st != 400 {
 			t.Errorf("%v: %d", p, st)
@@ -307,17 +307,17 @@ func TestCreateValidates(t *testing.T) {
 func TestSetModelSameProvider(t *testing.T) {
 	runDir = t.TempDir()
 	loadOnce.Do(func() {})
-	rec := Record{ID: newID(), User: "pmh", Host: "razer", Dir: "/x", Model: "chimp", Perm: "default", Status: "ended"}
+	rec := Record{ID: newID(), User: "pmh", Host: "razer", Dir: "/x", Model: "mesh", Perm: "default", Status: "ended"}
 	allMu.Lock()
 	all[rec.ID] = newSession(rec)
 	allMu.Unlock()
 	if st, b := SetModel("pmh", rec.ID, map[string]any{"model": "opus"}); st != 409 || !strings.Contains(fmt.Sprint(b), "new session") {
 		t.Fatalf("across providers: %d %v", st, b)
 	}
-	if st, b := SetModel("pmh", rec.ID, map[string]any{"model": "orangutan"}); st != 200 || b.(Record).Model != "orangutan" {
+	if st, b := SetModel("pmh", rec.ID, map[string]any{"model": "mesh"}); st != 200 || b.(Record).Model != "mesh" {
 		t.Fatalf("within: %d %v", st, b)
 	}
-	if _, r := Get("pmh", rec.ID); r.(Record).Model != "orangutan" || r.(Record).Status != "ended" {
+	if _, r := Get("pmh", rec.ID); r.(Record).Model != "mesh" || r.(Record).Status != "ended" {
 		t.Fatalf("record %+v", r)
 	}
 }
