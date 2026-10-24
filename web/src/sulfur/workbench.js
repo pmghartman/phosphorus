@@ -430,7 +430,7 @@ const SETTINGS = {
   'editor.inlineSuggest.enabled': { def: true, type: 'boolean', title: 'Editor: AI Inline Suggestions', about: 'Predict code with the selected completion model through the mesh using a dedicated harness. Sends bounded context from this file and up to two related open files. Tab accepts; Escape dismisses. Works independently of the chat harness.' },
   'editor.inlineSuggest.model': { def: 'chimp', type: 'model', title: 'Editor: Completion Machine / Model', about: 'Choose automatic Chimp/Orangutan routing, or pin completion to a machine and its configured model. The machine must have that model ready; this does not change its model installation.' },
   'editor.inlineSuggest.delay': { def: 750, type: 'number', min: 200, max: 5000, title: 'Editor: AI Suggestion Delay', about: 'Idle time in milliseconds after meaningful typing before asking the completion model. Blank lines, Enter, indentation, and deletion do not request AI suggestions; Alt+\\ still works anywhere.' },
-  'editor.diagnostics.delay': { def: 1000, type: 'number', min: 300, max: 5000, title: 'Editor: Diagnostic Delay', about: 'Idle time in milliseconds before checking syntax or requesting language-server diagnostics. Stale underlines clear while you edit incomplete lines.' },
+  'editor.diagnostics.delay': { def: 500, type: 'number', min: 300, max: 5000, title: 'Editor: Syntax Check Delay', about: 'Idle time in milliseconds before Sulfur\'s own syntax check marks half-typed code. A language server\'s problems show as soon as it reports them.' },
   'sulfur.languageServerSettings': { def: {}, type: 'object', title: 'Languages: Server Settings', about: 'Language-server settings, keyed by extension id (typescript, python, javascript, java, csharp, php, shell, cpp, hcl, go). Runtime prerequisites and installation are in Extensions.' },
   'editor.fontSize': { def: 13, type: 'number', min: 8, max: 40, title: 'Editor: Font Size', about: 'Controls the font size in pixels.' },
   'editor.renderLineHighlight': { def: 'line', type: 'enum', options: [['line', 'Line and line number'], ['gutter', 'Line number only'], ['none', 'None']], title: 'Editor: Render Line Highlight', about: 'How the caret\'s line is shown. The line is lit only while nothing is selected.' },
@@ -742,6 +742,12 @@ function build() {
   // narrow: a tap on the editors or the panel puts the side bars away, as a phone's drawer goes
   center.addEventListener('pointerdown', () => drawersAway());
   root.addEventListener('keydown', onKey, true);
+  // Ctrl (Cmd on a Mac) let go: a Ctrl+Tab walk ends where it stands
+  root.addEventListener('keyup', (e) => {
+    if (!I?.mruWalk || (e.key !== 'Control' && e.key !== 'Meta')) return;
+    I.mruWalk = null;
+    if (I.active) I.mru = [I.active, ...(I.mru || []).filter((x) => x !== I.active)];
+  }, true);
   root.addEventListener('contextmenu', (e) => { if (!e.target.closest('input, textarea, .xterm, .md')) e.preventDefault(); });
   // a tab's unsaved edits held against the page's own close
   const unload = (e) => { if (I?.tabs.some((t) => t.ed?.dirty())) e.preventDefault(); };
@@ -1182,13 +1188,37 @@ function buildExplorer() {
   I.ex = { treeHead, tree, note, edit: null, rows: [] };
   v.focus = () => { tree.focus(); if (!I.sel) selectRow(I.st.root, false); };
   v.acts = [];
-  tree.addEventListener('click', (e) => {
-    const row = e.target.closest('.ide-row');
-    if (!row || row.classList.contains('ide-row-edit')) return;
+  // a row opened on the press and release of one path, not the click: a click needs the
+  // same element under both, and a tree repainted between (an editor saving or checking as
+  // it loses focus) or a row's drag starting on a small move would leave it unanswered, the
+  // file opening only on a second click
+  const activateRow = (row) => {
     const p = row.dataset.path;
     selectRow(p, false);
     if (row.dataset.dir === '1') toggleDir(p);
     else openFile(p, { preview: setting('editor.enablePreview'), host: row.dataset.host || undefined });
+  };
+  let pressed = null, answered = null;
+  tree.addEventListener('pointerdown', (e) => {
+    const row = e.button === 0 && !e.ctrlKey && !e.metaKey && !e.shiftKey ? e.target.closest('.ide-row') : null;
+    pressed = row && !row.classList.contains('ide-row-edit') ? { path: row.dataset.path, x: e.clientX, y: e.clientY } : null;
+  });
+  tree.addEventListener('pointerup', (e) => {
+    const was = pressed;
+    pressed = null;
+    const row = e.target.closest('.ide-row');
+    if (!was || !row || row.dataset.path !== was.path || row.classList.contains('ide-row-edit') || Math.hypot(e.clientX - was.x, e.clientY - was.y) > 8) return;
+    answered = { path: was.path, at: performance.now() };
+    activateRow(row);
+  });
+  tree.addEventListener('pointercancel', () => { pressed = null; });
+  tree.addEventListener('click', (e) => {
+    const row = e.target.closest('.ide-row');
+    if (!row || row.classList.contains('ide-row-edit')) return;
+    // already opened by its press and release; a click from the keyboard or a script still opens
+    if (answered && answered.path === row.dataset.path && performance.now() - answered.at < 1000) { answered = null; return; }
+    answered = null;
+    activateRow(row);
   });
   tree.addEventListener('dblclick', (e) => {
     const row = e.target.closest('.ide-row');
@@ -2434,6 +2464,7 @@ function activate(t, focus = true) {
   const was = I.active;
   if (t !== was) inlineCompletions.dismiss();
   I.active = t;
+  if (!I.mruWalk) I.mru = [t, ...(I.mru || []).filter((x) => x !== t && I.tabs.includes(x))];
   if (t !== was) {
     if (I.st.probFilter?.active) paintProblemsSoon();
     languages.cancelCompletions();
@@ -3234,7 +3265,12 @@ function registerCommands() {
   C('workbench.action.revertFile', 'Revert File', () => revertFile(I.active), { when: hasEd, category: 'File' });
   C('workbench.action.closeActiveEditor', 'Close Editor', () => I.active && closeTab(I.active), { key: 'ctrl+w', alt: ['ctrl+f4'], category: 'View' });
   C('workbench.action.closeAllEditors', 'Close All Editors', () => closeMany([...I.tabs]), { key: 'ctrl+k ctrl+w', category: 'View' });
-  C('workbench.action.reopenClosedEditor', 'Reopen Closed Editor', () => { const p = I.closed[0]; if (p) openFile(p, { preview: false }); }, { category: 'View' });
+  C('workbench.action.reopenClosedEditor', 'Reopen Closed Editor', () => { const p = I.closed[0]; if (p) openFile(p, { preview: false }); }, { key: 'ctrl+shift+t', category: 'View' });
+  // Alt+1…9 the editor at that place, 9 the last, as VS Code's (Ctrl+1…9 on a Mac)
+  for (let n = 1; n <= 9; n++) C(`workbench.action.openEditorAtIndex${n}`, `Open Editor at Index ${n}`, () => { const t = n === 9 ? I.tabs.at(-1) : I.tabs[n - 1]; if (t) activate(t); }, { key: `${IS_MAC ? 'meta' : 'alt'}+${n}`, category: 'View', hidden: true });
+  // Ctrl+Tab the editors most recently used first, stepped while Ctrl is held
+  C('workbench.action.quickOpenPreviousRecentlyUsedEditorInGroup', 'Open Previous Recently Used Editor', () => stepRecent(1), { key: IS_MAC ? 'meta+tab' : 'ctrl+tab', category: 'View' });
+  C('workbench.action.quickOpenLeastRecentlyUsedEditorInGroup', 'Open Next Recently Used Editor', () => stepRecent(-1), { key: IS_MAC ? 'meta+shift+tab' : 'ctrl+shift+tab', category: 'View' });
   C('workbench.action.navigateBack', 'Go Back', () => navGo(-1), { key: standalone?.mac ? 'ctrl+-' : 'alt+left', category: 'Go' });
   C('workbench.action.navigateForward', 'Go Forward', () => navGo(1), { key: standalone?.mac ? 'ctrl+shift+-' : 'alt+right', category: 'Go' });
   C('workbench.action.nextEditor', 'Open Next Editor', () => stepTab(1), { key: 'ctrl+pagedown', alt: ['alt+pagedown'], category: 'View' });
@@ -3262,7 +3298,7 @@ function registerCommands() {
   C('sulfur.forgejo.pr', 'Forgejo: Create Pull Request…', () => forgejoPR(), { category: 'Forgejo' });
   C('sulfur.forgejo.prs', 'Forgejo: Pull Requests…', () => forgejoPRs(), { category: 'Forgejo' });
   C('sulfur.forgejo.publish', 'Forgejo: Publish Repository…', () => forgejoPublish(), { category: 'Forgejo' });
-  C('workbench.action.findInFiles', 'Search: Find in Files', () => findInFiles(), { key: 'ctrl+shift+f', category: 'Search', shell: true });
+  C('workbench.action.findInFiles', 'Search: Find in Files', () => findInFiles(), { key: 'ctrl+shift+h', category: 'Search', shell: true });
   C('workbench.view.run', 'Show Run and Build', () => showSide('run', true, true), { key: 'ctrl+shift+d', category: 'View', shell: true });
   C('workbench.view.extensions', 'Show Extensions', () => showSide('extensions', true, true), { key: 'ctrl+shift+x', category: 'View', shell: true });
   C('workbench.action.toggleSidebarVisibility', 'Toggle Primary Side Bar Visibility', () => showSide(I.st.side.view, I.st.side.hidden), { key: 'ctrl+k b', category: 'View' });
@@ -3279,8 +3315,8 @@ function registerCommands() {
   C('workbench.action.output.toggleOutput', 'Toggle Output', () => (I.st.panel.view === 'output' && !I.st.panel.hidden ? showPanel('output', false) : showPanel('output', true, true)), { key: 'ctrl+shift+u', category: 'View', shell: true });
   C('workbench.action.showOutput', 'Show Output', () => showPanel('output', true, true), { category: 'Output', hidden: true });
   // the editor
-  C('actions.find', 'Find', () => openFind(false), { key: 'ctrl+alt+f', when: hasEd, category: 'Editor' });
-  C('editor.action.formatDocument', 'Format Document', () => formatActive(true).catch((err) => notify('error', err.message)), { key: 'ctrl+f', alt: ['shift+alt+f'], when: edFocused, category: 'Editor' });
+  C('actions.find', 'Find', () => openFind(false), { key: 'ctrl+f', when: hasEd, category: 'Editor' });
+  C('editor.action.formatDocument', 'Format Document', () => formatActive(true).catch((err) => notify('error', err.message)), { key: 'ctrl+shift+f', alt: ['shift+alt+f'], when: hasEd, category: 'Editor' });
   C('editor.action.formatSelection', 'Format Selection', () => formatActive(false).catch((err) => notify('error', err.message)), { key: 'ctrl+k ctrl+f', when: hasEd, category: 'Editor' });
   C('editor.action.startFindReplaceAction', 'Replace', () => openFind(true), { key: 'ctrl+h', when: hasEd, category: 'Editor' });
   C('editor.action.revealDefinition', 'Go to Definition', () => goToDefinition().catch((err) => notify('error', err.message)), { key: 'f12', when: hasEd, category: 'Go' });
@@ -3411,6 +3447,17 @@ function registerCommands() {
   buildKeys();
 }
 
+// the editors by when they were last active: Ctrl+Tab walks it while Ctrl is held, the order
+// settling on the one chosen once it's let go
+function stepRecent(d) {
+  const list = (I.mru || []).filter((t) => I.tabs.includes(t));
+  for (const t of I.tabs) if (!list.includes(t)) list.push(t);
+  if (list.length < 2) return;
+  if (!I.mruWalk) I.mruWalk = { list, at: 0 };
+  const w = I.mruWalk;
+  w.at = (w.at + d + w.list.length) % w.list.length;
+  activate(w.list[w.at]);
+}
 function stepTab(d) {
   if (I.tabs.length < 2 || !I.active) return;
   const i = I.tabs.indexOf(I.active);

@@ -415,11 +415,17 @@ function codeEditor(view, file, btn, id, opts = {}) {
     });
   }
   const regeom = () => { geomCache = null; };
+  // the place kept while the editor is hidden: a hidden scroller can't scroll, and the browser
+  // forgets its offset, so it's put back once the editor shows again
+  let hiddenScroll = null;
+  // what the scroller took is kept, not what was asked: an offset past the end, or set while
+  // hidden, would leave the drawn window somewhere the view isn't (lines missing)
   const scrollTo = (top, left = metrics.left) => {
-    if (top !== metrics.top) scroller.scrollTop = metrics.top = Math.max(0, top);
-    if (left !== metrics.left) scroller.scrollLeft = metrics.left = Math.max(0, left);
+    if (!scroller.clientHeight) { hiddenScroll = { top: Math.max(0, top), left: Math.max(0, left) }; return; }
+    if (top !== metrics.top) { scroller.scrollTop = Math.max(0, top); metrics.top = scroller.scrollTop; }
+    if (left !== metrics.left) { scroller.scrollLeft = Math.max(0, left); metrics.left = scroller.scrollLeft; }
   };
-  scroller.addEventListener('scroll', () => { metrics.top = scroller.scrollTop; metrics.left = scroller.scrollLeft; }, { passive: true });
+  scroller.addEventListener('scroll', () => { if (!scroller.clientHeight) return; metrics.top = scroller.scrollTop; metrics.left = scroller.scrollLeft; }, { passive: true });
   // the lines to draw: those on screen and as many again above and below
   function viewWindow(text) {
     lineAt(text, 0);
@@ -513,8 +519,11 @@ function codeEditor(view, file, btn, id, opts = {}) {
       viewFrame = 0;
       if (closed || view.hidden) return;
       if (ta.value !== hlText) { redraw(); return; }
-      const w = viewWindow(ta.value), margin = Math.max(10, (w.last - w.first) / 6);
-      if ((drawn.first > 0 && w.first + margin < drawn.first) || (drawn.last < w.lines && w.last - margin > drawn.last)) { paintText(); paintMarks(); }
+      // the lines on screen, and half a screen beyond, must lie inside what's drawn
+      const g = geom(), top = metrics.top - g.preTop;
+      const first = Math.floor(top / g.lh), last = Math.ceil((top + metrics.height) / g.lh);
+      const ahead = Math.max(10, (last - first) >> 1);
+      if ((drawn.first > 0 && first - ahead < drawn.first) || (drawn.last < drawn.lines && last + ahead > drawn.last)) { paintText(); paintMarks(); paintDeco(); }
     });
   }, { passive: true });
   let guideFrame = 0, guideSnapshot = null;
@@ -553,6 +562,12 @@ function codeEditor(view, file, btn, id, opts = {}) {
   // read after layout, before paint: free, unlike a read in the middle of drawing
   const guideResize = new ResizeObserver(() => {
     regeom();
+    // hidden (its tab switched away): where it was kept, the rest left for when it shows
+    if (!scroller.clientHeight) { hiddenScroll ||= { top: metrics.top, left: metrics.left }; metrics.height = 0; return; }
+    if (hiddenScroll) {
+      scroller.scrollTop = hiddenScroll.top; scroller.scrollLeft = hiddenScroll.left;
+      hiddenScroll = null;
+    }
     const taller = scroller.clientHeight > metrics.height;
     Object.assign(metrics, { top: scroller.scrollTop, left: scroller.scrollLeft, height: scroller.clientHeight, width: scroller.clientWidth, gutter: gutter.offsetWidth });
     guidesSoon();
@@ -1049,13 +1064,19 @@ function codeEditor(view, file, btn, id, opts = {}) {
     squigWin.innerHTML = markedHtml(text, marks, drawn);
     placeWindow(squigWin, drawn);
   }
+  // The parse's own syntax errors wait for typing to pause (half-typed code isn't an error
+  // yet); a language server's are shown the moment they come, moved onto the text now, as
+  // VS Code shows them
   async function check() {
+    if (languageErrors !== null) { publishErrors(); return; }
     if (Date.now() - lastTextChange < diagnosticsDelay()) { checkSoon(); return; }
-    hideDiagnosticHover();
     const text = ta.value;
-    const parser = languageErrors === null && lang.check && text.length <= HL_MAX && await parserFor(lang.check);
-    if (closed || text !== ta.value) return;
-    errs = languageErrors === null ? parser ? syntaxErrors(parser, text, syntax.parse(parser, text)) : [] : languageErrorsText === text ? languageErrors : [];
+    const parser = lang.check && text.length <= HL_MAX && await parserFor(lang.check);
+    if (closed || text !== ta.value || languageErrors !== null) return;
+    publishErrors(parser ? syntaxErrors(parser, text, syntax.parse(parser, text)) : [], text);
+  }
+  function publishErrors(list = languageErrorsText === ta.value ? languageErrors : [], text = ta.value) {
+    errs = list;
     errsText = text;
     paintSquiggles();
     const lineOf = (p) => lineAt(text, p);
@@ -1063,7 +1084,8 @@ function codeEditor(view, file, btn, id, opts = {}) {
     const counts = diagnosticCounts(errs);
     errEl.textContent = [['errors', 'error'], ['warnings', 'warning'], ['info', 'info']].filter(([k]) => counts[k]).map(([k, label]) => `${counts[k]} ${label}${counts[k] !== 1 && k !== 'info' ? 's' : ''}`).join(', ');
     outTitle.textContent = errEl.textContent;
-    outList.replaceChildren(...errs.map((e) => {
+    // the list under a bar of its own; the ide has its Problems view instead
+    if (!bare) outList.replaceChildren(...errs.map((e) => {
       const row = Object.assign(el('button', 'code-err-row'), { type: 'button' });
       row.append(el('span', 'code-out-dim', `line ${lineOf(e.from)}`), el('span', `code-out-err${diagnosticSeverity(e) === 2 ? ' code-warning' : diagnosticSeverity(e) > 2 ? ' code-hint' : ''}`, diagnosticText(e)));
       row.addEventListener('click', () => { ta.focus(); ta.setSelectionRange(e.from, e.from); caretInView(); });
@@ -1353,6 +1375,16 @@ function codeEditor(view, file, btn, id, opts = {}) {
     typeIn(edit.from, edit.to, edit.text, ...edit.select);
     return true;
   }
+  // the nearest line above ls with text: its indentation, and whether it opens a block
+  function indentAbove(v, ls) {
+    for (let end = ls - 1; end > 0;) {
+      const start = v.lastIndexOf('\n', end - 1) + 1;
+      const line = v.slice(start, end);
+      if (line.trim()) return { indent: line.match(/^[ \t]*/)[0], opens: /[{[(]\s*$/.test(line) || (lang.hl === 'python' && /:\s*(#.*)?$/.test(line)) };
+      end = start - 1;
+    }
+    return null;
+  }
   // the caret's active end and the selection's anchor, as the textarea's direction says
   const anchorHead = () => {
     const s = ta.selectionStart, e = ta.selectionEnd;
@@ -1427,8 +1459,14 @@ function codeEditor(view, file, btn, id, opts = {}) {
     if (e.key === 'Enter') {
       e.preventDefault();
       const ls = lineStart(s);
-      const ind = v.slice(ls, s).match(/^[ \t]*/)[0];
+      let ind = v.slice(ls, s).match(/^[ \t]*/)[0];
       const before = v.slice(ls, s).trimEnd();
+      // on an empty line the indentation comes from the nearest line above with text (a
+      // level deeper if it opens a block), as VS Code's, so a run of Enters stays indented
+      if (s === t && ls === s && !v.slice(s, lineEnd(s)).trim()) {
+        const above = indentAbove(v, ls);
+        if (above) ind = above.indent + (above.opens ? unit() : '');
+      }
       // a doc comment carried on, or closed under a fresh /**
       const doc = s === t && docCommentEnter(v, s, lang.hl);
       if (doc) { typeIn(s, t, doc.text, s + doc.caret); return; }
@@ -1492,7 +1530,16 @@ function codeEditor(view, file, btn, id, opts = {}) {
     wantCaret = true;
     redraw(); flush(); paintState(); sendCursor();
   });
-  for (const ev of ['keyup', 'click', 'select']) ta.addEventListener(ev, () => { caretInView(); sendCursor(); tell(); });
+  // the caret brought into view when it moved, not on any key let go: a key released into
+  // an editor just focused (Enter from quick open) would scroll a tab coming back to its caret
+  let seenSel = [-1, -1];
+  ta.addEventListener('focus', () => { seenSel = [ta.selectionStart, ta.selectionEnd]; });
+  for (const ev of ['keyup', 'click', 'select']) ta.addEventListener(ev, () => {
+    const s = ta.selectionStart, e = ta.selectionEnd;
+    if (ev !== 'keyup' || s !== seenSel[0] || e !== seenSel[1]) caretInView();
+    seenSel = [s, e];
+    sendCursor(); tell();
+  });
 
   let localSave = null;
   function save() {
@@ -1524,7 +1571,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
   if (isMd) { let on = false; try { on = localStorage.getItem(MD_KEY) === '1'; } catch {} setRendered(on); }
   outClose.addEventListener('click', () => { out.hidden = true; });
   // the gutter scrolled with the text, kept at the left edge
-  scroller.addEventListener('click', (e) => { if (e.target === scroller || e.target === body) ta.focus(); });
+  scroller.addEventListener('click', (e) => { if (e.target === scroller || e.target === body) ta.focus({ preventScroll: true }); });
 
   // a close with unsaved edits held once: the label says so, a second close goes
   let armed = 0;
@@ -1548,7 +1595,9 @@ function codeEditor(view, file, btn, id, opts = {}) {
     holdClose,
     undo: () => historyStep(),
     redo: () => historyStep(true),
-    focus: () => ta.focus(),
+    // focus never scrolls: the browser would bring the textarea's caret into view, undoing
+    // the place a tab coming back was put; caretInView scrolls where a move asks for it
+    focus: () => ta.focus({ preventScroll: true }),
     show: () => { regeom(); overviewColors = null; rulersKey = ''; guideSnapshot = null; redraw(true); },
     text: () => ta.value,
     setInlineSuggestion,
@@ -1576,7 +1625,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
     },
     // focus false: the caret moved and shown, the focus left where it is (a find's box)
     select: (from, to = from, { focus = true } = {}) => {
-      if (focus) ta.focus();
+      if (focus) ta.focus({ preventScroll: true });
       ta.setSelectionRange(from, to);
       caretInView(true);
       sendCursor();
@@ -1619,10 +1668,19 @@ function codeEditor(view, file, btn, id, opts = {}) {
     ready: () => ready,
     // tokens for an older text still apply: moved onto the text now, as VS Code moves them
     setSemanticTokens: (ranges, text) => { if (closed) return; semantic = ranges; semanticText = text; redraw(true); },
-    setDiagnostics: (errors) => {
-      languageErrors = errors === null ? null : [...errors].sort((a, b) => a.from - b.from);
-      languageErrorsText = ta.value;
-      if (errors === null) { clearDiagnostics(); checkSoon(); } else check();
+    // errors: offsets in forText (the text the server checked, the editor's own when left
+    // out), moved onto the text now through what's been typed since; null back to the parse
+    setDiagnostics: (errors, forText = ta.value) => {
+      if (closed) return;
+      const text = ta.value;
+      let list = errors === null ? null : [...errors].sort((a, b) => a.from - b.from);
+      if (list && forText !== text) {
+        const { head, tail } = commonEnds(forText, text);
+        list = rebaseDiagnostics(list, { head, tail, before: forText.length }, text.length - forText.length);
+      }
+      languageErrors = list;
+      languageErrorsText = text;
+      if (errors === null) { clearDiagnostics(); checkSoon(); } else publishErrors();
     },
     tokenClass,
     lineHeight: () => geom().lh,

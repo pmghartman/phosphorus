@@ -995,12 +995,23 @@ func (a *adapter) launch(item langItem, manifest map[string]any, req LanguageReq
 			if _, err := io.ReadFull(r, data); err != nil {
 				return
 			}
-			var line bytes.Buffer
-			if err := json.Compact(&line, data); err != nil {
-				a.emit("error", map[string]any{"error": err.Error()})
+			// one message a line to the page: servers mostly write compact JSON, sent as it
+			// is; only one with line breaks in it compacted (a copy and a pass over it)
+			line := data
+			if bytes.ContainsAny(data, "\r\n") {
+				var compact bytes.Buffer
+				if err := json.Compact(&compact, data); err != nil {
+					a.emit("error", map[string]any{"error": err.Error()})
+					return
+				}
+				line = compact.Bytes()
+			} else if !json.Valid(data) {
+				a.emit("error", map[string]any{"error": "invalid JSON from the language server"})
 				return
 			}
-			if item.ID == "csharp" {
+			// Roslyn's metadata locations remembered; only a message naming one decoded for them
+			// (not every reply, semantic tokens and all)
+			if item.ID == "csharp" && bytes.Contains(data, []byte("csharp:/")) {
 				var msg any
 				if json.Unmarshal(data, &msg) == nil {
 					vmu.Lock()
@@ -1008,9 +1019,10 @@ func (a *adapter) launch(item langItem, manifest map[string]any, req LanguageReq
 					vmu.Unlock()
 				}
 			}
-			line.WriteByte('\n')
+			// the line and its end written apart, under one lock: no copy of a big reply
 			a.wmu.Lock()
-			a.out.Write(line.Bytes())
+			a.out.Write(line)
+			a.out.Write(newline)
 			a.wmu.Unlock()
 		}
 	}()
@@ -1048,9 +1060,9 @@ func (a *adapter) launch(item langItem, manifest map[string]any, req LanguageReq
 					return errors.New("Document is outside the project")
 				}
 			}
-			var body bytes.Buffer
-			json.Compact(&body, line)
-			if _, werr := fmt.Fprintf(stdin, "Content-Length: %d\r\n\r\n%s", body.Len(), body.Bytes()); werr != nil {
+			// the page's JSON is one line already: sent with its framing in one write
+			body := bytes.TrimSpace(line)
+			if _, werr := fmt.Fprintf(stdin, "Content-Length: %d\r\n\r\n%s", len(body), body); werr != nil {
 				return nil
 			}
 		}
@@ -1059,6 +1071,8 @@ func (a *adapter) launch(item langItem, manifest map[string]any, req LanguageReq
 		}
 	}
 }
+
+var newline = []byte{'\n'}
 
 type atomicInt struct {
 	mu sync.Mutex
