@@ -3608,12 +3608,19 @@ function fileItems(q) {
   // each path's relative form and lowercase kept on the index: typing re-ranks tens of
   // thousands of files a keystroke
   const pathQuery = name.replace(/\\/g, '/');
-  for (const f of I.index.files) {
+  // a query typed on from the last one only narrows it: its files are all that can match, as
+  // VS Code narrows its quick open
+  const last = I.quickFiles;
+  const narrows = last && last.index === I.index && last.root === I.st.root && name.startsWith(last.name);
+  const files = narrows ? last.files : I.index.files;
+  const matched = [];
+  for (const f of files) {
     if (f.relRoot !== I.st.root) { f.relRoot = I.st.root; f.r = rel(f.path); f.b = baseName(f.r); f.rl = f.r.toLowerCase(); f.bl = f.b.toLowerCase(); }
     const mb = fuzzy(name, f.b, f.bl);
     const m = mb ? { score: mb.score + 100, hl: mb.hl } : fuzzy(pathQuery, f.r, f.rl);
-    if (m) hits.push({ f, r: f.r, b: f.b, m, inBase: !!mb });
+    if (m) { hits.push({ f, r: f.r, b: f.b, m, inBase: !!mb }); matched.push(f); }
   }
+  I.quickFiles = { index: I.index, root: I.st.root, name, files: matched };
   hits.sort((a, b) => b.m.score - a.m.score || a.r.length - b.r.length);
   const items = hits.slice(0, 200).map((x) => ({
     label: x.b, hl: x.inBase ? x.m.hl : [], description: filesParent(x.r), ic: x.f.path,
@@ -3687,34 +3694,54 @@ function quick(o) {
       msg.textContent = r.message || (!q.items.length ? r.empty || '' : '');
       msg.hidden = !msg.textContent;
       msg.classList.toggle('bad', !!r.bad);
-      list.replaceChildren(...q.items.slice(0, 500).map((x, i) => {
-        const row = el('div', `ide-qi${x.sep ? ' sep' : ''}`);
-        row.id = `${list.id}-${i}`;
-        row.setAttribute('role', 'option');
-        if (x.sep) row.dataset.sep = x.sep;
-        if (x.ic) row.append(IC[x.ic] ? icon(x.ic, 'ide-fi') : fileIcon(x.ic));
-        const main = el('span', 'ide-qi-main');
-        main.append(hlText(x.label, x.hl));
-        if (x.description) main.append(el('span', 'ide-qi-desc', x.description));
-        if (x.detail) main.append(el('span', 'ide-qi-detail', x.detail));
-        row.append(main);
-        if (x.key) { const k = el('span', 'ide-qi-key'); k.append(...x.key.split(' ').map((part) => el('kbd', '', keyLabel(part)))); row.append(k); }
-        row.addEventListener('pointermove', () => { if (q.at !== i) { q.at = i; mark(); } });
-        row.addEventListener('pointerdown', (e) => e.preventDefault());
-        row.addEventListener('click', () => accept(i));
-        return row;
-      }));
-      mark();
+      list.replaceChildren();
+      q.litRow = null;
+      list.scrollTop = 0;
+      grow(QUICK_PAGE);
+      mark(true);
       if (r.wait) r.wait.then((next) => { if (I?.quick === q && gen === q.gen) show(next); });
     };
     show(res);
   };
-  const mark = () => {
-    const rows = list.children;
-    for (let i = 0; i < rows.length; i++) rows[i].classList.toggle('on', i === q.at);
-    const r = rows[q.at];
+  // rows made a page at a time, as they're scrolled or stepped to: a keystroke lays out a
+  // screen of them, not the hundreds that match
+  const QUICK_PAGE = 40;
+  const grow = (upto) => {
+    const n = Math.min(q.items.length, 500, upto);
+    for (let i = list.children.length; i < n; i++) list.append(rowOf(q.items[i], i));
+  };
+  list.addEventListener('scroll', () => { if (list.scrollTop + list.clientHeight * 2 > list.scrollHeight) grow(list.children.length + QUICK_PAGE); }, { passive: true });
+  const rowOf = (x, i) => {
+    const row = el('div', `ide-qi${x.sep ? ' sep' : ''}`);
+    row.id = `${list.id}-${i}`;
+    row.setAttribute('role', 'option');
+    if (x.sep) row.dataset.sep = x.sep;
+    if (x.ic) row.append(IC[x.ic] ? icon(x.ic, 'ide-fi') : fileIcon(x.ic));
+    const main = el('span', 'ide-qi-main');
+    main.append(hlText(x.label, x.hl));
+    if (x.description) main.append(el('span', 'ide-qi-desc', x.description));
+    if (x.detail) main.append(el('span', 'ide-qi-detail', x.detail));
+    row.append(main);
+    if (x.key) { const k = el('span', 'ide-qi-key'); k.append(...x.key.split(' ').map((part) => el('kbd', '', keyLabel(part)))); row.append(k); }
+    row.addEventListener('pointermove', () => { if (q.at !== i) { q.at = i; mark(true); } });
+    row.addEventListener('pointerdown', (e) => e.preventDefault());
+    row.addEventListener('click', () => accept(i));
+    return row;
+  };
+  // the lit row: the one before put out, the list scrolled to it only when it's off its edge
+  // (fresh: just made, at the top already, nothing to measure)
+  const mark = (fresh = false) => {
+    if (q.at >= list.children.length) grow(q.at + QUICK_PAGE);
+    const r = list.children[q.at];
+    if (q.litRow && q.litRow !== r) q.litRow.classList.remove('on');
+    r?.classList.add('on');
+    q.litRow = r || null;
     input.setAttribute('aria-activedescendant', r ? r.id : '');
-    r?.scrollIntoView({ block: 'nearest' });
+    if (r && !(fresh && q.at === 0)) {
+      const top = r.offsetTop, bottom = top + r.offsetHeight;
+      if (top < list.scrollTop) list.scrollTop = top;
+      else if (bottom > list.scrollTop + list.clientHeight) list.scrollTop = bottom - list.clientHeight;
+    }
     // the lit item told, for a live preview (the color theme picker's)
     if (o.onActive && q.items[q.at] !== q.lit) { q.lit = q.items[q.at]; o.onActive(q.lit); }
   };
