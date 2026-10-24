@@ -385,8 +385,8 @@ func describe() {
 		"update_status":   "The mesh update: whether one runs, who started it, each host's step and result. history true adds the last fifty started from this host with any errors.",
 		"update_control":  "Start a mesh update on an admin's key, or cancel the running one. update_status follows it. Admins only.",
 		"make_git_master": "Make a git host the master: the live one hands off, or with none it's force-promoted. Returns once it leads (up to 30s); never press it twice. Admins only.",
-		"set_model_role":  "Pick which mesh host's model is the chimp (small, fast) or the orangutan (big), mesh-wide: phosphorus/<host>, blank for the default. Admins only.",
-		"models":          "The models: each role's mesh host chosen and answering, each mesh model host's file, state and memory, and the last call's context use.",
+		"set_agent_model": "Assign a mesh host's model to an agent (chat, inline, code, claude-code, opencode), mesh-wide: phosphorus/<host>, blank for the automatic pick; slot fast is the small background model. Admins only.",
+		"models":          "The models: each agent's mesh host assigned and answering, each mesh model host's file, state and memory, and the last call's context use.",
 		"people":          "Who is on phosphorus right now: each person, the host serving them, and whether they are typing.",
 	}
 	for i := range tools {
@@ -394,7 +394,7 @@ func describe() {
 			tools[i].description = t
 		}
 		switch tools[i].name {
-		case "make_git_master", "set_model_role", "update_control", "host_logs", "host_config", "service_edit", "config_set":
+		case "make_git_master", "set_agent_model", "update_control", "host_logs", "host_config", "service_edit", "config_set":
 			tools[i].admin = true
 		}
 		switch tools[i].name {

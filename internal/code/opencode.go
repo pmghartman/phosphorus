@@ -40,12 +40,12 @@ func ocConfig(base, model, perm string) string {
 		allow = "deny"
 	}
 	models := map[string]any{}
-	for _, m := range Mesh {
+	for _, m := range []string{ocAgent, ocAgent + "-fast"} {
 		models[m] = map[string]any{"name": m}
 	}
 	return string(util.Marshal(map[string]any{
 		"$schema": "https://opencode.ai/config.json", "autoupdate": false, "share": "disabled",
-		"model": "phosphorus/" + model, "small_model": "phosphorus/chimp",
+		"model": "phosphorus/" + ocAgent, "small_model": "phosphorus/" + ocAgent + "-fast",
 		"provider": map[string]any{"phosphorus": map[string]any{
 			"npm": "@ai-sdk/anthropic", "name": "phosphorus",
 			"options": map[string]any{"baseURL": base + "/api/model/v1", "apiKey": "{env:" + keyVar + "}"},
@@ -67,7 +67,7 @@ func ocSetup(base, model, perm string) string {
 // ocLaunch one run in dir on prompt, its env read off stdin first, resumed
 // from sid when there's one
 func ocLaunch(dir, model, perm, sid, prompt string) string {
-	args := []string{"opencode", "run", "--format", "json", "--model", quote("phosphorus/" + model)}
+	args := []string{"opencode", "run", "--format", "json", "--model", quote("phosphorus/" + ocAgent)}
 	// nobody's at a run's prompt to approve a tool: allowed, but in plan mode, where they're refused
 	if perm != "plan" {
 		args = append(args, "--auto")

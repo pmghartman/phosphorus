@@ -26,8 +26,8 @@ func TestOcTool(t *testing.T) {
 }
 
 func TestOcLaunch(t *testing.T) {
-	l := ocLaunch("~/proj", "chimp", "default", "ses_1", "fix it's bug")
-	if strings.Contains(ocLaunch("~/p", "chimp", "plan", "", "x"), "--auto") || !strings.Contains(l, "--auto") {
+	l := ocLaunch("~/proj", "mesh", "default", "ses_1", "fix it's bug")
+	if strings.Contains(ocLaunch("~/p", "mesh", "plan", "", "x"), "--auto") || !strings.Contains(l, "--auto") {
 		t.Fatal("--auto only outside plan mode")
 	}
 	for _, want := range []string{"opencode run --format json", `--session '\''ses_1'\''`, "OPENCODE_CONFIG=", `-- '\''fix it'\''\'\'''\''s bug'\''`} {
@@ -35,7 +35,7 @@ func TestOcLaunch(t *testing.T) {
 			t.Fatalf("no %q in %s", want, l)
 		}
 	}
-	if c := ocConfig("http://10.0.0.1:8090", "orangutan", "plan"); !strings.Contains(c, `"edit":"deny"`) || !strings.Contains(c, `"model":"phosphorus/orangutan"`) {
+	if c := ocConfig("http://10.0.0.1:8090", "mesh", "plan"); !strings.Contains(c, `"edit":"deny"`) || !strings.Contains(c, `"model":"phosphorus/agent-opencode"`) {
 		t.Fatal(c)
 	}
 }
@@ -57,7 +57,7 @@ func TestOcRun(t *testing.T) {
 	}
 	defer func() { spawn = sshSpawn }()
 	creds := func(string, string) (Creds, error) { return Creds{User: "u", Key: "k", Base: "http://b"}, nil }
-	st, b := Create("ryan", map[string]any{"host": "razer", "dir": "~/w", "model": "chimp", "harness": "opencode"}, creds)
+	st, b := Create("ryan", map[string]any{"host": "razer", "dir": "~/w", "model": "mesh", "harness": "opencode"}, creds)
 	if st != 200 {
 		t.Fatal(st, b)
 	}

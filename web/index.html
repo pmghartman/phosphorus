@@ -125,7 +125,6 @@ outside #mesh-svg (emptied every redraw) so it never restarts -->
       <div class="view" id="view-status">
         <div class="st-top" id="st-top">
           <section class="st-mesh" id="st-mesh" hidden><div class="st-card-head">mesh</div><div class="st-mesh-grid"><div><div></div><canvas class="st-graph st-mesh-g"></canvas></div><div><div></div><div class="st-sum-net st-mesh-g"><canvas class="st-graph"></canvas><canvas class="st-graph"></canvas></div></div></div></section>
-          <section class="st-mesh st-model" id="st-model" hidden><div class="st-card-head">model</div><div class="st-model-pick" hidden></div><div class="st-model-roles"></div></section>
         </div>
         <div class="st-hosts" id="st-hosts"><div class="st-wait">connecting</div></div>
       </div>
@@ -152,6 +151,7 @@ outside #mesh-svg (emptied every redraw) so it never restarts -->
       </div>
       <!-- claude code sessions on the mesh's hosts, drawn by apps/code.js -->
       <div class="view" id="view-code"></div>
+      <div class="view" id="view-agents"></div>
       <!-- a pretend remote desktop over the hosts' own terminals, files and services -->
       <div class="view dk active" id="view-desktop"></div>
       <div class="view" id="view-about">
@@ -181,8 +181,7 @@ outside #mesh-svg (emptied every redraw) so it never restarts -->
           <div class="mesh-legend" aria-hidden="true">
             <span><span class="mesh-legend-star">*</span> git servant</span>
             <span class="mesh-legend-git">git master</span>
-            <span><span class="mesh-legend-model">c</span> chimp model</span>
-            <span><span class="mesh-legend-model">o</span> orangutan model</span>
+            <span><span class="mesh-legend-model">3</span> agents asking a model</span>
           </div>
         </div>
         <div class="mesh-stats" id="mesh-stats">

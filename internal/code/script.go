@@ -33,8 +33,18 @@ var (
 	envNameRe   = regexp.MustCompile(`^[A-Z_][A-Z0-9_]*$`)
 )
 
-// Mesh the models served by the mesh, the rest Anthropic's
-var Mesh = []string{"chimp", "orangutan"}
+// Mesh the model the mesh serves a session: whichever the Agents page assigns
+// its harness; the rest are Anthropic's
+var Mesh = []string{"mesh"}
+
+// legacy the models sessions made before the Agents page were saved with, now the mesh's
+var legacy = []string{"chimp", "orangutan"}
+
+// the gateway names the harnesses ask by, the Agents page's assignments
+const (
+	claudeAgent = "agent-claude-code"
+	ocAgent     = "agent-opencode"
+)
 
 // Anthropic the models on the user's own subscription, claude's aliases
 var Anthropic = []string{"opus", "sonnet", "haiku"}
@@ -54,7 +64,7 @@ func has(xs []string, x string) bool {
 // provider "mesh" or "anthropic", "" for no such model
 func provider(m string) string {
 	switch {
-	case has(Mesh, m):
+	case has(Mesh, m), has(legacy, m), strings.HasPrefix(m, "agent-"):
 		return "mesh"
 	case has(Anthropic, m):
 		return "anthropic"
@@ -99,11 +109,12 @@ func envLines(model string, c Creds) ([]string, error) {
 	env := [][2]string{{keyVar, c.Key}}
 	switch provider(model) {
 	case "mesh":
+		main, fast, big := claudeAgent, claudeAgent+"-fast", claudeAgent
 		env = append(env, [][2]string{
 			{"ANTHROPIC_BASE_URL", c.Base + "/api/model"}, {"ANTHROPIC_AUTH_TOKEN", c.Key},
-			{"ANTHROPIC_MODEL", model}, {"ANTHROPIC_SMALL_FAST_MODEL", "chimp"},
-			{"ANTHROPIC_DEFAULT_HAIKU_MODEL", "chimp"}, {"ANTHROPIC_DEFAULT_SONNET_MODEL", "orangutan"},
-			{"ANTHROPIC_DEFAULT_OPUS_MODEL", "orangutan"}, {"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1"},
+			{"ANTHROPIC_MODEL", main}, {"ANTHROPIC_SMALL_FAST_MODEL", fast},
+			{"ANTHROPIC_DEFAULT_HAIKU_MODEL", fast}, {"ANTHROPIC_DEFAULT_SONNET_MODEL", big},
+			{"ANTHROPIC_DEFAULT_OPUS_MODEL", big}, {"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1"},
 			{"API_TIMEOUT_MS", "3600000"}}...)
 	case "anthropic":
 		if c.Token == "" {

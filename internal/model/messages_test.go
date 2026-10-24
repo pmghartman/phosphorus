@@ -10,11 +10,12 @@ import (
 
 func TestTarget(t *testing.T) {
 	for in, want := range map[string][2]string{
-		"chimp": {"", "chimp"}, "Orangutan": {"", "orangutan"}, "phosphorus/razer": {"razer", ""},
-		"claude-3-5-haiku-20241022": {"", "chimp"}, "claude-sonnet-4-5": {"", "orangutan"}, "": {"", "orangutan"},
-		"phosphorus/bad host": {"", "orangutan"},
+		"phosphorus/razer": {"razer", ""}, "claude-3-5-haiku-20241022": {"", "small"}, "claude-sonnet-4-5": {"", "large"},
+		"": {"", "large"}, "phosphorus/bad host": {"", "large"}, "chimp": {"", "large"},
+		"agent-chat": {"", "small"}, "agent-claude-code": {"", "large"}, "agent-claude-code-fast": {"", "small"},
+		"agent-chat-fast": {"", "small"}, "agent-nope": {"", "large"},
 	} {
-		h, r := Target(in)
+		h, r, _ := Target(in)
 		if h != want[0] || r != want[1] {
 			t.Errorf("%q: %q %q, want %v", in, h, r, want)
 		}

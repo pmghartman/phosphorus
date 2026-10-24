@@ -1,6 +1,6 @@
 ---
 name: phosphorus
-description: Operates the user's live, self-hosted Phosphorus mesh through the Phosphorus connector's tools. Use whenever the user names phosphorus or the mesh, one of its hosts, or asks about their own servers, homelab or tailnet, even without saying "phosphorus": a host up, down, slow or full; services or game servers on the mesh; files in mesh shares; running a command on a host; host logs; the mesh's Forgejo; the mesh chat; its models (chimp, orangutan); a mesh update. Not for editing or building the phosphorus source code itself.
+description: Operates the user's live, self-hosted Phosphorus mesh through the Phosphorus connector's tools. Use whenever the user names phosphorus or the mesh, one of its hosts, or asks about their own servers, homelab or tailnet, even without saying "phosphorus": a host up, down, slow or full; services or game servers on the mesh; files in mesh shares; running a command on a host; host logs; the mesh's Forgejo; the mesh chat; its models and agents; a mesh update. Not for editing or building the phosphorus source code itself.
 ---
 
 # Phosphorus
@@ -36,7 +36,7 @@ Read the one that fits before the first call; a one-tool question needs none.
 
 ## Not covered by a job file
 
-- Models: `models` shows which mesh host's model is each role (chimp the small, fast one, orangutan the big one); `set_model_role` changes a role (admin).
+- Models: `models` shows which mesh host's model each agent (chat, inline, code, claude-code, opencode) is assigned and answering with; `set_agent_model` assigns one (admin).
 - The user's own Phosphorus window: `open_file` opens a share's file in a Sulfur tab, `show_file` invites someone else into one, `open_terminal` opens a shared terminal tab.
 
 ## Errors

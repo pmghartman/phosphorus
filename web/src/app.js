@@ -15,6 +15,7 @@ const APPS = {
   terminal: () => import('./apps/terminal.js'),
   files: () => import('./apps/files.js'),
   code: () => import('./apps/code.js'),
+  agents: () => import('./apps/agents.js'),
   sulfur: () => import('./sulfur/workbench.js'),
 };
 // the newest /api/state, handed to an app as it loads
@@ -618,28 +619,23 @@ const syncMotion = () => (reduceMotion.matches ? svgDefs.pauseAnimations() : svg
 reduceMotion.addEventListener('change', syncMotion);
 syncMotion();
 
-// left of a model host, mirroring the git mark: c the chimp, o the orangutan,
-// in the glyph's colours, dimmed while not loaded
+// left of a model host, mirroring the git mark: how many agents ask it, in
+// the glyph's colours, dimmed while not loaded
 function drawModelMarker(x, y, mm, scale = 1, opacity = 1) {
   const mark = svgEl('text', {
     x: x - 4.5 * scale, y: y - 1.2 * scale, 'text-anchor': 'end', class: `mesh-model-mark${mm.ready ? '' : ' down'}`,
     style: `font-size:${7 * scale}px;opacity:${opacity}`,
   });
-  mark.textContent = mm.roles.map((r) => r[0]).join('');
+  mark.textContent = mm.agents.length || 'm';
   const title = svgEl('title', {});
-  title.textContent = `${mm.roles.join(' and ')} model: ${mm.file || 'no model yet'}${mm.ready ? '' : ', not loaded'}`;
+  title.textContent = `${mm.agents.length ? mm.agents.join(', ') : 'no agents'} on ${mm.file || 'no model yet'}${mm.ready ? '' : ', not loaded'}`;
   mark.appendChild(title);
   meshSvg.appendChild(mark);
 }
 
-// a model host's roles, as each now answers
-function modelRoles(x, model) {
-  return [x.host === model.chimp && 'chimp', x.host === model.orangutan && 'orangutan'].filter(Boolean);
-}
-
 let meshRoutes = [];
 let meshTailnet = [];
-// the chimp's and orangutan's hosts, marked in the glyph's colours
+// the model hosts, marked in the glyph's colours
 let meshModels = new Map();
 let meshSig = '';
 
@@ -1231,8 +1227,8 @@ function applyState(state) {
   renderRoutes(state.routes, state.tailnet);
   lastState = state;
   appCall('status', false, (m) => m.statusState(state));
-  const nextModels = new Map((state.model?.models || []).map((x) => [x.host, { file: x.file, ready: x.ready, roles: modelRoles(x, state.model) }])
-    .filter(([, v]) => v.roles.length));
+  appCall('agents', false, (m) => m.agentsState(state));
+  const nextModels = new Map((state.model?.models || []).map((x) => [x.host, { file: x.file, ready: x.ready, agents: x.agents || [] }]));
   const modelChanged = JSON.stringify([...nextModels]) !== JSON.stringify([...meshModels]);
   meshModels = nextModels;
   if ((gitChanged || modelChanged) && !meshAnimFrame) drawMesh();
@@ -2498,8 +2494,6 @@ function redrawLine(m) {
 // shown to their two ends)
 
 const CHANNELS_KEY = 'phosphorus-chat-channels';
-// the mesh models' roles, each picked in the model card
-const MODEL_ROLES = ['chimp', 'orangutan'];
 // mesh, ch:<name> or dm:<name>
 let conv = 'mesh';
 const loadJson = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } };
@@ -2966,18 +2960,21 @@ function renderHistory(messages, closed = {}) {
 }
 
 // the status card's clear buttons, its code fetched or not
-const stRolesEl = document.querySelector('#st-model .st-model-roles');
-stRolesEl.addEventListener('click', (e) => {
+const stHostsEl = document.getElementById('st-hosts');
+// captured, a card's own click opening it never seeing this one
+stHostsEl.addEventListener('click', (e) => {
   const b = e.target.closest('.st-clear');
-  if (!b || b.disabled) return;
+  if (!b) return;
+  e.stopPropagation();
+  if (b.disabled) return;
   b.disabled = true;
   b.textContent = 'clearing';
-  send({ type: 'model-purge', id: b.dataset.role, to: b.dataset.role });
-});
+  send({ type: 'model-purge', id: b.dataset.host, to: b.dataset.host });
+}, true);
 
 // the llama-server slots on its host erased, a fresh start for its kv cache
 function modelPurged(msg) {
-  const btn = stRolesEl.querySelector(`.st-clear[data-role="${CSS.escape(String(msg.id))}"]`);
+  const btn = stHostsEl.querySelector(`.st-clear[data-host="${CSS.escape(String(msg.id))}"]`);
   if (!btn) return;
   btn.disabled = false;
   btn.textContent = msg.error ? `no clear: ${msg.error}` : 'cleared';
@@ -4571,6 +4568,7 @@ function dkIcons() {
     ['status', () => dkIcon('status', 'status', '', () => dkOpenApp('status'))],
     ...(git ? [['git', () => dkGlobe(dkIcon('git', 'git', '', () => dkOpenApp('git')), 'public: its own login only')]] : []),
     ['code', () => dkIcon('code', 'code', '', () => dkOpenApp('code'))],
+    ['agents', () => dkIcon('agents', 'agents', '', () => dkOpenApp('agents'))],
     ['games', () => dkIcon('games', 'games', '', () => dkOpenApp('games'))],
     ['about', () => dkIcon('about', 'about', '', () => dkOpenApp('about'))],
     ...dk.services.map((r) => [JSON.stringify([r.host, r.name, !!r.public]), () => dkServiceIcon(r)]),
@@ -5868,6 +5866,7 @@ const DK_APPS = {
   about: { title: 'about', view: 'view-about', w: 700, h: 420 },
   games: { title: 'game servers', view: 'view-games', w: 460, h: 420 },
   code: { title: 'code', view: 'view-code', w: 1040, h: 660 },
+  agents: { title: 'agents', view: 'view-agents', w: 860, h: 640 },
 };
 
 // a fresh window's size, centered, a phone's left filling the desk
@@ -5919,6 +5918,7 @@ function dkAppsChanged() {
   }
   const up = (id) => deskApps.has(id) && !was.has(id);
   if (up('status')) appCall('status', true, (m) => m.statusWatch(lastState));
+  if (up('agents')) appCall('agents', true, (m) => { m.agentsState(lastState); m.agentsWatch(true); });
   if (deskApps.has('code') !== was.has('code')) appCall('code', deskApps.has('code'), (m) => m.codeWatch(deskApps.has('code')));
   // the conversation's news read once it's on screen
   if (up('chat')) setConv(conv);
@@ -5946,7 +5946,7 @@ function dkOpenTerminal(host, shared = false) {
 }
 
 // phosphorus's presses, each the app it names
-const DK_VIEWS = { status: 'status', about: 'about', chat: 'chat', git: 'git', games: 'games', home: 'games', code: 'code', projects: 'code' };
+const DK_VIEWS = { status: 'status', about: 'about', chat: 'chat', git: 'git', games: 'games', home: 'games', code: 'code', projects: 'code', agents: 'agents', models: 'agents' };
 function dkPressed(a) {
   if (a.kind === 'terminal') dkOpenTerminal(a.host, a.share === true);
   else if (a.kind === 'host' && phosphorusHosts().includes(a.host)) switchHost(a.host);
@@ -6778,7 +6778,7 @@ const AGENT_STALE_MS = 11 * 60000;
 // tools printed in a host's console: the command or the call, then what came back
 const AGENT_CONSOLE = new Set(['terminal_run', 'host_logs', 'service_request', 'forgejo',
   'host_config', 'service_edit', 'config_set', 'host_power', 'game_power']);
-const AGENT_STATUS = new Set(['mesh_hosts', 'host_stats', 'services', 'models', 'set_model_role']);
+const AGENT_STATUS = new Set(['mesh_hosts', 'host_stats', 'services', 'models', 'set_agent_model']);
 const AGENT_CHAT = new Set(['send_message', 'chat_history', 'chat_edit']);
 const AGENT_LIT_MS = 2400;
 // the windows the agent opened itself, closed this long after it goes quiet
@@ -7058,7 +7058,6 @@ export {
   DK_RUNNERS,
   DK_UI,
   HOME,
-  MODEL_ROLES,
   acct,
   codeKey,
   codeLang,
@@ -7123,7 +7122,6 @@ export {
   lines,
   may,
   modalOpen,
-  modelRoles,
   name,
   news,
   newSid,
