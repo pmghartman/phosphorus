@@ -8444,10 +8444,13 @@ function buildExtView() {
   const list = el('div', 'ide-ext-list');
   list.setAttribute('role', 'list');
   const note = el('div', 'ide-tree-note');
-  v.body.append(el('div', 'ide-search-form', ''), head.node, list, note);
+  // the language servers installed on the host, listed with the extensions installed
+  const langs = el('div', 'ide-ext-langs');
+  v.body.append(el('div', 'ide-search-form', ''), head.node, list, langs, note);
   v.body.firstChild.append(q);
-  languages.mount(v.body);
-  head.node.addEventListener('ide-section', () => { list.hidden = !head.open(); });
+  I.extView = { q, head, list, note, langs, langCount: 0 };
+  languages.mount(v.body, { installed: langs, count: (n) => { if (I.extView.langCount !== n) { I.extView.langCount = n; paintExtView(); } } });
+  head.node.addEventListener('ide-section', () => { list.hidden = langs.hidden = !head.open(); });
   head.paint();
   q.addEventListener('input', () => { paintExtView(); languages.filter(q.value); });
   v.focus = () => q.focus();
@@ -8455,7 +8458,6 @@ function buildExtView() {
     btn('', 'plus', 'Create New Extension…', () => run('sulfur.extensions.create')),
     btn('', 'refresh', 'Reload Extensions', () => run('workbench.extensions.action.refreshExtension')),
   ];
-  I.extView = { q, head, list, note };
 }
 
 function paintExtView() {
@@ -8466,7 +8468,7 @@ function paintExtView() {
   const shown = all.filter((x) => !v || `${extName(x)} ${x.id} ${x.manifest?.description || ''}`.toLowerCase().includes(v));
   E.head.title.textContent = `Installed`;
   E.head.node.querySelector('.ide-badge')?.remove();
-  E.head.title.after(Object.assign(el('span', 'ide-badge'), { textContent: String(all.length) }));
+  E.head.title.after(Object.assign(el('span', 'ide-badge'), { textContent: String(all.length + (E.langCount || 0)) }));
   E.list.replaceChildren(...shown.map((x) => {
     const row = Object.assign(el('div', `ide-ext${x.state === 'on' ? '' : ' off'}`), { tabIndex: 0 });
     row.setAttribute('role', 'listitem');
@@ -8496,7 +8498,7 @@ function paintExtView() {
     return row;
   }));
   E.note.replaceChildren();
-  if (!all.length) {
+  if (!all.length && !E.langCount) {
     E.note.append(el('p', '', 'No extensions yet. An extension is a folder in ~/.sulfur/extensions: a package.json and a module that exports activate(api).'));
     const make = Object.assign(el('button', 'ide-button', 'Create New Extension'), { type: 'button' });
     make.addEventListener('click', () => run('sulfur.extensions.create'));
