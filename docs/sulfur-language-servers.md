@@ -220,8 +220,8 @@ AI generation. Explicit IntelliSense requests and list navigation take priority.
 
 ## Formatting and pane layout
 
-`Ctrl+F` formats the document; `Shift+Alt+F` is an alternative. Find remains in
-the Edit menu and on `Ctrl+Alt+F`. **Formatting** settings control tabs/spaces,
+`Ctrl+Shift+F` formats the document; `Shift+Alt+F` is an alternative. `Ctrl+F` is
+Find, and Find in Files is on `Ctrl+Shift+H`. **Formatting** settings control tabs/spaces,
 tab width, opening braces on the same/next line and block-content indentation.
 Indentation detection can be disabled to use these preferences while typing.
 Formatting uses the language server when available, then applies supported

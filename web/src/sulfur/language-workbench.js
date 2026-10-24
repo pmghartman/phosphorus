@@ -1,7 +1,6 @@
 import { LANGUAGE_EXTENSIONS, languageId, positionAt, offsetAt, relativeUri, applyTextEdits, textEditRanges, completionEdits, snippetText, languageSocket, serverSettings } from './language-client.js';
 import { isWordChar, wordBefore, rankCompletions, wordCompletions, kindOf, inCommentOrString, sameCompletionWord } from './completion.js';
 import { reindent } from './format.js';
-import { diagnosticDelay } from './diagnostics.js';
 import { inlineSuffix, preferLanguageCompletion } from './inline-completion.js';
 import { semanticRanges } from './semantic-tokens.js';
 import { documentSymbols } from './navigation.js';
@@ -77,35 +76,53 @@ export function createLanguageWorkbench(api) {
     const p = message.params;
     try {
       const rel = relativeUri(session.client.rootUri, p.uri);
-      const document = session.client.documents.get(p.uri);
-      if (p.version != null && p.version !== document?.version) return;
+      // the text this report was made for: a version since typed past is still placed, on its
+      // own text, and the editor moves it onto the text now; only one too old to know is dropped
+      const forText = session.client.textOf(p.uri, p.version);
+      const open = session.client.documents.has(p.uri);
+      if (open && forText === undefined) return;
       const tab = [...attached].find(([, d]) => d.session === session && d.uri === p.uri)?.[0];
-      if (tab && document?.text !== tab.ed.text()) return;
       const items = (p.diagnostics || []).map((d) => ({ ...d, path: api.join(session.context.rootRel, rel) }));
       const key = session.key + '\n' + p.uri;
       diagnostics.set(key, { session, uri: p.uri, items, resultId: p.resultId || diagnostics.get(key)?.resultId });
-      if (tab) tab.ed.setDiagnostics(items.map((d) => ({ from: offsetAt(document.text, d.range.start), to: offsetAt(document.text, d.range.end), what: d.message, code: d.code, severity: d.severity ?? 1, source: d.source || session.extension })));
+      if (tab && forText !== undefined) {
+        const mapped = [];
+        for (const d of items) {
+          try { mapped.push({ from: offsetAt(forText, d.range.start), to: offsetAt(forText, d.range.end), what: d.message, code: d.code, severity: d.severity ?? 1, source: d.source || session.extension }); } catch {}
+        }
+        tab.ed.setDiagnostics(mapped, forText);
+      }
       api.problems();
     } catch (e) { api.log(e.message, `Languages: ${session.context.host}`); }
   }
+  // Pulled diagnostics (Roslyn's) as VS Code asks: shortly after an edit, one request at a
+  // time and never cancelled by typing, so underlines keep coming while you type; asked
+  // again once the one in flight lands if the text moved on meanwhile
+  const PULL_DELAY = 200;
   function scheduleDiagnostics(tab) {
     const doc = attached.get(tab);
     if (!doc?.session.client.capabilities.diagnosticProvider) return;
-    clearTimeout(doc.diagnosticTimer); doc.diagnosticController?.abort();
+    if (doc.pulling) { doc.pullAgain = true; return; }
+    clearTimeout(doc.diagnosticTimer);
     doc.diagnosticTimer = setTimeout(async () => {
       const client = doc.session.client;
       const snapshot = client.documents.get(doc.uri);
       if (!snapshot || !api.alive(tab)) return;
       const own = doc.diagnosticController = new AbortController();
+      doc.pulling = true; doc.pullAgain = false;
       try {
         const report = await client.request('textDocument/diagnostic', { textDocument: { uri: doc.uri }, ...(client.capabilities.diagnosticProvider.identifier ? { identifier: client.capabilities.diagnosticProvider.identifier } : {}), ...(doc.resultId ? { previousResultId: doc.resultId } : {}) }, { signal: own.signal });
-        if (own.signal.aborted || attached.get(tab) !== doc || client.documents.get(doc.uri)?.version !== snapshot.version || tab.ed.text() !== snapshot.text) return;
+        if (own.signal.aborted || attached.get(tab) !== doc) return;
         if (report.kind === 'full') doc.pullItems = report.items || [];
         doc.resultId = report.resultId;
         for (const [uri, related] of Object.entries(report.relatedDocuments || {})) if (related.kind === 'full') receive(doc.session, { method: 'textDocument/publishDiagnostics', params: { uri, resultId: related.resultId, diagnostics: related.items || [] } });
         receive(doc.session, { method: 'textDocument/publishDiagnostics', params: { uri: doc.uri, version: snapshot.version, resultId: report.resultId, diagnostics: doc.pullItems || [] } });
       } catch (error) { if (!aborted(error) && !client.closed()) api.log(error.message, `Languages: ${doc.session.context.host}`); }
-    }, diagnosticDelay(api.diagnosticDelay?.()));
+      finally {
+        doc.pulling = false;
+        if (attached.get(tab) === doc && (doc.pullAgain || client.documents.get(doc.uri)?.version !== snapshot.version)) scheduleDiagnostics(tab);
+      }
+    }, PULL_DELAY);
   }
   async function get(tab) {
     if (!tab?.rel || !tab.ed?.ready() || tab.info?.readOnly) return null;
@@ -219,7 +236,7 @@ export function createLanguageWorkbench(api) {
         analyses.delete(tab);
         if (task.again || text !== tab.ed.text()) scheduleAnalysis(tab);
       }
-    }, 350);
+    }, 200);
   }
   async function request(tab, method, extra = {}, signal) {
     if (signal?.aborted) return null;

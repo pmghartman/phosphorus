@@ -1,5 +1,5 @@
 export const diagnosticSeverity = (d) => [1, 2, 3, 4].includes(d.severity) ? d.severity : 1;
-export const diagnosticDelay = (value) => Math.max(300, Math.min(5000, Number(value) || 1000));
+export const diagnosticDelay = (value) => Math.max(300, Math.min(5000, Number(value) || 500));
 export function diagnosticCounts(items) {
   return items.reduce((out, item) => { out[diagnosticSeverity(item) === 1 ? 'errors' : diagnosticSeverity(item) === 2 ? 'warnings' : 'info']++; return out; }, { errors: 0, warnings: 0, info: 0 });
 }

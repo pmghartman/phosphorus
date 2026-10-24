@@ -23,8 +23,8 @@ test('hover hit testing handles tabs, CRLF, UTF-16 offsets and empty diagnostics
   assert.equal(diagnosticsAt([{ from: 1, to: 1, what: 'missing token' }], 1).length, 1);
 });
 
-test('diagnostic quiet periods default to a second and are bounded independently of suggestion timing', () => {
-  assert.equal(diagnosticDelay(),1000);
+test('the syntax check waits half a second by default and is bounded independently of suggestion timing', () => {
+  assert.equal(diagnosticDelay(), 500);
   assert.equal(diagnosticDelay(1500),1500);
   assert.equal(diagnosticDelay(-1),300);
   assert.equal(diagnosticDelay(99999),5000);

@@ -203,9 +203,16 @@ export function languageSocket(url, request, onEvent = () => {}) {
       const mode = typeof sync === 'number' ? sync : sync?.change;
       if (!old) client.notify('textDocument/didOpen', { textDocument: { uri, languageId: language, version, text } });
       else if (mode !== 0) client.notify('textDocument/didChange', { textDocument: { uri, version }, contentChanges: mode === 2 ? [incrementalChange(old.text, text)] : [{ text }] });
-      client.documents.set(uri, { text, version });
+      // the last texts sent, by version: a report for a version since typed past is placed on
+      // the text it was made for, then moved onto the text now, not thrown away
+      const texts = old?.texts || new Map();
+      texts.set(version, text);
+      for (const v of texts.keys()) { if (texts.size <= 12) break; texts.delete(v); }
+      client.documents.set(uri, { text, version, texts });
       return version;
     },
+    // the text a version of a document was, if it's one of the last sent
+    textOf(uri, version) { const d = client.documents.get(uri); return version == null ? d?.text : d?.texts?.get(version) ?? (d?.version === version ? d.text : undefined); },
     closeDocument(uri) { if (client.documents.delete(uri) && !closed && ws.readyState === 1) client.notify('textDocument/didClose', { textDocument: { uri } }); },
     close() { if (closed) return; closed = true; client.documents.clear(); rejectAll(new Error('Language session stopped')); ws.close(); },
   };
