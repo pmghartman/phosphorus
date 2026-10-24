@@ -132,19 +132,19 @@ func Check(force bool) map[string]any {
 
 // Chain the mesh update, on the initiator only
 type Chain struct {
-	ID           string                       `json:"id"`
-	Order        []string                     `json:"order"`
-	Results      map[string]string            `json:"results"`
-	Versions     map[string]map[string]string `json:"versions"`
-	Errors       map[string]string            `json:"errors"`
-	Details      map[string]string            `json:"details,omitempty"`
-	Target       string                       `json:"target"`
-	Cancelled    bool                         `json:"cancelled"`
-	Done         bool                         `json:"done"`
-	StartedAt    string                       `json:"startedAt"`
-	FinishedAt   int64                        `json:"finishedAt,omitempty"`
-	SavedAt      int64                        `json:"savedAt,omitempty"`
-	AlertSeq     *float64                     `json:"alertSeq,omitempty"`
+	ID         string                       `json:"id"`
+	Order      []string                     `json:"order"`
+	Results    map[string]string            `json:"results"`
+	Versions   map[string]map[string]string `json:"versions"`
+	Errors     map[string]string            `json:"errors"`
+	Details    map[string]string            `json:"details,omitempty"`
+	Target     string                       `json:"target"`
+	Cancelled  bool                         `json:"cancelled"`
+	Done       bool                         `json:"done"`
+	StartedAt  string                       `json:"startedAt"`
+	FinishedAt int64                        `json:"finishedAt,omitempty"`
+	SavedAt    int64                        `json:"savedAt,omitempty"`
+	AlertSeq   *float64                     `json:"alertSeq,omitempty"`
 }
 
 // nothing moving until it passes

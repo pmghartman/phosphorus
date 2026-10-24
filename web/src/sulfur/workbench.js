@@ -1240,6 +1240,10 @@ function buildExplorer() {
     if (row && row.dataset.dir !== '1' && !row.classList.contains('ide-row-edit')) openFile(row.dataset.path, { preview: false });
   });
   tree.addEventListener('keydown', treeKey);
+  tree.addEventListener('scroll', renderTreeSoon, { passive: true });
+  const treeResize = new ResizeObserver(() => { if (I?.ex?.items) { I.ex.drawn = null; renderTreeSoon(); } });
+  treeResize.observe(tree);
+  I.offs.push(() => treeResize.disconnect());
   tree.addEventListener('contextmenu', (e) => {
     e.preventDefault();
     const row = e.target.closest('.ide-row');
@@ -1383,21 +1387,22 @@ function paintTree() {
     rootHead.insertBefore(badge, rootHead.querySelector('.ide-sec-acts'));
   }
   const skip = excluded();
+  // the rows as what they show; only those on screen made (renderTree)
   const rows = [];
   const edit = I.ex.edit;
-  const editRow = (depth) => rows.push(edit.node || editNode(depth));
+  const editRow = (depth) => rows.push({ node: edit.node || editNode(depth), edit: true });
   const walk = (dir, depth) => {
     if (edit && edit.kind !== 'rename' && edit.dir === dir) editRow(depth);
     const list = I.tree.get(dir);
     if (!list) {
-      if (I.loading.has(dir)) rows.push(Object.assign(el('div', 'ide-row ide-row-wait'), { style: `--depth:${depth}` }));
+      if (I.loading.has(dir)) rows.push({ node: Object.assign(el('div', 'ide-row ide-row-wait'), { style: `--depth:${depth}` }) });
       return;
     }
     for (const e of list) {
       if (skip(e.name, e.dir)) continue;
       const p = filesJoin(dir, e.name);
       if (edit?.kind === 'rename' && edit.path === p) { editRow(depth); continue; }
-      rows.push(treeRow(e, p, depth, changes));
+      rows.push({ e, path: p, dir: !!e.dir, depth });
       if (e.dir && I.expanded.has(p)) walk(p, depth + 1);
     }
   };
@@ -1415,14 +1420,59 @@ function paintTree() {
     b.addEventListener('click', () => run('explorer.newFile'));
     note.append(b);
   }
-  tree.replaceChildren(...rows);
-  I.ex.rows = rows.filter((r) => r.dataset.path);
-  tree.setAttribute('aria-activedescendant', '');
-  const sel = I.sel && tree.querySelector(`.ide-row[data-path="${CSS.escape(I.sel)}"]`);
-  if (sel) { sel.classList.add('sel'); tree.setAttribute('aria-activedescendant', sel.id); }
+  I.ex.items = rows;
+  I.ex.rows = rows.filter((r) => r.path);
+  I.ex.changes = changes;
+  I.ex.drawn = null;
+  renderTree();
   if (edit?.input && document.activeElement !== edit.input && edit.focus) { edit.focus = false; edit.input.focus(); }
   saveExpanded();
 }
+
+// The rows on screen, and a screen's worth either side, made and put in; the rest stood in
+// for by the space they'd take, so a folder of thousands opens and scrolls as one of tens (as
+// VS Code's explorer is a virtual list). A row being edited (a rename, a new file) is always in.
+const TREE_SPARE = 30;
+function renderTree() {
+  const { tree, items } = I.ex;
+  const h = I.ex.rowH || 22;
+  const top = tree.scrollTop, height = tree.clientHeight || 800;
+  let first = Math.max(0, Math.floor(top / h) - TREE_SPARE), last = Math.min(items.length, Math.ceil((top + height) / h) + TREE_SPARE);
+  const editing = items.findIndex((x) => x.edit);
+  if (editing >= 0) { first = Math.min(first, editing); last = Math.max(last, editing + 1); }
+  if (I.ex.drawn?.first === first && I.ex.drawn.last === last && I.ex.drawn.items === items) return;
+  I.ex.drawn = { first, last, items };
+  I.ex.before ||= Object.assign(el('div', 'ide-tree-space'), { ariaHidden: 'true' });
+  I.ex.after ||= Object.assign(el('div', 'ide-tree-space'), { ariaHidden: 'true' });
+  const nodes = [];
+  let sel = null;
+  for (let i = first; i < last; i++) {
+    const it = items[i];
+    it.node ||= treeRow(it.e, it.path, it.depth, I.ex.changes);
+    if (it.path) { it.node.classList.toggle('sel', it.path === I.sel); if (it.path === I.sel) sel = it.node; }
+    nodes.push(it.node);
+  }
+  I.ex.before.style.height = `${first * h}px`;
+  I.ex.after.style.height = `${(items.length - last) * h}px`;
+  // into the tree in place: rows staying are never taken out (a focused rename box would lose
+  // its focus), only those leaving removed and those arriving put in
+  const want = [I.ex.before, ...nodes, I.ex.after];
+  const keep = new Set(want);
+  for (const child of [...tree.children]) if (!keep.has(child)) child.remove();
+  let at = tree.firstChild;
+  for (const node of want) {
+    if (node === at) { at = at.nextSibling; continue; }
+    tree.insertBefore(node, at);
+  }
+  tree.setAttribute('aria-activedescendant', sel ? sel.id : '');
+  // a row's height read once, from the first made
+  if (!I.ex.rowH && nodes.length) {
+    const rh = nodes.find((n) => n.classList.contains('ide-row') && !n.classList.contains('ide-row-edit'))?.offsetHeight;
+    if (rh) { I.ex.rowH = rh; if (rh !== h) { I.ex.drawn = null; renderTree(); } }
+  }
+}
+let treeScrollFrame = 0;
+const renderTreeSoon = () => { treeScrollFrame ||= requestAnimationFrame(() => { treeScrollFrame = 0; if (I?.ex?.items) renderTree(); }); };
 
 function saveExpanded() {
   I.st.expanded[wsKey()] = [...I.expanded].filter((p) => p !== I.st.root);
@@ -1475,12 +1525,15 @@ function selectRow(p, reveal = true) {
   I.sel = p;
   const { tree } = I.ex;
   for (const r of tree.querySelectorAll('.ide-row.sel')) r.classList.remove('sel');
-  const row = tree.querySelector(`.ide-row[data-path="${CSS.escape(p)}"]`);
-  if (row) {
-    row.classList.add('sel');
-    tree.setAttribute('aria-activedescendant', row.id);
-    if (reveal) row.scrollIntoView({ block: 'nearest' });
+  const i = (I.ex.items || []).findIndex((x) => x.path === p);
+  if (i >= 0 && reveal) {
+    // scrolled to by its place in the list, whether it's made yet or not
+    const h = I.ex.rowH || 22, y = i * h;
+    if (y < tree.scrollTop) tree.scrollTop = y;
+    else if (y + h > tree.scrollTop + tree.clientHeight) tree.scrollTop = y + h - tree.clientHeight;
   }
+  I.ex.drawn = null;
+  if (I.ex.items) renderTree();
 }
 
 async function toggleDir(p, on) {
@@ -1507,9 +1560,9 @@ async function revealPath(p) {
 function treeKey(e) {
   if (e.target !== I.ex.tree) return;
   const rows = I.ex.rows;
-  const i = rows.findIndex((r) => r.dataset.path === I.sel);
+  const i = rows.findIndex((r) => r.path === I.sel);
   const row = rows[i];
-  const go = (j) => { const r = rows[Math.max(0, Math.min(rows.length - 1, j))]; if (r) selectRow(r.dataset.path); };
+  const go = (j) => { const r = rows[Math.max(0, Math.min(rows.length - 1, j))]; if (r) selectRow(r.path); };
   const k = e.key;
   if (k === 'ArrowDown') { e.preventDefault(); go(i + 1); }
   else if (k === 'ArrowUp') { e.preventDefault(); go(i < 0 ? rows.length - 1 : i - 1); }
@@ -1517,17 +1570,17 @@ function treeKey(e) {
   else if (k === 'End') { e.preventDefault(); go(rows.length - 1); }
   else if (k === 'ArrowRight' && row) {
     e.preventDefault();
-    if (row.dataset.dir === '1') { if (!I.expanded.has(row.dataset.path)) toggleDir(row.dataset.path, true); else go(i + 1); }
+    if (row.dir) { if (!I.expanded.has(row.path)) toggleDir(row.path, true); else go(i + 1); }
   } else if (k === 'ArrowLeft' && row) {
     e.preventDefault();
-    if (row.dataset.dir === '1' && I.expanded.has(row.dataset.path)) toggleDir(row.dataset.path, false);
-    else { const up = filesParent(row.dataset.path); if (up && under(up, I.st.root) && up !== I.st.root) selectRow(up); }
+    if (row.dir && I.expanded.has(row.path)) toggleDir(row.path, false);
+    else { const up = filesParent(row.path); if (up && under(up, I.st.root) && up !== I.st.root) selectRow(up); }
   } else if ((k === 'Enter' || k === ' ') && row) {
     e.preventDefault();
-    if (row.dataset.dir === '1') toggleDir(row.dataset.path);
-    else openFile(row.dataset.path, { preview: k === ' ', focus: k === 'Enter' });
-  } else if (k === 'F2' && row) { e.preventDefault(); startEdit('rename', row.dataset.path); }
-  else if ((k === 'Delete' || (IS_MAC && k === 'Backspace' && e.metaKey)) && row) { e.preventDefault(); deleteEntry(row.dataset.path); }
+    if (row.dir) toggleDir(row.path);
+    else openFile(row.path, { preview: k === ' ', focus: k === 'Enter', host: row.node?.dataset.host || undefined });
+  } else if (k === 'F2' && row) { e.preventDefault(); startEdit('rename', row.path); }
+  else if ((k === 'Delete' || (IS_MAC && k === 'Backspace' && e.metaKey)) && row) { e.preventDefault(); deleteEntry(row.path); }
 }
 
 function explorerItems(p, dir) {
@@ -1536,8 +1589,10 @@ function explorerItems(p, dir) {
   const runnable = file && runnerFor(p);
   return [
     file && { label: 'Open', run: () => openFile(p, { preview: false }) },
-    dir && { label: 'New File…', run: () => startEdit('file', p) },
-    dir && { label: 'New Folder…', run: () => startEdit('folder', p) },
+    // on a file too, as VS Code's: made beside it
+    { label: 'New File…', run: () => startEdit('file', dir ? p : filesParent(p)) },
+    { label: 'New Folder…', run: () => startEdit('folder', dir ? p : filesParent(p)) },
+    file && '-',
     dir && { label: 'Open in Integrated Terminal', run: () => newTerminal({ cwd: p }) },
     dir && !isRoot && { label: 'Open as Workspace Folder', run: () => setRoot(p) },
     isRoot && { label: 'Build', key: keyFor('sulfur.build'), run: () => run('sulfur.build') },
@@ -1567,9 +1622,9 @@ function copyPath(p, abs) {
 
 // the folder a new entry lands in: the selection's, else the workspace's
 function targetDir() {
-  const row = I.sel && I.ex.tree.querySelector(`.ide-row[data-path="${CSS.escape(I.sel)}"]`);
+  const row = I.sel && I.ex.rows.find((r) => r.path === I.sel);
   if (!row) return I.st.root;
-  return row.dataset.dir === '1' ? row.dataset.path : filesParent(row.dataset.path);
+  return row.dir ? row.path : filesParent(row.path);
 }
 
 async function startEdit(kind, at) {
@@ -1724,11 +1779,11 @@ async function deleteEntry(p) {
   for (const t of I.tabs.filter((x) => x.rel && sameLoc(x.loc, locOf()) && under(x.rel, p))) closeTab(t, true);
   for (const x of [...I.expanded]) if (under(x, p)) I.expanded.delete(x);
   const rows = I.ex.rows;
-  const i = rows.findIndex((r) => r.dataset.path === p);
-  const next = rows[i + 1] && !under(rows[i + 1].dataset.path, p) ? rows[i + 1] : rows[i - 1];
+  const i = rows.findIndex((r) => r.path === p);
+  const next = rows[i + 1] && !under(rows[i + 1].path, p) ? rows[i + 1] : rows[i - 1];
   await loadDir(filesParent(p), true);
   I.index = null;
-  if (next) selectRow(next.dataset.path);
+  if (next) selectRow(next.path);
 }
 
 async function moveEntry(from, dir) {
