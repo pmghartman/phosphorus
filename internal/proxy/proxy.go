@@ -608,13 +608,19 @@ func forward(rt *Route, w http.ResponseWriter, r *http.Request, p string) {
 			if loc := res.Header.Get("Location"); loc != "" {
 				res.Header.Set("Location", reverseLocation(loc, rt.Prefix, r.Host, net.JoinHostPort(rt.IP, strconv.Itoa(rt.Port))))
 			}
+			// every service shown in the desktop's windows, on a path or a subdomain;
+			// a peer's frontend keeps its own headers
+			framed := !rt.Pin
+			denied, hasCSP := false, false
 			for k, vs := range res.Header {
 				lk := strings.ToLower(k)
-				if rt.Domain != "" && lk == "x-frame-options" {
+				if framed && lk == "x-frame-options" {
 					res.Header.Del(k)
+					denied = true
 					continue
 				}
-				if rt.Domain != "" && lk == "content-security-policy" {
+				if framed && lk == "content-security-policy" {
+					hasCSP = true
 					for i := range vs {
 						vs[i] = frameable(vs[i])
 					}
@@ -628,6 +634,10 @@ func forward(rt *Route, w http.ResponseWriter, r *http.Request, p string) {
 				if len(kept) == 0 {
 					res.Header.Del(k)
 				}
+			}
+			// the X-Frame-Options dropped above still kept from every other site
+			if denied && !hasCSP {
+				res.Header.Set("Content-Security-Policy", frameable(""))
 			}
 			return nil
 		},
