@@ -44,7 +44,7 @@ import { applyTextEdits } from './language-client.js';
 import { sidebarRight, runTargetName, moveBookmarks } from './navigation.js';
 import { fileKind, renderFileIcon } from './file-icons.js';
 import { extensionHostHTML } from './extension-host.js';
-import { createWebviewResources } from './webview-resources.js';
+import { createWebviewResources, navigateWebview, deliverWebviewDocument } from './webview-resources.js';
 import { setContributions, removeContributions, contributedThemes, contributedIconThemes, contributedServers, languageName, themeCss, iconOf, iconFontCss, snippetItems } from './vsx-contributions.js';
 import { parseGitStatus, explorerChanges } from './source-control.js';
 import { parserFor } from '../lezer.js';
@@ -8807,7 +8807,7 @@ const EXT_CALLS = {
     const revision = v.revision = (v.revision || 0) + 1;
     try {
       const doc = v.compat ? await vscodeWebviewDoc(x, html, v) : webviewDoc(html);
-      if (x.views.get(wid) === v && v.revision === revision) v.frame.srcdoc = doc;
+      if (x.views.get(wid) === v && v.revision === revision) navigateWebview(v, doc);
     } catch (error) { if (x.views.get(wid) === v && v.revision === revision) throw error; }
   },
   'webview.dispose': (x, wid) => { const v = x.views.get(wid); if (v) closeTab(v.t, true); },
@@ -8995,11 +8995,12 @@ function webviewDoc(html) {
 
 // a webview's word back to its extension; a VS Code webview's state kept for its next page
 function onWebviewMessage(e) {
-  if (!I || !e.data || !('phosphorusWebview' in e.data || 'phosphorusWebviewState' in e.data)) return;
+  if (!I || !e.data || !('phosphorusWebview' in e.data || 'phosphorusWebviewState' in e.data || 'sulfurWebviewReady' in e.data)) return;
   for (const x of I.exts.values()) {
     for (const [wid, v] of x.views) {
       if (v.frame?.contentWindow !== e.source) continue;
-      if ('phosphorusWebviewState' in e.data) v.state = e.data.phosphorusWebviewState;
+      if ('sulfurWebviewReady' in e.data) deliverWebviewDocument(v, e.data.sulfurWebviewReady);
+      else if ('phosphorusWebviewState' in e.data) v.state = e.data.phosphorusWebviewState;
       else x.port?.postMessage({ t: 'webview', wid, msg: e.data.phosphorusWebview });
       return;
     }

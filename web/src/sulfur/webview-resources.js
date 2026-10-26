@@ -5,6 +5,20 @@ const RESOURCE = /sulfur-res:(?:\/\/)?(\/[^"'\s)<>`]+)/g;
 const absolute = (p) => { const out = []; for (const s of p.split('/')) { if (s === '..') out.pop(); else if (s && s !== '.') out.push(s); } return `/${out.join('/')}`; };
 const local = (u) => !/^(?:[a-z][\w+.-]*:|#|\/\/)/i.test(u) || u.startsWith('sulfur-res:');
 
+export function navigateWebview(view, html) {
+  view.documentToken = crypto.randomUUID();
+  view.pendingHTML = html;
+  view.frame.removeAttribute('srcdoc');
+  view.frame.src = `/sulfur/webview.html#${view.documentToken}`;
+}
+
+export function deliverWebviewDocument(view, token) {
+  if (token !== view.documentToken || view.pendingHTML === undefined) return false;
+  view.frame.contentWindow.postMessage({ sulfurWebviewToken: token, html: view.pendingHTML }, '*');
+  delete view.pendingHTML;
+  return true;
+}
+
 // Cache within a webview; bounded parallel reads keep a large page responsive and
 // deduplicate shared fonts/styles. Disposing aborts both active and queued reads.
 export function createWebviewResources(read, { concurrency = 6, onError = () => {} } = {}) {
