@@ -41,6 +41,9 @@ var (
 	tickMS        = util.EnvInt("MODEL_TICK_MS", 1000)
 	notes         = util.NewNotes("model")
 	vramRe        = regexp.MustCompile(`(?i)cudaMalloc failed|out of memory|OutOfDeviceMemory|(failed|unable) to allocate (CUDA|Vulkan)\d* buffer`)
+	// a gpu gone from under a running server: Vulkan's device lost, or any of its
+	// commands failing a decode; every call fails after while /health stays 200
+	gpuLostRe = regexp.MustCompile(`ErrorDeviceLost|decode\(\) failed: vk::`)
 	// "  Vulkan0: AMD Radeon RX 7800 XT (16368 MiB, 15600 MiB free)"
 	deviceRe = regexp.MustCompile(`(?m)^\s*(\S+): .* \((\d+) MiB, (\d+) MiB free\)\s*$`)
 	hfBlob   = regexp.MustCompile(`^(https://huggingface\.co/.+?)/blob/`)
@@ -469,6 +472,7 @@ func serve(c config) {
 	v := vram
 	go func() {
 		buf := make([]byte, 8192)
+		lost := false
 		for {
 			n, err := stderr.Read(buf)
 			if n > 0 {
@@ -477,6 +481,12 @@ func serve(c config) {
 					oomMu.Lock()
 					oom = true
 					oomMu.Unlock()
+				}
+				// stopped, so the retry loads it on the gpu afresh
+				if v > 0 && !lost && gpuLostRe.Match(buf[:n]) {
+					lost = true
+					notes.Log("llama-server lost its gpu, restarting it")
+					stop(cmd.Process)
 				}
 			}
 			if err != nil {
