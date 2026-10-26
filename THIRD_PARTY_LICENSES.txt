@@ -172,7 +172,7 @@ Forgejo 16.0.6, text [8]
     https://codeberg.org/forgejo/forgejo/src/tag/v16.0.6
 Tailscale 1.104.1, text [10]
     https://github.com/tailscale/tailscale
-cloudflared 2026.9.3, text [40]
+cloudflared 2026.10.4, text [40]
     https://github.com/cloudflare/cloudflared
 
 
@@ -2311,7 +2311,7 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
----- [40] github.com/tklauser/numcpus v0.12.0, cloudflared 2026.9.3 ----
+---- [40] github.com/tklauser/numcpus v0.12.0, cloudflared 2026.10.4 ----
 
 Apache License
                            Version 2.0, January 2004
