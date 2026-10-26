@@ -152,16 +152,21 @@ test('sidebar webviews resolve once, retain their view and receive visibility ev
 
 test('tree providers retain element identity for children and forward selection, refresh and disposal', async () => {
   const { vscode, shim, registered, calls } = harness();
-  const changed = new vscode.EventEmitter(), parent = {}, child = {};
+  const changed = new vscode.EventEmitter(), parent = {}, child = { method() {} };
+  let invoked;
+  vscode.commands.registerCommand('demo.select', (element) => { invoked = element; });
   const tree = vscode.window.createTreeView('demo.tree', { treeDataProvider: {
     onDidChangeTreeData: changed.event,
     getChildren: (element) => element === parent ? [child] : [parent],
-    getTreeItem: (element) => new vscode.TreeItem(element === parent ? 'Parent' : 'Child', element === parent ? 1 : 0),
+    getTreeItem: (element) => Object.assign(new vscode.TreeItem(element === parent ? 'Parent' : 'Child', element === parent ? 1 : 0), { command: { command: 'demo.select', arguments: [element] } }),
   } });
   const rows = await registered.get('demo.tree.sulfur.children')();
   assert.equal(rows[0].label, 'Parent');
   const children = await registered.get('demo.tree.sulfur.children')(rows[0].id);
   assert.equal(children[0].label, 'Child');
+  assert.doesNotThrow(() => structuredClone(children));
+  await registered.get(children[0].command.command)(...children[0].command.arguments);
+  assert.equal(invoked, child);
   let selected;
   tree.onDidChangeSelection((e) => { selected = e.selection[0]; });
   shim.treeEvent('demo.tree', { visible: true, selected: children[0].id });
@@ -171,6 +176,15 @@ test('tree providers retain element identity for children and forward selection,
   tree.dispose();
   assert.equal(registered.has('demo.tree.sulfur.children'), false);
   assert.deepEqual(calls.at(-1), ['tree.dispose', 'demo.tree']);
+});
+
+test('native theme changes update the extension API and suppress duplicate color kind events', () => {
+  const { vscode, shim } = harness();
+  let changes = 0;
+  vscode.window.onDidChangeActiveColorTheme(() => changes++);
+  shim.themeChanged('vscode-light'); shim.themeChanged('vscode-light');
+  assert.equal(vscode.window.activeColorTheme.kind, vscode.ColorThemeKind.Light);
+  assert.equal(changes, 1);
 });
 
 test('unsupported APIs notify the workbench once and missing webviews return false', async () => {
