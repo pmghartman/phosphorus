@@ -45,6 +45,7 @@ import { sidebarRight, runTargetName, moveBookmarks } from './navigation.js';
 import { fileKind, renderFileIcon } from './file-icons.js';
 import { extensionHostHTML } from './extension-host.js';
 import { createWebviewResources, navigateWebview, deliverWebviewDocument } from './webview-resources.js';
+import { webviewBridge, applyWebviewStorage } from './webview-bridge.js';
 import { setContributions, removeContributions, contributedThemes, contributedIconThemes, contributedServers, languageName, themeCss, iconOf, iconFontCss, snippetItems } from './vsx-contributions.js';
 import { parseGitStatus, explorerChanges } from './source-control.js';
 import { parserFor } from '../lezer.js';
@@ -8635,6 +8636,7 @@ function deactivateExt(x) {
 function teardownExt(x, keepFrame = false) {
   x.generation = (x.generation || 0) + 1;
   clearTimeout(x.timer);
+  if (x.webviewStorageTimer) persistWebviewStorage(x);
   for (const [, p] of x.pending) p.rej(new Error('the extension stopped'));
   x.pending.clear();
   for (const k of x.status) I.statusItems.get(k)?.el.remove();
@@ -8972,8 +8974,9 @@ async function vscodeWebviewDoc(x, html, view) {
   vars.push('--vscode-font-size:13px', '--vscode-font-weight:normal', `--vscode-editor-font-size:${size}px`, '--vscode-editor-font-weight:normal');
   const kind = css.colorScheme === 'light' ? 'vscode-light' : 'vscode-dark';
   const head = `<style id="_defaultStyles">:root{${vars.join(';')}}body{background-color:var(--vscode-editor-background);color:var(--vscode-foreground);font-family:var(--vscode-font-family);font-size:var(--vscode-font-size);margin:0;padding:0 20px}a{color:var(--vscode-textLink-foreground)}</style>`
-    + `<script>(function(){var s=${JSON.stringify(view.state ?? null).replace(/</g, '\\u003c')};var api={postMessage:function(m){parent.postMessage({phosphorusWebview:m},'*')},getState:function(){return s===null?undefined:s},setState:function(n){s=n;parent.postMessage({phosphorusWebviewState:n},'*');return n}};window.acquireVsCodeApi=function(){return api};`
-    + `document.addEventListener('DOMContentLoaded',function(){document.body.classList.add('${kind}');document.body.dataset.vscodeThemeKind='${kind}';document.body.dataset.vscodeThemeId='Sulfur'});})();<\/script>`;
+    + '<script>(' + webviewBridge.toString() + ')(' + [view.state ?? null, kind, x.webviewStorage ||= Object.assign(Object.create(null), extState(x, 'webview')), view.sessionStorage ||= Object.create(null)]
+      .map((value) => JSON.stringify(value).replace(/</g, '\\u003c')).join(',') + ')<\/script>';
+
   return /<head[^>]*>/i.test(out) ? out.replace(/<head[^>]*>/i, (m) => m + head) : head + out;
 }
 function extCall(x, m, a) {
@@ -8995,16 +8998,31 @@ function webviewDoc(html) {
 
 // a webview's word back to its extension; a VS Code webview's state kept for its next page
 function onWebviewMessage(e) {
-  if (!I || !e.data || !('phosphorusWebview' in e.data || 'phosphorusWebviewState' in e.data || 'sulfurWebviewReady' in e.data)) return;
+  if (!I || !e.data || !('phosphorusWebview' in e.data || 'phosphorusWebviewState' in e.data || 'sulfurWebviewReady' in e.data || 'phosphorusWebviewStorage' in e.data)) return;
   for (const x of I.exts.values()) {
     for (const [wid, v] of x.views) {
       if (v.frame?.contentWindow !== e.source) continue;
       if ('sulfurWebviewReady' in e.data) deliverWebviewDocument(v, e.data.sulfurWebviewReady);
       else if ('phosphorusWebviewState' in e.data) v.state = e.data.phosphorusWebviewState;
+      else if ('phosphorusWebviewStorage' in e.data) {
+        const update = e.data.phosphorusWebviewStorage;
+        const entries = update?.scope === 'local' ? (x.webviewStorage ||= Object.create(null)) : (v.sessionStorage ||= Object.create(null));
+        if (!applyWebviewStorage(entries, update)) return;
+        if (update.scope === 'local') {
+          clearTimeout(x.webviewStorageTimer);
+          x.webviewStorageTimer = setTimeout(() => persistWebviewStorage(x), 100);
+          for (const other of x.views.values()) if (other !== v && other.compat) other.frame?.contentWindow?.postMessage({ sulfurWebviewStorageSync: update }, '*');
+        }
+      }
       else x.port?.postMessage({ t: 'webview', wid, msg: e.data.phosphorusWebview });
       return;
     }
   }
+}
+
+function persistWebviewStorage(x) {
+  clearTimeout(x.webviewStorageTimer); x.webviewStorageTimer = 0;
+  try { localStorage.setItem(`sulfur-ext-state:${x.id}:webview`, JSON.stringify(x.webviewStorage || {})); } catch {}
 }
 
 // an event to the extensions that asked for it

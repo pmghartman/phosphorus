@@ -7,12 +7,12 @@ import (
 
 func TestWebBuildCarriesNativeContributionsAndResources(t *testing.T) {
 	conv, m := convert(t, map[string]string{
-		"extension/package.json": `{"publisher":"pub","name":"viewer","version":"1.0.0","browser":"./out/browser.js","main":"./out/node.js","contributes":{"commands":[{"command":"viewer.open","title":"Open"}],"customEditors":[{"viewType":"viewer.custom","displayName":"Viewer","selector":[{"filenamePattern":"*.db"}]}],"configuration":{"properties":{"viewer.rows":{"default":100}}},"languages":[{"id":"demo","extensions":[".demo"]}]}}`,
-		"extension/out/browser.js": "exports.activate = () => {};",
-		"extension/out/node.js":    "node-only",
-		"extension/out/worker.js":  "worker",
-		"extension/media/view.wasm": "\x00asm",
-		"extension/LICENSE.md":      "Original extension license",
+		"extension/package.json":       `{"publisher":"pub","name":"viewer","version":"1.0.0","browser":"./out/browser.js","main":"./out/node.js","contributes":{"commands":[{"command":"viewer.open","title":"Open"}],"customEditors":[{"viewType":"viewer.custom","displayName":"Viewer","selector":[{"filenamePattern":"*.db"}]}],"configuration":{"properties":{"viewer.rows":{"default":100}}},"languages":[{"id":"demo","extensions":[".demo"]}]}}`,
+		"extension/out/browser.js":     "exports.activate = () => {};",
+		"extension/out/node.js":        "node-only",
+		"extension/out/worker.js":      "worker",
+		"extension/media/view.wasm":    "\x00asm",
+		"extension/LICENSE.md":         "Original extension license",
 		"extension/out/browser.js.map": "source map",
 	}, VSXOptions{})
 	if m["main"] != "vscode/out/browser.js" || asMap(m["sulfur"])["declarative"] != false {
