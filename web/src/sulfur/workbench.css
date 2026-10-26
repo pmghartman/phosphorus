@@ -1300,3 +1300,27 @@ button.ide-fd-place:hover { background: var(--ide-hover); color: var(--ide-stron
 :root.sx-mac .sx-win.dk-win > .dk-head { padding-left: 78px; }
 
 .sx-ic { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* The native SQLite view uses the workbench's fonts, colors and controls. */
+.ide-sqlite { height: 100%; min-height: 0; display: flex; flex-direction: column; color: var(--ide-fg); }
+.ide-sqlite-header { display: flex; align-items: center; gap: 20px; padding: 12px 18px; border-bottom: 1px solid var(--ide-border); }
+.ide-sqlite-header h2 { margin: 0; font-size: 18px; color: var(--ide-strong); }
+.ide-sqlite-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ide-muted); }
+.ide-sqlite-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(150px, 220px) minmax(0, 1fr); }
+.ide-sqlite-side { min-height: 0; overflow: auto; border-right: 1px solid var(--ide-border); background: var(--ide-side); padding: 10px; }
+.ide-sqlite-tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.ide-sqlite-tables { margin-top: 12px; }
+.ide-sqlite-table { display: block; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; padding: 7px 9px; background: transparent; color: inherit; border: 0; cursor: pointer; font: inherit; }
+.ide-sqlite-table:hover { background: var(--ide-hover); }
+.ide-sqlite-table.selected { background: var(--ide-sel); color: var(--ide-strong); }
+.ide-sqlite-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 14px; gap: 10px; }
+.ide-sqlite-sql { flex: 0 0 130px; min-height: 70px; width: 100%; box-sizing: border-box; resize: vertical; font-family: var(--ide-mono); white-space: pre; tab-size: 2; }
+.ide-sqlite-status { color: var(--ide-muted); white-space: pre-wrap; overflow-wrap: anywhere; }
+.ide-sqlite-status.error { color: var(--ide-err); }
+.ide-sqlite-result { flex: 1; min-height: 80px; min-width: 0; overflow: auto; border: 1px solid var(--ide-border); }
+.ide-sqlite-grid { border-collapse: separate; border-spacing: 0; width: 100%; font-family: var(--ide-mono); font-size: 12px; }
+.ide-sqlite-grid th, .ide-sqlite-grid td { padding: 6px 10px; border-bottom: 1px solid var(--ide-border); border-right: 1px solid var(--ide-border); text-align: left; white-space: pre-wrap; overflow-wrap: anywhere; max-width: 500px; }
+.ide-sqlite-grid th { position: sticky; top: 0; background: var(--ide-side); color: var(--ide-strong); z-index: 1; }
+.ide-sqlite-grid tbody tr:hover { background: var(--ide-hover); }
+.ide-sqlite-null { color: var(--ide-muted); font-style: italic; }
+@media (max-width: 650px) { .ide-sqlite-body { grid-template-columns: minmax(100px, 135px) minmax(0, 1fr); } .ide-sqlite-main { padding: 8px; } }

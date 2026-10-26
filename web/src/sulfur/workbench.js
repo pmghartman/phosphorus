@@ -52,6 +52,7 @@ import { parserFor } from '../lezer.js';
 import { readBrowserFile, saveBrowserFile } from './browser-files.js';
 import { createInlineCompletions, completionModels } from './inline-completion.js';
 import { diagnosticCounts, diagnosticSeverity } from './diagnostics.js';
+import { isSQLiteFile, sqliteProjectPath, mountSQLite } from './sqlite.js';
 import { createBuildProblemMatcher } from './build-problems.js';
 import { startTerminal, taskTerminal, termsRetheme } from '../apps/terminal.js';
 import { renderMd } from '../md.js';
@@ -546,7 +547,7 @@ const keptLoc = (x) => (typeof x === 'string' ? { rel: x, loc: HOME_LOC } : { re
 const saveState = debounce(() => {
   if (!I) return;
   const st = I.st;
-  st.tabs = I.tabs.filter((t) => t.kind === 'code' || t.kind === 'image').map(tabKept);
+  st.tabs = I.tabs.filter((t) => t.kind === 'code' || t.kind === 'image' || t.kind === 'sqlite').map(tabKept);
   st.active = I.active?.rel ? tabKept(I.active) : '';
   try { localStorage.setItem(STATE_KEY(), JSON.stringify(st)); } catch {}
 }, 300);
@@ -1886,6 +1887,7 @@ function openFile(rel, o = {}) {
   const p = cleanPath(rel);
   const l = o.loc || locOf();
   if (!p || !inScope(p, l)) { if (!o.quiet) notify('warning', `${rel} is outside your space`); return null; }
+  if (!o.text && isSQLiteFile(p)) return openSQLite(p, l, o.host);
   let t = I.tabs.find((x) => x.rel === p && sameLoc(x.loc, l));
   if (t) {
     if (o.preview === false) pin(t);
@@ -1968,6 +1970,52 @@ function openPage(key, title, ic, mount) {
   }
   activate(t);
   return t;
+}
+
+async function sqliteRequest(rel, loc, host, p, signal) {
+  const at = fileLoc(rel, host, loc);
+  const path = hostPath(at.host, at.share, rel);
+  if (!path) throw new Error('The database host is unavailable. Refresh the host list and try again.');
+  const r = await fetch(hostUrl(at.host, '/api/sulfur/sqlite'), { ...jsonPost({ ...p, path, host: at.host }), signal });
+  const b = await r.json().catch(() => ({}));
+  if (r.status === 404) throw new Error(`Update Phosphorus on ${at.host} to use native SQLite there.`);
+  if (!r.ok || b.error) throw new Error(b.error || `SQLite request failed (${r.status})`);
+  return b;
+}
+
+function openSQLite(rel, loc = locOf(), host = '') {
+  const state = I;
+  const at = fileLoc(rel, host, loc);
+  return openPage(`sqlite:${locKey(loc)}:${at.host}:${rel}`, baseName(rel), 'file', (t) => {
+    Object.assign(t, { kind: 'sqlite', rel, loc, host: at.host, share: at.share });
+    t.customOf = { path: rel, loc };
+    const view = mountSQLite(t.view, {
+      path: rel,
+      request: (p, signal) => sqliteRequest(rel, loc, at.host, p, signal),
+      onChange: () => { if (I === state) { I.index = null; refreshTree(); } },
+    });
+    t.dispose = () => view.dispose();
+  });
+}
+
+async function createSQLite() {
+  const state = I, loc = locOf(), root = I.st.root;
+  const value = await inputBox({
+    title: 'SQLite: Create Database in Project', value: 'app.sqlite',
+    prompt: 'A filename relative to this project. Parent folders must already exist.',
+    validate: (s) => sqliteProjectPath(root, s) ? '' : 'Enter a relative filename without . or .. path segments.',
+  });
+  if (!value || I !== state) return;
+  const rel = sqliteProjectPath(root, value);
+  if (!rel || !inScope(rel, loc)) return;
+  const at = fileLoc(root, '', loc);
+  try {
+    await sqliteRequest(rel, loc, at.host, { op: 'create' });
+    if (I !== state) return;
+    I.index = null;
+    refreshTree();
+    openSQLite(rel, loc, at.host);
+  } catch (err) { if (I === state) notify('error', `Creating SQLite database: ${err.message}`); }
 }
 
 function addTab(t, index) {
@@ -3373,6 +3421,11 @@ function onKey(e) {
 
 function registerCommands() {
   const C = command;
+  C('sulfur.sqlite.create', 'SQLite: Create Database in Project…', createSQLite, { category: 'SQLite' });
+  C('sulfur.sqlite.open', 'SQLite: Open Database…', async () => {
+    const at = await fileDialog({ files: true, title: 'Open SQLite Database' });
+    if (at && I) openSQLite(at.rel, at.loc);
+  }, { category: 'SQLite' });
   // the palette and its kin
   C('workbench.action.showCommands', 'Show All Commands', () => quickOpen('>'), { key: 'ctrl+shift+p', alt: ['f1'], shell: true });
   C('workbench.action.quickOpen', 'Go to File…', () => quickOpen(''), { key: 'ctrl+p', shell: true });
@@ -8406,11 +8459,25 @@ function buildExtView() {
   const note = el('div', 'ide-tree-note');
   // the language servers installed on the host, listed with the extensions installed
   const langs = el('div', 'ide-ext-langs');
-  v.body.append(el('div', 'ide-search-form', ''), head.node, list, langs, note);
+  const native = el('div', 'ide-ext-langs');
+  const sqlite = el('div', 'ide-ext');
+  const sqliteMain = el('div', 'ide-ext-main');
+  sqliteMain.append(el('strong', 'ide-ext-name', 'SQLite'), el('div', 'ide-ext-desc', 'Built into Sulfur · Create project databases, browse tables and run SQL.'));
+  const sqliteActions = el('div', 'ide-ext-foot');
+  for (const [label, id] of [['Create Database…', 'sulfur.sqlite.create'], ['Open Database…', 'sulfur.sqlite.open']]) {
+    const b = el('button', 'ide-button secondary', label);
+    b.type = 'button';
+    b.addEventListener('click', () => run(id));
+    sqliteActions.append(b);
+  }
+  sqliteMain.append(sqliteActions);
+  sqlite.append(sqliteMain);
+  native.append(sqlite);
+  v.body.append(el('div', 'ide-search-form', ''), head.node, list, native, langs, note);
   v.body.firstChild.append(q);
-  I.extView = { q, head, list, note, langs, langCount: 0 };
+  I.extView = { q, head, list, note, langs, native, langCount: 0 };
   languages.mount(v.body, { installed: langs, count: (n) => { if (I.extView.langCount !== n) { I.extView.langCount = n; paintExtView(); } } });
-  head.node.addEventListener('ide-section', () => { list.hidden = langs.hidden = !head.open(); });
+  head.node.addEventListener('ide-section', () => { list.hidden = langs.hidden = native.hidden = !head.open(); });
   head.paint();
   q.addEventListener('input', () => { paintExtView(); languages.filter(q.value); });
   v.focus = () => q.focus();
@@ -8425,11 +8492,12 @@ function paintExtView() {
   const E = I.extView;
   if (!E) return;
   const v = E.q.value.trim().toLowerCase();
+  E.native.hidden = !E.head.open() || !!v && !'sqlite database sql native sulfur'.includes(v);
   const all = [...I.exts.values()].sort((a, b) => extName(a).localeCompare(extName(b)));
   const shown = all.filter((x) => !v || `${extName(x)} ${x.id} ${x.manifest?.description || ''}`.toLowerCase().includes(v));
   E.head.title.textContent = `Installed`;
   E.head.node.querySelector('.ide-badge')?.remove();
-  E.head.title.after(Object.assign(el('span', 'ide-badge'), { textContent: String(all.length + (E.langCount || 0)) }));
+  E.head.title.after(Object.assign(el('span', 'ide-badge'), { textContent: String(all.length + (E.langCount || 0) + 1) }));
   E.list.replaceChildren(...shown.map((x) => {
     const row = Object.assign(el('div', `ide-ext${x.state === 'on' ? '' : ' off'}`), { tabIndex: 0 });
     row.setAttribute('role', 'listitem');
@@ -8932,10 +9000,11 @@ async function reopenWith() {
   const target = t?.customOf || (t?.rel ? { path: t.rel, loc: t.loc } : null);
   if (!target) return;
   const list = customEditorsFor(target.path, true);
-  const v = await pick([{ label: 'Text Editor', description: 'Sulfur', value: 'text' }, ...list.map((c, i) => ({ label: c.ce.displayName || c.ce.viewType, description: extName(c.x), value: i }))], { title: 'Reopen Editor With…', placeholder: `Select an editor for ${baseName(target.path)}` });
+  const v = await pick([{ label: 'Text Editor', description: 'Sulfur', value: 'text' }, ...(isSQLiteFile(target.path) ? [{ label: 'SQLite', description: 'Built into Sulfur', value: 'sqlite' }] : []), ...list.map((c, i) => ({ label: c.ce.displayName || c.ce.viewType, description: extName(c.x), value: i }))], { title: 'Reopen Editor With…', placeholder: `Select an editor for ${baseName(target.path)}` });
   if (v === undefined || v === null || !I) return;
   closeTab(t);
   if (v === 'text') openFile(target.path, { loc: target.loc, preview: false, text: true });
+  else if (v === 'sqlite') openSQLite(target.path, target.loc);
   else openCustomEditor(list[v].x, list[v].ce, target.path, target.loc);
 }
 
