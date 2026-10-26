@@ -4,6 +4,8 @@ import (
 	"archive/zip"
 	"bufio"
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -313,5 +315,123 @@ func TestUTF8DocumentsSurviveTheTransport(t *testing.T) {
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("the session outlived a document outside the project")
+	}
+}
+
+// a converted extension's server: its package for this platform fetched (the sha256 checked),
+// its entry found under this platform's name, listed, launched through the IPC bridge
+func TestConvertedServerInstall(t *testing.T) {
+	a, out := testAdapter(t)
+	a.executable = func(name string) (string, error) { return "/bin/" + name, nil }
+	var pkg bytes.Buffer
+	zw := zip.NewWriter(&pkg)
+	for _, name := range []string{"extension/package.json", "extension/dist/server.js", "extension/server/bin/demo-ls"} {
+		w, _ := zw.Create(name)
+		w.Write([]byte("x"))
+	}
+	zw.Close()
+	base := VSXRegistry() + "/pub/demo/1.0.0/" + vsxPlatform() + "/file/pub.demo-1.0.0"
+	sum := "0"
+	a.fetch = func(u string) ([]byte, error) {
+		switch u {
+		case base + ".vsix":
+			return pkg.Bytes(), nil
+		case base + ".sha256":
+			return []byte(sum + "  pub.demo-1.0.0.vsix\n"), nil
+		}
+		return nil, errors.New("fetched " + u)
+	}
+	// each operation on an adapter of its own, its client never going away meanwhile
+	op := func(req LanguageRequest) error {
+		b := newAdapter(a.home, out, io.Discard)
+		b.fetch, b.executable = a.fetch, a.executable
+		in, w := io.Pipe()
+		defer w.Close()
+		defer b.cancel()
+		return b.serve(req, in)
+	}
+	install := func(id string, s *VSXServer) error {
+		return op(LanguageRequest{Op: "install", Language: id, Server: s})
+	}
+	node := &VSXServer{Name: "Demo", Runtime: "node", Entry: "extension/dist/server.js", Extensions: []string{"demo"}, LanguageIDs: map[string]string{"demo": "demo"},
+		Downloads: map[string]string{vsxPlatform(): base + ".vsix", "web": "https://elsewhere.example/x.vsix"}}
+	if err := install("vsx.pub.demo", node); err == nil || !strings.Contains(err.Error(), "sha256") {
+		t.Fatal("a package not matching its sha256 installed:", err)
+	}
+	h := sha256Hex(pkg.Bytes())
+	sum = h
+	if err := install("vsx.pub.demo", node); err != nil {
+		t.Fatal(err)
+	}
+	m := a.load("vsx.pub.demo")
+	if m["custom"] != true || m["transport"] != "ipc" || m["entry"] != "extension/dist/server.js" || m["sha256"] != h {
+		t.Fatal(m)
+	}
+	if _, err := os.Stat(filepath.Join(a.home, "vsx.pub.demo", ipcBridgeName)); err != nil {
+		t.Fatal("no bridge", err)
+	}
+	argv, err := a.serverCommand(langItem{ID: "vsx.pub.demo", Custom: true}, m, LanguageRequest{})
+	if err != nil || len(argv) != 3 || argv[0] != "/bin/node" || filepath.Base(argv[1]) != ipcBridgeName || !strings.HasSuffix(filepath.ToSlash(argv[2]), "vsx.pub.demo/extension/dist/server.js") {
+		t.Fatal(argv, err)
+	}
+	// a native one converted from a Windows package, installed where it has no .exe
+	native := &VSXServer{Name: "Demo LS", Runtime: "binary", Entry: "extension/server/bin/demo-ls.exe", Extensions: []string{"demo"}, Downloads: map[string]string{vsxPlatform(): base + ".vsix"}}
+	if err := install("vsx.pub.native", native); err != nil {
+		t.Fatal(err)
+	}
+	if m := a.load("vsx.pub.native"); m["entry"] != "extension/server/bin/demo-ls" || m["transport"] != "stdio" {
+		t.Fatal(m)
+	}
+	out.Reset()
+	op(LanguageRequest{Op: "status"})
+	var status struct {
+		Extensions []map[string]any `json:"extensions"`
+	}
+	json.Unmarshal(out.Bytes(), &status)
+	n := 0
+	for _, e := range status.Extensions {
+		if e["custom"] == true && e["installed"] == true && e["enabled"] == true {
+			n++
+		}
+	}
+	if n != 2 {
+		t.Fatal(status.Extensions)
+	}
+	// only Open VSX's packages, and a converted id only
+	if err := install("vsx.pub.other", &VSXServer{Runtime: "node", Entry: "extension/x.js", Downloads: map[string]string{vsxPlatform(): "https://elsewhere.example/x.vsix"}}); err == nil {
+		t.Error("a package from elsewhere installed")
+	}
+	if err := install("../../evil", node); err == nil {
+		t.Error("an id outside the home taken")
+	}
+	if err := op(LanguageRequest{Op: "uninstall", Language: "vsx.pub.demo"}); err != nil || a.load("vsx.pub.demo") != nil {
+		t.Fatal("not uninstalled", err)
+	}
+}
+
+func sha256Hex(b []byte) string {
+	s := sha256.Sum256(b)
+	return hex.EncodeToString(s[:])
+}
+
+// a converted server's initialize: its own client's options filled in with where it's installed,
+// under the page's own
+func TestWithInitOptions(t *testing.T) {
+	body := []byte(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"initializationOptions":{"l10nPath":"page"},"rootUri":null}}`)
+	folder := filepath.Join(t.TempDir(), "vsx.pub.demo", "extension")
+	out := withInitOptions(body, map[string]any{"l10nPath": "${extensionPath}/dist/l10n", "icons": "${extensionPath}/media"}, folder)
+	var req struct {
+		Params struct {
+			InitializationOptions map[string]string `json:"initializationOptions"`
+		} `json:"params"`
+	}
+	if err := json.Unmarshal(out, &req); err != nil {
+		t.Fatal(err)
+	}
+	if o := req.Params.InitializationOptions; o["l10nPath"] != "page" || o["icons"] != filepath.Join(folder, "media") {
+		t.Fatal(o)
+	}
+	if string(withInitOptions(body, nil, folder)) != string(body) {
+		t.Fatal("changed without options")
 	}
 }

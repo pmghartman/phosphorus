@@ -28,6 +28,7 @@ import { bracketPair, enclosingPair, outdentFor } from './brackets.js';
 import { toggleLineComment, toggleBlockComment, docCommentEnter, blockCommentFor } from './comments.js';
 import { wordStart, wordEnd } from './completion.js';
 import { textWindow } from './text-window.js';
+import { contributedLang } from './vsx-contributions.js';
 
 // --- code editor ------------------------------------------------------------------
 // a share's text or code file in a tab of its own, joined to the file's live
@@ -45,7 +46,8 @@ window.addEventListener('beforeunload', (e) => { if (anyCodeDirty()) e.preventDe
 // opts.bare: no bar of its own, for a host that draws its own (the ide), told
 // of every change by opts.onState
 function codeEditor(view, file, btn, id, opts = {}) {
-  const lang = codeLang(file.path) || { hl: 'plaintext', check: '', comment: '' };
+  // a converted VS Code extension's language or grammar over the host's (vsx-contributions.js)
+  let lang = contributedLang(file.path, codeLang(file.path)) || { hl: 'plaintext', check: '', comment: '' };
   const bare = !!opts.bare;
   const localOnly = typeof opts.localText === 'string';
   const bar = el('div', 'code-bar');
@@ -489,6 +491,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
         if (p) redraw(true);
         else if (lang.hl !== 'plaintext' && text.length <= SERVER_HL_MAX) serverHighlight(text);
       });
+      else if (lang.grammar) grammarHighlight(text);
       else if (lang.hl !== 'plaintext' && text.length <= SERVER_HL_MAX) serverHighlight(text);
       if (lexicalDirty && lang.hl !== 'plaintext' && lang.hl !== 'markdown') colors = quickColors(text, w);
     }
@@ -1069,6 +1072,21 @@ function codeEditor(view, file, btn, id, opts = {}) {
       errors: errs.map((x) => ({ from: x.from, to: x.to, what: x.what, source: x.source, code: x.code, severity: diagnosticSeverity(x), line: lineAt(text, x.from), col: x.from - text.lastIndexOf('\n', x.from - 1) })),
       people: people.filter((p) => (me ? p.id !== me : p.name !== name)),
     };
+  }
+  // a converted extension's TextMate grammar: at once when the file opens, then once typing
+  // pauses briefly, each line kept while the state it begins in holds; the server's chroma
+  // if the grammar can't be read
+  let tmTimer = 0, tmApplied = null, tmHighlighter;
+  function grammarHighlight(text) {
+    if (tmApplied === text) return;
+    clearTimeout(tmTimer);
+    tmTimer = setTimeout(async () => {
+      if (closed || ta.value !== text) return;
+      if (tmHighlighter === undefined) { try { tmHighlighter = await lang.grammar(); } catch { tmHighlighter = null; } }
+      if (closed || ta.value !== text) return;
+      if (!tmHighlighter) { if (text.length <= SERVER_HL_MAX) serverHighlight(text); return; }
+      lexical = tmHighlighter(text); lexicalText = text; lexicalDirty = null; tmApplied = text; redraw(true);
+    }, tmApplied === null ? 0 : 60);
   }
   // a grammar the page has no parser for: chroma's, once typing pauses
   let hlTimer = 0, hlRequested = null, hlApplied = null, hlAbort = null;
@@ -1802,6 +1820,17 @@ function codeEditor(view, file, btn, id, opts = {}) {
     // a read of computed style forcing the whole page's style to be worked out mid-switch
     show: (restyle = false) => { if (restyle || !geomCache) regeom(); overviewColors = null; rulersKey = ''; guideSnapshot = null; redraw(true); },
     text: () => ta.value,
+    // a converted extension enabled or disabled: its grammar taken up or let go, the colors
+    // worked out again; a language the page parses never changes
+    refreshLanguage() {
+      if (lang.check) return false;
+      const next = contributedLang(file.path, codeLang(file.path)) || { hl: 'plaintext', check: '', comment: '' };
+      if (next.hl === lang.hl && next.scopeName === lang.scopeName && next.comment === lang.comment) return false;
+      lang = next;
+      clearTimeout(tmTimer); tmHighlighter = undefined; tmApplied = null; hlApplied = null; hlRequested = null;
+      redraw(true);
+      return true;
+    },
     setInlineSuggestion,
     info,
     async syntaxTree() {

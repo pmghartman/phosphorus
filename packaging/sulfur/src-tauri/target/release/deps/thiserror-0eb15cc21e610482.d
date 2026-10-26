@@ -1,0 +1,14 @@
+D:\Projects\phosphorus\packaging\sulfur\src-tauri\target\release\deps\thiserror-0eb15cc21e610482.d: C:\Users\rpm\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.21\src\lib.rs C:\Users\rpm\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.21\src\aserror.rs C:\Users\rpm\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.21\src\display.rs C:\Users\rpm\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.21\src\var.rs C:\Users\rpm\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.21\src\private.rs D:\Projects\phosphorus\packaging\sulfur\src-tauri\target\release\build\thiserror-ab48523f27f13e15\out/private.rs
+
+D:\Projects\phosphorus\packaging\sulfur\src-tauri\target\release\deps\libthiserror-0eb15cc21e610482.rlib: C:\Users\rpm\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.21\src\lib.rs C:\Users\rpm\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.21\src\aserror.rs C:\Users\rpm\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.21\src\display.rs C:\Users\rpm\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.21\src\var.rs C:\Users\rpm\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.21\src\private.rs D:\Projects\phosphorus\packaging\sulfur\src-tauri\target\release\build\thiserror-ab48523f27f13e15\out/private.rs
+
+D:\Projects\phosphorus\packaging\sulfur\src-tauri\target\release\deps\libthiserror-0eb15cc21e610482.rmeta: C:\Users\rpm\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.21\src\lib.rs C:\Users\rpm\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.21\src\aserror.rs C:\Users\rpm\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.21\src\display.rs C:\Users\rpm\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.21\src\var.rs C:\Users\rpm\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.21\src\private.rs D:\Projects\phosphorus\packaging\sulfur\src-tauri\target\release\build\thiserror-ab48523f27f13e15\out/private.rs
+
+C:\Users\rpm\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.21\src\lib.rs:
+C:\Users\rpm\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.21\src\aserror.rs:
+C:\Users\rpm\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.21\src\display.rs:
+C:\Users\rpm\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.21\src\var.rs:
+C:\Users\rpm\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-2.0.21\src\private.rs:
+D:\Projects\phosphorus\packaging\sulfur\src-tauri\target\release\build\thiserror-ab48523f27f13e15\out/private.rs:
+
+# env-dep:OUT_DIR=D:\\Projects\\phosphorus\\packaging\\sulfur\\src-tauri\\target\\release\\build\\thiserror-ab48523f27f13e15\\out
