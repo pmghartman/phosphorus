@@ -38,10 +38,13 @@ import {
 import { codeEditor } from './editor.js';
 import { captureEditorSession, rememberEditorSession, restoredSelection } from './editor-session.js';
 import { bindContextMenu } from './context-menu.js';
+import { mountGitGraph } from './git-graph.js';
 import { createLanguageWorkbench } from './language-workbench.js';
 import { formatWhitespace, formattingEdits, saveEdits } from './formatting.js';
 import { expandSelection } from './smart-select.js';
 import { excludeMatcher } from './excludes.js';
+import { findMatches, literalSearch } from './search.js';
+import { topRanked } from './ranked.js';
 import { applyTextEdits } from './language-client.js';
 import { sidebarRight, runTargetName, moveBookmarks } from './navigation.js';
 import { fileKind, renderFileIcon } from './file-icons.js';
@@ -495,7 +498,7 @@ const SETTINGS = {
   'search.exclude': { def: 'build, out, bin, obj, target, .vs, .vscode, cmake-build-*, dist, .cache, .gradle, __pycache__, node_modules, .git', type: 'string', title: 'Search: Exclude', about: 'Comma separated folder names or simple globs left out of quick open (Ctrl+P) and Find in Files, as a big project’s build outputs and caches are; the explorer still shows them.' },
   'files.exclude': { def: '.git, node_modules, __pycache__, .DS_Store', type: 'string', title: 'Files: Exclude', about: 'Comma separated names (node_modules), extensions (.meta hides every *.meta file), globs (*.o, *.{png,jpg}) or paths (build/cache) hidden from the explorer, quick open and search. VS Code\'s **/ forms work too.' },
   'terminal.integrated.fontSize': { def: 13, type: 'number', min: 8, max: 40, title: 'Terminal › Integrated: Font Size', about: 'Controls the font size in pixels of the terminal. New terminals take it.' },
-  'window.appearance': { def: 'system', type: 'enum', options: [['system', 'Follow the System'], ['light', 'Light'], ['dark', 'Dark']], title: 'Window: Appearance', about: 'Light or dark, whatever the system is set to, when Sulfur runs on its own. Inside the Phosphorus desktop, the desktop\'s own theme decides.' },
+  'window.appearance': { def: 'system', type: 'enum', options: [['system', 'Follow the System'], ['light', 'Light'], ['dark', 'Dark'], ['oled', 'OLED Black']], title: 'Window: Appearance', about: 'Follow the system, or choose the selected theme’s light, dark or OLED black variant when Sulfur runs on its own. Inside the Phosphorus desktop, the desktop\'s own theme decides.' },
   'workbench.colorTheme': { def: '', type: 'string', title: 'Workbench: Color Theme', about: 'A color theme from a converted VS Code extension (its extension id / theme id), worn over the palette. Empty for the palette’s own. Preferences: Color Theme picks one.' },
   'workbench.iconTheme': { def: '', type: 'string', title: 'Workbench: File Icon Theme', about: 'A file icon theme from a converted VS Code extension (its extension id / theme id). Empty for Sulfur’s own icons. Preferences: File Icon Theme picks one.' },
   'workbench.restoreEditors': { def: true, type: 'boolean', title: 'Workbench: Restore Editors', about: 'Restore each folder’s open files and cursor positions when switching folders or reopening Sulfur.' },
@@ -553,8 +556,9 @@ const keptLoc = (x) => (typeof x === 'string' ? { rel: x, loc: HOME_LOC } : { re
 function persistState() {
   if (!I || I.switchingWorkspace) return;
   const st = I.st;
-  const session = captureEditorSession(I.tabs, I.active, tabKept);
+  const session = captureEditorSession(I.tabs, I.active?.rel ? I.active : I.mru?.find((t) => t.rel), tabKept);
   session.closed = I.closed;
+  session.commitMessage = I.scmMsg || '';
   st.workspaces = rememberEditorSession(st.workspaces, wsKey(), session);
   st.tabs = session.tabs;
   st.active = session.active;
@@ -599,7 +603,7 @@ export function ideStart(w, open) {
   registerCommands();
   applySettings();
   if (standalone) {
-    const follow = () => { if (setting('window.appearance') === 'system') applyAppearance(); };
+    const follow = () => { if (setting('window.appearance') === 'system') applySettings(); };
     systemLight.addEventListener('change', follow);
     I.offs.push(() => systemLight.removeEventListener('change', follow));
   }
@@ -668,6 +672,8 @@ function holdClose(done) {
 
 function teardown() {
   if (!I) return;
+  closeQuick(true);
+  findSoon.cancel();
   saveState.cancel();
   persistState();
   languages.reset();
@@ -1310,13 +1316,12 @@ function buildExplorer() {
   const treeResize = new ResizeObserver(() => { if (I?.ex?.items) { I.ex.drawn = null; renderTreeSoon(); } });
   treeResize.observe(tree);
   I.offs.push(() => treeResize.disconnect());
-  tree.addEventListener('contextmenu', (e) => {
-    e.preventDefault();
+  contextActions(tree, (e) => {
     const row = e.target.closest('.ide-row');
-    if (row?.classList.contains('ide-row-edit')) return;
+    if (row?.classList.contains('ide-row-edit')) return [];
     const p = row ? row.dataset.path : I.st.root;
     if (row) selectRow(p, false);
-    menu({ x: e.clientX, y: e.clientY }, explorerItems(p, row ? row.dataset.dir === '1' : true));
+    return explorerItems(p, row ? row.dataset.dir === '1' : true);
   });
   // a row dragged onto a folder moves there; the computer's files dropped in upload
   tree.addEventListener('dragstart', (e) => {
@@ -1365,8 +1370,9 @@ async function setRoot(dir, first = false, l = locOf()) {
     // Resolve every unsaved buffer before removing any tab. Cancelling or a
     // failed save leaves the entire workspace in place.
     if (!(await confirmCloseTabs([...state.tabs])) || I !== state) return false;
-    const session = captureEditorSession(state.tabs, state.active, tabKept);
+    const session = captureEditorSession(state.tabs, state.active?.rel ? state.active : state.mru?.find((t) => t.rel), tabKept);
     session.closed = [...state.closed];
+    session.commitMessage = state.scmMsg || '';
     st.workspaces = rememberEditorSession(st.workspaces, wsKey(), session);
     for (const t of [...state.tabs]) await closeTab(t, true, false, false);
     if (I !== state) return false;
@@ -1409,6 +1415,9 @@ function applyRoot(d, l) {
   I.w.head.querySelector('.tab-label').textContent = `${baseName(d)} — Sulfur`;
   loadBuildConfig();
   I.scm = null;
+  I.scmMsg = st.workspaces[wsKey()]?.commitMessage || '';
+  I.sideViews.get('scm').body.replaceChildren();
+  paintScm();
   scmRefreshSoon();
   I.projHas = undefined;
   refreshProjectSoon();
@@ -1592,6 +1601,7 @@ function treeRow(e, p, depth, changes) {
   if (!e.dir && e.live?.length === 1) row.dataset.host = e.live[0];
   else if (!e.dir && !isHomeLoc()) row.dataset.host = locOf().host;
   row.draggable = true;
+  if (I.fileClipboard?.cut && sameLoc(I.fileClipboard.loc, locOf()) && under(p, I.fileClipboard.path)) row.classList.add('cut');
   row.style.setProperty('--depth', depth);
   row.setAttribute('role', 'treeitem');
   row.setAttribute('aria-level', String(depth + 1));
@@ -1669,7 +1679,11 @@ function treeKey(e) {
   const row = rows[i];
   const go = (j) => { const r = rows[Math.max(0, Math.min(rows.length - 1, j))]; if (r) selectRow(r.path); };
   const k = e.key;
-  if (k === 'ArrowDown') { e.preventDefault(); go(i + 1); }
+  if ((IS_MAC ? e.metaKey : e.ctrlKey) && !e.altKey && !e.shiftKey && ['c', 'x', 'v'].includes(k.toLowerCase())) {
+    e.preventDefault();
+    if (k.toLowerCase() === 'v') pasteEntry(targetDir());
+    else if (row && row.path !== I.st.root) copyEntry(row.path, row.dir, k.toLowerCase() === 'x');
+  } else if (k === 'ArrowDown') { e.preventDefault(); go(i + 1); }
   else if (k === 'ArrowUp') { e.preventDefault(); go(i < 0 ? rows.length - 1 : i - 1); }
   else if (k === 'Home') { e.preventDefault(); go(0); }
   else if (k === 'End') { e.preventDefault(); go(rows.length - 1); }
@@ -1707,6 +1721,10 @@ function explorerItems(p, dir) {
     filesWin && { label: localDesktop() ? (standalone.mac ? 'Reveal in Finder' : /Win/.test(navigator.platform) ? 'Reveal in File Explorer' : 'Open Containing Folder') : 'Reveal in Files', run: () => filesWin({ loc: apiLoc(), dir: dir ? p : filesParent(p) }) },
     file && { label: 'Ask the Agent About This File', run: () => { openFile(p, { preview: false }); showAux(true, true); } },
     '-',
+    !isRoot && { label: 'Cut', key: 'ctrl+x', run: () => copyEntry(p, dir, true) },
+    !isRoot && { label: 'Copy', key: 'ctrl+c', run: () => copyEntry(p, dir) },
+    { label: 'Paste', key: 'ctrl+v', disabled: !I.fileClipboard || (I.fileClipboard.cut && !sameLoc(I.fileClipboard.loc, locOf())), run: () => pasteEntry(dir ? p : filesParent(p)) },
+    '-',
     { label: 'Copy Path', key: IS_MAC ? 'alt+ctrl+c' : 'shift+alt+c', run: () => copyPath(p, true) },
     { label: 'Copy Relative Path', run: () => copyPath(p, false) },
     '-',
@@ -1721,6 +1739,58 @@ function copyPath(p, abs, loc = locOf(), host = '') {
   const full = hostPath(at.host, at.share, p);
   const text = abs ? (full || p) : (under(p, I.st.root) ? p.slice(I.st.root.length + 1) || '.' : p);
   copyText(text).then(() => setStatusFlash(`copied ${text}`), () => notify('error', 'The clipboard refused the copy.'));
+}
+
+function copyEntry(path, directory, cut = false) {
+  I.fileClipboard = { path, directory, cut, loc: locOf() };
+  paintTreeSoon();
+  setStatusFlash(`${cut ? 'Cut' : 'Copied'} ${baseName(path)}. Choose a destination and Paste.`);
+}
+
+async function pasteEntry(dir) {
+  const source = I.fileClipboard;
+  if (!source || I.filePaste) return;
+  const state = I, workspace = wsKey(), loc = locOf();
+  if (source.cut && !sameLoc(source.loc, loc)) { notify('info', 'Copy files between machines; cut and paste stays on the same machine.'); return; }
+  if (source.directory && sameLoc(source.loc, loc) && under(dir, source.path)) { notify('warning', 'A folder cannot be pasted inside itself.'); return; }
+  state.filePaste = true;
+  let note;
+  try {
+    const entries = await loadDir(dir, true);
+    if (I !== state || wsKey() !== workspace) return;
+    let name = baseName(source.path);
+    const names = new Set(entries.map((e) => e.name.toLowerCase()));
+    if (source.cut && names.has(name.toLowerCase())) { notify('warning', `${name} already exists in the destination.`); return; }
+    const dot = source.directory ? -1 : name.lastIndexOf('.');
+    const stem = dot > 0 ? name.slice(0, dot) : name, ext = dot > 0 ? name.slice(dot) : '';
+    for (let n = 1; names.has(name.toLowerCase()); n++) name = `${stem} copy${n === 1 ? '' : ` ${n}`}${ext}`;
+    const to = filesJoin(dir, name);
+    if (source.cut) {
+      if (await renameEntry(source.path, to)) { if (I === state && I.fileClipboard === source) I.fileClipboard = null; }
+      return;
+    }
+    const dirty = state.tabs.filter((t) => t.ed?.dirty() && t.rel && sameLoc(t.loc, source.loc) && under(t.rel, source.path));
+    if ((await Promise.all(dirty.map(saveTab))).some((saved) => !saved)) return;
+    const destHost = isHomeLoc(loc) ? homePick(dir) : loc.host;
+    const destination = isHomeLoc(loc) ? homeAt(destHost) : apiLoc(loc);
+    note = notify('info', `Copying ${baseName(source.path)}…`, { sticky: true, progress: true });
+    const copy = async (from, target, directory) => {
+      if (directory) {
+        const listing = await filesCall(apiLoc(source.loc), 'list', undefined, { path: from });
+        await filesCall(destination, 'mkdir', jsonPost({ path: target }));
+        for (const entry of listing.entries || []) await copy(filesJoin(from, entry.name), filesJoin(target, entry.name), entry.dir);
+      } else {
+        const holders = isHomeLoc(source.loc) ? await holdersOf(from, source.loc) : [];
+        const fromLoc = fileLoc(from, holders[0] || '', source.loc);
+        await copyFile(fromLoc, from, destination, target, () => {});
+      }
+    };
+    await copy(source.path, to, source.directory);
+    if (I !== state || wsKey() !== workspace) return;
+    await loadDir(dir, true); I.index = null; selectRow(to);
+    setStatusFlash(`Copied ${name}`);
+  } catch (err) { if (I === state) notify('error', `Unable to paste ${baseName(source.path)}: ${err.message}`); }
+  finally { note?.close(); state.filePaste = false; }
 }
 
 // --- making, renaming, deleting, moving: inline, as VS Code does ---
@@ -1834,16 +1904,18 @@ async function createEntry(kind, dir, typed) {
 
 // the tabs under a path saved first, then moved with it
 async function renameEntry(from, to) {
-  if (from === to) return;
+  if (from === to) return false;
+  const state = I, workspace = wsKey();
   const moving = I.tabs.filter((t) => t.rel && sameLoc(t.loc, locOf()) && under(t.rel, from));
-  await Promise.all(moving.filter((t) => t.ed?.dirty()).map((t) => saveTab(t)));
+  if ((await Promise.all(moving.filter((t) => t.ed?.dirty()).map((t) => saveTab(t)))).some((saved) => !saved)) return false;
+  if (I !== state || wsKey() !== workspace) return false;
   try {
     await filesCall(apiLoc(), 'rename', jsonPost({ from, to }));
   } catch (err) {
     notify('error', `Unable to rename '${baseName(from)}': ${err.message}`);
-    return;
+    return false;
   }
-  if (!I) return;
+  if (I !== state || wsKey() !== workspace) return true;
   for (const p of [...I.expanded]) if (under(p, from)) { I.expanded.delete(p); I.expanded.add(to + p.slice(from.length)); }
   const wasActive = I.active;
   for (const t of moving) {
@@ -1858,6 +1930,7 @@ async function renameEntry(from, to) {
   await Promise.all([loadDir(filesParent(from), true), loadDir(filesParent(to), true)]);
   I.index = null;
   selectRow(to);
+  return true;
 }
 
 async function deleteEntry(p) {
@@ -2098,6 +2171,13 @@ function addTab(t, index) {
   tab.addEventListener('click', () => activate(t));
   tab.addEventListener('auxclick', (e) => { if (e.button === 1) closeTab(t); });
   tab.addEventListener('dblclick', () => pin(t));
+  tab.addEventListener('keydown', (e) => {
+    if (e.target !== tab) return;
+    const at = I.tabs.indexOf(t);
+    const index = ({ ArrowLeft: at - 1, ArrowRight: at + 1, Home: 0, End: I.tabs.length - 1 })[e.key];
+    if (index === undefined) return;
+    e.preventDefault(); const next = I.tabs[(index + I.tabs.length) % I.tabs.length]; activate(next, false); next.tabEl.focus();
+  });
   contextActions(tab, () => tabItems(t));
   tab.addEventListener('dragstart', (e) => { e.dataTransfer.setData('application/x-ide-tab', t.id); e.dataTransfer.effectAllowed = 'move'; });
   tab.addEventListener('dragover', (e) => {
@@ -2714,6 +2794,8 @@ function activate(t, focus = true) {
     x.view.hidden = x !== t;
     x.tabEl.classList.toggle('on', x === t);
     x.tabEl.setAttribute('aria-selected', String(x === t));
+    x.tabEl.tabIndex = x === t ? 0 : -1;
+    x.tabEl.querySelector('.ide-tab-x').tabIndex = x === t ? 0 : -1;
   }
   for (const x of I.exts.values()) for (const [wid, view] of x.views) if (view.compat && !view.sidebar) x.port?.postMessage({ t: 'viewState', wid, state: { active: view.t === t, visible: view.t === t } });
   // painted first: an editor in a hidden view takes no focus
@@ -2813,6 +2895,7 @@ async function confirmCloseTabs(list) {
     });
     if (!v || !I) return false;
     if (v === 'save' && (await Promise.all(dirty.map(saveTab))).some((saved) => !saved)) return false;
+    if (v === 'save' && list.some((t) => t.ed?.dirty())) { notify('warning', 'A file changed while saving. Review its changes before closing.'); return false; }
   }
   return true;
 }
@@ -3092,16 +3175,10 @@ function findNow(fromTyping = false) {
   f.field.classList.toggle('bad', re === undefined);
   if (re) {
     const [from, to] = f.scope && f.scope[1] <= text.length ? f.scope : [0, text.length];
-    re.lastIndex = from;
-    for (let m = re.exec(text); m && f.ranges.length < 20000; m = re.exec(text)) {
-      if (m[0] === '') { re.lastIndex += 1; continue; }
-      if (m.index + m[0].length > to) break;
-      f.ranges.push([m.index, m.index + m[0].length]);
-    }
+    f.ranges = findMatches(text, re, { from, to });
   }
   const from = fromTyping || !was ? t.ed.selection()[0] : was[0];
   f.at = f.ranges.length ? Math.max(0, f.ranges.findIndex((r) => r[0] >= from)) : -1;
-  if (f.ranges.length && f.ranges.findIndex((r) => r[0] >= from) < 0) f.at = 0;
   paintFind(fromTyping);
 }
 
@@ -3562,6 +3639,7 @@ function registerCommands() {
   C('sulfur.git.push', 'Git: Push', () => scmPush(), { category: 'Git' });
   C('sulfur.git.sync', 'Git: Sync', () => scmSync(), { category: 'Git' });
   C('sulfur.git.history', 'Git: View History…', () => scmHistory(), { category: 'Git' });
+  C('sulfur.git.graph', 'Git: Open Source Control Graph', () => scmHistory(), { category: 'Git' });
   C('sulfur.forgejo.open', 'Forgejo: Open on Forgejo', () => forgejoOpen(I.active?.rel), { category: 'Forgejo' });
   C('sulfur.forgejo.pr', 'Forgejo: Create Pull Request…', () => forgejoPR(), { category: 'Forgejo' });
   C('sulfur.forgejo.prs', 'Forgejo: Pull Requests…', () => forgejoPRs(), { category: 'Forgejo' });
@@ -3772,14 +3850,16 @@ function hlText(text, hl = []) {
 
 // the workspace's files on every online host, for quick open: read once, kept a while
 async function fileIndex() {
+  if (!I) return null;
+  const state = I;
   const root = wsKey();
   if (I.index && I.index.root === root && Date.now() - I.index.at < INDEX_TTL) return I.index;
   if (I.indexing?.root === root) return I.indexing.pr;
   const places = isHomeLoc() ? homeOnline().map((h) => [h, homeAt(h)]) : [[locOf().host, apiLoc()]];
+  const skip = excluded();
   const pr = Promise.all(places.map(([h, at]) => filesCall(at, 'tree', undefined, { path: I.st.root, depth: 8, skip: searchSkip() }).then((b) => ({ h, b }), () => null))).then((got) => {
     const files = new Map();
     let truncated = false;
-    const skip = excluded();
     for (const g of got) {
       if (!g) continue;
       truncated ||= !!g.b.truncated;
@@ -3792,7 +3872,7 @@ async function fileIndex() {
       }
     }
     const idx = { root, at: Date.now(), files: [...files.values()], truncated };
-    if (I) { I.index = idx; I.indexing = null; }
+    if (I === state && I.indexing?.pr === pr && wsKey() === root) { I.index = idx; I.indexing = null; }
     return idx;
   });
   I.indexing = { root, pr };
@@ -3859,9 +3939,9 @@ function fileItems(q) {
     return { items, empty: 'Type to search the workspace’s files' };
   }
   if (!I.index || I.index.root !== wsKey()) {
-    return { items: [], message: 'Searching the workspace on every host…', wait: fileIndex().then(() => fileItems(q)) };
+    const state = I, workspace = wsKey();
+    return { items: [], message: 'Searching the workspace on every host…', wait: fileIndex().then(() => I === state && wsKey() === workspace ? fileItems(q) : { items: [] }) };
   }
-  const hits = [];
   // each path's relative form and lowercase kept on the index: typing re-ranks tens of
   // thousands of files a keystroke
   const pathQuery = name.replace(/\\/g, '/');
@@ -3871,15 +3951,17 @@ function fileItems(q) {
   const narrows = last && last.index === I.index && last.root === I.st.root && name.startsWith(last.name);
   const files = narrows ? last.files : I.index.files;
   const matched = [];
-  for (const f of files) {
-    if (f.relRoot !== I.st.root) { f.relRoot = I.st.root; f.r = rel(f.path); f.b = baseName(f.r); f.rl = f.r.toLowerCase(); f.bl = f.b.toLowerCase(); }
-    const mb = fuzzy(name, f.b, f.bl);
-    const m = mb ? { score: mb.score + 100, hl: mb.hl } : fuzzy(pathQuery, f.r, f.rl);
-    if (m) { hits.push({ f, r: f.r, b: f.b, m, inBase: !!mb }); matched.push(f); }
+  function* matches() {
+    for (const f of files) {
+      if (f.relRoot !== I.st.root) { f.relRoot = I.st.root; f.r = rel(f.path); f.b = baseName(f.r); f.rl = f.r.toLowerCase(); f.bl = f.b.toLowerCase(); }
+      const mb = fuzzy(name, f.b, f.bl);
+      const m = mb ? { score: mb.score + 100, hl: mb.hl } : fuzzy(pathQuery, f.r, f.rl);
+      if (m) { matched.push(f); yield { f, r: f.r, b: f.b, m, inBase: !!mb }; }
+    }
   }
+  const hits = topRanked(matches(), 200, (a, b) => b.m.score - a.m.score || a.r.length - b.r.length);
   I.quickFiles = { index: I.index, root: I.st.root, name, files: matched };
-  hits.sort((a, b) => b.m.score - a.m.score || a.r.length - b.r.length);
-  const items = hits.slice(0, 200).map((x) => ({
+  const items = hits.map((x) => ({
     label: x.b, hl: x.inBase ? x.m.hl : [], description: filesParent(x.r), ic: x.f.path,
     detail: x.f.hosts.length > 1 ? '' : `on ${x.f.hosts[0]}`, accept: go(x.f.path, x.f.hosts),
   }));
@@ -3930,8 +4012,10 @@ function quick(o) {
   title.hidden = !o.title;
   const input = Object.assign(el('input', 'ide-input ide-quick-input'), { value: o.value || '', placeholder: o.placeholder || '', spellcheck: false, autocomplete: 'off', type: o.password ? 'password' : 'text' });
   input.setAttribute('role', 'combobox');
+  input.setAttribute('aria-label', o.title || o.placeholder || 'Choose an item');
   input.setAttribute('aria-expanded', 'true');
   const msg = el('div', 'ide-quick-msg');
+  msg.setAttribute('role', 'status');
   const list = el('div', 'ide-quick-list');
   list.setAttribute('role', 'listbox');
   list.id = `ide-ql-${(I.seq += 1)}`;
@@ -3952,11 +4036,14 @@ function quick(o) {
       msg.hidden = !msg.textContent;
       msg.classList.toggle('bad', !!r.bad);
       list.replaceChildren();
+      list.setAttribute('aria-busy', String(!!r.wait));
       q.litRow = null;
       list.scrollTop = 0;
       grow(QUICK_PAGE);
       mark(true);
-      if (r.wait) r.wait.then((next) => { if (I?.quick === q && gen === q.gen) show(next); });
+      if (r.wait) r.wait.then((next) => { if (I?.quick === q && gen === q.gen) show(next); }, (error) => {
+        if (I?.quick === q && gen === q.gen) show({ items: [], message: `Couldn't load results: ${error.message}`, bad: true });
+      });
     };
     show(res);
   };
@@ -3964,7 +4051,7 @@ function quick(o) {
   // screen of them, not the hundreds that match
   const QUICK_PAGE = 40;
   const grow = (upto) => {
-    const n = Math.min(q.items.length, 500, upto);
+    const n = Math.min(q.items.length, upto);
     for (let i = list.children.length; i < n; i++) list.append(rowOf(q.items[i], i));
   };
   list.addEventListener('scroll', () => { if (list.scrollTop + list.clientHeight * 2 > list.scrollHeight) grow(list.children.length + QUICK_PAGE); }, { passive: true });
@@ -3972,8 +4059,17 @@ function quick(o) {
     const row = el('div', `ide-qi${x.sep ? ' sep' : ''}`);
     row.id = `${list.id}-${i}`;
     row.setAttribute('role', 'option');
+    row.setAttribute('aria-selected', 'false');
     if (x.sep) row.dataset.sep = x.sep;
     if (x.ic) row.append(IC[x.ic] ? icon(x.ic, 'ide-fi') : fileIcon(x.ic));
+    if (Array.isArray(x.swatch)) {
+      const swatch = el('span', 'ide-qi-swatch');
+      swatch.setAttribute('aria-hidden', 'true');
+      for (const color of x.swatch.filter((v) => /^#[0-9a-f]{6}$/i.test(v))) {
+        const dot = el('span'); dot.style.backgroundColor = color; swatch.append(dot);
+      }
+      row.append(swatch);
+    }
     const main = el('span', 'ide-qi-main');
     main.append(hlText(x.label, x.hl));
     if (x.description) main.append(el('span', 'ide-qi-desc', x.description));
@@ -3990,8 +4086,9 @@ function quick(o) {
   const mark = (fresh = false) => {
     if (q.at >= list.children.length) grow(q.at + QUICK_PAGE);
     const r = list.children[q.at];
-    if (q.litRow && q.litRow !== r) q.litRow.classList.remove('on');
+    if (q.litRow && q.litRow !== r) { q.litRow.classList.remove('on'); q.litRow.setAttribute('aria-selected', 'false'); }
     r?.classList.add('on');
+    r?.setAttribute('aria-selected', 'true');
     q.litRow = r || null;
     input.setAttribute('aria-activedescendant', r ? r.id : '');
     if (r && !(fresh && q.at === 0)) {
@@ -4011,10 +4108,11 @@ function quick(o) {
   };
   input.addEventListener('input', paint);
   input.addEventListener('keydown', (e) => {
-    const n = Math.min(q.items.length, 500);
+    if (e.isComposing || e.keyCode === 229) return;
+    const n = q.items.length;
     if (e.key === 'ArrowDown') { e.preventDefault(); if (n) { q.at = (q.at + 1) % n; mark(); } }
     else if (e.key === 'ArrowUp') { e.preventDefault(); if (n) { q.at = (q.at - 1 + n) % n; mark(); } }
-    else if (e.key === 'PageDown') { e.preventDefault(); q.at = Math.min(n - 1, q.at + 10); mark(); }
+    else if (e.key === 'PageDown') { e.preventDefault(); q.at = Math.max(0, Math.min(n - 1, q.at + 10)); mark(); }
     else if (e.key === 'PageUp') { e.preventDefault(); q.at = Math.max(0, q.at - 10); mark(); }
     else if (e.key === 'Enter') { e.preventDefault(); accept(q.at); }
     else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeQuick(); }
@@ -4422,7 +4520,7 @@ function sidebarItems(id) {
     { label: 'Copy All Results', disabled: !I.search.S.results.length, run: () => copyMenuText(I.search.S.results.flatMap((r) => r.matches.map((m) => `${r.path}:${m.line}: ${m.text}`)).join('\n')) }, '-',
     settingItem('search.exclude', 'Search Exclusions')];
   if (id === 'scm') items = [
-    { label: 'Refresh Source Control', run: () => scmRefresh(true) }, cmdItem('sulfur.git.commit', 'Commit…'),
+    { label: 'Refresh Source Control', run: () => scmRefresh(true) }, cmdItem('sulfur.git.graph', 'Open Source Control Graph'), cmdItem('sulfur.git.commit', 'Commit…'),
     { label: 'Stage All Changes', disabled: !I.scm?.changes?.length, run: () => scmOp(['add', '-A'], 'Staging', atTop()) },
     { label: 'Unstage All Changes', disabled: !I.scm?.staged?.length, run: () => scmOp(unstageArgs(['.']), 'Unstaging', atTop()) },
     { label: 'Discard All Changes…', disabled: !I.scm?.changes?.length, run: () => scmDiscard(I.scm.changes) }, '-', ...scmMenu()];
@@ -6972,6 +7070,7 @@ const unstageArgs = (paths) => (I.scm?.unborn ? ['rm', '--cached', '-r', '-f', '
 function buildScm() {
   const v = I.sideViews.get('scm');
   v.acts = [
+    btn('', 'scm', 'Open Source Control Graph', () => scmHistory()),
     btn('', 'refresh', 'Refresh', () => scmRefresh(true)),
     btn('', 'more', 'More Actions…', (e) => menu(e.currentTarget, scmMenu(), { side: 'left' })),
   ];
@@ -7081,9 +7180,12 @@ function paintScm() {
   }
   // the message and the commit, as VS Code's
   const commitBox = el('div', 'ide-scm-commit');
+  const composeHead = el('div', 'ide-scm-compose-head');
+  composeHead.append(el('label', '', 'Commit message'), el('span', 'ide-scm-stage-hint', `${s.staged.length} staged · ${s.changes.length} changed`));
   const msg = Object.assign(el('textarea', 'ide-input ide-scm-msg'), { rows: 3, value: keepMsg, ariaLabel: 'Commit message', placeholder: `Message (Ctrl+Enter to commit on “${s.branch}”)`, spellcheck: true });
+  msg.id = 'ide-scm-message'; composeHead.firstChild.htmlFor = msg.id;
   msg.style.height = `${I.scmMsgHeight || 76}px`;
-  msg.addEventListener('input', () => { I.scmMsg = msg.value; });
+  msg.addEventListener('input', () => { I.scmMsg = msg.value; saveState(); });
   msg.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); e.stopPropagation(); scmCommit(); } });
   const row = el('div', 'ide-run-row');
   const commit = Object.assign(el('button', 'ide-button ide-run-go'), { type: 'button' });
@@ -7099,7 +7201,7 @@ function paintScm() {
     { label: 'Amend Last Commit', run: () => scmCommit({ amend: true }) },
   ]));
   row.append(commit, more);
-  commitBox.append(msg, row);
+  commitBox.append(composeHead, msg, row);
   // the branch and how far it is from its upstream
   const br = el('div', 'ide-scm-branch');
   const bname = Object.assign(el('button', 'ide-link'), { type: 'button', title: 'Checkout to…' });
@@ -7110,7 +7212,10 @@ function paintScm() {
   sync.append(icon('refresh'), el('span', '', s.upstream ? `${s.behind}↓ ${s.ahead}↑` : 'Publish Branch'));
   sync.addEventListener('click', () => (s.upstream ? scmSync() : scmPush()));
   br.append(sync);
-  body.append(commitBox, br);
+  const graphLink = Object.assign(el('button', 'ide-scm-graph-link'), { type: 'button', title: 'Browse branches, commits, messages and changed files' });
+  graphLink.append(icon('scm'), el('span', '', 'Source Control Graph'), icon('right'));
+  graphLink.addEventListener('click', () => scmHistory());
+  body.append(commitBox, br, graphLink);
   if (messageSelection) { msg.focus({ preventScroll: true }); msg.setSelectionRange(...messageSelection); }
 
   const section = (title, list, staged) => {
@@ -7213,6 +7318,7 @@ async function scmAfter() {
   loadDir(I.st.root, true);
   for (const d of I.expanded) if (d !== I.st.root) loadDir(d, true);
   syncCleanTabs();
+  for (const t of I.tabs) t.gitGraph?.refresh();
   I.index = null;
 }
 
@@ -7261,8 +7367,7 @@ async function scmCommit(o = {}) {
     msg = (await inputBox({ title: `Commit on ${s.branch}`, placeholder: 'The commit message' }))?.trim() || '';
     if (!msg || !I) return;
   }
-  await saveAll();
-  if (!I) return;
+  if ((await saveAll()).some((saved) => !saved) || !I) return;
   // what's staged read again first: a view a moment old must not decide what's committed
   await scmRefresh();
   if (!I?.scm?.top) return;
@@ -7282,6 +7387,7 @@ async function scmCommit(o = {}) {
   const done = await scmOp(['commit', ...(o.amend ? ['--amend'] : []), ...paras], o.amend ? 'Amending' : 'Committing');
   if (!done || !I) return;
   I.scmMsg = '';
+  saveState();
   const b = I.sideViews.get('scm').body.querySelector('.ide-scm-msg');
   if (b) b.value = '';
   setStatusFlash(`Committed on ${s.branch}`);
@@ -7325,12 +7431,28 @@ async function scmBranchPick() {
 }
 
 async function scmHistory() {
-  let lines = [];
-  try { lines = (await git(['log', '-n', '200', '--format=%h%x09%s%x09%an%x09%ar'])).out.trim().split('\n').filter(Boolean).map((l) => l.split('\t')); } catch (err) { notify('error', err.message); return; }
-  const v = await pick(lines.map(([h, subj, who, when]) => ({ label: subj, description: `${h} · ${who}`, detail: when, ic: 'branch', value: h })), { title: `History of ${I.scm?.branch || 'this branch'}`, placeholder: 'Search the commits', matchDescription: true });
-  if (!v || !I) return;
-  const r = await git(['show', '--stat', '--patch', '--format=commit %H%nAuthor: %an <%ae>%nDate:   %ad%n%n%w(0,4,4)%B', v]).catch((err) => { notify('error', err.message); return null; });
-  if (r) showDiffPage(`commit:${v}`, `Commit ${v}`, r.out, null);
+  const state = I, workspace = wsKey();
+  if (!I.scm?.top) await scmRefresh();
+  if (I !== state || wsKey() !== workspace) return;
+  if (!I.scm?.top) { notify('info', 'Open a Git repository to view its commit graph.'); return; }
+  const options = { where: gitWhere(), ...atTop() };
+  const graphGit = (args, extra = {}) => git(args, { ...options, ...extra });
+  openPage(`git-graph:${workspace}`, 'Source Control Graph', 'scm', (t) => {
+    t.view.classList.add('ide-git-page');
+    t.gitGraph = mountGitGraph(t.view, {
+      git: graphGit, contextMenu: contextActions, copy: copyMenuText, title: baseName(I.scm.top), unborn: I.scm.unborn,
+      onError: (err) => notify('error', err.message),
+      openPatch: async (commit, path) => {
+        const args = commit.parents.length
+          ? ['diff', '--no-ext-diff', '--no-color', '--find-renames', commit.parents[0], commit.hash]
+          : ['show', '--no-ext-diff', '--no-color', '--format=fuller', commit.hash];
+        const result = await graphGit([...args, '--', ...(path ? [path] : [])]);
+        if (I !== state || !I.tabs.includes(t)) return;
+        showDiffPage(`commit:${workspace}:${commit.hash}:${path || ''}`, path ? `${baseName(path)} (${commit.hash.slice(0, 8)})` : `Commit ${commit.hash.slice(0, 8)}`, result.out, null);
+      },
+    });
+    t.dispose = () => t.gitGraph.dispose();
+  });
 }
 
 // a file's changes against its last commit, or what's staged, as a page
@@ -7495,6 +7617,7 @@ async function gitClone() {
 // words narrowed here, so what's offered is only what's kept
 
 function buildSearch() {
+  const state = I;
   const v = I.sideViews.get('search');
   const form = el('div', 'ide-search-form');
   const field = el('div', 'ide-find-field');
@@ -7503,7 +7626,7 @@ function buildSearch() {
   const opt = (label, title, key, cls = '') => {
     const b = Object.assign(el('button', `ide-opt ${cls}`, label), { type: 'button', title });
     b.setAttribute('aria-pressed', 'false');
-    b.addEventListener('click', () => { S[key] = !S[key]; b.classList.toggle('on', S[key]); b.setAttribute('aria-pressed', String(S[key])); go(); });
+    b.addEventListener('click', () => { S[key] = !S[key]; b.classList.toggle('on', S[key]); b.setAttribute('aria-pressed', String(S[key])); schedule(); });
     return b;
   };
   const S = { caseS: false, word: false, results: [], open: new Set(), gen: 0 };
@@ -7515,47 +7638,62 @@ function buildSearch() {
   details.hidden = true;
   const inc = Object.assign(el('input', 'ide-input'), { placeholder: 'e.g. *.c', spellcheck: false });
   const exc = Object.assign(el('input', 'ide-input'), { placeholder: 'e.g. *.min.js, build', spellcheck: false });
+  inc.setAttribute('aria-label', 'Files to include');
+  exc.setAttribute('aria-label', 'Files to exclude');
   details.append(el('label', 'ide-search-lab', 'files to include'), inc, el('label', 'ide-search-lab', 'files to exclude'), exc);
   form.append(top, details);
   const summary = el('div', 'ide-search-summary');
+  summary.setAttribute('role', 'status');
   const list = Object.assign(el('div', 'ide-search-results'), { tabIndex: 0 });
   list.setAttribute('role', 'tree');
   v.body.append(form, summary, list);
   const go = debounce(() => runSearch(), 300);
+  const invalidate = () => { S.gen += 1; S.controller?.abort(); S.controller = null; list.setAttribute('aria-busy', 'false'); };
+  const schedule = () => { invalidate(); go(); };
+  I.offs.push(() => { go.cancel(); invalidate(); });
   for (const x of [q, inc, exc]) {
-    x.addEventListener('input', go);
+    x.addEventListener('input', schedule);
     x.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); go.cancel(); runSearch(); } });
   }
   v.focus = () => { q.focus(); q.select(); };
+  const clear = () => { go.cancel(); invalidate(); q.value = ''; S.query = ''; S.results = []; S.open.clear(); S.truncated = false; S.failed = 0; paint(); };
   v.acts = [
-    btn('', 'trash', 'Clear Search Results', () => { q.value = ''; S.results = []; paint(); q.focus(); }),
+    btn('', 'trash', 'Clear Search Results', () => { clear(); q.focus(); }),
     btn('', 'collapse', 'Collapse All', () => { S.open = new Set(); paint(); }),
   ];
-  I.search = { q, S, paint: () => paint(), list };
+  I.search = { q, S, paint: () => paint(), list, clear, refresh: () => { go.cancel(); return runSearch(); }, expand: (on) => { S.open = new Set(on ? S.results.map((r) => r.path) : []); paint(); } };
 
   async function runSearch() {
+    if (I !== state) return;
+    invalidate();
     const query = q.value;
     const gen = (S.gen += 1);
-    if (!query.trim()) { S.results = []; paint(); return; }
+    if (!query.trim()) { S.results = []; S.query = ''; S.failed = 0; paint(); return; }
+    const controller = S.controller = new AbortController();
+    list.setAttribute('aria-busy', 'true');
     summary.textContent = 'Searching…';
-    const glob = inc.value.trim().split(',')[0]?.trim() || '';
-    const root = I.st.root;
-    const where = isHomeLoc() ? homeOnline().map((h) => [h, homeAt(h)]) : [[locOf().host, apiLoc()]];
-    const got = await Promise.all(where.map(([h, at]) => filesCall(at, 'search', undefined, { path: root, query, content: 'true', skip: searchSkip(), ...(glob ? { glob } : {}) })
-      .then((b) => ({ h, b }), () => null)));
-    if (!I || gen !== S.gen) return;
+    const include = inc.value.trim();
+    const glob = include.includes(',') ? '' : include;
+    const includes = excludeMatcher(include);
     const skip = excluded();
     const exGlobs = excludeMatcher(exc.value);
-    const word = S.word ? new RegExp(`(^|[^\\p{L}\\p{N}_])${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[^\\p{L}\\p{N}_])`, S.caseS ? 'u' : 'iu') : null;
+    const re = literalSearch(query, { caseSensitive: S.caseS, wholeWord: S.word });
+    const root = I.st.root;
+    const workspace = wsKey();
+    const where = isHomeLoc() ? homeOnline().map((h) => [h, homeAt(h)]) : [[locOf().host, apiLoc()]];
+    const got = await Promise.all(where.map(([h, at]) => filesCall(at, 'search', { signal: controller.signal }, { path: root, query, content: 'true', skip: searchSkip(), ...(glob ? { glob } : {}) })
+      .then((b) => ({ h, b }), () => null)));
+    if (I !== state || I.search?.S !== S || workspace !== wsKey() || gen !== S.gen) return;
+    S.controller = null;
+    list.setAttribute('aria-busy', 'false');
     const by = new Map();
     let truncated = false;
     for (const g of got) {
       if (!g) continue;
       truncated ||= !!g.b.truncated;
       for (const r of g.b.results || []) {
-        const segs = r.path.split('/');
-        if (skip.path(r.path) || exGlobs.path(r.path)) continue;
-        const hits = (r.matches || []).filter((m) => (!S.caseS || m.text.includes(query)) && (!word || word.test(m.text)));
+        if (skip.path(r.path) || exGlobs.path(r.path) || (include && !includes.path(r.path))) continue;
+        const hits = (r.matches || []).map((m) => ({ ...m, hl: findMatches(m.text, re, { limit: 20 }) })).filter((m) => m.hl.length);
         if (!hits.length) continue;
         if (!by.has(r.path)) by.set(r.path, { path: r.path, host: g.h, matches: hits });
       }
@@ -7563,13 +7701,16 @@ function buildSearch() {
     S.results = [...by.values()].sort((a, b) => a.path.localeCompare(b.path));
     S.open = new Set(S.results.map((r) => r.path));
     S.truncated = truncated;
+    S.failed = got.filter((g) => !g).length;
+    S.allFailed = !got.some(Boolean);
     S.query = query;
     paint();
   }
 
   function paint() {
     const n = S.results.reduce((k, r) => k + r.matches.length, 0);
-    summary.textContent = !q.value.trim() ? '' : n ? `${n} result${n === 1 ? '' : 's'} in ${S.results.length} file${S.results.length === 1 ? '' : 's'}${S.truncated ? ' (the hosts stopped early: narrow the search)' : ''}` : 'No results found. Review your settings for configured exclusions.';
+    summary.textContent = !q.value.trim() ? '' : S.allFailed ? 'Search failed: no host answered. Check the connection and try again.' : n ? `${n} result${n === 1 ? '' : 's'} in ${S.results.length} file${S.results.length === 1 ? '' : 's'}${S.truncated ? ' (the hosts stopped early: narrow the search)' : ''}` : 'No results found. Review your settings for configured exclusions.';
+    if (S.failed && !S.allFailed) summary.textContent += ` (${S.failed} host${S.failed === 1 ? '' : 's'} unavailable)`;
     summary.title = 'Each host reports at most 5 matching lines per file.';
     const rows = [];
     const rel = (p) => (under(p, I.st.root) ? p.slice(I.st.root.length + 1) : p);
@@ -7578,9 +7719,19 @@ function buildSearch() {
       const head = el('div', 'ide-sr-file');
       head.setAttribute('role', 'treeitem');
       head.setAttribute('aria-expanded', String(open));
+      head.tabIndex = 0;
       head.title = `${r.path}\non ${r.host}`;
       head.append(icon(open ? 'down' : 'right', 'ide-chev-ic'), fileIcon(r.path), el('span', 'ide-sr-name', baseName(r.path)), el('span', 'ide-sr-dir', filesParent(rel(r.path))), el('span', 'ide-badge', String(r.matches.length)));
-      head.addEventListener('click', () => { if (open) S.open.delete(r.path); else S.open.add(r.path); paint(); });
+      const toggle = () => { if (open) S.open.delete(r.path); else S.open.add(r.path); paint(); list.children[rows.indexOf(head)]?.focus(); };
+      head.addEventListener('click', toggle);
+      head.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
+      contextActions(head, () => [
+        { label: 'Open File', run: () => openFile(r.path, { preview: false, host: r.host }) },
+        { label: 'Copy Path', run: () => copyPath(r.path, true, locOf(), r.host) },
+        { label: 'Copy Relative Path', run: () => copyPath(r.path, false) },
+        { label: 'Copy Matches', run: () => copyMenuText(r.matches.map((m) => `${r.path}:${m.line}: ${m.text}`).join('\n')) }, '-',
+        { label: 'Remove from Results', run: () => { S.results = S.results.filter((x) => x !== r); paint(); } },
+      ]);
       rows.push(head);
       if (!open) continue;
       for (const m of r.matches) {
@@ -7588,14 +7739,17 @@ function buildSearch() {
         row.setAttribute('role', 'treeitem');
         row.title = `${m.text}\nLn ${m.line}`;
         const text = m.text;
-        const lower = S.caseS ? text : text.toLowerCase();
-        const needle = S.caseS ? S.query : S.query.toLowerCase();
-        const hl = [];
-        for (let i = lower.indexOf(needle); i >= 0 && hl.length < 20; i = lower.indexOf(needle, i + needle.length)) hl.push([i, i + needle.length]);
         const span = el('span', 'ide-sr-text');
-        span.append(hlText(text, hl));
+        span.append(hlText(text, m.hl));
         row.append(span, el('span', 'ide-sr-line', String(m.line)));
         row.addEventListener('click', () => openMatch(r, m));
+        row.tabIndex = 0;
+        row.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); openMatch(r, m); } });
+        contextActions(row, () => [
+          { label: 'Open Match', run: () => openMatch(r, m) },
+          { label: 'Copy Match', run: () => copyMenuText(m.text) },
+          { label: 'Copy Location', run: () => copyMenuText(`${r.path}:${m.line}`) },
+        ]);
         rows.push(row);
       }
     }
@@ -8046,59 +8200,70 @@ async function addFolderDialog() {
 // --- color themes ---------------------------------------------------------------------------
 
 async function pickTheme() {
+  const state = I;
   const worn = setting('workbench.colorTheme');
   const cur = worn && contributedThemes().some((t) => t.key === worn) ? `ext:${worn}` : paletteNow();
   const palette = paletteNow();
   const look = setting('window.appearance');
   // on its own, light and dark Sulfur's to pick; in the desktop, the desktop's
-  const appearance = standalone ? [['system', 'Follow the System', 'light or dark as the system is'], ['light', 'Light', 'Phosphorus light'], ['dark', 'Dark', 'Phosphorus dark']]
+  const appearance = standalone ? [['system', 'Follow the System', 'light or dark as the system is'], ['light', 'Light', 'Light variant of the selected theme'], ['dark', 'Dark', 'Dark variant of the selected theme'], ['oled', 'OLED Black', 'Black backgrounds with the selected theme’s accents']]
     .map(([id, label, description], i) => ({ label, description, detail: id === look ? 'current' : '', value: `look:${id}`, sep: i === 0 ? 'Appearance' : '' })) : [];
-  const items = [...appearance, ...PALETTES.map((t, i) => ({ label: t.label, description: t.about, detail: t.id === cur ? 'current' : '', value: t.id, sep: i === 0 ? 'Color Theme, phosphorus wide' : '' })),
+  const items = [...appearance, ...PALETTES.map((t, i) => ({ label: t.label, description: t.about, swatch: t.swatch, detail: t.id === cur ? 'current' : '', value: t.id, sep: i === 0 ? 'Color Theme, phosphorus wide' : '' })),
     // converted VS Code extensions' themes, Sulfur's alone, worn over the palette
     ...contributedThemes().map((t, i) => ({ label: t.label, description: t.extName, detail: `ext:${t.key}` === cur ? 'current' : '', value: `ext:${t.key}`, sep: i === 0 ? 'Color Theme, from converted extensions' : '' }))];
   // each theme worn while it's lit, as VS Code previews them; the one before back on Escape
   const preview = (id) => {
-    if (!I || !id || String(id).startsWith('look:')) return;
+    if (I !== state || !id) return;
+    if (String(id).startsWith('look:')) { if (paletteNow() !== palette) setPalette(palette); wearExtTheme(worn); return; }
     if (String(id).startsWith('ext:')) { wearExtTheme(id.slice(4)); return; }
-    wearExtTheme('');
     if (id !== paletteNow()) setPalette(id);
+    wearExtTheme('');
   };
   const v = await pick(items, { title: 'Color Theme', placeholder: standalone ? 'Select Color Theme, or Light or Dark' : 'Select Color Theme (light or dark follows the desktop)', onActive: preview, selected: cur });
-  if ((!v || v === 'look:system') && I) { if (paletteNow() !== palette) setPalette(palette); wearExtTheme(worn); }
-  if (!v || !I) return;
+  if (I !== state) return;
+  if (!v || v.startsWith('look:')) { if (paletteNow() !== palette) setPalette(palette); wearExtTheme(worn); }
+  if (!v) return;
+  if (v.startsWith('look:')) { setSetting('window.appearance', v.slice(5)); return; }
   if (v.startsWith('ext:')) { if (paletteNow() !== palette) setPalette(palette); setSetting('workbench.colorTheme', v.slice(4)); return; }
   if (worn) setSetting('workbench.colorTheme', '');
-  if (v.startsWith('look:')) {
-    if (v !== 'look:system') setPalette('phosphorus');
-    setSetting('window.appearance', v.slice(5));
-  } else setPalette(v);
+  setPalette(v);
 }
 
 // a converted extension's color theme over the palette's tokens ('' none), its file read once
 async function wearExtTheme(key) {
+  const state = I;
+  if (!state) return;
+  const request = state.extThemeRequest = {};
   const t = key ? contributedThemes().find((x) => x.key === key) : null;
   I.extThemeWant = key || '';
   let css = '';
   if (t) {
-    try { css = themeCss(await t.data()); } catch (err) { notify('warning', `The color theme ${t.label} couldn’t be read: ${err.message}`); }
-    if (!I || I.extThemeWant !== key) return;
+    try { css = themeCss(await t.data()); } catch (err) {
+      if (I === state && state.extThemeRequest === request) notify('warning', `The color theme ${t.label} couldn’t be read: ${err.message}`);
+    }
+    if (I !== state || state.extThemeRequest !== request) return;
   }
   let tag = document.getElementById('sulfur-ext-theme');
   if (css && !tag) { tag = Object.assign(document.createElement('style'), { id: 'sulfur-ext-theme' }); document.head.append(tag); }
   if (tag) tag.textContent = css;
   I.w.node.classList.toggle('ide-ext-theme', !!css);
   const now = css ? key : '';
-  if (I.extThemeNow !== now) { I.extThemeNow = now; requestAnimationFrame(() => { if (I) { termsRetheme(); refreshWebviewThemes(); } }); }
+  if (I.extThemeNow !== now) { I.extThemeNow = now; for (const t of I.tabs) t.ed?.show(true); requestAnimationFrame(() => { if (I === state) { termsRetheme(); refreshWebviewThemes(); } }); }
 }
 
 // a converted extension's file icon theme ('' Sulfur's own), its icon fonts put up
 async function wearIconTheme(key) {
+  const state = I;
+  if (!state) return;
+  const request = state.iconThemeRequest = {};
   const t = key ? contributedIconThemes().find((x) => x.key === key) : null;
   I.iconThemeWant = key || '';
   let data = null;
   if (t) {
-    try { data = await t.data(); } catch (err) { notify('warning', `The file icon theme ${t.label} couldn’t be read: ${err.message}`); }
-    if (!I || I.iconThemeWant !== key) return;
+    try { data = await t.data(); } catch (err) {
+      if (I === state && state.iconThemeRequest === request) notify('warning', `The file icon theme ${t.label} couldn’t be read: ${err.message}`);
+    }
+    if (I !== state || state.iconThemeRequest !== request) return;
   }
   if ((I.iconTheme?.key || '') === (data ? key : '')) return;
   I.iconTheme = data ? { key, data } : null;
@@ -8202,12 +8367,13 @@ const systemLight = matchMedia('(prefers-color-scheme: light)');
 function applyAppearance() {
   if (!standalone) return;
   const a = setting('window.appearance');
-  const light = a === 'light' || (a !== 'dark' && systemLight.matches);
+  const light = a === 'light' || (a !== 'dark' && a !== 'oled' && systemLight.matches);
   const root = document.documentElement;
-  const was = root.dataset.theme === 'light';
-  if (light) root.dataset.theme = 'light'; else delete root.dataset.theme;
+  const was = root.dataset.theme;
+  if (a === 'oled') root.dataset.theme = 'oled';
+  else if (light) root.dataset.theme = 'light'; else delete root.dataset.theme;
   try { localStorage.setItem('sulfur-appearance', a); } catch {}
-  if (was !== light) requestAnimationFrame(() => termsRetheme());
+  if (was !== root.dataset.theme) { const state = I; requestAnimationFrame(() => { if (I === state) termsRetheme(); }); }
 }
 
 function applySettings() {
@@ -8871,7 +9037,7 @@ function paintExtView() {
     row.append(ic, main);
     row.addEventListener('click', () => openExtPage(x));
     row.addEventListener('keydown', (e) => { if (e.key === 'Enter') openExtPage(x); });
-    row.addEventListener('contextmenu', (e) => { e.preventDefault(); menu({ x: e.clientX, y: e.clientY }, extItems(x)); });
+    contextActions(row, () => extItems(x));
     return row;
   }));
   E.note.replaceChildren();
