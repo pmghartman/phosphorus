@@ -114,7 +114,7 @@ func update() error {
 			}
 		}
 		if i == 30 && last == "" {
-			fmt.Println("nothing picked it up yet: is the update agent running (Linux: phosphorus-update.path, else the Phosphorus app)?")
+			fmt.Println("nothing picked it up yet: is the update agent running (Linux: phosphorus-update.path, Windows: the phosphorus service, macOS: the Phosphorus app)?")
 		}
 		time.Sleep(time.Second)
 	}

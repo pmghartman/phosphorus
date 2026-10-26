@@ -40,6 +40,12 @@ func hostBin() string { return filepath.Join(exeDir(), "phosphorus-host.exe") }
 
 func payloadDir() string { return filepath.Join(exeDir(), "release") }
 
+// where this app runs from, for the service updating it with no one signed in
+func noteAppDir() {
+	os.MkdirAll(filepath.Join(a.home, "state"), 0o755)
+	os.WriteFile(filepath.Join(a.home, "state", "app-dir"), []byte(exeDir()+"\n"), 0o644)
+}
+
 func setIcon() { systray.SetIcon(trayIcon) }
 
 func quiet(c *exec.Cmd) {

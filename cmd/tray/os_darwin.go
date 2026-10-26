@@ -40,6 +40,9 @@ func hostBin() string { return filepath.Join(exeDir(), "phosphorus-host") }
 // not "phosphorus": beside the Phosphorus binary on a case-insensitive disk
 func payloadDir() string { return filepath.Join(exeDir(), "../Resources/release") }
 
+// none: Windows' service alone updates the app without it
+func noteAppDir() {}
+
 // the app bundle this runs from, "" when run bare
 func bundle() string {
 	d := filepath.Clean(filepath.Join(exeDir(), "../.."))

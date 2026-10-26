@@ -2,7 +2,8 @@
 # Phosphorus's setup .exe for Windows: the tray, the host binary and the release,
 # by NSIS; with a signing key, the feed's signature beside a copy of it
 # usage: windows.sh VERSION PAYLOAD_DIR OUT_DIR UPDATE_DIR
-# env: FEED_URL and FEED_PUBKEY for the tray's own updates, UPDATE_SIGNING_KEY to sign them
+# env: FEED_URL and FEED_PUBKEY for the app's own updates (the tray's, and the
+# service's when no one is signed in), UPDATE_SIGNING_KEY to sign them
 set -euo pipefail
 VER=$1 PAYLOAD=$2 OUT=$3 UPD=$4
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -19,7 +20,9 @@ export GOOS=windows GOARCH=amd64 CGO_ENABLED=0
 go build -trimpath -ldflags "-s -w -H windowsgui -X main.appVersion=$VER -X main.feedURL=${FEED_URL:-} -X main.feedPubkey=${FEED_PUBKEY:-}" \
   -o "$STAGE/Phosphorus.exe" ./cmd/tray &
 t=$!
-go build -trimpath -ldflags "-s -w" -o "$STAGE/phosphorus-host.exe" ./cmd/phosphorus
+# the same feed, for the service updating the app with no one signed in
+go build -trimpath -ldflags "-s -w -X github.com/pmghartman/phosphorus/internal/host.feedURL=${FEED_URL:-} -X github.com/pmghartman/phosphorus/internal/host.feedPubkey=${FEED_PUBKEY:-}" \
+  -o "$STAGE/phosphorus-host.exe" ./cmd/phosphorus
 wait $t
 unset GOOS GOARCH
 rm -f cmd/tray/rsrc_windows_*.syso

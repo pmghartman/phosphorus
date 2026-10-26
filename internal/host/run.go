@@ -260,6 +260,7 @@ func runMain(stop <-chan struct{}) error {
 		names = append(names, c.role)
 	}
 	say("all up: %s", strings.Join(names, " "))
+	go watchUpdateRequests(stop)
 
 	exited := make(chan *child, len(all))
 	var watch func(c *child)

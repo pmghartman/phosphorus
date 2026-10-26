@@ -13,16 +13,12 @@ import (
 
 const aptList = "/etc/apt/sources.list.d/phosphorus.list"
 
-// upgrade the Linux update agent, phosphorus-update.service on
-// state/update-request.json: apt to the feed's newest, else this release re-applied
-func upgrade() error {
-	req := at("state", "update-request.json")
-	var r struct{ ID string }
-	b, _ := os.ReadFile(req)
-	json.Unmarshal(b, &r)
-	// consumed first, or the path unit fires again
-	os.Remove(req)
-	report := func(state string, current bool, version, why string) {
+// agentReporter an update's word in state/update-agent.json, what the
+// frontend and `phos update` wait on
+type agentReporter func(state string, current bool, version, why string)
+
+func agentReport(id string) agentReporter {
+	return func(state string, current bool, version, why string) {
 		why = strings.Map(func(c rune) rune {
 			if c == '\n' {
 				return ' '
@@ -32,13 +28,33 @@ func upgrade() error {
 		if len(why) > 400 {
 			why = why[:400]
 		}
-		b, _ := json.Marshal(map[string]any{"id": r.ID, "state": state, "current": current, "version": version, "error": why, "at": time.Now().UnixMilli()})
+		b, _ := json.Marshal(map[string]any{"id": id, "state": state, "current": current, "version": version, "error": why, "at": time.Now().UnixMilli()})
 		out := at("state", "update-agent.json")
 		if os.WriteFile(out+".tmp", b, 0o644) == nil {
 			os.Rename(out+".tmp", out)
 		}
 	}
+}
+
+// upgrade one update request: on Linux the update agent, phosphorus-update.service
+// on state/update-request.json, apt to the feed's newest, else this release
+// re-applied; on Windows the one the service hands on with its id, the app's
+// own update run without the app (upgradeApp)
+func upgrade(id string) error {
+	if id == "" {
+		req := at("state", "update-request.json")
+		var r struct{ ID string }
+		b, _ := os.ReadFile(req)
+		json.Unmarshal(b, &r)
+		// consumed first, or the path unit fires again
+		os.Remove(req)
+		id = r.ID
+	}
+	report := agentReport(id)
 	report("running", false, "", "")
+	if isWindows {
+		return upgradeApp(report)
+	}
 	if !fileExists(aptList) {
 		report("failed", false, "", "no update feed ("+aptList+" missing), reinstall from the latest release")
 		return fail("no update feed")

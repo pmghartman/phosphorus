@@ -27,6 +27,15 @@ func asRoot(args []string) int {
 
 func isAdmin() bool { return os.Geteuid() == 0 }
 
+// watchUpdateRequests none: systemd's path unit (Linux) or the app (macOS) the agent
+func watchUpdateRequests(<-chan struct{}) {}
+
+// upgradeApp Windows' alone
+func upgradeApp(report agentReporter) error {
+	report("failed", false, "", "no update feed here")
+	return fail("no update feed")
+}
+
 // spawnDetached its own session, out of reach of a dropped terminal's hangup
 func spawnDetached(args []string, log *os.File) (func(), error) {
 	c := exec.Command(exe(), args...)
