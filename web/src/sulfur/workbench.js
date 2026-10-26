@@ -418,7 +418,7 @@ const SETTINGS = {
   'editor.guides.indentation': { def: true, type: 'boolean', title: 'Editor: Indentation Guides', about: 'Draw vertical guides at indentation levels, including blank lines inside a block.' },
   'editor.renderWhitespace': { def: 'none', type: 'enum', options: [['none', 'Hidden'], ['boundary', 'Indentation, trailing and repeated spaces'], ['all', 'All spaces and tabs']], title: 'Editor: Whitespace Markers', about: 'Show space dots and tab arrows without changing file contents.' },
   'workbench.layout.mode': { def: 'default', type: 'enum', options: [['default', 'Default (activity bar)'], ['visualStudio', 'Visual Studio (compact toolbar)']], title: 'Layout: Mode', about: 'Keep the activity bar or move its operations into a compact toolbar with machine, configuration and named run target selectors. Independent of the color theme.' },
-  'workbench.sideBar.location': { def: 'auto', type: 'enum', options: [['auto', 'Layout default'], ['left', 'Left'], ['right', 'Right']], title: 'Layout: Primary Sidebar', about: 'Layout default places Explorer on the left in Default mode and the right in Visual Studio mode. An explicit side applies in either layout. Chat moves to the opposite side.' },
+  'workbench.sideBar.location': { def: 'auto', type: 'enum', options: [['auto', 'Layout default'], ['left', 'Left'], ['right', 'Right']], title: 'Layout: Primary Sidebar', about: 'Layout default places Explorer on the left in Default mode and the right in Visual Studio mode. An explicit side holds until the layout mode is changed, which returns it to the layout default. Chat moves to the opposite side.' },
   'workbench.panel.alignment': { def: 'center', type: 'enum', options: [['center', 'Editor width'], ['left', 'Editor and left sidebar'], ['right', 'Editor and right sidebar'], ['justify', 'Full width']], title: 'Layout: Console Span', about: 'Choose how far Terminal, Output and Problems extend beneath the sidebars.' },
   'editor.suggest.inlinePreview': { def: false, type: 'boolean', title: 'Completion: IntelliSense Inline Preview', about: 'Preview the selected language completion in the editor, as VS Code’s editor.suggest.preview (off there by default too). Tab or Enter accepts; Escape dismisses; Ctrl+Space requests IntelliSense.' },
   'editor.detectIndentation': { def: true, type: 'boolean', title: 'Formatting: Detect Indentation', about: 'Use the file’s existing indentation while typing. Turn off to use Insert Spaces and Tab Size.' },
@@ -7848,6 +7848,8 @@ function applySettings() {
 function setSetting(k, v) {
   const def = SETTINGS[k]?.def;
   if (JSON.stringify(v) === JSON.stringify(def)) delete I.settings[k]; else I.settings[k] = v;
+  // a new layout brings its own sides: the explorer and chat swap with it, a side picked before forgotten
+  if (k === 'workbench.layout.mode') delete I.settings['workbench.sideBar.location'];
   cacheSettings();
   if (k === 'sulfur.csharp.analyzersEnabled') { languages.reset(); if (I.active?.ed) languages.get(I.active).catch((e) => log(e.message, 'Languages')); }
   applySettings();
