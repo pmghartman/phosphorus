@@ -65,3 +65,17 @@ test('acquireVsCodeApi state and messages preserve the native webview protocol',
   assert.equal(f.sent[0].phosphorusWebviewState, 'kept');
   assert.equal(f.sent[1].phosphorusWebview.type, 'ready');
 });
+
+test('live theme changes accept only the parent and translate VS Code variables', () => {
+  const f = fixture(), classes = new Set(), values = new Map();
+  f.sandbox.document.body = { classList: { remove: (...names) => names.forEach((name) => classes.delete(name)), add: (name) => classes.add(name) }, dataset: {} };
+  f.sandbox.document.documentElement = { style: { setProperty: (key, value) => values.set(key, value) } };
+  const theme = { kind: 'vscode-light', id: 'native-theme', vars: { '--vscode-button-background': '#abc', '--ide-bg': '#fff', unsafe: 'ignored' } };
+  f.listeners.get('message')({ source: {}, data: { sulfurWebviewTheme: theme } });
+  assert.equal(values.size, 0);
+  f.listeners.get('message')({ source: f.parent, data: { sulfurWebviewTheme: theme } });
+  assert.equal(f.sandbox.document.body.dataset.vscodeThemeId, 'native-theme');
+  assert.equal(classes.has('vscode-light'), true);
+  assert.equal(values.get('--vscode-button-background'), '#abc');
+  assert.equal(values.has('unsafe'), false);
+});

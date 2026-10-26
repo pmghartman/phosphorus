@@ -1,14 +1,7 @@
+import { joinPath } from './project-paths.js';
+import { cmakeVisualStudioTargets } from './cmake-visual-studio.js';
+export { absolutePath, joinPath } from './project-paths.js';
 const slash = (s) => String(s || '').replace(/\\/g, '/');
-export const absolutePath = (s) => /^(?:[A-Za-z]:\/|\/)/.test(slash(s));
-export function joinPath(base, path) {
-  if (absolutePath(path)) return slash(path);
-  const parts = slash(base).split('/');
-  for (const part of slash(path).split('/')) {
-    if (!part || part === '.') continue;
-    if (part === '..') parts.pop(); else parts.push(part);
-  }
-  return parts.join('/');
-}
 const basename = (s) => slash(s).split('/').pop();
 const normalized = (s, windows) => windows ? slash(s).toLowerCase() : slash(s);
 
@@ -26,9 +19,9 @@ export function cmakeConfiguration(cfg, project) {
 // target's source directory. Names need not match OUTPUT_NAME on disk.
 export async function cmakeTargets({ read, list, root, configuration, windows = false }) {
   const reply = joinPath(root, '.cmake/api/v1/reply');
-  const names = await list(reply);
+  const names = await list(reply).catch(() => []);
   const indexName = names.map((e) => e.name).filter((n) => /^index-.*\.json$/.test(n)).sort().at(-1);
-  if (!indexName) return { available: false, items: [] };
+  if (!indexName) return windows ? cmakeVisualStudioTargets({ read, list, root, configuration }) : { available: false, items: [] };
   const readJSON = async (name) => {
     if (!name || /[\\/]/.test(name)) throw new Error('Invalid CMake reply filename');
     return JSON.parse(await read(joinPath(reply, name)));

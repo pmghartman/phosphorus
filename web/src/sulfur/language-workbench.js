@@ -51,7 +51,7 @@ export function createLanguageWorkbench(api) {
       await connection.ready;
       s.loaded = true;
     } catch (e) { s.errors[language || '*'] = e.message; throw e; }
-    finally { connection?.close(); s.busy.delete(language || '*'); panel?.paint(); }
+    finally { connection?.close(); s.busy.delete(language || '*'); panel?.paint(); api.extensionsChanged?.(); }
   }
   function clearSession(session) {
     if (sessions.get(session.key) === session) sessions.delete(session.key);
@@ -862,5 +862,9 @@ export function createLanguageWorkbench(api) {
     return !!c?.manual?.() || preferLanguageCompletion(tab.ed.text(), tab.ed.selection()[0], c?.symbols() || []);
   }
   const hasCodeActions = (tab) => !!attached.get(tab)?.session.client.capabilities.codeActionProvider;
-  return { manage, serverState: (host, id) => state(host).extensions.find((x) => x.id === id) || null, serverError: (host, id) => state(host).errors[id] || '', hover, signatureHelp, signatureTriggers, signature, quickFix, hasCodeActions, documentOutline, workspaceSymbols, openWorkspaceSymbol, callHierarchy, hierarchyCalls, openLocation, mount, filter, format, attach, changed, navigate, rename, reset, get, request, suggest, complete: suggest, cancelCompletions: () => { for (const c of completers.values()) c.hide(); api.onSuggest?.(); }, suggesting, dismissSuggest, symbols, preferLanguage, problems: () => [...diagnostics.values()].flatMap((d) => d.items.map((item) => ({ ...item, context: d.session.context }))), saved(tab) { const d = attached.get(tab); if (d) { changed(tab); const save = d.session.client.capabilities.textDocumentSync?.save; if (save) d.session.client.notify('textDocument/didSave', { textDocument: { uri: d.uri }, ...(save.includeText ? { text: tab.ed.text() } : {}) }); } } };
+  const installedExtensions = (host) => state(host).extensions.filter((x) => x.installed && !x.custom).map((x) => ({
+    id: `sulfur.language.${x.id}`, native: true, active: !!x.enabled,
+    manifest: { name: x.id, displayName: `${x.name} (${host})`, contributes: { languageServers: [{ extensions: Object.entries(LANGUAGE_EXTENSIONS).filter(([, id]) => id === x.id).map(([ext]) => ext) }] } },
+  }));
+  return { manage, installedExtensions, serverState: (host, id) => state(host).extensions.find((x) => x.id === id) || null, serverError: (host, id) => state(host).errors[id] || '', hover, signatureHelp, signatureTriggers, signature, quickFix, hasCodeActions, documentOutline, workspaceSymbols, openWorkspaceSymbol, callHierarchy, hierarchyCalls, openLocation, mount, filter, format, attach, changed, navigate, rename, reset, get, request, suggest, complete: suggest, cancelCompletions: () => { for (const c of completers.values()) c.hide(); api.onSuggest?.(); }, suggesting, dismissSuggest, symbols, preferLanguage, problems: () => [...diagnostics.values()].flatMap((d) => d.items.map((item) => ({ ...item, context: d.session.context }))), saved(tab) { const d = attached.get(tab); if (d) { changed(tab); const save = d.session.client.capabilities.textDocumentSync?.save; if (save) d.session.client.notify('textDocument/didSave', { textDocument: { uri: d.uri }, ...(save.includeText ? { text: tab.ed.text() } : {}) }); } } };
 }

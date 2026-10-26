@@ -216,12 +216,21 @@ func openVSIX(data []byte) (*vsixPackage, error) {
 		return nil, errors.New("not a .vsix: " + err.Error())
 	}
 	p := &vsixPackage{files: map[string]*zip.File{}}
+	names := map[string]bool{}
 	for _, f := range zr.File {
 		name := strings.ReplaceAll(f.Name, "\\", "/")
 		if !strings.HasPrefix(name, "extension/") || strings.HasSuffix(name, "/") {
 			continue
 		}
-		p.files[strings.TrimPrefix(name, "extension/")] = f
+		rel := cleanRel("", strings.TrimPrefix(name, "extension/"))
+		if rel == "" || strings.ContainsAny(rel, ":\x00") {
+			return nil, fmt.Errorf("unsafe package path: %s", name)
+		}
+		if names[strings.ToLower(rel)] {
+			return nil, fmt.Errorf("duplicate package path: %s", name)
+		}
+		names[strings.ToLower(rel)] = true
+		p.files[rel] = f
 	}
 	if p.files["package.json"] == nil {
 		return nil, errors.New("not a .vsix: no extension/package.json")
@@ -568,6 +577,9 @@ func VSXPlan(m map[string]any) []VSXReportItem {
 		if n := len(asList(c["commands"])); n > 0 {
 			add("commands", vsxConverted, plural(n, "command"), "run by its web build")
 		}
+		if len(asMap(c["views"])) > 0 {
+			add("views", vsxPartial, "sidebar views", "native containers for webview and tree providers; conditional visibility and view menus are not translated")
+		}
 	} else if code {
 		detail := "Node.js code: Sulfur has no Node extension host"
 		if c["views"] != nil || c["customEditors"] != nil || c["viewsContainers"] != nil {
@@ -577,7 +589,7 @@ func VSXPlan(m map[string]any) []VSXReportItem {
 	}
 	var other []string
 	for k := range c {
-		if _, ok := vsxUnsupported[k]; ok && !(web && (k == "commands" || k == "customEditors")) {
+		if _, ok := vsxUnsupported[k]; ok && !(web && (k == "commands" || k == "customEditors" || k == "views" || k == "viewsContainers")) {
 			other = append(other, k)
 		}
 	}
@@ -587,6 +599,9 @@ func VSXPlan(m map[string]any) []VSXReportItem {
 	}
 	if n := len(asList(m["extensionPack"])); n > 0 {
 		add("extensionPack", vsxSkipped, plural(n, "bundled extension"), "convert each on its own")
+	}
+	if n := len(asList(m["extensionDependencies"])); n > 0 {
+		add("dependencies", vsxPartial, plural(n, "dependency"), "checked against installed Sulfur extensions; convert missing dependencies separately")
 	}
 	return out
 }
@@ -742,6 +757,11 @@ func ConvertVSIX(data []byte, src VSXSource, opt VSXOptions) (*VSXConversion, er
 	}
 	if s := str(m["license"]); s != "" {
 		manifest["license"] = s
+	}
+	if dependencies := asList(m["extensionDependencies"]); len(dependencies) > 0 {
+		manifest["extensionDependencies"] = dependencies
+		c.add("dependencies", vsxPartial, plural(len(dependencies), "dependency"), "checked against installed Sulfur extensions; cross-extension executable exports are not shared across sandboxes")
+		sulfurPart["report"] = c.report
 	}
 	c.files["package.json"] = jsonText(manifest)
 	c.files["README.md"] = c.readme(display, src)
@@ -1918,7 +1938,7 @@ func (c *converter) rest(contributes map[string]any, server map[string]any) {
 	}
 	var other []string
 	for k := range contributes {
-		if _, ok := vsxUnsupported[k]; ok && k != "commands" && !(web && k == "customEditors") {
+		if _, ok := vsxUnsupported[k]; ok && k != "commands" && !(web && (k == "customEditors" || k == "views" || k == "viewsContainers" || k == "webviews")) {
 			other = append(other, k)
 		}
 	}

@@ -34,7 +34,15 @@ func VSXRegistry() string {
 	return "https://open-vsx.org/api"
 }
 
-var vsxClient = &http.Client{Timeout: 120 * time.Second}
+var vsxClient = &http.Client{Timeout: 120 * time.Second, CheckRedirect: func(req *http.Request, via []*http.Request) error {
+	if req.URL.Scheme != "https" {
+		return errors.New("Open VSX redirects must use HTTPS")
+	}
+	if len(via) >= 10 {
+		return errors.New("too many Open VSX redirects")
+	}
+	return nil
+}}
 
 func vsxGet(ctx context.Context, u string, limit int64) ([]byte, error) {
 	if !strings.HasPrefix(u, "https://") {
@@ -91,6 +99,7 @@ type VSXEntry struct {
 	Categories    []string        `json:"categories,omitempty"`
 	Plan          []VSXReportItem `json:"plan"`
 	PlanError     string          `json:"planError,omitempty"`
+	Manifest      map[string]any  `json:"manifest,omitempty"`
 }
 
 // VSXPage a page of the library
@@ -103,8 +112,54 @@ type VSXPage struct {
 // manifests read for plans, kept: a version's package.json never changes
 var (
 	planMu    sync.Mutex
-	planCache = map[string]map[string]any{}
+	planCache = map[string]*vsxManifestEntry{}
+	planOrder []string
+	planBytes int
 )
+
+type vsxManifestEntry struct {
+	done chan struct{}
+	m    map[string]any
+	err  error
+	size int
+}
+
+// Only handler identities travel with search results, not schemas or asset data.
+func vsxPreview(m map[string]any) map[string]any {
+	c := asMap(m["contributes"])
+	out := map[string]any{}
+	for _, key := range []string{"keybindings", "languages"} {
+		if c[key] != nil {
+			out[key] = c[key]
+		}
+	}
+	var editors, views []any
+	web := str(m["browser"]) != ""
+	if web {
+		out["commands"] = c["commands"]
+	}
+	for _, value := range asList(c["customEditors"]) {
+		if !web {
+			break
+		}
+		e := asMap(value)
+		var patterns []string
+		for _, selector := range asList(e["selector"]) {
+			patterns = append(patterns, str(asMap(selector)["filenamePattern"]))
+		}
+		editors = append(editors, map[string]any{"viewType": e["viewType"], "filenamePatterns": patterns, "priority": e["priority"]})
+	}
+	for _, group := range asMap(c["views"]) {
+		if !web {
+			break
+		}
+		for _, value := range asList(group) {
+			views = append(views, map[string]any{"id": asMap(value)["id"]})
+		}
+	}
+	out["customEditors"], out["views"] = editors, views
+	return map[string]any{"contributes": out, "extensionDependencies": m["extensionDependencies"]}
+}
 
 // vsxManifest a version's package.json: beside its download, which names a platform-specific
 // package's target (.../linux-x64/1.0.0/file/x.vsix), else at the version's own path
@@ -115,24 +170,51 @@ func vsxManifest(ctx context.Context, ns, name, version, download string) (map[s
 	}
 	key := u
 	planMu.Lock()
-	m, ok := planCache[key]
-	planMu.Unlock()
-	if ok {
-		return m, nil
+	if entry := planCache[key]; entry != nil {
+		planMu.Unlock()
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-entry.done:
+			if entry.err != nil && ctx.Err() == nil && (errors.Is(entry.err, context.Canceled) || errors.Is(entry.err, context.DeadlineExceeded)) {
+				return vsxManifest(ctx, ns, name, version, download)
+			}
+			return entry.m, entry.err
+		}
 	}
+	entry := &vsxManifestEntry{done: make(chan struct{})}
+	planCache[key] = entry
+	planMu.Unlock()
+	var m map[string]any
+	defer func() {
+		planMu.Lock()
+		entry.m = m
+		if entry.err != nil {
+			delete(planCache, key)
+		} else {
+			planOrder = append(planOrder, key)
+			planBytes += entry.size
+			for len(planOrder) > 512 || planBytes > 16<<20 {
+				if old := planCache[planOrder[0]]; old != nil {
+					planBytes -= old.size
+				}
+				delete(planCache, planOrder[0])
+				planOrder = planOrder[1:]
+			}
+		}
+		close(entry.done)
+		planMu.Unlock()
+	}()
 	b, err := vsxGet(ctx, u, 4<<20)
 	if err != nil {
+		entry.err = err
 		return nil, err
 	}
+	entry.size = len(b)
 	if err := json.Unmarshal(stripJSONC(b), &m); err != nil || m == nil {
-		return nil, errors.New("its package.json isn't JSON")
+		entry.err = errors.New("its package.json isn't JSON")
+		return nil, entry.err
 	}
-	planMu.Lock()
-	if len(planCache) > 2000 {
-		planCache = map[string]map[string]any{}
-	}
-	planCache[key] = m
-	planMu.Unlock()
 	return m, nil
 }
 
@@ -140,6 +222,8 @@ var vsxSorts = map[string]string{"relevance": "relevance", "downloads": "downloa
 
 // VSXSearch a page of the library, each extension's plan read from its manifest
 func VSXSearch(ctx context.Context, query, category, sort string, offset, size int) (*VSXPage, error) {
+	ctx, cancel := context.WithTimeout(ctx, 25*time.Second)
+	defer cancel()
 	if size <= 0 || size > 50 {
 		size = 20
 	}
@@ -173,6 +257,8 @@ func VSXSearch(ctx context.Context, query, category, sort string, offset, size i
 		return nil, errors.New("Open VSX's search answered something else: " + err.Error())
 	}
 	page := &VSXPage{Offset: raw.Offset, TotalSize: raw.TotalSize, Extensions: make([]VSXEntry, len(raw.Extensions))}
+	planCtx, cancelPlans := context.WithTimeout(ctx, 8*time.Second)
+	defer cancelPlans()
 	var wg sync.WaitGroup
 	gate := make(chan struct{}, 8)
 	for i, e := range raw.Extensions {
@@ -183,10 +269,15 @@ func VSXSearch(ctx context.Context, query, category, sort string, offset, size i
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			gate <- struct{}{}
+			select {
+			case gate <- struct{}{}:
+			case <-planCtx.Done():
+				page.Extensions[i].PlanError = planCtx.Err().Error()
+				return
+			}
 			defer func() { <-gate }()
 			x := &page.Extensions[i]
-			c, cancel := context.WithTimeout(ctx, 20*time.Second)
+			c, cancel := context.WithTimeout(planCtx, 6*time.Second)
 			defer cancel()
 			m, err := vsxManifest(c, x.Namespace, x.Name, x.Version, download)
 			if err != nil {
@@ -194,12 +285,16 @@ func VSXSearch(ctx context.Context, query, category, sort string, offset, size i
 				return
 			}
 			x.Plan = VSXPlan(m)
+			x.Manifest = vsxPreview(m)
 			for _, c := range asList(m["categories"]) {
 				x.Categories = append(x.Categories, str(c))
 			}
 		}(i)
 	}
 	wg.Wait()
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
 	return page, nil
 }
 
@@ -226,15 +321,15 @@ func vsxPlatform() string {
 	return osName + "-" + arch
 }
 
-// pickDownload a target's .vsix: this platform's, else the universal one, else any
+// pickDownload never installs an arbitrary foreign platform's executable.
 func pickDownload(downloads map[string]string, fallback string) (string, string) {
 	for _, p := range []string{vsxPlatform(), "universal"} {
 		if u := downloads[p]; u != "" {
 			return p, u
 		}
 	}
-	for p, u := range downloads {
-		return p, u
+	if len(downloads) > 0 {
+		return "", ""
 	}
 	return "", fallback
 }
@@ -250,12 +345,18 @@ func fetchVSIX(ctx context.Context, download string) ([]byte, string, error) {
 	}
 	sum := sha256.Sum256(data)
 	got := hex.EncodeToString(sum[:])
-	if strings.HasSuffix(download, ".vsix") {
-		if b, err := vsxGet(ctx, strings.TrimSuffix(download, ".vsix")+".sha256", 4096); err == nil {
-			if want := strings.ToLower(strings.TrimSpace(strings.Fields(string(b) + " ")[0])); want != "" && want != got {
-				return nil, "", errors.New("the package doesn't match the registry's sha256")
-			}
-		}
+	u, err := url.Parse(download)
+	if err != nil || !strings.HasSuffix(u.Path, ".vsix") {
+		return nil, "", errors.New("the registry package has no .vsix checksum location")
+	}
+	u.Path = strings.TrimSuffix(u.Path, ".vsix") + ".sha256"
+	b, err := vsxGet(ctx, u.String(), 4096)
+	if err != nil {
+		return nil, "", fmt.Errorf("cannot verify the registry's sha256: %w", err)
+	}
+	fields := strings.Fields(string(b))
+	if len(fields) == 0 || len(fields[0]) != 64 || strings.ToLower(fields[0]) != got {
+		return nil, "", errors.New("the package doesn't match the registry's sha256")
 	}
 	return data, got, nil
 }
@@ -278,8 +379,14 @@ func VSXConvert(ctx context.Context, ns, name, version string, opt VSXOptions) (
 		return nil, errors.New("Open VSX answered something else")
 	}
 	platform, download := pickDownload(meta.Downloads, meta.Files["download"])
+	if download == "" && meta.Downloads["web"] != "" {
+		platform, download = "web", meta.Downloads["web"]
+	}
 	if platform == "" {
 		platform = meta.TargetPlatform
+	}
+	if platform != "" && platform != "universal" && platform != "web" && platform != vsxPlatform() {
+		return nil, fmt.Errorf("no package for %s (the registry offered %s)", vsxPlatform(), platform)
 	}
 	if download == "" {
 		return nil, errors.New(ns + "." + name + " has nothing to download")
