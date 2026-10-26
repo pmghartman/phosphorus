@@ -1,4 +1,4 @@
-import { joinPath } from './project-paths.js';
+import { absolutePath, joinPath } from './project-paths.js';
 import { cmakeVisualStudioTargets } from './cmake-visual-studio.js';
 export { absolutePath, joinPath } from './project-paths.js';
 const slash = (s) => String(s || '').replace(/\\/g, '/');
