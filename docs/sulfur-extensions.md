@@ -9,6 +9,33 @@ For indentation guides, whitespace markers and external-file reloads, see
 
 ## Quick start
 
+### Convert extensions from Open VSX
+
+Open **Extensions → Browse Open VSX…** (or the library button in the Extensions
+pane), search the registry, and choose **Convert & Install**. Sulfur previews
+the contribution points and records a conversion report on the extension's page.
+The package is checked against the registry's SHA-256 checksum before conversion.
+
+Color themes, file icons, language definitions, TextMate grammars and snippets
+become native Sulfur contributions. They use the existing editor, completion and
+theme machinery without running the original extension's code. Bundled language
+servers use Sulfur's language host on the selected machine.
+
+When an extension supplies a browser build for commands or custom editors,
+Sulfur runs that build in an isolated extension frame. Its compatible API calls
+use Sulfur's command palette, dialogs, output, status bar and webview tabs. Its
+declarative contributions still use the native editor features. Executable
+extensions require the same trust decision as extensions written for Sulfur.
+Use **Reopen Editor With…** to select an installed custom editor for a file.
+
+Compatibility depends on the APIs the extension uses. Node-only extension code,
+debug adapters and notebooks are not supported. Tree views and language-feature
+providers implemented in JavaScript are not yet native contributions; check the
+conversion report and extension output for unsupported features. Disabling an
+extension removes its native contributions and stops its executable host.
+
+### Write a Sulfur extension
+
 For optional completion, semantic navigation, rename, and diagnostics, open
 **Extensions → Optional language extensions**. Select languages and a host, then
 **Install selected**. These use native language servers on that host, with

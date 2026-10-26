@@ -751,7 +751,12 @@ func ConvertVSIX(data []byte, src VSXSource, opt VSXOptions) (*VSXConversion, er
 func (c *converter) readme(display string, src VSXSource) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# %s\n\nConverted from the VS Code extension [%s.%s](https://open-vsx.org/extension/%s/%s) %s on Open VSX. ", display, src.Namespace, src.Name, src.Namespace, src.Name, src.Version)
-	b.WriteString("Sulfur reads what it declares; none of its own code runs.\n\n## Conversion\n\n| | what | status | |\n|---|---|---|---|\n")
+	if c.web != "" {
+		b.WriteString("Themes, icons, languages, grammars and snippets use Sulfur's native editor features. Its web build runs in a sandbox for commands and custom editors; unsupported VS Code APIs are reported in its output.\n")
+	} else {
+		b.WriteString("Sulfur reads what it declares; none of its own code runs.\n")
+	}
+	b.WriteString("\n## Conversion\n\n| | what | status | |\n|---|---|---|---|\n")
 	for _, r := range c.report {
 		fmt.Fprintf(&b, "| %s | %s | %s | %s |\n", r.Kind, mdCell(r.Name), r.Status, mdCell(r.Detail))
 	}
