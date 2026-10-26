@@ -317,6 +317,7 @@ func handleUpdate(id string, ask bool) {
 // launch: a new release unpacked into home, a pending update's verdict written,
 // the keys asked for when there are none, then the update requests watched
 func startup(background bool) {
+	noteAppDir()
 	installed := read(filepath.Join(a.home, ".phosphorus-installed"))
 	ver := payloadVersion()
 	if installed != ver && !busy.Swap(true) {

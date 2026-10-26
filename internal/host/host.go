@@ -109,7 +109,11 @@ func Main(cmd string, args []string) int {
 	case "rebuild":
 		err = rebuild()
 	case "upgrade":
-		err = upgrade()
+		id := ""
+		if len(f.rest) > 0 {
+			id = f.rest[0]
+		}
+		err = upgrade(id)
 	case "game-control":
 		err = gameControl()
 	case "game-control-setup":

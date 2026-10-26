@@ -1,7 +1,9 @@
 ; Phosphorus for Windows, per user: the tray, the host binary and the release in
 ; %LOCALAPPDATA%\Phosphorus, an update landing in place
 ; makensis /DVERSION=1.2 /DSTAGE=dir /DOUTFILE=setup.exe installer.nsi
-; /S silent, the tray started after on the desktop at its login item's quiet
+; /S silent, the tray started after on the desktop at its login item's quiet;
+; /S /AGENT /D=<dir> the phosphorus service's update with no one signed in: no
+; tray started, nothing written to the service account's own registry or menu
 
 Unicode true
 ManifestDPIAware true
@@ -48,6 +50,16 @@ VIAddVersionKey "LegalCopyright" "Apache-2.0"
 !insertmacro MUI_UNPAGE_INSTFILES
 !insertmacro MUI_LANGUAGE "English"
 
+Var AGENT
+
+Function .onInit
+  ${GetParameters} $0
+  ClearErrors
+  ${GetOptions} $0 "/AGENT" $1
+  IfErrors +2 0
+    StrCpy $AGENT 1
+FunctionEnd
+
 Section "Install"
   ; a running tray let go of its files; phosphorus itself runs from the home, untouched
   !insertmacro StopTray
@@ -66,6 +78,8 @@ Section "Install"
   File "${STAGE}\THIRD_PARTY_LICENSES.txt"
   File /r "${STAGE}\release"
   WriteUninstaller "$INSTDIR\uninstall.exe"
+  ; the service's update: the user's own registry and menu theirs, kept from the last install
+  StrCmp $AGENT 1 done
   CreateShortcut "$SMPROGRAMS\${PRODUCT}.lnk" "$INSTDIR\Phosphorus.exe" "" "$INSTDIR\icon.ico"
   WriteRegStr HKCU "${UNINSTKEY}" "DisplayName" "${PRODUCT}"
   WriteRegStr HKCU "${UNINSTKEY}" "DisplayVersion" "${VERSION}"
@@ -83,6 +97,7 @@ Section "Install"
   ; and over ssh it would die with the session)
   IfSilent 0 +2
     nsExec::Exec `powershell -NoProfile -NonInteractive -Command "Register-ScheduledTask PhosphorusTray -Action (New-ScheduledTaskAction -Execute '$INSTDIR\Phosphorus.exe' -Argument '--background') -Force | Out-Null; Start-ScheduledTask PhosphorusTray; Start-Sleep 1; Unregister-ScheduledTask PhosphorusTray -Confirm:$$false"`
+  done:
 SectionEnd
 
 Section "Uninstall"
