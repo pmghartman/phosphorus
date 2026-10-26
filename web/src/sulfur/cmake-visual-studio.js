@@ -23,7 +23,7 @@ function projectTarget(text, file, configuration, root) {
   if (!selected) return null;
   const [name, platform] = selected.split('|');
   const props = { configuration: name, platform, projectdir: parent(file) + '/', solutiondir: root + '/', projectname: base(file).replace(/\.vcxproj$/i, ''), targetext: '.exe' };
-  const expand = (s) => xml(s).replace(/\$\(([^)]+)\)/g, (m, key) => props[key.toLowerCase()] ?? m);
+  const expand = (s) => s.replace(/\$\(([^)]+)\)/g, (m, key) => props[key.toLowerCase()] ?? m);
   const applies = (attributes) => {
     const condition = attr(attributes, 'Condition');
     if (!condition) return true;
@@ -33,11 +33,11 @@ function projectTarget(text, file, configuration, root) {
   for (const group of text.matchAll(/<PropertyGroup\b([^>]*)>([\s\S]*?)<\/PropertyGroup>/gi)) {
     if (!applies(group[1])) continue;
     for (const property of group[2].matchAll(/<([\w]+)\b([^>]*)>([^<]*)<\/\1>/g)) {
-      if (applies(property[2])) props[property[1].toLowerCase()] = expand(property[3].trim());
+      if (applies(property[2])) props[property[1].toLowerCase()] = expand(xml(property[3].trim()));
     }
   }
-  const sources = [...text.matchAll(/<Cl(?:Compile|Include)\b([^>]*)>/gi)].filter((m) => applies(m[1])).map((m) => ({ path: joinPath(parent(file), expand(attr(m[1], 'Include'))) })).filter((s) => !s.path.includes('$('));
-  const dependencies = [...text.matchAll(/<ProjectReference\b([^>]*)>/gi)].filter((m) => applies(m[1])).map((m) => ({ id: id(joinPath(parent(file), expand(attr(m[1], 'Include')))) }));
+  const sources = [...text.matchAll(/<Cl(?:Compile|Include)\b([^>]*)>/gi)].filter((m) => attr(m[1], 'Include') && applies(m[1])).map((m) => ({ path: joinPath(parent(file), expand(attr(m[1], 'Include'))) })).filter((s) => !s.path.includes('$('));
+  const dependencies = [...text.matchAll(/<ProjectReference\b([^>]*)>/gi)].filter((m) => attr(m[1], 'Include') && applies(m[1])).map((m) => ({ id: id(joinPath(parent(file), expand(attr(m[1], 'Include')))) }));
   const target = { id: id(file), name: props.projectname, sources, dependencies, type: props.configurationtype === 'Application' ? 'EXECUTABLE' : 'LIBRARY' };
   if (target.type !== 'EXECUTABLE') return { target };
   const output = props.targetpath || (props.outdir ? props.outdir.replace(/[\\/]?$/, '/') + (props.targetname || props.projectname) + props.targetext : '');
