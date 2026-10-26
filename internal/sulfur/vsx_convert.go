@@ -2,16 +2,17 @@ package sulfur
 
 // VS Code extensions made Sulfur's: a .vsix (a zip whose extension/package.json
 // is the manifest) read for what it declares, and written out as an extension
-// Sulfur loads from ~/.sulfur/extensions without running any of its code.
+// Sulfur loads from ~/.sulfur/extensions. Declarative features use native editor
+// machinery; compatible browser builds use an isolated API bridge (vsx_web.go).
 //
 // What maps: color themes (workbench colors onto --ide-*, token colors onto the
 // --hl-* syntax tokens), file icon themes (svg/png icons and icon fonts, inlined),
 // languages and their configurations (comments, brackets), TextMate grammars
 // (json or plist), snippets, keybindings to commands Sulfur has, and a language
 // server the package carries (a node module or a native binary), installed on a
-// host by the language host. What can't: the extension's own code (VS Code's
-// API, its commands, webviews, views, debuggers, tasks, ...), reported, never
-// silently dropped.
+// host by the language host. Browser commands, webviews, custom editors and
+// sidebar providers use the compatibility host. Node-only code, debuggers and
+// unsupported contribution points are reported rather than silently dropped.
 
 import (
 	"archive/zip"

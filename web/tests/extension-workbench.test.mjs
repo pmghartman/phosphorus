@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { createWebviewResources, navigateWebview, deliverWebviewDocument } from '../src/sulfur/webview-resources.js';
 import { webviewBridge } from '../src/sulfur/webview-bridge.js';
 import { installExtensionResources } from '../src/sulfur/extension-resources.js';
+import { Element } from './helpers/editor-fixture.mjs';
 
 const source = readFileSync(new URL('../src/sulfur/workbench.js', import.meta.url), 'utf8');
 const functionSource = (name) => {
@@ -30,7 +31,7 @@ function harness() {
   };
   const constant = (name) => { const start = source.indexOf(`const ${name} = {`); return source.slice(start, source.indexOf('\n};', start) + 3); };
   vm.createContext(sandbox);
-  vm.runInContext(`${constant('VSCODE_VARS')}\n${['webviewTheme', 'vscodeWebviewDoc', 'onWebviewMessage'].map(functionSource).join('\n')}\n${constant('EXT_CALLS')}\nglobalThis.extensionCalls = EXT_CALLS;`, sandbox);
+  vm.runInContext(`${constant('VSCODE_VARS')}\n${['webviewTheme', 'vscodeWebviewDoc', 'onWebviewMessage', 'extensionSideView', 'claimExtensionHandler', 'releaseExtensionHandler', 'createExtensionTree'].map(functionSource).join('\n')}\n${constant('EXT_CALLS')}\nglobalThis.extensionCalls = EXT_CALLS;`, sandbox);
   return { extension, view, frame, sent, reads, errors, sandbox, calls: sandbox.extensionCalls };
 }
 
@@ -78,4 +79,45 @@ test('newer HTML wins if an earlier document finishes loading assets late', asyn
   assert.match(h.view.pendingHTML, /<p>New<\/p>/);
   assert.doesNotMatch(h.view.pendingHTML, /Old/);
   h.view.resources.dispose();
+});
+
+test('sidebar providers share native containers, resolve lazily and release their frames on disposal', async () => {
+  const h = harness(), requests = [], events = [], I = h.sandbox.I;
+  const element = (tag, cls, text) => { const node = new Element(tag, cls, text); node.dataset = {}; node.isConnected = true; return node; };
+  Object.assign(I, { sideViews: new Map(), actBtns: new Map(), sideBody: element(), actTop: element() });
+  I.st.side = { view: 'explorer', hidden: false };
+  h.extension.state = 'on';
+  h.extension.manifest.contributes = { views: [{ id: 'demo.view', name: 'Demo View', container: 'demo', containerTitle: 'Demo' }] };
+  h.extension.port = { postMessage: (message) => events.push(message) };
+  Object.assign(h.sandbox, { el: element, icon: () => element(), extName: (x) => x.id, vscodeWebviewLoading: () => 'Loading',
+    extRequest: async (x, request) => { requests.push(request); },
+    showSide: (id) => { I.st.side.view = id; const container = I.sideViews.get(id); container?.onShow?.(); container?.onVisibility?.(true); },
+  });
+  h.calls['webviewView.register'](h.extension, 'demo.view', 'demo.open');
+  assert.equal(I.sideViews.size, 1); assert.equal(requests.length, 0);
+  const entry = h.extension.sideViews.get('demo.view');
+  entry.show(); await settle(); entry.show();
+  assert.equal(requests.length, 1);
+  h.calls['webview.create'](h.extension, 'sidebar1', 'View', '', { sidebar: true, compat: true, viewType: 'demo.view' });
+  const view = h.extension.views.get('sidebar1');
+  assert.equal(view.sidebar, true); assert.equal(entry.content.firstChild, view.frame);
+  entry.onVisibility(false);
+  assert.equal(events.at(-1).state.visible, false);
+  h.calls['webviewView.unregister'](h.extension, 'demo.view');
+  assert.equal(I.sideViews.size, 0); assert.equal(I.actBtns.size, 0);
+  assert.equal(h.extension.views.has('sidebar1'), false);
+  assert.equal(events.at(-1).t, 'webviewClosed');
+});
+
+test('dynamic provider registration reports conflicts instead of replacing another extension handler', () => {
+  const h = harness(), notifications = [];
+  h.sandbox.notify = (...args) => notifications.push(args);
+  h.sandbox.extName = (x) => x.id;
+  h.extension.state = 'on';
+  h.calls['customEditor.register'](h.extension, 'demo.editor');
+  const other = { id: 'other', state: 'on' };
+  assert.throws(() => h.calls['customEditor.register'](other, 'demo.editor'), /belongs to pub.viewer/);
+  assert.equal(notifications.length, 1);
+  h.calls['customEditor.unregister'](h.extension, 'demo.editor');
+  assert.doesNotThrow(() => h.calls['customEditor.register'](other, 'demo.editor'));
 });

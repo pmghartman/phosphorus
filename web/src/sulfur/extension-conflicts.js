@@ -8,6 +8,7 @@ export const NATIVE_EXTENSIONS = [{
 }];
 
 const list = (value) => Array.isArray(value) ? value : [];
+const records = (value) => list(value).filter((item) => item && typeof item === 'object');
 const name = (x) => x.manifest?.displayName || x.id;
 const identity = (id) => String(id).toLowerCase();
 const extensionID = (x) => identity(x.manifest?.sulfur?.vscode?.id || x.id);
@@ -55,23 +56,23 @@ export function createExtensionConflictIndex(extensions, { native = NATIVE_EXTEN
       if (!target || target.active === false) add(x, target, 'dependency', dep, `${dep} is ${target ? 'disabled' : 'not installed'}; this extension may not activate correctly.`);
     }
     if (x.active === false) return;
-    for (const cmd of list(c.commands)) claim(x, 'command', cmd.command);
+    for (const cmd of records(c.commands)) if (typeof cmd.command === 'string') claim(x, 'command', cmd.command);
     for (const [ext] of Object.entries(c.runners || {})) claim(x, 'runner', ext.replace(/^\./, '').toLowerCase());
-    for (const key of list(c.keybindings)) {
-      if (!key.command || key.command.startsWith('-')) continue;
+    for (const key of records(c.keybindings)) {
+      if (typeof key.command !== 'string' || !key.command || key.command.startsWith('-')) continue;
       claim(x, 'keybinding', keyOf(mac && key.mac ? key.mac : key.key), key.command, String(key.when || '').trim());
     }
-    for (const view of list(c.views)) claim(x, 'view', view.id);
-    for (const editor of list(c.customEditors)) {
+    for (const view of records(c.views)) if (typeof view.id === 'string') claim(x, 'view', view.id);
+    for (const editor of records(c.customEditors)) {
       claim(x, 'custom editor', editor.viewType);
       if (editor.priority === 'option') continue;
-      for (const pattern of list(editor.filenamePatterns)) claim(x, 'file editor', pattern.replace(/^\*\*\//, '').toLowerCase());
+      for (const pattern of list(editor.filenamePatterns)) if (typeof pattern === 'string') claim(x, 'file editor', pattern.replace(/^\*\*\//, '').toLowerCase());
     }
-    for (const server of list(c.languageServers)) {
-      for (const ext of list(server.extensions)) claim(x, 'language server', ext.replace(/^\./, '').toLowerCase());
+    for (const server of records(c.languageServers)) {
+      for (const ext of list(server.extensions)) if (typeof ext === 'string') claim(x, 'language server', ext.replace(/^\./, '').toLowerCase());
     }
-    for (const lang of list(c.languages)) {
-      for (const ext of list(lang.extensions)) claim(x, 'language association', ext.replace(/^\./, '').toLowerCase(), lang.id);
+    for (const lang of records(c.languages)) {
+      for (const ext of list(lang.extensions)) if (typeof ext === 'string') claim(x, 'language association', ext.replace(/^\./, '').toLowerCase(), lang.id);
     }
   };
   for (const x of all) inspect(x);

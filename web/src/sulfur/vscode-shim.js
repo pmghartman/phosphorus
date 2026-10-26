@@ -429,7 +429,14 @@ export function vscodeShim(api, host) {
         case 'vscode.openWith': return call('customEditor.open', pathOf(args[0]), String(args[1] || ''));
         case 'setContext': return undefined;
         case 'workbench.action.openSettings': return api.commands.execute('workbench.action.openSettings');
-        default: return api.commands.execute(id, ...args.map(plain));
+        default: {
+          if (id.endsWith('.focus')) {
+            const viewId = id.slice(0, -6);
+            if (webviewViews.has(viewId)) return openWebviewView(viewId);
+            if (treeViews.has(viewId)) return call('tree.reveal', viewId, '');
+          }
+          return api.commands.execute(id, ...args.map(plain));
+        }
       }
     },
     getCommands: async (filterInternal = false) => (await call('commands.list') || []).filter((id) => !filterInternal || !id.startsWith('_')),
@@ -541,6 +548,7 @@ export function vscodeShim(api, host) {
       if (!reg) throw new Error(`no custom editor '${viewType}' is registered`);
       const uri = Uri.file(path);
       const panel = makePanel(wid, viewType, title, reg.options?.webviewOptions || {});
+      await call('webview.options', wid, plain(reg.options?.webviewOptions || {}));
       if (typeof reg.provider.resolveCustomTextEditor === 'function') {
         await reg.provider.resolveCustomTextEditor(await openTextDocument(uri), panel, token);
       } else {

@@ -66,7 +66,8 @@ resource bridge, as do explicit local `fetch` and Worker requests for resources
 such as WebAssembly. Explicit `localResourceRoots` restrict those reads. Browser
 module loading and relative worker imports still require a bundled entry point.
 
-The library labels potential conflicts before installation. Installed extension
+Select a registry result to open its native compatibility preview, with the
+translation plan and current conflicts before installation. Installed extension
 pages list competing commands, shortcuts, runners, view IDs, file editors,
 language associations and language servers, plus missing or disabled dependencies.
 Checks include built-in SQLite and installed native language servers on the
