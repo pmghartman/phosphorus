@@ -1,11 +1,13 @@
 import { vscodeShim } from './vscode-shim.js';
+import { installExtensionResources } from './extension-resources.js';
 
 // the extension host's page: runs in the sandbox, turns the port into the api
-export function extensionHostMain(createVSCode) {
+export function extensionHostMain(createVSCode, installResources) {
   let port = null;
   let mod = null;
   // a converted VS Code extension's web build: its vscode API (vscode-shim.js)
   let shim = null;
+  let resources = null;
   let seq = 0;
   let sbSeq = 0;
   let wvSeq = 0;
@@ -161,12 +163,14 @@ export function extensionHostMain(createVSCode) {
         if (shim) shim.closed(m.wid); else views.delete(m.wid);
       } else if (m.t === 'deactivate') {
         try { await (mod && mod.deactivate && mod.deactivate()); } catch (err) { console.error(err); }
+        resources?.dispose();
         port.postMessage({ t: 'bye' });
       }
     };
     if (d.context && d.context.vscode) {
       // CommonJS, as VS Code's web extension host runs it: require('vscode') the shim, nothing else
       Promise.resolve().then(async () => {
+        resources = installResources(call);
         shim = createVSCode(api, { call, views, context: d.context });
         const module = { exports: {} };
         const require = (name) => {
@@ -192,6 +196,6 @@ export function extensionHostMain(createVSCode) {
 }
 
 // Both functions travel as values: no name in the parent bundle is required in the frame.
-export function extensionHostHTML(hostMain = extensionHostMain, createVSCode = vscodeShim) {
-  return `<!doctype html><meta charset="utf-8"><title>extension host</title><script>(${hostMain.toString()})(${createVSCode.toString()})<\/script>`;
+export function extensionHostHTML(hostMain = extensionHostMain, createVSCode = vscodeShim, installResources = installExtensionResources) {
+  return `<!doctype html><meta charset="utf-8"><title>extension host</title><script>(${hostMain.toString()})(${createVSCode.toString()},${installResources.toString()})<\/script>`;
 }

@@ -1887,7 +1887,9 @@ func (c *converter) rest(contributes map[string]any, server map[string]any) {
 		nSettings += len(asMap(asMap(cfg)["properties"]))
 	}
 	if nSettings > 0 {
-		if server != nil {
+		if c.web != "" {
+			c.add("settings", vsxPartial, plural(nSettings, "setting"), "their defaults are available to its sandboxed web build")
+		} else if server != nil {
 			c.add("settings", vsxPartial, plural(nSettings, "setting"), "their defaults are the language server's settings; change them under sulfur.languageServerSettings")
 		} else {
 			c.add("settings", vsxSkipped, plural(nSettings, "setting"), "read by the extension's code")

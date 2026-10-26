@@ -16,7 +16,7 @@ function frame(code, vscode = {}) {
   const sandbox = {
     console: Object.fromEntries(['log', 'info', 'warn', 'error', 'debug'].map((k) => [k, () => {}])),
     addEventListener: (name, fn) => listeners.set(name, fn),
-    structuredClone, AbortController, TextEncoder, TextDecoder, URL, Blob,
+    structuredClone, AbortController, TextEncoder, TextDecoder, URL, Blob, fetch,
   };
   // Execute precisely the script sent to the opaque frame: none of the parent's
   // module bindings are in scope, including the imported VS Code factory.

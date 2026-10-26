@@ -44,6 +44,7 @@ import { applyTextEdits } from './language-client.js';
 import { sidebarRight, runTargetName, moveBookmarks } from './navigation.js';
 import { fileKind, renderFileIcon } from './file-icons.js';
 import { extensionHostHTML } from './extension-host.js';
+import { createWebviewResources } from './webview-resources.js';
 import { setContributions, removeContributions, contributedThemes, contributedIconThemes, contributedServers, languageName, themeCss, iconOf, iconFontCss, snippetItems } from './vsx-contributions.js';
 import { parseGitStatus, explorerChanges } from './source-control.js';
 import { parserFor } from '../lezer.js';
@@ -8794,7 +8795,7 @@ const EXT_CALLS = {
       frame.srcdoc = o.compat ? vscodeWebviewLoading() : webviewDoc(html);
       pg.view.append(frame);
       pg.frame = frame;
-      pg.dispose = () => { x.views.delete(wid); x.port?.postMessage({ t: 'webviewClosed', wid }); };
+      pg.dispose = () => { x.views.get(wid)?.resources?.dispose(); x.views.delete(wid); x.port?.postMessage({ t: 'webviewClosed', wid }); };
     });
     x.views.set(wid, { t, frame: t.frame, compat: !!o.compat });
   },
@@ -8803,7 +8804,11 @@ const EXT_CALLS = {
   'webview.html': async (x, wid, html) => {
     const v = x.views.get(wid);
     if (!v) return;
-    v.frame.srcdoc = v.compat ? await vscodeWebviewDoc(x, html, v) : webviewDoc(html);
+    const revision = v.revision = (v.revision || 0) + 1;
+    try {
+      const doc = v.compat ? await vscodeWebviewDoc(x, html, v) : webviewDoc(html);
+      if (x.views.get(wid) === v && v.revision === revision) v.frame.srcdoc = doc;
+    } catch (error) { if (x.views.get(wid) === v && v.revision === revision) throw error; }
   },
   'webview.dispose': (x, wid) => { const v = x.views.get(wid); if (v) closeTab(v.t, true); },
   'webview.title': (x, wid, title) => { const v = x.views.get(wid); if (v) { v.t.title = String(title); v.t.tabEl?.querySelector('.ide-tab-label')?.replaceChildren(String(title)); } },
@@ -8904,7 +8909,7 @@ function openCustomEditor(x, ce, path, loc) {
     pg.view.append(frame);
     pg.frame = frame;
     pg.customOf = { path, loc };
-    pg.dispose = () => { x.views.delete(wid); x.port?.postMessage({ t: 'webviewClosed', wid }); };
+    pg.dispose = () => { x.views.get(wid)?.resources?.dispose(); x.views.delete(wid); x.port?.postMessage({ t: 'webviewClosed', wid }); };
     x.views.set(wid, { t: pg, frame, compat: true });
     (async () => {
       const ready = await extOn(x);
@@ -8952,47 +8957,14 @@ const VSCODE_VARS = {
   'keybindingLabel-background': '--ide-second', 'keybindingLabel-foreground': '--ide-fg', 'notifications-background': '--ide-widget', 'quickInput-background': '--ide-widget',
   'editorGroupHeader-tabsBackground': '--ide-side', 'titleBar-activeBackground': '--ide-side', 'statusBar-background': '--ide-side', 'progressBar-background': '--ide-accent',
 };
-const RES_MIME = { js: 'text/javascript', mjs: 'text/javascript', cjs: 'text/javascript', css: 'text/css', html: 'text/html', json: 'application/json', wasm: 'application/wasm',
-  svg: 'image/svg+xml', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', ico: 'image/x-icon', woff: 'font/woff', woff2: 'font/woff2',
-  ttf: 'font/ttf', otf: 'font/otf', bin: 'application/octet-stream', map: 'application/json', txt: 'text/plain' };
-const RES_RE = /sulfur-res:(?:\/\/)?(\/[^"'\s)<>`]+)/g;
-// one of the extension's own files as a data: url, a stylesheet's own urls inlined in it
-async function resourceUrl(x, path, cache, depth = 0) {
-  if (cache.has(path)) return cache.get(path);
-  const job = (async () => {
-    const ext = path.split('.').pop().toLowerCase();
-    const mime = RES_MIME[ext] || 'application/octet-stream';
-    const { path: rel, loc } = extPath(path);
-    const r = await fetch(filesApi(isHomeLoc(loc) ? HOME : apiLoc(loc), 'download', { path: rel }));
-    if (!r.ok) throw new Error(`${path}: ${r.status}`);
-    let bytes = new Uint8Array(await r.arrayBuffer());
-    if (ext === 'css' && depth < 2) {
-      const dir = path.slice(0, path.lastIndexOf('/'));
-      let css = new TextDecoder().decode(bytes);
-      const refs = [...new Set([...css.matchAll(/url\(\s*(['"]?)([^'")]+)\1\s*\)/g)].map((m) => m[2]).filter((u) => !/^(data:|https?:|#|\/\/)/i.test(u)))];
-      for (const u of refs) {
-        const target = u.startsWith('sulfur-res:') ? u.replace(/^sulfur-res:(?:\/\/)?/, '') : cleanAbs(`${dir}/${u.split(/[?#]/)[0]}`);
-        try { const d = await resourceUrl(x, target, cache, depth + 1); css = css.split(u).join(d); } catch {}
-      }
-      bytes = new TextEncoder().encode(css);
-    }
-    let bin = '';
-    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
-    return `data:${mime};base64,${btoa(bin)}`;
-  })();
-  cache.set(path, job);
-  return job;
-}
-const cleanAbs = (p) => { const out = []; for (const s of p.split('/')) { if (s === '..') out.pop(); else if (s && s !== '.') out.push(s); } return `/${out.join('/')}`; };
 async function vscodeWebviewDoc(x, html, view) {
-  view.res ||= new Map();
-  let out = String(html);
-  const found = [...new Set([...out.matchAll(RES_RE)].map((m) => m[0]))];
-  for (const u of found) {
-    let path = u.replace(/^sulfur-res:(?:\/\/)?/, '');
-    try { path = decodeURIComponent(path); } catch {}
-    try { out = out.split(u).join(await resourceUrl(x, path.split(/[?#]/)[0], view.res)); } catch (err) { log(`webview: ${err.message}`, extChannel(x)); }
-  }
+  view.resources ||= createWebviewResources(async (path, signal) => {
+    const { path: rel, loc } = extPath(path);
+    const r = await fetch(filesApi(isHomeLoc(loc) ? HOME : apiLoc(loc), 'download', { path: rel }), { signal });
+    if (!r.ok) throw new Error(path + ': ' + r.status);
+    return new Uint8Array(await r.arrayBuffer());
+  }, { onError: (err) => log('webview: ' + err.message, extChannel(x)) });
+  const out = await view.resources.html(html);
   const css = getComputedStyle(I.w.node);
   const v = (n) => css.getPropertyValue(n).trim();
   const vars = Object.entries(VSCODE_VARS).map(([k, n]) => `--vscode-${k}:${v(n)}`);
