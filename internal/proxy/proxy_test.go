@@ -2,6 +2,23 @@ package proxy
 
 import "testing"
 
+func TestFrameable(t *testing.T) {
+	defer func(d string) { baseDomain = d }(baseDomain)
+	baseDomain = "mulab.dev"
+	for _, c := range []struct {
+		csp, want string
+	}{
+		{"frame-ancestors 'none';", "frame-ancestors 'self' https://mulab.dev"},
+		{"default-src 'self'; FRAME-ANCESTORS 'none'; img-src *", "default-src 'self'; img-src *; frame-ancestors 'self' https://mulab.dev"},
+		// an X-Frame-Options alone, dropped: the policy that replaces it
+		{"", "frame-ancestors 'self' https://mulab.dev"},
+	} {
+		if got := frameable(c.csp); got != c.want {
+			t.Errorf("frameable(%q) = %q, want %q", c.csp, got, c.want)
+		}
+	}
+}
+
 func TestReverseLocation(t *testing.T) {
 	const prefix, host, svc = "/torus/sunshine", "mulab.dev", "100.105.120.33:47990"
 	for _, c := range []struct {
