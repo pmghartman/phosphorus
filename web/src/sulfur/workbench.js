@@ -43,6 +43,7 @@ import { excludeMatcher } from './excludes.js';
 import { applyTextEdits } from './language-client.js';
 import { sidebarRight, runTargetName, moveBookmarks } from './navigation.js';
 import { fileKind, renderFileIcon } from './file-icons.js';
+import { vscodeShim } from './vscode-shim.js';
 import { setContributions, removeContributions, contributedThemes, contributedIconThemes, contributedServers, languageName, themeCss, iconOf, iconFontCss, snippetItems } from './vsx-contributions.js';
 import { parseGitStatus, explorerChanges } from './source-control.js';
 import { parserFor } from '../lezer.js';
@@ -1890,6 +1891,11 @@ function openFile(rel, o = {}) {
     placeCaret(t, o);
     return t;
   }
+  // a converted VS Code extension's custom editor for this kind of file (a SQLite viewer's)
+  if (!o.text) {
+    const ce = customEditorsFor(p)[0];
+    if (ce) { const ct = openCustomEditor(ce.x, ce.ce, p, l); if (ct) return ct; }
+  }
   const preview = o.preview ?? false;
   let index = o.index ?? (I.active ? I.tabs.indexOf(I.active) + 1 : I.tabs.length);
   if (preview) {
@@ -3563,6 +3569,7 @@ function registerCommands() {
   C('sulfur.extensions.guide', 'Open the Extension Guide', () => openGuide(), { category: 'Extensions' });
   C('sulfur.extensions.create', 'Create New Extension…', () => createExtension(), { category: 'Extensions' });
   C('sulfur.extensions.openVSX', 'Browse Open VSX…', () => openVsxLibrary(), { category: 'Extensions' });
+  C('workbench.action.reopenWithEditor', 'Reopen Editor With…', () => reopenWith(), { category: 'View', when: () => !!(I.active?.rel || I.active?.customOf) });
   C('workbench.extensions.action.refreshExtension', 'Reload Extensions', () => loadExtensions(true), { category: 'Developer' });
   C('workbench.action.reloadWindow', 'Reload Window', () => { const w = I.w; const open = { dir: I.st.root }; teardown(); ideStart(w, open); }, { category: 'Developer' });
   buildKeys();
@@ -8386,6 +8393,8 @@ function openGuide() {
 function extHostMain() {
   let port = null;
   let mod = null;
+  // a converted VS Code extension's web build: its vscode API (vscode-shim.js)
+  let shim = null;
   let seq = 0;
   let sbSeq = 0;
   let wvSeq = 0;
@@ -8535,11 +8544,32 @@ function extHostMain() {
         for (const fn of subs.get(m.name) || []) { try { fn(m.data); } catch (err) { console.error(err); } }
       } else if (m.t === 'webview') {
         for (const fn of views.get(m.wid) || []) { try { fn(m.msg); } catch (err) { console.error(err); } }
+      } else if (m.t === 'customEditor') {
+        reply(m.id, Promise.resolve().then(() => { if (!shim) throw new Error('not a VS Code extension'); return shim.resolveCustomEditor(m); }));
+      } else if (m.t === 'webviewClosed') {
+        if (shim) shim.closed(m.wid); else views.delete(m.wid);
       } else if (m.t === 'deactivate') {
         try { await (mod && mod.deactivate && mod.deactivate()); } catch (err) { console.error(err); }
         port.postMessage({ t: 'bye' });
       }
     };
+    if (d.context && d.context.vscode) {
+      // CommonJS, as VS Code's web extension host runs it: require('vscode') the shim, nothing else
+      Promise.resolve().then(async () => {
+        shim = vscodeShim(api, { call, views, context: d.context });
+        const module = { exports: {} };
+        const require = (name) => {
+          if (name === 'vscode') return shim.vscode;
+          throw new Error(`require('${name}'): a VS Code web extension gets only 'vscode' in Sulfur`);
+        };
+        new Function('module', 'exports', 'require', `${d.code}\n//# sourceURL=${encodeURIComponent(d.context.id)}-web.js`)(module, module.exports, require);
+        const ex = module.exports || {};
+        mod = { deactivate: async () => { try { if (typeof ex.deactivate === 'function') await ex.deactivate(); } finally { shim.deactivate(); } } };
+        if (typeof ex.activate === 'function') await ex.activate(shim.context);
+        port.postMessage({ t: 'ready' });
+      }).catch((err) => port.postMessage({ t: 'fail', e: String((err && err.stack) || err) }));
+      return;
+    }
     const url = URL.createObjectURL(new Blob([d.code], { type: 'text/javascript' }));
     import(url).then(async (m) => {
       mod = m;
@@ -8549,7 +8579,7 @@ function extHostMain() {
     }).catch((err) => port.postMessage({ t: 'fail', e: String((err && err.stack) || err) }));
   });
 }
-const HOST_HTML = `<!doctype html><meta charset="utf-8"><title>extension host</title><script>(${extHostMain.toString()})()<\/script>`;
+const HOST_HTML = `<!doctype html><meta charset="utf-8"><title>extension host</title><script>const vscodeShim = (${vscodeShim.toString()});(${extHostMain.toString()})()<\/script>`;
 
 const extName = (x) => x.manifest?.displayName || x.manifest?.name || x.id;
 const extChannel = (x, n) => (n ? `${extName(x)}: ${n}` : `Extension: ${extName(x)}`);
@@ -8741,6 +8771,15 @@ async function activateExt(x) {
   const code = mainRel && under(mainRel, x.dir) ? await readUser(mainRel) : null;
   if (!I) return;
   if (code === null) { extFailed(x, `its main module ${x.manifest.main || 'extension.js'} wasn't found, or is over 16MB`); return; }
+  // a converted VS Code extension's web build: what its vscode API needs to know
+  const vs = x.manifest.sulfur?.vscode;
+  let vscode = null;
+  if (vs) {
+    let packageJSON = {};
+    try { packageJSON = parseJsonc((await readUser(`${x.dir}/${vs.root}/package.json`)) || '{}') || {}; } catch {}
+    if (!I) return;
+    vscode = { root: vs.root, id: vs.id, defaults: vs.defaults || {}, packageJSON, state: { global: extState(x, 'global'), workspace: extState(x, 'workspace') }, dark: getComputedStyle(I.w.node).colorScheme !== 'light' };
+  }
   const frame = el('iframe', 'ide-ext-frame');
   frame.setAttribute('sandbox', 'allow-scripts');
   frame.setAttribute('aria-hidden', 'true');
@@ -8751,7 +8790,7 @@ async function activateExt(x) {
   x.frame = frame;
   ch.port1.onmessage = (ev) => extMessage(x, ev.data);
   frame.addEventListener('load', () => {
-    frame.contentWindow.postMessage({ t: 'init', code, context: { id: x.id, extensionPath: x.dir, user: acct.user, workspace: I.st.root, host: selfHost } }, '*', [ch.port2]);
+    frame.contentWindow.postMessage({ t: 'init', code, context: { id: x.id, extensionPath: x.dir, user: acct.user, workspace: I.st.root, host: selfHost, vscode } }, '*', [ch.port2]);
   }, { once: true });
   frame.srcdoc = HOST_HTML;
   I.root.append(frame);
@@ -8933,22 +8972,224 @@ const EXT_CALLS = {
   'agents.unregister': (x, pid) => { const key = `ext:${x.id}:${pid}`; I.providers.delete(key); x.providers.delete(key); paintChat(true); },
   'agents.progress': (x, rid, text) => { for (const c of I.chats.values()) if (c.req === rid) { c.live = text; paintChat(); } },
   'events.subscribe': (x, n) => { x.subs.add(n); },
-  'webview.create': (x, wid, title, html) => {
+  'webview.create': (x, wid, title, html, o = {}) => {
     const t = openPage(`wv:${x.id}:${wid}`, title, 'ext', (pg) => {
       const frame = el('iframe', 'ide-webview');
       frame.setAttribute('sandbox', 'allow-scripts allow-forms allow-modals');
       frame.title = title;
-      frame.srcdoc = webviewDoc(html);
+      frame.srcdoc = o.compat ? vscodeWebviewLoading() : webviewDoc(html);
       pg.view.append(frame);
       pg.frame = frame;
-      pg.dispose = () => x.views.delete(wid);
+      pg.dispose = () => { x.views.delete(wid); x.port?.postMessage({ t: 'webviewClosed', wid }); };
     });
-    x.views.set(wid, { t, frame: t.frame });
+    x.views.set(wid, { t, frame: t.frame, compat: !!o.compat });
   },
-  'webview.post': (x, wid, msg) => { x.views.get(wid)?.frame.contentWindow?.postMessage({ phosphorusHost: msg }, '*'); },
-  'webview.html': (x, wid, html) => { const v = x.views.get(wid); if (v) v.frame.srcdoc = webviewDoc(html); },
+  // a VS Code webview gets its messages as they were posted; Sulfur's own wrapped
+  'webview.post': (x, wid, msg) => { const v = x.views.get(wid); v?.frame.contentWindow?.postMessage(v.compat ? msg : { phosphorusHost: msg }, '*'); },
+  'webview.html': async (x, wid, html) => {
+    const v = x.views.get(wid);
+    if (!v) return;
+    v.frame.srcdoc = v.compat ? await vscodeWebviewDoc(x, html, v) : webviewDoc(html);
+  },
   'webview.dispose': (x, wid) => { const v = x.views.get(wid); if (v) closeTab(v.t, true); },
+  'webview.title': (x, wid, title) => { const v = x.views.get(wid); if (v) { v.t.title = String(title); v.t.tabEl?.querySelector('.ide-tab-label')?.replaceChildren(String(title)); } },
+  'webview.reveal': (x, wid) => { const v = x.views.get(wid); if (v) activate(v.t); },
+  // a converted VS Code extension's files and dialogs: bytes, a file's kind and size, a path asked for
+  'workspace.readBytes': async (x, p) => {
+    const { path, loc } = extPath(p);
+    const r = await fetch(filesApi(isHomeLoc(loc) ? HOME : apiLoc(loc), 'download', { path }));
+    if (!r.ok) throw new Error(`${p}: ${r.status === 404 ? 'not found' : r.statusText || r.status}`);
+    return new Uint8Array(await r.arrayBuffer());
+  },
+  'workspace.writeBytes': async (x, p, bytes) => {
+    const { path, loc } = extPath(p);
+    await putFile(isHomeLoc(loc) ? HOME : apiLoc(loc), path, new Blob([bytes]));
+    if (sameLoc(loc, locOf())) loadDir(filesParent(path), true);
+    return true;
+  },
+  'workspace.stat': async (x, p) => {
+    const { path, loc } = extPath(p);
+    let b;
+    try { b = await filesCall(isHomeLoc(loc) ? HOME : apiLoc(loc), 'list', undefined, { path: filesParent(path) }); } catch { return null; }
+    const e = (b.entries || []).find((y) => y.name === baseName(path));
+    if (!e) return null;
+    const ms = (e.mtime || 0) < 1e12 ? (e.mtime || 0) * 1000 : e.mtime;
+    return { type: e.dir ? 2 : 1, size: e.size || 0, mtime: ms, ctime: ms };
+  },
+  'workspace.mkdir': async (x, p) => { const { path, loc } = extPath(p); await filesCall(isHomeLoc(loc) ? HOME : apiLoc(loc), 'mkdir', jsonPost({ path })); return true; },
+  'window.saveDialog': (x, def, title) => askExtPath(x, def, title),
+  'window.openDialog': (x, def, title) => askExtPath(x, def, title),
+  'state.set': (x, scope, data) => { try { localStorage.setItem(`sulfur-ext-state:${x.id}:${scope}`, JSON.stringify(data)); } catch {} return true; },
+  'env.clipboard': (x, text) => copyText(String(text)).then(() => true),
+  'env.openExternal': (x, u) => { if (!/^https?:\/\//i.test(String(u))) throw new Error('only http and https links open'); openExternal(String(u)); return true; },
+  'customEditor.register': (x, viewType) => { (x.customTypes ||= new Set()).add(String(viewType)); return true; },
+  'customEditor.open': (x, p, viewType) => {
+    const { path, loc } = extPath(p);
+    const ce = customEditorsFor(path, true).find((c) => c.x === x && (!viewType || c.ce.viewType === viewType));
+    if (!ce) throw new Error(`no custom editor ${viewType} for ${p}`);
+    return !!openCustomEditor(ce.x, ce.ce, path, loc);
+  },
 };
+
+// a path a VS Code extension asks for (a save or open dialog's): from the home's top or the workspace
+async function askExtPath(x, def, title) {
+  const v = await inputBox({ title: `${extName(x)}: ${title || 'Choose a File'}`, prompt: 'A path in your space: from the top of your home (/you/...) or from the workspace', value: def || `/${filesJoin(I.st.root, '')}` });
+  if (!v) return null;
+  return v.startsWith('/') ? v : `/${filesJoin(I.st.root, v)}`;
+}
+function extState(x, scope) {
+  try { return JSON.parse(localStorage.getItem(`sulfur-ext-state:${x.id}:${scope}`) || '{}') || {}; } catch { return {}; }
+}
+
+// --- custom editors: a converted VS Code extension's webview for a kind of file -----------------------
+
+const globRe = new Map();
+function globMatch(pattern, name) {
+  let re = globRe.get(pattern);
+  if (!re) {
+    const p = String(pattern).replace(/^\*\*\//, '');
+    const src = p.split('').map((c) => (c === '*' ? '[^/]*' : c === '?' ? '[^/]' : /[\\^$.|+()[\]]/.test(c) ? `\\${c}` : c)).join('')
+      .replace(/\{([^}]*)\}/g, (all, alts) => `(?:${alts.split(',').join('|')})`);
+    re = new RegExp(`^${src}$`, 'i');
+    globRe.set(pattern, re);
+  }
+  return re.test(name) || (pattern.includes('/') && re.test(name));
+}
+// the custom editors for a file: those opening it by default, or with options all of them
+function customEditorsFor(path, options = false) {
+  const name = baseName(path);
+  const out = [];
+  for (const x of I.exts.values()) {
+    if (x.bad || I.st.ext.enabled[x.id] === false || !x.manifest?.sulfur?.vscode) continue;
+    for (const ce of x.manifest.contributes?.customEditors || []) {
+      if (!options && ce.priority === 'option') continue;
+      if ((ce.filenamePatterns || []).some((p) => p !== '*' || options ? globMatch(p, name) : false)) out.push({ x, ce });
+    }
+  }
+  return out;
+}
+// waits for an extension to finish activating, enabling it first (its trust asked) if it's off
+async function extOn(x) {
+  if (x.state !== 'on' && x.state !== 'loading') await setExtEnabled(x, true);
+  for (let i = 0; i < 200 && I && x.state === 'loading'; i++) await sleep(100);
+  return x.state === 'on';
+}
+function vscodeWebviewLoading() {
+  return '<!doctype html><meta charset="utf-8"><style>body{margin:0;display:grid;place-items:center;height:100vh;font:13px system-ui,sans-serif;opacity:.6}</style><body>Loading…</body>';
+}
+// a file opened in a custom editor: a webview tab its extension fills
+function openCustomEditor(x, ce, path, loc) {
+  const p = isHomeLoc(loc) ? `/${path}` : sameLoc(loc, locOf()) && under(path, I.st.root) ? path.slice(I.st.root.length + 1) : null;
+  if (p === null) { notify('warning', `${ce.displayName || ce.viewType} opens files of your home and of this workspace only.`); return null; }
+  const wid = `ce${(I.seq += 1)}`;
+  const t = openPage(`ce:${ce.viewType}:${loc.host}:${path}`, baseName(path), 'ext', (pg) => {
+    const frame = el('iframe', 'ide-webview');
+    frame.setAttribute('sandbox', 'allow-scripts allow-forms allow-modals');
+    frame.title = `${baseName(path)} (${ce.displayName || ce.viewType})`;
+    frame.srcdoc = vscodeWebviewLoading();
+    pg.view.append(frame);
+    pg.frame = frame;
+    pg.customOf = { path, loc };
+    pg.dispose = () => { x.views.delete(wid); x.port?.postMessage({ t: 'webviewClosed', wid }); };
+    x.views.set(wid, { t: pg, frame, compat: true });
+    (async () => {
+      const ready = await extOn(x);
+      if (!I || !I.tabs.includes(pg)) return;
+      try {
+        if (!ready) throw new Error(x.error || 'the extension is off');
+        await extRequest(x, { t: 'customEditor', viewType: ce.viewType, path: p, wid, title: baseName(path) });
+      } catch (err) {
+        frame.srcdoc = `<!doctype html><meta charset="utf-8"><body style="font:13px system-ui,sans-serif;margin:24px">${esc(`${ce.displayName || ce.viewType} couldn't open ${baseName(path)}: ${err.message}`)}</body>`;
+      }
+    })();
+  });
+  t.title = baseName(path);
+  return t;
+}
+async function reopenWith() {
+  const t = I.active;
+  const target = t?.customOf || (t?.rel ? { path: t.rel, loc: t.loc } : null);
+  if (!target) return;
+  const list = customEditorsFor(target.path, true);
+  const v = await pick([{ label: 'Text Editor', description: 'Sulfur', value: 'text' }, ...list.map((c, i) => ({ label: c.ce.displayName || c.ce.viewType, description: extName(c.x), value: i }))], { title: 'Reopen Editor With…', placeholder: `Select an editor for ${baseName(target.path)}` });
+  if (v === undefined || v === null || !I) return;
+  closeTab(t);
+  if (v === 'text') openFile(target.path, { loc: target.loc, preview: false, text: true });
+  else openCustomEditor(list[v].x, list[v].ce, target.path, target.loc);
+}
+
+// --- a VS Code webview's page: its html with its own files inlined, VS Code's theme variables,
+// acquireVsCodeApi; its messages arrive and leave as VS Code's do
+
+const VSCODE_VARS = {
+  'font-family': '--ide-ui', 'editor-font-family': '--ide-mono', foreground: '--ide-fg', 'editor-foreground': '--ide-fg', 'editor-background': '--ide-bg',
+  'sideBar-background': '--ide-side', 'panel-background': '--ide-bg', 'panel-border': '--ide-border', 'widget-border': '--ide-widget-border', focusBorder: '--ide-accent',
+  'button-background': '--ide-button', 'button-foreground': '--ide-button-fg', 'button-hoverBackground': '--ide-button-hover', 'button-secondaryBackground': '--ide-second',
+  'button-secondaryForeground': '--ide-second-fg', 'button-secondaryHoverBackground': '--ide-second-hover', 'input-background': '--ide-input', 'input-foreground': '--ide-fg',
+  'input-border': '--ide-input-border', 'input-placeholderForeground': '--ide-muted', 'dropdown-background': '--ide-input', 'dropdown-foreground': '--ide-fg', 'dropdown-border': '--ide-input-border',
+  'checkbox-background': '--ide-input', 'checkbox-border': '--ide-input-border', 'list-hoverBackground': '--ide-hover', 'list-activeSelectionBackground': '--ide-sel',
+  'list-activeSelectionForeground': '--ide-strong', 'list-inactiveSelectionBackground': '--ide-sel-off', 'list-focusOutline': '--ide-accent', 'textLink-foreground': '--ide-link',
+  'textLink-activeForeground': '--ide-link', descriptionForeground: '--ide-muted', disabledForeground: '--ide-dim', errorForeground: '--ide-err', 'editorError-foreground': '--ide-err',
+  'editorWarning-foreground': '--ide-warn', 'editorInfo-foreground': '--ide-info', 'badge-background': '--ide-badge', 'badge-foreground': '--ide-badge-fg',
+  'editorWidget-background': '--ide-widget', 'editorWidget-border': '--ide-widget-border', 'menu-background': '--ide-widget', 'menu-foreground': '--ide-fg',
+  'toolbar-hoverBackground': '--ide-hover', 'editor-selectionBackground': '--ide-ed-sel', 'editorLineNumber-foreground': '--ide-line-nr', 'tab-activeBackground': '--ide-bg',
+  'tab-inactiveBackground': '--ide-side', 'tab-activeForeground': '--ide-strong', 'tab-inactiveForeground': '--ide-muted', 'scrollbarSlider-background': '--ide-scroll',
+  'scrollbarSlider-hoverBackground': '--ide-scroll', 'scrollbarSlider-activeBackground': '--ide-scroll', 'textCodeBlock-background': '--ide-side', 'textPreformat-foreground': '--ide-fg',
+  'keybindingLabel-background': '--ide-second', 'keybindingLabel-foreground': '--ide-fg', 'notifications-background': '--ide-widget', 'quickInput-background': '--ide-widget',
+  'editorGroupHeader-tabsBackground': '--ide-side', 'titleBar-activeBackground': '--ide-side', 'statusBar-background': '--ide-side', 'progressBar-background': '--ide-accent',
+};
+const RES_MIME = { js: 'text/javascript', mjs: 'text/javascript', cjs: 'text/javascript', css: 'text/css', html: 'text/html', json: 'application/json', wasm: 'application/wasm',
+  svg: 'image/svg+xml', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', ico: 'image/x-icon', woff: 'font/woff', woff2: 'font/woff2',
+  ttf: 'font/ttf', otf: 'font/otf', bin: 'application/octet-stream', map: 'application/json', txt: 'text/plain' };
+const RES_RE = /sulfur-res:(?:\/\/)?(\/[^"'\s)<>`]+)/g;
+// one of the extension's own files as a data: url, a stylesheet's own urls inlined in it
+async function resourceUrl(x, path, cache, depth = 0) {
+  if (cache.has(path)) return cache.get(path);
+  const job = (async () => {
+    const ext = path.split('.').pop().toLowerCase();
+    const mime = RES_MIME[ext] || 'application/octet-stream';
+    const { path: rel, loc } = extPath(path);
+    const r = await fetch(filesApi(isHomeLoc(loc) ? HOME : apiLoc(loc), 'download', { path: rel }));
+    if (!r.ok) throw new Error(`${path}: ${r.status}`);
+    let bytes = new Uint8Array(await r.arrayBuffer());
+    if (ext === 'css' && depth < 2) {
+      const dir = path.slice(0, path.lastIndexOf('/'));
+      let css = new TextDecoder().decode(bytes);
+      const refs = [...new Set([...css.matchAll(/url\(\s*(['"]?)([^'")]+)\1\s*\)/g)].map((m) => m[2]).filter((u) => !/^(data:|https?:|#|\/\/)/i.test(u)))];
+      for (const u of refs) {
+        const target = u.startsWith('sulfur-res:') ? u.replace(/^sulfur-res:(?:\/\/)?/, '') : cleanAbs(`${dir}/${u.split(/[?#]/)[0]}`);
+        try { const d = await resourceUrl(x, target, cache, depth + 1); css = css.split(u).join(d); } catch {}
+      }
+      bytes = new TextEncoder().encode(css);
+    }
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return `data:${mime};base64,${btoa(bin)}`;
+  })();
+  cache.set(path, job);
+  return job;
+}
+const cleanAbs = (p) => { const out = []; for (const s of p.split('/')) { if (s === '..') out.pop(); else if (s && s !== '.') out.push(s); } return `/${out.join('/')}`; };
+async function vscodeWebviewDoc(x, html, view) {
+  view.res ||= new Map();
+  let out = String(html);
+  const found = [...new Set([...out.matchAll(RES_RE)].map((m) => m[0]))];
+  for (const u of found) {
+    let path = u.replace(/^sulfur-res:(?:\/\/)?/, '');
+    try { path = decodeURIComponent(path); } catch {}
+    try { out = out.split(u).join(await resourceUrl(x, path.split(/[?#]/)[0], view.res)); } catch (err) { log(`webview: ${err.message}`, extChannel(x)); }
+  }
+  const css = getComputedStyle(I.w.node);
+  const v = (n) => css.getPropertyValue(n).trim();
+  const vars = Object.entries(VSCODE_VARS).map(([k, n]) => `--vscode-${k}:${v(n)}`);
+  const size = parseFloat(v('--ide-code-font')) || 13;
+  vars.push('--vscode-font-size:13px', '--vscode-font-weight:normal', `--vscode-editor-font-size:${size}px`, '--vscode-editor-font-weight:normal');
+  const kind = css.colorScheme === 'light' ? 'vscode-light' : 'vscode-dark';
+  const head = `<style id="_defaultStyles">:root{${vars.join(';')}}body{background-color:var(--vscode-editor-background);color:var(--vscode-foreground);font-family:var(--vscode-font-family);font-size:var(--vscode-font-size);margin:0;padding:0 20px}a{color:var(--vscode-textLink-foreground)}</style>`
+    + `<script>(function(){var s=${JSON.stringify(view.state ?? null).replace(/</g, '\\u003c')};var api={postMessage:function(m){parent.postMessage({phosphorusWebview:m},'*')},getState:function(){return s===null?undefined:s},setState:function(n){s=n;parent.postMessage({phosphorusWebviewState:n},'*');return n}};window.acquireVsCodeApi=function(){return api};`
+    + `document.addEventListener('DOMContentLoaded',function(){document.body.classList.add('${kind}');document.body.dataset.vscodeThemeKind='${kind}';document.body.dataset.vscodeThemeId='Sulfur'});})();<\/script>`;
+  return /<head[^>]*>/i.test(out) ? out.replace(/<head[^>]*>/i, (m) => m + head) : head + out;
+}
 function extCall(x, m, a) {
   const fn = EXT_CALLS[m];
   if (!fn) throw new Error(`no such call: ${m}`);
@@ -8966,12 +9207,15 @@ function webviewDoc(html) {
     + html;
 }
 
-// a webview's word back to its extension
+// a webview's word back to its extension; a VS Code webview's state kept for its next page
 function onWebviewMessage(e) {
-  if (!I || !e.data || !('phosphorusWebview' in e.data)) return;
+  if (!I || !e.data || !('phosphorusWebview' in e.data || 'phosphorusWebviewState' in e.data)) return;
   for (const x of I.exts.values()) {
     for (const [wid, v] of x.views) {
-      if (v.frame?.contentWindow === e.source) { x.port?.postMessage({ t: 'webview', wid, msg: e.data.phosphorusWebview }); return; }
+      if (v.frame?.contentWindow !== e.source) continue;
+      if ('phosphorusWebviewState' in e.data) v.state = e.data.phosphorusWebviewState;
+      else x.port?.postMessage({ t: 'webview', wid, msg: e.data.phosphorusWebview });
+      return;
     }
   }
 }
@@ -9282,18 +9526,35 @@ async function vsxInstall(e, repaint = () => {}) {
     }
     const files = Object.entries(conv.files || {});
     let n = 0;
+    const binary = Object.entries(conv.binary || {});
+    const total = files.length + binary.length;
     for (const [rel, text] of files) {
       const p = cleanPath(filesJoin(dir, rel));
       if (!p || !under(p, dir)) continue;
       note.update(`Installing ${conv.manifest?.displayName || conv.id}: ${rel}`);
       await writeText(p, text, 'Open VSX');
-      note.progress((n += 1) / files.length);
+      note.progress((n += 1) / total);
     }
-    I.st.ext.enabled[conv.id] = true;
+    for (const [rel, b64] of binary) {
+      const p = cleanPath(filesJoin(dir, rel));
+      if (!p || !under(p, dir)) continue;
+      note.update(`Installing ${conv.manifest?.displayName || conv.id}: ${rel}`);
+      const raw = atob(b64);
+      const bytes = new Uint8Array(raw.length);
+      for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+      await putFile(HOME, p, new Blob([bytes]));
+      note.progress((n += 1) / total);
+    }
+    // what declares alone is on at once; a web build's code runs once its trust is given
+    const runs = !!conv.manifest?.main;
+    if (!runs) I.st.ext.enabled[conv.id] = true;
+    else if (I.st.ext.enabled[conv.id] === false) delete I.st.ext.enabled[conv.id];
     saveState();
     await loadExtensions();
     if (!I) return;
     const x = I.exts.get(conv.id);
+    if (runs && x && x.state !== 'on') await setExtEnabled(x, true);
+    if (!I) return;
     const c = conv.manifest?.contributes || {};
     const counts = (conv.report || []).reduce((m, r) => ({ ...m, [r.status]: (m[r.status] || 0) + 1 }), {});
     const actions = [];
@@ -9354,6 +9615,18 @@ function paintConvertedContrib(x, contrib) {
   if (c.snippets?.length) {
     section('Snippets');
     for (const s of c.snippets) row([['ide-vsx-item-name', (s.languages || [s.language]).join(', ')], ['ide-vsx-item-meta', (s.extensions || []).map((e) => `.${e}`).join(' ')]]);
+  }
+  if (m.sulfur?.vscode) {
+    section('Web Build');
+    contrib.append(el('p', 'ide-run-note', `Its VS Code web build (${m.main}) runs in a sandboxed frame under Sulfur’s VS Code API shim. What it calls that Sulfur hasn’t is said in its output channel.`));
+  }
+  if (c.customEditors?.length) {
+    section('Custom Editors');
+    for (const ce of c.customEditors) row([['ide-vsx-item-name', ce.displayName || ce.viewType], ['ide-vsx-item-meta', `${(ce.filenamePatterns || []).join(' ')}${ce.priority === 'option' ? ' · Reopen Editor With…' : ''}`]]);
+  }
+  if (c.commands?.length && m.sulfur?.vscode) {
+    section('Commands');
+    for (const cmd of c.commands) row([['ide-vsx-item-name', `${cmd.category ? `${cmd.category}: ` : ''}${cmd.title || cmd.command}`], ['ide-vsx-item-meta', cmd.command]]);
   }
   if (c.keybindings?.length) {
     section('Keybindings');
