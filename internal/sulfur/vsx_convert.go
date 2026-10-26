@@ -559,12 +559,25 @@ func VSXPlan(m map[string]any) []VSXReportItem {
 			}
 		}
 	}
-	if code {
-		add("code", vsxSkipped, "extension code", "VS Code API code doesn't run in Sulfur")
+	web := str(m["browser"]) != ""
+	if web {
+		add("code", vsxPartial, "web build", "runs sandboxed under Sulfur's VS Code API shim")
+		if n := len(asList(c["customEditors"])); n > 0 {
+			add("customEditors", vsxConverted, plural(n, "custom editor"), "in webview tabs")
+		}
+		if n := len(asList(c["commands"])); n > 0 {
+			add("commands", vsxConverted, plural(n, "command"), "run by its web build")
+		}
+	} else if code {
+		detail := "Node.js code: Sulfur has no Node extension host"
+		if c["views"] != nil || c["customEditors"] != nil || c["viewsContainers"] != nil {
+			detail += "; its UI is drawn by that code"
+		}
+		add("code", vsxSkipped, "extension code", detail)
 	}
 	var other []string
 	for k := range c {
-		if _, ok := vsxUnsupported[k]; ok {
+		if _, ok := vsxUnsupported[k]; ok && !(web && (k == "commands" || k == "customEditors")) {
 			other = append(other, k)
 		}
 	}
@@ -610,6 +623,8 @@ type converter struct {
 	// a web build carried (vsx_web.go): its entry under vscode/, its settings' defaults
 	web         string
 	webDefaults map[string]any
+	// a web build there was no reason to run
+	webIdle bool
 }
 
 func (c *converter) add(kind, status, name, detail string) {
@@ -685,9 +700,11 @@ func ConvertVSIX(data []byte, src VSXSource, opt VSXOptions) (*VSXConversion, er
 	c.themes(asList(contributes["themes"]))
 	c.iconThemes(asList(contributes["iconThemes"]))
 	c.snippets(asList(contributes["snippets"]))
-	c.keybindings(asList(contributes["keybindings"]), asList(contributes["commands"]), browser != "")
 	server := c.languageServer(contributes)
-	if browser != "" {
+	runWeb := browser != "" && c.wantsWeb(contributes, browser, server)
+	c.webIdle = browser != "" && !runWeb
+	c.keybindings(asList(contributes["keybindings"]), asList(contributes["commands"]), runWeb)
+	if runWeb {
 		c.webExtension(contributes, browser)
 	}
 	c.rest(contributes, server)
@@ -1883,6 +1900,9 @@ func (c *converter) rest(contributes map[string]any, server map[string]any) {
 		ui := contributes["views"] != nil || contributes["customEditors"] != nil || contributes["viewsContainers"] != nil
 		if ui {
 			detail += "; its views, webviews and custom editors are drawn by that code, so they don't come"
+		}
+		if c.webIdle {
+			detail = "its web build isn't run: beyond what's converted here it only adds VS Code commands and settings"
 		}
 		if server != nil {
 			detail = "its language client is replaced by Sulfur's; anything else it does at run time isn't converted"

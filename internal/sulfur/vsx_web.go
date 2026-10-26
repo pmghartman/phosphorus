@@ -42,6 +42,20 @@ func (c *converter) webBuild() string {
 	return b
 }
 
+// wantsWeb whether a web build is worth running: for the UI only its code draws (webviews,
+// custom editors), or the commands of an extension that isn't a theme or a language server
+// (whose web code would only set VS Code's settings, or start the server Sulfur runs itself)
+func (c *converter) wantsWeb(contributes map[string]any, browser string, server map[string]any) bool {
+	code, err := c.pkg.read(browser)
+	if err != nil {
+		return false
+	}
+	ui := len(asList(contributes["customEditors"])) > 0 || bytes.Contains(code, []byte("createWebviewPanel")) ||
+		bytes.Contains(code, []byte("registerWebviewViewProvider")) || bytes.Contains(code, []byte("registerCustomEditorProvider"))
+	declared := len(asList(contributes["themes"]))+len(asList(contributes["iconThemes"])) > 0
+	return ui || (len(asList(contributes["commands"])) > 0 && !declared && server == nil)
+}
+
 // webExtension the web build and the files it may load, under vscode/; its commands and
 // custom editors declared for the workbench
 func (c *converter) webExtension(contributes map[string]any, browser string) {
