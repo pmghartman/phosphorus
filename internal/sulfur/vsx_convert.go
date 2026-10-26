@@ -52,12 +52,13 @@ type VSXSource struct {
 	SHA256         string `json:"sha256,omitempty"`
 }
 
-// VSXConversion the Sulfur extension made from a package: its folder's name,
-// its files (text, binary assets inlined as data URLs) and the report
+// VSXConversion the Sulfur extension made from a package: its folder's name, its text
+// files, its binary ones (a web build's wasm and images, base64) and the report
 type VSXConversion struct {
 	ID       string            `json:"id"`
 	Manifest map[string]any    `json:"manifest"`
 	Files    map[string]string `json:"files"`
+	Binary   map[string]string `json:"binary,omitempty"`
 	Report   []VSXReportItem   `json:"report"`
 }
 
@@ -605,6 +606,10 @@ type converter struct {
 	langs    map[string]map[string]any // the package's languages by id, as written
 	langList []string
 	used     map[string]bool // written file names
+	binary   map[string]string
+	// a web build carried (vsx_web.go): its entry under vscode/, its settings' defaults
+	web         string
+	webDefaults map[string]any
 }
 
 func (c *converter) add(kind, status, name, detail string) {
@@ -672,15 +677,19 @@ func ConvertVSIX(data []byte, src VSXSource, opt VSXOptions) (*VSXConversion, er
 	if src.Namespace == "" || src.Name == "" {
 		return nil, errors.New("package.json names no publisher and name")
 	}
-	c := &converter{pkg: pkg, m: m, opt: opt, files: map[string]string{}, contrib: map[string]any{}, langs: map[string]map[string]any{}, used: map[string]bool{}}
+	c := &converter{pkg: pkg, m: m, opt: opt, files: map[string]string{}, binary: map[string]string{}, contrib: map[string]any{}, langs: map[string]map[string]any{}, used: map[string]bool{}}
 	contributes := asMap(m["contributes"])
+	browser := c.webBuild()
 	c.languages(asList(contributes["languages"]))
 	c.grammars(asList(contributes["grammars"]))
 	c.themes(asList(contributes["themes"]))
 	c.iconThemes(asList(contributes["iconThemes"]))
 	c.snippets(asList(contributes["snippets"]))
-	c.keybindings(asList(contributes["keybindings"]), asList(contributes["commands"]))
+	c.keybindings(asList(contributes["keybindings"]), asList(contributes["commands"]), browser != "")
 	server := c.languageServer(contributes)
+	if browser != "" {
+		c.webExtension(contributes, browser)
+	}
 	c.rest(contributes, server)
 	if len(c.langList) > 0 {
 		list := []any{}
@@ -695,6 +704,11 @@ func ConvertVSIX(data []byte, src VSXSource, opt VSXOptions) (*VSXConversion, er
 	if display == "" {
 		display = src.Name
 	}
+	sulfurPart := map[string]any{
+		"declarative": c.web == "",
+		"converted":   src,
+		"report":      c.report,
+	}
 	manifest := map[string]any{
 		"name":        id,
 		"displayName": display,
@@ -702,18 +716,19 @@ func ConvertVSIX(data []byte, src VSXSource, opt VSXOptions) (*VSXConversion, er
 		"description": pkg.localize(m["description"]),
 		"publisher":   src.Namespace,
 		"contributes": c.contrib,
-		"sulfur": map[string]any{
-			"declarative": true,
-			"converted":   src,
-			"report":      c.report,
-		},
+		"sulfur":      sulfurPart,
+	}
+	if c.web != "" {
+		// its web build is its main module, run under the VS Code API shim
+		manifest["main"] = c.web
+		sulfurPart["vscode"] = map[string]any{"root": vsxWebDir, "id": src.Namespace + "." + src.Name, "defaults": c.webDefaults}
 	}
 	if s := str(m["license"]); s != "" {
 		manifest["license"] = s
 	}
 	c.files["package.json"] = jsonText(manifest)
 	c.files["README.md"] = c.readme(display, src)
-	return &VSXConversion{ID: id, Manifest: manifest, Files: c.files, Report: c.report}, nil
+	return &VSXConversion{ID: id, Manifest: manifest, Files: c.files, Binary: c.binary, Report: c.report}, nil
 }
 
 func (c *converter) readme(display string, src VSXSource) string {
@@ -1549,7 +1564,7 @@ func (c *converter) snippets(list []any) {
 
 // --- keybindings -------------------------------------------------------------------------
 
-func (c *converter) keybindings(list, commands []any) {
+func (c *converter) keybindings(list, commands []any, web bool) {
 	if len(list) == 0 {
 		return
 	}
@@ -1567,15 +1582,15 @@ func (c *converter) keybindings(list, commands []any) {
 			continue
 		}
 		bare := strings.TrimPrefix(cmd, "-")
-		if own[bare] {
+		if own[bare] && !web {
 			ownCmd = append(ownCmd, bare)
 			continue
 		}
-		if !c.opt.Commands[bare] {
+		if !own[bare] && !c.opt.Commands[bare] {
 			noCmd = append(noCmd, bare)
 			continue
 		}
-		kb := map[string]any{"command": cmd, "key": strings.ToLower(key)}
+		kb := map[string]any{"command": cmd, "key": strings.ToLower(key), "own": own[bare]}
 		if mac := str(k["mac"]); mac != "" {
 			kb["mac"] = strings.ToLower(mac)
 		}
@@ -1859,11 +1874,16 @@ func (c *converter) rest(contributes map[string]any, server map[string]any) {
 	if n := len(asMap(contributes["configurationDefaults"])); n > 0 {
 		c.add("configurationDefaults", vsxSkipped, plural(n, "default"), "VS Code setting defaults; set what you want in Sulfur's settings")
 	}
-	if n := len(asList(contributes["commands"])); n > 0 {
+	web := c.web != ""
+	if n := len(asList(contributes["commands"])); n > 0 && !web {
 		c.add("commands", vsxSkipped, plural(n, "command"), vsxUnsupported["commands"])
 	}
-	if str(c.m["main"]) != "" || str(c.m["browser"]) != "" {
-		detail := "it uses VS Code's API, which Sulfur doesn't have; what it does at run time isn't converted"
+	if !web && (str(c.m["main"]) != "" || str(c.m["browser"]) != "") {
+		detail := "Node.js code with no web build: it needs VS Code's Node extension host, which Sulfur doesn't have"
+		ui := contributes["views"] != nil || contributes["customEditors"] != nil || contributes["viewsContainers"] != nil
+		if ui {
+			detail += "; its views, webviews and custom editors are drawn by that code, so they don't come"
+		}
 		if server != nil {
 			detail = "its language client is replaced by Sulfur's; anything else it does at run time isn't converted"
 		}
@@ -1871,7 +1891,7 @@ func (c *converter) rest(contributes map[string]any, server map[string]any) {
 	}
 	var other []string
 	for k := range contributes {
-		if _, ok := vsxUnsupported[k]; ok && k != "commands" {
+		if _, ok := vsxUnsupported[k]; ok && k != "commands" && !(web && k == "customEditors") {
 			other = append(other, k)
 		}
 	}
