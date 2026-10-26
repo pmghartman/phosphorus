@@ -38,6 +38,7 @@ var (
 	ole32    = windows.NewLazySystemDLL("ole32.dll")
 
 	pShowWindow          = user32.NewProc("ShowWindow")
+	pRedrawWindow        = user32.NewProc("RedrawWindow")
 	pIsZoomed            = user32.NewProc("IsZoomed")
 	pSendMessage         = user32.NewProc("SendMessageW")
 	pReleaseCapture      = user32.NewProc("ReleaseCapture")
@@ -68,6 +69,7 @@ var (
 
 const (
 	wmNCCalcSize    = 0x0083
+	wmSize          = 0x0005
 	wmClose         = 0x0010
 	wmSetIcon       = 0x0080
 	wmNCLButtonDown = 0x00A1
@@ -75,6 +77,7 @@ const (
 	swMinimize      = 6
 	swMaximize      = 3
 	swRestore       = 9
+	sizeMinimized   = 1
 	// frame changed, no move, size, z order or activation
 	swpFrame = 0x0020 | 0x0002 | 0x0001 | 0x0004 | 0x0010
 )
@@ -91,8 +94,28 @@ type monitorInfo struct {
 // wndProc the window's procedure ahead of the library's: the frame's title taken
 // out of the client area, a close from the window's own controls handed to the page
 func wndProc(sh *shell, h *webHost) uintptr {
+	minimized := false // accessed only on the window's UI thread
 	return windows.NewCallback(func(hwnd, msg, wp, lp uintptr) uintptr {
 		switch msg {
+		case wmSize:
+			if wp == sizeMinimized {
+				// The binding resizes WebView2 on every WM_SIZE, including minimization.
+				// Keep its last usable bounds while Windows has no visible client area.
+				minimized = true
+				return 0
+			}
+			if minimized {
+				minimized = false
+				// Repeat the binding's bounds update after the restore's native layout
+				// has settled, then invalidate the child surfaces as an actual resize does.
+				(*h).Dispatch(func() {
+					if forceClose.Load() || minimized {
+						return
+					}
+					pCallWindowProc.Call(oldProc, hwnd, wmSize, wp, lp)
+					pRedrawWindow.Call(hwnd, 0, 0, 0x0001|0x0080) // RDW_INVALIDATE | RDW_ALLCHILDREN
+				})
+			}
 		case wmNCCalcSize:
 			if wp == 0 {
 				break

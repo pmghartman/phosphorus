@@ -29,6 +29,7 @@ import { toggleLineComment, toggleBlockComment, docCommentEnter, blockCommentFor
 import { wordStart, wordEnd } from './completion.js';
 import { textWindow } from './text-window.js';
 import { contributedLang } from './vsx-contributions.js';
+import { mountHoverIntent } from './hover-intent.js';
 
 // --- code editor ------------------------------------------------------------------
 // a share's text or code file in a tab of its own, joined to the file's live
@@ -133,8 +134,8 @@ function codeEditor(view, file, btn, id, opts = {}) {
   function hideDiagnosticHover() { diagnosticHover.hidden = true; }
   // the hover: the problems under the mouse at once, then what the language server says of
   // the word there (opts.hover) once the mouse rests on it, in one tooltip as VS Code's
-  let hoverTimer = 0, hoverAbort = null, hoverWord = null, moveTimer = 0;
-  function hideHover() { clearTimeout(hoverTimer); clearTimeout(moveTimer); moveTimer = 0; hoverAbort?.abort(); hoverAbort = null; hoverWord = null; hideDiagnosticHover(); }
+  let hoverTimer = 0, hoverAbort = null, hoverWord = null, hoverIntent;
+  function hideHover() { clearTimeout(hoverTimer); hoverTimer = 0; hoverIntent?.cancel(); hoverAbort?.abort(); hoverAbort = null; hoverWord = null; hideDiagnosticHover(); }
   let lastPlace = null;
   function placeHover(x, y, below = true) {
     lastPlace = [x, y, below];
@@ -181,7 +182,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
     if (own.signal.aborted || closed || ta.value !== text || hoverAbort !== own) return;
     if (extra || problems.length) showHover(problems, extra, x, y, below);
   }
-  ta.addEventListener('mousemove', (event) => {
+  hoverIntent = mountHoverIntent({ target: ta, tooltip: diagnosticHover, hide: hideHover, onMove: (event) => {
     if (inlineSuggestion) { hideHover(); return; }
     if (!errs.length && !opts.hover) { hideHover(); return; }
     const rect = ta.getBoundingClientRect(), g = geom();
@@ -197,17 +198,10 @@ function codeEditor(view, file, btn, id, opts = {}) {
     const ws = wordStart(text, at), we = wordEnd(text, at);
     const hit = errsText === text ? diagnosticsAt(errs, at) : [];
     const key = `${ws}:${we}:${hit.length}`;
-    if (hoverWord === key && (!diagnosticHover.hidden || hoverTimer)) { clearTimeout(moveTimer); moveTimer = 0; return; }
+    if (hoverWord === key && (!diagnosticHover.hidden || hoverTimer)) return;
     const x = event.clientX + 12, y = event.clientY + 20;
-    // a tooltip showing stays a moment as the mouse moves off its word: it may be on its way
-    // into it (to a Quick Fix, a link), crossing other text below the word
-    if (!diagnosticHover.hidden) {
-      clearTimeout(moveTimer);
-      moveTimer = setTimeout(() => { moveTimer = 0; if (!diagnosticHover.matches(':hover')) startHover(at, ws, we, hit, key, x, y); }, 300);
-      return;
-    }
     startHover(at, ws, we, hit, key, x, y);
-  });
+  } });
   function startHover(at, ws, we, hit, key, x, y) {
     hideHover();
     if (we === ws && !hit.length) return;
@@ -220,11 +214,6 @@ function codeEditor(view, file, btn, id, opts = {}) {
   scroller.addEventListener('scroll', hideHover);
   // a rich hover takes the mouse: moved into, it stays to be read, scrolled and its links
   // followed; focus stays in the text throughout
-  let leaveTimer = 0;
-  ta.addEventListener('mouseleave', () => { clearTimeout(leaveTimer); leaveTimer = setTimeout(() => { if (!diagnosticHover.matches(':hover')) hideHover(); }, 250); });
-  ta.addEventListener('mouseenter', () => clearTimeout(leaveTimer));
-  diagnosticHover.addEventListener('mouseleave', () => { clearTimeout(leaveTimer); leaveTimer = setTimeout(hideHover, 250); });
-  diagnosticHover.addEventListener('mouseenter', () => { clearTimeout(leaveTimer); clearTimeout(moveTimer); moveTimer = 0; });
   diagnosticHover.addEventListener('mousedown', (e) => e.preventDefault());
   diagnosticHover.addEventListener('click', (e) => {
     const a = e.target.closest('a[href]');
@@ -1927,9 +1916,10 @@ function codeEditor(view, file, btn, id, opts = {}) {
       closed = true;
       document.removeEventListener('selectionchange', selectionMoved);
       definitionLinks?.dispose();
+      hoverIntent.dispose();
       guideResize.disconnect(); hoverResize.disconnect(); cancelAnimationFrame(guideFrame);
       hlAbort?.abort();
-      for (const timer of [bigTimer, hlTimer, mdTimer, checkTimer, cursorTimer, agentFade, armed, occurrenceTimer, hoverTimer, leaveTimer, restTimer]) clearTimeout(timer);
+      for (const timer of [bigTimer, hlTimer, mdTimer, checkTimer, cursorTimer, agentFade, armed, occurrenceTimer, hoverTimer, restTimer]) clearTimeout(timer);
       hoverAbort?.abort();
       for (const frame of [drawFrame, tellFrame, viewFrame, decoFrame, overviewFrame]) cancelAnimationFrame(frame);
       syntax.clear();
