@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -304,6 +305,38 @@ func strip(p, prefix string) string {
 	return s
 }
 
+// reverseLocation a service's redirect kept under the prefix its request was
+// stripped of, as Apache's ProxyPassReverse: a path from the service's own
+// root, or an absolute URL back at this host or the service itself; relative
+// ones, ones already under the prefix and other hosts' left as they are
+func reverseLocation(loc, prefix string, hosts ...string) string {
+	if prefix == "" {
+		return loc
+	}
+	u, err := url.Parse(loc)
+	if err != nil || u.Opaque != "" {
+		return loc
+	}
+	if u.Host != "" {
+		if !slices.ContainsFunc(hosts, func(h string) bool { return strings.EqualFold(h, u.Host) }) {
+			return loc
+		}
+		if u.Path == "" {
+			u.Path = "/"
+		}
+	} else if u.Scheme != "" || !strings.HasPrefix(u.Path, "/") {
+		return loc
+	}
+	if under(u.Path, prefix) {
+		return loc
+	}
+	u.Path = prefix + u.Path
+	if u.RawPath != "" {
+		u.RawPath = prefix + u.RawPath
+	}
+	return u.String()
+}
+
 // RemoteIP the socket's address, ::ffff: dropped
 func RemoteIP(r *http.Request) string {
 	h, _, err := net.SplitHostPort(r.RemoteAddr)
@@ -572,6 +605,9 @@ func forward(rt *Route, w http.ResponseWriter, r *http.Request, p string) {
 			}
 		},
 		ModifyResponse: func(res *http.Response) error {
+			if loc := res.Header.Get("Location"); loc != "" {
+				res.Header.Set("Location", reverseLocation(loc, rt.Prefix, r.Host, net.JoinHostPort(rt.IP, strconv.Itoa(rt.Port))))
+			}
 			for k, vs := range res.Header {
 				lk := strings.ToLower(k)
 				if rt.Domain != "" && lk == "x-frame-options" {
