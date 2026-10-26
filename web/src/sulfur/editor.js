@@ -182,9 +182,7 @@ function codeEditor(view, file, btn, id, opts = {}) {
     if (own.signal.aborted || closed || ta.value !== text || hoverAbort !== own) return;
     if (extra || problems.length) showHover(problems, extra, x, y, below);
   }
-  hoverIntent = mountHoverIntent({ target: ta, tooltip: diagnosticHover, hide: hideHover, onMove: (event) => {
-    if (inlineSuggestion) { hideHover(); return; }
-    if (!errs.length && !opts.hover) { hideHover(); return; }
+  function hoverLocation(event) {
     const rect = ta.getBoundingClientRect(), g = geom();
     const line = Math.floor((event.clientY - rect.top - g.top) / g.lh);
     const column = Math.floor((event.clientX - rect.left - g.left) / g.cw);
@@ -192,16 +190,22 @@ function codeEditor(view, file, btn, id, opts = {}) {
     lineAt(text, 0);
     const start = lineStarts[line];
     const local = start === undefined ? null : offsetAtColumn(text.slice(start, lineStarts[line + 1] ?? text.length), 0, column, g.tab);
-    if (local == null) { hideHover(); return; }
-    const at = start + local;
-    // the word or problem under the mouse: the same one keeps its tooltip where it is
-    const ws = wordStart(text, at), we = wordEnd(text, at);
+    if (local == null) return null;
+    const at = start + local, ws = wordStart(text, at), we = wordEnd(text, at);
     const hit = errsText === text ? diagnosticsAt(errs, at) : [];
-    const key = `${ws}:${we}:${hit.length}`;
-    if (hoverWord === key && (!diagnosticHover.hidden || hoverTimer)) return;
-    const x = event.clientX + 12, y = event.clientY + 20;
-    startHover(at, ws, we, hit, key, x, y);
-  } });
+    return { at, ws, we, hit, key: ws + ':' + we + ':' + hit.length };
+  }
+  hoverIntent = mountHoverIntent({ target: ta, tooltip: diagnosticHover, hide: hideHover,
+    isAnchor: (event) => !inlineSuggestion && hoverWord !== null && hoverLocation(event)?.key === hoverWord,
+    onMove(event) {
+      if (inlineSuggestion || (!errs.length && !opts.hover)) { hideHover(); return; }
+      const at = hoverLocation(event);
+      if (!at) { hideHover(); return; }
+      if (hoverWord === at.key && (!diagnosticHover.hidden || hoverTimer)) return;
+      startHover(at.at, at.ws, at.we, at.hit, at.key, event.clientX + 12, event.clientY + 20);
+    },
+  });
+
   function startHover(at, ws, we, hit, key, x, y) {
     hideHover();
     if (we === ws && !hit.length) return;

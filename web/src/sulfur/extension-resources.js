@@ -4,6 +4,7 @@ export function installExtensionResources(call) {
   const originalFetch = globalThis.fetch;
   const OriginalWorker = globalThis.Worker;
   const workers = new Set();
+  let disposed = false;
   const virtual = (input) => /^(file:|sulfur-res:)/i.test(String(input?.url || input));
   const pathOf = (input) => decodeURIComponent(new URL(String(input?.url || input)).pathname);
   const mime = (url) => /\.wasm(?:[?#]|$)/i.test(url) ? 'application/wasm' : /\.[cm]?js(?:[?#]|$)/i.test(url) ? 'text/javascript' : 'application/octet-stream';
@@ -109,6 +110,8 @@ export function installExtensionResources(call) {
   }
   return {
     dispose() {
+      if (disposed) return;
+      disposed = true;
       for (const worker of workers) worker.terminate();
       workers.clear();
       globalThis.fetch = originalFetch;
