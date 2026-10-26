@@ -447,6 +447,18 @@ func localAPI(w http.ResponseWriter, r *http.Request) {
 		}
 	case path == "/api/sulfur/vsx/search" || path == "/api/sulfur/vsx/convert":
 		sulfur.VSXServe(w, r)
+	case path == "/api/sulfur/sqlite" && r.Method == "POST":
+		var p sulfur.SQLiteRequest
+		if json.NewDecoder(http.MaxBytesReader(w, r.Body, (1<<20)+4096)).Decode(&p) != nil {
+			send(w, 400, errB("invalid SQLite request"))
+			return
+		}
+		res, err := sulfur.SQLiteLocal(r.Context(), p)
+		if err != nil {
+			send(w, 400, errB(err.Error()))
+			return
+		}
+		send(w, 200, res)
 	case path == "/api/sulfur/git" && r.Method == "POST":
 		var p struct {
 			Dir   string           `json:"dir"`

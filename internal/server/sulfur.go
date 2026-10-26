@@ -23,7 +23,7 @@ var absDirRe = regexp.MustCompile(`^(/|[A-Za-z]:\\)`)
 
 // sulfurRoute Sulfur's REST, false for a path that isn't one
 func sulfurRoute(w http.ResponseWriter, r *http.Request, pathname string, q url.Values) bool {
-	if pathname != "/api/sulfur/toolchains" && pathname != "/api/sulfur/share" && pathname != "/api/sulfur/git" && pathname != "/api/sulfur/forgejo" && pathname != "/api/sulfur/vsx/search" && pathname != "/api/sulfur/vsx/convert" {
+	if pathname != "/api/sulfur/toolchains" && pathname != "/api/sulfur/share" && pathname != "/api/sulfur/git" && pathname != "/api/sulfur/forgejo" && pathname != "/api/sulfur/vsx/search" && pathname != "/api/sulfur/vsx/convert" && pathname != "/api/sulfur/sqlite" {
 		return false
 	}
 	if !isLocalOrPeer(r) || (r.Method != "GET" && !sameOrigin(r)) {
@@ -55,6 +55,24 @@ func sulfurRoute(w http.ResponseWriter, r *http.Request, pathname string, q url.
 		sendJSON(w, 200, t)
 	case pathname == "/api/sulfur/git" && r.Method == "POST":
 		onJSON(w, r, maxJSONBody, true, func(p map[string]any) (int, any) { return sulfurGit(s, p) })
+	case pathname == "/api/sulfur/sqlite" && r.Method == "POST":
+		onJSON(w, r, (1<<20)+4096, true, func(p map[string]any) (int, any) {
+			host := str(p["host"])
+			c, err := codeLogin(s, host)
+			if err != nil {
+				return 400, map[string]any{"error": err.Error()}
+			}
+			var req sulfur.SQLiteRequest
+			b, _ := json.Marshal(p)
+			if json.Unmarshal(b, &req) != nil || !absDirRe.MatchString(req.Path) {
+				return 400, map[string]any{"error": "choose a full path to a database"}
+			}
+			res, err := sulfur.SQLiteRemote(r.Context(), host, c, req)
+			if err != nil {
+				return 400, map[string]any{"error": err.Error()}
+			}
+			return 200, res
+		})
 	case pathname == "/api/sulfur/forgejo" && r.Method == "POST":
 		onJSON(w, r, maxJSONBody, true, func(p map[string]any) (int, any) { return sulfurForgejo(s, p) })
 	case pathname == "/api/sulfur/share" && r.Method == "POST":

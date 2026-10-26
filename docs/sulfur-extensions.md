@@ -9,6 +9,27 @@ For indentation guides, whitespace markers and external-file reloads, see
 
 ## Quick start
 
+### Use native SQLite
+
+SQLite is built into Sulfur and appears in the Extensions pane. Choose
+**Create Database…** there, or run **SQLite: Create Database in Project…** from
+the command palette. Enter a project-relative filename such as `app.sqlite`.
+Existing files are never overwritten; parent folders must already exist.
+
+Open a `.sqlite`, `.sqlite3`, `.db` or `.db3` file to browse its tables and views.
+Rows load in pages of 200. **New Table** inserts an editable SQL template;
+**Execute SQL** applies the whole batch in a transaction and rolls it back on
+error. Do not include `BEGIN`, `COMMIT` or `SAVEPOINT` in the batch. **Run Query**
+(`Ctrl+Enter`, or `Cmd+Enter` on macOS) opens the database read-only. Query
+results stop at 200 rows or 8 MiB, with previews for large strings and blobs;
+queries time out after ten seconds. Integers outside JavaScript's exact range
+are displayed as strings.
+
+Desktop databases run locally without another executable or extension download.
+For mesh projects, SQLite runs on the file's host under your saved SSH login;
+update Phosphorus on that host to enable the helper. The database stays there.
+Use **Reopen Editor With…** to choose a converted SQLite viewer instead.
+
 ### Convert extensions from Open VSX
 
 Open **Extensions → Browse Open VSX…** (or the library button in the Extensions
