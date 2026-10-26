@@ -190,6 +190,9 @@ function startTerminal(view, host, sid, resume, shared = false, login = null, op
       return true;
     },
     clear: () => term?.clear(),
+    selection: () => term?.getSelection() || '',
+    selectAll: () => term?.selectAll(),
+    paste: (text) => term?.paste(text),
     fit: () => fit?.fit(),
     close: () => ready.then(() => {
       observer?.disconnect();
@@ -300,6 +303,9 @@ function taskTerminal(view, host, task, opts = {}) {
     fit: () => fit?.fit(),
     clear: () => term?.clear(),
     ended: () => ended,
+    selection: () => term?.getSelection() || '',
+    selectAll: () => term?.selectAll(),
+    paste: (text) => term?.paste(text),
     send: (text) => {
       if (ended || ws?.readyState !== WebSocket.OPEN) return false;
       ws.send(enc.encode(text));
