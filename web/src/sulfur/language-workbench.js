@@ -8,6 +8,12 @@ import { documentSymbols } from './navigation.js';
 const titles = ['TypeScript', 'Python', 'JavaScript', 'Java', 'C#', 'PHP', 'Shell (Bash)', 'C / C++', 'HCL / Terraform', 'Go'];
 const ids = ['typescript', 'python', 'javascript', 'java', 'csharp', 'php', 'shell', 'cpp', 'hcl', 'go'];
 const aborted = (e) => e?.name === 'AbortError';
+// settings over defaults, objects merged key by key
+const mergeSettings = (under, over) => {
+  const out = { ...under };
+  for (const [k, v] of Object.entries(over)) out[k] = v && typeof v === 'object' && !Array.isArray(v) && under[k] && typeof under[k] === 'object' ? mergeSettings(under[k], v) : v;
+  return out;
+};
 // how long a server still starting is waited for before words are suggested instead
 const WORD_WAIT = 1200;
 
@@ -19,19 +25,26 @@ export function createLanguageWorkbench(api) {
   const attached = new Map();
   const diagnostics = new Map();
   const completers = new Map();
+  // each tab's snippets from converted extensions, kept, asked again as completion opens
+  const snippetLists = new WeakMap();
+  const loadSnippets = (tab) => (api.snippets ? api.snippets(tab).then((items) => { snippetLists.set(tab, items); }, () => {}) : Promise.resolve());
+  function snippets(tab) {
+    loadSnippets(tab);
+    return snippetLists.get(tab) || [];
+  }
   const analyses = new Map();
   let generation = 0;
   let panel;
   let query = '';
   const state = (host) => { if (!states.has(host)) states.set(host, { extensions: ids.map((id, n) => ({ id, name: titles[n] })), errors: {}, busy: new Set() }); return states.get(host); };
   const connect = (host, request, event) => languageSocket(api.url(host), request, (m) => { if (m._sulfur === 'log') api.log(m.text, `Languages: ${host}`); event?.(m); });
-  async function manage(host, op = 'status', language) {
+  async function manage(host, op = 'status', language, server) {
     const s = state(host);
     s.busy.add(language || '*'); delete s.errors[language || '*']; panel?.paint();
     let connection;
     try {
       if (op !== 'status') stopMatching(host, language);
-      connection = connect(host, { op, language }, (m) => {
+      connection = connect(host, { op, language, ...(server ? { server } : {}) }, (m) => {
         if (m._sulfur === 'status') s.extensions = m.extensions;
         if (m._sulfur === 'error') s.errors[language || '*'] = m.error;
       });
@@ -126,8 +139,11 @@ export function createLanguageWorkbench(api) {
   }
   async function get(tab) {
     if (!tab?.rel || !tab.ed?.ready() || tab.info?.readOnly) return null;
-    const extension = LANGUAGE_EXTENSIONS[tab.rel.split('.').pop().toLowerCase()];
-    if (!extension) return null;
+    // a converted extension's server for the file (vsx.<id>), else the catalog's
+    const fileExt = tab.rel.split('.').pop().toLowerCase(), fileName = tab.rel.split('/').pop().toLowerCase();
+    const custom = (api.convertedServers?.() || []).filter((x) => x.extensions?.includes(fileExt) || x.filenames?.includes(fileName));
+    const candidates = [...custom.map((x) => x.id), LANGUAGE_EXTENSIONS[fileExt]].filter(Boolean);
+    if (!candidates.length) return null;
     const epoch = generation;
     const context = await api.context(tab);
     if (!context || epoch !== generation) return null;
@@ -140,7 +156,10 @@ export function createLanguageWorkbench(api) {
       if (s.checking) await s.checking;
       if (!s.loaded) return null;
     }
-    if (epoch !== generation || !s.extensions.find((x) => x.id === extension)?.enabled) return null;
+    const extension = candidates.find((id) => s.extensions.find((x) => x.id === id)?.enabled);
+    if (epoch !== generation || !extension) return null;
+    const converted = custom.find((x) => x.id === extension);
+    const langId = converted ? converted.languageIds?.[fileExt] || converted.languages?.[0] || fileExt : languageId(tab.rel, extension);
     const key = JSON.stringify([context.host, context.root, extension, context.solutionPath, context.configuration, context.buildDirectory, context.settings]);
     // Reinitialization is intentional: servers cache active build settings.
     for (const [old, session] of sessions) if (old !== key && session.extension === extension && session.context.host === context.host && session.context.root === context.root) { clearSession(session); sessions.delete(old); }
@@ -151,7 +170,9 @@ export function createLanguageWorkbench(api) {
       session.client = connect(context.host, { op: 'launch', language: extension, root: context.root, configuration: context.configuration, buildDirectory: context.buildDirectory }, (m) => receive(session, m));
       // a code action's command editing files (workspace/applyEdit), through the editors
       session.client.applyEdit = (edit) => applyEdit(session, edit);
-      session.promise = session.client.initialize(serverSettings(extension, { ...context, analyzersEnabled: api.setting?.('sulfur.csharp.analyzersEnabled') })).then(() => { session.readyAt = Date.now(); panel?.paint(); return session; }).catch((e) => { state(context.host).errors[extension] = e.message; panel?.paint(); clearSession(session); return null; });
+      // a converted server's settings: its extension's defaults under the user's own
+      const settings = converted ? { ...context.settings, [extension]: mergeSettings(converted.settings || {}, context.settings?.[extension] || {}) } : context.settings;
+      session.promise = session.client.initialize(serverSettings(extension, { ...context, settings, analyzersEnabled: api.setting?.('sulfur.csharp.analyzersEnabled') })).then(() => { session.readyAt = Date.now(); panel?.paint(); return session; }).catch((e) => { state(context.host).errors[extension] = e.message; panel?.paint(); clearSession(session); return null; });
     }
     const ready = await session.promise;
     if (!ready || epoch !== generation || session.client.closed() || !api.alive(tab)) return null;
@@ -159,8 +180,9 @@ export function createLanguageWorkbench(api) {
     const previous = attached.get(tab);
     if (previous && (previous.uri !== uri || previous.session !== session)) previous.session.client.closeDocument(previous.uri);
     const previousVersion = session.client.documents.get(uri)?.version;
-    const version = session.client.sync(uri, languageId(tab.rel, extension), tab.ed.text());
+    const version = session.client.sync(uri, langId, tab.ed.text());
     const result = previous?.session === session && previous.uri === uri ? previous : { session, uri };
+    result.languageId = langId;
     attached.set(tab, result);
     if (!previous || previous.session !== session || previous.uri !== uri || previousVersion !== version) {
       scheduleAnalysis(tab); scheduleDiagnostics(tab); scheduleWorkspaceAnalysis(session);
@@ -174,7 +196,7 @@ export function createLanguageWorkbench(api) {
     if (client.documents.get(doc.uri)?.text !== tab.ed.text()) {
       // the last report stays, moved with the edits by the editor, until the next one
       // replaces it: squiggles never blink off as you type, as in VS Code
-      client.sync(doc.uri, languageId(tab.rel, doc.session.extension), tab.ed.text());
+      client.sync(doc.uri, doc.languageId || languageId(tab.rel, doc.session.extension), tab.ed.text());
       scheduleAnalysis(tab);
       scheduleWorkspaceAnalysis(doc.session);
       scheduleDiagnostics(tab);
@@ -270,6 +292,7 @@ export function createLanguageWorkbench(api) {
     ta.setAttribute('aria-expanded', 'false');
     ta.setAttribute('aria-controls', box.id); ta.setAttribute('aria-autocomplete', 'both');
     tab.view.append(box);
+    loadSnippets(tab);
     // session: the items asked for the word starting at from; shown: those matching what's typed
     let session = null, shown = [], selected = 0, timer, controller, wordTimer;
     let languagePreview = false;
@@ -372,6 +395,8 @@ export function createLanguageWorkbench(api) {
       if (opening) { place(text, session.from); session.placedAt = session.from; }
     }
     async function trigger(triggerKind, triggerCharacter = '', explicit = false, retry = 0) {
+      // the file's snippets read once, before its first list
+      if (!snippetLists.has(tab)) await loadSnippets(tab);
       api.onSuggest?.();
       controller?.abort();
       const own = controller = new AbortController();
@@ -390,7 +415,7 @@ export function createLanguageWorkbench(api) {
         // are what made the list jump. Words come at once only without a server, or
         // after a while for one still starting.
         const server = !!attached.get(tab)?.session.client.capabilities.completionProvider;
-        const words = () => triggerCharacter ? [] : wordCompletions(api.documents?.(tab) || [], tab.ed.text(), ta.selectionStart);
+        const words = () => triggerCharacter ? [] : [...snippets(tab), ...wordCompletions(api.documents?.(tab) || [], tab.ed.text(), ta.selectionStart)];
         const waiting = session = { from, text, caret, items: server ? [] : words(), lsp: null, defaults: {}, incomplete: false, anchored: explicit || !!triggerCharacter, placedAt };
         refilter();
         if (server && !triggerCharacter) wordTimer = setTimeout(() => { if (session === waiting) { waiting.items = words(); refilter(); } }, WORD_WAIT);
@@ -422,6 +447,7 @@ export function createLanguageWorkbench(api) {
         items = wordCompletions(api.documents?.(tab) || [], now, ta.selectionStart);
         lsp = null;
       }
+      if (!triggerCharacter) { const own = snippets(tab); if (own.length) items = [...own, ...items]; }
       clearTimeout(wordTimer);
       session = { from, text, caret, items, lsp, defaults, incomplete, anchored: explicit || !!triggerCharacter || (session?.from === from && !!session.anchored), placedAt: session?.from === from ? session.placedAt : undefined };
       refilter();
@@ -434,7 +460,8 @@ export function createLanguageWorkbench(api) {
       hide();
       if (!pick || !s || tab.info?.readOnly || caret !== ta.selectionEnd || !sameCompletionWord(s.text, s.caret, s.from, text, caret)) return;
       let item = pick.item;
-      if (!s.lsp) { const applied = completionEdits(item, text, caret); tab.ed.editMany(applied.edits, applied.selection); changed(tab); return; }
+      // words and converted extensions' snippets go in here; a server's items through it
+      if (!s.lsp || item.snippetOf) { const applied = completionEdits(item, text, caret); tab.ed.editMany(applied.edits, applied.selection); changed(tab); return; }
       const client = s.lsp.doc.session.client;
       const epoch = generation;
       const own = controller = new AbortController();
@@ -835,5 +862,5 @@ export function createLanguageWorkbench(api) {
     return !!c?.manual?.() || preferLanguageCompletion(tab.ed.text(), tab.ed.selection()[0], c?.symbols() || []);
   }
   const hasCodeActions = (tab) => !!attached.get(tab)?.session.client.capabilities.codeActionProvider;
-  return { hover, signatureHelp, signatureTriggers, signature, quickFix, hasCodeActions, documentOutline, workspaceSymbols, openWorkspaceSymbol, callHierarchy, hierarchyCalls, openLocation, mount, filter, format, attach, changed, navigate, rename, reset, get, request, suggest, complete: suggest, cancelCompletions: () => { for (const c of completers.values()) c.hide(); api.onSuggest?.(); }, suggesting, dismissSuggest, symbols, preferLanguage, problems: () => [...diagnostics.values()].flatMap((d) => d.items.map((item) => ({ ...item, context: d.session.context }))), saved(tab) { const d = attached.get(tab); if (d) { changed(tab); const save = d.session.client.capabilities.textDocumentSync?.save; if (save) d.session.client.notify('textDocument/didSave', { textDocument: { uri: d.uri }, ...(save.includeText ? { text: tab.ed.text() } : {}) }); } } };
+  return { manage, serverState: (host, id) => state(host).extensions.find((x) => x.id === id) || null, serverError: (host, id) => state(host).errors[id] || '', hover, signatureHelp, signatureTriggers, signature, quickFix, hasCodeActions, documentOutline, workspaceSymbols, openWorkspaceSymbol, callHierarchy, hierarchyCalls, openLocation, mount, filter, format, attach, changed, navigate, rename, reset, get, request, suggest, complete: suggest, cancelCompletions: () => { for (const c of completers.values()) c.hide(); api.onSuggest?.(); }, suggesting, dismissSuggest, symbols, preferLanguage, problems: () => [...diagnostics.values()].flatMap((d) => d.items.map((item) => ({ ...item, context: d.session.context }))), saved(tab) { const d = attached.get(tab); if (d) { changed(tab); const save = d.session.client.capabilities.textDocumentSync?.save; if (save) d.session.client.notify('textDocument/didSave', { textDocument: { uri: d.uri }, ...(save.includeText ? { text: tab.ed.text() } : {}) }); } } };
 }

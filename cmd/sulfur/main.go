@@ -445,6 +445,8 @@ func localAPI(w http.ResponseWriter, r *http.Request) {
 		if ws := accept(w, r); ws != nil {
 			sulfur.LanguageSocket(ws, "", code.Creds{})
 		}
+	case path == "/api/sulfur/vsx/search" || path == "/api/sulfur/vsx/convert":
+		sulfur.VSXServe(w, r)
 	case path == "/api/sulfur/git" && r.Method == "POST":
 		var p struct {
 			Dir   string           `json:"dir"`

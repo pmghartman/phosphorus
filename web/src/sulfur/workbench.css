@@ -273,6 +273,10 @@
 .ide-twist { flex: none; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; color: var(--ide-fg); }
 .ide-twist .ide-ic { width: 14px; height: 14px; }
 .ide-fi { width: 16px; height: 16px; margin-right: 6px; stroke-width: 1.15; }
+/* a converted file icon theme's icons: images, or glyphs of its icon font */
+.ide-fi-img { object-fit: contain; flex: none; }
+.ide-fi-glyph { display: inline-flex; flex: none; align-items: center; justify-content: center; overflow: visible; line-height: 1; font-size: 16px; font-style: normal; color: var(--ide-fg); -webkit-font-smoothing: antialiased; }
+.ide-no-arrows .ide-tree .ide-twist { visibility: hidden; width: 4px; }
 .ide-fi-dir { color: #dcb67a; }
 .ide-hue-y { color: #cbcb41; } .ide-hue-b { color: #519aba; } .ide-hue-c { color: #4fc1ff; } .ide-hue-o { color: #e37933; }
 .ide-hue-r { color: #cc3e44; } .ide-hue-p { color: #a074c4; } .ide-hue-g { color: #8dc149; } .ide-hue-n { color: var(--ide-muted); }
@@ -925,6 +929,32 @@
 .ide-ext-state { color: var(--ide-muted); white-space: nowrap; }
 .ide-ext-state.error { color: var(--ide-err); }
 .ide-ext-acts { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+
+/* the Open VSX library: VS Code's extensions, what each would convert to */
+.ide-vsx-head { padding: 24px 32px 4px; max-width: 920px; }
+.ide-vsx-head h1 { margin: 0 0 6px; font-size: 26px; font-weight: 600; color: var(--ide-strong); }
+.ide-vsx-head p { margin: 0; color: var(--ide-muted); line-height: 1.5; }
+.ide-vsx-form { display: flex; gap: 8px; padding: 12px 32px 6px; max-width: 920px; flex-wrap: wrap; }
+.ide-vsx-q { flex: 1 1 260px; height: 28px; margin: 0; }
+.ide-vsx-sel { height: 28px; margin: 0; width: auto; }
+.ide-vsx-status { padding: 2px 32px 6px; color: var(--ide-muted); font-size: 12px; }
+.ide-vsx-list { max-width: 920px; padding: 0 20px; }
+.ide-vsx-row { padding: 10px 12px; border-bottom: 1px solid var(--ide-border); }
+.ide-vsx-ic { width: 48px; height: 48px; background: none; }
+.ide-vsx-ic img { width: 48px; height: 48px; object-fit: contain; }
+.ide-vsx-desc { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.ide-vsx-plan { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.ide-vsx-chip { font-size: 11px; padding: 1px 7px; border-radius: 9px; border: 1px solid var(--ide-border); color: var(--ide-muted); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.ide-vsx-row .ide-ext-main { overflow: hidden; }
+.ide-vsx-chip.converted { color: var(--ide-ok); border-color: color-mix(in srgb, var(--ide-ok) 45%, transparent); }
+.ide-vsx-chip.partial { color: var(--ide-warn); border-color: color-mix(in srgb, var(--ide-warn) 45%, transparent); }
+.ide-vsx-chip.skipped { opacity: 0.75; text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--ide-muted) 50%, transparent); }
+.ide-vsx-pager { display: flex; align-items: center; gap: 12px; padding: 12px 32px 32px; color: var(--ide-muted); font-size: 12px; }
+.ide-vsx-item { display: flex; align-items: center; gap: 12px; padding: 4px 0; border-bottom: 1px solid color-mix(in srgb, var(--ide-border) 60%, transparent); }
+.ide-vsx-item-name { color: var(--ide-strong); }
+.ide-vsx-item-meta { color: var(--ide-muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.ide-vsx-item-acts { margin-left: auto; display: flex; gap: 6px; flex: none; }
+.ide-vsx-server { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 4px 0; }
 
 /* --- source control: the commit, the changes, a diff ------------------------------------- */
 

@@ -24,6 +24,24 @@ type LanguageRequest struct {
 	Root           string `json:"root"`
 	Configuration  string `json:"configuration"`
 	BuildDirectory string `json:"buildDirectory"`
+	// install: a server a converted VS Code extension carries (vsx_convert.go)
+	Server *VSXServer `json:"server,omitempty"`
+}
+
+// VSXServer a converted extension's language server as the page asks a host to
+// install it: the host fetches the package for its own platform from Open VSX
+type VSXServer struct {
+	Name        string            `json:"name"`
+	Runtime     string            `json:"runtime"`
+	Transport   string            `json:"transport"`
+	Entry       string            `json:"entry"`
+	Args        []string          `json:"args"`
+	Extensions  []string          `json:"extensions"`
+	Filenames   []string          `json:"filenames"`
+	LanguageIDs map[string]string `json:"languageIds"`
+	Downloads   map[string]string `json:"downloads"`
+	// the client's initialization options, ${extensionPath} the package's folder on the host
+	InitializationOptions map[string]any `json:"initializationOptions,omitempty"`
 }
 
 // LanguageSocket serves one management operation or one project's LSP session.

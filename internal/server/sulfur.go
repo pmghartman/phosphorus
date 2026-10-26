@@ -23,7 +23,7 @@ var absDirRe = regexp.MustCompile(`^(/|[A-Za-z]:\\)`)
 
 // sulfurRoute Sulfur's REST, false for a path that isn't one
 func sulfurRoute(w http.ResponseWriter, r *http.Request, pathname string, q url.Values) bool {
-	if pathname != "/api/sulfur/toolchains" && pathname != "/api/sulfur/share" && pathname != "/api/sulfur/git" && pathname != "/api/sulfur/forgejo" {
+	if pathname != "/api/sulfur/toolchains" && pathname != "/api/sulfur/share" && pathname != "/api/sulfur/git" && pathname != "/api/sulfur/forgejo" && pathname != "/api/sulfur/vsx/search" && pathname != "/api/sulfur/vsx/convert" {
 		return false
 	}
 	if !isLocalOrPeer(r) || (r.Method != "GET" && !sameOrigin(r)) {
@@ -37,6 +37,9 @@ func sulfurRoute(w http.ResponseWriter, r *http.Request, pathname string, q url.
 		return true
 	}
 	switch {
+	// Open VSX's library and Convert & Install (internal/sulfur/vsx.go): the user's to browse
+	case pathname == "/api/sulfur/vsx/search" || pathname == "/api/sulfur/vsx/convert":
+		sulfur.VSXServe(w, r)
 	case pathname == "/api/sulfur/toolchains" && r.Method == "GET":
 		host := q.Get("host")
 		c, err := codeLogin(s, host)

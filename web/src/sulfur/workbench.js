@@ -43,6 +43,7 @@ import { excludeMatcher } from './excludes.js';
 import { applyTextEdits } from './language-client.js';
 import { sidebarRight, runTargetName, moveBookmarks } from './navigation.js';
 import { fileKind, renderFileIcon } from './file-icons.js';
+import { setContributions, removeContributions, contributedThemes, contributedIconThemes, contributedServers, languageName, themeCss, iconOf, iconFontCss, snippetItems } from './vsx-contributions.js';
 import { parseGitStatus, explorerChanges } from './source-control.js';
 import { parserFor } from '../lezer.js';
 import { readBrowserFile, saveBrowserFile } from './browser-files.js';
@@ -149,6 +150,7 @@ const IC = {
   save: 'M2 2h10l2 2v10H2zM5 2v4h6V2M5 14V9h6v5',
   saveAll: 'M5 1h8l2 2v9M2 4h8l2 2v9H2zM5 4v4h4V4M5 15v-4h4v4',
   bookmark: 'M4 2h8v12l-4-3-4 3z',
+  vsx: 'M2 7h12v7H2zM8 1v8M5 6l3 3 3-3M5 11h6',
   bookmarkPrev: 'M8 2h6v12l-3-2-3 2zM5 5L2 8l3 3',
   bookmarkNext: 'M2 2h6v12l-3-2-3 2zM11 5l3 3-3 3',
   bookmarkClear: 'M2 2h7v12l-3.5-2.5L2 14zM11 5l4 4M15 5l-4 4',
@@ -166,7 +168,35 @@ const icon = (k, cls = '') => (k === 'sulfur'
 
 const extOf = (p) => { const b = String(p).split('/').pop().toLowerCase(); return b.includes('.') ? b.split('.').pop() : b; };
 function fileIcon(p, dir = false, open = false) {
+  const theme = I?.iconTheme;
+  if (theme) {
+    // a theme's light set while the colors are light
+    const light = getComputedStyle(I.w.node).colorScheme === 'light';
+    const def = iconOf(theme.data, p, { directory: dir, open, root: dir && p === I.st.root, light });
+    if (def) return themedIcon(def, theme);
+  }
   return renderFileIcon(document, fileKind(p, { directory: dir, open, entries: dir ? I?.tree.get(p) || [] : [] }));
+}
+// every file icon drawn again: an icon theme worn or taken off
+function repaintIcons() {
+  paintTreeSoon();
+  for (const t of I.tabs) { const p = t.rel || t.localName; if (p && t.tabEl) t.tabEl.querySelector('.ide-fi')?.replaceWith(fileIcon(p)); }
+  paintCrumbs();
+}
+// a converted icon theme's icon: an image, or a glyph of its icon font
+function themedIcon(def, theme) {
+  if (def.src) {
+    const img = Object.assign(el('img', 'ic ide-ic ide-fi ide-file-icon ide-fi-img'), { src: def.src, alt: '', draggable: false });
+    img.setAttribute('aria-hidden', 'true');
+    return img;
+  }
+  const span = el('span', 'ic ide-ic ide-fi ide-file-icon ide-fi-glyph', def.char);
+  span.setAttribute('aria-hidden', 'true');
+  span.style.fontFamily = `"${iconFamily(theme.key, def.font)}"`;
+  if (def.color) span.style.color = def.color;
+  const size = def.size || theme.data.fonts?.[def.font]?.size;
+  if (size) span.style.fontSize = size;
+  return span;
 }
 
 // the editor's language names as VS Code says them in its status bar
@@ -345,6 +375,9 @@ const languages = createLanguageWorkbench({
   alive: (t) => !!I?.tabs.includes(t),
   // the other open files of t's kind, for word-based suggestions
   documents: (t) => (I ? I.tabs.filter((x) => x !== t && x.ed?.ready() && extOf(x.rel) === extOf(t.rel)).map((x) => x.ed.text()) : []),
+  // converted extensions' snippets for the file's language
+  snippets: (t) => snippetItems(t.rel || t.localName || ''),
+  convertedServers: () => contributedServers(),
   hosts: () => dkLiveHosts(),
   url: (host) => new URL(hostUrl(host, `/api/sulfur/languages?host=${encodeURIComponent(host)}`), location.href).href,
   problems: () => I && paintProblemsSoon(),
@@ -453,6 +486,8 @@ const SETTINGS = {
   'files.exclude': { def: '.git, node_modules, __pycache__, .DS_Store', type: 'string', title: 'Files: Exclude', about: 'Comma separated names (node_modules), extensions (.meta hides every *.meta file), globs (*.o, *.{png,jpg}) or paths (build/cache) hidden from the explorer, quick open and search. VS Code\'s **/ forms work too.' },
   'terminal.integrated.fontSize': { def: 13, type: 'number', min: 8, max: 40, title: 'Terminal › Integrated: Font Size', about: 'Controls the font size in pixels of the terminal. New terminals take it.' },
   'window.appearance': { def: 'system', type: 'enum', options: [['system', 'Follow the System'], ['light', 'Light'], ['dark', 'Dark']], title: 'Window: Appearance', about: 'Light or dark, whatever the system is set to, when Sulfur runs on its own. Inside the Phosphorus desktop, the desktop\'s own theme decides.' },
+  'workbench.colorTheme': { def: '', type: 'string', title: 'Workbench: Color Theme', about: 'A color theme from a converted VS Code extension (its extension id / theme id), worn over the palette. Empty for the palette’s own. Preferences: Color Theme picks one.' },
+  'workbench.iconTheme': { def: '', type: 'string', title: 'Workbench: File Icon Theme', about: 'A file icon theme from a converted VS Code extension (its extension id / theme id). Empty for Sulfur’s own icons. Preferences: File Icon Theme picks one.' },
   'workbench.restoreEditors': { def: true, type: 'boolean', title: 'Workbench: Restore Editors', about: 'Controls whether the open editors come back when Sulfur opens again.' },
   'sulfur.runners': { def: {}, type: 'object', title: 'Run: Runners', about: 'Commands that run a file, by extension, over the built-in ones, as {"py": "python3 -u \\"$f\\""}: $f is the file, $o a fresh output path beside it.' },
   'chat.includeActiveFile': { def: true, type: 'boolean', title: 'Chat: Include Active File', about: 'Controls whether the mesh agents see the file you have open, and know "this file" means it.' },
@@ -1075,7 +1110,10 @@ const MENUS = [
   ]],
   ['Appearance', () => [
     { label: 'Layout Mode', sub: () => SETTINGS['workbench.layout.mode'].options.map(([v, label]) => ({ label, checked: setting('workbench.layout.mode') === v, run: () => setSetting('workbench.layout.mode', v) })) },
-    { label: 'Color Theme', sub: () => PALETTES.map((t) => ({ label: t.label, detail: t.about, checked: paletteNow() === t.id, run: () => setPalette(t.id) })) },
+    { label: 'Color Theme', sub: () => PALETTES.map((t) => ({ label: t.label, detail: t.about, checked: paletteNow() === t.id && !setting('workbench.colorTheme'), run: () => { setSetting('workbench.colorTheme', ''); setPalette(t.id); } }))
+      .concat(contributedThemes().map((t) => ({ label: t.label, detail: t.extName, checked: setting('workbench.colorTheme') === t.key, run: () => setSetting('workbench.colorTheme', t.key) }))) },
+    { label: 'File Icon Theme', sub: () => [{ label: 'Sulfur', detail: 'Sulfur’s own icons', checked: !setting('workbench.iconTheme'), run: () => setSetting('workbench.iconTheme', '') }]
+      .concat(contributedIconThemes().map((t) => ({ label: t.label, detail: t.extName, checked: setting('workbench.iconTheme') === t.key, run: () => setSetting('workbench.iconTheme', t.key) }))) },
     // on its own, light or dark Sulfur's; in the desktop, the desktop's
     standalone
       ? { label: 'Light or Dark', sub: () => SETTINGS['window.appearance'].options.map(([v, label]) => ({ label, checked: setting('window.appearance') === v, run: () => setSetting('window.appearance', v) })) }
@@ -1122,7 +1160,7 @@ const MENUS = [
     ...(standalone?.app ? ['-', ...(meshLinked() || meshChecking() ? [] : [cmdItem('sulfur.mesh.connect', standalone.server ? `Connect to ${meshName()}…` : 'Connect to a Phosphorus Mesh…')]), ...(meshLinked() ? [cmdItem('sulfur.mesh.signOut', 'Sign Out of the Mesh')] : [])] : []),
   ]],
   ['Extensions', () => [
-    cmdItem('workbench.view.extensions', 'Show Extensions'), settingItem('sulfur.languageServerSettings', 'Language Server Settings'), '-',
+    cmdItem('workbench.view.extensions', 'Show Extensions'), cmdItem('sulfur.extensions.openVSX', 'Browse Open VSX…'), settingItem('sulfur.languageServerSettings', 'Language Server Settings'), '-',
     cmdItem('workbench.extensions.action.refreshExtension', 'Reload Extensions'), '-',
     cmdItem('sulfur.extensions.guide', 'Extension Guide'), cmdItem('sulfur.extensions.create', 'Create an Extension…'),
   ]],
@@ -3266,8 +3304,12 @@ function keyFor(id) {
 function buildKeys() {
   const keys = new Map();
   const add = (k, id) => { if (k) keys.set(k, [...(keys.get(k) || []), id]); };
-  const dropped = new Set(I.userKeys.filter((k) => k.command.startsWith('-')).map((k) => `${k.key}\n${k.command.slice(1)}`));
+  // converted extensions' keys to Sulfur's commands (a keymap's), under the user's own
+  const extKeys = [...I.exts.values()].filter((x) => x.state === 'on' && declarative(x)).flatMap((x) => (Array.isArray(x.manifest.contributes?.keybindings) ? x.manifest.contributes.keybindings : []))
+    .filter((k) => typeof k?.key === 'string' && typeof k.command === 'string').map((k) => ({ key: normKey(IS_MAC && typeof k.mac === 'string' ? k.mac : k.key), command: k.command }));
+  const dropped = new Set([...extKeys, ...I.userKeys].filter((k) => k.command.startsWith('-')).map((k) => `${k.key}\n${k.command.slice(1)}`));
   for (const c of I.commands.values()) for (const k of [c.key, ...c.alt]) if (k && !dropped.has(`${k}\n${c.id}`) && !dropped.has(`\n${c.id}`)) add(k, c.id);
+  for (const k of extKeys) if (!k.command.startsWith('-') && I.commands.has(k.command)) keys.set(k.key, [k.command, ...(keys.get(k.key) || []).filter((c) => c !== k.command)]);
   // the user's own first, over any default on the same keys
   for (const u of I.userKeys) if (!u.command.startsWith('-') && u.key) keys.set(u.key, [u.command, ...(keys.get(u.key) || []).filter((x) => x !== u.command)]);
   I.keys = keys;
@@ -3502,6 +3544,7 @@ function registerCommands() {
   C('sulfur.mesh.open', 'Open the Mesh’s Machines', () => meshOpen(), { when: () => !!standalone?.app && localDesktop() && !!standalone.meshUser, category: 'Mesh' });
   C('sulfur.mesh.signOut', 'Sign Out of the Mesh', () => meshSignOut(), { when: () => !!standalone?.app && !!standalone.meshUser, category: 'Mesh' });
   C('workbench.action.selectTheme', 'Color Theme', () => pickTheme(), { key: 'ctrl+k ctrl+t', category: 'Preferences' });
+  C('workbench.action.selectIconTheme', 'File Icon Theme', () => pickIconTheme(), { category: 'Preferences' });
   C('workbench.action.toggleLightDarkThemes', 'Toggle between Light and Dark', () => setSetting('window.appearance', document.documentElement.dataset.theme === 'light' ? 'dark' : 'light'), { when: () => !!standalone, category: 'Preferences' });
   C('sulfur.selectHost', 'Switch Workspace Machine…', () => pickHost('Switch workspace and execution to a machine').then((h) => h && switchMachine(h)), { category: 'Phosphorus' });
   C('sulfur.selectRunHost', 'Select Default Host for New Terminals and Runs…', () => pickHost('Select the host new terminals and runs use').then((h) => h && setRunHost(h)), { category: 'Phosphorus' });
@@ -3519,6 +3562,7 @@ function registerCommands() {
   // extensions
   C('sulfur.extensions.guide', 'Open the Extension Guide', () => openGuide(), { category: 'Extensions' });
   C('sulfur.extensions.create', 'Create New Extension…', () => createExtension(), { category: 'Extensions' });
+  C('sulfur.extensions.openVSX', 'Browse Open VSX…', () => openVsxLibrary(), { category: 'Extensions' });
   C('workbench.extensions.action.refreshExtension', 'Reload Extensions', () => loadExtensions(true), { category: 'Developer' });
   C('workbench.action.reloadWindow', 'Reload Window', () => { const w = I.w; const open = { dir: I.st.root }; teardown(); ideStart(w, open); }, { category: 'Developer' });
   buildKeys();
@@ -5145,7 +5189,7 @@ function paintStatusNow() {
     sbSet(S.indent, 'textContent', info.indent === 'tab' ? `Tab Size: ${formattingOptions().tabSize}` : `Spaces: ${info.indent}`);
     sbSet(S.enc, 'textContent', 'UTF-8');
     sbSet(S.eol, 'textContent', info.eol);
-    sbSet(S.lang, 'textContent', LANG_NAMES[info.lang] || info.lang);
+    sbSet(S.lang, 'textContent', LANG_NAMES[info.lang] || languageName(info.lang) || info.lang);
     sbSet(S.state, 'textContent', info.readOnly && info.ready ? 'read-only' : info.state);
     S.state.classList.toggle('bad', info.bad);
   }
@@ -7727,21 +7771,92 @@ async function addFolderDialog() {
 // --- color themes ---------------------------------------------------------------------------
 
 async function pickTheme() {
-  const cur = paletteNow();
+  const worn = setting('workbench.colorTheme');
+  const cur = worn && contributedThemes().some((t) => t.key === worn) ? `ext:${worn}` : paletteNow();
+  const palette = paletteNow();
   const look = setting('window.appearance');
   // on its own, light and dark Sulfur's to pick; in the desktop, the desktop's
   const appearance = standalone ? [['system', 'Follow the System', 'light or dark as the system is'], ['light', 'Light', 'Phosphorus light'], ['dark', 'Dark', 'Phosphorus dark']]
     .map(([id, label, description], i) => ({ label, description, detail: id === look ? 'current' : '', value: `look:${id}`, sep: i === 0 ? 'Appearance' : '' })) : [];
-  const items = [...appearance, ...PALETTES.map((t, i) => ({ label: t.label, description: t.about, detail: t.id === cur ? 'current' : '', value: t.id, sep: i === 0 ? 'Color Theme, phosphorus wide' : '' }))];
+  const items = [...appearance, ...PALETTES.map((t, i) => ({ label: t.label, description: t.about, detail: t.id === cur ? 'current' : '', value: t.id, sep: i === 0 ? 'Color Theme, phosphorus wide' : '' })),
+    // converted VS Code extensions' themes, Sulfur's alone, worn over the palette
+    ...contributedThemes().map((t, i) => ({ label: t.label, description: t.extName, detail: `ext:${t.key}` === cur ? 'current' : '', value: `ext:${t.key}`, sep: i === 0 ? 'Color Theme, from converted extensions' : '' }))];
   // each theme worn while it's lit, as VS Code previews them; the one before back on Escape
-  const preview = (id) => { if (I && id && !String(id).startsWith('look:') && id !== paletteNow()) setPalette(id); };
+  const preview = (id) => {
+    if (!I || !id || String(id).startsWith('look:')) return;
+    if (String(id).startsWith('ext:')) { wearExtTheme(id.slice(4)); return; }
+    wearExtTheme('');
+    if (id !== paletteNow()) setPalette(id);
+  };
   const v = await pick(items, { title: 'Color Theme', placeholder: standalone ? 'Select Color Theme, or Light or Dark' : 'Select Color Theme (light or dark follows the desktop)', onActive: preview, selected: cur });
-  if ((!v || v === 'look:system') && I && paletteNow() !== cur) setPalette(cur);
+  if ((!v || v === 'look:system') && I) { if (paletteNow() !== palette) setPalette(palette); wearExtTheme(worn); }
   if (!v || !I) return;
+  if (v.startsWith('ext:')) { if (paletteNow() !== palette) setPalette(palette); setSetting('workbench.colorTheme', v.slice(4)); return; }
+  if (worn) setSetting('workbench.colorTheme', '');
   if (v.startsWith('look:')) {
     if (v !== 'look:system') setPalette('phosphorus');
     setSetting('window.appearance', v.slice(5));
   } else setPalette(v);
+}
+
+// a converted extension's color theme over the palette's tokens ('' none), its file read once
+async function wearExtTheme(key) {
+  const t = key ? contributedThemes().find((x) => x.key === key) : null;
+  I.extThemeWant = key || '';
+  let css = '';
+  if (t) {
+    try { css = themeCss(await t.data()); } catch (err) { notify('warning', `The color theme ${t.label} couldn’t be read: ${err.message}`); }
+    if (!I || I.extThemeWant !== key) return;
+  }
+  let tag = document.getElementById('sulfur-ext-theme');
+  if (css && !tag) { tag = Object.assign(document.createElement('style'), { id: 'sulfur-ext-theme' }); document.head.append(tag); }
+  if (tag) tag.textContent = css;
+  I.w.node.classList.toggle('ide-ext-theme', !!css);
+  const now = css ? key : '';
+  if (I.extThemeNow !== now) { I.extThemeNow = now; requestAnimationFrame(() => I && termsRetheme()); }
+}
+
+// a converted extension's file icon theme ('' Sulfur's own), its icon fonts put up
+async function wearIconTheme(key) {
+  const t = key ? contributedIconThemes().find((x) => x.key === key) : null;
+  I.iconThemeWant = key || '';
+  let data = null;
+  if (t) {
+    try { data = await t.data(); } catch (err) { notify('warning', `The file icon theme ${t.label} couldn’t be read: ${err.message}`); }
+    if (!I || I.iconThemeWant !== key) return;
+  }
+  if ((I.iconTheme?.key || '') === (data ? key : '')) return;
+  I.iconTheme = data ? { key, data } : null;
+  let tag = document.getElementById('sulfur-ext-icons');
+  const css = data ? iconFontCss(data, (id) => iconFamily(key, id)) : '';
+  if (css && !tag) { tag = Object.assign(document.createElement('style'), { id: 'sulfur-ext-icons' }); document.head.append(tag); }
+  if (tag) tag.textContent = css;
+  I.w.node.classList.toggle('ide-no-arrows', !!data?.hidesExplorerArrows);
+  repaintIcons();
+}
+const iconFamily = (key, id) => `sulfur-icons-${key.replace(/[^\w-]+/g, '-')}-${id}`;
+// what themes are worn followed to the settings, and to the extensions enabled
+function applyExtThemes() {
+  if (!I) return;
+  const color = contributedThemes().some((t) => t.key === setting('workbench.colorTheme')) ? setting('workbench.colorTheme') : '';
+  const icons = contributedIconThemes().some((t) => t.key === setting('workbench.iconTheme')) ? setting('workbench.iconTheme') : '';
+  const changed = (I.extThemeWant ?? null) !== color || (I.iconThemeWant ?? null) !== icons;
+  if ((I.extThemeWant ?? null) !== color) wearExtTheme(color);
+  if ((I.iconThemeWant ?? null) !== icons) wearIconTheme(icons);
+  // the extensions' pages say which theme is worn
+  if (changed) for (const t of I.tabs) if (t.page?.startsWith('ext:')) t.paint?.();
+}
+
+async function pickIconTheme() {
+  const worn = setting('workbench.iconTheme');
+  const items = [{ label: 'Sulfur', description: 'Sulfur’s own icons', detail: worn ? '' : 'current', value: 'none' },
+    ...contributedIconThemes().map((t, i) => ({ label: t.label, description: t.extName, detail: t.key === worn ? 'current' : '', value: t.key, sep: i === 0 ? 'From converted extensions' : '' })),
+    { label: 'Browse Open VSX for File Icon Themes…', value: 'browse', sep: 'Open VSX' }];
+  const v = await pick(items, { title: 'File Icon Theme', placeholder: 'Select File Icon Theme', onActive: (id) => { if (I && id && id !== 'browse') wearIconTheme(id === 'none' ? '' : id); }, selected: worn || 'none' });
+  if (!I) return;
+  if (v === 'browse') { wearIconTheme(worn); openVsxLibrary('icon theme'); return; }
+  if (!v) { wearIconTheme(worn); return; }
+  setSetting('workbench.iconTheme', v === 'none' ? '' : v);
 }
 
 const sectionTitle = (t) => el('div', 'ide-sec-head static', t.toUpperCase());
@@ -7839,6 +7954,7 @@ function applySettings() {
   // the terminals recolored once the theme, or a custom one's overrides, changed
   const theme = paletteNow() + (document.getElementById('phosphorus-custom')?.textContent || '');
   if (I.themeNow !== theme) { I.themeNow = theme; requestAnimationFrame(() => termsRetheme()); }
+  applyExtThemes();
   I.exclude = null;
   paintTreeSoon();
   if (I.chat) paintChatCtx();
@@ -8457,6 +8573,7 @@ function buildExtView() {
   q.addEventListener('input', () => { paintExtView(); languages.filter(q.value); });
   v.focus = () => q.focus();
   v.acts = [
+    btn('', 'vsx', 'Browse Open VSX…', () => run('sulfur.extensions.openVSX')),
     btn('', 'plus', 'Create New Extension…', () => run('sulfur.extensions.create')),
     btn('', 'refresh', 'Reload Extensions', () => run('workbench.extensions.action.refreshExtension')),
   ];
@@ -8501,8 +8618,11 @@ function paintExtView() {
   }));
   E.note.replaceChildren();
   if (!all.length && !E.langCount) {
-    E.note.append(el('p', '', 'No extensions yet. An extension is a folder in ~/.sulfur/extensions: a package.json and a module that exports activate(api).'));
-    const make = Object.assign(el('button', 'ide-button', 'Create New Extension'), { type: 'button' });
+    E.note.append(el('p', '', 'No extensions yet. Convert one of VS Code’s from Open VSX (themes, icons, languages, snippets, language servers), or write your own: a folder in ~/.sulfur/extensions with a package.json and a module that exports activate(api).'));
+    const browse = Object.assign(el('button', 'ide-button', 'Browse Open VSX'), { type: 'button' });
+    browse.addEventListener('click', () => run('sulfur.extensions.openVSX'));
+    E.note.append(browse);
+    const make = Object.assign(el('button', 'ide-button secondary', 'Create New Extension'), { type: 'button' });
     make.addEventListener('click', () => run('sulfur.extensions.create'));
     const read = Object.assign(el('button', 'ide-link', 'Read the Extension Guide'), { type: 'button' });
     read.addEventListener('click', () => run('sulfur.extensions.guide'));
@@ -8577,7 +8697,8 @@ function uncontribute(x, all) {
 }
 
 async function setExtEnabled(x, on) {
-  if (on && !I.st.ext.enabled[x.id] && I.st.ext.enabled[x.id] !== false) {
+  // a converted extension is data: nothing of it runs, so nothing to trust
+  if (on && !declarative(x) && !I.st.ext.enabled[x.id] && I.st.ext.enabled[x.id] !== false) {
     const v = await ask({
       title: `Enable the extension '${extName(x)}'?`,
       detail: 'It runs sandboxed, away from this page and your login, but through Sulfur it can read and write the files in your space, type commands into terminals on the hosts you’re logged into, and answer as an agent. Enable only what you wrote or trust.',
@@ -8590,8 +8711,29 @@ async function setExtEnabled(x, on) {
   if (on) activateExt(x); else { deactivateExt(x); paintExtView(); }
 }
 
+// a VS Code extension converted from Open VSX (internal/sulfur/vsx_convert.go): no main
+// module, only what it declares
+const declarative = (x) => !!x.manifest?.sulfur?.declarative && !x.manifest.main;
+function applyDeclarative(x, on) {
+  if (on) {
+    setContributions(x.id, x.manifest, (p) => {
+      const c = cleanPath(filesJoin(x.dir, p));
+      return c && under(c, x.dir) ? readUser(c) : Promise.resolve(null);
+    });
+  } else removeContributions(x.id);
+  x.state = on ? 'on' : 'off';
+  if (on) log(`enabled ${x.id}: its themes, languages, grammars, snippets and keys`, extChannel(x));
+  buildKeys();
+  applyExtThemes();
+  // open editors take up (or let go of) its grammars and languages
+  for (const t of I.tabs) t.ed?.refreshLanguage?.();
+  repaintIcons();
+  paintExtView();
+}
+
 async function activateExt(x) {
   if (!I || x.bad || x.state === 'on' || x.state === 'loading') return;
+  if (declarative(x)) { applyDeclarative(x, true); return; }
   x.state = 'loading';
   x.error = '';
   paintExtView();
@@ -8627,6 +8769,7 @@ function extFailed(x, why) {
 }
 
 function deactivateExt(x) {
+  if (declarative(x)) { if (x.state === 'on') applyDeclarative(x, false); return; }
   if (x.port) {
     try { x.port.postMessage({ t: 'deactivate' }); } catch {}
     const frame = x.frame;
@@ -8852,7 +8995,8 @@ async function paintExtPage(t, x) {
   const ic = el('div', 'ide-extp-ic');
   ic.append(icon('ext'));
   const info = el('div', 'ide-extp-info');
-  info.append(el('h1', '', extName(x)), el('div', 'ide-extp-id', `${x.id}${m.version ? ` · v${m.version}` : ''} · ${x.dir}`), el('p', '', x.bad || m.description || ''));
+  const from = m.sulfur?.converted;
+  info.append(el('h1', '', extName(x)), el('div', 'ide-extp-id', `${x.id}${m.version ? ` · v${m.version}` : ''} · ${x.dir}${from ? ` · converted from ${from.namespace}.${from.name} on Open VSX${from.targetPlatform && from.targetPlatform !== 'universal' ? ` (${from.targetPlatform})` : ''}` : ''}`), el('p', '', x.bad || m.description || ''));
   const acts = el('div', 'ide-extp-acts');
   if (!x.bad) {
     const b = Object.assign(el('button', `ide-button${x.state === 'on' ? ' secondary' : ''}`, x.state === 'on' ? 'Disable' : 'Enable'), { type: 'button' });
@@ -8879,6 +9023,7 @@ async function paintExtPage(t, x) {
       contrib.append(r);
     }
   }
+  if (declarative(x)) paintConvertedContrib(x, contrib);
   if (c.runners && Object.keys(c.runners).length) {
     contrib.append(el('h2', '', 'Runners'));
     for (const [ext, cmd] of Object.entries(c.runners)) {
@@ -8978,6 +9123,295 @@ export function activate(api, context) {
 
 export function deactivate() {}
 `;
+
+// --- Open VSX: VS Code's extensions converted to Sulfur's -------------------------------------
+// The library pages through open-vsx.org with what each extension would convert to (read from
+// its package.json by the app's server, internal/sulfur/vsx.go); Convert & Install has the server
+// fetch and convert the package and writes the result to ~/.sulfur/extensions, enabled
+
+const VSX_SORTS = [['relevance', 'Relevance'], ['downloads', 'Most Downloads'], ['rating', 'Highest Rated'], ['updated', 'Recently Updated']];
+const VSX_CATEGORIES = ['', 'Themes', 'Programming Languages', 'Snippets', 'Keymaps', 'Linters', 'Formatters', 'Language Packs', 'Other'];
+const VSX_PAGE = 20;
+const vsxKinds = { theme: 'color theme', iconTheme: 'icon theme', language: 'language', grammar: 'grammar', snippets: 'snippets', keybindings: 'keys', languageServer: 'language server' };
+const countLabel = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(n >= 1e7 ? 0 : 1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(n >= 1e4 ? 0 : 1)}K` : String(n || 0));
+
+async function vsxCall(path, init) {
+  const r = await fetch(path, init);
+  let b = {};
+  try { b = await r.json(); } catch {}
+  if (!r.ok) throw new Error(b.error || `${r.status} ${r.statusText}`);
+  return b;
+}
+
+function openVsxLibrary(query = '') {
+  const t = openPage('vsx', 'Open VSX', 'vsx', (pg) => mountVsxLibrary(pg));
+  if (query && t.vsx) { t.vsx.q.value = query; t.vsx.search(0); }
+  t.vsx?.q.focus();
+  return t;
+}
+
+function mountVsxLibrary(t) {
+  const head = el('div', 'ide-vsx-head');
+  head.append(el('h1', '', 'Open VSX'), el('p', '', 'VS Code extensions from open-vsx.org, converted to Sulfur’s: color and file icon themes, languages, grammars, snippets, keymaps and the language servers they carry. Their own code doesn’t run in Sulfur; each conversion says what it kept and what it left out.'));
+  const form = el('div', 'ide-vsx-form');
+  const q = Object.assign(el('input', 'ide-input ide-vsx-q'), { type: 'search', placeholder: 'Search Open VSX', spellcheck: false });
+  q.setAttribute('aria-label', 'Search Open VSX');
+  const sort = el('select', 'ide-input ide-vsx-sel');
+  sort.setAttribute('aria-label', 'Sort by');
+  for (const [v, label] of VSX_SORTS) sort.append(Object.assign(el('option', '', label), { value: v }));
+  const cat = el('select', 'ide-input ide-vsx-sel');
+  cat.setAttribute('aria-label', 'Category');
+  for (const c of VSX_CATEGORIES) cat.append(Object.assign(el('option', '', c || 'All Categories'), { value: c }));
+  form.append(q, cat, sort);
+  const status = el('div', 'ide-vsx-status');
+  status.setAttribute('role', 'status');
+  const list = el('div', 'ide-vsx-list');
+  list.setAttribute('role', 'list');
+  const pager = el('div', 'ide-vsx-pager');
+  t.view.append(head, form, status, list, pager);
+  const S = t.vsx = { q, offset: 0, total: 0, seq: 0, busy: new Map(), entries: [] };
+  let timer = 0;
+  S.search = async (offset = 0) => {
+    clearTimeout(timer);
+    const seq = (S.seq += 1);
+    S.offset = offset;
+    status.textContent = 'Searching Open VSX…';
+    const params = new URLSearchParams({ q: q.value.trim(), offset: String(offset), size: String(VSX_PAGE), sort: q.value.trim() || sort.value !== 'relevance' ? sort.value : 'downloads' });
+    if (cat.value) params.set('category', cat.value);
+    try {
+      const page = await vsxCall(`/api/sulfur/vsx/search?${params}`);
+      if (seq !== S.seq || !I) return;
+      S.total = page.totalSize || 0;
+      S.entries = page.extensions || [];
+      paint();
+      // a page turned: back to its first result
+      if (offset) status.scrollIntoView?.({ block: 'start' }); else t.view.scrollTop = 0;
+    } catch (err) {
+      if (seq !== S.seq) return;
+      S.entries = [];
+      paint();
+      status.textContent = `Open VSX couldn’t be reached: ${err.message}`;
+    }
+  };
+  function paint() {
+    const from = S.total ? S.offset + 1 : 0, to = S.offset + S.entries.length;
+    status.textContent = S.total ? `${from}–${to} of ${S.total.toLocaleString()}` : 'No extensions match.';
+    list.replaceChildren(...S.entries.map(vsxRow));
+    pager.replaceChildren();
+    const prev = Object.assign(el('button', 'ide-button secondary', 'Previous'), { type: 'button', disabled: S.offset === 0 });
+    prev.addEventListener('click', () => S.search(Math.max(0, S.offset - VSX_PAGE)));
+    const next = Object.assign(el('button', 'ide-button secondary', 'Next'), { type: 'button', disabled: to >= S.total });
+    next.addEventListener('click', () => S.search(S.offset + VSX_PAGE));
+    if (S.total > VSX_PAGE) pager.append(prev, el('span', '', `Page ${Math.floor(S.offset / VSX_PAGE) + 1} of ${Math.ceil(S.total / VSX_PAGE)}`), next);
+  }
+  function vsxRow(e) {
+    const id = vsxId(e.namespace, e.name);
+    const have = I.exts.get(id);
+    const row = Object.assign(el('div', 'ide-ext ide-vsx-row'), { tabIndex: 0 });
+    row.setAttribute('role', 'listitem');
+    const ic = el('span', 'ide-ext-ic ide-vsx-ic');
+    if (e.icon) {
+      const img = Object.assign(el('img', ''), { src: e.icon, alt: '', loading: 'lazy', draggable: false });
+      img.addEventListener('error', () => img.replaceWith(icon('ext')));
+      ic.append(img);
+    } else ic.append(icon('ext'));
+    const main = el('div', 'ide-ext-main');
+    const top = el('div', 'ide-ext-top');
+    top.append(el('span', 'ide-ext-name', e.displayName || e.name), el('span', 'ide-ext-ver', `v${e.version}`));
+    if (e.deprecated) top.append(el('span', 'ide-ext-state error', 'Deprecated'));
+    const desc = el('div', 'ide-ext-desc ide-vsx-desc', e.description || '');
+    desc.title = e.description || '';
+    const foot = el('div', 'ide-ext-foot');
+    const by = el('span', 'ide-ext-by', `${e.namespace}${e.verified ? ' ✓' : ''}`);
+    by.title = e.verified ? `${e.namespace}, a verified publisher` : e.namespace;
+    foot.append(by, el('span', 'ide-ext-state', `↓ ${countLabel(e.downloadCount)}`));
+    if (e.averageRating) foot.append(el('span', 'ide-ext-state', `★ ${e.averageRating.toFixed(1)}`));
+    // what it would become: each kind a chip, its status its color
+    const plan = el('div', 'ide-vsx-plan');
+    const kept = (e.plan || []).filter((p) => p.status !== 'skipped');
+    for (const p of e.plan || []) {
+      const chip = el('span', `ide-vsx-chip ${p.status}`, p.status !== 'skipped' ? p.name : p.kind === 'code' ? 'no code' : p.kind === 'extensionPack' ? `${p.name} not included` : `no ${p.name}`);
+      chip.title = `${p.status}${p.detail ? `: ${p.detail}` : ''}`;
+      plan.append(chip);
+    }
+    if (e.planError) plan.append(el('span', 'ide-vsx-chip skipped', `plan unknown: ${e.planError}`));
+    else if (!kept.length) plan.append(el('span', 'ide-vsx-chip skipped', 'nothing Sulfur can use'));
+    const acts = el('span', 'ide-ext-acts');
+    const busy = S.busy.get(id);
+    const label = busy ? 'Converting…' : !have ? 'Convert & Install' : have.manifest?.version === e.version ? 'Reinstall' : `Update to v${e.version}`;
+    const go = Object.assign(el('button', `ide-button small${have && have.manifest?.version === e.version ? ' secondary' : ''}`, label), { type: 'button', disabled: !!busy || (!kept.length && !e.planError) });
+    go.addEventListener('click', (ev) => { ev.stopPropagation(); vsxInstall(e, () => paint()); });
+    if (have) acts.append(el('span', 'ide-ext-state', `v${have.manifest?.version || '?'} installed`));
+    acts.append(go);
+    foot.append(acts);
+    main.append(top, desc, foot, plan);
+    row.append(ic, main);
+    const open = () => { if (have) openExtPage(have); else window.open(`https://open-vsx.org/extension/${encodeURIComponent(e.namespace)}/${encodeURIComponent(e.name)}`, '_blank', 'noopener'); };
+    row.addEventListener('click', open);
+    row.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' && ev.target === row) open(); });
+    row.title = have ? 'Open its page' : 'Open it on open-vsx.org';
+    return row;
+  }
+  S.paint = paint;
+  q.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => S.search(0), 350); });
+  q.addEventListener('keydown', (e) => { if (e.key === 'Enter') S.search(0); });
+  sort.addEventListener('change', () => S.search(0));
+  cat.addEventListener('change', () => S.search(0));
+  t.paint = () => { if (S.entries.length) paint(); };
+  S.search(0);
+}
+
+const vsxId = (ns, name) => `${ns}.${name}`.toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^[.-]+|[.-]+$/g, '');
+
+// a package converted by the app's server, its files written as an extension of the user's, enabled
+async function vsxInstall(e, repaint = () => {}) {
+  const id = vsxId(e.namespace, e.name);
+  const lib = I.tabs.find((x) => x.page === 'vsx')?.vsx;
+  lib?.busy.set(id, true);
+  repaint();
+  const note = notify('info', `Converting ${e.displayName || e.name} from Open VSX…`, { progress: true, sticky: true });
+  try {
+    const conv = await vsxCall('/api/sulfur/vsx/convert', jsonPost({ namespace: e.namespace, name: e.name, version: e.version || '', commands: [...I.commands.keys()].filter((c) => !I.commands.get(c).ext) }));
+    if (!I) return;
+    const dir = filesJoin(EXT_DIR(), conv.id);
+    // an older version's folder replaced whole
+    const had = I.exts.get(conv.id);
+    if (had) {
+      deactivateExt(had);
+      try { await filesCall(HOME, 'delete', jsonPost({ path: dir })); } catch {}
+    }
+    const files = Object.entries(conv.files || {});
+    let n = 0;
+    for (const [rel, text] of files) {
+      const p = cleanPath(filesJoin(dir, rel));
+      if (!p || !under(p, dir)) continue;
+      note.update(`Installing ${conv.manifest?.displayName || conv.id}: ${rel}`);
+      await writeText(p, text, 'Open VSX');
+      note.progress((n += 1) / files.length);
+    }
+    I.st.ext.enabled[conv.id] = true;
+    saveState();
+    await loadExtensions();
+    if (!I) return;
+    const x = I.exts.get(conv.id);
+    const c = conv.manifest?.contributes || {};
+    const counts = (conv.report || []).reduce((m, r) => ({ ...m, [r.status]: (m[r.status] || 0) + 1 }), {});
+    const actions = [];
+    if (x) actions.push({ label: 'Show Conversion', run: () => openExtPage(x) });
+    const theme = contributedThemes().find((th) => th.ext === conv.id);
+    if (theme) actions.push({ label: 'Set Color Theme', run: () => setSetting('workbench.colorTheme', theme.key) });
+    const icons = contributedIconThemes().find((th) => th.ext === conv.id);
+    if (icons) actions.push({ label: 'Set File Icon Theme', run: () => setSetting('workbench.iconTheme', icons.key) });
+    if (c.languageServers?.length && x) actions.push({ label: 'Install Language Server…', run: () => { openExtPage(x); } });
+    notify('info', `Installed ${conv.manifest?.displayName || conv.id} v${conv.manifest?.version}: ${counts.converted || 0} converted, ${counts.partial || 0} in part, ${counts.skipped || 0} left out.`, { source: 'Open VSX', actions });
+    if (x) openExtPage(x);
+  } catch (err) {
+    notify('error', `Couldn’t convert ${e.displayName || e.name}: ${err.message}`, { source: 'Open VSX' });
+  } finally {
+    note.close();
+    lib?.busy.delete(id);
+    if (I) { repaint(); lib?.paint(); }
+  }
+}
+
+// a converted extension's page: what it declares, and its language server on a host
+function paintConvertedContrib(x, contrib) {
+  const m = x.manifest;
+  const c = m.contributes || {};
+  const on = x.state === 'on';
+  const section = (title) => contrib.append(el('h2', '', title));
+  const row = (cells, acts = []) => {
+    const r = el('div', 'ide-vsx-item');
+    for (const [cls, text] of cells) r.append(el('span', cls, text));
+    if (acts.length) { const a = el('span', 'ide-vsx-item-acts'); a.append(...acts); r.append(a); }
+    contrib.append(r);
+  };
+  const button = (label, run, secondary = true) => { const b = Object.assign(el('button', `ide-button small${secondary ? ' secondary' : ''}`, label), { type: 'button', disabled: !on }); b.addEventListener('click', run); return b; };
+  if (c.themes?.length) {
+    section('Color Themes');
+    for (const t of c.themes) {
+      const key = `${x.id}/${t.id || t.label}`;
+      const worn = setting('workbench.colorTheme') === key;
+      row([['ide-vsx-item-name', t.label], ['ide-vsx-item-meta', t.uiTheme]], [button(worn ? 'Current' : 'Set Color Theme', () => setSetting('workbench.colorTheme', worn ? '' : key), worn)]);
+    }
+  }
+  if (c.iconThemes?.length) {
+    section('File Icon Themes');
+    for (const t of c.iconThemes) {
+      const key = `${x.id}/${t.id || t.label}`;
+      const worn = setting('workbench.iconTheme') === key;
+      row([['ide-vsx-item-name', t.label]], [button(worn ? 'Current' : 'Set File Icon Theme', () => setSetting('workbench.iconTheme', worn ? '' : key), worn)]);
+    }
+  }
+  if (c.languages?.length) {
+    section('Languages');
+    for (const l of c.languages) row([['ide-vsx-item-name', l.aliases?.[0] || l.id], ['ide-vsx-item-meta', [...(l.extensions || []).map((e) => `.${e}`), ...(l.filenames || [])].join(' ')]]);
+  }
+  if (c.grammars?.length) {
+    section('Grammars');
+    for (const g of c.grammars) row([['ide-vsx-item-name', g.scopeName], ['ide-vsx-item-meta', g.language ? `for ${g.language}` : 'included by others']]);
+  }
+  if (c.snippets?.length) {
+    section('Snippets');
+    for (const s of c.snippets) row([['ide-vsx-item-name', (s.languages || [s.language]).join(', ')], ['ide-vsx-item-meta', (s.extensions || []).map((e) => `.${e}`).join(' ')]]);
+  }
+  if (c.keybindings?.length) {
+    section('Keybindings');
+    for (const k of c.keybindings) {
+      const keys = el('span', 'ide-key-keys');
+      keys.append(...String(IS_MAC && k.mac ? k.mac : k.key).split(' ').map((part) => el('kbd', '', keyLabel(normKey(part)))));
+      const r = el('div', 'ide-key-row');
+      r.append(el('span', '', k.command.startsWith('-') ? `Removes ${I.commands.get(k.command.slice(1))?.title || k.command.slice(1)}` : I.commands.get(k.command)?.title || k.command), keys, el('span', 'ide-key-id', k.command));
+      contrib.append(r);
+    }
+  }
+  for (const s of c.languageServers || []) {
+    section('Language Server');
+    const id = `vsx.${x.id}`;
+    const box = el('div', 'ide-vsx-server');
+    const host = el('select', 'ide-input ide-vsx-sel');
+    host.setAttribute('aria-label', 'Host');
+    for (const h of dkLiveHosts()) host.append(Object.assign(el('option', '', h), { value: h }));
+    host.value = I.vsxHost && dkLiveHosts().includes(I.vsxHost) ? I.vsxHost : runHost() || host.value;
+    const state = el('span', 'ide-ext-state');
+    const acts = el('span', 'ide-vsx-item-acts');
+    const detail = el('p', 'ide-run-note', `${s.name}: ${s.entry.replace(/^extension\//, '')}, run ${s.runtime === 'node' ? `by Node.js on the host (over ${s.transport === 'stdio' ? 'stdio' : 'node IPC'})` : 'as a program on the host'} for ${(s.languages || []).join(', ')} files (${(s.extensions || []).map((e) => `.${e}`).join(' ')}). Installing downloads the extension’s package for the host’s platform from Open VSX and runs its server as your user there.`);
+    const paintServer = () => {
+      const h = host.value;
+      const st = languages.serverState(h, id);
+      const err = languages.serverError(h, id);
+      state.textContent = err ? `Error: ${err}` : !st ? 'Not installed' : st.enabled ? `Installed and enabled${st.manifest?.platform ? ` (${st.manifest.platform})` : ''}` : 'Installed, disabled';
+      state.classList.toggle('error', !!err);
+      acts.replaceChildren();
+      const op = (label, what, secondary = true) => button(label, async () => {
+        if (what === 'install') {
+          const ok = await ask({ title: `Install ${s.name} on ${h}?`, detail: `Its package (${m.publisher}.${x.id.split('.').slice(1).join('.')} v${m.version}) comes from Open VSX, checked against the registry’s sha256, and its server runs as your user on ${h}. Install only what you trust.`, buttons: [{ label: 'Install', primary: true, value: 'y' }, { label: 'Cancel', value: '' }] });
+          if (ok !== 'y') return;
+        }
+        I.vsxHost = h;
+        state.textContent = 'Working…';
+        const payload = what === 'install' ? { name: s.name, runtime: s.runtime, transport: s.transport, entry: s.entry, args: s.args || [], extensions: s.extensions || [], filenames: s.filenames || [], languageIds: s.languageIds || {}, downloads: s.downloads || {}, initializationOptions: s.initializationOptions || {} } : undefined;
+        try { await languages.manage(h, what, id, payload); } catch (err) { notify('error', `${s.name} on ${h}: ${err.message}`); }
+        if (I) paintServer();
+      }, secondary);
+      if (!st) acts.append(op('Install', 'install', false));
+      else acts.append(op(st.enabled ? 'Disable' : 'Enable', st.enabled ? 'disable' : 'enable'), op('Reinstall', 'install'), op('Uninstall', 'uninstall'));
+    };
+    // a host's status asked once per page, its state kept by the language workbench after
+    const check = () => {
+      x.vsxChecked ||= new Set();
+      if (x.vsxChecked.has(host.value)) { paintServer(); return; }
+      x.vsxChecked.add(host.value);
+      state.textContent = 'Checking…';
+      languages.manage(host.value).catch(() => {}).finally(() => I && paintServer());
+    };
+    host.addEventListener('change', check);
+    box.append(host, state, acts);
+    contrib.append(box, detail);
+    if (!host.value) state.textContent = 'Log in to a host to install it';
+    else check();
+  }
+}
 
 // --- building: a host's toolchains, the project's kind, its tasks run there ----------------
 // what a host can build with comes from the host itself, as the user's login sees

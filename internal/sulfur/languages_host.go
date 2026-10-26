@@ -41,6 +41,9 @@ type langItem struct {
 	Packages         []string
 	Entry            string
 	Prerequisites    string
+	// a converted VS Code extension's server (vsx.<id>), what its install asked for
+	Custom bool
+	VSX    *VSXServer
 }
 
 var langCatalog = []langItem{
@@ -54,6 +57,30 @@ var langCatalog = []langItem{
 	{ID: "cpp", Name: "C / C++", Server: "clangd", Prerequisites: "platform clangd binary or x86-64 release, C/C++ toolchain and compile_commands.json; native ARM hosts can provide clangd on PATH"},
 	{ID: "hcl", Name: "HCL / Terraform", Server: "terraform-ls", Prerequisites: "Terraform CLI recommended; cached Terraform providers for offline use"},
 	{ID: "go", Name: "Go", Server: "gopls", Prerequisites: "current Go SDK; installation compiles gopls; cache project modules for offline use"},
+}
+
+// customIDRe a converted extension's server: vsx. and the extension's id
+var customIDRe = regexp.MustCompile(`^vsx\.[a-z0-9][a-z0-9._-]{0,120}$`)
+
+// itemByID a catalog language, or a converted extension's server: the one an install
+// brings, else the one installed
+func (a *adapter) itemByID(id string, req LanguageRequest) (langItem, bool) {
+	if i, ok := langByID(id); ok {
+		return i, true
+	}
+	if !customIDRe.MatchString(id) {
+		return langItem{}, false
+	}
+	if req.Op == "install" && req.Server != nil {
+		return langItem{ID: id, Name: req.Server.Name, Server: req.Server.Name, Custom: true, VSX: req.Server}, true
+	}
+	if m := a.load(id); m != nil && m["custom"] == true {
+		return langItem{ID: id, Name: str(m["name"]), Server: str(m["server"]), Custom: true}, true
+	}
+	if req.Op == "uninstall" {
+		return langItem{ID: id, Custom: true}, true
+	}
+	return langItem{}, false
 }
 
 func langByID(id string) (langItem, bool) {
@@ -175,7 +202,7 @@ func (a *adapter) serve(req LanguageRequest, in io.Reader) error {
 		a.emitStatus()
 		return nil
 	}
-	item, ok := langByID(req.Language)
+	item, ok := a.itemByID(req.Language, req)
 	if !ok {
 		return errors.New("Unknown language")
 	}
@@ -259,6 +286,24 @@ func (a *adapter) status() []map[string]any {
 			e["entry"] = i.Entry
 		}
 		out = append(out, e)
+	}
+	// the servers converted extensions brought, as installed
+	entries, _ := os.ReadDir(a.home)
+	for _, d := range entries {
+		if !d.IsDir() || !customIDRe.MatchString(d.Name()) {
+			continue
+		}
+		m := a.load(d.Name())
+		if m == nil || m["custom"] != true {
+			continue
+		}
+		prereq := ""
+		if m["runtime"] == "node" {
+			prereq = "Node.js on PATH"
+		}
+		out = append(out, map[string]any{"id": d.Name(), "name": str(m["name"]), "server": str(m["server"]), "prerequisites": prereq,
+			"installed": true, "enabled": m["enabled"] == true, "manifest": m, "custom": true,
+			"extensions": m["extensions"], "filenames": m["filenames"], "languageIds": m["languageIds"]})
 	}
 	return out
 }
@@ -547,6 +592,10 @@ func (a *adapter) install(item langItem) error {
 	}
 	defer os.RemoveAll(stage)
 	switch {
+	case item.Custom:
+		if err := a.installVSX(item.VSX, stage, manifest); err != nil {
+			return err
+		}
 	case item.Packages != nil:
 		if err := a.installNpm(item, stage, manifest); err != nil {
 			return err
@@ -604,6 +653,108 @@ func (a *adapter) install(item langItem) error {
 	os.RemoveAll(backup)
 	return nil
 }
+
+// installVSX a converted extension's server: its package for this host's platform
+// from Open VSX, checked against the registry's sha256, its entry made runnable
+func (a *adapter) installVSX(s *VSXServer, stage string, manifest map[string]any) error {
+	if s == nil {
+		return errors.New("Install the server again from its extension's page")
+	}
+	if s.Runtime != "node" && s.Runtime != "binary" {
+		return errors.New("Unknown server runtime " + s.Runtime)
+	}
+	entry := cleanRel("", s.Entry)
+	if !strings.HasPrefix(entry, "extension/") {
+		return errors.New("The server's entry isn't in its package")
+	}
+	if s.Runtime == "node" {
+		if _, err := a.executable("node"); err != nil {
+			return err
+		}
+	}
+	platform, u := pickDownload(s.Downloads, "")
+	if u == "" {
+		return errors.New("Open VSX has no build of this extension for " + vsxPlatform())
+	}
+	if !strings.HasPrefix(u, VSXRegistry()+"/") {
+		return errors.New("A server is installed from " + VSXRegistry() + " only")
+	}
+	if err := a.unpack(u, stage, manifest); err != nil {
+		return err
+	}
+	if strings.HasSuffix(u, ".vsix") {
+		if b, err := a.fetch(strings.TrimSuffix(u, ".vsix") + ".sha256"); err == nil {
+			if f := strings.Fields(string(b)); len(f) > 0 && !strings.EqualFold(f[0], fmt.Sprint(manifest["sha256"])) {
+				return errors.New("The package doesn't match the registry's sha256")
+			}
+		}
+	}
+	// a native server converted from another platform's package: its name here
+	found := ""
+	for _, cand := range []string{entry, strings.TrimSuffix(entry, ".exe"), entry + ".exe"} {
+		if fi, err := os.Stat(filepath.Join(stage, filepath.FromSlash(cand))); err == nil && !fi.IsDir() {
+			found = cand
+			break
+		}
+	}
+	if found == "" {
+		return errors.New("The package for " + platform + " has no " + entry)
+	}
+	if s.Runtime == "binary" {
+		if err := os.Chmod(filepath.Join(stage, filepath.FromSlash(found)), 0o755); err != nil {
+			return err
+		}
+	}
+	args := s.Args
+	if args == nil {
+		args = []string{}
+	}
+	transport := "stdio"
+	if s.Runtime == "node" && s.Transport != "stdio" {
+		transport = "ipc"
+		if err := os.WriteFile(filepath.Join(stage, ipcBridgeName), []byte(ipcBridge), 0o644); err != nil {
+			return err
+		}
+	}
+	for k, v := range map[string]any{"custom": true, "name": s.Name, "server": s.Name, "runtime": s.Runtime, "transport": transport, "entry": found, "args": args, "platform": platform,
+		"extensions": s.Extensions, "filenames": s.Filenames, "languageIds": s.LanguageIDs, "initializationOptions": s.InitializationOptions} {
+		manifest[k] = v
+	}
+	return nil
+}
+
+// ipcBridge a node server that talks over node IPC, as VS Code's client forks one,
+// spoken to over stdio: LSP's framing on stdin and stdout, each message sent on
+// to the server and back as an object; the server's own output to stderr
+const ipcBridgeName = "sulfur-ipc-bridge.js"
+const ipcBridge = `'use strict';
+const { fork } = require('child_process');
+const [entry, ...args] = process.argv.slice(2);
+const child = fork(entry, [...args, '--node-ipc', '--clientProcessId=' + process.pid], { silent: true, cwd: process.cwd() });
+child.stdout.pipe(process.stderr);
+child.stderr.pipe(process.stderr);
+child.on('message', (m) => {
+  const body = Buffer.from(JSON.stringify(m), 'utf8');
+  process.stdout.write(Buffer.concat([Buffer.from('Content-Length: ' + body.length + '\r\n\r\n', 'ascii'), body]));
+});
+child.on('exit', (code) => process.exit(code == null ? 1 : code));
+let buf = Buffer.alloc(0);
+process.stdin.on('data', (d) => {
+  buf = Buffer.concat([buf, d]);
+  for (;;) {
+    const head = buf.indexOf('\r\n\r\n');
+    if (head < 0) return;
+    const m = /content-length:\s*(\d+)/i.exec(buf.subarray(0, head).toString('ascii'));
+    if (!m) { buf = buf.subarray(head + 4); continue; }
+    const end = head + 4 + Number(m[1]);
+    if (buf.length < end) return;
+    const msg = JSON.parse(buf.subarray(head + 4, end).toString('utf8'));
+    buf = buf.subarray(end);
+    if (child.connected) child.send(msg);
+  }
+});
+process.stdin.on('end', () => child.kill());
+`
 
 func (a *adapter) installNpm(item langItem, stage string, manifest map[string]any) error {
 	node, err := a.executable("node")
@@ -787,6 +938,23 @@ func (a *adapter) installTerraformLS(stage string, manifest map[string]any) erro
 func (a *adapter) serverCommand(item langItem, manifest map[string]any, req LanguageRequest) ([]string, error) {
 	folder := filepath.Join(a.home, item.ID)
 	entry := filepath.Join(folder, filepath.FromSlash(fmt.Sprint(manifest["entry"])))
+	if item.Custom {
+		var args []string
+		for _, x := range asList(manifest["args"]) {
+			args = append(args, str(x))
+		}
+		if manifest["runtime"] == "node" {
+			node, err := a.executable("node")
+			if err != nil {
+				return nil, err
+			}
+			if manifest["transport"] == "ipc" {
+				return append([]string{node, filepath.Join(folder, ipcBridgeName), entry}, args...), nil
+			}
+			return append([]string{node, entry}, args...), nil
+		}
+		return append([]string{entry}, args...), nil
+	}
 	if item.Packages != nil {
 		node, err := a.executable("node")
 		if err != nil {
@@ -1062,6 +1230,10 @@ func (a *adapter) launch(item langItem, manifest map[string]any, req LanguageReq
 			}
 			// the page's JSON is one line already: sent with its framing in one write
 			body := bytes.TrimSpace(line)
+			// a converted server's initialize: the options its own client gave it, under the page's
+			if msg.Method == "initialize" && item.Custom {
+				body = withInitOptions(body, asMap(manifest["initializationOptions"]), filepath.Join(a.home, item.ID, "extension"))
+			}
 			if _, werr := fmt.Fprintf(stdin, "Content-Length: %d\r\n\r\n%s", len(body), body); werr != nil {
 				return nil
 			}
@@ -1073,6 +1245,41 @@ func (a *adapter) launch(item langItem, manifest map[string]any, req LanguageReq
 }
 
 var newline = []byte{'\n'}
+
+// withInitOptions an initialize request with a converted server's own client options merged
+// under what the page sent, ${extensionPath} its package's folder on this host
+func withInitOptions(body []byte, opts map[string]any, folder string) []byte {
+	if len(opts) == 0 {
+		return body
+	}
+	var req map[string]any
+	if json.Unmarshal(body, &req) != nil {
+		return body
+	}
+	params := asMap(req["params"])
+	if params == nil {
+		return body
+	}
+	init := asMap(params["initializationOptions"])
+	if init == nil {
+		init = map[string]any{}
+	}
+	for k, v := range opts {
+		if _, had := init[k]; had {
+			continue
+		}
+		if s, ok := v.(string); ok {
+			v = filepath.FromSlash(strings.ReplaceAll(s, "${extensionPath}", filepath.ToSlash(folder)))
+		}
+		init[k] = v
+	}
+	params["initializationOptions"] = init
+	out, err := json.Marshal(req)
+	if err != nil {
+		return body
+	}
+	return out
+}
 
 type atomicInt struct {
 	mu sync.Mutex
