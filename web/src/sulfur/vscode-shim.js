@@ -10,7 +10,7 @@
 export function vscodeShim(api, host) {
   const { call, views, context } = host;
   const said = new Set();
-  const missing = (what) => { if (!said.has(what)) { said.add(what); console.warn(`${what} isn't in Sulfur's VS Code API; this extension may not work fully`); } };
+  const missing = (what) => { if (!said.has(what)) { said.add(what); console.warn(`${what} isn't in Sulfur's VS Code API; this extension may not work fully`); call('compatibility.unsupported', what).catch(() => {}); } };
   // a namespace whose unknown members are said once, then undefined
   const ns = (name, o) => new Proxy(o, {
     get(t, k) {
@@ -160,10 +160,10 @@ export function vscodeShim(api, host) {
       get html() { return html; },
       set html(h) { html = String(h); call('webview.html', id, html).catch((e) => console.error(e.message)); },
       get options() { return opts; },
-      set options(o) { opts = { ...o }; },
+      set options(o) { opts = { ...o }; call('webview.options', id, plain(opts)).catch((e) => console.error(e.message)); },
       cspSource,
       asWebviewUri,
-      postMessage: (m) => call('webview.post', id, m).then(() => true, () => false),
+      postMessage: (m) => call('webview.post', id, m).then((result) => result !== false, () => false),
       onDidReceiveMessage: msgs.event,
     };
     let panelTitle = title;
@@ -177,6 +177,7 @@ export function vscodeShim(api, host) {
       onDidDispose: disposed.event,
       onDidChangeViewState: state.event,
       _closed: () => { if (!panels.has(id)) return; panels.delete(id); views.delete(id); disposed.fire(); },
+      _state: (value) => { Object.assign(panel, value); state.fire({ webviewPanel: panel }); },
     };
     panels.set(id, panel);
     return panel;
@@ -184,11 +185,50 @@ export function vscodeShim(api, host) {
   function createWebviewPanel(viewType, title, showOptions, options = {}) {
     wvSeq += 1;
     const id = `vw${wvSeq}`;
-    call('webview.create', id, String(title || viewType), '', { compat: true, viewType }).catch((e) => console.error(e.message));
+    call('webview.create', id, String(title || viewType), '', { compat: true, viewType, ...plain(options) }).catch((e) => console.error(e.message));
     return makePanel(id, viewType, String(title || viewType), options);
   }
   const customEditors = new Map();
   const webviewViews = new Map();
+  const treeViews = new Map();
+  function createTreeView(viewId, options = {}) {
+    if (treeViews.has(viewId)) throw new Error(`Tree view '${viewId}' is already registered`);
+    const provider = options.treeDataProvider;
+    if (!provider?.getChildren || !provider?.getTreeItem) throw new Error('A tree data provider needs getChildren and getTreeItem');
+    const elements = new Map(), ids = new Map();
+    const selection = new EventEmitter(), visibility = new EventEmitter(), expanded = new EventEmitter(), collapsed = new EventEmitter();
+    let seq = 0, generation = 0;
+    const idOf = (element) => { if (!ids.has(element)) ids.set(element, `n${++seq}`); const id = ids.get(element); elements.set(id, element); return id; };
+    const commandID = `${viewId}.sulfur.children`;
+    const registration = api.commands.register(commandID, async (parent) => {
+      const revision = generation;
+      if (parent && !elements.has(parent)) throw new Error('The tree changed; refresh this view');
+      const values = await provider.getChildren(parent ? elements.get(parent) : undefined) || [];
+      if (revision !== generation) return [];
+      if (values.length > 1000) console.warn(`${viewId}: showing the first 1000 children`);
+      return Promise.all(values.slice(0, 1000).map(async (element) => {
+        const item = await provider.getTreeItem(element);
+        if (revision !== generation) return null;
+        return { id: idOf(element), label: typeof item.label === 'string' ? item.label : item.label?.label || item.resourceUri?.path?.split('/').pop() || '',
+          description: typeof item.description === 'string' ? item.description : '', tooltip: typeof item.tooltip === 'string' ? item.tooltip : item.tooltip?.value || '',
+          collapsibleState: item.collapsibleState || 0, command: item.command ? { command: item.command.command, arguments: plain(item.command.arguments || []) } : undefined };
+      })).then((rows) => rows.filter(Boolean));
+    });
+    const selected = [];
+    const tree = { visible: false, selection: selected, onDidChangeSelection: selection.event, onDidChangeVisibility: visibility.event,
+      onDidExpandElement: expanded.event, onDidCollapseElement: collapsed.event,
+      reveal: async (element) => { await call('tree.reveal', viewId, idOf(element)); },
+      dispose() { if (!treeViews.has(viewId)) return; treeViews.delete(viewId); subscription?.dispose(); registration.dispose(); elements.clear(); ids.clear(); call('tree.dispose', viewId).catch(() => {}); },
+      _event(event) { if ('visible' in event) { tree.visible = event.visible; visibility.fire({ visible: tree.visible }); }
+        if (event.selected) { selected.splice(0, selected.length, elements.get(event.selected)); selection.fire({ selection: [...selected] }); }
+        if (event.expanded) expanded.fire({ element: elements.get(event.expanded) });
+        if (event.collapsed) collapsed.fire({ element: elements.get(event.collapsed) }); },
+    };
+    treeViews.set(viewId, tree);
+    const subscription = provider.onDidChangeTreeData?.(() => { generation++; elements.clear(); ids.clear(); call('tree.changed', viewId).catch(() => {}); });
+    call('tree.create', viewId, commandID).catch((e) => console.error(e.message));
+    return tree;
+  }
 
   // --- configuration: the extension's own defaults, changes kept for the session ---------------------
   const defaults = context.vscode?.defaults || {};
@@ -231,6 +271,7 @@ export function vscodeShim(api, host) {
   const extensionUri = Uri.file(root);
   const workspaceUri = Uri.file(`/${context.workspace || ''}`);
   const dark = context.vscode?.dark !== false;
+  const themeEvents = new EventEmitter();
   const packageJSON = context.vscode?.packageJSON || {};
   const extensionId = context.vscode?.id || context.id;
 
@@ -283,18 +324,19 @@ export function vscodeShim(api, host) {
     registerCustomEditorProvider(viewType, provider, options = {}) {
       customEditors.set(viewType, { provider, options });
       call('customEditor.register', viewType).catch((e) => console.error(e.message));
-      return new Disposable(() => customEditors.delete(viewType));
+      return new Disposable(() => { customEditors.delete(viewType); call('customEditor.unregister', viewType).catch(() => {}); });
     },
     registerWebviewViewProvider(viewId, provider, options = {}) {
-      // a sidebar webview opened as a tab, from the palette
       webviewViews.set(viewId, { provider, options });
       const cmd = `${viewId}.sulfur.open`;
-      api.commands.register(cmd, () => openWebviewView(viewId));
-      return new Disposable(() => webviewViews.delete(viewId));
+      const registration = api.commands.register(cmd, () => openWebviewView(viewId));
+      // The native sidebar resolves the provider lazily on first display.
+      call('webviewView.register', viewId, cmd).catch((e) => console.error(e.message));
+      return new Disposable(() => { webviewViews.get(viewId)?.panel?.dispose(); webviewViews.delete(viewId); registration.dispose(); call('webviewView.unregister', viewId).catch(() => {}); });
     },
     registerWebviewPanelSerializer: () => new Disposable(() => {}),
-    registerTreeDataProvider: (id) => { missing(`vscode.window.registerTreeDataProvider (${id})`); return new Disposable(() => {}); },
-    createTreeView: (id) => { missing(`vscode.window.createTreeView (${id})`); return { onDidChangeSelection: noEvent, onDidChangeVisibility: noEvent, onDidCollapseElement: noEvent, onDidExpandElement: noEvent, reveal: async () => {}, dispose() {}, visible: false, selection: [] }; },
+    registerTreeDataProvider: (id, provider) => createTreeView(id, { treeDataProvider: provider }),
+    createTreeView,
     createTerminal: (o = {}) => {
       const name = typeof o === 'string' ? o : o.name || 'Terminal';
       return { name, processId: Promise.resolve(undefined), sendText: (t, nl = true) => api.terminal.run(nl ? String(t) : String(t), { name }), show() {}, hide() {}, dispose() {} };
@@ -310,7 +352,7 @@ export function vscodeShim(api, host) {
     onDidChangeVisibleTextEditors: noEvent,
     onDidChangeTextEditorSelection: noEvent,
     onDidChangeWindowState: noEvent,
-    onDidChangeActiveColorTheme: noEvent,
+    onDidChangeActiveColorTheme: themeEvents.event,
     onDidOpenTerminal: noEvent,
     onDidCloseTerminal: noEvent,
   });
@@ -318,9 +360,21 @@ export function vscodeShim(api, host) {
   async function openWebviewView(viewId) {
     const v = webviewViews.get(viewId);
     if (!v) return;
-    const panel = createWebviewPanel(viewId, viewId.split('.').pop(), 1, v.options.webviewOptions || {});
-    const view = { viewType: viewId, webview: panel.webview, title: panel.title, description: '', badge: undefined, visible: true, show() { panel.reveal(); }, onDidDispose: panel.onDidDispose, onDidChangeVisibility: noEvent };
-    await v.provider.resolveWebviewView(view, { state: undefined }, token);
+    if (v.resolving) return v.resolving;
+    if (v.panel) { v.panel.reveal(); return; }
+    v.resolving = (async () => {
+      const id = `vw${++wvSeq}`;
+      await call('webview.create', id, viewId.split('.').pop(), '', { compat: true, viewType: viewId, sidebar: true, ...plain(v.options.webviewOptions || {}) });
+      const panel = v.panel = makePanel(id, viewId, viewId.split('.').pop(), v.options.webviewOptions || {});
+      const visibility = new EventEmitter();
+      panel.onDidChangeViewState(() => visibility.fire());
+      panel.onDidDispose(() => { v.panel = null; visibility.dispose(); });
+      const view = { viewType: viewId, webview: panel.webview, get title() { return panel.title; }, set title(t) { panel.title = t; },
+        description: '', badge: undefined, get visible() { return panel.visible; }, show() { panel.reveal(); }, onDidDispose: panel.onDidDispose, onDidChangeVisibility: visibility.event };
+      try { await v.provider.resolveWebviewView(view, { state: undefined }, token); }
+      catch (error) { panel.dispose(); throw error; }
+    })();
+    try { await v.resolving; } finally { v.resolving = null; }
   }
 
   // --- workspace ---------------------------------------------------------------------------------------
@@ -378,7 +432,7 @@ export function vscodeShim(api, host) {
         default: return api.commands.execute(id, ...args.map(plain));
       }
     },
-    getCommands: async () => [],
+    getCommands: async (filterInternal = false) => (await call('commands.list') || []).filter((id) => !filterInternal || !id.startsWith('_')),
   });
 
   // --- the rest -------------------------------------------------------------------------------------------
@@ -418,7 +472,17 @@ export function vscodeShim(api, host) {
     },
   });
   const extension = { id: extensionId, extensionUri, extensionPath: extensionUri.path, packageJSON, isActive: true, exports: undefined, extensionKind: 2 };
-  const extensions = { getExtension: (id) => (String(id).toLowerCase() === String(extensionId).toLowerCase() ? extension : undefined), all: [extension], onDidChange: noEvent };
+  const extensionEvents = new EventEmitter();
+  let installed = [];
+  const updateExtensions = (items) => { installed = (items || []).filter((x) => String(x.id).toLowerCase() !== String(extensionId).toLowerCase()).map((x) => ({
+    id: x.id, packageJSON: x.packageJSON || {}, isActive: !!x.isActive, extensionKind: 2,
+    extensionUri: Uri.file(x.extensionPath || '/'), extensionPath: x.extensionPath || '/', exports: undefined,
+    activate: async () => { await call('extensions.activate', x.id); return undefined; },
+  })); };
+  updateExtensions(context.vscode?.extensions);
+  extension.activate = async () => extension.exports;
+  const extensions = { getExtension: (id) => extensions.all.find((x) => String(x.id).toLowerCase() === String(id).toLowerCase()),
+    get all() { return [extension, ...installed]; }, onDidChange: extensionEvents.event };
 
   const vscode = new Proxy({
     version: '1.95.0',
@@ -488,6 +552,10 @@ export function vscodeShim(api, host) {
     },
     // its tab closed in the workbench
     closed(wid) { panels.get(wid)?._closed(); },
-    deactivate() { for (const d of subscriptions.splice(0)) { try { d?.dispose?.(); } catch (err) { console.error(err); } } },
+    viewState(wid, value) { panels.get(wid)?._state(value); },
+    treeEvent(id, event) { treeViews.get(id)?._event(event); },
+    themeChanged(kind) { const value = { kind: kind === 'vscode-light' ? 1 : 2 }; if (window.activeColorTheme.kind !== value.kind) { window.activeColorTheme = value; themeEvents.fire(value); } },
+    updateExtensions(items) { updateExtensions(items); extensionEvents.fire(); },
+    deactivate() { for (const tree of [...treeViews.values()]) tree.dispose(); for (const panel of [...panels.values()]) panel.dispose(); extensionEvents.dispose(); themeEvents.dispose(); for (const d of subscriptions.splice(0)) { try { d?.dispose?.(); } catch (err) { console.error(err); } } },
   };
 }

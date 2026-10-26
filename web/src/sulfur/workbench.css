@@ -928,6 +928,20 @@
 .ide-ext-by { color: var(--ide-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ide-ext-state { color: var(--ide-muted); white-space: nowrap; }
 .ide-ext-state.error { color: var(--ide-err); }
+.ide-ext-state.warning { color: var(--ide-warn); }
+.ide-extension-sidebar { display: flex; flex-direction: column; }
+.ide-extension-section { display: flex; flex-direction: column; min-height: 120px; flex: 1; overflow: hidden; }
+.ide-extension-view-title { flex: none; margin: 0; padding: 6px 12px; font-size: 11px; text-transform: uppercase; background: var(--ide-side); border-bottom: 1px solid var(--ide-border); }
+.ide-extension-view-content { flex: 1; min-height: 0; overflow: auto; }
+.ide-extension-view-content > .ide-webview { width: 100%; height: 100%; min-height: 120px; border: 0; display: block; }
+.ide-extension-tree-row { display: flex; align-items: center; gap: 6px; border: 0; background: none; color: var(--ide-fg); font: inherit; text-align: left; width: 100%; min-height: 24px; padding: 2px 8px; cursor: pointer; }
+.ide-extension-tree-row:hover { background: var(--ide-hover); }
+.ide-extension-tree-row:focus-visible { outline: 1px solid var(--ide-accent); outline-offset: -1px; }
+.ide-extension-tree-row > span:first-child { width: 12px; flex: none; }
+.ide-extension-tree-description { color: var(--ide-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ide-extension-tree-children { padding-left: 16px; }
+.ide-extension-conflict { color: var(--ide-warn); padding: 6px 0; }
+.ide-extension-conflict .ide-link { margin-left: 8px; }
 .ide-ext-acts { margin-left: auto; display: flex; align-items: center; gap: 4px; }
 
 /* the Open VSX library: VS Code's extensions, what each would convert to */

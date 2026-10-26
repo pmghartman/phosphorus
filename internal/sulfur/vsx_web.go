@@ -50,10 +50,10 @@ func (c *converter) wantsWeb(contributes map[string]any, browser string, server 
 	if err != nil {
 		return false
 	}
-	ui := len(asList(contributes["customEditors"])) > 0 || bytes.Contains(code, []byte("createWebviewPanel")) ||
+	ui := len(asList(contributes["customEditors"])) > 0 || len(asMap(contributes["views"])) > 0 || bytes.Contains(code, []byte("createWebviewPanel")) ||
 		bytes.Contains(code, []byte("registerWebviewViewProvider")) || bytes.Contains(code, []byte("registerCustomEditorProvider"))
 	declared := len(asList(contributes["themes"]))+len(asList(contributes["iconThemes"])) > 0
-	return ui || (len(asList(contributes["commands"])) > 0 && !declared && server == nil)
+	return ui || (!declared && server == nil)
 }
 
 // webExtension the web build and the files it may load, under vscode/; its commands and
@@ -158,11 +158,37 @@ func (c *converter) webExtension(contributes map[string]any, browser string) {
 	if len(editors) > 0 {
 		c.contrib["customEditors"] = editors
 	}
+	var views []any
+	containers := map[string]string{}
+	for _, group := range asMap(contributes["viewsContainers"]) {
+		for _, item := range asList(group) {
+			v := asMap(item)
+			containers[str(v["id"])] = c.pkg.localize(v["title"])
+		}
+	}
+	var groups []string
+	for group := range asMap(contributes["views"]) {
+		groups = append(groups, group)
+	}
+	sort.Strings(groups)
+	for _, group := range groups {
+		for _, item := range asList(asMap(contributes["views"])[group]) {
+			v := asMap(item)
+			if str(v["id"]) == "" {
+				continue
+			}
+			views = append(views, map[string]any{"id": v["id"], "name": c.pkg.localize(v["name"]), "type": str(v["type"]), "container": group, "containerTitle": containers[group]})
+		}
+	}
+	if len(views) > 0 {
+		c.contrib["views"] = views
+		c.add("views", vsxPartial, plural(len(views), "sidebar view"), "native Sulfur sidebar containers; webview and tree providers use the extension bridge; conditional visibility and view menus are not translated")
+	}
 	if bytes.Contains(code, []byte("createWebviewPanel")) {
 		c.add("webviews", vsxConverted, "webview panels", "Sulfur webview tabs: acquireVsCodeApi, VS Code's theme variables, its own files inlined")
 	}
 	if bytes.Contains(code, []byte("registerWebviewViewProvider")) {
-		c.add("webviewViews", vsxPartial, "sidebar webviews", "opened as tabs: Sulfur's sidebar has no extension views")
+		c.add("webviewViews", vsxConverted, "sidebar webviews", "in Sulfur's sidebar with native theme and lifecycle events")
 	}
 	detail := fmt.Sprintf("its web build (%s, %dKB of code and files", browser, size>>10)
 	if binary > 0 {

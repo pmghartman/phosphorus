@@ -46,3 +46,41 @@ func TestWebBuildReservesSpaceForEntryBeforeOptionalAssets(t *testing.T) {
 		t.Fatal("entry omitted because optional assets filled the size limit")
 	}
 }
+
+func TestWebViewsPreserveNativeContainersAndDependencies(t *testing.T) {
+	conv, m := convert(t, map[string]string{
+		"extension/package.json": `{"publisher":"pub","name":"views","browser":"web.js","extensionDependencies":["pub.helper"],"contributes":{"viewsContainers":{"activitybar":[{"id":"demo","title":"Demo"}]},"views":{"demo":[{"id":"demo.web","name":"Web","type":"webview"},{"id":"demo.tree","name":"Tree"}]}}}`,
+		"extension/web.js":       `exports.activate = () => {};`,
+	}, VSXOptions{})
+	views := asList(asMap(m["contributes"])["views"])
+	if len(views) != 2 || asMap(views[0])["containerTitle"] != "Demo" || asMap(views[0])["type"] != "webview" {
+		t.Fatal(views)
+	}
+	if len(asList(m["extensionDependencies"])) != 1 || m["main"] != "vscode/web.js" {
+		t.Fatal(m)
+	}
+	for _, r := range conv.Report {
+		if (r.Kind == "views" || r.Kind == "viewsContainers") && r.Status == vsxSkipped {
+			t.Fatal("translated sidebar views reported as skipped", r)
+		}
+	}
+}
+
+func TestWebBuildWithoutCommandsStillRuns(t *testing.T) {
+	_, m := convert(t, map[string]string{
+		"extension/package.json": `{"publisher":"pub","name":"startup","browser":"web.js"}`,
+		"extension/web.js":       `exports.activate = () => {};`,
+	}, VSXOptions{})
+	if m["main"] != "vscode/web.js" {
+		t.Fatal("browser extension discarded because it has no commands", m)
+	}
+}
+
+func TestVSIXRejectsUnsafeOrDuplicateResourcePaths(t *testing.T) {
+	for _, name := range []string{"extension/../../escape", "extension/C:/escape", "extension/PACKAGE.JSON"} {
+		data := vsix(t, map[string]string{"extension/package.json": `{"publisher":"pub","name":"safe"}`, name: "bad"})
+		if _, err := ConvertVSIX(data, VSXSource{}, VSXOptions{}); err == nil {
+			t.Fatal("accepted unsafe or duplicate resource", name)
+		}
+	}
+}

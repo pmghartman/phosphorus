@@ -161,6 +161,14 @@ export function extensionHostMain(createVSCode, installResources) {
         reply(m.id, Promise.resolve().then(() => { if (!shim) throw new Error('not a VS Code extension'); return shim.resolveCustomEditor(m); }));
       } else if (m.t === 'webviewClosed') {
         if (shim) shim.closed(m.wid); else views.delete(m.wid);
+      } else if (m.t === 'viewState') {
+        shim?.viewState(m.wid, m.state);
+      } else if (m.t === 'treeEvent') {
+        shim?.treeEvent(m.viewId, m.event);
+      } else if (m.t === 'extensionsChanged') {
+        shim?.updateExtensions(m.extensions);
+      } else if (m.t === 'themeChanged') {
+        shim?.themeChanged(m.kind);
       } else if (m.t === 'deactivate') {
         try { await (mod && mod.deactivate && mod.deactivate()); } catch (err) { console.error(err); }
         resources?.dispose();

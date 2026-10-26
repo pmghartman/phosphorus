@@ -7,7 +7,9 @@ export function installExtensionResources(call) {
   let disposed = false;
   const virtual = (input) => /^(file:|sulfur-res:)/i.test(String(input?.url || input));
   const pathOf = (input) => decodeURIComponent(new URL(String(input?.url || input)).pathname);
-  const mime = (url) => /\.wasm(?:[?#]|$)/i.test(url) ? 'application/wasm' : /\.[cm]?js(?:[?#]|$)/i.test(url) ? 'text/javascript' : 'application/octet-stream';
+  const types = { wasm: 'application/wasm', js: 'text/javascript', mjs: 'text/javascript', cjs: 'text/javascript', css: 'text/css', json: 'application/json',
+    html: 'text/html', svg: 'image/svg+xml', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', woff: 'font/woff', woff2: 'font/woff2', ttf: 'font/ttf', txt: 'text/plain' };
+  const mime = (url) => types[url.split(/[?#]/)[0].split('.').pop().toLowerCase()] || 'application/octet-stream';
   const fetchResource = async (input, options = {}) => {
     if (!virtual(input)) return originalFetch.call(globalThis, input, options);
     const signal = options.signal || input?.signal;
@@ -77,7 +79,7 @@ export function installExtensionResources(call) {
     if (!new.target) throw new TypeError("Worker constructor requires 'new'");
     const entry = String(source);
     if (!virtual(entry)) return new OriginalWorker(source, options);
-    const key = crypto.randomUUID();
+    const key = typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('');
     const script = `(${workerMain.toString()})(${JSON.stringify(entry)},${JSON.stringify(key)},${options?.type === 'module'})`;
     const bootstrap = URL.createObjectURL(new Blob([script], { type: 'text/javascript' }));
     let worker;

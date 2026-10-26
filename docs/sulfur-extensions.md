@@ -36,6 +36,10 @@ Open **Extensions → Browse Open VSX…** (or the library button in the Extensi
 pane), search the registry, and choose **Convert & Install**. Sulfur previews
 the contribution points and records a conversion report on the extension's page.
 The package is checked against the registry's SHA-256 checksum before conversion.
+Missing or invalid checksums stop installation. Search cancels superseded requests
+and caches recent pages. Installation uploads to a staging folder with bounded
+parallelism, then replaces the installed directory; a failed replacement restores
+the previous directory. Updating a disabled extension keeps it disabled.
 
 Color themes, file icons, language definitions, TextMate grammars and snippets
 become native Sulfur contributions. They use the existing editor, completion and
@@ -49,10 +53,37 @@ declarative contributions still use the native editor features. Executable
 extensions require the same trust decision as extensions written for Sulfur.
 Use **Reopen Editor With…** to select an installed custom editor for a file.
 
+Webview views and tree data providers use native Sulfur sidebar containers.
+Webviews resolve lazily when their container opens and retain their state while
+hidden. Tree views support children, refresh, selection, expansion, collapse and
+item commands. Custom view menus, conditional visibility, drag and drop, and
+revealing unloaded tree ancestors are not translated. Tree child lists currently
+show up to 1,000 items per parent.
+
+Webview CSS variables follow Sulfur's current colors and fonts when the theme
+changes. Local stylesheets and their fonts/images load through the extension's
+resource bridge, as do explicit local `fetch` and Worker requests for resources
+such as WebAssembly. Explicit `localResourceRoots` restrict those reads. Browser
+module loading and relative worker imports still require a bundled entry point.
+
+The library labels potential conflicts before installation. Installed extension
+pages list competing commands, shortcuts, runners, view IDs, file editors,
+language associations and language servers, plus missing or disabled dependencies.
+Checks include built-in SQLite and installed native language servers on the
+selected host. Enabling an extension with conflicts shows a notification;
+existing command and runner owners retain their handlers. File editor conflicts
+compare declared patterns, so different glob patterns may still overlap.
+
+Converted code can discover installed native and converted extensions through
+`vscode.extensions`, with change events as their state changes. Dependency
+metadata is preserved; dependencies are converted separately. Executable exports
+are not shared between isolated extension frames.
+
 Compatibility depends on the APIs the extension uses. Node-only extension code,
-debug adapters and notebooks are not supported. Tree views and language-feature
-providers implemented in JavaScript are not yet native contributions; check the
-conversion report and extension output for unsupported features. Disabling an
+debug adapters and notebooks are not supported. Language-feature providers
+implemented in JavaScript are not yet native contributions; check the conversion
+report and extension output for unsupported features. Unsupported API use also
+shows a compatibility notification and is listed on the extension's page. Disabling an
 extension removes its native contributions and stops its executable host.
 
 ### Write a Sulfur extension

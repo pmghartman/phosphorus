@@ -91,7 +91,7 @@ test('a custom editor resolves into the workbench\'s webview, its own files as r
 test('webview panels, commands and terminals reach Sulfur\'s; what\'s missing is said once', async () => {
   const { vscode, calls, registered } = harness();
   const panel = vscode.window.createWebviewPanel('demo.panel', 'Demo', vscode.ViewColumn.One, { enableScripts: true });
-  assert.deepEqual(calls.find((c) => c[0] === 'webview.create').slice(1, 5), ['vw1', 'Demo', '', { compat: true, viewType: 'demo.panel' }]);
+  assert.deepEqual(calls.find((c) => c[0] === 'webview.create').slice(1, 5), ['vw1', 'Demo', '', { compat: true, viewType: 'demo.panel', enableScripts: true }]);
   assert.equal(await panel.webview.postMessage({ a: 1 }), true);
   let ran = 0;
   vscode.commands.registerCommand('demo.go', function () { ran = this.n; }, { n: 7 });
@@ -111,4 +111,73 @@ test('webview panels, commands and terminals reach Sulfur\'s; what\'s missing is
   assert.deepEqual(warned.map((w) => w.split(' ')[0]), ['vscode.notebooks', 'vscode.window.createQuickPick', 'vscode.languages.registerHoverProvider']);
   assert.equal(vscode.l10n.t('Exported {0} rows to {file}', 3), 'Exported 3 rows to {file}');
   assert.equal(vscode.l10n.t('to {file}', { file: 'a.csv' }), 'to a.csv');
+});
+
+test('native and converted extensions are discoverable and registry updates fire once', async () => {
+  const { vscode, shim, calls } = harness({ 'commands.list': ['visible', '_internal'] }, {
+    id: 'pub.ext', vscode: { root: 'vscode', id: 'pub.ext', extensions: [{ id: 'sulfur.sqlite', isActive: true, packageJSON: { displayName: 'SQLite' } }, { id: 'pub.ext' }] },
+  });
+  assert.equal(vscode.extensions.all.length, 2);
+  assert.equal(vscode.extensions.getExtension('SULFUR.SQLITE').packageJSON.displayName, 'SQLite');
+  assert.equal(vscode.extensions.getExtension('missing'), undefined);
+  let changes = 0;
+  vscode.extensions.onDidChange(() => changes++);
+  shim.updateExtensions([{ id: 'pub.other', extensionPath: '/me/extensions/other', isActive: false }]);
+  assert.equal(changes, 1);
+  assert.equal(vscode.extensions.getExtension('sulfur.sqlite'), undefined);
+  await vscode.extensions.getExtension('pub.other').activate();
+  assert.deepEqual(calls.at(-1), ['extensions.activate', 'pub.other']);
+  assert.deepEqual(await vscode.commands.getCommands(true), ['visible']);
+});
+
+test('sidebar webviews resolve once, retain their view and receive visibility events', async () => {
+  const { vscode, shim, registered, calls } = harness();
+  let resolutions = 0, view, visibility = 0;
+  const subscription = vscode.window.registerWebviewViewProvider('demo.sidebar', {
+    resolveWebviewView(value) { resolutions++; view = value; view.onDidChangeVisibility(() => visibility++); view.webview.options = { enableScripts: true, localResourceRoots: [] }; view.webview.html = '<p>Sidebar</p>'; },
+  });
+  assert.deepEqual(calls.at(-1), ['webviewView.register', 'demo.sidebar', 'demo.sidebar.sulfur.open']);
+  await Promise.all([registered.get('demo.sidebar.sulfur.open')(), registered.get('demo.sidebar.sulfur.open')()]);
+  assert.equal(resolutions, 1);
+  assert.equal(calls.find((c) => c[0] === 'webview.create')[4].sidebar, true);
+  const id = calls.find((c) => c[0] === 'webview.create')[1];
+  shim.viewState(id, { active: false, visible: false });
+  assert.equal(view.visible, false); assert.equal(visibility, 1);
+  await registered.get('demo.sidebar.sulfur.open')();
+  assert.equal(resolutions, 1);
+  assert.deepEqual(calls.at(-1), ['webview.reveal', id]);
+  subscription.dispose();
+  assert.equal(registered.has('demo.sidebar.sulfur.open'), false);
+});
+
+test('tree providers retain element identity for children and forward selection, refresh and disposal', async () => {
+  const { vscode, shim, registered, calls } = harness();
+  const changed = new vscode.EventEmitter(), parent = {}, child = {};
+  const tree = vscode.window.createTreeView('demo.tree', { treeDataProvider: {
+    onDidChangeTreeData: changed.event,
+    getChildren: (element) => element === parent ? [child] : [parent],
+    getTreeItem: (element) => new vscode.TreeItem(element === parent ? 'Parent' : 'Child', element === parent ? 1 : 0),
+  } });
+  const rows = await registered.get('demo.tree.sulfur.children')();
+  assert.equal(rows[0].label, 'Parent');
+  const children = await registered.get('demo.tree.sulfur.children')(rows[0].id);
+  assert.equal(children[0].label, 'Child');
+  let selected;
+  tree.onDidChangeSelection((e) => { selected = e.selection[0]; });
+  shim.treeEvent('demo.tree', { visible: true, selected: children[0].id });
+  assert.equal(selected, child); assert.equal(tree.visible, true);
+  changed.fire(parent);
+  assert.deepEqual(calls.at(-1), ['tree.changed', 'demo.tree']);
+  tree.dispose();
+  assert.equal(registered.has('demo.tree.sulfur.children'), false);
+  assert.deepEqual(calls.at(-1), ['tree.dispose', 'demo.tree']);
+});
+
+test('unsupported APIs notify the workbench once and missing webviews return false', async () => {
+  const { vscode, calls } = harness({ 'webview.post': false });
+  const was = console.warn; console.warn = () => {};
+  try { void vscode.notebooks; void vscode.notebooks; } finally { console.warn = was; }
+  assert.equal(calls.filter((c) => c[0] === 'compatibility.unsupported').length, 1);
+  const panel = vscode.window.createWebviewPanel('a', 'A', 1);
+  assert.equal(await panel.webview.postMessage({ message: 'lost' }), false);
 });

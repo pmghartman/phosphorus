@@ -1,5 +1,5 @@
 // Serialized into the webview. All dependencies are browser globals or arguments.
-export function webviewBridge(initialState, theme, localEntries = {}, sessionEntries = {}) {
+export function webviewBridge(initialState, theme, localEntries = {}, sessionEntries = {}, installResources, revision) {
   let state = initialState;
   const post = (message) => parent.postMessage(message, '*');
   const api = {
@@ -8,6 +8,23 @@ export function webviewBridge(initialState, theme, localEntries = {}, sessionEnt
     setState: (value) => { state = value; post({ phosphorusWebviewState: value }); return value; },
   };
   window.acquireVsCodeApi = () => api;
+  const pending = new Map();
+  let sequence = 0;
+  if (installResources) installResources((method, path) => new Promise((resolve, reject) => {
+    const id = ++sequence;
+    const timer = setTimeout(() => { pending.delete(id); reject(new Error(`Webview resource timed out: ${path}`)); }, 30000);
+    pending.set(id, { resolve, reject, timer });
+    post({ sulfurWebviewResource: { id, path, revision } });
+  }));
+  function applyTheme(value) {
+    const body = document.body;
+    if (!body) return;
+    body.classList.remove('vscode-light', 'vscode-dark', 'vscode-high-contrast', 'vscode-high-contrast-light');
+    body.classList.add(value.kind);
+    body.dataset.vscodeThemeKind = value.kind;
+    body.dataset.vscodeThemeId = value.id || 'Sulfur';
+    for (const [name, token] of Object.entries(value.vars || {})) if (/^--(?:vscode|ide)-[\w-]+$/.test(name)) document.documentElement.style.setProperty(name, token);
+  }
   const stores = new Map();
   for (const [name, scope, initial] of [['localStorage', 'local', localEntries], ['sessionStorage', 'session', sessionEntries]]) {
     try { if (window[name]) continue; } catch {}
@@ -44,15 +61,21 @@ export function webviewBridge(initialState, theme, localEntries = {}, sessionEnt
     stores.set(scope, apply);
   }
   addEventListener('message', (event) => {
-    if (event.source === parent && event.data?.sulfurWebviewStorageSync) {
+    if (event.source !== parent) return;
+    if (event.data?.sulfurWebviewResourceResult) {
+      const result = event.data.sulfurWebviewResourceResult, job = pending.get(result.id);
+      if (job) { clearTimeout(job.timer); pending.delete(result.id); if (result.error) job.reject(new Error(result.error)); else job.resolve(result.bytes); }
+    } else if (event.data?.sulfurWebviewTheme) {
+      theme = event.data.sulfurWebviewTheme.kind;
+      applyTheme(event.data.sulfurWebviewTheme);
+    } else if (event.data?.sulfurWebviewStorageSync) {
       const update = event.data.sulfurWebviewStorageSync;
       stores.get(update.scope)?.(update);
     }
   });
   document.addEventListener('DOMContentLoaded', () => {
-    document.body.classList.add(theme);
-    document.body.dataset.vscodeThemeKind = theme;
-    document.body.dataset.vscodeThemeId = 'Sulfur';
+    applyTheme({ kind: theme });
+    post({ sulfurWebviewLoaded: revision });
   });
 }
 

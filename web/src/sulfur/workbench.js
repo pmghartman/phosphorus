@@ -44,6 +44,9 @@ import { applyTextEdits } from './language-client.js';
 import { sidebarRight, runTargetName, moveBookmarks } from './navigation.js';
 import { fileKind, renderFileIcon } from './file-icons.js';
 import { extensionHostHTML } from './extension-host.js';
+import { installExtensionResources } from './extension-resources.js';
+import { extensionConflicts, createExtensionConflictIndex, NATIVE_EXTENSIONS } from './extension-conflicts.js';
+import { installConvertedExtension } from './extension-install.js';
 import { createWebviewResources, navigateWebview, deliverWebviewDocument } from './webview-resources.js';
 import { webviewBridge, applyWebviewStorage } from './webview-bridge.js';
 import { setContributions, removeContributions, contributedThemes, contributedIconThemes, contributedServers, languageName, themeCss, iconOf, iconFontCss, snippetItems } from './vsx-contributions.js';
@@ -382,6 +385,7 @@ const languages = createLanguageWorkbench({
   // converted extensions' snippets for the file's language
   snippets: (t) => snippetItems(t.rel || t.localName || ''),
   convertedServers: () => contributedServers(),
+  extensionsChanged: () => { if (I) { refreshExtensionRegistry(); paintExtView(); } },
   hosts: () => dkLiveHosts(),
   url: (host) => new URL(hostUrl(host, `/api/sulfur/languages?host=${encodeURIComponent(host)}`), location.href).href,
   problems: () => I && paintProblemsSoon(),
@@ -1026,6 +1030,7 @@ function showSide(id, on = true, focus = false) {
     v.body.hidden = k !== id;
     I.actBtns.get(k).classList.toggle('on', k === id && on);
     I.actBtns.get(k).setAttribute('aria-selected', String(k === id && on));
+    v.onVisibility?.(k === id && on);
   }
   const v = I.sideViews.get(id);
   if (on && narrow()) I.st.aux.hidden = true;
@@ -2656,6 +2661,7 @@ function activate(t, focus = true) {
     x.tabEl.classList.toggle('on', x === t);
     x.tabEl.setAttribute('aria-selected', String(x === t));
   }
+  for (const x of I.exts.values()) for (const [wid, view] of x.views) if (view.compat && !view.sidebar) x.port?.postMessage({ t: 'viewState', wid, state: { active: view.t === t, visible: view.t === t } });
   // painted first: an editor in a hidden view takes no focus
   paintEditors();
   t.ed?.show();
@@ -3368,7 +3374,7 @@ function buildKeys() {
   const keys = new Map();
   const add = (k, id) => { if (k) keys.set(k, [...(keys.get(k) || []), id]); };
   // converted extensions' keys to Sulfur's commands (a keymap's), under the user's own
-  const extKeys = [...I.exts.values()].filter((x) => x.state === 'on' && declarative(x)).flatMap((x) => (Array.isArray(x.manifest.contributes?.keybindings) ? x.manifest.contributes.keybindings : []))
+  const extKeys = [...I.exts.values()].filter((x) => x.state === 'on').flatMap((x) => (Array.isArray(x.manifest.contributes?.keybindings) ? x.manifest.contributes.keybindings : []))
     .filter((k) => typeof k?.key === 'string' && typeof k.command === 'string').map((k) => ({ key: normKey(IS_MAC && typeof k.mac === 'string' ? k.mac : k.key), command: k.command }));
   const dropped = new Set([...extKeys, ...I.userKeys].filter((k) => k.command.startsWith('-')).map((k) => `${k.key}\n${k.command.slice(1)}`));
   for (const c of I.commands.values()) for (const k of [c.key, ...c.alt]) if (k && !dropped.has(`${k}\n${c.id}`) && !dropped.has(`\n${c.id}`)) add(k, c.id);
@@ -7882,7 +7888,7 @@ async function wearExtTheme(key) {
   if (tag) tag.textContent = css;
   I.w.node.classList.toggle('ide-ext-theme', !!css);
   const now = css ? key : '';
-  if (I.extThemeNow !== now) { I.extThemeNow = now; requestAnimationFrame(() => I && termsRetheme()); }
+  if (I.extThemeNow !== now) { I.extThemeNow = now; requestAnimationFrame(() => { if (I) { termsRetheme(); refreshWebviewThemes(); } }); }
 }
 
 // a converted extension's file icon theme ('' Sulfur's own), its icon fonts put up
@@ -8024,6 +8030,7 @@ function applySettings() {
   const theme = paletteNow() + (document.getElementById('phosphorus-custom')?.textContent || '');
   if (I.themeNow !== theme) { I.themeNow = theme; requestAnimationFrame(() => termsRetheme()); }
   applyExtThemes();
+  refreshWebviewThemes();
   I.exclude = null;
   paintTreeSoon();
   if (I.chat) paintChatCtx();
@@ -8456,6 +8463,133 @@ const HOST_HTML = extensionHostHTML();
 const extName = (x) => x.manifest?.displayName || x.manifest?.name || x.id;
 const extChannel = (x, n) => (n ? `${extName(x)}: ${n}` : `Extension: ${extName(x)}`);
 
+function nativeExtensions() { return [...NATIVE_EXTENSIONS, ...languages.installedExtensions(runHost())]; }
+function extensionRegistry() {
+  return [...nativeExtensions().map((x) => ({ id: x.id, isActive: x.active, native: true, packageJSON: x.manifest })),
+    ...[...I.exts.values()].filter((x) => !x.bad).map((x) => ({ id: x.manifest?.sulfur?.vscode?.id || x.id, extensionPath: `/${x.dir}${x.manifest?.sulfur?.vscode?.root ? '/' + x.manifest.sulfur.vscode.root : ''}`,
+      packageJSON: x.manifest, isActive: x.state === 'on' }))];
+}
+
+function refreshExtensionRegistry() {
+  if (!I) return;
+  const extensions = extensionRegistry();
+  for (const x of I.exts.values()) x.port?.postMessage({ t: 'extensionsChanged', extensions });
+  const issues = extensionConflicts([...I.exts.values()].map((x) => ({ ...x, active: !!I.st.ext.enabled[x.id] && !x.bad })), {
+    native: nativeExtensions(), commands: [...I.commands.values()].filter((c) => !c.ext), mac: IS_MAC,
+  });
+  for (const x of I.exts.values()) {
+    x.conflicts = issues.get(x.id) || [];
+    const signature = JSON.stringify(x.conflicts);
+    if (x.conflicts.length && signature !== x.conflictSignature && I.st.ext.enabled[x.id]) notify('warning', `${extName(x)}: ${x.conflicts.length} extension conflict${x.conflicts.length === 1 ? '' : 's'} or missing dependencies. ${x.conflicts[0].detail}`, {
+      source: 'Extensions', actions: [{ label: 'Review Conflicts', run: () => openExtPage(x) }],
+    });
+    x.conflictSignature = signature;
+  }
+}
+
+function claimExtensionHandler(x, kind, id) {
+  const handlers = I.extensionHandlers ||= new Map(), key = `${kind}:${id}`;
+  const had = handlers.get(key);
+  if (had && had !== x && (had.state === 'on' || had.state === 'loading')) {
+    const detail = `${extName(x)} cannot register ${kind} '${id}': it belongs to ${extName(had)}.`;
+    notify('warning', detail, { source: 'Extensions', actions: [{ label: 'Review Extension', run: () => openExtPage(x) }] });
+    throw new Error(detail);
+  }
+  handlers.set(key, x);
+}
+function releaseExtensionHandler(x, kind, id) { const key = `${kind}:${id}`; if (I.extensionHandlers?.get(key) === x) I.extensionHandlers.delete(key); }
+
+// Extension views share native sidebar containers and retain their frames while hidden.
+function extensionSideView(x, viewId) {
+  x.sideViews ||= new Map();
+  if (x.sideViews.has(viewId)) return x.sideViews.get(viewId);
+  const declared = (Array.isArray(x.manifest?.contributes?.views) ? x.manifest.contributes.views : []).find((v) => v.id === viewId) || {};
+  const id = `ext:${x.id}:${declared.container || viewId}`;
+  let container = I.sideViews.get(id);
+  if (!container) {
+    const title = declared.containerTitle || extName(x);
+    const body = el('div', 'ide-view ide-extension-sidebar');
+    body.hidden = true;
+    I.sideBody.append(body);
+    const b = Object.assign(el('button', 'ide-act'), { type: 'button', title, ariaLabel: title });
+    b.setAttribute('role', 'tab'); b.dataset.label = title;
+    b.append(icon('ext')); b.addEventListener('click', () => showSide(id, I.st.side.view !== id || I.st.side.hidden, true));
+    I.actTop.append(b); I.actBtns.set(id, b);
+    container = { id, title, body, acts: [], entries: new Set(),
+      onShow() { for (const entry of this.entries) entry.onShow?.(); },
+      onVisibility(visible) { for (const entry of this.entries) entry.onVisibility?.(visible); },
+    };
+    I.sideViews.set(id, container);
+  }
+  const section = el('section', 'ide-extension-section');
+  const heading = el('h3', 'ide-extension-view-title', declared.name || viewId);
+  const content = el('div', 'ide-extension-view-content');
+  section.append(heading, content); container.body.append(section);
+  const entry = { content, heading, container, show() { showSide(id, true, true); },
+    dispose() {
+      entry.onDispose?.(); section.remove(); container.entries.delete(entry); x.sideViews.delete(viewId);
+      if (!container.entries.size) {
+        if (I.st.side.view === id) showSide('explorer', true);
+        container.body.remove(); I.actBtns.get(id)?.remove(); I.actBtns.delete(id); I.sideViews.delete(id);
+      }
+    },
+  };
+  container.entries.add(entry); x.sideViews.set(viewId, entry);
+  return entry;
+}
+
+function createExtensionTree(x, viewId, cmd) {
+  claimExtensionHandler(x, 'view', viewId);
+  const entry = extensionSideView(x, viewId);
+  if (entry.treeCommand) throw new Error(`Tree view '${viewId}' is already registered`);
+  entry.treeCommand = cmd;
+  let generation = 0;
+  const event = (value) => x.port?.postMessage({ t: 'treeEvent', viewId, event: value });
+  const read = async (parent, target, revision, depth = 0) => {
+    target.setAttribute('aria-busy', 'true');
+    try {
+      const items = await extRequest(x, { t: 'cmd', cmd, args: [parent] });
+      if (revision !== generation || !target.isConnected) return;
+      target.replaceChildren();
+      for (const item of items || []) {
+        const node = el('div', 'ide-extension-tree-node');
+        const row = Object.assign(el('button', 'ide-extension-tree-row'), { type: 'button', title: item.tooltip || item.label });
+        row.dataset.treeId = item.id; row.setAttribute('role', 'treeitem');
+        const arrow = el('span', '', item.collapsibleState ? '▸' : '');
+        row.append(arrow, el('span', '', item.label), el('span', 'ide-extension-tree-description', item.description || ''));
+        const children = el('div', 'ide-extension-tree-children');
+        children.setAttribute('role', 'group'); children.hidden = true;
+        let loaded = false;
+        const expand = async () => {
+          children.hidden = !children.hidden; row.setAttribute('aria-expanded', String(!children.hidden)); arrow.textContent = children.hidden ? '▸' : '▾';
+          event({ [children.hidden ? 'collapsed' : 'expanded']: item.id });
+          if (!children.hidden && !loaded) { loaded = true; await read(item.id, children, revision, depth + 1); }
+        };
+        if (item.collapsibleState) row.setAttribute('aria-expanded', 'false');
+        row.addEventListener('click', async () => {
+          event({ selected: item.id });
+          if (item.collapsibleState) await expand();
+          if (item.command?.command) run(item.command.command, ...(item.command.arguments || []));
+        });
+        row.addEventListener('keydown', (e) => {
+          if (e.key === 'ArrowRight' && item.collapsibleState && children.hidden || e.key === 'ArrowLeft' && !children.hidden) { e.preventDefault(); expand(); }
+        });
+        node.append(row, children); target.append(node);
+        if (item.collapsibleState === 2 && depth < 8) expand();
+      }
+      if (!items?.length && !parent) target.append(el('div', 'ide-tree-note', 'No items.'));
+    } catch (error) { if (revision === generation && target.isConnected) { target.replaceChildren(el('div', 'ide-tree-note', error.message)); log(error.message, extChannel(x)); } }
+    finally { target.removeAttribute('aria-busy'); }
+  };
+  entry.refresh = () => { generation++; return read(undefined, entry.content, generation); };
+  let shown = false;
+  entry.onShow = () => { if (!shown && x.state === 'on') { shown = true; entry.refresh(); } };
+  entry.onVisibility = (visible) => event({ visible });
+  entry.onDispose = () => { generation++; };
+  entry.content.setAttribute('role', 'tree'); entry.content.setAttribute('aria-label', entry.heading.textContent);
+  entry.onShow();
+}
+
 function buildExtView() {
   const v = I.sideViews.get('extensions');
   v.body.classList.add('ide-extensions-body');
@@ -8518,6 +8652,7 @@ function paintExtView() {
     foot.append(el('span', 'ide-ext-by', x.id));
     const state = { on: '', loading: 'Activating…', error: 'Failed to activate', off: 'Disabled', bad: 'Invalid' }[x.bad ? 'bad' : x.state];
     if (state) foot.append(el('span', `ide-ext-state ${x.state}`, state));
+    if (x.conflicts?.length) foot.append(el('span', 'ide-ext-state warning', `${x.conflicts.length} conflicts`));
     const acts = el('span', 'ide-ext-acts');
     if (!x.bad) {
       const b = Object.assign(el('button', `ide-button small${x.state === 'on' || x.state === 'loading' ? ' secondary' : ''}`, x.state === 'on' || x.state === 'loading' ? 'Disable' : 'Enable'), { type: 'button' });
@@ -8564,20 +8699,39 @@ function extItems(x) {
 
 // every folder's package.json read, the enabled ones started
 async function loadExtensions(restart = false) {
+  if (!I) return;
+  const current = I, run = () => { if (I === current) return loadExtensionFolders(restart); };
+  const pending = (current.extensionLoading || Promise.resolve()).then(run, run);
+  current.extensionLoading = pending;
+  try { return await pending; } finally { if (current.extensionLoading === pending) current.extensionLoading = null; }
+}
+async function loadExtensionFolders(restart = false) {
+  const current = I;
   if (restart) for (const x of I.exts.values()) deactivateExt(x);
   let entries = [];
   try { entries = (await filesCall(HOME, 'list', undefined, { path: EXT_DIR() })).entries || []; } catch {}
-  if (!I) return;
+  if (I !== current) return;
+  entries = entries.filter((y) => y.dir && /^[\w.-]+$/.test(y.name));
+  const texts = new Map();
+  let index = 0;
+  await Promise.all(Array.from({ length: Math.min(6, entries.length) }, async () => {
+    while (index < entries.length && I === current) {
+      const e = entries[index++], had = I.exts.get(e.name);
+      if (had && !restart && (had.state === 'on' || had.state === 'loading')) continue;
+      texts.set(e.name, await readUser(`${filesJoin(EXT_DIR(), e.name)}/package.json`));
+    }
+  }));
+  if (I !== current) return;
   const seen = new Set();
-  for (const e of entries.filter((y) => y.dir && /^[\w.-]+$/.test(y.name))) {
+  const activate = [];
+  for (const e of entries) {
     seen.add(e.name);
     const had = I.exts.get(e.name);
-    if (had && !restart && had.state === 'on') continue;
-    if (had) deactivateExt(had);
+    if (had && !restart && (had.state === 'on' || had.state === 'loading')) continue;
+    if (had) { deactivateExt(had); uncontribute(had, true); }
     const dir = filesJoin(EXT_DIR(), e.name);
     const x = { id: e.name, dir, manifest: null, bad: '', state: 'off', cmds: new Set(), status: new Set(), runners: new Set(), providers: new Set(), subs: new Set(), views: new Map(), pending: new Map(), seq: 0 };
-    const text = await readUser(`${dir}/package.json`);
-    if (!I) return;
+    const text = texts.get(e.name);
     if (text === null) x.bad = 'No package.json in its folder.';
     else {
       try {
@@ -8588,10 +8742,12 @@ async function loadExtensions(restart = false) {
     }
     I.exts.set(x.id, x);
     contribute(x);
-    if (!x.bad && I.st.ext.enabled[x.id]) activateExt(x);
+    if (!x.bad && I.st.ext.enabled[x.id]) activate.push(x);
   }
   for (const [id, x] of I.exts) if (!seen.has(id)) { deactivateExt(x); uncontribute(x, true); I.exts.delete(id); }
+  for (const x of activate) activateExt(x);
   buildKeys();
+  refreshExtensionRegistry();
   paintExtView();
 }
 
@@ -8600,17 +8756,29 @@ function contribute(x) {
   const c = x.manifest?.contributes || {};
   const keys = new Map((Array.isArray(c.keybindings) ? c.keybindings : []).filter((k) => k && k.command && k.key).map((k) => [k.command, IS_MAC && k.mac ? k.mac : k.key]));
   for (const cmd of Array.isArray(c.commands) ? c.commands : []) {
-    if (!cmd?.command || (I.commands.has(cmd.command) && I.commands.get(cmd.command).ext !== x.id)) continue;
+    if (!cmd?.command) continue;
+    const owner = I.commands.get(cmd.command);
+    if (owner && owner.ext !== x.id && (!owner.ext || I.st.ext.enabled[owner.ext] || !I.st.ext.enabled[x.id])) continue;
     command(cmd.command, String(cmd.title || cmd.command), (...args) => extRequest(x, { t: 'cmd', cmd: cmd.command, args: args.map((a) => { try { return structuredClone(a); } catch { return undefined; } }) }), {
       category: String(cmd.category || extName(x)), key: keys.get(cmd.command) || '', ext: x.id, when: () => x.state === 'on',
     });
     x.cmds.add(cmd.command);
   }
-  for (const [ext, cmd] of Object.entries(c.runners || {})) if (typeof cmd === 'string') { I.runners.set(ext.replace(/^\./, ''), { cmd, by: extName(x) }); x.runners.add(ext.replace(/^\./, '')); }
+}
+function refreshExtensionRunners() {
+  I.runners = new Map(Object.entries(DK_RUNNERS).map(([ext, cmd]) => [ext, { cmd, by: '' }]));
+  for (const x of I.exts.values()) if (x.state === 'on' || x.state === 'loading') {
+    for (const [extension, cmd] of Object.entries({ ...(x.manifest?.contributes?.runners || {}), ...Object.fromEntries(x.runtimeRunners || []) })) {
+      if (typeof cmd !== 'string') continue;
+      const ext = extension.replace(/^\./, '').toLowerCase();
+      if (!I.runners.get(ext)?.ext) I.runners.set(ext, { cmd, by: extName(x), ext: x.id });
+    }
+  }
 }
 function uncontribute(x, all) {
-  for (const id of x.cmds) if (all || !((x.manifest?.contributes?.commands) || []).some((c) => c?.command === id)) I.commands.delete(id);
-  for (const ext of x.runners) if (I.runners.get(ext)?.by === extName(x)) { const def = DK_RUNNERS[ext]; if (def) I.runners.set(ext, { cmd: def, by: '' }); else I.runners.delete(ext); }
+  for (const id of x.cmds) if (I.commands.get(id)?.ext === x.id && (all || !((x.manifest?.contributes?.commands) || []).some((c) => c?.command === id))) I.commands.delete(id);
+  x.runtimeRunners?.clear();
+  refreshExtensionRunners();
 }
 
 async function setExtEnabled(x, on) {
@@ -8626,12 +8794,15 @@ async function setExtEnabled(x, on) {
   I.st.ext.enabled[x.id] = on;
   saveState();
   if (on) activateExt(x); else { deactivateExt(x); paintExtView(); }
+  refreshExtensionRegistry();
+  paintExtView();
 }
 
 // a VS Code extension converted from Open VSX (internal/sulfur/vsx_convert.go): no main
 // module, only what it declares
 const declarative = (x) => !!x.manifest?.sulfur?.declarative && !x.manifest.main;
 function applyExtensionContributions(x, on) {
+  refreshExtensionRunners();
   if (on) {
     setContributions(x.id, x.manifest, (p) => {
       const c = cleanPath(filesJoin(x.dir, p));
@@ -8647,11 +8818,15 @@ function applyExtensionContributions(x, on) {
 }
 
 async function activateExt(x) {
-  if (!I || x.bad || x.state === 'on' || x.state === 'loading') return;
-  if (declarative(x)) { x.state = 'on'; applyExtensionContributions(x, true); return; }
+  if (!I || x.bad) return false;
+  if (x.state === 'on') return true;
+  if (x.state === 'loading') return x.activation;
+  if (declarative(x)) { x.state = 'on'; contribute(x); applyExtensionContributions(x, true); refreshExtensionRegistry(); return true; }
+  x.activation = new Promise((resolve) => { x.resolveActivation = resolve; });
   const current = I, generation = x.generation = (x.generation || 0) + 1;
   const active = () => I === current && x.generation === generation && x.state === 'loading';
   x.state = 'loading';
+  contribute(x);
   x.error = '';
   paintExtView();
   const mainRel = cleanPath(filesJoin(x.dir, x.manifest.main || 'extension.js'));
@@ -8665,7 +8840,7 @@ async function activateExt(x) {
     let packageJSON = {};
     try { packageJSON = parseJsonc((await readUser(`${x.dir}/${vs.root}/package.json`)) || '{}') || {}; } catch {}
     if (!active()) return;
-    vscode = { root: vs.root, id: vs.id, defaults: vs.defaults || {}, packageJSON, state: { global: extState(x, 'global'), workspace: extState(x, 'workspace') }, dark: getComputedStyle(I.w.node).colorScheme !== 'light' };
+    vscode = { root: vs.root, id: vs.id, defaults: vs.defaults || {}, packageJSON, extensions: extensionRegistry(), state: { global: extState(x, 'global'), workspace: extState(x, 'workspace') }, dark: getComputedStyle(I.w.node).colorScheme !== 'light' };
   }
   const frame = el('iframe', 'ide-ext-frame');
   frame.setAttribute('sandbox', 'allow-scripts');
@@ -8683,9 +8858,11 @@ async function activateExt(x) {
   frame.srcdoc = HOST_HTML;
   I.root.append(frame);
   x.timer = setTimeout(() => { if (x.state === 'loading') extFailed(x, 'activate() didn’t finish within 15 seconds'); }, 15000);
+  return x.activation;
 }
 
 function extFailed(x, why) {
+  x.resolveActivation?.(false);
   clearTimeout(x.timer);
   x.state = 'error';
   x.error = why;
@@ -8696,8 +8873,10 @@ function extFailed(x, why) {
 }
 
 function deactivateExt(x) {
+  x.resolveActivation?.(false);
   x.generation = (x.generation || 0) + 1;
   if (declarative(x)) { if (x.state === 'on') { x.state = 'off'; applyExtensionContributions(x, false); } return; }
+  x.state = 'off';
   if (x.port) {
     try { x.port.postMessage({ t: 'deactivate' }); } catch {}
     const frame = x.frame;
@@ -8719,8 +8898,11 @@ function teardownExt(x, keepFrame = false) {
   x.status.clear();
   for (const k of x.providers) { I.providers.delete(k); const c = I.chats.get(k); if (c) { c.busy = false; c.req = null; } }
   x.providers.clear();
-  for (const [, v] of x.views) closeTab(v.t, true);
+  for (const [, v] of [...x.views]) { if (v.sidebar) v.dispose(); else closeTab(v.t, true); }
   x.views.clear();
+  for (const entry of [...(x.sideViews?.values() || [])]) entry.dispose();
+  for (const [key, owner] of I.extensionHandlers || []) if (owner === x) I.extensionHandlers.delete(key);
+  x.customTypes?.clear();
   x.subs.clear();
   uncontribute(x, false);
   contribute(x);
@@ -8747,6 +8929,9 @@ function extMessage(x, d) {
   if (d.t === 'ready') {
     clearTimeout(x.timer);
     x.state = 'on';
+    x.resolveActivation?.(true);
+    refreshExtensionRegistry();
+    if (!I.st.side.hidden) I.sideViews.get(I.st.side.view)?.onShow?.();
     log(`activated ${x.id}`, extChannel(x));
     applyExtensionContributions(x, true);
   } else if (d.t === 'fail') extFailed(x, d.e);
@@ -8775,9 +8960,28 @@ function extPath(p) {
 }
 
 const EXT_CALLS = {
+  'commands.list': () => [...I.commands.keys()],
+  'extensions.activate': async (x, id) => {
+    const target = [...I.exts.values()].find((e) => (e.manifest?.sulfur?.vscode?.id || e.id).toLowerCase() === String(id).toLowerCase());
+    if (!target) { if (NATIVE_EXTENSIONS.some((e) => e.id === id)) return true; throw new Error(`Extension '${id}' is not installed`); }
+    if (!I.st.ext.enabled[target.id]) throw new Error(`Extension '${id}' is disabled; enable it in Extensions`);
+    if (!await activateExt(target)) throw new Error(`Extension '${id}' could not activate`);
+    return true;
+  },
+  'compatibility.unsupported': (x, what) => {
+    (x.unsupported ||= new Set()).add(String(what));
+    if (!x.compatibilityNotified) {
+      x.compatibilityNotified = true;
+      notify('warning', `${extName(x)} uses a VS Code API Sulfur cannot translate: ${what}. See its compatibility details.`, { source: 'Extensions', actions: [{ label: 'Review Compatibility', run: () => openExtPage(x) }] });
+    }
+    log(`Unsupported API: ${what}`, extChannel(x));
+  },
   'commands.register': (x, id) => {
     const had = I.commands.get(id);
-    if (had && had.ext !== x.id) throw new Error(`command '${id}' already exists`);
+    if (had && had.ext !== x.id) {
+      notify('warning', `${extName(x)} cannot register '${id}': it belongs to ${had.ext ? extName(I.exts.get(had.ext) || { id: had.ext }) : 'Sulfur'}.`, { source: 'Extensions', actions: [{ label: 'Review Extension', run: () => openExtPage(x) }] });
+      throw new Error(`command '${id}' already exists`);
+    }
     if (!had) {
       command(id, id, (...args) => extRequest(x, { t: 'cmd', cmd: id, args }), { category: extName(x), ext: x.id, when: () => x.state === 'on' });
       buildKeys();
@@ -8853,8 +9057,12 @@ const EXT_CALLS = {
     if (term && term.h.send(`${cmd}\r`)) { selectTerm(term, false); showPanel('terminal', true); return true; }
     return !!(await newTerminal({ host, kind: 'run', name: nm, run: cmd, cwd: o?.cwd !== undefined ? extPath(o.cwd) : I.st.root, focus: false }));
   },
-  'runners.register': (x, ext, cmd) => { const e = ext.replace(/^\./, ''); I.runners.set(e, { cmd, by: extName(x) }); x.runners.add(e); paintRunView(); paintTabActions(); },
-  'runners.unregister': (x, ext) => { const e = ext.replace(/^\./, ''); if (I.runners.get(e)?.by === extName(x)) { if (DK_RUNNERS[e]) I.runners.set(e, { cmd: DK_RUNNERS[e], by: '' }); else I.runners.delete(e); } x.runners.delete(e); paintRunView(); },
+  'runners.register': (x, ext, cmd) => {
+    const e = ext.replace(/^\./, '').toLowerCase(), had = I.runners.get(e);
+    if (had?.ext && had.ext !== x.id) { notify('warning', `${extName(x)} cannot replace the .${e} runner owned by ${had.by}.`, { source: 'Extensions' }); throw new Error(`Runner .${e} already belongs to ${had.by}`); }
+    (x.runtimeRunners ||= new Map()).set(e, cmd); refreshExtensionRunners(); paintRunView(); paintTabActions();
+  },
+  'runners.unregister': (x, ext) => { x.runtimeRunners?.delete(ext.replace(/^\./, '').toLowerCase()); refreshExtensionRunners(); paintRunView(); },
   'agents.register': (x, pid, label) => {
     const key = `ext:${x.id}:${pid}`;
     I.providers.set(key, { key, id: pid, label, ext: x.id });
@@ -8864,7 +9072,38 @@ const EXT_CALLS = {
   'agents.unregister': (x, pid) => { const key = `ext:${x.id}:${pid}`; I.providers.delete(key); x.providers.delete(key); paintChat(true); },
   'agents.progress': (x, rid, text) => { for (const c of I.chats.values()) if (c.req === rid) { c.live = text; paintChat(); } },
   'events.subscribe': (x, n) => { x.subs.add(n); },
+  'tree.create': (x, viewId, cmd) => createExtensionTree(x, String(viewId), String(cmd)),
+  'tree.changed': (x, viewId) => { if (x.state === 'on') return x.sideViews?.get(viewId)?.refresh?.(); },
+  'tree.dispose': (x, viewId) => { x.sideViews?.get(viewId)?.dispose(); releaseExtensionHandler(x, 'view', viewId); },
+  'tree.reveal': (x, viewId, id) => { const entry = x.sideViews?.get(viewId); entry?.show(); [...(entry?.content.querySelectorAll('[data-tree-id]') || [])].find((n) => n.dataset.treeId === id)?.focus(); },
+  'webviewView.register': (x, viewId, cmd) => {
+    claimExtensionHandler(x, 'view', viewId);
+    const entry = extensionSideView(x, String(viewId));
+    entry.onShow = () => {
+      if (entry.resolved || entry.resolving || x.state !== 'on') return;
+      entry.resolving = true;
+      extRequest(x, { t: 'cmd', cmd, args: [] }).then(() => { entry.resolved = true; }, (error) => {
+        entry.content.replaceChildren(el('div', 'ide-tree-note', error.message)); log(error.message, extChannel(x));
+      }).finally(() => { entry.resolving = false; });
+    };
+    if (I.st.side.view === entry.container.id && !I.st.side.hidden) entry.onShow();
+  },
+  'webviewView.unregister': (x, viewId) => { x.sideViews?.get(viewId)?.dispose(); releaseExtensionHandler(x, 'view', viewId); },
   'webview.create': (x, wid, title, html, o = {}) => {
+    if (x.views.has(wid)) throw new Error(`Webview '${wid}' already exists`);
+    if (o.sidebar) {
+      const entry = extensionSideView(x, o.viewType);
+      const frame = el('iframe', 'ide-webview'); frame.title = entry.heading.textContent;
+      frame.setAttribute('sandbox', 'allow-scripts allow-forms allow-modals'); frame.srcdoc = vscodeWebviewLoading();
+      entry.content.replaceChildren(frame);
+      const view = { frame, compat: true, sidebar: true, entry, options: o,
+        dispose() { view.resources?.dispose(); x.views.delete(wid); frame.remove(); entry.resolved = false; x.port?.postMessage({ t: 'webviewClosed', wid }); },
+      };
+      entry.onDispose = () => view.dispose();
+      entry.onVisibility = (visible) => x.port?.postMessage({ t: 'viewState', wid, state: { visible, active: visible } });
+      x.views.set(wid, view);
+      return;
+    }
     const t = openPage(`wv:${x.id}:${wid}`, title, 'ext', (pg) => {
       const frame = el('iframe', 'ide-webview');
       frame.setAttribute('sandbox', 'allow-scripts allow-forms allow-modals');
@@ -8874,22 +9113,35 @@ const EXT_CALLS = {
       pg.frame = frame;
       pg.dispose = () => { x.views.get(wid)?.resources?.dispose(); x.views.delete(wid); x.port?.postMessage({ t: 'webviewClosed', wid }); };
     });
-    x.views.set(wid, { t, frame: t.frame, compat: !!o.compat });
+    x.views.set(wid, { t, frame: t.frame, compat: !!o.compat, options: o });
   },
   // a VS Code webview gets its messages as they were posted; Sulfur's own wrapped
-  'webview.post': (x, wid, msg) => { const v = x.views.get(wid); v?.frame.contentWindow?.postMessage(v.compat ? msg : { phosphorusHost: msg }, '*'); },
+  'webview.post': (x, wid, msg) => {
+    const v = x.views.get(wid);
+    if (!v) return false;
+    if (v.compat && !v.loaded) { const queue = v.messages ||= []; if (queue.length >= 256) return false; queue.push(msg); }
+    else v.frame.contentWindow?.postMessage(v.compat ? msg : { phosphorusHost: msg }, '*');
+    return true;
+  },
+  'webview.options': (x, wid, options) => { const v = x.views.get(wid); if (v) { v.options = options || {}; v.resources?.dispose(); v.resources = null; if (v.html !== undefined) return EXT_CALLS['webview.html'](x, wid, v.html); } },
   'webview.html': async (x, wid, html) => {
     const v = x.views.get(wid);
     if (!v) return;
+    v.html = String(html);
     const revision = v.revision = (v.revision || 0) + 1;
+    v.loaded = false; v.messages = [];
     try {
       const doc = v.compat ? await vscodeWebviewDoc(x, html, v) : webviewDoc(html);
-      if (x.views.get(wid) === v && v.revision === revision) navigateWebview(v, doc);
+      if (x.views.get(wid) === v && v.revision === revision) {
+        v.frame.setAttribute('sandbox', v.options?.enableScripts === false ? 'allow-forms allow-modals' : 'allow-scripts allow-forms allow-modals');
+        if (v.options?.enableScripts === false) { v.frame.removeAttribute('src'); v.frame.srcdoc = doc; }
+        else navigateWebview(v, doc);
+      }
     } catch (error) { if (x.views.get(wid) === v && v.revision === revision) throw error; }
   },
-  'webview.dispose': (x, wid) => { const v = x.views.get(wid); if (v) closeTab(v.t, true); },
-  'webview.title': (x, wid, title) => { const v = x.views.get(wid); if (v) { v.t.title = String(title); v.t.tabEl?.querySelector('.ide-tab-label')?.replaceChildren(String(title)); } },
-  'webview.reveal': (x, wid) => { const v = x.views.get(wid); if (v) activate(v.t); },
+  'webview.dispose': (x, wid) => { const v = x.views.get(wid); if (v?.sidebar) v.dispose(); else if (v) closeTab(v.t, true); },
+  'webview.title': (x, wid, title) => { const v = x.views.get(wid); if (v?.sidebar) v.entry.heading.textContent = String(title); else if (v) { v.t.title = String(title); v.t.tabEl?.querySelector('.ide-tab-label')?.replaceChildren(String(title)); } },
+  'webview.reveal': (x, wid) => { const v = x.views.get(wid); if (v?.sidebar) v.entry.show(); else if (v) activate(v.t); },
   // a converted VS Code extension's files and dialogs: bytes, a file's kind and size, a path asked for
   'workspace.readBytes': async (x, p) => {
     const { path, loc } = extPath(p);
@@ -8918,7 +9170,8 @@ const EXT_CALLS = {
   'state.set': (x, scope, data) => { try { localStorage.setItem(`sulfur-ext-state:${x.id}:${scope}`, JSON.stringify(data)); } catch {} return true; },
   'env.clipboard': (x, text) => copyText(String(text)).then(() => true),
   'env.openExternal': (x, u) => { if (!/^https?:\/\//i.test(String(u))) throw new Error('only http and https links open'); openExternal(String(u)); return true; },
-  'customEditor.register': (x, viewType) => { (x.customTypes ||= new Set()).add(String(viewType)); return true; },
+  'customEditor.register': (x, viewType) => { claimExtensionHandler(x, 'custom editor', viewType); (x.customTypes ||= new Set()).add(String(viewType)); return true; },
+  'customEditor.unregister': (x, viewType) => { x.customTypes?.delete(String(viewType)); releaseExtensionHandler(x, 'custom editor', viewType); },
   'customEditor.open': (x, p, viewType) => {
     const { path, loc } = extPath(p);
     const ce = customEditorsFor(path, true).find((c) => c.x === x && (!viewType || c.ce.viewType === viewType));
@@ -9035,23 +9288,38 @@ const VSCODE_VARS = {
   'keybindingLabel-background': '--ide-second', 'keybindingLabel-foreground': '--ide-fg', 'notifications-background': '--ide-widget', 'quickInput-background': '--ide-widget',
   'editorGroupHeader-tabsBackground': '--ide-side', 'titleBar-activeBackground': '--ide-side', 'statusBar-background': '--ide-side', 'progressBar-background': '--ide-accent',
 };
+function webviewTheme() {
+  const css = getComputedStyle(I.w.node), vars = {};
+  for (const [name, token] of Object.entries(VSCODE_VARS)) vars[`--vscode-${name}`] = css.getPropertyValue(token).trim();
+  for (const token of new Set(Object.values(VSCODE_VARS))) vars[token] = css.getPropertyValue(token).trim();
+  Object.assign(vars, { '--vscode-font-size': '13px', '--vscode-font-weight': 'normal', '--vscode-editor-font-size': `${parseFloat(css.getPropertyValue('--ide-code-font')) || 13}px`, '--vscode-editor-font-weight': 'normal' });
+  return { kind: css.colorScheme === 'light' ? 'vscode-light' : 'vscode-dark', id: setting('workbench.colorTheme') || 'Sulfur', vars };
+}
+function refreshWebviewThemes() {
+  if (!I) return;
+  const theme = webviewTheme();
+  for (const x of I.exts.values()) {
+    x.port?.postMessage({ t: 'themeChanged', kind: theme.kind });
+    for (const view of x.views.values()) if (view.compat) view.frame.contentWindow?.postMessage({ sulfurWebviewTheme: theme }, '*');
+  }
+}
 async function vscodeWebviewDoc(x, html, view) {
   view.resources ||= createWebviewResources(async (path, signal) => {
     const { path: rel, loc } = extPath(path);
+    const roots = view.options?.localResourceRoots;
+    const allowed = Array.isArray(roots) ? roots.map((r) => cleanPath(typeof r === 'string' ? r.replace(/^file:\/\//, '') : r.path || '')) : [x.dir, I.st.root];
+    if (!allowed.some((root) => root !== null && under(rel, root))) throw new Error(`${path} is outside this webview's local resource roots`);
     const r = await fetch(filesApi(isHomeLoc(loc) ? HOME : apiLoc(loc), 'download', { path: rel }), { signal });
     if (!r.ok) throw new Error(path + ': ' + r.status);
     return new Uint8Array(await r.arrayBuffer());
   }, { onError: (err) => log('webview: ' + err.message, extChannel(x)) });
   const out = await view.resources.html(html);
-  const css = getComputedStyle(I.w.node);
-  const v = (n) => css.getPropertyValue(n).trim();
-  const vars = Object.entries(VSCODE_VARS).map(([k, n]) => `--vscode-${k}:${v(n)}`);
-  const size = parseFloat(v('--ide-code-font')) || 13;
-  vars.push('--vscode-font-size:13px', '--vscode-font-weight:normal', `--vscode-editor-font-size:${size}px`, '--vscode-editor-font-weight:normal');
-  const kind = css.colorScheme === 'light' ? 'vscode-light' : 'vscode-dark';
+  const theme = webviewTheme();
+  const vars = Object.entries(theme.vars).map(([k, value]) => `${k}:${value.replace(/</g, '')}`);
+  const kind = theme.kind;
   const head = `<style id="_defaultStyles">:root{${vars.join(';')}}body{background-color:var(--vscode-editor-background);color:var(--vscode-foreground);font-family:var(--vscode-font-family);font-size:var(--vscode-font-size);margin:0;padding:0 20px}a{color:var(--vscode-textLink-foreground)}</style>`
     + '<script>(' + webviewBridge.toString() + ')(' + [view.state ?? null, kind, x.webviewStorage ||= Object.assign(Object.create(null), extState(x, 'webview')), view.sessionStorage ||= Object.create(null)]
-      .map((value) => JSON.stringify(value).replace(/</g, '\\u003c')).join(',') + ')<\/script>';
+      .map((value) => JSON.stringify(value).replace(/</g, '\\u003c')).join(',') + ',' + installExtensionResources.toString() + ',' + view.revision + ')<\/script>';
 
   return /<head[^>]*>/i.test(out) ? out.replace(/<head[^>]*>/i, (m) => m + head) : head + out;
 }
@@ -9074,11 +9342,26 @@ function webviewDoc(html) {
 
 // a webview's word back to its extension; a VS Code webview's state kept for its next page
 function onWebviewMessage(e) {
-  if (!I || !e.data || !('phosphorusWebview' in e.data || 'phosphorusWebviewState' in e.data || 'sulfurWebviewReady' in e.data || 'phosphorusWebviewStorage' in e.data)) return;
+  if (!I || !e.data || !('phosphorusWebview' in e.data || 'phosphorusWebviewState' in e.data || 'sulfurWebviewReady' in e.data || 'phosphorusWebviewStorage' in e.data || 'sulfurWebviewResource' in e.data || 'sulfurWebviewLoaded' in e.data)) return;
   for (const x of I.exts.values()) {
     for (const [wid, v] of x.views) {
       if (v.frame?.contentWindow !== e.source) continue;
-      if ('sulfurWebviewReady' in e.data) deliverWebviewDocument(v, e.data.sulfurWebviewReady);
+      if ('sulfurWebviewLoaded' in e.data && v.compat) {
+        if (e.data.sulfurWebviewLoaded !== v.revision) return;
+        v.loaded = true;
+        v.frame.contentWindow?.postMessage({ sulfurWebviewTheme: webviewTheme() }, '*');
+        for (const message of v.messages || []) v.frame.contentWindow?.postMessage(message, '*');
+        v.messages = [];
+      }
+      else if ('sulfurWebviewResource' in e.data && v.compat) {
+        const request = e.data.sulfurWebviewResource, revision = v.revision;
+        if (!Number.isSafeInteger(request?.id) || request.revision !== revision || typeof request.path !== 'string' || !v.resources) return;
+        (v.resources.url(`sulfur-res:${request.path}`).then(async (url) => new Uint8Array(await (await fetch(url)).arrayBuffer()))).then(
+          (bytes) => { if (x.views.get(wid) === v && v.revision === revision) v.frame.contentWindow?.postMessage({ sulfurWebviewResourceResult: { id: request.id, bytes } }, '*', [bytes.buffer]); },
+          (error) => { if (x.views.get(wid) === v && v.revision === revision) v.frame.contentWindow?.postMessage({ sulfurWebviewResourceResult: { id: request.id, error: error.message } }, '*'); },
+        );
+      }
+      else if ('sulfurWebviewReady' in e.data) deliverWebviewDocument(v, e.data.sulfurWebviewReady);
       else if ('phosphorusWebviewState' in e.data) v.state = e.data.phosphorusWebviewState;
       else if ('phosphorusWebviewStorage' in e.data) {
         const update = e.data.phosphorusWebviewStorage;
@@ -9136,6 +9419,16 @@ async function paintExtPage(t, x) {
   head.append(ic, info);
   const c = m.contributes || {};
   const contrib = el('div', 'ide-extp-contrib');
+  if (x.conflicts?.length) {
+    contrib.append(el('h2', '', 'Extension conflicts and dependencies'));
+    for (const conflict of x.conflicts) {
+      const row = el('div', 'ide-extension-conflict', conflict.detail);
+      const other = I.exts.get(conflict.other);
+      if (other) { const button = el('button', 'ide-link', `Open ${extName(other)}`); button.type = 'button'; button.addEventListener('click', () => openExtPage(other)); row.append(button); }
+      contrib.append(row);
+    }
+  }
+  if (x.unsupported?.size) { contrib.append(el('h2', '', 'Unsupported APIs')); for (const api of x.unsupported) contrib.append(el('div', 'ide-extension-conflict', api)); }
   const cmds = Array.isArray(c.commands) ? c.commands : [];
   if (cmds.length) {
     contrib.append(el('h2', '', 'Commands'));
@@ -9148,7 +9441,7 @@ async function paintExtPage(t, x) {
       contrib.append(r);
     }
   }
-  if (declarative(x)) paintConvertedContrib(x, contrib);
+  if (m.sulfur?.converted) paintConvertedContrib(x, contrib);
   if (c.runners && Object.keys(c.runners).length) {
     contrib.append(el('h2', '', 'Runners'));
     for (const [ext, cmd] of Object.entries(c.runners)) {
@@ -9159,8 +9452,8 @@ async function paintExtPage(t, x) {
   }
   const readme = el('div', 'ide-md');
   t.view.replaceChildren(head, contrib, readme);
-  const text = await readUser(`${x.dir}/README.md`);
-  if (text !== null && t.view.isConnected) renderMd(readme, text, false);
+  const text = await (x.readme ||= readUser(`${x.dir}/README.md`));
+  if (text !== null && readme.isConnected) renderMd(readme, text, false);
 }
 
 async function uninstallExt(x) {
@@ -9277,7 +9570,7 @@ function openVsxLibrary(query = '') {
 
 function mountVsxLibrary(t) {
   const head = el('div', 'ide-vsx-head');
-  head.append(el('h1', '', 'Open VSX'), el('p', '', 'VS Code extensions from open-vsx.org, converted to Sulfur’s: color and file icon themes, languages, grammars, snippets, keymaps and the language servers they carry. Their own code doesn’t run in Sulfur; each conversion says what it kept and what it left out.'));
+  head.append(el('h1', '', 'Open VSX'), el('p', '', 'Convert extensions into Sulfur themes, icons, languages, snippets and language servers. Compatible browser builds use Sulfur commands, dialogs, sidebar views and custom editors. Each conversion reports compatibility limits, native feature overlaps and extension conflicts.'));
   const form = el('div', 'ide-vsx-form');
   const q = Object.assign(el('input', 'ide-input ide-vsx-q'), { type: 'search', placeholder: 'Search Open VSX', spellcheck: false });
   q.setAttribute('aria-label', 'Search Open VSX');
@@ -9294,31 +9587,36 @@ function mountVsxLibrary(t) {
   list.setAttribute('role', 'list');
   const pager = el('div', 'ide-vsx-pager');
   t.view.append(head, form, status, list, pager);
-  const S = t.vsx = { q, offset: 0, total: 0, seq: 0, busy: new Map(), entries: [] };
+  const S = t.vsx = { q, offset: 0, total: 0, seq: 0, busy: I.vsxInstalling ||= new Map(), entries: [], cache: new Map() };
   let timer = 0;
   S.search = async (offset = 0) => {
     clearTimeout(timer);
+    S.controller?.abort();
+    S.controller = new AbortController();
     const seq = (S.seq += 1);
     S.offset = offset;
     status.textContent = 'Searching Open VSX…';
     const params = new URLSearchParams({ q: q.value.trim(), offset: String(offset), size: String(VSX_PAGE), sort: q.value.trim() || sort.value !== 'relevance' ? sort.value : 'downloads' });
     if (cat.value) params.set('category', cat.value);
     try {
-      const page = await vsxCall(`/api/sulfur/vsx/search?${params}`);
+      const key = params.toString(), cached = S.cache.get(key);
+      const page = cached && Date.now() - cached.time < 60000 ? cached.page : await vsxCall(`/api/sulfur/vsx/search?${params}`, { signal: S.controller.signal });
       if (seq !== S.seq || !I) return;
+      if (!cached || page !== cached.page) { S.cache.delete(key); S.cache.set(key, { time: Date.now(), page }); if (S.cache.size > 12) S.cache.delete(S.cache.keys().next().value); }
       S.total = page.totalSize || 0;
       S.entries = page.extensions || [];
       paint();
       // a page turned: back to its first result
       if (offset) status.scrollIntoView?.({ block: 'start' }); else t.view.scrollTop = 0;
     } catch (err) {
-      if (seq !== S.seq) return;
+      if (seq !== S.seq || err.name === 'AbortError') return;
       S.entries = [];
       paint();
       status.textContent = `Open VSX couldn’t be reached: ${err.message}`;
     }
   };
   function paint() {
+    S.conflicts = createExtensionConflictIndex([...I.exts.values()].map((x) => ({ ...x, active: !!I.st.ext.enabled[x.id] })), { native: nativeExtensions(), mac: IS_MAC, commands: [...I.commands.values()].filter((c) => !c.ext) });
     const from = S.total ? S.offset + 1 : 0, to = S.offset + S.entries.length;
     status.textContent = S.total ? `${from}–${to} of ${S.total.toLocaleString()}` : 'No extensions match.';
     list.replaceChildren(...S.entries.map(vsxRow));
@@ -9361,6 +9659,11 @@ function mountVsxLibrary(t) {
     }
     if (e.planError) plan.append(el('span', 'ide-vsx-chip skipped', `plan unknown: ${e.planError}`));
     else if (!kept.length) plan.append(el('span', 'ide-vsx-chip skipped', 'nothing Sulfur can use'));
+    if (e.manifest) {
+      const candidate = { id, manifest: e.manifest, active: true };
+      const conflicts = S.conflicts.inspect(candidate);
+      if (conflicts.length) { const chip = el('span', 'ide-vsx-chip partial', `${conflicts.length} potential conflict${conflicts.length === 1 ? '' : 's'}`); chip.title = conflicts.map((c) => c.detail).join('\n'); plan.append(chip); }
+    }
     const acts = el('span', 'ide-ext-acts');
     const busy = S.busy.get(id);
     const label = busy ? 'Converting…' : !have ? 'Convert & Install' : have.manifest?.version === e.version ? 'Reinstall' : `Update to v${e.version}`;
@@ -9378,11 +9681,12 @@ function mountVsxLibrary(t) {
     return row;
   }
   S.paint = paint;
-  q.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => S.search(0), 350); });
+  q.addEventListener('input', () => { clearTimeout(timer); S.seq++; S.controller?.abort(); timer = setTimeout(() => S.search(0), 250); });
   q.addEventListener('keydown', (e) => { if (e.key === 'Enter') S.search(0); });
   sort.addEventListener('change', () => S.search(0));
   cat.addEventListener('change', () => S.search(0));
   t.paint = () => { if (S.entries.length) paint(); };
+  t.dispose = () => { clearTimeout(timer); S.seq++; S.controller?.abort(); S.cache.clear(); };
   S.search(0);
 }
 
@@ -9391,50 +9695,38 @@ const vsxId = (ns, name) => `${ns}.${name}`.toLowerCase().replace(/[^a-z0-9._-]+
 // a package converted by the app's server, its files written as an extension of the user's, enabled
 async function vsxInstall(e, repaint = () => {}) {
   const id = vsxId(e.namespace, e.name);
+  const current = I;
+  const installing = I.vsxInstalling ||= new Map();
+  if (nativeExtensions().some((x) => x.id === id)) { notify('warning', `${id} is already provided by a native Sulfur extension.`, { source: 'Extensions' }); return; }
+  if (installing.has(id)) return;
+  installing.set(id, true);
   const lib = I.tabs.find((x) => x.page === 'vsx')?.vsx;
-  lib?.busy.set(id, true);
   repaint();
   const note = notify('info', `Converting ${e.displayName || e.name} from Open VSX…`, { progress: true, sticky: true });
   try {
     const conv = await vsxCall('/api/sulfur/vsx/convert', jsonPost({ namespace: e.namespace, name: e.name, version: e.version || '', commands: [...I.commands.keys()].filter((c) => !I.commands.get(c).ext) }));
-    if (!I) return;
+    if (I !== current) return;
+    if (conv.id !== id) throw new Error('The registry returned a different extension identity');
     const dir = filesJoin(EXT_DIR(), conv.id);
-    // an older version's folder replaced whole
     const had = I.exts.get(conv.id);
-    if (had) {
-      deactivateExt(had);
-      try { await filesCall(HOME, 'delete', jsonPost({ path: dir })); } catch {}
-    }
-    const files = Object.entries(conv.files || {});
-    let n = 0;
-    const binary = Object.entries(conv.binary || {});
-    const total = files.length + binary.length;
-    for (const [rel, text] of files) {
-      const p = cleanPath(filesJoin(dir, rel));
-      if (!p || !under(p, dir)) continue;
-      note.update(`Installing ${conv.manifest?.displayName || conv.id}: ${rel}`);
-      await writeText(p, text, 'Open VSX');
-      note.progress((n += 1) / total);
-    }
-    for (const [rel, b64] of binary) {
-      const p = cleanPath(filesJoin(dir, rel));
-      if (!p || !under(p, dir)) continue;
-      note.update(`Installing ${conv.manifest?.displayName || conv.id}: ${rel}`);
-      const raw = atob(b64);
-      const bytes = new Uint8Array(raw.length);
-      for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
-      await putFile(HOME, p, new Blob([bytes]));
-      note.progress((n += 1) / total);
-    }
+    const token = crypto.randomUUID();
+    await installConvertedExtension(conv, {
+      directory: dir, staging: filesJoin(CONF_DIR(), `.extension-install-${token}`), backup: filesJoin(CONF_DIR(), `.extension-backup-${token}`), existing: !!had,
+      write: (path, data, binary) => binary ? putFile(HOME, path, new Blob([data])) : writeText(path, data, 'Open VSX'),
+      rename: (from, to) => filesCall(HOME, 'rename', jsonPost({ from, to })),
+      remove: (path) => filesCall(HOME, 'delete', jsonPost({ path })),
+      beforeCommit: () => { if (I !== current) throw new Error('The workbench closed before installation finished'); if (had) deactivateExt(had); },
+      progress: (value, rel) => { note.update(`Installing ${conv.manifest?.displayName || conv.id}: ${rel}`); note.progress(value); },
+    });
+    if (I !== current) return;
     // what declares alone is on at once; a web build's code runs once its trust is given
     const runs = !!conv.manifest?.main;
-    if (!runs) I.st.ext.enabled[conv.id] = true;
-    else if (I.st.ext.enabled[conv.id] === false) delete I.st.ext.enabled[conv.id];
+    if (!runs && I.st.ext.enabled[conv.id] !== false) I.st.ext.enabled[conv.id] = true;
     saveState();
     await loadExtensions();
     if (!I) return;
     const x = I.exts.get(conv.id);
-    if (runs && x && x.state !== 'on') await setExtEnabled(x, true);
+    if (runs && x && x.state !== 'on' && I.st.ext.enabled[conv.id] !== false) await setExtEnabled(x, true);
     if (!I) return;
     const c = conv.manifest?.contributes || {};
     const counts = (conv.report || []).reduce((m, r) => ({ ...m, [r.status]: (m[r.status] || 0) + 1 }), {});
@@ -9449,10 +9741,11 @@ async function vsxInstall(e, repaint = () => {}) {
     if (x) openExtPage(x);
   } catch (err) {
     notify('error', `Couldn’t convert ${e.displayName || e.name}: ${err.message}`, { source: 'Open VSX' });
+    if (I === current) await loadExtensions();
   } finally {
     note.close();
-    lib?.busy.delete(id);
-    if (I) { repaint(); lib?.paint(); }
+    installing.delete(id);
+    if (I === current) { repaint(); lib?.paint(); }
   }
 }
 
@@ -10070,6 +10363,7 @@ function tasksFor(cfg, proj) {
       add('rebuild', `Rebuild (${c})`, `cmake -S . -B ${b} && cmake --build ${b} --config ${c} --clean-first`);
       add('test', 'Test (CTest)', `ctest --test-dir ${b} -C ${c} --output-on-failure`, 'test');
       add('clean', 'Clean', `cmake --build ${b} --config ${c} --target clean`, 'other');
+      out.buildRoot = b;
       break;
     }
     case 'cmake-gcc': case 'cmake-clang': {
