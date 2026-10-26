@@ -8543,12 +8543,18 @@ function createExtensionTree(x, viewId, cmd) {
   const entry = extensionSideView(x, viewId);
   if (entry.treeCommand) throw new Error(`Tree view '${viewId}' is already registered`);
   entry.treeCommand = cmd;
-  let generation = 0;
+  let generation = 0, active = 0, autoExpanded = 0;
+  const waiting = [];
   const event = (value) => x.port?.postMessage({ t: 'treeEvent', viewId, event: value });
   const read = async (parent, target, revision, depth = 0) => {
     target.setAttribute('aria-busy', 'true');
     try {
-      const items = await extRequest(x, { t: 'cmd', cmd, args: [parent] });
+      while (active >= 4 && revision === generation) await new Promise((resolve) => waiting.push(resolve));
+      if (revision !== generation) return;
+      active++;
+      let items;
+      try { items = await extRequest(x, { t: 'cmd', cmd, args: [parent] }); }
+      finally { active--; waiting.shift()?.(); }
       if (revision !== generation || !target.isConnected) return;
       target.replaceChildren();
       for (const item of items || []) {
@@ -8575,17 +8581,17 @@ function createExtensionTree(x, viewId, cmd) {
           if (e.key === 'ArrowRight' && item.collapsibleState && children.hidden || e.key === 'ArrowLeft' && !children.hidden) { e.preventDefault(); expand(); }
         });
         node.append(row, children); target.append(node);
-        if (item.collapsibleState === 2 && depth < 8) expand();
+        if (item.collapsibleState === 2 && depth < 8 && autoExpanded < 200) { autoExpanded++; expand(); }
       }
       if (!items?.length && !parent) target.append(el('div', 'ide-tree-note', 'No items.'));
     } catch (error) { if (revision === generation && target.isConnected) { target.replaceChildren(el('div', 'ide-tree-note', error.message)); log(error.message, extChannel(x)); } }
     finally { target.removeAttribute('aria-busy'); }
   };
-  entry.refresh = () => { generation++; return read(undefined, entry.content, generation); };
+  entry.refresh = () => { generation++; autoExpanded = 0; for (const resume of waiting.splice(0)) resume(); return read(undefined, entry.content, generation); };
   let shown = false;
   entry.onShow = () => { if (!shown && x.state === 'on') { shown = true; entry.refresh(); } };
   entry.onVisibility = (visible) => event({ visible });
-  entry.onDispose = () => { generation++; };
+  entry.onDispose = () => { generation++; for (const resume of waiting.splice(0)) resume(); };
   entry.content.setAttribute('role', 'tree'); entry.content.setAttribute('aria-label', entry.heading.textContent);
   entry.onShow();
 }
@@ -8987,7 +8993,7 @@ const EXT_CALLS = {
       throw new Error(`command '${id}' already exists`);
     }
     if (!had) {
-      command(id, id, (...args) => extRequest(x, { t: 'cmd', cmd: id, args }), { category: extName(x), ext: x.id, hidden: id.endsWith('.sulfur.children'), when: () => x.state === 'on' });
+      command(id, id, (...args) => extRequest(x, { t: 'cmd', cmd: id, args }), { category: extName(x), ext: x.id, hidden: /\.sulfur\.(children|invoke)$/.test(id), when: () => x.state === 'on' });
       buildKeys();
     }
     x.cmds.add(id);

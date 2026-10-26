@@ -195,7 +195,7 @@ export function vscodeShim(api, host) {
     if (treeViews.has(viewId)) throw new Error(`Tree view '${viewId}' is already registered`);
     const provider = options.treeDataProvider;
     if (!provider?.getChildren || !provider?.getTreeItem) throw new Error('A tree data provider needs getChildren and getTreeItem');
-    const elements = new Map(), ids = new Map();
+    const elements = new Map(), ids = new Map(), items = new Map();
     const selection = new EventEmitter(), visibility = new EventEmitter(), expanded = new EventEmitter(), collapsed = new EventEmitter();
     let seq = 0, generation = 0;
     const idOf = (element) => { if (!ids.has(element)) ids.set(element, `n${++seq}`); const id = ids.get(element); elements.set(id, element); return id; };
@@ -209,23 +209,25 @@ export function vscodeShim(api, host) {
       return Promise.all(values.slice(0, 1000).map(async (element) => {
         const item = await provider.getTreeItem(element);
         if (revision !== generation) return null;
-        return { id: idOf(element), label: typeof item.label === 'string' ? item.label : item.label?.label || item.resourceUri?.path?.split('/').pop() || '',
+        const id = idOf(element); items.set(id, item);
+        return { id, label: typeof item.label === 'string' ? item.label : item.label?.label || item.resourceUri?.path?.split('/').pop() || '',
           description: typeof item.description === 'string' ? item.description : '', tooltip: typeof item.tooltip === 'string' ? item.tooltip : item.tooltip?.value || '',
-          collapsibleState: item.collapsibleState || 0, command: item.command ? { command: item.command.command, arguments: plain(item.command.arguments || []) } : undefined };
+          collapsibleState: item.collapsibleState || 0, command: item.command ? { command: `${viewId}.sulfur.invoke`, arguments: [id] } : undefined };
       })).then((rows) => rows.filter(Boolean));
     });
+    const invoke = api.commands.register(`${viewId}.sulfur.invoke`, (id) => { const command = items.get(id)?.command; if (command?.command) return commands.executeCommand(command.command, ...(command.arguments || [])); });
     const selected = [];
     const tree = { visible: false, selection: selected, onDidChangeSelection: selection.event, onDidChangeVisibility: visibility.event,
       onDidExpandElement: expanded.event, onDidCollapseElement: collapsed.event,
       reveal: async (element) => { await call('tree.reveal', viewId, idOf(element)); },
-      dispose() { if (!treeViews.has(viewId)) return; treeViews.delete(viewId); subscription?.dispose(); registration.dispose(); elements.clear(); ids.clear(); call('tree.dispose', viewId).catch(() => {}); },
+      dispose() { if (!treeViews.has(viewId)) return; generation++; treeViews.delete(viewId); subscription?.dispose(); registration.dispose(); invoke.dispose(); elements.clear(); ids.clear(); items.clear(); call('tree.dispose', viewId).catch(() => {}); },
       _event(event) { if ('visible' in event) { tree.visible = event.visible; visibility.fire({ visible: tree.visible }); }
         if (event.selected) { selected.splice(0, selected.length, elements.get(event.selected)); selection.fire({ selection: [...selected] }); }
         if (event.expanded) expanded.fire({ element: elements.get(event.expanded) });
         if (event.collapsed) collapsed.fire({ element: elements.get(event.collapsed) }); },
     };
     treeViews.set(viewId, tree);
-    const subscription = provider.onDidChangeTreeData?.(() => { generation++; elements.clear(); ids.clear(); call('tree.changed', viewId).catch(() => {}); });
+    const subscription = provider.onDidChangeTreeData?.(() => { generation++; elements.clear(); ids.clear(); items.clear(); call('tree.changed', viewId).catch(() => {}); });
     call('tree.create', viewId, commandID).catch((e) => console.error(e.message));
     return tree;
   }
@@ -420,10 +422,16 @@ export function vscodeShim(api, host) {
   });
 
   // --- commands -----------------------------------------------------------------------------------------
+  const commandHandlers = new Map();
   const commands = ns('commands', {
-    registerCommand: (id, fn, thisArg) => { const d = api.commands.register(id, (...a) => fn.apply(thisArg, a)); return new Disposable(() => d.dispose()); },
-    registerTextEditorCommand: (id, fn, thisArg) => { const d = api.commands.register(id, (...a) => fn.apply(thisArg, [undefined, undefined, ...a])); return new Disposable(() => d.dispose()); },
+    registerCommand: (id, fn, thisArg) => {
+      const handler = (...a) => fn.apply(thisArg, a), d = api.commands.register(id, handler);
+      commandHandlers.set(id, handler);
+      return new Disposable(() => { if (commandHandlers.get(id) === handler) commandHandlers.delete(id); d.dispose(); });
+    },
+    registerTextEditorCommand: (id, fn, thisArg) => commands.registerCommand(id, (...a) => fn.apply(thisArg, [undefined, undefined, ...a])),
     executeCommand: async (id, ...args) => {
+      if (commandHandlers.has(id)) return commandHandlers.get(id)(...args);
       switch (id) {
         case 'vscode.open': return api.workspace.openFile(pathOf(args[0]));
         case 'vscode.openWith': return call('customEditor.open', pathOf(args[0]), String(args[1] || ''));
@@ -564,6 +572,6 @@ export function vscodeShim(api, host) {
     treeEvent(id, event) { treeViews.get(id)?._event(event); },
     themeChanged(kind) { const value = { kind: kind === 'vscode-light' ? 1 : 2 }; if (window.activeColorTheme.kind !== value.kind) { window.activeColorTheme = value; themeEvents.fire(value); } },
     updateExtensions(items) { updateExtensions(items); extensionEvents.fire(); },
-    deactivate() { for (const tree of [...treeViews.values()]) tree.dispose(); for (const panel of [...panels.values()]) panel.dispose(); extensionEvents.dispose(); themeEvents.dispose(); for (const d of subscriptions.splice(0)) { try { d?.dispose?.(); } catch (err) { console.error(err); } } },
+    deactivate() { for (const tree of [...treeViews.values()]) tree.dispose(); for (const panel of [...panels.values()]) panel.dispose(); commandHandlers.clear(); extensionEvents.dispose(); themeEvents.dispose(); for (const d of subscriptions.splice(0)) { try { d?.dispose?.(); } catch (err) { console.error(err); } } },
   };
 }
