@@ -70,6 +70,7 @@ var (
 const (
 	wmNCCalcSize    = 0x0083
 	wmSize          = 0x0005
+	wmMove          = 0x0003
 	wmClose         = 0x0010
 	wmSetIcon       = 0x0080
 	wmNCLButtonDown = 0x00A1
@@ -106,13 +107,15 @@ func wndProc(sh *shell, h *webHost) uintptr {
 			}
 			if minimized {
 				minimized = false
-				// Repeat the binding's bounds update after the restore's native layout
-				// has settled, then invalidate the child surfaces as an actual resize does.
+				// After restore, WebView2 can retain its minimized/previous-monitor
+				// screen position even when its client size has not changed. Repeat both
+				// notifications after native layout settles, then invalidate its surfaces.
 				(*h).Dispatch(func() {
 					if forceClose.Load() || minimized {
 						return
 					}
 					pCallWindowProc.Call(oldProc, hwnd, wmSize, wp, lp)
+					pCallWindowProc.Call(oldProc, hwnd, wmMove, 0, 0)
 					pRedrawWindow.Call(hwnd, 0, 0, 0x0001|0x0080) // RDW_INVALIDATE | RDW_ALLCHILDREN
 				})
 			}

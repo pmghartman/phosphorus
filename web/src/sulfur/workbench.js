@@ -43,7 +43,7 @@ import { excludeMatcher } from './excludes.js';
 import { applyTextEdits } from './language-client.js';
 import { sidebarRight, runTargetName, moveBookmarks } from './navigation.js';
 import { fileKind, renderFileIcon } from './file-icons.js';
-import { vscodeShim } from './vscode-shim.js';
+import { extensionHostHTML } from './extension-host.js';
 import { setContributions, removeContributions, contributedThemes, contributedIconThemes, contributedServers, languageName, themeCss, iconOf, iconFontCss, snippetItems } from './vsx-contributions.js';
 import { parseGitStatus, explorerChanges } from './source-control.js';
 import { parserFor } from '../lezer.js';
@@ -8389,197 +8389,7 @@ function openGuide() {
 // api), talking to the workbench over one message port: what it can do is what
 // the workbench answers there, and that's the api in the guide
 
-// the extension host's page: runs in the sandbox, turns the port into the api
-function extHostMain() {
-  let port = null;
-  let mod = null;
-  // a converted VS Code extension's web build: its vscode API (vscode-shim.js)
-  let shim = null;
-  let seq = 0;
-  let sbSeq = 0;
-  let wvSeq = 0;
-  const pending = new Map();
-  const cmds = new Map();
-  const subs = new Map();
-  const providers = new Map();
-  const views = new Map();
-  const call = (m, ...a) => new Promise((res, rej) => {
-    if (!port) { rej(new Error('the extension host is not connected')); return; }
-    seq += 1;
-    pending.set(seq, { res, rej });
-    port.postMessage({ t: 'call', id: seq, m, a });
-  });
-  const disposable = (fn) => ({ dispose: fn });
-  const on = (name) => (fn) => {
-    if (!subs.has(name)) { subs.set(name, new Set()); call('events.subscribe', name).catch(() => {}); }
-    subs.get(name).add(fn);
-    return disposable(() => subs.get(name).delete(fn));
-  };
-  const message = (kind) => (text, ...actions) => call('window.message', kind, String(text), actions.map(String));
-  const api = {
-    commands: {
-      register(id, fn) {
-        cmds.set(id, fn);
-        call('commands.register', id).catch((e) => console.error(e.message));
-        return disposable(() => { cmds.delete(id); call('commands.unregister', id).catch(() => {}); });
-      },
-      execute: (id, ...args) => call('commands.execute', id, args),
-    },
-    window: {
-      showInformationMessage: message('info'),
-      showWarningMessage: message('warning'),
-      showErrorMessage: message('error'),
-      showQuickPick: (items, opts = {}) => call('window.quickPick', items, opts),
-      showInputBox: (opts = {}) => call('window.inputBox', opts),
-      setStatusBarMessage: (text) => call('window.flash', String(text)),
-      createStatusBarItem(opts = {}) {
-        sbSeq += 1;
-        const id = `s${sbSeq}`;
-        let props = { text: '', tooltip: '', command: '', align: 'left', priority: 0, ...opts };
-        return {
-          update(p) { props = { ...props, ...p }; return call('statusBar.set', id, props); },
-          show() { return call('statusBar.set', id, props); },
-          hide() { return call('statusBar.remove', id); },
-          dispose() { return call('statusBar.remove', id); },
-        };
-      },
-      createOutputChannel(name) {
-        const n = String(name);
-        return {
-          append: (t) => call('output.append', n, String(t)),
-          appendLine: (t) => call('output.append', n, `${t}\n`),
-          clear: () => call('output.clear', n),
-          show: () => call('output.show', n),
-        };
-      },
-      createWebviewPanel(opts = {}) {
-        wvSeq += 1;
-        const id = `w${wvSeq}`;
-        const fns = new Set();
-        views.set(id, fns);
-        call('webview.create', id, String(opts.title || 'Webview'), String(opts.html || ''));
-        return {
-          post: (msg) => call('webview.post', id, msg),
-          setHtml: (h) => call('webview.html', id, String(h)),
-          onMessage: (fn) => { fns.add(fn); return disposable(() => fns.delete(fn)); },
-          dispose: () => { views.delete(id); return call('webview.dispose', id); },
-        };
-      },
-      onDidChangeActiveEditor: on('activeEditor'),
-    },
-    workspace: {
-      root: () => call('workspace.root'),
-      readFile: (p) => call('workspace.read', String(p)),
-      writeFile: (p, text) => call('workspace.write', String(p), String(text)),
-      list: (p = '') => call('workspace.list', String(p)),
-      openFile: (p, opts = {}) => call('workspace.open', String(p), opts),
-      onDidSaveFile: on('save'),
-      onDidOpenFile: on('open'),
-    },
-    editor: {
-      active: () => call('editor.active'),
-      insert: (text) => call('editor.insert', String(text)),
-      replaceSelection: (text) => call('editor.insert', String(text)),
-      select: (from, to) => call('editor.select', from, to ?? from),
-    },
-    terminal: {
-      hosts: () => call('terminal.hosts'),
-      run: (command, opts = {}) => call('terminal.run', String(command), opts),
-    },
-    runners: {
-      register(ext, command) {
-        call('runners.register', String(ext), String(command));
-        return disposable(() => call('runners.unregister', String(ext)).catch(() => {}));
-      },
-    },
-    agents: {
-      registerProvider(opts, handler) {
-        const id = String(opts.id);
-        providers.set(id, handler);
-        call('agents.register', id, String(opts.label || id));
-        return disposable(() => { providers.delete(id); call('agents.unregister', id).catch(() => {}); });
-      },
-    },
-    onDidRunFile: on('run'),
-  };
-  const clone = (v) => { try { return structuredClone(v); } catch { return undefined; } };
-  const reply = (id, p) => p.then(
-    (v) => port.postMessage({ t: 'ret', id, v: clone(v) }),
-    (e) => port.postMessage({ t: 'err', id, e: String((e && e.message) || e) }),
-  );
-  for (const level of ['log', 'info', 'warn', 'error', 'debug']) {
-    const was = console[level].bind(console);
-    console[level] = (...args) => {
-      was(...args);
-      const text = args.map((x) => (x instanceof Error ? x.stack || x.message : typeof x === 'object' ? (() => { try { return JSON.stringify(x); } catch { return String(x); } })() : String(x))).join(' ');
-      if (port) port.postMessage({ t: 'log', level, text });
-    };
-  }
-  addEventListener('error', (e) => console.error(e.error || e.message));
-  addEventListener('unhandledrejection', (e) => console.error(e.reason));
-  addEventListener('message', (e) => {
-    const d = e.data;
-    if (port || !d || d.t !== 'init' || !e.ports[0]) return;
-    port = e.ports[0];
-    port.onmessage = async (ev) => {
-      const m = ev.data;
-      if (m.t === 'ret' || m.t === 'err') {
-        const p = pending.get(m.id);
-        if (!p) return;
-        pending.delete(m.id);
-        if (m.t === 'ret') p.res(m.v); else p.rej(new Error(m.e));
-      } else if (m.t === 'cmd') {
-        reply(m.id, Promise.resolve().then(() => {
-          const fn = cmds.get(m.cmd);
-          if (!fn) throw new Error(`command '${m.cmd}' isn't registered`);
-          return fn(...(m.args || []));
-        }));
-      } else if (m.t === 'provider') {
-        reply(m.id, Promise.resolve().then(() => {
-          const fn = providers.get(m.pid);
-          if (!fn) throw new Error(`agent '${m.pid}' isn't registered`);
-          return fn({ ...m.req, progress: (text) => call('agents.progress', m.rid, String(text)).catch(() => {}) });
-        }));
-      } else if (m.t === 'event') {
-        for (const fn of subs.get(m.name) || []) { try { fn(m.data); } catch (err) { console.error(err); } }
-      } else if (m.t === 'webview') {
-        for (const fn of views.get(m.wid) || []) { try { fn(m.msg); } catch (err) { console.error(err); } }
-      } else if (m.t === 'customEditor') {
-        reply(m.id, Promise.resolve().then(() => { if (!shim) throw new Error('not a VS Code extension'); return shim.resolveCustomEditor(m); }));
-      } else if (m.t === 'webviewClosed') {
-        if (shim) shim.closed(m.wid); else views.delete(m.wid);
-      } else if (m.t === 'deactivate') {
-        try { await (mod && mod.deactivate && mod.deactivate()); } catch (err) { console.error(err); }
-        port.postMessage({ t: 'bye' });
-      }
-    };
-    if (d.context && d.context.vscode) {
-      // CommonJS, as VS Code's web extension host runs it: require('vscode') the shim, nothing else
-      Promise.resolve().then(async () => {
-        shim = vscodeShim(api, { call, views, context: d.context });
-        const module = { exports: {} };
-        const require = (name) => {
-          if (name === 'vscode') return shim.vscode;
-          throw new Error(`require('${name}'): a VS Code web extension gets only 'vscode' in Sulfur`);
-        };
-        new Function('module', 'exports', 'require', `${d.code}\n//# sourceURL=${encodeURIComponent(d.context.id)}-web.js`)(module, module.exports, require);
-        const ex = module.exports || {};
-        mod = { deactivate: async () => { try { if (typeof ex.deactivate === 'function') await ex.deactivate(); } finally { shim.deactivate(); } } };
-        if (typeof ex.activate === 'function') await ex.activate(shim.context);
-        port.postMessage({ t: 'ready' });
-      }).catch((err) => port.postMessage({ t: 'fail', e: String((err && err.stack) || err) }));
-      return;
-    }
-    const url = URL.createObjectURL(new Blob([d.code], { type: 'text/javascript' }));
-    import(url).then(async (m) => {
-      mod = m;
-      if (typeof m.activate !== 'function') throw new Error('the main module exports no activate(api, context)');
-      await m.activate(api, d.context);
-      port.postMessage({ t: 'ready' });
-    }).catch((err) => port.postMessage({ t: 'fail', e: String((err && err.stack) || err) }));
-  });
-}
-const HOST_HTML = `<!doctype html><meta charset="utf-8"><title>extension host</title><script>const vscodeShim = (${vscodeShim.toString()});(${extHostMain.toString()})()<\/script>`;
+const HOST_HTML = extensionHostHTML();
 
 const extName = (x) => x.manifest?.displayName || x.manifest?.name || x.id;
 const extChannel = (x, n) => (n ? `${extName(x)}: ${n}` : `Extension: ${extName(x)}`);
@@ -8744,15 +8554,13 @@ async function setExtEnabled(x, on) {
 // a VS Code extension converted from Open VSX (internal/sulfur/vsx_convert.go): no main
 // module, only what it declares
 const declarative = (x) => !!x.manifest?.sulfur?.declarative && !x.manifest.main;
-function applyDeclarative(x, on) {
+function applyExtensionContributions(x, on) {
   if (on) {
     setContributions(x.id, x.manifest, (p) => {
       const c = cleanPath(filesJoin(x.dir, p));
       return c && under(c, x.dir) ? readUser(c) : Promise.resolve(null);
     });
   } else removeContributions(x.id);
-  x.state = on ? 'on' : 'off';
-  if (on) log(`enabled ${x.id}: its themes, languages, grammars, snippets and keys`, extChannel(x));
   buildKeys();
   applyExtThemes();
   // open editors take up (or let go of) its grammars and languages
@@ -8763,13 +8571,15 @@ function applyDeclarative(x, on) {
 
 async function activateExt(x) {
   if (!I || x.bad || x.state === 'on' || x.state === 'loading') return;
-  if (declarative(x)) { applyDeclarative(x, true); return; }
+  if (declarative(x)) { x.state = 'on'; applyExtensionContributions(x, true); return; }
+  const current = I, generation = x.generation = (x.generation || 0) + 1;
+  const active = () => I === current && x.generation === generation && x.state === 'loading';
   x.state = 'loading';
   x.error = '';
   paintExtView();
   const mainRel = cleanPath(filesJoin(x.dir, x.manifest.main || 'extension.js'));
   const code = mainRel && under(mainRel, x.dir) ? await readUser(mainRel) : null;
-  if (!I) return;
+  if (!active()) return;
   if (code === null) { extFailed(x, `its main module ${x.manifest.main || 'extension.js'} wasn't found, or is over 16MB`); return; }
   // a converted VS Code extension's web build: what its vscode API needs to know
   const vs = x.manifest.sulfur?.vscode;
@@ -8777,7 +8587,7 @@ async function activateExt(x) {
   if (vs) {
     let packageJSON = {};
     try { packageJSON = parseJsonc((await readUser(`${x.dir}/${vs.root}/package.json`)) || '{}') || {}; } catch {}
-    if (!I) return;
+    if (!active()) return;
     vscode = { root: vs.root, id: vs.id, defaults: vs.defaults || {}, packageJSON, state: { global: extState(x, 'global'), workspace: extState(x, 'workspace') }, dark: getComputedStyle(I.w.node).colorScheme !== 'light' };
   }
   const frame = el('iframe', 'ide-ext-frame');
@@ -8788,8 +8598,9 @@ async function activateExt(x) {
   const ch = new MessageChannel();
   x.port = ch.port1;
   x.frame = frame;
-  ch.port1.onmessage = (ev) => extMessage(x, ev.data);
+  ch.port1.onmessage = (ev) => { if (I === current && x.port === ch.port1) extMessage(x, ev.data); };
   frame.addEventListener('load', () => {
+    if (!active() || x.frame !== frame) return;
     frame.contentWindow.postMessage({ t: 'init', code, context: { id: x.id, extensionPath: x.dir, user: acct.user, workspace: I.st.root, host: selfHost, vscode } }, '*', [ch.port2]);
   }, { once: true });
   frame.srcdoc = HOST_HTML;
@@ -8808,7 +8619,8 @@ function extFailed(x, why) {
 }
 
 function deactivateExt(x) {
-  if (declarative(x)) { if (x.state === 'on') applyDeclarative(x, false); return; }
+  x.generation = (x.generation || 0) + 1;
+  if (declarative(x)) { if (x.state === 'on') { x.state = 'off'; applyExtensionContributions(x, false); } return; }
   if (x.port) {
     try { x.port.postMessage({ t: 'deactivate' }); } catch {}
     const frame = x.frame;
@@ -8820,6 +8632,7 @@ function deactivateExt(x) {
 
 // what it made of the workbench taken back, its contributed commands kept, sleeping
 function teardownExt(x, keepFrame = false) {
+  x.generation = (x.generation || 0) + 1;
   clearTimeout(x.timer);
   for (const [, p] of x.pending) p.rej(new Error('the extension stopped'));
   x.pending.clear();
@@ -8837,6 +8650,7 @@ function teardownExt(x, keepFrame = false) {
   if (!keepFrame) x.frame?.remove();
   x.frame = null;
   x.port = null;
+  applyExtensionContributions(x, false);
   if (I.chat) paintChat();
   paintStatus();
 }
@@ -8856,7 +8670,7 @@ function extMessage(x, d) {
     clearTimeout(x.timer);
     x.state = 'on';
     log(`activated ${x.id}`, extChannel(x));
-    paintExtView();
+    applyExtensionContributions(x, true);
   } else if (d.t === 'fail') extFailed(x, d.e);
   else if (d.t === 'log') outAppend(extChannel(x), `[${d.level}] ${d.text}\n`);
   else if (d.t === 'ret' || d.t === 'err') {
