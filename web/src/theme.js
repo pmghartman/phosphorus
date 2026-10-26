@@ -19,7 +19,7 @@ export const PALETTES = [
   })),
   { id: 'custom', label: 'custom', about: 'yours: a theme to start from, with your accent, type, corners, shadows and layout', look: '', custom: true },
 ];
-const LOOKS = LIB.themes.map((t) => t.id);
+const LOOKS = [...new Set(LIB.themes.map((t) => t.look))];
 const builtIn = (id) => LIB.themes.find((t) => t.id === id);
 
 // --- a custom theme: a built-in one to start from, any of these over it, '' the theme's own ------
@@ -142,7 +142,7 @@ const stored = () => { try { const v = localStorage.getItem(KEY); return valid(v
 
 // the theme picked, custom included; lookNow the built-in one whose structure the page wears
 export const paletteNow = () => document.documentElement.dataset.themeId || stored();
-export const lookNow = () => document.documentElement.dataset.palette || 'phosphorus';
+export const lookNow = () => builtIn(document.documentElement.dataset.palette)?.look || 'phosphorus';
 export const LOOK_IDS = LOOKS;
 let layout = themeLayout('phosphorus');
 // the layout worn: the theme's, a custom one's choices over it

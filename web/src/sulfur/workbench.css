@@ -331,9 +331,9 @@
 .ide-tab-desc { margin-left: 6px; color: var(--ide-muted); font-size: 12px; opacity: 0.8; }
 .ide-tab-desc:empty { display: none; }
 .ide-tab-x { margin-left: 4px; width: 20px; height: 20px; padding: 2px; visibility: hidden; }
-.ide-tab:hover .ide-tab-x, .ide-tab.on .ide-tab-x, .ide-tab.dirty .ide-tab-x { visibility: visible; }
-.ide-tab.dirty:not(:hover) .ide-tab-x .ide-ic { display: none; }
-.ide-tab.dirty:not(:hover) .ide-tab-x::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.ide-tab:hover .ide-tab-x, .ide-tab:focus-within .ide-tab-x, .ide-tab.on .ide-tab-x, .ide-tab.dirty .ide-tab-x { visibility: visible; }
+.ide-tab.dirty:not(:hover):not(:focus-within) .ide-tab-x .ide-ic { display: none; }
+.ide-tab.dirty:not(:hover):not(:focus-within) .ide-tab-x::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
 .ide-tab.drop-l { box-shadow: inset 2px 0 0 var(--ide-accent); }
 .ide-tab.drop-r { box-shadow: inset -2px 0 0 var(--ide-accent); }
 .ide-tab-acts { padding: 0 6px; }
@@ -1011,6 +1011,67 @@
 .ide-scm-empty { padding: 8px 20px; display: flex; flex-direction: column; gap: 8px; }
 .ide-scm-empty p { margin: 0; color: var(--ide-muted); line-height: 1.5; }
 .ide-scm-empty p.bad { color: var(--ide-err); }
+
+.ide-side-head .ide-side-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ide-scm-compose-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 10px; font-size: 11px; }
+.ide-scm-stage-hint { color: var(--ide-muted); }
+.ide-scm-graph-link { display: flex; align-items: center; gap: 8px; flex: none; margin: 4px 12px 12px 20px; padding: 8px; border: 1px solid var(--ide-border); border-radius: 4px; background: var(--ide-bg); color: var(--ide-fg); cursor: pointer; text-align: left; font: 12px var(--ide-ui); }
+.ide-scm-graph-link span { flex: 1; }
+.ide-scm-graph-link:hover { background: var(--ide-hover); }
+.ide-tree .ide-row.cut { opacity: .5; }
+.ide-git-page { overflow: hidden; container-type: inline-size; }
+.ide-git-graph { display: flex; flex-direction: column; flex: 1; min-height: 0; color: var(--ide-fg); font: 12px var(--ide-ui); }
+.ide-git-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--ide-border); }
+.ide-git-toolbar > strong { margin-right: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; }
+.ide-git-find { flex: 1; min-width: 140px; max-width: 380px; }
+.ide-git-status { flex: none; color: var(--ide-muted); padding: 5px 14px; border-bottom: 1px solid var(--ide-border); min-height: 25px; box-sizing: border-box; }
+.ide-git-body { display: grid; grid-template-rows: minmax(100px, 1fr) minmax(160px, .8fr); flex: 1; min-height: 0; }
+.ide-git-history { min-height: 0; display: flex; flex-direction: column; overflow: auto; }
+.ide-git-list { flex: 1; min-height: 80px; overflow: auto; outline: none; }
+.ide-git-row { display: grid; grid-template-columns: var(--git-lanes) minmax(200px, 1fr) 120px 90px 76px; gap: 10px; align-items: center; height: 32px; min-width: max(100%, calc(var(--git-lanes) + 550px)); width: 100%; border: 0; padding: 0 12px 0 0; color: inherit; background: none; text-align: left; cursor: pointer; font: inherit; }
+.ide-git-row > svg { display: block; overflow: visible; }
+.ide-git-row:hover, .ide-git-file:hover { background: var(--ide-hover); }
+.ide-git-row.on { background: color-mix(in srgb, var(--ide-accent) 20%, transparent); }
+.ide-git-row.dim .ide-git-summary, .ide-git-row.dim .ide-git-author, .ide-git-row.dim .ide-git-date, .ide-git-row.dim .ide-git-hash { opacity: .38; }
+.ide-git-summary { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; }
+.ide-git-subject, .ide-git-author, .ide-git-file-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ide-git-ref { flex: none; border: 1px solid color-mix(in srgb, var(--ide-accent) 55%, transparent); background: color-mix(in srgb, var(--ide-accent) 12%, transparent); padding: 1px 5px; border-radius: 3px; font-size: 10px; }
+.ide-git-date, .ide-git-hash, .ide-git-author { color: var(--ide-muted); }
+.ide-git-hash { font-size: 11px; }
+.ide-git-more { flex: none; align-self: center; margin: 8px; }
+.ide-git-details { display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 1fr); min-height: 0; border-top: 1px solid var(--ide-border); overflow: auto; }
+.ide-git-meta, .ide-git-changes { min-width: 0; padding: 14px; overflow: auto; }
+.ide-git-meta { border-right: 1px solid var(--ide-border); }
+.ide-git-detail-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.ide-git-fields { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 10px; margin: 0; line-height: 1.5; }
+.ide-git-fields dt { color: var(--ide-muted); }
+.ide-git-fields dd { margin: 0; overflow-wrap: anywhere; }
+.ide-git-full-hash { text-align: left; word-break: break-all; font: 11px var(--ide-mono, monospace); }
+.ide-git-parents { display: flex; flex-wrap: wrap; gap: 8px; }
+.ide-git-message { font: 13px/1.6 var(--ide-ui); white-space: pre-wrap; overflow-wrap: anywhere; margin: 16px 0 0; }
+.ide-git-changes > strong { display: block; margin-bottom: 10px; }
+.ide-git-merge-note { color: var(--ide-muted); font-size: 11px; }
+.ide-git-file { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 4px; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.ide-git-file-path { flex: 1; }
+.ide-git-file-status { color: var(--ide-muted); width: 14px; flex: none; }
+.ide-git-added { color: var(--ide-git-added, #73c991); }
+:root[data-theme="light"] .ide-git-added { color: #327b32; }
+.ide-git-removed { color: var(--ide-err); }
+.ide-git-row:focus-visible, .ide-git-file:focus-visible, .ide-scm-graph-link:focus-visible, .ide-prob:focus-visible, .ide-sr-match:focus-visible, .ide-term-item:focus-visible { outline: 1px solid var(--ide-accent); outline-offset: -1px; }
+@container (max-width: 600px) {
+  .ide-git-toolbar > strong { flex-basis: 100%; max-width: none; }
+  .ide-git-details { grid-template-columns: 1fr; }
+  .ide-git-meta { border-right: 0; border-bottom: 1px solid var(--ide-border); overflow: visible; }
+  .ide-git-changes { overflow: visible; }
+  .ide-git-row { grid-template-columns: var(--git-lanes) minmax(160px, 1fr) 76px; min-width: max(100%, calc(var(--git-lanes) + 280px)); }
+  .ide-git-author, .ide-git-date { display: none; }
+}
+@media (pointer: coarse) {
+  .ide-tab-x { visibility: visible; }
+  .ide-tab.dirty .ide-tab-x .ide-ic { display: block !important; }
+  .ide-tab.dirty .ide-tab-x::after { display: none; }
+  .ide-mi { min-height: 32px; }
+}
 .ide-sb-branch .ide-ic { width: 13px; height: 13px; }
 .ide-sb-sync { margin-left: 6px; }
 /* a diff as a page: both sides' line numbers, the change coloured */
@@ -1075,6 +1136,10 @@ span.ide-sb:hover { background: none; }
 .ide-quick-msg.bad { color: var(--ide-err); }
 .ide-quick-list { max-height: min(440px, 60vh); overflow-y: auto; margin-top: 4px; }
 .ide-quick-list:empty { display: none; }
+.ide-qi-swatch { display: inline-flex; flex: none; gap: 3px; align-self: center; margin-right: 6px; }
+.ide-qi-swatch > span { width: 12px; height: 12px; border-radius: 50%; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ide-fg) 30%, transparent); }
+.ide-sr-file:focus-visible { outline: 1px solid var(--ide-accent); outline-offset: -1px; }
+.ide-search-results { overflow-anchor: none; }
 .ide-qi { position: relative; display: flex; align-items: center; gap: 6px; min-height: 22px; padding: 2px 8px; cursor: pointer; border-radius: 3px; white-space: nowrap; }
 .ide-qi.sep { margin-top: 5px; }
 .ide-qi.sep::before { content: attr(data-sep); position: absolute; right: 8px; top: 3px; color: var(--ide-muted); font-size: 11px; }

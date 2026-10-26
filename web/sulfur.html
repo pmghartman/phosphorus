@@ -12,8 +12,9 @@
 (() => {
   let pick = null;
   try { pick = localStorage.getItem('sulfur-appearance'); } catch {}
-  const light = pick === 'light' || (pick !== 'dark' && matchMedia('(prefers-color-scheme: light)').matches);
-  if (light) document.documentElement.dataset.theme = 'light';
+  const light = pick === 'light' || (pick !== 'dark' && pick !== 'oled' && matchMedia('(prefers-color-scheme: light)').matches);
+  if (pick === 'oled') document.documentElement.dataset.theme = 'oled';
+  else if (light) document.documentElement.dataset.theme = 'light';
   // the theme as theme.js last put it up: its look, rounded corners, page font, a custom one's css
   const r = document.documentElement;
   let a = null;

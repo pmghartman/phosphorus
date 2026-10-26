@@ -47,6 +47,39 @@ web and desktop editor draws guides and markers only around the visible viewport
 Tabs use a compact height in both layout modes. Syntax and semantic colors for
 unchanged text stay visible while updated highlighting is pending.
 
+Right-click a panel, its header, or an item to see the operations for that
+context. The header’s **More Actions** button offers the same panel operations.
+`Shift+F10` or the menu key opens the context menu for the focused item; Escape
+returns focus to where it was. Text fields retain their native editing menus.
+Chat has a close button in its header and can be reopened with `Ctrl+Alt+I`.
+
+Switching folders closes the current editors after resolving unsaved changes.
+Cancel or a failed save leaves the current folder and tabs in place. Each
+folder remembers its file order, active file, cursor selections, recently closed
+editors, and commit-message draft separately, including the machine and share.
+Returning to a folder restores its last open files; explicitly closing all its
+files keeps it empty on return. **Workbench: Restore Editors** controls restoration
+on folder changes as well as at startup. Browser-local imported files remain
+snapshots and are not persisted as workspace files. `Ctrl+Shift+T` reopens a closed
+workspace file at its previous selection and original location.
+
+Explorer’s **Cut**, **Copy**, and **Paste** work for files and folders, also with
+`Ctrl+X`, `Ctrl+C`, and `Ctrl+V` while the tree has focus. Copying into a folder
+with an existing name chooses a “copy” suffix. Cut and paste stays within the
+same location; copying also works between locations. Paste refuses to put a
+folder inside itself or replace an existing cut destination.
+
+Source Control includes a commit-message composer and a **Source Control Graph**
+button. The graph shows branch and tag labels, parent and merge lanes, and either
+all branches or the current branch. Select a commit for its full message, author,
+date, parents, and changed files with line counts. Click a file or **Open Changes**
+to view its patch; merge changes are compared with the first parent. Find commits
+by message, author, ref, or hash and press Enter to advance through matches without
+hiding graph connections. Arrow keys navigate commits, and **Load more commits**
+extends the history in batches of 100. Commit and file context menus include copy
+and navigation operations. The command palette also exposes **Git: Open Source
+Control Graph** and **Git: View History**.
+
 Open files on a workspace machine are checked for external saves once a second
 by one watcher on that machine. Unchanged files require metadata checks only.
 Clean buffers reload automatically through the collaboration protocol, retaining
