@@ -51,3 +51,9 @@ test('shared language identities and identical key commands are not conflicts', 
   const c = { languages: [{ id: 'python', extensions: ['.py'] }], keybindings: [{ key: 'ctrl+shift+k', command: 'same' }] };
   assert.equal(extensionConflicts([extension('a', c), extension('b', c)]).get('a').length, 0);
 });
+
+test('malformed registry declarations do not break conflict previews', () => {
+  const bad = extension('bad', { commands: [null, 'wrong', { command: 7 }], keybindings: [null, { key: 'ctrl+k', command: {} }],
+    languages: [null, { extensions: [null, 42] }], customEditors: [null, { filenamePatterns: [null, 7] }], views: [null] });
+  assert.doesNotThrow(() => extensionConflicts([bad]));
+});

@@ -962,7 +962,7 @@
 .ide-vsx-row .ide-ext-main { overflow: hidden; }
 .ide-vsx-chip.converted { color: var(--ide-ok); border-color: color-mix(in srgb, var(--ide-ok) 45%, transparent); }
 .ide-vsx-chip.partial { color: var(--ide-warn); border-color: color-mix(in srgb, var(--ide-warn) 45%, transparent); }
-.ide-vsx-chip.skipped { opacity: 0.75; text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--ide-muted) 50%, transparent); }
+.ide-vsx-chip.skipped { color: var(--ide-muted); background: color-mix(in srgb, var(--ide-muted) 6%, transparent); }
 .ide-vsx-pager { display: flex; align-items: center; gap: 12px; padding: 12px 32px 32px; color: var(--ide-muted); font-size: 12px; }
 .ide-vsx-item { display: flex; align-items: center; gap: 12px; padding: 4px 0; border-bottom: 1px solid color-mix(in srgb, var(--ide-border) 60%, transparent); }
 .ide-vsx-item-name { color: var(--ide-strong); }

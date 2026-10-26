@@ -8680,7 +8680,7 @@ function paintExtView() {
     read.addEventListener('click', () => run('sulfur.extensions.guide'));
     E.note.append(make, read);
   }
-  for (const t of I.tabs) if (t.page?.startsWith('ext:')) t.paint?.();
+  for (const t of I.tabs) if (t.page?.startsWith('ext:') || t.page?.startsWith('vsx-preview:')) t.paint?.();
 }
 
 function extItems(x) {
@@ -8963,7 +8963,11 @@ const EXT_CALLS = {
   'commands.list': () => [...I.commands.keys()],
   'extensions.activate': async (x, id) => {
     const target = [...I.exts.values()].find((e) => (e.manifest?.sulfur?.vscode?.id || e.id).toLowerCase() === String(id).toLowerCase());
-    if (!target) { if (NATIVE_EXTENSIONS.some((e) => e.id === id)) return true; throw new Error(`Extension '${id}' is not installed`); }
+    if (!target) {
+      const native = nativeExtensions().find((e) => e.id.toLowerCase() === String(id).toLowerCase());
+      if (native?.active) return true;
+      throw new Error(native ? `Extension '${id}' is disabled; enable it in Extensions` : `Extension '${id}' is not installed`);
+    }
     if (!I.st.ext.enabled[target.id]) throw new Error(`Extension '${id}' is disabled; enable it in Extensions`);
     if (!await activateExt(target)) throw new Error(`Extension '${id}' could not activate`);
     return true;
@@ -8983,13 +8987,19 @@ const EXT_CALLS = {
       throw new Error(`command '${id}' already exists`);
     }
     if (!had) {
-      command(id, id, (...args) => extRequest(x, { t: 'cmd', cmd: id, args }), { category: extName(x), ext: x.id, when: () => x.state === 'on' });
+      command(id, id, (...args) => extRequest(x, { t: 'cmd', cmd: id, args }), { category: extName(x), ext: x.id, hidden: id.endsWith('.sulfur.children'), when: () => x.state === 'on' });
       buildKeys();
     }
     x.cmds.add(id);
   },
   'commands.unregister': (x, id) => { if (I.commands.get(id)?.ext === x.id && !(x.manifest?.contributes?.commands || []).some((c) => c?.command === id)) { I.commands.delete(id); x.cmds.delete(id); buildKeys(); } },
-  'commands.execute': (x, id, args) => run(id, ...(args || [])),
+  'commands.execute': (x, id, args) => {
+    if (id.startsWith('workbench.view.extension.')) {
+      const container = id.slice('workbench.view.extension.'.length), entry = [...(x.sideViews?.values() || [])].find((e) => e.container.id === `ext:${x.id}:${container}`);
+      if (entry) return entry.show();
+    }
+    return run(id, ...(args || []));
+  },
   'window.message': (x, kind, text, actions) => new Promise((res) => {
     notify(['info', 'warning', 'error'].includes(kind) ? kind : 'info', text, { source: extName(x), actions: (actions || []).map((label) => ({ label, run: () => res(label) })), onClose: () => res(undefined) });
   }),
@@ -9287,6 +9297,16 @@ const VSCODE_VARS = {
   'scrollbarSlider-hoverBackground': '--ide-scroll', 'scrollbarSlider-activeBackground': '--ide-scroll', 'textCodeBlock-background': '--ide-side', 'textPreformat-foreground': '--ide-fg',
   'keybindingLabel-background': '--ide-second', 'keybindingLabel-foreground': '--ide-fg', 'notifications-background': '--ide-widget', 'quickInput-background': '--ide-widget',
   'editorGroupHeader-tabsBackground': '--ide-side', 'titleBar-activeBackground': '--ide-side', 'statusBar-background': '--ide-side', 'progressBar-background': '--ide-accent',
+  'sideBar-foreground': '--ide-fg', 'sideBar-border': '--ide-border', 'sideBarSectionHeader-background': '--ide-side', 'sideBarSectionHeader-foreground': '--ide-strong',
+  'activityBar-background': '--ide-side', 'activityBar-foreground': '--ide-fg', 'activityBar-inactiveForeground': '--ide-muted', 'activityBarBadge-background': '--ide-badge', 'activityBarBadge-foreground': '--ide-badge-fg',
+  'button-border': '--ide-border', 'checkbox-foreground': '--ide-fg', 'checkbox-selectBackground': '--ide-sel', 'dropdown-listBackground': '--ide-widget',
+  'inputValidation-errorBackground': '--ide-widget', 'inputValidation-errorBorder': '--ide-err', 'inputValidation-errorForeground': '--ide-err',
+  'inputValidation-warningBackground': '--ide-widget', 'inputValidation-warningBorder': '--ide-warn', 'inputValidation-infoBorder': '--ide-info',
+  'list-focusBackground': '--ide-sel', 'list-focusForeground': '--ide-strong', 'list-hoverForeground': '--ide-fg', 'list-inactiveSelectionForeground': '--ide-fg', 'list-highlightForeground': '--ide-accent',
+  'editorWidget-foreground': '--ide-fg', 'editorHoverWidget-background': '--ide-widget', 'editorHoverWidget-foreground': '--ide-fg', 'editorHoverWidget-border': '--ide-widget-border',
+  'textBlockQuote-background': '--ide-side', 'textBlockQuote-border': '--ide-border', 'textSeparator-foreground': '--ide-border',
+  'panelTitle-activeForeground': '--ide-strong', 'panelTitle-inactiveForeground': '--ide-muted', 'panelTitle-activeBorder': '--ide-accent',
+  'settings-headerForeground': '--ide-strong', 'settings-textInputBackground': '--ide-input', 'settings-textInputForeground': '--ide-fg', 'settings-textInputBorder': '--ide-input-border',
 };
 function webviewTheme() {
   const css = getComputedStyle(I.w.node), vars = {};
@@ -9653,7 +9673,7 @@ function mountVsxLibrary(t) {
     const plan = el('div', 'ide-vsx-plan');
     const kept = (e.plan || []).filter((p) => p.status !== 'skipped');
     for (const p of e.plan || []) {
-      const chip = el('span', `ide-vsx-chip ${p.status}`, p.status !== 'skipped' ? p.name : p.kind === 'code' ? 'no code' : p.kind === 'extensionPack' ? `${p.name} not included` : `no ${p.name}`);
+      const chip = el('span', `ide-vsx-chip ${p.status}`, p.status !== 'skipped' ? p.name : p.kind === 'code' ? 'Code unavailable' : p.kind === 'other' ? `${p.name.split(',').length} unsupported features` : `${p.name} unavailable`);
       chip.title = `${p.status}${p.detail ? `: ${p.detail}` : ''}`;
       plan.append(chip);
     }
@@ -9674,10 +9694,10 @@ function mountVsxLibrary(t) {
     foot.append(acts);
     main.append(top, desc, foot, plan);
     row.append(ic, main);
-    const open = () => { if (have) openExtPage(have); else window.open(`https://open-vsx.org/extension/${encodeURIComponent(e.namespace)}/${encodeURIComponent(e.name)}`, '_blank', 'noopener'); };
+    const open = () => { if (have) openExtPage(have); else openVsxPreview(e); };
     row.addEventListener('click', open);
     row.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' && ev.target === row) open(); });
-    row.title = have ? 'Open its page' : 'Open it on open-vsx.org';
+    row.title = have ? 'Open its page' : 'Review native compatibility and conflicts';
     return row;
   }
   S.paint = paint;
@@ -9691,6 +9711,39 @@ function mountVsxLibrary(t) {
 }
 
 const vsxId = (ns, name) => `${ns}.${name}`.toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^[.-]+|[.-]+$/g, '');
+
+function openVsxPreview(e) {
+  const id = vsxId(e.namespace, e.name);
+  return openPage(`vsx-preview:${id}`, e.displayName || e.name, 'ext', (pg) => {
+    const paint = pg.paint = () => {
+      const have = I.exts.get(id), busy = I.vsxInstalling?.has(id);
+      const head = el('div', 'ide-extp-head'), info = el('div', 'ide-extp-info');
+      info.append(el('h1', '', e.displayName || e.name), el('div', 'ide-extp-id', `${id} · v${e.version}`), el('p', '', e.description || ''));
+      const actions = el('div', 'ide-extp-acts');
+      const install = Object.assign(el('button', 'ide-button', busy ? 'Converting…' : have ? 'Open Installed Extension' : 'Convert & Install'), { type: 'button', disabled: !!busy || !have && !e.planError && !(e.plan || []).some((p) => p.status !== 'skipped') });
+      install.addEventListener('click', () => have ? openExtPage(have) : vsxInstall(e, paint));
+      const registry = Object.assign(el('button', 'ide-button secondary', 'Open on Open VSX'), { type: 'button' });
+      registry.addEventListener('click', () => openExternal(`https://open-vsx.org/extension/${encodeURIComponent(e.namespace)}/${encodeURIComponent(e.name)}`));
+      actions.append(install, registry); info.append(actions); head.append(info);
+      const body = el('div', 'ide-extp-contrib');
+      body.append(el('h2', '', 'Conversion preview'), el('p', 'ide-run-note', 'This preview uses the published manifest. Package inspection produces the final conversion report; browser API compatibility is checked as the extension runs.'));
+      if (e.planError) body.append(el('p', 'ide-extension-conflict', `Compatibility could not be checked: ${e.planError}`));
+      for (const item of e.plan || []) {
+        const row = el('div', 'ide-vsx-item');
+        row.append(el('span', `ide-vsx-chip ${item.status}`, item.status), el('span', 'ide-vsx-item-name', item.name), el('span', 'ide-run-note', item.detail || ''));
+        body.append(row);
+      }
+      const conflicts = e.manifest ? createExtensionConflictIndex([...I.exts.values()].map((x) => ({ ...x, active: !!I.st.ext.enabled[x.id] })), {
+        native: nativeExtensions(), commands: [...I.commands.values()].filter((c) => !c.ext), mac: IS_MAC,
+      }).inspect({ id, manifest: e.manifest, active: true }) : [];
+      body.append(el('h2', '', 'Potential conflicts and dependencies'));
+      if (!conflicts.length) body.append(el('p', 'ide-run-note', e.manifest ? 'No competing declarations found in the current extension registry. Runtime handlers are checked when registered.' : 'The manifest is unavailable; conflicts will be checked after conversion.'));
+      for (const conflict of conflicts) body.append(el('div', 'ide-extension-conflict', conflict.detail));
+      pg.view.replaceChildren(head, body);
+    };
+    paint();
+  });
+}
 
 // a package converted by the app's server, its files written as an extension of the user's, enabled
 async function vsxInstall(e, repaint = () => {}) {
