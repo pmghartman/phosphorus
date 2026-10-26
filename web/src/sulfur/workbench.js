@@ -1986,12 +1986,19 @@ async function sqliteRequest(rel, loc, host, p, signal) {
 function openSQLite(rel, loc = locOf(), host = '') {
   const state = I;
   const at = fileLoc(rel, host, loc);
-  return openPage(`sqlite:${locKey(loc)}:${at.host}:${rel}`, baseName(rel), 'file', (t) => {
+  return openPage(`sqlite:${locKey(loc)}:${rel}`, baseName(rel), 'file', (t) => {
     Object.assign(t, { kind: 'sqlite', rel, loc, host: at.host, share: at.share });
     t.customOf = { path: rel, loc };
+    // Restored tabs open before the merged-home listing has populated its
+    // holder cache. Resolve the actual file holder once and pin this view to it.
+    const ready = !isHomeLoc(loc) || host ? Promise.resolve(at.host) : holdersOf(rel, loc).then((hosts) => {
+      const selected = hosts.includes(selfHost) ? selfHost : hosts[0] || homePick(rel);
+      if (I === state && I.tabs.includes(t)) t.host = selected;
+      return selected;
+    });
     const view = mountSQLite(t.view, {
       path: rel,
-      request: (p, signal) => sqliteRequest(rel, loc, at.host, p, signal),
+      request: async (p, signal) => sqliteRequest(rel, loc, await ready, p, signal),
       onChange: () => { if (I === state) { I.index = null; refreshTree(); } },
     });
     t.dispose = () => view.dispose();
