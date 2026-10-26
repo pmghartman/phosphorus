@@ -25,7 +25,7 @@ const (
 )
 
 // the package's files a web build never needs
-var vsxWebSkip = regexp.MustCompile(`(?i)(\.map$|\.ts$|\.tsx$|(^|/)(readme|changelog|license|licence|thirdpartynotices|third-party-notices)[^/]*$|(^|/)\.[^/]+$|(^|/)(test|tests|__tests__|\.github|\.vscode)/|node_modules/\.bin/|node_modules/[^/]+/(src|test|tests|docs?)/)`)
+var vsxWebSkip = regexp.MustCompile(`(?i)(\.map$|\.ts$|\.tsx$|(^|/)(readme|changelog)[^/]*$|(^|/)\.[^/]+$|(^|/)(test|tests|__tests__|\.github|\.vscode)/|node_modules/\.bin/|node_modules/[^/]+/(src|test|tests|docs?)/)`)
 
 // webBuild the package's web entry, "" when it has none
 func (c *converter) webBuild() string {
@@ -79,7 +79,14 @@ func (c *converter) webExtension(contributes map[string]any, browser string) {
 	for rel := range c.pkg.files {
 		rels = append(rels, rel)
 	}
-	sort.Strings(rels)
+	// The executable must fit before optional assets; alphabetical order can put
+	// a large media directory ahead of the entry and otherwise omit the main module.
+	sort.Slice(rels, func(i, j int) bool {
+		if rels[i] == browser || rels[j] == browser {
+			return rels[i] == browser
+		}
+		return rels[i] < rels[j]
+	})
 	size, skipped, binary := 0, 0, 0
 	for _, rel := range rels {
 		f := c.pkg.files[rel]
@@ -92,7 +99,7 @@ func (c *converter) webExtension(contributes map[string]any, browser string) {
 				continue
 			}
 		}
-		if size+int(f.UncompressedSize64) > vsxWebMax {
+		if f.UncompressedSize64 > uint64(vsxWebMax-size) {
 			skipped++
 			continue
 		}
