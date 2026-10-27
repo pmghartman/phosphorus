@@ -39,7 +39,7 @@ write(`${kdir}/katex.css`, kcss);
 assets["katex.css"] = `/${kdir}/katex.css`;
 
 const res = await Bun.build({
-  entrypoints: [join(src, "src/main.js"), join(src, "style.css")],
+  entrypoints: [join(src, "src/main.ts"), join(src, "style.css")],
   outdir: join(out, "assets"),
   naming: { entry: "[name]-[hash].[ext]", chunk: "[name]-[hash].[ext]", asset: "[name]-[hash].[ext]" },
   format: "esm",
@@ -66,13 +66,13 @@ if (!res.success) process.exit(1);
 
 // the page: its entry and style put in
 const entry: Record<string, string> = {};
-// main.js is the one entry-point; style.css comes out as an asset
+// main.ts is the one entry-point; style.css comes out as an asset
 for (const o of res.outputs) {
   const name = basename(o.path).replace(/-[a-z0-9]+(\.\w+)$/, "$1");
   if (o.kind === "entry-point" || (o.kind === "asset" && name === "style.css")) entry[name] = "/" + relative(out, o.path).replaceAll("\\", "/");
 }
 let html = readFileSync(join(src, "index.html"), "utf8");
-html = html.replace(`href="/style.css"`, `href="${entry["style.css"]}"`).replace(`<script type="module" src="/src/main.js"></script>`, `<script type="module" src="${entry["main.js"]}"></script>`);
+html = html.replace(`href="/style.css"`, `href="${entry["style.css"]}"`).replace(`<script type="module" src="/src/main.ts"></script>`, `<script type="module" src="${entry["main.js"]}"></script>`);
 if (!entry["main.js"] || !entry["style.css"] || !html.includes(entry["main.js"]) || !html.includes(entry["style.css"])) {
   console.error("index.html lost its style.css or main.js tag");
   process.exit(1);

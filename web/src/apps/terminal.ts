@@ -1,23 +1,25 @@
-import {
-  ASSETS,
-  copyText,
-  cssVar,
-  hostUrl,
-  name,
-} from '../app.js';
+import { hostUrl } from '../shares.ts';
+import { st } from '../state.ts';
+import type { TermLogin } from '../types.ts';
+import { copyText } from '../util.ts';
+import type { ITerminalOptions, ITheme, Terminal as TerminalT } from '@xterm/xterm';
+import type { FitAddon as FitAddonT } from '@xterm/addon-fit';
+
+// the page's vendor files, hashed by the build
+const ASSETS = __ASSETS__;
 
 // --- terminals --------------------------------------------------------------
 
 // xterm with this chunk's prefetch, its own chunks
-let xtermLoaded = null;
-let Terminal = null;
-let FitAddon = null;
-let WebglAddon = null;
-function loadXterm() {
+let xtermLoaded: Promise<void> | null = null;
+let Terminal: typeof TerminalT | null = null;
+let FitAddon: typeof import('@xterm/addon-fit') | null = null;
+let WebglAddon: typeof import('@xterm/addon-webgl') | null = null;
+function loadXterm(): Promise<void> {
   if (xtermLoaded) return xtermLoaded;
   const css = document.createElement('link');
   css.rel = 'stylesheet';
-  css.href = ASSETS['xterm.css'];
+  css.href = ASSETS['xterm.css']!;
   document.head.appendChild(css);
   xtermLoaded = Promise.all([import('@xterm/xterm'), import('@xterm/addon-fit'), import('@xterm/addon-webgl')])
     .then(([x, f, g]) => { Terminal = x.Terminal; FitAddon = f; WebglAddon = g; })
@@ -28,31 +30,31 @@ function loadXterm() {
 // server's close codes: session gone for good, or taken by another tab
 const TERM_ENDED = 4000;
 // cmd+c and cmd+v a mac's own, its ctrl+c always ^C
-const IS_MAC = /Mac|iPhone|iPad/.test(navigator.userAgentData?.platform || navigator.platform || '');
+const IS_MAC = /Mac|iPhone|iPad/.test((navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform || navigator.platform || '');
 const TERM_TAKEN = 4001;
 const RETRY_MIN_MS = 1000;
 const RETRY_MAX_MS = 10000;
 // the sixteen ANSI colors from the page's own tokens, so a restyle reaches
 // terminals too: magenta the accent, yellow its orange, blue the sky
-const TERM_HUES = {
+const TERM_HUES: Record<string, string> = {
   red: '--offmesh', green: '--online', yellow: '--accent-2',
   blue: '--sky', magenta: '--accent', cyan: '--teal',
 };
 
-const hexRgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
-const mixHex = (a, b, t) => `#${hexRgb(a).map((v, i) => Math.round(v + (hexRgb(b)[i] - v) * t).toString(16).padStart(2, '0')).join('')}`;
+const hexRgb = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+const mixHex = (a: string, b: string, t: number) => `#${hexRgb(a).map((v, i) => Math.round(v + (hexRgb(b)[i]! - v) * t).toString(16).padStart(2, '0')).join('')}`;
 
 // read fresh each time so a theme switch reaches open terminals,
 // light's tokens already inked for white, only its brights darker;
 // from: the element whose tokens it takes, clear: no background of its own
-function termTheme(from = document.documentElement, clear = false) {
+function termTheme(from: Element = document.documentElement, clear = false): ITheme {
   const css = getComputedStyle(from.isConnected ? from : document.documentElement);
-  const cssVar = (name) => css.getPropertyValue(name).trim();
+  const cssVar = (name: string) => css.getPropertyValue(name).trim();
   // a window may set its own scheme, a theme's terminal dark on a light desktop
   const scheme = cssVar('--term-scheme');
   const light = scheme ? scheme === 'light' : document.documentElement.dataset.theme === 'light';
   const fg = cssVar('--fg');
-  const theme = {
+  const theme: ITheme & Record<string, string> = {
     background: clear ? '#00000000' : cssVar('--bg'), foreground: fg,
     cursor: cssVar('--accent'), cursorAccent: cssVar('--bg'),
     selectionBackground: `${cssVar('--accent')}59`,
@@ -63,31 +65,47 @@ function termTheme(from = document.documentElement, clear = false) {
   };
   for (const [name, token] of Object.entries(TERM_HUES)) {
     const hue = cssVar(token);
-    const bright = `bright${name[0].toUpperCase()}${name.slice(1)}`;
+    const bright = `bright${name[0]!.toUpperCase()}${name.slice(1)}`;
     theme[name] = hue;
     theme[bright] = light ? mixHex(hue, fg, 0.25) : mixHex(hue, '#ffffff', 0.25);
   }
   return theme;
 }
 // each open terminal and where its colors come from
-const liveTerms = new Map();
-const looks = (opts) => ({ from: opts.themeFrom || document.documentElement, clear: !!opts.transparent });
+interface Looks { from: Element; clear: boolean; fit?: FitAddonT }
+const liveTerms = new Map<TerminalT, Looks>();
+// a terminal's options: its size, where its colours come from, its transparency, its ending
+interface TermOpts { fontSize?: number; themeFrom?: Element; transparent?: boolean; onEnd?: () => void }
+const looks = (opts: TermOpts): Looks => ({ from: opts.themeFrom || document.documentElement, clear: !!opts.transparent });
 // the mono of where its colors come from, a theme's terminal its own face
-const monoOf = (from) => getComputedStyle(from?.isConnected ? from : document.documentElement).getPropertyValue('--mono').trim();
+const monoOf = (from: Element | undefined) => getComputedStyle(from?.isConnected ? from : document.documentElement).getPropertyValue('--mono').trim();
+
+// a terminal as the page drives it
+export interface Term {
+  show: () => Promise<void>;
+  focus: () => void;
+  send: (text: string) => boolean;
+  clear: () => void;
+  selection: () => string;
+  selectAll: () => void;
+  paste: (text: string) => void;
+  fit: () => void;
+  close: () => Promise<void>;
+}
 
 // /api/term/<host>: keystrokes and output as binary frames, resize as JSON,
 // a dropped socket's rejoin by sid, until the server's ENDED
 // login: {user, pass} typed into the host's prompts, unseen
 // opts: fontSize, and onEnd once the session's gone for good
-function startTerminal(view, host, sid, resume, shared = false, login = null, opts = {}) {
-  let term = null;
-  let fit = null;
-  let ws = null;
-  let observer = null;
-  let retry = null;
+function startTerminal(view: HTMLElement, host: string, sid: string, resume: boolean, shared = false, login: TermLogin | null = null, opts: TermOpts = {}): Term {
+  let term: TerminalT | null = null;
+  let fit: FitAddonT | null = null;
+  let ws: WebSocket | null = null;
+  let observer: ResizeObserver | null = null;
+  let retry: ReturnType<typeof setTimeout> | null = null;
 
   const ready = loadXterm().then(() => {
-    term = new Terminal({
+    term = new Terminal!({
       cursorBlink: true,
       cursorStyle: 'bar',
       fontSize: opts.fontSize || 14,
@@ -104,9 +122,9 @@ function startTerminal(view, host, sid, resume, shared = false, login = null, op
       if (e.key === 'Escape' && e.shiftKey) return false;
       if (IS_MAC || e.type !== 'keydown' || !e.ctrlKey || e.shiftKey || e.altKey || e.metaKey) return true;
       const k = e.key.toLowerCase();
-      if (k === 'c' && term.hasSelection()) {
-        copyText(term.getSelection()).catch(() => {});
-        term.clearSelection();
+      if (k === 'c' && term!.hasSelection()) {
+        copyText(term!.getSelection()).catch(() => {});
+        term!.clearSelection();
         e.preventDefault();
         return false;
       }
@@ -114,24 +132,24 @@ function startTerminal(view, host, sid, resume, shared = false, login = null, op
       if (k === 'v') return false;
       return true;
     });
-    fit = new FitAddon.FitAddon();
+    fit = new FitAddon!.FitAddon();
     term.loadAddon(fit);
-    liveTerms.get(term).fit = fit;
+    liveTerms.get(term)!.fit = fit;
     term.open(view);
     // pixel exact block and box glyphs, DOM renderer if no WebGL2 or the panel shows through
     if (!opts.transparent) {
       try {
-        const gl = new WebglAddon.WebglAddon();
+        const gl = new WebglAddon!.WebglAddon();
         gl.onContextLoss(() => gl.dispose());
         term.loadAddon(gl);
       } catch {}
     }
     // 0x0 for hidden views, skipped by fit
-    observer = new ResizeObserver(() => fit.fit());
+    observer = new ResizeObserver(() => fit!.fit());
     observer.observe(view);
 
     const sendSize = () => ws?.readyState === WebSocket.OPEN
-      && ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
+      && ws.send(JSON.stringify({ type: 'resize', cols: term!.cols, rows: term!.rows }));
     const enc = new TextEncoder();
     term.onResize(sendSize);
     term.onData((d) => ws?.readyState === WebSocket.OPEN && ws.send(enc.encode(d)));
@@ -140,7 +158,7 @@ function startTerminal(view, host, sid, resume, shared = false, login = null, op
     let got = 0;
     let delay = RETRY_MIN_MS;
     const connect = () => {
-      const q = new URLSearchParams({ sid, since: got });
+      const q = new URLSearchParams({ sid, since: String(got) });
       if (resume) q.set('resume', '1');
       // a saved login on its way: the server waits for it, its prompts never drawn
       else if (login) q.set('auto', '1');
@@ -151,23 +169,23 @@ function startTerminal(view, host, sid, resume, shared = false, login = null, op
       ws.onopen = () => {
         delay = RETRY_MIN_MS;
         sendSize();
-        ws.send(JSON.stringify({ type: 'share', on: shared, by: name }));
-        if (login && !resume) ws.send(JSON.stringify({ type: 'login', user: login.user, pass: login.pass, run: login.run || '', ...(login.dir ? { dir: login.dir, then: login.then || '' } : {}) }));
+        ws!.send(JSON.stringify({ type: 'share', on: shared, by: st.name }));
+        if (login && !resume) ws!.send(JSON.stringify({ type: 'login', user: login.user, pass: login.pass, run: login.run || '', ...(login.dir ? { dir: login.dir, then: login.then || '' } : {}) }));
         login = null;
       };
       ws.onmessage = (e) => {
         resume = true;
         got += e.data.byteLength;
-        term.write(new Uint8Array(e.data));
+        term!.write(new Uint8Array(e.data));
       };
       ws.onclose = (e) => {
         if (e.code === TERM_TAKEN) {
-          term.write('\r\n\x1b[2m[opened in another tab]\x1b[0m\r\n');
+          term!.write('\r\n\x1b[2m[opened in another tab]\x1b[0m\r\n');
           opts.onEnd?.();
           return;
         }
         if (e.code === TERM_ENDED || !resume) {
-          term.write('\r\n\x1b[2m[connection closed]\x1b[0m\r\n');
+          term!.write('\r\n\x1b[2m[connection closed]\x1b[0m\r\n');
           opts.onEnd?.();
           return;
         }
@@ -196,34 +214,34 @@ function startTerminal(view, host, sid, resume, shared = false, login = null, op
     fit: () => fit?.fit(),
     close: () => ready.then(() => {
       observer?.disconnect();
-      clearTimeout(retry);
+      clearTimeout(retry!);
       if (ws) {
         ws.onclose = null;
         if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'close' }));
         ws.close();
       }
-      liveTerms.delete(term);
+      liveTerms.delete(term!);
       term?.dispose();
     }),
   };
 }
 
 // the agent's console on a host: read only, its commands and their output as written
-function agentConsole(view) {
-  let term = null;
-  let observer = null;
-  const queued = [];
+function agentConsole(view: HTMLElement): { write: (t: string) => void; close: () => Promise<void> } {
+  let term: TerminalT | null = null;
+  let observer: ResizeObserver | null = null;
+  const queued: string[] = [];
   const ready = loadXterm().then(() => {
-    term = new Terminal({
+    term = new Terminal!({
       disableStdin: true, cursorBlink: false, cursorStyle: 'bar', cursorInactiveStyle: 'none', convertEol: true,
       fontSize: 13, lineHeight: 1, scrollback: 5000,
       fontFamily: getComputedStyle(document.documentElement).getPropertyValue('--mono').trim(),
       theme: termTheme(),
-    });
+    } as ITerminalOptions);
     liveTerms.set(term, looks({}));
-    const fit = new FitAddon.FitAddon();
+    const fit = new FitAddon!.FitAddon();
     term.loadAddon(fit);
-    liveTerms.get(term).fit = fit;
+    liveTerms.get(term)!.fit = fit;
     term.open(view);
     observer = new ResizeObserver(() => fit.fit());
     observer.observe(view);
@@ -232,13 +250,13 @@ function agentConsole(view) {
   }).catch((err) => { view.textContent = err.message; });
   return {
     write: (t) => { if (term) term.write(t); else queued.push(t); },
-    close: () => ready.then(() => { observer?.disconnect(); liveTerms.delete(term); term?.dispose(); }),
+    close: () => ready.then(() => { observer?.disconnect(); liveTerms.delete(term!); term?.dispose(); }),
   };
 }
 
 // re-coloured with the page's theme
 // a theme's own mono too, the cells measured again for it
-function termsRetheme() {
+function termsRetheme(): void {
   for (const [t, l] of liveTerms) {
     const font = monoOf(l.from);
     t.options.theme = termTheme(l.from, l.clear);

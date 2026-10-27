@@ -1,23 +1,19 @@
-import {
-  deskApps,
-  dk,
-  dkCode,
-  dkTerminal,
-  el,
-  esc,
-  hostsInfo,
-  noFill,
-  wsBase,
-} from '../app.js';
-import { renderMd } from '../md.js';
+import { wsBase } from '../api.ts';
+import { el, noFill } from '../dom.ts';
+import { renderMd } from '../md.ts';
+import { deskApps, dk, st } from '../state.ts';
+import type { CodeHarness, CodeHarnesses, CodeLs, CodeModel, CodeOptions, CodeSession, CodeWsMessage } from '../types.ts';
+import { esc } from '../util.ts';
+import { dkTerminal } from '../desktop/desk.ts';
+import { dkCode } from '../desktop/deskfiles.ts';
 
 // --- code: claude code sessions on any mesh host, as the desktop app's code tab
 // draws them: the sessions down the side, one's transcript streamed over a
 // socket, a composer under it; every action a REST call
 
-const view = document.getElementById('view-code');
+const view = document.getElementById('view-code')!;
 
-const PERMS = [
+const PERMS: [string, string][] = [
   ['default', 'ask first'],
   ['acceptEdits', 'accept edits'],
   ['plan', 'plan only'],
@@ -31,32 +27,59 @@ const LIST_MS = 4000;
 // an upload's bytes at most, as the server takes
 const UP_MAX = 50 * 1024 * 1024;
 const ANTH = ['opus', 'sonnet', 'haiku'];
-const provOf = (id) => (ANTH.includes(id) ? 'anthropic' : 'mesh');
+const provOf = (id: string | undefined) => (ANTH.includes(id!) ? 'anthropic' : 'mesh');
 // a tool's output kept to this on screen, the rest counted
 const OUT_MAX = 16000;
 
+// a tool call's card in the transcript
+interface Card { el: HTMLElement; body: HTMLElement; out: HTMLElement; sub: HTMLElement; name: string; input: Record<string, any> }
+// a block still streaming
+interface Live { kind: string; el: HTMLElement; index: number; text: string; timer?: ReturnType<typeof setTimeout> | 0 }
+interface Todo { status: string; content: string; activeForm?: string }
+// why an api call failed, in words
+interface Why { text: string; auth: boolean }
+// id -> transcript: its node, last seq, open cards, live blocks, its socket
+interface Transcript {
+  id: string;
+  node: HTMLElement;
+  seq: number;
+  cards: Map<string, Card>;
+  live: Live[];
+  perms: Map<string, { el: HTMLElement; done: (allow: boolean, always: boolean, cancelled?: boolean) => void }>;
+  todos: Todo[];
+  sock: WebSocket | null;
+  retry: number;
+  lastErr: string;
+  closed?: boolean;
+  todoEl?: HTMLElement;
+  todoFold?: boolean;
+  apiWhy?: Why | null;
+  retryEl?: HTMLElement | null;
+}
+
 const cd = {
-  list: [], opts: null, pick: '', filter: '', armed: '', renaming: '', listSig: '',
+  list: [] as CodeSession[], opts: null as CodeOptions | null, pick: '', filter: '', armed: '', renaming: '', listSig: '',
   // id -> transcript: its node, last seq, open cards, live blocks, its socket
-  logs: new Map(), tick: 0, on: false, drawer: false,
+  logs: new Map<string, Transcript>(), tick: 0 as ReturnType<typeof setInterval> | 0, on: false, drawer: false,
+  err: '', login: false,
 };
 
-const lsGet = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
-const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
-const shQuote = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
-const tilde = (d) => String(d || '').replace(/^\/(home|Users)\/[^/]+(?=\/|$)/, '~').replace(/^\/root(?=\/|$)/, '~');
-const base = (d) => String(d || '').replace(/\/+$/, '').split('/').pop() || '/';
-const parent = (d) => String(d || '').replace(/\/+$/, '').replace(/\/[^/]*$/, '') || '/';
-const qs = (o) => Object.entries(o).map(([k, v]) => `${k}=${encodeURIComponent(v ?? '')}`).join('&');
-const bytes = (n) => (n >= 1 << 30 ? `${(n / (1 << 30)).toFixed(1)}G` : n >= 1 << 20 ? `${(n / (1 << 20)).toFixed(1)}M` : n >= 1024 ? `${(n / 1024).toFixed(1)}K` : `${n || 0}B`);
-const kfmt = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}m` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}k` : String(n || 0));
-const ago = (ms) => {
+const lsGet = <T>(k: string, d: T): T => { try { return JSON.parse(localStorage.getItem(k)!) ?? d; } catch { return d; } };
+const lsSet = (k: string, v: unknown) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+const shQuote = (s: unknown) => `'${String(s).replace(/'/g, `'\\''`)}'`;
+const tilde = (d: unknown) => String(d || '').replace(/^\/(home|Users)\/[^/]+(?=\/|$)/, '~').replace(/^\/root(?=\/|$)/, '~');
+const base = (d: unknown) => String(d || '').replace(/\/+$/, '').split('/').pop() || '/';
+const parent = (d: unknown) => String(d || '').replace(/\/+$/, '').replace(/\/[^/]*$/, '') || '/';
+const qs = (o: Record<string, unknown>) => Object.entries(o).map(([k, v]) => `${k}=${encodeURIComponent(String(v ?? ''))}`).join('&');
+const bytes = (n: number | undefined) => (n! >= 1 << 30 ? `${(n! / (1 << 30)).toFixed(1)}G` : n! >= 1 << 20 ? `${(n! / (1 << 20)).toFixed(1)}M` : n! >= 1024 ? `${(n! / 1024).toFixed(1)}K` : `${n || 0}B`);
+const kfmt = (n: number | undefined) => (n! >= 1e6 ? `${(n! / 1e6).toFixed(1)}m` : n! >= 1e3 ? `${(n! / 1e3).toFixed(1)}k` : String(n || 0));
+const ago = (ms: number) => {
   const m = Math.max(0, Math.round((Date.now() - ms) / 60000));
   return m < 1 ? 'now' : m < 60 ? `${m}m` : m < 1440 ? `${Math.floor(m / 60)}h` : `${Math.floor(m / 1440)}d`;
 };
-const live = (r) => r && (r.status === 'working' || r.status === 'starting');
-const svg = (d) => `<svg viewBox="0 0 16 16" class="ic" aria-hidden="true"><path d="${d}"/></svg>`;
-const GL = {
+const live = (r: CodeSession | null | undefined) => r && (r.status === 'working' || r.status === 'starting');
+const svg = (d: string) => `<svg viewBox="0 0 16 16" class="ic" aria-hidden="true"><path d="${d}"/></svg>`;
+const GL: Record<string, string> = {
   term: 'M2 3h12v10H2zM4.5 6.5l2 1.5-2 1.5M8 10h3.5',
   folder: 'M1.5 3.5h4l1.2 1.5h7.8v8h-13z',
   side: 'M2.5 4h11M2.5 8h11M2.5 12h11',
@@ -68,15 +91,15 @@ const GL = {
   shield: 'M8 1.8l5 2v4c0 3-2.2 5.3-5 6.4-2.8-1.1-5-3.4-5-6.4v-4z',
 };
 
-async function call(url, method = 'GET', body) {
-  const init = { method, cache: 'no-store' };
+async function call(url: string, method = 'GET', body?: unknown): Promise<any> {
+  const init: RequestInit = { method, cache: 'no-store' };
   if (body !== undefined) { init.headers = { 'content-type': 'application/json' }; init.body = JSON.stringify(body); }
   const r = await fetch(url, init);
   const out = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(out.error || `status ${r.status}`);
   return out;
 }
-const sapi = (id, op = '') => `/api/code/sessions/${encodeURIComponent(id)}${op ? `/${op}` : ''}`;
+const sapi = (id: string, op = '') => `/api/code/sessions/${encodeURIComponent(id)}${op ? `/${op}` : ''}`;
 
 // --- the frame: side list, main pane ---
 
@@ -91,7 +114,7 @@ view.replaceChildren(root);
 scrim.addEventListener('click', () => drawer(false));
 
 // the side's width dragged on its grip, kept per browser
-function sideWidth(px) {
+function sideWidth(px: number): number {
   if (!px) { root.style.removeProperty('--cd-side'); return 0; }
   const w = Math.round(Math.min(Math.max(220, root.clientWidth * 0.45), Math.max(150, px)));
   root.style.setProperty('--cd-side', `${w}px`);
@@ -105,7 +128,7 @@ grip.addEventListener('pointerdown', (e) => {
   const x0 = e.clientX;
   const w0 = side.getBoundingClientRect().width;
   root.classList.add('cd-resizing');
-  const move = (ev) => sideWidth(w0 + ev.clientX - x0);
+  const move = (ev: PointerEvent) => sideWidth(w0 + ev.clientX - x0);
   const up = () => {
     grip.removeEventListener('pointermove', move);
     grip.removeEventListener('pointerup', up);
@@ -118,7 +141,7 @@ grip.addEventListener('pointerdown', (e) => {
   grip.addEventListener('pointercancel', up);
 });
 grip.addEventListener('keydown', (e) => {
-  const d = { ArrowLeft: -16, ArrowRight: 16 }[e.key];
+  const d = ({ ArrowLeft: -16, ArrowRight: 16 } as Record<string, number>)[e.key];
   if (!d) return;
   e.preventDefault();
   e.stopPropagation();
@@ -140,12 +163,12 @@ const acctBtn = Object.assign(el('button', 'cd-acct-btn'), { type: 'button', tit
 acctBtn.setAttribute('aria-expanded', 'false');
 acct.append(acctBox, acctBtn);
 side.append(sideTop, listEl, acct);
-acctBtn.addEventListener('click', () => acctOpen(acctBox.hidden));
+acctBtn.addEventListener('click', () => acctOpen(acctBox.hidden as boolean));
 newBtn.addEventListener('click', () => go('new'));
 find.addEventListener('input', () => { cd.filter = find.value.trim().toLowerCase(); cd.listSig = ''; paintList(); });
 find.addEventListener('keydown', (e) => e.stopPropagation());
 
-function drawer(on) {
+function drawer(on: boolean) {
   cd.drawer = on;
   root.classList.toggle('cd-drawer', on);
 }
@@ -157,7 +180,7 @@ async function loadList() {
     const r = await call('/api/code/sessions');
     cd.list = r.sessions || [];
     cd.err = '';
-  } catch (e) { cd.err = e.message; }
+  } catch (e) { cd.err = (e as Error).message; }
   if (!cd.pick) cd.pick = cd.list.some((s) => s.id === lsGet(PICK_LS, '')) ? lsGet(PICK_LS, '') : cd.list[0]?.id || 'new';
   if (cd.pick !== 'new' && !cd.list.some((s) => s.id === cd.pick) && !cd.err) { go(cd.list[0]?.id || 'new'); return; }
   paintList();
@@ -165,10 +188,10 @@ async function loadList() {
   else if (cd.pick !== 'new') paintHead();
 }
 
-async function loadOpts(fresh) {
+async function loadOpts(fresh?: boolean): Promise<CodeOptions> {
   if (cd.opts && !fresh) return cd.opts;
-  try { cd.opts = await call('/api/code/options'); } catch (e) { cd.opts = { hosts: [], models: [], anthropic: false, error: e.message }; }
-  return cd.opts;
+  try { cd.opts = await call('/api/code/options'); } catch (e) { cd.opts = { hosts: [], models: [], anthropic: false, error: (e as Error).message }; }
+  return cd.opts!;
 }
 
 const rec = (id = cd.pick) => cd.list.find((s) => s.id === id) || null;
@@ -179,7 +202,7 @@ function paintList() {
   cd.listSig = sig;
   const f = cd.filter;
   const shown = cd.list.filter((s) => !f || [s.title, s.host, s.dir, s.model].some((x) => String(x || '').toLowerCase().includes(f)));
-  const rows = [];
+  const rows: HTMLElement[] = [];
   if (cd.err) rows.push(el('div', 'cw-empty cd-bad', `failed: ${cd.err}`));
   else if (!cd.list.length) rows.push(el('div', 'cw-empty', 'no sessions yet'));
   else if (!shown.length) rows.push(el('div', 'cw-empty', 'nothing matches'));
@@ -188,7 +211,7 @@ function paintList() {
     row.dataset.id = s.id;
     if (cd.renaming === s.id) {
       const inp = Object.assign(el('input', 'cd-rename'), { value: s.title || '', maxLength: 120, spellcheck: false });
-      const done = (save) => {
+      const done = (save: boolean) => {
         if (cd.renaming !== s.id) return;
         cd.renaming = '';
         const t = inp.value.trim();
@@ -228,13 +251,13 @@ function paintList() {
     row.append(b, acts);
     rows.push(row);
   }
-  const focused = document.activeElement?.closest?.('.cd-item')?.dataset.id;
+  const focused = (document.activeElement?.closest?.('.cd-item') as HTMLElement | null)?.dataset.id;
   listEl.replaceChildren(...rows);
-  if (focused && !cd.renaming) listEl.querySelector(`.cd-item[data-id="${CSS.escape(focused)}"] .cd-pick`)?.focus();
+  if (focused && !cd.renaming) (listEl.querySelector(`.cd-item[data-id="${CSS.escape(focused)}"] .cd-pick`) as HTMLElement | null)?.focus();
 }
 
 // twice to confirm, the first press arming it a few seconds
-function arm(what) {
+function arm(what: string): boolean {
   if (cd.armed === what) { cd.armed = ''; return true; }
   cd.armed = what;
   cd.listSig = '';
@@ -243,7 +266,7 @@ function arm(what) {
   return false;
 }
 
-function remove(s) {
+function remove(s: CodeSession) {
   if (!arm(`del:${s.id}`)) return;
   call(sapi(s.id), 'DELETE').then(() => {
     const t = cd.logs.get(s.id);
@@ -253,7 +276,7 @@ function remove(s) {
   }, (e) => say(e.message));
 }
 
-function go(id) {
+function go(id: string) {
   if (id === cd.pick && main.childElementCount) return;
   const was = cd.logs.get(cd.pick);
   if (was) { was.closed = true; was.sock?.close(); was.sock = null; }
@@ -266,9 +289,9 @@ function go(id) {
 
 // --- one session: header, transcript, todos, composer ---
 
-let head = null;
+let head: HTMLElement | null = null;
 let headSig = '';
-let composer = null;
+let composer: { node: HTMLElement; text: HTMLTextAreaElement; state: (r: CodeSession | null) => void } | null = null;
 
 function paintOne() {
   const id = cd.pick;
@@ -288,21 +311,21 @@ function paintOne() {
   paintTodos(t);
   paintHead();
   connect(t);
-  requestAnimationFrame(() => { t.node.scrollTop = t.node.scrollHeight; });
+  requestAnimationFrame(() => { t!.node.scrollTop = t!.node.scrollHeight; });
   if (!view.closest('[hidden]')) composer.text.focus({ preventScroll: true });
 }
 
-function sideBtn() {
+function sideBtn(): HTMLButtonElement {
   const b = Object.assign(el('button', 'cd-icon cd-side-btn'), { type: 'button', title: 'sessions', ariaLabel: 'sessions' });
-  b.innerHTML = svg(GL.side);
+  b.innerHTML = svg(GL.side!);
   b.addEventListener('click', () => drawer(!cd.drawer));
   return b;
 }
 
 // the share holding a host's absolute folder, its path inside it
-function shareOf(host, dir) {
-  const shares = hostsInfo[String(host).toLowerCase()]?.files?.shares || [];
-  const clean = (p) => String(p || '').replace(/\/+$/, '');
+function shareOf(host: string, dir: string) {
+  const shares = st.hostsInfo[String(host).toLowerCase()]?.files?.shares || [];
+  const clean = (p: unknown) => String(p || '').replace(/\/+$/, '');
   const d = clean(dir);
   const sh = shares.filter((x) => x.label && (d === clean(x.label) || d.startsWith(`${clean(x.label)}/`)))
     .sort((a, b) => clean(b.label).length - clean(a.label).length)[0];
@@ -324,13 +347,13 @@ function paintHead() {
   const state = el('span', `cd-state cd-st-${r.status}`, r.status === 'working' ? 'working' : r.status);
   const tools = el('span', 'cd-head-tools');
   const term = Object.assign(el('button', 'cd-icon'), { type: 'button', ariaLabel: 'terminal here' });
-  term.innerHTML = svg(GL.term);
+  term.innerHTML = svg(GL.term!);
   const can = dk.creds?.has(r.host);
   term.disabled = !can;
   term.title = can ? `terminal on ${r.host} in ${r.dir}` : `log into ${r.host} on the desktop for a terminal`;
   term.addEventListener('click', () => dkTerminal(r.host, `cd ${shQuote(r.dir)}`));
   const folder = Object.assign(el('button', 'cd-icon'), { type: 'button', ariaLabel: 'open folder' });
-  folder.innerHTML = svg(GL.folder);
+  folder.innerHTML = svg(GL.folder!);
   folder.title = `browse ${r.host}:${r.dir}`;
   folder.addEventListener('click', () => openBrowser(r.host, r.dir));
   tools.append(term, folder);
@@ -363,17 +386,17 @@ function paintHead() {
 
 // the models by provider; lock, a running session's, the other provider's
 // shown but off: a switch across is a new session's
-function modelSelect(opts, cur, lock) {
+function modelSelect(opts: CodeOptions | null, cur: string, lock?: boolean): HTMLSelectElement {
   const s = el('select', 'cd-sel');
   const CROSS = 'start a new session to change provider';
   s.title = lock ? `model; ${CROSS}` : 'model';
-  const models = (opts?.models || []).filter((m) => m.provider !== 'anthropic' || opts.anthropic);
+  const models = (opts?.models || []).filter((m) => m.provider !== 'anthropic' || opts!.anthropic);
   const mesh = models.filter((m) => m.provider !== 'anthropic');
   const anth = models.filter((m) => m.provider === 'anthropic');
-  const off = (m) => lock && provOf(m.id) !== provOf(cur);
-  const opt = (m) => `<option value="${esc(m.id)}"${m.id === cur ? ' selected' : ''}${(m.ready === false && m.id !== cur) || off(m) ? ' disabled' : ''}`
+  const off = (m: CodeModel) => lock && provOf(m.id) !== provOf(cur);
+  const opt = (m: CodeModel) => `<option value="${esc(m.id)}"${m.id === cur ? ' selected' : ''}${(m.ready === false && m.id !== cur) || off(m) ? ' disabled' : ''}`
     + `${off(m) ? ` title="${CROSS}"` : ''}>${esc(m.label || m.id)}${m.ready === false ? ` · ${esc(m.why || 'not ready')}` : ''}</option>`;
-  const group = (label, ms) => `<optgroup label="${label}"${ms.length && ms.every(off) ? ` title="${CROSS}"` : ''}>${ms.map(opt).join('')}</optgroup>`;
+  const group = (label: string, ms: CodeModel[]) => `<optgroup label="${label}"${ms.length && ms.every(off) ? ` title="${CROSS}"` : ''}>${ms.map(opt).join('')}</optgroup>`;
   let html = '';
   if (mesh.length) html += group('mesh', mesh);
   if (anth.length) html += group('anthropic', anth);
@@ -383,26 +406,26 @@ function modelSelect(opts, cur, lock) {
 }
 
 // a line in the composer's corner
-function say(text) {
-  const m = main.querySelector('.cd-msg');
+function say(text: string) {
+  const m = main.querySelector('.cd-msg') as (HTMLElement & { t?: ReturnType<typeof setTimeout> }) | null;
   if (m) { m.textContent = text; clearTimeout(m.t); m.t = setTimeout(() => { m.textContent = ''; }, 6000); }
 }
 
 // --- the socket: everything after the last seq seen, then live ---
 
-function connect(t) {
+function connect(t: Transcript) {
   if (t.sock || t.closed || !cd.on) return;
   const ws = new WebSocket(`${wsBase()}/api/code/ws/${encodeURIComponent(t.id)}?since=${t.seq}`);
   t.sock = ws;
   ws.onopen = () => { t.retry = 0; };
   ws.onmessage = (e) => {
-    let m = null;
+    let m: CodeWsMessage | null = null;
     try { m = JSON.parse(e.data); } catch { return; }
-    if (m.seq && m.seq <= t.seq) return;
+    if (m!.seq && m!.seq <= t.seq) return;
     t.node.querySelector(':scope > .cd-wait')?.remove();
     const stick = t.node.scrollHeight - t.node.scrollTop - t.node.clientHeight < 40;
-    take(t, m);
-    if (m.seq) t.seq = m.seq;
+    take(t, m!);
+    if (m!.seq) t.seq = m!.seq;
     if (stick) t.node.scrollTop = t.node.scrollHeight;
   };
   ws.onclose = () => {
@@ -415,7 +438,7 @@ function connect(t) {
   };
 }
 
-function take(t, m) {
+function take(t: Transcript, m: CodeWsMessage) {
   // a line too big for the log, kept only as its kind
   if (m.truncated) { addNote(t, m.ev?.type || m.kind || 'event', 'too large to keep in the transcript').classList.add('cd-quiet'); return; }
   switch (m.kind) {
@@ -429,8 +452,8 @@ function take(t, m) {
     }
     case 'permission': permCard(t, m); break;
     case 'permission_done': {
-      const c = t.perms.get(m.reqId);
-      if (c) c.done(m.allow, false, m.cancelled);
+      const c = t.perms.get(m.reqId!);
+      if (c) c.done(m.allow!, false, m.cancelled);
       break;
     }
     case 'status': {
@@ -448,7 +471,7 @@ function take(t, m) {
   }
 }
 
-function addNote(t, kind, text) {
+function addNote(t: Transcript, kind: string, text: string): HTMLElement {
   const n = el('div', `cd-note cd-note-${kind}`);
   n.append(el('span', 'cd-note-tag', kind), el('span', 'cd-note-text', text));
   t.node.append(n);
@@ -457,7 +480,7 @@ function addNote(t, kind, text) {
 
 // --- claude's stream-json, one event at a time ---
 
-function claudeEv(t, ev) {
+function claudeEv(t: Transcript, ev: Record<string, any>) {
   const where = ev.parent_tool_use_id ? t.cards.get(ev.parent_tool_use_id)?.sub || t.node : t.node;
   switch (ev.type) {
     case 'system':
@@ -481,7 +504,7 @@ function claudeEv(t, ev) {
     case 'user': {
       const content = ev.message?.content;
       if (!Array.isArray(content)) break;
-      for (const b of content) if (b.type === 'tool_result') toolResult(t, b, ev.tool_use_result);
+      for (const b of content) if (b.type === 'tool_result') toolResult(t, b);
       break;
     }
     case 'result': {
@@ -515,7 +538,7 @@ function claudeEv(t, ev) {
 }
 
 // why an api call failed, by its status, in words that say where to look
-function apiWhy(t, status, kind) {
+function apiWhy(t: Transcript, status: number | undefined, kind: string | undefined): Why {
   const anth = provOf(rec(t.id)?.model) === 'anthropic';
   const who = anth ? 'Anthropic' : "the mesh's model gateway";
   if (!status) return { text: `couldn't reach ${who}${anth ? '' : ` from ${rec(t.id)?.host || 'the host'}`}`, auth: false };
@@ -529,15 +552,15 @@ function apiWhy(t, status, kind) {
 }
 
 // claude retrying a failed call: one line, kept current while nothing else lands
-function retryNote(t, ev) {
+function retryNote(t: Transcript, ev: Record<string, any>) {
   const why = apiWhy(t, ev.error_status, ev.error);
   t.apiWhy = why;
   const text = `${why.text} · try ${ev.attempt || '?'} of ${ev.max_retries || '?'}`;
-  if (t.retryEl && t.node.lastElementChild === t.retryEl) t.retryEl.querySelector('.cd-note-text').textContent = text;
+  if (t.retryEl && t.node.lastElementChild === t.retryEl) t.retryEl.querySelector('.cd-note-text')!.textContent = text;
   else { t.retryEl = addNote(t, 'retrying', text); t.retryEl.classList.add('cd-note-warn'); }
 }
 
-function noAnswer(t, raw) {
+function noAnswer(t: Transcript, raw: string) {
   const why = t.apiWhy;
   const n = addNote(t, 'error', `no answer from the model${why ? `: ${why.text}` : ''}`);
   n.title = raw;
@@ -549,24 +572,24 @@ function noAnswer(t, raw) {
 }
 
 // a final block in place of its streamed draft, else at the end
-function place(t, kind, node, where) {
+function place(t: Transcript, kind: string, node: HTMLElement, where: HTMLElement) {
   const i = where === t.node ? t.live.findIndex((x) => x.kind === kind) : -1;
   if (i >= 0) {
     const [x] = t.live.splice(i, 1);
-    x.el.replaceWith(node);
+    x!.el.replaceWith(node);
   } else where.append(node);
 }
 
-function flushLive(t) {
+function flushLive(t: Transcript) {
   for (const x of t.live) x.el.remove();
   t.live = [];
 }
 
-function streamEv(t, e) {
+function streamEv(t: Transcript, e: Record<string, any>) {
   if (e.type === 'content_block_start') {
-    const kind = { text: 'text', thinking: 'thinking', tool_use: 'tool', server_tool_use: 'tool' }[e.content_block?.type];
+    const kind = ({ text: 'text', thinking: 'thinking', tool_use: 'tool', server_tool_use: 'tool' } as Record<string, string>)[e.content_block?.type];
     if (!kind) return;
-    let node;
+    let node: HTMLElement;
     if (kind === 'text') node = el('div', 'cd-text cd-streaming');
     else if (kind === 'thinking') node = thinkBlock('');
     else {
@@ -575,7 +598,7 @@ function streamEv(t, e) {
       h.append(el('span', 'cd-pip'), el('span', 'cd-tool-name', e.content_block.name || 'tool'), el('span', 'cd-tool-arg', '…'));
       node.append(h);
     }
-    const x = { kind, el: node, index: e.index, text: '' };
+    const x: Live = { kind, el: node, index: e.index, text: '' };
     t.live.push(x);
     t.node.append(node);
   } else if (e.type === 'content_block_delta') {
@@ -596,21 +619,21 @@ function streamEv(t, e) {
       }
     } else if (d.type === 'thinking_delta') {
       x.text += d.thinking || '';
-      x.el.querySelector('.cd-think-body').textContent = x.text;
-      x.el.querySelector('.cd-think-sum').textContent = 'thinking…';
+      x.el.querySelector('.cd-think-body')!.textContent = x.text;
+      x.el.querySelector('.cd-think-sum')!.textContent = 'thinking…';
     }
   } else if (e.type === 'message_stop') {
     // drafts never confirmed by a final block (none arrive for an interrupted turn) left till the turn ends
   }
 }
 
-function textBlock(text) {
+function textBlock(text: string): HTMLElement {
   const d = el('div', 'cd-text md');
   renderMd(d, text);
   return d;
 }
 
-function thinkBlock(text) {
+function thinkBlock(text: string): HTMLElement {
   const d = el('details', 'cd-think');
   const s = el('summary', 'cd-think-sum', text ? `thought · ${kfmt(text.length)} chars` : 'thinking…');
   d.append(s, el('div', 'cd-think-body', text));
@@ -621,7 +644,7 @@ function thinkBlock(text) {
 
 const COMPACT = new Set(['Read', 'Glob', 'Grep', 'LS', 'WebFetch', 'WebSearch', 'TodoWrite', 'NotebookRead', 'BashOutput', 'KillShell', 'KillBash']);
 
-function toolArg(name, x = {}) {
+function toolArg(name: string, x: Record<string, any> = {}): string {
   switch (name) {
     case 'Bash': return x.description || x.command || '';
     case 'Read': return `${x.file_path || ''}${x.offset ? ` :${x.offset}${x.limit ? `-${x.offset + x.limit}` : ''}` : ''}`;
@@ -631,19 +654,19 @@ function toolArg(name, x = {}) {
     case 'WebFetch': return x.url || '';
     case 'WebSearch': return x.query || '';
     case 'Task': case 'Agent': return x.description || x.subagent_type || '';
-    case 'TodoWrite': return `${(x.todos || []).filter((y) => y.status === 'completed').length}/${(x.todos || []).length} done`;
+    case 'TodoWrite': return `${(x.todos || []).filter((y: Todo) => y.status === 'completed').length}/${(x.todos || []).length} done`;
     default: {
-      const v = Object.values(x).find((y) => typeof y === 'string');
+      const v = Object.values(x).find((y) => typeof y === 'string') as string | undefined;
       return v ? v.slice(0, 120) : '';
     }
   }
 }
 
 // mcp__phosphorus__files_list as phosphorus · files_list
-const toolName = (n) => (n.startsWith('mcp__') ? n.slice(5).replace('__', ' · ') : n);
+const toolName = (n: string) => (n.startsWith('mcp__') ? n.slice(5).replace('__', ' · ') : n);
 
-function toolCard(t, b) {
-  const name = b.name || 'tool';
+function toolCard(t: Transcript, b: Record<string, any>): HTMLElement {
+  const name: string = b.name || 'tool';
   const x = b.input || {};
   const c = el('div', `cd-tool run cd-tool-${name.replace(/[^\w-]/g, '_')}`);
   const h = Object.assign(el('button', 'cd-tool-head'), { type: 'button' });
@@ -668,7 +691,7 @@ function toolCard(t, b) {
   return c;
 }
 
-function editStat(name, x) {
+function editStat(name: string, x: Record<string, any>): HTMLElement | null {
   let add = 0;
   let del = 0;
   if (name === 'Write') add = lines(x.content).length;
@@ -680,7 +703,7 @@ function editStat(name, x) {
   return s;
 }
 
-function toolInput(name, x) {
+function toolInput(name: string, x: Record<string, any>): HTMLElement[] {
   switch (name) {
     case 'Bash': {
       const p = el('pre', 'cd-cmd');
@@ -688,7 +711,7 @@ function toolInput(name, x) {
       return [p];
     }
     case 'Edit': return [diffView(x.old_string, x.new_string)];
-    case 'MultiEdit': return (x.edits || []).map((e) => diffView(e.old_string, e.new_string));
+    case 'MultiEdit': return (x.edits || []).map((e: Record<string, string>) => diffView(e.old_string, e.new_string));
     case 'Write': return [diffView('', x.content)];
     case 'TodoWrite': return [todoList(x.todos || [])];
     default:
@@ -697,10 +720,10 @@ function toolInput(name, x) {
   }
 }
 
-const resultText = (c) => (typeof c === 'string' ? c : Array.isArray(c) ? c.map((p) => (p.type === 'text' ? p.text : p.type === 'image' ? '[image]' : '')).join('\n') : c == null ? '' : JSON.stringify(c, null, 2));
-const clip = (s) => (s.length > OUT_MAX ? `${s.slice(0, OUT_MAX)}\n… ${kfmt(s.length - OUT_MAX)} more chars` : s);
+const resultText = (c: unknown): string => (typeof c === 'string' ? c : Array.isArray(c) ? c.map((p) => (p.type === 'text' ? p.text : p.type === 'image' ? '[image]' : '')).join('\n') : c == null ? '' : JSON.stringify(c, null, 2));
+const clip = (s: string) => (s.length > OUT_MAX ? `${s.slice(0, OUT_MAX)}\n… ${kfmt(s.length - OUT_MAX)} more chars` : s);
 
-function toolResult(t, b) {
+function toolResult(t: Transcript, b: Record<string, any>) {
   const c = t.cards.get(b.tool_use_id);
   if (!c) return;
   const text = resultText(b.content).replace(/\s+$/, '');
@@ -710,13 +733,13 @@ function toolResult(t, b) {
   const n = text ? text.split('\n').length : 0;
   let out;
   if (bad) out = text.split('\n')[0] || 'failed';
-  else if (c.name === 'Bash') out = text ? `${text.split('\n')[0].slice(0, 160)}${n > 1 ? `  (+${n - 1} lines)` : ''}` : '(no output)';
+  else if (c.name === 'Bash') out = text ? `${text.split('\n')[0]!.slice(0, 160)}${n > 1 ? `  (+${n - 1} lines)` : ''}` : '(no output)';
   else if (c.name === 'Read') out = `${n} lines`;
   else if (c.name === 'Glob') out = /^no files/i.test(text) ? 'no files' : `${n} files`;
-  else if (c.name === 'Grep') out = text.split('\n')[0].slice(0, 160) || 'no matches';
+  else if (c.name === 'Grep') out = text.split('\n')[0]!.slice(0, 160) || 'no matches';
   else if (['Edit', 'MultiEdit', 'Write'].includes(c.name)) out = 'applied';
   else if (c.name === 'TodoWrite') out = 'todos updated';
-  else out = text ? `${text.split('\n')[0].slice(0, 160)}${n > 1 ? `  (+${n - 1} lines)` : ''}` : 'done';
+  else out = text ? `${text.split('\n')[0]!.slice(0, 160)}${n > 1 ? `  (+${n - 1} lines)` : ''}` : 'done';
   c.out.textContent = out;
   // what came back, folded with the input, unless an edit's "updated" line
   if (text && (bad || !['Edit', 'MultiEdit', 'Write', 'TodoWrite'].includes(c.name))) {
@@ -727,16 +750,16 @@ function toolResult(t, b) {
 
 // --- diffs: old and new as lines, the shortest edit between, 3 lines of context ---
 
-const lines = (s) => (s ? String(s).replace(/\n$/, '').split('\n') : []);
+const lines = (s: unknown) => (s ? String(s).replace(/\n$/, '').split('\n') : []);
 
-function lineDiff(a, b) {
+function lineDiff(a: string[], b: string[]): [string, string][] {
   let p = 0;
   while (p < a.length && p < b.length && a[p] === b[p]) p++;
   let s = 0;
   while (s < a.length - p && s < b.length - p && a[a.length - 1 - s] === b[b.length - 1 - s]) s++;
   const A = a.slice(p, a.length - s);
   const B = b.slice(p, b.length - s);
-  const mid = [];
+  const mid: [string, string][] = [];
   if (A.length * B.length > 600000) {
     for (const l of A) mid.push(['-', l]);
     for (const l of B) mid.push(['+', l]);
@@ -746,30 +769,30 @@ function lineDiff(a, b) {
     const L = new Uint32Array((n + 1) * (m + 1));
     for (let i = n - 1; i >= 0; i--) {
       for (let j = m - 1; j >= 0; j--) {
-        L[i * (m + 1) + j] = A[i] === B[j] ? L[(i + 1) * (m + 1) + j + 1] + 1 : Math.max(L[(i + 1) * (m + 1) + j], L[i * (m + 1) + j + 1]);
+        L[i * (m + 1) + j] = A[i] === B[j] ? L[(i + 1) * (m + 1) + j + 1]! + 1 : Math.max(L[(i + 1) * (m + 1) + j]!, L[i * (m + 1) + j + 1]!);
       }
     }
     let i = 0;
     let j = 0;
     while (i < n || j < m) {
-      if (i < n && j < m && A[i] === B[j]) { mid.push([' ', A[i]]); i++; j++; }
-      else if (j < m && (i >= n || L[i * (m + 1) + j + 1] >= L[(i + 1) * (m + 1) + j])) { mid.push(['+', B[j]]); j++; }
-      else { mid.push(['-', A[i]]); i++; }
+      if (i < n && j < m && A[i] === B[j]) { mid.push([' ', A[i]!]); i++; j++; }
+      else if (j < m && (i >= n || L[i * (m + 1) + j + 1]! >= L[(i + 1) * (m + 1) + j]!)) { mid.push(['+', B[j]!]); j++; }
+      else { mid.push(['-', A[i]!]); i++; }
     }
   }
-  return [...a.slice(0, p).map((l) => [' ', l]), ...mid, ...a.slice(a.length - s).map((l) => [' ', l])];
+  return [...a.slice(0, p).map((l): [string, string] => [' ', l]), ...mid, ...a.slice(a.length - s).map((l): [string, string] => [' ', l])];
 }
 
-function countDiff(a, b) {
+function countDiff(a: unknown, b: unknown): { add: number; del: number } {
   let add = 0;
   let del = 0;
   for (const [k] of lineDiff(lines(a), lines(b))) { if (k === '+') add++; else if (k === '-') del++; }
   return { add, del };
 }
 
-function diffView(a, b) {
+function diffView(a: unknown, b: unknown): HTMLElement {
   const ops = lineDiff(lines(a), lines(b));
-  const keep = new Array(ops.length).fill(false);
+  const keep = new Array<boolean>(ops.length).fill(false);
   ops.forEach(([k], i) => { if (k !== ' ') for (let j = Math.max(0, i - 3); j <= Math.min(ops.length - 1, i + 3); j++) keep[j] = true; });
   const box = el('div', 'cd-diff');
   let gap = false;
@@ -789,12 +812,12 @@ function diffView(a, b) {
 
 // --- todos: TodoWrite's list pinned above the composer, a bar of how far ---
 
-const cdBar = (frac, n = 20) => {
+const cdBar = (frac: number, n = 20) => {
   const k = Math.max(0, Math.min(n, Math.round(frac * n)));
   return `[<span class="cd-cells">${'█'.repeat(k)}<i>${'░'.repeat(n - k)}</i></span>]`;
 };
 
-function todoList(todos) {
+function todoList(todos: Todo[]): HTMLElement {
   const ul = el('ul', 'cd-todo-list');
   for (const x of todos) {
     const li = el('li', `cd-todo-${x.status}`);
@@ -805,7 +828,7 @@ function todoList(todos) {
   return ul;
 }
 
-function paintTodos(t) {
+function paintTodos(t: Transcript) {
   const box = t.todoEl;
   if (!box) return;
   const todos = t.todos || [];
@@ -824,22 +847,22 @@ function paintTodos(t) {
 
 // --- permission requests: inline, answered once ---
 
-function permCard(t, m) {
+function permCard(t: Transcript, m: CodeWsMessage) {
   flushLive(t);
   const c = el('div', 'cd-perm');
   const h = el('div', 'cd-perm-head');
   h.append(el('span', 'cd-perm-tag', 'permission'), el('span', 'cd-tool-name', toolName(m.tool || 'tool')));
-  const arg = toolArg(m.tool, m.input || {});
+  const arg = toolArg(m.tool!, m.input || {});
   if (arg) h.append(el('span', 'cd-tool-arg', arg));
   const body = el('div', 'cd-perm-body');
   if (m.reason) body.append(el('div', 'cd-perm-reason', m.reason));
-  const shown = toolInput(m.tool, m.input || {});
+  const shown = toolInput(m.tool!, m.input || {});
   body.append(...(shown.length ? shown : [Object.assign(el('pre', 'cd-json'), { textContent: JSON.stringify(m.input || {}, null, 2) })]));
   const why = Object.assign(el('input', 'cd-perm-why'), { type: 'text', placeholder: 'tell claude why, if denying (optional)', spellcheck: false });
   why.addEventListener('keydown', (e) => e.stopPropagation());
   const acts = el('div', 'update-actions cd-perm-acts');
   const msg = el('span', 'cd-perm-msg');
-  const btn = (label, cls, allow, always) => {
+  const btn = (label: string, cls: string, allow: boolean, always: boolean) => {
     const b = Object.assign(el('button', cls, label), { type: 'button' });
     b.addEventListener('click', () => {
       for (const x of acts.querySelectorAll('button')) x.disabled = true;
@@ -851,29 +874,29 @@ function permCard(t, m) {
   };
   acts.append(msg, btn('deny', 'danger', false, false), btn('always allow', '', true, true), btn('allow once', 'primary', true, false));
   c.append(h, body, why, acts);
-  const done = (allow, always, cancelled) => {
+  const done = (allow: boolean, always: boolean, cancelled?: boolean) => {
     if (c.classList.contains('answered')) return;
     c.classList.add('answered', allow ? 'allowed' : 'denied');
     why.remove();
     acts.replaceChildren(el('span', `cd-perm-msg ${allow ? 'good' : cancelled ? '' : 'bad'}`, allow ? (always ? 'always allowed' : 'allowed') : cancelled ? 'no longer asked' : 'denied'));
   };
-  t.perms.set(m.reqId, { el: c, done });
+  t.perms.set(m.reqId!, { el: c, done });
   t.node.append(c);
 }
 
 // --- composer ---
 
-function makeComposer(t) {
+function makeComposer(t: Transcript) {
   const node = el('div', 'cd-compose');
   const atts = el('div', 'cd-atts');
   const form = el('form', 'chat-form cd-form');
   const text = Object.assign(el('textarea', 'cd-text-in'), { rows: 1, placeholder: 'message', title: 'enter sends, shift+enter a new line, esc stops a turn', spellcheck: false });
   const attach = Object.assign(el('button', 'chat-icon chat-attach cd-attach'), { type: 'button', ariaLabel: 'attach' });
-  attach.innerHTML = svg(GL.attach);
+  attach.innerHTML = svg(GL.attach!);
   const stop = Object.assign(el('button', 'cd-stop'), { type: 'button', title: 'stop this turn', ariaLabel: 'stop' });
-  stop.innerHTML = `${svg(GL.stop)}<span>stop</span>`;
+  stop.innerHTML = `${svg(GL.stop!)}<span>stop</span>`;
   const go = Object.assign(el('button', 'chat-go'), { type: 'submit', title: 'send (enter)', ariaLabel: 'send', disabled: true });
-  go.innerHTML = svg(GL.send);
+  go.innerHTML = svg(GL.send!);
   const input = Object.assign(el('input'), { type: 'file', multiple: true, hidden: true });
   form.append(el('span', 'chat-prompt', '>'), text, attach, stop, go);
   const foot = el('div', 'cd-compose-foot');
@@ -900,7 +923,7 @@ function makeComposer(t) {
   });
   stop.addEventListener('click', () => call(sapi(t.id, 'stop'), 'POST', {}).then(() => say('stopping'), (e) => say(e.message)));
   attach.addEventListener('click', () => input.click());
-  input.addEventListener('change', () => { upload(t, [...input.files], atts, text, grow); input.value = ''; });
+  input.addEventListener('change', () => { upload(t, [...input.files!], atts, text, grow); input.value = ''; });
   form.addEventListener('dragover', (e) => { if (e.dataTransfer?.types?.includes('Files')) e.preventDefault(); });
   form.addEventListener('drop', (e) => {
     if (!e.dataTransfer?.files?.length) return;
@@ -911,8 +934,8 @@ function makeComposer(t) {
     const files = [...(e.clipboardData?.files || [])];
     if (files.length) { e.preventDefault(); upload(t, files, atts, text, grow); }
   });
-  const state = (r) => {
-    const working = live(r);
+  const state = (r: CodeSession | null) => {
+    const working = !!live(r);
     stop.hidden = !working;
     attach.disabled = !r;
     attach.title = r ? `attach files: uploaded into ${r.host}:${r.dir}` : 'attach files';
@@ -923,13 +946,13 @@ function makeComposer(t) {
 }
 
 // a file posted raw, its progress told
-function sendFile(url, f, progress) {
+function sendFile(url: string, f: File, progress: (n: number) => void): Promise<Record<string, any>> {
   return new Promise((ok, bad) => {
     const x = new XMLHttpRequest();
     x.open('POST', url);
     x.upload.onprogress = (e) => progress(e.loaded);
     x.onload = () => {
-      let o = {};
+      let o: Record<string, any> = {};
       try { o = JSON.parse(x.responseText); } catch {}
       if (x.status >= 200 && x.status < 300) ok(o); else bad(new Error(o.error || `status ${x.status}`));
     };
@@ -941,7 +964,7 @@ function sendFile(url, f, progress) {
 // files sent into the session's folder over the user's login there, an
 // existing name never overwritten (the server picks "name (1).ext"), then
 // @mentioned in the prompt
-async function upload(t, files, atts, text, grow) {
+async function upload(t: Transcript, files: File[], atts: HTMLElement, text: HTMLTextAreaElement, grow: () => void) {
   const r = rec(t.id);
   if (!r) return;
   for (const f of files) {
@@ -961,7 +984,7 @@ async function upload(t, files, atts, text, grow) {
       text.focus();
     } catch (e) {
       chip.classList.add('bad');
-      st.textContent = e.message;
+      st.textContent = (e as Error).message;
       setTimeout(() => chip.remove(), 6000);
     }
   }
@@ -971,24 +994,24 @@ async function upload(t, files, atts, text, grow) {
 // choices in a row of chips under it ---
 
 // a select dressed as a chip, its glyph before it
-function chip(glyph, sel, title) {
+function chip(glyph: string, sel: HTMLSelectElement, title: string): HTMLElement {
   const c = el('label', 'cd-chip');
   c.title = title;
   const g = el('span', 'cd-chip-ic');
-  g.innerHTML = svg(GL[glyph]);
+  g.innerHTML = svg(GL[glyph]!);
   sel.classList.add('cd-chip-sel');
   c.append(g, sel);
   return c;
 }
 
 // the Anthropic token box: plain text masked by css, so no password manager fills it
-function tokenInput(cls = '') {
+function tokenInput(cls = ''): HTMLInputElement {
   const i = noFill(Object.assign(el('input', cls), { placeholder: 'sk-ant-oat…', spellcheck: false }), true);
   i.addEventListener('keydown', (e) => e.stopPropagation());
   return i;
 }
 
-async function saveToken(token) {
+async function saveToken(token: string): Promise<boolean> {
   const r = await call('/api/me/anthropic', 'POST', { token });
   if (cd.opts) cd.opts.anthropic = !!r.anthropic;
   paintAcct();
@@ -996,8 +1019,8 @@ async function saveToken(token) {
 }
 
 // signing in to Claude: claude setup-token run in a terminal, its token pasted back
-function loginPanel(hostOf, done) {
-  const box = el('div', 'cd-login');
+function loginPanel(hostOf: () => string, done: () => void): HTMLElement & { focusIn: () => void } {
+  const box = el('div', 'cd-login') as unknown as HTMLElement & { focusIn: () => void };
   const shut = Object.assign(el('button', 'cd-mini', 'close'), { type: 'button' });
   shut.addEventListener('click', () => { box.hidden = true; });
   const t = el('div', 'cd-login-t');
@@ -1037,7 +1060,7 @@ function loginPanel(hostOf, done) {
       msg.textContent = '';
       box.hidden = true;
       done();
-    } catch (e) { msg.textContent = e.message; }
+    } catch (e) { msg.textContent = (e as Error).message; }
     save.disabled = false;
   };
   inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); put(); } });
@@ -1070,7 +1093,7 @@ async function paintNew() {
     return;
   }
   const hosts = opts.hosts || [];
-  const dirs = lsGet(DIR_LS, {});
+  const dirs = lsGet<Record<string, string>>(DIR_LS, {});
   const lastHost = lsGet(`${DIR_LS}-host`, '');
   const host = el('select');
   host.innerHTML = hosts.map((h) => `<option value="${esc(h)}"${h === lastHost ? ' selected' : ''}>${esc(h)}</option>`).join('') || '<option value="">no hosts</option>';
@@ -1079,18 +1102,18 @@ async function paintNew() {
   const picker = el('div', 'cd-picker');
   picker.hidden = true;
   const paintDir = () => {
-    dirBtn.innerHTML = `<span class="cd-chip-ic">${svg(GL.folder)}</span>`;
+    dirBtn.innerHTML = `<span class="cd-chip-ic">${svg(GL.folder!)}</span>`;
     dirBtn.append(el('span', `cd-chip-t${dir ? '' : ' cd-chip-want'}`, dir ? base(tilde(dir)) || dir : 'pick a folder'));
     dirBtn.title = dir ? `${host.value}:${dir}` : 'the folder the agent works in';
   };
   // the harnesses the code service offers, the last one used picked
-  const harnesses = opts.harnesses || [];
+  const harnesses: CodeHarness[] = opts.harnesses || [];
   const lastHarness = lsGet(`${DIR_LS}-harness`, '');
   const harness = el('select');
   harness.innerHTML = harnesses.map((h) => `<option value="${esc(h.id)}"${h.id === lastHarness ? ' selected' : ''}>${esc(h.label.toLowerCase())}</option>`).join('') || '<option value="">no harnesses</option>';
   const hxOf = () => harnesses.find((h) => h.id === harness.value) || null;
   // each host's harnesses as the code service found them
-  const found = new Map();
+  const found = new Map<string, CodeHarnesses>();
   const ready = (opts.models || []).filter((m) => m.ready !== false);
   const lastModel = lsGet(`${DIR_LS}-model`, '');
   let model = modelSelect(opts, (ready.find((m) => m.id === lastModel) || ready[0])?.id || '');
@@ -1111,7 +1134,7 @@ async function paintNew() {
   });
   login.hidden = true;
   const goBtn = Object.assign(el('button', 'chat-go cd-go'), { type: 'submit', title: 'start (enter)', ariaLabel: 'start' });
-  goBtn.innerHTML = svg(GL.send);
+  goBtn.innerHTML = svg(GL.send!);
   const modelChip = chip('model', model, 'model');
   const bar = el('div', 'cd-bar');
   bar.append(chip('host', host, 'the computer the agent runs on, as your login there'), dirBtn,
@@ -1133,7 +1156,7 @@ async function paintNew() {
   form.replaceChildren(top, wrap);
 
   // a sign in offered as the last model, the choice put back once it's open
-  function swapModel(next) {
+  function swapModel(next: HTMLSelectElement) {
     let was = next.value;
     if (!opts.anthropic && !cd.opts?.anthropic) {
       next.insertAdjacentHTML('beforeend', '<optgroup label="claude subscription"><option value="__login">Sign in for Opus, Sonnet, Haiku…</option></optgroup>');
@@ -1175,21 +1198,21 @@ async function paintNew() {
     if (!h || !hx) { valid(); return; }
     let r = found.get(h);
     if (!r || fresh) {
-      try { r = await call(`/api/code/harnesses?${qs({ host: h, fresh: fresh ? '1' : '' })}`); } catch (e) { r = { error: e.message }; }
-      if (!r.error) found.set(h, r);
+      try { r = await call(`/api/code/harnesses?${qs({ host: h, fresh: fresh ? '1' : '' })}`); } catch (e) { r = { error: (e as Error).message }; }
+      if (!r!.error) found.set(h, r!);
     }
     if (host.value !== h || hxOf() !== hx) return;
-    const on = (r.harnesses || []).find((x) => x.id === hx.id);
+    const on = (r!.harnesses || []).find((x) => x.id === hx.id);
     for (const o of harness.options) {
-      const x = (r.harnesses || []).find((y) => y.id === o.value);
+      const x = (r!.harnesses || []).find((y) => y.id === o.value);
       const label = harnesses.find((y) => y.id === o.value)?.label.toLowerCase() || o.value;
       o.textContent = x && !x.installed ? `${label} · not on ${h}` : label;
     }
-    if (r.error) { host.parentElement.title = `couldn't look for harnesses on ${h}: ${r.error}`; valid(); return; }
-    if (on?.installed) { harness.parentElement.title = on.version ? `${hx.label.toLowerCase()} ${on.version} on ${h}` : h; valid(); return; }
+    if (r!.error) { host.parentElement!.title = `couldn't look for harnesses on ${h}: ${r!.error}`; valid(); return; }
+    if (on?.installed) { harness.parentElement!.title = on.version ? `${hx.label.toLowerCase()} ${on.version} on ${h}` : h; valid(); return; }
     install.hidden = false;
     install.dataset.missing = '1';
-    if (r.why) { install.replaceChildren(el('span', '', r.why)); valid(); return; }
+    if (r!.why) { install.replaceChildren(el('span', '', r!.why)); valid(); return; }
     const b = Object.assign(el('button', 'cd-mini primary', `install ${hx.label.toLowerCase()}`), { type: 'button' });
     const out = el('pre', 'cd-install-out');
     out.hidden = true;
@@ -1202,14 +1225,14 @@ async function paintNew() {
         out.textContent = x.out || '';
         if (x.ok) { check(true); return; }
         b.textContent = 'install failed, retry';
-      } catch (e) { out.hidden = false; out.textContent = e.message; b.textContent = 'retry'; }
+      } catch (e) { out.hidden = false; out.textContent = (e as Error).message; b.textContent = 'retry'; }
       b.disabled = false;
     });
-    const others = (r.harnesses || []).filter((x) => x.installed).map((x) => x.label.toLowerCase());
+    const others = (r!.harnesses || []).filter((x) => x.installed).map((x) => x.label.toLowerCase());
     install.replaceChildren(el('span', '', `${hx.label.toLowerCase()} isn't installed on ${h}${others.length ? `; it has ${others.join(', ')}` : ''}. installing it is optional, from ${hx.site}.`), b, out);
     valid();
   };
-  const pick = (p) => { dir = p; picker.hidden = true; paintDir(); valid(); prompt.focus(); };
+  const pick = (p: string) => { dir = p; picker.hidden = true; paintDir(); valid(); prompt.focus(); };
   // the folder: typed, a recent one, or browsed to
   const openPicker = () => {
     const h = host.value;
@@ -1219,8 +1242,8 @@ async function paintNew() {
       if (e.key === 'Enter') { e.preventDefault(); if (path.value.trim()) pick(path.value.trim()); }
       if (e.key === 'Escape') { picker.hidden = true; prompt.focus(); }
     });
-    const rows = [path];
-    const recent = lsGet(RECENT_LS, []).filter((x) => x.host === h).slice(0, 6);
+    const rows: HTMLElement[] = [path];
+    const recent = lsGet<{ host: string; dir: string }[]>(RECENT_LS, []).filter((x) => x.host === h).slice(0, 6);
     if (recent.length) {
       const ul = el('div', 'cd-recent');
       ul.append(el('div', 'cd-recent-t', 'recent'));
@@ -1252,9 +1275,9 @@ async function paintNew() {
     lsSet(`${DIR_LS}-host`, host.value);
     lsSet(`${DIR_LS}-model`, model.value);
     lsSet(`${DIR_LS}-harness`, harness.value);
-    lsSet(RECENT_LS, [{ host: host.value, dir }, ...lsGet(RECENT_LS, []).filter((x) => x.host !== host.value || x.dir !== dir)].slice(0, 30));
+    lsSet(RECENT_LS, [{ host: host.value, dir }, ...lsGet<{ host: string; dir: string }[]>(RECENT_LS, []).filter((x) => x.host !== host.value || x.dir !== dir)].slice(0, 30));
     call('/api/code/sessions', 'POST', { host: host.value, dir, harness: harness.value, model: model.value, perm: perm.value, prompt: prompt.value.trim() })
-      .then((r) => {
+      .then((r: CodeSession) => {
         cd.list = [r, ...cd.list.filter((s) => s.id !== r.id)];
         go(r.id);
         loadList();
@@ -1267,20 +1290,20 @@ async function paintNew() {
 }
 
 // a folder picker over the user's login on the host, from its home down
-async function browseAt(box, host, dir, pick) {
+async function browseAt(box: HTMLElement & { seq?: number }, host: string, dir: string, pick: (p: string) => void) {
   const seq = (box.seq = (box.seq || 0) + 1);
   const head = el('div', 'cd-picker-head');
   const listing = el('ul', 'cd-picker-list');
   box.replaceChildren(head, listing);
   head.append(el('span', 'cd-picker-path', dir || '~'));
   listing.append(el('li', 'st-wait', 'loading'));
-  let r;
+  let r: CodeLs;
   try { r = await call(`/api/code/ls?${qs({ host, dir })}`); } catch (e) {
     if (box.seq !== seq) return;
     const home = Object.assign(el('button', 'cd-mini', '~'), { type: 'button', title: 'home' });
     home.addEventListener('click', () => browseAt(box, host, '', pick));
     head.prepend(home);
-    listing.replaceChildren(el('li', 'cd-bad', e.message));
+    listing.replaceChildren(el('li', 'cd-bad', (e as Error).message));
     return;
   }
   if (box.seq !== seq) return;
@@ -1301,7 +1324,7 @@ async function browseAt(box, host, dir, pick) {
 
 // a session's folder browsed in a panel over the app, folders and files,
 // hidden ones on a toggle
-function openBrowser(host, dir) {
+function openBrowser(host: string, dir: string) {
   root.querySelector(':scope > .cd-browse')?.remove();
   const wrap = el('div', 'cd-browse');
   const panel = Object.assign(el('div', 'cd-browse-panel'), { role: 'dialog', ariaLabel: `${host} files` });
@@ -1313,18 +1336,18 @@ function openBrowser(host, dir) {
   let dots = false;
   let seq = 0;
   const close = () => { wrap.remove(); document.removeEventListener('keydown', key, true); };
-  const key = (e) => { if (e.key === 'Escape' && wrap.isConnected) { e.stopPropagation(); close(); } };
+  const key = (e: KeyboardEvent) => { if (e.key === 'Escape' && wrap.isConnected) { e.stopPropagation(); close(); } };
   document.addEventListener('keydown', key, true);
   wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
   const shut = Object.assign(el('button', 'cd-mini', 'close'), { type: 'button' });
   shut.addEventListener('click', close);
-  const nav = async (d) => {
+  const nav = async (d: string) => {
     const n = ++seq;
     head.replaceChildren(el('span', 'cd-host', host), el('span', 'cd-picker-path', d || '~'), shut);
     listing.replaceChildren(el('li', 'st-wait', 'loading'));
-    let r;
+    let r: CodeLs;
     try { r = await call(`/api/code/ls?${qs({ host, dir: d })}`); } catch (e) {
-      if (n === seq) listing.replaceChildren(el('li', 'cd-bad', e.message));
+      if (n === seq) listing.replaceChildren(el('li', 'cd-bad', (e as Error).message));
       return;
     }
     if (n !== seq || !wrap.isConnected) return;
@@ -1337,7 +1360,7 @@ function openBrowser(host, dir) {
     head.replaceChildren(up, el('span', 'cd-host', host), path, hid, shut);
     const ents = (r.entries || []).filter((e) => dots || !e.name.startsWith('.'));
     listing.replaceChildren(...ents.map((e) => {
-      const row = Object.assign(el(e.dir ? 'button' : 'div', `cd-browse-row${e.dir ? ' dir' : ''}`), e.dir ? { type: 'button' } : {});
+      const row: HTMLElement = e.dir ? Object.assign(el('button', 'cd-browse-row dir'), { type: 'button' }) : el('div', 'cd-browse-row');
       row.append(el('span', 'cd-browse-name', e.dir ? `${e.name}/` : e.name), el('span', 'cd-browse-size', e.dir ? '' : bytes(e.size)),
         el('span', 'cd-browse-at', e.mtime ? ago(e.mtime) : ''));
       if (e.dir) row.addEventListener('click', () => nav(`${r.dir.replace(/\/$/, '')}/${e.name}`));
@@ -1354,7 +1377,7 @@ function openBrowser(host, dir) {
 
 // --- the window coming and going ---
 
-function codeWatch(on) {
+function codeWatch(on: boolean): void {
   cd.on = on;
   clearInterval(cd.tick);
   cd.tick = 0;
@@ -1378,7 +1401,7 @@ function paintAcct() {
     el('span', 'cd-acct-st', on ? 'signed in' : 'sign in'));
 }
 
-function acctOpen(on) {
+function acctOpen(on: boolean) {
   acctBox.hidden = !on;
   acctBtn.setAttribute('aria-expanded', String(on));
   if (on) codeToken(acctBox);
@@ -1386,7 +1409,7 @@ function acctOpen(on) {
 
 // --- the anthropic token: pasted, saved, cleared, never shown back ---
 
-function codeToken(box) {
+function codeToken(box: HTMLElement) {
   box.classList.add('cd-token');
   const title = el('div', 'dk-cl-sec-t', 'Claude subscription');
   const state = el('span', 'dk-cl-state', '…');
@@ -1399,13 +1422,13 @@ function codeToken(box) {
   const bar = el('div', 'dk-cl-bar cd-token-bar');
   bar.append(inp, save, clear);
   box.replaceChildren(title, hint, bar);
-  const paint = (on) => {
+  const paint = (on: boolean) => {
     state.textContent = on ? 'connected' : 'not connected';
     state.dataset.state = on ? 'online' : 'off';
     clear.hidden = !on;
     inp.placeholder = on ? 'paste a new token to replace it' : 'sk-ant-oat…';
   };
-  const put = async (token) => {
+  const put = async (token: string) => {
     save.disabled = clear.disabled = true;
     try {
       const on = await saveToken(token);
@@ -1414,7 +1437,7 @@ function codeToken(box) {
       // saved: folded back into the account row, its dot saying so
       if (on && box === acctBox) acctOpen(false);
       loadOpts(true).then(() => { headSig = ''; paintHead(); paintAcct(); });
-    } catch (e) { state.textContent = e.message; state.dataset.state = 'off'; }
+    } catch (e) { state.textContent = (e as Error).message; state.dataset.state = 'off'; }
     save.disabled = clear.disabled = false;
   };
   inp.addEventListener('keydown', (e) => { if (e.key === 'Enter' && inp.value.trim()) put(inp.value.trim()); });
@@ -1426,11 +1449,11 @@ function codeToken(box) {
 
 // a file's path in a tool card opened in the editor when it sits in a share
 view.addEventListener('dblclick', (e) => {
-  const a = e.target.closest('.cd-tool-arg');
-  const card = e.target.closest('.cd-tool');
+  const a = (e.target as Element).closest('.cd-tool-arg');
+  const card = (e.target as Element).closest('.cd-tool');
   const r = rec();
   if (!a || !card || !r || !/cd-tool-(Read|Edit|MultiEdit|Write)\b/.test(card.className)) return;
-  const sh = shareOf(r.host, a.textContent.replace(/ :\d.*$/, ''));
+  const sh = shareOf(r.host, a.textContent!.replace(/ :\d.*$/, ''));
   if (sh) dkCode({ host: r.host, share: sh.loc.share, path: sh.rel, label: `${r.host}/${sh.rel}` });
 });
 
