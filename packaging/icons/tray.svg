@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="112 112 800 800" width="44" height="44">
   <!-- the macOS menu bar's template of web/static/phosphorus.svg: one color, its alpha the shape, the
        weave shown by gaps (the oval over the stem at the crown, the stem over the oval at the foot);
-       rendered to cmd/tray/assets/tray.png -->
+       rendered to apps/tray/assets/tray.png -->
   <defs>
     <path id="ring" fill-rule="evenodd" d="M117,512 A395,236 0 1,0 907,512 A395,236 0 1,0 117,512 Z M263,512 A249,172 0 1,1 761,512 A249,172 0 1,1 263,512 Z"/>
     <polygon id="stem" points="340,169 684,169 684,205 581,252 581,772 684,819 684,855 340,855 340,819 443,772 443,252 340,205"/>
