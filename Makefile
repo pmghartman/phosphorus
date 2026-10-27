@@ -17,7 +17,7 @@ check: web
 	bun scripts/licenses.ts --check
 
 test: web
-	bun test
+	bun run test
 
 # THIRD_PARTY_NOTICES.txt and the SBOM, into dist/; CI ships them in each installer
 licenses: web
