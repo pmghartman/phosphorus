@@ -15,10 +15,11 @@ const root = resolve(import.meta.dir, "..");
 const win = target.startsWith("windows");
 mkdirSync(out, { recursive: true });
 
+// the Go -X ldflags' stand-in: constants the host and tray declare
 const define = {
-  "process.env.PHOSPHORUS_VERSION": JSON.stringify(version),
-  "process.env.FEED_URL": JSON.stringify(process.env.FEED_URL ?? ""),
-  "process.env.FEED_PUBKEY": JSON.stringify(process.env.FEED_PUBKEY ?? ""),
+  PHOSPHORUS_APP_VERSION: JSON.stringify(version),
+  PHOSPHORUS_FEED_URL: JSON.stringify(process.env.FEED_URL ?? ""),
+  PHOSPHORUS_FEED_PUBKEY: JSON.stringify(process.env.FEED_PUBKEY ?? ""),
 };
 const compile = async (entry: string, name: string, gui: boolean) => {
   const res = await Bun.build({
