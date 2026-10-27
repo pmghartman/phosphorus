@@ -5248,16 +5248,19 @@ async function newTerminal(o = {}) {
   const fl = isHomeLoc() ? { share: 'home' } : (host === locOf().host ? { share: locOf().share } : null);
   const abs = cwd && fl ? hostPath(host, fl.share, cwd) : '';
   const win = hostIsWindows(host);
-  // pushd works in cmd and PowerShell alike, whichever sshd gives
-  const cd = !abs ? '' : win ? `pushd "${abs}"` : `cd ${shQuote(abs)}`;
   const pwsh = hostsInfo[String(host).toLowerCase()]?.shell === 'powershell';
+  // pushd works in cmd and PowerShell alike, whichever sshd gives; PowerShell's
+  // in single quotes, its double ones running a folder's $(...)
+  const cd = !abs ? '' : pwsh ? `pushd -LiteralPath '${abs.replace(/'/g, "''")}'` : win ? `pushd "${abs}"` : `cd ${shQuote(abs)}`;
   const line = kind === 'shell' ? (cd ? (win ? (pwsh ? `${cd}; Clear-Host` : cd) : `${cd} && clear`) : '') : [cd, o.run].filter(Boolean).join(pwsh ? '; ' : win ? ' & ' : ' && ');
+  // this computer's own shell starts in dir, then only what follows the cd typed
+  const then = kind === 'shell' ? '' : o.run || '';
   const same = I.terms.filter((x) => x.base === (o.name || host)).length;
   const t = { id: `t${(I.termSeq += 1)}`, host, base: o.name || host, name: same ? `${o.name || host} (${same + 1})` : (o.name || host), kind, ended: false };
   t.view = el('div', 'ide-term-view');
   t.view.hidden = true;
   tv.views.append(t.view);
-  t.h = startTerminal(t.view, host, newSid(), false, false, { ...creds, run: line }, {
+  t.h = startTerminal(t.view, host, newSid(), false, false, { ...creds, run: line, dir: abs, then }, {
     fontSize: setting('terminal.integrated.fontSize'), themeFrom: t.view, transparent: true,
     onEnd: () => { t.ended = true; paintTerms(); },
   });

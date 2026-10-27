@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"os"
 	"sync"
 	"time"
 
@@ -49,7 +50,9 @@ func (s *termSession) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func terminal(ws *wsock.Conn, sid string, since int64) {
+// terminal one of this computer's shells for the page; auto: a login's on its
+// way, the shell started once it names the folder
+func terminal(ws *wsock.Conn, sid string, since int64, auto bool) {
 	if sid == "" || len(sid) > 64 {
 		ws.Close(termEnded)
 		return
@@ -60,8 +63,20 @@ func terminal(ws *wsock.Conn, sid string, since int64) {
 	if s != nil {
 		s.attach(ws, since)
 	}
-	var run string
 	started := s != nil
+	cols, rows := 0, 0
+	start := func(dir string) bool {
+		started = true
+		ns, err := startShell(sid, dir, cols, rows)
+		if err != nil {
+			ws.Binary([]byte("\r\n\x1b[31m" + err.Error() + "\x1b[0m\r\n"))
+			ws.Close(termEnded)
+			return false
+		}
+		s = ns
+		s.attach(ws, 0)
+		return true
+	}
 	for {
 		b, binary, err := ws.Read()
 		if err != nil {
@@ -76,32 +91,39 @@ func terminal(ws *wsock.Conn, sid string, since int64) {
 		var m struct {
 			Type       string
 			Cols, Rows int
-			Run        string
+			Run, Dir   string
+			Then       *string
 		}
 		if json.Unmarshal(b, &m) != nil {
 			continue
 		}
 		switch m.Type {
 		case "resize":
-			// the first size the page gives is the shell's to start at
-			if !started {
-				started = true
-				ns, err := startShell(sid, m.Cols, m.Rows)
-				if err != nil {
-					ws.Binary([]byte("\r\n\x1b[31m" + err.Error() + "\x1b[0m\r\n"))
-					ws.Close(termEnded)
+			cols, rows = m.Cols, m.Rows
+			// the first size the page gives is the shell's to start at, unless its folder's still to come
+			if !started && !auto {
+				if !start("") {
 					return
 				}
-				s = ns
-				s.attach(ws, 0)
 			} else if s != nil {
 				s.l.Resize(m.Cols, m.Rows)
 			}
 		case "login":
-			// no login here, only the line Sulfur types first: into its folder
-			run = m.Run
-			if s != nil && run != "" {
-				go func(l *sulfur.Local, line string) { time.Sleep(250 * time.Millisecond); l.Input([]byte(line + "\r")) }(s.l, run)
+			// no login here: the shell started in the page's folder, then its line
+			// typed, or an older page's whole line, a cd and all
+			line := m.Run
+			if st, err := os.Stat(m.Dir); m.Then != nil && err == nil && st.IsDir() {
+				line = *m.Then
+			}
+			if !started {
+				if !start(m.Dir) {
+					return
+				}
+			} else {
+				line = m.Run
+			}
+			if s != nil && line != "" {
+				go func(l *sulfur.Local, line string) { time.Sleep(250 * time.Millisecond); l.Input([]byte(line + "\r")) }(s.l, line)
 			}
 		case "close":
 			if s != nil {
@@ -114,9 +136,9 @@ func terminal(ws *wsock.Conn, sid string, since int64) {
 	}
 }
 
-func startShell(sid string, cols, rows int) (*termSession, error) {
+func startShell(sid, dir string, cols, rows int) (*termSession, error) {
 	s := &termSession{}
-	l, wait, err := sulfur.StartShell("", cols, rows, s)
+	l, wait, err := sulfur.StartShell(dir, cols, rows, s)
 	if err != nil {
 		return nil, err
 	}

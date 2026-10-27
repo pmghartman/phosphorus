@@ -496,7 +496,7 @@ func localAPI(w http.ResponseWriter, r *http.Request) {
 		}
 	case termRe.MatchString(path):
 		if ws := accept(w, r); ws != nil {
-			terminal(ws, q.Get("sid"), atoi(q.Get("since")))
+			terminal(ws, q.Get("sid"), atoi(q.Get("since")), q.Get("auto") != "")
 		}
 	case strings.HasPrefix(path, "/api/code/"):
 		send(w, 503, errB("The chat's agents work through a linked Phosphorus mesh"))
