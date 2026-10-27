@@ -9,7 +9,7 @@
   --rail-w: 1.7rem;
 }
 
-/* every color, font, shadow and corner token comes from the theme library, internal/theme/themes.json,
+/* every color, font, shadow and corner token comes from the theme library, packages/theme/themes.json,
    its rules bundled in here by the build (webbuild); this sheet holds structure, keyed by a theme's
    look (data-palette), rounded controls (data-round) and a proportional page font (data-sans) */
 

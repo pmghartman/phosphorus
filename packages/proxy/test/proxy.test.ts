@@ -44,7 +44,7 @@ test("ingress forwards http and websockets", async () => {
       const u = new URL(req.url);
       return new Response(`${u.pathname}${u.search} ${req.headers.get("x-forwarded-proto")}`, { headers: { "X-Frame-Options": "DENY" } });
     },
-    websocket: { message: (ws, m) => ws.send("echo:" + m) },
+    websocket: { message: (ws, m) => void ws.send("echo:" + m) },
   });
   swap([{ host: "box", name: "web", port: back.port, scheme: "http", mode: "path", public: true }], () => "127.0.0.1");
   const front = serve(0, handler(() => new Response("app"), { pass: () => false, issuers: () => [] }), true);

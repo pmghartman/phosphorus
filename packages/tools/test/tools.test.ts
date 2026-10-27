@@ -31,7 +31,7 @@ const tarball = () =>
     ]),
   );
 
-const serve = (body: Uint8Array | null) => Bun.serve({ port: 0, fetch: () => (body ? new Response(body) : new Response("", { status: 404 })) });
+const serve = (body: Uint8Array | null) => Bun.serve({ port: 0, fetch: () => (body ? new Response(body as Uint8Array<ArrayBuffer>) : new Response("", { status: 404 })) });
 
 test("install", async () => {
   const srv = serve(tarball());

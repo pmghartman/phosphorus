@@ -158,7 +158,7 @@ export function dial(
     const ws = new WebSocket(url, { headers, protocols: protocols?.length ? protocols : undefined, tls } as any);
     ws.binaryType = "arraybuffer";
     const c = new Conn(
-      (d) => ws.send(d),
+      (d) => ws.send(d as string | Uint8Array<ArrayBuffer>),
       (code) => ws.close(code),
       () => (ws as any).terminate?.() ?? ws.close(),
       () => ws.bufferedAmount,

@@ -1,8 +1,8 @@
 // the themes, phosphorus wide: the desktop and every app, each with its dark,
-// light and oled. Their tokens are the theme library's (internal/theme/themes.json), built into
+// light and oled. Their tokens are the theme library's (packages/theme/themes.json), built into
 // style.css; here the pick, a custom theme over any of them, and what the page's head needs to
 // put them up before paint. Kept per user across the mesh with the rest of their settings.
-import LIB from '../../internal/theme/themes.json';
+import LIB from '../../packages/theme/themes.json';
 import { setIconSet } from './icons.js';
 
 const KEY = 'phosphorus-palette';
