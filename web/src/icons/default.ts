@@ -1,6 +1,9 @@
+// a set's shape: its stroke, and each group's glyphs by name
+export interface IconSet { id: string; label: string; stroke: { width: number; cap: string; join: string }; files: Record<string, string>; glyphs: Record<string, string>; ui: Record<string, string> }
+
 // the default icon set: every glyph a phrase of path data on a 16 grid, stroked in one weight.
-// A set names itself, says how it is stroked, and gives each group its glyphs; see ../icons.js.
-const icons = {
+// A set names itself, says how it is stroked, and gives each group its glyphs; see ../icons.ts.
+const icons: Record<string, string> = {
   folder: 'M1.5 3.5h4l1.2 1.5h7.8v8h-13z',
   file: 'M3.5 1.5h6l3 3v10h-9zM9.5 1.5v3h3',
   download: 'M8 2v8M4.5 7L8 10.5 11.5 7M2.5 13.5h11',
@@ -14,7 +17,7 @@ const icons = {
   host: 'M1.5 2.5h13v4.5h-13zM1.5 9h13v4.5h-13zM4 4.75h1.5M4 11.25h1.5',
 };
 
-export default {
+const set: IconSet = {
   id: 'default',
   label: 'default',
   stroke: { width: 1.3, cap: 'round', join: 'round' },
@@ -58,3 +61,4 @@ export default {
   desk: 'M1.5 2.5h13v8.5h-13zM5.5 13.5h5M8 11v2.5M4 5h3M4 7.5h2',
   },
 };
+export default set;

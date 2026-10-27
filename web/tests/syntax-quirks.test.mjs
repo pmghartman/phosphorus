@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { quirksFor, eachSyntaxError } from '../src/syntax-quirks.js';
+import { quirksFor, eachSyntaxError } from '../src/syntax-quirks.ts';
 
 // the errors the syntax check reports: the grammar's, its gaps left out. The grammars come
 // from web/.vendor, with cmd/webbuild/patches.go's fixes put in

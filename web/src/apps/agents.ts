@@ -1,37 +1,39 @@
-import { deskApps, el, jsonPost } from '../app.js';
+import { jsonPost } from '../api.ts';
+import { el } from '../dom.ts';
+import type { ModelAgent, ModelHost, ModelSummary, State } from '../types.ts';
 
 // --- agents: which mesh model each implementation that asks one runs on ------
 // a model is assigned to any number of agents; an assignment is mesh-wide, one
 // POST each, and the models themselves are installed in the phos tui
 
-const view = document.getElementById('view-agents');
+const view = document.getElementById('view-agents')!;
 
 // the newest model summary, and the last refusal
-let model = null;
+let model: ModelSummary | null = null;
 let error = '';
 let sig = '';
 
-const hostOf = (id) => (id || '').replace(/^phosphorus\//, '');
-const fileName = (m) => String(m.file || '').replace(/\\/g, '/').split('/').pop();
+const hostOf = (id: string | undefined) => (id || '').replace(/^phosphorus\//, '');
+const fileName = (m: { file?: string }) => String(m.file || '').replace(/\\/g, '/').split('/').pop();
 
-function agentsState(state) {
+function agentsState(state: State | null): void {
   model = state?.model || null;
   draw();
 }
 
-function agentsWatch(on) {
+function agentsWatch(on: boolean): void {
   if (on) draw();
 }
 
 // ready, loading or down, as the status tab words a model
-function phase(m) {
+function phase(m: ModelHost): [string, string] {
   if (m.ready) return ['on', 'loaded'];
   if (m.download?.total) return ['mid', `downloading ${Math.floor((100 * m.download.done) / m.download.total)}%`];
   if (m.loading) return ['mid', 'loading'];
   return ['off', 'not loaded'];
 }
 
-async function assign(agent, slot, value) {
+async function assign(agent: string, slot: string, value: string) {
   try {
     const r = await fetch('/api/model/agent', jsonPost({ agent, slot, model: value }));
     const out = await r.json().catch(() => ({}));
@@ -40,14 +42,14 @@ async function assign(agent, slot, value) {
     const s = model?.agents?.find((a) => a.id === agent)?.slots?.[slot];
     if (s) s.chosen = value;
   } catch (e) {
-    error = e.message;
+    error = (e as Error).message;
   }
   sig = '';
   draw();
 }
 
 // one model host, its agents as chips
-function modelCard(m) {
+function modelCard(m: ModelHost): HTMLElement {
   const [cls, text] = phase(m);
   const card = el('div', `ag-model ${cls}`);
   const head = el('div', 'ag-model-head');
@@ -64,34 +66,34 @@ function modelCard(m) {
 }
 
 // a slot's pills: the default (the parent's, or automatic), then every model
-function slotRow(a, slot, label) {
-  const s = a.slots[slot];
+function slotRow(a: ModelAgent, slot: string, label: string): HTMLElement {
+  const s = a.slots[slot]!;
   const row = el('div', 'ag-slot');
   if (label) row.append(el('span', 'ag-slot-k', label));
   const pills = el('div', 'ag-pills');
-  const pill = (value, text, title) => {
+  const pill = (value: string, text: string, title?: string) => {
     const b = Object.assign(el('button', `ag-pill${(s.chosen || '') === value ? ' on' : ''}`, text), { type: 'button', title: title || text });
     b.addEventListener('click', () => { if ((s.chosen || '') !== value) assign(a.id, slot, value); });
     return b;
   };
-  const parent = a.parent ? model.agents.find((x) => x.id === a.parent) : null;
+  const parent = a.parent ? model!.agents!.find((x) => x.id === a.parent) : null;
   pills.append(pill('', parent ? `same as ${parent.label}` : 'automatic',
     parent ? `follows whatever ${parent.label} is assigned` : 'the smallest ready model, or the biggest for the larger agents'));
-  const hosts = model.models.map((m) => m.host);
-  for (const m of model.models) pills.append(pill(`phosphorus/${m.host}`, m.host, fileName(m)));
+  const hosts = model!.models.map((m) => m.host);
+  for (const m of model!.models) pills.append(pill(`phosphorus/${m.host}`, m.host, fileName(m)));
   if (s.chosen && !hosts.includes(hostOf(s.chosen))) pills.append(pill(s.chosen, `${hostOf(s.chosen)} (gone)`));
   // what it answers with now, or why nothing does
   const line = el('div', `ag-line ${s.ready ? 'on' : 'off'}`);
-  const m = model.models.find((x) => x.host === s.host);
+  const m = model!.models.find((x) => x.host === s.host);
   line.append(el('i', 'ag-dot'));
-  if (s.ready) line.append(el('span', '', 'asks '), el('b', '', s.host), el('span', '', fileName(m || {}) ? ` · ${fileName(m)}` : ''));
+  if (s.ready) line.append(el('span', '', 'asks '), el('b', '', s.host), el('span', '', fileName(m || {}) ? ` · ${fileName(m!)}` : ''));
   else line.append(el('span', '', s.why || 'no model answering'));
   if (s.ready && !s.chosen) line.append(el('span', '', s.inherited ? ' · inherited' : ' · automatic'));
   row.append(pills, line);
   return row;
 }
 
-function agentCard(a) {
+function agentCard(a: ModelAgent): HTMLElement {
   const card = el('section', 'ag-card');
   const head = el('div', 'ag-card-head');
   const name = el('b', '', a.label);
@@ -103,9 +105,9 @@ function agentCard(a) {
 }
 
 // agents by where they run
-const GROUPS = [['Code', ['code', 'claude-code', 'opencode']]];
+const GROUPS: [string, string[]][] = [['Code', ['code', 'claude-code', 'opencode']]];
 
-function group(title, note, body) {
+function group(title: string, note: string, body: HTMLElement): HTMLElement {
   const g = el('section', 'ag-group');
   const head = el('div', 'ag-group-head', title);
   if (note) head.append(el('span', 'ag-dim', note));
@@ -117,7 +119,7 @@ function draw() {
   const next = JSON.stringify([model, error]);
   if (next === sig) return;
   // never rebuilt under a hand on a pill
-  if (view.contains(document.activeElement) && document.activeElement.classList.contains('ag-pill') && sig) return;
+  if (view.contains(document.activeElement) && document.activeElement!.classList.contains('ag-pill') && sig) return;
   sig = next;
   if (!model) { view.replaceChildren(el('div', 'ag-empty', 'connecting')); return; }
   const wrap = el('div', 'ag');
@@ -128,7 +130,7 @@ function draw() {
   if (model.models.length) {
     const known = new Set(GROUPS.flatMap(([, ids]) => ids));
     const rest = (model.agents || []).filter((a) => !known.has(a.id));
-    for (const [title, ids] of [...GROUPS, ['Other', rest.map((a) => a.id)]]) {
+    for (const [title, ids] of [...GROUPS, ['Other', rest.map((a) => a.id)] as [string, string[]]]) {
       const agents = (model.agents || []).filter((a) => ids.includes(a.id));
       if (!agents.length) continue;
       const cards = el('div', 'ag-cards');

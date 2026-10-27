@@ -1,9 +1,13 @@
-import { el, filesCall, jsonPost } from '../app.js';
+import { jsonPost } from '../api.ts';
+import { el } from '../dom.ts';
+import { filesCall } from '../shares.ts';
+import type { DkWin } from '../desktop/windows.ts';
+import type { FileRef } from '../desktop/deskfiles.ts';
 
 // --- editor: one file as plain text in a window, no tabs, no highlighting ----
 // f: { host, share, path, label }; read and saved through the files API
 
-function editorStart(w, f) {
+function editorStart(w: DkWin, f: FileRef): { focus: () => void; holdClose: () => boolean } {
   const loc = { host: f.host, share: String(f.share ?? '') };
   const name = f.path.split('/').pop() || f.path;
   const bar = el('div', 'ed-bar');
@@ -19,11 +23,11 @@ function editorStart(w, f) {
   const dirty = () => ta.value !== saved;
   const mark = () => {
     const t = dirty() ? `${name} •` : name;
-    w.head.querySelector('.tab-label').textContent = t;
-    w.task.querySelector('.dk-task-t').textContent = t;
+    w.head.querySelector('.tab-label')!.textContent = t;
+    w.task.querySelector('.dk-task-t')!.textContent = t;
     save.disabled = busy || !dirty();
   };
-  const say = (t) => { note.textContent = t; };
+  const say = (t: string) => { note.textContent = t; };
 
   const put = async () => {
     if (busy || !dirty()) return true;
@@ -36,7 +40,7 @@ function editorStart(w, f) {
       saved = text;
       say('saved');
     } catch (err) {
-      say(err.message);
+      say((err as Error).message);
     }
     busy = false;
     mark();
@@ -45,8 +49,8 @@ function editorStart(w, f) {
 
   filesCall(loc, 'read', undefined, { path: f.path }).then((r) => {
     if (r.binary || r.tooBig) { say(r.binary ? 'binary file' : 'too big to edit'); return; }
-    saved = r.text;
-    ta.value = r.text;
+    saved = r.text!;
+    ta.value = r.text!;
     ta.disabled = false;
     say('');
     mark();
@@ -67,7 +71,7 @@ function editorStart(w, f) {
   return {
     focus: () => { if (!ta.disabled) ta.focus(); },
     // unsaved text asked about first; done runs once it may close
-    holdClose: (done) => {
+    holdClose: () => {
       if (!dirty()) return false;
       if (confirm(`${name} has unsaved changes. Close without saving?`)) return false;
       return true;

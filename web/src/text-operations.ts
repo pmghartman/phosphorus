@@ -1,20 +1,24 @@
 // Text operations shared by the live session and its undo history.
-const opIns = (o) => typeof o === 'string';
-const opDel = (o) => typeof o === 'number' && o < 0;
+// an op: a string inserts it, a positive number retains that many, a negative deletes
+export type Op = string | number;
+export interface TextEdit { from: number; to: number; text: string }
+
+const opIns = (o: Op | undefined): o is string => typeof o === 'string';
+const opDel = (o: Op | undefined): o is number => typeof o === 'number' && o < 0;
 export function opBuilder() {
-  const ops = [];
-  const add = (o) => {
+  const ops: Op[] = [];
+  const add = (o: Op) => {
     if (o === 0 || o === '') return;
     const last = ops[ops.length - 1];
     if (opIns(o) && opDel(last)) {
       const before = ops[ops.length - 2];
       if (opIns(before)) ops[ops.length - 2] = before + o; else ops.splice(ops.length - 1, 0, o);
-    } else if (last !== undefined && typeof last === typeof o && (opIns(o) || (o > 0) === (last > 0))) ops[ops.length - 1] = last + o;
+    } else if (last !== undefined && typeof last === typeof o && (opIns(o) || (o > 0) === ((last as number) > 0))) ops[ops.length - 1] = (last as any) + (o as any);
     else ops.push(o);
   };
-  return { ops, retain: (n) => add(n), insert: (s) => add(s), del: (n) => add(-n) };
+  return { ops, retain: (n: number) => add(n), insert: (s: string) => add(s), del: (n: number) => add(-n) };
 }
-export function opApply(doc, ops) {
+export function opApply(doc: string, ops: Op[]): string {
   let out = '';
   let at = 0;
   for (const o of ops) {
@@ -23,13 +27,13 @@ export function opApply(doc, ops) {
   }
   return out;
 }
-export function opTransform(a, b) {
+export function opTransform(a: Op[], b: Op[]): [Op[], Op[]] {
   const a1 = opBuilder();
   const b1 = opBuilder();
   let i = 0;
   let j = 0;
-  let x = a[i++];
-  let y = b[j++];
+  let x: Op | undefined = a[i++];
+  let y: Op | undefined = b[j++];
   for (;;) {
     if (x === undefined && y === undefined) break;
     if (opIns(x)) { a1.insert(x); b1.retain(x.length); x = a[i++]; continue; }
@@ -55,17 +59,18 @@ const MAX_BLOCK = 1 << 20;
 // whose head and tail are the lesser of theirs, so a frame drawing several keystrokes at once,
 // or an undo group diffing back to where its typing began, still diffs nothing. Either way
 // round, as the history diffs a text back to the one before it.
-let known = [];
+interface Known { before: string; after: string; head: number; tail: number }
+let known: Known[] = [];
 const KNOWN = 48;
-export function knownEdit(before, after, head, tail) {
+export function knownEdit(before: string, after: string, head: number, tail: number): void {
   if (head < 0 || tail < 0 || head + tail > Math.min(before.length, after.length)) { known = []; return; }
-  const next = [{ before, after, head, tail }];
-  if (known.length && known[0].after === before) for (const k of known.slice(0, KNOWN - 1)) next.push({ before: k.before, after, head: Math.min(k.head, head), tail: Math.min(k.tail, tail) });
+  const next: Known[] = [{ before, after, head, tail }];
+  if (known.length && known[0]!.after === before) for (const k of known.slice(0, KNOWN - 1)) next.push({ before: k.before, after, head: Math.min(k.head, head), tail: Math.min(k.tail, tail) });
   known = next;
 }
-export function commonEnds(a, b) {
+export function commonEnds(a: string, b: string): { head: number; tail: number } {
   if (known.length) {
-    const latest = known[0].after;
+    const latest = known[0]!.after;
     if (latest === b) { for (const k of known) if (k.before === a) return { head: k.head, tail: k.tail }; }
     else if (latest === a) { for (const k of known) if (k.before === b) return { head: k.head, tail: k.tail }; }
   }
@@ -84,7 +89,7 @@ export function commonEnds(a, b) {
   return { head, tail };
 }
 // one replace: what changed between two texts, by their common ends
-export function opDiff(a, b) {
+export function opDiff(a: string, b: string): Op[] {
   const { head: s, tail: e } = commonEnds(a, b);
   const o = opBuilder();
   o.retain(s);
@@ -94,7 +99,7 @@ export function opDiff(a, b) {
   return o.ops;
 }
 // Disjoint replacements retain unchanged spans so undo can preserve peer edits.
-export function opEdits(text, edits) {
+export function opEdits(text: string, edits: TextEdit[]): Op[] {
   const o = opBuilder();
   let at = 0;
   for (const e of [...edits].sort((a, b) => a.from - b.from || a.to - b.to)) {
@@ -105,7 +110,7 @@ export function opEdits(text, edits) {
   return o.ops;
 }
 
-export function opInverse(text, ops) {
+export function opInverse(text: string, ops: Op[]): Op[] {
   const o = opBuilder();
   let at = 0;
   for (const part of ops) {
@@ -117,7 +122,7 @@ export function opInverse(text, ops) {
 }
 
 // where a place in the text lands after an edit
-export function opMap(ops, pos) {
+export function opMap(ops: Op[], pos: number): number {
   let i = 0;
   let j = 0;
   for (const o of ops) {
@@ -129,4 +134,3 @@ export function opMap(ops, pos) {
   }
   return j;
 }
-

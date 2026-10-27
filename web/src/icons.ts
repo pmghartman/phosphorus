@@ -2,17 +2,20 @@
 // every glyph's path data in three groups and how they are stroked; one not in the set, or a set
 // not here, falls back to the default's. The page reads glyphs through iconGroup, so a set change
 // shows on the next draw.
-import DEFAULT from './icons/default.js';
+import DEFAULT, { type IconSet } from './icons/default.ts';
 
-export const ICON_SETS = { [DEFAULT.id]: DEFAULT };
+export type { IconSet };
+export type IconGroupName = 'files' | 'glyphs' | 'ui';
+
+export const ICON_SETS: Record<string, IconSet> = { [DEFAULT.id]: DEFAULT };
 export const ICON_EVENT = 'phosphorus-icons';
 let active = DEFAULT;
 
 export const iconSetNow = () => active.id;
 
 // a set worn: its stroke on the page, the stylesheet drawing every icon from it
-export function setIconSet(id) {
-  const next = ICON_SETS[id] || DEFAULT;
+export function setIconSet(id: string | undefined): void {
+  const next = ICON_SETS[id!] || DEFAULT;
   const changed = next !== active;
   active = next;
   const style = document.documentElement.style;
@@ -23,8 +26,8 @@ export function setIconSet(id) {
 }
 
 // a group's glyphs by name, from the set worn, else the default's
-export const iconGroup = (name) => new Proxy({}, {
-  get: (_, key) => active[name]?.[key] ?? DEFAULT[name][key],
+export const iconGroup = (name: IconGroupName): Record<string, string> => new Proxy({} as Record<string, string>, {
+  get: (_, key) => active[name]?.[key as string] ?? DEFAULT[name][key as string],
   has: (_, key) => key in active[name] || key in DEFAULT[name],
   ownKeys: () => Object.keys({ ...DEFAULT[name], ...active[name] }),
   getOwnPropertyDescriptor: () => ({ enumerable: true, configurable: true }),

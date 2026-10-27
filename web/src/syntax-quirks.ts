@@ -3,16 +3,20 @@
 // own (the rest of its statement, where recovery may stumble again); the syntax check
 // leaves those out. Found by parsing large bodies of valid code (Go's standard library,
 // Python's, npm packages); web/tests/syntax-quirks.test.mjs keeps them.
+import type { SyntaxNode, SyntaxNodeRef, Tree } from '@lezer/common';
+
+// a grammar's gap test: the offset its errors run to, -1 when the node is a real error
+export type Quirk = (node: SyntaxNode, text: string) => number;
 
 // the end of the statement holding a node: its errors are the quirk's cascade
-function statementEnd(node) {
+function statementEnd(node: SyntaxNode): number {
   let n = node;
   while (n.parent && !/^(Script|SourceFile|Block|Body|ClassBody|StyleSheet|StatementGroup)$/.test(n.parent.name)) n = n.parent;
   return n.to;
 }
-const lineEnd = (text, p) => { const e = text.indexOf('\n', p); return e < 0 ? text.length : e; };
+const lineEnd = (text: string, p: number) => { const e = text.indexOf('\n', p); return e < 0 ? text.length : e; };
 // the bracket closing the one at open, strings and comments passed over
-function closingOf(text, open) {
+function closingOf(text: string, open: number): number {
   let depth = 0;
   for (let i = open; i < text.length; i++) {
     const c = text[i];
@@ -24,22 +28,22 @@ function closingOf(text, open) {
   }
   return text.length;
 }
-const only = (node, name) => node.firstChild?.name === name && !node.firstChild.nextSibling;
-const textOf = (node, text) => text.slice(node.from, node.to);
+const only = (node: SyntaxNode, name: string) => node.firstChild?.name === name && !node.firstChild.nextSibling;
+const textOf = (node: SyntaxNode, text: string) => text.slice(node.from, node.to);
 
 // a parenthesized arrow's parameters with a destructured default, ({ a } = {}) =>, taken
 // for a parenthesized assignment
-function patternDefault(paren) {
+function patternDefault(paren: SyntaxNode | null): boolean {
   for (let c = paren?.firstChild; c; c = c.nextSibling) {
     const list = c.name === 'SequenceExpression' ? [...children(c)] : [c];
     if (list.some((x) => x.name === 'AssignmentExpression' && /Pattern$/.test(x.firstChild?.name || ''))) return true;
   }
   return false;
 }
-function* children(node) { for (let c = node.firstChild; c; c = c.nextSibling) yield c; }
+function* children(node: SyntaxNode): Generator<SyntaxNode> { for (let c = node.firstChild; c; c = c.nextSibling) yield c; }
 // whether an expression can be assigned to as a destructuring target: names, members, and
 // arrays and objects of them (defaults and rest included); [1, 2] = x stays an error
-function assignable(node) {
+function assignable(node: SyntaxNode | null): boolean {
   switch (node?.name) {
     case 'VariableName': case 'MemberExpression': return true;
     case 'ParenthesizedExpression': return [...children(node)].filter((c) => !/^[()]$/.test(c.name)).every(assignable);
@@ -52,7 +56,7 @@ function assignable(node) {
   }
 }
 
-const javascript = (node, text) => {
+const javascript: Quirk = (node, text) => {
   const prev = node.prevSibling;
   // [a.b, c[0]] = …: an array (or object) destructured into members
   if (only(node, 'Equals') && /^(ArrayExpression|ObjectExpression)$/.test(prev?.name || '') && assignable(prev)) return statementEnd(node);
@@ -76,12 +80,12 @@ const javascript = (node, text) => {
   return -1;
 };
 
-const go = (node, text) => {
+const go: Quirk = (node, text) => {
   const prev = node.prevSibling;
   // for range n { … } (Go 1.22), no variables before range: its block may be taken for a
   // composite literal's (range b.N { … }), the for then missing one where the next line starts
   if (only(node, 'range') && prev?.name === 'for') {
-    const loop = node.parent;
+    const loop = node.parent!;
     if (loop?.lastChild?.name === 'Block') return loop.to;
     const next = text.slice(loop.to).search(/\S/);
     return next < 0 ? text.length : loop.to + next + 1;
@@ -91,7 +95,7 @@ const go = (node, text) => {
   return -1;
 };
 
-const python = (node, text) => {
+const python: Quirk = (node, text) => {
   const prev = node.prevSibling;
   // yield on its own
   if (node.from === node.to && prev?.name === 'yield' && node.parent?.name === 'YieldStatement') return node.to;
@@ -102,16 +106,16 @@ const python = (node, text) => {
   return -1;
 };
 
-const css = (node) => {
+const css: Quirk = (node) => {
   // a pseudo-class's own argument syntax, :nth-child(2n of .item), :is(…)
   for (let n = node.parent; n; n = n.parent) if (n.name === 'ArgList' && n.parent?.name === 'PseudoClassSelector') return n.to;
   return -1;
 };
 
-const QUIRKS = { javascript, go, python, css };
+const QUIRKS: Record<string, Quirk> = { javascript, go, python, css };
 
 // each error node of from..to in document order, those a quirk owns left out
-export function eachSyntaxError(quirk, text, tree, from, to, fn) {
+export function eachSyntaxError(quirk: Quirk | null | undefined, text: string, tree: Tree, from: number, to: number, fn: (n: SyntaxNodeRef) => void): void {
   let skip = -1;
   tree.iterate({ from, to, enter: (n) => {
     if (!n.type.isError || n.from < skip) return;
@@ -122,6 +126,6 @@ export function eachSyntaxError(quirk, text, tree, from, to, fn) {
 }
 
 // the grammar's quirk test for a check name (javascript:ts → javascript's), null if none
-export function quirksFor(check) {
-  return QUIRKS[String(check || '').split(':')[0]] || null;
+export function quirksFor(check: string | null | undefined): Quirk | null {
+  return QUIRKS[String(check || '').split(':')[0]!] || null;
 }

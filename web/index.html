@@ -19,7 +19,7 @@
   try { pick = localStorage.getItem('phosphorus-theme'); } catch {}
   const theme = pick || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
   if (theme === 'light' || theme === 'oled') document.documentElement.dataset.theme = theme;
-  // the theme as theme.js last put it up: its look, rounded corners, page font, a custom one's css
+  // the theme as theme.ts last put it up: its look, rounded corners, page font, a custom one's css
   const r = document.documentElement;
   let a = null;
   try { a = JSON.parse(localStorage.getItem('phosphorus-theme-applied')); } catch {}
@@ -149,7 +149,7 @@ outside #mesh-svg (emptied every redraw) so it never restarts -->
           <div class="cw-main" id="cw-main"></div>
         </div>
       </div>
-      <!-- claude code sessions on the mesh's hosts, drawn by apps/code.js -->
+      <!-- claude code sessions on the mesh's hosts, drawn by apps/code.ts -->
       <div class="view" id="view-code"></div>
       <div class="view" id="view-agents"></div>
       <!-- a pretend remote desktop over the hosts' own terminals, files and services -->
@@ -247,6 +247,6 @@ outside #mesh-svg (emptied every redraw) so it never restarts -->
 <!-- the chat's one popup: a conversation's actions, or what's been shared -->
 <div class="chat-pop" id="chat-pop" role="menu" hidden></div>
 
-<script type="module" src="/src/main.js"></script>
+<script type="module" src="/src/main.ts"></script>
 </body>
 </html>
