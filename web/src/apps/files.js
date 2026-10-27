@@ -474,7 +474,7 @@ function fmMenu(fm, x, y, onItem) {
   const items = onItem ? [
     ['open', () => one && fmOpen(fm, one), !!one],
     one && one.dir && runnable(one) && ['browse inside', () => fmGo(fm, fm.loc, picked[0].rel), true],
-    one && !one.dir && ['open in sulfur', () => dkCode({ host: fm.loc.host, share: fm.loc.share, path: picked[0].rel, label: fileLabel(fm.loc.host, fm.loc.root, picked[0].rel) }), true],
+    one && !one.dir && ['open in editor', () => dkCode({ host: fm.loc.host, share: fm.loc.share, path: picked[0].rel, label: fileLabel(fm.loc.host, fm.loc.root, picked[0].rel) }), true],
     one && !one.dir && ['download', () => fmDownload(fm, picked[0].rel), fmCan(fm, 'r')],
     ...(one && !one.dir && fm.loc.share === 'home' ? dkRunItems(picked[0].rel, fm.loc.host === '*' ? (one.all ? homeOnline() : one.live || []) : [fm.loc.host]) : []),
     one && fmKind(one) === 'image' && ['set as wallpaper', () => fmWallpaper(fm, picked[0].rel), fmCan(fm, 'r')],

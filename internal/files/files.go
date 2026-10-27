@@ -462,7 +462,7 @@ type TreeEntry struct {
 }
 
 // Tree every entry under rel to depth, breadth first
-// TreeMax a tree's entries at most; Sulfur's own server, one user's machine, takes more
+// TreeMax a tree's entries at most
 var TreeMax = 2000
 
 // skipper whether a folder's name is one of skip's (names, or globs as *.egg-info):

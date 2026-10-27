@@ -23,8 +23,6 @@ type Agent struct {
 
 // Agents every implementation that asks a model, in the pages' order
 var Agents = []Agent{
-	{ID: "chat", Label: "Chat", About: "Sulfur's chat side bar, asking the model straight through the gateway", Tier: "small"},
-	{ID: "inline", Label: "Inline suggestions", About: "Sulfur's ghost-text completions as you type", Tier: "small"},
 	{ID: "code", Label: "Code app", About: "the projects' agent sessions, the default for every harness below", Tier: "large", Fast: true},
 	{ID: "claude-code", Label: "Claude Code", About: "Claude Code in a project, on the mesh's models", Parent: "code", Tier: "large", Fast: true},
 	{ID: "opencode", Label: "OpenCode", About: "opencode in a project, on the mesh's models", Parent: "code", Tier: "large", Fast: true},

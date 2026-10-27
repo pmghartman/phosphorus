@@ -92,17 +92,7 @@ func main() {
 			return api.OnLoadResult{Contents: &css, Loader: api.LoaderCSS}, nil
 		})
 	}}
-	// '#host', the one way Sulfur and the components it shares reach whatever hosts them
-	// (web/src/host/contract.js): bound per page to that page's host, never left to a default
-	hostOf := func(impl string) api.Plugin {
-		abs, _ := filepath.Abs(filepath.Join(*src, impl))
-		return api.Plugin{Name: "sulfur-host", Setup: func(b api.PluginBuild) {
-			b.OnResolve(api.OnResolveOptions{Filter: `^#host$`}, func(api.OnResolveArgs) (api.OnResolveResult, error) {
-				return api.OnResolveResult{Path: abs}, nil
-			})
-		}}
-	}
-	opts := func(entry, outdir, host string) api.BuildOptions {
+	opts := func(entry, outdir string) api.BuildOptions {
 		return api.BuildOptions{
 			EntryPoints:       []string{filepath.Join(*src, entry), filepath.Join(*src, "style.css")},
 			Bundle:            true,
@@ -117,22 +107,16 @@ func main() {
 			NodePaths:         []string{modules},
 			External:          []string{"/vendor/*"},
 			Define:            map[string]string{"__ASSETS__": string(define)},
-			Loader:            map[string]api.Loader{".md": api.LoaderText}, // sulfur's guide, docs/sulfur-extensions.md, as its text
+			Loader:            map[string]api.Loader{".md": api.LoaderText},
 			Metafile:          true,
 			Write:             true,
 			LegalComments:     api.LegalCommentsLinked,
 			Charset:           api.CharsetUTF8,
 			LogLevel:          api.LogLevelWarning,
-			Plugins:           []api.Plugin{themes, hostOf(host)},
+			Plugins:           []api.Plugin{themes},
 		}
 	}
-	// the desktop's page, Sulfur's host the desktop itself
-	page(*out, filepath.Join(*src, "index.html"), "index.html", "/src/main.js", api.Build(opts("src/main.js", "assets", "src/host/desktop.js")))
-
-	// Sulfur alone, its desktop app's page and /sulfur/ on every host: its own host, so
-	// nothing of the desktop comes with it
-	alone := opts("src/sulfur/main.js", "sulfur/assets", "src/sulfur/host.js")
-	page(*out, filepath.Join(*src, "sulfur.html"), "sulfur/index.html", "/src/sulfur/main.js", api.Build(alone))
+	page(*out, filepath.Join(*src, "index.html"), "index.html", "/src/main.js", api.Build(opts("src/main.js", "assets")))
 	must(copyDir(filepath.Join(*src, "static"), *out, ""))
 
 	n := 0
@@ -143,7 +127,7 @@ func main() {
 		n++
 		return precompress(p, hashedPath(*out, p))
 	}))
-	log.Printf("built the desktop's page and Sulfur's, %d files precompressed", n)
+	log.Printf("built the desktop's page, %d files precompressed", n)
 }
 
 // page a build's html: its entry and style put in
@@ -299,11 +283,11 @@ func copyDir(from, to, ext string) error {
 	})
 }
 
-// hashedPath under assets/, sulfur/assets/ or vendor/h/, the server's cached-for-good files
+// hashedPath under assets/ or vendor/h/, the server's cached-for-good files
 func hashedPath(out, p string) bool {
 	rel, _ := filepath.Rel(out, p)
 	rel = filepath.ToSlash(rel)
-	return strings.HasPrefix(rel, "assets/") || strings.HasPrefix(rel, "sulfur/assets/") || strings.HasPrefix(rel, "vendor/h/")
+	return strings.HasPrefix(rel, "assets/") || strings.HasPrefix(rel, "vendor/h/")
 }
 
 // precompress p as .gz, a hashed file's own copy then dropped

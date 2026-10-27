@@ -1,5 +1,5 @@
 {
-  "about": "phosphorus's themes, the one source for the desktop, sulfur, terminals, the cli and the tray. Each theme lays its dark over base.dark; light over that and base.light; oled over that and base.oled. look names the page's structural styles (style.css keys them by data-palette); layout where its bars sit and how windows wear their chrome, over base.layout (data-l-*); round and sans mark rounded controls and a proportional page font.",
+  "about": "phosphorus's themes, the one source for the desktop, terminals, the cli and the tray. Each theme lays its dark over base.dark; light over that and base.light; oled over that and base.oled. look names the page's structural styles (style.css keys them by data-palette); layout where its bars sit and how windows wear their chrome, over base.layout (data-l-*); round and sans mark rounded controls and a proportional page font.",
   "base": {
     "layout": { "bar": "bottom", "barStyle": "panel", "menubar": "off", "items": ["hosts", "agent", "bell", "clock", "profile"], "btns": "right", "btnStyle": "glyphs", "title": "left", "density": "normal", "autohide": "off", "labels": "both" },
     "dark": {
@@ -844,7 +844,7 @@
     {
       "id": "macos",
       "label": "macos",
-      "about": "san francisco, traffic lights, a dock; sulfur as xcode",
+      "about": "san francisco, traffic lights, a dock",
       "look": "macos",
       "icons": "default",
       "layout": { "barStyle": "dock", "menubar": "top", "btns": "left", "btnStyle": "lights", "title": "center", "labels": "icons" },
@@ -1101,7 +1101,7 @@
     {
       "id": "win11",
       "label": "windows 11",
-      "about": "segoe, mica, caption buttons, a centered taskbar; sulfur as visual studio 2026",
+      "about": "segoe, mica, caption buttons, a centered taskbar",
       "look": "win11",
       "icons": "default",
       "layout": { "barStyle": "full", "btnStyle": "caption" },

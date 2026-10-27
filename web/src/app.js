@@ -6,9 +6,6 @@ import { iconGroup } from './icons.js';
 // the page's vendor files, hashed by the build
 const ASSETS = __ASSETS__;
 
-// Sulfur's own host when it runs alone (web/src/sulfur/host.js); inside the desktop, none
-const standalone = null;
-
 // each app's module, set up on first use; one bundle holds them all, no fetch
 const APPS = {
   status: () => import('./apps/status.js'),
@@ -16,7 +13,7 @@ const APPS = {
   files: () => import('./apps/files.js'),
   code: () => import('./apps/code.js'),
   agents: () => import('./apps/agents.js'),
-  sulfur: () => import('./sulfur/workbench.js'),
+  editor: () => import('./apps/editor.js'),
 };
 // the newest /api/state, handed to an app as it loads
 let lastState = null;
@@ -1320,7 +1317,7 @@ const homeAt = (host) => ({ host, share: 'home', root: 'home', perms: 'rwd' });
 const homeWhere = new Map();
 
 const homeOnline = () => [...new Set([selfHost, ...phosphorusHosts()].filter(Boolean))];
-// Sulfur alone reaches hosts by other paths; the desktop's are all its server's own
+// the desktop reaches every host through its own server
 const hostUrl = (host, path) => path;
 const otherHosts = () => [];
 
@@ -2064,7 +2061,7 @@ function dkControlTray() {
       tb.addEventListener('click', () => { setTheme(t); draw(); });
       theme.append(tb);
     }
-    // the theme, every app's and Sulfur's, its whole look
+    // the theme, every app's, its whole look
     const palette = dkPaletteDrop(draw);
     // the account's own actions, small chips under the panel's big tiles
     const chips = el('div', 'dk-ctl-chips');
@@ -4563,7 +4560,6 @@ function dkIcons() {
   const want = [
     ...hosts.map((h) => [`terminal\n${h}`, () => dkIcon('terminal', 'terminal', h, () => dkTerminal(h))]),
     ['files', () => dkIcon('files', 'files', '', () => filesWin())],
-    ...(acct && !acct.boot ? [['sulfur', () => dkIcon('sulfur', 'sulfur', '', () => dkSulfur(), '/sulfur/icon.svg')]] : []),
     ['chat', () => dkIcon('chat', 'chat', '', () => dkOpenApp('chat'))],
     ['status', () => dkIcon('status', 'status', '', () => dkOpenApp('status'))],
     ...(git ? [['git', () => dkGlobe(dkIcon('git', 'git', '', () => dkOpenApp('git')), 'public: its own login only')]] : []),
@@ -5738,7 +5734,7 @@ function dkFileMenu(e) {
   return [
     ['open', () => fileOpen(HOME, rel, e), !e.stale],
     e.dir && ['show in files', () => filesWin({ loc: HOME, dir: rel }), true],
-    ['open in sulfur', () => (e.dir ? dkSulfur({ dir: rel }) : dkCode({ host: loc.host, share: loc.share, path: rel, label: fileLabel(loc.host, 'home', rel) })), !e.stale],
+    !e.dir && ['open in editor', () => dkCode({ host: loc.host, share: loc.share, path: rel, label: fileLabel(loc.host, 'home', rel) }), !e.stale],
     !e.dir && ['download', () => { location.href = filesApi(loc, 'download', { path: rel }); }, !e.stale],
     ...(e.dir ? [] : dkRunItems(rel, e.all ? homeOnline() : e.live || [])),
     null,
@@ -5779,7 +5775,7 @@ async function dkRun(loc, rel) {
   dkFocus(w);
 }
 
-// --- a file to edit: a tab in Sulfur
+// --- a file to edit: a plain text window each
 
 // whether a file is still where it was: its folder listed, it in it
 async function fileThere(f) {
@@ -5789,42 +5785,30 @@ async function fileThere(f) {
   } catch { return false; }
 }
 
-// a file to edit, refused with a note when it's gone: a tab in Sulfur, its home
-// file as the home's, any other share's as that host's
+// a file to edit, refused with a note when it's gone
 async function dkCode(f) {
   if (!(await fileThere(f))) { dkMenuNote(`${f.path.split('/').pop()} is gone`); return; }
   if (acct?.boot) { dkMenuNote('make your own account to edit files'); return; }
-  const share = String(f.share ?? '');
-  dkSulfur({ path: f.path, host: f.host, ...(share === 'home' ? {} : { loc: { host: f.host, share } }) });
+  dkEditor(f);
 }
 
-// --- sulfur, the code editor: one window, a project folder its workspace, its
-// terminals on the hosts this desktop is logged into; open: {dir} or {path}
-let dkSulfurNow = null;
-function dkSulfur(open = null) {
+function dkEditor(f) {
   if (!dk.desk || !acct || acct.boot) return;
-  const had = dk.wins.get('app:sulfur');
-  if (had) {
-    dkFocus(had);
-    if (open) dkSulfurNow?.then((x) => x?.open(open));
-    return;
-  }
-  const w = dkWin('app:sulfur', 'sulfur', '', 'ide');
+  const label = f.label || fileLabel(f.host, String(f.share ?? ''), f.path);
+  const w = dkWin(`view:edit
+${f.host}
+${f.share ?? ''}
+${f.path}`, f.path.split('/').pop() || f.path, '', 'edit');
   if (!w) return;
-  w.node.classList.add('ide-win');
-  dkSize(w, 1280, 800);
-  w.body.append(el('div', 'ide-loading', 'loading'));
+  dkSize(w, 720, 560);
+  w.body.append(el('div', 'ed-note', 'loading'));
   let now = null;
-  const ide = app('sulfur').then((m) => {
-    if (!w.node.isConnected) return null;
-    now = m.ideStart(w, open);
-    return now;
-  }, (e) => { w.body.textContent = `failed: ${e.message}`; return null; });
-  dkSulfurNow = ide;
+  app('editor').then((m) => {
+    if (!w.node.isConnected) return;
+    now = m.editorStart(w, { ...f, label });
+  }, (e) => { w.body.textContent = `failed: ${e.message}`; });
   w.onFocus = () => now?.focus();
-  // unsaved files asked about first, the window closed for good once settled
-  w.holdClose = () => !!now?.holdClose(() => dkClose(w, true));
-  w.onClose = () => { now?.close(); if (dkSulfurNow === ide) dkSulfurNow = null; };
+  w.holdClose = () => !!now?.holdClose();
   dkFocus(w);
 }
 
@@ -6562,7 +6546,7 @@ function dkMcpTray() {
   const box = Object.assign(el('input'), { type: 'checkbox', checked: agentViewOn() });
   box.addEventListener('change', () => agentViewSet(box.checked));
   view.append(box, el('span', '', 'show agent on screen'));
-  view.title = 'open the files, sulfur, consoles and views the agent works in, as it works';
+  view.title = 'open the files, editor, consoles and views the agent works in, as it works';
   pop.append(bar, hint, view, head, body);
   head.append(el('span', 'dk-cl-title', 'agent'), stateLine);
   const flash = (x, text) => {
@@ -6862,7 +6846,10 @@ function agentAct(a, args, done) {
     agentLit(agentWin((w) => w.kind === 'term' && w.host === args.host));
     return;
   }
-  const code = () => agentOpen(agentCodeKey(args), () => dkCode({ host: args.host, share: args.share, path: args.path }));
+  const code = () => agentOpen(`view:edit
+${args.host}
+${args.share ?? ''}
+${args.path}`, () => dkCode({ host: args.host, share: args.share, path: args.path }));
   if (t === 'files_read' && !done && args.host && args.path) { code(); return; }
   if (t === 'files_write' && done && a.ok && args.host && args.path) {
     if (!args.open) code();
@@ -6884,8 +6871,6 @@ function agentAct(a, args, done) {
   } else if (t === 'update_control' && acct?.admin && updateModal.hidden) openUpdateModal();
 }
 
-// a file the agent touches opens in Sulfur, the one window lit
-const agentCodeKey = () => 'app:sulfur';
 
 // one files window the agent browses in, opened or moved to the place
 let agentFm = null;
@@ -7054,7 +7039,6 @@ acctStart();
 // read by the apps loaded on first open
 export {
   ASSETS,
-  standalone,
   DK_RUNNERS,
   DK_UI,
   HOME,
@@ -7076,7 +7060,6 @@ export {
   dkFocus,
   dkGlyph,
   dkHomeOn,
-  dkSulfur,
   dkLiveHosts,
   dkMenu,
   dkMenuEl,
