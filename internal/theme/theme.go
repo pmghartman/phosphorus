@@ -1,5 +1,5 @@
 // Package theme is phosphorus's theme library: every color, font, shadow and corner token of
-// every theme, in themes.json, the one source the desktop, Sulfur, the terminals, the cli and
+// every theme, in themes.json, the one source the desktop, the terminals, the cli and
 // the tray all draw from. The web build turns it into CSS (CSS); Go callers resolve a theme's
 // tokens for a mode (Tokens).
 package theme

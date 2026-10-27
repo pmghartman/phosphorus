@@ -1,5 +1,5 @@
 // Highlighted ranges drawn as html: sorted, disjoint {from, to, cls} ranges over a text.
-// Shared by the desktop's highlighter (lezer.js) and Sulfur's editor, so neither reaches
+// Shared by the desktop's highlighter (lezer.js) and the editor, so neither reaches
 // into the other's code.
 
 const escape = (s) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);

@@ -17,26 +17,12 @@ Install it on each machine and they find each other. No servers to rent, no conf
 - **Services and game servers**, started from the desktop
 - **Git, chat and a local AI model**, shared by the whole mesh
 - **Code sessions** with Claude Code or opencode on any host
-- **Agents**: assign each mesh model to chat, inline suggestions, Claude Code and opencode from one page
+- **Agents**: assign each mesh model to Claude Code and opencode from one page
 - **An MCP server**, so Claude can work your mesh for you
-
-<p align="center"><img src="packaging/sulfur/icon.svg" alt="" width="140"></p>
-
-<h2 align="center">Sulfur</h2>
-
-<p align="center"><b>A code editor that lives on every machine at once.</b></p>
-
-Open any file on any host and edit it live, together. Build with each machine's own compilers. Run it in the browser or as its own desktop app, on the mesh or fully offline.
-
-- **Feels like VS Code**: palette, completion, extensions, themes
-- **Live collaboration** on every file
-- **Language servers** for ten languages, installed per host
-- **Claude Code and opencode** agents in the editor
-- **Self-updating** apps for macOS, Windows and Linux
 
 ## Quick start
 
-Grab Phosphorus or Sulfur from the [**latest release**](https://github.com/pmghartman/phosphorus/releases/latest), which has install steps for every platform. Phosphorus needs a free [Tailscale](https://tailscale.com) auth key; then open `http://HOST` from any device on your tailnet.
+Grab Phosphorus from the [**latest release**](https://github.com/pmghartman/phosphorus/releases/latest), which has install steps for every platform. Phosphorus needs a free [Tailscale](https://tailscale.com) auth key; then open `http://HOST` from any device on your tailnet.
 
 ## License
 

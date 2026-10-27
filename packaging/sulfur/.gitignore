@@ -1,6 +1,0 @@
-/stage/
-
-# Leftover Tauri packaging output (the native shell now lives in cmd/sulfur).
-/src-tauri/target/
-/src-tauri/binaries/
-/src-tauri/gen/

@@ -1,4 +1,4 @@
-// the themes, phosphorus wide: the desktop, every app and Sulfur alike, each with its dark,
+// the themes, phosphorus wide: the desktop and every app, each with its dark,
 // light and oled. Their tokens are the theme library's (internal/theme/themes.json), built into
 // style.css; here the pick, a custom theme over any of them, and what the page's head needs to
 // put them up before paint. Kept per user across the mesh with the rest of their settings.
@@ -118,12 +118,10 @@ export function customNow() {
 function customCss(c) {
   const own = themeConfig(c.base);
   const page = {};
-  const ide = {};
   if (c.accent !== own.accent) {
     Object.assign(page, { '--accent': c.accent, '--mesh-self': c.accent, '--glyph-purple': c.accent });
-    Object.assign(ide, { '--ide-accent': c.accent, '--ide-button': c.accent, '--ide-badge': c.accent, '--ide-hl': c.accent, '--ide-link': c.accent, '--ide-caret': c.accent });
   }
-  if (c.font !== own.font) { page['--font'] = CUSTOM_FONTS[c.font]; ide['--ide-ui'] = CUSTOM_FONTS[c.font]; }
+  if (c.font !== own.font) { page['--font'] = CUSTOM_FONTS[c.font] }
   if (c.mono !== own.mono) page['--mono'] = CUSTOM_MONOS[c.mono];
   if (c.corners !== own.corners) {
     const n = Number(c.corners);
@@ -132,7 +130,7 @@ function customCss(c) {
   if (c.shadows !== own.shadows) Object.assign(page, CUSTOM_SHADOWS[c.shadows]);
   if (c.desk !== own.desk) page['--desk'] = c.desk;
   const rule = (sel, t) => (Object.keys(t).length ? `${sel} { ${Object.entries(t).map(([k, v]) => `${k}: ${v};`).join(' ')} }\n` : '');
-  return rule(':root[data-custom]', page) + rule(':root[data-custom] .ide-win', ide);
+  return rule(':root[data-custom]', page);
 }
 
 // --- the pick ----------------------------------------------------------------------------------
