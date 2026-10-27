@@ -103,7 +103,7 @@ function agentCard(a) {
 }
 
 // agents by where they run
-const GROUPS = [['Sulfur', ['chat', 'inline']], ['Code', ['code', 'claude-code', 'opencode']]];
+const GROUPS = [['Code', ['code', 'claude-code', 'opencode']]];
 
 function group(title, note, body) {
   const g = el('section', 'ag-group');

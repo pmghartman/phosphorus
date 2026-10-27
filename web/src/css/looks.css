@@ -1,4 +1,4 @@
-/* whole looks over the desktop and Sulfur alike: cli, macos, windows 11, rounded controls */
+/* whole looks over the desktop: cli, macos, windows 11, rounded controls */
 
 /* --- whole looks: cli, macos and windows 11 (their tokens the library's) ---------------------- */
 
@@ -289,4 +289,4 @@
 :root[data-palette="cli"] .dk-task:not(.active):hover { background: var(--tab-hover); color: var(--fg); }
 :root[data-palette="cli"] .about-version { background: none; color: var(--accent); animation: none; -webkit-background-clip: border-box; background-clip: border-box; }
 /* the marks and app icons in the terminal's own grey, nothing in color but the text */
-:root[data-palette="cli"] :is(.about-mark, .ide-mark, .dk-tile-img .dk-favicon) { filter: grayscale(1); }
+:root[data-palette="cli"] :is(.about-mark, .dk-tile-img .dk-favicon) { filter: grayscale(1); }

@@ -9,7 +9,6 @@ import (
 
 	"github.com/pmghartman/phosphorus/internal/cli"
 	"github.com/pmghartman/phosphorus/internal/host"
-	"github.com/pmghartman/phosphorus/internal/sulfur"
 )
 
 func main() {
@@ -21,11 +20,6 @@ func main() {
 	switch {
 	case cmd == "cli":
 		os.Exit(cli.Main(args))
-	case cmd == "sulfur-language" && len(args) == 1:
-		// a mesh host's language servers, under the SSH login that asked
-		os.Exit(sulfur.LanguageMain(args[0], os.Stdin, os.Stdout, os.Stderr))
-	case cmd == "sulfur-sqlite" && len(args) == 0:
-		os.Exit(sulfur.SQLiteMain(os.Stdin, os.Stdout, os.Stderr))
 	case cmd == "version":
 		fmt.Println(host.Version())
 	case host.Commands[cmd]:

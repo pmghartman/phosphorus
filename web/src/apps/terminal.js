@@ -4,7 +4,7 @@ import {
   cssVar,
   hostUrl,
   name,
-} from '#host';
+} from '../app.js';
 
 // --- terminals --------------------------------------------------------------
 
@@ -236,92 +236,6 @@ function agentConsole(view) {
   };
 }
 
-// a task on a host through /api/sulfur/run, a build or a run: its output as a
-// terminal's, keys passed in while it runs, its exit told once it's over;
-// opts: fontSize, banner, onText (its output as text, for problem matchers), onExit
-function taskTerminal(view, host, task, opts = {}) {
-  let term = null;
-  let fit = null;
-  let ws = null;
-  let observer = null;
-  let ended = false;
-  const dec = new TextDecoder();
-  const enc = new TextEncoder();
-  const end = (code, why) => {
-    if (ended) return;
-    ended = true;
-    if (why) term?.write(`\r\n\x1b[31m${why}\x1b[0m`);
-    term?.write(`\r\n\x1b[2m[${code === 0 ? 'done' : code === -1 ? 'stopped' : `exited with ${code}`}]\x1b[0m\r\n`);
-    opts.onExit?.(code, why || '');
-  };
-  const ready = loadXterm().then(() => {
-    term = new Terminal({
-      cursorBlink: false, cursorStyle: 'bar', fontSize: opts.fontSize || 14, lineHeight: 1, scrollback: 20000,
-      fontFamily: monoOf(looks(opts).from),
-      allowTransparency: !!opts.transparent, theme: termTheme(looks(opts).from, looks(opts).clear),
-    });
-    liveTerms.set(term, looks(opts));
-    fit = new FitAddon.FitAddon();
-    term.loadAddon(fit);
-    liveTerms.get(term).fit = fit;
-    term.open(view);
-    if (!opts.transparent) {
-      try {
-        const gl = new WebglAddon.WebglAddon();
-        gl.onContextLoss(() => gl.dispose());
-        term.loadAddon(gl);
-      } catch {}
-    }
-    observer = new ResizeObserver(() => fit.fit());
-    observer.observe(view);
-    fit.fit();
-    if (opts.banner) term.write(opts.banner);
-    ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${hostUrl(host, '/api/sulfur/run')}`);
-    ws.binaryType = 'arraybuffer';
-    let heard = false;
-    ws.onopen = () => ws.send(JSON.stringify({ host, task: { ...task, cols: term.cols, rows: term.rows } }));
-    ws.onmessage = (e) => {
-      heard = true;
-      if (typeof e.data === 'string') {
-        let m = null;
-        try { m = JSON.parse(e.data); } catch { return; }
-        if (m.type === 'exit') end(m.code, m.error);
-        return;
-      }
-      const b = new Uint8Array(e.data);
-      term.write(b);
-      opts.onText?.(dec.decode(b, { stream: true }));
-    };
-    // closed before a word: the host has no runs to give, most likely a Phosphorus older than this Sulfur
-    ws.onclose = () => end(-1, heard ? 'the connection closed' : `${host} didn't take the run: its Phosphorus is likely older than this Sulfur. Update the mesh (the status app's update, or phos update all), then run it again.`);
-    term.onData((d) => { if (!ended && ws?.readyState === WebSocket.OPEN) ws.send(enc.encode(d)); });
-    term.onResize(() => { if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows })); });
-  }).catch((err) => { view.textContent = err.message; end(-1, err.message); });
-  return {
-    show: () => ready.then(() => { fit?.fit(); term?.focus(); }),
-    focus: () => term?.focus(),
-    fit: () => fit?.fit(),
-    clear: () => term?.clear(),
-    ended: () => ended,
-    selection: () => term?.getSelection() || '',
-    selectAll: () => term?.selectAll(),
-    paste: (text) => term?.paste(text),
-    send: (text) => {
-      if (ended || ws?.readyState !== WebSocket.OPEN) return false;
-      ws.send(enc.encode(text));
-      return true;
-    },
-    // a stop asked of the host, the socket closed after so nothing's left
-    kill: () => { if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'kill' })); },
-    close: () => ready.then(() => {
-      observer?.disconnect();
-      if (ws) { ws.onclose = null; try { ws.close(); } catch {} }
-      liveTerms.delete(term);
-      term?.dispose();
-    }),
-  };
-}
-
 // re-coloured with the page's theme
 // a theme's own mono too, the cells measured again for it
 function termsRetheme() {
@@ -332,4 +246,4 @@ function termsRetheme() {
   }
 }
 
-export { agentConsole, startTerminal, taskTerminal, termsRetheme };
+export { agentConsole, startTerminal, termsRetheme };

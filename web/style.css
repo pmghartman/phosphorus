@@ -1,10 +1,7 @@
-/* the page's styles, in cascade order; each part's own file:
-   Phosphorus's (src/css/) and Sulfur's (src/sulfur/), so either is worked on alone */
+/* the page's styles, in cascade order; each part's own file in src/css/ */
 
 /* the theme library's tokens, generated from internal/theme/themes.json by the build */
 @import "phosphorus:themes";
 @import "./src/css/phosphorus.css";
-@import "./src/sulfur/workbench.css";
 @import "./src/css/looks.css";
-@import "./src/sulfur/looks.css";
 @import "./src/css/layout.css";
