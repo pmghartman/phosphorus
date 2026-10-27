@@ -1,0 +1,4 @@
+{"cache":734003200,"standby":4294967296,"swapTotal":4096,"swapUsed":512,
+"net":[{"name":"Ethernet","rx":123456789012,"tx":9876543210},{"name":"vEthernet (WSL)","rx":1000,"tx":2000},{"name":"Wi-Fi","rx":0,"tx":0},{"name":"Bluetooth Network Connection","rx":4096,"tx":1024}],
+"io":[{"r":1000000000,"w":500000000},{"r":250,"w":125}],
+"disks":[{"total":1023737835520,"free":512000000000},{"total":2000396746752,"free":1000000000000},{"total":2000396746752,"free":1000000000000}]}
