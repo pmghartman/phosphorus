@@ -152,7 +152,7 @@ function startTerminal(view, host, sid, resume, shared = false, login = null, op
         delay = RETRY_MIN_MS;
         sendSize();
         ws.send(JSON.stringify({ type: 'share', on: shared, by: name }));
-        if (login && !resume) ws.send(JSON.stringify({ type: 'login', user: login.user, pass: login.pass, run: login.run || '' }));
+        if (login && !resume) ws.send(JSON.stringify({ type: 'login', user: login.user, pass: login.pass, run: login.run || '', ...(login.dir ? { dir: login.dir, then: login.then || '' } : {}) }));
         login = null;
       };
       ws.onmessage = (e) => {
