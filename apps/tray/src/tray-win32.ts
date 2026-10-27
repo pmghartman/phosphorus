@@ -1,7 +1,10 @@
 // the Windows notification-area icon and its menu over user32/shell32: a hidden
 // window owning the icon, its messages pumped on a timer beside the event loop
-import { dlopen, FFIType, JSCallback, ptr, type Pointer } from "bun:ffi";
-import type { Tray, TrayItem } from "./tray";
+import { writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { dlopen, FFIType, JSCallback, ptr } from "bun:ffi";
+import { wstr, type Tray, type TrayItem } from "./tray.ts";
 
 const { u32, i32, u64, ptr: P, bool, i64 } = FFIType;
 
@@ -33,26 +36,17 @@ const NIM_ADD = 0, NIM_MODIFY = 1, NIM_DELETE = 2, NIF_MESSAGE = 1, NIF_ICON = 2
 const MF_STRING = 0, MF_GRAYED = 1, MF_SEPARATOR = 0x800, TPM_RETURNCMD = 0x100, TPM_NONOTIFY = 0x80, TPM_RIGHTBUTTON = 2;
 const CALLBACK = WM_APP + 1;
 
-// a NUL-terminated UTF-16 string, kept alive by its caller
-export const wstr = (s: string) => {
-  const b = Buffer.alloc((s.length + 1) * 2);
-  b.write(s, "utf16le");
-  return b;
-};
-
-export function win32Tray(iconPath: string, tooltip: string): Tray {
+export function win32Tray(icon: Uint8Array, tooltip: string): Tray {
   const hinst = kernel32.symbols.GetModuleHandleW(0n);
   const className = wstr("PhosphorusTray");
   let items: TrayItem[] = [];
-  let onClick: (() => void) | undefined;
   const taskbarCreated = U.RegisterWindowMessageW(wstr("TaskbarCreated"));
 
   const wndProc = new JSCallback(
     (hwnd: bigint, msg: number, wp: bigint, lp: bigint): bigint => {
       if (msg === CALLBACK) {
         const ev = Number(lp & 0xffffn);
-        if (ev === WM_RBUTTONUP || ev === WM_CONTEXTMENU) popup();
-        else if (ev === WM_LBUTTONUP) onClick ? onClick() : popup();
+        if (ev === WM_RBUTTONUP || ev === WM_CONTEXTMENU || ev === WM_LBUTTONUP) popup();
         return 0n;
       }
       // Explorer restarted: the icon put back
@@ -72,15 +66,18 @@ export function win32Tray(iconPath: string, tooltip: string): Tray {
   const hwnd = U.CreateWindowExW(0, className, className, 0, 0, 0, 0, 0, 0n, 0n, hinst, 0n) as bigint;
   if (!hwnd) throw new Error("tray: CreateWindowExW failed");
 
+  // the .ico's bytes by way of a file: LoadImageW reads no memory
   let hicon = 0n;
-  const loadIcon = (p: string) => {
+  const loadIcon = (ico: Uint8Array) => {
+    const p = join(tmpdir(), `phosphorus-tray-${process.pid}.ico`);
+    writeFileSync(p, ico);
     const h = U.LoadImageW(0n, wstr(p), 1 /* IMAGE_ICON */, 0, 0, 0x10 | 0x40 /* LR_LOADFROMFILE|LR_DEFAULTSIZE */) as bigint;
     if (h) {
       if (hicon) U.DestroyIcon(hicon);
       hicon = h;
     }
   };
-  loadIcon(iconPath);
+  loadIcon(icon);
 
   // NOTIFYICONDATAW, x64 layout
   const nid = Buffer.alloc(976);
@@ -122,24 +119,26 @@ export function win32Tray(iconPath: string, tooltip: string): Tray {
 
   // this thread's messages, the event loop's timers interleaved with them
   const msg = Buffer.alloc(48);
-  const pump = setInterval(() => {
+  const tick = () => {
     while (U.PeekMessageW(msg, 0n, 0, 0, 1 /* PM_REMOVE */)) {
       U.TranslateMessage(msg);
       U.DispatchMessageW(msg);
     }
-  }, 30);
+  };
+  let pump: ReturnType<typeof setInterval> | undefined;
 
   return {
     setMenu(next) { items = next; },
     setTooltip(t) { setTipText(t); notify(NIM_MODIFY); },
-    setIcon(p) { loadIcon(p); notify(NIM_MODIFY); },
-    onClick(f) { onClick = f; },
+    setIcon(ico) { loadIcon(ico); notify(NIM_MODIFY); },
+    run() { pump ??= setInterval(tick, 30); },
     // tests and diagnostics: the menu as if clicked
     _popup: popup,
     _hwnd: hwnd,
     _post: (lp: number) => U.PostMessageW(hwnd, CALLBACK, 1n, BigInt(lp)),
     quit() {
-      clearInterval(pump);
+      if (pump) clearInterval(pump);
+      pump = undefined;
       notify(NIM_DELETE);
       if (hicon) U.DestroyIcon(hicon);
       U.DestroyWindow(hwnd);
