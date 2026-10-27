@@ -142,7 +142,7 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run web
       - run: bun run check
-      - run: bun test
+      - run: bun run test
 
   # one job per OS: Linux's host the .deb around the binary, macOS's and
   # Windows' the menu bar app beside it, in a .dmg and a setup .exe

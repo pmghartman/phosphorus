@@ -5,7 +5,7 @@
   "workspaces": ["apps/*", "packages/*", "web"],
   "scripts": {
     "check": "tsc --noEmit -p .",
-    "test": "bun test",
+    "test": "bun scripts/test.ts",
     "web": "bun scripts/webbuild.ts",
     "build": "bun scripts/build.ts",
     "licenses": "bun scripts/licenses.ts"
