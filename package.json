@@ -1,0 +1,17 @@
+{
+  "name": "phosphorus",
+  "private": true,
+  "type": "module",
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "check": "tsc --noEmit -p .",
+    "test": "bun test",
+    "web": "bun scripts/webbuild.ts",
+    "build": "bun scripts/build.ts",
+    "licenses": "bun scripts/licenses.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.4",
+    "typescript": "^7.0.2"
+  }
+}
