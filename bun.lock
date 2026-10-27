@@ -21,6 +21,9 @@
     "packages/chatmedia": {
       "name": "@phosphorus/chatmedia",
     },
+    "packages/cli": {
+      "name": "@phosphorus/cli",
+    },
     "packages/clock": {
       "name": "@phosphorus/clock",
     },
@@ -48,14 +51,29 @@
     "packages/gamedns": {
       "name": "@phosphorus/gamedns",
     },
+    "packages/git": {
+      "name": "@phosphorus/git",
+    },
+    "packages/host": {
+      "name": "@phosphorus/host",
+    },
     "packages/ini": {
       "name": "@phosphorus/ini",
+    },
+    "packages/mcp": {
+      "name": "@phosphorus/mcp",
+    },
+    "packages/mesh": {
+      "name": "@phosphorus/mesh",
     },
     "packages/minisign": {
       "name": "@phosphorus/minisign",
     },
     "packages/mirror": {
       "name": "@phosphorus/mirror",
+    },
+    "packages/model": {
+      "name": "@phosphorus/model",
     },
     "packages/modeld": {
       "name": "@phosphorus/modeld",
@@ -68,6 +86,15 @@
     },
     "packages/reconfig": {
       "name": "@phosphorus/reconfig",
+    },
+    "packages/server": {
+      "name": "@phosphorus/server",
+      "dependencies": {
+        "ssh2": "1.17.0",
+      },
+      "devDependencies": {
+        "@types/ssh2": "1.15.6",
+      },
     },
     "packages/services": {
       "name": "@phosphorus/services",
@@ -96,6 +123,9 @@
     },
     "packages/tools": {
       "name": "@phosphorus/tools",
+    },
+    "packages/update": {
+      "name": "@phosphorus/update",
     },
     "packages/users": {
       "name": "@phosphorus/users",
@@ -185,6 +215,8 @@
 
     "@phosphorus/chatmedia": ["@phosphorus/chatmedia@workspace:packages/chatmedia"],
 
+    "@phosphorus/cli": ["@phosphorus/cli@workspace:packages/cli"],
+
     "@phosphorus/clock": ["@phosphorus/clock@workspace:packages/clock"],
 
     "@phosphorus/code": ["@phosphorus/code@workspace:packages/code"],
@@ -199,13 +231,23 @@
 
     "@phosphorus/gamedns": ["@phosphorus/gamedns@workspace:packages/gamedns"],
 
+    "@phosphorus/git": ["@phosphorus/git@workspace:packages/git"],
+
+    "@phosphorus/host": ["@phosphorus/host@workspace:packages/host"],
+
     "@phosphorus/host-app": ["@phosphorus/host-app@workspace:apps/host"],
 
     "@phosphorus/ini": ["@phosphorus/ini@workspace:packages/ini"],
 
+    "@phosphorus/mcp": ["@phosphorus/mcp@workspace:packages/mcp"],
+
+    "@phosphorus/mesh": ["@phosphorus/mesh@workspace:packages/mesh"],
+
     "@phosphorus/minisign": ["@phosphorus/minisign@workspace:packages/minisign"],
 
     "@phosphorus/mirror": ["@phosphorus/mirror@workspace:packages/mirror"],
+
+    "@phosphorus/model": ["@phosphorus/model@workspace:packages/model"],
 
     "@phosphorus/modeld": ["@phosphorus/modeld@workspace:packages/modeld"],
 
@@ -214,6 +256,8 @@
     "@phosphorus/proxy": ["@phosphorus/proxy@workspace:packages/proxy"],
 
     "@phosphorus/reconfig": ["@phosphorus/reconfig@workspace:packages/reconfig"],
+
+    "@phosphorus/server": ["@phosphorus/server@workspace:packages/server"],
 
     "@phosphorus/services": ["@phosphorus/services@workspace:packages/services"],
 
@@ -230,6 +274,8 @@
     "@phosphorus/tools": ["@phosphorus/tools@workspace:packages/tools"],
 
     "@phosphorus/tray-app": ["@phosphorus/tray-app@workspace:apps/tray"],
+
+    "@phosphorus/update": ["@phosphorus/update@workspace:packages/update"],
 
     "@phosphorus/users": ["@phosphorus/users@workspace:packages/users"],
 
