@@ -51,6 +51,9 @@
     "packages/minisign": {
       "name": "@phosphorus/minisign",
     },
+    "packages/mirror": {
+      "name": "@phosphorus/mirror",
+    },
     "packages/modeld": {
       "name": "@phosphorus/modeld",
     },
@@ -68,6 +71,9 @@
     },
     "packages/sshrelay": {
       "name": "@phosphorus/sshrelay",
+    },
+    "packages/stats": {
+      "name": "@phosphorus/stats",
     },
     "packages/sysfs": {
       "name": "@phosphorus/sysfs",
@@ -194,6 +200,8 @@
 
     "@phosphorus/minisign": ["@phosphorus/minisign@workspace:packages/minisign"],
 
+    "@phosphorus/mirror": ["@phosphorus/mirror@workspace:packages/mirror"],
+
     "@phosphorus/modeld": ["@phosphorus/modeld@workspace:packages/modeld"],
 
     "@phosphorus/procs": ["@phosphorus/procs@workspace:packages/procs"],
@@ -205,6 +213,8 @@
     "@phosphorus/services": ["@phosphorus/services@workspace:packages/services"],
 
     "@phosphorus/sshrelay": ["@phosphorus/sshrelay@workspace:packages/sshrelay"],
+
+    "@phosphorus/stats": ["@phosphorus/stats@workspace:packages/stats"],
 
     "@phosphorus/sysfs": ["@phosphorus/sysfs@workspace:packages/sysfs"],
 
