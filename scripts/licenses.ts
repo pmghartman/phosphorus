@@ -63,8 +63,8 @@ function walk(name: string, from: string) {
   if (parts.has(key)) return;
   const spdx = spdxOf(pj);
   if (!pick(spdx)) bad.push(`${key}: ${spdx || "no license field"}`);
+  // a package shipping no text gets the standard SPDX one, fetched below
   const texts = filesIn(dir);
-  if (!texts.length && !checkOnly) die(`${key} ships no license file in ${dir}`);
   parts.set(key, { group: npmGroup, name, version: pj.version, spdx, source: `https://www.npmjs.com/package/${name}`, texts, purl: `pkg:npm/${name}@${pj.version}` });
   for (const dep of Object.keys(pj.dependencies ?? {})) walk(dep, dir);
   // an optional dependency that didn't install is left out
@@ -104,6 +104,14 @@ const pinned = (file: string, re: string) => {
   return m?.[1] ?? die(`no version in ${file}`);
 };
 const all: Part[] = [...parts.values()];
+const spdxTag = "v3.27.0";
+const standard = new Map<string, string>();
+for (const p of all)
+  if (!p.texts.length) {
+    const id = pick(p.spdx);
+    if (!standard.has(id)) standard.set(id, await fetchText(`https://raw.githubusercontent.com/spdx/license-list-data/${spdxTag}/text/${id}.txt`));
+    p.texts = [standard.get(id)!];
+  }
 all.push({ group: "Runtime compiled into the phosphorus binary", name: "Bun", version: Bun.version, spdx: "MIT", source: "https://bun.sh", texts: [await fetchText(`https://raw.githubusercontent.com/oven-sh/bun/bun-v${Bun.version}/LICENSE.md`)] });
 const tools = JSON.parse(readFileSync(join(root, "packaging/tools-licenses.json"), "utf8"));
 const forgejo = pinned("packaging/tools.sh", "^FORGEJO=(\\S+)");
