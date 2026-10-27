@@ -6,7 +6,7 @@ import { quirksFor, eachSyntaxError } from '../src/syntax-quirks.js';
 // from web/.vendor, with cmd/webbuild/patches.go's fixes put in
 async function errors(check, text) {
   const [mod, dialect] = check.split(':');
-  const { parser } = await import(`../.vendor/node_modules/@lezer/${mod}/dist/index.js`);
+  const { parser } = await import(`@lezer/${mod}`);
   const p = dialect ? parser.configure({ dialect }) : parser;
   const out = [];
   eachSyntaxError(quirksFor(check), text, p.parse(text), 0, text.length, (n) => out.push(n.from));

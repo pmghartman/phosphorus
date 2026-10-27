@@ -12,19 +12,14 @@ APP=$WORK/Phosphorus.app
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$OUT" "$UPD"
 export MACOSX_DEPLOYMENT_TARGET=12.0
 
-b() { (cd "$ROOT" && GOOS=darwin GOARCH=$1 CGO_ENABLED=$2 CC="clang -arch $3" go build -trimpath -ldflags "-s -w $4" -o "$5" "$6"); }
-TRAY_LD="-X main.appVersion=$VER -X main.feedURL=${FEED_URL:-} -X main.feedPubkey=${FEED_PUBKEY:-}"
-b arm64 1 arm64 "$TRAY_LD" "$WORK/tray-arm64" ./cmd/tray &
-b amd64 1 x86_64 "$TRAY_LD" "$WORK/tray-amd64" ./cmd/tray &
-b arm64 0 arm64 "" "$WORK/host-arm64" ./cmd/phosphorus &
-b amd64 0 x86_64 "" "$WORK/host-amd64" ./cmd/phosphorus &
-for j in $(jobs -p); do wait "$j"; done
-lipo -create -output "$APP/Contents/MacOS/Phosphorus" "$WORK/tray-arm64" "$WORK/tray-amd64"
-lipo -create -output "$APP/Contents/MacOS/phosphorus-host" "$WORK/host-arm64" "$WORK/host-amd64"
+# the tray and the host compiled by bun per arch, then one universal binary each
+(cd "$ROOT" && bun scripts/build.ts darwin-arm64 "$WORK/arm64" "$VER" && bun scripts/build.ts darwin-x64 "$WORK/x64" "$VER")
+lipo -create -output "$APP/Contents/MacOS/Phosphorus" "$WORK/arm64/Phosphorus" "$WORK/x64/Phosphorus"
+lipo -create -output "$APP/Contents/MacOS/phosphorus-host" "$WORK/arm64/phosphorus-host" "$WORK/x64/phosphorus-host"
 
 # not "phosphorus": beside the Phosphorus binary on a case-insensitive disk
 cp -R "$PAYLOAD" "$APP/Contents/Resources/release"
-cp "$ROOT/LICENSE" "$ROOT/THIRD_PARTY_LICENSES.txt" "$APP/Contents/Resources/"
+cp "$ROOT/LICENSE" "$PAYLOAD/THIRD_PARTY_NOTICES.txt" "$APP/Contents/Resources/"
 cp "$ROOT/packaging/icons/icon.icns" "$APP/Contents/Resources/icon.icns"
 sed "s/@VERSION@/$VER/g" "$HERE/Info.plist" > "$APP/Contents/Info.plist"
 # ad hoc: the binaries inside first, then the bundle
@@ -45,6 +40,6 @@ done
 
 if [ -n "${UPDATE_SIGNING_KEY:-}" ] && [ -n "${FEED_PUBKEY:-}" ]; then
   tar -czf "$UPD/phosphorus-macos-universal.app.tar.gz" -C "$WORK" Phosphorus.app
-  (cd "$ROOT" && go run ./cmd/feedsign "$UPD/phosphorus-macos-universal.app.tar.gz")
+  (cd "$ROOT" && bun scripts/feedsign.ts "$UPD/phosphorus-macos-universal.app.tar.gz")
 fi
 rm -rf "$WORK"

@@ -15,11 +15,11 @@
 /files/*
 !/files/.gitkeep
 
-# go generate's web build, rebuilt in CI and the image
-/internal/web/dist/*
-!/internal/web/dist/README
-/web/.vendor/
+# the web build, rebuilt by bun run web in CI and the image
+/packages/webstatic/dist/
+/packages/webstatic/src/manifest.ts
 # installed JavaScript dependencies; keep dependency manifests and locks tracked
 node_modules/
 /phosphorus
 /out/
+/dist/

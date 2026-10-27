@@ -2,10 +2,11 @@ import { expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, parse, sep } from "node:path";
+import type { Entry, Share } from "@phosphorus/files";
 
 process.env.HOME_FS = mkdtempSync(join(tmpdir(), "phos-files-"));
 const F = await import("@phosphorus/files");
-const share = (real: string): F.Share => ({ id: "0", label: "", perms: "rwd", root: real, real, ok: true });
+const share = (real: string): Share => ({ id: "0", label: "", perms: "rwd", root: real, real, ok: true });
 
 // a share of a whole drive or the root holds what's under it, its separator already its own
 test("inside root", () => {
@@ -30,7 +31,7 @@ test("system folder is admins only", () => {
   expect(F.homeGate(ann, "/bob/notes.txt", isUser)).not.toBe("");
   expect([F.gateCode(ann, F.Gone), F.gateCode(undefined, "log in"), F.gateCode(ann, "admins only")]).toEqual([404, 401, 403]);
   const entries = [".sys", "ann", "shared"].map((name) => ({ name, dir: true, link: false, size: null, mtime: null }));
-  const names = (es: F.Entry[]) => es.map((e) => e.name).join(",");
+  const names = (es: Entry[]) => es.map((e) => e.name).join(",");
   expect(names(F.homeFilterList(ann, "", entries, isUser))).toBe("ann,shared");
   // an admin sees the system's folder, though never another user's home
   expect(names(F.homeFilterList(admin, "", entries, isUser))).toBe(".sys,shared");
@@ -47,7 +48,7 @@ test("save, read, upload, list", async () => {
   expect((await F.write(sh, "up.bin", body("def"), { id: "abcdefgh", offset: 3, total: 6 }))[1].path).toBe("up.bin");
   expect((await F.read(sh, "up.bin"))[1].text).toBe("abcdef");
   const [, l] = await F.list(sh, "");
-  expect(l.entries.map((e: F.Entry) => e.name)).toEqual(["a", "up.bin"]);
+  expect(l.entries.map((e: Entry) => e.name)).toEqual(["a", "up.bin"]);
   expect((await F.read(sh, "../x"))[0]).toBe(400);
   const [, s] = await F.search(sh, "", "there", true, "");
   expect(s.results).toEqual([{ path: "a/b.txt", matches: [{ line: 1, text: "hello there" }] }]);

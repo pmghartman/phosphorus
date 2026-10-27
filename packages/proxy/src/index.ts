@@ -328,9 +328,8 @@ async function forward(rt: Route, c: Ctx, p: string): Promise<Response | undefin
       decompress: false,
       tls: { rejectUnauthorized: false },
       signal: req.signal,
-      // @ts-expect-error streamed request bodies
       duplex: "half",
-    });
+    } as RequestInit);
   } catch (e) {
     if (e instanceof TooLarge || (e as any)?.cause instanceof TooLarge) return refuse(413, "request body too large");
     return refuse(502, `${rt.host}'s ${rt.name} didn't answer`, rt.pin ? { "Set-Cookie": pinCookieFor(selfHost) } : {});

@@ -19,10 +19,10 @@
     "verbatimModuleSyntax": true,
     "noFallthroughCasesInSwitch": true,
     "noImplicitOverride": true,
-    "baseUrl": ".",
+    
     "paths": {
       "@phosphorus/*": [
-        "packages/*/src/index.ts"
+        "./packages/*/src/index.ts"
       ]
     }
   },
