@@ -1,9 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=Sulfur
-Comment=A code editor, offline on this computer or on a Phosphorus mesh
-Exec=sulfur
-Icon=sulfur
-Terminal=false
-Categories=Development;IDE;TextEditor;
-StartupWMClass=sulfur

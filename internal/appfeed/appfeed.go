@@ -26,7 +26,7 @@ type Release struct {
 }
 
 // Feed where an app looks: the feed's base url, the key its files are signed
-// with, the app's prefix on each target's file ("" for phosphorus, "sulfur-")
+// with, the app's prefix on each target's file ("" for phosphorus)
 type Feed struct {
 	URL    string
 	Pubkey string

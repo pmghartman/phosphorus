@@ -64,7 +64,7 @@ func dial(host, user, pass string) (*ssh.Client, error) {
 	return c, nil
 }
 
-// Dial host as c's login, for Sulfur's builds and probes there
+// Dial host as c's login
 func Dial(host string, c Creds) (*ssh.Client, error) { return dial(host, c.User, c.Pass) }
 
 // tail a writer keeping the last tailMax bytes

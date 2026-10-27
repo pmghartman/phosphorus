@@ -12,8 +12,8 @@ func TestTarget(t *testing.T) {
 	for in, want := range map[string][2]string{
 		"phosphorus/razer": {"razer", ""}, "claude-3-5-haiku-20241022": {"", "small"}, "claude-sonnet-4-5": {"", "large"},
 		"": {"", "large"}, "phosphorus/bad host": {"", "large"}, "chimp": {"", "large"},
-		"agent-chat": {"", "small"}, "agent-claude-code": {"", "large"}, "agent-claude-code-fast": {"", "small"},
-		"agent-chat-fast": {"", "small"}, "agent-nope": {"", "large"},
+		"agent-claude-code": {"", "large"}, "agent-claude-code-fast": {"", "small"},
+		"agent-nope": {"", "large"},
 	} {
 		h, r, _ := Target(in)
 		if h != want[0] || r != want[1] {

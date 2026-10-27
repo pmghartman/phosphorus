@@ -214,7 +214,7 @@ func (s *session) saveDisk(by string, reviewed bool) (int, any) {
 		}
 		s.observeDisk(observed)
 		if s.diskConflict {
-			return 409, map[string]any{"error": "file changed outside Sulfur; review both versions before saving"}
+			return 409, map[string]any{"error": "file changed outside the editor; review both versions before saving"}
 		}
 	}
 	t := s.onDisk()

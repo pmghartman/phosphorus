@@ -82,7 +82,7 @@
   :root[data-l-bar="right"]:is([data-l-bar-style="full"], [data-l-bar-style="line"]) .dk-bar:not(.dk-menubar) { border-left: 1px solid var(--border); }
   :root:is([data-l-bar="left"], [data-l-bar="right"])[data-l-bar-style="full"] .dk-bar:not(.dk-menubar) .dk-task { height: 2.2rem; margin: 0 4px; }
 
-  /* window chrome, the desktop's windows only (Sulfur's own window keeps its title bar) */
+  /* window chrome, the desktop's windows only */
   /* window buttons at the left: close first, the pop-out last */
   :root[data-l-btns="left"] .dk-desk .dk-btns { order: -5; }
   :root[data-l-btns="left"] .dk-desk .dk-btns .dk-close { order: -1; }
@@ -122,44 +122,6 @@
   :root[data-l-density="compact"] .dk-desk .dk-head { height: 22px; }
   :root[data-l-density="roomy"] .dk-head { height: 38px; }
 }
-
-/* Layout mode is independent of the theme and keeps the same command registry. */
-.ide-layout-visualStudio { --activity-w: 0px; }
-.ide-layout-visualStudio .ide-activity { display: none; }
-.ide-compact-layout .ide-titlebar :is(.ide-tb-back, .ide-tb-fwd) { display: none; }
-.ide-toolbar { flex: none; display: flex; align-items: center; gap: 2px; min-width: 0; height: 36px; padding: 2px 6px; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; background: var(--ide-title-bg, var(--ide-bg)); color: var(--ide-fg); border-bottom: 1px solid var(--ide-border); }
-.ide-toolbar[hidden] { display: none; }
-.ide-toolbar > .ide-btn { flex: none; min-width: 26px; height: 27px; border-radius: 3px; }
-.ide-toolbar > :is(.ide-toolbar-select, .ide-toolbar-run) { width: auto; }
-.ide-toolbar .ide-toolbar-select { display: flex; align-items: center; gap: 5px; padding: 0 6px; }
-/* a dropdown whose menu is open stays pressed until it closes */
-.ide-toolbar .ide-toolbar-select[aria-expanded="true"] { background: var(--ide-sel-off, var(--ide-hover)); }
-.ide-toolbar-select > .ide-ic:last-child { width: 11px; }
-.ide-toolbar-label { flex: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; }
-.ide-toolbar-select[aria-label="Navigation History"], .ide-toolbar-select[aria-label="Startup Target"] { gap: 0; padding: 0 3px; min-width: 16px; }
-.ide-toolbar-select:is([aria-label="Navigation History"], [aria-label="Startup Target"]) > :not(:last-child) { display: none; }
-.ide-toolbar-select:is([aria-label="Workspace Machine"], [aria-label="Build Configuration"]) { background: var(--ide-input-bg, var(--ide-widget)); border: 1px solid var(--ide-border); }
-.ide-toolbar-run { display: flex; align-items: center; gap: 6px; padding: 0 8px; }
-.ide-toolbar-run > .ide-ic { color: var(--ide-green, #73c991); }
-.ide-toolbar-sep { flex: none; height: 19px; border-left: 1px solid var(--ide-border); margin: 0 4px; }
-.ide-run-label { display: inline-block; max-width: 180px; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; font-size: 12px; }
-.ide-tab-acts .ide-run-btn { display: flex; align-items: center; gap: 5px; width: auto; }
-.ide-layout-visualStudio .ide-tab-acts .ide-run-btn { display: none; }
-.ide-narrow .ide-layout-visualStudio .ide-side { left: 0; width: min(var(--side-w), calc(100% - 16px)); }
-.ide-narrow .ide-layout-visualStudio.ide-side-right .ide-side { left: auto; right: 0; }
-.code-mark.code-mark-bookmark { left: 5px; right: auto; width: 7px; background: var(--ide-info, #75beff); clip-path: polygon(0 15%, 100% 15%, 100% 85%, 50% 65%, 0 85%); }
-.ide-hierarchy-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 16px; border-bottom: 1px solid var(--ide-border); }
-.ide-hierarchy-head .ide-input { width: auto; }
-.ide-hierarchy-tree { padding: 12px 16px; overflow: auto; }
-.ide-hierarchy-branch > summary { cursor: pointer; white-space: nowrap; padding: 3px 0; }
-.ide-hierarchy-branch > summary > .ide-ic { display: inline-block; vertical-align: middle; margin-right: 5px; }
-.ide-hierarchy-symbol, .ide-hierarchy-site { background: none; border: 0; color: var(--ide-fg); cursor: pointer; padding: 2px 4px; font: inherit; }
-.ide-hierarchy-symbol:hover, .ide-hierarchy-site:hover { text-decoration: underline; }
-.ide-hierarchy-detail { color: var(--ide-dim); font-size: 12px; margin-left: 8px; }
-.ide-hierarchy-children { margin-left: 22px; border-left: 1px solid var(--ide-border); padding-left: 10px; }
-.ide-hierarchy-sites { color: var(--ide-dim); font-size: 12px; }
-.ide-hierarchy-site { display: block; }
-.ide-hierarchy-empty { color: var(--ide-dim); margin: 4px 0; }
 
 /* --- the bar's windows and the menu bar's app: an icon, a title, both (data-l-labels) ------------ */
 
@@ -205,34 +167,3 @@
 
 /* the phosphorus and cli looks draw the mark as ascii art (theme.js sets --mark), on the desk and in about */
 .about-mark { content: var(--mark); object-fit: contain; }
-
-/* the status bar's mesh link: an icon alone, bright when linked, dim when not or while asking */
-.ide-sb-mesh { padding: 0 8px; }
-.ide-sb-mesh .ide-ic { width: 14px; height: 14px; }
-.ide-sb-mesh:not(.linked) { opacity: 0.6; }
-.ide-sb-mesh.checking { opacity: 0.45; }
-
-/* File type glyphs retain their language color beside Git name decorations. */
-.ide-file-icon { flex: none; vertical-align: middle; }
-.ide-file-icon text { paint-order: stroke; }
-.ide { --ide-git-modified: #e2c08d; --ide-git-added: #73c991; --ide-git-untracked: #73c991; --ide-git-deleted: #e47768; --ide-git-renamed: #73c991; --ide-git-conflict: #f48771; }
-:root[data-theme="light"] .ide { --ide-git-modified: #895503; --ide-git-added: #39772b; --ide-git-untracked: #39772b; --ide-git-deleted: #a1260d; --ide-git-renamed: #39772b; --ide-git-conflict: #b52020; }
-.ide [data-git-status="modified"] { --ide-git-color: var(--ide-git-modified); }
-.ide [data-git-status="added"] { --ide-git-color: var(--ide-git-added); }
-.ide [data-git-status="untracked"] { --ide-git-color: var(--ide-git-untracked); }
-.ide [data-git-status="deleted"] { --ide-git-color: var(--ide-git-deleted); }
-.ide [data-git-status="renamed"] { --ide-git-color: var(--ide-git-renamed); }
-.ide [data-git-status="conflict"] { --ide-git-color: var(--ide-git-conflict); }
-.ide-row[data-git-status] > .ide-row-name, .ide-sec-head[data-git-status] > .ide-sec-title { color: var(--ide-git-color); }
-.ide-git-badge { flex: none; margin-left: 6px; color: var(--ide-git-color); font: 600 11px var(--mono); line-height: 16px; }
-.code-definition-link, .ide .code-definition-link { position: absolute; inset: 0; color: transparent; pointer-events: none; }
-.code-definition-link span { position: absolute; color: var(--ide-info, var(--accent)); text-decoration: underline; text-underline-offset: 2px; text-decoration-thickness: 1px; }
-.code-ta.code-definition-target { cursor: pointer; }
-.code-guide-layer { position: absolute; inset: 0; pointer-events: none; color: var(--ide-whitespace, var(--ide-dim, var(--dim))); line-height: var(--code-lh); }
-.code-guide-row { position: absolute; }
-.code-indent-guides { position: absolute; inset: 0 auto 0 0; background-image: linear-gradient(to right, var(--ide-indent-guide, var(--ide-guide, var(--border))) 0 1px, transparent 1px); background-repeat: repeat-x; }
-.code-whitespace-mark { position: absolute; top: 0; white-space: pre; font: inherit; line-height: inherit; }
-.code-disk-notice { flex: none; padding: 8px 12px; border-bottom: 1px solid var(--ide-warn, var(--warn)); background: var(--ide-widget, var(--card)); font-size: 12px; }
-.code-disk-notice[hidden] { display: none; }
-.code-disk-actions { display: flex; gap: 6px; margin: 6px 0; }
-.code-disk-notice pre { max-height: 28vh; overflow: auto; white-space: pre; font: 12px var(--mono); }
