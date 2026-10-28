@@ -513,8 +513,17 @@ span.dk-chip { cursor: default; }
 .st-card { position: relative; border: 1px solid var(--border); padding: 0.95rem 0.6rem 0.6rem; transition: opacity 0.3s, border-color 0.15s; cursor: pointer; scroll-margin-top: 1.2rem; }
 .st-card:hover, .st-card:focus { border-color: var(--accent); }
 .st-card.open { grid-column: 1 / -1; }
-.st-card.open .st-sum, .st-card:not(.open) .st-grid { display: none; }
-.st-card.waiting .st-sum { display: none; }
+.st-card.open .st-tile, .st-card:not(.open) .st-grid { display: none; }
+.st-card.waiting .st-tile { display: none; }
+/* the tile: its summary, and a model host's model box under it, or beside it where the tile is wide */
+.st-tile { display: flex; flex-direction: column; gap: 0.6rem; }
+.st-tile > * { min-width: 0; }
+.st-tile > [hidden] { display: none; }
+.st-hosts.st-wide .st-card.has-model:not(.open) { grid-column: span 2; }
+.st-hosts.st-wide .st-tile { flex-direction: row; gap: 0.7rem; }
+.st-hosts.st-wide .st-tile > * { flex: 1 1 0; }
+.st-tile > .st-model { margin-top: 0.35rem; }
+.st-hosts.st-wide .st-tile > .st-model { margin-top: 0; }
 .st-card:not(.open) { padding: 0.8rem 0.5rem 0.4rem; }
 .st-sum { font-size: 0.7rem; line-height: 1.3; white-space: pre; }
 .st-sum .st-key { width: 6ch; }
@@ -588,6 +597,7 @@ span.dk-chip { cursor: default; }
 .st-gpu > .st-head { color: var(--sage); }
 .st-ctr > .st-head { color: var(--rose); }
 .st-proc > .st-head { color: var(--sky); }
+.st-model > .st-head { color: var(--glyph-purple); }
 .st-body, .st-probe { font-size: 0.72rem; line-height: 1.35; white-space: pre; }
 .st-body { overflow: hidden; }
 .st-probe { position: absolute; visibility: hidden; }
@@ -619,21 +629,28 @@ span.dk-chip { cursor: default; }
 .st-dim { color: var(--muted); }
 .st-empty { color: color-mix(in srgb, var(--dim) 45%, transparent); }
 
+/* each width's rows filled, with or without the gpu box, and with a model box after cpu */
 @container (min-width: 44rem) {
   .st-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .st-cpu, .st-ctr, .st-proc { grid-column: span 2; }
   .st-cpu > .st-body { flex-direction: row; gap: 1.2rem; }
   .st-grid:has(> .st-gpu[hidden]) > .st-net { grid-column: span 2; }
+  .st-card.has-model .st-grid > .st-ctr { grid-column: auto; }
+  .st-card.has-model .st-grid:has(> .st-gpu[hidden]) > :is(.st-net, .st-proc) { grid-column: auto; }
 }
 @container (min-width: 76rem) {
   .st-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .st-ctr, .st-grid:has(> .st-gpu[hidden]) > .st-net { grid-column: auto; }
   .st-grid:has(> .st-gpu[hidden]) > .st-proc { grid-column: 1 / -1; }
+  .st-card.has-model .st-grid > .st-proc { grid-column: auto; }
+  .st-card.has-model .st-grid:has(> .st-gpu[hidden]) > .st-proc { grid-column: span 2; }
 }
 @container (min-width: 110rem) {
   .st-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .st-proc { grid-column: auto; }
   .st-grid:has(> .st-gpu[hidden]) > .st-proc { grid-column: span 2; }
+  .st-card.has-model .st-grid > .st-proc { grid-column: 1 / -1; }
+  .st-card.has-model .st-grid:has(> .st-gpu[hidden]) > .st-proc { grid-column: auto; }
 }
 
 /* --- home tab: services + game servers ------------------------------------ */
@@ -927,7 +944,7 @@ span.dk-chip { cursor: default; }
 .git-lag .stale { color: var(--offmesh); }
 .git-lag .off { color: color-mix(in srgb, var(--muted) 55%, var(--border)); }
 
-/* up to 4 rows (a px max-height from app.js), then a scroll */
+/* up to 8 rows (a px max-height from mesh.ts), then a scroll */
 .mesh-stats-rows { display: flex; flex-direction: column; overflow-y: auto; }
 
 .mesh-stat-name { display: flex; align-items: baseline; gap: 0.4rem; overflow: hidden; }
@@ -2077,7 +2094,7 @@ body:has(.dk-pop:not([hidden])) .toasts { opacity: 0; pointer-events: none; }
   .cw-item { min-height: 2.5rem; }
 }
 
-/* --- code: claude code sessions (apps/code.js) ------------------------------- */
+/* --- code: claude code sessions (apps/code.ts) ------------------------------- */
 .dk-icon.dk-code .ic { color: var(--sky); }
 #view-code { overflow: hidden; }
 .dk-app-code .dk-body > .view { padding: 0; }
@@ -2367,26 +2384,21 @@ body:has(.dk-pop:not([hidden])) .toasts { opacity: 0; pointer-events: none; }
 @media (prefers-reduced-motion: reduce) { .cd-dot, .cd-state, .cd-tool.run .cd-pip, .cd-streaming.cd-text::after { animation: none !important; } }
 /* --- end code ------------------------------------------------------------------ */
 
-/* a model host's chip on its tile: phase and speed, file, context window, its agents */
-.st-chip { margin-top: 0.55rem; padding-top: 0.5rem; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.7rem; line-height: 1.4; white-space: normal; cursor: default; }
-.st-chip-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 1ch; }
-.st-chip-t { color: var(--accent); letter-spacing: 0.04em; }
-.st-chip-file { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.st-chip-ctx { margin-top: 0; align-items: center; gap: 0.4rem 1.2ch; }
-.st-chip .st-ctx-grid { grid-template-columns: repeat(10, 0.8ch); gap: 0.2ch; padding-top: 0; }
-.st-chip .st-ctx i { width: 0.8ch; height: 0.8ch; }
-.st-chip-key { flex: 1 1 12ch; min-width: 0; }
-.st-chip-key > span { display: inline-block; white-space: nowrap; margin-right: 1ch; }
-.st-chip-key i { margin-right: 0.4ch; }
-.st-chip-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.3rem 1ch; }
-.st-chip-agents { display: flex; flex-wrap: wrap; gap: 0.25rem; min-width: 0; }
-.st-chip-a { padding: 0 0.5ch; border: 1px solid var(--border); color: var(--accent); }
-/* a model host's tile twice as wide, where three or more columns fit */
-.st-hosts.wide-chips .st-card.has-model:not(.open) { grid-column: span 2; }
-.st-hosts.wide-chips .st-card.has-model:not(.open) .st-chip { flex-direction: row; flex-wrap: wrap; align-items: center; column-gap: 1.6ch; }
-.st-hosts.wide-chips .st-card.has-model:not(.open) .st-chip-head { flex: 1 1 100%; }
+/* a model host's model box: phase and speed, file, context window, its agents */
+.st-model > .st-body { display: flex; flex-direction: column; gap: 0.35rem; white-space: normal; line-height: 1.4; cursor: default; }
+.st-model-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 1ch; }
+.st-model-file { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-model .st-ctx { margin-top: 0; align-items: center; gap: 0.4rem 1.2ch; white-space: normal; }
+.st-model .st-ctx-grid { grid-template-columns: repeat(10, 0.8ch); gap: 0.2ch; padding-top: 0; }
+.st-model .st-ctx i { width: 0.8ch; height: 0.8ch; }
+.st-model-key { flex: 1 1 12ch; min-width: 0; }
+.st-model-key > span { display: inline-block; white-space: nowrap; margin-right: 1ch; }
+.st-model-key i { margin-right: 0.4ch; }
+.st-model-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.3rem 1ch; margin-top: auto; }
+.st-model-agents { display: flex; flex-wrap: wrap; gap: 0.25rem; min-width: 0; }
+.st-model-a { padding: 0 0.5ch; border: 1px solid var(--border); color: var(--accent); }
 
-/* --- agents: which model each agent asks (apps/agents.js) -------------------- */
+/* --- agents: which model each agent asks (apps/agents.ts) -------------------- */
 .dk-icon.dk-agents .ic { color: var(--accent); }
 .dk-app-agents .dk-body > .view { padding: 1rem 1rem 1.2rem; overflow-y: auto; }
 .ag { display: flex; flex-direction: column; gap: 1.5rem; max-width: 60rem; margin: 0 auto; font-size: 0.8rem; line-height: 1.45; }

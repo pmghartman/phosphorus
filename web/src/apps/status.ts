@@ -15,7 +15,7 @@ const ST_HIST = 400;
 const ST_STALE_MS = 4000;
 
 // a card's elements: the parts drawn into, by box name and a few extras
-type Parts = Record<string, any> & { head: HTMLElement; chip: HTMLElement; chipHtml: string; sum: HTMLElement; sumCpu: HTMLCanvasElement; sumNet: HTMLElement; sumRx: HTMLCanvasElement; sumTx: HTMLCanvasElement };
+type Parts = Record<string, any> & { head: HTMLElement; tile: HTMLElement; model: HTMLElement; modelBox: HTMLElement; modelHtml: string; sum: HTMLElement; sumCpu: HTMLCanvasElement; sumNet: HTMLElement; sumRx: HTMLCanvasElement; sumTx: HTMLCanvasElement };
 // host -> {s, at, hist: {cpu, rx, tx}, card}
 interface StHost { s: StatsSample | null; at: number; hist: Record<string, number[]>; card: { card: HTMLElement; parts: Parts } | null; gpu?: boolean; netMax?: number }
 const stHosts = new Map<string, StHost>();
@@ -194,17 +194,21 @@ function netScale(h: StHost): number {
 const ST_BOXES: [string, string, (p: Parts, h: StHost) => void][] = [['cpu', 'cpu', drawCpu], ['mem', 'mem', drawMem], ['disk', 'disk', drawDisk], ['net', 'net', drawNet],
   ['gpu', 'gpu', drawGpu], ['ctr', 'phosphorus', drawCtr], ['proc', 'processes', drawProc]];
 
-// a tile of the headline numbers, clicked open to the full btop grid
+// a tile of the headline numbers, clicked open to the full btop grid; a model
+// host's model box beside the tile's graphs, and among the open grid's boxes
 function stCard(name: string): { card: HTMLElement; parts: Parts } {
   const card = document.createElement('section');
   card.className = 'st-card';
   card.dataset.host = name;
-  card.innerHTML = '<div class="st-card-head"></div><div class="st-sum"><canvas class="st-graph st-sum-cpu"></canvas>'
+  card.innerHTML = '<div class="st-card-head"></div><div class="st-tile"><div class="st-sum"><canvas class="st-graph st-sum-cpu"></canvas>'
     + '<div class="st-sum-rows"></div><div class="st-row st-sum-netrow"><span class="st-key">net</span><span></span>'
-    + '<div class="st-sum-net"><canvas class="st-graph"></canvas><canvas class="st-graph"></canvas></div></div></div><div class="st-chip" hidden></div><div class="st-grid"></div>';
+    + '<div class="st-sum-net"><canvas class="st-graph"></canvas><canvas class="st-graph"></canvas></div></div></div>'
+    + '<div class="st-box st-model" hidden><div class="st-head">model</div><div class="st-body"></div></div></div><div class="st-grid"></div>';
   const grid = card.querySelector('.st-grid')!;
-  const parts = { head: card.querySelector('.st-card-head') as HTMLElement, chip: card.querySelector('.st-chip') as HTMLElement, chipHtml: '' } as Parts;
-  const [cpuGraph, rows, netRow] = card.querySelector('.st-sum')!.children as unknown as [HTMLCanvasElement, HTMLElement, HTMLElement];
+  const tile = card.querySelector('.st-tile') as HTMLElement;
+  const modelBox = tile.lastElementChild as HTMLElement;
+  const parts = { head: card.querySelector('.st-card-head') as HTMLElement, tile, modelBox, model: modelBox.lastElementChild as HTMLElement, modelHtml: '' } as Parts;
+  const [cpuGraph, rows, netRow] = tile.firstElementChild!.children as unknown as [HTMLCanvasElement, HTMLElement, HTMLElement];
   parts.sum = rows;
   parts.sumCpu = cpuGraph;
   parts.sumNet = netRow.children[1] as HTMLElement;
@@ -394,12 +398,12 @@ function ctxCells(m: ModelHost) {
   return { cells: cells.join(''), parts, used };
 }
 
-// a model host's chip on its tile: phase and speed, its file, the context
-// window as its last ask left it, the agents asking it
-function chipHtml(m: ModelHost): string {
+// a model host's model box: phase and speed, its file, the context window as
+// its last ask left it, the agents asking it
+function modelHtml(m: ModelHost): string {
   const [cls, phase] = modelPhase(m);
   const head = dotJoin([`<span class="${cls}">${esc(phase)}</span>`, m.ready && m.use?.tps && `<b>${m.use.tps}</b> <span class="st-dim">tok/s</span>`]);
-  const agents = m.agents?.length ? m.agents.map((a) => `<span class="st-chip-a">${esc(a)}</span>`).join('') : '<span class="st-dim">no agents</span>';
+  const agents = m.agents?.length ? m.agents.map((a) => `<span class="st-model-a">${esc(a)}</span>`).join('') : '<span class="st-dim">no agents</span>';
   let ctx = '';
   if (m.ready && m.ctx) {
     const { cells, parts, used } = ctxCells(m);
@@ -409,18 +413,21 @@ function chipHtml(m: ModelHost): string {
       ...parts.map(([k, label, n]) => `<span title="${label}"><i class="ctx-${k} full"></i>${kTok(n)}</span>`),
       `<span title="free"><i></i>${kTok(m.ctx - used)}</span>`,
     ].join(' ');
-    ctx = `<div class="st-ctx st-chip-ctx"><div class="st-ctx-grid">${cells}</div><div class="st-chip-key">${legend}</div></div>`;
+    ctx = `<div class="st-ctx"><div class="st-ctx-grid">${cells}</div><div class="st-model-key">${legend}</div></div>`;
   }
-  const file = m.file ? `<div class="st-chip-file st-dim" title="${esc(m.file)}">${esc(String(m.file).replace(/\\/g, '/').split('/').pop())}</div>` : '';
+  const file = m.file ? `<div class="st-model-file st-dim" title="${esc(m.file)}">${esc(String(m.file).replace(/\\/g, '/').split('/').pop())}</div>` : '';
   const clear = m.ready ? `<button type="button" class="st-clear" data-host="${esc(m.host)}" title="erase ${esc(m.host)}'s context windows">clear context</button>` : '';
-  return `<div class="st-chip-head"><span class="st-chip-t">model</span>${head}</div>${file}${ctx}<div class="st-chip-foot"><div class="st-chip-agents">${agents}</div>${clear}</div>`;
+  return `<div class="st-model-head">${head}</div>${file}${ctx}<div class="st-model-foot"><div class="st-model-agents">${agents}</div>${clear}</div>`;
 }
 
-// the chip drawn only when its html changed, no reflow a tick
-function drawChip(p: Parts, m: ModelHost | null) {
-  p.chip.hidden = !m;
-  const html = m ? chipHtml(m) : '';
-  if (html !== p.chipHtml) { p.chipHtml = html; p.chip.innerHTML = html; }
+// the box drawn only when its html changed, no reflow a tick; it sits beside
+// the tile's graphs, or in the open grid after cpu
+function drawModel(p: Parts, m: ModelHost | null, open: boolean) {
+  p.modelBox.hidden = !m;
+  const html = m ? modelHtml(m) : '';
+  if (html !== p.modelHtml) { p.modelHtml = html; p.model.innerHTML = html; }
+  if (open) { if (p.modelBox.previousElementSibling !== p.cpuBox) (p.cpuBox as HTMLElement).after(p.modelBox); }
+  else if (p.modelBox.parentElement !== p.tile) p.tile.append(p.modelBox);
 }
 
 // tile widths in rem: the narrowest still legible, the widest before another column
@@ -465,8 +472,8 @@ function fitTiles(names: string[]) {
   if (fit === stFit) return;
   stFit = fit;
   stHostsEl.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
-  // a model host's tile twice as wide where three columns or more fit
-  stHostsEl.classList.toggle('wide-chips', cols >= 3);
+  // a model host's tile twice as wide where three columns or more fit, its model box beside its graphs
+  stHostsEl.classList.toggle('st-wide', cols >= 3);
   stHostsEl.style.setProperty('--st-sum-graph', `${h}px`);
   statusDraw();
 }
@@ -598,7 +605,7 @@ function statusRender() {
     parts.head.innerHTML = headLine(name, h, open);
     const model = modelOf(name);
     card.classList.toggle('has-model', !!model);
-    drawChip(parts, model);
+    drawModel(parts, model, open);
     card.classList.toggle('stale', !!h.s?.cpu && Date.now() - h.at > ST_STALE_MS);
     card.classList.toggle('waiting', !h.s?.cpu);
     if (!h.s?.cpu) {
