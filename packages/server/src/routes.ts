@@ -41,6 +41,7 @@ const runRe = /^\/api\/run\/([a-z0-9][a-z0-9-]*)\/([A-Za-z0-9_-]+)\/(.*)$/;
 const mirrorRe = /^\/internal\/mirror\/([0-9a-f]{24})$/;
 const appsTarRe = /^\/internal\/apps\/([a-z][a-z0-9-]*)\/(\d+(?:\.\d+){0,3})$/;
 const appsSvcRe = /^\/api\/apps\/services\/(install|update|remove)$/;
+const appsSvcIconRe = /^\/api\/apps\/services\/([a-z][a-z0-9-]*)\/icon$/;
 const hostRe = /^[a-z0-9][a-z0-9-]*$/;
 const pingRe = /^\/api\/ping\/([a-z0-9-]+)$/;
 const filesRe = /^\/api\/files\/([a-z0-9][a-z0-9-]*)\/(info|list|tree|search|read|download|upload|save|mkdir|rename|delete|run|mirror|own)$/;
@@ -337,8 +338,16 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
       if (!hostRe.test(host)) return [400, { error: "pick a host" }];
       const [user, pass, ok] = await users.HostLogin(s, host);
       if (!ok) return [403, { error: `no saved login for ${host}: log into it on the desktop first` }];
-      return webapps.ServiceOp(op, str(p.id), host, { user, pass }, s.user);
+      return webapps.ServiceOp(op, str(p.id), host, { user, pass }, s.user, truthy(p.keep));
     });
+  }
+  // a service's icon, off its repository, kept here
+  m = appsSvcIconRe.exec(pathname);
+  if (m && method === "GET") {
+    if (!(await isLocalOrPeer(c))) return forbidden();
+    const ic = await webapps.svcIcon(m[1]!);
+    if (!ic) return new Response(null, { status: 404, headers: { "Cache-Control": "max-age=600" } });
+    return new Response(ic.data as Uint8Array<ArrayBuffer>, { status: 200, headers: { "Content-Type": ic.type, "Cache-Control": "max-age=3600", "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox" } });
   }
   m = appsTarRe.exec(pathname);
   if (m && method === "GET") {

@@ -456,7 +456,9 @@ export { newer };
 
 // the services beside the apps: a checkout per host, run as a person's own login
 export {
-  type Device as SvcDevice, type HostView as SvcHostView, type Job as SvcJob, type JobView as SvcJobView, Jobs as svcJobs, type Login as SvcLogin, type Op as SvcOp,
-  Ops as SvcOps, type Publish as SvcPublish, type Record_ as SvcRecord, recordOf as svcRecordOf, records as svcRecords, reset as svcReset, type Route as SvcRoute,
-  type Runner as SvcRunner, script as svcScript, seams as svcSeams, type Service, serviceOf, ServiceOp, Services, Start as StartServices, summary as svcSummary,
+  behindMain as svcBehindMain, type Device as SvcDevice, type HostView as SvcHostView, Icon as svcIcon, iconPath as svcIconPath, type Job as SvcJob, jobOf as svcJobOf,
+  jobs as svcJobs, type JobView as SvcJobView, launch as svcLaunch, type Login as SvcLogin, type Op as SvcOp, Ops as SvcOps, opTimeoutMS as svcTimeoutMS, progress as svcProgress,
+  type Progress as SvcProgress, type PublishLocal as SvcPublishLocal, type Record_ as SvcRecord, recordOf as svcRecordOf, records as svcRecords, repoOf as svcRepoOf,
+  reset as svcReset, type Route as SvcRoute, type Runner as SvcRunner, script as svcScript, seams as svcSeams, type Service, serviceOf, ServiceOp, Services,
+  Start as StartServices, summary as svcSummary, tick as svcTick, unitOf as svcUnitOf,
 } from "./services.ts";
