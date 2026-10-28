@@ -8,6 +8,7 @@ export interface AppMods {
   code: typeof import('./apps/code.ts');
   agents: typeof import('./apps/agents.ts');
   editor: typeof import('./apps/editor.ts');
+  store: typeof import('./apps/store.ts');
 }
 export type AppName = keyof AppMods;
 
@@ -18,6 +19,7 @@ const APPS: { [K in AppName]: () => Promise<AppMods[K]> } = {
   code: () => import('./apps/code.ts'),
   agents: () => import('./apps/agents.ts'),
   editor: () => import('./apps/editor.ts'),
+  store: () => import('./apps/store.ts'),
 };
 const appMods = new Map<AppName, Promise<any>>();
 export function app<K extends AppName>(name: K): Promise<AppMods[K]> {

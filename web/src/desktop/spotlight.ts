@@ -9,7 +9,7 @@ import { PALETTES, paletteNow, setPalette } from '../theme.ts';
 import type { FileEntry } from '../types.ts';
 import { openUpdateModal } from '../update.ts';
 import { dkThemeWin } from './control.ts';
-import { dkLiveHosts, dkOpenApp, dkService, dkTerminal, dkWallClear, dkWallPick, dkArrange } from './desk.ts';
+import { dkLiveHosts, dkOpenApp, dkService, dkTerminal, dkWallClear, dkWallPick, dkArrange, dkWebApp, dkWebApps } from './desk.ts';
 import { dkShowDesktop } from './keys.ts';
 import { dkOverview } from './switcher.ts';
 import { dkClose, dkFocus, dkMax, dkMin, dkSnapTo, dkStack } from './windows.ts';
@@ -33,7 +33,9 @@ function hits(): Hit[] {
   add(G.code!, 'code', '', 'app', 'claude opencode agent sessions', () => dkOpenApp('code'));
   add(G.agents!, 'agents', '', 'app', 'models assign', () => dkOpenApp('agents'));
   add(G.games!, 'game servers', '', 'app', 'games play', () => dkOpenApp('games'));
+  add(G.apps!, 'apps', '', 'app', 'install store extras sulfur editor', () => dkOpenApp('apps'));
   add(G.about!, 'about', '', 'app', 'version license', () => dkOpenApp('about'));
+  for (const a of dkWebApps()) add(G.app!, a.id, `v${a.want.version}`, 'app', 'editor code app', () => dkWebApp(a.id));
   for (const r of dk.services) add(G.service!, r.name, r.host, 'service', `service site ${r.public ? 'public' : ''}`, () => dkService(r));
   // settings
   if (st.acct && !st.acct.boot) {

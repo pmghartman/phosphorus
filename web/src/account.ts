@@ -189,7 +189,8 @@ function acctNext(): boolean {
     return false;
   }
   const base = st.baseDomain || location.hostname;
-  if (u.protocol !== 'https:' || !(u.hostname === base || u.hostname.endsWith(`.${base}`))) return false;
+  const ours = u.origin === location.origin;
+  if (!ours && (u.protocol !== 'https:' || !(u.hostname === base || u.hostname.endsWith(`.${base}`)))) return false;
   location.replace(u.href);
   return true;
 }

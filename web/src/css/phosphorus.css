@@ -2402,6 +2402,53 @@ body:has(.dk-pop:not([hidden])) .toasts { opacity: 0; pointer-events: none; }
 .ag-empty { color: var(--muted); padding: 0.4rem 0; }
 .ag-err { color: var(--offmesh); overflow-wrap: anywhere; }
 
+/* --- apps: the optional extras the mesh can take (apps/store.ts) ---------- */
+.dk-icon.dk-apps .ic { color: var(--sand); }
+.dk-icon.dk-app .ic { color: var(--teal); }
+.dk-app-apps .dk-body > .view { padding: 1rem 1rem 1.2rem; overflow-y: auto; }
+.store { display: flex; flex-direction: column; gap: 1rem; max-width: 56rem; margin: 0 auto; font-size: 0.8rem; line-height: 1.45; }
+.store-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+.store-top .dk-note { margin: 0; }
+.store-refresh { flex: none; padding: 0.15rem 0.65rem; background: none; border: 1px solid var(--border); color: var(--muted); font: inherit; font-size: 0.72rem; cursor: pointer; }
+.store-refresh:is(:hover, :focus-visible) { border-color: var(--accent); color: var(--fg); }
+.store-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr)); gap: 0.8rem; }
+.store-card { border: 1px solid var(--border); padding: 0.8rem 0.9rem; display: flex; flex-direction: column; gap: 0.6rem; min-width: 0; }
+.store-card.on { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.store-head { display: flex; align-items: center; gap: 0.7rem; min-width: 0; }
+.store-tile { flex: none; display: grid; place-items: center; width: 2.4rem; height: 2.4rem; border: 1px solid var(--border); background: var(--card); }
+.store-icon { width: 1.7rem; height: 1.7rem; object-fit: contain; }
+.store-mono { color: var(--teal); font-size: 1.1rem; font-weight: 600; }
+.store-title { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+.store-title b { color: var(--fg); font-weight: 600; }
+.store-repo { color: var(--muted); font-size: 0.72rem; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.store-repo:hover { color: var(--accent); text-decoration: underline; }
+.store-about { margin: 0; color: var(--muted); }
+.store-state { display: flex; flex-direction: column; gap: 0.15rem; font-size: 0.74rem; }
+.store-line.on { color: var(--online); }
+.store-line.off { color: var(--fg); }
+.store-line.new { color: var(--accent); }
+.store-line.dim { color: var(--muted); }
+.store-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.store-actions button { padding: 0.2rem 0.75rem; background: none; border: 1px solid var(--border); color: var(--fg); font: inherit; cursor: pointer; }
+.store-actions button:is(:hover, :focus-visible) { border-color: var(--accent); }
+.store-actions button.primary { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.store-actions button.danger { color: var(--offmesh); }
+.store-actions button.danger:is(:hover, :focus-visible) { border-color: var(--offmesh); }
+.store-actions button:disabled { opacity: 0.5; cursor: default; border-color: var(--border); }
+.store-hosts { list-style: none; margin: 0; padding: 0.4rem 0 0; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.74rem; }
+.store-host { display: flex; align-items: center; gap: 0.6rem; min-width: 0; }
+.store-dot { flex: none; display: inline-block; width: 0.5rem; height: 0.5rem; background: var(--border); }
+.store-host.ok .store-dot { background: var(--online); }
+.store-host.mid .store-dot, .store-host.old .store-dot { background: var(--sand); }
+.store-host.fail .store-dot { background: var(--offmesh); }
+.store-host.mid .store-host-state { color: var(--accent); animation: update-blink 1.2s steps(1) infinite; }
+.store-host.fail .store-host-state { color: var(--offmesh); }
+.store-host-name { color: var(--fg); }
+.store-host-name.is-self::after { content: " (here)"; color: var(--muted); }
+.store-host-state { margin-left: auto; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.store-empty { color: var(--muted); padding: 0.4rem 0; }
+.store-err { color: var(--offmesh); overflow-wrap: anywhere; }
+
 /* --- the desktop's own: the switcher, the overview, the search ---------- */
 
 /* the switcher: a list over the desk, the pick in the accent */

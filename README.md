@@ -19,6 +19,7 @@ Install it on each machine and they find each other. No servers to rent, no conf
 - **Code sessions** with Claude Code or opencode on any host
 - **Agents**: assign each mesh model to Claude Code and opencode from one page
 - **An MCP server**, so Claude can work your mesh for you
+- **Apps**: optional extras such as the [Sulfur](https://github.com/rpmull/sulfur) editor, installed onto every host from one page
 
 ## Quick start
 

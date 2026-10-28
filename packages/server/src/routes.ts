@@ -16,6 +16,7 @@ import * as sysfs from "@phosphorus/sysfs";
 import * as term from "@phosphorus/term";
 import * as update from "@phosphorus/update";
 import * as users from "@phosphorus/users";
+import * as webapps from "@phosphorus/webapps";
 import { errText, peerCall, tailnetIP } from "@phosphorus/util";
 import { blocks, highlight, markdown } from "@phosphorus/web-md";
 import { serveStatic } from "@phosphorus/webstatic";
@@ -38,6 +39,7 @@ const gameRe = /^\/api\/games\/([a-z0-9][a-z0-9-]*)\/([a-z0-9][a-z0-9-]*)\/(star
 const mediaRe = /^\/api\/chat\/media\/([a-z0-9][a-z0-9-]*)\/([0-9a-f]{32})$/;
 const runRe = /^\/api\/run\/([a-z0-9][a-z0-9-]*)\/([A-Za-z0-9_-]+)\/(.*)$/;
 const mirrorRe = /^\/internal\/mirror\/([0-9a-f]{24})$/;
+const appsTarRe = /^\/internal\/apps\/([a-z][a-z0-9-]*)\/(\d+(?:\.\d+){0,3})$/;
 const pingRe = /^\/api\/ping\/([a-z0-9-]+)$/;
 const filesRe = /^\/api\/files\/([a-z0-9][a-z0-9-]*)\/(info|list|tree|search|read|download|upload|save|mkdir|rename|delete|run|mirror|own)$/;
 const publicRe = /^\/api\/services\/([a-z0-9][a-z0-9-]*)\/([a-z0-9][a-z0-9-]*)\/public$/;
@@ -309,6 +311,22 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
       return chainAction(str(p.action), str(p.password), admin);
     });
   }
+  // the optional apps: the catalogue, what the mesh wants and this host has;
+  // an admin's pick followed by every host
+  if (pathname === "/api/apps" && method === "GET") {
+    if (!(await isLocalOrPeer(c))) return forbidden();
+    return sendJSON(200, await webapps.summary(q.has("fresh")));
+  }
+  if ((pathname === "/api/apps/install" || pathname === "/api/apps/remove") && method === "POST") {
+    const s = users.Of(c);
+    if (!isBrowser(c) || !((!!s && s.admin) || (adminPass === "" && isLoopback(c)))) return forbidden();
+    return onJSON(c, 1024, true, (p) => (pathname === "/api/apps/install" ? webapps.Install(str(p.id)) : webapps.Remove(str(p.id))));
+  }
+  m = appsTarRe.exec(pathname);
+  if (m && method === "GET") {
+    if (!(await isTailnet(c))) return forbidden();
+    return webapps.Serve(m[1]!, m[2]!);
+  }
   if (pathname === "/api/join-key" && method === "POST") {
     // admins, or this machine with no admin password
     const s = users.Of(c);
@@ -446,7 +464,10 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
   }
 
   if (pathname.startsWith("/api/") || pathname.startsWith("/internal/")) return sendJSON(404, { error: "not found" });
-  return serveStatic(c.req);
+  // an installed app under its mount; the desktop's own files, then an app's root files
+  if (webapps.mounted(pathname)) return webapps.serve(c.req) ?? serveStatic(c.req);
+  const res = await serveStatic(c.req);
+  return res.status === 404 ? (webapps.serve(c.req) ?? res) : res;
 }
 
 async function filesRoute(c: Ctx, host: string, op: string, q: URLSearchParams): Promise<Response> {
