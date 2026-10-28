@@ -159,7 +159,7 @@ test("key grants", async () => {
   for (const w of ["acts as u, a user", "no saved host logins", "No forgejo login", "Off this key:", "host_power"]) expect(ins).toContain(w);
   // the mark off the mesh's domain first, inline after it
   const icons: { src: string }[] = o.result.serverInfo.icons;
-  expect(icons[0]!.src).toBe("https://mesh.example/icon-192.png");
+  expect(icons[0]!.src).toBe("https://mesh.example/connector-icon.png");
   expect(icons[1]!.src.startsWith("data:image/png;base64,iVBOR")).toBe(true);
 });
 
