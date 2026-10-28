@@ -82,7 +82,7 @@ export type OS = {
   // the login item: this app at login, its tray alone
   setAutostart(on: boolean): void;
   // the app removed once this process is gone
-  removeApp(): void;
+  removeApp(): Promise<void>;
   // the release's download installed in this app's place and started once this one exits
   installDownloaded(file: string): Promise<void>;
 };
@@ -140,7 +140,7 @@ const mac: OS = {
     mkdirSync(dirname(p), { recursive: true });
     writeFileSync(p, plist);
   },
-  removeApp() {
+  async removeApp() {
     const b = bundle();
     if (b) detach(["/bin/sh", "-c", `sleep 2; rm -rf ${sq(b)}`]);
   },
@@ -221,16 +221,29 @@ const windows: OS = {
     void run(["reg", "add", key, "/v", "Phosphorus", "/t", "REG_SZ", "/d", cmd, "/f"]);
   },
   // the installer's uninstaller run once this process is gone
-  removeApp() {
+  async removeApp() {
     const un = join(app.exe, "uninstall.exe");
     if (!existsSync(un)) return;
-    detach(["cmd", "/c", "timeout", "/t", "2", "/nobreak", ">nul", "&", un, "/S"]);
+    await afterExit(`"${un}" /S`);
   },
   // the release's setup run silently once this process is gone; it starts the new app
   async installDownloaded(file) {
-    detach(["cmd", "/c", "timeout", "/t", "2", "/nobreak", ">nul", "&", file, "/S", "/R"]);
+    await afterExit(`"${file}" /S /R`);
   },
 };
+
+const psq = (s: string) => "'" + s.replaceAll("'", "''") + "'";
+
+// a command line run hidden 2s on, started via WMI: outside this process's job
+// (a scheduled task's, Bun's own), which this one's exit would kill
+async function afterExit(line: string) {
+  const script =
+    "$s = New-CimInstance -ClassName Win32_ProcessStartup -ClientOnly -Property @{ShowWindow=[uint16]0}; " +
+    `$r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{CommandLine=${psq("cmd /c ping -n 3 127.0.0.1 >nul & " + line)}; ProcessStartupInformation=$s}; ` +
+    "exit $r.ReturnValue";
+  const r = await run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script]);
+  if (!r.ok) throw new Error(`couldn't start ${line}: ${r.output.trim() || "WMI refused"}`);
+}
 
 // a modal box, the thread's messages pumped by it meanwhile
 function box(text: string, flags: number): number {

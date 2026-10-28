@@ -260,7 +260,7 @@ async function uninstall() {
     return;
   }
   os.setAutostart(false);
-  os.removeApp();
+  await os.removeApp().catch((e) => os.alert(errText(e)));
   tray.quit();
   process.exit(0);
 }
