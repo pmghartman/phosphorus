@@ -102,7 +102,7 @@ export function ServeModels(req: Request, peer: boolean): Response {
   if (refused) return refused;
   const states = view();
   const at = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
-  const data = Agents.map((a: Agent) => {
+  const data = Agents().map((a: Agent) => {
     const s = resolve(states, a.tier, assigned(a, "model")[0])[1];
     return { type: "model", id: AgentName(a.id, false), display_name: a.label, created_at: at, ready: s?.server === "ready" };
   });

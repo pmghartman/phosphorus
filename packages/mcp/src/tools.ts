@@ -192,9 +192,10 @@ export const coreTools = (): Tool[] => [
     name: "set_agent_model",
     description:
       "Assign a mesh host's model to an agent, mesh-wide: the host as phosphorus/<host> (or just <host>), blank for the " +
-      "automatic pick. slot fast is the small model an agent uses for background work (code, claude-code, opencode only).",
+      "automatic pick. The agents: code, claude-code, opencode, and an app on the mesh while it is published, as tavern " +
+      "(the tavern app's dungeon master). slot fast is the small model an agent uses for background work (code, claude-code, opencode only).",
     schema: object({
-      agent: { type: "string", enum: ["code", "claude-code", "opencode"] },
+      agent: { type: "string", description: "code, claude-code, opencode, or an app on the mesh such as tavern" },
       slot: { type: "string", enum: ["model", "fast"] }, model: { type: "string" },
     }, "agent", "model"),
     run: (a, m) => {
