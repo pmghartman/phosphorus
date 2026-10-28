@@ -1,6 +1,6 @@
 // --- light or dark: the browser's own ('system') unless a mode is picked; index.html sets the
 // pick before paint, the page's terminals and bars follow a switch
-import { appCall } from './apps.ts';
+import { appCall } from '../apps/index.ts';
 import { svgEl } from './dom.ts';
 import { PALETTE_EVENT } from './theme.ts';
 

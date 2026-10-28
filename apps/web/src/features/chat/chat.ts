@@ -3,18 +3,18 @@
 // mesh and its channels, direct messages, and private phosphorus sessions kept in
 // this browser. Bubbles: yours on the right, everyone else's on the left,
 // phosphorus's replies the full width
-import { codeCopies, el } from './dom.ts';
-import { fitMath, renderMd } from './md.ts';
-import { phosphorusHosts } from './mesh.ts';
-import { away, bumpUnread, dropUnread, noteAdd, noteFor, notesReadConv, notifyChat } from './notes.ts';
-import { codeName, codeTabs, editors, fileLabel, type EditorFile } from './shares.ts';
-import { deskApps, dk, st } from './state.ts';
+import { codeCopies, el } from '../../lib/dom.ts';
+import { fitMath, renderMd } from '../../lib/md.ts';
+import { phosphorusHosts } from '../mesh/mesh.ts';
+import { away, bumpUnread, dropUnread, noteAdd, noteFor, notesReadConv, notifyChat } from '../notes.ts';
+import { codeName, codeTabs, editors, fileLabel, type EditorFile } from '../home/home.ts';
+import { deskApps, dk, st } from '../../lib/state.ts';
 import type { ChannelMeta, ChatFile, ChatMsg, ChatWsMessage, Person, Reaction, ShowFile, UiAction } from '@phosphorus/wire';
-import { copyText, humanSize, loadJson } from './util.ts';
-import { dkOpenApp, dkOpenTerminal, dkPressed } from './desktop/desk.ts';
-import { dkCode, fileThere } from './desktop/deskfiles.ts';
-import { deskBadge } from './desktop/taskbar.ts';
-import { dkFocus, dkWin } from './desktop/windows.ts';
+import { copyText, humanSize, loadJson } from '../../lib/util.ts';
+import { dkOpenApp, dkOpenTerminal, dkPressed } from '../../desktop/desk.ts';
+import { dkCode, fileThere } from '../../desktop/deskfiles.ts';
+import { deskBadge } from '../../desktop/taskbar.ts';
+import { dkFocus, dkWin } from '../../desktop/windows.ts';
 
 // a line as this browser holds it: the host's, with the marks folded into it, and its own
 // drawing state

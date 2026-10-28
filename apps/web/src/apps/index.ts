@@ -2,24 +2,24 @@
 
 // the modules by name, for an app's call to be typed
 export interface AppMods {
-  status: typeof import('./apps/status.ts');
-  terminal: typeof import('./apps/terminal.ts');
-  files: typeof import('./apps/files.ts');
-  code: typeof import('./apps/code.ts');
-  agents: typeof import('./apps/agents.ts');
-  editor: typeof import('./apps/editor.ts');
-  store: typeof import('./apps/store.ts');
+  status: typeof import('./status.ts');
+  terminal: typeof import('./terminal.ts');
+  files: typeof import('./files.ts');
+  code: typeof import('./code.ts');
+  agents: typeof import('./agents.ts');
+  editor: typeof import('./editor.ts');
+  store: typeof import('./store.ts');
 }
 export type AppName = keyof AppMods;
 
 const APPS: { [K in AppName]: () => Promise<AppMods[K]> } = {
-  status: () => import('./apps/status.ts'),
-  terminal: () => import('./apps/terminal.ts'),
-  files: () => import('./apps/files.ts'),
-  code: () => import('./apps/code.ts'),
-  agents: () => import('./apps/agents.ts'),
-  editor: () => import('./apps/editor.ts'),
-  store: () => import('./apps/store.ts'),
+  status: () => import('./status.ts'),
+  terminal: () => import('./terminal.ts'),
+  files: () => import('./files.ts'),
+  code: () => import('./code.ts'),
+  agents: () => import('./agents.ts'),
+  editor: () => import('./editor.ts'),
+  store: () => import('./store.ts'),
 };
 const appMods = new Map<AppName, Promise<any>>();
 export function app<K extends AppName>(name: K): Promise<AppMods[K]> {

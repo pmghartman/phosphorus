@@ -1,9 +1,9 @@
 // the session: every window's place kept per user in this browser, put back on the
 // next visit once its host, route or login is there
-import { dkProfileWin, dkUsersWin } from '../account.ts';
-import { app } from '../apps.ts';
-import { dkFms, filesWin, type Loc } from '../shares.ts';
-import { dk, st } from '../state.ts';
+import { dkProfileWin, dkUsersWin } from '../features/account.ts';
+import { app } from '../apps/index.ts';
+import { dkFms, filesWin, type Loc } from '../features/home/home.ts';
+import { dk, st } from '../lib/state.ts';
 import { dkAppearanceWin } from './control.ts';
 import { dkOpenApp, dkService, dkTerminal } from './desk.ts';
 import { dkCode, dkRun } from './deskfiles.ts';

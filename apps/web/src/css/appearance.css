@@ -1,0 +1,91 @@
+/* --- the appearance window: sections down a rail, each a page of labelled controls ----------- */
+.dk-ap-pane { display: grid; grid-template-columns: 7rem minmax(0, 1fr); height: 100%; min-height: 0; font-size: 0.8rem; }
+.dk-ap-nav { display: flex; flex-direction: column; gap: 0.15rem; padding: 0.6rem 0.4rem; border-right: 1px solid var(--border); background: var(--card); }
+.dk-ap-tab {
+  display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.6rem; background: none; border: 0; color: var(--muted);
+  font: inherit; text-align: left; cursor: pointer; transition: background-color 0.15s, color 0.15s;
+}
+.dk-ap-tab .ic { width: 0.85rem; height: 0.85rem; flex: none; }
+.dk-ap-tab:hover, .dk-ap-tab:focus-visible { color: var(--fg); background: var(--tab-hover); outline: none; }
+.dk-ap-tab.on { color: var(--fg); background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.dk-ap-body { min-height: 0; display: flex; flex-direction: column; gap: 0.55rem; padding: 0.9rem; overflow-y: auto; }
+.dk-ap-body .dk-note { margin: 0; }
+.dk-ap-head { margin-top: 0.5rem; padding-bottom: 0.2rem; border-bottom: 1px solid var(--border); color: var(--fg); font-weight: 600; }
+.dk-ap-head:first-child { margin-top: 0; }
+/* a row: its label, its control, a note under the control */
+.dk-ap-row { display: grid; grid-template-columns: 6.5rem minmax(0, 1fr); align-items: center; gap: 0.15rem 0.7rem; }
+.dk-ap-row:has(> .dk-ap-items) { align-items: start; }
+.dk-ap-k { color: var(--muted); }
+.dk-ap-note { grid-column: 2; color: var(--dim); font-size: 0.7rem; }
+.dk-ap-in { min-width: 0; padding: 0.25rem 0.4rem; background: var(--card); border: 1px solid var(--border); color: var(--fg); font: inherit; }
+.dk-ap-in:focus { border-color: var(--accent); outline: none; }
+.dk-ap-color { display: flex; align-items: center; gap: 0.5rem; }
+.dk-ap-color input[type="color"] { width: 2.4rem; height: 1.7rem; padding: 0.1rem; cursor: pointer; }
+.dk-ap-color .dk-ap-note { grid-column: auto; }
+/* a checkbox with its sentence, a note under the sentence */
+.dk-ap-check { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 0.1rem 0.5rem; cursor: pointer; }
+.dk-ap-check input { margin: 0; accent-color: var(--accent); cursor: pointer; }
+.dk-ap-check:hover .dk-ap-check-t { color: var(--fg); }
+/* light or dark, a segmented control */
+.dk-ap-segs { display: flex; border: 1px solid var(--border); }
+.dk-ap-seg {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 0.35rem; padding: 0.35rem 0;
+  background: none; border: 0; color: var(--muted); font: inherit; cursor: pointer; transition: background-color 0.15s, color 0.15s;
+}
+.dk-ap-seg + .dk-ap-seg { border-left: 1px solid var(--border); }
+.dk-ap-seg:hover { color: var(--fg); }
+.dk-ap-seg.on { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--fg); }
+.dk-ap-seg .theme-icon { display: block; width: 0.8rem; height: 0.8rem; }
+/* the themes, cards: a swatch, a name and a line about each, the worn one marked */
+.dk-ap-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr)); gap: 0.4rem; }
+.dk-ap-card {
+  display: flex; flex-direction: column; align-items: stretch; gap: 0.25rem; padding: 0.5rem 0.6rem; min-width: 0;
+  background: var(--card); border: 1px solid var(--border); color: var(--fg); font: inherit; text-align: left; cursor: pointer; transition: border-color 0.15s;
+}
+.dk-ap-card:hover, .dk-ap-card:focus-visible { border-color: var(--accent); outline: none; }
+.dk-ap-card.on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.dk-ap-card-top { display: flex; align-items: center; gap: 0.45rem; }
+.dk-ap-card.on .dk-ap-card-name { color: var(--accent); }
+.dk-ap-card.on .dk-ap-card-name::after { content: " \2713"; }
+.dk-ap-card-about { color: var(--muted); font-size: 0.68rem; line-height: 1.3; }
+.dk-ap-swatch { width: 0.9rem; height: 0.9rem; flex: none; border: 1px solid var(--border); }
+/* the bar's items: each shown or not, moved earlier or later */
+.dk-ap-items { display: flex; flex-direction: column; border: 1px solid var(--border); }
+.dk-ap-item { display: flex; align-items: center; gap: 0.45rem; padding: 0.15rem 0.2rem 0.15rem 0.45rem; }
+.dk-ap-item + .dk-ap-item { border-top: 1px solid var(--border); }
+.dk-ap-item input { margin: 0; accent-color: var(--accent); }
+.dk-ap-item label { flex: 1; cursor: pointer; }
+.dk-ap-item input:disabled + label { color: var(--muted); cursor: default; }
+:root .dk-ap-pane .dk-ap-mv { width: 1.5rem; padding: 0.05rem 0; background: none; border: 0; color: var(--muted); font: inherit; cursor: pointer; }
+:root .dk-ap-pane .dk-ap-mv:hover:not(:disabled) { background: var(--tab-hover); color: var(--fg); }
+:root .dk-ap-pane .dk-ap-mv:disabled { opacity: 0.3; cursor: default; }
+/* plain buttons: the wallpaper's, the way back to a theme */
+.dk-ap-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
+.dk-ap-state { color: var(--muted); margin-right: 0.2rem; }
+.dk-ap-btn { padding: 0.3rem 0.8rem; background: none; border: 1px solid var(--border); color: var(--fg); font: inherit; cursor: pointer; transition: background-color 0.15s, border-color 0.15s; }
+.dk-ap-btn:hover:not(:disabled) { background: var(--tab-hover); border-color: var(--accent); }
+.dk-ap-btn.danger { color: var(--offmesh); }
+.dk-ap-btn.danger:hover:not(:disabled) { border-color: var(--offmesh); }
+@media (max-width: 720px) {
+  /* a phone: the rail a row of tabs over the page */
+  .dk-ap-pane { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .dk-ap-nav { flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--border); }
+  .dk-ap-row { grid-template-columns: 5.5rem minmax(0, 1fr); }
+}
+.dk-ctl-who { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+.dk-ctl-name { color: var(--fg); font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dk-ctl-out {
+  margin-left: auto; flex: none; width: 1.9rem; height: 1.9rem; display: grid; place-items: center;
+  background: none; border: 1px solid var(--border); color: var(--muted); cursor: pointer; transition: color 0.15s, border-color 0.15s;
+}
+.dk-ctl-out .ic { width: 0.85rem; height: 0.85rem; }
+.dk-ctl-out:hover, .dk-ctl-out:focus-visible { color: var(--offmesh); border-color: var(--offmesh); outline: none; }
+/* the account's own actions, chips under the tiles */
+.dk-ctl-chips { display: flex; gap: 0.35rem; padding: 0 0.6rem 0.6rem; }
+.dk-ctl-chip {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 0.35rem; padding: 0.4rem 0.3rem;
+  background: none; border: 1px solid var(--border); color: var(--fg); font: inherit; cursor: pointer; transition: border-color 0.15s, color 0.15s;
+}
+.dk-ctl-chip .ic { width: 0.8rem; height: 0.8rem; color: var(--muted); transition: color 0.15s; }
+.dk-ctl-chip:hover, .dk-ctl-chip:focus-visible { border-color: var(--accent); outline: none; }
+.dk-ctl-chip:hover .ic { color: var(--accent); }

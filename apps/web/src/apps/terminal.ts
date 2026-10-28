@@ -1,7 +1,7 @@
-import { hostUrl } from '../shares.ts';
-import { st } from '../state.ts';
+import { hostUrl } from '../features/home/home.ts';
+import { st } from '../lib/state.ts';
 import type { TermLogin } from '@phosphorus/wire';
-import { copyText } from '../util.ts';
+import { copyText } from '../lib/util.ts';
 import type { ITerminalOptions, ITheme, Terminal as TerminalT } from '@xterm/xterm';
 import type { FitAddon as FitAddonT } from '@xterm/addon-fit';
 

@@ -1,0 +1,37 @@
+/* --- agents: which model each agent asks (apps/agents.ts) -------------------- */
+.dk-icon.dk-agents .ic { color: var(--accent); }
+.dk-app-agents .dk-body > .view { padding: 1rem 1rem 1.2rem; overflow-y: auto; }
+.ag { display: flex; flex-direction: column; gap: 1.5rem; max-width: 60rem; margin: 0 auto; font-size: 0.8rem; line-height: 1.45; }
+.ag-dim { color: var(--muted); }
+.ag-group { display: flex; flex-direction: column; gap: 0.7rem; }
+.ag-group-head { display: flex; align-items: baseline; gap: 1ch; color: var(--accent); font-size: 0.72rem; letter-spacing: 0.04em; }
+.ag-group-head::after { content: ""; flex: 1; border-top: 1px solid var(--border); align-self: center; }
+.ag-group-head .ag-dim { order: 2; letter-spacing: 0; }
+.ag-models { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 0.6rem; }
+.ag-model { border: 1px solid var(--border); padding: 0.55rem 0.7rem; display: flex; flex-direction: column; gap: 0.3rem; min-width: 0; }
+.ag-model-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0 1ch; min-width: 0; }
+.ag-model-head b { color: var(--fg); font-weight: 600; }
+.ag-model-head .ag-spd { margin-left: auto; color: var(--fg); }
+.ag-file { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.72rem; }
+.ag-dot { flex: none; display: inline-block; width: 0.5rem; height: 0.5rem; background: var(--offmesh); }
+.ag-model.on .ag-dot, .ag-line.on .ag-dot { background: var(--online); }
+.ag-model.mid .ag-dot { background: var(--sand); }
+.ag-chips { display: flex; flex-wrap: wrap; gap: 0.25rem; }
+.ag-chip { padding: 0 0.5ch; border: 1px solid var(--border); color: var(--accent); font-size: 0.7rem; }
+.ag-why { color: var(--sand); font-size: 0.72rem; overflow-wrap: anywhere; }
+.ag-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr)); gap: 0.8rem; }
+.ag-card { border: 1px solid var(--border); padding: 0.75rem 0.85rem; display: flex; flex-direction: column; gap: 0.7rem; min-width: 0; }
+.ag-card-head { display: flex; flex-direction: column; gap: 0.1rem; }
+.ag-card-head b { color: var(--fg); font-weight: 600; }
+.ag-about { color: var(--muted); font-size: 0.72rem; }
+.ag-slot { display: flex; flex-direction: column; gap: 0.4rem; }
+.ag-slot-k { color: var(--muted); font-size: 0.68rem; letter-spacing: 0.04em; }
+.ag-pills { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.ag-pill { padding: 0.15rem 0.65rem; background: none; border: 1px solid var(--border); color: var(--muted); font: inherit; cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: border-color 0.15s, color 0.15s; }
+.ag-pill:is(:hover, :focus-visible) { border-color: var(--accent); color: var(--fg); }
+.ag-pill.on { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.ag-line { display: flex; flex-wrap: wrap; align-items: center; gap: 0 1ch; font-size: 0.72rem; color: var(--muted); }
+.ag-line.off { color: var(--sand); }
+.ag-line b { color: var(--fg); font-weight: 400; }
+.ag-empty { color: var(--muted); padding: 0.4rem 0; }
+.ag-err { color: var(--offmesh); overflow-wrap: anywhere; }

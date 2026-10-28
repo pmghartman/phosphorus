@@ -1,12 +1,12 @@
 // --- unread and notifications -------------------------------------------------
-import { chatNote, openConv } from './chat.ts';
-import { DK_GLYPHS, dkGlyph, el } from './dom.ts';
-import { dk } from './state.ts';
-import { dkAnchor, dkBarSide, dkPopsClose, type Pop } from './desktop/taskbar.ts';
-import { dkOpenApp } from './desktop/desk.ts';
+import { chatNote, openConv } from './chat/chat.ts';
+import { DK_GLYPHS, dkGlyph, el } from '../lib/dom.ts';
+import { dk } from '../lib/state.ts';
+import { dkAnchor, dkBarSide, dkPopsClose, type Pop } from '../desktop/taskbar.ts';
+import { dkOpenApp } from '../desktop/desk.ts';
 import { openUpdateModal, updateModal } from './update.ts';
 import type { Chain, State } from '@phosphorus/wire';
-import { ago2 } from './util.ts';
+import { ago2 } from '../lib/util.ts';
 
 // unread tally in the tab title, counted only while the tab is away
 const BASE_TITLE = document.title;

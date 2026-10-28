@@ -1,8 +1,8 @@
 // --- keys and popups ------------------------------------------------------------
-import { chatPanel, cwList, stepConv } from '../chat.ts';
-import { modalOpen } from '../dom.ts';
-import { closeUpdateModal, updateModal } from '../update.ts';
-import { dkIconKeys } from '../desktop/desk.ts';
+import { chatPanel, cwList, stepConv } from '../features/chat/chat.ts';
+import { modalOpen } from '../lib/dom.ts';
+import { closeUpdateModal, updateModal } from '../features/update.ts';
+import { dkIconKeys } from './desk.ts';
 
 // swipe down on a popup: dismissed, as by its ×
 for (const box of document.querySelectorAll<HTMLElement>('.modal-box')) {

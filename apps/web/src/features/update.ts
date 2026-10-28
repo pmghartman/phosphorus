@@ -2,14 +2,14 @@
 
 // one chain at a time, mesh-wide, its state on the host that started it,
 // this pane only ever talking to its own frontend
-import { el, maskField } from './dom.ts';
-import { hostPlatform } from './mesh.ts';
+import { el, maskField } from '../lib/dom.ts';
+import { hostPlatform } from './mesh/mesh.ts';
 import { noteAdd, notifyMesh, notifyOs, notifying } from './notes.ts';
-import { dk, st } from './state.ts';
-import { pollState } from './sync.ts';
-import { dkPopsClose } from './desktop/taskbar.ts';
+import { dk, st } from '../lib/state.ts';
+import { pollState } from '../lib/sync.ts';
+import { dkPopsClose } from '../desktop/taskbar.ts';
 import type { Chain, MeshLock, State, TailnetDevice, UpdateCheck } from '@phosphorus/wire';
-import { newerVersion } from './util.ts';
+import { newerVersion } from '../lib/util.ts';
 
 const updateBtn = document.getElementById('mesh-update') as HTMLButtonElement;
 export const updateModal = document.getElementById('update-modal')!;

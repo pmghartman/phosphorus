@@ -1,12 +1,12 @@
 // the task bar: its clock, the status items where the layout puts them, the host chips,
 // the chat badge, and every popup grown out of a bar button
-import { DK_GLYPHS, DK_UI, dkGlyph, el, isMobile } from '../dom.ts';
-import { toastPlace } from '../notes.ts';
-import { dk, st } from '../state.ts';
-import { BAR_ITEMS, layoutNow, PALETTE_EVENT } from '../theme.ts';
-import { closeUpdateModal, updateModal } from '../update.ts';
-import { dkUnlock } from '../account.ts';
-import { hostSwitchNow } from '../mesh.ts';
+import { DK_GLYPHS, DK_UI, dkGlyph, el, isMobile } from '../lib/dom.ts';
+import { toastPlace } from '../features/notes.ts';
+import { dk, st } from '../lib/state.ts';
+import { BAR_ITEMS, layoutNow, PALETTE_EVENT } from '../lib/theme.ts';
+import { closeUpdateModal, updateModal } from '../features/update.ts';
+import { dkUnlock } from '../features/account.ts';
+import { hostSwitchNow } from '../features/mesh/mesh.ts';
 import { dkMenuEl } from './desk.ts';
 import { dkMin } from './windows.ts';
 

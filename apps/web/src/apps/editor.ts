@@ -1,6 +1,6 @@
-import { jsonPost } from '../api.ts';
-import { el } from '../dom.ts';
-import { filesCall } from '../shares.ts';
+import { jsonPost } from '../lib/api.ts';
+import { el } from '../lib/dom.ts';
+import { filesCall } from '../features/home/home.ts';
 import type { DkWin } from '../desktop/windows.ts';
 import type { FileRef } from '../desktop/deskfiles.ts';
 

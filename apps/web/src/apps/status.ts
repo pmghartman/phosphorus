@@ -1,8 +1,8 @@
-import { cssVar, modalOpen } from '../dom.ts';
-import { pingClass, steadyRtt } from '../mesh.ts';
-import { deskApps, st } from '../state.ts';
+import { cssVar, modalOpen } from '../lib/dom.ts';
+import { pingClass, steadyRtt } from '../features/mesh/mesh.ts';
+import { deskApps, st } from '../lib/state.ts';
 import type { ModelHost, State, StatsSample } from '@phosphorus/wire';
-import { esc, humanSize, plural } from '../util.ts';
+import { esc, humanSize, plural } from '../lib/util.ts';
 
 // --- status: btop for the whole mesh ----------------------------------------
 // one socket to the serving host, every host's samples fanned in there, open

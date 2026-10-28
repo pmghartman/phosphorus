@@ -1,9 +1,9 @@
 // the window manager: one window per terminal, files, service or app, moved, resized,
 // snapped, minimized into its task bar button and back
-import { DK_GLYPHS, DK_UI, dkGlyph, el, isMobile } from '../dom.ts';
-import { dk } from '../state.ts';
+import { DK_GLYPHS, DK_UI, dkGlyph, el, isMobile } from '../lib/dom.ts';
+import { dk } from '../lib/state.ts';
 import { dkAppsChanged, dkMenu, type MenuItem } from './desk.ts';
-import type { Connection } from '../mesh.ts';
+import type { Connection } from '../features/mesh/mesh.ts';
 
 // told of any window made, moved, snapped, hidden, shown, raised or closed (session.ts)
 let touched: (() => void) | null = null;

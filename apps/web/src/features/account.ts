@@ -1,21 +1,21 @@
 // --- the account: a phosphorus user over the hosts' own logins, its vault
 // of host and page logins kept on the mesh, sealed with its password
-import { acctCall } from './api.ts';
-import { chatAs } from './chat.ts';
-import { DK_GLYPHS, dkGlyph, el, noFill, pageAsk, svgEl } from './dom.ts';
-import { serviceUrl } from './mesh.ts';
-import { applyTheme, systemLight } from './scheme.ts';
-import { dk, PREF_LS, PREF_OF, st, type Account } from './state.ts';
-import { editorPref, EDITORS } from './desktop/deskfiles.ts';
-import { connectState, stateStop, stateUp } from './sync.ts';
-import { themeFromStorage } from './theme.ts';
+import { acctCall } from '../lib/api.ts';
+import { chatAs } from './chat/chat.ts';
+import { DK_GLYPHS, dkGlyph, el, noFill, pageAsk, svgEl } from '../lib/dom.ts';
+import { serviceUrl } from './mesh/mesh.ts';
+import { applyTheme, systemLight } from '../lib/scheme.ts';
+import { dk, PREF_LS, PREF_OF, st, type Account } from '../lib/state.ts';
+import { editorPref, EDITORS } from '../desktop/deskfiles.ts';
+import { connectState, stateStop, stateUp } from '../lib/sync.ts';
+import { themeFromStorage } from '../lib/theme.ts';
 import type { Me, UserRow } from '@phosphorus/wire';
-import { copyText } from './util.ts';
-import { appCall } from './apps.ts';
-import { dkArt, dkDesktop, dkIcons, dkLayout, dkLogout, dkWallPaint } from './desktop/desk.ts';
-import { DK_USERS_KEY, dkLogin, dkProbe, dkUsers } from './desktop/login.ts';
-import { dkAnchor, dkBar, dkChips, dkPopsClose, type Pop } from './desktop/taskbar.ts';
-import { dkClose, dkFocus, dkSize, dkWin } from './desktop/windows.ts';
+import { copyText } from '../lib/util.ts';
+import { appCall } from '../apps/index.ts';
+import { dkArt, dkDesktop, dkIcons, dkLayout, dkLogout, dkWallPaint } from '../desktop/desk.ts';
+import { DK_USERS_KEY, dkLogin, dkProbe, dkUsers } from '../desktop/login.ts';
+import { dkAnchor, dkBar, dkChips, dkPopsClose, type Pop } from '../desktop/taskbar.ts';
+import { dkClose, dkFocus, dkSize, dkWin } from '../desktop/windows.ts';
 
 const dkView = document.getElementById('view-desktop')!;
 

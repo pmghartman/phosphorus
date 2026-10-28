@@ -1,13 +1,13 @@
 // --- the agent tray beside the bell: how Claude Code's plugin connects and signs in,
 // the calls of the agents signed in as they happen
 import { agentViewOn, agentViewSet } from './agent.ts';
-import { acctCall } from './api.ts';
-import { DK_GLYPHS, dkGlyph, el, pageAsk, svgEl } from './dom.ts';
+import { acctCall } from '../lib/api.ts';
+import { DK_GLYPHS, dkGlyph, el, pageAsk, svgEl } from '../lib/dom.ts';
 import { noteAdd } from './notes.ts';
-import { dk, st } from './state.ts';
+import { dk, st } from '../lib/state.ts';
 import type { McpCall, McpStatus } from '@phosphorus/wire';
-import { copyText } from './util.ts';
-import { dkAnchor, dkPopsClose, type Pop } from './desktop/taskbar.ts';
+import { copyText } from '../lib/util.ts';
+import { dkAnchor, dkPopsClose, type Pop } from '../desktop/taskbar.ts';
 import { updateModal } from './update.ts';
 
 // whether the user has agents signed in, and their calls from the mesh

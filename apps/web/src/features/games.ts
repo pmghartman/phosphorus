@@ -2,12 +2,12 @@
 
 // not links: joined in-game at <name>.<zone>, tailnet only, play/stop open to
 // any viewer
-import { postFailure } from './api.ts';
-import { gameIcon } from './dom.ts';
-import { serviceKey } from './mesh.ts';
-import { pollState } from './sync.ts';
+import { postFailure } from '../lib/api.ts';
+import { gameIcon } from '../lib/dom.ts';
+import { serviceKey } from './mesh/mesh.ts';
+import { pollState } from '../lib/sync.ts';
 import type { Route } from '@phosphorus/wire';
-import { copyText } from './util.ts';
+import { copyText } from '../lib/util.ts';
 
 // games joined at <name>.phosphorus
 const gameZone = 'phosphorus';

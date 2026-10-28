@@ -1,15 +1,15 @@
 // /api/state: everything the page knows of the mesh, pushed over its socket, one read right
 // after the user's own action; each push applied to the mesh graph, the games, the desktop,
 // the update pane and the apps
-import { acctCheck } from './account.ts';
-import { appCall } from './apps.ts';
-import { renderGames } from './games.ts';
-import { GIT_SERVICE, meshModelsFrom, pruneConnections, renderMesh, renderMeshGit, settleHost } from './mesh.ts';
+import { acctCheck } from '../features/account.ts';
+import { appCall } from '../apps/index.ts';
+import { renderGames } from '../features/games.ts';
+import { GIT_SERVICE, meshModelsFrom, pruneConnections, renderMesh, renderMeshGit, settleHost } from '../features/mesh/mesh.ts';
 import { st } from './state.ts';
 import type { Route, State, TailnetDevice } from '@phosphorus/wire';
-import { updateState } from './update.ts';
-import { dkHostsGone, dkRoutes } from './desktop/desk.ts';
-import { dkDeskStamps } from './desktop/deskfiles.ts';
+import { updateState } from '../features/update.ts';
+import { dkHostsGone, dkRoutes } from '../desktop/desk.ts';
+import { dkDeskStamps } from '../desktop/deskfiles.ts';
 
 const aboutVersion = document.getElementById('about-version')!;
 

@@ -1,13 +1,13 @@
 // the search: a box in the middle of the desk (ctrl+alt+space, or the bar's glass), plain
 // words finding apps, settings, menu actions, open windows, hosts and files
-import { acctLogout, dkProfileWin, dkUsersWin } from '../account.ts';
-import { DK_GLYPHS, dkGlyph, el, isMobile } from '../dom.ts';
-import { MODES, modePick, setTheme } from '../scheme.ts';
-import { filesApi, filesJoin, filesWin, fileOpen, HOME, homeOnline } from '../shares.ts';
-import { dk, st } from '../state.ts';
-import { PALETTES, paletteNow, setPalette } from '../theme.ts';
+import { acctLogout, dkProfileWin, dkUsersWin } from '../features/account.ts';
+import { DK_GLYPHS, dkGlyph, el, isMobile } from '../lib/dom.ts';
+import { MODES, modePick, setTheme } from '../lib/scheme.ts';
+import { filesApi, filesJoin, filesWin, fileOpen, HOME, homeOnline } from '../features/home/home.ts';
+import { dk, st } from '../lib/state.ts';
+import { PALETTES, paletteNow, setPalette } from '../lib/theme.ts';
 import type { FileEntry } from '@phosphorus/wire';
-import { openUpdateModal } from '../update.ts';
+import { openUpdateModal } from '../features/update.ts';
 import { dkAppearanceWin } from './control.ts';
 import { dkLiveHosts, dkOpenApp, dkService, dkTerminal, dkWallClear, dkWallPick, dkArrange, dkWebApp, dkWebApps } from './desk.ts';
 import { dkShowDesktop } from './keys.ts';

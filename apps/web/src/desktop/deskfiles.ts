@@ -1,12 +1,12 @@
 // --- the desktop's files: the user's own Desktop and shared/Desktop, each
 // over the merged home, from every host
-import { app } from '../apps.ts';
-import { jsonPost } from '../api.ts';
-import { DK_GLYPHS, DK_UI, dkGlyph, el } from '../dom.ts';
-import { fileLabel, filesApi, filesCall, filesJoin, filesParent, fmChanged, fmExt, fmIcon, fmKind, filesWin, HOME, homeAt, homeHostList, homeList, homeOnline, homePick, runnable, fileOpen, type Loc } from '../shares.ts';
-import { dk, PREF_LS, st } from '../state.ts';
+import { app } from '../apps/index.ts';
+import { jsonPost } from '../lib/api.ts';
+import { DK_GLYPHS, DK_UI, dkGlyph, el } from '../lib/dom.ts';
+import { fileLabel, filesApi, filesCall, filesJoin, filesParent, fmChanged, fmExt, fmIcon, fmKind, filesWin, HOME, homeAt, homeHostList, homeList, homeOnline, homePick, runnable, fileOpen, type Loc } from '../features/home/home.ts';
+import { dk, PREF_LS, st } from '../lib/state.ts';
 import type { FileEntry } from '@phosphorus/wire';
-import { shQuote } from '../util.ts';
+import { shQuote } from '../lib/util.ts';
 import { dkIcon, dkIcons, dkLiveHosts, dkMenuNote, dkSulfurOpen, dkTerminal, type MenuItem } from './desk.ts';
 import { dkFocus, dkNav, dkSize, dkWin, type NavFrame } from './windows.ts';
 

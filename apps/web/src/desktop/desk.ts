@@ -1,18 +1,18 @@
 // --- desktop: a pretend remote desktop, every window one of the
 // mesh's own terminals, files or services, drawn here
-import { acctCall } from '../api.ts';
-import { app, appCall } from '../apps.ts';
-import { chatName, chatText, convNow, dragsFiles, joined, openConv, setConv } from '../chat.ts';
-import { DK_GLYPHS, DK_UI, dkGlyph, el, isMobile, mobileQuery, stash, svgEl } from '../dom.ts';
-import { activeConnections, drawMesh, phosphorusHosts, pingHosts, serviceKey, serviceUrl, startPulseLoop, switchHost, dkMeshTray, type Connection } from '../mesh.ts';
-import { noteAdd, notifyOs, dkBellTray } from '../notes.ts';
-import { dkFms, filesJoin, filesParent, filesWin, fileLabel, fmSame, fmTransfer, fmMark, fmSpring, fmUnspring, fmZones, HOME, homeAt, homeOnline, may, putFile, fmChanged } from '../shares.ts';
-import { deskApps, dk, st } from '../state.ts';
+import { acctCall } from '../lib/api.ts';
+import { app, appCall } from '../apps/index.ts';
+import { chatName, chatText, convNow, dragsFiles, joined, openConv, setConv } from '../features/chat/chat.ts';
+import { DK_GLYPHS, DK_UI, dkGlyph, el, isMobile, mobileQuery, stash, svgEl } from '../lib/dom.ts';
+import { activeConnections, drawMesh, phosphorusHosts, pingHosts, serviceKey, serviceUrl, startPulseLoop, switchHost, dkMeshTray, type Connection } from '../features/mesh/mesh.ts';
+import { noteAdd, notifyOs, dkBellTray } from '../features/notes.ts';
+import { dkFms, filesJoin, filesParent, filesWin, fileLabel, fmSame, fmTransfer, fmMark, fmSpring, fmUnspring, fmZones, HOME, homeAt, homeOnline, may, putFile, fmChanged } from '../features/home/home.ts';
+import { deskApps, dk, st } from '../lib/state.ts';
 import type { AppWant, Route, UiAction } from '@phosphorus/wire';
-import { openUpdateModal, updateModal } from '../update.ts';
-import { newSid } from '../util.ts';
-import { agentArm, agentOwn, agentStep, agentViewOn } from '../agent.ts';
-import { mcpStat, dkMcpTray } from '../mcp.ts';
+import { openUpdateModal, updateModal } from '../features/update.ts';
+import { newSid } from '../lib/util.ts';
+import { agentArm, agentOwn, agentStep, agentViewOn } from '../features/agent.ts';
+import { mcpStat, dkMcpTray } from '../features/mcp.ts';
 import { dkAppearanceWin, dkControlTray } from './control.ts';
 import { dkCode, dkDeskAt, dkDeskWatch, dkFileIcon, dkFileMenu, type FileRef } from './deskfiles.ts';
 import { dkLoginHosts } from './login.ts';

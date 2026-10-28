@@ -1,8 +1,8 @@
 // the desktop's keys, ctrl+alt the desk's own modifier: windows, the search and apps
 // without a pointer, by key code so a mac's alt letters count too
-import { isMobile } from '../dom.ts';
-import { filesWin } from '../shares.ts';
-import { dk, st } from '../state.ts';
+import { isMobile } from '../lib/dom.ts';
+import { filesWin } from '../features/home/home.ts';
+import { dk, st } from '../lib/state.ts';
 import { dkLiveHosts, dkOpenApp, dkTerminal } from './desk.ts';
 import { dkOverview, dkOverviewEnd, dkOverviewOn, dkSwitchEnd, dkSwitching, dkSwitchStep } from './switcher.ts';
 import { dkClose, dkFocus, dkMax, dkMin, dkSnapTo, dkStack, type DkWin } from './windows.ts';

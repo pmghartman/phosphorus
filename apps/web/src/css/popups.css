@@ -1,0 +1,162 @@
+/* --- popups ------------------------------------------------------------ */
+
+/* top-left, never dimming the page */
+.modal {
+  position: absolute;
+  top: calc(var(--header-h) + 0.4rem);
+  left: 0.75rem;
+  z-index: 20;
+}
+
+.modal[hidden] { display: none; }
+
+.modal-box {
+  position: relative;
+  width: min(22rem, calc(75vw - 1.5rem));
+  max-height: calc(100vh - var(--header-h) - 2rem);
+  display: flex;
+  flex-direction: column;
+  padding-top: 0.4rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  box-shadow: var(--drop);
+  animation: pop-in 0.18s ease-out;
+  /* dismissed by a downward swipe */
+  touch-action: pinch-zoom;
+}
+.modal-box.dragging { opacity: 0.9; }
+
+.modal-header {
+  position: absolute;
+  top: 0; left: 0.6rem; right: 0.4rem;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  line-height: 1;
+  pointer-events: none;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+}
+.modal-header > * { padding: 0 0.45ch; background: var(--card); pointer-events: auto; }
+.modal-header > span { color: var(--sage); }
+
+.modal-close {
+  font: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.modal-close:hover { color: var(--fg); }
+
+/* every host, its version, mid-update its step, one grid so the columns line up */
+.update-versions {
+  display: grid; grid-template-columns: minmax(0, 1fr) max-content max-content; column-gap: 0.75rem;
+}
+.update-row { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; row-gap: 0.15rem; align-items: baseline; padding: 0.3rem 0.75rem; font-size: 0.8rem; }
+.update-head { padding: 0.45rem 0.75rem 0.1rem; font-size: 0.65rem; letter-spacing: 0.04em; color: var(--sage); }
+.update-host { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.update-ver, .update-state { font-size: 0.7rem; letter-spacing: 0.04em; white-space: nowrap; }
+.update-head .update-ver, .update-head .update-state { font-size: inherit; }
+.update-row:not(.update-head)[class*=" "] .update-ver { color: var(--muted); }
+
+.update-row.pending, .update-row.skipped, .update-row.skipped .update-host { color: var(--muted); }
+.update-row.skipped .update-host { text-decoration: line-through; }
+.update-row.running .update-host, .update-row.running .update-state { color: var(--accent); }
+.update-row.running .update-state { animation: update-blink 1.2s steps(1) infinite; }
+.update-row.ok .update-state, .update-row.current .update-state { color: var(--online); }
+/* only the step red, the name unchanged */
+.update-row.fail .update-state, .update-row.unreachable .update-state { color: var(--offmesh); }
+
+@keyframes update-blink { 50% { opacity: 0.35; } }
+
+.update-versions li.empty { grid-column: 1 / -1; padding: 0.3rem 0.75rem; font-size: 0.8rem; }
+
+.update-confirm { padding: 0.75rem; }
+.update-confirm p { margin: 0 0 0.75rem; font-size: 0.85rem; }
+
+/* the gate on starting a chain, red once a wrong one has been tried */
+.update-pass {
+  display: block;
+  width: 100%;
+  margin-bottom: 0.75rem;
+  padding: 0.5rem 0.6rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.85rem;
+}
+.update-pass[hidden] { display: none; }
+.update-pass:focus { outline: none; border-color: var(--accent); }
+.update-pass.bad { border-color: var(--offmesh); }
+.update-pass.bad::placeholder { color: var(--offmesh); }
+
+.update-progress {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 0.75rem 0.2rem;
+}
+
+.update-progress[hidden] { display: none; }
+
+.update-progress-track { flex: 1; min-width: 0; display: flex; color: var(--accent); white-space: pre; font-size: 0.72rem; }
+/* ░ in the off tone, as the files transfer bar */
+.update-progress-cells { flex: 1; min-width: 0; overflow: hidden; font-size: 0.7em; letter-spacing: 0; vertical-align: 0.08em; }
+.update-progress-cells i { font-style: normal; color: var(--dim); }
+
+.update-progress-label {
+  flex: none;
+  font-size: 0.7rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+
+.update-actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
+.update-actions button.force { color: var(--warn); border-color: var(--warn); }
+.update-actions button.force:hover { background: var(--warn); color: var(--bg); }
+
+/* [ label ], like a terminal prompt's choices, hover inverting as a selection would */
+.update-actions button {
+  white-space: nowrap;
+  font: inherit;
+  font-size: 0.75rem;
+  color: var(--fg);
+  background: none;
+  border: 1px solid var(--muted);
+  padding: 0.2rem 0.65rem;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s, transform 0.1s;
+}
+.update-actions button:active:not(:disabled) { transform: translateY(1px); }
+.update-actions button:hover { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.update-actions button.danger { color: var(--offmesh); border-color: var(--offmesh); }
+.update-actions button.danger:hover { background: var(--offmesh); color: var(--bg); }
+.update-actions button.primary { color: var(--accent); border-color: var(--accent); font-weight: 600; }
+.update-actions button.primary:hover { background: var(--accent); color: var(--bg); }
+
+.update-os { color: var(--teal); font-size: 0.7rem; margin-left: 0.5rem; }
+.update-actions button:disabled { cursor: default; opacity: 0.6; }
+.update-actions button:disabled:hover { background: none; color: var(--accent); border-color: var(--accent); }
+
+/* every host and its version, with the button that starts the chain */
+/* a rule only under a section above it, never doubling the box's own edge */
+:is(.update-confirm, .update-progress):not([hidden]) ~ .update-mesh { border-top: 1px solid var(--border); }
+.update-versions { list-style: none; margin: 0 0 0.5rem; padding: 0; overflow-y: auto; }
+.update-mesh { flex: 1; min-height: 0; display: flex; flex-direction: column; padding-bottom: 0.6rem; }
+/* on another version than this host */
+.update-versions .update-row.differs .update-ver { color: var(--warn); }
+.update-mesh .update-actions { padding: 0 0.75rem; }
+/* the newest release, asked on opening: a turning ring until the feed answers */
+.update-latest { margin: 0 0.75rem 0.4rem; display: flex; align-items: center; gap: 0.6ch; color: var(--muted); }
+.update-latest[data-state="ok"] { color: var(--online); }
+.update-latest[data-state="new"] { color: var(--accent); }
+.update-latest[data-state="bad"] { color: var(--warn); }
+.update-spin { width: 0.75em; height: 0.75em; border: 1.5px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: update-spin 0.8s linear infinite; }
+@keyframes update-spin { to { rotate: 360deg; } }
+@media (prefers-reduced-motion: reduce) { .update-spin { animation-duration: 2.4s; } }

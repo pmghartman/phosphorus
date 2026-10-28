@@ -1,9 +1,9 @@
-import { jsonPost } from '../api.ts';
-import { DK_UI, dkGlyph, el, ICONS, pageAsk } from '../dom.ts';
-import { dk, st } from '../state.ts';
-import { pollState } from '../sync.ts';
+import { jsonPost } from '../lib/api.ts';
+import { DK_UI, dkGlyph, el, ICONS, pageAsk } from '../lib/dom.ts';
+import { dk, st } from '../lib/state.ts';
+import { pollState } from '../lib/sync.ts';
 import type { AppStatus, AppWant, Route, State } from '@phosphorus/wire';
-import { ago2, newerVersion } from '../util.ts';
+import { ago2, newerVersion } from '../lib/util.ts';
 import { dkOpenApp, dkService, dkWebApp } from '../desktop/desk.ts';
 import { editorPref, setEditorPref } from '../desktop/deskfiles.ts';
 

@@ -1,13 +1,13 @@
 // the mesh: its routes and serving host, the status diagram and its stats table, the git
 // rows, pings from this browser, and the tray popup holding it all
-import { appCall } from './apps.ts';
-import { databaseIcon, DK_GLYPHS, dkGlyph, el, pageAsk, svgEl } from './dom.ts';
-import { noteAdd } from './notes.ts';
-import { dk, st } from './state.ts';
-import { connectState } from './sync.ts';
-import { dkAnchor, dkChips, dkPopsClose, type Pop } from './desktop/taskbar.ts';
+import { appCall } from '../../apps/index.ts';
+import { databaseIcon, DK_GLYPHS, dkGlyph, el, pageAsk, svgEl } from '../../lib/dom.ts';
+import { noteAdd } from '../notes.ts';
+import { dk, st } from '../../lib/state.ts';
+import { connectState } from '../../lib/sync.ts';
+import { dkAnchor, dkChips, dkPopsClose, type Pop } from '../../desktop/taskbar.ts';
 import type { GitHost, Route, State, TailnetDevice } from '@phosphorus/wire';
-import { ago, esc } from './util.ts';
+import { ago, esc } from '../../lib/util.ts';
 
 // --- self / routes ------------------------------------------------------
 

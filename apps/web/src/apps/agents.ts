@@ -1,5 +1,5 @@
-import { jsonPost } from '../api.ts';
-import { el } from '../dom.ts';
+import { jsonPost } from '../lib/api.ts';
+import { el } from '../lib/dom.ts';
 import type { ModelAgent, ModelHost, ModelSummary, State } from '@phosphorus/wire';
 
 // --- agents: which mesh model each implementation that asks one runs on ------

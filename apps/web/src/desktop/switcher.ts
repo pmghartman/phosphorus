@@ -1,7 +1,7 @@
 // the window switcher (ctrl+alt+tab) and the overview (ctrl+alt+o): every window in
 // reach by a key or a click
-import { dkGlyph, el, isMobile } from '../dom.ts';
-import { dk } from '../state.ts';
+import { dkGlyph, el, isMobile } from '../lib/dom.ts';
+import { dk } from '../lib/state.ts';
 import { dkClose, dkFocus, dkStack, dkTouch, type DkWin } from './windows.ts';
 
 // --- the switcher: a list in the middle, tab stepping while ctrl+alt are held, let go to land

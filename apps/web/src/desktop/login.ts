@@ -1,9 +1,9 @@
 // --- login: every host's user and password, any that answer enough
-import { acctLogout, acctSave } from '../account.ts';
-import { wsBase } from '../api.ts';
-import { el, noFill } from '../dom.ts';
-import { dk, st } from '../state.ts';
-import { newSid } from '../util.ts';
+import { acctLogout, acctSave } from '../features/account.ts';
+import { wsBase } from '../lib/api.ts';
+import { el, noFill } from '../lib/dom.ts';
+import { dk, st } from '../lib/state.ts';
+import { newSid } from '../lib/util.ts';
 import { dkArt, dkDesktop } from './desk.ts';
 import { dkBar } from './taskbar.ts';
 

@@ -1,14 +1,14 @@
 // --- the agent on screen: each keyed call's start and end, the window it works in
 // brought up and lit, its shell work in a console per host; off by the tray's box
-import { app } from './apps.ts';
-import { openConv } from './chat.ts';
-import { filesParent, filesWin, HOME, type Fm, type Loc } from './shares.ts';
-import { dk, PREF_LS, st } from './state.ts';
+import { app } from '../apps/index.ts';
+import { openConv } from './chat/chat.ts';
+import { filesParent, filesWin, HOME, type Fm, type Loc } from './home/home.ts';
+import { dk, PREF_LS, st } from '../lib/state.ts';
 import type { UiAction } from '@phosphorus/wire';
 import { openUpdateModal, updateModal } from './update.ts';
-import { dkOpenApp } from './desktop/desk.ts';
-import { dkCode } from './desktop/deskfiles.ts';
-import { dkClose, dkFocus, dkWin, type DkWin } from './desktop/windows.ts';
+import { dkOpenApp } from '../desktop/desk.ts';
+import { dkCode } from '../desktop/deskfiles.ts';
+import { dkClose, dkFocus, dkWin, type DkWin } from '../desktop/windows.ts';
 
 const AGENT_VIEW_LS = PREF_LS.agentview!;
 export const agentViewOn = () => { try { return localStorage.getItem(AGENT_VIEW_LS) !== '0'; } catch { return true; } };

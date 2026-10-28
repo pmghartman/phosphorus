@@ -1,12 +1,12 @@
 // --- the control panel and the appearance window: the mesh, the update, light or dark, the theme
 // and everything of yours over it, one button for all
-import { acctLogout, dkProfileWin, dkUserGlyph, dkUsersWin } from '../account.ts';
-import { DK_GLYPHS, DK_UI, dkGlyph, el } from '../dom.ts';
-import { phosphorusHosts } from '../mesh.ts';
-import { MODES, modeIcon, modePick, setTheme } from '../scheme.ts';
-import { dk, st } from '../state.ts';
-import { BAR_ITEMS, CUSTOM_CORNERS, CUSTOM_SHADOWS, customNow, LAYOUT_CHOICES, PALETTE_EVENT, PALETTES, paletteNow, setCustom, setPalette, themeConfig, type CustomConfig, type LayoutNow } from '../theme.ts';
-import { checkUpdates, meshLockNow, openUpdateModal, updates } from '../update.ts';
+import { acctLogout, dkProfileWin, dkUserGlyph, dkUsersWin } from '../features/account.ts';
+import { DK_GLYPHS, DK_UI, dkGlyph, el } from '../lib/dom.ts';
+import { phosphorusHosts } from '../features/mesh/mesh.ts';
+import { MODES, modeIcon, modePick, setTheme } from '../lib/scheme.ts';
+import { dk, st } from '../lib/state.ts';
+import { BAR_ITEMS, CUSTOM_CORNERS, CUSTOM_SHADOWS, customNow, LAYOUT_CHOICES, PALETTE_EVENT, PALETTES, paletteNow, setCustom, setPalette, themeConfig, type CustomConfig, type LayoutNow } from '../lib/theme.ts';
+import { checkUpdates, meshLockNow, openUpdateModal, updates } from '../features/update.ts';
 import { dkWallClear, dkWallPick, WALL_EVENT } from './desk.ts';
 import { dkAnchor, dkPopsClose, type Pop } from './taskbar.ts';
 import { dkFocus, dkSize, dkWin } from './windows.ts';

@@ -1,5 +1,5 @@
-import { jsonPost } from '../api.ts';
-import { DK_UI, dkGlyph, el, icon, isMobile } from '../dom.ts';
+import { jsonPost } from '../lib/api.ts';
+import { DK_UI, dkGlyph, el, icon, isMobile } from '../lib/dom.ts';
 import {
   copyFile,
   dkFms,
@@ -35,10 +35,10 @@ import {
   type Fm,
   type Loc,
   type PickedItem,
-} from '../shares.ts';
-import { dk, st } from '../state.ts';
+} from '../features/home/home.ts';
+import { dk, st } from '../lib/state.ts';
 import type { FileEntry } from '@phosphorus/wire';
-import { humanSize } from '../util.ts';
+import { humanSize } from '../lib/util.ts';
 import { dkMenu, dkWallSet, type MenuItem } from '../desktop/desk.ts';
 import { dkCode, dkRunItems } from '../desktop/deskfiles.ts';
 import { dkFocus, dkWin } from '../desktop/windows.ts';
