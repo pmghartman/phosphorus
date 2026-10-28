@@ -1,8 +1,9 @@
 // config/ edited in place: services.export and phosphorus.ini section by
 // section, comments, order and every other section kept; the cli's forms and
 // the frontend's edits both come through here
+
+import { chmodSync, readFileSync, renameSync, type Stats, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import { chmodSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync, type Stats } from "node:fs";
 import { parse } from "@phosphorus/services";
 import { chownLike, env, errText, RepoDir } from "@phosphorus/util";
 
@@ -51,13 +52,22 @@ export function fieldsOf(s: Section | undefined): Record<string, string> {
   if (!s) return f;
   for (const line of s.lines.slice(1)) {
     const k = keyOf(line);
-    if (k !== "") f[k] = line.slice(line.indexOf("=") + 1).trim().replace(quotesRe, "");
+    if (k !== "")
+      f[k] = line
+        .slice(line.indexOf("=") + 1)
+        .trim()
+        .replace(quotesRe, "");
   }
   return f;
 }
 
 // vals key to value, undefined drops the key, absent untouched, new keys after the last
-export function rewriteSection(s: Section, name: string, vals: Record<string, string | undefined>, order: string[]): string[] {
+export function rewriteSection(
+  s: Section,
+  name: string,
+  vals: Record<string, string | undefined>,
+  order: string[],
+): string[] {
   const out = ["[" + name + "]"];
   const done = new Set<string>();
   let after = 1;
@@ -143,7 +153,8 @@ function writeDoc(file: string, d: Doc): string {
 
 export const svcKeys = ["port", "scheme", "mode", "base_path", "extras", "type", "start", "stop", "public"];
 
-export const svcVals = (v: Record<string, string>) => Object.fromEntries(svcKeys.map((k) => [k, v[k] ? v[k] : undefined]));
+export const svcVals = (v: Record<string, string>) =>
+  Object.fromEntries(svcKeys.map((k) => [k, v[k] ? v[k] : undefined]));
 
 export function commitServices(d: Doc): string {
   const [, err] = parse(joinDoc(d));
@@ -155,7 +166,11 @@ export function commitServices(d: Doc): string {
 
 export type Share = { dir: string; perms: string };
 
-const splitList = (v: string) => v.split(",").map((s) => s.trim()).filter((s) => s !== "");
+const splitList = (v: string) =>
+  v
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s !== "");
 
 // unset perms full access, as the frontend reads them
 export function readShares(): Share[] {
@@ -170,7 +185,8 @@ export function writeShares(shares: Share[]): string {
   const d = splitSections(readText(iniFile));
   const s = iniSection(d, "files");
   let vals: Record<string, string | undefined> = { dir: "", priv: undefined };
-  if (shares.length > 0) vals = { dir: shares.map((x) => x.dir).join(", "), priv: shares.map((x) => x.perms).join(", ") };
+  if (shares.length > 0)
+    vals = { dir: shares.map((x) => x.dir).join(", "), priv: shares.map((x) => x.perms).join(", ") };
   s.lines = rewriteSection(s, "files", vals, ["dir", "priv"]);
   return writeDoc(iniFile, d);
 }
@@ -207,7 +223,8 @@ export function readGitHost(): boolean {
 }
 
 export function writeGitHost(on: boolean): string {
-  if (on && process.platform !== "linux") return "git hosts run on Linux alone: forgejo and the git daemon ship for it only";
+  if (on && process.platform !== "linux")
+    return "git hosts run on Linux alone: forgejo and the git daemon ship for it only";
   const d = splitSections(readText(iniFile));
   const s = iniSection(d, "git");
   s.lines = rewriteSection(s, "git", { host: String(on) }, ["host"]);
@@ -266,10 +283,16 @@ export function wholeAtLeast(v: string, lo: number): boolean {
 const svcNameRe = /^[a-z0-9][a-z0-9-]*$/;
 
 // setService [name] written with fields, a blank one dropped, or removed; "" once saved
-export const setService = (name: string, fields: Record<string, string>, remove: boolean) => editService(name, fields, remove, false)[0];
+export const setService = (name: string, fields: Record<string, string>, remove: boolean) =>
+  editService(name, fields, remove, false)[0];
 
 // editService setService, or with dry the change it would make as a diff, nothing written
-export function editService(name: string, fields: Record<string, string>, remove: boolean, dry: boolean): [string, string] {
+export function editService(
+  name: string,
+  fields: Record<string, string>,
+  remove: boolean,
+  dry: boolean,
+): [string, string] {
   if (!svcNameRe.test(name)) return ["name: lowercase letters, digits, -", ""];
   const before = readText(servicesFile);
   const d = splitSections(before);
@@ -337,13 +360,17 @@ export function lineDiff(a: string, b: string): string {
     t = t.replace(/\n+$/, "");
     return t === "" ? [] : t.split("\n");
   };
-  const x = lines(a), y = lines(b);
-  const n = x.length, m = y.length;
+  const x = lines(a),
+    y = lines(b);
+  const n = x.length,
+    m = y.length;
   const l: number[][] = Array.from({ length: n + 1 }, () => new Array<number>(m + 1).fill(0));
   for (let i = n - 1; i >= 0; i--)
-    for (let j = m - 1; j >= 0; j--) l[i]![j] = x[i] === y[j] ? l[i + 1]![j + 1]! + 1 : Math.max(l[i + 1]![j]!, l[i]![j + 1]!);
+    for (let j = m - 1; j >= 0; j--)
+      l[i]![j] = x[i] === y[j] ? l[i + 1]![j + 1]! + 1 : Math.max(l[i + 1]![j]!, l[i]![j + 1]!);
   const out: string[] = [];
-  let i = 0, j = 0;
+  let i = 0,
+    j = 0;
   while (i < n || j < m) {
     if (i < n && j < m && x[i] === y[j]) {
       i++;

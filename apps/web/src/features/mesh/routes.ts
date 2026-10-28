@@ -1,6 +1,7 @@
 // self / routes
-import { st } from '../../lib/state.ts';
+
 import type { Route } from '@phosphorus/wire';
+import { st } from '../../lib/state.ts';
 import { drawMesh } from './draw.ts';
 
 export function serviceUrl(route: Route): string {
@@ -12,7 +13,11 @@ export function serviceUrl(route: Route): string {
 export const serviceKey = (route: { host: string; name: string }) => `${route.host}::${route.name}`;
 
 // a service opened from here whose tab is still open
-export interface Connection { win: { closed: boolean }; host: string; name: string }
+export interface Connection {
+  win: { closed: boolean };
+  host: string;
+  name: string;
+}
 // key -> { win, host, name } for each service opened from here whose tab is
 // still open, driving the touched/purple path and the packet pulse
 export const activeConnections = new Map<string, Connection>();
@@ -22,7 +27,10 @@ export function pruneConnections(): void {
   if (!activeConnections.size) return;
   let changed = false;
   for (const [key, conn] of activeConnections) {
-    if (conn.win.closed) { activeConnections.delete(key); changed = true; }
+    if (conn.win.closed) {
+      activeConnections.delete(key);
+      changed = true;
+    }
   }
   if (changed) drawMesh();
 }

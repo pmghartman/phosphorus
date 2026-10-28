@@ -50,8 +50,10 @@ export const setSpawn = (f?: Spawner) => void (spawn = f ?? sshSpawn);
 // setupErr why setup failed, a Windows host's shell named
 export function setupErr(host: string, code: number, out: string, error?: string): Error {
   const low = out.toLowerCase();
-  if (code === 127 && !low.includes("not found") && !low.includes("not recognized")) return new Error(missing(Claude, host));
-  if (low.includes("not recognized") || low.includes("commandnotfound")) return new Error(`${host} runs Windows, which Code doesn't support yet`);
+  if (code === 127 && !low.includes("not found") && !low.includes("not recognized"))
+    return new Error(missing(Claude, host));
+  if (low.includes("not recognized") || low.includes("commandnotfound"))
+    return new Error(`${host} runs Windows, which Code doesn't support yet`);
   if (error) return new Error(`setting up claude on ${host}: ${error}`);
   if (out.length > 400) out = out.slice(-400);
   return new Error(`setting up claude on ${host} failed (exit ${code}): ${out}`);

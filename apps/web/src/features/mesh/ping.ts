@@ -20,24 +20,29 @@ export const RTT_SHOWN_OF = 5;
 export async function pingHosts(): Promise<void> {
   const hosts = phosphorusHosts();
   if (!hosts.length) return;
-  await Promise.all(hosts.map(async (h) => {
-    const t = performance.now();
-    const r = await fetch(`/api/ping/${encodeURIComponent(h)}`, { cache: 'no-store' }).catch(() => null);
-    const ms = r?.status === 204 ? Math.round(performance.now() - t) : null;
-    hostRtt.set(h, ms);
-    if (ms === null) return;
-    const hist = rttHistory.get(h) || [];
-    hist.push(ms);
-    if (hist.length > RTT_HISTORY_LEN) hist.shift();
-    rttHistory.set(h, hist);
-  }));
+  await Promise.all(
+    hosts.map(async (h) => {
+      const t = performance.now();
+      const r = await fetch(`/api/ping/${encodeURIComponent(h)}`, { cache: 'no-store' }).catch(() => null);
+      const ms = r?.status === 204 ? Math.round(performance.now() - t) : null;
+      hostRtt.set(h, ms);
+      if (ms === null) return;
+      const hist = rttHistory.get(h) || [];
+      hist.push(ms);
+      if (hist.length > RTT_HISTORY_LEN) hist.shift();
+      rttHistory.set(h, hist);
+    }),
+  );
   uiVars.meshStatsDirty = true;
   if (!meshAnimFrame) drawMesh();
 }
 // only while the mesh graph or the status view is on screen
-export const pingWanted = () => !document.hidden && [meshPanel, document.getElementById('view-status')]
-  .some((v) => v?.getClientRects().length && !v.closest('.stash'));
-setInterval(() => { if (pingWanted()) pingHosts(); }, RTT_SAMPLE_MS);
+export const pingWanted = () =>
+  !document.hidden &&
+  [meshPanel, document.getElementById('view-status')].some((v) => v?.getClientRects().length && !v.closest('.stash'));
+setInterval(() => {
+  if (pingWanted()) pingHosts();
+}, RTT_SAMPLE_MS);
 
 export const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 

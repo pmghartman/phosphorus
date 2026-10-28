@@ -3,7 +3,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { runSync } from "@phosphorus/util";
 import { probeCommand } from "../src/harness.ts";
-import { Claude, harnessByID, Harnesses, harnessOf, Opencode, parseProbe } from "../src/index.ts";
+import { Claude, Harnesses, harnessByID, harnessOf, Opencode, parseProbe } from "../src/index.ts";
 import { tmp } from "./fake.ts";
 
 // the probe's lines off a PATH holding a fake opencode and no claude

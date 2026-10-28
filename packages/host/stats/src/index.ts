@@ -4,7 +4,7 @@ import { basename, join } from "node:path";
 import { list as procsList } from "@phosphorus/procs";
 import { FrontendPort, marshal, now, readJSON, run, StateDir, writeJSONAtomic } from "@phosphorus/util";
 import { type Conn, dial } from "@phosphorus/wsock";
-import { type CpuT, type Gpu, gpuMS, num, read, round, runes, type RxTx, type Sys } from "./common.ts";
+import { type CpuT, type Gpu, gpuMS, num, type RxTx, read, round, runes, type Sys } from "./common.ts";
 import { darwin } from "./darwin.ts";
 import { linux } from "./linux.ts";
 import { win32 } from "./win32.ts";
@@ -88,8 +88,13 @@ export function parseNvidia(out: string): Gpu[] {
     const p = l.split(",");
     while (p.length < 7) p.push("");
     list.push({
-      name: p[0]!.trim().toLowerCase(), util: z(p[1]!), memUsed: z(p[2]!) * (1 << 20), memTotal: z(p[3]!) * (1 << 20),
-      temp: opt(p[4]!), mhz: opt(p[5]!), mhzMax: opt(p[6]!),
+      name: p[0]!.trim().toLowerCase(),
+      util: z(p[1]!),
+      memUsed: z(p[2]!) * (1 << 20),
+      memTotal: z(p[3]!) * (1 << 20),
+      temp: opt(p[4]!),
+      mhz: opt(p[5]!),
+      mhzMax: opt(p[6]!),
     });
   }
   return list;
@@ -138,7 +143,12 @@ function refreshProcs(at: number) {
     cur.set(p.pid, p.cpu);
     const was = procPrev.get(p.pid);
     const cpu = was !== undefined && secs > 0 ? Math.round((1000 * (p.cpu - was)) / secs) / 10 : 0;
-    const row: Row = { pid: p.pid, name: linuxOS ? p.name : (p.name || basename(p.cmd)).replace(/\.exe$/, ""), cpu, mem: p.rss };
+    const row: Row = {
+      pid: p.pid,
+      name: linuxOS ? p.name : (p.name || basename(p.cmd)).replace(/\.exe$/, ""),
+      cpu,
+      mem: p.rss,
+    };
     if (!linuxOS && p.cmd) row.cmd = runes(p.cmd, 300);
     if (p.role) {
       row.role = p.role;
@@ -205,11 +215,16 @@ async function sample(): Promise<Record<string, any> | undefined> {
     const b = last.cpu[i];
     return b && a.total > b.total ? round(1000 * (1 - (a.idle - b.idle) / (a.total - b.total))) / 10 : 0;
   };
-  const rate = (a: number, b: number | undefined) => (b !== undefined && a >= b && secs > 0 ? round((a - b) / secs) : 0);
+  const rate = (a: number, b: number | undefined) =>
+    b !== undefined && a >= b && secs > 0 ? round((a - b) / secs) : 0;
   const cpus = cur.cpu.map(pct);
   const ld = sys.loadAvg();
   refreshProcs(at);
-  const nets = order.map((n) => ({ name: n, rx: rate(cur.net[n]!.rx, last.net[n]?.rx), tx: rate(cur.net[n]!.tx, last.net[n]?.tx) }));
+  const nets = order.map((n) => ({
+    name: n,
+    rx: rate(cur.net[n]!.rx, last.net[n]?.rx),
+    tx: rate(cur.net[n]!.tx, last.net[n]?.tx),
+  }));
   return {
     ...hooks.self(),
     at,

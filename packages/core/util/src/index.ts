@@ -8,14 +8,13 @@ import { IniFile } from "./ini.ts";
 import { logf } from "./log.ts";
 import { run } from "./proc.ts";
 
-export * from "./proc.ts";
+export * from "./acl.ts";
 export * from "./clock.ts";
-export * from "./net.ts";
+export { env, envInt } from "./env.ts";
 export { IniFile, parse as parseIni } from "./ini.ts";
 export * from "./log.ts";
-export * from "./acl.ts";
-
-export { env, envInt } from "./env.ts";
+export * from "./net.ts";
+export * from "./proc.ts";
 
 export const FrontendPort = envInt("FRONTEND_PORT", 8090);
 // cloudflared's metrics and /ready, on loopback
@@ -131,7 +130,9 @@ export type Req = {
 export async function requestJSON(r: Req): Promise<Response> {
   const host = r.host || "127.0.0.1";
   const url = `http://${host.includes(":") ? `[${host}]` : host}:${r.port}${r.path}`;
-  const signals = [r.signal, r.timeoutMs ? AbortSignal.timeout(r.timeoutMs) : undefined].filter(Boolean) as AbortSignal[];
+  const signals = [r.signal, r.timeoutMs ? AbortSignal.timeout(r.timeoutMs) : undefined].filter(
+    Boolean,
+  ) as AbortSignal[];
   const headers: Record<string, string> = { ...r.headers };
   if (r.body !== undefined) headers["Content-Type"] = "application/json";
   let res: globalThis.Response;

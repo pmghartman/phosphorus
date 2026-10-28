@@ -2,8 +2,22 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { intervalMS } from "@phosphorus/util";
-import { env, errText, FrontendPort, now, obj, readJSONMap, RepoDir, requestJSON, sleep, StateDir, tailnetIP, writeJSONAtomic, type Req } from "@phosphorus/util";
+import {
+  env,
+  errText,
+  FrontendPort,
+  intervalMS,
+  now,
+  obj,
+  RepoDir,
+  type Req,
+  readJSONMap,
+  requestJSON,
+  StateDir,
+  sleep,
+  tailnetIP,
+  writeJSONAtomic,
+} from "@phosphorus/util";
 
 export const VersionFile = env("VERSION_FILE", join(RepoDir, "VERSION"));
 const requestFile = join(StateDir, "update-request.json");
@@ -20,7 +34,13 @@ export const peerCapMS = 1800000;
 export const truthy = (v: unknown) => (typeof v === "number" ? v !== 0 && !Number.isNaN(v) : !!v);
 // as a JS template literal renders a JSON value
 export const jsString = (v: unknown): string =>
-  v == null ? "null" : Array.isArray(v) ? v.map((e) => (e == null ? "" : jsString(e))).join(",") : typeof v === "object" ? "[object Object]" : String(v);
+  v == null
+    ? "null"
+    : Array.isArray(v)
+      ? v.map((e) => (e == null ? "" : jsString(e))).join(",")
+      : typeof v === "object"
+        ? "[object Object]"
+        : String(v);
 export const str = (v: unknown) => (truthy(v) ? jsString(v) : "");
 
 // a VERSION file trimmed, "" when unreadable
@@ -33,7 +53,14 @@ export function readVersion(file: string): string {
 }
 
 export type Result = { ok: boolean; current: boolean; to: string; error: string; unreachable: boolean };
-export const result = (p: Partial<Result> = {}): Result => ({ ok: false, current: false, to: "", error: "", unreachable: false, ...p });
+export const result = (p: Partial<Result> = {}): Result => ({
+  ok: false,
+  current: false,
+  to: "",
+  error: "",
+  unreachable: false,
+  ...p,
+});
 const settled = (r: Result) => r.ok || r.error !== "";
 
 let failedHook = () => {};
@@ -108,7 +135,13 @@ export function status(): Record<string, any> {
   const q = inFlight;
   if (q && (!a || a.id !== q.id)) return { id: q.id, state: "asked" };
   if (!a) return { state: "idle" };
-  return { id: a.id ?? null, state: a.state ?? null, current: truthy(a.current), version: a.version ?? null, error: a.error ?? null };
+  return {
+    id: a.id ?? null,
+    state: a.state ?? null,
+    current: truthy(a.current),
+    version: a.version ?? null,
+    error: a.error ?? null,
+  };
 }
 
 // while an update here is asked for or running
@@ -133,7 +166,8 @@ export async function settleSelf(id: string): Promise<Result> {
 
 // --- peers ------------------------------------------------------------------
 
-const peerReq = (host: string, r: Omit<Req, "port" | "host">) => requestJSON({ ...r, host, port: FrontendPort, timeoutMs: r.timeoutMs || connectTimeoutMS });
+const peerReq = (host: string, r: Omit<Req, "port" | "host">) =>
+  requestJSON({ ...r, host, port: FrontendPort, timeoutMs: r.timeoutMs || connectTimeoutMS });
 
 export type SelfInfo = { bootID: string; version: string; platform: string };
 
@@ -200,7 +234,14 @@ export async function callPeerUpdate(host: string, note: Note): Promise<Result> 
 
 // a peer's update, found by its id, followed to its verdict: its agent's, then
 // its new boot
-export async function watchPeer(host: string, id: string, fromVersion: string, fromBoot: string, stage: string, note: Note): Promise<Result> {
+export async function watchPeer(
+  host: string,
+  id: string,
+  fromVersion: string,
+  fromBoot: string,
+  stage: string,
+  note: Note,
+): Promise<Result> {
   const addr = await seams.peerAddr(host);
   // the stage each progress bar weighs the host by, every peer at once
   const at = (s: string) => {
@@ -226,7 +267,8 @@ export async function watchPeer(host: string, id: string, fromVersion: string, f
     }
     quietUntil = now() + peerQuietMS;
     if (status.id !== id) continue;
-    if (swapDeadline !== 0 && now() > swapDeadline) return result({ error: "the restart never landed, see that host's phosphorus log" });
+    if (swapDeadline !== 0 && now() > swapDeadline)
+      return result({ error: "the restart never landed, see that host's phosphorus log" });
     if (status.state === "running" && stage === "asked") at("installing");
     const v = verdict(status);
     if (!settled(v)) continue;

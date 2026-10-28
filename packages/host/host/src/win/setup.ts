@@ -16,7 +16,8 @@ export const defined = (f: () => string) => {
     return "";
   }
 };
-export const feedURL = defined(() => PHOSPHORUS_FEED_URL), feedPubkey = defined(() => PHOSPHORUS_FEED_PUBKEY);
+export const feedURL = defined(() => PHOSPHORUS_FEED_URL),
+  feedPubkey = defined(() => PHOSPHORUS_FEED_PUBKEY);
 
 // how long the app gets to pick a request up first, it looking every 2s
 export const appPickup = 10_000;
@@ -28,7 +29,8 @@ export const psq = (s: string) => "'" + s.replaceAll("'", "''") + "'";
 // quotes and the backslashes before them escaped
 export function escapeArg(s: string): string {
   if (s === "") return '""';
-  let needsBackslash = false, hasSpace = false;
+  let needsBackslash = false,
+    hasSpace = false;
   for (const c of s) {
     if (c === '"' || c === "\\") needsBackslash = true;
     else if (c === " " || c === "\t") hasSpace = true;
@@ -81,7 +83,13 @@ export const advapi32 = lazy(
 
 // a process started outside this one's job and session via WMI, its pid; 0 when it couldn't
 export async function wmiStart(line: string): Promise<number> {
-  const pid = Number(await ps("(Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{CommandLine=" + psq(line) + "}).ProcessId"));
+  const pid = Number(
+    await ps(
+      "(Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{CommandLine=" +
+        psq(line) +
+        "}).ProcessId",
+    ),
+  );
   return Number.isInteger(pid) ? pid : 0;
 }
 
@@ -91,7 +99,8 @@ export async function spawnDetached(args: string[], log: string): Promise<() => 
   const q = [...selfArgv(), ...args].map((a) => `"${a}"`).join(" ");
   const pid = await wmiStart(`cmd /c set PHOSPHORUS_DETACHED=1&& ${q} > "${log}" 2>&1`);
   if (!pid) throw fail("couldn't start it detached");
-  return () => quiet("powershell", "-NoProfile", "-NonInteractive", "-Command", `Wait-Process -Id ${pid}`).then(() => {});
+  return () =>
+    quiet("powershell", "-NoProfile", "-NonInteractive", "-Command", `Wait-Process -Id ${pid}`).then(() => {});
 }
 
 // prepareOS phosphorus on PATH for new shells
@@ -100,7 +109,11 @@ export async function prepareOS() {
   const path = await ps("[Environment]::GetEnvironmentVariable('Path', 'User')");
   for (const p of path.split(";")) if (p.replace(/\\+$/, "").toLowerCase() === bin.toLowerCase()) return;
   say("putting phosphorus on PATH, new shells pick it up");
-  await ps("[Environment]::SetEnvironmentVariable('Path', ((@([Environment]::GetEnvironmentVariable('Path', 'User'), " + psq(bin) + ") | Where-Object { $_ }) -join ';'), 'User')");
+  await ps(
+    "[Environment]::SetEnvironmentVariable('Path', ((@([Environment]::GetEnvironmentVariable('Path', 'User'), " +
+      psq(bin) +
+      ") | Where-Object { $_ }) -join ';'), 'User')",
+  );
 }
 
 export const sshConfig = () => join(process.env.ProgramData ?? "", "ssh", "ssh_config");
@@ -138,7 +151,9 @@ export async function setupOS() {
   if (await sshdUp()) say("sshd already running, skipping");
   else {
     say("installing and starting OpenSSH Server...");
-    await ps("if ((Get-WindowsCapability -Online -Name 'OpenSSH.Server~~~~0.0.1.0').State -ne 'Installed') { Add-WindowsCapability -Online -Name 'OpenSSH.Server~~~~0.0.1.0' | Out-Null }; Set-Service -Name sshd -StartupType Automatic; Start-Service sshd");
+    await ps(
+      "if ((Get-WindowsCapability -Online -Name 'OpenSSH.Server~~~~0.0.1.0').State -ne 'Installed') { Add-WindowsCapability -Online -Name 'OpenSSH.Server~~~~0.0.1.0' | Out-Null }; Set-Service -Name sshd -StartupType Automatic; Start-Service sshd",
+    );
     if (!(await sshdUp())) throw fail("sshd didn't start");
   }
   // the Include first, counting only ahead of every Host block

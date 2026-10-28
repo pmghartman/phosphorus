@@ -26,10 +26,23 @@ const llama = Bun.serve({
         return json({ tokens: String(body.content).split(/\s+/).filter(Boolean) });
       case "/apply-template": {
         const ms: Record<string, any>[] = body.messages;
-        return json({ prompt: "<|sys|>" + ms.filter((m) => m.role === "system").map((m) => m.content).join(" ") + "<|end|>" + ms.at(-1)!.content });
+        return json({
+          prompt:
+            "<|sys|>" +
+            ms
+              .filter((m) => m.role === "system")
+              .map((m) => m.content)
+              .join(" ") +
+            "<|end|>" +
+            ms.at(-1)!.content,
+        });
       }
       case "/v1/chat/completions": {
-        if (!body.stream) return json({ choices: [{ message: { content: "hi" } }], usage: { prompt_tokens: 12, completion_tokens: 3 } });
+        if (!body.stream)
+          return json({
+            choices: [{ message: { content: "hi" } }],
+            usage: { prompt_tokens: 12, completion_tokens: 3 },
+          });
         const lines = [
           `data: ${JSON.stringify({ choices: [{ delta: { content: "hel" } }] })}\n\n`,
           `data: ${JSON.stringify({ choices: [{ delta: { content: "lo" } }] })}\n\n`,
@@ -48,7 +61,10 @@ const llama = Bun.serve({
         return new Response(stream, { headers: { "Content-Type": "text/event-stream" } });
       }
       case "/v1/messages":
-        return json({ content: [{ type: "text", text: "ok" }], usage: { input_tokens: 10, cache_read_input_tokens: 5, output_tokens: 7 } });
+        return json({
+          content: [{ type: "text", text: "ok" }],
+          usage: { input_tokens: 10, cache_read_input_tokens: 5, output_tokens: 7 },
+        });
       case "/slots":
         return json([
           { id: 0, is_processing: false },
@@ -81,8 +97,25 @@ const claim = async (c: Record<string, any> | undefined) => {
   writeFileSync(claimFile, c ? JSON.stringify(c) : "null");
 };
 const since = Date.now();
-const ready = { host: "razer", ip: "127.0.0.1", runs: true, server: "ready", serverSince: since, size: 4 * gib, file: "q4.gguf", ctx: 8192, slots: 2, gpu: true, vram: 8 * gib, total: 16 * gib, machine: 32 * gib, need: 5 * gib, tools: true };
-const req = (headers: Record<string, string> = {}) => new Request("http://razer/api/model/v1/messages", { method: "POST", headers });
+const ready = {
+  host: "razer",
+  ip: "127.0.0.1",
+  runs: true,
+  server: "ready",
+  serverSince: since,
+  size: 4 * gib,
+  file: "q4.gguf",
+  ctx: 8192,
+  slots: 2,
+  gpu: true,
+  vram: 8 * gib,
+  total: 16 * gib,
+  machine: 32 * gib,
+  need: 5 * gib,
+  tools: true,
+};
+const req = (headers: Record<string, string> = {}) =>
+  new Request("http://razer/api/model/v1/messages", { method: "POST", headers });
 // the last call on a path, measuring's own calls landing in between
 const sent = (path: string) => asked.filter((a) => a.path === path).at(-1)!;
 const settled = async (fn: () => boolean) => {
@@ -91,9 +124,14 @@ const settled = async (fn: () => boolean) => {
 
 test("target", () => {
   for (const [input, want] of Object.entries({
-    "phosphorus/razer": ["razer", ""], "claude-3-5-haiku-20241022": ["", "small"], "claude-sonnet-4-5": ["", "large"],
-    "": ["", "large"], "phosphorus/bad host": ["", "large"], chimp: ["", "large"],
-    "agent-claude-code": ["", "large"], "agent-claude-code-fast": ["", "small"],
+    "phosphorus/razer": ["razer", ""],
+    "claude-3-5-haiku-20241022": ["", "small"],
+    "claude-sonnet-4-5": ["", "large"],
+    "": ["", "large"],
+    "phosphorus/bad host": ["", "large"],
+    chimp: ["", "large"],
+    "agent-claude-code": ["", "large"],
+    "agent-claude-code-fast": ["", "small"],
     "agent-nope": ["", "large"],
   })) {
     const [h, r] = M.Target(input);
@@ -109,8 +147,17 @@ test("anthropic usage", () => {
 });
 
 test("chat shaped", () => {
-  const m = M.chatShaped({ system: [{ type: "text", text: "be " }, { type: "text", text: "brief" }], messages: [{ role: "user", content: "hi" }] });
-  expect(m).toEqual([{ role: "system", content: "be brief" }, { role: "user", content: "hi" }]);
+  const m = M.chatShaped({
+    system: [
+      { type: "text", text: "be " },
+      { type: "text", text: "brief" },
+    ],
+    messages: [{ role: "user", content: "hi" }],
+  });
+  expect(m).toEqual([
+    { role: "system", content: "be brief" },
+    { role: "user", content: "hi" },
+  ]);
 });
 
 test("gate refuses", () => {
@@ -124,7 +171,13 @@ test("gate refuses", () => {
 });
 
 test("fold system", () => {
-  const p = { system: "be brief", messages: [{ role: "user", content: "hi" }, { role: "system", content: [{ type: "text", text: "context" }] }] };
+  const p = {
+    system: "be brief",
+    messages: [
+      { role: "user", content: "hi" },
+      { role: "system", content: [{ type: "text", text: "context" }] },
+    ],
+  };
   const out = M.foldSystem(p);
   expect(out.messages).toHaveLength(1);
   expect(out.system).toHaveLength(2);
@@ -140,12 +193,16 @@ test("excuses", () => {
   expect(M.excuse([a], undefined)).toBe("not loaded: no host has host = true under [model] in its phosphorus.ini");
   expect(M.excuse([a], { ...a, why: "no gpu" })).toBe("not loaded: no gpu");
   expect(M.excuse([a], { ...a, oom: true, server: "loading" })).toBe("out of vram, lower ctx or slots");
-  expect(M.excuse([a], { ...a, server: "down", exits: 1, lastExit: "x" })).toBe("not loaded: llama-server has exited 1 time since it was last up (x), the phosphorus log on a says why");
+  expect(M.excuse([a], { ...a, server: "down", exits: 1, lastExit: "x" })).toBe(
+    "not loaded: llama-server has exited 1 time since it was last up (x), the phosphorus log on a says why",
+  );
   expect(M.excuse([a], { ...a, server: "loading", serverSince: Date.now() - 125000, exits: 2, lastExit: "x" })).toBe(
     "still loading f on a, 2m in; llama-server has exited 2 times since it was last up (x), the phosphorus log on a says why",
   );
   expect(M.excuse([a], { ...a, server: "loading" })).toBe("still loading f on a, 0m in");
-  expect(M.excuse([a], { ...a, download: { done: 1.5 * gib, total: 3 * gib } })).toBe("not loaded: a is still downloading f 50% (1.5GB so far)");
+  expect(M.excuse([a], { ...a, download: { done: 1.5 * gib, total: 3 * gib } })).toBe(
+    "not loaded: a is still downloading f 50% (1.5GB so far)",
+  );
   expect(M.excuse([a], { ...a, download: { done: 0 } })).toBe("not loaded: a is still downloading f (0.0GB so far)");
   expect(M.excuse([a], a)).toBe("not loaded: starting llama-server on a");
 });
@@ -171,7 +228,15 @@ test("no model anywhere", async () => {
   const s = M.Summary();
   expect(s.models).toEqual([]);
   expect(s.agents.map((a: any) => a.id)).toEqual(["code", "claude-code", "opencode", "tavern"]);
-  expect(s.agents[0].slots.model).toEqual({ chosen: "", inherited: false, assigned: "", model: "", host: "", ready: false, why: "not loaded: no host is running the model daemon" });
+  expect(s.agents[0].slots.model).toEqual({
+    chosen: "",
+    inherited: false,
+    assigned: "",
+    model: "",
+    host: "",
+    ready: false,
+    why: "not loaded: no host is running the model daemon",
+  });
   expect(Object.keys(s.agents[0].slots)).toEqual(["model", "fast"]);
   const r = await M.ServeChat(req(), { model: "razer", messages: [] }, true);
   expect(r.status).toBe(503);
@@ -179,8 +244,13 @@ test("no model anywhere", async () => {
   expect((await M.ServeChat(req(), {}, true)).status).toBe(400);
   const m = await M.ServeMessages(req(), { model: "phosphorus/razer", messages: [] }, "", true, false);
   expect(m.status).toBe(529);
-  expect(await m.json()).toEqual({ type: "error", error: { type: "overloaded_error", message: "not loaded: no host is running the model daemon" } });
-  expect((await M.ServeMessages(req(), { model: "phosphorus/razer", messages: [] }, "/x", true, false)).status).toBe(404);
+  expect(await m.json()).toEqual({
+    type: "error",
+    error: { type: "overloaded_error", message: "not loaded: no host is running the model daemon" },
+  });
+  expect((await M.ServeMessages(req(), { model: "phosphorus/razer", messages: [] }, "/x", true, false)).status).toBe(
+    404,
+  );
   expect(M.Assign({ agent: "code", model: "razer" })).toEqual([409, { error: "razer runs no model" }]);
 });
 
@@ -190,19 +260,58 @@ test("summary of a ready claim", async () => {
   const s = M.Summary();
   expect(s.models).toEqual([
     {
-      host: "razer", file: "q4.gguf", size: 4 * gib, ctx: 8192, slots: 2, ready: true, loading: false,
-      gpu: true, vram: 8 * gib, total: 16 * gib, machine: 32 * gib, need: 5 * gib,
-      why: "", use: null, download: null, tools: true, agents: ["code", "claude-code", "opencode", "tavern"],
+      host: "razer",
+      file: "q4.gguf",
+      size: 4 * gib,
+      ctx: 8192,
+      slots: 2,
+      ready: true,
+      loading: false,
+      gpu: true,
+      vram: 8 * gib,
+      total: 16 * gib,
+      machine: 32 * gib,
+      need: 5 * gib,
+      why: "",
+      use: null,
+      download: null,
+      tools: true,
+      agents: ["code", "claude-code", "opencode", "tavern"],
     },
   ]);
   expect(s.agents[1]).toEqual({
-    id: "claude-code", label: "Claude Code", about: "Claude Code in a project, on the mesh's models", parent: "code", fast: true,
+    id: "claude-code",
+    label: "Claude Code",
+    about: "Claude Code in a project, on the mesh's models",
+    parent: "code",
+    fast: true,
     slots: {
-      model: { chosen: "", inherited: false, assigned: "", model: "phosphorus/razer", host: "razer", ready: true, why: "" },
-      fast: { chosen: "", inherited: false, assigned: "", model: "phosphorus/razer", host: "razer", ready: true, why: "" },
+      model: {
+        chosen: "",
+        inherited: false,
+        assigned: "",
+        model: "phosphorus/razer",
+        host: "razer",
+        ready: true,
+        why: "",
+      },
+      fast: {
+        chosen: "",
+        inherited: false,
+        assigned: "",
+        model: "phosphorus/razer",
+        host: "razer",
+        ready: true,
+        why: "",
+      },
     },
   });
-  await claim({ ...ready, server: "loading", use: { system: 5, chat: -1, ask: 2, reply: 3, tps: 4, at: 9, extra: 1 }, download: { done: "7", total: 10 } });
+  await claim({
+    ...ready,
+    server: "loading",
+    use: { system: 5, chat: -1, ask: 2, reply: 3, tps: 4, at: 9, extra: 1 },
+    download: { done: "7", total: 10 },
+  });
   const row = M.Summary().models[0];
   expect(row.ready).toBe(false);
   expect(row.loading).toBe(true);
@@ -217,23 +326,47 @@ test("assign", async () => {
   await claim(ready);
   expect(M.Assign({ agent: "nope" })).toEqual([400, { error: "agent is code, claude-code, opencode, tavern" }]);
   expect(M.Assign({ agent: "code", slot: "x" })).toEqual([400, { error: "Code app has no x slot" }]);
-  expect(M.Assign({ agent: "code", model: "other/x" })).toEqual([400, { error: "model is a mesh host running one, as phosphorus/<host>, blank for the automatic pick" }]);
+  expect(M.Assign({ agent: "code", model: "other/x" })).toEqual([
+    400,
+    { error: "model is a mesh host running one, as phosphorus/<host>, blank for the automatic pick" },
+  ]);
   expect(M.Assign({ agent: "code", model: "ghost" })).toEqual([409, { error: "ghost runs no model" }]);
-  expect(M.Assign({ agent: "code", model: " razer " })).toEqual([200, { agent: "code", slot: "model", model: "phosphorus/razer" }]);
+  expect(M.Assign({ agent: "code", model: " razer " })).toEqual([
+    200,
+    { agent: "code", slot: "model", model: "phosphorus/razer" },
+  ]);
   expect(store.read("etc/model/agents/code.json")).toEqual({ model: "phosphorus/razer" });
   const cc = M.Summary().agents[1].slots;
-  expect(cc.model).toMatchObject({ chosen: "", inherited: true, assigned: "phosphorus/razer", model: "phosphorus/razer", ready: true });
+  expect(cc.model).toMatchObject({
+    chosen: "",
+    inherited: true,
+    assigned: "phosphorus/razer",
+    model: "phosphorus/razer",
+    ready: true,
+  });
   expect(cc.fast).toMatchObject({ chosen: "", inherited: false, assigned: "" });
   expect(M.Target("agent-claude-code")).toEqual(["", "large", "phosphorus/razer"]);
-  expect(M.Assign({ agent: "claude-code", slot: "fast", model: "phosphorus/razer" })).toEqual([200, { agent: "claude-code", slot: "fast", model: "phosphorus/razer" }]);
-  expect(M.Summary().agents[1].slots.fast).toMatchObject({ chosen: "phosphorus/razer", inherited: false, assigned: "phosphorus/razer" });
+  expect(M.Assign({ agent: "claude-code", slot: "fast", model: "phosphorus/razer" })).toEqual([
+    200,
+    { agent: "claude-code", slot: "fast", model: "phosphorus/razer" },
+  ]);
+  expect(M.Summary().agents[1].slots.fast).toMatchObject({
+    chosen: "phosphorus/razer",
+    inherited: false,
+    assigned: "phosphorus/razer",
+  });
   expect(M.Target("Agent-Claude-Code-Fast ")).toEqual(["", "small", "phosphorus/razer"]);
   expect(M.Assign({ agent: "code", model: "" })).toEqual([200, { agent: "code", slot: "model", model: "" }]);
   expect(store.read("etc/model/agents/code.json")).toEqual({});
   expect(M.Summary().agents[1].slots.model).toMatchObject({ chosen: "", inherited: false, assigned: "" });
   // a host since gone keeps its pick, a value not a mesh host is dropped
   store.write("etc/model/agents/code.json", { model: "phosphorus/gone", fast: "openai/gpt" });
-  expect(M.Summary().agents[0].slots.model).toMatchObject({ chosen: "phosphorus/gone", assigned: "phosphorus/gone", model: "phosphorus/razer", host: "razer" });
+  expect(M.Summary().agents[0].slots.model).toMatchObject({
+    chosen: "phosphorus/gone",
+    assigned: "phosphorus/gone",
+    model: "phosphorus/razer",
+    host: "razer",
+  });
   expect(M.Summary().agents[0].slots.fast.chosen).toBe("");
   store.write("etc/model/agents/code.json", {});
   store.write("etc/model/agents/claude-code.json", {});
@@ -242,8 +375,13 @@ test("assign", async () => {
 test("chat streamed and measured", async () => {
   await claim(ready);
   const p = {
-    model: "razer", stream: true, stream_options: { x: 1 },
-    messages: [{ role: "system", content: "be brief" }, { role: "user", content: "<context>\nnote here\n</context>\n\nhello there friend" }],
+    model: "razer",
+    stream: true,
+    stream_options: { x: 1 },
+    messages: [
+      { role: "system", content: "be brief" },
+      { role: "user", content: "<context>\nnote here\n</context>\n\nhello there friend" },
+    ],
   };
   const r = await M.ServeChat(req(), p, false);
   expect(r.status).toBe(200);
@@ -263,7 +401,10 @@ test("chat streamed and measured", async () => {
   expect(use).toMatchObject({ since, system: 6, ask: 3, chat: 3, reply: 21 });
   expect(use.tps).toBeGreaterThan(0);
   expect(use.at).toBeGreaterThan(0);
-  expect(asked.find((a) => a.path === "/apply-template")!.body).toEqual({ messages: [p.messages[0], { role: "user", content: "\u0000ask\u0000" }], add_generation_prompt: false });
+  expect(asked.find((a) => a.path === "/apply-template")!.body).toEqual({
+    messages: [p.messages[0], { role: "user", content: "\u0000ask\u0000" }],
+    add_generation_prompt: false,
+  });
   // a claim from another run of the server carries no use
   await claim({ ...ready, serverSince: since + 1 });
   expect(M.State()!.use).toBeUndefined();
@@ -275,7 +416,9 @@ test("chat for another host", async () => {
   await claim(ready);
   const r = await M.ServeChat(req(), { model: "torus", messages: [] }, true);
   expect(r.status).toBe(503);
-  expect(await r.json()).toEqual({ error: { message: "not loaded: no host has host = true under [model] in its phosphorus.ini" } });
+  expect(await r.json()).toEqual({
+    error: { message: "not loaded: no host has host = true under [model] in its phosphorus.ini" },
+  });
   await claim({ ...ready, host: "torus" });
   const far = await M.ServeChat(req(), { model: "torus", messages: [] }, false);
   expect(far.status).toBe(409);
@@ -290,7 +433,13 @@ test("chat as an agent or a mesh name", async () => {
   await claim(ready);
   // sulfur installed onto the mesh: its agent with a fast slot, asked by its two names
   M.seams.installed = (id: string) => id === "sulfur";
-  expect(M.Agents().map((a) => [a.id, a.fast])).toEqual([["code", true], ["claude-code", true], ["opencode", true], ["tavern", false], ["sulfur", true]]);
+  expect(M.Agents().map((a) => [a.id, a.fast])).toEqual([
+    ["code", true],
+    ["claude-code", true],
+    ["opencode", true],
+    ["tavern", false],
+    ["sulfur", true],
+  ]);
   // its fast name the small tier, its main one the large
   expect(M.Target("agent-sulfur-fast")[1]).toBe("small");
   expect(M.Target("agent-sulfur")[1]).toBe("large");
@@ -298,7 +447,10 @@ test("chat as an agent or a mesh name", async () => {
   // tavern gone from the mesh: no agent of its name, listed nowhere
   M.seams.published = () => false;
   expect(M.Summary().agents.map((a: any) => a.id)).toEqual(["code", "claude-code", "opencode"]);
-  expect(M.Assign({ agent: "tavern", model: "razer" })).toEqual([400, { error: "agent is code, claude-code, opencode" }]);
+  expect(M.Assign({ agent: "tavern", model: "razer" })).toEqual([
+    400,
+    { error: "agent is code, claude-code, opencode" },
+  ]);
   expect((await M.ServeChat(req(), { model: "agent-tavern", messages: [] }, true)).status).toBe(503);
   M.seams.published = (name: string) => name === "tavern";
   // tavern asks as agent-tavern: unassigned, the biggest ready model, this host's
@@ -309,7 +461,11 @@ test("chat as an agent or a mesh name", async () => {
   expect(m.status).toBe(200);
   // assigned to a host that is gone: its excuse, not another host's answer
   expect(M.Assign({ agent: "tavern", model: "razer" })[0]).toBe(200);
-  expect(M.Summary().agents.find((x: any) => x.id === "tavern").slots.model).toMatchObject({ chosen: "phosphorus/razer", host: "razer", ready: true });
+  expect(M.Summary().agents.find((x: any) => x.id === "tavern").slots.model).toMatchObject({
+    chosen: "phosphorus/razer",
+    host: "razer",
+    ready: true,
+  });
   expect(M.Assign({ agent: "tavern", model: "" })[0]).toBe(200);
   const nope = await M.ServeChat(req(), { model: "agent-nope", messages: [] }, true);
   expect(nope.status).toBe(503);
@@ -317,12 +473,28 @@ test("chat as an agent or a mesh name", async () => {
 
 test("messages", async () => {
   await claim(ready);
-  const p = { model: "phosphorus/razer", max_tokens: 100, system: "be brief", messages: [{ role: "user", content: "hi" }, { role: "system", content: "and kind" }] };
+  const p = {
+    model: "phosphorus/razer",
+    max_tokens: 100,
+    system: "be brief",
+    messages: [
+      { role: "user", content: "hi" },
+      { role: "system", content: "and kind" },
+    ],
+  };
   const r = await M.ServeMessages(req(), p, "", true, false);
   expect(r.status).toBe(200);
   expect(await r.json()).toMatchObject({ content: [{ type: "text", text: "ok" }] });
   // a pinned host: the body as sent, its system folded
-  expect(sent("/v1/messages").body).toEqual({ model: "phosphorus/razer", max_tokens: 100, system: [{ type: "text", text: "be brief" }, { type: "text", text: "and kind" }], messages: [{ role: "user", content: "hi" }] });
+  expect(sent("/v1/messages").body).toEqual({
+    model: "phosphorus/razer",
+    max_tokens: 100,
+    system: [
+      { type: "text", text: "be brief" },
+      { type: "text", text: "and kind" },
+    ],
+    messages: [{ role: "user", content: "hi" }],
+  });
   await settled(() => M.State()?.use?.reply === 7);
   // the folded system <|sys|>be briefand kind<|end|> is 3 words of 15
   expect(M.State()!.use).toMatchObject({ reply: 7, system: 3, ask: 0, chat: 12 });
@@ -331,11 +503,23 @@ test("messages", async () => {
   expect((await M.ServeMessages(req(), { ...p, model: "agent-code" }, "", false, false)).status).toBe(401);
   const u = await M.ServeMessages(req(), { ...p, model: "agent-code" }, "", false, true);
   expect(u.status).toBe(200);
-  expect(sent("/v1/messages").body).toMatchObject({ model: "agent-code", max_tokens: 100, chat_template_kwargs: { enable_thinking: true, reasoning_effort: "high" } });
+  expect(sent("/v1/messages").body).toMatchObject({
+    model: "agent-code",
+    max_tokens: 100,
+    chat_template_kwargs: { enable_thinking: true, reasoning_effort: "high" },
+  });
   expect(sent("/v1/messages").body.temperature).toBeUndefined();
   const f = await M.ServeMessages(req(), { ...p, model: "agent-code-fast", max_tokens: 9000 }, "", false, true);
   expect(f.status).toBe(200);
-  expect(sent("/v1/messages").body).toMatchObject({ max_tokens: 4096, temperature: 0.7, top_p: 0.8, top_k: 20, min_p: 0, presence_penalty: 1.5, chat_template_kwargs: { enable_thinking: false, reasoning_effort: "low" } });
+  expect(sent("/v1/messages").body).toMatchObject({
+    max_tokens: 4096,
+    temperature: 0.7,
+    top_p: 0.8,
+    top_k: 20,
+    min_p: 0,
+    presence_penalty: 1.5,
+    chat_template_kwargs: { enable_thinking: false, reasoning_effort: "low" },
+  });
   // counting tokens: unprofiled, llama-server's own answer passed back
   const c = await M.ServeMessages(req(), { ...p, model: "agent-code" }, "/count_tokens", false, true);
   expect(c.status).toBe(404);

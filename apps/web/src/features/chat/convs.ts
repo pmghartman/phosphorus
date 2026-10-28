@@ -1,10 +1,11 @@
 // conversations
-import { el } from '../../lib/dom.ts';
-import { away, dropUnread, notesReadConv } from '../notes.ts';
-import { deskApps, dk, st } from '../../lib/state.ts';
+
 import type { ChannelMeta } from '@phosphorus/wire';
-import { loadJson } from '../../lib/util.ts';
 import { deskBadge } from '../../desktop/taskbar.ts';
+import { el } from '../../lib/dom.ts';
+import { deskApps, dk, st } from '../../lib/state.ts';
+import { loadJson } from '../../lib/util.ts';
+import { away, dropUnread, notesReadConv } from '../notes.ts';
 import { CHANNEL_CHIP, startCommand } from './commands.ts';
 import { openConv, setConv, typers } from './files.ts';
 import { convLines } from './lines.ts';
@@ -14,7 +15,10 @@ import { chatName, chatPanel, chatText, chatTitle, colorFor, cwList, joined, sta
 
 // back on the tab: badge cleared, however many piled up
 export function clearUnread(): void {
-  if (chatReading(convsVars.conv)) { stampRead(convsVars.conv); notesReadConv(convsVars.conv); }
+  if (chatReading(convsVars.conv)) {
+    stampRead(convsVars.conv);
+    notesReadConv(convsVars.conv);
+  }
   dropUnread();
 }
 
@@ -56,19 +60,29 @@ export const news = new Map<string, number>();
 
 export const dmWith = (c: string) => (c.startsWith('dm:') ? c.slice(3) : '');
 export const chOf = (c: string) => (c.startsWith('ch:') ? c.slice(3) : '');
-export const convName = (c: string) => (c === 'mesh' ? '#mesh' : chOf(c) ? `#${chOf(c)}` : dmWith(c) ? `@${dmWith(c)}` : c);
+export const convName = (c: string) =>
+  c === 'mesh' ? '#mesh' : chOf(c) ? `#${chOf(c)}` : dmWith(c) ? `@${dmWith(c)}` : c;
 export const convHint = () => `message ${convName(convsVars.conv)}`;
 
 // per conversation, the newest line seen here, kept so a tab opened later
 // counts what came while it was closed
 export const READ_KEY = 'phosphorus-chat-readat';
-export const readAt: Record<string, number> = (() => { try { const v = JSON.parse(localStorage.getItem(READ_KEY)!); return v && typeof v === 'object' ? v : {}; } catch { return {}; } })();
+export const readAt: Record<string, number> = (() => {
+  try {
+    const v = JSON.parse(localStorage.getItem(READ_KEY)!);
+    return v && typeof v === 'object' ? v : {};
+  } catch {
+    return {};
+  }
+})();
 
 export function stampRead(c: string) {
   const at = lastAt(c);
   if (readAt[c]! >= at) return;
   readAt[c] = at;
-  try { localStorage.setItem(READ_KEY, JSON.stringify(readAt)); } catch {}
+  try {
+    localStorage.setItem(READ_KEY, JSON.stringify(readAt));
+  } catch {}
 }
 
 // a conversation read: its count gone, its place kept
@@ -78,7 +92,10 @@ export function readConv(c: string) {
 }
 
 export function noteNews(c: string) {
-  if (c === convsVars.conv && !away() && chatPanel.offsetParent) { stampRead(c); return; }
+  if (c === convsVars.conv && !away() && chatPanel.offsetParent) {
+    stampRead(c);
+    return;
+  }
   news.set(c, (news.get(c) || 0) + 1);
   paintConvs();
 }
@@ -88,7 +105,9 @@ export const chOpen = (m: ChannelMeta) => !!m.created && m.created > (m.closedAt
 export function channels(): string[] {
   const seen = [...convLines.keys()].filter((c) => c.startsWith('ch:') && convLines.get(c)!.length).map(chOf);
   const open = Object.keys(convsVars.chMetas).filter((ch) => chOpen(convsVars.chMetas[ch]!));
-  const shown = [...seen, ...open].filter((ch) => !(leftChannels[ch]! >= Math.max(lastAt(`ch:${ch}`), convsVars.chMetas[ch]?.created || 0)));
+  const shown = [...seen, ...open].filter(
+    (ch) => !(leftChannels[ch]! >= Math.max(lastAt(`ch:${ch}`), convsVars.chMetas[ch]?.created || 0)),
+  );
   return [...new Set([...shown, ...convsVars.myChannels])].sort();
 }
 
@@ -102,7 +121,8 @@ export function topicOf(c: string): string {
 // everyone to dm, by name so a new line never moves a chat
 export function dmNames(): string[] {
   const talked = [...convLines.keys()].map(dmWith).filter(Boolean);
-  return [...new Set([...talked, ...stateVars.people.map((p) => p.name)])].filter((n) => n !== st.name)
+  return [...new Set([...talked, ...stateVars.people.map((p) => p.name)])]
+    .filter((n) => n !== st.name)
     .sort((a, b) => a.localeCompare(b));
 }
 
@@ -129,11 +149,16 @@ export function convItems(): HTMLElement[] {
     }
     return h;
   };
-  const item = (c: string, label: string, { sub = '', dot, hue }: { sub?: string; dot?: boolean; hue?: string } = {}) => {
+  const item = (
+    c: string,
+    label: string,
+    { sub = '', dot, hue }: { sub?: string; dot?: boolean; hue?: string } = {},
+  ) => {
     const row = el('div', 'cw-row');
     const b = Object.assign(el('button', `cw-item${c === convsVars.conv ? ' on' : ''}`), { type: 'button' });
     b.dataset.conv = c;
-    if (dot !== undefined) b.append(Object.assign(el('span', `cw-dot${dot ? ' up' : ''}`), { title: dot ? 'online' : 'offline' }));
+    if (dot !== undefined)
+      b.append(Object.assign(el('span', `cw-dot${dot ? ' up' : ''}`), { title: dot ? 'online' : 'offline' }));
     const l = el('span', 'cw-name', label);
     if (hue) l.style.color = hue;
     b.append(l);
@@ -141,12 +166,17 @@ export function convItems(): HTMLElement[] {
     else if (sub) b.append(el('span', 'cw-sub', sub));
     const k = news.get(c);
     if (k && c !== convsVars.conv) b.append(el('span', 'chat-badge', `${k > 99 ? '99+' : k}`));
-    const more = Object.assign(el('button', 'cw-more', '…'), { type: 'button', title: `${convName(c)}: more (.)`, tabIndex: -1 });
+    const more = Object.assign(el('button', 'cw-more', '…'), {
+      type: 'button',
+      title: `${convName(c)}: more (.)`,
+      tabIndex: -1,
+    });
     more.dataset.conv = c;
     row.append(b, more);
     return row;
   };
-  const hueOf = (n: string) => online.get(n)?.color || convLines.get(`dm:${n}`)?.findLast((m) => m.name === n)?.color || colorFor(n);
+  const hueOf = (n: string) =>
+    online.get(n)?.color || convLines.get(`dm:${n}`)?.findLast((m) => m.name === n)?.color || colorFor(n);
   return [
     head('channels', ['open a channel', () => startCommand(CHANNEL_CHIP[0])]),
     item('mesh', '# mesh', { sub: `${stateVars.people.length} online` }),
@@ -166,7 +196,11 @@ export function paintConvs() {
 for (const list of [cwList]) {
   list.addEventListener('click', (e) => {
     const more = (e.target as Element).closest('.cw-more') as HTMLElement | null;
-    if (more) { e.stopPropagation(); convMenu(more.dataset.conv!, more); return; }
+    if (more) {
+      e.stopPropagation();
+      convMenu(more.dataset.conv!, more);
+      return;
+    }
     const b = (e.target as Element).closest('.cw-item') as HTMLElement | null;
     if (!b) return;
     setConv(b.dataset.conv!);
@@ -180,4 +214,6 @@ for (const list of [cwList]) {
     convMenu(b.dataset.conv!, b);
   });
 }
-document.addEventListener('visibilitychange', () => { if (!document.hidden) chatAwake(true); });
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) chatAwake(true);
+});

@@ -9,7 +9,8 @@ export function portsOf(addrs: Iterable<string>, ip: string): Set<number> {
   const ports = new Set<number>();
   for (const a of addrs) {
     const m = addrRe.exec(a);
-    if (m && (m[1] === "0.0.0.0" || m[1] === "*" || m[1] === "[::]" || m[1] === "::" || m[1] === ip)) ports.add(Number(m[2]));
+    if (m && (m[1] === "0.0.0.0" || m[1] === "*" || m[1] === "[::]" || m[1] === "::" || m[1] === ip))
+      ports.add(Number(m[2]));
   }
   return ports;
 }

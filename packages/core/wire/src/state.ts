@@ -56,7 +56,13 @@ export interface ModelHost {
   ctx?: number;
   agents?: string[];
 }
-export interface ModelAgentSlot { chosen?: string; ready?: boolean; host?: string; why?: string; inherited?: boolean }
+export interface ModelAgentSlot {
+  chosen?: string;
+  ready?: boolean;
+  host?: string;
+  why?: string;
+  inherited?: boolean;
+}
 export interface ModelAgent {
   id: string;
   label: string;
@@ -65,7 +71,10 @@ export interface ModelAgent {
   fast?: boolean;
   slots: Record<string, ModelAgentSlot>;
 }
-export interface ModelSummary { models: ModelHost[]; agents?: ModelAgent[] }
+export interface ModelSummary {
+  models: ModelHost[];
+  agents?: ModelAgent[];
+}
 
 // the mesh update's walk, as chainStatus_() in packages/update marshals it
 export interface Chain {
@@ -83,10 +92,20 @@ export interface Chain {
 }
 
 // a walk under way somewhere on the mesh, who started it
-export interface MeshLock { initiator: string; chainId?: string; startedAt?: string; done?: boolean }
+export interface MeshLock {
+  initiator: string;
+  chainId?: string;
+  startedAt?: string;
+  done?: boolean;
+}
 
 // a share as a host publishes it in its info.json (packages/files Share, the page's fields)
-export interface HostShare { id: string; label: string; perms?: string; home?: boolean }
+export interface HostShare {
+  id: string;
+  label: string;
+  perms?: string;
+  home?: boolean;
+}
 // each host's info.json off sys: version, platform, its files and Desktop stamps
 export interface HostInfo {
   version?: string;
@@ -98,11 +117,26 @@ export interface HostInfo {
   services?: Record<string, { log: string; exit?: number }>;
 }
 
-export interface SelfInfo { host: string; version?: string; platform?: string; bootId?: string }
+export interface SelfInfo {
+  host: string;
+  version?: string;
+  platform?: string;
+  bootId?: string;
+}
 
 // an optional app the mesh wants (packages/webapps Want), and a host's copy of one (Status)
-export interface AppWant { version: string; url?: string; sha256?: string; from?: string; at?: number }
-export interface AppStatus { version: string; busy?: boolean; error?: string }
+export interface AppWant {
+  version: string;
+  url?: string;
+  sha256?: string;
+  from?: string;
+  at?: number;
+}
+export interface AppStatus {
+  version: string;
+  busy?: boolean;
+  error?: string;
+}
 
 export interface State {
   domain?: string;
@@ -124,4 +158,7 @@ export interface State {
 // --- /api/update
 
 // the release feed as /api/update/check answers
-export interface UpdateCheck { latest?: string; error?: string }
+export interface UpdateCheck {
+  latest?: string;
+  error?: string;
+}

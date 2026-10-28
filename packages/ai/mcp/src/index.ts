@@ -12,10 +12,21 @@ import { grantsOf, keyDescription, keyNote, sig, withheld } from "./grants.ts";
 import { mirror, mirrorArgs, mirrorEnd } from "./mirror.ts";
 import { coreTools } from "./tools.ts";
 
-export { type Action, type Actions, type Asker, type Caller, init, type Loc, type Meta, type Res, type Src, ToolError } from "./common.ts";
 export { callBegin, callDetail, callEnd, calls, watch } from "./calls.ts";
-export { skill, skillFiles } from "./skill.ts";
+export {
+  type Action,
+  type Actions,
+  type Asker,
+  type Caller,
+  init,
+  type Loc,
+  type Meta,
+  type Res,
+  type Src,
+  ToolError,
+} from "./common.ts";
 export { statsRow, statsShape } from "./hosts.ts";
+export { skill, skillFiles } from "./skill.ts";
 
 const toolIndex = new Map<string, Tool>();
 // the tools/list answer per kind of caller, built once
@@ -109,14 +120,25 @@ function toolList(local: boolean, caller: Caller | undefined): Record<string, an
     if (!visible(t, local, caller)) continue;
     const ann: Record<string, any> = { title: t.title, readOnlyHint: !!t.read, openWorldHint: !!t.open };
     if (!t.read) ann.destructiveHint = !!t.destructive;
-    list.push({ name: t.name, title: t.title, description: caller ? keyDescription(t, caller) : t.description, inputSchema: t.schema, annotations: ann });
+    list.push({
+      name: t.name,
+      title: t.title,
+      description: caller ? keyDescription(t, caller) : t.description,
+      inputSchema: t.schema,
+      annotations: ann,
+    });
   }
   listed.set(key, list);
   return list;
 }
 
 // runTool one tool's run, whatever it throws its error
-async function runTool(t: Tool, params: Record<string, any>, local: boolean, caller: Caller | undefined): Promise<[unknown, Error | undefined]> {
+async function runTool(
+  t: Tool,
+  params: Record<string, any>,
+  local: boolean,
+  caller: Caller | undefined,
+): Promise<[unknown, Error | undefined]> {
   const args = { ...obj(params.arguments) };
   let out: unknown, err: Error | undefined;
   try {
@@ -135,7 +157,8 @@ async function callTool(id: unknown, params: Record<string, any>, local: boolean
     const why = withheld(t, caller);
     if (why) return fail(id, -32602, `${name} is off this key: ${why}`);
   }
-  if (!t || !visible(t, local, caller)) return fail(id, -32602, `no tool ${params.name === undefined ? "null" : String(params.name)}`);
+  if (!t || !visible(t, local, caller))
+    return fail(id, -32602, `no tool ${params.name === undefined ? "null" : String(params.name)}`);
   let out: unknown, err: Error | undefined;
   if (caller) {
     const args = obj(params.arguments);

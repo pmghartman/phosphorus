@@ -1,7 +1,17 @@
 // shares: the [files] dirs and the home
 import { mkdirSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { Desktop, HomeRoot, Shared, cleanPerms, fullPerms, mountedDirs, realOf, splitList, type Share } from "./index.ts";
+import {
+  cleanPerms,
+  Desktop,
+  fullPerms,
+  HomeRoot,
+  mountedDirs,
+  realOf,
+  type Share,
+  Shared,
+  splitList,
+} from "./index.ts";
 
 export function makeShare(id: string, perms: string, root: string): Share {
   let ok = false;

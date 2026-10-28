@@ -3,7 +3,18 @@
 // and the GPU Engine and GPU Adapter Memory counters, nvidia's left to nvidia-smi
 import { freemem, totalmem, uptime } from "node:os";
 import { now, run } from "@phosphorus/util";
-import { type Disk, type Gpu, gpuMS, type Mem, type Net, osCpuModel, osCpuTimes, osLoadAvg, type Sys, vendor } from "./common.ts";
+import {
+  type Disk,
+  type Gpu,
+  gpuMS,
+  type Mem,
+  type Net,
+  osCpuModel,
+  osCpuTimes,
+  osLoadAvg,
+  type Sys,
+  vendor,
+} from "./common.ts";
 
 const virtualIf = /^(lo|loopback|vEthernet|veth|bridge|awdl|llw|anpi|ap\d|gif|stf|isatap|teredo)/i;
 
@@ -25,7 +36,10 @@ $c=@((Get-Counter '\\GPU Engine(*)\\Utilization Percentage','\\GPU Adapter Memor
 // a script's JSON, undefined when PowerShell couldn't run it
 async function ps(script: string): Promise<any> {
   const enc = Buffer.from(script, "utf16le").toString("base64");
-  const r = await run(["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", enc], { timeoutMs: 15000 });
+  const r = await run(
+    ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", enc],
+    { timeoutMs: 15000 },
+  );
   try {
     return JSON.parse(r.stdout);
   } catch {
@@ -51,7 +65,9 @@ export function parsePoll(j: any, total = totalmem(), avail = freemem()): Polled
   };
   const net: Net = { bytes: {}, order: [] };
   for (const a of arr(j?.net)) {
-    const name = String(a?.name ?? ""), rx = n(a?.rx), tx = n(a?.tx);
+    const name = String(a?.name ?? ""),
+      rx = n(a?.rx),
+      tx = n(a?.tx);
     if (!name || virtualIf.test(name) || rx + tx === 0 || net.bytes[name]) continue;
     net.bytes[name] = { rx, tx };
     net.order.push(name);
@@ -64,7 +80,8 @@ export function parsePoll(j: any, total = totalmem(), avail = freemem()): Polled
   const seen = new Set<string>();
   const disk: Disk = { total: 0, used: 0, count: 0 };
   for (const v of arr(j?.disks)) {
-    const t = n(v?.total), free = n(v?.free);
+    const t = n(v?.total),
+      free = n(v?.free);
     const key = `${t}:${free}`;
     if (t === 0 || seen.has(key)) continue;
     seen.add(key);
@@ -86,9 +103,12 @@ type Adapter = Gpu & { vendor: string };
 // the shared pool. Registry entries outlive their adapters, so only those the
 // counters list now count, every vendor-known one when there are no counters
 export function parseGpus(j: any): Adapter[] {
-  const busy = new Map<string, Map<string, number>>(), mem = new Map<string, number>(), shMem = new Map<string, number>();
+  const busy = new Map<string, Map<string, number>>(),
+    mem = new Map<string, number>(),
+    shMem = new Map<string, number>();
   for (const c of arr(j?.counters)) {
-    const p = String(c?.p ?? "").toLowerCase(), v = n(c?.v);
+    const p = String(c?.p ?? "").toLowerCase(),
+      v = n(c?.v);
     const m = luidRe.exec(p);
     if (!m) continue;
     const l = `${m[1]}_${m[2]}`.toLowerCase();
@@ -121,14 +141,22 @@ export function parseGpus(j: any): Adapter[] {
   for (const a of newest.values()) {
     const dedicated = n(a.dedicated);
     const integrated = dedicated < 1 << 30;
-    let util: number | null = null, memUsed: number | null = null;
+    let util: number | null = null,
+      memUsed: number | null = null;
     const b = busy.get(a.l);
     if (b) util = Math.min(Math.max(0, ...b.values()), 100);
     if (mem.has(a.l)) memUsed = mem.get(a.l)!;
     if (shMem.has(a.l) && integrated) memUsed = shMem.get(a.l)!;
     out.push({
-      name: String(a.name ?? "").toLowerCase(), util, memUsed, memTotal: integrated ? n(a.shared) : dedicated,
-      mhz: null, mhzMax: null, temp: null, integrated, vendor: a.v,
+      name: String(a.name ?? "").toLowerCase(),
+      util,
+      memUsed,
+      memTotal: integrated ? n(a.shared) : dedicated,
+      mhz: null,
+      mhzMax: null,
+      temp: null,
+      integrated,
+      vendor: a.v,
     });
   }
   return out;
@@ -136,7 +164,8 @@ export function parseGpus(j: any): Adapter[] {
 
 let polled = parsePoll(undefined);
 let gpus: Adapter[] = [];
-let gpuAt = 0, gpuBusy = false;
+let gpuAt = 0,
+  gpuBusy = false;
 
 function vendorGpus(haveNvidia: boolean): Gpu[] {
   if (!gpuBusy && now() - gpuAt >= gpuMS) {

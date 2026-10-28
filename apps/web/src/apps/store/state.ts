@@ -1,8 +1,9 @@
 // apps: a store for the mesh's optional extras, each a web build installed onto every host,
-import { jsonPost } from '../../lib/api.ts';
-import { pollState } from '../../lib/sync.ts';
+
 import type { AppStatus, AppWant, Route, State } from '@phosphorus/wire';
 import { dkOpenApp } from '../../desktop/desk.ts';
+import { jsonPost } from '../../lib/api.ts';
+import { pollState } from '../../lib/sync.ts';
 import { draw } from './services.ts';
 
 // or a service run on the hosts a person picks --
@@ -40,8 +41,29 @@ export interface StoreApp {
 // a service's step on one host, run there as a unit of the login's own; asked from the host
 // from, finished by the host itself (packages/webapps services)
 export type SvcOp = 'install' | 'update' | 'remove';
-export interface SvcJob { id: string; host: string; op: SvcOp; by: string; login: string; from: string; keep: boolean; at: number; done: number; ok?: boolean; error: string; log: string; exit?: number }
-export interface SvcHost { published: boolean; route?: Route; version: string; record?: { login: string; by: string; at: number; commit: string }; job?: SvcJob; behind: number | null }
+export interface SvcJob {
+  id: string;
+  host: string;
+  op: SvcOp;
+  by: string;
+  login: string;
+  from: string;
+  keep: boolean;
+  at: number;
+  done: number;
+  ok?: boolean;
+  error: string;
+  log: string;
+  exit?: number;
+}
+export interface SvcHost {
+  published: boolean;
+  route?: Route;
+  version: string;
+  record?: { login: string; by: string; at: number; commit: string };
+  job?: SvcJob;
+  behind: number | null;
+}
 
 // one service as /api/apps lists it
 export interface StoreService {
@@ -86,7 +108,10 @@ export let fast: ReturnType<typeof setTimeout> | null = null;
 // the feed read on opening, held ten minutes on the server; fresh on the refresh button
 export async function read(fresh = false) {
   try {
-    const r = await fetch(`/api/apps${fresh ? '?fresh=1' : ''}`, { cache: 'no-store', signal: AbortSignal.timeout(20000) });
+    const r = await fetch(`/api/apps${fresh ? '?fresh=1' : ''}`, {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(20000),
+    });
     if (!r.ok) throw new Error(`status ${r.status}`);
     const got = await r.json();
     apps = got.apps as StoreApp[];
@@ -98,8 +123,12 @@ export async function read(fresh = false) {
   stateVars.sig = '';
   draw();
   // a service's step under way: read again soon, its log and outcome shown as they come
-  if (fast) { clearTimeout(fast); fast = null; }
-  if (watching && services.some((s) => Object.values(s.hosts).some((h) => h.job && !h.job.done))) fast = setTimeout(() => read(), 3000);
+  if (fast) {
+    clearTimeout(fast);
+    fast = null;
+  }
+  if (watching && services.some((s) => Object.values(s.hosts).some((h) => h.job && !h.job.done)))
+    fast = setTimeout(() => read(), 3000);
 }
 
 export function storeState(_state: State | null): void {
@@ -108,8 +137,14 @@ export function storeState(_state: State | null): void {
 
 export function storeWatch(on: boolean): void {
   watching = on;
-  if (timer) { clearInterval(timer); timer = null; }
-  if (fast) { clearTimeout(fast); fast = null; }
+  if (timer) {
+    clearInterval(timer);
+    timer = null;
+  }
+  if (fast) {
+    clearTimeout(fast);
+    fast = null;
+  }
   if (!on) return;
   read();
   timer = setInterval(() => read(), 60000);

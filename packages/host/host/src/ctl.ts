@@ -114,7 +114,10 @@ export async function update() {
       }
       println("updating...");
     }
-    if (i === 30 && last === "") println("nothing picked it up yet: is the update agent running (Linux: phosphorus-update.path, Windows: the phosphorus service, macOS: the Phosphorus app)?");
+    if (i === 30 && last === "")
+      println(
+        "nothing picked it up yet: is the update agent running (Linux: phosphorus-update.path, Windows: the phosphorus service, macOS: the Phosphorus app)?",
+      );
     await sleep(1000);
   }
   throw fail(`gave up waiting, see ${at("state", "update-agent.json")}`);

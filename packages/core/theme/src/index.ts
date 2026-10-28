@@ -40,7 +40,10 @@ export type Theme = {
   scopes?: Record<string, Modes>;
 };
 // the whole file: the base every theme lays over, then the themes in their order
-export type LibraryData = { base: { layout: Layout; dark: Tokens; light: Tokens; oled: Tokens; ide: Modes }; themes: Theme[] };
+export type LibraryData = {
+  base: { layout: Layout; dark: Tokens; light: Tokens; oled: Tokens; ide: Modes };
+  themes: Theme[];
+};
 
 // the theme a page or tool starts on
 export const Default = "phosphorus";
@@ -62,7 +65,8 @@ export class Library {
   // a theme's page tokens for "dark", "light" or "oled": its dark over the base's,
   // then for light or oled the base's and its own of that mode over those
   tokens(id: string, mode: string): Tokens {
-    const t = this.get(id), b = this.data.base;
+    const t = this.get(id),
+      b = this.data.base;
     if (mode === "light") return merge(b.dark, t.dark, b.light, t.light);
     if (mode === "oled") return merge(b.dark, t.dark, b.oled, t.oled);
     return merge(b.dark, t.dark);
@@ -70,7 +74,8 @@ export class Library {
 
   // a theme's workbench tokens for a mode, laid over the base's as the page's are
   ide(id: string, mode: string): Tokens {
-    const t = this.get(id).ide ?? {}, b = this.data.base.ide;
+    const t = this.get(id).ide ?? {},
+      b = this.data.base.ide;
     if (mode === "light") return merge(b.dark, b.light, t.dark, t.light);
     if (mode === "oled") return merge(b.dark, b.oled, t.dark, t.oled);
     return merge(b.dark, t.dark);
@@ -99,7 +104,8 @@ export class Library {
         if (t.id === Default) on += `, :not([data-palette])${m}`;
         rule(`:root:where(${on})`, this.tokens(t.id, mode));
         rule(`:where(:root:where(${on})) .ide-win`, this.ide(t.id, mode));
-        for (const s of Object.keys(t.scopes ?? {}).sort()) rule(`:where(:root:where(${on})) ${s}`, scope(t.scopes![s]!, mode));
+        for (const s of Object.keys(t.scopes ?? {}).sort())
+          rule(`:where(:root:where(${on})) ${s}`, scope(t.scopes![s]!, mode));
       }
     }
     return b;

@@ -5,7 +5,12 @@ import type { J } from "./json.ts";
 
 // the frontend's apps as tabs, the mesh update last, opened by u over them
 export const tabs = ["status", "services", "files", "model", "git", "update"];
-export const statsTab = 0, servicesTab = 1, filesTab = 2, modelTab = 3, gitTab = 4, updateTab = 5;
+export const statsTab = 0,
+  servicesTab = 1,
+  filesTab = 2,
+  modelTab = 3,
+  gitTab = 4,
+  updateTab = 5;
 // shown the tabs on the bar, the update left off
 export const shown = updateTab;
 

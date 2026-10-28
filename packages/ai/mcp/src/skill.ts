@@ -2,8 +2,6 @@
 // folder: the plugin's files, its domain filled in as Claude Code fills the
 // plugin's; no key in it, the connector doing the calling
 import { deflateRawSync } from "node:zlib";
-// each file imported so a compiled binary carries it; the test checks the list against the folder
-import skillMD from "../../../../plugin/skills/phosphorus/SKILL.md" with { type: "file" };
 import chatMD from "../../../../plugin/skills/phosphorus/references/chat.md" with { type: "file" };
 import diagnoseMD from "../../../../plugin/skills/phosphorus/references/diagnose.md" with { type: "file" };
 import filesMD from "../../../../plugin/skills/phosphorus/references/files.md" with { type: "file" };
@@ -12,6 +10,8 @@ import runMD from "../../../../plugin/skills/phosphorus/references/run.md" with 
 import serviceMD from "../../../../plugin/skills/phosphorus/references/service.md" with { type: "file" };
 import statusMD from "../../../../plugin/skills/phosphorus/references/status.md" with { type: "file" };
 import updateMD from "../../../../plugin/skills/phosphorus/references/update.md" with { type: "file" };
+// each file imported so a compiled binary carries it; the test checks the list against the folder
+import skillMD from "../../../../plugin/skills/phosphorus/SKILL.md" with { type: "file" };
 
 // skillFiles each file's name in the zip and where it lives
 export const skillFiles: Record<string, string> = {
@@ -30,7 +30,8 @@ export const skillFiles: Record<string, string> = {
 export async function skill(base: string): Promise<Uint8Array> {
   const domain = base.replace(/^https?:\/\//, "").replace(/\/+$/, "");
   const files: Record<string, string> = {};
-  for (const [name, path] of Object.entries(skillFiles)) files[name] = (await Bun.file(path).text()).replaceAll("${user_config.domain}", domain);
+  for (const [name, path] of Object.entries(skillFiles))
+    files[name] = (await Bun.file(path).text()).replaceAll("${user_config.domain}", domain);
   return zipOf(files);
 }
 
@@ -40,7 +41,8 @@ function zipOf(files: Record<string, string>): Uint8Array {
   const d = new Date();
   const dosTime = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
   const dosDate = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
-  const parts: Uint8Array[] = [], cd: Uint8Array[] = [];
+  const parts: Uint8Array[] = [],
+    cd: Uint8Array[] = [];
   let off = 0;
   const hdr = (sig: number, n: number) => {
     const b = new Uint8Array(n);
@@ -48,7 +50,8 @@ function zipOf(files: Record<string, string>): Uint8Array {
     return b;
   };
   for (const [name, body] of Object.entries(files)) {
-    const data = enc.encode(body), nm = enc.encode(name);
+    const data = enc.encode(body),
+      nm = enc.encode(name);
     const packed = new Uint8Array(deflateRawSync(data));
     const fill = (b: Uint8Array, o: number) => {
       const v = new DataView(b.buffer);
@@ -62,7 +65,8 @@ function zipOf(files: Record<string, string>): Uint8Array {
       v.setUint32(o + 18, data.length, true);
       v.setUint16(o + 22, nm.length, true);
     };
-    const lh = hdr(0x04034b50, 30), ch = hdr(0x02014b50, 46);
+    const lh = hdr(0x04034b50, 30),
+      ch = hdr(0x02014b50, 46);
     fill(lh, 4);
     fill(ch, 6);
     new DataView(ch.buffer).setUint32(42, off, true);

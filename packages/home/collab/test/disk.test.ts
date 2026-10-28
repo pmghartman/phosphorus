@@ -1,5 +1,14 @@
 import { afterEach, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, unlinkSync, utimesSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  unlinkSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Share } from "@phosphorus/files";
@@ -97,7 +106,13 @@ test("disk incomplete snapshot and matching draft", async () => {
 });
 
 test("disk diff survives JSON for unicode", () => {
-  for (const [from, to] of [["😀x", "😁x"], ["x😀", "x😈"], ["😀", "🌀"], ["a\n", ""], ["", "café 😀"]] as const) {
+  for (const [from, to] of [
+    ["😀x", "😁x"],
+    ["x😀", "x😈"],
+    ["😀", "🌀"],
+    ["a\n", ""],
+    ["", "café 😀"],
+  ] as const) {
     const data = JSON.stringify(diskDiff(from, to));
     const decoded = Parse(JSON.parse(data));
     expect(decoded).toBeDefined();

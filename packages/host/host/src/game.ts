@@ -4,9 +4,8 @@
 import { chownSync, closeSync, mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { userInfo } from "node:os";
 import { dirname, join } from "node:path";
-import { parseIni } from "@phosphorus/util";
-import { lockACL } from "@phosphorus/util";
-import { at, binPath, eprint, ExitCode, fail, fileExists, home, isWindows, output, run, say } from "./base.ts";
+import { lockACL, parseIni } from "@phosphorus/util";
+import { at, binPath, ExitCode, eprint, fail, fileExists, home, isWindows, output, run, say } from "./base.ts";
 
 const gameTag = "phosphorus-game-control";
 const gameName = /^[a-z0-9][a-z0-9-]*$/;
@@ -16,7 +15,12 @@ export type User = { username: string; homeDir: string; uid: string; gid: string
 
 export function currentUser(): User {
   const u = userInfo();
-  return { username: u.username, homeDir: u.homedir, uid: u.uid < 0 ? "" : String(u.uid), gid: u.gid < 0 ? "" : String(u.gid) };
+  return {
+    username: u.username,
+    homeDir: u.homedir,
+    uid: u.uid < 0 ? "" : String(u.uid),
+    gid: u.gid < 0 ? "" : String(u.gid),
+  };
 }
 
 // lookupUser by name: passwd on Linux, Directory Services on macOS, the
@@ -36,7 +40,13 @@ export async function lookupUser(name: string): Promise<User | undefined> {
     return { username: name, uid: get("UniqueID"), gid: get("PrimaryGroupID"), homeDir: get("NFSHomeDirectory") };
   }
   const q = "'" + name.replaceAll("'", "''") + "'";
-  const out = await output("powershell", "-NoProfile", "-NonInteractive", "-Command", `$s = (New-Object System.Security.Principal.NTAccount(${q})).Translate([System.Security.Principal.SecurityIdentifier]).Value; $s; (Get-ItemProperty "HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\ProfileList\\$s" -ErrorAction SilentlyContinue).ProfileImagePath`);
+  const out = await output(
+    "powershell",
+    "-NoProfile",
+    "-NonInteractive",
+    "-Command",
+    `$s = (New-Object System.Security.Principal.NTAccount(${q})).Translate([System.Security.Principal.SecurityIdentifier]).Value; $s; (Get-ItemProperty "HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\ProfileList\\$s" -ErrorAction SilentlyContinue).ProfileImagePath`,
+  );
   const [sid = "", homeDir = ""] = out.split(/\r?\n/).map((l) => l.trim());
   if (!sid) return undefined;
   return { username: name, uid: sid, gid: "", homeDir };
@@ -54,7 +64,7 @@ export async function gameControl() {
     text = readFileSync(at("config", "services.export"), "utf8");
   } catch {}
   const keys = parseIni(text);
-  const cmd = keys.get(name + "\0type") === "game" ? keys.get(name + "\0" + action) ?? "" : "";
+  const cmd = keys.get(name + "\0type") === "game" ? (keys.get(name + "\0" + action) ?? "") : "";
   if (!cmd) throw fail(`${name} has no ${action} command in services.export`);
   // output to a file, not the ssh channel a backgrounded server would hold open
   const dir = at("state", "game-control");
@@ -96,10 +106,12 @@ export async function gameControlSetup() {
     ok = false;
   }
   if (!ok || !writable(dir)) {
-    if (isWindows || !(await run("sudo", "mkdir", "-p", dir)) || !(await run("sudo", "chown", u.username, dir))) throw fail(`can't write ${dir}`);
+    if (isWindows || !(await run("sudo", "mkdir", "-p", dir)) || !(await run("sudo", "chown", u.username, dir)))
+      throw fail(`can't write ${dir}`);
   }
   if (!fileExists(key)) {
-    if (!(await run("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", gameTag, "-f", key))) throw fail("ssh-keygen failed");
+    if (!(await run("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", gameTag, "-f", key)))
+      throw fail("ssh-keygen failed");
   }
   const name = u.username.slice(u.username.lastIndexOf("\\") + 1);
   writeFileSync(join(dir, "user"), name + "\n", { mode: 0o644 });
@@ -112,7 +124,8 @@ export async function gameControlSetup() {
 }
 
 // the forced command's line for a key: restrict,command="<bin> game-control --home <home>" <key>
-export const gameKeyLine = (bin: string, home: string, pub: string) => "restrict,command=" + JSON.stringify(bin + " game-control --home " + home) + " " + pub.trim();
+export const gameKeyLine = (bin: string, home: string, pub: string) =>
+  "restrict,command=" + JSON.stringify(bin + " game-control --home " + home) + " " + pub.trim();
 
 // authorizeGameKey u's authorized_keys line for the key, pointed at this
 // binary; a stale one (an older key, or a script an old release shipped) swapped out
@@ -193,7 +206,8 @@ export async function refreshGameKey() {
 
 // chownUser paths given to u, where ids mean anything
 function chownUser(u: User, ...paths: string[]) {
-  const uid = Number(u.uid), gid = Number(u.gid);
+  const uid = Number(u.uid),
+    gid = Number(u.gid);
   if (!u.uid || !u.gid || !Number.isInteger(uid) || !Number.isInteger(gid)) return;
   for (const p of paths) {
     try {
@@ -222,7 +236,10 @@ export function unauthorizeGame() {
     return;
   }
   if (!b.includes(gameTag)) return;
-  const kept = b.replace(/\n+$/, "").split("\n").filter((l) => !l.includes(gameTag));
+  const kept = b
+    .replace(/\n+$/, "")
+    .split("\n")
+    .filter((l) => !l.includes(gameTag));
   try {
     writeFileSync(ak, kept.join("\n") + "\n", { mode: 0o600 });
   } catch {}

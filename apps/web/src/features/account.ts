@@ -1,21 +1,22 @@
 // --- the account: a phosphorus user over the hosts' own logins, its vault
 // of host and page logins kept on the mesh, sealed with its password
-import { acctCall } from '../lib/api.ts';
-import { chatAs } from './chat/chat.ts';
-import { DK_GLYPHS, dkGlyph, el, noFill, pageAsk, svgEl } from '../lib/dom.ts';
-import { serviceUrl } from './mesh/mesh.ts';
-import { applyTheme, systemLight } from '../lib/scheme.ts';
-import { dk, PREF_LS, PREF_OF, st, type Account } from '../lib/state.ts';
-import { editorPref, EDITORS } from '../desktop/deskfiles.ts';
-import { connectState, stateStop, stateUp } from '../lib/sync.ts';
-import { themeFromStorage } from '../lib/theme.ts';
+
 import type { Me, UserRow } from '@phosphorus/wire';
-import { copyText } from '../lib/util.ts';
 import { appCall } from '../apps/index.ts';
 import { dkArt, dkDesktop, dkIcons, dkLayout, dkLogout, dkWallPaint } from '../desktop/desk.ts';
+import { EDITORS, editorPref } from '../desktop/deskfiles.ts';
 import { DK_USERS_KEY, dkLogin, dkProbe, dkUsers } from '../desktop/login.ts';
 import { dkAnchor, dkBar, dkChips, dkPopsClose, type Pop } from '../desktop/taskbar.ts';
 import { dkClose, dkFocus, dkSize, dkWin } from '../desktop/windows.ts';
+import { acctCall } from '../lib/api.ts';
+import { DK_GLYPHS, dkGlyph, el, noFill, pageAsk, svgEl } from '../lib/dom.ts';
+import { applyTheme, systemLight } from '../lib/scheme.ts';
+import { type Account, dk, PREF_LS, PREF_OF, st } from '../lib/state.ts';
+import { connectState, stateStop, stateUp } from '../lib/sync.ts';
+import { themeFromStorage } from '../lib/theme.ts';
+import { copyText } from '../lib/util.ts';
+import { chatAs } from './chat/chat.ts';
+import { serviceUrl } from './mesh/mesh.ts';
 
 const dkView = document.getElementById('view-desktop')!;
 
@@ -32,22 +33,43 @@ function acctLogin(setup: boolean) {
   stateStop();
   dkLogout();
   const form = Object.assign(el('form', 'dk-login acct-login'), { method: 'post', action: '/api/login' });
-  const user = Object.assign(el('input'), { name: 'username', placeholder: 'user', autocomplete: 'username' as const, spellcheck: false, autocapitalize: 'off', required: true });
-  const pass = Object.assign(el('input'), { name: 'password', type: 'password', placeholder: 'password', autocomplete: 'current-password' as const });
+  const user = Object.assign(el('input'), {
+    name: 'username',
+    placeholder: 'user',
+    autocomplete: 'username' as const,
+    spellcheck: false,
+    autocapitalize: 'off',
+    required: true,
+  });
+  const pass = Object.assign(el('input'), {
+    name: 'password',
+    type: 'password',
+    placeholder: 'password',
+    autocomplete: 'current-password' as const,
+  });
   const why = el('span', 'dk-state bad');
   const go = Object.assign(el('button', 'primary', 'log in'), { type: 'submit' });
   const actions = el('div', 'update-actions');
   actions.append(why, go);
-  form.append(el('div', 'home-col-head', 'phosphorus'),
+  form.append(
+    el('div', 'home-col-head', 'phosphorus'),
     el('p', 'dk-note', setup ? 'admin, ADMIN_PASS' : 'log in'),
-    user, pass, actions);
+    user,
+    pass,
+    actions,
+  );
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     go.disabled = true;
     why.textContent = '';
     const me = await acctCall<Me>('/api/login', { user: user.value.trim(), pass: pass.value });
     go.disabled = false;
-    if (!me.ok) { why.textContent = me.error || 'no answer'; pass.value = ''; pass.focus(); return; }
+    if (!me.ok) {
+      why.textContent = me.error || 'no answer';
+      pass.value = '';
+      pass.focus();
+      return;
+    }
     acctIn(me as Me);
   });
   const stage = el('div', 'dk-stage');
@@ -59,17 +81,28 @@ function acctLogin(setup: boolean) {
 }
 
 function acctIn(me: Me) {
-  const acct: Account = { user: me.user, admin: me.admin, boot: me.boot, wallpaper: me.wallpaper || 0, vault: me.vault || { hosts: {}, pages: {} }, vaultOK: me.vaultOK !== false };
+  const acct: Account = {
+    user: me.user,
+    admin: me.admin,
+    boot: me.boot,
+    wallpaper: me.wallpaper || 0,
+    vault: me.vault || { hosts: {}, pages: {} },
+    vaultOK: me.vaultOK !== false,
+  };
   st.acct = acct;
   acct.vault.hosts ||= {};
   acct.vault.pages ||= {};
-  if (acct.boot) { acctSetup(); return; }
+  if (acct.boot) {
+    acctSetup();
+    return;
+  }
   acctPrefs(me.prefs || {}, me.prefsAt || 0);
   chatAs(acct.user);
   if (acctNext()) return;
   if (!stateUp()) connectState();
   dk.creds = new Map(Object.entries(acct.vault.hosts).map(([h, c]) => [h, { user: c.user, pass: c.pass }]));
-  if (dk.creds.size) dkDesktop(); else dkLogin();
+  if (dk.creds.size) dkDesktop();
+  else dkLogin();
 }
 
 export async function acctSave(): Promise<string> {
@@ -82,7 +115,8 @@ export async function acctSave(): Promise<string> {
     acct.vault.hosts = { ...me.vault!.hosts, ...acct.vault.hosts };
     acct.vault.pages = { ...me.vault!.pages, ...acct.vault.pages };
     acct.vaultOK = true;
-    for (const [h, c] of Object.entries(acct.vault.hosts)) if (!dk.creds.has(h)) dk.creds.set(h, { user: c.user, pass: c.pass });
+    for (const [h, c] of Object.entries(acct.vault.hosts))
+      if (!dk.creds.has(h)) dk.creds.set(h, { user: c.user, pass: c.pass });
   }
   const r = await acctCall('/api/me/vault', { vault: acct.vault });
   return r.ok ? '' : r.error || 'not saved';
@@ -101,10 +135,17 @@ function prefsSoon(key?: string) {
   clearTimeout(prefsTimer!);
   prefsTimer = setTimeout(() => {
     const prefs: Record<string, string> = {};
-    for (const k of prefsDirty) { try { prefs[k] = localStorage.getItem(PREF_LS[k]!) || ''; } catch {} }
+    for (const k of prefsDirty) {
+      try {
+        prefs[k] = localStorage.getItem(PREF_LS[k]!) || '';
+      } catch {}
+    }
     prefsDirty.clear();
     acctCall('/api/me/prefs', { prefs }).then((r) => {
-      if (r.ok) { prefsSeen = JSON.stringify(r.prefs); prefsAt = Math.max(prefsAt, r.prefsAt || 0); }
+      if (r.ok) {
+        prefsSeen = JSON.stringify(r.prefs);
+        prefsAt = Math.max(prefsAt, r.prefsAt || 0);
+      }
       prefsTimer = null;
     });
   }, 800);
@@ -112,7 +153,11 @@ function prefsSoon(key?: string) {
 
 for (const m of ['setItem', 'removeItem'] as const) {
   const own = Storage.prototype[m] as (this: Storage, k: string, ...rest: string[]) => void;
-  (Storage.prototype as unknown as Record<string, unknown>)[m] = function (this: Storage, k: string, ...rest: string[]) {
+  (Storage.prototype as unknown as Record<string, unknown>)[m] = function (
+    this: Storage,
+    k: string,
+    ...rest: string[]
+  ) {
     own.call(this, k, ...rest);
     if (this === window.localStorage && PREF_OF[k]) prefsSoon(PREF_OF[k]);
   };
@@ -129,7 +174,10 @@ function acctPrefs(prefs: Record<string, string>, at = 0) {
   prefsAt = Math.max(prefsAt, at);
   let seed = false;
   let mine = false;
-  try { mine = localStorage.getItem(PREF_OWNER) === st.acct!.user; localStorage.setItem(PREF_OWNER, st.acct!.user); } catch {}
+  try {
+    mine = localStorage.getItem(PREF_OWNER) === st.acct!.user;
+    localStorage.setItem(PREF_OWNER, st.acct!.user);
+  } catch {}
   prefsSeen = JSON.stringify(prefs);
   prefsQuiet = true;
   for (const [k, ls] of Object.entries(PREF_LS)) {
@@ -142,7 +190,10 @@ function acctPrefs(prefs: Record<string, string>, at = 0) {
   prefsQuiet = false;
   if (seed) prefsSoon();
   let theme: string | null = null;
-  try { theme = localStorage.getItem(PREF_LS.theme!); st.color = localStorage.getItem(PREF_LS.color!) || st.color; } catch {}
+  try {
+    theme = localStorage.getItem(PREF_LS.theme!);
+    st.color = localStorage.getItem(PREF_LS.color!) || st.color;
+  } catch {}
   themeFromStorage();
   applyTheme(theme || (systemLight.matches ? 'light' : 'dark'));
 }
@@ -156,7 +207,12 @@ async function acctTick() {
   acctPollMs = up === false ? Math.min(acctPollMs * 2, 300000) : ACCT_POLL_MS;
 }
 addEventListener('focus', acctTick);
-(function acctPoll() { setTimeout(async () => { if (!document.hidden) await acctTick(); acctPoll(); }, acctPollMs); })();
+(function acctPoll() {
+  setTimeout(async () => {
+    if (!document.hidden) await acctTick();
+    acctPoll();
+  }, acctPollMs);
+})();
 
 // a session gone (expired, password changed, user deleted): back to the login
 let acctChecking = false;
@@ -168,8 +224,14 @@ export async function acctCheck(): Promise<boolean | undefined> {
   if (me.status === 401 && st.acct) acctLogin(!!me.setup);
   // another browser's icon moves, theme or wallpaper, taken in
   if (!me.ok || !st.acct || st.acct.boot || me.user !== st.acct.user) return me.status !== 0;
-  if ((me.prefsAt || 0) > prefsAt && JSON.stringify(me.prefs || {}) !== prefsSeen && !prefsTimer) { acctPrefs(me.prefs || {}, me.prefsAt); dkLayout(); }
-  if ((me.wallpaper || 0) !== st.acct.wallpaper) { st.acct.wallpaper = me.wallpaper || 0; dkWallPaint(); }
+  if ((me.prefsAt || 0) > prefsAt && JSON.stringify(me.prefs || {}) !== prefsSeen && !prefsTimer) {
+    acctPrefs(me.prefs || {}, me.prefsAt);
+    dkLayout();
+  }
+  if ((me.wallpaper || 0) !== st.acct.wallpaper) {
+    st.acct.wallpaper = me.wallpaper || 0;
+    dkWallPaint();
+  }
   return true;
 }
 
@@ -181,10 +243,17 @@ function acctNext(): boolean {
   history.replaceState(null, '', '/');
   // the service still refusing: no second bounce back to it
   let last = '';
-  try { last = sessionStorage.getItem('phosphorus-next') || ''; sessionStorage.setItem('phosphorus-next', `${Date.now()} ${next}`); } catch {}
+  try {
+    last = sessionStorage.getItem('phosphorus-next') || '';
+    sessionStorage.setItem('phosphorus-next', `${Date.now()} ${next}`);
+  } catch {}
   const [at, prev] = [Number(last.split(' ')[0]), last.slice(last.indexOf(' ') + 1)];
   let u: URL;
-  try { u = new URL(next); } catch { return false; }
+  try {
+    u = new URL(next);
+  } catch {
+    return false;
+  }
   if (prev === next && Date.now() - at < 15000) {
     const why = q.get('why') === 'none' ? 'no cookie' : 'cookie refused';
     setTimeout(() => pageAsk({ title: u.host, message: why, cancel: false }));
@@ -210,9 +279,12 @@ function acctSetup() {
   out.addEventListener('click', acctLogout);
   const actions = el('div', 'update-actions');
   actions.appendChild(out);
-  box.append(el('div', 'home-col-head', 'setup admin'),
+  box.append(
+    el('div', 'home-col-head', 'setup admin'),
     el('p', 'dk-note', 'make an admin user, then log out and in as them; the setup admin is off once an admin exists'),
-    acctUsers(), actions);
+    acctUsers(),
+    actions,
+  );
   const stage = el('div', 'dk-stage');
   stage.appendChild(box);
   const desk = el('div', 'dk-desk');
@@ -224,7 +296,9 @@ function acctSetup() {
 function acctUsers(): HTMLElement {
   const wrap = el('div', 'acct-users');
   const list = el('ul', 'dk-rows');
-  const name = noFill(Object.assign(el('input'), { placeholder: 'new user', spellcheck: false, autocapitalize: 'off' }));
+  const name = noFill(
+    Object.assign(el('input'), { placeholder: 'new user', spellcheck: false, autocapitalize: 'off' }),
+  );
   const pass = noFill(Object.assign(el('input'), { placeholder: 'password' }), true);
   const admin = Object.assign(el('input'), { type: 'checkbox' });
   const adminLabel = el('label', 'acct-check');
@@ -236,27 +310,50 @@ function acctUsers(): HTMLElement {
   const draw = (r: { ok: boolean; error?: string; users?: UserRow[] }) => {
     why.textContent = r.ok ? '' : r.error || 'no answer';
     if (!r.users) return;
-    list.replaceChildren(...(r.users.length ? r.users.map((u) => {
-      const li = el('li', 'dk-row acct-user');
-      const box = Object.assign(el('input'), { type: 'checkbox', checked: u.admin, disabled: u.name === st.acct!.user });
-      const lab = el('label', 'acct-check');
-      lab.append(box, ' admin');
-      box.addEventListener('change', async () => draw(await acctCall('/api/users/admin', { name: u.name, admin: box.checked })));
-      const del = Object.assign(el('button', 'danger', 'delete'), { type: 'button', disabled: u.name === st.acct!.user });
-      del.addEventListener('click', async () => {
-        if (del.textContent !== 'sure?') { del.textContent = 'sure?'; return; }
-        draw(await acctCall('/api/users/delete', { name: u.name }));
-      });
-      li.append(el('span', 'dk-host', u.name), lab, del);
-      return li;
-    }) : [el('li', 'empty', 'no users yet')]));
+    list.replaceChildren(
+      ...(r.users.length
+        ? r.users.map((u) => {
+            const li = el('li', 'dk-row acct-user');
+            const box = Object.assign(el('input'), {
+              type: 'checkbox',
+              checked: u.admin,
+              disabled: u.name === st.acct!.user,
+            });
+            const lab = el('label', 'acct-check');
+            lab.append(box, ' admin');
+            box.addEventListener('change', async () =>
+              draw(await acctCall('/api/users/admin', { name: u.name, admin: box.checked })),
+            );
+            const del = Object.assign(el('button', 'danger', 'delete'), {
+              type: 'button',
+              disabled: u.name === st.acct!.user,
+            });
+            del.addEventListener('click', async () => {
+              if (del.textContent !== 'sure?') {
+                del.textContent = 'sure?';
+                return;
+              }
+              draw(await acctCall('/api/users/delete', { name: u.name }));
+            });
+            li.append(el('span', 'dk-host', u.name), lab, del);
+            return li;
+          })
+        : [el('li', 'empty', 'no users yet')]),
+    );
   };
   add.addEventListener('click', async () => {
     const r = await acctCall('/api/users', { name: name.value.trim(), pass: pass.value, admin: admin.checked });
-    if (r.ok) { name.value = ''; pass.value = ''; admin.checked = false; }
+    if (r.ok) {
+      name.value = '';
+      pass.value = '';
+      admin.checked = false;
+    }
     draw(r);
   });
-  for (const i of [name, pass]) i.addEventListener('keydown', (e) => { if (e.key === 'Enter') add.click(); });
+  for (const i of [name, pass])
+    i.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') add.click();
+    });
   wrap.append(list, row, why);
   acctCall('/api/users').then(draw);
   return wrap;
@@ -278,16 +375,30 @@ type Chip = HTMLElement & { unlockClosed?: number };
 // a locked host chip's own login, saved to the vault once the shell answers
 export function dkUnlock(host: string, chip: Chip): void {
   // a second press on its chip closing it
-  if (chip.unlockClosed && Date.now() - chip.unlockClosed < 400) { chip.unlockClosed = 0; return; }
+  if (chip.unlockClosed && Date.now() - chip.unlockClosed < 400) {
+    chip.unlockClosed = 0;
+    return;
+  }
   dkPopsClose();
   const pop = el('form', 'acct-unlock') as HTMLFormElement & Pop;
-  const user = noFill(Object.assign(el('input'), { placeholder: 'user', spellcheck: false, autocapitalize: 'off', value: dkUsers()[host] || '' }));
+  const user = noFill(
+    Object.assign(el('input'), {
+      placeholder: 'user',
+      spellcheck: false,
+      autocapitalize: 'off',
+      value: dkUsers()[host] || '',
+    }),
+  );
   const pass = noFill(Object.assign(el('input'), { placeholder: 'password' }), true);
   const why = el('span', 'dk-state');
   const go = Object.assign(el('button', 'primary', 'log in'), { type: 'submit' });
   pop.append(el('div', 'home-col-head', host), user, pass, why, go);
   pop.classList.add('dk-pop');
-  const close = () => { pop.remove(); pop.dkRelease?.(); document.removeEventListener('pointerdown', away, true); };
+  const close = () => {
+    pop.remove();
+    pop.dkRelease?.();
+    document.removeEventListener('pointerdown', away, true);
+  };
   pop.dkClose = close;
   const away = (e: PointerEvent) => {
     if (pop.contains(e.target as Node)) return;
@@ -295,7 +406,9 @@ export function dkUnlock(host: string, chip: Chip): void {
     close();
   };
   document.addEventListener('pointerdown', away, true);
-  pop.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+  pop.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') close();
+  });
   pop.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!user.value.trim() || !pass.value) return;
@@ -304,7 +417,13 @@ export function dkUnlock(host: string, chip: Chip): void {
     why.textContent = '…';
     const bad = await dkProbe(host, user.value.trim(), pass.value);
     go.disabled = false;
-    if (bad) { why.className = 'dk-state bad'; why.textContent = bad; pass.value = ''; pass.focus(); return; }
+    if (bad) {
+      why.className = 'dk-state bad';
+      why.textContent = bad;
+      pass.value = '';
+      pass.focus();
+      return;
+    }
     dkRemember(host, user.value.trim(), pass.value);
     close();
   });
@@ -317,15 +436,23 @@ function dkRemember(host: string, user: string, pass: string) {
   dk.creds.set(host, { user, pass });
   const users = dkUsers();
   users[host] = user;
-  try { localStorage.setItem(DK_USERS_KEY, JSON.stringify(users)); } catch {}
-  if (st.acct && !st.acct.boot) { st.acct.vault.hosts[host] = { user, pass }; acctSave(); }
+  try {
+    localStorage.setItem(DK_USERS_KEY, JSON.stringify(users));
+  } catch {}
+  if (st.acct && !st.acct.boot) {
+    st.acct.vault.hosts[host] = { user, pass };
+    acctSave();
+  }
   dkChips();
   dkIcons();
 }
 
 function dkForget(host: string) {
   dk.creds.delete(host);
-  if (st.acct) { delete st.acct.vault.hosts[host]; acctSave(); }
+  if (st.acct) {
+    delete st.acct.vault.hosts[host];
+    acctSave();
+  }
   for (const w of [...dk.wins.values()]) if (w.host === host) dkClose(w, true);
   dkChips();
   dkIcons();
@@ -350,36 +477,59 @@ export function dkProfileWin(): void {
   const draw = () => {
     const acct = st.acct!;
     const hosts = el('ul', 'dk-rows');
-    const names = [...new Set([...Object.keys(acct.vault.hosts), ...st.terminalHosts])]
-      .sort((a, b) => Number(!acct.vault.hosts[a]) - Number(!acct.vault.hosts[b]) || a.localeCompare(b));
-    hosts.replaceChildren(...(names.length ? names.map((h) => {
-      const li = el('li', 'dk-row acct-user');
-      const saved = acct.vault.hosts[h];
-      const act = Object.assign(el('button', saved ? 'danger' : '', saved ? 'forget' : 'log in'), { type: 'button' });
-      act.addEventListener('click', () => {
-        if (saved) { dkForget(h); draw(); return; }
-        const chip = [...(dk.desk?.hosts.children || [])].find((c) => c.textContent === h) as Chip | undefined;
-        if (chip) dkUnlock(h, chip);
-      });
-      li.append(el('span', 'dk-host', h), el('span', 'dk-state', saved ? saved.user : st.terminalHosts.includes(h) ? 'locked' : ''), act);
-      return li;
-    }) : [el('li', 'empty', 'no hosts')]));
+    const names = [...new Set([...Object.keys(acct.vault.hosts), ...st.terminalHosts])].sort(
+      (a, b) => Number(!acct.vault.hosts[a]) - Number(!acct.vault.hosts[b]) || a.localeCompare(b),
+    );
+    hosts.replaceChildren(
+      ...(names.length
+        ? names.map((h) => {
+            const li = el('li', 'dk-row acct-user');
+            const saved = acct.vault.hosts[h];
+            const act = Object.assign(el('button', saved ? 'danger' : '', saved ? 'forget' : 'log in'), {
+              type: 'button',
+            });
+            act.addEventListener('click', () => {
+              if (saved) {
+                dkForget(h);
+                draw();
+                return;
+              }
+              const chip = [...(dk.desk?.hosts.children || [])].find((c) => c.textContent === h) as Chip | undefined;
+              if (chip) dkUnlock(h, chip);
+            });
+            li.append(
+              el('span', 'dk-host', h),
+              el('span', 'dk-state', saved ? saved.user : st.terminalHosts.includes(h) ? 'locked' : ''),
+              act,
+            );
+            return li;
+          })
+        : [el('li', 'empty', 'no hosts')]),
+    );
 
     const pages = el('ul', 'dk-rows');
     const keys = Object.keys(acct.vault.pages).sort();
-    pages.replaceChildren(...(keys.length ? keys.map((k) => {
-      const p = acct.vault.pages[k]!;
-      const li = el('li', 'dk-row acct-page');
-      const cu = Object.assign(el('button', '', 'copy user'), { type: 'button' });
-      const cp = Object.assign(el('button', '', 'copy pass'), { type: 'button' });
-      const del = Object.assign(el('button', 'danger', 'delete'), { type: 'button' });
-      cu.addEventListener('click', () => copyText(p.user));
-      cp.addEventListener('click', () => copyText(p.pass));
-      del.addEventListener('click', () => { delete acct.vault.pages[k]; acctSave(); draw(); });
-      const name = Object.assign(el('span', 'dk-host', k), { title: p.url || k });
-      li.append(name, el('span', 'dk-state', p.user), cu, cp, del);
-      return li;
-    }) : [el('li', 'empty', 'none saved')]));
+    pages.replaceChildren(
+      ...(keys.length
+        ? keys.map((k) => {
+            const p = acct.vault.pages[k]!;
+            const li = el('li', 'dk-row acct-page');
+            const cu = Object.assign(el('button', '', 'copy user'), { type: 'button' });
+            const cp = Object.assign(el('button', '', 'copy pass'), { type: 'button' });
+            const del = Object.assign(el('button', 'danger', 'delete'), { type: 'button' });
+            cu.addEventListener('click', () => copyText(p.user));
+            cp.addEventListener('click', () => copyText(p.pass));
+            del.addEventListener('click', () => {
+              delete acct.vault.pages[k];
+              acctSave();
+              draw();
+            });
+            const name = Object.assign(el('span', 'dk-host', k), { title: p.url || k });
+            li.append(name, el('span', 'dk-state', p.user), cu, cp, del);
+            return li;
+          })
+        : [el('li', 'empty', 'none saved')]),
+    );
     const pName = noFill(Object.assign(el('input'), { placeholder: 'page', spellcheck: false }));
     pName.setAttribute('list', 'acct-page-names');
     const opts = el('datalist');
@@ -412,20 +562,34 @@ export function dkProfileWin(): void {
       const r = await acctCall('/api/me/password', { old: old.value, pass: neu.value });
       pwWhy.className = `dk-state ${r.ok ? 'ok' : 'bad'}`;
       pwWhy.textContent = r.ok ? 'changed' : r.error || 'no answer';
-      if (r.ok) { old.value = ''; neu.value = ''; }
+      if (r.ok) {
+        old.value = '';
+        neu.value = '';
+      }
     });
 
     // the editor files open in, picked on the apps page, which installs sulfur when it must
     const ed = el('div', 'dk-row acct-editor');
     const edGo = Object.assign(el('button', '', 'change'), { type: 'button', title: 'on the apps page' });
     edGo.addEventListener('click', () => appCall('store', true, (m) => m.storeShow('sulfur')));
-    ed.append(el('span', 'dk-host', EDITORS.find(([id]) => id === editorPref())![1]), el('span', 'dk-state', editorPref() ? 'an app on the mesh' : 'the desktop’s own'), edGo);
+    ed.append(
+      el('span', 'dk-host', EDITORS.find(([id]) => id === editorPref())![1]),
+      el('span', 'dk-state', editorPref() ? 'an app on the mesh' : 'the desktop’s own'),
+      edGo,
+    );
 
     body.replaceChildren(
-      el('div', 'dk-pick-head', 'hosts'), hosts,
-      el('div', 'dk-pick-head', 'page logins'), pages, pRow, opts,
-      el('div', 'dk-pick-head', 'editor'), ed,
-      el('div', 'dk-pick-head', 'password'), pw, pwWhy,
+      el('div', 'dk-pick-head', 'hosts'),
+      hosts,
+      el('div', 'dk-pick-head', 'page logins'),
+      pages,
+      pRow,
+      opts,
+      el('div', 'dk-pick-head', 'editor'),
+      ed,
+      el('div', 'dk-pick-head', 'password'),
+      pw,
+      pwWhy,
     );
   };
   draw();

@@ -7,12 +7,19 @@ export const logf = (f: string, ...a: unknown[]) => log("[services] " + f, ...a)
 // on the host, the scripts run in that checkout as the login, the port and mode
 // published; the rest is what the apps page shows of it
 export type Service = {
-  id: string; name: string; tagline: string; about: string; features: string[]; category: string; by: string;
+  id: string;
+  name: string;
+  tagline: string;
+  about: string;
+  features: string[];
+  category: string;
+  by: string;
   // the GitHub repository, cloned on the host; main is what's installed and updated to
   repo: string;
   // the icon's path in the repository, fetched off its main and served by the page
   icon: string;
-  port: number; mode: "path" | "subdomain";
+  port: number;
+  mode: "path" | "subdomain";
   // the host OSes its scripts run on, as the tailnet names them
   os: string[];
   // what the host needs before an install
@@ -24,7 +31,9 @@ export type Service = {
   // paths in the checkout a remove may keep aside, an install restoring them
   data: string[];
   // run by sh in the checkout: install (first time), update, remove (the unit undone)
-  install: string; update: string; remove: string;
+  install: string;
+  update: string;
+  remove: string;
 };
 
 export const Services: Service[] = [
@@ -32,8 +41,14 @@ export const Services: Service[] = [
     id: "circuit",
     name: "Circuit",
     tagline: "a schematic editor with a live circuit solver",
-    about: "Draw a circuit and watch it solve as you edit: DC, transient and graph layout from a Rust core, the UI served by its own small web server. Built from source on the host, updated from its own header button or here.",
-    features: ["live solving as you draw", "transient analysis", "a desktop app too, from the same checkout", "updates itself from main"],
+    about:
+      "Draw a circuit and watch it solve as you edit: DC, transient and graph layout from a Rust core, the UI served by its own small web server. Built from source on the host, updated from its own header button or here.",
+    features: [
+      "live solving as you draw",
+      "transient analysis",
+      "a desktop app too, from the same checkout",
+      "updates itself from main",
+    ],
     category: "engineering",
     by: "pmghartman",
     repo: "https://github.com/pmghartman/circuit",
@@ -52,8 +67,15 @@ export const Services: Service[] = [
     id: "tavern",
     name: "Tavern",
     tagline: "D&D 5e in a chat room, an AI dungeon master on the mesh",
-    about: "A strict rules engine decides every outcome while a dungeon master on the mesh's models tells the story: campaigns, character sheets, grid combat, adventure modules read from a PDF. The DM asks phosphorus's model gateway as the Tavern agent.",
-    features: ["campaign lobby and persistent memory", "full character creation and level-up", "grid combat with the real action economy", "adventure modules read from PDF or text", "the DM on the mesh's models, assigned on the agents page"],
+    about:
+      "A strict rules engine decides every outcome while a dungeon master on the mesh's models tells the story: campaigns, character sheets, grid combat, adventure modules read from a PDF. The DM asks phosphorus's model gateway as the Tavern agent.",
+    features: [
+      "campaign lobby and persistent memory",
+      "full character creation and level-up",
+      "grid combat with the real action economy",
+      "adventure modules read from PDF or text",
+      "the DM on the mesh's models, assigned on the agents page",
+    ],
     category: "games",
     by: "pmghartman",
     repo: "https://github.com/pmghartman/tavern",
@@ -67,7 +89,8 @@ export const Services: Service[] = [
     data: ["data", ".env"],
     install: "scripts/rebuild.sh",
     update: "scripts/update.sh",
-    remove: "systemctl --user disable --now tavern; rm -f \"$HOME/.config/systemd/user/tavern.service\"; systemctl --user daemon-reload",
+    remove:
+      'systemctl --user disable --now tavern; rm -f "$HOME/.config/systemd/user/tavern.service"; systemctl --user daemon-reload',
   },
 ];
 
@@ -127,7 +150,8 @@ export const aside = (s: Service) =>
 export function script(s: Service, op: Op, keep = false): string {
   switch (op) {
     case "install":
-      return head(s) +
+      return (
+        head(s) +
         'mkdir -p "$(dirname "$dir")"\n' +
         'if [ -d "$dir/.git" ]; then\n' +
         '  echo "updating the checkout in $dir"\n' +
@@ -139,14 +163,20 @@ export function script(s: Service, op: Op, keep = false): string {
         "fi\n" +
         restore(s) +
         'cd "$dir"\n' +
-        s.install + "\n";
+        s.install +
+        "\n"
+      );
     case "update":
-      return head(s) +
+      return (
+        head(s) +
         '[ -d "$dir/.git" ] || { echo "no checkout in $dir; install first" >&2; exit 2; }\n' +
         'cd "$dir"\n' +
-        s.update + "\n";
+        s.update +
+        "\n"
+      );
     case "remove":
-      return head(s) +
+      return (
+        head(s) +
         'if [ -d "$dir" ]; then\n' +
         '  cd "$dir"\n' +
         `  ( ${s.remove} ) || echo "note: the uninstall step failed; removing the checkout anyway"\n` +
@@ -156,7 +186,8 @@ export function script(s: Service, op: Op, keep = false): string {
         '  echo "removed $dir"\n' +
         "else\n" +
         '  echo "no checkout in $dir"\n' +
-        "fi\n";
+        "fi\n"
+      );
   }
 }
 
@@ -181,7 +212,7 @@ export function launch(s: Service, op: Op, keep = false): string {
     `rm -f "$j/${s.id}.exit" "$j/${s.id}.commit"\n` +
     `: > "$j/${s.id}.log"\n` +
     // the step outlives this login: linger, by the login itself or sudo without a prompt
-    'linger=0\n' +
+    "linger=0\n" +
     'if loginctl enable-linger "$(id -un)" 2>/dev/null || sudo -n loginctl enable-linger "$(id -un)" 2>/dev/null; then linger=1; fi\n' +
     `run='sh "$1" >"$2" 2>&1; echo $? >"$3"; if [ -d "$4/.git" ]; then git -C "$4" rev-parse HEAD >"$5" 2>/dev/null; fi; true'\n` +
     'if [ "$linger" = 1 ] && command -v systemd-run >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then\n' +

@@ -1,12 +1,13 @@
 // this host's service and VPN: status as text or JSON, Tailscale up or down
 import { fail, println, run, say } from "./base.ts";
+import { stop } from "./ctl.ts";
 import { os } from "./os.ts";
 import { vpnState } from "./tailnet.ts";
-import { stop } from "./ctl.ts";
 
 // status this host's service and VPN, as text or, with --json, for the app's tray
 export async function status(args: string[]) {
-  const running = await os.svcActive(), vpn = await vpnState();
+  const running = await os.svcActive(),
+    vpn = await vpnState();
   if (args[0] === "--json") {
     println(JSON.stringify({ running, vpn: vpn === "Running" }));
     return;
@@ -20,7 +21,8 @@ export async function vpn(args: string[]) {
   if (args.length === 0) return status([]);
   switch (args[0]) {
     case "on":
-      if (!(await run(os.tailscaleCLI(), "up", ...os.tailscaleUpFlags()))) throw fail("couldn't bring Tailscale up: tailscale up failed");
+      if (!(await run(os.tailscaleCLI(), "up", ...os.tailscaleUpFlags())))
+        throw fail("couldn't bring Tailscale up: tailscale up failed");
       say("Tailscale up");
       return;
     case "off":

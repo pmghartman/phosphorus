@@ -1,8 +1,9 @@
 // the ingress cloudflared points at: every published service by path or
 // subdomain, the frontend itself for everything else
-import type { Server } from "bun";
+
 import { envInt, isLoopbackAddr, isTailnetAddr, logf, marshal, Notes } from "@phosphorus/util";
-import { type Ctx, dial, type Handler, isUpgrade, remoteIP, upgrade, websocket, type WSData } from "@phosphorus/wsock";
+import { type Ctx, dial, type Handler, isUpgrade, remoteIP, upgrade, type WSData, websocket } from "@phosphorus/wsock";
+import type { Server } from "bun";
 
 export { favicon, faviconWhy, type Icon } from "./favicon.ts";
 
@@ -135,7 +136,10 @@ export function swap(rows: Row[], ipOf: (h: string) => string): boolean {
     }
     const held = domains.get(rt.domain);
     if (held && !(rt.master && !held.master)) {
-      notes.note("dup:" + rt.domain, `${rt.domain} is published by ${held.host} and ${rt.host}; serving ${held.host}'s`);
+      notes.note(
+        "dup:" + rt.domain,
+        `${rt.domain} is published by ${held.host} and ${rt.host}; serving ${held.host}'s`,
+      );
       continue;
     }
     domains.set(rt.domain, rt);
@@ -145,7 +149,9 @@ export function swap(rows: Row[], ipOf: (h: string) => string): boolean {
   every = all;
   // a Map's order: insertion, kept by the rows' own order
   const seen = new Set<string>();
-  const served = all.filter((rt) => rt.domain && domains.get(rt.domain) === rt && !seen.has(rt.domain) && seen.add(rt.domain));
+  const served = all.filter(
+    (rt) => rt.domain && domains.get(rt.domain) === rt && !seen.has(rt.domain) && seen.add(rt.domain),
+  );
   served.push(...paths);
   const fp = marshal(served.map(routeJSON));
   if (fp === tableFp) return false;
@@ -171,7 +177,8 @@ export const strip = (p: string, prefix: string) => p.slice(prefix.length) || "/
 // the prefix and other hosts' left as they are
 export function reverseLocation(loc: string, prefix: string, ...hosts: string[]): string {
   if (!prefix) return loc;
-  let head = "", rest = loc;
+  let head = "",
+    rest = loc;
   const abs = /^([a-z][a-z0-9+.-]*:)?\/\/([^/?#]*)(.*)$/is.exec(loc);
   if (abs) {
     if (!hosts.some((h) => h.toLowerCase() === abs[2]!.toLowerCase())) return loc;
@@ -194,7 +201,10 @@ export function unrebindable(host: string): boolean {
   let h = host;
   const m = /^\[([^\]]*)\](?::\d+)?$/.exec(h) ?? /^([^:]*):\d+$/.exec(h);
   if (m) h = m[1]!;
-  h = h.replace(/^\[|\]$/g, "").toLowerCase().replace(/\.$/, "");
+  h = h
+    .replace(/^\[|\]$/g, "")
+    .toLowerCase()
+    .replace(/\.$/, "");
   const ip = /^\d+\.\d+\.\d+\.\d+$/.test(h) || h.includes(":");
   return ip || !h.includes(".") || h.endsWith(".ts.net");
 }
@@ -210,12 +220,15 @@ const reqHost = (req: Request) => (req.headers.get("host") ?? "").toLowerCase().
 function resolve(c: Ctx): Hit {
   const host = reqHost(c.req);
   const raw = requestURI(c);
-  const pathname = c.url.pathname, search = c.url.search;
+  const pathname = c.url.pathname,
+    search = c.url.search;
   const t = table;
   // the domain, or on the tailnet any host's own name or address
-  const main = host === baseDomain || (!t.domains.has(host) && pathname !== "/healthz" && onMesh(c) && unrebindable(host));
+  const main =
+    host === baseDomain || (!t.domains.has(host) && pathname !== "/healthz" && onMesh(c) && unrebindable(host));
   if (main) {
-    for (const x of t.paths) if (under(pathname, x.prefix)) return { route: x, path: strip(pathname, x.prefix) + search };
+    for (const x of t.paths)
+      if (under(pathname, x.prefix)) return { route: x, path: strip(pathname, x.prefix) + search };
     if (pathname === "/api/update/local") return { status: 404, text: "not found" };
     return onMesh(c) ? { frontend: true } : { status: 403, text: "forbidden" };
   }
@@ -234,7 +247,17 @@ function resolve(c: Ctx): Hit {
 const loginCookie = "phosphorus-user";
 const pinCookie = "phosphorus-host";
 const pinHop = "x-forwarded-phosphorus-host";
-const hopHeaders = ["connection", "keep-alive", "proxy-connection", "transfer-encoding", "te", "trailer", "upgrade", "proxy-authorization", "proxy-authenticate"];
+const hopHeaders = [
+  "connection",
+  "keep-alive",
+  "proxy-connection",
+  "transfer-encoding",
+  "te",
+  "trailer",
+  "upgrade",
+  "proxy-authorization",
+  "proxy-authenticate",
+];
 
 const pinHopped = (req: Request) => !!req.headers.get(pinHop);
 function pinnedTo(req: Request): string {
@@ -249,7 +272,21 @@ export const pinTargets = (ips: Record<string, string>) => void (pinIPs = { ...i
 function peerIngress(host: string): Route | undefined {
   const ip = pinIPs[host];
   if (!ip) return;
-  return { pin: true, host, name: "frontend", scheme: "http", ip, port: ingressPort, proto: "https", master: false, git: false, public: false, domain: "", prefix: "", maxBody: 0 };
+  return {
+    pin: true,
+    host,
+    name: "frontend",
+    scheme: "http",
+    ip,
+    port: ingressPort,
+    proto: "https",
+    master: false,
+    git: false,
+    public: false,
+    domain: "",
+    prefix: "",
+    maxBody: 0,
+  };
 }
 
 function pinRoute(req: Request): Route | undefined {
@@ -262,7 +299,10 @@ export const refuse = (status: number, text: string, headers: Record<string, str
   new Response(text, { status, headers: { "Content-Type": "text/plain; charset=utf-8", ...headers } });
 
 export function frameable(csp: string): string {
-  const kept = csp.split(";").map((d) => d.trim()).filter((d) => d && !/^frame-ancestors(\s|$)/i.test(d));
+  const kept = csp
+    .split(";")
+    .map((d) => d.trim())
+    .filter((d) => d && !/^frame-ancestors(\s|$)/i.test(d));
   let anc = "frame-ancestors 'self'";
   if (baseDomain) anc += " https://" + baseDomain;
   return [...kept, anc].join("; ");
@@ -305,7 +345,8 @@ function capped(body: ReadableStream<Uint8Array>, max: number) {
 async function forward(rt: Route, c: Ctx, p: string): Promise<Response | undefined> {
   if (isUpgrade(c.req)) return forwardSocket(rt, c, p);
   const req = c.req;
-  if (rt.maxBody > 0 && Number(req.headers.get("content-length")) > rt.maxBody) return refuse(413, "request body too large");
+  if (rt.maxBody > 0 && Number(req.headers.get("content-length")) > rt.maxBody)
+    return refuse(413, "request body too large");
   let body: ReadableStream<Uint8Array> | null = req.body;
   if (body && rt.maxBody > 0) body = capped(body, rt.maxBody);
   let res: Response;
@@ -345,11 +386,20 @@ async function forward(rt: Route, c: Ctx, p: string): Promise<Response | undefin
 // the one the client is answered with
 async function forwardSocket(rt: Route, c: Ctx, p: string): Promise<Response | undefined> {
   const h = outHeaders(rt, c);
-  const protocols = (c.req.headers.get("sec-websocket-protocol") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  const protocols = (c.req.headers.get("sec-websocket-protocol") ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
   for (const k of [...h.keys()]) if (k.startsWith("sec-websocket-")) h.delete(k);
   let up;
   try {
-    up = await dial(`${rt.scheme === "https" ? "wss" : "ws"}://${hostPort(rt)}${p}`, Object.fromEntries(h), 30_000, protocols, { rejectUnauthorized: false });
+    up = await dial(
+      `${rt.scheme === "https" ? "wss" : "ws"}://${hostPort(rt)}${p}`,
+      Object.fromEntries(h),
+      30_000,
+      protocols,
+      { rejectUnauthorized: false },
+    );
   } catch {
     return refuse(502, `${rt.host}'s ${rt.name} didn't answer`, rt.pin ? { "Set-Cookie": pinCookieFor(selfHost) } : {});
   }
@@ -396,7 +446,10 @@ function deny(c: Ctx): Response {
   if (page && baseDomain) {
     const why = /(?:^|;\s*)phosphorus-user=/.test(c.req.headers.get("cookie") ?? "") ? "refused" : "none";
     const q = new URLSearchParams({ next: "https://" + host + requestURI(c), why, by: selfHost });
-    return new Response(null, { status: 302, headers: { Location: `https://${baseDomain}/?${q}`, "Cache-Control": "no-store" } });
+    return new Response(null, {
+      status: 302,
+      headers: { Location: `https://${baseDomain}/?${q}`, "Cache-Control": "no-store" },
+    });
   }
   return refuse(401, "log in first" + (selfHost ? ` (${selfHost})` : ""));
 }

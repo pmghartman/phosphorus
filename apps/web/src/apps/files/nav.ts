@@ -1,10 +1,13 @@
 // navigation: paths, history, the listing loaded
-import { filesCall, filesParent, fmSame, type Fm, type Loc } from '../../features/home/home.ts';
+import { type Fm, filesCall, filesParent, fmSame, type Loc } from '../../features/home/home.ts';
 import { fmUpload } from './actions.ts';
 import { fmRender } from './list.ts';
 
 export function fmGo(fm: Fm, loc: Loc, dir: string, how?: string): void {
-  if (how !== 'history' && fm.loc) { fm.back.push({ loc: fm.loc, dir: fm.dir }); fm.fwd = []; }
+  if (how !== 'history' && fm.loc) {
+    fm.back.push({ loc: fm.loc, dir: fm.dir });
+    fm.fwd = [];
+  }
   const from = fmSame(fm.loc, loc) ? fm.dir : null;
   fm.loc = loc;
   fm.dir = dir;
@@ -12,7 +15,10 @@ export function fmGo(fm: Fm, loc: Loc, dir: string, how?: string): void {
   fm.find.value = '';
   fm.filter = '';
   // back up a level: the folder left, picked
-  if (from != null && filesParent(from) === dir && from !== dir) { fm.sel.add(from.split('/').pop()!); fm.anchor = from.split('/').pop()!; }
+  if (from != null && filesParent(from) === dir && from !== dir) {
+    fm.sel.add(from.split('/').pop()!);
+    fm.anchor = from.split('/').pop()!;
+  }
   fm.entries = [];
   fm.renderSide?.();
   fmLoad(fm);
@@ -48,5 +54,8 @@ export async function fmLoad(fm: Fm): Promise<void> {
   fmRender(fm);
   // files added from the desktop, into the first folder shown
   const up = fm.pendingUpload;
-  if (up) { fm.pendingUpload = null; fmUpload(fm, fm.loc, fm.dir, up); }
+  if (up) {
+    fm.pendingUpload = null;
+    fmUpload(fm, fm.loc, fm.dir, up);
+  }
 }

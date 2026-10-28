@@ -4,7 +4,7 @@ import { renderMd } from '../../lib/md.ts';
 import { go, rec } from './list.ts';
 import { paintNew } from './newsession.ts';
 import { addNote } from './session.ts';
-import { ANTH, cd, kfmt, provOf, tilde, type Live, type Transcript, type Why } from './state.ts';
+import { ANTH, cd, kfmt, type Live, provOf, type Transcript, tilde, type Why } from './state.ts';
 import { toolCard, toolResult } from './tools.ts';
 
 export function claudeEv(t: Transcript, ev: Record<string, any>) {
@@ -15,14 +15,19 @@ export function claudeEv(t: Transcript, ev: Record<string, any>) {
         const bits = [ev.model, ev.permissionMode, ev.cwd && tilde(ev.cwd)].filter(Boolean);
         addNote(t, 'session', bits.join(' · ') || 'started').classList.add('cd-quiet');
       } else if (ev.subtype === 'api_retry') retryNote(t, ev);
-      else if (ev.subtype && ev.subtype !== 'status') addNote(t, ev.subtype.replace(/_/g, ' '), ev.message || ev.content || '').classList.add('cd-quiet');
+      else if (ev.subtype && ev.subtype !== 'status')
+        addNote(t, ev.subtype.replace(/_/g, ' '), ev.message || ev.content || '').classList.add('cd-quiet');
       break;
-    case 'stream_event': if (!ev.parent_tool_use_id) streamEv(t, ev.event || {}); break;
+    case 'stream_event':
+      if (!ev.parent_tool_use_id) streamEv(t, ev.event || {});
+      break;
     case 'assistant': {
       const content = ev.message?.content || [];
       for (const b of content) {
-        if (b.type === 'text') { if (b.text?.trim()) place(t, 'text', textBlock(b.text), where); }
-        else if (b.type === 'thinking' || b.type === 'redacted_thinking') place(t, 'thinking', thinkBlock(b.thinking || '(redacted)'), where);
+        if (b.type === 'text') {
+          if (b.text?.trim()) place(t, 'text', textBlock(b.text), where);
+        } else if (b.type === 'thinking' || b.type === 'redacted_thinking')
+          place(t, 'thinking', thinkBlock(b.thinking || '(redacted)'), where);
         else if (b.type === 'tool_use') place(t, 'tool', toolCard(t, b), where);
       }
       if (ev.error) addNote(t, 'error', String(ev.error));
@@ -60,7 +65,8 @@ export function claudeEv(t: Transcript, ev: Record<string, any>) {
       t.retryEl = null;
       break;
     }
-    default: break;
+    default:
+      break;
   }
 }
 
@@ -68,14 +74,29 @@ export function claudeEv(t: Transcript, ev: Record<string, any>) {
 export function apiWhy(t: Transcript, status: number | undefined, kind: string | undefined): Why {
   const anth = provOf(rec(t.id)?.model) === 'anthropic';
   const who = anth ? 'Anthropic' : "the mesh's model gateway";
-  if (!status) return { text: `couldn't reach ${who}${anth ? '' : ` from ${rec(t.id)?.host || 'the host'}`}`, auth: false };
+  if (!status)
+    return { text: `couldn't reach ${who}${anth ? '' : ` from ${rec(t.id)?.host || 'the host'}`}`, auth: false };
   if (status === 401 || status === 403 || kind === 'authentication_failed') {
-    return { text: anth ? 'Anthropic refused the token: sign in to Claude again' : 'the model gateway refused your phosphorus key', auth: anth };
+    return {
+      text: anth
+        ? 'Anthropic refused the token: sign in to Claude again'
+        : 'the model gateway refused your phosphorus key',
+      auth: anth,
+    };
   }
   if (status === 429) return { text: `${who} is rate limiting (429)`, auth: false };
-  if (status === 529 || status === 503) return { text: anth ? 'Anthropic is overloaded (529)' : `the model isn't loaded or is busy (${status}): check models in status`, auth: false };
+  if (status === 529 || status === 503)
+    return {
+      text: anth
+        ? 'Anthropic is overloaded (529)'
+        : `the model isn't loaded or is busy (${status}): check models in status`,
+      auth: false,
+    };
   if (status === 404) return { text: `${who} has no such model (404)`, auth: false };
-  return { text: `${who} failed (${status}${kind && kind !== 'unknown' ? ` ${kind.replace(/_/g, ' ')}` : ''})`, auth: false };
+  return {
+    text: `${who} failed (${status}${kind && kind !== 'unknown' ? ` ${kind.replace(/_/g, ' ')}` : ''})`,
+    auth: false,
+  };
 }
 
 // claude retrying a failed call: one line, kept current while nothing else lands
@@ -84,7 +105,10 @@ export function retryNote(t: Transcript, ev: Record<string, any>) {
   t.apiWhy = why;
   const text = `${why.text} · try ${ev.attempt || '?'} of ${ev.max_retries || '?'}`;
   if (t.retryEl && t.node.lastElementChild === t.retryEl) t.retryEl.querySelector('.cd-note-text')!.textContent = text;
-  else { t.retryEl = addNote(t, 'retrying', text); t.retryEl.classList.add('cd-note-warn'); }
+  else {
+    t.retryEl = addNote(t, 'retrying', text);
+    t.retryEl.classList.add('cd-note-warn');
+  }
 }
 
 export function noAnswer(t: Transcript, raw: string) {
@@ -93,7 +117,11 @@ export function noAnswer(t: Transcript, raw: string) {
   n.title = raw;
   if (why?.auth) {
     const b = Object.assign(el('button', 'cd-mini primary', 'sign in to Claude'), { type: 'button' });
-    b.addEventListener('click', () => { cd.login = true; if (cd.pick === 'new') paintNew(); else go('new'); });
+    b.addEventListener('click', () => {
+      cd.login = true;
+      if (cd.pick === 'new') paintNew();
+      else go('new');
+    });
     n.append(b);
   }
 }
@@ -114,7 +142,9 @@ export function flushLive(t: Transcript) {
 
 export function streamEv(t: Transcript, e: Record<string, any>) {
   if (e.type === 'content_block_start') {
-    const kind = ({ text: 'text', thinking: 'thinking', tool_use: 'tool', server_tool_use: 'tool' } as Record<string, string>)[e.content_block?.type];
+    const kind = (
+      { text: 'text', thinking: 'thinking', tool_use: 'tool', server_tool_use: 'tool' } as Record<string, string>
+    )[e.content_block?.type];
     if (!kind) return;
     let node: HTMLElement;
     if (kind === 'text') node = el('div', 'cd-text cd-streaming');
@@ -122,7 +152,11 @@ export function streamEv(t: Transcript, e: Record<string, any>) {
     else {
       node = el('div', 'cd-tool run cd-streaming');
       const h = el('div', 'cd-tool-head');
-      h.append(el('span', 'cd-pip'), el('span', 'cd-tool-name', e.content_block.name || 'tool'), el('span', 'cd-tool-arg', '…'));
+      h.append(
+        el('span', 'cd-pip'),
+        el('span', 'cd-tool-name', e.content_block.name || 'tool'),
+        el('span', 'cd-tool-arg', '…'),
+      );
       node.append(h);
     }
     const x: Live = { kind, el: node, index: e.index, text: '' };

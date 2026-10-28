@@ -7,16 +7,29 @@ export const stash = document.getElementById('dk-stash')!;
 
 // one list for good, each matchMedia() call another for the engine to re-evaluate
 export const mobileQuery = matchMedia('(max-width: 720px)');
-export function isMobile(): boolean { return mobileQuery.matches; }
+export function isMobile(): boolean {
+  return mobileQuery.matches;
+}
 export const modalOpen = () => !!document.querySelector('.modal:not([hidden])');
 
 export const cssVar = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
-export const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string | number | null): HTMLElementTagNameMap[K] =>
-  Object.assign(document.createElement(tag), cls ? { className: cls } : {}, text != null ? { textContent: String(text) } : {});
+export const el = <K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  cls?: string,
+  text?: string | number | null,
+): HTMLElementTagNameMap[K] =>
+  Object.assign(
+    document.createElement(tag),
+    cls ? { className: cls } : {},
+    text != null ? { textContent: String(text) } : {},
+  );
 
 export const SVG_NS = 'http://www.w3.org/2000/svg';
-export function svgEl<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, string | number>): SVGElementTagNameMap[K] {
+export function svgEl<K extends keyof SVGElementTagNameMap>(
+  tag: K,
+  attrs: Record<string, string | number>,
+): SVGElementTagNameMap[K] {
   const el = document.createElementNS(SVG_NS, tag);
   for (const k in attrs) el.setAttribute(k, String(attrs[k]));
   return el;
@@ -65,7 +78,9 @@ export function databaseIcon(): SVGSVGElement {
   const ry = 1.5;
   const icon = svgEl('svg', { viewBox: '0 0 7 8', class: 'db-icon', 'aria-hidden': 'true' });
   icon.appendChild(svgEl('ellipse', { cx: x + w / 2, cy: y + ry, rx: w / 2, ry }));
-  icon.appendChild(svgEl('path', { d: `M ${x} ${y + ry} V ${y + h - ry} A ${w / 2} ${ry} 0 0 0 ${x + w} ${y + h - ry} V ${y + ry}` }));
+  icon.appendChild(
+    svgEl('path', { d: `M ${x} ${y + ry} V ${y + h - ry} A ${w / 2} ${ry} 0 0 0 ${x + w} ${y + h - ry} V ${y + ry}` }),
+  );
   icon.appendChild(svgEl('path', { d: `M ${x} ${y + h / 2} A ${w / 2} ${ry} 0 0 0 ${x + w} ${y + h / 2}` }));
   return icon;
 }
@@ -76,27 +91,48 @@ export function codeCopies(root: HTMLElement): void {
     if (pre.parentElement?.classList.contains('code-wrap')) continue;
     const wrap = el('div', 'code-wrap');
     pre.replaceWith(wrap);
-    const copy = Object.assign(el('button', 'game-copy code-copy'), { type: 'button', title: 'copy', ariaLabel: 'copy' });
+    const copy = Object.assign(el('button', 'game-copy code-copy'), {
+      type: 'button',
+      title: 'copy',
+      ariaLabel: 'copy',
+    });
     copy.appendChild(gameIcon('copy'));
     copy.addEventListener('click', (e) => {
       e.stopPropagation();
-      copyText(pre.innerText.replace(/\n$/, '')).then(() => {
-        copy.replaceChildren(gameIcon('check'));
-        setTimeout(() => copy.replaceChildren(gameIcon('copy')), 1200);
-      }).catch(() => {});
+      copyText(pre.innerText.replace(/\n$/, ''))
+        .then(() => {
+          copy.replaceChildren(gameIcon('check'));
+          setTimeout(() => copy.replaceChildren(gameIcon('copy')), 1200);
+        })
+        .catch(() => {});
     });
     wrap.append(pre, copy);
   }
 }
 
 // a box over the whole page, any user's: true for its action, false for cancel or esc
-export function pageAsk({ title, message, action = 'ok', danger = false, cancel = true }: { title: string; message: string; action?: string; danger?: boolean; cancel?: boolean }): Promise<boolean> {
+export function pageAsk({
+  title,
+  message,
+  action = 'ok',
+  danger = false,
+  cancel = true,
+}: {
+  title: string;
+  message: string;
+  action?: string;
+  danger?: boolean;
+  cancel?: boolean;
+}): Promise<boolean> {
   return new Promise((resolve) => {
     const veil = el('div', 'fm-veil page-veil');
     const box = el('form', 'fm-ask');
     const go = Object.assign(el('button', danger ? 'danger' : 'primary', action), { type: 'submit' });
     const acts = el('div', 'update-actions');
-    const end = (v: boolean) => { veil.remove(); resolve(v); };
+    const end = (v: boolean) => {
+      veil.remove();
+      resolve(v);
+    };
     if (cancel) {
       const no = Object.assign(el('button', '', 'cancel'), { type: 'button' });
       no.addEventListener('click', () => end(false));
@@ -104,9 +140,17 @@ export function pageAsk({ title, message, action = 'ok', danger = false, cancel 
     }
     acts.append(go);
     box.append(el('div', 'fm-ask-title', title), el('p', '', message), acts);
-    box.addEventListener('submit', (e) => { e.preventDefault(); end(true); });
-    box.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Escape') end(false); });
-    veil.addEventListener('pointerdown', (e) => { if (e.target === veil) end(false); });
+    box.addEventListener('submit', (e) => {
+      e.preventDefault();
+      end(true);
+    });
+    box.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Escape') end(false);
+    });
+    veil.addEventListener('pointerdown', (e) => {
+      if (e.target === veil) end(false);
+    });
     veil.appendChild(box);
     document.body.appendChild(veil);
     go.focus();
@@ -116,14 +160,23 @@ export function pageAsk({ title, message, action = 'ok', danger = false, cancel 
 // masked by css, never a password field, so password managers skip it
 export function noFill(input: HTMLInputElement, secret?: boolean): HTMLInputElement {
   Object.assign(input, { type: 'text', autocomplete: 'off', name: `nf-${Math.random().toString(36).slice(2)}` });
-  for (const [k, v] of [['data-1p-ignore', ''], ['data-lpignore', 'true'], ['data-bwignore', ''], ['data-form-type', 'other']] as const) input.setAttribute(k, v);
+  for (const [k, v] of [
+    ['data-1p-ignore', ''],
+    ['data-lpignore', 'true'],
+    ['data-bwignore', ''],
+    ['data-form-type', 'other'],
+  ] as const)
+    input.setAttribute(k, v);
   if (secret) input.classList.add('no-fill-secret');
   return input;
 }
 
 // masked here, not by the browser: only bullets in the field, so no password
 // manager takes it for a password and offers to save it
-export function maskField(input: HTMLInputElement, onEdit?: () => void): { get: () => string; set: (t: string, caret?: number) => void } {
+export function maskField(
+  input: HTMLInputElement,
+  onEdit?: () => void,
+): { get: () => string; set: (t: string, caret?: number) => void } {
   let text = '';
   const set = (t: string, caret = t.length) => {
     text = t;
@@ -140,7 +193,8 @@ export function maskField(input: HTMLInputElement, onEdit?: () => void): { get: 
     if (e.inputType.startsWith('insert')) {
       ins = e.data ?? e.dataTransfer?.getData('text/plain') ?? '';
     } else if (start === end) {
-      if (e.inputType.includes('Backward')) start = e.inputType === 'deleteContentBackward' ? Math.max(0, start - 1) : 0;
+      if (e.inputType.includes('Backward'))
+        start = e.inputType === 'deleteContentBackward' ? Math.max(0, start - 1) : 0;
       else end = e.inputType === 'deleteContentForward' ? end + 1 : text.length;
     }
     ins = ins.replace(/[\r\n]/g, '');

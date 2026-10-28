@@ -1,11 +1,11 @@
 // the frontend's websockets: chat, the state push, stats, editors and
 // terminals, here or spliced onto the owning peer's
-import { intervalMS, onHot } from "@phosphorus/util";
+
 import { Attach as collabAttach, Forward as collabForward } from "@phosphorus/collab";
 import { attach as statsAttach } from "@phosphorus/stats";
 import * as term from "@phosphorus/term";
 import { Of } from "@phosphorus/users";
-import { marshal, now, sleep, tailnetIP } from "@phosphorus/util";
+import { intervalMS, marshal, now, onHot, sleep, tailnetIP } from "@phosphorus/util";
 import { type Conn, type Ctx, upgrade } from "@phosphorus/wsock";
 import { onChat } from "./chatws.ts";
 import { codeSocket } from "./code.ts";
@@ -78,10 +78,14 @@ export async function onUpgrade(c: Ctx, pathname: string, q: URLSearchParams): P
       }
       q.set("hop", "1");
       const cookie = c.req.headers.get("cookie") ?? "";
-      collabForward(ws, async () => {
-        const ip = await tailnetIP(host);
-        return ip ? `ws://${ip}:${port}/api/code/${host}?${q}` : "";
-      }, cookie);
+      collabForward(
+        ws,
+        async () => {
+          const ip = await tailnetIP(host);
+          return ip ? `ws://${ip}:${port}/api/code/${host}?${q}` : "";
+        },
+        cookie,
+      );
     });
   }
   m = termPathRe.exec(pathname);
@@ -108,14 +112,28 @@ export async function onUpgrade(c: Ctx, pathname: string, q: URLSearchParams): P
         default:
           shell = 'exec "$SHELL" -l';
       }
-      term.attach(ws, { host, sid: q.get("sid")!, since, resume, sshHost: hostSSHHost, port: intOf(hostSSHPort), shell, auto: q.get("auto") === "1" });
+      term.attach(ws, {
+        host,
+        sid: q.get("sid")!,
+        since,
+        resume,
+        sshHost: hostSSHHost,
+        port: intOf(hostSSHPort),
+        shell,
+        auto: q.get("auto") === "1",
+      });
       return;
     }
     q.set("hop", "1");
-    term.forward(ws, host, async () => {
-      const ip = await tailnetIP(host);
-      return ip ? `ws://${ip}:${port}/api/term/${host}?${q}` : "";
-    }, resume);
+    term.forward(
+      ws,
+      host,
+      async () => {
+        const ip = await tailnetIP(host);
+        return ip ? `ws://${ip}:${port}/api/term/${host}?${q}` : "";
+      },
+      resume,
+    );
   });
 }
 

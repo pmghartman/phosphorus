@@ -5,9 +5,34 @@ import type { Session } from "@phosphorus/users";
 import { errText, marshal, now } from "@phosphorus/util";
 import type { Conn } from "@phosphorus/wsock";
 import {
-  allPresence, announceJoin, announceLeave, broadcast, broadcastPresence, channelOf, type ChatClient, chMeta, clients, colorForName, fileOf,
-  hideDm, isDm, lineOf, maxNameLen, maxTextLen, type Msg, nextClearTimestamp, postOwn, presenceFor, reactions, refRe, sees, sendHistory, setChannel,
-  setClear, typingRe, validColors,
+  allPresence,
+  announceJoin,
+  announceLeave,
+  broadcast,
+  broadcastPresence,
+  type ChatClient,
+  channelOf,
+  chMeta,
+  clients,
+  colorForName,
+  fileOf,
+  hideDm,
+  isDm,
+  lineOf,
+  type Msg,
+  maxNameLen,
+  maxTextLen,
+  nextClearTimestamp,
+  postOwn,
+  presenceFor,
+  reactions,
+  refRe,
+  sees,
+  sendHistory,
+  setChannel,
+  setClear,
+  typingRe,
+  validColors,
 } from "./chat.ts";
 import { clipU, decode, num, obj, str, truthy } from "./js.ts";
 
@@ -120,7 +145,8 @@ export function onChatMessage(c: ChatClient, user: string, msg: Msg) {
     case "show": {
       const to = clipU(str(msg.to).trim(), maxNameLen);
       const file = fileOf(msg.file);
-      if (to !== "" && to !== c.name && file) postOwn({ name: c.name, color: c.color, kind: "show", dm: to, text: file.label, file });
+      if (to !== "" && to !== c.name && file)
+        postOwn({ name: c.name, color: c.color, kind: "show", dm: to, text: file.label, file });
       return;
     }
     case "react":

@@ -2,9 +2,9 @@
 import { existsSync, lstatSync } from "node:fs";
 import { open, rename, rm, stat, truncate, unlink, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
-import { adopt, mkdirAll, ownerAt } from "./owner.ts";
-import { MaxText, MaxUpload, errBody, type Res, type Share, uploadTmp } from "./index.ts";
+import { errBody, MaxText, MaxUpload, type Res, type Share, uploadTmp } from "./index.ts";
 import { jsNumber } from "./listing.ts";
+import { adopt, mkdirAll, ownerAt } from "./owner.ts";
 import { badPath, relOf, safePath } from "./paths.ts";
 import { makeParents, read } from "./read.ts";
 import { can } from "./shares.ts";
@@ -27,12 +27,18 @@ export async function drain(body: ReadableStream<Uint8Array> | null) {
 }
 
 // one chunk of an upload appended at its offset, renamed into place once the last lands
-export async function write(sh: Share | undefined, rel: string, body: ReadableStream<Uint8Array> | null, q: UploadQ): Promise<Res> {
+export async function write(
+  sh: Share | undefined,
+  rel: string,
+  body: ReadableStream<Uint8Array> | null,
+  q: UploadQ,
+): Promise<Res> {
   if (!sh || !can(sh, "w")) return [403, errBody("this share is read-only")];
   makeParents(sh, rel);
   const abs = safePath(sh, rel, false);
   if (!abs || badName.test(basename(abs))) return badPath(sh, rel, false);
-  const total = jsNumber(q.total), offset = jsNumber(q.offset);
+  const total = jsNumber(q.total),
+    offset = jsNumber(q.offset);
   if (!idRe.test(q.id) || !isInt(total) || !isInt(offset) || offset < 0 || offset > total) {
     await drain(body);
     return [400, errBody("bad chunk")];

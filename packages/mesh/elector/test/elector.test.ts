@@ -5,7 +5,13 @@ import { join } from "node:path";
 
 const dir = mkdtempSync(join(tmpdir(), "phos-elector-"));
 process.env.STATE_DIR = dir;
-for (const [k, f] of [["LOCAL_FILE", "local"], ["DECISION_FILE", "decision"], ["LEASE_UNTIL_FILE", "lease"], ["FORGEJO_PID_FILE", "forgejo"], ["PROMOTING_FILE", "promoting"]])
+for (const [k, f] of [
+  ["LOCAL_FILE", "local"],
+  ["DECISION_FILE", "decision"],
+  ["LEASE_UNTIL_FILE", "lease"],
+  ["FORGEJO_PID_FILE", "forgejo"],
+  ["PROMOTING_FILE", "promoting"],
+])
   process.env[k!] = join(dir, f!);
 process.env.PROMOTE_GRACE = "2";
 process.env.ADD_AFTER_MS = "0";
@@ -23,7 +29,12 @@ function mesh(self: string, peers: Record<string, Peer>) {
   const votes: Vote[] = [];
   const call = async (host: string, _method: string, path: string, body?: unknown) => {
     if (path === "/api/git/view") {
-      const states = Object.entries(peers).map(([h, p]) => ({ host: h, gitHost: p.gitHost ?? true, claim: p.claim, roster: p.roster }));
+      const states = Object.entries(peers).map(([h, p]) => ({
+        host: h,
+        gitHost: p.gitHost ?? true,
+        claim: p.claim,
+        roster: p.roster,
+      }));
       return { pollMs: 50, states: [...states, { host: self, gitHost: true }], offlineMs: {} };
     }
     votes.push({ host, body });
@@ -43,17 +54,41 @@ test("boots as master on a majority, then grows the roster jointly", async () =>
   const m = mesh("a", { b: {}, c: {} });
   const e = new Elector("a", m.call);
   e.start();
-  expect(claim()).toEqual({ host: "a", role: "none", master: "", gen: 1, stamp: 7, eligible: true, roster: 0, handoffTo: "" });
+  expect(claim()).toEqual({
+    host: "a",
+    role: "none",
+    master: "",
+    gen: 1,
+    stamp: 7,
+    eligible: true,
+    roster: 0,
+    handoffTo: "",
+  });
   // one tick of grace, then the campaign
   await e.tick();
   expect([e.role, m.votes.length]).toEqual(["none", 0]);
   await e.tick();
   expect([e.role, e.master, e.gen]).toEqual(["master", "a", 2]);
-  const members = [{ name: "a", git: true, tb: true }, { name: "b", git: true, tb: false }, { name: "c", git: true, tb: false }];
+  const members = [
+    { name: "a", git: true, tb: true },
+    { name: "b", git: true, tb: false },
+    { name: "c", git: true, tb: false },
+  ];
   expect(roster()).toEqual({ epoch: 1, members, prev: null });
-  expect(m.votes.map((v) => v.host).sort()).toEqual(["b", "c", m.votes.find((v) => v.host !== "b" && v.host !== "c")!.host].sort());
+  expect(m.votes.map((v) => v.host).sort()).toEqual(
+    ["b", "c", m.votes.find((v) => v.host !== "b" && v.host !== "c")!.host].sort(),
+  );
   expect(m.votes[0]!.body).toEqual({ c: "a", ms: 4000, roster: { epoch: 1, members, prev: null } });
-  expect(claim()).toEqual({ host: "a", role: "master", master: "a", gen: 2, stamp: 7, eligible: true, roster: 1, handoffTo: "" });
+  expect(claim()).toEqual({
+    host: "a",
+    role: "master",
+    master: "a",
+    gen: 2,
+    stamp: 7,
+    eligible: true,
+    roster: 1,
+    handoffTo: "",
+  });
   expect(decision()).toMatch(/^master a 2 \d+ -\n$/);
   expect(Number(readFileSync(process.env.LEASE_UNTIL_FILE!, "utf8"))).toBeGreaterThan(0);
   // no forgejo yet: promoting
@@ -92,7 +127,10 @@ test("boots as master on a majority, then grows the roster jointly", async () =>
 
 test("follows a master, refuses one with older data", async () => {
   local("3 1 1 0");
-  const m = mesh("a", { b: { claim: { role: "master", master: "b", gen: 5, stamp: 1, eligible: true, handoffTo: "" } }, c: {} });
+  const m = mesh("a", {
+    b: { claim: { role: "master", master: "b", gen: 5, stamp: 1, eligible: true, handoffTo: "" } },
+    c: {},
+  });
   const e = new Elector("a", m.call);
   await e.tick();
   expect([e.role, e.master, m.votes.length]).toEqual(["servant", "b", 0]);
@@ -132,15 +170,27 @@ test("stalls without a majority, out of sync, or behind newer data", async () =>
 });
 
 test("rosters as JSON", () => {
-  expect(validRoster({ epoch: 2, members: [{ name: "a", git: true }], prev: null })).toEqual({ epoch: 2, members: [{ name: "a", git: true }], prev: null });
-  expect(validRoster({ epoch: 2, members: [{ name: "a", git: true, tb: true }], prev: [{ name: "b", git: false }] })).toEqual({
-    epoch: 2, members: [{ name: "a", git: true, tb: true }], prev: [{ name: "b", git: false }],
+  expect(validRoster({ epoch: 2, members: [{ name: "a", git: true }], prev: null })).toEqual({
+    epoch: 2,
+    members: [{ name: "a", git: true }],
+    prev: null,
+  });
+  expect(
+    validRoster({ epoch: 2, members: [{ name: "a", git: true, tb: true }], prev: [{ name: "b", git: false }] }),
+  ).toEqual({
+    epoch: 2,
+    members: [{ name: "a", git: true, tb: true }],
+    prev: [{ name: "b", git: false }],
   });
   for (const bad of [
-    null, { epoch: 1, members: [] },
-    { epoch: 1.5, members: [], prev: null }, { epoch: -1, members: [], prev: null },
-    { epoch: 1, members: [{ name: "a b", git: true }], prev: null }, { epoch: 1, members: [{ name: "a", git: "yes" }], prev: null },
-    { epoch: 1, members: [{ name: "a", git: true, tb: 1 }], prev: null }, { epoch: 1, members: [], prev: {} },
+    null,
+    { epoch: 1, members: [] },
+    { epoch: 1.5, members: [], prev: null },
+    { epoch: -1, members: [], prev: null },
+    { epoch: 1, members: [{ name: "a b", git: true }], prev: null },
+    { epoch: 1, members: [{ name: "a", git: "yes" }], prev: null },
+    { epoch: 1, members: [{ name: "a", git: true, tb: 1 }], prev: null },
+    { epoch: 1, members: [], prev: {} },
   ])
     expect(validRoster(bad)).toBeUndefined();
 });

@@ -14,19 +14,36 @@ import { isTailnet, type Res, sendJSON } from "./http.ts";
 import { jsString, obj, str, truthy } from "./js.ts";
 
 const mimeByExt: Record<string, string> = {
-  ".txt": "text/plain; charset=utf-8", ".md": "text/plain; charset=utf-8",
-  ".log": "text/plain; charset=utf-8", ".json": "application/json",
-  ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
-  ".gif": "image/gif", ".webp": "image/webp", ".svg": "image/svg+xml",
-  ".pdf": "application/pdf", ".mp4": "video/mp4", ".webm": "video/webm",
+  ".txt": "text/plain; charset=utf-8",
+  ".md": "text/plain; charset=utf-8",
+  ".log": "text/plain; charset=utf-8",
+  ".json": "application/json",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".svg": "image/svg+xml",
+  ".pdf": "application/pdf",
+  ".mp4": "video/mp4",
+  ".webm": "video/webm",
 };
 
 const runMime: Record<string, string> = {
-  ".html": "text/html; charset=utf-8", ".htm": "text/html; charset=utf-8",
-  ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8",
-  ".css": "text/css; charset=utf-8", ".wasm": "application/wasm", ".data": "application/octet-stream",
-  ".ico": "image/x-icon", ".woff2": "font/woff2", ".woff": "font/woff", ".ttf": "font/ttf",
-  ".mp3": "audio/mpeg", ".ogg": "audio/ogg", ".wav": "audio/wav",
+  ".html": "text/html; charset=utf-8",
+  ".htm": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".wasm": "application/wasm",
+  ".data": "application/octet-stream",
+  ".ico": "image/x-icon",
+  ".woff2": "font/woff2",
+  ".woff": "font/woff",
+  ".ttf": "font/ttf",
+  ".mp3": "audio/mpeg",
+  ".ogg": "audio/ogg",
+  ".wav": "audio/wav",
 };
 
 export function sendFile(abs: string, download: boolean, extra: Record<string, string> = {}): Response {
@@ -74,7 +91,8 @@ export function runGrant(sh: files.Share, rel: string, who: files.Who | undefine
   if (!st) return [404, { error: "no such file" }];
   const kind = runKind(rel, st.dir);
   if (!kind) return [400, { error: "not runnable: a page, a .wasm or a folder with an index.html" }];
-  let dir = st.rel, entry = "index.html";
+  let dir = st.rel,
+    entry = "index.html";
   if (!st.dir) {
     dir = posix.dirname(st.rel);
     if (dir === ".") dir = "";
@@ -102,7 +120,10 @@ export async function serveRun(c: Ctx, host: string, token: string, rest: string
     }
   }
   const d = str(g!.d);
-  const rel = posix.normalize("/" + d + "/" + parts.join("/")).replace(/\/$/, "").replace(/^\//, "");
+  const rel = posix
+    .normalize("/" + d + "/" + parts.join("/"))
+    .replace(/\/$/, "")
+    .replace(/^\//, "");
   if (d !== "" && rel !== d && !rel.startsWith(d + "/")) return sendJSON(403, { error: "outside the app" });
   if (sh.id === "home") {
     const u = str(g!.u);
@@ -113,10 +134,17 @@ export async function serveRun(c: Ctx, host: string, token: string, rest: string
   const st = files.statPath(sh, rel);
   const abs = st ? files.downloadPath(sh, st.dir ? st.rel + "/index.html" : st.rel) : "";
   if (!abs) return sendJSON(404, { error: "no such file" });
-  const extra: Record<string, string> = { "Content-Security-Policy": runSandbox, "Access-Control-Allow-Origin": "*", "Cross-Origin-Resource-Policy": "cross-origin" };
+  const extra: Record<string, string> = {
+    "Content-Security-Policy": runSandbox,
+    "Access-Control-Allow-Origin": "*",
+    "Cross-Origin-Resource-Policy": "cross-origin",
+  };
   // a .wasm asked as an app: the console page running it, beside it
   if (c.url.searchParams.has("console") && extname(abs).toLowerCase() === ".wasm") {
-    return new Response(wasiConsole, { status: 200, headers: { ...extra, "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } });
+    return new Response(wasiConsole, {
+      status: 200,
+      headers: { ...extra, "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" },
+    });
   }
   const t = runMime[extname(abs).toLowerCase()];
   if (t) extra["Content-Type"] = t;
@@ -176,7 +204,13 @@ export async function forwardFiles(host: string, c: Ctx, urlPath: string): Promi
 
 export function filesInfo(): Record<string, any> {
   const shares = files.shares().map(files.shareJSON);
-  return { host: selfHost, enabled: shares.length > 0, shares, home: files.homeDir(), wantDir: files.pending() ? files.configuredDirs().join(", ") : "" };
+  return {
+    host: selfHost,
+    enabled: shares.length > 0,
+    shares,
+    home: files.homeDir(),
+    wantDir: files.pending() ? files.configuredDirs().join(", ") : "",
+  };
 }
 
 // homeFilterResults a search's hits cut to what who may reach
@@ -185,7 +219,13 @@ export function homeFilterResults(who: files.Who | undefined, rs: Record<string,
 }
 
 // filesCall a files call, here or on its host; homes only for a keyed caller, as their user
-export async function filesCall(c: Caller | undefined, host: string, op: string, share: string, body: Record<string, any>): Promise<Res> {
+export async function filesCall(
+  c: Caller | undefined,
+  host: string,
+  op: string,
+  share: string,
+  body: Record<string, any>,
+): Promise<Res> {
   if (host === selfHost) {
     if (op === "info") return [200, filesInfo()];
     if (!files.enabled()) return [503, { error: selfHost + " publishes no files directory" }];
@@ -236,11 +276,17 @@ export async function filesCall(c: Caller | undefined, host: string, op: string,
   const get = op === "info" || op === "list" || op === "tree" || op === "search" || op === "read";
   const q = "share=" + encodeURIComponent(share);
   let params = "";
-  if (get) for (const k of ["path", "depth", "match", "query", "content", "glob"]) if (truthy(body[k])) params += "&" + k + "=" + encodeURIComponent(jsString(body[k]));
+  if (get)
+    for (const k of ["path", "depth", "match", "query", "content", "glob"])
+      if (truthy(body[k])) params += "&" + k + "=" + encodeURIComponent(jsString(body[k]));
   const headers = c ? { [whoHeader]: SealGrant({ u: c.user, a: !!c.admin }, 60 * 1000) } : undefined;
   return peerCall(host, {
-    host: ip, method: get ? "GET" : "POST", timeoutMs: 15000, body: get ? undefined : body,
-    path: `/api/files/${host}/${op}?${q}${params}&hop=1`, headers,
+    host: ip,
+    method: get ? "GET" : "POST",
+    timeoutMs: 15000,
+    body: get ? undefined : body,
+    path: `/api/files/${host}/${op}?${q}${params}&hop=1`,
+    headers,
   });
 }
 
@@ -248,5 +294,11 @@ const strPtr = (v: unknown) => (typeof v === "string" ? v : undefined);
 
 export function writeP(p: Record<string, any>): WriteP {
   const by = obj(p.by);
-  return { text: strPtr(p.text), old: strPtr(p.old), new: strPtr(p.new), byName: str(by?.name), byColor: str(by?.color) };
+  return {
+    text: strPtr(p.text),
+    old: strPtr(p.old),
+    new: strPtr(p.new),
+    byName: str(by?.name),
+    byColor: str(by?.color),
+  };
 }

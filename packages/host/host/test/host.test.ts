@@ -11,20 +11,49 @@ const { durText, lastLine, setHome, splitLines, sshInclude } = base;
 const { plistText, xmlEsc } = await import("../src/darwin.ts");
 const { escapeArg, psq } = await import("../src/windows.ts");
 const { authorizedKeysKept, gameKeyLine } = await import("../src/game.ts");
-const { absTo, bakeEnv, envFileText, psText, readEnvFile, signature, splitComma, withPath } = await import("../src/native.ts");
+const { absTo, bakeEnv, envFileText, psText, readEnvFile, signature, splitComma, withPath } = await import(
+  "../src/native.ts"
+);
 const { kept, syncPayload } = await import("../src/install.ts");
 const { field } = await import("../src/upgrade.ts");
 const { keySet } = await import("../src/start.ts");
 
 test("parse takes --update, --home and --payload, the rest in order", () => {
   expect(parse([])).toEqual({ update: false, payload: "", home: "", rest: [] });
-  expect(parse(["all", "--update", "--home", "/h", "--payload", "/p", "x"])).toEqual({ update: true, payload: "/p", home: "/h", rest: ["all", "x"] });
+  expect(parse(["all", "--update", "--home", "/h", "--payload", "/p", "x"])).toEqual({
+    update: true,
+    payload: "/p",
+    home: "/h",
+    rest: ["all", "x"],
+  });
   // a trailing --home with no value is an ordinary argument, as Go left it
   expect(parse(["--home"])).toEqual({ update: false, payload: "", home: "", rest: ["--home"] });
 });
 
 test("commands and usage", async () => {
-  for (const c of ["", "start", "stop", "restart", "update", "keys", "install", "setup", "rebuild", "upgrade", "game-control", "game-control-setup", "run", "ps", "uninstall", "status", "vpn", "help", "-h", "--help"]) expect(commands.has(c)).toBe(true);
+  for (const c of [
+    "",
+    "start",
+    "stop",
+    "restart",
+    "update",
+    "keys",
+    "install",
+    "setup",
+    "rebuild",
+    "upgrade",
+    "game-control",
+    "game-control-setup",
+    "run",
+    "ps",
+    "uninstall",
+    "status",
+    "vpn",
+    "help",
+    "-h",
+    "--help",
+  ])
+    expect(commands.has(c)).toBe(true);
   expect(commands.has("serve")).toBe(false);
   expect(usageText.startsWith("usage: phos             the cli")).toBe(true);
   expect(await main("help", [])).toBe(0);
@@ -38,7 +67,11 @@ test("version reads the home's VERSION, else dev", () => {
 });
 
 test("launchd plist as Go rendered it, xml escaped", () => {
-  const p = plistText("/Users/a&b/Library/Phosphorus/bin/phosphorus", "/Users/a&b/Library/Phosphorus", "/Users/a&b/Library/Phosphorus/state/phosphorus.log");
+  const p = plistText(
+    "/Users/a&b/Library/Phosphorus/bin/phosphorus",
+    "/Users/a&b/Library/Phosphorus",
+    "/Users/a&b/Library/Phosphorus/state/phosphorus.log",
+  );
   expect(p).toBe(`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -66,7 +99,9 @@ test("escapeArg as syscall.EscapeArg, psq as a PowerShell literal", () => {
   expect(escapeArg("")).toBe('""');
   expect(escapeArg("abc")).toBe("abc");
   expect(escapeArg("a b")).toBe('"a b"');
-  expect(escapeArg(String.raw`C:\Users\x\phosphorus\bin\phosphorus.exe`)).toBe(String.raw`C:\Users\x\phosphorus\bin\phosphorus.exe`);
+  expect(escapeArg(String.raw`C:\Users\x\phosphorus\bin\phosphorus.exe`)).toBe(
+    String.raw`C:\Users\x\phosphorus\bin\phosphorus.exe`,
+  );
   expect(escapeArg(String.raw`C:\Program Files\x`)).toBe(String.raw`"C:\Program Files\x"`);
   expect(escapeArg('a"b')).toBe(String.raw`a\"b`);
   expect(escapeArg(String.raw`a\"b`)).toBe(String.raw`a\\\"b`);
@@ -78,21 +113,40 @@ test("escapeArg as syscall.EscapeArg, psq as a PowerShell literal", () => {
 test("the play/stop key's authorized_keys line and what's kept around it", () => {
   const pub = "ssh-ed25519 AAAAC3 phosphorus-game-control\n";
   const line = gameKeyLine("/var/lib/phosphorus/bin/phosphorus", "/var/lib/phosphorus", pub);
-  expect(line).toBe('restrict,command="/var/lib/phosphorus/bin/phosphorus game-control --home /var/lib/phosphorus" ssh-ed25519 AAAAC3 phosphorus-game-control');
-  expect(gameKeyLine(String.raw`C:\p\bin\phosphorus.exe`, String.raw`C:\p`, pub)).toBe(String.raw`restrict,command="C:\\p\\bin\\phosphorus.exe game-control --home C:\\p" ssh-ed25519 AAAAC3 phosphorus-game-control`);
+  expect(line).toBe(
+    'restrict,command="/var/lib/phosphorus/bin/phosphorus game-control --home /var/lib/phosphorus" ssh-ed25519 AAAAC3 phosphorus-game-control',
+  );
+  expect(gameKeyLine(String.raw`C:\p\bin\phosphorus.exe`, String.raw`C:\p`, pub)).toBe(
+    String.raw`restrict,command="C:\\p\\bin\\phosphorus.exe game-control --home C:\\p" ssh-ed25519 AAAAC3 phosphorus-game-control`,
+  );
   const keyPart = "ssh-ed25519 AAAAC3";
   // already there: nothing to write
   expect(authorizedKeysKept("ssh-rsa X me\n" + line + "\n", line, keyPart)).toBeUndefined();
   // an older line for the key, a stale script line and blanks dropped; others kept
   const old = 'command="/old/game.sh" ssh-ed25519 AAAAC3 phosphorus-game-control';
-  expect(authorizedKeysKept(`ssh-rsa X me\n\n${old}\nrestrict ssh-ed25519 AAAAC3 other\nssh-rsa Y you\n`, line, keyPart)).toEqual(["ssh-rsa X me", "ssh-rsa Y you"]);
+  expect(
+    authorizedKeysKept(`ssh-rsa X me\n\n${old}\nrestrict ssh-ed25519 AAAAC3 other\nssh-rsa Y you\n`, line, keyPart),
+  ).toEqual(["ssh-rsa X me", "ssh-rsa Y you"]);
   expect(authorizedKeysKept("", line, keyPart)).toEqual([]);
 });
 
 test("phos ps as a tree by role, with totals", () => {
-  const p = (pid: number, ppid: number, role: string, rss: number, cmd: string) => ({ pid, ppid, role, rss, cmd, name: "llama-server", cpu: 0 });
+  const p = (pid: number, ppid: number, role: string, rss: number, cmd: string) => ({
+    pid,
+    ppid,
+    role,
+    rss,
+    cmd,
+    name: "llama-server",
+    cpu: 0,
+  });
   expect(psText([])).toBe("no phosphorus processes running\n");
-  const out = psText([p(30, 10, "frontend", 100 << 20, "phosphorus serve"), p(10, 1, "run", 50 << 20, "phosphorus run"), p(40, 10, "llama-server", 3 * 1024 * 1024 * 1024, "llama-server -m x"), p(41, 40, "llama-server", 1 << 20, "")]);
+  const out = psText([
+    p(30, 10, "frontend", 100 << 20, "phosphorus serve"),
+    p(10, 1, "run", 50 << 20, "phosphorus run"),
+    p(40, 10, "llama-server", 3 * 1024 * 1024 * 1024, "llama-server -m x"),
+    p(41, 40, "llama-server", 1 << 20, ""),
+  ]);
   expect(out).toBe(
     [
       "ROLE                 PID      RSS  COMMAND",
@@ -130,7 +184,10 @@ test("bakeEnv from phosphorus.ini, missing share dirs skipped", () => {
   setHome(dir);
   mkdirSync(join(dir, "config"), { recursive: true });
   mkdirSync(join(dir, "share"), { recursive: true });
-  writeFileSync(join(dir, "config", "phosphorus.ini"), "[files]\ndir = share/, nope, /\npriv = r,,rw\n[model]\nhost = true\n");
+  writeFileSync(
+    join(dir, "config", "phosphorus.ini"),
+    "[files]\ndir = share/, nope, /\npriv = r,,rw\n[model]\nhost = true\n",
+  );
   const m = bakeEnv(join(dir, "files"));
   expect(m.PHOSPHORUS_HOME).toBe(dir);
   expect(m.STATE_DIR).toBe(join(dir, "state"));
@@ -145,7 +202,8 @@ test("bakeEnv from phosphorus.ini, missing share dirs skipped", () => {
 });
 
 test("syncPayload copies the release, keeps this host's config, prunes the last release's files", () => {
-  const src = join(dir, "payload"), dst = join(dir, "home");
+  const src = join(dir, "payload"),
+    dst = join(dir, "home");
   mkdirSync(join(src, "config"), { recursive: true });
   mkdirSync(join(src, "web", "assets"), { recursive: true });
   writeFileSync(join(src, "VERSION"), "2\n");
@@ -167,7 +225,9 @@ test("syncPayload copies the release, keeps this host's config, prunes the last 
   expect(existsSync(join(dst, ".phosphorus-installed"))).toBe(false);
   expect(existsSync(join(dst, "old", "deep"))).toBe(false);
   expect(existsSync(join(dst, "old", "stay.txt"))).toBe(true);
-  expect(readFileSync(join(dst, ".phosphorus-manifest"), "utf8")).toBe(`VERSION\n${process.platform === "win32" ? "bin/phos.exe\nbin/phosphorus.exe" : "bin/phosphorus"}\nconfig/phosphorus.ini\nconfig/services.export\nweb/assets/a.js\n`);
+  expect(readFileSync(join(dst, ".phosphorus-manifest"), "utf8")).toBe(
+    `VERSION\n${process.platform === "win32" ? "bin/phos.exe\nbin/phosphorus.exe" : "bin/phosphorus"}\nconfig/phosphorus.ini\nconfig/services.export\nweb/assets/a.js\n`,
+  );
   expect(kept("config/services.export")).toBe(true);
   expect(kept("files/a/b")).toBe(true);
   expect(kept("web/a")).toBe(false);
@@ -179,7 +239,13 @@ test("small helpers", () => {
   expect(lastLine("a\nE: bad\nok\n", /ERROR|E:/)).toBe("E: bad");
   expect(lastLine("a\nb\n")).toBe("b");
   expect(lastLine("", /x/)).toBe("");
-  expect(keySet({ TS_AUTHKEY: "k", BASE_DOMAIN: "" })).toEqual({ TS_AUTHKEY: true, BASE_DOMAIN: false, TUNNEL_TOKEN: false, TS_API_KEY: false, ADMIN_PASS: false });
+  expect(keySet({ TS_AUTHKEY: "k", BASE_DOMAIN: "" })).toEqual({
+    TS_AUTHKEY: true,
+    BASE_DOMAIN: false,
+    TUNNEL_TOKEN: false,
+    TS_API_KEY: false,
+    ADMIN_PASS: false,
+  });
   expect(durText(5000)).toBe("5s");
   expect(durText(60_000)).toBe("1m0s");
   expect(splitLines("a\r\nb\n")).toEqual(["a", "b"]);

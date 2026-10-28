@@ -1,13 +1,13 @@
 // --- game servers -----------------------------------------------------------
 
+import type { Route } from '@phosphorus/wire';
 // not links: joined in-game at <name>.<zone>, tailnet only, play/stop open to
 // any viewer
 import { postFailure } from '../lib/api.ts';
 import { gameIcon } from '../lib/dom.ts';
-import { serviceKey } from './mesh/mesh.ts';
 import { pollState } from '../lib/sync.ts';
-import type { Route } from '@phosphorus/wire';
 import { copyText } from '../lib/util.ts';
+import { serviceKey } from './mesh/mesh.ts';
 
 // games joined at <name>.phosphorus
 const gameZone = 'phosphorus';
@@ -41,10 +41,14 @@ joinKeyBtn.addEventListener('click', async () => {
     copy.className = 'game-copy';
     copy.title = 'copy';
     copy.appendChild(gameIcon('copy'));
-    copy.addEventListener('click', () => copyText(cmd).then(() => {
-      copy.replaceChildren(gameIcon('check'));
-      setTimeout(() => copy.replaceChildren(gameIcon('copy')), 1200);
-    }).catch(() => {}));
+    copy.addEventListener('click', () =>
+      copyText(cmd)
+        .then(() => {
+          copy.replaceChildren(gameIcon('check'));
+          setTimeout(() => copy.replaceChildren(gameIcon('copy')), 1200);
+        })
+        .catch(() => {}),
+    );
     row.append(code, copy);
     box.appendChild(row);
   } catch (err) {
@@ -59,8 +63,9 @@ joinKeyBtn.addEventListener('click', async () => {
 
 // rebuilt only on change, a 500ms rebuild eating clicks mid-press
 export function renderGames(games: Route[]): void {
-  lastGames = games.sort((a, b) => Number(gameUp(b)) - Number(gameUp(a))
-    || a.host.localeCompare(b.host) || a.name.localeCompare(b.name));
+  lastGames = games.sort(
+    (a, b) => Number(gameUp(b)) - Number(gameUp(a)) || a.host.localeCompare(b.host) || a.name.localeCompare(b.name),
+  );
   const sig = JSON.stringify([games, [...gameBusy], [...gameError]]);
   if (sig === lastGamesSig) return;
   lastGamesSig = sig;
@@ -87,8 +92,11 @@ export function renderGames(games: Route[]): void {
     btn.type = 'button';
     btn.className = `game-btn ${busy ? 'busy' : g.status}`;
     btn.disabled = busy || !g.controllable;
-    btn.title = busy ? `${gameBusy.get(key) || g.status}…`
-      : g.controllable ? `${g.status}: ${action === 'start' ? 'play' : 'stop'}` : `${g.status}: no start/stop commands`;
+    btn.title = busy
+      ? `${gameBusy.get(key) || g.status}…`
+      : g.controllable
+        ? `${g.status}: ${action === 'start' ? 'play' : 'stop'}`
+        : `${g.status}: no start/stop commands`;
     btn.appendChild(gameIcon(busy ? 'busy' : action === 'start' ? 'play' : 'pause'));
     btn.addEventListener('click', () => pressGame(g, action));
 
@@ -113,10 +121,14 @@ export function renderGames(games: Route[]): void {
     copy.className = 'game-copy';
     copy.title = 'copy';
     copy.appendChild(gameIcon('copy'));
-    copy.addEventListener('click', () => copyText(address).then(() => {
-      copy.replaceChildren(gameIcon('check'));
-      setTimeout(() => copy.replaceChildren(gameIcon('copy')), 1200);
-    }).catch(() => {}));
+    copy.addEventListener('click', () =>
+      copyText(address)
+        .then(() => {
+          copy.replaceChildren(gameIcon('check'));
+          setTimeout(() => copy.replaceChildren(gameIcon('copy')), 1200);
+        })
+        .catch(() => {}),
+    );
     detail.append(addr, copy);
     info.append(title);
     if (gameError.has(key)) {
@@ -144,5 +156,11 @@ async function pressGame(g: Route, action: string) {
   renderGames(lastGames);
   pollState();
   const shown = gameError.get(key);
-  if (shown) setTimeout(() => { if (gameError.get(key) === shown) { gameError.delete(key); renderGames(lastGames); } }, 15000);
+  if (shown)
+    setTimeout(() => {
+      if (gameError.get(key) === shown) {
+        gameError.delete(key);
+        renderGames(lastGames);
+      }
+    }, 15000);
 }

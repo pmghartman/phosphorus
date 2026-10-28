@@ -25,12 +25,32 @@ export const provOf = (id: string | undefined) => (ANTH.includes(id!) ? 'anthrop
 export const OUT_MAX = 16000;
 
 // a tool call's card in the transcript
-export interface Card { el: HTMLElement; body: HTMLElement; out: HTMLElement; sub: HTMLElement; name: string; input: Record<string, any> }
+export interface Card {
+  el: HTMLElement;
+  body: HTMLElement;
+  out: HTMLElement;
+  sub: HTMLElement;
+  name: string;
+  input: Record<string, any>;
+}
 // a block still streaming
-export interface Live { kind: string; el: HTMLElement; index: number; text: string; timer?: ReturnType<typeof setTimeout> | 0 }
-export interface Todo { status: string; content: string; activeForm?: string }
+export interface Live {
+  kind: string;
+  el: HTMLElement;
+  index: number;
+  text: string;
+  timer?: ReturnType<typeof setTimeout> | 0;
+}
+export interface Todo {
+  status: string;
+  content: string;
+  activeForm?: string;
+}
 // why an api call failed, in words
-export interface Why { text: string; auth: boolean }
+export interface Why {
+  text: string;
+  auth: boolean;
+}
 // id -> transcript: its node, last seq, open cards, live blocks, its socket
 export interface Transcript {
   id: string;
@@ -51,21 +71,62 @@ export interface Transcript {
 }
 
 export const cd = {
-  list: [] as CodeSession[], opts: null as CodeOptions | null, pick: '', filter: '', armed: '', renaming: '', listSig: '',
+  list: [] as CodeSession[],
+  opts: null as CodeOptions | null,
+  pick: '',
+  filter: '',
+  armed: '',
+  renaming: '',
+  listSig: '',
   // id -> transcript: its node, last seq, open cards, live blocks, its socket
-  logs: new Map<string, Transcript>(), tick: 0 as ReturnType<typeof setInterval> | 0, on: false, drawer: false,
-  err: '', login: false,
+  logs: new Map<string, Transcript>(),
+  tick: 0 as ReturnType<typeof setInterval> | 0,
+  on: false,
+  drawer: false,
+  err: '',
+  login: false,
 };
 
-export const lsGet = <T>(k: string, d: T): T => { try { return JSON.parse(localStorage.getItem(k)!) ?? d; } catch { return d; } };
-export const lsSet = (k: string, v: unknown) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+export const lsGet = <T>(k: string, d: T): T => {
+  try {
+    return JSON.parse(localStorage.getItem(k)!) ?? d;
+  } catch {
+    return d;
+  }
+};
+export const lsSet = (k: string, v: unknown) => {
+  try {
+    localStorage.setItem(k, JSON.stringify(v));
+  } catch {}
+};
 export const shQuote = (s: unknown) => `'${String(s).replace(/'/g, `'\\''`)}'`;
-export const tilde = (d: unknown) => String(d || '').replace(/^\/(home|Users)\/[^/]+(?=\/|$)/, '~').replace(/^\/root(?=\/|$)/, '~');
-export const base = (d: unknown) => String(d || '').replace(/\/+$/, '').split('/').pop() || '/';
-export const parent = (d: unknown) => String(d || '').replace(/\/+$/, '').replace(/\/[^/]*$/, '') || '/';
-export const qs = (o: Record<string, unknown>) => Object.entries(o).map(([k, v]) => `${k}=${encodeURIComponent(String(v ?? ''))}`).join('&');
-export const bytes = (n: number | undefined) => (n! >= 1 << 30 ? `${(n! / (1 << 30)).toFixed(1)}G` : n! >= 1 << 20 ? `${(n! / (1 << 20)).toFixed(1)}M` : n! >= 1024 ? `${(n! / 1024).toFixed(1)}K` : `${n || 0}B`);
-export const kfmt = (n: number | undefined) => (n! >= 1e6 ? `${(n! / 1e6).toFixed(1)}m` : n! >= 1e3 ? `${(n! / 1e3).toFixed(1)}k` : String(n || 0));
+export const tilde = (d: unknown) =>
+  String(d || '')
+    .replace(/^\/(home|Users)\/[^/]+(?=\/|$)/, '~')
+    .replace(/^\/root(?=\/|$)/, '~');
+export const base = (d: unknown) =>
+  String(d || '')
+    .replace(/\/+$/, '')
+    .split('/')
+    .pop() || '/';
+export const parent = (d: unknown) =>
+  String(d || '')
+    .replace(/\/+$/, '')
+    .replace(/\/[^/]*$/, '') || '/';
+export const qs = (o: Record<string, unknown>) =>
+  Object.entries(o)
+    .map(([k, v]) => `${k}=${encodeURIComponent(String(v ?? ''))}`)
+    .join('&');
+export const bytes = (n: number | undefined) =>
+  n! >= 1 << 30
+    ? `${(n! / (1 << 30)).toFixed(1)}G`
+    : n! >= 1 << 20
+      ? `${(n! / (1 << 20)).toFixed(1)}M`
+      : n! >= 1024
+        ? `${(n! / 1024).toFixed(1)}K`
+        : `${n || 0}B`;
+export const kfmt = (n: number | undefined) =>
+  n! >= 1e6 ? `${(n! / 1e6).toFixed(1)}m` : n! >= 1e3 ? `${(n! / 1e3).toFixed(1)}k` : String(n || 0);
 export const ago = (ms: number) => {
   const m = Math.max(0, Math.round((Date.now() - ms) / 60000));
   return m < 1 ? 'now' : m < 60 ? `${m}m` : m < 1440 ? `${Math.floor(m / 60)}h` : `${Math.floor(m / 1440)}d`;
@@ -86,7 +147,10 @@ export const GL: Record<string, string> = {
 
 export async function call(url: string, method = 'GET', body?: unknown): Promise<any> {
   const init: RequestInit = { method, cache: 'no-store' };
-  if (body !== undefined) { init.headers = { 'content-type': 'application/json' }; init.body = JSON.stringify(body); }
+  if (body !== undefined) {
+    init.headers = { 'content-type': 'application/json' };
+    init.body = JSON.stringify(body);
+  }
   const r = await fetch(url, init);
   const out = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(out.error || `status ${r.status}`);

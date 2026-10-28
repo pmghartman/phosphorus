@@ -3,7 +3,8 @@
 import { statfsSync } from "node:fs";
 import { type CpuT, type Disk, type Gpu, type Mem, type Net, num, read, readdir, type Sys, vendor } from "./common.ts";
 
-const realFS = /^(ext[234]|xfs|btrfs|zfs|f2fs|bcachefs|jfs|reiserfs|ntfs3?|fuseblk|exfat|vfat|hfsplus|apfs|9p|drvfs|virtiofs)$/;
+const realFS =
+  /^(ext[234]|xfs|btrfs|zfs|f2fs|bcachefs|jfs|reiserfs|ntfs3?|fuseblk|exfat|vfat|hfsplus|apfs|9p|drvfs|virtiofs)$/;
 const virtualIf = /^(lo|veth|docker|br-|virbr|cni|flannel|kube)/;
 const wholeDisk = /^(sd[a-z]+|vd[a-z]+|xvd[a-z]+|hd[a-z]+|nvme\d+n\d+|mmcblk\d+)$/;
 
@@ -45,7 +46,10 @@ export function netBytes(s = read("/proc/net/dev")): Net {
     if (at < 0) continue;
     const name = line.slice(0, at).trim();
     if (virtualIf.test(name)) continue;
-    const f = line.slice(at + 1).trim().split(/\s+/);
+    const f = line
+      .slice(at + 1)
+      .trim()
+      .split(/\s+/);
     if (f.length < 9) continue;
     out.bytes[name] = { rx: num(f[0]!), tx: num(f[8]!) };
     out.order.push(name);
@@ -54,7 +58,8 @@ export function netBytes(s = read("/proc/net/dev")): Net {
 }
 
 export function diskBytes(s = read("/proc/diskstats")): [number, number] {
-  let r = 0, w = 0;
+  let r = 0,
+    w = 0;
   for (const line of s.split("\n")) {
     const v = line.trim().split(/\s+/);
     if (v.length < 10 || !wholeDisk.test(v[2]!)) continue;
@@ -83,7 +88,9 @@ export function diskMounts(s = read("/proc/self/mountinfo")): Mount[] {
 // store, counted a single time
 export function disk(mounts = diskMounts()): Disk {
   const seen = new Set<string>();
-  let total = 0, used = 0, count = 0;
+  let total = 0,
+    used = 0,
+    count = 0;
   for (const m of mounts) {
     if (seen.has(m.dev)) continue;
     let s;
@@ -104,7 +111,8 @@ export function disk(mounts = diskMounts()): Disk {
 }
 
 let model: string | undefined;
-export const cpuModel = (s?: string) => (model ??= /^model name\s*:\s*(.+)$/m.exec(s ?? read("/proc/cpuinfo"))?.[1] ?? "");
+export const cpuModel = (s?: string) =>
+  (model ??= /^model name\s*:\s*(.+)$/m.exec(s ?? read("/proc/cpuinfo"))?.[1] ?? "");
 
 // --- gpus from /sys/class/drm ------------------------------------------------
 
@@ -129,7 +137,8 @@ function integrated(v: string, dev: string): boolean {
 
 // amdClock the shader clock now and its top step, from pp_dpm_sclk's levels
 export function amdClock(s: string): [number | null, number | null] {
-  let now: number | null = null, top: number | null = null;
+  let now: number | null = null,
+    top: number | null = null;
   for (const l of s.split("\n")) {
     const m = /(\d+)Mhz/.exec(l);
     if (!m) continue;
@@ -155,12 +164,24 @@ export function vendorGpus(haveNvidia: boolean): Gpu[] {
     }
     let name = read(dev + "/product_name").trim();
     if (!name) name = igpu ? `${v} integrated gpu` : `${v} gpu`;
-    let used = numFile(dev + "/mem_info_vram_used"), total = numFile(dev + "/mem_info_vram_total");
+    let used = numFile(dev + "/mem_info_vram_used"),
+      total = numFile(dev + "/mem_info_vram_total");
     // an amd igpu's memory the gtt it maps from system ram
-    if (igpu && v === "amd") [used, total] = [numFile(dev + "/mem_info_gtt_used"), numFile(dev + "/mem_info_gtt_total")];
-    let mhz = numFile(`/sys/class/drm/${c}/gt_act_freq_mhz`), mhzMax = numFile(`/sys/class/drm/${c}/gt_max_freq_mhz`);
+    if (igpu && v === "amd")
+      [used, total] = [numFile(dev + "/mem_info_gtt_used"), numFile(dev + "/mem_info_gtt_total")];
+    let mhz = numFile(`/sys/class/drm/${c}/gt_act_freq_mhz`),
+      mhzMax = numFile(`/sys/class/drm/${c}/gt_max_freq_mhz`);
     if (v === "amd") [mhz, mhzMax] = amdClock(read(dev + "/pp_dpm_sclk"));
-    out.push({ name: name.toLowerCase(), util: numFile(dev + "/gpu_busy_percent"), memUsed: used, memTotal: total, mhz, mhzMax, temp, integrated: igpu });
+    out.push({
+      name: name.toLowerCase(),
+      util: numFile(dev + "/gpu_busy_percent"),
+      memUsed: used,
+      memTotal: total,
+      mhz,
+      mhzMax,
+      temp,
+      integrated: igpu,
+    });
   }
   return out;
 }
@@ -177,4 +198,15 @@ export function uptimeSecs(s = read("/proc/uptime")): number {
   return up[0] ? num(up[0]) : 0;
 }
 
-export const linux: Sys = { cpuTimes, memInfo, netBytes, diskBytes, disk, cpuModel, bootID, loadAvg, uptimeSecs, vendorGpus };
+export const linux: Sys = {
+  cpuTimes,
+  memInfo,
+  netBytes,
+  diskBytes,
+  disk,
+  cpuModel,
+  bootID,
+  loadAvg,
+  uptimeSecs,
+  vendorGpus,
+};

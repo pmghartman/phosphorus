@@ -4,7 +4,11 @@ import { expect, test } from "bun:test";
 const { lineTime, logTime } = await import("@phosphorus/server");
 
 test("line time", () => {
-  for (const l of ["2026-10-19T21:16:03-0700 [run] up", "[cloudflared] 2026-10-19T21:16:03Z ERR x", "2026/10/19 21:16:03 [frontend] listening"]) {
+  for (const l of [
+    "2026-10-19T21:16:03-0700 [run] up",
+    "[cloudflared] 2026-10-19T21:16:03Z ERR x",
+    "2026/10/19 21:16:03 [frontend] listening",
+  ]) {
     expect(lineTime(l)).toBeDefined();
   }
   expect(lineTime("[mesh] couldn't sync")).toBeUndefined();

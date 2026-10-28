@@ -3,8 +3,20 @@
 import { join } from "node:path";
 import { peerModel, routes } from "@phosphorus/peers";
 import * as store from "@phosphorus/store";
+import {
+  envInt,
+  errText,
+  FrontendPort,
+  localeCompare,
+  marshal,
+  now,
+  obj,
+  readFresh,
+  requestJSON,
+  SelfHost,
+  StateDir,
+} from "@phosphorus/util";
 import { wantOf } from "@phosphorus/webapps";
-import { envInt, errText, FrontendPort, localeCompare, marshal, now, obj, readFresh, requestJSON, SelfHost, StateDir } from "@phosphorus/util";
 
 export const selfHost = SelfHost;
 const claimFile = join(StateDir, "model-claim.json");
@@ -20,7 +32,12 @@ export const Mesh = "phosphorus";
 
 type Profile = { maxTokens: number; thinking: boolean; effort: string; sampling?: Record<string, unknown> };
 const profiles: Record<string, Profile> = {
-  small: { maxTokens: 4096, thinking: false, effort: "low", sampling: { temperature: 0.7, top_p: 0.8, top_k: 20, min_p: 0, presence_penalty: 1.5 } },
+  small: {
+    maxTokens: 4096,
+    thinking: false,
+    effort: "low",
+    sampling: { temperature: 0.7, top_p: 0.8, top_k: 20, min_p: 0, presence_penalty: 1.5 },
+  },
   large: { maxTokens: 32768, thinking: true, effort: "high" },
 };
 
@@ -31,7 +48,13 @@ export type State = Record<string, any>;
 export const truthy = (v: unknown) => !!v;
 // as a JS template literal renders a JSON value
 export const jsString = (v: unknown): string =>
-  v == null ? "null" : Array.isArray(v) ? v.map((e) => (e == null ? "" : jsString(e))).join(",") : typeof v === "object" ? "[object Object]" : String(v);
+  v == null
+    ? "null"
+    : Array.isArray(v)
+      ? v.map((e) => (e == null ? "" : jsString(e))).join(",")
+      : typeof v === "object"
+        ? "[object Object]"
+        : String(v);
 export const str = (v: unknown) => (truthy(v) ? jsString(v) : "");
 const decode = (s: string): unknown => {
   try {
@@ -68,7 +91,9 @@ export function State(): State | undefined {
 
 export function view(): State[] {
   const s = State();
-  return [...(s ? [s] : []), ...peerModel()].map(obj).filter((m): m is State => !!m && typeof m.host === "string" && nameRe.test(m.host));
+  return [...(s ? [s] : []), ...peerModel()]
+    .map(obj)
+    .filter((m): m is State => !!m && typeof m.host === "string" && nameRe.test(m.host));
 }
 
 export function runners(states: State[]): State[] {
@@ -112,10 +137,22 @@ function row(s: State, states: State[]): Record<string, any> {
   const ready = s.server === "ready";
   const d = obj(s.download);
   return {
-    host: s.host, file: str(s.file), size: n(s.size),
-    ctx: n(s.ctx), slots: n(s.slots), ready, loading: s.server === "loading",
-    gpu: truthy(s.gpu), vram: n(s.vram), total: n(s.total), machine: n(s.machine), need: n(s.need),
-    why: ready ? "" : excuse(states, s), use: (ready && useOf(s)) || null, download: d ? { done: n(d.done), total: n(d.total) } : null, tools: s.tools ?? null,
+    host: s.host,
+    file: str(s.file),
+    size: n(s.size),
+    ctx: n(s.ctx),
+    slots: n(s.slots),
+    ready,
+    loading: s.server === "loading",
+    gpu: truthy(s.gpu),
+    vram: n(s.vram),
+    total: n(s.total),
+    machine: n(s.machine),
+    need: n(s.need),
+    why: ready ? "" : excuse(states, s),
+    use: (ready && useOf(s)) || null,
+    download: d ? { done: n(d.done), total: n(d.total) } : null,
+    tools: s.tools ?? null,
   };
 }
 
@@ -135,7 +172,10 @@ export function excuse(states: State[], s: State | undefined): string {
   if (why) return "not loaded: " + why;
   if (truthy(s.oom) && s.server !== "ready") return "out of vram, lower ctx or slots";
   const e = Math.trunc(n(s.exits));
-  const crashed = e > 0 ? `llama-server has exited ${e === 1 ? "1 time" : `${e} times`} since it was last up (${jsString(s.lastExit)}), the phosphorus log on ${jsString(s.host)} says why` : "";
+  const crashed =
+    e > 0
+      ? `llama-server has exited ${e === 1 ? "1 time" : `${e} times`} since it was last up (${jsString(s.lastExit)}), the phosphorus log on ${jsString(s.host)} says why`
+      : "";
   if (crashed && s.server !== "loading") return "not loaded: " + crashed;
   if (s.server === "loading") {
     const since = n(s.serverSince);
@@ -153,7 +193,8 @@ export function excuse(states: State[], s: State | undefined): string {
 
 // --- asking ----------------------------------------------------------------
 
-const local = (method: string, path: string, body: unknown, timeoutMs: number) => requestJSON({ port: serverPort, method, path, body, timeoutMs });
+const local = (method: string, path: string, body: unknown, timeoutMs: number) =>
+  requestJSON({ port: serverPort, method, path, body, timeoutMs });
 
 async function tokens(content: string): Promise<number> {
   try {
@@ -183,7 +224,10 @@ let framedN = 0;
 async function frameTokens(systems: unknown[], tools: unknown): Promise<number> {
   const key = marshal([systems, tools ?? []]);
   if (framedKey === key) return framedN;
-  const body: Record<string, any> = { messages: [...systems, { role: "user", content: sentinel }], add_generation_prompt: false };
+  const body: Record<string, any> = {
+    messages: [...systems, { role: "user", content: sentinel }],
+    add_generation_prompt: false,
+  };
   if (Array.isArray(tools) && tools.length) body.tools = tools;
   let prompt = "";
   let at = -1;
@@ -195,14 +239,20 @@ async function frameTokens(systems: unknown[], tools: unknown): Promise<number> 
       at = prompt.indexOf(sentinel);
     }
   } catch {}
-  const cnt = at > 0 ? await tokens(prompt.slice(0, at)) : await tokens(systems.map((m) => textOf(obj(m)?.content)).join("\n"));
+  const cnt =
+    at > 0 ? await tokens(prompt.slice(0, at)) : await tokens(systems.map((m) => textOf(obj(m)?.content)).join("\n"));
   framedKey = key;
   framedN = cnt;
   return cnt;
 }
 
 // the last ask's prompt split into the frame, the note under <context> and what was said
-export async function measure(messages: unknown[], tools: unknown, usage: Record<string, any> | undefined, genMS: number) {
+export async function measure(
+  messages: unknown[],
+  tools: unknown,
+  usage: Record<string, any> | undefined,
+  genMS: number,
+) {
   const prompt = n(usage?.prompt_tokens);
   const claim = State();
   if (prompt === 0 || !claim) return;
@@ -232,7 +282,15 @@ export async function measure(messages: unknown[], tools: unknown, usage: Record
   let tps = 0;
   if (genMS > 0 && reply > 1) tps = Math.round(((reply - 1) * 1000) / genMS);
   else if (use) tps = n(use.tps);
-  use = { since: truthy(claim.serverSince) ? claim.serverSince : 0, at: now(), system, ask, chat: Math.max(0, prompt - system - ask), reply, tps };
+  use = {
+    since: truthy(claim.serverSince) ? claim.serverSince : 0,
+    at: now(),
+    system,
+    ask,
+    chat: Math.max(0, prompt - system - ask),
+    reply,
+    tps,
+  };
 }
 
 export function profiled(p: Record<string, any>, r: string): Record<string, any> {
@@ -255,7 +313,15 @@ export type FwdOut = { ok: boolean; usage?: Record<string, any>; genMS: number }
 
 // forward the call to host:port, its answer streamed back as it comes, done
 // told its usage once over; an answer idle past askTimeout cut off there
-export async function forward(req: Request, host: string, port: number, path: string, body: unknown, who: string, done?: (o: FwdOut) => void): Promise<Response> {
+export async function forward(
+  req: Request,
+  host: string,
+  port: number,
+  path: string,
+  body: unknown,
+  who: string,
+  done?: (o: FwdOut) => void,
+): Promise<Response> {
   const ac = new AbortController();
   const onAbort = () => ac.abort();
   req.signal.addEventListener("abort", onAbort, { once: true });
@@ -266,7 +332,12 @@ export async function forward(req: Request, host: string, port: number, path: st
   };
   let res: Response;
   try {
-    res = await fetch(`http://${host}:${port}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: marshal(body), signal: ac.signal });
+    res = await fetch(`http://${host}:${port}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: marshal(body),
+      signal: ac.signal,
+    });
   } catch (e) {
     stop();
     return json(502, { error: { message: `${who} didn't answer: ${errText(e)}` } });
@@ -358,9 +429,17 @@ export async function ServeChat(req: Request, p: Record<string, any>, isLocal: b
     if (!isLocal) return fail(409, host + " isn't this host");
     return forward(req, jsString(s.ip), FrontendPort, "/api/model/v1/chat/completions", { ...p, model: host }, host);
   }
-  return forward(req, "127.0.0.1", serverPort, "/v1/chat/completions", completion({ ...p, model: host }), "llama-server on " + host, (out) => {
-    if (out.ok) measure(msgs, p.tools, out.usage, out.genMS).catch(() => {});
-  });
+  return forward(
+    req,
+    "127.0.0.1",
+    serverPort,
+    "/v1/chat/completions",
+    completion({ ...p, model: host }),
+    "llama-server on " + host,
+    (out) => {
+      if (out.ok) measure(msgs, p.tools, out.usage, out.genMS).catch(() => {});
+    },
+  );
 }
 
 // Purge a mesh host's idle slots erased, asked of the host running it
@@ -370,7 +449,13 @@ export async function Purge(host: string): Promise<any> {
   if (!s) throw new Error(`${JSON.stringify(host)} isn't a mesh model, nothing here to purge`);
   if (s.server !== "ready") throw new Error("no model loaded on " + host);
   if (s.host === selfHost) return EraseSlots();
-  const res = await requestJSON({ host: jsString(s.ip), port: FrontendPort, method: "POST", path: "/api/model/purge", timeoutMs: 10000 });
+  const res = await requestJSON({
+    host: jsString(s.ip),
+    port: FrontendPort,
+    method: "POST",
+    path: "/api/model/purge",
+    timeoutMs: 10000,
+  });
   const b = res.body;
   if (res.status !== 200 || b == null) throw new Error(str(obj(b)?.error) || jsString(s.host) + " would not purge");
   return b;
@@ -417,16 +502,53 @@ export type Agent = {
 
 // the built-in agents, every implementation of phosphorus's own that asks a model, in the pages' order
 const builtin: Agent[] = [
-  { id: "code", label: "Code app", about: "the projects' agent sessions, the default for every harness below", parent: "", tier: "large", fast: true },
-  { id: "claude-code", label: "Claude Code", about: "Claude Code in a project, on the mesh's models", parent: "code", tier: "large", fast: true },
-  { id: "opencode", label: "OpenCode", about: "opencode in a project, on the mesh's models", parent: "code", tier: "large", fast: true },
+  {
+    id: "code",
+    label: "Code app",
+    about: "the projects' agent sessions, the default for every harness below",
+    parent: "",
+    tier: "large",
+    fast: true,
+  },
+  {
+    id: "claude-code",
+    label: "Claude Code",
+    about: "Claude Code in a project, on the mesh's models",
+    parent: "code",
+    tier: "large",
+    fast: true,
+  },
+  {
+    id: "opencode",
+    label: "OpenCode",
+    about: "opencode in a project, on the mesh's models",
+    parent: "code",
+    tier: "large",
+    fast: true,
+  },
 ];
 
 // apps on the mesh that ask a model, each an agent while it's there: a service of its
 // name published on any host, or an app of the apps page installed onto the mesh
 const apps: (Agent & { service?: string; app?: string })[] = [
-  { id: "tavern", label: "Tavern", about: "the dungeon master of the tavern app, asking as agent-tavern", parent: "", tier: "large", fast: false, service: "tavern" },
-  { id: "sulfur", label: "Sulfur", about: "the editor's chat, asking as agent-sulfur; its inline completions as agent-sulfur-fast", parent: "", tier: "large", fast: true, app: "sulfur" },
+  {
+    id: "tavern",
+    label: "Tavern",
+    about: "the dungeon master of the tavern app, asking as agent-tavern",
+    parent: "",
+    tier: "large",
+    fast: false,
+    service: "tavern",
+  },
+  {
+    id: "sulfur",
+    label: "Sulfur",
+    about: "the editor's chat, asking as agent-sulfur; its inline completions as agent-sulfur-fast",
+    parent: "",
+    tier: "large",
+    fast: true,
+    app: "sulfur",
+  },
 ];
 
 // whether a service of that name is published on the mesh, and whether an app is
@@ -438,7 +560,12 @@ export const seams = {
 
 // Agents the agents right now: the built-ins, then the apps on the mesh
 export function Agents(): Agent[] {
-  return [...builtin, ...apps.filter((a) => (a.service ? seams.published(a.service) : seams.installed(a.app!))).map(({ service: _, app: __, ...a }) => a)];
+  return [
+    ...builtin,
+    ...apps
+      .filter((a) => (a.service ? seams.published(a.service) : seams.installed(a.app!)))
+      .map(({ service: _, app: __, ...a }) => a),
+  ];
 }
 
 // slots an agent's assignments: its model, and for some a fast one
@@ -487,12 +614,23 @@ export const tierOf = (a: Agent, slot: string) => (slot === "fast" ? "small" : a
 // Assign a model to an agent's slot, mesh-wide; blank for the automatic pick
 export function Assign(p: Record<string, any>): [number, any] {
   const a = AgentByID(str(p.agent));
-  if (!a) return [400, { error: "agent is " + Agents().map((x) => x.id).join(", ") }];
+  if (!a)
+    return [
+      400,
+      {
+        error:
+          "agent is " +
+          Agents()
+            .map((x) => x.id)
+            .join(", "),
+      },
+    ];
   const slot = str(p.slot) || "model";
   if (slot !== "model" && (slot !== "fast" || !a.fast)) return [400, { error: `${a.label} has no ${slot} slot` }];
   let m = str(p.model).trim();
   if (m && !m.includes("/")) m = Mesh + "/" + m;
-  if (m && !meshHost(m)) return [400, { error: `model is a mesh host running one, as ${Mesh}/<host>, blank for the automatic pick` }];
+  if (m && !meshHost(m))
+    return [400, { error: `model is a mesh host running one, as ${Mesh}/<host>, blank for the automatic pick` }];
   const h = meshHost(m);
   if (h && !runners(view()).some((s) => s.host === h)) return [409, { error: h + " runs no model" }];
   const c: Record<string, any> = { ...obj(store.read(agentFile(a.id))) };
@@ -511,7 +649,15 @@ function agentRows(states: State[]): Record<string, any>[] {
       const [pref, inherited] = assigned(a, slot);
       const [m, s] = resolve(states, tierOf(a, slot), pref);
       const ready = m !== "" && s?.server === "ready";
-      sl[slot] = { chosen: own(a, slot), inherited, assigned: pref, model: m, host: s ? jsString(s.host) : "", ready, why: ready ? "" : excuse(states, s) };
+      sl[slot] = {
+        chosen: own(a, slot),
+        inherited,
+        assigned: pref,
+        model: m,
+        host: s ? jsString(s.host) : "",
+        ready,
+        why: ready ? "" : excuse(states, s),
+      };
     }
     return { id: a.id, label: a.label, about: a.about, parent: a.parent, fast: a.fast, slots: sl };
   });
@@ -519,5 +665,7 @@ function agentRows(states: State[]): Record<string, any>[] {
 
 // agentsOn the ids of the agents asking host's model, in any slot
 function agentsOn(rows: Record<string, any>[], host: string): string[] {
-  return rows.filter((x) => Object.values(obj(x.slots) ?? {}).some((s) => obj(s)?.host === host && truthy(obj(s)?.ready))).map((x) => str(x.id));
+  return rows
+    .filter((x) => Object.values(obj(x.slots) ?? {}).some((s) => obj(s)?.host === host && truthy(obj(s)?.ready)))
+    .map((x) => str(x.id));
 }

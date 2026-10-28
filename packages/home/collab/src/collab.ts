@@ -1,8 +1,8 @@
 // one live session per open file: its text, the ops that made it, the tabs and
 // agents on it; saved to disk soon after each change
 import type { BigIntStats } from "node:fs";
+import type { Who as FilesWho, Res, Share } from "@phosphorus/files";
 import * as files from "@phosphorus/files";
-import type { Res, Share, Who as FilesWho } from "@phosphorus/files";
 import { Exists } from "@phosphorus/users";
 import { sleep } from "@phosphorus/util";
 import { type Conn, dial } from "@phosphorus/wsock";
@@ -163,7 +163,8 @@ export class Session {
   async saveDisk(by: string, reviewed: boolean): Promise<Res> {
     clearTimeout(this.autosave);
     this.dirtyAt = 0;
-    if (this.saved === this.version && !reviewed && !this.diskConflict && !this.eolPending) return [200, { path: this.rel }];
+    if (this.saved === this.version && !reviewed && !this.diskConflict && !this.eolPending)
+      return [200, { path: this.rel }];
     if (!files.can(this.share, "w")) return [403, { error: "this share is read-only" }];
     if (!reviewed) {
       const observed = await readDisk(this.share, this.rel);
@@ -172,7 +173,8 @@ export class Session {
         return [409, { error: "file is changing on disk; saving will retry" }];
       }
       observeDisk(this, observed);
-      if (this.diskConflict) return [409, { error: "file changed outside the editor; review both versions before saving" }];
+      if (this.diskConflict)
+        return [409, { error: "file changed outside the editor; review both versions before saving" }];
     }
     const [status, out] = await files.save(this.share, this.rel, { text: this.onDisk() });
     if (status !== 200) {
@@ -247,7 +249,8 @@ export class Session {
         return;
     }
     if (readOnly()) return;
-    const resync = () => sendTo(c, { type: "resync", text: this.text, v: this.version, saved: this.saved, id: msg.id ?? null });
+    const resync = () =>
+      sendTo(c, { type: "resync", text: this.text, v: this.version, saved: this.saved, id: msg.id ?? null });
     let basef = typeof msg.base === "number" ? msg.base : NaN;
     if (typeof msg.base === "string") basef = Number(msg.base) || 0;
     let ops = Parse(msg.ops);
@@ -274,7 +277,15 @@ export class Session {
     this.history.push(ops);
     if (this.history.length > history) this.history.shift();
     for (const c of this.order) if (c !== by && c.pos !== 0) c.pos = MapPos(ops, c.pos);
-    this.toAll({ type: "op", v: this.version, ops, id: id ?? null, by: by.who?.name ?? "", agent: by.agent, agentEdit: by.cid });
+    this.toAll({
+      type: "op",
+      v: this.version,
+      ops,
+      id: id ?? null,
+      by: by.who?.name ?? "",
+      agent: by.agent,
+      agentEdit: by.cid,
+    });
     if (by.agent) this.toAll({ type: "people", people: this.people() });
     this.saveSoon();
   }
@@ -346,7 +357,11 @@ export async function Write(sh: Share, rel: string, p: WriteP): Promise<Res> {
     return [413, { error: "over 16MB" }];
   }
   const name = p.byName || "phosphorus";
-  const agent = new Client({ agent: true, cid: nextCID(), who: { name: clip(name, 32), color: clip(p.byColor ?? "", 16) } });
+  const agent = new Client({
+    agent: true,
+    cid: nextCID(),
+    who: { name: clip(name, 32), color: clip(p.byColor ?? "", 16) },
+  });
   clearTimeout(s.idle);
   s.add(agent);
   let a = 0;
@@ -407,7 +422,16 @@ export async function Attach(ws: Conn, shareID: string, rel: string, w: FilesWho
   }
   const c = new Client({ ws, cid: nextCID() });
   s.add(c);
-  sendTo(c, { type: "init", text: s.text, v: s.version, saved: s.saved, perms: sh.perms, people: s.people(), you: c.cid, eol: s.eol });
+  sendTo(c, {
+    type: "init",
+    text: s.text,
+    v: s.version,
+    saved: s.saved,
+    perms: sh.perms,
+    people: s.people(),
+    you: c.cid,
+    eol: s.eol,
+  });
   if (s.diskConflict) sendTo(c, diskMessage(s));
   release();
   ws.onMessage((d, binary) => {

@@ -1,15 +1,15 @@
 // --- mesh update ----------------------------------------------------------
 
+import type { Chain, MeshLock, State, TailnetDevice, UpdateCheck } from '@phosphorus/wire';
+import { dkPopsClose } from '../desktop/taskbar.ts';
 // one chain at a time, mesh-wide, its state on the host that started it,
 // this pane only ever talking to its own frontend
 import { el, maskField } from '../lib/dom.ts';
-import { hostPlatform } from './mesh/mesh.ts';
-import { noteAdd, notifyMesh, notifyOs, notifying } from './notes.ts';
 import { dk, st } from '../lib/state.ts';
 import { pollState } from '../lib/sync.ts';
-import { dkPopsClose } from '../desktop/taskbar.ts';
-import type { Chain, MeshLock, State, TailnetDevice, UpdateCheck } from '@phosphorus/wire';
 import { newerVersion } from '../lib/util.ts';
+import { hostPlatform } from './mesh/mesh.ts';
+import { noteAdd, notifying, notifyMesh, notifyOs } from './notes.ts';
 
 const updateBtn = document.getElementById('mesh-update') as HTMLButtonElement;
 export const updateModal = document.getElementById('update-modal')!;
@@ -52,19 +52,29 @@ function holdChain(chain: Chain | null | undefined): Chain | null {
 }
 
 const UPDATE_LABEL: Record<string, string> = {
-  pending: 'waiting', running: 'updating', ok: 'success', current: 'up to date',
-  fail: 'failed', unreachable: 'unreachable', skipped: 'skipped',
+  pending: 'waiting',
+  running: 'updating',
+  ok: 'success',
+  current: 'up to date',
+  fail: 'failed',
+  unreachable: 'unreachable',
+  skipped: 'skipped',
 };
 
 // a running host's stage, every peer updating at once, and how far along it is
 const STAGE_LABEL: Record<string, string> = { asked: 'starting', installing: 'installing', restarting: 'restarting' };
 const STAGE_DONE: Record<string, number> = { asked: 0.15, installing: 0.45, restarting: 0.8 };
-const stageOf = (chain: Chain | null, host: string) => (chain && chain.versions && chain.versions[host] && chain.versions[host].stage) || '';
+const stageOf = (chain: Chain | null, host: string) =>
+  (chain && chain.versions && chain.versions[host] && chain.versions[host].stage) || '';
 
 // a failure's short cause, when the chain named one, a running host's stage
-const stepLabel = (chain: Chain | null, host: string, step: string) => (!step ? ''
-  : ((step === 'fail' || step === 'unreachable' || step === 'skipped') && chain!.errors && chain!.errors[host])
-    || (step === 'running' && STAGE_LABEL[stageOf(chain, host)]) || UPDATE_LABEL[step] || step);
+const stepLabel = (chain: Chain | null, host: string, step: string) =>
+  !step
+    ? ''
+    : ((step === 'fail' || step === 'unreachable' || step === 'skipped') && chain!.errors && chain!.errors[host]) ||
+      (step === 'running' && STAGE_LABEL[stageOf(chain, host)]) ||
+      UPDATE_LABEL[step] ||
+      step;
 
 // nothing new while a chain is in flight, its own continue and cancel above
 function renderUpdateButton() {
@@ -98,18 +108,33 @@ function renderVersions() {
     name.textContent = host;
     name.classList.toggle('is-self', host === st.selfHost);
     const os = d.os || hostPlatform.get(host);
-    if (os) name.appendChild(Object.assign(document.createElement('span'), { className: 'update-os', textContent: os }));
-    li.append(name,
-      Object.assign(document.createElement('span'), { className: 'update-ver', textContent: version ? `v${version}` : '?' }),
-      Object.assign(document.createElement('span'), { className: 'update-state', textContent: stepLabel(updateChain, host, step) || (quiet ? 'not answering' : ''), title: updateChain?.details?.[host] || '' }));
+    if (os)
+      name.appendChild(Object.assign(document.createElement('span'), { className: 'update-os', textContent: os }));
+    li.append(
+      name,
+      Object.assign(document.createElement('span'), {
+        className: 'update-ver',
+        textContent: version ? `v${version}` : '?',
+      }),
+      Object.assign(document.createElement('span'), {
+        className: 'update-state',
+        textContent: stepLabel(updateChain, host, step) || (quiet ? 'not answering' : ''),
+        title: updateChain?.details?.[host] || '',
+      }),
+    );
     return li;
   });
-  if (!rows.length) rows.push(Object.assign(document.createElement('li'), { className: 'empty', textContent: 'no hosts in view' }));
+  if (!rows.length)
+    rows.push(Object.assign(document.createElement('li'), { className: 'empty', textContent: 'no hosts in view' }));
   // column heads in the rows' own grid, so they line up with them
   const head = document.createElement('li');
   head.className = 'update-row update-head';
   const stateHead = updateChain || order.some(isQuiet) ? 'status' : '';
-  for (const [cls, text] of [['update-host', 'host'], ['update-ver', 'version'], ['update-state', stateHead]]) {
+  for (const [cls, text] of [
+    ['update-host', 'host'],
+    ['update-ver', 'version'],
+    ['update-state', stateHead],
+  ]) {
     head.appendChild(Object.assign(document.createElement('span'), { className: cls, textContent: text }));
   }
   rows.unshift(head);
@@ -134,22 +159,33 @@ let progressStatus: Chain | null = null;
 function renderProgress(status: Chain) {
   progressStatus = status;
   const total = status.order.length;
-  if (!total) { updateProgress.hidden = true; return; }
+  if (!total) {
+    updateProgress.hidden = true;
+    return;
+  }
   let done = 0;
   let finished = 0;
   for (const host of status.order) {
     const state = status.results[host] || 'pending';
     if (state === 'running') done += STAGE_DONE[stageOf(status, host)] || 0.05;
-    else if (state !== 'pending') { done += 1; finished += 1; }
+    else if (state !== 'pending') {
+      done += 1;
+      finished += 1;
+    }
   }
   // block cells, as the files transfer bar
   updateProgress.hidden = false;
   const cells = updateCells();
   const full = Math.round((done / total) * cells);
-  updateProgressCells.replaceChildren('█'.repeat(full), Object.assign(document.createElement('i'), { textContent: '░'.repeat(cells - full) }));
+  updateProgressCells.replaceChildren(
+    '█'.repeat(full),
+    Object.assign(document.createElement('i'), { textContent: '░'.repeat(cells - full) }),
+  );
   updateProgressLabel.textContent = `${finished}/${total} hosts`;
 }
-new ResizeObserver(() => { if (progressStatus && !updateProgress.hidden) renderProgress(progressStatus); }).observe(updateProgressCells);
+new ResizeObserver(() => {
+  if (progressStatus && !updateProgress.hidden) renderProgress(progressStatus);
+}).observe(updateProgressCells);
 
 // the version list as the walk while one runs, its results kept while the
 // server still has them: each host's step, and why one failed
@@ -161,8 +197,13 @@ function applyChain(status: Chain | null, mine: boolean) {
   updateStart.hidden = !!live;
   updateFoot.hidden = !live || !mine;
   const clean = status && status.order.every((m) => ['ok', 'current'].includes(status.results[m]!));
-  updateTitle.textContent = live ? 'updating the mesh'
-    : status ? (clean ? 'mesh update done' : 'mesh update ended') : 'mesh update';
+  updateTitle.textContent = live
+    ? 'updating the mesh'
+    : status
+      ? clean
+        ? 'mesh update done'
+        : 'mesh update ended'
+      : 'mesh update';
   renderVersions();
 }
 
@@ -181,7 +222,10 @@ let latestAt = 0;
 let latestRun = 0;
 let latestFeed: UpdateCheck | null = null;
 async function checkLatest() {
-  if (meshLock) { updateLatest.hidden = true; return; }
+  if (meshLock) {
+    updateLatest.hidden = true;
+    return;
+  }
   updateLatest.hidden = false;
   if (Date.now() - latestAt < LATEST_HOLD_MS) return;
   const me = ++latestRun;
@@ -193,10 +237,17 @@ async function checkLatest() {
     if (r.ok) c = await r.json();
   } catch {}
   if (me !== latestRun) return;
-  const versions = [updateSeen.selfVersion, ...updateSeen.tailnet.filter((d) => d.phosphorus).map((d) => d.version)].filter(Boolean) as string[];
+  const versions = [
+    updateSeen.selfVersion,
+    ...updateSeen.tailnet.filter((d) => d.phosphorus).map((d) => d.version),
+  ].filter(Boolean) as string[];
   const behind = c.latest && versions.some((v) => newerVersion(c.latest!, v));
   updateLatest.dataset.state = !c.latest ? 'bad' : behind ? 'new' : 'ok';
-  updateLatest.textContent = !c.latest ? 'release feed unreachable' : behind ? `v${c.latest} is out` : `on latest · v${c.latest}`;
+  updateLatest.textContent = !c.latest
+    ? 'release feed unreachable'
+    : behind
+      ? `v${c.latest} is out`
+      : `on latest · v${c.latest}`;
   latestAt = c.latest ? Date.now() : 0;
   latestFeed = c.latest ? c : null;
 }
@@ -210,7 +261,24 @@ export function closeUpdateModal(): void {
 // one/two-button prompt inside the pane itself instead of confirm()/alert(),
 // those outside the page, unstyleable, and flagged by some hosts
 // cancel back to the update pane only for the update's own asks
-function openConfirm(message: string, { title, hideCancel, actionLabel, onAction, onCancel = closeUpdateModal, password }: { title: string; hideCancel?: boolean; actionLabel: string; onAction: () => void; onCancel?: () => void; password?: boolean }) {
+function openConfirm(
+  message: string,
+  {
+    title,
+    hideCancel,
+    actionLabel,
+    onAction,
+    onCancel = closeUpdateModal,
+    password,
+  }: {
+    title: string;
+    hideCancel?: boolean;
+    actionLabel: string;
+    onAction: () => void;
+    onCancel?: () => void;
+    password?: boolean;
+  },
+) {
   updateModal.hidden = false;
   updateTitle.textContent = title;
   updateConfirmText.textContent = message;
@@ -240,28 +308,39 @@ async function askToStart() {
     try {
       const r = await fetch('/api/update/check?fresh=1');
       c = r.ok ? await r.json() : { error: `${r.status} ${(await r.text()).slice(0, 80)}`.trim() };
-    } catch (err) { c = { error: (err as Error).message }; }
+    } catch (err) {
+      c = { error: (err as Error).message };
+    }
   }
   renderUpdateButton();
-  const versions = [updateSeen.selfVersion, ...updateSeen.tailnet.filter((d) => d.phosphorus).map((d) => d.version)]
-    .filter(Boolean) as string[];
+  const versions = [
+    updateSeen.selfVersion,
+    ...updateSeen.tailnet.filter((d) => d.phosphorus).map((d) => d.version),
+  ].filter(Boolean) as string[];
   const behind = c.latest ? versions.filter((v) => newerVersion(c.latest!, v)).length : 0;
   if (!c.latest) {
     openConfirm('feed down', {
-      title: 'update', actionLabel: 'update anyway',
-      onAction: () => startChain(), onCancel: openUpdateModal,
+      title: 'update',
+      actionLabel: 'update anyway',
+      onAction: () => startChain(),
+      onCancel: openUpdateModal,
     });
     return;
   }
   if (!behind) {
     openConfirm(`v${c.latest}`, {
-      title: 'up to date', hideCancel: true, actionLabel: 'ok', onAction: openUpdateModal,
+      title: 'up to date',
+      hideCancel: true,
+      actionLabel: 'ok',
+      onAction: openUpdateModal,
     });
     return;
   }
   openConfirm(`${c.latest} is out. update?`, {
-    title: 'update', actionLabel: 'update',
-    onAction: () => startChain(), onCancel: openUpdateModal,
+    title: 'update',
+    actionLabel: 'update',
+    onAction: () => startChain(),
+    onCancel: openUpdateModal,
   });
 }
 
@@ -307,7 +386,10 @@ function chainAction(action: string, password?: string): Promise<Response> {
 
 async function startChain(password?: string) {
   const res = await chainAction('start', password);
-  if (res.status === 401) { passwordRejected(); return; }
+  if (res.status === 401) {
+    passwordRejected();
+    return;
+  }
   if (res.status === 409) {
     const body = await res.json().catch(() => ({}));
     showLockedInfo(body.by || 'another host');
@@ -320,16 +402,31 @@ updateBtn.addEventListener('click', askToStart);
 // a popup under its icon, as the theme's, a second tap to close; the side
 // column never touched
 const toggleUpdatePane = () => {
-  if (!updateModal.hidden) { closeUpdateModal(); return; }
+  if (!updateModal.hidden) {
+    closeUpdateModal();
+    return;
+  }
   dkPopsClose('update');
   openUpdateModal();
 };
 document.getElementById('update-close')!.addEventListener('click', closeUpdateModal);
 // closed by a click outside it, never by the one that opened it
 let updateWasOpen = false;
-document.addEventListener('pointerdown', () => { updateWasOpen = !updateModal.hidden; }, true);
+document.addEventListener(
+  'pointerdown',
+  () => {
+    updateWasOpen = !updateModal.hidden;
+  },
+  true,
+);
 document.addEventListener('click', (e) => {
-  if (updateWasOpen && !updateModal.hidden && !updateModal.contains(e.target as Node) && !(e.target as Element).closest?.('.modal, .dk-ctl-pop')) closeUpdateModal();
+  if (
+    updateWasOpen &&
+    !updateModal.hidden &&
+    !updateModal.contains(e.target as Node) &&
+    !(e.target as Element).closest?.('.modal, .dk-ctl-pop')
+  )
+    closeUpdateModal();
 });
 
 document.getElementById('update-cancel')!.addEventListener('click', () => {
@@ -351,7 +448,8 @@ export function updateState(state: State): void {
     updateModal.hidden = false;
   }
   // the confirm prompt borrowing this same pane, its text otherwise lost
-  if (updateConfirm.hidden) applyChain(chain, !!state.chainMine); else renderVersions();
+  if (updateConfirm.hidden) applyChain(chain, !!state.chainMine);
+  else renderVersions();
 }
 
 // --- updates waiting: the mesh's release, a blue dot and one note
@@ -363,7 +461,9 @@ function paintUpdates() {
   dk.ctl?.btn.classList.toggle('has-update', !!updates.mesh);
   dk.ctl?.draw();
   let noted: Record<string, string> = {};
-  try { noted = JSON.parse(localStorage.getItem(UPDATE_NOTED)!) || {}; } catch {}
+  try {
+    noted = JSON.parse(localStorage.getItem(UPDATE_NOTED)!) || {};
+  } catch {}
   const say = (k: string, title: string) => {
     if (!updates[k] || noted[k] === updates[k]) return;
     noted[k] = updates[k]!;
@@ -371,7 +471,9 @@ function paintUpdates() {
     if (notifying()) notifyOs(title, `v${updates[k]}`);
   };
   say('mesh', 'mesh update');
-  try { localStorage.setItem(UPDATE_NOTED, JSON.stringify(noted)); } catch {}
+  try {
+    localStorage.setItem(UPDATE_NOTED, JSON.stringify(noted));
+  } catch {}
 }
 
 // the release feed against every host; asked, never acted on
@@ -379,7 +481,10 @@ export async function checkUpdates(): Promise<void> {
   if (st.acct?.admin) {
     try {
       const c: UpdateCheck = await (await fetch('/api/update/check')).json();
-      const versions = [updateSeen.selfVersion, ...(updateSeen.tailnet || []).filter((d) => d.phosphorus).map((d) => d.version)].filter(Boolean) as string[];
+      const versions = [
+        updateSeen.selfVersion,
+        ...(updateSeen.tailnet || []).filter((d) => d.phosphorus).map((d) => d.version),
+      ].filter(Boolean) as string[];
       updates.mesh = c.latest && versions.some((v) => newerVersion(c.latest!, v)) ? c.latest : '';
     } catch {}
   }

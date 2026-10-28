@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, utimesSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -12,7 +12,11 @@ const git = await import("@phosphorus/git");
 const state = (await import("@phosphorus/util")).StateDir;
 mkdirSync(state, { recursive: true });
 
-const roster = (epoch: number, ...gits: string[]) => ({ epoch, members: gits.map((name) => ({ name, git: true })), prev: null });
+const roster = (epoch: number, ...gits: string[]) => ({
+  epoch,
+  members: gits.map((name) => ({ name, git: true })),
+  prev: null,
+});
 let claimAt = Date.now() / 1000;
 // each claim stamped later than the last: readFresh keys its cache on the mtime
 const writeClaim = (c: Record<string, unknown>) => {
@@ -37,10 +41,16 @@ test("vote validates c, ms and roster", () => {
 
 test("vote abstains for the first 10s, still adopting the newest roster", () => {
   git.init(() => false, "b1", Date.now());
-  expect(git.vote({ c: "a", ms: 4000, roster: roster(2, "a", "b") })).toEqual([200, { granted: false, abstaining: true, roster: roster(2, "a", "b") }]);
+  expect(git.vote({ c: "a", ms: 4000, roster: roster(2, "a", "b") })).toEqual([
+    200,
+    { granted: false, abstaining: true, roster: roster(2, "a", "b") },
+  ]);
   expect(JSON.parse(readFileSync(join(state, "git-roster.json"), "utf8"))).toEqual(roster(2, "a", "b"));
   // an older epoch refused, the newer one sent back
-  expect(git.vote({ c: "a", ms: 4000, roster: roster(1, "a") })).toEqual([200, { granted: false, roster: roster(2, "a", "b") }]);
+  expect(git.vote({ c: "a", ms: 4000, roster: roster(1, "a") })).toEqual([
+    200,
+    { granted: false, roster: roster(2, "a", "b") },
+  ]);
   // the saved roster reloaded on init
   git.init(() => false, "b1");
   expect(git.state().roster).toEqual(roster(2, "a", "b"));
@@ -73,8 +83,17 @@ test("rows from a view, roster git members unreachable until they answer", () =>
   git.init(() => false, "b1", Date.now() - 20000);
   git.vote({ c: "a", ms: 0, roster: roster(9, "zed", "alpha", "beta") });
   const states = [
-    { host: "beta", gitHost: true, updating: 1, claim: { role: "servant", master: "alpha", gen: 4, stamp: 95, eligible: true, handoffTo: "" } },
-    { host: "alpha", gitHost: true, claim: { role: "master", master: "alpha", gen: 4, stamp: 101, eligible: true, handoffTo: "gamma" } },
+    {
+      host: "beta",
+      gitHost: true,
+      updating: 1,
+      claim: { role: "servant", master: "alpha", gen: 4, stamp: 95, eligible: true, handoffTo: "" },
+    },
+    {
+      host: "alpha",
+      gitHost: true,
+      claim: { role: "master", master: "alpha", gen: 4, stamp: 101, eligible: true, handoffTo: "gamma" },
+    },
     // a claim alone counts; a bad name, a plain host and a non-object are left out
     { host: "gamma", claim: {} },
     { host: "bad name", gitHost: true },
@@ -84,12 +103,44 @@ test("rows from a view, roster git members unreachable until they answer", () =>
   ];
   const rows = git.rowsOf(states, 100);
   expect(rows.map((r) => r.host)).toEqual(["alpha", "beta", "delta", "gamma"]);
-  expect(rows[0]).toEqual({ host: "alpha", reachable: true, role: "master", master: "alpha", gen: 4, ageSec: 0, eligible: true, updating: false, handoffTo: "gamma" });
-  expect(rows[1]).toEqual({ host: "beta", reachable: true, role: "servant", master: "alpha", gen: 4, ageSec: 5, eligible: true, updating: true, handoffTo: "" });
-  expect(rows[2]).toEqual({ host: "delta", reachable: true, role: "starting", master: "", gen: null, ageSec: null, eligible: false, updating: false, handoffTo: "" });
+  expect(rows[0]).toEqual({
+    host: "alpha",
+    reachable: true,
+    role: "master",
+    master: "alpha",
+    gen: 4,
+    ageSec: 0,
+    eligible: true,
+    updating: false,
+    handoffTo: "gamma",
+  });
+  expect(rows[1]).toEqual({
+    host: "beta",
+    reachable: true,
+    role: "servant",
+    master: "alpha",
+    gen: 4,
+    ageSec: 5,
+    eligible: true,
+    updating: true,
+    handoffTo: "",
+  });
+  expect(rows[2]).toEqual({
+    host: "delta",
+    reachable: true,
+    role: "starting",
+    master: "",
+    gen: null,
+    ageSec: null,
+    eligible: false,
+    updating: false,
+    handoffTo: "",
+  });
   expect(rows[3].role).toBe("starting");
   // the fingerprint, missing keys null, ageSec left out
-  expect(git.rowsFp(git.rowsOf([{ host: "zed", gitHost: true, claim: null }], 100))).toBe('[["alpha",false,null,null,null,null,null],["beta",false,null,null,null,null,null],["zed",true,"starting","",null,false,false]]');
+  expect(git.rowsFp(git.rowsOf([{ host: "zed", gitHost: true, claim: null }], 100))).toBe(
+    '[["alpha",false,null,null,null,null,null],["beta",false,null,null,null,null,null],["zed",true,"starting","",null,false,false]]',
+  );
   expect(git.rowsFp(rows)).not.toContain("5");
 });
 

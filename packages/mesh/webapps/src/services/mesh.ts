@@ -5,13 +5,28 @@ import { sshRun } from "./runner.ts";
 
 export type Login = { user: string; pass: string };
 // Runner a script run on host as login to its end, each chunk of output to onOut; the exit code
-export type Runner = (host: string, login: Login, script: string, onOut: (s: string) => void, timeoutMs: number) => Promise<number>;
+export type Runner = (
+  host: string,
+  login: Login,
+  script: string,
+  onOut: (s: string) => void,
+  timeoutMs: number,
+) => Promise<number>;
 // PublishLocal this host's services.export: [name] set to fields, or dropped with null
 export type PublishLocal = (name: string, fields: Record<string, string> | null) => Promise<[number, any]>;
 // Device a tailnet device as mesh.tailnet lists it
 export type Device = { name?: unknown; os?: unknown; phosphorus?: unknown };
 // Route a published service as mesh.routes lists it
-export type Route = { host?: unknown; name?: unknown; port?: unknown; mode?: unknown; base_path?: unknown; scheme?: unknown; type?: unknown; public?: unknown };
+export type Route = {
+  host?: unknown;
+  name?: unknown;
+  port?: unknown;
+  mode?: unknown;
+  base_path?: unknown;
+  scheme?: unknown;
+  type?: unknown;
+  public?: unknown;
+};
 // Progress what a host says of a step on it, in its info: the log's tail, the exit once there
 export type Progress = { log: string; exit?: number };
 
@@ -38,7 +53,10 @@ export const seams: {
   hostInfo: () => undefined,
   homeOf: passwdHome,
   fetchJSON: async (url) => {
-    const r = await fetch(url, { headers: { Accept: "application/vnd.github+json", "User-Agent": "phosphorus" }, signal: AbortSignal.timeout(8000) });
+    const r = await fetch(url, {
+      headers: { Accept: "application/vnd.github+json", "User-Agent": "phosphorus" },
+      signal: AbortSignal.timeout(8000),
+    });
     if (!r.ok) throw new Error(`${url}: ${r.status}`);
     return r.json();
   },

@@ -23,13 +23,17 @@ export type Entry = { name: string; dir: boolean; size: number; mtime: number };
 
 // dirPrelude $1 as a folder: "" and ~ its home, ~/x under it; then cd'd
 // into, exit 3 when it can't be
-const dirPrelude = `d=$1; shift; case $d in "" | "~") d=$HOME ;; "~/"*) d=$HOME/\${d#"~/"} ;; esac; ` + `cd -- "$d" 2>/dev/null || exit 3; `;
+const dirPrelude =
+  `d=$1; shift; case $d in "" | "~") d=$HOME ;; "~/"*) d=$HOME/\${d#"~/"} ;; esac; ` +
+  `cd -- "$d" 2>/dev/null || exit 3; `;
 
 // lsCommand a listing of dir: its resolved path, then each name tagged d or
 // f, NUL ended, an empty one closing them; then lstat's size and mtime, a line
 // per name in the same order, GNU's stat or BSD's
 export function lsCommand(dir: string): string {
-  const script = dirPrelude + `printf '%s\\000' "$(pwd -P)"; n=0; more=; ` +
+  const script =
+    dirPrelude +
+    `printf '%s\\000' "$(pwd -P)"; n=0; more=; ` +
     `for f in .[!.]* ..?* *; do [ -e "$f" ] || [ -L "$f" ] || continue; n=$((n+1)); ` +
     `if [ $n -gt ${lsMax} ]; then more=1; break; fi; set -- "$@" "$f"; done; ` +
     `for f in "$@"; do if [ -d "$f" ]; then printf 'd%s\\000' "$f"; else printf 'f%s\\000' "$f"; fi; done; ` +
@@ -73,7 +77,8 @@ export function parseLs(out: Uint8Array): { dir: string; entries: Entry[]; more:
     });
   entries.sort((a, b) => {
     if (a.dir !== b.dir) return a.dir ? -1 : 1;
-    const x = a.name.toLowerCase(), y = b.name.toLowerCase();
+    const x = a.name.toLowerCase(),
+      y = b.name.toLowerCase();
     return x < y ? -1 : x > y ? 1 : 0;
   });
   return { dir, entries, more };
@@ -85,7 +90,9 @@ const int = (s: string) => (/^-?\d+$/.test(s) ? Number(s) : 0);
 // isn't there yet, made with noclobber so nothing's overwritten; its path
 // printed, the file gone again when it isn't size bytes
 export function uploadCommand(dir: string, size: number, names: string[]): string {
-  const script = dirPrelude + `n=$1; shift; for f in "$@"; do ` +
+  const script =
+    dirPrelude +
+    `n=$1; shift; for f in "$@"; do ` +
     `if (set -C; : > "$f") 2>/dev/null; then cat > "$f" || { rm -f -- "$f"; exit 5; }; ` +
     `if [ "$(wc -c < "$f" | tr -d ' ')" != "$n" ]; then rm -f -- "$f"; exit 5; fi; ` +
     `printf '%s/%s' "$(pwd -P)" "$f"; exit 0; fi; done; exit 4`;
@@ -94,7 +101,8 @@ export function uploadCommand(dir: string, size: number, names: string[]): strin
 
 // dupNames name, then "name (1).ext" on to "name (n).ext"
 export function dupNames(name: string, n: number): string[] {
-  let stem = name, ext = "";
+  let stem = name,
+    ext = "";
   const i = name.lastIndexOf(".");
   if (i > 0) [stem, ext] = [name.slice(0, i), name.slice(i)];
   const out = [name];
@@ -117,7 +125,8 @@ export function okDir(d: string): boolean {
 // shellErr a host's shell refusing sh, a Windows one named
 export function shellErr(host: string, code: number, errs: string): string {
   const low = errs.toLowerCase();
-  if (low.includes("not recognized") || low.includes("commandnotfound")) return `${host} runs Windows, which Code doesn't support yet`;
+  if (low.includes("not recognized") || low.includes("commandnotfound"))
+    return `${host} runs Windows, which Code doesn't support yet`;
   if (!errs) return `on ${host}: exit ${code}`;
   return `on ${host}: ${lastLine(errs)}`;
 }
@@ -149,7 +158,14 @@ export async function ls(host: string, dir: string, c: Creds): Promise<Res> {
 
 // upload size bytes of body into dir on host as the login, under name or
 // "name (n).ext" when that's taken
-export async function upload(host: string, dir: string, name: string, size: number, body: Stdin, c: Creds): Promise<Res> {
+export async function upload(
+  host: string,
+  dir: string,
+  name: string,
+  size: number,
+  body: Stdin,
+  c: Creds,
+): Promise<Res> {
   name = name.trim();
   if (!hostRe.test(host)) return [400, errB("pick a host")];
   if (!okDir(dir)) return [400, errB("dir: an absolute path, or ~")];
@@ -163,7 +179,14 @@ export async function upload(host: string, dir: string, name: string, size: numb
     return [502, errB(errText(e))];
   }
   try {
-    const r = await capture(cl, uploadCommand(dir, size, dupNames(name, dupMax)), body ?? "", 64 * 1024, 10 * 60_000, size);
+    const r = await capture(
+      cl,
+      uploadCommand(dir, size, dupNames(name, dupMax)),
+      body ?? "",
+      64 * 1024,
+      10 * 60_000,
+      size,
+    );
     if (r.error) return [502, errB(r.error)];
     if (r.code === 3) return [404, errB(`can't open ${dir} on ${host}`)];
     if (r.code === 4) return [409, errB("too many files named " + name + " there already")];

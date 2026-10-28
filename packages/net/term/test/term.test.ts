@@ -1,7 +1,18 @@
 import { afterAll, expect, test } from "bun:test";
+import {
+  attach,
+  close,
+  Ended,
+  forward,
+  type Opts,
+  render,
+  screens,
+  sessionCount,
+  Taken,
+  typeIn,
+} from "@phosphorus/term";
+import { type Conn, dial, type WSData, websocket } from "@phosphorus/wsock";
 import { Server, type ServerChannel, utils } from "ssh2";
-import { type Conn, dial, websocket, type WSData } from "@phosphorus/wsock";
-import { attach, close, Ended, forward, type Opts, render, screens, sessionCount, Taken, typeIn } from "@phosphorus/term";
 
 const dec = new TextDecoder();
 const enc = new TextEncoder();
@@ -33,7 +44,13 @@ test("render keeps the last 120 lines, in place edits and resizes", async () => 
 
 // --- a fake sshd: u/pw, a shell that echoes a few commands ------------------
 
-type Fake = { port: number; winch: { cols: number; rows: number }[]; execs: string[]; ptys: { term: string; cols: number; rows: number }[]; stop: () => void };
+type Fake = {
+  port: number;
+  winch: { cols: number; rows: number }[];
+  execs: string[];
+  ptys: { term: string; cols: number; rows: number }[];
+  stop: () => void;
+};
 
 function fakeSSHD(): Promise<Fake> {
   const f: Fake = { port: 0, winch: [], execs: [], ptys: [], stop: () => {} };
@@ -42,7 +59,10 @@ function fakeSSHD(): Promise<Fake> {
     client
       .on("authentication", (ctx) => {
         if (ctx.method === "password" && ctx.username === "u" && ctx.password === "pw") return ctx.accept();
-        if (ctx.method === "keyboard-interactive") return ctx.prompt("Password: ", (a: string[]) => (a[0] === "pw" && ctx.username === "u" ? ctx.accept() : ctx.reject()));
+        if (ctx.method === "keyboard-interactive")
+          return ctx.prompt("Password: ", (a: string[]) =>
+            a[0] === "pw" && ctx.username === "u" ? ctx.accept() : ctx.reject(),
+          );
         ctx.reject(["password", "keyboard-interactive"]);
       })
       .on("ready", () => {
@@ -174,7 +194,9 @@ test("login prompts, the shell, shared screens, typing, close", async () => {
   expect(t.seen()).toBe("box login: ux\b \b\r\npassword: ");
   t.type("pw\r");
   await t.until(/\$ $/);
-  expect(t.seen().slice(t.seen().indexOf("password: "))).toBe(`password: \r\n${clear}shell xterm-256color 100x30\r\n$ `);
+  expect(t.seen().slice(t.seen().indexOf("password: "))).toBe(
+    `password: \r\n${clear}shell xterm-256color 100x30\r\n$ `,
+  );
   expect(sessionCount()).toBe(1);
 
   // the snapshot phosphorus reads, and a resize reaching the far pty
@@ -186,7 +208,10 @@ test("login prompts, the shell, shared screens, typing, close", async () => {
   // cols and rows outside 1..1000 or not whole: kept as they were
   t.json({ type: "resize", cols: 0, rows: 40.5 });
   await Bun.sleep(100);
-  expect(fake.winch).toEqual([{ cols: 120, rows: 40 }, { cols: 120, rows: 40 }]);
+  expect(fake.winch).toEqual([
+    { cols: 120, rows: 40 },
+    { cols: 120, rows: 40 },
+  ]);
 
   // a command run at once, its output settled
   let r = await typeIn("alice", sid.slice(0, 4), "echo hi", 5, true);
@@ -308,14 +333,20 @@ test("a saved login refused is asked for by hand; one typed in at the prompt", a
   // a login message answering the drawn prompt: the user shown, the password not
   t.json({ type: "login", user: "u", pass: "pw", run: "echo hi" });
   await t.until(/hi\r\n\$ $/);
-  expect(t.seen()).toBe(`access denied\r\n\r\nbox login: u\r\npassword: \r\n${clear}shell xterm-256color 80x24\r\n$ echo hi\r\nhi\r\n$ `);
+  expect(t.seen()).toBe(
+    `access denied\r\n\r\nbox login: u\r\npassword: \r\n${clear}shell xterm-256color 80x24\r\n$ echo hi\r\nhi\r\n$ `,
+  );
   t.json({ type: "close" });
   await t.closed;
 }, 20_000);
 
 test("a hop to the owning peer", async () => {
   const peer = serveTerm(fake);
-  const hub = serveTerm(fake, (q) => (q.get("sid")?.startsWith("sid") ? wsURL(q.get("sid")!, { hop: "1", ...(q.has("resume") ? { resume: "1" } : {}) }, peer.port) : ""));
+  const hub = serveTerm(fake, (q) =>
+    q.get("sid")?.startsWith("sid")
+      ? wsURL(q.get("sid")!, { hop: "1", ...(q.has("resume") ? { resume: "1" } : {}) }, peer.port)
+      : "",
+  );
   const sid = newSID();
   const t = await tab(wsURL(sid, {}, hub.port));
   t.json({ type: "resize", cols: 50, rows: 10 });

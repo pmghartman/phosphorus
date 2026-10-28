@@ -1,9 +1,19 @@
 // the home's gate: whose folders a caller may see
 import { existsSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
-import { posix } from "node:path";
+import { join, posix } from "node:path";
 import { RepoDir } from "@phosphorus/util";
-import { Desktop, Gone, HomeRoot, Shared, Sys, absRe, configuredDirs, mountedDirs, slashed, type Res } from "./index.ts";
+import {
+  absRe,
+  configuredDirs,
+  Desktop,
+  Gone,
+  HomeRoot,
+  mountedDirs,
+  type Res,
+  Shared,
+  Sys,
+  slashed,
+} from "./index.ts";
 import { type Entry } from "./paths.ts";
 
 // what phosphorus.ini asks for against what is mounted

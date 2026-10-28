@@ -5,13 +5,17 @@ const { frameable, reverseLocation } = await import("@phosphorus/proxy");
 
 test("frameable", () => {
   expect(frameable("frame-ancestors 'none';")).toBe("frame-ancestors 'self' https://mulab.dev");
-  expect(frameable("default-src 'self'; FRAME-ANCESTORS 'none'; img-src *")).toBe("default-src 'self'; img-src *; frame-ancestors 'self' https://mulab.dev");
+  expect(frameable("default-src 'self'; FRAME-ANCESTORS 'none'; img-src *")).toBe(
+    "default-src 'self'; img-src *; frame-ancestors 'self' https://mulab.dev",
+  );
   // an X-Frame-Options alone, dropped: the policy that replaces it
   expect(frameable("")).toBe("frame-ancestors 'self' https://mulab.dev");
 });
 
 test("reverse location", () => {
-  const prefix = "/torus/sunshine", host = "mulab.dev", svc = "100.105.120.33:47990";
+  const prefix = "/torus/sunshine",
+    host = "mulab.dev",
+    svc = "100.105.120.33:47990";
   for (const [loc, want] of [
     ["/welcome", "/torus/sunshine/welcome"],
     ["/", "/torus/sunshine/"],
@@ -42,12 +46,18 @@ test("ingress forwards http and websockets", async () => {
     fetch(req, s) {
       if (s.upgrade(req)) return;
       const u = new URL(req.url);
-      return new Response(`${u.pathname}${u.search} ${req.headers.get("x-forwarded-proto")}`, { headers: { "X-Frame-Options": "DENY" } });
+      return new Response(`${u.pathname}${u.search} ${req.headers.get("x-forwarded-proto")}`, {
+        headers: { "X-Frame-Options": "DENY" },
+      });
     },
     websocket: { message: (ws, m) => void ws.send("echo:" + m) },
   });
   swap([{ host: "box", name: "web", port: back.port, scheme: "http", mode: "path", public: true }], () => "127.0.0.1");
-  const front = serve(0, handler(() => new Response("app"), { pass: () => false, issuers: () => [] }), true);
+  const front = serve(
+    0,
+    handler(() => new Response("app"), { pass: () => false, issuers: () => [] }),
+    true,
+  );
   const base = `http://127.0.0.1:${front.port}`;
   const r = await fetch(`${base}/box/web/hi?x=1`);
   expect(await r.text()).toBe("/hi?x=1 http");

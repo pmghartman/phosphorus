@@ -2,11 +2,36 @@
 // key, a role or a host as the model, llama-server's own /v1/messages answering
 import { CheckMCPKey } from "@phosphorus/users";
 import { FrontendPort, marshal, obj } from "@phosphorus/util";
-import { type Agent, AgentName, Agents, agentOf, assigned, excuse, forward, jsString, measure, Mesh, meshHost, n, profiled, resolve, runners, selfHost, serverPort, str, textOf, tierOf, view } from "./model.ts";
+import {
+  type Agent,
+  AgentName,
+  Agents,
+  agentOf,
+  assigned,
+  excuse,
+  forward,
+  jsString,
+  Mesh,
+  measure,
+  meshHost,
+  n,
+  profiled,
+  resolve,
+  runners,
+  selfHost,
+  serverPort,
+  str,
+  textOf,
+  tierOf,
+  view,
+} from "./model.ts";
 
 // anthErr an error as the Anthropic API words it
 const anthErr = (status: number, typ: string, msg: string) =>
-  new Response(marshal({ type: "error", error: { type: typ, message: msg } }), { status, headers: { "Content-Type": "application/json" } });
+  new Response(marshal({ type: "error", error: { type: typ, message: msg } }), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
 
 // keyOf the caller's key: a bearer token or x-api-key, as claude sends either
 export function keyOf(req: Request): string {
@@ -70,14 +95,27 @@ export function foldSystem(p: Record<string, any>): Record<string, any> {
     else if (Array.isArray(c)) extra.push(...c);
   }
   if (keep.length === ms.length) return p;
-  const sys: unknown[] = typeof p.system === "string" ? (p.system ? [{ type: "text", text: p.system }] : []) : Array.isArray(p.system) ? [...p.system] : [];
+  const sys: unknown[] =
+    typeof p.system === "string"
+      ? p.system
+        ? [{ type: "text", text: p.system }]
+        : []
+      : Array.isArray(p.system)
+        ? [...p.system]
+        : [];
   return { ...p, system: [...sys, ...extra], messages: keep };
 }
 
 // ServeMessages POST /api/model/v1/messages[/count_tokens]: sub "" or
 // "/count_tokens", peer a tailnet or loopback caller, user a logged-in user's
 // own page (the ide's chat), its login the pass a key is for anyone else
-export async function ServeMessages(req: Request, p: Record<string, any>, sub: string, peer: boolean, user: boolean): Promise<Response> {
+export async function ServeMessages(
+  req: Request,
+  p: Record<string, any>,
+  sub: string,
+  peer: boolean,
+  user: boolean,
+): Promise<Response> {
   if (sub !== "" && sub !== "/count_tokens") return anthErr(404, "not_found_error", "no such endpoint");
   const [host, role, pref] = Target(str(p.model));
   const refused = gate(req, (peer && host !== "") || user);
@@ -89,7 +127,15 @@ export async function ServeMessages(req: Request, p: Record<string, any>, sub: s
   if (!s || s.server !== "ready") return anthErr(529, "overloaded_error", excuse(states, s));
   const h = jsString(s.host);
   const body = sub === "" && role ? profiled(p, role) : p;
-  if (h !== selfHost) return forward(req, jsString(s.ip), FrontendPort, "/api/model/v1/messages" + sub, { ...body, model: Mesh + "/" + h }, h);
+  if (h !== selfHost)
+    return forward(
+      req,
+      jsString(s.ip),
+      FrontendPort,
+      "/api/model/v1/messages" + sub,
+      { ...body, model: Mesh + "/" + h },
+      h,
+    );
   const msgs = chatShaped(p);
   return forward(req, "127.0.0.1", serverPort, "/v1/messages" + sub, body, "llama-server on " + h, (out) => {
     if (out.ok && sub === "") measure(msgs, p.tools, anthUsage(out.usage), out.genMS).catch(() => {});
@@ -104,7 +150,13 @@ export function ServeModels(req: Request, peer: boolean): Response {
   const at = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
   const data = Agents().map((a: Agent) => {
     const s = resolve(states, a.tier, assigned(a, "model")[0])[1];
-    return { type: "model", id: AgentName(a.id, false), display_name: a.label, created_at: at, ready: s?.server === "ready" };
+    return {
+      type: "model",
+      id: AgentName(a.id, false),
+      display_name: a.label,
+      created_at: at,
+      ready: s?.server === "ready",
+    };
   });
   return new Response(marshal({ data, has_more: false, first_id: data[0]!.id, last_id: data[data.length - 1]!.id }), {
     status: 200,

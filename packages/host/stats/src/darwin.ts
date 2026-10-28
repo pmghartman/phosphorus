@@ -2,7 +2,18 @@
 // netstat for the links, ioreg for disk bytes and the gpu, df for the volumes
 import { totalmem, uptime } from "node:os";
 import { now, run } from "@phosphorus/util";
-import { type Disk, type Gpu, gpuMS, type Mem, type Net, num, osCpuModel, osCpuTimes, osLoadAvg, type Sys } from "./common.ts";
+import {
+  type Disk,
+  type Gpu,
+  gpuMS,
+  type Mem,
+  type Net,
+  num,
+  osCpuModel,
+  osCpuTimes,
+  osLoadAvg,
+  type Sys,
+} from "./common.ts";
 
 const virtualIf = /^(lo|loopback|vEthernet|veth|bridge|awdl|llw|anpi|ap\d|gif|stf|isatap|teredo)/i;
 const unit: Record<string, number> = { K: 1024, M: 1 << 20, G: 1 << 30, T: 2 ** 40 };
@@ -17,7 +28,14 @@ export function memInfo(vm: string, swap: string, total = totalmem()): Mem {
     return m ? num(m[1]!) * (unit[m[2]!] ?? 1) : 0;
   };
   const avail = pages("Pages free") + pages("Pages inactive");
-  return { total, used: total - avail, avail, cached: pages("Pages inactive"), swapTotal: swapOf("total"), swapUsed: swapOf("used") };
+  return {
+    total,
+    used: total - avail,
+    avail,
+    cached: pages("Pages inactive"),
+    swapTotal: swapOf("total"),
+    swapUsed: swapOf("used"),
+  };
 }
 
 // netstat -ibn's link rows, one per interface, bytes counted from the end
@@ -28,7 +46,8 @@ export function netBytes(s: string): Net {
     const f = line.trim().split(/\s+/);
     if (f.length < 10 || !f[2]!.startsWith("<Link#")) continue;
     const name = f[0]!.replace(/\*$/, "");
-    const rx = num(f[f.length - 5]!), tx = num(f[f.length - 2]!);
+    const rx = num(f[f.length - 5]!),
+      tx = num(f[f.length - 2]!);
     if (virtualIf.test(name) || !(rx + tx > 0) || out.bytes[name]) continue;
     out.bytes[name] = { rx, tx };
     out.order.push(name);
@@ -38,7 +57,8 @@ export function netBytes(s: string): Net {
 
 // every block driver's Statistics summed
 export function diskBytes(ioreg: string): [number, number] {
-  const sum = (k: string) => [...ioreg.matchAll(new RegExp(`"Bytes \\(${k}\\)"=(\\d+)`, "g"))].reduce((a, m) => a + Number(m[1]), 0);
+  const sum = (k: string) =>
+    [...ioreg.matchAll(new RegExp(`"Bytes \\(${k}\\)"=(\\d+)`, "g"))].reduce((a, m) => a + Number(m[1]), 0);
   return [sum("Read"), sum("Write")];
 }
 
@@ -46,11 +66,15 @@ export function diskBytes(ioreg: string): [number, number] {
 // pairs are one APFS container, its capacity counted once, each volume's used
 export function disk(df: string): Disk {
   const seen = new Set<string>();
-  let total = 0, used = 0, count = 0;
+  let total = 0,
+    used = 0,
+    count = 0;
   for (const line of df.split("\n").slice(1)) {
     const f = line.trim().split(/\s+/);
     if (f.length < 6 || f[0] === "devfs" || f[0] === "map") continue;
-    const t = num(f[1]!) * 1024, u = num(f[2]!) * 1024, free = num(f[3]!) * 1024;
+    const t = num(f[1]!) * 1024,
+      u = num(f[2]!) * 1024,
+      free = num(f[3]!) * 1024;
     const mount = f.slice(5).join(" ");
     const key = `${t}:${free}`;
     if (!(t > 0) || (mount.startsWith("/System/Volumes/") && mount !== "/System/Volumes/Data")) continue;
@@ -73,7 +97,16 @@ export function appleGpus(ioreg: string, chip = osCpuModel(), memTotal = totalme
     if (!m) continue;
     const model = /"model" = "([^"]+)"/.exec(blk);
     const name = model ? model[1]!.toLowerCase() : chip ? `${chip.toLowerCase()} gpu` : "apple gpu";
-    const g: Gpu = { name, util: Number(m[1]), memUsed: null, memTotal: null, mhz: null, mhzMax: null, temp: null, integrated: true };
+    const g: Gpu = {
+      name,
+      util: Number(m[1]),
+      memUsed: null,
+      memTotal: null,
+      mhz: null,
+      mhzMax: null,
+      temp: null,
+      integrated: true,
+    };
     const mem = /"In use system memory"=(\d+)/.exec(blk);
     if (mem) g.memUsed = Number(mem[1]);
     if (memTotal) g.memTotal = memTotal;
@@ -93,7 +126,8 @@ let net: Net = { bytes: {}, order: [] };
 let io: [number, number] = [0, 0];
 let vols: Disk = { total: 0, used: 0, count: 0 };
 let apple: Gpu[] = [];
-let appleAt = 0, appleBusy = false;
+let appleAt = 0,
+  appleBusy = false;
 
 async function poll() {
   const [vm, swap, ns, ioreg, df] = await Promise.all([

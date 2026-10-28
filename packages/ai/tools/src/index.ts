@@ -34,7 +34,8 @@ function llamaKind(gpu: boolean): string {
   const a = ({ x64: "x64", arm64: "arm64" } as Record<string, string>)[process.arch] ?? "";
   const b = backend(gpu);
   if (process.platform === "darwin") return "macos-" + a;
-  if (process.platform === "win32") return b === "cuda" ? "win-cuda-12.4-x64" : b === "vulkan" ? "win-vulkan-x64" : "win-cpu-" + a;
+  if (process.platform === "win32")
+    return b === "cuda" ? "win-cuda-12.4-x64" : b === "vulkan" ? "win-vulkan-x64" : "win-cpu-" + a;
   return b === "cuda" ? "cuda-12.8-x64" : b === "vulkan" ? "vulkan-x64" : a;
 }
 
@@ -53,7 +54,8 @@ export type Fetch = { dir: string; urls: string[]; strip: number };
 function llamaFetch(gpu: boolean): Fetch {
   const base = "https://github.com/ggml-org/llama.cpp/releases/download/" + LlamaTag;
   const k = llamaKind(gpu);
-  if (process.platform === "darwin") return { dir: llamaDir(gpu), urls: [`${base}/llama-${LlamaTag}-bin-${k}.tar.gz`], strip: 1 };
+  if (process.platform === "darwin")
+    return { dir: llamaDir(gpu), urls: [`${base}/llama-${LlamaTag}-bin-${k}.tar.gz`], strip: 1 };
   if (process.platform === "win32") {
     const urls = [`${base}/llama-${LlamaTag}-bin-${k}.zip`];
     if (k.includes("cuda")) urls.push(`${base}/cudart-llama-bin-${k}.zip`);
@@ -84,7 +86,8 @@ function dropOpencode() {
   if (dropped) return;
   dropped = true;
   try {
-    for (const n of readdirSync(root)) if (n.startsWith("opencode-")) rmSync(join(root, n), { recursive: true, force: true });
+    for (const n of readdirSync(root))
+      if (n.startsWith("opencode-")) rmSync(join(root, n), { recursive: true, force: true });
   } catch {}
   rmSync(join(dirname(root), "opencode"), { recursive: true, force: true });
 }

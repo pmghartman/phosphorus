@@ -15,7 +15,9 @@ export function agentReport(id: string): Reporter {
     why = why.replaceAll("\n", " ").slice(0, 400);
     const out = at("state", "update-agent.json");
     try {
-      writeFileSync(out + ".tmp", JSON.stringify({ id, state, current, version, error: why, at: Date.now() }), { mode: 0o644 });
+      writeFileSync(out + ".tmp", JSON.stringify({ id, state, current, version, error: why, at: Date.now() }), {
+        mode: 0o644,
+      });
       renameSync(out + ".tmp", out);
     } catch {}
   };
@@ -40,7 +42,19 @@ export async function upgrade(id: string) {
   // the feed's Origin and Label free to change
   const apt = (tee: boolean, ...args: string[]) =>
     capture(
-      ["apt-get", "-q", "-o", "Dir::Etc::sourcelist=sources.list.d/phosphorus.list", "-o", "Dir::Etc::sourceparts=-", "-o", "Acquire::AllowReleaseInfoChange::Origin=true", "-o", "Acquire::AllowReleaseInfoChange::Label=true", ...args],
+      [
+        "apt-get",
+        "-q",
+        "-o",
+        "Dir::Etc::sourcelist=sources.list.d/phosphorus.list",
+        "-o",
+        "Dir::Etc::sourceparts=-",
+        "-o",
+        "Acquire::AllowReleaseInfoChange::Origin=true",
+        "-o",
+        "Acquire::AllowReleaseInfoChange::Label=true",
+        ...args,
+      ],
       tee,
       { ...process.env, DEBIAN_FRONTEND: "noninteractive" },
     );
@@ -50,7 +64,8 @@ export async function upgrade(id: string) {
     throw fail("apt-get update failed");
   }
   const policy = await output("apt-cache", "policy", "phosphorus");
-  const have = field(policy, "Installed:"), cand = field(policy, "Candidate:");
+  const have = field(policy, "Installed:"),
+    cand = field(policy, "Candidate:");
   if (cand && cand !== "(none)" && cand !== have) {
     say(`${have} -> ${cand}`);
     // postinst installs the release and rebuilds

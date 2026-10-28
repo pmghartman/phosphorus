@@ -5,10 +5,20 @@ import { gunzipSync } from "bun";
 import { files } from "./manifest.ts";
 
 const types: Record<string, string> = {
-  ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8",
-  ".css": "text/css; charset=utf-8", ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png",
-  ".ico": "image/x-icon", ".woff2": "font/woff2", ".woff": "font/woff", ".ttf": "font/ttf", ".gif": "image/gif",
-  ".wasm": "application/wasm", ".map": "application/json",
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".json": "application/json",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".ico": "image/x-icon",
+  ".woff2": "font/woff2",
+  ".woff": "font/woff",
+  ".ttf": "font/ttf",
+  ".gif": "image/gif",
+  ".wasm": "application/wasm",
+  ".map": "application/json",
 };
 
 const etags = new Map<string, string>();
@@ -45,7 +55,14 @@ const read = (name: string) => {
     // NAME.gz!raw: that file inflated
     const raw = name.endsWith(".gz!raw");
     const file = files[raw ? name.slice(0, -4) : name];
-    p = file ? Bun.file(file).arrayBuffer().then((b) => (raw ? gunzipSync(b) : new Uint8Array(b)) as Uint8Array<ArrayBuffer>, () => undefined) : Promise.resolve(undefined);
+    p = file
+      ? Bun.file(file)
+          .arrayBuffer()
+          .then(
+            (b) => (raw ? gunzipSync(b) : new Uint8Array(b)) as Uint8Array<ArrayBuffer>,
+            () => undefined,
+          )
+      : Promise.resolve(undefined);
     bytes.set(name, p);
   }
   return p;
@@ -56,7 +73,8 @@ export async function serveStatic(r: Request): Promise<Response> {
   let p = new URL(r.url).pathname;
   if (p === "/" || p === "") p = "/index.html";
   const name = p.replace(/\/+/g, "/").replace(/^\//, "");
-  if (!name || name.endsWith(".gz") || name.split("/").includes("..")) return new Response("not found", { status: 404 });
+  if (!name || name.endsWith(".gz") || name.split("/").includes(".."))
+    return new Response("not found", { status: 404 });
   let packed = false;
   let b = await read(name);
   if (!b) {
@@ -65,8 +83,15 @@ export async function serveStatic(r: Request): Promise<Response> {
   }
   if (!b) return new Response("not found", { status: 404, headers: { "Content-Type": "text/plain" } });
   const ext = name.slice(name.lastIndexOf("."));
-  const h = new Headers({ "Content-Type": types[ext] ?? "application/octet-stream", ETag: etagOf(name, b), Vary: "Accept-Encoding" });
-  h.set("Cache-Control", hashed(name) ? "public, max-age=31536000, immutable" : ext === ".woff2" ? "public, max-age=86400" : "no-cache");
+  const h = new Headers({
+    "Content-Type": types[ext] ?? "application/octet-stream",
+    ETag: etagOf(name, b),
+    Vary: "Accept-Encoding",
+  });
+  h.set(
+    "Cache-Control",
+    hashed(name) ? "public, max-age=31536000, immutable" : ext === ".woff2" ? "public, max-age=86400" : "no-cache",
+  );
   if (r.headers.get("if-none-match") === h.get("ETag")) return new Response(null, { status: 304, headers: h });
   let body: Uint8Array<ArrayBuffer> | undefined;
   if (accepts(r, "gzip")) {

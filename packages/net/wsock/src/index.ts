@@ -177,7 +177,11 @@ export function dial(
       clearTimeout(t);
       reject(new Error("couldn't connect"));
     };
-    ws.onmessage = (e) => c._message(typeof e.data === "string" ? e.data : new Uint8Array(e.data as ArrayBuffer), typeof e.data !== "string");
+    ws.onmessage = (e) =>
+      c._message(
+        typeof e.data === "string" ? e.data : new Uint8Array(e.data as ArrayBuffer),
+        typeof e.data !== "string",
+      );
     ws.addEventListener("pong", () => c._pong());
     ws.onclose = (e) => {
       clearTimeout(t);
@@ -213,4 +217,5 @@ export function isUpgrade(req: Request): boolean {
 export const headerHas = (h: Headers, k: string, token: string) =>
   (h.get(k) ?? "").split(",").some((t) => t.trim().toLowerCase() === token);
 
-export const remoteIP = (server: Server<any>, req: Request) => (server.requestIP(req)?.address ?? "").replace(/^::ffff:/, "");
+export const remoteIP = (server: Server<any>, req: Request) =>
+  (server.requestIP(req)?.address ?? "").replace(/^::ffff:/, "");

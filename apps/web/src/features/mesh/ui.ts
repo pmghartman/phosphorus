@@ -24,7 +24,12 @@ export const uiVars = {
   meshDims: null as { collapsed: Dims; expanded: Dims } | null,
 };
 
-export interface Dims { width: number; height: number; widthPx: number; legendPx: number }
+export interface Dims {
+  width: number;
+  height: number;
+  widthPx: number;
+  legendPx: number;
+}
 
 // expanded: fewer logical units per pixel width, a real zoom, the popup's
 // height whatever the stats table leaves
@@ -36,7 +41,12 @@ export function meshLayoutParams(expanded: boolean): Dims {
   // the legend expanded only, hidden, not gone, so still measured
   const legend = meshGraphWrap.querySelector('.mesh-legend') as HTMLElement;
   const legendOn = expanded && meshPanel.classList.contains('legend-on');
-  return { width, height: width * (Math.max(60, bodyH) / widthPx), widthPx, legendPx: legendOn ? legend.offsetTop + legend.offsetHeight : 0 };
+  return {
+    width,
+    height: width * (Math.max(60, bodyH) / widthPx),
+    widthPx,
+    legendPx: legendOn ? legend.offsetTop + legend.offsetHeight : 0,
+  };
 }
 
 // host row to the non-phosphorus devices, a frame fraction, LIFT the
@@ -44,7 +54,8 @@ export function meshLayoutParams(expanded: boolean): Dims {
 export const OTHERS_AXIS = 0.34;
 export const LIFT = 0.1;
 export function meshDimsNow() {
-  if (!uiVars.meshDims || !meshAnimFrame) uiVars.meshDims = { collapsed: meshLayoutParams(false), expanded: meshLayoutParams(true) };
+  if (!uiVars.meshDims || !meshAnimFrame)
+    uiVars.meshDims = { collapsed: meshLayoutParams(false), expanded: meshLayoutParams(true) };
   return uiVars.meshDims;
 }
 
@@ -76,8 +87,24 @@ meshT = 1;
 
 // the nodes and git rows folded under their heads, the legend behind a ?; kept per browser
 export const MESH_UI_KEY = 'phosphorus-mesh-ui';
-export const meshUi: { legend?: boolean; nodes?: boolean; git?: boolean; size?: { w: number; h: number }; [k: string]: unknown } = (() => { try { return JSON.parse(localStorage.getItem(MESH_UI_KEY)!) || {}; } catch { return {}; } })();
-export const saveMeshUi = () => { try { localStorage.setItem(MESH_UI_KEY, JSON.stringify(meshUi)); } catch {} };
+export const meshUi: {
+  legend?: boolean;
+  nodes?: boolean;
+  git?: boolean;
+  size?: { w: number; h: number };
+  [k: string]: unknown;
+} = (() => {
+  try {
+    return JSON.parse(localStorage.getItem(MESH_UI_KEY)!) || {};
+  } catch {
+    return {};
+  }
+})();
+export const saveMeshUi = () => {
+  try {
+    localStorage.setItem(MESH_UI_KEY, JSON.stringify(meshUi));
+  } catch {}
+};
 export const meshLegendBtn = document.getElementById('mesh-legend-btn')!;
 export function paintMeshUi() {
   meshPanel.classList.toggle('legend-on', !!meshUi.legend);

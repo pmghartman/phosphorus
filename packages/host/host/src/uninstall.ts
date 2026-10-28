@@ -39,7 +39,18 @@ export async function uninstall(opts: string[]) {
 async function purgeLinux() {
   say("purging the phosphorus package...");
   const ok = fileExists("/run/systemd/system")
-    ? await run("systemd-run", "--quiet", "--collect", "--wait", "--unit", "phosphorus-uninstall", "apt-get", "purge", "-y", "phosphorus")
+    ? await run(
+        "systemd-run",
+        "--quiet",
+        "--collect",
+        "--wait",
+        "--unit",
+        "phosphorus-uninstall",
+        "apt-get",
+        "purge",
+        "-y",
+        "phosphorus",
+      )
     : await run("apt-get", "purge", "-y", "phosphorus");
   if (!ok) throw fail("apt-get purge failed");
 }

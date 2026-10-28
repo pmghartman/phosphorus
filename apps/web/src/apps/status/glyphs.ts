@@ -1,7 +1,7 @@
 // glyphs
 import { cssVar } from '../../lib/dom.ts';
 import { humanSize } from '../../lib/util.ts';
-import { stHostsEl, type StHost } from './state.ts';
+import { type StHost, stHostsEl } from './state.ts';
 
 // low to high: sage, sand, rose
 export const heat = (t: number) => (t < 0.5 ? 'st-lo' : t < 0.8 ? 'st-mid' : 'st-hi');
@@ -22,7 +22,8 @@ export function chWidth(glyph: string): number {
   return w || 8;
 }
 // meter cells fitting in el past `reserve` characters of text
-export const meterCells = (el: HTMLElement, reserve: number) => Math.max(4, Math.floor((el.clientWidth - reserve * chWidth('0')) / chWidth('■')));
+export const meterCells = (el: HTMLElement, reserve: number) =>
+  Math.max(4, Math.floor((el.clientWidth - reserve * chWidth('0')) / chWidth('■')));
 
 // btop's bar: filled cells by heat, the rest dim
 export function meter(frac: number, cells: number, cls?: string): string {
@@ -36,7 +37,14 @@ export function meter(frac: number, cells: number, cls?: string): string {
 // braille glyphs off a fallback font in most monospace faces)
 export const HEAT_VAR: Record<string, string> = { 'st-lo': '--sage', 'st-mid': '--sand', 'st-hi': '--rose' };
 export const heatVar = (t: number) => HEAT_VAR[heat(t)]!;
-export function dotGraph(canvas: HTMLCanvasElement, values: number[], max: number, hue: (t: number) => string, down?: boolean, fine = 1) {
+export function dotGraph(
+  canvas: HTMLCanvasElement,
+  values: number[],
+  max: number,
+  hue: (t: number) => string,
+  down?: boolean,
+  fine = 1,
+) {
   const dpr = devicePixelRatio || 1;
   const w = canvas.clientWidth;
   const h = canvas.clientHeight;

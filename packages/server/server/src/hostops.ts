@@ -28,7 +28,8 @@ const logLevel: Record<string, RegExp> = {
 
 const pad = (n: number) => String(n).padStart(2, "0");
 // Go's "2006-01-02 15:04:05", local
-const stamp = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+const stamp = (d: Date) =>
+  `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 
 const isoRe = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(\.\d+)?(Z|[+-]\d{2}:?\d{2})$/;
 
@@ -106,7 +107,8 @@ export async function hostLogs(p: Record<string, any>): Promise<Res> {
   let lines = Math.trunc(jsNumber(p.lines)) || 0;
   if (lines < 1) lines = 200;
   if (lines > logLinesMax) lines = logLinesMax;
-  const match = str(p.match), level = str(p.level).toLowerCase();
+  const match = str(p.match),
+    level = str(p.level).toLowerCase();
   let source = str(p.source).toLowerCase() || "phosphorus";
   if (level !== "" && !logLevel[level]) return [400, { error: "level is error or warn" }];
   let since: Date | undefined, until: Date | undefined;
@@ -211,7 +213,12 @@ export async function tailFile(p: string): Promise<string[] | undefined> {
 }
 
 // onHost a call run here when host is this one, else on the peer's /internal path
-export async function onHost(host: string, path: string, body: Record<string, any>, waitMs: number): Promise<Res | undefined> {
+export async function onHost(
+  host: string,
+  path: string,
+  body: Record<string, any>,
+  waitMs: number,
+): Promise<Res | undefined> {
   if (host === selfHost) return;
   const ip = await tailnetIP(host);
   if (!ip) return [502, { error: `can't find ${host} on the tailnet` }];
@@ -221,7 +228,8 @@ export async function onHost(host: string, path: string, body: Record<string, an
 // configOp this host's config: get both files, or set one service or ini key,
 // dry returning the diff alone; a service's outcome waited on once written
 export async function configOp(p: Record<string, any>): Promise<Res> {
-  let why = "", diff = "";
+  let why = "",
+    diff = "";
   const dry = truthy(p.dry_run);
   switch (str(p.op)) {
     case "get": {
@@ -262,7 +270,8 @@ async function serviceOutcome(name: string): Promise<Record<string, any>> {
     await sleep(1000);
   }
   if (!h) return { published: false, why: "not declared, services.export rejected it" };
-  if (h.published === true) for (const r of peers.routes()) if (str(r.host) === selfHost && str(r.name) === name) h.route = r;
+  if (h.published === true)
+    for (const r of peers.routes()) if (str(r.host) === selfHost && str(r.name) === name) h.route = r;
   return h;
 }
 
@@ -295,7 +304,14 @@ export async function userUI(user: string, action: Record<string, any>): Promise
   await Promise.all(
     Object.values(peers.peerIPs()).map(async (ip) => {
       try {
-        const res = await requestJSON({ host: ip, port: FrontendPort, method: "POST", path: "/internal/ui", body: { grant }, timeoutMs: 5000 });
+        const res = await requestJSON({
+          host: ip,
+          port: FrontendPort,
+          method: "POST",
+          path: "/internal/ui",
+          body: { grant },
+          timeoutMs: 5000,
+        });
         if (res.status === 200 && truthy(obj(res.body)?.ok)) ok = true;
       } catch {}
     }),
@@ -310,7 +326,14 @@ const uiPeerQueue = 256;
 async function uiDrain(ip: string, q: string[]) {
   for (let g = q.shift(); g !== undefined; g = q.shift()) {
     try {
-      await requestJSON({ host: ip, port: FrontendPort, method: "POST", path: "/internal/ui", body: { grant: g }, timeoutMs: 3000 });
+      await requestJSON({
+        host: ip,
+        port: FrontendPort,
+        method: "POST",
+        path: "/internal/ui",
+        body: { grant: g },
+        timeoutMs: 3000,
+      });
     } catch {}
   }
   uiPeers.delete(ip);
@@ -336,10 +359,18 @@ export function userUIAsync(user: string, action: Record<string, any>) {
 const svcOutMax = 512 << 10;
 
 // svcRequest one request to a published web service, straight to it, its body back as json or text
-export async function svcRequest(host: string, name: string, method: string, path: string, headers: Record<string, string>, body: string): Promise<Res> {
+export async function svcRequest(
+  host: string,
+  name: string,
+  method: string,
+  path: string,
+  headers: Record<string, string>,
+  body: string,
+): Promise<Res> {
   let r: Record<string, any> | undefined;
   for (const x of peers.routes()) {
-    if (str(x.name) === name && x.type !== "game" && (host === "" || str(x.host) === host) && (!r || x.master === true)) r = x;
+    if (str(x.name) === name && x.type !== "game" && (host === "" || str(x.host) === host) && (!r || x.master === true))
+      r = x;
   }
   if (!r) return [404, { error: `no web service ${name} on the mesh` }];
   const ip = (await tailnetIP(str(r.host))) || str(r.host);
@@ -352,7 +383,9 @@ export async function svcRequest(host: string, name: string, method: string, pat
   let res: Response;
   try {
     res = await fetch(`${scheme}://${ip}:${jsString(r.port)}${base}${path}`, {
-      method: (method || "GET").toUpperCase(), headers: h, body: body === "" ? undefined : body,
+      method: (method || "GET").toUpperCase(),
+      headers: h,
+      body: body === "" ? undefined : body,
       signal: AbortSignal.timeout(60000),
     });
   } catch (e) {

@@ -1,8 +1,28 @@
 // --- /api/stats: one host's sample (packages/stats)
 
-export interface StatsGpu { name: string; util: number | null; mhz?: number; mhzMax?: number; memUsed?: number; memTotal?: number; temp: number | null }
-export interface StatsPart { name: string; cpu: number; mem: number; pids: number }
-export interface StatsProc { name: string; pid: number; cpu: number; mem: number; cmd?: string; role?: string }
+export interface StatsGpu {
+  name: string;
+  util: number | null;
+  mhz?: number;
+  mhzMax?: number;
+  memUsed?: number;
+  memTotal?: number;
+  temp: number | null;
+}
+export interface StatsPart {
+  name: string;
+  cpu: number;
+  mem: number;
+  pids: number;
+}
+export interface StatsProc {
+  name: string;
+  pid: number;
+  cpu: number;
+  mem: number;
+  cmd?: string;
+  role?: string;
+}
 export interface StatsSample {
   host: string;
   at: number;

@@ -35,7 +35,11 @@ export async function run(argv: string[], o: RunOpts = {}): Promise<RunResult> {
   } catch (e) {
     return fail(e);
   }
-  const [stdout, stderr, code] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text(), p.exited]);
+  const [stdout, stderr, code] = await Promise.all([
+    new Response(p.stdout).text(),
+    new Response(p.stderr).text(),
+    p.exited,
+  ]);
   return { ok: code === 0, code, stdout, stderr, output: stdout + stderr };
 }
 
@@ -65,7 +69,13 @@ export const which = (name: string) => Bun.which(name) ?? "";
 // to it, a failure to start ignored
 export function spawnDetached(argv: string[]) {
   try {
-    Bun.spawn(argv, { detached: process.platform !== "win32", stdin: "ignore", stdout: "ignore", stderr: "ignore", windowsHide: true }).unref();
+    Bun.spawn(argv, {
+      detached: process.platform !== "win32",
+      stdin: "ignore",
+      stdout: "ignore",
+      stderr: "ignore",
+      windowsHide: true,
+    }).unref();
   } catch {}
 }
 

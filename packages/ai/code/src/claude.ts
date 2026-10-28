@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { errText, marshal, now, obj, readJSON, StateDir } from "@phosphorus/util";
 import { Claude, harnessOf, missing, Opencode } from "./harness.ts";
 import { EvLog, writePrivate } from "./log.ts";
-import { ocBegin, ocEvents, ocExited, type OcRun } from "./opencode.ts";
+import { type OcRun, ocBegin, ocEvents, ocExited } from "./opencode.ts";
 import { type Creds, envBlock, envLines, launchCommand, provider, randHex, setupScript } from "./script.ts";
 import { spawn } from "./spawn.ts";
 import type { Proc } from "./ssh.ts";
@@ -55,9 +55,21 @@ export type SessionRecord = {
 // record every field present, as Go's zero values read a file back
 export function record(r: Partial<SessionRecord>): SessionRecord {
   const u = obj(r.usage) ?? {};
-  const out: SessionRecord = { id: str(r.id), user: str(r.user), host: str(r.host), dir: str(r.dir), title: str(r.title), model: str(r.model),
-    perm: str(r.perm), status: str(r.status), err: str(r.err), claudeSID: str(r.claudeSID), created: num(r.created), updated: num(r.updated),
-    usage: { in: num(u.in), out: num(u.out), costUSD: num(u.costUSD) } };
+  const out: SessionRecord = {
+    id: str(r.id),
+    user: str(r.user),
+    host: str(r.host),
+    dir: str(r.dir),
+    title: str(r.title),
+    model: str(r.model),
+    perm: str(r.perm),
+    status: str(r.status),
+    err: str(r.err),
+    claudeSID: str(r.claudeSID),
+    created: num(r.created),
+    updated: num(r.updated),
+    usage: { in: num(u.in), out: num(u.out), costUSD: num(u.costUSD) },
+  };
   if (r.harness) out.harness = r.harness;
   return out;
 }
@@ -104,7 +116,8 @@ export class Session {
 
   // emit m to every socket, logged under a seq when keep, else seq 0
   emit(m: Record<string, any>, keep: boolean) {
-    let b: string, seq = 0;
+    let b: string,
+      seq = 0;
     if (keep) {
       b = this.log.add(m);
       seq = this.log.last();
@@ -203,7 +216,9 @@ export class Session {
 
   // respond claude's own control request answered
   respond(id: string, ok: boolean, body: unknown) {
-    const r = ok ? { subtype: "success", request_id: id, response: body } : { subtype: "error", request_id: id, error: body };
+    const r = ok
+      ? { subtype: "success", request_id: id, response: body }
+      : { subtype: "error", request_id: id, error: body };
     this.write({ type: "control_response", response: r });
   }
 
@@ -236,15 +251,27 @@ export class Session {
       case "control_request": {
         const id = str(ev.request_id);
         const req = orObj(ev.request);
-        if (str(req.subtype) !== "can_use_tool") return this.respond(id, false, "phosphorus doesn't handle " + str(req.subtype));
+        if (str(req.subtype) !== "can_use_tool")
+          return this.respond(id, false, "phosphorus doesn't handle " + str(req.subtype));
         this.perms.set(id, req);
-        this.emit({ kind: "permission", reqId: id, tool: str(req.tool_name), input: orObj(req.input),
-          reason: str(req.decision_reason), toolUseId: str(req.tool_use_id), at: now() }, true);
+        this.emit(
+          {
+            kind: "permission",
+            reqId: id,
+            tool: str(req.tool_name),
+            input: orObj(req.input),
+            reason: str(req.decision_reason),
+            toolUseId: str(req.tool_use_id),
+            at: now(),
+          },
+          true,
+        );
         return;
       }
       case "control_cancel_request": {
         const id = str(ev.request_id);
-        if (this.perms.delete(id)) this.emit({ kind: "permission_done", reqId: id, allow: false, cancelled: true }, true);
+        if (this.perms.delete(id))
+          this.emit({ kind: "permission_done", reqId: id, allow: false, cancelled: true }, true);
         return;
       }
       case "control_response": {
@@ -252,7 +279,8 @@ export class Session {
         const id = str(r.request_id);
         const what = this.ctl.get(id) ?? "";
         this.ctl.delete(id);
-        if (str(r.subtype) === "error" && what) this.emit({ kind: "error", text: what + ": " + str(r.error), at: now() }, true);
+        if (str(r.subtype) === "error" && what)
+          this.emit({ kind: "error", text: what + ": " + str(r.error), at: now() }, true);
         return;
       }
       case "stream_event":
@@ -269,7 +297,9 @@ export class Session {
     switch (typ) {
       case "result": {
         const u = orObj(ev.usage);
-        this.rec.usage.in += Math.trunc(num(u.input_tokens) + num(u.cache_read_input_tokens) + num(u.cache_creation_input_tokens));
+        this.rec.usage.in += Math.trunc(
+          num(u.input_tokens) + num(u.cache_read_input_tokens) + num(u.cache_creation_input_tokens),
+        );
         this.rec.usage.out += Math.trunc(num(u.output_tokens));
         if (provider(this.rec.model) === "anthropic") this.rec.usage.costUSD += num(ev.total_cost_usd);
         this.rec.err = "";
@@ -304,7 +334,8 @@ export class Session {
     this.p = undefined;
     this.gen++;
     clearTimeout(this.idle);
-    for (const id of this.perms.keys()) this.emit({ kind: "permission_done", reqId: id, allow: false, cancelled: true }, true);
+    for (const id of this.perms.keys())
+      this.emit({ kind: "permission_done", reqId: id, allow: false, cancelled: true }, true);
     this.perms = new Map();
     this.ctl = new Map();
     const stopping = this.stopping;
@@ -326,8 +357,12 @@ export class Session {
   }
 }
 
-export const userMessage = (text: string) => ({ type: "user", parent_tool_use_id: null, session_id: "",
-  message: { role: "user", content: [{ type: "text", text }] } });
+export const userMessage = (text: string) => ({
+  type: "user",
+  parent_tool_use_id: null,
+  session_id: "",
+  message: { role: "user", content: [{ type: "text", text }] },
+});
 
 // lines of a byte stream, a \r before the \n dropped, the read over at one
 // past outMax

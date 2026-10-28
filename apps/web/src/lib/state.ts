@@ -2,13 +2,20 @@
 // chat's name and socket, and the desktop's own. Each was a module-level let of app.js read by
 // several sections; here one object, read where it was read and set where it was set
 import type { FileEntry, GitHost, HostInfo, Route, State, Vault } from '@phosphorus/wire';
-import type { Fm, HomeHostList, Loc, PickedItem } from '../features/home/home.ts';
-import type { DkWin } from '../desktop/windows.ts';
 import type { LoginRow } from '../desktop/login.ts';
+import type { DkWin } from '../desktop/windows.ts';
+import type { Fm, HomeHostList, Loc, PickedItem } from '../features/home/home.ts';
 
 // the account: a phosphorus user over the hosts' own logins, its vault of host and page
 // logins kept on the mesh, sealed with its password
-export interface Account { user: string; admin: boolean; boot: boolean; wallpaper: number; vault: Vault; vaultOK: boolean }
+export interface Account {
+  user: string;
+  admin: boolean;
+  boot: boolean;
+  wallpaper: number;
+  vault: Vault;
+  vaultOK: boolean;
+}
 
 export const st = {
   // everything from /api/state, pushed, see connectState in sync.ts
@@ -40,7 +47,16 @@ export const deskApps = new Set<string>();
 
 // the page's own settings in localStorage, mirrored to the user's home (account.ts); here
 // because the agent's view key is read as its module loads
-export const PREF_LS: Record<string, string> = { icons: 'phosphorus-dk-icons', theme: 'phosphorus-theme', palette: 'phosphorus-palette', custom: 'phosphorus-theme-custom', recent: 'phosphorus-recent-files', color: 'phosphorus-chat-color', agentview: 'phosphorus-agent-view', editor: 'phosphorus-editor' };
+export const PREF_LS: Record<string, string> = {
+  icons: 'phosphorus-dk-icons',
+  theme: 'phosphorus-theme',
+  palette: 'phosphorus-palette',
+  custom: 'phosphorus-theme-custom',
+  recent: 'phosphorus-recent-files',
+  color: 'phosphorus-chat-color',
+  agentview: 'phosphorus-agent-view',
+  editor: 'phosphorus-editor',
+};
 export const PREF_OF: Record<string, string> = Object.fromEntries(Object.entries(PREF_LS).map(([k, v]) => [v, k]));
 
 // the desk once up: its layers, bar and status items
@@ -56,8 +72,16 @@ export interface Desk {
   items: Record<string, HTMLElement | null>;
 }
 // a files window's picks on their way: dragged, or cut or copied
-export interface FmDrag { fm: Fm; loc: Loc; items: PickedItem[] }
-export interface FmClip { op: 'cut' | 'copy'; loc: Loc; items: PickedItem[] }
+export interface FmDrag {
+  fm: Fm;
+  loc: Loc;
+  items: PickedItem[];
+}
+export interface FmClip {
+  op: 'cut' | 'copy';
+  loc: Loc;
+  items: PickedItem[];
+}
 
 // the desktop's state, up here because code run at load (the chat's first
 // setConv) asks dk.desk long before the desktop section below
@@ -91,4 +115,16 @@ export interface Dk {
   drag?: FmDrag | null;
   clip?: FmClip | null;
 }
-export const dk: Dk = { creds: new Map(), rows: new Map(), wins: new Map(), services: [], deskFiles: [], deskHosts: new Map(), z: 10, n: 0, desk: null, sig: '', sel: new Set() };
+export const dk: Dk = {
+  creds: new Map(),
+  rows: new Map(),
+  wins: new Map(),
+  services: [],
+  deskFiles: [],
+  deskHosts: new Map(),
+  z: 10,
+  n: 0,
+  desk: null,
+  sig: '',
+  sel: new Set(),
+};

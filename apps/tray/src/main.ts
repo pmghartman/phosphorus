@@ -7,15 +7,26 @@ import { readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { Feed, type Release } from "@phosphorus/appfeed";
 import { errText, readJSON, sleep } from "@phosphorus/util";
-import { frontendURL, hostCmd, hostRun, hostState, installedVersion, keyState, keysMissing, lastError, payloadVersion, report, updateAgentFile } from "./host.ts";
-import { keysURL } from "./keys.ts";
-import { app, darwin, os } from "./os.ts";
-import type { Tray } from "./tray.ts";
-
+import iconIco from "../assets/icon.ico" with { type: "file" };
 // set at release by the build's --define: the app's version, the feed and the key
 // its updates are signed with; unset (a dev build) there's no feed
 import trayPng from "../assets/tray.png" with { type: "file" };
-import iconIco from "../assets/icon.ico" with { type: "file" };
+import {
+  frontendURL,
+  hostCmd,
+  hostRun,
+  hostState,
+  installedVersion,
+  keyState,
+  keysMissing,
+  lastError,
+  payloadVersion,
+  report,
+  updateAgentFile,
+} from "./host.ts";
+import { keysURL } from "./keys.ts";
+import { app, darwin, os } from "./os.ts";
+import type { Tray } from "./tray.ts";
 
 declare const PHOSPHORUS_APP_VERSION: string, PHOSPHORUS_FEED_URL: string, PHOSPHORUS_FEED_PUBKEY: string;
 const defined = (f: () => string) => {
@@ -26,7 +37,10 @@ const defined = (f: () => string) => {
   }
 };
 const appVersion = defined(() => PHOSPHORUS_APP_VERSION);
-const feed = new Feed(defined(() => PHOSPHORUS_FEED_URL), defined(() => PHOSPHORUS_FEED_PUBKEY));
+const feed = new Feed(
+  defined(() => PHOSPHORUS_FEED_URL),
+  defined(() => PHOSPHORUS_FEED_PUBKEY),
+);
 
 // the OS's backend, loaded for this platform alone: each opens its libraries on import
 async function openTray(icon: Uint8Array, tooltip: string): Promise<Tray> {
@@ -39,7 +53,8 @@ async function openTray(icon: Uint8Array, tooltip: string): Promise<Tray> {
 let busy = false;
 // the status line, the menu's first item and the icon's tooltip
 let tip = "Phosphorus";
-let startOn = false, stopOn = false;
+let startOn = false,
+  stopOn = false;
 let tray: Tray;
 
 // the menu as the state has it: the status line, then the service's controls
@@ -136,7 +151,14 @@ async function handleUpdate(id: string, ask: boolean) {
       console.error("phosphorus: update feed:", errText(e));
     }
     if (rel) {
-      if (ask && !(await os.confirm(`Phosphorus ${rel.version} is available. Updating restarts phosphorus on this host.`, "Update", "Later"))) {
+      if (
+        ask &&
+        !(await os.confirm(
+          `Phosphorus ${rel.version} is available. Updating restarts phosphorus on this host.`,
+          "Update",
+          "Later",
+        ))
+      ) {
         report(id, "failed", false, "", "update declined");
         return;
       }
@@ -171,7 +193,8 @@ async function handleUpdate(id: string, ask: boolean) {
 // the keys asked for when there are none, then the update requests watched
 async function startup(background: boolean) {
   os.noteAppDir();
-  const installed = installedVersion(), ver = payloadVersion();
+  const installed = installedVersion(),
+    ver = payloadVersion();
   if (installed !== ver && !busy) {
     busy = true;
     setTip(`Phosphorus installing ${ver}…`);

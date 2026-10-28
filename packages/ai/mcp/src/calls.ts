@@ -47,7 +47,10 @@ export function noteClient(user: string, name: string) {
 
 // clientOf that agent's name as a word, claude-ai or Claude Code as claude; blank for none
 export function clientOf(user: string): string {
-  const w = (by.get(user)?.client ?? "").toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  const w = (by.get(user)?.client ?? "")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
   return w[0] ?? "";
 }
 
@@ -64,7 +67,15 @@ export function callEnd(user: string, id: number, errText: string) {
   if (i < 0) return;
   const [c] = l.live.splice(i, 1);
   const at = now();
-  l.done.unshift({ tool: c!.tool, detail: c!.detail, host: c!.host, at, ms: at - c!.since, ok: errText === "", error: errText });
+  l.done.unshift({
+    tool: c!.tool,
+    detail: c!.detail,
+    host: c!.host,
+    at,
+    ms: at - c!.since,
+    ok: errText === "",
+    error: errText,
+  });
   if (l.done.length > recentCalls) l.done.length = recentCalls;
   l.at = at;
   poke(user);

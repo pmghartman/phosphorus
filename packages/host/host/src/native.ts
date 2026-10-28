@@ -1,11 +1,47 @@
 // the service on this host: the env baked for run, the rebuild that
 // (re)starts it, stop and restart, the cli attached, phos ps
 import { createHash } from "node:crypto";
-import { lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, rmdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  readlinkSync,
+  rmdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { isAbsolute, join, normalize, relative, sep } from "node:path";
 import * as envfile from "@phosphorus/envfile";
 import { ours, type P } from "@phosphorus/procs";
-import { at, binPath, envPath, eprint, ExitCode, fail, fileExists, home, iniFile, iniGet, inDpkg, isGitHost, isLinux, isModelHost, isWindows, lockEnv, print, println, readTrim, say, setTag, sleep, spawnIO, statOf, version } from "./base.ts";
+import {
+  at,
+  binPath,
+  ExitCode,
+  envPath,
+  eprint,
+  fail,
+  fileExists,
+  home,
+  inDpkg,
+  iniFile,
+  iniGet,
+  isGitHost,
+  isLinux,
+  isModelHost,
+  isWindows,
+  lockEnv,
+  print,
+  println,
+  readTrim,
+  say,
+  setTag,
+  sleep,
+  spawnIO,
+  statOf,
+  version,
+} from "./base.ts";
 import { refreshGameKey } from "./game.ts";
 import { copyFile, replace } from "./install.ts";
 import { os } from "./os.ts";
@@ -23,17 +59,26 @@ export const tool = (name: string) => join(os.libexec(), isWindows ? name + ".ex
 export function bakeEnv(homeDir: string): Record<string, string> {
   const files = at("files");
   const m: Record<string, string> = {
-    PHOSPHORUS_HOME: home, PHOSPHORUS_REPO_DIR: home,
-    STATE_DIR: at("state"), SERVICES_FILE: at("config", "services.export"),
-    PHOSPHORUS_INI_FILE: iniFile(), PHOSPHORUS_CONFIG_DIR: at("config"), PHOSPHORUS_ENV_FILE: envPath(),
-    VERSION_FILE: at("VERSION"), REBUILD_CMD: binPath("phosphorus"),
-    FILES_ROOT: files, PHOSPHORUS_FILES_DIR: files,
-    HOME_FS: homeDir, PHOSPHORUS_HOME_DIR: homeDir,
-    MODEL_DIR: at("state", "models"), HOST_SSH_HOST: "127.0.0.1",
+    PHOSPHORUS_HOME: home,
+    PHOSPHORUS_REPO_DIR: home,
+    STATE_DIR: at("state"),
+    SERVICES_FILE: at("config", "services.export"),
+    PHOSPHORUS_INI_FILE: iniFile(),
+    PHOSPHORUS_CONFIG_DIR: at("config"),
+    PHOSPHORUS_ENV_FILE: envPath(),
+    VERSION_FILE: at("VERSION"),
+    REBUILD_CMD: binPath("phosphorus"),
+    FILES_ROOT: files,
+    PHOSPHORUS_FILES_DIR: files,
+    HOME_FS: homeDir,
+    PHOSPHORUS_HOME_DIR: homeDir,
+    MODEL_DIR: at("state", "models"),
+    HOST_SSH_HOST: "127.0.0.1",
   };
   if (isLinux) Object.assign(m, os.gitEnv());
   if (process.env.TS_HOSTNAME) m.TS_HOSTNAME = process.env.TS_HOSTNAME;
-  const dirs: string[] = [], perms: string[] = [];
+  const dirs: string[] = [],
+    perms: string[] = [];
   const ps = splitComma(iniGet("files", "priv"));
   splitComma(iniGet("files", "dir")).forEach((d, i) => {
     d = d.replace(/[/\\]+$/, "");
@@ -118,7 +163,15 @@ export function signature(env: Record<string, string>): string {
   h.update(`${version()} ${isGitHost()} ${isModelHost()}\n`);
   const st = statOf(binPath("phosphorus"));
   if (st) h.update(`${st.size} ${st.mtimeNs}\n`);
-  h.update(JSON.stringify(Object.fromEntries(Object.keys(env).sort().map((k) => [k, env[k]]))));
+  h.update(
+    JSON.stringify(
+      Object.fromEntries(
+        Object.keys(env)
+          .sort()
+          .map((k) => [k, env[k]]),
+      ),
+    ),
+  );
   return h.digest("hex");
 }
 
@@ -135,7 +188,12 @@ export async function waitFrontend(ms: number): Promise<boolean> {
 // notifyUpdating the elector told before the frontend goes, best effort
 async function notifyUpdating() {
   try {
-    await fetch("http://127.0.0.1:8090/internal/status/updating", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}", signal: AbortSignal.timeout(3000) });
+    await fetch("http://127.0.0.1:8090/internal/status/updating", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+      signal: AbortSignal.timeout(3000),
+    });
   } catch {}
 }
 
@@ -173,7 +231,8 @@ export async function rebuild() {
     }
     let homeFrom = readTrim(at("state", "native-home"));
     if (homeFrom === homeTo) homeFrom = "";
-    if (homeFrom && (homeTo + sep).startsWith(join(homeFrom, "home") + sep)) throw fail("[home] dir can't be inside the folders it moves");
+    if (homeFrom && (homeTo + sep).startsWith(join(homeFrom, "home") + sep))
+      throw fail("[home] dir can't be inside the folders it moves");
     await refreshGameKey();
     let env = bakeEnv(homeTo);
     let sig = signature(env);
@@ -331,7 +390,8 @@ export function psText(ps: P[]): string {
   };
   for (const r of asc(roots)) walk(r, 0);
   // totals, the model's own runtimes apart: their weights and caches dwarf the rest
-  let all = 0, model = 0;
+  let all = 0,
+    model = 0;
   for (const p of ps) {
     all += p.rss;
     if (p.role === "llama-server") model += p.rss;

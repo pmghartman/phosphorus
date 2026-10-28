@@ -3,7 +3,7 @@
 // file the frontend and `phosphorus update` wait on
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { mkdirParent, run, writeJSONAtomic, type RunResult } from "@phosphorus/util";
+import { mkdirParent, type RunResult, run, writeJSONAtomic } from "@phosphorus/util";
 import { app, read } from "./os.ts";
 
 // the host binary, no console window, the home passed along
@@ -61,7 +61,13 @@ export const frontendURL = (d: string) => (d ? `https://${d}/` : "http://localho
 export const updateAgentFile = join(app.home, "state/update-agent.json");
 
 // what the frontend and `phosphorus update` wait on
-export function report(id: string, state: "running" | "ok" | "failed", current: boolean, version: string, error: string) {
+export function report(
+  id: string,
+  state: "running" | "ok" | "failed",
+  current: boolean,
+  version: string,
+  error: string,
+) {
   mkdirParent(updateAgentFile);
   writeJSONAtomic(updateAgentFile, { id, state, current, version, error: error.slice(0, 400), at: Date.now() });
 }

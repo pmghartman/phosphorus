@@ -38,12 +38,21 @@ export function listWindows(): P[] {
     for (let ok = k.Process32FirstW(snap, pe); ok; ok = k.Process32NextW(snap, pe)) {
       const pid = pe.readUInt32LE(8);
       const nameRaw = pe.subarray(44, 44 + 520).toString("utf16le");
-      const p: P = { pid, ppid: pe.readUInt32LE(32), name: nameRaw.slice(0, nameRaw.indexOf("\0")), cmd: "", role: "", rss: 0, cpu: 0 };
+      const p: P = {
+        pid,
+        ppid: pe.readUInt32LE(32),
+        name: nameRaw.slice(0, nameRaw.indexOf("\0")),
+        cmd: "",
+        role: "",
+        rss: 0,
+        cpu: 0,
+      };
       const h = pid ? (k.OpenProcess(QUERY_LIMITED, false, pid) as bigint) : 0n;
       if (h) {
         mem.writeUInt32LE(72, 0);
         if (k.K32GetProcessMemoryInfo(h, mem, 72)) p.rss = Number(mem.readBigUInt64LE(16));
-        if (k.GetProcessTimes(h, t[0]!, t[1]!, t[2]!, t[3]!)) p.cpu = Number(t[2]!.readBigUInt64LE(0) + t[3]!.readBigUInt64LE(0)) / 1e7;
+        if (k.GetProcessTimes(h, t[0]!, t[1]!, t[2]!, t[3]!))
+          p.cpu = Number(t[2]!.readBigUInt64LE(0) + t[3]!.readBigUInt64LE(0)) / 1e7;
         if (nt.NtQueryInformationProcess(h, ProcessCommandLineInformation, cmdBuf, cmdBuf.length, retLen) === 0) {
           // a UNICODE_STRING whose text follows it in the same buffer
           const len = cmdBuf.readUInt16LE(0);

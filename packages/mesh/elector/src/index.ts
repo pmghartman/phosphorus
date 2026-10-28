@@ -4,7 +4,19 @@
 import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { networkInterfaces } from "node:os";
 import { join } from "node:path";
-import { env, envInt, logf as log, marshal, obj, readJSON, readJSONMap, requestJSON, sleep, StateDir, writeFileAtomic } from "@phosphorus/util";
+import {
+  env,
+  envInt,
+  logf as log,
+  marshal,
+  obj,
+  readJSON,
+  readJSONMap,
+  requestJSON,
+  StateDir,
+  sleep,
+  writeFileAtomic,
+} from "@phosphorus/util";
 
 const frontendPort = envInt("FRONTEND_PORT", 8090);
 const claimFile = join(StateDir, "git-claim.json");
@@ -37,7 +49,8 @@ export type Member = { name: string; git: boolean; tb?: boolean };
 // prev null marshals as null
 export type Roster = { epoch: number; members: Member[]; prev: Member[] | null };
 
-const member = (name: string, git: boolean, tb?: boolean): Member => (tb === undefined ? { name, git } : { name, git, tb });
+const member = (name: string, git: boolean, tb?: boolean): Member =>
+  tb === undefined ? { name, git } : { name, git, tb };
 const isInt = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v);
 
 function validMembers(v: unknown): Member[] | undefined {
@@ -68,7 +81,15 @@ export function validRoster(v: unknown): Roster | undefined {
   return { epoch: o.epoch, members, prev };
 }
 
-type Claim = { host: string; role: string; master: string; gen: number; stamp: number; eligible: boolean; handoffTo: string };
+type Claim = {
+  host: string;
+  role: string;
+  master: string;
+  gen: number;
+  stamp: number;
+  eligible: boolean;
+  handoffTo: string;
+};
 
 function validClaim(v: unknown): Claim | undefined {
   const o = obj(v);
@@ -117,7 +138,11 @@ const read = (file: string) => {
 };
 
 const names = (m: Member[]) => m.map((x) => x.name);
-const gitNames = (m: Member[]) => m.filter((x) => x.git).map((x) => x.name).sort();
+const gitNames = (m: Member[]) =>
+  m
+    .filter((x) => x.git)
+    .map((x) => x.name)
+    .sort();
 const uniq = (xs: string[]) => [...new Set(xs)];
 const voters = (r: Roster) => uniq([...names(r.members), ...(r.prev ? names(r.prev) : [])]);
 const describe = (m: Member[]) => m.map((x) => (x.git ? x.name + "*" : x.name)).join(" ");
@@ -170,7 +195,12 @@ function selfAddr(self: string): string {
 const forgejoUp = () => read(forgejoPidFile).trim() !== "";
 
 // one frontend request: parsed JSON on a 200, else undefined
-export type Call = (host: string, method: string, path: string, body?: unknown) => Promise<Record<string, any> | undefined>;
+export type Call = (
+  host: string,
+  method: string,
+  path: string,
+  body?: unknown,
+) => Promise<Record<string, any> | undefined>;
 
 // the elector's state, one tick at a time driving it
 export class Elector {
@@ -247,7 +277,8 @@ export class Elector {
     this.claims = new Map();
     this.witnessed = new Set();
     for (const [h, f] of Object.entries(obj(view!.offlineMs) ?? {}))
-      if (nameRe.test(h) && h !== this.self && !byHost.has(h) && typeof f === "number" && f >= witnessMS) this.witnessed.add(h);
+      if (nameRe.test(h) && h !== this.self && !byHost.has(h) && typeof f === "number" && f >= witnessMS)
+        this.witnessed.add(h);
     for (const h of [...this.firstSeen.keys()]) if (!byHost.has(h)) this.firstSeen.delete(h);
     for (const [h, s] of byHost) {
       this.adopt(s.roster);
@@ -266,7 +297,9 @@ export class Elector {
 
   private async campaign(r: Roster, ms: number, extra: string[]): Promise<Set<string>> {
     const vs = uniq([...voters(r), ...extra]);
-    const replies = await Promise.all(vs.map((h) => this.call(h, "POST", "/api/git/vote", { c: this.self, ms, roster: r })));
+    const replies = await Promise.all(
+      vs.map((h) => this.call(h, "POST", "/api/git/vote", { c: this.self, ms, roster: r })),
+    );
     const granted = new Set<string>();
     replies.forEach((rep, i) => {
       if (!rep) return;
@@ -313,7 +346,8 @@ export class Elector {
 
   private nextRoster(): [Roster, boolean] {
     if (this.committed !== this.known.epoch || !this.viewOK) return [this.known, false];
-    if (this.known.prev !== null) return [{ epoch: this.known.epoch + 1, members: this.known.members, prev: null }, true];
+    if (this.known.prev !== null)
+      return [{ epoch: this.known.epoch + 1, members: this.known.members, prev: null }, true];
     const want = this.desiredMembers(this.grantedLast);
     if (marshal(want) === marshal(this.known.members)) return [this.known, false];
     return [{ epoch: this.known.epoch + 1, members: want, prev: this.known.members }, true];
@@ -350,7 +384,12 @@ export class Elector {
       this.noMasterTicks = 0;
       if (best.gen < l.gen) {
         if (this.refused !== best.host)
-          logf("refusing to follow %s: its data (gen %d) is older than ours (gen %d), fix by hand", best.host, best.gen, l.gen);
+          logf(
+            "refusing to follow %s: its data (gen %d) is older than ours (gen %d), fix by hand",
+            best.host,
+            best.gen,
+            l.gen,
+          );
         this.refused = best.host;
         this.vouched = false;
         this.vouchedAt = 0;
@@ -387,12 +426,16 @@ export class Elector {
     let same = true;
     if (boot) {
       const hosts = uniq([...[...this.firstSeen.keys()].sort(), this.self]);
-      const ms = hosts.map((h) => member(h, h === this.self || this.gitFlag.get(h) === true, h === this.self)).sort(byName);
+      const ms = hosts
+        .map((h) => member(h, h === this.self || this.gitFlag.get(h) === true, h === this.self))
+        .sort(byName);
       r = { epoch: this.known.epoch + 1, members: ms, prev: null };
       same = false;
     } else if (gone.length) {
       const goneSet = new Set(gone);
-      const ms = this.known.members.filter((m) => !goneSet.has(m.name)).map((m) => member(m.name, m.git, m.name === this.self));
+      const ms = this.known.members
+        .filter((m) => !goneSet.has(m.name))
+        .map((m) => member(m.name, m.git, m.name === this.self));
       r = { epoch: this.known.epoch + 1, members: ms, prev: null };
       same = false;
     }
@@ -401,7 +444,10 @@ export class Elector {
       return;
     }
     if (!this.eligible(l, r)) {
-      const who = gitNames(r.members).filter((h) => h !== this.self && !this.claims.has(h)).join(", ") || "no host";
+      const who =
+        gitNames(r.members)
+          .filter((h) => h !== this.self && !this.claims.has(h))
+          .join(", ") || "no host";
       const why = this.vouched ? " (waiting on tailscale to call them gone)" : " (never vouched for the last master)";
       this.stall(`not in sync, and ${who} out of view${why}`);
       return;
@@ -413,7 +459,13 @@ export class Elector {
         return;
       }
     if (l.force) logf("forced: resetting roster to %s", describe(r.members));
-    else if (gone.length) logf("%s offline per tailscale for %ds, roster without it: %s", gone.join(", "), Math.trunc(witnessMS / 1000), describe(r.members));
+    else if (gone.length)
+      logf(
+        "%s offline per tailscale for %ds, roster without it: %s",
+        gone.join(", "),
+        Math.trunc(witnessMS / 1000),
+        describe(r.members),
+      );
     if (!same) {
       this.known = r;
       this.saveKnown();
@@ -511,7 +563,8 @@ export class Elector {
     this.writeOut(readLocal());
     while (forgejoUp()) {
       const sent = uptimeMS();
-      if (quorum(this.known, await this.campaign(this.known, leaseMS, []), this.self)) this.leaseUntil = sent + leaseMS - leaseMarginMS;
+      if (quorum(this.known, await this.campaign(this.known, leaseMS, []), this.self))
+        this.leaseUntil = sent + leaseMS - leaseMarginMS;
       if (uptimeMS() >= this.leaseUntil) return;
       const l = readLocal();
       this.writeClaim(l, l.gen);
@@ -522,7 +575,8 @@ export class Elector {
   }
 
   private namedSuccessor(): string {
-    for (const c of this.sortedClaims()) if (c.handoffTo && (c.handoffTo === this.self || this.claims.has(c.handoffTo))) return c.handoffTo;
+    for (const c of this.sortedClaims())
+      if (c.handoffTo && (c.handoffTo === this.self || this.claims.has(c.handoffTo))) return c.handoffTo;
     return "";
   }
 

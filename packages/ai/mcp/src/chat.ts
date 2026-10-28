@@ -13,7 +13,8 @@ export function chatRows(m: Meta, want: string): Record<string, any>[] {
   // edits and deletes folded in, each by its own author only
   const authors = new Map<string, unknown>();
   for (const x of all) authors.set(`${jsString(x.host)}:${jsString(x.seq)}`, x.name);
-  const gone = new Set<string>(), edited = new Map<string, string>();
+  const gone = new Set<string>(),
+    edited = new Map<string, string>();
   for (const x of all) {
     const ref = str(x.ref);
     if (authors.get(ref) !== x.name) continue;
@@ -33,7 +34,14 @@ export function chatRows(m: Meta, want: string): Record<string, any>[] {
     const ts = Math.trunc(num(x.timestamp));
     const ref = `${jsString(x.host)}:${jsString(x.seq)}`;
     if (gone.has(ref)) continue;
-    const row: Record<string, any> = { at: new Date(ts).toISOString(), ms: ts, channel: ch, name: x.name, text: x.text, ref };
+    const row: Record<string, any> = {
+      at: new Date(ts).toISOString(),
+      ms: ts,
+      channel: ch,
+      name: x.name,
+      text: x.text,
+      ref,
+    };
     const t = edited.get(ref);
     if (t !== undefined) {
       row.text = t;

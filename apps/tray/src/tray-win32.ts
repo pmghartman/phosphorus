@@ -1,10 +1,11 @@
 // the Windows notification-area icon and its menu over user32/shell32: a hidden
 // window owning the icon, its messages pumped on a timer beside the event loop
+
+import { dlopen, FFIType, JSCallback, ptr } from "bun:ffi";
 import { writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { dlopen, FFIType, JSCallback, ptr } from "bun:ffi";
-import { wstr, type Tray, type TrayItem } from "./tray.ts";
+import { type Tray, type TrayItem, wstr } from "./tray.ts";
 
 const { u32, i32, u64, ptr: P, bool, i64 } = FFIType;
 
@@ -31,9 +32,23 @@ const shell32 = dlopen("shell32.dll", { Shell_NotifyIconW: { args: [u32, P], ret
 const kernel32 = dlopen("kernel32.dll", { GetModuleHandleW: { args: [u64], returns: u64 } });
 const U = user32.symbols;
 
-const WM_COMMAND = 0x111, WM_APP = 0x8000, WM_LBUTTONUP = 0x202, WM_RBUTTONUP = 0x205, WM_CONTEXTMENU = 0x7b;
-const NIM_ADD = 0, NIM_MODIFY = 1, NIM_DELETE = 2, NIF_MESSAGE = 1, NIF_ICON = 2, NIF_TIP = 4;
-const MF_STRING = 0, MF_GRAYED = 1, MF_SEPARATOR = 0x800, TPM_RETURNCMD = 0x100, TPM_NONOTIFY = 0x80, TPM_RIGHTBUTTON = 2;
+const WM_COMMAND = 0x111,
+  WM_APP = 0x8000,
+  WM_LBUTTONUP = 0x202,
+  WM_RBUTTONUP = 0x205,
+  WM_CONTEXTMENU = 0x7b;
+const NIM_ADD = 0,
+  NIM_MODIFY = 1,
+  NIM_DELETE = 2,
+  NIF_MESSAGE = 1,
+  NIF_ICON = 2,
+  NIF_TIP = 4;
+const MF_STRING = 0,
+  MF_GRAYED = 1,
+  MF_SEPARATOR = 0x800,
+  TPM_RETURNCMD = 0x100,
+  TPM_NONOTIFY = 0x80,
+  TPM_RIGHTBUTTON = 2;
 const CALLBACK = WM_APP + 1;
 
 export function win32Tray(icon: Uint8Array, tooltip: string): Tray {
@@ -71,7 +86,14 @@ export function win32Tray(icon: Uint8Array, tooltip: string): Tray {
   const loadIcon = (ico: Uint8Array) => {
     const p = join(tmpdir(), `phosphorus-tray-${process.pid}.ico`);
     writeFileSync(p, ico);
-    const h = U.LoadImageW(0n, wstr(p), 1 /* IMAGE_ICON */, 0, 0, 0x10 | 0x40 /* LR_LOADFROMFILE|LR_DEFAULTSIZE */) as bigint;
+    const h = U.LoadImageW(
+      0n,
+      wstr(p),
+      1 /* IMAGE_ICON */,
+      0,
+      0,
+      0x10 | 0x40 /* LR_LOADFROMFILE|LR_DEFAULTSIZE */,
+    ) as bigint;
     if (h) {
       if (hicon) U.DestroyIcon(hicon);
       hicon = h;
@@ -109,7 +131,15 @@ export function win32Tray(icon: Uint8Array, tooltip: string): Tray {
     const pt = Buffer.alloc(8);
     U.GetCursorPos(pt);
     U.SetForegroundWindow(hwnd);
-    const cmd = U.TrackPopupMenu(menu, TPM_RETURNCMD | TPM_NONOTIFY | TPM_RIGHTBUTTON, pt.readInt32LE(0), pt.readInt32LE(4), 0, hwnd, 0n);
+    const cmd = U.TrackPopupMenu(
+      menu,
+      TPM_RETURNCMD | TPM_NONOTIFY | TPM_RIGHTBUTTON,
+      pt.readInt32LE(0),
+      pt.readInt32LE(4),
+      0,
+      hwnd,
+      0n,
+    );
     U.PostMessageW(hwnd, 0, 0n, 0n);
     U.DestroyMenu(menu);
     // run after the menu's own loop has unwound
@@ -128,10 +158,20 @@ export function win32Tray(icon: Uint8Array, tooltip: string): Tray {
   let pump: ReturnType<typeof setInterval> | undefined;
 
   return {
-    setMenu(next) { items = next; },
-    setTooltip(t) { setTipText(t); notify(NIM_MODIFY); },
-    setIcon(ico) { loadIcon(ico); notify(NIM_MODIFY); },
-    run() { pump ??= setInterval(tick, 30); },
+    setMenu(next) {
+      items = next;
+    },
+    setTooltip(t) {
+      setTipText(t);
+      notify(NIM_MODIFY);
+    },
+    setIcon(ico) {
+      loadIcon(ico);
+      notify(NIM_MODIFY);
+    },
+    run() {
+      pump ??= setInterval(tick, 30);
+    },
     // tests and diagnostics: the menu as if clicked
     _popup: popup,
     _hwnd: hwnd,

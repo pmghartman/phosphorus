@@ -1,12 +1,31 @@
 // phosphorus run, the service's main process: tailscale checked, the
 // frontend, the tunnel, the model and git daemons as labelled children,
 // all down with a core one
-import type { Subprocess } from "bun";
+
 import { mkdirSync, writeFileSync } from "node:fs";
 import * as envfile from "@phosphorus/envfile";
 import { writeRoles } from "@phosphorus/procs";
 import { env as envOf, TunnelMetrics } from "@phosphorus/util";
-import { at, binPath, durText, errText, ExitCode, fail, fileExists, gitd, home, isGitHost, isModelHost, print, say, setTag, sleep, stamp, stdio } from "./base.ts";
+import type { Subprocess } from "bun";
+import {
+  at,
+  binPath,
+  durText,
+  ExitCode,
+  errText,
+  fail,
+  fileExists,
+  gitd,
+  home,
+  isGitHost,
+  isModelHost,
+  print,
+  say,
+  setTag,
+  sleep,
+  stamp,
+  stdio,
+} from "./base.ts";
 import { nativeEnvFile, runEnv, tool, withPath } from "./native.ts";
 import { os, type Stop } from "./os.ts";
 import { meshKeyValues, tailnetJoin, tailscaleStatus } from "./tailnet.ts";
@@ -26,7 +45,9 @@ type Child = {
   started: number;
 };
 
-const child = (c: Omit<Child, "started" | "core" | "prefix" | "exited"> & { core?: boolean; prefix?: boolean }): Child => ({ core: false, prefix: false, started: 0, exited: false, ...c });
+const child = (
+  c: Omit<Child, "started" | "core" | "prefix" | "exited"> & { core?: boolean; prefix?: boolean },
+): Child => ({ core: false, prefix: false, started: 0, exited: false, ...c });
 
 function start(c: Child) {
   const io = c.prefix ? "pipe" : stdio();
@@ -116,7 +137,8 @@ async function tailnetSelf(): Promise<string> {
 // fillMeshKeys a joining host's missing keys from a peer, waited on only
 // when this host can't run without them
 async function fillMeshKeys() {
-  let need = true, missing = false;
+  let need = true,
+    missing = false;
   for (const k of envfile.Keys) {
     missing ||= k.mesh && !process.env[k.name];
     need &&= !k.mesh || !process.env[k.name];
@@ -176,22 +198,43 @@ export async function runMain(stop: Stop): Promise<number> {
   if (!process.env.BASE_DOMAIN) say("no BASE_DOMAIN, served on the tailnet only");
   writeFileSync(at("state", "base-domain"), (process.env.BASE_DOMAIN ?? "") + "\n", { mode: 0o644 });
   const first = dns.split(".")[0] ?? "";
-  process.env.SELF_HOST = first.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  process.env.SELF_HOST = first
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
   process.env.HOST_SSH_PORT = "22";
-  const env = withPath(Object.fromEntries(Object.entries(process.env).filter((kv): kv is [string, string] => kv[1] !== undefined)));
+  const env = withPath(
+    Object.fromEntries(Object.entries(process.env).filter((kv): kv is [string, string] => kv[1] !== undefined)),
+  );
   const bin = binPath("phosphorus");
 
   const frontend = child({ role: "frontend", core: true, graceMs: 15_000, argv: [bin, "serve"], env });
   const tunnel = child({
-    role: "cloudflared", core: true, graceMs: 10_000, prefix: true, env,
-    argv: [tool("cloudflared"), "tunnel", "--no-autoupdate", "--loglevel", "warn", "--protocol", envOf("TUNNEL_PROTOCOL", "http2"), "--metrics", TunnelMetrics, "run"],
+    role: "cloudflared",
+    core: true,
+    graceMs: 10_000,
+    prefix: true,
+    env,
+    argv: [
+      tool("cloudflared"),
+      "tunnel",
+      "--no-autoupdate",
+      "--loglevel",
+      "warn",
+      "--protocol",
+      envOf("TUNNEL_PROTOCOL", "http2"),
+      "--metrics",
+      TunnelMetrics,
+      "run",
+    ],
   });
   const kids = [frontend];
   const extra: Child[] = [];
   if (isModelHost()) extra.push(child({ role: "model", graceMs: 30_000, argv: [bin, "model"], env }));
   // forgejo's ROOT_URL at git.<domain>, no git without one
   if (isGitHost() && !process.env.BASE_DOMAIN) say("git: no BASE_DOMAIN, not started");
-  else if (isGitHost()) extra.push(child({ role: "git", graceMs: 60_000, env, argv: ["/bin/bash", gitd("git-daemon.sh")] }));
+  else if (isGitHost())
+    extra.push(child({ role: "git", graceMs: 60_000, env, argv: ["/bin/bash", gitd("git-daemon.sh")] }));
 
   try {
     start(frontend);

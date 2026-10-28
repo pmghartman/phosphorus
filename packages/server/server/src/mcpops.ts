@@ -8,7 +8,16 @@ import { health } from "@phosphorus/services";
 import { close as termClose } from "@phosphorus/term";
 import type { Chain } from "@phosphorus/update";
 import { HasMCPKey, OpenGrant, SealGrant } from "@phosphorus/users";
-import { errText, marshal, now, RepoDir, tailnetIP, TunnelMetrics, writeJSONAtomic, startDetached } from "@phosphorus/util";
+import {
+  errText,
+  marshal,
+  now,
+  RepoDir,
+  startDetached,
+  TunnelMetrics,
+  tailnetIP,
+  writeJSONAtomic,
+} from "@phosphorus/util";
 import type { Conn } from "@phosphorus/wsock";
 import { Client } from "ssh2";
 import { hostSSHHost, hostSSHPort, selfHost, stateDir, Version } from "./config.ts";
@@ -47,7 +56,14 @@ async function localOp(op: string, p: Record<string, any>): Promise<Res> {
     case "exec":
       return localExec(str(p.user), str(p.pass), str(p.cmd), str(p.stdin), Math.trunc(num(p.timeout)));
     case "shell":
-      return shellExec(str(p.user), str(p.pass), str(p.cmd), str(p.stdin), Math.trunc(num(p.timeout)), p.reset === true);
+      return shellExec(
+        str(p.user),
+        str(p.pass),
+        str(p.cmd),
+        str(p.stdin),
+        Math.trunc(num(p.timeout)),
+        p.reset === true,
+      );
     case "mcp_calls":
       return [200, mcpCalls(str(p.user))];
     case "service_health": {
@@ -113,7 +129,10 @@ function hostPower(action: string): Res {
       argv = [...binSelf(), "restart", "--home", RepoDir];
       break;
     case "reboot":
-      argv = process.platform === "win32" ? ["shutdown", "/r", "/t", "5", "/c", "phosphorus: reboot asked over the mesh"] : ["sh", "-c", "sleep 3; shutdown -r now"];
+      argv =
+        process.platform === "win32"
+          ? ["shutdown", "/r", "/t", "5", "/c", "phosphorus: reboot asked over the mesh"]
+          : ["sh", "-c", "sleep 3; shutdown -r now"];
       break;
     default:
       return [400, { error: "action is restart or reboot" }];
@@ -145,8 +164,18 @@ function readHistory(): any[] {
 // rememberChain a finished chain kept, the last fifty, newest last
 export function rememberChain(c: Chain) {
   let all = readHistory();
-  all.push({ id: c.id, startedAt: c.startedAt, finishedAt: c.finishedAt, order: c.order, results: c.results, errors: c.errors,
-    details: c.details ?? null, versions: c.versions, cancelled: c.cancelled, by: selfHost });
+  all.push({
+    id: c.id,
+    startedAt: c.startedAt,
+    finishedAt: c.finishedAt,
+    order: c.order,
+    results: c.results,
+    errors: c.errors,
+    details: c.details ?? null,
+    versions: c.versions,
+    cancelled: c.cancelled,
+    by: selfHost,
+  });
   if (all.length > historyMax) all = all.slice(-historyMax);
   try {
     writeJSONAtomic(historyFile(), all);
@@ -195,19 +224,31 @@ async function localExec(user: string, pass: string, cmd: string, stdin: string,
         reject(e);
       });
       cl.on("keyboard-interactive", (_n, _i, _l, prompts, finish) => finish(prompts.map(() => pass)));
-      cl.connect({ host: hostSSHHost, port: Number(hostSSHPort) || 22, username: user, password: pass, tryKeyboard: true, readyTimeout: 10_000 });
+      cl.connect({
+        host: hostSSHHost,
+        port: Number(hostSSHPort) || 22,
+        username: user,
+        password: pass,
+        tryKeyboard: true,
+        readyTimeout: 10_000,
+      });
     });
   } catch (e) {
     const msg = errText(e);
-    if (/authentication methods failed|unable to authenticate/i.test(msg)) return [403, { error: `the saved login for ${selfHost} was refused` }];
+    if (/authentication methods failed|unable to authenticate/i.test(msg))
+      return [403, { error: `the saved login for ${selfHost} was refused` }];
     return [502, { error: `ssh to ${selfHost}: ${msg}` }];
   }
   c.on("error", () => {});
-  const stdout = new Capped(execOutMax), stderr = new Capped(execOutMax);
+  const stdout = new Capped(execOutMax),
+    stderr = new Capped(execOutMax);
   const t0 = now();
-  let code = 0, timedOut = false;
+  let code = 0,
+    timedOut = false;
   try {
-    const st = await new Promise<import("ssh2").ClientChannel>((res, rej) => c.exec(cmd, (err, s) => (err ? rej(err) : res(s))));
+    const st = await new Promise<import("ssh2").ClientChannel>((res, rej) =>
+      c.exec(cmd, (err, s) => (err ? rej(err) : res(s))),
+    );
     st.on("data", (b: Uint8Array) => stdout.write(b));
     st.stderr.on("data", (b: Uint8Array) => stderr.write(b));
     if (stdin !== "") st.write(stdin);
@@ -231,7 +272,14 @@ async function localExec(user: string, pass: string, cmd: string, stdin: string,
   } finally {
     c.end();
   }
-  const out: Record<string, any> = { host: selfHost, user, exit: code, stdout: stdout.text(), stderr: stderr.text(), ms: now() - t0 };
+  const out: Record<string, any> = {
+    host: selfHost,
+    user,
+    exit: code,
+    stdout: stdout.text(),
+    stderr: stderr.text(),
+    ms: now() - t0,
+  };
   if (timedOut) {
     out.exit = null;
     out.timedOut = true;

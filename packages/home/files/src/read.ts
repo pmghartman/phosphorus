@@ -1,9 +1,9 @@
 // reads
-import { existsSync, statSync, type Stats } from "node:fs";
+import { existsSync, type Stats, statSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { dirname } from "node:path";
+import { errBody, MaxText, type Res, realOf, type Share } from "./index.ts";
 import { mkdirAll } from "./owner.ts";
-import { MaxText, errBody, realOf, type Res, type Share } from "./index.ts";
 import { badPath, inside, relOf, safePath, toAbs } from "./paths.ts";
 import { can } from "./shares.ts";
 

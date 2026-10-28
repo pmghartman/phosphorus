@@ -3,167 +3,553 @@
 /* --- layout: bars and window chrome, any theme's (data-l-*: its themes.json layout, a custom one's over it) -- */
 
 /* the menu bar: the focused window's name, the status items; a strip along the top or bottom */
-.dk-menubar { display: none; }
-.dk-bar.dk-menubar {
-  grid-area: mt; height: 1.65rem; margin: 0; padding: 0 0 0 0.75rem; gap: 0.3rem; border: 0; border-bottom: 1px solid var(--border);
-  border-radius: 0; box-shadow: none; background: color-mix(in srgb, var(--tabbar) 88%, transparent); backdrop-filter: blur(20px);
+.dk-menubar {
+  display: none;
 }
-:root[data-l-menubar="bottom"] .dk-bar.dk-menubar { grid-area: mb; border-bottom: 0; border-top: 1px solid var(--border); }
-.dk-menubar-app { margin-right: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); font-weight: 600; }
-.dk-bar .dk-unshown { display: none !important; }
-.dk-bar > .dk-clock { padding: 0 0.35rem; white-space: nowrap; }
+.dk-bar.dk-menubar {
+  grid-area: mt;
+  height: 1.65rem;
+  margin: 0;
+  padding: 0 0 0 0.75rem;
+  gap: 0.3rem;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  box-shadow: none;
+  background: color-mix(in srgb, var(--tabbar) 88%, transparent);
+  backdrop-filter: blur(20px);
+}
+:root[data-l-menubar="bottom"] .dk-bar.dk-menubar {
+  grid-area: mb;
+  border-bottom: 0;
+  border-top: 1px solid var(--border);
+}
+.dk-menubar-app {
+  margin-right: auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg);
+  font-weight: 600;
+}
+.dk-bar .dk-unshown {
+  display: none !important;
+}
+.dk-bar > .dk-clock {
+  padding: 0 0.35rem;
+  white-space: nowrap;
+}
 
 @media (min-width: 721px) {
-  :root:is([data-l-menubar="top"], [data-l-menubar="bottom"]) .dk-menubar { display: flex; }
-  :root[data-l-bar="top"] .dk-bar:not(.dk-menubar) { grid-area: bt; }
-  :root[data-l-bar="left"] .dk-bar:not(.dk-menubar) { grid-area: bl; }
-  :root[data-l-bar="right"] .dk-bar:not(.dk-menubar) { grid-area: br; }
+  :root:is([data-l-menubar="top"], [data-l-menubar="bottom"]) .dk-menubar {
+    display: flex;
+  }
+  :root[data-l-bar="top"] .dk-bar:not(.dk-menubar) {
+    grid-area: bt;
+  }
+  :root[data-l-bar="left"] .dk-bar:not(.dk-menubar) {
+    grid-area: bl;
+  }
+  :root[data-l-bar="right"] .dk-bar:not(.dk-menubar) {
+    grid-area: br;
+  }
 
   /* dock: floating and centered, a dot by each open window */
   :root[data-l-bar-style="dock"] .dk-bar:not(.dk-menubar) {
-    justify-self: center; max-width: calc(100% - 2rem); height: 2.9rem; margin: 0.3rem auto 0.4rem; padding: 0 0.4rem; gap: 0.3rem;
-    border: 1px solid var(--pop-edge, var(--border)); border-radius: calc(var(--r-win, 0px) * 1.4);
-    background: color-mix(in srgb, var(--tabbar) 88%, transparent); backdrop-filter: blur(20px); box-shadow: var(--drop); font-size: 12px;
+    justify-self: center;
+    max-width: calc(100% - 2rem);
+    height: 2.9rem;
+    margin: 0.3rem auto 0.4rem;
+    padding: 0 0.4rem;
+    gap: 0.3rem;
+    border: 1px solid var(--pop-edge, var(--border));
+    border-radius: calc(var(--r-win, 0px) * 1.4);
+    background: color-mix(in srgb, var(--tabbar) 88%, transparent);
+    backdrop-filter: blur(20px);
+    box-shadow: var(--drop);
+    font-size: 12px;
   }
-  :root[data-l-bar-style="dock"] .dk-bar:not(.dk-menubar) .dk-tasks { align-self: stretch; align-items: center; gap: 0.2rem; }
-  :root[data-l-bar-style="dock"] .dk-bar:not(.dk-menubar) .dk-task { height: 2.2rem; padding: 0 0.8rem; border: 0; border-radius: calc(var(--r-win, 0px) * 0.8); color: var(--fg); }
-  :root[data-l-bar-style="dock"] .dk-bar:not(.dk-menubar) :is(.dk-task:hover, .dk-task.active) { background: var(--tab-hover); }
+  :root[data-l-bar-style="dock"] .dk-bar:not(.dk-menubar) .dk-tasks {
+    align-self: stretch;
+    align-items: center;
+    gap: 0.2rem;
+  }
+  :root[data-l-bar-style="dock"] .dk-bar:not(.dk-menubar) .dk-task {
+    height: 2.2rem;
+    padding: 0 0.8rem;
+    border: 0;
+    border-radius: calc(var(--r-win, 0px) * 0.8);
+    color: var(--fg);
+  }
+  :root[data-l-bar-style="dock"] .dk-bar:not(.dk-menubar) :is(.dk-task:hover, .dk-task.active) {
+    background: var(--tab-hover);
+  }
   :root[data-l-bar-style="dock"] .dk-bar:not(.dk-menubar) .dk-task::after {
-    content: ""; position: absolute; left: 50%; bottom: 1px; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: var(--dim);
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: 1px;
+    width: 4px;
+    height: 4px;
+    margin-left: -2px;
+    border-radius: 50%;
+    background: var(--dim);
   }
-  :root[data-l-bar-style="dock"] .dk-bar:not(.dk-menubar) .dk-task.active::after { background: var(--fg); }
-  :root[data-l-bar-style="dock"] .dk-bar .dk-tray { margin: 0.3rem 0; border-radius: calc(var(--r-win, 0px) * 0.8); }
-  :root[data-l-bar-style="dock"] .dk-bar :is(.dk-tray:hover, .dk-tray[aria-expanded="true"]) { background: var(--tab-hover); color: var(--fg); }
+  :root[data-l-bar-style="dock"] .dk-bar:not(.dk-menubar) .dk-task.active::after {
+    background: var(--fg);
+  }
+  :root[data-l-bar-style="dock"] .dk-bar .dk-tray {
+    margin: 0.3rem 0;
+    border-radius: calc(var(--r-win, 0px) * 0.8);
+  }
+  :root[data-l-bar-style="dock"] .dk-bar :is(.dk-tray:hover, .dk-tray[aria-expanded="true"]) {
+    background: var(--tab-hover);
+    color: var(--fg);
+  }
 
   /* full: edge to edge, tasks centered, a short line under each, the focused one's long and in the accent */
   :root[data-l-bar-style="full"] .dk-bar:not(.dk-menubar) {
-    height: 48px; margin: 0; padding: 0 0 0 12px; gap: 4px; border: 0; border-top: 1px solid var(--border); border-radius: 0;
-    background: color-mix(in srgb, var(--tabbar) 92%, transparent); backdrop-filter: blur(20px); box-shadow: none; font-size: 12px;
+    height: 48px;
+    margin: 0;
+    padding: 0 0 0 12px;
+    gap: 4px;
+    border: 0;
+    border-top: 1px solid var(--border);
+    border-radius: 0;
+    background: color-mix(in srgb, var(--tabbar) 92%, transparent);
+    backdrop-filter: blur(20px);
+    box-shadow: none;
+    font-size: 12px;
   }
-  :root[data-l-bar-style="full"] .dk-bar:not(.dk-menubar) .dk-tasks { align-self: stretch; align-items: center; gap: 4px; }
-  :root[data-l-bar-style="full"] .dk-bar:not(.dk-menubar) .dk-task:first-child { margin-left: auto; }
-  :root[data-l-bar-style="full"] .dk-bar:not(.dk-menubar) .dk-task:last-child { margin-right: auto; }
-  :root[data-l-bar-style="full"] .dk-bar:not(.dk-menubar) .dk-task { height: 40px; max-width: 11rem; padding: 0 12px; border: 0; border-radius: var(--r-ctl, 0); color: var(--fg); }
-  :root[data-l-bar-style="full"] .dk-bar:not(.dk-menubar) :is(.dk-task:hover, .dk-task.active) { background: color-mix(in srgb, var(--fg) 7%, transparent); }
+  :root[data-l-bar-style="full"] .dk-bar:not(.dk-menubar) .dk-tasks {
+    align-self: stretch;
+    align-items: center;
+    gap: 4px;
+  }
+  :root[data-l-bar-style="full"] .dk-bar:not(.dk-menubar) .dk-task:first-child {
+    margin-left: auto;
+  }
+  :root[data-l-bar-style="full"] .dk-bar:not(.dk-menubar) .dk-task:last-child {
+    margin-right: auto;
+  }
+  :root[data-l-bar-style="full"] .dk-bar:not(.dk-menubar) .dk-task {
+    height: 40px;
+    max-width: 11rem;
+    padding: 0 12px;
+    border: 0;
+    border-radius: var(--r-ctl, 0);
+    color: var(--fg);
+  }
+  :root[data-l-bar-style="full"] .dk-bar:not(.dk-menubar) :is(.dk-task:hover, .dk-task.active) {
+    background: color-mix(in srgb, var(--fg) 7%, transparent);
+  }
   :root[data-l-bar-style="full"] .dk-bar:not(.dk-menubar) .dk-task::after {
-    content: ""; position: absolute; left: 50%; bottom: 2px; width: 6px; height: 3px; margin-left: -3px; border-radius: 2px; background: var(--dim);
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: 2px;
+    width: 6px;
+    height: 3px;
+    margin-left: -3px;
+    border-radius: 2px;
+    background: var(--dim);
   }
-  :root[data-l-bar-style="full"] .dk-bar:not(.dk-menubar) .dk-task.active::after { width: 16px; margin-left: -8px; background: var(--accent); }
-  :root[data-l-bar-style="full"] .dk-bar .dk-tray { margin: 4px 0; border-radius: var(--r-ctl, 0); }
-  :root[data-l-bar-style="full"] .dk-bar :is(.dk-tray:hover, .dk-tray[aria-expanded="true"]) { background: color-mix(in srgb, var(--fg) 7%, transparent); color: var(--fg); }
+  :root[data-l-bar-style="full"] .dk-bar:not(.dk-menubar) .dk-task.active::after {
+    width: 16px;
+    margin-left: -8px;
+    background: var(--accent);
+  }
+  :root[data-l-bar-style="full"] .dk-bar .dk-tray {
+    margin: 4px 0;
+    border-radius: var(--r-ctl, 0);
+  }
+  :root[data-l-bar-style="full"] .dk-bar :is(.dk-tray:hover, .dk-tray[aria-expanded="true"]) {
+    background: color-mix(in srgb, var(--fg) 7%, transparent);
+    color: var(--fg);
+  }
 
   /* line: tmux's status line, flush and flat */
   :root[data-l-bar-style="line"] .dk-bar:not(.dk-menubar) {
-    height: 1.6rem; margin: 0; padding: 0; gap: 0.6rem; border: 0; border-top: 1px solid var(--border); border-radius: 0;
-    background: var(--tabbar); backdrop-filter: none; box-shadow: none;
+    height: 1.6rem;
+    margin: 0;
+    padding: 0;
+    gap: 0.6rem;
+    border: 0;
+    border-top: 1px solid var(--border);
+    border-radius: 0;
+    background: var(--tabbar);
+    backdrop-filter: none;
+    box-shadow: none;
   }
 
   /* an edge bar at the top: its rule below it */
-  :root[data-l-bar="top"]:is([data-l-bar-style="full"], [data-l-bar-style="line"]) .dk-bar:not(.dk-menubar) { border-top: 0; border-bottom: 1px solid var(--border); }
+  :root[data-l-bar="top"]:is([data-l-bar-style="full"], [data-l-bar-style="line"]) .dk-bar:not(.dk-menubar) {
+    border-top: 0;
+    border-bottom: 1px solid var(--border);
+  }
 
   /* a side bar: a column, its tasks stacked, the status items under them */
   :root:is([data-l-bar="left"], [data-l-bar="right"]) .dk-bar:not(.dk-menubar) {
-    flex-direction: column; align-items: stretch; width: 10rem; height: auto; padding: 0.35rem 0; gap: 0.3rem;
+    flex-direction: column;
+    align-items: stretch;
+    width: 10rem;
+    height: auto;
+    padding: 0.35rem 0;
+    gap: 0.3rem;
   }
-  :root:is([data-l-bar="left"], [data-l-bar="right"]) .dk-bar:not(.dk-menubar) .dk-tasks { flex-direction: column; align-items: stretch; margin: 0; overflow: hidden auto; }
-  :root:is([data-l-bar="left"], [data-l-bar="right"]) .dk-bar:not(.dk-menubar) .dk-task { max-width: none; flex: none; margin: 0 0.3rem; text-align: left; }
-  :root:is([data-l-bar="left"], [data-l-bar="right"]) .dk-bar:not(.dk-menubar) .dk-hosts { flex-wrap: wrap; justify-content: center; }
-  :root:is([data-l-bar="left"], [data-l-bar="right"]) .dk-bar:not(.dk-menubar) .dk-tray-wrap { justify-content: center; }
-  :root:is([data-l-bar="left"], [data-l-bar="right"]) .dk-bar:not(.dk-menubar) .dk-tray-wrap::before { display: none; }
-  :root:is([data-l-bar="left"], [data-l-bar="right"]) .dk-bar:not(.dk-menubar) .dk-tray { flex: 1; height: 2rem; justify-content: center; }
-  :root:is([data-l-bar="left"], [data-l-bar="right"]) .dk-bar:not(.dk-menubar) .dk-task::after { left: 2px; top: 50%; bottom: auto; width: 3px; height: 6px; margin: -3px 0 0; }
-  :root:is([data-l-bar="left"], [data-l-bar="right"]) .dk-bar:not(.dk-menubar) .dk-task.active::after { height: 16px; margin-top: -8px; }
+  :root:is([data-l-bar="left"], [data-l-bar="right"]) .dk-bar:not(.dk-menubar) .dk-tasks {
+    flex-direction: column;
+    align-items: stretch;
+    margin: 0;
+    overflow: hidden auto;
+  }
+  :root:is([data-l-bar="left"], [data-l-bar="right"]) .dk-bar:not(.dk-menubar) .dk-task {
+    max-width: none;
+    flex: none;
+    margin: 0 0.3rem;
+    text-align: left;
+  }
+  :root:is([data-l-bar="left"], [data-l-bar="right"]) .dk-bar:not(.dk-menubar) .dk-hosts {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  :root:is([data-l-bar="left"], [data-l-bar="right"]) .dk-bar:not(.dk-menubar) .dk-tray-wrap {
+    justify-content: center;
+  }
+  :root:is([data-l-bar="left"], [data-l-bar="right"]) .dk-bar:not(.dk-menubar) .dk-tray-wrap::before {
+    display: none;
+  }
+  :root:is([data-l-bar="left"], [data-l-bar="right"]) .dk-bar:not(.dk-menubar) .dk-tray {
+    flex: 1;
+    height: 2rem;
+    justify-content: center;
+  }
+  :root:is([data-l-bar="left"], [data-l-bar="right"]) .dk-bar:not(.dk-menubar) .dk-task::after {
+    left: 2px;
+    top: 50%;
+    bottom: auto;
+    width: 3px;
+    height: 6px;
+    margin: -3px 0 0;
+  }
+  :root:is([data-l-bar="left"], [data-l-bar="right"]) .dk-bar:not(.dk-menubar) .dk-task.active::after {
+    height: 16px;
+    margin-top: -8px;
+  }
   :root:is([data-l-bar="left"], [data-l-bar="right"])[data-l-bar-style="dock"] .dk-bar:not(.dk-menubar) {
-    align-self: center; justify-self: stretch; width: auto; max-width: 11rem; max-height: calc(100% - 2rem); margin: 0 0.4rem; padding: 0.4rem 0;
+    align-self: center;
+    justify-self: stretch;
+    width: auto;
+    max-width: 11rem;
+    max-height: calc(100% - 2rem);
+    margin: 0 0.4rem;
+    padding: 0.4rem 0;
   }
-  :root:is([data-l-bar="left"], [data-l-bar="right"])[data-l-bar-style="dock"] .dk-bar:not(.dk-menubar) .dk-task::after { width: 4px; height: 4px; margin-top: -2px; }
-  :root:is([data-l-bar="left"], [data-l-bar="right"]):is([data-l-bar-style="full"], [data-l-bar-style="line"]) .dk-bar:not(.dk-menubar) { padding: 0.3rem 0; border-top: 0; }
-  :root[data-l-bar="left"]:is([data-l-bar-style="full"], [data-l-bar-style="line"]) .dk-bar:not(.dk-menubar) { border-right: 1px solid var(--border); }
-  :root[data-l-bar="right"]:is([data-l-bar-style="full"], [data-l-bar-style="line"]) .dk-bar:not(.dk-menubar) { border-left: 1px solid var(--border); }
-  :root:is([data-l-bar="left"], [data-l-bar="right"])[data-l-bar-style="full"] .dk-bar:not(.dk-menubar) .dk-task { height: 2.2rem; margin: 0 4px; }
+  :root:is([data-l-bar="left"], [data-l-bar="right"])[data-l-bar-style="dock"]
+    .dk-bar:not(.dk-menubar)
+    .dk-task::after {
+    width: 4px;
+    height: 4px;
+    margin-top: -2px;
+  }
+  :root:is([data-l-bar="left"], [data-l-bar="right"]):is([data-l-bar-style="full"], [data-l-bar-style="line"])
+    .dk-bar:not(.dk-menubar) {
+    padding: 0.3rem 0;
+    border-top: 0;
+  }
+  :root[data-l-bar="left"]:is([data-l-bar-style="full"], [data-l-bar-style="line"]) .dk-bar:not(.dk-menubar) {
+    border-right: 1px solid var(--border);
+  }
+  :root[data-l-bar="right"]:is([data-l-bar-style="full"], [data-l-bar-style="line"]) .dk-bar:not(.dk-menubar) {
+    border-left: 1px solid var(--border);
+  }
+  :root:is([data-l-bar="left"], [data-l-bar="right"])[data-l-bar-style="full"] .dk-bar:not(.dk-menubar) .dk-task {
+    height: 2.2rem;
+    margin: 0 4px;
+  }
 
   /* window chrome, the desktop's windows only */
   /* window buttons at the left: close first, the pop-out last */
-  :root[data-l-btns="left"] .dk-desk .dk-btns { order: -5; }
-  :root[data-l-btns="left"] .dk-desk .dk-btns .dk-close { order: -1; }
-  :root[data-l-btns="left"] .dk-desk .dk-btns .dk-out { order: 1; }
-  :root[data-l-btns="left"] .dk-desk .dk-back { order: -2; margin-left: 0; }
-  :root[data-l-btns="left"]:not([data-l-btn-style="lights"]) .dk-desk .dk-head { padding-left: 0.15rem; padding-right: 0.55rem; }
-  :root[data-l-title="center"] .dk-desk .dk-title { flex: 1; min-width: 0; margin: 0; text-align: center; }
+  :root[data-l-btns="left"] .dk-desk .dk-btns {
+    order: -5;
+  }
+  :root[data-l-btns="left"] .dk-desk .dk-btns .dk-close {
+    order: -1;
+  }
+  :root[data-l-btns="left"] .dk-desk .dk-btns .dk-out {
+    order: 1;
+  }
+  :root[data-l-btns="left"] .dk-desk .dk-back {
+    order: -2;
+    margin-left: 0;
+  }
+  :root[data-l-btns="left"]:not([data-l-btn-style="lights"]) .dk-desk .dk-head {
+    padding-left: 0.15rem;
+    padding-right: 0.55rem;
+  }
+  :root[data-l-title="center"] .dk-desk .dk-title {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    text-align: center;
+  }
 
   /* lights: macos's three dots, their glyphs only while the pointer's on one, grey in a window behind */
-  :root[data-l-btn-style="lights"] .dk-desk .dk-head { gap: 8px; }
-  :root[data-l-btn-style="lights"] .dk-desk .dk-btns { display: contents; }
-  :root[data-l-btn-style="lights"][data-l-btns="left"] .dk-desk .dk-close { order: -5; }
-  :root[data-l-btn-style="lights"][data-l-btns="left"] .dk-desk .dk-min { order: -4; }
-  :root[data-l-btn-style="lights"][data-l-btns="left"] .dk-desk .dk-max { order: -3; }
-  :root[data-l-btn-style="lights"][data-l-btns="right"] .dk-desk .dk-head { padding-right: 12px; }
-  :root[data-l-btn-style="lights"] .dk-desk .dk-btns :is(.dk-close, .dk-min, .dk-max) {
-    flex: none; width: 12px; height: 12px; padding: 0; border-radius: 50%; box-shadow: inset 0 0 0 0.5px rgb(0 0 0 / 0.2);
+  :root[data-l-btn-style="lights"] .dk-desk .dk-head {
+    gap: 8px;
   }
-  :root[data-l-btn-style="lights"] .dk-desk .dk-btns .dk-close, :root[data-l-btn-style="lights"] .dk-desk .dk-btns .dk-close:hover { background: #ff5f57; color: rgb(77 0 0 / 0.75); }
-  :root[data-l-btn-style="lights"] .dk-desk .dk-btns .dk-min, :root[data-l-btn-style="lights"] .dk-desk .dk-btns .dk-min:hover { background: #febc2e; color: rgb(90 50 0 / 0.75); }
-  :root[data-l-btn-style="lights"] .dk-desk .dk-btns .dk-max, :root[data-l-btn-style="lights"] .dk-desk .dk-btns .dk-max:hover { background: #28c840; color: rgb(0 70 0 / 0.75); }
-  :root[data-l-btn-style="lights"] .dk-desk .dk-btns :is(.dk-close, .dk-min, .dk-max) .ic { width: 8px; height: 8px; stroke-width: 2.2; opacity: 0; }
-  :root[data-l-btn-style="lights"] .dk-desk .dk-head:has(:is(.dk-close, .dk-min, .dk-max):hover) :is(.dk-close, .dk-min, .dk-max) .ic { opacity: 1; }
-  :root[data-l-btn-style="lights"] .dk-desk .dk-win:not(.focused) .dk-desk .dk-head:not(:has(:is(.dk-close, .dk-min, .dk-max):hover)) :is(.dk-close, .dk-min, .dk-max) { background: var(--light-off, var(--dim)); }
+  :root[data-l-btn-style="lights"] .dk-desk .dk-btns {
+    display: contents;
+  }
+  :root[data-l-btn-style="lights"][data-l-btns="left"] .dk-desk .dk-close {
+    order: -5;
+  }
+  :root[data-l-btn-style="lights"][data-l-btns="left"] .dk-desk .dk-min {
+    order: -4;
+  }
+  :root[data-l-btn-style="lights"][data-l-btns="left"] .dk-desk .dk-max {
+    order: -3;
+  }
+  :root[data-l-btn-style="lights"][data-l-btns="right"] .dk-desk .dk-head {
+    padding-right: 12px;
+  }
+  :root[data-l-btn-style="lights"] .dk-desk .dk-btns :is(.dk-close, .dk-min, .dk-max) {
+    flex: none;
+    width: 12px;
+    height: 12px;
+    padding: 0;
+    border-radius: 50%;
+    box-shadow: inset 0 0 0 0.5px rgb(0 0 0 / 0.2);
+  }
+  :root[data-l-btn-style="lights"] .dk-desk .dk-btns .dk-close,
+  :root[data-l-btn-style="lights"] .dk-desk .dk-btns .dk-close:hover {
+    background: #ff5f57;
+    color: rgb(77 0 0 / 0.75);
+  }
+  :root[data-l-btn-style="lights"] .dk-desk .dk-btns .dk-min,
+  :root[data-l-btn-style="lights"] .dk-desk .dk-btns .dk-min:hover {
+    background: #febc2e;
+    color: rgb(90 50 0 / 0.75);
+  }
+  :root[data-l-btn-style="lights"] .dk-desk .dk-btns .dk-max,
+  :root[data-l-btn-style="lights"] .dk-desk .dk-btns .dk-max:hover {
+    background: #28c840;
+    color: rgb(0 70 0 / 0.75);
+  }
+  :root[data-l-btn-style="lights"] .dk-desk .dk-btns :is(.dk-close, .dk-min, .dk-max) .ic {
+    width: 8px;
+    height: 8px;
+    stroke-width: 2.2;
+    opacity: 0;
+  }
+  :root[data-l-btn-style="lights"]
+    .dk-desk
+    .dk-head:has(:is(.dk-close, .dk-min, .dk-max):hover)
+    :is(.dk-close, .dk-min, .dk-max)
+    .ic {
+    opacity: 1;
+  }
+  :root[data-l-btn-style="lights"]
+    .dk-desk
+    .dk-win:not(.focused)
+    .dk-desk
+    .dk-head:not(:has(:is(.dk-close, .dk-min, .dk-max):hover))
+    :is(.dk-close, .dk-min, .dk-max) {
+    background: var(--light-off, var(--dim));
+  }
 
   /* caption: windows' 46-wide buttons the title bar's height, close red */
-  :root[data-l-btn-style="caption"] .dk-desk .dk-btns { align-self: stretch; }
-  :root[data-l-btn-style="caption"] .dk-desk .dk-btns button { width: 46px; height: 100%; border-radius: 0; color: var(--fg); }
-  :root[data-l-btn-style="caption"] .dk-desk .dk-win:not(.focused) .dk-desk .dk-btns button { color: var(--dim); }
-  :root[data-l-btn-style="caption"] .dk-desk .dk-btns .ic { width: 10px; height: 10px; stroke-width: 1.1; }
-  :root[data-l-btn-style="caption"] .dk-desk .dk-btns button:hover { background: color-mix(in srgb, var(--fg) 7%, transparent); color: var(--fg); }
-  :root[data-l-btn-style="caption"] .dk-desk .dk-btns .dk-close:hover { background: #c42b1c; color: #fff; }
-  :root[data-l-btn-style="caption"][data-l-btns="right"] .dk-desk .dk-head { padding-right: 0; }
-  :root[data-l-btn-style="caption"][data-l-btns="left"] .dk-desk .dk-head { padding-left: 0; }
+  :root[data-l-btn-style="caption"] .dk-desk .dk-btns {
+    align-self: stretch;
+  }
+  :root[data-l-btn-style="caption"] .dk-desk .dk-btns button {
+    width: 46px;
+    height: 100%;
+    border-radius: 0;
+    color: var(--fg);
+  }
+  :root[data-l-btn-style="caption"] .dk-desk .dk-win:not(.focused) .dk-desk .dk-btns button {
+    color: var(--dim);
+  }
+  :root[data-l-btn-style="caption"] .dk-desk .dk-btns .ic {
+    width: 10px;
+    height: 10px;
+    stroke-width: 1.1;
+  }
+  :root[data-l-btn-style="caption"] .dk-desk .dk-btns button:hover {
+    background: color-mix(in srgb, var(--fg) 7%, transparent);
+    color: var(--fg);
+  }
+  :root[data-l-btn-style="caption"] .dk-desk .dk-btns .dk-close:hover {
+    background: #c42b1c;
+    color: #fff;
+  }
+  :root[data-l-btn-style="caption"][data-l-btns="right"] .dk-desk .dk-head {
+    padding-right: 0;
+  }
+  :root[data-l-btn-style="caption"][data-l-btns="left"] .dk-desk .dk-head {
+    padding-left: 0;
+  }
 
   /* density: the title bar's height */
-  :root[data-l-density="compact"] .dk-desk .dk-head { height: 22px; }
-  :root[data-l-density="roomy"] .dk-head { height: 38px; }
+  :root[data-l-density="compact"] .dk-desk .dk-head {
+    height: 22px;
+  }
+  :root[data-l-density="roomy"] .dk-head {
+    height: 38px;
+  }
 }
 
 /* --- the bar's windows and the menu bar's app: an icon, a title, both (data-l-labels) ------------ */
 
-.dk-task { display: inline-flex; align-items: center; gap: 0.4rem; }
-.dk-task-ic, .dk-menubar-app-ic { width: 1rem; height: 1rem; flex: none; }
-.dk-task-t, .dk-menubar-app-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.dk-menubar-app { display: inline-flex; align-items: center; gap: 0.4rem; }
-:root[data-l-labels="icons"] :is(.dk-task-t, .dk-menubar-app-t) { display: none; }
-:root[data-l-labels="titles"] :is(.dk-task-ic, .dk-menubar-app-ic) { display: none; }
+.dk-task {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.dk-task-ic,
+.dk-menubar-app-ic {
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+}
+.dk-task-t,
+.dk-menubar-app-t {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dk-menubar-app {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+:root[data-l-labels="icons"] :is(.dk-task-t, .dk-menubar-app-t) {
+  display: none;
+}
+:root[data-l-labels="titles"] :is(.dk-task-ic, .dk-menubar-app-ic) {
+  display: none;
+}
 /* icons alone: a square tile, the icon larger */
-:root[data-l-labels="icons"] .dk-task { justify-content: center; min-width: 2.2rem; padding-left: 0.5rem; padding-right: 0.5rem; }
-:root[data-l-labels="icons"] .dk-task-ic { width: 1.25rem; height: 1.25rem; }
+:root[data-l-labels="icons"] .dk-task {
+  justify-content: center;
+  min-width: 2.2rem;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+}
+:root[data-l-labels="icons"] .dk-task-ic {
+  width: 1.25rem;
+  height: 1.25rem;
+}
 
 @media (min-width: 721px) {
   /* a bar with no windows in it and its status items in the menu bar has nothing to show, and no sliver of itself */
-  :root:is([data-l-menubar="top"], [data-l-menubar="bottom"]) .dk-bar:not(.dk-menubar):not(:has(.dk-task)) { display: none; }
+  :root:is([data-l-menubar="top"], [data-l-menubar="bottom"]) .dk-bar:not(.dk-menubar):not(:has(.dk-task)) {
+    display: none;
+  }
   /* the dock sized to what's in it: a lone window a tile, never a stretched pill */
-  :root[data-l-bar-style="dock"] .dk-bar:not(.dk-menubar) { min-width: 3.4rem; }
+  :root[data-l-bar-style="dock"] .dk-bar:not(.dk-menubar) {
+    min-width: 3.4rem;
+  }
 
   /* auto-hide, only while a window is maximized (the page :has one): the bar off its edge, clear of the menu bar, until the pointer, a keyboard focus or an open
      popup reaches it; its strip over the menu bar's inner edge */
-  :root[data-l-menubar="top"] { --bar-top: 1.65rem; }
-  :root[data-l-menubar="bottom"] { --bar-bot: 1.65rem; }
-  :root[data-l-autohide="on"]:has(.dk-win[data-snap="max"]:not([hidden])) .dk-desk { overflow: hidden; }
-  :root[data-l-autohide="on"]:has(.dk-win[data-snap="max"]:not([hidden])) .dk-bar:not(.dk-menubar) { position: absolute; z-index: 40; transition: transform 0.18s ease; }
-  :root[data-l-autohide="on"]:has(.dk-win[data-snap="max"]:not([hidden])) .dk-bar.dk-menubar { z-index: 41; }
+  :root[data-l-menubar="top"] {
+    --bar-top: 1.65rem;
+  }
+  :root[data-l-menubar="bottom"] {
+    --bar-bot: 1.65rem;
+  }
+  :root[data-l-autohide="on"]:has(.dk-win[data-snap="max"]:not([hidden])) .dk-desk {
+    overflow: hidden;
+  }
+  :root[data-l-autohide="on"]:has(.dk-win[data-snap="max"]:not([hidden])) .dk-bar:not(.dk-menubar) {
+    position: absolute;
+    z-index: 40;
+    transition: transform 0.18s ease;
+  }
+  :root[data-l-autohide="on"]:has(.dk-win[data-snap="max"]:not([hidden])) .dk-bar.dk-menubar {
+    z-index: 41;
+  }
   /* a dock keeps its own width, centered on its edge */
-  :root[data-l-autohide="on"]:has(.dk-win[data-snap="max"]:not([hidden]))[data-l-bar-style="dock"]:is([data-l-bar="bottom"], [data-l-bar="top"]) .dk-bar:not(.dk-menubar) { width: fit-content; }
-  :root[data-l-autohide="on"]:has(.dk-win[data-snap="max"]:not([hidden])) .dk-bar:not(.dk-menubar)::after { content: ""; position: absolute; }
-  :root[data-l-autohide="on"]:has(.dk-win[data-snap="max"]:not([hidden]))[data-l-bar="bottom"] .dk-bar:not(.dk-menubar) { left: 0; right: 0; bottom: var(--bar-bot, 0px); transform: translateY(calc(100% + var(--bar-bot, 0px) + 1rem)); }
-  :root[data-l-autohide="on"]:has(.dk-win[data-snap="max"]:not([hidden]))[data-l-bar="bottom"] .dk-bar:not(.dk-menubar)::after { left: 0; right: 0; top: calc(-22px - var(--bar-bot, 0px)); height: 22px; }
-  :root[data-l-autohide="on"]:has(.dk-win[data-snap="max"]:not([hidden]))[data-l-bar="top"] .dk-bar:not(.dk-menubar) { left: 0; right: 0; top: var(--bar-top, 0px); transform: translateY(calc(-100% - var(--bar-top, 0px) - 1rem)); }
-  :root[data-l-autohide="on"]:has(.dk-win[data-snap="max"]:not([hidden]))[data-l-bar="top"] .dk-bar:not(.dk-menubar)::after { left: 0; right: 0; bottom: calc(-22px - var(--bar-top, 0px)); height: 22px; }
-  :root[data-l-autohide="on"]:has(.dk-win[data-snap="max"]:not([hidden]))[data-l-bar="left"] .dk-bar:not(.dk-menubar) { left: 0; top: var(--bar-top, 0px); bottom: var(--bar-bot, 0px); transform: translateX(calc(-100% - 1rem)); }
-  :root[data-l-autohide="on"]:has(.dk-win[data-snap="max"]:not([hidden]))[data-l-bar="left"] .dk-bar:not(.dk-menubar)::after { right: -22px; width: 22px; top: 0; bottom: 0; }
-  :root[data-l-autohide="on"]:has(.dk-win[data-snap="max"]:not([hidden]))[data-l-bar="right"] .dk-bar:not(.dk-menubar) { right: 0; top: var(--bar-top, 0px); bottom: var(--bar-bot, 0px); transform: translateX(calc(100% + 1rem)); }
-  :root[data-l-autohide="on"]:has(.dk-win[data-snap="max"]:not([hidden]))[data-l-bar="right"] .dk-bar:not(.dk-menubar)::after { left: -22px; width: 22px; top: 0; bottom: 0; }
-  :root[data-l-autohide="on"]:has(.dk-win[data-snap="max"]:not([hidden])) .dk-bar:not(.dk-menubar):is(:hover, :has(:focus-visible), :has([aria-expanded="true"]:not(.dk-chip-fold))) { transform: none; }
+  :root[data-l-autohide="on"]:has(.dk-win[data-snap="max"]:not([hidden]))[data-l-bar-style="dock"]:is(
+      [data-l-bar="bottom"],
+      [data-l-bar="top"]
+    )
+    .dk-bar:not(.dk-menubar) {
+    width: fit-content;
+  }
+  :root[data-l-autohide="on"]:has(.dk-win[data-snap="max"]:not([hidden])) .dk-bar:not(.dk-menubar)::after {
+    content: "";
+    position: absolute;
+  }
+  :root[data-l-autohide="on"]:has(.dk-win[data-snap="max"]:not([hidden]))[data-l-bar="bottom"]
+    .dk-bar:not(.dk-menubar) {
+    left: 0;
+    right: 0;
+    bottom: var(--bar-bot, 0px);
+    transform: translateY(calc(100% + var(--bar-bot, 0px) + 1rem));
+  }
+  :root[data-l-autohide="on"]:has(.dk-win[data-snap="max"]:not([hidden]))[data-l-bar="bottom"]
+    .dk-bar:not(.dk-menubar)::after {
+    left: 0;
+    right: 0;
+    top: calc(-22px - var(--bar-bot, 0px));
+    height: 22px;
+  }
+  :root[data-l-autohide="on"]:has(.dk-win[data-snap="max"]:not([hidden]))[data-l-bar="top"] .dk-bar:not(.dk-menubar) {
+    left: 0;
+    right: 0;
+    top: var(--bar-top, 0px);
+    transform: translateY(calc(-100% - var(--bar-top, 0px) - 1rem));
+  }
+  :root[data-l-autohide="on"]:has(.dk-win[data-snap="max"]:not([hidden]))[data-l-bar="top"]
+    .dk-bar:not(.dk-menubar)::after {
+    left: 0;
+    right: 0;
+    bottom: calc(-22px - var(--bar-top, 0px));
+    height: 22px;
+  }
+  :root[data-l-autohide="on"]:has(.dk-win[data-snap="max"]:not([hidden]))[data-l-bar="left"] .dk-bar:not(.dk-menubar) {
+    left: 0;
+    top: var(--bar-top, 0px);
+    bottom: var(--bar-bot, 0px);
+    transform: translateX(calc(-100% - 1rem));
+  }
+  :root[data-l-autohide="on"]:has(.dk-win[data-snap="max"]:not([hidden]))[data-l-bar="left"]
+    .dk-bar:not(.dk-menubar)::after {
+    right: -22px;
+    width: 22px;
+    top: 0;
+    bottom: 0;
+  }
+  :root[data-l-autohide="on"]:has(.dk-win[data-snap="max"]:not([hidden]))[data-l-bar="right"] .dk-bar:not(.dk-menubar) {
+    right: 0;
+    top: var(--bar-top, 0px);
+    bottom: var(--bar-bot, 0px);
+    transform: translateX(calc(100% + 1rem));
+  }
+  :root[data-l-autohide="on"]:has(.dk-win[data-snap="max"]:not([hidden]))[data-l-bar="right"]
+    .dk-bar:not(.dk-menubar)::after {
+    left: -22px;
+    width: 22px;
+    top: 0;
+    bottom: 0;
+  }
+  :root[data-l-autohide="on"]:has(.dk-win[data-snap="max"]:not([hidden]))
+    .dk-bar:not(.dk-menubar):is(:hover, :has(:focus-visible), :has([aria-expanded="true"]:not(.dk-chip-fold))) {
+    transform: none;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
-  :root[data-l-autohide="on"]:has(.dk-win[data-snap="max"]:not([hidden])) .dk-bar:not(.dk-menubar) { transition: none; }
+  :root[data-l-autohide="on"]:has(.dk-win[data-snap="max"]:not([hidden])) .dk-bar:not(.dk-menubar) {
+    transition: none;
+  }
 }
 
 /* the phosphorus and cli looks draw the mark as ascii art (theme.js sets --mark), on the desk and in about */
-.about-mark { content: var(--mark); object-fit: contain; }
+.about-mark {
+  content: var(--mark);
+  object-fit: contain;
+}

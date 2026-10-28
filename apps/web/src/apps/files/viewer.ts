@@ -1,7 +1,8 @@
 // the viewer
-import { el } from '../../lib/dom.ts';
-import { filesApi, fmKind, type Loc } from '../../features/home/home.ts';
+
 import { dkFocus, dkWin } from '../../desktop/windows.ts';
+import { filesApi, fmKind, type Loc } from '../../features/home/home.ts';
+import { el } from '../../lib/dom.ts';
 
 // anything the browser shows itself: pictures, video, sound, pdfs, else its text
 
@@ -21,6 +22,8 @@ export function dkViewer(loc: Loc, rel: string): void {
   }
   const frame = Object.assign(el('iframe', 'dk-frame'), { src, title: rel });
   w.body.appendChild(frame);
-  w.onClose = () => { frame.src = 'about:blank'; };
+  w.onClose = () => {
+    frame.src = 'about:blank';
+  };
   dkFocus(w);
 }

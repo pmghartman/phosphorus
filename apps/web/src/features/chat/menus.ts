@@ -11,7 +11,16 @@ import { chatPop, send } from './state.ts';
 // a destructive pick asking once more before it goes
 
 // one item of the menu: a link, or an action, a destructive one asked again
-export interface PopItem { label: string; sub?: string; key?: string; danger?: boolean; confirm?: string; href?: string; thumb?: string; act?: () => void }
+export interface PopItem {
+  label: string;
+  sub?: string;
+  key?: string;
+  danger?: boolean;
+  confirm?: string;
+  href?: string;
+  thumb?: string;
+  act?: () => void;
+}
 
 export let popFrom: HTMLElement | null = null;
 export function closePop(refocus: boolean) {
@@ -22,8 +31,17 @@ export function closePop(refocus: boolean) {
 }
 
 // title: a heading, or a node over the items; at: a right click's point to open at
-export function popMenu(anchor: HTMLElement, title: string | HTMLElement | null, items: PopItem[], focusAt = 0, at: { x: number; y: number } | null = null) {
-  if (!chatPop.hidden && popFrom === anchor) { closePop(true); return; }
+export function popMenu(
+  anchor: HTMLElement,
+  title: string | HTMLElement | null,
+  items: PopItem[],
+  focusAt = 0,
+  at: { x: number; y: number } | null = null,
+) {
+  if (!chatPop.hidden && popFrom === anchor) {
+    closePop(true);
+    return;
+  }
   closePop(false);
   popFrom = anchor;
   const els = items.map((it) => {
@@ -31,7 +49,15 @@ export function popMenu(anchor: HTMLElement, title: string | HTMLElement | null,
       ? Object.assign(el('a', 'pop-item'), { href: it.href, target: '_blank', rel: 'noopener noreferrer' })
       : Object.assign(el('button', 'pop-item'), { type: 'button' });
     if (it.danger) b.classList.add('danger');
-    if (it.thumb) b.append(Object.assign(document.createElement('img'), { src: it.thumb, alt: '', loading: 'lazy', className: 'pop-thumb' }));
+    if (it.thumb)
+      b.append(
+        Object.assign(document.createElement('img'), {
+          src: it.thumb,
+          alt: '',
+          loading: 'lazy',
+          className: 'pop-thumb',
+        }),
+      );
     const text = el('span', 'pop-text');
     text.append(el('span', 'pop-label', it.label));
     if (it.sub) text.append(el('span', 'pop-sub', it.sub));
@@ -44,12 +70,18 @@ export function popMenu(anchor: HTMLElement, title: string | HTMLElement | null,
         b.querySelector('.pop-label')!.textContent = it.confirm;
         return;
       }
-      if (it.act) { e.preventDefault(); it.act(); }
+      if (it.act) {
+        e.preventDefault();
+        it.act();
+      }
       closePop(!it.href);
     });
     return b;
   });
-  chatPop.replaceChildren(...(title ? [typeof title === 'string' ? el('div', 'pop-title', title) : title] : []), ...els);
+  chatPop.replaceChildren(
+    ...(title ? [typeof title === 'string' ? el('div', 'pop-title', title) : title] : []),
+    ...els,
+  );
   chatPop.hidden = false;
   // under the anchor, kept on screen, over it when there's no room below
   const r = at ? { left: at.x, top: at.y, bottom: at.y } : anchor.getBoundingClientRect();
@@ -78,20 +110,55 @@ window.addEventListener('resize', () => closePop(false));
 
 // what a conversation offers: read, leave, close or clear, the destructive one last
 export function convActions(c: string): PopItem[] {
-  const read = news.get(c) && { label: 'mark read', act: () => { readConv(c); notesReadConv(c); paintConvs(); } };
+  const read = news.get(c) && {
+    label: 'mark read',
+    act: () => {
+      readConv(c);
+      notesReadConv(c);
+      paintConvs();
+    },
+  };
   const ch = chOf(c);
   if (ch) {
-    return [read, { label: 'open', act: () => openConv(c) },
+    return [
+      read,
+      { label: 'open', act: () => openConv(c) },
       { label: 'leave', sub: 'hide it here until someone posts', act: () => leaveChannel(ch) },
-      { label: 'close for everyone', sub: 'its history gone mesh-wide', key: 'd', danger: true, confirm: `close #${ch}?`, act: () => send({ type: 'close', ch }) },
+      {
+        label: 'close for everyone',
+        sub: 'its history gone mesh-wide',
+        key: 'd',
+        danger: true,
+        confirm: `close #${ch}?`,
+        act: () => send({ type: 'close', ch }),
+      },
     ].filter(Boolean) as PopItem[];
   }
   if (c === 'mesh') {
-    return [read, { label: 'clear for everyone', sub: "#mesh's history gone mesh-wide", key: 'd', danger: true, confirm: 'clear all?', act: () => send({ type: 'clear' }) }].filter(Boolean) as PopItem[];
+    return [
+      read,
+      {
+        label: 'clear for everyone',
+        sub: "#mesh's history gone mesh-wide",
+        key: 'd',
+        danger: true,
+        confirm: 'clear all?',
+        act: () => send({ type: 'clear' }),
+      },
+    ].filter(Boolean) as PopItem[];
   }
   const dm = dmWith(c);
-  return [read, { label: 'open', act: () => openConv(c) },
-    dm && { label: 'delete conversation', sub: 'its history gone for you, on every host', key: 'd', danger: true, confirm: `delete your dms with ${dm}?`, act: () => deleteDm(dm) },
+  return [
+    read,
+    { label: 'open', act: () => openConv(c) },
+    dm && {
+      label: 'delete conversation',
+      sub: 'its history gone for you, on every host',
+      key: 'd',
+      danger: true,
+      confirm: `delete your dms with ${dm}?`,
+      act: () => deleteDm(dm),
+    },
   ].filter(Boolean) as PopItem[];
 }
 
@@ -104,7 +171,17 @@ export function deleteDm(dm: string) {
 
 export function convMenu(c: string, anchor: HTMLElement, destructive?: boolean) {
   const items = convActions(c);
-  popMenu(anchor, convName(c), items, destructive ? Math.max(0, items.findIndex((it) => it.danger)) : 0);
+  popMenu(
+    anchor,
+    convName(c),
+    items,
+    destructive
+      ? Math.max(
+          0,
+          items.findIndex((it) => it.danger),
+        )
+      : 0,
+  );
 }
 
 export function leaveChannel(ch: string) {

@@ -1,8 +1,9 @@
 // chat
-import { fitMath } from '../../lib/md.ts';
-import { st } from '../../lib/state.ts';
+
 import type { ChatMsg, Person, Reaction } from '@phosphorus/wire';
 import { dkOpenTerminal } from '../../desktop/desk.ts';
+import { fitMath } from '../../lib/md.ts';
+import { st } from '../../lib/state.ts';
 
 // a line as this browser holds it: the host's, with the marks folded into it, and its own
 // drawing state
@@ -66,12 +67,36 @@ export const stateVars = {
 };
 
 export const NAME_COLORS = [
-  '#4f9eff', '#3fb950', '#f0883e', '#d2a8ff', '#ff7b72', '#79c0ff', '#ffa657',
-  '#e3b341', '#ff9bce', '#39c5cf', '#db61a2', '#7ee787', '#d4a72c', '#ffa198',
+  '#4f9eff',
+  '#3fb950',
+  '#f0883e',
+  '#d2a8ff',
+  '#ff7b72',
+  '#79c0ff',
+  '#ffa657',
+  '#e3b341',
+  '#ff9bce',
+  '#39c5cf',
+  '#db61a2',
+  '#7ee787',
+  '#d4a72c',
+  '#ffa198',
 ];
 export const COLOR_NAMES = [
-  'blue', 'green', 'orange', 'purple', 'red', 'skyblue', 'gold',
-  'yellow', 'pink', 'teal', 'magenta', 'lime', 'amber', 'coral',
+  'blue',
+  'green',
+  'orange',
+  'purple',
+  'red',
+  'skyblue',
+  'gold',
+  'yellow',
+  'pink',
+  'teal',
+  'magenta',
+  'lime',
+  'amber',
+  'coral',
 ];
 
 export function colorFor(n: string): string {
@@ -83,13 +108,19 @@ export const wsOpen = () => st.ws && st.ws.readyState === WebSocket.OPEN;
 export const send = (body: Record<string, unknown>) => wsOpen() && st.ws!.send(JSON.stringify(body));
 export const joined = () => !chatCompose.hidden;
 
-export const formatTime = (ts: number) => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+export const formatTime = (ts: number) =>
+  new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
 export function formatDay(ts: number): string {
   const d = new Date(ts);
   const days = Math.round((new Date().setHours(0, 0, 0, 0) - new Date(ts).setHours(0, 0, 0, 0)) / 86400000);
   if (days === 0) return 'today';
   if (days === 1) return 'yesterday';
-  return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', ...(days > 300 ? { year: 'numeric' } : {}) });
+  return d.toLocaleDateString([], {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    ...(days > 300 ? { year: 'numeric' } : {}),
+  });
 }
 
 // the log following its newest line, eased down rather than snapped, a jump
@@ -100,21 +131,40 @@ export function toBottom() {
   if (glide) return;
   const step = () => {
     const gap = chatLog.scrollHeight - chatLog.clientHeight - chatLog.scrollTop;
-    if (gap <= 1 || gap > chatLog.clientHeight) { chatLog.scrollTop = chatLog.scrollHeight; glide = 0; return; }
+    if (gap <= 1 || gap > chatLog.clientHeight) {
+      chatLog.scrollTop = chatLog.scrollHeight;
+      glide = 0;
+      return;
+    }
     chatLog.scrollTop += Math.ceil(gap * 0.2);
     glide = requestAnimationFrame(step);
   };
   glide = requestAnimationFrame(step);
 }
 // the reader scrolling away ending the glide
-for (const ev of ['wheel', 'touchmove']) chatLog.addEventListener(ev, () => { cancelAnimationFrame(glide); glide = 0; }, { passive: true });
-chatLog.addEventListener('scroll', () => { stateVars.chatPinned = nearBottom(); });
+for (const ev of ['wheel', 'touchmove'])
+  chatLog.addEventListener(
+    ev,
+    () => {
+      cancelAnimationFrame(glide);
+      glide = 0;
+    },
+    { passive: true },
+  );
+chatLog.addEventListener('scroll', () => {
+  stateVars.chatPinned = nearBottom();
+});
 // math refitted when the width moves or katex's fonts land
-export const refitMath = () => { for (const t of chatLog.querySelectorAll<HTMLElement>('.md')) if (t.querySelector('.katex')) fitMath(t); };
+export const refitMath = () => {
+  for (const t of chatLog.querySelectorAll<HTMLElement>('.md')) if (t.querySelector('.katex')) fitMath(t);
+};
 document.fonts.addEventListener('loadingdone', refitMath);
 export let chatWidth = 0;
 new ResizeObserver(() => {
-  if (chatLog.clientWidth !== chatWidth) { chatWidth = chatLog.clientWidth; refitMath(); }
+  if (chatLog.clientWidth !== chatWidth) {
+    chatWidth = chatLog.clientWidth;
+    refitMath();
+  }
   if (stateVars.chatPinned) chatLog.scrollTop = chatLog.scrollHeight;
 }).observe(chatLog);
 
@@ -123,19 +173,25 @@ export function markMentions(el: HTMLElement): boolean {
   if (!st.name) return false;
   let me = false;
   const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
-    acceptNode: (n) => ((n as Text).parentElement!.closest('code, pre, a, .katex') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
+    acceptNode: (n) =>
+      (n as Text).parentElement!.closest('code, pre, a, .katex') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
   });
   const hits: Text[] = [];
   while (walk.nextNode()) if (walk.currentNode.nodeValue!.includes('@')) hits.push(walk.currentNode as Text);
   for (const t of hits) {
     const parts = t.nodeValue!.split(/(@[\w.-]+)/);
     if (parts.length < 2) continue;
-    t.replaceWith(...parts.map((p, i) => {
-      if (i % 2 === 0) return p;
-      const s = Object.assign(document.createElement('span'), { className: 'mention', textContent: p });
-      if (p.slice(1).toLowerCase() === st.name.toLowerCase()) { s.classList.add('me'); me = true; }
-      return s;
-    }));
+    t.replaceWith(
+      ...parts.map((p, i) => {
+        if (i % 2 === 0) return p;
+        const s = Object.assign(document.createElement('span'), { className: 'mention', textContent: p });
+        if (p.slice(1).toLowerCase() === st.name.toLowerCase()) {
+          s.classList.add('me');
+          me = true;
+        }
+        return s;
+      }),
+    );
   }
   return me;
 }

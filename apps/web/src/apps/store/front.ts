@@ -1,16 +1,21 @@
 // the front: tiles
-import { dkGlyph, el, ICONS } from '../../lib/dom.ts';
+
 import { editorPref } from '../../desktop/deskfiles.ts';
+import { dkGlyph, el, ICONS } from '../../lib/dom.ts';
 import { facts, iconOf, pill, tileSub } from './apps.ts';
 import { svcFacts, svcIcon, svcPill, svcSub } from './services.ts';
-import { apps, read, readError, services, storeShow, type StoreApp, type StoreService } from './state.ts';
+import { apps, read, readError, type StoreApp, type StoreService, services, storeShow } from './state.ts';
 
 export function tile(a: StoreApp): HTMLElement {
   const f = facts(a);
   const t = Object.assign(el('button', `store-tile${f.want ? ' on' : ''}`), { type: 'button' });
   const text = el('span', 'store-tile-text');
   const [cls, sub] = tileSub(a, f);
-  text.append(el('b', 'store-tile-name', a.name), el('span', 'store-tile-tag', a.tagline), el('span', `store-tile-sub ${cls}`, sub));
+  text.append(
+    el('b', 'store-tile-name', a.name),
+    el('span', 'store-tile-tag', a.tagline),
+    el('span', `store-tile-sub ${cls}`, sub),
+  );
   const side = el('span', 'store-tile-side');
   side.append(pill(a, f));
   if (a.id === 'sulfur' && editorPref() === 'sulfur') side.append(el('span', 'store-tile-badge', 'default editor'));
@@ -24,7 +29,11 @@ export function svcTile(s: StoreService): HTMLElement {
   const t = Object.assign(el('button', `store-tile${f.on.length ? ' on' : ''}`), { type: 'button' });
   const text = el('span', 'store-tile-text');
   const [cls, sub] = svcSub(s, f);
-  text.append(el('b', 'store-tile-name', s.name), el('span', 'store-tile-tag', s.tagline), el('span', `store-tile-sub ${cls}`, sub));
+  text.append(
+    el('b', 'store-tile-name', s.name),
+    el('span', 'store-tile-tag', s.tagline),
+    el('span', `store-tile-sub ${cls}`, sub),
+  );
   const side = el('span', 'store-tile-side');
   side.append(svcPill(s, f), el('span', 'store-tile-badge', 'service'));
   t.append(svcIcon(s, f, 'md'), text, side);
@@ -36,7 +45,14 @@ export function front(): HTMLElement {
   const wrap = el('div', 'store-front');
   const head = el('div', 'store-head');
   const title = el('div', 'store-title');
-  title.append(el('h1', '', 'apps'), el('p', 'store-lead', 'Extras for the mesh. Get an app and every host serves its own copy, beside this desktop; install a service onto the hosts you pick, as your own login there.'));
+  title.append(
+    el('h1', '', 'apps'),
+    el(
+      'p',
+      'store-lead',
+      'Extras for the mesh. Get an app and every host serves its own copy, beside this desktop; install a service onto the hosts you pick, as your own login there.',
+    ),
+  );
   const refresh = Object.assign(el('button', 'store-link'), { type: 'button', title: 'ask each release feed again' });
   refresh.append(dkGlyph(ICONS.refresh!, 'store-link-ic'), 'check for updates');
   refresh.addEventListener('click', () => read(true));
@@ -61,7 +77,10 @@ export function front(): HTMLElement {
     section('on the mesh', [...have.map(tile), ...svcOn.map(svcTile)]);
     section(have.length || svcOn.length ? 'more' : 'discover', [...more.map(tile), ...svcMore.map(svcTile)]);
     const updates = have.filter((a) => facts(a).update).length;
-    if (updates) wrap.querySelector('.store-section-head')!.append(el('span', 'store-count', `${updates} update${updates === 1 ? '' : 's'}`));
+    if (updates)
+      wrap
+        .querySelector('.store-section-head')!
+        .append(el('span', 'store-count', `${updates} update${updates === 1 ? '' : 's'}`));
   }
   return wrap;
 }

@@ -5,7 +5,19 @@
 import { errText, marshal } from "@phosphorus/util";
 import type { Session } from "./claude.ts";
 import { missing, Opencode } from "./harness.ts";
-import { type Creds, envBlock, keyVar, Mesh, ocAgent, ocDir, ocPath, provider, quote, randHex, shDir } from "./script.ts";
+import {
+  type Creds,
+  envBlock,
+  keyVar,
+  Mesh,
+  ocAgent,
+  ocDir,
+  ocPath,
+  provider,
+  quote,
+  randHex,
+  shDir,
+} from "./script.ts";
 import { spawn } from "./spawn.ts";
 import { anyList, clip, lastLine, num, orObj, str } from "./text.ts";
 
@@ -22,12 +34,27 @@ export function ocConfig(base: string, _model: string, perm: string): string {
   const models: Record<string, any> = {};
   for (const m of [ocAgent, ocAgent + "-fast"]) models[m] = { name: m };
   return marshal({
-    $schema: "https://opencode.ai/config.json", autoupdate: false, share: "disabled",
-    model: "phosphorus/" + ocAgent, small_model: "phosphorus/" + ocAgent + "-fast",
-    provider: { phosphorus: { npm: "@ai-sdk/anthropic", name: "phosphorus",
-      options: { baseURL: base + "/api/model/v1", apiKey: "{env:" + keyVar + "}" }, models } },
-    mcp: { phosphorus: { type: "remote", url: base + "/api/mcp", enabled: true,
-      headers: { Authorization: "Bearer {env:" + keyVar + "}", "X-Phosphorus-Via": "opencode" } } },
+    $schema: "https://opencode.ai/config.json",
+    autoupdate: false,
+    share: "disabled",
+    model: "phosphorus/" + ocAgent,
+    small_model: "phosphorus/" + ocAgent + "-fast",
+    provider: {
+      phosphorus: {
+        npm: "@ai-sdk/anthropic",
+        name: "phosphorus",
+        options: { baseURL: base + "/api/model/v1", apiKey: "{env:" + keyVar + "}" },
+        models,
+      },
+    },
+    mcp: {
+      phosphorus: {
+        type: "remote",
+        url: base + "/api/mcp",
+        enabled: true,
+        headers: { Authorization: "Bearer {env:" + keyVar + "}", "X-Phosphorus-Via": "opencode" },
+      },
+    },
     permission: { edit: allow, bash: allow, webfetch: "allow" },
   });
 }
@@ -35,9 +62,12 @@ export function ocConfig(base: string, _model: string, perm: string): string {
 // ocSetup for sh -s: the config written fresh, opencode looked for
 export function ocSetup(base: string, model: string, perm: string): string {
   const eof = "PHOS_EOF_" + randHex(8);
-  return `set -e\numask 077\nD=${ocDir}\nmkdir -p "$D"\n` +
+  return (
+    `set -e\numask 077\nD=${ocDir}\nmkdir -p "$D"\n` +
     `cat > "$D/opencode.json" <<'${eof}'\n${ocConfig(base, model, perm)}\n${eof}\n` +
-    ocPath + "\ncommand -v opencode >/dev/null 2>&1 || exit 127\n";
+    ocPath +
+    "\ncommand -v opencode >/dev/null 2>&1 || exit 127\n"
+  );
 }
 
 // ocLaunch one run in dir on prompt, its env read off stdin first, resumed
@@ -48,12 +78,19 @@ export function ocLaunch(dir: string, _model: string, perm: string, sid: string,
   if (perm !== "plan") args.push("--auto");
   if (sid) args.push("--session", quote(sid));
   args.push("--", quote(prompt));
-  const script = ocPath +
+  const script =
+    ocPath +
     `while IFS= read -r l && [ -n "$l" ]; do export "$l"; done; ` +
-    "OPENCODE_CONFIG=" + ocDir + "/opencode.json; export OPENCODE_CONFIG; " +
-    "cd " + shDir(dir) + " || exit 3; " +
+    "OPENCODE_CONFIG=" +
+    ocDir +
+    "/opencode.json; export OPENCODE_CONFIG; " +
+    "cd " +
+    shDir(dir) +
+    " || exit 3; " +
     "command -v opencode >/dev/null 2>&1 || exit 127; " +
-    "exec " + args.join(" ") + " </dev/null";
+    "exec " +
+    args.join(" ") +
+    " </dev/null";
   return "sh -c " + quote(script);
 }
 
@@ -109,12 +146,30 @@ export function ocExited(s: Session, g: number, code: number, errs: string) {
   if (s.deleted) return;
   const r = s.run;
   if (stopping) {
-    s.emit({ kind: "claude", ev: { type: "result", subtype: "error_during_execution", is_error: true, result: "stopped",
-      num_turns: r.steps, duration_ms: Date.now() - r.start } }, true);
+    s.emit(
+      {
+        kind: "claude",
+        ev: {
+          type: "result",
+          subtype: "error_during_execution",
+          is_error: true,
+          result: "stopped",
+          num_turns: r.steps,
+          duration_ms: Date.now() - r.start,
+        },
+      },
+      true,
+    );
     s.status("idle");
   } else if (code === 0 && !r.err) {
-    s.on({ type: "result", subtype: "success", num_turns: r.steps, duration_ms: Date.now() - r.start,
-      usage: { input_tokens: r.in, output_tokens: r.out }, total_cost_usd: r.cost });
+    s.on({
+      type: "result",
+      subtype: "success",
+      num_turns: r.steps,
+      duration_ms: Date.now() - r.start,
+      usage: { input_tokens: r.in, output_tokens: r.out },
+      total_cost_usd: r.cost,
+    });
   } else if (code === 127) s.fail(missing(Opencode, s.rec.host));
   else if (code === 3) s.fail(`no folder ${s.rec.dir} on ${s.rec.host}`);
   else s.fail(r.err || lastLine(errs) || `opencode exited with ${code}`);
@@ -142,7 +197,10 @@ export function ocEvents(s: Session, ev: Record<string, any>): Record<string, an
       if (bad && !out) out = str(st.error);
       return [
         with_({ type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", id, name, input }] } }),
-        with_({ type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: id, content: out, is_error: bad }] } }),
+        with_({
+          type: "user",
+          message: { role: "user", content: [{ type: "tool_result", tool_use_id: id, content: out, is_error: bad }] },
+        }),
       ];
     }
     case "step_start":
@@ -177,12 +235,26 @@ export function ocTool(tool: string, input: Record<string, any>): [string, Recor
   const file = input.path ?? input.filePath;
   switch (tool) {
     case "edit":
-      return ["Edit", { file_path: file, old_string: input.oldString, new_string: input.newString, replace_all: input.replaceAll === true }];
+      return [
+        "Edit",
+        {
+          file_path: file,
+          old_string: input.oldString,
+          new_string: input.newString,
+          replace_all: input.replaceAll === true,
+        },
+      ];
     case "multiedit":
-      return ["MultiEdit", { file_path: file, edits: anyList(input.edits).map((e) => {
-        const x = orObj(e);
-        return { old_string: x.oldString, new_string: x.newString, replace_all: x.replaceAll === true };
-      }) }];
+      return [
+        "MultiEdit",
+        {
+          file_path: file,
+          edits: anyList(input.edits).map((e) => {
+            const x = orObj(e);
+            return { old_string: x.oldString, new_string: x.newString, replace_all: x.replaceAll === true };
+          }),
+        },
+      ];
     case "write":
       return ["Write", { file_path: file, content: input.content }];
     case "read":

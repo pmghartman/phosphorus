@@ -2,11 +2,21 @@
 import * as code from "@phosphorus/code";
 import { skill } from "@phosphorus/mcp";
 import { Summary } from "@phosphorus/model";
-import { AnthropicToken, HostLogin, HostLogins, KeyOf, MCPBase, Of, type Session, Soon, VaultOK } from "@phosphorus/users";
+import {
+  AnthropicToken,
+  HostLogin,
+  HostLogins,
+  KeyOf,
+  MCPBase,
+  Of,
+  type Session,
+  Soon,
+  VaultOK,
+} from "@phosphorus/users";
 import { errText, FrontendPort, tailnetIP } from "@phosphorus/util";
 import { type Ctx, upgrade } from "@phosphorus/wsock";
 import { selfHost } from "./config.ts";
-import { forbidden, isLocalOrPeer, readRaw, refuse, type Res, sameOrigin, sendJSON } from "./http.ts";
+import { forbidden, isLocalOrPeer, type Res, readRaw, refuse, sameOrigin, sendJSON } from "./http.ts";
 import { decode, obj, str } from "./js.ts";
 
 const codeSessRe = /^\/api\/code\/sessions\/([a-z0-9]{12})(?:\/(send|stop|model|perm|permission|rename))?$/;
@@ -60,9 +70,12 @@ export async function codeOptions(s: Session): Promise<Record<string, any>> {
   let ro: Record<string, any> = {};
   for (const a of Summary().agents as any[]) if (obj(a)?.id === "code") ro = obj(obj(obj(a)?.slots)?.model) ?? {};
   const models: any[] = [];
-  for (const m of code.Mesh) models.push({ id: m, label: "Mesh model", provider: "mesh", ready: ro.ready === true, why: str(ro.why) });
+  for (const m of code.Mesh)
+    models.push({ id: m, label: "Mesh model", provider: "mesh", ready: ro.ready === true, why: str(ro.why) });
   const has = (await AnthropicToken(s)) !== "";
-  if (has) for (const m of code.Anthropic) models.push({ id: m, label: m[0]!.toUpperCase() + m.slice(1), provider: "anthropic", ready: true, why: "" });
+  if (has)
+    for (const m of code.Anthropic)
+      models.push({ id: m, label: m[0]!.toUpperCase() + m.slice(1), provider: "anthropic", ready: true, why: "" });
   const out: Record<string, any> = { hosts: await HostLogins(s), models, anthropic: has, harnesses: code.Harnesses };
   const why = await codeBlocked(s);
   if (why) {
@@ -75,8 +88,14 @@ export async function codeOptions(s: Session): Promise<Record<string, any>> {
 // codeRoute the app's REST, undefined for a path that isn't one
 export async function codeRoute(c: Ctx, pathname: string, q: URLSearchParams): Promise<Response | undefined> {
   const m = codeSessRe.exec(pathname);
-  const known = !!m || pathname === "/api/code/options" || pathname === "/api/code/sessions" || pathname === "/api/code/install" ||
-    pathname === "/api/code/harnesses" || pathname === "/api/code/ls" || pathname === "/api/code/upload";
+  const known =
+    !!m ||
+    pathname === "/api/code/options" ||
+    pathname === "/api/code/sessions" ||
+    pathname === "/api/code/install" ||
+    pathname === "/api/code/harnesses" ||
+    pathname === "/api/code/ls" ||
+    pathname === "/api/code/upload";
   if (!known) return;
   const meth = c.req.method;
   if (!(await isLocalOrPeer(c)) || (meth !== "GET" && !sameOrigin(c))) return forbidden();
@@ -90,8 +109,13 @@ export async function codeRoute(c: Ctx, pathname: string, q: URLSearchParams): P
   const qs = (k: string) => q.get(k) ?? "";
   const sub = m?.[2] ?? "";
   // whatever runs on a host needs a login of the user's own there
-  const starts = (pathname === "/api/code/sessions" && meth === "POST") || pathname === "/api/code/install" ||
-    pathname === "/api/code/harnesses" || pathname === "/api/code/ls" || pathname === "/api/code/upload" || (!!m && sub === "send" && meth === "POST");
+  const starts =
+    (pathname === "/api/code/sessions" && meth === "POST") ||
+    pathname === "/api/code/install" ||
+    pathname === "/api/code/harnesses" ||
+    pathname === "/api/code/ls" ||
+    pathname === "/api/code/upload" ||
+    (!!m && sub === "send" && meth === "POST");
   if (starts) {
     const why = await codeBlocked(s);
     if (why) return reply([403, { error: why }]);
@@ -107,7 +131,8 @@ export async function codeRoute(c: Ctx, pathname: string, q: URLSearchParams): P
   if (pathname === "/api/code/sessions" && meth === "GET") return reply(code.list(s.user));
   if (pathname === "/api/code/sessions" && meth === "POST") {
     const p = await body();
-    if (await anthropicOff(s, str(p.model))) return reply([400, { error: "save your Anthropic token in settings first" }]);
+    if (await anthropicOff(s, str(p.model)))
+      return reply([400, { error: "save your Anthropic token in settings first" }]);
     return reply(await code.create(s.user, p, codeCreds(s, c)));
   }
   if (pathname === "/api/code/harnesses" && meth === "GET") {
@@ -131,19 +156,30 @@ export async function codeRoute(c: Ctx, pathname: string, q: URLSearchParams): P
     if (cr instanceof Response) return cr;
     const cl = c.req.headers.get("content-length");
     const size = cl !== null && /^\d+$/.test(cl) ? Number(cl) : -1;
-    return reply(await code.upload(qs("host"), qs("dir"), qs("name"), size, c.req.body as unknown as AsyncIterable<Uint8Array> | null, cr));
+    return reply(
+      await code.upload(
+        qs("host"),
+        qs("dir"),
+        qs("name"),
+        size,
+        c.req.body as unknown as AsyncIterable<Uint8Array> | null,
+        cr,
+      ),
+    );
   }
   if (m && sub === "" && meth === "GET") return reply(code.get(s.user, m[1]!));
   if (m && sub === "" && meth === "DELETE") return reply(code.remove(s.user, m[1]!));
   if (m && sub !== "" && meth === "POST") {
-    const id = m[1]!, p = await body();
+    const id = m[1]!,
+      p = await body();
     switch (sub) {
       case "send":
         return reply(await code.send(s.user, id, p, codeCreds(s, c)));
       case "stop":
         return reply(code.stop(s.user, id));
       case "model":
-        if (await anthropicOff(s, str(p.model))) return reply([400, { error: "save your Anthropic token in settings first" }]);
+        if (await anthropicOff(s, str(p.model)))
+          return reply([400, { error: "save your Anthropic token in settings first" }]);
         return reply(code.setModel(s.user, id, p));
       case "perm":
         return reply(code.setPerm(s.user, id, p));

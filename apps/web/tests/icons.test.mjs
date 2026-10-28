@@ -1,9 +1,14 @@
-import test from 'node:test';
 import assert from 'node:assert/strict';
+import test from 'node:test';
 
 const style = new Map();
 globalThis.document = { documentElement: { style: { setProperty: (k, v) => style.set(k, v) } } };
-globalThis.CustomEvent = class { constructor(type, init) { this.type = type; this.detail = init?.detail; } };
+globalThis.CustomEvent = class {
+  constructor(type, init) {
+    this.type = type;
+    this.detail = init?.detail;
+  }
+};
 const events = [];
 globalThis.dispatchEvent = (e) => events.push(e);
 
@@ -16,7 +21,8 @@ test('the default set is the only one, and every group has glyphs', () => {
 
 test('glyphs are path data on the 16 grid, aliases kept', () => {
   const { files, glyphs, ui } = ICON_SETS.default;
-  for (const d of [...Object.values(files), ...Object.values(glyphs), ...Object.values(ui)]) assert.match(d, /^M[\d.\-\s,a-zA-Z]+$/);
+  for (const d of [...Object.values(files), ...Object.values(glyphs), ...Object.values(ui)])
+    assert.match(d, /^M[\d.\-\s,a-zA-Z]+$/);
   assert.equal(glyphs.doc, files.file);
   assert.equal(glyphs.files, files.folder);
 });
@@ -27,7 +33,13 @@ test('a group reads the set worn, the default behind it', () => {
   assert.equal(g.nosuch, undefined);
   assert.ok('gear' in g);
   assert.ok(Object.keys(g).includes('bell'));
-  ICON_SETS.test = { id: 'test', stroke: { width: 2, cap: 'square', join: 'miter' }, files: {}, glyphs: { terminal: 'M0 0' }, ui: {} };
+  ICON_SETS.test = {
+    id: 'test',
+    stroke: { width: 2, cap: 'square', join: 'miter' },
+    files: {},
+    glyphs: { terminal: 'M0 0' },
+    ui: {},
+  };
   setIconSet('test');
   assert.equal(iconSetNow(), 'test');
   assert.equal(g.terminal, 'M0 0');

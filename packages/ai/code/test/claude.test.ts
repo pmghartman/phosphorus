@@ -3,13 +3,43 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "no
 import { join } from "node:path";
 import { runSync, sleep } from "@phosphorus/util";
 import { all, Session } from "../src/claude.ts";
+import {
+  attach,
+  create,
+  envBlock,
+  envLines,
+  get,
+  idRe,
+  launchCommand,
+  newID,
+  permAnswer,
+  record,
+  setModel,
+  setRunDir,
+  setupScript,
+  zipOf,
+} from "../src/index.ts";
 import { EvLog, lineMax, logMax } from "../src/log.ts";
-import { attach, create, envBlock, envLines, get, idRe, launchCommand, newID, permAnswer, record, setModel, setRunDir, setupScript, zipOf } from "../src/index.ts";
 import { FakeConn, tmp } from "./fake.ts";
 
 test("record shape", () => {
   const m = JSON.parse(JSON.stringify(record({ id: "abc", usage: { in: 1, out: 2, costUSD: 0.5 } })));
-  for (const k of ["id", "user", "host", "dir", "title", "model", "perm", "status", "err", "claudeSID", "created", "updated", "usage"]) expect(k in m).toBe(true);
+  for (const k of [
+    "id",
+    "user",
+    "host",
+    "dir",
+    "title",
+    "model",
+    "perm",
+    "status",
+    "err",
+    "claudeSID",
+    "created",
+    "updated",
+    "usage",
+  ])
+    expect(k in m).toBe(true);
   expect(m.usage).toEqual({ in: 1, out: 2, costUSD: 0.5 });
   expect("harness" in m).toBe(false);
 });
@@ -17,8 +47,14 @@ test("record shape", () => {
 test("env lines", () => {
   const c = { user: "", pass: "", key: "k1", base: "http://100.1.2.3:8090", token: "tok" };
   const mesh = envLines("mesh", c);
-  for (const w of ["PHOSPHORUS_MCP_KEY=k1", "ANTHROPIC_BASE_URL=http://100.1.2.3:8090/api/model", "ANTHROPIC_AUTH_TOKEN=k1",
-    "ANTHROPIC_MODEL=agent-claude-code", "ANTHROPIC_SMALL_FAST_MODEL=agent-claude-code-fast", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1"])
+  for (const w of [
+    "PHOSPHORUS_MCP_KEY=k1",
+    "ANTHROPIC_BASE_URL=http://100.1.2.3:8090/api/model",
+    "ANTHROPIC_AUTH_TOKEN=k1",
+    "ANTHROPIC_MODEL=agent-claude-code",
+    "ANTHROPIC_SMALL_FAST_MODEL=agent-claude-code-fast",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1",
+  ])
     expect(mesh).toContain(w);
   for (const l of mesh) expect(l).not.toContain("tok");
   const an = envLines("sonnet", c);
@@ -34,8 +70,16 @@ test("env lines", () => {
 
 test("launch command", () => {
   const c = launchCommand("~/src/it's", "opus", "default", "sid-1");
-  for (const w of ["--input-format stream-json", "--output-format stream-json", "--include-partial-messages",
-    "--permission-prompt-tool stdio", "--strict-mcp-config", "--allowedTools mcp__phosphorus", "--model opus", "--resume"])
+  for (const w of [
+    "--input-format stream-json",
+    "--output-format stream-json",
+    "--include-partial-messages",
+    "--permission-prompt-tool stdio",
+    "--strict-mcp-config",
+    "--allowedTools mcp__phosphorus",
+    "--model opus",
+    "--resume",
+  ])
     expect(c).toContain(w);
   expect(c).not.toContain("--permission-mode");
   expect(launchCommand("/x", "mesh", "plan", "")).toContain("--permission-mode plan");
@@ -49,17 +93,40 @@ test.skipIf(process.platform === "win32" || !Bun.which("sh"))("launch script run
   mkdirSync(bin, { recursive: true });
   mkdirSync(join(home, "it's here"), { recursive: true });
   // a fake claude printing its env, args and stdin's rest
-  writeFileSync(join(bin, "claude"), "#!/bin/sh\necho \"dir=$PWD\"\necho \"key=$PHOSPHORUS_MCP_KEY cfg=$CLAUDE_CONFIG_DIR api=$ANTHROPIC_API_KEY\"\necho \"args=$*\"\ncat\n", { mode: 0o755 });
+  writeFileSync(
+    join(bin, "claude"),
+    '#!/bin/sh\necho "dir=$PWD"\necho "key=$PHOSPHORUS_MCP_KEY cfg=$CLAUDE_CONFIG_DIR api=$ANTHROPIC_API_KEY"\necho "args=$*"\ncat\n',
+    { mode: 0o755 },
+  );
   const env = { HOME: home, PATH: "/usr/bin:/bin", ANTHROPIC_API_KEY: "leak" };
-  const r = runSync(["sh", "-c", launchCommand("~/it's here", "mesh", "acceptEdits", "s'1")], { env, input: envBlock(["PHOSPHORUS_MCP_KEY=sec ret"]) + '{"type":"user"}\n' });
+  const r = runSync(["sh", "-c", launchCommand("~/it's here", "mesh", "acceptEdits", "s'1")], {
+    env,
+    input: envBlock(["PHOSPHORUS_MCP_KEY=sec ret"]) + '{"type":"user"}\n',
+  });
   expect(r.ok).toBe(true);
-  for (const w of ["dir=" + join(home, "it's here"), "key=sec ret cfg=" + home + "/.phosphorus/claude api=\n",
-    "--resume s'1", "--permission-mode acceptEdits", "--mcp-config " + home + "/.phosphorus/claude/mcp.json", '{"type":"user"}'])
+  for (const w of [
+    "dir=" + join(home, "it's here"),
+    "key=sec ret cfg=" + home + "/.phosphorus/claude api=\n",
+    "--resume s'1",
+    "--permission-mode acceptEdits",
+    "--mcp-config " + home + "/.phosphorus/claude/mcp.json",
+    '{"type":"user"}',
+  ])
     expect(r.output).toContain(w);
   // no claude: 127; no folder: 3
-  expect(runSync(["sh", "-c", launchCommand("/nowhere/at/all", "mesh", "", "")], { env: { HOME: home, PATH: "/usr/bin:/bin" }, input: "\n" }).code).toBe(3);
+  expect(
+    runSync(["sh", "-c", launchCommand("/nowhere/at/all", "mesh", "", "")], {
+      env: { HOME: home, PATH: "/usr/bin:/bin" },
+      input: "\n",
+    }).code,
+  ).toBe(3);
   runSync(["rm", join(bin, "claude")]);
-  expect(runSync(["sh", "-c", launchCommand("~", "mesh", "", "")], { env: { HOME: home, PATH: "/usr/bin:/bin" }, input: "\n" }).code).toBe(127);
+  expect(
+    runSync(["sh", "-c", launchCommand("~", "mesh", "", "")], {
+      env: { HOME: home, PATH: "/usr/bin:/bin" },
+      input: "\n",
+    }).code,
+  ).toBe(127);
 });
 
 test.skipIf(process.platform === "win32" || !Bun.which("sh"))("setup script", () => {
@@ -68,7 +135,10 @@ test.skipIf(process.platform === "win32" || !Bun.which("sh"))("setup script", ()
   mkdirSync(join(home, ".phosphorus/claude/skills/phosphorus"), { recursive: true });
   writeFileSync(old, "x");
   const body = "---\nname: phosphorus\n---\nit's $HOME `x` PHOS_EOF_ \\ no newline";
-  const s = setupScript(zipOf({ "phosphorus/SKILL.md": body, "phosphorus/references/a.md": "a\n" }), "http://1.2.3.4:8090");
+  const s = setupScript(
+    zipOf({ "phosphorus/SKILL.md": body, "phosphorus/references/a.md": "a\n" }),
+    "http://1.2.3.4:8090",
+  );
   mkdirSync(join(home, ".local/bin"), { recursive: true });
   writeFileSync(join(home, ".local/bin/claude"), "#!/bin/sh\n", { mode: 0o755 });
   const r = runSync(["sh", "-s"], { env: { HOME: home, PATH: "/usr/bin:/bin" }, input: s });
@@ -109,7 +179,8 @@ test("log replay", () => {
   expect(big.length).toBeLessThan(1000);
   expect(big).toContain('"truncated":true');
   for (let i = 0; i < logMax + logMax / 10; i++) l.add({ kind: "user" });
-  let n = 0, first = 0;
+  let n = 0,
+    first = 0;
   l.each(0, (seq) => {
     if (!first) first = seq;
     n++;
@@ -165,7 +236,15 @@ test("create validates", async () => {
 
 test("set model within a provider", () => {
   setRunDir(tmp("model"));
-  const rec = record({ id: newID(), user: "pmh", host: "razer", dir: "/x", model: "mesh", perm: "default", status: "ended" });
+  const rec = record({
+    id: newID(),
+    user: "pmh",
+    host: "razer",
+    dir: "/x",
+    model: "mesh",
+    perm: "default",
+    status: "ended",
+  });
   all.set(rec.id, new Session(rec));
   const [st, b] = setModel("pmh", rec.id, { model: "opus" });
   expect(st).toBe(409);

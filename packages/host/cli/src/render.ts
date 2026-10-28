@@ -1,8 +1,9 @@
 // render
+
+import { out } from "./api.ts";
 import { base, bg, c, caret, fit, max0, pal, selMark, size, surface, wrap } from "./draw.ts";
 import { ui, updateTab } from "./state.ts";
 import { currentView, hints, k, topBar } from "./views.ts";
-import { out } from "./api.ts";
 
 // selAt the last frame's selected body line, -1 for none
 export let selAt = -1;
@@ -26,7 +27,8 @@ export function render() {
     const p = ui.prompt;
     let label = c("muted")(p.label);
     if (p.err !== "") label = c("offmesh")(p.err);
-    status = " " + label + " " + surface(pal.card!)(" " + "•".repeat([...p.value].length) + caret() + bg(pal.card!) + " ");
+    status =
+      " " + label + " " + surface(pal.card!)(" " + "•".repeat([...p.value].length) + caret() + bg(pal.card!) + " ");
     hint = [k("enter send", "primary"), k("esc cancel")];
   } else if (ui.confirm) {
     status = " " + ui.confirm.text;

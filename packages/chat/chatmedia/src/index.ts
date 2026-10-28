@@ -14,10 +14,23 @@ const hostRe = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const typeRe = /^[\w.+-]+\/[\w.+-]+$/;
 const badNameRe = /[/\\\x00]/g;
 const inline = new Set([
-  "image/png", "image/jpeg", "image/gif", "image/webp", "image/avif",
-  "video/mp4", "video/webm", "video/ogg",
-  "audio/mpeg", "audio/ogg", "audio/wav", "audio/webm", "audio/mp4", "audio/aac", "audio/flac",
-  "application/pdf", "text/plain",
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+  "image/avif",
+  "video/mp4",
+  "video/webm",
+  "video/ogg",
+  "audio/mpeg",
+  "audio/ogg",
+  "audio/wav",
+  "audio/webm",
+  "audio/mp4",
+  "audio/aac",
+  "audio/flac",
+  "application/pdf",
+  "text/plain",
 ]);
 const maxFiles = 8;
 
@@ -103,7 +116,13 @@ function prune() {
 
 const tooLarge = () => `over ${Math.trunc(MaxFile / 1048576)}MB`;
 
-async function keep(host: string, id: string, src: ReadableStream<Uint8Array> | null, name: string, typ: string): Promise<[number, any]> {
+async function keep(
+  host: string,
+  id: string,
+  src: ReadableStream<Uint8Array> | null,
+  name: string,
+  typ: string,
+): Promise<[number, any]> {
   mkdirSync(join(dir, host), { recursive: true, mode: 0o755 });
   const abs = where(host, id);
   const tmp = `${abs}.${process.pid}.tmp`;
@@ -192,7 +211,9 @@ export function pull(host: string, id: string, ip: string, port: number): Promis
 async function fetchOnce(host: string, id: string, ip: string, port: number): Promise<boolean> {
   let res: Response;
   try {
-    res = await fetch(`http://${ip}:${port}/api/chat/media/${host}/${id}?hop=1`, { signal: AbortSignal.timeout(60000) });
+    res = await fetch(`http://${ip}:${port}/api/chat/media/${host}/${id}?hop=1`, {
+      signal: AbortSignal.timeout(60000),
+    });
   } catch {
     return false;
   }

@@ -1,7 +1,7 @@
 // --- keys and popups ------------------------------------------------------------
 import { chatPanel, cwList, stepConv } from '../features/chat/chat.ts';
-import { modalOpen } from '../lib/dom.ts';
 import { closeUpdateModal, updateModal } from '../features/update.ts';
+import { modalOpen } from '../lib/dom.ts';
 import { dkIconKeys } from './desk.ts';
 
 // swipe down on a popup: dismissed, as by its ×
@@ -14,7 +14,11 @@ for (const box of document.querySelectorAll<HTMLElement>('.modal-box')) {
   box.addEventListener('pointermove', (e) => {
     if (!drag || e.pointerId !== drag.id) return;
     const dy = Math.max(0, e.clientY - drag.y);
-    if (!drag.on && dy > 8) { drag.on = true; box.setPointerCapture(e.pointerId); box.classList.add('dragging'); }
+    if (!drag.on && dy > 8) {
+      drag.on = true;
+      box.setPointerCapture(e.pointerId);
+      box.classList.add('dragging');
+    }
     if (drag.on) box.style.transform = `translateY(${dy}px)`;
   });
   const end = (e: PointerEvent) => {
@@ -33,20 +37,28 @@ for (const box of document.querySelectorAll<HTMLElement>('.modal-box')) {
 
 // ctrl+↑↓ through the chats, from the chat or anywhere not typing; ahead of
 // the chat box's own ↑, an editor's and a terminal's left alone
-document.addEventListener('keydown', (e) => {
-  if (!e.ctrlKey || e.altKey || e.shiftKey || e.metaKey || !['ArrowUp', 'ArrowDown'].includes(e.key)) return;
-  const t = e.target as Element;
-  const inChat = chatPanel.contains(t) || cwList.contains(t);
-  if (modalOpen() || (!inChat && t.closest?.('input, textarea, select, [contenteditable], .xterm'))) return;
-  e.preventDefault();
-  e.stopPropagation();
-  stepConv(e.key === 'ArrowDown' ? 1 : -1);
-}, true);
+document.addEventListener(
+  'keydown',
+  (e) => {
+    if (!e.ctrlKey || e.altKey || e.shiftKey || e.metaKey || !['ArrowUp', 'ArrowDown'].includes(e.key)) return;
+    const t = e.target as Element;
+    const inChat = chatPanel.contains(t) || cwList.contains(t);
+    if (modalOpen() || (!inChat && t.closest?.('input, textarea, select, [contenteditable], .xterm'))) return;
+    e.preventDefault();
+    e.stopPropagation();
+    stepConv(e.key === 'ArrowDown' ? 1 : -1);
+  },
+  true,
+);
 
 // a press outside the update pane and its button closing it
-document.addEventListener('pointerdown', (e) => {
-  if (!updateModal.hidden && !updateModal.parentElement!.contains(e.target as Node)) closeUpdateModal();
-}, true);
+document.addEventListener(
+  'pointerdown',
+  (e) => {
+    if (!updateModal.hidden && !updateModal.parentElement!.contains(e.target as Node)) closeUpdateModal();
+  },
+  true,
+);
 
 // shift+esc only ever unfocusing a terminal, esc the update pane
 document.addEventListener('keydown', (e) => {

@@ -20,7 +20,13 @@ test("oc launch", () => {
   const l = ocLaunch("~/proj", "mesh", "default", "ses_1", "fix it's bug");
   expect(ocLaunch("~/p", "mesh", "plan", "", "x")).not.toContain("--auto");
   expect(l).toContain("--auto");
-  for (const want of ["opencode run --format json", `--session '\\''ses_1'\\''`, "OPENCODE_CONFIG=", `-- '\\''fix it'\\''\\'\\'''\\''s bug'\\''`]) expect(l).toContain(want);
+  for (const want of [
+    "opencode run --format json",
+    `--session '\\''ses_1'\\''`,
+    "OPENCODE_CONFIG=",
+    `-- '\\''fix it'\\''\\'\\'''\\''s bug'\\''`,
+  ])
+    expect(l).toContain(want);
   const c = ocConfig("http://10.0.0.1:8090", "mesh", "plan");
   expect(c).toContain('"edit":"deny"');
   expect(c).toContain('"model":"phosphorus/agent-opencode"');
@@ -33,11 +39,22 @@ test("oc run", async () => {
   const cmds: string[] = [];
   setSpawn(async (_host, _c, _setup, command) => {
     cmds.push(command);
-    const out = `{"type":"step_start","sessionID":"ses_1","part":{}}` + "\n" +
-      `{"type":"text","sessionID":"ses_1","part":{"text":"Fixed it."}}` + "\n" +
-      `{"type":"tool_use","sessionID":"ses_1","part":{"id":"t1","tool":"edit","state":{"status":"completed","input":{"path":"/w/a.c","oldString":"x","newString":"y"},"output":"done"}}}` + "\n" +
-      `{"type":"step_finish","sessionID":"ses_1","part":{"tokens":{"input":10,"output":5,"cache":{"read":2,"write":0}},"cost":0}}` + "\n";
-    return { in: { write() {}, end() {} }, out: [new TextEncoder().encode(out)], errs: new Tail(), wait: async () => 0, kill() {} };
+    const out =
+      `{"type":"step_start","sessionID":"ses_1","part":{}}` +
+      "\n" +
+      `{"type":"text","sessionID":"ses_1","part":{"text":"Fixed it."}}` +
+      "\n" +
+      `{"type":"tool_use","sessionID":"ses_1","part":{"id":"t1","tool":"edit","state":{"status":"completed","input":{"path":"/w/a.c","oldString":"x","newString":"y"},"output":"done"}}}` +
+      "\n" +
+      `{"type":"step_finish","sessionID":"ses_1","part":{"tokens":{"input":10,"output":5,"cache":{"read":2,"write":0}},"cost":0}}` +
+      "\n";
+    return {
+      in: { write() {}, end() {} },
+      out: [new TextEncoder().encode(out)],
+      errs: new Tail(),
+      wait: async () => 0,
+      kill() {},
+    };
   });
   try {
     const creds = () => ({ user: "u", pass: "", key: "k", base: "http://b", token: "" });
@@ -50,7 +67,9 @@ test("oc run", async () => {
     s.subs.set(f, { c: f, ready: true, backlog: [], seqs: [] });
     await send("ryan", id, { text: "fix the bug" }, creds);
     await f.wait("the result", 5000, (m) => m.ev?.type === "result" && m.ev?.subtype === "success");
-    expect(f.find((m) => m.ev?.message?.content?.length === 1 && m.ev.message.content[0].name === "Edit")).toBeDefined();
+    expect(
+      f.find((m) => m.ev?.message?.content?.length === 1 && m.ev.message.content[0].name === "Edit"),
+    ).toBeDefined();
     expect([s.rec.claudeSID, s.rec.status, s.rec.usage.in]).toEqual(["ses_1", "idle", 12]);
     await send("ryan", id, { text: "again" }, creds);
     await sleep(200);

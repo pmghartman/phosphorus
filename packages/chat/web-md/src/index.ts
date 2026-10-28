@@ -3,8 +3,8 @@
 // Go had goldmark, chroma and bluemonday
 import { createHash } from "node:crypto";
 import hljs from "highlight.js";
-import MarkdownIt from "markdown-it";
 import type { Token } from "markdown-it";
+import MarkdownIt from "markdown-it";
 import sanitizeHtml from "sanitize-html";
 
 // math: $$..$$ \[..\] display, \(..\) and $..$ inline, as the page had it
@@ -12,7 +12,8 @@ const mathRe = /\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\]|\\\(([\s\S]+?)\\\)|\$(\S(?
 const codeRe = /```[\s\S]*?(?:```|$)|`[^`\n]+`/g;
 
 // Go's html.EscapeString
-const escape = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&#34;", "'": "&#39;" })[c]!);
+const escape = (s: string) =>
+  s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&#34;", "'": "&#39;" })[c]!);
 
 // --- fenced code: highlight.js's own class names ----------------------------
 
@@ -54,14 +55,21 @@ function newMD(breaks: boolean) {
         continue;
       }
       if (i < 2) continue;
-      if (t.type !== "inline" || ts[i - 1]!.type !== "paragraph_open" || ts[i - 2]!.type !== "list_item_open" || !t.children) continue;
+      if (
+        t.type !== "inline" ||
+        ts[i - 1]!.type !== "paragraph_open" ||
+        ts[i - 2]!.type !== "list_item_open" ||
+        !t.children
+      )
+        continue;
       const first = t.children[0];
       if (!first || first.type !== "text") continue;
       const m = taskRe.exec(first.content);
       if (!m) continue;
       first.content = first.content.slice(m[0].length);
       const box = new state.Token("html_inline", "", 0);
-      box.content = m[1] === " " ? '<input disabled="" type="checkbox"> ' : '<input checked="" disabled="" type="checkbox"> ';
+      box.content =
+        m[1] === " " ? '<input disabled="" type="checkbox"> ' : '<input checked="" disabled="" type="checkbox"> ';
       t.children.unshift(box);
     }
   });
@@ -75,9 +83,42 @@ const schemeRe = /^(https?|mailto):/i;
 
 const policy = {
   allowedTags: [
-    "p", "br", "strong", "em", "del", "s", "code", "pre", "ul", "ol", "li", "blockquote", "hr",
-    "h1", "h2", "h3", "h4", "h5", "h6", "table", "thead", "tbody", "tr", "th", "td",
-    "details", "summary", "kbd", "sup", "sub", "mark", "ins", "abbr", "span", "a", "input",
+    "p",
+    "br",
+    "strong",
+    "em",
+    "del",
+    "s",
+    "code",
+    "pre",
+    "ul",
+    "ol",
+    "li",
+    "blockquote",
+    "hr",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "table",
+    "thead",
+    "tbody",
+    "tr",
+    "th",
+    "td",
+    "details",
+    "summary",
+    "kbd",
+    "sup",
+    "sub",
+    "mark",
+    "ins",
+    "abbr",
+    "span",
+    "a",
+    "input",
   ],
   allowedAttributes: {
     "*": ["class", "title"],
@@ -111,7 +152,9 @@ const cache = new Map<string, string>();
 
 // a line's text as sanitized html, math left as spans for katex
 export function markdown(src: string, breaks: boolean): string {
-  const key = createHash("sha256").update((breaks ? "b" : "p") + src).digest("hex");
+  const key = createHash("sha256")
+    .update((breaks ? "b" : "p") + src)
+    .digest("hex");
   const hit = cache.get(key);
   if (hit !== undefined) return hit;
   const held: string[] = [];
@@ -173,7 +216,8 @@ export function blocks(src: string): Block[] {
   const lines = [0];
   for (let i = 0; i < src.length; i++) if (src.charCodeAt(i) === 10) lines.push(i + 1);
   const starts: number[] = [];
-  for (const t of mdPlain.parse(src, {}) as Token[]) if (t.level === 0 && t.nesting >= 0 && t.map) starts.push(lines[t.map[0]] ?? -1);
+  for (const t of mdPlain.parse(src, {}) as Token[])
+    if (t.level === 0 && t.nesting >= 0 && t.map) starts.push(lines[t.map[0]] ?? -1);
   const out: Block[] = [];
   starts.forEach((st, i) => {
     if (st < 0) return;

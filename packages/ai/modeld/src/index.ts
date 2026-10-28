@@ -1,11 +1,25 @@
 // llama-server on the one host with [model] host = true, fetched there alone,
 // every other host asking it through its frontend
-import { spawn, type Subprocess } from "bun";
+
 import { mkdirSync, readFileSync, renameSync, rmSync, statSync } from "node:fs";
 import { networkInterfaces, totalmem } from "node:os";
 import { join } from "node:path";
 import * as tools from "@phosphorus/tools";
-import { env, envInt, errText, ini, marshal, Notes, now, readJSON, run, sleep, StateDir, writeJSONAtomic } from "@phosphorus/util";
+import {
+  env,
+  envInt,
+  errText,
+  ini,
+  marshal,
+  Notes,
+  now,
+  readJSON,
+  run,
+  StateDir,
+  sleep,
+  writeJSONAtomic,
+} from "@phosphorus/util";
+import { type Subprocess, spawn } from "bun";
 
 const stateDir = StateDir;
 let selfHost = process.env.SELF_HOST ?? "";
@@ -17,7 +31,8 @@ const modelDir = env("MODEL_DIR", join(StateDir, "models"));
 const serverPort = envInt("MODEL_SERVER_PORT", 8791);
 const tickMS = envInt("MODEL_TICK_MS", 1000);
 const notes = new Notes("model");
-export const vramRe = /cudaMalloc failed|out of memory|OutOfDeviceMemory|(failed|unable) to allocate (CUDA|Vulkan)\d* buffer/i;
+export const vramRe =
+  /cudaMalloc failed|out of memory|OutOfDeviceMemory|(failed|unable) to allocate (CUDA|Vulkan)\d* buffer/i;
 // a gpu gone from under a running server: Vulkan's device lost, or any of its
 // commands failing a decode; every call fails after while /health stays 200
 export const gpuLostRe = /ErrorDeviceLost|decode\(\) failed: vk::/;
@@ -74,7 +89,15 @@ export function modelLink(raw: string): Link | undefined {
   return { url: u.href, file: f };
 }
 
-export type Config = { raw: string; url: string; file: string; ctx: number; slots: number; host: boolean; gpu: boolean };
+export type Config = {
+  raw: string;
+  url: string;
+  file: string;
+  ctx: number;
+  slots: number;
+  host: boolean;
+  gpu: boolean;
+};
 
 // strconv.ParseFloat, 0 when it isn't a number
 function jsNum(s: string): number {
@@ -90,7 +113,15 @@ export function readConfig(): Config {
   let slots = Math.floor(jsNum(ini("model", "slots")));
   if (slots === 0) slots = defaultSlots;
   if (slots < 1) slots = 1;
-  return { raw, url: l?.url ?? "", file: l?.file ?? "", ctx, slots, host: ini("model", "host") === "true", gpu: ini("model", "gpu") === "true" };
+  return {
+    raw,
+    url: l?.url ?? "",
+    file: l?.file ?? "",
+    ctx,
+    slots,
+    host: ini("model", "host") === "true",
+    gpu: ini("model", "gpu") === "true",
+  };
 }
 
 // this host's tailnet IPv4, in 100.64.0.0/10
@@ -110,8 +141,12 @@ const memTotal = () => totalmem();
 // the device llama-server's own build lists with the most free memory, and 95%
 // of that free memory
 async function gpuDevice(gpu: boolean): Promise<[string, number]> {
-  const r = await run([tools.llamaServer(gpu), "--list-devices"], { env: { ...process.env, LD_LIBRARY_PATH: tools.llamaDir(gpu) }, timeoutMs: 30_000 });
-  let name = "", free = 0;
+  const r = await run([tools.llamaServer(gpu), "--list-devices"], {
+    env: { ...process.env, LD_LIBRARY_PATH: tools.llamaDir(gpu) },
+    timeoutMs: 30_000,
+  });
+  let name = "",
+    free = 0;
   for (const m of r.output.matchAll(deviceRe)) {
     const f = jsNum(m[3]!);
     if (f > free) [name, free] = [m[1]!, f];
@@ -154,7 +189,12 @@ function ensureModel(c: Config): boolean {
   const part = modelPath(c) + ".part";
   let proc: Subprocess;
   try {
-    proc = spawn(["curl", "-fsSL", "--retry", "5", "--retry-delay", "5", "-C", "-", "-o", part, c.url], { stdin: "ignore", stdout: "inherit", stderr: "inherit", windowsHide: true });
+    proc = spawn(["curl", "-fsSL", "--retry", "5", "--retry-delay", "5", "-C", "-", "-o", part, c.url], {
+      stdin: "ignore",
+      stdout: "inherit",
+      stderr: "inherit",
+      windowsHide: true,
+    });
   } catch (e) {
     dl.retryAt = now() + downloadRetry;
     notes.log(`download of ${c.file} failed (${errText(e)}), retrying in ${downloadRetry / 1000}s`);
@@ -226,7 +266,10 @@ function stopServer() {
 // /health answering 200, no proxy from the environment on the way
 async function healthy(): Promise<boolean> {
   try {
-    const res = await fetch(`http://127.0.0.1:${serverPort}/health`, { proxy: false, signal: AbortSignal.timeout(1500) } as RequestInit);
+    const res = await fetch(`http://127.0.0.1:${serverPort}/health`, {
+      proxy: false,
+      signal: AbortSignal.timeout(1500),
+    } as RequestInit);
     await res.body?.cancel();
     return res.status === 200;
   } catch {
@@ -250,7 +293,9 @@ async function serve(c: Config) {
   if (c.gpu && vram === 0) {
     fitNeed = 0;
     const b = tools.backend(c.gpu);
-    fitWhy = b ? `gpu is on but llama-server's ${b} build finds no usable gpu here` : "gpu is on but upstream has no gpu build of llama-server for this machine";
+    fitWhy = b
+      ? `gpu is on but llama-server's ${b} build finds no usable gpu here`
+      : "gpu is on but upstream has no gpu build of llama-server for this machine";
     notes.note("gpu", fitWhy);
     stopServer();
     srv.retryAt = now() + retry;
@@ -292,10 +337,39 @@ async function serve(c: Config) {
     trouble = { exits: 0, lastExit: "", oom: false };
     triedSig = sig;
   }
-  const args = ["-m", modelPath(c), "--load-mode", c.gpu ? "dio" : "mlock", "-c", String(c.ctx), "-np", String(c.slots), "--kv-unified", "--jinja", "-fa", "on", "-ctk", "q8_0", "-ctv", "q8_0"];
+  const args = [
+    "-m",
+    modelPath(c),
+    "--load-mode",
+    c.gpu ? "dio" : "mlock",
+    "-c",
+    String(c.ctx),
+    "-np",
+    String(c.slots),
+    "--kv-unified",
+    "--jinja",
+    "-fa",
+    "on",
+    "-ctk",
+    "q8_0",
+    "-ctv",
+    "q8_0",
+  ];
   if (c.gpu) args.push("--device", device, "-ngl", "999");
   else args.push("-ngl", "0");
-  args.push("--cache-ram", c.gpu ? "0" : "2048", "--cache-reuse", "256", "--slots", "--slot-save-path", slotDir, "--host", "127.0.0.1", "--port", String(serverPort));
+  args.push(
+    "--cache-ram",
+    c.gpu ? "0" : "2048",
+    "--cache-reuse",
+    "256",
+    "--slots",
+    "--slot-save-path",
+    slotDir,
+    "--host",
+    "127.0.0.1",
+    "--port",
+    String(serverPort),
+  );
   const dir = tools.llamaDir(c.gpu);
   let oom = false;
   const gone = (why: string) => {
@@ -344,13 +418,31 @@ async function serve(c: Config) {
 // --- the tick ---------------------------------------------------------------
 
 function claim(c: Config): Record<string, any> {
-  const out: Record<string, any> = { host: selfHost, ip: selfAddr(), runs: c.host, total: memTotal(), machine: memTotal() };
+  const out: Record<string, any> = {
+    host: selfHost,
+    ip: selfAddr(),
+    runs: c.host,
+    total: memTotal(),
+    machine: memTotal(),
+  };
   if (c.host) {
     const d = dl.proc ? { done: sizeOf(modelPath(c) + ".part"), total: dl.total } : null;
     Object.assign(out, {
-      file: c.file, size: sizeOf(modelPath(c)), ctx: c.ctx, slots: c.slots, gpu: vram > 0, vram,
-      server: srv.state, serverSince: srv.since, need: fitNeed, why: fitWhy,
-      exits: trouble.exits, lastExit: trouble.lastExit, oom: trouble.oom, download: d, tools: toolState,
+      file: c.file,
+      size: sizeOf(modelPath(c)),
+      ctx: c.ctx,
+      slots: c.slots,
+      gpu: vram > 0,
+      vram,
+      server: srv.state,
+      serverSince: srv.since,
+      need: fitNeed,
+      why: fitWhy,
+      exits: trouble.exits,
+      lastExit: trouble.lastExit,
+      oom: trouble.oom,
+      download: d,
+      tools: toolState,
     });
   }
   return out;
@@ -379,7 +471,11 @@ async function tick() {
     if (dl.proc) pauseDownload(c.host ? "[model] url cleared" : "[model] host is off");
     stopServer();
     fitNeed = 0;
-    fitWhy = !c.host ? "" : c.raw ? "[model] url isn't a https link to a single .gguf: " + c.raw : "no model yet, enter its download link in the model tab of phosphorus";
+    fitWhy = !c.host
+      ? ""
+      : c.raw
+        ? "[model] url isn't a https link to a single .gguf: " + c.raw
+        : "no model yet, enter its download link in the model tab of phosphorus";
     if (fitWhy) notes.note("link", fitWhy);
     else notes.clear("link");
   } else {

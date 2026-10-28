@@ -8,7 +8,23 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
-const allowed = new Set(["MIT", "ISC", "BSD-2-Clause", "BSD-3-Clause", "Apache-2.0", "0BSD", "CC0-1.0", "Unlicense", "BlueOak-1.0.0", "Python-2.0", "PSF-2.0", "MIT-0", "Zlib", "CC-BY-4.0", "LGPL-3.0-or-later"]);
+const allowed = new Set([
+  "MIT",
+  "ISC",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "Apache-2.0",
+  "0BSD",
+  "CC0-1.0",
+  "Unlicense",
+  "BlueOak-1.0.0",
+  "Python-2.0",
+  "PSF-2.0",
+  "MIT-0",
+  "Zlib",
+  "CC-BY-4.0",
+  "LGPL-3.0-or-later",
+]);
 const licenseFile = /^(licen[cs]e|copying|notice|unlicense)([-._].*)?$/i;
 const root = resolve(import.meta.dir, "..");
 const checkOnly = process.argv.includes("--check");
@@ -16,9 +32,18 @@ const outDir = process.argv.slice(2).find((a) => !a.startsWith("--")) ?? "dist";
 const log = (s: string) => console.error(`[licenses] ${s}`);
 const die = (s: string): never => (log(s), process.exit(1));
 
-type Part = { group: string; name: string; version: string; spdx: string; source: string; texts: string[]; purl?: string };
+type Part = {
+  group: string;
+  name: string;
+  version: string;
+  spdx: string;
+  source: string;
+  texts: string[];
+  purl?: string;
+};
 const npmGroup = "npm packages in the phosphorus binary and web client";
-const bundled = "Programs bundled with the host installers", fetched = "Programs a model host downloads at run time";
+const bundled = "Programs bundled with the host installers",
+  fetched = "Programs a model host downloads at run time";
 
 const filesIn = (dir: string) =>
   readdirSync(dir, { withFileTypes: true })
@@ -35,7 +60,11 @@ function find(name: string, from: string): string {
   }
   const store = join(root, "node_modules", ".bun");
   const prefix = name.replaceAll("/", "+") + "@";
-  const hit = existsSync(store) ? readdirSync(store).filter((e) => e.startsWith(prefix)).sort() : [];
+  const hit = existsSync(store)
+    ? readdirSync(store)
+        .filter((e) => e.startsWith(prefix))
+        .sort()
+    : [];
   if (hit.length) return join(store, hit.at(-1)!, "node_modules", name);
   return die(`${name} isn't installed (from ${from}); run bun install`);
 }
@@ -44,13 +73,20 @@ function find(name: string, from: string): string {
 function spdxOf(pj: any): string {
   const l = pj.license ?? pj.licenses;
   if (typeof l === "string") return l;
-  if (Array.isArray(l)) return l.map((x) => (typeof x === "string" ? x : x?.type)).filter(Boolean).join(" OR ");
+  if (Array.isArray(l))
+    return l
+      .map((x) => (typeof x === "string" ? x : x?.type))
+      .filter(Boolean)
+      .join(" OR ");
   if (l && typeof l === "object" && l.type) return l.type;
   return "";
 }
 // one allowed license the expression offers, else ""
 function pick(expr: string): string {
-  const opts = expr.replace(/[()]/g, "").split(/\s+OR\s+|\//i).map((s) => s.trim());
+  const opts = expr
+    .replace(/[()]/g, "")
+    .split(/\s+OR\s+|\//i)
+    .map((s) => s.trim());
   return opts.find((o) => allowed.has(o)) ?? "";
 }
 
@@ -65,7 +101,15 @@ function walk(name: string, from: string) {
   if (!pick(spdx)) bad.push(`${key}: ${spdx || "no license field"}`);
   // a package shipping no text gets the standard SPDX one, fetched below
   const texts = filesIn(dir);
-  parts.set(key, { group: npmGroup, name, version: pj.version, spdx, source: `https://www.npmjs.com/package/${name}`, texts, purl: `pkg:npm/${name}@${pj.version}` });
+  parts.set(key, {
+    group: npmGroup,
+    name,
+    version: pj.version,
+    spdx,
+    source: `https://www.npmjs.com/package/${name}`,
+    texts,
+    purl: `pkg:npm/${name}@${pj.version}`,
+  });
   for (const dep of Object.keys(pj.dependencies ?? {})) walk(dep, dir);
   // an optional dependency that didn't install is left out
   for (const dep of Object.keys(pj.optionalDependencies ?? {})) {
@@ -74,12 +118,18 @@ function walk(name: string, from: string) {
     } catch {}
   }
 }
-const pkgDirs = [...readdirSync(join(root, "apps")).map((a) => join(root, "apps", a)), ...readdirSync(join(root, "packages")).flatMap((g) => readdirSync(join(root, "packages", g)).map((p) => join(root, "packages", g, p)))];
+const pkgDirs = [
+  ...readdirSync(join(root, "apps")).map((a) => join(root, "apps", a)),
+  ...readdirSync(join(root, "packages")).flatMap((g) =>
+    readdirSync(join(root, "packages", g)).map((p) => join(root, "packages", g, p)),
+  ),
+];
 {
   for (const d of pkgDirs) {
     const f = join(d, "package.json");
     if (!existsSync(f)) continue;
-    for (const dep of Object.keys(JSON.parse(readFileSync(f, "utf8")).dependencies ?? {})) if (!dep.startsWith("@phosphorus/")) walk(dep, d);
+    for (const dep of Object.keys(JSON.parse(readFileSync(f, "utf8")).dependencies ?? {}))
+      if (!dep.startsWith("@phosphorus/")) walk(dep, d);
   }
 }
 if (bad.length) die(`licenses outside the allowed set:\n  ${bad.join("\n  ")}`);
@@ -109,22 +159,48 @@ const standard = new Map<string, string>();
 for (const p of all)
   if (!p.texts.length) {
     const id = pick(p.spdx);
-    if (!standard.has(id)) standard.set(id, await fetchText(`https://raw.githubusercontent.com/spdx/license-list-data/${spdxTag}/text/${id}.txt`));
+    if (!standard.has(id))
+      standard.set(
+        id,
+        await fetchText(`https://raw.githubusercontent.com/spdx/license-list-data/${spdxTag}/text/${id}.txt`),
+      );
     p.texts = [standard.get(id)!];
   }
-all.push({ group: "Runtime compiled into the phosphorus binary", name: "Bun", version: Bun.version, spdx: "MIT", source: "https://bun.sh", texts: [await fetchText(`https://raw.githubusercontent.com/oven-sh/bun/bun-v${Bun.version}/LICENSE.md`)] });
+all.push({
+  group: "Runtime compiled into the phosphorus binary",
+  name: "Bun",
+  version: Bun.version,
+  spdx: "MIT",
+  source: "https://bun.sh",
+  texts: [await fetchText(`https://raw.githubusercontent.com/oven-sh/bun/bun-v${Bun.version}/LICENSE.md`)],
+});
 const tools = JSON.parse(readFileSync(join(root, "packaging/tools-licenses.json"), "utf8"));
 const forgejo = pinned("packaging/tools.sh", "^FORGEJO=(\\S+)");
-for (const [group, list] of [[bundled, tools.bundled], [fetched, tools.fetched]] as [string, any[]][])
+for (const [group, list] of [
+  [bundled, tools.bundled],
+  [fetched, tools.fetched],
+] as [string, any[]][])
   for (const t of list) {
     const v = pinned(t.pin[0], t.pin[1]);
-    all.push({ group, name: t.name, version: v, spdx: t.spdx, source: t.source.replaceAll("{v}", v), texts: [await fetchText(t.license.replaceAll("{v}", v))] });
+    all.push({
+      group,
+      name: t.name,
+      version: v,
+      spdx: t.spdx,
+      source: t.source.replaceAll("{v}", v),
+      texts: [await fetchText(t.license.replaceAll("{v}", v))],
+    });
   }
 
 // --- output: each component under its group, then each distinct text once ----
 const norm = (s: string) => s.replaceAll("\r\n", "\n").trim();
 const groups = ["Runtime compiled into the phosphorus binary", npmGroup, bundled, fetched];
-all.sort((a, b) => groups.indexOf(a.group) - groups.indexOf(b.group) || a.name.localeCompare(b.name) || a.version.localeCompare(b.version));
+all.sort(
+  (a, b) =>
+    groups.indexOf(a.group) - groups.indexOf(b.group) ||
+    a.name.localeCompare(b.name) ||
+    a.version.localeCompare(b.version),
+);
 type Text = { id: number; body: string; users: string[] };
 const byHash = new Map<string, Text>();
 const hash = (s: string) => new Bun.CryptoHasher("sha256").update(s).digest("hex");
@@ -175,13 +251,18 @@ const sbom = {
   bomFormat: "CycloneDX",
   specVersion: "1.5",
   version: 1,
-  metadata: { timestamp: new Date().toISOString(), component: { type: "application", name: "phosphorus", version, licenses: [{ license: { id: "Apache-2.0" } }] } },
+  metadata: {
+    timestamp: new Date().toISOString(),
+    component: { type: "application", name: "phosphorus", version, licenses: [{ license: { id: "Apache-2.0" } }] },
+  },
   components: all.map((p) => ({
     type: p.group === fetched || p.group === bundled ? "application" : "library",
     name: p.name,
     version: p.version,
     ...(p.purl ? { purl: p.purl } : {}),
-    licenses: [pick(p.spdx) || !p.spdx.includes(" ") ? { license: { id: p.spdx || "NOASSERTION" } } : { expression: p.spdx }],
+    licenses: [
+      pick(p.spdx) || !p.spdx.includes(" ") ? { license: { id: p.spdx || "NOASSERTION" } } : { expression: p.spdx },
+    ],
     externalReferences: [{ type: "website", url: p.source }],
   })),
 };

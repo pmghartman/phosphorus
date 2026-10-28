@@ -2,8 +2,8 @@
 import * as store from "@phosphorus/store";
 import { marshal, obj } from "@phosphorus/util";
 import { Seal } from "./crypto.ts";
-import { MCPURL, loginOf } from "./mcpkeys.ts";
-import { maxVault, str, type Req, vaultFile } from "./secrets.ts";
+import { loginOf, MCPURL } from "./mcpkeys.ts";
+import { maxVault, type Req, str, vaultFile } from "./secrets.ts";
 import { cleanVault, errR, notSynced, type R, type Session, type Vault, vaultOf, vaultOrPull } from "./session.ts";
 
 // a user's own Anthropic subscription token (claude setup-token's), kept in
@@ -22,7 +22,8 @@ export function cleanToken(v: unknown): string {
 
 // DropOldTokens the tokens older releases sealed with the mesh key, gone
 export function DropOldTokens() {
-  for (const f of store.list("home")) if (f.split("/").length === 2 && f.endsWith("/anthropic.json")) store.remove("home/" + f);
+  for (const f of store.list("home"))
+    if (f.split("/").length === 2 && f.endsWith("/anthropic.json")) store.remove("home/" + f);
 }
 
 // the old tokens gone on the first read too, any synced in late
@@ -38,7 +39,8 @@ export async function SetAnthropic(s: Session | undefined, p: Record<string, any
   if (!s || s.boot || !s.key?.length) return errR(403, "log in as a user");
   dropOnce();
   const t = str(p.token).trim();
-  if (t !== "" && cleanToken(t) === "") return errR(400, "that isn't a token: run claude setup-token and paste what it prints");
+  if (t !== "" && cleanToken(t) === "")
+    return errR(400, "that isn't a token: run claude setup-token and paste what it prints");
   const v = await vaultOrPull(s);
   if (!v) return notSynced();
   const cv = cleanVault(v);
@@ -72,7 +74,11 @@ export async function HostLogin(s: Session | undefined, host: string): Promise<[
 
 // PageLogin the session's saved page login named name, else the first whose
 // url holds urlHas: a service's own login, as Forgejo's
-export async function PageLogin(s: Session | undefined, name: string, urlHas: string): Promise<[string, string, boolean]> {
+export async function PageLogin(
+  s: Session | undefined,
+  name: string,
+  urlHas: string,
+): Promise<[string, string, boolean]> {
   const [v] = await vaultOf(s);
   const ps = cleanVault(v).pages as Vault;
   let l = obj(ps[name]);

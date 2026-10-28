@@ -1,7 +1,14 @@
 // JSON values read as the web client's JS would: String(v || ""), a number
 // or none, an object or an empty one
 export function str(v: unknown): string {
-  if (v === null || v === undefined || v === false || v === "" || (typeof v === "number" && (v === 0 || Number.isNaN(v)))) return "";
+  if (
+    v === null ||
+    v === undefined ||
+    v === false ||
+    v === "" ||
+    (typeof v === "number" && (v === 0 || Number.isNaN(v)))
+  )
+    return "";
   if (typeof v === "string") return v;
   if (Array.isArray(v)) return v.map((e) => (e === null || e === undefined ? "" : str(e))).join(",");
   if (typeof v === "object") return "[object Object]";
@@ -10,7 +17,8 @@ export function str(v: unknown): string {
 
 export const num = (v: unknown) => (typeof v === "number" ? v : 0);
 
-export const orObj = (v: unknown): Record<string, any> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, any>) : {});
+export const orObj = (v: unknown): Record<string, any> =>
+  v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, any>) : {};
 
 export const anyList = (v: unknown): any[] => (Array.isArray(v) ? v : []);
 

@@ -1,11 +1,59 @@
 // sessions
-import { isLoopbackAddr, isTailnetAddr } from "@phosphorus/util";
+
 import * as store from "@phosphorus/store";
-import { marshal, now, obj, sleep } from "@phosphorus/util";
-import { B64URL, b64url, type Box, boxOf, derive, hashOK, hex, Open, randHex, sameSecret, Seal, unhex } from "./crypto.ts";
+import { isLoopbackAddr, isTailnetAddr, marshal, now, obj, sleep } from "@phosphorus/util";
 import { cleanToken } from "./anthropic.ts";
+import {
+  B64URL,
+  type Box,
+  b64url,
+  boxOf,
+  derive,
+  hashOK,
+  hex,
+  Open,
+  randHex,
+  Seal,
+  sameSecret,
+  unhex,
+} from "./crypto.ts";
 import { resealMCP } from "./mcpkeys.ts";
-import { Cookie, MaxWall, MeshKey, admin, adminPass, anyAdmin, baseDomain, bootSessionMS, hasAdmin, live, maxPass, maxPrefs, maxVault, nameRe, names, passwd, prefKeys, prefsFile, pull, pulled, reserved, secretRel, selfHost, sessionMS, shadow, str, tries, triesMS, triesMax, truthy, type Req, vaultFile, wallFile, wallTypes } from "./secrets.ts";
+import {
+  admin,
+  adminPass,
+  anyAdmin,
+  baseDomain,
+  bootSessionMS,
+  Cookie,
+  hasAdmin,
+  live,
+  MaxWall,
+  MeshKey,
+  maxPass,
+  maxPrefs,
+  maxVault,
+  nameRe,
+  names,
+  passwd,
+  prefKeys,
+  prefsFile,
+  pull,
+  pulled,
+  type Req,
+  reserved,
+  secretRel,
+  selfHost,
+  sessionMS,
+  shadow,
+  str,
+  tries,
+  triesMax,
+  triesMS,
+  truthy,
+  vaultFile,
+  wallFile,
+  wallTypes,
+} from "./secrets.ts";
 
 // Session a logged in browser
 export type Session = { user: string; admin: boolean; boot: boolean; key?: Uint8Array; token: string; e: number };
@@ -176,14 +224,24 @@ export async function Me(s: Session): Promise<Record<string, any>> {
   const [v, vaultOK] = await vaultOf(s);
   const vault = v ?? { hosts: {}, pages: {} };
   let prefs: unknown = {};
-  let prefsAt = 0, wall = 0;
+  let prefsAt = 0,
+    wall = 0;
   if (!s.boot) {
     const p = store.read(prefsFile(s.user));
     if (p !== undefined) prefs = p;
     prefsAt = store.stamp(prefsFile(s.user));
     if (store.read(wallFile(s.user)) !== undefined) wall = store.stamp(wallFile(s.user));
   }
-  return { user: s.user, admin: s.admin, boot: s.boot, vault: pageVault(vault), vaultOK, prefs, prefsAt, wallpaper: wall };
+  return {
+    user: s.user,
+    admin: s.admin,
+    boot: s.boot,
+    vault: pageVault(vault),
+    vaultOK,
+    prefs,
+    prefsAt,
+    wallpaper: wall,
+  };
 }
 
 // Wallpaper the user's desktop picture: its type and bytes, none for ["", undefined]
@@ -243,7 +301,8 @@ export async function SignIn(p: Record<string, any>, c: Req): Promise<[R, Sessio
   const pass = str(p.pass);
   const keys = ["ip:" + IPOf(c), "user:" + name];
   const until = locked(keys);
-  if (until > 0) return [errR(429, `too many wrong passwords, try again in ${Math.ceil((until - now()) / 60000)} min`), undefined];
+  if (until > 0)
+    return [errR(429, `too many wrong passwords, try again in ${Math.ceil((until - now()) / 60000)} min`), undefined];
   const fail = async (): Promise<[R, undefined]> => {
     failed(keys);
     await sleep(400);
@@ -291,19 +350,22 @@ export function clip(v: unknown, n: number): string {
 // cleanVault the vault as kept: hosts and pages with their keys and fields
 // checked, the Anthropic token when it looks like one
 export function cleanVault(v: unknown): Vault {
-  const hosts: Vault = {}, pages: Vault = {};
+  const hosts: Vault = {},
+    pages: Vault = {};
   const o = obj(v) ?? {};
   const hs = obj(o.hosts);
   if (hs)
     for (const [h, c] of Object.entries(hs)) {
       const cm = obj(c);
-      if (hostKeyRe.test(h) && cm && truthy(cm.user)) hosts[h] = { user: clip(cm.user, 64), pass: clip(cm.pass, maxPass) };
+      if (hostKeyRe.test(h) && cm && truthy(cm.user))
+        hosts[h] = { user: clip(cm.user, 64), pass: clip(cm.pass, maxPass) };
     }
   const ps = obj(o.pages);
   if (ps)
     for (const [k, c] of Object.entries(ps)) {
       const cm = obj(c);
-      if (k !== "" && Buffer.byteLength(k) <= 128 && cm) pages[clip(k, 128)] = { url: clip(cm.url, 512), user: clip(cm.user, 128), pass: clip(cm.pass, maxPass) };
+      if (k !== "" && Buffer.byteLength(k) <= 128 && cm)
+        pages[clip(k, 128)] = { url: clip(cm.url, 512), user: clip(cm.user, 128), pass: clip(cm.pass, maxPass) };
     }
   const out: Vault = { hosts, pages };
   const t = cleanToken(o.anthropic);
@@ -358,7 +420,11 @@ export async function ChangePass(s: Session | undefined, p: Record<string, any>,
   const v = await vaultOrPull(s);
   if (!v) return notSynced();
   const key = await setPass(s.user, pass, v);
-  return { status: 200, body: { ok: true }, cookie: [issue(c, { u: s.user, p: live(s.user)!.pwAt, k: hex(key) }, sessionMS)] };
+  return {
+    status: 200,
+    body: { ok: true },
+    cookie: [issue(c, { u: s.user, p: live(s.user)!.pwAt, k: hex(key) }, sessionMS)],
+  };
 }
 
 export const needAdmin = (s: Session | undefined): R | undefined => (s?.admin ? undefined : errR(403, "admins only"));
@@ -376,7 +442,8 @@ export async function Create(s: Session | undefined, p: Record<string, any>): Pr
   if (no) return no;
   const name = str(p.name).trim().toLowerCase();
   const pass = str(p.pass);
-  if (!nameRe.test(name) || reserved.includes(name)) return errR(400, "name: letters, digits, . _ -, up to 32, never " + reserved.join(", "));
+  if (!nameRe.test(name) || reserved.includes(name))
+    return errR(400, "name: letters, digits, . _ -, up to 32, never " + reserved.join(", "));
   if (live(name)) return errR(409, name + " already exists");
   const n = runes(pass);
   if (n < 4 || n > maxPass) return errR(400, "password: 4 to 256 characters");

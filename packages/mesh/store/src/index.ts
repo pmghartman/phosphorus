@@ -1,11 +1,11 @@
 // the pretend OS's tree: etc/ and home/ replicated, every host a full copy, each
 // file's latest write winning; var/ this host's own
+
+import { createHash } from "node:crypto";
 import { mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { createHash } from "node:crypto";
-import { markHot } from "@phosphorus/util";
 import { HomeRoot, Sys } from "@phosphorus/files";
-import { FrontendPort, logf, requestJSON, writeFileAtomic } from "@phosphorus/util";
+import { FrontendPort, logf, markHot, requestJSON, writeFileAtomic } from "@phosphorus/util";
 
 // in [home] dir's home/, hidden from every user but the admins
 export const Root = join(HomeRoot, Sys);
@@ -34,7 +34,8 @@ export function setPeerSources(ips: typeof peerIPs, ps: typeof peers) {
 }
 
 // a file's JSON as stored: {at, data} with data present even when null
-const encode = (f: File) => (f.gone ? `{"at":${f.at},"gone":true}` : `{"at":${f.at},"data":${JSON.stringify(f.data ?? null)}}`);
+const encode = (f: File) =>
+  f.gone ? `{"at":${f.at},"gone":true}` : `{"at":${f.at},"data":${JSON.stringify(f.data ?? null)}}`;
 
 function parseFile(v: unknown): File | undefined {
   if (!v || typeof v !== "object") return;
@@ -106,7 +107,10 @@ export function remove(rel: string) {
 // live files under a dir, rel to it
 export function list(dir: string): string[] {
   const pre = dir + "/";
-  return [...tree].filter(([r, f]) => r.startsWith(pre) && live(f)).map(([r]) => r.slice(pre.length)).sort();
+  return [...tree]
+    .filter(([r, f]) => r.startsWith(pre) && live(f))
+    .map(([r]) => r.slice(pre.length))
+    .sort();
 }
 
 // a file's stamp, 0 when absent
@@ -193,7 +197,12 @@ async function pullOnce() {
         for (let i = 0; i < want.length; i += pullBatch) {
           const rels = want.slice(i, i + pullBatch).filter((r) => wins(r, st[r] as number));
           if (!rels.length) continue;
-          const r = await requestJSON({ host: ip, port: FrontendPort, path: "/api/sys/sync?" + new URLSearchParams({ rels: rels.join(",") }), timeoutMs: 5000 });
+          const r = await requestJSON({
+            host: ip,
+            port: FrontendPort,
+            path: "/api/sys/sync?" + new URLSearchParams({ rels: rels.join(",") }),
+            timeoutMs: 5000,
+          });
           if (r.status !== 200) return;
           if (r.body && typeof r.body === "object") merge(r.body);
         }

@@ -7,7 +7,9 @@ import { at, binPath, fail, fileExists, home, output, quiet, run, say, sleep, ss
 import { installTailscale } from "../tailnet.ts";
 import { escapeArg, kernel32, ps, psq, readFile, sshConfig, svcName, wstr } from "./setup.ts";
 
-export const STOPPED = 1, STOP_PENDING = 3, RUNNING = 4;
+export const STOPPED = 1,
+  STOP_PENDING = 3,
+  RUNNING = 4;
 
 // svcState sc's numeric state, 0 when there's no such service: query rights
 // alone, what a non-admin may ask for
@@ -25,12 +27,23 @@ export async function createService() {
   if (await svcInstalled()) await quiet("sc", "config", svcName, "binPath=", bin, "start=", "auto");
   else {
     say("installing the phosphorus service...");
-    if (!(await run("sc", "create", svcName, "binPath=", bin, "start=", "auto", "DisplayName=", "Phosphorus host"))) throw fail("couldn't install the service: sc create failed");
-    await quiet("sc", "description", svcName, "phosphorus run: the frontend, the tunnel and the model as its own processes");
+    if (!(await run("sc", "create", svcName, "binPath=", bin, "start=", "auto", "DisplayName=", "Phosphorus host")))
+      throw fail("couldn't install the service: sc create failed");
+    await quiet(
+      "sc",
+      "description",
+      svcName,
+      "phosphorus run: the frontend, the tunnel and the model as its own processes",
+    );
     await quiet("sc", "failure", svcName, "reset=", "0", "actions=", "restart/5000");
   }
   // SY and BA full, interactive and service users query, authenticated users start and stop
-  await run("sc", "sdset", svcName, "D:(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWLOCRRC;;;IU)(A;;CCLCSWLOCRRC;;;SU)(A;;CCLCSWRPWPLOCRRC;;;AU)");
+  await run(
+    "sc",
+    "sdset",
+    svcName,
+    "D:(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWLOCRRC;;;IU)(A;;CCLCSWLOCRRC;;;SU)(A;;CCLCSWRPWPLOCRRC;;;AU)",
+  );
 }
 
 // svcWait true once the service is in want, false past wait
@@ -77,7 +90,11 @@ export const tailscaleInstalled = () => fileExists(tailscaleCLI());
 
 // silent, unattended so it stays up signed out of Windows
 export const tailscaleInstall = () =>
-  installTailscale("tailscale-setup-1.104.1-amd64.msi", "6da8bcdb0d45a214cae0e8a88c2987ad48dec134bf04dffb9c05f1354c02b0b4", (msi) => run("msiexec", "/i", msi, "/quiet", "/norestart", "TS_UNATTENDEDMODE=always"));
+  installTailscale(
+    "tailscale-setup-1.104.1-amd64.msi",
+    "6da8bcdb0d45a214cae0e8a88c2987ad48dec134bf04dffb9c05f1354c02b0b4",
+    (msi) => run("msiexec", "/i", msi, "/quiet", "/norestart", "TS_UNATTENDEDMODE=always"),
+  );
 
 export const INVALID = 0xffffffffffffffffn;
 
@@ -87,7 +104,15 @@ export async function lockRebuild(): Promise<() => void> {
   const k = kernel32();
   const name = wstr(at("state", "rebuild.lock"));
   for (;;) {
-    const h = k.CreateFileW(ptr(name), 0x40000000 /* GENERIC_WRITE */, 0, 0n, 4 /* OPEN_ALWAYS */, 0x80 /* FILE_ATTRIBUTE_NORMAL */, 0n) as bigint;
+    const h = k.CreateFileW(
+      ptr(name),
+      0x40000000 /* GENERIC_WRITE */,
+      0,
+      0n,
+      4 /* OPEN_ALWAYS */,
+      0x80 /* FILE_ATTRIBUTE_NORMAL */,
+      0n,
+    ) as bigint;
     if (BigInt(h) !== INVALID) return () => void k.CloseHandle(h);
     await sleep(500);
   }
@@ -95,7 +120,11 @@ export async function lockRebuild(): Promise<() => void> {
 
 // unpath the home's bin out of the user's PATH
 export async function unpath() {
-  await ps("$b = " + psq(at("bin")) + "; [Environment]::SetEnvironmentVariable('Path', ((([Environment]::GetEnvironmentVariable('Path', 'User')) -split ';' | Where-Object { $_ -and $_.TrimEnd('\\') -ne $b }) -join ';'), 'User')");
+  await ps(
+    "$b = " +
+      psq(at("bin")) +
+      "; [Environment]::SetEnvironmentVariable('Path', ((([Environment]::GetEnvironmentVariable('Path', 'User')) -split ';' | Where-Object { $_ -and $_.TrimEnd('\\') -ne $b }) -join ';'), 'User')",
+  );
 }
 
 // uninstallAdmin the service deleted, the ssh include dropped, the home's

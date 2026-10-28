@@ -1,18 +1,38 @@
 // drawing: a host's node, its git and model marks
+
+import type { GitHost, Route, State, TailnetDevice } from '@phosphorus/wire';
 import { databaseIcon, svgEl } from '../../lib/dom.ts';
 import { st } from '../../lib/state.ts';
-import type { GitHost, Route, State, TailnetDevice } from '@phosphorus/wire';
 import { gitVars } from './git.ts';
-import { NODE_HALF, hostSwitch } from './hosts.ts';
+import { hostSwitch, NODE_HALF } from './hosts.ts';
 import { lerp } from './ping.ts';
 import { activeConnections, hostPlatform, serviceKey } from './routes.ts';
 import { renderMeshStats } from './stats.ts';
-import { LIFT, OTHERS_AXIS, meshAnimFrame, meshCount, meshDimsNow, meshPanel, meshStats, meshSvg, meshT, type Dims, uiVars } from './ui.ts';
+import {
+  type Dims,
+  LIFT,
+  meshAnimFrame,
+  meshCount,
+  meshDimsNow,
+  meshPanel,
+  meshStats,
+  meshSvg,
+  meshT,
+  OTHERS_AXIS,
+  uiVars,
+} from './ui.ts';
 
 // one square plus its name, the rest in the tooltip, opts: size (half-width),
 // scale (depth), opacity, noLabel, host (a host to switch to), all optional
 
-export function drawNode(x: number, y: number, name: string, cls: string, tooltip: string, opts?: { size?: number; scale?: number; opacity?: number; noLabel?: boolean; host?: string }) {
+export function drawNode(
+  x: number,
+  y: number,
+  name: string,
+  cls: string,
+  tooltip: string,
+  opts?: { size?: number; scale?: number; opacity?: number; noLabel?: boolean; host?: string },
+) {
   const o = opts || {};
   const scale = o.scale || 1;
   const size = o.size || NODE_HALF * scale;
@@ -26,8 +46,12 @@ export function drawNode(x: number, y: number, name: string, cls: string, toolti
     parent.appendChild(svgEl('rect', { x: x - w / 2, y: y - 8, width: w, height: 24, class: 'mesh-hit' }));
   }
   const node = svgEl('rect', {
-    x: x - size, y: y - size, width: size * 2, height: size * 2,
-    class: `mesh-node ${cls}`, style: `opacity:${opacity}`,
+    x: x - size,
+    y: y - size,
+    width: size * 2,
+    height: size * 2,
+    class: `mesh-node ${cls}`,
+    style: `opacity:${opacity}`,
   });
   const title = svgEl('title', {});
   title.textContent = tooltip;
@@ -40,8 +64,11 @@ export function drawNode(x: number, y: number, name: string, cls: string, toolti
   const half = name.length * 2.15 * textScale;
   const frame = meshSvg.viewBox.baseVal;
   const label = svgEl('text', {
-    x: Math.max(half, Math.min(frame.width - half, x)), y: Math.min(frame.height - 1.5, y + 10 * scale + 3), 'text-anchor': 'middle',
-    class: 'mesh-label', style: `opacity:${opacity};font-size:${7 * textScale}px`,
+    x: Math.max(half, Math.min(frame.width - half, x)),
+    y: Math.min(frame.height - 1.5, y + 10 * scale + 3),
+    'text-anchor': 'middle',
+    class: 'mesh-label',
+    style: `opacity:${opacity};font-size:${7 * textScale}px`,
   });
   label.textContent = name;
   parent.appendChild(label);
@@ -52,9 +79,17 @@ export function drawNode(x: number, y: number, name: string, cls: string, toolti
 export function drawGitMarker(x: number, y: number, h: GitHost, scale = 1) {
   const master = h.reachable && h.role === 'master';
   const state = !h.reachable ? 'down' : master ? 'master' : h.eligible ? 'ok' : 'stale';
-  const g = svgEl('g', { class: `mesh-git ${state}`, transform: `translate(${x + 4.5 * scale} ${y - 4.5 * scale}) scale(${0.9 * scale})` });
+  const g = svgEl('g', {
+    class: `mesh-git ${state}`,
+    transform: `translate(${x + 4.5 * scale} ${y - 4.5 * scale}) scale(${0.9 * scale})`,
+  });
   const title = svgEl('title', {});
-  title.textContent = { master: 'git master', ok: 'git servant, in sync', stale: 'git servant, out of date', down: 'git servant, unreachable' }[state];
+  title.textContent = {
+    master: 'git master',
+    ok: 'git servant, in sync',
+    stale: 'git servant, out of date',
+    down: 'git servant, unreachable',
+  }[state];
   g.appendChild(title);
   if (master) {
     // no CSS size for a nested svg, only its own attributes
@@ -81,13 +116,20 @@ reduceMotion.addEventListener('change', syncMotion);
 syncMotion();
 
 // a model host as the graph marks it
-export interface MeshModel { file?: string; ready?: boolean; agents: string[] }
+export interface MeshModel {
+  file?: string;
+  ready?: boolean;
+  agents: string[];
+}
 
 // left of a model host, mirroring the git mark: how many agents ask it, in
 // the glyph's colours, dimmed while not loaded
 export function drawModelMarker(x: number, y: number, mm: MeshModel, scale = 1, opacity = 1) {
   const mark = svgEl('text', {
-    x: x - 4.5 * scale, y: y - 1.2 * scale, 'text-anchor': 'end', class: `mesh-model-mark${mm.ready ? '' : ' down'}`,
+    x: x - 4.5 * scale,
+    y: y - 1.2 * scale,
+    'text-anchor': 'end',
+    class: `mesh-model-mark${mm.ready ? '' : ' down'}`,
     style: `font-size:${7 * scale}px;opacity:${opacity}`,
   });
   mark.textContent = String(mm.agents.length || 'm');
@@ -111,8 +153,11 @@ export function renderMesh(routes: Route[], tailnet: TailnetDevice[]): void {
   meshRoutes = routes;
   meshTailnet = tailnet;
   // nothing redrawn for a poll changing nothing drawn (a full rebuild at 10/s grew the tab)
-  const sig = JSON.stringify([st.selfHost, routes.map((r) => [r.host, r.name]),
-    tailnet.map((d) => [d.name, !!d.phosphorus, d.os || ''])]);
+  const sig = JSON.stringify([
+    st.selfHost,
+    routes.map((r) => [r.host, r.name]),
+    tailnet.map((d) => [d.name, !!d.phosphorus, d.os || '']),
+  ]);
   if (sig === drawVars.meshSig) return;
   drawVars.meshSig = sig;
   uiVars.meshStatsDirty = true;
@@ -121,7 +166,9 @@ export function renderMesh(routes: Route[], tailnet: TailnetDevice[]): void {
 
 // the model hosts from a state push, the graph drawn again for a git or model change
 export function meshModelsFrom(state: State, gitChanged: boolean): void {
-  const nextModels = new Map<string, MeshModel>((state.model?.models || []).map((x) => [x.host, { file: x.file, ready: x.ready, agents: x.agents || [] }]));
+  const nextModels = new Map<string, MeshModel>(
+    (state.model?.models || []).map((x) => [x.host, { file: x.file, ready: x.ready, agents: x.agents || [] }]),
+  );
   const modelChanged = JSON.stringify([...nextModels]) !== JSON.stringify([...meshModels]);
   meshModels = nextModels;
   if ((gitChanged || modelChanged) && !meshAnimFrame) drawMesh();
@@ -134,7 +181,9 @@ export function pulsePoint(key: string, host: string, distFrac: number): DOMPoin
   const ids = ['mesh-tunnel-self'];
   if (host !== st.selfHost) ids.push(`peer-${host}`);
   ids.push(`stem-${key}`);
-  const segs = ids.map((id) => document.getElementById(id) as unknown as SVGGeometryElement | null).filter((s): s is SVGGeometryElement => !!s);
+  const segs = ids
+    .map((id) => document.getElementById(id) as unknown as SVGGeometryElement | null)
+    .filter((s): s is SVGGeometryElement => !!s);
   if (!segs.length) return null;
 
   const lens = segs.map((el) => el.getTotalLength());
@@ -152,16 +201,27 @@ export function pulsePoint(key: string, host: string, distFrac: number): DOMPoin
 export function startPulseLoop(): void {
   if (gitVars.pulseAnimFrame) return;
   const tick = (now: number) => {
-    if (!activeConnections.size) { gitVars.pulseAnimFrame = null; return; }
+    if (!activeConnections.size) {
+      gitVars.pulseAnimFrame = null;
+      return;
+    }
     // the graph off screen: nothing to measure, looked at again a few times a second
-    if (!meshPanel.offsetParent) { gitVars.pulseAnimFrame = setTimeout(() => requestAnimationFrame(tick), 250); return; }
+    if (!meshPanel.offsetParent) {
+      gitVars.pulseAnimFrame = setTimeout(() => requestAnimationFrame(tick), 250);
+      return;
+    }
     const progress = (now / 1000) % 1;
     for (const [key, conn] of activeConnections) {
       const point = pulsePoint(key, conn.host, progress);
       if (!point) continue;
       let mark = document.getElementById(`pulse-${key}`);
       if (!mark || !mark.isConnected) {
-        mark = svgEl('rect', { id: `pulse-${key}`, width: 2, height: 2, class: 'mesh-pulse' }) as unknown as HTMLElement;
+        mark = svgEl('rect', {
+          id: `pulse-${key}`,
+          width: 2,
+          height: 2,
+          class: 'mesh-pulse',
+        }) as unknown as HTMLElement;
         meshSvg.appendChild(mark);
       }
       mark.setAttribute('x', String(point.x - 1));
@@ -210,7 +270,9 @@ export function drawMesh(): void {
   meshCount.textContent = [
     hosts.length ? plural(hosts.length, 'host') : '',
     others.length ? `${others.length} in-mesh` : '',
-  ].filter(Boolean).join(' · ');
+  ]
+    .filter(Boolean)
+    .join(' · ');
   // stats table first, room for its height reserved by meshLayoutParams(),
   // rebuilt only on real change, never per tween frame
   if (uiVars.meshStatsDirty) {
@@ -239,7 +301,8 @@ export function drawMesh(): void {
   // crowded hosts staggered into lanes for clear labels: side by side collapsed,
   // stacked rows expanded, each row with room for its services
   const labelW = Math.max(0, ...hosts.map((m) => m.length)) * 4.3 + 6;
-  const lanesFor = (span: number, need: number, most: number) => Math.min(most, Math.ceil(need / (span / (hosts.length + 1))));
+  const lanesFor = (span: number, need: number, most: number) =>
+    Math.min(most, Math.ceil(need / (span / (hosts.length + 1))));
   const lanesC = lanesFor(collapsed.height, 22, 3);
   const lanesE = lanesFor(expanded.width, labelW, 5);
   const LANE_C = Math.min(labelW, 34);
@@ -287,14 +350,19 @@ export function drawMesh(): void {
   const floorH = (height + grow) / 2;
   const floorY = centerY + grow / 2;
   const fitY = tiltCos / (1 - tiltSin * PERSP);
-  interface Projected { x: number; y: number; s: number; fog: number }
+  interface Projected {
+    x: number;
+    y: number;
+    s: number;
+    fog: number;
+  }
   const project = (x: number, y: number, depth = 0): Projected => {
     const u = (y - floorY) / floorH;
     const z = -u * tiltSin + depth;
     const s = 1 / (1 + z * PERSP);
     return {
       x: centerX + (x - centerX) * s,
-      y: floorY + (u * tiltCos * s / fitY) * floorH,
+      y: floorY + ((u * tiltCos * s) / fitY) * floorH,
       s,
       fog: Math.max(0.35, Math.min(1, 1 - 0.55 * z)),
     };
@@ -309,10 +377,11 @@ export function drawMesh(): void {
   const hostSpread = new Map(hosts.map((n, i) => [n, fracAlong(i, hosts.length)]));
   const otherSpread = new Map(others.map((n, i) => [n, fracAlong(i, others.length)]));
   // across the host axis, turning with the layout
-  const laneOff = new Map(hosts.map((n, i) => [n,
-    lerp((i % lanesC - (lanesC - 1) / 2) * LANE_C, (i % lanesE) * LANE_E, t)]));
+  const laneOff = new Map(
+    hosts.map((n, i) => [n, lerp(((i % lanesC) - (lanesC - 1) / 2) * LANE_C, (i % lanesE) * LANE_E, t)]),
+  );
   // collapsed lanes side by side, so depth apart, expanded ones, depth from the tilt
-  const laneDepth = new Map(hosts.map((n, i) => [n, (1 - t) * 0.7 * (i % lanesC - (lanesC - 1) / 2)]));
+  const laneDepth = new Map(hosts.map((n, i) => [n, (1 - t) * 0.7 * ((i % lanesC) - (lanesC - 1) / 2)]));
 
   // flat layout position, before the tilt
   const flatOf = (name: string, isHost: boolean) => {
@@ -335,7 +404,10 @@ export function drawMesh(): void {
   // fainter peer lines the more there are
   const n = hosts.length;
   const o = others.length;
-  meshSvg.style.setProperty('--fade', Math.min(1, Math.sqrt(12 / Math.max(1, (n * (n - 1) + o * (o - 1)) / 2 + n * o))).toFixed(3));
+  meshSvg.style.setProperty(
+    '--fade',
+    Math.min(1, Math.sqrt(12 / Math.max(1, (n * (n - 1) + o * (o - 1)) / 2 + n * o))).toFixed(3),
+  );
 
   // every device reaching every other, a line per pair, same-group pairs
   // arced outward, the bulge itself rotating with the layout
@@ -356,7 +428,8 @@ export function drawMesh(): void {
         const [start, end] = touched && names[j] === st.selfHost ? [p2, p1] : [p1, p2];
         const attrs: Record<string, string> = {
           d: `M ${start.x} ${start.y} Q ${cx} ${cy} ${end.x} ${end.y}`,
-          class: touched ? 'mesh-line-peer touched' : 'mesh-line-peer', style: edgeFog(p1, p2),
+          class: touched ? 'mesh-line-peer touched' : 'mesh-line-peer',
+          style: edgeFog(p1, p2),
         };
         if (touched) attrs.id = `peer-${other}`;
         edges.appendChild(svgEl('path', attrs));
@@ -369,16 +442,29 @@ export function drawMesh(): void {
     for (const m of hosts) {
       const p1 = posOf(m, true);
       const p2 = posOf(name, false);
-      edges.appendChild(svgEl('line', {
-        x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y, class: 'mesh-line-peer', style: edgeFog(p1, p2),
-      }));
+      edges.appendChild(
+        svgEl('line', {
+          x1: p1.x,
+          y1: p1.y,
+          x2: p2.x,
+          y2: p2.y,
+          class: 'mesh-line-peer',
+          style: edgeFog(p1, p2),
+        }),
+      );
     }
   }
 
   const hubR = 4 * hub.s;
-  meshSvg.appendChild(svgEl('rect', { x: hubX - hubR, y: hubY - hubR, width: hubR * 2, height: hubR * 2, class: 'mesh-hub' }));
+  meshSvg.appendChild(
+    svgEl('rect', { x: hubX - hubR, y: hubY - hubR, width: hubR * 2, height: hubR * 2, class: 'mesh-hub' }),
+  );
   const hubDns = svgEl('text', {
-    x: hubX, y: hubY + 12 * hub.s + 4, 'text-anchor': 'middle', class: 'mesh-hub-dns', style: `font-size:${6 * hub.s}px`,
+    x: hubX,
+    y: hubY + 12 * hub.s + 4,
+    'text-anchor': 'middle',
+    class: 'mesh-hub-dns',
+    style: `font-size:${6 * hub.s}px`,
   });
   hubDns.textContent = st.meshDomain || 'tailnet';
   meshSvg.appendChild(hubDns);
@@ -388,7 +474,12 @@ export function drawMesh(): void {
     const p = posOf(m, true);
     const isSelf = m === st.selfHost;
     const spoke: Record<string, string | number> = {
-      x1: hubX, y1: hubY, x2: p.x, y2: p.y, class: isSelf ? 'mesh-line-tunnel self' : 'mesh-line-tunnel', style: edgeFog(hub, p),
+      x1: hubX,
+      y1: hubY,
+      x2: p.x,
+      y2: p.y,
+      class: isSelf ? 'mesh-line-tunnel self' : 'mesh-line-tunnel',
+      style: edgeFog(hub, p),
     };
     if (isSelf) spoke.id = 'mesh-tunnel-self';
     edges.appendChild(svgEl('line', spoke));
@@ -402,9 +493,11 @@ export function drawMesh(): void {
     // the new self pulsing until a switch is answered
     const cls = isSelf ? (hostSwitch ? 'self pending' : 'self') : own.length ? 'active' : 'idle';
     const os = hostPlatform.get(m);
-    drawNode(p.x, p.y, m, cls,
-      `${m}${os ? ` (${os})` : ''}: ${own.length} service${own.length === 1 ? '' : 's'}`,
-      { host: isSelf ? '' : m, scale: p.s, opacity: p.fog });
+    drawNode(p.x, p.y, m, cls, `${m}${os ? ` (${os})` : ''}: ${own.length} service${own.length === 1 ? '' : 's'}`, {
+      host: isSelf ? '' : m,
+      scale: p.s,
+      opacity: p.fog,
+    });
     if (meshModels.has(m)) drawModelMarker(p.x, p.y, meshModels.get(m)!, p.s, p.fog);
     const gitHost = st.gitHostsList.find((h) => h.host === m);
     if (gitHost) drawGitMarker(p.x, p.y, gitHost, p.s);
@@ -424,14 +517,23 @@ export function drawMesh(): void {
       const key = serviceKey(r);
       const svcTouched = touchedServices.has(key);
       const stem: Record<string, string | number> = {
-        x1: p.x, y1: p.y, x2: c.x, y2: c.y,
+        x1: p.x,
+        y1: p.y,
+        x2: c.x,
+        y2: c.y,
         class: svcTouched ? 'mesh-line-stem touched' : 'mesh-line-stem',
         style: `opacity:${t};${edgeFog(p, c)}`,
       };
       if (svcTouched) stem.id = `stem-${key}`;
       edges.appendChild(svgEl('line', stem));
-      drawNode(c.x, c.y, r.name, svcTouched ? 'svc touched' : 'svc', r.public || r.master !== undefined ? `${r.name} (public, no phosphorus login)` : r.name,
-        { size: 1.8 * c.s, opacity: t * c.fog, noLabel: true });
+      drawNode(
+        c.x,
+        c.y,
+        r.name,
+        svcTouched ? 'svc touched' : 'svc',
+        r.public || r.master !== undefined ? `${r.name} (public, no phosphorus login)` : r.name,
+        { size: 1.8 * c.s, opacity: t * c.fog, noLabel: true },
+      );
     });
   });
 
@@ -439,8 +541,7 @@ export function drawMesh(): void {
   others.forEach((name) => {
     const { os } = outside.get(name)!;
     const p = posOf(name, false);
-    drawNode(p.x, p.y, name, 'outside',
-      `${name}${os ? ` (${os})` : ''}: in-mesh`, { scale: p.s, opacity: p.fog });
+    drawNode(p.x, p.y, name, 'outside', `${name}${os ? ` (${os})` : ''}: in-mesh`, { scale: p.s, opacity: p.fog });
   });
   fitMesh(width, height + grow, t ? expanded : collapsed);
 }

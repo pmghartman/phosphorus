@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test";
 import { accepts, serveStatic } from "@phosphorus/webstatic";
 
-const get = (path: string, headers: Record<string, string> = {}) => serveStatic(new Request(`http://x${path}`, { headers }));
+const get = (path: string, headers: Record<string, string> = {}) =>
+  serveStatic(new Request(`http://x${path}`, { headers }));
 
 test("accepts", () => {
   const r = (ae: string) => accepts(new Request("http://x/", { headers: { "Accept-Encoding": ae } }), "gzip");

@@ -2,14 +2,56 @@
 // mesh's, every host at once
 import { join } from "node:path";
 import { lock as meshLockOf, tailnet } from "@phosphorus/peers";
-import { env, errText, localeCompare, logf as log, now, obj, readJSON, SelfHost, StateDir, writeJSONAtomic } from "@phosphorus/util";
-import { ask, callPeerUpdate, readVersion, type Result, result, seams, settleSelf, str, uuid, VersionFile, watchPeer } from "./local.ts";
+import {
+  env,
+  errText,
+  localeCompare,
+  logf as log,
+  now,
+  obj,
+  readJSON,
+  SelfHost,
+  StateDir,
+  writeJSONAtomic,
+} from "@phosphorus/util";
+import {
+  ask,
+  callPeerUpdate,
+  type Result,
+  readVersion,
+  result,
+  seams,
+  settleSelf,
+  str,
+  uuid,
+  VersionFile,
+  watchPeer,
+} from "./local.ts";
 
-export { ask, busy, callPeerUpdate, onFailed, readVersion, type Request, type Result, result, seams, settleSelf, status, uuid, VersionFile, verdict, watchPeer } from "./local.ts";
+export {
+  ask,
+  busy,
+  callPeerUpdate,
+  onFailed,
+  type Request,
+  type Result,
+  readVersion,
+  result,
+  seams,
+  settleSelf,
+  status,
+  uuid,
+  VersionFile,
+  verdict,
+  watchPeer,
+} from "./local.ts";
 
 const selfHost = SelfHost;
 const chainFile = join(StateDir, "update-chain.json");
-const feedURL = env("PHOSPHORUS_FEED_URL", "https://github.com/pmghartman/phosphorus/releases/download/update/latest.json");
+const feedURL = env(
+  "PHOSPHORUS_FEED_URL",
+  "https://github.com/pmghartman/phosphorus/releases/download/update/latest.json",
+);
 
 const feedTTLMS = 600000;
 const feedRetryMS = 30000;
@@ -20,7 +62,8 @@ const logf = (f: string, ...a: unknown[]) => log("[update] " + f, ...a);
 
 // numeric, part by part, 0.13 < 0.13.1 < 0.14
 export function newer(a: string, b: string): boolean {
-  const pa = a.split("."), pb = b.split(".");
+  const pa = a.split("."),
+    pb = b.split(".");
   const num = (xs: string[], i: number) => (i < xs.length ? Number(xs[i]) || 0 : 0);
   for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
     const d = num(pa, i) - num(pb, i);
@@ -55,8 +98,12 @@ export async function check(force: boolean): Promise<Record<string, any>> {
   if (force || now() - feed.at > feedTTLMS) await (fetching = fetchFeed().finally(() => void (fetching = undefined)));
   const cur = readVersion(VersionFile);
   return {
-    current: cur, latest: feed.latest, notes: feed.notes, error: feed.error,
-    available: feed.latest !== "" && cur !== "" && newer(feed.latest, cur), checkedAt: feed.at,
+    current: cur,
+    latest: feed.latest,
+    notes: feed.notes,
+    error: feed.error,
+    available: feed.latest !== "" && cur !== "" && newer(feed.latest, cur),
+    checkedAt: feed.at,
   };
 }
 
@@ -89,16 +136,27 @@ function chainStatus_(): Record<string, any> | null {
   if (!chain) return null;
   if (chain.done && now() - chain.finishedAt > chainLingerMS) return null;
   return {
-    chainId: chain.id, order: chain.order, results: chain.results, versions: chain.versions,
-    target: chain.target, errors: chain.errors, done: chain.done, finishedAt: chain.finishedAt,
+    chainId: chain.id,
+    order: chain.order,
+    results: chain.results,
+    versions: chain.versions,
+    target: chain.target,
+    errors: chain.errors,
+    done: chain.done,
+    finishedAt: chain.finishedAt,
   };
 }
 
 function shared(): Record<string, any> | null {
   if (!chain || chainStatus_() === null) return null;
   return {
-    initiator: selfHost, chainId: chain.id, startedAt: chain.startedAt, done: chain.done,
-    order: chain.order, results: chain.results, errors: chain.errors,
+    initiator: selfHost,
+    chainId: chain.id,
+    startedAt: chain.startedAt,
+    done: chain.done,
+    order: chain.order,
+    results: chain.results,
+    errors: chain.errors,
   };
 }
 
@@ -123,10 +181,18 @@ function save() {
   const c = chain;
   c.savedAt = now();
   writeJSONAtomic(chainFile, {
-    id: c.id, order: c.order, results: c.results, versions: c.versions, errors: c.errors,
+    id: c.id,
+    order: c.order,
+    results: c.results,
+    versions: c.versions,
+    errors: c.errors,
     details: c.details && Object.keys(c.details).length ? c.details : undefined,
-    target: c.target, cancelled: c.cancelled, done: c.done, startedAt: c.startedAt,
-    finishedAt: c.finishedAt || undefined, savedAt: c.savedAt,
+    target: c.target,
+    cancelled: c.cancelled,
+    done: c.done,
+    startedAt: c.startedAt,
+    finishedAt: c.finishedAt || undefined,
+    savedAt: c.savedAt,
   });
 }
 
@@ -218,8 +284,18 @@ export function restoreChain() {
   if (!saved || saved.done || !Array.isArray(saved.order)) return;
   if (now() - (saved.savedAt ?? 0) > chainMaxAgeMS) return;
   chain = {
-    ...saved, id: String(saved.id ?? ""), order: saved.order, results: saved.results ?? {}, versions: saved.versions ?? {}, errors: saved.errors ?? {},
-    target: saved.target ?? "", cancelled: !!saved.cancelled, done: false, startedAt: saved.startedAt ?? "", finishedAt: saved.finishedAt ?? 0, savedAt: saved.savedAt ?? 0,
+    ...saved,
+    id: String(saved.id ?? ""),
+    order: saved.order,
+    results: saved.results ?? {},
+    versions: saved.versions ?? {},
+    errors: saved.errors ?? {},
+    target: saved.target ?? "",
+    cancelled: !!saved.cancelled,
+    done: false,
+    startedAt: saved.startedAt ?? "",
+    finishedAt: saved.finishedAt ?? 0,
+    savedAt: saved.savedAt ?? 0,
   };
   const c = chain;
   const running = c.order.filter((m) => c.results[m] === "running");
@@ -234,7 +310,9 @@ export function restoreChain() {
         const v = c.versions[host] ?? {};
         const { id = "", from = "", boot = "" } = v;
         const stage = v.stage || "asked";
-        return follow(host, () => (host === selfHost ? settleSelf(id) : watchPeer(host, id, from, boot, stage, noter(host))));
+        return follow(host, () =>
+          host === selfHost ? settleSelf(id) : watchPeer(host, id, from, boot, stage, noter(host)),
+        );
       }),
     );
     finish("finished");
@@ -280,8 +358,17 @@ export function start(gitHosts: string[], only: string[]): Record<string, any> {
   const results: Record<string, string> = {};
   for (const m of order) results[m] = "pending";
   chain = {
-    id: uuid(), order, results, versions: {}, errors: {}, target: "", cancelled: false, done: false,
-    startedAt: new Date().toISOString(), finishedAt: 0, savedAt: 0,
+    id: uuid(),
+    order,
+    results,
+    versions: {},
+    errors: {},
+    target: "",
+    cancelled: false,
+    done: false,
+    startedAt: new Date().toISOString(),
+    finishedAt: 0,
+    savedAt: 0,
   };
   logf("chain %s starting over %s", chain.id.slice(0, 8), order.join(", "));
   save();

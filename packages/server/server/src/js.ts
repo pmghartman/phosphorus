@@ -8,7 +8,13 @@ export type Msg = Record<string, any>;
 export const truthy = (v: unknown) => (typeof v === "number" ? v !== 0 && !Number.isNaN(v) : !!v);
 // as a JS template literal renders a JSON value
 export const jsString = (v: unknown): string =>
-  v == null ? "null" : Array.isArray(v) ? v.map((e) => (e == null ? "" : jsString(e))).join(",") : typeof v === "object" ? "[object Object]" : String(v);
+  v == null
+    ? "null"
+    : Array.isArray(v)
+      ? v.map((e) => (e == null ? "" : jsString(e))).join(",")
+      : typeof v === "object"
+        ? "[object Object]"
+        : String(v);
 export const str = (v: unknown) => (truthy(v) ? jsString(v) : "");
 export const num = (v: unknown) => (typeof v === "number" ? v : 0);
 export const isFinite = (v: unknown) => typeof v === "number" && Number.isFinite(v);

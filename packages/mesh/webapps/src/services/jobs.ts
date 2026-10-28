@@ -3,16 +3,38 @@ import { closeSync, openSync, readSync, statSync } from "node:fs";
 import { join } from "node:path";
 import * as store from "@phosphorus/store";
 import { errText, now, SelfHost } from "@phosphorus/util";
-import { seams, type Login, type Progress } from "./mesh.ts";
-import { jobOf, recordRel, type Job, type Record_, writeJob } from "./records.ts";
-import { Ops, Services, launch, launchTimeoutMS, logTail, logf, opTimeoutMS, serviceOf, type Op, type Service } from "./scripts.ts";
+import { type Login, type Progress, seams } from "./mesh.ts";
+import { type Job, jobOf, type Record_, recordRel, writeJob } from "./records.ts";
+import {
+  launch,
+  launchTimeoutMS,
+  logf,
+  logTail,
+  type Op,
+  Ops,
+  opTimeoutMS,
+  type Service,
+  Services,
+  serviceOf,
+} from "./scripts.ts";
 import { behind } from "./versions.ts";
 
-export const opWord: Record<Op, string> = { install: "installing on", update: "updating on", remove: "being removed from" };
+export const opWord: Record<Op, string> = {
+  install: "installing on",
+  update: "updating on",
+  remove: "being removed from",
+};
 
 // ServiceOp an install, update or removal of id on host as login, asked by by:
 // [status, body] once the step has started on the host, the host finishing it
-export async function ServiceOp(op: string, id: string, host: string, login: Login, by: string, keep = false): Promise<[number, any]> {
+export async function ServiceOp(
+  op: string,
+  id: string,
+  host: string,
+  login: Login,
+  by: string,
+  keep = false,
+): Promise<[number, any]> {
   const s = serviceOf(id);
   if (!s) return [404, { error: `no service called ${id}` }];
   if (!Ops.includes(op as Op)) return [400, { error: "op is " + Ops.join(", ") }];
@@ -23,7 +45,18 @@ export async function ServiceOp(op: string, id: string, host: string, login: Log
   if (!login.user) return [400, { error: `a login for ${host}` }];
   const held = jobOf(id, host);
   if (held && !held.done) return [409, { error: `${s.name} is already ${opWord[held.op]} ${host}`, job: held }];
-  const j: Job = { id, host, op: op as Op, by, login: login.user, from: SelfHost, keep: keep && op === "remove", at: now(), done: 0, error: "" };
+  const j: Job = {
+    id,
+    host,
+    op: op as Op,
+    by,
+    login: login.user,
+    from: SelfHost,
+    keep: keep && op === "remove",
+    at: now(),
+    done: 0,
+    error: "",
+  };
   let out = "";
   try {
     const code = await seams.run(host, login, launch(s, j.op, j.keep), (t) => void (out += t), launchTimeoutMS);
@@ -94,7 +127,8 @@ export async function finish(s: Service, j: Job, exit: number | undefined) {
     if (j.op === "remove") {
       const [st, b] = await seams.publishLocal(s.id, null);
       // nothing declared is as good as dropped
-      if (st !== 200 && st !== 404 && !/no service/i.test(String(b?.error ?? ""))) throw new Error(`unpublishing: ${b?.error ?? `status ${st}`}`);
+      if (st !== 200 && st !== 404 && !/no service/i.test(String(b?.error ?? "")))
+        throw new Error(`unpublishing: ${b?.error ?? `status ${st}`}`);
       store.remove(recordRel(s.id, j.host));
     } else {
       const [st, b] = await seams.publishLocal(s.id, { port: String(s.port), mode: s.mode });

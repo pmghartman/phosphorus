@@ -2,8 +2,12 @@ import { expect, test } from "bun:test";
 import { blocks, highlight, markdown } from "@phosphorus/web-md";
 
 test("markdown", () => {
-  const h = markdown("**hi** $x^2$ and `$y$`\n```go\nfunc main() {}\n```\n\n[a](javascript:x) [b](https://x.y) <script>alert(1)</script>", true);
-  for (const want of ["<strong>hi</strong>", 'data-tex="x^2"', "<code>$y$</code>", "hljs-keyword", 'target="_blank"']) expect(h).toContain(want);
+  const h = markdown(
+    "**hi** $x^2$ and `$y$`\n```go\nfunc main() {}\n```\n\n[a](javascript:x) [b](https://x.y) <script>alert(1)</script>",
+    true,
+  );
+  for (const want of ["<strong>hi</strong>", 'data-tex="x^2"', "<code>$y$</code>", "hljs-keyword", 'target="_blank"'])
+    expect(h).toContain(want);
   expect(h).not.toContain("<script");
   expect(h).not.toContain("javascript:");
   expect(h).not.toContain("alert(1)");
@@ -29,14 +33,24 @@ test("html as goldmark and bluemonday wrote it", () => {
     '<ul>\n<li class="task"><input checked="" disabled="" type="checkbox"> done</li>\n<li class="task"><input disabled="" type="checkbox"> not</li>\n</ul>\n',
   );
   expect(markdown("```\nx < y\n```", false)).toBe('<pre><code class="hljs">x &lt; y\n</code></pre>\n');
-  expect(markdown("$$a<b$$", false)).toBe('<p><span class="math" data-tex="a&lt;b" data-display="1">a&lt;b</span></p>\n');
+  expect(markdown("$$a<b$$", false)).toBe(
+    '<p><span class="math" data-tex="a&lt;b" data-display="1">a&lt;b</span></p>\n',
+  );
   // a relative link to its text, an event handler gone
   expect(markdown('<a href="/rel" onclick="x()">r</a> x', false)).toBe("<p>r x</p>\n");
-  expect(markdown("<details open><summary>s</summary>t</details>", false)).toBe('<details open=""><summary>s</summary>t</details>');
-  expect(markdown("<img src=x onerror=alert(1)> <span title=\"t\" style=\"color:red\">s</span>", false)).toBe('<p> <span title="t">s</span></p>\n');
-  expect(markdown("[m](mailto:a@b.c)", false)).toBe('<p><a href="mailto:a@b.c" rel="noreferrer noopener" target="_blank">m</a></p>\n');
+  expect(markdown("<details open><summary>s</summary>t</details>", false)).toBe(
+    '<details open=""><summary>s</summary>t</details>',
+  );
+  expect(markdown('<img src=x onerror=alert(1)> <span title="t" style="color:red">s</span>', false)).toBe(
+    '<p> <span title="t">s</span></p>\n',
+  );
+  expect(markdown("[m](mailto:a@b.c)", false)).toBe(
+    '<p><a href="mailto:a@b.c" rel="noreferrer noopener" target="_blank">m</a></p>\n',
+  );
   expect(markdown("| a | b |\n|:--|--:|\n| 1 | 2 |", false)).toContain('<th align="right">b</th>');
-  expect(markdown("~~x~~ https://a.b/c", false)).toBe('<p><s>x</s> <a href="https://a.b/c" rel="noreferrer noopener" target="_blank">https://a.b/c</a></p>\n');
+  expect(markdown("~~x~~ https://a.b/c", false)).toBe(
+    '<p><s>x</s> <a href="https://a.b/c" rel="noreferrer noopener" target="_blank">https://a.b/c</a></p>\n',
+  );
 });
 
 test("math spans", () => {

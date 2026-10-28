@@ -1,18 +1,26 @@
 // what the file manager windows and the desktop's files share
-import { jsonPost } from '../../lib/api.ts';
-import { app, appCall } from '../../apps/index.ts';
-import { dkGlyph, ICONS } from '../../lib/dom.ts';
+
 import type { FileEntry } from '@phosphorus/wire';
-import type { DkWin } from '../../desktop/windows.ts';
+import { app, appCall } from '../../apps/index.ts';
 import { dkCode, dkDeskDirs, dkDeskLoad, dkRun } from '../../desktop/deskfiles.ts';
-import { filesCall, filesJoin, filesParent, may, type Loc } from './api.ts';
+import type { DkWin } from '../../desktop/windows.ts';
+import { jsonPost } from '../../lib/api.ts';
+import { dkGlyph, ICONS } from '../../lib/dom.ts';
+import { filesCall, filesJoin, filesParent, type Loc, may } from './api.ts';
 import { fileLabel, isCode } from './editors.ts';
 import { homeAt, homeOnline, homePick, homeTarget, isHome } from './merged.ts';
 import { copyFile, copyTree } from './transfer.ts';
 
 // a file manager window's state (apps/files.ts makes one per window)
-export interface ShareInfo { shares?: Loc[]; error?: string }
-export interface PickedItem { rel: string; dir: boolean; name: string }
+export interface ShareInfo {
+  shares?: Loc[];
+  error?: string;
+}
+export interface PickedItem {
+  rel: string;
+  dir: boolean;
+  name: string;
+}
 export interface Fm {
   w: DkWin;
   loc: Loc | null;
@@ -50,7 +58,10 @@ export interface Fm {
   spring?: { node: Element; timer: ReturnType<typeof setTimeout> } | null;
 }
 // a drop zone's target: a place and a folder in it
-export interface DropTarget { loc: Loc; dir: string }
+export interface DropTarget {
+  loc: Loc;
+  dir: string;
+}
 // a choice in a box: label, value, why disabled
 export type Choice = [string, string, string?];
 
@@ -65,7 +76,8 @@ export function fmKind(e: { name: string; dir?: boolean }): string {
 
 export const fmIcon = (kind: string) => dkGlyph(FM_GLYPHS[kind]!, `fm-${kind}`);
 
-export const fmSame = (a: Loc | null | undefined, b: Loc | null | undefined) => !!a && !!b && a.host === b.host && a.share === b.share;
+export const fmSame = (a: Loc | null | undefined, b: Loc | null | undefined) =>
+  !!a && !!b && a.host === b.host && a.share === b.share;
 
 // every window showing that folder, read again
 export function fmChanged(loc: Loc, ...dirs: string[]): void {
@@ -75,29 +87,45 @@ export function fmChanged(loc: Loc, ...dirs: string[]): void {
 }
 
 // pages, wasm and NAME.app folders run, text edits, the rest shown
-export const runnable = (e: { name: string; dir?: boolean }) => (e.dir ? /\.app$/i.test(e.name) : ['html', 'htm', 'wasm'].includes(fmExt(e.name)));
+export const runnable = (e: { name: string; dir?: boolean }) =>
+  e.dir ? /\.app$/i.test(e.name) : ['html', 'htm', 'wasm'].includes(fmExt(e.name));
 
 export function fileOpen(loc: Loc, rel: string, e: FileEntry): unknown {
   if (loc.host === '*' && !(e.dir && !runnable(e))) loc = homeAt(homePick(rel));
   if (runnable(e)) return dkRun(loc, rel);
   if (e.dir) return filesWin({ loc, dir: rel });
-  if (isCode(e.name)) return dkCode({ host: loc.host, share: loc.share!, path: rel, label: fileLabel(loc.host, loc.root!, rel) });
+  if (isCode(e.name))
+    return dkCode({ host: loc.host, share: loc.share!, path: rel, label: fileLabel(loc.host, loc.root!, rel) });
   app('files').then((m) => m.dkViewer(loc, rel));
 }
 
 // inside one share a move is a rename, anything else bytes through the page,
 // a move's source deleted once its copy is whole
-export async function fmTransfer(fm: Fm, from: Loc, items: PickedItem[], to: Loc, dir: string, move: boolean): Promise<void> {
+export async function fmTransfer(
+  fm: Fm,
+  from: Loc,
+  items: PickedItem[],
+  to: Loc,
+  dir: string,
+  move: boolean,
+): Promise<void> {
   if (!may(to, 'w')) return fmSay(fm, 'read-only', true);
   // into the home, other than a move inside it: where the copies go; every
   // host's a folder copied to each, a file kept in step
   let all = false;
   let alsoTo: Loc[] = [];
   if (to.host === '*' && !(move && fmSame(from, to))) {
-    const t = await homeTarget(fm, items.some((it) => it.dir) ? 0 : 1, items.length === 1 ? items[0]!.name : `${items.length} items`);
+    const t = await homeTarget(
+      fm,
+      items.some((it) => it.dir) ? 0 : 1,
+      items.length === 1 ? items[0]!.name : `${items.length} items`,
+    );
     if (!t) return;
     all = t.all;
-    if (all) alsoTo = homeOnline().filter((h) => h !== t.host).map(homeAt);
+    if (all)
+      alsoTo = homeOnline()
+        .filter((h) => h !== t.host)
+        .map(homeAt);
     to = homeAt(t.host);
   }
   const label = move ? 'moving' : 'copying';
@@ -106,9 +134,16 @@ export async function fmTransfer(fm: Fm, from: Loc, items: PickedItem[], to: Loc
     const it = items[i]!;
     const dst = filesJoin(dir, it.name);
     if (fmSame(from, to) && (dst === it.rel || `${dir}/`.startsWith(`${it.rel}/`))) {
-      if (move || it.dir) { failed += 1; fmSay(fm, 'into itself', true); continue; }
+      if (move || it.dir) {
+        failed += 1;
+        fmSay(fm, 'into itself', true);
+        continue;
+      }
     }
-    const tick = (f: number, child?: string) => { fm.busy = 'x'; fmSay(fm, `${label} ${Math.round(f * 100)}%`); };
+    const tick = (f: number, child?: string) => {
+      fm.busy = 'x';
+      fmSay(fm, `${label} ${Math.round(f * 100)}%`);
+    };
     try {
       if (move && fmSame(from, to)) {
         await filesCall(to, 'rename', jsonPost({ from: it.rel, to: dst }));
@@ -128,7 +163,11 @@ export async function fmTransfer(fm: Fm, from: Loc, items: PickedItem[], to: Loc
         }
         if (move) await filesCall(from, 'delete', jsonPost({ path: it.rel }));
       }
-    } catch (err) { failed += 1; fm.busy = ''; fmSay(fm, `${it.name}: ${(err as Error).message}`, true); }
+    } catch (err) {
+      failed += 1;
+      fm.busy = '';
+      fmSay(fm, `${it.name}: ${(err as Error).message}`, true);
+    }
   }
   fm.busy = '';
   if (!failed) fmSay(fm, move ? 'moved' : 'copied');
@@ -141,7 +180,14 @@ export function fmSpring(fm: Fm, node: Element, t: DropTarget): void {
   clearTimeout(fm.spring?.timer);
   fm.spring = null;
   if (fmSame(t.loc, fm.loc) && t.dir === fm.dir) return;
-  fm.spring = { node, timer: setTimeout(() => { fm.spring = null; node.classList.remove('drop'); app('files').then((m) => m.fmGo(fm, t.loc, t.dir)); }, FM_SPRING_MS) };
+  fm.spring = {
+    node,
+    timer: setTimeout(() => {
+      fm.spring = null;
+      node.classList.remove('drop');
+      app('files').then((m) => m.fmGo(fm, t.loc, t.dir));
+    }, FM_SPRING_MS),
+  };
 }
 
 export function fmUnspring(fm: Fm, node?: Element): void {
@@ -154,7 +200,8 @@ export function fmUnspring(fm: Fm, node?: Element): void {
 export const fmZones = new WeakMap<Element, { fm: Fm; where: () => DropTarget | null }>();
 
 export function fmMark(fm: Fm, node: Element | null): void {
-  for (const root of [fm.main, fm.side]) root?.querySelectorAll('.drop').forEach((x) => x !== node && x.classList.remove('drop'));
+  for (const root of [fm.main, fm.side])
+    root?.querySelectorAll('.drop').forEach((x) => x !== node && x.classList.remove('drop'));
   node?.classList.add('drop');
 }
 
@@ -188,9 +235,13 @@ export const fmSay = (fm: Fm, text: string, bad?: boolean) => {
   fm.note.textContent = text || '';
   fm.note.classList.toggle('bad', !!bad);
   clearTimeout(fm.noteTimer);
-  if (text && !fm.busy) fm.noteTimer = setTimeout(() => { if (fm.note.textContent === text) fm.note.textContent = ''; }, 6000);
+  if (text && !fm.busy)
+    fm.noteTimer = setTimeout(() => {
+      if (fm.note.textContent === text) fm.note.textContent = '';
+    }, 6000);
 };
 
 // the file manager's window and its choices, fetched on first open
 export const filesWin = (at?: DropTarget) => app('files').then((m) => m.dkFiles(at));
-export const filesChoose = (fm: Fm, ask: { title: string; message: string; options: Choice[] }) => app('files').then((m) => m.dkChoose(fm, ask));
+export const filesChoose = (fm: Fm, ask: { title: string; message: string; options: Choice[] }) =>
+  app('files').then((m) => m.dkChoose(fm, ask));

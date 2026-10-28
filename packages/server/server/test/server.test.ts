@@ -28,7 +28,11 @@ test("http smoke", async () => {
     expect(me.headers.get("cache-control")).toBe("no-store");
     expect(await me.json()).toEqual({ error: "log in", setup: true });
     // a write from another site's page
-    const cross = await fetch(base + "/api/login", { method: "POST", headers: { origin: "https://elsewhere.test" }, body: "{}" });
+    const cross = await fetch(base + "/api/login", {
+      method: "POST",
+      headers: { origin: "https://elsewhere.test" },
+      body: "{}",
+    });
     expect(cross.status).toBe(403);
     expect(await cross.text()).toBe("forbidden");
     // a host no page may rebind to
@@ -52,7 +56,11 @@ test("http smoke", async () => {
     // the apps page: services beside the apps; a service's step needs a login, admin or not
     const apps = await (await fetch(base + "/api/apps")).json();
     expect(apps.services.map((x: any) => x.id)).toEqual(["circuit", "tavern"]);
-    const svc = await fetch(base + "/api/apps/services/install", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: "circuit", host: "testhost" }) });
+    const svc = await fetch(base + "/api/apps/services/install", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "circuit", host: "testhost" }),
+    });
     expect(svc.status).toBe(403);
     expect(await svc.json()).toEqual({ error: "log in as a user" });
     expect((await fetch(base + "/api/apps/services/dance", { method: "POST", body: "{}" })).status).toBe(404);

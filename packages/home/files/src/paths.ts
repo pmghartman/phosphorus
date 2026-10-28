@@ -1,6 +1,6 @@
 // paths: held inside their share
 import { dirname, join, relative, sep } from "node:path";
-import { errBody, realOf, type Res, type Share } from "./index.ts";
+import { errBody, type Res, realOf, type Share } from "./index.ts";
 import { homeHeld, shares } from "./shares.ts";
 
 export function inside(sh: Share, p: string): boolean {
@@ -48,8 +48,17 @@ export type Located = { share: string; path: string };
 export function locate(abs: string): Located | undefined {
   const real = realOf(abs);
   if (!real) return;
-  for (const s of shares()) if (s.id !== "home" && inside(s, real) && !homeHeld(s, real)) return { share: s.id, path: relOf(s, real) };
+  for (const s of shares())
+    if (s.id !== "home" && inside(s, real) && !homeHeld(s, real)) return { share: s.id, path: relOf(s, real) };
 }
 
 // one listed name
-export type Entry = { name: string; dir: boolean; empty?: boolean; link: boolean; size: number | null; mtime: number | null; all?: boolean };
+export type Entry = {
+  name: string;
+  dir: boolean;
+  empty?: boolean;
+  link: boolean;
+  size: number | null;
+  mtime: number | null;
+  all?: boolean;
+};

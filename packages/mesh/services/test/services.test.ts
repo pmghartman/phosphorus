@@ -43,7 +43,9 @@ test("parse", () => {
   );
   expect(why).toBe("[sub] 'maybe' is not true or false");
   expect(rows).toEqual([]);
-  const [ok, none] = parse("[web]\nport = 8080\nextras = {\"max_body\": \"10MB\"}\npublic = true\n[mc]\ntype = game\nport = 25565\nstart = a\nstop = b\n[idle]\ntype = game\nport = 7777\n");
+  const [ok, none] = parse(
+    '[web]\nport = 8080\nextras = {"max_body": "10MB"}\npublic = true\n[mc]\ntype = game\nport = 25565\nstart = a\nstop = b\n[idle]\ntype = game\nport = 7777\n',
+  );
   expect(none).toBe("");
   expect(ok).toEqual([
     { max_body: "10MB", name: "web", port: 8080, scheme: "http", mode: "path", base_path: "", public: true },
@@ -61,7 +63,7 @@ test("parse rejects", () => {
     ["[a]\nport = 1\nextras = {", "[a] extras is not valid JSON"],
     ["[a]\nport = 1\nextras = [1]", "[a] extras is not a JSON object"],
     ["[a]\nport = 1\nextras = null", "[a] extras is not a JSON object"],
-    ["[a]\nport = 1\nextras = {\"x\": 1}", "[a] extras has an unknown key, x"],
+    ['[a]\nport = 1\nextras = {"x": 1}', "[a] extras has an unknown key, x"],
     ["[a]\nscheme = http", "[a] 'undefined' is not a valid port"],
     ["[a]\nport = 80a", "[a] '80a' is not a valid port"],
     ["[a]\nport = 80\nscheme = ftp", "[a] 'ftp' is not http or https"],
@@ -75,9 +77,13 @@ test("parse rejects", () => {
 test("set public", () => {
   writeFileSync(file, "[web]\nport = 8080\n# keep\n\n[mc]\ntype = game\nport = 25565\n");
   expect(setPublic("web", true)).toEqual([200, { public: true }]);
-  expect(readFileSync(file, "utf8")).toBe("[web]\nport = 8080\n# keep\npublic = true\n\n[mc]\ntype = game\nport = 25565\n");
+  expect(readFileSync(file, "utf8")).toBe(
+    "[web]\nport = 8080\n# keep\npublic = true\n\n[mc]\ntype = game\nport = 25565\n",
+  );
   expect(setPublic("web", true)).toEqual([200, { public: true }]);
-  expect(readFileSync(file, "utf8")).toBe("[web]\nport = 8080\n# keep\npublic = true\n\n[mc]\ntype = game\nport = 25565\n");
+  expect(readFileSync(file, "utf8")).toBe(
+    "[web]\nport = 8080\n# keep\npublic = true\n\n[mc]\ntype = game\nport = 25565\n",
+  );
   expect(setPublic("web", false)).toEqual([200, { public: false }]);
   expect(readFileSync(file, "utf8")).toBe("[web]\nport = 8080\n# keep\n\n[mc]\ntype = game\nport = 25565\n");
   expect(setPublic("mc", true)).toEqual([400, { error: "public is for web services only" }]);
@@ -88,7 +94,8 @@ test("set public", () => {
 });
 
 test("ports of", () => {
-  const ss = "LISTEN 0 128 0.0.0.0:22 0.0.0.0:*\nLISTEN 0 128 [::]:80 [::]:*\nLISTEN 0 128 100.64.0.5:7777 0.0.0.0:*\nLISTEN 0 128 127.0.0.1:631 0.0.0.0:*\nLISTEN 0 128 *:9000 *:*\n";
+  const ss =
+    "LISTEN 0 128 0.0.0.0:22 0.0.0.0:*\nLISTEN 0 128 [::]:80 [::]:*\nLISTEN 0 128 100.64.0.5:7777 0.0.0.0:*\nLISTEN 0 128 127.0.0.1:631 0.0.0.0:*\nLISTEN 0 128 *:9000 *:*\n";
   const addrs = ss.split("\n").map((l) => l.split(/\s+/)[3]!);
   expect([...portsOf(addrs, "100.64.0.5")].sort()).toEqual([22, 7777, 80, 9000]);
   expect([...portsOf(["[::1]:5000", "::"], "100.64.0.5")]).toEqual([]);
@@ -103,7 +110,10 @@ test("refresh and health", async () => {
   let git = false;
   try {
     mkdirSync(StateDir, { recursive: true });
-    writeFileSync(join(StateDir, "git-role"), JSON.stringify({ publish: true, name: "git", port: srv.port, mode: "subdomain", master: true }));
+    writeFileSync(
+      join(StateDir, "git-role"),
+      JSON.stringify({ publish: true, name: "git", port: srv.port, mode: "subdomain", master: true }),
+    );
     git = true;
   } catch {}
   const want = git ? ["web", "mc", "git"] : ["web", "mc"];
@@ -117,15 +127,45 @@ test("refresh and health", async () => {
   const rows = own();
   expect(rows.map((r) => r.name)).toEqual(want);
   expect(rows[1]!.status).toBe("offline");
-  if (git) expect(rows[2]).toEqual({ name: "git", port: srv.port, scheme: "http", mode: "subdomain", base_path: "", master: true });
+  if (git)
+    expect(rows[2]).toEqual({
+      name: "git",
+      port: srv.port,
+      scheme: "http",
+      mode: "subdomain",
+      base_path: "",
+      master: true,
+    });
   setPending("mc", "start");
   expect((await refresh("127.0.0.1")).find((r) => r.name === "mc")!.status).toBe("starting");
   setPending("mc", "");
   expect((await refresh("127.0.0.1")).find((r) => r.name === "mc")!.status).toBe("offline");
 
   expect(await health("nope", "127.0.0.1")).toBeUndefined();
-  expect(await health("web", "127.0.0.1")).toEqual({ name: "web", port: srv.port, type: "web", published: true, listening: true, httpStatus: 200, why: "answering" });
-  expect(await health("gone", "127.0.0.1")).toEqual({ name: "gone", port: deadPort, type: "web", published: false, listening: false, why: `not published: nothing on :${deadPort}` });
-  expect(await health("mc", "127.0.0.1")).toEqual({ name: "mc", port: deadPort, type: "game", published: true, listening: false, why: `nothing listening on :${deadPort}, start it with game_power` });
+  expect(await health("web", "127.0.0.1")).toEqual({
+    name: "web",
+    port: srv.port,
+    type: "web",
+    published: true,
+    listening: true,
+    httpStatus: 200,
+    why: "answering",
+  });
+  expect(await health("gone", "127.0.0.1")).toEqual({
+    name: "gone",
+    port: deadPort,
+    type: "web",
+    published: false,
+    listening: false,
+    why: `not published: nothing on :${deadPort}`,
+  });
+  expect(await health("mc", "127.0.0.1")).toEqual({
+    name: "mc",
+    port: deadPort,
+    type: "game",
+    published: true,
+    listening: false,
+    why: `nothing listening on :${deadPort}, start it with game_power`,
+  });
   srv.stop(true);
 });

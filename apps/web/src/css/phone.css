@@ -1,73 +1,218 @@
 /* --- a phone: icons a scrolling launcher, every window the full screen, the
    task bar a nav bar along the bottom ------------------------------------ */
-.dk-home { display: none; }
+.dk-home {
+  display: none;
+}
 @media (max-width: 720px) {
   .dk-icons {
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(5.2rem, 1fr)); grid-auto-rows: max-content;
-    align-content: start; gap: 0.6rem 0.2rem; padding: calc(1rem + env(safe-area-inset-top)) calc(0.6rem + env(safe-area-inset-right)) 1rem calc(0.6rem + env(safe-area-inset-left));
-    overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(5.2rem, 1fr));
+    grid-auto-rows: max-content;
+    align-content: start;
+    gap: 0.6rem 0.2rem;
+    padding: calc(1rem + env(safe-area-inset-top)) calc(0.6rem + env(safe-area-inset-right)) 1rem
+      calc(0.6rem + env(safe-area-inset-left));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
   }
-  .dk-icons > .dk-icon { position: relative; transform: none !important; transition: none; touch-action: pan-y; }
-  .dk-icon { width: auto; min-width: 0; padding: 0.35rem 0.15rem; font-size: 0.75rem; -webkit-tap-highlight-color: transparent; }
+  .dk-icons > .dk-icon {
+    position: relative;
+    transform: none !important;
+    transition: none;
+    touch-action: pan-y;
+  }
+  .dk-icon {
+    width: auto;
+    min-width: 0;
+    padding: 0.35rem 0.15rem;
+    font-size: 0.75rem;
+    -webkit-tap-highlight-color: transparent;
+  }
   .dk-icon .dk-tile {
-    width: 3.4rem; height: 3.4rem; background: color-mix(in srgb, var(--card) 88%, transparent);
-    border: 1px solid var(--border); box-shadow: var(--lift-sm);
+    width: 3.4rem;
+    height: 3.4rem;
+    background: color-mix(in srgb, var(--card) 88%, transparent);
+    border: 1px solid var(--border);
+    box-shadow: var(--lift-sm);
   }
-  .dk-tile .ic, .dk-tile-img .dk-favicon { width: 1.75rem; height: 1.75rem; }
-  .dk-icon:active .dk-tile { background: color-mix(in srgb, var(--accent) 16%, var(--card)); }
-  .dk-icon.sel .dk-tile, .dk-icon.sel .dk-label { background: none; color: inherit; border-color: var(--border); }
-  .dk-icon.sel .dk-label { border-color: transparent; }
+  .dk-tile .ic,
+  .dk-tile-img .dk-favicon {
+    width: 1.75rem;
+    height: 1.75rem;
+  }
+  .dk-icon:active .dk-tile {
+    background: color-mix(in srgb, var(--accent) 16%, var(--card));
+  }
+  .dk-icon.sel .dk-tile,
+  .dk-icon.sel .dk-label {
+    background: none;
+    color: inherit;
+    border-color: var(--border);
+  }
+  .dk-icon.sel .dk-label {
+    border-color: transparent;
+  }
 
   /* the bar flush along the bottom, over the home indicator */
   .dk-bar {
-    height: calc(3.4rem + env(safe-area-inset-bottom)); margin: 0; padding: 0 0.25rem env(safe-area-inset-bottom);
-    gap: 0.25rem; border-width: 1px 0 0; box-shadow: none; font-size: 0.8rem;
+    height: calc(3.4rem + env(safe-area-inset-bottom));
+    margin: 0;
+    padding: 0 0.25rem env(safe-area-inset-bottom);
+    gap: 0.25rem;
+    border-width: 1px 0 0;
+    box-shadow: none;
+    font-size: 0.8rem;
   }
   .dk-home {
-    display: flex; flex: none; align-items: center; justify-content: center; width: 2.9rem; align-self: stretch;
-    background: none; border: 0; color: var(--fg); cursor: pointer;
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 2.9rem;
+    align-self: stretch;
+    background: none;
+    border: 0;
+    color: var(--fg);
+    cursor: pointer;
   }
-  .dk-home .ic { width: 1.15rem; height: 1.15rem; }
-  .dk-home:active { color: var(--accent); }
-  .dk-clock { display: none; }
-  .dk-tasks { gap: 0.3rem; align-self: stretch; align-items: center; padding: 0 0.1rem; }
-  .dk-task { max-width: 8rem; height: 2.3rem; padding: 0 0.75rem; border-color: var(--border); }
-  .dk-task.active { background: color-mix(in srgb, var(--accent) 12%, transparent); }
-  .dk-bar .dk-tray { padding: 0 0.75rem; }
-  .dk-bar .dk-tray.dk-mcp-btn, .dk-bar .dk-mcp + .dk-tray-wrap > .dk-tray.dk-bell { width: auto; padding: 0 0.6rem; }
-  .dk-bar .dk-tray .ic { width: 1.1rem; height: 1.1rem; }
+  .dk-home .ic {
+    width: 1.15rem;
+    height: 1.15rem;
+  }
+  .dk-home:active {
+    color: var(--accent);
+  }
+  .dk-clock {
+    display: none;
+  }
+  .dk-tasks {
+    gap: 0.3rem;
+    align-self: stretch;
+    align-items: center;
+    padding: 0 0.1rem;
+  }
+  .dk-task {
+    max-width: 8rem;
+    height: 2.3rem;
+    padding: 0 0.75rem;
+    border-color: var(--border);
+  }
+  .dk-task.active {
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+  }
+  .dk-bar .dk-tray {
+    padding: 0 0.75rem;
+  }
+  .dk-bar .dk-tray.dk-mcp-btn,
+  .dk-bar .dk-mcp + .dk-tray-wrap > .dk-tray.dk-bell {
+    width: auto;
+    padding: 0 0.6rem;
+  }
+  .dk-bar .dk-tray .ic {
+    width: 1.1rem;
+    height: 1.1rem;
+  }
 
   /* windows: no frame, a tall title bar, minimize and close only */
-  .dk-win { border-width: 0; box-shadow: none; animation-duration: 0.12s; }
-  .dk-head { height: 2.75rem; padding: 0 0 0 0.85rem; font-size: 0.85rem; touch-action: manipulation; }
-  .dk-btns button, .dk-back, .dk-out { width: 2.75rem; height: 2.75rem; }
-  .dk-btns .ic, .dk-back .ic, .dk-out .ic { width: 1rem; height: 1rem; }
-  .dk-btns .dk-max, .dk-edge { display: none; }
+  .dk-win {
+    border-width: 0;
+    box-shadow: none;
+    animation-duration: 0.12s;
+  }
+  .dk-head {
+    height: 2.75rem;
+    padding: 0 0 0 0.85rem;
+    font-size: 0.85rem;
+    touch-action: manipulation;
+  }
+  .dk-btns button,
+  .dk-back,
+  .dk-out {
+    width: 2.75rem;
+    height: 2.75rem;
+  }
+  .dk-btns .ic,
+  .dk-back .ic,
+  .dk-out .ic {
+    width: 1rem;
+    height: 1rem;
+  }
+  .dk-btns .dk-max,
+  .dk-edge {
+    display: none;
+  }
 
   /* every task bar popup a sheet the bar's width */
-  .dk-pop { max-width: calc(100vw - 16px); }
+  .dk-pop {
+    max-width: calc(100vw - 16px);
+  }
   /* a full screen window under the status bar and clear of a landscape notch */
-  .dk-win { padding-top: env(safe-area-inset-top); padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); box-sizing: border-box; }
-  .dk-bar { padding-left: calc(0.25rem + env(safe-area-inset-left)); padding-right: calc(0.25rem + env(safe-area-inset-right)); }
+  .dk-win {
+    padding-top: env(safe-area-inset-top);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+    box-sizing: border-box;
+  }
+  .dk-bar {
+    padding-left: calc(0.25rem + env(safe-area-inset-left));
+    padding-right: calc(0.25rem + env(safe-area-inset-right));
+  }
 }
 /* iOS zooms into any field under 16px and stays zoomed, the page then wider than the pane */
 @supports (-webkit-touch-callout: none) {
-  @media (max-width: 720px) { input, textarea, select { font-size: 16px !important; } }
+  @media (max-width: 720px) {
+    input,
+    textarea,
+    select {
+      font-size: 16px !important;
+    }
+  }
 }
 
 @media (max-width: 720px) {
   /* every task bar popup a sheet across the bottom */
-  .dk-pop { left: 0.5rem !important; width: calc(100vw - 1rem) !important; max-width: none; }
+  .dk-pop {
+    left: 0.5rem !important;
+    width: calc(100vw - 1rem) !important;
+    max-width: none;
+  }
   /* files: finger sized buttons and rows */
-  .fm-tools { gap: 0.3rem; padding: 0.4rem; }
-  .fm-btn { width: 2.25rem; height: 2.25rem; }
-  .fm-tools { flex-wrap: wrap; }
-  .fm-crumbs, .fm-find { height: 2.25rem; }
+  .fm-tools {
+    gap: 0.3rem;
+    padding: 0.4rem;
+  }
+  .fm-btn {
+    width: 2.25rem;
+    height: 2.25rem;
+  }
+  .fm-tools {
+    flex-wrap: wrap;
+  }
+  .fm-crumbs,
+  .fm-find {
+    height: 2.25rem;
+  }
   /* the path its own row under the buttons */
-  .fm-crumbs { order: 1; flex: 1 0 100%; margin: 0; }
-  .fm-find { flex: 1; min-width: 4rem; }
-  .fm-list .fm-row { padding: 0.55rem 0.75rem; font-size: 0.85rem; }
+  .fm-crumbs {
+    order: 1;
+    flex: 1 0 100%;
+    margin: 0;
+  }
+  .fm-find {
+    flex: 1;
+    min-width: 4rem;
+  }
+  .fm-list .fm-row {
+    padding: 0.55rem 0.75rem;
+    font-size: 0.85rem;
+  }
   /* the apps' views closer to the screen's edges */
-  .dk-app .dk-body > .view, .dk-app-chat .dk-body > .view { padding: 0.6rem 0.5rem 0.5rem; }
-  .cw-item { min-height: 2.5rem; }
+  .dk-app .dk-body > .view,
+  .dk-app-chat .dk-body > .view {
+    padding: 0.6rem 0.5rem 0.5rem;
+  }
+  .cw-item {
+    min-height: 2.5rem;
+  }
 }

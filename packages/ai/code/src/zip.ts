@@ -20,7 +20,9 @@ export function unzip(z: Uint8Array): Map<string, Uint8Array> {
     if (p + 46 > z.length || v.getUint32(p, true) !== 0x02014b50) throw new Error("bad zip");
     const method = v.getUint16(p + 10, true);
     const csize = v.getUint32(p + 20, true);
-    const nameLen = v.getUint16(p + 28, true), extraLen = v.getUint16(p + 30, true), cmtLen = v.getUint16(p + 32, true);
+    const nameLen = v.getUint16(p + 28, true),
+      extraLen = v.getUint16(p + 30, true),
+      cmtLen = v.getUint16(p + 32, true);
     const at = v.getUint32(p + 42, true);
     const name = new TextDecoder().decode(z.subarray(p + 46, p + 46 + nameLen));
     p += 46 + nameLen + extraLen + cmtLen;
@@ -37,7 +39,8 @@ export function unzip(z: Uint8Array): Map<string, Uint8Array> {
 
 // zipOf files by name, deflated
 export function zipOf(files: Record<string, string | Uint8Array>): Uint8Array {
-  const parts: Uint8Array[] = [], cd: Uint8Array[] = [];
+  const parts: Uint8Array[] = [],
+    cd: Uint8Array[] = [];
   let off = 0;
   const hdr = (sig: number, n: number) => {
     const b = new Uint8Array(n);

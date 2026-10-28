@@ -9,7 +9,8 @@ const { codeBlocked, codeBlockedMsg, codeLogin, codeOptions } = await import("@p
 // the options for a user whose vault holds no host login: none offered, blocked
 test("code options blocked", async () => {
   const key = users.Derive("pw", "00").subarray(32);
-  const put = (hosts: Record<string, any>) => store.write("home/pmh/vault.json", users.Seal(key, marshal({ hosts, pages: {} })));
+  const put = (hosts: Record<string, any>) =>
+    store.write("home/pmh/vault.json", users.Seal(key, marshal({ hosts, pages: {} })));
   const s: import("@phosphorus/users").Session = { user: "pmh", admin: false, boot: false, key, token: "", e: 0 };
   put({});
   let o = await codeOptions(s);

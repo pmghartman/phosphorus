@@ -1,6 +1,10 @@
 // --- /api/code: packages/code
 
-export interface CodeUsage { in?: number; out?: number; costUSD?: number }
+export interface CodeUsage {
+  in?: number;
+  out?: number;
+  costUSD?: number;
+}
 // a session as the page sees it (packages/code SessionRecord)
 export interface CodeSession {
   id: string;
@@ -17,8 +21,20 @@ export interface CodeSession {
   usage?: CodeUsage;
   harness?: string;
 }
-export interface CodeModel { id: string; label?: string; provider?: string; ready?: boolean; why?: string }
-export interface CodeHarness { id: string; label: string; about?: string; meshOnly?: boolean; site?: string }
+export interface CodeModel {
+  id: string;
+  label?: string;
+  provider?: string;
+  ready?: boolean;
+  why?: string;
+}
+export interface CodeHarness {
+  id: string;
+  label: string;
+  about?: string;
+  meshOnly?: boolean;
+  site?: string;
+}
 export interface CodeOptions {
   hosts?: string[];
   models?: CodeModel[];
@@ -27,10 +43,28 @@ export interface CodeOptions {
   blocked?: string;
   error?: string;
 }
-export interface CodeHarnessOn { id: string; label: string; installed: boolean; version?: string }
-export interface CodeHarnesses { harnesses?: CodeHarnessOn[]; error?: string; why?: string }
-export interface CodeLsEntry { name: string; dir: boolean; size?: number; mtime?: number }
-export interface CodeLs { dir: string; entries?: CodeLsEntry[]; more?: boolean }
+export interface CodeHarnessOn {
+  id: string;
+  label: string;
+  installed: boolean;
+  version?: string;
+}
+export interface CodeHarnesses {
+  harnesses?: CodeHarnessOn[];
+  error?: string;
+  why?: string;
+}
+export interface CodeLsEntry {
+  name: string;
+  dir: boolean;
+  size?: number;
+  mtime?: number;
+}
+export interface CodeLs {
+  dir: string;
+  entries?: CodeLsEntry[];
+  more?: boolean;
+}
 // a line of a session's transcript over its socket
 export interface CodeWsMessage {
   seq?: number;

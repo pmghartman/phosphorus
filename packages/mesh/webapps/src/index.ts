@@ -5,11 +5,23 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { extname, join, posix } from "node:path";
 import { newer } from "@phosphorus/appfeed";
-import { markHot } from "@phosphorus/util";
 import { parsePublicKey } from "@phosphorus/minisign";
 import * as store from "@phosphorus/store";
 import { untar } from "@phosphorus/tools";
-import { env, errText, FrontendPort, ini, logf as log, now, obj, readJSON, SelfHost, StateDir, writeJSONAtomic } from "@phosphorus/util";
+import {
+  env,
+  errText,
+  FrontendPort,
+  ini,
+  logf as log,
+  markHot,
+  now,
+  obj,
+  readJSON,
+  SelfHost,
+  StateDir,
+  writeJSONAtomic,
+} from "@phosphorus/util";
 import { RepoIcon, summary as svcSummaryFn } from "./services.ts";
 
 const logf = (f: string, ...a: unknown[]) => log("[apps] " + f, ...a);
@@ -18,8 +30,17 @@ const logf = (f: string, ...a: unknown[]) => log("[apps] " + f, ...a);
 // is where every host serves it, the same folder inside the tarball; the rest
 // is what the apps page shows of it
 export type App = {
-  id: string; name: string; tagline: string; about: string; features: string[]; category: string; by: string;
-  repo: string; feed: string; mount: string; icon: string;
+  id: string;
+  name: string;
+  tagline: string;
+  about: string;
+  features: string[];
+  category: string;
+  by: string;
+  repo: string;
+  feed: string;
+  mount: string;
+  icon: string;
   // the icon's path in the repository, shown before any host serves the app
   repoIcon: string;
   // the agents it asks the mesh's models as, listed in the agents app while installed
@@ -31,8 +52,15 @@ export const Catalog: App[] = [
     id: "sulfur",
     name: "Sulfur",
     tagline: "a code editor for distributed systems",
-    about: "Feels like VS Code: palette, completion, extensions from Open VSX, themes. Every host's files and the merged home, live collaboration on every file, terminals, builds, git and SQLite on any machine, and language servers for ten languages, run on the host that has the toolchain.",
-    features: ["live collaboration on every file", "terminals, builds and git on any host", "language servers native for ten languages", "extensions from Open VSX", "a chat and inline completions on the mesh's models"],
+    about:
+      "Feels like VS Code: palette, completion, extensions from Open VSX, themes. Every host's files and the merged home, live collaboration on every file, terminals, builds, git and SQLite on any machine, and language servers for ten languages, run on the host that has the toolchain.",
+    features: [
+      "live collaboration on every file",
+      "terminals, builds and git on any host",
+      "language servers native for ten languages",
+      "extensions from Open VSX",
+      "a chat and inline completions on the mesh's models",
+    ],
     category: "developer tools",
     by: "rpmull",
     repo: "https://github.com/rpmull/sulfur",
@@ -134,7 +162,8 @@ export async function Install(id: string): Promise<[number, any]> {
   const f = await latest(app, true);
   if (!f.latest) return [502, { error: `${app.name}'s feed: ${f.error || "no release"}` }];
   const have = wantOf(id);
-  if (have && have.version === f.latest.version && have.sha256 === f.latest.sha256) return [200, { ok: true, want: have, current: true }];
+  if (have && have.version === f.latest.version && have.sha256 === f.latest.sha256)
+    return [200, { ok: true, want: have, current: true }];
   const want: Want = { ...f.latest, from: SelfHost, at: now() };
   store.write(wantRel(id), want);
   logf("%s v%s picked for the mesh", app.name, want.version);
@@ -172,8 +201,18 @@ function local(id: string): Local {
   let l = locals.get(id);
   if (!l) {
     const cur = obj(readJSON(currentFile(id)));
-    const version = typeof cur?.version === "string" && versionRe.test(cur.version) && existsSync(okStamp(id, cur.version)) ? cur.version : "";
-    l = { version, sha256: version && typeof cur?.sha256 === "string" ? cur.sha256 : "", busy: false, error: "", errorFor: "", at: 0 };
+    const version =
+      typeof cur?.version === "string" && versionRe.test(cur.version) && existsSync(okStamp(id, cur.version))
+        ? cur.version
+        : "";
+    l = {
+      version,
+      sha256: version && typeof cur?.sha256 === "string" ? cur.sha256 : "",
+      busy: false,
+      error: "",
+      errorFor: "",
+      at: 0,
+    };
     locals.set(id, l);
   }
   return l;
@@ -210,7 +249,10 @@ export function Serve(id: string, version: string): Response {
   } catch {
     return new Response(null, { status: 404 });
   }
-  return new Response(Bun.file(file), { status: 200, headers: { "Content-Type": "application/gzip", "Content-Length": String(size) } });
+  return new Response(Bun.file(file), {
+    status: 200,
+    headers: { "Content-Type": "application/gzip", "Content-Length": String(size) },
+  });
 }
 
 const sha256 = (b: Uint8Array) => createHash("sha256").update(b).digest("hex");
@@ -237,7 +279,9 @@ async function fromPeer(app: App, w: Want, ipOf: IPOf, port: number): Promise<Ui
   const ip = await ipOf(w.from);
   if (!ip) return;
   try {
-    const res = await fetch(`http://${ip}:${port}/internal/apps/${app.id}/${w.version}`, { signal: AbortSignal.timeout(120000) });
+    const res = await fetch(`http://${ip}:${port}/internal/apps/${app.id}/${w.version}`, {
+      signal: AbortSignal.timeout(120000),
+    });
     if (res.status !== 200) {
       await res.body?.cancel().catch(() => {});
       return;
@@ -345,11 +389,28 @@ export function reset() {
 // --- the page served: the app's folder under its mount, its root files beside the desktop's ---
 
 const types: Record<string, string> = {
-  ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8",
-  ".css": "text/css; charset=utf-8", ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png",
-  ".ico": "image/x-icon", ".woff2": "font/woff2", ".woff": "font/woff", ".ttf": "font/ttf", ".gif": "image/gif",
-  ".wasm": "application/wasm", ".map": "application/json", ".txt": "text/plain; charset=utf-8", ".md": "text/plain; charset=utf-8",
-  ".webp": "image/webp", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".mp3": "audio/mpeg", ".ogg": "audio/ogg", ".wav": "audio/wav",
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".json": "application/json",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".ico": "image/x-icon",
+  ".woff2": "font/woff2",
+  ".woff": "font/woff",
+  ".ttf": "font/ttf",
+  ".gif": "image/gif",
+  ".wasm": "application/wasm",
+  ".map": "application/json",
+  ".txt": "text/plain; charset=utf-8",
+  ".md": "text/plain; charset=utf-8",
+  ".webp": "image/webp",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".mp3": "audio/mpeg",
+  ".ogg": "audio/ogg",
+  ".wav": "audio/wav",
 };
 // a content-hashed name, kept for good
 const hashedRe = /[-.][A-Za-z0-9_-]{8,}\.(js|css|woff2?)$/;
@@ -396,7 +457,8 @@ export function mounted(pathname: string): { app: App; rel: string } | undefined
   for (const app of Catalog) {
     if (!dirOf(app.id)) continue;
     const m = app.mount.replace(/\/$/, "");
-    if (pathname === m || pathname.startsWith(app.mount)) return { app, rel: pathname === m ? "" : pathname.slice(app.mount.length) };
+    if (pathname === m || pathname.startsWith(app.mount))
+      return { app, rel: pathname === m ? "" : pathname.slice(app.mount.length) };
   }
 }
 
@@ -440,18 +502,32 @@ export function serve(req: Request): Response | undefined {
 
 export async function summary(fresh: boolean): Promise<Record<string, any>> {
   const services = svcSummaryFn();
-  const apps = await Promise.all(Catalog.map(async (a) => {
-    const f = await latest(a, fresh);
-    const l = local(a.id);
-    return {
-      id: a.id, name: a.name, tagline: a.tagline, about: a.about, features: a.features, category: a.category, by: a.by,
-      repo: a.repo, mount: a.mount, icon: a.icon, repoIcon: appIconPath(a.id), agents: a.agents ?? [],
-      want: wantOf(a.id) ?? null,
-      latest: f.latest ? f.latest.version : "", feedError: f.error, checkedAt: f.at,
-      local: { version: l.version, busy: l.busy, error: l.error },
-      signed: !!keyOf(a.id),
-    };
-  }));
+  const apps = await Promise.all(
+    Catalog.map(async (a) => {
+      const f = await latest(a, fresh);
+      const l = local(a.id);
+      return {
+        id: a.id,
+        name: a.name,
+        tagline: a.tagline,
+        about: a.about,
+        features: a.features,
+        category: a.category,
+        by: a.by,
+        repo: a.repo,
+        mount: a.mount,
+        icon: a.icon,
+        repoIcon: appIconPath(a.id),
+        agents: a.agents ?? [],
+        want: wantOf(a.id) ?? null,
+        latest: f.latest ? f.latest.version : "",
+        feedError: f.error,
+        checkedAt: f.at,
+        local: { version: l.version, busy: l.busy, error: l.error },
+        signed: !!keyOf(a.id),
+      };
+    }),
+  );
   return { apps, services: await services };
 }
 
@@ -467,9 +543,38 @@ export async function AppIcon(id: string): Promise<{ data: Uint8Array; type: str
 
 // the services beside the apps: a checkout per host, run as a person's own login
 export {
-  behindMain as svcBehindMain, type Device as SvcDevice, type HostView as SvcHostView, Icon as svcIcon, iconPath as svcIconPath, type Job as SvcJob, jobOf as svcJobOf,
-  jobs as svcJobs, type JobView as SvcJobView, launch as svcLaunch, type Login as SvcLogin, type Op as SvcOp, Ops as SvcOps, opTimeoutMS as svcTimeoutMS, progress as svcProgress,
-  type Progress as SvcProgress, type PublishLocal as SvcPublishLocal, type Record_ as SvcRecord, recordOf as svcRecordOf, records as svcRecords, repoOf as svcRepoOf,
-  reset as svcReset, type Route as SvcRoute, type Runner as SvcRunner, script as svcScript, seams as svcSeams, type Service, serviceOf, ServiceOp, Services,
-  Start as StartServices, summary as svcSummary, tick as svcTick, unitOf as svcUnitOf,
+  behindMain as svcBehindMain,
+  type Device as SvcDevice,
+  type HostView as SvcHostView,
+  Icon as svcIcon,
+  iconPath as svcIconPath,
+  type Job as SvcJob,
+  type JobView as SvcJobView,
+  jobOf as svcJobOf,
+  jobs as svcJobs,
+  type Login as SvcLogin,
+  launch as svcLaunch,
+  type Op as SvcOp,
+  Ops as SvcOps,
+  opTimeoutMS as svcTimeoutMS,
+  type Progress as SvcProgress,
+  type PublishLocal as SvcPublishLocal,
+  progress as svcProgress,
+  type Record_ as SvcRecord,
+  type Route as SvcRoute,
+  type Runner as SvcRunner,
+  recordOf as svcRecordOf,
+  records as svcRecords,
+  repoOf as svcRepoOf,
+  reset as svcReset,
+  type Service,
+  ServiceOp,
+  Services,
+  Start as StartServices,
+  script as svcScript,
+  seams as svcSeams,
+  serviceOf,
+  summary as svcSummary,
+  tick as svcTick,
+  unitOf as svcUnitOf,
 } from "./services.ts";

@@ -42,14 +42,15 @@ function tarGz(files: Record<string, string>): Uint8Array<ArrayBuffer> {
 
 const sha256 = (b: Uint8Array) => createHash("sha256").update(b).digest("hex");
 
-const page = (v: string) => tarGz({
-  "./sulfur/index.html": `<!doctype html><title>sulfur ${v}</title>`,
-  "./sulfur/assets/main-abcdef123456.js": `console.log(${JSON.stringify(v)})`,
-  "./sulfur/icon.svg": "<svg/>",
-  "./vendor/xterm-0123456789ab.css": "body{}",
-  "./wasi.js": "// wasi",
-  "../escape.txt": "never written",
-});
+const page = (v: string) =>
+  tarGz({
+    "./sulfur/index.html": `<!doctype html><title>sulfur ${v}</title>`,
+    "./sulfur/assets/main-abcdef123456.js": `console.log(${JSON.stringify(v)})`,
+    "./sulfur/icon.svg": "<svg/>",
+    "./vendor/xterm-0123456789ab.css": "body{}",
+    "./wasi.js": "// wasi",
+    "../escape.txt": "never written",
+  });
 
 // the feed and the download on one local server, the body swapped per test
 let tar = page("1.0.1");
@@ -70,9 +71,16 @@ const srv = Bun.serve({
 const base = `http://127.0.0.1:${srv.port}`;
 sulfur.feed = `${base}/feed.json`;
 const feed = (version: string, data: Uint8Array, extra: Record<string, unknown> = {}) =>
-  (feedBody = JSON.stringify({ version, url: `${base}/sulfur-web.tar.gz`, sha256: sha256(data), signature: "", ...extra }));
+  (feedBody = JSON.stringify({
+    version,
+    url: `${base}/sulfur-web.tar.gz`,
+    sha256: sha256(data),
+    signature: "",
+    ...extra,
+  }));
 
-const req = (path: string, headers: Record<string, string> = {}, method = "GET") => new Request("http://host" + path, { method, headers });
+const req = (path: string, headers: Record<string, string> = {}, method = "GET") =>
+  new Request("http://host" + path, { method, headers });
 
 test("nothing installed: no mount, no want, the page's summary bare", async () => {
   expect(W.mounted("/sulfur/")).toBeUndefined();
@@ -143,9 +151,18 @@ test("install: the want written for the mesh, this host following, the page serv
   expect(W.serve(req("/nothing.css"))).toBeUndefined();
 
   // nothing above the app's folder, however it's spelt
-  for (const p of ["/sulfur/../1.0.1.tar.gz", "/sulfur/%2e%2e/1.0.1.tar.gz", "/sulfur/..%2f..%2fcurrent.json", "/sulfur/a/../../1.0.1.ok", "/sulfur/%2e%2e/%2e%2e/1.0.1.ok"]) {
+  for (const p of [
+    "/sulfur/../1.0.1.tar.gz",
+    "/sulfur/%2e%2e/1.0.1.tar.gz",
+    "/sulfur/..%2f..%2fcurrent.json",
+    "/sulfur/a/../../1.0.1.ok",
+    "/sulfur/%2e%2e/%2e%2e/1.0.1.ok",
+  ]) {
     const r = W.serve(req(p));
-    expect([p, r === undefined || r.status === 404 || (r.status === 200 && (await r.text()).includes("sulfur 1.0.1"))]).toEqual([p, true]);
+    expect([
+      p,
+      r === undefined || r.status === 404 || (r.status === 200 && (await r.text()).includes("sulfur 1.0.1")),
+    ]).toEqual([p, true]);
   }
   expect(W.serve(req("/../state/apps/sulfur/current.json"))).toBeUndefined();
   expect(W.Serve("sulfur", "1.0.1").status).toBe(200);
@@ -169,7 +186,10 @@ test("a newer release: picked, fetched, the old copy gone", async () => {
   expect(existsSync(join(dir, "state", "apps", "sulfur", "1.0.1"))).toBe(false);
   expect(existsSync(join(dir, "state", "apps", "sulfur", "1.0.1.tar.gz"))).toBe(false);
   expect(await W.serve(req("/sulfur/"))!.text()).toContain("sulfur 1.0.2");
-  expect(JSON.parse(readFileSync(join(dir, "state", "apps", "sulfur", "current.json"), "utf8"))).toEqual({ version: "1.0.2", sha256: sha256(tar) });
+  expect(JSON.parse(readFileSync(join(dir, "state", "apps", "sulfur", "current.json"), "utf8"))).toEqual({
+    version: "1.0.2",
+    sha256: sha256(tar),
+  });
 });
 
 test("a download whose hash differs is refused, the copy kept, retried later", async () => {
@@ -191,7 +211,14 @@ test("a download whose hash differs is refused, the copy kept, retried later", a
 
 test("a peer's want followed: its copy first, the feed when the peer has none", async () => {
   tar = page("1.0.4");
-  const w = { version: "1.0.4", url: `${base}/sulfur-web.tar.gz`, sha256: sha256(tar), signature: "", from: "b", at: Date.now() };
+  const w = {
+    version: "1.0.4",
+    url: `${base}/sulfur-web.tar.gz`,
+    sha256: sha256(tar),
+    signature: "",
+    from: "b",
+    at: Date.now(),
+  };
   store.write("etc/apps/sulfur.json", w);
   // b unreachable: the feed's url
   await W.tick(() => "");
@@ -200,7 +227,13 @@ test("a peer's want followed: its copy first, the feed when the peer has none", 
   tar = page("1.0.5");
   let peerHits = 0;
   const peersCopy = tar;
-  const peer = Bun.serve({ port: 0, fetch: (r) => (new URL(r.url).pathname === "/internal/apps/sulfur/1.0.5" ? (peerHits++, new Response(peersCopy)) : new Response(null, { status: 404 })) });
+  const peer = Bun.serve({
+    port: 0,
+    fetch: (r) =>
+      new URL(r.url).pathname === "/internal/apps/sulfur/1.0.5"
+        ? (peerHits++, new Response(peersCopy))
+        : new Response(null, { status: 404 }),
+  });
   store.write("etc/apps/sulfur.json", { ...w, version: "1.0.5", sha256: sha256(peersCopy) });
   // the feed holding another tarball: only the peer's copy matches
   tar = page("stale");
@@ -260,7 +293,12 @@ const jobsDir = (login: string) => join(homeOf(login), ".phosphorus", "services"
 const ahead: Record<string, number> = {};
 let iconBytes: Uint8Array | undefined = new TextEncoder().encode("PNG!");
 let iconHits = 0;
-W.svcSeams.tailnet = () => [{ name: "a", os: "linux", phosphorus: true }, { name: "b", os: "linux", phosphorus: true }, { name: "w", os: "windows", phosphorus: true }, { name: "phone", os: "ios", phosphorus: false }];
+W.svcSeams.tailnet = () => [
+  { name: "a", os: "linux", phosphorus: true },
+  { name: "b", os: "linux", phosphorus: true },
+  { name: "w", os: "windows", phosphorus: true },
+  { name: "phone", os: "ios", phosphorus: false },
+];
 W.svcSeams.routes = () => routes;
 W.svcSeams.homeOf = homeOf;
 W.svcSeams.hostInfo = (h) => (h === "a" ? { services: W.svcProgress() } : undefined);
@@ -272,7 +310,15 @@ W.svcSeams.run = async (host, login, script, onOut) => {
 W.svcSeams.publishLocal = async (name, fields) => {
   published.push([name, fields]);
   if (publishStatus !== 200) return [publishStatus, { error: "nope" }];
-  if (fields) routes.push({ host: "a", name, port: Number(fields.port), mode: fields.mode ?? "path", scheme: "http", base_path: "" });
+  if (fields)
+    routes.push({
+      host: "a",
+      name,
+      port: Number(fields.port),
+      mode: fields.mode ?? "path",
+      scheme: "http",
+      base_path: "",
+    });
   else routes.splice(0, routes.length, ...routes.filter((r) => r.name !== name));
   return [200, { ok: true, outcome: { published: true } }];
 };
@@ -296,7 +342,10 @@ function ended(login: string, id: string, exit: number, log: string, commit = ""
 }
 
 test("the catalogue: circuit and tavern as services, their scripts in the login's own checkout", () => {
-  expect(W.Services.map((s) => [s.id, s.port, s.mode, s.os, s.data])).toEqual([["circuit", 8099, "path", ["linux"], []], ["tavern", 8484, "path", ["linux"], ["data", ".env"]]]);
+  expect(W.Services.map((s) => [s.id, s.port, s.mode, s.os, s.data])).toEqual([
+    ["circuit", 8099, "path", ["linux"], []],
+    ["tavern", 8484, "path", ["linux"], ["data", ".env"]],
+  ]);
   expect(W.svcRepoOf(circuit)).toEqual({ owner: "pmghartman", name: "circuit" });
   const inst = W.svcScript(circuit, "install");
   expect(inst).toContain('dir="$HOME/.phosphorus/services/circuit"');

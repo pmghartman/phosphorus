@@ -2,7 +2,7 @@
 // reach by a key or a click
 import { dkGlyph, el, isMobile } from '../lib/dom.ts';
 import { dk } from '../lib/state.ts';
-import { dkClose, dkFocus, dkStack, dkTouch, type DkWin } from './windows.ts';
+import { type DkWin, dkClose, dkFocus, dkStack, dkTouch } from './windows.ts';
 
 // --- the switcher: a list in the middle, tab stepping while ctrl+alt are held, let go to land
 
@@ -31,8 +31,15 @@ export function dkSwitchStep(back: boolean): void {
     box.setAttribute('role', 'listbox');
     for (const w of list) {
       const row = el('div', 'dk-sw-row');
-      row.append(dkGlyph(w.glyph, 'dk-sw-ic'), el('span', 'dk-sw-t', w.task.querySelector('.dk-task-t')!.textContent || ''), el('span', 'dk-sw-s', w.node.hidden ? 'minimized' : ''));
-      row.addEventListener('pointerup', () => { sw!.at = list.indexOf(w); dkSwitchEnd(); });
+      row.append(
+        dkGlyph(w.glyph, 'dk-sw-ic'),
+        el('span', 'dk-sw-t', w.task.querySelector('.dk-task-t')!.textContent || ''),
+        el('span', 'dk-sw-s', w.node.hidden ? 'minimized' : ''),
+      );
+      row.addEventListener('pointerup', () => {
+        sw!.at = list.indexOf(w);
+        dkSwitchEnd();
+      });
       box.appendChild(row);
     }
     dk.desk.el.appendChild(box);
@@ -57,7 +64,10 @@ let ov: { cells: HTMLElement; wins: DkWin[] } | null = null;
 export const dkOverviewOn = (): boolean => !!ov;
 
 export function dkOverview(): void {
-  if (ov) { dkOverviewEnd(); return; }
+  if (ov) {
+    dkOverviewEnd();
+    return;
+  }
   if (isMobile() || !dk.desk) return;
   const wins = swOrder();
   if (!wins.length) return;
@@ -77,7 +87,10 @@ export function dkOverview(): void {
   wins.forEach((w, i) => {
     const node = w.node;
     // a minimized one shown for the overview alone
-    if (node.hidden) { node.hidden = false; node.classList.add('dk-ov-shown'); }
+    if (node.hidden) {
+      node.hidden = false;
+      node.classList.add('dk-ov-shown');
+    }
     const r = node.getBoundingClientRect();
     const k = Math.min(cellW / r.width, cellH / r.height, 1);
     const c = i % cols;
@@ -92,15 +105,29 @@ export function dkOverview(): void {
     node.style.setProperty('--ov-y', `${ty - oy}px`);
     node.style.setProperty('--ov-s', String(k));
     const cell = Object.assign(el('button', 'dk-ov-cell'), { type: 'button', title: w.task.title });
-    Object.assign(cell.style, { left: `${tx}px`, top: `${ty}px`, width: `${r.width * k}px`, height: `${r.height * k}px` });
+    Object.assign(cell.style, {
+      left: `${tx}px`,
+      top: `${ty}px`,
+      width: `${r.width * k}px`,
+      height: `${r.height * k}px`,
+    });
     const label = el('span', 'dk-ov-t', w.task.querySelector('.dk-task-t')!.textContent || '');
     const close = Object.assign(el('span', 'dk-ov-x', '×'), { title: 'close' });
-    close.addEventListener('click', (e) => { e.stopPropagation(); dkOverviewEnd(); dkClose(w); });
+    close.addEventListener('click', (e) => {
+      e.stopPropagation();
+      dkOverviewEnd();
+      dkClose(w);
+    });
     cell.append(label, close);
-    cell.addEventListener('click', () => { dkOverviewEnd(); dkFocus(w); });
+    cell.addEventListener('click', () => {
+      dkOverviewEnd();
+      dkFocus(w);
+    });
     cells.appendChild(cell);
   });
-  cells.addEventListener('click', (e) => { if (e.target === cells) dkOverviewEnd(); });
+  cells.addEventListener('click', (e) => {
+    if (e.target === cells) dkOverviewEnd();
+  });
   area.appendChild(cells);
   ov = { cells, wins };
 }
@@ -113,7 +140,10 @@ export function dkOverviewEnd(): void {
   dk.desk?.el.classList.remove('dk-overview');
   for (const w of wins) {
     const n = w.node;
-    if (n.classList.contains('dk-ov-shown')) { n.classList.remove('dk-ov-shown'); n.hidden = true; }
+    if (n.classList.contains('dk-ov-shown')) {
+      n.classList.remove('dk-ov-shown');
+      n.hidden = true;
+    }
     n.style.removeProperty('--ov-x');
     n.style.removeProperty('--ov-y');
     n.style.removeProperty('--ov-s');

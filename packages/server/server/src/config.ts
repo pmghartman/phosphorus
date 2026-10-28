@@ -22,7 +22,8 @@ export const bootID = uuid();
 export const gameKey = process.platform === "win32" ? join(gameKeyDir, "run-key") : "/root/.ssh/game-control";
 
 export const runMS = 12 * 3600 * 1000;
-export const runSandbox = "sandbox allow-scripts allow-forms allow-modals allow-popups allow-pointer-lock allow-downloads";
+export const runSandbox =
+  "sandbox allow-scripts allow-forms allow-modals allow-popups allow-pointer-lock allow-downloads";
 export const maxTerms = 16;
 // modelColor the colour of lines a key's agent posts
 export const modelColor = "#d2a8ff";
@@ -42,7 +43,8 @@ export const setPlatform = (p: string) => void (platform = p);
 
 export const selfInfo = () => ({ host: selfHost, version: Version(), platform: getPlatform(), bootId: bootID });
 
-export const detectPlatform = () => (process.platform === "darwin" ? "macOS" : process.platform === "win32" ? "windows" : "linux");
+export const detectPlatform = () =>
+  process.platform === "darwin" ? "macOS" : process.platform === "win32" ? "windows" : "linux";
 
 export function recordPlatform() {
   const found = detectPlatform();

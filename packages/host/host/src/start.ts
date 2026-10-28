@@ -1,7 +1,22 @@
 // bring-up, the one-time admin setup, the cli on the service's env and the keys
 import { keys as cliKeys } from "@phosphorus/cli";
 import * as envfile from "@phosphorus/envfile";
-import { at, envPath, ExitCode, fail, fileExists, home, inDpkg, isWindows, keysMissing, println, say, selfArgv, setTag, spawnIO } from "./base.ts";
+import {
+  at,
+  ExitCode,
+  envPath,
+  fail,
+  fileExists,
+  home,
+  inDpkg,
+  isWindows,
+  keysMissing,
+  println,
+  say,
+  selfArgv,
+  setTag,
+  spawnIO,
+} from "./base.ts";
 import { attach, rebuild, waitFrontend } from "./native.ts";
 import { os } from "./os.ts";
 

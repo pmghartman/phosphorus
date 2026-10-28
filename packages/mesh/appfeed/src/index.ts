@@ -17,9 +17,11 @@ export function target() {
 
 // numeric, part by part, missing parts 0
 export function newer(a: string, b: string): boolean {
-  const pa = a.split("."), pb = b.split(".");
+  const pa = a.split("."),
+    pb = b.split(".");
   for (let i = 0; i < pa.length || i < pb.length; i++) {
-    const x = parseInt(pa[i] ?? "0", 10) || 0, y = parseInt(pb[i] ?? "0", 10) || 0;
+    const x = parseInt(pa[i] ?? "0", 10) || 0,
+      y = parseInt(pb[i] ?? "0", 10) || 0;
     if (x !== y) return x > y;
   }
   return false;
@@ -28,7 +30,11 @@ export function newer(a: string, b: string): boolean {
 // where an app looks: the feed's base url, the key its files are signed with,
 // the app's prefix on each target's file ("" for phosphorus)
 export class Feed {
-  constructor(public url: string, public pubkey: string, public app = "") {}
+  constructor(
+    public url: string,
+    public pubkey: string,
+    public app = "",
+  ) {}
 
   // whether the feed is set, false for a dev build
   on() {
@@ -38,7 +44,9 @@ export class Feed {
   // the feed's release when newer than have, undefined when not or with no feed
   async check(have: string): Promise<Release | undefined> {
     if (!this.on()) return;
-    const res = await fetch(`${this.url.replace(/\/+$/, "")}/${this.app}${target()}.json`, { signal: AbortSignal.timeout(30_000) });
+    const res = await fetch(`${this.url.replace(/\/+$/, "")}/${this.app}${target()}.json`, {
+      signal: AbortSignal.timeout(30_000),
+    });
     if (res.status === 404) return;
     if (res.status !== 200) throw new Error(`feed answered ${res.status}`);
     const r = (await res.json()) as Release;

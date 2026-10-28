@@ -1,6 +1,7 @@
 // the Claude account at the side's foot
-import { el } from '../../lib/dom.ts';
+
 import { dkCode } from '../../desktop/deskfiles.ts';
+import { el } from '../../lib/dom.ts';
 import { acctBox, acctBtn } from './frame.ts';
 import { loadOpts, rec } from './list.ts';
 import { saveToken, tokenInput } from './newsession.ts';
@@ -9,8 +10,11 @@ import { call, cd, view } from './state.ts';
 
 export function paintAcct() {
   const on = !!cd.opts?.anthropic;
-  acctBtn.replaceChildren(el('span', `cd-acct-dot${on ? ' on' : ''}`), el('span', 'cd-acct-t', 'Claude account'),
-    el('span', 'cd-acct-st', on ? 'signed in' : 'sign in'));
+  acctBtn.replaceChildren(
+    el('span', `cd-acct-dot${on ? ' on' : ''}`),
+    el('span', 'cd-acct-t', 'Claude account'),
+    el('span', 'cd-acct-st', on ? 'signed in' : 'sign in'),
+  );
 }
 
 export function acctOpen(on: boolean) {
@@ -28,7 +32,8 @@ export function codeToken(box: HTMLElement) {
   const save = Object.assign(el('button', 'dk-cl-key', 'save token'), { type: 'button' });
   const clear = Object.assign(el('button', 'dk-cl-key quiet', 'clear'), { type: 'button' });
   const hint = el('div', 'cd-token-hint');
-  hint.innerHTML = 'Run <code>claude setup-token</code> in a terminal and paste the token it prints, for Opus, Sonnet and Haiku.';
+  hint.innerHTML =
+    'Run <code>claude setup-token</code> in a terminal and paste the token it prints, for Opus, Sonnet and Haiku.';
   const bar = el('div', 'dk-cl-bar cd-token-bar');
   bar.append(inp, save, clear);
   box.replaceChildren(title, hint, bar);
@@ -46,14 +51,33 @@ export function codeToken(box: HTMLElement) {
       paint(on);
       // saved: folded back into the account row, its dot saying so
       if (on && box === acctBox) acctOpen(false);
-      loadOpts(true).then(() => { sessionVars.headSig = ''; paintHead(); paintAcct(); });
-    } catch (e) { state.textContent = (e as Error).message; state.dataset.state = 'off'; }
+      loadOpts(true).then(() => {
+        sessionVars.headSig = '';
+        paintHead();
+        paintAcct();
+      });
+    } catch (e) {
+      state.textContent = (e as Error).message;
+      state.dataset.state = 'off';
+    }
     save.disabled = clear.disabled = false;
   };
-  inp.addEventListener('keydown', (e) => { if (e.key === 'Enter' && inp.value.trim()) put(inp.value.trim()); });
-  save.addEventListener('click', () => { if (inp.value.trim()) put(inp.value.trim()); else inp.focus(); });
+  inp.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && inp.value.trim()) put(inp.value.trim());
+  });
+  save.addEventListener('click', () => {
+    if (inp.value.trim()) put(inp.value.trim());
+    else inp.focus();
+  });
   clear.addEventListener('click', () => put(''));
-  call('/api/code/options').then((o) => { cd.opts = o; paint(!!o.anthropic); paintAcct(); }, () => paint(false));
+  call('/api/code/options').then(
+    (o) => {
+      cd.opts = o;
+      paint(!!o.anthropic);
+      paintAcct();
+    },
+    () => paint(false),
+  );
   inp.focus({ preventScroll: true });
 }
 

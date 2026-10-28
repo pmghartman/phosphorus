@@ -2,10 +2,9 @@
 // what each browser gets of it
 import { createHash } from "node:crypto";
 import { clean as cleanFiles } from "@phosphorus/chatmedia";
-import { markHot } from "@phosphorus/util";
 import * as store from "@phosphorus/store";
 import { Exists } from "@phosphorus/users";
-import { logf, marshal, now, readJSON, writeJSONSoon } from "@phosphorus/util";
+import { logf, markHot, marshal, now, readJSON, writeJSONSoon } from "@phosphorus/util";
 import { markdown } from "@phosphorus/web-md";
 import type { Conn } from "@phosphorus/wsock";
 import { modelColor, selfHost } from "./config.ts";
@@ -22,8 +21,22 @@ const typingMS = 6000;
 const rejoinGrace = 20 * 1000;
 const bootQuiet = 20 * 1000;
 
-const nameColors = ["#4f9eff", "#3fb950", "#f0883e", "#d2a8ff", "#ff7b72", "#79c0ff", "#ffa657",
-  "#e3b341", "#ff9bce", "#39c5cf", "#db61a2", "#7ee787", "#d4a72c", "#ffa198"];
+const nameColors = [
+  "#4f9eff",
+  "#3fb950",
+  "#f0883e",
+  "#d2a8ff",
+  "#ff7b72",
+  "#79c0ff",
+  "#ffa657",
+  "#e3b341",
+  "#ff9bce",
+  "#39c5cf",
+  "#db61a2",
+  "#7ee787",
+  "#d4a72c",
+  "#ffa198",
+];
 export const validColors = new Set(nameColors);
 export const reactions = ["+1", "✓", "✗", "?", "!", "♡"];
 const channelRe = /^[a-z0-9][a-z0-9-]{0,23}$/;
@@ -214,7 +227,8 @@ function dropOrphanMarks() {
 export function mergeChatMessages(newMsgs: Msg[]): Msg[] {
   for (const m of newMsgs) {
     if (isClearEntry(m)) setClear(num(m.timestamp), str(m.name));
-    else if (isClose(m) && num(m.timestamp) > closedOf(str(m.ch))) setChannel(str(m.ch), { closedAt: m.timestamp, closedBy: m.name });
+    else if (isClose(m) && num(m.timestamp) > closedOf(str(m.ch)))
+      setChannel(str(m.ch), { closedAt: m.timestamp, closedBy: m.name });
   }
   const gone = new Set<string>();
   const goneOrder: string[] = [];
@@ -279,7 +293,15 @@ export function nextClearTimestamp(): number {
 }
 
 function validChatMessage(m: Msg | undefined): m is Msg {
-  if (!m || typeof m.host !== "string" || m.host === "" || !isFinite(m.seq) || typeof m.name !== "string" || !isFinite(m.timestamp)) return false;
+  if (
+    !m ||
+    typeof m.host !== "string" ||
+    m.host === "" ||
+    !isFinite(m.seq) ||
+    typeof m.name !== "string" ||
+    !isFinite(m.timestamp)
+  )
+    return false;
   if (isClearEntry(m)) return true;
   if (isClose(m)) return channelOf(m.ch) !== "";
   if (isRetract(m) && !isFinite(m.target)) return false;
@@ -505,7 +527,12 @@ export function mergeFromPeers(messages: any[]) {
     const m = obj(x);
     if (validChatMessage(m)) valid.push(cleanChatMessage(m));
   }
-  if (valid.length !== messages.length) logf("[frontend] dropped %d of %d incoming chat messages, wrong shape", messages.length - valid.length, messages.length);
+  if (valid.length !== messages.length)
+    logf(
+      "[frontend] dropped %d of %d incoming chat messages, wrong shape",
+      messages.length - valid.length,
+      messages.length,
+    );
   mergeChatMessages(valid);
 }
 

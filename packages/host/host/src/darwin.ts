@@ -1,12 +1,25 @@
 // macOS: a LaunchAgent of the account the app runs as, the Tailscale app's
 // own node, no distro packages and no git host
-import type { Subprocess } from "bun";
+
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import type { Subprocess } from "bun";
 import { at, binPath, fail, fileExists, home, isMac, logTo, openLog, output, quiet, run } from "./base.ts";
 import type { OS } from "./os.ts";
 import { installTailscale, tailscaleLogin } from "./tailnet.ts";
-import { asRoot, elevateUninstall, isAdmin, lockRebuild, needSetup, serve, setupOS, spawnDetached, terminate, uninstallAdmin, unixOnly } from "./unix.ts";
+import {
+  asRoot,
+  elevateUninstall,
+  isAdmin,
+  lockRebuild,
+  needSetup,
+  serve,
+  setupOS,
+  spawnDetached,
+  terminate,
+  uninstallAdmin,
+  unixOnly,
+} from "./unix.ts";
 
 if (isMac) {
   // Finder's PATH: no homebrew tools
@@ -60,7 +73,11 @@ async function svcStart() {
 
 // --- tailscale: the Tailscale app's own node ---------------------------------------------
 
-const appCLI = ["/Applications/Tailscale.app/Contents/MacOS/Tailscale", "/opt/homebrew/bin/tailscale", "/usr/local/bin/tailscale"];
+const appCLI = [
+  "/Applications/Tailscale.app/Contents/MacOS/Tailscale",
+  "/opt/homebrew/bin/tailscale",
+  "/usr/local/bin/tailscale",
+];
 const appTailscale = () => appCLI.find(fileExists) ?? "";
 
 // tailscaleLaunch the app, in the background: its daemon lives in it; Homebrew's
@@ -71,18 +88,27 @@ async function tailscaleLaunch() {
   const env = { ...process.env };
   delete env.TAILSCALE_BE_CLI;
   try {
-    await Bun.spawn(["open", "-a", "/Applications/Tailscale.app"], { env, stdin: "ignore", stdout: "ignore", stderr: "ignore" }).exited;
+    await Bun.spawn(["open", "-a", "/Applications/Tailscale.app"], {
+      env,
+      stdin: "ignore",
+      stdout: "ignore",
+      stderr: "ignore",
+    }).exited;
   } catch {}
 }
 
-const tailscaleHint = () => (fileExists(appCLI[0]!) ? "open the Tailscale app and allow its VPN configuration" : "start Homebrew's tailscaled with sudo brew services start tailscale");
+const tailscaleHint = () =>
+  fileExists(appCLI[0]!)
+    ? "open the Tailscale app and allow its VPN configuration"
+    : "start Homebrew's tailscaled with sudo brew services start tailscale";
 
 export const darwin: OS = {
   sshdName: "Remote Login (ssh)",
   async enableSSHD() {
     if (await run("systemsetup", "-setremotelogin", "on")) return;
     // systemsetup without Full Disk Access on newer macOS
-    if (!(await run("launchctl", "load", "-w", "/System/Library/LaunchDaemons/ssh.plist"))) throw fail("couldn't turn on Remote Login");
+    if (!(await run("launchctl", "load", "-w", "/System/Library/LaunchDaemons/ssh.plist")))
+      throw fail("couldn't turn on Remote Login");
   },
   asRoot,
   isAdmin,
@@ -123,7 +149,11 @@ export const darwin: OS = {
     await quiet("launchctl", "enable", domain() + "/" + label);
     if (!(await svcActive())) return svcStart();
     if (noBlock) {
-      Bun.spawn(["launchctl", "kickstart", "-k", domain() + "/" + label], { stdin: "ignore", stdout: "ignore", stderr: "ignore" }).unref();
+      Bun.spawn(["launchctl", "kickstart", "-k", domain() + "/" + label], {
+        stdin: "ignore",
+        stdout: "ignore",
+        stderr: "ignore",
+      }).unref();
       return;
     }
     if (!(await run("launchctl", "kickstart", "-k", domain() + "/" + label))) throw fail("launchctl kickstart failed");
@@ -133,7 +163,12 @@ export const darwin: OS = {
   // tailscaleCLI by its own path: through a link the app's binary misses its bundle
   tailscaleCLI: () => appTailscale() || tool("tailscale"),
   tailscaleInstalled: () => appTailscale() !== "",
-  tailscaleInstall: () => installTailscale("Tailscale-1.104.1-macos.pkg", "67ec55f18ee2afac0a8fb57f7811977f4ad6df1debd4a187fa0db3dbb5d401d5", (pkg) => run("installer", "-pkg", pkg, "-target", "/")),
+  tailscaleInstall: () =>
+    installTailscale(
+      "Tailscale-1.104.1-macos.pkg",
+      "67ec55f18ee2afac0a8fb57f7811977f4ad6df1debd4a187fa0db3dbb5d401d5",
+      (pkg) => run("installer", "-pkg", pkg, "-target", "/"),
+    ),
   async tailscaleKeepUp() {},
   // tailscaleReady the app's CLI in the tools as tailscale, a script exec'ing its full
   // path for the roles' PATH, logged in with TS_AUTHKEY when it isn't
@@ -141,7 +176,7 @@ export const darwin: OS = {
     const cli = appTailscale();
     if (!cli) throw fail("no Tailscale here: install the Tailscale app (tailscale.com/download), then phos start");
     mkdirSync(libexec(), { recursive: true });
-    const sh = "#!/bin/sh\nTAILSCALE_BE_CLI=1 exec '" + cli.replaceAll("'", `'\\''`) + "' \"$@\"\n";
+    const sh = "#!/bin/sh\nTAILSCALE_BE_CLI=1 exec '" + cli.replaceAll("'", `'\\''`) + '\' "$@"\n';
     let have: string | undefined;
     try {
       have = readFileSync(tool("tailscale"), "utf8");

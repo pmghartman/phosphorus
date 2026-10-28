@@ -22,14 +22,17 @@ test("inside root", () => {
 
 test("system folder is admins only", () => {
   const isUser = (s: string) => s === "ann" || s === "bob";
-  const admin = { user: "root", admin: true }, ann = { user: "ann", admin: false };
+  const admin = { user: "root", admin: true },
+    ann = { user: "ann", admin: false };
   for (const rel of ["/.sys", "/.sys/etc/x.json", "/.SYS/home/ann/prefs.json"]) {
     expect(F.homeGate(admin, rel, isUser)).toBe("");
     expect(F.homeGate(ann, rel, isUser)).toBe(F.Gone);
   }
   expect(F.homeGate(ann, "/ann/notes.txt", isUser)).toBe("");
   expect(F.homeGate(ann, "/bob/notes.txt", isUser)).not.toBe("");
-  expect([F.gateCode(ann, F.Gone), F.gateCode(undefined, "log in"), F.gateCode(ann, "admins only")]).toEqual([404, 401, 403]);
+  expect([F.gateCode(ann, F.Gone), F.gateCode(undefined, "log in"), F.gateCode(ann, "admins only")]).toEqual([
+    404, 401, 403,
+  ]);
   const entries = [".sys", "ann", "shared"].map((name) => ({ name, dir: true, link: false, size: null, mtime: null }));
   const names = (es: Entry[]) => es.map((e) => e.name).join(",");
   expect(names(F.homeFilterList(ann, "", entries, isUser))).toBe("ann,shared");

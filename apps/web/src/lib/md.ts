@@ -6,7 +6,12 @@ import type { MdBlock } from '@phosphorus/wire';
 const cache = new Map<string, string>();
 const CACHE_MAX = 4000;
 // asked of the server together, a tick after the first
-interface Queued { el: HTMLElement; src: string; breaks: boolean; key: string }
+interface Queued {
+  el: HTMLElement;
+  src: string;
+  breaks: boolean;
+  key: string;
+}
 let queue: Queued[] = [];
 let queued: ReturnType<typeof setTimeout> | 0 = 0;
 
@@ -25,7 +30,10 @@ export function renderMd(el: HTMLElement, src: string, breaks = true, html: stri
   el.classList.add('md');
   el.dataset.md = key;
   const known = cache.get(key);
-  if (known !== undefined) { paint(el, known); return; }
+  if (known !== undefined) {
+    paint(el, known);
+    return;
+  }
   el.textContent = src;
   queue.push({ el, src, breaks, key });
   queued ||= setTimeout(flush, 0);
@@ -38,10 +46,18 @@ async function flush() {
   queued = 0;
   const items: { text: string; breaks: boolean }[] = [];
   const seen = new Map<string, number>();
-  for (const q of batch) if (!seen.has(q.key)) { seen.set(q.key, items.length); items.push({ text: q.src, breaks: q.breaks }); }
+  for (const q of batch)
+    if (!seen.has(q.key)) {
+      seen.set(q.key, items.length);
+      items.push({ text: q.src, breaks: q.breaks });
+    }
   let out: unknown[] = [];
   try {
-    const r = await fetch('/api/md', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ items }) });
+    const r = await fetch('/api/md', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ items }),
+    });
     if (r.ok) out = (await r.json()).html || [];
   } catch {}
   for (const q of batch) {
@@ -55,7 +71,11 @@ async function flush() {
 // a document's top-level blocks, each with where its source sits and its html
 export async function mdBlocks(text: string): Promise<MdBlock[]> {
   try {
-    const r = await fetch('/api/md', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text, blocks: true }) });
+    const r = await fetch('/api/md', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text, blocks: true }),
+    });
     if (r.ok) return (await r.json()).blocks || [];
   } catch {}
   return text ? [{ from: 0, raw: text, html: null }] : [];
@@ -63,7 +83,10 @@ export async function mdBlocks(text: string): Promise<MdBlock[]> {
 
 function paint(el: HTMLElement, html: string) {
   el.innerHTML = html;
-  for (const a of el.querySelectorAll('a[href]')) { (a as HTMLAnchorElement).target = '_blank'; (a as HTMLAnchorElement).rel = 'noopener noreferrer'; }
+  for (const a of el.querySelectorAll('a[href]')) {
+    (a as HTMLAnchorElement).target = '_blank';
+    (a as HTMLAnchorElement).rel = 'noopener noreferrer';
+  }
   for (const box of el.querySelectorAll('input')) box.setAttribute('disabled', '');
   if (el.querySelector('.math')) drawMath(el);
   el.dispatchEvent(new CustomEvent('md-painted', { bubbles: true }));
@@ -73,21 +96,33 @@ function paint(el: HTMLElement, html: string) {
 
 type Katex = typeof import('katex').default;
 let katexLoad: Promise<Katex> | null = null;
-const loadKatex = () => (katexLoad ||= (async () => {
-  const css = Object.assign(document.createElement('link'), { rel: 'stylesheet', href: __ASSETS__['katex.css'] });
-  document.head.appendChild(css);
-  const k = (await import('katex')).default;
-  (globalThis as unknown as { katex: Katex }).katex = k;
-  await import('katex/contrib/mhchem');
-  return k;
-})().catch((e) => { katexLoad = null; throw e; }));
+const loadKatex = () =>
+  (katexLoad ||= (async () => {
+    const css = Object.assign(document.createElement('link'), { rel: 'stylesheet', href: __ASSETS__['katex.css'] });
+    document.head.appendChild(css);
+    const k = (await import('katex')).default;
+    (globalThis as unknown as { katex: Katex }).katex = k;
+    await import('katex/contrib/mhchem');
+    return k;
+  })().catch((e) => {
+    katexLoad = null;
+    throw e;
+  }));
 
 async function drawMath(el: HTMLElement) {
   let k: Katex;
-  try { k = await loadKatex(); } catch { return; }
+  try {
+    k = await loadKatex();
+  } catch {
+    return;
+  }
   for (const s of el.querySelectorAll<HTMLElement>('span.math[data-tex]')) {
     try {
-      s.innerHTML = k.renderToString(s.dataset.tex!, { displayMode: s.dataset.display === '1', throwOnError: false, output: 'html' });
+      s.innerHTML = k.renderToString(s.dataset.tex!, {
+        displayMode: s.dataset.display === '1',
+        throwOnError: false,
+        output: 'html',
+      });
       s.classList.add('math-done');
     } catch {}
   }

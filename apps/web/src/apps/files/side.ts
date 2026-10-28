@@ -1,6 +1,7 @@
 // the side: places and hosts
+
+import { type Fm, filesCall, fmIcon, fmSame, HOME, homeOnline, type Loc } from '../../features/home/home.ts';
 import { el } from '../../lib/dom.ts';
-import { filesCall, fmIcon, fmSame, HOME, homeOnline, type Fm, type Loc } from '../../features/home/home.ts';
 import { st } from '../../lib/state.ts';
 import { fmDropZone } from './actions.ts';
 import { fmGo } from './nav.ts';
@@ -12,7 +13,7 @@ export async function fmSide(fm: Fm) {
     const hosts = homeOnline();
     const home = el('div', `fm-place fm-share${fmSame(HOME, fm.loc) ? ' here' : ''}`);
     home.append(fmIcon('dir'), el('span', '', 'home'));
-    home.title = 'every host\'s home as one';
+    home.title = "every host's home as one";
     home.addEventListener('click', () => fmGo(fm, HOME, ''));
     fmDropZone(fm, home, () => ({ loc: HOME, dir: '' }));
     const out = [home, el('div', 'fm-side-head', 'hosts')];
@@ -21,8 +22,14 @@ export async function fmSide(fm: Fm) {
       const hostRow = el('div', 'fm-place fm-hostrow');
       hostRow.append(fmIcon('host'), el('span', '', h));
       out.push(hostRow);
-      if (!info) { out.push(el('div', 'fm-place-note', '…')); continue; }
-      if (info.error) { out.push(Object.assign(el('div', 'fm-place-note bad', info.error), { title: info.error })); continue; }
+      if (!info) {
+        out.push(el('div', 'fm-place-note', '…'));
+        continue;
+      }
+      if (info.error) {
+        out.push(Object.assign(el('div', 'fm-place-note bad', info.error), { title: info.error }));
+        continue;
+      }
       for (const loc of info.shares!) {
         const row = el('div', `fm-place fm-share${fmSame(loc, fm.loc) ? ' here' : ''}`);
         row.append(fmIcon('dir'), el('span', '', loc.root));
@@ -54,17 +61,30 @@ export async function fmHosts(fm: Fm): Promise<void> {
   fm.sideSig = sig;
   if (fm.loc && fm.loc.host !== '*' && !on.includes(fm.loc.host)) fmGo(fm, HOME, '');
   else fm.renderSide?.();
-  await Promise.all(on.filter((h) => !fm.shares.has(h)).map(async (h) => {
-    fm.shares.set(h, null);
-    try {
-      // what the host published in sys, else asked
-      const info = st.hostsInfo[h.toLowerCase()]?.files || await filesCall({ host: h }, 'info');
-      // the home only as the merged one above, ssh logins no part of it
-      fm.shares.set(h, info.enabled
-        ? { shares: info.shares!.filter((sh) => sh.id !== 'home').map((sh): Loc => ({ host: h, share: sh.id, root: sh.label, perms: sh.perms || '' })) }
-        : { error: 'no files directory' });
-    } catch (err) { fm.shares.set(h, { error: (err as Error).message }); }
-    fm.renderSide?.();
-  }));
+  await Promise.all(
+    on
+      .filter((h) => !fm.shares.has(h))
+      .map(async (h) => {
+        fm.shares.set(h, null);
+        try {
+          // what the host published in sys, else asked
+          const info = st.hostsInfo[h.toLowerCase()]?.files || (await filesCall({ host: h }, 'info'));
+          // the home only as the merged one above, ssh logins no part of it
+          fm.shares.set(
+            h,
+            info.enabled
+              ? {
+                  shares: info
+                    .shares!.filter((sh) => sh.id !== 'home')
+                    .map((sh): Loc => ({ host: h, share: sh.id, root: sh.label, perms: sh.perms || '' })),
+                }
+              : { error: 'no files directory' },
+          );
+        } catch (err) {
+          fm.shares.set(h, { error: (err as Error).message });
+        }
+        fm.renderSide?.();
+      }),
+  );
   for (const h of [...fm.shares.keys()]) if (!on.includes(h)) fm.shares.delete(h);
 }

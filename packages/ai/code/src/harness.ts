@@ -30,13 +30,38 @@ export type Harness = {
 type harnessDef = Harness & { bin: string; path: string; install: string };
 
 const defs: harnessDef[] = [
-  { id: Claude, label: "Claude Code", about: "an agent in the project: it reads, runs and edits", icon: "spark", meshOnly: false,
-    site: "claude.ai", bin: "claude", path: pathPrefix, install: "curl -fsSL https://claude.ai/install.sh | bash 2>&1" },
-  { id: Opencode, label: "opencode", about: "an open agent in the project, on the mesh's models", icon: "terminal", meshOnly: true,
-    site: "opencode.ai", bin: "opencode", path: ocPath, install: "curl -fsSL https://opencode.ai/install | bash 2>&1" },
+  {
+    id: Claude,
+    label: "Claude Code",
+    about: "an agent in the project: it reads, runs and edits",
+    icon: "spark",
+    meshOnly: false,
+    site: "claude.ai",
+    bin: "claude",
+    path: pathPrefix,
+    install: "curl -fsSL https://claude.ai/install.sh | bash 2>&1",
+  },
+  {
+    id: Opencode,
+    label: "opencode",
+    about: "an open agent in the project, on the mesh's models",
+    icon: "terminal",
+    meshOnly: true,
+    site: "opencode.ai",
+    bin: "opencode",
+    path: ocPath,
+    install: "curl -fsSL https://opencode.ai/install | bash 2>&1",
+  },
 ];
 
-const pub = ({ id, label, about, icon, meshOnly, site }: harnessDef): Harness => ({ id, label, about, icon, meshOnly, site });
+const pub = ({ id, label, about, icon, meshOnly, site }: harnessDef): Harness => ({
+  id,
+  label,
+  about,
+  icon,
+  meshOnly,
+  site,
+});
 
 // Harnesses every harness a session may run, in the pages' order
 export const Harnesses: Harness[] = defs.map(pub);

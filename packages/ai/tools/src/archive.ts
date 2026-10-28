@@ -22,7 +22,8 @@ const octal = (b: Uint8Array, at: number, n: number) => parseInt(cstr(b, at, n).
 // a gzipped tar's entries written under dir
 export function untar(gz: Uint8Array, dir: string, strip: number) {
   const b = Bun.gunzipSync(gz as Uint8Array<ArrayBuffer>);
-  let longName = "", longLink = "";
+  let longName = "",
+    longLink = "";
   let pax: Record<string, string> = {};
   for (let at = 0; at + 512 <= b.length; ) {
     const h = b.subarray(at, at + 512);
@@ -86,7 +87,9 @@ export function unzip(z: Uint8Array, dir: string, strip: number) {
     if (v.getUint32(at, true) !== 0x02014b50) throw new Error("zip: bad central directory");
     const method = v.getUint16(at + 10, true);
     const csize = v.getUint32(at + 20, true);
-    const nlen = v.getUint16(at + 28, true), elen = v.getUint16(at + 30, true), clen = v.getUint16(at + 32, true);
+    const nlen = v.getUint16(at + 28, true),
+      elen = v.getUint16(at + 30, true),
+      clen = v.getUint16(at + 32, true);
     const attr = v.getUint32(at + 38, true);
     const local = v.getUint32(at + 42, true);
     const name = Buffer.from(z.subarray(at + 46, at + 46 + nlen)).toString("utf8");

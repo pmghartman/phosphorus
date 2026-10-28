@@ -1,18 +1,27 @@
 // --- the agent tray beside the bell: how Claude Code's plugin connects and signs in,
 // the calls of the agents signed in as they happen
-import { agentViewOn, agentViewSet } from './agent.ts';
+
+import type { McpCall, McpStatus } from '@phosphorus/wire';
+import { dkAnchor, dkPopsClose, type Pop } from '../desktop/taskbar.ts';
 import { acctCall } from '../lib/api.ts';
 import { DK_GLYPHS, dkGlyph, el, pageAsk, svgEl } from '../lib/dom.ts';
-import { noteAdd } from './notes.ts';
 import { dk, st } from '../lib/state.ts';
-import type { McpCall, McpStatus } from '@phosphorus/wire';
 import { copyText } from '../lib/util.ts';
-import { dkAnchor, dkPopsClose, type Pop } from '../desktop/taskbar.ts';
+import { agentViewOn, agentViewSet } from './agent.ts';
+import { noteAdd } from './notes.ts';
 import { updateModal } from './update.ts';
 
 // whether the user has agents signed in, and their calls from the mesh
-export const mcpStat: { configured: boolean; seen: number; at: number; now: number; got: number; client: string; calls: McpCall[]; recent: McpCall[] } =
-  { configured: false, seen: 0, at: 0, now: 0, got: 0, client: '', calls: [], recent: [] };
+export const mcpStat: {
+  configured: boolean;
+  seen: number;
+  at: number;
+  now: number;
+  got: number;
+  client: string;
+  calls: McpCall[];
+  recent: McpCall[];
+} = { configured: false, seen: 0, at: 0, now: 0, got: 0, client: '', calls: [], recent: [] };
 const MCP_ACTIVE_MS = 12000;
 // a connector heard from this recently counted connected
 const MCP_SEEN_MS = 15 * 60000;
@@ -36,9 +45,26 @@ const mcpMs = (ms: number) => (ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)
 // the star with its own moving purple to orange, painted by css while an agent runs
 function mcpGlyph(): SVGSVGElement {
   const svg = dkGlyph(DK_GLYPHS.spark!);
-  const g = svgEl('linearGradient', { id: 'mcp-grad', gradientUnits: 'userSpaceOnUse', x1: '0', y1: '0', x2: '16', y2: '16', spreadMethod: 'reflect' });
-  g.append(svgEl('stop', { offset: '0', class: 'phosphorus-grad-p' }), svgEl('stop', { offset: '1', class: 'phosphorus-grad-o' }),
-    svgEl('animateTransform', { attributeName: 'gradientTransform', type: 'translate', values: '-16 -16; 16 16; -16 -16', dur: '6s', repeatCount: 'indefinite' }));
+  const g = svgEl('linearGradient', {
+    id: 'mcp-grad',
+    gradientUnits: 'userSpaceOnUse',
+    x1: '0',
+    y1: '0',
+    x2: '16',
+    y2: '16',
+    spreadMethod: 'reflect',
+  });
+  g.append(
+    svgEl('stop', { offset: '0', class: 'phosphorus-grad-p' }),
+    svgEl('stop', { offset: '1', class: 'phosphorus-grad-o' }),
+    svgEl('animateTransform', {
+      attributeName: 'gradientTransform',
+      type: 'translate',
+      values: '-16 -16; 16 16; -16 -16',
+      dur: '6s',
+      repeatCount: 'indefinite',
+    }),
+  );
   const defs = svgEl('defs', {});
   defs.append(g);
   svg.prepend(defs);
@@ -66,7 +92,8 @@ export function dkMcpTray(): HTMLElement {
     if (c.host) top.append(el('span', 'dk-cl-host', c.host));
     top.append(el('span', 'dk-cl-tool', c.tool));
     if (c.detail) top.append(el('span', 'dk-cl-arg', `(${c.detail})`));
-    const out = live ? `running · ${mcpMs(Math.max(0, mcpNow() - c.since!))}`
+    const out = live
+      ? `running · ${mcpMs(Math.max(0, mcpNow() - c.since!))}`
       : `${c.ok ? 'done' : c.error || 'failed'} · ${mcpMs(c.ms!)} · ${mcpAgo(mcpNow() - c.at!)} ago`;
     li.append(top, el('div', 'dk-cl-out', out));
     if (c.detail) li.title = c.host ? `${c.host}: ${c.detail}` : c.detail;
@@ -90,7 +117,9 @@ export function dkMcpTray(): HTMLElement {
   const flash = (x: HTMLElement, text: string) => {
     const was = x.dataset.label!;
     x.textContent = text;
-    setTimeout(() => { x.textContent = was; }, 1800);
+    setTimeout(() => {
+      x.textContent = was;
+    }, 1800);
   };
   const button = (label: string, cls: string, act: (x: HTMLButtonElement) => void) => {
     const x = Object.assign(el('button', `dk-cl-key ${cls}`, label), { type: 'button' });
@@ -98,14 +127,24 @@ export function dkMcpTray(): HTMLElement {
     x.addEventListener('click', () => act(x));
     return x;
   };
-  const copier = (label: string, cls: string, text: () => string) => button(label, cls, async (x) => {
-    try { await copyText(text()); flash(x, 'copied'); } catch { flash(x, text()); }
-  });
+  const copier = (label: string, cls: string, text: () => string) =>
+    button(label, cls, async (x) => {
+      try {
+        await copyText(text());
+        flash(x, 'copied');
+      } catch {
+        flash(x, text());
+      }
+    });
   // how an agent connects: the Claude Code plugin, signed in on the mesh's own page
   const steps = () => {
     const ol = el('ol', 'dk-cl-steps');
     const code = (t: string) => el('code', '', t);
-    const li = (...xs: (Node | string)[]) => { const x = el('li'); x.append(...xs); ol.append(x); };
+    const li = (...xs: (Node | string)[]) => {
+      const x = el('li');
+      x.append(...xs);
+      ol.append(x);
+    };
     li('in Claude Code: ', code(MCP_INSTALL[0]!));
     li(code(MCP_INSTALL[1]!), ', domain ', code(mcpDomain()));
     li(code('/mcp'), ', phosphorus, sign in');
@@ -129,9 +168,20 @@ export function dkMcpTray(): HTMLElement {
     hint.replaceChildren();
     const out = button('sign out agents', 'quiet', async () => {
       show(false);
-      if (!await pageAsk({ title: 'sign out agents?', message: 'every agent signs in again', action: 'sign out', danger: true })) return;
+      if (
+        !(await pageAsk({
+          title: 'sign out agents?',
+          message: 'every agent signs in again',
+          action: 'sign out',
+          danger: true,
+        }))
+      )
+        return;
       const r = await acctCall('/api/me/mcp-revoke', {});
-      if (!r.ok) { mcpFailed(r.error); return; }
+      if (!r.ok) {
+        mcpFailed(r.error);
+        return;
+      }
       mcpStat.configured = false;
       noteAdd('agents signed out', 'each signs in again from /mcp');
       pollMcp();
@@ -142,15 +192,30 @@ export function dkMcpTray(): HTMLElement {
   const paint = () => {
     const st = mcpState();
     b.dataset.state = st;
-    b.title = { off: 'agent, not connected', idle: 'agent, nothing heard lately', online: 'agent, connected', active: 'agent, working' }[st];
+    b.title = {
+      off: 'agent, not connected',
+      idle: 'agent, nothing heard lately',
+      online: 'agent, connected',
+      active: 'agent, working',
+    }[st];
     if (pop.hidden) return;
     drawBar();
     const c = mcpStat;
     stateLine.textContent = { off: 'not connected', idle: 'idle', online: 'connected', active: 'working' }[st];
     stateLine.dataset.state = st;
-    if (!c.configured) { body.replaceChildren(); list = null; return; }
+    if (!c.configured) {
+      body.replaceChildren();
+      list = null;
+      return;
+    }
     const now = mcpNow();
-    const rows = [row('last heard', c.seen ? `${mcpAgo(now - c.seen)} ago` : 'not yet', c.seen && now - c.seen < MCP_SEEN_MS ? 'good' : '')];
+    const rows = [
+      row(
+        'last heard',
+        c.seen ? `${mcpAgo(now - c.seen)} ago` : 'not yet',
+        c.seen && now - c.seen < MCP_SEEN_MS ? 'good' : '',
+      ),
+    ];
     if (c.client) rows.push(row('client', c.client));
     const calls = el('div', 'dk-cl-sec');
     calls.append(el('div', 'dk-cl-sec-t', 'calls'));
@@ -158,7 +223,10 @@ export function dkMcpTray(): HTMLElement {
     const stick = !list || list.scrollHeight - list.scrollTop - list.clientHeight < 8;
     const keep = list?.scrollTop || 0;
     list = list || el('ul', 'dk-cl-calls');
-    list.replaceChildren(...[...c.recent].reverse().map((x) => callRow(x, false)), ...c.calls.map((x) => callRow(x, true)));
+    list.replaceChildren(
+      ...[...c.recent].reverse().map((x) => callRow(x, false)),
+      ...c.calls.map((x) => callRow(x, true)),
+    );
     if (!list.children.length) list.append(el('li', 'dk-cl-none', 'no calls yet'));
     calls.append(list);
     rows.push(calls);
@@ -181,8 +249,16 @@ export function dkMcpTray(): HTMLElement {
     }
   };
   b.addEventListener('click', () => show(pop.hidden as boolean));
-  document.addEventListener('pointerdown', (e) => { if (!pop.hidden && !wrap.contains(e.target as Node) && !updateModal.contains(e.target as Node)) show(false); }, true);
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !pop.hidden) show(false); });
+  document.addEventListener(
+    'pointerdown',
+    (e) => {
+      if (!pop.hidden && !wrap.contains(e.target as Node) && !updateModal.contains(e.target as Node)) show(false);
+    },
+    true,
+  );
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !pop.hidden) show(false);
+  });
   const me = { show, paint };
   dk.mcp = me;
   dk.mcpStop?.();
@@ -197,7 +273,11 @@ export function dkMcpTray(): HTMLElement {
     sock = s;
     s.onmessage = (ev) => {
       retryMs = 1000;
-      try { mcpApply(JSON.parse(ev.data)); } catch { return; }
+      try {
+        mcpApply(JSON.parse(ev.data));
+      } catch {
+        return;
+      }
       me.paint();
     };
     s.onclose = () => {
@@ -211,7 +291,11 @@ export function dkMcpTray(): HTMLElement {
   };
   const seen = () => {
     if (dk.mcp !== me) return;
-    if (document.hidden) { clearTimeout(retry!); sock?.close(); return; }
+    if (document.hidden) {
+      clearTimeout(retry!);
+      sock?.close();
+      return;
+    }
     open();
   };
   document.addEventListener('visibilitychange', seen);
@@ -238,8 +322,16 @@ async function pollMcp() {
 }
 
 function mcpApply(s: McpStatus) {
-  Object.assign(mcpStat, { configured: !!s.configured, seen: +s.seen! || 0, at: +s.at! || 0, client: s.client || '',
-    now: +s.now! || Date.now(), got: Date.now(), calls: s.calls || [], recent: s.recent || [] });
+  Object.assign(mcpStat, {
+    configured: !!s.configured,
+    seen: +s.seen! || 0,
+    at: +s.at! || 0,
+    client: s.client || '',
+    now: +s.now! || Date.now(),
+    got: Date.now(),
+    calls: s.calls || [],
+    recent: s.recent || [],
+  });
 }
 
 // the mesh's now, carried forward from the last answer so durations keep running

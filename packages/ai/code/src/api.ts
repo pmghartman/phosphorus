@@ -63,7 +63,8 @@ export async function create(user: string, p: Record<string, any>, creds: CredsF
   const prompt = cleanText(p.prompt, textMax);
   const h = harnessByID(harness);
   if (!h) return [400, errB("harness is one of " + harnessIDs().join(", "))];
-  if (h.meshOnly && provider(model) !== "mesh") return [400, errB(h.label + " runs on the mesh's models: " + Mesh.join(", "))];
+  if (h.meshOnly && provider(model) !== "mesh")
+    return [400, errB(h.label + " runs on the mesh's models: " + Mesh.join(", "))];
   if (!hostRe.test(host)) return [400, errB("pick a host")];
   if (!dir || dir.length > dirMax || /[\0\r\n]/.test(dir)) return [400, errB("pick a folder")];
   if (!provider(model)) return [400, errB("model is one of " + [...Mesh, ...Anthropic].join(", "))];
@@ -77,7 +78,18 @@ export async function create(user: string, p: Record<string, any>, creds: CredsF
     return [400, errB(errText(e))];
   }
   const t = now();
-  const rec = record({ id: newID(), user, host, dir, model, perm, harness, status: "starting", created: t, updated: t });
+  const rec = record({
+    id: newID(),
+    user,
+    host,
+    dir,
+    model,
+    perm,
+    harness,
+    status: "starting",
+    created: t,
+    updated: t,
+  });
   const s = new Session(rec);
   try {
     s.begin(c);
@@ -176,15 +188,22 @@ export function setPerm(user: string, id: string, p: Record<string, any>): Res {
   const m = str(p.mode);
   if (!Perms.includes(m)) return [400, errB("mode is one of " + Perms.join(", "))];
   s.rec.perm = m;
-  if (s.alive() && harnessOf(s.rec) === Claude) s.control("permission mode", { subtype: "set_permission_mode", mode: m });
+  if (s.alive() && harnessOf(s.rec) === Claude)
+    s.control("permission mode", { subtype: "set_permission_mode", mode: m });
   s.status("");
   return [200, s.rec];
 }
 
 // permAnswer claude's can_use_tool answer: the input as asked, always the
 // rules claude suggested kept for the session
-export function permAnswer(req: Record<string, any>, allow: boolean, always: boolean, msg: string): Record<string, any> {
-  if (!allow) return { behavior: "deny", message: msg.trim() ? msg : "The user denied this. Ask them what to do instead." };
+export function permAnswer(
+  req: Record<string, any>,
+  allow: boolean,
+  always: boolean,
+  msg: string,
+): Record<string, any> {
+  if (!allow)
+    return { behavior: "deny", message: msg.trim() ? msg : "The user denied this. Ask them what to do instead." };
   const out: Record<string, any> = { behavior: "allow", updatedInput: orObj(req.input) };
   const sg = req.permission_suggestions;
   if (always && Array.isArray(sg) && sg.length) out.updatedPermissions = sg;
@@ -233,4 +252,3 @@ export function remove(user: string, id: string): Res {
   dropRecord(id);
   return [200, ok()];
 }
-

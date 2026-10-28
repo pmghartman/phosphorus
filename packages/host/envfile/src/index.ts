@@ -89,7 +89,15 @@ export function set(file: string, vals: Record<string, string>) {
 // inherited; else 0600, root's when root writes it
 export function lock(file: string) {
   if (process.platform === "win32") {
-    const r = runSync(["icacls", file, "/inheritance:r", "/grant:r", `${process.env.USERNAME}:(M)`, "/grant:r", "SYSTEM:(F)"]);
+    const r = runSync([
+      "icacls",
+      file,
+      "/inheritance:r",
+      "/grant:r",
+      `${process.env.USERNAME}:(M)`,
+      "/grant:r",
+      "SYSTEM:(F)",
+    ]);
     if (!r.ok) throw new Error(r.output.trim() || "icacls failed");
     return;
   }

@@ -3,13 +3,23 @@
 import { readFileSync } from "node:fs";
 import { connect } from "node:net";
 import { join } from "node:path";
-import { IdleMS, markHot } from "@phosphorus/util";
-import { ExtraKeys, rowError, type Row } from "@phosphorus/proxy";
-import { env, errText, Notes, now, readJSONMap, RepoDir, StateDir, writeFileAtomic } from "@phosphorus/util";
+import { ExtraKeys, type Row, rowError } from "@phosphorus/proxy";
+import {
+  env,
+  errText,
+  IdleMS,
+  markHot,
+  Notes,
+  now,
+  RepoDir,
+  readJSONMap,
+  StateDir,
+  writeFileAtomic,
+} from "@phosphorus/util";
 import { listening } from "./listen.ts";
 
-export type { Row };
 export { listening, portsOf } from "./listen.ts";
+export type { Row };
 
 const servicesFile = env("SERVICES_FILE", join(RepoDir, "config", "services.export"));
 const gitRoleFile = join(StateDir, "git-role");
@@ -44,7 +54,13 @@ export function parse(text: string): [Row[], string] {
     const key = line.slice(0, eq).trim();
     if (!cur) return [[], `line ${i + 1}: ${key} outside any [section]`];
     if (!keys.has(key)) return [[], `[${cur.name}] has an unknown key, ${key}`];
-    cur.f.set(key, line.slice(eq + 1).trim().replace(quoteRe, ""));
+    cur.f.set(
+      key,
+      line
+        .slice(eq + 1)
+        .trim()
+        .replace(quoteRe, ""),
+    );
   }
   const rows: Row[] = [];
   const names = new Set<string>();
@@ -63,9 +79,18 @@ export function parse(text: string): [Row[], string] {
       } catch {
         return [[], `[${s.name}] extras is not valid JSON`];
       }
-      if (!extras || typeof extras !== "object" || Array.isArray(extras)) return [[], `[${s.name}] extras is not a JSON object`];
-      for (const k of Object.keys(extras)) if (!ExtraKeys.includes(k)) return [[], `[${s.name}] extras has an unknown key, ${k}`];
-      row = { ...(extras as Row), name: s.name, port, scheme: s.f.get("scheme") || "http", mode: s.f.get("mode") || "path", base_path: s.f.get("base_path") ?? "" };
+      if (!extras || typeof extras !== "object" || Array.isArray(extras))
+        return [[], `[${s.name}] extras is not a JSON object`];
+      for (const k of Object.keys(extras))
+        if (!ExtraKeys.includes(k)) return [[], `[${s.name}] extras has an unknown key, ${k}`];
+      row = {
+        ...(extras as Row),
+        name: s.name,
+        port,
+        scheme: s.f.get("scheme") || "http",
+        mode: s.f.get("mode") || "path",
+        base_path: s.f.get("base_path") ?? "",
+      };
       if (s.f.get("type")) row.type = s.f.get("type");
       if (s.f.has("public")) {
         const p = s.f.get("public")!;
@@ -219,14 +244,24 @@ function gitRow(ip: string): Row | undefined {
     return;
   }
   // a non-empty string, else any truthy value as JS strings it, else def
-  const str = (k: string, def: string) => (typeof g[k] === "string" && g[k] ? g[k] : k in g && g[k] ? String(g[k]) : def);
-  const row: Row = { name: g.name, port: g.port, scheme: str("scheme", "http"), mode: str("mode", "subdomain"), base_path: str("base_path", ""), master: g.master === true };
+  const str = (k: string, def: string) =>
+    typeof g[k] === "string" && g[k] ? g[k] : k in g && g[k] ? String(g[k]) : def;
+  const row: Row = {
+    name: g.name,
+    port: g.port,
+    scheme: str("scheme", "http"),
+    mode: str("mode", "subdomain"),
+    base_path: str("base_path", ""),
+    master: g.master === true,
+  };
   const why = rowError(row);
   if (why) {
     notes.note("git", "ignoring git-role: " + why);
     return;
   }
-  const port = row.port as number, scheme = row.scheme as string, base = row.base_path as string;
+  const port = row.port as number,
+    scheme = row.scheme as string,
+    base = row.base_path as string;
   const up = probe(`web:${scheme}:${ip}:${port}:${base}`, IdleMS, () => answers(scheme, ip, port, base));
   if (up === undefined) return;
   const name = String(row.name);
@@ -278,7 +313,8 @@ export function setPublic(name: string, on: boolean): [number, any] {
   } catch {
     return [500, { error: "can't read services.export" }];
   }
-  let start = -1, end = lines.length;
+  let start = -1,
+    end = lines.length;
   for (let i = 0; i < lines.length; i++) {
     const m = headRe.exec(lines[i]!.replace(/\r$/, "").trim());
     if (!m) continue;
@@ -303,7 +339,8 @@ export function setPublic(name: string, on: boolean): [number, any] {
   const text = out.join("\n");
   const [rows, why] = parse(text);
   if (why) return [400, { error: why }];
-  for (const r of rows) if (r.name === name && r.type === "game") return [400, { error: "public is for web services only" }];
+  for (const r of rows)
+    if (r.name === name && r.type === "game") return [400, { error: "public is for web services only" }];
   try {
     writeFileAtomic(servicesFile, text);
   } catch (e) {
@@ -322,7 +359,13 @@ export async function health(name: string, ip: string): Promise<Record<string, a
   const published = ownRows.some((x) => x.name === name);
   if (!r) return;
   const port = r.port as number;
-  const out: Record<string, any> = { name, port, type: (typeof r.type === "string" && r.type) || "web", published, listening: (await connects(ip, port)) || (await connects("127.0.0.1", port)) };
+  const out: Record<string, any> = {
+    name,
+    port,
+    type: (typeof r.type === "string" && r.type) || "web",
+    published,
+    listening: (await connects(ip, port)) || (await connects("127.0.0.1", port)),
+  };
   if (r.type === "game") {
     out.why = out.listening ? "up" : `nothing listening on :${port}, start it with game_power`;
     return out;

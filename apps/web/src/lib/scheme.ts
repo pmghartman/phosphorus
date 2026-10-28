@@ -13,7 +13,11 @@ const systemMode = () => (systemLight.matches ? 'light' : 'dark');
 export const currentTheme = (): string => document.documentElement.dataset.theme || 'dark';
 // the mode picked: system while none is
 export function modePick(): string {
-  try { return localStorage.getItem(KEY) || 'system'; } catch { return 'system'; }
+  try {
+    return localStorage.getItem(KEY) || 'system';
+  } catch {
+    return 'system';
+  }
 }
 
 // system a screen, dark a filled moon, light a sun, oled a hollow thin moon
@@ -31,7 +35,12 @@ export function applyTheme(theme: string): void {
   if (theme === 'dark') delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = theme;
   // Safari's bars tinted the page's own background
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', getComputedStyle(document.body || document.documentElement).getPropertyValue('--bg').trim() || '#141414');
+  document.querySelector('meta[name="theme-color"]')?.setAttribute(
+    'content',
+    getComputedStyle(document.body || document.documentElement)
+      .getPropertyValue('--bg')
+      .trim() || '#141414',
+  );
   appCall('terminal', false, (m) => m.termsRetheme());
 }
 
@@ -48,7 +57,9 @@ export function setTheme(mode: string): void {
   applyTheme(mode === 'system' ? systemMode() : mode);
 }
 
-systemLight.addEventListener('change', () => { if (modePick() === 'system') applyTheme(systemMode()); });
+systemLight.addEventListener('change', () => {
+  if (modePick() === 'system') applyTheme(systemMode());
+});
 // a new color theme: the bar's color and the terminals' with it
 addEventListener(PALETTE_EVENT, () => applyTheme(currentTheme()));
 applyTheme(currentTheme());

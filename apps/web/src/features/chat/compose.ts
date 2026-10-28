@@ -1,14 +1,28 @@
 // typing
+
+import type { ChatFile } from '@phosphorus/wire';
+import { dkCode } from '../../desktop/deskfiles.ts';
 import { el } from '../../lib/dom.ts';
 import { st } from '../../lib/state.ts';
-import type { ChatFile } from '@phosphorus/wire';
 import { copyText, humanSize } from '../../lib/util.ts';
-import { dkCode } from '../../desktop/deskfiles.ts';
 import { autoGrowChatText, setChatChip, syncSend } from './commands.ts';
 import { convsVars } from './convs.ts';
-import { REACTIONS, keyOf, lines } from './lines.ts';
-import { closePop, popMenu, type PopItem } from './menus.ts';
-import { chatAttach, chatAtts, chatBar, chatChip, chatDrop, chatFile, chatLog, chatPanel, chatText, joined, send, type ChatLine } from './state.ts';
+import { keyOf, lines, REACTIONS } from './lines.ts';
+import { closePop, type PopItem, popMenu } from './menus.ts';
+import {
+  type ChatLine,
+  chatAttach,
+  chatAtts,
+  chatBar,
+  chatChip,
+  chatDrop,
+  chatFile,
+  chatLog,
+  chatPanel,
+  chatText,
+  joined,
+  send,
+} from './state.ts';
 
 // where a key went down, said again every few seconds while it keeps going
 export const TYPING_EVERY_MS = 3000;
@@ -32,18 +46,35 @@ export function typingTick() {
 }
 
 // one picked, pasted or dropped: its upload, then the server's meta for the line
-export interface Att { file: File; state: 'up' | 'done' | 'err'; pct: number; meta: ChatFile | null; error: string; xhr?: XMLHttpRequest | null }
+export interface Att {
+  file: File;
+  state: 'up' | 'done' | 'err';
+  pct: number;
+  meta: ChatFile | null;
+  error: string;
+  xhr?: XMLHttpRequest | null;
+}
 
 export function paintAtts() {
   chatAtts.hidden = !composeVars.atts.length;
-  chatAtts.replaceChildren(...composeVars.atts.map((a) => {
-    const li = el('li', `att ${a.state}`);
-    li.append(el('span', 'att-name', a.file.name), el('span', 'att-state', a.state === 'up' ? `${a.pct}%` : a.state === 'err' ? a.error : humanSize(a.file.size)));
-    const x = Object.assign(el('button', 'att-x', '×'), { type: 'button', title: 'remove' });
-    x.addEventListener('click', () => { a.xhr?.abort(); composeVars.atts = composeVars.atts.filter((b) => b !== a); paintAtts(); syncSend(); });
-    li.append(x);
-    return li;
-  }));
+  chatAtts.replaceChildren(
+    ...composeVars.atts.map((a) => {
+      const li = el('li', `att ${a.state}`);
+      li.append(
+        el('span', 'att-name', a.file.name),
+        el('span', 'att-state', a.state === 'up' ? `${a.pct}%` : a.state === 'err' ? a.error : humanSize(a.file.size)),
+      );
+      const x = Object.assign(el('button', 'att-x', '×'), { type: 'button', title: 'remove' });
+      x.addEventListener('click', () => {
+        a.xhr?.abort();
+        composeVars.atts = composeVars.atts.filter((b) => b !== a);
+        paintAtts();
+        syncSend();
+      });
+      li.append(x);
+      return li;
+    }),
+  );
   syncSend();
 }
 
@@ -53,16 +84,37 @@ export function addFiles(list: File[]) {
     const a: Att = { file, state: 'up', pct: 0, meta: null, error: '' };
     const xhr = new XMLHttpRequest();
     a.xhr = xhr;
-    xhr.open('POST', `/api/chat/upload?name=${encodeURIComponent(file.name)}&type=${encodeURIComponent(file.type || '')}`);
-    xhr.upload.onprogress = (e) => { if (e.lengthComputable) { a.pct = Math.round((e.loaded / e.total) * 100); paintAtts(); } };
+    xhr.open(
+      'POST',
+      `/api/chat/upload?name=${encodeURIComponent(file.name)}&type=${encodeURIComponent(file.type || '')}`,
+    );
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) {
+        a.pct = Math.round((e.loaded / e.total) * 100);
+        paintAtts();
+      }
+    };
     xhr.onload = () => {
       let body: Record<string, any> = {};
-      try { body = JSON.parse(xhr.responseText); } catch {}
-      if (xhr.status === 200 && body.id) { a.state = 'done'; a.meta = body as ChatFile; } else { a.state = 'err'; a.error = body.error || `failed (${xhr.status})`; }
+      try {
+        body = JSON.parse(xhr.responseText);
+      } catch {}
+      if (xhr.status === 200 && body.id) {
+        a.state = 'done';
+        a.meta = body as ChatFile;
+      } else {
+        a.state = 'err';
+        a.error = body.error || `failed (${xhr.status})`;
+      }
       a.xhr = null;
       paintAtts();
     };
-    xhr.onerror = () => { a.state = 'err'; a.error = 'upload failed'; a.xhr = null; paintAtts(); };
+    xhr.onerror = () => {
+      a.state = 'err';
+      a.error = 'upload failed';
+      a.xhr = null;
+      paintAtts();
+    };
     xhr.send(file);
     composeVars.atts.push(a);
   }
@@ -71,7 +123,10 @@ export function addFiles(list: File[]) {
 }
 
 chatAttach.addEventListener('click', () => chatFile.click());
-chatFile.addEventListener('change', () => { addFiles([...chatFile.files!]); chatFile.value = ''; });
+chatFile.addEventListener('change', () => {
+  addFiles([...chatFile.files!]);
+  chatFile.value = '';
+});
 chatText.addEventListener('paste', (e) => {
   const files = [...(e.clipboardData?.files || [])];
   if (!files.length) return;
@@ -86,8 +141,13 @@ chatPanel.addEventListener('dragenter', (e) => {
   dragDepth += 1;
   chatDrop.hidden = false;
 });
-chatPanel.addEventListener('dragleave', () => { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) chatDrop.hidden = true; });
-chatPanel.addEventListener('dragover', (e) => { if (dragsFiles(e)) e.preventDefault(); });
+chatPanel.addEventListener('dragleave', () => {
+  dragDepth = Math.max(0, dragDepth - 1);
+  if (!dragDepth) chatDrop.hidden = true;
+});
+chatPanel.addEventListener('dragover', (e) => {
+  if (dragsFiles(e)) e.preventDefault();
+});
 chatPanel.addEventListener('drop', (e) => {
   if (!dragsFiles(e)) return;
   e.preventDefault();
@@ -111,7 +171,10 @@ export function paintBar() {
 }
 
 export function cancelCompose() {
-  if (editing) { chatText.value = ''; autoGrowChatText(); }
+  if (editing) {
+    chatText.value = '';
+    autoGrowChatText();
+  }
   composeVars.replyTo = null;
   editing = null;
   paintBar();
@@ -170,17 +233,32 @@ chatLog.addEventListener('contextmenu', (e) => {
 });
 
 // a line's menu: reactions over reply, edit, delete; under the anchor or at the pointer
-export function lineMenu(li: HTMLElement, m: ChatLine, anchor: HTMLElement, at: { x: number; y: number } | null = null) {
+export function lineMenu(
+  li: HTMLElement,
+  m: ChatLine,
+  anchor: HTMLElement,
+  at: { x: number; y: number } | null = null,
+) {
   const mine = li.dataset.acts === 'mine';
   const items: PopItem[] = [{ label: 'reply', act: () => startReply(m) }];
   const text = m.edited ?? m.text;
   if (text) items.push({ label: 'copy', act: () => copyText(text).catch(() => {}) });
   if (mine && (!m.kind || m.kind === 'dm')) items.push({ label: 'edit', act: () => startEdit(m) });
-  if (mine) items.push({ label: 'delete', sub: 'for everyone', danger: true, confirm: 'delete it?', act: () => send({ type: 'delete', ref: keyOf(m) }) });
+  if (mine)
+    items.push({
+      label: 'delete',
+      sub: 'for everyone',
+      danger: true,
+      confirm: 'delete it?',
+      act: () => send({ type: 'delete', ref: keyOf(m) }),
+    });
   const row = el('div', 'pop-reacts');
   for (const r of REACTIONS) {
     const x = Object.assign(el('button', m.reacts?.get(`${st.name}\n${r}`)?.on ? 'on' : '', r), { type: 'button' });
-    x.addEventListener('click', () => { react(m, r); closePop(false); });
+    x.addEventListener('click', () => {
+      react(m, r);
+      closePop(false);
+    });
     row.append(x);
   }
   popMenu(anchor, row, items, 0, at);

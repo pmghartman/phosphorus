@@ -3,7 +3,20 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { type Roster, validRoster } from "@phosphorus/elector";
 import { peerGit } from "@phosphorus/peers";
-import { ini, localeCompare, marshal, now, obj, peerCall, readFresh, readJSON, SelfHost, sleep, StateDir, writeJSONAtomic } from "@phosphorus/util";
+import {
+  ini,
+  localeCompare,
+  marshal,
+  now,
+  obj,
+  peerCall,
+  readFresh,
+  readJSON,
+  SelfHost,
+  StateDir,
+  sleep,
+  writeJSONAtomic,
+} from "@phosphorus/util";
 
 const selfHost = SelfHost;
 const claimFile = join(StateDir, "git-claim.json");
@@ -27,7 +40,13 @@ let bootID = "";
 const truthy = (v: unknown) => (typeof v === "number" ? v !== 0 && !Number.isNaN(v) : !!v);
 // as a JS template literal renders a JSON value
 const jsString = (v: unknown): string =>
-  v == null ? "null" : Array.isArray(v) ? v.map((e) => (e == null ? "" : jsString(e))).join(",") : typeof v === "object" ? "[object Object]" : String(v);
+  v == null
+    ? "null"
+    : Array.isArray(v)
+      ? v.map((e) => (e == null ? "" : jsString(e))).join(",")
+      : typeof v === "object"
+        ? "[object Object]"
+        : String(v);
 const str = (v: unknown) => (truthy(v) ? jsString(v) : "");
 
 // with server's updating flag and boot id; startedAt the process start, for tests
@@ -46,7 +65,15 @@ export function vote(p: Record<string, any>): [number, any] {
   const r = validRoster(p.roster);
   const c = p.c;
   const ms = p.ms;
-  if (typeof c !== "string" || !nameRe.test(c) || typeof ms !== "number" || !Number.isInteger(ms) || ms < 0 || ms > leaseCapMS || !r)
+  if (
+    typeof c !== "string" ||
+    !nameRe.test(c) ||
+    typeof ms !== "number" ||
+    !Number.isInteger(ms) ||
+    ms < 0 ||
+    ms > leaseCapMS ||
+    !r
+  )
     return [400, { error: "bad c, ms or roster" }];
   if (r.epoch < roster.epoch) return [200, { granted: false, roster }];
   if (r.epoch > roster.epoch) {
@@ -76,7 +103,8 @@ export const view = (): any[] => [state(), ...peerGit()];
 export type Row = Record<string, any>;
 
 // the rows that moved, ageSec ticking left out
-export const rowsFp = (rows: Row[]) => marshal(rows.map((h) => [h.host, h.reachable, h.role, h.master, h.gen, h.eligible, h.updating]));
+export const rowsFp = (rows: Row[]) =>
+  marshal(rows.map((h) => [h.host, h.reachable, h.role, h.master, h.gen, h.eligible, h.updating]));
 
 // the card's rows from a view, nowSec the wall clock ageSec counts from
 export function rowsOf(states: unknown[], nowSec: number): Row[] {
@@ -144,7 +172,8 @@ export function promote(body: Record<string, any>): [number, any] {
 }
 
 function hop(host: string, body: Record<string, any>): Promise<[number, any]> {
-  if (host !== selfHost) return peerCall(host, { host, method: "POST", path: "/api/git/promote", body, timeoutMs: 5000 });
+  if (host !== selfHost)
+    return peerCall(host, { host, method: "POST", path: "/api/git/promote", body, timeoutMs: 5000 });
   return Promise.resolve(promote(body));
 }
 
@@ -161,10 +190,13 @@ export async function force(target: string): Promise<[number, any]> {
   if (t.role === "master") return [409, { error: target + " is already master" }];
   const m = find((h) => h.reachable === true && truthy(h.handoffTo));
   if (m) return [409, { error: `${m.host} is already handing off to ${m.handoffTo}` }];
-  if (inFlight && now() < inFlight.until && !leads(inFlight.to)) return [409, { error: "making " + inFlight.to + " master is already under way" }];
+  if (inFlight && now() < inFlight.until && !leads(inFlight.to))
+    return [409, { error: "making " + inFlight.to + " master is already under way" }];
   const master = find((h) => h.role === "master" && h.reachable === true);
-  if (!master && find((h) => h.reachable === true && h.role === "starting")) return [409, { error: "a git host is still starting, try once it settles" }];
-  if (master && (!truthy(t.eligible) || t.master !== master.host)) return [409, { error: `${target} isn't in sync with ${master.host} yet` }];
+  if (!master && find((h) => h.reachable === true && h.role === "starting"))
+    return [409, { error: "a git host is still starting, try once it settles" }];
+  if (master && (!truthy(t.eligible) || t.master !== master.host))
+    return [409, { error: `${target} isn't in sync with ${master.host} yet` }];
   const [st, out] = master ? await hop(master.host, { op: "handoff", to: target }) : await hop(target, { op: "take" });
   if (st === 200) inFlight = { to: target, until: now() + settleMS };
   return [st, out];

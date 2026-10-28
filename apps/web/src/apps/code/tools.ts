@@ -1,22 +1,47 @@
 // tool calls: a line like a coding agent's log, its outcome under it, the detail folded
 import { el } from '../../lib/dom.ts';
 import { countDiff, diffView, lines } from './diffs.ts';
-import { OUT_MAX, kfmt, type Todo, type Transcript } from './state.ts';
+import { kfmt, OUT_MAX, type Todo, type Transcript } from './state.ts';
 import { paintTodos, todoList } from './todos.ts';
 
-export const COMPACT = new Set(['Read', 'Glob', 'Grep', 'LS', 'WebFetch', 'WebSearch', 'TodoWrite', 'NotebookRead', 'BashOutput', 'KillShell', 'KillBash']);
+export const COMPACT = new Set([
+  'Read',
+  'Glob',
+  'Grep',
+  'LS',
+  'WebFetch',
+  'WebSearch',
+  'TodoWrite',
+  'NotebookRead',
+  'BashOutput',
+  'KillShell',
+  'KillBash',
+]);
 
 export function toolArg(name: string, x: Record<string, any> = {}): string {
   switch (name) {
-    case 'Bash': return x.description || x.command || '';
-    case 'Read': return `${x.file_path || ''}${x.offset ? ` :${x.offset}${x.limit ? `-${x.offset + x.limit}` : ''}` : ''}`;
-    case 'Edit': case 'MultiEdit': case 'Write': case 'NotebookEdit': return x.file_path || x.notebook_path || '';
-    case 'Glob': return `${x.pattern || ''}${x.path ? ` in ${x.path}` : ''}`;
-    case 'Grep': return `${x.pattern || ''}${x.path ? ` in ${x.path}` : ''}${x.glob ? ` (${x.glob})` : ''}`;
-    case 'WebFetch': return x.url || '';
-    case 'WebSearch': return x.query || '';
-    case 'Task': case 'Agent': return x.description || x.subagent_type || '';
-    case 'TodoWrite': return `${(x.todos || []).filter((y: Todo) => y.status === 'completed').length}/${(x.todos || []).length} done`;
+    case 'Bash':
+      return x.description || x.command || '';
+    case 'Read':
+      return `${x.file_path || ''}${x.offset ? ` :${x.offset}${x.limit ? `-${x.offset + x.limit}` : ''}` : ''}`;
+    case 'Edit':
+    case 'MultiEdit':
+    case 'Write':
+    case 'NotebookEdit':
+      return x.file_path || x.notebook_path || '';
+    case 'Glob':
+      return `${x.pattern || ''}${x.path ? ` in ${x.path}` : ''}`;
+    case 'Grep':
+      return `${x.pattern || ''}${x.path ? ` in ${x.path}` : ''}${x.glob ? ` (${x.glob})` : ''}`;
+    case 'WebFetch':
+      return x.url || '';
+    case 'WebSearch':
+      return x.query || '';
+    case 'Task':
+    case 'Agent':
+      return x.description || x.subagent_type || '';
+    case 'TodoWrite':
+      return `${(x.todos || []).filter((y: Todo) => y.status === 'completed').length}/${(x.todos || []).length} done`;
     default: {
       const v = Object.values(x).find((y) => typeof y === 'string') as string | undefined;
       return v ? v.slice(0, 120) : '';
@@ -44,12 +69,19 @@ export function toolCard(t: Transcript, b: Record<string, any>): HTMLElement {
   const open = ['Edit', 'MultiEdit', 'Write'].includes(name);
   body.hidden = !open;
   c.classList.toggle('open', open);
-  h.addEventListener('click', () => { body.hidden = !body.hidden; c.classList.toggle('open', !body.hidden); });
+  h.addEventListener('click', () => {
+    body.hidden = !body.hidden;
+    c.classList.toggle('open', !body.hidden);
+  });
   body.append(...toolInput(name, x));
   c.append(h, out, body, sub);
-  if (name === 'Task' || name === 'Agent') sub.hidden = false; else sub.hidden = true;
+  if (name === 'Task' || name === 'Agent') sub.hidden = false;
+  else sub.hidden = true;
   t.cards.set(b.id, { el: c, body, out, sub, name, input: x });
-  if (name === 'TodoWrite') { t.todos = x.todos || []; paintTodos(t); }
+  if (name === 'TodoWrite') {
+    t.todos = x.todos || [];
+    paintTodos(t);
+  }
   return c;
 }
 
@@ -58,7 +90,12 @@ export function editStat(name: string, x: Record<string, any>): HTMLElement | nu
   let del = 0;
   if (name === 'Write') add = lines(x.content).length;
   else if (name === 'Edit') ({ add, del } = countDiff(x.old_string, x.new_string));
-  else if (name === 'MultiEdit') for (const e of x.edits || []) { const n = countDiff(e.old_string, e.new_string); add += n.add; del += n.del; }
+  else if (name === 'MultiEdit')
+    for (const e of x.edits || []) {
+      const n = countDiff(e.old_string, e.new_string);
+      add += n.add;
+      del += n.del;
+    }
   else return null;
   const s = el('span', 'cd-tool-stat');
   s.append(el('span', 'cd-add', `+${add}`), ' ', el('span', 'cd-del', `−${del}`));
@@ -72,18 +109,30 @@ export function toolInput(name: string, x: Record<string, any>): HTMLElement[] {
       p.append(el('span', 'cd-prompt', '$ '), x.command || '');
       return [p];
     }
-    case 'Edit': return [diffView(x.old_string, x.new_string)];
-    case 'MultiEdit': return (x.edits || []).map((e: Record<string, string>) => diffView(e.old_string, e.new_string));
-    case 'Write': return [diffView('', x.content)];
-    case 'TodoWrite': return [todoList(x.todos || [])];
+    case 'Edit':
+      return [diffView(x.old_string, x.new_string)];
+    case 'MultiEdit':
+      return (x.edits || []).map((e: Record<string, string>) => diffView(e.old_string, e.new_string));
+    case 'Write':
+      return [diffView('', x.content)];
+    case 'TodoWrite':
+      return [todoList(x.todos || [])];
     default:
       if (COMPACT.has(name)) return [];
       return [Object.assign(el('pre', 'cd-json'), { textContent: JSON.stringify(x, null, 2) })];
   }
 }
 
-export const resultText = (c: unknown): string => (typeof c === 'string' ? c : Array.isArray(c) ? c.map((p) => (p.type === 'text' ? p.text : p.type === 'image' ? '[image]' : '')).join('\n') : c == null ? '' : JSON.stringify(c, null, 2));
-export const clip = (s: string) => (s.length > OUT_MAX ? `${s.slice(0, OUT_MAX)}\n… ${kfmt(s.length - OUT_MAX)} more chars` : s);
+export const resultText = (c: unknown): string =>
+  typeof c === 'string'
+    ? c
+    : Array.isArray(c)
+      ? c.map((p) => (p.type === 'text' ? p.text : p.type === 'image' ? '[image]' : '')).join('\n')
+      : c == null
+        ? ''
+        : JSON.stringify(c, null, 2);
+export const clip = (s: string) =>
+  s.length > OUT_MAX ? `${s.slice(0, OUT_MAX)}\n… ${kfmt(s.length - OUT_MAX)} more chars` : s;
 
 export function toolResult(t: Transcript, b: Record<string, any>) {
   const c = t.cards.get(b.tool_use_id);
@@ -95,7 +144,8 @@ export function toolResult(t: Transcript, b: Record<string, any>) {
   const n = text ? text.split('\n').length : 0;
   let out;
   if (bad) out = text.split('\n')[0] || 'failed';
-  else if (c.name === 'Bash') out = text ? `${text.split('\n')[0]!.slice(0, 160)}${n > 1 ? `  (+${n - 1} lines)` : ''}` : '(no output)';
+  else if (c.name === 'Bash')
+    out = text ? `${text.split('\n')[0]!.slice(0, 160)}${n > 1 ? `  (+${n - 1} lines)` : ''}` : '(no output)';
   else if (c.name === 'Read') out = `${n} lines`;
   else if (c.name === 'Glob') out = /^no files/i.test(text) ? 'no files' : `${n} files`;
   else if (c.name === 'Grep') out = text.split('\n')[0]!.slice(0, 160) || 'no matches';

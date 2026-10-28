@@ -6,7 +6,26 @@ const { answer, Server, Zone } = await import("@phosphorus/gamedns");
 // one query: id, flags, a single question
 function query(name: string, qtype = 1, flags = 0x0100): Uint8Array {
   const labels = name.split(".").flatMap((l) => [l.length, ...Buffer.from(l)]);
-  return new Uint8Array([0x12, 0x34, flags >> 8, flags & 0xff, 0, 1, 0, 0, 0, 0, 0, 0, ...labels, 0, qtype >> 8, qtype & 0xff, 0, 1]);
+  return new Uint8Array([
+    0x12,
+    0x34,
+    flags >> 8,
+    flags & 0xff,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    ...labels,
+    0,
+    qtype >> 8,
+    qtype & 0xff,
+    0,
+    1,
+  ]);
 }
 const lookup = (n: string) => (n === "valheim" ? "100.64.1.2" : "");
 

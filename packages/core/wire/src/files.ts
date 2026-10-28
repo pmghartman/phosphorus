@@ -17,8 +17,24 @@ export interface FileEntry {
   stale?: boolean;
   at?: string;
 }
-export interface FileListing { path: string; entries: FileEntry[]; truncated?: boolean }
-export interface FilesInfo { enabled?: boolean; shares?: HostShare[] }
-export interface FileRead { path: string; size?: number; text?: string; tooBig?: boolean; binary?: boolean }
+export interface FileListing {
+  path: string;
+  entries: FileEntry[];
+  truncated?: boolean;
+}
+export interface FilesInfo {
+  enabled?: boolean;
+  shares?: HostShare[];
+}
+export interface FileRead {
+  path: string;
+  size?: number;
+  text?: string;
+  tooBig?: boolean;
+  binary?: boolean;
+}
 // a sealed run link for a page, an app folder or a .wasm
-export interface FileRun { url: string; kind?: string }
+export interface FileRun {
+  url: string;
+  kind?: string;
+}

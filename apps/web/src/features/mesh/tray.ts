@@ -1,7 +1,8 @@
 // the mesh: the tray's icon, its graph and pings in a popup above it
+
+import { dkAnchor, dkPopsClose, type Pop } from '../../desktop/taskbar.ts';
 import { DK_GLYPHS, dkGlyph, el } from '../../lib/dom.ts';
 import { dk } from '../../lib/state.ts';
-import { dkAnchor, dkPopsClose, type Pop } from '../../desktop/taskbar.ts';
 import { drawMesh } from './draw.ts';
 import { pingHosts } from './ping.ts';
 import { meshAnimFrame, meshPanel, meshUi, saveMeshUi, stash, uiVars } from './ui.ts';
@@ -27,18 +28,27 @@ export function dkMeshTray(anchor?: HTMLElement): HTMLElement {
     const w0 = pop.offsetWidth;
     const h0 = pop.offsetHeight;
     const move = (ev: PointerEvent) => {
-      meshUi.size = { w: Math.max(240, Math.round(w0 + x0 - ev.clientX)), h: Math.max(260, Math.round(h0 + y0 - ev.clientY)) };
+      meshUi.size = {
+        w: Math.max(240, Math.round(w0 + x0 - ev.clientX)),
+        h: Math.max(260, Math.round(h0 + y0 - ev.clientY)),
+      };
       pop.dkAnchor!.fill = meshUi.size.w;
       pop.dkAnchor!.tall = meshUi.size.h;
       pop.style.width = '';
       pop.dkPlace!();
     };
-    const up = () => { grip.removeEventListener('pointermove', move); saveMeshUi(); };
+    const up = () => {
+      grip.removeEventListener('pointermove', move);
+      saveMeshUi();
+    };
     grip.addEventListener('pointermove', move);
     grip.addEventListener('pointerup', up, { once: true });
     grip.addEventListener('pointercancel', up, { once: true });
   });
-  const fit = new ResizeObserver(() => { uiVars.meshDims = null; if (!pop.hidden && !meshAnimFrame) drawMesh(); });
+  const fit = new ResizeObserver(() => {
+    uiVars.meshDims = null;
+    if (!pop.hidden && !meshAnimFrame) drawMesh();
+  });
   const show = (on: boolean) => {
     if (!on && pop.hidden) return;
     if (on) dkPopsClose('mesh');
@@ -59,8 +69,16 @@ export function dkMeshTray(anchor?: HTMLElement): HTMLElement {
   };
   b.addEventListener('click', () => show(pop.hidden as boolean));
   // a press anywhere else closes it
-  document.addEventListener('pointerdown', (e) => { if (!pop.hidden && !wrap.contains(e.target as Node)) show(false); }, true);
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !pop.hidden) show(false); });
+  document.addEventListener(
+    'pointerdown',
+    (e) => {
+      if (!pop.hidden && !wrap.contains(e.target as Node)) show(false);
+    },
+    true,
+  );
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !pop.hidden) show(false);
+  });
   dk.meshTray = { show };
   return wrap;
 }

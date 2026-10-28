@@ -23,7 +23,14 @@ const APPS: { [K in AppName]: () => Promise<AppMods[K]> } = {
 };
 const appMods = new Map<AppName, Promise<any>>();
 export function app<K extends AppName>(name: K): Promise<AppMods[K]> {
-  if (!appMods.has(name)) appMods.set(name, (APPS[name] as () => Promise<AppMods[K]>)().catch((e) => { appMods.delete(name); throw e; }));
+  if (!appMods.has(name))
+    appMods.set(
+      name,
+      (APPS[name] as () => Promise<AppMods[K]>)().catch((e) => {
+        appMods.delete(name);
+        throw e;
+      }),
+    );
   return appMods.get(name)!;
 }
 // an app's call: loaded for it when on, skipped when it never was
@@ -31,6 +38,8 @@ export function appCall<K extends AppName>(name: K, on: boolean, call: (m: AppMo
   if (on || appMods.has(name)) app(name).then(call, (e) => console.error(`${name} failed to load`, e));
 }
 // past first paint, so opening one never waits on its setup
-addEventListener('load', () => (self.requestIdleCallback || setTimeout)(() => {
-  for (const n of Object.keys(APPS) as AppName[]) app(n).catch(() => {});
-}));
+addEventListener('load', () =>
+  (self.requestIdleCallback || setTimeout)(() => {
+    for (const n of Object.keys(APPS) as AppName[]) app(n).catch(() => {});
+  }),
+);

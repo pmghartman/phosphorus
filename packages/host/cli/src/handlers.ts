@@ -1,19 +1,56 @@
 // keys
-import { isHomeDir, readGitHost, readShares, readText, servicesFile, type Share, splitSections, writeGitHost, writeHomeDir, writeShares } from "@phosphorus/config";
-import { deleteService, modelForm, saveModel, saveService, saveShare, serviceForm, shareForm, switchService } from "./forms.ts";
-import { c, max0 } from "./draw.ts";
-import type { Form } from "./form.ts";
-import { type KeyEv } from "./input.ts";
-import { type J, get, indexOf, obj, objs, or, str, truthy } from "./json.ts";
-import { applyKeys, keysForm, keysSaved, saveKeys } from "./keys.ts";
-import { filesTab, gitTab, iniNote, modelTab, openForm, rebuilding, servicesTab, shown, statsTab, ui, updateTab } from "./state.ts";
-import { liveChain } from "./views.ts";
+import {
+  isHomeDir,
+  readGitHost,
+  readShares,
+  readText,
+  type Share,
+  servicesFile,
+  splitSections,
+  writeGitHost,
+  writeHomeDir,
+  writeShares,
+} from "@phosphorus/config";
 import { chainPost, post } from "./api.ts";
 import { quit } from "./cli.ts";
+import { c, max0 } from "./draw.ts";
+import type { Form } from "./form.ts";
+import {
+  deleteService,
+  modelForm,
+  saveModel,
+  saveService,
+  saveShare,
+  serviceForm,
+  shareForm,
+  switchService,
+} from "./forms.ts";
+import { type KeyEv } from "./input.ts";
+import { get, indexOf, type J, obj, objs, or, str, truthy } from "./json.ts";
+import { applyKeys, keysForm, keysSaved, saveKeys } from "./keys.ts";
 import { flash, onLoop, poll } from "./loop.ts";
 import { render } from "./render.ts";
+import {
+  filesTab,
+  gitTab,
+  iniNote,
+  modelTab,
+  openForm,
+  rebuilding,
+  servicesTab,
+  shown,
+  statsTab,
+  ui,
+  updateTab,
+} from "./state.ts";
+import { liveChain } from "./views.ts";
 
-export const savers: Record<string, (f: Form) => string> = { service: saveService, share: saveShare, model: saveModel, keys: saveKeys };
+export const savers: Record<string, (f: Form) => string> = {
+  service: saveService,
+  share: saveShare,
+  model: saveModel,
+  keys: saveKeys,
+};
 
 export function formKey(s: string, e: KeyEv) {
   const f = ui.form!;
@@ -46,7 +83,11 @@ export function formKey(s: string, e: KeyEv) {
     // only a share, or [model] host or gpu, changing what phosphorus was started with
     let rebuilds = f.kind === "share";
     for (const x of f.fields) {
-      if (f.kind === "model" && ((x.key === "gpu" && x.value.trim() !== f.gpuWas) || (x.key === "host" && x.value.trim() !== f.hostWas))) rebuilds = true;
+      if (
+        f.kind === "model" &&
+        ((x.key === "gpu" && x.value.trim() !== f.gpuWas) || (x.key === "host" && x.value.trim() !== f.hostWas))
+      )
+        rebuilds = true;
     }
     if (ui.offline) flash(c("online")("saved, applied once phosphorus is up: phos start"));
     else if (rebuilds) flash(c("online")("saved, " + rebuilding));
@@ -206,7 +247,9 @@ export function gitKey(s: string, e: KeyEv) {
   else if (s === "h" && !readGitHost() && process.platform !== "linux") flash(c("offmesh")(writeGitHost(true)));
   else if (s === "h") {
     const on = !readGitHost();
-    const text = on ? "make this host a git host (forgejo)? " + iniNote : "stop being a git host? phosphorus-git is removed, " + iniNote;
+    const text = on
+      ? "make this host a git host (forgejo)? " + iniNote
+      : "stop being a git host? phosphorus-git is removed, " + iniNote;
     ui.confirm = {
       text,
       danger: !on,

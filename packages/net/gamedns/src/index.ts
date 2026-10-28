@@ -1,7 +1,8 @@
 // <game>.phosphorus to its host's tailnet IP, for the split DNS domain mesh
 // keeps pointed here
-import type { udp } from "bun";
+
 import { envInt, errText, now } from "@phosphorus/util";
+import type { udp } from "bun";
 
 // fixed, GAME_ZONE retired
 export const Zone = "phosphorus";

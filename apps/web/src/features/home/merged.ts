@@ -1,9 +1,10 @@
 // the merged home: usr on every host as one, each entry carrying the
-import { phosphorusHosts } from '../mesh/mesh.ts';
-import { st } from '../../lib/state.ts';
+
 import type { FileEntry, FileListing } from '@phosphorus/wire';
+import { st } from '../../lib/state.ts';
+import { phosphorusHosts } from '../mesh/mesh.ts';
 import { filesCall, filesJoin, type Loc } from './api.ts';
-import { filesChoose, type Choice, type Fm } from './fm.ts';
+import { type Choice, type Fm, filesChoose } from './fm.ts';
 
 // hosts that hold it, an offline host's left out
 
@@ -31,12 +32,18 @@ export const homeHolders = (rel: string) => {
 };
 
 // one host's listing of a home folder, stale and empty when it didn't answer
-export interface HomeHostList { h: string; entries: FileEntry[]; stale?: boolean }
+export interface HomeHostList {
+  h: string;
+  entries: FileEntry[];
+  stale?: boolean;
+}
 export async function homeHostList(h: string, dir: string): Promise<HomeHostList> {
   try {
     const body = await filesCall(homeAt(h), 'list', undefined, { path: dir });
     return { h, entries: body.entries };
-  } catch { return { h, entries: [], stale: true }; }
+  } catch {
+    return { h, entries: [], stale: true };
+  }
 }
 
 // the hosts' listings merged; `got` the listings already in hand, else every online host asked
@@ -65,8 +72,9 @@ export async function homeList(dir: string, got?: HomeHostList[]): Promise<FileL
 export async function homeCall(op: string, init?: RequestInit, params?: Record<string, string | number>): Promise<any> {
   if (op === 'list') return homeList(String(params?.path || ''));
   const body = init?.body ? JSON.parse(init.body as string) : {};
-  const rel: string = op === 'rename' ? body.from : body.path ?? params?.path ?? '';
-  const hosts = op === 'mkdir' ? homeOnline() : ['delete', 'rename', 'mirror'].includes(op) ? homeHolders(rel) : [homePick(rel)];
+  const rel: string = op === 'rename' ? body.from : (body.path ?? params?.path ?? '');
+  const hosts =
+    op === 'mkdir' ? homeOnline() : ['delete', 'rename', 'mirror'].includes(op) ? homeHolders(rel) : [homePick(rel)];
   const out = await Promise.allSettled(hosts.map((h) => filesCall(homeAt(h), op, init, params)));
   const ok = out.find((r): r is PromiseFulfilledResult<any> => r.status === 'fulfilled');
   if (!ok) throw (out[0] as PromiseRejectedResult).reason;
@@ -77,7 +85,10 @@ export async function homeCall(op: string, init?: RequestInit, params?: Record<s
 // where new bytes in the home go: one host, or every host (small files only)
 export async function homeTarget(fm: Fm, bytes: number, what: string): Promise<{ host: string; all: boolean } | null> {
   const on = homeOnline();
-  const opts: Choice[] = [...on.map((h): Choice => [h === st.selfHost ? `${h} (this host)` : h, h]), ['all hosts', '*', bytes > HOME_ALL_MAX ? 'over 32MB' : '']];
+  const opts: Choice[] = [
+    ...on.map((h): Choice => [h === st.selfHost ? `${h} (this host)` : h, h]),
+    ['all hosts', '*', bytes > HOME_ALL_MAX ? 'over 32MB' : ''],
+  ];
   if (on.length < 2) return { host: st.selfHost, all: false };
   const pick = await filesChoose(fm, { title: 'keep it on', message: what, options: opts });
   if (!pick) return null;

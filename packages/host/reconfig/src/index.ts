@@ -1,8 +1,20 @@
 // phosphorus.ini's [files], [home], [git] host and [model] host and gpu applied
 // as soon as edited, a rebuild
 import { join } from "node:path";
-import { IdleMS } from "@phosphorus/util";
-import { env, ini, logf, marshal, now, readJSONMap, RepoDir, run, sleep, StateDir, writeJSONAtomic } from "@phosphorus/util";
+import {
+  env,
+  IdleMS,
+  ini,
+  logf,
+  marshal,
+  now,
+  RepoDir,
+  readJSONMap,
+  run,
+  StateDir,
+  sleep,
+  writeJSONAtomic,
+} from "@phosphorus/util";
 
 const appliedFile = join(StateDir, "reconfig.json");
 // the image's binary, or natively the home's, run against the install

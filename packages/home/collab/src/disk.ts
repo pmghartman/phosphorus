@@ -1,9 +1,9 @@
 // the file under a session watched: another program's save folded into the
 // text as an edit, or held for review when the editor has unsaved changes
 import { type BigIntStats, statSync } from "node:fs";
-import * as files from "@phosphorus/files";
 import type { Share } from "@phosphorus/files";
-import { type Client, history, lf, mu, sendTo, type Session, sessions } from "./collab.ts";
+import * as files from "@phosphorus/files";
+import { type Client, history, lf, mu, type Session, sendTo, sessions } from "./collab.ts";
 import { Builder, MapPos, type Op } from "./ot.ts";
 
 // One watcher per host, only while editors are attached. Unchanged files cost
@@ -73,7 +73,8 @@ async function sweep() {
   const probes = await mu.run((): Probe[] => {
     const out: Probe[] = [];
     for (const s of sessions.values())
-      if (s.clients.size > 0) out.push({ s, info: s.diskInfo, version: s.version, problem: s.diskProblem, generation: s.diskGeneration });
+      if (s.clients.size > 0)
+        out.push({ s, info: s.diskInfo, version: s.version, problem: s.diskProblem, generation: s.diskGeneration });
     if (!out.length) {
       clearInterval(diskWatch);
       diskWatch = undefined;
@@ -85,7 +86,12 @@ async function sweep() {
     if (sameDisk(p.info, info) || (!info && p.problem !== "")) continue;
     const observed = await readDisk(p.s.share, p.s.rel);
     await mu.run(() => {
-      if (sessions.get(p.s.key) === p.s && p.s.clients.size > 0 && p.s.version === p.version && p.s.diskGeneration === p.generation)
+      if (
+        sessions.get(p.s.key) === p.s &&
+        p.s.clients.size > 0 &&
+        p.s.version === p.version &&
+        p.s.diskGeneration === p.generation
+      )
         observeDisk(p.s, observed);
     });
   }
@@ -93,12 +99,18 @@ async function sweep() {
 const low = (u: number) => u >= 0xdc00 && u <= 0xdfff;
 
 export function diskDiff(before: string, after: string): Op[] {
-  let start = 0, tail = 0;
+  let start = 0,
+    tail = 0;
   while (start < before.length && start < after.length && before.charCodeAt(start) === after.charCodeAt(start)) start++;
   // Inserted strings cross JSON as Unicode: never split a surrogate pair at
   // the retained prefix/suffix, even when two emoji share one surrogate.
   if (start > 0 && start < before.length && low(before.charCodeAt(start))) start--;
-  while (tail < before.length - start && tail < after.length - start && before.charCodeAt(before.length - 1 - tail) === after.charCodeAt(after.length - 1 - tail)) tail++;
+  while (
+    tail < before.length - start &&
+    tail < after.length - start &&
+    before.charCodeAt(before.length - 1 - tail) === after.charCodeAt(after.length - 1 - tail)
+  )
+    tail++;
   if (tail > 0 && tail < after.length - start && low(after.charCodeAt(after.length - tail))) tail--;
   const b = new Builder();
   b.retain(start);
@@ -108,14 +120,26 @@ export function diskDiff(before: string, after: string): Op[] {
   return b.ops;
 }
 
-export const diskMessage = (s: Session) => ({ type: "disk", conflict: s.diskConflict, text: s.diskPending, problem: s.diskProblem, revision: s.diskRevision });
+export const diskMessage = (s: Session) => ({
+  type: "disk",
+  conflict: s.diskConflict,
+  text: s.diskPending,
+  problem: s.diskProblem,
+  revision: s.diskRevision,
+});
 
 // Called under mu; disk changes use normal OT operations so pending client
 // keystrokes, carets, undo history and language-server versions stay aligned.
 export function observeDisk(s: Session, snapshot: DiskSnapshot) {
   if (!snapshot.valid) return;
   const text = lf(snapshot.text);
-  if (s.diskConflict && s.diskPending === text && s.diskProblem === snapshot.problem && (sameDisk(s.diskInfo, snapshot.info) || (!s.diskInfo && !snapshot.info))) return;
+  if (
+    s.diskConflict &&
+    s.diskPending === text &&
+    s.diskProblem === snapshot.problem &&
+    (sameDisk(s.diskInfo, snapshot.info) || (!s.diskInfo && !snapshot.info))
+  )
+    return;
   s.diskInfo = snapshot.info;
   s.diskGeneration++;
   const current = s.text;

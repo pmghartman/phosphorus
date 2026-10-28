@@ -12,7 +12,9 @@ export function deskStamps(): Record<string, string> {
   const out: Record<string, string> = {};
   let users: Dirent[];
   try {
-    users = readdirSync(HomeRoot, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    users = readdirSync(HomeRoot, { withFileTypes: true }).sort((a, b) =>
+      a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
+    );
   } catch {
     return out;
   }

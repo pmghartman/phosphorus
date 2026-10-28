@@ -1,12 +1,13 @@
 // the task bar: its clock, the status items where the layout puts them, the host chips,
 // the chat badge, and every popup grown out of a bar button
-import { DK_GLYPHS, DK_UI, dkGlyph, el, isMobile } from '../lib/dom.ts';
-import { toastPlace } from '../features/notes.ts';
-import { dk, st } from '../lib/state.ts';
-import { BAR_ITEMS, layoutNow, PALETTE_EVENT } from '../lib/theme.ts';
-import { closeUpdateModal, updateModal } from '../features/update.ts';
+
 import { dkUnlock } from '../features/account.ts';
 import { hostSwitchNow } from '../features/mesh/mesh.ts';
+import { toastPlace } from '../features/notes.ts';
+import { closeUpdateModal, updateModal } from '../features/update.ts';
+import { DK_GLYPHS, DK_UI, dkGlyph, el, isMobile } from '../lib/dom.ts';
+import { dk, st } from '../lib/state.ts';
+import { BAR_ITEMS, layoutNow, PALETTE_EVENT } from '../lib/theme.ts';
 import { dkMenuEl } from './desk.ts';
 import { dkMin } from './windows.ts';
 
@@ -23,7 +24,11 @@ export function dkBar(...before: HTMLElement[]): HTMLElement {
 
 // a phone's way back to its icons: every window down into the bar
 export function dkHomeBtn(): HTMLButtonElement {
-  const b = Object.assign(el('button', 'dk-home'), { type: 'button', title: 'show desktop', ariaLabel: 'show desktop' });
+  const b = Object.assign(el('button', 'dk-home'), {
+    type: 'button',
+    title: 'show desktop',
+    ariaLabel: 'show desktop',
+  });
   b.appendChild(dkGlyph(DK_UI.desk!));
   b.addEventListener('click', () => {
     for (const w of dk.wins.values()) if (!w.node.hidden && !w.leaving) dkMin(w);
@@ -50,20 +55,40 @@ export function dkPlaceItems(): void {
 addEventListener(PALETTE_EVENT, dkPlaceItems);
 
 // the edge a bar sits on: a phone's always the bottom
-export const dkBarSide = (bar: HTMLElement): string => (isMobile() || !bar.classList.contains('dk-bar') ? 'bottom'
-  : bar.classList.contains('dk-menubar') ? layoutNow().menubar : layoutNow().bar);
+export const dkBarSide = (bar: HTMLElement): string =>
+  isMobile() || !bar.classList.contains('dk-bar')
+    ? 'bottom'
+    : bar.classList.contains('dk-menubar')
+      ? layoutNow().menubar
+      : layoutNow().bar;
 
 export function dkClock(): void {
   if (!dk.clock) return;
   const d = new Date();
-  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })
-    .formatToParts(d).map((x) => [x.type, x.value]));
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    })
+      .formatToParts(d)
+      .map((x) => [x.type, x.value]),
+  );
   dk.clock.textContent = `${p.weekday} ${p.month} ${p.day} ${p.hour}:${p.minute}${p.dayPeriod}`;
 }
 
 // the logged in hosts, the one serving this page purple, a press moving it there
 const DK_CHIPS_KEY = 'phosphorus-host-chips';
-const dkChipsOpen = () => { try { return localStorage.getItem(DK_CHIPS_KEY) === '1'; } catch { return false; } };
+const dkChipsOpen = () => {
+  try {
+    return localStorage.getItem(DK_CHIPS_KEY) === '1';
+  } catch {
+    return false;
+  }
+};
 
 export function dkChips(): void {
   const hosts = dk.desk?.hosts;
@@ -73,7 +98,8 @@ export function dkChips(): void {
   // logged in first, the locked last
   const rank = (h: string) => (!dk.creds.has(h) ? 1 : 0);
   // a host off the mesh not shown at all
-  const names = [...new Set([...dk.creds.keys(), ...st.terminalHosts])].filter((h) => up.has(h))
+  const names = [...new Set([...dk.creds.keys(), ...st.terminalHosts])]
+    .filter((h) => up.has(h))
     .sort((a, b) => rank(a) - rank(b) || Number(b === st.selfHost) - Number(a === st.selfHost) || a.localeCompare(b));
   dkChipsFold(hosts, names.length);
   const sig = JSON.stringify([here, names, [...dk.creds.keys()]]);
@@ -87,7 +113,9 @@ export function dkChips(): void {
       b.addEventListener('click', () => dkUnlock(h, b));
       return b;
     }
-    return Object.assign(el('span', `dk-chip${h === here ? ' here' : ''}`, h), { title: h === here ? `this page is served by ${h}` : `${h}, logged in` });
+    return Object.assign(el('span', `dk-chip${h === here ? ' here' : ''}`, h), {
+      title: h === here ? `this page is served by ${h}` : `${h}, logged in`,
+    });
   });
   chips.forEach((c, i) => c.classList.toggle('cur', names[i] === here));
   hosts.replaceChildren(dk.chipFold!, ...chips);
@@ -101,7 +129,9 @@ function dkChipsFold(hosts: HTMLElement, n: number) {
     const b = Object.assign(el('button', 'dk-chip-fold'), { type: 'button' });
     b.appendChild(dkGlyph(DK_UI.back!));
     b.addEventListener('click', () => {
-      try { localStorage.setItem(DK_CHIPS_KEY, dkChipsOpen() ? '0' : '1'); } catch {}
+      try {
+        localStorage.setItem(DK_CHIPS_KEY, dkChipsOpen() ? '0' : '1');
+      } catch {}
       dkChipsFold(hosts, dk.chipN!);
     });
     dk.chipFold = b;
@@ -158,8 +188,14 @@ export type Pop = HTMLElement & {
 function dkFixedFrame(node: HTMLElement) {
   for (let a = node.parentElement; a && a !== document.documentElement; a = a.parentElement) {
     const cs = getComputedStyle(a);
-    if (cs.transform !== 'none' || cs.filter !== 'none' || cs.backdropFilter !== 'none' || cs.perspective !== 'none'
-      || /paint|layout|strict|content/.test(cs.contain) || /transform|filter|perspective/.test(cs.willChange)) {
+    if (
+      cs.transform !== 'none' ||
+      cs.filter !== 'none' ||
+      cs.backdropFilter !== 'none' ||
+      cs.perspective !== 'none' ||
+      /paint|layout|strict|content/.test(cs.contain) ||
+      /transform|filter|perspective/.test(cs.willChange)
+    ) {
       const r = a.getBoundingClientRect();
       return { left: r.left + a.clientLeft, top: r.top + a.clientTop, bottom: r.top + a.clientTop + a.clientHeight };
     }
@@ -167,7 +203,11 @@ function dkFixedFrame(node: HTMLElement) {
   return { left: 0, top: 0, bottom: innerHeight };
 }
 
-export function dkAnchor(pop: Pop, btn: HTMLElement, { fill = 0, tall = 0 }: { fill?: number; tall?: number } = {}): void {
+export function dkAnchor(
+  pop: Pop,
+  btn: HTMLElement,
+  { fill = 0, tall = 0 }: { fill?: number; tall?: number } = {},
+): void {
   pop.dkAnchor = { btn, fill, tall };
   if (!pop.dkPlace) {
     const ro = new ResizeObserver(() => pop.dkPlace!());
@@ -188,7 +228,10 @@ export function dkAnchor(pop: Pop, btn: HTMLElement, { fill = 0, tall = 0 }: { f
         if (a.tall) pop.style.height = `${Math.min(a.tall, innerHeight - 2 * DK_POP_EDGE)}px`;
         if (a.fill) pop.style.width = `${Math.min(innerWidth - bar.width - DK_POP_GAP - 2 * DK_POP_EDGE, a.fill)}px`;
         const x = side === 'left' ? bar.right + DK_POP_GAP : bar.left - DK_POP_GAP - pop.offsetWidth;
-        const y = Math.max(DK_POP_EDGE, Math.min(innerHeight - DK_POP_EDGE - pop.offsetHeight, a.btn.getBoundingClientRect().top));
+        const y = Math.max(
+          DK_POP_EDGE,
+          Math.min(innerHeight - DK_POP_EDGE - pop.offsetHeight, a.btn.getBoundingClientRect().top),
+        );
         pop.style.left = `${x - cb.left}px`;
         pop.style.top = `${y - cb.top}px`;
         return;
@@ -208,7 +251,11 @@ export function dkAnchor(pop: Pop, btn: HTMLElement, { fill = 0, tall = 0 }: { f
     ro.observe(pop);
     const place = pop.dkPlace;
     addEventListener('resize', place);
-    pop.dkRelease = () => { ro.disconnect(); removeEventListener('resize', place); pop.dkPlace = null; };
+    pop.dkRelease = () => {
+      ro.disconnect();
+      removeEventListener('resize', place);
+      pop.dkPlace = null;
+    };
   }
   pop.dkPlace();
 }

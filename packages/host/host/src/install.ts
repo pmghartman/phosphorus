@@ -1,6 +1,19 @@
 // install the release into the home, per-host files kept, then the bring-up
 // or, for an update, the rebuild; no keys yet: left for the key form
-import { chmodSync, copyFileSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  copyFileSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  rmdirSync,
+  rmSync,
+  statSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import * as envfile from "@phosphorus/envfile";
 import { at, binPath, envPath, exe, fail, fileExists, home, isWindows, keysMissing, say, version } from "./base.ts";
@@ -12,7 +25,8 @@ export async function install(payload: string, update: boolean) {
   if (!payload) payload = dirname(dirname(exe()));
   payload = resolve(payload);
   const h = resolve(home);
-  if (fileExists(join(payload, ".git"))) throw fail(`${payload} is a git clone, not a release: install from the latest release`);
+  if (fileExists(join(payload, ".git")))
+    throw fail(`${payload} is a git clone, not a release: install from the latest release`);
   if (!fileExists(join(payload, "VERSION"))) throw fail(`${payload} holds no release`);
   if (payload.toLowerCase() === h.toLowerCase()) throw fail(`run the package's copy, not ${home}'s`);
   try {
@@ -46,20 +60,25 @@ export async function install(payload: string, update: boolean) {
     try {
       await rebuild();
     } catch (e) {
-      throw fail(`rebuild failed, the service may still run the previous binary: ${e instanceof Error ? e.message : e}`);
+      throw fail(
+        `rebuild failed, the service may still run the previous binary: ${e instanceof Error ? e.message : e}`,
+      );
     }
   } else await start();
   writeFileSync(at(".phosphorus-installed"), v + "\n", { mode: 0o644 });
 }
 
 // per host, never overwritten once there
-export const kept = (f: string) => f === "config/services.export" || f === "config/phosphorus.ini" || f.startsWith("files/");
+export const kept = (f: string) =>
+  f === "config/services.export" || f === "config/phosphorus.ini" || f.startsWith("files/");
 
 // every file under dir, slash-separated and relative, .phosphorus-* ones skipped
 function walk(dir: string): string[] {
   const out: string[] = [];
   const visit = (p: string) => {
-    for (const e of readdirSync(p, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))) {
+    for (const e of readdirSync(p, { withFileTypes: true }).sort((a, b) =>
+      a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
+    )) {
       const full = join(p, e.name);
       if (e.isDirectory()) visit(full);
       else if (!e.name.startsWith(".phosphorus-")) out.push(relative(dir, full).replaceAll("\\", "/"));

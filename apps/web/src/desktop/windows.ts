@@ -1,13 +1,16 @@
 // the window manager: one window per terminal, files, service or app, moved, resized,
 // snapped, minimized into its task bar button and back
+
+import type { Connection } from '../features/mesh/mesh.ts';
 import { DK_GLYPHS, DK_UI, dkGlyph, el, isMobile } from '../lib/dom.ts';
 import { dk } from '../lib/state.ts';
 import { dkAppsChanged, dkMenu, type MenuItem } from './desk.ts';
-import type { Connection } from '../features/mesh/mesh.ts';
 
 // told of any window made, moved, snapped, hidden, shown, raised or closed (session.ts)
 let touched: (() => void) | null = null;
-export function dkOnTouch(f: () => void): void { touched = f; }
+export function dkOnTouch(f: () => void): void {
+  touched = f;
+}
 export const dkTouch = (): void => touched?.();
 
 // a frame in a website window, marked when its load is a back's own
@@ -48,7 +51,10 @@ export interface DkWin {
 // the glyph a window's task button wears, by what it is
 function dkWinGlyph(key: string | null, kind: string): string {
   const k = String(key || '');
-  if (k.startsWith('app:')) { const id = k.slice(4); return ({ appearance: 'palette', profile: 'user' } as Record<string, string>)[id] || (DK_GLYPHS[id] ? id : 'app'); }
+  if (k.startsWith('app:')) {
+    const id = k.slice(4);
+    return ({ appearance: 'palette', profile: 'user' } as Record<string, string>)[id] || (DK_GLYPHS[id] ? id : 'app');
+  }
   if (String(kind).startsWith('term')) return 'terminal';
   if (kind === 'fm') return 'files';
   if (k.startsWith('svc:')) return 'service';
@@ -58,7 +64,10 @@ function dkWinGlyph(key: string | null, kind: string): string {
 
 // one window, key: a single instance's, else a fresh one per open
 export function dkWin(key: string | null, title: string, sub: string, kind: string): DkWin | null {
-  if (key && dk.wins.has(key)) { dkFocus(dk.wins.get(key)!); return null; }
+  if (key && dk.wins.has(key)) {
+    dkFocus(dk.wins.get(key)!);
+    return null;
+  }
   const { wins, tasks } = dk.desk!;
   const node = el('div', `dk-win dk-${kind}`);
   const head = el('div', 'dk-head');
@@ -87,7 +96,22 @@ export function dkWin(key: string | null, title: string, sub: string, kind: stri
   const glyph = DK_GLYPHS[dkWinGlyph(key, kind)]!;
   const task = Object.assign(el('button', 'dk-task'), { type: 'button', title: sub ? `${title} ${sub}` : title });
   task.append(dkGlyph(glyph, 'dk-task-ic'), el('span', 'dk-task-t', title));
-  const w: DkWin = { key: key || `w${++dk.n}`, node, body, head, task, kind, glyph, onFocus: null, onClose: null, w: 0, h: 0, x: 0, y: 0, snap: '' };
+  const w: DkWin = {
+    key: key || `w${++dk.n}`,
+    node,
+    body,
+    head,
+    task,
+    kind,
+    glyph,
+    onFocus: null,
+    onClose: null,
+    w: 0,
+    h: 0,
+    x: 0,
+    y: 0,
+    snap: '',
+  };
   // cascaded from the icons, a phone's filling the desk
   const step = (dk.n++ % 8) * 24;
   const W = wins.clientWidth;
@@ -102,17 +126,37 @@ export function dkWin(key: string | null, title: string, sub: string, kind: stri
   min.addEventListener('click', () => dkMin(w));
   max.addEventListener('click', () => dkMax(w));
   close.addEventListener('click', () => dkClose(w));
-  head.addEventListener('dblclick', (e) => { if (!(e.target as Element).closest('button')) dkMax(w); });
+  head.addEventListener('dblclick', (e) => {
+    if (!(e.target as Element).closest('button')) dkMax(w);
+  });
   // a right click on the title or the task: the window's menu; a middle click on the task closes
-  const menu = (e: MouseEvent) => { if (!(e.target as Element).closest('.dk-btns')) { e.preventDefault(); dkWinMenu(w, e.clientX, e.clientY); } };
+  const menu = (e: MouseEvent) => {
+    if (!(e.target as Element).closest('.dk-btns')) {
+      e.preventDefault();
+      dkWinMenu(w, e.clientX, e.clientY);
+    }
+  };
   head.addEventListener('contextmenu', menu);
   task.addEventListener('contextmenu', menu);
-  task.addEventListener('auxclick', (e) => { if (e.button === 1) { e.preventDefault(); dkClose(w); } });
+  task.addEventListener('auxclick', (e) => {
+    if (e.button === 1) {
+      e.preventDefault();
+      dkClose(w);
+    }
+  });
   task.addEventListener('click', () => {
-    if (node.hidden || w.leaving) dkFocus(w); else if (node.classList.contains('focused')) dkMin(w); else dkFocus(w);
+    if (node.hidden || w.leaving) dkFocus(w);
+    else if (node.classList.contains('focused')) dkMin(w);
+    else dkFocus(w);
   });
   // the minimize button never raising or focusing on its way down
-  node.addEventListener('pointerdown', (e) => { if (!(e.target as Element).closest('.dk-min')) dkFocus(w); }, true);
+  node.addEventListener(
+    'pointerdown',
+    (e) => {
+      if (!(e.target as Element).closest('.dk-min')) dkFocus(w);
+    },
+    true,
+  );
   dkMove(w, head);
   for (const edge of edges) dkDrag(w, edge, (dx, dy, o) => dkResize(w, edge.dataset.e!, dx, dy, o));
   wins.appendChild(node);
@@ -125,7 +169,8 @@ export function dkWin(key: string | null, title: string, sub: string, kind: stri
 // on screen: not minimized, not leaving
 export const dkShown = (w: DkWin): boolean => !w.node.hidden && !w.leaving;
 // the windows on screen, topmost first
-export const dkStack = (): DkWin[] => [...dk.wins.values()].filter(dkShown).sort((a, b) => Number(b.node.style.zIndex) - Number(a.node.style.zIndex));
+export const dkStack = (): DkWin[] =>
+  [...dk.wins.values()].filter(dkShown).sort((a, b) => Number(b.node.style.zIndex) - Number(a.node.style.zIndex));
 
 // the window's menu, as a title bar's right click gives it
 export function dkWinMenu(w: DkWin, x: number, y: number): void {
@@ -134,12 +179,20 @@ export function dkWinMenu(w: DkWin, x: number, y: number): void {
   const items: MenuItem[] = [
     [w.node.hidden ? 'restore' : 'minimize', () => (w.node.hidden ? dkFocus(w) : dkMin(w)), true],
     [w.snap === 'max' ? 'restore size' : 'maximize', () => dkMax(w), !phone],
-    ['snap', [
-      ['left half', () => dkSnapTo(w, 'l'), true], ['right half', () => dkSnapTo(w, 'r'), true],
-      ['top left', () => dkSnapTo(w, 'tl'), true], ['top right', () => dkSnapTo(w, 'tr'), true],
-      ['bottom left', () => dkSnapTo(w, 'bl'), true], ['bottom right', () => dkSnapTo(w, 'br'), true],
-      null, ['floating', () => dkSnapTo(w, ''), !!w.snap],
-    ], !phone],
+    [
+      'snap',
+      [
+        ['left half', () => dkSnapTo(w, 'l'), true],
+        ['right half', () => dkSnapTo(w, 'r'), true],
+        ['top left', () => dkSnapTo(w, 'tl'), true],
+        ['top right', () => dkSnapTo(w, 'tr'), true],
+        ['bottom left', () => dkSnapTo(w, 'bl'), true],
+        ['bottom right', () => dkSnapTo(w, 'br'), true],
+        null,
+        ['floating', () => dkSnapTo(w, ''), !!w.snap],
+      ],
+      !phone,
+    ],
     null,
     ['close', () => dkClose(w), true, 'danger'],
   ];
@@ -155,7 +208,12 @@ export function dkSnapTo(w: DkWin, zone: string): void {
 }
 
 // the geometry a drag started from
-interface Geo { x: number; y: number; w: number; h: number }
+interface Geo {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
 
 // a side's drag: its own edge moved, the opposite one held, never under the minimum
 const DK_MIN_W = 280;
@@ -193,7 +251,11 @@ function dkDrag(w: DkWin, handle: HTMLElement, move: (dx: number, dy: number, o:
     dk.desk!.el.classList.add('dk-moving');
     const onMove = (ev: PointerEvent) => {
       move(ev.clientX - o.px, ev.clientY - o.py, o);
-      if (!frame) frame = requestAnimationFrame(() => { frame = 0; dkPlace(w); });
+      if (!frame)
+        frame = requestAnimationFrame(() => {
+          frame = 0;
+          dkPlace(w);
+        });
     };
     const onUp = () => {
       handle.removeEventListener('pointermove', onMove);
@@ -219,7 +281,8 @@ function dkZone(x: number, y: number, W: number, H: number): string {
 
 export function dkSnap(w: DkWin, zone: string): void {
   w.snap = zone || '';
-  if (zone) w.node.dataset.snap = zone; else delete w.node.dataset.snap;
+  if (zone) w.node.dataset.snap = zone;
+  else delete w.node.dataset.snap;
   (w.node.querySelector('.dk-max') as HTMLElement).title = zone === 'max' ? 'restore' : 'maximize';
   dkTouch();
 }
@@ -256,9 +319,14 @@ function dkMove(w: DkWin, head: HTMLElement) {
       const next = dkZone(ev.clientX - box.left, ev.clientY - box.top, box.width, box.height);
       if (next !== zone) {
         zone = next;
-        if (zone) preview.dataset.snap = zone; else delete preview.dataset.snap;
+        if (zone) preview.dataset.snap = zone;
+        else delete preview.dataset.snap;
       }
-      if (!frame) frame = requestAnimationFrame(() => { frame = 0; dkPlace(w); });
+      if (!frame)
+        frame = requestAnimationFrame(() => {
+          frame = 0;
+          dkPlace(w);
+        });
     };
     const onUp = () => {
       head.removeEventListener('pointermove', onMove);
@@ -270,7 +338,10 @@ function dkMove(w: DkWin, head: HTMLElement) {
       w.x = Math.max(48 - w.w, Math.min(box.width - 48, w.x));
       w.y = Math.max(0, Math.min(box.height - 28, w.y));
       dkPlace(w);
-      if (zone) { dkTween(w); dkSnap(w, zone); }
+      if (zone) {
+        dkTween(w);
+        dkSnap(w, zone);
+      }
     };
     head.addEventListener('pointermove', onMove);
     head.addEventListener('pointerup', onUp, { once: true });
@@ -289,7 +360,9 @@ function dkLeave(w: DkWin, done: () => void, cls = 'dk-leaving') {
     n.classList.remove(cls);
     done();
   };
-  const onEnd = (e: AnimationEvent) => { if (e.target === n) end(); };
+  const onEnd = (e: AnimationEvent) => {
+    if (e.target === n) end();
+  };
   const t = setTimeout(end, 300);
   w.leaving = t;
   n.classList.add(cls);
@@ -314,7 +387,9 @@ export function dkFocus(w: DkWin | null): void {
     o.task.classList.toggle('active', o === w);
   }
   if (dk.desk?.app) {
-    dk.desk.app.querySelector('.dk-menubar-app-t')!.textContent = w ? w.task.querySelector('.dk-task-t')!.textContent : 'phosphorus';
+    dk.desk.app.querySelector('.dk-menubar-app-t')!.textContent = w
+      ? w.task.querySelector('.dk-task-t')!.textContent
+      : 'phosphorus';
     dk.desk.app.querySelector('path')!.setAttribute('d', w ? w.glyph : DK_GLYPHS.mesh!);
   }
   if (!w) return;
@@ -342,12 +417,16 @@ function dkToTask(w: DkWin) {
 // next window focused only once it's gone
 export function dkMin(w: DkWin): void {
   dkToTask(w);
-  dkLeave(w, () => {
-    dkHide(w);
-    const top = dkStack()[0];
-    if (top) dkFocus(top);
-    dkAppsChanged();
-  }, 'dk-minimizing');
+  dkLeave(
+    w,
+    () => {
+      dkHide(w);
+      const top = dkStack()[0];
+      if (top) dkFocus(top);
+      dkAppsChanged();
+    },
+    'dk-minimizing',
+  );
 }
 
 // minimized at once, no animation: a session's windows put back as they were
@@ -387,7 +466,8 @@ export function dkClose(w: DkWin, force?: boolean): void {
   if (!force && w.holdClose?.()) return;
   w.onClose?.();
   if (w.back) dkNavDrop(w);
-  if (force) w.node.remove(); else dkLeave(w, () => w.node.remove());
+  if (force) w.node.remove();
+  else dkLeave(w, () => w.node.remove());
   w.task.remove();
   dk.wins.delete(w.key);
   dkAppsChanged();
@@ -400,7 +480,9 @@ export function dkClose(w: DkWin, force?: boolean): void {
 let dkNavs: NavFrame[] = [];
 const dkNavWins = new Set<DkWin>();
 const DK_NAV_UNDO_MS = 3000;
-function dkNavSync() { for (const w of dkNavWins) w.back!.disabled = !w.frame || dkNavs.at(-1) !== w.frame; }
+function dkNavSync() {
+  for (const w of dkNavWins) w.back!.disabled = !w.frame || dkNavs.at(-1) !== w.frame;
+}
 function dkNavDrop(w: DkWin) {
   dkNavs = dkNavs.filter((f) => f.isConnected && f !== w.frame);
   dkNavWins.delete(w);
@@ -425,8 +507,14 @@ export function dkNav(w: DkWin, frame: NavFrame): void {
   let first = true;
   // the first load the page itself, one just after a back that back's
   frame.addEventListener('load', () => {
-    if (first) { first = false; return; }
-    if (performance.now() - (frame.dkUndo || -Infinity) < DK_NAV_UNDO_MS) { frame.dkUndo = 0; return; }
+    if (first) {
+      first = false;
+      return;
+    }
+    if (performance.now() - (frame.dkUndo || -Infinity) < DK_NAV_UNDO_MS) {
+      frame.dkUndo = 0;
+      return;
+    }
     dkNavs.push(frame);
     dkNavSync();
   });

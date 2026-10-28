@@ -80,7 +80,10 @@ test("tick pulls a peer's file and drops it once unmarked", async () => {
   const bad = M.idOf("shared/missing.txt");
   const srv = Bun.serve({
     port: 0,
-    fetch: (req) => (new URL(req.url).pathname === `/internal/mirror/${id}` ? new Response("peer's bytes") : new Response(null, { status: 404 })),
+    fetch: (req) =>
+      new URL(req.url).pathname === `/internal/mirror/${id}`
+        ? new Response("peer's bytes")
+        : new Response(null, { status: 404 }),
   });
   try {
     const port = srv.port!;

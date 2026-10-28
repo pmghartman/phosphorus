@@ -46,8 +46,11 @@ export type LiveUser = ShadowRec & { admin: boolean };
 export function shadowOf(v: unknown): ShadowRec | undefined {
   const o = obj(v);
   if (!o) return;
-  const f = (k: string) => (o[k] === undefined || o[k] === null ? "" : typeof o[k] === "string" ? (o[k] as string) : undefined);
-  const salt = f("salt"), hash = f("hash"), pwAt = f("pwAt");
+  const f = (k: string) =>
+    o[k] === undefined || o[k] === null ? "" : typeof o[k] === "string" ? (o[k] as string) : undefined;
+  const salt = f("salt"),
+    hash = f("hash"),
+    pwAt = f("pwAt");
   if (salt === undefined || hash === undefined || pwAt === undefined) return;
   return { salt, hash, pwAt };
 }

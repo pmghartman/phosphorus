@@ -1,20 +1,37 @@
 // attachments
-import { el } from '../../lib/dom.ts';
-import { notesReadConv } from '../notes.ts';
-import { st } from '../../lib/state.ts';
+
 import type { ChatFile, Person } from '@phosphorus/wire';
-import { humanSize } from '../../lib/util.ts';
 import { dkOpenApp } from '../../desktop/desk.ts';
+import { el } from '../../lib/dom.ts';
+import { st } from '../../lib/state.ts';
+import { humanSize } from '../../lib/util.ts';
+import { notesReadConv } from '../notes.ts';
 import { setChatChip } from './commands.ts';
 import { cancelCompose, composeVars } from './compose.ts';
-import { chOf, chatReading, convHint, convName, convsVars, dmWith, news, paintConvs, readConv } from './convs.ts';
+import { chatReading, chOf, convHint, convName, convsVars, dmWith, news, paintConvs, readConv } from './convs.ts';
 import { CHAT_KEEP, chatNote, convLines, mediaUrl, putLine } from './lines.ts';
 import { popMenu } from './menus.ts';
-import { chatChip, chatFilesBtn, chatLog, chatStatus, chatText, chatTitle, chatTyping, colorFor, formatDay, formatTime, stateVars, type ChatLine } from './state.ts';
+import {
+  type ChatLine,
+  chatChip,
+  chatFilesBtn,
+  chatLog,
+  chatStatus,
+  chatText,
+  chatTitle,
+  chatTyping,
+  colorFor,
+  formatDay,
+  formatTime,
+  stateVars,
+} from './state.ts';
 
 // everything shared in this conversation, newest first, with who and when
-export const convFiles = (): [ChatFile, ChatLine][] => (convLines.get(convsVars.conv) || []).filter((m) => m.files && !m.gone)
-  .flatMap((m) => m.files!.map((f): [ChatFile, ChatLine] => [f, m])).reverse();
+export const convFiles = (): [ChatFile, ChatLine][] =>
+  (convLines.get(convsVars.conv) || [])
+    .filter((m) => m.files && !m.gone)
+    .flatMap((m) => m.files!.map((f): [ChatFile, ChatLine] => [f, m]))
+    .reverse();
 
 export function paintFiles() {
   const n = convFiles().length;
@@ -25,20 +42,31 @@ export function paintFiles() {
 
 export function openFiles() {
   const list = convFiles().slice(0, 50);
-  if (!list.length) { chatNote('nothing shared'); return; }
-  popMenu(chatFilesBtn, `attachments · ${convFiles().length}`, list.map(([f, m]) => ({
-    label: f.name, href: mediaUrl(f),
-    sub: `${humanSize(f.size || 0)} · ${m.name === st.name ? 'you' : m.name} · ${formatDay(m.timestamp)} ${formatTime(m.timestamp)}`,
-    thumb: (f.type || '').startsWith('image/') ? mediaUrl(f) : '',
-  })));
+  if (!list.length) {
+    chatNote('nothing shared');
+    return;
+  }
+  popMenu(
+    chatFilesBtn,
+    `attachments · ${convFiles().length}`,
+    list.map(([f, m]) => ({
+      label: f.name,
+      href: mediaUrl(f),
+      sub: `${humanSize(f.size || 0)} · ${m.name === st.name ? 'you' : m.name} · ${formatDay(m.timestamp)} ${formatTime(m.timestamp)}`,
+      thumb: (f.type || '').startsWith('image/') ? mediaUrl(f) : '',
+    })),
+  );
 }
 chatFilesBtn.addEventListener('click', openFiles);
 
 // who's typing here, never this browser's own name
 export function typers(c: string): string[] {
   const dm = dmWith(c);
-  return stateVars.people.filter((p) => p.name !== st.name && p.typing
-    && (dm ? p.name === dm && p.typing === `dm:${st.name}` : p.typing === c)).map((p) => p.name);
+  return stateVars.people
+    .filter(
+      (p) => p.name !== st.name && p.typing && (dm ? p.name === dm && p.typing === `dm:${st.name}` : p.typing === c),
+    )
+    .map((p) => p.name);
 }
 
 export function paintTyping() {
@@ -54,7 +82,10 @@ export function paintStatus() {
   chatStatus.classList.toggle('online', stateVars.chatOnline);
   const label = chatStatus.querySelector('.label')!;
   label.textContent = '';
-  if (!stateVars.chatOnline) { label.textContent = 'offline'; return; }
+  if (!stateVars.chatOnline) {
+    label.textContent = 'offline';
+    return;
+  }
   const dm = dmWith(convsVars.conv);
   const who = (p: Person) => {
     const span = el('span', 'who', p.name);
@@ -96,7 +127,11 @@ export function setConv(c: string): void {
   convsVars.freshFrom = news.get(c) || 0;
   readConv(c);
   if (chatReading(c)) notesReadConv(c);
-  if (was !== c) { cancelCompose(); setChatChip(''); composeVars.typingSent = ''; }
+  if (was !== c) {
+    cancelCompose();
+    setChatChip('');
+    composeVars.typingSent = '';
+  }
   chatTitle.querySelector('.chat-title-text')!.textContent = convName(convsVars.conv);
   if (!chatChip.textContent) chatText.placeholder = convHint();
   renderConv();

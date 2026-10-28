@@ -1,14 +1,25 @@
 // the log as it came in
+
+import type { ChatFile, ChatMsg } from '@phosphorus/wire';
+import { fileThere } from '../../desktop/deskfiles.ts';
+import { dkFocus, dkWin } from '../../desktop/windows.ts';
 import { codeCopies, el } from '../../lib/dom.ts';
 import { fitMath, renderMd } from '../../lib/md.ts';
 import { dk, st } from '../../lib/state.ts';
-import type { ChatFile, ChatMsg } from '@phosphorus/wire';
 import { humanSize } from '../../lib/util.ts';
-import { fileThere } from '../../desktop/deskfiles.ts';
-import { dkFocus, dkWin } from '../../desktop/windows.ts';
 import { convsVars } from './convs.ts';
 import { findIn } from './find.ts';
-import { chatFindInput, chatLog, colorFor, formatDay, formatTime, markMentions, nearBottom, toBottom, type ChatLine } from './state.ts';
+import {
+  type ChatLine,
+  chatFindInput,
+  chatLog,
+  colorFor,
+  formatDay,
+  formatTime,
+  markMentions,
+  nearBottom,
+  toBottom,
+} from './state.ts';
 
 // every line by host:seq, sorted into conversations: mesh, ch:<name>, dm:<name>,
 // reactions, edits and deletes folded into the line they point at
@@ -26,7 +37,8 @@ export const GROUP_MS = 5 * 60 * 1000;
 export let sysSeq = 0;
 
 export const keyOf = (m: ChatMsg) => `${m.host}:${m.seq}`;
-export const convOf = (m: ChatMsg) => (m.dm ? `dm:${m.name === st.name ? m.dm : m.name}` : m.ch ? `ch:${m.ch}` : 'mesh');
+export const convOf = (m: ChatMsg) =>
+  m.dm ? `dm:${m.name === st.name ? m.dm : m.name}` : m.ch ? `ch:${m.ch}` : 'mesh';
 
 export function fold(k: ChatMsg): ChatLine | null {
   const m = lines.get(k.ref!);
@@ -37,11 +49,16 @@ export function fold(k: ChatMsg): ChatLine | null {
   if (k.kind === 'react') {
     const id = `${k.name}\n${k.emoji}`;
     const was = m.reacts!.get(id);
-    if (!was || was.at <= k.timestamp) m.reacts!.set(id, { name: k.name, emoji: k.emoji!, on: k.on !== false, at: k.timestamp });
+    if (!was || was.at <= k.timestamp)
+      m.reacts!.set(id, { name: k.name, emoji: k.emoji!, on: k.on !== false, at: k.timestamp });
     return m;
   }
   if (k.name !== m.name) return null;
-  if (k.kind === 'edit' && (!m.editAt || m.editAt <= k.timestamp)) { m.edited = k.text; m.editedHtml = k.html; m.editAt = k.timestamp; }
+  if (k.kind === 'edit' && (!m.editAt || m.editAt <= k.timestamp)) {
+    m.edited = k.text;
+    m.editedHtml = k.html;
+    m.editAt = k.timestamp;
+  }
   if (k.kind === 'delete') m.gone = true;
   return m;
 }
@@ -88,14 +105,20 @@ export function chatNote(text: string): void {
   chatLog.scrollTop = chatLog.scrollHeight;
 }
 
-export const mediaUrl = (f: ChatFile, dl?: boolean) => `/api/chat/media/${encodeURIComponent(f.host)}/${f.id}${dl ? '?dl' : ''}`;
+export const mediaUrl = (f: ChatFile, dl?: boolean) =>
+  `/api/chat/media/${encodeURIComponent(f.host)}/${f.id}${dl ? '?dl' : ''}`;
 
 export function filesEl(files: ChatFile[]): HTMLElement {
   const box = el('div', 'msg-files');
   for (const f of files) {
     const kind = (f.type || '').split('/')[0];
     if (kind === 'image') {
-      const a = Object.assign(el('a', 'msg-img'), { href: mediaUrl(f), target: '_blank', rel: 'noopener', title: f.name });
+      const a = Object.assign(el('a', 'msg-img'), {
+        href: mediaUrl(f),
+        target: '_blank',
+        rel: 'noopener',
+        title: f.name,
+      });
       // on the desk, a window of its own in it; a plain link anywhere else
       a.addEventListener('click', (e) => {
         if (!dk.desk || e.ctrlKey || e.metaKey || e.shiftKey || e.button) return;
@@ -105,12 +128,25 @@ export function filesEl(files: ChatFile[]): HTMLElement {
       a.append(Object.assign(document.createElement('img'), { src: mediaUrl(f), alt: f.name, loading: 'lazy' }));
       box.append(a);
     } else if (kind === 'video' || kind === 'audio') {
-      const v = Object.assign(document.createElement(kind), { src: mediaUrl(f), controls: true, preload: 'metadata', title: f.name });
+      const v = Object.assign(document.createElement(kind), {
+        src: mediaUrl(f),
+        controls: true,
+        preload: 'metadata',
+        title: f.name,
+      });
       v.className = `msg-${kind}`;
       box.append(v);
     } else {
-      const a = Object.assign(el('a', 'msg-file'), { href: mediaUrl(f, true), download: f.name, title: `download ${f.name}` });
-      a.append(el('span', 'msg-file-icon', '▤'), el('span', 'msg-file-name', f.name), el('span', 'msg-file-size', humanSize(f.size || 0)));
+      const a = Object.assign(el('a', 'msg-file'), {
+        href: mediaUrl(f, true),
+        download: f.name,
+        title: `download ${f.name}`,
+      });
+      a.append(
+        el('span', 'msg-file-icon', '▤'),
+        el('span', 'msg-file-name', f.name),
+        el('span', 'msg-file-size', humanSize(f.size || 0)),
+      );
       box.append(a);
     }
   }
@@ -126,7 +162,10 @@ export function reactsEl(m: ChatLine): HTMLElement | null {
   for (const e of REACTIONS) {
     const who = by.get(e);
     if (!who) continue;
-    const b = Object.assign(el('button', `react${who.includes(st.name) ? ' on' : ''}`, `${e} ${who.length}`), { type: 'button', title: who.join(', ') });
+    const b = Object.assign(el('button', `react${who.includes(st.name) ? ' on' : ''}`, `${e} ${who.length}`), {
+      type: 'button',
+      title: who.join(', '),
+    });
     b.dataset.act = 'react';
     b.dataset.emoji = e;
     row.append(b);
@@ -137,7 +176,11 @@ export function reactsEl(m: ChatLine): HTMLElement | null {
 // on hover, over the bubble's top corner: the reactions, reply, and the rest of the menu
 // a line's menu marked by a faint ⋯ in its corner; right click or the ⋯ opens it
 export function toolsEl(): HTMLElement {
-  const more = Object.assign(el('button', 'msg-more', '⋯'), { type: 'button', title: 'options, or right click', ariaLabel: 'options' });
+  const more = Object.assign(el('button', 'msg-more', '⋯'), {
+    type: 'button',
+    title: 'options, or right click',
+    ariaLabel: 'options',
+  });
   more.dataset.act = 'more';
   return more;
 }
@@ -148,9 +191,16 @@ export function quoteEl(ref: string): HTMLElement {
   q.type = 'button';
   q.dataset.act = 'goto';
   q.dataset.ref = ref;
-  if (!t || t.gone) { q.textContent = '↳ deleted'; return q; }
+  if (!t || t.gone) {
+    q.textContent = '↳ deleted';
+    return q;
+  }
   const text = (t.edited ?? t.text) || (t.files ? `[${t.files.map((f) => f.name).join(', ')}]` : '');
-  q.append('↳ ', Object.assign(el('b', '', t.name), { style: `color: ${t.color || colorFor(t.name)}` }), ` ${text.replace(/\s+/g, ' ').slice(0, 120)}`);
+  q.append(
+    '↳ ',
+    Object.assign(el('b', '', t.name), { style: `color: ${t.color || colorFor(t.name)}` }),
+    ` ${text.replace(/\s+/g, ' ').slice(0, 120)}`,
+  );
   return q;
 }
 
@@ -182,12 +232,24 @@ export function lineEl(m: ChatLine, prev: Element | null): HTMLLIElement {
   if (m.kind === 'show') {
     li.className = 'sys show';
     const by = m.via ? `${m.via} from ${m.name}` : m.name;
-    li.append(m.name === st.name && !m.via ? `invited ${m.dm}: ` : m.name === st.name ? `${m.via} from you invited ${m.dm}: ` : `${by} invites: `, el('code', '', m.file?.label || m.text));
+    li.append(
+      m.name === st.name && !m.via
+        ? `invited ${m.dm}: `
+        : m.name === st.name
+          ? `${m.via} from you invited ${m.dm}: `
+          : `${by} invites: `,
+      el('code', '', m.file?.label || m.text),
+    );
     if (m.file) {
-      const b = Object.assign(el('button', 'show-open', 'open'), { type: 'button', title: 'open it in a shared editor' });
+      const b = Object.assign(el('button', 'show-open', 'open'), {
+        type: 'button',
+        title: 'open it in a shared editor',
+      });
       b.dataset.act = 'show';
       li.append(' ', b);
-      fileThere(m.file).then((there) => { if (!there) b.replaceWith(el('span', 'st-dim', '(gone)')); });
+      fileThere(m.file).then((there) => {
+        if (!there) b.replaceWith(el('span', 'st-dim', '(gone)'));
+      });
     }
     return li;
   }
@@ -205,7 +267,8 @@ export function lineEl(m: ChatLine, prev: Element | null): HTMLLIElement {
   li.dataset.who = m.via ? `${m.name}\u0000${m.via}` : m.name;
   li.style.setProperty('--who', m.color || colorFor(m.name));
   const p = prev?.matches?.('.msg') && (prev as HTMLElement);
-  if (p && p.dataset.who === li.dataset.who && m.timestamp - Number(p.dataset.at) < GROUP_MS && !m.re) li.classList.add('cont');
+  if (p && p.dataset.who === li.dataset.who && m.timestamp - Number(p.dataset.at) < GROUP_MS && !m.re)
+    li.classList.add('cont');
 
   const head = el('div', 'msg-head');
   const user = el('span', 'user', mine ? 'you' : m.via || m.name);
@@ -232,7 +295,8 @@ export function lineEl(m: ChatLine, prev: Element | null): HTMLLIElement {
   if (!m.gone && markMentions(text)) li.classList.add('at-me');
   if (body || m.gone) bubble.append(text);
   if (m.files && !m.gone) bubble.append(filesEl(m.files));
-  if (!body && !m.gone && m.files?.length && m.files.every((f) => (f.type || '').startsWith('image/'))) li.classList.add('just-img');
+  if (!body && !m.gone && m.files?.length && m.files.every((f) => (f.type || '').startsWith('image/')))
+    li.classList.add('just-img');
   li.append(bubble);
   if (real) bubble.append(toolsEl());
   const reacts = !m.gone && reactsEl(m);

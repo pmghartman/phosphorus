@@ -1,8 +1,9 @@
 // Linux's and macOS's shared side: sudo, a detached session, the admin setup
 // (ssh server, ssh by name, PATH links), the rebuild lock and run's signals
-import type { Subprocess } from "bun";
+
 import { dlopen } from "bun:ffi";
 import { closeSync, mkdirSync, openSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import type { Subprocess } from "bun";
 import { at, binPath, fail, home, isMac, readTrim, say, selfArgv, spawnIO, sshdUp, sshInclude } from "./base.ts";
 import type { OS, Reporter, Stop } from "./os.ts";
 import { newStop, os } from "./os.ts";
@@ -77,9 +78,12 @@ export async function setupOS() {
   if (!os.tailscaleInstalled()) await os.tailscaleInstall();
 }
 
-const LOCK_EX = 2, LOCK_NB = 4;
+const LOCK_EX = 2,
+  LOCK_NB = 4;
 let flock: ((fd: number, op: number) => number) | undefined;
-const libc = () => (flock ??= dlopen(isMac ? "libSystem.B.dylib" : "libc.so.6", { flock: { args: ["i32", "i32"], returns: "i32" } }).symbols.flock);
+const libc = () =>
+  (flock ??= dlopen(isMac ? "libSystem.B.dylib" : "libc.so.6", { flock: { args: ["i32", "i32"], returns: "i32" } })
+    .symbols.flock);
 
 // lockRebuild state/rebuild.lock held for the rebuild, a second one waiting
 export async function lockRebuild(): Promise<() => void> {

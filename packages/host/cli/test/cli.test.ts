@@ -7,7 +7,8 @@ const dir = mkdtempSync(join(tmpdir(), "phos-cli-"));
 process.env.PHOSPHORUS_CONFIG_DIR = dir;
 // proxy's domain is fixed on its first import: the one its own test expects
 process.env.BASE_DOMAIN ??= "mulab.dev";
-const svc = join(dir, "services.export"), ini = join(dir, "phosphorus.ini");
+const svc = join(dir, "services.export"),
+  ini = join(dir, "phosphorus.ini");
 const draw = await import("../src/draw.ts");
 const { Parser } = await import("../src/input.ts");
 const { num, str, get, objs } = await import("../src/json.ts");
@@ -51,7 +52,15 @@ test("text measured past its codes, cut, padded and wrapped", () => {
 
 test("tables and panels", () => {
   const { table, panel, panels, vlen, selMark } = draw;
-  const t = table(["name", "port"], [["web", "8080"], ["mc", "1"]], 1, 0);
+  const t = table(
+    ["name", "port"],
+    [
+      ["web", "8080"],
+      ["mc", "1"],
+    ],
+    1,
+    0,
+  );
   expect(t.length).toBe(3);
   expect(t[0]!.sel).toBeUndefined();
   expect(vlen(t[0]!.text)).toBe("  name  port".length);
@@ -59,7 +68,12 @@ test("tables and panels", () => {
   expect(t[2]!.text.replace(/\x1b\[[0-9;]*m/g, "")).toBe("› mc    1   ");
   expect(t[2]!.sel).toBe(true);
   // past max: a window around the selection and a count
-  const big = table(["n"], Array.from({ length: 10 }, (_, i) => [String(i)]), 7, 4);
+  const big = table(
+    ["n"],
+    Array.from({ length: 10 }, (_, i) => [String(i)]),
+    7,
+    4,
+  );
   expect(big.length).toBe(5);
   expect(big[1]!.text.replace(/\x1b\[[0-9;]*m/g, "")).toBe("  6");
   expect(big[4]!.text.replace(/\x1b\[[0-9;]*m/g, "")).toBe("  7-9 of 10");
@@ -79,19 +93,43 @@ test("tables and panels", () => {
 test("stdin parsed into readline's key events", () => {
   const p = new Parser();
   const names = (s: string) => p.feed(s).map((e) => [e.name, e.str, e.ctrl, e.shift, e.meta]);
-  expect(names("aA ")).toEqual([["a", "a", false, false, false], ["a", "A", false, true, false], ["space", " ", false, false, false]]);
-  expect(names("\r\n\t\x7f\x03")).toEqual([["return", "\r", false, false, false], ["enter", "\n", false, false, false], ["tab", "\t", false, false, false], ["backspace", "\x7f", false, false, false], ["c", "\x03", true, false, false]]);
+  expect(names("aA ")).toEqual([
+    ["a", "a", false, false, false],
+    ["a", "A", false, true, false],
+    ["space", " ", false, false, false],
+  ]);
+  expect(names("\r\n\t\x7f\x03")).toEqual([
+    ["return", "\r", false, false, false],
+    ["enter", "\n", false, false, false],
+    ["tab", "\t", false, false, false],
+    ["backspace", "\x7f", false, false, false],
+    ["c", "\x03", true, false, false],
+  ]);
   expect(names("\x1b[A\x1b[1;2C\x1b[Z\x1b[5~\x1b[6~\x1b[3~\x1bOB")).toEqual([
-    ["up", "", false, false, false], ["right", "", false, true, false], ["tab", "", false, true, false],
-    ["pageup", "", false, false, false], ["pagedown", "", false, false, false], ["delete", "", false, false, false], ["down", "", false, false, false],
+    ["up", "", false, false, false],
+    ["right", "", false, true, false],
+    ["tab", "", false, true, false],
+    ["pageup", "", false, false, false],
+    ["pagedown", "", false, false, false],
+    ["delete", "", false, false, false],
+    ["down", "", false, false, false],
   ]);
   expect(names("\x1b")).toEqual([["escape", "", false, false, false]]);
-  expect(names("\x1b\x1bx")).toEqual([["escape", "", false, false, false], ["x", "x", false, false, true]]);
-  expect(names("é😀")).toEqual([["é", "é", false, false, false], ["😀", "😀", false, false, false]]);
+  expect(names("\x1b\x1bx")).toEqual([
+    ["escape", "", false, false, false],
+    ["x", "x", false, false, true],
+  ]);
+  expect(names("é😀")).toEqual([
+    ["é", "é", false, false, false],
+    ["😀", "😀", false, false, false],
+  ]);
   // an unfinished sequence waits for the rest
   expect(names("\x1b[")).toEqual([]);
   expect(names("B")).toEqual([["down", "", false, false, false]]);
   // a paste whole, its end marker split across reads
   expect(names("\x1b[200~hi\nthere\x1b[20")).toEqual([]);
-  expect(names("1~q")).toEqual([["paste", "hi\nthere", false, false, false], ["q", "q", false, false, false]]);
+  expect(names("1~q")).toEqual([
+    ["paste", "hi\nthere", false, false, false],
+    ["q", "q", false, false, false],
+  ]);
 });

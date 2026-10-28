@@ -3,7 +3,7 @@
 import { createHash } from "node:crypto";
 import { renameSync, rmSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { downloadPath, makeParents, safePath, type Share, shareOf } from "@phosphorus/files";
+import { downloadPath, makeParents, type Share, safePath, shareOf } from "@phosphorus/files";
 import * as store from "@phosphorus/store";
 import { obj, readJSONMap, SelfHost, writeJSONAtomic } from "@phosphorus/util";
 
@@ -102,7 +102,10 @@ export function Serve(id: string): Response {
   } catch {
     return new Response(null, { status: 404 });
   }
-  return new Response(Bun.file(abs), { status: 200, headers: { "Content-Type": "application/octet-stream", "Content-Length": String(size) } });
+  return new Response(Bun.file(abs), {
+    status: 200,
+    headers: { "Content-Type": "application/octet-stream", "Content-Length": String(size) },
+  });
 }
 
 const rm = (p: string) => {

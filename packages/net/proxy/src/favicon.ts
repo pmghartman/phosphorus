@@ -116,7 +116,10 @@ function fromData(href: string): Icon | undefined {
   const m = /^data:(image\/[a-z0-9.+-]+)(;base64)?,(.*)$/is.exec(href);
   if (!m) return;
   try {
-    return { type: m[1]!.toLowerCase(), body: m[2] ? Buffer.from(m[3]!, "base64") : Buffer.from(decodeURIComponent(m[3]!)) };
+    return {
+      type: m[1]!.toLowerCase(),
+      body: m[2] ? Buffer.from(m[3]!, "base64") : Buffer.from(decodeURIComponent(m[3]!)),
+    };
   } catch {}
 }
 
@@ -132,7 +135,13 @@ async function manifestIcons(rt: Route, href: string, from: string, trace?: stri
     return [];
   }
   const size = (i: any) =>
-    Math.max(0, ...String(i.sizes ?? "").split(/\s+/).filter(Boolean).map((x) => parseInt(x.toLowerCase().split("x")[0]!, 10) || (x === "any" ? 1024 : 0)));
+    Math.max(
+      0,
+      ...String(i.sizes ?? "")
+        .split(/\s+/)
+        .filter(Boolean)
+        .map((x) => parseInt(x.toLowerCase().split("x")[0]!, 10) || (x === "any" ? 1024 : 0)),
+    );
   return icons
     .filter((i) => typeof i?.src === "string")
     .sort((a, b) => size(b) - size(a))
@@ -140,8 +149,19 @@ async function manifestIcons(rt: Route, href: string, from: string, trace?: stri
     .filter(Boolean);
 }
 
-const usualIcons = ["/favicon.ico", "/favicon.png", "/favicon.svg", "/apple-touch-icon.png", "/static/favicon.ico", "/static/favicon.png",
-  "/assets/favicon.ico", "/.client/favicon.png", "/.client/logo.png", "/logo.png", "/icon.png"];
+const usualIcons = [
+  "/favicon.ico",
+  "/favicon.png",
+  "/favicon.svg",
+  "/apple-touch-icon.png",
+  "/static/favicon.ico",
+  "/static/favicon.png",
+  "/assets/favicon.ico",
+  "/.client/favicon.png",
+  "/.client/logo.png",
+  "/logo.png",
+  "/icon.png",
+];
 
 function hrefOf(tag: string): string {
   const d = /\bhref\s*=\s*"([\s\S]*?)"/i.exec(tag);
@@ -154,14 +174,16 @@ function hrefOf(tag: string): string {
 async function lookIcon(rt: Route, trace?: string[], answered?: { yes: boolean }): Promise<Icon | undefined> {
   const page = await grab(rt, "/", iconMax * 4, { page: true, hops: 4, trace, answered });
   let html = "";
-  if (page && (/html/.test(page.typ) || /^\s*</.test(new TextDecoder().decode(page.body.subarray(0, 64))))) html = new TextDecoder().decode(page.body);
+  if (page && (/html/.test(page.typ) || /^\s*</.test(new TextDecoder().decode(page.body.subarray(0, 64)))))
+    html = new TextDecoder().decode(page.body);
   let from = page?.path ?? "/";
   const base = /<base\b[^>]*\bhref\s*=\s*(["'])([^"']*)["']/i.exec(html);
   if (base?.[2]) {
     const x = iconPath(rt, base[2].endsWith("/") ? base[2] + "_" : base[2], page?.path ?? "/");
     if (x) from = x;
   }
-  const icons: string[] = [], touch: string[] = [];
+  const icons: string[] = [],
+    touch: string[] = [];
   let manifest = "";
   for (const tag of html.match(/<link\b[^>]*>/gi) ?? []) {
     const lr = (/\brel\s*=\s*["']?([^"'>]*)/i.exec(tag)?.[1] ?? "").toLowerCase();
@@ -171,12 +193,18 @@ async function lookIcon(rt: Route, trace?: string[], answered?: { yes: boolean }
     (lr.includes("apple-touch") ? touch : icons).push(href.trim());
   }
   const all = [...icons, ...touch];
-  for (const h of all) if (h.startsWith("data:")) {
-    const d = fromData(h);
-    if (d) return d;
-  }
-  const paths = all.filter((h) => !h.startsWith("data:")).map((h) => iconPath(rt, h, from)).filter(Boolean);
-  trace?.push("page names " + (paths.length ? paths.join(", ") : "no icons") + (manifest ? ", manifest " + manifest : ""));
+  for (const h of all)
+    if (h.startsWith("data:")) {
+      const d = fromData(h);
+      if (d) return d;
+    }
+  const paths = all
+    .filter((h) => !h.startsWith("data:"))
+    .map((h) => iconPath(rt, h, from))
+    .filter(Boolean);
+  trace?.push(
+    "page names " + (paths.length ? paths.join(", ") : "no icons") + (manifest ? ", manifest " + manifest : ""),
+  );
   if (manifest) paths.push(...(await manifestIcons(rt, manifest, from, trace)));
   for (const p of new Set([...paths, ...usualIcons])) {
     const r = asImage(await grab(rt, p, iconMax, { hops: 4, trace }));
@@ -195,16 +223,18 @@ export function favicon(host: string, name: string): Promise<Icon | undefined> {
   if (!rt) return Promise.resolve(undefined);
   const entry = { until: Date.now() + iconKeepMs, done: undefined as any as Promise<Icon | undefined> };
   const answered = { yes: false };
-  entry.done = lookIcon(rt, undefined, answered).catch(() => undefined).then((icon) => {
-    if (!icon && !answered.yes) {
-      entry.until = Date.now() + iconDownMs;
-      notes.log(`no icon for ${key} yet: ${rt.scheme}://${rt.ip}:${rt.port} didn't answer`);
-    } else if (!icon) {
-      entry.until = Date.now() + iconMissMs;
-      notes.log(`no icon found for ${key} at ${rt.scheme}://${rt.ip}:${rt.port}, its page and the usual paths tried`);
-    }
-    return icon;
-  });
+  entry.done = lookIcon(rt, undefined, answered)
+    .catch(() => undefined)
+    .then((icon) => {
+      if (!icon && !answered.yes) {
+        entry.until = Date.now() + iconDownMs;
+        notes.log(`no icon for ${key} yet: ${rt.scheme}://${rt.ip}:${rt.port} didn't answer`);
+      } else if (!icon) {
+        entry.until = Date.now() + iconMissMs;
+        notes.log(`no icon found for ${key} at ${rt.scheme}://${rt.ip}:${rt.port}, its page and the usual paths tried`);
+      }
+      return icon;
+    });
   held.set(key, entry);
   return entry.done;
 }

@@ -35,7 +35,14 @@ export type Actions = {
   userUI: (user: string, action: Action) => boolean | Promise<boolean>;
   // userUIAsync the same, never waiting on a peer
   userUIAsync?: (user: string, action: Action) => void | Promise<void>;
-  service: (host: string, name: string, method: string, path: string, headers: Record<string, string>, body: string) => R;
+  service: (
+    host: string,
+    name: string,
+    method: string,
+    path: string,
+    headers: Record<string, string>,
+    body: string,
+  ) => R;
   modelColor: string;
 };
 
@@ -113,7 +120,14 @@ export async function pressed(r: R): Promise<any> {
 
 // JSON values read as the web client's JS would: String(v || "")
 export function str(v: unknown): string {
-  if (v === null || v === undefined || v === false || v === "" || (typeof v === "number" && (v === 0 || Number.isNaN(v)))) return "";
+  if (
+    v === null ||
+    v === undefined ||
+    v === false ||
+    v === "" ||
+    (typeof v === "number" && (v === 0 || Number.isNaN(v)))
+  )
+    return "";
   return jsString(v);
 }
 // as a JS template literal renders a JSON value
@@ -132,7 +146,11 @@ export const runes = (s: string, n: number) => {
   return r.length > n ? r.slice(0, n).join("") : s;
 };
 
-export const object = (props?: Record<string, any>, ...required: string[]) => ({ type: "object", properties: props ?? {}, required });
+export const object = (props?: Record<string, any>, ...required: string[]) => ({
+  type: "object",
+  properties: props ?? {},
+  required,
+});
 export const name = { type: "string", description: "host name, as mesh_hosts lists it" };
 
 export const nameRe = /^[A-Za-z0-9-]{1,63}$/;

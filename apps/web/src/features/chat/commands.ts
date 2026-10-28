@@ -1,24 +1,49 @@
 // commands
-import { el } from '../../lib/dom.ts';
-import { phosphorusHosts } from '../mesh/mesh.ts';
-import { codeName, codeTabs, editors, fileLabel, type EditorFile } from '../home/home.ts';
-import { st } from '../../lib/state.ts';
+
 import type { ShowFile } from '@phosphorus/wire';
 import { dkCode } from '../../desktop/deskfiles.ts';
+import { el } from '../../lib/dom.ts';
+import { st } from '../../lib/state.ts';
+import { codeName, codeTabs, type EditorFile, editors, fileLabel } from '../home/home.ts';
+import { phosphorusHosts } from '../mesh/mesh.ts';
 import { cancelCompose, composeVars, editing, paintAtts, paintBar, startEdit, typingTick } from './compose.ts';
-import { chOf, channels, convHint, convsVars, dmWith, leftChannels, saveChannels, topicOf } from './convs.ts';
+import { channels, chOf, convHint, convsVars, dmWith, leftChannels, saveChannels, topicOf } from './convs.ts';
 import { openConv, setConv } from './files.ts';
 import { chatNote, convLines, keyOf } from './lines.ts';
 import { convMenu, leaveChannel, popMenu } from './menus.ts';
 import { connectChat, putSending, socketVars } from './socket.ts';
-import { COLOR_NAMES, NAME_COLORS, chatChip, chatCmds, chatCompose, chatForm, chatJoin, chatJoinGo, chatName, chatSend, chatText, chatTitle, joined, send, stateVars, type ChatLine, wsOpen } from './state.ts';
+import {
+  type ChatLine,
+  COLOR_NAMES,
+  chatChip,
+  chatCmds,
+  chatCompose,
+  chatForm,
+  chatJoin,
+  chatJoinGo,
+  chatName,
+  chatSend,
+  chatText,
+  chatTitle,
+  joined,
+  NAME_COLORS,
+  send,
+  stateVars,
+  wsOpen,
+} from './state.ts';
 
 // a channel opened or made from the conversations' +, a topic after its name
 export function joinChannel(arg: string) {
   const [raw, ...topic] = arg.trim().split(/s+/);
   const ch = (raw || '').replace(/^#/, '').toLowerCase();
-  if (ch === 'mesh') { setConv('mesh'); return; }
-  if (!/^[a-z0-9][a-z0-9-]{0,23}$/.test(ch)) { chatNote('bad name'); return; }
+  if (ch === 'mesh') {
+    setConv('mesh');
+    return;
+  }
+  if (!/^[a-z0-9][a-z0-9-]{0,23}$/.test(ch)) {
+    chatNote('bad name');
+    return;
+  }
   if (!convsVars.myChannels.includes(ch)) convsVars.myChannels.push(ch);
   delete leftChannels[ch];
   saveChannels();
@@ -35,10 +60,19 @@ export function runCommand(input: string) {
     // in a dm, its other end unless another name leads
     let to = nameIn(arg);
     let what = arg.slice(to.length).trim();
-    if (dmWith(convsVars.conv) && !knownNames().includes(to)) { to = dmWith(convsVars.conv); what = arg; }
-    if (!to || to === st.name || !what) { chatNote('usage: /share name file'); return; }
+    if (dmWith(convsVars.conv) && !knownNames().includes(to)) {
+      to = dmWith(convsVars.conv);
+      what = arg;
+    }
+    if (!to || to === st.name || !what) {
+      chatNote('usage: /share name file');
+      return;
+    }
     resolveShow(what).then((f) => {
-      if (!f) { chatNote(`no ${what}`); return; }
+      if (!f) {
+        chatNote(`no ${what}`);
+        return;
+      }
       chatNote(shareWith(to, f));
       dkCode(f);
     });
@@ -46,20 +80,41 @@ export function runCommand(input: string) {
   }
   if (cmd === '/dm') {
     const to = nameIn(arg);
-    if (!to || to === st.name) { chatNote('usage: /dm name [message]'); return; }
+    if (!to || to === st.name) {
+      chatNote('usage: /dm name [message]');
+      return;
+    }
     const text = arg.slice(to.length).trim();
     openConv(`dm:${to}`);
     if (text) send({ type: 'dm', to, text });
     return;
   }
-  if (cmd === '/chat') { setConv('mesh'); return; }
-  if (cmd === '/leave' && chOf(convsVars.conv)) { leaveChannel(chOf(convsVars.conv)); return; }
+  if (cmd === '/chat') {
+    setConv('mesh');
+    return;
+  }
+  if (cmd === '/leave' && chOf(convsVars.conv)) {
+    leaveChannel(chOf(convsVars.conv));
+    return;
+  }
   // asked once more in the menu, never closed on one keystroke
-  if (cmd === '/close' && chOf(convsVars.conv)) { convMenu(convsVars.conv, chatTitle, true); return; }
-  if (cmd === '/topic' && chOf(convsVars.conv)) { send({ type: 'topic', ch: chOf(convsVars.conv), text: arg }); return; }
+  if (cmd === '/close' && chOf(convsVars.conv)) {
+    convMenu(convsVars.conv, chatTitle, true);
+    return;
+  }
+  if (cmd === '/topic' && chOf(convsVars.conv)) {
+    send({ type: 'topic', ch: chOf(convsVars.conv), text: arg });
+    return;
+  }
   if (cmd === '/rename') {
-    if (st.acct) { chatNote('name fixed'); return; }
-    if (!arg) { chatNote('usage: /rename name'); return; }
+    if (st.acct) {
+      chatNote('name fixed');
+      return;
+    }
+    if (!arg) {
+      chatNote('usage: /rename name');
+      return;
+    }
     st.name = arg.slice(0, 32);
     localStorage.setItem('phosphorus-chat-name', st.name);
     send({ type: 'rename', name: st.name });
@@ -67,23 +122,37 @@ export function runCommand(input: string) {
   }
   if (cmd === '/recolor') {
     const idx = arg ? COLOR_NAMES.indexOf(arg.toLowerCase()) : -1;
-    if (arg && idx === -1) { chatNote(`usage: /recolor ${COLOR_NAMES.join('|')}`); return; }
+    if (arg && idx === -1) {
+      chatNote(`usage: /recolor ${COLOR_NAMES.join('|')}`);
+      return;
+    }
     st.color = idx !== -1 ? NAME_COLORS[idx]! : NAME_COLORS[Math.floor(Math.random() * NAME_COLORS.length)]!;
     localStorage.setItem('phosphorus-chat-color', st.color);
     send({ type: 'recolor', color: st.color });
     return;
   }
-  if (dmWith(convsVars.conv)) { chatNote('not here'); return; }
+  if (dmWith(convsVars.conv)) {
+    chatNote('not here');
+    return;
+  }
   // the mesh channel's own, everyone's, not a local scrollback wipe
-  if (cmd === '/clear' && convsVars.conv === 'mesh') { send({ type: 'clear' }); return; }
+  if (cmd === '/clear' && convsVars.conv === 'mesh') {
+    send({ type: 'clear' });
+    return;
+  }
   chatNote(`unknown ${cmd}`);
 }
 
 // every name this browser knows of, and the longest of them an argument starts
 // with, names with spaces included
-export const knownNames = () => [...new Set([...stateVars.people.map((p) => p.name), ...[...convLines.keys()].map(dmWith).filter(Boolean)])]
-  .filter((n) => n !== st.name);
-export const nameIn = (arg: string) => knownNames().sort((a, b) => b.length - a.length).find((n) => arg === n || arg.startsWith(`${n} `)) || arg.split(/\s+/)[0]!;
+export const knownNames = () =>
+  [...new Set([...stateVars.people.map((p) => p.name), ...[...convLines.keys()].map(dmWith).filter(Boolean)])].filter(
+    (n) => n !== st.name,
+  );
+export const nameIn = (arg: string) =>
+  knownNames()
+    .sort((a, b) => b.length - a.length)
+    .find((n) => arg === n || arg.startsWith(`${n} `)) || arg.split(/\s+/)[0]!;
 
 // a file offered to someone: an invite as a dm, a dialog on their end
 export function shareWith(to: string, f: ShowFile): string {
@@ -95,9 +164,17 @@ export function shareWith(to: string, f: ShowFile): string {
 export function shareMenu(anchor: HTMLElement, f: EditorFile, done: (how: string) => void): void {
   const on = (n: string) => stateVars.people.some((p) => p.name === n);
   const who = knownNames().sort((a, b) => Number(on(b)) - Number(on(a)) || a.localeCompare(b));
-  popMenu(anchor, `share ${codeName(f)} with`, who.length
-    ? who.map((n) => ({ label: n, sub: on(n) ? 'online' : 'asked when they are back', act: () => done(shareWith(n, f)) }))
-    : [{ label: 'nobody', act: () => {} }]);
+  popMenu(
+    anchor,
+    `share ${codeName(f)} with`,
+    who.length
+      ? who.map((n) => ({
+          label: n,
+          sub: on(n) ? 'online' : 'asked when they are back',
+          act: () => done(shareWith(n, f)),
+        }))
+      : [{ label: 'nobody', act: () => {} }],
+  );
 }
 
 // a /share's file: an open editor tab by its name or path, else a file as the
@@ -110,10 +187,14 @@ export async function resolveShow(what: string): Promise<ShowFile | null> {
   }
   const [host, ...rest] = w.split('/');
   if (![st.selfHost, ...phosphorusHosts()].includes(host!) || !rest.length) return null;
-  const info = await fetch(`/api/files/${encodeURIComponent(host!)}/info`).then((r) => r.json()).catch(() => null);
+  const info = await fetch(`/api/files/${encodeURIComponent(host!)}/info`)
+    .then((r) => r.json())
+    .catch(() => null);
   const full = rest.join('/');
   const bare = (l: unknown) => String(l || '').replace(/^\/+|\/+$/g, '');
-  const sh = ((info?.shares || []) as { id: string; label: string }[]).filter((x) => full.startsWith(`${bare(x.label)}/`)).sort((a, b) => bare(b.label).length - bare(a.label).length)[0];
+  const sh = ((info?.shares || []) as { id: string; label: string }[])
+    .filter((x) => full.startsWith(`${bare(x.label)}/`))
+    .sort((a, b) => bare(b.label).length - bare(a.label).length)[0];
   if (!sh) return null;
   const rel = full.slice(bare(sh.label).length + 1);
   return rel ? { host: host!, share: sh.id, path: rel, label: fileLabel(host!, sh.label, rel) } : null;
@@ -125,19 +206,35 @@ export let showFile: ShowFile | null = null;
 export function showInvite(m: ChatLine) {
   showFile = m.file!;
   socketVars.showSeen = Math.max(socketVars.showSeen, m.timestamp);
-  try { localStorage.setItem('phosphorus-show-seen', String(socketVars.showSeen)); } catch {}
-  document.getElementById('show-modal-text')!.replaceChildren(el('b', '', m.name), ' invites: ', el('code', '', m.file!.label));
+  try {
+    localStorage.setItem('phosphorus-show-seen', String(socketVars.showSeen));
+  } catch {}
+  document
+    .getElementById('show-modal-text')!
+    .replaceChildren(el('b', '', m.name), ' invites: ', el('code', '', m.file!.label));
   showModal.hidden = false;
   document.getElementById('show-modal-go')!.focus();
 }
-export const closeShow = () => { showModal.hidden = true; };
-document.getElementById('show-modal-go')!.addEventListener('click', () => { closeShow(); if (showFile) dkCode(showFile); });
+export const closeShow = () => {
+  showModal.hidden = true;
+};
+document.getElementById('show-modal-go')!.addEventListener('click', () => {
+  closeShow();
+  if (showFile) dkCode(showFile);
+});
 document.getElementById('show-modal-no')!.addEventListener('click', closeShow);
 document.getElementById('show-modal-close')!.addEventListener('click', closeShow);
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !showModal.hidden) closeShow(); });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !showModal.hidden) closeShow();
+});
 
 // a command's hit: its label, what it is, and what picking it does
-export interface ChatHit { label: string; what: string; cmd?: boolean; pick: () => void }
+export interface ChatHit {
+  label: string;
+  what: string;
+  cmd?: boolean;
+  pick: () => void;
+}
 
 // the choices a command's words already have: people, open files, channels, colours
 export function argHints(): ChatHit[] {
@@ -147,23 +244,32 @@ export function argHints(): ChatHit[] {
   let prefix = '';
   let list: [string, string][] = [];
   if (cmd === '/dm' || cmd === '/share') {
-    const who = knownNames().sort((a, b) => b.length - a.length).find((n) => v.startsWith(`${n} `));
+    const who = knownNames()
+      .sort((a, b) => b.length - a.length)
+      .find((n) => v.startsWith(`${n} `));
     if (!who) list = knownNames().map((n) => [n, online(n)]);
     else if (cmd === '/share') {
       prefix = `${who} `;
-      list = [...codeTabs.values()].map((id) => editors.get(id)?.file).filter((f): f is EditorFile => !!f).map((f) => [f.label, 'open in an editor tab']);
+      list = [...codeTabs.values()]
+        .map((id) => editors.get(id)?.file)
+        .filter((f): f is EditorFile => !!f)
+        .map((f) => [f.label, 'open in an editor tab']);
     }
   } else if (cmd === CHANNEL_CHIP[0]) list = channels().map((c) => [c, topicOf(`ch:${c}`) || 'channel']);
   else if (cmd === '/recolor') list = COLOR_NAMES.map((c) => [c, '']);
   const token = v.slice(prefix.length).toLowerCase();
-  return list.filter(([x]) => x.toLowerCase().includes(token) && x.toLowerCase() !== token).slice(0, 8).map(([x, what]) => ({
-    label: x, what,
-    pick: () => {
-      chatText.value = `${prefix}${x}${cmd === '/recolor' || prefix ? '' : ' '}`;
-      chatText.setSelectionRange(chatText.value.length, chatText.value.length);
-      autoGrowChatText();
-    },
-  }));
+  return list
+    .filter(([x]) => x.toLowerCase().includes(token) && x.toLowerCase() !== token)
+    .slice(0, 8)
+    .map(([x, what]) => ({
+      label: x,
+      what,
+      pick: () => {
+        chatText.value = `${prefix}${x}${cmd === '/recolor' || prefix ? '' : ' '}`;
+        chatText.setSelectionRange(chatText.value.length, chatText.value.length);
+        autoGrowChatText();
+      },
+    }));
 }
 
 // name, what it does, and the box's placeholder once chosen, none for a
@@ -178,8 +284,16 @@ export const ME_CMDS: Cmd[] = [['/recolor', 'change your colour', COLOR_NAMES.jo
 export function commands(): Cmd[] {
   if (dmWith(convsVars.conv)) return [BACK_CMD, SHARE_CMD, DM_CMD];
   return [
-    DM_CMD, SHARE_CMD,
-    ...(chOf(convsVars.conv) ? [['/topic', 'describe this channel', 'topic'], ['/leave', 'hide it from your list', ''], ['/close', 'close it for everyone', ''], BACK_CMD] as Cmd[] : [['/clear', 'clear #mesh for everyone', '']] as Cmd[]),
+    DM_CMD,
+    SHARE_CMD,
+    ...(chOf(convsVars.conv)
+      ? ([
+          ['/topic', 'describe this channel', 'topic'],
+          ['/leave', 'hide it from your list', ''],
+          ['/close', 'close it for everyone', ''],
+          BACK_CMD,
+        ] as Cmd[])
+      : ([['/clear', 'clear #mesh for everyone', '']] as Cmd[])),
     ...ME_CMDS,
   ];
 }
@@ -197,7 +311,10 @@ export function setChatChip(cmd: string) {
 
 // a command picked from outside the box, its words typed next
 export function startCommand(cmd: string) {
-  if (!joined()) { chatName.focus(); return; }
+  if (!joined()) {
+    chatName.focus();
+    return;
+  }
   setChatChip(cmd);
   chatText.value = '';
   autoGrowChatText();
@@ -208,21 +325,29 @@ export function startCommand(cmd: string) {
 // one lit for tab or enter
 export function renderChatCmds() {
   const m = chatText.value.match(/^(\/\S*)$/);
-  const hits: ChatHit[] = editing ? []
-    : chatChip.textContent ? argHints()
-      : m ? commands().filter(([c]) => c.startsWith(m[1]!.toLowerCase())).map(([c, what]) => ({ label: c, what, cmd: true, pick: () => pickChatCmd(c) })) : [];
+  const hits: ChatHit[] = editing
+    ? []
+    : chatChip.textContent
+      ? argHints()
+      : m
+        ? commands()
+            .filter(([c]) => c.startsWith(m[1]!.toLowerCase()))
+            .map(([c, what]) => ({ label: c, what, cmd: true, pick: () => pickChatCmd(c) }))
+        : [];
   if (hits.map((h) => h.label).join() !== chatHits.map((h) => h.label).join()) chatHit = 0;
   chatHits = hits;
   chatCmds.hidden = !hits.length;
-  chatCmds.replaceChildren(...hits.map((h, i) => {
-    const li = el('li', i === chatHit ? 'on' : '');
-    li.append(el('span', h.cmd ? 'cmd' : 'cmd hint', h.label), el('span', 'cmd-what', h.what));
-    li.addEventListener('mousedown', (e) => {
-      e.preventDefault(); // keeps the box focused
-      h.pick();
-    });
-    return li;
-  }));
+  chatCmds.replaceChildren(
+    ...hits.map((h, i) => {
+      const li = el('li', i === chatHit ? 'on' : '');
+      li.append(el('span', h.cmd ? 'cmd' : 'cmd hint', h.label), el('span', 'cmd-what', h.what));
+      li.addEventListener('mousedown', (e) => {
+        e.preventDefault(); // keeps the box focused
+        h.pick();
+      });
+      return li;
+    }),
+  );
 }
 
 // a command taking words as the chip, one taking none run
@@ -240,7 +365,8 @@ export function pickChatCmd(cmd: string) {
 
 export const uploading = () => composeVars.atts.some((a) => a.state === 'up');
 export function syncSend() {
-  chatSend.disabled = !chatText.value.trim() && !chatChip.textContent && !composeVars.atts.some((a) => a.state === 'done');
+  chatSend.disabled =
+    !chatText.value.trim() && !chatChip.textContent && !composeVars.atts.some((a) => a.state === 'done');
 }
 
 // the box grown to its text, the arrow lit only once there is something to send
@@ -262,8 +388,15 @@ chatText.addEventListener('input', () => {
   autoGrowChatText();
   typingTick();
 });
-chatText.addEventListener('blur', () => { if (composeVars.typingSent) { composeVars.typingSent = ''; send({ type: 'typing', conv: '' }); } });
-chatName.addEventListener('input', () => { chatJoinGo.disabled = !chatName.value.trim(); });
+chatText.addEventListener('blur', () => {
+  if (composeVars.typingSent) {
+    composeVars.typingSent = '';
+    send({ type: 'typing', conv: '' });
+  }
+});
+chatName.addEventListener('input', () => {
+  chatJoinGo.disabled = !chatName.value.trim();
+});
 
 chatText.addEventListener('keydown', (e) => {
   if (chatHits.length && ['ArrowDown', 'ArrowUp'].includes(e.key)) {
@@ -291,8 +424,13 @@ chatText.addEventListener('keydown', (e) => {
   }
   // ↑ in an empty box: your last line here, to edit
   if (e.key === 'ArrowUp' && !chatText.value && !chatChip.textContent) {
-    const m = (convLines.get(convsVars.conv) || []).findLast((x) => x.name === st.name && (!x.kind || x.kind === 'dm') && !x.gone);
-    if (m) { e.preventDefault(); startEdit(m); }
+    const m = (convLines.get(convsVars.conv) || []).findLast(
+      (x) => x.name === st.name && (!x.kind || x.kind === 'dm') && !x.gone,
+    );
+    if (m) {
+      e.preventDefault();
+      startEdit(m);
+    }
     return;
   }
   // backspace at the very start: the chip back as text
@@ -314,7 +452,10 @@ chatText.addEventListener('keydown', (e) => {
 chatForm.addEventListener('submit', (e) => {
   e.preventDefault();
   const text = `${chatChip.textContent} ${chatText.value}`.trim();
-  if (!wsOpen()) { chatNote('reconnecting'); return; }
+  if (!wsOpen()) {
+    chatNote('reconnecting');
+    return;
+  }
   if (editing) {
     if (text) send({ type: 'edit', ref: keyOf(editing), text });
     cancelCompose();
@@ -324,7 +465,10 @@ chatForm.addEventListener('submit', (e) => {
   }
   const files = composeVars.atts.filter((a) => a.state === 'done').map((a) => a.meta!);
   if (!text && !files.length) return;
-  if (uploading()) { chatNote('uploading'); return; }
+  if (uploading()) {
+    chatNote('uploading');
+    return;
+  }
   chatText.value = '';
   setChatChip('');
   autoGrowChatText();
@@ -367,7 +511,9 @@ chatJoin.addEventListener('submit', (e) => {
 export function chatAs(user: string): void {
   if (user === st.name && st.ws && st.ws.readyState <= WebSocket.OPEN) return;
   st.name = user;
-  try { if (user) localStorage.setItem('phosphorus-chat-name', user); } catch {}
+  try {
+    if (user) localStorage.setItem('phosphorus-chat-name', user);
+  } catch {}
   chatJoin.hidden = !!user;
   chatCompose.hidden = !user;
   if (st.ws && st.ws.readyState <= WebSocket.OPEN) st.ws.close();

@@ -3,8 +3,8 @@ import { type Stats } from "node:fs";
 import { lstat, opendir, readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { localeCompare } from "@phosphorus/util";
-import { errBody, maxEntries, splitList, treeDepthMax, type Res, type Share, uploadTmp } from "./index.ts";
-import { badPath, relOf, safePath, type Entry } from "./paths.ts";
+import { errBody, maxEntries, type Res, type Share, splitList, treeDepthMax, uploadTmp } from "./index.ts";
+import { badPath, type Entry, relOf, safePath } from "./paths.ts";
 import { looksBinary } from "./read.ts";
 import { can, isHome } from "./shares.ts";
 
@@ -75,7 +75,9 @@ export async function list(sh: Share | undefined, rel: string): Promise<Res> {
 
 // a glob as a case-insensitive whole-name regexp: * any run, ? one
 export function globRe(g: string): RegExp {
-  const src = [...g].map((c) => (c === "*" ? ".*" : c === "?" ? "." : c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))).join("");
+  const src = [...g]
+    .map((c) => (c === "*" ? ".*" : c === "?" ? "." : c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")))
+    .join("");
   try {
     return new RegExp(`^${src}$`, "i");
   } catch {
@@ -98,7 +100,13 @@ export function skipper(skip: string): (name: string) => boolean {
 export const jsNumber = (v: unknown) => (v === undefined ? NaN : Number(v));
 
 // the folders and files under rel, breadth first; skip's folders left out
-export async function tree(sh: Share | undefined, rel: string, depth: unknown, match: string, ...skip: string[]): Promise<Res> {
+export async function tree(
+  sh: Share | undefined,
+  rel: string,
+  depth: unknown,
+  match: string,
+  ...skip: string[]
+): Promise<Res> {
   if (!sh || !can(sh, "r")) return [403, errBody("this share is not readable")];
   const root = safePath(sh, rel, true);
   if (!root) return badPath(sh, rel, true);
@@ -123,7 +131,9 @@ export async function tree(sh: Share | undefined, rel: string, depth: unknown, m
       } catch {
         continue;
       }
-      const names = ns.filter((n) => !n.startsWith(uploadTmp) && (sh.id === "home" || !isHome(join(dir, n)))).sort(localeCompare);
+      const names = ns
+        .filter((n) => !n.startsWith(uploadTmp) && (sh.id === "home" || !isHome(join(dir, n))))
+        .sort(localeCompare);
       for (const e of await entriesOf(dir, names)) {
         if (e.dir && skipped(e.name)) continue;
         const rp = relOf(sh, join(dir, e.name));
@@ -150,7 +160,14 @@ export const searchLineClip = 240;
 
 // names, or with content the text inside, holding query, case-insensitive,
 // under rel; glob narrows the names looked at, skip's folders left out
-export async function search(sh: Share | undefined, rel: string, query: string, content: boolean, glob: string, ...skip: string[]): Promise<Res> {
+export async function search(
+  sh: Share | undefined,
+  rel: string,
+  query: string,
+  content: boolean,
+  glob: string,
+  ...skip: string[]
+): Promise<Res> {
   if (!sh || !can(sh, "r")) return [403, errBody("this share is not readable")];
   const root = safePath(sh, rel, true);
   if (!root) return badPath(sh, rel, true);
@@ -165,7 +182,9 @@ export async function search(sh: Share | undefined, rel: string, query: string, 
   const walk = async (dir: string): Promise<boolean> => {
     let ents;
     try {
-      ents = (await readdir(dir, { withFileTypes: true })).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+      ents = (await readdir(dir, { withFileTypes: true })).sort((a, b) =>
+        a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
+      );
     } catch {
       return true;
     }

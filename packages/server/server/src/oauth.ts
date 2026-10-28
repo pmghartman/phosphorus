@@ -20,7 +20,11 @@ export const resourceMeta = (c: Ctx) => originOf(c) + "/.well-known/oauth-protec
 // Unauthorized a 401 that sends an mcp client to the sign-in
 export function Unauthorized(c: Ctx, why = ""): Response {
   const err = why ? `, error="invalid_token", error_description="${why.replace(/["\\]/g, "")}"` : "";
-  return sendJSON(401, { error: why || "sign in first" }, { "WWW-Authenticate": `Bearer realm="phosphorus", resource_metadata="${resourceMeta(c)}"${err}` });
+  return sendJSON(
+    401,
+    { error: why || "sign in first" },
+    { "WWW-Authenticate": `Bearer realm="phosphorus", resource_metadata="${resourceMeta(c)}"${err}` },
+  );
 }
 
 const noStore = { "Cache-Control": "no-store" };
@@ -29,8 +33,17 @@ const noStore = { "Cache-Control": "no-store" };
 export async function oauthRoute(c: Ctx, pathname: string): Promise<Response | undefined> {
   const method = c.req.method;
   const base = originOf(c);
-  if (method === "GET" && (pathname === "/.well-known/oauth-protected-resource" || pathname === "/.well-known/oauth-protected-resource/api/mcp")) {
-    return sendJSON(200, { resource: base + "/api/mcp", authorization_servers: [base], bearer_methods_supported: ["header"], resource_name: "Phosphorus" });
+  if (
+    method === "GET" &&
+    (pathname === "/.well-known/oauth-protected-resource" ||
+      pathname === "/.well-known/oauth-protected-resource/api/mcp")
+  ) {
+    return sendJSON(200, {
+      resource: base + "/api/mcp",
+      authorization_servers: [base],
+      bearer_methods_supported: ["header"],
+      resource_name: "Phosphorus",
+    });
   }
   if (method === "GET" && pathname === "/.well-known/oauth-authorization-server") {
     return sendJSON(200, {
@@ -89,7 +102,8 @@ function askOf(p: Record<string, any>): [Ask | undefined, string] {
   const redirect = users.OAuthRedirectFor(client, str(p.redirect_uri));
   if (!redirect) return [undefined, "this agent asked to be sent somewhere it didn't register"];
   if (str(p.response_type) !== "code") return [undefined, "only the code flow is offered"];
-  if (str(p.code_challenge_method) !== "S256" || !challengeRe.test(str(p.code_challenge))) return [undefined, "the agent didn't send a PKCE S256 challenge"];
+  if (str(p.code_challenge_method) !== "S256" || !challengeRe.test(str(p.code_challenge)))
+    return [undefined, "the agent didn't send a PKCE S256 challenge"];
   const state = str(p.state);
   if (state.length > maxState) return [undefined, "state too long"];
   return [{ client, name: cl.name, redirect, challenge: str(p.code_challenge), state }, ""];
@@ -116,7 +130,12 @@ async function authorize(c: Ctx, p: Record<string, any>, posted: boolean): Promi
   let cookie: string[] = [];
   if (!s || str(p.user) !== "") {
     const [r, ns] = await users.SignIn({ user: p.user, pass: p.pass }, c);
-    if (!ns || ns.boot) return page(r.status === 200 ? 403 : r.status, "sign in an agent", form(ask, "", ns?.boot ? "the setup admin can't sign an agent in, make a user first" : str(r.body?.error)));
+    if (!ns || ns.boot)
+      return page(
+        r.status === 200 ? 403 : r.status,
+        "sign in an agent",
+        form(ask, "", ns?.boot ? "the setup admin can't sign an agent in, make a user first" : str(r.body?.error)),
+      );
     s = ns;
     cookie = r.cookie ?? [];
   }
@@ -129,8 +148,17 @@ const esc = (s: string) => s.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};
 
 // form the sign-in, or the consent when the browser is already signed in
 function form(ask: Ask, user: string, err: string): string {
-  const fields = { client_id: ask.client, redirect_uri: ask.redirect, response_type: "code", code_challenge: ask.challenge, code_challenge_method: "S256", state: ask.state };
-  const keep = Object.entries(fields).map(([k, v]) => `<input type="hidden" name="${k}" value="${esc(v)}">`).join("");
+  const fields = {
+    client_id: ask.client,
+    redirect_uri: ask.redirect,
+    response_type: "code",
+    code_challenge: ask.challenge,
+    code_challenge_method: "S256",
+    state: ask.state,
+  };
+  const keep = Object.entries(fields)
+    .map(([k, v]) => `<input type="hidden" name="${k}" value="${esc(v)}">`)
+    .join("");
   const to = new URL(ask.redirect);
   const who = user
     ? `<p>Signed in as <b>${esc(user)}</b>.</p>
@@ -160,7 +188,10 @@ button.quiet{background:transparent;color:var(--fg);border-color:var(--line)}sum
   return new Response(html, {
     status,
     headers: {
-      "Content-Type": "text/html; charset=utf-8", ...noStore, "X-Frame-Options": "DENY", "Referrer-Policy": "no-referrer",
+      "Content-Type": "text/html; charset=utf-8",
+      ...noStore,
+      "X-Frame-Options": "DENY",
+      "Referrer-Policy": "no-referrer",
       "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'",
     },
   });

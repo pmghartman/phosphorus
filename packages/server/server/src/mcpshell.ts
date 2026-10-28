@@ -3,8 +3,8 @@
 // across calls, the way a shell session does. each command ends with a marker
 // line carrying its exit code, read back as that command's output.
 import { randomBytes } from "node:crypto";
-import { Client, type ClientChannel } from "ssh2";
 import { errText } from "@phosphorus/util";
+import { Client, type ClientChannel } from "ssh2";
 import { hostSSHHost, hostSSHPort, selfHost } from "./config.ts";
 import type { Res } from "./http.ts";
 
@@ -114,7 +114,14 @@ const shellKey = (user: string) => user;
 
 // shellExec a command in the user's persistent shell here, the session opened
 // on first use and reused after; reset drops any session first
-export async function shellExec(user: string, pass: string, cmd: string, stdin: string, timeout: number, reset: boolean): Promise<Res> {
+export async function shellExec(
+  user: string,
+  pass: string,
+  cmd: string,
+  stdin: string,
+  timeout: number,
+  reset: boolean,
+): Promise<Res> {
   if (user === "" || cmd.trim() === "") return [400, { error: "a login and a command" }];
   if (cmd.includes("\0")) return [400, { error: "the command holds a null byte" }];
   if (timeout < 1 || timeout > execMax) timeout = 60;
@@ -183,7 +190,16 @@ async function openShell(user: string, pass: string): Promise<Shell> {
   const lines = new Lines();
   stream.on("data", (b: Uint8Array) => lines.push(b));
   stream.stderr.on("data", (b: Uint8Array) => lines.push(b));
-  const sh: Shell = { client: c, stream, lines, marker: "__phos_" + m, n: 0, lastUse: Date.now(), dead: false, busy: Promise.resolve() };
+  const sh: Shell = {
+    client: c,
+    stream,
+    lines,
+    marker: "__phos_" + m,
+    n: 0,
+    lastUse: Date.now(),
+    dead: false,
+    busy: Promise.resolve(),
+  };
   stream.on("close", () => {
     lines.end();
     sh.dead = true;
@@ -204,10 +220,21 @@ function sshDial(user: string, pass: string): Promise<Client> {
     c.on("error", (e) => {
       c.end();
       const msg = errText(e);
-      reject(/authentication methods failed|unable to authenticate/i.test(msg) ? new Coded(403, `the saved login for ${selfHost} was refused`) : new Coded(502, `ssh to ${selfHost}: ${msg}`));
+      reject(
+        /authentication methods failed|unable to authenticate/i.test(msg)
+          ? new Coded(403, `the saved login for ${selfHost} was refused`)
+          : new Coded(502, `ssh to ${selfHost}: ${msg}`),
+      );
     });
     c.on("keyboard-interactive", (_n, _i, _l, prompts, finish) => finish(prompts.map(() => pass)));
-    c.connect({ host: hostSSHHost, port: Number(hostSSHPort) || 22, username: user, password: pass, tryKeyboard: true, readyTimeout: 10_000 });
+    c.connect({
+      host: hostSSHHost,
+      port: Number(hostSSHPort) || 22,
+      username: user,
+      password: pass,
+      tryKeyboard: true,
+      readyTimeout: 10_000,
+    });
   });
 }
 
@@ -235,17 +262,29 @@ function runIn(s: Shell, cmd: string, stdin: string, timeoutMs: number): Promise
 // driveShell feed one command, then a line printing the tag and $?, and read
 // the combined output until that tag line; the core, ssh aside, so it is tested
 // against a local shell
-export async function driveShell(stdin: Stdin, lines: Lines, cmd: string, feed: string, tag: string, timeoutMs: number): Promise<[string, number, Error | undefined]> {
+export async function driveShell(
+  stdin: Stdin,
+  lines: Lines,
+  cmd: string,
+  feed: string,
+  tag: string,
+  timeoutMs: number,
+): Promise<[string, number, Error | undefined]> {
   // feed delivered by a heredoc so the command sees a bounded stdin that ends,
   // the shell's own stdin staying open for the marker and the next command
   let script = cmd + "\n";
   if (feed !== "") {
-    const delim = "PHOS_IN_" + tag.trim().split(/\s+/)[0]!.replace(/^__phos_/, "");
+    const delim =
+      "PHOS_IN_" +
+      tag
+        .trim()
+        .split(/\s+/)[0]!
+        .replace(/^__phos_/, "");
     script = cmd + " <<'" + delim + "'\n" + feed;
     if (!feed.endsWith("\n")) script += "\n";
     script += delim + "\n";
   }
-  script += "printf '\\n%s%d\\n' '" + tag + "' \"$?\"\n";
+  script += "printf '\\n%s%d\\n' '" + tag + '\' "$?"\n';
   try {
     await stdin.write(script);
   } catch (e) {

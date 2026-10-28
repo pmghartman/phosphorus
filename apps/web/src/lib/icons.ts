@@ -26,9 +26,10 @@ export function setIconSet(id: string | undefined): void {
 }
 
 // a group's glyphs by name, from the set worn, else the default's
-export const iconGroup = (name: IconGroupName): Record<string, string> => new Proxy({} as Record<string, string>, {
-  get: (_, key) => active[name]?.[key as string] ?? DEFAULT[name][key as string],
-  has: (_, key) => key in active[name] || key in DEFAULT[name],
-  ownKeys: () => Object.keys({ ...DEFAULT[name], ...active[name] }),
-  getOwnPropertyDescriptor: () => ({ enumerable: true, configurable: true }),
-});
+export const iconGroup = (name: IconGroupName): Record<string, string> =>
+  new Proxy({} as Record<string, string>, {
+    get: (_, key) => active[name]?.[key as string] ?? DEFAULT[name][key as string],
+    has: (_, key) => key in active[name] || key in DEFAULT[name],
+    ownKeys: () => Object.keys({ ...DEFAULT[name], ...active[name] }),
+    getOwnPropertyDescriptor: () => ({ enumerable: true, configurable: true }),
+  });

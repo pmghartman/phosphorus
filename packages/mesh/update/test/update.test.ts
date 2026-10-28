@@ -19,14 +19,16 @@ const chainFile = join(dir, "update-chain.json");
 const http = { askPeer: seams.askPeer, peerState: seams.peerState, peerSelf: seams.peerSelf };
 
 function setup() {
-  for (const f of ["update-request.json", "update-agent.json", "update-chain.json"]) rmSync(join(dir, f), { force: true });
+  for (const f of ["update-request.json", "update-agent.json", "update-chain.json"])
+    rmSync(join(dir, f), { force: true });
   writeFileSync(join(dir, "VERSION"), "1.0\n");
   testing.reset();
   Object.assign(seams, http, { pause: () => Bun.sleep(1), peerAddr: async (h: string) => h });
   testing.startGraceMS = 200;
 }
 
-const agent = (id: string, state: string, version = "", error = "", current = false) => writeJSONAtomic(agentFile, { id, state, version, error, current });
+const agent = (id: string, state: string, version = "", error = "", current = false) =>
+  writeJSONAtomic(agentFile, { id, state, version, error, current });
 
 async function within(what: string, ok: () => boolean) {
   for (const end = Date.now() + 5000; Date.now() < end; await Bun.sleep(1)) if (ok()) return;
@@ -38,8 +40,13 @@ const race = <T>(p: Promise<T>, ms: number) => Promise.race([p, Bun.sleep(ms).th
 
 test("newer", () => {
   for (const [a, b, want] of [
-    ["0.14", "0.13.1", true], ["0.13.1", "0.13", true], ["0.13", "0.13.1", false],
-    ["1.0", "1.0", false], ["1.0.0", "1.0", false], ["2", "10", false], ["1.10", "1.9", true],
+    ["0.14", "0.13.1", true],
+    ["0.13.1", "0.13", true],
+    ["0.13", "0.13.1", false],
+    ["1.0", "1.0", false],
+    ["1.0.0", "1.0", false],
+    ["2", "10", false],
+    ["1.10", "1.9", true],
   ] as [string, string, boolean][])
     expect(u.newer(a, b)).toBe(want);
 });
@@ -104,7 +111,10 @@ test("settle self", async () => {
 class FakePeer {
   i = 0;
   b = 0;
-  constructor(public states: Record<string, any>[], public boots: string[]) {}
+  constructor(
+    public states: Record<string, any>[],
+    public boots: string[],
+  ) {}
   state = async () => this.states[Math.min(this.i++, this.states.length - 1)]!;
   self = async () => ({ bootID: this.boots[Math.min(this.b++, this.boots.length - 1)]!, version: "1.1", platform: "" });
 }
@@ -144,13 +154,22 @@ test("watch peer ok without a restart waits", async () => {
   const f = new FakePeer([st("u1", "ok")], ["b"]);
   setup();
   Object.assign(seams, { peerState: f.state, peerSelf: f.self });
-  expect(await race(u.watchPeer("p", "u1", "1.0", "b", "asked", () => {}), 100)).toBeUndefined();
+  expect(
+    await race(
+      u.watchPeer("p", "u1", "1.0", "b", "asked", () => {}),
+      100,
+    ),
+  ).toBeUndefined();
 });
 
 test("call peer update", async () => {
   const f = new FakePeer([st("u9", "ok")], ["b1", "b2"]);
   setup();
-  Object.assign(seams, { peerState: f.state, peerSelf: f.self, askPeer: async (): Promise<[string, Result]> => ["u9", u.result()] });
+  Object.assign(seams, {
+    peerState: f.state,
+    peerSelf: f.self,
+    askPeer: async (): Promise<[string, Result]> => ["u9", u.result()],
+  });
   let got: Record<string, string> = {};
   const r = await u.callPeerUpdate("p", (m) => {
     if (m.id) got = m;
@@ -164,15 +183,27 @@ test("call peer update", async () => {
 
 test("brief", () => {
   for (const [r, want] of [
-    [u.result({ error: "pull failed: x" }), "pull failed"], [u.result({ error: "the restart never landed" }), "restart failed"],
-    [u.result({ error: "update timed out" }), "timed out"], [u.result({ unreachable: true, error: "x" }), "unreachable"],
+    [u.result({ error: "pull failed: x" }), "pull failed"],
+    [u.result({ error: "the restart never landed" }), "restart failed"],
+    [u.result({ error: "update timed out" }), "timed out"],
+    [u.result({ unreachable: true, error: "x" }), "unreachable"],
     [u.result({ error: "x" }), "failed"],
   ] as [Result, string][])
     expect(u.brief(r)).toBe(want);
 });
 
 const savedChain = (results: Record<string, string>, versions: Record<string, Record<string, string>> = {}): Chain => ({
-  id: "00000000-0000", order: Object.keys(results), results, versions, errors: {}, target: "", cancelled: false, done: false, startedAt: "", finishedAt: 0, savedAt: Date.now(),
+  id: "00000000-0000",
+  order: Object.keys(results),
+  results,
+  versions,
+  errors: {},
+  target: "",
+  cancelled: false,
+  done: false,
+  startedAt: "",
+  finishedAt: 0,
+  savedAt: Date.now(),
 });
 
 async function restored(c: Chain): Promise<Chain> {
@@ -208,7 +239,12 @@ test("restore watches peers again", async () => {
   const f = new FakePeer([st("p1", "ok")], ["new"]);
   Object.assign(seams, { peerState: f.state, peerSelf: f.self });
   agent("u1", "ok", "1.1");
-  const c = await restored(savedChain({ a: "running", p: "running", q: "ok" }, { a: { id: "u1" }, p: { id: "p1", boot: "old", from: "1.0", stage: "installing" } }));
+  const c = await restored(
+    savedChain(
+      { a: "running", p: "running", q: "ok" },
+      { a: { id: "u1" }, p: { id: "p1", boot: "old", from: "1.0", stage: "installing" } },
+    ),
+  );
   expect([c.results.a, c.results.p, c.results.q]).toEqual(["ok", "ok", "ok"]);
 });
 
@@ -253,7 +289,18 @@ test("the chain file keeps Go's shape", async () => {
   const done = new Promise<Chain>((res) => u.onFinish(res));
   u.start([], []);
   const saved = JSON.parse(await Bun.file(chainFile).text());
-  expect(Object.keys(saved)).toEqual(["id", "order", "results", "versions", "errors", "target", "cancelled", "done", "startedAt", "savedAt"]);
+  expect(Object.keys(saved)).toEqual([
+    "id",
+    "order",
+    "results",
+    "versions",
+    "errors",
+    "target",
+    "cancelled",
+    "done",
+    "startedAt",
+    "savedAt",
+  ]);
   expect(saved.startedAt).toMatch(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/);
   u.cancel();
   await done;

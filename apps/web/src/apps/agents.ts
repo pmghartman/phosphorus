@@ -1,6 +1,6 @@
+import type { ModelAgent, ModelHost, ModelSummary, State } from '@phosphorus/wire';
 import { jsonPost } from '../lib/api.ts';
 import { el } from '../lib/dom.ts';
-import type { ModelAgent, ModelHost, ModelSummary, State } from '@phosphorus/wire';
 
 // --- agents: which mesh model each implementation that asks one runs on ------
 // a model is assigned to any number of agents; an assignment is mesh-wide, one
@@ -14,7 +14,11 @@ let error = '';
 let sig = '';
 
 const hostOf = (id: string | undefined) => (id || '').replace(/^phosphorus\//, '');
-const fileName = (m: { file?: string }) => String(m.file || '').replace(/\\/g, '/').split('/').pop();
+const fileName = (m: { file?: string }) =>
+  String(m.file || '')
+    .replace(/\\/g, '/')
+    .split('/')
+    .pop();
 
 function agentsState(state: State | null): void {
   model = state?.model || null;
@@ -72,13 +76,25 @@ function slotRow(a: ModelAgent, slot: string, label: string): HTMLElement {
   if (label) row.append(el('span', 'ag-slot-k', label));
   const pills = el('div', 'ag-pills');
   const pill = (value: string, text: string, title?: string) => {
-    const b = Object.assign(el('button', `ag-pill${(s.chosen || '') === value ? ' on' : ''}`, text), { type: 'button', title: title || text });
-    b.addEventListener('click', () => { if ((s.chosen || '') !== value) assign(a.id, slot, value); });
+    const b = Object.assign(el('button', `ag-pill${(s.chosen || '') === value ? ' on' : ''}`, text), {
+      type: 'button',
+      title: title || text,
+    });
+    b.addEventListener('click', () => {
+      if ((s.chosen || '') !== value) assign(a.id, slot, value);
+    });
     return b;
   };
   const parent = a.parent ? model!.agents!.find((x) => x.id === a.parent) : null;
-  pills.append(pill('', parent ? `same as ${parent.label}` : 'automatic',
-    parent ? `follows whatever ${parent.label} is assigned` : 'the smallest ready model, or the biggest for the larger agents'));
+  pills.append(
+    pill(
+      '',
+      parent ? `same as ${parent.label}` : 'automatic',
+      parent
+        ? `follows whatever ${parent.label} is assigned`
+        : 'the smallest ready model, or the biggest for the larger agents',
+    ),
+  );
   const hosts = model!.models.map((m) => m.host);
   for (const m of model!.models) pills.append(pill(`phosphorus/${m.host}`, m.host, fileName(m)));
   if (s.chosen && !hosts.includes(hostOf(s.chosen))) pills.append(pill(s.chosen, `${hostOf(s.chosen)} (gone)`));
@@ -86,7 +102,12 @@ function slotRow(a: ModelAgent, slot: string, label: string): HTMLElement {
   const line = el('div', `ag-line ${s.ready ? 'on' : 'off'}`);
   const m = model!.models.find((x) => x.host === s.host);
   line.append(el('i', 'ag-dot'));
-  if (s.ready) line.append(el('span', '', 'asks '), el('b', '', s.host), el('span', '', fileName(m || {}) ? ` · ${fileName(m!)}` : ''));
+  if (s.ready)
+    line.append(
+      el('span', '', 'asks '),
+      el('b', '', s.host),
+      el('span', '', fileName(m || {}) ? ` · ${fileName(m!)}` : ''),
+    );
   else line.append(el('span', '', s.why || 'no model answering'));
   if (s.ready && !s.chosen) line.append(el('span', '', s.inherited ? ' · inherited' : ' · automatic'));
   row.append(pills, line);
@@ -105,7 +126,10 @@ function agentCard(a: ModelAgent): HTMLElement {
 }
 
 // agents by where they run
-const GROUPS: [string, string[]][] = [['Code', ['code', 'claude-code', 'opencode']], ['Apps', ['tavern', 'sulfur']]];
+const GROUPS: [string, string[]][] = [
+  ['Code', ['code', 'claude-code', 'opencode']],
+  ['Apps', ['tavern', 'sulfur']],
+];
 
 function group(title: string, note: string, body: HTMLElement): HTMLElement {
   const g = el('section', 'ag-group');
@@ -121,11 +145,21 @@ function draw() {
   // never rebuilt under a hand on a pill
   if (view.contains(document.activeElement) && document.activeElement!.classList.contains('ag-pill') && sig) return;
   sig = next;
-  if (!model) { view.replaceChildren(el('div', 'ag-empty', 'connecting')); return; }
+  if (!model) {
+    view.replaceChildren(el('div', 'ag-empty', 'connecting'));
+    return;
+  }
   const wrap = el('div', 'ag');
   const models = el('div', 'ag-models');
   if (model.models.length) models.append(...model.models.map(modelCard));
-  else models.append(el('div', 'ag-empty', 'no model host yet: turn on [model] host in the phos tui\'s model tab, and its model installs here'));
+  else
+    models.append(
+      el(
+        'div',
+        'ag-empty',
+        "no model host yet: turn on [model] host in the phos tui's model tab, and its model installs here",
+      ),
+    );
   wrap.append(group('models', `${model.models.length} on the mesh`, models));
   if (model.models.length) {
     const known = new Set(GROUPS.flatMap(([, ids]) => ids));

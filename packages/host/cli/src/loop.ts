@@ -1,8 +1,9 @@
 // ui state
-import { type J, get, num, obj, objs, str, truthy } from "./json.ts";
-import { filesTab, ui } from "./state.ts";
+
 import { call } from "./api.ts";
+import { get, type J, num, obj, objs, str, truthy } from "./json.ts";
 import { render } from "./render.ts";
+import { filesTab, ui } from "./state.ts";
 
 // the module's variables other modules set
 export const loopVars = {

@@ -78,9 +78,12 @@ export function Apply(doc: string, ops: Op[]): string | undefined {
 // Transform a and b from the same text: a' after b and b' after a; undefined
 // when they are of different lengths
 export function Transform(a: Op[], b: Op[]): [Op[], Op[]] | undefined {
-  const a1 = new Builder(), b1 = new Builder();
-  let i = 0, j = 0;
-  let x: Op | undefined = a[i++], y: Op | undefined = b[j++];
+  const a1 = new Builder(),
+    b1 = new Builder();
+  let i = 0,
+    j = 0;
+  let x: Op | undefined = a[i++],
+    y: Op | undefined = b[j++];
   for (;;) {
     if (x === undefined && y === undefined) break;
     if (x !== undefined && isInsert(x)) {
@@ -96,7 +99,8 @@ export function Transform(a: Op[], b: Op[]): [Op[], Op[]] | undefined {
       continue;
     }
     if (x === undefined || y === undefined) return;
-    const xn = x as number, yn = y as number;
+    const xn = x as number,
+      yn = y as number;
     const n = Math.min(Math.abs(xn), Math.abs(yn));
     if (xn > 0 && yn > 0) {
       a1.retain(n);
@@ -111,7 +115,8 @@ export function Transform(a: Op[], b: Op[]): [Op[], Op[]] | undefined {
 
 // MapPos where a place in the text lands after an edit
 export function MapPos(ops: Op[], pos: number): number {
-  let i = 0, j = 0;
+  let i = 0,
+    j = 0;
   for (const o of ops) {
     if (isInsert(o)) {
       j += o.length;

@@ -9,18 +9,50 @@
 }
 
 /* each side pane a cli card: its header on the top edge, sage */
-.mesh-panel, .chat-panel { position: relative; border: 1px solid var(--border); animation: rise-in 0.2s ease-out backwards; }
-.chat-panel { animation-delay: 0.06s; }
-.mesh-header, .chat-header {
-  position: absolute; z-index: 2; top: 0; left: 0.5rem; right: 0.5rem; transform: translateY(-50%);
-  display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
-  height: auto; padding: 0; line-height: 1;
-  color: var(--muted); font-size: 0.72rem; letter-spacing: 0.04em;
-  background: none; border: 0; pointer-events: none;
+.mesh-panel,
+.chat-panel {
+  position: relative;
+  border: 1px solid var(--border);
+  animation: rise-in 0.2s ease-out backwards;
 }
-.mesh-header > *, .chat-header > * { background: var(--bg); padding: 0 0.45ch; pointer-events: auto; }
-.mesh-header > span:first-child { color: var(--sage); }
+.chat-panel {
+  animation-delay: 0.06s;
+}
+.mesh-header,
+.chat-header {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  left: 0.5rem;
+  right: 0.5rem;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  height: auto;
+  padding: 0;
+  line-height: 1;
+  color: var(--muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  background: none;
+  border: 0;
+  pointer-events: none;
+}
+.mesh-header > *,
+.chat-header > * {
+  background: var(--bg);
+  padding: 0 0.45ch;
+  pointer-events: auto;
+}
+.mesh-header > span:first-child {
+  color: var(--sage);
+}
 /* news counted beside a conversation or the chat tab */
-.chat-badge { color: var(--accent); margin-left: 0.5ch; }
+.chat-badge {
+  color: var(--accent);
+  margin-left: 0.5ch;
+}
 /* the model card in the mesh's place, scrolling inside its border */
 /* the model chip as tall as what it holds, never scrolled; the full card the rest of the column */

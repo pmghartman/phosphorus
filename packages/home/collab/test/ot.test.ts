@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { Builder, type Op, Apply, Transform } from "../src/ot.ts";
+import { Apply, Builder, type Op, Transform } from "../src/ot.ts";
 
 // a seeded generator, the run the same each time as Go's rand.NewSource(1) was
 function rng(seed: number) {
@@ -41,12 +41,15 @@ test("transform converges", () => {
   const r = rng(1);
   for (let i = 0; i < 5000; i++) {
     const doc = ["", "hello world", "a😀b\nc", "line one\nline two\n"][r(4)]!;
-    const a = randOp(r, doc.length), b = randOp(r, doc.length);
+    const a = randOp(r, doc.length),
+      b = randOp(r, doc.length);
     const t = Transform(a, b);
     expect(t).toBeDefined();
     const [a1, b1] = t!;
-    const da = Apply(doc, a)!, db = Apply(doc, b)!;
-    const x = Apply(da, b1), y = Apply(db, a1);
+    const da = Apply(doc, a)!,
+      db = Apply(doc, b)!;
+    const x = Apply(da, b1),
+      y = Apply(db, a1);
     expect(x).toBeDefined();
     expect(y).toBeDefined();
     if (x !== y) throw new Error(`diverged: ${JSON.stringify(x)} ${JSON.stringify(y)}`);

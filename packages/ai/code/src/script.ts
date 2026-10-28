@@ -73,12 +73,18 @@ export function envLines(model: string, c: Creds): string[] {
   const env: [string, string][] = [[keyVar, c.key]];
   switch (provider(model)) {
     case "mesh": {
-      const main = claudeAgent, fast = claudeAgent + "-fast", big = claudeAgent;
+      const main = claudeAgent,
+        fast = claudeAgent + "-fast",
+        big = claudeAgent;
       env.push(
-        ["ANTHROPIC_BASE_URL", c.base + "/api/model"], ["ANTHROPIC_AUTH_TOKEN", c.key],
-        ["ANTHROPIC_MODEL", main], ["ANTHROPIC_SMALL_FAST_MODEL", fast],
-        ["ANTHROPIC_DEFAULT_HAIKU_MODEL", fast], ["ANTHROPIC_DEFAULT_SONNET_MODEL", big],
-        ["ANTHROPIC_DEFAULT_OPUS_MODEL", big], ["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1"],
+        ["ANTHROPIC_BASE_URL", c.base + "/api/model"],
+        ["ANTHROPIC_AUTH_TOKEN", c.key],
+        ["ANTHROPIC_MODEL", main],
+        ["ANTHROPIC_SMALL_FAST_MODEL", fast],
+        ["ANTHROPIC_DEFAULT_HAIKU_MODEL", fast],
+        ["ANTHROPIC_DEFAULT_SONNET_MODEL", big],
+        ["ANTHROPIC_DEFAULT_OPUS_MODEL", big],
+        ["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1"],
         ["API_TIMEOUT_MS", "3600000"],
       );
       break;
@@ -102,25 +108,54 @@ export const envBlock = (lines: string[]) => lines.join("\n") + "\n\n";
 // launchCommand claude in dir, its env read off stdin first; sh -c so any
 // login shell runs it the same
 export function launchCommand(dir: string, model: string, perm: string, resume: string): string {
-  const args = ["claude", "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
-    "--include-partial-messages", "--model", model, "--permission-prompt-tool", "stdio",
-    "--mcp-config", `"$CLAUDE_CONFIG_DIR/mcp.json"`, "--strict-mcp-config", "--allowedTools", "mcp__phosphorus"];
+  const args = [
+    "claude",
+    "-p",
+    "--input-format",
+    "stream-json",
+    "--output-format",
+    "stream-json",
+    "--verbose",
+    "--include-partial-messages",
+    "--model",
+    model,
+    "--permission-prompt-tool",
+    "stdio",
+    "--mcp-config",
+    `"$CLAUDE_CONFIG_DIR/mcp.json"`,
+    "--strict-mcp-config",
+    "--allowedTools",
+    "mcp__phosphorus",
+  ];
   if (perm && perm !== "default") args.push("--permission-mode", perm);
   if (resume) args.push("--resume", quote(resume));
-  const script = pathPrefix +
+  const script =
+    pathPrefix +
     "unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN ANTHROPIC_BASE_URL ANTHROPIC_MODEL CLAUDE_CODE_OAUTH_TOKEN; " +
     `while IFS= read -r l && [ -n "$l" ]; do export "$l"; done; ` +
-    "CLAUDE_CONFIG_DIR=" + configDir + "; export CLAUDE_CONFIG_DIR; " +
-    "cd " + shDir(dir) + " || exit 3; " +
+    "CLAUDE_CONFIG_DIR=" +
+    configDir +
+    "; export CLAUDE_CONFIG_DIR; " +
+    "cd " +
+    shDir(dir) +
+    " || exit 3; " +
     "command -v claude >/dev/null 2>&1 || exit 127; " +
-    "exec " + args.join(" ");
+    "exec " +
+    args.join(" ");
   return "sh -c " + quote(script);
 }
 
 // mcpConfig phosphorus's server for claude, the key read from the env
 export const mcpConfig = (base: string) =>
-  marshal({ mcpServers: { phosphorus: { type: "http", url: base + "/api/mcp",
-    headers: { Authorization: "Bearer ${" + keyVar + "}", "X-Phosphorus-Via": "claude-code" } } } });
+  marshal({
+    mcpServers: {
+      phosphorus: {
+        type: "http",
+        url: base + "/api/mcp",
+        headers: { Authorization: "Bearer ${" + keyVar + "}", "X-Phosphorus-Via": "claude-code" },
+      },
+    },
+  });
 
 // setupScript for sh -s: claude's config dir, mcp.json and the skill fresh,
 // whatever was there of the skill before gone

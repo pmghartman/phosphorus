@@ -9,7 +9,8 @@ import { tmp } from "./fake.ts";
 const bytes = (s: string) => new TextEncoder().encode(s);
 
 test("parse ls", () => {
-  const out = "/home/pmh\x00fzeta.txt\x00dsrc\x00fodd\nname\x00dAlpha\x00\x00" + "12 1700000000\n4096 1700000001\n3 5\n4096 7\n";
+  const out =
+    "/home/pmh\x00fzeta.txt\x00dsrc\x00fodd\nname\x00dAlpha\x00\x00" + "12 1700000000\n4096 1700000001\n3 5\n4096 7\n";
   const { dir, entries, more } = parseLs(bytes(out));
   expect([dir, more]).toEqual(["/home/pmh", false]);
   expect(entries).toEqual([
@@ -21,16 +22,33 @@ test("parse ls", () => {
   // stat lines that don't line up dropped, the names kept; more flagged
   const r = parseLs(bytes("/x\x00fa\x00fb\x001\x00" + "1 2\n"));
   expect([r.more, r.entries.length, r.entries[0]!.size]).toEqual([true, 2, 0]);
-  for (const bad of ["", "relative\x00\x00", "/x\x00fa"]) expect(() => parseLs(bytes(bad))).toThrow("unreadable listing");
+  for (const bad of ["", "relative\x00\x00", "/x\x00fa"])
+    expect(() => parseLs(bytes(bad))).toThrow("unreadable listing");
 });
 
 test("dup names", () => {
   expect(dupNames("shot.final.png", 2)).toEqual(["shot.final.png", "shot.final (1).png", "shot.final (2).png"]);
   expect(dupNames(".env", 1)[1]).toBe(".env (1)");
   expect(dupNames("README", 1)[1]).toBe("README (1)");
-  for (const [n, ok] of Object.entries({ "a.txt": true, "it's $(x).txt": true, "": false, ".": false, "..": false, "a/b": false, "a\nb": false }))
+  for (const [n, ok] of Object.entries({
+    "a.txt": true,
+    "it's $(x).txt": true,
+    "": false,
+    ".": false,
+    "..": false,
+    "a/b": false,
+    "a\nb": false,
+  }))
     expect(okName(n), n).toBe(ok);
-  for (const [d, ok] of Object.entries({ "": true, "~": true, "~/x": true, "/x": true, x: false, "~x": false, "/a\nb": false }))
+  for (const [d, ok] of Object.entries({
+    "": true,
+    "~": true,
+    "~/x": true,
+    "/x": true,
+    x: false,
+    "~x": false,
+    "/a\nb": false,
+  }))
     expect(okDir(d), d).toBe(ok);
 });
 

@@ -2,19 +2,30 @@
 // built for the page, the update chain and guest keys
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { markHot } from "@phosphorus/util";
 import { jsNumber } from "@phosphorus/files";
 import { Zone } from "@phosphorus/gamedns";
 import * as git from "@phosphorus/git";
-import * as peers from "@phosphorus/peers";
 import { State as modelState, Summary } from "@phosphorus/model";
+import * as peers from "@phosphorus/peers";
 import { own as ownServices, setPending } from "@phosphorus/services";
 import * as store from "@phosphorus/store";
 import * as update from "@phosphorus/update";
-import { lockACL, logf, marshal, peerCall, run, tailnetIP } from "@phosphorus/util";
+import { lockACL, logf, markHot, marshal, peerCall, run, tailnetIP } from "@phosphorus/util";
 import * as webapps from "@phosphorus/webapps";
 import { ownChat, presence } from "./chat.ts";
-import { adminPass, baseDomain, gameKey, gameKeyDir, getPlatform, hostSSHHost, hostSSHPort, selfHost, selfInfo, tsAPIKey, Version } from "./config.ts";
+import {
+  adminPass,
+  baseDomain,
+  gameKey,
+  gameKeyDir,
+  getPlatform,
+  hostSSHHost,
+  hostSSHPort,
+  selfHost,
+  selfInfo,
+  tsAPIKey,
+  Version,
+} from "./config.ts";
 import { deskStamps } from "./desk.ts";
 import type { Res } from "./http.ts";
 import { decode, type Msg, num, obj, str } from "./js.ts";
@@ -43,8 +54,27 @@ export async function runGameLocally(name: string, action: string): Promise<Res>
   }
   setPending(name, action);
   const r = await run(
-    ["ssh", "-i", gameKey, "-p", hostSSHPort, "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "ConnectTimeout=5", "-o", "StrictHostKeyChecking=no",
-      "-o", "UserKnownHostsFile=/dev/null", "-o", "LogLevel=ERROR", `${user}@${hostSSHHost}`, `${action} ${name}`],
+    [
+      "ssh",
+      "-i",
+      gameKey,
+      "-p",
+      hostSSHPort,
+      "-o",
+      "BatchMode=yes",
+      "-o",
+      "IdentitiesOnly=yes",
+      "-o",
+      "ConnectTimeout=5",
+      "-o",
+      "StrictHostKeyChecking=no",
+      "-o",
+      "UserKnownHostsFile=/dev/null",
+      "-o",
+      "LogLevel=ERROR",
+      `${user}@${hostSSHHost}`,
+      `${action} ${name}`,
+    ],
     { timeoutMs: 60000 },
   );
   if (!r.ok) {
@@ -53,7 +83,8 @@ export async function runGameLocally(name: string, action: string): Promise<Res>
     if (why.length > 300) why = why.slice(-300);
     if (!why) why = action + " failed";
     // the key's forced command still naming a file an old release had
-    if (why.includes("No such file") || why.includes("not found")) why += `; the play/stop key on ${selfHost} points at a missing program, run phos game-control-setup there or update it`;
+    if (why.includes("No such file") || why.includes("not found"))
+      why += `; the play/stop key on ${selfHost} points at a missing program, run phos game-control-setup there or update it`;
     logf("[frontend] game %s: %s failed: %s", name, action, why);
     return [502, { error: why }];
   }
@@ -64,7 +95,12 @@ export async function runGameLocally(name: string, action: string): Promise<Res>
 export async function forwardGame(host: string, name: string, action: string): Promise<Res> {
   const ip = await tailnetIP(host);
   if (!ip) return [502, { error: `can't find ${host} on the tailnet` }];
-  return peerCall(host, { host: ip, method: "POST", path: `/api/games/${host}/${name}/${action}?hop=1`, timeoutMs: 65000 });
+  return peerCall(host, {
+    host: ip,
+    method: "POST",
+    path: `/api/games/${host}/${name}/${action}?hop=1`,
+    timeoutMs: 65000,
+  });
 }
 
 // --- etc/hosts/<host>/ ------------------------------------------------------
@@ -79,7 +115,14 @@ export function publishHost() {
     if (cur !== next) store.write(hostRel(selfHost, f), data);
   };
   put("services", ownServices());
-  put("info", { version: Version(), platform: getPlatform(), files: filesInfo(), desk: deskStamps(), apps: webapps.installed(), services: webapps.svcProgress() });
+  put("info", {
+    version: Version(),
+    platform: getPlatform(),
+    files: filesInfo(),
+    desk: deskStamps(),
+    apps: webapps.installed(),
+    services: webapps.svcProgress(),
+  });
 }
 
 export function hostsInfo(): Record<string, any> {
@@ -110,8 +153,17 @@ export function buildState(): Record<string, any> {
   const mine = chain !== null && chain !== undefined;
   if (!mine) chain = peers.chain();
   return {
-    domain: baseDomain, gameZone: Zone, self: selfInfo(), routes: peers.routes(), tailnet: peers.tailnet(),
-    lock: update.meshLock(), gitHosts: gitRowsAny(), model: Summary(), chain: chain ?? null, chainMine: mine, hosts: hostsInfo(),
+    domain: baseDomain,
+    gameZone: Zone,
+    self: selfInfo(),
+    routes: peers.routes(),
+    tailnet: peers.tailnet(),
+    lock: update.meshLock(),
+    gitHosts: gitRowsAny(),
+    model: Summary(),
+    chain: chain ?? null,
+    chainMine: mine,
+    hosts: hostsInfo(),
     apps: webapps.wants(),
   };
 }
@@ -140,8 +192,14 @@ export function snapshot(q: URLSearchParams): Record<string, any> {
     for (const m of ownChat) if (num(m.seq) > s) chat.push(m);
   }
   return {
-    self: selfInfo(), presence: presence(), lock: update.ownLock(), chain: update.sharedChain(),
-    git: git.state(), model: modelState() ?? null, sysDigest: store.digest(), chat,
+    self: selfInfo(),
+    presence: presence(),
+    lock: update.ownLock(),
+    chain: update.sharedChain(),
+    git: git.state(),
+    model: modelState() ?? null,
+    sysDigest: store.digest(),
+    chat,
   };
 }
 
@@ -150,7 +208,8 @@ export function snapshot(q: URLSearchParams): Record<string, any> {
 export function chainAction(action: string, password: string, admin: boolean, only: string[] = []): Res {
   switch (action) {
     case "start": {
-      if (!admin && (adminPass === "" || password !== adminPass)) return [401, { error: "admins only, or the admin password" }];
+      if (!admin && (adminPass === "" || password !== adminPass))
+        return [401, { error: "admins only, or the admin password" }];
       const hosts = git.rows().map((h) => str(h.host));
       const started = update.start(hosts, only);
       if ("locked" in started) return [409, { status: "locked", by: started.locked }];
@@ -174,21 +233,27 @@ class TSError extends Error {}
 
 async function ownGuestTag() {
   if (guestTagOwned) return;
-  const got = await fetch(tsTailnet + "/acl", { headers: { Authorization: "Bearer " + tsAPIKey, Accept: "application/hujson" }, signal: AbortSignal.timeout(10000) });
+  const got = await fetch(tsTailnet + "/acl", {
+    headers: { Authorization: "Bearer " + tsAPIKey, Accept: "application/hujson" },
+    signal: AbortSignal.timeout(10000),
+  });
   const body = await got.text();
   if (got.status < 200 || got.status >= 300) throw new TSError(`tailscale said ${got.status} reading the policy`);
   let lines = body.split("\n");
   const live = (re: RegExp) => lines.findIndex((l) => re.test(l) && !/^\s*\/\//.test(l));
   if (live(/"tag:guest"\s*:/) === -1) {
     const owners = live(/^\s*"tagOwners"\s*:\s*\{/);
-    if (owners !== -1) lines = [...lines.slice(0, owners + 1), '\t\t"tag:guest": ["autogroup:admin"],', ...lines.slice(owners + 1)];
+    if (owners !== -1)
+      lines = [...lines.slice(0, owners + 1), '\t\t"tag:guest": ["autogroup:admin"],', ...lines.slice(owners + 1)];
     else {
       const at = live(/^\s*\{/) + 1;
       lines = [...lines.slice(0, at), '\t"tagOwners": { "tag:guest": ["autogroup:admin"] },', ...lines.slice(at)];
     }
     const etag = got.headers.get("etag") || "*";
     const put = await fetch(tsTailnet + "/acl", {
-      method: "POST", body: lines.join("\n"), signal: AbortSignal.timeout(10000),
+      method: "POST",
+      body: lines.join("\n"),
+      signal: AbortSignal.timeout(10000),
       headers: { Authorization: "Bearer " + tsAPIKey, "Content-Type": "application/hujson", "If-Match": etag },
     });
     const b = await put.text();
@@ -210,19 +275,27 @@ export async function mintGuestKey(): Promise<Res> {
     return [500, { error: e instanceof TSError ? msg : "couldn't reach tailscale: " + msg }];
   }
   const body = marshal({
-    capabilities: { devices: { create: { reusable: false, ephemeral: true, preauthorized: true, tags: ["tag:guest"] } } },
-    expirySeconds: 3 * 24 * 3600, description: "phosphorus guest",
+    capabilities: {
+      devices: { create: { reusable: false, ephemeral: true, preauthorized: true, tags: ["tag:guest"] } },
+    },
+    expirySeconds: 3 * 24 * 3600,
+    description: "phosphorus guest",
   });
   let res: Response;
   try {
-    res = await fetch(tsTailnet + "/keys", { method: "POST", body, headers: { Authorization: "Bearer " + tsAPIKey, "Content-Type": "application/json" }, signal: AbortSignal.timeout(10000) });
+    res = await fetch(tsTailnet + "/keys", {
+      method: "POST",
+      body,
+      headers: { Authorization: "Bearer " + tsAPIKey, "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(10000),
+    });
   } catch (e) {
     return [500, { error: "couldn't reach tailscale: " + (e instanceof Error ? e.message : String(e)) }];
   }
   const out = obj(decode(await res.text())) ?? {};
-  if (res.status < 200 || res.status >= 300) return [500, { error: `tailscale said ${res.status}: ${str(out.message) || "no reason given"}` }];
+  if (res.status < 200 || res.status >= 300)
+    return [500, { error: `tailscale said ${res.status}: ${str(out.message) || "no reason given"}` }];
   return [200, { key: out.key, expires: out.expires }];
 }
 
 // --- startup -----------------------------------------------------------------
-

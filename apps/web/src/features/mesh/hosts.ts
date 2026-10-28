@@ -1,13 +1,17 @@
 // serving host
 import { appCall } from '../../apps/index.ts';
+import { dkChips } from '../../desktop/taskbar.ts';
 import { st } from '../../lib/state.ts';
 import { connectState } from '../../lib/sync.ts';
-import { dkChips } from '../../desktop/taskbar.ts';
 import { drawVars, meshRoutes, meshTailnet, renderMesh } from './draw.ts';
 
 // the host serving this page, held by the ingress's phosphorus-host cookie
 
-export const phosphorusHosts = () => meshTailnet.filter((d) => d.phosphorus).map((d) => d.name).sort();
+export const phosphorusHosts = () =>
+  meshTailnet
+    .filter((d) => d.phosphorus)
+    .map((d) => d.name)
+    .sort();
 
 // {to, from, at} of a switch awaiting the new host's first answer
 export let hostSwitch: { to: string; from: string; at: number } | null = null;

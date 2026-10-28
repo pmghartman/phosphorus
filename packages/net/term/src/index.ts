@@ -1,8 +1,9 @@
 // an ssh session per browser tab into the host sshd, or a hop to the owning
 // peer, binary frames for bytes, text for JSON resize and close
-import { Client, type ClientChannel } from "ssh2";
+
 import { errText, obj, sleep } from "@phosphorus/util";
 import { type Conn, dial } from "@phosphorus/wsock";
+import { Client, type ClientChannel } from "ssh2";
 import { render } from "./render.ts";
 
 export { render, screenLines } from "./render.ts";
@@ -30,7 +31,8 @@ const enc = new TextEncoder();
 const bytes = (s: string) => enc.encode(s);
 const runes = (s: string, n: number) => (s.length > n ? [...s].slice(0, n).join("") : s);
 
-const dim = (n: unknown, fallback: number) => (typeof n === "number" && Number.isInteger(n) && n > 0 && n <= 1000 ? n : fallback);
+const dim = (n: unknown, fallback: number) =>
+  typeof n === "number" && Number.isInteger(n) && n > 0 && n <= 1000 ? n : fallback;
 
 type Login = { user: string; pass: string; run: string };
 
@@ -156,7 +158,8 @@ class Session {
           const user = typeof m.user === "string" ? m.user : "";
           const pass = typeof m.pass === "string" ? m.pass : "";
           const run = typeof m.run === "string" ? m.run : "";
-          if (user && Buffer.byteLength(user) <= maxField && Buffer.byteLength(pass) <= maxField) this.offer({ user, pass, run });
+          if (user && Buffer.byteLength(user) <= maxField && Buffer.byteLength(pass) <= maxField)
+            this.offer({ user, pass, run });
           return;
         }
         case "share":
@@ -300,7 +303,14 @@ function connect(s: Session, o: Opts, user: string, pass: string): Promise<strin
     // after ready a lost connection ends the session by its close, never thrown
     c.on("error", (e) => resolve(/authentication methods failed/i.test(e.message) ? "access denied" : e.message));
     c.on("keyboard-interactive", (_n, _i, _l, prompts, finish) => finish(prompts.map(() => pass)));
-    c.connect({ host: o.sshHost, port: o.port, username: user, password: pass, tryKeyboard: true, readyTimeout: 10_000 });
+    c.connect({
+      host: o.sshHost,
+      port: o.port,
+      username: user,
+      password: pass,
+      tryKeyboard: true,
+      readyTimeout: 10_000,
+    });
   }).then(async (why) => {
     if (why) {
       c.destroy();
@@ -330,7 +340,8 @@ function connect(s: Session, o: Opts, user: string, pass: string): Promise<strin
   });
 }
 
-const relay = (to: Conn, b: string | Uint8Array, bin: boolean) => (bin ? to.binary(b as Uint8Array) : to.text(b as string));
+const relay = (to: Conn, b: string | Uint8Array, bin: boolean) =>
+  bin ? to.binary(b as Uint8Array) : to.text(b as string);
 
 // forward the browser's socket spliced onto the owning peer's
 export function forward(ws: Conn, host: string, lookup: () => string | Promise<string>, resume: boolean) {
@@ -389,16 +400,27 @@ export function close(by: string, id: string) {
 
 // typeIn a command typed into the owner's shared screen, left for them to run,
 // or with run entered at once as theirs, their key's own ask
-export async function typeIn(by: string, id: string, text: string, waitS: number, run: boolean): Promise<Record<string, any>> {
+export async function typeIn(
+  by: string,
+  id: string,
+  text: string,
+  waitS: number,
+  run: boolean,
+): Promise<Record<string, any>> {
   const mine = shared("").filter((s) => by && s.owner === by && s.sid.startsWith(id));
   if (mine.length !== 1) {
-    throw new Error(mine.length ? "several shared terminals, give its id" : "no terminal of theirs is shared with phosphorus and logged in here");
+    throw new Error(
+      mine.length
+        ? "several shared terminals, give its id"
+        : "no terminal of theirs is shared with phosphorus and logged in here",
+    );
   }
   const s = mine[0]!;
   if (s.waiter) throw new Error("already waiting on a command there");
   const before = await s.render();
   const ls = before.split("\n");
-  if (secretPrompt.test(ls[ls.length - 1]!)) throw new Error("the terminal is asking for a credential, they type that themselves");
+  if (secretPrompt.test(ls[ls.length - 1]!))
+    throw new Error("the terminal is asking for a credential, they type that themselves");
   const cmd = runes(text.replace(control, ""), maxCommand);
   if (!cmd.trim()) throw new Error("nothing to type");
   const until = Date.now() + waitS * 1000;
@@ -420,7 +442,11 @@ export async function typeIn(by: string, id: string, text: string, waitS: number
     };
   });
   if (key !== "enter") {
-    const why: Record<string, string> = { cancel: "they cancelled it", closed: "the terminal closed", timeout: `no Enter in ${waitS}s, still typed there` };
+    const why: Record<string, string> = {
+      cancel: "they cancelled it",
+      closed: "the terminal closed",
+      timeout: `no Enter in ${waitS}s, still typed there`,
+    };
     return { id: s.sid.slice(0, 6), ran: false, why: why[key], screen: await s.render() };
   }
   return settled(s, Date.now(), until);

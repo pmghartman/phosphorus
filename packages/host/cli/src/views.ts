@@ -1,13 +1,58 @@
 // each tab drawn from the api's state and the config files, as the frontend's
 // pages draw them
+
+import {
+  fieldsOf,
+  isHomeDir,
+  readGitHost,
+  readHomeDir,
+  readModel,
+  readShares,
+  readText,
+  servicesFile,
+  splitSections,
+} from "@phosphorus/config";
 import { parse } from "@phosphorus/services";
 import { FrontendPort } from "@phosphorus/util";
-import { fieldsOf, isHomeDir, readGitHost, readHomeDir, readModel, readShares, readText, servicesFile, splitSections } from "@phosphorus/config";
-import { type Card, type Key, type Row, bg, bold, c, caret, fg, gradient, inner, max0, off, pad, pal, panels, plainRows, strike, surface, table, vlen, wrap } from "./draw.ts";
+import {
+  bg,
+  bold,
+  type Card,
+  c,
+  caret,
+  fg,
+  gradient,
+  inner,
+  type Key,
+  max0,
+  off,
+  pad,
+  pal,
+  panels,
+  plainRows,
+  type Row,
+  strike,
+  surface,
+  table,
+  vlen,
+  wrap,
+} from "./draw.ts";
 import type { Field, Form } from "./form.ts";
-import { type J, anys, get, indexOf, num, obj, objs, or, str, strs, truthy } from "./json.ts";
+import { anys, get, indexOf, type J, num, obj, objs, or, str, strs, truthy } from "./json.ts";
 import { joinNote, keysNote, keysNoteApply } from "./keys.ts";
-import { filesTab, gitTab, iniNote, modelNote, modelTab, rebuilding, servicesTab, shown, tabs, ui, updateTab } from "./state.ts";
+import {
+  filesTab,
+  gitTab,
+  iniNote,
+  modelNote,
+  modelTab,
+  rebuilding,
+  servicesTab,
+  shown,
+  tabs,
+  ui,
+  updateTab,
+} from "./state.ts";
 
 export type View = {
   lines: string[];
@@ -39,13 +84,15 @@ const meshAddr = () => baseDomain || selfHost();
 // the version right, narrowed by dropping the hosts, then the tab names
 export function topBar(cols: number): string {
   const mark = " " + gradient("phosphorus", 0) + "  ";
-  if (ui.keysOnly) return surface(pal.tabbar!)(mark + c("muted")("· ") + c("sage")("keys") + " ".repeat(max0(cols - vlen(mark) - 6)));
+  if (ui.keysOnly)
+    return surface(pal.tabbar!)(mark + c("muted")("· ") + c("sage")("keys") + " ".repeat(max0(cols - vlen(mark) - 6)));
   const tasks = (short: boolean) =>
     tabs
       .slice(0, shown)
       .map((t, i) => {
         const label = short ? ` ${i + 1} ` : ` ${i + 1} ${t} `;
-        if (i === ui.tab) return surface(pal.border!)(bold(fg(pal.accent!) + label.slice(0, 2) + fg(pal.fg!) + label.slice(2)));
+        if (i === ui.tab)
+          return surface(pal.border!)(bold(fg(pal.accent!) + label.slice(0, 2) + fg(pal.fg!) + label.slice(2)));
         return c("muted")(label);
       })
       .join("");
@@ -58,7 +105,8 @@ export function topBar(cols: number): string {
   if (chips !== "") chips += "  ";
   let t = tasks(false);
   for (const right of [upd + chips + ver, upd + ver]) {
-    if (vlen(mark) + vlen(t) + vlen(right) <= cols) return surface(pal.tabbar!)(mark + t + " ".repeat(cols - vlen(mark) - vlen(t) - vlen(right)) + right);
+    if (vlen(mark) + vlen(t) + vlen(right) <= cols)
+      return surface(pal.tabbar!)(mark + t + " ".repeat(cols - vlen(mark) - vlen(t) - vlen(right)) + right);
   }
   t = tasks(true);
   let right = upd + ver;
@@ -95,7 +143,8 @@ export function hints(keys: Key[], global: Key[], cols: number): string {
         return bold(c(tok)(key)) + " " + c("muted")(rest);
       })
       .join("   ");
-  const left = " " + one(keys), right = one(global) + " ";
+  const left = " " + one(keys),
+    right = one(global) + " ";
   return left + " ".repeat(max0(cols - vlen(left) - vlen(right))) + right;
 }
 
@@ -131,18 +180,36 @@ function servicesView(): View {
     let access = c("muted")("login");
     if (f.type === "game") access = c("muted")("-");
     else if (f.public === "true") access = c("warn")("public");
-    rows.push([s.name, f.port ?? "", c("teal")(or(f.type ?? "", f.mode ?? "", "path")), c("muted")(scheme), c("muted")(where), access, status]);
+    rows.push([
+      s.name,
+      f.port ?? "",
+      c("teal")(or(f.type ?? "", f.mode ?? "", "path")),
+      c("muted")(scheme),
+      c("muted")(where),
+      access,
+      status,
+    ]);
   }
   let rejected: Card | undefined;
   let room = ui.room - 3;
   if (perr !== "") {
-    rejected = { title: "rejected", lines: plainRows(c("offmesh")(perr), c("offmesh")("the frontend keeps publishing the last good version until it is fixed")) };
+    rejected = {
+      title: "rejected",
+      lines: plainRows(
+        c("offmesh")(perr),
+        c("offmesh")("the frontend keeps publishing the last good version until it is fixed"),
+      ),
+    };
     room = ui.room - 8;
   }
   let body = plainRows(c("muted")("no services declared"));
-  if (rows.length > 0) body = table(["name", "port", "mode", "scheme", "address", "access", "live"], rows, ui.sel[servicesTab]!, room);
+  if (rows.length > 0)
+    body = table(["name", "port", "mode", "scheme", "address", "access", "live"], rows, ui.sel[servicesTab]!, room);
   const n = rows.length > 0;
-  return { lines: panels(rejected, { title: "services.export", lines: body }), keys: [k("a add", "primary"), kif(n, "e edit"), kif(n, "d delete", "danger")] };
+  return {
+    lines: panels(rejected, { title: "services.export", lines: body }),
+    keys: [k("a add", "primary"), kif(n, "e edit"), kif(n, "d delete", "danger")],
+  };
 }
 
 const star = (on: boolean) => (on ? c("accent")("★") : " ");
@@ -202,7 +269,11 @@ export function ago(sec: number): string {
 export function lagMeter(age: number): string {
   let out = "";
   let empty = 0;
-  for (const [tok, from, to] of [["online", 0, 8], ["warn", 8, 15], ["offmesh", 15, 60]] as [string, number, number][]) {
+  for (const [tok, from, to] of [
+    ["online", 0, 8],
+    ["warn", 8, 15],
+    ["offmesh", 15, 60],
+  ] as [string, number, number][]) {
     const full = Math.round(Math.max(0, Math.min(1, (age - from) / (to - from))) * 5);
     if (full > 0) out += c(tok)("█".repeat(full));
     empty += 5 - full;
@@ -252,13 +323,17 @@ function statsView(): View {
   const self = selfHost();
   let lockCard: Card | undefined;
   const lock = obj(st.lock);
-  if (lock) lockCard = { title: "mesh update", lines: plainRows(c("accent")("running, started by " + str(lock.initiator))) };
+  if (lock)
+    lockCard = { title: "mesh update", lines: plainRows(c("accent")("running, started by " + str(lock.initiator))) };
   let tail = objs(st.tailnet);
   if (!tail.some((d) => str(d.name) === self)) tail = [{ name: self, phosphorus: true }, ...tail];
   const trows: string[][] = [];
   for (const d of tail) {
     const isSelf = str(d.name) === self;
-    let name = dot(d), os = str(d.os), ver = str(d.version), p = "";
+    let name = dot(d),
+      os = str(d.os),
+      ver = str(d.version),
+      p = "";
     if (isSelf) {
       name = selfMark(self);
       os = str(get(st, "self", "platform"));
@@ -273,7 +348,9 @@ function statsView(): View {
     const rrows: string[][] = [];
     for (const r of routes) {
       const game = str(r.type) === "game";
-      let mode = str(r.mode), addr = "", status = c("online")("up");
+      let mode = str(r.mode),
+        addr = "",
+        status = c("online")("up");
       if (game) {
         mode = "game";
         addr = `${str(r.name)}.${str(st.gameZone)}:${str(r.port)}`;
@@ -286,12 +363,25 @@ function statsView(): View {
       let access = c("muted")("login");
       if (r.public === true || r.master != null) access = c("warn")("public");
       if (game) access = c("muted")("-");
-      rrows.push([c("sky")(str(r.host)), str(r.name), c("teal")(mode), c("muted")(addr), c("muted")(str(r.port)), access, status]);
+      rrows.push([
+        c("sky")(str(r.host)),
+        str(r.name),
+        c("teal")(mode),
+        c("muted")(addr),
+        c("muted")(str(r.port)),
+        access,
+        status,
+      ]);
     }
     rbody = table(["host", "name", "mode", "address", "port", "access", "status"], rrows, -1, 0);
   }
   return {
-    lines: panels(lockCard, overview(tail), { title: "tailnet", lines: table(["host", "os", "version", "ping"], trows, -1, 0) }, { title: "routes", lines: rbody }),
+    lines: panels(
+      lockCard,
+      overview(tail),
+      { title: "tailnet", lines: table(["host", "os", "version", "ping"], trows, -1, 0) },
+      { title: "routes", lines: rbody },
+    ),
     keys: [k("↑↓ scroll", "quiet")],
     scroll: true,
   };
@@ -299,7 +389,8 @@ function statsView(): View {
 
 // overview where to open the desktop and how many hosts answer
 function overview(tail: J[]): Card {
-  let up = 0, seen = 0;
+  let up = 0,
+    seen = 0;
   for (const d of tail) {
     if (truthy(d.phosphorus)) up++;
     if (truthy(d.phosphorus) || truthy(d.phosphorusSeen)) seen++;
@@ -330,13 +421,23 @@ function gitView(): View {
   ui.sel[gitTab] = clampSel(ui.sel[gitTab]!, hosts.length);
   const on = want ? c("online")("on") : c("muted")("off");
   const here = plainRows(selfMark(selfHost()) + "  git host " + on);
-  if (want !== live) here.push({ text: c("warn")((want ? "not a git host yet" : "still a git host") + "; " + rebuilding) });
+  if (want !== live)
+    here.push({ text: c("warn")((want ? "not a git host yet" : "still a git host") + "; " + rebuilding) });
   let body = plainRows(c("muted")("none"));
-  if (hosts.length > 0) body = table(["host", "state", "behind"], hosts.map((h) => gitRow(h, masterGen)), ui.sel[gitTab]!, 0);
+  if (hosts.length > 0)
+    body = table(
+      ["host", "state", "behind"],
+      hosts.map((h) => gitRow(h, masterGen)),
+      ui.sel[gitTab]!,
+      0,
+    );
   const target = ui.sel[gitTab]! < hosts.length ? hosts[ui.sel[gitTab]!] : undefined;
   return {
     lines: panels({ title: "this host", lines: here }, { title: "git hosts", lines: body }),
-    keys: [k("h toggle host", "primary"), kif(!!target && truthy(target.reachable) && str(target.role) !== "master", "p make master")],
+    keys: [
+      k("h toggle host", "primary"),
+      kif(!!target && truthy(target.reachable) && str(target.role) !== "master", "p make master"),
+    ],
   };
 }
 
@@ -391,7 +492,10 @@ function modelView(): View {
   if (hostOn) here.push(cfg.url !== "" ? c("muted")(cfg.url!) : c("warn")("no link yet, e to enter one"));
   if (m) {
     const dl = obj(m.download);
-    if (dl && truthy(dl.total)) here.push(bar(num(dl.done) / num(dl.total), "") + "  " + c("muted")(gb(num(dl.done)) + " of " + gb(num(dl.total))));
+    if (dl && truthy(dl.total))
+      here.push(
+        bar(num(dl.done) / num(dl.total), "") + "  " + c("muted")(gb(num(dl.done)) + " of " + gb(num(dl.total))),
+      );
     if (!truthy(m.ready) && str(m.why) !== "") here.push(c("warn")(str(m.why)));
   }
   const picked = ui.sel[modelTab]! < all.length ? all[ui.sel[modelTab]!] : undefined;
@@ -409,10 +513,15 @@ function modelView(): View {
   let models = plainRows(c("muted")("no host runs a model"));
   if (all.length > 0) {
     models = table(["host", "agents", "state", "speed", "file"], rows, ui.sel[modelTab]!, 0);
-    if (picked && mi !== ui.sel[modelTab] && !truthy(picked.ready) && str(picked.why) !== "") models.push({ text: c("warn")(str(picked.why)) });
+    if (picked && mi !== ui.sel[modelTab] && !truthy(picked.ready) && str(picked.why) !== "")
+      models.push({ text: c("warn")(str(picked.why)) });
   }
   return {
-    lines: panels({ title: "agents", lines: plainRows(...rl) }, { title: "this host", lines: plainRows(...here) }, { title: "models", lines: models }),
+    lines: panels(
+      { title: "agents", lines: plainRows(...rl) },
+      { title: "this host", lines: plainRows(...here) },
+      { title: "models", lines: models },
+    ),
     keys: [k("e edit", "primary")],
   };
 }
@@ -447,7 +556,8 @@ const stageOf = (chain: J | undefined, host: string) => str(get(chain, "versions
 function progress(chain: J): string {
   const order = strs(chain.order);
   const res = obj(chain.results) ?? {};
-  let done = 0, finished = 0;
+  let done = 0,
+    finished = 0;
   for (const m of order) {
     switch (or(str(res[m]), "pending")) {
       case "running":
@@ -464,8 +574,13 @@ function progress(chain: J): string {
 }
 
 const stepLabel: Record<string, string> = {
-  pending: "waiting", running: "updating", ok: "success", current: "up to date",
-  fail: "failed", unreachable: "unreachable", skipped: "skipped",
+  pending: "waiting",
+  running: "updating",
+  ok: "success",
+  current: "up to date",
+  fail: "failed",
+  unreachable: "unreachable",
+  skipped: "skipped",
 };
 
 function updateView(): View {
@@ -503,7 +618,8 @@ function updateView(): View {
   for (const m of order) {
     const d = byName[m] ?? {};
     const isSelf = m === self;
-    let version = str(d.version), osName = str(d.os);
+    let version = str(d.version),
+      osName = str(d.os);
     if (isSelf) {
       version = selfVer;
       osName = str(get(st, "self", "platform"));
@@ -557,15 +673,23 @@ function updateView(): View {
   if (chain) keys = mine ? [k("x cancel", "danger")] : [];
   let failed: Card | undefined;
   if (why.length > 0) failed = { title: "why", lines: plainRows(...why) };
-  return { lines: panels(prog, { title, lines: table(["host", "version", ""], rows, -1, 0) }, failed), keys, title: "mesh update" };
+  return {
+    lines: panels(prog, { title, lines: table(["host", "version", ""], rows, -1, 0) }, failed),
+    keys,
+    title: "mesh update",
+  };
 }
 
 function offlineView(): string[] {
   return panels({
     title: "offline",
     lines: plainRows(
-      c("offmesh")(`the frontend is not answering on :${FrontendPort}`), "",
-      c("muted")("phosphorus is down or restarting, start it with"), "", "  " + c("accent")("phos start"), "",
+      c("offmesh")(`the frontend is not answering on :${FrontendPort}`),
+      "",
+      c("muted")("phosphorus is down or restarting, start it with"),
+      "",
+      "  " + c("accent")("phos start"),
+      "",
       c("muted")("this screen clears on its own once it answers"),
     ),
   });
@@ -585,7 +709,9 @@ function serviceStrip(f: Form): string {
   if (names.length === 0) return "";
   const room = inner() - 4;
   const cell = (n: string) => vlen(n) + 3;
-  let lo = at, hi = at, used = cell(names[at]!);
+  let lo = at,
+    hi = at,
+    used = cell(names[at]!);
   for (let grew = true; grew; ) {
     grew = false;
     if (hi + 1 < names.length && used + cell(names[hi + 1]!) <= room) {
@@ -612,7 +738,8 @@ function serviceStrip(f: Form): string {
 
 // .update-pass: the value on the card surface, the accent marking focus
 function formView(f: Form): View {
-  let w = 0, widest = 0;
+  let w = 0,
+    widest = 0;
   for (const x of f.fields) {
     if (x.key.length > w) w = x.key.length;
     if (vlen(x.value) + 1 > widest) widest = vlen(x.value) + 1;
@@ -631,7 +758,8 @@ function formView(f: Form): View {
     let shownV = x.value;
     if (x.secret) shownV = "•".repeat(Math.min([...x.value].length, vw - 2));
     const chars = [...shownV];
-    if (chars.length >= vw) shownV = on ? "…" + chars.slice(chars.length - vw + 2).join("") : chars.slice(0, vw - 1).join("") + "…";
+    if (chars.length >= vw)
+      shownV = on ? "…" + chars.slice(chars.length - vw + 2).join("") : chars.slice(0, vw - 1).join("") + "…";
     let value: string;
     if (on) value = surface(pal.card!)(" " + pad(shownV + caret() + bg(pal.card!), vw) + " ");
     else {
@@ -664,7 +792,12 @@ function formView(f: Form): View {
   return {
     title: f.title,
     lines: panels(strip, { title: f.title, lines: plainRows(...fields) }, notesCard),
-    keys: [k("enter save", "primary"), k("esc cancel"), k("↑↓ field", "quiet"), kif(strip !== undefined, "←→ service", "quiet")],
+    keys: [
+      k("enter save", "primary"),
+      k("esc cancel"),
+      k("↑↓ field", "quiet"),
+      kif(strip !== undefined, "←→ service", "quiet"),
+    ],
   };
 }
 
@@ -677,4 +810,3 @@ export function currentView(): View {
   if (ui.form) return formView(ui.form);
   return [statsView, servicesView, filesView, modelView, gitView, updateView][ui.tab]!();
 }
-

@@ -19,7 +19,12 @@ export function runFind() {
 
 export function toggleFind(on = chatFind.hidden) {
   chatFind.hidden = !on;
-  if (!on) { chatFindInput.value = ''; runFind(); chatText.focus(); return; }
+  if (!on) {
+    chatFindInput.value = '';
+    runFind();
+    chatText.focus();
+    return;
+  }
   chatFindInput.focus();
   chatFindInput.select();
 }
@@ -27,5 +32,8 @@ export function toggleFind(on = chatFind.hidden) {
 document.getElementById('chat-find-btn')!.addEventListener('click', () => toggleFind());
 chatFindInput.addEventListener('input', runFind);
 chatFindInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { e.preventDefault(); toggleFind(false); }
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    toggleFind(false);
+  }
 });

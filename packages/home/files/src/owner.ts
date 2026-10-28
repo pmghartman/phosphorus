@@ -49,9 +49,11 @@ export function own(home: string, login: string): [number, any] {
   if (!posix) return [200, { ok: true, owner: login, already: true }];
   if (process.geteuid?.() !== 0)
     return [409, { error: "Phosphorus doesn't run as root here: the home's already as its files' owners left it" }];
-  const id = runSync(["id", "-u", login]), gid = runSync(["id", "-g", login]);
+  const id = runSync(["id", "-u", login]),
+    gid = runSync(["id", "-g", login]);
   if (!id.ok) return [404, { error: login + " isn't an account on this machine" }];
-  const uid = Number(id.stdout.trim()), g = Number(gid.stdout.trim());
+  const uid = Number(id.stdout.trim()),
+    g = Number(gid.stdout.trim());
   if (uid === 0) return [400, { error: "not root's: a home is handed to a person's own login" }];
   const o = ownerAt(home);
   if (o.ok && o.uid === uid) return [200, { ok: true, owner: login, already: true }];

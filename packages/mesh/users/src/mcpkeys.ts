@@ -4,7 +4,20 @@ import * as store from "@phosphorus/store";
 import { marshal, obj } from "@phosphorus/util";
 import { type Box, boxOf, hex, Open, randHex, Seal, unhex } from "./crypto.ts";
 import { baseDomain, live, mcpFile, type Req } from "./secrets.ts";
-import { OpenGrant, SealGrant, cleanVault, errR, hostOf, notSynced, openToken, type R, type Session, type Vault, unexpired, vaultOf } from "./session.ts";
+import {
+  cleanVault,
+  errR,
+  hostOf,
+  notSynced,
+  OpenGrant,
+  openToken,
+  type R,
+  SealGrant,
+  type Session,
+  unexpired,
+  type Vault,
+  vaultOf,
+} from "./session.ts";
 
 // MCPKey a fresh key for the session's user, a year long, the last one void
 // the user's saved host logins ride along, sealed under a secret held only in
@@ -18,8 +31,14 @@ export async function MCPKey(s: Session | undefined, _p: Record<string, any> | u
   const g = randHex(8);
   const k = randomBytes(32);
   const cv = cleanVault(v);
-  const logins = cv.hosts as Vault, pages = cv.pages as Vault;
-  store.write(mcpFile(s.user), { g, kk: Seal(s.key!, hex(k)), c: Seal(k, marshal(logins)), p: Seal(k, marshal(pages)) });
+  const logins = cv.hosts as Vault,
+    pages = cv.pages as Vault;
+  store.write(mcpFile(s.user), {
+    g,
+    kk: Seal(s.key!, hex(k)),
+    c: Seal(k, marshal(logins)),
+    p: Seal(k, marshal(pages)),
+  });
   return mcpGrant(s.user, lu.pwAt, g, k, logins, pages, c, true);
 }
 
@@ -41,9 +60,28 @@ export async function MCPURL(s: Session | undefined, p: Record<string, any> | un
 // HasMCPKey whether the user has a key in use
 export const HasMCPKey = (u: string) => mcpRecord(u).g !== "";
 
-export function mcpGrant(u: string, pwAt: string, g: string, k: Uint8Array, logins: Vault, pages: Vault, c: Req, fresh: boolean): R {
+export function mcpGrant(
+  u: string,
+  pwAt: string,
+  g: string,
+  k: Uint8Array,
+  logins: Vault,
+  pages: Vault,
+  c: Req,
+  fresh: boolean,
+): R {
   const key = SealGrant({ u, p: pwAt, m: g, k: hex(k) }, 365 * 24 * 3600 * 1000);
-  return { status: 200, body: { key, url: MCPBase(c) + "/api/mcp/" + key, fresh, user: u, hosts: Object.keys(logins).sort(), pages: Object.keys(pages).sort() } };
+  return {
+    status: 200,
+    body: {
+      key,
+      url: MCPBase(c) + "/api/mcp/" + key,
+      fresh,
+      user: u,
+      hosts: Object.keys(logins).sort(),
+      pages: Object.keys(pages).sort(),
+    },
+  };
 }
 
 // MCPBase where an agent reaches the mesh: the base domain, else the host asked
@@ -67,13 +105,19 @@ export function resealMCP(s: Session, vault: Vault) {
   if (!rec.kk) return;
   const k = unhex(Open(s.key, rec.kk));
   if (!k || k.length !== 32) return;
-  store.write(mcpFile(s.user), { g: rec.g, kk: rec.kk, c: Seal(k, marshal(vault.hosts)), p: Seal(k, marshal(vault.pages)) });
+  store.write(mcpFile(s.user), {
+    g: rec.g,
+    kk: rec.kk,
+    c: Seal(k, marshal(vault.hosts)),
+    p: Seal(k, marshal(vault.pages)),
+  });
 }
 
 // a saved login's user and pass, ok false when there's no user
 export function loginOf(l: unknown): [string, string, boolean] {
   const o = obj(l);
-  const user = typeof o?.user === "string" ? o.user : "", pass = typeof o?.pass === "string" ? o.pass : "";
+  const user = typeof o?.user === "string" ? o.user : "",
+    pass = typeof o?.pass === "string" ? o.pass : "";
   return [user, pass, user !== ""];
 }
 

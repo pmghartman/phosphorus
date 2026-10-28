@@ -2,7 +2,7 @@ import { afterAll, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { upgrade, websocket, type WSData } from "@phosphorus/wsock";
+import { upgrade, type WSData, websocket } from "@phosphorus/wsock";
 
 // a share "0" on a temp dir, the home share absent
 const dir = mkdtempSync(join(tmpdir(), "phos-collab-ws-"));
@@ -63,11 +63,28 @@ test("attach: init, join, op, save and resync as the Go protocol", async () => {
   const cl = connect(srv.port!);
   await cl.opened;
   const init = await cl.next();
-  expect(init).toEqual({ type: "init", text: "hello", v: 0, saved: 0, perms: "rw", people: [], you: init.you, eol: "\n" });
+  expect(init).toEqual({
+    type: "init",
+    text: "hello",
+    v: 0,
+    saved: 0,
+    perms: "rw",
+    people: [],
+    you: init.you,
+    eol: "\n",
+  });
   cl.send({ type: "join", name: "ann", color: "#f00" });
   expect(await cl.next()).toEqual({ type: "people", people: [{ id: init.you, name: "ann", color: "#f00", pos: 0 }] });
   cl.send({ type: "op", base: 0, ops: ["X", 5], id: "k1" });
-  expect(await cl.next()).toEqual({ type: "op", v: 1, ops: ["X", 5], id: "k1", by: "ann", agent: false, agentEdit: init.you });
+  expect(await cl.next()).toEqual({
+    type: "op",
+    v: 1,
+    ops: ["X", 5],
+    id: "k1",
+    by: "ann",
+    agent: false,
+    agentEdit: init.you,
+  });
   cl.send({ type: "save" });
   expect(await cl.next()).toEqual({ type: "saved", v: 1, by: "ann" });
   expect(readFileSync(join(dir, "a.txt"), "utf8")).toBe("Xhello");
@@ -76,7 +93,15 @@ test("attach: init, join, op, save and resync as the Go protocol", async () => {
   expect(await cl.next()).toEqual({ type: "resync", text: "Xhello", v: 1, saved: 1, id: null });
   // an edit rebased over one it hadn't seen
   cl.send({ type: "op", base: 0, ops: [5, "!"], id: "k2" });
-  expect(await cl.next()).toEqual({ type: "op", v: 2, ops: [6, "!"], id: "k2", by: "ann", agent: false, agentEdit: init.you });
+  expect(await cl.next()).toEqual({
+    type: "op",
+    v: 2,
+    ops: [6, "!"],
+    id: "k2",
+    by: "ann",
+    agent: false,
+    agentEdit: init.you,
+  });
 
   // an agent's write typed into the open session; the file just saved aged, as
   // one written this instant reads as still changing
@@ -88,7 +113,14 @@ test("attach: init, join, op, save and resync as the Go protocol", async () => {
   expect(people.type).toBe("people");
   expect(people.people[1]).toEqual({ id: people.people[1].id, name: "bot", color: "", pos: 3, agent: true });
   const first = await cl.next();
-  expect(first).toMatchObject({ type: "op", v: 3, ops: [3, -3, 1], by: "bot", agent: true, agentEdit: people.people[1].id });
+  expect(first).toMatchObject({
+    type: "op",
+    v: 3,
+    ops: [3, -3, 1],
+    by: "bot",
+    agent: true,
+    agentEdit: people.people[1].id,
+  });
   expect(String(first.id)).toMatch(/^agent-\d+$/);
   const [status, out] = await done;
   expect(status).toBe(200);

@@ -12,8 +12,16 @@ const mirrorHidden = new Set(["headers"]);
 
 // tools whose output the page prints, as a console does
 const mirrorPrinted = new Set([
-  "terminal_run", "host_logs", "service_request", "forgejo", "host_config", "service_edit", "config_set", "host_power",
-  "game_power", "terminal_screen",
+  "terminal_run",
+  "host_logs",
+  "service_request",
+  "forgejo",
+  "host_config",
+  "service_edit",
+  "config_set",
+  "host_power",
+  "game_power",
+  "terminal_screen",
 ]);
 
 const queues = new Map<string, Record<string, any>[]>();
@@ -56,7 +64,8 @@ export function mirrorEnd(step: Record<string, any>, tool: string, out: unknown)
     step.timedOut = m.timedOut === true;
   }
   if (m && m.output !== null && m.output !== undefined) step.out = clipBytes(str(m.output), mirrorOut, true);
-  else if (m && m.stdout !== null && m.stdout !== undefined) step.out = clipBytes(str(m.stdout) + str(m.stderr), mirrorOut, true);
+  else if (m && m.stdout !== null && m.stdout !== undefined)
+    step.out = clipBytes(str(m.stdout) + str(m.stderr), mirrorOut, true);
   else if (m && m.screen !== null && m.screen !== undefined) step.out = clipBytes(str(m.screen), mirrorOut, true);
   else step.out = clipBytes(marshal(out), mirrorOut, true);
 }

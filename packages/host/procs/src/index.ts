@@ -31,7 +31,8 @@ function readRoles(): Map<number, string> {
 
 // /proc: every field gopsutil reads, the role off each environ we may read
 function listLinux(): P[] {
-  const page = 4096, tick = 100;
+  const page = 4096,
+    tick = 100;
   const out: P[] = [];
   for (const d of readdirSync("/proc")) {
     if (!/^\d+$/.test(d)) continue;
@@ -43,10 +44,20 @@ function listLinux(): P[] {
       const cmd = readFileSync(`/proc/${d}/cmdline`, "utf8").replace(/\0+$/, "").replaceAll("\0", " ");
       let role = "";
       try {
-        const e = readFileSync(`/proc/${d}/environ`, "utf8").split("\0").find((kv) => kv.startsWith("PHOSPHORUS_ROLE="));
+        const e = readFileSync(`/proc/${d}/environ`, "utf8")
+          .split("\0")
+          .find((kv) => kv.startsWith("PHOSPHORUS_ROLE="));
         role = e ? e.slice(16) : "";
       } catch {}
-      out.push({ pid: Number(d), ppid: Number(f[1]), name, cmd, role, rss: Number(f[21]) * page, cpu: (Number(f[11]) + Number(f[12])) / tick });
+      out.push({
+        pid: Number(d),
+        ppid: Number(f[1]),
+        name,
+        cmd,
+        role,
+        rss: Number(f[21]) * page,
+        cpu: (Number(f[11]) + Number(f[12])) / tick,
+      });
     } catch {}
   }
   return out;

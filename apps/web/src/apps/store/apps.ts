@@ -1,12 +1,13 @@
 // what's known of an app, in one place
-import { DK_UI, dkGlyph, el, pageAsk } from '../../lib/dom.ts';
-import { st } from '../../lib/state.ts';
+
 import type { AppStatus, AppWant } from '@phosphorus/wire';
-import { ago2, newerVersion } from '../../lib/util.ts';
 import { dkWebApp } from '../../desktop/desk.ts';
 import { editorPref, setEditorPref } from '../../desktop/deskfiles.ts';
+import { DK_UI, dkGlyph, el, pageAsk } from '../../lib/dom.ts';
+import { st } from '../../lib/state.ts';
+import { ago2, newerVersion } from '../../lib/util.ts';
 import { draw } from './services.ts';
-import { act, stateVars, storeShow, type StoreApp } from './state.ts';
+import { act, type StoreApp, stateVars, storeShow } from './state.ts';
 
 // every phosphorus host and its copy
 export function hostRows(a: StoreApp): [string, AppStatus | undefined][] {
@@ -53,15 +54,36 @@ export function pill(a: StoreApp, f: Facts, big = false): HTMLElement {
     b.className += ` ${cls}`;
     b.title = title;
     b.disabled = !go;
-    if (go) b.addEventListener('click', (e) => { e.stopPropagation(); go(); });
+    if (go)
+      b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        go();
+      });
   };
   if (stateVars.busyId === a.id) set(f.want ? 'updating' : 'getting', 'wait', null);
   else if (!f.want) {
-    if (admin) set('get', 'get', () => act('/api/apps/install', a.id), a.latest ? `install v${a.latest} onto every host` : a.feedError ? 'release feed unreachable' : 'checking the release feed');
+    if (admin)
+      set(
+        'get',
+        'get',
+        () => act('/api/apps/install', a.id),
+        a.latest
+          ? `install v${a.latest} onto every host`
+          : a.feedError
+            ? 'release feed unreachable'
+            : 'checking the release feed',
+      );
     else set('get', 'get', null, 'an admin installs apps');
-  } else if (f.update && admin) set('update', 'get', () => act('/api/apps/install', a.id), `v${f.update} onto every host`);
+  } else if (f.update && admin)
+    set('update', 'get', () => act('/api/apps/install', a.id), `v${f.update} onto every host`);
   else if (f.here) set('open', 'open', () => dkWebApp(a.id), `open ${a.name}`);
-  else set(f.busy ? 'installing' : 'not here', 'wait', null, f.busy ? 'this host is fetching it' : `${st.selfHost} has no copy yet`);
+  else
+    set(
+      f.busy ? 'installing' : 'not here',
+      'wait',
+      null,
+      f.busy ? 'this host is fetching it' : `${st.selfHost} has no copy yet`,
+    );
   if (!a.latest && !f.want && !a.feedError) b.disabled = true;
   return b;
 }
@@ -72,7 +94,10 @@ export function iconTile(name: string, srcs: string[], cls: string): HTMLElement
   const mono = () => el('span', 'store-mono', name[0]!.toUpperCase());
   const next = (rest: string[], at: HTMLElement) => {
     const [src, ...more] = rest.filter(Boolean);
-    if (!src) { at.replaceWith(mono()); return; }
+    if (!src) {
+      at.replaceWith(mono());
+      return;
+    }
     const img = Object.assign(el('img'), { src, alt: '', draggable: false });
     img.addEventListener('error', () => next(more, img), { once: true });
     at.replaceWith(img);
@@ -84,14 +109,16 @@ export function iconTile(name: string, srcs: string[], cls: string): HTMLElement
 }
 
 // the copy a host serves once one does, the repository's until then
-export const iconOf = (a: StoreApp, f: Facts, cls: string) => iconTile(a.name, f.here || f.on ? [a.icon, a.repoIcon] : [a.repoIcon], cls);
+export const iconOf = (a: StoreApp, f: Facts, cls: string) =>
+  iconTile(a.name, f.here || f.on ? [a.icon, a.repoIcon] : [a.repoIcon], cls);
 
 // a line under a tile's name: on the mesh, an update, or what it is
 export function tileSub(a: StoreApp, f: Facts): [string, string] {
   if (stateVars.busyId === a.id) return ['wait', f.want ? 'updating the mesh' : 'installing onto the mesh'];
   if (!f.want) return ['dim', a.category];
   if (f.failed) return ['bad', `v${f.want.version} · ${f.failed} host${f.failed === 1 ? '' : 's'} failed`];
-  if (f.busy) return ['wait', `v${f.want.version} · installing on ${f.all - f.on} host${f.all - f.on === 1 ? '' : 's'}`];
+  if (f.busy)
+    return ['wait', `v${f.want.version} · installing on ${f.all - f.on} host${f.all - f.on === 1 ? '' : 's'}`];
   if (f.update) return ['new', `v${f.update} is out`];
   return ['on', `v${f.want.version} · on ${f.on === f.all ? 'every host' : `${f.on} of ${f.all} hosts`}`];
 }
@@ -105,10 +132,17 @@ export function infoRows(a: StoreApp, f: Facts): HTMLElement {
     dl.append(dd);
   };
   row('on the mesh', f.want ? `v${f.want.version}` : 'not installed');
-  row('latest release', a.latest ? `v${a.latest}` : a.feedError ? `feed unreachable: ${a.feedError}` : 'checking', a.latest ? '' : 'dim');
+  row(
+    'latest release',
+    a.latest ? `v${a.latest}` : a.feedError ? `feed unreachable: ${a.feedError}` : 'checking',
+    a.latest ? '' : 'dim',
+  );
   if (f.want?.from) row('installed by', `${f.want.from}${f.want.at ? `, ${ago2(f.want.at)}` : ''}`);
   row('served at', Object.assign(el('a', '', a.mount), { href: a.mount, target: '_blank', rel: 'noopener' }));
-  row('source', Object.assign(el('a', '', a.repo.replace(/^https?:\/\//, '')), { href: a.repo, target: '_blank', rel: 'noopener' }));
+  row(
+    'source',
+    Object.assign(el('a', '', a.repo.replace(/^https?:\/\//, '')), { href: a.repo, target: '_blank', rel: 'noopener' }),
+  );
   row('verified by', a.signed ? 'sha256 and the signature against [apps] key' : 'sha256 from the release feed');
   if (a.agents.length) row('asks models as', a.agents.join(', '), 'mono');
   row('category', a.category);
@@ -120,10 +154,36 @@ export function hostList(a: StoreApp, f: Facts): HTMLElement {
   for (const [h, s] of hostRows(a)) {
     const li = el('li', 'store-host');
     const want = f.want;
-    const cls = !s ? (want ? 'wait' : 'off') : s.error ? 'fail' : s.busy ? 'mid' : want && s.version === want.version ? 'ok' : s.version ? 'old' : 'wait';
+    const cls = !s
+      ? want
+        ? 'wait'
+        : 'off'
+      : s.error
+        ? 'fail'
+        : s.busy
+          ? 'mid'
+          : want && s.version === want.version
+            ? 'ok'
+            : s.version
+              ? 'old'
+              : 'wait';
     li.className += ` ${cls}`;
-    const text = !s ? (want ? 'waiting' : 'none') : s.error ? s.error : s.busy ? 'installing' : s.version ? `v${s.version}${want && s.version !== want.version ? ', behind' : ''}` : 'removing';
-    li.append(el('i', 'store-dot'), el('span', `store-host-name${h === st.selfHost ? ' is-self' : ''}`, h), el('span', 'store-host-state', text));
+    const text = !s
+      ? want
+        ? 'waiting'
+        : 'none'
+      : s.error
+        ? s.error
+        : s.busy
+          ? 'installing'
+          : s.version
+            ? `v${s.version}${want && s.version !== want.version ? ', behind' : ''}`
+            : 'removing';
+    li.append(
+      el('i', 'store-dot'),
+      el('span', `store-host-name${h === st.selfHost ? ' is-self' : ''}`, h),
+      el('span', 'store-host-state', text),
+    );
     if (s?.error) li.title = s.error;
     list.append(li);
   }
@@ -137,19 +197,39 @@ export function editorOption(a: StoreApp, f: Facts): HTMLElement {
   const row = el('div', 'store-option');
   const text = el('div', 'store-option-text');
   const now = editorPref();
-  text.append(el('b', '', 'default editor'), el('span', 'store-option-sub', now === 'sulfur'
-    ? (f.here ? 'files on the desktop open in Sulfur' : f.want ? 'files open in Sulfur once this host has it; the built-in editor until then' : 'files open in Sulfur once it’s on the mesh')
-    : 'files on the desktop open in the built-in editor'));
+  text.append(
+    el('b', '', 'default editor'),
+    el(
+      'span',
+      'store-option-sub',
+      now === 'sulfur'
+        ? f.here
+          ? 'files on the desktop open in Sulfur'
+          : f.want
+            ? 'files open in Sulfur once this host has it; the built-in editor until then'
+            : 'files open in Sulfur once it’s on the mesh'
+        : 'files on the desktop open in the built-in editor',
+    ),
+  );
   const seg = el('div', 'store-seg');
-  for (const [id, label] of [['', 'built-in'], ['sulfur', 'Sulfur']] as [string, string][]) {
-    const b = Object.assign(el('button', `store-seg-btn${now === id ? ' on' : ''}`, label), { type: 'button', ariaPressed: String(now === id) });
+  for (const [id, label] of [
+    ['', 'built-in'],
+    ['sulfur', 'Sulfur'],
+  ] as [string, string][]) {
+    const b = Object.assign(el('button', `store-seg-btn${now === id ? ' on' : ''}`, label), {
+      type: 'button',
+      ariaPressed: String(now === id),
+    });
     b.addEventListener('click', () => {
       if (editorPref() === id) return;
       setEditorPref(id);
       stateVars.actError = '';
       // sulfur picked before any host has it: got for the mesh, as the pill would
       if (id === 'sulfur' && !f.want) {
-        if (st.acct?.admin) { act('/api/apps/install', a.id); return; }
+        if (st.acct?.admin) {
+          act('/api/apps/install', a.id);
+          return;
+        }
         stateVars.actError = 'Sulfur isn’t on the mesh yet: an admin gets it here; the built-in editor until then';
       }
       stateVars.sig = '';
@@ -180,7 +260,11 @@ export function page(a: StoreApp): HTMLElement {
   const [cls, sub] = tileSub(a, f);
   acts.append(el('span', `store-hero-sub ${cls}`, sub));
   if (f.here && f.update && admin) {
-    const open = Object.assign(el('button', 'store-link'), { type: 'button' }, { textContent: `open v${f.want!.version}` });
+    const open = Object.assign(
+      el('button', 'store-link'),
+      { type: 'button' },
+      { textContent: `open v${f.want!.version}` },
+    );
     open.addEventListener('click', () => dkWebApp(a.id));
     acts.append(open);
   }
@@ -213,9 +297,20 @@ export function page(a: StoreApp): HTMLElement {
   side.append(infoSec);
   if (f.want && admin) {
     const danger = el('section', 'store-sec');
-    const rm = Object.assign(el('button', 'store-remove', `remove ${a.name} from the mesh`), { type: 'button', disabled: stateVars.busyId === a.id });
+    const rm = Object.assign(el('button', 'store-remove', `remove ${a.name} from the mesh`), {
+      type: 'button',
+      disabled: stateVars.busyId === a.id,
+    });
     rm.addEventListener('click', async () => {
-      if (await pageAsk({ title: `remove ${a.name}`, message: `${a.name} v${f.want!.version} is dropped from every host. Nothing of yours is deleted; it can be got again.`, action: 'remove', danger: true })) act('/api/apps/remove', a.id);
+      if (
+        await pageAsk({
+          title: `remove ${a.name}`,
+          message: `${a.name} v${f.want!.version} is dropped from every host. Nothing of yours is deleted; it can be got again.`,
+          action: 'remove',
+          danger: true,
+        })
+      )
+        act('/api/apps/remove', a.id);
     });
     danger.append(rm);
     side.append(danger);

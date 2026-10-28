@@ -7,10 +7,25 @@ type Palette = Record<string, string>;
 
 // the cli's names for the library's tokens
 const cliTokens: Record<string, string> = {
-  bg: "--bg", fg: "--fg", muted: "--muted", accent: "--accent", accent2: "--accent-2", dim: "--dim",
-  glyphPurple: "--glyph-purple", glyphOrange: "--glyph-orange", border: "--border", card: "--card", tabbar: "--tabbar",
-  online: "--online", offmesh: "--offmesh", warn: "--warn",
-  teal: "--teal", sage: "--sage", sky: "--sky", rose: "--rose", sand: "--sand",
+  bg: "--bg",
+  fg: "--fg",
+  muted: "--muted",
+  accent: "--accent",
+  accent2: "--accent-2",
+  dim: "--dim",
+  glyphPurple: "--glyph-purple",
+  glyphOrange: "--glyph-orange",
+  border: "--border",
+  card: "--card",
+  tabbar: "--tabbar",
+  online: "--online",
+  offmesh: "--offmesh",
+  warn: "--warn",
+  teal: "--teal",
+  sage: "--sage",
+  sky: "--sky",
+  rose: "--rose",
+  sand: "--sand",
 };
 
 function paletteOf(id: string, mode: string): Palette {
@@ -45,7 +60,8 @@ const hex2 = (n: number) => Math.round(n).toString(16).padStart(2, "0");
 export const hexOf = (c: RGB) => "#" + hex2(c[0]) + hex2(c[1]) + hex2(c[2]);
 
 export function mix(a: string, b: string, t: number): string {
-  const x = rgb(a), y = rgb(b);
+  const x = rgb(a),
+    y = rgb(b);
   return hexOf([x[0] + (y[0] - x[0]) * t, x[1] + (y[1] - x[1]) * t, x[2] + (y[2] - x[2]) * t]);
 }
 
@@ -156,8 +172,10 @@ const softRe = /[^/.\-_:]*[/.\-_:]+|[^/.\-_:]+/g;
 export function wrap(s: string, w: number, hang: number): string[] {
   if (vlen(s) <= w || w < 2) return [s];
   const out: string[] = [];
-  let codes = "", line = "";
-  let n = 0, room = w;
+  let codes = "",
+    line = "";
+  let n = 0,
+    room = w;
   const next = () => {
     out.push(line);
     line = " ".repeat(hang) + codes;
@@ -198,7 +216,8 @@ export function wrap(s: string, w: number, hang: number): string[] {
 }
 
 export function size(): [number, number] {
-  const cols = process.stdout.columns, rows = process.stdout.rows;
+  const cols = process.stdout.columns,
+    rows = process.stdout.rows;
   if (!cols || !rows || cols <= 0 || rows <= 0) return [80, 24];
   return [cols, rows];
 }

@@ -1,17 +1,69 @@
 // run: its children in a job, the service's main, the update agent
-import type { Subprocess } from "bun";
-import { FFIType, JSCallback, ptr, type Pointer } from "bun:ffi";
+
+import { FFIType, JSCallback, type Pointer, ptr } from "bun:ffi";
 import { readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { Feed } from "@phosphorus/appfeed";
 import { list } from "@phosphorus/procs";
-import { at, capture, errText, fail, fileExists, home, lastLine, logTo, openLog, output, quiet, readTrim, say, sleep } from "../base.ts";
+import type { Subprocess } from "bun";
+import {
+  at,
+  capture,
+  errText,
+  fail,
+  fileExists,
+  home,
+  lastLine,
+  logTo,
+  openLog,
+  output,
+  quiet,
+  readTrim,
+  say,
+  sleep,
+} from "../base.ts";
 import type { OS, Reporter, Stop } from "../os.ts";
 import { newStop } from "../os.ts";
 import { tailscaleLogin } from "../tailnet.ts";
 import { agentReport } from "../upgrade.ts";
-import { RUNNING, STOPPED, STOP_PENDING, createService, lockRebuild, svcActive, svcInstalled, svcStart, svcStop, tailscaleCLI, tailscaleDirs, tailscaleInstall, tailscaleInstalled, uninstallAdmin, unpath } from "./service.ts";
-import { P, advapi32, appPickup, elevateWindows, escapeArg, feedPubkey, feedURL, kernel32, needSetup, prepareOS, ps, psq, runAs, setupOS, spawnDetached, svcName, u32, wmiStart, wstr } from "./setup.ts";
+import {
+  createService,
+  lockRebuild,
+  RUNNING,
+  STOP_PENDING,
+  STOPPED,
+  svcActive,
+  svcInstalled,
+  svcStart,
+  svcStop,
+  tailscaleCLI,
+  tailscaleDirs,
+  tailscaleInstall,
+  tailscaleInstalled,
+  uninstallAdmin,
+  unpath,
+} from "./service.ts";
+import {
+  advapi32,
+  appPickup,
+  elevateWindows,
+  escapeArg,
+  feedPubkey,
+  feedURL,
+  kernel32,
+  needSetup,
+  P,
+  prepareOS,
+  ps,
+  psq,
+  runAs,
+  setupOS,
+  spawnDetached,
+  svcName,
+  u32,
+  wmiStart,
+  wstr,
+} from "./setup.ts";
 
 // killOnClose run in a job its children inherit, all of them gone with run
 export function killOnClose() {
@@ -54,7 +106,8 @@ export const keep: unknown[] = [];
 // event loop free: ServiceMain reports RUNNING and returns, the handler marks
 // stop; both run on the SCM's threads and only touch flags
 export function dispatch(stop: Stop) {
-  const k = kernel32(), adv = advapi32();
+  const k = kernel32(),
+    adv = advapi32();
   let stopAsked = false;
   const handler = new JSCallback(
     (control: number): number => {
@@ -81,7 +134,10 @@ export function dispatch(stop: Stop) {
   table.writeBigUInt64LE(BigInt(ptr(name)), 0);
   table.writeBigUInt64LE(BigInt(serviceMain.ptr as number), 8);
   keep.push(handler, serviceMain, name, table);
-  const fn = k.GetProcAddress(k.GetModuleHandleW(ptr(wstr("advapi32.dll"))) as bigint, ptr(Buffer.from("StartServiceCtrlDispatcherW\0"))) as bigint;
+  const fn = k.GetProcAddress(
+    k.GetModuleHandleW(ptr(wstr("advapi32.dll"))) as bigint,
+    ptr(Buffer.from("StartServiceCtrlDispatcherW\0")),
+  ) as bigint;
   k.CreateThread(0n, 0n, fn, ptr(table), 0, 0n);
   const t = setInterval(() => {
     if (stopAsked) {
@@ -202,9 +258,17 @@ export async function upgradeApp(report: Reporter) {
       // NSIS's /D last and unquoted, spaces and all, the command line verbatim
       // with setup's own path quoted; /AGENT: no tray started and nothing
       // written to the service's own registry
-      let out = "", code = -1;
+      let out = "",
+        code = -1;
       try {
-        const p = Bun.spawn([escapeArg(setup), "/S", "/AGENT", "/D=" + dir], { argv0: setup, stdin: "ignore", stdout: "pipe", stderr: "pipe", windowsHide: true, windowsVerbatimArguments: true });
+        const p = Bun.spawn([escapeArg(setup), "/S", "/AGENT", "/D=" + dir], {
+          argv0: setup,
+          stdin: "ignore",
+          stdout: "pipe",
+          stderr: "pipe",
+          windowsHide: true,
+          windowsVerbatimArguments: true,
+        });
         const [o, e, c] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text(), p.exited]);
         out = o + e;
         code = c;
@@ -252,7 +316,8 @@ export const windows: OS = {
   logHint: () => at("state", "phosphorus.log"),
   async svcInstall() {
     if (await svcInstalled()) return;
-    if (!(await quiet("net", "session"))) throw fail("the phosphorus service isn't installed yet: phos start (it asks for admin once)");
+    if (!(await quiet("net", "session")))
+      throw fail("the phosphorus service isn't installed yet: phos start (it asks for admin once)");
     await createService();
   },
   svcActive,
@@ -268,7 +333,8 @@ export const windows: OS = {
   async svcRestart(noBlock) {
     if (noBlock) {
       // started through WMI, outside run's job that the stop kills
-      if (!(await wmiStart("powershell -NoProfile -NonInteractive -Command Restart-Service " + svcName + " -Force"))) throw fail("couldn't start the restart detached");
+      if (!(await wmiStart("powershell -NoProfile -NonInteractive -Command Restart-Service " + svcName + " -Force")))
+        throw fail("couldn't start the restart detached");
       return;
     }
     await svcStop();
@@ -284,9 +350,13 @@ export const windows: OS = {
     await quiet(tailscaleCLI(), "set", "--unattended");
   },
   async tailscaleReady() {
-    if (!fileExists(tailscaleCLI())) throw fail("no Tailscale here: install Tailscale for Windows (tailscale.com/download), then phos start");
+    if (!fileExists(tailscaleCLI()))
+      throw fail("no Tailscale here: install Tailscale for Windows (tailscale.com/download), then phos start");
     // tailscaleLaunch its service, set to start by the installer
-    await tailscaleLogin(async () => void (await quiet("net", "start", "Tailscale")), () => "start Tailscale from the Start menu");
+    await tailscaleLogin(
+      async () => void (await quiet("net", "start", "Tailscale")),
+      () => "start Tailscale from the Start menu",
+    );
   },
   async tailscaleStart() {},
   tailscaleUpFlags: () => ["--unattended"],

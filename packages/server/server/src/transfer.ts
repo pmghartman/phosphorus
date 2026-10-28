@@ -30,14 +30,29 @@ function localShare(c: Caller | undefined, share: string, ...rels: string[]): [f
 }
 
 // peerFiles a raw files request to a peer, the caller's rights sealed along
-async function peerFiles(signal: AbortSignal, c: Caller | undefined, host: string, op: string, method: string, q: URLSearchParams, body: ReadableStream<Uint8Array> | undefined, size: number): Promise<Response> {
+async function peerFiles(
+  signal: AbortSignal,
+  c: Caller | undefined,
+  host: string,
+  op: string,
+  method: string,
+  q: URLSearchParams,
+  body: ReadableStream<Uint8Array> | undefined,
+  size: number,
+): Promise<Response> {
   const ip = await tailnetIP(host);
   if (!ip) throw new Error(`can't find ${host} on the tailnet`);
   q.set("hop", "1");
   const headers: Record<string, string> = {};
   if (body) headers["Content-Length"] = String(size);
   if (c) headers[whoHeader] = SealGrant({ u: c.user, a: !!c.admin }, transferWait);
-  return fetch(`http://${ip}:${FrontendPort}/api/files/${host}/${op}?${q}`, { method, headers, body, signal, duplex: "half" } as RequestInit);
+  return fetch(`http://${ip}:${FrontendPort}/api/files/${host}/${op}?${q}`, {
+    method,
+    headers,
+    body,
+    signal,
+    duplex: "half",
+  } as RequestInit);
 }
 
 async function errOf(res: Response): Promise<string> {
@@ -53,7 +68,8 @@ export type Loc = { host: string; share: string; path: string };
 
 // copyAcross one file from a share to a share, any hosts, moved when move
 export async function copyAcross(c: Caller | undefined, from: Loc, to: Loc, move: boolean): Promise<Res> {
-  if (from.host === to.host && from.share === to.share && from.path === to.path) return [400, { error: "the same file" }];
+  if (from.host === to.host && from.share === to.share && from.path === to.path)
+    return [400, { error: "the same file" }];
   const signal = AbortSignal.timeout(transferWait);
   let src: ReadableStream<Uint8Array>;
   let size: number;
@@ -71,7 +87,16 @@ export async function copyAcross(c: Caller | undefined, from: Loc, to: Loc, move
   } else {
     let res: Response;
     try {
-      res = await peerFiles(signal, c, from.host, "download", "GET", new URLSearchParams({ share: from.share, path: from.path }), undefined, 0);
+      res = await peerFiles(
+        signal,
+        c,
+        from.host,
+        "download",
+        "GET",
+        new URLSearchParams({ share: from.share, path: from.path }),
+        undefined,
+        0,
+      );
     } catch (e) {
       return [502, { error: errText(e) }];
     }

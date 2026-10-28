@@ -1,6 +1,7 @@
 // status: btop for the whole mesh
-import { deskApps } from '../../lib/state.ts';
+
 import type { State, StatsSample } from '@phosphorus/wire';
+import { deskApps } from '../../lib/state.ts';
 import { statusRender } from '../status.ts';
 
 // one socket to the serving host, every host's samples fanned in there, open
@@ -13,9 +14,27 @@ export const ST_HIST = 400;
 export const ST_STALE_MS = 4000;
 
 // a card's elements: the parts drawn into, by box name and a few extras
-export type Parts = Record<string, any> & { head: HTMLElement; tile: HTMLElement; model: HTMLElement; modelBox: HTMLElement; modelHtml: string; sum: HTMLElement; sumCpu: HTMLCanvasElement; sumNet: HTMLElement; sumRx: HTMLCanvasElement; sumTx: HTMLCanvasElement };
+export type Parts = Record<string, any> & {
+  head: HTMLElement;
+  tile: HTMLElement;
+  model: HTMLElement;
+  modelBox: HTMLElement;
+  modelHtml: string;
+  sum: HTMLElement;
+  sumCpu: HTMLCanvasElement;
+  sumNet: HTMLElement;
+  sumRx: HTMLCanvasElement;
+  sumTx: HTMLCanvasElement;
+};
 // host -> {s, at, hist: {cpu, rx, tx}, card}
-export interface StHost { s: StatsSample | null; at: number; hist: Record<string, number[]>; card: { card: HTMLElement; parts: Parts } | null; gpu?: boolean; netMax?: number }
+export interface StHost {
+  s: StatsSample | null;
+  at: number;
+  hist: Record<string, number[]>;
+  card: { card: HTMLElement; parts: Parts } | null;
+  gpu?: boolean;
+  netMax?: number;
+}
 export const stHosts = new Map<string, StHost>();
 export let stWs: WebSocket | null = null;
 export let stRetry: ReturnType<typeof setTimeout> | null = null;
@@ -41,7 +60,9 @@ export function statusWatch(state?: State | null): void {
 }
 
 // the serving host switched: the stats socket follows it
-export function statusReconnect(): void { if (stWs) statusConnect(); }
+export function statusReconnect(): void {
+  if (stWs) statusConnect();
+}
 
 export function statusConnect() {
   clearTimeout(stRetry!);
@@ -53,16 +74,29 @@ export function statusConnect() {
   sock.onmessage = (ev) => {
     stLast = Date.now();
     let s: StatsSample;
-    try { s = JSON.parse(ev.data); } catch { return; }
+    try {
+      s = JSON.parse(ev.data);
+    } catch {
+      return;
+    }
     if (!s.host) return;
     const h = stHost(s.host);
     h.s = s;
     h.at = Date.now();
     if (s.cpu) {
-      const push = (k: string, v: number) => { h.hist[k]!.push(v); if (h.hist[k]!.length > ST_HIST) h.hist[k]!.shift(); };
+      const push = (k: string, v: number) => {
+        h.hist[k]!.push(v);
+        if (h.hist[k]!.length > ST_HIST) h.hist[k]!.shift();
+      };
       push('cpu', s.cpu.total);
-      push('rx', s.net.reduce((a, n) => a + n.rx, 0));
-      push('tx', s.net.reduce((a, n) => a + n.tx, 0));
+      push(
+        'rx',
+        s.net.reduce((a, n) => a + n.rx, 0),
+      );
+      push(
+        'tx',
+        s.net.reduce((a, n) => a + n.tx, 0),
+      );
       // the gpus' mean load, 0 on a host with none reporting
       const util = (s.gpus || []).filter((g) => g.util !== null);
       if (util.length) h.gpu = true;
@@ -85,19 +119,29 @@ export function statusAwake() {
   if (stWs && stOpen() && Date.now() - stLast > ST_QUIET_MS) statusConnect();
 }
 setInterval(statusAwake, 2000);
-document.addEventListener('visibilitychange', () => { if (!document.hidden) statusAwake(); });
-window.addEventListener('online', () => { if (stWs) statusConnect(); });
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) statusAwake();
+});
+window.addEventListener('online', () => {
+  if (stWs) statusConnect();
+});
 
 export function stHost(name: string): StHost {
   let h = stHosts.get(name);
-  if (!h) { h = { s: null, at: 0, hist: { cpu: [], rx: [], tx: [], gpu: [] }, card: null }; stHosts.set(name, h); }
+  if (!h) {
+    h = { s: null, at: 0, hist: { cpu: [], rx: [], tx: [], gpu: [] }, card: null };
+    stHosts.set(name, h);
+  }
   return h;
 }
 
 // once a frame at most, and only while shown
 export function statusDraw(): void {
   if (stFrame || !stOpen()) return;
-  stFrame = requestAnimationFrame(() => { stFrame = null; statusRender(); });
+  stFrame = requestAnimationFrame(() => {
+    stFrame = null;
+    statusRender();
+  });
 }
 
 export function statusState(state: State): void {

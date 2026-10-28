@@ -2,7 +2,29 @@
 import { jsNumber } from "@phosphorus/files";
 import { obj } from "@phosphorus/util";
 import { chatRows, chatWait, chatWaitMax } from "./chat.ts";
-import { adminOf, arr, askerOf, byOf, codeOf, errc, gameNameRe, jsString, knownHost, meshHosts, nameRe, name, noCreds, numOr, object, pressed, src, str, type Tool, ToolError, waitMaxS } from "./common.ts";
+import {
+  adminOf,
+  arr,
+  askerOf,
+  byOf,
+  codeOf,
+  errc,
+  gameNameRe,
+  jsString,
+  knownHost,
+  meshHosts,
+  name,
+  nameRe,
+  noCreds,
+  numOr,
+  object,
+  pressed,
+  src,
+  str,
+  type Tool,
+  ToolError,
+  waitMaxS,
+} from "./common.ts";
 import { fileStat } from "./control.ts";
 import { channelKnown, noteOpened, openedFor, viaOf } from "./extra.ts";
 import { hostStats, statsAll, watchScreens } from "./hosts.ts";
@@ -14,13 +36,23 @@ const notKnown = (to: string) => errc("not_found", `no one called ${to}; people 
 
 export const coreTools = (): Tool[] => [
   {
-    name: "mesh_hosts", title: "Mesh hosts", read: true,
+    name: "mesh_hosts",
+    title: "Mesh hosts",
+    read: true,
     description: "Every host on the phosphorus mesh: whether it runs phosphorus, its OS and version.",
-    schema: object({ health: { type: "boolean", default: false, description: "key only: each phosphorus host's health too, answering, version, round trip and tunnel" } }),
+    schema: object({
+      health: {
+        type: "boolean",
+        default: false,
+        description: "key only: each phosphorus host's health too, answering, version, round trip and tunnel",
+      },
+    }),
     run: async (a, m) => {
       const self = src.self();
       // this host's own row carries no version; copies so the mesh's stays as is
-      const hosts = src.tailnet().map((d) => (d.name === self.host && !d.version ? { ...d, version: self.version } : d));
+      const hosts = src
+        .tailnet()
+        .map((d) => (d.name === self.host && !d.version ? { ...d, version: self.version } : d));
       const out: Record<string, any> = { self, domain: src.domain(), hosts };
       if (a.health === true) {
         if (!m.caller) throw errc("forbidden", "health on a user's key only");
@@ -30,7 +62,9 @@ export const coreTools = (): Tool[] => [
     },
   },
   {
-    name: "services", title: "Services", read: true,
+    name: "services",
+    title: "Services",
+    read: true,
     description: "Every service published on the mesh, by host, with its name and where it is served.",
     schema: object({
       host: { type: "string", description: "with name: the service's host" },
@@ -57,19 +91,28 @@ export const coreTools = (): Tool[] => [
     },
   },
   {
-    name: "host_stats", title: "Host stats", read: true,
-    description: "Live cpu, memory, disk, gpu, network, phosphorus's parts and top processes of one host; no host, a row of percents for every host.",
-    schema: object({ host: { type: "string", description: "host name, as mesh_hosts lists it; blank for every host's row at once" } }),
+    name: "host_stats",
+    title: "Host stats",
+    read: true,
+    description:
+      "Live cpu, memory, disk, gpu, network, phosphorus's parts and top processes of one host; no host, a row of percents for every host.",
+    schema: object({
+      host: { type: "string", description: "host name, as mesh_hosts lists it; blank for every host's row at once" },
+    }),
     run: (a) => (str(a.host) ? hostStats(knownHost(a)) : statsAll()),
   },
   {
-    name: "git", title: "Git hosts", read: true,
+    name: "git",
+    title: "Git hosts",
+    read: true,
     description: "The git hosts (forgejo): which is master, which are replicas, how far behind, reachable or not.",
     schema: object(),
     run: () => src.gitHosts(),
   },
   {
-    name: "models", title: "Models and agents", read: true,
+    name: "models",
+    title: "Models and agents",
+    read: true,
     description:
       "The models: each agent's (chat, inline, code, claude-code, opencode) assigned mesh host and the one answering, " +
       "each mesh model host, its file, state, memory and the agents on it, and the last call's context window in tokens (system prompt, chat, prompt, reply) and speed.",
@@ -77,8 +120,11 @@ export const coreTools = (): Tool[] => [
     run: () => src.model(),
   },
   {
-    name: "people", title: "People online", read: true,
-    description: "Who is on phosphorus right now: each person connected, the host they are on, and whether they are typing.",
+    name: "people",
+    title: "People online",
+    read: true,
+    description:
+      "Who is on phosphorus right now: each person connected, the host they are on, and whether they are typing.",
     schema: object(),
     run: () =>
       src.people().map((p) => {
@@ -89,11 +135,23 @@ export const coreTools = (): Tool[] => [
       }),
   },
   {
-    name: "terminal_screen", title: "Read a terminal screen", read: true,
+    name: "terminal_screen",
+    title: "Read a terminal screen",
+    read: true,
     description:
       "Read only: the screen and recent scrollback of the asker's terminal tabs shared with phosphorus on one host. " +
       "wait_s waits for new output (a login, a command finishing) before reading.",
-    schema: object({ host: name, wait_s: { type: "integer", description: `seconds to wait for the screen to change, up to ${waitMaxS}`, default: 0 } }, "host"),
+    schema: object(
+      {
+        host: name,
+        wait_s: {
+          type: "integer",
+          description: `seconds to wait for the screen to change, up to ${waitMaxS}`,
+          default: 0,
+        },
+      },
+      "host",
+    ),
     run: async (a, m) => {
       const by = m.caller?.user ?? "";
       const host = knownHost(a);
@@ -108,7 +166,9 @@ export const coreTools = (): Tool[] => [
     },
   },
   {
-    name: "files_list", title: "List files", read: true,
+    name: "files_list",
+    title: "List files",
+    read: true,
     description:
       "Files shared to the mesh. No host: every host's shares and perms at once. " +
       "Host only: that host's shares. With a share: its entries to depth levels (folders end in /), " +
@@ -119,7 +179,11 @@ export const coreTools = (): Tool[] => [
       path: { type: "string", description: "folder in the share, blank for its root" },
       depth: { type: "integer", description: "levels to list, 1 to 8", default: 1 },
       match: { type: "string", description: "name glob, * and ?, case-insensitive" },
-      stat: { type: "boolean", description: "path names one file or folder: whether it exists, its size and mtime", default: false },
+      stat: {
+        type: "boolean",
+        description: "path names one file or folder: whether it exists, its size and mtime",
+        default: false,
+      },
     }),
     run: async (a, m) => {
       if (a.stat === true) return fileStat(a, m);
@@ -141,34 +205,58 @@ export const coreTools = (): Tool[] => [
         depth = jsNumber(a.depth);
         if (Number.isNaN(depth) || depth < 1 || depth > 8) throw errc("bad_input", "depth is 1 to 8");
       }
-      return pressed(src.actions.files(m.caller, host, "tree", str(a.share), { path: str(a.path), depth, match: str(a.match) }));
+      return pressed(
+        src.actions.files(m.caller, host, "tree", str(a.share), { path: str(a.path), depth, match: str(a.match) }),
+      );
     },
   },
   {
-    name: "files_read", title: "Read a file", read: true,
-    description: "Read a text file in a share, as the files tab's preview does, a page at a time, from: the next page's offset.",
-    schema: object({
-      host: name, share: { type: "string" },
-      path: { type: "string", description: "the file, relative to the share's root" },
-      from: { type: "integer", description: "character offset to read from", default: 0 },
-    }, "host", "share", "path"),
+    name: "files_read",
+    title: "Read a file",
+    read: true,
+    description:
+      "Read a text file in a share, as the files tab's preview does, a page at a time, from: the next page's offset.",
+    schema: object(
+      {
+        host: name,
+        share: { type: "string" },
+        path: { type: "string", description: "the file, relative to the share's root" },
+        from: { type: "integer", description: "character offset to read from", default: 0 },
+      },
+      "host",
+      "share",
+      "path",
+    ),
     run: async (a, m) => {
       const host = knownHost(a);
-      const f = obj(await pressed(src.actions.files(m.caller, host, "read", str(a.share), { path: str(a.path) }))) ?? {};
+      const f =
+        obj(await pressed(src.actions.files(m.caller, host, "read", str(a.share), { path: str(a.path) }))) ?? {};
       if (f.tooBig) return { path: f.path ?? null, size: f.size ?? null, note: "over 512KB: too big to read here" };
       if (f.binary) return { path: f.path ?? null, size: f.size ?? null, note: "a binary file, not text" };
       const u = [...str(f.text)];
       const from = Math.min(Math.trunc(Math.max(0, numOr(a.from, 0))), u.length);
       const end = Math.min(from + filePage, u.length);
-      const out: Record<string, any> = { path: f.path ?? null, size: f.size ?? null, from, text: u.slice(from, end).join("") };
+      const out: Record<string, any> = {
+        path: f.path ?? null,
+        size: f.size ?? null,
+        from,
+        text: u.slice(from, end).join(""),
+      };
       if (end < u.length) out.next = end;
       return out;
     },
   },
   {
-    name: "game_power", title: "Start or stop a game server",
-    description: "Press play or stop on a game service, as its button does, runs only the start or stop command declared for it.",
-    schema: object({ host: name, name: { type: "string" }, action: { type: "string", enum: ["start", "stop"] } }, "host", "name", "action"),
+    name: "game_power",
+    title: "Start or stop a game server",
+    description:
+      "Press play or stop on a game service, as its button does, runs only the start or stop command declared for it.",
+    schema: object(
+      { host: name, name: { type: "string" }, action: { type: "string", enum: ["start", "stop"] } },
+      "host",
+      "name",
+      "action",
+    ),
     run: (a, m) => {
       askerOf(m);
       const act = str(a.action);
@@ -177,7 +265,8 @@ export const coreTools = (): Tool[] => [
     },
   },
   {
-    name: "make_git_master", title: "Make git master",
+    name: "make_git_master",
+    title: "Make git master",
     description:
       "The git card's make master: the live master hands off to this host, or with none it is force-promoted. " +
       "Returns once it leads (up to 30s), never press it again while one is under way.",
@@ -189,15 +278,21 @@ export const coreTools = (): Tool[] => [
     },
   },
   {
-    name: "set_agent_model", title: "Assign an agent's model",
+    name: "set_agent_model",
+    title: "Assign an agent's model",
     description:
       "Assign a mesh host's model to an agent, mesh-wide: the host as phosphorus/<host> (or just <host>), blank for the " +
       "automatic pick. The agents: code, claude-code, opencode, and an app on the mesh while it is published, as tavern " +
       "(the tavern app's dungeon master). slot fast is the small model an agent uses for background work (code, claude-code, opencode only).",
-    schema: object({
-      agent: { type: "string", description: "code, claude-code, opencode, or an app on the mesh such as tavern" },
-      slot: { type: "string", enum: ["model", "fast"] }, model: { type: "string" },
-    }, "agent", "model"),
+    schema: object(
+      {
+        agent: { type: "string", description: "code, claude-code, opencode, or an app on the mesh such as tavern" },
+        slot: { type: "string", enum: ["model", "fast"] },
+        model: { type: "string" },
+      },
+      "agent",
+      "model",
+    ),
     run: (a, m) => {
       adminOf(m);
       askerOf(m);
@@ -205,19 +300,28 @@ export const coreTools = (): Tool[] => [
     },
   },
   {
-    name: "update_control", title: "Start or cancel a mesh update",
+    name: "update_control",
+    title: "Start or cancel a mesh update",
     description: "Start a mesh update (an admin's key), or cancel the running one. " + noCreds,
-    schema: object({
-      action: { type: "string", enum: ["start", "cancel"] },
-      hosts: { type: "array", items: { type: "string" }, description: "start only: just these hosts, to retry the ones that failed" },
-    }, "action"),
+    schema: object(
+      {
+        action: { type: "string", enum: ["start", "cancel"] },
+        hosts: {
+          type: "array",
+          items: { type: "string" },
+          description: "start only: just these hosts, to retry the ones that failed",
+        },
+      },
+      "action",
+    ),
     run: (a, m) => {
       adminOf(m);
       askerOf(m);
       const act = str(a.action);
       if (act !== "start" && act !== "cancel") throw new Error("action is start or cancel");
       // a chat ask starts one only through ask_credentials, its password
-      if (act === "start" && !m.caller) throw new Error("starting one takes the update password: ask_credentials update");
+      if (act === "start" && !m.caller)
+        throw new Error("starting one takes the update password: ask_credentials update");
       const only: string[] = [];
       for (const h of arr(a.hosts)) {
         if (!nameRe.test(str(h))) throw errc("bad_input", `bad host ${jsString(h)}`);
@@ -228,17 +332,25 @@ export const coreTools = (): Tool[] => [
     },
   },
   {
-    name: "files_write", title: "Write a file",
+    name: "files_write",
+    title: "Write a file",
     description:
       "Write a text file in a share with w: the whole file as text (made if missing), or old replaced by new, " +
       "old an exact passage found once in it. files_read it first to edit.",
-    schema: object({
-      host: name, share: { type: "string" },
-      path: { type: "string", description: "the file, relative to the share's root" },
-      text: { type: "string", description: "the whole file" },
-      old: { type: "string", description: "the exact passage to replace" }, new: { type: "string", description: "what replaces it" },
-      open: { type: "boolean", description: "also open the file in a editor tab on their page", default: false },
-    }, "host", "share", "path"),
+    schema: object(
+      {
+        host: name,
+        share: { type: "string" },
+        path: { type: "string", description: "the file, relative to the share's root" },
+        text: { type: "string", description: "the whole file" },
+        old: { type: "string", description: "the exact passage to replace" },
+        new: { type: "string", description: "what replaces it" },
+        open: { type: "boolean", description: "also open the file in a editor tab on their page", default: false },
+      },
+      "host",
+      "share",
+      "path",
+    ),
     run: async (a, m) => {
       const who = askerOf(m);
       const edit = typeof a.old === "string" && typeof a.new === "string";
@@ -259,20 +371,35 @@ export const coreTools = (): Tool[] => [
     },
   },
   {
-    name: "files_change", title: "Organize share files",
+    name: "files_change",
+    title: "Organize share files",
     description:
       "Organize a share within its perms: mkdir, rename or move (to ending in / moves into that folder, " +
       "missing folders made), delete (permanent). One change, or several in steps, run in order, stopping at the first failure.",
-    schema: object({
-      host: name, share: { type: "string" },
-      op: { type: "string", enum: ["mkdir", "rename", "delete"] },
-      path: { type: "string", description: "the folder to make, the entry to delete, or the one to rename" },
-      to: { type: "string", description: "rename only: its new path, or a folder ending in /" },
-      steps: {
-        type: "array", description: "several changes in place of op, path and to",
-        items: object({ op: { type: "string", enum: ["mkdir", "rename", "delete"] }, path: { type: "string" }, to: { type: "string" } }, "op", "path"),
+    schema: object(
+      {
+        host: name,
+        share: { type: "string" },
+        op: { type: "string", enum: ["mkdir", "rename", "delete"] },
+        path: { type: "string", description: "the folder to make, the entry to delete, or the one to rename" },
+        to: { type: "string", description: "rename only: its new path, or a folder ending in /" },
+        steps: {
+          type: "array",
+          description: "several changes in place of op, path and to",
+          items: object(
+            {
+              op: { type: "string", enum: ["mkdir", "rename", "delete"] },
+              path: { type: "string" },
+              to: { type: "string" },
+            },
+            "op",
+            "path",
+          ),
+        },
       },
-    }, "host", "share"),
+      "host",
+      "share",
+    ),
     run: async (a, m) => {
       askerOf(m);
       const host = knownHost(a);
@@ -282,7 +409,8 @@ export const coreTools = (): Tool[] => [
       for (const x of steps) {
         const st = obj(x) ?? {};
         const op = str(st.op);
-        if (op !== "mkdir" && op !== "rename" && op !== "delete") throw errc("bad_input", "op is mkdir, rename or delete");
+        if (op !== "mkdir" && op !== "rename" && op !== "delete")
+          throw errc("bad_input", "op is mkdir, rename or delete");
         if (!str(st.path)) throw errc("bad_input", "missing 'path'");
         if (op === "rename" && !str(st.to)) throw errc("bad_input", "missing 'to' for rename");
         const body = op === "rename" ? { from: str(st.path), to: str(st.to) } : { path: str(st.path) };
@@ -290,7 +418,10 @@ export const coreTools = (): Tool[] => [
         const o = obj(out) ?? {};
         if (status >= 300) {
           const e = str(o.error) || `status ${status}`;
-          throw new ToolError(codeOf(status), `${op} ${str(st.path)} failed: ${e}`, { done, failed: { ...st, error: e } });
+          throw new ToolError(codeOf(status), `${op} ${str(st.path)} failed: ${e}`, {
+            done,
+            failed: { ...st, error: e },
+          });
         }
         const d: Record<string, any> = { op, path: st.path ?? null };
         if (o.path && op !== "delete") d.now = o.path;
@@ -301,38 +432,63 @@ export const coreTools = (): Tool[] => [
     },
   },
   {
-    name: "open_file", title: "Open a file in the editor",
-    description: "Open a text or code file from a share in a code editor tab on the asker's page, highlighted, its syntax errors marked, to read and edit together. Nothing in it can be run.",
-    schema: object({ host: name, share: { type: "string" }, path: { type: "string", description: "the file, relative to the share's root" } }, "host", "share", "path"),
+    name: "open_file",
+    title: "Open a file in the editor",
+    description:
+      "Open a text or code file from a share in a code editor tab on the asker's page, highlighted, its syntax errors marked, to read and edit together. Nothing in it can be run.",
+    schema: object(
+      {
+        host: name,
+        share: { type: "string" },
+        path: { type: "string", description: "the file, relative to the share's root" },
+      },
+      "host",
+      "share",
+      "path",
+    ),
     run: async (a, m) => {
       const host = knownHost(a);
       const as = askerOf(m);
       await pressed(src.actions.files(m.caller, host, "read", str(a.share), { path: str(a.path) }));
-      if (!(await as.ui({ kind: "code", host, share: str(a.share), path: str(a.path) }))) throw errc("unreachable", "no Phosphorus window of theirs is open");
+      if (!(await as.ui({ kind: "code", host, share: str(a.share), path: str(a.path) })))
+        throw errc("unreachable", "no Phosphorus window of theirs is open");
       return { opened: host + "/" + jsString(a.path) };
     },
   },
   {
-    name: "open_terminal", title: "Open a terminal tab",
+    name: "open_terminal",
+    title: "Open a terminal tab",
     description:
       "Open a terminal tab to a phosphorus host on the asker's page, shared with phosphorus from the start. " +
-      "They log in themselves, phosphorus never types into it. " + noCreds,
+      "They log in themselves, phosphorus never types into it. " +
+      noCreds,
     schema: object({ host: name }, "host"),
     run: async (a, m) => {
       const host = knownHost(a);
       const as = askerOf(m);
-      if (!(await as.ui({ kind: "terminal", host, share: true }))) throw errc("unreachable", "no Phosphorus window of theirs is open");
+      if (!(await as.ui({ kind: "terminal", host, share: true })))
+        throw errc("unreachable", "no Phosphorus window of theirs is open");
       noteOpened(as.name, host);
-      return { opened: host, state: "opened, waiting for login", note: "it shares with phosphorus once they log in; terminal_screen with wait_s reads it then" };
+      return {
+        opened: host,
+        state: "opened, waiting for login",
+        note: "it shares with phosphorus once they log in; terminal_screen with wait_s reads it then",
+      };
     },
   },
   {
-    name: "chat_history", title: "Read chat", read: true,
+    name: "chat_history",
+    title: "Read chat",
+    read: true,
     description: "",
     schema: object({
       limit: { type: "integer", description: `lines, at most ${chatMax}`, default: 20 },
       channel: { type: "string", description: "one channel only: mesh for the main one, or dm:<name>" },
-      wait_s: { type: "integer", description: `key only: wait up to this many seconds (max ${chatWaitMax}) for lines newer than since`, default: 0 },
+      wait_s: {
+        type: "integer",
+        description: `key only: wait up to this many seconds (max ${chatWaitMax}) for lines newer than since`,
+        default: 0,
+      },
       since: { type: "integer", description: "with wait_s: only lines after this ms, default now" },
     }),
     run: (a, m) => {
@@ -353,14 +509,18 @@ export const coreTools = (): Tool[] => [
     },
   },
   {
-    name: "send_message", title: "Send a chat message",
+    name: "send_message",
+    title: "Send a chat message",
     description:
       "Post as yourself to the mesh group chat, or as a direct message to one person by their chat name, " +
       "for when the asker wants someone else told something. Never needed to answer the asker.",
-    schema: object({
-      text: { type: "string", description: "the message, markdown" },
-      to: { type: "string", description: "a person's chat name for a direct message, blank for the group chat" },
-    }, "text"),
+    schema: object(
+      {
+        text: { type: "string", description: "the message, markdown" },
+        to: { type: "string", description: "a person's chat name for a direct message, blank for the group chat" },
+      },
+      "text",
+    ),
     run: (a, m) => {
       askerOf(m);
       const to = str(a.to).trim().replace(/^@/, "");
@@ -369,14 +529,23 @@ export const coreTools = (): Tool[] => [
     },
   },
   {
-    name: "show_file", title: "Show a file to someone",
+    name: "show_file",
+    title: "Show a file to someone",
     description:
       "Invite a person into a share's file in the editor, as /share does: a dialog and a notification for them, " +
       "open in a tab on accepting. For when the asker wants someone to look at or work on a file with them.",
-    schema: object({
-      to: { type: "string", description: "the person's chat name" },
-      host: name, share: { type: "string" }, path: { type: "string", description: "the file, relative to the share's root" },
-    }, "to", "host", "share", "path"),
+    schema: object(
+      {
+        to: { type: "string", description: "the person's chat name" },
+        host: name,
+        share: { type: "string" },
+        path: { type: "string", description: "the file, relative to the share's root" },
+      },
+      "to",
+      "host",
+      "share",
+      "path",
+    ),
     run: async (a, m) => {
       askerOf(m);
       const host = knownHost(a);
@@ -388,9 +557,17 @@ export const coreTools = (): Tool[] => [
     },
   },
   {
-    name: "update_status", title: "Mesh update status", read: true,
+    name: "update_status",
+    title: "Mesh update status",
+    read: true,
     description: "The mesh update: whether one is running, who started it, and each host's result.",
-    schema: object({ history: { type: "boolean", default: false, description: "key only: also the last fifty updates started from this host, each host's result and error" } }),
+    schema: object({
+      history: {
+        type: "boolean",
+        default: false,
+        description: "key only: also the last fifty updates started from this host, each host's result and error",
+      },
+    }),
     run: async (a, m) => {
       const out: Record<string, any> = { lock: src.lock(), chain: src.chain() };
       if (a.history === true) {

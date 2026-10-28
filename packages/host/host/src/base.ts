@@ -1,12 +1,12 @@
 // the host's shared state and small helpers: the home, the log's tag and
 // stamp, where output goes once run logs to a file, and child processes
-import type { Subprocess } from "bun";
+
 import { existsSync, openSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeSync } from "node:fs";
 import { createConnection } from "node:net";
 import { join } from "node:path";
-import { parseIni } from "@phosphorus/util";
 import * as envfile from "@phosphorus/envfile";
-import { which } from "@phosphorus/util";
+import { parseIni, which } from "@phosphorus/util";
+import type { Subprocess } from "bun";
 
 export const isLinux = process.platform === "linux";
 export const isMac = process.platform === "darwin";
@@ -136,7 +136,12 @@ export const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
 // --- child processes ------------------------------------------------------------------
 
-export type SpawnOpts = { env?: Record<string, string | undefined>; cwd?: string; input?: string; stdin?: "inherit" | "ignore" };
+export type SpawnOpts = {
+  env?: Record<string, string | undefined>;
+  cwd?: string;
+  input?: string;
+  stdin?: "inherit" | "ignore";
+};
 
 // argv run on this terminal (or the log), its exit code; -1 when it can't
 // start; no stdin unless asked for, as Go's exec gave none
@@ -145,7 +150,7 @@ export async function spawnIO(argv: string[], o: SpawnOpts = {}): Promise<number
     const p = Bun.spawn(argv, {
       cwd: o.cwd,
       env: o.env as Record<string, string> | undefined,
-      stdin: o.input !== undefined ? new Blob([o.input]) : o.stdin ?? "ignore",
+      stdin: o.input !== undefined ? new Blob([o.input]) : (o.stdin ?? "ignore"),
       stdout: stdio(),
       stderr: stdio(),
       windowsHide: true,
@@ -180,10 +185,20 @@ export async function output(...argv: string[]): Promise<string> {
 }
 
 // argv run with its stdout and stderr both captured, and printed too when tee
-export async function capture(argv: string[], tee: boolean, env?: Record<string, string | undefined>): Promise<{ out: string; code: number }> {
+export async function capture(
+  argv: string[],
+  tee: boolean,
+  env?: Record<string, string | undefined>,
+): Promise<{ out: string; code: number }> {
   let p: Subprocess<"ignore", "pipe", "pipe">;
   try {
-    p = Bun.spawn(argv, { env: env as Record<string, string> | undefined, stdin: "ignore", stdout: "pipe", stderr: "pipe", windowsHide: true });
+    p = Bun.spawn(argv, {
+      env: env as Record<string, string> | undefined,
+      stdin: "ignore",
+      stdout: "pipe",
+      stderr: "pipe",
+      windowsHide: true,
+    });
   } catch (e) {
     return { out: errText(e), code: -1 };
   }

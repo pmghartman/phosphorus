@@ -1,15 +1,23 @@
 // /api/state: everything the page knows of the mesh, pushed over its socket, one read right
 // after the user's own action; each push applied to the mesh graph, the games, the desktop,
 // the update pane and the apps
-import { acctCheck } from '../features/account.ts';
-import { appCall } from '../apps/index.ts';
-import { renderGames } from '../features/games.ts';
-import { GIT_SERVICE, meshModelsFrom, pruneConnections, renderMesh, renderMeshGit, settleHost } from '../features/mesh/mesh.ts';
-import { st } from './state.ts';
+
 import type { Route, State, TailnetDevice } from '@phosphorus/wire';
-import { updateState } from '../features/update.ts';
+import { appCall } from '../apps/index.ts';
 import { dkHostsGone, dkRoutes } from '../desktop/desk.ts';
 import { dkDeskStamps } from '../desktop/deskfiles.ts';
+import { acctCheck } from '../features/account.ts';
+import { renderGames } from '../features/games.ts';
+import {
+  GIT_SERVICE,
+  meshModelsFrom,
+  pruneConnections,
+  renderMesh,
+  renderMeshGit,
+  settleHost,
+} from '../features/mesh/mesh.ts';
+import { updateState } from '../features/update.ts';
+import { st } from './state.ts';
 
 const aboutVersion = document.getElementById('about-version')!;
 
@@ -34,8 +42,9 @@ function applyState(state: State) {
   }
 
   const next = state.gitHosts;
-  const gitChanged = JSON.stringify(next.map((h) => [h.host, h.reachable, h.role, h.eligible]))
-    !== JSON.stringify(st.gitHostsList.map((h) => [h.host, h.reachable, h.role, h.eligible]));
+  const gitChanged =
+    JSON.stringify(next.map((h) => [h.host, h.reachable, h.role, h.eligible])) !==
+    JSON.stringify(st.gitHostsList.map((h) => [h.host, h.reachable, h.role, h.eligible]));
   st.gitHostsList = next;
   renderMeshGit();
 
@@ -73,10 +82,16 @@ export function connectState(): void {
   const sock = new WebSocket(`${proto}//${location.host}/api/state`);
   stateWs = sock;
   old?.close();
-  sock.onopen = () => { stateRetryMs = 300; };
+  sock.onopen = () => {
+    stateRetryMs = 300;
+  };
   sock.onmessage = (ev) => {
     let state: State;
-    try { state = JSON.parse(ev.data); } catch { return; }
+    try {
+      state = JSON.parse(ev.data);
+    } catch {
+      return;
+    }
     applyState(state);
   };
   sock.onclose = () => {

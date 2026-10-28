@@ -1,12 +1,34 @@
 // the one loop on the clock, own services refreshed, every tailnet peer
 // polled, both merged into the routing table
 import { join } from "node:path";
-import { FastMS, IdleMS, intervalMS, isHot, markHot } from "@phosphorus/util";
 import { Server as DNSServer, Zone } from "@phosphorus/gamedns";
 import { pinTargets, type Row, rowError, swap } from "@phosphorus/proxy";
 import { refresh } from "@phosphorus/services";
+import {
+  env,
+  errText,
+  FastMS,
+  FrontendPort,
+  flushWrites,
+  IdleMS,
+  intervalMS,
+  isHot,
+  isIPv4,
+  localeCompare,
+  markHot,
+  marshal,
+  Notes,
+  noteTailnetIPs,
+  now,
+  obj,
+  requestJSON,
+  run,
+  SelfHost,
+  StateDir,
+  sleep,
+  writeFileAtomic,
+} from "@phosphorus/util";
 import { type Peer as SSHPeer, writeConfig } from "./ssh.ts";
-import { env, errText, flushWrites, FrontendPort, isIPv4, localeCompare, marshal, Notes, noteTailnetIPs, now, obj, requestJSON, run, SelfHost, sleep, StateDir, writeFileAtomic } from "@phosphorus/util";
 
 const selfHost = SelfHost;
 const selfHostFile = join(StateDir, "self-host");
@@ -51,13 +73,25 @@ const hooks: Required<Hooks> = {
 const truthy = (v: unknown) => (typeof v === "number" ? v !== 0 && !Number.isNaN(v) : !!v);
 // as a JS template literal renders a JSON value
 const jsString = (v: unknown): string =>
-  v == null ? "null" : Array.isArray(v) ? v.map((e) => (e == null ? "" : jsString(e))).join(",") : typeof v === "object" ? "[object Object]" : String(v);
+  v == null
+    ? "null"
+    : Array.isArray(v)
+      ? v.map((e) => (e == null ? "" : jsString(e))).join(",")
+      : typeof v === "object"
+        ? "[object Object]"
+        : String(v);
 const str = (v: unknown) => (truthy(v) ? jsString(v) : "");
 
 // --- discovery -------------------------------------------------------------
 
 type Peer = { host: string; ip: string; os: string; online: boolean };
-type TSNode = { DNSName?: string; TailscaleIPs?: string[] | null; Online?: boolean; OS?: string; Tags?: string[] | null };
+type TSNode = {
+  DNSName?: string;
+  TailscaleIPs?: string[] | null;
+  Online?: boolean;
+  OS?: string;
+  Tags?: string[] | null;
+};
 
 let selfIP = "";
 let hostIPs = new Map<string, string>();
@@ -150,7 +184,8 @@ async function knownPeers(): Promise<[Peer[], boolean]> {
   lastDiscover = now();
   const online = new Set(found.filter((p) => p.online).map((p) => p.host));
   for (const h of online) offlineSince.delete(h);
-  for (const p of [...found, ...lastPeers]) if (!online.has(p.host) && !offlineSince.has(p.host)) offlineSince.set(p.host, lastDiscover);
+  for (const p of [...found, ...lastPeers])
+    if (!online.has(p.host) && !offlineSince.has(p.host)) offlineSince.set(p.host, lastDiscover);
   lastPeers = found;
   hasPeers = true;
   return [found, true];
@@ -185,7 +220,26 @@ const peerStates = new Map<string, PeerState>();
 function stateFor(h: string): PeerState {
   let s = peerStates.get(h);
   if (!s) {
-    s = { entries: [], presence: [], lock: null, chain: null, git: null, model: null, platform: "", version: "", misses: 0, lastSeq: 0, answered: false, everAnswered: false, fp: "", sys: "", answeredAt: 0, took: 0, nextTry: 0, trying: false };
+    s = {
+      entries: [],
+      presence: [],
+      lock: null,
+      chain: null,
+      git: null,
+      model: null,
+      platform: "",
+      version: "",
+      misses: 0,
+      lastSeq: 0,
+      answered: false,
+      everAnswered: false,
+      fp: "",
+      sys: "",
+      answeredAt: 0,
+      took: 0,
+      nextTry: 0,
+      trying: false,
+    };
     peerStates.set(h, s);
   }
   return s;
@@ -302,7 +356,10 @@ function mapGames(rows: Row[]): Map<string, string> {
     const name = jsString(r.name);
     if (out.has(name)) {
       const first = games.find((g) => jsString(g.name) === name)?.host;
-      notes.note("dup:" + name, `game ${name} is declared on more than one host, ${name}.${Zone} goes to ${typeof first === "string" ? first : ""}`);
+      notes.note(
+        "dup:" + name,
+        `game ${name} is declared on more than one host, ${name}.${Zone} goes to ${typeof first === "string" ? first : ""}`,
+      );
       continue;
     }
     const ip = hostIPs.get(typeof r.host === "string" ? r.host : "") ?? "";
@@ -314,18 +371,28 @@ function mapGames(rows: Row[]): Map<string, string> {
 async function tsAPICall(method: string, path: string, body?: unknown): Promise<any> {
   const headers: Record<string, string> = { Authorization: "Bearer " + tsAPIKey };
   if (body !== undefined) headers["Content-Type"] = "application/json";
-  const res = await fetch(tsAPI + path, { method, headers, body: body !== undefined ? marshal(body) : undefined, signal: AbortSignal.timeout(10000) });
+  const res = await fetch(tsAPI + path, {
+    method,
+    headers,
+    body: body !== undefined ? marshal(body) : undefined,
+    signal: AbortSignal.timeout(10000),
+  });
   const text = await res.text();
   if (res.status === 401) throw new Error("TS_API_KEY was rejected, expired? renew it in .env");
-  if (res.status < 200 || res.status >= 300) throw new Error(`${method} ${path} got status ${res.status}: ${text.trim()}`);
+  if (res.status < 200 || res.status >= 300)
+    throw new Error(`${method} ${path} got status ${res.status}: ${text.trim()}`);
   return text ? JSON.parse(text) : null;
 }
 
-let lastSplitSync = 0, lastGuestSweep = 0;
+let lastSplitSync = 0,
+  lastGuestSweep = 0;
 
 function syncSplitDNS(ns: string[]) {
   if (!tsAPIKey) {
-    notes.note("split-dns", `TS_API_KEY unset, keep the .${Zone} split DNS nameservers in the Tailscale admin console by hand`);
+    notes.note(
+      "split-dns",
+      `TS_API_KEY unset, keep the .${Zone} split DNS nameservers in the Tailscale admin console by hand`,
+    );
     return;
   }
   if (!ns.length || now() - lastSplitSync < splitDNSMS) return;
@@ -425,7 +492,13 @@ async function tick() {
       const ph = st.answered && st.misses < missThreshold;
       if (!ph && !p.online) continue;
       // the version the host last reported, kept while it isn't answering
-      next.push({ name: p.host, os: ph ? st.platform : p.os, phosphorus: ph, phosphorusSeen: st.everAnswered, version: st.version });
+      next.push({
+        name: p.host,
+        os: ph ? st.platform : p.os,
+        phosphorus: ph,
+        phosphorusSeen: st.everAnswered,
+        version: st.version,
+      });
     }
     devices = next;
     hostIPs = new Map(peers.map((p) => [p.host, p.ip]));
@@ -461,8 +534,14 @@ async function tick() {
   gameIPs = mapGames(merged);
   const selfIPNow = selfIP;
   const livePeers: SSHPeer[] = peers.map((p) => ({ host: p.host, ip: p.ip }));
-  const live = devices.filter((d) => d.phosphorus === true).map((d) => String(d.name)).sort();
-  const ns = live.map((m) => hostIPs.get(m) ?? "").filter(isIPv4).sort();
+  const live = devices
+    .filter((d) => d.phosphorus === true)
+    .map((d) => String(d.name))
+    .sort();
+  const ns = live
+    .map((m) => hostIPs.get(m) ?? "")
+    .filter(isIPv4)
+    .sort();
 
   swap(merged, (h) => ips.get(h) ?? "");
   if (held || hooks.ownLock() != null) hot = true;
@@ -489,10 +568,15 @@ export function start(h: Hooks) {
   if (h.platform) hooks.platform = h.platform;
   if (h.ownLock) hooks.ownLock = h.ownLock;
   if (h.hostServices) hooks.hostServices = h.hostServices;
-  gameDNS = new DNSServer((name) => gameIPs.get(name) ?? "", (k, m) => notes.note(k, m));
+  gameDNS = new DNSServer(
+    (name) => gameIPs.get(name) ?? "",
+    (k, m) => notes.note(k, m),
+  );
   if (selfHost) writeFileAtomic(selfHostFile, selfHost);
   markHot();
-  notes.log(`polling every online tailnet peer every ${FastMS}ms while the mesh is busy, every ${IdleMS}ms once it is quiet`);
+  notes.log(
+    `polling every online tailnet peer every ${FastMS}ms while the mesh is busy, every ${IdleMS}ms once it is quiet`,
+  );
   void (async () => {
     for (;;) {
       try {

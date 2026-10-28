@@ -7,7 +7,10 @@ const dir = mkdtempSync(join(tmpdir(), "phos-modeld-"));
 process.env.STATE_DIR = dir;
 process.env.PHOSPHORUS_INI_FILE = join(dir, "phosphorus.ini");
 const url = "https://huggingface.co/org/repo/blob/main/q4.gguf";
-writeFileSync(process.env.PHOSPHORUS_INI_FILE, `[model]\nurl = ${url}\nctx = 8192.7\nslots = 2.9\nhost = true\ngpu = false\n`);
+writeFileSync(
+  process.env.PHOSPHORUS_INI_FILE,
+  `[model]\nurl = ${url}\nctx = 8192.7\nslots = 2.9\nhost = true\ngpu = false\n`,
+);
 const { deviceRe, gpuLostRe, modelLink, readConfig } = await import("@phosphorus/modeld");
 // util's ini file is fixed on its first import, another test's in a whole run
 const iniTaken = readConfig().raw === url;
@@ -28,13 +31,27 @@ test("gpu lost", () => {
 });
 
 test("model link", () => {
-  expect(modelLink("https://huggingface.co/org/repo/blob/main/q4.gguf")).toEqual({ url: "https://huggingface.co/org/repo/resolve/main/q4.gguf", file: "q4.gguf" });
-  expect(modelLink("https://x.example/m/a%20b.gguf?download=1")).toEqual({ url: "https://x.example/m/a%20b.gguf?download=1", file: "a b.gguf" });
-  for (const raw of ["http://x.example/a.gguf", "https://x.example/a.safetensors", "https://x.example/", "not a url", ""]) expect(modelLink(raw)).toBeUndefined();
+  expect(modelLink("https://huggingface.co/org/repo/blob/main/q4.gguf")).toEqual({
+    url: "https://huggingface.co/org/repo/resolve/main/q4.gguf",
+    file: "q4.gguf",
+  });
+  expect(modelLink("https://x.example/m/a%20b.gguf?download=1")).toEqual({
+    url: "https://x.example/m/a%20b.gguf?download=1",
+    file: "a b.gguf",
+  });
+  for (const raw of [
+    "http://x.example/a.gguf",
+    "https://x.example/a.safetensors",
+    "https://x.example/",
+    "not a url",
+    "",
+  ])
+    expect(modelLink(raw)).toBeUndefined();
 });
 
 test("devices", () => {
-  const out = "Available devices:\n  Vulkan0: AMD Radeon RX 7800 XT (16368 MiB, 15600 MiB free)\n  Vulkan1: Intel UHD (1024 MiB, 900 MiB free)\n";
+  const out =
+    "Available devices:\n  Vulkan0: AMD Radeon RX 7800 XT (16368 MiB, 15600 MiB free)\n  Vulkan1: Intel UHD (1024 MiB, 900 MiB free)\n";
   expect([...out.matchAll(deviceRe)].map((m) => [m[1], m[3]])).toEqual([
     ["Vulkan0", "15600"],
     ["Vulkan1", "900"],

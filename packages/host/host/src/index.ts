@@ -1,6 +1,6 @@
 // the machine's side, run by the installers and the cli: install, bring-up,
 // rebuild, start and stop, keys, the update agent and game play/stop
-import { eprint, ExitCode, home, homeDir, isLinux, print, readTrim, setHome, setTag, tag, at } from "./base.ts";
+import { at, ExitCode, eprint, home, homeDir, isLinux, print, readTrim, setHome, setTag, tag } from "./base.ts";
 import { restart, stop, update } from "./ctl.ts";
 import { gameControl, gameControlSetup } from "./game.ts";
 import { install } from "./install.ts";
@@ -14,8 +14,26 @@ import { status, vpn } from "./vpn.ts";
 
 // commands the ones main takes, everything else run's children's roles
 export const commands = new Set([
-  "", "start", "stop", "restart", "update", "keys", "install", "setup", "rebuild", "upgrade", "game-control", "game-control-setup",
-  "run", "ps", "uninstall", "status", "vpn", "help", "-h", "--help",
+  "",
+  "start",
+  "stop",
+  "restart",
+  "update",
+  "keys",
+  "install",
+  "setup",
+  "rebuild",
+  "upgrade",
+  "game-control",
+  "game-control-setup",
+  "run",
+  "ps",
+  "uninstall",
+  "status",
+  "vpn",
+  "help",
+  "-h",
+  "--help",
 ]);
 
 export const usageText = `usage: phos             the cli, the keys asked for on first start
@@ -65,7 +83,8 @@ export async function main(cmd: string, args: string[]): Promise<number> {
   if (f.home) setHome(f.home);
   if (!home) setHome(homeDir());
   // Linux: root's /var/lib/phosphorus, its .env root's alone
-  if (isLinux && process.geteuid?.() !== 0 && cmd !== "game-control" && cmd !== "game-control-setup" && cmd !== "help") return os.asRoot([cmd, ...args]);
+  if (isLinux && process.geteuid?.() !== 0 && cmd !== "game-control" && cmd !== "game-control-setup" && cmd !== "help")
+    return os.asRoot([cmd, ...args]);
   setTag(cmd);
   try {
     switch (cmd) {

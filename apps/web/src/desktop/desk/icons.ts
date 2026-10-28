@@ -1,21 +1,35 @@
 // the desktop: icons, windows and a task bar
+
+import type { Route } from '@phosphorus/wire';
 import { appCall } from '../../apps/index.ts';
-import { DK_GLYPHS, dkGlyph, el, isMobile, mobileQuery, svgEl } from '../../lib/dom.ts';
+import {
+  dkFms,
+  filesJoin,
+  filesParent,
+  filesWin,
+  fmMark,
+  fmSame,
+  fmSpring,
+  fmTransfer,
+  fmUnspring,
+  fmZones,
+  HOME,
+  may,
+} from '../../features/home/home.ts';
+import { dkMcpTray, mcpStat } from '../../features/mcp.ts';
 import { dkMeshTray } from '../../features/mesh/mesh.ts';
 import { dkBellTray } from '../../features/notes.ts';
-import { dkFms, filesJoin, filesParent, filesWin, fmSame, fmTransfer, fmMark, fmSpring, fmUnspring, fmZones, HOME, may } from '../../features/home/home.ts';
-import { dk, st } from '../../lib/state.ts';
-import type { Route } from '@phosphorus/wire';
 import { updateModal } from '../../features/update.ts';
-import { mcpStat, dkMcpTray } from '../../features/mcp.ts';
+import { DK_GLYPHS, dkGlyph, el, isMobile, mobileQuery, svgEl } from '../../lib/dom.ts';
+import { dk, st } from '../../lib/state.ts';
 import { dkControlTray } from '../control.ts';
+import { dkView } from '../desk.ts';
 import { dkDeskWatch, dkFileIcon } from '../deskfiles.ts';
 import { dkLoginHosts } from '../login.ts';
-import { dkBadge, dkBar, dkChips, dkClock, dkHomeBtn, dkAnchor, dkPlaceItems, type Pop } from '../taskbar.ts';
-import { dkClose, dkFocus, dkPlace, dkSnap } from '../windows.ts';
-import { dkSpotlightTray } from '../spotlight.ts';
 import { dkSessionHold, dkSessionRestore, dkSessionTry } from '../session.ts';
-import { dkView } from '../desk.ts';
+import { dkSpotlightTray } from '../spotlight.ts';
+import { dkAnchor, dkBadge, dkBar, dkChips, dkClock, dkHomeBtn, dkPlaceItems, type Pop } from '../taskbar.ts';
+import { dkClose, dkFocus, dkPlace, dkSnap } from '../windows.ts';
 import { dkTerminal } from './apps.ts';
 import { dkGitFrame } from './git.ts';
 import { dkDeskMenu, dkService, dkWallPaint } from './wallpaper.ts';
@@ -47,7 +61,17 @@ export function dkDesktop(): void {
   dkView.replaceChildren(desk);
   dkBand(icons);
   dkDeskMenu(icons);
-  dk.desk = { el: desk, icons, wins, tasks, hosts, bar, menubar, app, items: { search, hosts, agent, bell, clock: dk.clock!, profile: ctl } };
+  dk.desk = {
+    el: desk,
+    icons,
+    wins,
+    tasks,
+    hosts,
+    bar,
+    menubar,
+    app,
+    items: { search, hosts, agent, bell, clock: dk.clock!, profile: ctl },
+  };
   dkPlaceItems();
   dk.chips = '';
   dkChips();
@@ -91,7 +115,7 @@ export function dkArt(): HTMLElement {
 (function dkClockTick() {
   dkClock();
   setTimeout(dkClockTick, 60000 - (Date.now() % 60000) + 20);
-}());
+})();
 
 export function dkLogout(): void {
   // the session kept as it was, never saved empty on the way out
@@ -102,7 +126,17 @@ export function dkLogout(): void {
   // the last user's key and calls never shown to the next
   dk.mcp = null;
   dk.mcpStop?.();
-  Object.assign(mcpStat, { configured: false, seen: 0, at: 0, now: 0, got: 0, client: '', calls: [], recent: [], url: '' });
+  Object.assign(mcpStat, {
+    configured: false,
+    seen: 0,
+    at: 0,
+    now: 0,
+    got: 0,
+    client: '',
+    calls: [],
+    recent: [],
+    url: '',
+  });
   for (const w of [...dk.wins.values()]) dkClose(w, true);
   dk.creds.clear();
   dk.desk = null;
@@ -139,19 +173,40 @@ export function dkTryIcons(tile: HTMLElement, icons: string[], again = 0, retry 
   const next = (i: number) => {
     if (i === srcs.length) {
       tile.classList.remove('dk-wait');
-      if (again) setTimeout(() => { if (tile.isConnected) dkTryIcons(tile, srcs, Math.min(again * 2, 600000), true); }, again);
+      if (again)
+        setTimeout(() => {
+          if (tile.isConnected) dkTryIcons(tile, srcs, Math.min(again * 2, 600000), true);
+        }, again);
       return;
     }
     const img = Object.assign(el('img', 'dk-favicon'), { alt: '', decoding: 'async' as const, draggable: false });
-    img.addEventListener('load', () => { tile.replaceChildren(img, ...tile.querySelectorAll('.dk-public, .dk-badge')); tile.classList.add('dk-tile-img'); tile.classList.remove('dk-wait'); }, { once: true });
+    img.addEventListener(
+      'load',
+      () => {
+        tile.replaceChildren(img, ...tile.querySelectorAll('.dk-public, .dk-badge'));
+        tile.classList.add('dk-tile-img');
+        tile.classList.remove('dk-wait');
+      },
+      { once: true },
+    );
     img.addEventListener('error', () => next(i + 1), { once: true });
     img.src = srcs[i]!;
   };
   next(0);
 }
 
-export function dkIcon(kind: string, label: string, sub: string, open: () => void, icon: string | string[] = '', again = 0): HTMLButtonElement {
-  const b = Object.assign(el('button', `dk-icon dk-${kind}`), { type: 'button', title: sub ? `${label} on ${sub}` : label });
+export function dkIcon(
+  kind: string,
+  label: string,
+  sub: string,
+  open: () => void,
+  icon: string | string[] = '',
+  again = 0,
+): HTMLButtonElement {
+  const b = Object.assign(el('button', `dk-icon dk-${kind}`), {
+    type: 'button',
+    title: sub ? `${label} on ${sub}` : label,
+  });
   const tile = el('span', 'dk-tile');
   tile.appendChild(kind === 'service' ? dkMono(label) : dkGlyph(DK_GLYPHS[kind]!));
   if (kind === 'chat') tile.appendChild(dkBadge());
@@ -162,15 +217,29 @@ export function dkIcon(kind: string, label: string, sub: string, open: () => voi
   b.dataset.id = `${kind}\n${label}\n${sub}`;
   b.addEventListener('dblclick', open);
   // a phone's icons a grid that scrolls, a tap opening
-  b.addEventListener('click', () => { if (isMobile()) open(); });
-  b.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); open(); } });
+  b.addEventListener('click', () => {
+    if (isMobile()) open();
+  });
+  b.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      open();
+    }
+  });
   b.addEventListener('pointerdown', (e) => dkGrab(e, b, open));
   return b;
 }
 
 // a public one badged with a globe, open to all behind its own login only
 export function dkServiceIcon(r: Route): HTMLButtonElement {
-  const b = dkIcon('service', r.name, r.host, () => dkService(r), `/api/favicon/${encodeURIComponent(r.host)}/${encodeURIComponent(r.name)}`, 30000);
+  const b = dkIcon(
+    'service',
+    r.name,
+    r.host,
+    () => dkService(r),
+    `/api/favicon/${encodeURIComponent(r.host)}/${encodeURIComponent(r.name)}`,
+    30000,
+  );
   return r.public ? dkGlobe(b, 'public: no phosphorus login') : b;
 }
 
@@ -195,7 +264,14 @@ export function dkIcons(): void {
   const hosts = dkLiveHosts();
   const git = !!st.gitRoute;
   const webapps = dkWebApps();
-  const sig = JSON.stringify([hosts, git, !!st.acct?.admin, dk.services.map((r) => [r.host, r.name, !!r.public]), webapps.map((a) => a.id), dk.deskFiles.map((e) => [e.at, e.name, e.dir, e.mtime, e.hosts, e.stale, e.all])]);
+  const sig = JSON.stringify([
+    hosts,
+    git,
+    !!st.acct?.admin,
+    dk.services.map((r) => [r.host, r.name, !!r.public]),
+    webapps.map((a) => a.id),
+    dk.deskFiles.map((e) => [e.at, e.name, e.dir, e.mtime, e.hosts, e.stale, e.all]),
+  ]);
   if (sig === dk.sig) return;
   dk.sig = sig;
   // a host, login or service newly here: a saved window waiting on it opened
@@ -203,34 +279,64 @@ export function dkIcons(): void {
   const files = new Map(dk.deskFiles.map((e) => [`doc\n${filesJoin(e.at!, e.name)}`, e]));
   // one key per icon and what it shows, an unchanged one kept as it is
   const want: [string, () => HTMLButtonElement][] = [
-    ...hosts.map((h): [string, () => HTMLButtonElement] => [`terminal\n${h}`, () => dkIcon('terminal', 'terminal', h, () => dkTerminal(h))]),
+    ...hosts.map((h): [string, () => HTMLButtonElement] => [
+      `terminal\n${h}`,
+      () => dkIcon('terminal', 'terminal', h, () => dkTerminal(h)),
+    ]),
     ['files', () => dkIcon('files', 'files', '', () => filesWin())],
     ['chat', () => dkIcon('chat', 'chat', '', () => dkOpenApp('chat'))],
     ['status', () => dkIcon('status', 'status', '', () => dkOpenApp('status'))],
-    ...(git ? [['git', () => dkGlobe(dkIcon('git', 'git', '', () => dkOpenApp('git')), 'public: its own login only')] as [string, () => HTMLButtonElement]] : []),
+    ...(git
+      ? [
+          [
+            'git',
+            () =>
+              dkGlobe(
+                dkIcon('git', 'git', '', () => dkOpenApp('git')),
+                'public: its own login only',
+              ),
+          ] as [string, () => HTMLButtonElement],
+        ]
+      : []),
     ['code', () => dkIcon('code', 'code', '', () => dkOpenApp('code'))],
     ['agents', () => dkIcon('agents', 'agents', '', () => dkOpenApp('agents'))],
     ['games', () => dkIcon('games', 'games', '', () => dkOpenApp('games'))],
     ['apps', () => dkIcon('apps', 'apps', '', () => dkOpenApp('apps'))],
     ['about', () => dkIcon('about', 'about', '', () => dkOpenApp('about'))],
-    ...webapps.map((a): [string, () => HTMLButtonElement] => [`webapp\n${a.id}`, () => dkIcon('app', a.id, '', () => dkWebApp(a.id), a.mount + 'icon.svg')]),
-    ...dk.services.map((r): [string, () => HTMLButtonElement] => [JSON.stringify([r.host, r.name, !!r.public]), () => dkServiceIcon(r)]),
-    ...[...files.values()].map((e): [string, () => HTMLButtonElement] => [JSON.stringify([e.at, e.name, e.dir, e.mtime, e.hosts, e.stale, e.all, e.live]), () => dkFileIcon(e)]),
+    ...webapps.map((a): [string, () => HTMLButtonElement] => [
+      `webapp\n${a.id}`,
+      () => dkIcon('app', a.id, '', () => dkWebApp(a.id), a.mount + 'icon.svg'),
+    ]),
+    ...dk.services.map((r): [string, () => HTMLButtonElement] => [
+      JSON.stringify([r.host, r.name, !!r.public]),
+      () => dkServiceIcon(r),
+    ]),
+    ...[...files.values()].map((e): [string, () => HTMLButtonElement] => [
+      JSON.stringify([e.at, e.name, e.dir, e.mtime, e.hosts, e.stale, e.all, e.live]),
+      () => dkFileIcon(e),
+    ]),
   ];
   const had = new Map(dkIconEls().map((b) => [b.dataset.key, b]));
-  dk.desk.icons.replaceChildren(...want.map(([key, make]) => {
-    const old = had.get(key);
-    if (old) return old;
-    const b = make();
-    b.dataset.key = key;
-    b.classList.add('dk-new');
-    return b;
-  }));
+  dk.desk.icons.replaceChildren(
+    ...want.map(([key, make]) => {
+      const old = had.get(key);
+      if (old) return old;
+      const b = make();
+      b.dataset.key = key;
+      b.classList.add('dk-new');
+      return b;
+    }),
+  );
   dkLayout();
 }
 
 export function dkSaved(): Record<string, [number, number]> {
-  try { const v = JSON.parse(localStorage.getItem(DK_POS_KEY)!); return v && typeof v === 'object' && !Array.isArray(v) ? v : {}; } catch { return {}; }
+  try {
+    const v = JSON.parse(localStorage.getItem(DK_POS_KEY)!);
+    return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+  } catch {
+    return {};
+  }
 }
 export const dkIconEls = () => (dk.desk ? [...dk.desk.icons.querySelectorAll<HTMLButtonElement>('.dk-icon')] : []);
 export const dkGrid = () => {
@@ -254,11 +360,18 @@ export function dkLayout(): void {
   // a deleted file's cell freed once the desktop's files are read
   if (dk.deskReady) {
     for (const id of Object.keys(saved)) {
-      if (id.startsWith('doc\n') && !here.has(id)) { delete saved[id]; placed = true; }
+      if (id.startsWith('doc\n') && !here.has(id)) {
+        delete saved[id];
+        placed = true;
+      }
     }
   }
   // an icon not in yet keeps its cell, none of the others spilling into it
-  const held = new Set(Object.entries(saved).filter(([id, p]) => !here.has(id) && Array.isArray(p)).map(([, p]) => dkCell(...p)));
+  const held = new Set(
+    Object.entries(saved)
+      .filter(([id, p]) => !here.has(id) && Array.isArray(p))
+      .map(([, p]) => dkCell(...p)),
+  );
   const taken = new Set<string>();
   const rest: HTMLButtonElement[] = [];
   for (const b of dkIconEls()) {
@@ -268,22 +381,32 @@ export function dkLayout(): void {
       dkPut(b, p[0], p[1]);
     } else rest.push(b);
   }
-  const busy = (i: number, skipHeld: boolean) => taken.has(dkCell(Math.floor(i / rows), i % rows)) || (skipHeld && held.has(dkCell(Math.floor(i / rows), i % rows)));
+  const busy = (i: number, skipHeld: boolean) =>
+    taken.has(dkCell(Math.floor(i / rows), i % rows)) || (skipHeld && held.has(dkCell(Math.floor(i / rows), i % rows)));
   let i = 0;
   for (const b of rest) {
     let j = i;
     while (j < cols * rows && busy(j, true)) j += 1;
     // a full grid: held cells given up before overlapping
-    if (j >= cols * rows) { j = i; while (j < cols * rows && busy(j, false)) j += 1; } else i = j;
+    if (j >= cols * rows) {
+      j = i;
+      while (j < cols * rows && busy(j, false)) j += 1;
+    } else i = j;
     const c = Math.floor(j / rows);
     const r = j % rows;
     taken.add(dkCell(c, r));
     dkPut(b, c, r);
     // its cell kept, off the grid only while the desk is too small
     const p = saved[b.dataset.id!];
-    if (!(Array.isArray(p) && (p[0] >= cols || p[1] >= rows))) { saved[b.dataset.id!] = [c, r]; placed = true; }
+    if (!(Array.isArray(p) && (p[0] >= cols || p[1] >= rows))) {
+      saved[b.dataset.id!] = [c, r];
+      placed = true;
+    }
   }
-  if (placed) try { localStorage.setItem(DK_POS_KEY, JSON.stringify(saved)); } catch {}
+  if (placed)
+    try {
+      localStorage.setItem(DK_POS_KEY, JSON.stringify(saved));
+    } catch {}
   for (const id of [...dk.sel]) if (!dkIconEls().some((b) => b.dataset.id === id)) dk.sel.delete(id);
   dkPaintSel();
 }
@@ -292,13 +415,16 @@ export function dkPut(b: HTMLElement, c: number, r: number) {
   b.dataset.c = String(c);
   b.dataset.r = String(r);
   b.style.transform = `translate(${DK_PAD + c * DK_GX}px, ${DK_PAD + r * DK_GY}px)`;
-  if (b.classList.contains('dk-new')) requestAnimationFrame(() => requestAnimationFrame(() => b.classList.remove('dk-new')));
+  if (b.classList.contains('dk-new'))
+    requestAnimationFrame(() => requestAnimationFrame(() => b.classList.remove('dk-new')));
 }
 
 export function dkSave() {
   const saved = dkSaved();
   for (const b of dkIconEls()) saved[b.dataset.id!] = [Number(b.dataset.c), Number(b.dataset.r)];
-  try { localStorage.setItem(DK_POS_KEY, JSON.stringify(saved)); } catch {}
+  try {
+    localStorage.setItem(DK_POS_KEY, JSON.stringify(saved));
+  } catch {}
 }
 
 export function dkPaintSel() {
@@ -313,7 +439,9 @@ export function dkGrab(e: PointerEvent, b: HTMLButtonElement, open: () => void) 
   const id = b.dataset.id!;
   const add = e.ctrlKey || e.metaKey;
   const was = dk.sel.has(id);
-  if (add) { if (!was) dk.sel.add(id); } else if (!was) dk.sel = new Set([id]);
+  if (add) {
+    if (!was) dk.sel.add(id);
+  } else if (!was) dk.sel = new Set([id]);
   dkPaintSel();
   b.setPointerCapture(e.pointerId);
   const moving = dkIconEls().filter((x) => dk.sel.has(x.dataset.id!));
@@ -335,15 +463,22 @@ export function dkGrab(e: PointerEvent, b: HTMLButtonElement, open: () => void) 
     }
     const got = z && fmZones.get(z);
     const t = got?.where();
-    if (zone && zone !== z) { zone.classList.remove('drop'); fmUnspring(fmZones.get(zone)!.fm, zone); }
+    if (zone && zone !== z) {
+      zone.classList.remove('drop');
+      fmUnspring(fmZones.get(zone)!.fm, zone);
+    }
     zone = got && t && may(t.loc, 'w') ? z : null;
-    if (zone) { fmMark(got!.fm, zone); fmSpring(got!.fm, zone, t!); }
+    if (zone) {
+      fmMark(got!.fm, zone);
+      fmSpring(got!.fm, zone, t!);
+    }
   };
   // a copy riding the pointer above every window
   let ghost: HTMLElement | null = null;
   const paint = () => {
     frame = 0;
-    for (const x of moving) x.style.transform = `translate(${DK_PAD + Number(x.dataset.c) * DK_GX + dx}px, ${DK_PAD + Number(x.dataset.r) * DK_GY + dy}px)`;
+    for (const x of moving)
+      x.style.transform = `translate(${DK_PAD + Number(x.dataset.c) * DK_GX + dx}px, ${DK_PAD + Number(x.dataset.r) * DK_GY + dy}px)`;
     if (!files.length) return;
     if (!ghost) {
       ghost = el('div', 'dk-ghost');
@@ -361,7 +496,11 @@ export function dkGrab(e: PointerEvent, b: HTMLButtonElement, open: () => void) 
     px = ev.clientX;
     py = ev.clientY;
     if (!dragged && Math.hypot(dx, dy) < 4) return;
-    if (!dragged) { dragged = true; dk.desk!.el.classList.add('dk-moving'); for (const x of moving) x.classList.add('dk-lift'); }
+    if (!dragged) {
+      dragged = true;
+      dk.desk!.el.classList.add('dk-moving');
+      for (const x of moving) x.classList.add('dk-lift');
+    }
     if (!frame) frame = requestAnimationFrame(paint);
   };
   const onUp = (ev: PointerEvent) => {
@@ -370,8 +509,10 @@ export function dkGrab(e: PointerEvent, b: HTMLButtonElement, open: () => void) 
     b.removeEventListener('pointercancel', onUp);
     cancelAnimationFrame(frame);
     if (!dragged) {
-      if (add && was) { dk.sel.delete(id); dkPaintSel(); }
-      else if (!add && ev.type === 'pointerup') {
+      if (add && was) {
+        dk.sel.delete(id);
+        dkPaintSel();
+      } else if (!add && ev.type === 'pointerup') {
         dk.sel = new Set([id]);
         dkPaintSel();
         if (e.pointerType !== 'mouse') open();
@@ -388,8 +529,10 @@ export function dkGrab(e: PointerEvent, b: HTMLButtonElement, open: () => void) 
       zone.classList.remove('drop');
       fmUnspring(fm);
       for (const x of moving) dkPut(x, Number(x.dataset.c), Number(x.dataset.r));
-      const items = files.map((x) => dk.deskFiles.find((f) => filesJoin(f.at!, f.name) === x.dataset.file))
-        .filter((f): f is NonNullable<typeof f> => !!f).map((f) => ({ rel: filesJoin(f.at!, f.name), dir: !!f.dir, name: f.name }))
+      const items = files
+        .map((x) => dk.deskFiles.find((f) => filesJoin(f.at!, f.name) === x.dataset.file))
+        .filter((f): f is NonNullable<typeof f> => !!f)
+        .map((f) => ({ rel: filesJoin(f.at!, f.name), dir: !!f.dir, name: f.name }))
         .filter((it) => !(fmSame(HOME, t.loc) && filesParent(it.rel) === t.dir));
       if (items.length) fmTransfer(fm, HOME, items, t.loc, t.dir, fmSame(HOME, t.loc) && !ev.ctrlKey && !ev.altKey);
       return;
@@ -404,7 +547,11 @@ export function dkGrab(e: PointerEvent, b: HTMLButtonElement, open: () => void) 
 // each moved icon its own cell, else the nearest free one
 export function dkDrop(moving: HTMLElement[], dc: number, dr: number) {
   const { cols, rows } = dkGrid();
-  const taken = new Set(dkIconEls().filter((x) => !moving.includes(x)).map((x) => dkCell(x.dataset.c!, x.dataset.r!)));
+  const taken = new Set(
+    dkIconEls()
+      .filter((x) => !moving.includes(x))
+      .map((x) => dkCell(x.dataset.c!, x.dataset.r!)),
+  );
   for (const x of moving) {
     const c0 = Math.max(0, Math.min(cols - 1, Number(x.dataset.c) + dc));
     const r0 = Math.max(0, Math.min(rows - 1, Number(x.dataset.r) + dr));
@@ -483,11 +630,13 @@ export function dkBand(icons: HTMLElement) {
 // esc and ctrl+a for the icons, a window's own keys left alone; on the document after the
 // page's own escape (keys/shortcuts.ts), which marks a shift+esc as handled
 export function dkIconKeys(e: KeyboardEvent): void {
-  if (!dk.desk || e.defaultPrevented || e.ctrlKey && e.altKey) return;
+  if (!dk.desk || e.defaultPrevented || (e.ctrlKey && e.altKey)) return;
   const t = e.target as Node;
   if (t !== document.body && !dk.desk.icons.contains(t)) return;
-  if (e.key === 'Escape') { dk.sel.clear(); dkPaintSel(); }
-  else if (e.key === 'a' && (e.ctrlKey || e.metaKey)) {
+  if (e.key === 'Escape') {
+    dk.sel.clear();
+    dkPaintSel();
+  } else if (e.key === 'a' && (e.ctrlKey || e.metaKey)) {
     e.preventDefault();
     dk.sel = new Set(dkIconEls().map((b) => b.dataset.id!));
     dkPaintSel();
@@ -511,7 +660,10 @@ export function dkIconKeys(e: KeyboardEvent): void {
         if (ac <= 0) continue;
         const side = Math.abs((c - c0) * dr) + Math.abs((r - r0) * dc);
         const d = ac * 4 + side;
-        if (d < best) { best = d; pick = b; }
+        if (d < best) {
+          best = d;
+          pick = b;
+        }
       }
     }
     if (!pick) return;

@@ -1,38 +1,62 @@
 // every request on the frontend port, and the ingress's leftovers
 import { join } from "node:path";
 import * as chatmedia from "@phosphorus/chatmedia";
-import { intervalMS, markHot } from "@phosphorus/util";
 import { Write as collabWrite } from "@phosphorus/collab";
 import { Keys as envKeys } from "@phosphorus/envfile";
 import * as files from "@phosphorus/files";
 import * as git from "@phosphorus/git";
 import { type Caller, handle as mcpHandle } from "@phosphorus/mcp";
-import * as peers from "@phosphorus/peers";
 import * as mirror from "@phosphorus/mirror";
 import { Assign, EraseSlots, ServeChat, ServeMessages, ServeModels } from "@phosphorus/model";
+import * as peers from "@phosphorus/peers";
 import { favicon, faviconWhy, requestURI } from "@phosphorus/proxy";
 import { setPublic } from "@phosphorus/services";
 import * as store from "@phosphorus/store";
 import * as term from "@phosphorus/term";
 import * as update from "@phosphorus/update";
 import * as users from "@phosphorus/users";
-import * as webapps from "@phosphorus/webapps";
-import { errText, peerCall, tailnetIP } from "@phosphorus/util";
+import { errText, intervalMS, markHot, peerCall, tailnetIP } from "@phosphorus/util";
 import { blocks, highlight, markdown } from "@phosphorus/web-md";
+import * as webapps from "@phosphorus/webapps";
 import { serveStatic } from "@phosphorus/webstatic";
 import { type Ctx, isUpgrade } from "@phosphorus/wsock";
 import { codeRoute } from "./code.ts";
 import { adminPass, port, selfHost, setUpdating } from "./config.ts";
 import { configOp, hostLogs, localUI } from "./hostops.ts";
 import {
-  crossSite, forbidden, isBrowser, isLocalOrPeer, isLoopback, isTailnet, maxJSONBody, maxSaveBody, maxTextBody, onJSON, pageUser, plain, readRaw, type Res,
-  sameOrigin, sendJSON,
+  crossSite,
+  forbidden,
+  isBrowser,
+  isLocalOrPeer,
+  isLoopback,
+  isTailnet,
+  maxJSONBody,
+  maxSaveBody,
+  maxTextBody,
+  onJSON,
+  pageUser,
+  plain,
+  type Res,
+  readRaw,
+  sameOrigin,
+  sendJSON,
 } from "./http.ts";
 import { decode, obj, str, truthy } from "./js.ts";
 import { mcpCallsMesh, peerOp } from "./mcpops.ts";
 import { oauthRoute, Unauthorized } from "./oauth.ts";
 import { buildState, chainAction, forwardGame, mintGuestKey, noteState, runGameLocally, snapshot } from "./server.ts";
-import { filesInfo, forwardFiles, homeFilterResults, homeWho, pingPeer, runGrant, sendFile, serveRun, withHop, writeP } from "./shares.ts";
+import {
+  filesInfo,
+  forwardFiles,
+  homeFilterResults,
+  homeWho,
+  pingPeer,
+  runGrant,
+  sendFile,
+  serveRun,
+  withHop,
+  writeP,
+} from "./shares.ts";
 import { onUpgrade } from "./ws.ts";
 
 const gitForceRe = /^\/api\/githosts\/([A-Za-z0-9-]{1,63})\/force$/;
@@ -46,7 +70,8 @@ const appsSvcIconRe = /^\/api\/apps\/services\/([a-z][a-z0-9-]*)\/icon$/;
 const appsIconRe = /^\/api\/apps\/([a-z][a-z0-9-]*)\/icon$/;
 const hostRe = /^[a-z0-9][a-z0-9-]*$/;
 const pingRe = /^\/api\/ping\/([a-z0-9-]+)$/;
-const filesRe = /^\/api\/files\/([a-z0-9][a-z0-9-]*)\/(info|list|tree|search|read|download|upload|save|mkdir|rename|delete|run|mirror|own)$/;
+const filesRe =
+  /^\/api\/files\/([a-z0-9][a-z0-9-]*)\/(info|list|tree|search|read|download|upload|save|mkdir|rename|delete|run|mirror|own)$/;
 const publicRe = /^\/api\/services\/([a-z0-9][a-z0-9-]*)\/([a-z0-9][a-z0-9-]*)\/public$/;
 const faviconRe = /^\/api\/favicon\/([a-z0-9][a-z0-9-]*)\/([a-z0-9][a-z0-9-]*)$/;
 
@@ -93,7 +118,10 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
   if (crossSite(c)) return forbidden();
   if (isUpgrade(c.req)) return onUpgrade(c, pathname, q);
 
-  if (method === "GET" && (pathname === "/api/state" || pathname === "/api/mesh/snapshot" || pathname === "/api/update/local/status")) {
+  if (
+    method === "GET" &&
+    (pathname === "/api/state" || pathname === "/api/mesh/snapshot" || pathname === "/api/update/local/status")
+  ) {
     if (!(await isLocalOrPeer(c))) return forbidden();
     if (pathname === "/api/state") {
       const s = buildState();
@@ -121,7 +149,11 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
     if (!b) return new Response(null, { status: 404, headers: { "Cache-Control": "no-store" } });
     return new Response(b as Uint8Array<ArrayBuffer>, {
       status: 200,
-      headers: { "Content-Type": t, "Cache-Control": "private, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff" },
+      headers: {
+        "Content-Type": t,
+        "Cache-Control": "private, max-age=31536000, immutable",
+        "X-Content-Type-Options": "nosniff",
+      },
     });
   }
 
@@ -156,7 +188,8 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
   if (pathname.startsWith("/api/git/")) {
     if (!(await isTailnet(c))) return forbidden();
     if (pathname === "/api/git/vote" && method === "POST") return onJSON(c, maxJSONBody, true, git.vote);
-    if (pathname === "/api/git/view" && method === "GET") return sendJSON(200, { states: git.view(), pollMs: intervalMS(), offlineMs: peers.offlineMS() });
+    if (pathname === "/api/git/view" && method === "GET")
+      return sendJSON(200, { states: git.view(), pollMs: intervalMS(), offlineMs: peers.offlineMS() });
     if (pathname === "/api/git/promote" && method === "POST") {
       return onJSON(c, maxJSONBody, false, (p) => {
         const [st, out] = git.promote(p);
@@ -215,13 +248,18 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
       // the client shown needs-auth, never connected on a refused key, and sent to sign in again
       if (!s) return Unauthorized(c, "key " + why);
       caller = {
-        user: s.user, admin: s.admin, via,
+        user: s.user,
+        admin: s.admin,
+        via,
         login: (host) => {
           const [user, pass, has] = users.MCPLogin(k, host);
           return has ? { user, pass } : undefined;
         },
         pages: () => users.MCPPages(k),
-        hosts: () => Object.entries(users.MCPLogins(k) ?? {}).filter(([, l]) => str(obj(l)?.user) !== "").map(([h]) => h),
+        hosts: () =>
+          Object.entries(users.MCPLogins(k) ?? {})
+            .filter(([, l]) => str(obj(l)?.user) !== "")
+            .map(([h]) => h),
       };
     } else if (!isLoopback(c) && !(await isTailnet(c))) return Unauthorized(c);
     if (method !== "POST") return new Response(null, { status: 405, headers: { Allow: "POST" } });
@@ -244,9 +282,16 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
     const b = await readRaw(c, 32 * 1024 * 1024);
     const p = b === undefined ? undefined : obj(decode(b));
     if (!p) return sendJSON(400, { type: "error", error: { type: "invalid_request_error", message: "bad request" } });
-    return ServeMessages(c.req, p, pathname.slice("/api/model/v1/messages".length), isLoopback(c) || (await isTailnet(c)), pageUser(c));
+    return ServeMessages(
+      c.req,
+      p,
+      pathname.slice("/api/model/v1/messages".length),
+      isLoopback(c) || (await isTailnet(c)),
+      pageUser(c),
+    );
   }
-  if (pathname === "/api/model/v1/models" && method === "GET") return ServeModels(c.req, isLoopback(c) || (await isTailnet(c)) || pageUser(c));
+  if (pathname === "/api/model/v1/models" && method === "GET")
+    return ServeModels(c.req, isLoopback(c) || (await isTailnet(c)) || pageUser(c));
   if (pathname === "/api/model/purge" && method === "POST") {
     if (!isLoopback(c) && !(await isTailnet(c))) return forbidden();
     try {
@@ -310,7 +355,9 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
   if ((pathname === "/api/apps/install" || pathname === "/api/apps/remove") && method === "POST") {
     const s = users.Of(c);
     if (!isBrowser(c) || !((!!s && s.admin) || (adminPass === "" && isLoopback(c)))) return forbidden();
-    return onJSON(c, 1024, true, (p) => (pathname === "/api/apps/install" ? webapps.Install(str(p.id)) : webapps.Remove(str(p.id))));
+    return onJSON(c, 1024, true, (p) =>
+      pathname === "/api/apps/install" ? webapps.Install(str(p.id)) : webapps.Remove(str(p.id)),
+    );
   }
   // a service onto, updated on or off one host, run there as the person's saved login
   // for that host: anyone who logged into the host, admin or not
@@ -335,7 +382,15 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
     if (!(await isLocalOrPeer(c))) return forbidden();
     const ic = await (svcIc ? webapps.svcIcon(m[1]!) : webapps.AppIcon(m[1]!));
     if (!ic) return new Response(null, { status: 404, headers: { "Cache-Control": "max-age=600" } });
-    return new Response(ic.data as Uint8Array<ArrayBuffer>, { status: 200, headers: { "Content-Type": ic.type, "Cache-Control": "max-age=3600", "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox" } });
+    return new Response(ic.data as Uint8Array<ArrayBuffer>, {
+      status: 200,
+      headers: {
+        "Content-Type": ic.type,
+        "Cache-Control": "max-age=3600",
+        "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+      },
+    });
   }
   m = appsTarRe.exec(pathname);
   if (m && method === "GET") {
@@ -355,7 +410,8 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
     // the tailnet and this machine, the public side admins only
     const s = users.Of(c);
     if (!(await isLocalOrPeer(c)) || !sameOrigin(c) || (c.ingress && (!s || !s.admin))) return forbidden();
-    const host = m[1]!, name = m[2]!;
+    const host = m[1]!,
+      name = m[2]!;
     return onJSON(c, 1024, true, async (p) => {
       if (typeof p.public !== "boolean") return [400, { error: "public is true or false" }];
       const on = p.public;
@@ -363,14 +419,22 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
       if (q.has("hop")) return hopErr(host);
       const ip = await tailnetIP(host);
       if (!ip) return noPeer(host);
-      return peerCall(host, { host: ip, method: "POST", path: `/api/services/${host}/${name}/public?hop=1`, body: { public: on }, timeoutMs: 10000 });
+      return peerCall(host, {
+        host: ip,
+        method: "POST",
+        path: `/api/services/${host}/${name}/public?hop=1`,
+        body: { public: on },
+        timeoutMs: 10000,
+      });
     });
   }
 
   m = gameRe.exec(pathname);
   if (m && method === "POST") {
     if (!(await isLocalOrPeer(c))) return forbidden();
-    const host = m[1]!, name = m[2]!, action = m[3]!;
+    const host = m[1]!,
+      name = m[2]!,
+      action = m[3]!;
     let r: Res;
     if (host === selfHost) r = await runGameLocally(name, action);
     else if (q.has("hop")) r = [421, { error: `${name} was sent to ${selfHost}, which isn't ${host}` }];
@@ -387,7 +451,8 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
   m = mediaRe.exec(pathname);
   if (m && method === "GET") {
     if (!(await isLocalOrPeer(c))) return forbidden();
-    const host = m[1]!, id = m[2]!;
+    const host = m[1]!,
+      id = m[2]!;
     const dl = q.has("dl");
     const held = chatmedia.serve(host, id, dl);
     if (held) return held;
@@ -437,7 +502,10 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
     // a grant sealing an exec's stdin, past a plain body's cap
     return onJSON(c, maxSaveBody, true, peerOp);
   }
-  if (method === "POST" && (pathname === "/internal/logs" || pathname === "/internal/config" || pathname === "/internal/ui")) {
+  if (
+    method === "POST" &&
+    (pathname === "/internal/logs" || pathname === "/internal/config" || pathname === "/internal/ui")
+  ) {
     if (!(await isTailnet(c))) return forbidden();
     return onJSON(c, maxJSONBody, true, (p) => {
       if (pathname === "/internal/logs") return hostLogs(p);
@@ -473,7 +541,9 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
     return new Response(v.body as Uint8Array<ArrayBuffer>, {
       status: 200,
       headers: {
-        "Content-Type": v.type, "Cache-Control": "max-age=3600", "X-Content-Type-Options": "nosniff",
+        "Content-Type": v.type,
+        "Cache-Control": "max-age=3600",
+        "X-Content-Type-Options": "nosniff",
         "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
       },
     });
@@ -537,7 +607,14 @@ async function filesRoute(c: Ctx, host: string, op: string, q: URLSearchParams):
     return sendJSON(st, b);
   }
   if (m === "GET" && op === "search") {
-    const [st, b] = await files.search(sh, rel, q.get("query") ?? "", q.get("content") === "true", q.get("glob") ?? "", q.get("skip") ?? "");
+    const [st, b] = await files.search(
+      sh,
+      rel,
+      q.get("query") ?? "",
+      q.get("content") === "true",
+      q.get("glob") ?? "",
+      q.get("skip") ?? "",
+    );
     if (sh.id === "home" && st === 200) b.results = homeFilterResults(who, b.results);
     return sendJSON(st, b);
   }
@@ -557,7 +634,11 @@ async function filesRoute(c: Ctx, host: string, op: string, q: URLSearchParams):
       return b;
     }
     const qv = (k: string) => (q.has(k) ? q.get(k)! : undefined);
-    const [st, out] = await files.write(sh, rel, c.req.body, { id: q.get("id") ?? "", offset: qv("offset"), total: qv("total") });
+    const [st, out] = await files.write(sh, rel, c.req.body, {
+      id: q.get("id") ?? "",
+      offset: qv("offset"),
+      total: qv("total"),
+    });
     return sendJSON(st, out);
   }
   if (m === "POST" && op === "save") {

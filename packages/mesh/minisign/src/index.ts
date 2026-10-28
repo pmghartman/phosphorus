@@ -1,6 +1,15 @@
 // the update feed's signatures in minisign's format; keys and signatures as
 // base64 of their files
-import { createPrivateKey, createPublicKey, generateKeyPairSync, randomBytes, scryptSync, sign, verify, type KeyObject } from "node:crypto";
+import {
+  createPrivateKey,
+  createPublicKey,
+  generateKeyPairSync,
+  type KeyObject,
+  randomBytes,
+  scryptSync,
+  sign,
+  verify,
+} from "node:crypto";
 
 const algLegacy = Buffer.from("Ed");
 const algHashed = Buffer.from("ED");
@@ -32,7 +41,10 @@ function unwrap(s: string, line: number): [Buffer, string[]] {
 // a key id and its ed25519 public half
 export class PublicKey {
   private key: KeyObject;
-  constructor(public id: Buffer, raw: Buffer) {
+  constructor(
+    public id: Buffer,
+    raw: Buffer,
+  ) {
     this.key = createPublicKey({ key: { kty: "OKP", crv: "Ed25519", x: b64url(raw) }, format: "jwk" });
   }
 
@@ -48,7 +60,10 @@ export class PublicKey {
     if (!verify(null, msg, this.key, s)) throw new Error("minisign: bad signature");
     const tc = "trusted comment: ";
     const global = Buffer.from(lines[3]!.trim(), "base64");
-    if (!lines[2]!.startsWith(tc) || !verify(null, Buffer.concat([s, Buffer.from(lines[2]!.slice(tc.length))]), this.key, global))
+    if (
+      !lines[2]!.startsWith(tc) ||
+      !verify(null, Buffer.concat([s, Buffer.from(lines[2]!.slice(tc.length))]), this.key, global)
+    )
       throw new Error("minisign: bad trusted comment");
   }
 }
@@ -57,7 +72,10 @@ export class PublicKey {
 export class SecretKey {
   private key: KeyObject;
   // priv: the 32-byte seed then the 32-byte public key
-  constructor(public id: Buffer, priv: Buffer) {
+  constructor(
+    public id: Buffer,
+    priv: Buffer,
+  ) {
     this.key = createPrivateKey({
       key: { kty: "OKP", crv: "Ed25519", d: b64url(priv.subarray(0, 32)), x: b64url(priv.subarray(32)) },
       format: "jwk",
@@ -118,7 +136,12 @@ export function parseSecretKey(s: string, password: string): SecretKey {
   const body = Buffer.from(b.subarray(54));
   if (eq(b.subarray(2, 4), kdfScrypt)) {
     const [n, r, p] = scryptParams(ops, mem);
-    const stream = scryptSync(password, salt, body.length, { N: 2 ** n, r, p, maxmem: 128 * r * 2 ** n * 2 + 1024 * 1024 });
+    const stream = scryptSync(password, salt, body.length, {
+      N: 2 ** n,
+      r,
+      p,
+      maxmem: 128 * r * 2 ** n * 2 + 1024 * 1024,
+    });
     for (let i = 0; i < body.length; i++) body[i]! ^= stream[i]!;
   } else if (b[2] !== 0 || b[3] !== 0) throw new Error("minisign: unknown key derivation");
   if (!eq(blake2b(256, b.subarray(0, 2), body.subarray(0, 72)), body.subarray(72, 104)))

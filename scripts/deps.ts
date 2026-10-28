@@ -9,7 +9,8 @@ const checkOnly = process.argv.includes("--check");
 // every package dir: apps/*, packages/*/*
 const dirs: string[] = [];
 for (const a of readdirSync(join(root, "apps"))) dirs.push(join("apps", a));
-for (const g of readdirSync(join(root, "packages"))) for (const p of readdirSync(join(root, "packages", g))) dirs.push(join("packages", g, p));
+for (const g of readdirSync(join(root, "packages")))
+  for (const p of readdirSync(join(root, "packages", g))) dirs.push(join("packages", g, p));
 
 const names = new Map<string, string>();
 for (const d of dirs) {
@@ -45,7 +46,8 @@ for (const d of dirs) {
   }
   for (const name of want) if (!names.has(name)) throw new Error(`${d} imports ${name}, which no package declares`);
   const deps: Record<string, string> = {};
-  for (const [k, v] of Object.entries((pj.dependencies ?? {}) as Record<string, string>)) if (!k.startsWith("@phosphorus/")) deps[k] = v;
+  for (const [k, v] of Object.entries((pj.dependencies ?? {}) as Record<string, string>))
+    if (!k.startsWith("@phosphorus/")) deps[k] = v;
   for (const name of [...want].sort()) deps[name] = "workspace:*";
   const sorted = Object.fromEntries(Object.entries(deps).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
   const next = { ...pj, dependencies: Object.keys(sorted).length ? sorted : undefined };
@@ -57,7 +59,9 @@ for (const d of dirs) {
   if (checkOnly) console.error(`[deps] ${d}/package.json is out of date; run bun scripts/deps.ts`);
   else {
     writeFileSync(f, text);
-    console.log(`[deps] ${d}: ${Object.keys(sorted).filter((k) => k.startsWith("@phosphorus/")).length} workspace deps`);
+    console.log(
+      `[deps] ${d}: ${Object.keys(sorted).filter((k) => k.startsWith("@phosphorus/")).length} workspace deps`,
+    );
   }
 }
 if (checkOnly && bad) process.exit(1);

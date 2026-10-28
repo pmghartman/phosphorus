@@ -1,21 +1,48 @@
 /* --- the cli's look ---------------------------------------------------------- */
 
 /* the selection marker: a › in the accent, sliding in on hover or ↑↓ */
-.list li a, .game-card, .tab-menu-list li { position: relative; }
-:is(.list li a, .game-card, .tab-menu-list li:not(.empty))::after {
-  content: '›'; position: absolute; left: 0.4rem; top: 50%;
-  color: var(--accent); opacity: 0; transform: translate(-0.3rem, -50%);
-  transition: opacity 0.15s, transform 0.15s;
+.list li a,
+.game-card,
+.tab-menu-list li {
+  position: relative;
 }
-:is(.list li a, .game-card):is(:focus-visible)::after { opacity: 1; transform: translate(0, -50%); }
-.list li a { transition: background-color 0.15s, color 0.15s; }
+:is(.list li a, .game-card, .tab-menu-list li:not(.empty))::after {
+  content: "›";
+  position: absolute;
+  left: 0.4rem;
+  top: 50%;
+  color: var(--accent);
+  opacity: 0;
+  transform: translate(-0.3rem, -50%);
+  transition:
+    opacity 0.15s,
+    transform 0.15s;
+}
+:is(.list li a, .game-card):is(:focus-visible)::after {
+  opacity: 1;
+  transform: translate(0, -50%);
+}
+.list li a {
+  transition:
+    background-color 0.15s,
+    color 0.15s;
+}
 
 /* the pane a group's keys belong to, over its first key */
-.keybar [data-pane] { position: relative; }
+.keybar [data-pane] {
+  position: relative;
+}
 .keybar [data-pane]::before {
-  content: attr(data-pane); position: absolute; bottom: calc(100% + 0.12rem); left: 0;
-  font-size: 0.55rem; font-weight: 400; line-height: 1; letter-spacing: 0.04em;
-  color: var(--muted); pointer-events: none;
+  content: attr(data-pane);
+  position: absolute;
+  bottom: calc(100% + 0.12rem);
+  left: 0;
+  font-size: 0.55rem;
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  pointer-events: none;
 }
 
 /* one tab bar across the whole top, over the side column too */
@@ -26,106 +53,338 @@
 
 /* phones: swipes and taps, no key row, only the version */
 @media (max-width: 720px) {
-  .keybar { display: none; }
+  .keybar {
+    display: none;
+  }
   /* phones: the popup the screen's width */
-  .update-pane { position: fixed; left: 0.5rem; right: 0.5rem; width: auto; }
+  .update-pane {
+    position: fixed;
+    left: 0.5rem;
+    right: 0.5rem;
+    width: auto;
+  }
 }
 /* the update popup's own close on a phone, the icon's tap on a wide screen */
-.update-pane-header .modal-close { position: static; padding: 0 0.45ch; font-size: 0.9rem; line-height: 1; }
-@media (min-width: 721px) { .update-pane-header .modal-close { display: none; } }
+.update-pane-header .modal-close {
+  position: static;
+  padding: 0 0.45ch;
+  font-size: 0.9rem;
+  line-height: 1;
+}
+@media (min-width: 721px) {
+  .update-pane-header .modal-close {
+    display: none;
+  }
+}
 
 /* the mobile bar's accent edge, sliding between sections */
 
 /* the graph's own touch swipes, up to open its table, down to close */
-.mesh-graph-wrap { touch-action: none; }
+.mesh-graph-wrap {
+  touch-action: none;
+}
 
 /* light and dark cross-faded rather than snapped */
-.theme-fade, .theme-fade * { transition: background-color 0.3s, color 0.3s, border-color 0.3s, fill 0.3s, stroke 0.3s !important; }
+.theme-fade,
+.theme-fade * {
+  transition:
+    background-color 0.3s,
+    color 0.3s,
+    border-color 0.3s,
+    fill 0.3s,
+    stroke 0.3s !important;
+}
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 /* the chat's popup: a conversation's actions, or its attachments */
 .chat-pop {
-  position: fixed; z-index: 40; min-width: 13rem; max-width: min(24rem, calc(100vw - 1rem)); max-height: min(24rem, 70vh);
-  overflow-y: auto; display: flex; flex-direction: column; padding: 0.3rem;
-  background: var(--card); border: 1px solid var(--border); box-shadow: var(--drop); animation: pop-in 0.14s ease-out;
+  position: fixed;
+  z-index: 40;
+  min-width: 13rem;
+  max-width: min(24rem, calc(100vw - 1rem));
+  max-height: min(24rem, 70vh);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 0.3rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  box-shadow: var(--drop);
+  animation: pop-in 0.14s ease-out;
 }
-.pop-title { padding: 0.15rem 0.5rem 0.35rem; color: var(--sage); font-size: 0.7rem; letter-spacing: 0.04em; }
+.pop-title {
+  padding: 0.15rem 0.5rem 0.35rem;
+  color: var(--sage);
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+}
 .pop-item {
-  display: flex; align-items: center; gap: 0.7ch; padding: 0.3rem 0.5rem; border: 0; background: none;
-  color: var(--fg); font: inherit; font-size: 0.8rem; text-align: left; text-decoration: none; cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.7ch;
+  padding: 0.3rem 0.5rem;
+  border: 0;
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.8rem;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
 }
-.pop-item:hover, .pop-item:focus-visible, .pop-item:focus { background: var(--bg); box-shadow: inset 2px 0 var(--accent); }
-.pop-item.danger { color: var(--offmesh); }
-.pop-item.danger:focus, .pop-item.danger:hover { box-shadow: inset 2px 0 var(--offmesh); }
-.pop-item.armed { background: color-mix(in srgb, var(--offmesh) 14%, transparent); }
-.pop-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.pop-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pop-sub { color: var(--muted); font-size: 0.7rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pop-key { color: var(--dim); font-size: 0.7rem; }
-.pop-thumb { flex: none; width: 2.2rem; height: 2.2rem; object-fit: cover; border: 1px solid var(--border); background: var(--bg); }
+.pop-item:hover,
+.pop-item:focus-visible,
+.pop-item:focus {
+  background: var(--bg);
+  box-shadow: inset 2px 0 var(--accent);
+}
+.pop-item.danger {
+  color: var(--offmesh);
+}
+.pop-item.danger:focus,
+.pop-item.danger:hover {
+  box-shadow: inset 2px 0 var(--offmesh);
+}
+.pop-item.armed {
+  background: color-mix(in srgb, var(--offmesh) 14%, transparent);
+}
+.pop-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.pop-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pop-sub {
+  color: var(--muted);
+  font-size: 0.7rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pop-key {
+  color: var(--dim);
+  font-size: 0.7rem;
+}
+.pop-thumb {
+  flex: none;
+  width: 2.2rem;
+  height: 2.2rem;
+  object-fit: cover;
+  border: 1px solid var(--border);
+  background: var(--bg);
+}
 
 /* an invite to a shared editor, in the dm it came by */
-.chat-log .sys.show { color: var(--fg); }
-.chat-log .sys.show code { color: var(--sky); }
-.show-open { margin-left: 0.4ch; padding: 0 0.6ch; border: 1px solid var(--accent); background: none; color: var(--accent); font: inherit; font-size: 0.72rem; cursor: pointer; }
-.show-open:hover { background: color-mix(in srgb, var(--accent) 15%, transparent); }
-.show-modal code { color: var(--sky); overflow-wrap: anywhere; }
+.chat-log .sys.show {
+  color: var(--fg);
+}
+.chat-log .sys.show code {
+  color: var(--sky);
+}
+.show-open {
+  margin-left: 0.4ch;
+  padding: 0 0.6ch;
+  border: 1px solid var(--accent);
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+.show-open:hover {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+.show-modal code {
+  color: var(--sky);
+  overflow-wrap: anywhere;
+}
 
-
-.dk-stage { grid-area: w; min-height: 0; display: flex; overflow-y: auto; z-index: 1; }
+.dk-stage {
+  grid-area: w;
+  min-height: 0;
+  display: flex;
+  overflow-y: auto;
+  z-index: 1;
+}
 
 /* icons placed on a grid by app.js, a band selecting on bare desk */
-.dk-icon.sel .dk-tile { background: color-mix(in srgb, var(--accent) 18%, transparent); border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
-.dk-icon.sel .dk-label { background: var(--accent); color: var(--bg); }
+.dk-icon.sel .dk-tile {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+}
+.dk-icon.sel .dk-label {
+  background: var(--accent);
+  color: var(--bg);
+}
 .dk-band {
-  position: absolute; z-index: 3; pointer-events: none;
-  border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent);
+  position: absolute;
+  z-index: 3;
+  pointer-events: none;
+  border: 1px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
 }
 
 /* the mesh's own apps: chat, status, git and about in windows */
-.dk-icon.dk-chat .ic { color: var(--accent); }
-.dk-icon.dk-status .ic { color: var(--online); }
-.dk-icon.dk-git .ic { color: var(--sand); }
-.dk-tile { position: relative; }
-.dk-badge {
-  position: absolute; top: -0.4rem; right: -0.55rem; min-width: 1rem; padding: 0 0.2rem; line-height: 1rem;
-  background: var(--accent); color: var(--bg); font-size: 0.6rem; text-align: center;
+.dk-icon.dk-chat .ic {
+  color: var(--accent);
 }
-.dk-badge[hidden] { display: none; }
-.dk-tile .dk-public { position: absolute; bottom: -0.3rem; right: -0.4rem; width: 0.85rem; height: 0.85rem; pointer-events: none; }
-.dk-task { position: relative; }
+.dk-icon.dk-status .ic {
+  color: var(--online);
+}
+.dk-icon.dk-git .ic {
+  color: var(--sand);
+}
+.dk-tile {
+  position: relative;
+}
+.dk-badge {
+  position: absolute;
+  top: -0.4rem;
+  right: -0.55rem;
+  min-width: 1rem;
+  padding: 0 0.2rem;
+  line-height: 1rem;
+  background: var(--accent);
+  color: var(--bg);
+  font-size: 0.6rem;
+  text-align: center;
+}
+.dk-badge[hidden] {
+  display: none;
+}
+.dk-tile .dk-public {
+  position: absolute;
+  bottom: -0.3rem;
+  right: -0.4rem;
+  width: 0.85rem;
+  height: 0.85rem;
+  pointer-events: none;
+}
+.dk-task {
+  position: relative;
+}
 /* inline beside the label: the task strip scrolls, so anything over its edge is clipped */
-.dk-task:has(.dk-badge:not([hidden])) { display: inline-flex; align-items: center; gap: 0.35rem; }
-.dk-task .dk-badge { position: static; flex: none; }
-.dk-app .dk-body > .view { padding: 0.9rem; }
-.dk-app-chat .dk-body > .view { padding: 0.9rem 0.7rem 0.6rem; }
+.dk-task:has(.dk-badge:not([hidden])) {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.dk-task .dk-badge {
+  position: static;
+  flex: none;
+}
+.dk-app .dk-body > .view {
+  padding: 0.9rem;
+}
+.dk-app-chat .dk-body > .view {
+  padding: 0.9rem 0.7rem 0.6rem;
+}
 
-
-.dk-icon.dk-games .ic { color: var(--teal); }
-.dk-icon.dk-about .ic { color: var(--muted); }
-.dk-favicon { width: 1.4rem; height: 1.4rem; object-fit: contain; image-rendering: auto; }
-#view-games > .home-col { min-height: 100%; border: 0; padding: 0; }
-#view-games > .home-col > .home-col-head { display: none; }
+.dk-icon.dk-games .ic {
+  color: var(--teal);
+}
+.dk-icon.dk-about .ic {
+  color: var(--muted);
+}
+.dk-favicon {
+  width: 1.4rem;
+  height: 1.4rem;
+  object-fit: contain;
+  image-rendering: auto;
+}
+#view-games > .home-col {
+  min-height: 100%;
+  border: 0;
+  padding: 0;
+}
+#view-games > .home-col > .home-col-head {
+  display: none;
+}
 
 /* the tray's mesh: an icon, its graph and pings in a popup above it */
-.dk-tray-wrap { position: relative; display: flex; align-self: stretch; }
-.dk-tray { display: flex; align-items: center; padding: 0 0.6rem; background: none; border: 0; color: var(--muted); cursor: pointer; }
-.dk-tray .ic { width: 0.95rem; height: 0.95rem; }
-.dk-tray:hover, .dk-tray[aria-expanded="true"] { background: var(--tab-hover); color: var(--accent); }
-.dk-mesh-pop {
-  z-index: 20; display: flex; animation: pop-in 0.16s ease-out;
+.dk-tray-wrap {
+  position: relative;
+  display: flex;
+  align-self: stretch;
 }
-.dk-mesh-pop[hidden] { display: none; }
-.dk-mesh-grip { position: absolute; z-index: 3; left: 0; top: 0; width: 0.8rem; height: 0.8rem; cursor: nwse-resize; touch-action: none; }
-.dk-mesh-grip::before { content: ''; position: absolute; left: 3px; top: 3px; width: 5px; height: 5px; border-left: 1px solid var(--muted); border-top: 1px solid var(--muted); opacity: 0.5; }
-.dk-mesh-grip:hover::before { opacity: 1; border-color: var(--accent); }
+.dk-tray {
+  display: flex;
+  align-items: center;
+  padding: 0 0.6rem;
+  background: none;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+}
+.dk-tray .ic {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+.dk-tray:hover,
+.dk-tray[aria-expanded="true"] {
+  background: var(--tab-hover);
+  color: var(--accent);
+}
+.dk-mesh-pop {
+  z-index: 20;
+  display: flex;
+  animation: pop-in 0.16s ease-out;
+}
+.dk-mesh-pop[hidden] {
+  display: none;
+}
+.dk-mesh-grip {
+  position: absolute;
+  z-index: 3;
+  left: 0;
+  top: 0;
+  width: 0.8rem;
+  height: 0.8rem;
+  cursor: nwse-resize;
+  touch-action: none;
+}
+.dk-mesh-grip::before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  width: 5px;
+  height: 5px;
+  border-left: 1px solid var(--muted);
+  border-top: 1px solid var(--muted);
+  opacity: 0.5;
+}
+.dk-mesh-grip:hover::before {
+  opacity: 1;
+  border-color: var(--accent);
+}
 /* the update pane's card: its border, its shadow, the name on the top edge */
 .dk-mesh-pop > .mesh-panel {
-  display: flex !important; flex: 1 1 auto; min-height: 0; margin: 0; animation: none;
-  background: var(--card); box-shadow: var(--drop);
+  display: flex !important;
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+  animation: none;
+  background: var(--card);
+  box-shadow: var(--drop);
 }
-.dk-mesh-pop .mesh-header { font-size: 0.72rem; }
-.dk-mesh-pop .mesh-header > * { background: var(--card); }
+.dk-mesh-pop .mesh-header {
+  font-size: 0.72rem;
+}
+.dk-mesh-pop .mesh-header > * {
+  background: var(--card);
+}

@@ -1,7 +1,8 @@
 // the host reached over ssh with the user's saved login, as the terminal's:
 // this host's own sshd as the terminal finds it, a peer's on its tailnet address
-import { Client, type ClientChannel } from "ssh2";
+
 import { env, envInt, errText, SelfHost, tailnetIP } from "@phosphorus/util";
+import { Client, type ClientChannel } from "ssh2";
 import type { Creds } from "./script.ts";
 
 const tailMax = 8 * 1024;
@@ -9,7 +10,8 @@ const tailMax = 8 * 1024;
 // addrOf where host's sshd answers; this one's as HOST_SSH_HOST and
 // HOST_SSH_PORT say, read each time so a test may point them elsewhere
 async function addrOf(host: string): Promise<{ host: string; port: number }> {
-  if (host === (process.env.SELF_HOST ?? SelfHost)) return { host: env("HOST_SSH_HOST", "127.0.0.1"), port: envInt("HOST_SSH_PORT", 22) || 22 };
+  if (host === (process.env.SELF_HOST ?? SelfHost))
+    return { host: env("HOST_SSH_HOST", "127.0.0.1"), port: envInt("HOST_SSH_PORT", 22) || 22 };
   const ip = await tailnetIP(host);
   if (!ip) throw new Error(`can't find ${host} on the tailnet`);
   return { host: ip, port: 22 };
@@ -17,17 +19,33 @@ async function addrOf(host: string): Promise<{ host: string; port: number }> {
 
 // dial host as user, a password or keyboard-interactive login
 export function dial(host: string, user: string, pass: string): Promise<Client> {
-  return addrOf(host).then((addr) => new Promise<Client>((resolve, reject) => {
-    const c = new Client();
-    c.on("ready", () => resolve(c));
-    c.on("error", (e) => {
-      c.end();
-      const msg = errText(e);
-      reject(new Error(/authentication methods failed|unable to authenticate/i.test(msg) ? `the saved login for ${host} was refused` : `ssh to ${host}: ${msg}`));
-    });
-    c.on("keyboard-interactive", (_n, _i, _l, prompts, finish) => finish(prompts.map(() => pass)));
-    c.connect({ host: addr.host, port: addr.port, username: user, password: pass, tryKeyboard: true, readyTimeout: 10_000 });
-  }));
+  return addrOf(host).then(
+    (addr) =>
+      new Promise<Client>((resolve, reject) => {
+        const c = new Client();
+        c.on("ready", () => resolve(c));
+        c.on("error", (e) => {
+          c.end();
+          const msg = errText(e);
+          reject(
+            new Error(
+              /authentication methods failed|unable to authenticate/i.test(msg)
+                ? `the saved login for ${host} was refused`
+                : `ssh to ${host}: ${msg}`,
+            ),
+          );
+        });
+        c.on("keyboard-interactive", (_n, _i, _l, prompts, finish) => finish(prompts.map(() => pass)));
+        c.connect({
+          host: addr.host,
+          port: addr.port,
+          username: user,
+          password: pass,
+          tryKeyboard: true,
+          readyTimeout: 10_000,
+        });
+      }),
+  );
 }
 
 // dialAs host as c's login
@@ -37,7 +55,8 @@ export const dialAs = (host: string, c: Creds) => dial(host, c.user, c.pass);
 export class Tail {
   private b: Uint8Array = new Uint8Array();
   write(p: Uint8Array) {
-    this.b = this.b.length + p.length > tailMax ? Buffer.concat([this.b, p]).subarray(-tailMax) : Buffer.concat([this.b, p]);
+    this.b =
+      this.b.length + p.length > tailMax ? Buffer.concat([this.b, p]).subarray(-tailMax) : Buffer.concat([this.b, p]);
   }
   toString() {
     return Buffer.from(this.b).toString().trim();
@@ -59,7 +78,12 @@ export function exit(st: ClientChannel): Promise<number> {
 // feed stdin into the channel to its end, at most limit bytes, with backpressure
 export async function feed(st: ClientChannel, stdin: Stdin, limit = Infinity) {
   try {
-    const chunks = stdin instanceof Uint8Array ? [stdin] : typeof stdin === "string" ? [new TextEncoder().encode(stdin)] : stdin ?? [];
+    const chunks =
+      stdin instanceof Uint8Array
+        ? [stdin]
+        : typeof stdin === "string"
+          ? [new TextEncoder().encode(stdin)]
+          : (stdin ?? []);
     let n = 0;
     for await (let c of chunks) {
       if (n + c.length > limit) c = c.subarray(0, limit - n);
@@ -77,7 +101,14 @@ export type Captured = { code: number; out: Uint8Array; errs: string; error?: st
 
 // capture one command to its end, stdin fed it: its exit, stdout up to max,
 // stderr's tail; code -1 and error when it never ran out
-export async function capture(cl: Client, cmd: string, stdin: Stdin, max: number, timeoutMs: number, limit?: number): Promise<Captured> {
+export async function capture(
+  cl: Client,
+  cmd: string,
+  stdin: Stdin,
+  max: number,
+  timeoutMs: number,
+  limit?: number,
+): Promise<Captured> {
   let st: ClientChannel;
   try {
     st = await exec(cl, cmd);
@@ -107,7 +138,12 @@ export async function capture(cl: Client, cmd: string, stdin: Stdin, max: number
 }
 
 // run one command to its end, stdin fed it: its exit code and output's tail
-export async function run(cl: Client, cmd: string, stdin: string, timeoutMs: number): Promise<{ code: number; out: string; error?: string }> {
+export async function run(
+  cl: Client,
+  cmd: string,
+  stdin: string,
+  timeoutMs: number,
+): Promise<{ code: number; out: string; error?: string }> {
   let st: ClientChannel;
   try {
     st = await exec(cl, cmd);
@@ -141,7 +177,11 @@ export type Proc = {
 };
 
 // install an official installer, cmd, run as the login: ok and its output's tail
-export async function install(host: string, c: Creds, cmd: string): Promise<{ ok: boolean; out: string; error?: string }> {
+export async function install(
+  host: string,
+  c: Creds,
+  cmd: string,
+): Promise<{ ok: boolean; out: string; error?: string }> {
   const cl = await dial(host, c.user, c.pass);
   try {
     const r = await run(cl, cmd, "", 10 * 60_000);

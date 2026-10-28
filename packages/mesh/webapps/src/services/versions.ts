@@ -1,6 +1,6 @@
 // versions: each published copy asked, cached a minute
 import { errText, now, obj } from "@phosphorus/util";
-import { seams, type Route } from "./mesh.ts";
+import { type Route, seams } from "./mesh.ts";
 import { logf, repoOf, type Service } from "./scripts.ts";
 
 export const versionTTL = 60000;
@@ -16,7 +16,9 @@ export async function versionOf(s: Service, r: Route): Promise<string> {
     const ip = (await seams.ipOf(host)) || host;
     const scheme = r.scheme === "https" ? "https" : "http";
     const bp = String(r.base_path ?? "").replace(/^\/+|\/+$/g, "");
-    const res = await fetch(`${scheme}://${ip}:${r.port}${bp ? "/" + bp : ""}/${s.versionPath}`, { signal: AbortSignal.timeout(3000) });
+    const res = await fetch(`${scheme}://${ip}:${r.port}${bp ? "/" + bp : ""}/${s.versionPath}`, {
+      signal: AbortSignal.timeout(3000),
+    });
     const o = obj(await res.json());
     if (typeof o?.version === "string") v = o.version;
   } catch {}
@@ -43,7 +45,9 @@ export function behindMain(s: Service, commit: string): Promise<number | null> {
     p = (async () => {
       let n: number | null = null;
       try {
-        const o = obj(await seams.fetchJSON(`https://api.github.com/repos/${repo.owner}/${repo.name}/compare/${commit}...main`));
+        const o = obj(
+          await seams.fetchJSON(`https://api.github.com/repos/${repo.owner}/${repo.name}/compare/${commit}...main`),
+        );
         if (typeof o?.ahead_by === "number") n = o.ahead_by;
       } catch (e) {
         logf("%s's main: %s", s.name, errText(e));

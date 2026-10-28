@@ -5,7 +5,8 @@ import { join, resolve } from "node:path";
 import { inflateRawSync } from "node:zlib";
 
 process.env.STATE_DIR = mkdtempSync(join(tmpdir(), "mcp-test-"));
-const { allTools, callBegin, callDetail, callEnd, calls, handle, init, skill, skillFiles, statsRow, statsShape } = await import("@phosphorus/mcp");
+const { allTools, callBegin, callDetail, callEnd, calls, handle, init, skill, skillFiles, statsRow, statsShape } =
+  await import("@phosphorus/mcp");
 type Caller = import("@phosphorus/mcp").Caller;
 type Actions = import("@phosphorus/mcp").Actions;
 // the few buttons a test wires, typed as the whole set
@@ -29,8 +30,11 @@ function unzip(z: Uint8Array): Map<string, string> {
   const out = new Map<string, string>();
   for (let k = 0; k < n; k++) {
     expect(v.getUint32(p, true)).toBe(0x02014b50);
-    const method = v.getUint16(p + 10, true), csize = v.getUint32(p + 20, true);
-    const nameLen = v.getUint16(p + 28, true), extraLen = v.getUint16(p + 30, true), cmtLen = v.getUint16(p + 32, true);
+    const method = v.getUint16(p + 10, true),
+      csize = v.getUint32(p + 20, true);
+    const nameLen = v.getUint16(p + 28, true),
+      extraLen = v.getUint16(p + 30, true),
+      cmtLen = v.getUint16(p + 32, true);
     const at = v.getUint32(p + 42, true);
     const name = new TextDecoder().decode(z.subarray(p + 46, p + 46 + nameLen));
     p += 46 + nameLen + extraLen + cmtLen;
@@ -48,7 +52,8 @@ test("handle", async () => {
   const [, out] = await handle(rpc("ping"), false, undefined);
   expect(out.result).toBeDefined();
   const list = async (c: Caller) => (await handle(rpc("tools/list"), false, c))[1].result.tools.length;
-  const user = await list({ user: "u" }), admin = await list({ user: "a", admin: true });
+  const user = await list({ user: "u" }),
+    admin = await list({ user: "a", admin: true });
   expect(user).toBeGreaterThan(0);
   expect(admin).toBeGreaterThan(user);
   const [, o] = await handle(rpc("tools/call", { name: "nope" }), false, { user: "u" });
@@ -70,7 +75,15 @@ test("call log", () => {
 });
 
 // backticked words in the skill that are arguments, not tools
-const skillWords = new Set(["dry_run", "wait_s", "base_path", "clone_url", "mcp__phosphorus__", "bad_input", "not_found"]);
+const skillWords = new Set([
+  "dry_run",
+  "wait_s",
+  "base_path",
+  "clone_url",
+  "mcp__phosphorus__",
+  "bad_input",
+  "not_found",
+]);
 
 test("skill", async () => {
   init({ self: () => ({ host: "h", version: "1.2" }) });
@@ -99,8 +112,13 @@ test("skill", async () => {
 
 test("the skill's file list is the folder", () => {
   const root = resolve(import.meta.dir, "..", "..", "..", "..", "plugin", "skills");
-  const walk = (d: string): string[] => readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(d, e.name)) : [join(d, e.name)]));
-  const onDisk = walk(root).map((p) => p.slice(root.length + 1).replaceAll("\\", "/")).sort();
+  const walk = (d: string): string[] =>
+    readdirSync(d, { withFileTypes: true }).flatMap((e) =>
+      e.isDirectory() ? walk(join(d, e.name)) : [join(d, e.name)],
+    );
+  const onDisk = walk(root)
+    .map((p) => p.slice(root.length + 1).replaceAll("\\", "/"))
+    .sort();
   expect(Object.keys(skillFiles).sort()).toEqual(onDisk);
   for (const [n, p] of Object.entries(skillFiles)) expect(resolve(p)).toBe(join(root, n));
 });
@@ -117,7 +135,8 @@ test("mesh_hosts gives the self row its version", async () => {
 test("stats shape", () => {
   const long = "x".repeat(300);
   const s = {
-    host: "h", cpu: { total: 12.5, cores: [1, 2], load: [0.123456, null, 1] },
+    host: "h",
+    cpu: { total: 12.5, cores: [1, 2], load: [0.123456, null, 1] },
     mem: { total: 200, used: 50, avail: 150, cached: 9, swapTotal: 10, swapUsed: 5 },
     disk: { count: 1, total: 1000, used: 778 },
     gpus: [{ name: "g", util: 38.886, temp: null }],
@@ -163,7 +182,8 @@ test("key grants", async () => {
   expect(o.error.message).toContain("off this key");
   [, o] = await handle(rpc("initialize"), false, bare());
   const ins: string = o.result.instructions;
-  for (const w of ["acts as u, a user", "no saved host logins", "No forgejo login", "Off this key:", "host_power"]) expect(ins).toContain(w);
+  for (const w of ["acts as u, a user", "no saved host logins", "No forgejo login", "Off this key:", "host_power"])
+    expect(ins).toContain(w);
   // the mark off the mesh's domain first, inline after it
   const icons: { src: string }[] = o.result.serverInfo.icons;
   expect(icons[0]!.src).toBe("https://mesh.example/connector-icon.png");
@@ -172,7 +192,15 @@ test("key grants", async () => {
 
 test("a tool's error carries its code, a batch answers each request", async () => {
   init({ self: () => ({ host: "h", version: "1" }), tailnet: () => [] });
-  const [st, out] = await handle([rpc("tools/call", { name: "host_stats", arguments: { host: "nope" } }), { jsonrpc: "2.0", method: "x" }, rpc("nope")], true, undefined);
+  const [st, out] = await handle(
+    [
+      rpc("tools/call", { name: "host_stats", arguments: { host: "nope" } }),
+      { jsonrpc: "2.0", method: "x" },
+      rpc("nope"),
+    ],
+    true,
+    undefined,
+  );
   expect(st).toBe(200);
   expect(out).toHaveLength(2);
   expect(out[0].result.isError).toBe(true);
@@ -191,20 +219,40 @@ test("a tool's error carries its code, a batch answers each request", async () =
 test("a keyed write is audited, logged and mirrored", async () => {
   const steps: Record<string, any>[] = [];
   init({
-    self: () => ({ host: "h", version: "1" }), tailnet: () => [],
-    actions: acts({ files: (_c, _h, _op, _s, body) => [200, { ok: true, path: body.path }], userUIAsync: (_u, s) => void steps.push(s) }),
+    self: () => ({ host: "h", version: "1" }),
+    tailnet: () => [],
+    actions: acts({
+      files: (_c, _h, _op, _s, body) => [200, { ok: true, path: body.path }],
+      userUIAsync: (_u, s) => void steps.push(s),
+    }),
   });
   const c: Caller = { user: "u", via: "claude" };
-  const [, o] = await handle(rpc("tools/call", { name: "files_change", arguments: { host: "h", share: "0", op: "mkdir", path: "a/b" } }), false, c);
+  const [, o] = await handle(
+    rpc("tools/call", { name: "files_change", arguments: { host: "h", share: "0", op: "mkdir", path: "a/b" } }),
+    false,
+    c,
+  );
   expect(JSON.parse(o.result.content[0].text)).toEqual({ ok: true, op: "mkdir", path: "a/b", now: "a/b" });
   await Bun.sleep(10);
   expect(steps.map((s) => s.phase)).toEqual(["start", "end"]);
-  expect(steps[0]).toMatchObject({ kind: "agent", tool: "files_change", read: false, args: { host: "h", path: "a/b" } });
+  expect(steps[0]).toMatchObject({
+    kind: "agent",
+    tool: "files_change",
+    read: false,
+    args: { host: "h", path: "a/b" },
+  });
   expect(steps[1]).toMatchObject({ kind: "agent", ok: true, error: "" });
   const [, log] = await handle(rpc("tools/call", { name: "audit_log" }), false, c);
   const rows = JSON.parse(log.result.content[0].text).rows;
   expect(rows).toHaveLength(1);
-  expect(rows[0]).toMatchObject({ user: "u", via: "claude", tool: "files_change", ok: true, host: "h", args: { op: "mkdir", path: "a/b" } });
+  expect(rows[0]).toMatchObject({
+    user: "u",
+    via: "claude",
+    tool: "files_change",
+    ok: true,
+    host: "h",
+    args: { op: "mkdir", path: "a/b" },
+  });
   expect(rows[0].at).toMatch(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/);
   const mine = calls("u");
   expect(mine.recent[1]).toMatchObject({ tool: "files_change", detail: "a/b", host: "h", ok: true });
@@ -214,11 +262,21 @@ test("a keyed write is audited, logged and mirrored", async () => {
 test("terminal_run git hands the forgejo login to a fresh shell", async () => {
   let got: any;
   init({
-    self: () => ({ host: "h", version: "1" }), tailnet: () => [], domain: () => "mesh.example",
+    self: () => ({ host: "h", version: "1" }),
+    tailnet: () => [],
+    domain: () => "mesh.example",
     actions: acts({ op: (_h, op, p) => ((got = { op, p }), [200, { exit: 0, output: "ok" }]), userUIAsync: () => {} }),
   });
-  const c: Caller = { user: "u", login: () => ({ user: "me", pass: "pw" }), pages: () => ({ git: { user: "gu", pass: "gp" } }) };
-  const [, o] = await handle(rpc("tools/call", { name: "terminal_run", arguments: { host: "h", command: "git fetch", git: true, stdin: "x" } }), false, c);
+  const c: Caller = {
+    user: "u",
+    login: () => ({ user: "me", pass: "pw" }),
+    pages: () => ({ git: { user: "gu", pass: "gp" } }),
+  };
+  const [, o] = await handle(
+    rpc("tools/call", { name: "terminal_run", arguments: { host: "h", command: "git fetch", git: true, stdin: "x" } }),
+    false,
+    c,
+  );
   expect(o.result.isError).toBeUndefined();
   expect(got.op).toBe("exec");
   expect(got.p).toMatchObject({ user: "me", pass: "pw", timeout: 60, stdin: "gu\ngp\nx" });
@@ -226,6 +284,10 @@ test("terminal_run git hands the forgejo login to a fresh shell", async () => {
   expect(got.p.cmd).toContain("GIT_CONFIG_KEY_0='credential.https://git.mesh.example.helper'");
   expect(got.p.cmd.endsWith("; f'\ngit fetch")).toBe(true);
   // a saved login and no git: the persistent session, reset passed along
-  await handle(rpc("tools/call", { name: "terminal_run", arguments: { host: "h", command: "ls", reset: true } }), false, c);
+  await handle(
+    rpc("tools/call", { name: "terminal_run", arguments: { host: "h", command: "ls", reset: true } }),
+    false,
+    c,
+  );
   expect(got).toMatchObject({ op: "shell", p: { cmd: "ls", stdin: "", reset: true } });
 });

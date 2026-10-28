@@ -1,41 +1,75 @@
 // phosphorus in one process, the ingress, the mesh loop, the page, this
 // host's state for peers, chat and terminal websockets
-import type { Server } from "bun";
+
 import * as chatmedia from "@phosphorus/chatmedia";
-import { markHot } from "@phosphorus/util";
 import * as files from "@phosphorus/files";
 import * as git from "@phosphorus/git";
-import { type Caller, init as mcpInit, type Loc } from "@phosphorus/mcp";
-import * as peers from "@phosphorus/peers";
+import { type Caller, type Loc, init as mcpInit } from "@phosphorus/mcp";
 import * as mirror from "@phosphorus/mirror";
 import { Assign, Summary } from "@phosphorus/model";
+import * as peers from "@phosphorus/peers";
 import { listen as ingressListen, serve as proxyServe } from "@phosphorus/proxy";
 import { start as reconfigStart } from "@phosphorus/reconfig";
 import * as stats from "@phosphorus/stats";
 import * as store from "@phosphorus/store";
 import * as update from "@phosphorus/update";
 import * as users from "@phosphorus/users";
-import { errText, flushWrites, logf, tailnetIP } from "@phosphorus/util";
+import { errText, flushWrites, logf, markHot, tailnetIP } from "@phosphorus/util";
 import * as webapps from "@phosphorus/webapps";
 import type { WSData } from "@phosphorus/wsock";
-import { allPresence, chatEditAs, initChat, knownPerson, mergedChat, mergeFromPeers, mergePeerPresence, postAs, showAs } from "./chat.ts";
-import { baseDomain, bootID, getPlatform, ingressPort, isUpdating, loadPlatform, modelColor, port, recordPlatform, selfHost, selfInfo, setUpdating, Version } from "./config.ts";
+import type { Server } from "bun";
+import {
+  allPresence,
+  chatEditAs,
+  initChat,
+  knownPerson,
+  mergedChat,
+  mergeFromPeers,
+  mergePeerPresence,
+  postAs,
+  showAs,
+} from "./chat.ts";
+import {
+  baseDomain,
+  bootID,
+  getPlatform,
+  ingressPort,
+  isUpdating,
+  loadPlatform,
+  modelColor,
+  port,
+  recordPlatform,
+  selfHost,
+  selfInfo,
+  setUpdating,
+  Version,
+} from "./config.ts";
 import { configOp, hostConfig, hostLogsOn, svcRequest, userUI, userUIAsync } from "./hostops.ts";
 import { meshOnly } from "./http.ts";
 import { num } from "./js.ts";
 import { chainHistory, meshHealth, opOn, rememberChain } from "./mcpops.ts";
 import { reapShells } from "./mcpshell.ts";
 import { appHandler } from "./routes.ts";
-import { buildState, chainAction, forwardGame, gitRowsAny, hostServices, hostsInfo, publishHost, runGameLocally, snapshot } from "./server.ts";
+import {
+  buildState,
+  chainAction,
+  forwardGame,
+  gitRowsAny,
+  hostServices,
+  hostsInfo,
+  publishHost,
+  runGameLocally,
+  snapshot,
+} from "./server.ts";
 import { filesCall } from "./shares.ts";
 import { copyAcross } from "./transfer.ts";
 import { startPushes } from "./ws.ts";
 
-export { appHandler, buildState, snapshot, Version };
 export { codeBlocked, codeBlockedMsg, codeLogin, codeOptions } from "./code.ts";
-export { pageUser } from "./http.ts";
 export { lineTime, logTime } from "./hostops.ts";
+export { pageUser } from "./http.ts";
 export { driveShell, errShellTimeout, Lines, readLines } from "./mcpshell.ts";
+export { appHandler, buildState, snapshot, Version };
 
 // start everything but the signal wait: the frontend server, once listening
 export async function start(): Promise<Server<WSData>> {
@@ -60,15 +94,25 @@ export async function start(): Promise<Server<WSData>> {
   mirror.Start(tailnetIP, port);
   webapps.Start(tailnetIP, port);
   webapps.StartServices({
-    routes: peers.routes, tailnet: peers.tailnet, ipOf: tailnetIP, hostInfo: (h) => hostsInfo()[h],
-    publishLocal: (name, fields) => configOp(fields ? { op: "service", name, fields } : { op: "service", name, remove: true }),
+    routes: peers.routes,
+    tailnet: peers.tailnet,
+    ipOf: tailnetIP,
+    hostInfo: (h) => hostsInfo()[h],
+    publishLocal: (name, fields) =>
+      configOp(fields ? { op: "service", name, fields } : { op: "service", name, remove: true }),
   });
   ingressListen(ingressPort, appHandler, { pass: users.Pass, issuers: users.Issuers });
   stats.hooks.self = () => ({ host: selfHost, platform: getPlatform(), version: Version() });
   stats.hooks.peers = peers.peerIPs;
   await stats.init();
   initMCP();
-  peers.start({ mergeChat: mergeFromPeers, mergePresence: mergePeerPresence, platform: getPlatform, ownLock: update.ownLock, hostServices });
+  peers.start({
+    mergeChat: mergeFromPeers,
+    mergePresence: mergePeerPresence,
+    platform: getPlatform,
+    ownLock: update.ownLock,
+    hostServices,
+  });
   publishHost();
   setInterval(publishHost, 2000);
   reconfigStart(() => isUpdating() || update.busy());
@@ -106,7 +150,8 @@ function initMCP() {
     lock: update.meshLock,
     chain: () => update.chainStatus() ?? peers.chain(),
     actions: {
-      game: (host, name, action) => (host === selfHost ? runGameLocally(name, action) : forwardGame(host, name, action)),
+      game: (host, name, action) =>
+        host === selfHost ? runGameLocally(name, action) : forwardGame(host, name, action),
       gitMaster: (host) => {
         markHot();
         return git.makeMaster(host);
@@ -124,7 +169,12 @@ function initMCP() {
       },
       files: filesCall,
       copy: (c: Caller | undefined, from: Loc, to: Loc, move: boolean) =>
-        copyAcross(c, { host: from[0], share: from[1], path: from[2] }, { host: to[0], share: to[1], path: to[2] }, move),
+        copyAcross(
+          c,
+          { host: from[0], share: from[1], path: from[2] },
+          { host: to[0], share: to[1], path: to[2] },
+          move,
+        ),
       logs: hostLogsOn,
       op: (host, op, p) => {
         if (op === "mesh_health") return meshHealth().then((h) => [200, h] as [number, any]);
@@ -146,4 +196,3 @@ function initMCP() {
     known: knownPerson,
   });
 }
-

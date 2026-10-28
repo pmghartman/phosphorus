@@ -28,7 +28,11 @@ export function withheld(t: Tool, c: Caller): string {
   const g = grantsOf(c);
   if (t.admin && !g.admin) return "admins only";
   if (t.name === "forgejo" && !g.forgejo) {
-    return "needs a forgejo login on the key: save it in the browser's profile as the page login " + gitService + ", then reconnect";
+    return (
+      "needs a forgejo login on the key: save it in the browser's profile as the page login " +
+      gitService +
+      ", then reconnect"
+    );
   }
   return "";
 }
@@ -48,12 +52,16 @@ export function keyDescription(t: Tool, c: Caller): string {
 export function keyNote(c: Caller): string {
   const g = grantsOf(c);
   let b = ` This key acts as ${c.user}, ${g.admin ? "an admin" : "a user"}.`;
-  if (!g.hosts.length) b += " It carries no saved host logins: terminal_run works only with mode tab, in a terminal the person opened and shared.";
-  else b += ` Saved host logins: ${g.hosts.join(", ")}, where terminal_run runs over ssh as that login; any other host takes mode tab only.`;
+  if (!g.hosts.length)
+    b +=
+      " It carries no saved host logins: terminal_run works only with mode tab, in a terminal the person opened and shared.";
+  else
+    b += ` Saved host logins: ${g.hosts.join(", ")}, where terminal_run runs over ssh as that login; any other host takes mode tab only.`;
   if (g.forgejo) b += " A forgejo login is saved: forgejo and terminal_run git work as it.";
   else b += " No forgejo login: forgejo and terminal_run git are off.";
   const off = tools.filter((t) => withheld(t, c) !== "").map((t) => t.name);
   if (off.length) b += ` Off this key: ${off.join(", ")}; never offer them, say who could.`;
-  b += " Files follow each share's own r, w and d perms, which files_list shows. Logins saved in the browser reach the key on its next connection.";
+  b +=
+    " Files follow each share's own r, w and d perms, which files_list shows. Logins saved in the browser reach the key on its next connection.";
   return b;
 }

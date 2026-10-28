@@ -41,9 +41,14 @@ async function atFixtureTime<T>(fn: () => T | Promise<T>): Promise<T> {
 // vectors recorded from Node's crypto (scrypt defaults, aes-256-gcm)
 const vecSalt = "00112233445566778899aabbccddeeff";
 const vecPass = "hunter2 ünï";
-const vecOut = "8c86694dfb3f9a13c8f4068192ad0ddaf52fe9bbcd03d2a578ed68ca0fc79eb37579bc061fc2e5c5209ea0c8099bec46821efcfd5231b68850c6af01ec7f0a04";
+const vecOut =
+  "8c86694dfb3f9a13c8f4068192ad0ddaf52fe9bbcd03d2a578ed68ca0fc79eb37579bc061fc2e5c5209ea0c8099bec46821efcfd5231b68850c6af01ec7f0a04";
 const vecText = `{"hosts":{},"pages":{}} ✓`;
-const vecBox = { iv: "0102030405060708090a0b0c", tag: "d94ae642cf96f284c42501cd55dbf86f", data: "tG5xYqWZD7fplRlMOuSspjXD2htU2GVVnEm9" };
+const vecBox = {
+  iv: "0102030405060708090a0b0c",
+  tag: "d94ae642cf96f284c42501cd55dbf86f",
+  data: "tG5xYqWZD7fplRlMOuSspjXD2htU2GVVnEm9",
+};
 
 test("derive matches node", () => {
   expect(hex(U.Derive(vecPass, vecSalt))).toBe(vecOut);
@@ -88,8 +93,18 @@ test("go's files, keys and tokens open as they are", async () => {
     expect(await U.Soon(c)).toEqual(s);
     // the vault, prefs and token it sealed
     const me = await U.Me(s);
-    expect(me.vault).toEqual({ hosts: { razer: { user: "pmh", pass: "x" } }, pages: { forge: { url: "https://forge.example", user: "u", pass: "p" } } });
-    expect([me.vaultOK, me.prefs, me.user, me.admin, me.boot, me.wallpaper]).toEqual([true, { theme: "dark" }, "pmh", true, false, 0]);
+    expect(me.vault).toEqual({
+      hosts: { razer: { user: "pmh", pass: "x" } },
+      pages: { forge: { url: "https://forge.example", user: "u", pass: "p" } },
+    });
+    expect([me.vaultOK, me.prefs, me.user, me.admin, me.boot, me.wallpaper]).toEqual([
+      true,
+      { theme: "dark" },
+      "pmh",
+      true,
+      false,
+      0,
+    ]);
     expect(me.prefsAt).toBe(store.stamp("home/pmh/prefs.json"));
     expect(await U.AnthropicToken(s)).toBe("sk-ant-oat01-abc_DEF-123");
     expect(await U.HostLogin(s, "razer")).toEqual(["pmh", "x", true]);
@@ -134,7 +149,9 @@ test("login issues a cookie this package and go read alike", async () => {
   const s = U.Of(sent(cookie))!;
   expect([s.user, hex(s.key)]).toEqual(["pmh", fx.sessionKey]);
   expect(U.Issuers(sent(cookie))).toEqual([]);
-  expect(U.ClearCookie(c)).toEqual(["phosphorus-user=; Max-Age=0; Path=/; Domain=mesh.example; SameSite=Lax; HttpOnly; Secure"]);
+  expect(U.ClearCookie(c)).toEqual([
+    "phosphorus-user=; Max-Age=0; Path=/; Domain=mesh.example; SameSite=Lax; HttpOnly; Secure",
+  ]);
   expect(U.Refresh(req({ host: "box" }), s)).toBeUndefined();
   expect(U.Refresh(c, s)![1]!.startsWith(`phosphorus-user=${s.token}; Max-Age=259`)).toBe(true);
   // the setup admin off once an admin user exists
@@ -144,28 +161,47 @@ test("login issues a cookie this package and go read alike", async () => {
   expect(bad).toEqual({ status: 401, body: { error: "wrong user or password" } });
   for (let i = 0; i < 4; i++) await U.Login({ user: "pmh", pass: "nope" }, c);
   expect((await U.Login({ user: "pmh", pass: fx.pass }, c)).status).toBe(429);
-  expect((await U.Login({ user: "pmh", pass: fx.pass }, req({}, "https://mesh.example/", "10.0.0.9"))).status).toBe(200);
+  expect((await U.Login({ user: "pmh", pass: fx.pass }, req({}, "https://mesh.example/", "10.0.0.9"))).status).toBe(
+    200,
+  );
 });
 
 test("users made here, their vault, mcp key and password change", async () => {
-  const root = U.Of(sent((await U.Login({ user: "pmh", pass: fx.pass }, req({}, "https://mesh.example/", "10.0.0.8"))).cookie![0]!))!;
+  const root = U.Of(
+    sent((await U.Login({ user: "pmh", pass: fx.pass }, req({}, "https://mesh.example/", "10.0.0.8"))).cookie![0]!),
+  )!;
   expect(U.List(undefined).status).toBe(403);
   expect((await U.Create(root, { name: "Admin", pass: "pw12" })).status).toBe(400);
   expect((await U.Create(root, { name: "bob", pass: "pw1" })).status).toBe(400);
   const made = await U.Create(root, { name: " Bob ", pass: "pw12", admin: 0 });
-  expect(made.body.users).toEqual([{ name: "bob", admin: false }, { name: "pmh", admin: true }]);
+  expect(made.body.users).toEqual([
+    { name: "bob", admin: false },
+    { name: "pmh", admin: true },
+  ]);
   expect((await U.Create(root, { name: "bob", pass: "pw12" })).status).toBe(409);
   // 127.0.0.1 is locked out by the test above
   const c = req({ host: "box:8090" }, "http://box:8090/api/x", "10.0.0.8");
   const bob = U.Of(sent((await U.Login({ user: "bob", pass: "pw12" }, c)).cookie![0]!))!;
   expect([bob.user, bob.admin]).toEqual(["bob", false]);
   expect(U.List(bob).status).toBe(403);
-  const vault = { hosts: { razer: { user: "bob", pass: "p" }, "Bad Host": { user: "x" }, nouser: { pass: "y" } }, pages: { git: { url: "https://git.example", user: "g", pass: "s" } }, anthropic: "sk-ant-forged" };
+  const vault = {
+    hosts: { razer: { user: "bob", pass: "p" }, "Bad Host": { user: "x" }, nouser: { pass: "y" } },
+    pages: { git: { url: "https://git.example", user: "g", pass: "s" } },
+    anthropic: "sk-ant-forged",
+  };
   const sv = await U.SetVault(bob, { vault });
-  expect(sv.body.vault).toEqual({ hosts: { razer: { user: "bob", pass: "p" } }, pages: { git: { url: "https://git.example", user: "g", pass: "s" } } });
+  expect(sv.body.vault).toEqual({
+    hosts: { razer: { user: "bob", pass: "p" } },
+    pages: { git: { url: "https://git.example", user: "g", pass: "s" } },
+  });
   // an mcp key, a vault change resealed into it, a password change voiding it
   const k1 = await U.MCPKey(bob, undefined, c);
-  expect([k1.status, k1.body.fresh, k1.body.hosts, k1.body.url]).toEqual([200, true, ["razer"], "https://mesh.example/api/mcp/" + k1.body.key]);
+  expect([k1.status, k1.body.fresh, k1.body.hosts, k1.body.url]).toEqual([
+    200,
+    true,
+    ["razer"],
+    "https://mesh.example/api/mcp/" + k1.body.key,
+  ]);
   expect(U.MCPLogin(k1.body.key, "razer")).toEqual(["bob", "p", true]);
   await U.SetVault(bob, { vault: { hosts: { mulab: { user: "b2", pass: "q" } } } });
   expect(U.MCPLogins(k1.body.key)).toEqual({ mulab: { user: "b2", pass: "q" } });
@@ -197,7 +233,10 @@ test("users made here, their vault, mcp key and password change", async () => {
   expect((await U.Me(bob2)).wallpaper).toBe(0);
   // admin flips and removal
   expect(U.SetAdmin(root, { name: "pmh", admin: false }).status).toBe(400);
-  expect(U.SetAdmin(root, { name: "bob", admin: true }).body.users).toEqual([{ name: "bob", admin: true }, { name: "pmh", admin: true }]);
+  expect(U.SetAdmin(root, { name: "bob", admin: true }).body.users).toEqual([
+    { name: "bob", admin: true },
+    { name: "pmh", admin: true },
+  ]);
   expect(U.Remove(root, { name: "pmh" }).status).toBe(400);
   expect(U.Remove(root, { name: "bob" }).body.users).toEqual([{ name: "pmh", admin: true }]);
   expect(U.Exists("bob")).toBe(false);
@@ -225,13 +264,17 @@ test("anthropic token", async () => {
   expect(await U.AnthropicToken({ ...s, key: U.MeshKey() })).toBe("");
   // the page never sees it, and saving the page's vault keeps it
   expect((await U.Me(s)).vault.anthropic).toBeUndefined();
-  const sv = await U.SetVault(s, { vault: { hosts: { "mulab-01": { user: "u", pass: "p" } }, anthropic: "sk-ant-forged" } });
+  const sv = await U.SetVault(s, {
+    vault: { hosts: { "mulab-01": { user: "u", pass: "p" } }, anthropic: "sk-ant-forged" },
+  });
   expect([sv.status, sv.body.vault.anthropic]).toEqual([200, undefined]);
   expect(await U.AnthropicToken(s)).toBe("sk-ant-oat01-abc_DEF-123");
   expect(await U.HostLogins(s)).toEqual(["mulab-01"]);
   expect((await U.SetAnthropic(s, { token: "" })).status).toBe(200);
   expect(await U.AnthropicToken(s)).toBe("");
-  expect((await U.SetAnthropic({ user: "admin", admin: true, boot: true, token: "", e: 0 }, { token: "x" })).status).toBe(403);
+  expect(
+    (await U.SetAnthropic({ user: "admin", admin: true, boot: true, token: "", e: 0 }, { token: "x" })).status,
+  ).toBe(403);
   expect((await U.SetAnthropic({ ...s, key: undefined }, { token: "x" })).status).toBe(403);
 });
 
@@ -260,7 +303,10 @@ test("oauth: a registered agent's code traded once for the user's mcp key", asyn
   expect(U.OAuthRedirectFor(id, cb)).toBe(cb);
   expect(U.OAuthRedirectFor(id, "http://evil.example:4567/callback")).toBe("");
   expect(U.OAuthRedirectFor(id, "http://localhost:4567/other")).toBe("");
-  const [r, s] = await U.SignIn({ user: "pmh", pass: fx.pass }, req({}, "https://mesh.example/oauth/authorize", "203.0.113.7"));
+  const [r, s] = await U.SignIn(
+    { user: "pmh", pass: fx.pass },
+    req({}, "https://mesh.example/oauth/authorize", "203.0.113.7"),
+  );
   expect(r.status).toBe(200);
   const [before] = await U.KeyOf(s, req());
   const verifier = "v".repeat(43);
@@ -285,7 +331,9 @@ test("oauth: a registered agent's code traded once for the user's mcp key", asyn
   expect(U.OAuthToken({ ...p, code: id }).body.error).toBe("invalid_grant");
   expect(U.OAuthToken({ ...p, grant_type: "password" }).body.error).toBe("unsupported_grant_type");
   // the setup admin can't sign an agent in
-  expect((await U.OAuthCode({ user: "admin", admin: true, boot: true, token: "", e: 0 }, req(), id, cb, challenge))[0]).toBe("");
+  expect(
+    (await U.OAuthCode({ user: "admin", admin: true, boot: true, token: "", e: 0 }, req(), id, cb, challenge))[0],
+  ).toBe("");
   // revoked: the token the agent holds refused
   U.MCPRevoke(s);
   expect(U.CheckMCPKey(t.body.access_token)[1]).toBe("revoked or replaced by a newer key");

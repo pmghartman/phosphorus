@@ -1,7 +1,8 @@
 // the stats table: a sparkline and a row per host
-import { st } from '../../lib/state.ts';
+
 import type { Route } from '@phosphorus/wire';
-import { SPARK_MAX_MS, pingClass, pingText, rttHistory, steadyRtt } from './ping.ts';
+import { st } from '../../lib/state.ts';
+import { pingClass, pingText, rttHistory, SPARK_MAX_MS, steadyRtt } from './ping.ts';
 import { hostPlatform } from './routes.ts';
 import { meshStats, meshStatsRows, uiVars } from './ui.ts';
 
@@ -9,13 +10,17 @@ export function sparkline(history: number[] | undefined, cls: string): string {
   if (!history || history.length < 2) return '';
   const w = 24;
   const h = 10;
-  const pts = history.map((v, i) => {
-    const x = (i / (history.length - 1)) * w;
-    const y = h - (Math.min(v, SPARK_MAX_MS) / SPARK_MAX_MS) * h;
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  }).join(' ');
-  return `<svg class="mesh-spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">` +
-    `<polyline points="${pts}" class="${cls}"/></svg>`;
+  const pts = history
+    .map((v, i) => {
+      const x = (i / (history.length - 1)) * w;
+      const y = h - (Math.min(v, SPARK_MAX_MS) / SPARK_MAX_MS) * h;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(' ');
+  return (
+    `<svg class="mesh-spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">` +
+    `<polyline points="${pts}" class="${cls}"/></svg>`
+  );
 }
 
 // CSS-hidden until .expanded, built every render anyway, cheap and always

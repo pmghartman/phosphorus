@@ -2,9 +2,8 @@
 import { MaxText } from "@phosphorus/files";
 import { trusted } from "@phosphorus/peers";
 import { unrebindable } from "@phosphorus/proxy";
-import { isLoopbackAddr, isTailnetAddr } from "@phosphorus/util";
 import { Of } from "@phosphorus/users";
-import { marshal } from "@phosphorus/util";
+import { isLoopbackAddr, isTailnetAddr, marshal } from "@phosphorus/util";
 import { type Ctx, type Handler, isUpgrade } from "@phosphorus/wsock";
 import { obj } from "./js.ts";
 
@@ -19,7 +18,8 @@ export type Res = [number, any];
 export const sendJSON = (status: number, body: unknown, headers: Record<string, string> = {}) =>
   new Response(marshal(body), { status, headers: { "Content-Type": "application/json", ...headers } });
 
-export const plain = (status: number, text: string) => new Response(text, { status, headers: { "Content-Type": "text/plain; charset=utf-8" } });
+export const plain = (status: number, text: string) =>
+  new Response(text, { status, headers: { "Content-Type": "text/plain; charset=utf-8" } });
 
 export const forbidden = () => plain(403, "forbidden");
 
@@ -87,7 +87,12 @@ export async function readRaw(c: Ctx, max: number): Promise<Uint8Array | undefin
 }
 
 // onJSON a JSON body in, status and body out, bad JSON {} or a strict 400
-export async function onJSON(c: Ctx, max: number, strict: boolean, handle: (p: Record<string, any>) => Res | Promise<Res>): Promise<Response> {
+export async function onJSON(
+  c: Ctx,
+  max: number,
+  strict: boolean,
+  handle: (p: Record<string, any>) => Res | Promise<Res>,
+): Promise<Response> {
   const b = await readRaw(c, max);
   if (b === undefined) return plain(400, "bad request");
   let v: unknown;
