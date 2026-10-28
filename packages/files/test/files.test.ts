@@ -38,7 +38,7 @@ test("system folder is admins only", () => {
 });
 
 test("save, read, upload, list", async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "phos-share-")));
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), "phos-share-")));
   const sh = share(root);
   expect((await F.save(sh, "a/b.txt", { text: "hello world" }))[0]).toBe(200);
   expect((await F.save(sh, "a/b.txt", { old: "world", new: "there" }))[1].ok).toBe(true);

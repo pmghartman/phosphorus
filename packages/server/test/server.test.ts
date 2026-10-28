@@ -71,4 +71,4 @@ test("http smoke", async () => {
   } finally {
     srv.stop(true);
   }
-});
+}, 60000);

@@ -122,7 +122,7 @@ test("the baked env file round-trips, PATH gets the tools first", () => {
     expect(withPath({}).PATH!.endsWith("/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")).toBe(true);
   }
   expect(splitComma(" a, b ,")).toEqual(["a", "b", ""]);
-  expect(absTo("/h", " x/ ")).toBe("/h/x");
+  expect(absTo("/h", " x/ ")).toBe(join("/h", "x"));
   expect(absTo("/h", "/abs/")).toBe("/abs");
 });
 
