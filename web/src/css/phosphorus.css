@@ -2411,6 +2411,16 @@ body:has(.dk-pop:not([hidden])) .toasts { opacity: 0; pointer-events: none; }
 .store-top .dk-note { margin: 0; }
 .store-refresh { flex: none; padding: 0.15rem 0.65rem; background: none; border: 1px solid var(--border); color: var(--muted); font: inherit; font-size: 0.72rem; cursor: pointer; }
 .store-refresh:is(:hover, :focus-visible) { border-color: var(--accent); color: var(--fg); }
+.store-editor { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1ch; padding: 0.6rem 0.8rem; border: 1px solid var(--border); background: var(--card); }
+.store-editor-k { color: var(--accent); font-size: 0.72rem; letter-spacing: 0.04em; }
+.store-seg { display: inline-flex; }
+.store-seg-btn { padding: 0.15rem 0.75rem; background: none; border: 1px solid var(--border); color: var(--muted); font: inherit; cursor: pointer; }
+.store-seg-btn + .store-seg-btn { margin-left: -1px; }
+.store-seg-btn:is(:hover, :focus-visible) { border-color: var(--accent); color: var(--fg); position: relative; z-index: 1; }
+.store-seg-btn.on { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); position: relative; z-index: 1; }
+.store-editor-note { flex: 1 1 12rem; color: var(--muted); font-size: 0.72rem; }
+.acct-editor { grid-template-columns: minmax(5rem, 1fr) 1fr 5.5rem; }
+.acct-editor .dk-host { text-transform: none; }
 .store-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr)); gap: 0.8rem; }
 .store-card { border: 1px solid var(--border); padding: 0.8rem 0.9rem; display: flex; flex-direction: column; gap: 0.6rem; min-width: 0; }
 .store-card.on { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }

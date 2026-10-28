@@ -14,7 +14,7 @@ import { newSid } from '../util.ts';
 import { agentArm, agentOwn, agentStep, agentViewOn } from '../agent.ts';
 import { mcpStat, dkMcpTray } from '../mcp.ts';
 import { dkControlTray } from './control.ts';
-import { dkCode, dkDeskAt, dkDeskWatch, dkFileIcon, dkFileMenu } from './deskfiles.ts';
+import { dkCode, dkDeskAt, dkDeskWatch, dkFileIcon, dkFileMenu, type FileRef } from './deskfiles.ts';
 import { dkLoginHosts } from './login.ts';
 import { dkBadge, dkBar, dkChips, dkClock, dkHomeBtn, dkAnchor, dkPlaceItems, type Pop } from './taskbar.ts';
 import { dkClose, dkFocus, dkNav, dkPlace, dkSize, dkSnap, dkWin, type DkWin, type NavFrame } from './windows.ts';
@@ -889,7 +889,8 @@ export function dkWebApps(): { id: string; mount: string; want: AppWant }[] {
   return Object.entries(wants).filter(([id, w]) => w && mine[id]?.version === w.version).map(([id, w]) => ({ id, mount: `/${id}/`, want: w }));
 }
 
-export function dkWebApp(id: string): DkWin | undefined {
+// the app's window, the page's url carrying query when given (a file for sulfur to open)
+export function dkWebApp(id: string, query?: Record<string, string>): DkWin | undefined {
   const a = dkWebApps().find((x) => x.id === id);
   if (!a) return;
   const w = dkWin(`webapp:${id}`, id, `v${a.want.version}`, 'svc dk-webapp');
@@ -898,7 +899,9 @@ export function dkWebApp(id: string): DkWin | undefined {
   pop.appendChild(dkGlyph(DK_UI.pop!));
   pop.addEventListener('click', () => window.open(a.mount, '_blank', 'noopener'));
   w.head.querySelector('.dk-btns')!.prepend(pop);
-  const frame: NavFrame = Object.assign(el('iframe', 'dk-frame'), { src: a.mount, title: id, allow: 'clipboard-read; clipboard-write; fullscreen' });
+  const src = query ? `${a.mount}?${new URLSearchParams(query)}` : a.mount;
+  const frame: NavFrame = Object.assign(el('iframe', 'dk-frame'), { src, title: id, allow: 'clipboard-read; clipboard-write; fullscreen' });
+  w.frame = frame;
   w.body.appendChild(frame);
   dkNav(w, frame);
   dkSize(w, 1100, 680);
@@ -906,6 +909,20 @@ export function dkWebApp(id: string): DkWin | undefined {
   w.onClose = () => { frame.contentWindow?.location.replace('about:blank'); };
   dkFocus(w);
   return w;
+}
+
+// a file opened in sulfur: its window made on the file, or the one up told of it; false when
+// this host doesn't serve sulfur
+export function dkSulfurOpen(f: FileRef): boolean {
+  if (!dkWebApps().some((a) => a.id === 'sulfur')) return false;
+  const o = { host: f.host, share: String(f.share || 'home'), path: f.path };
+  const w = dk.wins.get('webapp:sulfur');
+  if (w?.frame) {
+    w.frame.contentWindow?.postMessage({ t: 'sulfur-open', ...o }, location.origin);
+    dkFocus(w);
+    return true;
+  }
+  return !!dkWebApp('sulfur', o);
 }
 
 // --- git: forgejo itself, the master host in the title

@@ -5,6 +5,7 @@ import { pollState } from '../sync.ts';
 import type { AppStatus, AppWant, State } from '../types.ts';
 import { newerVersion } from '../util.ts';
 import { dkWebApp } from '../desktop/desk.ts';
+import { editorPref, EDITORS, setEditorPref } from '../desktop/deskfiles.ts';
 
 // --- apps: optional extras the mesh can take, each a web build installed onto every host --
 // the catalogue and the feeds from /api/apps, each host's copy from the state push; an
@@ -116,6 +117,7 @@ function card(a: StoreApp): HTMLElement {
     else if (a.feedError && !a.latest) line('dim', `release feed unreachable: ${a.feedError}`);
   }
   if (a.signed) line('dim', 'signature checked against [apps] key');
+  if (a.id === 'sulfur' && editorPref() === 'sulfur') line('dim', 'the default editor');
   const acts = el('div', 'store-actions');
   const btn = (label: string, cls: string, go: () => void, disabled = false) => {
     const b = Object.assign(el('button', cls, label), { type: 'button', disabled: disabled || busyId === a.id });
@@ -149,9 +151,41 @@ function card(a: StoreApp): HTMLElement {
   return card;
 }
 
+// the editor files open in: the desktop's own, or sulfur, installed onto the mesh by picking
+// it when no host has it yet; the choice kept with the user's settings on every host
+function editorRow(): HTMLElement {
+  const row = el('div', 'store-editor');
+  row.append(el('span', 'store-editor-k', 'default editor'));
+  const seg = el('div', 'store-seg');
+  const now = editorPref();
+  const sulfur = apps?.find((a) => a.id === 'sulfur');
+  for (const [id, label] of EDITORS) {
+    const b = Object.assign(el('button', `store-seg-btn${now === id ? ' on' : ''}`, label), { type: 'button', ariaPressed: String(now === id) });
+    b.addEventListener('click', () => {
+      if (editorPref() === id) return;
+      setEditorPref(id);
+      actError = '';
+      // sulfur picked before any host has it: installed for the mesh, as its own button would
+      if (id === 'sulfur' && sulfur && !sulfur.want) {
+        if (st.acct?.admin) { act('/api/apps/install', 'sulfur'); return; }
+        actError = 'sulfur isn’t installed yet: an admin installs it here; the built-in editor until then';
+      }
+      sig = '';
+      draw();
+    });
+    seg.append(b);
+  }
+  row.append(seg);
+  const mine = st.hostsInfo[st.selfHost]?.apps?.sulfur?.version;
+  row.append(el('span', 'store-editor-note', now === 'sulfur'
+    ? (mine ? 'files open in sulfur, in its window' : sulfur?.want ? 'files open in sulfur once this host has it' : 'files open in sulfur once it’s installed')
+    : 'files open in the desktop’s own editor'));
+  return row;
+}
+
 function draw() {
   if (!watching) return;
-  const next = JSON.stringify([apps, readError, actError, busyId, st.selfHost, st.acct?.admin, st.hostsInfo, (st.lastState?.tailnet || []).map((d) => [d.name, d.phosphorus])]);
+  const next = JSON.stringify([apps, readError, actError, busyId, st.selfHost, st.acct?.admin, st.hostsInfo, editorPref(), (st.lastState?.tailnet || []).map((d) => [d.name, d.phosphorus])]);
   if (next === sig) return;
   sig = next;
   const wrap = el('div', 'store');
@@ -160,7 +194,7 @@ function draw() {
   const refresh = Object.assign(el('button', 'store-refresh', 'check for releases'), { type: 'button', title: 'ask each release feed again' });
   refresh.addEventListener('click', () => read(true));
   head.append(refresh);
-  wrap.append(head);
+  wrap.append(head, editorRow());
   if (!apps) wrap.append(el('div', 'store-empty', readError ? `can't read the catalogue: ${readError}` : 'connecting'));
   else if (!apps.length) wrap.append(el('div', 'store-empty', 'nothing in the catalogue yet'));
   else {
