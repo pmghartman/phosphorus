@@ -98,7 +98,7 @@ test("skill", async () => {
 });
 
 test("the skill's file list is the folder", () => {
-  const root = resolve(import.meta.dir, "..", "..", "..", "plugin", "skills");
+  const root = resolve(import.meta.dir, "..", "..", "..", "..", "plugin", "skills");
   const walk = (d: string): string[] => readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(d, e.name)) : [join(d, e.name)]));
   const onDisk = walk(root).map((p) => p.slice(root.length + 1).replaceAll("\\", "/")).sort();
   expect(Object.keys(skillFiles).sort()).toEqual(onDisk);
