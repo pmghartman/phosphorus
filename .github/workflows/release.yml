@@ -3,8 +3,7 @@
 # releases and runs kept
 # app and apt feeds need UPDATE_SIGNING_KEY (bun scripts/feedsign.ts -keygen), APT_GPG_KEY, var UPDATE_PUBKEY;
 # Windows' code signing vars AZURE_SIGNING_ENDPOINT/ACCOUNT/PROFILE and secrets AZURE_TENANT_ID/
-# CLIENT_ID/CLIENT_SECRET (Trusted Signing), or secrets WINDOWS_CERT_PFX/PASSWORD (packaging/winsign.sh);
-# the plugin's version bump secret PLUGIN_DEPLOY_KEY, a write deploy key main's rules let bypass
+# CLIENT_ID/CLIENT_SECRET (Trusted Signing), or secrets WINDOWS_CERT_PFX/PASSWORD (packaging/winsign.sh)
 name: release
 
 on:
@@ -360,37 +359,6 @@ jobs:
           fi
           gh release view update >/dev/null 2>&1 || gh release create update --prerelease --latest=false --title "Update feed" --notes "Files installed hosts update from. Install from the numbered releases."
           gh release upload update * --clobber
-
-  # the Claude Code plugin's version set to this release's on the default branch,
-  # every release; pushed with PLUGIN_DEPLOY_KEY, a deploy key main's rules let
-  # bypass them, and skipped with a warning without it
-  plugin:
-    needs: [version, release]
-    if: ${{ !cancelled() && needs.release.result == 'success' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    env:
-      VER: ${{ needs.version.outputs.ver }}
-      KEYED: ${{ secrets.PLUGIN_DEPLOY_KEY != '' }}
-    steps:
-      - if: env.KEYED != 'true'
-        run: echo "::warning::PLUGIN_DEPLOY_KEY isn't set, the plugin's version stays as it is"
-      - if: env.KEYED == 'true'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          ref: ${{ github.event.repository.default_branch }}
-          ssh-key: ${{ secrets.PLUGIN_DEPLOY_KEY }}
-      - if: env.KEYED == 'true'
-        name: bump
-        run: |
-          f=plugin/.claude-plugin/plugin.json
-          sed -i -E "s/^(  \"version\": )\"[^\"]*\"/\1\"$VER\"/" "$f"
-          grep -q "^  \"version\": \"$VER\"," "$f" || { echo "no top-level version line in $f" >&2; exit 1; }
-          git diff --quiet && { echo "already $VER"; exit 0; }
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -qam "Plugin: version $VER, as release v$VER"
-          git push origin HEAD
 
   # only the two newest numbered releases and their tags kept, the `update` feed
   # aside; only this workflow's two newest runs, this one included; of the bun
