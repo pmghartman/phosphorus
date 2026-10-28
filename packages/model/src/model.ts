@@ -1,7 +1,7 @@
 // the mesh's models, every host's claim, which agents each is assigned to,
 // the calls made to them passed to the host running them
 import { join } from "node:path";
-import { peerModel } from "@phosphorus/mesh";
+import { peerModel, routes } from "@phosphorus/mesh";
 import * as sysfs from "@phosphorus/sysfs";
 import { envInt, errText, FrontendPort, localeCompare, marshal, now, obj, readFresh, requestJSON, SelfHost, StateDir } from "@phosphorus/util";
 
@@ -335,20 +335,29 @@ export async function forward(req: Request, host: string, port: number, path: st
   return new Response(out, { status: res.status, headers });
 }
 
+// chatTarget the model a chat names: a host (bare or as phosphorus/<host>),
+// or an agent (agent-<id>[-fast]) resolved to its assigned or tier's model
+export function chatTarget(states: State[], m: string): State | undefined {
+  const [a, slot] = agentOf(m.toLowerCase().trim());
+  if (a) return resolve(states, tierOf(a, slot), assigned(a, slot)[0])[1];
+  const host = meshHost(m) || m;
+  return runners(states).findLast((x) => x.host === host);
+}
+
 // ServeChat a call to a mesh model, answered here or passed on
 export async function ServeChat(req: Request, p: Record<string, any>, isLocal: boolean): Promise<Response> {
   const fail = (status: number, msg: string) => json(status, { error: { message: msg } });
   const msgs = p.messages;
   if (!Array.isArray(msgs)) return fail(400, "bad messages");
-  const host = str(p.model);
   const states = view();
-  const s = runners(states).findLast((x) => x.host === host);
+  const s = chatTarget(states, str(p.model));
   if (!s || s.server !== "ready") return fail(503, excuse(states, s));
+  const host = jsString(s.host);
   if (host !== selfHost) {
     if (!isLocal) return fail(409, host + " isn't this host");
-    return forward(req, jsString(s.ip), FrontendPort, "/api/model/v1/chat/completions", p, host);
+    return forward(req, jsString(s.ip), FrontendPort, "/api/model/v1/chat/completions", { ...p, model: host }, host);
   }
-  return forward(req, "127.0.0.1", serverPort, "/v1/chat/completions", completion(p), "llama-server on " + host, (out) => {
+  return forward(req, "127.0.0.1", serverPort, "/v1/chat/completions", completion({ ...p, model: host }), "llama-server on " + host, (out) => {
     if (out.ok) measure(msgs, p.tools, out.usage, out.genMS).catch(() => {});
   });
 }
@@ -405,12 +414,26 @@ export type Agent = {
   tier: string;
 };
 
-// Agents every implementation that asks a model, in the pages' order
-export const Agents: Agent[] = [
+// the built-in agents, every implementation of phosphorus's own that asks a model, in the pages' order
+const builtin: Agent[] = [
   { id: "code", label: "Code app", about: "the projects' agent sessions, the default for every harness below", parent: "", tier: "large", fast: true },
   { id: "claude-code", label: "Claude Code", about: "Claude Code in a project, on the mesh's models", parent: "code", tier: "large", fast: true },
   { id: "opencode", label: "OpenCode", about: "opencode in a project, on the mesh's models", parent: "code", tier: "large", fast: true },
 ];
+
+// apps on the mesh that ask a model, each an agent while a service of its name
+// is published on any host
+const apps: (Agent & { service: string })[] = [
+  { id: "tavern", label: "Tavern", about: "the dungeon master of the tavern app, asking as agent-tavern", parent: "", tier: "large", fast: false, service: "tavern" },
+];
+
+// whether a service of that name is published on the mesh, swapped for a fake in tests
+export const seams = { published: (name: string) => routes().some((r) => r.name === name) };
+
+// Agents the agents right now: the built-ins, then the apps on the mesh
+export function Agents(): Agent[] {
+  return [...builtin, ...apps.filter((a) => seams.published(a.service)).map(({ service: _, ...a }) => a)];
+}
 
 // slots an agent's assignments: its model, and for some a fast one
 const slots = ["model", "fast"];
@@ -418,7 +441,7 @@ const agentPrefix = "agent-";
 const agentFile = (id: string) => `etc/model/agents/${id}.json`;
 
 // AgentByID the agent named, undefined for none
-export const AgentByID = (id: string) => Agents.find((a) => a.id === id);
+export const AgentByID = (id: string) => Agents().find((a) => a.id === id);
 
 // AgentName the name an agent asks the gateway by: agent-<id>, agent-<id>-fast
 export const AgentName = (id: string, fast: boolean) => agentPrefix + id + (fast ? "-fast" : "");
@@ -458,7 +481,7 @@ export const tierOf = (a: Agent, slot: string) => (slot === "fast" ? "small" : a
 // Assign a model to an agent's slot, mesh-wide; blank for the automatic pick
 export function Assign(p: Record<string, any>): [number, any] {
   const a = AgentByID(str(p.agent));
-  if (!a) return [400, { error: "agent is " + Agents.map((x) => x.id).join(", ") }];
+  if (!a) return [400, { error: "agent is " + Agents().map((x) => x.id).join(", ") }];
   const slot = str(p.slot) || "model";
   if (slot !== "model" && (slot !== "fast" || !a.fast)) return [400, { error: `${a.label} has no ${slot} slot` }];
   let m = str(p.model).trim();
@@ -475,7 +498,7 @@ export function Assign(p: Record<string, any>): [number, any] {
 
 // agentRows each agent with its slots: what was picked, what it answers with, why not
 function agentRows(states: State[]): Record<string, any>[] {
-  return Agents.map((a) => {
+  return Agents().map((a) => {
     const sl: Record<string, any> = {};
     for (const slot of slots) {
       if (slot === "fast" && !a.fast) continue;

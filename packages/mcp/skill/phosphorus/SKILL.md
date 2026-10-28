@@ -36,7 +36,7 @@ Read the one that fits before the first call; a one-tool question needs none.
 
 ## Not covered by a job file
 
-- Models: `models` shows which mesh host's model each agent (chat, inline, code, claude-code, opencode) is assigned and answering with; `set_agent_model` assigns one (admin).
+- Models: `models` shows which mesh host's model each agent (code, claude-code, opencode, and tavern while the tavern app is on the mesh) is assigned and answering with; `set_agent_model` assigns one (admin).
 - The user's own Phosphorus window: `open_file` opens a share's file in a editor tab, `show_file` invites someone else into one, `open_terminal` opens a shared terminal tab.
 
 ## Errors

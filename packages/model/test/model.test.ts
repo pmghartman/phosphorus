@@ -68,6 +68,8 @@ free.stop(true);
 
 const sysfs = await import("@phosphorus/sysfs");
 const M = await import("@phosphorus/model");
+// tavern published on the mesh, so its agent is listed; one test takes it away
+M.seams.published = (name: string) => name === "tavern";
 const { StateDir } = await import("@phosphorus/util");
 
 const gib = 1 << 30;
@@ -167,7 +169,7 @@ test("no model anywhere", async () => {
   expect(M.State()).toBeUndefined();
   const s = M.Summary();
   expect(s.models).toEqual([]);
-  expect(s.agents.map((a: any) => a.id)).toEqual(["code", "claude-code", "opencode"]);
+  expect(s.agents.map((a: any) => a.id)).toEqual(["code", "claude-code", "opencode", "tavern"]);
   expect(s.agents[0].slots.model).toEqual({ chosen: "", inherited: false, assigned: "", model: "", host: "", ready: false, why: "not loaded: no host is running the model daemon" });
   expect(Object.keys(s.agents[0].slots)).toEqual(["model", "fast"]);
   const r = await M.ServeChat(req(), { model: "razer", messages: [] }, true);
@@ -189,7 +191,7 @@ test("summary of a ready claim", async () => {
     {
       host: "razer", file: "q4.gguf", size: 4 * gib, ctx: 8192, slots: 2, ready: true, loading: false,
       gpu: true, vram: 8 * gib, total: 16 * gib, machine: 32 * gib, need: 5 * gib,
-      why: "", use: null, download: null, tools: true, agents: ["code", "claude-code", "opencode"],
+      why: "", use: null, download: null, tools: true, agents: ["code", "claude-code", "opencode", "tavern"],
     },
   ]);
   expect(s.agents[1]).toEqual({
@@ -212,7 +214,7 @@ test("summary of a ready claim", async () => {
 
 test("assign", async () => {
   await claim(ready);
-  expect(M.Assign({ agent: "nope" })).toEqual([400, { error: "agent is code, claude-code, opencode" }]);
+  expect(M.Assign({ agent: "nope" })).toEqual([400, { error: "agent is code, claude-code, opencode, tavern" }]);
   expect(M.Assign({ agent: "code", slot: "x" })).toEqual([400, { error: "Code app has no x slot" }]);
   expect(M.Assign({ agent: "code", model: "other/x" })).toEqual([400, { error: "model is a mesh host running one, as phosphorus/<host>, blank for the automatic pick" }]);
   expect(M.Assign({ agent: "code", model: "ghost" })).toEqual([409, { error: "ghost runs no model" }]);
@@ -283,6 +285,28 @@ test("chat for another host", async () => {
   expect((await hop.json()).error.message).toMatch(/^torus didn't answer: /);
 });
 
+test("chat as an agent or a mesh name", async () => {
+  await claim(ready);
+  // tavern gone from the mesh: no agent of its name, listed nowhere
+  M.seams.published = () => false;
+  expect(M.Summary().agents.map((a: any) => a.id)).toEqual(["code", "claude-code", "opencode"]);
+  expect(M.Assign({ agent: "tavern", model: "razer" })).toEqual([400, { error: "agent is code, claude-code, opencode" }]);
+  expect((await M.ServeChat(req(), { model: "agent-tavern", messages: [] }, true)).status).toBe(503);
+  M.seams.published = (name: string) => name === "tavern";
+  // tavern asks as agent-tavern: unassigned, the biggest ready model, this host's
+  const a = await M.ServeChat(req(), { model: "agent-tavern", messages: [{ role: "user", content: "hi" }] }, true);
+  expect(a.status).toBe(200);
+  expect(sent("/v1/chat/completions").body.model).toBe("razer");
+  const m = await M.ServeChat(req(), { model: "phosphorus/razer", messages: [{ role: "user", content: "hi" }] }, true);
+  expect(m.status).toBe(200);
+  // assigned to a host that is gone: its excuse, not another host's answer
+  expect(M.Assign({ agent: "tavern", model: "razer" })[0]).toBe(200);
+  expect(M.Summary().agents.find((x: any) => x.id === "tavern").slots.model).toMatchObject({ chosen: "phosphorus/razer", host: "razer", ready: true });
+  expect(M.Assign({ agent: "tavern", model: "" })[0]).toBe(200);
+  const nope = await M.ServeChat(req(), { model: "agent-nope", messages: [] }, true);
+  expect(nope.status).toBe(503);
+});
+
 test("messages", async () => {
   await claim(ready);
   const p = { model: "phosphorus/razer", max_tokens: 100, system: "be brief", messages: [{ role: "user", content: "hi" }, { role: "system", content: "and kind" }] };
@@ -319,10 +343,10 @@ test("models", async () => {
   expect(r.status).toBe(200);
   expect(r.headers.get("cache-control")).toBe("no-store");
   const b = await r.json();
-  expect(b.data.map((m: any) => m.id)).toEqual(["agent-code", "agent-claude-code", "agent-opencode"]);
+  expect(b.data.map((m: any) => m.id)).toEqual(["agent-code", "agent-claude-code", "agent-opencode", "agent-tavern"]);
   expect(b.data[0]).toMatchObject({ type: "model", display_name: "Code app", ready: true });
   expect(b.data[0].created_at).toMatch(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/);
-  expect(b).toMatchObject({ has_more: false, first_id: "agent-code", last_id: "agent-opencode" });
+  expect(b).toMatchObject({ has_more: false, first_id: "agent-code", last_id: "agent-tavern" });
 });
 
 test("purge", async () => {
