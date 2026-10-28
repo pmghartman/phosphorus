@@ -13,7 +13,7 @@ import { openUpdateModal, updateModal } from '../update.ts';
 import { newSid } from '../util.ts';
 import { agentArm, agentOwn, agentStep, agentViewOn } from '../agent.ts';
 import { mcpStat, dkMcpTray } from '../mcp.ts';
-import { dkControlTray } from './control.ts';
+import { dkAppearanceWin, dkControlTray } from './control.ts';
 import { dkCode, dkDeskAt, dkDeskWatch, dkFileIcon, dkFileMenu, type FileRef } from './deskfiles.ts';
 import { dkLoginHosts } from './login.ts';
 import { dkBadge, dkBar, dkChips, dkClock, dkHomeBtn, dkAnchor, dkPlaceItems, type Pop } from './taskbar.ts';
@@ -37,7 +37,8 @@ export function dkDesktop(): void {
   const ctl = dkControlTray();
   const bell = dkBellTray();
   const agent = st.acct?.boot ? null : dkMcpTray();
-  bar.append(dkSpotlightTray(), ...(agent ? [agent] : []), bell, ctl);
+  const search = dkSpotlightTray();
+  bar.append(search, ...(agent ? [agent] : []), bell, ctl);
   // the mesh and update panes opened from the panel
   ctl.append(dkMeshTray(dk.ctl!.btn), updateModal);
   dkAnchor(updateModal as Pop, dk.ctl!.btn);
@@ -49,7 +50,7 @@ export function dkDesktop(): void {
   dkView.replaceChildren(desk);
   dkBand(icons);
   dkDeskMenu(icons);
-  dk.desk = { el: desk, icons, wins, tasks, hosts, bar, menubar, app, items: { hosts, agent, bell, clock: dk.clock!, profile: ctl } };
+  dk.desk = { el: desk, icons, wins, tasks, hosts, bar, menubar, app, items: { search, hosts, agent, bell, clock: dk.clock!, profile: ctl } };
   dkPlaceItems();
   dk.chips = '';
   dkChips();
@@ -549,11 +550,14 @@ export function dkTerminal(host: string, run = '', shared = false): DkWin | unde
 
 const DK_WALL_MAX = 2560;
 
+// the wallpaper set or removed, for the appearance window's row
+export const WALL_EVENT = 'phosphorus-wallpaper';
 export function dkWallPaint(): void {
   const at = st.acct?.wallpaper || 0;
   dkView.classList.toggle('dk-walled', !!at);
   if (at) dkView.style.setProperty('--dk-wall', `url("/api/me/wallpaper?v=${at}")`);
   else dkView.style.removeProperty('--dk-wall');
+  dispatchEvent(new CustomEvent(WALL_EVENT, { detail: at }));
 }
 
 // shrunk to the screen's size at most, a jpeg; '' once set, else why not
@@ -674,7 +678,7 @@ function dkDeskMenu(icons: HTMLElement) {
       ['upload files…', () => dkPick('', true, (list) => { dkPlaceAt(e.clientX, e.clientY, list.map((f) => f.name)); dkAddFiles(list); }), homeOnline().length > 0],
       null,
       ['change wallpaper…', dkWallPick, !!st.acct && !st.acct.boot],
-      ['remove wallpaper', dkWallClear, !!st.acct?.wallpaper],
+      ['appearance…', () => dkAppearanceWin('desktop'), true],
       null,
       ['select all', () => { dk.sel = new Set(dkIconEls().map((x) => x.dataset.id!)); dkPaintSel(); }, true],
       ['arrange icons', dkArrange, true],

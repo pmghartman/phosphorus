@@ -48,7 +48,7 @@ export interface DkWin {
 // the glyph a window's task button wears, by what it is
 function dkWinGlyph(key: string | null, kind: string): string {
   const k = String(key || '');
-  if (k.startsWith('app:')) { const id = k.slice(4); return ({ theme: 'gear', profile: 'user' } as Record<string, string>)[id] || (DK_GLYPHS[id] ? id : 'app'); }
+  if (k.startsWith('app:')) { const id = k.slice(4); return ({ appearance: 'palette', profile: 'user' } as Record<string, string>)[id] || (DK_GLYPHS[id] ? id : 'app'); }
   if (String(kind).startsWith('term')) return 'terminal';
   if (kind === 'fm') return 'files';
   if (k.startsWith('svc:')) return 'service';
