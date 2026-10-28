@@ -1,1 +1,15 @@
-{ "name": "@phosphorus/host-app", "private": true, "type": "module", "main": "src/main.ts" }
+{
+  "name": "@phosphorus/host-app",
+  "private": true,
+  "type": "module",
+  "main": "src/main.ts",
+  "dependencies": {
+    "@phosphorus/cli": "workspace:*",
+    "@phosphorus/elector": "workspace:*",
+    "@phosphorus/host": "workspace:*",
+    "@phosphorus/modeld": "workspace:*",
+    "@phosphorus/server": "workspace:*",
+    "@phosphorus/tray-app": "workspace:*",
+    "@phosphorus/util": "workspace:*"
+  }
+}

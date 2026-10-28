@@ -5,135 +5,92 @@
     "": {
       "name": "phosphorus",
       "devDependencies": {
+        "@phosphorus/minisign": "workspace:*",
+        "@phosphorus/theme": "workspace:*",
         "@types/bun": "^1.4.4",
         "typescript": "^7.0.2",
       },
     },
     "apps/host": {
       "name": "@phosphorus/host-app",
+      "dependencies": {
+        "@phosphorus/cli": "workspace:*",
+        "@phosphorus/elector": "workspace:*",
+        "@phosphorus/host": "workspace:*",
+        "@phosphorus/modeld": "workspace:*",
+        "@phosphorus/server": "workspace:*",
+        "@phosphorus/tray-app": "workspace:*",
+        "@phosphorus/util": "workspace:*",
+      },
     },
     "apps/tray": {
       "name": "@phosphorus/tray-app",
+      "dependencies": {
+        "@phosphorus/appfeed": "workspace:*",
+        "@phosphorus/theme": "workspace:*",
+        "@phosphorus/util": "workspace:*",
+      },
     },
-    "packages/appfeed": {
-      "name": "@phosphorus/appfeed",
+    "apps/web": {
+      "name": "@phosphorus/web",
+      "dependencies": {
+        "@phosphorus/theme": "workspace:*",
+        "@xterm/addon-fit": "0.11.0",
+        "@xterm/addon-webgl": "0.19.0",
+        "@xterm/xterm": "6.0.0",
+        "katex": "0.18.10",
+      },
     },
-    "packages/chatmedia": {
-      "name": "@phosphorus/chatmedia",
-    },
-    "packages/cli": {
-      "name": "@phosphorus/cli",
-    },
-    "packages/clock": {
-      "name": "@phosphorus/clock",
-    },
-    "packages/code": {
+    "packages/ai/code": {
       "name": "@phosphorus/code",
       "dependencies": {
+        "@phosphorus/util": "workspace:*",
         "ssh2": "1.17.0",
       },
       "devDependencies": {
         "@types/ssh2": "1.15.6",
       },
     },
-    "packages/collab": {
-      "name": "@phosphorus/collab",
-    },
-    "packages/elector": {
-      "name": "@phosphorus/elector",
-    },
-    "packages/envfile": {
-      "name": "@phosphorus/envfile",
-    },
-    "packages/files": {
-      "name": "@phosphorus/files",
-    },
-    "packages/gamedns": {
-      "name": "@phosphorus/gamedns",
-    },
-    "packages/git": {
-      "name": "@phosphorus/git",
-    },
-    "packages/host": {
-      "name": "@phosphorus/host",
-    },
-    "packages/ini": {
-      "name": "@phosphorus/ini",
-    },
-    "packages/mcp": {
+    "packages/ai/mcp": {
       "name": "@phosphorus/mcp",
+      "dependencies": {
+        "@phosphorus/files": "workspace:*",
+        "@phosphorus/term": "workspace:*",
+        "@phosphorus/util": "workspace:*",
+        "@phosphorus/wsock": "workspace:*",
+      },
     },
-    "packages/mesh": {
-      "name": "@phosphorus/mesh",
-    },
-    "packages/minisign": {
-      "name": "@phosphorus/minisign",
-    },
-    "packages/mirror": {
-      "name": "@phosphorus/mirror",
-    },
-    "packages/model": {
+    "packages/ai/model": {
       "name": "@phosphorus/model",
+      "dependencies": {
+        "@phosphorus/peers": "workspace:*",
+        "@phosphorus/store": "workspace:*",
+        "@phosphorus/users": "workspace:*",
+        "@phosphorus/util": "workspace:*",
+        "@phosphorus/webapps": "workspace:*",
+      },
     },
-    "packages/modeld": {
+    "packages/ai/modeld": {
       "name": "@phosphorus/modeld",
-    },
-    "packages/procs": {
-      "name": "@phosphorus/procs",
-    },
-    "packages/proxy": {
-      "name": "@phosphorus/proxy",
-    },
-    "packages/reconfig": {
-      "name": "@phosphorus/reconfig",
-    },
-    "packages/server": {
-      "name": "@phosphorus/server",
       "dependencies": {
-        "ssh2": "1.17.0",
-      },
-      "devDependencies": {
-        "@types/ssh2": "1.15.6",
+        "@phosphorus/tools": "workspace:*",
+        "@phosphorus/util": "workspace:*",
       },
     },
-    "packages/services": {
-      "name": "@phosphorus/services",
-    },
-    "packages/sshrelay": {
-      "name": "@phosphorus/sshrelay",
-    },
-    "packages/stats": {
-      "name": "@phosphorus/stats",
-    },
-    "packages/sysfs": {
-      "name": "@phosphorus/sysfs",
-    },
-    "packages/term": {
-      "name": "@phosphorus/term",
-      "dependencies": {
-        "@xterm/headless": "6.0.0",
-        "ssh2": "1.17.0",
-      },
-      "devDependencies": {
-        "@types/ssh2": "1.15.6",
-      },
-    },
-    "packages/theme": {
-      "name": "@phosphorus/theme",
-    },
-    "packages/tools": {
+    "packages/ai/tools": {
       "name": "@phosphorus/tools",
+      "dependencies": {
+        "@phosphorus/util": "workspace:*",
+      },
     },
-    "packages/update": {
-      "name": "@phosphorus/update",
+    "packages/chat/chatmedia": {
+      "name": "@phosphorus/chatmedia",
+      "dependencies": {
+        "@phosphorus/store": "workspace:*",
+        "@phosphorus/util": "workspace:*",
+      },
     },
-    "packages/users": {
-      "name": "@phosphorus/users",
-    },
-    "packages/util": {
-      "name": "@phosphorus/util",
-    },
-    "packages/web-md": {
+    "packages/chat/web-md": {
       "name": "@phosphorus/web-md",
       "dependencies": {
         "highlight.js": "11.12.0",
@@ -144,111 +101,329 @@
         "@types/sanitize-html": "2.16.2",
       },
     },
-    "packages/webapps": {
+    "packages/core/clock": {
+      "name": "@phosphorus/clock",
+      "dependencies": {
+        "@phosphorus/util": "workspace:*",
+      },
+    },
+    "packages/core/ini": {
+      "name": "@phosphorus/ini",
+    },
+    "packages/core/theme": {
+      "name": "@phosphorus/theme",
+    },
+    "packages/core/util": {
+      "name": "@phosphorus/util",
+      "dependencies": {
+        "@phosphorus/ini": "workspace:*",
+      },
+    },
+    "packages/home/collab": {
+      "name": "@phosphorus/collab",
+      "dependencies": {
+        "@phosphorus/files": "workspace:*",
+        "@phosphorus/users": "workspace:*",
+        "@phosphorus/util": "workspace:*",
+        "@phosphorus/wsock": "workspace:*",
+      },
+    },
+    "packages/home/files": {
+      "name": "@phosphorus/files",
+      "dependencies": {
+        "@phosphorus/util": "workspace:*",
+      },
+    },
+    "packages/home/mirror": {
+      "name": "@phosphorus/mirror",
+      "dependencies": {
+        "@phosphorus/files": "workspace:*",
+        "@phosphorus/store": "workspace:*",
+        "@phosphorus/util": "workspace:*",
+      },
+    },
+    "packages/host/cli": {
+      "name": "@phosphorus/cli",
+      "dependencies": {
+        "@phosphorus/envfile": "workspace:*",
+        "@phosphorus/services": "workspace:*",
+        "@phosphorus/theme": "workspace:*",
+        "@phosphorus/util": "workspace:*",
+      },
+    },
+    "packages/host/envfile": {
+      "name": "@phosphorus/envfile",
+      "dependencies": {
+        "@phosphorus/util": "workspace:*",
+      },
+    },
+    "packages/host/host": {
+      "name": "@phosphorus/host",
+      "dependencies": {
+        "@phosphorus/appfeed": "workspace:*",
+        "@phosphorus/cli": "workspace:*",
+        "@phosphorus/envfile": "workspace:*",
+        "@phosphorus/ini": "workspace:*",
+        "@phosphorus/procs": "workspace:*",
+        "@phosphorus/util": "workspace:*",
+      },
+    },
+    "packages/host/procs": {
+      "name": "@phosphorus/procs",
+      "dependencies": {
+        "@phosphorus/util": "workspace:*",
+      },
+    },
+    "packages/host/reconfig": {
+      "name": "@phosphorus/reconfig",
+      "dependencies": {
+        "@phosphorus/clock": "workspace:*",
+        "@phosphorus/util": "workspace:*",
+      },
+    },
+    "packages/host/stats": {
+      "name": "@phosphorus/stats",
+      "dependencies": {
+        "@phosphorus/procs": "workspace:*",
+        "@phosphorus/util": "workspace:*",
+        "@phosphorus/wsock": "workspace:*",
+      },
+    },
+    "packages/mesh/appfeed": {
+      "name": "@phosphorus/appfeed",
+      "dependencies": {
+        "@phosphorus/minisign": "workspace:*",
+      },
+    },
+    "packages/mesh/elector": {
+      "name": "@phosphorus/elector",
+      "dependencies": {
+        "@phosphorus/util": "workspace:*",
+      },
+    },
+    "packages/mesh/git": {
+      "name": "@phosphorus/git",
+      "dependencies": {
+        "@phosphorus/elector": "workspace:*",
+        "@phosphorus/peers": "workspace:*",
+        "@phosphorus/util": "workspace:*",
+      },
+    },
+    "packages/mesh/minisign": {
+      "name": "@phosphorus/minisign",
+    },
+    "packages/mesh/peers": {
+      "name": "@phosphorus/peers",
+      "dependencies": {
+        "@phosphorus/clock": "workspace:*",
+        "@phosphorus/gamedns": "workspace:*",
+        "@phosphorus/proxy": "workspace:*",
+        "@phosphorus/services": "workspace:*",
+        "@phosphorus/sshrelay": "workspace:*",
+        "@phosphorus/util": "workspace:*",
+      },
+    },
+    "packages/mesh/services": {
+      "name": "@phosphorus/services",
+      "dependencies": {
+        "@phosphorus/clock": "workspace:*",
+        "@phosphorus/proxy": "workspace:*",
+        "@phosphorus/util": "workspace:*",
+      },
+    },
+    "packages/mesh/sshrelay": {
+      "name": "@phosphorus/sshrelay",
+      "dependencies": {
+        "@phosphorus/util": "workspace:*",
+      },
+    },
+    "packages/mesh/store": {
+      "name": "@phosphorus/store",
+      "dependencies": {
+        "@phosphorus/clock": "workspace:*",
+        "@phosphorus/files": "workspace:*",
+        "@phosphorus/util": "workspace:*",
+      },
+    },
+    "packages/mesh/update": {
+      "name": "@phosphorus/update",
+      "dependencies": {
+        "@phosphorus/clock": "workspace:*",
+        "@phosphorus/peers": "workspace:*",
+        "@phosphorus/util": "workspace:*",
+      },
+    },
+    "packages/mesh/users": {
+      "name": "@phosphorus/users",
+      "dependencies": {
+        "@phosphorus/proxy": "workspace:*",
+        "@phosphorus/store": "workspace:*",
+        "@phosphorus/util": "workspace:*",
+        "@phosphorus/wsock": "workspace:*",
+      },
+    },
+    "packages/mesh/webapps": {
       "name": "@phosphorus/webapps",
       "dependencies": {
+        "@phosphorus/appfeed": "workspace:*",
+        "@phosphorus/clock": "workspace:*",
+        "@phosphorus/minisign": "workspace:*",
+        "@phosphorus/store": "workspace:*",
+        "@phosphorus/tools": "workspace:*",
+        "@phosphorus/util": "workspace:*",
         "ssh2": "1.17.0",
       },
       "devDependencies": {
         "@types/ssh2": "1.15.6",
       },
     },
-    "packages/webstatic": {
-      "name": "@phosphorus/webstatic",
+    "packages/net/gamedns": {
+      "name": "@phosphorus/gamedns",
+      "dependencies": {
+        "@phosphorus/util": "workspace:*",
+      },
     },
-    "packages/wsock": {
+    "packages/net/proxy": {
+      "name": "@phosphorus/proxy",
+      "dependencies": {
+        "@phosphorus/util": "workspace:*",
+        "@phosphorus/wsock": "workspace:*",
+      },
+    },
+    "packages/net/term": {
+      "name": "@phosphorus/term",
+      "dependencies": {
+        "@phosphorus/util": "workspace:*",
+        "@phosphorus/wsock": "workspace:*",
+        "@xterm/headless": "6.0.0",
+        "ssh2": "1.17.0",
+      },
+      "devDependencies": {
+        "@types/ssh2": "1.15.6",
+      },
+    },
+    "packages/net/wsock": {
       "name": "@phosphorus/wsock",
     },
-    "web": {
-      "name": "@phosphorus/web",
+    "packages/server/server": {
+      "name": "@phosphorus/server",
       "dependencies": {
-        "@xterm/addon-fit": "0.11.0",
-        "@xterm/addon-webgl": "0.19.0",
-        "@xterm/xterm": "6.0.0",
-        "katex": "0.18.10",
+        "@phosphorus/chatmedia": "workspace:*",
+        "@phosphorus/cli": "workspace:*",
+        "@phosphorus/clock": "workspace:*",
+        "@phosphorus/code": "workspace:*",
+        "@phosphorus/collab": "workspace:*",
+        "@phosphorus/envfile": "workspace:*",
+        "@phosphorus/files": "workspace:*",
+        "@phosphorus/gamedns": "workspace:*",
+        "@phosphorus/git": "workspace:*",
+        "@phosphorus/mcp": "workspace:*",
+        "@phosphorus/mirror": "workspace:*",
+        "@phosphorus/model": "workspace:*",
+        "@phosphorus/peers": "workspace:*",
+        "@phosphorus/proxy": "workspace:*",
+        "@phosphorus/reconfig": "workspace:*",
+        "@phosphorus/services": "workspace:*",
+        "@phosphorus/stats": "workspace:*",
+        "@phosphorus/store": "workspace:*",
+        "@phosphorus/term": "workspace:*",
+        "@phosphorus/update": "workspace:*",
+        "@phosphorus/users": "workspace:*",
+        "@phosphorus/util": "workspace:*",
+        "@phosphorus/web-md": "workspace:*",
+        "@phosphorus/webapps": "workspace:*",
+        "@phosphorus/webstatic": "workspace:*",
+        "@phosphorus/wsock": "workspace:*",
+        "ssh2": "1.17.0",
       },
+      "devDependencies": {
+        "@types/ssh2": "1.15.6",
+      },
+    },
+    "packages/server/webstatic": {
+      "name": "@phosphorus/webstatic",
     },
   },
   "packages": {
-    "@phosphorus/appfeed": ["@phosphorus/appfeed@workspace:packages/appfeed"],
+    "@phosphorus/appfeed": ["@phosphorus/appfeed@workspace:packages/mesh/appfeed"],
 
-    "@phosphorus/chatmedia": ["@phosphorus/chatmedia@workspace:packages/chatmedia"],
+    "@phosphorus/chatmedia": ["@phosphorus/chatmedia@workspace:packages/chat/chatmedia"],
 
-    "@phosphorus/cli": ["@phosphorus/cli@workspace:packages/cli"],
+    "@phosphorus/cli": ["@phosphorus/cli@workspace:packages/host/cli"],
 
-    "@phosphorus/clock": ["@phosphorus/clock@workspace:packages/clock"],
+    "@phosphorus/clock": ["@phosphorus/clock@workspace:packages/core/clock"],
 
-    "@phosphorus/code": ["@phosphorus/code@workspace:packages/code"],
+    "@phosphorus/code": ["@phosphorus/code@workspace:packages/ai/code"],
 
-    "@phosphorus/collab": ["@phosphorus/collab@workspace:packages/collab"],
+    "@phosphorus/collab": ["@phosphorus/collab@workspace:packages/home/collab"],
 
-    "@phosphorus/elector": ["@phosphorus/elector@workspace:packages/elector"],
+    "@phosphorus/elector": ["@phosphorus/elector@workspace:packages/mesh/elector"],
 
-    "@phosphorus/envfile": ["@phosphorus/envfile@workspace:packages/envfile"],
+    "@phosphorus/envfile": ["@phosphorus/envfile@workspace:packages/host/envfile"],
 
-    "@phosphorus/files": ["@phosphorus/files@workspace:packages/files"],
+    "@phosphorus/files": ["@phosphorus/files@workspace:packages/home/files"],
 
-    "@phosphorus/gamedns": ["@phosphorus/gamedns@workspace:packages/gamedns"],
+    "@phosphorus/gamedns": ["@phosphorus/gamedns@workspace:packages/net/gamedns"],
 
-    "@phosphorus/git": ["@phosphorus/git@workspace:packages/git"],
+    "@phosphorus/git": ["@phosphorus/git@workspace:packages/mesh/git"],
 
-    "@phosphorus/host": ["@phosphorus/host@workspace:packages/host"],
+    "@phosphorus/host": ["@phosphorus/host@workspace:packages/host/host"],
 
     "@phosphorus/host-app": ["@phosphorus/host-app@workspace:apps/host"],
 
-    "@phosphorus/ini": ["@phosphorus/ini@workspace:packages/ini"],
+    "@phosphorus/ini": ["@phosphorus/ini@workspace:packages/core/ini"],
 
-    "@phosphorus/mcp": ["@phosphorus/mcp@workspace:packages/mcp"],
+    "@phosphorus/mcp": ["@phosphorus/mcp@workspace:packages/ai/mcp"],
 
-    "@phosphorus/mesh": ["@phosphorus/mesh@workspace:packages/mesh"],
+    "@phosphorus/minisign": ["@phosphorus/minisign@workspace:packages/mesh/minisign"],
 
-    "@phosphorus/minisign": ["@phosphorus/minisign@workspace:packages/minisign"],
+    "@phosphorus/mirror": ["@phosphorus/mirror@workspace:packages/home/mirror"],
 
-    "@phosphorus/mirror": ["@phosphorus/mirror@workspace:packages/mirror"],
+    "@phosphorus/model": ["@phosphorus/model@workspace:packages/ai/model"],
 
-    "@phosphorus/model": ["@phosphorus/model@workspace:packages/model"],
+    "@phosphorus/modeld": ["@phosphorus/modeld@workspace:packages/ai/modeld"],
 
-    "@phosphorus/modeld": ["@phosphorus/modeld@workspace:packages/modeld"],
+    "@phosphorus/peers": ["@phosphorus/peers@workspace:packages/mesh/peers"],
 
-    "@phosphorus/procs": ["@phosphorus/procs@workspace:packages/procs"],
+    "@phosphorus/procs": ["@phosphorus/procs@workspace:packages/host/procs"],
 
-    "@phosphorus/proxy": ["@phosphorus/proxy@workspace:packages/proxy"],
+    "@phosphorus/proxy": ["@phosphorus/proxy@workspace:packages/net/proxy"],
 
-    "@phosphorus/reconfig": ["@phosphorus/reconfig@workspace:packages/reconfig"],
+    "@phosphorus/reconfig": ["@phosphorus/reconfig@workspace:packages/host/reconfig"],
 
-    "@phosphorus/server": ["@phosphorus/server@workspace:packages/server"],
+    "@phosphorus/server": ["@phosphorus/server@workspace:packages/server/server"],
 
-    "@phosphorus/services": ["@phosphorus/services@workspace:packages/services"],
+    "@phosphorus/services": ["@phosphorus/services@workspace:packages/mesh/services"],
 
-    "@phosphorus/sshrelay": ["@phosphorus/sshrelay@workspace:packages/sshrelay"],
+    "@phosphorus/sshrelay": ["@phosphorus/sshrelay@workspace:packages/mesh/sshrelay"],
 
-    "@phosphorus/stats": ["@phosphorus/stats@workspace:packages/stats"],
+    "@phosphorus/stats": ["@phosphorus/stats@workspace:packages/host/stats"],
 
-    "@phosphorus/sysfs": ["@phosphorus/sysfs@workspace:packages/sysfs"],
+    "@phosphorus/store": ["@phosphorus/store@workspace:packages/mesh/store"],
 
-    "@phosphorus/term": ["@phosphorus/term@workspace:packages/term"],
+    "@phosphorus/term": ["@phosphorus/term@workspace:packages/net/term"],
 
-    "@phosphorus/theme": ["@phosphorus/theme@workspace:packages/theme"],
+    "@phosphorus/theme": ["@phosphorus/theme@workspace:packages/core/theme"],
 
-    "@phosphorus/tools": ["@phosphorus/tools@workspace:packages/tools"],
+    "@phosphorus/tools": ["@phosphorus/tools@workspace:packages/ai/tools"],
 
     "@phosphorus/tray-app": ["@phosphorus/tray-app@workspace:apps/tray"],
 
-    "@phosphorus/update": ["@phosphorus/update@workspace:packages/update"],
+    "@phosphorus/update": ["@phosphorus/update@workspace:packages/mesh/update"],
 
-    "@phosphorus/users": ["@phosphorus/users@workspace:packages/users"],
+    "@phosphorus/users": ["@phosphorus/users@workspace:packages/mesh/users"],
 
-    "@phosphorus/util": ["@phosphorus/util@workspace:packages/util"],
+    "@phosphorus/util": ["@phosphorus/util@workspace:packages/core/util"],
 
-    "@phosphorus/web": ["@phosphorus/web@workspace:web"],
+    "@phosphorus/web": ["@phosphorus/web@workspace:apps/web"],
 
-    "@phosphorus/web-md": ["@phosphorus/web-md@workspace:packages/web-md"],
+    "@phosphorus/web-md": ["@phosphorus/web-md@workspace:packages/chat/web-md"],
 
-    "@phosphorus/webapps": ["@phosphorus/webapps@workspace:packages/webapps"],
+    "@phosphorus/webapps": ["@phosphorus/webapps@workspace:packages/mesh/webapps"],
 
-    "@phosphorus/webstatic": ["@phosphorus/webstatic@workspace:packages/webstatic"],
+    "@phosphorus/webstatic": ["@phosphorus/webstatic@workspace:packages/server/webstatic"],
 
-    "@phosphorus/wsock": ["@phosphorus/wsock@workspace:packages/wsock"],
+    "@phosphorus/wsock": ["@phosphorus/wsock@workspace:packages/net/wsock"],
 
     "@types/bun": ["@types/bun@1.4.4", "", { "dependencies": { "bun-types": "1.4.4" } }, "sha512-9wkRDXUXK124pEnAutE6n/l18j+i9GC5IAHK8TmX/2nlySETmky0OU6yL5U8pW1AoKh++AN9auDCr647BfurjQ=="],
 

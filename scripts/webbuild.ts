@@ -1,4 +1,4 @@
-// webbuild: web/ into packages/webstatic/dist, the client bundled by Bun from
+// webbuild: apps/web into packages/server/webstatic/dist, the client bundled by Bun from
 // the workspace's pinned packages, every text
 // file precompressed, and a manifest module naming each file so bun build
 // --compile embeds them
@@ -7,8 +7,8 @@ import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync }
 import { basename, dirname, extname, join, relative } from "node:path";
 import { load } from "@phosphorus/theme";
 
-const src = process.argv[2] ?? "web";
-const out = process.argv[3] ?? "packages/webstatic/dist";
+const src = process.argv[2] ?? "apps/web";
+const out = process.argv[3] ?? "packages/server/webstatic/dist";
 const modules = join(src, "node_modules");
 const log = (s: string) => console.log(`[webbuild] ${s}`);
 

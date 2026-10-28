@@ -2,16 +2,22 @@
   "name": "phosphorus",
   "private": true,
   "type": "module",
-  "workspaces": ["apps/*", "packages/*", "web"],
+  "workspaces": [
+    "apps/*",
+    "packages/*/*"
+  ],
   "scripts": {
-    "check": "tsc --noEmit -p .",
+    "check": "bun scripts/deps.ts --check && tsc --noEmit -p .",
     "test": "bun scripts/test.ts",
     "web": "bun scripts/webbuild.ts",
     "build": "bun scripts/build.ts",
-    "licenses": "bun scripts/licenses.ts"
+    "licenses": "bun scripts/licenses.ts",
+    "deps": "bun scripts/deps.ts"
   },
   "devDependencies": {
     "@types/bun": "^1.4.4",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "@phosphorus/minisign": "workspace:*",
+    "@phosphorus/theme": "workspace:*"
   }
 }

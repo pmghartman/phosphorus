@@ -5,8 +5,9 @@ import { join, resolve } from "node:path";
 
 const root = resolve(import.meta.dir, "..");
 const dirs: string[] = [];
-for (const ws of ["packages", "apps"]) for (const d of readdirSync(join(root, ws))) if (existsSync(join(root, ws, d, "test")) && readdirSync(join(root, ws, d, "test")).some((f) => /\.test\.[cm]?[jt]s$/.test(f))) dirs.push(`${ws}/${d}`);
-if (existsSync(join(root, "web/tests"))) dirs.push("web");
+const hasTests = (d: string) => ["test", "tests"].some((t) => existsSync(join(root, d, t)) && readdirSync(join(root, d, t)).some((f) => /\.test\.[cm]?[jt]s$/.test(f)));
+for (const a of readdirSync(join(root, "apps"))) if (hasTests(`apps/${a}`)) dirs.push(`apps/${a}`);
+for (const g of readdirSync(join(root, "packages"))) for (const p of readdirSync(join(root, "packages", g))) if (hasTests(`packages/${g}/${p}`)) dirs.push(`packages/${g}/${p}`);
 const only = process.argv.slice(2);
 let failed = 0;
 for (const d of dirs) {

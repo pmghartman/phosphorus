@@ -74,9 +74,9 @@ function walk(name: string, from: string) {
     } catch {}
   }
 }
-for (const ws of ["apps", "packages", "web"]) {
-  const dirs = ws === "web" ? [join(root, "web")] : readdirSync(join(root, ws)).map((d) => join(root, ws, d));
-  for (const d of dirs) {
+const pkgDirs = [...readdirSync(join(root, "apps")).map((a) => join(root, "apps", a)), ...readdirSync(join(root, "packages")).flatMap((g) => readdirSync(join(root, "packages", g)).map((p) => join(root, "packages", g, p)))];
+{
+  for (const d of pkgDirs) {
     const f = join(d, "package.json");
     if (!existsSync(f)) continue;
     for (const dep of Object.keys(JSON.parse(readFileSync(f, "utf8")).dependencies ?? {})) if (!dep.startsWith("@phosphorus/")) walk(dep, d);

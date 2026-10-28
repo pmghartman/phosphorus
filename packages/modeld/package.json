@@ -1,1 +1,0 @@
-{ "name": "@phosphorus/modeld", "private": true, "type": "module", "exports": { ".": "./src/index.ts" } }

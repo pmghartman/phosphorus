@@ -15,8 +15,10 @@
 /notices/
 
 # the web build, rebuilt by bun run web in CI and the image
-/packages/webstatic/dist/
-/packages/webstatic/src/manifest.ts
+/packages/server/webstatic/dist/
+/packages/server/webstatic/src/manifest.ts
+# the web client's vendored copies
+/apps/web/.vendor/
 # installed JavaScript dependencies; keep dependency manifests and locks tracked
 node_modules/
 /phosphorus

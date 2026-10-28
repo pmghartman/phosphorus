@@ -1,0 +1,13 @@
+{
+  "name": "@phosphorus/git",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@phosphorus/elector": "workspace:*",
+    "@phosphorus/peers": "workspace:*",
+    "@phosphorus/util": "workspace:*"
+  }
+}

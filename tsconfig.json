@@ -18,20 +18,13 @@
     "resolveJsonModule": true,
     "verbatimModuleSyntax": true,
     "noFallthroughCasesInSwitch": true,
-    "noImplicitOverride": true,
-    
-    "paths": {
-      "@phosphorus/*": [
-        "./packages/*/src/index.ts"
-      ]
-    }
+    "noImplicitOverride": true
   },
   "include": [
     "apps/*/src",
-    "packages/*/src",
-    "packages/*/test",
-    "scripts",
-    "web/src",
-    "web/tests"
+    "apps/web/tests",
+    "packages/*/*/src",
+    "packages/*/*/test",
+    "scripts"
   ]
 }
