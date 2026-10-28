@@ -1,0 +1,255 @@
+/* --- the agent tray beside the bell: its glyph tinted, a popup of status and calls ---- */
+/* the glyph alone, tinted by state: off and waiting dim, connected and running in phosphorus's
+   moving purple and orange, working pulsing too */
+.dk-mcp-btn[data-state="online"] .ic path,
+.dk-mcp-btn[data-state="active"] .ic path {
+  stroke: url(#mcp-grad);
+}
+.dk-mcp-btn[data-state="active"] .ic {
+  animation: mcp-pulse 1.2s ease-in-out infinite;
+}
+@keyframes mcp-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+.dk-mcp-btn:hover,
+.dk-mcp-btn[aria-expanded="true"] {
+  color: var(--accent);
+}
+.dk-mcp-pop {
+  display: flex;
+  flex-direction: column;
+  background: var(--card);
+  border: 1px solid var(--border);
+  box-shadow: var(--drop);
+  font-size: 0.75rem;
+  animation: pop-in 0.12s ease-out;
+}
+.dk-mcp-pop[hidden] {
+  display: none;
+}
+.dk-cl-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0.6rem 0.6rem 0;
+}
+.dk-cl-key.wide {
+  flex-basis: 100%;
+}
+.dk-cl-hint:not(:empty) {
+  padding: 0.45rem 0.6rem 0;
+}
+.dk-cl-steps {
+  margin: 0;
+  padding-left: 1.2rem;
+  color: var(--muted);
+  line-height: 1.6;
+}
+.dk-cl-steps code {
+  color: var(--fg);
+  font-size: 0.7rem;
+  overflow-wrap: anywhere;
+}
+.dk-cl-check {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.5rem 0.7rem 0;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+.dk-cl-check input {
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.dk-cl-check:hover,
+.dk-cl-check:has(input:focus-visible) {
+  color: var(--fg);
+}
+.dk-agent-con .dk-body {
+  display: block;
+  padding: 0.25rem 0 0 0.5rem;
+}
+.dk-cl-url {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--accent);
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.7rem;
+}
+.dk-cl-key {
+  flex: 1;
+  min-width: 0;
+  padding: 0.45rem 0.6rem;
+  font: inherit;
+  cursor: pointer;
+  border: 1px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+  transition:
+    border-color 0.15s,
+    color 0.15s,
+    background 0.15s;
+}
+.dk-cl-key:hover,
+.dk-cl-key:focus-visible {
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+  outline: none;
+}
+/* set up, the key buttons stay grey until pointed at or focused; a finger's hover never sticks */
+@media (hover: hover) {
+  .dk-cl-key.quiet:hover {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    color: var(--accent);
+  }
+}
+.dk-cl-key.quiet {
+  border-color: var(--border);
+  background: none;
+  color: var(--muted);
+}
+.dk-cl-key.quiet:focus-visible,
+.dk-cl-key.quiet:active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+}
+.dk-cl-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 0.65rem 0.7rem 0.3rem;
+}
+.dk-cl-title {
+  color: var(--sage);
+  letter-spacing: 0.04em;
+}
+.dk-cl-state {
+  color: var(--muted);
+}
+.dk-cl-state[data-state="online"],
+.dk-cl-state[data-state="active"] {
+  color: var(--online);
+}
+.dk-cl-body {
+  padding: 0 0 0.5rem;
+}
+.dk-cl-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.2rem 0.7rem;
+}
+.dk-cl-k {
+  color: var(--muted);
+  flex: none;
+}
+.dk-cl-v {
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.dk-cl-v.good {
+  color: var(--online);
+}
+.dk-cl-sec {
+  margin-top: 0.4rem;
+  border-top: 1px solid var(--border);
+}
+.dk-cl-sec-t {
+  padding: 0.5rem 0.7rem 0.2rem;
+  color: var(--sage);
+  letter-spacing: 0.04em;
+}
+/* the calls a running log like a coding agent's: a bullet and the call, its outcome hung under it */
+.dk-cl-calls {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0.2rem;
+  max-height: min(62vh, 30rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.dk-cl-call {
+  padding: 0.2rem 0.7rem;
+}
+.dk-cl-ln {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+.dk-cl-pip {
+  flex: none;
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: var(--dim);
+}
+.dk-cl-call.live .dk-cl-pip {
+  background: var(--online);
+  animation: mcp-pulse 1.2s ease-in-out infinite;
+}
+.dk-cl-call.ok .dk-cl-pip {
+  background: color-mix(in srgb, var(--online) 55%, var(--dim));
+}
+.dk-cl-call.bad .dk-cl-pip {
+  background: var(--accent-2);
+}
+.dk-cl-host {
+  flex: none;
+  color: var(--sage);
+}
+.dk-cl-tool {
+  flex: none;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg);
+  font-weight: 600;
+}
+.dk-cl-arg {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  margin-left: -0.35rem;
+}
+.dk-cl-out {
+  position: relative;
+  margin: 0.05rem 0 0 0.85rem;
+  padding-left: 1.1rem;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.dk-cl-out::before {
+  content: "⎿";
+  position: absolute;
+  left: 0;
+  color: var(--dim);
+}
+.dk-cl-call.live .dk-cl-out {
+  color: var(--online);
+}
+.dk-cl-call.bad .dk-cl-out {
+  color: var(--accent-2);
+}
+.dk-cl-none {
+  padding: 0.3rem 0.7rem;
+  color: var(--muted);
+}

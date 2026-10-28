@@ -1,0 +1,191 @@
+/* --- files tab ------------------------------------------------------------ */
+/* a tree per pane, split adding a second, rows dragged between them */
+
+.ic {
+  width: 0.85rem;
+  height: 0.85rem;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: var(--ic-w, 1.3);
+  stroke-linecap: var(--ic-cap, round);
+  stroke-linejoin: var(--ic-join, round);
+}
+/* each kind of thing its own muted hue */
+.ic-host {
+  color: var(--rose);
+}
+.ic-folder,
+.ic-mkdir,
+.ic-rename {
+  color: var(--sand);
+}
+.ic-file,
+.ic-split {
+  color: var(--sky);
+}
+.ic-upload,
+.ic-download {
+  color: var(--sage);
+}
+.ic-refresh {
+  color: var(--teal);
+}
+.ic-view,
+.ic-trash {
+  color: var(--rose);
+}
+
+/* status line, only while there is something to say */
+
+/* tree(s) with the view pane to the right, or the bottom half in split mode */
+
+/* what a published directory allows, as rw-, -wd, r-d */
+
+/* one toolbar down the side, acting on the active pane */
+
+/* rename, new folder, delete and upload asked here, not in a browser dialog */
+
+/* the whole pane, blank space a drop into the working directory, --step one
+   level (guide under the parent's icon), --gutter room for an unfoldable row's > */
+
+/* indent guides under each open folder's icon, one per level, none from host to
+   share, ending mid-slot so no line on the box edge gets rounded away */
+
+/* always visible, not hover only: the row's real controls */
+
+/* drag and drop: the target row lit, or the whole tree for its blank space */
+
+/* where a drop lands, or why it can't, beside the pointer */
+/* the pane sliding in on open, each file's contents fading in as they land */
+@keyframes files-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+/* whole image in view, never upscaled */
+
+/* block cells, not a styled div, read like the rest of the terminal UI */
+/* a full-height block overrunning the brackets, so shrunk and lifted inside them */
+
+/* stacked below the breakpoint: no room for side-by-side panes to be useful */
+@media (max-width: 720px) {
+  /* the view under the list, half the height */
+}
+
+/* this host, wherever it is listed: the square the node table gives it */
+.is-self::before {
+  content: "";
+  display: inline-block;
+  width: 0.4rem;
+  height: 0.4rem;
+  margin-right: 0.5rem;
+  background: var(--accent);
+  vertical-align: middle;
+}
+
+/* the up arrow inside the box's right edge, kept at the bottom as the box grows */
+.chat-go {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  margin: 0 0.45rem 0.4rem 0;
+  padding: 0;
+  border: none;
+  background: var(--accent);
+  color: var(--bg);
+  cursor: pointer;
+}
+.chat-go svg {
+  width: 0.8rem;
+  height: 0.8rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: calc(var(--ic-w, 1.3) + 0.7);
+  stroke-linecap: var(--ic-cap, round);
+  stroke-linejoin: var(--ic-join, round);
+}
+.chat-go:disabled {
+  background: var(--border);
+  color: var(--muted);
+  cursor: default;
+}
+
+/* slash commands over the box while one is being typed */
+.chat-cmds {
+  list-style: none;
+  margin: 0;
+  padding: 0.25rem 0;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-bottom: 0;
+  font-size: 0.75rem;
+}
+.chat-cmds li {
+  display: flex;
+  gap: 1.5ch;
+  padding: 0.2rem 0.75rem;
+  color: var(--muted);
+  cursor: pointer;
+}
+.chat-cmds li:hover,
+.chat-cmds li.on {
+  background: var(--bg);
+}
+.chat-cmds li.on {
+  box-shadow: inset 2px 0 var(--accent);
+  color: var(--fg);
+}
+.chat-cmds .cmd {
+  flex: 0 0 7ch;
+  color: var(--sage);
+  font-weight: 600;
+}
+.chat-cmds .cmd-what {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* a command's choices: a name, an open file, a channel */
+.chat-cmds .cmd.hint {
+  flex: 0 1 auto;
+  max-width: 70%;
+  color: var(--fg);
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* the chosen command, left of the box on its first line */
+.chat-chip {
+  flex: none;
+  align-self: flex-start;
+  padding: 0.55rem 0 0.55rem 0.6rem;
+  color: var(--sage);
+  font-weight: 600;
+}
+.chat-chip[hidden] {
+  display: none;
+}
+.chat-form:has(.chat-chip:not([hidden])) textarea {
+  padding-left: 0.5ch;
+}
+
+/* a blinking bar cursor, as in the terminal */
+input,
+textarea {
+  caret-color: var(--accent);
+}
+
+/* > at the tree's left edge, only on the unfoldable row under the pointer */
+
+/* section heads and column labels, a quiet green over the grey */
+.home-col-head,
+.mesh-stats-head,
+.tab-menu-title {
+  color: var(--sage);
+}

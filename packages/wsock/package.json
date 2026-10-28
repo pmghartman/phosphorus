@@ -1,1 +1,0 @@
-{ "name": "@phosphorus/wsock", "private": true, "type": "module", "exports": { ".": "./src/index.ts" } }

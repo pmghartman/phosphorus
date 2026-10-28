@@ -1,0 +1,85 @@
+/* --- home tab: services + game servers ------------------------------------ */
+.home-col {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.home-col {
+  position: relative;
+  border: 1px solid var(--border);
+  padding: 0.75rem 0.4rem 0.4rem;
+}
+.home-col-head {
+  position: absolute;
+  top: 0;
+  left: 0.6rem;
+  transform: translateY(-50%);
+  padding: 0 0.45ch;
+  background: var(--bg);
+  line-height: 1;
+  letter-spacing: 0.04em;
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+.home-note {
+  margin-top: auto;
+  padding: 0.6rem 0.75rem;
+  border: 1px dashed var(--border);
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+.join-key {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.5rem;
+  margin-top: 0.55rem;
+}
+.join-key a,
+.join-key-btn {
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--border);
+  background: none;
+  font: inherit;
+  color: var(--muted);
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    color 0.15s,
+    background-color 0.15s;
+}
+.join-key a:is(:focus-visible),
+.join-key-btn:is(:focus-visible):not(:disabled) {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--fg);
+  outline: none;
+}
+.join-key-cmd .game-copy:focus-visible {
+  color: var(--accent);
+  background: var(--border);
+  outline: none;
+}
+.join-key-btn:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+.join-key-cmd {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  flex-basis: 100%;
+}
+.join-key-cmd code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  user-select: all;
+  color: var(--teal);
+}
+.join-key-err {
+  flex-basis: 100%;
+  color: var(--offmesh);
+  overflow-wrap: anywhere;
+}

@@ -1,0 +1,175 @@
+/* --- services list ------------------------------------------------------ */
+
+/* rows, not cards, lit like a selection in a cli list */
+.list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.list li a {
+  display: block;
+  padding: 0.3rem 0.5rem 0.3rem 1.2rem;
+  color: var(--fg);
+  text-decoration: none;
+}
+.list li a:hover,
+.list li a:focus-visible {
+  background: var(--border);
+  color: var(--accent);
+  outline: none;
+}
+
+.list li .meta {
+  color: var(--muted);
+  font-size: 0.8rem;
+  margin-left: 0.5rem;
+}
+.db-icon {
+  width: 0.7em;
+  height: 0.8em;
+  margin-right: 0.3em;
+  vertical-align: -0.05em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 0.9;
+}
+
+.empty {
+  color: var(--muted);
+}
+
+/* git: pinned above the services, a row like theirs, hosts folded under it when
+   collapsed, slid out into a tree when open (app.js layoutGitStack) */
+/* the link over the whole card, like the other service cards, the chevron above it */
+/* the graph's chevron, turning the same way as the hosts unfold */
+
+/* clipped at its own bottom edge only: a box mid-slide never painting over the services below */
+/* one straight guide down from the chevron, as the files tree draws them */
+
+/* one glyph and hue per state: ● master, ○ ready (filled on hover), ◌ catching
+   up, × unreachable, a turning ◐ mid-switch, a wide target in the row's rhythm */
+/* ○ and ● drawn, not typed, oval as monospace glyphs */
+/* time behind the master, the transfer bar's cells: green, yellow, red */
+
+/* one row, same as a service link, so both columns line up */
+.game-card {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.3rem 0.5rem 0.3rem 1.2rem;
+  transition: background-color 0.15s;
+}
+.game-card:hover,
+.game-card:focus-visible {
+  background: var(--border);
+  outline: none;
+}
+.game-info {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.game-detail {
+  flex: 0 3 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.game-info > div:first-child,
+.game-addr {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.game-addr {
+  min-width: 0;
+  user-select: all;
+  color: var(--teal);
+}
+.game-error {
+  color: var(--offmesh);
+  font-size: 0.75rem;
+  margin-top: 0.25rem;
+  overflow-wrap: anywhere;
+}
+
+/* play/pause/spinner, colored by status, capped at the card's line box */
+.game-btn {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 1.05rem;
+  height: 1.05rem;
+  padding: 0;
+  background: none;
+  border: 1px solid currentColor;
+  cursor: pointer;
+}
+.game-btn svg {
+  width: 0.55rem;
+  height: 0.55rem;
+  fill: currentColor;
+}
+.game-btn.online {
+  color: var(--online);
+}
+.game-btn.offline {
+  color: var(--muted);
+}
+.game-btn.offline:hover:not(:disabled) {
+  color: var(--fg);
+}
+.game-btn.busy {
+  color: var(--warn);
+}
+.game-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, currentColor 15%, transparent);
+}
+.game-btn:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+.game-btn.busy:disabled {
+  opacity: 1;
+}
+.game-spin {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+}
+.game-btn.busy svg {
+  animation: game-spin 1s linear infinite;
+}
+@keyframes game-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.game-copy {
+  display: grid;
+  place-items: center;
+  padding: 0.15rem;
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.game-copy:hover {
+  color: var(--accent);
+}
+.game-copy svg {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+.game-copy .stroke,
+.game-btn .stroke {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1;
+}

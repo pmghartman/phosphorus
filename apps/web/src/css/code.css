@@ -1,0 +1,1438 @@
+/* --- code: claude code sessions (apps/code.ts) ------------------------------- */
+.dk-icon.dk-code .ic {
+  color: var(--sky);
+}
+#view-code {
+  overflow: hidden;
+}
+.dk-app-code .dk-body > .view {
+  padding: 0;
+}
+.cd {
+  position: relative;
+  display: flex;
+  height: 100%;
+  container-type: inline-size;
+  font-size: 0.82rem;
+}
+/* the side narrower than the main pane, dragged wider on its grip */
+.cd-side {
+  flex: 0 0 var(--cd-side, 13rem);
+  max-width: 45%;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+  min-height: 0;
+  padding: 0.4rem 0.3rem 0.3rem;
+  background: var(--tabbar);
+}
+.cd-grip {
+  flex: none;
+  width: 5px;
+  margin-left: -2px;
+  margin-right: -2px;
+  position: relative;
+  z-index: 1;
+  cursor: col-resize;
+  touch-action: none;
+}
+.cd-grip::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 2px;
+  width: 1px;
+  background: var(--border);
+  transition: background 0.15s;
+}
+.cd-grip:hover::before,
+.cd-grip:focus-visible::before,
+.cd-resizing .cd-grip::before {
+  left: 1px;
+  width: 3px;
+  background: var(--accent);
+}
+.cd-grip:focus-visible {
+  outline: none;
+}
+.cd-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+.cd-side-top {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.cd-new {
+  padding: 0.3rem 0.5rem;
+  background: none;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.cd-new:hover,
+.cd-new:focus-visible {
+  background: var(--accent);
+  color: var(--bg);
+}
+.cd-find {
+  padding: 0.3rem 0.5rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.75rem;
+}
+.cd-find:focus {
+  border-color: var(--accent);
+}
+.cd-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+.cd-item {
+  position: relative;
+}
+.cd-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  width: 100%;
+  padding: 0.3rem 0.5rem;
+  background: none;
+  border: 0;
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.cd-pick:hover,
+.cd-pick:focus-visible {
+  background: var(--card);
+}
+.cd-item.on .cd-pick {
+  background: var(--card);
+  box-shadow: inset 2px 0 var(--accent);
+}
+.cd-item-top {
+  display: flex;
+  align-items: center;
+  gap: 0.6ch;
+  min-width: 0;
+}
+.cd-item-top .cw-sub {
+  flex: none;
+  margin-left: auto;
+}
+.cd-item-sub {
+  color: var(--muted);
+  font-size: 0.7rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-left: calc(0.45rem + 0.6ch);
+}
+.cd-host {
+  color: var(--sage);
+}
+.cd-harness {
+  color: var(--accent);
+  margin-right: 0.5rem;
+}
+.cd-model {
+  color: var(--accent);
+}
+.cd-item-acts {
+  position: absolute;
+  right: 0.3rem;
+  bottom: 0.25rem;
+  display: none;
+  gap: 0.25rem;
+}
+.cd-item:hover .cd-item-acts,
+.cd-item:focus-within .cd-item-acts,
+.cd-item.on .cd-item-acts {
+  display: flex;
+}
+/* the details line cut short before them, never drawn under; small whatever a theme's buttons are */
+@media (min-width: 721px) {
+  .cd-item:is(:hover, :focus-within, .on) .cd-item-sub {
+    padding-right: 7.5rem;
+  }
+}
+:root .cd-item-acts .cd-mini.cd-mini {
+  padding: 0.05rem 0.45rem;
+  font-size: 0.68rem;
+  line-height: 1.2;
+}
+.cd-mini {
+  padding: 0.05rem 0.45rem;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.68rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.cd-mini:hover:not(:disabled) {
+  border-color: var(--fg);
+  color: var(--fg);
+}
+.cd-mini.danger {
+  color: var(--offmesh);
+}
+.cd-mini.danger:hover,
+.cd-mini.armed {
+  border-color: var(--offmesh);
+  background: var(--offmesh);
+  color: var(--bg);
+}
+.cd-mini.primary {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.cd-mini.primary:hover:not(:disabled) {
+  background: var(--accent);
+  color: var(--bg);
+}
+.cd-mini:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.cd-rename {
+  width: 100%;
+  padding: 0.35rem 0.6rem;
+  background: var(--card);
+  border: 1px solid var(--accent);
+  color: var(--fg);
+  font: inherit;
+}
+/* a session's state: working pulsing, idle up, ended dim, failed red */
+.cd-dot {
+  flex: none;
+  width: 0.45rem;
+  height: 0.45rem;
+  background: var(--dim);
+}
+.cd-dot.cd-st-working,
+.cd-dot.cd-st-starting {
+  background: var(--accent);
+  animation: mcp-pulse 1.2s ease-in-out infinite;
+}
+.cd-dot.cd-st-idle {
+  background: var(--online);
+}
+.cd-dot.cd-st-failed {
+  background: var(--offmesh);
+}
+.cd-bad {
+  color: var(--offmesh);
+}
+
+.cd-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.cd-head {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.35rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--tabbar);
+}
+.cd-head-top {
+  display: flex;
+  align-items: center;
+  gap: 1ch;
+  min-width: 0;
+}
+.cd-title {
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cd-state {
+  flex: none;
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+.cd-state.cd-st-working,
+.cd-state.cd-st-starting {
+  color: var(--accent);
+  animation: update-blink 1.2s ease-in-out infinite;
+}
+.cd-state.cd-st-idle {
+  color: var(--online);
+}
+.cd-state.cd-st-failed {
+  color: var(--offmesh);
+}
+.cd-head-tools {
+  margin-left: auto;
+  display: flex;
+  gap: 0.3rem;
+}
+.cd-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 1.6rem;
+  height: 1.4rem;
+  padding: 0;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  cursor: pointer;
+}
+.cd-icon:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.cd-icon:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.cd-side-btn {
+  display: none;
+}
+.cd-head-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 1ch;
+  font-size: 0.75rem;
+}
+.cd-where {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  margin-right: auto;
+}
+.cd-sel {
+  padding: 0.15rem 0.3rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.72rem;
+}
+.cd-sel:focus {
+  border-color: var(--accent);
+}
+.cd-use {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* the transcript */
+.cd-log {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.6rem 0.7rem 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  overflow-wrap: anywhere;
+}
+.cd-wait {
+  align-self: center;
+  margin-top: 2rem;
+}
+/* as the chat app: your prompt its own bubble on the right, the agent's words behind the brand gradient */
+.cd-user {
+  align-self: flex-end;
+  max-width: min(78%, 46rem);
+  padding: 0.35rem 0.65rem;
+  background: color-mix(in srgb, var(--accent) 12%, var(--card));
+  border-right: 2px solid var(--accent);
+  box-shadow: var(--lift-sm);
+  white-space: pre-wrap;
+}
+.cd-user .cd-prompt {
+  display: none;
+}
+.cd-log > .cd-text {
+  padding: 0.1rem 0 0.1rem 0.75rem;
+  border-left: 1px solid;
+  border-image: linear-gradient(var(--glyph-purple), var(--glyph-orange)) 1;
+}
+.cd-prompt {
+  color: var(--accent);
+  font-weight: 600;
+  flex: none;
+}
+.cd-text.md {
+  white-space: normal;
+  line-height: 1.5;
+}
+.cd-text.md > :first-child {
+  margin-top: 0;
+}
+.cd-text.md p,
+.cd-text.md ul,
+.cd-text.md ol,
+.cd-text.md pre,
+.cd-text.md blockquote,
+.cd-text.md table {
+  margin: 0.4em 0 0;
+}
+.cd-text.md ul,
+.cd-text.md ol {
+  padding-left: 1.4em;
+}
+.cd-text.md h1,
+.cd-text.md h2,
+.cd-text.md h3,
+.cd-text.md h4 {
+  font-size: 1em;
+  margin: 0.6em 0 0;
+  color: var(--accent);
+}
+.cd-text.md code {
+  background: var(--card);
+  padding: 0 0.25em;
+}
+.cd-text.md pre {
+  background: var(--card);
+  border: 1px solid var(--border);
+  padding: 0.45em 0.7em;
+  overflow-x: auto;
+  white-space: pre;
+}
+.cd-text.md pre code {
+  background: none;
+  padding: 0;
+}
+.cd-text.md a {
+  color: var(--sky);
+}
+.cd-text.md blockquote {
+  border-left: 2px solid var(--border);
+  padding-left: 0.6em;
+  color: var(--muted);
+}
+.cd-text.md table {
+  border-collapse: collapse;
+  display: block;
+  overflow-x: auto;
+}
+.cd-text.md th,
+.cd-text.md td {
+  border: 1px solid var(--border);
+  padding: 0.1em 0.5em;
+}
+.cd-streaming.cd-text {
+  white-space: pre-wrap;
+}
+.cd-streaming.cd-text::after {
+  content: "▍";
+  color: var(--accent);
+  animation: update-blink 1s steps(2) infinite;
+}
+.cd-think {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+.cd-think summary {
+  cursor: pointer;
+  color: var(--dim);
+  font-style: italic;
+  list-style: none;
+}
+.cd-think summary::before {
+  content: "▸ ";
+}
+.cd-think[open] summary::before {
+  content: "▾ ";
+}
+.cd-think-body {
+  white-space: pre-wrap;
+  padding: 0.3rem 0 0 1rem;
+  border-left: 1px solid var(--border);
+  margin-left: 0.25rem;
+}
+
+/* a tool call: ● name(arg), ⎿ what came back, the detail folded under */
+.cd-tool {
+  min-width: 0;
+}
+.cd-tool-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5ch;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.cd-tool-head:hover .cd-tool-name {
+  color: var(--accent);
+}
+.cd-pip {
+  flex: none;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: var(--dim);
+  margin-right: 0.3ch;
+}
+.cd-tool.run .cd-pip {
+  background: var(--accent);
+  animation: mcp-pulse 1.2s ease-in-out infinite;
+}
+.cd-tool.ok .cd-pip {
+  background: var(--online);
+}
+.cd-tool.bad .cd-pip {
+  background: var(--offmesh);
+}
+.cd-tool-name {
+  flex: none;
+  font-weight: 600;
+}
+.cd-tool-arg {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+}
+.cd-tool-arg::before {
+  content: "(";
+}
+.cd-tool-arg::after {
+  content: ")";
+}
+.cd-tool-stat {
+  flex: none;
+  margin-left: 0.5ch;
+  font-size: 0.72rem;
+}
+.cd-add {
+  color: var(--online);
+}
+.cd-del {
+  color: var(--offmesh);
+}
+.cd-tool-out {
+  position: relative;
+  margin: 0.05rem 0 0 0.3rem;
+  padding-left: 1.2rem;
+  color: var(--dim);
+  font-size: 0.75rem;
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cd-tool-out::before {
+  content: "⎿";
+  position: absolute;
+  left: 0;
+}
+.cd-tool.run .cd-tool-out {
+  color: var(--accent);
+}
+.cd-tool.bad .cd-tool-out {
+  color: var(--offmesh);
+}
+.cd-tool-body {
+  margin: 0.3rem 0 0 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.cd-tool-sub {
+  margin: 0.3rem 0 0 0.7rem;
+  padding-left: 0.8rem;
+  border-left: 1px dashed var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.cd-tool-sub:empty {
+  display: none;
+}
+.cd-cmd,
+.cd-result,
+.cd-json,
+.cd-install-out {
+  margin: 0;
+  padding: 0.4rem 0.6rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  font: inherit;
+  font-size: 0.75rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 22rem;
+  overflow-y: auto;
+}
+.cd-result {
+  color: var(--muted);
+}
+.cd-result.bad {
+  color: var(--offmesh);
+}
+.cd-diff {
+  border: 1px solid var(--border);
+  background: var(--card);
+  font-size: 0.74rem;
+  max-height: 26rem;
+  overflow: auto;
+}
+.cd-dl {
+  display: flex;
+  white-space: pre;
+  min-width: max-content;
+}
+.cd-dl.add {
+  background: color-mix(in srgb, var(--online) 14%, transparent);
+}
+.cd-dl.del {
+  background: color-mix(in srgb, var(--offmesh) 14%, transparent);
+}
+.cd-dl.gap {
+  color: var(--dim);
+  padding-left: 0.6rem;
+}
+.cd-dm {
+  flex: none;
+  width: 1.6ch;
+  text-align: center;
+  color: var(--dim);
+  user-select: none;
+}
+.cd-dl.add .cd-dm {
+  color: var(--online);
+}
+.cd-dl.del .cd-dm {
+  color: var(--offmesh);
+}
+.cd-dt {
+  padding-right: 0.6rem;
+}
+
+.cd-note {
+  display: flex;
+  gap: 1ch;
+  font-size: 0.75rem;
+}
+.cd-note-tag {
+  flex: none;
+  color: var(--sage);
+}
+.cd-note-text {
+  white-space: pre-wrap;
+}
+.cd-note-error .cd-note-tag,
+.cd-note-error .cd-note-text {
+  color: var(--offmesh);
+}
+.cd-note-warn .cd-note-tag,
+.cd-note-warn .cd-note-text {
+  color: var(--warn);
+}
+.cd-note .cd-mini {
+  flex: none;
+  align-self: center;
+}
+.cd-note.cd-quiet {
+  color: var(--dim);
+}
+.cd-note.cd-quiet .cd-note-tag {
+  color: var(--dim);
+}
+.cd-foot {
+  display: flex;
+  align-items: center;
+  gap: 1ch;
+  color: var(--dim);
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+}
+.cd-foot::before,
+.cd-foot::after {
+  content: "";
+  flex: 1;
+  border-top: 1px solid var(--border);
+}
+.cd-foot.bad {
+  color: var(--offmesh);
+}
+
+/* a permission asked: the call shown, three answers */
+.cd-perm {
+  border: 1px solid var(--warn);
+  padding: 0.5rem 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  background: color-mix(in srgb, var(--warn) 6%, transparent);
+}
+.cd-perm.answered {
+  border-color: var(--border);
+  background: none;
+}
+.cd-perm-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6ch;
+  min-width: 0;
+}
+.cd-perm-tag {
+  flex: none;
+  color: var(--warn);
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+}
+.cd-perm.answered .cd-perm-tag {
+  color: var(--muted);
+}
+.cd-perm.answered .cd-perm-body {
+  display: none;
+}
+.cd-perm-reason {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.cd-perm-why {
+  padding: 0.3rem 0.5rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.75rem;
+}
+.cd-perm-why:focus {
+  border-color: var(--accent);
+}
+.cd-perm-acts {
+  align-items: center;
+}
+.cd-perm-msg {
+  margin-right: auto;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+.cd-perm-msg.good {
+  color: var(--online);
+}
+.cd-perm-msg.bad {
+  color: var(--offmesh);
+}
+
+/* todos over the composer, a bar of how far */
+.cd-todos {
+  flex: none;
+  border-top: 1px solid var(--border);
+  padding: 0.35rem 0.8rem;
+  max-height: 30%;
+  overflow-y: auto;
+}
+.cd-todo-head {
+  display: flex;
+  align-items: baseline;
+  gap: 1ch;
+  width: 100%;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.75rem;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.cd-todo-t {
+  color: var(--sage);
+  letter-spacing: 0.04em;
+}
+.cd-todo-now {
+  color: var(--accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.cd-cells {
+  font-size: 0.7em;
+  letter-spacing: 0;
+  color: var(--accent);
+  vertical-align: 0.08em;
+}
+.cd-cells i {
+  font-style: normal;
+  color: var(--dim);
+}
+.cd-todo-list {
+  list-style: none;
+  margin: 0.25rem 0 0;
+  padding: 0;
+  font-size: 0.75rem;
+}
+.cd-todo-list li {
+  padding: 0.05rem 0;
+}
+.cd-box {
+  color: var(--accent);
+  white-space: pre;
+}
+.cd-todo-completed {
+  color: var(--muted);
+  text-decoration: line-through;
+  text-decoration-color: var(--dim);
+}
+.cd-todo-completed .cd-box {
+  color: var(--online);
+}
+.cd-todo-in_progress {
+  color: var(--accent);
+}
+
+/* the composer */
+.cd-compose {
+  flex: none;
+  padding: 0.4rem 0.5rem 0.2rem;
+  border-top: 1px solid var(--border);
+}
+.cd-form textarea {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  color: var(--fg);
+  padding: 0.55rem 0.6rem;
+  font: inherit;
+  resize: none;
+  overflow-y: auto;
+  max-height: 200px;
+}
+.cd-form .cd-attach {
+  margin: 0 0.4rem 0.6rem 0;
+}
+.cd-form .cd-attach:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.cd-stop {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 0.4ch;
+  height: 1.4rem;
+  margin: 0 0.4rem 0.4rem 0;
+  padding: 0 0.5rem;
+  background: none;
+  border: 1px solid var(--offmesh);
+  color: var(--offmesh);
+  font: inherit;
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+.cd-stop:hover {
+  background: var(--offmesh);
+  color: var(--bg);
+}
+.cd-stop .ic {
+  width: 0.6rem;
+  height: 0.6rem;
+  fill: currentColor;
+}
+.cd-form.cd-busy {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+}
+.cd-compose-foot {
+  min-height: 1rem;
+  padding-top: 0.2rem;
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+.cd-atts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.cd-atts:not(:empty) {
+  padding-bottom: 0.3rem;
+}
+.cd-att {
+  display: inline-flex;
+  gap: 0.6ch;
+  padding: 0.1rem 0.4rem;
+  border: 1px solid var(--border);
+  font-size: 0.7rem;
+}
+.cd-att-st {
+  color: var(--muted);
+}
+.cd-att.bad {
+  border-color: var(--offmesh);
+}
+.cd-att.bad .cd-att-st {
+  color: var(--offmesh);
+}
+
+/* a new session, as the desktop app starts one: a prompt box, its choices as chips under it */
+.cd-newform {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+.cd-newform > .cd-head-top {
+  padding: 0.35rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--tabbar);
+}
+.cd-start {
+  box-sizing: border-box;
+  width: min(44rem, 100%);
+  margin: auto;
+  padding: 1rem 0.8rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.cd-hello {
+  font-size: 1.15rem;
+  font-weight: 600;
+  text-align: center;
+  margin-bottom: 0.4rem;
+}
+.cd-intro {
+  margin: 0 0 0.75rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.cd-box {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  background: var(--card);
+  box-shadow: var(--lift-sm);
+  transition: border-color 0.15s;
+}
+.cd-box:focus-within {
+  border-color: var(--accent);
+}
+.cd-first {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 4.5rem;
+  max-height: 320px;
+  padding: 0.6rem 0.7rem 0.3rem;
+  background: none;
+  border: 0;
+  color: var(--fg);
+  font: inherit;
+  resize: none;
+  overflow-y: auto;
+}
+.cd-first:focus {
+  outline: none;
+}
+.cd-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.25rem 0.35rem 0.35rem;
+}
+.cd-bar-gap {
+  flex: 1;
+}
+.cd-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35ch;
+  min-width: 0;
+  max-width: 16rem;
+  height: 1.5rem;
+  padding: 0 0.45rem;
+  background: none;
+  border: 1px solid transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+.cd-chip:hover,
+.cd-chip:focus-within,
+.cd-chip:focus-visible {
+  border-color: var(--border);
+  background: var(--bg);
+  color: var(--fg);
+}
+.cd-chip-ic {
+  flex: none;
+  display: grid;
+}
+.cd-chip-ic .ic {
+  width: 0.8rem;
+  height: 0.8rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.3;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.cd-chip-sel {
+  field-sizing: content;
+  min-width: 0;
+  max-width: 12rem;
+  padding: 0;
+  appearance: none;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-overflow: ellipsis;
+}
+.cd-chip:has(> .cd-chip-sel)::after {
+  content: "▾";
+  flex: none;
+  font-size: 0.65em;
+  opacity: 0.7;
+  pointer-events: none;
+}
+.cd-chip-sel:focus {
+  outline: none;
+}
+.cd-chip-sel option,
+.cd-chip-sel optgroup {
+  background: var(--card);
+  color: var(--fg);
+}
+.cd-chip-t {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cd-chip-want {
+  color: var(--warn);
+}
+.cd-go {
+  margin: 0 0 0 0.3rem;
+}
+.cd-start-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 1ch;
+  min-height: 1rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+.cd-start-foot .cd-msg {
+  margin-right: auto;
+  color: var(--warn);
+}
+.cd-signin {
+  color: var(--muted);
+}
+.cd-link {
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--sky);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.cd-install {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--warn);
+  font-size: 0.75rem;
+  color: var(--warn);
+}
+.cd-install-out {
+  flex-basis: 100%;
+  color: var(--muted);
+}
+/* signing in to Claude: the command, the token pasted back */
+.cd-login {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.5rem 0.7rem 0.6rem;
+  border: 1px solid var(--accent);
+  background: var(--card);
+  font-size: 0.78rem;
+}
+.cd-login-t {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
+}
+.cd-login-p {
+  margin: 0;
+  color: var(--muted);
+}
+.cd-login-steps {
+  margin: 0;
+  padding-left: 1.4em;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.cd-login-steps code {
+  color: var(--fg);
+}
+.cd-login-bar {
+  display: flex;
+  gap: 0.4rem;
+}
+.cd-login-bar .update-pass {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 0.35rem 0.5rem;
+}
+.cd-login-msg {
+  color: var(--offmesh);
+  font-size: 0.72rem;
+}
+.cd-login-msg:empty {
+  display: none;
+}
+/* the folder: typed, recent, browsed */
+.cd-picker {
+  border-top: 1px solid var(--border);
+  max-height: 18rem;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+}
+.cd-path {
+  margin: 0.4rem 0.5rem 0.2rem;
+  padding: 0.3rem 0.5rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.78rem;
+}
+.cd-path:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.cd-recent {
+  padding: 0.1rem 0 0.2rem;
+  border-bottom: 1px solid var(--border);
+}
+.cd-recent-t {
+  padding: 0.15rem 0.6rem;
+  color: var(--dim);
+  font-size: 0.68rem;
+}
+.cd-picker-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.cd-picker-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg);
+}
+.cd-picker-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.2rem 0;
+  overflow-y: auto;
+}
+.cd-picker-list > li {
+  padding: 0.15rem 0.6rem;
+  font-size: 0.75rem;
+}
+.cd-picker-row {
+  display: block;
+  width: 100%;
+  padding: 0.15rem 0.6rem;
+  background: none;
+  border: 0;
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.78rem;
+  text-align: left;
+  cursor: pointer;
+}
+.cd-picker-row:hover,
+.cd-picker-row:focus-visible {
+  background: var(--bg);
+  color: var(--accent);
+}
+
+/* no login of the user's own anywhere: the new session's form in its place */
+.cd-newform > .cd-empty {
+  margin-top: 2rem;
+  align-self: center;
+  box-sizing: border-box;
+  width: min(34rem, calc(100% - 1.6rem));
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+}
+.cd-empty-t {
+  font-weight: 600;
+  color: var(--warn);
+  margin-bottom: 0.5rem;
+}
+
+/* a session's folder browsed: a panel over the app */
+.cd-browse {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  place-items: center;
+  padding: 1rem;
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
+}
+.cd-browse-panel {
+  width: min(40rem, 100%);
+  max-height: min(34rem, 100%);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  box-shadow: var(--drop);
+  animation: pop-in 0.1s ease-out;
+}
+.cd-browse-list {
+  flex: 1;
+  min-height: 0;
+}
+.cd-browse .cd-picker-head > :not(.cd-picker-path) {
+  flex: none;
+}
+.cd-browse-list > li:has(> .cd-browse-row) {
+  padding: 0;
+}
+.cd-browse-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 7ch 5ch;
+  gap: 1ch;
+  width: 100%;
+  padding: 0.2rem 0.6rem;
+  background: none;
+  border: 0;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.78rem;
+  text-align: left;
+}
+.cd-browse-row.dir {
+  color: var(--fg);
+  cursor: pointer;
+}
+.cd-browse-row.dir:hover,
+.cd-browse-row.dir:focus-visible {
+  background: var(--card);
+  color: var(--accent);
+}
+.cd-browse-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cd-browse-size,
+.cd-browse-at {
+  color: var(--dim);
+  font-size: 0.7rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* the Claude account at the side's foot, its token box opening above it */
+.cd-acct {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border);
+  margin: 0 -0.3rem -0.3rem;
+}
+.cd-acct-box {
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+.cd-acct-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.6ch;
+  width: 100%;
+  padding: 0.45rem 0.6rem;
+  background: none;
+  border: 0;
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.75rem;
+  text-align: left;
+  cursor: pointer;
+}
+.cd-acct-btn:hover,
+.cd-acct-btn:focus-visible,
+.cd-acct-btn[aria-expanded="true"] {
+  background: var(--card);
+}
+.cd-acct-dot {
+  flex: none;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: var(--dim);
+}
+.cd-acct-dot.on {
+  background: var(--online);
+}
+.cd-acct-t {
+  flex: 1;
+  min-width: 0;
+}
+.cd-acct-st {
+  flex: none;
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+.cd-token .dk-cl-sec-t {
+  padding-top: 0.45rem;
+}
+/* the anthropic token's box */
+.cd-token-hint {
+  padding: 0 0.7rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+.cd-token-hint code {
+  color: var(--fg);
+}
+.cd-token .dk-cl-state {
+  margin-left: 0.5ch;
+  letter-spacing: 0;
+}
+.cd-token .dk-cl-state[data-state="off"] {
+  color: var(--muted);
+}
+.cd-token-bar {
+  padding-bottom: 0.6rem;
+}
+.cd-token-in {
+  flex: 1 0 100%;
+}
+
+/* narrow: one column, the sessions a drawer over it */
+.cd-scrim {
+  display: none;
+}
+@container (max-width: 640px) {
+  .cd-grip {
+    display: none;
+  }
+  .cd-side {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 3;
+    width: min(18rem, 85%);
+    max-width: none;
+    border-right: 1px solid var(--border);
+    transform: translateX(-110%);
+    transition: transform 0.18s ease;
+    box-shadow: var(--drop);
+  }
+  .cd.cd-drawer .cd-side {
+    transform: none;
+  }
+  .cd.cd-drawer .cd-scrim {
+    display: block;
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    background: color-mix(in srgb, var(--bg) 55%, transparent);
+  }
+  .cd-side-btn {
+    display: grid;
+  }
+  .cd-item-acts {
+    display: flex;
+    position: static;
+    justify-content: flex-end;
+    padding: 0 0.6rem 0.3rem;
+    background: none;
+  }
+  .cd-start {
+    padding-top: 0.6rem;
+  }
+  .cd-tool-body {
+    margin-left: 0.6rem;
+  }
+}
+@media (max-width: 720px) {
+  .cd-pick {
+    min-height: 2.5rem;
+  }
+  .cd-form textarea,
+  .cd-first,
+  .cd-path {
+    font-size: 16px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cd-dot,
+  .cd-state,
+  .cd-tool.run .cd-pip,
+  .cd-streaming.cd-text::after {
+    animation: none !important;
+  }
+}
+/* --- end code ------------------------------------------------------------------ */

@@ -1,0 +1,28 @@
+/* the page's styles, in cascade order; each part's own file in src/css/ */
+
+/* the theme library's tokens, generated from packages/theme/themes.json by the build */
+@import "phosphorus:themes";
+@import "./src/css/base.css";
+@import "./src/css/desktop.css";
+@import "./src/css/filemanager.css";
+@import "./src/css/services.css";
+@import "./src/css/status.css";
+@import "./src/css/home.css";
+@import "./src/css/about.css";
+@import "./src/css/chatpane.css";
+@import "./src/css/chat.css";
+@import "./src/css/popups.css";
+@import "./src/css/files.css";
+@import "./src/css/cli.css";
+@import "./src/css/account.css";
+@import "./src/css/control.css";
+@import "./src/css/appearance.css";
+@import "./src/css/agent.css";
+@import "./src/css/corner.css";
+@import "./src/css/phone.css";
+@import "./src/css/code.css";
+@import "./src/css/agents.css";
+@import "./src/css/store.css";
+@import "./src/css/switcher.css";
+@import "./src/css/looks.css";
+@import "./src/css/layout.css";

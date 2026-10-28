@@ -1,0 +1,39 @@
+{
+  "name": "@phosphorus/server",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@phosphorus/chatmedia": "workspace:*",
+    "@phosphorus/code": "workspace:*",
+    "@phosphorus/collab": "workspace:*",
+    "@phosphorus/config": "workspace:*",
+    "@phosphorus/envfile": "workspace:*",
+    "@phosphorus/files": "workspace:*",
+    "@phosphorus/gamedns": "workspace:*",
+    "@phosphorus/git": "workspace:*",
+    "@phosphorus/mcp": "workspace:*",
+    "@phosphorus/mirror": "workspace:*",
+    "@phosphorus/model": "workspace:*",
+    "@phosphorus/peers": "workspace:*",
+    "@phosphorus/proxy": "workspace:*",
+    "@phosphorus/reconfig": "workspace:*",
+    "@phosphorus/services": "workspace:*",
+    "@phosphorus/stats": "workspace:*",
+    "@phosphorus/store": "workspace:*",
+    "@phosphorus/term": "workspace:*",
+    "@phosphorus/update": "workspace:*",
+    "@phosphorus/users": "workspace:*",
+    "@phosphorus/util": "workspace:*",
+    "@phosphorus/web-md": "workspace:*",
+    "@phosphorus/webapps": "workspace:*",
+    "@phosphorus/webstatic": "workspace:*",
+    "@phosphorus/wsock": "workspace:*",
+    "ssh2": "1.17.0"
+  },
+  "devDependencies": {
+    "@types/ssh2": "1.15.6"
+  }
+}

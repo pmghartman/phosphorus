@@ -1,0 +1,12 @@
+{
+  "name": "@phosphorus/update",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@phosphorus/peers": "workspace:*",
+    "@phosphorus/util": "workspace:*"
+  }
+}

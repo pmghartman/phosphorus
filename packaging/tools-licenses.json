@@ -1,11 +1,35 @@
 {
   "_": "programs phosphorus bundles or fetches that aren't npm packages: their version pin and license text, merged into THIRD_PARTY_NOTICES.txt by scripts/licenses.ts",
   "bundled": [
-    { "name": "Tailscale", "spdx": "BSD-3-Clause", "pin": ["packaging/tools.sh", "^TAILSCALE=(\\S+)"], "source": "https://github.com/tailscale/tailscale", "license": "https://raw.githubusercontent.com/tailscale/tailscale/v{v}/LICENSE" },
-    { "name": "cloudflared", "spdx": "Apache-2.0", "pin": ["packaging/tools.sh", "^CLOUDFLARED=(\\S+)"], "source": "https://github.com/cloudflare/cloudflared", "license": "https://raw.githubusercontent.com/cloudflare/cloudflared/{v}/LICENSE" },
-    { "name": "Forgejo", "spdx": "GPL-3.0-or-later", "pin": ["packaging/tools.sh", "^FORGEJO=(\\S+)"], "source": "https://codeberg.org/forgejo/forgejo/src/tag/v{v}", "license": "https://codeberg.org/forgejo/forgejo/raw/tag/v{v}/LICENSE" }
+    {
+      "name": "Tailscale",
+      "spdx": "BSD-3-Clause",
+      "pin": ["packaging/tools.sh", "^TAILSCALE=(\\S+)"],
+      "source": "https://github.com/tailscale/tailscale",
+      "license": "https://raw.githubusercontent.com/tailscale/tailscale/v{v}/LICENSE"
+    },
+    {
+      "name": "cloudflared",
+      "spdx": "Apache-2.0",
+      "pin": ["packaging/tools.sh", "^CLOUDFLARED=(\\S+)"],
+      "source": "https://github.com/cloudflare/cloudflared",
+      "license": "https://raw.githubusercontent.com/cloudflare/cloudflared/{v}/LICENSE"
+    },
+    {
+      "name": "Forgejo",
+      "spdx": "GPL-3.0-or-later",
+      "pin": ["packaging/tools.sh", "^FORGEJO=(\\S+)"],
+      "source": "https://codeberg.org/forgejo/forgejo/src/tag/v{v}",
+      "license": "https://codeberg.org/forgejo/forgejo/raw/tag/v{v}/LICENSE"
+    }
   ],
   "fetched": [
-    { "name": "llama.cpp", "spdx": "MIT", "pin": ["packages/tools/src/index.ts", "LlamaTag\\s*=\\s*\"([^\"]+)\""], "source": "https://github.com/ggml-org/llama.cpp", "license": "https://raw.githubusercontent.com/ggml-org/llama.cpp/{v}/LICENSE" }
+    {
+      "name": "llama.cpp",
+      "spdx": "MIT",
+      "pin": ["packages/tools/src/index.ts", "LlamaTag\\s*=\\s*\"([^\"]+)\""],
+      "source": "https://github.com/ggml-org/llama.cpp",
+      "license": "https://raw.githubusercontent.com/ggml-org/llama.cpp/{v}/LICENSE"
+    }
   ]
 }

@@ -1,0 +1,14 @@
+{
+  "name": "@phosphorus/peers",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@phosphorus/gamedns": "workspace:*",
+    "@phosphorus/proxy": "workspace:*",
+    "@phosphorus/services": "workspace:*",
+    "@phosphorus/util": "workspace:*"
+  }
+}

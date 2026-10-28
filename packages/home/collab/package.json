@@ -1,0 +1,14 @@
+{
+  "name": "@phosphorus/collab",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@phosphorus/files": "workspace:*",
+    "@phosphorus/users": "workspace:*",
+    "@phosphorus/util": "workspace:*",
+    "@phosphorus/wsock": "workspace:*"
+  }
+}

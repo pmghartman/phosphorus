@@ -1,1 +1,14 @@
-{ "name": "@phosphorus/tray-app", "private": true, "type": "module", "main": "src/main.ts" }
+{
+  "name": "@phosphorus/tray-app",
+  "private": true,
+  "type": "module",
+  "main": "src/main.ts",
+  "dependencies": {
+    "@phosphorus/appfeed": "workspace:*",
+    "@phosphorus/theme": "workspace:*",
+    "@phosphorus/util": "workspace:*"
+  },
+  "exports": {
+    ".": "./src/main.ts"
+  }
+}

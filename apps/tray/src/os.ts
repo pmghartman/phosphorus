@@ -1,9 +1,22 @@
 // each OS's side of the app: where its home, host binary and release payload
 // are, dialogs, the browser, the admin steps, the login item, one instance per
 // user, and a downloaded release swapped in for this one
-import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+
 import { dlopen } from "bun:ffi";
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { dirname, join } from "node:path";
 import { errText, run } from "@phosphorus/util";
 import { wstr } from "./tray.ts";
 
@@ -19,7 +32,8 @@ export function read(p: string): string {
 }
 
 // a child left to run on its own, this process's exit no end to it
-const detach = (argv: string[]) => Bun.spawn(argv, { stdin: "ignore", stdout: "ignore", stderr: "ignore", windowsHide: true }).unref();
+const detach = (argv: string[]) =>
+  Bun.spawn(argv, { stdin: "ignore", stdout: "ignore", stderr: "ignore", windowsHide: true }).unref();
 
 // the tray as the login item launches it: bun with the script in a dev run; the
 // binary, which is the host's too, with tray; on Windows the launcher beside it, a
@@ -63,7 +77,9 @@ function self(): string {
 export const app = {
   exe,
   home: homeDir(),
-  host: process.env.PHOSPHORUS_HOST_BIN || (Bun.main.endsWith(".ts") ? join(exe, darwin ? "phosphorus-host" : "phosphorus-host.exe") : self()),
+  host:
+    process.env.PHOSPHORUS_HOST_BIN ||
+    (Bun.main.endsWith(".ts") ? join(exe, darwin ? "phosphorus-host" : "phosphorus-host.exe") : self()),
   // not "phosphorus": beside the Phosphorus binary on a case-insensitive disk
   payload: darwin ? join(exe, "../Resources/release") : join(exe, "release"),
 };
@@ -176,7 +192,8 @@ const mac: OS = {
       if (!r.ok) throw new Error("unpacking: " + r.output.trim());
       const name = readdirSync(stage).find((n) => n.endsWith(".app"));
       if (!name) throw new Error("no app in the download");
-      const fresh = join(stage, name), old = join(stage, "old.app");
+      const fresh = join(stage, name),
+        old = join(stage, "old.app");
       renameSync(b, old);
       try {
         renameSync(fresh, b);
@@ -203,8 +220,15 @@ async function dialog(text: string, icon: string, ...buttons: string[]): Promise
 
 const xmlEsc = (s: string) => s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 
-const MB_OK = 0, MB_OKCANCEL = 1, MB_ICONERROR = 0x10, MB_ICONWARNING = 0x30, MB_ICONINFORMATION = 0x40, MB_DEFBUTTON2 = 0x100;
-const MB_SETFOREGROUND = 0x10000, MB_TOPMOST = 0x40000, IDOK = 1;
+const MB_OK = 0,
+  MB_OKCANCEL = 1,
+  MB_ICONERROR = 0x10,
+  MB_ICONWARNING = 0x30,
+  MB_ICONINFORMATION = 0x40,
+  MB_DEFBUTTON2 = 0x100;
+const MB_SETFOREGROUND = 0x10000,
+  MB_TOPMOST = 0x40000,
+  IDOK = 1;
 
 const windows: OS = {
   noteAppDir() {
@@ -215,7 +239,15 @@ const windows: OS = {
   singleInstance() {
     mkdirSync(join(app.home, "state"), { recursive: true });
     const { CreateFileW } = kernel32();
-    const h = CreateFileW(wstr(join(app.home, "state/tray.lock")), 0x40000000 /* GENERIC_WRITE */, 0, 0n, 4 /* OPEN_ALWAYS */, 0x80 /* FILE_ATTRIBUTE_NORMAL */, 0n);
+    const h = CreateFileW(
+      wstr(join(app.home, "state/tray.lock")),
+      0x40000000 /* GENERIC_WRITE */,
+      0,
+      0n,
+      4 /* OPEN_ALWAYS */,
+      0x80 /* FILE_ATTRIBUTE_NORMAL */,
+      0n,
+    );
     if (BigInt(h) === 0xffffffffffffffffn) return false;
     lock = h;
     return true;
@@ -272,7 +304,13 @@ const lazy = <T>(f: () => T) => {
   return () => (v ??= f());
 };
 const libc = lazy(() => dlopen("libSystem.B.dylib", { flock: { args: ["i32", "i32"], returns: "i32" } }).symbols);
-const kernel32 = lazy(() => dlopen("kernel32.dll", { CreateFileW: { args: ["ptr", "u32", "u32", "u64", "u32", "u32", "u64"], returns: "u64" } }).symbols);
-const user32 = lazy(() => dlopen("user32.dll", { MessageBoxW: { args: ["u64", "ptr", "ptr", "u32"], returns: "i32" } }).symbols);
+const kernel32 = lazy(
+  () =>
+    dlopen("kernel32.dll", { CreateFileW: { args: ["ptr", "u32", "u32", "u64", "u32", "u32", "u64"], returns: "u64" } })
+      .symbols,
+);
+const user32 = lazy(
+  () => dlopen("user32.dll", { MessageBoxW: { args: ["u64", "ptr", "ptr", "u32"], returns: "i32" } }).symbols,
+);
 
 export const os: OS = darwin ? mac : windows;

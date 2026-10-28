@@ -11,13 +11,17 @@
 .DS_Store
 *.bak
 
-# default [files] share, contents per host, not shipped
-/files/*
-!/files/.gitkeep
+# the licence notices and SBOM, written by bun run licenses
+/notices/
+
+# bun's package cache, kept in the workspace by CI
+/.bun-cache/
 
 # the web build, rebuilt by bun run web in CI and the image
-/packages/webstatic/dist/
-/packages/webstatic/src/manifest.ts
+/packages/server/webstatic/dist/
+/packages/server/webstatic/src/manifest.ts
+# the web client's vendored copies
+/apps/web/.vendor/
 # installed JavaScript dependencies; keep dependency manifests and locks tracked
 node_modules/
 /phosphorus

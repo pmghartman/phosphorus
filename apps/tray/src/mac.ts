@@ -3,7 +3,7 @@
 // target one runtime-made class, NSApplication's events pumped on a timer beside
 // the event loop. objc_msgSend is called through fixed prototypes, one per
 // argument shape, never as a variadic
-import { dlopen, FFIType, JSCallback, type FFITypeOrString, type Pointer } from "bun:ffi";
+import { dlopen, FFIType, type FFITypeOrString, JSCallback, type Pointer } from "bun:ffi";
 import { cstr, type Tray, type TrayItem } from "./tray.ts";
 
 const LIBOBJC = "/usr/lib/libobjc.A.dylib";
@@ -134,7 +134,13 @@ export function macTray(icon: Uint8Array, tooltip: string): Tray {
       send.b(m, sel("setAutoenablesItems:"), false);
       next.forEach((it, i) => {
         if (it.separator) return void send.o(m, sel("addItem:"), send.v(cls("NSMenuItem"), sel("separatorItem")));
-        const mi = send.ooo(alloc("NSMenuItem"), sel("initWithTitle:action:keyEquivalent:"), nsstr(it.label ?? ""), sel("trayClick:"), nsstr(""));
+        const mi = send.ooo(
+          alloc("NSMenuItem"),
+          sel("initWithTitle:action:keyEquivalent:"),
+          nsstr(it.label ?? ""),
+          sel("trayClick:"),
+          nsstr(""),
+        );
         send.o(mi, sel("setTarget:"), target);
         send.i(mi, sel("setTag:"), BigInt(i));
         send.b(mi, sel("setEnabled:"), it.enabled !== false);
@@ -154,7 +160,14 @@ export function macTray(icon: Uint8Array, tooltip: string): Tray {
   const tick = () =>
     pooled(() => {
       for (;;) {
-        const ev = send.event(app, sel("nextEventMatchingMask:untilDate:inMode:dequeue:"), NSEventMaskAny, distantPast, defaultMode, true);
+        const ev = send.event(
+          app,
+          sel("nextEventMatchingMask:untilDate:inMode:dequeue:"),
+          NSEventMaskAny,
+          distantPast,
+          defaultMode,
+          true,
+        );
         if (!ev) break;
         send.o(app, sel("sendEvent:"), ev);
       }
