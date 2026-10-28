@@ -28,7 +28,7 @@ async function role(cmd: string): Promise<number | undefined> {
 // the app: `tray`, or Phosphorus.app opened on macOS, which passes no command (or
 // the login item's --background); its module runs on import
 const inBundle = process.platform === "darwin" && /\.app\/Contents\/MacOS\//.test(process.execPath);
-if (cmd === "tray" || (inBundle && (cmd === "" || cmd.startsWith("--")))) await import("../../tray/src/main.ts");
+if (cmd === "tray" || (inBundle && (cmd === "" || cmd.startsWith("--")))) await import("@phosphorus/tray-app");
 else if (cmd === "cli") process.exit(await cliMain(args));
 else if (cmd === "version") console.log(version());
 else if (commands.has(cmd)) process.exit(await hostMain(cmd, args));

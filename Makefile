@@ -3,7 +3,7 @@
 
 all: build
 
-# the client's bundle, from the workspace's pinned packages, into packages/webstatic/dist
+# the client's bundle, from the workspace's pinned packages, into packages/server/webstatic/dist
 web:
 	bun install --frozen-lockfile
 	bun run web
@@ -24,4 +24,4 @@ licenses: web
 	bun scripts/licenses.ts dist
 
 clean:
-	rm -rf dist packages/webstatic/dist packages/webstatic/src/manifest.ts
+	rm -rf dist packages/server/webstatic/dist packages/server/webstatic/src/manifest.ts

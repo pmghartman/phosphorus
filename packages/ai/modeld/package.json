@@ -1,0 +1,12 @@
+{
+  "name": "@phosphorus/modeld",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@phosphorus/tools": "workspace:*",
+    "@phosphorus/util": "workspace:*"
+  }
+}

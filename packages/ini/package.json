@@ -1,1 +1,0 @@
-{ "name": "@phosphorus/ini", "private": true, "type": "module", "exports": { ".": "./src/index.ts" } }

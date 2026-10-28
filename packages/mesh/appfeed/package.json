@@ -1,0 +1,11 @@
+{
+  "name": "@phosphorus/appfeed",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@phosphorus/minisign": "workspace:*"
+  }
+}

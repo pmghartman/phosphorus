@@ -16,8 +16,7 @@ function keysTheme(): string {
 
 const keysPage = () => readFileSync(keysHtml as unknown as string, "utf8").replace("/*theme*/", keysTheme());
 
-const reply = (status: number, v: unknown) =>
-  Response.json(v, { status, headers: { "Cache-Control": "no-store" } });
+const reply = (status: number, v: unknown) => Response.json(v, { status, headers: { "Cache-Control": "no-store" } });
 
 let srv: { base: string; done: boolean; err: string } | undefined;
 
@@ -34,12 +33,15 @@ export function keysURL(start: () => Promise<string>): string {
     async fetch(req) {
       // by this address alone, never a rebound name, and never posted to by a page elsewhere
       const o = req.headers.get("origin");
-      if (req.headers.get("host") !== host || (o && o !== "http://" + host)) return new Response("forbidden", { status: 403 });
+      if (req.headers.get("host") !== host || (o && o !== "http://" + host))
+        return new Response("forbidden", { status: 403 });
       const path = new URL(req.url).pathname;
       if (!path.startsWith(tok)) return new Response("not found", { status: 404 });
       switch (path.slice(tok.length)) {
         case "":
-          return new Response(page, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } });
+          return new Response(page, {
+            headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" },
+          });
         case "status":
           return reply(200, await keyStatus());
         case "save":

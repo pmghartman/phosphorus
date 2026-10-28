@@ -3,14 +3,8 @@
     "target": "ES2023",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "lib": [
-      "ES2023",
-      "DOM",
-      "DOM.Iterable"
-    ],
-    "types": [
-      "bun"
-    ],
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["bun"],
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true,
@@ -18,20 +12,7 @@
     "resolveJsonModule": true,
     "verbatimModuleSyntax": true,
     "noFallthroughCasesInSwitch": true,
-    "noImplicitOverride": true,
-    
-    "paths": {
-      "@phosphorus/*": [
-        "./packages/*/src/index.ts"
-      ]
-    }
+    "noImplicitOverride": true
   },
-  "include": [
-    "apps/*/src",
-    "packages/*/src",
-    "packages/*/test",
-    "scripts",
-    "web/src",
-    "web/tests"
-  ]
+  "include": ["apps/*/src", "apps/web/tests", "packages/*/*/src", "packages/*/*/test", "scripts"]
 }

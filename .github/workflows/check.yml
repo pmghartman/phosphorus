@@ -1,4 +1,4 @@
-# one short pass on every pull request: install, the web build, types, tests
+# one short pass on every pull request: install, the web build, types, the formatter, tests
 name: check
 
 on:
@@ -33,4 +33,6 @@ jobs:
       # the web build first: tsc reads its manifest
       - run: bun run web
       - run: bun run check
+      # the formatter's word on the whole tree
+      - run: bun run lint
       - run: bun run test

@@ -1,0 +1,11 @@
+{
+  "name": "@phosphorus/tools",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@phosphorus/util": "workspace:*"
+  }
+}

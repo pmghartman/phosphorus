@@ -1,0 +1,15 @@
+{
+  "name": "@phosphorus/model",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@phosphorus/peers": "workspace:*",
+    "@phosphorus/store": "workspace:*",
+    "@phosphorus/users": "workspace:*",
+    "@phosphorus/util": "workspace:*",
+    "@phosphorus/webapps": "workspace:*"
+  }
+}

@@ -110,13 +110,13 @@ jobs:
           key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock') }}
       - run: bun install --frozen-lockfile
       # a binary without it serves nothing but 404s
-      - run: bun run web && test -f packages/webstatic/dist/index.html
+      - run: bun run web && test -f packages/server/webstatic/dist/index.html
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: web-dist
           path: |
-            packages/webstatic/dist/
-            packages/webstatic/src/manifest.ts
+            packages/server/webstatic/dist/
+            packages/server/webstatic/src/manifest.ts
           retention-days: 1
 
   # every production dependency under an allowed license, and the shipped notices
@@ -177,11 +177,11 @@ jobs:
           echo "$KEY" | gpg --batch --import
           gpg --export > "$RUNNER_TEMP/phosphorus.gpg"
           echo "PHOSPHORUS_APT_KEY=$RUNNER_TEMP/phosphorus.gpg" >> "$GITHUB_ENV"
-      # the web client the web job built, into packages/webstatic before anything embeds it
+      # the web client the web job built, into packages/server/webstatic before anything embeds it
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: web-dist
-          path: packages/webstatic
+          path: packages/server/webstatic
       # the notices and SBOM, shipped inside each installer
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
