@@ -43,6 +43,7 @@ function applyState(state: State) {
   st.lastState = state;
   appCall('status', false, (m) => m.statusState(state));
   appCall('agents', false, (m) => m.agentsState(state));
+  appCall('store', false, (m) => m.storeState(state));
   meshModelsFrom(state, gitChanged);
   updateState(state);
 }

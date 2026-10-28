@@ -99,9 +99,14 @@ export interface HostInfo {
   platform?: string;
   files?: { enabled?: boolean; shares?: HostShare[] };
   desk?: Record<string, string>;
+  apps?: Record<string, AppStatus>;
 }
 
 export interface SelfInfo { host: string; version?: string; platform?: string; bootId?: string }
+
+// an optional app the mesh wants (packages/webapps Want), and a host's copy of one (Status)
+export interface AppWant { version: string; url?: string; sha256?: string; from?: string; at?: number }
+export interface AppStatus { version: string; busy?: boolean; error?: string }
 
 export interface State {
   domain?: string;
@@ -115,6 +120,8 @@ export interface State {
   chain?: Chain | null;
   chainMine?: boolean;
   hosts?: Record<string, HostInfo>;
+  // the optional apps picked for the mesh, by id
+  apps?: Record<string, AppWant>;
   pollMs?: number;
 }
 

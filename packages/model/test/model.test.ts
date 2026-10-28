@@ -70,6 +70,7 @@ const sysfs = await import("@phosphorus/sysfs");
 const M = await import("@phosphorus/model");
 // tavern published on the mesh, so its agent is listed; one test takes it away
 M.seams.published = (name: string) => name === "tavern";
+M.seams.installed = () => false;
 const { StateDir } = await import("@phosphorus/util");
 
 const gib = 1 << 30;
@@ -287,6 +288,13 @@ test("chat for another host", async () => {
 
 test("chat as an agent or a mesh name", async () => {
   await claim(ready);
+  // sulfur installed onto the mesh: its agent with a fast slot, asked by its two names
+  M.seams.installed = (id: string) => id === "sulfur";
+  expect(M.Agents().map((a) => [a.id, a.fast])).toEqual([["code", true], ["claude-code", true], ["opencode", true], ["tavern", false], ["sulfur", true]]);
+  // its fast name the small tier, its main one the large
+  expect(M.Target("agent-sulfur-fast")[1]).toBe("small");
+  expect(M.Target("agent-sulfur")[1]).toBe("large");
+  M.seams.installed = () => false;
   // tavern gone from the mesh: no agent of its name, listed nowhere
   M.seams.published = () => false;
   expect(M.Summary().agents.map((a: any) => a.id)).toEqual(["code", "claude-code", "opencode"]);

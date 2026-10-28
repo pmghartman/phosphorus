@@ -105,7 +105,7 @@ function agentCard(a: ModelAgent): HTMLElement {
 }
 
 // agents by where they run
-const GROUPS: [string, string[]][] = [['Code', ['code', 'claude-code', 'opencode']], ['Apps', ['tavern']]];
+const GROUPS: [string, string[]][] = [['Code', ['code', 'claude-code', 'opencode']], ['Apps', ['tavern', 'sulfur']]];
 
 function group(title: string, note: string, body: HTMLElement): HTMLElement {
   const g = el('section', 'ag-group');

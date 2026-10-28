@@ -3,6 +3,7 @@
 import { join } from "node:path";
 import { peerModel, routes } from "@phosphorus/mesh";
 import * as sysfs from "@phosphorus/sysfs";
+import { wantOf } from "@phosphorus/webapps";
 import { envInt, errText, FrontendPort, localeCompare, marshal, now, obj, readFresh, requestJSON, SelfHost, StateDir } from "@phosphorus/util";
 
 export const selfHost = SelfHost;
@@ -421,18 +422,23 @@ const builtin: Agent[] = [
   { id: "opencode", label: "OpenCode", about: "opencode in a project, on the mesh's models", parent: "code", tier: "large", fast: true },
 ];
 
-// apps on the mesh that ask a model, each an agent while a service of its name
-// is published on any host
-const apps: (Agent & { service: string })[] = [
+// apps on the mesh that ask a model, each an agent while it's there: a service of its
+// name published on any host, or an app of the apps page installed onto the mesh
+const apps: (Agent & { service?: string; app?: string })[] = [
   { id: "tavern", label: "Tavern", about: "the dungeon master of the tavern app, asking as agent-tavern", parent: "", tier: "large", fast: false, service: "tavern" },
+  { id: "sulfur", label: "Sulfur", about: "the editor's chat, asking as agent-sulfur; its inline completions as agent-sulfur-fast", parent: "", tier: "large", fast: true, app: "sulfur" },
 ];
 
-// whether a service of that name is published on the mesh, swapped for a fake in tests
-export const seams = { published: (name: string) => routes().some((r) => r.name === name) };
+// whether a service of that name is published on the mesh, and whether an app is
+// installed onto it, each swapped for a fake in tests
+export const seams = {
+  published: (name: string) => routes().some((r) => r.name === name),
+  installed: (id: string) => wantOf(id) !== undefined,
+};
 
 // Agents the agents right now: the built-ins, then the apps on the mesh
 export function Agents(): Agent[] {
-  return [...builtin, ...apps.filter((a) => seams.published(a.service)).map(({ service: _, ...a }) => a)];
+  return [...builtin, ...apps.filter((a) => (a.service ? seams.published(a.service) : seams.installed(a.app!))).map(({ service: _, app: __, ...a }) => a)];
 }
 
 // slots an agent's assignments: its model, and for some a fast one

@@ -40,7 +40,7 @@ export const deskApps = new Set<string>();
 
 // the page's own settings in localStorage, mirrored to the user's home (account.ts); here
 // because the agent's view key is read as its module loads
-export const PREF_LS: Record<string, string> = { icons: 'phosphorus-dk-icons', theme: 'phosphorus-theme', palette: 'phosphorus-palette', custom: 'phosphorus-theme-custom', recent: 'phosphorus-recent-files', color: 'phosphorus-chat-color', agentview: 'phosphorus-agent-view' };
+export const PREF_LS: Record<string, string> = { icons: 'phosphorus-dk-icons', theme: 'phosphorus-theme', palette: 'phosphorus-palette', custom: 'phosphorus-theme-custom', recent: 'phosphorus-recent-files', color: 'phosphorus-chat-color', agentview: 'phosphorus-agent-view', editor: 'phosphorus-editor' };
 export const PREF_OF: Record<string, string> = Object.fromEntries(Object.entries(PREF_LS).map(([k, v]) => [v, k]));
 
 // the desk once up: its layers, bar and status items

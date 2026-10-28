@@ -16,6 +16,7 @@ import * as sysfs from "@phosphorus/sysfs";
 import * as update from "@phosphorus/update";
 import * as users from "@phosphorus/users";
 import { errText, flushWrites, logf, tailnetIP } from "@phosphorus/util";
+import * as webapps from "@phosphorus/webapps";
 import type { WSData } from "@phosphorus/wsock";
 import { allPresence, chatEditAs, initChat, knownPerson, mergedChat, mergeFromPeers, mergePeerPresence, postAs, showAs } from "./chat.ts";
 import { baseDomain, bootID, getPlatform, ingressPort, isUpdating, loadPlatform, modelColor, port, recordPlatform, selfHost, selfInfo, setUpdating, Version } from "./config.ts";
@@ -57,6 +58,7 @@ export async function start(): Promise<Server<WSData>> {
   recordPlatform();
   update.restoreChain();
   mirror.Start(tailnetIP, port);
+  webapps.Start(tailnetIP, port);
   ingressListen(ingressPort, appHandler, { pass: users.Pass, issuers: users.Issuers });
   stats.hooks.self = () => ({ host: selfHost, platform: getPlatform(), version: Version() });
   stats.hooks.peers = mesh.peerIPs;
