@@ -31,15 +31,17 @@ DMG=$WORK/dmg
 mkdir -p "$DMG"
 cp -R "$APP" "$DMG/"
 ln -s /Applications "$DMG/Applications"
-# the runners' disk images now and then busy: a few tries
+# lzfse (ULFO, macOS 10.11+): smaller than zlib's UDZO and several times faster over
+# the four bun binaries; the runners' disk images now and then busy: a few tries
 for i in 1 2 3; do
-  hdiutil create -volname Phosphorus -srcfolder "$DMG" -ov -format UDZO "$OUT/phosphorus-$VER-macos-universal.dmg" && break
+  hdiutil create -volname Phosphorus -srcfolder "$DMG" -ov -format ULFO "$OUT/phosphorus-$VER-macos-universal.dmg" && break
   [ $i = 3 ] && exit 1
   sleep 5
 done
 
 if [ -n "${UPDATE_SIGNING_KEY:-}" ] && [ -n "${FEED_PUBKEY:-}" ]; then
-  tar -czf "$UPD/phosphorus-macos-universal.app.tar.gz" -C "$WORK" Phosphorus.app
+  # gzip at its fastest: the bun binaries barely compress better at the default level
+  tar -cf - -C "$WORK" Phosphorus.app | gzip -1 > "$UPD/phosphorus-macos-universal.app.tar.gz"
   (cd "$ROOT" && bun scripts/feedsign.ts "$UPD/phosphorus-macos-universal.app.tar.gz")
 fi
 rm -rf "$WORK"
