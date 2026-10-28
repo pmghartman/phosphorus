@@ -8,7 +8,9 @@
 Unicode true
 ManifestDPIAware true
 RequestExecutionLevel user
-SetCompressor /SOLID lzma
+; zlib: solid lzma took two and a half minutes over the two bun binaries for a
+; third off the setup's size; zlib takes seconds
+SetCompressor zlib
 
 !include "MUI2.nsh"
 !include "FileFunc.nsh"

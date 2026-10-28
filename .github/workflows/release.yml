@@ -33,6 +33,10 @@ on:
 permissions:
   contents: read
 
+env:
+  # bun's package cache in one place on every OS, kept between runs by actions/cache
+  BUN_INSTALL_CACHE_DIR: ${{ github.workspace }}/.bun-cache
+
 # one release at a time: the next version is read off the tags
 concurrency:
   group: release
@@ -45,8 +49,16 @@ jobs:
     outputs:
       ver: ${{ steps.v.outputs.ver }}
       builds: ${{ steps.plan.outputs.builds }}
+      # the lockfile's hash: the bun cache's key, and what prune keeps
+      lock: ${{ steps.lock.outputs.lock }}
+      # the pinned Forgejo version the release notes link the source of
+      forgejo: ${{ steps.fj.outputs.forgejo }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - id: fj
+        run: echo "forgejo=$(sed -n 's/^FORGEJO=//p' packaging/tools.sh)" | tee -a "$GITHUB_OUTPUT"
+      - id: lock
+        run: echo "lock=${{ hashFiles('bun.lock') }}" | tee -a "$GITHUB_OUTPUT"
       # every run one past the highest vMAJOR.MINOR tag: minor, or major with .0
       - name: next version
         id: v
@@ -92,6 +104,10 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: .bun-cache
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock') }}
       - run: bun install --frozen-lockfile
       # a binary without it serves nothing but 404s
       - run: bun run web && test -f packages/webstatic/dist/index.html
@@ -113,6 +129,10 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: .bun-cache
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock') }}
       - run: bun install --frozen-lockfile
       - run: bun scripts/licenses.ts notices
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
@@ -139,6 +159,10 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: .bun-cache
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock') }}
       - run: bun install --frozen-lockfile
       - run: bun run web
       - run: bun run check
@@ -164,6 +188,10 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: .bun-cache
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock') }}
       - run: bun install --frozen-lockfile
       # apt key's public half, into the host package
       - name: apt key
@@ -255,12 +283,8 @@ jobs:
       contents: write
     env:
       VER: ${{ needs.version.outputs.ver }}
+      FJ: ${{ needs.version.outputs.forgejo }}
     steps:
-      # tools.sh alone, for the pinned Forgejo version the notes link the source of
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          sparse-checkout: packaging/tools.sh
-          sparse-checkout-cone-mode: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           path: out
@@ -275,7 +299,6 @@ jobs:
       # the notes: how to install, the assets listed by GitHub under them
       - name: notes
         run: |
-          FJ=$(sed -n 's/^FORGEJO=//p' packaging/tools.sh)
           cd out
           {
             shopt -s nullglob
@@ -365,10 +388,10 @@ jobs:
           gh release upload update * --clobber
 
   # only the two newest numbered releases and their tags kept, the `update` feed
-  # aside; only this workflow's two newest runs, this one included, and the apt
-  # caches those two saved
+  # aside; only this workflow's two newest runs, this one included; of the bun
+  # caches only this lockfile's
   prune:
-    needs: [release, feed]
+    needs: [version, release, feed]
     if: ${{ !cancelled() && needs.release.result == 'success' && contains(fromJSON('["success", "skipped"]'), needs.feed.result) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -387,9 +410,10 @@ jobs:
             gh release delete "$t" --yes --cleanup-tag
           done
       - name: caches
+        env:
+          LOCK: ${{ needs.version.outputs.lock }}
         run: |
-          keep=$(gh run list --workflow release.yml --limit 200 --json databaseId,createdAt --jq 'sort_by(.createdAt) | reverse | .[:2] | map(.databaseId | tostring) | join("|")')
-          gh cache list --limit 200 --json id,key --jq ".[] | select(.key | test(\"^apt-.*-[0-9]+\$\")) | select(.key | test(\"-($keep)\$\") | not) | .id" |
+          gh cache list --limit 200 --json id,key --jq ".[] | select(.key | startswith(\"bun-\")) | select(.key | endswith(\"-$LOCK\") | not) | .id" |
           while read -r id; do
             echo "deleting cache $id"
             gh cache delete "$id" || true
