@@ -11,7 +11,8 @@ import { connectState, stateStop, stateUp } from './sync.ts';
 import { themeFromStorage } from './theme.ts';
 import type { Me, UserRow } from './types.ts';
 import { copyText } from './util.ts';
-import { dkArt, dkDesktop, dkIcons, dkLayout, dkLogout, dkOpenApp, dkWallPaint } from './desktop/desk.ts';
+import { appCall } from './apps.ts';
+import { dkArt, dkDesktop, dkIcons, dkLayout, dkLogout, dkWallPaint } from './desktop/desk.ts';
 import { DK_USERS_KEY, dkLogin, dkProbe, dkUsers } from './desktop/login.ts';
 import { dkAnchor, dkBar, dkChips, dkPopsClose, type Pop } from './desktop/taskbar.ts';
 import { dkClose, dkFocus, dkSize, dkWin } from './desktop/windows.ts';
@@ -417,7 +418,7 @@ export function dkProfileWin(): void {
     // the editor files open in, picked on the apps page, which installs sulfur when it must
     const ed = el('div', 'dk-row acct-editor');
     const edGo = Object.assign(el('button', '', 'change'), { type: 'button', title: 'on the apps page' });
-    edGo.addEventListener('click', () => dkOpenApp('apps'));
+    edGo.addEventListener('click', () => appCall('store', true, (m) => m.storeShow('sulfur')));
     ed.append(el('span', 'dk-host', EDITORS.find(([id]) => id === editorPref())![1]), el('span', 'dk-state', editorPref() ? 'an app on the mesh' : 'the desktop’s own'), edGo);
 
     body.replaceChildren(

@@ -14,18 +14,29 @@ import { env, errText, FrontendPort, ini, logf as log, now, obj, readJSON, SelfH
 const logf = (f: string, ...a: unknown[]) => log("[apps] " + f, ...a);
 
 // one app the mesh can take: its feed's entry names the page's tarball; mount
-// is where every host serves it, the same folder inside the tarball
-export type App = { id: string; name: string; about: string; repo: string; feed: string; mount: string; icon: string };
+// is where every host serves it, the same folder inside the tarball; the rest
+// is what the apps page shows of it
+export type App = {
+  id: string; name: string; tagline: string; about: string; features: string[]; category: string; by: string;
+  repo: string; feed: string; mount: string; icon: string;
+  // the agents it asks the mesh's models as, listed in the agents app while installed
+  agents?: string[];
+};
 
 export const Catalog: App[] = [
   {
     id: "sulfur",
-    name: "sulfur",
-    about: "a code editor for the mesh: every host's files and terminals, live collaboration on each file, builds, git and language servers on the host that has them",
+    name: "Sulfur",
+    tagline: "a code editor for distributed systems",
+    about: "Feels like VS Code: palette, completion, extensions from Open VSX, themes. Every host's files and the merged home, live collaboration on every file, terminals, builds, git and SQLite on any machine, and language servers for ten languages, run on the host that has the toolchain.",
+    features: ["live collaboration on every file", "terminals, builds and git on any host", "language servers native for ten languages", "extensions from Open VSX", "a chat and inline completions on the mesh's models"],
+    category: "developer tools",
+    by: "rpmull",
     repo: "https://github.com/rpmull/sulfur",
     feed: env("SULFUR_FEED_URL", "https://github.com/rpmull/sulfur/releases/download/update/sulfur-web.json"),
     mount: "/sulfur/",
     icon: "/sulfur/icon.svg",
+    agents: ["agent-sulfur", "agent-sulfur-fast"],
   },
 ];
 
@@ -428,7 +439,8 @@ export async function summary(fresh: boolean): Promise<Record<string, any>> {
     const f = await latest(a, fresh);
     const l = local(a.id);
     return {
-      id: a.id, name: a.name, about: a.about, repo: a.repo, mount: a.mount, icon: a.icon,
+      id: a.id, name: a.name, tagline: a.tagline, about: a.about, features: a.features, category: a.category, by: a.by,
+      repo: a.repo, mount: a.mount, icon: a.icon, agents: a.agents ?? [],
       want: wantOf(a.id) ?? null,
       latest: f.latest ? f.latest.version : "", feedError: f.error, checkedAt: f.at,
       local: { version: l.version, busy: l.busy, error: l.error },

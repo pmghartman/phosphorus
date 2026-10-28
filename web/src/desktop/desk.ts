@@ -807,7 +807,7 @@ export function dkService(r: Route): DkWin | undefined {
 
 const DK_APPS: Record<string, { title: string; view: string; w: number; h: number }> = {
   chat: { title: 'chat', view: 'view-chat', w: 880, h: 560 },
-  apps: { title: 'apps', view: 'view-apps', w: 760, h: 560 },
+  apps: { title: 'apps', view: 'view-apps', w: 820, h: 700 },
   status: { title: 'status', view: 'view-status', w: 920, h: 600 },
   about: { title: 'about', view: 'view-about', w: 700, h: 420 },
   games: { title: 'game servers', view: 'view-games', w: 460, h: 420 },
