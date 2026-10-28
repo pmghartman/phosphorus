@@ -1,6 +1,6 @@
 /* the page's styles, in cascade order; each part's own file in src/css/ */
 
-/* the theme library's tokens, generated from internal/theme/themes.json by the build */
+/* the theme library's tokens, generated from packages/theme/themes.json by the build */
 @import "phosphorus:themes";
 @import "./src/css/phosphorus.css";
 @import "./src/css/looks.css";

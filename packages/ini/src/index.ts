@@ -1,4 +1,4 @@
-// phosphorus.ini read as util.js did: first key wins, quotes stripped, ; and #
+// phosphorus.ini read: first key wins, quotes stripped, ; and #
 // comment lines, re-parsed only on a stat change
 import { readFileSync, statSync } from "node:fs";
 

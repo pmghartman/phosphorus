@@ -1,4 +1,4 @@
-// markdown as the server renders it (goldmark, chroma, bluemonday), the page
+// markdown as the server renders it (packages/web-md: markdown-it, highlight.js, sanitize-html), the page
 // adding only katex for math, fetched on first use
 import type { MdBlock } from './types.ts';
 

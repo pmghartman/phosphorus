@@ -161,7 +161,7 @@ function filesView(): View {
     if (w !== "") ls.push("", c("warn")(rebuilding + " to publish " + w));
     published = { title: "published now", lines: plainRows(...ls) };
   }
-  let fallback = "the home's files/";
+  let fallback = "files/ beside the app";
   if (info && str(info.home) !== "") fallback = str(info.home);
   let lines: Row[] = [];
   let anyHome = false;

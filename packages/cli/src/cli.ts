@@ -390,7 +390,7 @@ function listKey(s: string, e: KeyEv) {
       else if (s === "h" && has) {
         const dir = shares[i]!.dir;
         const isOff = isHomeDir(dir);
-        const what = isOff ? "home/ back to the default files/" : "home/ into " + dir;
+        const what = isOff ? "home/ back to files/ beside the app" : "home/ into " + dir;
         ui.confirm = {
           text: what + "? it moves with everything in it, " + iniNote,
           onYes: () => {

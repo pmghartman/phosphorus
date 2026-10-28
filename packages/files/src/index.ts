@@ -1,4 +1,4 @@
-// each [files] dir mounted under SHARE_ROOT, every request path held inside its
+// each [files] dir a share, every request path held inside its
 // share and every write checked against its perms
 import { existsSync, lstatSync, mkdirSync, realpathSync, statSync, type Stats } from "node:fs";
 import { lstat, open, opendir, readdir, readFile, rename, rm, stat, truncate, unlink, writeFile } from "node:fs/promises";
@@ -65,9 +65,10 @@ function makeShare(id: string, perms: string, root: string): Share {
   return { id, label: root, perms, root, real: realOf(root) ?? root, ok };
 }
 
+// the [files] dirs as shares; none configured, only the home
 function buildShares(): Share[] {
   const dirs = mountedDirs();
-  if (!dirs.length) return [makeShare("0", fullPerms, FilesRoot)];
+  if (!dirs.length) return [];
   const perms = splitList(process.env.PHOSPHORUS_FILES_PERMS ?? "");
   return dirs.map((d, i) => makeShare(String(i), i < perms.length ? cleanPerms(perms[i]!) : fullPerms, d));
 }
