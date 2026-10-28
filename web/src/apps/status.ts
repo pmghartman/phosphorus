@@ -582,7 +582,8 @@ function statusRender() {
   for (const [name, h] of stHosts) if (!names.includes(name)) { h.card?.card.remove(); stHosts.delete(name); }
   if (!names.includes(stOpenHost!)) stOpenHost = null;
   if (names.length) stHostsEl.querySelector('.st-wait')?.remove();
-  drawMeshSum(names);
+  // the mesh's sums left as they were rather than every card after them
+  try { drawMeshSum(names); } catch (e) { console.error('status: the mesh summary', e); }
   let prev: HTMLElement | null = null;
   for (const name of names) {
     const h = stHost(name);
@@ -604,12 +605,19 @@ function statusRender() {
       card.dataset.note = 'waiting for stats';
       continue;
     }
-    if (!open) { drawSum(parts, h); continue; }
-    // no gpu, no gpu box
-    for (const [k, , draw] of ST_BOXES) {
-      const box = parts[`${k}Box`] as HTMLElement;
-      box.hidden = k === 'gpu' && !h.s.gpus.length;
-      if (!box.hidden) draw(parts, h);
+    // a sample this page can't draw spoils its own card only, never the hosts after it
+    try {
+      if (!open) { drawSum(parts, h); continue; }
+      // no gpu, no gpu box
+      for (const [k, , draw] of ST_BOXES) {
+        const box = parts[`${k}Box`] as HTMLElement;
+        box.hidden = k === 'gpu' && !h.s.gpus.length;
+        if (!box.hidden) draw(parts, h);
+      }
+    } catch (e) {
+      card.classList.add('waiting');
+      card.dataset.note = 'can’t draw its stats';
+      console.error(`status: ${name}'s stats`, e);
     }
   }
   stHostsEl.classList.toggle('has-open', !!stOpenHost);
