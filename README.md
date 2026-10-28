@@ -26,7 +26,7 @@ Grab Phosphorus from the [**latest release**](https://github.com/pmghartman/phos
 
 ## License
 
-Apache 2.0, see [`LICENSE`](LICENSE). Bundled software keeps its own license; full texts are in [`THIRD_PARTY_LICENSES.txt`](THIRD_PARTY_LICENSES.txt).
+Apache 2.0, see [`LICENSE`](LICENSE). Bundled software keeps its own license; full texts ship in each installer as `THIRD_PARTY_NOTICES.txt`, generated at build time by `bun run licenses`.
 
 <p align="center">
   <img src=".github/assets/wright-alchemist.jpg" alt="The Alchemist Discovering Phosphorus, Joseph Wright of Derby" width="420">

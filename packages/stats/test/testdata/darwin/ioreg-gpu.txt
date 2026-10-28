@@ -1,0 +1,9 @@
++-o AGXAcceleratorG13G  <class AGXAcceleratorG13G, id 0x100000456, registered, matched, active, busy 0 (0 ms), retain 71>
+    {
+      "IOClass" = "AGXAcceleratorG13G"
+      "gpu-core-count" = 8
+      "model" = "Apple M1"
+      "PerformanceStatistics" = {"Device Utilization %"=23,"In use system memory"=1879048192,"Alloc system memory"=2415919104,"Renderer Utilization %"=20,"Tiler Utilization %"=11}
+      "IOAccelRevision" = 2
+    }
+

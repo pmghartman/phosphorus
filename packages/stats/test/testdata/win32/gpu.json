@@ -1,0 +1,14 @@
+{"adapters":[
+ {"name":"NVIDIA GeForce RTX 3080","vendor":4318,"luid":"52123","dedicated":"10737418240","shared":"17119785984","seen":"133700000000000000"},
+ {"name":"AMD Radeon(TM) Graphics","vendor":4098,"luid":"52120","dedicated":"536870912","shared":"17119785984","seen":"133700000000000000"},
+ {"name":"AMD Radeon(TM) Graphics","vendor":4098,"luid":"40000","dedicated":"536870912","shared":"17119785984","seen":"133600000000000000"},
+ {"name":"Microsoft Basic Render Driver","vendor":5140,"luid":"52130","dedicated":"0","shared":"17119785984","seen":"133700000000000000"}],
+"counters":[
+ {"p":"\\\\desktop\\gpu engine(pid_1234_luid_0x00000000_0x0000cb9b_phys_0_eng_0_engtype_3d)\\utilization percentage","v":30.5},
+ {"p":"\\\\desktop\\gpu engine(pid_5678_luid_0x00000000_0x0000cb9b_phys_0_eng_0_engtype_3d)\\utilization percentage","v":12.25},
+ {"p":"\\\\desktop\\gpu engine(pid_5678_luid_0x00000000_0x0000cb9b_phys_0_eng_3_engtype_copy)\\utilization percentage","v":2},
+ {"p":"\\\\desktop\\gpu engine(pid_999_luid_0x00000000_0x0000cb98_phys_0_eng_0_engtype_3d)\\utilization percentage","v":150},
+ {"p":"\\\\desktop\\gpu adapter memory(luid_0x00000000_0x0000cb9b_phys_0)\\dedicated usage","v":3221225472},
+ {"p":"\\\\desktop\\gpu adapter memory(luid_0x00000000_0x0000cb9b_phys_0)\\shared usage","v":104857600},
+ {"p":"\\\\desktop\\gpu adapter memory(luid_0x00000000_0x0000cb98_phys_0)\\dedicated usage","v":67108864},
+ {"p":"\\\\desktop\\gpu adapter memory(luid_0x00000000_0x0000cb98_phys_0)\\shared usage","v":805306368}]}

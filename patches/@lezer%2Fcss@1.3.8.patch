@@ -1,0 +1,26 @@
+diff --git a/dist/index.cjs b/dist/index.cjs
+index 194351aab1b1ae4c63217a2f63d18d196db3bacc..174c390786be093c2d173dd56054683e59b096ce 100644
+--- a/dist/index.cjs
++++ b/dist/index.cjs
+@@ -86,7 +86,7 @@ const unitToken = new lr.ExternalTokenizer(input => {
+ });
+ 
+ function hashColor(name) {
+-  return /^#[a-f\d]{3}([a-f\d]{3}([a-f\d]{2})?)?$/i.test(name) ? hashNameColor : -1
++  return /^#([a-f\d]{3,4}|[a-f\d]{6}|[a-f\d]{8})$/i.test(name) ? hashNameColor : -1
+ }
+ 
+ const cssHighlighting = highlight.styleTags({
+diff --git a/dist/index.js b/dist/index.js
+index cfba1473785eea3e376c1d5a118f9dbfe9a9d8d6..54b25465a8505cc2debd9e414a7467d914c0e802 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -82,7 +82,7 @@ const unitToken = new ExternalTokenizer(input => {
+ });
+ 
+ function hashColor(name) {
+-  return /^#[a-f\d]{3}([a-f\d]{3}([a-f\d]{2})?)?$/i.test(name) ? hashNameColor : -1
++  return /^#([a-f\d]{3,4}|[a-f\d]{6}|[a-f\d]{8})$/i.test(name) ? hashNameColor : -1
+ }
+ 
+ const cssHighlighting = styleTags({
