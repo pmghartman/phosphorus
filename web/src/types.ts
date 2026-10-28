@@ -336,7 +336,8 @@ export interface StatsSample {
   at: number;
   platform?: string;
   version?: string;
-  cpu: { total: number; cores: number[]; model: string; load: number[] };
+  // null on Windows, which has no load average
+  cpu: { total: number; cores: number[]; model: string; load: (number | null)[] };
   mem: { total: number; used: number; avail: number; cached: number; swapTotal: number; swapUsed: number };
   net: { name: string; rx: number; tx: number }[];
   netDay: { rx: number; tx: number; since: number };

@@ -284,7 +284,7 @@ function drawSum(p: Parts, h: StHost) {
   const load = gpus.filter((g) => g.util !== null);
   const gpuLoad = load.reduce((a, g) => a + g.util!, 0) / Math.max(1, load.length) / 100;
   p.sum.innerHTML = [
-    sumRow('cpu', cpu.total / 100, cells, `${pct(cpu.total / 100).padStart(4)} <span class="st-dim">load ${cpu.load[0]!.toFixed(2)}</span>`),
+    sumRow('cpu', cpu.total / 100, cells, `${pct(cpu.total / 100).padStart(4)}${cpu.load[0] == null ? '' : ` <span class="st-dim">load ${cpu.load[0].toFixed(2)}</span>`}`),
     sumRow('mem', mem.used / mem.total, cells, usedOf(mem.used, mem.total)),
     sumRow('disk', disk.used / disk.total, cells, usedOf(disk.used, disk.total)),
     load.length && sumRow('gpu', gpuLoad, cells, `${pct(gpuLoad).padStart(4)} <span class="st-dim">${plural(gpus.length, 'gpu')}</span>`),
@@ -313,7 +313,7 @@ function drawMeshSum(names: string[]) {
   const live = names.map((n) => stHosts.get(n)).filter((h): h is StHost => !!h?.s?.cpu && Date.now() - h.at <= ST_STALE_MS);
   stMeshEl.hidden = !live.length;
   if (!live.length) return;
-  const sum = (f: (s: StatsSample) => number | undefined) => live.reduce((a, h) => a + (f(h.s!) || 0), 0);
+  const sum = (f: (s: StatsSample) => number | null | undefined) => live.reduce((a, h) => a + (f(h.s!) || 0), 0);
   const cores = sum((s) => s.cpu.cores.length);
   const cpu = sum((s) => s.cpu.total * s.cpu.cores.length) / Math.max(1, cores) / 100;
   const memU = sum((s) => s.mem.used);
@@ -480,8 +480,9 @@ function drawCpu(p: Parts, h: StHost) {
     p.cores = p.cpu.lastElementChild;
   }
   dotGraph(p.cpuGraph, h.hist.cpu!, 100, heatVar);
+  // Windows has no load average: its hosts' sent as nulls, the line without one
   p.cpuLine.innerHTML = `<span class="${heat(cpu.total / 100)}">${cpu.total.toFixed(1)}%</span>`
-    + `<span class="st-dim"> load </span>${cpu.load.map((l) => l.toFixed(2)).join(' ')}`;
+    + (cpu.load[0] == null ? '' : `<span class="st-dim"> load </span>${cpu.load.map((l) => (l ?? 0).toFixed(2)).join(' ')}`);
   p.cores.innerHTML = cpu.cores.map((c, i) => `<div><span class="st-dim">${String(i).padStart(2)}</span> `
     + `${meter(c / 100, 4)} ${String(Math.round(c)).padStart(3)}%</div>`).join('');
 }
