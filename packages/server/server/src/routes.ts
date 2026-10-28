@@ -21,7 +21,7 @@ import * as webapps from "@phosphorus/webapps";
 import { serveStatic } from "@phosphorus/webstatic";
 import { type Ctx, isUpgrade } from "@phosphorus/wsock";
 import { codeRoute } from "./code.ts";
-import { adminPass, port, selfHost, setUpdating } from "./config.ts";
+import { adminPass, port, selfHost, selfInfo, setUpdating } from "./config.ts";
 import { configOp, hostLogs, localUI } from "./hostops.ts";
 import {
   crossSite,
@@ -44,7 +44,7 @@ import {
 import { decode, obj, str, truthy } from "./js.ts";
 import { mcpCallsMesh, peerOp } from "./mcpops.ts";
 import { oauthRoute, Unauthorized } from "./oauth.ts";
-import { buildState, chainAction, forwardGame, mintGuestKey, noteState, runGameLocally, snapshot } from "./server.ts";
+import { buildState, chainAction, forwardGame, mintGuestKey, noteState, runGameLocally } from "./server.ts";
 import {
   filesInfo,
   forwardFiles,
@@ -120,7 +120,7 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
 
   if (
     method === "GET" &&
-    (pathname === "/api/state" || pathname === "/api/mesh/snapshot" || pathname === "/api/update/local/status")
+    (pathname === "/api/state" || pathname === "/api/self" || pathname === "/api/update/local/status")
   ) {
     if (!(await isLocalOrPeer(c))) return forbidden();
     if (pathname === "/api/state") {
@@ -129,7 +129,8 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
       s.pollMs = intervalMS();
       return sendJSON(200, s);
     }
-    if (pathname === "/api/mesh/snapshot") return sendJSON(200, snapshot(q));
+    // this host as a peer's update asks it: version, platform, boot id
+    if (pathname === "/api/self") return sendJSON(200, selfInfo());
     return sendJSON(200, update.status());
   }
   if (pathname === "/api/sys/stamps" && method === "GET") {

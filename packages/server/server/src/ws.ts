@@ -2,6 +2,7 @@
 // terminals, here or spliced onto the owning peer's
 
 import { Attach as collabAttach, Forward as collabForward } from "@phosphorus/collab";
+import { acceptLink, HostHeader } from "@phosphorus/peers";
 import { attach as statsAttach } from "@phosphorus/stats";
 import * as term from "@phosphorus/term";
 import { Of } from "@phosphorus/users";
@@ -57,6 +58,13 @@ export async function onUpgrade(c: Ctx, pathname: string, q: URLSearchParams): P
         drainWS(ws);
         ws.onClose(() => stateWS.delete(ws));
       });
+    case "/api/peer": {
+      // another host's link, the dialler named in its header: the tailnet, or this
+      // machine, as the snapshot it replaces was
+      const host = c.req.headers.get(HostHeader);
+      const ip = c.ip;
+      return accept(c, (ws) => void acceptLink(ws, host, ip));
+    }
     case "/api/stats": {
       const own = q.has("own");
       if (own && !(await isTailnet(c)) && !isLoopback(c)) return refuse(403);

@@ -2,7 +2,6 @@
 // built for the page, the update chain and guest keys
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { jsNumber } from "@phosphorus/files";
 import { Zone } from "@phosphorus/gamedns";
 import * as git from "@phosphorus/git";
 import { State as modelState, Summary } from "@phosphorus/model";
@@ -12,7 +11,7 @@ import * as store from "@phosphorus/store";
 import * as update from "@phosphorus/update";
 import { lockACL, logf, markHot, marshal, peerCall, run, tailnetIP } from "@phosphorus/util";
 import * as webapps from "@phosphorus/webapps";
-import { ownChat, presence } from "./chat.ts";
+import { presence } from "./chat.ts";
 import {
   adminPass,
   baseDomain,
@@ -28,7 +27,7 @@ import {
 } from "./config.ts";
 import { deskStamps } from "./desk.ts";
 import type { Res } from "./http.ts";
-import { decode, type Msg, num, obj, str } from "./js.ts";
+import { decode, obj, str } from "./js.ts";
 import { filesInfo } from "./shares.ts";
 
 // --- game servers ------------------------------------------------------------
@@ -184,22 +183,14 @@ export function noteState(s: Record<string, any>): string {
   return fp;
 }
 
-export function snapshot(q: URLSearchParams): Record<string, any> {
-  const chat: Msg[] = [];
-  if (q.has("since")) {
-    let s = jsNumber(q.get("since"));
-    if (Number.isNaN(s)) s = 0;
-    for (const m of ownChat) if (num(m.seq) > s) chat.push(m);
-  }
+// this host's state as its peers' links carry it
+export function ownState(): peers.Own {
   return {
-    self: selfInfo(),
     presence: presence(),
     lock: update.ownLock(),
     chain: update.sharedChain(),
     git: git.state(),
     model: modelState() ?? null,
-    sysDigest: store.digest(),
-    chat,
   };
 }
 
