@@ -115,15 +115,17 @@ test("the log: a cursor per peer, what changed after it, nothing for a cursor it
   expect(seqs).toEqual([store.seq()]);
 });
 
-test("tombstones: pruned after their keep, a live file of any age not", () => {
-  const old = Date.now() - 91 * day;
+test("tombstones: pruned after their keep, never taken back past it, a live file of any age not", () => {
+  const old = Date.now() - 89 * day;
   store.merge({
     "etc/h/gone.json": { t: old, h: "zulu", gone: true },
     "etc/h/kept.json": { t: old, h: "zulu", c: "k", data: 1 },
   });
   expect(store.stamps()["etc/h/gone.json"]).toBeDefined();
   expect(existsSync(join(store.Root, "etc/h/gone.json"))).toBe(true);
-  store.prune();
+  // one past its keep is not even merged
+  expect(store.merge({ "etc/h/ancient.json": { t: Date.now() - 91 * day, h: "zulu", gone: true } })).toBe(false);
+  store.prune(Date.now() + 2 * day);
   expect(store.stamps()["etc/h/gone.json"]).toBeUndefined();
   expect(existsSync(join(store.Root, "etc/h/gone.json"))).toBe(false);
   expect(store.read("etc/h/kept.json")).toBe(1);
