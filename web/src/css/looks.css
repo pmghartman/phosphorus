@@ -12,16 +12,16 @@
 /* every control rounded; zero specificity, so a class's own corners (round pips) still win */
 :where(:root[data-round]) :where(button, input, select, textarea, .dk-task, .dk-tray, .dk-chip,
   .fm-row, .fm-crumbs, .fm-find, .toast, .msg-file, .chat-find, .chat-bar, .dk-snap, .dk-band, .dk-badge, .update-row,
-  .cw-item, .fm-share, .fm-tile, .cd-pick, .cd-att, .dk-ctl-drop-opt) { border-radius: var(--r-ctl); }
+  .cw-item, .fm-share, .fm-tile, .cd-pick, .cd-att, .dk-ap-tab, .dk-ap-item) { border-radius: var(--r-ctl); }
 :where(:root[data-round]) :where(.msg-img img, .chat-log .md pre, .code-md .md pre, .home-note, .chat-form, .chat-join, .cd-diff, .cd-perm,
   .home-col, .st-card, .st-mesh, .about-info, .cw-side, .mesh-panel, .chat-panel, .st-box, .bubble, .cd-user, .cd-box) { border-radius: var(--r-card); }
 :where(:root[data-round]) :where(.dk-note-pop, .dk-ctl-pop, .dk-menu, .update-pane, .modal-box, .dk-mcp-pop, .dk-login, .acct-unlock,
-  .dk-mesh-pop > .mesh-panel, .dk-ctl-tile, .dk-ctl-chip, .dk-ctl-out, .dk-ctl-theme, .dk-ctl-drop-btn, .dk-ctl-drop-list, .dk-icon .dk-tile) { border-radius: var(--r-pop); }
-:root[data-round] .dk-ctl-theme { padding: 2px; gap: 2px; }
+  .dk-mesh-pop > .mesh-panel, .dk-ctl-tile, .dk-ctl-chip, .dk-ctl-out, .dk-ctl-row, .dk-ap-segs, .dk-ap-card, .dk-ap-items, .dk-icon .dk-tile) { border-radius: var(--r-pop); }
+:root[data-round] .dk-ap-segs { padding: 2px; gap: 2px; }
 /* rounded: each segment its own pill inset in the track, so its fill never meets a straight edge */
-:root[data-round] .dk-ctl-seg { padding-block: calc(0.3rem - 2px); border-radius: max(0px, calc(var(--r-pop) - 3px)); }
-:root[data-round] .dk-ctl-seg + .dk-ctl-seg { border-left: 0; }
-:root[data-round] .dk-ctl-swatch { border-radius: 50%; }
+:root[data-round] .dk-ap-seg { padding-block: calc(0.35rem - 2px); border-radius: max(0px, calc(var(--r-pop) - 3px)); }
+:root[data-round] .dk-ap-seg + .dk-ap-seg { border-left: 0; }
+:root[data-round] .dk-ap-swatch { border-radius: 50%; }
 :root[data-round] .dk-win { overflow: clip; }
 :root[data-round] .dk-win.dk-agent::after { border-radius: inherit; }
 @media (min-width: 721px) {
@@ -56,8 +56,6 @@
 :root:is([data-palette="macos"], [data-palette="win11"]) :is(.home-col, .st-card, .st-mesh, .about-info) { padding-top: 0.65rem; }
 :root:is([data-palette="macos"], [data-palette="win11"]) :is(.home-col-head, .mesh-stats-head, .dk-menu-title, .cw-head, .fm-side-head,
   .dk-note-head, .dk-ctl-head, .dk-cl-title, .dk-cl-sec-t, .update-pane-header > span, .modal-header > span, .about-key) { color: var(--muted); letter-spacing: 0; }
-/* the theme list its own rounded flyout under the button */
-:root:is([data-palette="macos"], [data-palette="win11"]) .dk-ctl-drop-list { margin-top: 4px; border: 1px solid var(--border); border-radius: var(--r-pop); padding: 4px; background: var(--pop-bg); }
 /* windows: system shadows, corners on everything but a maximized one */
 :root:is([data-palette="macos"], [data-palette="win11"]) .dk-win { box-shadow: var(--win-shadow); }
 :root:is([data-palette="macos"], [data-palette="win11"]) .dk-win:not(.focused) { box-shadow: var(--win-shadow-off); }
@@ -115,8 +113,6 @@
 :root[data-palette="macos"] .dk-menu button { padding: 0.2rem 0.65rem; }
 :root[data-palette="macos"] :is(.dk-menu button:hover:not(:disabled), .dk-menu-item.open > .dk-menu-more:not(:disabled)) { background: var(--accent); color: #fff; }
 :root[data-palette="macos"] .dk-menu button.danger:hover:not(:disabled) { background: var(--offmesh); color: #fff; }
-:root[data-palette="macos"] :is(.dk-ctl-drop-opt:hover, .dk-ctl-drop-opt:focus) { background: var(--accent); }
-:root[data-palette="macos"] .dk-ctl-drop-opt:is(:hover, :focus) :is(.dk-ctl-drop-name, .dk-ctl-drop-about) { color: #fff; }
 :root[data-palette="macos"] :is(.update-actions button, .acct-pane button, .acct-users button, .acct-unlock button, .cd-mini, .join-key-btn) { box-shadow: 0 0 0 0.5px rgb(0 0 0 / 0.2), 0 0.5px 1px rgb(0 0 0 / 0.12); }
 /* fields: a soft blue ring while focused */
 :root[data-palette="macos"] :is(.dk-row input, .fm-ask input, .fm-find, .update-pass, .dk-cl-url, .acct-pane input, .acct-users input, .acct-unlock input, .dk-login input, .cd-find, .cd-sel):focus,
@@ -142,15 +138,8 @@
   :root[data-palette="win11"] .dk-ctl > .dk-profile { margin-right: 4px; }
 }
 /* menus: items a subtle fill, the current one a short accent line at its left */
-:root[data-palette="win11"] :is(.dk-menu button:hover:not(:disabled), .dk-menu-item.open > .dk-menu-more:not(:disabled),
-  .dk-ctl-drop-opt:hover, .dk-ctl-drop-opt:focus) { background: color-mix(in srgb, var(--fg) 6%, transparent); color: var(--fg); }
+:root[data-palette="win11"] :is(.dk-menu button:hover:not(:disabled), .dk-menu-item.open > .dk-menu-more:not(:disabled)) { background: color-mix(in srgb, var(--fg) 6%, transparent); color: var(--fg); }
 :root[data-palette="win11"] .dk-menu button.danger:hover:not(:disabled) { color: var(--offmesh); }
-:root[data-palette="win11"] .dk-ctl-drop-opt { position: relative; }
-:root[data-palette="win11"] .dk-ctl-drop-opt.on::before {
-  content: ""; position: absolute; left: 0; top: 50%; width: 3px; height: 16px; margin-top: -8px; border-radius: 2px; background: var(--accent);
-}
-:root[data-palette="win11"] .dk-ctl-drop-opt.on .dk-ctl-drop-name { color: var(--fg); font-weight: 600; }
-:root[data-palette="win11"] .dk-ctl-drop-opt.on .dk-ctl-drop-name::after { content: none; }
 /* fields: a line under them, the accent's while focused */
 :root[data-palette="win11"] :is(.dk-row input, .fm-ask input, .fm-find, .update-pass, .dk-cl-url, .acct-pane input, .acct-users input, .acct-unlock input, .dk-login input, .cd-find) {
   border-color: var(--ctl-edge); border-bottom-color: var(--muted); background: var(--ctl);
@@ -273,11 +262,9 @@
 :root[data-palette="cli"] :is(.dk-note-pop, .dk-ctl-pop, .dk-menu, .update-pane, .modal-box, .dk-mcp-pop, .dk-login, .acct-unlock, .toast) {
   border-color: var(--muted); box-shadow: none; animation: none;
 }
-:root[data-palette="cli"] :is(.dk-menu button:hover:not(:disabled), .dk-menu-item.open > .dk-menu-more:not(:disabled),
-  .dk-ctl-drop-opt:hover, .dk-ctl-drop-opt:focus) { background: var(--fg); color: var(--bg); }
-:root[data-palette="cli"] .dk-ctl-drop-opt:is(:hover, :focus) :is(.dk-ctl-drop-name, .dk-ctl-drop-about) { color: var(--bg); }
-:root[data-palette="cli"] .dk-ctl-drop-opt.on .dk-ctl-drop-name::after { content: " *"; }
-:root[data-palette="cli"] .dk-ctl-seg.on { background: var(--fg); color: var(--bg); }
+:root[data-palette="cli"] :is(.dk-menu button:hover:not(:disabled), .dk-menu-item.open > .dk-menu-more:not(:disabled)) { background: var(--fg); color: var(--bg); }
+:root[data-palette="cli"] :is(.dk-ap-seg.on, .dk-ap-tab.on) { background: var(--fg); color: var(--bg); }
+:root[data-palette="cli"] .dk-ap-card.on .dk-ap-card-name::after { content: " *"; }
 :root[data-palette="cli"] .dk-icon.sel .dk-label { background: var(--fg); color: var(--bg); }
 :root[data-palette="cli"] .dk-icon .ic { color: var(--muted); }
 /* tmux's windows numbered, the current one inverse and starred; its flush status line the layout's (line) */

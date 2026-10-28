@@ -48,10 +48,10 @@ body {
 .home-col, .about-info, .st-card, .st-mesh, .st-box, .mesh-panel, .chat-panel, .cw-side,
 .update-pane, .chat-find, .msg-file, .msg-img img, .chat-log .md pre, .code-md .md pre { box-shadow: var(--lift); }
 
-/* dark a filled moon, light a sun, oled a hollow thin moon */
+/* system a screen, dark a filled moon, light a sun, oled a hollow thin moon */
 .theme-icon { flex: none; width: 0.85rem; height: 0.85rem; fill: none; stroke: currentColor; stroke-width: calc(var(--ic-w, 1.3) + 0.1); stroke-linecap: var(--ic-cap, round); stroke-linejoin: var(--ic-join, round); }
-.theme-icon.moon { fill: currentColor; }
-.theme-icon.moon-thin { stroke-width: 0.9; }
+.theme-icon.dark { fill: currentColor; }
+.theme-icon.oled { stroke-width: 0.9; }
 
 /* an app's view: hidden in the stash, filling its window while open */
 .view {
@@ -1699,7 +1699,7 @@ input, textarea { caret-color: var(--accent); }
 /* the bar's icon buttons one even row: same width, same glyph, no gap between */
 .dk-bar .dk-tray-wrap { margin-right: 0; }
 .dk-bar .dk-ctl { margin-left: 0; }
-.dk-bar .dk-tray:not(.dk-profile), .dk-bar .update-wrap > button, .dk-bar .theme-toggle.top-theme {
+.dk-bar .dk-tray:not(.dk-profile), .dk-bar .update-wrap > button {
   width: 2.25rem; padding: 0; justify-content: center; display: flex; align-items: center;
 }
 .dk-bar .dk-tray .ic, .dk-bar .top-side svg { width: 0.85rem; height: 0.85rem; }
@@ -1793,11 +1793,17 @@ input, textarea { caret-color: var(--accent); }
 .dk-ctl-tile:hover, .dk-ctl-tile:focus-visible { border-color: var(--accent); outline: none; }
 .dk-ctl-tile:hover .ic { color: var(--accent); }
 .dk-ctl-sub { color: var(--muted); font-size: 0.68rem; }
-.dk-ctl-theme { display: flex; margin: 0.6rem; border: 1px solid var(--border); }
-.dk-ctl-seg { flex: 1; padding: 0.3rem 0; background: none; border: 0; color: var(--muted); font: inherit; cursor: pointer; transition: background-color 0.15s, color 0.15s; }
-.dk-ctl-seg + .dk-ctl-seg { border-left: 1px solid var(--border); }
-.dk-ctl-seg:hover { color: var(--fg); }
-.dk-ctl-seg.on { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--fg); }
+/* the appearance, one row: what is worn, the window on a press */
+.dk-ctl-row {
+  display: flex; align-items: center; gap: 0.45rem; width: calc(100% - 1.2rem); margin: 0.6rem; padding: 0.4rem 0.55rem;
+  background: none; border: 1px solid var(--border); color: var(--fg); font: inherit; text-align: left; cursor: pointer; transition: border-color 0.15s;
+}
+.dk-ctl-row:hover, .dk-ctl-row:focus-visible { border-color: var(--accent); outline: none; }
+.dk-ctl-row-ic { flex: none; width: 0.85rem; height: 0.85rem; color: var(--muted); transition: color 0.15s; }
+.dk-ctl-row:hover .dk-ctl-row-ic { color: var(--accent); }
+.dk-ctl-row-k { flex: none; }
+.dk-ctl-row-v { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 0.72rem; text-align: right; }
+.dk-ctl-row-ch { flex: none; width: 0.7rem; height: 0.7rem; color: var(--dim); }
 /* the clock and the user, one wide button */
 .dk-ctl > .dk-profile { gap: 0.45rem; padding: 0 0.7rem; }
 .dk-ctl > .dk-profile .dk-clock { margin-right: 0.25rem; }
@@ -1816,63 +1822,80 @@ input, textarea { caret-color: var(--accent); }
 .dk-ctl-tile { position: relative; }
 .dk-ctl-tile.fresh::after { top: 0.5rem; right: 0.5rem; }
 .dk-ctl-tile.fresh .ic { color: var(--sky); }
-.dk-ctl-seg { display: flex; align-items: center; justify-content: center; gap: 0.35rem; }
-.dk-ctl-seg .theme-icon { display: block; width: 0.8rem; height: 0.8rem; }
-.dk-ctl-swatch { width: 0.6rem; height: 0.6rem; flex: none; }
-/* the theme a dropdown under the light and dark: its list opened in the panel, under its button */
-.dk-ctl-drop { margin: 0 0.6rem 0.6rem; }
-.dk-ctl-drop-btn {
-  width: 100%; display: flex; align-items: center; gap: 0.45rem; padding: 0.35rem 0.55rem;
-  background: none; border: 1px solid var(--border); color: var(--fg); font: inherit; cursor: pointer; transition: border-color 0.15s;
+/* --- the appearance window: sections down a rail, each a page of labelled controls ----------- */
+.dk-ap-pane { display: grid; grid-template-columns: 7rem minmax(0, 1fr); height: 100%; min-height: 0; font-size: 0.8rem; }
+.dk-ap-nav { display: flex; flex-direction: column; gap: 0.15rem; padding: 0.6rem 0.4rem; border-right: 1px solid var(--border); background: var(--card); }
+.dk-ap-tab {
+  display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.6rem; background: none; border: 0; color: var(--muted);
+  font: inherit; text-align: left; cursor: pointer; transition: background-color 0.15s, color 0.15s;
 }
-.dk-ctl-drop-btn:hover, .dk-ctl-drop-btn:focus-visible, .dk-ctl-drop.open .dk-ctl-drop-btn { border-color: var(--accent); outline: none; }
-.dk-ctl-drop-k { margin-right: auto; color: var(--muted); }
-.dk-ctl-drop-ch { width: 0.75rem; height: 0.75rem; color: var(--muted); transition: transform 0.2s; }
-.dk-ctl-drop.open .dk-ctl-drop-ch { transform: rotate(180deg); }
-.dk-ctl-drop-list {
-  list-style: none; margin: 0; padding: 0.2rem 0; max-height: min(42vh, 20rem); overflow-y: auto; overscroll-behavior: contain;
-  border: 1px solid var(--accent); border-top: 0; animation: pop-in 0.12s ease-out;
+.dk-ap-tab .ic { width: 0.85rem; height: 0.85rem; flex: none; }
+.dk-ap-tab:hover, .dk-ap-tab:focus-visible { color: var(--fg); background: var(--tab-hover); outline: none; }
+.dk-ap-tab.on { color: var(--fg); background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.dk-ap-body { min-height: 0; display: flex; flex-direction: column; gap: 0.55rem; padding: 0.9rem; overflow-y: auto; }
+.dk-ap-body .dk-note { margin: 0; }
+.dk-ap-head { margin-top: 0.5rem; padding-bottom: 0.2rem; border-bottom: 1px solid var(--border); color: var(--fg); font-weight: 600; }
+.dk-ap-head:first-child { margin-top: 0; }
+/* a row: its label, its control, a note under the control */
+.dk-ap-row { display: grid; grid-template-columns: 6.5rem minmax(0, 1fr); align-items: center; gap: 0.15rem 0.7rem; }
+.dk-ap-row:has(> .dk-ap-items) { align-items: start; }
+.dk-ap-k { color: var(--muted); }
+.dk-ap-note { grid-column: 2; color: var(--dim); font-size: 0.7rem; }
+.dk-ap-in { min-width: 0; padding: 0.25rem 0.4rem; background: var(--card); border: 1px solid var(--border); color: var(--fg); font: inherit; }
+.dk-ap-in:focus { border-color: var(--accent); outline: none; }
+.dk-ap-color { display: flex; align-items: center; gap: 0.5rem; }
+.dk-ap-color input[type="color"] { width: 2.4rem; height: 1.7rem; padding: 0.1rem; cursor: pointer; }
+.dk-ap-color .dk-ap-note { grid-column: auto; }
+/* a checkbox with its sentence, a note under the sentence */
+.dk-ap-check { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 0.1rem 0.5rem; cursor: pointer; }
+.dk-ap-check input { margin: 0; accent-color: var(--accent); cursor: pointer; }
+.dk-ap-check:hover .dk-ap-check-t { color: var(--fg); }
+/* light or dark, a segmented control */
+.dk-ap-segs { display: flex; border: 1px solid var(--border); }
+.dk-ap-seg {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 0.35rem; padding: 0.35rem 0;
+  background: none; border: 0; color: var(--muted); font: inherit; cursor: pointer; transition: background-color 0.15s, color 0.15s;
 }
-.dk-ctl-drop-opt { display: flex; align-items: flex-start; gap: 0.5rem; padding: 0.35rem 0.55rem; cursor: pointer; outline: none; }
-.dk-ctl-drop-opt .dk-ctl-swatch { margin-top: 0.3em; }
-.dk-ctl-drop-opt:hover, .dk-ctl-drop-opt:focus { background: color-mix(in srgb, var(--accent) 14%, transparent); }
-.dk-ctl-drop-text { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
-.dk-ctl-drop-name { color: var(--fg); }
-.dk-ctl-drop-opt.on .dk-ctl-drop-name { color: var(--accent); }
-.dk-ctl-drop-opt.on .dk-ctl-drop-name::after { content: " \2713"; }
-.dk-ctl-drop-about { color: var(--muted); font-size: 0.68rem; line-height: 1.3; }
-.dk-ctl-drop-act { border-top: 1px solid var(--border); margin-top: 0.2rem; padding-top: 0.45rem; }
-.dk-ctl-drop-ic { width: 0.75rem; height: 0.75rem; flex: none; margin-top: 0.2em; color: var(--muted); }
-/* the custom theme's editor: a label, its control, a note under */
-.dk-theme-pane { display: flex; flex-direction: column; height: 100%; min-height: 0; font-size: 0.8rem; }
-.dk-theme-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 0.55rem; padding: 0.9rem; overflow-y: auto; }
-.dk-theme-pane .dk-note { margin: 0 0 0.3rem; }
-.dk-theme-row { display: grid; grid-template-columns: 6.5rem minmax(0, 1fr); align-items: center; gap: 0.15rem 0.7rem; }
-.dk-theme-k { color: var(--muted); }
-.dk-theme-note { grid-column: 2; color: var(--dim); font-size: 0.7rem; }
-.dk-theme-in { min-width: 0; padding: 0.25rem 0.4rem; background: var(--card); border: 1px solid var(--border); color: var(--fg); font: inherit; }
-.dk-theme-in:focus { border-color: var(--accent); outline: none; }
-.dk-theme-color { display: flex; align-items: center; gap: 0.5rem; }
-.dk-theme-head { margin-top: 0.4rem; padding-bottom: 0.2rem; border-bottom: 1px solid var(--border); color: var(--fg); font-weight: 600; }
-.dk-theme-row:has(> .dk-theme-items) { align-items: start; }
-.dk-theme-items { display: flex; flex-direction: column; border: 1px solid var(--border); }
-.dk-theme-item { display: flex; align-items: center; gap: 0.45rem; padding: 0.15rem 0.2rem 0.15rem 0.45rem; }
-.dk-theme-item + .dk-theme-item { border-top: 1px solid var(--border); }
-.dk-theme-item label { flex: 1; cursor: pointer; }
-/* flat, over any look's push buttons */
-:root .dk-theme-pane .dk-theme-item .dk-theme-mv { width: 1.5rem; padding: 0.05rem 0; background: none; border: 0; color: var(--muted); font: inherit; cursor: pointer; }
-:root .dk-theme-pane .dk-theme-item .dk-theme-mv:hover:not(:disabled) { background: var(--tab-hover); color: var(--fg); }
-:root .dk-theme-pane .dk-theme-item .dk-theme-mv:disabled { opacity: 0.3; cursor: default; }
-.dk-theme-color input[type="color"] { width: 2.4rem; height: 1.7rem; padding: 0.1rem; cursor: pointer; }
-/* the bottom, always in reach: a reset to a built-in theme's config on the left, the save on the right */
-.dk-theme-foot { flex: none; display: flex; flex-direction: column; gap: 0.5rem; padding: 0.6rem 0.9rem; border-top: 1px solid var(--border); background: var(--card); }
-.dk-theme-acts { display: flex; justify-content: space-between; gap: 0.5rem; }
-.dk-theme-resets { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
-.dk-theme-resets .dk-theme-note { grid-column: auto; width: 100%; }
-.dk-theme-foot button { padding: 0.3rem 0.8rem; background: none; border: 1px solid var(--border); color: var(--fg); font: inherit; cursor: pointer; }
-.dk-theme-foot button:hover:not(:disabled) { background: var(--tab-hover); }
-.dk-theme-foot .dk-theme-save:not(:disabled) { background: var(--accent); border-color: var(--accent); color: var(--on-accent, var(--bg)); }
-.dk-theme-foot button:disabled { opacity: 0.5; cursor: default; }
+.dk-ap-seg + .dk-ap-seg { border-left: 1px solid var(--border); }
+.dk-ap-seg:hover { color: var(--fg); }
+.dk-ap-seg.on { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--fg); }
+.dk-ap-seg .theme-icon { display: block; width: 0.8rem; height: 0.8rem; }
+/* the themes, cards: a swatch, a name and a line about each, the worn one marked */
+.dk-ap-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr)); gap: 0.4rem; }
+.dk-ap-card {
+  display: flex; flex-direction: column; align-items: stretch; gap: 0.25rem; padding: 0.5rem 0.6rem; min-width: 0;
+  background: var(--card); border: 1px solid var(--border); color: var(--fg); font: inherit; text-align: left; cursor: pointer; transition: border-color 0.15s;
+}
+.dk-ap-card:hover, .dk-ap-card:focus-visible { border-color: var(--accent); outline: none; }
+.dk-ap-card.on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.dk-ap-card-top { display: flex; align-items: center; gap: 0.45rem; }
+.dk-ap-card.on .dk-ap-card-name { color: var(--accent); }
+.dk-ap-card.on .dk-ap-card-name::after { content: " \2713"; }
+.dk-ap-card-about { color: var(--muted); font-size: 0.68rem; line-height: 1.3; }
+.dk-ap-swatch { width: 0.9rem; height: 0.9rem; flex: none; border: 1px solid var(--border); }
+/* the bar's items: each shown or not, moved earlier or later */
+.dk-ap-items { display: flex; flex-direction: column; border: 1px solid var(--border); }
+.dk-ap-item { display: flex; align-items: center; gap: 0.45rem; padding: 0.15rem 0.2rem 0.15rem 0.45rem; }
+.dk-ap-item + .dk-ap-item { border-top: 1px solid var(--border); }
+.dk-ap-item input { margin: 0; accent-color: var(--accent); }
+.dk-ap-item label { flex: 1; cursor: pointer; }
+.dk-ap-item input:disabled + label { color: var(--muted); cursor: default; }
+:root .dk-ap-pane .dk-ap-mv { width: 1.5rem; padding: 0.05rem 0; background: none; border: 0; color: var(--muted); font: inherit; cursor: pointer; }
+:root .dk-ap-pane .dk-ap-mv:hover:not(:disabled) { background: var(--tab-hover); color: var(--fg); }
+:root .dk-ap-pane .dk-ap-mv:disabled { opacity: 0.3; cursor: default; }
+/* plain buttons: the wallpaper's, the way back to a theme */
+.dk-ap-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
+.dk-ap-state { color: var(--muted); margin-right: 0.2rem; }
+.dk-ap-btn { padding: 0.3rem 0.8rem; background: none; border: 1px solid var(--border); color: var(--fg); font: inherit; cursor: pointer; transition: background-color 0.15s, border-color 0.15s; }
+.dk-ap-btn:hover:not(:disabled) { background: var(--tab-hover); border-color: var(--accent); }
+.dk-ap-btn.danger { color: var(--offmesh); }
+.dk-ap-btn.danger:hover:not(:disabled) { border-color: var(--offmesh); }
+@media (max-width: 720px) {
+  /* a phone: the rail a row of tabs over the page */
+  .dk-ap-pane { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .dk-ap-nav { flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--border); }
+  .dk-ap-row { grid-template-columns: 5.5rem minmax(0, 1fr); }
+}
 .dk-ctl-who { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
 .dk-ctl-name { color: var(--fg); font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dk-ctl-out {
@@ -1964,7 +1987,6 @@ input, textarea { caret-color: var(--accent); }
 body:has(.dk-pop:not([hidden])) .toasts { opacity: 0; pointer-events: none; }
 @keyframes toast-in { from { opacity: 0; transform: translateY(0.4rem); } }
 @media (prefers-reduced-motion: reduce) { .toast, .dk-mcp-pop { animation: none; } .dk-mcp-btn .ic, .dk-cl-pip { animation: none !important; } .dk-win.dk-agent::after { animation: none; } }
-.dk-ctl-theme { margin: 0.6rem; }
 /* the bar's right side: the hosts, a rule, the bell, then the clock and the user */
 .dk-bar .dk-tray-wrap:has(> .dk-bell)::before, .dk-bar .dk-tray-wrap:has(> .dk-mcp-btn)::before { content: ''; align-self: center; width: 1px; height: 1.1rem; margin-right: 0.3rem; background: var(--border); }
 /* the agent tray leads the pair, so the bell needs no rule of its own after it */

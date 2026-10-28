@@ -2,13 +2,13 @@
 // words finding apps, settings, menu actions, open windows, hosts and files
 import { acctLogout, dkProfileWin, dkUsersWin } from '../account.ts';
 import { DK_GLYPHS, dkGlyph, el, isMobile } from '../dom.ts';
-import { currentTheme, setTheme, THEMES } from '../scheme.ts';
+import { MODES, modePick, setTheme } from '../scheme.ts';
 import { filesApi, filesJoin, filesWin, fileOpen, HOME, homeOnline } from '../shares.ts';
 import { dk, st } from '../state.ts';
 import { PALETTES, paletteNow, setPalette } from '../theme.ts';
 import type { FileEntry } from '../types.ts';
 import { openUpdateModal } from '../update.ts';
-import { dkThemeWin } from './control.ts';
+import { dkAppearanceWin } from './control.ts';
 import { dkLiveHosts, dkOpenApp, dkService, dkTerminal, dkWallClear, dkWallPick, dkArrange } from './desk.ts';
 import { dkShowDesktop } from './keys.ts';
 import { dkOverview } from './switcher.ts';
@@ -37,8 +37,8 @@ function hits(): Hit[] {
   for (const r of dk.services) add(G.service!, r.name, r.host, 'service', `service site ${r.public ? 'public' : ''}`, () => dkService(r));
   // settings
   if (st.acct && !st.acct.boot) {
-    add(G.gear!, 'settings', 'profile', 'setting', 'account password logins vault prefs', dkProfileWin);
-    add(G.gear!, 'customize theme', '', 'setting', 'theme editor accent font corners layout bar', dkThemeWin);
+    add(G.user!, 'profile', 'hosts, page logins, password', 'setting', 'account settings password logins vault prefs', dkProfileWin);
+    add(G.palette!, 'appearance', 'theme, desk, bar, windows', 'setting', 'theme editor accent font corners layout bar customize look wallpaper', () => dkAppearanceWin());
     if (st.acct.admin) {
       add(G.users!, 'users', '', 'setting', 'accounts admin', dkUsersWin);
       add(G.update!, 'mesh update', '', 'setting', 'upgrade version release', openUpdateModal);
@@ -46,8 +46,8 @@ function hits(): Hit[] {
     add(G.doc!, 'change wallpaper', '', 'setting', 'background picture desk', dkWallPick);
     if (st.acct.wallpaper) add(G.doc!, 'remove wallpaper', '', 'setting', 'background picture', dkWallClear);
   }
-  for (const t of THEMES) add(G.gear!, `${t} mode`, currentTheme() === t ? 'on' : '', 'setting', 'theme light dark oled appearance', () => setTheme(t));
-  for (const p of PALETTES) if (!p.custom) add(G.gear!, `theme ${p.label}`, paletteNow() === p.id ? 'on' : p.about || '', 'setting', 'look palette style', () => setPalette(p.id));
+  for (const m of MODES) add(G.palette!, `${m} mode`, modePick() === m ? 'on' : '', 'setting', 'theme light dark oled appearance', () => setTheme(m));
+  for (const p of PALETTES) if (!p.custom) add(G.palette!, `theme ${p.label}`, paletteNow() === p.id ? 'on' : p.about || '', 'setting', 'look palette style appearance', () => setPalette(p.id));
   add(G.mesh!, 'mesh', '', 'menu', 'graph hosts peers tailnet', () => dk.meshTray?.show(true));
   add(G.bell!, 'notifications', '', 'menu', 'bell alerts', () => dk.bell?.show(true));
   add(G.app!, 'arrange icons', '', 'menu', 'desktop tidy sort', dkArrange);

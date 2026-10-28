@@ -4,7 +4,7 @@ import { dkProfileWin, dkUsersWin } from '../account.ts';
 import { app } from '../apps.ts';
 import { dkFms, filesWin, type Loc } from '../shares.ts';
 import { dk, st } from '../state.ts';
-import { dkThemeWin } from './control.ts';
+import { dkAppearanceWin } from './control.ts';
 import { dkOpenApp, dkService, dkTerminal } from './desk.ts';
 import { dkCode, dkRun } from './deskfiles.ts';
 import { dkFocus, dkHide, dkOnTouch, dkPlace, dkSnap, type DkWin } from './windows.ts';
@@ -60,7 +60,7 @@ async function reopen(s: Saved): Promise<DkWin | undefined | null> {
       const id = String(o.id);
       if (id === 'profile') dkProfileWin();
       else if (id === 'users') { if (!st.acct?.admin) return null; dkUsersWin(); }
-      else if (id === 'theme') dkThemeWin();
+      else if (id === 'appearance') dkAppearanceWin();
       else if (id === 'git') { if (!st.gitRoute) return undefined; dkOpenApp('git'); }
       else dkOpenApp(id);
       return dk.wins.get(`app:${id}`) ?? null;

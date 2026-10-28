@@ -27,7 +27,7 @@ export const PALETTES: Palette[] = [
     id: t.id, label: t.label, about: t.about, look: t.look, round: !!t.round, sans: !!t.sans,
     swatch: [tokensOf(t)['--accent']!, tokensOf(t)['--bg']!],
   })),
-  { id: 'custom', label: 'custom', about: 'yours: a theme to start from, with your accent, type, corners, shadows and layout', look: '', custom: true },
+  { id: 'custom', label: 'custom', about: 'yours: any theme, then your own accent, type, corners, shadows and layout', look: '', custom: true },
 ];
 const LOOKS = [...new Set(LIB.themes.map((t) => t.look))];
 const builtIn = (id: string | undefined) => LIB.themes.find((t) => t.id === id);
@@ -69,7 +69,8 @@ export const LAYOUT_CHOICES: Record<string, string[]> = {
   // what the bar's windows and the menu bar's app show: an icon, a title, both
   labels: ['both', 'icons', 'titles'],
 };
-export const BAR_ITEMS = ['hosts', 'agent', 'bell', 'clock', 'profile'];
+// the bar's status items, every one the layout may show or not, in its order; the profile always
+export const BAR_ITEMS = ['search', 'hosts', 'agent', 'bell', 'clock', 'profile'];
 // a built-in theme's own whole config, every value concrete: what the custom theme starts as and
 // what a reset sets it to
 export function themeConfig(id: string): CustomConfig {
@@ -89,7 +90,7 @@ export function themeConfig(id: string): CustomConfig {
   };
 }
 
-// a layout made whole: each key valid, the profile never hidden (it opens the settings)
+// a layout made whole: each key valid, the profile never hidden (it opens the appearance window)
 function cleanLayout(l: unknown, under?: LayoutNow): LayoutNow {
   const o = {} as LayoutNow;
   const src = (l && typeof l === 'object' ? l : {}) as Record<string, unknown>;
