@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { cpSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -245,4 +246,47 @@ test("drop old tokens", () => {
   sysfs.write("home/ann/prefs.json", {});
   U.DropOldTokens();
   expect([sysfs.read("home/ann/anthropic.json"), sysfs.read("home/ann/prefs.json")]).toEqual([undefined, {}]);
+});
+
+test("oauth: a registered agent's code traded once for the user's mcp key", async () => {
+  expect(U.OAuthRegister({ redirect_uris: ["https://evil.example/cb"] }).status).toBe(400);
+  expect(U.OAuthRegister({ redirect_uris: ["https://claude.ai/elsewhere"] }).status).toBe(400);
+  const reg = U.OAuthRegister({ client_name: "Claude Code", redirect_uris: ["http://localhost:4567/callback"] });
+  expect(reg.status).toBe(201);
+  const id: string = reg.body.client_id;
+  expect(U.OAuthClient(id)?.name).toBe("Claude Code");
+  // a loopback redirect on any port, never another host or path
+  const cb = "http://localhost:9999/callback";
+  expect(U.OAuthRedirectFor(id, cb)).toBe(cb);
+  expect(U.OAuthRedirectFor(id, "http://evil.example:4567/callback")).toBe("");
+  expect(U.OAuthRedirectFor(id, "http://localhost:4567/other")).toBe("");
+  const [r, s] = await U.SignIn({ user: "pmh", pass: fx.pass }, req({}, "https://mesh.example/oauth/authorize", "203.0.113.7"));
+  expect(r.status).toBe(200);
+  const [before] = await U.KeyOf(s, req());
+  const verifier = "v".repeat(43);
+  const challenge = createHash("sha256").update(verifier).digest("base64url");
+  const [code, why] = await U.OAuthCode(s!, req(), id, cb, challenge);
+  expect(why).toBe("");
+  const p = { grant_type: "authorization_code", code, client_id: id, redirect_uri: cb, code_verifier: verifier };
+  expect(U.OAuthToken({ ...p, code_verifier: "w".repeat(43) }).body.error).toBe("invalid_grant");
+  expect(U.OAuthToken({ ...p, redirect_uri: "http://localhost:1/callback" }).body.error).toBe("invalid_grant");
+  const other = U.OAuthRegister({ redirect_uris: [cb] }).body.client_id;
+  expect(U.OAuthToken({ ...p, client_id: other }).body.error_description).toBe("code issued to another client");
+  const t = U.OAuthToken(p);
+  expect(t.status).toBe(200);
+  expect(t.body.token_type).toBe("Bearer");
+  expect(t.body.expires_in).toBeGreaterThan(300 * 24 * 3600);
+  expect(U.CheckMCPKey(t.body.access_token)[0]?.user).toBe("pmh");
+  // signing in again reuses the key in use, so no other agent is signed out
+  expect(U.CheckMCPKey(before)[1]).toBe("");
+  expect(U.OAuthToken(p).body.error_description).toBe("code already used");
+  // a code never a key, a client id never a code
+  expect(U.CheckMCPKey(code)[0]).toBeUndefined();
+  expect(U.OAuthToken({ ...p, code: id }).body.error).toBe("invalid_grant");
+  expect(U.OAuthToken({ ...p, grant_type: "password" }).body.error).toBe("unsupported_grant_type");
+  // the setup admin can't sign an agent in
+  expect((await U.OAuthCode({ user: "admin", admin: true, boot: true, token: "", e: 0 }, req(), id, cb, challenge))[0]).toBe("");
+  // revoked: the token the agent holds refused
+  U.MCPRevoke(s);
+  expect(U.CheckMCPKey(t.body.access_token)[1]).toBe("revoked or replaced by a newer key");
 });

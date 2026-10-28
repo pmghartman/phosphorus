@@ -181,6 +181,8 @@ export function askerOf(m: Meta): Asker {
 
 export type Tool = {
   name: string;
+  // title a person's name for it, as a client lists it
+  title: string;
   description: string;
   schema: Record<string, any>;
   read?: boolean;

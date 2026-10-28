@@ -74,18 +74,18 @@ const skillWords = new Set(["dry_run", "wait_s", "base_path", "clone_url", "mcp_
 
 test("skill", async () => {
   init({ self: () => ({ host: "h", version: "1.2" }) });
-  const got = unzip(await skill("pat", true, "https://mesh.example"));
+  const got = unzip(await skill("https://mesh.example"));
   expect(got.size).toBeGreaterThan(0);
   for (const [n, s] of got) {
     expect(n.startsWith("phosphorus/")).toBe(true);
     expect(s).not.toContain("{{");
+    expect(s).not.toContain("${");
     expect(s).not.toContain("$ARGUMENTS");
     expect(s).not.toContain("/api/mcp");
   }
   const sk = got.get("phosphorus/SKILL.md")!;
   expect(sk.startsWith("---\nname: phosphorus\ndescription: ")).toBe(true);
-  expect(sk).toContain("https://mesh.example");
-  expect(sk).toContain("phosphorus 1.2");
+  expect(sk).toContain("https://mesh.example.");
   for (const f of ["status", "diagnose", "run", "files", "service", "update", "chat", "git"]) {
     expect(got.get(`phosphorus/references/${f}.md`)).toBeTruthy();
     expect(sk).toContain(`references/${f}.md`);
@@ -98,7 +98,7 @@ test("skill", async () => {
 });
 
 test("the skill's file list is the folder", () => {
-  const root = resolve(import.meta.dir, "..", "skill");
+  const root = resolve(import.meta.dir, "..", "..", "..", "plugin", "skills");
   const walk = (d: string): string[] => readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(d, e.name)) : [join(d, e.name)]));
   const onDisk = walk(root).map((p) => p.slice(root.length + 1).replaceAll("\\", "/")).sort();
   expect(Object.keys(skillFiles).sort()).toEqual(onDisk);
@@ -152,6 +152,13 @@ test("key grants", async () => {
   const g = await names(git);
   expect(g.forgejo).toBeDefined();
   expect(g.terminal_run).toContain("saved logins: a, b;");
+  // every tool titled, and its read, destructive and title hints given, as the directory asks
+  for (const t of (await handle(rpc("tools/list"), false, git))[1].result.tools) {
+    expect(t.title).toMatch(/^[A-Z]/);
+    expect(t.annotations.title).toBe(t.title);
+    expect(typeof t.annotations.readOnlyHint).toBe("boolean");
+    if (!t.annotations.readOnlyHint) expect(typeof t.annotations.destructiveHint).toBe("boolean");
+  }
   let [, o] = await handle(rpc("tools/call", { name: "forgejo" }), false, bare());
   expect(o.error.message).toContain("off this key");
   [, o] = await handle(rpc("initialize"), false, bare());

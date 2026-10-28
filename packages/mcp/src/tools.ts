@@ -14,7 +14,7 @@ const notKnown = (to: string) => errc("not_found", `no one called ${to}; people 
 
 export const coreTools = (): Tool[] => [
   {
-    name: "mesh_hosts", read: true,
+    name: "mesh_hosts", title: "Mesh hosts", read: true,
     description: "Every host on the phosphorus mesh: whether it runs phosphorus, its OS and version.",
     schema: object({ health: { type: "boolean", default: false, description: "key only: each phosphorus host's health too, answering, version, round trip and tunnel" } }),
     run: async (a, m) => {
@@ -30,7 +30,7 @@ export const coreTools = (): Tool[] => [
     },
   },
   {
-    name: "services", read: true,
+    name: "services", title: "Services", read: true,
     description: "Every service published on the mesh, by host, with its name and where it is served.",
     schema: object({
       host: { type: "string", description: "with name: the service's host" },
@@ -57,19 +57,19 @@ export const coreTools = (): Tool[] => [
     },
   },
   {
-    name: "host_stats", read: true,
+    name: "host_stats", title: "Host stats", read: true,
     description: "Live cpu, memory, disk, gpu, network, phosphorus's parts and top processes of one host; no host, a row of percents for every host.",
     schema: object({ host: { type: "string", description: "host name, as mesh_hosts lists it; blank for every host's row at once" } }),
     run: (a) => (str(a.host) ? hostStats(knownHost(a)) : statsAll()),
   },
   {
-    name: "git", read: true,
+    name: "git", title: "Git hosts", read: true,
     description: "The git hosts (forgejo): which is master, which are replicas, how far behind, reachable or not.",
     schema: object(),
     run: () => src.gitHosts(),
   },
   {
-    name: "models", read: true,
+    name: "models", title: "Models and agents", read: true,
     description:
       "The models: each agent's (chat, inline, code, claude-code, opencode) assigned mesh host and the one answering, " +
       "each mesh model host, its file, state, memory and the agents on it, and the last call's context window in tokens (system prompt, chat, prompt, reply) and speed.",
@@ -77,7 +77,7 @@ export const coreTools = (): Tool[] => [
     run: () => src.model(),
   },
   {
-    name: "people", read: true,
+    name: "people", title: "People online", read: true,
     description: "Who is on phosphorus right now: each person connected, the host they are on, and whether they are typing.",
     schema: object(),
     run: () =>
@@ -89,7 +89,7 @@ export const coreTools = (): Tool[] => [
       }),
   },
   {
-    name: "terminal_screen", read: true,
+    name: "terminal_screen", title: "Read a terminal screen", read: true,
     description:
       "Read only: the screen and recent scrollback of the asker's terminal tabs shared with phosphorus on one host. " +
       "wait_s waits for new output (a login, a command finishing) before reading.",
@@ -108,7 +108,7 @@ export const coreTools = (): Tool[] => [
     },
   },
   {
-    name: "files_list", read: true,
+    name: "files_list", title: "List files", read: true,
     description:
       "Files shared to the mesh. No host: every host's shares and perms at once. " +
       "Host only: that host's shares. With a share: its entries to depth levels (folders end in /), " +
@@ -145,7 +145,7 @@ export const coreTools = (): Tool[] => [
     },
   },
   {
-    name: "files_read", read: true,
+    name: "files_read", title: "Read a file", read: true,
     description: "Read a text file in a share, as the files tab's preview does, a page at a time, from: the next page's offset.",
     schema: object({
       host: name, share: { type: "string" },
@@ -166,7 +166,7 @@ export const coreTools = (): Tool[] => [
     },
   },
   {
-    name: "game_power",
+    name: "game_power", title: "Start or stop a game server",
     description: "Press play or stop on a game service, as its button does, runs only the start or stop command declared for it.",
     schema: object({ host: name, name: { type: "string" }, action: { type: "string", enum: ["start", "stop"] } }, "host", "name", "action"),
     run: (a, m) => {
@@ -177,7 +177,7 @@ export const coreTools = (): Tool[] => [
     },
   },
   {
-    name: "make_git_master",
+    name: "make_git_master", title: "Make git master",
     description:
       "The git card's make master: the live master hands off to this host, or with none it is force-promoted. " +
       "Returns once it leads (up to 30s), never press it again while one is under way.",
@@ -189,7 +189,7 @@ export const coreTools = (): Tool[] => [
     },
   },
   {
-    name: "set_agent_model",
+    name: "set_agent_model", title: "Assign an agent's model",
     description:
       "Assign a mesh host's model to an agent, mesh-wide: the host as phosphorus/<host> (or just <host>), blank for the " +
       "automatic pick. The agents: code, claude-code, opencode, and an app on the mesh while it is published, as tavern " +
@@ -205,7 +205,7 @@ export const coreTools = (): Tool[] => [
     },
   },
   {
-    name: "update_control",
+    name: "update_control", title: "Start or cancel a mesh update",
     description: "Start a mesh update (an admin's key), or cancel the running one. " + noCreds,
     schema: object({
       action: { type: "string", enum: ["start", "cancel"] },
@@ -228,7 +228,7 @@ export const coreTools = (): Tool[] => [
     },
   },
   {
-    name: "files_write",
+    name: "files_write", title: "Write a file",
     description:
       "Write a text file in a share with w: the whole file as text (made if missing), or old replaced by new, " +
       "old an exact passage found once in it. files_read it first to edit.",
@@ -259,7 +259,7 @@ export const coreTools = (): Tool[] => [
     },
   },
   {
-    name: "files_change",
+    name: "files_change", title: "Organize share files",
     description:
       "Organize a share within its perms: mkdir, rename or move (to ending in / moves into that folder, " +
       "missing folders made), delete (permanent). One change, or several in steps, run in order, stopping at the first failure.",
@@ -301,7 +301,7 @@ export const coreTools = (): Tool[] => [
     },
   },
   {
-    name: "open_file",
+    name: "open_file", title: "Open a file in the editor",
     description: "Open a text or code file from a share in a code editor tab on the asker's page, highlighted, its syntax errors marked, to read and edit together. Nothing in it can be run.",
     schema: object({ host: name, share: { type: "string" }, path: { type: "string", description: "the file, relative to the share's root" } }, "host", "share", "path"),
     run: async (a, m) => {
@@ -313,7 +313,7 @@ export const coreTools = (): Tool[] => [
     },
   },
   {
-    name: "open_terminal",
+    name: "open_terminal", title: "Open a terminal tab",
     description:
       "Open a terminal tab to a phosphorus host on the asker's page, shared with phosphorus from the start. " +
       "They log in themselves, phosphorus never types into it. " + noCreds,
@@ -327,7 +327,7 @@ export const coreTools = (): Tool[] => [
     },
   },
   {
-    name: "chat_history", read: true,
+    name: "chat_history", title: "Read chat", read: true,
     description: "",
     schema: object({
       limit: { type: "integer", description: `lines, at most ${chatMax}`, default: 20 },
@@ -353,7 +353,7 @@ export const coreTools = (): Tool[] => [
     },
   },
   {
-    name: "send_message",
+    name: "send_message", title: "Send a chat message",
     description:
       "Post as yourself to the mesh group chat, or as a direct message to one person by their chat name, " +
       "for when the asker wants someone else told something. Never needed to answer the asker.",
@@ -369,7 +369,7 @@ export const coreTools = (): Tool[] => [
     },
   },
   {
-    name: "show_file",
+    name: "show_file", title: "Show a file to someone",
     description:
       "Invite a person into a share's file in the editor, as /share does: a dialog and a notification for them, " +
       "open in a tab on accepting. For when the asker wants someone to look at or work on a file with them.",
@@ -388,7 +388,7 @@ export const coreTools = (): Tool[] => [
     },
   },
   {
-    name: "update_status", read: true,
+    name: "update_status", title: "Mesh update status", read: true,
     description: "The mesh update: whether one is running, who started it, and each host's result.",
     schema: object({ history: { type: "boolean", default: false, description: "key only: also the last fifty updates started from this host, each host's result and error" } }),
     run: async (a, m) => {
