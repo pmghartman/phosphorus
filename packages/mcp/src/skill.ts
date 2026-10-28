@@ -1,18 +1,17 @@
-// the claude skill for one user, uploaded to claude.ai or dropped in a skills
-// folder; no key in it, the connector they already have doing the calling: its
-// files with the user filled in, the tools' own descriptions their reference
+// the claude skill for the mesh's own Code sessions, dropped in their skills
+// folder: the plugin's files, its domain filled in as Claude Code fills the
+// plugin's; no key in it, the connector doing the calling
 import { deflateRawSync } from "node:zlib";
-import { src, str } from "./common.ts";
 // each file imported so a compiled binary carries it; the test checks the list against the folder
-import skillMD from "../skill/phosphorus/SKILL.md" with { type: "file" };
-import chatMD from "../skill/phosphorus/references/chat.md" with { type: "file" };
-import diagnoseMD from "../skill/phosphorus/references/diagnose.md" with { type: "file" };
-import filesMD from "../skill/phosphorus/references/files.md" with { type: "file" };
-import gitMD from "../skill/phosphorus/references/git.md" with { type: "file" };
-import runMD from "../skill/phosphorus/references/run.md" with { type: "file" };
-import serviceMD from "../skill/phosphorus/references/service.md" with { type: "file" };
-import statusMD from "../skill/phosphorus/references/status.md" with { type: "file" };
-import updateMD from "../skill/phosphorus/references/update.md" with { type: "file" };
+import skillMD from "../../../plugin/skills/phosphorus/SKILL.md" with { type: "file" };
+import chatMD from "../../../plugin/skills/phosphorus/references/chat.md" with { type: "file" };
+import diagnoseMD from "../../../plugin/skills/phosphorus/references/diagnose.md" with { type: "file" };
+import filesMD from "../../../plugin/skills/phosphorus/references/files.md" with { type: "file" };
+import gitMD from "../../../plugin/skills/phosphorus/references/git.md" with { type: "file" };
+import runMD from "../../../plugin/skills/phosphorus/references/run.md" with { type: "file" };
+import serviceMD from "../../../plugin/skills/phosphorus/references/service.md" with { type: "file" };
+import statusMD from "../../../plugin/skills/phosphorus/references/status.md" with { type: "file" };
+import updateMD from "../../../plugin/skills/phosphorus/references/update.md" with { type: "file" };
 
 // skillFiles each file's name in the zip and where it lives
 export const skillFiles: Record<string, string> = {
@@ -27,16 +26,11 @@ export const skillFiles: Record<string, string> = {
   "phosphorus/references/update.md": updateMD,
 };
 
-// skill the zip for user on the mesh at base: the phosphorus folder at its root
-export async function skill(user: string, admin: boolean, base: string): Promise<Uint8Array> {
-  const ver = str(src.self().version).replace(/^v/, "");
-  const fill: Record<string, string> = {
-    "{{BASE}}": base, "{{USER}}": user, "{{ADMIN_NOTE}}": admin ? " (an admin)" : "",
-    "{{VERSION}}": ver, "{{BUILT}}": new Date().toISOString().slice(0, 10),
-  };
-  const re = /\{\{(BASE|USER|ADMIN_NOTE|VERSION|BUILT)\}\}/g;
+// skill the zip for the mesh at base: the phosphorus folder at its root
+export async function skill(base: string): Promise<Uint8Array> {
+  const domain = base.replace(/^https?:\/\//, "").replace(/\/+$/, "");
   const files: Record<string, string> = {};
-  for (const [name, path] of Object.entries(skillFiles)) files[name] = (await Bun.file(path).text()).replace(re, (m) => fill[m]!);
+  for (const [name, path] of Object.entries(skillFiles)) files[name] = (await Bun.file(path).text()).replaceAll("${user_config.domain}", domain);
   return zipOf(files);
 }
 

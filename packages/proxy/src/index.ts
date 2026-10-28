@@ -394,8 +394,8 @@ function isOpen(c: Ctx, h: Hit): boolean {
   if (!h.frontend) return false;
   const p = c.url.pathname;
   if (!p.startsWith("/api/") && !p.startsWith("/internal/")) return true;
-  // a key checked by the frontend itself
-  if (p === "/api/mcp" && (c.req.headers.get("authorization") ?? "").startsWith("Bearer ")) return true;
+  // a key checked by the frontend itself, which sends a keyless agent to sign in
+  if (p === "/api/mcp") return true;
   if (p.startsWith("/api/mcp/") && p.slice(9).replace(/^\/+|\/+$/g, "")) return true;
   return openAPI.test(p);
 }

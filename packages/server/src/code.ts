@@ -50,7 +50,7 @@ function codeCreds(s: Session, c: Ctx): code.CredsFn {
     cr.key = key;
     cr.token = await AnthropicToken(s);
     cr.base = base;
-    cr.skill = await skill(s.user, s.admin, sb);
+    cr.skill = await skill(sb);
     return cr;
   };
 }

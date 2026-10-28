@@ -1945,6 +1945,8 @@ input, textarea { caret-color: var(--accent); }
 .dk-cl-bar { display: flex; flex-wrap: wrap; gap: 0.4rem; padding: 0.6rem 0.6rem 0; }
 .dk-cl-key.wide { flex-basis: 100%; }
 .dk-cl-hint:not(:empty) { padding: 0.45rem 0.6rem 0; }
+.dk-cl-steps { margin: 0; padding-left: 1.2rem; color: var(--muted); line-height: 1.6; }
+.dk-cl-steps code { color: var(--fg); font-size: 0.7rem; overflow-wrap: anywhere; }
 .dk-cl-check { display: flex; align-items: center; gap: 0.45rem; padding: 0.5rem 0.7rem 0; color: var(--muted); cursor: pointer; user-select: none; }
 .dk-cl-check input { margin: 0; accent-color: var(--accent); cursor: pointer; }
 .dk-cl-check:hover, .dk-cl-check:has(input:focus-visible) { color: var(--fg); }

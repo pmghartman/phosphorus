@@ -107,9 +107,9 @@ function toolList(local: boolean, caller: Caller | undefined): Record<string, an
   const list: Record<string, any>[] = [];
   for (const t of tools) {
     if (!visible(t, local, caller)) continue;
-    const ann: Record<string, any> = { readOnlyHint: !!t.read, openWorldHint: !!t.open };
+    const ann: Record<string, any> = { title: t.title, readOnlyHint: !!t.read, openWorldHint: !!t.open };
     if (!t.read) ann.destructiveHint = !!t.destructive;
-    list.push({ name: t.name, description: caller ? keyDescription(t, caller) : t.description, inputSchema: t.schema, annotations: ann });
+    list.push({ name: t.name, title: t.title, description: caller ? keyDescription(t, caller) : t.description, inputSchema: t.schema, annotations: ann });
   }
   listed.set(key, list);
   return list;

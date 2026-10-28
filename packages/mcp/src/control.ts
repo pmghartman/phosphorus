@@ -8,7 +8,7 @@ import { typeTerminal } from "./hosts.ts";
 
 export const controlTools = (): Tool[] => [
   {
-    name: "host_power", scope: "key", admin: true, destructive: true,
+    name: "host_power", title: "Restart a host", scope: "key", admin: true, destructive: true,
     description:
       "Restart phosphorus on a host, or reboot the machine. Its terminals and services drop until it's back. " +
       "confirm must repeat the host's name. Admins only.",
@@ -24,7 +24,7 @@ export const controlTools = (): Tool[] => [
     },
   },
   {
-    name: "chat_edit", scope: "key",
+    name: "chat_edit", title: "Edit or withdraw a chat line", scope: "key",
     description: "Edit or delete one of your own chat lines by its ref from chat_history; deleting an invite from show_file withdraws it.",
     schema: object({
       ref: { type: "string", description: "host:seq, from chat_history" },
@@ -37,7 +37,7 @@ export const controlTools = (): Tool[] => [
     },
   },
   {
-    name: "terminal_run", destructive: true,
+    name: "terminal_run", title: "Run a command on a host", destructive: true,
     description:
       "Run a command or a whole script on a host as you, with exactly the rights of your saved login, as if you were " +
       "at its shell. With a login saved it signs in over ssh on its own, no window needed, and returns the exit code and the " +
@@ -95,7 +95,7 @@ export const controlTools = (): Tool[] => [
     },
   },
   {
-    name: "audit_log", read: true, scope: "key",
+    name: "audit_log", title: "Audit log", read: true, scope: "key",
     description:
       "Every write made through a key on this host, newest last: when, who, through which agent, the tool, its " +
       "arguments and whether it went through. Your own; an admin may ask for everyone's.",

@@ -1,0 +1,20 @@
+{
+  "name": "phosphorus",
+  "displayName": "Phosphorus",
+  "description": "Operate your self-hosted Phosphorus mesh from Claude Code: hosts, services, files, terminals, logs, Forgejo, chat and updates, signed in with your mesh login.",
+  "author": { "name": "Patrick Hartman", "url": "https://github.com/pmghartman" },
+  "homepage": "https://github.com/pmghartman/phosphorus",
+  "repository": "https://github.com/pmghartman/phosphorus",
+  "license": "Apache-2.0",
+  "privacyPolicyUrl": "https://github.com/pmghartman/phosphorus/blob/main/PRIVACY.md",
+  "supportUrl": "https://github.com/pmghartman/phosphorus/issues",
+  "keywords": ["homelab", "mesh", "tailnet", "self-hosted"],
+  "userConfig": {
+    "domain": {
+      "type": "string",
+      "title": "Mesh domain",
+      "description": "The address you open your mesh at, without https://, such as mesh.example.com",
+      "required": true
+    }
+  }
+}

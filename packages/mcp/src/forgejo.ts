@@ -47,7 +47,7 @@ export function gitCreds(c: Caller | undefined): [prefix: string, stdin: string]
 
 export const forgejoTools = (): Tool[] => [
   {
-    name: "forgejo", scope: "key", open: true, destructive: true,
+    name: "forgejo", title: "Forgejo API", scope: "key", open: true, destructive: true,
     description:
       "Call the mesh's Forgejo (git) API as you, signed in with the forgejo login saved in your vault (the page login git): " +
       "repos, branches, files, commits, issues, pull requests, reviews, releases, orgs, anything under /api/v1. " +
