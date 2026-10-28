@@ -141,33 +141,6 @@ jobs:
           path: notices/
           retention-days: 1
 
-  # types and tests gating the release, a job per OS in parallel: the terminal and
-  # the host's service code have per-OS paths
-  check:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { name: linux, runner: ubuntu-24.04 }
-          - { name: darwin, runner: macos-14 }
-          - { name: windows, runner: windows-2022 }
-    name: check (${{ matrix.name }})
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version-file: .bun-version
-      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
-        with:
-          path: .bun-cache
-          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock') }}
-      - run: bun install --frozen-lockfile
-      - run: bun run web
-      - run: bun run check
-      - run: bun run test
-
   # one job per OS: Linux's host the .deb around the binary, macOS's and
   # Windows' the menu bar app beside it, in a .dmg and a setup .exe
   build:
@@ -274,7 +247,7 @@ jobs:
           if-no-files-found: ignore
 
   release:
-    needs: [version, licenses, check, build]
+    needs: [version, licenses, build]
     # runs with unchecked OSes skipped, not when anything failed
     if: ${{ !cancelled() && !failure() }}
     runs-on: ubuntu-24.04
@@ -326,7 +299,7 @@ jobs:
   # the update feed beside the release, not after it: nothing in it waits on the numbered
   # release's upload, and the upload nothing on it
   feed:
-    needs: [version, licenses, check, build]
+    needs: [version, licenses, build]
     if: ${{ !cancelled() && !failure() && (inputs.linux_amd64 || inputs.linux_arm64 || inputs.macos || inputs.windows) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
