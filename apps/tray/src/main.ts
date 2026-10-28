@@ -1,7 +1,8 @@
-// Phosphorus's menu bar and tray app, macOS and Windows: bundled with the host
-// binary and release; keys, install, start and stop, feed updates, the frontend
-// opened in the default browser. The menu's logic is here once, the OS's icon
-// and menu behind Tray (mac.ts, tray-win32.ts), the rest of the OS behind os.ts
+// Phosphorus's menu bar and tray app, macOS and Windows: a role of the host binary
+// (phosphorus-host tray, or Phosphorus.app opened), the release beside it; keys,
+// install, start and stop, feed updates, the frontend opened in the default
+// browser. The menu's logic is here once, the OS's icon and menu behind Tray
+// (mac.ts, tray-win32.ts), the rest of the OS behind os.ts
 import { readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { Feed, type Release } from "@phosphorus/appfeed";

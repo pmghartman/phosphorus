@@ -1,4 +1,5 @@
-// build: the host and tray binaries compiled by bun for a target, into OUT
+// build: the host binary compiled by bun for a target, into OUT; off Linux it
+// carries the tray app too (phosphorus-host tray)
 //   bun scripts/build.ts TARGET OUT [VERSION]
 // TARGET: linux-x64 linux-arm64 darwin-x64 darwin-arm64 windows-x64; the web
 // client must be built first (bun run web). The tray's feed comes from
@@ -21,13 +22,15 @@ const define = {
   PHOSPHORUS_FEED_URL: JSON.stringify(process.env.FEED_URL ?? ""),
   PHOSPHORUS_FEED_PUBKEY: JSON.stringify(process.env.FEED_PUBKEY ?? ""),
 };
-const compile = async (entry: string, name: string, gui: boolean) => {
+const compile = async (entry: string, name: string) => {
   const res = await Bun.build({
     entrypoints: [join(root, entry)],
     compile: {
       target: `bun-${target}` as any,
       outfile: join(out, name),
-      windows: win ? { hideConsole: gui, icon: join(root, "packaging/icons/icon.ico") } : undefined,
+      // a console program, phos and the service in it; the tray is started without a
+      // window by the launcher Phosphorus.exe (packaging/host/launcher.nsi)
+      windows: win ? { icon: join(root, "packaging/icons/icon.ico") } : undefined,
       autoloadBunfig: false,
       autoloadDotenv: false,
     },
@@ -39,6 +42,4 @@ const compile = async (entry: string, name: string, gui: boolean) => {
   if (!res.success) process.exit(1);
   console.log(`[build] ${name} for ${target}`);
 };
-await compile("apps/host/src/main.ts", win ? "phosphorus-host.exe" : "phosphorus-host", false);
-// Linux has no tray; its hosts run as a systemd service alone
-if (!target.startsWith("linux")) await compile("apps/tray/src/main.ts", win ? "Phosphorus.exe" : "Phosphorus", true);
+await compile("apps/host/src/main.ts", win ? "phosphorus-host.exe" : "phosphorus-host");

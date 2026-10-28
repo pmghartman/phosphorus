@@ -1,5 +1,6 @@
-; Phosphorus for Windows, per user: the tray, the host binary and the release in
-; %LOCALAPPDATA%\Phosphorus, an update landing in place
+; Phosphorus for Windows, per user: the host binary (the tray a role of it), the
+; launcher Phosphorus.exe that starts that tray without a console window, and the
+; release in %LOCALAPPDATA%\Phosphorus, an update landing in place
 ; makensis /DVERSION=1.2 /DSTAGE=dir /DOUTFILE=setup.exe installer.nsi
 ; /S silent, the tray started after on the desktop at its login item's quiet;
 ; /S /AGENT /D=<dir> the phosphorus service's update with no one signed in: no
@@ -19,11 +20,12 @@ SetCompressor zlib
 !define UNINSTKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT}"
 !define RUNKEY "Software\Microsoft\Windows\CurrentVersion\Run"
 
-; the tray alone, by its full path: Windows names are case-blind, and phosphorus
-; itself runs as phosphorus.exe from the home, never to be stopped by this; the path
-; read through CIM, which a setup run from another session (ssh) can still see
+; the tray alone: the host binary here run with tray, by its full path (Windows
+; names are case-blind), and phosphorus itself runs as phosphorus.exe from the home,
+; never to be stopped by this; the path read through CIM, which a setup run from
+; another session (ssh) can still see
 !macro StopTray
-  nsExec::Exec `powershell -NoProfile -NonInteractive -Command "Get-CimInstance Win32_Process -Filter \"Name='Phosphorus.exe'\" | Where-Object { $$_.ExecutablePath -eq '$INSTDIR\Phosphorus.exe' -or $$_.CommandLine -like '*$INSTDIR\Phosphorus.exe*' } | ForEach-Object { Stop-Process -Id $$_.ProcessId -Force -ErrorAction SilentlyContinue }"`
+  nsExec::Exec `powershell -NoProfile -NonInteractive -Command "Get-CimInstance Win32_Process -Filter \"Name='phosphorus-host.exe'\" | Where-Object { ($$_.ExecutablePath -eq '$INSTDIR\phosphorus-host.exe' -or $$_.CommandLine -like '*$INSTDIR\phosphorus-host.exe*') -and $$_.CommandLine -like '* tray*' } | ForEach-Object { Stop-Process -Id $$_.ProcessId -Force -ErrorAction SilentlyContinue }"`
   Sleep 800
 !macroend
 
@@ -69,9 +71,10 @@ Section "Install"
   ; the old release's files gone, never mixed with this one's
   RMDir /r "$INSTDIR\release"
   ; a tray still running moved aside, never left in place of the new one
-  Delete "$INSTDIR\Phosphorus.old.exe"
-  IfFileExists "$INSTDIR\Phosphorus.old.exe" +2 0
-    Rename "$INSTDIR\Phosphorus.exe" "$INSTDIR\Phosphorus.old.exe"
+  Delete "$INSTDIR\phosphorus-host.old.exe"
+  IfFileExists "$INSTDIR\phosphorus-host.old.exe" +2 0
+    Rename "$INSTDIR\phosphorus-host.exe" "$INSTDIR\phosphorus-host.old.exe"
+  Delete /REBOOTOK "$INSTDIR\phosphorus-host.old.exe"
   Delete /REBOOTOK "$INSTDIR\Phosphorus.old.exe"
   File "${STAGE}\Phosphorus.exe"
   File "${STAGE}\phosphorus-host.exe"

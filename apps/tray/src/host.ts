@@ -1,4 +1,4 @@
-// the host binary's commands (phosphorus-host beside this app), their output
+// the host binary's commands (this same binary, phosphorus-host), their output
 // kept in state/, what it says of the keys and the service, and the update-agent
 // file the frontend and `phosphorus update` wait on
 import { mkdirSync, writeFileSync } from "node:fs";
