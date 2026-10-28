@@ -1,7 +1,13 @@
 // a file's ACL to SYSTEM and Administrators, plus Authenticated Users read when
 // shared, nothing inherited: what OpenSSH accepts for a SYSTEM caller; nothing
 // off Windows, file modes do it there
+import { chownSync, type Stats } from "node:fs";
 import { runSync } from "./proc.ts";
+
+// a file's owner carried to its replacement, nothing to carry on Windows
+export function chownLike(file: string, st: Stats) {
+  if (process.platform !== "win32") chownSync(file, st.uid, st.gid);
+}
 
 export function lockACL(file: string, shared: boolean) {
   if (process.platform !== "win32") return;

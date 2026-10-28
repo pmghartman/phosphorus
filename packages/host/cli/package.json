@@ -6,6 +6,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@phosphorus/config": "workspace:*",
     "@phosphorus/envfile": "workspace:*",
     "@phosphorus/services": "workspace:*",
     "@phosphorus/theme": "workspace:*",

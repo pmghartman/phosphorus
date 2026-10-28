@@ -2,7 +2,7 @@ import { wsBase } from '../api.ts';
 import { el, noFill } from '../dom.ts';
 import { renderMd } from '../md.ts';
 import { deskApps, dk, st } from '../state.ts';
-import type { CodeHarness, CodeHarnesses, CodeLs, CodeModel, CodeOptions, CodeSession, CodeWsMessage } from '../types.ts';
+import type { CodeHarness, CodeHarnesses, CodeLs, CodeModel, CodeOptions, CodeSession, CodeWsMessage } from '@phosphorus/wire';
 import { esc } from '../util.ts';
 import { dkTerminal } from '../desktop/desk.ts';
 import { dkCode } from '../desktop/deskfiles.ts';

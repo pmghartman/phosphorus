@@ -2,7 +2,7 @@
 // host's state for peers, chat and terminal websockets
 import type { Server } from "bun";
 import * as chatmedia from "@phosphorus/chatmedia";
-import { markHot } from "@phosphorus/clock";
+import { markHot } from "@phosphorus/util";
 import * as files from "@phosphorus/files";
 import * as git from "@phosphorus/git";
 import { type Caller, init as mcpInit, type Loc } from "@phosphorus/mcp";

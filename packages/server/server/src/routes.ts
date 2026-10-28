@@ -1,7 +1,7 @@
 // every request on the frontend port, and the ingress's leftovers
 import { join } from "node:path";
 import * as chatmedia from "@phosphorus/chatmedia";
-import { intervalMS, markHot } from "@phosphorus/clock";
+import { intervalMS, markHot } from "@phosphorus/util";
 import { Write as collabWrite } from "@phosphorus/collab";
 import { Keys as envKeys } from "@phosphorus/envfile";
 import * as files from "@phosphorus/files";

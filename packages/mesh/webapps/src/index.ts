@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { extname, join, posix } from "node:path";
 import { newer } from "@phosphorus/appfeed";
-import { markHot } from "@phosphorus/clock";
+import { markHot } from "@phosphorus/util";
 import { parsePublicKey } from "@phosphorus/minisign";
 import * as store from "@phosphorus/store";
 import { untar } from "@phosphorus/tools";

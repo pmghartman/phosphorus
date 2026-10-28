@@ -1,6 +1,6 @@
 // markdown as the server renders it (packages/web-md: markdown-it, highlight.js, sanitize-html), the page
 // adding only katex for math, fetched on first use
-import type { MdBlock } from './types.ts';
+import type { MdBlock } from '@phosphorus/wire';
 
 // the server's html for a text, by breaks and text
 const cache = new Map<string, string>();

@@ -60,3 +60,16 @@ export function runSync(argv: string[], o: Omit<RunOpts, "signal"> = {}): RunRes
 
 // a binary on PATH, "" when not found
 export const which = (name: string) => Bun.which(name) ?? "";
+
+// argv started in its own session on unix, nothing of this process's handed
+// to it, a failure to start ignored
+export function spawnDetached(argv: string[]) {
+  try {
+    Bun.spawn(argv, { detached: process.platform !== "win32", stdin: "ignore", stdout: "ignore", stderr: "ignore", windowsHide: true }).unref();
+  } catch {}
+}
+
+// startDetached argv in its own session, run after delayMs, outliving this process
+export function startDetached(argv: string[], delayMs: number) {
+  setTimeout(() => spawnDetached(argv), delayMs);
+}

@@ -1,7 +1,7 @@
 // the mesh's people, scrypt hashes, each one's vault of host and page logins
 // (and Anthropic token) sealed with a key from their own password
 import { createHash, randomBytes } from "node:crypto";
-import { isLoopbackAddr, isTailnetAddr } from "@phosphorus/proxy";
+import { isLoopbackAddr, isTailnetAddr } from "@phosphorus/util";
 import * as store from "@phosphorus/store";
 import { env, marshal, now, obj, sleep } from "@phosphorus/util";
 import type { Ctx } from "@phosphorus/wsock";

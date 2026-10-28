@@ -6,7 +6,7 @@ import { appCall } from './apps.ts';
 import { renderGames } from './games.ts';
 import { GIT_SERVICE, meshModelsFrom, pruneConnections, renderMesh, renderMeshGit, settleHost } from './mesh.ts';
 import { st } from './state.ts';
-import type { Route, State, TailnetDevice } from './types.ts';
+import type { Route, State, TailnetDevice } from '@phosphorus/wire';
 import { updateState } from './update.ts';
 import { dkHostsGone, dkRoutes } from './desktop/desk.ts';
 import { dkDeskStamps } from './desktop/deskfiles.ts';

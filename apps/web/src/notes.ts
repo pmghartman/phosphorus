@@ -5,7 +5,7 @@ import { dk } from './state.ts';
 import { dkAnchor, dkBarSide, dkPopsClose, type Pop } from './desktop/taskbar.ts';
 import { dkOpenApp } from './desktop/desk.ts';
 import { openUpdateModal, updateModal } from './update.ts';
-import type { Chain, State } from './types.ts';
+import type { Chain, State } from '@phosphorus/wire';
 import { ago2 } from './util.ts';
 
 // unread tally in the tab title, counted only while the tab is away

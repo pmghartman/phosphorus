@@ -1,11 +1,11 @@
 // the one loop on the clock, own services refreshed, every tailnet peer
 // polled, both merged into the routing table
 import { join } from "node:path";
-import { FastMS, IdleMS, intervalMS, isHot, markHot } from "@phosphorus/clock";
+import { FastMS, IdleMS, intervalMS, isHot, markHot } from "@phosphorus/util";
 import { Server as DNSServer, Zone } from "@phosphorus/gamedns";
 import { pinTargets, type Row, rowError, swap } from "@phosphorus/proxy";
 import { refresh } from "@phosphorus/services";
-import { type Peer as SSHPeer, writeConfig } from "@phosphorus/sshrelay";
+import { type Peer as SSHPeer, writeConfig } from "./ssh.ts";
 import { env, errText, flushWrites, FrontendPort, isIPv4, localeCompare, marshal, Notes, noteTailnetIPs, now, obj, requestJSON, run, SelfHost, sleep, StateDir, writeFileAtomic } from "@phosphorus/util";
 
 const selfHost = SelfHost;

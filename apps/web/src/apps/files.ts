@@ -37,7 +37,7 @@ import {
   type PickedItem,
 } from '../shares.ts';
 import { dk, st } from '../state.ts';
-import type { FileEntry } from '../types.ts';
+import type { FileEntry } from '@phosphorus/wire';
 import { humanSize } from '../util.ts';
 import { dkMenu, dkWallSet, type MenuItem } from '../desktop/desk.ts';
 import { dkCode, dkRunItems } from '../desktop/deskfiles.ts';

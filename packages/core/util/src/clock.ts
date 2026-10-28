@@ -1,6 +1,6 @@
 // the one cadence for every loop and the state push: fast while anything moves,
 // idle once it settles
-import { envInt } from "@phosphorus/util";
+import { envInt } from "./env.ts";
 
 export const FastMS = envInt("POLL_INTERVAL_MS", 100);
 export const IdleMS = envInt("IDLE_POLL_INTERVAL_MS", 500);

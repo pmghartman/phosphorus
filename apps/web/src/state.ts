@@ -1,7 +1,7 @@
 // the page's state shared across its modules: what /api/state last said, the account, the
 // chat's name and socket, and the desktop's own. Each was a module-level let of app.js read by
 // several sections; here one object, read where it was read and set where it was set
-import type { FileEntry, GitHost, HostInfo, Route, State, Vault } from './types.ts';
+import type { FileEntry, GitHost, HostInfo, Route, State, Vault } from '@phosphorus/wire';
 import type { Fm, HomeHostList, Loc, PickedItem } from './shares.ts';
 import type { DkWin } from './desktop/windows.ts';
 import type { LoginRow } from './desktop/login.ts';

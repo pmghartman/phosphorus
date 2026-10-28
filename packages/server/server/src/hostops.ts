@@ -3,7 +3,7 @@
 import { existsSync } from "node:fs";
 import { open } from "node:fs/promises";
 import { join } from "node:path";
-import { configText, editIni, editService } from "@phosphorus/cli";
+import { configText, editIni, editService } from "@phosphorus/config";
 import { jsNumber } from "@phosphorus/files";
 import * as peers from "@phosphorus/peers";
 import { health } from "@phosphorus/services";

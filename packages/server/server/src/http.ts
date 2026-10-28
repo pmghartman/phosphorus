@@ -1,7 +1,8 @@
 // what every route shares: JSON in and out, who's asking, from where
 import { MaxText } from "@phosphorus/files";
 import { trusted } from "@phosphorus/peers";
-import { isLoopbackAddr, isTailnetAddr, unrebindable } from "@phosphorus/proxy";
+import { unrebindable } from "@phosphorus/proxy";
+import { isLoopbackAddr, isTailnetAddr } from "@phosphorus/util";
 import { Of } from "@phosphorus/users";
 import { marshal } from "@phosphorus/util";
 import { type Ctx, type Handler, isUpgrade } from "@phosphorus/wsock";

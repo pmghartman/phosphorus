@@ -5,7 +5,7 @@ import { acctCall } from './api.ts';
 import { DK_GLYPHS, dkGlyph, el, pageAsk, svgEl } from './dom.ts';
 import { noteAdd } from './notes.ts';
 import { dk, st } from './state.ts';
-import type { McpCall, McpStatus } from './types.ts';
+import type { McpCall, McpStatus } from '@phosphorus/wire';
 import { copyText } from './util.ts';
 import { dkAnchor, dkPopsClose, type Pop } from './desktop/taskbar.ts';
 import { updateModal } from './update.ts';

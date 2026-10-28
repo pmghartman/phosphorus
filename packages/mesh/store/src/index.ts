@@ -3,7 +3,7 @@
 import { mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { createHash } from "node:crypto";
-import { markHot } from "@phosphorus/clock";
+import { markHot } from "@phosphorus/util";
 import { HomeRoot, Sys } from "@phosphorus/files";
 import { FrontendPort, logf, requestJSON, writeFileAtomic } from "@phosphorus/util";
 

@@ -8,7 +8,7 @@ import { noteAdd, notifyMesh, notifyOs, notifying } from './notes.ts';
 import { dk, st } from './state.ts';
 import { pollState } from './sync.ts';
 import { dkPopsClose } from './desktop/taskbar.ts';
-import type { Chain, MeshLock, State, TailnetDevice, UpdateCheck } from './types.ts';
+import type { Chain, MeshLock, State, TailnetDevice, UpdateCheck } from '@phosphorus/wire';
 import { newerVersion } from './util.ts';
 
 const updateBtn = document.getElementById('mesh-update') as HTMLButtonElement;

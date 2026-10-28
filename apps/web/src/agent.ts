@@ -4,7 +4,7 @@ import { app } from './apps.ts';
 import { openConv } from './chat.ts';
 import { filesParent, filesWin, HOME, type Fm, type Loc } from './shares.ts';
 import { dk, PREF_LS, st } from './state.ts';
-import type { UiAction } from './types.ts';
+import type { UiAction } from '@phosphorus/wire';
 import { openUpdateModal, updateModal } from './update.ts';
 import { dkOpenApp } from './desktop/desk.ts';
 import { dkCode } from './desktop/deskfiles.ts';

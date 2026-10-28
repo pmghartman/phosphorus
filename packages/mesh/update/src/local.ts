@@ -2,7 +2,7 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { intervalMS } from "@phosphorus/clock";
+import { intervalMS } from "@phosphorus/util";
 import { env, errText, FrontendPort, now, obj, readJSONMap, RepoDir, requestJSON, sleep, StateDir, tailnetIP, writeJSONAtomic, type Req } from "@phosphorus/util";
 
 export const VersionFile = env("VERSION_FILE", join(RepoDir, "VERSION"));

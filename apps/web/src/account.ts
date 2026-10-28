@@ -9,7 +9,7 @@ import { dk, PREF_LS, PREF_OF, st, type Account } from './state.ts';
 import { editorPref, EDITORS } from './desktop/deskfiles.ts';
 import { connectState, stateStop, stateUp } from './sync.ts';
 import { themeFromStorage } from './theme.ts';
-import type { Me, UserRow } from './types.ts';
+import type { Me, UserRow } from '@phosphorus/wire';
 import { copyText } from './util.ts';
 import { appCall } from './apps.ts';
 import { dkArt, dkDesktop, dkIcons, dkLayout, dkLogout, dkWallPaint } from './desktop/desk.ts';

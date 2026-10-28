@@ -6,7 +6,7 @@ import { MODES, modePick, setTheme } from '../scheme.ts';
 import { filesApi, filesJoin, filesWin, fileOpen, HOME, homeOnline } from '../shares.ts';
 import { dk, st } from '../state.ts';
 import { PALETTES, paletteNow, setPalette } from '../theme.ts';
-import type { FileEntry } from '../types.ts';
+import type { FileEntry } from '@phosphorus/wire';
 import { openUpdateModal } from '../update.ts';
 import { dkAppearanceWin } from './control.ts';
 import { dkLiveHosts, dkOpenApp, dkService, dkTerminal, dkWallClear, dkWallPick, dkArrange, dkWebApp, dkWebApps } from './desk.ts';

@@ -7,10 +7,9 @@
   },
   "dependencies": {
     "@phosphorus/chatmedia": "workspace:*",
-    "@phosphorus/cli": "workspace:*",
-    "@phosphorus/clock": "workspace:*",
     "@phosphorus/code": "workspace:*",
     "@phosphorus/collab": "workspace:*",
+    "@phosphorus/config": "workspace:*",
     "@phosphorus/envfile": "workspace:*",
     "@phosphorus/files": "workspace:*",
     "@phosphorus/gamedns": "workspace:*",

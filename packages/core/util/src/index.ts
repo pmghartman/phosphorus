@@ -3,24 +3,19 @@
 import { mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { IniFile } from "@phosphorus/ini";
+import { env, envInt } from "./env.ts";
+import { IniFile } from "./ini.ts";
 import { logf } from "./log.ts";
 import { run } from "./proc.ts";
 
 export * from "./proc.ts";
+export * from "./clock.ts";
+export * from "./net.ts";
+export { IniFile, parse as parseIni } from "./ini.ts";
 export * from "./log.ts";
 export * from "./acl.ts";
 
-// k, def when unset or empty
-export const env = (k: string, def = "") => process.env[k] || def;
-
-// Number(process.env.X || def), def on a bad number
-export function envInt(k: string, def: number): number {
-  const v = process.env[k];
-  if (!v) return def;
-  const n = Number(v);
-  return Number.isFinite(n) ? Math.trunc(n) : def;
-}
+export { env, envInt } from "./env.ts";
 
 export const FrontendPort = envInt("FRONTEND_PORT", 8090);
 // cloudflared's metrics and /ready, on loopback
@@ -117,22 +112,6 @@ export function writeJSONSoon(file: string, v: unknown) {
 // every pending writeJSONSoon done, for shutdown
 export async function flushWrites() {
   for (let i = 0; i < 200 && soonBusy.size; i++) await sleep(10);
-}
-
-export const isIPv4 = (s: string) => /^\d+\.\d+\.\d+\.\d+$/.test(s);
-let knownIPs = new Map<string, string>();
-
-// host -> IPv4, as mesh's discovery last listed them
-export function noteTailnetIPs(ips: Record<string, string>) {
-  knownIPs = new Map(Object.entries(ips).filter(([, ip]) => isIPv4(ip)));
-}
-
-// a host's tailnet IPv4, blank when unknown
-export async function tailnetIP(name: string): Promise<string> {
-  const ip = knownIPs.get(name);
-  if (ip) return ip;
-  const r = await run(["tailscale", "ip", "-4", name], { timeoutMs: 3000 });
-  return r.ok ? r.stdout.trim() : "";
 }
 
 export type Response = { status: number; body: any; text: string };

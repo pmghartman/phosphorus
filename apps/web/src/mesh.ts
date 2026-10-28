@@ -6,7 +6,7 @@ import { noteAdd } from './notes.ts';
 import { dk, st } from './state.ts';
 import { connectState } from './sync.ts';
 import { dkAnchor, dkChips, dkPopsClose, type Pop } from './desktop/taskbar.ts';
-import type { GitHost, Route, State, TailnetDevice } from './types.ts';
+import type { GitHost, Route, State, TailnetDevice } from '@phosphorus/wire';
 import { ago, esc } from './util.ts';
 
 // --- self / routes ------------------------------------------------------

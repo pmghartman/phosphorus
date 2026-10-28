@@ -2,7 +2,7 @@
 // pages draw them
 import { parse } from "@phosphorus/services";
 import { FrontendPort } from "@phosphorus/util";
-import { fieldsOf, isHomeDir, readGitHost, readHomeDir, readModel, readShares, readText, servicesFile, splitSections } from "./config.ts";
+import { fieldsOf, isHomeDir, readGitHost, readHomeDir, readModel, readShares, readText, servicesFile, splitSections } from "@phosphorus/config";
 import { type Card, type Key, type Row, bg, bold, c, caret, fg, gradient, inner, max0, off, pad, pal, panels, plainRows, strike, surface, table, vlen, wrap } from "./draw.ts";
 import type { Field, Form } from "./form.ts";
 import { type J, anys, get, indexOf, num, obj, objs, or, str, strs, truthy } from "./json.ts";

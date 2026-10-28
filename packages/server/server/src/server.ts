@@ -2,7 +2,7 @@
 // built for the page, the update chain and guest keys
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { markHot } from "@phosphorus/clock";
+import { markHot } from "@phosphorus/util";
 import { jsNumber } from "@phosphorus/files";
 import { Zone } from "@phosphorus/gamedns";
 import * as git from "@phosphorus/git";

@@ -7,7 +7,6 @@
   },
   "dependencies": {
     "@phosphorus/appfeed": "workspace:*",
-    "@phosphorus/clock": "workspace:*",
     "@phosphorus/minisign": "workspace:*",
     "@phosphorus/store": "workspace:*",
     "@phosphorus/tools": "workspace:*",

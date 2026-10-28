@@ -1,7 +1,7 @@
 import { cssVar, modalOpen } from '../dom.ts';
 import { pingClass, steadyRtt } from '../mesh.ts';
 import { deskApps, st } from '../state.ts';
-import type { ModelHost, State, StatsSample } from '../types.ts';
+import type { ModelHost, State, StatsSample } from '@phosphorus/wire';
 import { esc, humanSize, plural } from '../util.ts';
 
 // --- status: btop for the whole mesh ----------------------------------------

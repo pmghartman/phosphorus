@@ -1,12 +1,12 @@
 // the home's .env: its keys typed blind, saved and phosphorus restarted on them
 import { join } from "node:path";
 import { Keys as envKeys, read as readEnv, set as setEnv } from "@phosphorus/envfile";
-import { env, RepoDir } from "@phosphorus/util";
-import { osErrText } from "./config.ts";
+import { env, RepoDir, spawnDetached } from "@phosphorus/util";
+import { osErrText } from "@phosphorus/config";
 import { c } from "./draw.ts";
 import { type Field, type Form, newForm } from "./form.ts";
 import { ui } from "./state.ts";
-import { spawnDetached } from "./sys.ts";
+
 
 // the home's .env, phosphorus run passing its path
 export let envFile = env("PHOSPHORUS_ENV_FILE", join(RepoDir, ".env"));

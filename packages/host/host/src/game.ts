@@ -4,7 +4,7 @@
 import { chownSync, closeSync, mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { userInfo } from "node:os";
 import { dirname, join } from "node:path";
-import { parse as parseIni } from "@phosphorus/ini";
+import { parseIni } from "@phosphorus/util";
 import { lockACL } from "@phosphorus/util";
 import { at, binPath, eprint, ExitCode, fail, fileExists, home, isWindows, output, run, say } from "./base.ts";
 

@@ -6,7 +6,7 @@ import { app, appCall } from './apps.ts';
 import { dkGlyph, ICONS } from './dom.ts';
 import { phosphorusHosts } from './mesh.ts';
 import { st } from './state.ts';
-import type { FileEntry, FileListing, FileRead, FileRun, FilesInfo, ShowFile } from './types.ts';
+import type { FileEntry, FileListing, FileRead, FileRun, FilesInfo, ShowFile } from '@phosphorus/wire';
 import type { DkWin } from './desktop/windows.ts';
 import { dkCode, dkDeskDirs, dkDeskLoad, dkRun } from './desktop/deskfiles.ts';
 

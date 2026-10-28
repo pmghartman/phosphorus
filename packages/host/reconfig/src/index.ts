@@ -1,7 +1,7 @@
 // phosphorus.ini's [files], [home], [git] host and [model] host and gpu applied
 // as soon as edited, a rebuild
 import { join } from "node:path";
-import { IdleMS } from "@phosphorus/clock";
+import { IdleMS } from "@phosphorus/util";
 import { env, ini, logf, marshal, now, readJSONMap, RepoDir, run, sleep, StateDir, writeJSONAtomic } from "@phosphorus/util";
 
 const appliedFile = join(StateDir, "reconfig.json");

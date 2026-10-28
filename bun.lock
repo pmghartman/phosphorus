@@ -35,6 +35,7 @@
       "name": "@phosphorus/web",
       "dependencies": {
         "@phosphorus/theme": "workspace:*",
+        "@phosphorus/wire": "workspace:*",
         "@xterm/addon-fit": "0.11.0",
         "@xterm/addon-webgl": "0.19.0",
         "@xterm/xterm": "6.0.0",
@@ -101,23 +102,14 @@
         "@types/sanitize-html": "2.16.2",
       },
     },
-    "packages/core/clock": {
-      "name": "@phosphorus/clock",
-      "dependencies": {
-        "@phosphorus/util": "workspace:*",
-      },
-    },
-    "packages/core/ini": {
-      "name": "@phosphorus/ini",
-    },
     "packages/core/theme": {
       "name": "@phosphorus/theme",
     },
     "packages/core/util": {
       "name": "@phosphorus/util",
-      "dependencies": {
-        "@phosphorus/ini": "workspace:*",
-      },
+    },
+    "packages/core/wire": {
+      "name": "@phosphorus/wire",
     },
     "packages/home/collab": {
       "name": "@phosphorus/collab",
@@ -145,9 +137,17 @@
     "packages/host/cli": {
       "name": "@phosphorus/cli",
       "dependencies": {
+        "@phosphorus/config": "workspace:*",
         "@phosphorus/envfile": "workspace:*",
         "@phosphorus/services": "workspace:*",
         "@phosphorus/theme": "workspace:*",
+        "@phosphorus/util": "workspace:*",
+      },
+    },
+    "packages/host/config": {
+      "name": "@phosphorus/config",
+      "dependencies": {
+        "@phosphorus/services": "workspace:*",
         "@phosphorus/util": "workspace:*",
       },
     },
@@ -163,7 +163,6 @@
         "@phosphorus/appfeed": "workspace:*",
         "@phosphorus/cli": "workspace:*",
         "@phosphorus/envfile": "workspace:*",
-        "@phosphorus/ini": "workspace:*",
         "@phosphorus/procs": "workspace:*",
         "@phosphorus/util": "workspace:*",
       },
@@ -177,7 +176,6 @@
     "packages/host/reconfig": {
       "name": "@phosphorus/reconfig",
       "dependencies": {
-        "@phosphorus/clock": "workspace:*",
         "@phosphorus/util": "workspace:*",
       },
     },
@@ -215,32 +213,22 @@
     "packages/mesh/peers": {
       "name": "@phosphorus/peers",
       "dependencies": {
-        "@phosphorus/clock": "workspace:*",
         "@phosphorus/gamedns": "workspace:*",
         "@phosphorus/proxy": "workspace:*",
         "@phosphorus/services": "workspace:*",
-        "@phosphorus/sshrelay": "workspace:*",
         "@phosphorus/util": "workspace:*",
       },
     },
     "packages/mesh/services": {
       "name": "@phosphorus/services",
       "dependencies": {
-        "@phosphorus/clock": "workspace:*",
         "@phosphorus/proxy": "workspace:*",
-        "@phosphorus/util": "workspace:*",
-      },
-    },
-    "packages/mesh/sshrelay": {
-      "name": "@phosphorus/sshrelay",
-      "dependencies": {
         "@phosphorus/util": "workspace:*",
       },
     },
     "packages/mesh/store": {
       "name": "@phosphorus/store",
       "dependencies": {
-        "@phosphorus/clock": "workspace:*",
         "@phosphorus/files": "workspace:*",
         "@phosphorus/util": "workspace:*",
       },
@@ -248,7 +236,6 @@
     "packages/mesh/update": {
       "name": "@phosphorus/update",
       "dependencies": {
-        "@phosphorus/clock": "workspace:*",
         "@phosphorus/peers": "workspace:*",
         "@phosphorus/util": "workspace:*",
       },
@@ -256,7 +243,6 @@
     "packages/mesh/users": {
       "name": "@phosphorus/users",
       "dependencies": {
-        "@phosphorus/proxy": "workspace:*",
         "@phosphorus/store": "workspace:*",
         "@phosphorus/util": "workspace:*",
         "@phosphorus/wsock": "workspace:*",
@@ -266,7 +252,6 @@
       "name": "@phosphorus/webapps",
       "dependencies": {
         "@phosphorus/appfeed": "workspace:*",
-        "@phosphorus/clock": "workspace:*",
         "@phosphorus/minisign": "workspace:*",
         "@phosphorus/store": "workspace:*",
         "@phosphorus/tools": "workspace:*",
@@ -309,10 +294,9 @@
       "name": "@phosphorus/server",
       "dependencies": {
         "@phosphorus/chatmedia": "workspace:*",
-        "@phosphorus/cli": "workspace:*",
-        "@phosphorus/clock": "workspace:*",
         "@phosphorus/code": "workspace:*",
         "@phosphorus/collab": "workspace:*",
+        "@phosphorus/config": "workspace:*",
         "@phosphorus/envfile": "workspace:*",
         "@phosphorus/files": "workspace:*",
         "@phosphorus/gamedns": "workspace:*",
@@ -351,11 +335,11 @@
 
     "@phosphorus/cli": ["@phosphorus/cli@workspace:packages/host/cli"],
 
-    "@phosphorus/clock": ["@phosphorus/clock@workspace:packages/core/clock"],
-
     "@phosphorus/code": ["@phosphorus/code@workspace:packages/ai/code"],
 
     "@phosphorus/collab": ["@phosphorus/collab@workspace:packages/home/collab"],
+
+    "@phosphorus/config": ["@phosphorus/config@workspace:packages/host/config"],
 
     "@phosphorus/elector": ["@phosphorus/elector@workspace:packages/mesh/elector"],
 
@@ -370,8 +354,6 @@
     "@phosphorus/host": ["@phosphorus/host@workspace:packages/host/host"],
 
     "@phosphorus/host-app": ["@phosphorus/host-app@workspace:apps/host"],
-
-    "@phosphorus/ini": ["@phosphorus/ini@workspace:packages/core/ini"],
 
     "@phosphorus/mcp": ["@phosphorus/mcp@workspace:packages/ai/mcp"],
 
@@ -394,8 +376,6 @@
     "@phosphorus/server": ["@phosphorus/server@workspace:packages/server/server"],
 
     "@phosphorus/services": ["@phosphorus/services@workspace:packages/mesh/services"],
-
-    "@phosphorus/sshrelay": ["@phosphorus/sshrelay@workspace:packages/mesh/sshrelay"],
 
     "@phosphorus/stats": ["@phosphorus/stats@workspace:packages/host/stats"],
 
@@ -422,6 +402,8 @@
     "@phosphorus/webapps": ["@phosphorus/webapps@workspace:packages/mesh/webapps"],
 
     "@phosphorus/webstatic": ["@phosphorus/webstatic@workspace:packages/server/webstatic"],
+
+    "@phosphorus/wire": ["@phosphorus/wire@workspace:packages/core/wire"],
 
     "@phosphorus/wsock": ["@phosphorus/wsock@workspace:packages/net/wsock"],
 

@@ -2,14 +2,13 @@
 // here or on a peer through /internal/op, every peer call carrying a sealed grant
 import { existsSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { startDetached } from "@phosphorus/cli";
 import { calls as mcpCalls, watch as mcpWatch } from "@phosphorus/mcp";
 import * as peers from "@phosphorus/peers";
 import { health } from "@phosphorus/services";
 import { close as termClose } from "@phosphorus/term";
 import type { Chain } from "@phosphorus/update";
 import { HasMCPKey, OpenGrant, SealGrant } from "@phosphorus/users";
-import { errText, marshal, now, RepoDir, tailnetIP, TunnelMetrics, writeJSONAtomic } from "@phosphorus/util";
+import { errText, marshal, now, RepoDir, tailnetIP, TunnelMetrics, writeJSONAtomic, startDetached } from "@phosphorus/util";
 import type { Conn } from "@phosphorus/wsock";
 import { Client } from "ssh2";
 import { hostSSHHost, hostSSHPort, selfHost, stateDir, Version } from "./config.ts";

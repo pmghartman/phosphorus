@@ -5,7 +5,7 @@ import { jsonPost } from '../api.ts';
 import { DK_GLYPHS, DK_UI, dkGlyph, el } from '../dom.ts';
 import { fileLabel, filesApi, filesCall, filesJoin, filesParent, fmChanged, fmExt, fmIcon, fmKind, filesWin, HOME, homeAt, homeHostList, homeList, homeOnline, homePick, runnable, fileOpen, type Loc } from '../shares.ts';
 import { dk, PREF_LS, st } from '../state.ts';
-import type { FileEntry } from '../types.ts';
+import type { FileEntry } from '@phosphorus/wire';
 import { shQuote } from '../util.ts';
 import { dkIcon, dkIcons, dkLiveHosts, dkMenuNote, dkSulfurOpen, dkTerminal, type MenuItem } from './desk.ts';
 import { dkFocus, dkNav, dkSize, dkWin, type NavFrame } from './windows.ts';

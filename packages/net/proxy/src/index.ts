@@ -1,7 +1,7 @@
 // the ingress cloudflared points at: every published service by path or
 // subdomain, the frontend itself for everything else
 import type { Server } from "bun";
-import { envInt, logf, marshal, Notes } from "@phosphorus/util";
+import { envInt, isLoopbackAddr, isTailnetAddr, logf, marshal, Notes } from "@phosphorus/util";
 import { type Ctx, dial, type Handler, isUpgrade, remoteIP, upgrade, websocket, type WSData } from "@phosphorus/wsock";
 
 export { favicon, faviconWhy, type Icon } from "./favicon.ts";
@@ -187,16 +187,6 @@ export function reverseLocation(loc: string, prefix: string, ...hosts: string[])
   } catch {}
   if (under(decoded, prefix)) return loc;
   return head + prefix + rest;
-}
-
-// 127.0.0.1 or ::1
-export const isLoopbackAddr = (a: string) => a === "127.0.0.1" || a === "::1";
-
-// 100.64.0.0/10
-export function isTailnetAddr(a: string): boolean {
-  if (!a.startsWith("100.")) return false;
-  const n = Number(a.split(".")[1]);
-  return Number.isInteger(n) && n >= 64 && n <= 127;
 }
 
 // an address, a bare name or a tailnet one

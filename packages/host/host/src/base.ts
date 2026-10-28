@@ -4,7 +4,7 @@ import type { Subprocess } from "bun";
 import { existsSync, openSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeSync } from "node:fs";
 import { createConnection } from "node:net";
 import { join } from "node:path";
-import { parse as parseIni } from "@phosphorus/ini";
+import { parseIni } from "@phosphorus/util";
 import * as envfile from "@phosphorus/envfile";
 import { which } from "@phosphorus/util";
 

@@ -1,6 +1,6 @@
 // the frontend's websockets: chat, the state push, stats, editors and
 // terminals, here or spliced onto the owning peer's
-import { intervalMS, onHot } from "@phosphorus/clock";
+import { intervalMS, onHot } from "@phosphorus/util";
 import { Attach as collabAttach, Forward as collabForward } from "@phosphorus/collab";
 import { attach as statsAttach } from "@phosphorus/stats";
 import * as term from "@phosphorus/term";

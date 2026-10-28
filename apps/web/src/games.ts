@@ -6,7 +6,7 @@ import { postFailure } from './api.ts';
 import { gameIcon } from './dom.ts';
 import { serviceKey } from './mesh.ts';
 import { pollState } from './sync.ts';
-import type { Route } from './types.ts';
+import type { Route } from '@phosphorus/wire';
 import { copyText } from './util.ts';
 
 // games joined at <name>.phosphorus

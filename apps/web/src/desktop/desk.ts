@@ -8,7 +8,7 @@ import { activeConnections, drawMesh, phosphorusHosts, pingHosts, serviceKey, se
 import { noteAdd, notifyOs, dkBellTray } from '../notes.ts';
 import { dkFms, filesJoin, filesParent, filesWin, fileLabel, fmSame, fmTransfer, fmMark, fmSpring, fmUnspring, fmZones, HOME, homeAt, homeOnline, may, putFile, fmChanged } from '../shares.ts';
 import { deskApps, dk, st } from '../state.ts';
-import type { AppWant, Route, UiAction } from '../types.ts';
+import type { AppWant, Route, UiAction } from '@phosphorus/wire';
 import { openUpdateModal, updateModal } from '../update.ts';
 import { newSid } from '../util.ts';
 import { agentArm, agentOwn, agentStep, agentViewOn } from '../agent.ts';

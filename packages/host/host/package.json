@@ -9,7 +9,6 @@
     "@phosphorus/appfeed": "workspace:*",
     "@phosphorus/cli": "workspace:*",
     "@phosphorus/envfile": "workspace:*",
-    "@phosphorus/ini": "workspace:*",
     "@phosphorus/procs": "workspace:*",
     "@phosphorus/util": "workspace:*"
   }

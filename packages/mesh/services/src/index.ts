@@ -3,7 +3,7 @@
 import { readFileSync } from "node:fs";
 import { connect } from "node:net";
 import { join } from "node:path";
-import { IdleMS, markHot } from "@phosphorus/clock";
+import { IdleMS, markHot } from "@phosphorus/util";
 import { ExtraKeys, rowError, type Row } from "@phosphorus/proxy";
 import { env, errText, Notes, now, readJSONMap, RepoDir, StateDir, writeFileAtomic } from "@phosphorus/util";
 import { listening } from "./listen.ts";

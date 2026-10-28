@@ -1,6 +1,6 @@
 import { jsonPost } from '../api.ts';
 import { el } from '../dom.ts';
-import type { ModelAgent, ModelHost, ModelSummary, State } from '../types.ts';
+import type { ModelAgent, ModelHost, ModelSummary, State } from '@phosphorus/wire';
 
 // --- agents: which mesh model each implementation that asks one runs on ------
 // a model is assigned to any number of agents; an assignment is mesh-wide, one

@@ -2,7 +2,8 @@
 // this host's /api/state and writing straight to config/
 import { missing } from "@phosphorus/envfile";
 import { env, errText, FrontendPort, marshal, sleep } from "@phosphorus/util";
-import { deleteService, modelForm, readGitHost, readText, readShares, serviceForm, servicesFile, shareForm, splitSections, switchService, saveModel, saveService, saveShare, writeGitHost, writeHomeDir, isHomeDir, writeShares, type Share } from "./config.ts";
+import { isHomeDir, readGitHost, readShares, readText, servicesFile, type Share, splitSections, writeGitHost, writeHomeDir, writeShares } from "@phosphorus/config";
+import { deleteService, modelForm, saveModel, saveService, saveShare, serviceForm, shareForm, switchService } from "./forms.ts";
 import { base, bg, c, caret, fit, max0, pal, selMark, setTheme, size, surface, wrap } from "./draw.ts";
 import type { Form } from "./form.ts";
 import { type KeyEv, Parser } from "./input.ts";

@@ -2,7 +2,7 @@
 // what each browser gets of it
 import { createHash } from "node:crypto";
 import { clean as cleanFiles } from "@phosphorus/chatmedia";
-import { markHot } from "@phosphorus/clock";
+import { markHot } from "@phosphorus/util";
 import * as store from "@phosphorus/store";
 import { Exists } from "@phosphorus/users";
 import { logf, marshal, now, readJSON, writeJSONSoon } from "@phosphorus/util";
