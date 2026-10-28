@@ -1,0 +1,10 @@
++-o AppleANS3NVMeController  <class AppleANS3NVMeController, id 0x100000312, registered, matched, active, busy 0 (0 ms), retain 10>
+    {
+      "IOClass" = "AppleANS3NVMeController"
+      "Statistics" = {"Operations (Write)"=12345678,"Latency Time (Write)"=0,"Bytes (Read)"=58467723776,"Total Time (Read)"=123456789,"Errors (Read)"=0,"Operations (Read)"=2345678,"Bytes (Write)"=34567891456,"Total Time (Write)"=98765432,"Latency Time (Read)"=0,"Retries (Read)"=0,"Errors (Write)"=0,"Retries (Write)"=0}
+    }
+
++-o IOBlockStorageDriver  <class IOBlockStorageDriver, id 0x100000415, registered, matched, active, busy 0 (0 ms), retain 7>
+    {
+      "Statistics" = {"Operations (Write)"=100,"Bytes (Read)"=1000,"Bytes (Write)"=2000,"Operations (Read)"=10}
+    }

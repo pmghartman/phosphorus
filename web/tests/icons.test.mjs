@@ -7,7 +7,7 @@ globalThis.CustomEvent = class { constructor(type, init) { this.type = type; thi
 const events = [];
 globalThis.dispatchEvent = (e) => events.push(e);
 
-const { ICON_SETS, iconGroup, setIconSet, iconSetNow } = await import('../src/icons.js');
+const { ICON_SETS, iconGroup, setIconSet, iconSetNow } = await import('../src/icons.ts');
 
 test('the default set is the only one, and every group has glyphs', () => {
   assert.deepEqual(Object.keys(ICON_SETS), ['default']);

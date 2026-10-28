@@ -75,7 +75,7 @@ Section "Install"
   File "${STAGE}\phosphorus-host.exe"
   File "${STAGE}\icon.ico"
   File "${STAGE}\LICENSE"
-  File "${STAGE}\THIRD_PARTY_LICENSES.txt"
+  File "${STAGE}\THIRD_PARTY_NOTICES.txt"
   File /r "${STAGE}\release"
   WriteUninstaller "$INSTDIR\uninstall.exe"
   ; the service's update: the user's own registry and menu theirs, kept from the last install

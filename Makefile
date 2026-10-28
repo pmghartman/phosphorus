@@ -1,30 +1,27 @@
-# the binary and its checks, the same as CI's
-BIN ?= phosphorus
-
+# the binaries and their checks, the same as CI's; bun does the work
 .PHONY: all web build check test licenses clean
 
 all: build
 
-# the client's bundle, from pinned npm tarballs, into internal/web/dist
+# the client's bundle, from the workspace's pinned packages, into packages/webstatic/dist
 web:
-	go generate ./internal/web
+	bun install --frozen-lockfile
+	bun run web
 
+# the host (and, off Linux, the tray) compiled for this machine, into dist/
 build: web
-	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o $(BIN) ./cmd/phosphorus
+	bun scripts/build.ts $(shell bun -e 'console.log(process.platform === "win32" ? "windows" : process.platform, process.arch)' | sed 's/ /-/') dist
 
 check: web
-	@test -z "$$(gofmt -l cmd internal)" || { gofmt -l cmd internal; exit 1; }
-	go vet ./...
-	GOOS=darwin go vet ./...
-	GOOS=windows go vet ./...
+	bun run check
+	bun scripts/licenses.ts --check
 
 test: web
-	go test ./...
+	bun run test
 
-# THIRD_PARTY_LICENSES.txt regenerated, CI failing a release while it's stale
+# THIRD_PARTY_NOTICES.txt and the SBOM, into dist/; CI ships them in each installer
 licenses: web
-	go run ./cmd/licenses
+	bun scripts/licenses.ts dist
 
 clean:
-	rm -rf $(BIN) web/.vendor
-	find internal/web/dist -mindepth 1 ! -name README -delete
+	rm -rf dist packages/webstatic/dist packages/webstatic/src/manifest.ts

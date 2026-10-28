@@ -1,0 +1,26 @@
+diff --git a/dist/index.cjs b/dist/index.cjs
+index 278aa31a9611da249c3192328ba848bc5718dbfd..08ae4116baa3f36615f5650aa9713a7ba018206d 100644
+--- a/dist/index.cjs
++++ b/dist/index.cjs
+@@ -1374,7 +1374,7 @@ class Parse {
+                 for (let j = i + 1; j < newStacks.length; j++) {
+                     let other = newStacks[j];
+                     if (stack.sameState(other) ||
+-                        stack.buffer.length > 500 /* Rec.MinBufferLengthPrune */ && other.buffer.length > 500 /* Rec.MinBufferLengthPrune */) {
++                        stack.buffer.length > 20000 && other.buffer.length > 20000) {
+                         if (((stack.score - other.score) || (stack.buffer.length - other.buffer.length)) > 0) {
+                             newStacks.splice(j--, 1);
+                         }
+diff --git a/dist/index.js b/dist/index.js
+index ed9297626a7d6c49d76a132535202d46919931d7..05116fab278e645979e63a5ad3f0ab1c07c78c83 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -1372,7 +1372,7 @@ class Parse {
+                 for (let j = i + 1; j < newStacks.length; j++) {
+                     let other = newStacks[j];
+                     if (stack.sameState(other) ||
+-                        stack.buffer.length > 500 /* Rec.MinBufferLengthPrune */ && other.buffer.length > 500 /* Rec.MinBufferLengthPrune */) {
++                        stack.buffer.length > 20000 && other.buffer.length > 20000) {
+                         if (((stack.score - other.score) || (stack.buffer.length - other.buffer.length)) > 0) {
+                             newStacks.splice(j--, 1);
+                         }

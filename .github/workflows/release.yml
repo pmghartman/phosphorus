@@ -1,7 +1,7 @@
 # manual release: per checked OS a host installer (.deb, .dmg, setup .exe), as
 # vVERSION; feeds on release `update` for the hosts built, then only the two newest
 # releases and runs kept
-# app and apt feeds need UPDATE_SIGNING_KEY (go run ./cmd/feedsign -keygen), APT_GPG_KEY, var UPDATE_PUBKEY;
+# app and apt feeds need UPDATE_SIGNING_KEY (bun scripts/feedsign.ts -keygen), APT_GPG_KEY, var UPDATE_PUBKEY;
 # Windows' code signing vars AZURE_SIGNING_ENDPOINT/ACCOUNT/PROFILE and secrets AZURE_TENANT_ID/
 # CLIENT_ID/CLIENT_SECRET (Trusted Signing), or secrets WINDOWS_CERT_PFX/PASSWORD (packaging/winsign.sh)
 name: release
@@ -82,78 +82,72 @@ jobs:
           j() { [ $# -gt 0 ] || set -- '{"name":"none"}'; local IFS=,; echo "[$*]"; }
           echo "builds=$(j "${builds[@]}")" | tee -a "$GITHUB_OUTPUT"
 
-  # the web client built once, from pinned npm tarballs, for every job that embeds it
+  # the web client built once, from the workspace's pinned packages, for every
+  # job that embeds it
   web:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          go-version-file: go.mod
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: web/.vendor/cache
-          key: web-vendor-${{ hashFiles('web/vendor.lock') }}
+          bun-version-file: .bun-version
+      - run: bun install --frozen-lockfile
       # a binary without it serves nothing but 404s
-      - run: go generate ./internal/web && test -f internal/web/dist/index.html
+      - run: bun run web && test -f packages/webstatic/dist/index.html
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: web-dist
-          path: internal/web/dist/
+          path: |
+            packages/webstatic/dist/
+            packages/webstatic/src/manifest.ts
           retention-days: 1
 
-  # the shipped license texts current with every dependency and pinned tool, beside the
-  # builds, not before them; needs the npm packages, so the web build's cache
+  # every production dependency under an allowed license, and the shipped notices
+  # and SBOM generated from them and the pinned tools, beside the builds
   licenses:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          go-version-file: go.mod
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+          bun-version-file: .bun-version
+      - run: bun install --frozen-lockfile
+      - run: bun scripts/licenses.ts notices
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          path: web/.vendor/cache
-          key: web-vendor-${{ hashFiles('web/vendor.lock') }}
-      - run: go generate ./internal/web
-      - name: licenses
-        run: |
-          go run ./cmd/licenses
-          git diff --exit-code THIRD_PARTY_LICENSES.txt || { echo "THIRD_PARTY_LICENSES.txt is stale, run make licenses and commit it" >&2; exit 1; }
+          name: notices
+          path: notices/
+          retention-days: 1
 
-  # vet and tests gating the release, a job per target in parallel; no web client or
-  # cgo needed
+  # types and tests gating the release, a job per OS in parallel: the terminal and
+  # the host's service code have per-OS paths
   check:
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { name: linux, goos: linux }
-          - { name: darwin, goos: darwin }
-          - { name: windows, goos: windows }
+          - { name: linux, runner: ubuntu-24.04 }
+          - { name: darwin, runner: macos-14 }
+          - { name: windows, runner: windows-2022 }
     name: check (${{ matrix.name }})
-    runs-on: ubuntu-24.04
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
-    env:
-      CGO_ENABLED: 0
-      GOOS: ${{ matrix.goos }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          go-version-file: go.mod
-      # tests' own vet off, run above; packages with no tests not listed
-      - run: |
-          set -o pipefail
-          go vet ./...
-          if [ "$GOOS" = linux ]; then go test -vet=off ./... | awk '!/no test files/'; fi
+          bun-version-file: .bun-version
+      - run: bun install --frozen-lockfile
+      - run: bun run web
+      - run: bun run check
+      - run: bun run test
 
-  # one job per OS, Go alone: Linux's host the .deb around the binary, macOS's
-  # and Windows' the menu bar app beside it, in a .dmg and a setup .exe
+  # one job per OS: Linux's host the .deb around the binary, macOS's and
+  # Windows' the menu bar app beside it, in a .dmg and a setup .exe
   build:
-    needs: [version, web]
+    needs: [version, web, licenses]
     if: ${{ inputs.linux_amd64 || inputs.linux_arm64 || inputs.macos || inputs.windows }}
     strategy:
       # one OS's failure leaves the others' builds, and their caches, finished
@@ -167,9 +161,10 @@ jobs:
       APP: packaging/host
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          go-version-file: go.mod
+          bun-version-file: .bun-version
+      - run: bun install --frozen-lockfile
       # apt key's public half, into the host package
       - name: apt key
         if: startsWith(matrix.name, 'linux')
@@ -181,25 +176,30 @@ jobs:
           echo "$KEY" | gpg --batch --import
           gpg --export > "$RUNNER_TEMP/phosphorus.gpg"
           echo "PHOSPHORUS_APT_KEY=$RUNNER_TEMP/phosphorus.gpg" >> "$GITHUB_ENV"
-      # the web client the web job built, into internal/web/dist before anything embeds it
+      # the web client the web job built, into packages/webstatic before anything embeds it
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: web-dist
-          path: internal/web/dist
+          path: packages/webstatic
+      # the notices and SBOM, shipped inside each installer
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: notices
+          path: notices
       # the release's tree (.github and packaging export-ignored) and its bundled tools;
-      # Linux's packaged at once, the tools fetched beside the Go build
+      # Linux's packaged at once, the tools fetched beside the compile
       - name: host binary
         shell: bash
         run: |
           mkdir -p out upd art $APP/payload
           git archive HEAD | tar -x -C $APP/payload && echo "$VER" > $APP/payload/VERSION
-          b() { CGO_ENABLED=0 GOOS=$1 GOARCH=$2 go build -trimpath -ldflags "-s -w" -o "$3" ./cmd/phosphorus; }
+          cp notices/THIRD_PARTY_NOTICES.txt notices/phosphorus.cdx.json $APP/payload/
           case "${{ matrix.name }}" in
             linux-*)
               packaging/tools.sh linux ${{ matrix.arch }} art/tools > art/tools.log 2>&1 & t=$!
-              b linux ${{ matrix.arch }} art/phosphorus
+              bun scripts/build.ts linux-$([ ${{ matrix.arch }} = amd64 ] && echo x64 || echo arm64) art "$VER"
               wait $t || { cat art/tools.log; exit 1; }
-              packaging/deb/build.sh "out/phosphorus_${VER}_${{ matrix.arch }}.deb" "$VER" $APP/payload ${{ matrix.arch }} art/phosphorus art/tools ;;
+              packaging/deb/build.sh "out/phosphorus_${VER}_${{ matrix.arch }}.deb" "$VER" $APP/payload ${{ matrix.arch }} art/phosphorus-host art/tools ;;
             macos-universal)
               packaging/tools.sh darwin universal $APP/payload/tools > art/tools.log 2>&1 || { cat art/tools.log; exit 1; } ;;
             windows-*)
@@ -266,6 +266,12 @@ jobs:
           path: out
           pattern: out-*
           merge-multiple: true
+      # the SBOM beside the installers
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: notices
+          path: notices
+      - run: cp notices/phosphorus.cdx.json out/phosphorus-$VER.cdx.json
       # the notes: how to install, the assets listed by GitHub under them
       - name: notes
         run: |
