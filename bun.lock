@@ -144,6 +144,9 @@
         "@types/sanitize-html": "2.16.2",
       },
     },
+    "packages/webapps": {
+      "name": "@phosphorus/webapps",
+    },
     "packages/webstatic": {
       "name": "@phosphorus/webstatic",
     },
@@ -234,6 +237,8 @@
     "@phosphorus/web": ["@phosphorus/web@workspace:web"],
 
     "@phosphorus/web-md": ["@phosphorus/web-md@workspace:packages/web-md"],
+
+    "@phosphorus/webapps": ["@phosphorus/webapps@workspace:packages/webapps"],
 
     "@phosphorus/webstatic": ["@phosphorus/webstatic@workspace:packages/webstatic"],
 
