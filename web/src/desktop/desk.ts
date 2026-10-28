@@ -129,28 +129,37 @@ function dkMono(label: string): SVGSVGElement {
   return svg;
 }
 
-// the first of icons that loads, the glyph kept when none does
-function dkTryIcons(tile: HTMLElement, icons: string[]) {
-  const [first, ...rest] = icons.filter(Boolean);
-  if (!first) { tile.classList.remove('dk-wait'); return; }
-  if (!tile.classList.contains('dk-wait')) {
+// the first of icons that loads, the glyph kept when none does; again: all asked once more
+// after that long, doubling, while the tile is on the desk, a host restarting answering later
+function dkTryIcons(tile: HTMLElement, icons: string[], again = 0, retry = false) {
+  const srcs = icons.filter(Boolean);
+  if (!srcs.length) return;
+  if (!retry) {
     tile.classList.add('dk-wait');
     // the glyph shown after a while, a slow host never leaving a hole
     setTimeout(() => tile.classList.remove('dk-wait'), 600);
   }
-  const img = Object.assign(el('img', 'dk-favicon'), { alt: '', decoding: 'async' as const, draggable: false });
-  img.addEventListener('load', () => { tile.replaceChildren(img, ...tile.querySelectorAll('.dk-public, .dk-badge')); tile.classList.add('dk-tile-img'); tile.classList.remove('dk-wait'); }, { once: true });
-  img.addEventListener('error', () => dkTryIcons(tile, rest), { once: true });
-  img.src = first;
+  const next = (i: number) => {
+    if (i === srcs.length) {
+      tile.classList.remove('dk-wait');
+      if (again) setTimeout(() => { if (tile.isConnected) dkTryIcons(tile, srcs, Math.min(again * 2, 600000), true); }, again);
+      return;
+    }
+    const img = Object.assign(el('img', 'dk-favicon'), { alt: '', decoding: 'async' as const, draggable: false });
+    img.addEventListener('load', () => { tile.replaceChildren(img, ...tile.querySelectorAll('.dk-public, .dk-badge')); tile.classList.add('dk-tile-img'); tile.classList.remove('dk-wait'); }, { once: true });
+    img.addEventListener('error', () => next(i + 1), { once: true });
+    img.src = srcs[i]!;
+  };
+  next(0);
 }
 
-export function dkIcon(kind: string, label: string, sub: string, open: () => void, icon: string | string[] = ''): HTMLButtonElement {
+export function dkIcon(kind: string, label: string, sub: string, open: () => void, icon: string | string[] = '', again = 0): HTMLButtonElement {
   const b = Object.assign(el('button', `dk-icon dk-${kind}`), { type: 'button', title: sub ? `${label} on ${sub}` : label });
   const tile = el('span', 'dk-tile');
   tile.appendChild(kind === 'service' ? dkMono(label) : dkGlyph(DK_GLYPHS[kind]!));
   if (kind === 'chat') tile.appendChild(dkBadge());
   // a site's own icon once it loads
-  dkTryIcons(tile, ([] as string[]).concat(icon));
+  dkTryIcons(tile, ([] as string[]).concat(icon), again);
   b.append(tile, el('span', 'dk-label', label));
   if (sub) b.appendChild(el('span', 'dk-sub', sub));
   b.dataset.id = `${kind}\n${label}\n${sub}`;
@@ -164,7 +173,7 @@ export function dkIcon(kind: string, label: string, sub: string, open: () => voi
 
 // a public one badged with a globe, open to all behind its own login only
 function dkServiceIcon(r: Route): HTMLButtonElement {
-  const b = dkIcon('service', r.name, r.host, () => dkService(r), `/api/favicon/${encodeURIComponent(r.host)}/${encodeURIComponent(r.name)}`);
+  const b = dkIcon('service', r.name, r.host, () => dkService(r), `/api/favicon/${encodeURIComponent(r.host)}/${encodeURIComponent(r.name)}`, 30000);
   return r.public ? dkGlobe(b, 'public: no phosphorus login') : b;
 }
 

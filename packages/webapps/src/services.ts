@@ -86,7 +86,7 @@ export const Services: Service[] = [
 export const serviceOf = (id: string) => Services.find((s) => s.id === id);
 
 // the repository's owner and name, for GitHub's API and raw files
-export function repoOf(s: Service): { owner: string; name: string } | undefined {
+export function repoOf(s: { repo: string }): { owner: string; name: string } | undefined {
   const m = /^https:\/\/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/.exec(s.repo);
   return m ? { owner: m[1]!, name: m[2]! } : undefined;
 }
@@ -577,8 +577,14 @@ export const iconPath = (id: string) => `/api/apps/services/${id}/icon`;
 // once a day after, the kept copy meanwhile; undefined with none to give
 export async function Icon(id: string): Promise<{ data: Uint8Array; type: string } | undefined> {
   const s = serviceOf(id);
-  const repo = s && repoOf(s);
-  if (!s || !repo || !s.icon) return;
+  return s ? RepoIcon(s) : undefined;
+}
+
+// RepoIcon an icon at a path in a repository's main, kept under its id: a service's, or a web
+// app's before any host serves it
+export async function RepoIcon(s: { id: string; name: string; repo: string; icon: string }): Promise<{ data: Uint8Array; type: string } | undefined> {
+  const repo = repoOf(s);
+  if (!repo || !s.icon) return;
   const ext = (/\.[a-z0-9]+$/i.exec(s.icon)?.[0] ?? ".png").toLowerCase();
   const type = iconTypes[ext] ?? "application/octet-stream";
   const file = join(iconDir(), s.id + ext);

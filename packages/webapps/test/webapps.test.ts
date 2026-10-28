@@ -454,3 +454,10 @@ test("the icon off the repository, kept a day, the kept copy when the fetch fail
   expect(await W.svcIcon("nothing")).toBeUndefined();
   W.svcReset();
 });
+
+test("a web app's icon off its repository, for the page before any host serves it", async () => {
+  const hits = iconHits;
+  const ic = (await W.AppIcon("sulfur"))!;
+  expect([ic.type, new TextDecoder().decode(ic.data), iconHits - hits]).toEqual(["image/svg+xml", "PNG!", 1]);
+  expect(await W.AppIcon("nothing")).toBeUndefined();
+});
