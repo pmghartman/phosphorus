@@ -28,7 +28,7 @@
   :root[data-round] .dk-win:not([data-snap="max"]) { border-radius: var(--r-win); }
 }
 /* tables, gauges and art laid out in character cells: mono whatever the page's type (data-sans) */
-:root[data-sans] :is(code, pre, kbd, samp, .st-body, .st-probe, .st-sum, .st-chip, .st-mesh-grid, .st-ctx,
+:root[data-sans] :is(code, pre, kbd, samp, .st-body, .st-probe, .st-sum, .st-mesh-grid, .st-ctx,
   .st-cores, .st-ctr-row, .st-proc-row, .dk-cl-calls, .dk-cl-out, .cd-tool-out, .cd-dl) { font-family: var(--mono); }
 
 /* a custom theme's own desk color, whatever look it starts from */
