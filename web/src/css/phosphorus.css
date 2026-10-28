@@ -2424,6 +2424,121 @@ body:has(.dk-pop:not([hidden])) .toasts { opacity: 0; pointer-events: none; }
 .ag-empty { color: var(--muted); padding: 0.4rem 0; }
 .ag-err { color: var(--offmesh); overflow-wrap: anywhere; }
 
+/* --- apps: a store for the mesh's optional extras (apps/store.ts) ---------- */
+.dk-icon.dk-apps .ic { color: var(--sand); }
+.dk-icon.dk-app .ic { color: var(--teal); }
+.dk-app-apps .dk-body > .view { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+.store { flex: 1; min-height: 0; overflow-y: auto; padding: 1.1rem 1.4rem 1.4rem; font-size: 0.8rem; line-height: 1.45; }
+.store-front, .store-page { max-width: 62rem; margin: 0 auto; display: flex; flex-direction: column; gap: 1.2rem; }
+.store h1 { margin: 0; font-size: 1.5rem; font-weight: 600; color: var(--fg); letter-spacing: -0.01em; }
+.store h2 { margin: 0; font-size: 0.72rem; font-weight: 400; color: var(--accent); letter-spacing: 0.04em; }
+.store-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.store-lead { margin: 0.25rem 0 0; color: var(--muted); }
+.store-link { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.2rem 0.2rem; background: none; border: 0; color: var(--muted); font: inherit; font-size: 0.74rem; cursor: pointer; }
+.store-link:is(:hover, :focus-visible) { color: var(--accent); }
+.store-link-ic { width: 0.85rem; height: 0.85rem; }
+.store-section { display: flex; flex-direction: column; gap: 0.6rem; }
+.store-section-head, .store-sec h2 { display: flex; align-items: baseline; gap: 1ch; }
+.store-section-head::after, .store-sec h2::after { content: ""; flex: 1; border-top: 1px solid var(--border); align-self: center; }
+.store-count { order: 2; color: var(--muted); letter-spacing: 0; }
+.store-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 22rem), 1fr)); gap: 0.7rem; }
+/* a tile: the icon, the name and a line on it, the one button; the whole of it opens the page */
+.store-tile { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 0.85rem; padding: 0.8rem 0.9rem; background: var(--card); border: 1px solid var(--border); color: var(--fg); font: inherit; text-align: left; cursor: pointer; min-width: 0; transition: border-color 0.15s, transform 0.15s; }
+.store-tile:is(:hover, :focus-visible) { border-color: var(--accent); }
+.store-tile:active { transform: scale(0.995); }
+.store-tile-text { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+.store-tile-name { font-weight: 600; color: var(--fg); }
+.store-tile-tag { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.store-tile-sub { font-size: 0.72rem; color: var(--muted); }
+.store-tile-sub.on { color: var(--online); }
+.store-tile-sub.new { color: var(--accent); }
+.store-tile-sub.bad { color: var(--offmesh); }
+.store-tile-sub.wait { color: var(--sand); }
+.store-tile-side { display: flex; flex-direction: column; align-items: flex-end; gap: 0.3rem; }
+.store-tile-badge { font-size: 0.66rem; color: var(--accent); letter-spacing: 0.03em; }
+/* the icon: the app's own once a host serves it, its initial until then */
+.store-icon { flex: none; display: grid; place-items: center; border: 1px solid var(--border); background: var(--bg); overflow: hidden; }
+.store-icon.md { width: 3.2rem; height: 3.2rem; }
+.store-icon.lg { width: 6rem; height: 6rem; }
+.store-icon img { width: 68%; height: 68%; object-fit: contain; }
+.store-mono { color: var(--teal); font-size: 1.3rem; font-weight: 600; }
+.store-icon.lg .store-mono { font-size: 2.4rem; }
+/* the pill: the store's one button, the thing it does in a word */
+.store-pill { min-width: 4.6rem; padding: 0.25rem 0.9rem; border-radius: 999px; border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); font: inherit; font-size: 0.74rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; cursor: pointer; transition: background 0.15s, color 0.15s; }
+.store-pill.big { min-width: 6.5rem; padding: 0.4rem 1.3rem; font-size: 0.8rem; }
+.store-pill:is(:hover, :focus-visible):not(:disabled) { background: var(--accent); color: var(--bg); }
+.store-pill.open { border-color: var(--online); color: var(--online); background: color-mix(in srgb, var(--online) 12%, transparent); }
+.store-pill.open:is(:hover, :focus-visible):not(:disabled) { background: var(--online); color: var(--bg); }
+.store-pill.wait, .store-pill:disabled { border-color: var(--border); color: var(--muted); background: none; cursor: default; }
+.store-pill.wait:not(:disabled) { animation: update-blink 1.2s ease-in-out infinite; }
+/* the page: back, a hero, two columns */
+.store-back { align-self: flex-start; display: inline-flex; align-items: center; gap: 0.2rem; padding: 0.1rem 0.3rem 0.1rem 0; background: none; border: 0; color: var(--muted); font: inherit; font-size: 0.78rem; cursor: pointer; }
+.store-back:is(:hover, :focus-visible) { color: var(--accent); }
+.store-back-ic { width: 0.9rem; height: 0.9rem; }
+.store-hero { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 1.2rem; padding-bottom: 1.2rem; border-bottom: 1px solid var(--border); }
+.store-hero-text { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
+.store-hero-tag { margin: 0; color: var(--fg); font-size: 0.95rem; }
+.store-hero-meta { display: flex; gap: 0.6ch; color: var(--muted); font-size: 0.74rem; }
+.store-hero-acts { display: flex; flex-direction: column; align-items: flex-end; gap: 0.4rem; }
+.store-hero-sub { font-size: 0.72rem; color: var(--muted); }
+.store-hero-sub.on { color: var(--online); }
+.store-hero-sub.new { color: var(--accent); }
+.store-hero-sub.bad { color: var(--offmesh); }
+.store-hero-sub.wait { color: var(--sand); }
+.store-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(16rem, 20rem); gap: 1.6rem; align-items: start; }
+.store-main, .store-side { display: flex; flex-direction: column; gap: 1.4rem; min-width: 0; }
+.store-sec { display: flex; flex-direction: column; gap: 0.6rem; }
+.store-about { margin: 0; color: var(--fg); }
+.store-features { margin: 0; padding: 0 0 0 1.1rem; color: var(--muted); display: flex; flex-direction: column; gap: 0.15rem; }
+.store-features li::marker { color: var(--accent); }
+/* information: a two column list */
+.store-info { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 0.35rem 1rem; font-size: 0.76rem; }
+.store-info dt { color: var(--muted); }
+.store-info dd { margin: 0; color: var(--fg); min-width: 0; overflow-wrap: anywhere; }
+.store-info dd.dim { color: var(--muted); }
+.store-info dd.mono { font-family: var(--mono, ui-monospace, monospace); }
+.store-info a { color: var(--fg); text-decoration: none; border-bottom: 1px solid var(--border); }
+.store-info a:hover { color: var(--accent); border-color: var(--accent); }
+/* an option: its words and a segmented pick */
+.store-option { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; padding: 0.7rem 0.85rem; border: 1px solid var(--border); background: var(--card); }
+.store-option-text { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+.store-option-text b { color: var(--fg); font-weight: 600; }
+.store-option-sub { color: var(--muted); font-size: 0.72rem; }
+.store-seg { display: inline-flex; }
+.store-seg-btn { padding: 0.2rem 0.85rem; background: none; border: 1px solid var(--border); color: var(--muted); font: inherit; cursor: pointer; }
+.store-seg-btn + .store-seg-btn { margin-left: -1px; }
+.store-seg-btn:first-child { border-radius: 999px 0 0 999px; }
+.store-seg-btn:last-child { border-radius: 0 999px 999px 0; }
+.store-seg-btn:is(:hover, :focus-visible) { border-color: var(--accent); color: var(--fg); position: relative; z-index: 1; }
+.store-seg-btn.on { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); position: relative; z-index: 1; }
+/* every host and its copy */
+.store-hosts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; font-size: 0.76rem; border: 1px solid var(--border); }
+.store-host { display: flex; align-items: center; gap: 0.6rem; min-width: 0; padding: 0.4rem 0.75rem; }
+.store-host + .store-host { border-top: 1px solid var(--border); }
+.store-dot { flex: none; display: inline-block; width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--border); }
+.store-host.ok .store-dot { background: var(--online); }
+.store-host.mid .store-dot, .store-host.old .store-dot { background: var(--sand); }
+.store-host.fail .store-dot { background: var(--offmesh); }
+.store-host.mid .store-host-state { color: var(--accent); animation: update-blink 1.2s ease-in-out infinite; }
+.store-host.fail .store-host-state { color: var(--offmesh); }
+.store-host.old .store-host-state { color: var(--sand); }
+.store-host-name { color: var(--fg); }
+.store-host-name.is-self::after { content: " (this host)"; color: var(--muted); }
+.store-host-state { margin-left: auto; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.store-remove { align-self: flex-start; padding: 0.2rem 0.75rem; background: none; border: 1px solid var(--border); color: var(--offmesh); font: inherit; font-size: 0.74rem; cursor: pointer; }
+.store-remove:is(:hover, :focus-visible):not(:disabled) { border-color: var(--offmesh); }
+.store-remove:disabled { opacity: 0.5; cursor: default; }
+.store-empty { color: var(--muted); padding: 0.4rem 0; }
+.store-err { max-width: 62rem; margin: 0.8rem auto 0; color: var(--offmesh); overflow-wrap: anywhere; }
+.acct-editor { grid-template-columns: minmax(5rem, 1fr) 1fr 5.5rem; }
+.acct-editor .dk-host { text-transform: none; }
+@media (max-width: 720px) {
+  .store { padding: 0.8rem; }
+  .store-cols { grid-template-columns: 1fr; }
+  .store-hero { grid-template-columns: auto 1fr; }
+  .store-hero-acts { grid-column: 1 / -1; flex-direction: row; align-items: center; }
+}
+
 /* --- the desktop's own: the switcher, the overview, the search ---------- */
 
 /* the switcher: a list over the desk, the pick in the accent */

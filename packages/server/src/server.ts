@@ -12,6 +12,7 @@ import { own as ownServices, setPending } from "@phosphorus/services";
 import * as sysfs from "@phosphorus/sysfs";
 import * as update from "@phosphorus/update";
 import { lockACL, logf, marshal, peerCall, run, tailnetIP } from "@phosphorus/util";
+import * as webapps from "@phosphorus/webapps";
 import { ownChat, presence } from "./chat.ts";
 import { adminPass, baseDomain, gameKey, gameKeyDir, getPlatform, hostSSHHost, hostSSHPort, selfHost, selfInfo, tsAPIKey, Version } from "./config.ts";
 import { deskStamps } from "./desk.ts";
@@ -78,7 +79,7 @@ export function publishHost() {
     if (cur !== next) sysfs.write(hostRel(selfHost, f), data);
   };
   put("services", ownServices());
-  put("info", { version: Version(), platform: getPlatform(), files: filesInfo(), desk: deskStamps() });
+  put("info", { version: Version(), platform: getPlatform(), files: filesInfo(), desk: deskStamps(), apps: webapps.installed() });
 }
 
 export function hostsInfo(): Record<string, any> {
@@ -111,6 +112,7 @@ export function buildState(): Record<string, any> {
   return {
     domain: baseDomain, gameZone: Zone, self: selfInfo(), routes: mesh.routes(), tailnet: mesh.tailnet(),
     lock: update.meshLock(), gitHosts: gitRowsAny(), model: Summary(), chain: chain ?? null, chainMine: mine, hosts: hostsInfo(),
+    apps: webapps.wants(),
   };
 }
 
@@ -119,7 +121,7 @@ let lastStateFp = "";
 function stateFp(s: Record<string, any>): string {
   const tn = (s.tailnet as Record<string, any>[]).map((d) => [d.name, d.os, d.phosphorus, d.phosphorusSeen, d.version]);
   const m = s.model as Record<string, any>;
-  return marshal([s.self, s.routes, s.lock, s.chain, tn, git.rowsFp(git.rows()), m.agents, m.keys, s.hosts]);
+  return marshal([s.self, s.routes, s.lock, s.chain, tn, git.rowsFp(git.rows()), m.agents, m.keys, s.hosts, s.apps]);
 }
 
 export function noteState(s: Record<string, any>): string {

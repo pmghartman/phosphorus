@@ -8,13 +8,13 @@ import { activeConnections, drawMesh, phosphorusHosts, pingHosts, serviceKey, se
 import { noteAdd, notifyOs, dkBellTray } from '../notes.ts';
 import { dkFms, filesJoin, filesParent, filesWin, fileLabel, fmSame, fmTransfer, fmMark, fmSpring, fmUnspring, fmZones, HOME, homeAt, homeOnline, may, putFile, fmChanged } from '../shares.ts';
 import { deskApps, dk, st } from '../state.ts';
-import type { Route, UiAction } from '../types.ts';
+import type { AppWant, Route, UiAction } from '../types.ts';
 import { openUpdateModal, updateModal } from '../update.ts';
 import { newSid } from '../util.ts';
 import { agentArm, agentOwn, agentStep, agentViewOn } from '../agent.ts';
 import { mcpStat, dkMcpTray } from '../mcp.ts';
 import { dkAppearanceWin, dkControlTray } from './control.ts';
-import { dkCode, dkDeskAt, dkDeskWatch, dkFileIcon, dkFileMenu } from './deskfiles.ts';
+import { dkCode, dkDeskAt, dkDeskWatch, dkFileIcon, dkFileMenu, type FileRef } from './deskfiles.ts';
 import { dkLoginHosts } from './login.ts';
 import { dkBadge, dkBar, dkChips, dkClock, dkHomeBtn, dkAnchor, dkPlaceItems, type Pop } from './taskbar.ts';
 import { dkClose, dkFocus, dkNav, dkPlace, dkSize, dkSnap, dkWin, type DkWin, type NavFrame } from './windows.ts';
@@ -188,7 +188,8 @@ export function dkIcons(): void {
   dkDeskWatch();
   const hosts = dkLiveHosts();
   const git = !!st.gitRoute;
-  const sig = JSON.stringify([hosts, git, !!st.acct?.admin, dk.services.map((r) => [r.host, r.name, !!r.public]), dk.deskFiles.map((e) => [e.at, e.name, e.dir, e.mtime, e.hosts, e.stale, e.all])]);
+  const webapps = dkWebApps();
+  const sig = JSON.stringify([hosts, git, !!st.acct?.admin, dk.services.map((r) => [r.host, r.name, !!r.public]), webapps.map((a) => a.id), dk.deskFiles.map((e) => [e.at, e.name, e.dir, e.mtime, e.hosts, e.stale, e.all])]);
   if (sig === dk.sig) return;
   dk.sig = sig;
   // a host, login or service newly here: a saved window waiting on it opened
@@ -204,7 +205,9 @@ export function dkIcons(): void {
     ['code', () => dkIcon('code', 'code', '', () => dkOpenApp('code'))],
     ['agents', () => dkIcon('agents', 'agents', '', () => dkOpenApp('agents'))],
     ['games', () => dkIcon('games', 'games', '', () => dkOpenApp('games'))],
+    ['apps', () => dkIcon('apps', 'apps', '', () => dkOpenApp('apps'))],
     ['about', () => dkIcon('about', 'about', '', () => dkOpenApp('about'))],
+    ...webapps.map((a): [string, () => HTMLButtonElement] => [`webapp\n${a.id}`, () => dkIcon('app', a.id, '', () => dkWebApp(a.id), a.mount + 'icon.svg')]),
     ...dk.services.map((r): [string, () => HTMLButtonElement] => [JSON.stringify([r.host, r.name, !!r.public]), () => dkServiceIcon(r)]),
     ...[...files.values()].map((e): [string, () => HTMLButtonElement] => [JSON.stringify([e.at, e.name, e.dir, e.mtime, e.hosts, e.stale, e.all, e.live]), () => dkFileIcon(e)]),
   ];
@@ -808,6 +811,7 @@ export function dkService(r: Route): DkWin | undefined {
 
 const DK_APPS: Record<string, { title: string; view: string; w: number; h: number }> = {
   chat: { title: 'chat', view: 'view-chat', w: 880, h: 560 },
+  apps: { title: 'apps', view: 'view-apps', w: 820, h: 700 },
   status: { title: 'status', view: 'view-status', w: 920, h: 600 },
   about: { title: 'about', view: 'view-about', w: 700, h: 420 },
   games: { title: 'game servers', view: 'view-games', w: 460, h: 420 },
@@ -851,6 +855,7 @@ export function dkAppsChanged(): void {
   const up = (id: string) => deskApps.has(id) && !was.has(id);
   if (up('status')) appCall('status', true, (m) => m.statusWatch(st.lastState));
   if (up('agents')) appCall('agents', true, (m) => { m.agentsState(st.lastState); m.agentsWatch(true); });
+  if (deskApps.has('apps') !== was.has('apps')) appCall('store', deskApps.has('apps'), (m) => m.storeWatch(deskApps.has('apps')));
   if (deskApps.has('code') !== was.has('code')) appCall('code', deskApps.has('code'), (m) => m.codeWatch(deskApps.has('code')));
   // the conversation's news read once it's on screen
   if (up('chat')) setConv(convNow());
@@ -865,7 +870,7 @@ export function dkOpenTerminal(host: string, shared = false): void {
 }
 
 // phosphorus's presses, each the app it names
-const DK_VIEWS: Record<string, string> = { status: 'status', about: 'about', chat: 'chat', git: 'git', games: 'games', home: 'games', code: 'code', projects: 'code', agents: 'agents', models: 'agents' };
+const DK_VIEWS: Record<string, string> = { status: 'status', about: 'about', chat: 'chat', git: 'git', games: 'games', home: 'games', code: 'code', projects: 'code', agents: 'agents', models: 'agents', apps: 'apps', store: 'apps' };
 export function dkPressed(a: UiAction): void {
   if (a.kind === 'terminal') dkOpenTerminal(a.host!, a.share === true);
   else if (a.kind === 'host' && phosphorusHosts().includes(a.host!)) switchHost(a.host!);
@@ -877,6 +882,51 @@ export function dkPressed(a: UiAction): void {
     else if (a.view === 'update' && updateModal.hidden) openUpdateModal();
   } else if (a.kind === 'notify') { noteAdd(a.title!, a.body!); notifyOs(String(a.title || ''), String(a.body || '')); }
   else if (a.kind === 'agent') agentStep(a);
+}
+
+// --- the optional apps: each one the mesh wants and this host serves, its page in a window
+
+// the apps picked for the mesh that this host has a copy of, each served under /<id>/
+export function dkWebApps(): { id: string; mount: string; want: AppWant }[] {
+  const wants = st.lastState?.apps || {};
+  const mine = st.hostsInfo[st.selfHost]?.apps || {};
+  return Object.entries(wants).filter(([id, w]) => w && mine[id]?.version === w.version).map(([id, w]) => ({ id, mount: `/${id}/`, want: w }));
+}
+
+// the app's window, the page's url carrying query when given (a file for sulfur to open)
+export function dkWebApp(id: string, query?: Record<string, string>): DkWin | undefined {
+  const a = dkWebApps().find((x) => x.id === id);
+  if (!a) return;
+  const w = dkWin(`webapp:${id}`, id, `v${a.want.version}`, 'svc dk-webapp');
+  if (!w) return;
+  const pop = Object.assign(el('button', 'dk-out'), { type: 'button', title: 'open in a browser tab', ariaLabel: 'open in a browser tab' });
+  pop.appendChild(dkGlyph(DK_UI.pop!));
+  pop.addEventListener('click', () => window.open(a.mount, '_blank', 'noopener'));
+  w.head.querySelector('.dk-btns')!.prepend(pop);
+  const src = query ? `${a.mount}?${new URLSearchParams(query)}` : a.mount;
+  const frame: NavFrame = Object.assign(el('iframe', 'dk-frame'), { src, title: id, allow: 'clipboard-read; clipboard-write; fullscreen' });
+  w.frame = frame;
+  w.body.appendChild(frame);
+  dkNav(w, frame);
+  dkSize(w, 1100, 680);
+  w.onFocus = () => frame.contentWindow?.focus();
+  w.onClose = () => { frame.contentWindow?.location.replace('about:blank'); };
+  dkFocus(w);
+  return w;
+}
+
+// a file opened in sulfur: its window made on the file, or the one up told of it; false when
+// this host doesn't serve sulfur
+export function dkSulfurOpen(f: FileRef): boolean {
+  if (!dkWebApps().some((a) => a.id === 'sulfur')) return false;
+  const o = { host: f.host, share: String(f.share || 'home'), path: f.path };
+  const w = dk.wins.get('webapp:sulfur');
+  if (w?.frame) {
+    w.frame.contentWindow?.postMessage({ t: 'sulfur-open', ...o }, location.origin);
+    dkFocus(w);
+    return true;
+  }
+  return !!dkWebApp('sulfur', o);
 }
 
 // --- git: forgejo itself, the master host in the title

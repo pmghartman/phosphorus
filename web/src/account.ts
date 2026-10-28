@@ -6,10 +6,12 @@ import { DK_GLYPHS, dkGlyph, el, noFill, pageAsk, svgEl } from './dom.ts';
 import { serviceUrl } from './mesh.ts';
 import { applyTheme, systemLight } from './scheme.ts';
 import { dk, PREF_LS, PREF_OF, st, type Account } from './state.ts';
+import { editorPref, EDITORS } from './desktop/deskfiles.ts';
 import { connectState, stateStop, stateUp } from './sync.ts';
 import { themeFromStorage } from './theme.ts';
 import type { Me, UserRow } from './types.ts';
 import { copyText } from './util.ts';
+import { appCall } from './apps.ts';
 import { dkArt, dkDesktop, dkIcons, dkLayout, dkLogout, dkWallPaint } from './desktop/desk.ts';
 import { DK_USERS_KEY, dkLogin, dkProbe, dkUsers } from './desktop/login.ts';
 import { dkAnchor, dkBar, dkChips, dkPopsClose, type Pop } from './desktop/taskbar.ts';
@@ -189,7 +191,8 @@ function acctNext(): boolean {
     return false;
   }
   const base = st.baseDomain || location.hostname;
-  if (u.protocol !== 'https:' || !(u.hostname === base || u.hostname.endsWith(`.${base}`))) return false;
+  const ours = u.origin === location.origin;
+  if (!ours && (u.protocol !== 'https:' || !(u.hostname === base || u.hostname.endsWith(`.${base}`)))) return false;
   location.replace(u.href);
   return true;
 }
@@ -412,9 +415,16 @@ export function dkProfileWin(): void {
       if (r.ok) { old.value = ''; neu.value = ''; }
     });
 
+    // the editor files open in, picked on the apps page, which installs sulfur when it must
+    const ed = el('div', 'dk-row acct-editor');
+    const edGo = Object.assign(el('button', '', 'change'), { type: 'button', title: 'on the apps page' });
+    edGo.addEventListener('click', () => appCall('store', true, (m) => m.storeShow('sulfur')));
+    ed.append(el('span', 'dk-host', EDITORS.find(([id]) => id === editorPref())![1]), el('span', 'dk-state', editorPref() ? 'an app on the mesh' : 'the desktop’s own'), edGo);
+
     body.replaceChildren(
       el('div', 'dk-pick-head', 'hosts'), hosts,
       el('div', 'dk-pick-head', 'page logins'), pages, pRow, opts,
+      el('div', 'dk-pick-head', 'editor'), ed,
       el('div', 'dk-pick-head', 'password'), pw, pwWhy,
     );
   };
