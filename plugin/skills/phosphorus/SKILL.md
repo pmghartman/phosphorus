@@ -1,6 +1,6 @@
 ---
 name: phosphorus
-description: Operates the user's live, self-hosted Phosphorus mesh through the Phosphorus connector's tools. Use whenever the user names phosphorus or the mesh, one of its hosts, or asks about their own servers, homelab or tailnet, even without saying "phosphorus": a host up, down, slow or full; services or game servers on the mesh; files in mesh shares; running a command on a host; host logs; the mesh's Forgejo; the mesh chat; its models and agents; a mesh update. Not for editing or building the phosphorus source code itself.
+description: "Operates the user's live, self-hosted Phosphorus mesh through the Phosphorus connector's tools. Use whenever the user names phosphorus or the mesh, one of its hosts, or asks about their own servers, homelab or tailnet, even without saying \"phosphorus\": a host up, down, slow or full; services or game servers on the mesh; files in mesh shares; running a command on a host; host logs; the mesh's Forgejo; the mesh chat; its models and agents; a mesh update. Not for editing or building the phosphorus source code itself."
 ---
 
 # Phosphorus
