@@ -5,6 +5,7 @@
     "includes": [
       "**",
       "!**/node_modules",
+      "!.bun-cache",
       "!packages/server/webstatic/dist",
       "!packages/server/webstatic/src/manifest.ts",
       "!apps/web/.vendor",

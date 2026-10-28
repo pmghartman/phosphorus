@@ -14,6 +14,9 @@
 # the licence notices and SBOM, written by bun run licenses
 /notices/
 
+# bun's package cache, kept in the workspace by CI
+/.bun-cache/
+
 # the web build, rebuilt by bun run web in CI and the image
 /packages/server/webstatic/dist/
 /packages/server/webstatic/src/manifest.ts
