@@ -1,7 +1,7 @@
 {
   "name": "phosphorus",
   "displayName": "Phosphorus",
-  "version": "2.10.0",
+  "version": "2.10",
   "description": "Operate your self-hosted Phosphorus mesh from Claude Code: hosts, services, files, terminals, logs, Forgejo, chat and updates, signed in with your mesh login.",
   "author": { "name": "Patrick Hartman", "url": "https://github.com/pmghartman" },
   "homepage": "https://github.com/pmghartman/phosphorus",
