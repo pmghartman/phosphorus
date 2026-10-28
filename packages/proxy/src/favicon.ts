@@ -5,11 +5,14 @@ import { baseDomain, everyRoute, notes, type Route, strip, under } from "./index
 const iconMax = 256 * 1024;
 const iconKeepMs = 3600_000;
 const iconMissMs = 600_000;
+// a miss when the service didn't answer at all: a host restarting, asked again soon
+const iconDownMs = 30_000;
 
 // a service's own icon
 export type Icon = { type: string; body: Uint8Array };
 type Grabbed = { typ: string; body: Uint8Array; path: string };
-type GrabOpts = { page?: boolean; hops: number; trace?: string[] };
+// answered: set once the service gives any response
+type GrabOpts = { page?: boolean; hops: number; trace?: string[]; answered?: { yes: boolean } };
 
 const held = new Map<string, { done: Promise<Icon | undefined>; until: number }>();
 
@@ -55,6 +58,7 @@ async function grab(rt: Route, p: string, max: number, o: GrabOpts): Promise<Gra
     say(e?.name === "TimeoutError" ? "timed out" : (e?.message ?? String(e)));
     return;
   }
+  if (o.answered) o.answered.yes = true;
   const loc = res.headers.get("location");
   if (res.status >= 300 && res.status < 400 && loc) {
     const next = o.hops > 0 ? iconPath(rt, loc, p) : "";
@@ -147,8 +151,8 @@ function hrefOf(tag: string): string {
   return /\bhref\s*=\s*([^\s"'>]+)/i.exec(tag)?.[1] ?? "";
 }
 
-async function lookIcon(rt: Route, trace?: string[]): Promise<Icon | undefined> {
-  const page = await grab(rt, "/", iconMax * 4, { page: true, hops: 4, trace });
+async function lookIcon(rt: Route, trace?: string[], answered?: { yes: boolean }): Promise<Icon | undefined> {
+  const page = await grab(rt, "/", iconMax * 4, { page: true, hops: 4, trace, answered });
   let html = "";
   if (page && (/html/.test(page.typ) || /^\s*</.test(new TextDecoder().decode(page.body.subarray(0, 64))))) html = new TextDecoder().decode(page.body);
   let from = page?.path ?? "/";
@@ -190,8 +194,12 @@ export function favicon(host: string, name: string): Promise<Icon | undefined> {
   const rt = findRoute(host, name);
   if (!rt) return Promise.resolve(undefined);
   const entry = { until: Date.now() + iconKeepMs, done: undefined as any as Promise<Icon | undefined> };
-  entry.done = lookIcon(rt).catch(() => undefined).then((icon) => {
-    if (!icon) {
+  const answered = { yes: false };
+  entry.done = lookIcon(rt, undefined, answered).catch(() => undefined).then((icon) => {
+    if (!icon && !answered.yes) {
+      entry.until = Date.now() + iconDownMs;
+      notes.log(`no icon for ${key} yet: ${rt.scheme}://${rt.ip}:${rt.port} didn't answer`);
+    } else if (!icon) {
       entry.until = Date.now() + iconMissMs;
       notes.log(`no icon found for ${key} at ${rt.scheme}://${rt.ip}:${rt.port}, its page and the usual paths tried`);
     }

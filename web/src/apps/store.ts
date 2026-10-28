@@ -29,6 +29,8 @@ interface StoreApp {
   repo: string;
   mount: string;
   icon: string;
+  // off the repository, until a host serves the app's own
+  repoIcon: string;
   agents: string[];
   want: AppWant | null;
   latest: string;
@@ -197,18 +199,25 @@ function pill(a: StoreApp, f: Facts, big = false): HTMLElement {
   return b;
 }
 
-// the icon tile: an image once something serves one, the initial until then
-function iconTile(name: string, src: string, cls: string): HTMLElement {
+// the icon tile: the first of srcs that loads, the initial when none does
+function iconTile(name: string, srcs: string[], cls: string): HTMLElement {
   const tile = el('span', `store-icon ${cls}`);
-  if (src) {
+  const mono = () => el('span', 'store-mono', name[0]!.toUpperCase());
+  const next = (rest: string[], at: HTMLElement) => {
+    const [src, ...more] = rest.filter(Boolean);
+    if (!src) { at.replaceWith(mono()); return; }
     const img = Object.assign(el('img'), { src, alt: '', draggable: false });
-    img.addEventListener('error', () => img.replaceWith(el('span', 'store-mono', name[0]!.toUpperCase())));
-    tile.append(img);
-  } else tile.append(el('span', 'store-mono', name[0]!.toUpperCase()));
+    img.addEventListener('error', () => next(more, img), { once: true });
+    at.replaceWith(img);
+  };
+  const first = el('span');
+  tile.append(first);
+  next(srcs, first);
   return tile;
 }
 
-const iconOf = (a: StoreApp, f: Facts, cls: string) => iconTile(a.name, f.here || f.on ? a.icon : '', cls);
+// the copy a host serves once one does, the repository's until then
+const iconOf = (a: StoreApp, f: Facts, cls: string) => iconTile(a.name, f.here || f.on ? [a.icon, a.repoIcon] : [a.repoIcon], cls);
 
 // a line under a tile's name: on the mesh, an update, or what it is
 function tileSub(a: StoreApp, f: Facts): [string, string] {
@@ -356,8 +365,11 @@ function svcPill(s: StoreService, f: SvcFacts, big = false): HTMLElement {
   return b;
 }
 
-// the icon off the service's repository, kept by this host; its initial until that answers
-const svcIcon = (s: StoreService, _f: SvcFacts, cls: string) => iconTile(s.name, s.icon, cls);
+// the icon the desktop shows, the running service's own, else the one off its repository
+const svcIcon = (s: StoreService, f: SvcFacts, cls: string) => iconTile(s.name, [
+  ...f.on.map((h) => `/api/favicon/${encodeURIComponent(h)}/${encodeURIComponent(s.id)}`),
+  s.icon,
+], cls);
 
 // a line under a service's tile: where it runs, a step under way, or what it is
 function svcSub(s: StoreService, f: SvcFacts): [string, string] {

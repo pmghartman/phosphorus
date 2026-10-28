@@ -10,7 +10,7 @@ import { parsePublicKey } from "@phosphorus/minisign";
 import * as sysfs from "@phosphorus/sysfs";
 import { untar } from "@phosphorus/tools";
 import { env, errText, FrontendPort, ini, logf as log, now, obj, readJSON, SelfHost, StateDir, writeJSONAtomic } from "@phosphorus/util";
-import { summary as svcSummaryFn } from "./services.ts";
+import { RepoIcon, summary as svcSummaryFn } from "./services.ts";
 
 const logf = (f: string, ...a: unknown[]) => log("[apps] " + f, ...a);
 
@@ -20,6 +20,8 @@ const logf = (f: string, ...a: unknown[]) => log("[apps] " + f, ...a);
 export type App = {
   id: string; name: string; tagline: string; about: string; features: string[]; category: string; by: string;
   repo: string; feed: string; mount: string; icon: string;
+  // the icon's path in the repository, shown before any host serves the app
+  repoIcon: string;
   // the agents it asks the mesh's models as, listed in the agents app while installed
   agents?: string[];
 };
@@ -37,6 +39,7 @@ export const Catalog: App[] = [
     feed: env("SULFUR_FEED_URL", "https://github.com/rpmull/sulfur/releases/download/update/sulfur-web.json"),
     mount: "/sulfur/",
     icon: "/sulfur/icon.svg",
+    repoIcon: "web/static/sulfur/icon.svg",
     agents: ["agent-sulfur", "agent-sulfur-fast"],
   },
 ];
@@ -442,7 +445,7 @@ export async function summary(fresh: boolean): Promise<Record<string, any>> {
     const l = local(a.id);
     return {
       id: a.id, name: a.name, tagline: a.tagline, about: a.about, features: a.features, category: a.category, by: a.by,
-      repo: a.repo, mount: a.mount, icon: a.icon, agents: a.agents ?? [],
+      repo: a.repo, mount: a.mount, icon: a.icon, repoIcon: appIconPath(a.id), agents: a.agents ?? [],
       want: wantOf(a.id) ?? null,
       latest: f.latest ? f.latest.version : "", feedError: f.error, checkedAt: f.at,
       local: { version: l.version, busy: l.busy, error: l.error },
@@ -453,6 +456,14 @@ export async function summary(fresh: boolean): Promise<Record<string, any>> {
 }
 
 export { newer };
+
+export const appIconPath = (id: string) => `/api/apps/${id}/icon`;
+
+// an app's icon off its repository, for the page before any host serves the app
+export async function AppIcon(id: string): Promise<{ data: Uint8Array; type: string } | undefined> {
+  const a = appOf(id);
+  return a ? RepoIcon({ id: a.id, name: a.name, repo: a.repo, icon: a.repoIcon }) : undefined;
+}
 
 // the services beside the apps: a checkout per host, run as a person's own login
 export {

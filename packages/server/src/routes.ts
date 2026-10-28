@@ -42,6 +42,7 @@ const mirrorRe = /^\/internal\/mirror\/([0-9a-f]{24})$/;
 const appsTarRe = /^\/internal\/apps\/([a-z][a-z0-9-]*)\/(\d+(?:\.\d+){0,3})$/;
 const appsSvcRe = /^\/api\/apps\/services\/(install|update|remove)$/;
 const appsSvcIconRe = /^\/api\/apps\/services\/([a-z][a-z0-9-]*)\/icon$/;
+const appsIconRe = /^\/api\/apps\/([a-z][a-z0-9-]*)\/icon$/;
 const hostRe = /^[a-z0-9][a-z0-9-]*$/;
 const pingRe = /^\/api\/ping\/([a-z0-9-]+)$/;
 const filesRe = /^\/api\/files\/([a-z0-9][a-z0-9-]*)\/(info|list|tree|search|read|download|upload|save|mkdir|rename|delete|run|mirror|own)$/;
@@ -341,11 +342,12 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
       return webapps.ServiceOp(op, str(p.id), host, { user, pass }, s.user, truthy(p.keep));
     });
   }
-  // a service's icon, off its repository, kept here
-  m = appsSvcIconRe.exec(pathname);
+  // a service's icon, or an app's, off its repository, kept here
+  const svcIc = appsSvcIconRe.exec(pathname);
+  m = svcIc ?? appsIconRe.exec(pathname);
   if (m && method === "GET") {
     if (!(await isLocalOrPeer(c))) return forbidden();
-    const ic = await webapps.svcIcon(m[1]!);
+    const ic = await (svcIc ? webapps.svcIcon(m[1]!) : webapps.AppIcon(m[1]!));
     if (!ic) return new Response(null, { status: 404, headers: { "Cache-Control": "max-age=600" } });
     return new Response(ic.data as Uint8Array<ArrayBuffer>, { status: 200, headers: { "Content-Type": ic.type, "Cache-Control": "max-age=3600", "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox" } });
   }
@@ -480,7 +482,8 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
     if (!(await isLocalOrPeer(c))) return forbidden();
     if (q.has("why")) return sendJSON(200, await faviconWhy(m[1]!, m[2]!));
     const v = await favicon(m[1]!, m[2]!);
-    if (!v) return new Response(null, { status: 204, headers: { "Cache-Control": "max-age=600" } });
+    // none kept by the browser: the host holds a miss, a while or briefly when the service didn't answer
+    if (!v) return new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
     return new Response(v.body as Uint8Array<ArrayBuffer>, {
       status: 200,
       headers: {
