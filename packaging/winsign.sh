@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Windows' Authenticode signature on each .exe given, timestamped, so SmartScreen and
 # Defender know who made it. Signed by Microsoft's Trusted Signing (Artifact Signing) when
-# its account is set, else by a .pfx certificate; with neither, left unsigned with a warning
+# its account is set, else by a .pfx certificate; with neither, left unsigned with a notice
 # (WINDOWS_SIGNING_REQUIRED=1 makes that an error)
 # usage: winsign.sh FILE...
 # env, Trusted Signing: AZURE_SIGNING_ENDPOINT (e.g. https://eus.codesigning.azure.net),
@@ -20,7 +20,7 @@ fi
 if [ -z "$mode" ]; then
   msg="not code-signed (no Trusted Signing account or certificate set): $*"
   [ "${WINDOWS_SIGNING_REQUIRED:-}" = 1 ] && { echo "::error::$msg" >&2; exit 1; }
-  echo "::warning::$msg" >&2
+  echo "::notice::$msg" >&2
   exit 0
 fi
 
