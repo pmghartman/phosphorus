@@ -43,7 +43,7 @@ test("launch command", () => {
 });
 
 // sh reads the launch script as written: env off stdin, then claude in dir
-test.skipIf(!Bun.which("sh"))("launch script runs", () => {
+test.skipIf(process.platform === "win32" || !Bun.which("sh"))("launch script runs", () => {
   const home = tmp("launch");
   const bin = join(home, ".local", "bin");
   mkdirSync(bin, { recursive: true });
@@ -62,7 +62,7 @@ test.skipIf(!Bun.which("sh"))("launch script runs", () => {
   expect(runSync(["sh", "-c", launchCommand("~", "mesh", "", "")], { env: { HOME: home, PATH: "/usr/bin:/bin" }, input: "\n" }).code).toBe(127);
 });
 
-test.skipIf(!Bun.which("sh"))("setup script", () => {
+test.skipIf(process.platform === "win32" || !Bun.which("sh"))("setup script", () => {
   const home = tmp("setup");
   const old = join(home, ".phosphorus/claude/skills/phosphorus/stale.md");
   mkdirSync(join(home, ".phosphorus/claude/skills/phosphorus"), { recursive: true });

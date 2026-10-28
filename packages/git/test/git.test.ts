@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -13,7 +13,12 @@ const state = (await import("@phosphorus/util")).StateDir;
 mkdirSync(state, { recursive: true });
 
 const roster = (epoch: number, ...gits: string[]) => ({ epoch, members: gits.map((name) => ({ name, git: true })), prev: null });
-const writeClaim = (c: Record<string, unknown>) => writeFileSync(join(state, "git-claim.json"), JSON.stringify(c));
+let claimAt = Date.now() / 1000;
+// each claim stamped later than the last: readFresh keys its cache on the mtime
+const writeClaim = (c: Record<string, unknown>) => {
+  writeFileSync(join(state, "git-claim.json"), JSON.stringify(c));
+  utimesSync(join(state, "git-claim.json"), (claimAt += 0.01), claimAt);
+};
 
 test("vote validates c, ms and roster", () => {
   git.init(() => false, "b1");

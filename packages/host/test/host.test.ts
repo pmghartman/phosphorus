@@ -115,10 +115,12 @@ test("the baked env file round-trips, PATH gets the tools first", () => {
   expect(readEnvFile(join(dir, "nope"))).toEqual({});
   writeFileSync(join(dir, "e.env"), text.replaceAll("\n", "\r\n") + "  # c\n\n");
   expect(readEnvFile(join(dir, "e.env"))).toEqual({ A: "x=y", B: "2", PATH: "/bin" });
-  const env = withPath({ X: "1", Path: "/usr/bin" });
-  expect(env.Path!.endsWith(":/usr/bin")).toBe(true);
-  expect(env.Path!.startsWith("/")).toBe(true);
-  expect(withPath({}).PATH!.endsWith("/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")).toBe(true);
+  if (process.platform !== "win32") {
+    const env = withPath({ X: "1", Path: "/usr/bin" });
+    expect(env.Path!.endsWith(":/usr/bin")).toBe(true);
+    expect(env.Path!.startsWith("/")).toBe(true);
+    expect(withPath({}).PATH!.endsWith("/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")).toBe(true);
+  }
   expect(splitComma(" a, b ,")).toEqual(["a", "b", ""]);
   expect(absTo("/h", " x/ ")).toBe("/h/x");
   expect(absTo("/h", "/abs/")).toBe("/abs");
@@ -165,7 +167,7 @@ test("syncPayload copies the release, keeps this host's config, prunes the last 
   expect(existsSync(join(dst, ".phosphorus-installed"))).toBe(false);
   expect(existsSync(join(dst, "old", "deep"))).toBe(false);
   expect(existsSync(join(dst, "old", "stay.txt"))).toBe(true);
-  expect(readFileSync(join(dst, ".phosphorus-manifest"), "utf8")).toBe("VERSION\nbin/phosphorus\nconfig/phosphorus.ini\nconfig/services.export\nweb/assets/a.js\n");
+  expect(readFileSync(join(dst, ".phosphorus-manifest"), "utf8")).toBe(`VERSION\n${process.platform === "win32" ? "bin/phos.exe\nbin/phosphorus.exe" : "bin/phosphorus"}\nconfig/phosphorus.ini\nconfig/services.export\nweb/assets/a.js\n`);
   expect(kept("config/services.export")).toBe(true);
   expect(kept("files/a/b")).toBe(true);
   expect(kept("web/a")).toBe(false);

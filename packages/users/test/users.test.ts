@@ -58,7 +58,7 @@ test("seal round trip", () => {
   const key = Buffer.from(vecOut, "hex").subarray(32);
   const b = U.Seal(key, vecText);
   expect(U.Open(key, b)).toBe(vecText);
-  expect(U.Open(key, { ...b, tag: b.tag.replace(/^./, "0") })).toBeUndefined();
+  expect(U.Open(key, { ...b, tag: (b.tag[0] === "0" ? "1" : "0") + b.tag.slice(1) })).toBeUndefined();
 });
 
 test("b64url", () => {

@@ -59,7 +59,7 @@ export function readFresh(file: string, maxAgeMs: number): any {
   try {
     const st = statSync(file, { bigint: true });
     if (Date.now() - Number(st.mtimeMs) > maxAgeMs) return undefined;
-    sig = `${st.ino}:${st.mtimeNs}`;
+    sig = `${st.ino}:${st.mtimeNs}:${st.size}`;
   } catch {
     return undefined;
   }

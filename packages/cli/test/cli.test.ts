@@ -99,7 +99,7 @@ test("editIni holds to IniKeys and drops an emptied section", () => {
   expect(configText()).toEqual(["[files]\ndir = /srv\n", read(svc)!]);
 });
 
-test("a rewrite keeps the file's mode", () => {
+test.skipIf(process.platform === "win32")("a rewrite keeps the file's mode", () => {
   chmodSync(ini, 0o600);
   expect(setIni("home", "dir", "/srv/x/")).toBe("");
   expect(statSync(ini).mode & 0o777).toBe(0o600);
