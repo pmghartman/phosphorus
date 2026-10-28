@@ -25,8 +25,7 @@ export function pctOf(a: unknown, b: unknown): number | null {
 // phosphorus's own processes as parts, the top six others with short command lines
 export function statsShape(s: Record<string, any>): Record<string, any> {
   const cpu = obj(s.cpu);
-  // an older peer sends them as containers
-  const cs = Array.isArray(s.parts) ? s.parts : Array.isArray(s.containers) ? s.containers : [];
+  const cs = Array.isArray(s.parts) ? s.parts : [];
   const parts = cs.map((c: unknown) => {
     const m = obj(c);
     return { name: m?.name ?? null, cpu: m?.cpu ?? null, mem: m?.mem ?? null };

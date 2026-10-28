@@ -3,7 +3,7 @@
 import { iconGroup } from './icons.ts';
 import { copyText } from './util.ts';
 
-export const paneContent = document.getElementById('pane-content')!;
+export const stash = document.getElementById('dk-stash')!;
 
 // one list for good, each matchMedia() call another for the engine to re-evaluate
 export const mobileQuery = matchMedia('(max-width: 720px)');

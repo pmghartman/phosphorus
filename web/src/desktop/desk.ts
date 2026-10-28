@@ -3,7 +3,7 @@
 import { acctCall } from '../api.ts';
 import { app, appCall } from '../apps.ts';
 import { chatName, chatText, convNow, dragsFiles, joined, openConv, setConv } from '../chat.ts';
-import { DK_GLYPHS, DK_UI, dkGlyph, el, isMobile, mobileQuery, paneContent, svgEl } from '../dom.ts';
+import { DK_GLYPHS, DK_UI, dkGlyph, el, isMobile, mobileQuery, stash, svgEl } from '../dom.ts';
 import { activeConnections, drawMesh, phosphorusHosts, pingHosts, serviceKey, serviceUrl, startPulseLoop, switchHost, dkMeshTray, type Connection } from '../mesh.ts';
 import { noteAdd, notifyOs, dkBellTray } from '../notes.ts';
 import { dkFms, filesJoin, filesParent, filesWin, fileLabel, fmSame, fmTransfer, fmMark, fmSpring, fmUnspring, fmZones, HOME, homeAt, homeOnline, may, putFile, fmChanged } from '../shares.ts';
@@ -16,8 +16,10 @@ import { mcpStat, dkMcpTray } from '../mcp.ts';
 import { dkControlTray } from './control.ts';
 import { dkCode, dkDeskAt, dkDeskWatch, dkFileIcon, dkFileMenu } from './deskfiles.ts';
 import { dkLoginHosts } from './login.ts';
-import { dkBadge, dkBar, dkChips, dkClock, dkHomeBtn, dkAnchor, dkPlaceItems, dkTray, type Pop } from './taskbar.ts';
+import { dkBadge, dkBar, dkChips, dkClock, dkHomeBtn, dkAnchor, dkPlaceItems, type Pop } from './taskbar.ts';
 import { dkClose, dkFocus, dkNav, dkPlace, dkSize, dkSnap, dkWin, type DkWin, type NavFrame } from './windows.ts';
+import { dkSpotlightTray } from './spotlight.ts';
+import { dkSessionHold, dkSessionRestore, dkSessionTry } from './session.ts';
 
 const dkView = document.getElementById('view-desktop')!;
 
@@ -34,12 +36,10 @@ export function dkDesktop(): void {
   bar.prepend(dkHomeBtn());
   const ctl = dkControlTray();
   const bell = dkBellTray();
-  bar.insertBefore(bell, dkTray);
   const agent = st.acct?.boot ? null : dkMcpTray();
-  if (agent) bar.insertBefore(agent, bell);
-  bar.append(ctl);
-  // the mesh and update panes opened from the panel, their own buttons out of sight
-  ctl.append(dkMeshTray(dk.ctl!.btn), dkTray, updateModal);
+  bar.append(dkSpotlightTray(), ...(agent ? [agent] : []), bell, ctl);
+  // the mesh and update panes opened from the panel
+  ctl.append(dkMeshTray(dk.ctl!.btn), updateModal);
   dkAnchor(updateModal as Pop, dk.ctl!.btn);
   const menubar = el('div', 'dk-bar dk-menubar');
   const app = el('span', 'dk-menubar-app');
@@ -73,6 +73,7 @@ export function dkDesktop(): void {
   dk.sig = '';
   dkClock();
   dkIcons();
+  dkSessionRestore();
 }
 
 // a phone's windows always filling the screen
@@ -95,6 +96,8 @@ export function dkArt(): HTMLElement {
 }());
 
 export function dkLogout(): void {
+  // the session kept as it was, never saved empty on the way out
+  dkSessionHold(true);
   dk.meshTray?.show(false);
   dk.ctl?.show(false);
   dk.mcp?.show(false);
@@ -105,6 +108,7 @@ export function dkLogout(): void {
   for (const w of [...dk.wins.values()]) dkClose(w, true);
   dk.creds.clear();
   dk.desk = null;
+  dkSessionHold(false);
 }
 
 // icons on a grid, any cell, kept per browser; a press selects, a drag moves
@@ -186,6 +190,8 @@ export function dkIcons(): void {
   const sig = JSON.stringify([hosts, git, !!st.acct?.admin, dk.services.map((r) => [r.host, r.name, !!r.public]), dk.deskFiles.map((e) => [e.at, e.name, e.dir, e.mtime, e.hosts, e.stale, e.all])]);
   if (sig === dk.sig) return;
   dk.sig = sig;
+  // a host, login or service newly here: a saved window waiting on it opened
+  dkSessionTry();
   const files = new Map(dk.deskFiles.map((e) => [`doc\n${filesJoin(e.at!, e.name)}`, e]));
   // one key per icon and what it shows, an unchanged one kept as it is
   const want: [string, () => HTMLButtonElement][] = [
@@ -467,13 +473,40 @@ function dkBand(icons: HTMLElement) {
 // esc and ctrl+a for the icons, a window's own keys left alone; on the document after the
 // page's own escape (keys/shortcuts.ts), which marks a shift+esc as handled
 export function dkIconKeys(e: KeyboardEvent): void {
-  if (!dk.desk || e.defaultPrevented) return;
+  if (!dk.desk || e.defaultPrevented || e.ctrlKey && e.altKey) return;
   const t = e.target as Node;
   if (t !== document.body && !dk.desk.icons.contains(t)) return;
   if (e.key === 'Escape') { dk.sel.clear(); dkPaintSel(); }
   else if (e.key === 'a' && (e.ctrlKey || e.metaKey)) {
     e.preventDefault();
     dk.sel = new Set(dkIconEls().map((b) => b.dataset.id!));
+    dkPaintSel();
+  } else if (/^Arrow(Up|Down|Left|Right)$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    // the nearest icon that way, from the focused one or the top left
+    const icons = dkIconEls();
+    if (!icons.length) return;
+    e.preventDefault();
+    const from = icons.find((b) => b === document.activeElement) || icons.find((b) => dk.sel.has(b.dataset.id!));
+    const at = (b: HTMLElement) => [Number(b.dataset.c), Number(b.dataset.r)] as const;
+    let pick: HTMLButtonElement | undefined;
+    if (!from) pick = [...icons].sort((a, b) => at(a)[0] - at(b)[0] || at(a)[1] - at(b)[1])[0];
+    else {
+      const [c0, r0] = at(from);
+      const dc = e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1 : 0;
+      const dr = e.key === 'ArrowUp' ? -1 : e.key === 'ArrowDown' ? 1 : 0;
+      let best = Infinity;
+      for (const b of icons) {
+        const [c, r] = at(b);
+        const ac = (c - c0) * dc + (r - r0) * dr;
+        if (ac <= 0) continue;
+        const side = Math.abs((c - c0) * dr) + Math.abs((r - r0) * dc);
+        const d = ac * 4 + side;
+        if (d < best) { best = d; pick = b; }
+      }
+    }
+    if (!pick) return;
+    pick.focus({ preventScroll: true });
+    dk.sel = e.shiftKey ? new Set([...dk.sel, pick.dataset.id!]) : new Set([pick.dataset.id!]);
     dkPaintSel();
   }
 }
@@ -538,7 +571,7 @@ export async function dkWallSet(blob: Blob): Promise<string> {
   return '';
 }
 
-async function dkWallClear() {
+export async function dkWallClear(): Promise<void> {
   const r = await acctCall('/api/me/wallpaper', { data: '' });
   if (!r.ok) return;
   st.acct!.wallpaper = 0;
@@ -550,6 +583,8 @@ const dkPick = (accept: string, multiple: boolean, then: (files: File[]) => void
   input.addEventListener('change', () => { if (input.files!.length) then([...input.files!]); });
   input.click();
 };
+// a picture picked for the wallpaper
+export const dkWallPick = (): void => dkPick('image/*', false, ([f]) => dkWallSet(f!).then((why) => why && dkMenuNote(why)));
 
 // files about to land on the desktop held to the cell at x, y (else the
 // nearest free ones after it), their icons placed there once they show
@@ -635,7 +670,7 @@ function dkDeskMenu(icons: HTMLElement) {
       ['add file…', () => dkNewFile(e.clientX, e.clientY), !!dkDeskAt()],
       ['upload files…', () => dkPick('', true, (list) => { dkPlaceAt(e.clientX, e.clientY, list.map((f) => f.name)); dkAddFiles(list); }), homeOnline().length > 0],
       null,
-      ['change wallpaper…', () => dkPick('image/*', false, ([f]) => dkWallSet(f!).then((why) => why && dkMenuNote(why))), !!st.acct && !st.acct.boot],
+      ['change wallpaper…', dkWallPick, !!st.acct && !st.acct.boot],
       ['remove wallpaper', dkWallClear, !!st.acct?.wallpaper],
       null,
       ['select all', () => { dk.sel = new Set(dkIconEls().map((x) => x.dataset.id!)); dkPaintSel(); }, true],
@@ -676,7 +711,7 @@ export function dkMenuNote(text: string): void {
 }
 
 // every icon back in the default order
-function dkArrange() {
+export function dkArrange(): void {
   try { localStorage.setItem(DK_POS_KEY, '{}'); } catch {}
   dkLayout();
 }
@@ -743,7 +778,7 @@ async function dkSetPublic(r: Route, on: boolean) {
   dkMenuNote(res?.ok ? `${r.name} ${on ? 'public' : 'private'}` : out.error || 'not changed');
 }
 
-function dkService(r: Route) {
+export function dkService(r: Route): DkWin | undefined {
   const w = dkWin(`svc:${serviceKey(r)}`, r.name, r.public ? `${r.host}, public` : r.host, 'svc');
   if (!w) return;
   const url = serviceUrl(r);
@@ -762,9 +797,10 @@ function dkService(r: Route) {
   w.onFocus = () => frame.contentWindow?.focus();
   w.onClose = () => { conn.win.closed = true; frame.contentWindow?.location.replace('about:blank'); };
   dkFocus(w);
+  return w;
 }
 
-// --- the mesh's own apps: each old tab's view moved into a window, back on close
+// --- the mesh's own apps: each view moved into a window, back to the stash on close
 
 const DK_APPS: Record<string, { title: string; view: string; w: number; h: number }> = {
   chat: { title: 'chat', view: 'view-chat', w: 880, h: 560 },
@@ -791,7 +827,7 @@ export function dkOpenApp(id: string): void {
   w.onClose = () => {
     fit.disconnect();
     view.classList.remove('active');
-    paneContent.appendChild(view);
+    stash.appendChild(view);
   };
   if (id === 'chat') {
     w.task.appendChild(dkBadge());

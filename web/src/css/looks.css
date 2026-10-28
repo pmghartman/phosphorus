@@ -11,11 +11,11 @@
 /* --r-* the corners: ctl a control's, pop a popup's, card a panel's, win a window's */
 /* every control rounded; zero specificity, so a class's own corners (round pips) still win */
 :where(:root[data-round]) :where(button, input, select, textarea, .dk-task, .dk-tray, .dk-chip,
-  .tab-menu-list li, .fm-row, .fm-crumbs, .fm-find, .toast, .msg-file, .chat-find, .chat-bar, .dk-snap, .dk-band, .dk-badge, .update-row,
+  .fm-row, .fm-crumbs, .fm-find, .toast, .msg-file, .chat-find, .chat-bar, .dk-snap, .dk-band, .dk-badge, .update-row,
   .cw-item, .fm-share, .fm-tile, .cd-pick, .cd-att, .dk-ctl-drop-opt) { border-radius: var(--r-ctl); }
 :where(:root[data-round]) :where(.msg-img img, .chat-log .md pre, .code-md .md pre, .home-note, .chat-form, .chat-join, .cd-diff, .cd-perm,
   .home-col, .st-card, .st-mesh, .about-info, .cw-side, .mesh-panel, .chat-panel, .st-box, .bubble, .cd-user, .cd-box) { border-radius: var(--r-card); }
-:where(:root[data-round]) :where(.dk-note-pop, .dk-ctl-pop, .dk-menu, .tab-menu, .update-pane, .modal-box, .dk-mcp-pop, .dk-login, .acct-unlock,
+:where(:root[data-round]) :where(.dk-note-pop, .dk-ctl-pop, .dk-menu, .update-pane, .modal-box, .dk-mcp-pop, .dk-login, .acct-unlock,
   .dk-mesh-pop > .mesh-panel, .dk-ctl-tile, .dk-ctl-chip, .dk-ctl-out, .dk-ctl-theme, .dk-ctl-drop-btn, .dk-ctl-drop-list, .dk-icon .dk-tile) { border-radius: var(--r-pop); }
 :root[data-round] .dk-ctl-theme { padding: 2px; gap: 2px; }
 /* rounded: each segment its own pill inset in the track, so its fill never meets a straight edge */
@@ -29,7 +29,7 @@
 }
 /* tables, gauges and art laid out in character cells: mono whatever the page's type (data-sans) */
 :root[data-sans] :is(code, pre, kbd, samp, .st-body, .st-probe, .st-sum, .st-chip, .st-mesh-grid, .st-ctx,
-  .st-cores, .st-ctr-row, .st-proc-row, .keybar, .dk-cl-calls, .dk-cl-out, .cd-tool-out, .cd-dl) { font-family: var(--mono); }
+  .st-cores, .st-ctr-row, .st-proc-row, .dk-cl-calls, .dk-cl-out, .cd-tool-out, .cd-dl) { font-family: var(--mono); }
 
 /* a custom theme's own desk color, whatever look it starts from */
 :root[data-custom-desk] .dk-desk:not(.dk-walled *) { background: var(--desk); }
@@ -54,7 +54,7 @@
 }
 :root:is([data-palette="macos"], [data-palette="win11"]) .st-head { padding-bottom: 0.25rem; font-size: 0.72rem; }
 :root:is([data-palette="macos"], [data-palette="win11"]) :is(.home-col, .st-card, .st-mesh, .about-info) { padding-top: 0.65rem; }
-:root:is([data-palette="macos"], [data-palette="win11"]) :is(.home-col-head, .mesh-stats-head, .tab-menu-title, .dk-menu-title, .cw-head, .fm-side-head,
+:root:is([data-palette="macos"], [data-palette="win11"]) :is(.home-col-head, .mesh-stats-head, .dk-menu-title, .cw-head, .fm-side-head,
   .dk-note-head, .dk-ctl-head, .dk-cl-title, .dk-cl-sec-t, .update-pane-header > span, .modal-header > span, .about-key) { color: var(--muted); letter-spacing: 0; }
 /* the theme list its own rounded flyout under the button */
 :root:is([data-palette="macos"], [data-palette="win11"]) .dk-ctl-drop-list { margin-top: 4px; border: 1px solid var(--border); border-radius: var(--r-pop); padding: 4px; background: var(--pop-bg); }
@@ -65,7 +65,7 @@
 :root:is([data-palette="macos"], [data-palette="win11"]) .dk-win:not(.dk-leaving, .dk-minimizing, .dk-restoring) { animation: os-open 0.14s ease-out; }
 @keyframes os-open { from { opacity: 0; scale: 0.98; } }
 /* popups and menus: opaque, rounded, a hairline edge */
-:root:is([data-palette="macos"], [data-palette="win11"]) :is(.dk-note-pop, .dk-ctl-pop, .dk-menu, .tab-menu, .update-pane, .modal-box, .dk-mcp-pop, .dk-login, .acct-unlock, .toast) {
+:root:is([data-palette="macos"], [data-palette="win11"]) :is(.dk-note-pop, .dk-ctl-pop, .dk-menu, .update-pane, .modal-box, .dk-mcp-pop, .dk-login, .acct-unlock, .toast) {
   border: 1px solid var(--pop-edge); border-radius: var(--r-pop); background: var(--pop-bg); box-shadow: var(--drop); animation: os-pop 0.1s ease-out;
 }
 @keyframes os-pop { from { opacity: 0; } }
@@ -113,7 +113,7 @@
 }
 /* menus: the picked item a blue pill, white on it */
 :root[data-palette="macos"] .dk-menu button { padding: 0.2rem 0.65rem; }
-:root[data-palette="macos"] :is(.dk-menu button:hover:not(:disabled), .dk-menu-item.open > .dk-menu-more:not(:disabled), .tab-menu-list li:not(.empty):hover, .tab-menu-list li.sel) { background: var(--accent); color: #fff; }
+:root[data-palette="macos"] :is(.dk-menu button:hover:not(:disabled), .dk-menu-item.open > .dk-menu-more:not(:disabled)) { background: var(--accent); color: #fff; }
 :root[data-palette="macos"] .dk-menu button.danger:hover:not(:disabled) { background: var(--offmesh); color: #fff; }
 :root[data-palette="macos"] :is(.dk-ctl-drop-opt:hover, .dk-ctl-drop-opt:focus) { background: var(--accent); }
 :root[data-palette="macos"] .dk-ctl-drop-opt:is(:hover, :focus) :is(.dk-ctl-drop-name, .dk-ctl-drop-about) { color: #fff; }
@@ -142,7 +142,7 @@
   :root[data-palette="win11"] .dk-ctl > .dk-profile { margin-right: 4px; }
 }
 /* menus: items a subtle fill, the current one a short accent line at its left */
-:root[data-palette="win11"] :is(.dk-menu button:hover:not(:disabled), .dk-menu-item.open > .dk-menu-more:not(:disabled), .tab-menu-list li:not(.empty):hover, .tab-menu-list li.sel,
+:root[data-palette="win11"] :is(.dk-menu button:hover:not(:disabled), .dk-menu-item.open > .dk-menu-more:not(:disabled),
   .dk-ctl-drop-opt:hover, .dk-ctl-drop-opt:focus) { background: color-mix(in srgb, var(--fg) 6%, transparent); color: var(--fg); }
 :root[data-palette="win11"] .dk-menu button.danger:hover:not(:disabled) { color: var(--offmesh); }
 :root[data-palette="win11"] .dk-ctl-drop-opt { position: relative; }
@@ -270,11 +270,11 @@
 :root[data-palette="cli"] .dk-win:not(.dk-leaving, .dk-minimizing, .dk-restoring) { animation: none; }
 :root[data-palette="cli"] .dk-head { background: var(--bg); border-bottom-color: var(--border); }
 :root[data-palette="cli"] .dk-win.focused .dk-title { color: var(--fg); }
-:root[data-palette="cli"] :is(.dk-note-pop, .dk-ctl-pop, .dk-menu, .tab-menu, .update-pane, .modal-box, .dk-mcp-pop, .dk-login, .acct-unlock, .toast) {
+:root[data-palette="cli"] :is(.dk-note-pop, .dk-ctl-pop, .dk-menu, .update-pane, .modal-box, .dk-mcp-pop, .dk-login, .acct-unlock, .toast) {
   border-color: var(--muted); box-shadow: none; animation: none;
 }
-:root[data-palette="cli"] :is(.dk-menu button:hover:not(:disabled), .dk-menu-item.open > .dk-menu-more:not(:disabled), .tab-menu-list li:not(.empty):hover,
-  .tab-menu-list li.sel, .dk-ctl-drop-opt:hover, .dk-ctl-drop-opt:focus) { background: var(--fg); color: var(--bg); }
+:root[data-palette="cli"] :is(.dk-menu button:hover:not(:disabled), .dk-menu-item.open > .dk-menu-more:not(:disabled),
+  .dk-ctl-drop-opt:hover, .dk-ctl-drop-opt:focus) { background: var(--fg); color: var(--bg); }
 :root[data-palette="cli"] .dk-ctl-drop-opt:is(:hover, :focus) :is(.dk-ctl-drop-name, .dk-ctl-drop-about) { color: var(--bg); }
 :root[data-palette="cli"] .dk-ctl-drop-opt.on .dk-ctl-drop-name::after { content: " *"; }
 :root[data-palette="cli"] .dk-ctl-seg.on { background: var(--fg); color: var(--bg); }

@@ -2,7 +2,6 @@
 // the chat badge, and every popup grown out of a bar button
 import { DK_GLYPHS, DK_UI, dkGlyph, el, isMobile } from '../dom.ts';
 import { toastPlace } from '../notes.ts';
-import { closeMenus } from '../scheme.ts';
 import { dk, st } from '../state.ts';
 import { BAR_ITEMS, layoutNow, PALETTE_EVENT } from '../theme.ts';
 import { closeUpdateModal, updateModal } from '../update.ts';
@@ -11,14 +10,11 @@ import { hostSwitchNow } from '../mesh.ts';
 import { dkMenuEl } from './desk.ts';
 import { dkMin } from './windows.ts';
 
-// the page's update and theme buttons, moved into whichever bar is up
-export const dkTray = document.querySelector('.top-mesh-wide') as HTMLElement;
 export function dkBar(...before: HTMLElement[]): HTMLElement {
   const bar = el('div', 'dk-bar');
   dk.clock = el('span', 'dk-clock');
   if (!before.length) bar.appendChild(el('span', 'dk-tasks'));
-  bar.append(...before.slice(0, 2), dkTray, dk.clock, ...before.slice(2));
-  (dkTray.querySelector('.update-wrap') as HTMLElement).hidden = !st.acct?.admin;
+  bar.append(...before.slice(0, 2), dk.clock, ...before.slice(2));
   updateModal.classList.add('dk-pop');
   if (!st.acct?.admin) closeUpdateModal();
   dkClock();
@@ -143,7 +139,6 @@ export function dkPopsClose(keep?: string): void {
   if (keep !== 'mcp') dk.mcp?.show(false);
   if (keep !== 'menu') dkMenuEl.hidden = true;
   if (keep !== 'update' && !updateModal.hidden) closeUpdateModal();
-  if (keep !== 'theme') closeMenus();
   if (keep !== 'unlock') for (const p of document.querySelectorAll<Pop>('.acct-unlock')) p.dkClose?.();
 }
 const DK_POP_EDGE = 8;

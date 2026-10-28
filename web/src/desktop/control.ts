@@ -2,7 +2,7 @@
 import { acctLogout, dkProfileWin, dkUserGlyph, dkUsersWin } from '../account.ts';
 import { DK_GLYPHS, DK_UI, dkGlyph, el } from '../dom.ts';
 import { phosphorusHosts } from '../mesh.ts';
-import { currentTheme, setTheme, THEME_ICON, THEMES } from '../scheme.ts';
+import { currentTheme, setTheme, themeIcon, THEMES } from '../scheme.ts';
 import { dk, st } from '../state.ts';
 import { BAR_ITEMS, CUSTOM_CORNERS, CUSTOM_SHADOWS, customNow, LAYOUT_CHOICES, PALETTES, paletteNow, setCustom, setPalette, themeConfig, type Palette } from '../theme.ts';
 import { checkUpdates, meshLockNow, openUpdateModal, updates } from '../update.ts';
@@ -33,7 +33,7 @@ const DK_ITEM_NAMES: Record<string, string> = { hosts: 'hosts', agent: 'agent', 
 
 // the custom theme, made here: every setting its own value, worn once saved, then kept with the
 // user's settings on every host; a reset sets them all to one of the built-in themes'
-function dkThemeWin() {
+export function dkThemeWin(): void {
   const w = dkWin('app:theme', 'theme', 'custom', 'app dk-app-theme');
   if (!w) return;
   const pane = el('div', 'dk-theme-pane');
@@ -231,8 +231,7 @@ export function dkControlTray(): HTMLElement {
     const theme = el('div', 'dk-ctl-theme');
     for (const t of THEMES) {
       const tb = Object.assign(el('button', `dk-ctl-seg${currentTheme() === t ? ' on' : ''}`), { type: 'button', title: t });
-      const icon = document.querySelector(`.theme-toggle .${THEME_ICON[t]}`)?.cloneNode(true);
-      tb.append(...(icon ? [icon] : []), t);
+      tb.append(themeIcon(t), t);
       tb.addEventListener('click', () => { setTheme(t); draw(); });
       theme.append(tb);
     }

@@ -141,26 +141,6 @@ new ResizeObserver(() => {
   if (chatPinned) chatLog.scrollTop = chatLog.scrollHeight;
 }).observe(chatLog);
 
-// "in 5 seconds" down to 1 on the same line, then the bare text, from arrival
-// when live, from the timestamp for history
-function alertCountdown(li: HTMLElement, m: ChatLine, until: number) {
-  const left = Math.ceil((until - Date.now()) / 1000);
-  li.textContent = left > 0 ? `system: ${m.text} ${left}s` : `system: ${m.text}`;
-  if (left > 0) setTimeout(() => { if (li.isConnected) alertCountdown(li, m, until); }, (until - Date.now()) % 1000 || 1000);
-}
-
-// what an agent posts on someone's key, and the old chat agent's lines and notices
-const MODEL_KINDS = ['model', 'notice'];
-
-// a chat reply opened with who it's for, "Patrick, yes", a plain first word lowered,
-// a block (fence, list, heading, table, display math) on its own line
-const PLAIN_FIRST = /^(?:Yes|No|The|It|Its|It's|That|This|There|These|Those|You|Your|A|An|Sure|Done|Here|Nothing|None|All|Both|Not|To|In|On|For|With|From|At|By|Use|Run|Try|Open|Ok|Okay|Each|One|Some|Only|Just)\b/;
-const BLOCK_FIRST = /^\s*(?:```|[-*+] |\d+\. |#|>|\||\$\$|\\\[)/;
-function addressed(to: string, text: string): string {
-  if (!to || !text || text.toLowerCase().startsWith(`${to.toLowerCase()},`)) return text;
-  if (BLOCK_FIRST.test(text)) return `${to},\n\n${text}`;
-  return `${to}, ${PLAIN_FIRST.test(text) ? text[0]!.toLowerCase() + text.slice(1) : text}`;
-}
 
 // @name lit, outside code, true when it's this browser's own
 function markMentions(el: HTMLElement): boolean {
@@ -343,7 +323,7 @@ function dkImageWin(f: ChatFile) {
   dkFocus(w);
 }
 
-// who a line is from, as notices and headers say it: the agent from the user whose key it used
+// who a line is from: the agent from the user whose key it used
 const sender = (m: ChatMsg) => (m.via ? `${m.via} from ${m.name}` : m.name);
 
 // the li for a line, prev the li before it, for its header and day
@@ -354,12 +334,6 @@ function lineEl(m: ChatLine, prev: Element | null): HTMLLIElement {
   if (m.kind === 'sys') {
     li.className = `sys ${m.cls || ''}`;
     li.textContent = m.text!;
-    return li;
-  }
-  if (m.kind === 'alert') {
-    li.className = 'sys alert';
-    li.textContent = `system: ${m.text}`;
-    if (m.countdown! > 0) alertCountdown(li, m, (m.live ? Date.now() : m.timestamp) + m.countdown! * 1000);
     return li;
   }
   if (m.kind === 'show') {
@@ -380,9 +354,9 @@ function lineEl(m: ChatLine, prev: Element | null): HTMLLIElement {
     return li;
   }
   // a line sent by an agent on someone's key: the agent's, in the agents' colours, from that user
-  const agent = MODEL_KINDS.includes(m.kind!) || !!m.via;
+  const agent = m.kind === 'model' || !!m.via;
   const mine = !agent && m.name === st.name;
-  const real = m.kind !== 'notice' && !m.gone && !m.sending;
+  const real = !m.gone && !m.sending;
   li.className = `msg ${agent ? 'agent' : mine ? 'mine' : 'theirs'}`;
   // an agent's line on someone's key never grouped under their own
   li.dataset.who = m.via ? `${m.name}\u0000${m.via}` : m.name;
@@ -403,8 +377,6 @@ function lineEl(m: ChatLine, prev: Element | null): HTMLLIElement {
   const bubble = el('div', 'bubble');
   if (m.re && !m.gone) bubble.append(quoteEl(m.re));
   const text = el('div', 'text');
-  // who an old model reply was for
-  const to = m.kind === 'model' && typeof m.to === 'string' ? m.to : '';
   const body = m.edited ?? m.text;
   const html = m.edited != null ? m.editedHtml : m.html;
   if (m.gone) {
@@ -412,7 +384,7 @@ function lineEl(m: ChatLine, prev: Element | null): HTMLLIElement {
     text.textContent = 'message deleted';
   } else if (body) {
     text.addEventListener('md-painted', () => codeCopies(text));
-    renderMd(text, addressed(to, body), true, html);
+    renderMd(text, body, true, html);
   }
   if (!m.gone && markMentions(text)) li.classList.add('at-me');
   if (body || m.gone) bubble.append(text);
@@ -428,12 +400,10 @@ function lineEl(m: ChatLine, prev: Element | null): HTMLLIElement {
 // a day's first line under its date, was: a spinner line it takes the place of
 function putLine(m: ChatLine, live?: boolean, was: Element | null = null): HTMLLIElement {
   const atBottom = live && nearBottom();
-  const to = MODEL_KINDS.includes(m.kind!) && typeof m.to === 'string' && m.to;
-  const old = was?.isConnected ? was : to && chatLog.querySelector(`li.retired[data-to="${CSS.escape(to)}"]`);
   let li: HTMLLIElement;
-  if (old) {
-    li = lineEl(m, old.previousElementSibling?.matches('.day') ? null : old.previousElementSibling);
-    old.replaceWith(li);
+  if (was?.isConnected) {
+    li = lineEl(m, was.previousElementSibling?.matches('.day') ? null : was.previousElementSibling);
+    was.replaceWith(li);
   } else {
     const last = chatLog.lastElementChild;
     const day = formatDay(m.timestamp);
@@ -471,8 +441,6 @@ const CHANNELS_KEY = 'phosphorus-chat-channels';
 let conv = 'mesh';
 // the conversation on screen
 export const convNow = () => conv;
-// the old chat agent's conversations, kept in this browser, dropped
-try { localStorage.removeItem('phosphorus-agents'); } catch {}
 // channels opened here, kept listed before anyone has said a word in them
 let myChannels = loadJson<string[]>(CHANNELS_KEY, []);
 // channels left here, by when, hidden until a line comes after

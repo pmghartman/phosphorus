@@ -2,8 +2,13 @@
 // snapped, minimized into its task bar button and back
 import { DK_GLYPHS, DK_UI, dkGlyph, el, isMobile } from '../dom.ts';
 import { dk } from '../state.ts';
-import { dkAppsChanged } from './desk.ts';
+import { dkAppsChanged, dkMenu, type MenuItem } from './desk.ts';
 import type { Connection } from '../mesh.ts';
+
+// told of any window made, moved, snapped, hidden, shown, raised or closed (session.ts)
+let touched: (() => void) | null = null;
+export function dkOnTouch(f: () => void): void { touched = f; }
+export const dkTouch = (): void => touched?.();
 
 // a frame in a website window, marked when its load is a back's own
 export type NavFrame = HTMLIFrameElement & { dkUndo?: number };
@@ -98,6 +103,11 @@ export function dkWin(key: string | null, title: string, sub: string, kind: stri
   max.addEventListener('click', () => dkMax(w));
   close.addEventListener('click', () => dkClose(w));
   head.addEventListener('dblclick', (e) => { if (!(e.target as Element).closest('button')) dkMax(w); });
+  // a right click on the title or the task: the window's menu; a middle click on the task closes
+  const menu = (e: MouseEvent) => { if (!(e.target as Element).closest('.dk-btns')) { e.preventDefault(); dkWinMenu(w, e.clientX, e.clientY); } };
+  head.addEventListener('contextmenu', menu);
+  task.addEventListener('contextmenu', menu);
+  task.addEventListener('auxclick', (e) => { if (e.button === 1) { e.preventDefault(); dkClose(w); } });
   task.addEventListener('click', () => {
     if (node.hidden || w.leaving) dkFocus(w); else if (node.classList.contains('focused')) dkMin(w); else dkFocus(w);
   });
@@ -108,7 +118,40 @@ export function dkWin(key: string | null, title: string, sub: string, kind: stri
   wins.appendChild(node);
   tasks.appendChild(task);
   dk.wins.set(w.key, w);
+  dkTouch();
   return w;
+}
+
+// on screen: not minimized, not leaving
+export const dkShown = (w: DkWin): boolean => !w.node.hidden && !w.leaving;
+// the windows on screen, topmost first
+export const dkStack = (): DkWin[] => [...dk.wins.values()].filter(dkShown).sort((a, b) => Number(b.node.style.zIndex) - Number(a.node.style.zIndex));
+
+// the window's menu, as a title bar's right click gives it
+export function dkWinMenu(w: DkWin, x: number, y: number): void {
+  const title = w.task.title;
+  const phone = isMobile();
+  const items: MenuItem[] = [
+    [w.node.hidden ? 'restore' : 'minimize', () => (w.node.hidden ? dkFocus(w) : dkMin(w)), true],
+    [w.snap === 'max' ? 'restore size' : 'maximize', () => dkMax(w), !phone],
+    ['snap', [
+      ['left half', () => dkSnapTo(w, 'l'), true], ['right half', () => dkSnapTo(w, 'r'), true],
+      ['top left', () => dkSnapTo(w, 'tl'), true], ['top right', () => dkSnapTo(w, 'tr'), true],
+      ['bottom left', () => dkSnapTo(w, 'bl'), true], ['bottom right', () => dkSnapTo(w, 'br'), true],
+      null, ['floating', () => dkSnapTo(w, ''), !!w.snap],
+    ], !phone],
+    null,
+    ['close', () => dkClose(w), true, 'danger'],
+  ];
+  dkMenu(x, y, items, undefined, title);
+}
+
+// snapped to a zone, or let go of its snap, eased there
+export function dkSnapTo(w: DkWin, zone: string): void {
+  if (isMobile() || zone === w.snap) return;
+  dkTween(w);
+  dkSnap(w, zone);
+  dkFocus(w);
 }
 
 // the geometry a drag started from
@@ -136,6 +179,7 @@ export function dkPlace(w: DkWin): void {
   w.node.style.transform = `translate3d(${w.x}px, ${w.y}px, 0)`;
   w.node.style.width = `${w.w}px`;
   w.node.style.height = `${w.h}px`;
+  dkTouch();
 }
 
 // pointer captured from press to release, one write per frame
@@ -177,6 +221,7 @@ export function dkSnap(w: DkWin, zone: string): void {
   w.snap = zone || '';
   if (zone) w.node.dataset.snap = zone; else delete w.node.dataset.snap;
   (w.node.querySelector('.dk-max') as HTMLElement).title = zone === 'max' ? 'restore' : 'maximize';
+  dkTouch();
 }
 
 // a title bar's drag: a snapped window let go of its snap first, under the
@@ -277,6 +322,7 @@ export function dkFocus(w: DkWin | null): void {
   if (w.node.style.zIndex !== String(dk.z)) w.node.style.zIndex = String(++dk.z);
   w.onFocus?.();
   dkAppsChanged();
+  dkTouch();
 }
 
 // the offset from the window to its task bar button; the scale also pulls
@@ -297,13 +343,19 @@ function dkToTask(w: DkWin) {
 export function dkMin(w: DkWin): void {
   dkToTask(w);
   dkLeave(w, () => {
-    w.node.hidden = true;
-    w.node.classList.remove('focused');
-    w.task.classList.remove('active');
-    const top = [...dk.wins.values()].filter((o) => !o.node.hidden && !o.leaving).sort((a, b) => Number(b.node.style.zIndex) - Number(a.node.style.zIndex))[0];
+    dkHide(w);
+    const top = dkStack()[0];
     if (top) dkFocus(top);
     dkAppsChanged();
   }, 'dk-minimizing');
+}
+
+// minimized at once, no animation: a session's windows put back as they were
+export function dkHide(w: DkWin): void {
+  w.node.hidden = true;
+  w.node.classList.remove('focused');
+  w.task.classList.remove('active');
+  dkTouch();
 }
 
 // grown back out of its task bar button, measured unanimated first
@@ -323,7 +375,7 @@ function dkRestore(w: DkWin) {
   setTimeout(end, 400);
 }
 
-function dkMax(w: DkWin) {
+export function dkMax(w: DkWin): void {
   if (isMobile()) return;
   dkTween(w);
   dkSnap(w, w.snap === 'max' ? '' : 'max');
@@ -339,6 +391,7 @@ export function dkClose(w: DkWin, force?: boolean): void {
   w.task.remove();
   dk.wins.delete(w.key);
   dkAppsChanged();
+  dkTouch();
 }
 
 // --- a website window's back: history.back() undoes the newest frame load

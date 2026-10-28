@@ -4,24 +4,26 @@
 // the override, applied before paint by index.html
 import { appCall } from './apps.ts';
 import { PALETTE_EVENT } from './theme.ts';
-import { dkAnchor, dkPopsClose, type Pop } from './desktop/taskbar.ts';
+import { svgEl } from './dom.ts';
 
 export const THEMES = ['dark', 'light', 'oled'];
-const themeToggles = document.querySelectorAll<HTMLButtonElement>('.theme-toggle');
-export const themeMenus = [...document.querySelectorAll<HTMLElement>('.theme-menu')];
 export const systemLight = matchMedia('(prefers-color-scheme: light)');
 
 export const currentTheme = () => document.documentElement.dataset.theme || 'dark';
-export const openMenu = () => themeMenus.find((m) => !m.hidden);
-export function closeMenus(): void { for (const m of themeMenus) m.hidden = true; }
+
+// dark a filled moon, light a sun, oled a hollow thin moon
+const SUN = 'M8 1v1.8M8 13.2V15M1 8h1.8M13.2 8H15M3 3l1.3 1.3M11.7 11.7L13 13M3 13l1.3-1.3M11.7 4.3L13 3';
+const MOON = 'M13.5 10A6 6 0 0 1 6 2.5a6 6 0 1 0 7.5 7.5z';
+export function themeIcon(theme: string): SVGSVGElement {
+  const svg = svgEl('svg', { viewBox: '0 0 16 16', class: `theme-icon ${theme}`, 'aria-hidden': 'true' });
+  if (theme === 'light') { svg.append(svgEl('circle', { cx: 8, cy: 8, r: 3 }), svgEl('path', { d: SUN })); }
+  else svg.appendChild(svgEl('path', { d: MOON }));
+  return svg;
+}
 
 export function applyTheme(theme: string): void {
   if (theme === 'dark') delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = theme;
-  for (const b of themeToggles) {
-    b.title = `theme: ${theme}`;
-  }
-  for (const li of document.querySelectorAll<HTMLElement>('.theme-menu li')) li.classList.toggle('current', li.dataset.theme === theme);
   // Safari's bars tinted the page's own background
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', getComputedStyle(document.body || document.documentElement).getPropertyValue('--bg').trim() || '#141414');
   appCall('terminal', false, (m) => m.termsRetheme());
@@ -42,33 +44,6 @@ export function setTheme(theme: string): void {
   applyTheme(theme);
 }
 
-// each pick led by its button's own icon
-export const THEME_ICON: Record<string, string> = { dark: 'moon', light: 'sun', oled: 'moon-thin' };
-
-for (const menu of themeMenus) {
-  const list = menu.querySelector('ul')!;
-  const toggle = menu.parentElement!.querySelector('.theme-toggle')!;
-  for (const theme of THEMES) {
-    const li = document.createElement('li');
-    li.append(toggle.querySelector(`.${THEME_ICON[theme]}`)!.cloneNode(true), theme);
-    li.dataset.theme = theme;
-    li.tabIndex = 0;
-    li.addEventListener('click', () => { setTheme(theme); closeMenus(); });
-    list.appendChild(li);
-  }
-  menu.addEventListener('click', (e) => e.stopPropagation());
-}
-for (const b of themeToggles) {
-  b.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const menu = b.parentElement!.querySelector('.theme-menu') as Pop;
-    const open = menu.hidden;
-    dkPopsClose('theme');
-    closeMenus();
-    menu.hidden = !open;
-    if (open && b.closest('.dk-bar')) { menu.classList.add('dk-pop'); dkAnchor(menu, b); }
-  });
-}
 systemLight.addEventListener('change', (e) => { if (!themePick()) applyTheme(e.matches ? 'light' : 'dark'); });
 // a new color theme: the bar's color and the terminals' with it
 addEventListener(PALETTE_EVENT, () => applyTheme(currentTheme()));
