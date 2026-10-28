@@ -1,0 +1,12 @@
+{
+  "name": "phosphorus",
+  "owner": { "name": "Patrick Hartman", "url": "https://github.com/pmghartman" },
+  "description": "The Phosphorus plugin for Claude Code: operate your self-hosted mesh, signed in with your mesh login.",
+  "plugins": [
+    {
+      "name": "phosphorus",
+      "source": "./plugin",
+      "description": "Operate your self-hosted Phosphorus mesh from Claude Code, signed in with your mesh login."
+    }
+  ]
+}

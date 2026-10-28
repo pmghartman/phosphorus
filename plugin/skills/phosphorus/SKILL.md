@@ -5,9 +5,9 @@ description: Operates the user's live, self-hosted Phosphorus mesh through the P
 
 # Phosphorus
 
-Phosphorus is a mesh of the user's own machines on one tailnet. Each machine running it is a **host**: it shares folders, publishes web services and game servers, runs terminals, keeps logs, and may carry a Forgejo replica or a model. The Phosphorus connector answers for the whole mesh from any host, and every call runs as **{{USER}}**{{ADMIN_NOTE}} with exactly that user's rights. Tool names may carry a prefix (`mcp__phosphorus__`, `Phosphorus:`); each tool's own description is its full reference, so this skill covers only how to combine them.
+Phosphorus is a mesh of the user's own machines on one tailnet. Each machine running it is a **host**: it shares folders, publishes web services and game servers, runs terminals, keeps logs, and may carry a Forgejo replica or a model. The Phosphorus connector answers for the whole mesh from any host, and every call runs as the user who signed it in, with exactly that user's rights; the connector's instructions name them and whether they're an admin. Tool names may carry a prefix (`mcp__phosphorus__`, `Phosphorus:`); each tool's own description is its full reference, so this skill covers only how to combine them.
 
-No Phosphorus tools at all: tell the user to add the connector with the url from **copy mcp url** in the agent tray, and stop. The connector's instructions say what this key can do: admin or not, its saved host logins, its forgejo login and the tools kept off it. Never offer those; say who could.
+No Phosphorus tools at all, or the connector needs authentication: tell the user to run `/mcp`, pick phosphorus and sign in with their mesh login, and stop. The connector's instructions say what this key can do: admin or not, its saved host logins, its forgejo login and the tools kept off it. Never offer those; say who could.
 
 ## Job files
 
@@ -47,10 +47,10 @@ Failed calls return `code: message`.
 - `not_found`: re-list (`mesh_hosts`, `services`, `files_list`, `people`) instead of guessing.
 - `forbidden`: the key lacks the right (share perm, admin, saved login); say so and stop.
 - `unreachable`: the host is down or off the tailnet; check `mesh_hosts` `health: true`, and `host_logs` on another host.
-- `key refused` (HTTP 401): the key was refreshed or revoked; the user pastes the new url from **copy mcp url** into the connector.
+- `key refused` (HTTP 401): the sign-in was revoked, voided by a password change or is a year old; the user signs in again from `/mcp`.
 
 ## Reporting
 
 Lead with the answer. Name hosts, services and paths exactly as phosphorus does. A change: what, where, before and after, how to undo. A diagnosis: the evidence lines verbatim, the cause, the fix taken or proposed.
 
-Built {{BUILT}} for the mesh at {{BASE}}, phosphorus {{VERSION}}. For a newer mesh, download the skill again from the agent tray.
+The mesh is at https://${user_config.domain}.

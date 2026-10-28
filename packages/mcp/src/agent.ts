@@ -21,7 +21,7 @@ const errOf = (b: unknown) => str(obj(b)?.error);
 
 export const agentTools = (): Tool[] => [
   {
-    name: "files_search", read: true,
+    name: "files_search", title: "Search files", read: true,
     description:
       "Find files by name, or by text inside them, across every host's shares at once or one host and share. " +
       "Case-insensitive; content searches read text files up to 1MB and return each file's first matching lines. " +
@@ -69,7 +69,7 @@ export const agentTools = (): Tool[] => [
     },
   },
   {
-    name: "files_copy", destructive: true,
+    name: "files_copy", title: "Copy or move files", destructive: true,
     description:
       "Copy a file or a whole folder from a share to a share, on the same host or across hosts, any size and any kind " +
       "(binary too), streamed host to host. move deletes the original once the copy lands. An existing file at to is replaced.",
@@ -89,7 +89,7 @@ export const agentTools = (): Tool[] => [
     },
   },
   {
-    name: "host_logs", read: true, scope: "key",
+    name: "host_logs", title: "Host logs", read: true, scope: "key",
     description:
       "A host's logs: phosphorus's own (systemd's journal on Linux, phosphorus.log elsewhere), one part of it, " +
       "or a game's start/stop output; the last lines, filtered. The first stop when something misbehaves. Admins only.",
@@ -109,7 +109,7 @@ export const agentTools = (): Tool[] => [
     },
   },
   {
-    name: "host_config", read: true, scope: "key",
+    name: "host_config", title: "Read host config", read: true, scope: "key",
     description:
       "A host's two config files as they stand: phosphorus.ini (shares in [files], [git], [model], [home]) and " +
       "services.export (each [service]: port, scheme, mode, base_path, public, type game with start/stop). Read before service_edit or config_set. Admins only.",
@@ -120,7 +120,7 @@ export const agentTools = (): Tool[] => [
     },
   },
   {
-    name: "service_edit", scope: "key", destructive: true,
+    name: "service_edit", title: "Edit a service", scope: "key", destructive: true,
     description:
       "Publish, change or remove a service in a host's services.export, as the terminal UI's form does, the whole file " +
       "checked before it's written and live within seconds. fields only change the keys given; a blank value drops one. " +
@@ -139,7 +139,7 @@ export const agentTools = (): Tool[] => [
     },
   },
   {
-    name: "config_set", scope: "key", destructive: true,
+    name: "config_set", title: "Set host config", scope: "key", destructive: true,
     description:
       "Set one key of a host's phosphorus.ini, blank value to drop it (a section left empty goes too); phosphorus applies it within seconds. " +
       "Keys: [files] dir and priv (the shares and their rwd perms, comma-separated in step), [git] host, [model] host/gpu/url/ctx/slots, [home] dir. " +
@@ -156,7 +156,7 @@ export const agentTools = (): Tool[] => [
     },
   },
   {
-    name: "service_request", scope: "key", open: true,
+    name: "service_request", title: "Call a service's API", scope: "key", open: true,
     description:
       "One HTTP request to a web service published on the mesh, straight to it over the tailnet, past phosphorus's login: " +
       "its API by path. headers carry the service's own auth when it wants one (e.g. an API token the person gave you). " +

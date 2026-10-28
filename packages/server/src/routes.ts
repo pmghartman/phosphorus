@@ -6,7 +6,7 @@ import { Write as collabWrite } from "@phosphorus/collab";
 import { Keys as envKeys } from "@phosphorus/envfile";
 import * as files from "@phosphorus/files";
 import * as git from "@phosphorus/git";
-import { type Caller, handle as mcpHandle, skill } from "@phosphorus/mcp";
+import { type Caller, handle as mcpHandle } from "@phosphorus/mcp";
 import * as mesh from "@phosphorus/mesh";
 import * as mirror from "@phosphorus/mirror";
 import { Assign, EraseSlots, ServeChat, ServeMessages, ServeModels } from "@phosphorus/model";
@@ -30,6 +30,7 @@ import {
 } from "./http.ts";
 import { decode, obj, str, truthy } from "./js.ts";
 import { mcpCallsMesh, peerOp } from "./mcpops.ts";
+import { oauthRoute, Unauthorized } from "./oauth.ts";
 import { buildState, chainAction, forwardGame, mintGuestKey, noteState, runGameLocally, snapshot } from "./server.ts";
 import { filesInfo, forwardFiles, homeFilterResults, homeWho, pingPeer, runGrant, sendFile, serveRun, withHop, writeP } from "./shares.ts";
 import { onUpgrade } from "./ws.ts";
@@ -65,8 +66,6 @@ const userCalls: Record<string, UserCall> = {
   "POST /api/me/prefs": (s, p) => users.SetPrefs(s, p),
   "POST /api/me/wallpaper": (s, p) => users.SetWallpaper(s, p),
   "POST /api/me/password": (s, p, c) => users.ChangePass(s, p, c),
-  "POST /api/me/mcp-key": (s, p, c) => users.MCPKey(s, p, c),
-  "POST /api/me/mcp-url": (s, p, c) => users.MCPURL(s, p, c),
   "GET /api/me/mcp": async (s) => {
     if (!s || s.boot) return { status: 403, body: { error: "log in as a user" } };
     const out = await mcpCallsMesh(s.user);
@@ -126,21 +125,10 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
     });
   }
 
-  // the claude skill, no key in it: the user's connector does the calling
-  if (pathname === "/api/me/mcp-skill" && method === "POST") {
-    if (!(await isLocalOrPeer(c)) || !sameOrigin(c)) return forbidden();
-    const s = await users.Soon(c);
-    if (!s || s.boot) return sendJSON(403, { error: "log in as a user" });
-    let b: Uint8Array;
-    try {
-      b = await skill(s.user, s.admin, users.MCPBase(c));
-    } catch (e) {
-      return sendJSON(500, { error: errText(e) });
-    }
-    return new Response(b as Uint8Array<ArrayBuffer>, {
-      status: 200,
-      headers: { "Content-Type": "application/zip", "Content-Disposition": 'attachment; filename="phosphorus-skill.zip"', "Cache-Control": "no-store" },
-    });
+  // an agent's sign-in: from anywhere, the ingress included
+  if (pathname.startsWith("/.well-known/oauth-") || pathname.startsWith("/oauth/")) {
+    const r = await oauthRoute(c, pathname);
+    if (r) return r;
   }
   const call = userCalls[method + " " + pathname];
   if (call) {
@@ -224,10 +212,8 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
     if (ok) {
       const k = key.trim();
       const [s, why] = users.CheckMCPKey(k);
-      if (!s) {
-        // the client shown needs-auth, never connected on a refused key
-        return sendJSON(401, { error: "key refused: " + why }, { "WWW-Authenticate": `Bearer realm="phosphorus", error="invalid_token", error_description="key ${why}"` });
-      }
+      // the client shown needs-auth, never connected on a refused key, and sent to sign in again
+      if (!s) return Unauthorized(c, "key " + why);
       caller = {
         user: s.user, admin: s.admin, via,
         login: (host) => {
@@ -237,7 +223,7 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
         pages: () => users.MCPPages(k),
         hosts: () => Object.entries(users.MCPLogins(k) ?? {}).filter(([, l]) => str(obj(l)?.user) !== "").map(([h]) => h),
       };
-    } else if (!isLoopback(c) && !(await isTailnet(c))) return forbidden();
+    } else if (!isLoopback(c) && !(await isTailnet(c))) return Unauthorized(c);
     if (method !== "POST") return new Response(null, { status: 405, headers: { Allow: "POST" } });
     const b = await readRaw(c, maxJSONBody);
     if (b === undefined) return plain(400, "bad request");

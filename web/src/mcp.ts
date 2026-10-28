@@ -1,18 +1,18 @@
-// --- the agent tray beside the bell: the mcp's url copied for any agent's connector,
-// its calls on this host as they happen
+// --- the agent tray beside the bell: how Claude Code's plugin connects and signs in,
+// the calls of the agents signed in as they happen
 import { agentViewOn, agentViewSet } from './agent.ts';
 import { acctCall } from './api.ts';
 import { DK_GLYPHS, dkGlyph, el, pageAsk, svgEl } from './dom.ts';
 import { noteAdd } from './notes.ts';
-import { dk } from './state.ts';
+import { dk, st } from './state.ts';
 import type { McpCall, McpStatus } from './types.ts';
 import { copyText } from './util.ts';
 import { dkAnchor, dkPopsClose, type Pop } from './desktop/taskbar.ts';
 import { updateModal } from './update.ts';
 
-// the user's key and calls from the mesh, and its url once fetched
-export const mcpStat: { configured: boolean; seen: number; at: number; now: number; got: number; client: string; calls: McpCall[]; recent: McpCall[]; url: string } =
-  { configured: false, seen: 0, at: 0, now: 0, got: 0, client: '', calls: [], recent: [], url: '' };
+// whether the user has agents signed in, and their calls from the mesh
+export const mcpStat: { configured: boolean; seen: number; at: number; now: number; got: number; client: string; calls: McpCall[]; recent: McpCall[] } =
+  { configured: false, seen: 0, at: 0, now: 0, got: 0, client: '', calls: [], recent: [] };
 const MCP_ACTIVE_MS = 12000;
 // a connector heard from this recently counted connected
 const MCP_SEEN_MS = 15 * 60000;
@@ -76,7 +76,7 @@ export function dkMcpTray(): HTMLElement {
   const head = el('div', 'dk-cl-head');
   const stateLine = el('span', 'dk-cl-state');
   const bar = el('div', 'dk-cl-bar');
-  // the url itself, only when the clipboard refused it
+  // the plugin's steps while no agent is signed in
   const hint = el('div', 'dk-cl-hint');
   const body = el('div', 'dk-cl-body');
   // the agent's moves shown on this desk, or kept off it
@@ -98,50 +98,46 @@ export function dkMcpTray(): HTMLElement {
     x.addEventListener('click', () => act(x));
     return x;
   };
-  const showUrl = (url: string, copied: boolean) => {
-    if (copied) { hint.replaceChildren(); return; }
-    const f = Object.assign(el('input', 'dk-cl-url'), { readOnly: true, value: url, spellcheck: false, title: 'copy, then paste into your agent as a custom mcp connector' });
-    f.addEventListener('focus', () => f.select());
-    hint.replaceChildren(f);
-    f.focus();
+  const copier = (label: string, cls: string, text: () => string) => button(label, cls, async (x) => {
+    try { await copyText(text()); flash(x, 'copied'); } catch { flash(x, text()); }
+  });
+  // how an agent connects: the Claude Code plugin, signed in on the mesh's own page
+  const steps = () => {
+    const ol = el('ol', 'dk-cl-steps');
+    const code = (t: string) => el('code', '', t);
+    const li = (...xs: (Node | string)[]) => { const x = el('li'); x.append(...xs); ol.append(x); };
+    li('in Claude Code: ', code(MCP_INSTALL[0]!));
+    li(code(MCP_INSTALL[1]!), ', domain ', code(mcpDomain()));
+    li(code('/mcp'), ', phosphorus, sign in');
+    return ol;
   };
-  // the bar drawn again only when set up flips: connect, else copy and refresh
+  // the bar drawn again only when set up flips: the steps, else sign out
   let drawn: boolean | null = null;
   const drawBar = () => {
     const done = mcpStat.configured;
     if (drawn === done) return;
     drawn = done;
-    // the claude skill, no key: the connector does the calling
-    const skill = button('claude skill', 'quiet', async (x) => {
-      x.disabled = true;
-      const ok = await mcpSkill();
-      x.disabled = false;
-      if (ok) flash(x, 'downloaded');
-    });
-    skill.title = 'the mesh skill: upload it in claude.ai, Settings, Capabilities, Skills; works through the connector';
+    const domain = copier('copy domain', 'quiet', mcpDomain);
+    domain.title = 'the mesh domain the plugin asks for';
     if (!done) {
-      bar.replaceChildren(button('connect agent', 'wide', async () => {
-        const r = await mcpKey('/api/me/mcp-url');
-        if (r) showUrl(r.url, r.copied);
-      }), skill);
-      hint.replaceChildren();
+      const install = copier('copy install', '', () => MCP_INSTALL.join('\n'));
+      install.title = 'the two Claude Code commands that add the phosphorus plugin';
+      bar.replaceChildren(install, domain);
+      hint.replaceChildren(steps());
       return;
     }
     hint.replaceChildren();
-    const copy = button('copy mcp url', 'quiet wide', async (x) => {
-      const r = await mcpKey('/api/me/mcp-url', mcpStat.url);
-      if (!r) return;
-      flash(x, r.copied ? 'copied' : 'copy it below');
-      showUrl(r.url, r.copied);
-    });
-    copy.title = 'paste into your agent as a custom mcp connector';
-    const refresh = button('refresh key', 'quiet', async () => {
+    const out = button('sign out agents', 'quiet', async () => {
       show(false);
-      if (!await pageAsk({ title: 'refresh key?', message: 'old url dies', action: 'refresh', danger: true })) return;
-      const r = await mcpKey('/api/me/mcp-key');
-      if (r) { show(true); showUrl(r.url, r.copied); }
+      if (!await pageAsk({ title: 'sign out agents?', message: 'every agent signs in again', action: 'sign out', danger: true })) return;
+      const r = await acctCall('/api/me/mcp-revoke', {});
+      if (!r.ok) { mcpFailed(r.error); return; }
+      mcpStat.configured = false;
+      noteAdd('agents signed out', 'each signs in again from /mcp');
+      pollMcp();
     });
-    bar.replaceChildren(copy, refresh, skill);
+    out.title = 'void every agent sign-in; a password change does the same';
+    bar.replaceChildren(domain, out);
   };
   const paint = () => {
     const st = mcpState();
@@ -182,9 +178,6 @@ export function dkMcpTray(): HTMLElement {
       drawn = null;
       list = null;
       paint();
-      if (mcpStat.configured) hint.replaceChildren();
-      // the url ready before a tap, so copying it is the tap's own
-      if (mcpStat.configured) acctCall('/api/me/mcp-url', {}).then((r) => { if (r.ok) mcpStat.url = r.url; });
     }
   };
   b.addEventListener('click', () => show(pop.hidden as boolean));
@@ -252,36 +245,11 @@ function mcpApply(s: McpStatus) {
 // the mesh's now, carried forward from the last answer so durations keep running
 const mcpNow = () => (mcpStat.now || Date.now()) + (mcpStat.got ? Date.now() - mcpStat.got : 0);
 
-// the key's url from the mesh, copied: the one in use, or a fresh one voiding it.
-// a url already in hand copied in the tap itself, else once it lands
-async function mcpKey(path: string, have = ''): Promise<{ url: string; copied: boolean } | null> {
-  let copied = false;
-  if (have) { try { await copyText(have); copied = true; } catch {} }
-  const r: { ok: boolean; url?: string; error?: string } = have ? { ok: true, url: have } : await acctCall<{ url: string }>(path, {});
-  if (!r.ok) { mcpFailed(r.error); return null; }
-  if (!copied) { try { await copyText(r.url!); copied = true; } catch {} }
-  mcpStat.url = r.url!;
-  if (!mcpStat.configured || path.endsWith('mcp-key')) {
-    mcpStat.configured = true;
-    noteAdd('agent connected', copied ? 'url copied' : 'copy the url');
-  }
-  pollMcp();
-  return { ...r, url: r.url!, copied };
-}
+// the Claude Code commands that add the plugin, its skill and connector together
+const MCP_INSTALL = ['/plugin marketplace add pmghartman/phosphorus', '/plugin install phosphorus@phosphorus'];
 
-// the skill's zip from the mesh, saved for claude.ai's skill upload
-async function mcpSkill(): Promise<boolean> {
-  let res: Response;
-  try { res = await fetch('/api/me/mcp-skill', { method: 'POST' }); } catch (err) { mcpFailed((err as Error).message); return false; }
-  if (!res.ok) { mcpFailed((await res.json().catch(() => ({}))).error || `http ${res.status}`); return false; }
-  const url = URL.createObjectURL(await res.blob());
-  const a = Object.assign(document.createElement('a'), { href: url, download: 'phosphorus-skill.zip' });
-  document.body.append(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 30000);
-  return true;
-}
+// the domain the plugin asks for: the mesh's base, where its sign-in page answers
+const mcpDomain = () => st.baseDomain || location.host;
 
 // a failure in two words, its why in the notes
 function mcpFailed(why: string | undefined) {
