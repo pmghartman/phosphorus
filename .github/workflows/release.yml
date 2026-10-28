@@ -362,9 +362,8 @@ jobs:
           gh release upload update * --clobber
 
   # the Claude Code plugin's version set to this release's on the default branch,
-  # only when plugin/ changed since the release before, its own version line
-  # aside; pushed with PLUGIN_DEPLOY_KEY, a deploy key main's rules let bypass
-  # them, and skipped with a warning without it
+  # every release; pushed with PLUGIN_DEPLOY_KEY, a deploy key main's rules let
+  # bypass them, and skipped with a warning without it
   plugin:
     needs: [version, release]
     if: ${{ !cancelled() && needs.release.result == 'success' }}
@@ -381,23 +380,10 @@ jobs:
         with:
           ref: ${{ github.event.repository.default_branch }}
           ssh-key: ${{ secrets.PLUGIN_DEPLOY_KEY }}
-          fetch-depth: 0
-          fetch-tags: true
       - if: env.KEYED == 'true'
         name: bump
         run: |
           f=plugin/.claude-plugin/plugin.json
-          # the release before this one, by number
-          prev=$(git tag -l 'v[0-9]*.[0-9]*' | sed -n 's/^v\([0-9]*\.[0-9]*\)$/\1/p' | sort -t. -k1,1n -k2,2n | awk -v v="$VER" '$0 == v { print p; exit } { p = $0 }')
-          # plugin/ at both releases, the manifest's version line left out
-          same() {
-            git diff --quiet "$1" "$2" -- plugin ":(exclude)$f" &&
-              [ "$(git show "$1:$f" 2>/dev/null | grep -v '^  "version":')" = "$(git show "$2:$f" 2>/dev/null | grep -v '^  "version":')" ]
-          }
-          if [ -n "$prev" ] && same "v$prev" "v$VER"; then
-            echo "plugin/ unchanged since v$prev, its version stays"
-            exit 0
-          fi
           sed -i -E "s/^(  \"version\": )\"[^\"]*\"/\1\"$VER\"/" "$f"
           grep -q "^  \"version\": \"$VER\"," "$f" || { echo "no top-level version line in $f" >&2; exit 1; }
           git diff --quiet && { echo "already $VER"; exit 0; }
