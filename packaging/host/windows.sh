@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Phosphorus's setup .exe for Windows: the tray, the host binary and the release,
-# by NSIS; with a signing key, the feed's signature beside a copy of it
+# Phosphorus's setup .exe for Windows: the host binary (the tray in it), the launcher
+# that starts the tray without a console window, and the release, by NSIS; with a
+# signing key, the feed's signature beside a copy of it
 # usage: windows.sh VERSION PAYLOAD_DIR OUT_DIR UPDATE_DIR
 # env: FEED_URL and FEED_PUBKEY for the app's own updates (the tray's, and the
 # service's when no one is signed in), UPDATE_SIGNING_KEY to sign them
@@ -13,9 +14,16 @@ rm -rf "$STAGE"
 mkdir -p "$STAGE" "$OUT" "$UPD"
 
 cd "$ROOT"
-# the tray (no console, the icon in its .exe) and the host, both carrying the feed:
-# the service updates the app with no one signed in
+# the host with the tray in it, the icon in its .exe, carrying the feed: the service
+# updates the app with no one signed in
 bun scripts/build.ts windows-x64 "$STAGE" "$VER"
+cp LICENSE "$PAYLOAD/THIRD_PARTY_NOTICES.txt" packaging/icons/icon.ico "$STAGE/"
+
+# NSIS on the runner's image, else from chocolatey
+PATH="$PATH:/c/Program Files (x86)/NSIS"
+command -v makensis >/dev/null || choco install nsis -y --no-progress >/dev/null
+# Phosphorus.exe: the launcher, a window-less start of the tray in the host binary
+makensis -V2 -DVERSION="$VER" -DSTAGE="$(cygpath -w "$STAGE")" -DOUTFILE="$(cygpath -w "$STAGE/Phosphorus.exe")" "$(cygpath -w "$HERE/launcher.nsi")"
 
 # Authenticode-signed (packaging/winsign.sh), the uninstaller and setup too below, so
 # SmartScreen and Defender know who made them
@@ -25,11 +33,7 @@ SIGN=()
 if [ -n "${AZURE_SIGNING_ENDPOINT:-}${WINDOWS_CERT_PFX:-}" ]; then SIGN=(-DSIGN="\"$(cygpath -w "$BASH")\" \"$(cygpath -w "$SIGNER")\""); fi
 
 cp -R "$PAYLOAD" "$STAGE/release"
-cp LICENSE "$PAYLOAD/THIRD_PARTY_NOTICES.txt" packaging/icons/icon.ico "$STAGE/"
 SETUP=$OUT/phosphorus-$VER-windows-x86_64-setup.exe
-# NSIS on the runner's image, else from chocolatey
-PATH="$PATH:/c/Program Files (x86)/NSIS"
-command -v makensis >/dev/null || choco install nsis -y --no-progress >/dev/null
 makensis -V2 "${SIGN[@]}" -DVERSION="$VER" -DSTAGE="$(cygpath -w "$STAGE")" -DOUTFILE="$(cygpath -w "$SETUP")" "$(cygpath -w "$HERE/installer.nsi")"
 "$SIGNER" "$SETUP"
 

@@ -21,8 +21,15 @@ export function read(p: string): string {
 // a child left to run on its own, this process's exit no end to it
 const detach = (argv: string[]) => Bun.spawn(argv, { stdin: "ignore", stdout: "ignore", stderr: "ignore", windowsHide: true }).unref();
 
-// this app as the login item launches it: the compiled binary, or bun with the script
-const appArgv = () => (process.execPath.replace(/\.exe$/i, "").endsWith("bun") ? [process.execPath, Bun.main] : [process.execPath]);
+// the tray as the login item launches it: bun with the script in a dev run; the
+// binary, which is the host's too, with tray; on Windows the launcher beside it, a
+// window-less start of the same, when it's there
+function appArgv(): string[] {
+  if (process.execPath.replace(/\.exe$/i, "").endsWith("bun")) return [process.execPath, Bun.main, "tray"];
+  const launcher = join(exe, "Phosphorus.exe");
+  if (!darwin && existsSync(launcher)) return [launcher];
+  return [process.execPath, "tray"];
+}
 
 // where the app's binary is: Phosphorus.app/Contents/MacOS or the install dir;
 // PHOSPHORUS_APP_DIR for a bare dev run beside a built host
@@ -43,11 +50,20 @@ function homeDir(): string {
 }
 
 const exe = exeDir();
-// the app's places: the host binary beside it, the release payload it ships
+// this binary, symlinks resolved: the host's commands are its own
+function self(): string {
+  try {
+    return realpathSync(process.execPath);
+  } catch {
+    return process.execPath;
+  }
+}
+// the app's places: the host binary, this same one, and the release payload it ships;
+// PHOSPHORUS_HOST_BIN a built host for a bare dev run of the tray script
 export const app = {
   exe,
   home: homeDir(),
-  host: join(exe, darwin ? "phosphorus-host" : "phosphorus-host.exe"),
+  host: process.env.PHOSPHORUS_HOST_BIN || (Bun.main.endsWith(".ts") ? join(exe, darwin ? "phosphorus-host" : "phosphorus-host.exe") : self()),
   // not "phosphorus": beside the Phosphorus binary on a case-insensitive disk
   payload: darwin ? join(exe, "../Resources/release") : join(exe, "release"),
 };
