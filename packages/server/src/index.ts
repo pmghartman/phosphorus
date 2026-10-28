@@ -20,13 +20,13 @@ import * as webapps from "@phosphorus/webapps";
 import type { WSData } from "@phosphorus/wsock";
 import { allPresence, chatEditAs, initChat, knownPerson, mergedChat, mergeFromPeers, mergePeerPresence, postAs, showAs } from "./chat.ts";
 import { baseDomain, bootID, getPlatform, ingressPort, isUpdating, loadPlatform, modelColor, port, recordPlatform, selfHost, selfInfo, setUpdating, Version } from "./config.ts";
-import { hostConfig, hostLogsOn, svcRequest, userUI, userUIAsync } from "./hostops.ts";
+import { configOp, hostConfig, hostLogsOn, svcRequest, userUI, userUIAsync } from "./hostops.ts";
 import { meshOnly } from "./http.ts";
 import { num } from "./js.ts";
 import { chainHistory, meshHealth, opOn, rememberChain } from "./mcpops.ts";
 import { reapShells } from "./mcpshell.ts";
 import { appHandler } from "./routes.ts";
-import { buildState, chainAction, forwardGame, gitRowsAny, hostServices, publishHost, runGameLocally, snapshot } from "./server.ts";
+import { buildState, chainAction, forwardGame, gitRowsAny, hostServices, hostsInfo, publishHost, runGameLocally, snapshot } from "./server.ts";
 import { filesCall } from "./shares.ts";
 import { copyAcross } from "./transfer.ts";
 import { startPushes } from "./ws.ts";
@@ -59,7 +59,10 @@ export async function start(): Promise<Server<WSData>> {
   update.restoreChain();
   mirror.Start(tailnetIP, port);
   webapps.Start(tailnetIP, port);
-  webapps.StartServices({ routes: mesh.routes, tailnet: mesh.tailnet, ipOf: tailnetIP, publish: (host, name, fields) => hostConfig(host, fields ? { op: "service", name, fields } : { op: "service", name, remove: true }) });
+  webapps.StartServices({
+    routes: mesh.routes, tailnet: mesh.tailnet, ipOf: tailnetIP, hostInfo: (h) => hostsInfo()[h],
+    publishLocal: (name, fields) => configOp(fields ? { op: "service", name, fields } : { op: "service", name, remove: true }),
+  });
   ingressListen(ingressPort, appHandler, { pass: users.Pass, issuers: users.Issuers });
   stats.hooks.self = () => ({ host: selfHost, platform: getPlatform(), version: Version() });
   stats.hooks.peers = mesh.peerIPs;

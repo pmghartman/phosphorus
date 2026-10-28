@@ -240,49 +240,90 @@ test("the feed read once per ttl, fresh on demand", async () => {
   srv.stop(true);
 });
 
-// --- services: a checkout per host, the ssh runner and the mesh faked ------------------
+// --- services: a checkout per host, the ssh start, the host's own side and GitHub faked ----
+
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 
 const circuit = W.serviceOf("circuit")!;
 const tavern = W.serviceOf("tavern")!;
 type Ran = { host: string; user: string; script: string };
 const ran: Ran[] = [];
-const published: [string, string, Record<string, string> | null][] = [];
-let exitCode = 0;
+const published: [string, Record<string, string> | null][] = [];
+let launchExit = 0;
 let publishStatus = 200;
 const routes: { host: string; name: string; port: number; mode: string; scheme: string; base_path: string }[] = [];
+// the logins' homes on this host, a, under the temp dir
+const homes = join(dir, "homes");
+const homeOf = (login: string) => join(homes, login);
+const jobsDir = (login: string) => join(homeOf(login), ".phosphorus", "services", ".jobs");
+// what GitHub says main is past each commit, and the icon it serves
+const ahead: Record<string, number> = {};
+let iconBytes: Uint8Array | undefined = new TextEncoder().encode("PNG!");
+let iconHits = 0;
 W.svcSeams.tailnet = () => [{ name: "a", os: "linux", phosphorus: true }, { name: "b", os: "linux", phosphorus: true }, { name: "w", os: "windows", phosphorus: true }, { name: "phone", os: "ios", phosphorus: false }];
 W.svcSeams.routes = () => routes;
+W.svcSeams.homeOf = homeOf;
+W.svcSeams.hostInfo = (h) => (h === "a" ? { services: W.svcProgress() } : undefined);
 W.svcSeams.run = async (host, login, script, onOut) => {
   ran.push({ host, user: login.user, script });
-  onOut("step one\n");
-  onOut("step two\n");
-  return exitCode;
+  onOut("started as the user unit phos-svc-x\n");
+  return launchExit;
 };
-W.svcSeams.publish = async (host, name, fields) => {
-  published.push([host, name, fields]);
+W.svcSeams.publishLocal = async (name, fields) => {
+  published.push([name, fields]);
   if (publishStatus !== 200) return [publishStatus, { error: "nope" }];
-  if (fields) routes.push({ host, name, port: Number(fields.port), mode: fields.mode ?? "path", scheme: "http", base_path: "" });
-  else routes.splice(0, routes.length, ...routes.filter((r) => !(r.host === host && r.name === name)));
+  if (fields) routes.push({ host: "a", name, port: Number(fields.port), mode: fields.mode ?? "path", scheme: "http", base_path: "" });
+  else routes.splice(0, routes.length, ...routes.filter((r) => r.name !== name));
   return [200, { ok: true, outcome: { published: true } }];
 };
-
-const settled = async () => {
-  for (let i = 0; i < 50 && W.svcJobs().some((j) => !j.done); i++) await new Promise((r) => setTimeout(r, 10));
+W.svcSeams.fetchJSON = async (url) => {
+  const m = /compare\/([0-9a-f]+)\.\.\.main$/.exec(url);
+  if (!m || !(m[1]! in ahead)) throw new Error("404");
+  return { ahead_by: ahead[m[1]!] };
 };
+W.svcSeams.fetchBytes = async () => {
+  iconHits++;
+  return iconBytes && { data: iconBytes, type: "image/png" };
+};
+process.env.APPS_ICON_DIR = join(dir, "icons");
+
+// the unit on the host ended: its log, exit and commit left for the host to find
+function ended(login: string, id: string, exit: number, log: string, commit = "") {
+  mkdirSync(jobsDir(login), { recursive: true });
+  writeFileSync(join(jobsDir(login), id + ".log"), log);
+  writeFileSync(join(jobsDir(login), id + ".exit"), exit + "\n");
+  if (commit) writeFileSync(join(jobsDir(login), id + ".commit"), commit + "\n");
+}
 
 test("the catalogue: circuit and tavern as services, their scripts in the login's own checkout", () => {
-  expect(W.Services.map((s) => [s.id, s.port, s.mode, s.os])).toEqual([["circuit", 8099, "path", ["linux"]], ["tavern", 8484, "path", ["linux"]]]);
+  expect(W.Services.map((s) => [s.id, s.port, s.mode, s.os, s.data])).toEqual([["circuit", 8099, "path", ["linux"], []], ["tavern", 8484, "path", ["linux"], ["data", ".env"]]]);
+  expect(W.svcRepoOf(circuit)).toEqual({ owner: "pmghartman", name: "circuit" });
   const inst = W.svcScript(circuit, "install");
   expect(inst).toContain('dir="$HOME/.phosphorus/services/circuit"');
   expect(inst).toContain("git clone -q https://github.com/pmghartman/circuit.git");
   expect(inst).toContain("PORT=8099 scripts/install.sh");
-  expect(inst).toContain("loginctl enable-linger");
   expect(inst.startsWith("set -e\n")).toBe(true);
+  expect(inst).not.toContain("restored");
+  // tavern's data back into a fresh checkout, aside on a remove that keeps it
+  expect(W.svcScript(tavern, "install")).toContain('mv "$keep/$p" "$dir/$p"');
   expect(W.svcScript(tavern, "update")).toContain("scripts/update.sh");
   expect(W.svcScript(tavern, "update")).toContain("install first");
   const rm = W.svcScript(tavern, "remove");
   expect(rm).toContain("systemctl --user disable --now tavern");
   expect(rm).toContain('rm -rf "$dir"');
+  expect(rm).not.toContain("kept $p");
+  const keep = W.svcScript(tavern, "remove", true);
+  expect(keep).toContain("for p in data .env; do");
+  expect(keep).toContain('mv "$dir/$p" "$keep/$p"');
+  expect(keep.indexOf("kept $p")).toBeLessThan(keep.indexOf('rm -rf "$dir"'));
+  // the start: the script written under .jobs, run as a transient unit with the step's time
+  const l = W.svcLaunch(circuit, "install");
+  expect(l).toContain('cat > "$j/circuit.sh" <<');
+  expect(l).toContain(inst);
+  expect(l).toContain("systemd-run --user --quiet --collect --unit=phos-svc-circuit -p RuntimeMaxSec=2700");
+  expect(l).toContain("nohup setsid");
+  expect(l).toContain("loginctl enable-linger");
+  expect(l).toContain('git -C "$4" rev-parse HEAD >"$5"');
 });
 
 test("an op refused: no such service, a bad op, a host that isn't one, the wrong os, no login", async () => {
@@ -295,72 +336,121 @@ test("an op refused: no such service, a bad op, a host that isn't one, the wrong
   expect([st, b.error]).toEqual([400, "Circuit runs on linux hosts; w is windows"]);
   expect((await W.ServiceOp("install", "circuit", "a", { user: "", pass: "" }, "pat"))[0]).toBe(400);
   expect(ran).toEqual([]);
+  // the start itself failing: no job noted
+  launchExit = 255;
+  const r = await W.ServiceOp("install", "circuit", "a", login, "pat");
+  expect(r[0]).toBe(502);
+  expect(r[1].error).toContain("couldn't start it");
+  expect(W.svcJobOf("circuit", "a")).toBeUndefined();
+  launchExit = 0;
+  ran.length = 0;
 });
 
-test("install: the script run on the host as the login, the service published there, the record kept", async () => {
+test("install: started on the host as the login, the job noted for the mesh, this host finishing it", async () => {
   const [st, b] = await W.ServiceOp("install", "circuit", "a", { user: "pat", pass: "x" }, "pmh");
   expect(st).toBe(200);
-  expect(b.job).toMatchObject({ id: "circuit", host: "a", op: "install", login: "pat", by: "pmh", done: 0 });
+  expect(b.job).toMatchObject({ id: "circuit", host: "a", op: "install", login: "pat", by: "pmh", from: "a", done: 0 });
+  expect(ran.map((r) => [r.host, r.user])).toEqual([["a", "pat"]]);
+  expect(ran[0]!.script).toBe(W.svcLaunch(circuit, "install"));
+  expect(sysfs.read("etc/services/circuit/jobs/a.json")).toMatchObject({ op: "install", login: "pat" });
   // the same host again while it runs
   expect((await W.ServiceOp("update", "circuit", "a", { user: "pat", pass: "x" }, "pmh"))[0]).toBe(409);
-  await settled();
-  expect(ran.map((r) => [r.host, r.user])).toEqual([["a", "pat"]]);
-  expect(ran[0]!.script).toBe(W.svcScript(circuit, "install"));
-  expect(published).toEqual([["a", "circuit", { port: "8099", mode: "path" }]]);
-  expect(W.svcRecordOf("circuit", "a")).toMatchObject({ login: "pat", by: "pmh" });
-  expect(sysfs.read("etc/services/circuit/a.json")).toMatchObject({ login: "pat" });
-  const j = W.svcJobs("circuit")[0]!;
-  expect([j.ok, j.error]).toEqual([true, ""]);
-  expect(j.log).toContain("step two");
-  expect(j.log).toContain("Circuit published on a");
-  const s = (await W.svcSummary()).find((x: any) => x.id === "circuit")!;
-  expect(s.hosts.a).toMatchObject({ published: true, record: { login: "pat", by: "pmh" } });
-  expect(s.hosts.a.job.ok).toBe(true);
+  // under way: the log's tail in this host's info, nothing published yet
+  mkdirSync(jobsDir("pat"), { recursive: true });
+  writeFileSync(join(jobsDir("pat"), "circuit.log"), "cloning\nbuilding\n");
+  await W.svcTick();
+  expect(W.svcProgress()).toEqual({ circuit: { log: "cloning\nbuilding\n" } });
+  expect(published).toEqual([]);
+  let s = (await W.svcSummary()).find((x: any) => x.id === "circuit")!;
+  expect(s.hosts.a.job).toMatchObject({ op: "install", done: 0, log: "cloning\nbuilding\n" });
+  expect(s.icon).toBe("/api/apps/services/circuit/icon");
+  // ended: published here, recorded with the checkout's commit, the job done
+  ended("pat", "circuit", 0, "cloning\nbuilding\ndone\n", "abcdef0123456789");
+  ahead.abcdef0123456789 = 3;
+  await W.svcTick();
+  expect(published).toEqual([["circuit", { port: "8099", mode: "path" }]]);
+  expect(W.svcRecordOf("circuit", "a")).toMatchObject({ login: "pat", by: "pmh", commit: "abcdef0123456789" });
+  const j = W.svcJobOf("circuit", "a")!;
+  expect([j.ok, j.error, j.done > 0]).toEqual([true, "", true]);
+  expect(W.svcProgress().circuit).toMatchObject({ exit: 0 });
+  s = (await W.svcSummary()).find((x: any) => x.id === "circuit")!;
+  expect(s.hosts.a).toMatchObject({ published: true, record: { login: "pat", commit: "abcdef0123456789" }, behind: 3 });
+  expect(s.hosts.a.job).toMatchObject({ ok: true, exit: 0 });
   expect(s.checkout).toBe("~/.phosphorus/services/circuit");
   // the page's summary carries them beside the apps
   const all = await W.summary(false);
   expect(all.services.map((x: any) => x.id)).toEqual(["circuit", "tavern"]);
 });
 
-test("a failing script: the job failed with the exit, nothing published", async () => {
-  exitCode = 2;
+test("a failing script: the job failed with the exit, nothing published; tried again once done", async () => {
   ran.length = published.length = 0;
-  expect((await W.ServiceOp("install", "tavern", "b", { user: "pat", pass: "x" }, "pmh"))[0]).toBe(200);
-  await settled();
-  const j = W.svcJobs("tavern")[0]!;
-  expect(j.ok).toBe(false);
-  expect(j.error).toBe("the install script exited 2");
+  expect((await W.ServiceOp("install", "tavern", "a", { user: "pat", pass: "x" }, "pmh"))[0]).toBe(200);
+  ended("pat", "tavern", 2, "npm ci failed\n");
+  await W.svcTick();
+  const j = W.svcJobOf("tavern", "a")!;
+  expect([j.ok, j.error]).toEqual([false, "the install script exited 2"]);
   expect(published).toEqual([]);
-  expect(W.svcRecordOf("tavern", "b")).toBeUndefined();
-  // tried again once it's done
-  exitCode = 0;
-  expect((await W.ServiceOp("install", "tavern", "b", { user: "pat", pass: "x" }, "pmh"))[0]).toBe(200);
-  await settled();
-  expect(W.svcJobs("tavern")[0]!.ok).toBe(true);
-  expect(W.svcRecordOf("tavern", "b")).toMatchObject({ login: "pat" });
+  expect(W.svcRecordOf("tavern", "a")).toBeUndefined();
+  expect((await W.ServiceOp("install", "tavern", "a", { user: "pat", pass: "x" }, "pmh"))[0]).toBe(200);
+  expect(W.svcJobOf("tavern", "a")!.done).toBe(0);
+  ended("pat", "tavern", 0, "ok\n", "1234567");
+  await W.svcTick();
+  expect(W.svcJobOf("tavern", "a")!.ok).toBe(true);
+  expect(W.svcRecordOf("tavern", "a")).toMatchObject({ login: "pat", commit: "1234567" });
 });
 
-test("publishing refused: the job failed, the record not written", async () => {
+test("a step past its time with no exit: failed", async () => {
+  rmSync(join(jobsDir("pat"), "circuit.exit"), { force: true });
+  expect((await W.ServiceOp("update", "circuit", "a", { user: "pat", pass: "x" }, "pmh"))[0]).toBe(200);
+  const j = W.svcJobOf("circuit", "a")!;
+  sysfs.write("etc/services/circuit/jobs/a.json", { ...j, at: Date.now() - W.svcTimeoutMS.update - 120000 });
+  await W.svcTick();
+  expect(W.svcJobOf("circuit", "a")!.error).toContain("ran past 30 minutes");
+});
+
+test("publishing refused: the job failed, the record kept as it was", async () => {
   publishStatus = 500;
   expect((await W.ServiceOp("update", "circuit", "a", { user: "pat", pass: "x" }, "pmh"))[0]).toBe(200);
-  await settled();
-  const j = W.svcJobs("circuit")[0]!;
+  ended("pat", "circuit", 0, "pulled\n", "abcdef0123456789");
+  await W.svcTick();
+  const j = W.svcJobOf("circuit", "a")!;
   expect([j.op, j.ok]).toEqual(["update", false]);
   expect(j.error).toContain("publishing: nope");
   publishStatus = 200;
 });
 
-test("remove: the script run, the entry dropped, the record gone", async () => {
+test("remove, its data kept: the start asked with keep, the entry dropped, the record gone", async () => {
   ran.length = published.length = 0;
-  expect((await W.ServiceOp("remove", "circuit", "a", { user: "pat", pass: "x" }, "pmh"))[0]).toBe(200);
-  await settled();
-  expect(ran[0]!.script).toBe(W.svcScript(circuit, "remove"));
-  expect(published).toEqual([["a", "circuit", null]]);
-  expect(W.svcRecordOf("circuit", "a")).toBeUndefined();
-  expect(routes.some((r) => r.name === "circuit")).toBe(false);
-  const s = (await W.svcSummary()).find((x: any) => x.id === "circuit")!;
+  expect((await W.ServiceOp("remove", "tavern", "a", { user: "pat", pass: "x" }, "pmh", true))[0]).toBe(200);
+  expect(ran[0]!.script).toBe(W.svcLaunch(tavern, "remove", true));
+  expect(ran[0]!.script).toContain("kept $p");
+  expect(W.svcJobOf("tavern", "a")!.keep).toBe(true);
+  ended("pat", "tavern", 0, "removed\n");
+  await W.svcTick();
+  expect(published).toEqual([["tavern", null]]);
+  expect(W.svcRecordOf("tavern", "a")).toBeUndefined();
+  expect(routes.some((r) => r.name === "tavern")).toBe(false);
+  const s = (await W.svcSummary()).find((x: any) => x.id === "tavern")!;
   expect(s.hosts.a.published).toBe(false);
-  expect(s.hosts.a.job.op).toBe("remove");
+  expect(s.hosts.a.job).toMatchObject({ op: "remove", keep: true, ok: true });
+  // keep means nothing to an install
+  expect(W.svcJobOf("circuit", "a")!.keep).toBe(false);
+});
+
+test("main moved: GitHub's compare an hour at a time, nothing for a commit it can't place", async () => {
+  expect(await W.svcBehindMain(circuit, "abcdef0123456789")).toBe(3);
+  ahead.abcdef0123456789 = 9;
+  expect(await W.svcBehindMain(circuit, "abcdef0123456789")).toBe(3);
+  expect(await W.svcBehindMain(circuit, "ffffffff")).toBeNull();
+  expect(await W.svcBehindMain(circuit, "not a commit")).toBeNull();
+});
+
+test("the icon off the repository, kept a day, the kept copy when the fetch fails", async () => {
+  const ic = (await W.svcIcon("circuit"))!;
+  expect([ic.type, new TextDecoder().decode(ic.data), iconHits]).toEqual(["image/png", "PNG!", 1]);
+  expect(iconHits).toBe(1);
+  await W.svcIcon("circuit");
+  expect(iconHits).toBe(1);
+  expect(await W.svcIcon("nothing")).toBeUndefined();
   W.svcReset();
-  expect(W.svcJobs()).toEqual([]);
 });

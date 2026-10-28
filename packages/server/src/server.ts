@@ -79,7 +79,7 @@ export function publishHost() {
     if (cur !== next) sysfs.write(hostRel(selfHost, f), data);
   };
   put("services", ownServices());
-  put("info", { version: Version(), platform: getPlatform(), files: filesInfo(), desk: deskStamps(), apps: webapps.installed() });
+  put("info", { version: Version(), platform: getPlatform(), files: filesInfo(), desk: deskStamps(), apps: webapps.installed(), services: webapps.svcProgress() });
 }
 
 export function hostsInfo(): Record<string, any> {

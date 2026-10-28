@@ -100,6 +100,8 @@ export interface HostInfo {
   files?: { enabled?: boolean; shares?: HostShare[] };
   desk?: Record<string, string>;
   apps?: Record<string, AppStatus>;
+  // a service's step on the host (packages/webapps services): its log's tail, its exit once ended
+  services?: Record<string, { log: string; exit?: number }>;
 }
 
 export interface SelfInfo { host: string; version?: string; platform?: string; bootId?: string }

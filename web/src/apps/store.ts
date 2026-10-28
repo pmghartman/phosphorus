@@ -38,10 +38,11 @@ interface StoreApp {
   signed: boolean;
 }
 
-// a service's step on one host, on the host whose page started it (packages/webapps services)
+// a service's step on one host, run there as a unit of the login's own; asked from the host
+// from, finished by the host itself (packages/webapps services)
 type SvcOp = 'install' | 'update' | 'remove';
-interface SvcJob { id: string; host: string; op: SvcOp; by: string; login: string; at: number; done: number; ok?: boolean; error: string; log: string }
-interface SvcHost { published: boolean; route?: Route; version: string; record?: { login: string; by: string; at: number }; job?: SvcJob }
+interface SvcJob { id: string; host: string; op: SvcOp; by: string; login: string; from: string; keep: boolean; at: number; done: number; ok?: boolean; error: string; log: string; exit?: number }
+interface SvcHost { published: boolean; route?: Route; version: string; record?: { login: string; by: string; at: number; commit: string }; job?: SvcJob; behind: number | null }
 
 // one service as /api/apps lists it
 interface StoreService {
@@ -53,12 +54,15 @@ interface StoreService {
   category: string;
   by: string;
   repo: string;
+  icon: string;
   port: number;
   mode: string;
   os: string[];
   needs: string;
   agents: string[];
+  data: string[];
   checkout: string;
+  kept: string;
   hosts: Record<string, SvcHost>;
 }
 
@@ -243,6 +247,8 @@ interface SvcFacts {
   busy: string[];
   // hosts whose last step failed
   failed: string[];
+  // hosts whose checkout main has moved past
+  behind: string[];
   // hosts this person may install it onto: logged in, not serving it, nothing under way
   canInstall: string[];
 }
@@ -252,18 +258,20 @@ function svcFacts(s: StoreService): SvcFacts {
   const on = rows.filter(([h]) => !!svcRoute(s, h)).map(([h]) => h);
   const busy = rows.filter(([, x]) => x?.job && !x.job.done).map(([h]) => h);
   const failed = rows.filter(([, x]) => x?.job && x.job.done && x.job.ok === false).map(([h]) => h);
-  return { rows, on, busy, failed, canInstall: rows.filter(([h]) => canAct(h) && !on.includes(h) && !busy.includes(h)).map(([h]) => h) };
+  const behind = rows.filter(([h, x]) => on.includes(h) && (x?.behind ?? 0) > 0).map(([h]) => h);
+  return { rows, on, busy, failed, behind, canInstall: rows.filter(([h]) => canAct(h) && !on.includes(h) && !busy.includes(h)).map(([h]) => h) };
 }
 
 const opWord: Record<SvcOp, string> = { install: 'installing', update: 'updating', remove: 'removing' };
 
-// a service's step on a host, as the person's saved login there
-async function svcAct(op: SvcOp, s: StoreService, host: string) {
+// a service's step on a host, as the person's saved login there; keep: a remove leaving
+// the checkout's data aside
+async function svcAct(op: SvcOp, s: StoreService, host: string, keep = false) {
   busyId = s.id;
   sig = '';
   draw();
   try {
-    const r = await fetch(`/api/apps/services/${op}`, jsonPost({ id: s.id, host }));
+    const r = await fetch(`/api/apps/services/${op}`, jsonPost({ id: s.id, host, keep }));
     const out = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(out.error || `status ${r.status}`);
     actError = '';
@@ -348,15 +356,52 @@ function svcPill(s: StoreService, f: SvcFacts, big = false): HTMLElement {
   return b;
 }
 
-const svcIcon = (s: StoreService, f: SvcFacts, cls: string) => iconTile(s.name, f.on.length ? `/api/favicon/${encodeURIComponent(f.on[0]!)}/${encodeURIComponent(s.id)}` : '', cls);
+// the icon off the service's repository, kept by this host; its initial until that answers
+const svcIcon = (s: StoreService, _f: SvcFacts, cls: string) => iconTile(s.name, s.icon, cls);
 
 // a line under a service's tile: where it runs, a step under way, or what it is
 function svcSub(s: StoreService, f: SvcFacts): [string, string] {
   if (busyId === s.id) return ['wait', 'starting'];
   if (f.busy.length) return ['wait', `${opWord[s.hosts[f.busy[0]!]!.job!.op]} on ${f.busy.join(', ')}`];
   if (f.failed.length) return ['bad', `${s.hosts[f.failed[0]!]!.job!.op} failed on ${f.failed.join(', ')}`];
+  if (f.behind.length) return ['new', `main moved: ${behindWords(s.hosts[f.behind[0]!]!.behind!)} past ${f.behind.join(', ')}`];
   if (f.on.length) return ['on', `on ${f.on.join(', ')}`];
   return ['dim', s.category];
+}
+
+const behindWords = (n: number) => `${n} commit${n === 1 ? '' : 's'}`;
+
+// remove from a host: a service with data asks whether to keep it aside; null for no
+function svcRemoveAsk(s: StoreService, host: string): Promise<{ keep: boolean } | null> {
+  return new Promise((resolve) => {
+    const veil = el('div', 'fm-veil page-veil');
+    const box = el('form', 'fm-ask store-pick');
+    const end = (v: { keep: boolean } | null) => { veil.remove(); resolve(v); };
+    const keep = Object.assign(el('input'), { type: 'checkbox', checked: s.data.length > 0 });
+    const text = el('p', '', `Its unit is stopped, its entry leaves ${host}'s services.export and its checkout in ${s.checkout} is deleted.`);
+    const go = Object.assign(el('button', 'danger', 'remove'), { type: 'submit' });
+    const no = Object.assign(el('button', '', 'cancel'), { type: 'button' });
+    no.addEventListener('click', () => end(null));
+    const acts = el('div', 'update-actions');
+    acts.append(no, go);
+    box.append(el('div', 'fm-ask-title', `remove ${s.name} from ${host}`), text);
+    if (s.data.length) {
+      const lab = el('label', 'store-pick-label');
+      lab.append(keep, el('span', '', `keep its data (${s.data.join(', ')}) aside in ${s.kept}`));
+      const note = el('p', 'store-pick-note', 'put back by the next install there');
+      const sync = () => { note.textContent = keep.checked ? 'put back by the next install there' : 'its data goes with the checkout'; note.classList.toggle('warn', !keep.checked); };
+      keep.addEventListener('change', sync);
+      sync();
+      box.append(lab, note);
+    }
+    box.append(acts);
+    box.addEventListener('submit', (e) => { e.preventDefault(); end({ keep: s.data.length > 0 && keep.checked }); });
+    box.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Escape') end(null); });
+    veil.addEventListener('pointerdown', (e) => { if (e.target === veil) end(null); });
+    veil.appendChild(box);
+    document.body.appendChild(veil);
+    go.focus();
+  });
 }
 
 // --- the front: tiles -------------------------------------------------------------
@@ -566,6 +611,7 @@ function svcInfoRows(s: StoreService, f: SvcFacts): HTMLElement {
   row('on the mesh', f.on.length ? f.on.join(', ') : 'not installed');
   row('source', Object.assign(el('a', '', s.repo.replace(/^https?:\/\//, '').replace(/\.git$/, '')), { href: s.repo.replace(/\.git$/, ''), target: '_blank', rel: 'noopener' }));
   row('installed from', 'the repository’s main, cloned on the host', 'dim');
+  if (s.data.length) row('on remove', `its ${s.data.join(', ')} may be kept in ${s.kept}, back on the next install`, 'dim');
   row('runs as', `your own login, a systemd user unit in ${s.checkout}`, 'mono');
   row('published as', `port ${s.port}, ${s.mode} mode, in the host’s services.export`);
   row('runs on', `${s.os.join(', ')} hosts`);
@@ -591,23 +637,25 @@ function svcHostList(s: StoreService, f: SvcFacts): HTMLElement {
     const running = !!job && !job.done;
     const failed = !!job && job.done && job.ok === false;
     const can = canAct(h);
+    const behind = route && (x?.behind ?? 0) > 0 ? x!.behind! : 0;
     const cls = running ? 'mid' : failed ? 'fail' : route ? 'ok' : x?.record ? 'old' : 'off';
     li.className += ` ${cls}`;
     const text = running ? opWord[job.op]
       : failed ? `${job.op} failed`
-      : route ? (x?.version ? `v${x.version}` : 'running')
+      : route ? `${x?.version ? `v${x.version}` : 'running'}${behind ? ` · ${behindWords(behind)} behind main` : ''}`
       : x?.record ? 'installed, not answering'
       : can ? 'not installed' : 'not installed · log in on the desktop to install';
     const top = el('div', 'store-host-top');
-    top.append(el('i', 'store-dot'), el('span', `store-host-name${h === st.selfHost ? ' is-self' : ''}`, h), el('span', 'store-host-state', text));
+    top.append(el('i', 'store-dot'), el('span', `store-host-name${h === st.selfHost ? ' is-self' : ''}`, h), el('span', `store-host-state${behind ? ' behind' : ''}`, text));
     if (failed) top.title = job.error;
     const acts = el('span', 'store-host-acts');
     if (route) acts.append(svcBtn('open', `open ${s.name} on ${h}`, () => svcOpen(s, f, h)));
     if (can && !running && busyId !== s.id) {
       if (route || x?.record) {
-        acts.append(svcBtn('update', `pull main and rebuild on ${h}`, () => svcAct('update', s, h)));
+        acts.append(svcBtn('update', behind ? `main is ${behindWords(behind)} ahead: pull and rebuild on ${h}` : `pull main and rebuild on ${h}`, () => svcAct('update', s, h), behind ? 'new' : ''));
         acts.append(svcBtn('remove', `stop ${s.name} on ${h} and delete its checkout`, async () => {
-          if (await pageAsk({ title: `remove ${s.name} from ${h}`, message: `Its unit is stopped and its checkout in ${s.checkout} deleted, data and all. Its entry leaves ${h}'s services.export.`, action: 'remove', danger: true })) svcAct('remove', s, h);
+          const a = await svcRemoveAsk(s, h);
+          if (a) svcAct('remove', s, h, a.keep);
         }, 'danger'));
       } else acts.append(svcBtn('install', `onto ${h}, as your login there`, () => svcAct('install', s, h)));
     }
@@ -622,14 +670,14 @@ function svcHostList(s: StoreService, f: SvcFacts): HTMLElement {
     top.append(acts);
     li.append(top);
     if (job && (running || failed || logsOpen.has(`${s.id}/${h}`))) {
-      const who = `${job.op} as ${job.login}${job.by ? `, for ${job.by}` : ''}, ${ago2(job.at)}${job.done ? `, ${job.ok ? 'done' : 'failed'}` : ''}`;
+      const who = `${job.op} as ${job.login}${job.by ? `, for ${job.by}` : ''}${job.from && job.from !== h ? `, from ${job.from}` : ''}, ${ago2(job.at)}${job.done ? `, ${job.ok ? 'done' : 'failed'}` : ' · runs on the host itself, this page may close'}`;
       const log = el('pre', `store-log${logsOpen.has(`${s.id}/${h}`) ? ' full' : ''}`, (failed && job.error ? `${job.log.trimEnd()}\n${job.error}` : job.log) || (running ? 'connecting…' : ''));
       li.append(el('div', 'store-log-who', who), log);
       // the newest lines in view
       requestAnimationFrame(() => { log.scrollTop = log.scrollHeight; });
     }
     if (x?.record && !running) {
-      li.append(el('div', 'store-host-note', `installed by ${x.record.by || x.record.login} as ${x.record.login}${x.record.at ? `, ${ago2(x.record.at)}` : ''}`));
+      li.append(el('div', 'store-host-note', `installed by ${x.record.by || x.record.login} as ${x.record.login}${x.record.at ? `, ${ago2(x.record.at)}` : ''}${x.record.commit ? `, at ${x.record.commit.slice(0, 7)}` : ''}`));
     }
     list.append(li);
   }

@@ -2533,6 +2533,7 @@ body:has(.dk-pop:not([hidden])) .toasts { opacity: 0; pointer-events: none; }
 .store-host-btn { padding: 0.1rem 0.55rem; background: none; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); font: inherit; font-size: 0.7rem; cursor: pointer; }
 .store-host-btn:is(:hover, :focus-visible) { border-color: var(--accent); color: var(--accent); }
 .store-host-btn.danger:is(:hover, :focus-visible) { border-color: var(--offmesh); color: var(--offmesh); }
+.store-host-btn.new { border-color: var(--accent); color: var(--accent); }
 .store-log-who { color: var(--muted); font-size: 0.7rem; }
 .store-log { margin: 0; max-height: 7.5rem; overflow: auto; padding: 0.45rem 0.6rem; background: var(--bg); border: 1px solid var(--border); color: var(--fg); font-family: var(--mono, ui-monospace, monospace); font-size: 0.68rem; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; }
 .store-log.full { max-height: 24rem; }
@@ -2548,6 +2549,9 @@ body:has(.dk-pop:not([hidden])) .toasts { opacity: 0; pointer-events: none; }
 .store-pick-label input { accent-color: var(--accent); margin: 0; }
 .store-pick-why { color: var(--muted); font-size: 0.7rem; }
 .store-pick-why.hidden { display: none; }
+.store-pick-note { margin: 0; color: var(--muted); font-size: 0.72rem; }
+.store-pick-note.warn { color: var(--sand); }
+.store-host-state.behind { color: var(--accent); }
 .store-remove { align-self: flex-start; padding: 0.2rem 0.75rem; background: none; border: 1px solid var(--border); color: var(--offmesh); font: inherit; font-size: 0.74rem; cursor: pointer; }
 .store-remove:is(:hover, :focus-visible):not(:disabled) { border-color: var(--offmesh); }
 .store-remove:disabled { opacity: 0.5; cursor: default; }
