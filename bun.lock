@@ -146,6 +146,12 @@
     },
     "packages/webapps": {
       "name": "@phosphorus/webapps",
+      "dependencies": {
+        "ssh2": "1.17.0",
+      },
+      "devDependencies": {
+        "@types/ssh2": "1.15.6",
+      },
     },
     "packages/webstatic": {
       "name": "@phosphorus/webstatic",

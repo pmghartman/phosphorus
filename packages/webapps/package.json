@@ -1,1 +1,1 @@
-{ "name": "@phosphorus/webapps", "private": true, "type": "module", "exports": { ".": "./src/index.ts" } }
+{ "name": "@phosphorus/webapps", "private": true, "type": "module", "exports": { ".": "./src/index.ts" }, "dependencies": { "ssh2": "1.17.0" }, "devDependencies": { "@types/ssh2": "1.15.6" } }

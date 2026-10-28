@@ -59,6 +59,7 @@ export async function start(): Promise<Server<WSData>> {
   update.restoreChain();
   mirror.Start(tailnetIP, port);
   webapps.Start(tailnetIP, port);
+  webapps.StartServices({ routes: mesh.routes, tailnet: mesh.tailnet, ipOf: tailnetIP, publish: (host, name, fields) => hostConfig(host, fields ? { op: "service", name, fields } : { op: "service", name, remove: true }) });
   ingressListen(ingressPort, appHandler, { pass: users.Pass, issuers: users.Issuers });
   stats.hooks.self = () => ({ host: selfHost, platform: getPlatform(), version: Version() });
   stats.hooks.peers = mesh.peerIPs;

@@ -40,6 +40,8 @@ const mediaRe = /^\/api\/chat\/media\/([a-z0-9][a-z0-9-]*)\/([0-9a-f]{32})$/;
 const runRe = /^\/api\/run\/([a-z0-9][a-z0-9-]*)\/([A-Za-z0-9_-]+)\/(.*)$/;
 const mirrorRe = /^\/internal\/mirror\/([0-9a-f]{24})$/;
 const appsTarRe = /^\/internal\/apps\/([a-z][a-z0-9-]*)\/(\d+(?:\.\d+){0,3})$/;
+const appsSvcRe = /^\/api\/apps\/services\/(install|update|remove)$/;
+const hostRe = /^[a-z0-9][a-z0-9-]*$/;
 const pingRe = /^\/api\/ping\/([a-z0-9-]+)$/;
 const filesRe = /^\/api\/files\/([a-z0-9][a-z0-9-]*)\/(info|list|tree|search|read|download|upload|save|mkdir|rename|delete|run|mirror|own)$/;
 const publicRe = /^\/api\/services\/([a-z0-9][a-z0-9-]*)\/([a-z0-9][a-z0-9-]*)\/public$/;
@@ -321,6 +323,22 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
     const s = users.Of(c);
     if (!isBrowser(c) || !((!!s && s.admin) || (adminPass === "" && isLoopback(c)))) return forbidden();
     return onJSON(c, 1024, true, (p) => (pathname === "/api/apps/install" ? webapps.Install(str(p.id)) : webapps.Remove(str(p.id))));
+  }
+  // a service onto, updated on or off one host, run there as the person's saved login
+  // for that host: anyone who logged into the host, admin or not
+  m = appsSvcRe.exec(pathname);
+  if (m && method === "POST") {
+    if (!isBrowser(c) || !sameOrigin(c)) return forbidden();
+    const s = await users.Soon(c);
+    if (!s || s.boot) return sendJSON(403, { error: "log in as a user" });
+    const op = m[1]!;
+    return onJSON(c, 1024, true, async (p) => {
+      const host = str(p.host);
+      if (!hostRe.test(host)) return [400, { error: "pick a host" }];
+      const [user, pass, ok] = await users.HostLogin(s, host);
+      if (!ok) return [403, { error: `no saved login for ${host}: log into it on the desktop first` }];
+      return webapps.ServiceOp(op, str(p.id), host, { user, pass }, s.user);
+    });
   }
   m = appsTarRe.exec(pathname);
   if (m && method === "GET") {

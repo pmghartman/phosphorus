@@ -10,6 +10,7 @@ import { parsePublicKey } from "@phosphorus/minisign";
 import * as sysfs from "@phosphorus/sysfs";
 import { untar } from "@phosphorus/tools";
 import { env, errText, FrontendPort, ini, logf as log, now, obj, readJSON, SelfHost, StateDir, writeJSONAtomic } from "@phosphorus/util";
+import { summary as svcSummaryFn } from "./services.ts";
 
 const logf = (f: string, ...a: unknown[]) => log("[apps] " + f, ...a);
 
@@ -435,6 +436,7 @@ export function serve(req: Request): Response | undefined {
 // --- the page's read: the catalogue with what the mesh wants and the feed says ---
 
 export async function summary(fresh: boolean): Promise<Record<string, any>> {
+  const services = svcSummaryFn();
   const apps = await Promise.all(Catalog.map(async (a) => {
     const f = await latest(a, fresh);
     const l = local(a.id);
@@ -447,7 +449,14 @@ export async function summary(fresh: boolean): Promise<Record<string, any>> {
       signed: !!keyOf(a.id),
     };
   }));
-  return { apps };
+  return { apps, services: await services };
 }
 
 export { newer };
+
+// the services beside the apps: a checkout per host, run as a person's own login
+export {
+  type Device as SvcDevice, type HostView as SvcHostView, type Job as SvcJob, type JobView as SvcJobView, Jobs as svcJobs, type Login as SvcLogin, type Op as SvcOp,
+  Ops as SvcOps, type Publish as SvcPublish, type Record_ as SvcRecord, recordOf as svcRecordOf, records as svcRecords, reset as svcReset, type Route as SvcRoute,
+  type Runner as SvcRunner, script as svcScript, seams as svcSeams, type Service, serviceOf, ServiceOp, Services, Start as StartServices, summary as svcSummary,
+} from "./services.ts";
