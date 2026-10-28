@@ -43,9 +43,17 @@ function visible(t: Tool, local: boolean, caller: Caller | undefined): boolean {
   return !!t.read && !t.scope;
 }
 
-// iconURI the mesh's mark for an agent's connector list, its background clear
+// icons the mesh's mark for an agent's connector list, its background clear: off the
+// mesh's own domain first (claude.ai draws no data url), inline for a client with no web
 let iconURI: string | undefined;
-const iconOf = async () => (iconURI ??= "data:image/png;base64," + Buffer.from(await Bun.file(icon).bytes()).toString("base64"));
+async function icons(): Promise<Record<string, any>[]> {
+  iconURI ??= "data:image/png;base64," + Buffer.from(await Bun.file(icon).bytes()).toString("base64");
+  const domain = src.domain();
+  const out: Record<string, any>[] = [];
+  if (domain) out.push({ src: `https://${domain}/icon-192.png`, mimeType: "image/png", sizes: ["192x192"] });
+  out.push({ src: iconURI, mimeType: "image/png", sizes: ["128x128"] });
+  return out;
+}
 
 const reply = (id: unknown, result: unknown) => ({ jsonrpc: "2.0", id, result });
 const fail = (id: unknown, code: number, message: string) => ({ jsonrpc: "2.0", id, error: { code, message } });
@@ -76,7 +84,7 @@ async function initialize(id: unknown, params: Record<string, any>, caller: Call
   return reply(id, {
     protocolVersion: params.protocolVersion || protocol,
     capabilities: { tools: {} },
-    serverInfo: { name: "phosphorus", title: "Phosphorus", version: src.self().version, icons: [{ src: await iconOf(), mimeType: "image/png", sizes: ["128x128"] }] },
+    serverInfo: { name: "phosphorus", title: "Phosphorus", version: src.self().version, icons: await icons() },
     instructions: instructions(caller),
   });
 }

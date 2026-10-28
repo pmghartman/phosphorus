@@ -1,11 +1,9 @@
 // the page's entry: the desktop and its apps, one bundle
-// the leaves first, as app.js imported them: markdown, the themes, the editor's parsers (not
-// called by the page since the editor went plain, kept in the bundle as app.js kept them) and
-// the icons; then each section of app.js, the modules of one strongly connected graph whose
-// top-level code touches only the leaves, the DOM and hoisted functions
+// the leaves first: markdown, the themes and the icons; then the
+// modules of one strongly connected graph whose top-level code touches only the leaves,
+// the DOM and hoisted functions
 import './md.ts';
 import './theme.ts';
-import './lezer.ts';
 import './icons.ts';
 import './games.ts';
 import './mesh.ts';
@@ -22,6 +20,10 @@ import './desktop/login.ts';
 import './desktop/desk.ts';
 import './desktop/deskfiles.ts';
 import './desktop/control.ts';
+import './desktop/switcher.ts';
+import './desktop/spotlight.ts';
+import './desktop/keys.ts';
+import './desktop/session.ts';
 import { acctStart } from './account.ts';
 import './mcp.ts';
 import './agent.ts';

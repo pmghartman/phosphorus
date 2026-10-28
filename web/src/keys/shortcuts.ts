@@ -1,7 +1,6 @@
 // --- keys and popups ------------------------------------------------------------
 import { chatPanel, cwList, stepConv } from '../chat.ts';
 import { modalOpen } from '../dom.ts';
-import { closeMenus, themeMenus } from '../scheme.ts';
 import { closeUpdateModal, updateModal } from '../update.ts';
 import { dkIconKeys } from '../desktop/desk.ts';
 
@@ -44,14 +43,12 @@ document.addEventListener('keydown', (e) => {
   stepConv(e.key === 'ArrowDown' ? 1 : -1);
 }, true);
 
-// a press outside a popup and its button closing it, as the mesh's and the menus'
+// a press outside the update pane and its button closing it
 document.addEventListener('pointerdown', (e) => {
-  const t = e.target as Node;
-  for (const m of themeMenus) if (!m.hidden && !m.contains(t) && !m.previousElementSibling?.contains(t)) m.hidden = true;
-  if (!updateModal.hidden && !updateModal.parentElement!.contains(t)) closeUpdateModal();
+  if (!updateModal.hidden && !updateModal.parentElement!.contains(e.target as Node)) closeUpdateModal();
 }, true);
 
-// shift+esc only ever unfocusing a terminal, esc the menus and the update pane
+// shift+esc only ever unfocusing a terminal, esc the update pane
 document.addEventListener('keydown', (e) => {
   if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || e.key !== 'Escape') return;
   const t = e.target as HTMLElement;
@@ -62,7 +59,6 @@ document.addEventListener('keydown', (e) => {
   }
   if (t.closest?.('.chat-panel') && t.closest('input, textarea')) t.blur();
   if (!updateModal.hidden) closeUpdateModal();
-  closeMenus();
 });
 
 // esc and ctrl+a for the desktop's icons, after the escape above

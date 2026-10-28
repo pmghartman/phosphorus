@@ -1,12 +1,11 @@
 // the mesh chat: this host's own lines, every host's merged, who's on, and
 // what each browser gets of it
 import { createHash } from "node:crypto";
-import { rmSync } from "node:fs";
 import { clean as cleanFiles } from "@phosphorus/chatmedia";
 import { markHot } from "@phosphorus/clock";
 import * as sysfs from "@phosphorus/sysfs";
 import { Exists } from "@phosphorus/users";
-import { logf, marshal, now, readJSON, readJSONMap, writeJSONSoon } from "@phosphorus/util";
+import { logf, marshal, now, readJSON, writeJSONSoon } from "@phosphorus/util";
 import { markdown } from "@phosphorus/web-md";
 import type { Conn } from "@phosphorus/wsock";
 import { modelColor, selfHost } from "./config.ts";
@@ -45,7 +44,6 @@ export type ChatClient = { ws: Conn; name: string; color: string; typing: string
 
 let ownChatFile = "";
 let chatFile = "";
-let clearFile = "";
 export let ownChat: Msg[] = [];
 let ownSeq = 0;
 export let mergedChat: Msg[] = [];
@@ -318,20 +316,6 @@ function cleanChatMessage(m: Msg): Msg {
 
 // --- the html each browser gets beside a line's text ------------------------
 
-const plainFirst = /^(?:Yes|No|The|It|Its|It's|That|This|There|These|Those|You|Your|A|An|Sure|Done|Here|Nothing|None|All|Both|Not|To|In|On|For|With|From|At|By|Use|Run|Try|Open|Ok|Okay|Each|One|Some|Only|Just)\b/;
-const blockFirst = /^\s*(?:```|[-*+] |\d+\. |#|>|\||\$\$|\\\[)/;
-
-// addressed a reply opened with who it's for, a plain first word lowered
-export function addressed(to: string, text: string): string {
-  if (!to || !text || text.toLowerCase().startsWith(to.toLowerCase() + ",")) return text;
-  if (blockFirst.test(text)) return to + ",\n\n" + text;
-  if (plainFirst.test(text)) {
-    const r = [...text];
-    return to + ", " + r[0]!.toLowerCase() + r.slice(1).join("");
-  }
-  return to + ", " + text;
-}
-
 // forBrowser a line with its markdown rendered, never stored or peered
 export function forBrowser(m: Msg): Msg {
   const out: Msg = { ...m };
@@ -342,14 +326,11 @@ export function forBrowser(m: Msg): Msg {
     case "":
     case "dm":
     case "model":
-    case "notice":
-    case "pending":
     case "edit":
       break;
     default:
       return out;
   }
-  if (typeof m.to === "string" && (k === "model" || k === "pending")) text = addressed(m.to, text);
   out.html = markdown(text, true);
   return out;
 }
@@ -491,20 +472,9 @@ export function announceLeave(name: string) {
 export function initChat() {
   ownChatFile = sysfs.local("chat/own.json");
   chatFile = sysfs.local("chat/merged.json");
-  clearFile = sysfs.local("chat/clear.json");
   ownChat = readLog(ownChatFile);
   if (ownChat.length) ownSeq = num(ownChat[ownChat.length - 1]!.seq);
   mergedChat = readLog(chatFile);
-  const old = readJSONMap(clearFile);
-  if (old) {
-    setClear(num(old.at), "");
-    for (const [ch, at] of Object.entries(obj(old.ch) ?? {})) {
-      if (channelRe.test(ch) && num(at) > closedOf(ch)) setChannel(ch, { closedAt: at, closedBy: "" });
-    }
-    try {
-      rmSync(clearFile);
-    } catch {}
-  }
   shownClear = clearedAt();
   for (const [ch, at] of Object.entries(closedAll())) shownClose[ch] = num(at);
   for (const [ch, m] of Object.entries(channels())) shownMeta[ch] = marshal(m);
@@ -526,15 +496,6 @@ function readLog(file: string): Msg[] {
   const raw = readJSON(file);
   if (!Array.isArray(raw)) return [];
   return raw.map(obj).filter((m): m is Msg => !!m);
-}
-
-// retractStaleAlerts own warnings and "writing" lines a crash left up
-export function retractStaleAlerts() {
-  const gone = new Set<number>();
-  for (const m of ownChat) if (isRetract(m)) gone.add(num(m.target));
-  const stale: number[] = [];
-  for (const m of ownChat) if ((m.kind === "alert" || m.kind === "pending") && !gone.has(num(m.seq))) stale.push(num(m.seq));
-  for (const s of stale) retractOwn(s);
 }
 
 // mergeFromPeers peers' chat, straight from the mesh loop

@@ -11,8 +11,6 @@ import { dkPopsClose } from './desktop/taskbar.ts';
 import type { Chain, MeshLock, State, TailnetDevice, UpdateCheck } from './types.ts';
 import { newerVersion } from './util.ts';
 
-export const topUpdate = document.getElementById('top-update') as HTMLButtonElement;
-
 const updateBtn = document.getElementById('mesh-update') as HTMLButtonElement;
 export const updateModal = document.getElementById('update-modal')!;
 const updateTitle = document.getElementById('update-title')!;
@@ -205,7 +203,7 @@ async function checkLatest() {
 
 export function closeUpdateModal(): void {
   // the chain outliving the pane, nothing decided by closing it
-  if (updateModal.contains(document.activeElement)) topUpdate.focus();
+  if (updateModal.contains(document.activeElement)) dk.ctl?.btn.focus();
   updateModal.hidden = true;
 }
 
@@ -326,19 +324,13 @@ const toggleUpdatePane = () => {
   dkPopsClose('update');
   openUpdateModal();
 };
-topUpdate.addEventListener('click', toggleUpdatePane);
 document.getElementById('update-close')!.addEventListener('click', closeUpdateModal);
 // closed by a click outside it, never by the one that opened it
-const updateWrap = topUpdate.parentElement!;
 let updateWasOpen = false;
 document.addEventListener('pointerdown', () => { updateWasOpen = !updateModal.hidden; }, true);
 document.addEventListener('click', (e) => {
-  if (updateWasOpen && !updateModal.hidden && !updateWrap.contains(e.target as Node) && !updateModal.contains(e.target as Node) && !(e.target as Element).closest?.('.modal, .keybar, .dk-ctl-pop')) closeUpdateModal();
+  if (updateWasOpen && !updateModal.hidden && !updateModal.contains(e.target as Node) && !(e.target as Element).closest?.('.modal, .dk-ctl-pop')) closeUpdateModal();
 });
-
-new MutationObserver(() => topUpdate.setAttribute('aria-expanded', String(!updateModal.hidden))).observe(updateModal, { attributes: true, attributeFilter: ['hidden'] });
-
-// back to the host list, not out of the pane
 
 document.getElementById('update-cancel')!.addEventListener('click', () => {
   chainAction('cancel').then(pollState);
@@ -360,12 +352,6 @@ export function updateState(state: State): void {
   }
   // the confirm prompt borrowing this same pane, its text otherwise lost
   if (updateConfirm.hidden) applyChain(chain, !!state.chainMine); else renderVersions();
-  // the update icon's dot: a host on another version, or a walk under way
-  const mine = state.self.version || '';
-  const differs = state.tailnet.some((d) => d.phosphorus && d.version && mine && d.version !== mine);
-  const news = differs || !!meshLock || !!(chain && !chain.done);
-  topUpdate.toggleAttribute('data-news', news);
-  topUpdate.title = `mesh update (u)${meshLock || (chain && !chain.done) ? ', under way' : differs ? ', hosts on different versions' : ''}`;
 }
 
 // --- updates waiting: the mesh's release, a blue dot and one note

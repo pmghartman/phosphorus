@@ -1,9 +1,9 @@
 // this host for the mesh: its games run, its state published to peers and
 // built for the page, the update chain and guest keys
-import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { markHot } from "@phosphorus/clock";
-import { HomeRoot, jsNumber, Shared } from "@phosphorus/files";
+import { jsNumber } from "@phosphorus/files";
 import { Zone } from "@phosphorus/gamedns";
 import * as git from "@phosphorus/git";
 import * as mesh from "@phosphorus/mesh";
@@ -11,7 +11,7 @@ import { State as modelState, Summary } from "@phosphorus/model";
 import { own as ownServices, setPending } from "@phosphorus/services";
 import * as sysfs from "@phosphorus/sysfs";
 import * as update from "@phosphorus/update";
-import { lockACL, logf, marshal, peerCall, run, StateDir, tailnetIP } from "@phosphorus/util";
+import { lockACL, logf, marshal, peerCall, run, tailnetIP } from "@phosphorus/util";
 import { ownChat, presence } from "./chat.ts";
 import { adminPass, baseDomain, gameKey, gameKeyDir, getPlatform, hostSSHHost, hostSSHPort, selfHost, selfInfo, tsAPIKey, Version } from "./config.ts";
 import { deskStamps } from "./desk.ts";
@@ -224,16 +224,3 @@ export async function mintGuestKey(): Promise<Res> {
 
 // --- startup -----------------------------------------------------------------
 
-// dropProjects what the old projects app kept: its runs in the state dir and
-// its workspaces in the shared home, gone once
-export function dropProjects() {
-  const gone: string[] = [];
-  for (const d of [join(StateDir, "project-runs"), join(HomeRoot, Shared, "projects")]) {
-    if (!existsSync(d)) continue;
-    try {
-      rmSync(d, { recursive: true, force: true });
-      gone.push(d);
-    } catch {}
-  }
-  if (gone.length) logf("[frontend] removed old project data: %s", gone.join(", "));
-}

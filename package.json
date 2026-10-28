@@ -13,10 +13,5 @@
   "devDependencies": {
     "@types/bun": "^1.4.4",
     "typescript": "^7.0.2"
-  },
-  "patchedDependencies": {
-    "@lezer/lr@1.4.10": "patches/@lezer%2Flr@1.4.10.patch",
-    "@lezer/go@1.0.1": "patches/@lezer%2Fgo@1.0.1.patch",
-    "@lezer/css@1.3.8": "patches/@lezer%2Fcss@1.3.8.patch"
   }
 }

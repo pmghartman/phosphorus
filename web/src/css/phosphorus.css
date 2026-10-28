@@ -3,10 +3,6 @@
 
 :root {
   --header-h: 1.5rem;
-  --mobile-tabbar-h: 2.75rem;
-  /* the side column's width, the rail's beside it */
-  --side-w: 25vw;
-  --rail-w: 1.7rem;
 }
 
 /* every color, font, shadow and corner token comes from the theme library, packages/theme/themes.json,
@@ -52,116 +48,12 @@ body {
 .home-col, .about-info, .st-card, .st-mesh, .st-box, .mesh-panel, .chat-panel, .cw-side,
 .update-pane, .chat-find, .msg-file, .msg-img img, .chat-log .md pre, .code-md .md pre { box-shadow: var(--lift); }
 
-.layout {
-  display: flex;
-  height: 100vh;
-  width: 100%;
-}
-
-/* --- main pane: tabs + content ---------------------------------------- */
-
-/* never narrower than the side icons, the tabs scrolled instead */
-
-/* the mesh, model and update icons at the bar's right end, tabs like the
-   others, the active one while its pane is up */
-.top-side { align-self: stretch; display: flex; }
-.top-side > button, .update-wrap > button {
-  display: flex; align-items: center; height: 100%;
-  padding: 0 0.9rem; background: var(--tabbar);
-  border: none; border-top: 1px solid transparent; border-left: 1px solid var(--border);
-  color: var(--muted); font: inherit; font-size: 0.8rem; white-space: nowrap; cursor: pointer;
-  transition: color 0.15s, background-color 0.15s;
-}
-.top-side > button:hover, .top-side > button:focus-visible, .update-wrap > button:hover, .update-wrap > button:focus-visible { color: var(--fg); background: var(--tab-hover); outline: none; }
-/* open: joined to the page over the bar's rule, as an active tab */
-.top-side > button[aria-expanded="true"], .update-wrap > button[aria-expanded="true"] { color: var(--fg); background: var(--bg); border-top-color: var(--accent); box-shadow: 0 1px 0 var(--bg); }
-#top-update { color: var(--sky); }
-.top-side svg { width: 0.85rem; height: 0.85rem; fill: none; stroke: currentColor; stroke-width: calc(var(--ic-w, 1.3) + 0.1); stroke-linecap: var(--ic-cap, round); stroke-linejoin: var(--ic-join, round); }
-
-/* news for the update: hosts on different versions, or one under way */
-#top-update { position: relative; }
-#top-update[data-news]::after {
-  content: ''; position: absolute; top: 0.45rem; right: 0.5rem; width: 0.3rem; height: 0.3rem;
-  background: var(--sand);
-}
-/* the theme beside them, a tab like the side icons */
-.theme-toggle.top-theme {
-  align-self: stretch; width: auto; padding: 0 0.9rem; background: var(--tabbar);
-  border-top: 1px solid transparent; border-left: 1px solid var(--border);
-  transition: color 0.15s, background-color 0.15s;
-}
-.theme-toggle.top-theme:hover, .theme-toggle.top-theme:focus-visible { background: var(--tab-hover); }
-
-/* the version at the bar's left end, the about tab, unnumbered */
-
-
-/* the current theme's icon, the popup anchored to it */
-.theme-wrap { position: relative; display: flex; align-self: stretch; height: 100%; }
-/* inset past its drop shadow, else cut off at the window's edge */
-.tab-menu.theme-menu { left: auto; right: 0.6rem; min-width: 9rem; }
-.tab-menu-list li.current { color: var(--accent); }
-.theme-toggle {
-  flex: none; display: flex; align-items: center; justify-content: center;
-  width: 2.75rem; height: 100%; padding: 0;
-  background: none; border: none;
-  color: var(--sand); cursor: pointer;
-}
-.theme-toggle:hover { color: var(--accent); }
-/* dark a filled moon, light a sun, oled a hollow thin moon, on the button and beside each pick */
+/* dark a filled moon, light a sun, oled a hollow thin moon */
 .theme-icon { flex: none; width: 0.85rem; height: 0.85rem; fill: none; stroke: currentColor; stroke-width: calc(var(--ic-w, 1.3) + 0.1); stroke-linecap: var(--ic-cap, round); stroke-linejoin: var(--ic-join, round); }
 .theme-icon.moon { fill: currentColor; }
 .theme-icon.moon-thin { stroke-width: 0.9; }
-.theme-toggle .sun, .theme-toggle .moon-thin { display: none; }
-:root[data-theme="light"] .theme-toggle .moon, :root[data-theme="oled"] .theme-toggle .moon { display: none; }
-:root[data-theme="light"] .theme-toggle .sun, :root[data-theme="oled"] .theme-toggle .moon-thin { display: block; }
-.theme-menu li { display: flex; align-items: center; gap: 0.8ch; }
 
-/* the active tab's accent edge, sliding from tab to tab */
-
-/* numbered as in the cli, and as picked by 1-9 */
-/* a terminal phosphorus may read */
-
-.tab-menu {
-  position: absolute;
-  top: calc(100% + 0.6rem);
-  left: 0;
-  z-index: 20;
-  min-width: 14rem;
-  background: var(--card);
-  border: 1px solid var(--border);
-  padding: 0.7rem 0.3rem 0.3rem;
-  box-shadow: var(--drop);
-  animation: pop-in 0.16s ease-out;
-}
-
-.tab-menu-title {
-  position: absolute; top: 0; left: 0.6rem; transform: translateY(-50%);
-  padding: 0 0.45ch; background: var(--card); line-height: 1;
-  font-size: 0.72rem; letter-spacing: 0.04em;
-}
-
-.tab-menu-list { list-style: none; margin: 0; padding: 0; }
-/* a later section's title, inline under a rule */
-
-.tab-menu-list li {
-  padding: 0.35rem 0.5rem 0.35rem 1.2rem;
-  cursor: pointer;
-  font-size: 0.85rem;
-}
-
-
-.tab-menu-list li.empty { color: var(--muted); cursor: default; }
-
-/* the new tab: its title two boxes, a place then the host's app */
-.tab-menu-list li.sel { background: var(--border); }
-.tab-menu-list li.empty:hover { background: none; }
-
-.pane-content {
-  flex: 1;
-  position: relative;
-  min-height: 0;
-}
-
+/* an app's view: hidden in the stash, filling its window while open */
 .view {
   display: none;
   position: absolute;
@@ -207,7 +99,8 @@ body {
 
 /* --- desktop: a pretend remote desktop ------------------------------------ */
 
-.dk.active { display: flex; padding: 0; overflow: clip; }
+.dk { display: flex; height: 100vh; height: 100dvh; overflow: clip; }
+
 .dk-login {
   position: relative; margin: auto; width: min(34rem, calc(100% - 2rem));
   border: 1px solid var(--border); padding: 0.9rem 0.6rem 0.6rem; animation: pop-in 0.12s ease-out;
@@ -264,7 +157,6 @@ body {
 .dk-icon:active .dk-tile { transform: translateY(1px); }
 .dk-icon.dk-terminal .ic { color: var(--accent); }
 .dk-icon.dk-files .ic { color: var(--sand); }
-.dk-icon.dk-editor .ic { color: var(--sky); }
 .dk-icon.dk-service .ic { color: var(--teal); }
 .dk-mono text { fill: currentColor; stroke: none; font: 600 8.5px var(--mono); }
 .dk-label, .dk-icon .dk-sub { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -408,8 +300,6 @@ span.dk-chip { cursor: default; }
 .dk-chip.down:hover { background: none; color: var(--muted); }
 .dk-chip.down::before { background: var(--offmesh); }
 .dk-clock { color: var(--fg); font-variant-numeric: tabular-nums; }
-.dk-off { padding: 0.2rem 0.6rem; background: none; border: 1px solid var(--offmesh); color: var(--offmesh); font: inherit; cursor: pointer; }
-.dk-off:hover { background: var(--offmesh); color: var(--bg); }
 
 /* right click menus, on the page above every window */
 .dk-menu {
@@ -1300,7 +1190,6 @@ span.dk-chip { cursor: default; }
 .chat-log .pop .bubble { animation: pop-in 0.16s ease-out; }
 @keyframes pop-in { from { opacity: 0; transform: translateY(0.3rem) scale(0.98); } }
 /* the mesh about to go down, read before anything else in the log */
-.chat-log .sys.alert { font-weight: 600; color: var(--offmesh); font-size: 0.85rem; }
 
 /* files dragged over the panel */
 .chat-drop {
@@ -1640,25 +1529,9 @@ input, textarea { caret-color: var(--accent); }
   color: var(--accent); opacity: 0; transform: translate(-0.3rem, -50%);
   transition: opacity 0.15s, transform 0.15s;
 }
-:is(.list li a, .game-card, .tab-menu-list li:not(.empty)):is( :focus-visible)::after { opacity: 1; transform: translate(0, -50%); }
-.tab-menu-list li:not(.empty):hover { background: var(--border); }
-.list li a, .tab-menu-list li { transition: background-color 0.15s, color 0.15s; }
+:is(.list li a, .game-card):is(:focus-visible)::after { opacity: 1; transform: translate(0, -50%); }
+.list li a { transition: background-color 0.15s, color 0.15s; }
 
-/* the cli's bottom row of framed keys, each clickable */
-.keybar {
-  flex: none; display: flex; align-items: center; gap: 0.4rem;
-  flex-wrap: wrap; row-gap: 0.9rem;
-  padding: 0.9rem 0.75rem 0.45rem; white-space: nowrap;
-  font-size: 0.7rem; color: var(--muted);
-}
-.keybar button { padding: 0.12rem 0.5rem; border: 1px solid var(--border); background: none; color: var(--muted); font: inherit; }
-.keybar button { border-color: var(--muted); color: var(--fg); cursor: pointer; transition: border-color 0.15s, color 0.15s, background-color 0.15s; }
-.keybar button.quiet { border-color: var(--border); color: var(--muted); }
-.keybar button:hover { border-color: var(--accent); color: var(--accent); }
-.keybar button:active { background: color-mix(in srgb, var(--accent) 15%, transparent); }
-.keybar b { font-weight: 600; }
-.keybar .danger { border-color: var(--offmesh); color: var(--offmesh); }
-.keybar > * { animation: files-fade-in 0.15s ease-out; }
 /* the pane a group's keys belong to, over its first key */
 .keybar [data-pane] { position: relative; }
 .keybar [data-pane]::before {
@@ -1676,10 +1549,8 @@ input, textarea { caret-color: var(--accent); }
 /* phones: swipes and taps, no key row, only the version */
 @media (max-width: 720px) {
   .keybar { display: none; }
-  /* one tab in the bar, the active one, the rest in its list */
-  /* phones: the popup the screen's width, under the bar */
-  .update-pane { position: fixed; top: calc(var(--header-h) + 0.6rem); left: 0.5rem; right: 0.5rem; width: auto; }
-  /* the model card a section of its own, as the mesh */
+  /* phones: the popup the screen's width */
+  .update-pane { position: fixed; left: 0.5rem; right: 0.5rem; width: auto; }
 }
 /* the update popup's own close on a phone, the icon's tap on a wide screen */
 .update-pane-header .modal-close { position: static; padding: 0 0.45ch; font-size: 0.9rem; line-height: 1; }
@@ -1726,22 +1597,7 @@ input, textarea { caret-color: var(--accent); }
 .show-modal code { color: var(--sky); overflow-wrap: anywhere; }
 
 
-/* --- side rail: the column's cards, each label beside its card ------------- */
-/* shown: joined to its card, an accent edge, its own hue */
-
-/* --- desktop only: no tabs, key row, about or side column -------------- */
- .keybar { display: none !important; }
-.layout { height: 100vh !important; height: 100dvh !important; }
 .dk-stage { grid-area: w; min-height: 0; display: flex; overflow-y: auto; z-index: 1; }
-/* the macOS app: its top 28px a title bar to drag by, the traffic lights in it */
-
-/* the update and theme in the task bar, their popups opening upward */
-.dk-bar .top-mesh-wide { align-self: stretch; height: 100%; }
-.dk-bar .top-side > button, .dk-bar .update-wrap > button, .dk-bar .theme-toggle.top-theme {
-  padding: 0 0.7rem; border-left: 0; border-top: 0; background: none;
-}
-.dk-bar .top-side > button[aria-expanded="true"], .dk-bar .update-wrap > button[aria-expanded="true"] { background: var(--tab-hover); box-shadow: none; }
-.dk-bar .update-pane { max-height: calc(100vh - 3.5rem); }
 
 /* icons placed on a grid by app.js, a band selecting on bare desk */
 .dk-icon.sel .dk-tile { background: color-mix(in srgb, var(--accent) 18%, transparent); border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
@@ -1751,10 +1607,9 @@ input, textarea { caret-color: var(--accent); }
   border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent);
 }
 
-/* the old tabs as apps: chat, status, projects, git and about in windows */
+/* the mesh's own apps: chat, status, git and about in windows */
 .dk-icon.dk-chat .ic { color: var(--accent); }
 .dk-icon.dk-status .ic { color: var(--online); }
-.dk-icon.dk-projects .ic { color: var(--rose); }
 .dk-icon.dk-git .ic { color: var(--sand); }
 .dk-tile { position: relative; }
 .dk-badge {
@@ -1906,8 +1761,7 @@ input, textarea { caret-color: var(--accent); }
 /* --- the bar's bell and control panel ------------------------------------------ */
 
 /* the panes the panel opens, their own buttons out of sight */
-.dk-ctl > .dk-tray-wrap > .dk-tray, .dk-ctl .top-mesh-wide > .update-wrap > button, .dk-ctl .top-mesh-wide .theme-wrap { display: none; }
-.dk-ctl .top-mesh-wide { display: contents; }
+.dk-ctl > .dk-tray-wrap > .dk-tray { display: none; }
 .dk-bell { position: relative; }
 .dk-bell.has-new::after { content: ''; position: absolute; top: 0.55rem; right: 0.6rem; width: 0.35rem; height: 0.35rem; border-radius: 50%; background: var(--accent); }
 .dk-note-pop, .dk-ctl-pop {
@@ -2131,7 +1985,6 @@ body:has(.dk-pop:not([hidden])) .toasts { opacity: 0; pointer-events: none; }
    task bar a nav bar along the bottom ------------------------------------ */
 .dk-home { display: none; }
 @media (max-width: 720px) {
-  .layout { height: 100vh; height: 100dvh; }
   .dk-icons {
     display: grid; grid-template-columns: repeat(auto-fill, minmax(5.2rem, 1fr)); grid-auto-rows: max-content;
     align-content: start; gap: 0.6rem 0.2rem; padding: calc(1rem + env(safe-area-inset-top)) calc(0.6rem + env(safe-area-inset-right)) 1rem calc(0.6rem + env(safe-area-inset-left));
@@ -2159,7 +2012,7 @@ body:has(.dk-pop:not([hidden])) .toasts { opacity: 0; pointer-events: none; }
   }
   .dk-home .ic { width: 1.15rem; height: 1.15rem; }
   .dk-home:active { color: var(--accent); }
-  .dk-clock, .dk-bar .update-wrap, .dk-bar .top-theme-wrap { display: none; }
+  .dk-clock { display: none; }
   .dk-tasks { gap: 0.3rem; align-self: stretch; align-items: center; padding: 0 0.1rem; }
   .dk-task { max-width: 8rem; height: 2.3rem; padding: 0 0.75rem; border-color: var(--border); }
   .dk-task.active { background: color-mix(in srgb, var(--accent) 12%, transparent); }
@@ -2548,3 +2401,65 @@ body:has(.dk-pop:not([hidden])) .toasts { opacity: 0; pointer-events: none; }
 .ag-line b { color: var(--fg); font-weight: 400; }
 .ag-empty { color: var(--muted); padding: 0.4rem 0; }
 .ag-err { color: var(--offmesh); overflow-wrap: anywhere; }
+
+/* --- the desktop's own: the switcher, the overview, the search ---------- */
+
+/* the switcher: a list over the desk, the pick in the accent */
+.dk-sw {
+  position: absolute; left: 50%; top: 42%; z-index: 100001; transform: translate(-50%, -50%); min-width: 20rem; max-width: 80%;
+  padding: 0.3rem 0; background: var(--card); border: 1px solid var(--border); box-shadow: var(--drop); font-size: 0.78rem; animation: pop-in 0.08s ease-out;
+}
+.dk-sw-row { display: flex; align-items: center; gap: 0.6rem; padding: 0.35rem 0.8rem; color: var(--muted); cursor: pointer; }
+.dk-sw-row .dk-sw-ic { flex: none; width: 0.9rem; height: 0.9rem; }
+.dk-sw-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); }
+.dk-sw-s { color: var(--dim); font-size: 0.7rem; }
+.dk-sw-row.cur { background: var(--accent); color: var(--bg); }
+.dk-sw-row.cur .dk-sw-t, .dk-sw-row.cur .dk-sw-s { color: var(--bg); }
+
+/* the overview: every window scaled into a grid, its own transform set aside; the cells over
+   them take the clicks */
+.dk-overview .dk-win, .dk-overview .dk-win[data-snap] {
+  transform: translate(var(--ov-x, 0px), var(--ov-y, 0px)) scale(var(--ov-s, 1)) !important; transform-origin: 0 0;
+  transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1); pointer-events: none; animation: none;
+}
+.dk-overview .dk-win.dk-ov-shown { display: flex; }
+.dk-overview .dk-icons { opacity: 0.35; }
+.dk-ov-cells { position: absolute; inset: 0; z-index: 100000; pointer-events: auto; }
+.dk-ov-cell {
+  position: absolute; padding: 0; background: none; border: 1px solid transparent; cursor: pointer; font: inherit; color: var(--fg);
+  transition: border-color 0.12s;
+}
+.dk-ov-cell:hover, .dk-ov-cell:focus-visible { border-color: var(--accent); outline: none; }
+.dk-ov-t { position: absolute; left: 0; right: 1.4rem; bottom: 100%; padding: 0 0.1rem 0.25rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; font-size: 0.72rem; color: var(--muted); }
+.dk-ov-cell:hover .dk-ov-t { color: var(--fg); }
+.dk-ov-x { position: absolute; right: 0; bottom: 100%; padding: 0 0.3rem 0.2rem; color: var(--dim); font-size: 0.9rem; line-height: 1; }
+.dk-ov-x:hover { color: var(--offmesh); }
+
+/* the editor's bar: where the caret is */
+.ed-pos { flex: none; color: var(--dim); font-size: 0.7rem; font-variant-numeric: tabular-nums; }
+
+/* the search: a box in the upper middle of the desk over a faint veil, as spotlight's */
+.dk-spot-veil { position: absolute; inset: 0; z-index: 100002; display: flex; align-items: flex-start; justify-content: center; padding-top: 18vh; background: color-mix(in srgb, var(--bg) 35%, transparent); }
+.dk-spot {
+  position: relative; display: flex; flex-direction: column; width: min(40rem, calc(100% - 2rem)); max-height: 60vh;
+  background: var(--card); border: 1px solid var(--border); box-shadow: var(--drop); animation: pop-in 0.1s ease-out;
+}
+.dk-spot-ic { position: absolute; left: 0.8rem; top: 0.95rem; width: 1rem; height: 1rem; color: var(--muted); pointer-events: none; }
+.dk-spot-find { flex: none; padding: 0.7rem 0.8rem 0.7rem 2.5rem; background: none; border: 0; border-bottom: 1px solid var(--border); color: var(--fg); font: inherit; font-size: 1rem; }
+.dk-spot-find:focus { outline: none; }
+.dk-spot-find::placeholder { color: var(--dim); }
+.dk-spot-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0.25rem 0; }
+.dk-spot-row { display: flex; align-items: center; gap: 0.6rem; width: 100%; padding: 0.35rem 0.9rem; background: none; border: 0; color: var(--fg); font: inherit; font-size: 0.8rem; text-align: left; cursor: pointer; }
+.dk-spot-row-ic { flex: none; width: 0.9rem; height: 0.9rem; color: var(--muted); }
+.dk-spot-row.dk-terminal .dk-spot-row-ic { color: var(--accent); }
+.dk-spot-row.dk-files .dk-spot-row-ic, .dk-spot-row.dk-file .dk-spot-row-ic { color: var(--sand); }
+.dk-spot-row.dk-service .dk-spot-row-ic { color: var(--teal); }
+.dk-spot-row.dk-setting .dk-spot-row-ic, .dk-spot-row.dk-menu .dk-spot-row-ic { color: var(--sky); }
+.dk-spot-t { flex: none; }
+.dk-spot-s { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.dk-spot-k { flex: none; margin-left: auto; color: var(--dim); font-size: 0.68rem; }
+.dk-spot-row.cur { background: var(--accent); color: var(--bg); }
+.dk-spot-row.cur .dk-spot-row-ic, .dk-spot-row.cur .dk-spot-s, .dk-spot-row.cur .dk-spot-k { color: var(--bg); }
+.dk-spot-none { padding: 0.5rem 0.9rem; color: var(--muted); font-size: 0.8rem; }
+.dk-bar .dk-spot-btn { width: 1.9rem; }
+@media (max-width: 720px) { .dk-spot-tray { display: none; } }

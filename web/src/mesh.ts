@@ -61,7 +61,7 @@ const meshGraphWrap = document.getElementById('mesh-graph-wrap')!;
 const meshStats = document.getElementById('mesh-stats')!;
 const meshStatsRows = document.getElementById('mesh-stats-rows')!;
 const meshHeader = document.querySelector('.mesh-header') as HTMLElement;
-const stash = document.querySelector('.stash') as HTMLElement;
+const stash = document.getElementById('dk-stash')!;
 
 // the stats table's unclipped height, cached whenever renderMeshStats() runs,
 // reserved by meshLayoutParams() when expanded

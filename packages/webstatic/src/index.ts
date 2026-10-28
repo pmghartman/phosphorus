@@ -37,7 +37,19 @@ export function accepts(r: Request, enc: string): boolean {
   return false;
 }
 
-const read = async (name: string) => (name in files ? new Uint8Array(await Bun.file(files[name]!).arrayBuffer()) : undefined);
+// each file's bytes kept after the first read: the build's files never change while it runs
+const bytes = new Map<string, Promise<Uint8Array<ArrayBuffer> | undefined>>();
+const read = (name: string) => {
+  let p = bytes.get(name);
+  if (!p) {
+    // NAME.gz!raw: that file inflated
+    const raw = name.endsWith(".gz!raw");
+    const file = files[raw ? name.slice(0, -4) : name];
+    p = file ? Bun.file(file).arrayBuffer().then((b) => (raw ? gunzipSync(b) : new Uint8Array(b)) as Uint8Array<ArrayBuffer>, () => undefined) : Promise.resolve(undefined);
+    bytes.set(name, p);
+  }
+  return p;
+};
 
 // the page and its files; a path no file answers is 404
 export async function serveStatic(r: Request): Promise<Response> {
@@ -56,7 +68,7 @@ export async function serveStatic(r: Request): Promise<Response> {
   const h = new Headers({ "Content-Type": types[ext] ?? "application/octet-stream", ETag: etagOf(name, b), Vary: "Accept-Encoding" });
   h.set("Cache-Control", hashed(name) ? "public, max-age=31536000, immutable" : ext === ".woff2" ? "public, max-age=86400" : "no-cache");
   if (r.headers.get("if-none-match") === h.get("ETag")) return new Response(null, { status: 304, headers: h });
-  let body: Uint8Array | undefined;
+  let body: Uint8Array<ArrayBuffer> | undefined;
   if (accepts(r, "gzip")) {
     const c = packed ? b : await read(name + ".gz");
     if (c) {
@@ -64,7 +76,8 @@ export async function serveStatic(r: Request): Promise<Response> {
       body = c;
     }
   }
-  body ??= packed ? gunzipSync(b) : b;
-  h.set("Content-Length", String(body.length));
-  return new Response(r.method === "HEAD" ? null : (body as Uint8Array<ArrayBuffer>), { status: 200, headers: h });
+  // unpacked once per file too, a client taking no gzip never costing a second inflate
+  body ??= packed ? await read(name + ".gz!raw") : b;
+  h.set("Content-Length", String(body!.length));
+  return new Response(r.method === "HEAD" ? null : body!, { status: 200, headers: h });
 }

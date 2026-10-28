@@ -1,5 +1,5 @@
 // webbuild: web/ into packages/webstatic/dist, the client bundled by Bun from
-// the workspace's pinned packages (patches/ put in by bun install), every text
+// the workspace's pinned packages, every text
 // file precompressed, and a manifest module naming each file so bun build
 // --compile embeds them
 import { gzipSync } from "bun";

@@ -2,7 +2,7 @@
 // calls: buildState() in server.ts, the chat socket in chatws.ts and chat.ts, the files api in
 // packages/files, the account in packages/users, code in packages/code, stats in packages/stats.
 // The server marshals most of these as Record<string, any>, so each field here is one the page
-// relies on, optional where a host may leave it out or an older one never sent it.
+// relies on, optional where a host may leave it out.
 
 // --- /api/state: buildState() in packages/server/src/server.ts, pushed over the same path's socket
 
@@ -131,7 +131,7 @@ export interface ChatFile { host: string; id: string; name: string; type?: strin
 export interface ShowFile { host: string; share: string; path: string; label: string }
 
 // one line of the log as the host keeps it: by host:seq; kind '' or absent for a plain line,
-// else dm, model, notice, sys, alert, show, topic, or a mark (react, edit, delete) on ref
+// else dm, model, sys, show, topic, or a mark (react, edit, delete) on ref
 export interface ChatMsg {
   host: string;
   seq: number;
@@ -143,8 +143,6 @@ export interface ChatMsg {
   html?: string;
   ch?: string;
   dm?: string;
-  // who an old model reply was for
-  to?: string;
   // the agent that posted on this user's key
   via?: string;
   // the line replied to, host:seq
@@ -155,8 +153,6 @@ export interface ChatMsg {
   on?: boolean;
   files?: ChatFile[];
   file?: ShowFile;
-  // an alert's seconds
-  countdown?: number;
   [k: string]: unknown;
 }
 
@@ -340,8 +336,6 @@ export interface StatsSample {
   gpus: StatsGpu[];
   uptime?: number;
   parts?: StatsPart[];
-  // an older host's name for parts
-  containers?: StatsPart[];
   procs?: { count: number; top: StatsProc[] };
 }
 

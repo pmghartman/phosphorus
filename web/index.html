@@ -7,10 +7,10 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>phosphorus</title>
-<link rel="icon" href="/favicon.ico?v=14" sizes="32x32">
-<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=14">
-<link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png?v=14">
-<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=14">
+<link rel="icon" href="/favicon.ico" sizes="32x32">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
 <link rel="stylesheet" href="/style.css">
 <script>
 // the browser's own light or dark unless a theme was picked, and the color theme, set before paint
@@ -56,120 +56,84 @@ outside #mesh-svg (emptied every redraw) so it never restarts -->
     </linearGradient>
   </defs>
 </svg>
-<div class="layout">
-  <!-- the update popup and the theme, moved into the desktop's task bar -->
-  <div class="tray-stash" hidden>
-        <div class="top-side top-mesh-wide">
-          <div class="update-wrap">
-            <button type="button" id="top-update" title="mesh update (u)" aria-label="mesh update" aria-controls="update-modal" aria-expanded="false"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M12.5 1.5v3h-3"/></svg></button>
-            <div class="update-pane" id="update-modal" hidden>
-              <div class="update-pane-header">
-                <span id="update-title">mesh update</span>
-                <button class="modal-close" id="update-close" type="button" title="close (u)" aria-label="close">&times;</button>
-              </div>
-              <div class="update-pane-body">
-                <div class="update-confirm" id="update-confirm" hidden>
-                  <p id="update-confirm-text"></p>
-                  <input class="update-pass" id="update-pass" type="text" placeholder="password" autocomplete="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" hidden>
-                  <div class="update-actions">
-                    <button type="button" id="update-confirm-cancel">cancel</button>
-                    <button type="button" id="update-confirm-go" class="primary">update</button>
-                  </div>
-                </div>
-                <div class="update-progress" id="update-progress" hidden>
-                  <span class="update-progress-track">[<span class="update-progress-cells" id="update-progress-cells"></span>]</span>
-                  <span class="update-progress-label" id="update-progress-label"></span>
-                </div>
-                <div class="update-mesh" id="update-mesh">
-                  <p class="update-latest" id="update-latest" hidden></p>
-                  <ul class="update-versions" id="update-versions"></ul>
-                  <div class="update-actions" id="update-start">
-                    <button type="button" class="primary" id="mesh-update">update</button>
-                  </div>
-                  <div class="update-actions" id="update-foot" hidden>
-                    <button type="button" id="update-cancel" class="danger">cancel</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div class="theme-wrap top-theme-wrap">
-          <button class="theme-toggle top-theme" type="button" title="theme" aria-label="theme" aria-haspopup="true">
-            <svg class="theme-icon sun" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="3"/><path d="M8 1v1.8M8 13.2V15M1 8h1.8M13.2 8H15M3 3l1.3 1.3M11.7 11.7L13 13M3 13l1.3-1.3M11.7 4.3L13 3"/></svg>
-            <svg class="theme-icon moon" viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 10A6 6 0 0 1 6 2.5a6 6 0 1 0 7.5 7.5z"/></svg>
-            <svg class="theme-icon moon-thin" viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 10A6 6 0 0 1 6 2.5a6 6 0 1 0 7.5 7.5z"/></svg>
-          </button>
-          <div class="tab-menu theme-menu" hidden>
-            <div class="tab-menu-title">theme</div>
-            <ul class="tab-menu-list"></ul>
-          </div>
-          </div>
+<!-- the desktop: the login, then the desk, drawn by desktop/ -->
+<div class="dk" id="view-desktop"></div>
+<!-- the apps' views, the mesh and chat panels and the update pane, each moved into a
+window or popup while open and back here on close -->
+<div class="stash" id="dk-stash" hidden>
+    <div class="update-pane" id="update-modal" hidden>
+    <div class="update-pane-header">
+      <span id="update-title">mesh update</span>
+      <button class="modal-close" id="update-close" type="button" title="close (u)" aria-label="close">&times;</button>
+    </div>
+    <div class="update-pane-body">
+      <div class="update-confirm" id="update-confirm" hidden>
+        <p id="update-confirm-text"></p>
+        <input class="update-pass" id="update-pass" type="text" placeholder="password" autocomplete="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" hidden>
+        <div class="update-actions">
+          <button type="button" id="update-confirm-cancel">cancel</button>
+          <button type="button" id="update-confirm-go" class="primary">update</button>
         </div>
-  </div>
-    <div class="modal show-modal" id="show-modal" hidden role="dialog" aria-modal="true" aria-labelledby="show-modal-title">
-      <div class="modal-box">
-        <div class="modal-header">
-          <span id="show-modal-title">shared workspace</span>
-          <button class="modal-close" id="show-modal-close" type="button" title="close">&times;</button>
+      </div>
+      <div class="update-progress" id="update-progress" hidden>
+        <span class="update-progress-track">[<span class="update-progress-cells" id="update-progress-cells"></span>]</span>
+        <span class="update-progress-label" id="update-progress-label"></span>
+      </div>
+      <div class="update-mesh" id="update-mesh">
+        <p class="update-latest" id="update-latest" hidden></p>
+        <ul class="update-versions" id="update-versions"></ul>
+        <div class="update-actions" id="update-start">
+          <button type="button" class="primary" id="mesh-update">update</button>
         </div>
-        <div class="update-confirm">
-          <p id="show-modal-text"></p>
-          <div class="update-actions">
-            <button type="button" id="show-modal-no">not now</button>
-            <button type="button" id="show-modal-go" class="primary">open</button>
-          </div>
+        <div class="update-actions" id="update-foot" hidden>
+          <button type="button" id="update-cancel" class="danger">cancel</button>
         </div>
       </div>
     </div>
-  <div class="pane-content" id="pane-content">
-      <div class="view" id="view-status">
-        <div class="st-top" id="st-top">
-          <section class="st-mesh" id="st-mesh" hidden><div class="st-card-head">mesh</div><div class="st-mesh-grid"><div><div></div><canvas class="st-graph st-mesh-g"></canvas></div><div><div></div><div class="st-sum-net st-mesh-g"><canvas class="st-graph"></canvas><canvas class="st-graph"></canvas></div></div></div></section>
-        </div>
-        <div class="st-hosts" id="st-hosts"><div class="st-wait">connecting</div></div>
+                </div>
+    <div class="view" id="view-status">
+      <div class="st-top" id="st-top">
+        <section class="st-mesh" id="st-mesh" hidden><div class="st-card-head">mesh</div><div class="st-mesh-grid"><div><div></div><canvas class="st-graph st-mesh-g"></canvas></div><div><div></div><div class="st-sum-net st-mesh-g"><canvas class="st-graph"></canvas><canvas class="st-graph"></canvas></div></div></div></section>
       </div>
-      <!-- the game servers app -->
-      <div class="view" id="view-games">
-          <div class="home-col">
-            <div class="home-col-head">game servers</div>
-            <ul id="game-servers-list" class="list">
-              <li class="empty">none yet</li>
-            </ul>
-            <div class="home-note">mesh only
-              <div class="join-key" id="join-key">
-                <button type="button" class="join-key-btn" id="join-key-btn" title="single use, lasts 3 days">request guest key</button>
-                <a href="https://tailscale.com/download" target="_blank" rel="noopener">install tailscale</a>
-              </div>
+      <div class="st-hosts" id="st-hosts"><div class="st-wait">connecting</div></div>
+    </div>
+    <!-- the game servers app -->
+    <div class="view" id="view-games">
+        <div class="home-col">
+          <div class="home-col-head">game servers</div>
+          <ul id="game-servers-list" class="list">
+            <li class="empty">none yet</li>
+          </ul>
+          <div class="home-note">mesh only
+            <div class="join-key" id="join-key">
+              <button type="button" class="join-key-btn" id="join-key-btn" title="single use, lasts 3 days">request guest key</button>
+              <a href="https://tailscale.com/download" target="_blank" rel="noopener">install tailscale</a>
             </div>
           </div>
+        </div>
+    </div>
+    <div class="view" id="view-chat">
+      <div class="cw">
+        <div class="cw-side"><div class="home-col-head">conversations</div><nav class="cw-list" id="cw-list" aria-label="conversations"></nav></div>
+        <div class="cw-main" id="cw-main"></div>
       </div>
-      <div class="view" id="view-chat">
-        <div class="cw">
-          <div class="cw-side"><div class="home-col-head">conversations</div><nav class="cw-list" id="cw-list" aria-label="conversations"></nav></div>
-          <div class="cw-main" id="cw-main"></div>
+    </div>
+    <!-- claude code sessions on the mesh's hosts, drawn by apps/code.ts -->
+    <div class="view" id="view-code"></div>
+    <div class="view" id="view-agents"></div>
+    <div class="view" id="view-about">
+      <div class="about-wrap">
+        <div class="about-brand">
+        <img class="about-mark" src="/phosphorus.svg" alt="" aria-hidden="true" draggable="false">
+          <div class="about-version" id="about-version"></div>
+        </div>
+        <div class="about-info">
+          <div class="about-row"><span class="about-key">copyright</span><span class="about-val">&copy; 2026 Patrick Hartman.</span></div>
+          <div class="about-row"><span class="about-key">license</span><span class="about-val">Apache License 2.0; see LICENSE.</span></div>
+          <div class="about-row"><span class="about-key">packages</span><span class="about-val">Each bundled package keeps its own license: Apache-2.0 (cloudflared), BSD-3-Clause (Tailscale), MIT (Bun, xterm.js, KaTeX, llama.cpp), GPL-3.0-or-later (Forgejo). Full texts in THIRD_PARTY_NOTICES.txt beside the app.</span></div>
         </div>
       </div>
-      <!-- claude code sessions on the mesh's hosts, drawn by apps/code.ts -->
-      <div class="view" id="view-code"></div>
-      <div class="view" id="view-agents"></div>
-      <!-- a pretend remote desktop over the hosts' own terminals, files and services -->
-      <div class="view dk active" id="view-desktop"></div>
-      <div class="view" id="view-about">
-        <div class="about-wrap">
-          <div class="about-brand">
-          <img class="about-mark" src="/phosphorus.svg?v=1" alt="" aria-hidden="true" draggable="false">
-            <div class="about-version" id="about-version"></div>
-          </div>
-          <div class="about-info">
-            <div class="about-row"><span class="about-key">copyright</span><span class="about-val">&copy; 2026 Patrick Hartman.</span></div>
-            <div class="about-row"><span class="about-key">license</span><span class="about-val">Apache License 2.0; see LICENSE.</span></div>
-            <div class="about-row"><span class="about-key">packages</span><span class="about-val">Each bundled package keeps its own license: Apache-2.0 (cloudflared), BSD-3-Clause (Tailscale), MIT (Bun, xterm.js, KaTeX, llama.cpp), GPL-3.0-or-later (Forgejo). Full texts in THIRD_PARTY_NOTICES.txt beside the app.</span></div>
-          </div>
-        </div>
-      </div>
-  </div>
-  <!-- the mesh's graph between visits to its tray popup, the chat's panel till docked -->
-  <div class="stash" hidden>
+    </div>
     <div class="mesh-panel" id="mesh-panel">
       <div class="mesh-header">
         <span>mesh</span>
@@ -241,8 +205,22 @@ outside #mesh-svg (emptied every redraw) so it never restarts -->
         <input type="file" id="chat-file" multiple hidden>
       </div>
     </div>
-  </div>
 </div>
+    <div class="modal show-modal" id="show-modal" hidden role="dialog" aria-modal="true" aria-labelledby="show-modal-title">
+      <div class="modal-box">
+        <div class="modal-header">
+          <span id="show-modal-title">shared workspace</span>
+          <button class="modal-close" id="show-modal-close" type="button" title="close">&times;</button>
+        </div>
+        <div class="update-confirm">
+          <p id="show-modal-text"></p>
+          <div class="update-actions">
+            <button type="button" id="show-modal-no">not now</button>
+            <button type="button" id="show-modal-go" class="primary">open</button>
+          </div>
+        </div>
+      </div>
+    </div>
 
 <!-- the chat's one popup: a conversation's actions, or what's been shared -->
 <div class="chat-pop" id="chat-pop" role="menu" hidden></div>

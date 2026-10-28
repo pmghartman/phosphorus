@@ -76,7 +76,6 @@ export type Chain = {
   startedAt: string;
   finishedAt: number;
   savedAt: number;
-  alertSeq?: number;
 };
 
 let finishHook: (c: Chain) => void = () => {};
@@ -127,7 +126,7 @@ function save() {
     id: c.id, order: c.order, results: c.results, versions: c.versions, errors: c.errors,
     details: c.details && Object.keys(c.details).length ? c.details : undefined,
     target: c.target, cancelled: c.cancelled, done: c.done, startedAt: c.startedAt,
-    finishedAt: c.finishedAt || undefined, savedAt: c.savedAt, alertSeq: c.alertSeq,
+    finishedAt: c.finishedAt || undefined, savedAt: c.savedAt,
   });
 }
 
@@ -181,13 +180,6 @@ const briefRes: [RegExp, string][] = [
 export function brief(r: Result): string {
   for (const [re, out] of briefRes) if (re.test(r.error)) return out;
   return r.unreachable ? "unreachable" : "failed";
-}
-
-// the update warning's chat seq, kept across the swap
-export function remember(alertSeq: number) {
-  if (!chain) return;
-  chain.alertSeq = alertSeq;
-  save();
 }
 
 // a host's outcome recorded

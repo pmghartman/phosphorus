@@ -1,6 +1,5 @@
 import { cssVar, modalOpen } from '../dom.ts';
 import { pingClass, steadyRtt } from '../mesh.ts';
-import { openMenu } from '../scheme.ts';
 import { deskApps, st } from '../state.ts';
 import type { ModelHost, State, StatsSample } from '../types.ts';
 import { esc, humanSize, plural } from '../util.ts';
@@ -333,7 +332,7 @@ function drawMeshSum(names: string[]) {
   const ioR = sum((s) => s.io?.r);
   const ioW = sum((s) => s.io?.w);
   const load = sum((s) => s.cpu.load[0]);
-  const ctr = sum((s) => (s.parts || s.containers)?.length);
+  const ctr = sum((s) => s.parts?.length);
   const git = (stNet?.gitHosts || []).filter((g) => g.reachable);
   const master = git.find((g) => g.role === 'master');
   const svc = (stNet?.routes || []).filter((r) => r.type !== 'game').length;
@@ -556,7 +555,7 @@ function drawGpu(p: Parts, h: StHost) {
 
 function drawCtr(p: Parts, h: StHost) {
   // phosphorus's own processes, by role
-  const list = h.s!.parts || h.s!.containers;
+  const list = h.s!.parts;
   p.ctrHead.innerHTML = `phosphorus <span class="st-dim">${list ? list.length : ''}</span>`;
   if (!list) { p.ctr.innerHTML = '<div class="st-dim">no process list</div>'; return; }
   p.ctr.innerHTML = '<div class="st-ctr-row st-dim"><span>name</span><span>cpu</span><span>mem</span><span>pids</span></div>'
@@ -626,7 +625,7 @@ function stToggle(name: string) {
 }
 
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && !e.shiftKey && stOpenHost && stOpen() && !modalOpen() && !openMenu()) stToggle(stOpenHost);
+  if (e.key === 'Escape' && !e.shiftKey && stOpenHost && stOpen() && !modalOpen()) stToggle(stOpenHost);
 });
 
 // a quiet peer's stale mark, with no message to trigger it

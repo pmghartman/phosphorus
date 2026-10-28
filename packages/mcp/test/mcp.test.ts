@@ -125,7 +125,6 @@ test("stats shape", () => {
     parts: [{ name: "frontend", cpu: 1, mem: 2, pids: 3 }],
   };
   const st = statsShape(s);
-  expect(st.containers).toBeUndefined();
   expect(st.parts).toHaveLength(1);
   expect(st.mem.usedPct).toBe(25);
   expect(st.mem.cached).toBeUndefined();
@@ -158,7 +157,10 @@ test("key grants", async () => {
   [, o] = await handle(rpc("initialize"), false, bare());
   const ins: string = o.result.instructions;
   for (const w of ["acts as u, a user", "no saved host logins", "No forgejo login", "Off this key:", "host_power"]) expect(ins).toContain(w);
-  expect(o.result.serverInfo.icons[0].src.startsWith("data:image/png;base64,iVBOR")).toBe(true);
+  // the mark off the mesh's domain first, inline after it
+  const icons: { src: string }[] = o.result.serverInfo.icons;
+  expect(icons[0]!.src).toBe("https://mesh.example/icon-192.png");
+  expect(icons[1]!.src.startsWith("data:image/png;base64,iVBOR")).toBe(true);
 });
 
 test("a tool's error carries its code, a batch answers each request", async () => {
