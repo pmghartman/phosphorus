@@ -239,3 +239,128 @@ test("the feed read once per ttl, fresh on demand", async () => {
   expect(feedHits).toBe(n + 1);
   srv.stop(true);
 });
+
+// --- services: a checkout per host, the ssh runner and the mesh faked ------------------
+
+const circuit = W.serviceOf("circuit")!;
+const tavern = W.serviceOf("tavern")!;
+type Ran = { host: string; user: string; script: string };
+const ran: Ran[] = [];
+const published: [string, string, Record<string, string> | null][] = [];
+let exitCode = 0;
+let publishStatus = 200;
+const routes: { host: string; name: string; port: number; mode: string; scheme: string; base_path: string }[] = [];
+W.svcSeams.tailnet = () => [{ name: "a", os: "linux", phosphorus: true }, { name: "b", os: "linux", phosphorus: true }, { name: "w", os: "windows", phosphorus: true }, { name: "phone", os: "ios", phosphorus: false }];
+W.svcSeams.routes = () => routes;
+W.svcSeams.run = async (host, login, script, onOut) => {
+  ran.push({ host, user: login.user, script });
+  onOut("step one\n");
+  onOut("step two\n");
+  return exitCode;
+};
+W.svcSeams.publish = async (host, name, fields) => {
+  published.push([host, name, fields]);
+  if (publishStatus !== 200) return [publishStatus, { error: "nope" }];
+  if (fields) routes.push({ host, name, port: Number(fields.port), mode: fields.mode ?? "path", scheme: "http", base_path: "" });
+  else routes.splice(0, routes.length, ...routes.filter((r) => !(r.host === host && r.name === name)));
+  return [200, { ok: true, outcome: { published: true } }];
+};
+
+const settled = async () => {
+  for (let i = 0; i < 50 && W.svcJobs().some((j) => !j.done); i++) await new Promise((r) => setTimeout(r, 10));
+};
+
+test("the catalogue: circuit and tavern as services, their scripts in the login's own checkout", () => {
+  expect(W.Services.map((s) => [s.id, s.port, s.mode, s.os])).toEqual([["circuit", 8099, "path", ["linux"]], ["tavern", 8484, "path", ["linux"]]]);
+  const inst = W.svcScript(circuit, "install");
+  expect(inst).toContain('dir="$HOME/.phosphorus/services/circuit"');
+  expect(inst).toContain("git clone -q https://github.com/pmghartman/circuit.git");
+  expect(inst).toContain("PORT=8099 scripts/install.sh");
+  expect(inst).toContain("loginctl enable-linger");
+  expect(inst.startsWith("set -e\n")).toBe(true);
+  expect(W.svcScript(tavern, "update")).toContain("scripts/update.sh");
+  expect(W.svcScript(tavern, "update")).toContain("install first");
+  const rm = W.svcScript(tavern, "remove");
+  expect(rm).toContain("systemctl --user disable --now tavern");
+  expect(rm).toContain('rm -rf "$dir"');
+});
+
+test("an op refused: no such service, a bad op, a host that isn't one, the wrong os, no login", async () => {
+  const login = { user: "pat", pass: "x" };
+  expect((await W.ServiceOp("install", "nothing", "a", login, "pat"))[0]).toBe(404);
+  expect((await W.ServiceOp("dance", "circuit", "a", login, "pat"))[0]).toBe(400);
+  expect((await W.ServiceOp("install", "circuit", "phone", login, "pat"))[0]).toBe(404);
+  expect((await W.ServiceOp("install", "circuit", "zzz", login, "pat"))[0]).toBe(404);
+  const [st, b] = await W.ServiceOp("install", "circuit", "w", login, "pat");
+  expect([st, b.error]).toEqual([400, "Circuit runs on linux hosts; w is windows"]);
+  expect((await W.ServiceOp("install", "circuit", "a", { user: "", pass: "" }, "pat"))[0]).toBe(400);
+  expect(ran).toEqual([]);
+});
+
+test("install: the script run on the host as the login, the service published there, the record kept", async () => {
+  const [st, b] = await W.ServiceOp("install", "circuit", "a", { user: "pat", pass: "x" }, "pmh");
+  expect(st).toBe(200);
+  expect(b.job).toMatchObject({ id: "circuit", host: "a", op: "install", login: "pat", by: "pmh", done: 0 });
+  // the same host again while it runs
+  expect((await W.ServiceOp("update", "circuit", "a", { user: "pat", pass: "x" }, "pmh"))[0]).toBe(409);
+  await settled();
+  expect(ran.map((r) => [r.host, r.user])).toEqual([["a", "pat"]]);
+  expect(ran[0]!.script).toBe(W.svcScript(circuit, "install"));
+  expect(published).toEqual([["a", "circuit", { port: "8099", mode: "path" }]]);
+  expect(W.svcRecordOf("circuit", "a")).toMatchObject({ login: "pat", by: "pmh" });
+  expect(sysfs.read("etc/services/circuit/a.json")).toMatchObject({ login: "pat" });
+  const j = W.svcJobs("circuit")[0]!;
+  expect([j.ok, j.error]).toEqual([true, ""]);
+  expect(j.log).toContain("step two");
+  expect(j.log).toContain("Circuit published on a");
+  const s = (await W.svcSummary()).find((x: any) => x.id === "circuit")!;
+  expect(s.hosts.a).toMatchObject({ published: true, record: { login: "pat", by: "pmh" } });
+  expect(s.hosts.a.job.ok).toBe(true);
+  expect(s.checkout).toBe("~/.phosphorus/services/circuit");
+  // the page's summary carries them beside the apps
+  const all = await W.summary(false);
+  expect(all.services.map((x: any) => x.id)).toEqual(["circuit", "tavern"]);
+});
+
+test("a failing script: the job failed with the exit, nothing published", async () => {
+  exitCode = 2;
+  ran.length = published.length = 0;
+  expect((await W.ServiceOp("install", "tavern", "b", { user: "pat", pass: "x" }, "pmh"))[0]).toBe(200);
+  await settled();
+  const j = W.svcJobs("tavern")[0]!;
+  expect(j.ok).toBe(false);
+  expect(j.error).toBe("the install script exited 2");
+  expect(published).toEqual([]);
+  expect(W.svcRecordOf("tavern", "b")).toBeUndefined();
+  // tried again once it's done
+  exitCode = 0;
+  expect((await W.ServiceOp("install", "tavern", "b", { user: "pat", pass: "x" }, "pmh"))[0]).toBe(200);
+  await settled();
+  expect(W.svcJobs("tavern")[0]!.ok).toBe(true);
+  expect(W.svcRecordOf("tavern", "b")).toMatchObject({ login: "pat" });
+});
+
+test("publishing refused: the job failed, the record not written", async () => {
+  publishStatus = 500;
+  expect((await W.ServiceOp("update", "circuit", "a", { user: "pat", pass: "x" }, "pmh"))[0]).toBe(200);
+  await settled();
+  const j = W.svcJobs("circuit")[0]!;
+  expect([j.op, j.ok]).toEqual(["update", false]);
+  expect(j.error).toContain("publishing: nope");
+  publishStatus = 200;
+});
+
+test("remove: the script run, the entry dropped, the record gone", async () => {
+  ran.length = published.length = 0;
+  expect((await W.ServiceOp("remove", "circuit", "a", { user: "pat", pass: "x" }, "pmh"))[0]).toBe(200);
+  await settled();
+  expect(ran[0]!.script).toBe(W.svcScript(circuit, "remove"));
+  expect(published).toEqual([["a", "circuit", null]]);
+  expect(W.svcRecordOf("circuit", "a")).toBeUndefined();
+  expect(routes.some((r) => r.name === "circuit")).toBe(false);
+  const s = (await W.svcSummary()).find((x: any) => x.id === "circuit")!;
+  expect(s.hosts.a.published).toBe(false);
+  expect(s.hosts.a.job.op).toBe("remove");
+  W.svcReset();
+  expect(W.svcJobs()).toEqual([]);
+});

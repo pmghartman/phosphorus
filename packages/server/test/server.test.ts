@@ -49,6 +49,13 @@ test("http smoke", async () => {
     expect(Array.isArray(fi.shares)).toBe(true);
     // a ping answered here
     expect((await fetch(base + "/api/ping/testhost")).status).toBe(204);
+    // the apps page: services beside the apps; a service's step needs a login, admin or not
+    const apps = await (await fetch(base + "/api/apps")).json();
+    expect(apps.services.map((x: any) => x.id)).toEqual(["circuit", "tavern"]);
+    const svc = await fetch(base + "/api/apps/services/install", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: "circuit", host: "testhost" }) });
+    expect(svc.status).toBe(403);
+    expect(await svc.json()).toEqual({ error: "log in as a user" });
+    expect((await fetch(base + "/api/apps/services/dance", { method: "POST", body: "{}" })).status).toBe(404);
     // the chat socket: a join's history and presence
     const got = await new Promise<any[]>((res, rej) => {
       const out: any[] = [];
