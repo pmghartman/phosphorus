@@ -14,7 +14,7 @@ import * as stats from "@phosphorus/stats";
 import * as store from "@phosphorus/store";
 import * as update from "@phosphorus/update";
 import * as users from "@phosphorus/users";
-import { errText, flushWrites, logf, markHot, tailnetIP } from "@phosphorus/util";
+import { env, errText, flushWrites, logf, markHot, tailnetIP } from "@phosphorus/util";
 import * as webapps from "@phosphorus/webapps";
 import type { WSData } from "@phosphorus/wsock";
 import type { Server } from "bun";
@@ -26,6 +26,8 @@ import {
   mergedChat,
   mergeFromPeers,
   mergePeerPresence,
+  ownChatSince,
+  peerSeq,
   postAs,
   showAs,
 } from "./chat.ts";
@@ -57,19 +59,21 @@ import {
   gitRowsAny,
   hostServices,
   hostsInfo,
+  ownState,
   publishHost,
   runGameLocally,
-  snapshot,
 } from "./server.ts";
 import { filesCall } from "./shares.ts";
 import { copyAcross } from "./transfer.ts";
 import { startPushes } from "./ws.ts";
 
+// for a test mesh's hosts
+export { mergedChat, postOwn } from "./chat.ts";
 export { codeBlocked, codeBlockedMsg, codeLogin, codeOptions } from "./code.ts";
 export { lineTime, logTime } from "./hostops.ts";
 export { pageUser } from "./http.ts";
 export { driveShell, errShellTimeout, Lines, readLines } from "./mcpshell.ts";
-export { appHandler, buildState, snapshot, Version };
+export { appHandler, buildState, Version };
 
 // start everything but the signal wait: the frontend server, once listening
 export async function start(): Promise<Server<WSData>> {
@@ -77,7 +81,6 @@ export async function start(): Promise<Server<WSData>> {
   files.init();
   files.setOnChange(mirror.Touched);
   users.Init();
-  store.setPeerSources(peers.peerIPs, peers.peerSys);
   store.start();
   users.DropOldTokens();
   chatmedia.init();
@@ -87,7 +90,8 @@ export async function start(): Promise<Server<WSData>> {
   initChat();
   setInterval(reapShells, 60000);
 
-  const srv = proxyServe(port, meshOnly(appHandler), false);
+  // FRONTEND_BIND: one address alone, for a test mesh of several hosts on loopback
+  const srv = proxyServe(port, meshOnly(appHandler), false, env("FRONTEND_BIND") || undefined);
   logf("[frontend] listening on port %d as %s, version %s", srv.port, selfHost || "an unnamed host", Version());
   recordPlatform();
   update.restoreChain();
@@ -112,6 +116,10 @@ export async function start(): Promise<Server<WSData>> {
     platform: getPlatform,
     ownLock: update.ownLock,
     hostServices,
+    own: ownState,
+    ownChat: ownChatSince,
+    chatSince: peerSeq,
+    self: () => ({ version: Version(), bootId: bootID }),
   });
   publishHost();
   setInterval(publishHost, 2000);

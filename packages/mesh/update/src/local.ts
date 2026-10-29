@@ -197,8 +197,8 @@ async function peerStateHTTP(host: string): Promise<Record<string, any>> {
 
 async function peerSelfHTTP(host: string): Promise<SelfInfo> {
   try {
-    const r = await peerReq(host, { path: "/api/mesh/snapshot" });
-    const s = obj(obj(r.body)?.self) ?? {};
+    const r = await peerReq(host, { path: "/api/self" });
+    const s = obj(r.body) ?? {};
     return { bootID: str(s.bootId), version: str(s.version), platform: str(s.platform) };
   } catch {
     return { bootID: "", version: "", platform: "" };

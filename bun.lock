@@ -217,7 +217,10 @@
         "@phosphorus/gamedns": "workspace:*",
         "@phosphorus/proxy": "workspace:*",
         "@phosphorus/services": "workspace:*",
+        "@phosphorus/store": "workspace:*",
         "@phosphorus/util": "workspace:*",
+        "@phosphorus/wire": "workspace:*",
+        "@phosphorus/wsock": "workspace:*",
       },
     },
     "packages/mesh/services": {

@@ -2,6 +2,7 @@
 // what each browser gets of it
 import { createHash } from "node:crypto";
 import { clean as cleanFiles } from "@phosphorus/chatmedia";
+import { pushChat } from "@phosphorus/peers";
 import * as store from "@phosphorus/store";
 import { Exists } from "@phosphorus/users";
 import { logf, markHot, marshal, now, readJSON, writeJSONSoon } from "@phosphorus/util";
@@ -275,8 +276,21 @@ export function postOwn(fields: Msg): Msg {
   const e: Msg = { host: selfHost, seq: ownSeq, timestamp: now(), ...fields };
   pushOwn(e);
   mergeChatMessages([e]);
+  pushChat([e]);
   markHot();
   return e;
+}
+
+// this host's lines after seq, for a peer catching up
+export function ownChatSince(since: number): Msg[] {
+  return ownChat.filter((m) => num(m.seq) > since);
+}
+
+// the highest seq of a host's lines held here, what a hello asks from
+export function peerSeq(host: string): number {
+  let top = 0;
+  for (const m of mergedChat) if (m.host === host && num(m.seq) > top) top = num(m.seq);
+  return top;
 }
 
 export function retractOwn(seq: number) {
