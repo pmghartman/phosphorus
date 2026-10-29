@@ -239,6 +239,7 @@ const events = {
     link.sent = store.seq();
     if (h.storeDigest !== store.digest()) void syncWith(link);
     rebuildDevices(lastKnown());
+    for (const fn of upFns) fn(link.host);
     markHot();
   },
   onDialError(link: Link, why: string) {
@@ -483,6 +484,10 @@ export function peerModel(): any[] {
   }
   return out;
 }
+
+const upFns: ((host: string) => void)[] = [];
+// told each time a peer's link comes up
+export const onLinkUp = (fn: (host: string) => void) => void upFns.push(fn);
 
 // each peer's link, up or not, for the page and tests
 export const links = (): Record<string, boolean> =>
