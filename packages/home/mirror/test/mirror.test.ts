@@ -14,7 +14,8 @@ M.load();
 
 const home = (rel: string) => join(F.HomeRoot, rel);
 const appliedFile = join(store.Root, "var", "mirror-applied.json");
-const applied = () => JSON.parse(readFileSync(appliedFile, "utf8")) as Record<string, { at: number; path: string }>;
+const applied = () =>
+  JSON.parse(readFileSync(appliedFile, "utf8")) as Record<string, { at: number; path: string; own?: boolean }>;
 
 test("ids and entry paths as Go made them", () => {
   const want = createHash("sha256").update("ann/notes.txt").digest("hex").slice(0, 24);
@@ -31,8 +32,14 @@ test("mark, unmark, touched", async () => {
   expect(M.IsMirrored("ann/notes.txt")).toBe(true);
   const id = M.idOf("ann/notes.txt");
   expect(store.read(M.entryRel(id))).toEqual({ path: "ann/notes.txt", size: 5, from: "tshost" });
-  // this host's own mark counts as applied at the entry's stamp
-  expect(applied()[id]).toEqual({ at: store.stamp(M.entryRel(id)), path: "ann/notes.txt" });
+  // this host's own mark counts as applied at the entry's stamp, as the original
+  expect(applied()[id]).toEqual({ at: store.stamp(M.entryRel(id)), path: "ann/notes.txt", own: true });
+  // unmarked, the original stays
+  M.Unmark("ann/notes.txt");
+  await M.tick(() => "", 0);
+  expect(readFileSync(home("ann/notes.txt"), "utf8")).toBe("hello");
+  expect(applied()[id]).toBeUndefined();
+  expect(M.Mark("ann/notes.txt")).toEqual([200, { ok: true, all: true }]);
 
   // a rename follows the file
   await Bun.write(home("ann/moved.txt"), "hello");
@@ -109,6 +116,54 @@ test("tick pulls a peer's file and drops it once unmarked", async () => {
     await M.tick(ipOf, port);
     expect(existsSync(home("shared/from-peer.txt"))).toBe(false);
     expect(applied()).toEqual({});
+  } finally {
+    srv.stop(true);
+    for (const r of store.list("etc/mirror")) store.remove("etc/mirror/" + r);
+  }
+});
+
+const until = async (cond: () => boolean, what: string, ms = 5000) => {
+  const t0 = Date.now();
+  while (!cond()) {
+    if (Date.now() - t0 > ms) throw new Error("timed out waiting for " + what);
+    await Bun.sleep(20);
+  }
+};
+
+test("started, a pull follows the store's entries and a peer's link coming up, no tick asked for", async () => {
+  const id = M.idOf("shared/pushed.txt");
+  let serve = false;
+  let asked = 0;
+  const srv = Bun.serve({
+    port: 0,
+    fetch: (req) => {
+      asked++;
+      return serve && new URL(req.url).pathname === `/internal/mirror/${id}`
+        ? new Response("pushed bytes")
+        : new Response(null, { status: 404 });
+    },
+  });
+  try {
+    M.Start((host) => (host === "peer" ? "127.0.0.1" : ""), srv.port!);
+    // a peer's entry merged in, as a link delivers it: fetched, the peer not answering yet
+    store.merge({
+      [M.entryRel(id)]: {
+        t: Date.now(),
+        h: "peer",
+        c: "x",
+        data: { path: "shared/pushed.txt", size: 12, from: "peer" },
+      },
+    });
+    await until(() => asked > 0, "the first fetch");
+    expect(existsSync(home("shared/pushed.txt"))).toBe(false);
+    // the peer's link up: fetched again at once, this time there
+    serve = true;
+    M.peerUp();
+    await until(() => existsSync(home("shared/pushed.txt")), "the copy");
+    expect(readFileSync(home("shared/pushed.txt"), "utf8")).toBe("pushed bytes");
+    // the entry gone: the copy follows, from the store's change alone
+    store.remove(M.entryRel(id));
+    await until(() => !existsSync(home("shared/pushed.txt")), "the copy gone");
   } finally {
     srv.stop(true);
     for (const r of store.list("etc/mirror")) store.remove("etc/mirror/" + r);
