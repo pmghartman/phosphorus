@@ -24,8 +24,8 @@ export const PeerCloseNoHello = 4000;
 
 // what a link reports to the mesh
 export type LinkEvents = {
-  // this host's hello for the far side
-  hello: () => PeerHello;
+  // this host's hello for the far side of a link
+  hello: (link: Link) => PeerHello;
   // the far side's hello; false refuses the link
   onHello: (link: Link, hello: PeerHello) => boolean;
   // a frame after the hellos
@@ -78,7 +78,7 @@ export class Link {
         try {
           const c = await dial(
             `ws://${this.ip}:${FrontendPort}/api/peer`,
-            { [HostHeader]: this.ev.hello().host },
+            { [HostHeader]: this.ev.hello(this).host },
             dialTimeoutMs,
           );
           if (this.stopped) {
@@ -178,7 +178,7 @@ export class Link {
       }
       if (was) this.ev.onDown(this);
     });
-    c.json(this.ev.hello());
+    c.json(this.ev.hello(this));
     return true;
   }
 

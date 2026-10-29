@@ -1,13 +1,19 @@
 // three real hosts on loopback: links, the store converging over them, clock
 // skew, tombstones, a dropped link and a host leaving
-import { afterAll, beforeAll, expect, test } from "bun:test";
-import { Mesh } from "./mesh-harness.ts";
+import { afterAll, beforeAll, test as bunTest, expect } from "bun:test";
+import { Mesh, unavailable } from "./mesh-harness.ts";
 
-const m = new Mesh(["alpha", "bravo", "charlie"]);
+const names = ["alpha", "bravo", "charlie"];
+// a Mac's lo0 has 127.0.0.1 alone until given aliases: the mesh skipped, and why
+const why = unavailable(names.length);
+if (why) console.log(`[mesh test] skipped, ${why}`);
+const test = bunTest.skipIf(!!why);
+
+const m = (why ? undefined : new Mesh(names)) as Mesh;
 beforeAll(async () => {
-  await m.start();
+  await m?.start();
 }, 60_000);
-afterAll(() => m.stop());
+afterAll(() => m?.stop());
 
 const linked = async (name: string, ...peers: string[]) => {
   const v = await m.view(name);

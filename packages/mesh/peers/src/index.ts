@@ -198,7 +198,8 @@ function handPresence() {
 
 // --- the links -------------------------------------------------------------------------
 
-const helloFrame = (): PeerHello => {
+// this host's hello for a peer: what it holds of that peer's chat says where to resume
+const helloFrame = (peer: string): PeerHello => {
   const self = hooks.self();
   return {
     type: "hello",
@@ -208,7 +209,7 @@ const helloFrame = (): PeerHello => {
     bootId: self.bootId,
     storeDigest: store.digest(),
     storeSeq: store.seq(),
-    chatSince: 0,
+    chatSince: hooks.chatSince(peer),
   };
 };
 
@@ -216,7 +217,7 @@ const helloFrame = (): PeerHello => {
 const dials = (host: string) => selfHost < host;
 
 const events = {
-  hello: () => helloFrame(),
+  hello: (link: Link) => helloFrame(link.host),
   onHello(link: Link, hello: PeerHello): boolean {
     if (hello.host !== link.host) return false;
     return true;

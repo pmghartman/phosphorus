@@ -8,6 +8,40 @@ import { delimiter, join, resolve } from "node:path";
 const root = resolve(import.meta.dir, "../../../..");
 const win = process.platform === "win32";
 
+// 127.0.0.2 and up: every loopback address on Linux and Windows, only 127.0.0.1 on
+// a Mac until lo0 is given aliases
+const ipAt = (i: number) => `127.0.0.${2 + i}`;
+
+const canBind = (ip: string, port: number) => {
+  try {
+    Bun.serve({ hostname: ip, port, fetch: () => new Response() }).stop(true);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+// why a mesh of n hosts can't run here, blank when it can
+export function unavailable(n: number): string {
+  const missing = Array.from({ length: n }, (_, i) => ipAt(i)).filter((ip) => !canBind(ip, 0));
+  if (!missing.length) return "";
+  const how =
+    process.platform === "darwin"
+      ? `: sudo ifconfig lo0 alias ${missing.join(" up; sudo ifconfig lo0 alias ")} up`
+      : "";
+  return `can't bind ${missing.join(", ")}${how}`;
+}
+
+// two ports free on every host's address, below the ephemeral range so a
+// connection made meanwhile can't take one
+function pickPorts(ips: string[]): [number, number] {
+  for (;;) {
+    const a = 20000 + Math.floor(Math.random() * 10000);
+    const b = a + 1;
+    if (ips.every((ip) => canBind(ip, a) && canBind(ip, b))) return [a, b];
+  }
+}
+
 export type Host = { name: string; ip: string; proc: ReturnType<typeof Bun.spawn>; log: string[] };
 
 export class Mesh {
@@ -20,12 +54,7 @@ export class Mesh {
   gone = new Set<string>();
 
   constructor(private names: string[]) {
-    const probe = Bun.serve({ port: 0, fetch: () => new Response() });
-    this.port = probe.port!;
-    probe.stop(true);
-    const probe2 = Bun.serve({ port: 0, fetch: () => new Response() });
-    this.ctlPort = probe2.port!;
-    probe2.stop(true);
+    [this.port, this.ctlPort] = pickPorts(names.map((n) => this.ipOf(n)));
     mkdirSync(join(this.dir, "bin"));
     if (win)
       writeFileSync(
@@ -42,7 +71,7 @@ export class Mesh {
     for (const n of names) this.online.set(n, true);
   }
 
-  ipOf = (name: string) => `127.0.0.${2 + this.names.indexOf(name)}`;
+  ipOf = (name: string) => ipAt(this.names.indexOf(name));
   statusFile = (name: string) => join(this.dir, `${name}.status.json`);
 
   // every host's status file written as tailscale would answer it there

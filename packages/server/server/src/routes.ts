@@ -11,7 +11,6 @@ import { Assign, EraseSlots, ServeChat, ServeMessages, ServeModels } from "@phos
 import * as peers from "@phosphorus/peers";
 import { favicon, faviconWhy, requestURI } from "@phosphorus/proxy";
 import { setPublic } from "@phosphorus/services";
-import * as store from "@phosphorus/store";
 import * as term from "@phosphorus/term";
 import * as update from "@phosphorus/update";
 import * as users from "@phosphorus/users";
@@ -132,17 +131,6 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
     // this host as a peer's update asks it: version, platform, boot id
     if (pathname === "/api/self") return sendJSON(200, selfInfo());
     return sendJSON(200, update.status());
-  }
-  if (pathname === "/api/sys/stamps" && method === "GET") {
-    if (!(await isTailnet(c))) return forbidden();
-    return sendJSON(200, store.stamps());
-  }
-  if (pathname === "/api/sys/sync" && method === "GET") {
-    if (!(await isTailnet(c))) return forbidden();
-    let rels: string[] | undefined;
-    const v = q.get("rels");
-    if (v) rels = v.split(",").slice(0, 200);
-    return sendJSON(200, store.dump(rels));
   }
   if (pathname === "/api/me/wallpaper" && method === "GET") {
     if (!(await isLocalOrPeer(c))) return forbidden();
