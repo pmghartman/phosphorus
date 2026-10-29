@@ -8,5 +8,6 @@ export * from "./chat.ts";
 export * from "./code.ts";
 export * from "./files.ts";
 export * from "./md.ts";
+export * from "./peer.ts";
 export * from "./state.ts";
 export * from "./stats.ts";

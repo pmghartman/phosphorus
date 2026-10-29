@@ -13,15 +13,14 @@ test("http smoke", async () => {
     expect(page.status).toBe(200);
     expect(page.headers.get("content-type")).toBe("text/html; charset=utf-8");
     expect(await page.text()).toContain("<script");
-    // a peer's snapshot, from this machine
-    const snap = await fetch(base + "/api/mesh/snapshot?since=0");
-    expect(snap.status).toBe(200);
-    const s = await snap.json();
-    expect(s.self.host).toBe("testhost");
-    expect(s.self.bootId).toMatch(/^[0-9a-f-]{36}$/);
-    expect(s.chat).toEqual([]);
-    expect(s.presence).toEqual([]);
-    expect(typeof s.sysDigest).toBe("string");
+    // this host as a peer's update asks it, from this machine
+    const self = await fetch(base + "/api/self");
+    expect(self.status).toBe(200);
+    const s = await self.json();
+    expect(s.host).toBe("testhost");
+    expect(s.bootId).toMatch(/^[0-9a-f-]{36}$/);
+    // a peer's link is a websocket alone
+    expect((await fetch(base + "/api/peer")).status).toBe(404);
     // no login
     const me = await fetch(base + "/api/me");
     expect(me.status).toBe(401);
@@ -40,7 +39,6 @@ test("http smoke", async () => {
     expect(bound.status).toBe(403);
     // an unknown api path, and a peer-only one from the browser side
     expect((await fetch(base + "/api/nope")).status).toBe(404);
-    expect((await fetch(base + "/api/sys/stamps")).status).toBe(403);
     expect((await fetch(base + "/internal/keys")).status).toBe(403);
     // the state, and its poll interval
     const st = await (await fetch(base + "/api/state")).json();
