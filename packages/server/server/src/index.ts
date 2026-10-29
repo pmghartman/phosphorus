@@ -96,6 +96,7 @@ export async function start(): Promise<Server<WSData>> {
   recordPlatform();
   update.restoreChain();
   mirror.Start(tailnetIP, port);
+  peers.onLinkUp(mirror.peerUp);
   webapps.Start(tailnetIP, port);
   webapps.StartServices({
     routes: peers.routes,
