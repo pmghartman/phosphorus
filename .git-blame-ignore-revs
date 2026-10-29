@@ -1,2 +1,3 @@
-# the one-off formatting commit, skipped by git blame --ignore-revs-file
-a38a3dd43ab5e1f2c3cfcd0af55381bf993b6724
+# restructure 1/3 as squashed onto main (#9): the tree formatted once by biome,
+# skipped by git blame --ignore-revs-file
+dae46675be980b5778117111342797377f80be37
