@@ -548,8 +548,7 @@
   }
 }
 
-/* the phosphorus and cli looks draw the mark as ascii art (theme.js sets --mark), on the desk and in about */
+/* the mark as ascii art, on the desk and in about */
 .about-mark {
-  content: var(--mark);
   object-fit: contain;
 }

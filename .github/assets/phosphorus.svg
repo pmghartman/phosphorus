@@ -1,22 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="100 150 824 724" width="824" height="724" role="img" aria-label="phosphorus">
-  <!-- README's Φ: web/static/phosphorus.svg without filters, masks or blend modes, so it stays
-       crisp and animated in any viewer; the oval crosses over the stem at the crown -->
-  <defs>
-    <linearGradient id="flow" gradientUnits="userSpaceOnUse" x1="95.3" y1="144.6" x2="511.1" y2="943.2" spreadMethod="repeat">
-      <stop offset="0" stop-color="#a371f7"/><stop offset="0.5" stop-color="#f0883e"/><stop offset="1" stop-color="#a371f7"/>
-      <animateTransform attributeName="gradientTransform" type="translate" values="0 0;415.8 798.6;0 0" keyTimes="0;0.5;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1" dur="6s" repeatCount="indefinite"/>
-    </linearGradient>
-    <linearGradient id="tone" gradientUnits="userSpaceOnUse" x1="117" y1="0" x2="907" y2="0"><stop offset="0" stop-color="#2a0a3a" stop-opacity="0.24"/><stop offset="0.55" stop-color="#2a0a3a" stop-opacity="0"/><stop offset="1" stop-color="#fff" stop-opacity="0.12"/></linearGradient>
-    <path id="ring" fill-rule="evenodd" d="M117,512 A395,236 0 1,0 907,512 A395,236 0 1,0 117,512 Z M263,512 A249,172 0 1,1 761,512 A249,172 0 1,1 263,512 Z"/>
-    <polygon id="stem" stroke-width="16" stroke-linejoin="round" points="340,169 684,169 684,205 581,252 581,772 684,819 684,855 340,855 340,819 443,772 443,252 340,205"/>
-    <g id="serifs" stroke-width="16" stroke-linejoin="round"><rect x="340" y="169" width="344" height="36"/><rect x="340" y="819" width="344" height="36"/></g>
-    <clipPath id="cross"><rect x="380" y="200" width="264" height="220"/></clipPath>
-  </defs>
-  <use xlink:href="#ring" fill="url(#flow)"/>
-  <use xlink:href="#ring" fill="url(#tone)"/>
-  <use xlink:href="#stem" fill="url(#flow)" stroke="url(#flow)"/>
-  <use xlink:href="#stem" fill="#2a0a3a" stroke="#2a0a3a" opacity="0.32"/>
-  <use xlink:href="#serifs" fill="url(#flow)" stroke="url(#flow)"/>
-  <use xlink:href="#serifs" fill="#fff" stroke="#fff" opacity="0.1"/>
-  <g clip-path="url(#cross)"><use xlink:href="#ring" fill="url(#flow)"/><use xlink:href="#ring" fill="url(#tone)"/></g>
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="phosphorus">
+<!-- the mark: Georgia's Φ as a path, drawn the same without the font; orange to violet down its
+     diagonal. The one source: scripts/icons.ts makes every platform's icon from it -->
+<defs>
+<linearGradient id="g" gradientUnits="userSpaceOnUse" x1="87" y1="-681" x2="680" y2="-14">
+<stop offset="0" stop-color="#f0883e"/>
+<stop offset="1" stop-color="#a371f7"/>
+</linearGradient>
+</defs>
+<path transform="translate(11.28 50.78) scale(0.054)" fill="url(#g)" d="M179.2 -225.6Q204.1 -183.6 243.2 -165.0Q282.2 -146.5 332.5 -146.5L332.5 -552.7L312.0 -552.7Q267.6 -552.7 235.6 -535.2Q203.6 -517.6 182.6 -485.4Q165.0 -457.5 156.7 -421.6Q148.4 -385.7 148.4 -349.1Q148.4 -323.7 153.1 -293.2Q157.7 -262.7 179.2 -225.6ZM586.9 -225.6Q606.0 -258.3 612.1 -291.7Q618.2 -325.2 618.2 -349.1Q618.2 -380.4 609.9 -418.9Q601.6 -457.5 584.0 -485.4Q565.4 -514.6 533.7 -533.7Q502.0 -552.7 454.6 -552.7L434.1 -552.7L434.1 -146.5Q487.3 -146.5 526.1 -167.7Q564.9 -189.0 586.9 -225.6ZM647.0 -171.4Q606.9 -140.1 552.5 -123.5Q498.0 -106.9 433.6 -106.9L433.6 -85.0Q433.6 -67.9 439.2 -56.6Q444.8 -45.4 462.4 -38.6Q471.2 -35.2 492.9 -32.5Q514.6 -29.8 533.2 -29.3L533.2 4.9L239.7 4.9L239.7 -29.3Q251.5 -30.3 273.7 -32.5Q295.9 -34.7 304.7 -38.6Q319.3 -44.9 326.2 -56.2Q333.0 -67.4 333.0 -85.0L333.0 -106.9Q268.6 -106.9 213.6 -123.0Q158.7 -139.2 118.2 -171.4Q78.1 -203.6 55.4 -251.0Q32.7 -298.3 32.7 -360.8Q32.7 -408.7 49.1 -449.2Q65.4 -489.7 102.5 -522.9Q138.2 -554.7 194.8 -573.0Q251.5 -591.3 328.1 -591.3L333.0 -591.3L333.0 -604.5Q333.0 -620.6 327.4 -631.8Q321.8 -643.1 304.7 -650.4Q290.5 -656.7 271.7 -660.6Q252.9 -664.6 238.8 -665.5L238.8 -699.7L527.8 -699.7L527.8 -665.5Q513.7 -665.0 495.1 -662.8Q476.6 -660.6 462.4 -655.8Q445.8 -649.9 439.7 -637.9Q433.6 -626.0 433.6 -609.4L433.6 -591.3L438.5 -591.3Q515.1 -591.3 571.3 -573.2Q627.4 -555.2 664.1 -522.9Q700.2 -490.7 717.0 -449.2Q733.9 -407.7 733.9 -360.8Q733.9 -299.3 710.2 -251.0Q686.5 -202.6 647.0 -171.4Z"/>
 </svg>
