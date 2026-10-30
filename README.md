@@ -1,4 +1,4 @@
-<img src=".github/assets/phosphorus-ascii.svg" alt="" width="280">
+<img src="apps/web/static/phosphorus-ascii.svg" alt="" width="280">
 
 # Phosphorus
 
