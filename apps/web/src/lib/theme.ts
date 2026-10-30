@@ -256,9 +256,6 @@ function apply(id: string) {
   r.dataset.palette = t.id;
   setIconSet(t.icons);
   r.dataset.themeId = id;
-  // the phosphorus and cli looks draw the mark as ascii art
-  if (t.id === 'phosphorus' || t.id === 'cli') r.style.setProperty('--mark', 'url(/phosphorus-ascii.svg?v=1)');
-  else r.style.removeProperty('--mark');
   r.toggleAttribute('data-round', round);
   r.toggleAttribute('data-sans', sans);
   r.toggleAttribute('data-custom', !!c);
