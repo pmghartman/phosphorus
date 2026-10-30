@@ -67,7 +67,6 @@ function icns(): Uint8Array {
 }
 
 const out: Record<string, Uint8Array | string> = {
-  ".github/assets/phosphorus.svg": src,
   "apps/web/static/favicon.ico": ico([32]),
   "apps/web/static/icon-192.png": png(192),
   "apps/web/static/apple-touch-icon.png": png(180),
