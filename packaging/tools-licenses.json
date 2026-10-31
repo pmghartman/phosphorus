@@ -27,7 +27,7 @@
     {
       "name": "llama.cpp",
       "spdx": "MIT",
-      "pin": ["packages/tools/src/index.ts", "LlamaTag\\s*=\\s*\"([^\"]+)\""],
+      "pin": ["packages/ai/tools/src/index.ts","LlamaTag\\s*=\\s*\"([^\"]+)\""],
       "source": "https://github.com/ggml-org/llama.cpp",
       "license": "https://raw.githubusercontent.com/ggml-org/llama.cpp/{v}/LICENSE"
     }
