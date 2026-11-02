@@ -9,6 +9,7 @@
   "privacyPolicyUrl": "https://github.com/pmghartman/phosphorus/blob/main/PRIVACY.md",
   "supportUrl": "https://github.com/pmghartman/phosphorus/issues",
   "keywords": ["homelab", "mesh", "tailnet", "self-hosted"],
+  "icon": "./.claude-plugin/icon.png",
   "userConfig": {
     "domain": {
       "type": "string",
