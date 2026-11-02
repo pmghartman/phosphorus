@@ -214,6 +214,15 @@ export function dkAnchor(
     pop.dkPlace = () => {
       const a = pop.dkAnchor;
       if (!a || pop.hidden || !pop.isConnected || !a.btn.isConnected) return;
+      // a window's own button: under it, kept on the screen
+      if (a.btn.closest('.dk-win')) {
+        const r = a.btn.getBoundingClientRect();
+        const cb = dkFixedFrame(pop);
+        pop.style.right = pop.style.bottom = 'auto';
+        pop.style.top = `${Math.min(r.bottom + DK_POP_GAP, innerHeight - DK_POP_EDGE - pop.offsetHeight) - cb.top}px`;
+        pop.style.left = `${Math.max(DK_POP_EDGE, Math.min(r.left, innerWidth - DK_POP_EDGE - pop.offsetWidth)) - cb.left}px`;
+        return;
+      }
       // the bar's edges the limits, so a popup lines up with it
       const barEl = (a.btn.closest('.dk-bar') as HTMLElement | null) || a.btn;
       const bar = barEl.getBoundingClientRect();

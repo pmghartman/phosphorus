@@ -31,7 +31,6 @@ import { dkView } from '../desk.ts';
 import { dkCode, dkDeskAt, dkFileMenu } from '../deskfiles.ts';
 import { dkClock, type Pop } from '../taskbar.ts';
 import { type DkWin, dkFocus, dkNav, dkWin, type NavFrame } from '../windows.ts';
-import { dkTerminal } from './apps.ts';
 import {
   DK_GX,
   DK_GY,
@@ -45,6 +44,7 @@ import {
   dkPaintSel,
   dkSaved,
 } from './icons.ts';
+import { dkTerminal } from './terminal.ts';
 
 export const DK_WALL_MAX = 2560;
 

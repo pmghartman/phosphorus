@@ -39,7 +39,6 @@ export {
   homeOnline,
   homePick,
   homeTarget,
-  hostUrl,
   isHome,
   otherHosts,
 } from './merged.ts';

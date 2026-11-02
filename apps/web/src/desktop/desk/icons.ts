@@ -30,8 +30,8 @@ import { dkSessionHold, dkSessionRestore, dkSessionTry } from '../session.ts';
 import { dkSpotlightTray } from '../spotlight.ts';
 import { dkAnchor, dkBadge, dkBar, dkChips, dkClock, dkHomeBtn, dkPlaceItems, type Pop } from '../taskbar.ts';
 import { dkClose, dkFocus, dkPlace, dkSnap } from '../windows.ts';
-import { dkTerminal } from './apps.ts';
 import { dkGitFrame } from './git.ts';
+import { dkTermApp, dkTermDrop } from './terminal.ts';
 import { dkDeskMenu, dkService, dkWallPaint } from './wallpaper.ts';
 import { dkWebApp, dkWebApps } from './webapps.ts';
 import { dkOpenApp } from './windows.ts';
@@ -284,10 +284,7 @@ export function dkIcons(): void {
   const files = new Map(dk.deskFiles.map((e) => [`doc\n${filesJoin(e.at!, e.name)}`, e]));
   // one key per icon and what it shows, an unchanged one kept as it is
   const want: [string, () => HTMLButtonElement][] = [
-    ...hosts.map((h): [string, () => HTMLButtonElement] => [
-      `terminal\n${h}`,
-      () => dkIcon('terminal', 'terminal', h, () => dkTerminal(h)),
-    ]),
+    ['terminal', () => dkIcon('terminal', 'terminal', '', dkTermApp)],
     ['files', () => dkIcon('files', 'files', '', () => filesWin())],
     ['chat', () => dkIcon('chat', 'chat', '', () => dkOpenApp('chat'))],
     ['status', () => dkIcon('status', 'status', '', () => dkOpenApp('status'))],
@@ -689,7 +686,7 @@ export function dkRoutes(services: Route[]): void {
 // a host gone from the mesh: its terminals closed, its chip and places gone until it answers again
 export function dkHostsGone(): void {
   const up = new Set([...st.terminalHosts, st.selfHost]);
-  for (const w of [...dk.wins.values()]) if (w.kind === 'term' && w.host && !up.has(w.host)) dkClose(w, true);
+  dkTermDrop((h) => !up.has(h));
   dkChips();
   for (const fm of dkFms) appCall('files', false, (m) => m.fmHosts(fm));
 }

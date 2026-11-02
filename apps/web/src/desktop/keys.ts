@@ -3,8 +3,8 @@
 
 import { filesWin } from '../features/home/home.ts';
 import { isMobile } from '../lib/dom.ts';
-import { dk, st } from '../lib/state.ts';
-import { dkLiveHosts, dkOpenApp, dkTerminal } from './desk.ts';
+import { dk } from '../lib/state.ts';
+import { dkOpenApp, dkTermNew } from './desk.ts';
 import { dkSpotlight } from './spotlight.ts';
 import { dkOverview, dkOverviewEnd, dkOverviewOn, dkSwitchEnd, dkSwitching, dkSwitchStep } from './switcher.ts';
 import { type DkWin, dkClose, dkFocus, dkMax, dkMin, dkSnapTo, dkStack } from './windows.ts';
@@ -25,13 +25,6 @@ export function dkShowDesktop(): void {
   for (const w of back) dkFocus(w);
 }
 
-// a terminal on the host serving the page, else the first logged in
-function terminal() {
-  const hosts = dkLiveHosts();
-  const h = hosts.includes(st.selfHost) ? st.selfHost : hosts[0];
-  if (h) dkTerminal(h);
-}
-
 document.addEventListener(
   'keydown',
   (e) => {
@@ -47,7 +40,7 @@ document.addEventListener(
     let done = true;
     if (code === 'Tab') dkSwitchStep(e.shiftKey);
     else if (code === 'Space') dkSpotlight();
-    else if (code === 'KeyT') terminal();
+    else if (code === 'KeyT') dkTermNew();
     else if (code === 'KeyF') filesWin();
     else if (code === 'KeyC') dkOpenApp('chat');
     else if (code === 'KeyS') dkOpenApp('status');

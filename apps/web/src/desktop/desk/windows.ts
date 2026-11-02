@@ -13,8 +13,8 @@ import { deskApps, dk, st } from '../../lib/state.ts';
 import { dkCode } from '../deskfiles.ts';
 import { dkBadge } from '../taskbar.ts';
 import { dkFocus, dkSize, dkWin } from '../windows.ts';
-import { dkTerminal } from './apps.ts';
 import { dkGit } from './git.ts';
+import { dkTermFor } from './terminal.ts';
 
 export const DK_APPS: Record<string, { title: string; view: string; w: number; h: number }> = {
   chat: { title: 'chat', view: 'view-chat', w: 880, h: 560 },
@@ -81,13 +81,14 @@ export function dkAppsChanged(): void {
   if (up('chat')) setConv(convNow());
 }
 
-// a shell from the chat or phosphorus, on a host this desktop is logged into
-// one asked for by phosphorus: logged in with the saved login, shared with it
+// a shell from the chat or phosphorus, on a host this desktop is logged into: its tab
+// brought forward, else a new one; one asked for by phosphorus shared with it, the
+// window its own only if it opened it
 export function dkOpenTerminal(host: string, shared = false): void {
   if (!dk.desk || !dk.creds.has(host)) return;
-  const w = dkTerminal(host, '', shared);
-  if (shared && agentViewOn()) {
-    agentOwn(w);
+  const t = dkTermFor(host, shared);
+  if (t && shared && agentViewOn()) {
+    if (t.fresh) agentOwn(t.w);
     agentArm();
   }
 }

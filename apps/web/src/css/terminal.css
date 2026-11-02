@@ -1,0 +1,228 @@
+/* the terminal: its tabs in the title bar as Windows Terminal's, the shown one the
+   colour of the shell below it, the + and ▾ right after the last */
+.dk-terms .dk-title {
+  display: none;
+}
+.dk-terms .dk-head {
+  gap: 0;
+  padding-left: 0.3rem;
+}
+.dk-tbar {
+  display: flex;
+  align-items: flex-end;
+  align-self: stretch;
+  min-width: 0;
+  margin-right: auto;
+  padding-right: 1.5rem;
+}
+.dk-tabs {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  align-self: stretch;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.dk-tabs::-webkit-scrollbar {
+  display: none;
+}
+.dk-tab {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  box-sizing: border-box;
+  height: 1.35rem;
+  min-width: 5.5rem;
+  max-width: 11rem;
+  padding: 0 0.15rem 0 0.5rem;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: var(--r-ctl, 4px) var(--r-ctl, 4px) 0 0;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.dk-tab:hover:not(.active) {
+  background: var(--tab-hover);
+  color: var(--fg);
+}
+.dk-tab.active {
+  /* over the bar's bottom edge, one piece with the shell below */
+  height: calc(1.35rem + 1px);
+  margin-bottom: -1px;
+  border-color: var(--border);
+  background: var(--bg);
+  color: var(--fg);
+}
+.dk-win.focused .dk-tab.active .dk-tab-os {
+  color: var(--sage);
+}
+.dk-tab.shared .dk-tab-os {
+  color: var(--accent);
+}
+.dk-tab.ended .dk-tab-t {
+  color: var(--dim);
+  text-decoration: line-through;
+}
+.dk-tab.dragging {
+  opacity: 0.8;
+}
+.dk-tab-os {
+  flex: none;
+  width: 0.8rem;
+  height: 0.8rem;
+}
+.dk-tab-t {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dk-tab-x,
+.dk-tab-add,
+.dk-tab-pick {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: var(--r-ctl, 4px);
+  color: var(--muted);
+  cursor: pointer;
+}
+.dk-tab-x {
+  width: 1.1rem;
+  height: 1.1rem;
+  visibility: hidden;
+}
+.dk-tab.active .dk-tab-x,
+.dk-tab:hover .dk-tab-x {
+  visibility: visible;
+}
+.dk-tab-x .ic {
+  width: 0.6rem;
+  height: 0.6rem;
+}
+.dk-tab-add,
+.dk-tab-pick {
+  height: 1.2rem;
+  margin: 0 0 0.075rem 0.15rem;
+}
+.dk-tab-add {
+  width: 1.5rem;
+}
+.dk-tab-pick {
+  width: 1.1rem;
+  margin-left: 0;
+}
+.dk-tab-add .ic,
+.dk-tab-pick .ic {
+  width: 0.7rem;
+  height: 0.7rem;
+}
+.dk-tab-x:hover,
+.dk-tab-add:hover,
+.dk-tab-pick:hover {
+  background: var(--tab-hover);
+  color: var(--fg);
+}
+.dk-terms .dk-body {
+  padding: 0;
+}
+.dk-tpane {
+  position: absolute;
+  inset: 0;
+  padding: 0.25rem 0 0 0.5rem;
+}
+.dk-tpane[hidden] {
+  display: none;
+}
+.dk-terms-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--dim);
+  font-size: 0.8rem;
+}
+.dk-terms-empty:not(:only-child) {
+  display: none;
+}
+
+/* the ▾'s devices: each one's OS, its name, a note on the right */
+.dk-menu button.dk-term-dev {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.dk-term-os {
+  flex: none;
+  width: 0.85rem;
+  height: 0.85rem;
+}
+.dk-term-note {
+  margin-left: auto;
+  padding-left: 1.5rem;
+  color: var(--dim);
+}
+.dk-menu button.dk-term-dev:hover:not(:disabled) .dk-term-note {
+  color: inherit;
+}
+
+/* windows terminal's own: campbell's black under a dark grey bar, always */
+:root[data-palette="win11"] .dk-terms .dk-tab {
+  color: #c0c0c0;
+}
+:root[data-palette="win11"] .dk-terms .dk-tab.active {
+  border-color: transparent;
+  background: #0c0c0c;
+  color: #ffffff;
+}
+:root[data-palette="win11"] .dk-terms .dk-tab:hover:not(.active) {
+  background: #2d2d2d;
+  color: #ffffff;
+}
+:root[data-palette="win11"] .dk-terms :is(.dk-tab-x, .dk-tab-add, .dk-tab-pick) {
+  color: #ffffff;
+}
+:root[data-palette="win11"] .dk-terms :is(.dk-tab-x, .dk-tab-add, .dk-tab-pick):hover {
+  background: #3a3a3a;
+}
+
+/* a phone's: a strip of tabs that scrolls across the tall title bar */
+@media (max-width: 720px) {
+  .dk-terms .dk-head {
+    padding-left: 0.25rem;
+  }
+  .dk-tbar {
+    padding-right: 0.25rem;
+  }
+  .dk-tabs {
+    touch-action: pan-x;
+  }
+  .dk-tab,
+  .dk-tab.active {
+    height: 2.25rem;
+    min-width: 6.5rem;
+    font-size: 0.85rem;
+  }
+  .dk-tab-x {
+    width: 2rem;
+    height: 2rem;
+  }
+  .dk-tab-add,
+  .dk-tab-pick {
+    width: 2.5rem;
+    height: 2.5rem;
+    margin: 0 0 0.125rem;
+  }
+  .dk-tab-add .ic,
+  .dk-tab-pick .ic {
+    width: 1rem;
+    height: 1rem;
+  }
+}

@@ -6,6 +6,7 @@ import { dkProfileWin, dkUsersWin } from '../features/account.ts';
 import { dkFms, filesWin, type Loc } from '../features/home/home.ts';
 import { dk, st } from '../lib/state.ts';
 import { dkAppearanceWin } from './control.ts';
+import { dkTermRestore, dkTermSaved } from './desk/terminal.ts';
 import { dkOpenApp, dkService, dkTerminal } from './desk.ts';
 import { dkCode, dkRun } from './deskfiles.ts';
 import { type DkWin, dkFocus, dkHide, dkOnTouch, dkPlace, dkSnap } from './windows.ts';
@@ -38,7 +39,7 @@ function openerOf(w: DkWin): Record<string, any> | null {
     const [host, name] = k.slice(4).split('::');
     return { t: 'svc', host, name };
   }
-  if (w.kind === 'term' && w.host) return { t: 'term', host: w.host };
+  if (k === 'terminal') return dkTermSaved();
   if (k.startsWith('view:edit\n')) {
     const [, host, share, path] = k.split('\n');
     return { t: 'edit', host, share, path };
@@ -117,6 +118,9 @@ async function reopen(s: Saved): Promise<DkWin | undefined | null> {
       if (!r) return undefined;
       return dkService(r) ?? null;
     }
+    case 'terms':
+      return Array.isArray(o.hosts) ? dkTermRestore(o.hosts.map(String), Number(o.at) || 0) : null;
+    // one window per terminal before tabs: each a tab now
     case 'term':
       if (!dk.creds.has(String(o.host))) return st.terminalHosts.includes(String(o.host)) ? undefined : null;
       return dkTerminal(String(o.host)) ?? null;

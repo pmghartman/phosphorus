@@ -1,12 +1,11 @@
 import './desk/icons.ts';
-import './desk/apps.ts';
+import './desk/terminal.ts';
 import './desk/wallpaper.ts';
 import './desk/windows.ts';
 import './desk/webapps.ts';
 import './desk/git.ts';
 
 export const dkView = document.getElementById('view-desktop')!;
-export { dkTerminal } from './desk/apps.ts';
 export {
   dkArt,
   dkDesktop,
@@ -19,6 +18,7 @@ export {
   dkLogout,
   dkRoutes,
 } from './desk/icons.ts';
+export { dkTermApp, dkTermDrop, dkTerminal, dkTermNew, dkTermOn } from './desk/terminal.ts';
 export {
   dkArrange,
   dkMenu,

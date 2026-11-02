@@ -15,8 +15,6 @@ export const homeAt = (host: string): Loc => ({ host, share: 'home', root: 'home
 export const homeWhere = new Map<string, Set<string>>();
 
 export const homeOnline = () => [...new Set([st.selfHost, ...phosphorusHosts()].filter(Boolean))];
-// the desktop reaches every host through its own server
-export const hostUrl = (host: string, path: string) => path;
 export const otherHosts = (): string[] => [];
 
 // the holder to read a path from: this host first, then any online one

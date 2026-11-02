@@ -3,7 +3,7 @@
 
 import type { Me, UserRow } from '@phosphorus/wire';
 import { appCall } from '../apps/index.ts';
-import { dkArt, dkDesktop, dkIcons, dkLayout, dkLogout, dkWallPaint } from '../desktop/desk.ts';
+import { dkArt, dkDesktop, dkIcons, dkLayout, dkLogout, dkTermDrop, dkWallPaint } from '../desktop/desk.ts';
 import { EDITORS, editorPref } from '../desktop/deskfiles.ts';
 import { DK_USERS_KEY, dkLogin, dkProbe, dkUsers } from '../desktop/login.ts';
 import { dkAnchor, dkBar, dkChips, dkPopsClose, type Pop } from '../desktop/taskbar.ts';
@@ -373,7 +373,7 @@ export function dkUsersWin(): void {
 type Chip = HTMLElement & { unlockClosed?: number };
 
 // a locked host chip's own login, saved to the vault once the shell answers
-export function dkUnlock(host: string, chip: Chip): void {
+export function dkUnlock(host: string, chip: Chip, then?: () => void): void {
   // a second press on its chip closing it
   if (chip.unlockClosed && Date.now() - chip.unlockClosed < 400) {
     chip.unlockClosed = 0;
@@ -426,6 +426,7 @@ export function dkUnlock(host: string, chip: Chip): void {
     }
     dkRemember(host, user.value.trim(), pass.value);
     close();
+    then?.();
   });
   document.body.appendChild(pop);
   dkAnchor(pop, chip);
@@ -454,6 +455,7 @@ function dkForget(host: string) {
     acctSave();
   }
   for (const w of [...dk.wins.values()]) if (w.host === host) dkClose(w, true);
+  dkTermDrop((h) => h === host);
   dkChips();
   dkIcons();
 }

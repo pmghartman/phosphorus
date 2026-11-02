@@ -3,7 +3,7 @@
 
 import type { UiAction } from '@phosphorus/wire';
 import { app } from '../apps/index.ts';
-import { dkOpenApp } from '../desktop/desk.ts';
+import { dkOpenApp, dkTermOn } from '../desktop/desk.ts';
 import { dkCode } from '../desktop/deskfiles.ts';
 import { type DkWin, dkClose, dkFocus, dkWin } from '../desktop/windows.ts';
 import { dk, PREF_LS, st } from '../lib/state.ts';
@@ -100,6 +100,11 @@ export function agentOwn(w: DkWin | null | undefined): void {
   w.node.addEventListener('keydown', mine, { once: true });
 }
 
+// a window the agent opened that a person opened something in: theirs, kept
+export function agentDisown(w: DkWin): void {
+  if (agentOwned.delete(w)) agentRinged.add(w);
+}
+
 // a window by its key brought up: opened by the agent when it wasn't there, then lit
 async function agentOpen(key: string, open: () => unknown) {
   const had = dk.wins.has(key);
@@ -120,7 +125,6 @@ function agentLit(w: DkWin | null | undefined) {
     if (!agentOwned.has(w) && !agentRinged.has(w)) w.node.classList.remove('dk-agent');
   }, AGENT_LIT_MS);
 }
-const agentWin = (pred: (w: DkWin) => boolean) => [...dk.wins.values()].find(pred);
 
 function agentAct(a: UiAction, args: Record<string, any>, done: boolean) {
   const t = a.tool!;
@@ -130,7 +134,7 @@ function agentAct(a: UiAction, args: Record<string, any>, done: boolean) {
     return;
   }
   if (tab || t === 'terminal_screen') {
-    agentLit(agentWin((w) => w.kind === 'term' && w.host === args.host));
+    agentLit(dkTermOn(String(args.host)));
     return;
   }
   const code = () =>

@@ -1,7 +1,6 @@
 import type { TermLogin } from '@phosphorus/wire';
 import type { FitAddon as FitAddonT } from '@xterm/addon-fit';
 import type { ITerminalOptions, ITheme, Terminal as TerminalT } from '@xterm/xterm';
-import { hostUrl } from '../features/home/home.ts';
 import { st } from '../lib/state.ts';
 import { copyText } from '../lib/util.ts';
 
@@ -212,7 +211,7 @@ function startTerminal(
         // a saved login on its way: the server waits for it, its prompts never drawn
         else if (login) q.set('auto', '1');
         ws = new WebSocket(
-          `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${hostUrl(host, `/api/term/${encodeURIComponent(host)}`)}?${q}`,
+          `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/term/${encodeURIComponent(host)}?${q}`,
         );
         ws.binaryType = 'arraybuffer';
         // the share said again on every join, so a reload's choice holds; a saved
