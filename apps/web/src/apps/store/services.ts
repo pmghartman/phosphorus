@@ -43,6 +43,69 @@ export function svcRoute(s: StoreService, host: string): Route | undefined {
 // whether this person logged into host on the desktop, so their saved login may act there
 export const canAct = (host: string) => dk.creds.has(host);
 
+// the phosphorus hosts it can't run on, each with its OS
+export function svcIneligible(s: StoreService): [string, string][] {
+  return (st.lastState?.tailnet || [])
+    .filter((d) => d.phosphorus && d.os && !s.os.includes(d.os))
+    .map((d): [string, string] => [d.name, d.os || ''])
+    .sort(([a], [b]) => a.localeCompare(b));
+}
+
+// a sudo password field for a recipe that needs root, blank meaning the desktop login's
+export function sudoField(s: StoreService): { el: HTMLElement; value: () => string } | undefined {
+  if (!s.native?.sudo) return;
+  const wrap = el('label', 'store-sudo');
+  const box = Object.assign(el('input', 'store-sudo-pass'), {
+    type: 'password',
+    autocomplete: 'off',
+    placeholder: 'sudo password',
+  });
+  wrap.append(
+    el('span', 'store-sudo-label', 'sudo password'),
+    box,
+    el(
+      'span',
+      'store-pick-note',
+      'It installs system packages. Blank: your desktop login’s password, or none where sudo needs none. Used for this step only, never kept.',
+    ),
+  );
+  return { el: wrap, value: () => box.value };
+}
+
+// update or remove of a recipe needing root: its sudo password asked first; null for cancel
+export function svcSudoAsk(s: StoreService, what: string): Promise<string | null> {
+  const f = sudoField(s);
+  if (!f) return Promise.resolve('');
+  return new Promise((resolve) => {
+    const veil = el('div', 'fm-veil page-veil');
+    const box = el('form', 'fm-ask store-pick');
+    const end = (v: string | null) => {
+      veil.remove();
+      resolve(v);
+    };
+    const go = Object.assign(el('button', 'primary', 'continue'), { type: 'submit' });
+    const no = Object.assign(el('button', '', 'cancel'), { type: 'button' });
+    no.addEventListener('click', () => end(null));
+    const acts = el('div', 'update-actions');
+    acts.append(no, go);
+    box.append(el('div', 'fm-ask-title', what), f.el, acts);
+    box.addEventListener('submit', (e) => {
+      e.preventDefault();
+      end(f.value());
+    });
+    box.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Escape') end(null);
+    });
+    veil.addEventListener('pointerdown', (e) => {
+      if (e.target === veil) end(null);
+    });
+    veil.appendChild(box);
+    document.body.appendChild(veil);
+    (f.el.querySelector('input') as HTMLInputElement).focus();
+  });
+}
+
 export interface SvcFacts {
   // every host it can run on, and for each what's known
   rows: [string, SvcHost | undefined][];
@@ -78,12 +141,12 @@ export const opWord: Record<SvcOp, string> = { install: 'installing', update: 'u
 
 // a service's step on a host, as the person's saved login there; keep: a remove leaving
 // the checkout's data aside
-export async function svcAct(op: SvcOp, s: StoreService, host: string, keep = false) {
+export async function svcAct(op: SvcOp, s: StoreService, host: string, keep = false, sudo = '') {
   stateVars.busyId = s.id;
   stateVars.sig = '';
   draw();
   try {
-    const r = await fetch(`/api/apps/services/${op}`, jsonPost({ id: s.id, host, keep }));
+    const r = await fetch(`/api/apps/services/${op}`, jsonPost({ id: s.id, host, keep, sudo }));
     const out = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(out.error || `status ${r.status}`);
     stateVars.actError = '';
@@ -103,13 +166,14 @@ export function svcOpen(s: StoreService, f: SvcFacts, host?: string) {
 }
 
 // where to install: the hosts it can run on, those this person logged into to pick from
-export function svcPick(s: StoreService, f: SvcFacts): Promise<string[]> {
+export function svcPick(s: StoreService, f: SvcFacts): Promise<{ hosts: string[]; sudo: string }> {
   return new Promise((resolve) => {
     const veil = el('div', 'fm-veil page-veil');
     const box = el('form', 'fm-ask store-pick');
+    const sudo = sudoField(s);
     const end = (v: string[]) => {
       veil.remove();
-      resolve(v);
+      resolve({ hosts: v, sudo: sudo?.value() ?? '' });
     };
     const list = el('ul', 'store-pick-list');
     const boxes: [string, HTMLInputElement][] = [];
@@ -137,6 +201,15 @@ export function svcPick(s: StoreService, f: SvcFacts): Promise<string[]> {
       li.classList.toggle('off', cb.disabled);
       list.append(li);
     }
+    // the hosts it can't run on, shown so it's clear why they aren't offered
+    for (const [h, os] of svcIneligible(s)) {
+      const li = el('li', 'store-pick-row off');
+      const cb = Object.assign(el('input'), { type: 'checkbox', disabled: true });
+      const lab = el('label', 'store-pick-label');
+      lab.append(cb, el('span', 'store-pick-host', h));
+      li.append(lab, el('span', 'store-pick-why', `${os}: not supported`));
+      list.append(li);
+    }
     const go = Object.assign(el('button', 'primary', 'install'), { type: 'submit' });
     const sync = () => {
       go.disabled = !boxes.some(([, cb]) => cb.checked);
@@ -149,15 +222,17 @@ export function svcPick(s: StoreService, f: SvcFacts): Promise<string[]> {
     acts.append(no, go);
     const note = f.rows.length
       ? boxes.length
-        ? s.docker
-          ? `Run by Docker as your own login on each host, its compose project in ${s.checkout}, and published on the mesh desktop.`
+        ? s.native
+          ? `Installed on each host as your own login${s.native.sudo ? ', with sudo for its system packages' : ''}, its files in ${s.checkout}, and published on the mesh desktop.`
           : `Installed as your own login on each host, in ${s.checkout}, and published on the mesh desktop.`
         : `You're logged into none of these on the desktop: log in from a host's lock in the task bar first.`
       : `${s.name} runs on ${s.os.join(', ')} hosts; the mesh has none.`;
     box.append(
       el('div', 'fm-ask-title', `install ${s.name} where?`),
-      f.rows.length ? list : el('p', '', ''),
+      list.children.length ? list : el('p', '', ''),
+      el('p', 'store-pick-note', `runs on ${s.compat}`),
       el('p', '', note),
+      ...(sudo && boxes.length ? [sudo.el] : []),
       acts,
     );
     box.addEventListener('submit', (e) => {
@@ -178,8 +253,8 @@ export function svcPick(s: StoreService, f: SvcFacts): Promise<string[]> {
 }
 
 export async function svcInstall(s: StoreService, f: SvcFacts) {
-  const hosts = await svcPick(s, f);
-  for (const h of hosts) await svcAct('install', s, h);
+  const { hosts, sudo } = await svcPick(s, f);
+  for (const h of hosts) await svcAct('install', s, h, false, sudo);
 }
 
 // the store's one button for a service: install, open; what it does right now while it does
@@ -253,8 +328,8 @@ export function svcRemoveAsk(s: StoreService, host: string): Promise<{ keep: boo
     const text = el(
       'p',
       '',
-      s.docker
-        ? `Its containers are removed, its entry leaves ${host}'s services.export and ${s.checkout} is deleted.`
+      s.native
+        ? `It's stopped and uninstalled, its entry leaves ${host}'s services.export and ${s.checkout} is deleted.`
         : `Its unit is stopped, its entry leaves ${host}'s services.export and its checkout in ${s.checkout} is deleted.`,
     );
     const go = Object.assign(el('button', 'danger', 'remove'), { type: 'submit' });
@@ -270,8 +345,8 @@ export function svcRemoveAsk(s: StoreService, host: string): Promise<{ keep: boo
         el(
           'span',
           '',
-          s.docker
-            ? `keep its data: its Docker volumes, and its .env in ${s.kept}`
+          s.native
+            ? `keep its data (its data folder and .env) aside in ${s.kept}${s.native.sudo ? ', and its system packages’ data' : ''}`
             : `keep its data (${s.data.join(', ')}) aside in ${s.kept}`,
         ),
       );
@@ -279,8 +354,8 @@ export function svcRemoveAsk(s: StoreService, host: string): Promise<{ keep: boo
       const sync = () => {
         note.textContent = keep.checked
           ? 'put back by the next install there'
-          : s.docker
-            ? 'its volumes are deleted with it'
+          : s.native
+            ? 'its data is deleted with it'
             : 'its data goes with the checkout';
         note.classList.toggle('warn', !keep.checked);
       };
@@ -323,10 +398,16 @@ export function svcInfoRows(s: StoreService, f: SvcFacts): HTMLElement {
       rel: 'noopener',
     }),
   );
-  if (s.docker) {
-    row('installed from', s.docker.image, 'mono');
-    row('runs as', `Docker Compose project phos-${s.id}, in ${s.checkout}`, 'mono');
-    row('on remove', 'its volumes may be kept, back on the next install', 'dim');
+  if (s.native) {
+    row('installed from', 'its official release, on the host itself', 'dim');
+    row(
+      'runs as',
+      s.native.sudo
+        ? `system packages, set up as your login with sudo`
+        : `your own login, the systemd user unit phos-${s.id}`,
+      'mono',
+    );
+    row('on remove', `its data may be kept in ${s.kept}, back on the next install`, 'dim');
   } else {
     row('installed from', 'the repository’s main, cloned on the host', 'dim');
     if (s.data.length)
@@ -337,7 +418,9 @@ export function svcInfoRows(s: StoreService, f: SvcFacts): HTMLElement {
     'published as',
     st.meshDomain ? `${s.id}.${st.meshDomain}, from port ${s.port} on the host` : `port ${s.port}, on a path`,
   );
-  row('runs on', `${s.os.join(', ')} hosts`);
+  row('runs on', s.compat);
+  const not = svcIneligible(s);
+  if (not.length) row('not for', not.map(([h, os]) => `${h} (${os})`).join(', '), 'dim');
   row('needs', s.needs, 'dim');
   if (s.agents.length) row('asks models as', s.agents.join(', '), 'mono');
   row('category', s.category);
@@ -388,29 +471,38 @@ export function svcHostList(s: StoreService, f: SvcFacts): HTMLElement {
         acts.append(
           svcBtn(
             'update',
-            s.docker
-              ? `pull its images and restart it on ${h}`
+            s.native
+              ? `install its latest release on ${h}`
               : behind
                 ? `main is ${behindWords(behind)} ahead: pull and rebuild on ${h}`
                 : `pull main and rebuild on ${h}`,
-            () => svcAct('update', s, h),
+            async () => {
+              const sudo = await svcSudoAsk(s, `update ${s.name} on ${h}`);
+              if (sudo !== null) svcAct('update', s, h, false, sudo);
+            },
             behind ? 'new' : '',
           ),
         );
         acts.append(
           svcBtn(
             'remove',
-            s.docker
-              ? `stop ${s.name} on ${h} and remove its containers`
-              : `stop ${s.name} on ${h} and delete its checkout`,
+            s.native ? `stop and uninstall ${s.name} on ${h}` : `stop ${s.name} on ${h} and delete its checkout`,
             async () => {
               const a = await svcRemoveAsk(s, h);
-              if (a) svcAct('remove', s, h, a.keep);
+              if (!a) return;
+              const sudo = await svcSudoAsk(s, `remove ${s.name} from ${h}`);
+              if (sudo !== null) svcAct('remove', s, h, a.keep, sudo);
             },
             'danger',
           ),
         );
-      } else acts.append(svcBtn('install', `onto ${h}, as your login there`, () => svcAct('install', s, h)));
+      } else
+        acts.append(
+          svcBtn('install', `onto ${h}, as your login there`, async () => {
+            const sudo = await svcSudoAsk(s, `install ${s.name} on ${h}`);
+            if (sudo !== null) svcAct('install', s, h, false, sudo);
+          }),
+        );
     }
     if (job && (running || failed || logsOpen.has(`${s.id}/${h}`))) {
       acts.append(
@@ -470,7 +562,7 @@ export function svcPage(s: StoreService): HTMLElement {
     el('span', 'store-hero-dot', '·'),
     el('span', '', s.category),
     el('span', 'store-hero-dot', '·'),
-    el('span', '', s.docker ? 'docker service' : 'service'),
+    el('span', '', 'service'),
   );
   text.append(el('h1', '', s.name), el('p', 'store-hero-tag', s.tagline), meta);
   const acts = el('div', 'store-hero-acts');

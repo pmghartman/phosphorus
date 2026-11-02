@@ -77,8 +77,11 @@ export interface StoreService {
   repo: string;
   icon: string;
   port: number;
-  // a Docker Compose project on the host rather than a checkout's own scripts
-  docker: { image: string } | null;
+  // a catalogue recipe installing it on the host rather than a checkout's own scripts;
+  // sudo when it installs system packages
+  native: { sudo: boolean } | null;
+  // the hosts it runs on, said for people: versions, machines
+  compat: string;
   os: string[];
   needs: string;
   agents: string[];

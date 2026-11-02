@@ -74,7 +74,10 @@ export function svcTile(s: StoreService): HTMLElement {
     el('span', `store-tile-sub ${cls}`, sub),
   );
   const side = el('span', 'store-tile-side');
-  side.append(svcPill(s, f), el('span', 'store-tile-badge', 'service'));
+  side.append(
+    svcPill(s, f),
+    Object.assign(el('span', 'store-tile-badge', s.os.join(' · ')), { title: `runs on ${s.compat}` }),
+  );
   t.append(svcIcon(s, f, 'md'), text, side);
   t.addEventListener('click', () => storeShow(s.id));
   return t;
@@ -109,9 +112,9 @@ export function front(): HTMLElement {
     const more = shown.filter((a) => !a.want);
     const svcOn = svcShown.filter((s) => svcFacts(s).on.length);
     const svcMore = svcShown.filter((s) => !svcFacts(s).on.length);
-    // the mesh's own services first, the Docker catalogue by category after
-    const own = svcMore.filter((s) => !s.docker);
-    const docked = svcMore.filter((s) => s.docker);
+    // the mesh's own services first, the catalogue by category after
+    const own = svcMore.filter((s) => !s.native);
+    const docked = svcMore.filter((s) => s.native);
     const section = (name: string, list: HTMLElement[]) => {
       if (!list.length) return;
       const s = el('section', 'store-section');

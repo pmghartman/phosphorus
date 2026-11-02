@@ -380,12 +380,13 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
     const s = await users.Soon(c);
     if (!s || s.boot) return sendJSON(403, { error: "log in as a user" });
     const op = m[1]!;
-    return onJSON(c, 1024, true, async (p) => {
+    return onJSON(c, 2048, true, async (p) => {
       const host = str(p.host);
       if (!hostRe.test(host)) return [400, { error: "pick a host" }];
       const [user, pass, ok] = await users.HostLogin(s, host);
       if (!ok) return [403, { error: `no saved login for ${host}: log into it on the desktop first` }];
-      return webapps.ServiceOp(op, str(p.id), host, { user, pass }, s.user, truthy(p.keep));
+      // sudo: the login's sudo password for a recipe needing root, the saved one's when blank
+      return webapps.ServiceOp(op, str(p.id), host, { user, pass }, s.user, truthy(p.keep), str(p.sudo));
     });
   }
   // a service's icon, or an app's, off its repository, kept here

@@ -375,35 +375,51 @@ test("the catalogue: circuit and tavern as services, their scripts in the login'
   expect(l).toContain('git -C "$4" rev-parse HEAD >"$5"');
 });
 
-test("the Docker catalogue: a hundred, each its own port, a compose project as the login", () => {
-  const docker = W.Services.filter((s) => s.docker);
-  expect(docker.length).toBe(100);
+test("the catalogue: a hundred recipes on the host itself, each its own port, no containers", () => {
+  const cat = W.Services.filter((s) => s.native);
+  expect(cat.length).toBe(100);
   expect(new Set(W.Services.map((s) => s.id)).size).toBe(W.Services.length);
   expect(new Set(W.Services.map((s) => s.port)).size).toBe(W.Services.length);
-  const jf = W.serviceOf("jellyfin")!;
-  expect(jf.port).toBe(18100);
-  expect(jf.docker!.compose).toContain('      - "${IP}:${PORT}:8096"');
-  expect(jf.docker!.compose).toContain("      - config:/config");
-  expect(jf.docker!.compose.endsWith("volumes:\n  config:\n  cache:\n  media:\n")).toBe(true);
-  const w = { ip: "100.64.0.9", domain: "mulab.dev", url: "https://jellyfin.mulab.dev" };
-  const inst = W.svcScript(jf, "install", false, w);
-  expect(inst).toContain("cat > compose.yaml <<'PHOS_COMPOSE_END'");
+  // its own port where the package fixes it, else 18100 + its place
+  expect(W.serviceOf("jellyfin")!).toMatchObject({ port: 8096, native: { sudo: true } });
+  const nd = W.serviceOf("navidrome")!;
+  expect(nd.port).toBe(18100 + cat.indexOf(nd));
+  expect(nd.native!.sudo).toBe(false);
+  const w = { ip: "100.64.0.9", domain: "mulab.dev", url: "https://navidrome.mulab.dev" };
+  const inst = W.svcScript(nd, "install", false, w);
+  expect(inst).toContain('dir="$HOME/.phosphorus/services/navidrome"');
   expect(inst).toContain("setenv IP '100.64.0.9'");
-  expect(inst).toContain("setenv PORT 18100");
-  expect(inst).toContain("dc() { $dk compose -p phos-jellyfin");
-  expect(inst).toContain("dc up -d --remove-orphans");
+  expect(inst).toContain(`setenv PORT ${nd.port}`);
+  expect(inst).toContain("set -a; . ./.env; set +a");
+  expect(inst).toContain("unit() {");
+  expect(inst).toContain("gh_asset navidrome/navidrome");
+  expect(inst).not.toContain("docker");
   expect(inst).not.toContain("git clone");
   // no tailnet address, nothing started
-  expect(W.svcScript(jf, "install")).toContain("no tailnet address");
-  // secrets made once, kept in .env
-  const im = W.svcScript(W.serviceOf("immich")!, "update", false, w);
-  expect(im).toContain('for k in DB_SECRET; do grep -q "^$k=" .env');
-  expect(W.serviceOf("immich")!.docker!.compose).toContain("  db:\n");
-  // a remove downs the project, its volumes too unless kept
-  expect(W.svcScript(jf, "remove")).toContain("dc down -v");
-  const keep = W.svcScript(jf, "remove", true);
-  expect(keep).toContain("dc down ||");
-  expect(keep).toContain("for p in .env; do");
+  expect(W.svcScript(nd, "install")).toContain("no tailnet address");
+  expect(W.svcScript(nd, "update", false, w)).toContain("install first");
+  // a remove: the recipe's undo tolerated failing, the data aside only when kept
+  const rm = W.svcScript(nd, "remove");
+  expect(rm).toContain("KEEP=0");
+  expect(rm).toContain("(\nunit_gone\n) || echo");
+  expect(rm).not.toContain("kept $p");
+  const keep = W.svcScript(nd, "remove", true);
+  expect(keep).toContain("KEEP=1");
+  expect(keep).toContain("for p in data .env; do");
+  // a recipe needing root: the sudo password given checked at the start, an askpass
+  // for the step, gone when it ends; none needed where sudo asks for none
+  const jf = W.serviceOf("jellyfin")!;
+  const l = W.svcLaunch(jf, "install", false, { ...w, url: "https://jellyfin.mulab.dev" }, "s3cret'pw");
+  expect(l).toContain(Buffer.from("s3cret'pw").toString("base64"));
+  expect(l).not.toContain("s3cret");
+  expect(l).toContain('sudo -S -k -v -p "" < "$pwf"');
+  expect(l.indexOf("if ! sudo -n true")).toBeGreaterThan(l.indexOf("PHOS_JOB_END\n"));
+  expect(W.svcLaunch(jf, "install", false, w)).toContain("has no passwordless sudo");
+  expect(W.svcLaunch(nd, "install", false, w)).not.toContain("sudo -S");
+  const step = W.svcScript(jf, "install", false, w);
+  expect(step).toContain('SUDO_ASKPASS="$ask"');
+  expect(step).toContain('trap \'rm -f "$pwf" "$ask"\' EXIT');
+  expect(step).toContain("command sudo -A");
 });
 
 test("an op refused: no such service, a bad op, a host that isn't one, the wrong os, no login", async () => {

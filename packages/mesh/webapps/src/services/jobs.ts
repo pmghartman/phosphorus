@@ -1,5 +1,5 @@
 // a step asked: started on the host over ssh, the job noted for the mesh
-import { closeSync, existsSync, openSync, readSync, statSync } from "node:fs";
+import { closeSync, openSync, readSync, statSync } from "node:fs";
 import { join } from "node:path";
 import * as store from "@phosphorus/store";
 import { env, errText, now, SelfHost } from "@phosphorus/util";
@@ -35,6 +35,8 @@ export async function ServiceOp(
   login: Login,
   by: string,
   keep = false,
+  // a recipe needing root: the login's sudo password, the saved login's own when blank
+  sudoPass = "",
 ): Promise<[number, any]> {
   const s = serviceOf(id);
   if (!s) return [404, { error: `no service called ${id}` }];
@@ -58,16 +60,22 @@ export async function ServiceOp(
     done: 0,
     error: "",
   };
-  // a Docker service binds the host's tailnet address alone, opened at its subdomain
+  // a catalogue service binds the host's tailnet address where it can, opened at its subdomain
   const domain = env("BASE_DOMAIN");
   const w: Where = {
-    ip: s.docker ? String((await seams.ipOf(host)) || "") : "",
+    ip: s.native ? String((await seams.ipOf(host)) || "") : "",
     domain,
     url: domain ? `https://${s.id}.${domain}` : `http://${host}/${host}/${s.id}`,
   };
   let out = "";
   try {
-    const code = await seams.run(host, login, launch(s, j.op, j.keep, w), (t) => void (out += t), launchTimeoutMS);
+    const code = await seams.run(
+      host,
+      login,
+      launch(s, j.op, j.keep, w, s.native?.sudo ? sudoPass || login.pass : ""),
+      (t) => void (out += t),
+      launchTimeoutMS,
+    );
     if (code !== 0) throw new Error(`couldn't start it: ${out.trim().split("\n").at(-1) || `exit ${code}`}`);
   } catch (e) {
     return [502, { error: errText(e) }];
@@ -159,39 +167,11 @@ export async function finish(s: Service, j: Job, exit: number | undefined) {
 
 export let ticking: Promise<void> | undefined;
 
-// once this process has the tailnet: the Docker services installed here brought
-// up, a container that couldn't bind the tailnet address at boot started again
-let revived = false;
-async function revive() {
-  if (revived || process.platform !== "linux" || !(await seams.ipOf(SelfHost))) return;
-  revived = true;
-  for (const s of Services) {
-    if (!s.docker) continue;
-    const r = records(s.id)[SelfHost];
-    const j = jobOf(s.id, SelfHost);
-    if (!r || (j && !j.done)) continue;
-    const dir = join(seams.homeOf(r.login), ".phosphorus", "services", s.id);
-    if (!existsSync(join(dir, "compose.yaml"))) continue;
-    try {
-      const p = Bun.spawn(["docker", "compose", "-p", `phos-${s.id}`, "up", "-d"], {
-        cwd: dir,
-        stdout: "ignore",
-        stderr: "pipe",
-      });
-      const code = await p.exited;
-      if (code !== 0) logf("%s up after a start: %s", s.name, (await new Response(p.stderr).text()).trim());
-    } catch (e) {
-      logf("%s up after a start: %s", s.name, errText(e));
-    }
-  }
-}
-
 // tick the steps under way on this host: one that ended finished, one past its
 // time failed
 export function tick(): Promise<void> {
   return (ticking ??= (async () => {
     if (!SelfHost) return;
-    await revive();
     for (const s of Services) {
       const j = jobOf(s.id, SelfHost);
       if (!j || j.done) continue;

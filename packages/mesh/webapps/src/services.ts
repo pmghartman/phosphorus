@@ -6,6 +6,11 @@ import "./services/runner.ts";
 import "./services/versions.ts";
 import "./services/icon.ts";
 import "./services/page.ts";
+import { Catalogue } from "./services/catalogue.ts";
+import { Services } from "./services/scripts.ts";
+
+// the catalogue after circuit and tavern
+Services.push(...Catalogue);
 
 export { Icon, iconPath, RepoIcon } from "./services/icon.ts";
 export { progress, ServiceOp, tick } from "./services/jobs.ts";
