@@ -176,3 +176,29 @@ export interface UpdateCheck {
   latest?: string;
   error?: string;
 }
+
+// a press phosphorus makes on this page (packages/mcp's ui actions)
+export interface UiAction {
+  kind: string;
+  host?: string;
+  share?: string | boolean;
+  path?: string;
+  view?: string;
+  title?: string;
+  body?: string;
+  // an agent call's start or end
+  id?: string;
+  phase?: string;
+  tool?: string;
+  args?: Record<string, any>;
+  ok?: boolean;
+  out?: string;
+  error?: string;
+  exit?: number | null;
+  timedOut?: boolean;
+}
+
+// what the state socket carries besides the state itself, to one user's pages
+export type PageMessage =
+  | { type: "phosphorus-ui"; action: UiAction }
+  | { type: "model-purged"; id: string; error?: string };

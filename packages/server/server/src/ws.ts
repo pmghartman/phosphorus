@@ -2,17 +2,20 @@
 // terminals, here or spliced onto the owning peer's
 
 import { Attach as collabAttach, Forward as collabForward } from "@phosphorus/collab";
+import { Purge } from "@phosphorus/model";
 import { acceptLink, HostHeader } from "@phosphorus/peers";
 import { attach as statsAttach } from "@phosphorus/stats";
 import * as term from "@phosphorus/term";
 import { Of } from "@phosphorus/users";
-import { intervalMS, marshal, now, onHot, sleep, tailnetIP } from "@phosphorus/util";
+import { errText, intervalMS, marshal, now, onHot, sleep, tailnetIP } from "@phosphorus/util";
 import { type Conn, type Ctx, upgrade } from "@phosphorus/wsock";
 import { onChat } from "./chatws.ts";
 import { codeSocket } from "./code.ts";
 import { getPlatform, hostSSHHost, hostSSHPort, maxTerms, port, selfHost } from "./config.ts";
 import { isLocalOrPeer, isLoopback, isTailnet, refuse, sameOrigin } from "./http.ts";
+import { decode, obj, str } from "./js.ts";
 import { mcpSocket } from "./mcpops.ts";
+import { addPage, pageCount, toPages } from "./push.ts";
 import { buildState, noteState } from "./server.ts";
 import { homeWho } from "./shares.ts";
 
@@ -21,7 +24,6 @@ const codePathRe = /^\/api\/code\/([a-z0-9][a-z0-9-]*)$/;
 const sidRe = /^[0-9a-f]{32}$/;
 
 let termConns = 0;
-const stateWS = new Set<Conn>();
 
 // accept the socket, ready run with it once open; a failed upgrade a 400
 function accept(c: Ctx, ready: (ws: Conn) => void): Response | undefined {
@@ -31,9 +33,6 @@ function accept(c: Ctx, ready: (ws: Conn) => void): Response | undefined {
   });
   return ok ? undefined : refuse(400);
 }
-
-// nothing is read, as Go drained it
-const drainWS = (ws: Conn) => ws.onMessage(() => {});
 
 const intOf = (v: string | null) => (v !== null && /^[+-]?\d+$/.test(v) ? Number(v) : 0);
 
@@ -49,15 +48,17 @@ export async function onUpgrade(c: Ctx, pathname: string, q: URLSearchParams): P
       if (!s || s.boot || !sameOrigin(c)) return refuse(403);
       return accept(c, (ws) => void mcpSocket(ws, s.user));
     }
-    case "/api/state":
+    case "/api/state": {
+      const s = Of(c);
+      const user = s && !s.boot ? s.user : "";
       return accept(c, (ws) => {
-        const s = buildState();
-        noteState(s);
-        ws.json(s);
-        stateWS.add(ws);
-        drainWS(ws);
-        ws.onClose(() => stateWS.delete(ws));
+        const st = buildState();
+        noteState(st);
+        ws.json(st);
+        addPage(ws, user);
+        ws.onMessage((raw) => void onPage(ws, user, raw));
       });
+    }
     case "/api/peer": {
       // another host's link, the dialler named in its header: the tailnet, or this
       // machine, as the snapshot it replaces was
@@ -154,14 +155,27 @@ let pushedAt = 0;
 let pushQueued = false;
 
 function pushState() {
-  if (!stateWS.size) return;
+  if (!pageCount()) return;
   const s = buildState();
   const fp = noteState(s);
   if (fp === pushedFp && now() - pushedAt < rttPush) return;
   pushedFp = fp;
   pushedAt = now();
-  const text = marshal(s);
-  for (const c of [...stateWS]) c.text(text);
+  toPages(marshal(s));
+}
+
+// a page's own ask: a logged in user's, the model host's idle slots erased
+async function onPage(ws: Conn, user: string, raw: string | Uint8Array) {
+  const msg = obj(decode(raw));
+  if (!msg || user === "" || msg.type !== "model-purge") return;
+  const host = str(msg.to);
+  const body: Record<string, any> = { type: "model-purged", id: host };
+  try {
+    Object.assign(body, obj(JSON.parse(marshal(await Purge(host)))) ?? {});
+  } catch (e) {
+    body.error = errText(e);
+  }
+  if (ws.open()) ws.json(body);
 }
 
 export function startPushes() {

@@ -7,6 +7,7 @@ import './status/model.ts';
 import './status/summary.ts';
 import './status/context.ts';
 import './status/boxes.ts';
+import './status/purge.ts';
 import { fitTiles, ST_BOXES, stCard } from './status/cards.ts';
 import { drawModel, drawSum, headLine, modelOf } from './status/model.ts';
 import {
@@ -110,4 +111,5 @@ window.addEventListener('resize', statusDraw);
 // until the next push sets a real one (kept as it was; a candidate fix, not this refactor's)
 document.addEventListener('visibilitychange', statusWatch as unknown as EventListener);
 
+export { modelPurged } from './status/purge.ts';
 export { statusDraw, statusReconnect, statusState, statusWatch } from './status/state.ts';

@@ -107,7 +107,12 @@ mobileQuery.addEventListener('change', () => {
 export function dkArt(): HTMLElement {
   dkWallPaint();
   const art = el('div', 'dk-art');
-  art.appendChild(document.querySelector('.about-mark')!.cloneNode(true));
+  const mark = el('img', 'about-mark') as HTMLImageElement;
+  mark.src = '/phosphorus-ascii.svg';
+  mark.alt = '';
+  mark.draggable = false;
+  mark.setAttribute('aria-hidden', 'true');
+  art.appendChild(mark);
   return art;
 }
 

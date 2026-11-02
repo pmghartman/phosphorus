@@ -2,9 +2,9 @@
 // after the user's own action; each push applied to the mesh graph, the games, the desktop,
 // the update pane and the apps
 
-import type { Route, State, TailnetDevice } from '@phosphorus/wire';
+import type { PageMessage, Route, State, TailnetDevice } from '@phosphorus/wire';
 import { appCall } from '../apps/index.ts';
-import { dkHostsGone, dkRoutes } from '../desktop/desk.ts';
+import { dkHostsGone, dkPressed, dkRoutes } from '../desktop/desk.ts';
 import { dkDeskStamps } from '../desktop/deskfiles.ts';
 import { acctCheck } from '../features/account.ts';
 import { renderGames } from '../features/games.ts';
@@ -86,13 +86,16 @@ export function connectState(): void {
     stateRetryMs = 300;
   };
   sock.onmessage = (ev) => {
-    let state: State;
+    let msg: State | PageMessage;
     try {
-      state = JSON.parse(ev.data);
+      msg = JSON.parse(ev.data);
     } catch {
       return;
     }
-    applyState(state);
+    if (!('type' in msg)) applyState(msg);
+    else if (msg.type === 'phosphorus-ui') {
+      if (msg.action) dkPressed(msg.action);
+    } else if (msg.type === 'model-purged') appCall('status', false, (m) => m.modelPurged(msg));
   };
   sock.onclose = () => {
     if (stateWs !== sock) return;
@@ -101,6 +104,13 @@ export function connectState(): void {
     stateRetryMs = Math.min(stateRetryMs * 1.5, 5000);
   };
   sock.onerror = () => sock.close();
+}
+
+// an ask of this host on the push's socket, false when it isn't open
+export function sendPage(msg: Record<string, unknown>): boolean {
+  if (stateWs?.readyState !== WebSocket.OPEN) return false;
+  stateWs.send(JSON.stringify(msg));
+  return true;
 }
 
 // the push ended for a login screen: its retry dropped, its socket closed, nothing reopened

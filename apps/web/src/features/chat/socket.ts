@@ -3,7 +3,6 @@
 import type { ChatWsMessage } from '@phosphorus/wire';
 import { st } from '../../lib/state.ts';
 import { bumpUnread, noteAdd, noteFor, notifyChat } from '../notes.ts';
-import { phosphorusPressed } from './chat.ts';
 import { showInvite } from './commands.ts';
 import {
   chatReading,
@@ -204,36 +203,6 @@ export function renderHistory(messages: ChatLine[], closed: Record<string, unkno
   paintFiles();
 }
 
-// the status card's clear buttons, its code fetched or not
-export const stHostsEl = document.getElementById('st-hosts')!;
-// captured, a card's own click opening it never seeing this one
-stHostsEl.addEventListener(
-  'click',
-  (e) => {
-    const b = (e.target as Element).closest('.st-clear') as HTMLButtonElement | null;
-    if (!b) return;
-    e.stopPropagation();
-    if (b.disabled) return;
-    b.disabled = true;
-    b.textContent = 'clearing';
-    send({ type: 'model-purge', id: b.dataset.host, to: b.dataset.host });
-  },
-  true,
-);
-
-// the llama-server slots on its host erased, a fresh start for its kv cache
-export function modelPurged(msg: { id: string; error?: string }) {
-  const btn = stHostsEl.querySelector(
-    `.st-clear[data-host="${CSS.escape(String(msg.id))}"]`,
-  ) as HTMLButtonElement | null;
-  if (!btn) return;
-  btn.disabled = false;
-  btn.textContent = msg.error ? `no clear: ${msg.error}` : 'cleared';
-  setTimeout(() => {
-    btn.textContent = 'clear context';
-  }, 2500);
-}
-
 // the chat socket proved alive: a ping when it's been quiet, on coming back
 // and coming online, closed for a fresh one when no answer lands
 export let chatHeard = 0;
@@ -295,10 +264,6 @@ export function connectChat() {
     } else if (msg.type === 'message') {
       const { type, ...m } = msg;
       takeLine(m, true);
-    } else if (msg.type === 'phosphorus-ui') {
-      phosphorusPressed(msg.action);
-    } else if (msg.type === 'model-purged') {
-      modelPurged(msg);
     } else if (msg.type === 'retract') {
       dropLine(`${msg.host}:${msg.seq}`);
     } else if (msg.type === 'presence') {

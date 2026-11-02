@@ -1,8 +1,7 @@
 // the chat socket: a browser's join, lines, marks and presence
 import { clean as cleanFiles } from "@phosphorus/chatmedia";
-import { Purge } from "@phosphorus/model";
 import type { Session } from "@phosphorus/users";
-import { errText, marshal, now } from "@phosphorus/util";
+import { now } from "@phosphorus/util";
 import type { Conn } from "@phosphorus/wsock";
 import {
   allPresence,
@@ -35,12 +34,6 @@ import {
   validColors,
 } from "./chat.ts";
 import { clipU, decode, num, obj, str, truthy } from "./js.ts";
-
-export function uiFor(c: ChatClient | undefined, action: Record<string, any>): boolean {
-  if (!c || !c.ws.open()) return false;
-  c.ws.json({ type: "phosphorus-ui", action });
-  return true;
-}
 
 // --- the socket ---------------------------------------------------------------
 
@@ -87,21 +80,6 @@ export function onChatMessage(c: ChatClient, user: string, msg: Msg) {
   }
   if (c.name === "") return;
   switch (t) {
-    case "model-purge": {
-      // the status card's clear context: the role's idle llama-server slots erased
-      const id = clipU(str(msg.id), 40);
-      void (async () => {
-        const body: Msg = { type: "model-purged", id };
-        try {
-          const out = await Purge(str(msg.to));
-          Object.assign(body, obj(JSON.parse(marshal(out))) ?? {});
-        } catch (e) {
-          body.error = errText(e);
-        }
-        if (c.ws.open()) c.ws.json(body);
-      })();
-      return;
-    }
     case "rename": {
       const n = clipU(str(msg.name).trim(), maxNameLen);
       if (n === "" || n === c.name || user !== "") return;

@@ -71,32 +71,9 @@ export type ChatWsMessage =
   | { type: "pong" }
   | { type: "history"; messages: ChatMsg[]; channels?: Record<string, ChannelMeta>; closed?: Record<string, unknown> }
   | ({ type: "message" } & ChatMsg)
-  | { type: "phosphorus-ui"; action: UiAction }
-  | { type: "model-purged"; id: string; error?: string }
   | { type: "retract"; host: string; seq: number }
   | { type: "presence"; people: Person[] }
   | { type: "system"; text: string }
   | { type: "clear"; by?: string }
   | { type: "close"; ch: string; by?: string; at?: number }
   | { type: "channel"; ch: string; meta: ChannelMeta };
-
-// a press phosphorus makes on this page (packages/mcp's ui actions)
-export interface UiAction {
-  kind: string;
-  host?: string;
-  share?: string | boolean;
-  path?: string;
-  view?: string;
-  title?: string;
-  body?: string;
-  // an agent call's start or end
-  id?: string;
-  phase?: string;
-  tool?: string;
-  args?: Record<string, any>;
-  ok?: boolean;
-  out?: string;
-  error?: string;
-  exit?: number | null;
-  timedOut?: boolean;
-}

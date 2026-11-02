@@ -9,11 +9,10 @@ import * as peers from "@phosphorus/peers";
 import { health } from "@phosphorus/services";
 import { SealGrant } from "@phosphorus/users";
 import { errText, FrontendPort, peerCall, RepoDir, requestJSON, run, sleep, tailnetIP } from "@phosphorus/util";
-import { clients } from "./chat.ts";
-import { uiFor } from "./chatws.ts";
 import { gameKeyDir, selfHost } from "./config.ts";
 import type { Res } from "./http.ts";
 import { decode, jsString, obj, str, truthy, utf8 } from "./js.ts";
+import { toUser } from "./push.ts";
 import { gameUserRe } from "./server.ts";
 import { filesInfo } from "./shares.ts";
 
@@ -291,9 +290,7 @@ const keyUI = new Set(["agent", "notify", "code", "view", "terminal", "host"]);
 // localUI an action to user's pages on this host, true when one took it
 export function localUI(user: string, action: Record<string, any>): boolean {
   if (user === "" || !keyUI.has(str(action.kind))) return false;
-  let ok = false;
-  for (const c of [...clients]) if (c.name === user) ok = uiFor(c, action) || ok;
-  return ok;
+  return toUser(user, { type: "phosphorus-ui", action });
 }
 
 // userUI an action to user's pages on every host, sealed for each peer
