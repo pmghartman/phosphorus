@@ -5,7 +5,7 @@ import { errText, now } from "@phosphorus/util";
 import { all, dropRecord, load, of, record, Session, type SessionRecord } from "./claude.ts";
 import { Claude, errB, harnessByID, harnessIDs, harnessOf, hostRe, Opencode, type Res } from "./harness.ts";
 import { ocKick } from "./opencode.ts";
-import { Anthropic, type Creds, Mesh, Perms, provider } from "./script.ts";
+import { Anthropic, type Creds, claudeModel, Mesh, Perms, provider } from "./script.ts";
 import { clip, orObj, str } from "./text.ts";
 
 // liveMax processes running at once per user
@@ -176,7 +176,7 @@ export function setModel(user: string, id: string, p: Record<string, any>): Res 
   if (s.starting) return [409, errB("still starting, switch once it's up")];
   if (provider(m) !== provider(s.rec.model)) return [409, errB("start a new session to change provider")];
   s.rec.model = m;
-  if (s.alive() && harnessOf(s.rec) === Claude) s.control("model", { subtype: "set_model", model: m });
+  if (s.alive() && harnessOf(s.rec) === Claude) s.control("model", { subtype: "set_model", model: claudeModel(m) });
   s.status("");
   return [200, s.rec];
 }

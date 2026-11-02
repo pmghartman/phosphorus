@@ -1,14 +1,15 @@
 // a new session: as the desktop app starts one, a prompt box with its
+// choices in a row of chips under it
 
 import type { CodeHarness, CodeHarnesses, CodeLs, CodeSession } from '@phosphorus/wire';
 import { dkTerminal } from '../../desktop/desk.ts';
 import { el, noFill } from '../../lib/dom.ts';
 import { dk } from '../../lib/state.ts';
-import { esc } from '../../lib/util.ts';
 import { paintAcct } from './account.ts';
 import { main, root } from './frame.ts';
 import { go, loadList, loadOpts } from './list.ts';
-import { modelSelect, sessionVars, sideBtn } from './session.ts';
+import { chipBtn, choose, popClose, popOpen, popOver } from './menu.ts';
+import { modelChoices, modelLabel, modelOf, sessionVars, sideBtn } from './session.ts';
 import {
   ago,
   base,
@@ -19,6 +20,7 @@ import {
   GL,
   lsGet,
   lsSet,
+  PERM_SUB,
   PERMS,
   parent,
   provOf,
@@ -27,19 +29,6 @@ import {
   svg,
   tilde,
 } from './state.ts';
-
-// choices in a row of chips under it ---
-
-// a select dressed as a chip, its glyph before it
-export function chip(glyph: string, sel: HTMLSelectElement, title: string): HTMLElement {
-  const c = el('label', 'cd-chip');
-  c.title = title;
-  const g = el('span', 'cd-chip-ic');
-  g.innerHTML = svg(GL[glyph]!);
-  sel.classList.add('cd-chip-sel');
-  c.append(g, sel);
-  return c;
-}
 
 // the Anthropic token box: plain text masked by css, so no password manager fills it
 export function tokenInput(cls = ''): HTMLInputElement {
@@ -133,6 +122,7 @@ export function loginPanel(hostOf: () => string, done: () => void): HTMLElement 
 export async function paintNew() {
   sessionVars.head = null;
   sessionVars.composer = null;
+  popClose();
   const form = el('form', 'cd-newform');
   main.replaceChildren(form);
   form.append(el('div', 'st-wait', 'loading'));
@@ -140,65 +130,63 @@ export async function paintNew() {
   if (cd.pick !== 'new' || !form.isConnected) return;
   const top = el('div', 'cd-head-top');
   top.append(sideBtn(), el('span', 'cd-title', 'new session'));
-  // no login of the user's own on any computer: nowhere to run
-  if (opts.blocked) {
+  const hosts = opts.hosts || [];
+  const offline = opts.offline || [];
+  // nowhere to run: no login of the user's own on any computer, or none of those up
+  if (opts.blocked || (!hosts.length && !opts.error)) {
     const box = el('div', 'cd-empty');
     const again = Object.assign(el('button', 'cd-mini primary', 'check again'), { type: 'button' });
     again.addEventListener('click', () => paintNew());
-    box.append(
-      el('div', 'cd-empty-t', opts.blocked),
-      el(
-        'p',
-        'cd-intro',
-        'Code runs an agent harness on one of your computers, signed in as you over ssh, so it needs a login of yours saved for that computer.',
-      ),
-      el(
-        'p',
-        'cd-intro',
-        'Open a terminal on a computer from the desktop, log in and save the login, then come back here.',
-      ),
-      again,
-    );
+    const ic = el('div', 'cd-empty-ic');
+    ic.innerHTML = svg(GL.host!);
+    if (opts.blocked)
+      box.append(
+        ic,
+        el('div', 'cd-empty-t', opts.blocked),
+        el(
+          'p',
+          'cd-intro',
+          'Code runs an agent harness on one of your computers, signed in as you over ssh, so it needs a login of yours saved for that computer.',
+        ),
+        el(
+          'p',
+          'cd-intro',
+          'Open a terminal on a computer from the desktop, log in and save the login, then come back here.',
+        ),
+        again,
+      );
+    else
+      box.append(
+        ic,
+        el('div', 'cd-empty-t', 'none of your computers is online'),
+        el(
+          'p',
+          'cd-intro',
+          `${listOf(offline)} ${offline.length === 1 ? 'is' : 'are'} offline. Code runs on a computer that's up on the mesh and that you've saved a login for.`,
+        ),
+        again,
+      );
     form.replaceChildren(top, box);
     return;
   }
-  const hosts = opts.hosts || [];
   const dirs = lsGet<Record<string, string>>(DIR_LS, {});
   const lastHost = lsGet(`${DIR_LS}-host`, '');
-  const host = el('select');
-  host.innerHTML =
-    hosts.map((h) => `<option value="${esc(h)}"${h === lastHost ? ' selected' : ''}>${esc(h)}</option>`).join('') ||
-    '<option value="">no hosts</option>';
-  let dir = dirs[host.value] || '';
-  const dirBtn = Object.assign(el('button', 'cd-chip cd-chip-dir'), { type: 'button' });
-  const picker = el('div', 'cd-picker');
-  picker.hidden = true;
-  const paintDir = () => {
-    dirBtn.innerHTML = `<span class="cd-chip-ic">${svg(GL.folder!)}</span>`;
-    dirBtn.append(
-      el('span', `cd-chip-t${dir ? '' : ' cd-chip-want'}`, dir ? base(tilde(dir)) || dir : 'pick a folder'),
-    );
-    dirBtn.title = dir ? `${host.value}:${dir}` : 'the folder the agent works in';
-  };
-  // the harnesses the code service offers, the last one used picked
+  // the choices: the last ones used where they still stand
+  let host = hosts.includes(lastHost) ? lastHost : hosts[0] || '';
+  let dir = dirs[host] || '';
   const harnesses: CodeHarness[] = opts.harnesses || [];
   const lastHarness = lsGet(`${DIR_LS}-harness`, '');
-  const harness = el('select');
-  harness.innerHTML =
-    harnesses
-      .map(
-        (h) =>
-          `<option value="${esc(h.id)}"${h.id === lastHarness ? ' selected' : ''}>${esc(h.label.toLowerCase())}</option>`,
-      )
-      .join('') || '<option value="">no harnesses</option>';
-  const hxOf = () => harnesses.find((h) => h.id === harness.value) || null;
+  let harness = (harnesses.find((h) => h.id === lastHarness) || harnesses[0])?.id || '';
+  const hxOf = () => harnesses.find((h) => h.id === harness) || null;
   // each host's harnesses as the code service found them
   const found = new Map<string, CodeHarnesses>();
-  const ready = (opts.models || []).filter((m) => m.ready !== false);
+  const models = opts.models || [];
+  const ready = models.filter((m) => m.ready !== false);
   const lastModel = lsGet(`${DIR_LS}-model`, '');
-  let model = modelSelect(opts, (ready.find((m) => m.id === lastModel) || ready[0])?.id || '');
-  const perm = el('select');
-  perm.innerHTML = PERMS.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join('');
+  let model = (ready.find((m) => m.id === lastModel) || ready[0] || models[0])?.id || '';
+  const lastPerm = lsGet(`${DIR_LS}-perm`, 'default');
+  let perm = PERMS.some(([v]) => v === lastPerm) ? lastPerm : 'default';
+
   const prompt = Object.assign(el('textarea', 'cd-first'), {
     rows: 3,
     placeholder: 'What should it do?',
@@ -219,12 +207,14 @@ export async function paintNew() {
   const install = el('div', 'cd-install');
   install.hidden = true;
   const login = loginPanel(
-    () => host.value,
+    () => host,
     () => {
       // the subscription's models in the list now, sonnet picked
       loadOpts(true).then((o) => {
-        swapModel(modelSelect(o, 'sonnet'));
-        valid();
+        opts.models = o.models;
+        opts.anthropic = o.anthropic;
+        model = 'sonnet';
+        paint();
         signin.hidden = !!o.anthropic;
       });
     },
@@ -236,19 +226,17 @@ export async function paintNew() {
     ariaLabel: 'start',
   });
   goBtn.innerHTML = svg(GL.send!);
-  const modelChip = chip('model', model, 'model');
+  const hostChip = chipBtn('host', 'the computer the agent runs on, as your login there');
+  const dirChip = chipBtn('folder', 'the folder the agent works in');
+  const hxChip = chipBtn('term', 'the harness that runs the session');
+  const modelChip = chipBtn('model', 'model');
+  const permChip = chipBtn('shield', 'what the agent may do without asking');
+  const chips = el('div', 'cd-chips');
+  chips.append(hostChip.node, dirChip.node, el('span', 'cd-bar-gap'), hxChip.node, modelChip.node, permChip.node);
   const bar = el('div', 'cd-bar');
-  bar.append(
-    chip('host', host, 'the computer the agent runs on, as your login there'),
-    dirBtn,
-    el('span', 'cd-bar-gap'),
-    chip('term', harness, 'the harness that runs the session'),
-    modelChip,
-    chip('shield', perm, 'what the agent may do without asking'),
-    goBtn,
-  );
-  const box = el('div', 'cd-box');
-  box.append(prompt, picker, bar);
+  bar.append(chips, goBtn);
+  const box = el('div', 'cd-prompt-box');
+  box.append(prompt, bar);
   const msg = el('span', 'cd-msg');
   const signin = el('div', 'cd-signin');
   const signBtn = Object.assign(el('button', 'cd-link', 'Sign in to Claude'), { type: 'button' });
@@ -266,40 +254,18 @@ export async function paintNew() {
   if (opts.error) wrap.prepend(el('p', 'cd-intro cd-bad', `couldn't load options: ${opts.error}`));
   form.replaceChildren(top, wrap);
 
-  // a sign in offered as the last model, the choice put back once it's open
-  function swapModel(next: HTMLSelectElement) {
-    let was = next.value;
-    if (!opts.anthropic && !cd.opts?.anthropic) {
-      next.insertAdjacentHTML(
-        'beforeend',
-        '<optgroup label="claude subscription"><option value="__login">Sign in for Opus, Sonnet, Haiku…</option></optgroup>',
-      );
-    }
-    next.addEventListener('change', () => {
-      if (next.value === '__login') {
-        next.value = was;
-        openLogin();
-        return;
-      }
-      was = next.value;
-      valid();
-    });
-    next.classList.add('cd-chip-sel');
-    model.replaceWith(next);
-    model = next;
-  }
-  swapModel(model);
-
+  const modelNow = () => modelOf(opts, model);
   const why = () => {
-    if (!host.value) return 'no computer to run on';
+    if (!host) return 'no computer to run on';
     const hx = hxOf();
     if (!hx) return 'no harness to run';
-    if (install.dataset.missing === '1')
-      return `${hx.label.toLowerCase()} isn't on ${host.value}: install it or pick another harness`;
+    if (install.dataset.missing === '1') return `${hx.label} isn't on ${host}: install it or pick another harness`;
     if (!dir) return 'pick a folder';
-    if (!model.value || model.value === '__login') return 'pick a model';
-    if (hx.meshOnly && provOf(model.value) === 'anthropic')
-      return `${hx.label.toLowerCase()} runs on the mesh's models`;
+    if (!model) return 'pick a model';
+    const m = modelNow();
+    if (m?.ready === false)
+      return `${m.label || m.id} isn't ready: ${(m.why || 'not loaded').replace(/^not loaded: /, '')}`;
+    if (hx.meshOnly && provOf(model) === 'anthropic') return `${hx.label} runs on the mesh's models`;
     return '';
   };
   const valid = () => {
@@ -308,15 +274,30 @@ export async function paintNew() {
     // the folder chip says it already
     if (!msg.dataset.busy) msg.textContent = dir ? w : '';
   };
+  // the chips as the choices stand
+  const paint = () => {
+    hostChip.set(host || 'no computer');
+    dirChip.set(dir ? base(tilde(dir)) || dir : 'pick a folder', dir ? '' : 'want');
+    dirChip.node.title = dir ? `${host}:${dir}` : 'the folder the agent works in';
+    const hx = hxOf();
+    const on = found.get(host)?.harnesses?.find((x) => x.id === harness);
+    hxChip.set(hx?.label || 'no harness', on && !on.installed ? 'warn' : '');
+    const m = modelNow();
+    modelChip.set(modelLabel(opts, model), m?.ready === false ? 'warn' : '');
+    modelChip.node.title = m?.ready === false ? `model: ${m.why || 'not ready'}` : 'model';
+    permChip.set(PERMS.find(([v]) => v === perm)?.[1] || perm, perm === 'bypassPermissions' ? 'warn' : '');
+    valid();
+  };
   form.addEventListener('input', valid);
+
   // the harness picked looked for on the host; a warning and an optional install when it's not there
   const check = async (fresh = false) => {
-    const h = host.value;
+    const h = host;
     const hx = hxOf();
     install.hidden = true;
     install.dataset.missing = '';
     if (!h || !hx) {
-      valid();
+      paint();
       return;
     }
     let r = found.get(h);
@@ -328,31 +309,27 @@ export async function paintNew() {
       }
       if (!r!.error) found.set(h, r!);
     }
-    if (host.value !== h || hxOf() !== hx) return;
+    if (host !== h || hxOf() !== hx) return;
     const on = (r!.harnesses || []).find((x) => x.id === hx.id);
-    for (const o of harness.options) {
-      const x = (r!.harnesses || []).find((y) => y.id === o.value);
-      const label = harnesses.find((y) => y.id === o.value)?.label.toLowerCase() || o.value;
-      o.textContent = x && !x.installed ? `${label} · not on ${h}` : label;
-    }
     if (r!.error) {
-      host.parentElement!.title = `couldn't look for harnesses on ${h}: ${r!.error}`;
-      valid();
+      hostChip.node.title = `couldn't look for harnesses on ${h}: ${r!.error}`;
+      paint();
       return;
     }
+    hostChip.node.title = 'the computer the agent runs on, as your login there';
     if (on?.installed) {
-      harness.parentElement!.title = on.version ? `${hx.label.toLowerCase()} ${on.version} on ${h}` : h;
-      valid();
+      hxChip.node.title = on.version ? `${hx.label} ${on.version} on ${h}` : h;
+      paint();
       return;
     }
     install.hidden = false;
     install.dataset.missing = '1';
     if (r!.why) {
       install.replaceChildren(el('span', '', r!.why));
-      valid();
+      paint();
       return;
     }
-    const b = Object.assign(el('button', 'cd-mini primary', `install ${hx.label.toLowerCase()}`), { type: 'button' });
+    const b = Object.assign(el('button', 'cd-mini primary', `install ${hx.label}`), { type: 'button' });
     const out = el('pre', 'cd-install-out');
     out.hidden = true;
     b.addEventListener('click', async () => {
@@ -374,77 +351,90 @@ export async function paintNew() {
       }
       b.disabled = false;
     });
-    const others = (r!.harnesses || []).filter((x) => x.installed).map((x) => x.label.toLowerCase());
+    const others = (r!.harnesses || []).filter((x) => x.installed).map((x) => x.label);
     install.replaceChildren(
       el(
         'span',
-        '',
-        `${hx.label.toLowerCase()} isn't installed on ${h}${others.length ? `; it has ${others.join(', ')}` : ''}. installing it is optional, from ${hx.site}.`,
+        'cd-install-t',
+        `${hx.label} isn't installed on ${h}${others.length ? `; it has ${others.join(', ')}` : ''}. Installing it is optional, from ${hx.site}.`,
       ),
       b,
       out,
     );
-    valid();
+    paint();
   };
-  const pick = (p: string) => {
-    dir = p;
-    picker.hidden = true;
-    paintDir();
-    valid();
-    prompt.focus();
-  };
-  // the folder: typed, a recent one, or browsed to
-  const openPicker = () => {
-    const h = host.value;
-    const path = noFill(
-      Object.assign(el('input', 'cd-path'), { placeholder: '~/src/project', spellcheck: false, value: dir }),
-    );
-    path.addEventListener('keydown', (e) => {
-      e.stopPropagation();
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        if (path.value.trim()) pick(path.value.trim());
-      }
-      if (e.key === 'Escape') {
-        picker.hidden = true;
-        prompt.focus();
-      }
+
+  hostChip.node.addEventListener('click', () =>
+    choose(
+      hostChip.node,
+      'Computer',
+      hosts.map((h) => ({ id: h, label: h, sub: dirs[h] ? tilde(dirs[h]) : '' })),
+      host,
+      (h) => {
+        if (h === host) return;
+        host = h;
+        dir = dirs[h] || '';
+        check();
+      },
+    ),
+  );
+  const openPicker = () =>
+    folderPicker(dirChip.node, host, dir, (p) => {
+      dir = p;
+      paint();
+      prompt.focus();
     });
-    const rows: HTMLElement[] = [path];
-    const recent = lsGet<{ host: string; dir: string }[]>(RECENT_LS, [])
-      .filter((x) => x.host === h)
-      .slice(0, 6);
-    if (recent.length) {
-      const ul = el('div', 'cd-recent');
-      ul.append(el('div', 'cd-recent-t', 'recent'));
-      for (const x of recent) {
-        const b = Object.assign(el('button', 'cd-picker-row', tilde(x.dir)), { type: 'button', title: x.dir });
-        b.addEventListener('click', () => pick(x.dir));
-        ul.append(b);
+  dirChip.node.addEventListener('click', () => (popOpen(dirChip.node) ? popClose() : openPicker()));
+  hxChip.node.addEventListener('click', () => {
+    const on = found.get(host)?.harnesses || [];
+    choose(
+      hxChip.node,
+      'Harness',
+      harnesses.map((h) => {
+        const x = on.find((y) => y.id === h.id);
+        const where = x ? (x.installed ? `${x.version ? `${x.version} ` : ''}on ${host}` : `not on ${host}`) : '';
+        return {
+          id: h.id,
+          label: h.label,
+          sub: [where, h.meshOnly ? 'mesh models only' : ''].filter(Boolean).join(' · '),
+        };
+      }),
+      harness,
+      (id) => {
+        harness = id;
+        check();
+      },
+    );
+  });
+  modelChip.node.addEventListener('click', () => {
+    const cs = modelChoices(opts, model);
+    if (!opts.anthropic)
+      cs.push({
+        id: '__login',
+        label: 'Sign in for Opus, Sonnet and Haiku…',
+        group: 'Claude subscription',
+      });
+    choose(modelChip.node, 'Model', cs, model, (id) => {
+      if (id === '__login') {
+        openLogin();
+        return;
       }
-      rows.push(ul);
-    }
-    const browser = el('div', 'cd-browser');
-    rows.push(browser);
-    picker.replaceChildren(...rows);
-    picker.hidden = false;
-    browseAt(browser, h, dir, pick);
-    path.focus();
-  };
-  dirBtn.addEventListener('click', () => {
-    if (picker.hidden) openPicker();
-    else picker.hidden = true;
+      model = id;
+      paint();
+    });
   });
-  host.addEventListener('change', () => {
-    dir = dirs[host.value] || '';
-    picker.hidden = true;
-    paintDir();
-    check();
-  });
-  harness.addEventListener('change', () => {
-    check();
-    valid();
-  });
+  permChip.node.addEventListener('click', () =>
+    choose(
+      permChip.node,
+      'Permissions',
+      PERMS.map(([id, label]) => ({ id, label, sub: PERM_SUB[id], warn: id === 'bypassPermissions' })),
+      perm,
+      (id) => {
+        perm = id;
+        paint();
+      },
+    ),
+  );
   form.addEventListener('submit', (e) => {
     e.preventDefault();
     if (goBtn.disabled) {
@@ -454,24 +444,25 @@ export async function paintNew() {
     goBtn.disabled = true;
     msg.dataset.busy = '1';
     msg.textContent = 'starting';
-    dirs[host.value] = dir;
+    dirs[host] = dir;
     lsSet(DIR_LS, dirs);
-    lsSet(`${DIR_LS}-host`, host.value);
-    lsSet(`${DIR_LS}-model`, model.value);
-    lsSet(`${DIR_LS}-harness`, harness.value);
+    lsSet(`${DIR_LS}-host`, host);
+    lsSet(`${DIR_LS}-model`, model);
+    lsSet(`${DIR_LS}-harness`, harness);
+    lsSet(`${DIR_LS}-perm`, perm);
     lsSet(
       RECENT_LS,
       [
-        { host: host.value, dir },
-        ...lsGet<{ host: string; dir: string }[]>(RECENT_LS, []).filter((x) => x.host !== host.value || x.dir !== dir),
+        { host, dir },
+        ...lsGet<{ host: string; dir: string }[]>(RECENT_LS, []).filter((x) => x.host !== host || x.dir !== dir),
       ].slice(0, 30),
     );
     call('/api/code/sessions', 'POST', {
-      host: host.value,
+      host,
       dir,
-      harness: harness.value,
-      model: model.value,
-      perm: perm.value,
+      harness,
+      model,
+      perm,
       prompt: prompt.value.trim(),
     }).then(
       (r: CodeSession) => {
@@ -486,8 +477,7 @@ export async function paintNew() {
       },
     );
   });
-  paintDir();
-  valid();
+  paint();
   check();
   if (cd.login) {
     cd.login = false;
@@ -495,46 +485,227 @@ export async function paintNew() {
   } else prompt.focus({ preventScroll: true });
 }
 
-// a folder picker over the user's login on the host, from its home down
-export async function browseAt(
-  box: HTMLElement & { seq?: number },
-  host: string,
-  dir: string,
-  pick: (p: string) => void,
-) {
-  const seq = (box.seq = (box.seq || 0) + 1);
-  const head = el('div', 'cd-picker-head');
-  const listing = el('ul', 'cd-picker-list');
-  box.replaceChildren(head, listing);
-  head.append(el('span', 'cd-picker-path', dir || '~'));
-  listing.append(el('li', 'st-wait', 'loading'));
-  let r: CodeLs;
-  try {
-    r = await call(`/api/code/ls?${qs({ host, dir })}`);
-  } catch (e) {
-    if (box.seq !== seq) return;
-    const home = Object.assign(el('button', 'cd-mini', '~'), { type: 'button', title: 'home' });
-    home.addEventListener('click', () => browseAt(box, host, '', pick));
-    head.prepend(home);
-    listing.replaceChildren(el('li', 'cd-bad', (e as Error).message));
-    return;
-  }
-  if (box.seq !== seq) return;
-  const up = Object.assign(el('button', 'cd-mini', '..'), { type: 'button', title: 'up', disabled: r.dir === '/' });
-  up.addEventListener('click', () => browseAt(box, host, parent(r.dir), pick));
-  const use = Object.assign(el('button', 'cd-mini primary', 'use this folder'), { type: 'button' });
-  use.addEventListener('click', () => pick(r.dir));
-  head.replaceChildren(up, el('span', 'cd-picker-path', r.dir), use);
-  const dirs = (r.entries || []).filter((e) => e.dir && !e.name.startsWith('.'));
-  listing.replaceChildren(
-    ...dirs.map((e) => {
-      const b = Object.assign(el('button', 'cd-picker-row', `${e.name}/`), { type: 'button' });
-      b.addEventListener('click', () => browseAt(box, host, `${r.dir.replace(/\/$/, '')}/${e.name}`, pick));
-      return b;
+// a, b and c
+const listOf = (xs: string[]) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs.at(-1)}`);
+
+// listings already fetched, per host and folder, kept a little while
+const lsCache = new Map<string, { at: number; r: CodeLs }>();
+async function lsOf(host: string, dir: string, fresh = false): Promise<CodeLs> {
+  const k = `${host}\n${dir}`;
+  const c = lsCache.get(k);
+  if (c && !fresh && Date.now() - c.at < 30_000) return c.r;
+  const r: CodeLs = await call(`/api/code/ls?${qs({ host, dir })}`);
+  const v = { at: Date.now(), r };
+  lsCache.set(k, v);
+  lsCache.set(`${host}\n${r.dir}`, v);
+  return r;
+}
+
+// a folder's crumbs, home's as ~, each one a way back up
+export function crumbs(dir: string, nav: (d: string) => void): HTMLElement {
+  const box = Object.assign(el('nav', 'cd-crumbs'), { ariaLabel: 'folder' });
+  const t = tilde(dir);
+  const home = t === '~' || t.startsWith('~/');
+  const parts = (home ? t.slice(1) : t).split('/').filter(Boolean);
+  const abs = dir.replace(/\/+$/, '').split('/').filter(Boolean);
+  const first = Object.assign(el('button', 'cd-crumb'), { type: 'button', title: home ? 'home' : '/' });
+  if (home) first.innerHTML = svg(GL.home!);
+  else first.textContent = '/';
+  // home's own path, the absolute one less the parts under it
+  const homeAbs = home ? `/${abs.slice(0, abs.length - parts.length).join('/')}` : '/';
+  first.addEventListener('click', () => nav(home ? homeAbs : '/'));
+  box.append(first);
+  parts.forEach((p, i) => {
+    box.append(el('span', 'cd-crumb-sep', '/'));
+    const b = Object.assign(el('button', `cd-crumb${i === parts.length - 1 ? ' on' : ''}`, p), { type: 'button' });
+    const to = `${homeAbs.replace(/\/$/, '')}/${parts.slice(0, i + 1).join('/')}`;
+    b.addEventListener('click', () => nav(to));
+    box.append(b);
+  });
+  return box;
+}
+
+// the folder picker over the user's login on the host: a path typed with its
+// folders narrowed as it goes, crumbs back up, recent ones, the folders listed
+export function folderPicker(anchor: HTMLElement, host: string, start: string, pick: (p: string) => void) {
+  const fp = el('div', 'cd-fp');
+  const path = noFill(
+    Object.assign(el('input', 'cd-path'), {
+      placeholder: '~/src/project',
+      spellcheck: false,
+      ariaLabel: 'folder path',
     }),
   );
-  if (!dirs.length) listing.append(el('li', 'st-dim', 'no folders'));
-  if (r.more) listing.append(el('li', 'st-dim', 'more not shown'));
+  const dots = Object.assign(el('button', 'cd-icon cd-fp-dots'), {
+    type: 'button',
+    title: 'show hidden folders',
+    ariaLabel: 'show hidden folders',
+  });
+  dots.innerHTML = svg(GL.eye!);
+  dots.setAttribute('aria-pressed', 'false');
+  const topRow = el('div', 'cd-fp-top');
+  topRow.append(path, dots);
+  const trail = el('div', 'cd-fp-trail');
+  const list = Object.assign(el('div', 'cd-fp-list'), { role: 'listbox', ariaLabel: 'folders' });
+  const here = el('span', 'cd-fp-here');
+  const use = Object.assign(el('button', 'cd-mini primary cd-fp-use', 'use this folder'), { type: 'button' });
+  const foot = el('div', 'cd-fp-foot');
+  foot.append(here, use);
+  fp.append(topRow, trail, list, foot);
+  popOver(anchor, fp, 'cd-pop-fp');
+
+  let cur = '';
+  let entries: { name: string; dir: boolean }[] = [];
+  let shown: string[] = [];
+  let hi = -1;
+  let hidden = false;
+  let seq = 0;
+  let typed = 0 as ReturnType<typeof setTimeout> | 0;
+  let browsed = false;
+  const recent = lsGet<{ host: string; dir: string }[]>(RECENT_LS, [])
+    .filter((x) => x.host === host)
+    .slice(0, 5);
+  const join = (d: string, n: string) => `${d.replace(/\/$/, '')}/${n}`;
+  const done = (p: string) => {
+    popClose();
+    pick(p);
+  };
+  // the typed path as a folder to list and a name to narrow it by
+  const parse = () => {
+    const v = path.value.trim();
+    const i = v.lastIndexOf('/');
+    let d = i >= 0 ? v.slice(0, i + 1) : '';
+    if (d && !d.startsWith('/') && !d.startsWith('~')) d = join(cur, d);
+    return { d: d.replace(/(.)\/+$/, '$1'), f: i >= 0 ? v.slice(i + 1) : v };
+  };
+  const same = (a: string, b: string) =>
+    tilde(a).replace(/(.)\/+$/, '$1') === tilde(b).replace(/(.)\/+$/, '$1') && a !== '' && b !== '';
+  const paintList = () => {
+    const f = parse().f.toLowerCase();
+    const dirs = entries.filter((e) => e.dir && (hidden || f.startsWith('.') || !e.name.startsWith('.')));
+    const starts = dirs.filter((e) => e.name.toLowerCase().startsWith(f));
+    const has = f ? dirs.filter((e) => !starts.includes(e) && e.name.toLowerCase().includes(f)) : [];
+    shown = [...starts, ...has].map((e) => e.name);
+    hi = f && shown.length ? Math.min(Math.max(hi, 0), shown.length - 1) : Math.min(hi, shown.length - 1);
+    const rows: HTMLElement[] = [];
+    if (!browsed && !f && recent.length) {
+      rows.push(el('div', 'cd-fp-g', 'recent'));
+      for (const x of recent) {
+        const b = Object.assign(el('button', 'cd-fp-row recent'), { type: 'button', title: `use ${x.dir}` });
+        const ic = el('span', 'cd-fp-ic');
+        ic.innerHTML = svg(GL.clock!);
+        b.append(ic, el('span', 'cd-fp-name', tilde(x.dir)));
+        b.addEventListener('click', () => done(x.dir));
+        rows.push(b);
+      }
+      rows.push(el('div', 'cd-fp-g', base(tilde(cur)) === '~' ? 'home' : tilde(cur)));
+    }
+    shown.forEach((n, i) => {
+      const b = Object.assign(el('div', `cd-fp-row${i === hi ? ' hi' : ''}`), { role: 'option' });
+      b.setAttribute('aria-selected', String(i === hi));
+      const ic = el('span', 'cd-fp-ic');
+      ic.innerHTML = svg(GL.folder!);
+      const open = Object.assign(el('button', 'cd-fp-open'), { type: 'button', title: `open ${n}` });
+      open.append(ic, el('span', 'cd-fp-name', n));
+      open.addEventListener('click', () => nav(join(cur, n)));
+      open.addEventListener('dblclick', () => done(join(cur, n)));
+      const pickIt = Object.assign(el('button', 'cd-mini cd-fp-pick', 'use'), {
+        type: 'button',
+        title: `use ${tilde(join(cur, n))}`,
+        tabIndex: -1,
+      });
+      pickIt.addEventListener('click', () => done(join(cur, n)));
+      b.append(open, pickIt);
+      rows.push(b);
+    });
+    if (!shown.length && cur)
+      rows.push(el('div', 'cd-fp-none', f ? `no folder here starts with ${parse().f}` : 'no folders here'));
+    list.replaceChildren(...rows);
+    list.querySelector('.cd-fp-row.hi')?.scrollIntoView({ block: 'nearest' });
+  };
+  // a folder listed: its crumbs, its folders, the path box following unless typed in
+  const nav = async (d: string, keep = false) => {
+    const n = ++seq;
+    if (cur) browsed = true;
+    fp.classList.add('busy');
+    let r: CodeLs;
+    try {
+      r = await lsOf(host, d);
+    } catch (e) {
+      if (n !== seq) return;
+      fp.classList.remove('busy');
+      if (!cur) {
+        // the folder asked for gone: home instead
+        if (d) {
+          nav('');
+          return;
+        }
+        list.replaceChildren(el('div', 'cd-fp-none cd-bad', (e as Error).message));
+      } else if (!keep) list.replaceChildren(el('div', 'cd-fp-none cd-bad', (e as Error).message));
+      return;
+    }
+    if (n !== seq || !fp.isConnected) return;
+    fp.classList.remove('busy');
+    cur = r.dir;
+    entries = r.entries || [];
+    hi = -1;
+    trail.replaceChildren(crumbs(cur, (x) => nav(x)));
+    if (r.more) trail.append(el('span', 'cd-fp-more', 'more not shown'));
+    // cut from the left as it narrows, the path's own order kept
+    here.replaceChildren(Object.assign(el('bdi'), { dir: 'ltr', textContent: tilde(cur) }));
+    here.title = `${host}:${cur}`;
+    use.title = `use ${cur}`;
+    if (!keep) {
+      path.value = cur === '/' ? '/' : `${tilde(cur)}/`;
+      path.focus();
+    }
+    paintList();
+  };
+  path.addEventListener('input', () => {
+    clearTimeout(typed);
+    const { d } = parse();
+    if (d && !same(d, cur)) typed = setTimeout(() => nav(d, true), 200);
+    else paintList();
+  });
+  path.addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!shown.length) return;
+      hi = e.key === 'ArrowDown' ? Math.min(shown.length - 1, hi + 1) : Math.max(-1, hi - 1);
+      paintList();
+      return;
+    }
+    if (e.key === 'Tab' && !e.shiftKey && shown.length && parse().f) {
+      e.preventDefault();
+      nav(join(cur, shown[Math.max(hi, 0)]!));
+      return;
+    }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (e.ctrlKey || e.metaKey) {
+        done(hi >= 0 ? join(cur, shown[hi]!) : cur);
+        return;
+      }
+      if (hi >= 0) nav(join(cur, shown[hi]!));
+      else if (!parse().f && cur) done(cur);
+      else if (parse().f) {
+        // a name typed in full that isn't listed: the path as typed, ls deciding
+        const v = path.value.trim();
+        nav(v.startsWith('/') || v.startsWith('~') ? v : join(cur, v));
+      }
+      return;
+    }
+  });
+  dots.addEventListener('click', () => {
+    hidden = !hidden;
+    dots.setAttribute('aria-pressed', String(hidden));
+    dots.classList.toggle('on', hidden);
+    paintList();
+    path.focus();
+  });
+  use.addEventListener('click', () => cur && done(cur));
+  nav(start);
 }
 
 // a session's folder browsed in a panel over the app, folders and files,
@@ -578,17 +749,26 @@ export function openBrowser(host: string, dir: string) {
       return;
     }
     if (n !== seq || !wrap.isConnected) return;
-    const up = Object.assign(el('button', 'cd-mini', '..'), { type: 'button', title: 'up', disabled: r.dir === '/' });
+    const up = Object.assign(el('button', 'cd-icon'), {
+      type: 'button',
+      title: 'up a folder',
+      ariaLabel: 'up a folder',
+      disabled: r.dir === '/',
+    });
+    up.innerHTML = svg(GL.up!);
     up.addEventListener('click', () => nav(parent(r.dir)));
-    const hid = Object.assign(el('button', `cd-mini${dots ? ' primary' : ''}`, 'hidden'), {
+    const hid = Object.assign(el('button', `cd-icon${dots ? ' on' : ''}`), {
       type: 'button',
       title: 'show hidden files',
+      ariaLabel: 'show hidden files',
     });
+    hid.innerHTML = svg(GL.eye!);
+    hid.setAttribute('aria-pressed', String(dots));
     hid.addEventListener('click', () => {
       dots = !dots;
       nav(r.dir);
     });
-    const path = el('span', 'cd-picker-path', r.dir);
+    const path = crumbs(r.dir, nav);
     path.title = `${host}:${r.dir}`;
     head.replaceChildren(up, el('span', 'cd-host', host), path, hid, shut);
     const ents = (r.entries || []).filter((e) => dots || !e.name.startsWith('.'));
@@ -597,8 +777,12 @@ export function openBrowser(host: string, dir: string) {
         const row: HTMLElement = e.dir
           ? Object.assign(el('button', 'cd-browse-row dir'), { type: 'button' })
           : el('div', 'cd-browse-row');
+        const ic = el('span', 'cd-fp-ic');
+        ic.innerHTML = svg(e.dir ? GL.folder! : GL.file!);
+        const name = el('span', 'cd-browse-name');
+        name.append(ic, e.name);
         row.append(
-          el('span', 'cd-browse-name', e.dir ? `${e.name}/` : e.name),
+          name,
           el('span', 'cd-browse-size', e.dir ? '' : bytes(e.size)),
           el('span', 'cd-browse-at', e.mtime ? ago(e.mtime) : ''),
         );

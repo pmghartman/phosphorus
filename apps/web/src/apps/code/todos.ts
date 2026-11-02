@@ -13,7 +13,7 @@ export function todoList(todos: Todo[]): HTMLElement {
   for (const x of todos) {
     const li = el('li', `cd-todo-${x.status}`);
     li.append(
-      el('span', 'cd-box', x.status === 'completed' ? '[x]' : x.status === 'in_progress' ? '[~]' : '[ ]'),
+      el('span', 'cd-todo-box', x.status === 'completed' ? '[x]' : x.status === 'in_progress' ? '[~]' : '[ ]'),
       ' ',
       x.status === 'in_progress' && x.activeForm ? x.activeForm : x.content,
     );

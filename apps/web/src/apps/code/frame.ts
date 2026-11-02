@@ -80,7 +80,10 @@ acctBtn.setAttribute('aria-expanded', 'false');
 acct.append(acctBox, acctBtn);
 side.append(sideTop, listEl, acct);
 acctBtn.addEventListener('click', () => acctOpen(acctBox.hidden as boolean));
-newBtn.addEventListener('click', () => go('new'));
+newBtn.addEventListener('click', () => {
+  go('new');
+  drawer(false);
+});
 find.addEventListener('input', () => {
   cd.filter = find.value.trim().toLowerCase();
   cd.listSig = '';

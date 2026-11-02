@@ -5,14 +5,29 @@ import { dkTerminal } from '../../desktop/desk.ts';
 import { wsBase } from '../../lib/api.ts';
 import { el } from '../../lib/dom.ts';
 import { dk, st } from '../../lib/state.ts';
-import { esc } from '../../lib/util.ts';
 import { makeComposer } from './composer.ts';
 import { claudeEv, flushLive } from './events.ts';
 import { drawer, main } from './frame.ts';
 import { loadList, paintList, rec } from './list.ts';
+import { type Choice, chipBtn, choose, popIn } from './menu.ts';
 import { openBrowser } from './newsession.ts';
 import { permCard } from './perms.ts';
-import { call, cd, GL, kfmt, live, PERMS, provOf, sapi, shQuote, svg, type Transcript, tilde, view } from './state.ts';
+import {
+  call,
+  cd,
+  GL,
+  kfmt,
+  live,
+  PERM_SUB,
+  PERMS,
+  provOf,
+  sapi,
+  shQuote,
+  svg,
+  type Transcript,
+  tilde,
+  view,
+} from './state.ts';
 import { paintTodos } from './todos.ts';
 
 // the module's variables other modules set
@@ -88,7 +103,8 @@ export function paintHead() {
   if (!sessionVars.head || !r || cd.pick === 'new') return;
   const opts = cd.opts;
   const sig = JSON.stringify([r, opts, cd.renaming, !!dk.creds?.has(r.host)]);
-  if (sig === sessionVars.headSig) return;
+  // never drawn again under a menu of its own still open
+  if (sig === sessionVars.headSig || popIn(sessionVars.head)) return;
   sessionVars.headSig = sig;
   const top = el('div', 'cd-head-top');
   const title = el('span', 'cd-title', r.title || 'untitled');
@@ -119,38 +135,42 @@ export function paintHead() {
   where.title = `${r.host}:${r.dir}`;
   const hx = (opts?.harnesses || []).find((h) => h.id === (r.harness || 'claude'));
   if (hx) where.prepend(el('span', 'cd-harness', hx.label.toLowerCase()));
-  const model = modelSelect(opts, r.model, true);
-  model.addEventListener('change', () => {
-    const v = model.value;
-    call(sapi(r.id, 'model'), 'POST', { model: v }).then(
-      () => {
-        r.model = v;
-        loadList();
+  const model = chipBtn('model', 'model');
+  const m = modelOf(opts, r.model);
+  model.set(modelLabel(opts, r.model), m?.ready === false ? 'warn' : '');
+  if (m?.ready === false) model.node.title = `model: ${m.why || 'not ready'}`;
+  model.node.addEventListener('click', () =>
+    choose(model.node, 'Model', modelChoices(opts, r.model, true), r.model, (v) => {
+      if (v === r.model) return;
+      call(sapi(r.id, 'model'), 'POST', { model: v }).then(
+        () => {
+          r.model = v;
+          loadList();
+        },
+        (e) => say(e.message),
+      );
+    }),
+  );
+  const perm = chipBtn('shield', 'what the agent may do without asking');
+  perm.set(PERMS.find(([v]) => v === r.perm)?.[1] || r.perm, r.perm === 'bypassPermissions' ? 'warn' : '');
+  perm.node.addEventListener('click', () =>
+    choose(
+      perm.node,
+      'Permissions',
+      PERMS.map(([id, label]) => ({ id, label, sub: PERM_SUB[id], warn: id === 'bypassPermissions' })),
+      r.perm,
+      (v) => {
+        if (v === r.perm) return;
+        call(sapi(r.id, 'perm'), 'POST', { mode: v }).then(
+          () => {
+            r.perm = v;
+            loadList();
+          },
+          (e) => say(e.message),
+        );
       },
-      (e) => {
-        say(e.message);
-        model.value = r.model;
-      },
-    );
-  });
-  const perm = el('select', 'cd-sel');
-  perm.innerHTML = PERMS.map(
-    ([v, l]) => `<option value="${v}"${v === r.perm ? ' selected' : ''}>${esc(l)}</option>`,
-  ).join('');
-  perm.title = 'permission mode';
-  perm.addEventListener('change', () => {
-    const v = perm.value;
-    call(sapi(r.id, 'perm'), 'POST', { mode: v }).then(
-      () => {
-        r.perm = v;
-        loadList();
-      },
-      (e) => {
-        say(e.message);
-        perm.value = r.perm;
-      },
-    );
-  });
+    ),
+  );
   const u = r.usage || {};
   const use = el(
     'span',
@@ -159,33 +179,34 @@ export function paintHead() {
       ? `↑${kfmt(u.in)} ↓${kfmt(u.out)}${u.costUSD ? ` · $${u.costUSD.toFixed(u.costUSD < 1 ? 3 : 2)}` : ''}`
       : '',
   );
-  bar.append(where, model, perm, use);
+  bar.append(where, model.node, perm.node, use);
   sessionVars.head.replaceChildren(top, bar);
   sessionVars.composer?.state(r);
 }
 
-// the models by provider; lock, a running session's, the other provider's
-// shown but off: a switch across is a new session's
-export function modelSelect(opts: CodeOptions | null, cur: string, lock?: boolean): HTMLSelectElement {
-  const s = el('select', 'cd-sel');
-  const CROSS = 'start a new session to change provider';
-  s.title = lock ? `model; ${CROSS}` : 'model';
-  const models = (opts?.models || []).filter((m) => m.provider !== 'anthropic' || opts!.anthropic);
-  const mesh = models.filter((m) => m.provider !== 'anthropic');
-  const anth = models.filter((m) => m.provider === 'anthropic');
-  const off = (m: CodeModel) => lock && provOf(m.id) !== provOf(cur);
-  const opt = (m: CodeModel) =>
-    `<option value="${esc(m.id)}"${m.id === cur ? ' selected' : ''}${(m.ready === false && m.id !== cur) || off(m) ? ' disabled' : ''}` +
-    `${off(m) ? ` title="${CROSS}"` : ''}>${esc(m.label || m.id)}${m.ready === false ? ` · ${esc(m.why || 'not ready')}` : ''}</option>`;
-  const group = (label: string, ms: CodeModel[]) =>
-    `<optgroup label="${label}"${ms.length && ms.every(off) ? ` title="${CROSS}"` : ''}>${ms.map(opt).join('')}</optgroup>`;
-  let html = '';
-  if (mesh.length) html += group('mesh', mesh);
-  if (anth.length) html += group('anthropic', anth);
-  if (cur && !models.some((m) => m.id === cur)) html += `<option value="${esc(cur)}" selected>${esc(cur)}</option>`;
-  s.innerHTML = html || '<option value="">no models</option>';
-  return s;
+// the models as a chip's choices by provider; lock, a running session's: the
+// other provider's shown but off, a switch across being a new session's
+export function modelChoices(opts: CodeOptions | null, cur: string, lock?: boolean): Choice[] {
+  const out: Choice[] = [];
+  for (const m of opts?.models || []) {
+    const anth = m.provider === 'anthropic';
+    if (anth && !opts!.anthropic) continue;
+    const cross = !!lock && provOf(m.id) !== provOf(cur);
+    out.push({
+      id: m.id,
+      label: m.label || m.id,
+      group: anth ? 'Claude subscription' : 'Mesh',
+      sub: cross ? 'start a new session to change provider' : m.ready === false ? m.why || 'not ready' : '',
+      off: cross || (m.ready === false && m.id !== cur),
+      warn: m.ready === false,
+    });
+  }
+  if (cur && !out.some((c) => c.id === cur)) out.push({ id: cur, label: cur });
+  return out;
 }
+export const modelOf = (opts: CodeOptions | null, id: string): CodeModel | undefined =>
+  (opts?.models || []).find((m) => m.id === id);
+export const modelLabel = (opts: CodeOptions | null, id: string) => modelOf(opts, id)?.label || id || 'no model';
 
 // a line in the composer's corner
 export function say(text: string) {

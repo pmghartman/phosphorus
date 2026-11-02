@@ -143,6 +143,22 @@ export const GL: Record<string, string> = {
   host: 'M2 3.5h12v7H2zM5.5 13h5M8 10.5V13',
   model: 'M8 2l1.6 4.4L14 8l-4.4 1.6L8 14l-1.6-4.4L2 8l4.4-1.6z',
   shield: 'M8 1.8l5 2v4c0 3-2.2 5.3-5 6.4-2.8-1.1-5-3.4-5-6.4v-4z',
+  tick: 'M3.5 8.5l3 3 6-7',
+  caret: 'M5 6.5l3 3 3-3',
+  home: 'M2.5 7.5L8 3l5.5 4.5M4 6.5v6.5h8V6.5',
+  up: 'M8 13V3.5M4 7.5L8 3.5l4 4',
+  clock: 'M8 2.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11zM8 5v3.2l2 1.3',
+  eye: 'M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8s-2.4 4.5-6.5 4.5S1.5 8 1.5 8zM8 6a2 2 0 1 0 0 4 2 2 0 0 0 0-4z',
+  file: 'M3.5 1.5h6l3 3v10h-9zM9.5 1.5v3h3',
+  pencil: 'M10.5 2.5l3 3-8 8h-3v-3zM9 4l3 3',
+  trash: 'M2.5 4.5h11M6.5 4.5V2.5h3v2M4 4.5l.6 9h6.8l.6-9',
+};
+// the permission modes as the page tells them
+export const PERM_SUB: Record<string, string> = {
+  default: 'asks before it edits or runs anything',
+  acceptEdits: 'edits files on its own, asks before commands',
+  plan: 'reads and plans, changes nothing',
+  bypassPermissions: 'runs everything without asking',
 };
 
 export async function call(url: string, method = 'GET', body?: unknown): Promise<any> {
