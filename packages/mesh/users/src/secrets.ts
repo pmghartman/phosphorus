@@ -23,7 +23,7 @@ export const prefsFile = (n: string) => `home/${n}/prefs.json`;
 export const wallFile = (n: string) => `home/${n}/wallpaper.json`;
 export const mcpFile = (n: string) => `home/${n}/mcp.json`;
 
-export const adminPass = env("ADMIN_PASS", env("PHOSPHORUS_UPDATE_PASSWORD"));
+export const adminPass = env("ADMIN_PASS");
 export const nameRe = /^[a-z0-9][a-z0-9._-]{0,31}$/;
 export const reserved = [admin, "shared", "sys", "usr"];
 export const baseDomain = env("BASE_DOMAIN").toLowerCase();

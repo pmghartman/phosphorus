@@ -133,7 +133,7 @@ async function installRelease(r: Release) {
 }
 
 // an update request: the feed's newer app installed and relaunched (finished on the
-// next launch), else this release's images and config re-applied
+// next launch), else this release reinstalled over itself, config kept
 async function handleUpdate(id: string, ask: boolean) {
   if (busy) {
     report(id, "failed", false, "", "busy starting, stopping or installing; try again once it's done");
