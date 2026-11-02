@@ -77,7 +77,7 @@ export async function upgrade(id: string) {
     report("ok", false, cand, "");
     return;
   }
-  // newest already: this release's images and config re-applied
+  // newest already: this release reinstalled over itself, config kept
   say(`${have} is the newest`);
   const r = await capture([...selfArgv(), "install", "--update", "--home", home], true);
   if (r.code !== 0) {

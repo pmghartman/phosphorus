@@ -40,7 +40,7 @@ export async function tailnetJoin(state: string) {
     writeFileSync(joined, new Date().toISOString().replace(/\.\d+Z$/, "Z") + "\n");
   };
   const known = !!env.BASE_DOMAIN || !!env.ADMIN_PASS || fileExists(joined);
-  // turned off (vpn off, or by hand): back up as the same node, no re-auth
+  // turned off (by hand): back up as the same node, no re-auth
   if (state === "Stopped" && known) {
     if ((await runCmd([os.tailscaleCLI(), "up", ...os.tailscaleUpFlags()])).ok) {
       await os.tailscaleKeepUp();

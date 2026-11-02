@@ -64,7 +64,7 @@ now_ms() { local up; read -r up _ </proc/uptime; REPLY=$(( 10#${up/./} * 10 )); 
 
 write_file() { echo "$2" >"$1.tmp" && mv "$1.tmp" "$1"; }
 
-# as forgejo's account, labelled for phos ps
+# as forgejo's account, labelled with its role
 as_git() { PHOSPHORUS_ROLE="${ROLE:-forgejo}" setpriv --reuid="$GIT_USER" --regid="$GIT_GROUP" --init-groups "$@"; }
 
 # DOMAIN/ROOT_URL the stable mesh name, never this host's own hostname:

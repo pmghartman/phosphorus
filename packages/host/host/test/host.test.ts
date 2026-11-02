@@ -11,12 +11,10 @@ const { durText, lastLine, setHome, splitLines, sshInclude } = base;
 const { plistText, xmlEsc } = await import("../src/darwin.ts");
 const { escapeArg, psq } = await import("../src/windows.ts");
 const { authorizedKeysKept, gameKeyLine } = await import("../src/game.ts");
-const { absTo, bakeEnv, envFileText, psText, readEnvFile, signature, splitComma, withPath } = await import(
-  "../src/native.ts"
-);
+const { absTo, bakeEnv, envFileText, readEnvFile, signature, splitComma, withPath } = await import("../src/native.ts");
 const { kept, syncPayload } = await import("../src/install.ts");
 const { field } = await import("../src/upgrade.ts");
-const { keySet } = await import("../src/start.ts");
+const { keySet, meshURL } = await import("../src/start.ts");
 
 test("parse takes --update, --home and --payload, the rest in order", () => {
   expect(parse([])).toEqual({ update: false, payload: "", home: "", rest: [] });
@@ -45,17 +43,19 @@ test("commands and usage", async () => {
     "game-control",
     "game-control-setup",
     "run",
-    "ps",
     "uninstall",
     "status",
-    "vpn",
+    "version",
     "help",
     "-h",
     "--help",
   ])
     expect(commands.has(c)).toBe(true);
-  expect(commands.has("serve")).toBe(false);
-  expect(usageText.startsWith("usage: phos             the cli")).toBe(true);
+  for (const c of ["serve", "ps", "vpn", "cli"]) expect(commands.has(c)).toBe(false);
+  // one usage, every command it names taken
+  expect(usageText.startsWith("usage: phos ")).toBe(true);
+  for (const m of usageText.matchAll(/phos (\w+)/g)) expect(commands.has(m[1]!)).toBe(true);
+  expect(usageText).not.toMatch(/\b(ps|vpn|all)\b/);
   expect(await main("help", [])).toBe(0);
 });
 
@@ -128,39 +128,6 @@ test("the play/stop key's authorized_keys line and what's kept around it", () =>
     authorizedKeysKept(`ssh-rsa X me\n\n${old}\nrestrict ssh-ed25519 AAAAC3 other\nssh-rsa Y you\n`, line, keyPart),
   ).toEqual(["ssh-rsa X me", "ssh-rsa Y you"]);
   expect(authorizedKeysKept("", line, keyPart)).toEqual([]);
-});
-
-test("phos ps as a tree by role, with totals", () => {
-  const p = (pid: number, ppid: number, role: string, rss: number, cmd: string) => ({
-    pid,
-    ppid,
-    role,
-    rss,
-    cmd,
-    name: "llama-server",
-    cpu: 0,
-  });
-  expect(psText([])).toBe("no phosphorus processes running\n");
-  const out = psText([
-    p(30, 10, "frontend", 100 << 20, "phosphorus serve"),
-    p(10, 1, "run", 50 << 20, "phosphorus run"),
-    p(40, 10, "llama-server", 3 * 1024 * 1024 * 1024, "llama-server -m x"),
-    p(41, 40, "llama-server", 1 << 20, ""),
-  ]);
-  expect(out).toBe(
-    [
-      "ROLE                 PID      RSS  COMMAND",
-      "run                   10      50M  phosphorus run",
-      "frontend              30     100M    phosphorus serve",
-      "llama-server          40    3072M    llama-server -m x",
-      "llama-server          41       1M      llama-server",
-      "",
-      "phosphorus                   150M",
-      "llama-server                3073M",
-      "total                       3223M",
-      "",
-    ].join("\n"),
-  );
 });
 
 test("the baked env file round-trips, PATH gets the tools first", () => {
@@ -246,6 +213,10 @@ test("small helpers", () => {
     TS_API_KEY: false,
     ADMIN_PASS: false,
   });
+  // phos alone: the domain's address, else this host's tailnet name
+  expect(meshURL("mesh.example", "box.tail1.ts.net.")).toBe("https://mesh.example/");
+  expect(meshURL("", "box.tail1.ts.net.")).toBe("http://box.tail1.ts.net/");
+  expect(meshURL("", "")).toBe("http://localhost/");
   expect(durText(5000)).toBe("5s");
   expect(durText(60_000)).toBe("1m0s");
   expect(splitLines("a\r\nb\n")).toEqual(["a", "b"]);

@@ -85,7 +85,7 @@ async function stopChild(c: Child) {
 
 const roles = new Map<number, string>();
 
-// noteRole each child's pid for phos ps and the status tab on any OS
+// noteRole each child's pid for the status tab on any OS
 function noteRole(pid: number, role: string) {
   for (const [p, r] of roles) if (r === role) roles.delete(p);
   roles.set(pid, role);

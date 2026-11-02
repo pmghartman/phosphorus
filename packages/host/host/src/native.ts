@@ -1,5 +1,5 @@
 // the service on this host: the env baked for run, the rebuild that
-// (re)starts it, stop and restart, the cli attached, phos ps
+// (re)starts it, stop and restart
 import { createHash } from "node:crypto";
 import {
   lstatSync,
@@ -14,11 +14,9 @@ import {
 } from "node:fs";
 import { isAbsolute, join, normalize, relative, sep } from "node:path";
 import * as envfile from "@phosphorus/envfile";
-import { ours, type P } from "@phosphorus/procs";
 import {
   at,
   binPath,
-  ExitCode,
   envPath,
   eprint,
   fail,
@@ -32,13 +30,11 @@ import {
   isModelHost,
   isWindows,
   lockEnv,
-  print,
   println,
   readTrim,
   say,
   setTag,
   sleep,
-  spawnIO,
   statOf,
   version,
 } from "./base.ts";
@@ -349,60 +345,3 @@ export async function nativeRestart() {
   }
   println("phosphorus restarted");
 }
-
-// attach the cli on the running service's env, reattached across a restart
-export async function attach(args: string[]) {
-  for (;;) {
-    const before = await os.svcSince();
-    if (!(await os.svcActive())) throw fail("phosphorus isn't running, run: phos start");
-    const code = await spawnIO([binPath("phosphorus"), "cli", ...args], { env: runEnv(), stdin: "inherit" });
-    if ((await os.svcSince()) === before) {
-      if (code < 0) throw fail(`couldn't run ${binPath("phosphorus")}`);
-      if (code !== 0) throw new ExitCode(code);
-      return;
-    }
-    println("phosphorus is restarting, reattaching (ctrl-c to quit)...");
-    while (!(await os.svcActive())) await sleep(1000);
-    if (args[0] === "update-all") args = ["--tab", "update"];
-  }
-}
-
-// --- phos ps ------------------------------------------------------------------------
-
-// psText phosphorus's own processes as a tree, by role
-export function psText(ps: P[]): string {
-  if (ps.length === 0) return "no phosphorus processes running\n";
-  const by = new Map<number, P>(ps.map((p) => [p.pid, p]));
-  const kids = new Map<number, number[]>();
-  const roots: number[] = [];
-  for (const p of ps) {
-    if (by.has(p.ppid)) kids.set(p.ppid, [...(kids.get(p.ppid) ?? []), p.pid]);
-    else roots.push(p.pid);
-  }
-  const asc = (a: number[]) => a.sort((x, y) => x - y);
-  let w = `${"ROLE".padEnd(16)} ${"PID".padStart(7)} ${"RSS".padStart(8)}  COMMAND\n`;
-  const walk = (pid: number, depth: number) => {
-    const p = by.get(pid)!;
-    let cmd = p.cmd || p.name;
-    if (cmd.length > 90) cmd = cmd.slice(0, 90) + "…";
-    w += `${p.role.padEnd(16)} ${String(p.pid).padStart(7)} ${String(Math.floor(p.rss / (1 << 20))).padStart(7)}M  ${"  ".repeat(depth)}${cmd}\n`;
-    for (const k of asc(kids.get(pid) ?? [])) walk(k, depth + 1);
-  };
-  for (const r of asc(roots)) walk(r, 0);
-  // totals, the model's own runtimes apart: their weights and caches dwarf the rest
-  let all = 0,
-    model = 0;
-  for (const p of ps) {
-    all += p.rss;
-    if (p.role === "llama-server") model += p.rss;
-  }
-  const mb = (n: number) => String(Math.floor(n / (1 << 20))).padStart(7) + "M";
-  w += `\n${"phosphorus".padEnd(16)} ${"".padStart(7)} ${mb(all - model)}\n`;
-  if (model > 0) {
-    w += `${"llama-server".padEnd(16)} ${"".padStart(7)} ${mb(model)}\n`;
-    w += `${"total".padEnd(16)} ${"".padStart(7)} ${mb(all)}\n`;
-  }
-  return w;
-}
-
-export const psHost = () => print(psText(ours()));

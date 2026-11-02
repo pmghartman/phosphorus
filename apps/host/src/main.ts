@@ -1,9 +1,9 @@
-// phosphorus: one binary for every role, run's children (serve | model | elector |
-// cli), the host's (install, start, stop, keys and the rest) and, on macOS and
-// Windows, the menu bar or tray app (tray)
+// phosphorus: one binary for every role, run's children (serve | model | elector),
+// the host's commands (phos and the rest, @phosphorus/host's usageText) and, on
+// macOS and Windows, the menu bar or tray app (tray)
 import { main as cliMain } from "@phosphorus/cli";
 import { main as electorMain } from "@phosphorus/elector";
-import { commands, main as hostMain, version } from "@phosphorus/host";
+import { commands, main as hostMain, usageText } from "@phosphorus/host";
 import { main as modeldMain } from "@phosphorus/modeld";
 import { serve } from "@phosphorus/server";
 import { setLogStamps } from "@phosphorus/util";
@@ -30,11 +30,10 @@ async function role(cmd: string): Promise<number | undefined> {
 const inBundle = process.platform === "darwin" && /\.app\/Contents\/MacOS\//.test(process.execPath);
 if (cmd === "tray" || (inBundle && (cmd === "" || cmd.startsWith("--")))) await import("@phosphorus/tray-app");
 else if (cmd === "cli") process.exit(await cliMain(args));
-else if (cmd === "version") console.log(version());
 else if (commands.has(cmd)) process.exit(await hostMain(cmd, args));
 else {
   const code = await role(cmd);
   if (code !== undefined) process.exit(code);
-  console.error("usage: phosphorus [start | stop | restart | update [all] | keys | help]");
+  console.error(usageText.trimEnd());
   process.exit(2);
 }

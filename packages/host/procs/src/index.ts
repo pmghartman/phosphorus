@@ -112,6 +112,3 @@ export function list(): P[] {
   }
   return out;
 }
-
-// the processes carrying a phosphorus role
-export const ours = () => list().filter((p) => p.role);

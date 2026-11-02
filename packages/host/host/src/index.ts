@@ -1,16 +1,29 @@
 // the machine's side, run by the installers and the cli: install, bring-up,
 // rebuild, start and stop, keys, the update agent and game play/stop
-import { at, ExitCode, eprint, home, homeDir, isLinux, print, readTrim, setHome, setTag, tag } from "./base.ts";
+import {
+  at,
+  ExitCode,
+  eprint,
+  fail,
+  home,
+  homeDir,
+  isLinux,
+  print,
+  println,
+  readTrim,
+  setHome,
+  setTag,
+  tag,
+} from "./base.ts";
 import { restart, stop, update } from "./ctl.ts";
 import { gameControl, gameControlSetup } from "./game.ts";
 import { install } from "./install.ts";
-import { psHost, rebuild } from "./native.ts";
+import { rebuild } from "./native.ts";
 import { os } from "./os.ts";
 import { runHost } from "./run.ts";
-import { keys, setup, start, tui } from "./start.ts";
+import { keys, overview, setup, start, status } from "./start.ts";
 import { uninstall } from "./uninstall.ts";
 import { upgrade } from "./upgrade.ts";
-import { status, vpn } from "./vpn.ts";
 
 // commands the ones main takes, everything else run's children's roles
 export const commands = new Set([
@@ -27,26 +40,24 @@ export const commands = new Set([
   "game-control",
   "game-control-setup",
   "run",
-  "ps",
   "uninstall",
   "status",
-  "vpn",
+  "version",
   "help",
   "-h",
   "--help",
 ]);
 
-export const usageText = `usage: phos             the cli, the keys asked for on first start
-       phos start       start host
-       phos stop        stop host
-       phos restart     restart host
-       phos update      update host
-       phos update all  update mesh
-       phos keys        replace keys in .env
-       phos ps          phosphorus's processes, by role
-       phos status      whether phosphorus and Tailscale are up
-       phos vpn on|off  Tailscale up, or phosphorus stopped and Tailscale down
-       phos uninstall   remove phosphorus and its data from this host
+export const usageText = `usage: phos            this host's address and status; on a new host, the keys first
+       phos keys       replace the keys in .env
+       phos start      start phosphorus on this host
+       phos stop       stop it
+       phos restart    restart it
+       phos status     whether phosphorus and Tailscale are up, and the address
+       phos update     update this host (Settings › Update updates the mesh)
+       phos uninstall  remove phosphorus and its data from this host
+       phos version    the installed release
+       phos help       this text
 `;
 
 export type Flags = { update: boolean; payload: string; home: string; rest: string[] };
@@ -83,14 +94,18 @@ export async function main(cmd: string, args: string[]): Promise<number> {
   if (f.home) setHome(f.home);
   if (!home) setHome(homeDir());
   // Linux: root's /var/lib/phosphorus, its .env root's alone
-  if (isLinux && process.geteuid?.() !== 0 && cmd !== "game-control" && cmd !== "game-control-setup" && cmd !== "help")
+  if (
+    isLinux &&
+    process.geteuid?.() !== 0 &&
+    !["game-control", "game-control-setup", "help", "-h", "--help", "version"].includes(cmd)
+  )
     return os.asRoot([cmd, ...args]);
   setTag(cmd);
   try {
     switch (cmd) {
       case "":
         setTag("phosphorus");
-        await tui([]);
+        await overview();
         break;
       case "start":
         await start();
@@ -102,8 +117,8 @@ export async function main(cmd: string, args: string[]): Promise<number> {
         await restart();
         break;
       case "update":
-        if (f.rest[0] === "all") await tui(["update-all"]);
-        else await update();
+        if (f.rest.length) throw fail("update takes no arguments: it updates this host");
+        await update();
         break;
       case "keys":
         await keys(f.rest);
@@ -134,13 +149,8 @@ export async function main(cmd: string, args: string[]): Promise<number> {
       case "status":
         await status(f.rest);
         break;
-      case "vpn":
-        await vpn(f.rest);
-        break;
-      case "ps":
-        // the roles file under this home, not the default state dir
-        process.env.STATE_DIR = at("state");
-        psHost();
+      case "version":
+        println(version());
         break;
       default:
         print(usageText);
