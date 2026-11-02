@@ -7,8 +7,8 @@ import { Resvg } from "@resvg/resvg-js";
 
 const root = resolve(import.meta.dir, "..");
 const src = readFileSync(join(root, "apps/web/static/favicon.svg"), "utf8");
-// the connector's tile: the mesh's own dark, edge to edge (claude.ai frames icons on white)
-const tile = "#141414";
+// the connector's: clear, the mark cropped to fill most of it as other connectors' logos do
+const connector = src.replace('viewBox="0 0 64 64"', 'viewBox="8 8 48 48"');
 // the menu bar template: one color, cropped to the glyph so it fills the bar's height
 const template = src.replace('fill="url(#g)"', 'fill="#000"').replace('viewBox="0 0 64 64"', 'viewBox="12 12 40 40"');
 
@@ -70,9 +70,8 @@ const out: Record<string, Uint8Array | string> = {
   "apps/web/static/favicon.ico": ico([32]),
   "apps/web/static/icon-192.png": png(192),
   "apps/web/static/apple-touch-icon.png": png(180),
-  "apps/web/static/connector-icon.png": png(192, src, tile),
-  "packages/ai/mcp/assets/icon.png": png(128, src, tile),
-  "plugin/.claude-plugin/icon.png": png(1024),
+  "apps/web/static/connector-icon.png": png(192, connector),
+  "packages/ai/mcp/assets/icon.png": png(128, connector),
   "packaging/icons/icon.ico": ico([16, 24, 32, 48, 64, 256]),
   "apps/tray/assets/icon.ico": ico([16, 24, 32, 48, 64, 256]),
   "packaging/icons/icon.icns": icns(),

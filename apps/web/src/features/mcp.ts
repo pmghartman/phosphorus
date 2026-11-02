@@ -1,11 +1,11 @@
-// --- the agent tray beside the bell: how Claude Code's plugin connects and signs in,
-// the calls of the agents signed in as they happen
+// --- the agent tray beside the bell: the mcp address and skill an agent connects with,
+// the calls of the agents connected as they happen
 
 import type { McpCall, McpStatus } from '@phosphorus/wire';
 import { dkAnchor, dkPopsClose, type Pop } from '../desktop/taskbar.ts';
 import { acctCall } from '../lib/api.ts';
 import { DK_GLYPHS, dkGlyph, el, pageAsk, svgEl } from '../lib/dom.ts';
-import { dk, st } from '../lib/state.ts';
+import { dk } from '../lib/state.ts';
 import { copyText } from '../lib/util.ts';
 import { agentViewOn, agentViewSet } from './agent.ts';
 import { noteAdd } from './notes.ts';
@@ -21,7 +21,8 @@ export const mcpStat: {
   client: string;
   calls: McpCall[];
   recent: McpCall[];
-} = { configured: false, seen: 0, at: 0, now: 0, got: 0, client: '', calls: [], recent: [] };
+  url: string;
+} = { configured: false, seen: 0, at: 0, now: 0, got: 0, client: '', calls: [], recent: [], url: '' };
 const MCP_ACTIVE_MS = 12000;
 // a connector heard from this recently counted connected
 const MCP_SEEN_MS = 15 * 60000;
@@ -103,7 +104,7 @@ export function dkMcpTray(): HTMLElement {
   const head = el('div', 'dk-cl-head');
   const stateLine = el('span', 'dk-cl-state');
   const bar = el('div', 'dk-cl-bar');
-  // the plugin's steps while no agent is signed in
+  // the steps while no agent is connected
   const hint = el('div', 'dk-cl-hint');
   const body = el('div', 'dk-cl-body');
   // the agent's moves shown on this desk, or kept off it
@@ -127,16 +128,7 @@ export function dkMcpTray(): HTMLElement {
     x.addEventListener('click', () => act(x));
     return x;
   };
-  const copier = (label: string, cls: string, text: () => string) =>
-    button(label, cls, async (x) => {
-      try {
-        await copyText(text());
-        flash(x, 'copied');
-      } catch {
-        flash(x, text());
-      }
-    });
-  // how an agent connects: the Claude Code plugin, signed in on the mesh's own page
+  // how an agent connects: the address added as an mcp server, the skill beside it
   const steps = () => {
     const ol = el('ol', 'dk-cl-steps');
     const code = (t: string) => el('code', '', t);
@@ -145,10 +137,26 @@ export function dkMcpTray(): HTMLElement {
       x.append(...xs);
       ol.append(x);
     };
-    li('in Claude Code: ', code(MCP_INSTALL[0]!));
-    li(code(MCP_INSTALL[1]!), ', domain ', code(mcpDomain()));
-    li(code('/mcp'), ', phosphorus, sign in');
+    li('copy mcp, then in a terminal: ', code('claude mcp add --scope user --transport http phosphorus <paste>'));
+    li('or in claude.ai: Settings, Connectors, add custom connector');
+    li('download skill: unzip into ', code('~/.claude/skills'), ' or upload it in claude.ai');
     return ol;
+  };
+  // the url itself, only when the clipboard refused it
+  const showUrl = (url: string, copied: boolean) => {
+    if (copied) {
+      hint.replaceChildren();
+      return;
+    }
+    const f = Object.assign(el('input', 'dk-cl-url'), {
+      readOnly: true,
+      value: url,
+      spellcheck: false,
+      title: 'copy, then paste into your agent as an mcp server',
+    });
+    f.addEventListener('focus', () => f.select());
+    hint.replaceChildren(f);
+    f.focus();
   };
   // the bar drawn again only when set up flips: the steps, else sign out
   let drawn: boolean | null = null;
@@ -156,22 +164,34 @@ export function dkMcpTray(): HTMLElement {
     const done = mcpStat.configured;
     if (drawn === done) return;
     drawn = done;
-    const domain = copier('copy domain', 'quiet', mcpDomain);
-    domain.title = 'the mesh domain the plugin asks for';
+    // the whole server address, key and all, so the agent needs no sign-in
+    const url = button('copy mcp', done ? 'quiet half' : 'half', async (x) => {
+      const r = await mcpKey(mcpStat.url);
+      if (!r) return;
+      flash(x, r.copied ? 'copied' : 'copy it below');
+      showUrl(r.url, r.copied);
+    });
+    url.title = 'the mcp server address with your key in it: claude mcp add --transport http phosphorus <it>';
+    // the claude skill, no key: the connector does the calling
+    const skill = button('download skill', 'quiet half', async (x) => {
+      x.disabled = true;
+      const ok = await mcpSkill();
+      x.disabled = false;
+      if (ok) flash(x, 'downloaded');
+    });
+    skill.title = 'the phosphorus skill as a zip: a skills folder, or claude.ai, Settings, Capabilities, Skills';
     if (!done) {
-      const install = copier('copy install', '', () => MCP_INSTALL.join('\n'));
-      install.title = 'the two Claude Code commands that add the phosphorus plugin';
-      bar.replaceChildren(install, domain);
+      bar.replaceChildren(url, skill);
       hint.replaceChildren(steps());
       return;
     }
     hint.replaceChildren();
-    const out = button('sign out agents', 'quiet', async () => {
+    const out = button('sign out agents', 'quiet wide', async () => {
       show(false);
       if (
         !(await pageAsk({
           title: 'sign out agents?',
-          message: 'every agent signs in again',
+          message: 'every agent needs the new mcp address',
           action: 'sign out',
           danger: true,
         }))
@@ -183,11 +203,12 @@ export function dkMcpTray(): HTMLElement {
         return;
       }
       mcpStat.configured = false;
-      noteAdd('agents signed out', 'each signs in again from /mcp');
+      mcpStat.url = '';
+      noteAdd('agents signed out', 'copy mcp again for each');
       pollMcp();
     });
-    out.title = 'void every agent sign-in; a password change does the same';
-    bar.replaceChildren(domain, out);
+    out.title = 'void the key in every agent; a password change does the same';
+    bar.replaceChildren(url, skill, out);
   };
   const paint = () => {
     const st = mcpState();
@@ -246,6 +267,11 @@ export function dkMcpTray(): HTMLElement {
       drawn = null;
       list = null;
       paint();
+      // the url ready before a tap, so copying it is the tap's own
+      if (mcpStat.configured)
+        acctCall<{ url: string }>('/api/me/mcp-url', {}).then((r) => {
+          if (r.ok) mcpStat.url = r.url!;
+        });
     }
   };
   b.addEventListener('click', () => show(pop.hidden as boolean));
@@ -337,11 +363,59 @@ function mcpApply(s: McpStatus) {
 // the mesh's now, carried forward from the last answer so durations keep running
 const mcpNow = () => (mcpStat.now || Date.now()) + (mcpStat.got ? Date.now() - mcpStat.got : 0);
 
-// the Claude Code commands that add the plugin, its skill and connector together
-const MCP_INSTALL = ['/plugin marketplace add pmghartman/phosphorus', '/plugin install phosphorus@phosphorus'];
+// the key's url from the mesh, copied: a url already in hand copied in the tap
+// itself, else once it lands; asking makes a key when there's none
+async function mcpKey(have = ''): Promise<{ url: string; copied: boolean } | null> {
+  let copied = false;
+  if (have) {
+    try {
+      await copyText(have);
+      copied = true;
+    } catch {}
+  }
+  let url = have;
+  if (!url) {
+    const r = await acctCall<{ url: string }>('/api/me/mcp-url', {});
+    if (!r.ok) {
+      mcpFailed(r.error);
+      return null;
+    }
+    url = r.url!;
+    try {
+      await copyText(url);
+      copied = true;
+    } catch {}
+  }
+  mcpStat.url = url;
+  if (!mcpStat.configured) {
+    mcpStat.configured = true;
+    noteAdd('agent connected', copied ? 'url copied' : 'copy the url');
+  }
+  pollMcp();
+  return { url, copied };
+}
 
-// the domain the plugin asks for: the mesh's base, where its sign-in page answers
-const mcpDomain = () => st.baseDomain || location.host;
+// the skill's zip from the mesh, saved
+async function mcpSkill(): Promise<boolean> {
+  let res: Response;
+  try {
+    res = await fetch('/api/me/mcp-skill', { method: 'POST' });
+  } catch (err) {
+    mcpFailed((err as Error).message);
+    return false;
+  }
+  if (!res.ok) {
+    mcpFailed((await res.json().catch(() => ({}))).error || `http ${res.status}`);
+    return false;
+  }
+  const url = URL.createObjectURL(await res.blob());
+  const a = Object.assign(document.createElement('a'), { href: url, download: 'phosphorus-skill.zip' });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
+  return true;
+}
 
 // a failure in two words, its why in the notes
 function mcpFailed(why: string | undefined) {

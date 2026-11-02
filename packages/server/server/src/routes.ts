@@ -5,7 +5,7 @@ import { Write as collabWrite } from "@phosphorus/collab";
 import { Keys as envKeys } from "@phosphorus/envfile";
 import * as files from "@phosphorus/files";
 import * as git from "@phosphorus/git";
-import { type Caller, handle as mcpHandle } from "@phosphorus/mcp";
+import { type Caller, handle as mcpHandle, skill } from "@phosphorus/mcp";
 import * as mirror from "@phosphorus/mirror";
 import { Assign, EraseSlots, ServeChat, ServeMessages, ServeModels } from "@phosphorus/model";
 import * as peers from "@phosphorus/peers";
@@ -97,6 +97,8 @@ const userCalls: Record<string, UserCall> = {
     return { status: 200, body: out };
   },
   "POST /api/me/mcp-revoke": (s, p) => users.MCPRevoke(s, p),
+  // the key in use as a url, an agent's whole connector: pasted in, no sign-in
+  "POST /api/me/mcp-url": (s, p, c) => users.MCPURL(s, p, c),
   "POST /api/me/anthropic": (s, p) => users.SetAnthropic(s, p),
   "GET /api/users": (s) => users.List(s),
   "POST /api/users": (s, p) => users.Create(s, p),
@@ -142,6 +144,27 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
         "Content-Type": t,
         "Cache-Control": "private, max-age=31536000, immutable",
         "X-Content-Type-Options": "nosniff",
+      },
+    });
+  }
+
+  // the claude skill, no key in it: the user's connector does the calling
+  if (pathname === "/api/me/mcp-skill" && method === "POST") {
+    if (!(await isLocalOrPeer(c)) || !sameOrigin(c)) return forbidden();
+    const s = await users.Soon(c);
+    if (!s || s.boot) return sendJSON(403, { error: "log in as a user" });
+    let b: Uint8Array;
+    try {
+      b = await skill(users.MCPBase(c));
+    } catch (e) {
+      return sendJSON(500, { error: errText(e) });
+    }
+    return new Response(b as Uint8Array<ArrayBuffer>, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/zip",
+        "Content-Disposition": 'attachment; filename="phosphorus-skill.zip"',
+        "Cache-Control": "no-store",
       },
     });
   }

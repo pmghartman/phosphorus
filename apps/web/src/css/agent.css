@@ -38,6 +38,10 @@
 .dk-cl-key.wide {
   flex-basis: 100%;
 }
+/* two to a row, so four labels each stay on one line */
+.dk-cl-key.half {
+  flex-basis: calc(50% - 0.2rem);
+}
 .dk-cl-hint:not(:empty) {
   padding: 0.45rem 0.6rem 0;
 }

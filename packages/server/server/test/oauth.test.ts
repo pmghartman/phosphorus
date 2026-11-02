@@ -63,6 +63,8 @@ test("oauth for the mcp connector", async () => {
     const pg = await fetch(base + "/oauth/authorize?" + q);
     expect(pg.status).toBe(200);
     expect(pg.headers.get("x-frame-options")).toBe("DENY");
+    // a policy under which the browser posts the form with its own Origin, not null
+    expect(pg.headers.get("referrer-policy")).toBe("same-origin");
     const html = await pg.text();
     expect(html).toContain("Claude &#60;b&#62;Code&#60;/b&#62;");
     expect(html).toContain('name="pass"');
@@ -77,6 +79,7 @@ test("oauth for the mcp connector", async () => {
     // denied: back to the agent with the refusal and its state
     const deny = await fetch(base + "/oauth/authorize", {
       method: "POST",
+      headers: { origin: base },
       body: new URLSearchParams({ ...Object.fromEntries(q), act: "deny" }),
       redirect: "manual",
     });

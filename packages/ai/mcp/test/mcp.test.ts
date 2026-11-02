@@ -111,7 +111,7 @@ test("skill", async () => {
 });
 
 test("the skill's file list is the folder", () => {
-  const root = resolve(import.meta.dir, "..", "..", "..", "..", "plugin", "skills");
+  const root = resolve(import.meta.dir, "..", "skill");
   const walk = (d: string): string[] =>
     readdirSync(d, { withFileTypes: true }).flatMap((e) =>
       e.isDirectory() ? walk(join(d, e.name)) : [join(d, e.name)],

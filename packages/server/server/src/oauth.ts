@@ -191,7 +191,8 @@ button.quiet{background:transparent;color:var(--fg);border-color:var(--line)}sum
       "Content-Type": "text/html; charset=utf-8",
       ...noStore,
       "X-Frame-Options": "DENY",
-      "Referrer-Policy": "no-referrer",
+      // not no-referrer: a browser then posts the form with Origin: null, which crossSite refuses
+      "Referrer-Policy": "same-origin",
       "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'",
     },
   });

@@ -54,10 +54,9 @@ function visible(t: Tool, local: boolean, caller: Caller | undefined): boolean {
   return !!t.read && !t.scope;
 }
 
-// icons the mesh's mark for an agent's connector list, on its own dark tile edge to
-// edge: claude.ai frames a connector's icon on white, so a clear background showed
-// as a white box; off the mesh's own domain first (claude.ai draws no data url),
-// inline for a client with no web
+// icons the mesh's mark for an agent's connector list, on a clear background as
+// other connectors' logos are; off the mesh's own domain first (claude.ai draws no
+// data url), inline for a client with no web
 let iconURI: string | undefined;
 async function icons(): Promise<Record<string, any>[]> {
   iconURI ??= "data:image/png;base64," + Buffer.from(await Bun.file(icon).bytes()).toString("base64");

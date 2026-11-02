@@ -1,9 +1,0 @@
-{
-  "mcpServers": {
-    "phosphorus": {
-      "type": "http",
-      "url": "https://${user_config.domain}/api/mcp",
-      "headers": { "X-Phosphorus-Via": "claude-code" }
-    }
-  }
-}
