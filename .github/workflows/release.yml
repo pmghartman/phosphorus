@@ -102,6 +102,25 @@ jobs:
             packages/server/webstatic/src/manifest.ts
           retention-days: 1
 
+  # types, the formatter and tests on the web job's build, beside the builds: only
+  # the publishing waits on it
+  check:
+    needs: web
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/bun
+      # tsc reads its manifest
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: web-dist
+          path: packages/server/webstatic
+      - run: bun run check
+      # the formatter's word on the whole tree
+      - run: bun run lint
+      - run: bun run test
+
   # every production dependency under an allowed license, and the shipped notices
   # and SBOM generated from them and the pinned tools, beside the builds
   licenses:
@@ -216,7 +235,7 @@ jobs:
           if-no-files-found: ignore
 
   release:
-    needs: [version, build]
+    needs: [version, build, check]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -266,7 +285,7 @@ jobs:
   # the update feed beside the release, not after it: nothing in it waits on the numbered
   # release's upload, and the upload nothing on it
   feed:
-    needs: [version, build]
+    needs: [version, build, check]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:

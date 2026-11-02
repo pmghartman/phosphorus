@@ -29,3 +29,4 @@ node_modules/
 /dist/
 /packaging/host/payload/
 /packaging/host/stage/
+.hesperus/
