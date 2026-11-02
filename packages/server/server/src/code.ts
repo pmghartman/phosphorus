@@ -2,6 +2,7 @@
 import * as code from "@phosphorus/code";
 import { skill } from "@phosphorus/mcp";
 import { Summary } from "@phosphorus/model";
+import * as peers from "@phosphorus/peers";
 import {
   AnthropicToken,
   HostLogin,
@@ -65,8 +66,12 @@ function codeCreds(s: Session, c: Ctx): code.CredsFn {
   };
 }
 
-// codeOptions the new session form's choices
-export async function codeOptions(s: Session): Promise<Record<string, any>> {
+// codeUp the hosts whose phosphorus answers now, this one among them
+export const codeUp = (): Set<string> => new Set(peers.tailnet().flatMap((d) => (d.phosphorus ? [d.name] : [])));
+
+// codeOptions the new session form's choices: the hosts the user has a login
+// on and that are up, the rest of their logins as offline
+export async function codeOptions(s: Session, up: Set<string> = codeUp()): Promise<Record<string, any>> {
   let ro: Record<string, any> = {};
   for (const a of Summary().agents as any[]) if (obj(a)?.id === "code") ro = obj(obj(obj(a)?.slots)?.model) ?? {};
   const models: any[] = [];
@@ -76,10 +81,18 @@ export async function codeOptions(s: Session): Promise<Record<string, any>> {
   if (has)
     for (const m of code.Anthropic)
       models.push({ id: m, label: m[0]!.toUpperCase() + m.slice(1), provider: "anthropic", ready: true, why: "" });
-  const out: Record<string, any> = { hosts: await HostLogins(s), models, anthropic: has, harnesses: code.Harnesses };
+  const logins = await HostLogins(s);
+  const out: Record<string, any> = {
+    hosts: logins.filter((h) => up.has(h)),
+    offline: logins.filter((h) => !up.has(h)),
+    models,
+    anthropic: has,
+    harnesses: code.Harnesses,
+  };
   const why = await codeBlocked(s);
   if (why) {
     out.hosts = [];
+    out.offline = [];
     out.blocked = why;
   }
   return out;

@@ -84,6 +84,9 @@ test("launch command", () => {
   expect(c).not.toContain("--permission-mode");
   expect(launchCommand("/x", "mesh", "plan", "")).toContain("--permission-mode plan");
   expect(launchCommand("/x", "mesh", "plan", "")).not.toContain("--resume");
+  // the mesh's model asked for as the harness's agent, the Agents page's pick, never as plain "mesh"
+  expect(launchCommand("/x", "mesh", "", "")).toContain("--model agent-claude-code ");
+  expect(launchCommand("/x", "mesh", "", "")).not.toContain("--model mesh");
 });
 
 // sh reads the launch script as written: env off stdin, then claude in dir

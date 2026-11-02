@@ -36,7 +36,9 @@ export interface CodeHarness {
   site?: string;
 }
 export interface CodeOptions {
+  // the hosts the user has a login on that are up; offline, the rest of them
   hosts?: string[];
+  offline?: string[];
   models?: CodeModel[];
   anthropic?: boolean;
   harnesses?: CodeHarness[];

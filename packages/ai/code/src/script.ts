@@ -40,6 +40,10 @@ export function provider(m: string): string {
   return "";
 }
 
+// claudeModel the name claude asks the gateway by: the mesh's its harness's
+// agent, so the Agents page's assignment holds; an Anthropic alias as is
+export const claudeModel = (m: string) => (Mesh.includes(m) ? claudeAgent : m);
+
 // quote a word for sh, single quoted, as the launch scripts quote theirs
 export const quote = (s: string) => "'" + s.replaceAll("'", `'\\''`) + "'";
 
@@ -118,7 +122,7 @@ export function launchCommand(dir: string, model: string, perm: string, resume: 
     "--verbose",
     "--include-partial-messages",
     "--model",
-    model,
+    claudeModel(model),
     "--permission-prompt-tool",
     "stdio",
     "--mcp-config",

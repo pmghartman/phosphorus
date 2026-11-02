@@ -154,25 +154,63 @@
 .cd-model {
   color: var(--accent);
 }
+/* rename and delete over the row's corner on hover, the time under them */
 .cd-item-acts {
   position: absolute;
-  right: 0.3rem;
-  bottom: 0.25rem;
+  top: 0.2rem;
+  right: 0.25rem;
   display: none;
-  gap: 0.25rem;
+  gap: 0.1rem;
+  padding-left: 0.6rem;
+  background: linear-gradient(to right, transparent, var(--cd-row, var(--card)) 0.6rem);
 }
 .cd-item:hover .cd-item-acts,
 .cd-item:focus-within .cd-item-acts,
-.cd-item.on .cd-item-acts {
+.cd-item-acts:has(.armed) {
   display: flex;
 }
-/* the details line cut short before them, never drawn under; small whatever a theme's buttons are */
-@media (min-width: 721px) {
-  .cd-item:is(:hover, :focus-within, .on) .cd-item-sub {
-    padding-right: 7.5rem;
-  }
+.cd-act {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4ch;
+  height: 1.3rem;
+  min-width: 1.3rem;
+  justify-content: center;
+  padding: 0 0.2rem;
+  background: none;
+  border: 1px solid transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.68rem;
+  cursor: pointer;
 }
-:root .cd-item-acts .cd-mini.cd-mini {
+.cd-act .ic {
+  width: 0.8rem;
+  height: 0.8rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.3;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.cd-act:hover,
+.cd-act:focus-visible {
+  color: var(--fg);
+  border-color: var(--border);
+  outline: none;
+}
+.cd-act.danger:hover,
+.cd-act.danger:focus-visible {
+  color: var(--offmesh);
+  border-color: var(--offmesh);
+}
+.cd-act.armed {
+  padding: 0 0.35rem;
+  background: var(--offmesh);
+  border-color: var(--offmesh);
+  color: var(--bg);
+}
+.cd-mini {
   padding: 0.05rem 0.45rem;
   font-size: 0.68rem;
   line-height: 1.2;
@@ -330,16 +368,11 @@
   color: var(--muted);
   margin-right: auto;
 }
-.cd-sel {
-  padding: 0.15rem 0.3rem;
-  background: var(--card);
-  border: 1px solid var(--border);
-  color: var(--fg);
-  font: inherit;
+.cd-head-bar .cd-chip {
+  height: 1.45rem;
+  padding: 0 0.4rem;
   font-size: 0.72rem;
-}
-.cd-sel:focus {
-  border-color: var(--accent);
+  border-color: var(--border);
 }
 .cd-use {
   color: var(--muted);
@@ -653,9 +686,18 @@
 .cd-note-text {
   white-space: pre-wrap;
 }
+.cd-note-error {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid color-mix(in srgb, var(--offmesh) 50%, var(--border));
+  border-left-width: 3px;
+  background: color-mix(in srgb, var(--offmesh) 8%, transparent);
+}
 .cd-note-error .cd-note-tag,
 .cd-note-error .cd-note-text {
   color: var(--offmesh);
+}
+.cd-note-error .cd-note-tag {
+  font-weight: 600;
 }
 .cd-note-warn .cd-note-tag,
 .cd-note-warn .cd-note-text {
@@ -803,16 +845,17 @@
 .cd-todo-list li {
   padding: 0.05rem 0;
 }
-.cd-box {
+.cd-todo-box {
   color: var(--accent);
   white-space: pre;
+  font-family: var(--mono);
 }
 .cd-todo-completed {
   color: var(--muted);
   text-decoration: line-through;
   text-decoration-color: var(--dim);
 }
-.cd-todo-completed .cd-box {
+.cd-todo-completed .cd-todo-box {
   color: var(--online);
 }
 .cd-todo-in_progress {
@@ -911,64 +954,83 @@
   flex-direction: column;
 }
 .cd-newform > .cd-head-top {
-  padding: 0.35rem 0.6rem;
+  padding: 0.45rem 0.7rem;
   border-bottom: 1px solid var(--border);
   background: var(--tabbar);
 }
 .cd-start {
   box-sizing: border-box;
-  width: min(44rem, 100%);
+  width: min(46rem, 100%);
   margin: auto;
-  padding: 1rem 0.8rem 2rem;
+  padding: 1.5rem 1rem 3rem;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.6rem;
 }
 .cd-hello {
-  font-size: 1.15rem;
+  font-size: 1.25rem;
   font-weight: 600;
   text-align: center;
-  margin-bottom: 0.4rem;
+  margin-bottom: 0.6rem;
 }
 .cd-intro {
   margin: 0 0 0.75rem;
   color: var(--muted);
   font-size: 0.8rem;
+  line-height: 1.5;
 }
-.cd-box {
+.cd-prompt-box {
   display: flex;
   flex-direction: column;
   border: 1px solid var(--border);
   background: var(--card);
   box-shadow: var(--lift-sm);
-  transition: border-color 0.15s;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
 }
-.cd-box:focus-within {
+.cd-prompt-box:focus-within {
   border-color: var(--accent);
+  box-shadow:
+    var(--lift-sm),
+    0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent);
 }
 .cd-first {
   display: block;
   width: 100%;
   box-sizing: border-box;
-  min-height: 4.5rem;
+  min-height: 5rem;
   max-height: 320px;
-  padding: 0.6rem 0.7rem 0.3rem;
+  padding: 0.75rem 0.85rem 0.35rem;
   background: none;
   border: 0;
   color: var(--fg);
   font: inherit;
+  font-size: 0.86rem;
+  line-height: 1.5;
   resize: none;
   overflow-y: auto;
+}
+.cd-first::placeholder {
+  color: var(--dim);
 }
 .cd-first:focus {
   outline: none;
 }
+/* the chips wrap among themselves; the start button keeps its corner */
 .cd-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.4rem;
+  padding: 0.3rem 0.4rem 0.4rem;
+}
+.cd-chips {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.2rem;
-  padding: 0.25rem 0.35rem 0.35rem;
 }
 .cd-bar-gap {
   flex: 1;
@@ -976,83 +1038,84 @@
 .cd-chip {
   display: inline-flex;
   align-items: center;
-  gap: 0.35ch;
+  gap: 0.4ch;
   min-width: 0;
-  max-width: 16rem;
-  height: 1.5rem;
-  padding: 0 0.45rem;
+  max-width: 15rem;
+  height: 1.65rem;
+  padding: 0 0.5rem;
   background: none;
   border: 1px solid transparent;
   color: var(--muted);
   font: inherit;
   font-size: 0.75rem;
+  white-space: nowrap;
   cursor: pointer;
+  transition:
+    background 0.12s,
+    border-color 0.12s,
+    color 0.12s;
 }
 .cd-chip:hover,
-.cd-chip:focus-within,
-.cd-chip:focus-visible {
+.cd-chip:focus-visible,
+.cd-chip[aria-expanded="true"] {
   border-color: var(--border);
-  background: var(--bg);
+  background: var(--tab-hover, var(--bg));
   color: var(--fg);
 }
-.cd-chip-ic {
+.cd-chip:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+}
+.cd-chip.want {
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 45%, transparent);
+  border-style: dashed;
+}
+.cd-chip.warn .cd-chip-t {
+  color: var(--warn);
+}
+.cd-chip-ic,
+.cd-chip-caret {
   flex: none;
   display: grid;
 }
-.cd-chip-ic .ic {
-  width: 0.8rem;
-  height: 0.8rem;
+.cd-chip-ic .ic,
+.cd-chip-caret .ic,
+.cd-menu-tick .ic,
+.cd-fp-ic .ic,
+.cd-crumb .ic,
+.cd-empty-ic .ic,
+.cd-icon .ic {
+  width: 0.85rem;
+  height: 0.85rem;
   fill: none;
   stroke: currentColor;
   stroke-width: 1.3;
   stroke-linejoin: round;
   stroke-linecap: round;
 }
-.cd-chip-sel {
-  field-sizing: content;
-  min-width: 0;
-  max-width: 12rem;
-  padding: 0;
-  appearance: none;
-  background: none;
-  border: 0;
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
-  text-overflow: ellipsis;
+.cd-chip-caret {
+  opacity: 0.6;
 }
-.cd-chip:has(> .cd-chip-sel)::after {
-  content: "▾";
-  flex: none;
-  font-size: 0.65em;
-  opacity: 0.7;
-  pointer-events: none;
-}
-.cd-chip-sel:focus {
-  outline: none;
-}
-.cd-chip-sel option,
-.cd-chip-sel optgroup {
-  background: var(--card);
-  color: var(--fg);
+.cd-chip-caret .ic {
+  width: 0.7rem;
+  height: 0.7rem;
 }
 .cd-chip-t {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.cd-chip-want {
-  color: var(--warn);
 }
 .cd-go {
-  margin: 0 0 0 0.3rem;
+  flex: none;
+  margin: 0;
 }
 .cd-start-foot {
   display: flex;
   flex-wrap: wrap;
   gap: 0.3rem 1ch;
-  min-height: 1rem;
+  min-height: 1.1rem;
+  padding: 0 0.2rem;
   font-size: 0.72rem;
   color: var(--muted);
 }
@@ -1077,11 +1140,15 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.4rem 0.6rem;
-  border: 1px solid var(--warn);
+  gap: 0.5rem 0.8rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--warn) 55%, var(--border));
+  background: color-mix(in srgb, var(--warn) 7%, var(--card));
   font-size: 0.75rem;
-  color: var(--warn);
+  color: var(--fg);
+}
+.cd-install-t {
+  flex: 1 1 18rem;
 }
 .cd-install-out {
   flex-basis: 100%;
@@ -1091,10 +1158,11 @@
 .cd-login {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
-  padding: 0.5rem 0.7rem 0.6rem;
+  gap: 0.45rem;
+  padding: 0.65rem 0.8rem 0.75rem;
   border: 1px solid var(--accent);
   background: var(--card);
+  box-shadow: var(--lift-sm);
   font-size: 0.78rem;
 }
 .cd-login-t {
@@ -1112,7 +1180,7 @@
   padding-left: 1.4em;
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.3rem;
 }
 .cd-login-steps code {
   color: var(--fg);
@@ -1134,42 +1202,300 @@
 .cd-login-msg:empty {
   display: none;
 }
-/* the folder: typed, recent, browsed */
-.cd-picker {
-  border-top: 1px solid var(--border);
-  max-height: 18rem;
+
+/* popovers over the app: a chip's menu, the folder picker */
+.cd-pop {
+  position: absolute;
+  z-index: 5;
   display: flex;
   flex-direction: column;
   min-height: 0;
+  overflow: hidden;
+  background: var(--card);
+  border: 1px solid var(--border);
+  box-shadow: var(--drop);
+  animation: pop-in 0.08s ease-out;
+}
+.cd-menu {
+  min-width: 13rem;
+  max-width: min(22rem, calc(100vw - 2rem));
+  padding: 0.25rem;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+.cd-menu-t {
+  padding: 0.3rem 0.55rem 0.35rem;
+  color: var(--sage);
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+}
+.cd-menu-g {
+  padding: 0.45rem 0.55rem 0.15rem;
+  color: var(--dim);
+  font-size: 0.66rem;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+}
+.cd-menu-t + .cd-menu-g {
+  padding-top: 0.1rem;
+}
+.cd-menu-i {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5ch;
+  width: 100%;
+  padding: 0.32rem 0.55rem 0.32rem 0.35rem;
+  background: none;
+  border: 0;
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.78rem;
+  text-align: left;
+  cursor: pointer;
+}
+.cd-menu-i:hover:not(:disabled),
+.cd-menu-i:focus-visible {
+  outline: none;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+.cd-menu-i:disabled {
+  color: var(--dim);
+  cursor: default;
+}
+.cd-menu-tick {
+  flex: none;
+  display: grid;
+  width: 1rem;
+  height: 1.15em;
+  place-items: center;
+  color: var(--accent);
+}
+.cd-menu-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+}
+.cd-menu-l {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cd-menu-sub {
+  color: var(--muted);
+  font-size: 0.68rem;
+  line-height: 1.35;
+}
+.cd-menu-i:disabled .cd-menu-sub {
+  color: var(--dim);
+}
+.cd-menu-i.warn .cd-menu-sub {
+  color: var(--warn);
+}
+
+/* the folder picker: the path box, its crumbs, the folders, the one to use at the foot */
+.cd-pop-fp {
+  width: min(30rem, calc(100% - 1rem));
+}
+.cd-fp {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.cd-fp-top {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.5rem 0.5rem 0.3rem;
 }
 .cd-path {
-  margin: 0.4rem 0.5rem 0.2rem;
-  padding: 0.3rem 0.5rem;
+  flex: 1;
+  min-width: 0;
+  padding: 0.35rem 0.55rem;
   background: var(--bg);
   border: 1px solid var(--border);
   color: var(--fg);
   font: inherit;
-  font-size: 0.78rem;
+  font-size: 0.8rem;
 }
 .cd-path:focus {
   outline: none;
   border-color: var(--accent);
 }
-.cd-recent {
-  padding: 0.1rem 0 0.2rem;
+.cd-fp-trail {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 0.5rem 0.4rem;
   border-bottom: 1px solid var(--border);
 }
-.cd-recent-t {
-  padding: 0.15rem 0.6rem;
+.cd-crumbs {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0 0.15rem;
+  font-size: 0.75rem;
+}
+.cd-crumb {
+  display: inline-grid;
+  place-items: center;
+  min-height: 1.35rem;
+  padding: 0 0.3rem;
+  background: none;
+  border: 0;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+.cd-crumb:hover,
+.cd-crumb:focus-visible {
+  color: var(--accent);
+  background: var(--tab-hover, var(--bg));
+  outline: none;
+}
+.cd-crumb.on {
+  color: var(--fg);
+  font-weight: 600;
+}
+.cd-crumb-sep {
+  color: var(--dim);
+}
+.cd-fp-more {
+  flex: none;
   color: var(--dim);
   font-size: 0.68rem;
 }
+.cd-fp-list {
+  flex: 1;
+  min-height: 4rem;
+  max-height: 17rem;
+  overflow-y: auto;
+  padding: 0.25rem;
+  transition: opacity 0.15s;
+}
+.cd-fp.busy .cd-fp-list {
+  opacity: 0.55;
+}
+.cd-fp-g {
+  padding: 0.35rem 0.45rem 0.15rem;
+  color: var(--dim);
+  font-size: 0.66rem;
+  letter-spacing: 0.04em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cd-fp-row {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  width: 100%;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+}
+.cd-fp-row.recent {
+  gap: 0.55ch;
+  padding: 0.28rem 0.45rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.cd-fp-open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.55ch;
+  padding: 0.28rem 0.45rem;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  font-size: 0.78rem;
+  text-align: left;
+  cursor: pointer;
+}
+.cd-fp-row:hover,
+.cd-fp-row.hi,
+.cd-fp-row:focus-within {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.cd-fp-open:focus-visible,
+.cd-fp-row.recent:focus-visible {
+  outline: none;
+}
+.cd-fp-ic {
+  flex: none;
+  display: grid;
+  color: var(--accent);
+}
+.cd-fp-row.recent .cd-fp-ic {
+  color: var(--muted);
+}
+.cd-fp-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cd-fp-pick {
+  flex: none;
+  margin-right: 0.3rem;
+  visibility: hidden;
+}
+.cd-fp-row:is(:hover, .hi, :focus-within) .cd-fp-pick {
+  visibility: visible;
+}
+.cd-fp-none {
+  padding: 0.6rem 0.5rem;
+  color: var(--dim);
+  font-size: 0.75rem;
+}
+.cd-fp-foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.45rem 0.5rem;
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg) 45%, var(--card));
+}
+.cd-fp-here {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+:root .cd-fp-foot .cd-fp-use {
+  flex: none;
+  padding: 0.2rem 0.7rem;
+  font-size: 0.75rem;
+}
+.cd-icon.on,
+.cd-icon[aria-pressed="true"] {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* the session's folder panel's head */
 .cd-picker-head {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.3rem 0.5rem;
+  padding: 0.4rem 0.5rem;
   border-bottom: 1px solid var(--border);
   font-size: 0.75rem;
   color: var(--muted);
@@ -1185,46 +1511,52 @@
 .cd-picker-list {
   list-style: none;
   margin: 0;
-  padding: 0.2rem 0;
+  padding: 0.25rem;
   overflow-y: auto;
 }
 .cd-picker-list > li {
   padding: 0.15rem 0.6rem;
   font-size: 0.75rem;
 }
-.cd-picker-row {
-  display: block;
-  width: 100%;
-  padding: 0.15rem 0.6rem;
-  background: none;
-  border: 0;
-  color: var(--fg);
-  font: inherit;
-  font-size: 0.78rem;
-  text-align: left;
-  cursor: pointer;
-}
-.cd-picker-row:hover,
-.cd-picker-row:focus-visible {
-  background: var(--bg);
-  color: var(--accent);
-}
 
-/* no login of the user's own anywhere: the new session's form in its place */
+/* nowhere to run: no login of the user's own anywhere, or none of those computers up */
 .cd-newform > .cd-empty {
-  margin-top: 2rem;
-  align-self: center;
+  margin: auto;
+  padding: 2rem 1rem 3rem;
   box-sizing: border-box;
-  width: min(34rem, calc(100% - 1.6rem));
+  width: min(32rem, 100%);
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
+  text-align: center;
   gap: 0.2rem;
+}
+.cd-empty-ic {
+  display: grid;
+  place-items: center;
+  width: 2.6rem;
+  height: 2.6rem;
+  margin-bottom: 0.6rem;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--muted);
+}
+.cd-empty-ic .ic {
+  width: 1.3rem;
+  height: 1.3rem;
 }
 .cd-empty-t {
   font-weight: 600;
-  color: var(--warn);
-  margin-bottom: 0.5rem;
+  font-size: 0.95rem;
+  margin-bottom: 0.4rem;
+}
+.cd-empty .cd-intro {
+  margin-bottom: 0.4rem;
+}
+:root .cd-empty .cd-mini {
+  margin-top: 0.6rem;
+  padding: 0.25rem 0.9rem;
+  font-size: 0.75rem;
 }
 
 /* a session's folder browsed: a panel over the app */
@@ -1271,6 +1603,12 @@
   font-size: 0.78rem;
   text-align: left;
 }
+.cd-browse-row .cd-fp-ic {
+  color: var(--dim);
+}
+.cd-browse-row.dir .cd-fp-ic {
+  color: var(--accent);
+}
 .cd-browse-row.dir {
   color: var(--fg);
   cursor: pointer;
@@ -1281,6 +1619,10 @@
   color: var(--accent);
 }
 .cd-browse-name {
+  display: flex;
+  align-items: center;
+  gap: 0.55ch;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1407,7 +1749,7 @@
     display: flex;
     position: static;
     justify-content: flex-end;
-    padding: 0 0.6rem 0.3rem;
+    padding: 0 0.4rem 0.3rem;
     background: none;
   }
   .cd-start {

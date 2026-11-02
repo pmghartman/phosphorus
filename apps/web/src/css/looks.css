@@ -35,6 +35,7 @@
     .fm-tile,
     .cd-pick,
     .cd-att,
+    .cd-fp-row,
     .dk-ap-tab,
     .dk-ap-item
   ) {
@@ -60,7 +61,10 @@
     .st-box,
     .bubble,
     .cd-user,
-    .cd-box
+    .cd-prompt-box,
+    .cd-install,
+    .cd-login,
+    .cd-empty-ic
   ) {
   border-radius: var(--r-card);
 }
@@ -69,6 +73,7 @@
     .dk-note-pop,
     .dk-ctl-pop,
     .dk-menu,
+    .cd-pop,
     .update-pane,
     .modal-box,
     .dk-mcp-pop,
@@ -413,7 +418,7 @@
     .cd-find,
     .cd-sel
   ):focus,
-:root[data-palette="macos"] :is(.chat-form, .chat-join, .cd-form, .cd-box):focus-within {
+:root[data-palette="macos"] :is(.chat-form, .chat-join, .cd-form, .cd-prompt-box):focus-within {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent);
 }
@@ -518,7 +523,7 @@
     .dk-login input,
     .cd-find
   ):focus,
-:root[data-palette="win11"] :is(.chat-form, .chat-join, .cd-form, .cd-box):focus-within {
+:root[data-palette="win11"] :is(.chat-form, .chat-join, .cd-form, .cd-prompt-box):focus-within {
   border-bottom-color: var(--accent);
   box-shadow: inset 0 -1px 0 var(--accent);
 }
@@ -817,6 +822,9 @@
   border-color: var(--border);
   background: var(--bg);
 }
+:root:is([data-palette="macos"], [data-palette="win11"]) .dk-app-code .cd-item {
+  --cd-row: var(--tab-hover);
+}
 :root:is([data-palette="macos"], [data-palette="win11"]) .dk-app-code .cd-pick {
   border-radius: 8px;
   padding: 0.4rem 0.6rem;
@@ -870,13 +878,13 @@
   border-top: 0;
   padding: 0.4rem max(0.8rem, calc((100% - 46rem) / 2)) 0.6rem;
 }
-:root:is([data-palette="macos"], [data-palette="win11"]) .dk-app-code :is(.cd-form, .cd-box) {
+:root:is([data-palette="macos"], [data-palette="win11"]) .dk-app-code :is(.cd-form, .cd-prompt-box) {
   border: 1px solid var(--border);
   border-radius: 14px;
   background: var(--card);
   box-shadow: 0 1px 3px rgb(0 0 0 / 0.08);
 }
-:root:is([data-palette="macos"], [data-palette="win11"]) .dk-app-code :is(.cd-form, .cd-box):focus-within {
+:root:is([data-palette="macos"], [data-palette="win11"]) .dk-app-code :is(.cd-form, .cd-prompt-box):focus-within {
   border-color: color-mix(in srgb, var(--fg) 30%, var(--border));
   box-shadow: 0 1px 3px rgb(0 0 0 / 0.08);
 }

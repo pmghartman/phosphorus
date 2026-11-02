@@ -19,11 +19,32 @@ test("code options blocked", async () => {
   expect(await codeBlocked(s)).toBe(codeBlockedMsg);
   await expect(codeLogin(s, "razer")).rejects.toThrow("no saved login for razer");
   put({ razer: { user: "pmh", pass: "x" } });
-  o = await codeOptions(s);
+  o = await codeOptions(s, new Set(["razer"]));
   expect(o.hosts).toEqual(["razer"]);
+  expect(o.offline).toEqual([]);
   expect(o.blocked).toBeUndefined();
   const c = await codeLogin(s, "razer");
   expect([c.user, c.pass]).toEqual(["pmh", "x"]);
   // another password's key opens nothing
   expect(await codeBlocked({ ...s, key: users.Derive("other", "00").subarray(32) })).not.toBe("");
+});
+
+// only the hosts that are up offered, the rest of the user's logins named as offline
+test("code options online hosts", async () => {
+  const key = users.Derive("pw", "00").subarray(32);
+  store.write(
+    "home/pmh/vault.json",
+    users.Seal(
+      key,
+      marshal({ hosts: { razer: { user: "pmh", pass: "x" }, pi: { user: "pmh", pass: "y" } }, pages: {} }),
+    ),
+  );
+  const s: import("@phosphorus/users").Session = { user: "pmh", admin: false, boot: false, key, token: "", e: 0 };
+  let o = await codeOptions(s, new Set(["razer", "nas"]));
+  expect(o.hosts).toEqual(["razer"]);
+  expect(o.offline).toEqual(["pi"]);
+  o = await codeOptions(s, new Set());
+  expect(o.hosts).toEqual([]);
+  expect(o.offline).toEqual(["pi", "razer"]);
+  expect(o.blocked).toBeUndefined();
 });

@@ -3,9 +3,10 @@
 import type { CodeOptions, CodeSession } from '@phosphorus/wire';
 import { el } from '../../lib/dom.ts';
 import { drawer, listEl, main } from './frame.ts';
+import { popClose } from './menu.ts';
 import { paintNew } from './newsession.ts';
 import { paintHead, paintOne, say } from './session.ts';
-import { ago, call, cd, lsGet, lsSet, PICK_LS, sapi, tilde } from './state.ts';
+import { ago, call, cd, GL, lsGet, lsSet, PICK_LS, sapi, svg, tilde } from './state.ts';
 
 export async function loadList() {
   try {
@@ -110,21 +111,21 @@ export function paintList() {
       drawer(false);
     });
     const acts = el('span', 'cd-item-acts');
-    const ren = Object.assign(el('button', 'cd-mini', 'rename'), { type: 'button' });
+    const ren = Object.assign(el('button', 'cd-act'), { type: 'button', title: 'rename', ariaLabel: 'rename' });
+    ren.innerHTML = svg(GL.pencil!);
     ren.addEventListener('click', () => {
       cd.renaming = s.id;
       cd.listSig = '';
       paintList();
     });
-    const del = Object.assign(
-      el(
-        'button',
-        `cd-mini danger${cd.armed === `del:${s.id}` ? ' armed' : ''}`,
-        cd.armed === `del:${s.id}` ? 'delete?' : 'delete',
-      ),
-      { type: 'button' },
-    );
-    del.title = 'ends it and forgets its transcript; its files stay';
+    const armed = cd.armed === `del:${s.id}`;
+    const del = Object.assign(el('button', `cd-act danger${armed ? ' armed' : ''}`), {
+      type: 'button',
+      ariaLabel: armed ? 'press again to delete' : 'delete',
+    });
+    del.innerHTML = svg(GL.trash!);
+    if (armed) del.append(el('span', '', 'delete?'));
+    del.title = armed ? 'press again to delete' : 'delete: ends it and forgets its transcript; its files stay';
     del.addEventListener('click', () => remove(s));
     acts.append(ren, del);
     row.append(b, acts);
@@ -177,6 +178,7 @@ export function remove(s: CodeSession) {
 
 export function go(id: string) {
   if (id === cd.pick && main.childElementCount) return;
+  popClose();
   const was = cd.logs.get(cd.pick);
   if (was) {
     was.closed = true;
