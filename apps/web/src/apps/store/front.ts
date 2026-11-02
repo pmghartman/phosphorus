@@ -1,8 +1,12 @@
 // the front: tiles
 
+import type { FoundPage } from '@phosphorus/wire';
 import { editorPref } from '../../desktop/deskfiles.ts';
+import { jsonPost } from '../../lib/api.ts';
 import { dkGlyph, el, ICONS } from '../../lib/dom.ts';
-import { facts, iconOf, pill, tileSub } from './apps.ts';
+import { dk, st } from '../../lib/state.ts';
+import { pollState } from '../../lib/sync.ts';
+import { facts, iconOf, iconTile, pill, tileSub } from './apps.ts';
 import { draw, svcFacts, svcIcon, svcPill, svcSub } from './services.ts';
 import { apps, read, readError, type StoreApp, type StoreService, services, stateVars, storeShow } from './state.ts';
 
@@ -83,6 +87,64 @@ export function svcTile(s: StoreService): HTMLElement {
   return t;
 }
 
+// a found page on a host and its host's name
+type Discovered = FoundPage & { host: string };
+
+// every host's web pages its services.export doesn't name yet, those already
+// routed (published a moment ago, the host's next scan not in) left out
+function discovered(): Discovered[] {
+  const routed = new Set(dk.services.map((r) => `${r.host}:${r.port}`));
+  const out: Discovered[] = [];
+  for (const [host, info] of Object.entries(st.hostsInfo))
+    for (const f of info.found ?? []) if (!routed.has(`${host}:${f.port}`)) out.push({ ...f, host });
+  return out.sort((a, b) => a.host.localeCompare(b.host) || a.port - b.port);
+}
+
+// a found page written into its host's services.export under its guessed name,
+// the mode and scheme picked there
+async function publish(f: Discovered) {
+  stateVars.busyId = `found:${f.host}:${f.port}`;
+  stateVars.sig = '';
+  draw();
+  try {
+    const r = await fetch(
+      `/api/services/${encodeURIComponent(f.host)}/${encodeURIComponent(f.name)}/publish`,
+      jsonPost({ port: f.port }),
+    );
+    const out = await r.json().catch(() => ({}));
+    const why = out.outcome && out.outcome.published !== true ? out.outcome.why : '';
+    if (!r.ok || why) throw new Error(why || out.error || `status ${r.status}`);
+    stateVars.actError = '';
+  } catch (e) {
+    stateVars.actError = `${f.name} not published: ${(e as Error).message}`;
+  }
+  stateVars.busyId = '';
+  stateVars.sig = '';
+  pollState();
+  draw();
+}
+
+function foundTile(f: Discovered): HTMLElement {
+  const busy = stateVars.busyId === `found:${f.host}:${f.port}`;
+  const t = el('div', 'store-tile found');
+  const text = el('span', 'store-tile-text');
+  text.append(
+    el('b', 'store-tile-name', f.title),
+    el('span', 'store-tile-tag', `${f.host}:${f.port}`),
+    el('span', 'store-tile-sub new', `publishes as ${f.name}`),
+  );
+  const go = Object.assign(el('button', `store-pill${busy ? ' wait' : ''}`, busy ? 'publishing' : 'publish'), {
+    type: 'button',
+    disabled: !!stateVars.busyId,
+    title: `publish ${f.host}:${f.port} as ${f.name}, behind the phosphorus login`,
+  });
+  go.addEventListener('click', () => publish(f));
+  const side = el('span', 'store-tile-side');
+  side.append(go);
+  t.append(iconTile(f.title, [], 'md'), text, side);
+  return t;
+}
+
 export function front(): HTMLElement {
   const wrap = el('div', 'store-front');
   const head = el('div', 'store-head');
@@ -103,7 +165,8 @@ export function front(): HTMLElement {
   head.append(title, tools);
   wrap.append(head);
   if (!apps) wrap.append(el('div', 'store-empty', readError ? `can't read the catalogue: ${readError}` : 'connecting'));
-  else if (!apps.length && !services.length) wrap.append(el('div', 'store-empty', 'nothing in the catalogue yet'));
+  else if (!apps.length && !services.length && !(st.acct?.admin && discovered().length))
+    wrap.append(el('div', 'store-empty', 'nothing in the catalogue yet'));
   else {
     const q = stateVars.filter.trim();
     const shown = apps.filter((a) => !q || matches(a, q));
@@ -125,6 +188,13 @@ export function front(): HTMLElement {
       wrap.append(s);
     };
     section('on the mesh', [...have.map(tile), ...svcOn.map(svcTile)]);
+    // publishing is an admin's: the others aren't shown what they can't do
+    if (st.acct?.admin) {
+      const found = discovered().filter(
+        (f) => !q || matches({ id: f.name, name: f.title, tagline: f.host, category: 'discovered' }, q),
+      );
+      section('discovered', found.map(foundTile));
+    }
     section(have.length || svcOn.length ? 'more' : 'discover', [...more.map(tile), ...own.map(svcTile)]);
     if (q) section('self-hosted', docked.map(svcTile));
     else

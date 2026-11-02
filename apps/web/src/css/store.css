@@ -159,6 +159,13 @@
 .store-tile:is(:hover, :focus-visible) {
   border-color: var(--accent);
 }
+/* a discovered page: no page of its own to open, only its pill */
+.store-tile.found {
+  cursor: default;
+}
+.store-tile.found:hover {
+  border-color: var(--border);
+}
 .store-tile:active {
   transform: scale(0.995);
 }

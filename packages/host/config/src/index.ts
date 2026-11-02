@@ -94,6 +94,25 @@ export function rewriteSection(
   return [...out.slice(0, after), ...extra, ...out.slice(after)];
 }
 
+const noteRe = /^\s*[#;]/;
+
+// [name] taken out with the comment right above it; the blanks and comment
+// after its keys head the next section, so they stay
+export function dropSection(d: Doc, name: string) {
+  const i = d.secs.findIndex((s) => s.name === name);
+  if (i < 0) return;
+  const above = i > 0 ? d.secs[i - 1]!.lines : d.head;
+  while (above.length > 0 && noteRe.test(above[above.length - 1]!)) above.pop();
+  while (above.length > 0 && above[above.length - 1]!.trim() === "") above.pop();
+  const lines = d.secs[i]!.lines;
+  let k = lines.length;
+  while (k > 1 && (lines[k - 1]!.trim() === "" || noteRe.test(lines[k - 1]!))) k--;
+  const tail = lines.slice(k);
+  if (above.length === 0) while (tail.length > 0 && tail[0]!.trim() === "") tail.shift();
+  above.push(...tail);
+  d.secs.splice(i, 1);
+}
+
 // one blank line before it, one trailing newline after
 export function appendSection(d: Doc, name: string): Section {
   const last = d.secs.length > 0 ? d.secs[d.secs.length - 1]!.lines : d.head;
@@ -299,7 +318,7 @@ export function editService(
   let s = findSection(d, name);
   if (remove) {
     if (!s) return ["no service " + name, ""];
-    d.secs = d.secs.filter((x) => x.name !== name);
+    dropSection(d, name);
     return commitDry(d, before, dry);
   }
   const v = fieldsOf(s);

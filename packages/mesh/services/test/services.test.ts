@@ -219,6 +219,11 @@ test("pages on ports", async () => {
     port: 0,
     fetch: () => new Response("<title>web</title>", { headers: { "Content-Type": "text/html" } }),
   });
+  const failing = Bun.serve({
+    port: 0,
+    fetch: () =>
+      new Response("<title>Service Unavailable</title>", { status: 503, headers: { "Content-Type": "text/html" } }),
+  });
   const dead = Bun.serve({ port: 0, fetch: () => new Response("") });
   const deadPort = dead.port;
   dead.stop(true);
@@ -229,15 +234,15 @@ port = 1
 `,
   );
   await refresh("127.0.0.1");
-  const got = await pagesOn("127.0.0.1", [api.port!, page.port!, bare.port!, deadPort!, taken.port!]);
-  // the HTML pages with titles alone, a name already declared given its port
+  const got = await pagesOn("127.0.0.1", [api.port!, page.port!, bare.port!, deadPort!, taken.port!, failing.port!]);
+  // the HTML pages with titles alone, error pages left out, a name already declared given its port
   expect(got.sort((a, b) => a.port - b.port)).toEqual(
     [
       { port: page.port!, scheme: "http", title: "Jelly & Fin", name: "jelly-fin" },
       { port: taken.port!, scheme: "http", title: "web", name: `web-${taken.port}` },
     ].sort((a, b) => a.port - b.port),
   );
-  for (const s of [page, api, bare, taken]) s.stop(true);
+  for (const s of [page, api, bare, taken, failing]) s.stop(true);
 });
 
 test("found pages written in, a removed one left alone", async () => {

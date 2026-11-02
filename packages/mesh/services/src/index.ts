@@ -342,8 +342,9 @@ export type Found = { port: number; scheme: string; title: string; name: string 
 
 // 0 for no scan
 const findMS = envInt("SERVICES_FIND_MS", 60_000);
-// 0: found pages only offered, an admin writing each in from the desktop
-const autoPublish = env("SERVICES_AUTO", "1") !== "0";
+// found pages only offered by default, an admin publishing each from apps'
+// discovered or the desktop; 1: written in as soon as they're found
+const autoPublish = env("SERVICES_AUTO", "0") === "1";
 const findMax = 200;
 const findAtOnce = 8;
 const titleRe = /<title[^>]*>([^<]*)<\/title>/i;
@@ -383,7 +384,8 @@ export function nameFrom(title: string): string {
 }
 
 // a page's title, redirects followed; "" for anything not an HTML page with one,
-// an API or tailscale's own peer listener among them
+// an API or tailscale's own peer listener among them, and for an error page:
+// Windows' HTTP.sys answers :5357 (WSDAPI) with a titled "Service Unavailable" 503
 async function titleOf(scheme: string, host: string, port: number): Promise<string> {
   try {
     const res = await fetch(`${scheme}://${hostPort(host, port)}/`, {
@@ -391,7 +393,7 @@ async function titleOf(scheme: string, host: string, port: number): Promise<stri
       tls: { rejectUnauthorized: false },
       signal: AbortSignal.timeout(probeTimeout * 3),
     } as RequestInit);
-    if (!(res.headers.get("content-type") ?? "").includes("text/html")) {
+    if (!res.ok || !(res.headers.get("content-type") ?? "").includes("text/html")) {
       await res.body?.cancel();
       return "";
     }

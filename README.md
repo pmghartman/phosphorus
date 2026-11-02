@@ -14,7 +14,7 @@ Install it on each machine and they find each other. No servers to rent, no conf
 
 - **Terminals** on every host, a click away
 - **One home folder** across every machine
-- **Services and game servers**: web pages listening on any host found and published on their own, each on its own subdomain once `*.<domain>` routes through your tunnel; game servers started from the desktop
+- **Services and game servers**: web pages listening on any host found and offered in apps for an admin to publish, each on its own subdomain once `*.<domain>` routes through your tunnel; game servers started from the desktop
 - **Git, chat and a local AI model**, shared by the whole mesh
 - **Code sessions** with Claude Code or opencode on any host
 - **Agents**: assign each mesh model to Claude Code and opencode from one page

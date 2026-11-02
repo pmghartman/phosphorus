@@ -10,8 +10,18 @@ process.env.BASE_DOMAIN ??= "mulab.dev";
 const svc = join(dir, "services.export"),
   ini = join(dir, "phosphorus.ini");
 const { configText, editIni, editService, IniKeys, lineDiff, setIni, setService } = await import("@phosphorus/config");
-const { appendSection, fieldsOf, joinDoc, keyOf, osErrText, rewriteSection, splitSections, linkOk, wholeAtLeast } =
-  await import("@phosphorus/config");
+const {
+  appendSection,
+  dropSection,
+  fieldsOf,
+  joinDoc,
+  keyOf,
+  osErrText,
+  rewriteSection,
+  splitSections,
+  linkOk,
+  wholeAtLeast,
+} = await import("@phosphorus/config");
 
 const read = (f: string) => {
   try {
@@ -64,6 +74,24 @@ test("appendSection leaves one blank line before and one after", () => {
   expect(joinDoc(e)).toBe("[b]\n");
 });
 
+test("dropSection takes its own comment and leaves the next one's", () => {
+  const drop = (text: string, ...names: string[]) => {
+    const d = splitSections(text);
+    for (const n of names) dropSection(d, n);
+    return joinDoc(d);
+  };
+  const three = "[a]\nport = 1\n\n# found by phosphorus: B\n[b]\nport = 2\n\n# found by phosphorus: C\n[c]\nport = 3\n";
+  expect(drop(three, "b")).toBe("[a]\nport = 1\n\n# found by phosphorus: C\n[c]\nport = 3\n");
+  // the last: the file still ends in a newline
+  expect(drop(three, "c")).toBe("[a]\nport = 1\n\n# found by phosphorus: B\n[b]\nport = 2\n");
+  // laptop-hfpo6itm's: both found pages taken out, no comment left behind
+  const laptop = "\n# c1\n[a]\nport = 1\n\n# c2\n[b]\nport = 2\n";
+  expect(drop(laptop, "a")).toBe("# c2\n[b]\nport = 2\n");
+  expect(drop(laptop, "a", "b")).toBe("");
+  expect(drop(laptop, "b", "a")).toBe("");
+  expect(drop(laptop, "nope")).toBe(laptop);
+});
+
 test("editService creates, edits, rejects and removes", () => {
   expect(editService("Web", {}, false, false)).toEqual(["name: lowercase letters, digits, -", ""]);
   expect(editService("web", { nope: "1" }, false, false)).toEqual([
@@ -104,9 +132,13 @@ test("editService creates, edits, rejects and removes", () => {
   const [why] = editService("web", { port: "nope" }, false, false);
   expect(why).not.toBe("");
   expect(read(svc)).toBe(before!);
-  expect(editService("web", {}, true, true)).toEqual(["", "- [web]\n- # the port\n- port = 8080\n- mode = subdomain"]);
+  // its comment above it goes with it
+  expect(editService("web", {}, true, true)).toEqual([
+    "",
+    "- # mine\n- [web]\n- # the port\n- port = 8080\n- mode = subdomain",
+  ]);
   expect(setService("web", {}, true)).toBe("");
-  expect(read(svc)).toBe("# mine\n[mc]\nport = 25565\ntype = game\nstart = a\nstop = b\n");
+  expect(read(svc)).toBe("[mc]\nport = 25565\ntype = game\nstart = a\nstop = b\n");
 });
 
 test("editIni holds to IniKeys and drops an emptied section", () => {

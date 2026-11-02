@@ -3,6 +3,7 @@
 import {
   appendSection,
   commitServices,
+  dropSection,
   fieldsOf,
   findSection,
   isHomeDir,
@@ -114,7 +115,7 @@ export function saveService(f: Form): string {
 
 export function deleteService(name: string): string {
   const d = splitSections(readText(servicesFile));
-  d.secs = d.secs.filter((s) => s.name !== name);
+  dropSection(d, name);
   return commitServices(d);
 }
 
