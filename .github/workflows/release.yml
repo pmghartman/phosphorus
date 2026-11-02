@@ -179,6 +179,9 @@ jobs:
       # Linux's packaged at once, the tools fetched beside the compile
       - name: host binary
         shell: bash
+        # the release key baked in, the one first-party apps' bundles are checked against
+        env:
+          FEED_PUBKEY: ${{ vars.UPDATE_PUBKEY }}
         run: |
           mkdir -p out upd art $APP/payload
           git archive HEAD | tar -x -C $APP/payload && echo "$VER" > $APP/payload/VERSION
@@ -293,6 +296,9 @@ jobs:
     env:
       VER: ${{ needs.version.outputs.ver }}
     steps:
+      # the tree first: a checkout cleans what's downloaded before it
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/bun
       # the .debs alone, for the apt index
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
@@ -304,6 +310,18 @@ jobs:
           path: upd
           pattern: upd-*
           merge-multiple: true
+      # first-party apps (packages/apps/<id> with a page), each bundle and its feed
+      # entry signed beside the host's
+      - name: apps
+        env:
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+          APPS_FEED_BASE: https://github.com/${{ github.repository }}/releases/download/update
+        run: |
+          for d in packages/apps/*/; do
+            id=$(basename "$d")
+            [ -f "$d/web/index.html" ] || continue
+            bun run app "$id" upd "$VER"
+          done
       # built OSes' files onto `update`; others: last release's
       - name: update feed
         env:

@@ -61,7 +61,7 @@ export const firstParty = (
   repo: "https://github.com/pmghartman/phosphorus",
   feed: env(
     `${a.id.toUpperCase().replaceAll("-", "_")}_FEED_URL`,
-    `https://github.com/pmghartman/phosphorus/releases/latest/download/${a.id}.json`,
+    `https://github.com/pmghartman/phosphorus/releases/download/update/${a.id}.json`,
   ),
   mount: `/app/${a.id}/`,
   icon: `/app/${a.id}/icon.svg`,
