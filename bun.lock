@@ -8,6 +8,8 @@
         "@biomejs/biome": "2.6.3",
         "@phosphorus/minisign": "workspace:*",
         "@phosphorus/theme": "workspace:*",
+        "@phosphorus/tools": "workspace:*",
+        "@phosphorus/webapps": "workspace:*",
         "@resvg/resvg-js": "^2.6.2",
         "@types/bun": "^1.4.4",
         "typescript": "^7.0.2",

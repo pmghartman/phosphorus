@@ -19,6 +19,37 @@ const cstr = (b: Uint8Array, at: number, n: number) => {
 };
 const octal = (b: Uint8Array, at: number, n: number) => parseInt(cstr(b, at, n).trim() || "0", 8) || 0;
 
+// a gzipped ustar of files, path -> bytes; a path past 100 bytes as GNU's long name
+export function tarGz(files: [string, Uint8Array][]): Uint8Array {
+  const blocks: Uint8Array[] = [];
+  const pad = (n: number) => new Uint8Array(Math.ceil(n / 512) * 512 - n);
+  const header = (name: string, size: number, type: string) => {
+    const h = Buffer.alloc(512);
+    h.write(name.slice(0, 100), 0, 100, "utf8");
+    h.write("0000644\0", 100);
+    h.write("0000000\0", 108);
+    h.write("0000000\0", 116);
+    h.write(size.toString(8).padStart(11, "0") + "\0", 124);
+    h.write("00000000000\0", 136);
+    h.write("        ", 148);
+    h.write(type, 156);
+    h.write("ustar\0", 257);
+    h.write("00", 263);
+    let sum = 0;
+    for (const b of h) sum += b;
+    h.write(sum.toString(8).padStart(6, "0") + "\0 ", 148);
+    return h;
+  };
+  for (const [name, data] of files) {
+    const n = Buffer.from(name);
+    if (n.length > 100)
+      blocks.push(header("././@LongLink", n.length + 1, "L"), n, new Uint8Array(1), pad(n.length + 1));
+    blocks.push(header(name, data.length, "0"), data, pad(data.length));
+  }
+  blocks.push(new Uint8Array(1024));
+  return Bun.gzipSync(Buffer.concat(blocks));
+}
+
 // a gzipped tar's entries written under dir
 export function untar(gz: Uint8Array, dir: string, strip: number) {
   const b = Bun.gunzipSync(gz as Uint8Array<ArrayBuffer>);

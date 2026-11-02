@@ -5,7 +5,7 @@ import { basename, dirname, join } from "node:path";
 import { env, StateDir, which } from "@phosphorus/util";
 import { untar, unzip } from "./archive.ts";
 
-export { untar, unzip } from "./archive.ts";
+export { tarGz, untar, unzip } from "./archive.ts";
 
 // upstream's llama.cpp release
 export const LlamaTag = "b11838";

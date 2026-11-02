@@ -52,6 +52,24 @@ export type App = {
   key?: string;
 };
 
+// one of phosphorus's own apps, packages/apps/<id>: its bundle off the release
+// (scripts/appbuild.ts), signed with the release key, served at /app/<id>/
+export const firstParty = (
+  a: Pick<App, "id" | "name" | "tagline" | "about" | "features" | "category"> & Partial<App>,
+): App => ({
+  by: "phosphorus",
+  repo: "https://github.com/pmghartman/phosphorus",
+  feed: env(
+    `${a.id.toUpperCase().replaceAll("-", "_")}_FEED_URL`,
+    `https://github.com/pmghartman/phosphorus/releases/latest/download/${a.id}.json`,
+  ),
+  mount: `/app/${a.id}/`,
+  icon: `/app/${a.id}/icon.svg`,
+  repoIcon: `packages/apps/${a.id}/web/static/icon.svg`,
+  key: "release",
+  ...a,
+});
+
 export const Catalog: App[] = [
   {
     id: "sulfur",
