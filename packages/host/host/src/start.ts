@@ -1,5 +1,4 @@
 // bring-up, the one-time admin setup, phos alone, status and the keys
-import { keys as cliKeys } from "@phosphorus/cli";
 import * as envfile from "@phosphorus/envfile";
 import {
   at,
@@ -17,9 +16,10 @@ import {
   setTag,
   spawnIO,
 } from "./base.ts";
+import { askKeys, desktopLinks, front } from "./front.ts";
 import { rebuild, waitFrontend } from "./native.ts";
 import { os } from "./os.ts";
-import { tailscaleStatus } from "./tailnet.ts";
+import { vpnState } from "./tailnet.ts";
 
 // start bring-up, safe to re-run: checks, the one-time admin setup, then
 // the rebuild, which starts the service and waits on the frontend
@@ -77,44 +77,34 @@ async function elevate() {
 }
 
 // overview phos alone: on a new host the keys asked for and phosphorus
-// started, then where it's served and whether it's up
-export async function overview() {
+// started, then the front page with the link to the desktop
+export async function overview(version: string) {
   if (!(await os.svcActive()) && keysMissing()) {
     try {
       envfile.ensure(envPath());
     } catch (e) {
       throw fail(`can't write ${envPath()}: ${e instanceof Error ? e.message : e}`);
     }
-    if ((await cliKeys(envPath())) !== 0) return;
+    if (!(await askKeys(envPath()))) return;
     envfile.lock(envPath());
     setTag("start");
     await start();
     setTag("phosphorus");
   }
-  await status([]);
+  await front(version);
 }
 
-// the desktop's address: the mesh's domain, else this host's tailnet name
-export function meshURL(domain: string, dnsName: string): string {
-  if (domain) return `https://${domain}/`;
-  return `http://${dnsName.replace(/\.$/, "") || "localhost"}/`;
-}
-
-// status this host's service, VPN and address, as text or, with --json, for the
-// app's tray
+// status this host's service, VPN and the desktop's address, as text or, with
+// --json, for the app's tray
 export async function status(args: string[]) {
-  let ts: any;
-  try {
-    ts = JSON.parse(await tailscaleStatus());
-  } catch {}
   const running = await os.svcActive(),
-    vpn = typeof ts?.BackendState === "string" ? ts.BackendState : "";
+    vpn = await vpnState();
   if (args[0] === "--json") {
     println(JSON.stringify({ running, vpn: vpn === "Running" }));
     return;
   }
   println(`phosphorus ${running ? "running" : "stopped"}, tailscale ${vpn || "not answering"}`);
-  println(meshURL(envfile.read(envPath()).BASE_DOMAIN ?? "", String(ts?.Self?.DNSName ?? "")));
+  println((await desktopLinks()).join("  "));
   if (!running) println(keysMissing() ? "run phos to enter the keys" : "phos start brings it up");
 }
 
@@ -150,7 +140,7 @@ export async function keys(opts: string[]) {
       return;
     }
   }
-  if ((await cliKeys(envPath())) !== 0) return;
+  if (!(await askKeys(envPath()))) return;
   envfile.lock(envPath());
   if (!(await os.svcActive())) {
     say("saved, phos start to bring phosphorus up");

@@ -14,7 +14,8 @@ const { authorizedKeysKept, gameKeyLine } = await import("../src/game.ts");
 const { absTo, bakeEnv, envFileText, readEnvFile, signature, splitComma, withPath } = await import("../src/native.ts");
 const { kept, syncPayload } = await import("../src/install.ts");
 const { field } = await import("../src/upgrade.ts");
-const { keySet, meshURL } = await import("../src/start.ts");
+const { keySet } = await import("../src/start.ts");
+const { desktopURLs, frontPage } = await import("../src/front.ts");
 
 test("parse takes --update, --home and --payload, the rest in order", () => {
   expect(parse([])).toEqual({ update: false, payload: "", home: "", rest: [] });
@@ -130,6 +131,30 @@ test("the play/stop key's authorized_keys line and what's kept around it", () =>
   expect(authorizedKeysKept("", line, keyPart)).toEqual([]);
 });
 
+test("phos alone: the front page, linked to the desktop", () => {
+  expect(desktopURLs("mesh.example", "box")).toEqual(["https://mesh.example/", "http://box/"]);
+  expect(desktopURLs("", "box")).toEqual(["http://box/"]);
+  expect(desktopURLs("", "")).toEqual(["http://localhost/"]);
+  const f = { version: "2.15", running: true, host: "box", domain: "mesh.example", up: 4, seen: 5 };
+  expect(frontPage(f, false)).toBe(
+    [
+      "",
+      "  phosphorus 2.15",
+      "  ● running on box, 4 of 5 hosts up",
+      "",
+      "  every app is on the desktop, open it in a browser:",
+      "    https://mesh.example/",
+      "    http://box/  on the tailnet",
+      "",
+      "  phos help lists the commands",
+      "",
+    ].join("\n"),
+  );
+  expect(frontPage({ ...f, running: false, domain: "" }, false)).toContain("● stopped on box: phos start brings it up");
+  // a terminal gets an OSC 8 link, its text the URL itself
+  expect(frontPage(f, true)).toContain("\x1b]8;;https://mesh.example/\x1b\\https://mesh.example/\x1b]8;;\x1b\\");
+});
+
 test("the baked env file round-trips, PATH gets the tools first", () => {
   const text = envFileText({ B: "2", A: "x=y", PATH: "/bin" });
   expect(text).toBe("# baked by phosphorus rebuild, read by phosphorus run\nA=x=y\nB=2\nPATH=/bin\n");
@@ -213,10 +238,6 @@ test("small helpers", () => {
     TS_API_KEY: false,
     ADMIN_PASS: false,
   });
-  // phos alone: the domain's address, else this host's tailnet name
-  expect(meshURL("mesh.example", "box.tail1.ts.net.")).toBe("https://mesh.example/");
-  expect(meshURL("", "box.tail1.ts.net.")).toBe("http://box.tail1.ts.net/");
-  expect(meshURL("", "")).toBe("http://localhost/");
   expect(durText(5000)).toBe("5s");
   expect(durText(60_000)).toBe("1m0s");
   expect(splitLines("a\r\nb\n")).toEqual(["a", "b"]);

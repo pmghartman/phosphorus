@@ -1,6 +1,6 @@
 // config/ edited in place: services.export and phosphorus.ini section by
-// section, comments, order and every other section kept; the cli's forms and
-// the frontend's edits both come through here
+// section, comments, order and every other section kept; the frontend's and
+// the agents' edits come through here
 
 import { chmodSync, readFileSync, renameSync, type Stats, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";

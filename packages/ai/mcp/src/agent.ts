@@ -181,7 +181,7 @@ export const agentTools = (): Tool[] => [
     scope: "key",
     destructive: true,
     description:
-      "Publish, change or remove a service in a host's services.export, as the terminal UI's form does, the whole file " +
+      "Publish, change or remove a service in a host's services.export, the whole file " +
       "checked before it's written and live within seconds. fields only change the keys given; a blank value drops one. " +
       "Pages listening on a host are found and offered, not published: publish one with its port alone (removed stays removed). " +
       "Each is a subdomain once *.<domain> reaches the mesh, a path when another host has the name. " +

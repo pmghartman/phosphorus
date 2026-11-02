@@ -1,5 +1,5 @@
 // install the release into the home, per-host files kept, then the bring-up
-// or, for an update, the rebuild; no keys yet: left for the key form
+// or, for an update, the rebuild; no keys yet: left for phos or the app
 import {
   chmodSync,
   copyFileSync,
@@ -17,6 +17,7 @@ import {
 import { basename, dirname, join, relative, resolve } from "node:path";
 import * as envfile from "@phosphorus/envfile";
 import { at, binPath, envPath, exe, fail, fileExists, home, isWindows, keysMissing, say, version } from "./base.ts";
+import { desktopLinks } from "./front.ts";
 import { rebuild } from "./native.ts";
 import { start } from "./start.ts";
 
@@ -52,7 +53,7 @@ export async function install(payload: string, update: boolean) {
     throw fail(`can't lock ${envPath()}: ${e instanceof Error ? e.message : e}`);
   }
   if (keysMissing()) {
-    say("no keys yet: run phosphorus (or open the Phosphorus app) to enter them");
+    say("no keys yet: run phos (or open the Phosphorus app) to enter them, then it links to the desktop");
     writeFileSync(at(".phosphorus-installed"), v + "\n", { mode: 0o644 });
     return;
   }
@@ -64,7 +65,10 @@ export async function install(payload: string, update: boolean) {
         `rebuild failed, the service may still run the previous binary: ${e instanceof Error ? e.message : e}`,
       );
     }
-  } else await start();
+  } else {
+    await start();
+    say(`open the desktop for every app: ${(await desktopLinks()).join("  ")}`);
+  }
   writeFileSync(at(".phosphorus-installed"), v + "\n", { mode: 0o644 });
 }
 

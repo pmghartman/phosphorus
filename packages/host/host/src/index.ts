@@ -1,4 +1,4 @@
-// the machine's side, run by the installers and the cli: install, bring-up,
+// the machine's side, run by the installers and phos: install, bring-up,
 // rebuild, start and stop, keys, the update agent and game play/stop
 import {
   at,
@@ -16,6 +16,7 @@ import {
   tag,
 } from "./base.ts";
 import { restart, stop, update } from "./ctl.ts";
+import { desktopLinks } from "./front.ts";
 import { gameControl, gameControlSetup } from "./game.ts";
 import { install } from "./install.ts";
 import { rebuild } from "./native.ts";
@@ -48,13 +49,13 @@ export const commands = new Set([
   "--help",
 ]);
 
-export const usageText = `usage: phos            this host's address and status; on a new host, the keys first
+export const usageText = `usage: phos            this host's state and the link to the desktop; on a new host, the keys first
        phos keys       replace the keys in .env
        phos start      start phosphorus on this host
        phos stop       stop it
        phos restart    restart it
        phos status     whether phosphorus and Tailscale are up, and the address
-       phos update     update this host (Settings › Update updates the mesh)
+       phos update     update this host (the desktop updates every host)
        phos uninstall  remove phosphorus and its data from this host
        phos version    the installed release
        phos help       this text
@@ -105,7 +106,7 @@ export async function main(cmd: string, args: string[]): Promise<number> {
     switch (cmd) {
       case "":
         setTag("phosphorus");
-        await overview();
+        await overview(version());
         break;
       case "start":
         await start();
@@ -154,6 +155,7 @@ export async function main(cmd: string, args: string[]): Promise<number> {
         break;
       default:
         print(usageText);
+        println(`\nevery app and setting is on the desktop: ${(await desktopLinks()).join("  ")}`);
         return 0;
     }
   } catch (e) {

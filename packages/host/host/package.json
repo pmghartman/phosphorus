@@ -7,7 +7,6 @@
   },
   "dependencies": {
     "@phosphorus/appfeed": "workspace:*",
-    "@phosphorus/cli": "workspace:*",
     "@phosphorus/envfile": "workspace:*",
     "@phosphorus/procs": "workspace:*",
     "@phosphorus/util": "workspace:*"

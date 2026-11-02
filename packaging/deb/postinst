@@ -1,5 +1,5 @@
 #!/bin/sh
-# the release into /var/lib/phosphorus and up, the update agent; no keys yet: sudo phosphorus asks
+# the release into /var/lib/phosphorus and up, the update agent; no keys yet: sudo phos asks, then links to the desktop
 set -e
 [ "$1" = configure ] || exit 0
 mode=

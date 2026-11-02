@@ -320,7 +320,7 @@ export function copyTree(src: string, dst: string) {
   walk(src);
 }
 
-// --- start, stop, the cli ------------------------------------------------------------
+// --- start, stop ------------------------------------------------------------------
 
 export async function nativeStop() {
   if (!(await os.svcActive())) {

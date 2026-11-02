@@ -1,7 +1,6 @@
 // phosphorus: one binary for every role, run's children (serve | model | elector),
 // the host's commands (phos and the rest, @phosphorus/host's usageText) and, on
 // macOS and Windows, the menu bar or tray app (tray)
-import { main as cliMain } from "@phosphorus/cli";
 import { main as electorMain } from "@phosphorus/elector";
 import { commands, main as hostMain, usageText } from "@phosphorus/host";
 import { main as modeldMain } from "@phosphorus/modeld";
@@ -29,7 +28,6 @@ async function role(cmd: string): Promise<number | undefined> {
 // the login item's --background); its module runs on import
 const inBundle = process.platform === "darwin" && /\.app\/Contents\/MacOS\//.test(process.execPath);
 if (cmd === "tray" || (inBundle && (cmd === "" || cmd.startsWith("--")))) await import("@phosphorus/tray-app");
-else if (cmd === "cli") process.exit(await cliMain(args));
 else if (commands.has(cmd)) process.exit(await hostMain(cmd, args));
 else {
   const code = await role(cmd);

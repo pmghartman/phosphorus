@@ -4,7 +4,7 @@ import { el } from '../lib/dom.ts';
 
 // --- agents: which mesh model each implementation that asks one runs on ------
 // a model is assigned to any number of agents; an assignment is mesh-wide, one
-// POST each, and the models themselves are installed in the phos tui
+// POST each, and the models themselves are installed by a model host's [model]
 
 const view = document.getElementById('view-agents')!;
 
@@ -157,7 +157,7 @@ function draw() {
       el(
         'div',
         'ag-empty',
-        "no model host yet: turn on [model] host in the phos tui's model tab, and its model installs here",
+        "no model host yet: set [model] host = true in a host's phosphorus.ini (an agent's config_set can), and its model installs here",
       ),
     );
   wrap.append(group('models', `${model.models.length} on the mesh`, models));

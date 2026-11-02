@@ -18,7 +18,6 @@
     "apps/host": {
       "name": "@phosphorus/host-app",
       "dependencies": {
-        "@phosphorus/cli": "workspace:*",
         "@phosphorus/elector": "workspace:*",
         "@phosphorus/host": "workspace:*",
         "@phosphorus/modeld": "workspace:*",
@@ -141,16 +140,6 @@
         "@phosphorus/util": "workspace:*",
       },
     },
-    "packages/host/cli": {
-      "name": "@phosphorus/cli",
-      "dependencies": {
-        "@phosphorus/config": "workspace:*",
-        "@phosphorus/envfile": "workspace:*",
-        "@phosphorus/services": "workspace:*",
-        "@phosphorus/theme": "workspace:*",
-        "@phosphorus/util": "workspace:*",
-      },
-    },
     "packages/host/config": {
       "name": "@phosphorus/config",
       "dependencies": {
@@ -168,7 +157,6 @@
       "name": "@phosphorus/host",
       "dependencies": {
         "@phosphorus/appfeed": "workspace:*",
-        "@phosphorus/cli": "workspace:*",
         "@phosphorus/envfile": "workspace:*",
         "@phosphorus/procs": "workspace:*",
         "@phosphorus/util": "workspace:*",
@@ -370,8 +358,6 @@
     "@phosphorus/appfeed": ["@phosphorus/appfeed@workspace:packages/mesh/appfeed"],
 
     "@phosphorus/chatmedia": ["@phosphorus/chatmedia@workspace:packages/chat/chatmedia"],
-
-    "@phosphorus/cli": ["@phosphorus/cli@workspace:packages/host/cli"],
 
     "@phosphorus/code": ["@phosphorus/code@workspace:packages/ai/code"],
 
