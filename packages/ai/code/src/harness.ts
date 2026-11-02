@@ -1,5 +1,6 @@
 // the harnesses a session may run, each an optional install on a host: found
-// by its own command, installed by its own official installer as the login
+// by its own command, installed by its own official installer as the login,
+// brought up to date by its own updater
 import { errText } from "@phosphorus/util";
 import { type Creds, ocPath, pathPrefix, quote } from "./script.ts";
 import { dial, install, run } from "./ssh.ts";
@@ -26,8 +27,9 @@ export type Harness = {
   site: string;
 };
 
-// bin its command; path what a non-login PATH lacks of where it installs
-type harnessDef = Harness & { bin: string; path: string; install: string };
+// bin its command; path what a non-login PATH lacks of where it installs;
+// update its own updater, which keeps to however it was installed
+type harnessDef = Harness & { bin: string; path: string; install: string; update: string };
 
 const defs: harnessDef[] = [
   {
@@ -40,6 +42,7 @@ const defs: harnessDef[] = [
     bin: "claude",
     path: pathPrefix,
     install: "curl -fsSL https://claude.ai/install.sh | bash 2>&1",
+    update: "claude update 2>&1",
   },
   {
     id: Opencode,
@@ -51,6 +54,7 @@ const defs: harnessDef[] = [
     bin: "opencode",
     path: ocPath,
     install: "curl -fsSL https://opencode.ai/install | bash 2>&1",
+    update: "opencode upgrade 2>&1",
   },
 ];
 
@@ -138,18 +142,25 @@ export function parseProbe(out: string): HarnessState[] {
 
 const installs = new Set<string>();
 
-// installOf a harness's official installer run on host as the login
-export async function installOf(host: string, c: Creds, id: string): Promise<Res> {
+// setupCommand a harness's official installer, or with update its own updater, for sh
+export function setupCommand(id: string, update: boolean): string {
+  const h = harnessByID(id)!;
+  return "sh -c " + quote(h.path + (update ? h.update : h.install));
+}
+
+// installOf a harness's official installer run on host as the login; with
+// update its own updater in its place, for one already there
+export async function installOf(host: string, c: Creds, id: string, update = false): Promise<Res> {
   const h = harnessByID(id);
   if (!hostRe.test(host)) return [400, errB("pick a host")];
   if (!h) return [400, errB("harness is one of " + harnessIDs().join(", "))];
   const k = host + "|" + c.user + "|" + id;
-  if (installs.has(k)) return [409, errB("already installing on " + host)];
+  if (installs.has(k)) return [409, errB(`already ${update ? "updating" : "installing"} ${h.label} on ${host}`)];
   installs.add(k);
   try {
     let r: { ok: boolean; out: string; error?: string };
     try {
-      r = await install(host, c, "sh -c " + quote(h.path + h.install));
+      r = await install(host, c, setupCommand(id, update));
     } catch (e) {
       r = { ok: false, out: "", error: errText(e) };
     }

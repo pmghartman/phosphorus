@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { runSync } from "@phosphorus/util";
-import { probeCommand } from "../src/harness.ts";
+import { probeCommand, setupCommand } from "../src/harness.ts";
 import { Claude, Harnesses, harnessByID, harnessOf, Opencode, parseProbe } from "../src/index.ts";
 import { tmp } from "./fake.ts";
 
@@ -17,6 +17,23 @@ test.skipIf(process.platform === "win32" || !Bun.which("sh"))("probe command", (
   const got = r.stdout.trim();
   expect(got).toContain("claude\t0\t");
   expect(got).toContain("opencode\t1\t1.2.3");
+});
+
+// each harness brought up to date by its own updater, found where its installer put it
+test.skipIf(process.platform === "win32" || !Bun.which("sh"))("update command", () => {
+  const home = tmp("update");
+  const cbin = join(home, ".local", "bin");
+  const obin = join(home, ".opencode", "bin");
+  mkdirSync(cbin, { recursive: true });
+  mkdirSync(obin, { recursive: true });
+  writeFileSync(join(cbin, "claude"), '#!/bin/sh\necho "claude $1"\n', { mode: 0o755 });
+  writeFileSync(join(obin, "opencode"), '#!/bin/sh\necho "opencode $1"\n', { mode: 0o755 });
+  const env = { HOME: home, PATH: "/usr/bin:/bin" };
+  const c = runSync(["sh", "-c", setupCommand(Claude, true)], { env });
+  expect(c.stdout.trim(), c.output).toBe("claude update");
+  const o = runSync(["sh", "-c", setupCommand(Opencode, true)], { env });
+  expect(o.stdout.trim(), o.output).toBe("opencode upgrade");
+  expect(setupCommand(Claude, false)).toContain("https://claude.ai/install.sh");
 });
 
 test("harness by id", () => {

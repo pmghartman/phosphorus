@@ -8,7 +8,7 @@ import { dk } from '../../lib/state.ts';
 import { paintAcct } from './account.ts';
 import { main, root } from './frame.ts';
 import { go, loadList, loadOpts } from './list.ts';
-import { chipBtn, choose, popClose, popOpen, popOver } from './menu.ts';
+import { type Choice, chipBtn, choose, popClose, popOpen, popOver } from './menu.ts';
 import { modelChoices, modelLabel, modelOf, sessionVars, sideBtn } from './session.ts';
 import {
   ago,
@@ -206,6 +206,10 @@ export async function paintNew() {
   });
   const install = el('div', 'cd-install');
   install.hidden = true;
+  // how an update went, apart from the install prompt
+  const upd = el('div', 'cd-install note');
+  upd.hidden = true;
+  const updating = new Set<string>();
   const login = loginPanel(
     () => host,
     () => {
@@ -250,7 +254,7 @@ export async function paintNew() {
   const foot = el('div', 'cd-start-foot');
   foot.append(msg, signin);
   const wrap = el('div', 'cd-start');
-  wrap.append(el('div', 'cd-hello', 'What are we working on?'), install, login, box, foot);
+  wrap.append(el('div', 'cd-hello', 'What are we working on?'), install, upd, login, box, foot);
   if (opts.error) wrap.prepend(el('p', 'cd-intro cd-bad', `couldn't load options: ${opts.error}`));
   form.replaceChildren(top, wrap);
 
@@ -364,6 +368,47 @@ export async function paintNew() {
     paint();
   };
 
+  // a harness already on the host brought up to date by its own updater
+  const update = async (id: string) => {
+    const h = host;
+    const hx = harnesses.find((x) => x.id === id);
+    if (!hx || updating.has(id)) return;
+    const was = verOf(found.get(h)?.harnesses?.find((x) => x.id === id)?.version);
+    updating.add(id);
+    upd.classList.remove('bad');
+    upd.hidden = false;
+    upd.replaceChildren(el('span', 'cd-install-t', `updating ${hx.label} on ${h}…`));
+    let x: { ok?: boolean; out?: string };
+    try {
+      x = await call('/api/code/install', 'POST', { host: h, harness: id, update: true });
+    } catch (e) {
+      x = { ok: false, out: (e as Error).message };
+    }
+    updating.delete(id);
+    await check(true);
+    if (!form.isConnected) return;
+    const now = verOf(found.get(h)?.harnesses?.find((y) => y.id === id)?.version);
+    const said = !x.ok
+      ? `couldn't update ${hx.label} on ${h}`
+      : now && now !== was
+        ? `${hx.label} updated on ${h}: ${was || 'unknown'} → ${now}`
+        : `${hx.label} on ${h} is up to date${now ? `: ${now}` : ''}`;
+    const text = (x.out || '').trim();
+    const out = Object.assign(el('pre', 'cd-install-out'), { textContent: text, hidden: !!x.ok });
+    const more = Object.assign(el('button', 'cd-mini', x.ok ? 'details' : 'hide'), { type: 'button' });
+    more.hidden = !text;
+    more.addEventListener('click', () => {
+      out.hidden = !out.hidden;
+      more.textContent = out.hidden ? 'details' : 'hide';
+    });
+    const shut = Object.assign(el('button', 'cd-mini', 'close'), { type: 'button' });
+    shut.addEventListener('click', () => {
+      upd.hidden = true;
+    });
+    upd.classList.toggle('bad', !x.ok);
+    upd.hidden = false;
+    upd.replaceChildren(el('span', 'cd-install-t', said), more, shut, out);
+  };
   hostChip.node.addEventListener('click', () =>
     choose(
       hostChip.node,
@@ -387,24 +432,35 @@ export async function paintNew() {
   dirChip.node.addEventListener('click', () => (popOpen(dirChip.node) ? popClose() : openPicker()));
   hxChip.node.addEventListener('click', () => {
     const on = found.get(host)?.harnesses || [];
-    choose(
-      hxChip.node,
-      'Harness',
-      harnesses.map((h) => {
-        const x = on.find((y) => y.id === h.id);
-        const where = x ? (x.installed ? `${x.version ? `${x.version} ` : ''}on ${host}` : `not on ${host}`) : '';
-        return {
-          id: h.id,
-          label: h.label,
-          sub: [where, h.meshOnly ? 'mesh models only' : ''].filter(Boolean).join(' · '),
-        };
-      }),
-      harness,
-      (id) => {
-        harness = id;
-        check();
-      },
-    );
+    const cs: Choice[] = harnesses.map((h) => {
+      const x = on.find((y) => y.id === h.id);
+      const where = x ? (x.installed ? `${x.version ? `${verOf(x.version)} ` : ''}on ${host}` : `not on ${host}`) : '';
+      return {
+        id: h.id,
+        label: h.label,
+        sub: [where, h.meshOnly ? 'mesh models only' : ''].filter(Boolean).join(' · '),
+      };
+    });
+    // the ones on the host, each brought up to date by its own updater
+    for (const h of harnesses) {
+      const x = on.find((y) => y.id === h.id);
+      if (!x?.installed) continue;
+      cs.push({
+        id: `__update:${h.id}`,
+        label: `Update ${h.label}`,
+        sub: updating.has(h.id) ? 'updating…' : x.version ? `${verOf(x.version)} now` : '',
+        off: updating.has(h.id),
+        group: `on ${host}`,
+      });
+    }
+    choose(hxChip.node, 'Harness', cs, harness, (id) => {
+      if (id.startsWith('__update:')) {
+        update(id.slice('__update:'.length));
+        return;
+      }
+      harness = id;
+      check();
+    });
   });
   modelChip.node.addEventListener('click', () => {
     const cs = modelChoices(opts, model);
@@ -484,6 +540,9 @@ export async function paintNew() {
     openLogin();
   } else prompt.focus({ preventScroll: true });
 }
+
+// a harness's version as it says it, less its own name after: 2.1.296 (Claude Code)
+const verOf = (v: string | undefined) => (v || '').replace(/\s*\([^)]*\)\s*$/, '');
 
 // a, b and c
 const listOf = (xs: string[]) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs.at(-1)}`);

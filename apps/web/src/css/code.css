@@ -1150,6 +1150,15 @@
 .cd-install-t {
   flex: 1 1 18rem;
 }
+/* how an update went: quiet when it did, red when it didn't */
+.cd-install.note {
+  border-color: var(--border);
+  background: var(--card);
+}
+.cd-install.note.bad {
+  border-color: color-mix(in srgb, var(--offmesh) 55%, var(--border));
+  background: color-mix(in srgb, var(--offmesh) 7%, var(--card));
+}
 .cd-install-out {
   flex-basis: 100%;
   color: var(--muted);

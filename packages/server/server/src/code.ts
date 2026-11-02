@@ -157,7 +157,7 @@ export async function codeRoute(c: Ctx, pathname: string, q: URLSearchParams): P
     const p = await body();
     const cr = await login(str(p.host));
     if (cr instanceof Response) return cr;
-    return reply(await code.installOf(str(p.host), cr, str(p.harness)));
+    return reply(await code.installOf(str(p.host), cr, str(p.harness), p.update === true));
   }
   if (pathname === "/api/code/ls" && meth === "GET") {
     const cr = await login(qs("host"));
