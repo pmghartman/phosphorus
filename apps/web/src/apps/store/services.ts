@@ -149,7 +149,9 @@ export function svcPick(s: StoreService, f: SvcFacts): Promise<string[]> {
     acts.append(no, go);
     const note = f.rows.length
       ? boxes.length
-        ? `Installed as your own login on each host, in ${s.checkout}, and published on the mesh desktop.`
+        ? s.docker
+          ? `Run by Docker as your own login on each host, its compose project in ${s.checkout}, and published on the mesh desktop.`
+          : `Installed as your own login on each host, in ${s.checkout}, and published on the mesh desktop.`
         : `You're logged into none of these on the desktop: log in from a host's lock in the task bar first.`
       : `${s.name} runs on ${s.os.join(', ')} hosts; the mesh has none.`;
     box.append(
@@ -251,7 +253,9 @@ export function svcRemoveAsk(s: StoreService, host: string): Promise<{ keep: boo
     const text = el(
       'p',
       '',
-      `Its unit is stopped, its entry leaves ${host}'s services.export and its checkout in ${s.checkout} is deleted.`,
+      s.docker
+        ? `Its containers are removed, its entry leaves ${host}'s services.export and ${s.checkout} is deleted.`
+        : `Its unit is stopped, its entry leaves ${host}'s services.export and its checkout in ${s.checkout} is deleted.`,
     );
     const go = Object.assign(el('button', 'danger', 'remove'), { type: 'submit' });
     const no = Object.assign(el('button', '', 'cancel'), { type: 'button' });
@@ -261,10 +265,23 @@ export function svcRemoveAsk(s: StoreService, host: string): Promise<{ keep: boo
     box.append(el('div', 'fm-ask-title', `remove ${s.name} from ${host}`), text);
     if (s.data.length) {
       const lab = el('label', 'store-pick-label');
-      lab.append(keep, el('span', '', `keep its data (${s.data.join(', ')}) aside in ${s.kept}`));
+      lab.append(
+        keep,
+        el(
+          'span',
+          '',
+          s.docker
+            ? `keep its data: its Docker volumes, and its .env in ${s.kept}`
+            : `keep its data (${s.data.join(', ')}) aside in ${s.kept}`,
+        ),
+      );
       const note = el('p', 'store-pick-note', 'put back by the next install there');
       const sync = () => {
-        note.textContent = keep.checked ? 'put back by the next install there' : 'its data goes with the checkout';
+        note.textContent = keep.checked
+          ? 'put back by the next install there'
+          : s.docker
+            ? 'its volumes are deleted with it'
+            : 'its data goes with the checkout';
         note.classList.toggle('warn', !keep.checked);
       };
       keep.addEventListener('change', sync);
@@ -306,11 +323,20 @@ export function svcInfoRows(s: StoreService, f: SvcFacts): HTMLElement {
       rel: 'noopener',
     }),
   );
-  row('installed from', 'the repository’s main, cloned on the host', 'dim');
-  if (s.data.length)
-    row('on remove', `its ${s.data.join(', ')} may be kept in ${s.kept}, back on the next install`, 'dim');
-  row('runs as', `your own login, a systemd user unit in ${s.checkout}`, 'mono');
-  row('published as', `port ${s.port}, ${s.mode} mode, in the host’s services.export`);
+  if (s.docker) {
+    row('installed from', s.docker.image, 'mono');
+    row('runs as', `Docker Compose project phos-${s.id}, in ${s.checkout}`, 'mono');
+    row('on remove', 'its volumes may be kept, back on the next install', 'dim');
+  } else {
+    row('installed from', 'the repository’s main, cloned on the host', 'dim');
+    if (s.data.length)
+      row('on remove', `its ${s.data.join(', ')} may be kept in ${s.kept}, back on the next install`, 'dim');
+    row('runs as', `your own login, a systemd user unit in ${s.checkout}`, 'mono');
+  }
+  row(
+    'published as',
+    st.meshDomain ? `${s.id}.${st.meshDomain}, from port ${s.port} on the host` : `port ${s.port}, on a path`,
+  );
   row('runs on', `${s.os.join(', ')} hosts`);
   row('needs', s.needs, 'dim');
   if (s.agents.length) row('asks models as', s.agents.join(', '), 'mono');
@@ -362,7 +388,11 @@ export function svcHostList(s: StoreService, f: SvcFacts): HTMLElement {
         acts.append(
           svcBtn(
             'update',
-            behind ? `main is ${behindWords(behind)} ahead: pull and rebuild on ${h}` : `pull main and rebuild on ${h}`,
+            s.docker
+              ? `pull its images and restart it on ${h}`
+              : behind
+                ? `main is ${behindWords(behind)} ahead: pull and rebuild on ${h}`
+                : `pull main and rebuild on ${h}`,
             () => svcAct('update', s, h),
             behind ? 'new' : '',
           ),
@@ -370,7 +400,9 @@ export function svcHostList(s: StoreService, f: SvcFacts): HTMLElement {
         acts.append(
           svcBtn(
             'remove',
-            `stop ${s.name} on ${h} and delete its checkout`,
+            s.docker
+              ? `stop ${s.name} on ${h} and remove its containers`
+              : `stop ${s.name} on ${h} and delete its checkout`,
             async () => {
               const a = await svcRemoveAsk(s, h);
               if (a) svcAct('remove', s, h, a.keep);
@@ -438,7 +470,7 @@ export function svcPage(s: StoreService): HTMLElement {
     el('span', 'store-hero-dot', '·'),
     el('span', '', s.category),
     el('span', 'store-hero-dot', '·'),
-    el('span', '', 'service'),
+    el('span', '', s.docker ? 'docker service' : 'service'),
   );
   text.append(el('h1', '', s.name), el('p', 'store-hero-tag', s.tagline), meta);
   const acts = el('div', 'store-hero-acts');
@@ -500,6 +532,7 @@ export function draw() {
     stateVars.actError,
     stateVars.busyId,
     stateVars.openId,
+    stateVars.filter,
     [...logsOpen],
     st.selfHost,
     st.acct?.admin,

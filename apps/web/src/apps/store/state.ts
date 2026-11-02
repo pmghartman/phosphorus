@@ -77,7 +77,8 @@ export interface StoreService {
   repo: string;
   icon: string;
   port: number;
-  mode: string;
+  // a Docker Compose project on the host rather than a checkout's own scripts
+  docker: { image: string } | null;
   os: string[];
   needs: string;
   agents: string[];
@@ -98,6 +99,8 @@ export const stateVars = {
   actError: '',
   // the app or service open as its own page, '' for the front
   openId: '',
+  // the front's search, over names, taglines and categories
+  filter: '',
 };
 // a service's log shown in full, by host
 export const logsOpen = new Set<string>();

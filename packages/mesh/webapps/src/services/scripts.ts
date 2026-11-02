@@ -1,11 +1,13 @@
 // the scripts, run by sh as the login in its own checkout
 import { logf as log } from "@phosphorus/util";
+import { Catalogue } from "./catalogue.ts";
 
 export const logf = (f: string, ...a: unknown[]) => log("[services] " + f, ...a);
 
 // one service the mesh can take: its repo cloned under ~/.phosphorus/services/<id>
-// on the host, the scripts run in that checkout as the login, the port and mode
-// published; the rest is what the apps page shows of it
+// on the host, the scripts run in that checkout as the login, or a Docker Compose
+// project there; the port published, its mode picked by the host (a subdomain
+// once *.<domain> reaches the mesh); the rest is what the apps page shows of it
 export type Service = {
   id: string;
   name: string;
@@ -14,27 +16,37 @@ export type Service = {
   features: string[];
   category: string;
   by: string;
-  // the GitHub repository, cloned on the host; main is what's installed and updated to
+  // the GitHub repository, cloned on the host; main is what's installed and updated to;
+  // a Docker service's project page
   repo: string;
-  // the icon's path in the repository, fetched off its main and served by the page
+  // the icon's path in the repository, fetched off its main and served by the page, or a URL
   icon: string;
   port: number;
-  mode: "path" | "subdomain";
   // the host OSes its scripts run on, as the tailnet names them
   os: string[];
   // what the host needs before an install
   needs: string;
   // under the service's root, answering {version}
-  versionPath: string;
+  versionPath?: string;
   // the agents it asks the mesh's models as, listed in the agents app while published
   agents?: string[];
   // paths in the checkout a remove may keep aside, an install restoring them
   data: string[];
-  // run by sh in the checkout: install (first time), update, remove (the unit undone)
+  // run by sh in the checkout: install (first time), update, remove (the unit undone);
+  // blank for a Docker service, its steps written from its compose file
   install: string;
   update: string;
   remove: string;
+  docker?: Docker;
 };
+
+// a Docker Compose project: the file, the .env names given random hex on its first
+// install, the app's image
+export type Docker = { compose: string; secrets: string[]; image: string };
+
+// where a step runs: the host's tailnet address its ports bind to, the mesh's domain,
+// the URL the service is opened at
+export type Where = { ip: string; domain: string; url: string };
 
 export const Services: Service[] = [
   {
@@ -54,7 +66,6 @@ export const Services: Service[] = [
     repo: "https://github.com/pmghartman/circuit",
     icon: "src-tauri/icons/icon.png",
     port: 8099,
-    mode: "path",
     os: ["linux"],
     needs: "git; Rust is installed by the build when missing (several minutes the first time)",
     versionPath: "api/version",
@@ -81,7 +92,6 @@ export const Services: Service[] = [
     repo: "https://github.com/pmghartman/tavern",
     icon: "src-tauri/icons/icon.png",
     port: 8484,
-    mode: "path",
     os: ["linux"],
     needs: "git and Node 20+ (a build toolchain when no prebuilt sqlite binary fits)",
     versionPath: "api/health",
@@ -93,6 +103,8 @@ export const Services: Service[] = [
       'systemctl --user disable --now tavern; rm -f "$HOME/.config/systemd/user/tavern.service"; systemctl --user daemon-reload',
   },
 ];
+
+Services.push(...Catalogue);
 
 export const serviceOf = (id: string) => Services.find((s) => s.id === id);
 
@@ -146,8 +158,72 @@ export const aside = (s: Service) =>
       "  done\n"
     : "";
 
+// docker as the login, or by sudo without a prompt; compose for project phos-<id>
+const dockerHead = (s: Service) =>
+  "if docker info >/dev/null 2>&1; then dk=docker\n" +
+  "elif sudo -n docker info >/dev/null 2>&1; then dk='sudo -n docker'\n" +
+  'else echo "needs Docker: add $(id -un) to the docker group, or allow it sudo without a password" >&2; exit 3; fi\n' +
+  '$dk compose version >/dev/null 2>&1 || { echo "needs Docker Compose (the docker compose plugin)" >&2; exit 3; }\n' +
+  `dc() { $dk compose -p phos-${s.id} "$@"; }\n`;
+
+// a value single-quoted for sh
+const q = (v: string) => `'${v.replace(/'/g, "'\\''")}'`;
+
+// a Docker service up: the compose file written, .env set (its secrets made once),
+// the images pulled, the project up
+function dockerUp(s: Service, d: Docker, w: Where): string {
+  const delim = "PHOS_COMPOSE_END";
+  return (
+    dockerHead(s) +
+    `cat > compose.yaml <<'${delim}'\n${d.compose}${delim}\n` +
+    "touch .env; chmod 600 .env\n" +
+    'setenv() { grep -v "^$1=" .env > .env.new || true; printf \'%s=%s\\n\' "$1" "$2" >> .env.new; mv .env.new .env; chmod 600 .env; }\n' +
+    `setenv IP ${q(w.ip)}\nsetenv PORT ${s.port}\nsetenv DOMAIN ${q(w.domain)}\nsetenv URL ${q(w.url)}\n` +
+    'setenv PUID "$(id -u)"\nsetenv PGID "$(id -g)"\n' +
+    'setenv TZ "$(cat /etc/timezone 2>/dev/null || timedatectl show -p Timezone --value 2>/dev/null || echo UTC)"\n' +
+    (d.secrets.length
+      ? `for k in ${d.secrets.join(" ")}; do grep -q "^$k=" .env || setenv "$k" "$(od -An -N32 -tx1 /dev/urandom | tr -d ' \\n')"; done\n`
+      : "") +
+    'echo "pulling the images"\n' +
+    "dc pull\n" +
+    "dc up -d --remove-orphans\n" +
+    `echo "up on ${w.ip}:${s.port}"\n`
+  );
+}
+
 // script the sh script for op on s, run on the host in its unit
-export function script(s: Service, op: Op, keep = false): string {
+export function script(s: Service, op: Op, keep = false, w: Where = { ip: "", domain: "", url: "" }): string {
+  const d = s.docker;
+  if (d) {
+    if (op !== "remove" && !w.ip) return 'echo "no tailnet address for this host" >&2; exit 2\n';
+    switch (op) {
+      case "install":
+        return head(s) + 'mkdir -p "$dir"\n' + restore(s) + 'cd "$dir"\n' + dockerUp(s, d, w);
+      case "update":
+        return (
+          head(s) +
+          '[ -f "$dir/compose.yaml" ] || { echo "nothing installed in $dir; install first" >&2; exit 2; }\n' +
+          'cd "$dir"\n' +
+          dockerUp(s, d, w)
+        );
+      case "remove":
+        return (
+          head(s) +
+          'if [ -d "$dir" ]; then\n' +
+          '  cd "$dir"\n' +
+          dockerHead(s) +
+          `  dc down${keep ? "" : " -v"} || echo "note: compose down failed; removing $dir anyway"\n` +
+          (keep ? '  echo "its volumes kept for the next install"\n' : "") +
+          "  cd /\n" +
+          (keep ? aside(s) : "") +
+          '  rm -rf "$dir"\n' +
+          '  echo "removed $dir"\n' +
+          "else\n" +
+          '  echo "nothing installed in $dir"\n' +
+          "fi\n"
+        );
+    }
+  }
   switch (op) {
     case "install":
       return (
@@ -196,7 +272,7 @@ export function script(s: Service, op: Op, keep = false): string {
 // unit of the login's own manager (linger on, so it outlives this login), or as a
 // plain background process where there's none; the unit's output to .log, its
 // exit to .exit, the checkout's commit to .commit once done
-export function launch(s: Service, op: Op, keep = false): string {
+export function launch(s: Service, op: Op, keep = false, w?: Where): string {
   const unit = unitOf(s.id);
   // the step's script as a quoted heredoc: no line of a catalogue script is this
   const delim = "PHOS_JOB_END";
@@ -208,7 +284,7 @@ export function launch(s: Service, op: Op, keep = false): string {
     `j=${svcRoot}/.jobs\n` +
     `dir=${checkoutDir(s.id)}\n` +
     'mkdir -p "$j"\n' +
-    `cat > "$j/${s.id}.sh" <<'${delim}'\n${script(s, op, keep)}${delim}\n` +
+    `cat > "$j/${s.id}.sh" <<'${delim}'\n${script(s, op, keep, w)}${delim}\n` +
     `rm -f "$j/${s.id}.exit" "$j/${s.id}.commit"\n` +
     `: > "$j/${s.id}.log"\n` +
     // the step outlives this login: linger, by the login itself or sudo without a prompt

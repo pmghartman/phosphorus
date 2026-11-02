@@ -11,7 +11,12 @@ export type Key = { name: string; label: string; hint: string; mesh: boolean };
 export const Keys: Key[] = [
   { name: "TS_AUTHKEY", label: "Tailscale auth key", hint: "reusable, expires every 90 days", mesh: false },
   { name: "BASE_DOMAIN", label: "Domain", hint: "optional, for access off the tailnet", mesh: true },
-  { name: "TUNNEL_TOKEN", label: "Cloudflare tunnel token", hint: "optional, with the domain", mesh: true },
+  {
+    name: "TUNNEL_TOKEN",
+    label: "Cloudflare tunnel token",
+    hint: "optional, with the domain; its routes <domain> and *.<domain> to http://localhost:80",
+    mesh: true,
+  },
   { name: "TS_API_KEY", label: "Tailscale API token", hint: "game split DNS, expires every 90 days", mesh: true },
   { name: "ADMIN_PASS", label: "Admin password", hint: "setup admin's login, the gate on a mesh update", mesh: true },
 ];

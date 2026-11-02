@@ -52,6 +52,25 @@
   margin: 0.25rem 0 0;
   color: var(--muted);
 }
+.store-tools {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.store-search {
+  width: min(100%, 18rem);
+  padding: 0.35rem 0.6rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.8rem;
+}
+.store-search:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+}
 .store-link {
   display: inline-flex;
   align-items: center;

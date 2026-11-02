@@ -1,10 +1,10 @@
 // a step asked: started on the host over ssh, the job noted for the mesh
-import { closeSync, openSync, readSync, statSync } from "node:fs";
+import { closeSync, existsSync, openSync, readSync, statSync } from "node:fs";
 import { join } from "node:path";
 import * as store from "@phosphorus/store";
-import { errText, now, SelfHost } from "@phosphorus/util";
+import { env, errText, now, SelfHost } from "@phosphorus/util";
 import { type Login, type Progress, seams } from "./mesh.ts";
-import { type Job, jobOf, type Record_, recordRel, writeJob } from "./records.ts";
+import { type Job, jobOf, type Record_, recordRel, records, writeJob } from "./records.ts";
 import {
   launch,
   launchTimeoutMS,
@@ -16,6 +16,7 @@ import {
   type Service,
   Services,
   serviceOf,
+  type Where,
 } from "./scripts.ts";
 import { behind } from "./versions.ts";
 
@@ -57,9 +58,16 @@ export async function ServiceOp(
     done: 0,
     error: "",
   };
+  // a Docker service binds the host's tailnet address alone, opened at its subdomain
+  const domain = env("BASE_DOMAIN");
+  const w: Where = {
+    ip: s.docker ? String((await seams.ipOf(host)) || "") : "",
+    domain,
+    url: domain ? `https://${s.id}.${domain}` : `http://${host}/${host}/${s.id}`,
+  };
   let out = "";
   try {
-    const code = await seams.run(host, login, launch(s, j.op, j.keep), (t) => void (out += t), launchTimeoutMS);
+    const code = await seams.run(host, login, launch(s, j.op, j.keep, w), (t) => void (out += t), launchTimeoutMS);
     if (code !== 0) throw new Error(`couldn't start it: ${out.trim().split("\n").at(-1) || `exit ${code}`}`);
   } catch (e) {
     return [502, { error: errText(e) }];
@@ -131,7 +139,8 @@ export async function finish(s: Service, j: Job, exit: number | undefined) {
         throw new Error(`unpublishing: ${b?.error ?? `status ${st}`}`);
       store.remove(recordRel(s.id, j.host));
     } else {
-      const [st, b] = await seams.publishLocal(s.id, { port: String(s.port), mode: s.mode });
+      // the port alone: the scheme sniffed, the mode picked by the host
+      const [st, b] = await seams.publishLocal(s.id, { port: String(s.port) });
       if (st !== 200) throw new Error(`publishing: ${b?.error ?? `status ${st}`}`);
       const commit = tailOf(join(jobsDir(j.login), s.id + ".commit"), 64).trim();
       store.write(recordRel(s.id, j.host), { login: j.login, by: j.by, at: now(), commit } satisfies Record_);
@@ -150,11 +159,39 @@ export async function finish(s: Service, j: Job, exit: number | undefined) {
 
 export let ticking: Promise<void> | undefined;
 
+// once this process has the tailnet: the Docker services installed here brought
+// up, a container that couldn't bind the tailnet address at boot started again
+let revived = false;
+async function revive() {
+  if (revived || process.platform !== "linux" || !(await seams.ipOf(SelfHost))) return;
+  revived = true;
+  for (const s of Services) {
+    if (!s.docker) continue;
+    const r = records(s.id)[SelfHost];
+    const j = jobOf(s.id, SelfHost);
+    if (!r || (j && !j.done)) continue;
+    const dir = join(seams.homeOf(r.login), ".phosphorus", "services", s.id);
+    if (!existsSync(join(dir, "compose.yaml"))) continue;
+    try {
+      const p = Bun.spawn(["docker", "compose", "-p", `phos-${s.id}`, "up", "-d"], {
+        cwd: dir,
+        stdout: "ignore",
+        stderr: "pipe",
+      });
+      const code = await p.exited;
+      if (code !== 0) logf("%s up after a start: %s", s.name, (await new Response(p.stderr).text()).trim());
+    } catch (e) {
+      logf("%s up after a start: %s", s.name, errText(e));
+    }
+  }
+}
+
 // tick the steps under way on this host: one that ended finished, one past its
 // time failed
 export function tick(): Promise<void> {
   return (ticking ??= (async () => {
     if (!SelfHost) return;
+    await revive();
     for (const s of Services) {
       const j = jobOf(s.id, SelfHost);
       if (!j || j.done) continue;

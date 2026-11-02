@@ -13,9 +13,20 @@ process.env.SERVICES_FIND_MS = "0";
 // proxy's domain is fixed on its first import: the one its own test expects
 process.env.BASE_DOMAIN ??= "mulab.dev";
 mkdirSync(process.env.STATE_DIR);
-const { health, nameFrom, own, pagesOn, parse, portsOf, refresh, setPending, setPublic, tunnelID } = await import(
-  "@phosphorus/services"
-);
+const {
+  adopt,
+  health,
+  nameFrom,
+  own,
+  pagesOn,
+  parse,
+  portsOf,
+  refresh,
+  removedPorts,
+  setPending,
+  setPublic,
+  tunnelID,
+} = await import("@phosphorus/services");
 // util's StateDir is fixed on its first import, another test's in a whole run
 const { StateDir } = await import("@phosphorus/util");
 
@@ -133,7 +144,7 @@ test("refresh and health", async () => {
   expect(rows.map((r) => r.name)).toEqual(want);
   expect(rows[1]!.status).toBe("offline");
   // the scheme sniffed, the mode a path while *.<domain> isn't known to answer
-  expect(rows[0]).toEqual({ name: "web", port: srv.port, scheme: "http", mode: "path", base_path: "" });
+  expect(rows[0]).toEqual({ name: "web", port: srv.port, scheme: "http", mode: "path", base_path: "", auto: true });
   if (git)
     expect(rows[2]).toEqual({
       name: "git",
@@ -227,6 +238,24 @@ port = 1
     ].sort((a, b) => a.port - b.port),
   );
   for (const s of [page, api, bare, taken]) s.stop(true);
+});
+
+test("found pages written in, a removed one left alone", async () => {
+  writeFileSync(file, "[web]\nport = 1\n");
+  await refresh("127.0.0.1");
+  const jelly = { port: 9101, scheme: "http", title: "Jelly", name: "jelly" };
+  expect(adopt([jelly])).toEqual([jelly]);
+  expect(readFileSync(file, "utf8")).toBe("[web]\nport = 1\n\n# found by phosphorus: Jelly\n[jelly]\nport = 9101\n");
+  await refresh("127.0.0.1");
+  // taken out: remembered, not written back, and forgotten once named again
+  writeFileSync(file, "[web]\nport = 1\n");
+  await refresh("127.0.0.1");
+  expect(removedPorts().has(9101)).toBe(true);
+  expect(adopt([jelly])).toEqual([]);
+  expect(readFileSync(file, "utf8")).toBe("[web]\nport = 1\n");
+  writeFileSync(file, "[web]\nport = 1\n[mine]\nport = 9101\n");
+  await refresh("127.0.0.1");
+  expect(removedPorts().has(9101)).toBe(false);
 });
 
 test("tunnel id", () => {

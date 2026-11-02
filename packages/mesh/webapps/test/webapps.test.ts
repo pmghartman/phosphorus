@@ -342,9 +342,9 @@ function ended(login: string, id: string, exit: number, log: string, commit = ""
 }
 
 test("the catalogue: circuit and tavern as services, their scripts in the login's own checkout", () => {
-  expect(W.Services.map((s) => [s.id, s.port, s.mode, s.os, s.data])).toEqual([
-    ["circuit", 8099, "path", ["linux"], []],
-    ["tavern", 8484, "path", ["linux"], ["data", ".env"]],
+  expect(W.Services.slice(0, 2).map((s) => [s.id, s.port, s.os, s.data])).toEqual([
+    ["circuit", 8099, ["linux"], []],
+    ["tavern", 8484, ["linux"], ["data", ".env"]],
   ]);
   expect(W.svcRepoOf(circuit)).toEqual({ owner: "pmghartman", name: "circuit" });
   const inst = W.svcScript(circuit, "install");
@@ -373,6 +373,37 @@ test("the catalogue: circuit and tavern as services, their scripts in the login'
   expect(l).toContain("nohup setsid");
   expect(l).toContain("loginctl enable-linger");
   expect(l).toContain('git -C "$4" rev-parse HEAD >"$5"');
+});
+
+test("the Docker catalogue: a hundred, each its own port, a compose project as the login", () => {
+  const docker = W.Services.filter((s) => s.docker);
+  expect(docker.length).toBe(100);
+  expect(new Set(W.Services.map((s) => s.id)).size).toBe(W.Services.length);
+  expect(new Set(W.Services.map((s) => s.port)).size).toBe(W.Services.length);
+  const jf = W.serviceOf("jellyfin")!;
+  expect(jf.port).toBe(18100);
+  expect(jf.docker!.compose).toContain('      - "${IP}:${PORT}:8096"');
+  expect(jf.docker!.compose).toContain("      - config:/config");
+  expect(jf.docker!.compose.endsWith("volumes:\n  config:\n  cache:\n  media:\n")).toBe(true);
+  const w = { ip: "100.64.0.9", domain: "mulab.dev", url: "https://jellyfin.mulab.dev" };
+  const inst = W.svcScript(jf, "install", false, w);
+  expect(inst).toContain("cat > compose.yaml <<'PHOS_COMPOSE_END'");
+  expect(inst).toContain("setenv IP '100.64.0.9'");
+  expect(inst).toContain("setenv PORT 18100");
+  expect(inst).toContain("dc() { $dk compose -p phos-jellyfin");
+  expect(inst).toContain("dc up -d --remove-orphans");
+  expect(inst).not.toContain("git clone");
+  // no tailnet address, nothing started
+  expect(W.svcScript(jf, "install")).toContain("no tailnet address");
+  // secrets made once, kept in .env
+  const im = W.svcScript(W.serviceOf("immich")!, "update", false, w);
+  expect(im).toContain('for k in DB_SECRET; do grep -q "^$k=" .env');
+  expect(W.serviceOf("immich")!.docker!.compose).toContain("  db:\n");
+  // a remove downs the project, its volumes too unless kept
+  expect(W.svcScript(jf, "remove")).toContain("dc down -v");
+  const keep = W.svcScript(jf, "remove", true);
+  expect(keep).toContain("dc down ||");
+  expect(keep).toContain("for p in .env; do");
 });
 
 test("an op refused: no such service, a bad op, a host that isn't one, the wrong os, no login", async () => {
@@ -417,7 +448,7 @@ test("install: started on the host as the login, the job noted for the mesh, thi
   ended("pat", "circuit", 0, "cloning\nbuilding\ndone\n", "abcdef0123456789");
   ahead.abcdef0123456789 = 3;
   await W.svcTick();
-  expect(published).toEqual([["circuit", { port: "8099", mode: "path" }]]);
+  expect(published).toEqual([["circuit", { port: "8099" }]]);
   expect(W.svcRecordOf("circuit", "a")).toMatchObject({ login: "pat", by: "pmh", commit: "abcdef0123456789" });
   const j = W.svcJobOf("circuit", "a")!;
   expect([j.ok, j.error, j.done > 0]).toEqual([true, "", true]);
@@ -428,7 +459,7 @@ test("install: started on the host as the login, the job noted for the mesh, thi
   expect(s.checkout).toBe("~/.phosphorus/services/circuit");
   // the page's summary carries them beside the apps
   const all = await W.summary(false);
-  expect(all.services.map((x: any) => x.id)).toEqual(["circuit", "tavern"]);
+  expect(all.services.map((x: any) => x.id).slice(0, 3)).toEqual(["circuit", "tavern", "jellyfin"]);
 });
 
 test("a failing script: the job failed with the exit, nothing published; tried again once done", async () => {

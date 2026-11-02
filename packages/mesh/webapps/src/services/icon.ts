@@ -35,7 +35,12 @@ export async function RepoIcon(s: {
   icon: string;
 }): Promise<{ data: Uint8Array; type: string } | undefined> {
   const repo = repoOf(s);
-  if (!repo || !s.icon) return;
+  const url = /^https:\/\//.test(s.icon)
+    ? s.icon
+    : repo
+      ? `https://raw.githubusercontent.com/${repo.owner}/${repo.name}/main/${s.icon}`
+      : "";
+  if (!url) return;
   const ext = (/\.[a-z0-9]+$/i.exec(s.icon)?.[0] ?? ".png").toLowerCase();
   const type = iconTypes[ext] ?? "application/octet-stream";
   const file = join(iconDir(), s.id + ext);
@@ -47,9 +52,7 @@ export async function RepoIcon(s: {
     let p = iconFetching.get(s.id);
     if (!p) {
       p = (async () => {
-        const got = await seams.fetchBytes(
-          `https://raw.githubusercontent.com/${repo.owner}/${repo.name}/main/${s.icon}`,
-        );
+        const got = await seams.fetchBytes(url);
         if (!got || !got.data.length) return;
         mkdirSync(iconDir(), { recursive: true });
         writeFileSync(file, got.data);

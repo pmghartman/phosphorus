@@ -11,6 +11,7 @@ export async function versionOf(s: Service, r: Route): Promise<string> {
   const key = s.id + "/" + host;
   const cur = versions.get(key);
   if (cur && now() - cur.at < versionTTL) return cur.v;
+  if (!s.versionPath) return "";
   let v = "";
   try {
     const ip = (await seams.ipOf(host)) || host;

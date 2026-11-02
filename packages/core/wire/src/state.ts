@@ -18,6 +18,8 @@ export interface Route {
   type?: string;
   // subdomain or path for a service, game for a game server
   mode?: string;
+  // the mode picked by its host, services.export leaving it blank
+  auto?: boolean;
   base_path?: string;
   port?: number;
   scheme?: string;

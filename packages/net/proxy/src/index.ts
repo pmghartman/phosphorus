@@ -53,6 +53,21 @@ export function rowError(r: Row | undefined | null): string {
   return "";
 }
 
+// a subdomain a host picked on its own (auto) yields to one a services.export
+// asks for by name, then to the first host's in rows' order: the later on a
+// path instead, each host settling the same merged rows the same way
+export function settle(rows: Row[]): Row[] {
+  const asked = new Set(rows.filter((r) => r.mode === "subdomain" && r.auto !== true).map((r) => String(r.name)));
+  const taken = new Set<string>();
+  return rows.map((r) => {
+    if (r.mode !== "subdomain" || r.auto !== true) return r;
+    const name = String(r.name);
+    if (asked.has(name) || taken.has(name)) return { ...r, mode: "path" };
+    taken.add(name);
+    return r;
+  });
+}
+
 // --- routing table ---------------------------------------------------------
 
 // one served destination

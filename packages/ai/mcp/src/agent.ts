@@ -183,7 +183,8 @@ export const agentTools = (): Tool[] => [
     description:
       "Publish, change or remove a service in a host's services.export, as the terminal UI's form does, the whole file " +
       "checked before it's written and live within seconds. fields only change the keys given; a blank value drops one. " +
-      "Web: port (required), scheme http|https (blank: sniffed), mode path|subdomain (blank: a subdomain once *.<domain> reaches the mesh, else a path), base_path, public true. Game: type game, port, start and stop commands. Admins only.",
+      "Pages listening on a host are published on their own, port alone; edit only to change or remove one (removed stays removed). " +
+      "Web: port (required), scheme http|https (blank: sniffed), mode path|subdomain (blank: a subdomain once *.<domain> reaches the mesh, a path when another host has the name), base_path, public true. Game: type game, port, start and stop commands. Admins only.",
     schema: object(
       {
         host: name,

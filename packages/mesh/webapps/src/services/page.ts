@@ -54,7 +54,7 @@ export async function summary(): Promise<any[]> {
         repo: s.repo,
         icon: iconPath(s.id),
         port: s.port,
-        mode: s.mode,
+        docker: s.docker ? { image: s.docker.image } : null,
         os: s.os,
         needs: s.needs,
         agents: s.agents ?? [],

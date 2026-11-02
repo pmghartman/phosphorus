@@ -3,7 +3,7 @@
 // happen, and the views the rest of the host reads: routes, devices, locks,
 // the git and model states of live peers
 import { join } from "node:path";
-import { pinTargets, type Row, rowError, swap } from "@phosphorus/proxy";
+import { pinTargets, type Row, rowError, settle, swap } from "@phosphorus/proxy";
 import { refresh } from "@phosphorus/services";
 import * as store from "@phosphorus/store";
 import {
@@ -556,7 +556,7 @@ async function tick() {
     hot = true;
     pushState();
   }
-  const merged = [...ownRows];
+  let merged = [...ownRows];
   for (const h of upHosts()) {
     const s = infos.get(h)!;
     const published = hooks.hostServices(h);
@@ -564,6 +564,7 @@ async function tick() {
   }
   const hostOfRow = (r: Row) => (typeof r.host === "string" ? r.host : "");
   merged.sort((a, b) => localeCompare(hostOfRow(a), hostOfRow(b)) || localeCompare(jsString(a.name), jsString(b.name)));
+  merged = settle(merged);
   if (marshal(merged) !== marshal(curRoutes)) hot = true;
   curRoutes = merged;
   const hosts = upHosts();

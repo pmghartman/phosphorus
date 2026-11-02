@@ -53,7 +53,8 @@ test("http smoke", async () => {
     expect((await fetch(base + "/api/ping/testhost")).status).toBe(204);
     // the apps page: services beside the apps; a service's step needs a login, admin or not
     const apps = await (await fetch(base + "/api/apps")).json();
-    expect(apps.services.map((x: any) => x.id)).toEqual(["circuit", "tavern"]);
+    expect(apps.services.map((x: any) => x.id).slice(0, 2)).toEqual(["circuit", "tavern"]);
+    expect(apps.services.length).toBe(102);
     const svc = await fetch(base + "/api/apps/services/install", {
       method: "POST",
       headers: { "content-type": "application/json" },

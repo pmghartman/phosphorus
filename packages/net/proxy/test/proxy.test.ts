@@ -3,6 +3,28 @@ import { expect, test } from "bun:test";
 process.env.BASE_DOMAIN = "mulab.dev";
 const { frameable, reverseLocation } = await import("@phosphorus/proxy");
 
+test("settle", async () => {
+  const { settle } = await import("@phosphorus/proxy");
+  const row = (host: string, name: string, mode: string, auto?: boolean) => ({
+    host,
+    name,
+    port: 1,
+    scheme: "http",
+    mode,
+    ...(auto ? { auto } : {}),
+  });
+  // an asked-for subdomain keeps its name; of two picked ones the first host's does
+  expect(
+    settle([
+      row("a", "lab", "subdomain", true),
+      row("b", "lab", "subdomain"),
+      row("a", "sun", "subdomain", true),
+      row("b", "sun", "subdomain", true),
+      row("c", "own", "path"),
+    ]).map((r) => `${r.host}/${r.name}:${r.mode}`),
+  ).toEqual(["a/lab:path", "b/lab:subdomain", "a/sun:subdomain", "b/sun:path", "c/own:path"]);
+});
+
 test("frameable", () => {
   expect(frameable("frame-ancestors 'none';")).toBe("frame-ancestors 'self' https://mulab.dev");
   expect(frameable("default-src 'self'; FRAME-ANCESTORS 'none'; img-src *")).toBe(

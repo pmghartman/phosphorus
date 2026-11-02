@@ -1,6 +1,7 @@
 // this host's own services, services.export validated whole or not at all,
 // health checked, live ones, games and git published; a blank scheme sniffed,
 // a blank mode a subdomain once *.<domain> answers; pages it doesn't name found
+// and written in on their own, a section taken out not written back
 import { readFileSync } from "node:fs";
 import { connect } from "node:net";
 import { join } from "node:path";
@@ -29,6 +30,8 @@ export type { Row };
 
 const servicesFile = env("SERVICES_FILE", join(RepoDir, "config", "services.export"));
 const gitRoleFile = join(StateDir, "git-role");
+// the ports of sections taken out of services.export, a found page there left alone
+const removedFile = join(StateDir, "services-removed");
 const notes = new Notes("services");
 const keys = new Set(["port", "scheme", "mode", "base_path", "extras", "type", "start", "stop", "public"]);
 const headRe = /^\[\s*(.*?)\s*\]$/;
@@ -116,6 +119,32 @@ export function parse(text: string): [Row[], string] {
 
 let text: string | undefined;
 let declared: Row[] = [];
+// a good read had: the first one's sections aren't news
+let read = false;
+
+// the ports taken out of services.export, kept across restarts
+export function removedPorts(): Set<number> {
+  try {
+    const a = JSON.parse(readFileSync(removedFile, "utf8"));
+    return new Set(Array.isArray(a) ? a.filter((p) => Number.isInteger(p)) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+// a port no section names any more remembered, one named again forgotten
+function remember(before: Row[], after: Row[]) {
+  const now = new Set(after.map((r) => r.port as number));
+  const set = removedPorts();
+  const size = set.size;
+  let changed = false;
+  for (const r of before) if (!now.has(r.port as number)) set.add(r.port as number);
+  for (const p of now) if (set.delete(p)) changed = true;
+  if (!changed && set.size === size) return;
+  try {
+    writeFileAtomic(removedFile, JSON.stringify([...set].sort((a, b) => a - b)) + "\n");
+  } catch {}
+}
 
 function readDeclared() {
   let t: string;
@@ -136,6 +165,8 @@ function readDeclared() {
     return;
   }
   notes.note("parse", `${servicesFile} read: ${rows.length} declared`);
+  if (read) remember(declared, rows);
+  read = true;
   declared = rows;
   notes.reset("svc:");
 }
@@ -260,7 +291,8 @@ function webRow(r: Row, ip: string): Row | undefined {
     const scheme = want || sniffed.get(port) || "http";
     const mode = modeOf(r);
     notes.note("svc:" + name, `${name} is up on port ${port}, published (${scheme}, ${mode})`);
-    return { ...r, scheme, mode };
+    // auto: the mode picked here, a subdomain yielding to one asked for by name (proxy settle)
+    return r.mode ? { ...r, scheme, mode } : { ...r, scheme, mode, auto: true };
   }
   notes.note("svc:" + name, `${name} is not answering on port ${port}, not published`);
   return;
@@ -310,6 +342,8 @@ export type Found = { port: number; scheme: string; title: string; name: string 
 
 // 0 for no scan
 const findMS = envInt("SERVICES_FIND_MS", 60_000);
+// 0: found pages only offered, an admin writing each in from the desktop
+const autoPublish = env("SERVICES_AUTO", "1") !== "0";
 const findMax = 200;
 const findAtOnce = 8;
 const titleRe = /<title[^>]*>([^<]*)<\/title>/i;
@@ -403,10 +437,47 @@ export async function pagesOn(ip: string, ports: Iterable<number>): Promise<Foun
   return out;
 }
 
+// found pages written into services.export, their ports alone: the scheme
+// sniffed, the mode picked, behind the phosphorus login; those whose section was
+// taken out left alone, still offered. The ones written
+export function adopt(pages: Found[]): Found[] {
+  const removed = removedPorts();
+  const todo = pages.filter((f) => !removed.has(f.port));
+  if (!todo.length) return [];
+  let t: string;
+  try {
+    t = readFileSync(servicesFile, "utf8");
+  } catch {
+    return [];
+  }
+  let next = t && !t.endsWith("\n") ? t + "\n" : t;
+  for (const f of todo)
+    next += `\n# found by phosphorus: ${f.title.replace(/[\r\n]+/g, " ")}\n[${f.name}]\nport = ${f.port}\n`;
+  const why = parse(next)[1];
+  if (why) {
+    notes.note("adopt", `found pages not written: ${why}`);
+    return [];
+  }
+  try {
+    writeFileAtomic(servicesFile, next);
+  } catch (e) {
+    notes.note("adopt", "found pages not written: " + errText(e));
+    return [];
+  }
+  notes.clear("adopt");
+  notes.log(`published what was found listening: ${todo.map((f) => `${f.name} (:${f.port})`).join(", ")}`);
+  markHot();
+  return todo;
+}
+
 async function find(ip: string) {
   const open = await listening(ip);
   if (!open) return;
-  const out = await pagesOn(ip, open);
+  let out = await pagesOn(ip, open);
+  if (autoPublish) {
+    const took = new Set(adopt(out).map((f) => f.port));
+    out = out.filter((f) => !took.has(f.port));
+  }
   if (marshal(out) !== marshal(found)) {
     found = out;
     notes.note("found", `found ${out.length} unpublished page${out.length === 1 ? "" : "s"}`);
