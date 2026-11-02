@@ -4,7 +4,6 @@
 import type { Me, UserRow } from '@phosphorus/wire';
 import { appCall } from '../apps/index.ts';
 import { dkArt, dkDesktop, dkIcons, dkLayout, dkLogout, dkTermDrop, dkWallPaint } from '../desktop/desk.ts';
-import { EDITORS, editorPref } from '../desktop/deskfiles.ts';
 import { DK_USERS_KEY, dkLogin, dkProbe, dkUsers } from '../desktop/login.ts';
 import { dkAnchor, dkBar, dkChips, dkPopsClose, type Pop } from '../desktop/taskbar.ts';
 import { dkClose, dkFocus, dkSize, dkWin } from '../desktop/windows.ts';
@@ -570,16 +569,6 @@ export function dkProfileWin(): void {
       }
     });
 
-    // the editor files open in, picked on the apps page, which installs sulfur when it must
-    const ed = el('div', 'dk-row acct-editor');
-    const edGo = Object.assign(el('button', '', 'change'), { type: 'button', title: 'on the apps page' });
-    edGo.addEventListener('click', () => appCall('store', true, (m) => m.storeShow('sulfur')));
-    ed.append(
-      el('span', 'dk-host', EDITORS.find(([id]) => id === editorPref())![1]),
-      el('span', 'dk-state', editorPref() ? 'an app on the mesh' : 'the desktop’s own'),
-      edGo,
-    );
-
     body.replaceChildren(
       el('div', 'dk-pick-head', 'hosts'),
       hosts,
@@ -587,8 +576,6 @@ export function dkProfileWin(): void {
       pages,
       pRow,
       opts,
-      el('div', 'dk-pick-head', 'editor'),
-      ed,
       el('div', 'dk-pick-head', 'password'),
       pw,
       pwWhy,

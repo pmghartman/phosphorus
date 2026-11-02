@@ -70,30 +70,8 @@ export const firstParty = (
   ...a,
 });
 
-export const Catalog: App[] = [
-  {
-    id: "sulfur",
-    name: "Sulfur",
-    tagline: "a code editor for distributed systems",
-    about:
-      "Feels like VS Code: palette, completion, extensions from Open VSX, themes. Every host's files and the merged home, live collaboration on every file, terminals, builds, git and SQLite on any machine, and language servers for ten languages, run on the host that has the toolchain.",
-    features: [
-      "live collaboration on every file",
-      "terminals, builds and git on any host",
-      "language servers native for ten languages",
-      "extensions from Open VSX",
-      "a chat and inline completions on the mesh's models",
-    ],
-    category: "developer tools",
-    by: "rpmull",
-    repo: "https://github.com/rpmull/sulfur",
-    feed: env("SULFUR_FEED_URL", "https://github.com/rpmull/sulfur/releases/download/update/sulfur-web.json"),
-    mount: "/sulfur/",
-    icon: "/sulfur/icon.svg",
-    repoIcon: "web/static/sulfur/icon.svg",
-    agents: ["agent-sulfur", "agent-sulfur-fast"],
-  },
-];
+// the optional apps the mesh can take; each adds its firstParty() entry here
+export const Catalog: App[] = [];
 
 export const appOf = (id: string) => Catalog.find((a) => a.id === id);
 
@@ -480,7 +458,7 @@ const types: Record<string, string> = {
 // a content-hashed name, kept for good
 const hashedRe = /[-.][A-Za-z0-9_-]{8,}\.(js|css|woff2?)$/;
 
-// the mount's folder in the tarball: /sulfur/ is sulfur/
+// the mount's folder in the tarball: /app/code/ is app/code/
 const mountDir = (app: App) => app.mount.replace(/^\/+|\/+$/g, "");
 
 // a request path as a clean relative path, undefined when it escapes

@@ -78,7 +78,7 @@ function hits(): Hit[] {
   add(G.code!, 'code', '', 'app', 'claude opencode agent sessions', () => dkOpenApp('code'));
   add(G.agents!, 'agents', '', 'app', 'models assign', () => dkOpenApp('agents'));
   add(G.games!, 'game servers', '', 'app', 'games play', () => dkOpenApp('games'));
-  add(G.apps!, 'apps', '', 'app', 'install store extras sulfur editor', () => dkOpenApp('apps'));
+  add(G.apps!, 'apps', '', 'app', 'install store services extras', () => dkOpenApp('apps'));
   add(G.about!, 'about', '', 'app', 'version license', () => dkOpenApp('about'));
   for (const a of dkWebApps()) add(G.app!, a.id, `v${a.want.version}`, 'app', 'editor code app', () => dkWebApp(a.id));
   for (const r of dk.services)

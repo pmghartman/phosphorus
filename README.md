@@ -39,7 +39,6 @@ Off by default. An admin installs them from the Apps page, and every host serves
 
 | App | What it does | Status |
 |---|---|---|
-| Sulfur | A code editor for the whole mesh, by [rpmull](https://github.com/rpmull/sulfur) | available |
 | Code | Claude Code or opencode sessions on any host | moving out of the core |
 | Chat | Mesh-wide chat with channels and direct messages | moving out of the core |
 | Git | A Forgejo server for the mesh, with failover | moving out of the core |

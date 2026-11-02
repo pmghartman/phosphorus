@@ -2,7 +2,6 @@
 
 import type { Route } from '@phosphorus/wire';
 import { dkService } from '../../desktop/desk.ts';
-import { editorPref } from '../../desktop/deskfiles.ts';
 import { jsonPost } from '../../lib/api.ts';
 import { DK_UI, dkGlyph, el } from '../../lib/dom.ts';
 import { dk, st } from '../../lib/state.ts';
@@ -630,7 +629,6 @@ export function draw() {
     st.selfHost,
     st.acct?.admin,
     st.hostsInfo,
-    editorPref(),
     [...dk.creds.keys()],
     dk.services.map((r) => [r.host, r.name]),
     (st.lastState?.tailnet || []).map((d) => [d.name, d.phosphorus, d.os]),

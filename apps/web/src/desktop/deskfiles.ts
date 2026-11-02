@@ -28,7 +28,7 @@ import { jsonPost } from '../lib/api.ts';
 import { DK_GLYPHS, DK_UI, dkGlyph, el } from '../lib/dom.ts';
 import { dk, PREF_LS, st } from '../lib/state.ts';
 import { shQuote } from '../lib/util.ts';
-import { dkIcon, dkIcons, dkLiveHosts, dkMenuNote, dkSulfurOpen, dkTerminal, type MenuItem } from './desk.ts';
+import { dkIcon, dkIcons, dkLiveHosts, dkMenuNote, dkTerminal, type MenuItem } from './desk.ts';
 import { dkFocus, dkNav, dkSize, dkWin, type NavFrame } from './windows.ts';
 
 export const dkDeskDirs = () => (st.acct && !st.acct.boot ? [`${st.acct.user}/Desktop`, 'shared/Desktop'] : []);
@@ -300,28 +300,7 @@ export async function fileThere(f: FileRef): Promise<boolean> {
   }
 }
 
-// the editor a file opens in: '' the built-in one, else an installed app's id (sulfur); a
-// setting kept with the user's others on every host
-export const EDITORS: [string, string][] = [
-  ['', 'built-in'],
-  ['sulfur', 'sulfur'],
-];
-export function editorPref(): string {
-  let v = '';
-  try {
-    v = localStorage.getItem(PREF_LS.editor!) || '';
-  } catch {}
-  return EDITORS.some(([id]) => id === v) ? v : '';
-}
-export function setEditorPref(id: string): void {
-  try {
-    if (id) localStorage.setItem(PREF_LS.editor!, id);
-    else localStorage.removeItem(PREF_LS.editor!);
-  } catch {}
-}
-
-// a file to edit, refused with a note when it's gone; in sulfur when it's the editor picked
-// and this host serves it, the built-in one otherwise
+// a file to edit, refused with a note when it's gone
 export async function dkCode(f: FileRef): Promise<void> {
   if (!(await fileThere(f))) {
     dkMenuNote(`${f.path.split('/').pop()} is gone`);
@@ -330,10 +309,6 @@ export async function dkCode(f: FileRef): Promise<void> {
   if (st.acct?.boot) {
     dkMenuNote('make your own account to edit files');
     return;
-  }
-  if (editorPref() === 'sulfur') {
-    if (dkSulfurOpen(f)) return;
-    dkMenuNote('sulfur isn’t on this host yet; the built-in editor for now');
   }
   dkEditor(f);
 }

@@ -11,8 +11,18 @@ const store = await import("@phosphorus/store");
 const { allTools } = await import("@phosphorus/mcp");
 const A = await import("../src/apps.ts");
 
-const sulfur = W.appOf("sulfur")!;
-W.Catalog.push({ ...sulfur, id: "demo", name: "Demo", mount: "/app/demo/", agents: [], server: true, key: "x" });
+W.Catalog.push(
+  W.firstParty({
+    id: "demo",
+    name: "Demo",
+    tagline: "",
+    about: "",
+    features: [],
+    category: "",
+    server: true,
+    key: "x",
+  }),
+);
 
 const appDir = join(process.env.STATE_DIR!, "apps", "demo");
 

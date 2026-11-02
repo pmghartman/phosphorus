@@ -540,15 +540,6 @@ const apps: (Agent & { service?: string; app?: string })[] = [
     fast: false,
     service: "tavern",
   },
-  {
-    id: "sulfur",
-    label: "Sulfur",
-    about: "the editor's chat, asking as agent-sulfur; its inline completions as agent-sulfur-fast",
-    parent: "",
-    tier: "large",
-    fast: true,
-    app: "sulfur",
-  },
 ];
 
 // whether a service of that name is published on the mesh, and whether an app is

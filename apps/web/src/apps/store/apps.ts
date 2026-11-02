@@ -2,7 +2,6 @@
 
 import type { AppStatus, AppWant } from '@phosphorus/wire';
 import { dkWebApp } from '../../desktop/desk.ts';
-import { editorPref, setEditorPref } from '../../desktop/deskfiles.ts';
 import { DK_UI, dkGlyph, el, pageAsk } from '../../lib/dom.ts';
 import { st } from '../../lib/state.ts';
 import { ago2, newerVersion } from '../../lib/util.ts';
@@ -191,56 +190,6 @@ export function hostList(a: StoreApp, f: Facts): HTMLElement {
   return list;
 }
 
-// the editor files open in: the desktop's own, or sulfur, got for the mesh by picking it when
-// no host has it yet; the choice kept with the user's settings on every host
-export function editorOption(a: StoreApp, f: Facts): HTMLElement {
-  const row = el('div', 'store-option');
-  const text = el('div', 'store-option-text');
-  const now = editorPref();
-  text.append(
-    el('b', '', 'default editor'),
-    el(
-      'span',
-      'store-option-sub',
-      now === 'sulfur'
-        ? f.here
-          ? 'files on the desktop open in Sulfur'
-          : f.want
-            ? 'files open in Sulfur once this host has it; the built-in editor until then'
-            : 'files open in Sulfur once it’s on the mesh'
-        : 'files on the desktop open in the built-in editor',
-    ),
-  );
-  const seg = el('div', 'store-seg');
-  for (const [id, label] of [
-    ['', 'built-in'],
-    ['sulfur', 'Sulfur'],
-  ] as [string, string][]) {
-    const b = Object.assign(el('button', `store-seg-btn${now === id ? ' on' : ''}`, label), {
-      type: 'button',
-      ariaPressed: String(now === id),
-    });
-    b.addEventListener('click', () => {
-      if (editorPref() === id) return;
-      setEditorPref(id);
-      stateVars.actError = '';
-      // sulfur picked before any host has it: got for the mesh, as the pill would
-      if (id === 'sulfur' && !f.want) {
-        if (st.acct?.admin) {
-          act('/api/apps/install', a.id);
-          return;
-        }
-        stateVars.actError = 'Sulfur isn’t on the mesh yet: an admin gets it here; the built-in editor until then';
-      }
-      stateVars.sig = '';
-      draw();
-    });
-    seg.append(b);
-  }
-  row.append(text, seg);
-  return row;
-}
-
 export function page(a: StoreApp): HTMLElement {
   const f = facts(a);
   const admin = !!st.acct?.admin;
@@ -281,11 +230,6 @@ export function page(a: StoreApp): HTMLElement {
     aboutSec.append(ul);
   }
   main.append(aboutSec);
-  if (a.id === 'sulfur') {
-    const opt = el('section', 'store-sec');
-    opt.append(el('h2', '', 'options'), editorOption(a, f));
-    main.append(opt);
-  }
   const hostsSec = el('section', 'store-sec');
   const hh = el('h2', '', 'on the mesh');
   if (f.want) hh.append(el('span', 'store-count', f.on === f.all ? 'every host' : `${f.on} of ${f.all} hosts`));

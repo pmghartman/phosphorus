@@ -5,7 +5,6 @@ import { noteAdd } from '../../features/notes.ts';
 import { DK_UI, dkGlyph, el } from '../../lib/dom.ts';
 import { dk, st } from '../../lib/state.ts';
 import { PALETTE_EVENT } from '../../lib/theme.ts';
-import { type FileRef } from '../deskfiles.ts';
 import { type DkWin, dkFocus, dkNav, dkSize, dkWin, type NavFrame } from '../windows.ts';
 import { dkOpenTerminal } from './windows.ts';
 
@@ -74,7 +73,7 @@ function bridge(w: DkWin, frame: HTMLIFrameElement) {
   };
 }
 
-// the app's window, the page's url carrying query when given (a file for sulfur to open)
+// the app's window, the page's url carrying query when given
 export function dkWebApp(id: string, query?: Record<string, string>): DkWin | undefined {
   const a = dkWebApps().find((x) => x.id === id);
   if (!a) return;
@@ -106,18 +105,4 @@ export function dkWebApp(id: string, query?: Record<string, string>): DkWin | un
   };
   dkFocus(w);
   return w;
-}
-
-// a file opened in sulfur: its window made on the file, or the one up told of it; false when
-// this host doesn't serve sulfur
-export function dkSulfurOpen(f: FileRef): boolean {
-  if (!dkWebApps().some((a) => a.id === 'sulfur')) return false;
-  const o = { host: f.host, share: String(f.share || 'home'), path: f.path };
-  const w = dk.wins.get('webapp:sulfur');
-  if (w?.frame) {
-    w.frame.contentWindow?.postMessage({ t: 'sulfur-open', ...o }, location.origin);
-    dkFocus(w);
-    return true;
-  }
-  return !!dkWebApp('sulfur', o);
 }

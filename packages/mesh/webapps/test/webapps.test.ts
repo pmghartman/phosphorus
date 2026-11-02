@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { App } from "@phosphorus/webapps";
 
 const dir = mkdtempSync(join(tmpdir(), "phos-apps-"));
 process.env.HOME_FS = join(dir, "homefs");
@@ -13,7 +14,21 @@ process.env.SELF_HOST = "a";
 const store = await import("@phosphorus/store");
 const W = await import("@phosphorus/webapps");
 
-const sulfur = W.appOf("sulfur")!;
+// a web-only app for these tests, taken on its hash
+const pad: App = W.firstParty({
+  id: "pad",
+  name: "Pad",
+  tagline: "a test page",
+  about: "",
+  features: [],
+  category: "tools",
+  repo: "https://github.com/example/pad",
+  mount: "/pad/",
+  icon: "/pad/icon.svg",
+  repoIcon: "web/static/pad/icon.svg",
+  key: "",
+});
+W.Catalog.push(pad);
 
 // a gzipped ustar of files: name -> text
 function tarGz(files: Record<string, string>): Uint8Array<ArrayBuffer> {
@@ -44,9 +59,9 @@ const sha256 = (b: Uint8Array) => createHash("sha256").update(b).digest("hex");
 
 const page = (v: string) =>
   tarGz({
-    "./sulfur/index.html": `<!doctype html><title>sulfur ${v}</title>`,
-    "./sulfur/assets/main-abcdef123456.js": `console.log(${JSON.stringify(v)})`,
-    "./sulfur/icon.svg": "<svg/>",
+    "./pad/index.html": `<!doctype html><title>pad ${v}</title>`,
+    "./pad/assets/main-abcdef123456.js": `console.log(${JSON.stringify(v)})`,
+    "./pad/icon.svg": "<svg/>",
     "./vendor/xterm-0123456789ab.css": "body{}",
     "./wasi.js": "// wasi",
     "../escape.txt": "never written",
@@ -64,16 +79,16 @@ const srv = Bun.serve({
       feedHits++;
       return new Response(feedBody, { headers: { "Content-Type": "application/json" } });
     }
-    if (p === "/sulfur-web.tar.gz") return new Response(tar);
+    if (p === "/pad-web.tar.gz") return new Response(tar);
     return new Response("no", { status: 404 });
   },
 });
 const base = `http://127.0.0.1:${srv.port}`;
-sulfur.feed = `${base}/feed.json`;
+pad.feed = `${base}/feed.json`;
 const feed = (version: string, data: Uint8Array, extra: Record<string, unknown> = {}) =>
   (feedBody = JSON.stringify({
     version,
-    url: `${base}/sulfur-web.tar.gz`,
+    url: `${base}/pad-web.tar.gz`,
     sha256: sha256(data),
     signature: "",
     ...extra,
@@ -83,65 +98,65 @@ const req = (path: string, headers: Record<string, string> = {}, method = "GET")
   new Request("http://host" + path, { method, headers });
 
 test("nothing installed: no mount, no want, the page's summary bare", async () => {
-  expect(W.mounted("/sulfur/")).toBeUndefined();
-  expect(W.serve(req("/sulfur/"))).toBeUndefined();
+  expect(W.mounted("/pad/")).toBeUndefined();
+  expect(W.serve(req("/pad/"))).toBeUndefined();
   expect(W.wants()).toEqual({});
   expect(W.installed()).toEqual({});
   feed("1.0.1", tar);
   const s = await W.summary(true);
-  expect(s.apps.map((a: any) => [a.id, a.latest, a.want, a.local.version])).toEqual([["sulfur", "1.0.1", null, ""]]);
+  expect(s.apps.map((a: any) => [a.id, a.latest, a.want, a.local.version])).toEqual([["pad", "1.0.1", null, ""]]);
 });
 
 test("a release refused by its url or hash", async () => {
-  feedBody = JSON.stringify({ version: "1.0.1", url: `${base}/sulfur-web.tar.gz`, sha256: "nope" });
-  let r = await W.Install("sulfur");
+  feedBody = JSON.stringify({ version: "1.0.1", url: `${base}/pad-web.tar.gz`, sha256: "nope" });
+  let r = await W.Install("pad");
   expect(r[0]).toBe(502);
   expect(r[1].error).toContain("feed isn't a release");
   feedBody = JSON.stringify({ version: "1.0.1", url: "http://plain/x.tar.gz", sha256: sha256(tar) });
-  r = await W.Install("sulfur");
+  r = await W.Install("pad");
   expect(r[0]).toBe(502);
   expect(await W.Install("nothing")).toEqual([404, { error: "no app called nothing" }]);
 });
 
 test("install: the want written for the mesh, this host following, the page served", async () => {
   feed("1.0.1", tar);
-  const [st, body] = await W.Install("sulfur");
+  const [st, body] = await W.Install("pad");
   expect(st).toBe(200);
   expect(body.want).toMatchObject({ version: "1.0.1", sha256: sha256(tar), from: "a" });
-  expect(W.wantOf("sulfur")).toMatchObject({ version: "1.0.1", from: "a" });
-  expect(store.read("etc/apps/sulfur.json")).toMatchObject({ version: "1.0.1" });
+  expect(W.wantOf("pad")).toMatchObject({ version: "1.0.1", from: "a" });
+  expect(store.read("etc/apps/pad.json")).toMatchObject({ version: "1.0.1" });
   await W.tick(() => "");
-  expect(W.installed()).toEqual({ sulfur: { version: "1.0.1" } });
-  const root = W.dirOf("sulfur");
-  expect(root.endsWith(join("state", "apps", "sulfur", "1.0.1"))).toBe(true);
-  expect(existsSync(join(root, "sulfur", "index.html"))).toBe(true);
+  expect(W.installed()).toEqual({ pad: { version: "1.0.1" } });
+  const root = W.dirOf("pad");
+  expect(root.endsWith(join("state", "apps", "pad", "1.0.1"))).toBe(true);
+  expect(existsSync(join(root, "pad", "index.html"))).toBe(true);
   // the tarball kept for peers, the escaping entry dropped
   expect(existsSync(join(root, "..", "1.0.1.tar.gz"))).toBe(true);
   expect(existsSync(join(root, "..", "escape.txt"))).toBe(false);
   expect(existsSync(join(dir, "state", "apps", "escape.txt"))).toBe(false);
 
   // the mount: its page, a file, a route of the page's own, a missing asset
-  let res = W.serve(req("/sulfur/"))!;
+  let res = W.serve(req("/pad/"))!;
   expect(res.status).toBe(200);
   expect(res.headers.get("Content-Type")).toBe("text/html; charset=utf-8");
-  expect(await res.text()).toContain("sulfur 1.0.1");
-  res = W.serve(req("/sulfur"))!;
+  expect(await res.text()).toContain("pad 1.0.1");
+  res = W.serve(req("/pad"))!;
   expect(res.status).toBe(308);
-  expect(res.headers.get("Location")).toBe("/sulfur/");
-  res = W.serve(req("/sulfur/assets/main-abcdef123456.js"))!;
+  expect(res.headers.get("Location")).toBe("/pad/");
+  res = W.serve(req("/pad/assets/main-abcdef123456.js"))!;
   expect(res.status).toBe(200);
   expect(res.headers.get("Cache-Control")).toContain("immutable");
   expect(await res.text()).toBe('console.log("1.0.1")');
-  res = W.serve(req("/sulfur/some/route", { accept: "text/html" }))!;
+  res = W.serve(req("/pad/some/route", { accept: "text/html" }))!;
   expect(res.status).toBe(200);
-  expect(await res.text()).toContain("sulfur 1.0.1");
-  res = W.serve(req("/sulfur/assets/gone.js"))!;
+  expect(await res.text()).toContain("pad 1.0.1");
+  res = W.serve(req("/pad/assets/gone.js"))!;
   expect(res.status).toBe(404);
   // HEAD without a body
-  res = W.serve(req("/sulfur/icon.svg", {}, "HEAD"))!;
+  res = W.serve(req("/pad/icon.svg", {}, "HEAD"))!;
   expect(res.status).toBe(200);
   expect(await res.text()).toBe("");
-  expect(W.serve(req("/sulfur/", {}, "POST"))).toBeUndefined();
+  expect(W.serve(req("/pad/", {}, "POST"))).toBeUndefined();
 
   // its root files beside the desktop's, a folder never
   res = W.serve(req("/vendor/xterm-0123456789ab.css"))!;
@@ -152,41 +167,41 @@ test("install: the want written for the mesh, this host following, the page serv
 
   // nothing above the app's folder, however it's spelt
   for (const p of [
-    "/sulfur/../1.0.1.tar.gz",
-    "/sulfur/%2e%2e/1.0.1.tar.gz",
-    "/sulfur/..%2f..%2fcurrent.json",
-    "/sulfur/a/../../1.0.1.ok",
-    "/sulfur/%2e%2e/%2e%2e/1.0.1.ok",
+    "/pad/../1.0.1.tar.gz",
+    "/pad/%2e%2e/1.0.1.tar.gz",
+    "/pad/..%2f..%2fcurrent.json",
+    "/pad/a/../../1.0.1.ok",
+    "/pad/%2e%2e/%2e%2e/1.0.1.ok",
   ]) {
     const r = W.serve(req(p));
     expect([
       p,
-      r === undefined || r.status === 404 || (r.status === 200 && (await r.text()).includes("sulfur 1.0.1")),
+      r === undefined || r.status === 404 || (r.status === 200 && (await r.text()).includes("pad 1.0.1")),
     ]).toEqual([p, true]);
   }
-  expect(W.serve(req("/../state/apps/sulfur/current.json"))).toBeUndefined();
-  expect(W.Serve("sulfur", "1.0.1").status).toBe(200);
-  expect(W.Serve("sulfur", "1.0.0").status).toBe(404);
+  expect(W.serve(req("/../state/apps/pad/current.json"))).toBeUndefined();
+  expect(W.Serve("pad", "1.0.1").status).toBe(200);
+  expect(W.Serve("pad", "1.0.0").status).toBe(404);
   expect(W.Serve("other", "1.0.1").status).toBe(404);
 });
 
 test("the same release picked again changes nothing", async () => {
   feed("1.0.1", tar);
-  const [st, body] = await W.Install("sulfur");
+  const [st, body] = await W.Install("pad");
   expect([st, body.current]).toEqual([200, true]);
 });
 
 test("a newer release: picked, fetched, the old copy gone", async () => {
   tar = page("1.0.2");
   feed("1.0.2", tar);
-  const [st] = await W.Install("sulfur");
+  const [st] = await W.Install("pad");
   expect(st).toBe(200);
   await W.tick(() => "");
-  expect(W.installed()).toEqual({ sulfur: { version: "1.0.2" } });
-  expect(existsSync(join(dir, "state", "apps", "sulfur", "1.0.1"))).toBe(false);
-  expect(existsSync(join(dir, "state", "apps", "sulfur", "1.0.1.tar.gz"))).toBe(false);
-  expect(await W.serve(req("/sulfur/"))!.text()).toContain("sulfur 1.0.2");
-  expect(JSON.parse(readFileSync(join(dir, "state", "apps", "sulfur", "current.json"), "utf8"))).toEqual({
+  expect(W.installed()).toEqual({ pad: { version: "1.0.2" } });
+  expect(existsSync(join(dir, "state", "apps", "pad", "1.0.1"))).toBe(false);
+  expect(existsSync(join(dir, "state", "apps", "pad", "1.0.1.tar.gz"))).toBe(false);
+  expect(await W.serve(req("/pad/"))!.text()).toContain("pad 1.0.2");
+  expect(JSON.parse(readFileSync(join(dir, "state", "apps", "pad", "current.json"), "utf8"))).toEqual({
     version: "1.0.2",
     sha256: sha256(tar),
   });
@@ -196,16 +211,16 @@ test("a download whose hash differs is refused, the copy kept, retried later", a
   const good = tar;
   tar = page("1.0.3-bad");
   feed("1.0.3", page("1.0.3"));
-  await W.Install("sulfur");
+  await W.Install("pad");
   await W.tick(() => "");
-  const s = W.installed().sulfur!;
+  const s = W.installed().pad!;
   expect(s.version).toBe("1.0.2");
   expect(s.error).toContain("hash");
-  expect(await W.serve(req("/sulfur/"))!.text()).toContain("sulfur 1.0.2");
+  expect(await W.serve(req("/pad/"))!.text()).toContain("pad 1.0.2");
   // the same want not hammered: no second fetch within the retry hold
   tar = page("1.0.3");
   await W.tick(() => "");
-  expect(W.installed().sulfur!.version).toBe("1.0.2");
+  expect(W.installed().pad!.version).toBe("1.0.2");
   tar = good;
 });
 
@@ -213,16 +228,16 @@ test("a peer's want followed: its copy first, the feed when the peer has none", 
   tar = page("1.0.4");
   const w = {
     version: "1.0.4",
-    url: `${base}/sulfur-web.tar.gz`,
+    url: `${base}/pad-web.tar.gz`,
     sha256: sha256(tar),
     signature: "",
     from: "b",
     at: Date.now(),
   };
-  store.write("etc/apps/sulfur.json", w);
+  store.write("etc/apps/pad.json", w);
   // b unreachable: the feed's url
   await W.tick(() => "");
-  expect(W.installed()).toEqual({ sulfur: { version: "1.0.4" } });
+  expect(W.installed()).toEqual({ pad: { version: "1.0.4" } });
   // b answering with the release itself
   tar = page("1.0.5");
   let peerHits = 0;
@@ -230,35 +245,35 @@ test("a peer's want followed: its copy first, the feed when the peer has none", 
   const peer = Bun.serve({
     port: 0,
     fetch: (r) =>
-      new URL(r.url).pathname === "/internal/apps/sulfur/1.0.5"
+      new URL(r.url).pathname === "/internal/apps/pad/1.0.5"
         ? (peerHits++, new Response(peersCopy))
         : new Response(null, { status: 404 }),
   });
-  store.write("etc/apps/sulfur.json", { ...w, version: "1.0.5", sha256: sha256(peersCopy) });
+  store.write("etc/apps/pad.json", { ...w, version: "1.0.5", sha256: sha256(peersCopy) });
   // the feed holding another tarball: only the peer's copy matches
   tar = page("stale");
   await W.tick(() => "127.0.0.1", peer.port);
-  expect(W.installed()).toEqual({ sulfur: { version: "1.0.5" } });
+  expect(W.installed()).toEqual({ pad: { version: "1.0.5" } });
   expect(peerHits).toBe(1);
-  expect(await W.serve(req("/sulfur/"))!.text()).toContain("sulfur 1.0.5");
+  expect(await W.serve(req("/pad/"))!.text()).toContain("pad 1.0.5");
   tar = peersCopy;
   peer.stop(true);
 });
 
 test("remove: the want gone, every copy with it", async () => {
-  expect(W.Remove("sulfur")).toEqual([200, { ok: true }]);
+  expect(W.Remove("pad")).toEqual([200, { ok: true }]);
   await W.tick(() => "");
   expect(W.installed()).toEqual({});
-  expect(existsSync(join(dir, "state", "apps", "sulfur"))).toBe(false);
-  expect(W.serve(req("/sulfur/"))).toBeUndefined();
+  expect(existsSync(join(dir, "state", "apps", "pad"))).toBe(false);
+  expect(W.serve(req("/pad/"))).toBeUndefined();
   expect(W.Remove("nothing")[0]).toBe(404);
 });
 
 test("a signed release against a key: a bad signature refused, the key's absence trusting the hash", () => {
   const data = page("9");
   const r = { version: "9", url: "https://x/y.tar.gz", sha256: sha256(data), signature: "" };
-  expect(() => W.verify(sulfur, r, data)).not.toThrow();
-  expect(() => W.verify(sulfur, { ...r, sha256: "0".repeat(64) }, data)).toThrow(/hash/);
+  expect(() => W.verify(pad, r, data)).not.toThrow();
+  expect(() => W.verify(pad, { ...r, sha256: "0".repeat(64) }, data)).toThrow(/hash/);
 });
 
 test("the feed read once per ttl, fresh on demand", async () => {
@@ -553,7 +568,7 @@ test("the icon off the repository, kept a day, the kept copy when the fetch fail
 
 test("a web app's icon off its repository, for the page before any host serves it", async () => {
   const hits = iconHits;
-  const ic = (await W.AppIcon("sulfur"))!;
+  const ic = (await W.AppIcon("pad"))!;
   expect([ic.type, new TextDecoder().decode(ic.data), iconHits - hits]).toEqual(["image/svg+xml", "PNG!", 1]);
   expect(await W.AppIcon("nothing")).toBeUndefined();
 });
@@ -562,8 +577,8 @@ test("an app running code in phosphorus: never without a key, its signature chec
   const M = await import("@phosphorus/minisign");
   const pair = M.generate();
   const sk = M.parseSecretKey(pair.secret, "");
-  const demo: typeof sulfur = {
-    ...sulfur,
+  const demo: typeof pad = {
+    ...pad,
     id: "demo",
     name: "Demo",
     mount: "/app/demo/",
@@ -594,6 +609,6 @@ test("an app running code in phosphorus: never without a key, its signature chec
   W.reset();
   expect(W.serverOf("demo")?.version).toBe("1.0.0");
   expect(readFileSync(W.serverOf("demo")!.entry, "utf8")).toContain("register");
-  expect(W.serverOf("sulfur")).toBeUndefined();
+  expect(W.serverOf("pad")).toBeUndefined();
   W.Catalog.splice(W.Catalog.indexOf(demo), 3);
 });

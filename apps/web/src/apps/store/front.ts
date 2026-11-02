@@ -1,7 +1,6 @@
 // the front: tiles
 
 import type { FoundPage } from '@phosphorus/wire';
-import { editorPref } from '../../desktop/deskfiles.ts';
 import { jsonPost } from '../../lib/api.ts';
 import { dkGlyph, el, ICONS } from '../../lib/dom.ts';
 import { dk, st } from '../../lib/state.ts';
@@ -61,7 +60,6 @@ export function tile(a: StoreApp): HTMLElement {
   );
   const side = el('span', 'store-tile-side');
   side.append(pill(a, f));
-  if (a.id === 'sulfur' && editorPref() === 'sulfur') side.append(el('span', 'store-tile-badge', 'default editor'));
   t.append(iconOf(a, f, 'md'), text, side);
   t.addEventListener('click', () => storeShow(a.id));
   return t;

@@ -32,5 +32,5 @@ export {
   type MenuItem,
   WALL_EVENT,
 } from './desk/wallpaper.ts';
-export { dkSulfurOpen, dkWebApp, dkWebApps } from './desk/webapps.ts';
+export { dkWebApp, dkWebApps } from './desk/webapps.ts';
 export { dkAppsChanged, dkOpenApp, dkOpenTerminal, dkPressed } from './desk/windows.ts';

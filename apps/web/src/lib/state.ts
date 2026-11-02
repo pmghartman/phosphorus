@@ -55,7 +55,6 @@ export const PREF_LS: Record<string, string> = {
   recent: 'phosphorus-recent-files',
   color: 'phosphorus-chat-color',
   agentview: 'phosphorus-agent-view',
-  editor: 'phosphorus-editor',
 };
 export const PREF_OF: Record<string, string> = Object.fromEntries(Object.entries(PREF_LS).map(([k, v]) => [v, k]));
 
