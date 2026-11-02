@@ -4,7 +4,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { calls as mcpCalls, watch as mcpWatch } from "@phosphorus/mcp";
 import * as peers from "@phosphorus/peers";
-import { health } from "@phosphorus/services";
+import { health, wildcard } from "@phosphorus/services";
 import { close as termClose } from "@phosphorus/term";
 import type { Chain } from "@phosphorus/update";
 import { HasMCPKey, OpenGrant, SealGrant } from "@phosphorus/users";
@@ -79,7 +79,7 @@ async function localOp(op: string, p: Record<string, any>): Promise<Res> {
 
 const started = now();
 
-// localHealth this host's tunnel as cloudflared's /ready says, and its frontend
+// localHealth this host's tunnel as cloudflared's /ready says, *.<domain> through it, and its frontend
 async function localHealth(): Promise<Record<string, any>> {
   let tunnel: Record<string, any> = { state: "off", why: "no TUNNEL_TOKEN, tailnet only" };
   if (process.env.TUNNEL_TOKEN) {
@@ -92,7 +92,14 @@ async function localHealth(): Promise<Record<string, any>> {
       if (res.status !== 200 || n === 0) tunnel = { state: "down", connections: n, why: "no edge connection ready" };
     } catch {}
   }
-  return { host: selfHost, version: Version(), tunnel, uptimeSec: Math.trunc((now() - started) / 1000) };
+  // *.<domain> through the tunnel: what puts a blank-mode service on a subdomain
+  return {
+    host: selfHost,
+    version: Version(),
+    tunnel,
+    wildcard: wildcard(),
+    uptimeSec: Math.trunc((now() - started) / 1000),
+  };
 }
 
 // meshHealth every phosphorus host's health, with its round trip from here

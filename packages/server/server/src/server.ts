@@ -6,7 +6,7 @@ import { Zone } from "@phosphorus/gamedns";
 import * as git from "@phosphorus/git";
 import { State as modelState, Summary } from "@phosphorus/model";
 import * as peers from "@phosphorus/peers";
-import { own as ownServices, setPending } from "@phosphorus/services";
+import { own as ownServices, setPending, unpublished, wildcard } from "@phosphorus/services";
 import * as store from "@phosphorus/store";
 import * as update from "@phosphorus/update";
 import { lockACL, logf, markHot, marshal, peerCall, run, tailnetIP } from "@phosphorus/util";
@@ -121,6 +121,8 @@ export function publishHost() {
     desk: deskStamps(),
     apps: webapps.installed(),
     services: webapps.svcProgress(),
+    found: unpublished(),
+    wildcard: wildcard(),
   });
 }
 

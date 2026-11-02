@@ -21,7 +21,7 @@ import { serveStatic } from "@phosphorus/webstatic";
 import { type Ctx, isUpgrade } from "@phosphorus/wsock";
 import { codeRoute } from "./code.ts";
 import { adminPass, port, selfHost, selfInfo, setUpdating } from "./config.ts";
-import { configOp, hostLogs, localUI } from "./hostops.ts";
+import { configOp, hostConfig, hostLogs, localUI } from "./hostops.ts";
 import {
   crossSite,
   forbidden,
@@ -72,6 +72,7 @@ const pingRe = /^\/api\/ping\/([a-z0-9-]+)$/;
 const filesRe =
   /^\/api\/files\/([a-z0-9][a-z0-9-]*)\/(info|list|tree|search|read|download|upload|save|mkdir|rename|delete|run|mirror|own)$/;
 const publicRe = /^\/api\/services\/([a-z0-9][a-z0-9-]*)\/([a-z0-9][a-z0-9-]*)\/public$/;
+const publishRe = /^\/api\/services\/([a-z0-9][a-z0-9-]*)\/([a-z0-9][a-z0-9-]*)\/publish$/;
 const faviconRe = /^\/api\/favicon\/([a-z0-9][a-z0-9-]*)\/([a-z0-9][a-z0-9-]*)$/;
 
 // loginRe a machine account's name, as a home is handed to one
@@ -438,6 +439,22 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
         body: { public: on },
         timeoutMs: 10000,
       });
+    });
+  }
+
+  m = publishRe.exec(pathname);
+  if (m && method === "POST") {
+    // a found page written into its host's services.export as name, its port
+    // alone: the scheme sniffed, the mode picked when published
+    const s = users.Of(c);
+    if (!(await isLocalOrPeer(c)) || !sameOrigin(c) || (c.ingress && (!s || !s.admin))) return forbidden();
+    const host = m[1]!,
+      name = m[2]!;
+    return onJSON(c, 1024, true, (p) => {
+      const port = p.port;
+      if (typeof port !== "number" || !Number.isInteger(port) || port < 1 || port > 65535)
+        return [400, { error: "port is 1-65535" }];
+      return hostConfig(host, { op: "service", name, fields: { port: String(port) } });
     });
   }
 

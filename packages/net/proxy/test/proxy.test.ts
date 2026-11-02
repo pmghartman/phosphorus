@@ -72,3 +72,24 @@ test("ingress forwards http and websockets", async () => {
   front.stop(true);
   back.stop(true);
 });
+
+test("a path link to a service now on a subdomain is sent there", async () => {
+  const { serve, handler, swap } = await import("@phosphorus/proxy");
+  swap([{ host: "box", name: "media", port: 1, scheme: "http", mode: "subdomain", public: true }], () => "127.0.0.1");
+  const front = serve(
+    0,
+    handler(() => new Response("app"), { pass: () => true, issuers: () => [] }),
+    true,
+  );
+  const r = await fetch(`http://127.0.0.1:${front.port}/box/media/web/?x=1`, {
+    headers: { Host: "mulab.dev" },
+    redirect: "manual",
+  });
+  expect(r.status).toBe(302);
+  expect(r.headers.get("location")).toBe("https://media.mulab.dev/web/?x=1");
+  // the tailnet's own address keeps its paths
+  const t = await fetch(`http://127.0.0.1:${front.port}/box/media/web/`, { redirect: "manual" });
+  expect(t.status).toBe(200);
+  expect(await t.text()).toBe("app");
+  front.stop(true);
+});

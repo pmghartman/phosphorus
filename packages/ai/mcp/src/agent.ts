@@ -183,7 +183,7 @@ export const agentTools = (): Tool[] => [
     description:
       "Publish, change or remove a service in a host's services.export, as the terminal UI's form does, the whole file " +
       "checked before it's written and live within seconds. fields only change the keys given; a blank value drops one. " +
-      "Web: port (required), scheme http|https, mode path|subdomain, base_path, public true. Game: type game, port, start and stop commands. Admins only.",
+      "Web: port (required), scheme http|https (blank: sniffed), mode path|subdomain (blank: a subdomain once *.<domain> reaches the mesh, else a path), base_path, public true. Game: type game, port, start and stop commands. Admins only.",
     schema: object(
       {
         host: name,
@@ -320,7 +320,7 @@ export function describe() {
     mesh_hosts:
       "Start here. Every device on the mesh's tailnet: name, OS, whether it runs phosphorus (only those are hosts you can act on), " +
       "plus this host and the mesh's domain. Host names from here are what every other tool's host takes. " +
-      "health true adds each phosphorus host's health: answering, version, round trip in ms and its Cloudflare tunnel.",
+      "health true adds each phosphorus host's health: answering, version, round trip in ms, its Cloudflare tunnel and whether *.<domain> reaches the mesh through it (wildcard, with the Cloudflare entries to add when missing).",
     services:
       "Every web service and game server published on the mesh: host, name, port, mode, public, and the URL a person opens. " +
       "With host and name, that one service checked right now instead: listening, its HTTP status, published or why not. " +

@@ -211,6 +211,7 @@ export function dkDeskMenu(icons: HTMLElement) {
       ...(svc && st.acct?.admin
         ? [[svc.public ? 'make private' : 'make public', () => dkSetPublic(svc, !svc.public), true] as MenuItem]
         : []),
+      ...(!b && st.acct?.admin && dkFound().length ? [['publish found page', dkFound(), true] as MenuItem, null] : []),
       ...(b ? [null] : []),
       ['new terminal', hosts.map((h): MenuItem => [h, () => dkTerminal(h), true]), hosts.length > 0],
       null,
@@ -373,6 +374,27 @@ export function dkMenu(x: number, y: number, items: MenuItem[], after?: () => vo
   dkMenuEl.hidden = false;
   dkMenuEl.style.left = `${Math.min(x, innerWidth - dkMenuEl.offsetWidth - 4)}px`;
   dkMenuEl.style.top = `${Math.min(y, innerHeight - dkMenuEl.offsetHeight - 4)}px`;
+}
+
+// every host's unpublished pages as menu items, each written into its host's services.export
+function dkFound(): MenuItem[] {
+  const out: MenuItem[] = [];
+  for (const [host, info] of Object.entries(st.hostsInfo).sort(([a], [b]) => a.localeCompare(b)))
+    for (const f of info.found ?? [])
+      out.push([`${f.title} (${host}:${f.port})`, () => dkPublish(host, f.name, f.port), true]);
+  return out;
+}
+
+export async function dkPublish(host: string, name: string, port: number) {
+  dkMenuNote(`publishing ${name}…`);
+  const res = await fetch(`/api/services/${encodeURIComponent(host)}/${encodeURIComponent(name)}/publish`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ port }),
+  }).catch(() => null);
+  const out = res ? await res.json().catch(() => ({})) : {};
+  const why = out.outcome && out.outcome.published !== true ? out.outcome.why : '';
+  dkMenuNote(res?.ok && !why ? `${name} published` : why || out.error || 'not published');
 }
 
 // a service behind the phosphorus login or open to all, its owning host's services.export rewritten

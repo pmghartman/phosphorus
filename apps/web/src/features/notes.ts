@@ -4,7 +4,7 @@ import type { Chain, State } from '@phosphorus/wire';
 import { dkOpenApp } from '../desktop/desk.ts';
 import { dkAnchor, dkBarSide, dkPopsClose, type Pop } from '../desktop/taskbar.ts';
 import { DK_GLYPHS, dkGlyph, el } from '../lib/dom.ts';
-import { dk } from '../lib/state.ts';
+import { dk, st } from '../lib/state.ts';
 import { ago2 } from '../lib/util.ts';
 import { chatNote, openConv } from './chat/chat.ts';
 import { openUpdateModal, updateModal } from './update.ts';
@@ -129,6 +129,7 @@ export function notifyOs(title: string, body: string): void {
 // kept across the reload a host's own update brings
 const CHAIN_SEEN = 'phosphorus-chain-running';
 export function notifyMesh(state: State): void {
+  notifyWildcard(state);
   const ch: Chain | null | undefined = state.chain;
   if (!ch?.chainId) return;
   let running = '';
@@ -158,6 +159,27 @@ export function notifyMesh(state: State): void {
     .join('; ');
   noteAdd(t, b, null, { view: 'update' });
   if (notifyOn) notifyOs(t, b);
+}
+
+// *.<domain> not reaching the mesh, to admins in the bell: once per reason, the
+// Cloudflare entries that fix it in the body
+const WILDCARD_SEEN = 'phosphorus-wildcard-seen';
+function notifyWildcard(state: State): void {
+  if (!st.acct?.admin || !state.domain) return;
+  const infos = Object.values(state.hosts ?? {});
+  const miss = infos.find((h) => h.wildcard?.state === 'missing');
+  let seen = '';
+  try {
+    seen = localStorage.getItem(WILDCARD_SEEN) || '';
+  } catch {}
+  const why = miss ? miss.wildcard!.why || 'missing' : '';
+  // a host that sees it up clears the last reason, so a later break is told again
+  if (!miss && !infos.some((h) => h.wildcard?.state === 'up')) return;
+  if (why === seen) return;
+  try {
+    localStorage.setItem(WILDCARD_SEEN, why);
+  } catch {}
+  if (why) noteAdd(`*.${state.domain} isn't reaching the mesh`, why);
 }
 
 // --- the notification center: what happened mesh-wide, newest first, kept per browser

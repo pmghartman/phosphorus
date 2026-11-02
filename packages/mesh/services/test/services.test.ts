@@ -8,10 +8,14 @@ const file = join(dir, "services.export");
 process.env.SERVICES_FILE = file;
 process.env.STATE_DIR = join(dir, "state");
 process.env.IDLE_POLL_INTERVAL_MS = "20";
+// no scan of this machine's ports in the background
+process.env.SERVICES_FIND_MS = "0";
 // proxy's domain is fixed on its first import: the one its own test expects
 process.env.BASE_DOMAIN ??= "mulab.dev";
 mkdirSync(process.env.STATE_DIR);
-const { health, own, parse, portsOf, refresh, setPending, setPublic } = await import("@phosphorus/services");
+const { health, nameFrom, own, pagesOn, parse, portsOf, refresh, setPending, setPublic, tunnelID } = await import(
+  "@phosphorus/services"
+);
 // util's StateDir is fixed on its first import, another test's in a whole run
 const { StateDir } = await import("@phosphorus/util");
 
@@ -48,7 +52,8 @@ test("parse", () => {
   );
   expect(none).toBe("");
   expect(ok).toEqual([
-    { max_body: "10MB", name: "web", port: 8080, scheme: "http", mode: "path", base_path: "", public: true },
+    // scheme and mode blank, sniffed and picked when published
+    { max_body: "10MB", name: "web", port: 8080, scheme: "", mode: "", base_path: "", public: true },
     { name: "mc", port: 25565, type: "game", mode: "game", controllable: true },
     { name: "idle", port: 7777, type: "game", mode: "game", controllable: false },
   ]);
@@ -127,6 +132,8 @@ test("refresh and health", async () => {
   const rows = own();
   expect(rows.map((r) => r.name)).toEqual(want);
   expect(rows[1]!.status).toBe("offline");
+  // the scheme sniffed, the mode a path while *.<domain> isn't known to answer
+  expect(rows[0]).toEqual({ name: "web", port: srv.port, scheme: "http", mode: "path", base_path: "" });
   if (git)
     expect(rows[2]).toEqual({
       name: "git",
@@ -148,6 +155,8 @@ test("refresh and health", async () => {
     type: "web",
     published: true,
     listening: true,
+    scheme: "http",
+    mode: "path",
     httpStatus: 200,
     why: "answering",
   });
@@ -157,6 +166,8 @@ test("refresh and health", async () => {
     type: "web",
     published: false,
     listening: false,
+    scheme: "http",
+    mode: "path",
     why: `not published: nothing on :${deadPort}`,
   });
   expect(await health("mc", "127.0.0.1")).toEqual({
@@ -168,4 +179,59 @@ test("refresh and health", async () => {
     why: `nothing listening on :${deadPort}, start it with game_power`,
   });
   srv.stop(true);
+});
+
+test("name from title", () => {
+  expect(nameFrom("Jellyfin")).toBe("jellyfin");
+  expect(nameFrom("Home Assistant")).toBe("home-assistant");
+  expect(nameFrom("Dashboard - Grafana")).toBe("dashboard");
+  expect(nameFrom("qBittorrent v4.6 Web UI")).toBe("qbittorrent-v4-6-web-ui");
+  expect(nameFrom("日本")).toBe("");
+});
+
+test("pages on ports", async () => {
+  const page = Bun.serve({
+    port: 0,
+    fetch: (req) =>
+      new URL(req.url).pathname === "/"
+        ? Response.redirect("/web/", 302)
+        : new Response("<html><head><title> Jelly &amp; Fin </title></head></html>", {
+            headers: { "Content-Type": "text/html; charset=utf-8" },
+          }),
+  });
+  const api = Bun.serve({ port: 0, fetch: () => Response.json({ ok: true }) });
+  const bare = Bun.serve({
+    port: 0,
+    fetch: () => new Response("<h1>hi</h1>", { headers: { "Content-Type": "text/html" } }),
+  });
+  const taken = Bun.serve({
+    port: 0,
+    fetch: () => new Response("<title>web</title>", { headers: { "Content-Type": "text/html" } }),
+  });
+  const dead = Bun.serve({ port: 0, fetch: () => new Response("") });
+  const deadPort = dead.port;
+  dead.stop(true);
+  writeFileSync(
+    file,
+    `[web]
+port = 1
+`,
+  );
+  await refresh("127.0.0.1");
+  const got = await pagesOn("127.0.0.1", [api.port!, page.port!, bare.port!, deadPort!, taken.port!]);
+  // the HTML pages with titles alone, a name already declared given its port
+  expect(got.sort((a, b) => a.port - b.port)).toEqual(
+    [
+      { port: page.port!, scheme: "http", title: "Jelly & Fin", name: "jelly-fin" },
+      { port: taken.port!, scheme: "http", title: "web", name: `web-${taken.port}` },
+    ].sort((a, b) => a.port - b.port),
+  );
+  for (const s of [page, api, bare, taken]) s.stop(true);
+});
+
+test("tunnel id", () => {
+  const id = "6ff42ae2-765d-4adf-8112-31c55c1551ef";
+  expect(tunnelID(Buffer.from(JSON.stringify({ a: "acct", t: id, s: "secret" })).toString("base64"))).toBe(id);
+  expect(tunnelID("not a token")).toBe("");
+  expect(tunnelID("")).toBe("");
 });

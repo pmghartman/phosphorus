@@ -45,8 +45,8 @@ export function serviceForm(s: Section | undefined): Form {
   out.fields = [
     { key: "name", value: name, hint: "lowercase letters, digits, -" },
     fl("port", "required, 1-65535"),
-    fl("scheme", "blank = http", "", "http", "https"),
-    fl("mode", "blank = path, subdomain = <name>.<domain>, a path without one", "", "path", "subdomain"),
+    fl("scheme", "blank = whichever the port answers", "", "http", "https"),
+    fl("mode", "blank = <name>.<domain> once *.<domain> reaches the mesh, else a path", "", "path", "subdomain"),
     fl("base_path", "sub-path stripped before proxying"),
     fl("extras", 'JSON: {"max_body":"50MB","forwarded_proto":"https"}'),
     fl("public", "true = no phosphorus login, the service's own only", "", "true", "false"),

@@ -211,7 +211,7 @@ export function unrebindable(host: string): boolean {
 
 const onMesh = (c: Ctx) => isLoopbackAddr(c.ip) || isTailnetAddr(c.ip);
 
-type Hit = { route?: Route; path?: string; frontend?: boolean; status?: number; text?: string };
+type Hit = { route?: Route; path?: string; frontend?: boolean; status?: number; text?: string; location?: string };
 
 // the raw path and query, as the request line had them
 export const requestURI = (c: Ctx) => c.url.pathname + c.url.search;
@@ -229,6 +229,13 @@ function resolve(c: Ctx): Hit {
   if (main) {
     for (const x of t.paths)
       if (under(pathname, x.prefix)) return { route: x, path: strip(pathname, x.prefix) + search };
+    // a link from when the service was on a path, sent on to its subdomain
+    if (host === baseDomain)
+      for (const x of t.domains.values()) {
+        const old = `/${x.host}/${x.name}`;
+        if (under(pathname, old))
+          return { status: 404, location: `https://${x.domain}${strip(pathname, old)}${search}` };
+      }
     if (pathname === "/api/update/local") return { status: 404, text: "not found" };
     return onMesh(c) ? { frontend: true } : { status: 403, text: "forbidden" };
   }
@@ -488,6 +495,8 @@ export function handler(app: Handler, gate: Gate): Handler {
       if (h.frontend) return app(c);
       return new Response(null, { status: h.status });
     }
+    if (h.location)
+      return new Response(null, { status: 302, headers: { Location: h.location, "Cache-Control": "no-store" } });
     const hopReq = !!h.frontend && c.req.method === "POST" && /^\/api\/host(\?|$)/.test(requestURI(c));
     const pin = h.frontend && !hopReq ? pinRoute(c.req) : undefined;
     if (gated(h) && !pin && !isOpen(c, h) && !gate.pass(c)) {

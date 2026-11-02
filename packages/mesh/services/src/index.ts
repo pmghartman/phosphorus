@@ -1,14 +1,18 @@
 // this host's own services, services.export validated whole or not at all,
-// health checked, live ones, games and git published
+// health checked, live ones, games and git published; a blank scheme sniffed,
+// a blank mode a subdomain once *.<domain> answers; pages it doesn't name found
 import { readFileSync } from "node:fs";
 import { connect } from "node:net";
 import { join } from "node:path";
 import { ExtraKeys, type Row, rowError } from "@phosphorus/proxy";
 import {
   env,
+  envInt,
   errText,
+  FrontendPort,
   IdleMS,
   markHot,
+  marshal,
   Notes,
   now,
   RepoDir,
@@ -17,8 +21,10 @@ import {
   writeFileAtomic,
 } from "@phosphorus/util";
 import { listening } from "./listen.ts";
+import { pollWildcard, wildcardUp } from "./wildcard.ts";
 
 export { listening, portsOf } from "./listen.ts";
+export { tunnelID, type Wildcard, wildcard, wildcardUp } from "./wildcard.ts";
 export type { Row };
 
 const servicesFile = env("SERVICES_FILE", join(RepoDir, "config", "services.export"));
@@ -83,12 +89,13 @@ export function parse(text: string): [Row[], string] {
         return [[], `[${s.name}] extras is not a JSON object`];
       for (const k of Object.keys(extras))
         if (!ExtraKeys.includes(k)) return [[], `[${s.name}] extras has an unknown key, ${k}`];
+      // a blank scheme sniffed and a blank mode picked when published
       row = {
         ...(extras as Row),
         name: s.name,
         port,
-        scheme: s.f.get("scheme") || "http",
-        mode: s.f.get("mode") || "path",
+        scheme: s.f.get("scheme") || "",
+        mode: s.f.get("mode") || "",
         base_path: s.f.get("base_path") ?? "",
       };
       if (s.f.get("type")) row.type = s.f.get("type");
@@ -98,7 +105,9 @@ export function parse(text: string): [Row[], string] {
       }
     }
     if (port === undefined) delete row.port;
-    const why = rowError(row);
+    const why = rowError(
+      row.type === "game" ? row : { ...row, scheme: row.scheme || "http", mode: row.mode || "path" },
+    );
     if (why) return [[], `[${s.name}] ${why}`];
     rows.push(row);
   }
@@ -178,6 +187,17 @@ async function answers(scheme: string, host: string, port: number, base: string)
   }
 }
 
+// the scheme a port answers in, "" for none: want alone when set, else https
+// first, since a plain server fails a handshake where a TLS one may still
+// answer plain HTTP with a 400
+async function sniff(want: string, host: string, port: number, base: string): Promise<string> {
+  for (const s of want ? [want] : ["https", "http"]) if (await answers(s, host, port, base)) return s;
+  return "";
+}
+
+// each port's sniffed scheme, its row's when services.export leaves it blank
+const sniffed = new Map<number, string>();
+
 function connects(host: string, port: number): Promise<boolean> {
   return new Promise((res) => {
     const s = connect({ host, port });
@@ -222,16 +242,25 @@ function gameRow(r: Row, ip: string, ports: Set<number> | undefined): Row {
   return { ...r, status };
 }
 
+// a blank mode a subdomain once *.<domain> reaches the mesh, a path till then
+const modeOf = (r: Row) => (typeof r.mode === "string" && r.mode) || (wildcardUp() ? "subdomain" : "path");
+
 function webRow(r: Row, ip: string): Row | undefined {
   const port = r.port as number;
-  const scheme = typeof r.scheme === "string" ? r.scheme : "";
+  const want = typeof r.scheme === "string" ? r.scheme : "";
   const base = typeof r.base_path === "string" ? r.base_path : "";
-  const up = probe(`web:${scheme}:${ip}:${port}:${base}`, IdleMS, () => answers(scheme, ip, port, base));
+  const up = probe(`web:${want}:${ip}:${port}:${base}`, IdleMS, async () => {
+    const s = await sniff(want, ip, port, base);
+    if (s) sniffed.set(port, s);
+    return !!s;
+  });
   if (up === undefined) return;
   const name = r.name as string;
   if (up) {
-    notes.note("svc:" + name, `${name} is up on port ${port}, published`);
-    return r;
+    const scheme = want || sniffed.get(port) || "http";
+    const mode = modeOf(r);
+    notes.note("svc:" + name, `${name} is up on port ${port}, published (${scheme}, ${mode})`);
+    return { ...r, scheme, mode };
   }
   notes.note("svc:" + name, `${name} is not answering on port ${port}, not published`);
   return;
@@ -273,6 +302,121 @@ function gitRow(ip: string): Row | undefined {
   return;
 }
 
+// --- found -----------------------------------------------------------------
+
+// a web page on this host that services.export doesn't name yet, offered for
+// publishing; its name a guess from its title
+export type Found = { port: number; scheme: string; title: string; name: string };
+
+// 0 for no scan
+const findMS = envInt("SERVICES_FIND_MS", 60_000);
+const findMax = 200;
+const findAtOnce = 8;
+const titleRe = /<title[^>]*>([^<]*)<\/title>/i;
+const nameRe = /^[a-z0-9][a-z0-9-]*$/;
+
+// phosphorus's own: ssh, the ingress, the frontend, game DNS, the model, git
+function ownPorts(): Set<number> {
+  const out = new Set([
+    envInt("HOST_SSH_PORT", 22) || 22,
+    envInt("INGRESS_PORT", 80),
+    FrontendPort,
+    envInt("GAME_DNS_PORT", 53),
+    envInt("MODEL_SERVER_PORT", 8791),
+  ]);
+  const g = readJSONMap(gitRoleFile);
+  if (typeof g?.port === "number") out.add(g.port);
+  return out;
+}
+
+const unentity = (s: string) =>
+  s
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#0*39;/g, "'");
+
+// a title as a services.export name: its first words, lowercase and dashed
+export function nameFrom(title: string): string {
+  return title
+    .toLowerCase()
+    .split(/\s+[-|:–—·]\s+/)[0]!
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 32)
+    .replace(/-+$/, "");
+}
+
+// a page's title, redirects followed; "" for anything not an HTML page with one,
+// an API or tailscale's own peer listener among them
+async function titleOf(scheme: string, host: string, port: number): Promise<string> {
+  try {
+    const res = await fetch(`${scheme}://${hostPort(host, port)}/`, {
+      proxy: false,
+      tls: { rejectUnauthorized: false },
+      signal: AbortSignal.timeout(probeTimeout * 3),
+    } as RequestInit);
+    if (!(res.headers.get("content-type") ?? "").includes("text/html")) {
+      await res.body?.cancel();
+      return "";
+    }
+    const m = titleRe.exec((await res.text()).slice(0, 65536));
+    return m ? unentity(m[1]!).replace(/\s+/g, " ").trim() : "";
+  } catch {
+    return "";
+  }
+}
+
+let found: Found[] = [];
+let lastFind = 0;
+let finding = false;
+
+// the pages among ports on ip, own and declared ones left out, a few asked at once
+export async function pagesOn(ip: string, ports: Iterable<number>): Promise<Found[]> {
+  const skip = ownPorts();
+  for (const r of declared) skip.add(r.port as number);
+  const todo = [...ports]
+    .filter((p) => !skip.has(p))
+    .sort((a, b) => a - b)
+    .slice(0, findMax);
+  const got: (Omit<Found, "name"> | undefined)[] = [];
+  for (let i = 0; i < todo.length; i += findAtOnce)
+    got.push(
+      ...(await Promise.all(
+        todo.slice(i, i + findAtOnce).map(async (port) => {
+          const scheme = await sniff("", ip, port, "");
+          const title = scheme ? await titleOf(scheme, ip, port) : "";
+          return title ? { port, scheme, title } : undefined;
+        }),
+      )),
+    );
+  const names = new Set(declared.map((r) => r.name as string));
+  const out: Found[] = [];
+  for (const f of got) {
+    if (!f) continue;
+    let name = nameFrom(f.title);
+    if (!nameRe.test(name) || names.has(name)) name = `${name ? name + "-" : "port-"}${f.port}`;
+    names.add(name);
+    out.push({ ...f, name });
+  }
+  return out;
+}
+
+async function find(ip: string) {
+  const open = await listening(ip);
+  if (!open) return;
+  const out = await pagesOn(ip, open);
+  if (marshal(out) !== marshal(found)) {
+    found = out;
+    notes.note("found", `found ${out.length} unpublished page${out.length === 1 ? "" : "s"}`);
+    markHot();
+  }
+}
+
+// the last scan's pages
+export const unpublished = () => found;
+
 let ownRows: Row[] = [];
 let lastScan = 0;
 let ports: Set<number> | undefined;
@@ -298,6 +442,14 @@ export async function refresh(ip: string): Promise<Row[]> {
   const g = gitRow(ip);
   if (g) rows.push(g);
   for (const [k, p] of probes) if (!p.seen && !p.busy) probes.delete(k);
+  pollWildcard();
+  if (findMS > 0 && !finding && now() - lastFind >= findMS) {
+    finding = true;
+    lastFind = now();
+    find(ip).finally(() => {
+      finding = false;
+    });
+  }
   ownRows = rows;
   return rows;
 }
@@ -370,8 +522,10 @@ export async function health(name: string, ip: string): Promise<Record<string, a
     out.why = out.listening ? "up" : `nothing listening on :${port}, start it with game_power`;
     return out;
   }
-  const scheme = (typeof r.scheme === "string" && r.scheme) || "http";
+  const scheme = (typeof r.scheme === "string" && r.scheme) || (await sniff("", ip, port, "")) || "http";
   const base = typeof r.base_path === "string" ? r.base_path : "";
+  out.scheme = scheme;
+  out.mode = modeOf(r);
   let res: Response;
   try {
     res = await probeGet(scheme, ip, port, base);

@@ -8,7 +8,7 @@ Root-causes a broken, slow, full or silent host, service or game server from its
    - host not answering: `mesh_hosts` `health: true` (answering? still on the tailnet?), then from another host `terminal_run` `tailscale ping -c 3 <host>`
    - service: `services` `host` `name`, `host_config` (its `[service]` block), `host_logs` `match: <name>` `since: 2h`
    - game: `services`, `host_logs` `source: game:<name>`
-   - tunnel or public URL: `mesh_hosts` `health: true` tunnel state, `host_logs` `source: cloudflared` `since: 2h`
+   - tunnel or public URL: `mesh_hosts` `health: true` tunnel and wildcard state, `host_logs` `source: cloudflared` `since: 2h`; a subdomain 404 or 1016 with wildcard `missing` is fixed by the two Cloudflare entries its `why` names
    - git: `git`, `host_logs` `source: git`
 3. Narrow with more `host_logs` (`match` on the first error, an earlier `since`) or a read-only `terminal_run`: `systemctl status`, `ss -ltnp`, `journalctl -u ...`, and for a full Linux disk `df -h; du -xh --max-depth=2 / 2>/dev/null | sort -h | tail -20`.
 4. Confirm a past error still matters before calling it the cause: a later success line, or the current `git`, `services` check or `mesh_hosts` health.

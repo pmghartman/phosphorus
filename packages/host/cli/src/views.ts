@@ -172,18 +172,20 @@ function servicesView(): View {
     else if (f.type === "game") status = c("muted")("not published");
     else if (ok) status = c("online")("published");
     else status = c("warn")("not answering");
+    // blank scheme and mode as published: sniffed, and a subdomain once *.<domain> answers
+    const mode = f.mode || (ok ? str(live.mode) : "") || "auto";
     let where = `${meshAddr()}/${selfHost()}/${s.name}/`;
     if (f.type === "game") where = `${s.name}.${str(st.gameZone)}:${f.port ?? ""}`;
-    else if (f.mode === "subdomain" && baseDomain !== "") where = s.name + "." + baseDomain;
+    else if (mode === "subdomain" && baseDomain !== "") where = s.name + "." + baseDomain;
     let scheme = f.scheme ?? "";
-    if (scheme === "" && !f.type) scheme = "http";
+    if (scheme === "" && !f.type) scheme = (ok ? str(live.scheme) : "") || "auto";
     let access = c("muted")("login");
     if (f.type === "game") access = c("muted")("-");
     else if (f.public === "true") access = c("warn")("public");
     rows.push([
       s.name,
       f.port ?? "",
-      c("teal")(or(f.type ?? "", f.mode ?? "", "path")),
+      c("teal")(or(f.type ?? "", mode)),
       c("muted")(scheme),
       c("muted")(where),
       access,
