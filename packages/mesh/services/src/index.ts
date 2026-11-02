@@ -1,11 +1,11 @@
 // this host's own services, services.export validated whole or not at all,
 // health checked, live ones, games and git published; a blank scheme sniffed,
-// a blank mode a subdomain once *.<domain> answers; pages it doesn't name found
-// and written in on their own, a section taken out not written back
+// each a subdomain once *.<domain> answers; pages it doesn't name found and
+// offered, a section taken out not offered for writing back
 import { readFileSync } from "node:fs";
 import { connect } from "node:net";
 import { join } from "node:path";
-import { ExtraKeys, type Row, rowError } from "@phosphorus/proxy";
+import { type Row, rowError } from "@phosphorus/proxy";
 import {
   env,
   envInt,
@@ -33,7 +33,14 @@ const gitRoleFile = join(StateDir, "git-role");
 // the ports of sections taken out of services.export, a found page there left alone
 const removedFile = join(StateDir, "services-removed");
 const notes = new Notes("services");
-const keys = new Set(["port", "scheme", "mode", "base_path", "extras", "type", "start", "stop", "public"]);
+// a web service's port, scheme (blank: sniffed), max_body and public; a game's
+// type, start and stop until the Games app takes them
+export const Keys = ["port", "scheme", "max_body", "public", "type", "start", "stop"];
+// older keys still read, dropped whenever the file is rewritten: mode is picked
+// (a subdomain once *.<domain> answers, settled across hosts), base_path is gone,
+// extras' max_body is a key of its own, forwarded_proto follows the ingress
+const oldKeys = ["mode", "base_path", "extras"];
+const extraKeys = ["flush_interval", "max_body", "forwarded_proto"];
 const headRe = /^\[\s*(.*?)\s*\]$/;
 const commentRe = /^[#;]/;
 const digitsRe = /^[0-9]+$/;
@@ -45,8 +52,9 @@ const gameActionMS: Record<string, number> = { start: 180000, stop: 60000 };
 
 type Section = { name: string; f: Map<string, string> };
 
-// every section as a declared row, or the first reason to reject
-export function parse(text: string): [Row[], string] {
+// every section as a declared row, or the first reason to reject; old keys
+// still read listed as "[name] key"
+export function parse(text: string): [Row[], string, string[]] {
   const sections: Section[] = [];
   let cur: Section | undefined;
   const lines = text.split("\n");
@@ -59,10 +67,10 @@ export function parse(text: string): [Row[], string] {
       continue;
     }
     const eq = line.indexOf("=");
-    if (eq < 0) return [[], `line ${i + 1} is not key = value`];
+    if (eq < 0) return [[], `line ${i + 1} is not key = value`, []];
     const key = line.slice(0, eq).trim();
-    if (!cur) return [[], `line ${i + 1}: ${key} outside any [section]`];
-    if (!keys.has(key)) return [[], `[${cur.name}] has an unknown key, ${key}`];
+    if (!cur) return [[], `line ${i + 1}: ${key} outside any [section]`, []];
+    if (!Keys.includes(key) && !oldKeys.includes(key)) return [[], `[${cur.name}] has an unknown key, ${key}`, []];
     cur.f.set(
       key,
       line
@@ -72,49 +80,94 @@ export function parse(text: string): [Row[], string] {
     );
   }
   const rows: Row[] = [];
+  const old: string[] = [];
   const names = new Set<string>();
   for (const s of sections) {
-    if (names.has(s.name)) return [[], `[${s.name}] is declared twice`];
+    const no = (why: string): [Row[], string, string[]] => [[], `[${s.name}] ${why}`, []];
+    if (names.has(s.name)) return no("is declared twice");
     names.add(s.name);
-    let port: unknown = s.f.has("port") ? s.f.get("port") : undefined;
-    if (digitsRe.test(s.f.get("port") ?? "")) port = Number(s.f.get("port"));
+    for (const k of oldKeys) if (s.f.has(k)) old.push(`[${s.name}] ${k}`);
+    if (!s.f.has("port")) return no("has no port");
+    let port: unknown = s.f.get("port");
+    if (digitsRe.test(s.f.get("port")!)) port = Number(s.f.get("port"));
+    const game = s.f.get("type") === "game";
+    if (game && !s.f.get("start") !== !s.f.get("stop")) return no("start and stop go together");
+    if (!game && (s.f.get("start") || s.f.get("stop"))) return no("start and stop are for games only");
     let row: Row;
-    if (s.f.get("type") === "game") {
+    if (game) {
       row = { name: s.name, port, type: "game", mode: "game", controllable: !!s.f.get("start") && !!s.f.get("stop") };
     } else {
-      let extras: unknown;
-      try {
-        extras = JSON.parse(s.f.get("extras") || "{}");
-      } catch {
-        return [[], `[${s.name}] extras is not valid JSON`];
+      let maxBody: unknown = s.f.get("max_body") || undefined;
+      if (s.f.has("extras")) {
+        let extras: unknown;
+        try {
+          extras = JSON.parse(s.f.get("extras") || "{}");
+        } catch {
+          return no("extras is not valid JSON");
+        }
+        if (!extras || typeof extras !== "object" || Array.isArray(extras)) return no("extras is not a JSON object");
+        for (const k of Object.keys(extras)) if (!extraKeys.includes(k)) return no(`extras has an unknown key, ${k}`);
+        maxBody ??= (extras as Row).max_body;
       }
-      if (!extras || typeof extras !== "object" || Array.isArray(extras))
-        return [[], `[${s.name}] extras is not a JSON object`];
-      for (const k of Object.keys(extras))
-        if (!ExtraKeys.includes(k)) return [[], `[${s.name}] extras has an unknown key, ${k}`];
-      // a blank scheme sniffed and a blank mode picked when published
-      row = {
-        ...(extras as Row),
-        name: s.name,
-        port,
-        scheme: s.f.get("scheme") || "",
-        mode: s.f.get("mode") || "",
-        base_path: s.f.get("base_path") ?? "",
-      };
+      // a blank scheme sniffed when published
+      row = { name: s.name, port, scheme: s.f.get("scheme") || "" };
+      if (maxBody !== undefined) row.max_body = maxBody;
       if (s.f.get("type")) row.type = s.f.get("type");
       if (s.f.has("public")) {
         const p = s.f.get("public")!;
         row.public = p === "true" || p === "false" ? p === "true" : p;
       }
     }
-    if (port === undefined) delete row.port;
-    const why = rowError(
-      row.type === "game" ? row : { ...row, scheme: row.scheme || "http", mode: row.mode || "path" },
-    );
-    if (why) return [[], `[${s.name}] ${why}`];
+    const why = rowError(game ? row : { ...row, scheme: row.scheme || "http", mode: "path" });
+    if (why) return no(why);
     rows.push(row);
   }
-  return [rows, ""];
+  return [rows, "", old];
+}
+
+// text with the old keys out: mode, base_path and extras dropped, extras'
+// max_body kept as a line of its own where the section has none
+export function migrate(text: string): string {
+  const lines = text.split("\n");
+  const keyOf = (line: string) => {
+    const t = line.replace(/\r$/, "").trim();
+    const eq = t.indexOf("=");
+    return !t || commentRe.test(t) || eq <= 0 ? "" : t.slice(0, eq).trim();
+  };
+  const out: string[] = [];
+  let start = 0;
+  const flush = (end: number) => {
+    const sec = lines.slice(start, end);
+    let hasMax = sec.some((l) => keyOf(l) === "max_body");
+    for (const l of sec) {
+      const k = keyOf(l);
+      if (!oldKeys.includes(k)) {
+        out.push(l);
+        continue;
+      }
+      if (k !== "extras" || hasMax) continue;
+      let v: unknown;
+      try {
+        v = JSON.parse(
+          l
+            .replace(/\r$/, "")
+            .slice(l.indexOf("=") + 1)
+            .trim()
+            .replace(quoteRe, "") || "{}",
+        )?.max_body;
+      } catch {}
+      if (v === undefined || v === null || v === "") continue;
+      out.push(`max_body = ${v}` + (l.endsWith("\r") ? "\r" : ""));
+      hasMax = true;
+    }
+  };
+  for (let i = 0; i < lines.length; i++)
+    if (headRe.test(lines[i]!.replace(/\r$/, "").trim())) {
+      flush(i);
+      start = i;
+    }
+  flush(lines.length);
+  return out.join("\n");
 }
 
 let text: string | undefined;
@@ -159,12 +212,18 @@ function readDeclared() {
   notes.clear("file");
   if (text === t) return;
   text = t;
-  const [rows, why] = parse(t);
+  const [rows, why, old] = parse(t);
   if (why) {
     notes.note("parse", `${servicesFile} rejected, still publishing the last good one: ${why}`);
     return;
   }
   notes.note("parse", `${servicesFile} read: ${rows.length} declared`);
+  if (old.length)
+    notes.note(
+      "old",
+      `${servicesFile} has keys no longer used, dropped when it's next written (extras' max_body kept): ${old.join(", ")}`,
+    );
+  else notes.clear("old");
   if (read) remember(declared, rows);
   read = true;
   declared = rows;
@@ -273,15 +332,14 @@ function gameRow(r: Row, ip: string, ports: Set<number> | undefined): Row {
   return { ...r, status };
 }
 
-// a blank mode a subdomain once *.<domain> reaches the mesh, a path till then
-const modeOf = (r: Row) => (typeof r.mode === "string" && r.mode) || (wildcardUp() ? "subdomain" : "path");
+// a subdomain once *.<domain> reaches the mesh, a path till then
+const pickMode = () => (wildcardUp() ? "subdomain" : "path");
 
 function webRow(r: Row, ip: string): Row | undefined {
   const port = r.port as number;
   const want = typeof r.scheme === "string" ? r.scheme : "";
-  const base = typeof r.base_path === "string" ? r.base_path : "";
-  const up = probe(`web:${want}:${ip}:${port}:${base}`, IdleMS, async () => {
-    const s = await sniff(want, ip, port, base);
+  const up = probe(`web:${want}:${ip}:${port}:`, IdleMS, async () => {
+    const s = await sniff(want, ip, port, "");
     if (s) sniffed.set(port, s);
     return !!s;
   });
@@ -289,10 +347,10 @@ function webRow(r: Row, ip: string): Row | undefined {
   const name = r.name as string;
   if (up) {
     const scheme = want || sniffed.get(port) || "http";
-    const mode = modeOf(r);
+    const mode = pickMode();
     notes.note("svc:" + name, `${name} is up on port ${port}, published (${scheme}, ${mode})`);
     // auto: the mode picked here, a subdomain yielding to one asked for by name (proxy settle)
-    return r.mode ? { ...r, scheme, mode } : { ...r, scheme, mode, auto: true };
+    return { ...r, scheme, mode, auto: true };
   }
   notes.note("svc:" + name, `${name} is not answering on port ${port}, not published`);
   return;
@@ -452,7 +510,8 @@ export function adopt(pages: Found[]): Found[] {
   } catch {
     return [];
   }
-  let next = t && !t.endsWith("\n") ? t + "\n" : t;
+  let next = migrate(t);
+  if (next && !next.endsWith("\n")) next += "\n";
   for (const f of todo)
     next += `\n# found by phosphorus: ${f.title.replace(/[\r\n]+/g, " ")}\n[${f.name}]\nport = ${f.port}\n`;
   const why = parse(next)[1];
@@ -561,7 +620,7 @@ export function setPublic(name: string, on: boolean): [number, any] {
   }
   if (on) out.splice(last + 1, 0, "public = true");
   out.push(...lines.slice(end));
-  const text = out.join("\n");
+  const text = migrate(out.join("\n"));
   const [rows, why] = parse(text);
   if (why) return [400, { error: why }];
   for (const r of rows)
@@ -596,12 +655,11 @@ export async function health(name: string, ip: string): Promise<Record<string, a
     return out;
   }
   const scheme = (typeof r.scheme === "string" && r.scheme) || (await sniff("", ip, port, "")) || "http";
-  const base = typeof r.base_path === "string" ? r.base_path : "";
   out.scheme = scheme;
-  out.mode = modeOf(r);
+  out.mode = pickMode();
   let res: Response;
   try {
-    res = await probeGet(scheme, ip, port, base);
+    res = await probeGet(scheme, ip, port, "");
   } catch (e) {
     if (!out.listening) out.why = `not published: nothing on :${port}`;
     else {

@@ -20,16 +20,6 @@ const sizeRe = /^([0-9]+)(KB|MB|GB)?$/;
 const unit: Record<string, number> = { "": 1, KB: 1e3, MB: 1e6, GB: 1e9 };
 const gameStatus = new Set(["online", "offline", "starting", "stopping"]);
 
-// services.export `extras`, spread onto the published row
-export const ExtraKeys = ["flush_interval", "max_body", "forwarded_proto"];
-
-function extraOK(k: string, v: unknown): boolean {
-  if (k === "flush_interval") return Number.isInteger(Number(v)) && /^-?[0-9]+$/.test(String(v));
-  if (k === "max_body") return sizeRe.test(String(v));
-  if (k === "forwarded_proto") return v === "http" || v === "https";
-  return true;
-}
-
 const validPort = (p: unknown) => typeof p === "number" && Number.isInteger(p) && p >= 1 && p <= 65535;
 
 export type Row = Record<string, any>;
@@ -49,7 +39,7 @@ export function rowError(r: Row | undefined | null): string {
   if ("public" in r && r.public !== true && r.public !== false) return `'${r.public}' is not true or false`;
   if (r.base_path && (typeof r.base_path !== "string" || r.base_path.includes("..") || !baseRe.test(r.base_path)))
     return `'${r.base_path}' is not a valid base_path`;
-  for (const k of ExtraKeys) if (k in r && !extraOK(k, r[k])) return `'${r[k]}' is not a valid ${k}`;
+  if (r.max_body !== undefined && !sizeRe.test(String(r.max_body))) return `'${r.max_body}' is not a valid max_body`;
   return "";
 }
 
@@ -83,7 +73,6 @@ export type Route = {
   ip: string;
   port: number;
   maxBody: number;
-  proto: string;
   // a peer's own frontend, its pin cookie kept
   pin?: boolean;
 };
@@ -111,7 +100,6 @@ function toRoute(r: Row, ip: string): Route {
     ip,
     port: r.port,
     maxBody: 0,
-    proto: "http",
   };
   if (typeof r.master === "boolean") {
     rt.git = true;
@@ -125,7 +113,6 @@ function toRoute(r: Row, ip: string): Route {
     const m = sizeRe.exec(String(r.max_body));
     if (m) rt.maxBody = Number(m[1]) * unit[m[2] ?? ""]!;
   }
-  if (typeof r.forwarded_proto === "string" && r.forwarded_proto) rt.proto = r.forwarded_proto;
   return rt;
 }
 
@@ -301,7 +288,6 @@ function peerIngress(host: string): Route | undefined {
     scheme: "http",
     ip,
     port: ingressPort,
-    proto: "https",
     master: false,
     git: false,
     public: false,
@@ -332,6 +318,10 @@ export function frameable(csp: string): string {
 
 const hostPort = (rt: Route) => (rt.ip.includes(":") ? `[${rt.ip}]` : rt.ip) + ":" + rt.port;
 
+// https for a request over TLS or through the tunnel, its cloudflared saying so
+const protoOf = (c: Ctx) =>
+  c.url.protocol === "https:" || c.req.headers.get("x-forwarded-proto") === "https" ? "https" : "http";
+
 // the request's headers as the service gets them
 function outHeaders(rt: Route, c: Ctx): Headers {
   const h = new Headers(c.req.headers);
@@ -342,7 +332,7 @@ function outHeaders(rt: Route, c: Ctx): Headers {
     if (kept.length) h.set("cookie", kept.join("; "));
   }
   h.set("x-forwarded-for", c.ip);
-  h.set("x-forwarded-proto", rt.proto);
+  h.set("x-forwarded-proto", protoOf(c));
   h.set("x-forwarded-host", c.req.headers.get("host") ?? "");
   if (rt.pin) h.set(pinHop, selfHost);
   return h;

@@ -93,18 +93,22 @@ test("dropSection takes its own comment and leaves the next one's", () => {
 });
 
 test("editService creates, edits, rejects and removes", () => {
-  expect(editService("Web", {}, false, false)).toEqual(["name: lowercase letters, digits, -", ""]);
+  // services' own checks, nothing of config's
+  expect(editService("Web", { port: "1" }, false, false)).toEqual(["[Web] 'Web' is not a valid name", ""]);
   expect(editService("web", { nope: "1" }, false, false)).toEqual([
-    "no field nope, only port, scheme, mode, base_path, extras, type, start, stop, public",
+    "no field nope, only port, scheme, max_body, public, type, start, stop",
     "",
   ]);
-  expect(editService("web", {}, false, false)).toEqual(["port is required", ""]);
+  expect(editService("web", { mode: "path" }, false, false)[0]).toBe(
+    "no field mode, only port, scheme, max_body, public, type, start, stop",
+  );
+  expect(editService("web", {}, false, false)).toEqual(["[web] has no port", ""]);
   expect(editService("web", { port: "1", start: "x" }, false, false)).toEqual([
-    "start and stop are for games only",
+    "[web] start and stop are for games only",
     "",
   ]);
   expect(editService("mc", { port: "1", type: "game", start: "x" }, false, false)).toEqual([
-    "start and stop go together",
+    "[mc] start and stop go together",
     "",
   ]);
   expect(editService("web", {}, true, false)).toEqual(["no service web", ""]);
@@ -120,12 +124,12 @@ test("editService creates, edits, rejects and removes", () => {
     svc,
     "# mine\n[web]\n# the port\nport = 8080\nscheme = https\n\n[mc]\nport = 25565\ntype = game\nstart = a\nstop = b\n",
   );
-  expect(editService("web", { scheme: "", mode: "subdomain" }, false, false)).toEqual([
+  expect(editService("web", { scheme: "", max_body: "50MB" }, false, false)).toEqual([
     "",
-    "+ mode = subdomain\n- scheme = https",
+    "+ max_body = 50MB\n- scheme = https",
   ]);
   expect(read(svc)).toBe(
-    "# mine\n[web]\n# the port\nport = 8080\nmode = subdomain\n\n[mc]\nport = 25565\ntype = game\nstart = a\nstop = b\n",
+    "# mine\n[web]\n# the port\nport = 8080\nmax_body = 50MB\n\n[mc]\nport = 25565\ntype = game\nstart = a\nstop = b\n",
   );
   // a bad edit never reaches disk
   const before = read(svc);
@@ -135,10 +139,27 @@ test("editService creates, edits, rejects and removes", () => {
   // its comment above it goes with it
   expect(editService("web", {}, true, true)).toEqual([
     "",
-    "- # mine\n- [web]\n- # the port\n- port = 8080\n- mode = subdomain",
+    "- # mine\n- [web]\n- # the port\n- port = 8080\n- max_body = 50MB",
   ]);
   expect(setService("web", {}, true)).toBe("");
   expect(read(svc)).toBe("[mc]\nport = 25565\ntype = game\nstart = a\nstop = b\n");
+});
+
+test("editService drops old keys and renames", () => {
+  writeFileSync(svc, '[web]\nport = 8080\nmode = path\nextras = {"max_body": "50MB", "flush_interval": -1}\n');
+  // any edit takes the old keys out, extras' max_body kept, the diff showing it
+  expect(editService("web", { public: "true" }, false, false)).toEqual([
+    "",
+    '+ max_body = 50MB\n+ public = true\n- mode = path\n- extras = {"max_body": "50MB", "flush_interval": -1}',
+  ]);
+  expect(read(svc)).toBe("[web]\nport = 8080\nmax_body = 50MB\npublic = true\n");
+  expect(editService("site", {}, false, false, "nope")).toEqual(["no service nope", ""]);
+  expect(setService("mc", { port: "25565", type: "game", start: "a", stop: "b" }, false)).toBe("");
+  expect(editService("mc", {}, false, false, "web")).toEqual(["there's already a service mc", ""]);
+  expect(editService("site", { port: "8081" }, false, false, "web")[0]).toBe("");
+  expect(read(svc)).toBe(
+    "[site]\nport = 8081\nmax_body = 50MB\npublic = true\n\n[mc]\nport = 25565\ntype = game\nstart = a\nstop = b\n",
+  );
 });
 
 test("editIni holds to IniKeys and drops an emptied section", () => {

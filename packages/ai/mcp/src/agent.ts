@@ -168,7 +168,7 @@ export const agentTools = (): Tool[] => [
     scope: "key",
     description:
       "A host's two config files as they stand: phosphorus.ini (shares in [files], [git], [model], [home]) and " +
-      "services.export (each [service]: port, scheme, mode, base_path, public, type game with start/stop). Read before service_edit or config_set. Admins only.",
+      "services.export (each [service]: port, scheme, max_body, public, type game with start/stop). Read before service_edit or config_set. Admins only.",
     schema: object({ host: name }, "host"),
     run: (a, m) => {
       adminOf(m);
@@ -183,8 +183,10 @@ export const agentTools = (): Tool[] => [
     description:
       "Publish, change or remove a service in a host's services.export, as the terminal UI's form does, the whole file " +
       "checked before it's written and live within seconds. fields only change the keys given; a blank value drops one. " +
-      "Pages listening on a host are published on their own, port alone; edit only to change or remove one (removed stays removed). " +
-      "Web: port (required), scheme http|https (blank: sniffed), mode path|subdomain (blank: a subdomain once *.<domain> reaches the mesh, a path when another host has the name), base_path, public true. Game: type game, port, start and stop commands. Admins only.",
+      "Pages listening on a host are found and offered, not published: publish one with its port alone (removed stays removed). " +
+      "Each is a subdomain once *.<domain> reaches the mesh, a path when another host has the name. " +
+      "Web: port (required), scheme http|https (blank: sniffed), max_body (e.g. 50MB), public true. Game: type game, port, start and stop commands. " +
+      "Old keys (mode, base_path, extras) are dropped on any edit, extras' max_body kept. Admins only.",
     schema: object(
       {
         host: name,

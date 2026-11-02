@@ -46,7 +46,8 @@ async function grab(rt: Route, p: string, max: number, o: GrabOpts): Promise<Gra
         "Accept-Encoding": "identity",
         "User-Agent": "Mozilla/5.0 (phosphorus icons)",
         "X-Forwarded-Host": host,
-        "X-Forwarded-Proto": rt.proto,
+        // as a browser through the tunnel would ask
+        "X-Forwarded-Proto": host ? "https" : "http",
         "X-Forwarded-Prefix": rt.prefix,
       },
       redirect: "manual",

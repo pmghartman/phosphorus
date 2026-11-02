@@ -16,6 +16,7 @@ mkdirSync(process.env.STATE_DIR);
 const {
   adopt,
   health,
+  migrate,
   nameFrom,
   own,
   pagesOn,
@@ -38,8 +39,7 @@ test("parse", () => {
       "[ web ]",
       'port = "8080"',
       "scheme = https",
-      "base_path = app",
-      'extras = {"max_body": "10MB", "flush_interval": -1}',
+      "max_body = 10MB",
       "public = true",
       "",
       "[mc]\r",
@@ -52,19 +52,19 @@ test("parse", () => {
       "port = 7777",
       "[sub]",
       "port = 3000",
-      "mode = subdomain",
       "public = maybe",
     ].join("\n"),
   );
   expect(why).toBe("[sub] 'maybe' is not true or false");
   expect(rows).toEqual([]);
-  const [ok, none] = parse(
-    '[web]\nport = 8080\nextras = {"max_body": "10MB"}\npublic = true\n[mc]\ntype = game\nport = 25565\nstart = a\nstop = b\n[idle]\ntype = game\nport = 7777\n',
+  const [ok, none, old] = parse(
+    "[web]\nport = 8080\nmax_body = 10MB\npublic = true\n[mc]\ntype = game\nport = 25565\nstart = a\nstop = b\n[idle]\ntype = game\nport = 7777\n",
   );
   expect(none).toBe("");
+  expect(old).toEqual([]);
   expect(ok).toEqual([
-    // scheme and mode blank, sniffed and picked when published
-    { max_body: "10MB", name: "web", port: 8080, scheme: "", mode: "", base_path: "", public: true },
+    // scheme blank, sniffed when published
+    { name: "web", port: 8080, scheme: "", max_body: "10MB", public: true },
     { name: "mc", port: 25565, type: "game", mode: "game", controllable: true },
     { name: "idle", port: 7777, type: "game", mode: "game", controllable: false },
   ]);
@@ -80,14 +80,83 @@ test("parse rejects", () => {
     ["[a]\nport = 1\nextras = [1]", "[a] extras is not a JSON object"],
     ["[a]\nport = 1\nextras = null", "[a] extras is not a JSON object"],
     ['[a]\nport = 1\nextras = {"x": 1}', "[a] extras has an unknown key, x"],
-    ["[a]\nscheme = http", "[a] 'undefined' is not a valid port"],
+    ["[a]\nscheme = http", "[a] has no port"],
+    ["[a]\nport = 1\nmax_body = lots", "[a] 'lots' is not a valid max_body"],
+    ["[a]\nport = 1\nstart = x", "[a] start and stop are for games only"],
+    ["[a]\nport = 1\ntype = game\nstart = x", "[a] start and stop go together"],
+    ["[a]\nport = 1\nflush_interval = 5", "[a] has an unknown key, flush_interval"],
     ["[a]\nport = 80a", "[a] '80a' is not a valid port"],
     ["[a]\nport = 80\nscheme = ftp", "[a] 'ftp' is not http or https"],
     ["[a]\nport = 80\ntype = db", "[a] 'db' is not a service type"],
     ["[a b]\nport = 80", "[a b] 'a b' is not a valid name"],
   ])
     expect(parse(text!)[1]).toBe(why!);
-  expect(parse("")).toEqual([[], ""]);
+  expect(parse("")).toEqual([[], "", []]);
+});
+
+test("old keys still read, dropped on a rewrite", () => {
+  // as the live mesh's files have them
+  const text = [
+    "# media",
+    "[jelly]",
+    "port = 8096",
+    "mode = path",
+    "base_path = web",
+    'extras = {"max_body": "50MB", "forwarded_proto": "https", "flush_interval": -1}',
+    "",
+    "[up]\r",
+    "port = 3001\r",
+    "max_body = 1GB\r",
+    'extras = {"max_body": "5MB"}\r',
+    "[proto]",
+    "port = 9000",
+    'extras = {"forwarded_proto": "https"}',
+    "[rl]",
+    "type = game",
+    "port = 25565",
+    "start = systemctl start rl",
+    "stop = systemctl stop rl",
+    "",
+  ].join("\n");
+  const [rows, why, old] = parse(text);
+  expect(why).toBe("");
+  expect(old).toEqual(["[jelly] mode", "[jelly] base_path", "[jelly] extras", "[up] extras", "[proto] extras"]);
+  expect(rows).toEqual([
+    // a top-level max_body over extras' own, mode and base_path not read
+    { name: "jelly", port: 8096, scheme: "", max_body: "50MB" },
+    { name: "up", port: 3001, scheme: "", max_body: "1GB" },
+    { name: "proto", port: 9000, scheme: "" },
+    { name: "rl", port: 25565, type: "game", mode: "game", controllable: true },
+  ]);
+  const clean = migrate(text);
+  expect(clean).toBe(
+    [
+      "# media",
+      "[jelly]",
+      "port = 8096",
+      "max_body = 50MB",
+      "",
+      "[up]\r",
+      "port = 3001\r",
+      "max_body = 1GB\r",
+      "[proto]",
+      "port = 9000",
+      "[rl]",
+      "type = game",
+      "port = 25565",
+      "start = systemctl start rl",
+      "stop = systemctl stop rl",
+      "",
+    ].join("\n"),
+  );
+  expect(parse(clean)).toEqual([rows, "", []]);
+  expect(migrate(clean)).toBe(clean);
+  // a rewrite takes them out
+  writeFileSync(file, text);
+  expect(setPublic("proto", true)).toEqual([200, { public: true }]);
+  expect(readFileSync(file, "utf8")).toBe(clean.replace("port = 9000\n", "port = 9000\npublic = true\n"));
+  // bad extras still refused
+  expect(parse("[a]\nport = 1\nextras = {")[1]).toBe("[a] extras is not valid JSON");
 });
 
 test("set public", () => {
@@ -144,7 +213,7 @@ test("refresh and health", async () => {
   expect(rows.map((r) => r.name)).toEqual(want);
   expect(rows[1]!.status).toBe("offline");
   // the scheme sniffed, the mode a path while *.<domain> isn't known to answer
-  expect(rows[0]).toEqual({ name: "web", port: srv.port, scheme: "http", mode: "path", base_path: "", auto: true });
+  expect(rows[0]).toEqual({ name: "web", port: srv.port, scheme: "http", mode: "path", auto: true });
   if (git)
     expect(rows[2]).toEqual({
       name: "git",

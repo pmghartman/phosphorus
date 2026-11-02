@@ -4,7 +4,7 @@
 
 import { chmodSync, readFileSync, renameSync, type Stats, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import { parse } from "@phosphorus/services";
+import { Keys, migrate, parse } from "@phosphorus/services";
 import { chownLike, env, errText, RepoDir } from "@phosphorus/util";
 
 // the home's config/, read-write, /etc/phosphorus a read-only mount
@@ -168,19 +168,6 @@ function writeDoc(file: string, d: Doc): string {
   return "";
 }
 
-// --- services.export ------------------------------------------------------------
-
-export const svcKeys = ["port", "scheme", "mode", "base_path", "extras", "type", "start", "stop", "public"];
-
-export const svcVals = (v: Record<string, string>) =>
-  Object.fromEntries(svcKeys.map((k) => [k, v[k] ? v[k] : undefined]));
-
-export function commitServices(d: Doc): string {
-  const [, err] = parse(joinDoc(d));
-  if (err) return err;
-  return writeDoc(servicesFile, d);
-}
-
 // --- phosphorus.ini [files] -----------------------------------------------------
 
 export type Share = { dir: string; perms: string };
@@ -299,38 +286,37 @@ export function wholeAtLeast(v: string, lo: number): boolean {
 
 // --- edits from the frontend: the same rewrites as the forms ---------------------
 
-const svcNameRe = /^[a-z0-9][a-z0-9-]*$/;
-
 // setService [name] written with fields, a blank one dropped, or removed; "" once saved
 export const setService = (name: string, fields: Record<string, string>, remove: boolean) =>
   editService(name, fields, remove, false)[0];
 
-// editService setService, or with dry the change it would make as a diff, nothing written
+// editService setService, [from] renamed to [name] when given, or with dry the
+// change it would make as a diff, nothing written; the keys and every check are
+// @phosphorus/services', old keys dropped on the way
 export function editService(
   name: string,
   fields: Record<string, string>,
   remove: boolean,
   dry: boolean,
+  from = name,
 ): [string, string] {
-  if (!svcNameRe.test(name)) return ["name: lowercase letters, digits, -", ""];
   const before = readText(servicesFile);
-  const d = splitSections(before);
-  let s = findSection(d, name);
+  const d = splitSections(migrate(before));
+  let s = findSection(d, from);
   if (remove) {
-    if (!s) return ["no service " + name, ""];
-    dropSection(d, name);
+    if (!s) return ["no service " + from, ""];
+    dropSection(d, from);
     return commitDry(d, before, dry);
   }
+  if (from !== name && !s) return ["no service " + from, ""];
+  if (from !== name && findSection(d, name)) return ["there's already a service " + name, ""];
   const v = fieldsOf(s);
   for (const [k, x] of Object.entries(fields)) {
-    if (!svcKeys.includes(k)) return ["no field " + k + ", only " + svcKeys.join(", "), ""];
+    if (!Keys.includes(k)) return ["no field " + k + ", only " + Keys.join(", "), ""];
     v[k] = x.trim();
   }
-  if (!v.port) return ["port is required", ""];
-  if (v.type === "game" && !v.start !== !v.stop) return ["start and stop go together", ""];
-  if (v.type !== "game" && (v.start || v.stop)) return ["start and stop are for games only", ""];
   if (!s) s = appendSection(d, name);
-  s.lines = rewriteSection(s, name, svcVals(v), svcKeys);
+  s.lines = rewriteSection(s, name, Object.fromEntries(Keys.map((k) => [k, v[k] || undefined])), Keys);
   return commitDry(d, before, dry);
 }
 

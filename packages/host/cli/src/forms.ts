@@ -1,23 +1,17 @@
 // the forms over config/: services.export and phosphorus.ini's [files], [home] and
 // [model], each saved through the same rewrites the frontend uses
 import {
-  appendSection,
-  commitServices,
-  dropSection,
+  editService,
   fieldsOf,
-  findSection,
   isHomeDir,
   linkOk,
   readModel,
   readShares,
   readText,
-  rewriteSection,
   type Section,
   type Share,
   servicesFile,
   splitSections,
-  svcKeys,
-  svcVals,
   wholeAtLeast,
   writeHomeDir,
   writeModel,
@@ -47,15 +41,7 @@ export function serviceForm(s: Section | undefined): Form {
     { key: "name", value: name, hint: "lowercase letters, digits, -" },
     fl("port", "required, 1-65535"),
     fl("scheme", "blank = whichever the port answers", "", "http", "https"),
-    fl(
-      "mode",
-      "blank = <name>.<domain> once *.<domain> reaches the mesh (a path when another host has the name), else a path",
-      "",
-      "path",
-      "subdomain",
-    ),
-    fl("base_path", "sub-path stripped before proxying"),
-    fl("extras", 'JSON: {"max_body":"50MB","forwarded_proto":"https"}'),
+    fl("max_body", "largest request body, e.g. 50MB; blank = no limit"),
     fl("public", "true = no phosphorus login, the service's own only", "", "true", "false"),
     fl("type", "blank, or game", "", "game"),
     fl("start", "games only: host command behind play"),
@@ -93,31 +79,15 @@ export function switchService(dir: number) {
   ui.confirm = { text: "discard changes to " + what + "?", danger: true, onYes: goTo };
 }
 
-// the whole candidate file through the frontend's own parser, a bad edit never
-// reaching disk to blackhole the file
+// through config's editService, the whole candidate file checked before it's
+// written, a renamed one renamed in place
 export function saveService(f: Form): string {
-  const v = formVals(f);
-  if (!v.name) return "name is required";
-  if (!v.port) return "port is required";
-  if (v.type === "game" && !v.start !== !v.stop) return "start and stop go together";
-  if (v.type !== "game" && (v.start || v.stop)) return "start and stop are for games only";
-  if (v.type === "game" && v.public) return "public is for web services only";
-  const d = splitSections(readText(servicesFile));
-  let s: Section | undefined;
-  if (!f.isNew) {
-    s = findSection(d, f.orig);
-    if (!s) return "[" + f.orig + "] is gone from the file, reopen it";
-  }
-  if (!s) s = appendSection(d, v.name!);
-  s.lines = rewriteSection(s, v.name!, svcVals(v), svcKeys);
-  return commitServices(d);
+  const { name, ...fields } = formVals(f);
+  if (!name) return "name is required";
+  return editService(name, fields, false, false, f.isNew ? name : f.orig)[0];
 }
 
-export function deleteService(name: string): string {
-  const d = splitSections(readText(servicesFile));
-  dropSection(d, name);
-  return commitServices(d);
-}
+export const deleteService = (name: string) => editService(name, {}, true, false)[0];
 
 // --- phosphorus.ini [files] -----------------------------------------------------
 
