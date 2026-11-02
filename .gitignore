@@ -27,4 +27,6 @@ node_modules/
 /phosphorus
 /out/
 /dist/
+/packaging/host/payload/
+/packaging/host/stage/
 .hesperus/
