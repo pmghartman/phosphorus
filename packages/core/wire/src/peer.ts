@@ -44,7 +44,7 @@ export interface PeerDigest {
   store: string;
 }
 
-// a request and its answer: ops store.stamps, store.files {rels}, chat.since {seq}
+// a request and its answer: ops store.stamps, store.files {rels}, chat.since {seq}, home.stamps
 export interface PeerReq {
   type: "req";
   id: number;
@@ -58,7 +58,14 @@ export interface PeerRes {
   body?: unknown;
 }
 
-export type PeerFrame = PeerHello | PeerState | PeerChat | PeerStore | PeerDigest | PeerReq | PeerRes;
+// the synced home's: the sender's digest for drift, or the paths it changed (packages/home/sync)
+export interface PeerHome {
+  type: "home";
+  digest?: string;
+  files?: Record<string, unknown>;
+}
+
+export type PeerFrame = PeerHello | PeerState | PeerChat | PeerStore | PeerDigest | PeerHome | PeerReq | PeerRes;
 
 // close codes a link uses
 export const PeerCloseDuplicate = 4001;

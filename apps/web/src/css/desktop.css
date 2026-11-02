@@ -44,8 +44,7 @@
   white-space: nowrap;
 }
 .dk-row input,
-.fm-ask input,
-.fm-find {
+.fm-ask input {
   min-width: 0;
   padding: 0.3rem 0.45rem;
   background: var(--card);
@@ -55,8 +54,7 @@
   font-size: 0.8rem;
 }
 .dk-row input:focus,
-.fm-ask input:focus,
-.fm-find:focus {
+.fm-ask input:focus {
   outline: none;
   border-color: var(--accent);
 }

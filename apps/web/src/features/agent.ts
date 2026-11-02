@@ -8,7 +8,7 @@ import { dkCode } from '../desktop/deskfiles.ts';
 import { type DkWin, dkClose, dkFocus, dkWin } from '../desktop/windows.ts';
 import { dk, PREF_LS, st } from '../lib/state.ts';
 import { openConv } from './chat/chat.ts';
-import { type Fm, filesParent, filesWin, HOME, type Loc } from './home/home.ts';
+import { type Fm, filesParent, filesWin, homeLoc, type Loc } from './home/home.ts';
 import { openUpdateModal, updateModal } from './update.ts';
 
 const AGENT_VIEW_LS = PREF_LS.agentview!;
@@ -185,7 +185,7 @@ ${args.path}`,
 let agentFm: Fm | null | undefined = null;
 async function agentFiles(host: string, share: string, dir: string) {
   const info = st.hostsInfo[String(host).toLowerCase()]?.files?.shares?.find((x) => x.id === share);
-  const loc: Loc = share === 'home' ? HOME : { host, share, root: info?.label || share, perms: info?.perms || '' };
+  const loc: Loc = share === 'home' ? homeLoc() : { host, share, root: info?.label || share, perms: info?.perms || '' };
   if (agentFm?.w.node.isConnected) {
     (await app('files')).fmGo(agentFm, loc, dir);
     agentLit(agentFm.w);

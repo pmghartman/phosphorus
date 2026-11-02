@@ -218,6 +218,77 @@ export function homeFilterResults(who: files.Who | undefined, rs: Record<string,
   return rs.filter((r) => files.homeGate(who, str(r.path).replace(/\/$/, ""), Exists) === "");
 }
 
+// a caller as the home's gate knows them
+export const whoOf = (c: Caller | undefined): files.Who | undefined => c && { user: c.user, admin: !!c.admin };
+
+// openShare a share here and who's right to rels in it: the one place the gate is checked
+export function openShare(who: files.Who | undefined, share: string, ...rels: string[]): [files.Share, Res?] {
+  const none = undefined as unknown as files.Share;
+  if (!files.enabled()) return [none, [503, { error: selfHost + " publishes no files directory" }]];
+  const sh = files.shareOf(share);
+  if (!sh) return [none, [404, { error: selfHost + " has no such share" }]];
+  if (sh.id === "home")
+    for (const r of rels) {
+      const why = files.homeGate(who, r, Exists);
+      if (why) return [none, [files.gateCode(who, why), { error: why }]];
+    }
+  return [sh];
+}
+
+// filesHere one files op on this host's shares, its paths and options in p; quiet a
+// missing path a 200 flagged missing, for probes of paths a host may lack
+export async function filesHere(
+  who: files.Who | undefined,
+  op: string,
+  share: string,
+  p: Record<string, any>,
+  quiet = false,
+): Promise<Res> {
+  if (op === "info") return [200, filesInfo()];
+  const path = str(p.path);
+  const [sh, bad] = openShare(who, share, ...(op === "rename" ? [str(p.from), str(p.to)] : [path]));
+  if (bad) return bad;
+  const home = sh.id === "home";
+  let res: Res;
+  switch (op) {
+    case "list":
+      res = await files.list(sh, path);
+      if (home && res[0] === 200) res[1].entries = files.homeFilterList(who, path, res[1].entries, Exists);
+      break;
+    case "tree":
+      res = await files.tree(sh, path, p.depth, str(p.match), str(p.skip));
+      if (home && res[0] === 200) res[1].entries = files.homeFilterTree(who, res[1].entries, Exists);
+      break;
+    case "search":
+      res = await files.search(
+        sh,
+        path,
+        str(p.query),
+        p.content === true || p.content === "true",
+        str(p.glob),
+        str(p.skip),
+      );
+      if (home && res[0] === 200) res[1].results = homeFilterResults(who, res[1].results);
+      break;
+    case "read":
+      res = await files.read(sh, path);
+      break;
+    case "save":
+      return collabWrite(sh, path, writeP(p));
+    case "mkdir":
+      return files.mkdir(sh, path);
+    case "rename":
+      return files.renamePath(sh, str(p.from), str(p.to));
+    case "delete":
+      return files.trash(sh, path);
+    case "run":
+      return runGrant(sh, path, who);
+    default:
+      return [400, { error: "no op " + op }];
+  }
+  return quiet && res[0] === 404 ? [200, { missing: true, error: res[1]?.error }] : res;
+}
+
 // filesCall a files call, here or on its host; homes only for a keyed caller, as their user
 export async function filesCall(
   c: Caller | undefined,
@@ -226,51 +297,7 @@ export async function filesCall(
   share: string,
   body: Record<string, any>,
 ): Promise<Res> {
-  if (host === selfHost) {
-    if (op === "info") return [200, filesInfo()];
-    if (!files.enabled()) return [503, { error: selfHost + " publishes no files directory" }];
-    const sh = files.shareOf(share);
-    if (!sh) return [404, { error: selfHost + " has no such share" }];
-    const p = str(body.path);
-    let who: files.Who | undefined;
-    if (sh.id === "home") {
-      if (!c) return [403, { error: "the homes are for their users only" }];
-      who = { user: c.user, admin: !!c.admin };
-      const rels = op === "rename" ? [str(body.from), str(body.to)] : [p];
-      for (const x of rels) {
-        const why = files.homeGate(who, x, Exists);
-        if (why) return [files.gateCode(who, why), { error: why }];
-      }
-    }
-    switch (op) {
-      case "list": {
-        const [st, b] = await files.list(sh, p);
-        if (who && st === 200) b.entries = files.homeFilterList(who, p, b.entries, Exists);
-        return [st, b];
-      }
-      case "tree": {
-        const [st, b] = await files.tree(sh, p, body.depth, str(body.match));
-        if (who && st === 200) b.entries = files.homeFilterTree(who, b.entries, Exists);
-        return [st, b];
-      }
-      case "search": {
-        const [st, b] = await files.search(sh, p, str(body.query), truthy(body.content), str(body.glob));
-        if (who && st === 200) b.results = homeFilterResults(who, b.results);
-        return [st, b];
-      }
-      case "read":
-        return files.read(sh, p);
-      case "save":
-        return collabWrite(sh, p, writeP(body));
-      case "mkdir":
-        return files.mkdir(sh, p);
-      case "rename":
-        return files.renamePath(sh, str(body.from), str(body.to));
-      case "delete":
-        return files.remove(sh, p);
-    }
-    return [400, { error: "no op " + op }];
-  }
+  if (host === selfHost) return filesHere(whoOf(c), op, share, body);
   const ip = await tailnetIP(host);
   if (!ip) return [502, { error: `can't find ${host} on the tailnet` }];
   const get = op === "info" || op === "list" || op === "tree" || op === "search" || op === "read";

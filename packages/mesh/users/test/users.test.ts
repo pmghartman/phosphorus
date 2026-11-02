@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Req, Session } from "@phosphorus/users";
 
-process.env.HOME_FS = mkdtempSync(join(tmpdir(), "phos-users-"));
+process.env.PHOSPHORUS_REPO_DIR = mkdtempSync(join(tmpdir(), "phos-users-"));
 process.env.BASE_DOMAIN = "mesh.example";
 process.env.SELF_HOST = "tshost";
 process.env.ADMIN_PASS = "bootpw";

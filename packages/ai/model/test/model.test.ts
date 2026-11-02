@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const dir = mkdtempSync(join(tmpdir(), "phos-model-"));
-process.env.HOME_FS = join(dir, "home");
+process.env.PHOSPHORUS_REPO_DIR = dir;
 process.env.STATE_DIR = join(dir, "state");
 process.env.SELF_HOST = "razer";
 process.env.BASE_DOMAIN = "mesh.example";

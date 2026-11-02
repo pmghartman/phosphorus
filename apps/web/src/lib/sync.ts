@@ -5,7 +5,7 @@
 import type { PageMessage, Route, State, TailnetDevice } from '@phosphorus/wire';
 import { appCall } from '../apps/index.ts';
 import { dkHostsGone, dkPressed, dkRoutes } from '../desktop/desk.ts';
-import { dkDeskStamps } from '../desktop/deskfiles.ts';
+import { dkHomeSeen } from '../desktop/deskfiles.ts';
 import { acctCheck } from '../features/account.ts';
 import { renderGames } from '../features/games.ts';
 import {
@@ -34,7 +34,7 @@ function renderRoutes(routes: Route[], tailnet: TailnetDevice[]) {
 function applyState(state: State) {
   st.selfHost = settleHost(state.self.host || '');
   st.hostsInfo = state.hosts && typeof state.hosts === 'object' ? state.hosts : {};
-  dkDeskStamps();
+  dkHomeSeen(state.home);
   st.meshDomain = state.domain || '';
   if (state.domain) st.baseDomain = state.domain;
   if (state.self.version) {

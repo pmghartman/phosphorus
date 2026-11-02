@@ -10,11 +10,13 @@ import { HomeRoot, Sys } from "@phosphorus/files";
 import { logf, markHot, SelfHost, writeFileAtomic } from "@phosphorus/util";
 import { ahead as aheadOf, contentHash, newer, sameVer, seen, tick, type Ver, wall } from "./hlc.ts";
 
+// the clock itself, for an index kept beside the store (the synced home)
+export * as hlc from "./hlc.ts";
 export { AheadMs, setClockSkew, type Ver } from "./hlc.ts";
 // a stamp too far past this clock to take
 export const ahead = (t: unknown) => typeof t === "number" && aheadOf(t);
 
-// in [home] dir's home/, hidden from every user but the admins
+// in <phosphorus>/home/.sys, hidden from every user but the admins
 export const Root = join(HomeRoot, Sys);
 
 const relRe = /^(etc|home)(\/[a-z0-9][a-z0-9._-]{0,63}){1,5}\.json$/;

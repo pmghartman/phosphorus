@@ -1,9 +1,8 @@
 // what a write made keeps the owner it replaced: phosphorus writes as root, so a
 // home handed to its user's own login on this machine stays that login's, file
 // by file; Windows' files keep their folder's permissions on their own
-import { chmodSync, existsSync, lchownSync, lstatSync, mkdirSync, readdirSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { runSync } from "@phosphorus/util";
+import { chmodSync, existsSync, lchownSync, lstatSync, mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 
 type Owner = { uid: number; gid: number; mode: number; ok: boolean };
 const none: Owner = { uid: 0, gid: 0, mode: 0, ok: false };
@@ -41,37 +40,4 @@ export function mkdirAll(abs: string) {
   }
   mkdirSync(abs, { recursive: true, mode: 0o755 });
   for (let i = missing.length - 1; i >= 0; i--) adopt(missing[i]!, none);
-}
-
-// a user's home on this machine handed to their own login here, so its builds
-// and shells write in it as phosphorus does: the folder and all in it
-export function own(home: string, login: string): [number, any] {
-  if (!posix) return [200, { ok: true, owner: login, already: true }];
-  if (process.geteuid?.() !== 0)
-    return [409, { error: "Phosphorus doesn't run as root here: the home's already as its files' owners left it" }];
-  const id = runSync(["id", "-u", login]),
-    gid = runSync(["id", "-g", login]);
-  if (!id.ok) return [404, { error: login + " isn't an account on this machine" }];
-  const uid = Number(id.stdout.trim()),
-    g = Number(gid.stdout.trim());
-  if (uid === 0) return [400, { error: "not root's: a home is handed to a person's own login" }];
-  const o = ownerAt(home);
-  if (o.ok && o.uid === uid) return [200, { ok: true, owner: login, already: true }];
-  let bad: Error | undefined;
-  const walk = (p: string) => {
-    try {
-      lchownSync(p, uid, g);
-    } catch (e: any) {
-      if (e?.code !== "ENOENT") bad ??= e;
-    }
-    let ents;
-    try {
-      ents = lstatSync(p).isDirectory() ? readdirSync(p) : [];
-    } catch {
-      return;
-    }
-    for (const n of ents) walk(join(p, n));
-  };
-  walk(home);
-  return bad ? [500, { error: bad.message }] : [200, { ok: true, owner: login }];
 }

@@ -1,65 +1,68 @@
-// the side: places and hosts
+// the side: Home, then each host and its shares
 
-import { type Fm, filesCall, fmIcon, fmSame, HOME, homeOnline, type Loc } from '../../features/home/home.ts';
+import { type Fm, filesCall, fmIcon, fmSame, homeLoc, isHome, type Loc } from '../../features/home/home.ts';
+import { phosphorusHosts } from '../../features/mesh/hosts.ts';
 import { el } from '../../lib/dom.ts';
 import { st } from '../../lib/state.ts';
 import { fmDropZone } from './actions.ts';
 import { fmGo } from './nav.ts';
 
-// each online host's shares, asked once a host comes up, as its own [files] perms allow
+// the hosts up, this one first
+const fmHostsUp = () => [...new Set([st.selfHost, ...phosphorusHosts()].filter(Boolean))];
+
+// a share's friendly name: its folder's own
+export const shareLabel = (root: string) =>
+  root
+    .replace(/[/\\]+$/, '')
+    .split(/[/\\]/)
+    .pop() || root;
 
 export async function fmSide(fm: Fm) {
   const render = () => {
-    const hosts = homeOnline();
-    const home = el('div', `fm-place fm-share${fmSame(HOME, fm.loc) ? ' here' : ''}`);
-    home.append(fmIcon('dir'), el('span', '', 'home'));
-    home.title = "every host's home as one";
-    home.addEventListener('click', () => fmGo(fm, HOME, ''));
-    fmDropZone(fm, home, () => ({ loc: HOME, dir: '' }));
-    const out = [home, el('div', 'fm-side-head', 'hosts')];
+    const place = (loc: Loc, label: string, title: string, cls = '') => {
+      const row = el('div', `fm-place fm-share${cls}${fmSame(loc, fm.loc) ? ' here' : ''}`);
+      row.append(fmIcon('dir'), el('span', '', label));
+      row.title = title;
+      row.addEventListener('click', () => fmGo(fm, loc, ''));
+      fmDropZone(fm, row, () => ({ loc, dir: '' }));
+      return row;
+    };
+    const out: HTMLElement[] = [];
+    if (st.acct && !st.acct.boot) {
+      const home = place(homeLoc(), 'Home', 'your home, the same on every host', ' fm-home');
+      // Home is one place on every host: here whichever host shows it
+      home.classList.toggle('here', isHome(fm.loc));
+      out.push(home);
+    }
+    const hosts = fmHostsUp().filter((h) => fm.shares.get(h)?.shares?.length);
+    if (hosts.length) out.push(el('div', 'fm-side-head', 'hosts'));
     for (const h of hosts) {
-      const info = fm.shares.get(h);
       const hostRow = el('div', 'fm-place fm-hostrow');
       hostRow.append(fmIcon('host'), el('span', '', h));
       out.push(hostRow);
-      if (!info) {
-        out.push(el('div', 'fm-place-note', '…'));
-        continue;
-      }
-      if (info.error) {
-        out.push(Object.assign(el('div', 'fm-place-note bad', info.error), { title: info.error }));
-        continue;
-      }
-      for (const loc of info.shares!) {
-        const row = el('div', `fm-place fm-share${fmSame(loc, fm.loc) ? ' here' : ''}`);
-        row.append(fmIcon('dir'), el('span', '', loc.root));
-        row.title = `${h}/${loc.root}`;
-        row.addEventListener('click', () => fmGo(fm, loc, ''));
-        fmDropZone(fm, row, () => ({ loc, dir: '' }));
-        out.push(row);
-      }
+      for (const loc of fm.shares.get(h)!.shares!) out.push(place(loc, shareLabel(loc.root!), `${h}: ${loc.root}`));
     }
     fm.side.replaceChildren(...out);
   };
   fm.renderSide = render;
   render();
   await fmHosts(fm);
-  // no place yet: the home, the boot admin's first share
+  // no place yet: the home, else the boot admin's first share
   if (!fm.loc) {
     const first = [...fm.shares.values()].find((i) => i?.shares?.length);
-    if (st.acct && !st.acct.boot) fmGo(fm, HOME, '');
+    if (st.acct && !st.acct.boot) fmGo(fm, homeLoc(), '');
     else if (first) fmGo(fm, first.shares![0]!, '');
   }
 }
 
 // the side kept to the hosts up: a new one's shares asked, a gone one's place left
 export async function fmHosts(fm: Fm): Promise<void> {
-  const on = homeOnline();
+  const on = fmHostsUp();
   // asked on every state push: nothing redrawn while the hosts up are the same
   const sig = on.join('\n');
   if (sig === fm.sideSig) return;
   fm.sideSig = sig;
-  if (fm.loc && fm.loc.host !== '*' && !on.includes(fm.loc.host)) fmGo(fm, HOME, '');
+  if (fm.loc && !isHome(fm.loc) && !on.includes(fm.loc.host)) fmGo(fm, homeLoc(), '');
   else fm.renderSide?.();
   await Promise.all(
     on
@@ -69,17 +72,11 @@ export async function fmHosts(fm: Fm): Promise<void> {
         try {
           // what the host published in sys, else asked
           const info = st.hostsInfo[h.toLowerCase()]?.files || (await filesCall({ host: h }, 'info'));
-          // the home only as the merged one above, ssh logins no part of it
-          fm.shares.set(
-            h,
-            info.enabled
-              ? {
-                  shares: info
-                    .shares!.filter((sh) => sh.id !== 'home')
-                    .map((sh): Loc => ({ host: h, share: sh.id, root: sh.label, perms: sh.perms || '' })),
-                }
-              : { error: 'no files directory' },
-          );
+          fm.shares.set(h, {
+            shares: (info.shares || [])
+              .filter((sh) => sh.id !== 'home')
+              .map((sh): Loc => ({ host: h, share: sh.id, root: sh.label, perms: sh.perms || '' })),
+          });
         } catch (err) {
           fm.shares.set(h, { error: (err as Error).message });
         }

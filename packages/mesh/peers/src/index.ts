@@ -287,9 +287,13 @@ const events = {
         s.digest = f.store;
         if (f.store !== store.digest() && f.store !== s.synced) void syncWith(link);
         break;
+      default:
+        frameFns.get(f.type)?.(link.host, f);
     }
   },
-  async onReq(_link: Link, req: PeerReq): Promise<unknown> {
+  async onReq(link: Link, req: PeerReq): Promise<unknown> {
+    const fn = reqFns.get(req.op);
+    if (fn) return fn(link.host, req.body);
     const body = obj(req.body) ?? {};
     switch (req.op) {
       case "store.stamps":
@@ -483,6 +487,25 @@ export function peerModel(): any[] {
     if (fresh(s) && s.model) out.push(s.model);
   }
   return out;
+}
+
+// --- other packages' frames and requests over the links -------------------------------
+
+const frameFns = new Map<string, (host: string, f: PeerFrame) => void>();
+const reqFns = new Map<string, (host: string, body: unknown) => unknown>();
+// a frame type of its own, told with the host it came from
+export const onPeerFrame = (type: string, fn: (host: string, f: PeerFrame) => void) => void frameFns.set(type, fn);
+// a request op of its own, its answer what fn returns
+export const onPeerReq = (op: string, fn: (host: string, body: unknown) => unknown) => void reqFns.set(op, fn);
+// the peers linked now
+export const upPeers = () => upHosts();
+// a frame to one peer, false while its link is down
+export const sendPeer = (host: string, f: PeerFrame) => !!infos.get(host)?.link?.up && infos.get(host)!.link!.send(f);
+// a request to one peer, refused while its link is down
+export function requestPeer(host: string, op: string, body?: unknown, timeoutMs?: number): Promise<unknown> {
+  const link = infos.get(host)?.link;
+  if (!link?.up) return Promise.reject(new Error(`${host} isn't linked`));
+  return link.request(op, body, timeoutMs);
 }
 
 const upFns: ((host: string) => void)[] = [];

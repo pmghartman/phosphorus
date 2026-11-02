@@ -14,7 +14,7 @@ import { join } from "node:path";
 import type { Share } from "@phosphorus/files";
 import type { Session } from "../src/collab.ts";
 
-process.env.HOME_FS = mkdtempSync(join(tmpdir(), "phos-collab-home-"));
+process.env.PHOSPHORUS_REPO_DIR = mkdtempSync(join(tmpdir(), "phos-collab-home-"));
 const { Client, keyOf, mu, newSession, sessions } = await import("../src/collab.ts");
 const { diskDiff, diskStat, observeDisk, readDisk, resolveDisk } = await import("../src/disk.ts");
 const { Apply, Parse } = await import("../src/ot.ts");

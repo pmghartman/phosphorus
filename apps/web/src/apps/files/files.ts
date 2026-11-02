@@ -1,40 +1,20 @@
-// files: a file manager over the hosts' shares, places, a path bar, list
+// files: Home on top, then each host's shares; a path bar and one list
 
-import type { FileEntry } from '@phosphorus/wire';
 import { dkFocus, dkWin } from '../../desktop/windows.ts';
-import { type DropTarget, dkFms, type Fm, fmExt } from '../../features/home/home.ts';
+import { type DropTarget, dkFms, type Fm, fileOpen } from '../../features/home/home.ts';
 import { DK_UI, dkGlyph, el, icon } from '../../lib/dom.ts';
 import { fmDropZone, fmMkdir, fmUpload } from './actions.ts';
-import { fmCan, fmKeys, fmPaintSel, fmRender, fmStep } from './list.ts';
+import { fmCan, fmKeys, fmPaintSel, fmRender } from './list.ts';
 import { fmMenu } from './menu.ts';
-import { fmGo, fmHistory, fmLoad, fmUp } from './nav.ts';
+import { fmBack, fmGo, fmLoad, fmUp } from './nav.ts';
 import { fmSide } from './side.ts';
 
-// or icons, a right click's menu, cut, copy and paste across hosts
-
-export const fmKindLabel = (e: FileEntry) => (e.dir ? 'folder' : fmExt(e.name) ? `${fmExt(e.name)} file` : 'file');
-export const fmWhere = (e: FileEntry) => (e.hosts ? (e.all ? 'all hosts' : e.hosts.join(', ')) : '');
-// list columns: key, label, default width; name's null for the rest of the row
-export const FM_COLS: [string, string, string | null][] = [
-  ['name', 'name', null],
-  ['where', 'hosts', '7rem'],
-  ['mtime', 'modified', '10.5rem'],
-  ['size', 'size', '5rem'],
-  ['kind', 'kind', '7rem'],
+// list columns: key, label
+export const FM_COLS: [string, string][] = [
+  ['name', 'name'],
+  ['size', 'size'],
+  ['mtime', 'modified'],
 ];
-export const FM_WIDTHS_KEY = 'phosphorus-fm-widths';
-export const fmWidths: Record<string, number> = (() => {
-  try {
-    return JSON.parse(localStorage.getItem(FM_WIDTHS_KEY)!) || {};
-  } catch {
-    return {};
-  }
-})();
-export const fmSaveWidths = () => {
-  try {
-    localStorage.setItem(FM_WIDTHS_KEY, JSON.stringify(fmWidths));
-  } catch {}
-};
 export const fmDate = (ms: number | null | undefined) =>
   ms
     ? new Date(ms).toLocaleString([], {
@@ -46,12 +26,23 @@ export const fmDate = (ms: number | null | undefined) =>
       })
     : '';
 
+// a line in the status bar, gone after a while unless a transfer is still going
+export function fmSay(fm: Fm, text: string, bad?: boolean) {
+  fm.note.textContent = text || '';
+  fm.note.classList.toggle('bad', !!bad);
+  clearTimeout(fm.noteTimer);
+  if (text && !fm.busy)
+    fm.noteTimer = setTimeout(() => {
+      if (fm.note.textContent === text) fm.note.textContent = '';
+    }, 6000);
+}
+
 export function dkFiles(at?: DropTarget): Fm | undefined {
   const w = dkWin(null, 'files', '', 'fm');
   if (!w) return;
-  const btn = (cls: string, glyph: SVGSVGElement | null, label: string) => {
-    const b = Object.assign(el('button', `fm-btn ${cls}`), { type: 'button', title: label, ariaLabel: label });
-    if (glyph) b.append(glyph);
+  const btn = (glyph: SVGSVGElement, label: string) => {
+    const b = Object.assign(el('button', 'fm-btn'), { type: 'button', title: label, ariaLabel: label });
+    b.append(glyph);
     return b;
   };
   const fm: Fm = {
@@ -59,46 +50,41 @@ export function dkFiles(at?: DropTarget): Fm | undefined {
     loc: null,
     dir: '',
     back: [],
-    fwd: [],
     entries: [],
     shown: [],
     sel: new Set(),
     anchor: null,
     sort: { key: 'name', dir: 1 },
-    mode: 'list',
-    filter: '',
     shares: new Map(),
     busy: '',
-    backBtn: btn('', dkGlyph(DK_UI.back!), 'back (alt+←)'),
-    fwdBtn: btn('', dkGlyph(DK_UI.fwd!), 'forward (alt+→)'),
-    upBtn: btn('', dkGlyph(DK_UI.up!), 'up (alt+↑)'),
+    backBtn: btn(dkGlyph(DK_UI.back!), 'back (alt+←)'),
+    upBtn: btn(dkGlyph(DK_UI.up!), 'up (alt+↑)'),
     crumbs: el('div', 'fm-crumbs'),
-    find: Object.assign(el('input', 'fm-find'), {
-      placeholder: 'search',
-      spellcheck: false,
-      autocomplete: 'off' as const,
-    }),
-    modeBtn: btn('', null, 'list or icons'),
+    badge: Object.assign(el('span', 'fm-ro', 'read-only'), { hidden: true }),
     side: el('nav', 'fm-side'),
     main: Object.assign(el('div', 'fm-main'), { tabIndex: 0 }),
-    status: el('div', 'fm-status'),
     count: el('span', 'fm-count'),
     note: el('span', 'fm-note'),
+    box: w.body,
     input: Object.assign(el('input'), { type: 'file', multiple: true, hidden: true }),
-    cols: [],
+    say: (text, bad) => fmSay(fm, text, bad),
+    focus: () => fm.main.focus({ preventScroll: true }),
+    load: () => fmLoad(fm),
+    paint: () => fmPaintSel(fm),
+    open: (rel, dir) => (dir ? fmGo(fm, fm.loc!, rel) : fileOpen(fm.loc!, rel, { dir })),
   };
-  const refresh = btn('', icon('refresh'), 'refresh (f5)');
-  const mkdir = btn('', icon('mkdir'), 'new folder (ctrl+shift+n)');
-  const upload = btn('', icon('upload'), 'upload here');
+  const refresh = btn(icon('refresh'), 'refresh (f5)');
+  const mkdir = btn(icon('mkdir'), 'new folder (ctrl+shift+n)');
+  const upload = btn(icon('upload'), 'upload here');
   const tools = el('div', 'fm-tools');
-  tools.append(fm.backBtn, fm.fwdBtn, fm.upBtn, refresh, fm.crumbs, mkdir, upload, fm.modeBtn, fm.find);
-  fm.status.append(fm.count, fm.note);
+  tools.append(fm.backBtn, fm.upBtn, refresh, fm.crumbs, fm.badge, mkdir, upload);
+  const status = el('div', 'fm-status');
+  status.append(fm.count, fm.note);
   const split = el('div', 'fm-split');
   split.append(fm.side, fm.main);
-  w.body.append(tools, split, fm.status, fm.input);
+  w.body.append(tools, split, status, fm.input);
 
-  fm.backBtn.addEventListener('click', () => fmHistory(fm, -1));
-  fm.fwdBtn.addEventListener('click', () => fmHistory(fm, 1));
+  fm.backBtn.addEventListener('click', () => fmBack(fm));
   fm.upBtn.addEventListener('click', () => fmUp(fm));
   refresh.addEventListener('click', () => fmLoad(fm));
   mkdir.addEventListener('click', () => fmMkdir(fm));
@@ -106,28 +92,6 @@ export function dkFiles(at?: DropTarget): Fm | undefined {
   fm.input.addEventListener('change', () => {
     fmUpload(fm, fm.loc, fm.dir, fm.input.files!);
     fm.input.value = '';
-  });
-  fm.modeBtn.addEventListener('click', () => {
-    fm.mode = fm.mode === 'list' ? 'grid' : 'list';
-    fmRender(fm);
-  });
-  fm.find.addEventListener('input', () => {
-    fm.filter = fm.find.value.trim().toLowerCase();
-    fmRender(fm);
-  });
-  fm.find.addEventListener('keydown', (e) => {
-    e.stopPropagation();
-    if (e.key === 'Escape') {
-      fm.find.value = '';
-      fm.filter = '';
-      fmRender(fm);
-      fm.main.focus();
-    }
-    if (e.key === 'ArrowDown' || e.key === 'Enter') {
-      e.preventDefault();
-      fm.main.focus();
-      fmStep(fm, 0);
-    }
   });
   fm.main.addEventListener('keydown', (e) => fmKeys(fm, e));
   fm.main.addEventListener('pointerdown', (e) => {
@@ -152,7 +116,7 @@ export function dkFiles(at?: DropTarget): Fm | undefined {
   });
   fmDropZone(fm, fm.main, () => (fm.loc ? { loc: fm.loc, dir: fm.dir } : null));
   w.onFocus = () => {
-    if (!w.node.contains(document.activeElement)) fm.main.focus({ preventScroll: true });
+    if (!w.node.contains(document.activeElement)) fm.focus();
   };
   w.onClose = () => dkFms.delete(fm);
   dkFms.add(fm);

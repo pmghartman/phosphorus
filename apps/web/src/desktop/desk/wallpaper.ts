@@ -1,20 +1,9 @@
 // the wallpaper: a picture of the user's, kept in their home on the mesh
 
 import type { Route } from '@phosphorus/wire';
+import { appCall } from '../../apps/index.ts';
 import { dragsFiles } from '../../features/chat/chat.ts';
-import {
-  fileLabel,
-  filesJoin,
-  filesParent,
-  filesWin,
-  fmChanged,
-  fmSame,
-  fmTransfer,
-  HOME,
-  homeAt,
-  homeOnline,
-  putFile,
-} from '../../features/home/home.ts';
+import { filesJoin, filesParent, fmSame, fmTransfer } from '../../features/home/home.ts';
 import {
   activeConnections,
   type Connection,
@@ -28,7 +17,7 @@ import { DK_UI, dkGlyph, el } from '../../lib/dom.ts';
 import { dk, st } from '../../lib/state.ts';
 import { dkAppearanceWin } from '../control.ts';
 import { dkView } from '../desk.ts';
-import { dkCode, dkDeskAt, dkFileMenu } from '../deskfiles.ts';
+import { dkDeskAt, dkDeskUpload, dkDeskView } from '../deskfiles.ts';
 import { dkClock, type Pop } from '../taskbar.ts';
 import { type DkWin, dkFocus, dkNav, dkWin, type NavFrame } from '../windows.ts';
 import {
@@ -126,68 +115,6 @@ export function dkPlaceAt(x: number, y: number, names: string[], dir = dkDeskAt(
   } catch {}
 }
 
-// a new empty file on the desktop at x, y, on this host, opened to edit
-export function dkNewFile(x: number, y: number) {
-  const d = dkDeskAt();
-  if (!d) return;
-  const pop = el('form', 'acct-unlock dk-newfile') as HTMLFormElement & Pop;
-  const name = Object.assign(el('input'), { value: 'untitled.txt', spellcheck: false, autocomplete: 'off' as const });
-  const why = el('span', 'dk-state');
-  const go = Object.assign(el('button', 'primary', 'create'), { type: 'submit' });
-  pop.append(el('div', 'home-col-head', 'add file'), name, why, go);
-  pop.style.left = `${Math.max(4, Math.min(x, innerWidth - 260))}px`;
-  pop.style.top = `${Math.max(4, Math.min(y, innerHeight - 140))}px`;
-  const close = () => {
-    pop.remove();
-    pop.dkRelease?.();
-    document.removeEventListener('pointerdown', away, true);
-  };
-  const away = (e: PointerEvent) => {
-    if (!pop.contains(e.target as Node)) close();
-  };
-  document.addEventListener('pointerdown', away, true);
-  pop.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') close();
-  });
-  pop.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const n = name.value.trim();
-    if (!n || /[\\/]/.test(n)) {
-      why.textContent = 'no slashes';
-      return;
-    }
-    if (dk.deskFiles.some((f) => f.at === d.dir && f.name === n)) {
-      why.textContent = 'exists';
-      return;
-    }
-    const loc = homeAt(st.selfHost);
-    const rel = filesJoin(d.dir, n);
-    go.disabled = true;
-    try {
-      await putFile(loc, rel, new Blob([]));
-    } catch (err) {
-      go.disabled = false;
-      why.textContent = (err as Error).message;
-      return;
-    }
-    close();
-    dkPlaceAt(x, y, [n], d.dir);
-    fmChanged(HOME, d.dir);
-    dkCode({ host: loc.host, share: loc.share, path: rel, label: fileLabel(loc.host, 'home', rel) });
-  });
-  document.body.appendChild(pop);
-  name.focus();
-  // the name picked, its extension left
-  name.setSelectionRange(0, name.value.lastIndexOf('.'));
-}
-
-// computer files onto the desktop, else a files window's first folder,
-// a files window showing the upload either way
-export async function dkAddFiles(list: File[]) {
-  const fm = dk.desk && (await filesWin(dkDeskAt() || undefined));
-  if (fm && list.length) fm.pendingUpload = list;
-}
-
 // a right click on the desk or an icon, a drop of the computer's files
 export function dkDeskMenu(icons: HTMLElement) {
   icons.addEventListener('contextmenu', (e) => {
@@ -199,9 +126,9 @@ export function dkDeskMenu(icons: HTMLElement) {
       dkPaintSel();
     }
     const hosts = dkLiveHosts();
-    const f = b && dk.deskFiles.find((x) => filesJoin(x.at!, x.name) === b.dataset.file);
-    if (f) {
-      dkMenu(e.clientX, e.clientY, dkFileMenu(f));
+    // a file's: the files app's own menu, the desktop's picks its picks
+    if (b?.dataset.file) {
+      appCall('files', true, (m) => m.fmMenu(dkDeskView(), e.clientX, e.clientY, true));
       return;
     }
     const [kind, name, host] = b ? b.dataset.id!.split('\n') : [];
@@ -215,7 +142,7 @@ export function dkDeskMenu(icons: HTMLElement) {
       ...(b ? [null] : []),
       ['new terminal', hosts.map((h): MenuItem => [h, () => dkTerminal(h), true]), hosts.length > 0],
       null,
-      ['add file…', () => dkNewFile(e.clientX, e.clientY), !!dkDeskAt()],
+      ['new folder', () => appCall('files', true, (m) => m.fmMkdir(dkDeskView())), !!dkDeskAt()],
       [
         'upload files…',
         () =>
@@ -225,10 +152,11 @@ export function dkDeskMenu(icons: HTMLElement) {
               e.clientY,
               list.map((f) => f.name),
             );
-            dkAddFiles(list);
+            dkDeskUpload(list);
           }),
-        homeOnline().length > 0,
+        !!dkDeskAt(),
       ],
+      ['paste', () => appCall('files', true, (m) => m.fmPaste(dkDeskView())), !!dk.clip && !!dkDeskAt()],
       null,
       ['change wallpaper…', dkWallPick, !!st.acct && !st.acct.boot],
       ['appearance…', () => dkAppearanceWin('desktop'), true],
@@ -264,7 +192,7 @@ export function dkDeskMenu(icons: HTMLElement) {
         items.map((it) => it.name),
         d.dir,
       );
-      if (items.length) fmTransfer(drag.fm, drag.loc, items, d.loc, d.dir, false);
+      if (items.length) fmTransfer(drag.v, drag.loc, items, d.loc, d.dir, false);
       return;
     }
     if (!dragsFiles(e)) return;
@@ -275,7 +203,7 @@ export function dkDeskMenu(icons: HTMLElement) {
       e.clientY,
       list.map((f) => f.name),
     );
-    dkAddFiles(list);
+    dkDeskUpload(list);
   });
 }
 

@@ -4,7 +4,7 @@
 import type { FileEntry, GitHost, HostInfo, Route, State, Vault } from '@phosphorus/wire';
 import type { LoginRow } from '../desktop/login.ts';
 import type { DkWin } from '../desktop/windows.ts';
-import type { Fm, HomeHostList, Loc, PickedItem } from '../features/home/home.ts';
+import type { FmView, Loc, PickedItem } from '../features/home/home.ts';
 
 // the account: a phosphorus user over the hosts' own logins, its vault of host and page
 // logins kept on the mesh, sealed with its password
@@ -72,7 +72,7 @@ export interface Desk {
 }
 // a files window's picks on their way: dragged, or cut or copied
 export interface FmDrag {
-  fm: Fm;
+  v: FmView;
   loc: Loc;
   items: PickedItem[];
 }
@@ -91,7 +91,6 @@ export interface Dk {
   wins: Map<string, DkWin>;
   services: Route[];
   deskFiles: FileEntry[];
-  deskHosts: Map<string, { stamp: string; got: HomeHostList }>;
   z: number;
   n: number;
   desk: Desk | null;
@@ -110,7 +109,8 @@ export interface Dk {
   chipN?: number;
   deskKey?: string;
   deskReady?: boolean;
-  deskStamp?: string;
+  // the home's digest last seen in the state
+  homeSeen?: string;
   drag?: FmDrag | null;
   clip?: FmClip | null;
 }
@@ -120,7 +120,6 @@ export const dk: Dk = {
   wins: new Map(),
   services: [],
   deskFiles: [],
-  deskHosts: new Map(),
   z: 10,
   n: 0,
   desk: null,

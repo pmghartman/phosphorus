@@ -8,7 +8,7 @@ import './compose.ts';
 import './find.ts';
 import './commands.ts';
 
-export { chatAs, shareMenu } from './commands.ts';
+export { chatAs } from './commands.ts';
 export { dragsFiles } from './compose.ts';
 export { chatReading, clearUnread, convNow, news, stepConv } from './convs.ts';
 export { openConv, setConv } from './files.ts';

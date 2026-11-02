@@ -15,9 +15,7 @@ const { current, start } = await import("@phosphorus/reconfig");
 const { readJSON } = await import("@phosphorus/util");
 
 test("signature as JS wrote it", () => {
-  expect(current()).toBe(
-    '{"dir":"/srv/files","priv":"/srv/priv","home":"/srv/home","git":true,"gpu":true,"model":false}',
-  );
+  expect(current()).toBe('{"dir":"/srv/files","priv":"/srv/priv","git":true,"gpu":true,"model":false}');
 });
 
 test("the applied signature seeded on first start", async () => {

@@ -8,7 +8,7 @@ import { join } from "node:path";
 import type { App } from "@phosphorus/webapps";
 
 const dir = mkdtempSync(join(tmpdir(), "phos-apps-"));
-process.env.HOME_FS = join(dir, "homefs");
+process.env.PHOSPHORUS_REPO_DIR = join(dir, "homefs");
 process.env.STATE_DIR = join(dir, "state");
 process.env.SELF_HOST = "a";
 const store = await import("@phosphorus/store");

@@ -3,31 +3,15 @@ import { statSync } from "node:fs";
 import * as files from "@phosphorus/files";
 import type { Caller } from "@phosphorus/mcp";
 import { uuid } from "@phosphorus/update";
-import { Exists, SealGrant } from "@phosphorus/users";
+import { SealGrant } from "@phosphorus/users";
 import { errText, FrontendPort, tailnetIP } from "@phosphorus/util";
 import { selfHost, whoHeader } from "./config.ts";
 import type { Res } from "./http.ts";
 import { decode, obj, str } from "./js.ts";
-import { filesCall } from "./shares.ts";
+import { filesCall, openShare, whoOf } from "./shares.ts";
 
 // a copy's whole run, a large file over a slow peer included
 const transferWait = 30 * 60 * 1000;
-
-// localShare a share here, home only for a keyed caller and within their rights
-function localShare(c: Caller | undefined, share: string, ...rels: string[]): [files.Share | undefined, number, any] {
-  if (!files.enabled()) return [undefined, 503, { error: selfHost + " publishes no files directory" }];
-  const sh = files.shareOf(share);
-  if (!sh) return [undefined, 404, { error: selfHost + " has no such share" }];
-  if (sh.id === "home") {
-    if (!c) return [undefined, 403, { error: "the homes are for their users only" }];
-    const who = { user: c.user, admin: !!c.admin };
-    for (const r of rels) {
-      const why = files.homeGate(who, r, Exists);
-      if (why) return [undefined, files.gateCode(who, why), { error: why }];
-    }
-  }
-  return [sh, 0, undefined];
-}
 
 // peerFiles a raw files request to a peer, the caller's rights sealed along
 async function peerFiles(
@@ -74,8 +58,8 @@ export async function copyAcross(c: Caller | undefined, from: Loc, to: Loc, move
   let src: ReadableStream<Uint8Array>;
   let size: number;
   if (from.host === selfHost) {
-    const [sh, st, b] = localShare(c, from.share, from.path);
-    if (!sh) return [st, b];
+    const [sh, bad] = openShare(whoOf(c), from.share, from.path);
+    if (bad) return bad;
     const abs = files.downloadPath(sh, from.path);
     if (!abs) return [404, { error: "no such file (folders aren't copied)" }];
     try {
@@ -112,10 +96,10 @@ export async function copyAcross(c: Caller | undefined, from: Loc, to: Loc, move
   const id = uuid().replaceAll("-", "");
   let st: number, out: any;
   if (to.host === selfHost) {
-    const [sh, s, b] = localShare(c, to.share, to.path);
-    if (!sh) {
+    const [sh, bad] = openShare(whoOf(c), to.share, to.path);
+    if (bad) {
       await src.cancel().catch(() => {});
-      return [s, b];
+      return bad;
     }
     [st, out] = await files.write(sh, to.path, src, { id, offset: 0, total: size });
   } else {
@@ -134,4 +118,49 @@ export async function copyAcross(c: Caller | undefined, from: Loc, to: Loc, move
   const [dst, b] = await filesCall(c, from.host, "delete", from.share, { path: from.path });
   if (dst >= 300) return [200, { ok: true, path: to.path, note: "copied, the original left: " + str(obj(b)?.error) }];
   return [200, { ok: true, path: to.path, moved: true }];
+}
+
+const sameShare = (a: Loc, b: Loc) => a.host === b.host && a.share === b.share;
+
+// copyTree a file, or a folder and all in it, from a share to a share on any hosts;
+// moved when move, inside one share by a rename
+export async function copyTree(c: Caller | undefined, from: Loc, to: Loc, move: boolean): Promise<Res> {
+  if (sameShare(from, to) && (to.path === from.path || to.path.startsWith(from.path + "/")))
+    return [400, { error: "not into itself" }];
+  if (move && sameShare(from, to))
+    return filesCall(c, from.host, "rename", from.share, { from: from.path, to: to.path });
+  const [st, b] = await filesCall(c, from.host, "list", from.share, { path: from.path });
+  if (st === 400) return copyAcross(c, from, to, move);
+  if (st !== 200) return [st, b];
+  const [ms, mb] = await filesCall(c, to.host, "mkdir", to.share, { path: to.path });
+  if (ms !== 200 && ms !== 409) return [ms, mb];
+  for (const e of (obj(b)?.entries ?? []) as { name: string }[]) {
+    const r = await copyTree(
+      c,
+      { ...from, path: from.path + "/" + e.name },
+      { ...to, path: to.path + "/" + e.name },
+      false,
+    );
+    if (r[0] !== 200) return r;
+  }
+  if (move) {
+    const [ds, db] = await filesCall(c, from.host, "delete", from.share, { path: from.path });
+    if (ds >= 300) return [200, { ok: true, path: to.path, note: "copied, the original left: " + str(obj(db)?.error) }];
+  }
+  return [200, { ok: true, path: to.path, ...(move ? { moved: true } : {}) }];
+}
+
+// homeSource a home file's bytes from a peer, for the sync: its own route, the mesh's grant along
+export async function homeSource(host: string, rel: string) {
+  const ip = await tailnetIP(host);
+  if (!ip) return;
+  const res = await fetch(`http://${ip}:${FrontendPort}/internal/home?path=${encodeURIComponent(rel)}`, {
+    headers: { [whoHeader]: SealGrant({ s: "home" }, transferWait) },
+    signal: AbortSignal.timeout(transferWait),
+  });
+  if (res.status !== 200 || !res.body) {
+    await res.body?.cancel().catch(() => {});
+    return;
+  }
+  return { body: res.body, size: Number(res.headers.get("content-length")) || 0 };
 }

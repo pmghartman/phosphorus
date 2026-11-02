@@ -21,7 +21,6 @@
     .dk-chip,
     .fm-row,
     .fm-crumbs,
-    .fm-find,
     .toast,
     .msg-file,
     .chat-find,
@@ -32,7 +31,6 @@
     .update-row,
     .cw-item,
     .fm-share,
-    .fm-tile,
     .cd-pick,
     .cd-att,
     .cd-fp-row,
@@ -318,7 +316,6 @@
   :is(
     .dk-row input,
     .fm-ask input,
-    .fm-find,
     .update-pass,
     .dk-cl-url,
     .acct-pane input,
@@ -408,7 +405,6 @@
   :is(
     .dk-row input,
     .fm-ask input,
-    .fm-find,
     .update-pass,
     .dk-cl-url,
     .acct-pane input,
@@ -497,7 +493,6 @@
   :is(
     .dk-row input,
     .fm-ask input,
-    .fm-find,
     .update-pass,
     .dk-cl-url,
     .acct-pane input,
@@ -514,7 +509,6 @@
   :is(
     .dk-row input,
     .fm-ask input,
-    .fm-find,
     .update-pass,
     .dk-cl-url,
     .acct-pane input,
@@ -586,9 +580,6 @@
 :root:is([data-palette="macos"], [data-palette="win11"]) :is(.fm-crumb:last-child, .fm-crumb-host) {
   color: var(--fg);
 }
-:root:is([data-palette="macos"], [data-palette="win11"]) .fm-find {
-  height: 26px;
-}
 :root:is([data-palette="macos"], [data-palette="win11"]) .fm-side {
   padding: 6px;
   background: var(--tabbar);
@@ -635,10 +626,10 @@
 :root:is([data-palette="macos"], [data-palette="win11"]) .fm-dir {
   color: var(--accent);
 }
-:root[data-palette="macos"] .fm-list .fm-item:nth-child(even of .fm-item) {
+:root[data-palette="macos"] .fm-item:nth-child(even of .fm-item) {
   background: color-mix(in srgb, var(--fg) 4%, transparent);
 }
-:root[data-palette="macos"] .fm-list .fm-item {
+:root[data-palette="macos"] .fm-item {
   margin: 0 8px;
   border-radius: 5px;
 }
@@ -646,25 +637,20 @@
   background: var(--accent);
   color: #fff;
 }
-:root[data-palette="macos"]
-  :is(.fm-item.sel, .fm-main:focus .fm-item.sel)
-  :is(.ic, .fm-c-where, .fm-c-mtime, .fm-c-size, .fm-c-kind) {
+:root[data-palette="macos"] :is(.fm-item.sel, .fm-main:focus .fm-item.sel) :is(.ic, .fm-c-mtime, .fm-c-size) {
   color: #fff;
 }
 :root[data-palette="macos"] .fm-main:not(:focus) .fm-item.sel {
   background: color-mix(in srgb, var(--fg) 14%, transparent);
   color: var(--fg);
 }
-:root[data-palette="macos"]
-  .fm-main:not(:focus)
-  .fm-item.sel
-  :is(.ic, .fm-c-where, .fm-c-mtime, .fm-c-size, .fm-c-kind) {
+:root[data-palette="macos"] .fm-main:not(:focus) .fm-item.sel :is(.ic, .fm-c-mtime, .fm-c-size) {
   color: var(--muted);
 }
 :root[data-palette="macos"] .fm-status {
   justify-content: center;
 }
-:root[data-palette="win11"] .fm-list .fm-item {
+:root[data-palette="win11"] .fm-item {
   margin: 0 4px;
   border-radius: 4px;
 }

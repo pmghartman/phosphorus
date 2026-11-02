@@ -5,13 +5,13 @@ import * as chatmedia from "@phosphorus/chatmedia";
 import * as files from "@phosphorus/files";
 import * as git from "@phosphorus/git";
 import { type Caller, type Loc, init as mcpInit } from "@phosphorus/mcp";
-import * as mirror from "@phosphorus/mirror";
 import { Assign, Summary } from "@phosphorus/model";
 import * as peers from "@phosphorus/peers";
 import { listen as ingressListen, serve as proxyServe } from "@phosphorus/proxy";
 import { start as reconfigStart } from "@phosphorus/reconfig";
 import * as stats from "@phosphorus/stats";
 import * as store from "@phosphorus/store";
+import * as homesync from "@phosphorus/sync";
 import * as update from "@phosphorus/update";
 import * as users from "@phosphorus/users";
 import { env, errText, flushWrites, logf, markHot, tailnetIP } from "@phosphorus/util";
@@ -65,7 +65,7 @@ import {
   runGameLocally,
 } from "./server.ts";
 import { filesCall } from "./shares.ts";
-import { copyAcross } from "./transfer.ts";
+import { copyTree, homeSource } from "./transfer.ts";
 import { startPushes } from "./ws.ts";
 
 // for a test mesh's hosts
@@ -80,7 +80,6 @@ export { appHandler, buildState, Version };
 export async function start(): Promise<Server<WSData>> {
   loadPlatform();
   files.init();
-  files.setOnChange(mirror.Touched);
   users.Init();
   store.start();
   users.DropOldTokens();
@@ -96,8 +95,7 @@ export async function start(): Promise<Server<WSData>> {
   logf("[frontend] listening on port %d as %s, version %s", srv.port, selfHost || "an unnamed host", Version());
   recordPlatform();
   update.restoreChain();
-  mirror.Start(tailnetIP, port);
-  peers.onLinkUp(mirror.peerUp);
+  void homesync.start(homeSource);
   webapps.Start(tailnetIP, port);
   startApps();
   webapps.StartServices({
@@ -180,12 +178,7 @@ function initMCP() {
       },
       files: filesCall,
       copy: (c: Caller | undefined, from: Loc, to: Loc, move: boolean) =>
-        copyAcross(
-          c,
-          { host: from[0], share: from[1], path: from[2] },
-          { host: to[0], share: to[1], path: to[2] },
-          move,
-        ),
+        copyTree(c, { host: from[0], share: from[1], path: from[2] }, { host: to[0], share: to[1], path: to[2] }, move),
       logs: hostLogsOn,
       op: (host, op, p) => {
         if (op === "mesh_health") return meshHealth().then((h) => [200, h] as [number, any]);

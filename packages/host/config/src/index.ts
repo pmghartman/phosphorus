@@ -197,30 +197,6 @@ export function writeShares(shares: Share[]): string {
   return writeDoc(iniFile, d);
 }
 
-// --- phosphorus.ini [home] ------------------------------------------------------
-// the [files] dir whose home/ holds the users, shared/ and .sys/, blank the home's
-// files/, a change moving home/ there on the rebuild
-
-const homeKey = (d: string) => d.trim().replace(/[/\\]+$/, "");
-
-export function readHomeDir(): string {
-  const s = findSection(splitSections(readText(iniFile)), "home");
-  if (!s) return "";
-  return homeKey(fieldsOf(s).dir ?? "");
-}
-
-export function writeHomeDir(dir: string): string {
-  const d = splitSections(readText(iniFile));
-  const s = iniSection(d, "home");
-  s.lines = rewriteSection(s, "home", { dir: homeKey(dir) }, ["dir"]);
-  return writeDoc(iniFile, d);
-}
-
-export function isHomeDir(dir: string): boolean {
-  const h = readHomeDir();
-  return h !== "" && homeKey(dir) === h;
-}
-
 // --- phosphorus.ini [git] -------------------------------------------------------
 
 export function readGitHost(): boolean {
@@ -334,7 +310,6 @@ export const IniKeys: Record<string, string[]> = {
   files: ["dir", "priv"],
   git: ["host"],
   model: ["host", "gpu", "url", "ctx", "slots"],
-  home: ["dir"],
 };
 
 // setIni phosphorus.ini's section key set, blank dropping it; "" once saved

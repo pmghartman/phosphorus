@@ -1,7 +1,7 @@
 // --- /api/files/<host>/<op>: packages/files
 import type { HostShare } from "./state.ts";
 
-// one entry of a listing; hosts, live, stale and at are the merged home's own
+// one entry of a listing
 export interface FileEntry {
   name: string;
   dir: boolean;
@@ -9,13 +9,6 @@ export interface FileEntry {
   link?: boolean;
   size?: number | null;
   mtime?: number | null;
-  // a home file kept on every host
-  all?: boolean;
-  // the merged home: the hosts holding it, those online, none online, the folder it sits in
-  hosts?: string[];
-  live?: string[];
-  stale?: boolean;
-  at?: string;
 }
 export interface FileListing {
   path: string;

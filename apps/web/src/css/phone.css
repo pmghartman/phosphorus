@@ -189,8 +189,7 @@
   .fm-tools {
     flex-wrap: wrap;
   }
-  .fm-crumbs,
-  .fm-find {
+  .fm-crumbs {
     height: 2.25rem;
   }
   /* the path its own row under the buttons */
@@ -199,11 +198,7 @@
     flex: 1 0 100%;
     margin: 0;
   }
-  .fm-find {
-    flex: 1;
-    min-width: 4rem;
-  }
-  .fm-list .fm-row {
+  .fm-row {
     padding: 0.55rem 0.75rem;
     font-size: 0.85rem;
   }

@@ -164,7 +164,7 @@ test("editService drops old keys and renames", () => {
 
 test("editIni holds to IniKeys and drops an emptied section", () => {
   expect(IniKeys.model).toEqual(["host", "gpu", "url", "ctx", "slots"]);
-  expect(editIni("nope", "x", "1", false)).toEqual(["no section nope, only files, git, home, model", ""]);
+  expect(editIni("nope", "x", "1", false)).toEqual(["no section nope, only files, git, model", ""]);
   expect(editIni("files", "x", "1", false)).toEqual(["no key x in [files], only dir, priv", ""]);
   expect(editIni("files", "dir", "a\nb", false)).toEqual(["one line only", ""]);
   expect(editIni("files", "dir", "/srv", true)).toEqual(["", "+ [files]\n+ dir = /srv"]);
@@ -181,9 +181,9 @@ test("editIni holds to IniKeys and drops an emptied section", () => {
 
 test.skipIf(process.platform === "win32")("a rewrite keeps the file's mode", () => {
   chmodSync(ini, 0o600);
-  expect(setIni("home", "dir", "/srv/x/")).toBe("");
+  expect(setIni("model", "host", "true")).toBe("");
   expect(statSync(ini).mode & 0o777).toBe(0o600);
-  expect(read(ini)).toBe("[files]\ndir = /srv\n\n[home]\ndir = /srv/x/\n");
+  expect(read(ini)).toBe("[files]\ndir = /srv\n\n[model]\nhost = true\n");
 });
 
 test("lineDiff lists gone and new lines, blanks left out", () => {

@@ -318,41 +318,6 @@
   background: rgb(255 255 255 / 0.15);
 }
 
-/* the merged home: where each entry lives, greyed while only an offline host has it */
-.fm-stale,
-.dk-icon.dk-stale {
-  opacity: 0.45;
-}
-.fm-choices {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-.fm-choice {
-  display: flex;
-  justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.35rem 0.5rem;
-  text-align: left;
-  background: none;
-  border: 1px solid var(--border);
-  color: var(--fg);
-  font: inherit;
-  cursor: pointer;
-}
-.fm-choice:hover:not(:disabled),
-.fm-choice:focus-visible {
-  border-color: var(--accent);
-  outline: none;
-}
-.fm-choice:disabled {
-  color: var(--muted);
-  cursor: default;
-}
-.fm-choice-why {
-  color: var(--muted);
-  font-size: 0.68rem;
-}
 .dk-menu button.on::after {
   content: " ✓";
   color: var(--accent);

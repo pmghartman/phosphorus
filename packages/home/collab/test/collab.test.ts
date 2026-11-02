@@ -8,7 +8,7 @@ import { upgrade, type WSData, websocket } from "@phosphorus/wsock";
 const dir = mkdtempSync(join(tmpdir(), "phos-collab-ws-"));
 process.env.PHOSPHORUS_FILES_DIRS = dir;
 process.env.PHOSPHORUS_FILES_PERMS = "rw";
-process.env.HOME_FS = join(dir, "nohome");
+process.env.PHOSPHORUS_REPO_DIR = join(dir, "nohome");
 const files = await import("@phosphorus/files");
 const { Attach, Forward, Write } = await import("@phosphorus/collab");
 const { sessions } = await import("../src/collab.ts");

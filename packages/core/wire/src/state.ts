@@ -115,7 +115,6 @@ export interface HostInfo {
   version?: string;
   platform?: string;
   files?: { enabled?: boolean; shares?: HostShare[] };
-  desk?: Record<string, string>;
   apps?: Record<string, AppStatus>;
   // a service's step on the host (packages/webapps services): its log's tail, its exit once ended
   services?: Record<string, { log: string; exit?: number }>;
@@ -174,6 +173,8 @@ export interface State {
   apps?: Record<string, AppWant>;
   // the installed services, by id
   stacks?: Record<string, StackView>;
+  // the home's digest on this host: anything in it changed, the folders shown read again
+  home?: string;
   pollMs?: number;
 }
 

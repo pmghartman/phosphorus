@@ -112,15 +112,13 @@ export class Mesh {
 
   async startHost(name: string) {
     const home = join(this.dir, name);
-    for (const d of ["state", "files"]) mkdirSync(join(home, d), { recursive: true });
+    for (const d of ["state"]) mkdirSync(join(home, d), { recursive: true });
     const env: Record<string, string | undefined> = {
       ...process.env,
       PATH: `${join(this.dir, "bin")}${delimiter}${process.env.PATH ?? ""}`,
       TS_STATUS_FILE: this.statusFile(name),
       PHOSPHORUS_HOME: home,
       STATE_DIR: join(home, "state"),
-      FILES_ROOT: join(home, "files"),
-      HOME_FS: join(home, "files"),
       SERVICES_FILE: join(home, "none.export"),
       SELF_HOST: name,
       FRONTEND_BIND: this.ipOf(name),

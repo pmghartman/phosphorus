@@ -7,12 +7,13 @@ import {
   readdirSync,
   readFileSync,
   readlinkSync,
+  renameSync,
   rmdirSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
-import { isAbsolute, join, normalize, relative, sep } from "node:path";
+import { isAbsolute, join, normalize, relative } from "node:path";
 import * as envfile from "@phosphorus/envfile";
 import {
   at,
@@ -52,8 +53,7 @@ export const tool = (name: string) => join(os.libexec(), isWindows ? name + ".ex
 // --- the baked env ------------------------------------------------------------
 
 // bakeEnv every path the roles read, rewritten by every rebuild and read by run
-export function bakeEnv(homeDir: string): Record<string, string> {
-  const files = at("files");
+export function bakeEnv(): Record<string, string> {
   const m: Record<string, string> = {
     PHOSPHORUS_HOME: home,
     PHOSPHORUS_REPO_DIR: home,
@@ -64,10 +64,6 @@ export function bakeEnv(homeDir: string): Record<string, string> {
     PHOSPHORUS_ENV_FILE: envPath(),
     VERSION_FILE: at("VERSION"),
     REBUILD_CMD: binPath("phosphorus"),
-    FILES_ROOT: files,
-    PHOSPHORUS_FILES_DIR: files,
-    HOME_FS: homeDir,
-    PHOSPHORUS_HOME_DIR: homeDir,
     MODEL_DIR: at("state", "models"),
     HOST_SSH_HOST: "127.0.0.1",
   };
@@ -216,48 +212,26 @@ export async function rebuild() {
       removeOne(at("git", "data"));
       removeOne(at("git"));
     }
-    mkdirSync(at("files"), { recursive: true });
     mkdirSync(at("state"), { recursive: true });
-
-    let homeTo = at("files");
-    const d = iniGet("home", "dir");
-    if (d) {
-      homeTo = normalize(absTo(home, d));
-      mkdirSync(homeTo, { recursive: true });
-    }
-    let homeFrom = readTrim(at("state", "native-home"));
-    if (homeFrom === homeTo) homeFrom = "";
-    if (homeFrom && (homeTo + sep).startsWith(join(homeFrom, "home") + sep))
-      throw fail("[home] dir can't be inside the folders it moves");
+    const old = oldHomes();
     await refreshGameKey();
-    let env = bakeEnv(homeTo);
-    let sig = signature(env);
+    const env = bakeEnv();
+    const sig = signature(env);
     await os.svcInstall();
     let up = await os.svcActive();
-    if (up && !homeFrom && readTrim(at("state", "native-sig")) === sig) {
+    if (up && !old.length && readTrim(at("state", "native-sig")) === sig) {
       say("already up to date, nothing to restart");
       return;
     }
     await os.tailscaleReady();
 
-    if (up && homeFrom) {
+    if (up && old.length) {
       await notifyUpdating();
       await os.svcStop();
       up = false;
     }
-    if (homeFrom) {
-      say(`moving home/ from ${homeFrom} to ${homeTo}`);
-      try {
-        moveHome(homeFrom, homeTo);
-      } catch (e) {
-        say(`couldn't move the homes (${e instanceof Error ? e.message : e}), keeping them in ${homeFrom}`);
-        homeTo = homeFrom;
-        env = bakeEnv(homeTo);
-        sig = signature(env);
-      }
-    }
+    if (old.length) migrateHome(old);
     writeEnvFile(nativeEnvFile(), env);
-    writeFileSync(at("state", "native-home"), homeTo + "\n", { mode: 0o644 });
     await os.tailscaleStart();
     if (up && inService()) {
       await notifyUpdating();
@@ -299,12 +273,63 @@ function removeOne(p: string) {
   }
 }
 
-// moveHome home/ copied whole, only then the old one deleted
-function moveHome(from: string, to: string) {
-  const src = join(from, "home");
-  if (!fileExists(src)) return;
-  copyTree(src, join(to, "home"));
-  rmSync(src, { recursive: true, force: true });
+// --- the home's one move ---------------------------------------------------------------
+
+// oldHomes where earlier releases kept home/: files/home, or under an old [home] dir
+export function oldHomes(): string[] {
+  const dirs = [readTrim(at("state", "native-home")), iniGet("home", "dir"), at("files")];
+  const out: string[] = [];
+  for (const d of dirs) {
+    if (!d) continue;
+    const src = join(normalize(absTo(home, d)), "home");
+    if (src !== at("home") && fileExists(src) && !out.includes(src)) out.push(src);
+  }
+  return out;
+}
+
+// migrateHome every old home/ moved into <phosphorus>/home, what's there already kept,
+// a clash left where it was; files/ and the old [home] dir's record gone after
+export function migrateHome(srcs: string[]) {
+  const to = at("home");
+  for (const src of srcs) {
+    say(`moving home/ from ${src} to ${to}`);
+    try {
+      mergeMove(src, to);
+    } catch (e) {
+      say(`couldn't move all of ${src} (${e instanceof Error ? e.message : e}), what's left stays there`);
+    }
+  }
+  rmSync(at("state", "native-home"), { force: true });
+  try {
+    rmdirSync(at("files"));
+  } catch {}
+}
+
+// mergeMove src's entries into dst one by one, renamed or else copied, folders merged
+function mergeMove(src: string, dst: string) {
+  if (!fileExists(dst)) {
+    try {
+      renameSync(src, dst);
+      return;
+    } catch {}
+  }
+  mkdirSync(dst, { recursive: true });
+  for (const n of readdirSync(src)) {
+    const from = join(src, n),
+      to = join(dst, n);
+    if (!fileExists(to)) {
+      try {
+        renameSync(from, to);
+      } catch {
+        copyTree(from, to);
+        rmSync(from, { recursive: true, force: true });
+      }
+    } else if (lstatSync(from).isDirectory() && lstatSync(to).isDirectory()) mergeMove(from, to);
+    else say(`kept ${to}, ${from} left where it was`);
+  }
+  try {
+    rmdirSync(src);
+  } catch {}
 }
 
 export function copyTree(src: string, dst: string) {

@@ -1,20 +1,15 @@
-// navigation: paths, history, the listing loaded
+// navigation: paths, back, the listing loaded
 import { type Fm, filesCall, filesParent, fmSame, type Loc } from '../../features/home/home.ts';
 import { fmUpload } from './actions.ts';
 import { fmRender } from './list.ts';
 
 export function fmGo(fm: Fm, loc: Loc, dir: string, how?: string): void {
-  if (how !== 'history' && fm.loc) {
-    fm.back.push({ loc: fm.loc, dir: fm.dir });
-    fm.fwd = [];
-  }
+  if (how !== 'back' && fm.loc && !(fmSame(fm.loc, loc) && fm.dir === dir)) fm.back.push({ loc: fm.loc, dir: fm.dir });
   const from = fmSame(fm.loc, loc) ? fm.dir : null;
   fm.loc = loc;
   fm.dir = dir;
   fm.sel.clear();
-  fm.find.value = '';
-  fm.filter = '';
-  // back up a level: the folder left, picked
+  // up a level: the folder left, picked
   if (from != null && filesParent(from) === dir && from !== dir) {
     fm.sel.add(from.split('/').pop()!);
     fm.anchor = from.split('/').pop()!;
@@ -24,13 +19,9 @@ export function fmGo(fm: Fm, loc: Loc, dir: string, how?: string): void {
   fmLoad(fm);
 }
 
-export function fmHistory(fm: Fm, step: number) {
-  const from = step < 0 ? fm.back : fm.fwd;
-  const to = step < 0 ? fm.fwd : fm.back;
-  const at = from.pop();
-  if (!at) return;
-  to.push({ loc: fm.loc!, dir: fm.dir });
-  fmGo(fm, at.loc, at.dir, 'history');
+export function fmBack(fm: Fm) {
+  const at = fm.back.pop();
+  if (at) fmGo(fm, at.loc, at.dir, 'back');
 }
 
 export const fmUp = (fm: Fm) => fm.loc && fm.dir && fmGo(fm, fm.loc, filesParent(fm.dir));

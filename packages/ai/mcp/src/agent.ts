@@ -167,7 +167,7 @@ export const agentTools = (): Tool[] => [
     read: true,
     scope: "key",
     description:
-      "A host's two config files as they stand: phosphorus.ini (shares in [files], [git], [model], [home]) and " +
+      "A host's two config files as they stand: phosphorus.ini (shares in [files], [git], [model]) and " +
       "services.export (each [service]: port, scheme, max_body, public, type game with start/stop). Read before service_edit or config_set. Admins only.",
     schema: object({ host: name }, "host"),
     run: (a, m) => {
@@ -217,12 +217,12 @@ export const agentTools = (): Tool[] => [
     destructive: true,
     description:
       "Set one key of a host's phosphorus.ini, blank value to drop it (a section left empty goes too); phosphorus applies it within seconds. " +
-      "Keys: [files] dir and priv (the shares and their rwd perms, comma-separated in step), [git] host, [model] host/gpu/url/ctx/slots, [home] dir. " +
+      "Keys: [files] dir and priv (the shares and their rwd perms, comma-separated in step), [git] host, [model] host/gpu/url/ctx/slots. " +
       "Read host_config first and keep the other values. Admins only.",
     schema: object(
       {
         host: name,
-        section: { type: "string", enum: ["files", "git", "model", "home"] },
+        section: { type: "string", enum: ["files", "git", "model"] },
         key: { type: "string" },
         value: { type: "string" },
         dry_run: { type: "boolean", description: "return the diff alone, nothing written", default: false },

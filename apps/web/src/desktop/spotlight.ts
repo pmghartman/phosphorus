@@ -3,7 +3,7 @@
 
 import type { FileEntry } from '@phosphorus/wire';
 import { acctLogout, dkProfileWin, dkUsersWin } from '../features/account.ts';
-import { fileOpen, filesApi, filesJoin, filesWin, HOME, homeOnline } from '../features/home/home.ts';
+import { fileOpen, filesApi, filesJoin, filesWin, homeLoc } from '../features/home/home.ts';
 import { openUpdateModal } from '../features/update.ts';
 import { DK_GLYPHS, dkGlyph, el, isMobile } from '../lib/dom.ts';
 import { MODES, modePick, setTheme } from '../lib/scheme.ts';
@@ -21,6 +21,7 @@ import {
   dkWebApp,
   dkWebApps,
 } from './desk.ts';
+import { dkDeskDir } from './deskfiles.ts';
 import { dkShowDesktop } from './keys.ts';
 import { dkOverview } from './switcher.ts';
 import { dkClose, dkFocus, dkMax, dkMin, dkSnapTo, dkStack } from './windows.ts';
@@ -153,15 +154,9 @@ function hits(): Hit[] {
       );
   // the desktop's files
   for (const f of dk.deskFiles)
-    if (!f.stale)
-      add(
-        G.doc!,
-        f.name,
-        f.at!.startsWith('shared/') ? 'shared desktop' : 'desktop',
-        'file',
-        f.dir ? 'folder' : 'file document',
-        () => fileOpen(HOME, filesJoin(f.at!, f.name), f),
-      );
+    add(G.doc!, f.name, 'desktop', 'file', f.dir ? 'folder' : 'file document', () =>
+      fileOpen(homeLoc(), filesJoin(dkDeskDir(), f.name), f),
+    );
   return out;
 }
 
@@ -182,11 +177,10 @@ let box: HTMLElement | null = null;
 
 // the home searched by name, a few hits, each a file the files app opens
 async function fileHits(q: string): Promise<Hit[]> {
-  const host = homeOnline().includes(st.selfHost) ? st.selfHost : homeOnline()[0];
-  if (!host || !st.acct || st.acct.boot) return [];
-  const r = await fetch(
-    filesApi({ host, share: 'home' }, 'search', { path: '', query: q, skip: 'node_modules,.git,.cache' }),
-  ).catch(() => null);
+  if (!st.selfHost || !st.acct || st.acct.boot) return [];
+  const r = await fetch(filesApi(homeLoc(), 'search', { path: '', query: q, skip: 'node_modules,.git,.cache' })).catch(
+    () => null,
+  );
   const body = r?.ok ? await r.json().catch(() => null) : null;
   const list: { path: string; size?: number }[] = Array.isArray(body?.results) ? body.results : [];
   return list.slice(0, 12).map((e) => {
@@ -200,7 +194,7 @@ async function fileHits(q: string): Promise<Hit[]> {
       sub: rel.slice(0, -name.length).replace(/\/$/, '') || 'home',
       kind: 'file',
       keys: '',
-      act: () => fileOpen(HOME, rel, entry),
+      act: () => fileOpen(homeLoc(), rel, entry),
     };
   });
 }

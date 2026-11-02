@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const dir = mkdtempSync(join(tmpdir(), "phos-media-"));
-process.env.HOME_FS = dir;
+process.env.PHOSPHORUS_REPO_DIR = dir;
 process.env.STATE_DIR = join(dir, "state");
 process.env.CHAT_MEDIA_MAX_MB = "1";
 const M = await import("@phosphorus/chatmedia");

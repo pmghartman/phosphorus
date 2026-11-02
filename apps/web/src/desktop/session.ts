@@ -8,7 +8,7 @@ import { dk, st } from '../lib/state.ts';
 import { dkAppearanceWin } from './control.ts';
 import { dkTermRestore, dkTermSaved } from './desk/terminal.ts';
 import { dkOpenApp, dkService, dkTerminal } from './desk.ts';
-import { dkCode, dkRun } from './deskfiles.ts';
+import { dkCode } from './deskfiles.ts';
 import { type DkWin, dkFocus, dkHide, dkOnTouch, dkPlace, dkSnap } from './windows.ts';
 
 interface Saved {
@@ -43,14 +43,6 @@ function openerOf(w: DkWin): Record<string, any> | null {
   if (k.startsWith('view:edit\n')) {
     const [, host, share, path] = k.split('\n');
     return { t: 'edit', host, share, path };
-  }
-  if (k.startsWith('view:')) {
-    const [host, share, rel] = k.slice(5).split('\n');
-    return { t: 'view', host, share, rel };
-  }
-  if (k.startsWith('run:')) {
-    const [host, share, rel] = k.slice(4).split('\n');
-    return { t: 'run', host, share, rel };
   }
   if (w.kind === 'fm') {
     const fm = [...dkFms].find((f) => f.w === w);
@@ -126,12 +118,6 @@ async function reopen(s: Saved): Promise<DkWin | undefined | null> {
       return dkTerminal(String(o.host)) ?? null;
     case 'edit':
       await dkCode({ host: String(o.host), share: String(o.share), path: String(o.path) });
-      return fresh() ?? null;
-    case 'view':
-      await app('files').then((m) => m.dkViewer({ host: String(o.host), share: String(o.share) }, String(o.rel)));
-      return fresh() ?? null;
-    case 'run':
-      await dkRun({ host: String(o.host), share: String(o.share) }, String(o.rel));
       return fresh() ?? null;
     case 'fm': {
       const fm = await filesWin({ loc: o.loc as Loc, dir: String(o.dir) });

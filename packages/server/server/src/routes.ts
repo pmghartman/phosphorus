@@ -1,12 +1,9 @@
 // every request on the frontend port, and the ingress's leftovers
-import { join } from "node:path";
 import * as chatmedia from "@phosphorus/chatmedia";
-import { Write as collabWrite } from "@phosphorus/collab";
 import { Keys as envKeys } from "@phosphorus/envfile";
 import * as files from "@phosphorus/files";
 import * as git from "@phosphorus/git";
 import { type Caller, handle as mcpHandle, skill } from "@phosphorus/mcp";
-import * as mirror from "@phosphorus/mirror";
 import { Assign, EraseSlots, ServeChat, ServeMessages, ServeModels } from "@phosphorus/model";
 import * as peers from "@phosphorus/peers";
 import { favicon, faviconWhy, requestURI } from "@phosphorus/proxy";
@@ -21,7 +18,7 @@ import { serveStatic } from "@phosphorus/webstatic";
 import { type Ctx, isUpgrade } from "@phosphorus/wsock";
 import { appRoute } from "./apps.ts";
 import { codeRoute } from "./code.ts";
-import { adminPass, port, selfHost, selfInfo, setUpdating } from "./config.ts";
+import { adminPass, port, selfHost, selfInfo, setUpdating, whoHeader } from "./config.ts";
 import { configOp, hostConfig, hostLogs, localUI } from "./hostops.ts";
 import {
   crossSite,
@@ -45,25 +42,14 @@ import { decode, obj, str, truthy } from "./js.ts";
 import { mcpCallsMesh, peerOp } from "./mcpops.ts";
 import { oauthRoute, Unauthorized } from "./oauth.ts";
 import { buildState, chainAction, forwardGame, mintGuestKey, noteState, runGameLocally } from "./server.ts";
-import {
-  filesInfo,
-  forwardFiles,
-  homeFilterResults,
-  homeWho,
-  pingPeer,
-  runGrant,
-  sendFile,
-  serveRun,
-  withHop,
-  writeP,
-} from "./shares.ts";
+import { filesHere, forwardFiles, homeWho, openShare, pingPeer, sendFile, serveRun, withHop } from "./shares.ts";
+import { copyTree } from "./transfer.ts";
 import { onUpgrade } from "./ws.ts";
 
 const gitForceRe = /^\/api\/githosts\/([A-Za-z0-9-]{1,63})\/force$/;
 const gameRe = /^\/api\/games\/([a-z0-9][a-z0-9-]*)\/([a-z0-9][a-z0-9-]*)\/(start|stop)$/;
 const mediaRe = /^\/api\/chat\/media\/([a-z0-9][a-z0-9-]*)\/([0-9a-f]{32})$/;
 const runRe = /^\/api\/run\/([a-z0-9][a-z0-9-]*)\/([A-Za-z0-9_-]+)\/(.*)$/;
-const mirrorRe = /^\/internal\/mirror\/([0-9a-f]{24})$/;
 const appsTarRe = /^\/internal\/apps\/([a-z][a-z0-9-]*)\/(\d+(?:\.\d+){0,3})$/;
 const appsSvcRe = /^\/api\/apps\/services\/(install|update|remove)$/;
 const appsSvcIconRe = /^\/api\/apps\/services\/([a-z][a-z0-9-]*)\/icon$/;
@@ -71,13 +57,10 @@ const appsIconRe = /^\/api\/apps\/([a-z][a-z0-9-]*)\/icon$/;
 const hostRe = /^[a-z0-9][a-z0-9-]*$/;
 const pingRe = /^\/api\/ping\/([a-z0-9-]+)$/;
 const filesRe =
-  /^\/api\/files\/([a-z0-9][a-z0-9-]*)\/(info|list|tree|search|read|download|upload|save|mkdir|rename|delete|run|mirror|own)$/;
+  /^\/api\/files\/([a-z0-9][a-z0-9-]*)\/(info|list|tree|search|read|download|upload|save|mkdir|rename|delete|run|copy)$/;
 const publicRe = /^\/api\/services\/([a-z0-9][a-z0-9-]*)\/([a-z0-9][a-z0-9-]*)\/public$/;
 const publishRe = /^\/api\/services\/([a-z0-9][a-z0-9-]*)\/([a-z0-9][a-z0-9-]*)\/publish$/;
 const faviconRe = /^\/api\/favicon\/([a-z0-9][a-z0-9-]*)\/([a-z0-9][a-z0-9-]*)$/;
-
-// loginRe a machine account's name, as a home is handed to one
-const loginRe = /^[a-z_][a-z0-9_.-]{0,31}$/;
 
 type UserCall = (s: users.Session | undefined, p: Record<string, any>, c: Ctx) => users.R | Promise<users.R>;
 
@@ -499,10 +482,15 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
     return serveRun(c, m[1]!, m[2]!, m[3]!, q.has("hop"));
   }
 
-  m = mirrorRe.exec(pathname);
-  if (m && method === "GET") {
-    if (!(await isTailnet(c)) && !isLoopback(c)) return forbidden();
-    return mirror.Serve(m[1]!);
+  // a peer's sync fetching a home file, with the mesh's grant
+  if (pathname === "/internal/home" && method === "GET") {
+    if (
+      (!(await isTailnet(c)) && !isLoopback(c)) ||
+      str(users.OpenGrant(c.req.headers.get(whoHeader) ?? "")?.s) !== "home"
+    )
+      return forbidden();
+    const abs = files.downloadPath(files.shareOf("home"), q.get("path") ?? "");
+    return abs ? sendFile(abs, true) : sendJSON(404, { error: "no such file" });
   }
 
   m = filesRe.exec(pathname);
@@ -589,8 +577,25 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
   return res.status === 404 ? (webapps.serve(c.req) ?? res) : res;
 }
 
+// the files API: a host's own ops here, another's carried to it; a copy run here, between any two
 async function filesRoute(c: Ctx, host: string, op: string, q: URLSearchParams): Promise<Response> {
   if (!(await isLocalOrPeer(c))) return forbidden();
+  const m = c.req.method;
+  if (op === "copy" && m === "POST") {
+    const who = await homeWho(c);
+    const caller = who && { user: who.user, admin: who.admin };
+    return onJSON(c, maxJSONBody, true, (p) => {
+      const loc = (v: unknown) => {
+        const o = obj(v);
+        return { host: str(o?.host), share: str(o?.share), path: str(o?.path) };
+      };
+      const from = loc(p.from),
+        to = loc(p.to);
+      if (!hostRe.test(from.host) || !hostRe.test(to.host) || !from.path || !to.path)
+        return [400, { error: "a from and a to, each a host, share and path" }];
+      return copyTree(caller, from, to, p.move === true);
+    });
+  }
   if (host !== selfHost) {
     if (q.has("hop")) {
       const [st, b] = hopErr(host);
@@ -598,73 +603,21 @@ async function filesRoute(c: Ctx, host: string, op: string, q: URLSearchParams):
     }
     return forwardFiles(host, c, withHop(requestURI(c)));
   }
-  if (op === "info") return sendJSON(200, filesInfo());
-  if (!files.enabled()) return sendJSON(503, { error: selfHost + " publishes no files directory" });
-  const sh = files.shareOf(q.get("share") ?? "");
-  if (!sh) return sendJSON(404, { error: selfHost + " has no such share" });
+  const who = await homeWho(c);
+  const share = q.get("share") ?? "";
   const rel = q.get("path") ?? "";
-  const who = sh.id === "home" ? await homeWho(c) : undefined;
-  const gate = (...rels: string[]): Res | undefined => {
-    if (sh.id !== "home") return;
-    for (const x of rels) {
-      const why = files.homeGate(who, x, users.Exists);
-      if (why) return [files.gateCode(who, why), { error: why }];
-    }
-    return;
-  };
-  const barred = (...rels: string[]) => {
-    const r = gate(...rels);
-    return r ? sendJSON(r[0], r[1]) : undefined;
-  };
-  const m = c.req.method;
-  if (m === "GET" && (op === "list" || op === "tree" || op === "search" || op === "read" || op === "download")) {
-    const b = barred(rel);
-    if (b) return b;
-  }
-  if (m === "GET" && op === "list") {
-    let [st, b] = await files.list(sh, rel);
-    if (sh.id === "home" && st === 200) {
-      const ents = files.homeFilterList(who, rel, b.entries, users.Exists);
-      for (const e of ents) {
-        const p = rel ? rel + "/" + e.name : e.name;
-        if (!e.dir && mirror.IsMirrored(p)) e.all = true;
-      }
-      b.entries = ents;
-    }
-    [st, b] = files.quiet(q, [st, b]);
-    return sendJSON(st, b);
-  }
-  if (m === "GET" && op === "tree") {
-    const [st, b] = await files.tree(sh, rel, q.get("depth"), q.get("match") ?? "", q.get("skip") ?? "");
-    if (sh.id === "home" && st === 200) b.entries = files.homeFilterTree(who, b.entries, users.Exists);
-    return sendJSON(st, b);
-  }
-  if (m === "GET" && op === "search") {
-    const [st, b] = await files.search(
-      sh,
-      rel,
-      q.get("query") ?? "",
-      q.get("content") === "true",
-      q.get("glob") ?? "",
-      q.get("skip") ?? "",
-    );
-    if (sh.id === "home" && st === 200) b.results = homeFilterResults(who, b.results);
-    return sendJSON(st, b);
-  }
-  if (m === "GET" && op === "read") {
-    const [st, b] = files.quiet(q, await files.read(sh, rel));
-    return sendJSON(st, b);
-  }
   if (m === "GET" && op === "download") {
+    const [sh, bad] = openShare(who, share, rel);
+    if (bad) return sendJSON(bad[0], bad[1]);
     const abs = files.downloadPath(sh, rel);
     if (!abs) return sendJSON(404, { error: "no such file" });
     return sendFile(abs, !q.has("inline"));
   }
   if (m === "POST" && op === "upload") {
-    const b = barred(rel);
-    if (b) {
+    const [sh, bad] = openShare(who, share, rel);
+    if (bad) {
       await c.req.body?.cancel().catch(() => {});
-      return b;
+      return sendJSON(bad[0], bad[1]);
     }
     const qv = (k: string) => (q.has(k) ? q.get(k)! : undefined);
     const [st, out] = await files.write(sh, rel, c.req.body, {
@@ -674,47 +627,11 @@ async function filesRoute(c: Ctx, host: string, op: string, q: URLSearchParams):
     });
     return sendJSON(st, out);
   }
-  if (m === "POST" && op === "save") {
-    return onJSON(c, maxTextBody, true, (p) => gate(str(p.path)) ?? collabWrite(sh, str(p.path), writeP(p)));
+  if (m === "GET" && ["info", "list", "tree", "search", "read"].includes(op)) {
+    const [st, b] = await filesHere(who, op, share, Object.fromEntries(q), q.has("quiet"));
+    return sendJSON(st, b);
   }
-  if (m === "POST" && op === "mirror") {
-    return onJSON(c, maxJSONBody, false, (p) => {
-      if (sh.id !== "home") return [400, { error: "only home files go to every host" }];
-      const g = gate(str(p.path));
-      if (g) return g;
-      return truthy(p.on) ? mirror.Mark(str(p.path)) : mirror.Unmark(str(p.path));
-    });
-  }
-  // a user's own home here handed to their own login on this machine, so its
-  // builds and shells write in it as Phosphorus, root, does
-  if (m === "POST" && op === "own") {
-    return onJSON(c, maxJSONBody, true, async (p) => {
-      if (sh.id !== "home" || !who || who.user === "") return [403, { error: "only your own home" }];
-      let login = str(p.login);
-      // none named: the login the user saved for this machine, as the Code service's
-      const s = await users.Soon(c);
-      if (login === "" && s) [login] = await users.HostLogin(s, selfHost);
-      if (!loginRe.test(login)) return [400, { error: "a login's name" }];
-      return files.own(join(files.homeDir(), who.user), login);
-    });
-  }
-  if (m === "POST" && op === "run") {
-    return onJSON(c, maxJSONBody, false, (p) => gate(str(p.path)) ?? runGrant(sh, str(p.path), who));
-  }
-  if (m === "POST") {
-    return onJSON(c, maxJSONBody, false, (p) => {
-      const g = op === "rename" ? gate(str(p.from), str(p.to)) : gate(str(p.path));
-      if (g) return g;
-      switch (op) {
-        case "mkdir":
-          return files.mkdir(sh, str(p.path));
-        case "rename":
-          return files.renamePath(sh, str(p.from), str(p.to));
-        case "delete":
-          return files.remove(sh, str(p.path));
-      }
-      return [405, { error: "method not allowed" }];
-    });
-  }
+  if (m === "POST" && op !== "info")
+    return onJSON(c, op === "save" ? maxTextBody : maxJSONBody, op === "save", (p) => filesHere(who, op, share, p));
   return sendJSON(405, { error: "method not allowed" });
 }

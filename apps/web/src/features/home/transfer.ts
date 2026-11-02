@@ -1,6 +1,5 @@
 // transfer
-import { jsonPost } from '../../lib/api.ts';
-import { filesApi, filesCall, filesJoin, type Loc } from './api.ts';
+import { filesApi, type Loc } from './api.ts';
 
 // sent in chunks, each its own XHR, so no request nears a proxy's body cap or
 // a phone holds one huge one open, a failed chunk retried alone
@@ -66,59 +65,4 @@ export function putChunk(
     xhr.addEventListener('timeout', () => reject(new Error('upload timed out')));
     xhr.send(piece);
   });
-}
-
-// streamed for a bar that moves on the read too, the body still in memory
-// before the write, the cost of no host-to-host copy
-export async function getFile(
-  loc: Loc,
-  path: string,
-  onGot?: (got: number, size: number) => void,
-): Promise<{ blob: Blob; size: number }> {
-  const res = await fetch(filesApi(loc, 'download', { path }));
-  if (!res.ok) throw new Error(`couldn't read ${path}`);
-  const size = Number(res.headers.get('Content-Length')) || 0;
-  if (!res.body) return { blob: await res.blob(), size };
-  const reader = res.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let got = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    chunks.push(value);
-    got += value.length;
-    onGot && onGot(got, size);
-  }
-  return { blob: new Blob(chunks as BlobPart[]), size: got };
-}
-
-// no server-side copy between hosts: each file pulled from one share by the
-// browser and pushed to the other, the read the first half of the bar
-export async function copyFile(
-  from: Loc,
-  fromPath: string,
-  to: Loc,
-  toPath: string,
-  tick: (f: number) => void,
-): Promise<void> {
-  const { blob } = await getFile(from, fromPath, (got, size) => tick(size ? (got / size) * 0.5 : 0));
-  await putFile(to, toPath, blob, (sent) => tick(0.5 + (blob.size ? (sent / blob.size) * 0.5 : 0.5)));
-}
-
-export async function copyTree(
-  from: Loc,
-  fromPath: string,
-  to: Loc,
-  toPath: string,
-  tick: (f: number, name?: string) => void,
-): Promise<void> {
-  const listing = await filesCall(from, 'list', undefined, { path: fromPath });
-  // already there: fine, anything else surfacing on the first child write
-  await filesCall(to, 'mkdir', jsonPost({ path: toPath })).catch(() => {});
-  for (const e of listing.entries) {
-    const src = filesJoin(fromPath, e.name);
-    const dst = filesJoin(toPath, e.name);
-    if (e.dir) await copyTree(from, src, to, dst, tick);
-    else await copyFile(from, src, to, dst, (f) => tick(f, e.name));
-  }
 }

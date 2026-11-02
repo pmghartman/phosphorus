@@ -27,9 +27,7 @@ export function pending(): boolean {
   };
   const joined = (ds: string[]) => ds.filter(Boolean).map(norm).join(",");
   const want = joined(configuredDirs());
-  let have = mountedDirs();
-  if (!have.length) have = [process.env.PHOSPHORUS_FILES_DIR ?? ""];
-  const h = joined(have);
+  const h = joined(mountedDirs());
   return !!want && !!h && want !== h;
 }
 

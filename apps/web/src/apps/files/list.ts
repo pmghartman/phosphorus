@@ -1,55 +1,45 @@
-// the list: sorting, columns, rows, selection and keys
+// the list: sorting, rows, selection and keys
 
 import type { FileEntry } from '@phosphorus/wire';
 import {
-  dkFms,
   type Fm,
-  fileOpen,
+  type FmView,
   filesJoin,
   fmIcon,
   fmKind,
+  isHome,
   may,
   type PickedItem,
-  runnable,
 } from '../../features/home/home.ts';
-import { DK_UI, dkGlyph, el, isMobile } from '../../lib/dom.ts';
+import { el, isMobile } from '../../lib/dom.ts';
 import { dk } from '../../lib/state.ts';
 import { humanSize } from '../../lib/util.ts';
 import { fmClip, fmDelete, fmDropZone, fmMkdir, fmPaste, fmRename } from './actions.ts';
-import { FM_COLS, fmDate, fmKindLabel, fmSaveWidths, fmWhere, fmWidths } from './files.ts';
-import { fmReveal } from './menu.ts';
-import { fmGo, fmHistory, fmLoad, fmUp } from './nav.ts';
+import { FM_COLS, fmDate } from './files.ts';
+import { fmBack, fmGo, fmLoad, fmUp } from './nav.ts';
+import { shareLabel } from './side.ts';
 
-export const fmCan = (fm: Fm, perm: string) => !!fm.loc && may(fm.loc, perm);
+export const fmCan = (v: FmView, perm: string) => !!v.loc && may(v.loc, perm);
 
 export function fmSorted(fm: Fm): FileEntry[] {
   const { key, dir } = fm.sort;
   const val = (e: FileEntry): string | number =>
-    key === 'size'
-      ? (e.size ?? -1)
-      : key === 'mtime'
-        ? (e.mtime ?? 0)
-        : key === 'kind'
-          ? fmKindLabel(e)
-          : key === 'where'
-            ? fmWhere(e)
-            : e.name.toLowerCase();
-  return fm.entries
-    .filter((e) => !fm.filter || e.name.toLowerCase().includes(fm.filter))
-    .sort((a, b) => (a.dir !== b.dir ? (a.dir ? -1 : 1) : (val(a) < val(b) ? -1 : val(a) > val(b) ? 1 : 0) * dir));
+    key === 'size' ? (e.size ?? -1) : key === 'mtime' ? (e.mtime ?? 0) : e.name.toLowerCase();
+  return [...fm.entries].sort((a, b) =>
+    a.dir !== b.dir ? (a.dir ? -1 : 1) : (val(a) < val(b) ? -1 : val(a) > val(b) ? 1 : 0) * dir,
+  );
 }
 
 export function fmRender(fm: Fm) {
   fm.backBtn.disabled = !fm.back.length;
-  fm.fwdBtn.disabled = !fm.fwd.length;
   fm.upBtn.disabled = !fm.dir;
-  fm.modeBtn.replaceChildren(dkGlyph(fm.mode === 'list' ? DK_UI.grid! : DK_UI.list!));
-  // the path bar: host, the share, then each folder, any one a jump
+  fm.badge.hidden = !fm.loc || fmCan(fm, 'w');
+  // the path bar: the place, then each folder, any one a jump
   const crumbs: HTMLElement[] = [];
+  const top = !fm.loc ? '' : isHome(fm.loc) ? 'Home' : `${fm.loc.host}: ${shareLabel(fm.loc.root!)}`;
   if (fm.loc) {
-    if (fm.loc.host !== '*') crumbs.push(el('span', 'fm-crumb-host', fm.loc.host));
     const parts = fm.dir ? fm.dir.split('/') : [];
-    [fm.loc.root, ...parts].forEach((name, i) => {
+    [top, ...parts].forEach((name, i) => {
       const c = Object.assign(el('button', 'fm-crumb', name), { type: 'button' });
       const to = parts.slice(0, i).join('/');
       c.addEventListener('click', () => to !== fm.dir && fmGo(fm, fm.loc!, to));
@@ -58,32 +48,23 @@ export function fmRender(fm: Fm) {
     });
   }
   fm.crumbs.replaceChildren(...crumbs);
-  const name = fm.loc ? fm.dir.split('/').pop() || fm.loc.root : 'files';
-  fm.w.task.querySelector('.dk-task-t')!.textContent = name!;
-  fm.w.head.querySelector('.tab-label')!.textContent = name!;
+  const name = fm.loc ? fm.dir.split('/').pop() || top : 'files';
+  fm.w.task.querySelector('.dk-task-t')!.textContent = name;
+  fm.w.head.querySelector('.tab-label')!.textContent = name;
 
-  fm.cols = FM_COLS.filter(([key]) => key !== 'where' || fm.loc?.host === '*');
-  if (!fm.cols.some(([key]) => key === fm.sort.key)) fm.sort = { key: 'name', dir: 1 };
   fm.shown = fmSorted(fm);
-  const items = el('div', `fm-items fm-${fm.mode}`);
-  if (fm.mode === 'list') {
-    fmColWidths(fm, items);
-    const head = el('div', 'fm-row fm-cols');
-    fm.cols.forEach(([key, label], i) => {
-      const c = Object.assign(el('button', `fm-col fm-c-${key}`, label), { type: 'button' });
-      if (fm.sort.key === key) c.append(el('span', 'fm-arrow', fm.sort.dir > 0 ? ' ▴' : ' ▾'));
-      const grip = Object.assign(el('span', 'fm-grip'), { title: 'drag to resize, double click to fit' });
-      c.append(grip);
-      fmGrip(fm, items, grip, key, i);
-      c.addEventListener('click', (e) => {
-        if (e.target === grip) return;
-        fm.sort = { key, dir: fm.sort.key === key ? -fm.sort.dir : 1 };
-        fmRender(fm);
-      });
-      head.appendChild(c);
+  const items = el('div', 'fm-items');
+  const head = el('div', 'fm-row fm-cols');
+  for (const [key, label] of FM_COLS) {
+    const c = Object.assign(el('button', `fm-col fm-c-${key}`, label), { type: 'button' });
+    if (fm.sort.key === key) c.append(el('span', 'fm-arrow', fm.sort.dir > 0 ? ' ▴' : ' ▾'));
+    c.addEventListener('click', () => {
+      fm.sort = { key, dir: fm.sort.key === key ? -fm.sort.dir : 1 };
+      fmRender(fm);
     });
-    items.appendChild(head);
+    head.appendChild(c);
   }
+  items.appendChild(head);
   for (const e of fm.shown) items.appendChild(fmItem(fm, e));
   const note = !fm.loc
     ? 'pick a place'
@@ -92,84 +73,24 @@ export function fmRender(fm: Fm) {
       : fm.error && !fm.entries.length
         ? fm.error
         : !fm.shown.length
-          ? fm.filter
-            ? 'no match'
-            : 'empty'
+          ? 'empty'
           : '';
   if (note) items.appendChild(el('div', 'fm-empty', note));
   fm.main.replaceChildren(items);
   fmPaintSel(fm);
 }
 
-// the rows' grid from the widths dragged, name filling the rest until it's set
-export function fmColWidths(fm: Fm, items: HTMLElement) {
-  const cols = fm.cols.map(([key, , def]) => (fmWidths[key] ? `${fmWidths[key]}px` : def || 'minmax(8rem, 1fr)'));
-  items.style.setProperty('--fm-cols', cols.join(' '));
-  items.classList.toggle('fm-sized', !!fmWidths.name);
-}
-
-// a header's right edge: dragged for a width, double clicked to fit its cells
-export function fmGrip(fm: Fm, items: HTMLElement, grip: HTMLElement, key: string, i: number) {
-  const cells = () =>
-    [...items.querySelectorAll('.fm-row')]
-      .map((r) => r.children[i] as HTMLElement | undefined)
-      .filter((c): c is HTMLElement => !!c);
-  const set = (px: number) => {
-    fmWidths[key] = Math.max(40, Math.round(px));
-    for (const f of dkFms) if (f.mode === 'list' && f.main.firstChild) fmColWidths(f, f.main.firstChild as HTMLElement);
-  };
-  grip.addEventListener('pointerdown', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    grip.setPointerCapture(e.pointerId);
-    const x0 = e.clientX;
-    const w0 = grip.parentElement!.offsetWidth;
-    const move = (ev: PointerEvent) => set(w0 + ev.clientX - x0);
-    const up = () => {
-      grip.removeEventListener('pointermove', move);
-      fmSaveWidths();
-    };
-    grip.addEventListener('pointermove', move);
-    grip.addEventListener('pointerup', up, { once: true });
-    grip.addEventListener('pointercancel', up, { once: true });
-  });
-  grip.addEventListener('dblclick', (e) => {
-    e.stopPropagation();
-    const fit = (c: HTMLElement) =>
-      key === 'name'
-        ? [...c.children].reduce((t, k) => t + ((k as HTMLElement).scrollWidth || (k as HTMLElement).offsetWidth), 0) +
-          8 * (c.children.length - 1)
-        : c.scrollWidth;
-    set(Math.max(...cells().map(fit)) + 4);
-    fmSaveWidths();
-  });
-}
-
 export function fmItem(fm: Fm, e: FileEntry): HTMLElement {
-  const kind = fmKind(e);
-  const row = el('div', fm.mode === 'list' ? 'fm-row fm-item' : 'fm-tile fm-item');
+  const row = el('div', 'fm-row fm-item');
   row.dataset.name = e.name;
   row.draggable = true;
   const name = el('span', 'fm-name');
-  name.append(fmIcon(kind), el('span', 'fm-label', e.name));
-  // the merged home: greyed while only an offline host has it
-  if (e.stale) {
-    row.classList.add('fm-stale');
-    row.title = `on ${e.hosts!.join(', ')}, offline`;
-  }
-  if (fm.mode === 'list') {
-    const cell: Record<string, HTMLElement> = {
-      name,
-      where: el('span', 'fm-c-where', fmWhere(e)),
-      mtime: el('span', 'fm-c-mtime', fmDate(e.mtime)),
-      size: el('span', 'fm-c-size', e.dir ? '' : humanSize(e.size || 0)),
-      kind: el('span', 'fm-c-kind', fmKindLabel(e)),
-    };
-    row.append(...fm.cols.map(([key]) => cell[key]!));
-  } else {
-    row.append(name);
-    row.title = `${e.name}\n${e.dir ? 'folder' : humanSize(e.size || 0)}\n${fmDate(e.mtime)}`;
-  }
+  name.append(fmIcon(fmKind(e)), el('span', 'fm-label', e.name));
+  row.append(
+    name,
+    el('span', 'fm-c-size', e.dir ? '' : humanSize(e.size || 0)),
+    el('span', 'fm-c-mtime', fmDate(e.mtime)),
+  );
   row.addEventListener('click', (ev) => {
     fmClick(fm, e.name, ev);
     // a phone's tap opens, as its launcher's does
@@ -181,7 +102,7 @@ export function fmItem(fm: Fm, e: FileEntry): HTMLElement {
       fm.sel = new Set([e.name]);
       fmPaintSel(fm);
     }
-    dk.drag = { fm, loc: fm.loc!, items: fmPicked(fm) };
+    dk.drag = { v: fm, loc: fm.loc!, items: fmPicked(fm) };
     ev.dataTransfer!.effectAllowed = 'copyMove';
     ev.dataTransfer!.setData(
       'text/plain',
@@ -224,14 +145,16 @@ export function fmClick(fm: Fm, name: string, e: MouseEvent) {
 }
 
 // the picked entries as {rel, dir, name}
-export const fmPicked = (fm: Fm): PickedItem[] =>
-  fm.shown.filter((e) => fm.sel.has(e.name)).map((e) => ({ rel: filesJoin(fm.dir, e.name), dir: e.dir, name: e.name }));
+export const fmPicked = (v: FmView): PickedItem[] =>
+  v.shown.filter((e) => v.sel.has(e.name)).map((e) => ({ rel: filesJoin(v.dir, e.name), dir: e.dir, name: e.name }));
 
-export function fmOpen(fm: Fm, e: FileEntry) {
-  const rel = filesJoin(fm.dir, e.name);
-  if (e.dir && !runnable(e)) return fmGo(fm, fm.loc!, rel);
-  fileOpen(fm.loc!, rel, e);
-}
+// a folder opened in this window, a file downloaded
+export const fmOpen = (fm: Fm, e: FileEntry) => fm.open(filesJoin(fm.dir, e.name), e.dir);
+
+const fmReveal = (fm: Fm, name: string) =>
+  [...fm.main.querySelectorAll<HTMLElement>('.fm-item')]
+    .find((r) => r.dataset.name === name)
+    ?.scrollIntoView({ block: 'nearest' });
 
 // keys as a file manager's: arrows, enter, delete, f2, and the clipboard's
 export function fmKeys(fm: Fm, e: KeyboardEvent) {
@@ -239,27 +162,8 @@ export function fmKeys(fm: Fm, e: KeyboardEvent) {
   const k = e.key;
   const one =
     fm.shown.find((x) => x.name === fm.anchor && fm.sel.has(x.name)) || fm.shown.find((x) => fm.sel.has(x.name));
-  if (
-    k === 'ArrowDown' ||
-    k === 'ArrowUp' ||
-    ((k === 'ArrowLeft' || k === 'ArrowRight') && fm.mode === 'grid' && !e.altKey)
-  ) {
-    const cols =
-      fm.mode === 'grid'
-        ? Math.max(
-            1,
-            Math.floor(
-              fm.main.clientWidth / ((fm.main.querySelector('.fm-tile') as HTMLElement | null)?.offsetWidth || 1),
-            ),
-          )
-        : 1;
-    fmStep(
-      fm,
-      ({ ArrowDown: cols, ArrowUp: -cols, ArrowRight: 1, ArrowLeft: -1 } as Record<string, number>)[k]!,
-      e.shiftKey,
-    );
-  } else if (e.altKey && k === 'ArrowLeft') fmHistory(fm, -1);
-  else if (e.altKey && k === 'ArrowRight') fmHistory(fm, 1);
+  if ((k === 'ArrowDown' || k === 'ArrowUp') && !e.altKey) fmStep(fm, k === 'ArrowDown' ? 1 : -1, e.shiftKey);
+  else if (e.altKey && k === 'ArrowLeft') fmBack(fm);
   else if ((e.altKey && k === 'ArrowUp') || k === 'Backspace') fmUp(fm);
   else if (k === 'Enter' && one) fmOpen(fm, one);
   else if ((k === 'Delete' || (e.metaKey && k === 'Backspace')) && fm.sel.size) fmDelete(fm);
@@ -272,23 +176,9 @@ export function fmKeys(fm: Fm, e: KeyboardEvent) {
   } else if (mod && k.toLowerCase() === 'c' && fm.sel.size) fmClip(fm, 'copy');
   else if (mod && k.toLowerCase() === 'x' && fm.sel.size) fmClip(fm, 'cut');
   else if (mod && k.toLowerCase() === 'v') fmPaste(fm);
-  else if (mod && k.toLowerCase() === 'f') fm.find.focus();
   else if (k === 'Escape') {
     fm.sel.clear();
     fmPaintSel(fm);
-  } else if (k.length === 1 && !mod && !e.altKey) {
-    // typed letters jump to the next name starting with them
-    const names = fm.shown.map((x) => x.name);
-    const at = names.indexOf(fm.anchor!);
-    const hit = [...names.slice(at + 1), ...names.slice(0, at + 1)].find((n) =>
-      n.toLowerCase().startsWith(k.toLowerCase()),
-    );
-    if (hit) {
-      fm.sel = new Set([hit]);
-      fm.anchor = hit;
-      fmPaintSel(fm);
-      fmReveal(fm, hit);
-    }
   } else return;
   e.preventDefault();
   e.stopPropagation();

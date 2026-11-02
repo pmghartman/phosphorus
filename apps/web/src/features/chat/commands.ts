@@ -4,7 +4,7 @@ import type { ShowFile } from '@phosphorus/wire';
 import { dkCode } from '../../desktop/deskfiles.ts';
 import { el } from '../../lib/dom.ts';
 import { st } from '../../lib/state.ts';
-import { codeName, codeTabs, type EditorFile, editors, fileLabel } from '../home/home.ts';
+import { filesPath } from '../home/home.ts';
 import { phosphorusHosts } from '../mesh/mesh.ts';
 import { cancelCompose, composeVars, editing, paintAtts, paintBar, startEdit, typingTick } from './compose.ts';
 import { channels, chOf, convHint, convsVars, dmWith, leftChannels, saveChannels, topicOf } from './convs.ts';
@@ -160,31 +160,10 @@ export function shareWith(to: string, f: ShowFile): string {
   send({ type: 'show', to, file: f });
   return `invited ${to} to ${f.label}`;
 }
-// the people to offer it to, those on first; done says how it went
-export function shareMenu(anchor: HTMLElement, f: EditorFile, done: (how: string) => void): void {
-  const on = (n: string) => stateVars.people.some((p) => p.name === n);
-  const who = knownNames().sort((a, b) => Number(on(b)) - Number(on(a)) || a.localeCompare(b));
-  popMenu(
-    anchor,
-    `share ${codeName(f)} with`,
-    who.length
-      ? who.map((n) => ({
-          label: n,
-          sub: on(n) ? 'online' : 'asked when they are back',
-          act: () => done(shareWith(n, f)),
-        }))
-      : [{ label: 'nobody', act: () => {} }],
-  );
-}
 
-// a /share's file: an open editor tab by its name or path, else a file as the
-// files tab shows it, host then the share's root then the path
+// a /share's file as the files tab shows it, host then the share's root then the path
 export async function resolveShow(what: string): Promise<ShowFile | null> {
   const w = what.replace(/^\/+/, '');
-  for (const id of codeTabs.values()) {
-    const f = editors.get(id)?.file;
-    if (f && (f.label === w || f.path === w || codeName(f) === w || f.label.endsWith(`/${w}`))) return f;
-  }
   const [host, ...rest] = w.split('/');
   if (![st.selfHost, ...phosphorusHosts()].includes(host!) || !rest.length) return null;
   const info = await fetch(`/api/files/${encodeURIComponent(host!)}/info`)
@@ -197,7 +176,7 @@ export async function resolveShow(what: string): Promise<ShowFile | null> {
     .sort((a, b) => bare(b.label).length - bare(a.label).length)[0];
   if (!sh) return null;
   const rel = full.slice(bare(sh.label).length + 1);
-  return rel ? { host: host!, share: sh.id, path: rel, label: fileLabel(host!, sh.label, rel) } : null;
+  return rel ? { host: host!, share: sh.id, path: rel, label: filesPath(host!, sh.label, rel) } : null;
 }
 
 // the dialog for an invite to this browser
@@ -248,13 +227,6 @@ export function argHints(): ChatHit[] {
       .sort((a, b) => b.length - a.length)
       .find((n) => v.startsWith(`${n} `));
     if (!who) list = knownNames().map((n) => [n, online(n)]);
-    else if (cmd === '/share') {
-      prefix = `${who} `;
-      list = [...codeTabs.values()]
-        .map((id) => editors.get(id)?.file)
-        .filter((f): f is EditorFile => !!f)
-        .map((f) => [f.label, 'open in an editor tab']);
-    }
   } else if (cmd === CHANNEL_CHIP[0]) list = channels().map((c) => [c, topicOf(`ch:${c}`) || 'channel']);
   else if (cmd === '/recolor') list = COLOR_NAMES.map((c) => [c, '']);
   const token = v.slice(prefix.length).toLowerCase();

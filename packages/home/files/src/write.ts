@@ -2,14 +2,14 @@
 import { existsSync, lstatSync } from "node:fs";
 import { open, rename, rm, stat, truncate, unlink, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
-import { errBody, MaxText, MaxUpload, type Res, type Share, uploadTmp } from "./index.ts";
+import { errBody, MaxText, MaxUpload, type Res, type Share, Trash, uploadTmp } from "./index.ts";
 import { jsNumber } from "./listing.ts";
 import { adopt, mkdirAll, ownerAt } from "./owner.ts";
 import { badPath, relOf, safePath } from "./paths.ts";
 import { makeParents, read } from "./read.ts";
 import { can } from "./shares.ts";
 
-// a home change told to whoever watches (the mirror)
+// a home change told to whoever watches (the sync)
 export let onChange: ((op: string, rel: string, to: string) => void) | undefined;
 
 export const setOnChange = (f: typeof onChange) => void (onChange = f);
@@ -182,4 +182,35 @@ export async function remove(sh: Share | undefined, rel: string): Promise<Res> {
   }
   changed(sh, "delete", relOf(sh, abs));
   return [200, { ok: true }];
+}
+
+// a path's trash: its home's own (<user>/.trash), else the share's
+export function trashOf(sh: Share, rel: string): string {
+  const parts = rel.replaceAll("\\", "/").split("/").filter(Boolean);
+  return sh.id === "home" && parts.length > 1 ? `${parts[0]}/${Trash}` : Trash;
+}
+
+// into the trash under a name free there; what's in a trash already gone for good
+export async function trash(sh: Share | undefined, rel: string): Promise<Res> {
+  if (!sh || !can(sh, "d")) return [403, errBody("deleting is off for this share")];
+  const abs = safePath(sh, rel, true);
+  if (!abs) return badPath(sh, rel, true);
+  if (abs === sh.real) return [400, errBody("can't delete the share itself")];
+  const was = relOf(sh, abs);
+  const bin = trashOf(sh, was);
+  if (was === bin || was.startsWith(bin + "/")) return remove(sh, was);
+  const dir = join(sh.real, bin);
+  const name = basename(abs);
+  const dot = name.lastIndexOf(".");
+  const [stem, ext] = dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, ""];
+  let dst = join(dir, name);
+  for (let i = 2; existsSync(dst); i++) dst = join(dir, `${stem} ${i}${ext}`);
+  try {
+    mkdirAll(dir);
+    await rename(abs, dst);
+  } catch (e: any) {
+    return [500, errBody(e?.message)];
+  }
+  changed(sh, "delete", was);
+  return [200, { ok: true, path: relOf(sh, dst) }];
 }

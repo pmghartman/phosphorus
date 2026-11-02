@@ -8,6 +8,7 @@ import { State as modelState, Summary } from "@phosphorus/model";
 import * as peers from "@phosphorus/peers";
 import { own as ownServices, setPending, unpublished, wildcard } from "@phosphorus/services";
 import * as store from "@phosphorus/store";
+import * as homesync from "@phosphorus/sync";
 import * as update from "@phosphorus/update";
 import { lockACL, logf, markHot, marshal, peerCall, run, tailnetIP } from "@phosphorus/util";
 import * as webapps from "@phosphorus/webapps";
@@ -25,7 +26,6 @@ import {
   tsAPIKey,
   Version,
 } from "./config.ts";
-import { deskStamps } from "./desk.ts";
 import type { Res } from "./http.ts";
 import { decode, obj, str } from "./js.ts";
 import { filesInfo } from "./shares.ts";
@@ -118,7 +118,6 @@ export function publishHost() {
     version: Version(),
     platform: getPlatform(),
     files: filesInfo(),
-    desk: deskStamps(),
     apps: webapps.installed(),
     services: webapps.svcProgress(),
     found: unpublished(),
@@ -166,6 +165,7 @@ export function buildState(): Record<string, any> {
     chainMine: mine,
     hosts: hostsInfo(),
     apps: webapps.wants(),
+    home: homesync.digest(),
   };
 }
 
@@ -174,7 +174,19 @@ let lastStateFp = "";
 function stateFp(s: Record<string, any>): string {
   const tn = (s.tailnet as Record<string, any>[]).map((d) => [d.name, d.os, d.phosphorus, d.phosphorusSeen, d.version]);
   const m = s.model as Record<string, any>;
-  return marshal([s.self, s.routes, s.lock, s.chain, tn, git.rowsFp(git.rows()), m.agents, m.keys, s.hosts, s.apps]);
+  return marshal([
+    s.self,
+    s.routes,
+    s.lock,
+    s.chain,
+    tn,
+    git.rowsFp(git.rows()),
+    m.agents,
+    m.keys,
+    s.hosts,
+    s.apps,
+    s.home,
+  ]);
 }
 
 export function noteState(s: Record<string, any>): string {

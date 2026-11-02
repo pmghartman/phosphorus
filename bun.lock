@@ -132,12 +132,14 @@
         "@phosphorus/util": "workspace:*",
       },
     },
-    "packages/home/mirror": {
-      "name": "@phosphorus/mirror",
+    "packages/home/sync": {
+      "name": "@phosphorus/sync",
       "dependencies": {
         "@phosphorus/files": "workspace:*",
+        "@phosphorus/peers": "workspace:*",
         "@phosphorus/store": "workspace:*",
         "@phosphorus/util": "workspace:*",
+        "@phosphorus/wire": "workspace:*",
       },
     },
     "packages/host/config": {
@@ -304,7 +306,6 @@
         "@phosphorus/gamedns": "workspace:*",
         "@phosphorus/git": "workspace:*",
         "@phosphorus/mcp": "workspace:*",
-        "@phosphorus/mirror": "workspace:*",
         "@phosphorus/model": "workspace:*",
         "@phosphorus/peers": "workspace:*",
         "@phosphorus/proxy": "workspace:*",
@@ -312,6 +313,7 @@
         "@phosphorus/services": "workspace:*",
         "@phosphorus/stats": "workspace:*",
         "@phosphorus/store": "workspace:*",
+        "@phosphorus/sync": "workspace:*",
         "@phosphorus/term": "workspace:*",
         "@phosphorus/update": "workspace:*",
         "@phosphorus/users": "workspace:*",
@@ -383,8 +385,6 @@
 
     "@phosphorus/minisign": ["@phosphorus/minisign@workspace:packages/mesh/minisign"],
 
-    "@phosphorus/mirror": ["@phosphorus/mirror@workspace:packages/home/mirror"],
-
     "@phosphorus/model": ["@phosphorus/model@workspace:packages/ai/model"],
 
     "@phosphorus/modeld": ["@phosphorus/modeld@workspace:packages/ai/modeld"],
@@ -406,6 +406,8 @@
     "@phosphorus/stats": ["@phosphorus/stats@workspace:packages/host/stats"],
 
     "@phosphorus/store": ["@phosphorus/store@workspace:packages/mesh/store"],
+
+    "@phosphorus/sync": ["@phosphorus/sync@workspace:packages/home/sync"],
 
     "@phosphorus/term": ["@phosphorus/term@workspace:packages/net/term"],
 

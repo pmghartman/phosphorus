@@ -11,7 +11,8 @@ const { durText, lastLine, setHome, splitLines, sshInclude } = base;
 const { plistText, xmlEsc } = await import("../src/darwin.ts");
 const { escapeArg, psq } = await import("../src/windows.ts");
 const { authorizedKeysKept, gameKeyLine } = await import("../src/game.ts");
-const { absTo, bakeEnv, envFileText, readEnvFile, signature, splitComma, withPath } = await import("../src/native.ts");
+const { absTo, bakeEnv, envFileText, migrateHome, oldHomes, readEnvFile, signature, splitComma, withPath } =
+  await import("../src/native.ts");
 const { kept, syncPayload } = await import("../src/install.ts");
 const { field } = await import("../src/upgrade.ts");
 const { keySet } = await import("../src/start.ts");
@@ -180,10 +181,9 @@ test("bakeEnv from phosphorus.ini, missing share dirs skipped", () => {
     join(dir, "config", "phosphorus.ini"),
     "[files]\ndir = share/, nope, /\npriv = r,,rw\n[model]\nhost = true\n",
   );
-  const m = bakeEnv(join(dir, "files"));
+  const m = bakeEnv();
   expect(m.PHOSPHORUS_HOME).toBe(dir);
   expect(m.STATE_DIR).toBe(join(dir, "state"));
-  expect(m.HOME_FS).toBe(join(dir, "files"));
   expect(m.PHOSPHORUS_FILES_DIRS).toBe(join(dir, "share"));
   expect(m.PHOSPHORUS_FILES_PERMS).toBe("r");
   if (process.platform === "linux") expect(m.GIT_USER).toBe("phosphorus-git");
@@ -242,4 +242,31 @@ test("small helpers", () => {
   expect(durText(60_000)).toBe("1m0s");
   expect(splitLines("a\r\nb\n")).toEqual(["a", "b"]);
   expect(sshInclude()).toBe(`Include "${join(dir, "state", "ssh_config").replaceAll("\\", "/")}"`);
+});
+
+test("the home moved once into <phosphorus>/home, files/ gone, a clash left behind", () => {
+  setHome(dir);
+  mkdirSync(join(dir, "config"), { recursive: true });
+  writeFileSync(join(dir, "config", "phosphorus.ini"), "[home]\ndir = big\n");
+  mkdirSync(join(dir, "files", "home", "ann", "Desktop"), { recursive: true });
+  writeFileSync(join(dir, "files", "home", "ann", "Desktop", "a.txt"), "a");
+  mkdirSync(join(dir, "big", "home", "ann"), { recursive: true });
+  writeFileSync(join(dir, "big", "home", "ann", "b.txt"), "b");
+  mkdirSync(join(dir, "home", "bob"), { recursive: true });
+  writeFileSync(join(dir, "home", "bob", "c.txt"), "c");
+  writeFileSync(join(dir, "big", "home", "bob.txt"), "old");
+  writeFileSync(join(dir, "home", "bob.txt"), "new");
+  const old = oldHomes();
+  expect(old).toEqual([join(dir, "big", "home"), join(dir, "files", "home")]);
+  migrateHome(old);
+  for (const [p, t] of [
+    ["ann/Desktop/a.txt", "a"],
+    ["ann/b.txt", "b"],
+    ["bob/c.txt", "c"],
+    ["bob.txt", "new"],
+  ])
+    expect(readFileSync(join(dir, "home", p!), "utf8")).toBe(t!);
+  expect(existsSync(join(dir, "files"))).toBe(false);
+  expect(readFileSync(join(dir, "big", "home", "bob.txt"), "utf8")).toBe("old");
+  expect(oldHomes()).toEqual([join(dir, "big", "home")]);
 });

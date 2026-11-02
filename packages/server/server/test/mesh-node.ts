@@ -1,9 +1,8 @@
 // one host of a test mesh: the whole server on its own loopback address, and a
 // control endpoint the harness drives it through; started by harness.ts
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import * as files from "@phosphorus/files";
-import * as mirror from "@phosphorus/mirror";
 import * as peers from "@phosphorus/peers";
 import { mergedChat, postOwn, start } from "@phosphorus/server";
 import * as store from "@phosphorus/store";
@@ -60,12 +59,13 @@ Bun.serve({
       case "home.write":
         await Bun.write(join(files.HomeRoot, a.rel), a.text);
         return Response.json({ ok: true });
+      case "home.delete":
+        rmSync(join(files.HomeRoot, a.rel), { force: true });
+        return Response.json({ ok: true });
       case "home.read": {
         const abs = join(files.HomeRoot, a.rel);
         return Response.json({ text: existsSync(abs) ? readFileSync(abs, "utf8") : null });
       }
-      case "mirror.mark":
-        return Response.json({ res: a.on === false ? mirror.Unmark(a.rel) : mirror.Mark(a.rel) });
     }
     return new Response("no such op", { status: 400 });
   },

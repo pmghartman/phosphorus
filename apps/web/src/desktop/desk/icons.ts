@@ -9,11 +9,9 @@ import {
   filesWin,
   fmMark,
   fmSame,
-  fmSpring,
   fmTransfer,
-  fmUnspring,
   fmZones,
-  HOME,
+  homeLoc,
   may,
 } from '../../features/home/home.ts';
 import { dkMcpTray, mcpStat } from '../../features/mcp.ts';
@@ -24,7 +22,7 @@ import { DK_GLYPHS, dkGlyph, el, isMobile, mobileQuery, svgEl } from '../../lib/
 import { dk, st } from '../../lib/state.ts';
 import { dkControlTray } from '../control.ts';
 import { dkView } from '../desk.ts';
-import { dkDeskWatch, dkFileIcon } from '../deskfiles.ts';
+import { dkDeskDir, dkDeskView, dkDeskWatch, dkFileIcon } from '../deskfiles.ts';
 import { dkLoginHosts } from '../login.ts';
 import { dkSessionHold, dkSessionRestore, dkSessionTry } from '../session.ts';
 import { dkSpotlightTray } from '../spotlight.ts';
@@ -275,13 +273,13 @@ export function dkIcons(): void {
     !!st.acct?.admin,
     dk.services.map((r) => [r.host, r.name, !!r.public]),
     webapps.map((a) => a.id),
-    dk.deskFiles.map((e) => [e.at, e.name, e.dir, e.mtime, e.hosts, e.stale, e.all]),
+    dk.deskFiles.map((e) => [e.name, e.dir, e.mtime]),
   ]);
   if (sig === dk.sig) return;
   dk.sig = sig;
   // a host, login or service newly here: a saved window waiting on it opened
   dkSessionTry();
-  const files = new Map(dk.deskFiles.map((e) => [`doc\n${filesJoin(e.at!, e.name)}`, e]));
+  const files = new Map(dk.deskFiles.map((e) => [`doc\n${filesJoin(dkDeskDir(), e.name)}`, e]));
   // one key per icon and what it shows, an unchanged one kept as it is
   const want: [string, () => HTMLButtonElement][] = [
     ['terminal', () => dkIcon('terminal', 'terminal', '', dkTermApp)],
@@ -314,7 +312,7 @@ export function dkIcons(): void {
       () => dkServiceIcon(r),
     ]),
     ...[...files.values()].map((e): [string, () => HTMLButtonElement] => [
-      JSON.stringify([e.at, e.name, e.dir, e.mtime, e.hosts, e.stale, e.all, e.live]),
+      JSON.stringify([dkDeskDir(), e.name, e.dir, e.mtime]),
       () => dkFileIcon(e),
     ]),
   ];
@@ -465,15 +463,9 @@ export function dkGrab(e: PointerEvent, b: HTMLButtonElement, open: () => void) 
     }
     const got = z && fmZones.get(z);
     const t = got?.where();
-    if (zone && zone !== z) {
-      zone.classList.remove('drop');
-      fmUnspring(fmZones.get(zone)!.fm, zone);
-    }
+    if (zone && zone !== z) zone.classList.remove('drop');
     zone = got && t && may(t.loc, 'w') ? z : null;
-    if (zone) {
-      fmMark(got!.fm, zone);
-      fmSpring(got!.fm, zone, t!);
-    }
+    if (zone) fmMark(zone);
   };
   // a copy riding the pointer above every window
   let ghost: HTMLElement | null = null;
@@ -526,17 +518,17 @@ export function dkGrab(e: PointerEvent, b: HTMLButtonElement, open: () => void) 
     for (const x of moving) x.classList.remove('dk-lift');
     if (zone) {
       // into the window: the icons back in their cells, the files sent
-      const { fm, where } = fmZones.get(zone)!;
+      const { v, where } = fmZones.get(zone)!;
       const t = where()!;
       zone.classList.remove('drop');
-      fmUnspring(fm);
       for (const x of moving) dkPut(x, Number(x.dataset.c), Number(x.dataset.r));
+      const home = homeLoc();
       const items = files
-        .map((x) => dk.deskFiles.find((f) => filesJoin(f.at!, f.name) === x.dataset.file))
+        .map((x) => dk.deskFiles.find((f) => filesJoin(dkDeskDir(), f.name) === x.dataset.file))
         .filter((f): f is NonNullable<typeof f> => !!f)
-        .map((f) => ({ rel: filesJoin(f.at!, f.name), dir: !!f.dir, name: f.name }))
-        .filter((it) => !(fmSame(HOME, t.loc) && filesParent(it.rel) === t.dir));
-      if (items.length) fmTransfer(fm, HOME, items, t.loc, t.dir, fmSame(HOME, t.loc) && !ev.ctrlKey && !ev.altKey);
+        .map((f) => ({ rel: filesJoin(dkDeskDir(), f.name), dir: !!f.dir, name: f.name }))
+        .filter((it) => !(fmSame(home, t.loc) && filesParent(it.rel) === t.dir));
+      if (items.length) fmTransfer(v, home, items, t.loc, t.dir, fmSame(home, t.loc) && !ev.ctrlKey && !ev.altKey);
       return;
     }
     dkDrop(moving, Math.round(dx / DK_GX), Math.round(dy / DK_GY));

@@ -1,6 +1,6 @@
 import { realpathSync } from "node:fs";
 import { join } from "node:path";
-import { env, ini, RepoDir, StateDir as UtilStateDir } from "@phosphorus/util";
+import { ini, RepoDir, StateDir as UtilStateDir } from "@phosphorus/util";
 import "./shares.ts";
 import "./paths.ts";
 import "./listing.ts";
@@ -8,11 +8,10 @@ import "./read.ts";
 import "./write.ts";
 import "./gate.ts";
 
-export const FilesRoot = env("FILES_ROOT", join(RepoDir, "files"));
 export const StateDir = UtilStateDir;
-export const HomeFS = env("HOME_FS", FilesRoot);
 export const Home = "home";
-export const HomeRoot = join(HomeFS, Home);
+// every user's home, shared/ and the system's .sys/: <phosphorus>/home
+export const HomeRoot = join(RepoDir, Home);
 
 // a text file read or saved whole: source as big as an amalgamation's
 export const MaxText = 16 << 20;
@@ -20,6 +19,8 @@ export const MaxUpload = 64 * 2 ** 30;
 export const maxEntries = 5000;
 export const treeDepthMax = 8;
 export const uploadTmp = ".phosphorus-upload-";
+// where a delete puts things: each home's own, a share's at its root
+export const Trash = ".trash";
 export const fullPerms = "rwd";
 export const Desktop = "Desktop";
 export const Shared = "shared";
@@ -74,8 +75,19 @@ export const realOf = (p: string) => {
 };
 export { gateCode, homeFilterList, homeFilterTree, homeGate, pending, quiet, type Who } from "./gate.ts";
 export { globRe, jsNumber, list, search, setTreeMax, TreeMax, tree } from "./listing.ts";
-export { own } from "./owner.ts";
+export { adopt, mkdirAll, ownerAt } from "./owner.ts";
 export { type Entry, inside, type Located, locate, relOf, safePath, toAbs } from "./paths.ts";
 export { downloadPath, looksBinary, makeParents, read, statPath } from "./read.ts";
 export { can, enabled, homeDir, init, shareOf, shares } from "./shares.ts";
-export { mkdir, onChange, remove, renamePath, type SaveP, save, setOnChange, type UploadQ, write } from "./write.ts";
+export {
+  mkdir,
+  onChange,
+  remove,
+  renamePath,
+  type SaveP,
+  save,
+  setOnChange,
+  trash,
+  type UploadQ,
+  write,
+} from "./write.ts";

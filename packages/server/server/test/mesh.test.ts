@@ -122,44 +122,30 @@ test("chat lines cross the links, and a host away gets what it missed on its hel
   );
 }, 30_000);
 
-test("a home file marked for every host is on every other within the moment, follows its changes, and goes when unmarked", async () => {
+test("a home file written on one host is on every other within the moment, follows its changes, and goes to their trash when deleted", async () => {
+  // a change the watcher missed waits for the digests, every 10s
+  const wait = 20_000;
   await m.call("alpha", "home.write", { rel: "shared/note.txt", text: "from alpha" });
-  expect((await m.call("alpha", "mirror.mark", { rel: "shared/note.txt" })).res[0]).toBe(200);
-  const t0 = Date.now();
+  for (const h of ["bravo", "charlie"])
+    await m.until(
+      async () => (await m.call(h, "home.read", { rel: "shared/note.txt" })).text === "from alpha",
+      `${h} has the note`,
+      wait,
+    );
+  await m.call("bravo", "home.write", { rel: "shared/note.txt", text: "from bravo, on top" });
   await m.until(
-    async () => (await m.call("charlie", "home.read", { rel: "shared/note.txt" })).text === "from alpha",
-    "charlie's copy",
+    async () => (await m.call("alpha", "home.read", { rel: "shared/note.txt" })).text === "from bravo, on top",
+    "alpha has bravo's edit",
+    wait,
   );
-  expect(Date.now() - t0).toBeLessThan(1500);
-  await m.until(
-    async () => (await m.call("bravo", "home.read", { rel: "shared/note.txt" })).text === "from alpha",
-    "bravo's copy",
-  );
-  // the file changed and marked again: the new bytes everywhere
-  await m.call("alpha", "home.write", { rel: "shared/note.txt", text: "from alpha, again" });
-  await m.call("alpha", "mirror.mark", { rel: "shared/note.txt" });
-  await m.until(
-    async () => (await m.call("bravo", "home.read", { rel: "shared/note.txt" })).text === "from alpha, again",
-    "bravo's new copy",
-  );
-  // a copy's host away while it's marked: fetched once its link is back
-  await m.call("charlie", "link.drop", { host: "alpha" });
-  await m.until(async () => (await m.view("charlie")).links.alpha === false, "charlie sees alpha down", 7000);
-  await m.call("alpha", "home.write", { rel: "shared/late.txt", text: "late" });
-  await m.call("alpha", "mirror.mark", { rel: "shared/late.txt" });
-  await m.until(() => linked("charlie", "alpha"), "the link back", 10_000);
-  await m.until(
-    async () => (await m.call("charlie", "home.read", { rel: "shared/late.txt" })).text === "late",
-    "the late copy on charlie",
-  );
-  // unmarked: the copies go, the original stays
-  await m.call("alpha", "mirror.mark", { rel: "shared/note.txt", on: false });
+  await m.call("alpha", "home.delete", { rel: "shared/note.txt" });
   await m.until(
     async () => (await m.call("charlie", "home.read", { rel: "shared/note.txt" })).text === null,
     "charlie's copy gone",
+    wait,
   );
-  expect((await m.call("alpha", "home.read", { rel: "shared/note.txt" })).text).toBe("from alpha, again");
-}, 40_000);
+  expect((await m.call("charlie", "home.read", { rel: "shared/.trash/note.txt" })).text).toBe("from bravo, on top");
+}, 90_000);
 
 test("tailscale's offline flag alone keeps a link; a host removed is let go", async () => {
   m.setOnline("charlie", false);

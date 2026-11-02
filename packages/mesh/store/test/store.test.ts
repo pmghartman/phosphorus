@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const dir = mkdtempSync(join(tmpdir(), "phos-store-"));
-process.env.HOME_FS = dir;
+process.env.PHOSPHORUS_REPO_DIR = dir;
 process.env.SELF_HOST = "mike";
 const store = await import("@phosphorus/store");
 

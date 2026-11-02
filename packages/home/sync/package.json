@@ -1,5 +1,5 @@
 {
-  "name": "@phosphorus/mirror",
+  "name": "@phosphorus/sync",
   "private": true,
   "type": "module",
   "exports": {
@@ -7,7 +7,9 @@
   },
   "dependencies": {
     "@phosphorus/files": "workspace:*",
+    "@phosphorus/peers": "workspace:*",
     "@phosphorus/store": "workspace:*",
-    "@phosphorus/util": "workspace:*"
+    "@phosphorus/util": "workspace:*",
+    "@phosphorus/wire": "workspace:*"
   }
 }

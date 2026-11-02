@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, parse, sep } from "node:path";
 import type { Entry, Share } from "@phosphorus/files";
 
-process.env.HOME_FS = mkdtempSync(join(tmpdir(), "phos-files-"));
+process.env.PHOSPHORUS_REPO_DIR = mkdtempSync(join(tmpdir(), "phos-files-"));
 const F = await import("@phosphorus/files");
 const share = (real: string): Share => ({ id: "0", label: "", perms: "rwd", root: real, real, ok: true });
 

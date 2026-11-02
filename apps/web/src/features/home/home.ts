@@ -1,45 +1,39 @@
-import './editors.ts';
 import './api.ts';
-import './merged.ts';
 import './transfer.ts';
 import './fm.ts';
 
-export { filesApi, filesCall, filesJoin, filesParent, filesPath, type Loc, may } from './api.ts';
-export { codeKey, codeLang, codeName, codeTabs, type EditorFile, editors, fileLabel, isCode } from './editors.ts';
 export {
-  type Choice,
+  filesApi,
+  filesCall,
+  filesCopy,
+  filesJoin,
+  filesParent,
+  filesPath,
+  homeLoc,
+  hostOf,
+  isHome,
+  type Loc,
+  may,
+} from './api.ts';
+export {
   type DropTarget,
   dkFms,
   type Fm,
+  type FmView,
+  fileDownload,
   fileOpen,
-  filesChoose,
   filesWin,
   fmChanged,
   fmExt,
+  fmHomeChanged,
   fmIcon,
   fmKind,
   fmMark,
+  fmMenuAt,
   fmSame,
-  fmSay,
-  fmSpring,
   fmTransfer,
-  fmUnspring,
   fmZones,
   type PickedItem,
-  runnable,
   type ShareInfo,
 } from './fm.ts';
-export {
-  HOME,
-  type HomeHostList,
-  homeAt,
-  homeHolders,
-  homeHostList,
-  homeList,
-  homeOnline,
-  homePick,
-  homeTarget,
-  isHome,
-  otherHosts,
-} from './merged.ts';
-export { copyFile, putFile } from './transfer.ts';
+export { putFile } from './transfer.ts';
