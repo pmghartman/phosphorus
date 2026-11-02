@@ -1,5 +1,5 @@
 // appbuild: one first-party app's signed bundle and its feed, from
-// packages/apps/<id>/: web/index.html and what it loads, web/static/ as it is,
+// optional/<id>/: web/index.html and what it loads, web/static/ as it is,
 // server/index.ts bundled whole into server/index.js
 //   bun scripts/appbuild.ts ID OUT [VERSION]
 // OUT gets <id>-<version>.tar.gz and <id>.json, the feed entry naming it under
@@ -34,7 +34,7 @@ if (!id || !out) die("usage: bun scripts/appbuild.ts ID OUT [VERSION]", 2);
 if (!/^\d+(\.\d+){0,3}$/.test(version)) die(`${version} isn't a version: numbers and dots`);
 const app = appOf(id!) ?? die(`${id} isn't in the catalogue (packages/mesh/webapps)`);
 const root = resolve(import.meta.dir, "..");
-const src = join(root, "packages", "apps", id!);
+const src = join(root, "optional", id!);
 const mount = app.mount.replace(/^\/+|\/+$/g, "");
 if (!existsSync(join(src, "web", "index.html"))) die(`no ${relative(root, join(src, "web", "index.html"))}`);
 

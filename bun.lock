@@ -88,9 +88,6 @@
         "@phosphorus/util": "workspace:*",
       },
     },
-    "packages/apps/sdk": {
-      "name": "@phosphorus/app-sdk",
-    },
     "packages/chat/chatmedia": {
       "name": "@phosphorus/chatmedia",
       "dependencies": {
@@ -108,6 +105,9 @@
       "devDependencies": {
         "@types/sanitize-html": "2.16.2",
       },
+    },
+    "packages/core/app-sdk": {
+      "name": "@phosphorus/app-sdk",
     },
     "packages/core/theme": {
       "name": "@phosphorus/theme",
@@ -236,6 +236,9 @@
         "@phosphorus/util": "workspace:*",
       },
     },
+    "packages/mesh/stacks": {
+      "name": "@phosphorus/stacks",
+    },
     "packages/mesh/store": {
       "name": "@phosphorus/store",
       "dependencies": {
@@ -362,7 +365,7 @@
 
     "@biomejs/cli-win32-x64": ["@biomejs/cli-win32-x64@2.6.3", "", { "os": "win32", "cpu": "x64" }, "sha512-GhtOPphBWlnCepqpNk/w5eGN5oGRCzL20EbAkL1XCIpyboeVC9R642noyT43l8LSenGS4qz9IL8sKPfwY37V/Q=="],
 
-    "@phosphorus/app-sdk": ["@phosphorus/app-sdk@workspace:packages/apps/sdk"],
+    "@phosphorus/app-sdk": ["@phosphorus/app-sdk@workspace:packages/core/app-sdk"],
 
     "@phosphorus/appfeed": ["@phosphorus/appfeed@workspace:packages/mesh/appfeed"],
 
@@ -411,6 +414,8 @@
     "@phosphorus/server": ["@phosphorus/server@workspace:packages/server/server"],
 
     "@phosphorus/services": ["@phosphorus/services@workspace:packages/mesh/services"],
+
+    "@phosphorus/stacks": ["@phosphorus/stacks@workspace:packages/mesh/stacks"],
 
     "@phosphorus/stats": ["@phosphorus/stats@workspace:packages/host/stats"],
 

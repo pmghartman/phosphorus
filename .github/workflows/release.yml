@@ -310,14 +310,14 @@ jobs:
           path: upd
           pattern: upd-*
           merge-multiple: true
-      # first-party apps (packages/apps/<id> with a page), each bundle and its feed
+      # the optional apps (optional/<id> with a page), each bundle and its feed
       # entry signed beside the host's
       - name: apps
         env:
           UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
           APPS_FEED_BASE: https://github.com/${{ github.repository }}/releases/download/update
         run: |
-          for d in packages/apps/*/; do
+          for d in optional/*/; do
             id=$(basename "$d")
             [ -f "$d/web/index.html" ] || continue
             bun run app "$id" upd "$VER"

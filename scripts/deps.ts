@@ -6,9 +6,11 @@ import { join, resolve } from "node:path";
 const root = resolve(import.meta.dir, "..");
 const checkOnly = process.argv.includes("--check");
 
-// every package dir: apps/*, packages/*/*
+// every package dir: apps/*, packages/*/*, optional/*
 const dirs: string[] = [];
 for (const a of readdirSync(join(root, "apps"))) dirs.push(join("apps", a));
+if (existsSync(join(root, "optional")))
+  for (const a of readdirSync(join(root, "optional"))) dirs.push(join("optional", a));
 for (const g of readdirSync(join(root, "packages")))
   for (const p of readdirSync(join(root, "packages", g))) dirs.push(join("packages", g, p));
 

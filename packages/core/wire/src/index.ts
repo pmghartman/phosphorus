@@ -9,5 +9,6 @@ export * from "./code.ts";
 export * from "./files.ts";
 export * from "./md.ts";
 export * from "./peer.ts";
+export * from "./stacks.ts";
 export * from "./state.ts";
 export * from "./stats.ts";

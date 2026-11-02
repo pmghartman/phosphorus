@@ -1,3 +1,5 @@
+import type { StackStatus, StackView } from "./stacks.ts";
+
 // --- /api/state: buildState() in packages/server/src/server.ts, pushed over the same path's socket
 
 // a device on the tailnet, phosphorus hosts marked (packages/mesh)
@@ -121,6 +123,8 @@ export interface HostInfo {
   found?: FoundPage[];
   // *.<domain> reaching the mesh through the tunnel, as this host last saw it (packages/services Wildcard)
   wildcard?: { state: string; why?: string };
+  // this host's copy of each installed app (packages/stacks)
+  stacks?: Record<string, StackStatus>;
 }
 
 export interface FoundPage {
@@ -168,6 +172,8 @@ export interface State {
   hosts?: Record<string, HostInfo>;
   // the optional apps picked for the mesh, by id
   apps?: Record<string, AppWant>;
+  // the installed services, by id
+  stacks?: Record<string, StackView>;
   pollMs?: number;
 }
 

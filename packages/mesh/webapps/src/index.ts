@@ -52,7 +52,7 @@ export type App = {
   key?: string;
 };
 
-// one of phosphorus's own apps, packages/apps/<id>: its bundle off the release
+// one of phosphorus's own optional apps, optional/<id>: its bundle off the release
 // (scripts/appbuild.ts), signed with the release key, served at /app/<id>/
 export const firstParty = (
   a: Pick<App, "id" | "name" | "tagline" | "about" | "features" | "category"> & Partial<App>,
@@ -65,7 +65,7 @@ export const firstParty = (
   ),
   mount: `/app/${a.id}/`,
   icon: `/app/${a.id}/icon.svg`,
-  repoIcon: `packages/apps/${a.id}/web/static/icon.svg`,
+  repoIcon: `optional/${a.id}/web/static/icon.svg`,
   key: "release",
   ...a,
 });
