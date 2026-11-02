@@ -23,6 +23,7 @@ export {
   type Meta,
   type Res,
   type Src,
+  type Tool,
   ToolError,
 } from "./common.ts";
 export { statsRow, statsShape } from "./hosts.ts";
@@ -38,6 +39,33 @@ function build() {
   tools.push(...coreTools(), ...agentTools(), ...controlTools(), ...forgejoTools());
   describe();
   for (const t of tools) toolIndex.set(t.name, t);
+}
+
+// an installed app's tools, swapped whole as it changes, none once it's gone;
+// a name a built-in tool or another app holds is skipped
+const appTools = new Map<string, Tool[]>();
+export function setAppTools(app: string, list: Tool[]): string[] {
+  build();
+  for (const t of appTools.get(app) ?? []) {
+    toolIndex.delete(t.name);
+    const i = tools.indexOf(t);
+    if (i >= 0) tools.splice(i, 1);
+  }
+  const took: Tool[] = [];
+  const skipped: string[] = [];
+  for (const t of list) {
+    if (toolIndex.has(t.name)) {
+      skipped.push(t.name);
+      continue;
+    }
+    tools.push(t);
+    toolIndex.set(t.name, t);
+    took.push(t);
+  }
+  if (took.length) appTools.set(app, took);
+  else appTools.delete(app);
+  listed.clear();
+  return skipped;
 }
 
 // allTools every tool the server knows, for the tests

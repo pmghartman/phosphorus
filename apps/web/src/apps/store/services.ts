@@ -625,6 +625,7 @@ export function draw() {
     stateVars.busyId,
     stateVars.openId,
     stateVars.filter,
+    stateVars.tab,
     [...logsOpen],
     st.selfHost,
     st.acct?.admin,

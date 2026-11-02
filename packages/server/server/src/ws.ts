@@ -9,6 +9,7 @@ import * as term from "@phosphorus/term";
 import { Of } from "@phosphorus/users";
 import { errText, intervalMS, marshal, now, onHot, sleep, tailnetIP } from "@phosphorus/util";
 import { type Conn, type Ctx, upgrade } from "@phosphorus/wsock";
+import { appSocket } from "./apps.ts";
 import { onChat } from "./chatws.ts";
 import { codeSocket } from "./code.ts";
 import { getPlatform, hostSSHHost, hostSSHPort, maxTerms, port, selfHost } from "./config.ts";
@@ -72,6 +73,8 @@ export async function onUpgrade(c: Ctx, pathname: string, q: URLSearchParams): P
       return accept(c, (ws) => statsAttach(ws, own));
     }
   }
+  const as = appSocket(c, pathname);
+  if (as !== false) return as;
   const cs = codeSocket(c, pathname, q);
   if (cs !== false) return cs;
   let m = codePathRe.exec(pathname);

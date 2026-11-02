@@ -24,9 +24,9 @@ function matches(x: { id: string; name: string; tagline: string; category: strin
 function search(): HTMLElement {
   const box = Object.assign(el('input', 'store-search'), {
     type: 'search',
-    placeholder: `search ${services.length + (apps?.length ?? 0)} apps and services`,
+    placeholder: stateVars.tab === 'apps' ? `search ${apps?.length ?? 0} apps` : `search ${services.length} services`,
     value: stateVars.filter,
-    ariaLabel: 'search apps and services',
+    ariaLabel: stateVars.tab === 'apps' ? 'search apps' : 'search services',
   });
   box.addEventListener('input', () => {
     const at = box.selectionStart;
@@ -145,18 +145,43 @@ function foundTile(f: Discovered): HTMLElement {
   return t;
 }
 
+// the front's two tabs: services onto hosts, apps for the desktop
+const TABS = {
+  services: {
+    title: 'services',
+    lead: 'Self-hosted services, installed onto the hosts you pick as your own login there, each published on the mesh.',
+  },
+  apps: {
+    title: 'apps',
+    lead: 'Extras for the desktop. Get an app and every host serves its own copy, beside this desktop.',
+  },
+} as const;
+
+function tabs(): HTMLElement {
+  const bar = Object.assign(el('div', 'store-tabs'), { role: 'tablist' });
+  for (const id of Object.keys(TABS) as (keyof typeof TABS)[]) {
+    const on = stateVars.tab === id;
+    const b = Object.assign(el('button', `store-tab${on ? ' on' : ''}`, TABS[id].title), {
+      type: 'button',
+      role: 'tab',
+      ariaSelected: String(on),
+    });
+    b.addEventListener('click', () => {
+      if (stateVars.tab === id) return;
+      stateVars.tab = id;
+      draw();
+    });
+    bar.append(b);
+  }
+  return bar;
+}
+
 export function front(): HTMLElement {
   const wrap = el('div', 'store-front');
+  const tab = TABS[stateVars.tab];
   const head = el('div', 'store-head');
   const title = el('div', 'store-title');
-  title.append(
-    el('h1', '', 'apps'),
-    el(
-      'p',
-      'store-lead',
-      'Extras for the mesh. Get an app and every host serves its own copy, beside this desktop; install a service onto the hosts you pick, as your own login there.',
-    ),
-  );
+  title.append(tabs(), el('p', 'store-lead', tab.lead));
   const refresh = Object.assign(el('button', 'store-link'), { type: 'button', title: 'ask each release feed again' });
   refresh.append(dkGlyph(ICONS.refresh!, 'store-link-ic'), 'check for updates');
   refresh.addEventListener('click', () => read(true));
@@ -164,48 +189,53 @@ export function front(): HTMLElement {
   tools.append(search(), refresh);
   head.append(title, tools);
   wrap.append(head);
-  if (!apps) wrap.append(el('div', 'store-empty', readError ? `can't read the catalogue: ${readError}` : 'connecting'));
-  else if (!apps.length && !services.length && !(st.acct?.admin && discovered().length))
-    wrap.append(el('div', 'store-empty', 'nothing in the catalogue yet'));
-  else {
-    const q = stateVars.filter.trim();
+  if (!apps) {
+    wrap.append(el('div', 'store-empty', readError ? `can't read the catalogue: ${readError}` : 'connecting'));
+    return wrap;
+  }
+  const q = stateVars.filter.trim();
+  const section = (name: string, list: HTMLElement[]) => {
+    if (!list.length) return;
+    const s = el('section', 'store-section');
+    s.append(el('h2', 'store-section-head', name));
+    const grid = el('div', 'store-grid');
+    grid.append(...list);
+    s.append(grid);
+    wrap.append(s);
+  };
+  if (stateVars.tab === 'apps') {
     const shown = apps.filter((a) => !q || matches(a, q));
-    const svcShown = services.filter((s) => !q || matches(s, q));
     const have = shown.filter((a) => a.want);
-    const more = shown.filter((a) => !a.want);
-    const svcOn = svcShown.filter((s) => svcFacts(s).on.length);
-    const svcMore = svcShown.filter((s) => !svcFacts(s).on.length);
-    // the mesh's own services first, the catalogue by category after
-    const own = svcMore.filter((s) => !s.native);
-    const docked = svcMore.filter((s) => s.native);
-    const section = (name: string, list: HTMLElement[]) => {
-      if (!list.length) return;
-      const s = el('section', 'store-section');
-      s.append(el('h2', 'store-section-head', name));
-      const grid = el('div', 'store-grid');
-      grid.append(...list);
-      s.append(grid);
-      wrap.append(s);
-    };
-    section('on the mesh', [...have.map(tile), ...svcOn.map(svcTile)]);
-    // publishing is an admin's: the others aren't shown what they can't do
-    if (st.acct?.admin) {
-      const found = discovered().filter(
-        (f) => !q || matches({ id: f.name, name: f.title, tagline: f.host, category: 'discovered' }, q),
-      );
-      section('discovered', found.map(foundTile));
-    }
-    section(have.length || svcOn.length ? 'more' : 'discover', [...more.map(tile), ...own.map(svcTile)]);
-    if (q) section('self-hosted', docked.map(svcTile));
-    else
-      for (const c of [...new Set(docked.map((s) => s.category))].sort())
-        section(c, docked.filter((s) => s.category === c).map(svcTile));
-    if (q && !shown.length && !svcShown.length) wrap.append(el('div', 'store-empty', `nothing matches “${q}”`));
+    section('on the mesh', have.map(tile));
+    section(have.length ? 'more' : 'get', shown.filter((a) => !a.want).map(tile));
     const updates = have.filter((a) => facts(a).update).length;
     if (updates)
       wrap
-        .querySelector('.store-section-head')!
-        .append(el('span', 'store-count', `${updates} update${updates === 1 ? '' : 's'}`));
+        .querySelector('.store-section-head')
+        ?.append(el('span', 'store-count', `${updates} update${updates === 1 ? '' : 's'}`));
+    if (!shown.length)
+      wrap.append(el('div', 'store-empty', q ? `no app matches “${q}”` : 'no apps in the catalogue yet'));
+    return wrap;
   }
+  const shown = services.filter((s) => !q || matches(s, q));
+  const on = shown.filter((s) => svcFacts(s).on.length);
+  const more = shown.filter((s) => !svcFacts(s).on.length);
+  section('on the mesh', on.map(svcTile));
+  // publishing is an admin's: the others aren't shown what they can't do
+  const found = st.acct?.admin
+    ? discovered().filter(
+        (f) => !q || matches({ id: f.name, name: f.title, tagline: f.host, category: 'discovered' }, q),
+      )
+    : [];
+  section('discovered', found.map(foundTile));
+  // the mesh's own services first, the catalogue by category after
+  section('from the mesh', more.filter((s) => !s.native).map(svcTile));
+  const docked = more.filter((s) => s.native);
+  if (q) section('self-hosted', docked.map(svcTile));
+  else
+    for (const c of [...new Set(docked.map((s) => s.category))].sort())
+      section(c, docked.filter((s) => s.category === c).map(svcTile));
+  if (!shown.length && !found.length)
+    wrap.append(el('div', 'store-empty', q ? `no service matches “${q}”` : 'nothing in the catalogue yet'));
   return wrap;
 }

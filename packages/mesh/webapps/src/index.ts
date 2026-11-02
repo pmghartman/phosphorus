@@ -45,6 +45,11 @@ export type App = {
   repoIcon: string;
   // the agents it asks the mesh's models as, listed in the agents app while installed
   agents?: string[];
+  // its bundle carries server/index.js, run in phosphorus: never without a signature
+  // against a pinned key
+  server?: boolean;
+  // the pinned minisign key; "release" for phosphorus's own release key
+  key?: string;
 };
 
 export const Catalog: App[] = [
@@ -84,8 +89,22 @@ export type Status = { version: string; busy?: boolean; error?: string };
 const versionRe = /^\d+(\.\d+){0,3}$/;
 const shaRe = /^[0-9a-f]{64}$/;
 
-// the app's minisign key, when the admin set one: [apps] <id>_key in phosphorus.ini
-export const keyOf = (id: string) => ini("apps", id + "_key").trim();
+// phosphorus's own release key, baked in by the build; a dev build's from APPS_PUBKEY
+declare const PHOSPHORUS_FEED_PUBKEY: string;
+export function releaseKey(): string {
+  try {
+    if (PHOSPHORUS_FEED_PUBKEY) return PHOSPHORUS_FEED_PUBKEY;
+  } catch {}
+  return env("APPS_PUBKEY", "");
+}
+
+// the app's minisign key: [apps] <id>_key in phosphorus.ini, else the catalogue's pin
+export function keyOf(id: string): string {
+  const set = ini("apps", id + "_key").trim();
+  if (set) return set;
+  const pin = appOf(id)?.key ?? "";
+  return pin === "release" ? releaseKey() : pin;
+}
 
 function release(v: unknown): Release | undefined {
   const o = obj(v);
@@ -146,11 +165,11 @@ export function wantOf(id: string): Want | undefined {
   return { ...rel, from: typeof o.from === "string" ? o.from : "", at: typeof o.at === "number" ? o.at : 0 };
 }
 
-export function wants(): Record<string, Want> {
-  const out: Record<string, Want> = {};
+export function wants(): Record<string, Want & { mount: string }> {
+  const out: Record<string, Want & { mount: string }> = {};
   for (const a of Catalog) {
     const w = wantOf(a.id);
-    if (w) out[a.id] = w;
+    if (w) out[a.id] = { ...w, mount: a.mount };
   }
   return out;
 }
@@ -238,6 +257,30 @@ export const dirOf = (id: string) => {
   return l.version ? versionDir(id, l.version) : "";
 };
 
+// an app's server half in its bundle
+export const serverEntry = "server/index.js";
+
+// the installed copy's server module, undefined for an app without one
+export function serverOf(id: string): { entry: string; version: string } | undefined {
+  const app = appOf(id);
+  const l = local(id);
+  if (!app?.server || !l.version) return;
+  const entry = join(versionDir(id, l.version), serverEntry);
+  return existsSync(entry) ? { entry, version: l.version } : undefined;
+}
+
+// told of each app whose copy here came, changed or went
+const watchers: ((id: string) => void)[] = [];
+export const onChange = (fn: (id: string) => void) => void watchers.push(fn);
+function changed(id: string) {
+  for (const fn of watchers)
+    try {
+      fn(id);
+    } catch (e) {
+      logf("%s: %s", id, errText(e));
+    }
+}
+
 // the tarball of this host's copy, for a peer's GET /internal/apps/<id>/<version>
 export function Serve(id: string, version: string): Response {
   const l = appOf(id) && versionRe.test(version) ? local(id) : undefined;
@@ -262,6 +305,7 @@ const sha256 = (b: Uint8Array) => createHash("sha256").update(b).digest("hex");
 export function verify(app: App, r: Release, data: Uint8Array) {
   if (sha256(data) !== r.sha256) throw new Error("the download's hash doesn't match the release");
   const key = keyOf(app.id);
+  if (!key && app.server) throw new Error("no key to check it against, and it runs code in phosphorus");
   if (!key) return;
   if (!r.signature) throw new Error("the release is unsigned, and [apps] " + app.id + "_key is set");
   try {
@@ -313,6 +357,7 @@ export function unpack(app: App, w: Want, data: Uint8Array) {
     untar(data, part, 0);
     const index = join(part, mountDir(app), "index.html");
     if (!existsSync(index)) throw new Error(`no ${mountDir(app)}/index.html in the tarball`);
+    if (app.server && !existsSync(join(part, serverEntry))) throw new Error(`no ${serverEntry} in the tarball`);
   } catch (e) {
     rmSync(part, { recursive: true, force: true });
     throw e;
@@ -337,6 +382,7 @@ async function settle(app: App, ipOf: IPOf, port: number) {
     rmSync(appDir(app.id), { recursive: true, force: true });
     if (l.version) logf("%s v%s removed here", app.name, l.version);
     Object.assign(l, { version: "", sha256: "", error: "", errorFor: "" });
+    changed(app.id);
     markHot();
     return;
   }
@@ -350,6 +396,7 @@ async function settle(app: App, ipOf: IPOf, port: number) {
     unpack(app, w, data);
     Object.assign(l, { version: w.version, sha256: w.sha256, error: "", errorFor: "" });
     logf("%s v%s installed here, served at %s", app.name, w.version, app.mount);
+    changed(app.id);
   } catch (e) {
     Object.assign(l, { error: errText(e), errorFor: key, at: now() });
     logf("%s v%s: %s", app.name, w.version, l.error);

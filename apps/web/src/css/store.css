@@ -52,6 +52,30 @@
   margin: 0.25rem 0 0;
   color: var(--muted);
 }
+.store-tabs {
+  display: flex;
+  gap: 1.2rem;
+}
+.store-tab {
+  padding: 0 0 0.15rem;
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+}
+.store-tab.on {
+  color: var(--fg);
+  border-bottom-color: var(--accent);
+}
+.store-tab:not(.on):is(:hover, :focus-visible) {
+  color: var(--fg);
+  outline: none;
+}
 .store-tools {
   display: flex;
   align-items: center;

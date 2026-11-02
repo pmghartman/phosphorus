@@ -141,6 +141,8 @@ export interface SelfInfo {
 // an optional app the mesh wants (packages/webapps Want), and a host's copy of one (Status)
 export interface AppWant {
   version: string;
+  // where every host serves it
+  mount?: string;
   url?: string;
   sha256?: string;
   from?: string;

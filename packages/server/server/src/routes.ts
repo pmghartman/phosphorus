@@ -19,6 +19,7 @@ import { blocks, highlight, markdown } from "@phosphorus/web-md";
 import * as webapps from "@phosphorus/webapps";
 import { serveStatic } from "@phosphorus/webstatic";
 import { type Ctx, isUpgrade } from "@phosphorus/wsock";
+import { appRoute } from "./apps.ts";
 import { codeRoute } from "./code.ts";
 import { adminPass, port, selfHost, selfInfo, setUpdating } from "./config.ts";
 import { configOp, hostConfig, hostLogs, localUI } from "./hostops.ts";
@@ -579,6 +580,8 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
     });
   }
 
+  const app = await appRoute(c, pathname);
+  if (app) return app;
   if (pathname.startsWith("/api/") || pathname.startsWith("/internal/")) return sendJSON(404, { error: "not found" });
   // an installed app under its mount; the desktop's own files, then an app's root files
   if (webapps.mounted(pathname)) return webapps.serve(c.req) ?? serveStatic(c.req);

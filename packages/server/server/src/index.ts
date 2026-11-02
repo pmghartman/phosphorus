@@ -18,6 +18,7 @@ import { env, errText, flushWrites, logf, markHot, tailnetIP } from "@phosphorus
 import * as webapps from "@phosphorus/webapps";
 import type { WSData } from "@phosphorus/wsock";
 import type { Server } from "bun";
+import { startApps } from "./apps.ts";
 import {
   allPresence,
   chatEditAs,
@@ -98,6 +99,7 @@ export async function start(): Promise<Server<WSData>> {
   mirror.Start(tailnetIP, port);
   peers.onLinkUp(mirror.peerUp);
   webapps.Start(tailnetIP, port);
+  startApps();
   webapps.StartServices({
     routes: peers.routes,
     tailnet: peers.tailnet,

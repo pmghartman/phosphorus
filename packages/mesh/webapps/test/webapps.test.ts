@@ -557,3 +557,43 @@ test("a web app's icon off its repository, for the page before any host serves i
   expect([ic.type, new TextDecoder().decode(ic.data), iconHits - hits]).toEqual(["image/svg+xml", "PNG!", 1]);
   expect(await W.AppIcon("nothing")).toBeUndefined();
 });
+
+test("an app running code in phosphorus: never without a key, its signature checked, its server half found once in", async () => {
+  const M = await import("@phosphorus/minisign");
+  const pair = M.generate();
+  const sk = M.parseSecretKey(pair.secret, "");
+  const demo: typeof sulfur = {
+    ...sulfur,
+    id: "demo",
+    name: "Demo",
+    mount: "/app/demo/",
+    agents: [],
+    server: true,
+    key: pair.public,
+  };
+  const bare = { ...demo, id: "bare", key: "" };
+  W.Catalog.push(demo, bare);
+  const files = { "./app/demo/index.html": "<!doctype html>", "./server/index.js": "export function register() {}" };
+  const data = tarGz(files);
+  const r = { version: "1.0.0", url: "https://x/demo.tar.gz", sha256: sha256(data), signature: "" };
+  expect(() => W.verify(demo, r, data)).toThrow(/unsigned/);
+  expect(() => W.verify(demo, { ...r, signature: sk.sign(data, "demo.tar.gz") }, data)).not.toThrow();
+  const other = M.parseSecretKey(M.generate().secret, "");
+  expect(() => W.verify(demo, { ...r, signature: other.sign(data, "demo.tar.gz") }, data)).toThrow(/signature/);
+  expect(() => W.verify(bare, r, data)).toThrow(/no key/);
+  // pinned to phosphorus's own release key
+  process.env.APPS_PUBKEY = pair.public;
+  W.Catalog.push({ ...demo, id: "own", key: "release" });
+  expect(W.keyOf("own")).toBe(pair.public);
+  delete process.env.APPS_PUBKEY;
+  // a bundle without its server half refused; with it, found
+  expect(() => W.unpack(demo, { ...r, from: "a", at: 0 }, tarGz({ "./app/demo/index.html": "x" }))).toThrow(
+    /server\/index\.js/,
+  );
+  W.unpack(demo, { ...r, from: "a", at: 0 }, data);
+  W.reset();
+  expect(W.serverOf("demo")?.version).toBe("1.0.0");
+  expect(readFileSync(W.serverOf("demo")!.entry, "utf8")).toContain("register");
+  expect(W.serverOf("sulfur")).toBeUndefined();
+  W.Catalog.splice(W.Catalog.indexOf(demo), 3);
+});

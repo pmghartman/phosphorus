@@ -104,6 +104,8 @@ export const stateVars = {
   openId: '',
   // the front's search, over names, taglines and categories
   filter: '',
+  // the front's tab: self-hosted services, or apps for the desktop
+  tab: 'services' as 'services' | 'apps',
 };
 // a service's log shown in full, by host
 export const logsOpen = new Set<string>();
@@ -159,6 +161,9 @@ export function storeWatch(on: boolean): void {
 // an app's or service's page shown, the window opened for it when needed
 export function storeShow(id: string): void {
   stateVars.openId = id;
+  // the way back lands on the tab the page belongs to
+  if (apps?.some((a) => a.id === id)) stateVars.tab = 'apps';
+  else if (services.some((s) => s.id === id)) stateVars.tab = 'services';
   stateVars.sig = '';
   if (!watching) dkOpenApp('apps');
   draw();
