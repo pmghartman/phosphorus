@@ -257,8 +257,9 @@ type Plan = {
   clone: boolean;
 };
 
-// the project as the want and this host make it; its hash says when it changed
-async function plan(w: StackWant, role: StackRole): Promise<Plan> {
+// the project as the want and this host make it; its hash, over the role it runs in
+// (or "ha" when failover picks), says when it changed
+async function plan(w: StackWant, mode: string): Promise<Plan> {
   const ip = await seams.ipOf(SelfHost);
   if (!ip) throw new Error("no tailnet address here yet");
   const [values, bad] = opened(w);
@@ -266,7 +267,7 @@ async function plan(w: StackWant, role: StackRole): Promise<Plan> {
   const ctx = ctxOf(w.def.id, ip);
   const r = render(w.def, values, ctx);
   const envT = envText(w.def, values, ctx, r.webPort);
-  const hash = createHash("sha256").update(`${role}\0${r.compose}\0${envT}`).digest("hex").slice(0, 32);
+  const hash = createHash("sha256").update(`${mode}\0${r.compose}\0${envT}`).digest("hex").slice(0, 32);
   return { ...r, env: envT, hash };
 }
 
@@ -325,16 +326,24 @@ function end(id: string, l: Local, key: string, e?: unknown) {
   markHot();
 }
 
-// the copy brought to the want in its role: written, pulled, and run or held down
+// the copy brought to the want in its role: written, pulled, and run or held down;
+// with standbys, written and pulled alone, failover bringing it up or down
 async function apply(id: string, w: StackWant, role: StackRole, p: Plan, op: Op) {
   const l = local(id);
-  const key = `${w.gen}/${role}/${p.hash}`;
+  const ha = w.standbys.length > 0;
+  const key = `${w.gen}/${ha ? "ha" : role}/${p.hash}`;
   begin(id, l, op);
   try {
     writeProject(id, p);
     if (p.clone) await checkout(id, w);
     await compose(id, ["pull", ...(p.build ? ["--ignore-buildable"] : [])], pullMS);
-    if (role === "active") {
+    if (ha) {
+      if (p.build) await compose(id, ["build", "--pull"], pullMS);
+      l.webPort = p.webPort;
+      // a page this copy publishes moves to the new port
+      if (l.published && l.published !== p.webPort && (await isRunning(id, w.def.manifest.web)))
+        await publish(id, l, p.webPort);
+    } else if (role === "active") {
       if (p.build) await compose(id, ["build", "--pull"], pullMS);
       await compose(id, ["up", "-d", "--remove-orphans"], upMS);
       l.held = false;
@@ -349,7 +358,7 @@ async function apply(id: string, w: StackWant, role: StackRole, p: Plan, op: Op)
     }
     Object.assign(l, { gen: w.gen, role, hash: p.hash });
     saveApplied(id, l);
-    l.running = role === "active" && (await isRunning(id, w.def.manifest.web));
+    l.running = (ha || role === "active") && (await isRunning(id, w.def.manifest.web));
     l.checkedAt = 0;
     end(id, l, key);
   } catch (e) {
@@ -398,29 +407,35 @@ async function settle(id: string) {
     l.error = `waiting for docker: ${d.error ?? d.state}`;
     return;
   }
+  // with standbys, failover decides which candidate runs it
+  const ha = w.standbys.length > 0;
   let p: Plan;
   try {
-    p = await plan(w, role);
+    p = await plan(w, ha ? "ha" : role);
   } catch (e) {
     if (l.error !== errText(e)) markHot();
     l.error = errText(e);
     return;
   }
+  if (ha && l.gen === w.gen && l.hash === p.hash && l.role !== role) {
+    l.role = role;
+    saveApplied(id, l);
+  }
   if (l.gen !== w.gen || l.role !== role || l.hash !== p.hash) {
-    const key = `${w.gen}/${role}/${p.hash}`;
+    const key = `${w.gen}/${ha ? "ha" : role}/${p.hash}`;
     if (l.error && l.errorFor === key && now() - l.errorAt < retryMS) return;
-    const op: Op = !l.gen ? "install" : l.role === "standby" && role === "active" ? "promote" : "update";
+    const op: Op = !l.gen ? "install" : !ha && l.role === "standby" && role === "active" ? "promote" : "update";
     if (l.gen !== w.gen || l.role !== role) l.held = false;
     await apply(id, w, role, p, op);
     return;
   }
   if (l.error && !l.errorFor) l.error = "";
-  if (role !== "active" || now() - l.checkedAt < checkMS) return;
+  if ((!ha && role !== "active") || now() - l.checkedAt < checkMS) return;
   l.checkedAt = now();
   const was = [l.running, l.healthy];
   l.running = await isRunning(id, w.def.manifest.web);
-  // down on its own: brought back, unless failover holds it down
-  if (!l.running && !l.held && now() - l.upAt > retryMS) {
+  // down on its own: brought back, unless failover holds it down or picks the host
+  if (!ha && !l.running && !l.held && now() - l.upAt > retryMS) {
     l.upAt = now();
     try {
       await compose(id, ["up", "-d"], upMS);
@@ -492,7 +507,7 @@ export function statuses(): Record<string, StackStatus> {
       s.job = { op: l.job.op, log: tailOf(logFile(id), logTail), done: l.job.done };
       if (l.job.ok !== undefined) s.job.ok = l.job.ok;
     }
-    out[id] = s;
+    out[id] = { ...s, ...seams.haStatus?.(id) };
   }
   return out;
 }
@@ -521,6 +536,7 @@ export const runtime: Runtime = {
     markHot();
   },
   running: (id) => isRunning(id),
+  gen: async (id) => local(id).gen,
   async hook(id, phase) {
     const w = wantOf(id);
     if (!w) throw new Error(`no stack called ${id}`);

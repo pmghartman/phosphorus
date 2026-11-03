@@ -14,6 +14,8 @@ export interface Runtime {
   // compose stopped and its page withdrawn, the project and data kept
   down(id: string): Promise<void>;
   running(id: string): Promise<boolean>;
+  // the want's gen this host's project was last rendered and pulled from, 0 none
+  gen(id: string): Promise<number>;
   // the manifest's backup hooks, around a copy of the data
   hook(id: string, phase: "pre" | "post"): Promise<void>;
 }

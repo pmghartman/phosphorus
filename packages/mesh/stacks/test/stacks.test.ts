@@ -304,19 +304,19 @@ test("reconcile: an update pulls and comes up again with the new gen", async () 
   expect(published).toEqual([]);
 });
 
-test("reconcile: active to standby goes down and unpublished; promoted back up and published", async () => {
-  place("kuma", "b", ["a"]);
-  await S.tick();
-  expect(composed("kuma")).toEqual(["pull", "down"]);
-  expect(published).toEqual([["kuma", null]]);
-  expect(S.statuses().kuma).toMatchObject({ role: "standby", running: false });
-  published = [];
-  rmSync(log, { force: true });
+test("reconcile: standbys added to a running copy: pulled again, left running for failover", async () => {
   place("kuma", "a", ["b"]);
   await S.tick();
-  expect(composed("kuma")).toEqual(["pull", "up -d --remove-orphans"]);
-  expect(published).toEqual([["kuma", { port: String(webPort) }]]);
-  expect(S.statuses().kuma).toMatchObject({ role: "active", running: true });
+  expect(composed("kuma")).toEqual(["pull"]);
+  expect(published).toEqual([]);
+  expect(S.statuses().kuma).toMatchObject({ role: "active", gen: 3, running: true });
+  // nor brought back up by the loop when it stops: failover's call
+  writeFileSync(join(bin, "phos-kuma.json"), "[]");
+  rmSync(log, { force: true });
+  await S.tick();
+  expect(composed("kuma")).toEqual([]);
+  expect(S.statuses().kuma!.running).toBe(false);
+  await S.runtime.up("kuma");
 });
 
 test("failover's seam: down holds it down, up brings it back; hooks run in the container", async () => {
@@ -386,4 +386,37 @@ test("reconcile: a failed step reported and retried after a pause, not every rou
 test("docker: found with compose v2 through the fake", async () => {
   const d = await S.detectDocker();
   expect(d).toMatchObject({ state: "present", version: "27.3.1", compose: "2.29.7", arch: S.arch() });
+});
+
+test("with standbys: every candidate renders and pulls, failover alone brings it up or down", async () => {
+  await want({ standbys: ["b"] }, def({ id: "vault", ref: "Vault" }));
+  await S.tick();
+  // the active candidate pulls and waits for failover's up
+  expect(composed("vault")).toEqual(["pull"]);
+  expect(published).toEqual([]);
+  expect(await S.runtime.gen("vault")).toBe(1);
+  expect(S.statuses().vault).toMatchObject({
+    role: "active",
+    gen: 1,
+    running: false,
+    job: { op: "install", ok: true },
+  });
+  await S.runtime.up("vault");
+  expect(published).toEqual([["vault", { port: String(webPort) }]]);
+  // promotion written by failover: the roles swapped, nothing pulled again, nothing taken down
+  rmSync(log, { force: true });
+  const w = S.wantOf("vault")!;
+  store.write("etc/stacks/vault.json", { ...w, active: "b", standbys: ["a"] });
+  await S.tick();
+  expect(composed("vault")).toEqual([]);
+  expect(await S.runtime.running("vault")).toBe(true);
+  // failover's own part of the status spread in
+  S.seams.haStatus = (id) => (id === "vault" ? { role: "standby", lastSync: 42 } : undefined);
+  expect(S.statuses().vault).toMatchObject({ role: "standby", gen: 1, lastSync: 42 });
+  S.seams.haStatus = undefined;
+  // a new gen: pulled on the candidate, still not brought up or down by the loop
+  await S.Update("vault", "pat");
+  await S.tick();
+  expect(composed("vault")).toEqual(["pull"]);
+  expect(await S.runtime.gen("vault")).toBe(2);
 });

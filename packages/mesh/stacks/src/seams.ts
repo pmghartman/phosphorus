@@ -1,5 +1,5 @@
 // the mesh as the runtime sees it, set at Start and swapped in tests
-import type { AppDef } from "@phosphorus/wire";
+import type { AppDef, StackStatus } from "@phosphorus/wire";
 
 // this host's services.export: [name] set to fields, or dropped with null
 export type Publish = (name: string, fields: Record<string, string> | null) => Promise<[number, any]>;
@@ -16,6 +16,8 @@ export const seams: {
   defInBody: boolean;
   // told when a want was written here, so this host follows at once
   kick: () => void;
+  // failover's part of a stack's status here (./ha haStatus): role, gen, lastSync
+  haStatus?: (id: string) => Partial<StackStatus> | undefined;
 } = {
   ipOf: () => "",
   publish: async () => [503, { error: "the mesh isn't up yet" }],
