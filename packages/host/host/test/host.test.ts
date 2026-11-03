@@ -163,7 +163,7 @@ test("bakeEnv from phosphorus.ini, missing share dirs skipped", () => {
   expect(m.STATE_DIR).toBe(join(dir, "state"));
   expect(m.PHOSPHORUS_FILES_DIRS).toBe(join(dir, "share"));
   expect(m.PHOSPHORUS_FILES_PERMS).toBe("r");
-  if (process.platform === "linux") expect(m.GIT_USER).toBe("phosphorus-git");
+  expect(m.GIT_USER).toBeUndefined();
   const s1 = signature(m);
   expect(s1).toBe(signature({ ...m }));
   expect(signature({ ...m, X: "1" })).not.toBe(s1);

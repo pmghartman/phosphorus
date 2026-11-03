@@ -1,4 +1,5 @@
-// after stacks.test.ts, which sets the env @phosphorus/util reads on its first import
+// the env (./env.ts) before anything reads it
+import "./env.ts";
 import { expect, test } from "bun:test";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

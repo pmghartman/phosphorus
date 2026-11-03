@@ -1,33 +1,12 @@
-// a fresh state dir and home fs, this host named a; docker a fake on PATH logging
-// its argv (fake-docker.ts), publishing a recorded seam
+// the env (./env.ts) set before the stacks are imported below; publishing a recorded seam
 import { afterAll, beforeEach, expect, test } from "bun:test";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { delimiter, join } from "node:path";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import type { AppDef } from "@phosphorus/wire";
-
-const dir = mkdtempSync(join(tmpdir(), "phos-stacks-"));
-process.env.HOME_FS = join(dir, "homefs");
-process.env.STATE_DIR = join(dir, "state");
-process.env.STACKS_DIR = join(dir, "stacks");
-process.env.SELF_HOST = "a";
-process.env.BASE_DOMAIN = "";
-const bin = join(dir, "bin");
-const log = join(bin, "docker.log");
-mkdirSync(bin);
-const fake = join(import.meta.dir, "fake-docker.ts");
-if (process.platform === "win32")
-  writeFileSync(join(bin, "docker.cmd"), `@"${process.execPath}" "${fake}" "${bin}" %*\r\n`);
-else {
-  writeFileSync(join(bin, "docker"), `#!/bin/sh\nexec "${process.execPath}" "${fake}" "${bin}" "$@"\n`);
-  chmodSync(join(bin, "docker"), 0o755);
-}
-process.env.PATH = bin + delimiter + process.env.PATH;
+import { bin, dir, log } from "./env.ts";
 
 const store = await import("@phosphorus/store");
 const S = await import("@phosphorus/stacks");
-
-afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
 // the app's page, answering health checks on the web port
 const page = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: () => new Response("ok") });

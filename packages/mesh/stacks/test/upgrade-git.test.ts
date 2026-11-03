@@ -1,6 +1,7 @@
-// after stacks.test.ts, which sets the env @phosphorus/util reads on its first import:
-// the old built-in git's data folder (fixtures/legacy-git, a db made here) moved into
-// the forgejo stack, installed with the old servants as standbys, deleted once cleared
+// the env (./env.ts) before anything reads it. The old built-in git's data folder
+// (fixtures/legacy-git, a db made here) moved into the forgejo stack, installed with
+// the old servants as standbys, deleted once cleared
+import "./env.ts";
 import { Database } from "bun:sqlite";
 import { afterAll, expect, test } from "bun:test";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
