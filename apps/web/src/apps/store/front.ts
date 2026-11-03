@@ -191,7 +191,7 @@ function chips(list: [string, string][], now: string, pick: (v: string) => void)
 
 // the apps worth a first look, by id in whichever catalogue lists them first
 const FEATURED = [
-  'git',
+  'forgejo',
   'uptime-kuma',
   'vaultwarden',
   'jellyfin',
@@ -351,7 +351,7 @@ function servicesTab(wrap: HTMLElement, q: string) {
         (f) => !q || matches({ id: f.name, name: f.title, tagline: f.host, category: 'discovered' }, q),
       )
     : [];
-  // the old built-in git's data, offered to the git service
+  // the old built-in git's data, offered to Forgejo
   const legacy = q ? null : legacyGitBox();
   if (legacy) wrap.append(legacy);
   // services the retired installer left on hosts, nothing following them now

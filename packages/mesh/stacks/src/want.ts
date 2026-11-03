@@ -20,6 +20,8 @@ const composeMax = 256 << 10;
 const str = (v: unknown) => (typeof v === "string" ? v : "");
 const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 const port = (v: unknown) => (typeof v === "number" && Number.isInteger(v) && v > 0 && v < 65536 ? v : 0);
+// a page's other name, as a route's
+const aliasRe = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
 function hooks(v: unknown): Hook[] {
   return arr(v).flatMap((h) => {
@@ -73,6 +75,8 @@ export function defOf(v: unknown): AppDef | string {
     if (typeof w.service !== "string" || !port(w.port)) return "the web page needs a service and a port";
     manifest.web = { service: w.service, port: port(w.port) };
   }
+  const al = arr(m.aliases).filter((x): x is string => typeof x === "string" && aliasRe.test(x));
+  if (al.length) manifest.aliases = al;
   if (typeof m.preferredHost === "string") manifest.preferredHost = m.preferredHost;
   return {
     id: o.id,

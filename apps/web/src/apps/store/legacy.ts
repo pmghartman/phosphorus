@@ -1,5 +1,5 @@
 // the move off the git service phosphorus used to run itself, an admin's: the
-// newest old copy of Forgejo's data moved into the git service on its host, the
+// newest old copy of Forgejo's data moved into the installed Forgejo on its host, the
 // other old copies' hosts its standbys; the old copies deleted once it serves
 
 import type { LegacyGit } from '@phosphorus/wire';
@@ -25,6 +25,14 @@ function copies(): string[] {
         y.legacyGit!.gen - x.legacyGit!.gen || y.legacyGit!.stamp - x.legacyGit!.stamp || a.localeCompare(b),
     )
     .map(([h]) => h);
+}
+
+// the old copies' hosts while an install of Forgejo would move them, none once moved;
+// the server turns that install into the move, as here
+export function legacyPending(source: string, ref: string): string[] {
+  if (source !== 'phosphorus' || ref !== 'forgejo') return [];
+  const l = st.lastState?.legacyGit;
+  return l?.state === 'moved' || l?.cleared ? [] : copies();
 }
 
 const redraw = () => {
@@ -59,7 +67,7 @@ async function move(from: string, standbys: string[]) {
 async function clear(hosts: string[]) {
   const ok = await pageAsk({
     title: 'delete the old git data',
-    message: `The old built-in git's copies on ${hosts.join(', ')} go for good. Forgejo's data in the git service stays.`,
+    message: `The old built-in git's copies on ${hosts.join(', ')} go for good. Forgejo's data in the installed Forgejo stays.`,
     action: 'delete',
     danger: true,
   });
@@ -81,27 +89,25 @@ export function legacyGitBox(): HTMLElement | null {
   const old = copies();
   if (!old.length) return null;
   const l: LegacyGit | null | undefined = st.lastState?.legacyGit;
-  const git = st.lastState?.stacks?.git;
+  const git = st.lastState?.stacks?.forgejo;
   const box = el('div', 'store-repo store-legacy');
   const head = (t: string) => el('b', 'store-repo-head', t);
   const sub = (t: string) => el('span', 'store-repo-sub', t);
-  const domain = st.meshDomain ? `git.${st.meshDomain}` : 'git';
+  const domain = st.meshDomain ? `forgejo.${st.meshDomain}` : 'forgejo';
+  const alias = st.meshDomain ? `git.${st.meshDomain}` : 'git';
 
   if (l?.cleared) {
     box.append(head('deleting the old git data'), sub(`Still to go on ${old.join(', ')}, each once it's up.`));
   } else if (l?.state === 'asked' || l?.state === 'copying') {
-    box.append(
-      head('moving Forgejo into the services'),
-      sub(`Copying the old git data on ${l.from} into the git service…`),
-    );
+    box.append(head('moving Forgejo into the services'), sub(`Copying the old git data on ${l.from} into Forgejo…`));
   } else if (git && (l?.state === 'moved' || !l || l.state === 'failed')) {
-    const s = statusOn(git.active, 'git');
+    const s = statusOn(git.active, 'forgejo');
     const serving = !!s && s.role === 'active' && s.running && s.healthy !== false;
     box.append(
       head(l?.state === 'moved' ? 'Forgejo moved into the services' : 'the old git data is still here'),
       sub(
         serving
-          ? `Forgejo runs as the git service on ${git.active}${git.standbys.length ? `, standbys ${git.standbys.join(', ')}` : ''}. Once ${domain} shows your repos, delete the old copies on ${old.join(', ')}.`
+          ? `Forgejo runs on ${git.active}${git.standbys.length ? `, standbys ${git.standbys.join(', ')}` : ''}. Once ${domain} shows your repos, delete the old copies on ${old.join(', ')}.`
           : `Forgejo is starting on ${git.active}. The old copies on ${old.join(', ')} stay until it serves.`,
       ),
     );
@@ -113,10 +119,10 @@ export function legacyGitBox(): HTMLElement | null {
     const others = old.slice(1);
     if (!picked) picked = new Set(others);
     box.append(
-      head('move git into the services'),
+      head('move git into Forgejo'),
       sub(
         `Forgejo now installs like any other service. The old built-in git's data is on ${old.join(', ')}; ${from} has the newest. ` +
-          `Move it into Forgejo installed as the git service on ${from}, at ${domain} as before. Nothing old is deleted until you say so.`,
+          `Move it into Forgejo installed on ${from}, at ${domain}, and at ${alias} as before. Nothing old is deleted until you say so.`,
       ),
     );
     if (others.length) {

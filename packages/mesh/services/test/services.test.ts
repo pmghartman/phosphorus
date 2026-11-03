@@ -53,6 +53,13 @@ test("parse", () => {
   expect(ok).toEqual([{ name: "web", port: 8080, scheme: "", max_body: "10MB", public: true }]);
 });
 
+test("aliases: more names, comma or space separated", () => {
+  expect(parse("[forgejo]\nport = 3001\naliases = git, code")[0]).toEqual([
+    { name: "forgejo", port: 3001, scheme: "", aliases: ["git", "code"] },
+  ]);
+  expect(parse("[forgejo]\nport = 3001\naliases =")[0]).toEqual([{ name: "forgejo", port: 3001, scheme: "" }]);
+});
+
 test("parse rejects", () => {
   for (const [text, why] of [
     ["port = 1", "line 1: port outside any [section]"],
@@ -71,6 +78,8 @@ test("parse rejects", () => {
     ["[a]\nport = 80\nscheme = ftp", "[a] 'ftp' is not http or https"],
     ["[a]\nport = 80\ntype = db", "[a] has an unknown key, type"],
     ["[a b]\nport = 80", "[a b] 'a b' is not a valid name"],
+    ["[a]\nport = 80\naliases = Git", "[a] 'Git' is not a valid alias"],
+    ["[a]\nport = 80\naliases = a", "[a] 'a' is not a valid alias"],
   ])
     expect(parse(text!)[1]).toBe(why!);
   expect(parse("")).toEqual([[], "", []]);

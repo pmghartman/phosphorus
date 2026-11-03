@@ -35,6 +35,11 @@ export function rowError(r: Row | undefined | null): string {
   if (r.base_path && (typeof r.base_path !== "string" || r.base_path.includes("..") || !baseRe.test(r.base_path)))
     return `'${r.base_path}' is not a valid base_path`;
   if (r.max_body !== undefined && !sizeRe.test(String(r.max_body))) return `'${r.max_body}' is not a valid max_body`;
+  if (r.aliases !== undefined) {
+    if (!Array.isArray(r.aliases)) return `'${r.aliases}' is not a list of aliases`;
+    const bad = r.aliases.find((a: unknown) => typeof a !== "string" || !nameRe.test(a) || a === r.name);
+    if (bad !== undefined) return `'${bad}' is not a valid alias`;
+  }
   return "";
 }
 
@@ -68,6 +73,8 @@ export type Route = {
   ip: string;
   port: number;
   maxBody: number;
+  // the other domains it answers at, each yielding to a route of its own
+  aliases: string[];
   // a peer's own frontend, its pin cookie kept
   pin?: boolean;
 };
@@ -95,6 +102,7 @@ function toRoute(r: Row, ip: string): Route {
     ip,
     port: r.port,
     maxBody: 0,
+    aliases: [],
   };
   if (typeof r.master === "boolean") {
     rt.git = true;
@@ -103,6 +111,7 @@ function toRoute(r: Row, ip: string): Route {
   if (sub) {
     rt.domain = name + "." + baseDomain;
     rt.prefix = base;
+    if (Array.isArray(r.aliases)) rt.aliases = r.aliases.map((a: string) => a + "." + baseDomain);
   } else rt.prefix = `/${r.host}/${name}${base}`;
   if (r.max_body) {
     const m = sizeRe.exec(String(r.max_body));
@@ -142,6 +151,18 @@ export function swap(rows: Row[], ipOf: (h: string) => string): boolean {
     }
     domains.set(rt.domain, rt);
   }
+  // an alias goes to whichever copy won its route's domain, the first asking keeping it
+  const aliased = new Set<string>();
+  for (const rt of all)
+    if (rt.domain && domains.get(rt.domain) === rt)
+      for (const d of rt.aliases) {
+        const held = domains.get(d);
+        if (held && aliased.has(d) && held.name !== rt.name)
+          notes.note("dup:" + d, `${d} is an alias of ${held.name} and ${rt.name}; serving ${held.name}`);
+        if (held) continue;
+        domains.set(d, rt);
+        aliased.add(d);
+      }
   paths.sort((a, b) => b.prefix.length - a.prefix.length);
   notes.clear("table");
   every = all;
@@ -290,6 +311,7 @@ function peerIngress(host: string): Route | undefined {
     domain: "",
     prefix: "",
     maxBody: 0,
+    aliases: [],
   };
 }
 

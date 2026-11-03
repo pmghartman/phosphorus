@@ -5,10 +5,11 @@ import { rendered } from "../src/check.ts";
 import { environment, parse, phosVars, ports, vars } from "../src/compose.ts";
 import { forgejo } from "../src/featured.ts";
 
-test("Forgejo is listed first, under phosphorus, routed as git", () => {
+test("Forgejo is listed first, under phosphorus, routed as forgejo with git its alias", () => {
   expect(all()[0]).toBe(forgejo);
   expect(find("phosphorus", "forgejo")).toBe(forgejo);
-  expect(forgejo.id).toBe("git");
+  expect(forgejo.id).toBe("forgejo");
+  expect(forgejo.manifest.aliases).toEqual(["git"]);
   expect(sources()[0]).toMatchObject({ id: "phosphorus", apps: 1, licence: "Apache-2.0" });
   expect(tree("phosphorus", "forgejo")).toEqual([{ path: "docker-compose.yml", type: "file" }]);
 });

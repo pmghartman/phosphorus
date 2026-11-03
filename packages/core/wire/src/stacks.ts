@@ -57,6 +57,8 @@ export interface PhosManifest {
   health?: { service: string; path?: string; port?: number };
   // the web page the mesh publishes: its service and container port
   web?: { service: string; port: number };
+  // more names the web page answers at, <name>.<domain> each, one a real route takes over
+  aliases?: string[];
   // a host to install on unless the person picks another
   preferredHost?: string;
 }
@@ -197,12 +199,16 @@ export interface LegacyGit {
   by: string;
   at: number;
   state: "asked" | "copying" | "moved" | "failed";
+  // the install's own fields when it came as one, its secrets left out
+  env?: Record<string, string>;
   error?: string;
   cleared?: { by: string; at: number };
 }
 
 // POST /api/stacks/legacy-git/move { from, standbys } -> { ok, legacy }   (stacks, admin)
 // POST /api/stacks/legacy-git/clear                    -> { ok, legacy }   (stacks, admin)
+// POST /api/stacks/install of the featured Forgejo while an old copy waits is that move,
+// answering { ok, legacy }; fresh: true installs it empty instead.
 // State.legacyGit carries the record, HostInfo.legacyGit each host's old copy while it has one.
 
 export interface AppPage {

@@ -342,11 +342,12 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
     const s = users.Of(c);
     if (!isBrowser(c) || !((!!s && s.admin) || (adminPass === "" && isLoopback(c)))) return forbidden();
     const by = s?.user ?? "admin";
-    if (pathname === "/api/stacks/install") return onJSON(c, 512 << 10, true, (p) => stacks.Install(p, by));
+    if (pathname === "/api/stacks/install")
+      return onJSON(c, 512 << 10, true, (p) => stacks.InstallOrMove(p, by) ?? stacks.Install(p, by));
     if (pathname === "/api/stacks/docker") return onJSON(c, 1024, true, (p) => stacks.AskDocker(str(p.host), by));
     // the move off the old built-in git: its master's copy into the git stack, then the old copies deleted
     if (pathname === "/api/stacks/legacy-git/move") return onJSON(c, 4096, true, (p) => stacks.LegacyMove(p, by));
-    if (legacy) return onJSON(c, 1024, true, () => stacks.LegacyClear(by, stackServing("git")));
+    if (legacy) return onJSON(c, 1024, true, () => stacks.LegacyClear(by, stackServing("forgejo")));
     const [id, op] = [m![1]!, m![2]!];
     return onJSON(c, 1024, true, (p) =>
       op === "update" ? stacks.Update(id, by) : stacks.Remove(id, p.keepData !== false, by),

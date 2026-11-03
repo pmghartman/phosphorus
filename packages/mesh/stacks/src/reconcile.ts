@@ -58,7 +58,15 @@ const jobShownMS = 10 * 60000;
 type Op = NonNullable<StackStatus["job"]>["op"];
 
 // what this host last brought its copy to, kept beside it
-type Applied = { gen: number; role: StackRole; hash: string; webPort: number; published: number };
+type Applied = {
+  gen: number;
+  role: StackRole;
+  hash: string;
+  webPort: number;
+  published: number;
+  // the aliases published with it, comma separated
+  aliases: string;
+};
 
 type Local = Applied & {
   running: boolean;
@@ -86,6 +94,7 @@ function local(id: string): Local {
       hash: typeof a?.hash === "string" ? a.hash : "",
       webPort: typeof a?.webPort === "number" ? a.webPort : 0,
       published: typeof a?.published === "number" ? a.published : 0,
+      aliases: typeof a?.aliases === "string" ? a.aliases : "",
       running: false,
       checkedAt: 0,
       error: "",
@@ -106,6 +115,7 @@ const saveApplied = (id: string, l: Local) =>
     hash: l.hash,
     webPort: l.webPort,
     published: l.published,
+    aliases: l.aliases,
   } satisfies Applied);
 
 export const roleOf = (w: StackWant | undefined, host = SelfHost): StackRole =>
@@ -210,10 +220,15 @@ async function healthOf(id: string, w: StackWant, l: Local): Promise<boolean | u
 // --- publishing: [<id>] port = in this host's services.export --------------------
 
 async function publish(id: string, l: Local, port: number) {
-  if (l.published === port) return;
-  const [st, b] = await seams.publish(id, { port: String(port) });
+  const aliases = (wantOf(id)?.def.manifest.aliases ?? []).join(",");
+  if (l.published === port && l.aliases === aliases) return;
+  // aliases sent when it has some, or to clear the ones it had
+  const fields: Record<string, string> = { port: String(port) };
+  if (aliases || l.aliases) fields.aliases = aliases;
+  const [st, b] = await seams.publish(id, fields);
   if (st !== 200) throw new Error(`publishing: ${b?.error ?? `status ${st}`}`);
   l.published = port;
+  l.aliases = aliases;
   saveApplied(id, l);
 }
 
@@ -224,6 +239,7 @@ async function unpublish(id: string, l: Local) {
   if (st !== 200 && st !== 404 && !/no service/i.test(String(b?.error ?? "")))
     throw new Error(`unpublishing: ${b?.error ?? `status ${st}`}`);
   l.published = 0;
+  l.aliases = "";
   saveApplied(id, l);
 }
 
@@ -380,7 +396,16 @@ async function teardown(id: string, keepData: boolean) {
       for (const f of ["compose.yml", ".env", ".phos.json", "src", "cache"])
         rmSync(join(dirOf(id), f), { recursive: true, force: true });
     } else rmSync(dirOf(id), { recursive: true, force: true });
-    Object.assign(l, { gen: 0, role: "none", hash: "", webPort: 0, published: 0, running: false, healthy: undefined });
+    Object.assign(l, {
+      gen: 0,
+      role: "none",
+      hash: "",
+      webPort: 0,
+      published: 0,
+      aliases: "",
+      running: false,
+      healthy: undefined,
+    });
     end(id, l, key);
   } catch (e) {
     end(id, l, key, e);

@@ -3,8 +3,10 @@
 import { marshal, obj } from "@phosphorus/util";
 import { type Caller, errc, object, pressed, src, str, type Tool } from "./common.ts";
 
-// gitService the route Forgejo installs as from the services tab, and its page login's name
-export const gitService = "git";
+// gitService the route Forgejo installs as from the services tab, and its page login's name;
+// gitAlias its old name, still routed, a login saved under it still found
+export const gitService = "forgejo";
+export const gitAlias = "git";
 const serviceRe = /^[a-z][a-z0-9-]{0,39}$/;
 
 const domainRe = /^[a-z0-9.-]{1,253}$/;
@@ -14,16 +16,13 @@ const domainRe = /^[a-z0-9.-]{1,253}$/;
 export function forgejoLogin(c: Caller | undefined, service = gitService): [user: string, pass: string] {
   if (!c?.pages) throw errc("forbidden", "on a user's key only");
   const pages = c.pages() ?? {};
-  let l = obj(pages[service]);
-  if (!str(l?.user) && src.domain()) {
-    const at = "//" + service + "." + src.domain();
-    for (const v of Object.values(pages)) {
-      const p = obj(v);
-      if (str(p?.user) && str(p?.url).includes(at)) {
-        l = p;
-        break;
-      }
-    }
+  const names = service === gitService ? [service, gitAlias] : [service];
+  let l = names.map((n) => obj(pages[n])).find((p) => str(p?.user));
+  if (!l && src.domain()) {
+    const at = names.map((n) => "//" + n + "." + src.domain());
+    l = Object.values(pages)
+      .map(obj)
+      .find((p) => str(p?.user) && at.some((a) => str(p?.url).includes(a)));
   }
   if (!str(l?.user)) {
     throw errc(
@@ -35,7 +34,8 @@ export function forgejoLogin(c: Caller | undefined, service = gitService): [user
 }
 
 // gitCreds a posix shell prefix reading the forgejo login off stdin, git
-// handed it for https://git.<domain> alone, and the stdin lines it reads
+// handed it for https://forgejo.<domain> and https://git.<domain> alone, and the
+// stdin lines it reads
 export function gitCreds(c: Caller | undefined): [prefix: string, stdin: string] {
   const [user, pass] = forgejoLogin(c);
   const d = src.domain();
@@ -43,13 +43,14 @@ export function gitCreds(c: Caller | undefined): [prefix: string, stdin: string]
   if (/[\r\n]/.test(user + pass)) throw errc("bad_input", "the saved forgejo login holds a line break");
   const prefix =
     "IFS= read -r PHOS_GIT_USER; IFS= read -r PHOS_GIT_PASS; " +
-    "export PHOS_GIT_USER PHOS_GIT_PASS GIT_TERMINAL_PROMPT=0 GIT_CONFIG_COUNT=1 " +
-    "GIT_CONFIG_KEY_0='credential.https://" +
-    gitService +
-    "." +
-    d +
-    ".helper' " +
-    `GIT_CONFIG_VALUE_0='!f() { test "$1" = get && printf "username=%s\\npassword=%s\\n" "$PHOS_GIT_USER" "$PHOS_GIT_PASS"; }; f'` +
+    "export PHOS_GIT_USER PHOS_GIT_PASS GIT_TERMINAL_PROMPT=0 GIT_CONFIG_COUNT=2 " +
+    [gitService, gitAlias]
+      .map(
+        (n, i) =>
+          `GIT_CONFIG_KEY_${i}='credential.https://${n}.${d}.helper' ` +
+          `GIT_CONFIG_VALUE_${i}='!f() { test "$1" = get && printf "username=%s\\npassword=%s\\n" "$PHOS_GIT_USER" "$PHOS_GIT_PASS"; }; f'`,
+      )
+      .join(" ") +
     "\n";
   return [prefix, user + "\n" + pass + "\n"];
 }
@@ -62,7 +63,7 @@ export const forgejoTools = (): Tool[] => [
     open: true,
     destructive: true,
     description:
-      "Call a Forgejo installed on the mesh (the service git unless service names another) through its API as you, " +
+      "Call a Forgejo installed on the mesh (the service forgejo unless service names another) through its API as you, " +
       "signed in with the login saved in your vault as that service's page login: " +
       "repos, branches, files, commits, issues, pull requests, reviews, releases, orgs, anything under /api/v1. " +
       "Returns status and the JSON body, up to 512KB. Clone and push with terminal_run's git, the same login, at clone_url's address. " +

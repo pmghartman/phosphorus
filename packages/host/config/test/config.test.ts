@@ -96,15 +96,15 @@ test("editService creates, edits, rejects and removes", () => {
   // services' own checks, nothing of config's
   expect(editService("Web", { port: "1" }, false, false)).toEqual(["[Web] 'Web' is not a valid name", ""]);
   expect(editService("web", { nope: "1" }, false, false)).toEqual([
-    "no field nope, only port, scheme, max_body, public",
+    "no field nope, only port, scheme, max_body, public, aliases",
     "",
   ]);
   expect(editService("web", { mode: "path" }, false, false)[0]).toBe(
-    "no field mode, only port, scheme, max_body, public",
+    "no field mode, only port, scheme, max_body, public, aliases",
   );
   expect(editService("web", {}, false, false)).toEqual(["[web] has no port", ""]);
   expect(editService("web", { port: "1", start: "x" }, false, false)[0]).toBe(
-    "no field start, only port, scheme, max_body, public",
+    "no field start, only port, scheme, max_body, public, aliases",
   );
   expect(editService("web", {}, true, false)).toEqual(["no service web", ""]);
   // dry: the diff alone, nothing on disk

@@ -32,8 +32,9 @@ const servicesFile = env("SERVICES_FILE", join(RepoDir, "config", "services.expo
 // the ports of sections taken out of services.export, a found page there left alone
 const removedFile = join(StateDir, "services-removed");
 const notes = new Notes("services");
-// a web service's port, scheme (blank: sniffed), max_body and public
-export const Keys = ["port", "scheme", "max_body", "public"];
+// a web service's port, scheme (blank: sniffed), max_body, public, and aliases: more
+// names it answers at, comma separated
+export const Keys = ["port", "scheme", "max_body", "public", "aliases"];
 // older keys still read, dropped whenever the file is rewritten: mode is picked
 // (a subdomain once *.<domain> answers, settled across hosts), base_path is gone,
 // extras' max_body is a key of its own, forwarded_proto follows the ingress
@@ -112,6 +113,8 @@ export function parse(text: string): [Row[], string, string[]] {
       const p = s.f.get("public")!;
       row.public = p === "true" || p === "false" ? p === "true" : p;
     }
+    const al = (s.f.get("aliases") ?? "").split(/[\s,]+/).filter(Boolean);
+    if (al.length) row.aliases = al;
     const why = rowError({ ...row, scheme: row.scheme || "http", mode: "path" });
     if (why) return no(why);
     rows.push(row);

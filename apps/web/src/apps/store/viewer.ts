@@ -30,6 +30,7 @@ import {
   statusOn,
 } from './catalog.ts';
 import { draw } from './draw.ts';
+import { legacyPending } from './legacy.ts';
 import { logsOpen, stateVars, storeShow } from './state.ts';
 
 const redraw = () => {
@@ -436,6 +437,9 @@ function backupSec(key: string, page: AppPage, check: CheckResult): HTMLElement 
   return sec;
 }
 
+// the hosts picked, less the one the old data is on, as the server places the move
+const backupsOf = (from: string, picked: string[]) => [...new Set(picked.filter((h) => h && h !== from))].join(', ');
+
 function installSec(key: string, page: AppPage): HTMLElement[] {
   const f = formOf(key);
   const check = f.check ?? page.check;
@@ -446,15 +450,30 @@ function installSec(key: string, page: AppPage): HTMLElement[] {
   const backups = backupSec(key, page, check);
   if (backups) out.push(backups);
   const sec = el('section', 'store-sec store-go');
+  // the old built-in git's data goes with it, onto the newest copy's host
+  const old = legacyPending(page.def.source, page.def.ref);
   const go = Object.assign(
-    el('button', `store-pill big store-install${f.busy ? ' wait' : ''}`, f.busy ? 'installing' : 'install'),
+    el(
+      'button',
+      `store-pill big store-install${f.busy ? ' wait' : ''}`,
+      f.busy ? 'installing' : old.length ? 'install with your git data' : 'install',
+    ),
     {
       type: 'button',
       disabled: !canInstall(key, page.def, check),
     },
   );
-  go.addEventListener('click', () => install(key));
+  go.addEventListener('click', () => install(key, { also: old.slice(0, 1) }));
   sec.append(go);
+  // the data moved by hand (the README's Git), or not wanted
+  if (old.length && !f.busy) {
+    const empty = Object.assign(el('button', 'store-pill', 'install it empty instead'), {
+      type: 'button',
+      disabled: go.disabled,
+    });
+    empty.addEventListener('click', () => install(key, { fresh: true }));
+    sec.append(empty);
+  }
   const missing = wanting(page.def, f.env);
   const why = !st.acct?.admin
     ? 'An admin installs apps.'
@@ -464,7 +483,9 @@ function installSec(key: string, page: AppPage): HTMLElement[] {
         ? 'No host to install it on.'
         : missing.length
           ? `Fill in ${missing.join(', ')} first.`
-          : `Onto ${f.active}${f.standbys.length ? `, with ${f.standbys.join(', ')} as backup` : ''}.`;
+          : old.length
+            ? `Your old git data on ${old[0]} moves into it there, with ${backupsOf(old[0]!, [f.active, ...f.standbys]) || 'no'} backup.`
+            : `Onto ${f.active}${f.standbys.length ? `, with ${f.standbys.join(', ')} as backup` : ''}.`;
   sec.append(el('p', 'store-pick-note', why));
   if (f.error) sec.append(el('p', 'store-repo-err', f.error));
   out.push(sec);

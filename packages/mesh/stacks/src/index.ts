@@ -25,9 +25,11 @@ export {
   AskClear as LegacyClear,
   AskMove as LegacyMove,
   copyLegacy,
+  InstallOrMove,
   legacyDir,
   legacyInfo,
   legacyOf,
+  legacySeam,
   rewriteIni,
   tickLegacy,
 } from "./legacy-git.ts";

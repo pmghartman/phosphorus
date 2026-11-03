@@ -17,7 +17,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import * as store from "@phosphorus/store";
-import { env, errText, markHot, now, obj, RepoDir, run, StateDir } from "@phosphorus/util";
+import { env, errText, ini, markHot, now, obj, RepoDir, run, StateDir } from "@phosphorus/util";
 import type { LegacyGit } from "@phosphorus/wire";
 import { logf } from "./docker.ts";
 import { dirOf } from "./reconcile.ts";
@@ -25,11 +25,17 @@ import { seams } from "./seams.ts";
 import { Install, wantOf } from "./want.ts";
 
 export const legacyRel = "etc/stacks/legacy/git.json";
-// the stack it becomes: the featured Forgejo, route git
-const id = "git";
+// the stack it becomes: the featured Forgejo, route forgejo with git its alias
+const id = "forgejo";
 const app = { source: "phosphorus", ref: "forgejo" };
 
 export const legacyDir = () => env("LEGACY_GIT_DIR", join(RepoDir, "git"));
+
+// the hosts still holding an old copy, the newest first: the server's, off each host's info
+export const legacySeam = { copies: (): string[] => [] };
+
+// the old service's own bookkeeping under obj, not Forgejo's
+const skipObj = new Set([".phosphorus-hooks", "tmp"]);
 
 // the copy's db: the master's live one, else a servant's last snapshot
 function dbOf(root: string): string {
@@ -141,6 +147,7 @@ export function copyLegacy(root: string, dest: string): Record<string, string> {
   const objDir = join(root, "obj");
   if (existsSync(objDir))
     for (const e of readdirSync(objDir)) {
+      if (skipObj.has(e)) continue;
       const to =
         e === "forgejo-repositories" ? join(git, "repositories") : e === "lfs" ? join(git, "lfs") : join(gitea, e);
       cp(join(objDir, e), to);
@@ -181,7 +188,7 @@ export function AskMove(p: Record<string, any>, by: string): [number, any] {
     (h: unknown): h is string => typeof h === "string" && h !== from,
   );
   for (const h of standbys) if (!hosts.includes(h)) return [400, { error: `${h} isn't a phosphorus host` }];
-  if (wantOf(id)) return [409, { error: "Forgejo is already installed as git" }];
+  if (wantOf(id)) return [409, { error: "Forgejo is already installed" }];
   const cur = legacyOf();
   if (cur?.state === "asked" || cur?.state === "copying")
     return [409, { error: `the move on ${cur.from} is already under way` }];
@@ -189,6 +196,30 @@ export function AskMove(p: Record<string, any>, by: string): [number, any] {
   write(l);
   seams.kick();
   return [200, { ok: true, legacy: l }];
+}
+
+// POST /api/stacks/install of the featured Forgejo while an old copy is on the mesh and
+// not yet moved: the move instead, onto the newest copy's host with the install's other
+// hosts its standbys, so Forgejo never comes up empty beside the old data; undefined
+// for any other install, or one asking fresh: true
+export function InstallOrMove(p: Record<string, any>, by: string): [number, any] | undefined {
+  if (p.source !== app.source || p.ref !== app.ref || p.fresh === true) return;
+  const l = legacyOf();
+  if (l?.state === "moved" || l?.cleared) return;
+  const [from, ...others] = legacySeam.copies();
+  if (!from) return;
+  const asked = [p.active, ...(Array.isArray(p.standbys) ? p.standbys : [])];
+  const standbys = asked.filter((h): h is string => typeof h === "string" && h !== "");
+  const out = AskMove({ from, standbys: standbys.length ? standbys : others }, by);
+  if (out[0] !== 200) return out;
+  const fields = obj(p.env) ?? {};
+  const keep = Object.fromEntries(
+    Object.entries(fields).filter(
+      (e): e is [string, string] => typeof e[1] === "string" && e[0] !== "SECRET_KEY" && e[0] !== "INTERNAL_TOKEN",
+    ),
+  );
+  if (Object.keys(keep).length) write({ ...out[1].legacy, env: keep });
+  return [200, { ...out[1], legacy: legacyOf() }];
 }
 
 // POST /api/stacks/legacy-git/clear: the old copies deleted, once the stack serves;
@@ -224,11 +255,24 @@ async function move(l: LegacyGit) {
   const dest = join(dirOf(id), "data", "forgejo");
   let copied = false;
   try {
-    if (wantOf(id)) throw new Error("Forgejo is already installed as git");
+    if (wantOf(id)) throw new Error("Forgejo is already installed");
     const secrets = copyLegacy(legacyDir(), dest);
     copied = true;
+    // the image's user, not the old service's, owns it; the image's own chown left as a fallback
+    if (process.platform === "linux") {
+      const r = await run([
+        "chown",
+        "-R",
+        `${ini("stacks", "puid") || "1000"}:${ini("stacks", "pgid") || "1000"}`,
+        dest,
+      ]);
+      if (!r.ok) logf("legacy git: chown of %s failed: %s", dest, r.output);
+    }
     logf("legacy git: %s copied into %s", legacyDir(), dest);
-    const [st, out] = await Install({ ...app, env: secrets, active: l.from, standbys: l.standbys }, l.by);
+    const [st, out] = await Install(
+      { ...app, env: { ...l.env, ...secrets }, active: l.from, standbys: l.standbys, fresh: true },
+      l.by,
+    );
     if (st !== 200) throw new Error(obj(out)?.error ?? `install answered ${st}`);
     write({ ...l, state: "moved", at: now() });
   } catch (e) {

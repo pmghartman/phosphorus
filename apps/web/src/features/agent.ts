@@ -184,7 +184,7 @@ async function agentFiles(host: string, share: string, dir: string) {
 // a host's console: the agent's command in the accent, its output, its outcome dimmed
 const agentCons = new Map<string, { w: DkWin; con: { write: (t: string) => void; close: () => unknown } }>();
 async function agentPrint(a: UiAction, args: Record<string, any>, done: boolean) {
-  const host = args.host || (a.tool === 'forgejo' ? 'git' : 'mesh');
+  const host = args.host || (a.tool === 'forgejo' ? 'forgejo' : 'mesh');
   let c = agentCons.get(host);
   if (!c || !c.w.node.isConnected) {
     const w = dkWin(`agent:${host}`, 'terminal', host, 'term dk-agent-con');

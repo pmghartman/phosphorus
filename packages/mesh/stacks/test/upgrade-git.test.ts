@@ -1,6 +1,6 @@
 // after stacks.test.ts, which sets the env @phosphorus/util reads on its first import:
 // the old built-in git's data folder (fixtures/legacy-git, a db made here) moved into
-// the git stack, installed with the old servants as standbys, deleted once cleared
+// the forgejo stack, installed with the old servants as standbys, deleted once cleared
 import { Database } from "bun:sqlite";
 import { afterAll, expect, test } from "bun:test";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -24,7 +24,7 @@ db.close();
 
 // the featured Forgejo as far as the move reads it
 const forgejo: AppDef = {
-  id: "git",
+  id: "forgejo",
   source: "phosphorus",
   ref: "forgejo",
   name: "Forgejo",
@@ -37,6 +37,7 @@ const forgejo: AppDef = {
   archs: [],
   compose: "services:\n  forgejo:\n    image: codeberg.org/forgejo/forgejo:16\n    volumes:\n      - forgejo:/data\n",
   env: [
+    { name: "HTTP_PORT", label: "Web port on the host", default: "3001" },
     { name: "SECRET_KEY", label: "Secret key", secret: true },
     { name: "INTERNAL_TOKEN", label: "Internal token", secret: true },
   ],
@@ -48,7 +49,7 @@ const forgejo: AppDef = {
 S.seams.hosts = () => ["a", "b", "c"];
 S.seams.defOf = async (source, ref) => (source === "phosphorus" && ref === "forgejo" ? forgejo : undefined);
 
-const data = () => join(S.dirOf("git"), "data", "forgejo");
+const data = () => join(S.dirOf("forgejo"), "data", "forgejo");
 const read = (...p: string[]) => readFileSync(join(data(), ...p), "utf8");
 
 test("the old app.ini's paths become the image's", () => {
@@ -73,21 +74,46 @@ test("a move asked of a host that isn't one is refused", () => {
   expect(S.LegacyMove({ from: "a", standbys: ["zed"] }, "admin")[0]).toBe(400);
 });
 
-test("the master's copy moves into the git stack, the servants its standbys", async () => {
-  const [st, out] = S.LegacyMove({ from: "a", standbys: ["b", "c", "a"] }, "admin");
-  expect(st).toBe(200);
-  expect(out.legacy).toMatchObject({ from: "a", standbys: ["b", "c"], state: "asked" });
+const asForgejo = { source: "phosphorus", ref: "forgejo" };
+
+test("an install of anything else, or of a fresh Forgejo, or with no old copy, is just an install", () => {
+  S.legacySeam.copies = () => ["a"];
+  expect(S.InstallOrMove({ source: "casaos", ref: "forgejo", active: "a" }, "admin")).toBeUndefined();
+  expect(S.InstallOrMove({ ...asForgejo, active: "a", fresh: true }, "admin")).toBeUndefined();
+  S.legacySeam.copies = () => [];
+  expect(S.InstallOrMove({ ...asForgejo, active: "a" }, "admin")).toBeUndefined();
+  expect(S.legacyOf()).toBeUndefined();
+});
+
+test("installing Forgejo while an old copy waits moves it: the newest copy's host active, the picked ones standbys", async () => {
+  S.legacySeam.copies = () => ["a", "c"];
+  const r = S.InstallOrMove(
+    { ...asForgejo, active: "b", standbys: ["c", "a"], env: { HTTP_PORT: "3005", SECRET_KEY: "typed" } },
+    "admin",
+  );
+  expect(r?.[0]).toBe(200);
+  expect(r?.[1].legacy).toMatchObject({ from: "a", standbys: ["b", "c"], state: "asked", env: { HTTP_PORT: "3005" } });
+  // the typed secret never kept in the record every host sees
+  expect(S.legacyOf()?.env).toEqual({ HTTP_PORT: "3005" });
+});
+
+test("the master's copy moves into the forgejo stack, the servants its standbys", async () => {
   // only the asked host moves it
   await S.tickLegacy("b");
   expect(S.legacyOf()?.state).toBe("asked");
   await S.tickLegacy("a");
   expect(S.legacyOf()).toMatchObject({ state: "moved", from: "a" });
 
-  const w = S.wantOf("git")!;
+  const w = S.wantOf("forgejo")!;
   expect(w).toMatchObject({ active: "a", standbys: ["b", "c"], gen: 1, by: "admin" });
   expect(w.def.source).toBe("phosphorus");
   const [env] = S.opened(w);
-  expect(env).toEqual({ SECRET_KEY: "fixture-secret-key", INTERNAL_TOKEN: "fixture.internal.token" });
+  // the old app.ini's secrets over anything typed, the install's port kept
+  expect(env).toEqual({
+    HTTP_PORT: "3005",
+    SECRET_KEY: "fixture-secret-key",
+    INTERNAL_TOKEN: "fixture.internal.token",
+  });
   expect(w.env.SECRET_KEY).toStartWith("sealed:");
 
   // the image's layout under /data
@@ -98,6 +124,9 @@ test("the master's copy moves into the git stack, the servants its standbys", as
   expect(read("git", "lfs", "ab", "cd", "abcd0001")).toBe("lfs object\n");
   expect(read("gitea", "avatars", "alice")).toBe("png\n");
   expect(read("gitea", "attachments", "1", "report")).toBe("pdf\n");
+  // the oauth signing key and packages, everything Forgejo keeps under its app data
+  expect(read("gitea", "jwt", "private.pem")).toBe("jwt key\n");
+  expect(read("gitea", "packages", "fa", "blob")).toBe("blob\n");
   expect(read("gitea", "templates", "home.tmpl")).toContain("home");
   expect(read("gitea", "public", "assets", "site.css")).toBe("body{}\n");
   const ini = read("gitea", "conf", "app.ini");
@@ -110,7 +139,7 @@ test("the master's copy moves into the git stack, the servants its standbys", as
   );
   expect(read("git", "repositories", "alice", "app.git", "hooks", "pre-receive")).toContain("hookname=$(basename $0)");
   // the rebuildable and the old daemon's own left behind
-  for (const p of ["log", "queues", "GIT_VERSION", "GIT_CHANGE", "snap", "db"])
+  for (const p of ["log", "queues", "GIT_VERSION", "GIT_CHANGE", "snap", "db", ".phosphorus-hooks", "tmp"])
     expect(existsSync(join(data(), "gitea", p)) || existsSync(join(data(), p))).toBe(false);
   expect(existsSync(`${data()}.part`)).toBe(false);
   // nothing deleted yet
@@ -121,6 +150,8 @@ test("a second move is refused once the stack is installed", () => {
   const [st, out] = S.LegacyMove({ from: "a", standbys: [] }, "admin");
   expect(st).toBe(409);
   expect(out.error).toContain("already installed");
+  // moved: an install is an install again
+  expect(S.InstallOrMove({ ...asForgejo, active: "a" }, "admin")).toBeUndefined();
 });
 
 test("the old copies stay until the admin says the stack serves", async () => {
@@ -145,12 +176,12 @@ test("a failed move leaves no half copy and says why", async () => {
   // nothing to copy: the db is empty
   const [st] = S.LegacyMove({ from: "a", standbys: [] }, "admin");
   expect(st).toBe(409);
-  S.Remove("git", true, "admin");
+  S.Remove("forgejo", true, "admin");
   rmSync(data(), { recursive: true, force: true });
   expect(S.LegacyMove({ from: "a", standbys: [] }, "admin")[0]).toBe(200);
   await S.tickLegacy("a");
   expect(S.legacyOf()).toMatchObject({ state: "failed" });
   expect(S.legacyOf()?.error).toContain("no forgejo.db");
   expect(existsSync(data())).toBe(false);
-  expect(S.wantOf("git")).toBeUndefined();
+  expect(S.wantOf("forgejo")).toBeUndefined();
 });

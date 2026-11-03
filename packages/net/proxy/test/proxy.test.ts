@@ -118,3 +118,42 @@ test("a path link to a service now on a subdomain is sent there", async () => {
   expect(await t.text()).toBe("app");
   front.stop(true);
 });
+
+test("an alias answers for its route's winning copy, and yields to a route of its own", async () => {
+  const { serve, handler, swap } = await import("@phosphorus/proxy");
+  const back = (tag: string) =>
+    Bun.serve({ port: 0, fetch: (req) => new Response(`${tag} ${new URL(req.url).pathname}`) });
+  const [old, cur, other] = [back("old"), back("cur"), back("other")];
+  const row = (host: string, name: string, port: number | undefined, more: Record<string, unknown> = {}) => ({
+    host,
+    name,
+    port,
+    scheme: "http",
+    mode: "subdomain",
+    public: true,
+    ...more,
+  });
+  const ips: Record<string, string> = { a: "127.0.0.1", b: "127.0.0.1" };
+  // a former active's copy and the master one: git follows the master
+  swap(
+    [
+      row("a", "forgejo", old.port, { aliases: ["git"] }),
+      row("b", "forgejo", cur.port, { aliases: ["git"], master: true }),
+    ],
+    (h) => ips[h]!,
+  );
+  const front = serve(
+    0,
+    handler(() => new Response("app"), { pass: () => true, issuers: () => [] }),
+    true,
+  );
+  const get = async (host: string) =>
+    (await fetch(`http://127.0.0.1:${front.port}/x`, { headers: { Host: host } })).text();
+  expect(await get("forgejo.mulab.dev")).toBe("cur /x");
+  expect(await get("git.mulab.dev")).toBe("cur /x");
+  // a service really called git takes its name back
+  swap([row("b", "forgejo", cur.port, { aliases: ["git"] }), row("a", "git", other.port)], (h) => ips[h]!);
+  expect(await get("git.mulab.dev")).toBe("other /x");
+  expect(await get("forgejo.mulab.dev")).toBe("cur /x");
+  for (const s of [front, old, cur, other]) s.stop(true);
+});

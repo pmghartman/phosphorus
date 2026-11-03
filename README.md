@@ -25,7 +25,7 @@ Install Phosphorus on each machine and they find each other over your tailnet. T
 What every install has.
 
 - **App installer** *(in progress)*. Browse apps from the catalogues below, or paste any public GitHub repo that has a Compose file. Each app's page shows its README, its files and its Compose file, then runs a quick check: images for your hosts' CPU, free ports, the settings it needs, and anything risky (privileged, host network). If it passes, install it onto the host you pick with one click. It runs under Docker Compose with its data kept in one folder, and its page gets its own subdomain.
-- **Git.** [Forgejo](https://forgejo.org) is the first app on the services tab, written for the mesh: it answers at `git.<your domain>`, keeps its sqlite database, repositories and LFS objects in its data folder, and with standby hosts each keeps a copy taken after a consistent `.backup` of the database. See [Git](#git).
+- **Git.** [Forgejo](https://forgejo.org) is the first app on the services tab, written for the mesh: it answers at `forgejo.<your domain>` and, as before, `git.<your domain>`, keeps its sqlite database, repositories and LFS objects in its data folder, and with standby hosts each keeps a copy taken after a consistent `.backup` of the database. See [Git](#git).
 - **Backup hosts** *(in progress)*. When installing, pick one or more standby hosts. They keep a fresh copy of the app's data and take over automatically if the main host fails. "Move to host…" hands an app over cleanly for maintenance.
 - **Your own services, found.** Web pages already listening on any host are found and can be published on the mesh in one click, behind the Phosphorus login or public.
 - **Terminal.** One tabbed window that opens a shell on any host.
@@ -63,23 +63,24 @@ App logos belong to their projects and are loaded from the catalogue, not shippe
 
 ## Git
 
-Install **Forgejo** from the services tab onto any host with Docker, and pick standby hosts to keep copies. It answers at `git.<your domain>`; the first account registered is the admin. SSH clones go to port 2222 (or the one you pick) of the host serving it, over the tailnet. The MCP `forgejo` tool calls its API as you, with the login saved as the `git` page login.
+Install **Forgejo** from the services tab onto any host with Docker, and pick standby hosts to keep copies. It answers at `forgejo.<your domain>`, and at `git.<your domain>` as an alias so old remotes keep working; the first account registered is the admin. SSH clones go to port 2222 (or the one you pick) of the host serving it, over the tailnet. The MCP `forgejo` tool calls its API as you, with the login saved as the `forgejo` page login (one saved as `git` still works).
 
 ### Moving from the built-in git
 
 Earlier versions ran Forgejo themselves on the hosts with `[git] host = true`, its data in `/var/lib/phosphorus/git`. That code is gone; the data stays where it is until you delete it.
 
-On first start of this version the services tab offers admins the move: the old master's data (the copy with the newest version) is copied into the git service's data folder on that host, Forgejo installed there with the old servants as standbys, its secret key and internal token carried over. Once `git.<your domain>` shows your repos, press **delete the old copies**; nothing is deleted before that.
+On first start of this version the services tab offers admins the move, and installing Forgejo from its page does the same: the old master's data (the copy with the newest version) is copied into Forgejo's data folder on that host, owned by the stack's user, Forgejo installed there with the old servants as standbys, its secret key and internal token carried over. Once `forgejo.<your domain>` shows your repos, press **delete the old copies**; nothing is deleted before that.
 
 By hand instead, as root on the old master (the host whose `/var/lib/phosphorus/git/GIT_VERSION` has the highest first number):
 
 ```sh
-old=/var/lib/phosphorus/git new=/var/lib/phosphorus/stacks/git/data/forgejo
+old=/var/lib/phosphorus/git new=/var/lib/phosphorus/stacks/forgejo/data/forgejo
 mkdir -p $new/gitea/conf $new/git
 cp -a $old/db/forgejo.db $new/gitea/
 cp -a $old/obj/forgejo-repositories $new/git/repositories
 [ -d $old/obj/lfs ] && cp -a $old/obj/lfs $new/git/lfs
-for d in $old/obj/*; do case ${d##*/} in forgejo-repositories|lfs) ;; *) cp -a $d $new/gitea/ ;; esac; done
+for d in $old/obj/*; do case ${d##*/} in forgejo-repositories|lfs|tmp) ;; *) cp -a $d $new/gitea/ ;; esac; done
+chown -R 1000:1000 $new
 [ -d $old/custom ] && cp -a $old/custom/. $new/gitea/
 sed -e "s#$old/obj/forgejo-repositories#/data/git/repositories#g" -e "s#$old/obj/lfs#/data/git/lfs#g" \
     -e "s#$old/db/forgejo.db#/data/gitea/forgejo.db#g" -e "s#$old/[a-z]*#/data/gitea#g" -e "s#$old#/data/gitea#g" \
@@ -87,7 +88,7 @@ sed -e "s#$old/obj/forgejo-repositories#/data/git/repositories#g" -e "s#$old/obj
 grep -E '^(SECRET_KEY|INTERNAL_TOKEN)' $new/gitea/conf/app.ini
 ```
 
-Then install Forgejo from the services tab on that host, with the old git hosts as standbys, giving it the secret key and internal token printed above. In Forgejo's site administration, run *Resynchronize pre-receive, update and post-receive hooks of all repositories* once. When it serves your repos, remove `/var/lib/phosphorus/git` and the `phosphorus-git` user on each old git host, or press **delete the old copies** on the services tab.
+Then open Forgejo on the services tab and press **install it empty instead**, on that host with the old git hosts as standbys, giving it the secret key and internal token printed above. In Forgejo's site administration, run *Resynchronize pre-receive, update and post-receive hooks of all repositories* once. When it serves your repos, remove `/var/lib/phosphorus/git` and the `phosphorus-git` user on each old git host, or press **delete the old copies** on the services tab.
 
 ## The `phos` command
 

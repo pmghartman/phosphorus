@@ -3,7 +3,7 @@
 import type { AppDef, SourceInfo, TreeEntry } from "@phosphorus/wire";
 import { envFields } from "./manifest.ts";
 
-// Forgejo as the mesh's git, its route git.<domain>. The image's own layout under
+// Forgejo as the mesh's git, its route forgejo.<domain> and git.<domain> as before. The image's own layout under
 // /data: gitea/ the custom dir, app.ini, the sqlite db and app data, git/ the
 // repositories and LFS. Queues in memory, the issue index in the db and the log on
 // stdout, so nothing rebuildable is copied to standbys. On start a db failing its
@@ -66,12 +66,12 @@ volumes:
 
 const forgejoAbout = `Forgejo is a self-hosted git forge: repositories, issues, pull requests, packages and CI.
 
-Installed from here it answers at git.<your domain>. Its data (the sqlite database, the repositories, LFS objects and avatars) lives in the stack's data folder; pick standby hosts and each keeps a copy, taken after a consistent sqlite \`.backup\` of the database, ready to take over.
+Installed from here it answers at forgejo.<your domain>, and at git.<your domain> too. Its data (the sqlite database, the repositories, LFS objects and avatars) lives in the stack's data folder; pick standby hosts and each keeps a copy, taken after a consistent sqlite \`.backup\` of the database, ready to take over.
 
 SSH clones go to port 2222 (or the one you pick) of the host serving it, and the first account registered is the admin.`;
 
 export const forgejo: AppDef = {
-  id: "git",
+  id: "forgejo",
   source: "phosphorus",
   ref: "forgejo",
   name: "Forgejo",
@@ -105,6 +105,7 @@ export const forgejo: AppDef = {
     },
     health: { service: "forgejo", path: "/api/healthz", port: 3000 },
     web: { service: "forgejo", port: 3000 },
+    aliases: ["git"],
   },
 };
 

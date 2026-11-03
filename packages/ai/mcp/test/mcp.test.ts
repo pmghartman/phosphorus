@@ -288,7 +288,8 @@ test("terminal_run git hands the forgejo login to a fresh shell", async () => {
   expect(got.op).toBe("exec");
   expect(got.p).toMatchObject({ user: "me", pass: "pw", timeout: 60, stdin: "gu\ngp\nx" });
   expect(got.p.cmd.startsWith("IFS= read -r PHOS_GIT_USER; IFS= read -r PHOS_GIT_PASS; export ")).toBe(true);
-  expect(got.p.cmd).toContain("GIT_CONFIG_KEY_0='credential.https://git.mesh.example.helper'");
+  expect(got.p.cmd).toContain("GIT_CONFIG_KEY_0='credential.https://forgejo.mesh.example.helper'");
+  expect(got.p.cmd).toContain("GIT_CONFIG_KEY_1='credential.https://git.mesh.example.helper'");
   expect(got.p.cmd.endsWith("; f'\ngit fetch")).toBe(true);
   // a saved login and no git: the persistent session, reset passed along
   await handle(

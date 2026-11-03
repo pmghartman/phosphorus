@@ -168,7 +168,7 @@ export const agentTools = (): Tool[] => [
     scope: "key",
     description:
       "A host's two config files as they stand: phosphorus.ini (shares in [files], [model]) and " +
-      "services.export (each [service]: port, scheme, max_body, public). Read before service_edit or config_set. Admins only.",
+      "services.export (each [service]: port, scheme, max_body, public, aliases). Read before service_edit or config_set. Admins only.",
     schema: object({ host: name }, "host"),
     run: (a, m) => {
       adminOf(m);
