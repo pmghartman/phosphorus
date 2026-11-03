@@ -41,6 +41,51 @@
   color: var(--accent);
   letter-spacing: 0.04em;
 }
+/* the wizard's banner: its wand in a tile of the accent, its name and what it does */
+.store-hero {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.1rem 1.2rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
+  border-radius: var(--r-pop, 0);
+  background:
+    radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 60%),
+    radial-gradient(90% 120% at 100% 100%, color-mix(in srgb, var(--sand) 10%, transparent), transparent 65%),
+    var(--card);
+}
+.store-hero-ic {
+  flex: none;
+  width: 3rem;
+  height: 3rem;
+  padding: 0.65rem;
+  border-radius: var(--r-pop, 0);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+.store-hero-t {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+.store .store-hero-title {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+.store-hero-sub {
+  margin: 0;
+  color: var(--muted);
+}
+/* the catalogues not reached, one quiet line */
+.store-unfetched {
+  flex-basis: 100%;
+  color: var(--muted);
+  cursor: help;
+}
 .store-head {
   display: flex;
   align-items: flex-end;
@@ -49,28 +94,34 @@
   flex-wrap: wrap;
 }
 .store-lead {
-  margin: 0.25rem 0 0;
+  margin: 0.45rem 0 0;
   color: var(--muted);
 }
 .store-tabs {
-  display: flex;
-  gap: 1.2rem;
+  display: inline-flex;
+  gap: 0.2rem;
+  padding: 0.2rem;
+  border: 1px solid var(--border);
+  border-radius: var(--r-pop, 0);
+  background: var(--card);
 }
 .store-tab {
-  padding: 0 0 0.15rem;
+  padding: 0.3rem 0.95rem;
   background: none;
   border: 0;
-  border-bottom: 2px solid transparent;
+  border-radius: var(--r-pop, 0);
   color: var(--muted);
   font: inherit;
-  font-size: 1.5rem;
+  font-size: 0.85rem;
   font-weight: 600;
-  letter-spacing: -0.01em;
   cursor: pointer;
+  transition:
+    background-color 0.15s,
+    color 0.15s;
 }
 .store-tab.on {
   color: var(--fg);
-  border-bottom-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
 }
 .store-tab:not(.on):is(:hover, :focus-visible) {
   color: var(--fg);

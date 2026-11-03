@@ -1,7 +1,9 @@
-// --- the agent tray beside the bell: the mcp address and skill an agent connects with,
-// the calls of the agents connected as they happen
+// --- the agent tray beside the bell: its glyph and state, and a quick menu on a press with the
+// connector (the mcp address and skill an agent connects with, its calls as they happen) and the
+// way on to settings › agents, where the same connector sits over the models
 
 import type { McpCall, McpStatus } from '@phosphorus/wire';
+import { dkAnchor, dkPopsClose, type Pop } from '../desktop/taskbar.ts';
 import { acctCall } from '../lib/api.ts';
 import { DK_GLYPHS, dkGlyph, el, pageAsk, svgEl } from '../lib/dom.ts';
 import { dk } from '../lib/state.ts';
@@ -75,9 +77,13 @@ function mcpGlyph(): SVGSVGElement {
 export function dkMcpTray(): HTMLElement {
   const wrap = el('div', 'dk-tray-wrap dk-mcp');
   const b = Object.assign(el('button', 'dk-tray dk-mcp-btn'), { type: 'button', title: 'agent', ariaLabel: 'agent' });
+  b.setAttribute('aria-expanded', 'false');
   b.append(mcpGlyph());
-  wrap.append(b);
-  b.addEventListener('click', () => dkSettings('agents'));
+  const pop = Object.assign(el('div', 'dk-pop dk-mcp-pop'), { hidden: true }) as Pop;
+  wrap.append(b, pop);
+  dkAnchor(pop, b, { fill: 380 });
+  // the connector, laid out as the menu always was, while the menu is up
+  let shown: { node: HTMLElement; leave: () => void } | null = null;
   const paint = () => {
     const st = mcpState();
     b.dataset.state = st;
@@ -87,11 +93,32 @@ export function dkMcpTray(): HTMLElement {
       online: 'agent, connected',
       active: 'agent, working',
     }[st];
-    panel?.paint();
+    for (const p of panels) p.paint();
   };
   const show = (on: boolean) => {
-    if (on) dkSettings('agents');
+    if (!on && pop.hidden) return;
+    if (on) dkPopsClose('mcp');
+    pop.hidden = !on;
+    b.setAttribute('aria-expanded', String(on));
+    shown?.leave();
+    shown = null;
+    if (!on) return;
+    shown = mcpPanel(true);
+    pop.replaceChildren(shown.node);
   };
+  b.addEventListener('click', () => show(pop.hidden as boolean));
+  document.addEventListener(
+    'pointerdown',
+    (e) => {
+      // a press in the sign-out ask, a page dialog, leaves it open
+      const t = e.target as Element;
+      if (!pop.hidden && !wrap.contains(t) && !t.closest?.('.page-veil')) show(false);
+    },
+    true,
+  );
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !pop.hidden) show(false);
+  });
   const me = { show, paint };
   dk.mcp = me;
   dk.mcpStop?.();
@@ -143,13 +170,14 @@ export function dkMcpTray(): HTMLElement {
   return wrap;
 }
 
-// the connector as settings shows it, painted on every push while it's up
-let panel: { paint: () => void } | null = null;
+// the connectors up (settings', the quick menu's), each painted on every push
+const panels = new Set<{ paint: () => void }>();
 
 // the address and skill an agent connects with, its calls as they happen, and whether its moves
-// show on this desk; left, it stops being painted
-export function mcpPanel(): { node: HTMLElement; leave: () => void } {
-  const node = el('div', 'dk-cl set-cl');
+// show on this desk; left, it stops being painted. quick: the bar's menu, its keys first, then
+// the steps and the switch, then its state and calls; else settings', titled the connector
+export function mcpPanel(quick = false): { node: HTMLElement; leave: () => void } {
+  const node = el('div', quick ? 'dk-cl dk-cl-quick' : 'dk-cl set-cl');
   const row = (label: string, value: string, tone = '') => {
     const r = el('div', 'dk-cl-row');
     r.append(el('span', 'dk-cl-k', label), el('span', `dk-cl-v ${tone}`, value));
@@ -183,8 +211,9 @@ export function mcpPanel(): { node: HTMLElement; leave: () => void } {
   box.addEventListener('change', () => agentViewSet(box.checked));
   view.append(box, el('span', '', 'show agent on screen'));
   view.title = 'open the files, editor, consoles and views the agent works in, as it works';
-  node.append(head, bar, hint, body, view);
-  head.append(el('span', 'dk-cl-title', 'connector'), stateLine);
+  if (quick) node.append(bar, hint, view, head, body);
+  else node.append(head, bar, hint, body, view);
+  head.append(el('span', 'dk-cl-title', quick ? 'agent' : 'connector'), stateLine);
   const flash = (x: HTMLElement, text: string) => {
     const was = x.dataset.label!;
     x.textContent = text;
@@ -319,7 +348,7 @@ export function mcpPanel(): { node: HTMLElement; leave: () => void } {
     list.scrollTop = stick ? list.scrollHeight : keep;
   };
   const me = { paint };
-  panel = me;
+  panels.add(me);
   box.checked = agentViewOn();
   paint();
   // the url ready before a tap, so copying it is the tap's own
@@ -329,9 +358,7 @@ export function mcpPanel(): { node: HTMLElement; leave: () => void } {
     });
   return {
     node,
-    leave: () => {
-      if (panel === me) panel = null;
-    },
+    leave: () => void panels.delete(me),
   };
 }
 

@@ -1,14 +1,102 @@
 /* --- settings: one window, its sections down a rail (settings/); the appearance's controls,
    rows and segments its own throughout, the borrowed views laid flat in its page ---------------- */
 .set-pane {
-  grid-template-columns: 9rem minmax(0, 1fr);
+  grid-template-columns: 11rem minmax(0, 1fr);
 }
 .set-nav {
   overflow-y: auto;
+  gap: 0.1rem;
+  padding: 0.75rem 0.55rem;
+}
+/* the rail's groups: a small caps word over its sections */
+.set-group {
+  padding: 0.85rem 0.6rem 0.3rem;
+  color: var(--muted);
+  font-size: 0.64rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+.set-group:first-child {
+  padding-top: 0.2rem;
+}
+.set-nav .dk-ap-tab {
+  position: relative;
+  gap: 0.6rem;
+  padding: 0.45rem 0.65rem;
+  border-radius: var(--r-pop, 0);
+}
+.set-nav .dk-ap-tab .ic {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+.set-nav .dk-ap-tab.on .ic {
+  color: var(--accent);
+}
+/* the section open: a bar of the accent down its left edge */
+.set-nav .dk-ap-tab.on::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.35rem;
+  bottom: 0.35rem;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+/* the page: its header, then the section's own body scrolling under it */
+.set-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.set-head {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 1rem 1.3rem 0.9rem;
+  border-bottom: 1px solid var(--border);
+}
+.set-head-ic {
+  flex: none;
+  width: 2.1rem;
+  height: 2.1rem;
+  padding: 0.5rem;
+  border-radius: var(--r-pop, 0);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.set-head-t {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+.set-title {
+  margin: 0;
+  color: var(--fg);
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.set-blurb {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.74rem;
 }
 .set-body {
-  gap: 0.7rem;
-  padding: 1rem 1.1rem 1.4rem;
+  flex: 1 1 auto;
+  gap: 0.8rem;
+  padding: 1rem 1.3rem 1.5rem;
+}
+/* the sections' own headings, quieter now the header names the page */
+.set-body .dk-ap-head {
+  margin-top: 0.8rem;
+  color: var(--muted);
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 .set-body > * {
   flex: none;
@@ -211,6 +299,20 @@ button.dk-chip:not(.locked) {
   }
   .set-nav .dk-ap-tab {
     flex: none;
+  }
+  .set-group {
+    display: none;
+  }
+  .set-nav .dk-ap-tab.on::before {
+    top: auto;
+    left: 0.5rem;
+    right: 0.5rem;
+    bottom: 0;
+    width: auto;
+    height: 2px;
+  }
+  .set-head {
+    padding: 0.7rem 0.8rem;
   }
   .set-body {
     padding: 0.8rem 0.8rem 1.2rem;

@@ -149,8 +149,13 @@ function dkChipsFold(hosts: HTMLElement, n: number) {
 
 const DK_POP_GAP = 6;
 
+// the quick buttons' popups by id (./quick.ts), closed with the rest
+const quickPops = new Map<string, (on: boolean) => void>();
+export const dkPopReg = (id: string, show: (on: boolean) => void) => void quickPops.set(id, show);
+
 // one task bar popup open at a time, every other closed as one opens
 export function dkPopsClose(keep?: string): void {
+  for (const [id, show] of quickPops) if (keep !== id) show(false);
   if (keep !== 'bell') dk.bell?.show(false);
   if (keep !== 'ctl') dk.ctl?.show(false);
   if (keep !== 'mcp') dk.mcp?.show(false);

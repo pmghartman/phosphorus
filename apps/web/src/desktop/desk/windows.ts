@@ -15,7 +15,7 @@ import { dkTermFor } from './terminal.ts';
 import { dkWebApp, dkWebApps } from './webapps.ts';
 
 export const DK_APPS: Record<string, { title: string; view: string; w: number; h: number }> = {
-  apps: { title: 'apps', view: 'view-apps', w: 820, h: 700 },
+  apps: { title: 'service wizard', view: 'view-apps', w: 860, h: 720 },
 };
 
 export function dkOpenApp(id: string): void {

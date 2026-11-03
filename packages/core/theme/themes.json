@@ -5,7 +5,7 @@
       "bar": "bottom",
       "barStyle": "panel",
       "menubar": "off",
-      "items": ["search", "hosts", "agent", "bell", "clock", "profile"],
+      "items": ["search", "hosts", "mesh", "update", "agent", "bell", "clock", "profile"],
       "btns": "right",
       "btnStyle": "glyphs",
       "title": "left",

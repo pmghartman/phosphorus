@@ -72,7 +72,7 @@ function hits(): Hit[] {
   for (const h of dkLiveHosts())
     add(G.terminal!, 'terminal', h, 'terminal', `shell console ssh ${h}`, () => dkTerminal(h));
   add(G.files!, 'files', '', 'files', 'folders browse home share', () => filesWin());
-  add(G.apps!, 'apps', '', 'app', 'install store services extras', () => dkOpenApp('apps'));
+  add(G.apps!, 'service wizard', '', 'app', 'apps install store services extras catalogue', () => dkOpenApp('apps'));
   for (const a of dkWebApps()) add(G.app!, a.id, `v${a.want.version}`, 'app', 'editor code app', () => dkWebApp(a.id));
   for (const r of dk.services)
     add(G.service!, r.name, r.host, 'service', `service site ${r.public ? 'public' : ''}`, () => dkService(r));

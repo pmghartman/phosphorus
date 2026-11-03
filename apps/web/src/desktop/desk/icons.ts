@@ -18,9 +18,11 @@ import { dkMcpTray, mcpStat } from '../../features/mcp.ts';
 import { dkBellTray } from '../../features/notes.ts';
 import { DK_GLYPHS, dkGlyph, el, isMobile, mobileQuery, svgEl } from '../../lib/dom.ts';
 import { dk, st } from '../../lib/state.ts';
+import { dkSettings } from '../../settings/settings.ts';
 import { dkControlTray } from '../control.ts';
 import { dkView } from '../desk.ts';
 import { dkDeskDir, dkDeskView, dkDeskWatch, dkFileIcon } from '../deskfiles.ts';
+import { dkMeshQuick, dkUpdateQuick } from '../quick.ts';
 import { dkSessionHold, dkSessionRestore, dkSessionTry } from '../session.ts';
 import { dkSpotlightTray } from '../spotlight.ts';
 import { dkBar, dkChips, dkClock, dkHomeBtn, dkPlaceItems } from '../taskbar.ts';
@@ -42,7 +44,9 @@ export function dkDesktop(): void {
   const bell = dkBellTray();
   const agent = st.acct?.boot ? null : dkMcpTray();
   const search = dkSpotlightTray();
-  bar.append(search, ...(agent ? [agent] : []), bell, ctl);
+  const mesh = st.acct?.boot ? null : dkMeshQuick();
+  const update = st.acct?.boot ? null : dkUpdateQuick();
+  bar.append(search, ...[mesh, update, agent].filter((x): x is HTMLElement => !!x), bell, ctl);
   const menubar = el('div', 'dk-bar dk-menubar');
   const app = el('span', 'dk-menubar-app');
   app.append(dkGlyph(DK_GLYPHS.mesh!, 'dk-menubar-app-ic'), el('span', 'dk-menubar-app-t', 'phosphorus'));
@@ -60,7 +64,7 @@ export function dkDesktop(): void {
     bar,
     menubar,
     app,
-    items: { search, hosts, agent, bell, clock: dk.clock!, profile: ctl },
+    items: { search, hosts, mesh, update, agent, bell, clock: dk.clock!, profile: ctl },
   };
   dkPlaceItems();
   dk.chips = '';
@@ -272,7 +276,8 @@ export function dkIcons(): void {
   const want: [string, () => HTMLButtonElement][] = [
     ['terminal', () => dkIcon('terminal', 'terminal', '', dkTermApp)],
     ['files', () => dkIcon('files', 'files', '', () => filesWin())],
-    ['apps', () => dkIcon('apps', 'apps', '', () => dkOpenApp('apps'))],
+    ['apps', () => dkIcon('apps', 'service wizard', '', () => dkOpenApp('apps'))],
+    ['settings', () => dkIcon('settings', 'settings', '', () => dkSettings())],
     ...webapps.map((a): [string, () => HTMLButtonElement] => [
       `webapp\n${a.id}`,
       () => dkIcon('app', a.id, '', () => dkWebApp(a.id), a.mount + 'icon.svg'),

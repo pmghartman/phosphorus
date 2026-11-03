@@ -88,25 +88,8 @@ body:has(.dk-pop:not([hidden])) .toasts {
     animation: none;
   }
 }
-/* the bar's right side: the hosts, a rule, the bell, then the clock and the user */
-.dk-bar .dk-tray-wrap:has(> .dk-bell)::before,
-.dk-bar .dk-tray-wrap:has(> .dk-mcp-btn)::before {
-  content: "";
-  align-self: center;
-  width: 1px;
-  height: 1.1rem;
-  margin-right: 0.3rem;
-  background: var(--border);
-}
-/* the agent tray leads the pair, so the bell needs no rule of its own after it */
-.dk-bar .dk-tray-wrap:has(> .dk-mcp-btn) + .dk-tray-wrap:has(> .dk-bell)::before {
-  display: none;
-}
-.dk-bar .dk-bell,
-.dk-bar .dk-mcp-btn {
-  width: 2rem;
-}
-/* the bar's right end: hosts, bell and clock close together, the button flush to the edge */
+/* the bar's right end: the status buttons evenly spaced, each the same narrow slot, no rules
+   between them; the button flush to the edge */
 .dk-bar {
   gap: 0.3rem;
   padding-right: 0;
@@ -114,21 +97,8 @@ body:has(.dk-pop:not([hidden])) .toasts {
 .dk-bar .dk-tasks {
   margin-right: 0.3rem;
 }
-.dk-bar .dk-bell,
-.dk-bar .dk-mcp-btn {
+.dk-bar .dk-tray-wrap:not(.dk-ctl) > .dk-tray {
   width: 1.9rem;
-}
-.dk-bar .dk-tray-wrap:has(> .dk-bell)::before,
-.dk-bar .dk-tray-wrap:has(> .dk-mcp-btn)::before {
-  margin-right: 0.15rem;
-}
-/* the agent tray and the bell one pair: no gap between, each a narrower slot */
-.dk-bar .dk-tray-wrap:has(> .dk-mcp-btn) + .dk-tray-wrap:has(> .dk-bell) {
-  margin-left: -0.3rem;
-}
-.dk-bar .dk-tray.dk-mcp-btn,
-.dk-bar .dk-mcp + .dk-tray-wrap > .dk-tray.dk-bell {
-  width: 1.75rem;
 }
 .dk-ctl > .dk-profile {
   padding: 0 0.55rem;

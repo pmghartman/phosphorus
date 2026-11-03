@@ -398,6 +398,7 @@ document.getElementById('update-cancel')!.addEventListener('click', () => {
 // the update pane's part of a state push: the lock, the hosts' versions, the walk and the dot
 export function updateState(state: State): void {
   meshLock = state.lock && state.lock.initiator ? state.lock : null;
+  for (const fn of watchers) fn();
   notifyMesh(state);
   renderUpdateButton();
   updateSeen = { tailnet: state.tailnet, selfVersion: state.self.version || '' };
@@ -417,9 +418,13 @@ export function updateState(state: State): void {
 // --- updates waiting: the mesh's release, a blue dot and one note
 
 export const updates: Record<string, string> = { mesh: '' };
+// told whenever a release or a walk comes or goes: the bar's update button
+const watchers = new Set<() => void>();
+export const updateWatch = (fn: () => void) => void watchers.add(fn);
 const UPDATE_NOTED = 'phosphorus-update-noted';
 
 function paintUpdates() {
+  for (const fn of watchers) fn();
   dk.ctl?.btn.classList.toggle('has-update', !!updates.mesh);
   dk.ctl?.draw();
   let noted: Record<string, string> = {};

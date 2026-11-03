@@ -24,6 +24,10 @@ const icons: Record<string, string> = {
   host: 'M1.5 2.5h13v4.5h-13zM1.5 9h13v4.5h-13zM4 4.75h1.5M4 11.25h1.5',
 };
 
+// the settings' gear: eight square teeth round a hub, the bar's and the desktop's alike
+const gear =
+  'M6.66 3.18L6.84 1.50L9.16 1.50L9.34 3.18L10.46 3.65L11.77 2.59L13.41 4.23L12.35 5.54L12.82 6.66L14.50 6.84L14.50 9.16L12.82 9.34L12.35 10.46L13.41 11.77L11.77 13.41L10.46 12.35L9.34 12.82L9.16 14.50L6.84 14.50L6.66 12.82L5.54 12.35L4.23 13.41L2.59 11.77L3.65 10.46L3.18 9.34L1.50 9.16L1.50 6.84L3.18 6.66L3.65 5.54L2.59 4.23L4.23 2.59L5.54 3.65zM5.90 8a2.1 2.1 0 1 0 4.20 0a2.1 2.1 0 1 0 -4.20 0z';
+
 const set: IconSet = {
   id: 'default',
   label: 'default',
@@ -33,8 +37,10 @@ const set: IconSet = {
   // the desktop's apps and the bar's tools
   glyphs: {
     bell: 'M8 2.2a3.1 3.1 0 0 0-3.1 3.1v2.2L3.4 10.2h9.2L11.1 7.5V5.3A3.1 3.1 0 0 0 8 2.2zM6.6 12.6a1.4 1.4 0 0 0 2.8 0',
-    update: 'M8 10.5v-8M4.8 5.5L8 2.5l3.2 3M2.5 9v4.5h11V9',
-    gear: 'M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4',
+    // a release coming down into the hosts
+    update: 'M8 1.5v8.5M4.5 6.5L8 10l3.5-3.5M2 10.5v3h12v-3',
+    gear,
+    settings: gear,
     power: 'M8 1.5v6M4.6 3.8a5 5 0 1 0 6.8 0',
     spark: 'M8 1.5l1.4 5.1 5.1 1.4-5.1 1.4L8 14.5l-1.4-5.1L1.5 8l5.1-1.4z',
     reload: 'M13.5 8a5.5 5.5 0 1 1-1.8-4.1M13.5 1.5v3.5h-3.5',
@@ -53,7 +59,8 @@ const set: IconSet = {
     games:
       'M2.5 5h11a1 1 0 0 1 1 1v5a2 2 0 0 1-3.5 1.3L9.5 11h-3L5 12.3A2 2 0 0 1 1.5 11V6a1 1 0 0 1 1-1zM4.5 7v2.5M3.25 8.25h2.5M10.5 7.5h.01M12 9h.01',
     about: 'M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM8 7v4.5M8 4.75h.01',
-    apps: 'M2 2h5v5H2zM9 2h5v5H9zM2 9h5v5H2zM11.5 9.5v5M9 12h5',
+    // the service wizard: a wizard's hat, its tip curled over, a band round it
+    apps: 'M1.5 13c2 1.2 11 1.2 13 0M3.8 12.7L7.5 3.2C8.4 1.5 10.5 1.2 12 2.5c-1.5-.2-2.6.6-2.6 2.2l2.8 8M5.2 9.8c1.6.7 4 .7 5.7 0',
     mesh: 'M6.5 1.5h3v3h-3zM1.5 11.5h3v3h-3zM11.5 11.5h3v3h-3zM7.2 4.5l-3.4 7M8.8 4.5l3.4 7M4.5 13h7',
     lock: 'M4 7.5h8v6H4zM5.5 7.5V5a2.5 2.5 0 0 1 5 0v2.5',
     crown: 'M5.6 3.9L5 1.2l1.7 1.3L8 .6l1.3 1.9L11 1.2l-.6 2.7z',

@@ -1,0 +1,168 @@
+/* --- the bar's quick buttons (desktop/quick.ts, features/mcp.ts): mesh, update and agent, each its
+   popup as it was before settings: the view's own card, its name on the top edge ---------------- */
+
+/* the mesh: the graph and pings, a column up from the button, its corner a grip */
+.dk-mesh-pop {
+  z-index: 20;
+  display: flex;
+  animation: pop-in 0.16s ease-out;
+}
+.dk-mesh-pop[hidden] {
+  display: none;
+}
+.dk-mesh-grip {
+  position: absolute;
+  z-index: 3;
+  left: 0;
+  top: 0;
+  width: 0.8rem;
+  height: 0.8rem;
+  cursor: nwse-resize;
+  touch-action: none;
+}
+.dk-mesh-grip::before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  width: 5px;
+  height: 5px;
+  border-left: 1px solid var(--muted);
+  border-top: 1px solid var(--muted);
+  opacity: 0.5;
+}
+.dk-mesh-grip:hover::before {
+  opacity: 1;
+  border-color: var(--accent);
+}
+.dk-mesh-pop > .mesh-panel {
+  display: flex !important;
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+  animation: none;
+  background: var(--card);
+  box-shadow: var(--drop);
+}
+.dk-mesh-pop .mesh-header {
+  font-size: 0.72rem;
+}
+.dk-mesh-pop .mesh-header > * {
+  background: var(--card);
+}
+
+/* the update: its pane a card as wide and tall as what it holds, its title on the top edge */
+.dk-update-pop {
+  z-index: 20;
+  display: flex;
+}
+.dk-update-pop[hidden] {
+  display: none;
+}
+.dk-update-pop > .update-pane {
+  position: relative;
+  width: max-content;
+  min-width: 15rem;
+  max-width: calc(100vw - 1rem);
+  max-height: calc(100vh - 4rem);
+  padding: 0.45rem 0.15rem 0.2rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  box-shadow: var(--drop);
+  font-size: 0.75rem;
+  animation: pop-in 0.16s ease-out;
+}
+.dk-update-pop .update-pane-header {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  left: 0.5rem;
+  right: 0.5rem;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  line-height: 1;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  pointer-events: none;
+}
+.dk-update-pop .update-pane-header > * {
+  padding: 0 0.45ch;
+  background: var(--card);
+  pointer-events: auto;
+}
+.dk-update-pop .update-pane-header > span {
+  color: var(--sage);
+}
+.dk-update-pop .update-pane-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding-top: 0.2rem;
+  overflow-y: auto;
+}
+.dk-update-pop .update-row {
+  padding: 0.2rem 0.5rem;
+}
+.dk-update-pop .update-head {
+  padding: 0.3rem 0.5rem 0.05rem;
+}
+.dk-update-pop .update-confirm {
+  padding: 0.45rem 0.5rem;
+}
+.dk-update-pop .update-mesh {
+  padding-bottom: 0.35rem;
+}
+
+/* the agent: its keys, steps, switch, state and calls straight in the popup's card */
+.dk-mcp-pop {
+  display: flex;
+  flex-direction: column;
+  background: var(--card);
+  border: 1px solid var(--border);
+  box-shadow: var(--drop);
+  font-size: 0.75rem;
+  animation: pop-in 0.12s ease-out;
+}
+.dk-mcp-pop[hidden] {
+  display: none;
+}
+.dk-cl-quick {
+  display: contents;
+}
+
+/* the bar's buttons lit while their popup is up; update's dot while a release waits, its glyph
+   pulsing while one runs */
+.dk-quick > .dk-tray:is(:hover, [aria-expanded="true"]),
+.dk-mcp-btn:is(:hover, [aria-expanded="true"]) {
+  color: var(--accent);
+}
+.dk-quick > .dk-tray {
+  position: relative;
+}
+.dk-quick > .dk-tray.has-update::after {
+  content: "";
+  position: absolute;
+  top: 0.3rem;
+  right: 0.25rem;
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: var(--sky);
+}
+.dk-quick > .dk-tray.busy .ic {
+  color: var(--accent);
+  animation: dk-quick-pulse 1.4s ease-in-out infinite;
+}
+@keyframes dk-quick-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dk-quick > .dk-tray.busy .ic {
+    animation: none;
+  }
+}

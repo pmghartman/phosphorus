@@ -91,6 +91,8 @@ const LAYOUT_NAMES: Record<string, string> = {
 const ITEM_NAMES: Record<string, string> = {
   search: 'search',
   hosts: 'hosts',
+  mesh: 'mesh',
+  update: 'update',
   agent: 'agent',
   bell: 'notifications',
   clock: 'clock',

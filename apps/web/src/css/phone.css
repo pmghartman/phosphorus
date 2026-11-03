@@ -104,8 +104,7 @@
   .dk-bar .dk-tray {
     padding: 0 0.75rem;
   }
-  .dk-bar .dk-tray.dk-mcp-btn,
-  .dk-bar .dk-mcp + .dk-tray-wrap > .dk-tray.dk-bell {
+  .dk-bar .dk-tray-wrap:not(.dk-ctl) > .dk-tray {
     width: auto;
     padding: 0 0.6rem;
   }

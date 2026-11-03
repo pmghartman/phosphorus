@@ -227,6 +227,9 @@
 .dk-icon.dk-service .ic {
   color: var(--teal);
 }
+.dk-icon.dk-settings .ic {
+  color: var(--sky);
+}
 .dk-mono text {
   fill: currentColor;
   stroke: none;
@@ -239,8 +242,9 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* a file's whole name over two lines, its extension kept */
-.dk-icon[data-file] .dk-label {
+/* a file's whole name over two lines, its extension kept; the service wizard's two words */
+.dk-icon[data-file] .dk-label,
+.dk-icon.dk-apps .dk-label {
   white-space: normal;
   overflow-wrap: anywhere;
   text-align: center;

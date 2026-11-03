@@ -2,7 +2,7 @@
 
 import type { AppSummary, FoundPage, SourceId, StackView } from '@phosphorus/wire';
 import { jsonPost } from '../../lib/api.ts';
-import { dkGlyph, el, ICONS } from '../../lib/dom.ts';
+import { DK_GLYPHS, dkGlyph, el, ICONS } from '../../lib/dom.ts';
 import { dk, st } from '../../lib/state.ts';
 import { pollState } from '../../lib/sync.ts';
 import { facts, iconOf, iconTile, pill, tileSub } from './apps.ts';
@@ -389,10 +389,20 @@ function servicesTab(wrap: HTMLElement, q: string) {
       },
     ),
   );
-  // a catalogue this host couldn't fetch, or is fetching for the first time, said beside its name
+  // the catalogues this host couldn't fetch, said once with each one's why on hover; one being
+  // fetched for the first time said by name
+  const failed = sources.filter((s) => s.error);
+  if (failed.length) {
+    const n = el(
+      'span',
+      'store-repo-note store-unfetched',
+      `${failed.map((s) => s.name).join(', ')} couldn’t be reached from this host; refresh tries again`,
+    );
+    n.title = failed.map((s) => `${s.name}: ${s.error}`).join('\n');
+    filters.append(n);
+  }
   for (const s of sources)
-    if (s.error) filters.append(el('span', 'store-repo-err', `${s.name}: ${s.error}`));
-    else if (fetching(s)) filters.append(el('span', 'store-repo-note', `fetching ${s.name}…`));
+    if (!s.error && fetching(s)) filters.append(el('span', 'store-repo-note', `fetching ${s.name}…`));
   wrap.append(filters);
   const inSource = catalog.apps.filter((a) => !stateVars.source || a.source === stateVars.source);
   if (!q && !stateVars.category) {
@@ -466,6 +476,15 @@ function servicesTab(wrap: HTMLElement, q: string) {
 export function front(): HTMLElement {
   const wrap = el('div', 'store-front');
   const onApps = stateVars.tab === 'apps';
+  // the wizard's own banner, then its two tabs and what the one open is for
+  const hero = el('div', 'store-hero');
+  const words = el('div', 'store-hero-t');
+  words.append(
+    el('h1', 'store-hero-title', 'service wizard'),
+    el('p', 'store-hero-sub', 'Install self-hosted services onto your hosts, and apps onto this desktop.'),
+  );
+  hero.append(dkGlyph(DK_GLYPHS.apps!, 'store-hero-ic'), words);
+  wrap.append(hero);
   const head = el('div', 'store-head');
   const title = el('div', 'store-title');
   title.append(tabs(), el('p', 'store-lead', TABS[stateVars.tab].lead));
