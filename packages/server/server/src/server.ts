@@ -1,7 +1,6 @@
 // this host for the mesh: its state published to peers and built for the
 // page, the update chain and guest keys
 import * as catalog from "@phosphorus/catalog";
-import * as git from "@phosphorus/git";
 import { State as modelState, Summary } from "@phosphorus/model";
 import * as peers from "@phosphorus/peers";
 import { own as ownServices, unpublished, wildcard } from "@phosphorus/services";
@@ -38,8 +37,10 @@ export function publishHost() {
     wildcard: wildcard(),
     stacks: stacks.statuses(),
     docker: stacks.dockerInfo(),
+    legacyGit: stacks.legacyInfo(),
     ...catalog.facts(),
   });
+  void stacks.tickLegacy(selfHost);
 }
 
 // every phosphorus host as a place to install an app: its tailnet os and its info
@@ -77,8 +78,6 @@ export function hostServices(h: string): Record<string, any>[] | undefined {
 
 // --- state ------------------------------------------------------------------
 
-export const gitRowsAny = (): any[] => git.rows().map((r) => ({ ...r }));
-
 export function buildState(): Record<string, any> {
   let chain = update.chainStatus();
   const mine = chain !== null && chain !== undefined;
@@ -89,7 +88,6 @@ export function buildState(): Record<string, any> {
     routes: peers.routes(),
     tailnet: peers.tailnet(),
     lock: update.meshLock(),
-    gitHosts: gitRowsAny(),
     model: Summary(),
     chain: chain ?? null,
     chainMine: mine,
@@ -97,7 +95,16 @@ export function buildState(): Record<string, any> {
     apps: webapps.wants(),
     home: homesync.digest(),
     stacks: stacks.views(),
+    legacyGit: stacks.legacyOf() ?? null,
   };
+}
+
+// a stack served: its active copy up and well somewhere
+export function stackServing(id: string): boolean {
+  return Object.values(hostsInfo()).some((i) => {
+    const s = obj(obj(obj(i)?.stacks)?.[id]);
+    return s?.role === "active" && s.running === true && s.healthy !== false;
+  });
 }
 
 let lastStateFp = "";
@@ -111,13 +118,13 @@ function stateFp(s: Record<string, any>): string {
     s.lock,
     s.chain,
     tn,
-    git.rowsFp(git.rows()),
     m.agents,
     m.keys,
     s.hosts,
     s.apps,
     s.home,
     s.stacks,
+    s.legacyGit,
   ]);
 }
 
@@ -134,7 +141,6 @@ export function ownState(): peers.Own {
   return {
     lock: update.ownLock(),
     chain: update.sharedChain(),
-    git: git.state(),
     model: modelState() ?? null,
     ha: ownHA(),
   };
@@ -147,8 +153,9 @@ export function chainAction(action: string, password: string, admin: boolean, on
     case "start": {
       if (!admin && (adminPass === "" || password !== adminPass))
         return [401, { error: "admins only, or the admin password" }];
-      const hosts = git.rows().map((h) => str(h.host));
-      const started = update.start(hosts, only);
+      // the hosts serving a stack with standbys updated last, each handing it over
+      const ha = Object.values(stacks.views()).flatMap((v) => (v.standbys.length ? [v.active] : []));
+      const started = update.start(ha, only);
       if ("locked" in started) return [409, { status: "locked", by: started.locked }];
       if ("error" in started) return [404, { error: started.error }];
       return [202, started];

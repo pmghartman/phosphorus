@@ -47,12 +47,8 @@ jobs:
       builds: ${{ steps.plan.outputs.builds }}
       # the lockfile's hash: the bun cache's key, and what prune keeps
       lock: ${{ steps.lock.outputs.lock }}
-      # the pinned Forgejo version the release notes link the source of
-      forgejo: ${{ steps.fj.outputs.forgejo }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - id: fj
-        run: echo "forgejo=$(sed -n 's/^FORGEJO=//p' packaging/tools.sh)" | tee -a "$GITHUB_OUTPUT"
       - id: lock
         run: echo "lock=${{ hashFiles('bun.lock') }}" | tee -a "$GITHUB_OUTPUT"
       # every run one past the highest vMAJOR.MINOR tag: minor, or major with .0
@@ -245,7 +241,6 @@ jobs:
       contents: write
     env:
       VER: ${{ needs.version.outputs.ver }}
-      FJ: ${{ needs.version.outputs.forgejo }}
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
@@ -270,7 +265,7 @@ jobs:
             step() { echo "- $1"; }
             [ -e phosphorus-$VER-macos-universal.dmg ] && step "**macOS:** open the \`.dmg\`, drag Phosphorus to Applications, open it (first time: right-click, Open). It lives in the menu bar."
             [ -e phosphorus-$VER-windows-x86_64-setup.exe ] && step "**Windows:** run the setup \`.exe\` (SmartScreen: More info, Run anyway). It lives in the tray."
-            ls phosphorus_${VER}_*.deb >/dev/null 2>&1 && step "**Linux:** \`sudo apt install ./phosphorus_${VER}_ARCH.deb\`, then \`sudo phosphorus\`. It bundles Forgejo ${FJ} (GPL-3.0), source: [forgejo-src-${FJ}.tar.gz](https://codeberg.org/forgejo/forgejo/releases/download/v${FJ}/forgejo-src-${FJ}.tar.gz)."
+            ls phosphorus_${VER}_*.deb >/dev/null 2>&1 && step "**Linux:** \`sudo apt install ./phosphorus_${VER}_ARCH.deb\`, then \`sudo phosphorus\`."
             echo
             echo "Then enter the Tailscale auth key when asked; every other host copies the rest from the mesh. Open \`http://HOST\` from any device on the tailnet, by a host's name or tailnet IP. The first login is \`admin\` with your admin password."
             echo

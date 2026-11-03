@@ -1,7 +1,6 @@
 // the window manager: one window per terminal, files, service or app, moved, resized,
 // snapped, minimized into its task bar button and back
 
-import type { Connection } from '../features/mesh/mesh.ts';
 import { DK_GLYPHS, DK_UI, dkGlyph, el, isMobile } from '../lib/dom.ts';
 import { dk } from '../lib/state.ts';
 import { dkAppsChanged, dkMenu, type MenuItem } from './desk.ts';
@@ -42,8 +41,6 @@ export interface DkWin {
   // a website window's back button and frame
   back?: HTMLButtonElement;
   frame?: NavFrame;
-  // the git window's own: its url, the master in its title, its connection on the graph
-  git?: { url: string; master: string; conn: Connection | null };
   // lit by the agent's touch, the timer of its glow
   agentLit?: ReturnType<typeof setTimeout> | 0;
 }
@@ -473,6 +470,21 @@ export function dkClose(w: DkWin, force?: boolean): void {
   dkAppsChanged();
   dkTouch();
 }
+
+// a press inside a service's frame never reaching the page, its window raised by the page's blur
+addEventListener('blur', () =>
+  setTimeout(() => {
+    const f = document.activeElement;
+    const w = f?.classList.contains('dk-frame') && [...dk.wins.values()].find((o) => o.body.contains(f));
+    if (w && !w.node.classList.contains('focused')) dkFocus(w);
+  }),
+);
+
+// shells ended with the page, not left for their grace
+addEventListener('pagehide', (e) => {
+  if (!(e as PageTransitionEvent).persisted)
+    for (const w of [...dk.wins.values()]) if (w.kind === 'term') dkClose(w, true);
+});
 
 // --- a website window's back: history.back() undoes the newest frame load
 // anywhere, so only the window holding it gets one

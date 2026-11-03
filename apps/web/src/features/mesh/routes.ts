@@ -38,6 +38,3 @@ export function pruneConnections(): void {
 // a host's OS, from /api/state's tailnet (tailscale itself sees every
 // host as linux)
 export const hostPlatform = new Map<string, string>();
-
-// forgejo's service name, its own app rather than a service icon
-export const GIT_SERVICE = 'git';

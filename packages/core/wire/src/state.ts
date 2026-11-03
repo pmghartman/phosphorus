@@ -1,4 +1,4 @@
-import type { DockerInfo, StackStatus, StackView } from "./stacks.ts";
+import type { DockerInfo, LegacyGit, StackStatus, StackView } from "./stacks.ts";
 
 // --- /api/state: buildState() in packages/server/src/server.ts, pushed over the same path's socket
 
@@ -27,21 +27,9 @@ export interface Route {
   scheme?: string;
   // open to all behind its own login, no phosphorus login
   public?: boolean;
-  // the git service: its master flag, set on the serving copy
+  // a failover service's master flag, set on the serving copy
   master?: boolean;
   [k: string]: unknown;
-}
-
-// one git host on the card (packages/git rowsOf)
-export interface GitHost {
-  host: string;
-  reachable: boolean;
-  role?: string;
-  master?: string;
-  gen?: number | null;
-  ageSec?: number | null;
-  eligible?: boolean;
-  updating?: boolean;
 }
 
 // a model host's row, with the agents asking it (packages/model Summary)
@@ -128,6 +116,8 @@ export interface HostInfo {
   stacks?: Record<string, StackStatus>;
   // docker here, for the install check
   docker?: DockerInfo;
+  // the old built-in git's copy of Forgejo's data here, its version, until it's deleted
+  legacyGit?: { gen: number; stamp: number };
 }
 
 export interface FoundPage {
@@ -169,7 +159,6 @@ export interface State {
   routes: Route[];
   tailnet: TailnetDevice[];
   lock?: MeshLock | null;
-  gitHosts: GitHost[];
   model?: ModelSummary;
   chain?: Chain | null;
   chainMine?: boolean;
@@ -178,6 +167,8 @@ export interface State {
   apps?: Record<string, AppWant>;
   // the installed services, by id
   stacks?: Record<string, StackView>;
+  // the move off the old built-in git, while there's one
+  legacyGit?: LegacyGit | null;
   // the home's digest on this host: anything in it changed, the folders shown read again
   home?: string;
   pollMs?: number;

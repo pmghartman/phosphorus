@@ -27,29 +27,6 @@
   font-size: 0.8rem;
   margin-left: 0.5rem;
 }
-.db-icon {
-  width: 0.7em;
-  height: 0.8em;
-  margin-right: 0.3em;
-  vertical-align: -0.05em;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 0.9;
-}
-
 .empty {
   color: var(--muted);
 }
-
-/* git: pinned above the services, a row like theirs, hosts folded under it when
-   collapsed, slid out into a tree when open (app.js layoutGitStack) */
-/* the link over the whole card, like the other service cards, the chevron above it */
-/* the graph's chevron, turning the same way as the hosts unfold */
-
-/* clipped at its own bottom edge only: a box mid-slide never painting over the services below */
-/* one straight guide down from the chevron, as the files tree draws them */
-
-/* one glyph and hue per state: ● master, ○ ready (filled on hover), ◌ catching
-   up, × unreachable, a turning ◐ mid-switch, a wide target in the row's rhythm */
-/* ○ and ● drawn, not typed, oval as monospace glyphs */
-/* time behind the master, the transfer bar's cells: green, yellow, red */

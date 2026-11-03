@@ -95,14 +95,6 @@ export const coreTools = (): Tool[] => [
     run: (a) => (str(a.host) ? hostStats(knownHost(a)) : statsAll()),
   },
   {
-    name: "git",
-    title: "Git hosts",
-    read: true,
-    description: "The git hosts (forgejo): which is master, which are replicas, how far behind, reachable or not.",
-    schema: object(),
-    run: () => src.gitHosts(),
-  },
-  {
     name: "models",
     title: "Models and agents",
     read: true,
@@ -222,19 +214,6 @@ export const coreTools = (): Tool[] => [
       };
       if (end < u.length) out.next = end;
       return out;
-    },
-  },
-  {
-    name: "make_git_master",
-    title: "Make git master",
-    description:
-      "The git card's make master: the live master hands off to this host, or with none it is force-promoted. " +
-      "Returns once it leads (up to 30s), never press it again while one is under way.",
-    schema: object({ host: name }, "host"),
-    run: (a, m) => {
-      adminOf(m);
-      askerOf(m);
-      return pressed(src.actions.gitMaster(knownHost(a)));
     },
   },
   {

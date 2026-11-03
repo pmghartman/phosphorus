@@ -175,7 +175,6 @@ all.push({
   texts: [await fetchText(`https://raw.githubusercontent.com/oven-sh/bun/bun-v${Bun.version}/LICENSE.md`)],
 });
 const tools = JSON.parse(readFileSync(join(root, "packaging/tools-licenses.json"), "utf8"));
-const forgejo = pinned("packaging/tools.sh", "^FORGEJO=(\\S+)");
 for (const [group, list] of [
   [bundled, tools.bundled],
   [fetched, tools.fetched],
@@ -220,17 +219,13 @@ under its own license; the phosphorus license (LICENSE) covers none of them.
 Components are listed by group, then every distinct license text follows once,
 with the components it covers.
 
-Forgejo runs as a separate, unmodified program; phosphorus only writes its
-configuration. Its complete corresponding source, forgejo-src-${forgejo}.tar.gz, is at:
-https://codeberg.org/forgejo/forgejo/releases/download/v${forgejo}/forgejo-src-${forgejo}.tar.gz
-
 With [model] gpu on an nvidia gpu, the model host also downloads NVIDIA's CUDA
 runtime from llama.cpp's releases, under the NVIDIA CUDA EULA
 (https://docs.nvidia.com/cuda/eula/). phosphorus ships no model; a model's
 weights come under its own license.
 
-Cloudflare, Forgejo and Tailscale are trademarks of their respective owners;
-phosphorus is not affiliated with or endorsed by any of them.
+Cloudflare and Tailscale are trademarks of their respective owners;
+phosphorus is not affiliated with or endorsed by either.
 `;
 for (const g of groups) {
   out += `\n\n== ${g} ==\n\n`;

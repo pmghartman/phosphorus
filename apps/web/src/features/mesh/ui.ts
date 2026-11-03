@@ -85,12 +85,11 @@ function animateMeshT(target: number) {
 meshPanel.classList.add('expanded');
 meshT = 1;
 
-// the nodes and git rows folded under their heads, the legend behind a ?; kept per browser
+// the nodes folded under their head, the legend behind a ?; kept per browser
 export const MESH_UI_KEY = 'phosphorus-mesh-ui';
 export const meshUi: {
   legend?: boolean;
   nodes?: boolean;
-  git?: boolean;
   size?: { w: number; h: number };
   [k: string]: unknown;
 } = (() => {

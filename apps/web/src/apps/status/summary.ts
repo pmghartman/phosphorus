@@ -55,8 +55,6 @@ export function drawMeshSum(names: string[]) {
   const ioW = sum((s) => s.io?.w);
   const load = sum((s) => s.cpu.load[0]);
   const ctr = sum((s) => s.parts?.length);
-  const git = (stNet?.gitHosts || []).filter((g) => g.reachable);
-  const master = git.find((g) => g.role === 'master');
   const svc = (stNet?.routes || []).filter((r) => !r.type).length;
   const off = names.length - live.length;
   const rows = (
@@ -96,14 +94,6 @@ export function drawMeshSum(names: string[]) {
     text('io', `<span class="st-rx">▼ ${rate(ioR)}</span>  <span class="st-tx">▲ ${rate(ioW)}</span>`),
     text('load', `${load.toFixed(2)} <span class="st-dim">1m, all hosts</span>`),
     text('run', dotJoin([plural(svc, 'service'), plural(ctr, 'process', 'processes')])),
-    git.length &&
-      text(
-        'git',
-        dotJoin([
-          master ? `master ${esc(master.host)}` : '<span class="st-hi">no master</span>',
-          git.length > 1 && `${git.filter((g) => g.role !== 'master' && g.eligible).length}/${git.length - 1} in sync`,
-        ]),
-      ),
   ]
     .filter(Boolean)
     .join('');

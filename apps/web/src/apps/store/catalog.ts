@@ -314,6 +314,7 @@ export function sourceOf(id: SourceId): SourceInfo | undefined {
   return catalog?.sources.find((s) => s.id === id);
 }
 export const SOURCE_NAMES: Record<SourceId, string> = {
+  phosphorus: 'Phosphorus',
   casaos: 'CasaOS',
   runtipi: 'Runtipi',
   cosmos: 'Cosmos',

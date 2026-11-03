@@ -17,7 +17,6 @@ export interface PeerState {
   type: "state";
   lock?: unknown;
   chain?: unknown;
-  git?: unknown;
   model?: unknown;
   // each failover group's state, by group
   ha?: unknown;

@@ -32,7 +32,7 @@ export async function uninstall(opts: string[]) {
   say(`removed ${home}`);
 }
 
-// purgeLinux the package's own scripts: units stopped, links, git account and
+// purgeLinux the package's own scripts: units stopped, links and
 // /var/lib/phosphorus gone; in a unit of its own, outliving phosphorus's terminals
 async function purgeLinux() {
   say("purging the phosphorus package...");

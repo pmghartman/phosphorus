@@ -9,6 +9,7 @@ import { casaos } from "./adapters/casaos.ts";
 import { type Adapter, Skip } from "./adapters/common.ts";
 import { cosmos } from "./adapters/cosmos.ts";
 import { runtipi } from "./adapters/runtipi.ts";
+import * as featured from "./featured.ts";
 import type { Fetch } from "./registry.ts";
 import { entries } from "./tar.ts";
 
@@ -163,27 +164,31 @@ export function refresh(a: Adapter, force = false): Promise<void> {
 export const refreshAll = (force = false) => Promise.all(adapters.map((a) => refresh(a, force)));
 
 export function sources(): SourceInfo[] {
-  return adapters.map((a) => {
-    const m = meta(a);
-    const s: SourceInfo = {
-      id: a.id,
-      name: a.name,
-      repo: `https://github.com/${a.repo}`,
-      licence: a.licence,
-      apps: load(a)?.apps.length ?? 0,
-      fetchedAt: m.fetchedAt,
-    };
-    if (m.error) s.error = m.error;
-    return s;
-  });
+  return [
+    featured.source,
+    ...adapters.map((a) => {
+      const m = meta(a);
+      const s: SourceInfo = {
+        id: a.id,
+        name: a.name,
+        repo: `https://github.com/${a.repo}`,
+        licence: a.licence,
+        apps: load(a)?.apps.length ?? 0,
+        fetchedAt: m.fetchedAt,
+      };
+      if (m.error) s.error = m.error;
+      return s;
+    }),
+  ];
 }
 
-// every source's apps, an id taken by an earlier source prefixed with the later's
+// every source's apps, phosphorus's own first, an id taken by an earlier source
+// prefixed with the later's
 let merged: AppDef[] | undefined;
 export function all(): AppDef[] {
   if (merged) return merged;
-  const out: AppDef[] = [];
-  const taken = new Set<string>();
+  const out: AppDef[] = [...featured.apps];
+  const taken = new Set(out.map((d) => d.id));
   for (const a of adapters)
     for (const d of load(a)?.apps ?? []) {
       let id = d.id;
@@ -199,6 +204,7 @@ export function all(): AppDef[] {
 export const find = (source: string, ref: string) => all().find((d) => d.source === source && d.ref === ref);
 
 export function tree(source: string, ref: string): TreeEntry[] {
+  if (source === "phosphorus") return featured.tree(ref);
   const a = adapters.find((a) => a.id === source);
   return (a && load(a)?.trees[ref]) || [];
 }

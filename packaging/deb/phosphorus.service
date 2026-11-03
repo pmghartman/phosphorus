@@ -9,8 +9,8 @@ Environment=PHOSPHORUS_HOME=/var/lib/phosphorus
 ExecStart=/var/lib/phosphorus/bin/phosphorus run
 Restart=always
 RestartSec=5
-# TERM to run alone, which stops git (hand-off), the model, the tunnel and the
-# frontend in order; whatever is left killed after the timeout
+# TERM to run alone, which stops the model, the tunnel and the frontend (its
+# services handing off) in order; whatever is left killed after the timeout
 KillMode=mixed
 TimeoutStopSec=150
 # the model's weights locked in ram

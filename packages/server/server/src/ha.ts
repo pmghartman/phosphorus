@@ -1,7 +1,6 @@
 // failover for installed services as this frontend runs it: every group's
 // votes and view, the active's snapshot served to standbys, an admin's standby
 // edits and moves (@phosphorus/stacks/ha)
-import * as git from "@phosphorus/git";
 import * as peers from "@phosphorus/peers";
 import { setMasterOf } from "@phosphorus/services";
 import { ids, runtime, seams, viewOf, wantOf, wantRel } from "@phosphorus/stacks";
@@ -111,13 +110,6 @@ export async function haRoute(c: Ctx, pathname: string, method: string, q: URLSe
   if (m) {
     if (!(await isTailnet(c)) || !h) return forbidden();
     const [, g, op] = m as unknown as [string, string, string];
-    // git's group: its first routes' handlers
-    if (g === "git") {
-      if (op === "vote" && method === "POST") return onJSON(c, maxJSONBody, true, git.vote);
-      if (op === "view" && method === "GET")
-        return sendJSON(200, { states: git.view(), pollMs: intervalMS(), offlineMs: peers.offlineMS() });
-      return;
-    }
     if (op === "vote" && method === "POST") return onJSON(c, maxJSONBody, true, (p) => h!.vote(g, p));
     if (op === "view" && method === "GET") return sendJSON(200, h.view(g));
     if (op === "snap" && method === "GET") {

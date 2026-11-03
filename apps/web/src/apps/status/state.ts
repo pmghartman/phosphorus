@@ -39,7 +39,7 @@ export const stHosts = new Map<string, StHost>();
 export let stWs: WebSocket | null = null;
 export let stRetry: ReturnType<typeof setTimeout> | null = null;
 export let stFrame: number | null = null;
-// the last /api/state, for each header's ping, git role and services
+// the last /api/state, for each header's ping and services
 export let stNet: State | null = null;
 
 // the module's variables other modules set

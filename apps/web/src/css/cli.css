@@ -109,10 +109,6 @@
   background: color-mix(in srgb, var(--accent) 14%, transparent);
 }
 
-/* the mesh's own apps: git in a window */
-.dk-icon.dk-git .ic {
-  color: var(--sand);
-}
 .dk-tile {
   position: relative;
 }

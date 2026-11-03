@@ -218,8 +218,8 @@ test("a tool's error carries its code, a batch answers each request", async () =
   const peer = (await handle(rpc("tools/list"), false, undefined))[1].result.tools.map((t: any) => t.name);
   const local = (await handle(rpc("tools/list"), true, undefined))[1].result.tools.map((t: any) => t.name);
   expect(peer).toContain("mesh_hosts");
-  expect(peer).not.toContain("make_git_master");
-  expect(local).toContain("make_git_master");
+  expect(peer).not.toContain("update_control");
+  expect(local).toContain("update_control");
   expect(local).not.toContain("host_logs");
 });
 

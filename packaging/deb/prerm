@@ -1,5 +1,5 @@
 #!/bin/sh
-# the agent and the service stopped before the files go, git handing off first
+# the agent and the service stopped before the files go, its services handing off first
 set -e
 [ "$1" = remove ] || exit 0
 if [ -d /run/systemd/system ]; then

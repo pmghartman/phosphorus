@@ -26,7 +26,6 @@ import { dkSessionHold, dkSessionRestore, dkSessionTry } from '../session.ts';
 import { dkSpotlightTray } from '../spotlight.ts';
 import { dkBar, dkChips, dkClock, dkHomeBtn, dkPlaceItems } from '../taskbar.ts';
 import { dkClose, dkFocus, dkPlace, dkSnap } from '../windows.ts';
-import { dkGitFrame } from './git.ts';
 import { dkTermApp, dkTermDrop } from './terminal.ts';
 import { dkDeskMenu, dkService, dkWallPaint } from './wallpaper.ts';
 import { dkWebApp, dkWebApps } from './webapps.ts';
@@ -258,11 +257,9 @@ export function dkIcons(): void {
   if (!dk.desk) return;
   dkDeskWatch();
   const hosts = dkLiveHosts();
-  const git = !!st.gitRoute;
   const webapps = dkWebApps();
   const sig = JSON.stringify([
     hosts,
-    git,
     !!st.acct?.admin,
     dk.services.map((r) => [r.host, r.name, !!r.public]),
     webapps.map((a) => a.id),
@@ -277,18 +274,6 @@ export function dkIcons(): void {
   const want: [string, () => HTMLButtonElement][] = [
     ['terminal', () => dkIcon('terminal', 'terminal', '', dkTermApp)],
     ['files', () => dkIcon('files', 'files', '', () => filesWin())],
-    ...(git
-      ? [
-          [
-            'git',
-            () =>
-              dkGlobe(
-                dkIcon('git', 'git', '', () => dkOpenApp('git')),
-                'public: its own login only',
-              ),
-          ] as [string, () => HTMLButtonElement],
-        ]
-      : []),
     ['apps', () => dkIcon('apps', 'apps', '', () => dkOpenApp('apps'))],
     ...webapps.map((a): [string, () => HTMLButtonElement] => [
       `webapp\n${a.id}`,
@@ -658,7 +643,6 @@ export function dkRoutes(services: Route[]): void {
   dk.services = services;
   dkIcons();
   dkChips();
-  dkGitFrame();
   dkLoginHosts();
 }
 

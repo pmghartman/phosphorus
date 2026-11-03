@@ -1,11 +1,10 @@
 // master elections in named groups, every host's frontend voting, a majority
-// lease making one master, joint rosters keeping quorums overlapping: the group
-// git acted on by git-daemon.sh, each stack's (stack-<id>) by @phosphorus/stacks' ha
-import { readFileSync, rmSync, writeFileSync } from "node:fs";
+// lease making one master, joint rosters keeping quorums overlapping: each
+// stack's (stack-<id>) acted on by @phosphorus/stacks' ha
+import { readFileSync, rmSync } from "node:fs";
 import { networkInterfaces } from "node:os";
 import { join } from "node:path";
 import {
-  env,
   envInt,
   logf as log,
   marshal,
@@ -13,7 +12,6 @@ import {
   readJSON,
   readJSONMap,
   requestJSON,
-  StateDir,
   sleep,
   writeFileAtomic,
 } from "@phosphorus/util";
@@ -52,8 +50,8 @@ const nameRe = /^[A-Za-z0-9-]{1,63}$/;
 // a group's name, in its frontend paths
 export const groupRe = /^[a-z][a-z0-9-]{0,62}$/;
 
-// of a roster, git a candidate (named for the first group), tb kept absent
-// when a peer sent none
+// of a roster, git a candidate (the key named for the first group, kept for
+// every version's rosters), tb kept absent when a peer sent none
 export type Member = { name: string; git: boolean; tb?: boolean };
 // prev null marshals as null
 export type Roster = { epoch: number; members: Member[]; prev: Member[] | null };
@@ -152,7 +150,7 @@ const read = (file: string) => {
 };
 
 const names = (m: Member[]) => m.map((x) => x.name);
-const gitNames = (m: Member[]) =>
+const candidates = (m: Member[]) =>
   m
     .filter((x) => x.git)
     .map((x) => x.name)
@@ -164,14 +162,14 @@ const byName = (a: Member, b: Member) => (a.name < b.name ? -1 : a.name > b.name
 
 function tiebreaker(m: Member[]): string {
   for (const x of m) if (x.tb && x.git) return x.name;
-  return gitNames(m)[0] ?? "";
+  return candidates(m)[0] ?? "";
 }
 
 function partOK(m: Member[], granted: Set<string>, leader: string): boolean {
-  const gits = gitNames(m);
-  if (gits.length === 1 && gits[0] === leader) return true;
+  const cs = candidates(m);
+  if (cs.length === 1 && cs[0] === leader) return true;
   const got = m.filter((x) => granted.has(x.name)).length;
-  return got * 2 > m.length || (got * 2 === m.length && gits.length > 0 && granted.has(tiebreaker(m)));
+  return got * 2 > m.length || (got * 2 === m.length && cs.length > 0 && granted.has(tiebreaker(m)));
 }
 
 const quorum = (r: Roster, granted: Set<string>, leader: string) =>
@@ -180,17 +178,6 @@ const quorum = (r: Roster, granted: Set<string>, leader: string) =>
 // the copy's data version, whether it can vouch for being current, and an
 // admin's push to lead without proof it holds the newest
 export type Local = { gen: number; stamp: number; inSync: boolean; force: boolean };
-
-// "<gen> <stamp> <inSync> <force>", git-daemon.sh's local file
-export function parseLocal(text: string): Local {
-  const f = text.trim().split(/\s+/);
-  const at = (i: number) => f[i] ?? "";
-  const num = (s: string) => {
-    const v = Number(s);
-    return Number.isFinite(v) ? Math.trunc(v) : 0;
-  };
-  return { gen: num(at(0)), stamp: num(at(1)), inSync: at(2) === "1", force: at(3) === "1" };
-}
 
 function better(a: Claim, b: Claim): boolean {
   if (a.gen !== b.gen) return a.gen > b.gen;
@@ -251,8 +238,8 @@ export interface Group {
   blocked?(): string;
 }
 
-// state-dir files under a prefix, git's names: <prefix>-claim.json,
-// <prefix>-elector-roster.json, <prefix>-handoff.json
+// files under a prefix: <prefix>-claim.json, <prefix>-elector-roster.json,
+// <prefix>-handoff.json
 export function fileStore(dir: string, prefix: string): Pick<Group, "claim" | "roster" | "saveRoster" | "handoff"> {
   const claimFile = join(dir, `${prefix}-claim.json`);
   const rosterFile = join(dir, `${prefix}-elector-roster.json`);
@@ -270,40 +257,12 @@ export function fileStore(dir: string, prefix: string): Pick<Group, "claim" | "r
   };
 }
 
-// git: files shared with git-daemon.sh, forgejo the service
-export function gitGroup(): Group {
-  const localFile = env("LOCAL_FILE", "/run/phosphorus/git-local");
-  const decisionFile = env("DECISION_FILE", "/run/phosphorus/git-decision");
-  const leaseFile = env("LEASE_UNTIL_FILE", "/run/phosphorus/git-lease-until");
-  const forgejoPidFile = env("FORGEJO_PID_FILE", "/run/phosphorus/git-forgejo-pid");
-  const promotingFile = env("PROMOTING_FILE", "/run/phosphorus/git-promoting");
-  return {
-    name: "git",
-    // the first paths, every version answering them
-    view: "/api/git/view",
-    vote: "/api/git/vote",
-    flag: "gitHost",
-    ...fileStore(StateDir, "git"),
-    local: () => parseLocal(read(localFile)),
-    up: () => read(forgejoPidFile).trim() !== "",
-    decide(d) {
-      if (d.promoting) {
-        try {
-          writeFileSync(promotingFile, "", { mode: 0o644 });
-        } catch {}
-      } else rm(promotingFile);
-      writeAtomic(leaseFile, `${d.leaseUntil}\n`);
-      writeAtomic(decisionFile, `${d.role} ${d.master || "-"} ${d.gen} ${d.at} ${d.from || "-"}\n`);
-    },
-  };
-}
-
 // the elector's state, one tick at a time driving it
 export class Elector {
   known: Roster = { epoch: 0, members: [], prev: null };
   firstSeen = new Map<string, number>();
   lastSeen = new Map<string, number>();
-  gitFlag = new Map<string, boolean>();
+  candidateFlag = new Map<string, boolean>();
   claims = new Map<string, Claim>();
   selfState?: Record<string, any>;
   viewOK = false;
@@ -332,7 +291,7 @@ export class Elector {
   constructor(
     public self: string,
     private callFn: Call = httpCall,
-    public g: Group = gitGroup(),
+    public g: Group,
     private clock: Clock = realClock,
     public t: Timing = timing(),
   ) {
@@ -344,7 +303,7 @@ export class Elector {
   addr = () => selfAddr(this.self);
 
   logf(fmt: string, ...a: unknown[]) {
-    log((this.g.name === "git" ? "[elector] " : `[elector ${this.g.name}] `) + fmt, ...a);
+    log(`[elector ${this.g.name}] ` + fmt, ...a);
   }
 
   private stall(why: string) {
@@ -393,7 +352,7 @@ export class Elector {
       this.adopt(s.roster);
       this.lastSeen.set(h, now);
       if (!this.firstSeen.has(h)) this.firstSeen.set(h, now);
-      this.gitFlag.set(h, s[this.g.flag] === true);
+      this.candidateFlag.set(h, s[this.g.flag] === true);
       if (h === this.self) this.selfState = s;
       const c = validClaim(s.claim);
       if (c && h !== this.self) {
@@ -426,9 +385,9 @@ export class Elector {
 
   private eligible(l: Local, r: Roster): boolean {
     if (l.force || this.synced(l)) return true;
-    const gits = new Set([...gitNames(r.members), ...(r.prev ? gitNames(r.prev) : [])]);
-    gits.delete(this.self);
-    for (const h of gits) if (!this.claims.has(h) && !(this.vouched && this.witnessed.has(h))) return false;
+    const cs = new Set([...candidates(r.members), ...(r.prev ? candidates(r.prev) : [])]);
+    cs.delete(this.self);
+    for (const h of cs) if (!this.claims.has(h) && !(this.vouched && this.witnessed.has(h))) return false;
     return true;
   }
 
@@ -446,9 +405,10 @@ export class Elector {
     for (const m of this.known.members) {
       const ls = this.lastSeen.get(m.name) ?? now;
       if (m.name !== this.self && now - ls > this.t.removeAfterMS) continue;
-      out.set(m.name, member(m.name, this.gitFlag.get(m.name) ?? m.git, false));
+      out.set(m.name, member(m.name, this.candidateFlag.get(m.name) ?? m.git, false));
     }
-    for (const h of this.pending()) if (grantedLast.has(h)) out.set(h, member(h, this.gitFlag.get(h) === true, false));
+    for (const h of this.pending())
+      if (grantedLast.has(h)) out.set(h, member(h, this.candidateFlag.get(h) === true, false));
     out.set(this.self, member(this.self, true, true));
     return [...out.values()].sort(byName);
   }
@@ -536,7 +496,7 @@ export class Elector {
     if (boot) {
       const hosts = uniq([...[...this.firstSeen.keys()].sort(), this.self]);
       const ms = hosts
-        .map((h) => member(h, h === this.self || this.gitFlag.get(h) === true, h === this.self))
+        .map((h) => member(h, h === this.self || this.candidateFlag.get(h) === true, h === this.self))
         .sort(byName);
       r = { epoch: this.known.epoch + 1, members: ms, prev: null };
       same = false;
@@ -559,7 +519,7 @@ export class Elector {
     }
     if (!this.eligible(l, r)) {
       const who =
-        gitNames(r.members)
+        candidates(r.members)
           .filter((h) => h !== this.self && !this.claims.has(h))
           .join(", ") || "no host";
       const why = this.vouched ? " (waiting on tailscale to call them gone)" : " (never vouched for the last master)";
@@ -589,7 +549,7 @@ export class Elector {
     if (!quorum(r, granted, this.self)) {
       await this.campaign(r, 0, []);
       this.stall(`${granted.size} of ${voters(r).length} votes, no majority`);
-      const idx = gitNames(r.members).indexOf(this.self);
+      const idx = candidates(r.members).indexOf(this.self);
       this.skip = (idx < 0 ? 0 : idx) + 1;
       return;
     }
@@ -606,7 +566,7 @@ export class Elector {
     this.vouchedAt = 0;
     this.lastStall = "";
     const how =
-      gitNames(r.members).length === 1
+      candidates(r.members).length === 1
         ? `sole ${this.g.name} host`
         : `won ${granted.size} of ${voters(r).length} votes`;
     this.logf("%s (roster %d: %s), promoting self, gen %d", how, r.epoch, describe(r.members), this.gen);
@@ -878,30 +838,4 @@ export class Groups {
   async stopAll() {
     await Promise.all(this.names().map((n) => this.remove(n)));
   }
-}
-
-// runs git's elector until SIGTERM, the exit code
-export async function main(): Promise<number> {
-  const selfFile = join(StateDir, "self-host");
-  let self: string;
-  try {
-    self = readFileSync(selfFile, "utf8").trim();
-  } catch (e) {
-    log("[elector] can't read %s: %s", selfFile, e instanceof Error ? e.message : e);
-    return 1;
-  }
-  const gs = new Groups(self);
-  let signalled = false;
-  const done = new Promise<void>((res) => {
-    const onSignal = () => {
-      signalled = true;
-      res();
-    };
-    process.on("SIGTERM", onSignal);
-    process.on("SIGINT", onSignal);
-  });
-  gs.add(gitGroup());
-  await done;
-  if (signalled) await gs.stopAll();
-  return 0;
 }

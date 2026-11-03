@@ -20,6 +20,7 @@ import {
   stackViews,
 } from './catalog.ts';
 import { draw } from './draw.ts';
+import { legacyGitBox } from './legacy.ts';
 import { apps, nativeLeft, read, readError, type StoreApp, stateVars, storeShow } from './state.ts';
 
 // whether a tile matches the search: every word in its name, tagline, category or id
@@ -190,6 +191,7 @@ function chips(list: [string, string][], now: string, pick: (v: string) => void)
 
 // the apps worth a first look, by id in whichever catalogue lists them first
 const FEATURED = [
+  'git',
   'uptime-kuma',
   'vaultwarden',
   'jellyfin',
@@ -346,6 +348,9 @@ function servicesTab(wrap: HTMLElement, q: string) {
       )
     : [];
   section(wrap, 'discovered', found.map(foundTile));
+  // the old built-in git's data, offered to the git service
+  const legacy = q ? null : legacyGitBox();
+  if (legacy) wrap.append(legacy);
   // services the retired installer left on hosts, nothing following them now
   if (nativeLeft.length && !q)
     wrap.append(

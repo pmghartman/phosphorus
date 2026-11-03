@@ -1,5 +1,5 @@
-// the installer's catalogue half of /api/stacks: apps from the catalogues
-// fetched at run time (CasaOS, Runtipi, Cosmos) and from GitHub repos opened by
+// the installer's catalogue half of /api/stacks: phosphorus's own apps, apps from
+// the catalogues fetched at run time (CasaOS, Runtipi, Cosmos) and from GitHub repos opened by
 // url, each normalized to an AppDef (@phosphorus/wire), and the check of whether
 // it installs and where. packages/stacks installs what's picked
 import { readFileSync } from "node:fs";
@@ -13,6 +13,7 @@ import { normArch } from "./registry.ts";
 
 export { adapters, build, setup } from "./catalogs.ts";
 export { check, checkApp, type HostFacts, rendered } from "./check.ts";
+export { forgejo } from "./featured.ts";
 export { GitHubError, openRepo, repoOf, setHosts } from "./github.ts";
 export { derive, envFields } from "./manifest.ts";
 export { archsOf, type ImageInfo, parseRef } from "./registry.ts";
@@ -121,7 +122,8 @@ export async function appRoute(source: string, ref: string): Promise<Res> {
       return ghErr(e);
     }
   }
-  if (!catalogs.adapters.some((a) => a.id === source)) return [404, { error: `no source ${source}` }];
+  if (source !== "phosphorus" && !catalogs.adapters.some((a) => a.id === source))
+    return [404, { error: `no source ${source}` }];
   return page(undefined, source, ref);
 }
 

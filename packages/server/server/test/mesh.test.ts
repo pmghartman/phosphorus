@@ -60,7 +60,6 @@ test("every pair links, and the devices read as phosphorus hosts", async () => {
     ["charlie", true, true],
   ]);
   expect(v.peerIPs).toEqual({ bravo: "127.0.0.3", charlie: "127.0.0.4" });
-  expect(v.peerGit.map((g: any) => g.host)).toEqual(["bravo", "charlie"]);
   expect(v.lock).toBeNull();
 }, 20_000);
 

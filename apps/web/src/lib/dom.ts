@@ -64,22 +64,6 @@ export function copyIcon(done = false): SVGSVGElement {
   return icon;
 }
 
-// inline cylinder, sized to the text beside it, stroked in currentColor
-export function databaseIcon(): SVGSVGElement {
-  const x = 0.5;
-  const y = 0.5;
-  const w = 6;
-  const h = 7;
-  const ry = 1.5;
-  const icon = svgEl('svg', { viewBox: '0 0 7 8', class: 'db-icon', 'aria-hidden': 'true' });
-  icon.appendChild(svgEl('ellipse', { cx: x + w / 2, cy: y + ry, rx: w / 2, ry }));
-  icon.appendChild(
-    svgEl('path', { d: `M ${x} ${y + ry} V ${y + h - ry} A ${w / 2} ${ry} 0 0 0 ${x + w} ${y + h - ry} V ${y + ry}` }),
-  );
-  icon.appendChild(svgEl('path', { d: `M ${x} ${y + h / 2} A ${w / 2} ${ry} 0 0 0 ${x + w} ${y + h / 2}` }));
-  return icon;
-}
-
 // a box over the whole page, any user's: true for its action, false for cancel or esc
 export function pageAsk({
   title,

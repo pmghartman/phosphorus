@@ -1,9 +1,8 @@
-// drawing: a host's node, its git and model marks
+// drawing: a host's node, its model mark
 
-import type { GitHost, Route, State, TailnetDevice } from '@phosphorus/wire';
-import { databaseIcon, svgEl } from '../../lib/dom.ts';
+import type { Route, State, TailnetDevice } from '@phosphorus/wire';
+import { svgEl } from '../../lib/dom.ts';
 import { st } from '../../lib/state.ts';
-import { gitVars } from './git.ts';
 import { hostSwitch, NODE_HALF } from './hosts.ts';
 import { lerp } from './ping.ts';
 import { activeConnections, hostPlatform, serviceKey } from './routes.ts';
@@ -74,39 +73,6 @@ export function drawNode(
   parent.appendChild(label);
 }
 
-// beside a git host: the git service's own glyph for the master, a * for the rest,
-// purple master, sand available, dark grey out of date, red unreachable
-export function drawGitMarker(x: number, y: number, h: GitHost, scale = 1) {
-  const master = h.reachable && h.role === 'master';
-  const state = !h.reachable ? 'down' : master ? 'master' : h.eligible ? 'ok' : 'stale';
-  const g = svgEl('g', {
-    class: `mesh-git ${state}`,
-    transform: `translate(${x + 4.5 * scale} ${y - 4.5 * scale}) scale(${0.9 * scale})`,
-  });
-  const title = svgEl('title', {});
-  title.textContent = {
-    master: 'git master',
-    ok: 'git servant, in sync',
-    stale: 'git servant, out of date',
-    down: 'git servant, unreachable',
-  }[state];
-  g.appendChild(title);
-  if (master) {
-    // no CSS size for a nested svg, only its own attributes
-    const db = databaseIcon();
-    db.setAttribute('width', '7');
-    db.setAttribute('height', '8');
-    g.appendChild(db);
-  } else {
-    const star = svgEl('text', { x: 3.5, y: 6.5, 'text-anchor': 'middle', class: 'mesh-git-star' });
-    star.textContent = '*';
-    g.appendChild(star);
-  }
-  meshSvg.appendChild(g);
-}
-
-document.querySelector('.mesh-legend-git')!.prepend(databaseIcon());
-
 // the gradient sliding by smil, out of the stylesheet's reduced-motion
 // rule's reach, so held still here the same way
 export const svgDefs = document.querySelector('.svg-defs') as SVGSVGElement;
@@ -122,7 +88,7 @@ export interface MeshModel {
   agents: string[];
 }
 
-// left of a model host, mirroring the git mark: how many agents ask it, in
+// left of a model host: how many agents ask it, in
 // the glyph's colours, dimmed while not loaded
 export function drawModelMarker(x: number, y: number, mm: MeshModel, scale = 1, opacity = 1) {
   const mark = svgEl('text', {
@@ -164,14 +130,14 @@ export function renderMesh(routes: Route[], tailnet: TailnetDevice[]): void {
   if (!meshAnimFrame) drawMesh();
 }
 
-// the model hosts from a state push, the graph drawn again for a git or model change
-export function meshModelsFrom(state: State, gitChanged: boolean): void {
+// the model hosts from a state push, the graph drawn again for a model change
+export function meshModelsFrom(state: State): void {
   const nextModels = new Map<string, MeshModel>(
     (state.model?.models || []).map((x) => [x.host, { file: x.file, ready: x.ready, agents: x.agents || [] }]),
   );
   const modelChanged = JSON.stringify([...nextModels]) !== JSON.stringify([...meshModels]);
   meshModels = nextModels;
-  if ((gitChanged || modelChanged) && !meshAnimFrame) drawMesh();
+  if (modelChanged && !meshAnimFrame) drawMesh();
 }
 
 // the touched elements drawMesh() drew (tunnel spoke, peer arc, service stem)
@@ -198,16 +164,17 @@ export function pulsePoint(key: string, host: string, distFrac: number): DOMPoin
 
 // one pulse/sec per connection: hub, self, target host if different, target
 // service, its own rAF loop while any connection is open
+let pulseAnimFrame: number | ReturnType<typeof setTimeout> | null = null;
 export function startPulseLoop(): void {
-  if (gitVars.pulseAnimFrame) return;
+  if (pulseAnimFrame) return;
   const tick = (now: number) => {
     if (!activeConnections.size) {
-      gitVars.pulseAnimFrame = null;
+      pulseAnimFrame = null;
       return;
     }
     // the graph off screen: nothing to measure, looked at again a few times a second
     if (!meshPanel.offsetParent) {
-      gitVars.pulseAnimFrame = setTimeout(() => requestAnimationFrame(tick), 250);
+      pulseAnimFrame = setTimeout(() => requestAnimationFrame(tick), 250);
       return;
     }
     const progress = (now / 1000) % 1;
@@ -228,9 +195,9 @@ export function startPulseLoop(): void {
       mark.setAttribute('y', String(point.y - 1));
       mark.setAttribute('style', `opacity:${Math.sin(progress * Math.PI)}`);
     }
-    gitVars.pulseAnimFrame = requestAnimationFrame(tick);
+    pulseAnimFrame = requestAnimationFrame(tick);
   };
-  gitVars.pulseAnimFrame = requestAnimationFrame(tick);
+  pulseAnimFrame = requestAnimationFrame(tick);
 }
 
 // pure function of last-fetched data + meshT, called per data poll and per
@@ -499,8 +466,6 @@ export function drawMesh(): void {
       opacity: p.fog,
     });
     if (meshModels.has(m)) drawModelMarker(p.x, p.y, meshModels.get(m)!, p.s, p.fog);
-    const gitHost = st.gitHostsList.find((h) => h.host === m);
-    if (gitHost) drawGitMarker(p.x, p.y, gitHost, p.s);
     const flat = flatOf(m, true);
 
     // a row below their host as the panel expands, on it (invisible) at t=0,

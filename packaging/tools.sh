@@ -1,12 +1,11 @@
 #!/bin/sh
-# the host installers' bundled tools, pinned and checked: tailscale and forgejo on
-# Linux (git hosts are Linux only), cloudflared everywhere
+# the host installers' bundled tools, pinned and checked: tailscale on Linux,
+# cloudflared everywhere
 # Usage: packaging/tools.sh OS (linux|darwin|windows) ARCH (amd64|arm64|universal) OUTDIR
 set -eu
 OS=${1:?usage: packaging/tools.sh OS ARCH OUTDIR} ARCH=${2:?ARCH} OUT=${3:?OUTDIR}
 TAILSCALE=1.104.1
 CLOUDFLARED=2026.10.4
-FORGEJO=16.0.6
 CF=https://github.com/cloudflare/cloudflared/releases/download/$CLOUDFLARED
 T=$(mktemp -d)
 trap 'rm -rf "$T"' EXIT
@@ -23,17 +22,12 @@ linux)
     esac
     tar -xzf "$T/ts.tgz" -C "$T"
     install -m755 "$T/tailscale_${TAILSCALE}_${ARCH}/tailscale" "$T/tailscale_${TAILSCALE}_${ARCH}/tailscaled" "$OUT/"
-    get "$OUT/forgejo" "https://codeberg.org/forgejo/forgejo/releases/download/v${FORGEJO}/forgejo-${FORGEJO}-linux-${ARCH}"
-    case $ARCH in
-    amd64) check "$OUT/forgejo" b90e22c2e5534fd7705d93d81ecea792b00f15cad0ee7bbc3061c65bf9524293 ;;
-    arm64) check "$OUT/forgejo" c55ec791a3924097971c65dfd960f02a63efabc3ebcb4bb9a3363c2b5c693206 ;;
-    esac
     get "$OUT/cloudflared" "$CF/cloudflared-linux-${ARCH}"
     case $ARCH in
     amd64) check "$OUT/cloudflared" ae5e8add7884b0531d66bbca4570d1de491ff6da51e4ebe7eb160cdf241d9e42 ;;
     arm64) check "$OUT/cloudflared" 2b7203b4fb0ba28a0c1e12f8855ce2c25f76d266a8d5edafac5540b6812acff6 ;;
     esac
-    chmod 755 "$OUT/forgejo" "$OUT/cloudflared"
+    chmod 755 "$OUT/cloudflared"
     ;;
 darwin)
     # one universal binary out of upstream's two

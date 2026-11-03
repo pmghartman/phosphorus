@@ -25,6 +25,7 @@ Install Phosphorus on each machine and they find each other over your tailnet. T
 What every install has.
 
 - **App installer** *(in progress)*. Browse apps from the catalogues below, or paste any public GitHub repo that has a Compose file. Each app's page shows its README, its files and its Compose file, then runs a quick check: images for your hosts' CPU, free ports, the settings it needs, and anything risky (privileged, host network). If it passes, install it onto the host you pick with one click. It runs under Docker Compose with its data kept in one folder, and its page gets its own subdomain.
+- **Git.** [Forgejo](https://forgejo.org) is the first app on the services tab, written for the mesh: it answers at `git.<your domain>`, keeps its sqlite database, repositories and LFS objects in its data folder, and with standby hosts each keeps a copy taken after a consistent `.backup` of the database. See [Git](#git).
 - **Backup hosts** *(in progress)*. When installing, pick one or more standby hosts. They keep a fresh copy of the app's data and take over automatically if the main host fails. "Move to host…" hands an app over cleanly for maintenance.
 - **Your own services, found.** Web pages already listening on any host are found and can be published on the mesh in one click, behind the Phosphorus login or public.
 - **Terminal.** One tabbed window that opens a shell on any host.
@@ -41,7 +42,6 @@ Off by default. An admin installs them from the Apps page, and every host serves
 |---|---|---|
 | Code | Claude Code or opencode sessions in a folder on any host, run there as your own login, on the mesh's models or your Claude subscription | installable, [`optional/code`](optional/code) |
 | Chat | Mesh-wide chat with channels, direct messages, attachments and agents posting through the MCP tools, every host holding the whole history | installable, [`optional/chat`](optional/chat) |
-| Git | A Forgejo server for the mesh, with failover | moving out of the core |
 | Games | Game servers you start and stop from the desktop or an agent, each run on its host as a login an admin allowed, with join addresses on the tailnet | installable, [`optional/games`](optional/games) |
 | Viewer | Images with zoom, video, audio and PDFs from any host's files, plus a plain text editor; opening a file in Files opens it here, without it files download | installable, [`optional/viewer`](optional/viewer) |
 
@@ -49,16 +49,45 @@ Each optional app lives in [`optional/<id>`](optional) and is built into a signe
 
 ## App catalogues
 
-The installer reads these catalogues at run time, fetching them from their own repos on your host. Their files are never copied into this repo, and every app shows its source and licence.
+The installer reads these catalogues at run time, fetching them from their own repos on your host. Their files are never copied into this repo, and every app shows its source and licence. Phosphorus's own few apps ship with it.
 
 | Catalogue | Licence | Used |
 |---|---|---|
+| Phosphorus's own ([`packages/mesh/catalog/src/featured.ts`](packages/mesh/catalog/src/featured.ts)): Forgejo | Apache-2.0 (the app: GPL-3.0-or-later) | yes, shipped |
 | [CasaOS App Store](https://github.com/IceWhaleTech/CasaOS-AppStore) | Apache-2.0 | yes |
 | [Runtipi App Store](https://github.com/runtipi/runtipi-appstore) | GPL-3.0 | yes, fetched at run time only |
 | [Cosmos servapps](https://github.com/azukaar/cosmos-servapps-official) | AGPL-3.0 | yes, fetched at run time only |
 | Umbrel apps | none stated | no |
 
 App logos belong to their projects and are loaded from the catalogue, not shipped.
+
+## Git
+
+Install **Forgejo** from the services tab onto any host with Docker, and pick standby hosts to keep copies. It answers at `git.<your domain>`; the first account registered is the admin. SSH clones go to port 2222 (or the one you pick) of the host serving it, over the tailnet. The MCP `forgejo` tool calls its API as you, with the login saved as the `git` page login.
+
+### Moving from the built-in git
+
+Earlier versions ran Forgejo themselves on the hosts with `[git] host = true`, its data in `/var/lib/phosphorus/git`. That code is gone; the data stays where it is until you delete it.
+
+On first start of this version the services tab offers admins the move: the old master's data (the copy with the newest version) is copied into the git service's data folder on that host, Forgejo installed there with the old servants as standbys, its secret key and internal token carried over. Once `git.<your domain>` shows your repos, press **delete the old copies**; nothing is deleted before that.
+
+By hand instead, as root on the old master (the host whose `/var/lib/phosphorus/git/GIT_VERSION` has the highest first number):
+
+```sh
+old=/var/lib/phosphorus/git new=/var/lib/phosphorus/stacks/git/data/forgejo
+mkdir -p $new/gitea/conf $new/git
+cp -a $old/db/forgejo.db $new/gitea/
+cp -a $old/obj/forgejo-repositories $new/git/repositories
+[ -d $old/obj/lfs ] && cp -a $old/obj/lfs $new/git/lfs
+for d in $old/obj/*; do case ${d##*/} in forgejo-repositories|lfs) ;; *) cp -a $d $new/gitea/ ;; esac; done
+[ -d $old/custom ] && cp -a $old/custom/. $new/gitea/
+sed -e "s#$old/obj/forgejo-repositories#/data/git/repositories#g" -e "s#$old/obj/lfs#/data/git/lfs#g" \
+    -e "s#$old/db/forgejo.db#/data/gitea/forgejo.db#g" -e "s#$old/[a-z]*#/data/gitea#g" -e "s#$old#/data/gitea#g" \
+    -e 's#^RUN_USER *=.*#RUN_USER = git#' -e '/^WORK_PATH *=/d' $old/conf/app.ini > $new/gitea/conf/app.ini
+grep -E '^(SECRET_KEY|INTERNAL_TOKEN)' $new/gitea/conf/app.ini
+```
+
+Then install Forgejo from the services tab on that host, with the old git hosts as standbys, giving it the secret key and internal token printed above. In Forgejo's site administration, run *Resynchronize pre-receive, update and post-receive hooks of all repositories* once. When it serves your repos, remove `/var/lib/phosphorus/git` and the `phosphorus-git` user on each old git host, or press **delete the old copies** on the services tab.
 
 ## The `phos` command
 

@@ -134,7 +134,7 @@ export const agentTools = (): Tool[] => [
         match: { type: "string", description: "only lines holding this, case-insensitive" },
         source: {
           type: "string",
-          description: "phosphorus (all, default), frontend, cloudflared, git, model, mesh",
+          description: "phosphorus (all, default), frontend, cloudflared, model, mesh",
         },
         level: {
           type: "string",
@@ -167,7 +167,7 @@ export const agentTools = (): Tool[] => [
     read: true,
     scope: "key",
     description:
-      "A host's two config files as they stand: phosphorus.ini (shares in [files], [git], [model]) and " +
+      "A host's two config files as they stand: phosphorus.ini (shares in [files], [model]) and " +
       "services.export (each [service]: port, scheme, max_body, public). Read before service_edit or config_set. Admins only.",
     schema: object({ host: name }, "host"),
     run: (a, m) => {
@@ -217,12 +217,12 @@ export const agentTools = (): Tool[] => [
     destructive: true,
     description:
       "Set one key of a host's phosphorus.ini, blank value to drop it (a section left empty goes too); phosphorus applies it within seconds. " +
-      "Keys: [files] dir and priv (the shares and their rwd perms, comma-separated in step), [git] host, [model] host/gpu/url/ctx/slots. " +
+      "Keys: [files] dir and priv (the shares and their rwd perms, comma-separated in step), [model] host/gpu/url/ctx/slots. " +
       "Read host_config first and keep the other values. Admins only.",
     schema: object(
       {
         host: name,
-        section: { type: "string", enum: ["files", "git", "model"] },
+        section: { type: "string", enum: ["files", "model"] },
         key: { type: "string" },
         value: { type: "string" },
         dry_run: { type: "boolean", description: "return the diff alone, nothing written", default: false },
@@ -331,7 +331,6 @@ export function describe() {
     host_stats:
       "One host right now: cpu, memory and disk with percents, gpu, network, phosphorus's own parts by role and the top processes. " +
       "No host: one row of percents per host at once, the cheap way to scan the mesh before drilling into one.",
-    git: "The git (Forgejo) hosts: which is master, which are replicas, how far behind each is, reachable or not.",
     files_list:
       "Browse files shared to the mesh. No host: every host's shares and their rwd perms. A host: its shares. A host and share: " +
       "entries to depth levels (folders end in /), match a name glob like *.jpg. stat true with a path: that one file or folder's " +
@@ -355,8 +354,6 @@ export function describe() {
       "The mesh update: whether one runs, who started it, each host's step and result. history true adds the last fifty started from this host with any errors.",
     update_control:
       "Start a mesh update on an admin's key, or cancel the running one. update_status follows it. Admins only.",
-    make_git_master:
-      "Make a git host the master: the live one hands off, or with none it's force-promoted. Returns once it leads (up to 30s); never press it twice. Admins only.",
     set_agent_model:
       "Assign a mesh host's model to an agent (an app's while it's on the mesh: code, claude-code, opencode for the Code app, tavern, sulfur), mesh-wide: phosphorus/<host>, blank for the automatic pick; slot fast is the small background model. Admins only.",
     models:
@@ -365,18 +362,10 @@ export function describe() {
   for (const t of tools) {
     if (d[t.name]) t.description = d[t.name]!;
     if (
-      [
-        "make_git_master",
-        "set_agent_model",
-        "update_control",
-        "host_logs",
-        "host_config",
-        "service_edit",
-        "config_set",
-      ].includes(t.name)
+      ["set_agent_model", "update_control", "host_logs", "host_config", "service_edit", "config_set"].includes(t.name)
     )
       t.admin = true;
-    if (["files_change", "update_control", "make_git_master"].includes(t.name)) t.destructive = true;
+    if (["files_change", "update_control"].includes(t.name)) t.destructive = true;
     else if (t.name === "fetch_page") t.open = true;
   }
 }

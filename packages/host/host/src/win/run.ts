@@ -363,8 +363,6 @@ export const windows: OS = {
   missingDeps: async () => [],
   async aptInstall() {},
   async deferRebuild() {},
-  gitEnv: () => ({}),
-  async ensureGitUser() {},
   runtimeDir: () => at("state", "run"),
   // no console; the job run sits in kills it with run
   childDetached: false,

@@ -17,7 +17,7 @@ install -Dm755 "$BIN" "$T/usr/lib/phosphorus/bin/phosphorus"
 # the licenses where Debian looks for them too
 install -Dm644 "$PAYLOAD/LICENSE" "$T/usr/share/doc/phosphorus/copyright"
 install -Dm644 "$PAYLOAD/THIRD_PARTY_NOTICES.txt" "$T/usr/share/doc/phosphorus/THIRD_PARTY_NOTICES.txt"
-for t in tailscale tailscaled cloudflared forgejo; do install -Dm755 "$TOOLS/$t" "$T/usr/libexec/phosphorus/$t"; done
+for t in tailscale tailscaled cloudflared; do install -Dm755 "$TOOLS/$t" "$T/usr/libexec/phosphorus/$t"; done
 for u in phosphorus.service phosphorus-tailscaled.service phosphorus-update.path phosphorus-update.service; do
     install -Dm644 "$HERE/$u" "$T/usr/lib/systemd/system/$u"
 done
@@ -36,14 +36,14 @@ Version: $VER
 Architecture: $ARCH
 Maintainer: Phosphorus <https://github.com/pmghartman/phosphorus>
 Depends: openssh-server, sudo
-Recommends: rsync, sqlite3, git, ripgrep, libgomp1, curl, iproute2, ca-certificates
+Recommends: git, ripgrep, libgomp1, curl, iproute2, ca-certificates
 Installed-Size: $(du -sk --exclude=DEBIAN "$T" | cut -f1)
 Section: misc
 Priority: optional
 Homepage: https://github.com/pmghartman/phosphorus
 Description: one service per machine, a mesh of hosts
  The phosphorus host: its services published, the others' polled, one web UI and cli.
- Runs under systemd with tailscale, cloudflared and forgejo bundled, no containers.
+ Runs under systemd with tailscale and cloudflared bundled; installed services run in Docker.
 CTL
 dpkg-deb --root-owner-group -Zxz --build "$T" "$OUT" >/dev/null
 echo "package: $OUT"

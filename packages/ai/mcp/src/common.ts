@@ -20,7 +20,6 @@ export type Asker = { name: string; ui: (action: Action) => boolean | Promise<bo
 
 // Actions the buttons phosphorus may press
 export type Actions = {
-  gitMaster: (host: string) => R;
   agentModel: (agent: string, slot: string, model: string) => R;
   update: (action: string, admin: boolean, only: string[]) => R;
   // op a host operation: health, power, term_close, shell, exec,
@@ -51,7 +50,6 @@ export type Src = {
   tailnet: () => Record<string, any>[];
   routes: () => Record<string, any>[];
   peerIPs: () => Record<string, string>;
-  gitHosts: () => unknown;
   model: () => Record<string, any>;
   lock: () => unknown;
   chain: () => unknown;

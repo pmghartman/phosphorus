@@ -1,21 +1,22 @@
-// forgejo as the key's user: its api with the page login saved for git, and
-// that login handed to git over https on a host
+// an installed Forgejo as the key's user: its api with the page login saved for
+// it, and that login handed to git over https on a host
 import { marshal, obj } from "@phosphorus/util";
 import { type Caller, errc, object, pressed, src, str, type Tool } from "./common.ts";
 
-// gitService the mesh's forgejo route and its page login's name
+// gitService the route Forgejo installs as from the services tab, and its page login's name
 export const gitService = "git";
+const serviceRe = /^[a-z][a-z0-9-]{0,39}$/;
 
 const domainRe = /^[a-z0-9.-]{1,253}$/;
 
-// forgejoLogin the key's page login for forgejo: the one named git, else one
-// saved for git.<domain>
-export function forgejoLogin(c: Caller | undefined): [user: string, pass: string] {
+// forgejoLogin the key's page login for a forgejo service: the one named for it,
+// else one saved for <service>.<domain>
+export function forgejoLogin(c: Caller | undefined, service = gitService): [user: string, pass: string] {
   if (!c?.pages) throw errc("forbidden", "on a user's key only");
   const pages = c.pages() ?? {};
-  let l = obj(pages[gitService]);
+  let l = obj(pages[service]);
   if (!str(l?.user) && src.domain()) {
-    const at = "//" + gitService + "." + src.domain();
+    const at = "//" + service + "." + src.domain();
     for (const v of Object.values(pages)) {
       const p = obj(v);
       if (str(p?.user) && str(p?.url).includes(at)) {
@@ -27,7 +28,7 @@ export function forgejoLogin(c: Caller | undefined): [user: string, pass: string
   if (!str(l?.user)) {
     throw errc(
       "forbidden",
-      `your key carries no forgejo login: save it in the browser's profile as the page login ${gitService}, the key picks it up`,
+      `your key carries no forgejo login: save it in the browser's profile as the page login ${service}, the key picks it up`,
     );
   }
   return [str(l!.user), str(l!.pass)];
@@ -61,7 +62,8 @@ export const forgejoTools = (): Tool[] => [
     open: true,
     destructive: true,
     description:
-      "Call the mesh's Forgejo (git) API as you, signed in with the forgejo login saved in your vault (the page login git): " +
+      "Call a Forgejo installed on the mesh (the service git unless service names another) through its API as you, " +
+      "signed in with the login saved in your vault as that service's page login: " +
       "repos, branches, files, commits, issues, pull requests, reviews, releases, orgs, anything under /api/v1. " +
       "Returns status and the JSON body, up to 512KB. Clone and push with terminal_run's git, the same login, at clone_url's address. " +
       "GET /user says who you are; GET /repos/search?q= finds repos; GET /repos/{owner}/{repo}/contents/{path} reads a file.",
@@ -69,12 +71,19 @@ export const forgejoTools = (): Tool[] => [
       {
         method: { type: "string", enum: ["GET", "POST", "PUT", "PATCH", "DELETE"], default: "GET" },
         path: { type: "string", description: "under /api/v1, with any query, e.g. /repos/me/app/issues?state=open" },
+        service: {
+          type: "string",
+          default: gitService,
+          description: "the Forgejo's service name, as services lists it",
+        },
         body: { description: "the JSON body, an object, an array or JSON as text" },
       },
       "path",
     ),
     run: async (a, m) => {
-      const [user, pass] = forgejoLogin(m.caller);
+      const service = str(a.service) || gitService;
+      if (!serviceRe.test(service)) throw errc("bad_input", "service is a service's name");
+      const [user, pass] = forgejoLogin(m.caller, service);
       const p =
         "/" +
         str(a.path)
@@ -87,11 +96,11 @@ export const forgejoTools = (): Tool[] => [
         Accept: "application/json",
         Authorization: "Basic " + Buffer.from(user + ":" + pass).toString("base64"),
       };
-      const out = await pressed(src.actions.service("", gitService, method, "/api/v1" + p, hs, body));
+      const out = await pressed(src.actions.service("", service, method, "/api/v1" + p, hs, body));
       const r = obj(out);
-      if (r && src.domain()) r.clone_url = "https://" + gitService + "." + src.domain() + "/{owner}/{repo}.git";
+      if (r && src.domain()) r.clone_url = "https://" + service + "." + src.domain() + "/{owner}/{repo}.git";
       if (r?.status === 401)
-        r.note = "forgejo refused the saved login " + user + ": fix the page login git in your vault";
+        r.note = `forgejo refused the saved login ${user}: fix the page login ${service} in your vault`;
       return r ?? null;
     },
   },

@@ -72,7 +72,6 @@ function hits(): Hit[] {
   for (const h of dkLiveHosts())
     add(G.terminal!, 'terminal', h, 'terminal', `shell console ssh ${h}`, () => dkTerminal(h));
   add(G.files!, 'files', '', 'files', 'folders browse home share', () => filesWin());
-  if (st.gitRoute) add(G.git!, 'git', '', 'app', 'forgejo repos', () => dkOpenApp('git'));
   add(G.apps!, 'apps', '', 'app', 'install store services extras', () => dkOpenApp('apps'));
   for (const a of dkWebApps()) add(G.app!, a.id, `v${a.want.version}`, 'app', 'editor code app', () => dkWebApp(a.id));
   for (const r of dk.services)
@@ -89,7 +88,7 @@ function hits(): Hit[] {
     add(G.agents!, 'agents', 'settings', 'setting', 'models assign mcp connector skill claude', () =>
       dkSettings('agents'),
     );
-    add(G.mesh!, 'hosts', 'settings', 'setting', 'status stats cpu memory disk mesh graph ping git shares model', () =>
+    add(G.mesh!, 'hosts', 'settings', 'setting', 'status stats cpu memory disk mesh graph ping shares model', () =>
       dkSettings('hosts'),
     );
     add(G.about!, 'about', 'settings', 'setting', 'version license', () => dkSettings('about'));

@@ -1,5 +1,5 @@
 // phosphorus run, the service's main process: tailscale checked, the
-// frontend, the tunnel, the model and git daemons as labelled children,
+// frontend, the tunnel and the model daemon as labelled children,
 // all down with a core one
 
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -15,9 +15,7 @@ import {
   errText,
   fail,
   fileExists,
-  gitd,
   home,
-  isGitHost,
   isModelHost,
   print,
   say,
@@ -231,10 +229,6 @@ export async function runMain(stop: Stop): Promise<number> {
   const kids = [frontend];
   const extra: Child[] = [];
   if (isModelHost()) extra.push(child({ role: "model", graceMs: 30_000, argv: [bin, "model"], env }));
-  // forgejo's ROOT_URL at git.<domain>, no git without one
-  if (isGitHost() && !process.env.BASE_DOMAIN) say("git: no BASE_DOMAIN, not started");
-  else if (isGitHost())
-    extra.push(child({ role: "git", graceMs: 60_000, env, argv: ["/bin/bash", gitd("git-daemon.sh")] }));
 
   try {
     start(frontend);
@@ -268,8 +262,8 @@ export async function runMain(stop: Stop): Promise<number> {
   const ex = exits();
   const watch = (c: Child) => void c.done?.then(() => ex.push(c));
   for (const c of all) watch(c);
-  // git before the model, both before the tunnel and frontend, so a
-  // master hands off while the mesh can still see it
+  // the model before the tunnel and frontend, the frontend last so its
+  // services hand off while the mesh can still see it
   const shutdown = async () => {
     for (let i = all.length - 1; i >= 0; i--) await stopChild(all[i]!);
   };

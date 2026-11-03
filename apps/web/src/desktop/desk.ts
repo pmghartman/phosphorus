@@ -3,7 +3,6 @@ import './desk/terminal.ts';
 import './desk/wallpaper.ts';
 import './desk/windows.ts';
 import './desk/webapps.ts';
-import './desk/git.ts';
 
 export const dkView = document.getElementById('view-desktop')!;
 export { dkWallClear, dkWallPick, dkWallSet } from '../settings/appearance.ts';

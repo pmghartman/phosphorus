@@ -3,7 +3,7 @@
 import { existsSync } from "node:fs";
 import { open } from "node:fs/promises";
 import { join } from "node:path";
-import { configText, editGitHost, editIni, editModel, editService, editShares, iniValues } from "@phosphorus/config";
+import { configText, editIni, editModel, editService, editShares, iniValues } from "@phosphorus/config";
 import { jsNumber } from "@phosphorus/files";
 import * as peers from "@phosphorus/peers";
 import { health } from "@phosphorus/services";
@@ -99,7 +99,7 @@ export function lineTime(l: string): Date | undefined {
 }
 
 // hostLogs this host's logs, their last lines filtered: source phosphorus (all
-// of it), frontend, cloudflared, git, model or another role's tag; match,
+// of it), frontend, cloudflared, model or another role's tag; match,
 // level, since, until
 export async function hostLogs(p: Record<string, any>): Promise<Res> {
   let lines = Math.trunc(jsNumber(p.lines)) || 0;
@@ -213,7 +213,7 @@ export async function onHost(
 }
 
 // configOp this host's config: get both files, or set one service or ini key, or settings ›
-// hosts' shares, model or git host whole; dry returning the diff alone, a service's outcome
+// hosts' shares or model whole; dry returning the diff alone, a service's outcome
 // waited on once written
 export async function configOp(p: Record<string, any>): Promise<Res> {
   let why = "",
@@ -248,12 +248,8 @@ export async function configOp(p: Record<string, any>): Promise<Res> {
       [why, diff] = editModel(vals, dry);
       break;
     }
-    case "git":
-      if (typeof p.on !== "boolean") return [400, { error: "on is true or false" }];
-      [why, diff] = editGitHost(p.on, dry);
-      break;
     default:
-      return [400, { error: "op is get, service, ini, shares, model or git" }];
+      return [400, { error: "op is get, service, ini, shares or model" }];
   }
   if (why) return [400, { error: why }];
   const out: Record<string, any> = { ok: true, host: selfHost, diff };

@@ -1,5 +1,5 @@
 // macOS: a LaunchAgent of the account the app runs as, the Tailscale app's
-// own node, no distro packages and no git host
+// own node and no distro packages
 
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -193,8 +193,6 @@ export const darwin: OS = {
   missingDeps: async () => [],
   async aptInstall() {},
   async deferRebuild() {},
-  gitEnv: () => ({}),
-  async ensureGitUser() {},
   runtimeDir: () => at("state", "run"),
   // run's own group kept, launchd killing it whole when run goes
   childDetached: false,

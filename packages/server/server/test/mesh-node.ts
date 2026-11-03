@@ -14,7 +14,6 @@ const srv = await start();
 const view = () => ({
   tailnet: peers.tailnet(),
   routes: peers.routes(),
-  peerGit: peers.peerGit(),
   peerModel: peers.peerModel(),
   lock: peers.lock(),
   chain: peers.chain(),

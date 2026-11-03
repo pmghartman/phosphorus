@@ -107,7 +107,7 @@ window or popup while open and back here on close -->
         <div class="about-info">
           <div class="about-row"><span class="about-key">copyright</span><span class="about-val">&copy; 2026 Patrick Hartman.</span></div>
           <div class="about-row"><span class="about-key">license</span><span class="about-val">Apache License 2.0; see LICENSE.</span></div>
-          <div class="about-row"><span class="about-key">packages</span><span class="about-val">Each bundled package keeps its own license: Apache-2.0 (cloudflared), BSD-3-Clause (Tailscale), MIT (Bun, xterm.js, KaTeX, llama.cpp), GPL-3.0-or-later (Forgejo). Full texts in THIRD_PARTY_NOTICES.txt beside the app.</span></div>
+          <div class="about-row"><span class="about-key">packages</span><span class="about-val">Each bundled package keeps its own license: Apache-2.0 (cloudflared), BSD-3-Clause (Tailscale), MIT (Bun, xterm.js, KaTeX, llama.cpp). Full texts in THIRD_PARTY_NOTICES.txt beside the app.</span></div>
         </div>
       </div>
     </div>
@@ -120,18 +120,12 @@ window or popup while open and back here on close -->
         <div class="mesh-graph-wrap" id="mesh-graph-wrap">
           <svg id="mesh-svg" class="mesh-svg"></svg>
           <div class="mesh-legend" aria-hidden="true">
-            <span><span class="mesh-legend-star">*</span> git servant</span>
-            <span class="mesh-legend-git">git master</span>
             <span><span class="mesh-legend-model">3</span> agents asking a model</span>
           </div>
         </div>
         <div class="mesh-stats" id="mesh-stats">
           <button type="button" class="mesh-stats-head mesh-fold" data-fold="nodes" aria-expanded="false"><span>nodes <span class="mesh-fold-n" id="mesh-nodes-n"></span></span><span>ping</span></button>
           <div class="mesh-stats-rows" id="mesh-stats-rows"></div>
-          <div class="mesh-git-box" id="mesh-git" hidden>
-            <button type="button" class="mesh-stats-head mesh-fold" data-fold="git" aria-expanded="false"><span>git <span class="mesh-fold-n" id="mesh-git-n"></span></span><span>behind</span></button>
-            <div class="mesh-git-rows" id="mesh-git-rows"></div>
-          </div>
         </div>
       </div>
     </div>

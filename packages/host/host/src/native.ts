@@ -26,7 +26,6 @@ import {
   inDpkg,
   iniFile,
   iniGet,
-  isGitHost,
   isLinux,
   isModelHost,
   isWindows,
@@ -46,7 +45,7 @@ export const frontendUp = "http://127.0.0.1:8090/";
 
 export const nativeEnvFile = () => at("state", "native.env");
 
-// tool a bundled binary: tailscale, cloudflared, forgejo
+// tool a bundled binary: tailscale, cloudflared
 export const tool = (name: string) => join(os.libexec(), isWindows ? name + ".exe" : name);
 
 // --- the baked env ------------------------------------------------------------
@@ -66,7 +65,6 @@ export function bakeEnv(): Record<string, string> {
     MODEL_DIR: at("state", "models"),
     HOST_SSH_HOST: "127.0.0.1",
   };
-  if (isLinux) Object.assign(m, os.gitEnv());
   if (process.env.TS_HOSTNAME) m.TS_HOSTNAME = process.env.TS_HOSTNAME;
   const dirs: string[] = [],
     perms: string[] = [];
@@ -151,7 +149,7 @@ export function withPath(env: Record<string, string>): Record<string, string> {
 // signature what the running service was started on, an unchanged one no restart
 export function signature(env: Record<string, string>): string {
   const h = createHash("sha256");
-  h.update(`${version()} ${isGitHost()} ${isModelHost()}\n`);
+  h.update(`${version()} ${isModelHost()}\n`);
   const st = statOf(binPath("phosphorus"));
   if (st) h.update(`${st.size} ${st.mtimeNs}\n`);
   h.update(
@@ -200,16 +198,10 @@ export async function rebuild() {
   const unlock = await os.lockRebuild();
   try {
     lockEnv();
-    if (!isLinux && iniGet("git", "host") === "true") say("[git] host = true ignored: git hosts run on Linux alone");
     const missing = await os.missingDeps();
     if (missing.length) {
       if (inDpkg()) return os.deferRebuild();
       await os.aptInstall(missing);
-    }
-    if (isGitHost()) await os.ensureGitUser();
-    else {
-      removeOne(at("git", "data"));
-      removeOne(at("git"));
     }
     mkdirSync(at("state"), { recursive: true });
     const old = oldHomes();
@@ -350,7 +342,7 @@ export async function nativeStop() {
     println("phosphorus isn't running");
     return;
   }
-  println("stopping phosphorus (git hands off first)...");
+  println("stopping phosphorus (its services hand off first)...");
   try {
     await os.svcStop();
   } catch (e) {

@@ -163,7 +163,6 @@ function agentAct(a: UiAction, args: Record<string, any>, done: boolean) {
   }
   if (done) return;
   if (AGENT_STATUS.has(t)) agentOpen('app:settings', () => dkSettings('hosts'));
-  else if (t === 'git' || t === 'make_git_master') agentOpen('app:git', () => dkOpenApp('git'));
   else if (t === 'update_control' && st.acct?.admin) agentOpen('app:settings', () => dkSettings('update'));
 }
 

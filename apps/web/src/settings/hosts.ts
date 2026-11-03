@@ -1,5 +1,5 @@
-// --- settings › hosts: the mesh graph with its pings and git copies, each host's stats, and for
-// an admin each host's own phosphorus.ini: the folders it shares, the model it runs, git
+// --- settings › hosts: the mesh graph with its pings, each host's stats, and for
+// an admin each host's own phosphorus.ini: the folders it shares, the model it runs
 
 import { appCall } from '../apps/index.ts';
 import { drawMesh, meshPanel, phosphorusHosts, pingHosts } from '../features/mesh/mesh.ts';
@@ -45,7 +45,6 @@ interface Share {
 interface HostIni {
   shares: Share[];
   model: Record<string, string>;
-  git: boolean;
   platform: string;
 }
 
@@ -235,17 +234,6 @@ function hostForm(host: string, ini: HostIni): HTMLElement[] {
     }),
   );
 
-  // git: a copy of the mesh's repositories here, linux only
-  const linux = ini.platform === 'linux';
-  const [gitRowEl, gitBox] = check(
-    linux ? 'keep a copy of the git server here' : 'git copies run on Linux hosts only',
-    ini.git,
-  );
-  gitBox.disabled = !linux && !ini.git;
-  const saveGit = btn('save git', 'primary');
-  saveGit.disabled = gitBox.disabled;
-  saveGit.addEventListener('click', () => send(saveGit, { op: 'git', on: gitBox.checked }));
-
   const acts = (...b: HTMLElement[]) => {
     const d = el('div', 'update-actions set-acts');
     d.append(...b);
@@ -264,9 +252,6 @@ function hostForm(host: string, ini: HostIni): HTMLElement[] {
     ctxRow,
     slotsRow,
     acts(saveModel),
-    head('git'),
-    gitRowEl,
-    acts(saveGit),
     el('p', 'dk-note', RESTARTS),
     say,
   ];

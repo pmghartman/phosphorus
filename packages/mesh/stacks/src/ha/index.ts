@@ -101,8 +101,7 @@ const withStandbys = (w: StackWant | undefined) => !!w && Array.isArray(w.standb
 const uniq = (xs: string[]) => [...new Set(xs)];
 const ago = (ms: number) => (ms < 90_000 ? `${Math.round(ms / 1000)}s` : `${Math.round(ms / 60_000)} min`);
 
-// one stack on one candidate host: its election's I/O and the acting on it,
-// as git-daemon.sh does for git
+// one stack on one candidate host: its election's I/O and the acting on it
 export class Replica implements Group {
   name: string;
   view: string;

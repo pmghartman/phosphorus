@@ -6,6 +6,8 @@ import { storeShow } from './state.ts';
 
 // how each catalogue's terms let phosphorus use it
 const USE: Record<string, string> = {
+  phosphorus:
+    'Written for the mesh and shipped with phosphorus: each app’s compose file and manifest under phosphorus’s licence, the app itself under its own.',
   casaos:
     'Fetched by each host at run time; its terms would let phosphorus bundle it, keeping its licence and this credit.',
   runtipi: 'Fetched by each host at run time, never shipped with phosphorus.',

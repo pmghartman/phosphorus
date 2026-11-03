@@ -158,17 +158,17 @@ test("editService drops old keys and renames", () => {
 
 test("editIni holds to IniKeys and drops an emptied section", () => {
   expect(IniKeys.model).toEqual(["host", "gpu", "url", "ctx", "slots"]);
-  expect(editIni("nope", "x", "1", false)).toEqual(["no section nope, only files, git, model", ""]);
+  expect(editIni("nope", "x", "1", false)).toEqual(["no section nope, only files, model", ""]);
   expect(editIni("files", "x", "1", false)).toEqual(["no key x in [files], only dir, priv", ""]);
   expect(editIni("files", "dir", "a\nb", false)).toEqual(["one line only", ""]);
   expect(editIni("files", "dir", "/srv", true)).toEqual(["", "+ [files]\n+ dir = /srv"]);
   expect(read(ini)).toBeUndefined();
   expect(setIni("files", "dir", " /srv ")).toBe("");
   expect(setIni("files", "priv", "rw")).toBe("");
-  expect(setIni("git", "host", "true")).toBe("");
-  expect(read(ini)).toBe("[files]\ndir = /srv\npriv = rw\n\n[git]\nhost = true\n");
+  expect(setIni("model", "gpu", "true")).toBe("");
+  expect(read(ini)).toBe("[files]\ndir = /srv\npriv = rw\n\n[model]\ngpu = true\n");
   expect(editIni("files", "priv", "", false)).toEqual(["", "- priv = rw"]);
-  expect(editIni("git", "host", "", false)).toEqual(["", "- [git]\n- host = true"]);
+  expect(editIni("model", "gpu", "", false)).toEqual(["", "- [model]\n- gpu = true"]);
   expect(read(ini)).toBe("[files]\ndir = /srv\n");
   expect(configText()).toEqual(["[files]\ndir = /srv\n", read(svc)!]);
 });
@@ -201,9 +201,9 @@ test("model link and number checks", () => {
   expect(osErrText(new Error("other"))).toBe("other");
 });
 
-test("settings › hosts: shares, model and git host written whole and checked", async () => {
-  const { editGitHost, editModel, editShares, iniValues } = await import("@phosphorus/config");
-  writeFileSync(ini, "[git]\nhost = false\n");
+test("settings › hosts: shares and model written whole and checked", async () => {
+  const { editModel, editShares, iniValues } = await import("@phosphorus/config");
+  writeFileSync(ini, "");
   expect(iniValues().shares).toEqual([]);
   expect(editShares([{ dir: "", perms: "r" }], false)[0]).toBe("a share's folder is required");
   expect(editShares([{ dir: "/a,b", perms: "r" }], false)[0]).toBe("a folder can't contain a comma");
@@ -240,9 +240,4 @@ test("settings › hosts: shares, model and git host written whole and checked",
   expect(iniValues().model).toEqual({ host: "true", gpu: "false", url: "", ctx: "", slots: "2" });
   // nothing new: no write, no diff
   expect(editModel({ host: "true" }, false)).toEqual(["", ""]);
-  if (process.platform === "linux") {
-    expect(editGitHost(true, false)[0]).toBe("");
-    expect(iniValues().git).toBe(true);
-  } else expect(editGitHost(true, false)[0]).toMatch(/Linux alone/);
-  expect(editGitHost(false, true)).toEqual(["", ""]);
 });

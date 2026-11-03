@@ -95,10 +95,7 @@ async function reopen(s: Saved): Promise<DkWin | undefined | null> {
         dkSettings(String(at) as SettingsAt);
         return dk.wins.get('app:settings') ?? null;
       }
-      if (id === 'git') {
-        if (!st.gitRoute) return undefined;
-        dkOpenApp('git');
-      } else dkOpenApp(id);
+      dkOpenApp(id);
       return dk.wins.get(`app:${id}`) ?? null;
     }
     case 'svc': {

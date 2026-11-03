@@ -1,41 +1,70 @@
+// one group on files, as a service acting on its decisions would keep them: the
+// copy's version in, the decision, lease and promoting flag out
 import { expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { Group } from "@phosphorus/elector";
 
-const dir = mkdtempSync(join(tmpdir(), "phos-elector-"));
-process.env.STATE_DIR = dir;
-for (const [k, f] of [
-  ["LOCAL_FILE", "local"],
-  ["DECISION_FILE", "decision"],
-  ["LEASE_UNTIL_FILE", "lease"],
-  ["FORGEJO_PID_FILE", "forgejo"],
-  ["PROMOTING_FILE", "promoting"],
-])
-  process.env[k!] = join(dir, f!);
+const state = mkdtempSync(join(tmpdir(), "phos-elector-"));
 process.env.PROMOTE_GRACE = "2";
 process.env.ADD_AFTER_MS = "0";
 process.env.TICK_MS = "50";
-const { Elector, validRoster } = await import("@phosphorus/elector");
-// util may already be loaded with another test's STATE_DIR when every suite runs in one process
-const state = (await import("@phosphorus/util")).StateDir;
-mkdirSync(state, { recursive: true });
+const { Elector: Base, fileStore, validRoster } = await import("@phosphorus/elector");
 
-type Peer = { gitHost?: boolean; claim?: Record<string, unknown>; grant?: boolean; roster?: unknown };
+const files = { local: "local", decision: "decision", lease: "lease", up: "up", promoting: "promoting" };
+const at = (f: keyof typeof files) => join(state, files[f]);
+const read = (f: string) => {
+  try {
+    return readFileSync(f, "utf8");
+  } catch {
+    return "";
+  }
+};
+
+// "<gen> <stamp> <inSync> <force>"
+function svcGroup(): Group {
+  return {
+    name: "svc",
+    view: "/api/ha/svc/view",
+    vote: "/api/ha/svc/vote",
+    flag: "candidate",
+    ...fileStore(state, "svc"),
+    local() {
+      const f = read(at("local")).trim().split(/\s+/);
+      return { gen: Number(f[0]) || 0, stamp: Number(f[1]) || 0, inSync: f[2] === "1", force: f[3] === "1" };
+    },
+    up: () => read(at("up")).trim() !== "",
+    decide(d) {
+      if (d.promoting) writeFileSync(at("promoting"), "");
+      else rmSync(at("promoting"), { force: true });
+      writeFileSync(at("lease"), `${d.leaseUntil}\n`);
+      writeFileSync(at("decision"), `${d.role} ${d.master || "-"} ${d.gen} ${d.at} ${d.from || "-"}\n`);
+    },
+  };
+}
+
+class Elector extends Base {
+  constructor(self: string, call: ConstructorParameters<typeof Base>[1]) {
+    super(self, call, svcGroup());
+  }
+}
+
+type Peer = { candidate?: boolean; claim?: Record<string, unknown>; grant?: boolean; roster?: unknown };
 type Vote = { host: string; body: any };
 
 // the frontends a tick talks to: self's view of every host, each peer's vote
 function mesh(self: string, peers: Record<string, Peer>) {
   const votes: Vote[] = [];
   const call = async (host: string, _method: string, path: string, body?: unknown) => {
-    if (path === "/api/git/view") {
+    if (path === "/api/ha/svc/view") {
       const states = Object.entries(peers).map(([h, p]) => ({
         host: h,
-        gitHost: p.gitHost ?? true,
+        candidate: p.candidate ?? true,
         claim: p.claim,
         roster: p.roster,
       }));
-      return { pollMs: 50, states: [...states, { host: self, gitHost: true }], offlineMs: {} };
+      return { pollMs: 50, states: [...states, { host: self, candidate: true }], offlineMs: {} };
     }
     votes.push({ host, body });
     // self's vote comes by its tailnet address, or its name
@@ -44,10 +73,10 @@ function mesh(self: string, peers: Record<string, Peer>) {
   return { call, votes, peers };
 }
 
-const local = (s: string) => writeFileSync(process.env.LOCAL_FILE!, s);
-const claim = () => JSON.parse(readFileSync(join(state, "git-claim.json"), "utf8"));
-const roster = () => JSON.parse(readFileSync(join(state, "git-elector-roster.json"), "utf8"));
-const decision = () => readFileSync(process.env.DECISION_FILE!, "utf8");
+const local = (s: string) => writeFileSync(at("local"), s);
+const claim = () => JSON.parse(readFileSync(join(state, "svc-claim.json"), "utf8"));
+const roster = () => JSON.parse(readFileSync(join(state, "svc-elector-roster.json"), "utf8"));
+const decision = () => read(at("decision"));
 
 test("boots as master on a majority, then grows the roster jointly", async () => {
   local("1 7 1 0");
@@ -90,15 +119,15 @@ test("boots as master on a majority, then grows the roster jointly", async () =>
     handoffTo: "",
   });
   expect(decision()).toMatch(/^master a 2 \d+ -\n$/);
-  expect(Number(readFileSync(process.env.LEASE_UNTIL_FILE!, "utf8"))).toBeGreaterThan(0);
-  // no forgejo yet: promoting
-  expect(existsSync(process.env.PROMOTING_FILE!)).toBe(true);
+  expect(Number(read(at("lease")))).toBeGreaterThan(0);
+  // the service not up yet: promoting
+  expect(existsSync(at("promoting"))).toBe(true);
 
   // leading: the roster unchanged while the view is
   await e.tick();
   expect([e.role, roster().epoch]).toEqual(["master", 1]);
   // d appears: seen by the probe, voted next, then joined through a joint roster
-  m.peers.d = { gitHost: false };
+  m.peers.d = { candidate: false };
   await e.tick();
   await e.tick();
   expect(roster().epoch).toBe(1);
@@ -115,14 +144,14 @@ test("boots as master on a majority, then grows the roster jointly", async () =>
   m.peers.b = { claim: { role: "servant", master: "a", gen: 2, stamp: 1, eligible: true, handoffTo: "" } };
   await e.tick();
   expect(e.successor()).toBe("b");
-  writeFileSync(join(state, "git-handoff.json"), JSON.stringify({ at: Date.now(), to: "b" }));
+  writeFileSync(join(state, "svc-handoff.json"), JSON.stringify({ at: Date.now(), to: "b" }));
   await e.tick();
   expect([e.role, e.master, e.handoffTo]).toEqual(["none", "", "b"]);
   expect(claim()).toMatchObject({ role: "none", handoffTo: "b" });
   // the tiebreak passed to b, then every vote released
   expect(roster().members.find((x: any) => x.name === "b").tb).toBe(true);
   expect(m.votes[m.votes.length - 1]!.body.ms).toBe(0);
-  expect(existsSync(join(state, "git-handoff.json"))).toBe(false);
+  expect(existsSync(join(state, "svc-handoff.json"))).toBe(false);
 });
 
 test("follows a master, refuses one with older data", async () => {

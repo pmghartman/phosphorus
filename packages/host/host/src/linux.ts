@@ -1,5 +1,5 @@
 // Linux: systemd's units shipped by the package, the machine's tailscaled or
-// the bundled one, distro packages, forgejo's account, run's children by group
+// the bundled one, distro packages, run's children by group
 
 import { existsSync, mkdirSync, readFileSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
@@ -10,11 +10,9 @@ import {
   binPath,
   fail,
   fileExists,
-  gitd,
   has,
   home,
   iniGet,
-  isGitHost,
   isModelHost,
   output,
   quiet,
@@ -40,9 +38,8 @@ import {
 
 const unit = "phosphorus.service",
   tsUnit = "phosphorus-tailscaled.service";
-// runDir the git daemon's and elector's shared files, systemd's RuntimeDirectory
+// runDir systemd's RuntimeDirectory
 const runDir = "/run/phosphorus";
-const gitUser = "phosphorus-git";
 
 // libexec the package's bundled tools
 const libexec = () => "/usr/libexec/phosphorus";
@@ -81,8 +78,6 @@ async function missingDeps(): Promise<string[]> {
     { bin: "ssh", pkg: "openssh-client" },
     { bin: "setpriv", pkg: "util-linux" },
   ];
-  if (isGitHost())
-    want.push({ bin: "git", pkg: "git" }, { bin: "rsync", pkg: "rsync" }, { bin: "sqlite3", pkg: "sqlite3" });
   if (isModelHost()) {
     want.push(
       { bin: "curl", pkg: "curl" },
@@ -173,7 +168,7 @@ export const linux: OS = {
   async svcStart() {
     if (!(await run("systemctl", "start", unit))) throw fail("systemctl start failed");
   },
-  // svcStop git handing off first, kept off through reboots
+  // svcStop kept off through reboots
   async svcStop() {
     if (!(await run("systemctl", "disable", "--now", unit))) throw fail("systemctl disable --now failed");
   },
@@ -217,29 +212,6 @@ export const linux: OS = {
   missingDeps,
   aptInstall,
   deferRebuild,
-  // gitEnv the git daemon's and elector's paths
-  gitEnv: () => ({
-    DATA_ROOT: at("git"),
-    GIT_USER: gitUser,
-    GIT_GROUP: gitUser,
-    FORGEJO_BIN: tool("forgejo"),
-    ELECTOR: binPath("phosphorus") + " elector",
-    APP_INI_TMPL: gitd("app.ini.tmpl"),
-    RSYNCD_CONF_TMPL: gitd("rsyncd.conf"),
-    RSYNCD_CONF: runDir + "/rsyncd.conf",
-    RSYNCD_PID: runDir + "/rsyncd.pid",
-    LOCAL_FILE: runDir + "/git-local",
-    DECISION_FILE: runDir + "/git-decision",
-    LEASE_UNTIL_FILE: runDir + "/git-lease-until",
-    FORGEJO_PID_FILE: runDir + "/git-forgejo-pid",
-    PROMOTING_FILE: runDir + "/git-promoting",
-  }),
-  // ensureGitUser forgejo's account, a system user of its own
-  async ensureGitUser() {
-    if (await quiet("getent", "passwd", gitUser)) return;
-    if (!(await run("useradd", "--system", "--user-group", "-d", at("git"), "-M", "-s", "/usr/sbin/nologin", gitUser)))
-      throw fail(`couldn't add the ${gitUser} user`);
-  },
   runtimeDir: () => runDir,
   // its own group, killed whole on the way out
   childDetached: true,

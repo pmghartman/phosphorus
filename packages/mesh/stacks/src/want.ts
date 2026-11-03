@@ -13,7 +13,7 @@ import { seams } from "./seams.ts";
 // a removal: etc/stacks/removed/<id>.json, whether its hosts keep the data
 export const removedRel = (id: string) => `etc/stacks/removed/${id}.json`;
 
-const sources = ["casaos", "runtipi", "cosmos", "github"];
+const sources = ["phosphorus", "casaos", "runtipi", "cosmos", "github"];
 const hostRe = /^[A-Za-z0-9][A-Za-z0-9-]{0,62}$/;
 const composeMax = 256 << 10;
 

@@ -2,7 +2,6 @@
 import * as catalog from "@phosphorus/catalog";
 import { Keys as envKeys } from "@phosphorus/envfile";
 import * as files from "@phosphorus/files";
-import * as git from "@phosphorus/git";
 import { type Caller, handle as mcpHandle, skill } from "@phosphorus/mcp";
 import { Assign, EraseSlots, ServeChat, ServeMessages, ServeModels } from "@phosphorus/model";
 import * as peers from "@phosphorus/peers";
@@ -42,12 +41,11 @@ import {
 import { decode, obj, str, truthy } from "./js.ts";
 import { mcpCallsMesh, peerOp } from "./mcpops.ts";
 import { oauthRoute, Unauthorized } from "./oauth.ts";
-import { buildState, chainAction, mintGuestKey, noteState } from "./server.ts";
+import { buildState, chainAction, mintGuestKey, noteState, stackServing } from "./server.ts";
 import { filesHere, forwardFiles, homeWho, openShare, pingPeer, sendFile, serveRun, withHop } from "./shares.ts";
 import { copyTree } from "./transfer.ts";
 import { onUpgrade } from "./ws.ts";
 
-const gitForceRe = /^\/api\/githosts\/([A-Za-z0-9-]{1,63})\/force$/;
 const runRe = /^\/api\/run\/([a-z0-9][a-z0-9-]*)\/([A-Za-z0-9_-]+)\/(.*)$/;
 const stacksAppRe = /^\/api\/stacks\/app\/([a-z]+)\/(.+)$/;
 const appsTarRe = /^\/internal\/apps\/([a-z][a-z0-9-]*)\/(\d+(?:\.\d+){0,3})$/;
@@ -181,20 +179,6 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
     if (r) return r;
   }
 
-  if (pathname.startsWith("/api/git/")) {
-    if (!(await isTailnet(c))) return forbidden();
-    if (pathname === "/api/git/vote" && method === "POST") return onJSON(c, maxJSONBody, true, git.vote);
-    if (pathname === "/api/git/view" && method === "GET")
-      return sendJSON(200, { states: git.view(), pollMs: intervalMS(), offlineMs: peers.offlineMS() });
-    if (pathname === "/api/git/promote" && method === "POST") {
-      return onJSON(c, maxJSONBody, false, (p) => {
-        const [st, out] = git.promote(p);
-        if (st === 200) markHot();
-        return [st, out];
-      });
-    }
-  }
-
   // mesh-wide model picks: this machine, the tailnet, ingress admins
   if (pathname.startsWith("/api/model/") && !isLoopback(c) && !(await isTailnet(c))) {
     const pick = method === "POST" && pathname === "/api/model/agent";
@@ -311,16 +295,6 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
     });
   }
 
-  let m = gitForceRe.exec(pathname);
-  if (m && method === "POST") {
-    // the tailnet and this machine, the public side admins only
-    const s = users.Of(c);
-    if (c.ingress && (!s || !s.admin)) return forbidden();
-    markHot();
-    const [st, b] = await git.force(m[1]!);
-    return sendJSON(st, b);
-  }
-
   if (pathname === "/api/update/local" && method === "POST") {
     if (!(await isTailnet(c))) return forbidden();
     try {
@@ -362,13 +336,17 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
     );
   }
   // the installed services: an admin's install, update or removal, every host following
-  m = stackOpRe.exec(pathname);
-  if ((m || pathname === "/api/stacks/install" || pathname === "/api/stacks/docker") && method === "POST") {
+  let m = stackOpRe.exec(pathname);
+  const legacy = pathname === "/api/stacks/legacy-git/move" || pathname === "/api/stacks/legacy-git/clear";
+  if ((m || legacy || pathname === "/api/stacks/install" || pathname === "/api/stacks/docker") && method === "POST") {
     const s = users.Of(c);
     if (!isBrowser(c) || !((!!s && s.admin) || (adminPass === "" && isLoopback(c)))) return forbidden();
     const by = s?.user ?? "admin";
     if (pathname === "/api/stacks/install") return onJSON(c, 512 << 10, true, (p) => stacks.Install(p, by));
     if (pathname === "/api/stacks/docker") return onJSON(c, 1024, true, (p) => stacks.AskDocker(str(p.host), by));
+    // the move off the old built-in git: its master's copy into the git stack, then the old copies deleted
+    if (pathname === "/api/stacks/legacy-git/move") return onJSON(c, 4096, true, (p) => stacks.LegacyMove(p, by));
+    if (legacy) return onJSON(c, 1024, true, () => stacks.LegacyClear(by, stackServing("git")));
     const [id, op] = [m![1]!, m![2]!];
     return onJSON(c, 1024, true, (p) =>
       op === "update" ? stacks.Update(id, by) : stacks.Remove(id, p.keepData !== false, by),
@@ -403,7 +381,7 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
     return sendJSON(st, b);
   }
 
-  // a host's shares, model and git host, read and written for an admin (settings › hosts)
+  // a host's shares and model, read and written for an admin (settings › hosts)
   m = hostCfgRe.exec(pathname);
   if (m && (method === "GET" || method === "POST")) {
     const s = users.Of(c);
@@ -412,9 +390,7 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
     const host = m[1]!;
     if (method === "GET") return sendJSON(...(await hostConfig(host, { op: "get" })));
     return onJSON(c, 16 * 1024, true, (p) =>
-      ["shares", "model", "git"].includes(str(p.op))
-        ? hostConfig(host, p)
-        : [400, { error: "op is shares, model or git" }],
+      ["shares", "model"].includes(str(p.op)) ? hostConfig(host, p) : [400, { error: "op is shares or model" }],
     );
   }
 

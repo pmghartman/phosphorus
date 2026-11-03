@@ -71,8 +71,8 @@ export function profileSection(pane: HTMLElement): void {
     pName.setAttribute('list', 'acct-page-names');
     const opts = el('datalist');
     opts.id = 'acct-page-names';
-    // the mesh's services and its git (forgejo) login, each a page login's name
-    const loginable = [...dk.services, ...(st.gitRoute ? [st.gitRoute] : [])];
+    // the mesh's services, each a page login's name
+    const loginable = dk.services;
     opts.replaceChildren(...loginable.map((r) => Object.assign(el('option'), { value: r.name })));
     const pUser = noFill(Object.assign(el('input'), { placeholder: 'user', spellcheck: false }));
     const pPass = noFill(Object.assign(el('input'), { placeholder: 'password' }), true);

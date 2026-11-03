@@ -3,8 +3,9 @@
 // of it (etc/stacks/<id>.json) and each host's copy (packages/mesh/stacks); the
 // page reads them over /api/stacks/*
 
-// where an app came from: a catalogue fetched at run time, or a repo opened by url
-export type SourceId = "casaos" | "runtipi" | "cosmos" | "github";
+// where an app came from: phosphorus's own few, a catalogue fetched at run time, or
+// a repo opened by url
+export type SourceId = "phosphorus" | "casaos" | "runtipi" | "cosmos" | "github";
 
 // a catalogue as the page lists it: its terms shown beside every app it gives
 export interface SourceInfo {
@@ -186,6 +187,23 @@ export interface StackStatus {
 // POST /api/stacks/<id>/standbys { standbys }     -> { ok, want: StackView }                         (ha, admin)
 // POST /api/stacks/<id>/move { to }               -> { ok }   a planned handoff                      (ha, admin)
 // State.stacks carries every StackView; HostInfo.stacks each host's StackStatus, HostInfo.docker its DockerInfo.
+
+// the move off the git service phosphorus used to run itself (etc/stacks/legacy/git.json):
+// the old master's Forgejo data copied into the git stack on that host, the old servants
+// its standbys; the old copies deleted once an admin says the stack serves
+export interface LegacyGit {
+  from: string;
+  standbys: string[];
+  by: string;
+  at: number;
+  state: "asked" | "copying" | "moved" | "failed";
+  error?: string;
+  cleared?: { by: string; at: number };
+}
+
+// POST /api/stacks/legacy-git/move { from, standbys } -> { ok, legacy }   (stacks, admin)
+// POST /api/stacks/legacy-git/clear                    -> { ok, legacy }   (stacks, admin)
+// State.legacyGit carries the record, HostInfo.legacyGit each host's old copy while it has one.
 
 export interface AppPage {
   def: AppDef;

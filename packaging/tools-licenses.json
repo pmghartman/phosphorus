@@ -14,13 +14,6 @@
       "pin": ["packaging/tools.sh", "^CLOUDFLARED=(\\S+)"],
       "source": "https://github.com/cloudflare/cloudflared",
       "license": "https://raw.githubusercontent.com/cloudflare/cloudflared/{v}/LICENSE"
-    },
-    {
-      "name": "Forgejo",
-      "spdx": "GPL-3.0-or-later",
-      "pin": ["packaging/tools.sh", "^FORGEJO=(\\S+)"],
-      "source": "https://codeberg.org/forgejo/forgejo/src/tag/v{v}",
-      "license": "https://codeberg.org/forgejo/forgejo/raw/tag/v{v}/LICENSE"
     }
   ],
   "fetched": [

@@ -7,14 +7,7 @@ import { appCall } from '../apps/index.ts';
 import { dkHostsGone, dkPressed, dkRoutes } from '../desktop/desk.ts';
 import { dkHomeSeen } from '../desktop/deskfiles.ts';
 import { acctCheck } from '../features/account.ts';
-import {
-  GIT_SERVICE,
-  meshModelsFrom,
-  pruneConnections,
-  renderMesh,
-  renderMeshGit,
-  settleHost,
-} from '../features/mesh/mesh.ts';
+import { meshModelsFrom, pruneConnections, renderMesh, settleHost } from '../features/mesh/mesh.ts';
 import { updateState } from '../features/update.ts';
 import { agentsState } from '../settings/agents.ts';
 import { st } from './state.ts';
@@ -24,8 +17,7 @@ const aboutVersion = document.getElementById('about-version')!;
 function renderRoutes(routes: Route[], tailnet: TailnetDevice[]) {
   st.terminalHosts = tailnet.filter((d) => d.phosphorus).map((d) => d.name);
   // a typed row an older peer's: its game servers
-  const services = routes.filter((r) => !r.type && r.name !== GIT_SERVICE);
-  st.gitRoute = routes.find((r) => r.name === GIT_SERVICE) || null;
+  const services = routes.filter((r) => !r.type);
   renderMesh(routes, tailnet);
   dkRoutes(services);
   dkHostsGone();
@@ -41,19 +33,12 @@ function applyState(state: State) {
     aboutVersion.textContent = `v${state.self.version}`;
   }
 
-  const next = state.gitHosts;
-  const gitChanged =
-    JSON.stringify(next.map((h) => [h.host, h.reachable, h.role, h.eligible])) !==
-    JSON.stringify(st.gitHostsList.map((h) => [h.host, h.reachable, h.role, h.eligible]));
-  st.gitHostsList = next;
-  renderMeshGit();
-
   renderRoutes(state.routes, state.tailnet);
   st.lastState = state;
   appCall('status', false, (m) => m.statusState(state));
   agentsState(state);
   appCall('store', false, (m) => m.storeState(state));
-  meshModelsFrom(state, gitChanged);
+  meshModelsFrom(state);
   updateState(state);
 }
 

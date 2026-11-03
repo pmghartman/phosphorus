@@ -3,7 +3,6 @@
 
 import * as catalog from "@phosphorus/catalog";
 import * as files from "@phosphorus/files";
-import * as git from "@phosphorus/git";
 import { type Caller, type Loc, init as mcpInit } from "@phosphorus/mcp";
 import { Assign, Summary } from "@phosphorus/model";
 import * as peers from "@phosphorus/peers";
@@ -42,16 +41,7 @@ import { num } from "./js.ts";
 import { chainHistory, meshHealth, opOn, rememberChain } from "./mcpops.ts";
 import { reapShells } from "./mcpshell.ts";
 import { appHandler } from "./routes.ts";
-import {
-  buildState,
-  chainAction,
-  gitRowsAny,
-  hostServices,
-  hostsInfo,
-  ownState,
-  publishHost,
-  stackHosts,
-} from "./server.ts";
+import { buildState, chainAction, hostServices, hostsInfo, ownState, publishHost, stackHosts } from "./server.ts";
 import { filesCall } from "./shares.ts";
 import { copyTree, homeSource } from "./transfer.ts";
 import { startPushes } from "./ws.ts";
@@ -69,7 +59,6 @@ export async function start(): Promise<Server<WSData>> {
   files.init();
   users.Init();
   store.start();
-  git.init(isUpdating, bootID);
   update.onFinish(rememberChain);
   update.onFailed(() => setUpdating(false));
   setInterval(reapShells, 60000);
@@ -141,15 +130,10 @@ function initMCP() {
     tailnet: peers.tailnet,
     routes: peers.routes,
     peerIPs: peers.peerIPs,
-    gitHosts: () => gitRowsAny(),
     model: Summary,
     lock: update.meshLock,
     chain: () => update.chainStatus() ?? peers.chain(),
     actions: {
-      gitMaster: (host) => {
-        markHot();
-        return git.makeMaster(host);
-      },
       agentModel: (agent, slot, m) => {
         const [st, out] = Assign({ agent, slot, model: m });
         if (st === 200) markHot();

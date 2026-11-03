@@ -197,22 +197,6 @@ export function writeShares(shares: Share[]): string {
   return writeDoc(iniFile, d);
 }
 
-// --- phosphorus.ini [git] -------------------------------------------------------
-
-export function readGitHost(): boolean {
-  const s = findSection(splitSections(readText(iniFile)), "git");
-  return process.platform === "linux" && !!s && fieldsOf(s).host === "true";
-}
-
-export function writeGitHost(on: boolean): string {
-  if (on && process.platform !== "linux")
-    return "git hosts run on Linux alone: forgejo and the git daemon ship for it only";
-  const d = splitSections(readText(iniFile));
-  const s = iniSection(d, "git");
-  s.lines = rewriteSection(s, "git", { host: String(on) }, ["host"]);
-  return writeDoc(iniFile, d);
-}
-
 // --- phosphorus.ini [model] -----------------------------------------------------
 
 // host, gpu and url always written, ctx and slots only once set
@@ -308,7 +292,6 @@ function commitDry(d: Doc, before: string, dry: boolean): [string, string] {
 // IniKeys the phosphorus.ini keys phosphorus reads, by section
 export const IniKeys: Record<string, string[]> = {
   files: ["dir", "priv"],
-  git: ["host"],
   model: ["host", "gpu", "url", "ctx", "slots"],
 };
 
@@ -388,27 +371,15 @@ export function editModel(vals: Record<string, string>, dry: boolean): [string, 
   return commitIni(d, before, dry);
 }
 
-// editGitHost [git] host, Linux only
-export function editGitHost(on: boolean, dry: boolean): [string, string] {
-  if (on && process.platform !== "linux")
-    return ["git hosts run on Linux alone: forgejo and the git daemon ship for it only", ""];
-  const before = readText(iniFile);
-  const d = splitSections(before);
-  const s = iniSection(d, "git");
-  s.lines = rewriteSection(s, "git", { host: String(on) }, ["host"]);
-  return commitIni(d, before, dry);
-}
-
 function commitIni(d: Doc, before: string, dry: boolean): [string, string] {
   const diff = lineDiff(before, joinDoc(d));
   if (dry || diff === "") return ["", diff];
   return [writeDoc(iniFile, d), diff];
 }
 
-// iniValues the three sections as settings › hosts shows them
+// iniValues the sections as settings › hosts shows them
 export function iniValues(): Record<string, any> {
-  const git = fieldsOf(findSection(splitSections(readText(iniFile)), "git"));
-  return { shares: readShares(), model: readModel(), git: git.host === "true", platform: process.platform };
+  return { shares: readShares(), model: readModel(), platform: process.platform };
 }
 
 // lineDiff the lines b changed from a, "- " gone and "+ " new, unchanged left out

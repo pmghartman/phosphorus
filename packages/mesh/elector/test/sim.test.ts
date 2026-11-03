@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { Sim, simTiming } from "./sim.ts";
 
-// three git hosts booted together, a master and its servants in sync
+// three candidates booted together, a master and its servants in sync
 async function three(seed: number, rates = [1, 1, 1]) {
   const sim = new Sim(seed);
   ["a", "b", "c"].forEach((n, i) =>
@@ -58,7 +58,7 @@ test("a master cut from the majority is fenced, the majority elects, the old one
   const took = await sim.until(() => sim.master() !== "" && sim.master() !== old, 20_000);
   expect(took).toBeGreaterThan(0);
   expect(sim.fenced).toBeGreaterThanOrEqual(1);
-  expect(sim.hosts.get(old)!.forgejo).toBe(false);
+  expect(sim.hosts.get(old)!.app).toBe(false);
   const now = sim.master();
   sim.heal();
   await sim.run(20_000);
@@ -112,8 +112,8 @@ test("an update hands off to a servant, then the host's clean stop", async () =>
   done(sim);
 });
 
-// git-daemon.sh's term kills rsyncd once the elector has released its votes,
-// so the successor's final pull finds it gone and leads on its last regular
+// a runner whose stop drops its file server once the elector has released its votes:
+// the successor's final pull finds it gone and leads on its last regular
 // pull: up to a replication interval of pushes lost (an update hands off
 // while the host is still up, above, and loses none)
 test("a clean stop of the master hands off at once, its last pushes since the last pull lost", async () => {

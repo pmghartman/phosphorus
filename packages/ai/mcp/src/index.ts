@@ -133,7 +133,7 @@ async function initialize(id: unknown, params: Record<string, any>, caller: Call
 // instructions the server's, and on a key what that key can and can't do
 function instructions(caller: Caller | undefined): string {
   const s =
-    "phosphorus, a self-hosted mesh: read its hosts, services, stats, git, models, chat and updates, its buttons " +
+    "phosphorus, a self-hosted mesh: read its hosts, services, stats, models, chat and updates, its buttons " +
     "and messages pressed and sent only for a person asking phosphorus.";
   return caller ? s + keyNote(caller) : s;
 }

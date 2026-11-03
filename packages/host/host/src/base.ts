@@ -112,8 +112,6 @@ export const binPath = (name: string) => at("bin", isWindows ? name + ".exe" : n
 // --- phosphorus.ini ------------------------------------------------------------------
 
 export const iniFile = () => at("config", "phosphorus.ini");
-// the git role's daemon script and templates, shipped with its package
-export const gitd = (f: string) => at("packages", "mesh", "git", "gitd", f);
 
 export function iniGet(section: string, key: string): string {
   let text = "";
@@ -123,8 +121,6 @@ export function iniGet(section: string, key: string): string {
   return parseIni(text).get(section + "\0" + key) ?? "";
 }
 
-// Linux alone: forgejo and the git daemon ship for it only
-export const isGitHost = () => isLinux && iniGet("git", "host") === "true";
 export const isModelHost = () => iniGet("model", "host") === "true";
 
 export const has = (name: string) => which(name) !== "";

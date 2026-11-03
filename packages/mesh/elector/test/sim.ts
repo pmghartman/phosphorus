@@ -1,6 +1,6 @@
 // a deterministic mesh for elections: one scheduler on simulated time, each host
-// a frontend (voter, view), an elector and a model of git-daemon.sh (decision
-// read, forgejo up on the master alone, the watchdog fencing on a lapsed lease,
+// a frontend (voter, view), an elector and a model of a replicated service (decision
+// read, the app up on the master alone, the watchdog fencing on a lapsed lease,
 // a servant pulling every few seconds, a final pull on handoff); partitions,
 // crashes and skewed clocks between them
 import { mkdtempSync } from "node:fs";
@@ -46,7 +46,7 @@ export function rng(seed: number) {
 
 type Timer = { at: number; seq: number; fn: () => void };
 
-// the git data a host holds: gen and stamp as GIT_VERSION, writes the pushes it has
+// the data a host holds: gen and stamp as its version, writes the ones it has
 type Data = { gen: number; stamp: number; writes: number };
 
 const daemonTick = 250;
@@ -72,14 +72,14 @@ export class Host {
   bootId = "";
   published?: Record<string, any>;
 
-  // git-daemon.sh's
+  // the service runner's
   data: Data = { gen: 0, stamp: 0, writes: 0 };
   snap: Data = { gen: 0, stamp: 0, writes: 0 };
   decision?: Decision;
   amMaster = false;
   promoting = false;
   authoritative = "";
-  forgejo = false;
+  app = false;
   lastGood = 0;
   lastRepl = -1e12;
   pulling = false;
@@ -118,12 +118,12 @@ export class Host {
 
   group(): Group {
     return {
-      name: "git",
-      view: "/api/git/view",
-      vote: "/api/git/vote",
-      flag: "gitHost",
+      name: "svc",
+      view: "/api/ha/svc/view",
+      vote: "/api/ha/svc/vote",
+      flag: "candidate",
       local: this.local,
-      up: () => this.forgejo,
+      up: () => this.app,
       decide: (d) => (this.decision = d),
       claim: (c) => (this.claim = c ? { c, at: this.sim.t } : undefined),
       roster: () => this.roster,
@@ -140,7 +140,7 @@ export class Host {
     const c = this.claim && this.sim.t - this.claim.at <= claimMaxAgeMS ? this.claim.c : null;
     return {
       host: this.name,
-      gitHost: this.candidate,
+      candidate: this.candidate,
       roster: this.voter.roster,
       claim: c,
       updating: this.updating,
@@ -167,7 +167,7 @@ export class Host {
     this.voter = new Voter(join(this.sim.dir, `${this.name}-roster.json`), this.wall(), this.wall);
     this.e = new Elector(this.name, this.sim.call(this), this.group(), clock, this.sim.timing);
     this.e.addr = () => this.name;
-    this.amMaster = this.promoting = this.forgejo = this.pulling = false;
+    this.amMaster = this.promoting = this.app = this.pulling = false;
     this.authoritative = "";
     this.lastGood = 0;
     this.decision = undefined;
@@ -187,9 +187,9 @@ export class Host {
     };
     const watchdog = async () => {
       while (this.alive && this.life === life) {
-        if (this.forgejo && !this.leaseValid()) {
-          this.sim.log(`${this.name}: watchdog fenced forgejo`);
-          this.forgejo = false;
+        if (this.app && !this.leaseValid()) {
+          this.sim.log(`${this.name}: watchdog fenced the app`);
+          this.app = false;
           this.sim.fenced++;
         }
         await this.sleep(watchdogMS);
@@ -211,15 +211,15 @@ export class Host {
     this.sim.log(`${this.name}: crash`);
     this.alive = false;
     this.crashedAt = this.sim.t;
-    this.forgejo = false;
+    this.app = false;
     this.published = undefined;
     this.amMaster = false;
   }
 
-  // a clean stop as git-daemon.sh's term: forgejo down, then the elector handing off
+  // a clean stop: the app down, then the elector handing off
   async shutdown() {
     const life = this.life;
-    this.stopForgejo();
+    this.stopApp();
     this.e.stopping = true;
     await this.e.stop();
     if (this.life === life) this.crash();
@@ -232,12 +232,12 @@ export class Host {
     this.amMaster = false;
     this.promoting = false;
     this.authoritative = "";
-    this.stopForgejo();
+    this.stopApp();
   }
 
-  private stopForgejo() {
-    if (!this.forgejo) return;
-    this.forgejo = false;
+  private stopApp() {
+    if (!this.app) return;
+    this.app = false;
     this.snapshot();
   }
 
@@ -254,7 +254,7 @@ export class Host {
       if (!this.alive || this.life !== life) return;
       this.pulling = false;
       const src = this.sim.hosts.get(from);
-      // rsyncd refusing while the source is promoting
+      // the source refusing while it is promoting
       if (!src?.alive || src.promoting || !this.sim.linked(this.name, from)) return done(false);
       this.data = { ...src.snap };
       done(true);
@@ -284,8 +284,8 @@ export class Host {
         this.beginLeading();
       }
       if (this.promoting) return;
-      if (!this.forgejo && this.leaseValid()) {
-        this.forgejo = true;
+      if (!this.app && this.leaseValid()) {
+        this.app = true;
         this.sim.up(this);
       }
     } else if (role === "servant") {
@@ -296,7 +296,7 @@ export class Host {
       this.authoritative = "";
     }
     // a push landing on a serving master
-    if (this.forgejo) this.data.writes++;
+    if (this.app) this.data.writes++;
     this.replicate();
   }
 
@@ -383,8 +383,8 @@ export class Sim {
       const h = this.hosts.get(to);
       if (!h) return undefined;
       if (!from.alive || !h.alive || !this.linked(from.name, h.name)) return undefined;
-      if (method === "GET" && path === "/api/git/view") return h.view();
-      if (method === "POST" && path === "/api/git/vote") {
+      if (method === "GET" && path === "/api/ha/svc/view") return h.view();
+      if (method === "POST" && path === "/api/ha/svc/vote") {
         const [st, out] = h.voter.vote(body as Record<string, any>);
         return st === 200 ? out : undefined;
       }
@@ -393,7 +393,7 @@ export class Sim {
   }
 
   up(h: Host) {
-    this.log(`${h.name}: forgejo up`);
+    this.log(`${h.name}: app up`);
     this.check();
   }
 
@@ -404,7 +404,7 @@ export class Sim {
     this.promotions.push({ host: h.name, gen: h.data.gen, at: this.t, writes: h.data.writes });
   }
 
-  serving = () => [...this.hosts.values()].filter((h) => h.alive && h.forgejo).map((h) => h.name);
+  serving = () => [...this.hosts.values()].filter((h) => h.alive && h.app).map((h) => h.name);
 
   check() {
     const up = this.serving();

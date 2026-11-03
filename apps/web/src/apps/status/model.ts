@@ -28,7 +28,6 @@ export function modelPhase(m: ModelHost): [string, string] {
 export function headLine(name: string, h: StHost, open: boolean): string {
   const s: Partial<StatsSample> = h.s || {};
   const dev = (stNet?.tailnet || []).find((d) => d.name === name) || ({} as { os?: string; version?: string });
-  const git = (stNet?.gitHosts || []).find((g) => g.host === name);
   const svc = hostServices(name);
   const rtt = steadyRtt(name);
   return dotJoin([
@@ -37,7 +36,6 @@ export function headLine(name: string, h: StHost, open: boolean): string {
     open && (s.version || dev.version) && `v${esc(s.version || dev.version)}`,
     open && s.uptime && `up ${uptime(s.uptime)}`,
     typeof rtt === 'number' && `<span class="mesh-stat-ping ${pingClass(rtt)}">${rtt}ms</span>`,
-    open && git?.role && `<span class="st-git">git ${esc(git.role)}</span>`,
     modelOf(name) && '<span class="st-model-mark">model</span>',
     open && svc.length && plural(svc.length, 'service'),
     // a tile's whole head the click, only an open card showing its fold

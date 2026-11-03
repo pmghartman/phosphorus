@@ -1,4 +1,4 @@
-/* --- the mesh pane: its graph, its nodes and git rows ------------------------ */
+/* --- the mesh pane: its graph and its nodes ---------------------------------- */
 
 /* height set per frame by app.js drawMesh(), in step with the graph */
 .mesh-panel {
@@ -138,29 +138,7 @@
   font-size: 7px;
   font-family: inherit;
 }
-.mesh-svg .mesh-git {
-  --git-c: var(--sand);
-}
-.mesh-svg .mesh-git.stale {
-  --git-c: var(--dim);
-}
-.mesh-svg .mesh-git.down {
-  --git-c: var(--offmesh);
-}
-.mesh-svg .mesh-git.master {
-  --git-c: var(--accent);
-}
-/* the git service's own glyph, sized in graph units by app.js */
-.mesh-svg .mesh-git {
-  color: var(--git-c);
-}
-.mesh-svg .mesh-git-star {
-  fill: var(--git-c);
-  font-size: 9px;
-  font-family: inherit;
-}
-
-/* what the git marks mean, stacked in the graph's top-right corner */
+/* what the marks mean, stacked in the graph's top-right corner */
 .mesh-legend {
   position: absolute;
   right: 0.35rem;
@@ -187,13 +165,6 @@
   display: flex;
   align-items: center;
   gap: 0.2rem;
-}
-.mesh-legend-star {
-  color: var(--sand);
-}
-.mesh-legend-git .db-icon {
-  margin: 0;
-  color: var(--accent);
 }
 /* a model host's role letters and their legend, in the glyph's shifting purple and orange */
 .mesh-legend-model {
@@ -284,8 +255,7 @@
 .mesh-fold-n {
   color: var(--sage);
 }
-.mesh-stats.fold-nodes > .mesh-stats-rows,
-.mesh-git-box.fold-git > .mesh-git-rows {
+.mesh-stats.fold-nodes > .mesh-stats-rows {
   display: none;
 }
 .mesh-head-right {
@@ -350,109 +320,6 @@
 }
 
 /* a host switch's progress and outcome, expanded only */
-
-/* each git host's copy, a freshness bar for every backup */
-.mesh-git-box {
-  border-top: 1px solid var(--border);
-}
-.mesh-git-rows {
-  max-height: 9rem;
-  overflow-y: auto;
-}
-.mesh-git-box[hidden] {
-  display: none;
-}
-.mesh-git-row {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 0.4rem;
-  padding: 0.3rem 0.4rem;
-}
-.mesh-git-dot {
-  flex: none;
-  width: 0.45rem;
-  height: 0.45rem;
-  border: 1px solid var(--sage);
-  align-self: center;
-}
-.mesh-git-row.master .mesh-git-dot {
-  background: var(--accent);
-  border-color: var(--accent);
-}
-.mesh-git-row.catching .mesh-git-dot {
-  border-color: var(--sand);
-}
-.mesh-git-row.down .mesh-git-dot {
-  border-color: var(--offmesh);
-}
-.mesh-git-row.down .mesh-stat-nm {
-  color: var(--muted);
-  text-decoration: line-through;
-}
-.mesh-git-text {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--muted);
-}
-.git-spin {
-  display: inline-block;
-  width: 0.6em;
-  height: 0.6em;
-  margin-right: 0.35em;
-  vertical-align: -0.05em;
-  border: 1.5px solid var(--sand);
-  border-right-color: transparent;
-  border-radius: 50%;
-  animation: git-spin 0.8s linear infinite;
-}
-@keyframes git-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-.mesh-git-behind {
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-}
-.mesh-git-take {
-  font: inherit;
-  font-size: 0.85em;
-  padding: 0 0.35rem;
-  color: var(--muted);
-  background: none;
-  border: 1px solid var(--border);
-  cursor: pointer;
-}
-.mesh-git-take:hover,
-.mesh-git-take:focus-visible {
-  color: var(--accent);
-  border-color: var(--accent);
-}
-.git-ago {
-  min-width: 2.2rem;
-  text-align: right;
-  color: var(--muted);
-}
-.git-lag {
-  font-size: 0.7em;
-  letter-spacing: 0;
-}
-.git-lag .good {
-  color: var(--online);
-}
-.git-lag .slow {
-  color: var(--warn);
-}
-.git-lag .stale {
-  color: var(--offmesh);
-}
-.git-lag .off {
-  color: color-mix(in srgb, var(--muted) 55%, var(--border));
-}
 
 /* up to 8 rows (a px max-height from mesh.ts), then a scroll */
 .mesh-stats-rows {

@@ -21,6 +21,16 @@ export interface Runtime {
 }
 
 export { arch, detect as detectDocker, dockerInfo } from "./docker.ts";
+export {
+  AskClear as LegacyClear,
+  AskMove as LegacyMove,
+  copyLegacy,
+  legacyDir,
+  legacyInfo,
+  legacyOf,
+  rewriteIni,
+  tickLegacy,
+} from "./legacy-git.ts";
 export { dirOf, logFile, reset, roleOf, runtime, Start, statuses, tick } from "./reconcile.ts";
 export { type Ctx, envText, interp, parsePort, quote, type Rendered, render } from "./render.ts";
 export { type Publish, seams } from "./seams.ts";

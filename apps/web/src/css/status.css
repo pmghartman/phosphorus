@@ -264,9 +264,6 @@
 .st-name.self {
   color: var(--mesh-self);
 }
-.st-git {
-  color: var(--accent);
-}
 
 /* columns by the card's own width */
 .st-card {

@@ -60,8 +60,6 @@ export type OS = {
   missingDeps(): Promise<string[]>;
   aptInstall(pkgs: string[]): Promise<void>;
   deferRebuild(): Promise<void>;
-  gitEnv(): Record<string, string>;
-  ensureGitUser(): Promise<void>;
   runtimeDir(): string;
   // run's children in their own group (Linux), run's own (macOS), run's job (Windows)
   childDetached: boolean;

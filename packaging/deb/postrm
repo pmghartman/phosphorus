@@ -1,6 +1,6 @@
 #!/bin/sh
-# remove: the cli links; purge: /var/lib/phosphorus (git data, chat, shares, the
-# tailnet identity) and the git account
+# remove: the cli links; purge: /var/lib/phosphorus (installed services' data,
+# shares, the tailnet identity) and an older version's git account
 set -e
 case "$1" in
 remove | purge)

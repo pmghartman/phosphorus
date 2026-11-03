@@ -1,7 +1,7 @@
 // the mesh as this host sees it: the tailnet asked who is there, one socket to
 // each phosphorus peer carrying state and the store's changes as they
 // happen, and the views the rest of the host reads: routes, devices, locks,
-// the git and model states of live peers
+// the model and failover states of live peers
 import { join } from "node:path";
 import { pinTargets, type Row, rowError, settle, swap } from "@phosphorus/proxy";
 import { refresh } from "@phosphorus/services";
@@ -68,7 +68,6 @@ const pullBatch = 40;
 export type Own = {
   lock: unknown;
   chain: unknown;
-  git: unknown;
   model: unknown;
   // this host's state in each failover group, by group
   ha?: unknown;
@@ -88,7 +87,7 @@ const hooks: Required<Hooks> = {
   platform: () => "",
   ownLock: () => null,
   hostServices: () => undefined,
-  own: () => ({ lock: null, chain: null, git: null, model: null }),
+  own: () => ({ lock: null, chain: null, model: null }),
   self: () => ({ version: "", bootId: "" }),
 };
 
@@ -102,7 +101,6 @@ type PeerInfo = {
   version: string;
   lock: Record<string, any> | null;
   chain: Record<string, any> | null;
-  git: Record<string, any> | null;
   model: Record<string, any> | null;
   ha: Record<string, any> | null;
   services: Row[];
@@ -127,7 +125,6 @@ function infoFor(host: string): PeerInfo {
       version: "",
       lock: null,
       chain: null,
-      git: null,
       model: null,
       ha: null,
       services: [],
@@ -154,10 +151,9 @@ function objOrNull(v: unknown, key: string): Record<string, any> | null {
 
 // a peer's state frame taken in; true when anything it holds changed
 function applyState(s: PeerInfo, f: PeerState): boolean {
-  const before = marshal([s.lock, s.chain, s.git, s.model, s.ha, s.services]);
+  const before = marshal([s.lock, s.chain, s.model, s.ha, s.services]);
   if ("lock" in f) s.lock = objOrNull(f.lock, "initiator");
   if ("chain" in f) s.chain = objOrNull(f.chain, "initiator");
-  if ("git" in f) s.git = objOrNull(f.git, "");
   if ("model" in f) s.model = objOrNull(f.model, "");
   if ("ha" in f) s.ha = objOrNull(f.ha, "");
   if ("services" in f) {
@@ -171,7 +167,7 @@ function applyState(s: PeerInfo, f: PeerState): boolean {
     }
   }
   s.stateAt = now();
-  return before !== marshal([s.lock, s.chain, s.git, s.model, s.ha, s.services]);
+  return before !== marshal([s.lock, s.chain, s.model, s.ha, s.services]);
 }
 
 // --- the links -------------------------------------------------------------------------
@@ -223,7 +219,7 @@ const events = {
   onDown(link: Link) {
     const s = infos.get(link.host);
     if (s) {
-      s.lock = s.chain = s.git = s.model = s.ha = null;
+      s.lock = s.chain = s.model = s.ha = null;
       s.synced = "";
     }
     notes.note(`peer:${link.host}`, `${link.host} is not answering on its link, is phosphorus running there?`);
@@ -424,16 +420,6 @@ export const lock = () => curLock;
 export const chain = () => curChain;
 
 const fresh = (s: PeerInfo) => isUp(s) && now() - s.stateAt <= stateMaxAgeMS;
-
-// live peers' git states
-export function peerGit(): any[] {
-  const out: any[] = [];
-  for (const h of sortedHosts()) {
-    const s = infos.get(h)!;
-    if (fresh(s) && s.git) out.push(s.git);
-  }
-  return out;
-}
 
 // live peers' failover states, by host then group
 export function peerHA(): Record<string, Record<string, any>> {

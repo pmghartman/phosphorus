@@ -18,7 +18,6 @@
     "apps/host": {
       "name": "@phosphorus/host-app",
       "dependencies": {
-        "@phosphorus/elector": "workspace:*",
         "@phosphorus/host": "workspace:*",
         "@phosphorus/modeld": "workspace:*",
         "@phosphorus/server": "workspace:*",
@@ -215,14 +214,6 @@
         "@phosphorus/util": "workspace:*",
       },
     },
-    "packages/mesh/git": {
-      "name": "@phosphorus/git",
-      "dependencies": {
-        "@phosphorus/elector": "workspace:*",
-        "@phosphorus/peers": "workspace:*",
-        "@phosphorus/util": "workspace:*",
-      },
-    },
     "packages/mesh/minisign": {
       "name": "@phosphorus/minisign",
     },
@@ -316,7 +307,6 @@
         "@phosphorus/config": "workspace:*",
         "@phosphorus/envfile": "workspace:*",
         "@phosphorus/files": "workspace:*",
-        "@phosphorus/git": "workspace:*",
         "@phosphorus/mcp": "workspace:*",
         "@phosphorus/minisign": "workspace:*",
         "@phosphorus/model": "workspace:*",
@@ -391,8 +381,6 @@
     "@phosphorus/envfile": ["@phosphorus/envfile@workspace:packages/host/envfile"],
 
     "@phosphorus/files": ["@phosphorus/files@workspace:packages/home/files"],
-
-    "@phosphorus/git": ["@phosphorus/git@workspace:packages/mesh/git"],
 
     "@phosphorus/host": ["@phosphorus/host@workspace:packages/host/host"],
 

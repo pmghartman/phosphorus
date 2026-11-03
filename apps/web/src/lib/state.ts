@@ -1,7 +1,7 @@
 // the page's state shared across its modules: what /api/state last said, the account
 // and the desktop's own. Each was a module-level let of app.js read by
 // several sections; here one object, read where it was read and set where it was set
-import type { FileEntry, GitHost, HostInfo, Route, State, Vault } from '@phosphorus/wire';
+import type { FileEntry, HostInfo, Route, State, Vault } from '@phosphorus/wire';
 import type { LoginRow } from '../desktop/login.ts';
 import type { DkWin } from '../desktop/windows.ts';
 import type { FmView, Loc, PickedItem } from '../features/home/home.ts';
@@ -26,9 +26,6 @@ export const st = {
   meshDomain: '',
   // hosts whose frontend answers, each one terminal tab
   terminalHosts: [] as string[],
-  // the git service, and every git host's role and lag
-  gitRoute: null as Route | null,
-  gitHostsList: [] as GitHost[],
   // each host's own info.json off sys, offline ones too
   hostsInfo: {} as Record<string, HostInfo>,
   // the newest /api/state, handed to an app as it loads

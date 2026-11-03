@@ -7,7 +7,7 @@ import { nativeRestart, nativeStop } from "./native.ts";
 import { os } from "./os.ts";
 
 // detached this command rerun in its own session and its log followed: a
-// terminal inside phosphorus dropping mid-stop never leaves git stopped
+// terminal inside phosphorus dropping mid-stop never leaves it half stopped
 async function detached(cmd: string): Promise<boolean> {
   if (process.env.PHOSPHORUS_DETACHED) return false;
   mkdirSync(at("state"), { recursive: true });
@@ -38,8 +38,7 @@ async function detached(cmd: string): Promise<boolean> {
   return true;
 }
 
-// stop git first (run stops it before the rest), so a master hands off;
-// kept stopped through reboots
+// stopped, its services handing off first; kept stopped through reboots
 export async function stop() {
   if (await detached("stop")) return;
   await nativeStop();

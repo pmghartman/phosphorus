@@ -205,8 +205,8 @@ function note(host: string, fields: Record<string, string>) {
   save();
 }
 
-function buildOrder(gitHosts: string[]): string[] {
-  const git = new Set(gitHosts);
+function buildOrder(lastHosts: string[]): string[] {
+  const last = new Set(lastHosts);
   const seen = new Set<string>();
   const peers: string[] = [];
   for (const d of tailnet()) {
@@ -216,7 +216,7 @@ function buildOrder(gitHosts: string[]): string[] {
       peers.push(n);
     }
   }
-  const rank = (m: string) => (git.has(m) ? 1 : 0);
+  const rank = (m: string) => (last.has(m) ? 1 : 0);
   peers.sort((a, b) => rank(a) - rank(b) || localeCompare(a, b));
   return [...peers, selfHost];
 }
@@ -344,12 +344,12 @@ async function runChain() {
   finish("finished");
 }
 
-// a chain over only those hosts, every host when only is empty, or who holds
-// the lock
-export function start(gitHosts: string[], only: string[]): Record<string, any> {
+// a chain over only those hosts, every host when only is empty, lastHosts
+// (each serving a stack its standbys take over) walked last; or who holds the lock
+export function start(lastHosts: string[], only: string[]): Record<string, any> {
   const held = obj(meshLock());
   if (held) return { locked: held.initiator };
-  let order = buildOrder(gitHosts);
+  let order = buildOrder(lastHosts);
   if (only.length) {
     const kept = order.filter((h) => only.includes(h));
     if (!kept.length) return { error: `none of ${only.join(", ")} is a phosphorus host on the mesh` };

@@ -11,7 +11,6 @@ import { deskApps, dk, st } from '../../lib/state.ts';
 import { dkSettings, type SettingsAt, settingsShows } from '../../settings/settings.ts';
 import { dkCode } from '../deskfiles.ts';
 import { dkFocus, dkSize, dkWin } from '../windows.ts';
-import { dkGit } from './git.ts';
 import { dkTermFor } from './terminal.ts';
 import { dkWebApp, dkWebApps } from './webapps.ts';
 
@@ -21,10 +20,6 @@ export const DK_APPS: Record<string, { title: string; view: string; w: number; h
 
 export function dkOpenApp(id: string): void {
   if (!dk.desk) return;
-  if (id === 'git') {
-    dkGit();
-    return;
-  }
   const app = DK_APPS[id];
   const w = app && dkWin(`app:${id}`, app.title, '', `app dk-app-${id}`);
   if (!w) return;
@@ -43,7 +38,7 @@ export function dkOpenApp(id: string): void {
 export function dkAppsChanged(): void {
   const was = new Set(deskApps);
   deskApps.clear();
-  for (const id of [...Object.keys(DK_APPS), 'git']) {
+  for (const id of Object.keys(DK_APPS)) {
     const w = dk.wins.get(`app:${id}`);
     if (w && !w.node.hidden && !w.leaving) deskApps.add(id);
   }
@@ -69,7 +64,6 @@ export function dkOpenTerminal(host: string, shared = false): void {
 
 // phosphorus's presses, each the app it names, or the settings section
 export const DK_VIEWS: Record<string, string> = {
-  git: 'git',
   apps: 'apps',
   store: 'apps',
 };

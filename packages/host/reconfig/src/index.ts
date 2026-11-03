@@ -1,4 +1,4 @@
-// phosphorus.ini's [files], [git] host and [model] host and gpu applied
+// phosphorus.ini's [files] and [model] host and gpu applied
 // as soon as edited, a rebuild
 import { join } from "node:path";
 import {
@@ -27,7 +27,6 @@ export function current(): string {
   return marshal({
     dir: ini("files", "dir"),
     priv: ini("files", "priv"),
-    git: ini("git", "host") === "true",
     gpu: ini("model", "gpu") === "true",
     model: ini("model", "host") === "true",
   });
@@ -56,7 +55,7 @@ export function start(busy: () => boolean) {
       }
       if (s === applied() || now() - since < settleMS || busy()) continue;
       writeJSONAtomic(appliedFile, { sig: s });
-      logf("[reconfig] phosphorus.ini [files], [git] or [model] host or gpu changed, rebuilding");
+      logf("[reconfig] phosphorus.ini [files] or [model] host or gpu changed, rebuilding");
       const r = await run([rebuildCmd, "rebuild", "--home", RepoDir], { timeoutMs: rebuildTimeoutMs });
       if (!r.ok) logf("[reconfig] rebuild failed: %s", last(r.stderr || r.error || `exit status ${r.code}`));
       else if (last(r.stdout)) logf("[reconfig] %s", last(r.stdout));
