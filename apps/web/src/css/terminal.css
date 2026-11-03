@@ -3,6 +3,10 @@
 .dk-terms .dk-title {
   display: none;
 }
+/* no line under the tabs, in any look: the shown tab and its shell one piece */
+:root .dk-win.dk-terms .dk-head {
+  border-bottom: 0;
+}
 .dk-terms .dk-head {
   gap: 0;
   padding-left: 0.3rem;
@@ -48,9 +52,6 @@
   color: var(--fg);
 }
 .dk-tab.active {
-  /* over the bar's bottom edge, one piece with the shell below */
-  height: calc(1.35rem + 1px);
-  margin-bottom: -1px;
   border-color: var(--border);
   background: var(--bg);
   color: var(--fg);
