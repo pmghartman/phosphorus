@@ -26,7 +26,8 @@ import {
 } from "@phosphorus/elector";
 import { errText, logf as log, obj, writeFileAtomic } from "@phosphorus/util";
 import type { StackRole, StackStatus, StackWant } from "@phosphorus/wire";
-import { idRe, type Runtime } from "../index.ts";
+import { idRe } from "../ids.ts";
+import type { Runtime } from "../index.ts";
 import {
   cleanRel,
   type Fetch,
@@ -118,6 +119,7 @@ export class Replica implements Group {
   authoritative = "";
   state: "down" | "starting" | "up" | "stopping" = "down";
   fenced = false;
+  fencing?: Promise<void>;
   disposed = false;
   lastGood = 0;
   lastRepl = -Infinity;
@@ -290,8 +292,14 @@ export class Replica implements Group {
     this.state = "starting";
     try {
       await this.rt.up(this.id);
-      if (this.state === "starting") this.state = "up";
-      logf("%s: up as the active copy", this.id);
+      if (this.state === "starting") {
+        this.state = "up";
+        logf("%s: up as the active copy", this.id);
+      } else {
+        // fenced while it came up: down again, the fence's stop may have run first
+        await this.rt.down(this.id).catch(() => {});
+        this.state = "down";
+      }
     } catch (e) {
       if (this.state === "starting") this.state = "down";
       logf("%s: couldn't start: %s", this.id, errText(e));
@@ -304,7 +312,8 @@ export class Replica implements Group {
     this.amMaster = false;
     this.promoting = false;
     this.authoritative = "";
-    if (this.state !== "down") {
+    if (this.fencing) await this.fencing;
+    else if (this.state !== "down") {
       this.state = "stopping";
       try {
         await this.rt.down(this.id);
@@ -322,11 +331,15 @@ export class Replica implements Group {
     this.fenced = true;
     this.state = "stopping";
     logf("%s: lease ran out, watchdog stopping it", this.id);
-    void this.rt
+    // its last writes snapshotted, for a successor's final pull
+    this.fencing = this.rt
       .down(this.id)
       .catch((e) => logf("%s: couldn't stop: %s", this.id, errText(e)))
+      .then(() => this.snapshot(false))
+      .catch(() => {})
       .finally(() => {
         if (this.state === "stopping") this.state = "down";
+        this.fencing = undefined;
       });
   }
 
