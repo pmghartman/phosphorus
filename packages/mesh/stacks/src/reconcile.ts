@@ -64,11 +64,8 @@ type Applied = {
   role: StackRole;
   hash: string;
   webPort: number;
+  // the host port its page is served at here, 0 when it isn't
   published: number;
-  // the aliases published with it, comma separated
-  aliases: string;
-  // published open to all
-  pub: boolean;
 };
 
 type Local = Applied & {
@@ -97,8 +94,6 @@ function local(id: string): Local {
       hash: typeof a?.hash === "string" ? a.hash : "",
       webPort: typeof a?.webPort === "number" ? a.webPort : 0,
       published: typeof a?.published === "number" ? a.published : 0,
-      aliases: typeof a?.aliases === "string" ? a.aliases : "",
-      pub: a?.pub === true,
       running: false,
       checkedAt: 0,
       error: "",
@@ -119,8 +114,6 @@ const saveApplied = (id: string, l: Local) =>
     hash: l.hash,
     webPort: l.webPort,
     published: l.published,
-    aliases: l.aliases,
-    pub: l.pub,
   } satisfies Applied);
 
 export const roleOf = (w: StackWant | undefined, host = SelfHost): StackRole =>
@@ -222,35 +215,36 @@ async function healthOf(id: string, w: StackWant, l: Local): Promise<boolean | u
   return row.Health ? row.Health === "healthy" : row.State === "running";
 }
 
-// --- publishing: [<id>] port = in this host's services.export --------------------
+// --- publishing: the route its want makes, served from this host's port ---------
 
-async function publish(id: string, l: Local, port: number) {
-  const w = wantOf(id);
-  const aliases = (w?.def.manifest.aliases ?? []).join(",");
-  const pub = !!w?.public;
-  if (l.published === port && l.aliases === aliases && l.pub === pub) return;
-  // aliases and public sent when set, or to clear what it had
-  const fields: Record<string, string> = { port: String(port) };
-  if (aliases || l.aliases) fields.aliases = aliases;
-  if (pub || l.pub) fields.public = pub ? "true" : "";
-  const [st, b] = await seams.publish(id, fields);
-  if (st !== 200) throw new Error(`publishing: ${b?.error ?? `status ${st}`}`);
+function publish(id: string, l: Local, port: number) {
+  if (l.published === port) return;
   l.published = port;
-  l.aliases = aliases;
-  l.pub = pub;
   saveApplied(id, l);
+  markHot();
 }
 
-async function unpublish(id: string, l: Local) {
+function unpublish(id: string, l: Local) {
   if (!l.published) return;
-  const [st, b] = await seams.publish(id, null);
-  // nothing declared is as good as dropped
-  if (st !== 200 && st !== 404 && !/no service/i.test(String(b?.error ?? "")))
-    throw new Error(`unpublishing: ${b?.error ?? `status ${st}`}`);
   l.published = 0;
-  l.aliases = "";
-  l.pub = false;
   saveApplied(id, l);
+  markHot();
+}
+
+// the installed services this host serves, as services rows: the want's name,
+// aliases and public, its port here; the scheme sniffed
+export function webRows(): { name: string; port: number; scheme: string; aliases?: string[]; public?: boolean }[] {
+  const out: ReturnType<typeof webRows> = [];
+  for (const id of every()) {
+    const w = wantOf(id);
+    const l = local(id);
+    if (!w?.def.manifest.web || !l.published) continue;
+    const r: (typeof out)[number] = { name: id, port: l.published, scheme: "" };
+    if (w.def.manifest.aliases?.length) r.aliases = w.def.manifest.aliases;
+    if (w.public) r.public = true;
+    out.push(r);
+  }
+  return out;
 }
 
 // --- the project's files -------------------------------------------------------
@@ -376,17 +370,17 @@ async function apply(id: string, w: StackWant, role: StackRole, p: Plan, op: Op)
       l.webPort = p.webPort;
       // a page this copy publishes moves to the new port
       if (l.published && l.published !== p.webPort && (await isRunning(id, w.def.manifest.web)))
-        await publish(id, l, p.webPort);
+        publish(id, l, p.webPort);
     } else if (role === "active") {
       if (p.build) await compose(id, ["build", "--pull"], pullMS);
       await compose(id, ["up", "-d", "--remove-orphans"], upMS);
       l.held = false;
       l.upAt = now();
       l.webPort = p.webPort;
-      if (w.def.manifest.web) await publish(id, l, p.webPort);
-      else await unpublish(id, l);
+      if (w.def.manifest.web) publish(id, l, p.webPort);
+      else unpublish(id, l);
     } else {
-      await unpublish(id, l);
+      unpublish(id, l);
       if (l.role === "active" || (await isRunning(id, w.def.manifest.web))) await compose(id, ["down"], downMS);
       l.webPort = p.webPort;
     }
@@ -409,7 +403,7 @@ async function teardown(id: string, keepData: boolean) {
   try {
     if (existsSync(composeFile(id)))
       await compose(id, ["down", "--remove-orphans", ...(keepData ? [] : ["--volumes"])], downMS);
-    await unpublish(id, l);
+    unpublish(id, l);
     if (keepData) {
       for (const f of ["compose.yml", ".env", ".phos.json", "src", "cache"])
         rmSync(join(dirOf(id), f), { recursive: true, force: true });
@@ -420,8 +414,6 @@ async function teardown(id: string, keepData: boolean) {
       hash: "",
       webPort: 0,
       published: 0,
-      aliases: "",
-      pub: false,
       running: false,
       healthy: undefined,
     });
@@ -474,8 +466,6 @@ async function settle(id: string) {
     return;
   }
   if (l.error && !l.errorFor) l.error = "";
-  // the want's public or aliases moved: the page published again as they are now
-  if (l.published && w.def.manifest.web) await publish(id, l, l.published).catch((e) => logf("%s: %s", id, errText(e)));
   if ((!ha && role !== "active") || now() - l.checkedAt < checkMS) return;
   l.checkedAt = now();
   const was = [l.running, l.healthy];
@@ -569,7 +559,7 @@ export const runtime: Runtime = {
     l.upAt = now();
     await compose(id, ["up", "-d", "--remove-orphans"], upMS);
     const w = wantOf(id);
-    if (w?.def.manifest.web && l.webPort) await publish(id, l, l.webPort);
+    if (w?.def.manifest.web && l.webPort) publish(id, l, l.webPort);
     l.running = await isRunning(id, w?.def.manifest.web);
     markHot();
   },
@@ -577,7 +567,7 @@ export const runtime: Runtime = {
     const l = local(id);
     l.held = true;
     if (existsSync(composeFile(id))) await compose(id, ["stop"], downMS);
-    await unpublish(id, l);
+    unpublish(id, l);
     l.running = false;
     markHot();
   },

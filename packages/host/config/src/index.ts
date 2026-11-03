@@ -1,15 +1,12 @@
-// config/ edited in place: services.export and phosphorus.ini section by
-// section, comments, order and every other section kept; the frontend's and
-// the agents' edits come through here
+// config/ edited in place: phosphorus.ini section by section, comments, order
+// and every other section kept; the frontend's and the agents' edits come through here
 
 import { chmodSync, readFileSync, renameSync, type Stats, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import { Keys, migrate, parse } from "@phosphorus/services";
 import { chownLike, env, errText, RepoDir } from "@phosphorus/util";
 
 // the home's config/, read-write, /etc/phosphorus a read-only mount
 const configDir = env("PHOSPHORUS_CONFIG_DIR", join(RepoDir, "config"));
-export const servicesFile = join(configDir, "services.export");
 export const iniFile = join(configDir, "phosphorus.ini");
 
 // --- config files ---------------------------------------------------------------
@@ -92,25 +89,6 @@ export function rewriteSection(
     if (!done.has(k) && v !== undefined) extra.push(kv(k, v));
   }
   return [...out.slice(0, after), ...extra, ...out.slice(after)];
-}
-
-const noteRe = /^\s*[#;]/;
-
-// [name] taken out with the comment right above it; the blanks and comment
-// after its keys head the next section, so they stay
-export function dropSection(d: Doc, name: string) {
-  const i = d.secs.findIndex((s) => s.name === name);
-  if (i < 0) return;
-  const above = i > 0 ? d.secs[i - 1]!.lines : d.head;
-  while (above.length > 0 && noteRe.test(above[above.length - 1]!)) above.pop();
-  while (above.length > 0 && above[above.length - 1]!.trim() === "") above.pop();
-  const lines = d.secs[i]!.lines;
-  let k = lines.length;
-  while (k > 1 && (lines[k - 1]!.trim() === "" || noteRe.test(lines[k - 1]!))) k--;
-  const tail = lines.slice(k);
-  if (above.length === 0) while (tail.length > 0 && tail[0]!.trim() === "") tail.shift();
-  above.push(...tail);
-  d.secs.splice(i, 1);
 }
 
 // one blank line before it, one trailing newline after
@@ -246,49 +224,6 @@ export function wholeAtLeast(v: string, lo: number): boolean {
 
 // --- edits from the frontend: the same rewrites as the forms ---------------------
 
-// setService [name] written with fields, a blank one dropped, or removed; "" once saved
-export const setService = (name: string, fields: Record<string, string>, remove: boolean) =>
-  editService(name, fields, remove, false)[0];
-
-// editService setService, [from] renamed to [name] when given, or with dry the
-// change it would make as a diff, nothing written; the keys and every check are
-// @phosphorus/services', old keys dropped on the way
-export function editService(
-  name: string,
-  fields: Record<string, string>,
-  remove: boolean,
-  dry: boolean,
-  from = name,
-): [string, string] {
-  const before = readText(servicesFile);
-  const d = splitSections(migrate(before));
-  let s = findSection(d, from);
-  if (remove) {
-    if (!s) return ["no service " + from, ""];
-    dropSection(d, from);
-    return commitDry(d, before, dry);
-  }
-  if (from !== name && !s) return ["no service " + from, ""];
-  if (from !== name && findSection(d, name)) return ["there's already a service " + name, ""];
-  const v = fieldsOf(s);
-  for (const [k, x] of Object.entries(fields)) {
-    if (!Keys.includes(k)) return ["no field " + k + ", only " + Keys.join(", "), ""];
-    v[k] = x.trim();
-  }
-  if (!s) s = appendSection(d, name);
-  s.lines = rewriteSection(s, name, Object.fromEntries(Keys.map((k) => [k, v[k] || undefined])), Keys);
-  return commitDry(d, before, dry);
-}
-
-// commitDry services.export checked, then written, or only diffed when dry
-function commitDry(d: Doc, before: string, dry: boolean): [string, string] {
-  const [, err] = parse(joinDoc(d));
-  if (err) return [err, ""];
-  const diff = lineDiff(before, joinDoc(d));
-  if (dry) return ["", diff];
-  return [writeDoc(servicesFile, d), diff];
-}
-
 // IniKeys the phosphorus.ini keys phosphorus reads, by section
 export const IniKeys: Record<string, string[]> = {
   files: ["dir", "priv"],
@@ -414,5 +349,5 @@ export function lineDiff(a: string, b: string): string {
   return out.join("\n");
 }
 
-// configText phosphorus.ini and services.export as they stand
-export const configText = (): [string, string] => [readText(iniFile), readText(servicesFile)];
+// iniText phosphorus.ini as it stands
+export const iniText = () => readText(iniFile);

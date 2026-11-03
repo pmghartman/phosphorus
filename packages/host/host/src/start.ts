@@ -5,7 +5,6 @@ import {
   ExitCode,
   envPath,
   fail,
-  fileExists,
   home,
   inDpkg,
   isWindows,
@@ -25,7 +24,6 @@ import { vpnState } from "./tailnet.ts";
 // the rebuild, which starts the service and waits on the frontend
 export async function start() {
   if (keysMissing()) throw fail(`no TS_AUTHKEY in ${envPath()}, run phosphorus to enter the keys`);
-  if (!fileExists(at("config", "services.export"))) throw fail(`config/services.export not found in ${home}`);
   envfile.lock(envPath());
   await os.prepareOS(await os.svcActive());
   const todo = await os.needSetup();

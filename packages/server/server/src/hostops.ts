@@ -3,10 +3,10 @@
 import { existsSync } from "node:fs";
 import { open } from "node:fs/promises";
 import { join } from "node:path";
-import { configText, editIni, editModel, editService, editShares, iniValues } from "@phosphorus/config";
+import { editIni, editModel, editShares, iniText, iniValues } from "@phosphorus/config";
 import { jsNumber } from "@phosphorus/files";
 import * as peers from "@phosphorus/peers";
-import { health } from "@phosphorus/services";
+import { editService, health, listed } from "@phosphorus/services";
 import { SealGrant } from "@phosphorus/users";
 import { errText, FrontendPort, peerCall, RepoDir, requestJSON, run, sleep, tailnetIP } from "@phosphorus/util";
 import { selfHost } from "./config.ts";
@@ -212,19 +212,24 @@ export async function onHost(
   return peerCall(host, { host: ip, method: "POST", path, body, timeoutMs: waitMs });
 }
 
-// configOp this host's config: get both files, or set one service or ini key, or settings ›
-// hosts' shares or model whole; dry returning the diff alone, a service's outcome
-// waited on once written
+// configOp this host's config: get phosphorus.ini and its services' records, or set one
+// service or ini key, or settings › hosts' shares or model whole; dry returning the
+// diff alone, a service's outcome waited on once written
 export async function configOp(p: Record<string, any>): Promise<Res> {
   let why = "",
     diff = "";
   const dry = truthy(p.dry_run);
   switch (str(p.op)) {
     case "get": {
-      const [ini, svc] = configText();
       return [
         200,
-        { host: selfHost, "phosphorus.ini": ini, "services.export": svc, shares: filesInfo().shares, ini: iniValues() },
+        {
+          host: selfHost,
+          "phosphorus.ini": iniText(),
+          services: listed(),
+          shares: filesInfo().shares,
+          ini: iniValues(),
+        },
       ];
     }
     case "service": {
@@ -272,7 +277,7 @@ async function serviceOutcome(name: string): Promise<Record<string, any>> {
     if (!h || h.published === true || Date.now() > end) break;
     await sleep(1000);
   }
-  if (!h) return { published: false, why: "not declared, services.export rejected it" };
+  if (!h) return { published: false, why: "not declared on this host" };
   if (h.published === true)
     for (const r of peers.routes()) if (str(r.host) === selfHost && str(r.name) === name) h.route = r;
   return h;

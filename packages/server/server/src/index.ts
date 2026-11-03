@@ -8,6 +8,7 @@ import { Assign, Summary } from "@phosphorus/model";
 import * as peers from "@phosphorus/peers";
 import { listen as ingressListen, serve as proxyServe } from "@phosphorus/proxy";
 import { start as reconfigStart } from "@phosphorus/reconfig";
+import { migrateFile, setStackRows } from "@phosphorus/services";
 import * as stacks from "@phosphorus/stacks";
 import * as stats from "@phosphorus/stats";
 import * as store from "@phosphorus/store";
@@ -35,7 +36,7 @@ import {
   Version,
 } from "./config.ts";
 import { startHA, stopHA } from "./ha.ts";
-import { configOp, hostConfig, hostLogsOn, svcRequest, userUI, userUIAsync } from "./hostops.ts";
+import { hostConfig, hostLogsOn, svcRequest, userUI, userUIAsync } from "./hostops.ts";
 import { meshOnly } from "./http.ts";
 import { num } from "./js.ts";
 import { chainHistory, meshHealth, opOn, rememberChain } from "./mcpops.ts";
@@ -60,6 +61,8 @@ export async function start(): Promise<Server<WSData>> {
   files.init();
   users.Init();
   store.start();
+  // a services.export left from before the store, moved in once
+  migrateFile();
   update.onFinish(rememberChain);
   update.onFailed(() => setUpdating(false));
   setInterval(reapShells, 60000);
@@ -82,9 +85,8 @@ export async function start(): Promise<Server<WSData>> {
     defOf: catalog.defOf,
     ipOf: tailnetIP,
     hosts: () => peers.tailnet().flatMap((d) => (d.phosphorus === true && typeof d.name === "string" ? [d.name] : [])),
-    publish: (name, fields) =>
-      configOp(fields ? { op: "service", name, fields } : { op: "service", name, remove: true }),
   });
+  setStackRows(stacks.webRows);
   ingressListen(ingressPort, appHandler, { pass: users.Pass, issuers: users.Issuers });
   stats.hooks.self = () => ({ host: selfHost, platform: getPlatform(), version: Version() });
   stats.hooks.peers = peers.peerIPs;

@@ -1,4 +1,4 @@
-// the env (./env.ts) set before the stacks are imported below; publishing a recorded seam
+// the env (./env.ts) set before the stacks are imported below
 import { afterAll, beforeEach, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -75,14 +75,9 @@ volumes:
   ...over,
 });
 
-let published: [string, Record<string, string> | null][] = [];
 S.seams.ipOf = () => "127.0.0.1";
 S.seams.hosts = () => ["a", "b", "c"];
 S.seams.defInBody = true;
-S.seams.publish = async (name, fields) => {
-  published.push([name, fields]);
-  return [200, { ok: true }];
-};
 
 const calls = (): string[][] =>
   existsSync(log)
@@ -100,7 +95,6 @@ const composed = (id: string) =>
 
 beforeEach(() => {
   rmSync(log, { force: true });
-  published = [];
 });
 
 const ctx = {
@@ -266,7 +260,8 @@ test("reconcile: the active host pulls, runs and publishes; healthy; .env from t
   await want();
   await S.tick();
   expect(composed("kuma")).toEqual(["pull", "up -d --remove-orphans"]);
-  expect(published).toEqual([["kuma", { port: String(webPort) }]]);
+  // its route the want's, served from this host's port
+  expect(S.webRows()).toEqual([{ name: "kuma", port: webPort, scheme: "" }]);
   const st = S.statuses().kuma!;
   expect(st).toMatchObject({ role: "active", gen: 1, running: true });
   expect(st.job).toMatchObject({ op: "install", done: true, ok: true });
@@ -288,8 +283,7 @@ test("reconcile: an update pulls and comes up again with the new gen", async () 
   await S.tick();
   expect(composed("kuma")).toEqual(["pull", "up -d --remove-orphans"]);
   expect(S.statuses().kuma).toMatchObject({ gen: 2, job: { op: "update", ok: true } });
-  // already published at that port: not written again
-  expect(published).toEqual([]);
+  expect(S.webRows()).toEqual([{ name: "kuma", port: webPort, scheme: "" }]);
 });
 
 test("public: kept in the want, no gen bumped, and published so wherever it comes up next", async () => {
@@ -297,26 +291,22 @@ test("public: kept in the want, no gen bumped, and published so wherever it come
   expect(S.wantOf("kuma")).toMatchObject({ public: true, gen: 2 });
   await S.tick();
   expect(composed("kuma")).toEqual([]);
-  expect(published).toEqual([["kuma", { port: String(webPort), public: "true" }]]);
+  expect(S.webRows()).toEqual([{ name: "kuma", port: webPort, scheme: "", public: true }]);
   // down and up again, as on a host taking over: public with it
   await S.runtime.down("kuma");
+  expect(S.webRows()).toEqual([]);
   await S.runtime.up("kuma");
-  expect(published.slice(1)).toEqual([
-    ["kuma", null],
-    ["kuma", { port: String(webPort), public: "true" }],
-  ]);
-  // made private: the line cleared
-  published = [];
+  expect(S.webRows()).toEqual([{ name: "kuma", port: webPort, scheme: "", public: true }]);
+  // made private: the route with it at once
   S.SetPublic("kuma", false, "pat");
-  await S.tick();
-  expect(published).toEqual([["kuma", { port: String(webPort), public: "" }]]);
+  expect(S.webRows()).toEqual([{ name: "kuma", port: webPort, scheme: "" }]);
 });
 
 test("reconcile: standbys added to a running copy: pulled again, left running for failover", async () => {
   place("kuma", "a", ["b"]);
   await S.tick();
   expect(composed("kuma")).toEqual(["pull"]);
-  expect(published).toEqual([]);
+  expect(S.webRows()).toEqual([{ name: "kuma", port: webPort, scheme: "" }]);
   expect(S.statuses().kuma).toMatchObject({ role: "active", gen: 3, running: true });
   // nor brought back up by the loop when it stops: failover's call
   writeFileSync(join(bin, "phos-kuma.json"), "[]");
@@ -330,6 +320,7 @@ test("reconcile: standbys added to a running copy: pulled again, left running fo
 test("failover's seam: down holds it down, up brings it back; hooks run in the container", async () => {
   await S.runtime.down("kuma");
   expect(composed("kuma")).toEqual(["stop"]);
+  expect(S.webRows()).toEqual([]);
   expect(await S.runtime.running("kuma")).toBe(false);
   rmSync(log, { force: true });
   await S.tick();
@@ -339,7 +330,7 @@ test("failover's seam: down holds it down, up brings it back; hooks run in the c
   expect(composed("kuma")).toEqual(["exec -T db mariadb-dump --all-databases"]);
   await S.runtime.up("kuma");
   expect(await S.runtime.running("kuma")).toBe(true);
-  expect(published.map((p) => p[1])).toEqual([null, { port: String(webPort) }]);
+  expect(S.webRows()).toEqual([{ name: "kuma", port: webPort, scheme: "" }]);
   expect(S.runtime.dataDir("kuma")).toBe(join(S.dirOf("kuma"), "data"));
 });
 
@@ -347,7 +338,7 @@ test("reconcile: a host in neither role takes its copy down, the data kept", asy
   place("kuma", "b", ["c"]);
   await S.tick();
   expect(composed("kuma")).toEqual(["down --remove-orphans"]);
-  expect(published).toEqual([["kuma", null]]);
+  expect(S.webRows()).toEqual([]);
   expect(existsSync(join(S.dirOf("kuma"), "compose.yml"))).toBe(false);
   expect(existsSync(join(S.dirOf("kuma"), "data", "kuma-data"))).toBe(true);
   expect(S.statuses().kuma).toMatchObject({ role: "none", gen: 0, job: { op: "remove", ok: true } });
@@ -360,7 +351,7 @@ test("reconcile: a standby pulls its images and stays down", async () => {
   place("kuma", "b", ["a"]);
   await S.tick();
   expect(composed("kuma")).toEqual(["pull"]);
-  expect(published).toEqual([]);
+  expect(S.webRows()).toEqual([]);
   expect(S.statuses().kuma).toMatchObject({ role: "standby", running: false, job: { op: "install" } });
 });
 
@@ -416,7 +407,7 @@ test("with standbys: every candidate renders and pulls, failover alone brings it
   await S.tick();
   // the active candidate pulls and waits for failover's up
   expect(composed("vault")).toEqual(["pull"]);
-  expect(published).toEqual([]);
+  expect(S.webRows()).toEqual([]);
   expect(await S.runtime.gen("vault")).toBe(1);
   expect(S.statuses().vault).toMatchObject({
     role: "active",
@@ -425,7 +416,7 @@ test("with standbys: every candidate renders and pulls, failover alone brings it
     job: { op: "install", ok: true },
   });
   await S.runtime.up("vault");
-  expect(published).toEqual([["vault", { port: String(webPort) }]]);
+  expect(S.webRows()).toEqual([{ name: "vault", port: webPort, scheme: "" }]);
   // promotion written by failover: the roles swapped, nothing pulled again, nothing taken down
   rmSync(log, { force: true });
   const w = S.wantOf("vault")!;

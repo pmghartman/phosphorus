@@ -20,7 +20,7 @@ export interface Route {
   type?: string;
   // subdomain or path
   mode?: string;
-  // the mode picked by its host, services.export leaving it blank
+  // the mode picked by its host, nothing asking for one
   auto?: boolean;
   base_path?: string;
   port?: number;
@@ -108,7 +108,7 @@ export interface HostInfo {
   apps?: Record<string, AppStatus>;
   // a service's step on the host (packages/webapps services): its log's tail, its exit once ended
   services?: Record<string, { log: string; exit?: number }>;
-  // web pages listening on the host that its services.export doesn't name (packages/services Found)
+  // web pages listening on the host that nothing declares yet (packages/services Found)
   found?: FoundPage[];
   // *.<domain> reaching the mesh through the tunnel, as this host last saw it (packages/services Wildcard)
   wildcard?: { state: string; why?: string };
@@ -122,7 +122,7 @@ export interface FoundPage {
   port: number;
   scheme: string;
   title: string;
-  // a services.export name guessed from the title
+  // a service name guessed from the title
   name: string;
 }
 

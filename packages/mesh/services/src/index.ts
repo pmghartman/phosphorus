@@ -1,228 +1,38 @@
-// this host's own services, services.export validated whole or not at all,
-// health checked, live ones and git published; a blank scheme sniffed,
-// each a subdomain once *.<domain> answers; pages it doesn't name found and
-// offered, a section taken out not offered for writing back
-import { readFileSync } from "node:fs";
+// this host's own services: the installed ones it serves (packages/stacks) and its
+// records in the store (records.ts), health checked, live ones and git published;
+// a blank scheme sniffed, each a subdomain once *.<domain> answers; pages neither
+// names found and offered, one whose record was removed not written back
 import { connect } from "node:net";
-import { join } from "node:path";
-import { type Row, rowError } from "@phosphorus/proxy";
-import {
-  env,
-  envInt,
-  errText,
-  FrontendPort,
-  IdleMS,
-  markHot,
-  marshal,
-  Notes,
-  now,
-  RepoDir,
-  readJSONMap,
-  StateDir,
-  writeFileAtomic,
-} from "@phosphorus/util";
+import type { Row } from "@phosphorus/proxy";
+import { env, envInt, errText, FrontendPort, IdleMS, markHot, marshal, Notes, now } from "@phosphorus/util";
 import { listening } from "./listen.ts";
+import { adoptOne, records, removedPorts } from "./records.ts";
 import { pollWildcard, wildcardUp } from "./wildcard.ts";
 
 export { listening, portsOf } from "./listen.ts";
+export { Keys, parse } from "./parse.ts";
+export { editService, listed, migrateFile, records, removedPorts, setPublic } from "./records.ts";
 export { tunnelID, type Wildcard, wildcard, wildcardUp } from "./wildcard.ts";
 export type { Row };
 
-const servicesFile = env("SERVICES_FILE", join(RepoDir, "config", "services.export"));
-// the ports of sections taken out of services.export, a found page there left alone
-const removedFile = join(StateDir, "services-removed");
 const notes = new Notes("services");
-// a web service's port, scheme (blank: sniffed), max_body, public, and aliases: more
-// names it answers at, comma separated
-export const Keys = ["port", "scheme", "max_body", "public", "aliases"];
-// older keys still read, dropped whenever the file is rewritten: mode is picked
-// (a subdomain once *.<domain> answers, settled across hosts), base_path is gone,
-// extras' max_body is a key of its own, forwarded_proto follows the ingress
-const oldKeys = ["mode", "base_path", "extras"];
-const extraKeys = ["flush_interval", "max_body", "forwarded_proto"];
-// a game server's, from before Games was an app: its section left alone, not
-// served, till the app takes it
-const gameKeys = ["type", "start", "stop"];
-const headRe = /^\[\s*(.*?)\s*\]$/;
-const commentRe = /^[#;]/;
-const digitsRe = /^[0-9]+$/;
-const quoteRe = /^"|"$/g;
-
 const probeTimeout = 1000;
 
-type Section = { name: string; f: Map<string, string> };
+// the installed services this host serves, each a row its want makes (packages/stacks)
+let stackRows: () => Row[] = () => [];
+export const setStackRows = (fn: () => Row[]) => void (stackRows = fn);
 
-// every section as a declared row, or the first reason to reject; old keys
-// still read listed as "[name] key", a game's section skipped
-export function parse(text: string): [Row[], string, string[]] {
-  const sections: Section[] = [];
-  let cur: Section | undefined;
-  const lines = text.split("\n");
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]!.replace(/\r$/, "").trim();
-    if (!line || commentRe.test(line)) continue;
-    const m = headRe.exec(line);
-    if (m) {
-      sections.push((cur = { name: m[1]!, f: new Map() }));
-      continue;
-    }
-    const eq = line.indexOf("=");
-    if (eq < 0) return [[], `line ${i + 1} is not key = value`, []];
-    const key = line.slice(0, eq).trim();
-    if (!cur) return [[], `line ${i + 1}: ${key} outside any [section]`, []];
-    if (!Keys.includes(key) && !oldKeys.includes(key) && !gameKeys.includes(key))
-      return [[], `[${cur.name}] has an unknown key, ${key}`, []];
-    cur.f.set(
-      key,
-      line
-        .slice(eq + 1)
-        .trim()
-        .replace(quoteRe, ""),
-    );
-  }
-  const rows: Row[] = [];
-  const old: string[] = [];
-  const names = new Set<string>();
-  for (const s of sections) {
-    const no = (why: string): [Row[], string, string[]] => [[], `[${s.name}] ${why}`, []];
-    if (names.has(s.name)) return no("is declared twice");
-    names.add(s.name);
-    if (s.f.get("type") === "game") continue;
-    const stray = gameKeys.find((k) => s.f.has(k));
-    if (stray) return no(`has an unknown key, ${stray}`);
-    for (const k of oldKeys) if (s.f.has(k)) old.push(`[${s.name}] ${k}`);
-    if (!s.f.has("port")) return no("has no port");
-    let port: unknown = s.f.get("port");
-    if (digitsRe.test(s.f.get("port")!)) port = Number(s.f.get("port"));
-    let maxBody: unknown = s.f.get("max_body") || undefined;
-    if (s.f.has("extras")) {
-      let extras: unknown;
-      try {
-        extras = JSON.parse(s.f.get("extras") || "{}");
-      } catch {
-        return no("extras is not valid JSON");
-      }
-      if (!extras || typeof extras !== "object" || Array.isArray(extras)) return no("extras is not a JSON object");
-      for (const k of Object.keys(extras)) if (!extraKeys.includes(k)) return no(`extras has an unknown key, ${k}`);
-      maxBody ??= (extras as Row).max_body;
-    }
-    // a blank scheme sniffed when published
-    const row: Row = { name: s.name, port, scheme: s.f.get("scheme") || "" };
-    if (maxBody !== undefined) row.max_body = maxBody;
-    if (s.f.has("public")) {
-      const p = s.f.get("public")!;
-      row.public = p === "true" || p === "false" ? p === "true" : p;
-    }
-    const al = (s.f.get("aliases") ?? "").split(/[\s,]+/).filter(Boolean);
-    if (al.length) row.aliases = al;
-    const why = rowError({ ...row, scheme: row.scheme || "http", mode: "path" });
-    if (why) return no(why);
-    rows.push(row);
-  }
-  return [rows, "", old];
-}
-
-// text with the old keys out: mode, base_path and extras dropped, extras'
-// max_body kept as a line of its own where the section has none
-export function migrate(text: string): string {
-  const lines = text.split("\n");
-  const keyOf = (line: string) => {
-    const t = line.replace(/\r$/, "").trim();
-    const eq = t.indexOf("=");
-    return !t || commentRe.test(t) || eq <= 0 ? "" : t.slice(0, eq).trim();
-  };
-  const out: string[] = [];
-  let start = 0;
-  const flush = (end: number) => {
-    const sec = lines.slice(start, end);
-    let hasMax = sec.some((l) => keyOf(l) === "max_body");
-    for (const l of sec) {
-      const k = keyOf(l);
-      if (!oldKeys.includes(k)) {
-        out.push(l);
-        continue;
-      }
-      if (k !== "extras" || hasMax) continue;
-      let v: unknown;
-      try {
-        v = JSON.parse(
-          l
-            .replace(/\r$/, "")
-            .slice(l.indexOf("=") + 1)
-            .trim()
-            .replace(quoteRe, "") || "{}",
-        )?.max_body;
-      } catch {}
-      if (v === undefined || v === null || v === "") continue;
-      out.push(`max_body = ${v}` + (l.endsWith("\r") ? "\r" : ""));
-      hasMax = true;
-    }
-  };
-  for (let i = 0; i < lines.length; i++)
-    if (headRe.test(lines[i]!.replace(/\r$/, "").trim())) {
-      flush(i);
-      start = i;
-    }
-  flush(lines.length);
-  return out.join("\n");
-}
-
-let text: string | undefined;
 let declared: Row[] = [];
-// a good read had: the first one's sections aren't news
-let read = false;
+let declaredSig = "";
 
-// the ports taken out of services.export, kept across restarts
-export function removedPorts(): Set<number> {
-  try {
-    const a = JSON.parse(readFileSync(removedFile, "utf8"));
-    return new Set(Array.isArray(a) ? a.filter((p) => Number.isInteger(p)) : []);
-  } catch {
-    return new Set();
-  }
-}
-
-// a port no section names any more remembered, one named again forgotten
-function remember(before: Row[], after: Row[]) {
-  const now = new Set(after.map((r) => r.port as number));
-  const set = removedPorts();
-  const size = set.size;
-  let changed = false;
-  for (const r of before) if (!now.has(r.port as number)) set.add(r.port as number);
-  for (const p of now) if (set.delete(p)) changed = true;
-  if (!changed && set.size === size) return;
-  try {
-    writeFileAtomic(removedFile, JSON.stringify([...set].sort((a, b) => a - b)) + "\n");
-  } catch {}
-}
-
+// the installed ones first, a record of the same name left out
 function readDeclared() {
-  let t: string;
-  try {
-    t = readFileSync(servicesFile, "utf8");
-  } catch {
-    notes.note("file", `can't read ${servicesFile}; publishing nothing`);
-    text = undefined;
-    declared = [];
-    return;
-  }
-  notes.clear("file");
-  if (text === t) return;
-  text = t;
-  const [rows, why, old] = parse(t);
-  if (why) {
-    notes.note("parse", `${servicesFile} rejected, still publishing the last good one: ${why}`);
-    return;
-  }
-  notes.note("parse", `${servicesFile} read: ${rows.length} declared`);
-  if (old.length)
-    notes.note(
-      "old",
-      `${servicesFile} has keys no longer used, dropped when it's next written (extras' max_body kept): ${old.join(", ")}`,
-    );
-  else notes.clear("old");
-  if (read) remember(declared, rows);
-  read = true;
+  const rows = stackRows();
+  const names = new Set(rows.map((r) => r.name));
+  for (const r of records()) if (!names.has(r.name)) rows.push(r);
+  const sig = marshal(rows);
+  if (sig === declaredSig) return;
+  declaredSig = sig;
   declared = rows;
   notes.reset("svc:");
 }
@@ -282,7 +92,7 @@ async function sniff(want: string, host: string, port: number, base: string): Pr
   return "";
 }
 
-// each port's sniffed scheme, its row's when services.export leaves it blank
+// each port's sniffed scheme, its row's when the record leaves it blank
 const sniffed = new Map<number, string>();
 
 function connects(host: string, port: number): Promise<boolean> {
@@ -329,7 +139,7 @@ function webRow(r: Row, ip: string): Row | undefined {
 
 // --- found -----------------------------------------------------------------
 
-// a web page on this host that services.export doesn't name yet, offered for
+// a web page on this host that nothing declares yet, offered for
 // publishing; its name a guess from its title
 export type Found = { port: number; scheme: string; title: string; name: string };
 
@@ -361,7 +171,7 @@ const unentity = (s: string) =>
     .replace(/&quot;/g, '"')
     .replace(/&#0*39;/g, "'");
 
-// a title as a services.export name: its first words, lowercase and dashed
+// a title as a service name: its first words, lowercase and dashed
 export function nameFrom(title: string): string {
   return title
     .toLowerCase()
@@ -428,35 +238,13 @@ export async function pagesOn(ip: string, ports: Iterable<number>): Promise<Foun
   return out;
 }
 
-// found pages written into services.export, their ports alone: the scheme
-// sniffed, the mode picked, behind the phosphorus login; those whose section was
-// taken out left alone, still offered. The ones written
+// found pages written in as records, their ports alone: the scheme sniffed, the
+// mode picked, behind the phosphorus login; those whose record was removed left
+// alone, still offered. The ones written
 export function adopt(pages: Found[]): Found[] {
   const removed = removedPorts();
-  const todo = pages.filter((f) => !removed.has(f.port));
+  const todo = pages.filter((f) => !removed.has(f.port) && adoptOne(f.name, f.port));
   if (!todo.length) return [];
-  let t: string;
-  try {
-    t = readFileSync(servicesFile, "utf8");
-  } catch {
-    return [];
-  }
-  let next = migrate(t);
-  if (next && !next.endsWith("\n")) next += "\n";
-  for (const f of todo)
-    next += `\n# found by phosphorus: ${f.title.replace(/[\r\n]+/g, " ")}\n[${f.name}]\nport = ${f.port}\n`;
-  const why = parse(next)[1];
-  if (why) {
-    notes.note("adopt", `found pages not written: ${why}`);
-    return [];
-  }
-  try {
-    writeFileAtomic(servicesFile, next);
-  } catch (e) {
-    notes.note("adopt", "found pages not written: " + errText(e));
-    return [];
-  }
-  notes.clear("adopt");
   notes.log(`published what was found listening: ${todo.map((f) => `${f.name} (:${f.port})`).join(", ")}`);
   markHot();
   return todo;
@@ -506,49 +294,6 @@ export async function refresh(ip: string): Promise<Row[]> {
 
 // the last refresh's rows
 export const own = () => ownRows;
-
-// [name]'s public line set or dropped, the whole file validated first
-export function setPublic(name: string, on: boolean): [number, any] {
-  let lines: string[];
-  try {
-    lines = readFileSync(servicesFile, "utf8").split("\n");
-  } catch {
-    return [500, { error: "can't read services.export" }];
-  }
-  let start = -1,
-    end = lines.length;
-  for (let i = 0; i < lines.length; i++) {
-    const m = headRe.exec(lines[i]!.replace(/\r$/, "").trim());
-    if (!m) continue;
-    if (start >= 0) {
-      end = i;
-      break;
-    }
-    if (m[1] === name) start = i;
-  }
-  if (start < 0) return [404, { error: "this host declares no service called " + name }];
-  const out = lines.slice(0, start + 1);
-  let last = start;
-  for (let i = start + 1; i < end; i++) {
-    const line = lines[i]!.trim();
-    const eq = line.indexOf("=");
-    if (eq > 0 && !commentRe.test(line) && line.slice(0, eq).trim() === "public") continue;
-    out.push(lines[i]!);
-    if (line) last = out.length - 1;
-  }
-  if (on) out.splice(last + 1, 0, "public = true");
-  out.push(...lines.slice(end));
-  const text = migrate(out.join("\n"));
-  const [rows, why] = parse(text);
-  if (why) return [400, { error: why }];
-  try {
-    writeFileAtomic(servicesFile, text);
-  } catch (e) {
-    return [500, { error: "can't write services.export: " + errText(e) }];
-  }
-  markHot();
-  return [200, { public: on }];
-}
 
 // one declared service checked now: listening, its HTTP answer, and whether
 // it's published, with why not; undefined when nothing declares name

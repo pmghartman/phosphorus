@@ -181,8 +181,8 @@ const CAT_MAX = 24;
 // a found page on a host and its host's name
 type Discovered = FoundPage & { host: string };
 
-// every host's web pages its services.export doesn't name yet, those already
-// routed (published a moment ago, the host's next scan not in) left out
+// every host's web pages nothing publishes yet, those already routed (published
+// a moment ago, the host's next scan not in) left out
 function discovered(): Discovered[] {
   const routed = new Set(dk.services.map((r) => `${r.host}:${r.port}`));
   const out: Discovered[] = [];
@@ -191,8 +191,8 @@ function discovered(): Discovered[] {
   return out.sort((a, b) => a.host.localeCompare(b.host) || a.port - b.port);
 }
 
-// a found page written into its host's services.export under its guessed name,
-// the mode and scheme picked there
+// a found page published as its host's record under its guessed name, the mode
+// and scheme picked there
 async function publish(f: Discovered) {
   stateVars.busyId = `found:${f.host}:${f.port}`;
   stateVars.sig = '';
@@ -257,7 +257,7 @@ const TABS = {
   },
   running: {
     title: 'running',
-    lead: 'What the mesh runs now: the services installed from here, every host’s published services, and the apps got for the desktop.',
+    lead: 'What the mesh runs now: the services installed from here, every host’s published services, the pages found listening to publish, and the apps got for the desktop.',
   },
 } as const;
 
@@ -314,13 +314,7 @@ function appsTab(wrap: HTMLElement, q: string) {
 const fetching = (s: { fetchedAt: number; error?: string; apps: number }) => !s.fetchedAt && !s.error && !s.apps;
 
 function servicesTab(wrap: HTMLElement, q: string) {
-  // what's installed is in running, its tile here marked so; publishing is an admin's:
-  // the others aren't shown what they can't do
-  const found = st.acct?.admin
-    ? discovered().filter(
-        (f) => !q || matches({ id: f.name, name: f.title, tagline: f.host, category: 'discovered' }, q),
-      )
-    : [];
+  // what's installed and what's found listening are in running, its tile here marked so
   // services the retired installer left on hosts, nothing following them now
   if (nativeLeft.length && !q)
     wrap.append(
@@ -374,7 +368,6 @@ function servicesTab(wrap: HTMLElement, q: string) {
   // each service once, the catalogue filtered on one of those listing it
   const inSource = services().filter((l) => !stateVars.source || l.some((a) => a.source === stateVars.source));
   const leadOf = (l: AppSummary[]) => lead(l, stateVars.source);
-  section(wrap, 'discovered', found.map(foundTile));
   const cats = new Map<string, number>();
   for (const l of inSource) {
     const c = leadOf(l).category;
@@ -450,7 +443,7 @@ function routeRow(r: Route): HTMLElement {
     el('span', 'store-route-addr', url.replace(/^https:\/\//, '').replace(/\/$/, '')),
     el('span', 'store-route-port', r.port ? `:${r.port}` : ''),
     el('span', `store-route-tag${r.public ? ' warn' : ''}`, r.public ? 'public' : 'login'),
-    el('span', `store-route-tag${up ? '' : ' bad'}`, !up ? 'not answering' : r.auto ? 'found' : 'declared'),
+    el('span', `store-route-tag${up ? '' : ' bad'}`, up ? 'published' : 'not answering'),
   );
   return row;
 }
@@ -523,9 +516,13 @@ function runningTab(wrap: HTMLElement, q: string) {
     s.append(head, ul);
     wrap.append(s);
   }
+  // pages listening on a host that nothing publishes, each published here by an admin's
+  // press; the others aren't shown what they can't do
+  const found = st.acct?.admin ? discovered().filter((f) => hit(f.title, f.name, f.host)) : [];
+  section(wrap, 'discovered', found.map(foundTile), 'store-grid', `${found.length}`);
   const got = (apps ?? []).filter((a) => a.want && (!q || matches(a, q)));
   section(wrap, 'desktop apps', got.map(tile), 'store-grid', `${got.length}`);
-  if (!hosts.length && !got.length)
+  if (!hosts.length && !found.length && !got.length)
     wrap.append(el('div', 'store-empty', q ? `nothing running matches “${q}”` : 'nothing published on the mesh yet'));
 }
 

@@ -199,7 +199,9 @@ export function register(ctx: AppContext) {
     const { found, rest } = takeGames(text);
     for (const g of found) if (!gameOf(ctx.store, self, g.name)) save(ctx.store, { ...g, host: self });
     if (found.length) {
-      writeFileAtomic(file, rest);
+      // the core moved its pages to the store: nothing left, the file goes
+      if (/^\s*\[/m.test(rest)) writeFileAtomic(file, rest);
+      else rmSync(file, { force: true });
       ctx.log("took %s from services.export", found.map((g) => g.name).join(", "));
     }
     const old = join(StateDir, "game-control");

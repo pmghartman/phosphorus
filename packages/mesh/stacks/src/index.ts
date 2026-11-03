@@ -21,9 +21,9 @@ export interface Runtime {
 }
 
 export { arch, detect as detectDocker, dockerInfo } from "./docker.ts";
-export { dirOf, logFile, reset, roleOf, runtime, Start, statuses, tick } from "./reconcile.ts";
+export { dirOf, logFile, reset, roleOf, runtime, Start, statuses, tick, webRows } from "./reconcile.ts";
 export { type Ctx, envText, interp, parsePort, quote, type Rendered, render } from "./render.ts";
-export { type Publish, seams } from "./seams.ts";
+export { seams } from "./seams.ts";
 export {
   AskDocker,
   defOf,

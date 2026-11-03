@@ -167,8 +167,9 @@ export const agentTools = (): Tool[] => [
     read: true,
     scope: "key",
     description:
-      "A host's two config files as they stand: phosphorus.ini (shares in [files], [model]) and " +
-      "services.export (each [service]: port, scheme, max_body, public, aliases). Read before service_edit or config_set. Admins only.",
+      "A host's config as it stands: phosphorus.ini (shares in [files], [model]) and services, the pages it " +
+      "publishes by hand (each: name, port, scheme, max_body, public, aliases; installed services are the wizard's). " +
+      "Read before service_edit or config_set. Admins only.",
     schema: object({ host: name }, "host"),
     run: (a, m) => {
       adminOf(m);
@@ -181,12 +182,12 @@ export const agentTools = (): Tool[] => [
     scope: "key",
     destructive: true,
     description:
-      "Publish, change or remove a service in a host's services.export, the whole file " +
+      "Publish, change or remove a page a host publishes by hand, its record in the mesh's store, " +
       "checked before it's written and live within seconds. fields only change the keys given; a blank value drops one. " +
       "Pages listening on a host are found and offered, not published: publish one with its port alone (removed stays removed). " +
       "Each is a subdomain once *.<domain> reaches the mesh, a path when another host has the name. " +
-      "port (required), scheme http|https (blank: sniffed), max_body (e.g. 50MB), public true. " +
-      "Old keys (mode, base_path, extras) are dropped on any edit, extras' max_body kept. Admins only.",
+      "port (required), scheme http|https (blank: sniffed), max_body (e.g. 50MB), public true, aliases (more names, comma separated). " +
+      "An installed service's page is the wizard's (stack_control), not this. Admins only.",
     schema: object(
       {
         host: name,

@@ -56,7 +56,6 @@ export function bakeEnv(): Record<string, string> {
     PHOSPHORUS_HOME: home,
     PHOSPHORUS_REPO_DIR: home,
     STATE_DIR: at("state"),
-    SERVICES_FILE: at("config", "services.export"),
     PHOSPHORUS_INI_FILE: iniFile(),
     PHOSPHORUS_CONFIG_DIR: at("config"),
     PHOSPHORUS_ENV_FILE: envPath(),

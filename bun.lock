@@ -155,7 +155,6 @@
     "packages/host/config": {
       "name": "@phosphorus/config",
       "dependencies": {
-        "@phosphorus/services": "workspace:*",
         "@phosphorus/util": "workspace:*",
       },
     },
@@ -232,6 +231,7 @@
       "name": "@phosphorus/services",
       "dependencies": {
         "@phosphorus/proxy": "workspace:*",
+        "@phosphorus/store": "workspace:*",
         "@phosphorus/util": "workspace:*",
       },
     },

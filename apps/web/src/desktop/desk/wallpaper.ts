@@ -271,7 +271,7 @@ export function dkMenu(x: number, y: number, items: MenuItem[], after?: () => vo
   dkMenuEl.style.top = `${Math.min(y, innerHeight - dkMenuEl.offsetHeight - 4)}px`;
 }
 
-// every host's unpublished pages as menu items, each written into its host's services.export
+// every host's unpublished pages as menu items, each published as its host's record
 function dkFound(): MenuItem[] {
   const out: MenuItem[] = [];
   for (const [host, info] of Object.entries(st.hostsInfo).sort(([a], [b]) => a.localeCompare(b)))
@@ -292,7 +292,7 @@ export async function dkPublish(host: string, name: string, port: number) {
   dkMenuNote(res?.ok && !why ? `${name} published` : why || out.error || 'not published');
 }
 
-// a service behind the phosphorus login or open to all, its owning host's services.export rewritten
+// a service behind the phosphorus login or open to all, its record or want rewritten
 export async function dkSetPublic(r: Route, on: boolean) {
   const res = await fetch(`/api/services/${encodeURIComponent(r.host)}/${encodeURIComponent(r.name)}/public`, {
     method: 'POST',

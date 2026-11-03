@@ -1,11 +1,14 @@
 import { expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const dir = mkdtempSync(join(tmpdir(), "phos-services-"));
 const file = join(dir, "services.export");
 process.env.SERVICES_FILE = file;
+// the store under it, this host named a
+process.env.PHOSPHORUS_REPO_DIR = dir;
+process.env.SELF_HOST = "a";
 process.env.STATE_DIR = join(dir, "state");
 process.env.IDLE_POLL_INTERVAL_MS = "20";
 // no scan of this machine's ports in the background
@@ -13,10 +16,31 @@ process.env.SERVICES_FIND_MS = "0";
 // proxy's domain is fixed on its first import: the one its own test expects
 process.env.BASE_DOMAIN ??= "mulab.dev";
 mkdirSync(process.env.STATE_DIR);
-const { adopt, health, migrate, nameFrom, own, pagesOn, parse, portsOf, refresh, removedPorts, setPublic, tunnelID } =
-  await import("@phosphorus/services");
-// util's StateDir is fixed on its first import, another test's in a whole run
-const { StateDir } = await import("@phosphorus/util");
+const {
+  adopt,
+  editService,
+  health,
+  listed,
+  migrateFile,
+  nameFrom,
+  own,
+  pagesOn,
+  parse,
+  portsOf,
+  records,
+  refresh,
+  removedPorts,
+  setPublic,
+  setStackRows,
+  tunnelID,
+} = await import("@phosphorus/services");
+const store = await import("@phosphorus/store");
+
+// this host's records as given, every other one gone
+function recordsAre(recs: Record<string, unknown>) {
+  for (const f of store.list("etc/services/a")) store.remove(`etc/services/a/${f}`);
+  for (const [name, r] of Object.entries(recs)) store.write(`etc/services/a/${name}.json`, r);
+}
 
 test("parse", () => {
   const [rows, why] = parse(
@@ -85,7 +109,7 @@ test("parse rejects", () => {
   expect(parse("")).toEqual([[], "", []]);
 });
 
-test("old keys still read, dropped on a rewrite", () => {
+test("old keys still read", () => {
   // as the live mesh's files have them
   const text = [
     "# media",
@@ -102,11 +126,6 @@ test("old keys still read, dropped on a rewrite", () => {
     "[proto]",
     "port = 9000",
     'extras = {"forwarded_proto": "https"}',
-    "[rl]",
-    "type = game",
-    "port = 25565",
-    "start = systemctl start rl",
-    "stop = systemctl stop rl",
     "",
   ].join("\n");
   const [rows, why, old] = parse(text);
@@ -118,52 +137,107 @@ test("old keys still read, dropped on a rewrite", () => {
     { name: "up", port: 3001, scheme: "", max_body: "1GB" },
     { name: "proto", port: 9000, scheme: "" },
   ]);
-  const clean = migrate(text);
-  expect(clean).toBe(
-    [
-      "# media",
-      "[jelly]",
-      "port = 8096",
-      "max_body = 50MB",
-      "",
-      "[up]\r",
-      "port = 3001\r",
-      "max_body = 1GB\r",
-      "[proto]",
-      "port = 9000",
-      "[rl]",
-      "type = game",
-      "port = 25565",
-      "start = systemctl start rl",
-      "stop = systemctl stop rl",
-      "",
-    ].join("\n"),
-  );
-  expect(parse(clean)).toEqual([rows, "", []]);
-  expect(migrate(clean)).toBe(clean);
-  // a rewrite takes them out
-  writeFileSync(file, text);
-  expect(setPublic("proto", true)).toEqual([200, { public: true }]);
-  expect(readFileSync(file, "utf8")).toBe(clean.replace("port = 9000\n", "port = 9000\npublic = true\n"));
-  // bad extras still refused
-  expect(parse("[a]\nport = 1\nextras = {")[1]).toBe("[a] extras is not valid JSON");
 });
 
-test("set public", () => {
-  writeFileSync(file, "[web]\nport = 8080\n# keep\n\n[mc]\ntype = game\nport = 25565\n");
-  expect(setPublic("web", true)).toEqual([200, { public: true }]);
-  expect(readFileSync(file, "utf8")).toBe(
-    "[web]\nport = 8080\n# keep\npublic = true\n\n[mc]\ntype = game\nport = 25565\n",
+test("services.export moved into the store once, games and bad sections kept, then gone", () => {
+  recordsAre({ kept: { port: 1 } });
+  // the wizard's own, its route its want's
+  store.write("etc/stacks/forgejo.json", { def: {} });
+  writeFileSync(
+    file,
+    '# media\n[jelly]\nport = 8096\nmode = path\nextras = {"max_body": "50MB"}\n\n' +
+      "[forgejo]\nport = 3001\naliases = git\n\n[retro]\nport = 8080\nscheme = https\npublic = true\naliases = games, arcade\n" +
+      "[kept]\nport = 2\n[rl]\r\ntype = game\r\nport = 25565\r\n[bad]\nport = x\n",
   );
-  expect(setPublic("web", true)).toEqual([200, { public: true }]);
-  expect(readFileSync(file, "utf8")).toBe(
-    "[web]\nport = 8080\n# keep\npublic = true\n\n[mc]\ntype = game\nport = 25565\n",
+  migrateFile();
+  expect(store.read("etc/services/a/jelly.json")).toEqual({ port: 8096, max_body: "50MB" });
+  expect(store.read("etc/services/a/retro.json")).toEqual({
+    port: 8080,
+    scheme: "https",
+    public: true,
+    aliases: ["games", "arcade"],
+  });
+  // one already in the store left as it is, an installed one not made a record
+  expect(store.read("etc/services/a/kept.json")).toEqual({ port: 1 });
+  expect(store.read("etc/services/a/forgejo.json")).toBeUndefined();
+  const rest = "[rl]\r\ntype = game\r\nport = 25565\r\n[bad]\nport = x\n";
+  expect(readFileSync(file, "utf8")).toBe(rest);
+  // again: nothing new; once the Games app and an admin take the rest, the file goes
+  migrateFile();
+  expect(readFileSync(file, "utf8")).toBe(rest);
+  writeFileSync(file, "# found by phosphorus: Web\n[web]\nport = 9\n");
+  migrateFile();
+  expect(existsSync(file)).toBe(false);
+  expect(store.read("etc/services/a/web.json")).toEqual({ port: 9 });
+  store.remove("etc/stacks/forgejo.json");
+});
+
+test("editService creates, edits, rejects and removes a record", () => {
+  recordsAre({});
+  expect(editService("Web", { port: "1" }, false, false)).toEqual(["[Web] 'Web' is not a valid name", ""]);
+  expect(editService("web", { nope: "1" }, false, false)).toEqual([
+    "no field nope, only port, scheme, max_body, public, aliases",
+    "",
+  ]);
+  expect(editService("web", { mode: "path" }, false, false)[0]).toBe(
+    "no field mode, only port, scheme, max_body, public, aliases",
   );
-  expect(setPublic("web", false)).toEqual([200, { public: false }]);
-  expect(readFileSync(file, "utf8")).toBe("[web]\nport = 8080\n# keep\n\n[mc]\ntype = game\nport = 25565\n");
-  expect(setPublic("nope", true)).toEqual([404, { error: "this host declares no service called nope" }]);
-  writeFileSync(file, "[web]\nport = 8080\n[bad]\nport = x\n");
-  expect(setPublic("web", true)[0]).toBe(400);
+  expect(editService("web", {}, false, false)).toEqual(["[web] has no port", ""]);
+  expect(editService("web", { port: "1\n[x]" }, false, false)).toEqual(["one line only", ""]);
+  expect(editService("w".repeat(64), { port: "1" }, false, false)).toEqual(["a name is at most 63 characters", ""]);
+  expect(editService("web", {}, true, false)).toEqual(["no service web", ""]);
+  // dry: the diff alone, nothing written
+  expect(editService("web", { port: " 8080 " }, false, true)).toEqual(["", "+ [web]\n+ port = 8080"]);
+  expect(store.read("etc/services/a/web.json")).toBeUndefined();
+  expect(editService("web", { port: "8080", scheme: "https" }, false, false)).toEqual([
+    "",
+    "+ [web]\n+ port = 8080\n+ scheme = https",
+  ]);
+  expect(editService("web", { scheme: "", max_body: "50MB", aliases: "www  site" }, false, false)).toEqual([
+    "",
+    "- scheme = https\n+ max_body = 50MB\n+ aliases = www, site",
+  ]);
+  expect(store.read("etc/services/a/web.json")).toEqual({ port: 8080, max_body: "50MB", aliases: ["www", "site"] });
+  expect(listed()).toEqual([{ name: "web", port: "8080", max_body: "50MB", aliases: "www, site" }]);
+  // the same again: no change
+  expect(editService("web", { port: "8080" }, false, false)).toEqual(["", ""]);
+  // a bad edit never written
+  expect(editService("web", { port: "nope" }, false, false)[0]).toBe("[web] 'nope' is not a valid port");
+  expect(store.read<{ port: number }>("etc/services/a/web.json")!.port).toBe(8080);
+  // an installed service's page the wizard's
+  store.write("etc/stacks/kuma.json", { def: {} });
+  expect(editService("kuma", { port: "1" }, false, false)[0]).toBe(
+    "kuma is an installed service, its page set in the service wizard",
+  );
+  store.remove("etc/stacks/kuma.json");
+  expect(editService("web", {}, true, true)).toEqual([
+    "",
+    "- [web]\n- port = 8080\n- max_body = 50MB\n- aliases = www, site",
+  ]);
+  expect(editService("web", {}, true, false)[0]).toBe("");
+  expect(store.read("etc/services/a/web.json")).toBeUndefined();
+  // its port remembered, a found page there not written back; forgotten once named again
+  expect(removedPorts().has(8080)).toBe(true);
+  expect(editService("site", { port: "8080" }, false, false)[0]).toBe("");
+  expect(removedPorts().has(8080)).toBe(false);
+});
+
+test("set public, on any host's record", () => {
+  recordsAre({ web: { port: 8080 } });
+  expect(setPublic("a", "web", true)).toEqual([200, { public: true }]);
+  expect(store.read("etc/services/a/web.json")).toEqual({ port: 8080, public: true });
+  expect(setPublic("a", "web", false)).toEqual([200, { public: false }]);
+  expect(store.read("etc/services/a/web.json")).toEqual({ port: 8080 });
+  expect(setPublic("a", "nope", true)).toEqual([404, { error: "a declares no service called nope" }]);
+  store.write("etc/services/b/db.json", { port: 5432 });
+  expect(setPublic("b", "db", true)).toEqual([200, { public: true }]);
+  expect(store.read("etc/services/b/db.json")).toEqual({ port: 5432, public: true });
+  // another host's not this one's
+  expect(records().map((r) => r.name)).toEqual(["web"]);
+  // a record that won't check not published
+  store.write("etc/services/a/bad.json", { port: "x" });
+  expect(records().map((r) => r.name)).toEqual(["web"]);
+  store.remove("etc/services/a/bad.json");
 });
 
 test("ports of", () => {
@@ -179,9 +253,10 @@ test("refresh and health", async () => {
   const dead = Bun.serve({ port: 0, fetch: () => new Response("") });
   const deadPort = dead.port;
   dead.stop(true);
-  writeFileSync(file, `[web]\nport = ${srv.port}\n[gone]\nport = ${deadPort}\n[mc]\ntype = game\nport = ${deadPort}\n`);
-  // a game server's section not served
-  const want = ["web"];
+  recordsAre({ web: { port: srv.port }, gone: { port: deadPort }, kuma: { port: deadPort } });
+  // an installed service's row its want's, a record of its name left out
+  setStackRows(() => [{ name: "kuma", port: srv.port!, scheme: "", public: true }]);
+  const want = ["kuma", "web"];
   // probes answer in the background: nothing on the first pass
   const first = await refresh("127.0.0.1");
   expect(first.map((r) => r.name)).toEqual([]);
@@ -191,8 +266,9 @@ test("refresh and health", async () => {
   }
   const rows = own();
   expect(rows.map((r) => r.name)).toEqual(want);
+  expect(rows[0]).toMatchObject({ name: "kuma", port: srv.port, public: true });
   // the scheme sniffed, the mode a path while *.<domain> isn't known to answer
-  expect(rows[0]).toEqual({ name: "web", port: srv.port, scheme: "http", mode: "path", auto: true });
+  expect(rows[1]).toEqual({ name: "web", port: srv.port, scheme: "http", mode: "path", auto: true });
   expect(await health("nope", "127.0.0.1")).toBeUndefined();
   expect(await health("web", "127.0.0.1")).toEqual({
     name: "web",
@@ -213,7 +289,7 @@ test("refresh and health", async () => {
     mode: "path",
     why: `not published: nothing on :${deadPort}`,
   });
-  expect(await health("mc", "127.0.0.1")).toBeUndefined();
+  setStackRows(() => []);
   srv.stop(true);
 });
 
@@ -252,12 +328,7 @@ test("pages on ports", async () => {
   const dead = Bun.serve({ port: 0, fetch: () => new Response("") });
   const deadPort = dead.port;
   dead.stop(true);
-  writeFileSync(
-    file,
-    `[web]
-port = 1
-`,
-  );
+  recordsAre({ web: { port: 1 } });
   await refresh("127.0.0.1");
   const got = await pagesOn("127.0.0.1", [api.port!, page.port!, bare.port!, deadPort!, taken.port!, failing.port!]);
   // the HTML pages with titles alone, error pages left out, a name already declared given its port
@@ -271,21 +342,18 @@ port = 1
 });
 
 test("found pages written in, a removed one left alone", async () => {
-  writeFileSync(file, "[web]\nport = 1\n");
+  recordsAre({ web: { port: 1 } });
   await refresh("127.0.0.1");
   const jelly = { port: 9101, scheme: "http", title: "Jelly", name: "jelly" };
   expect(adopt([jelly])).toEqual([jelly]);
-  expect(readFileSync(file, "utf8")).toBe("[web]\nport = 1\n\n# found by phosphorus: Jelly\n[jelly]\nport = 9101\n");
-  await refresh("127.0.0.1");
-  // taken out: remembered, not written back, and forgotten once named again
-  writeFileSync(file, "[web]\nport = 1\n");
-  await refresh("127.0.0.1");
+  expect(store.read("etc/services/a/jelly.json")).toEqual({ port: 9101 });
+  // a name taken since not written over
+  expect(adopt([{ ...jelly, port: 9102 }])).toEqual([]);
+  // removed: remembered, not written back
+  expect(editService("jelly", {}, true, false)[0]).toBe("");
   expect(removedPorts().has(9101)).toBe(true);
   expect(adopt([jelly])).toEqual([]);
-  expect(readFileSync(file, "utf8")).toBe("[web]\nport = 1\n");
-  writeFileSync(file, "[web]\nport = 1\n[mine]\nport = 9101\n");
-  await refresh("127.0.0.1");
-  expect(removedPorts().has(9101)).toBe(false);
+  expect(store.read("etc/services/a/jelly.json")).toBeUndefined();
 });
 
 test("tunnel id", () => {

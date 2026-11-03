@@ -170,7 +170,7 @@ test("bakeEnv from phosphorus.ini, missing share dirs skipped", () => {
   expect(s1).toMatch(/^[0-9a-f]{64}$/);
 });
 
-test("syncPayload copies the release, keeps this host's config, prunes the last release's files", () => {
+test("syncPayload copies the release, keeps this host's config, leaves services.export out, prunes the last release's files", () => {
   const src = join(dir, "payload"),
     dst = join(dir, "home");
   mkdirSync(join(src, "config"), { recursive: true });
@@ -195,9 +195,10 @@ test("syncPayload copies the release, keeps this host's config, prunes the last 
   expect(existsSync(join(dst, "old", "deep"))).toBe(false);
   expect(existsSync(join(dst, "old", "stay.txt"))).toBe(true);
   expect(readFileSync(join(dst, ".phosphorus-manifest"), "utf8")).toBe(
-    `VERSION\n${process.platform === "win32" ? "bin/phos.exe\nbin/phosphorus.exe" : "bin/phosphorus"}\nconfig/phosphorus.ini\nconfig/services.export\nweb/assets/a.js\n`,
+    `VERSION\n${process.platform === "win32" ? "bin/phos.exe\nbin/phosphorus.exe" : "bin/phosphorus"}\nconfig/phosphorus.ini\nweb/assets/a.js\n`,
   );
-  expect(kept("config/services.export")).toBe(true);
+  expect(kept("config/services.export")).toBe(false);
+  expect(kept("config/phosphorus.ini")).toBe(true);
   expect(kept("files/a/b")).toBe(true);
   expect(kept("web/a")).toBe(false);
 });

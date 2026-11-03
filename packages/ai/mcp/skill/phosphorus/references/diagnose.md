@@ -6,7 +6,7 @@ Root-causes a broken, slow, full or silent host, service or game server from its
 2. Gather in parallel, as they apply:
    - host slow or full: `host_stats` on it (cpu, memory, disk with percents, parts, top processes), `host_logs` `level: warn` `since: 2h`
    - host not answering: `mesh_hosts` `health: true` (answering? still on the tailnet?), then from another host `terminal_run` `tailscale ping -c 3 <host>`
-   - service: `services` `host` `name`, `host_config` (its `[service]` block), `host_logs` `match: <name>` `since: 2h`
+   - service: `services` `host` `name`, `host_config` (its entry in `services`), `host_logs` `match: <name>` `since: 2h`
    - game (the Games app installed): `games`, `game_log`
    - tunnel or public URL: `mesh_hosts` `health: true` tunnel and wildcard state, `host_logs` `source: cloudflared` `since: 2h`; a subdomain 404 or 1016 with wildcard `missing` is fixed by the two Cloudflare entries its `why` names
    - git (Forgejo): `services` with host and name `git`, `host_logs` `match: git` `since: 2h`

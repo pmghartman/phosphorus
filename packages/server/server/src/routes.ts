@@ -11,7 +11,7 @@ import * as stacks from "@phosphorus/stacks";
 import * as term from "@phosphorus/term";
 import * as update from "@phosphorus/update";
 import * as users from "@phosphorus/users";
-import { errText, intervalMS, markHot, peerCall, tailnetIP } from "@phosphorus/util";
+import { errText, intervalMS, markHot } from "@phosphorus/util";
 import { blocks, highlight, markdown } from "@phosphorus/web-md";
 import * as webapps from "@phosphorus/webapps";
 import { serveStatic } from "@phosphorus/webstatic";
@@ -89,8 +89,6 @@ const userCalls: Record<string, UserCall> = {
 };
 
 const hopErr = (host: string): Res => [421, { error: `sent to ${selfHost}, which isn't ${host}` }];
-
-const noPeer = (host: string): Res => [502, { error: `can't find ${host} on the tailnet` }];
 
 // appHandler every request on the frontend port, and the ingress's leftovers
 export async function appHandler(c: Ctx): Promise<Response | undefined> {
@@ -401,32 +399,19 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
     if (!(await isLocalOrPeer(c)) || !sameOrigin(c) || (c.ingress && (!s || !s.admin))) return forbidden();
     const host = m[1]!,
       name = m[2]!;
-    return onJSON(c, 1024, true, async (p) => {
+    return onJSON(c, 1024, true, (p) => {
       if (typeof p.public !== "boolean") return [400, { error: "public is true or false" }];
-      const on = p.public;
-      // an installed service's kept in its want, so the host that serves it next publishes it so
-      if (!q.has("hop") && stacks.wantOf(name)) {
-        const [code, out] = stacks.SetPublic(name, on, s?.user ?? "admin");
-        if (code !== 200) return [code, out];
-      }
-      if (host === selfHost) return setPublic(name, on);
-      if (q.has("hop")) return hopErr(host);
-      const ip = await tailnetIP(host);
-      if (!ip) return noPeer(host);
-      return peerCall(host, {
-        host: ip,
-        method: "POST",
-        path: `/api/services/${host}/${name}/public?hop=1`,
-        body: { public: on },
-        timeoutMs: 10000,
-      });
+      // an installed service's kept in its want, a page's in its record: either in the
+      // store, so whichever host serves it next publishes it so
+      if (stacks.wantOf(name)) return stacks.SetPublic(name, p.public, s?.user ?? "admin");
+      return setPublic(host, name, p.public);
     });
   }
 
   m = publishRe.exec(pathname);
   if (m && method === "POST") {
-    // a found page written into its host's services.export as name, its port
-    // alone: the scheme sniffed, the mode picked when published
+    // a found page written in as its host's record called name, its port alone:
+    // the scheme sniffed, the mode picked when published
     const s = users.Of(c);
     if (!(await isLocalOrPeer(c)) || !sameOrigin(c) || (c.ingress && (!s || !s.admin))) return forbidden();
     const host = m[1]!,

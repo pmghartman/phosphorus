@@ -43,7 +43,7 @@ export function rowError(r: Row | undefined | null): string {
   return "";
 }
 
-// a subdomain a host picked on its own (auto) yields to one a services.export
+// a subdomain a host picked on its own (auto) yields to one a row
 // asks for by name, then to the first host's in rows' order: the later on a
 // path instead, each host settling the same merged rows the same way
 export function settle(rows: Row[]): Row[] {

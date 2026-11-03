@@ -5,23 +5,10 @@ import { join } from "node:path";
 
 const dir = mkdtempSync(join(tmpdir(), "phos-cli-"));
 process.env.PHOSPHORUS_CONFIG_DIR = dir;
-// proxy's domain is fixed on its first import: the one its own test expects
-process.env.BASE_DOMAIN ??= "mulab.dev";
-const svc = join(dir, "services.export"),
-  ini = join(dir, "phosphorus.ini");
-const { configText, editIni, editService, IniKeys, lineDiff, setIni, setService } = await import("@phosphorus/config");
-const {
-  appendSection,
-  dropSection,
-  fieldsOf,
-  joinDoc,
-  keyOf,
-  osErrText,
-  rewriteSection,
-  splitSections,
-  linkOk,
-  wholeAtLeast,
-} = await import("@phosphorus/config");
+const ini = join(dir, "phosphorus.ini");
+const { editIni, IniKeys, iniText, lineDiff, setIni } = await import("@phosphorus/config");
+const { appendSection, fieldsOf, joinDoc, keyOf, osErrText, rewriteSection, splitSections, linkOk, wholeAtLeast } =
+  await import("@phosphorus/config");
 
 const read = (f: string) => {
   try {
@@ -74,88 +61,6 @@ test("appendSection leaves one blank line before and one after", () => {
   expect(joinDoc(e)).toBe("[b]\n");
 });
 
-test("dropSection takes its own comment and leaves the next one's", () => {
-  const drop = (text: string, ...names: string[]) => {
-    const d = splitSections(text);
-    for (const n of names) dropSection(d, n);
-    return joinDoc(d);
-  };
-  const three = "[a]\nport = 1\n\n# found by phosphorus: B\n[b]\nport = 2\n\n# found by phosphorus: C\n[c]\nport = 3\n";
-  expect(drop(three, "b")).toBe("[a]\nport = 1\n\n# found by phosphorus: C\n[c]\nport = 3\n");
-  // the last: the file still ends in a newline
-  expect(drop(three, "c")).toBe("[a]\nport = 1\n\n# found by phosphorus: B\n[b]\nport = 2\n");
-  // laptop-hfpo6itm's: both found pages taken out, no comment left behind
-  const laptop = "\n# c1\n[a]\nport = 1\n\n# c2\n[b]\nport = 2\n";
-  expect(drop(laptop, "a")).toBe("# c2\n[b]\nport = 2\n");
-  expect(drop(laptop, "a", "b")).toBe("");
-  expect(drop(laptop, "b", "a")).toBe("");
-  expect(drop(laptop, "nope")).toBe(laptop);
-});
-
-test("editService creates, edits, rejects and removes", () => {
-  // services' own checks, nothing of config's
-  expect(editService("Web", { port: "1" }, false, false)).toEqual(["[Web] 'Web' is not a valid name", ""]);
-  expect(editService("web", { nope: "1" }, false, false)).toEqual([
-    "no field nope, only port, scheme, max_body, public, aliases",
-    "",
-  ]);
-  expect(editService("web", { mode: "path" }, false, false)[0]).toBe(
-    "no field mode, only port, scheme, max_body, public, aliases",
-  );
-  expect(editService("web", {}, false, false)).toEqual(["[web] has no port", ""]);
-  expect(editService("web", { port: "1", start: "x" }, false, false)[0]).toBe(
-    "no field start, only port, scheme, max_body, public, aliases",
-  );
-  expect(editService("web", {}, true, false)).toEqual(["no service web", ""]);
-  // dry: the diff alone, nothing on disk
-  expect(editService("web", { port: " 8080 " }, false, true)).toEqual(["", "+ [web]\n+ port = 8080"]);
-  expect(read(svc)).toBeUndefined();
-  expect(editService("web", { port: "8080" }, false, false)).toEqual(["", "+ [web]\n+ port = 8080"]);
-  expect(read(svc)).toBe("[web]\nport = 8080\n");
-  // a second one after a blank line, the first untouched
-  expect(setService("mc", { port: "25565" }, false)).toBe("");
-  expect(read(svc)).toBe("[web]\nport = 8080\n\n[mc]\nport = 25565\n");
-  // a game server's section from before Games was an app, left as it is
-  writeFileSync(
-    svc,
-    "# mine\n[web]\n# the port\nport = 8080\nscheme = https\n\n[mc]\nport = 25565\ntype = game\nstart = a\nstop = b\n",
-  );
-  expect(editService("web", { scheme: "", max_body: "50MB" }, false, false)).toEqual([
-    "",
-    "+ max_body = 50MB\n- scheme = https",
-  ]);
-  expect(read(svc)).toBe(
-    "# mine\n[web]\n# the port\nport = 8080\nmax_body = 50MB\n\n[mc]\nport = 25565\ntype = game\nstart = a\nstop = b\n",
-  );
-  // a bad edit never reaches disk
-  const before = read(svc);
-  const [why] = editService("web", { port: "nope" }, false, false);
-  expect(why).not.toBe("");
-  expect(read(svc)).toBe(before!);
-  // its comment above it goes with it
-  expect(editService("web", {}, true, true)).toEqual([
-    "",
-    "- # mine\n- [web]\n- # the port\n- port = 8080\n- max_body = 50MB",
-  ]);
-  expect(setService("web", {}, true)).toBe("");
-  expect(read(svc)).toBe("[mc]\nport = 25565\ntype = game\nstart = a\nstop = b\n");
-});
-
-test("editService drops old keys and renames", () => {
-  writeFileSync(svc, '[web]\nport = 8080\nmode = path\nextras = {"max_body": "50MB", "flush_interval": -1}\n');
-  // any edit takes the old keys out, extras' max_body kept, the diff showing it
-  expect(editService("web", { public: "true" }, false, false)).toEqual([
-    "",
-    '+ max_body = 50MB\n+ public = true\n- mode = path\n- extras = {"max_body": "50MB", "flush_interval": -1}',
-  ]);
-  expect(read(svc)).toBe("[web]\nport = 8080\nmax_body = 50MB\npublic = true\n");
-  expect(editService("site", {}, false, false, "nope")).toEqual(["no service nope", ""]);
-  expect(setService("mc", { port: "25565" }, false)).toBe("");
-  expect(editService("mc", {}, false, false, "web")).toEqual(["there's already a service mc", ""]);
-  expect(editService("site", { port: "8081" }, false, false, "web")[0]).toBe("");
-  expect(read(svc)).toBe("[site]\nport = 8081\nmax_body = 50MB\npublic = true\n\n[mc]\nport = 25565\n");
-});
-
 test("editIni holds to IniKeys and drops an emptied section", () => {
   expect(IniKeys.model).toEqual(["host", "gpu", "url", "ctx", "slots"]);
   expect(editIni("nope", "x", "1", false)).toEqual(["no section nope, only files, model", ""]);
@@ -170,7 +75,7 @@ test("editIni holds to IniKeys and drops an emptied section", () => {
   expect(editIni("files", "priv", "", false)).toEqual(["", "- priv = rw"]);
   expect(editIni("model", "gpu", "", false)).toEqual(["", "- [model]\n- gpu = true"]);
   expect(read(ini)).toBe("[files]\ndir = /srv\n");
-  expect(configText()).toEqual(["[files]\ndir = /srv\n", read(svc)!]);
+  expect(iniText()).toBe("[files]\ndir = /srv\n");
 });
 
 test.skipIf(process.platform === "win32")("a rewrite keeps the file's mode", () => {
