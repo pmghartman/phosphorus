@@ -4,7 +4,8 @@ import type { AppStatus, AppWant, Route, State } from '@phosphorus/wire';
 import { dkOpenApp } from '../../desktop/desk.ts';
 import { jsonPost } from '../../lib/api.ts';
 import { pollState } from '../../lib/sync.ts';
-import { draw } from './services.ts';
+import { loadPage, readCatalog } from './catalog.ts';
+import { draw } from './draw.ts';
 
 // or a service run on the hosts a person picks --
 // the front a grid of tiles, one open at a time as its own page: what it is, what's known of
@@ -38,61 +39,9 @@ export interface StoreApp {
   signed: boolean;
 }
 
-// a service's step on one host, run there as a unit of the login's own; asked from the host
-// from, finished by the host itself (packages/webapps services)
-export type SvcOp = 'install' | 'update' | 'remove';
-export interface SvcJob {
-  id: string;
-  host: string;
-  op: SvcOp;
-  by: string;
-  login: string;
-  from: string;
-  keep: boolean;
-  at: number;
-  done: number;
-  ok?: boolean;
-  error: string;
-  log: string;
-  exit?: number;
-}
-export interface SvcHost {
-  published: boolean;
-  route?: Route;
-  version: string;
-  record?: { login: string; by: string; at: number; commit: string };
-  job?: SvcJob;
-  behind: number | null;
-}
-
-// one service as /api/apps lists it
-export interface StoreService {
-  id: string;
-  name: string;
-  tagline: string;
-  about: string;
-  features: string[];
-  category: string;
-  by: string;
-  repo: string;
-  icon: string;
-  port: number;
-  // a catalogue recipe installing it on the host rather than a checkout's own scripts;
-  // sudo when it installs system packages
-  native: { sudo: boolean } | null;
-  // the hosts it runs on, said for people: versions, machines
-  compat: string;
-  os: string[];
-  needs: string;
-  agents: string[];
-  data: string[];
-  checkout: string;
-  kept: string;
-  hosts: Record<string, SvcHost>;
-}
-
 export let apps: StoreApp[] | null = null;
-export let services: StoreService[] = [];
+// services the retired native installer left on hosts, by id
+export let nativeLeft: string[] = [];
 export let readError = '';
 
 // the module's variables other modules set
@@ -100,10 +49,16 @@ export const stateVars = {
   busyId: '',
   sig: '',
   actError: '',
-  // the app or service open as its own page, '' for the front
+  // the page open, '' for the front: an app's or service's id, stack:<source>/<ref> for
+  // an installable app, sources for the catalogues and their licences
   openId: '',
   // the front's search, over names, taglines and categories
   filter: '',
+  // the services tab's source and category picked, '' for all
+  source: '',
+  category: '',
+  // every match shown, not the first few dozen
+  all: false,
   // the front's tab: self-hosted services, or apps for the desktop
   tab: 'services' as 'services' | 'apps',
 };
@@ -123,20 +78,13 @@ export async function read(fresh = false) {
     if (!r.ok) throw new Error(`status ${r.status}`);
     const got = await r.json();
     apps = got.apps as StoreApp[];
-    services = (got.services || []) as StoreService[];
+    nativeLeft = (got.nativeLeft || []) as string[];
     readError = '';
   } catch (e) {
     readError = (e as Error).message;
   }
   stateVars.sig = '';
   draw();
-  // a service's step under way: read again soon, its log and outcome shown as they come
-  if (fast) {
-    clearTimeout(fast);
-    fast = null;
-  }
-  if (watching && services.some((s) => Object.values(s.hosts).some((h) => h.job && !h.job.done)))
-    fast = setTimeout(() => read(), 3000);
 }
 
 export function storeState(_state: State | null): void {
@@ -155,6 +103,7 @@ export function storeWatch(on: boolean): void {
   }
   if (!on) return;
   read();
+  readCatalog();
   timer = setInterval(() => read(), 60000);
 }
 
@@ -162,8 +111,9 @@ export function storeWatch(on: boolean): void {
 export function storeShow(id: string): void {
   stateVars.openId = id;
   // the way back lands on the tab the page belongs to
-  if (apps?.some((a) => a.id === id)) stateVars.tab = 'apps';
-  else if (services.some((s) => s.id === id)) stateVars.tab = 'services';
+  if (id.startsWith('stack:') || id === 'sources') stateVars.tab = 'services';
+  if (id.startsWith('stack:')) loadPage(id.slice(6));
+  else if (apps?.some((a) => a.id === id)) stateVars.tab = 'apps';
   stateVars.sig = '';
   if (!watching) dkOpenApp('apps');
   draw();

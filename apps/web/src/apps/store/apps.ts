@@ -5,7 +5,7 @@ import { dkWebApp } from '../../desktop/desk.ts';
 import { DK_UI, dkGlyph, el, pageAsk } from '../../lib/dom.ts';
 import { st } from '../../lib/state.ts';
 import { ago2, newerVersion } from '../../lib/util.ts';
-import { draw } from './services.ts';
+import { draw } from './draw.ts';
 import { act, type StoreApp, stateVars, storeShow } from './state.ts';
 
 // every phosphorus host and its copy

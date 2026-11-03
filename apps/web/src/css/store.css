@@ -82,26 +82,6 @@
   gap: 0.6rem;
   flex-wrap: wrap;
 }
-.store-sudo {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-}
-.store-sudo-label {
-  color: var(--muted);
-  font-size: 0.74rem;
-}
-.store-sudo-pass {
-  padding: 0.35rem 0.6rem;
-  background: var(--card);
-  border: 1px solid var(--border);
-  color: var(--fg);
-  font: inherit;
-}
-.store-sudo-pass:focus-visible {
-  outline: none;
-  border-color: var(--accent);
-}
 .store-search {
   width: min(100%, 18rem);
   padding: 0.35rem 0.6rem;
@@ -445,64 +425,6 @@
   color: var(--accent);
   border-color: var(--accent);
 }
-/* an option: its words and a segmented pick */
-.store-option {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  flex-wrap: wrap;
-  padding: 0.7rem 0.85rem;
-  border: 1px solid var(--border);
-  background: var(--card);
-}
-.store-option-text {
-  display: flex;
-  flex-direction: column;
-  gap: 0.1rem;
-  min-width: 0;
-}
-.store-option-text b {
-  color: var(--fg);
-  font-weight: 600;
-}
-.store-option-sub {
-  color: var(--muted);
-  font-size: 0.72rem;
-}
-.store-seg {
-  display: inline-flex;
-}
-.store-seg-btn {
-  padding: 0.2rem 0.85rem;
-  background: none;
-  border: 1px solid var(--border);
-  color: var(--muted);
-  font: inherit;
-  cursor: pointer;
-}
-.store-seg-btn + .store-seg-btn {
-  margin-left: -1px;
-}
-.store-seg-btn:first-child {
-  border-radius: 999px 0 0 999px;
-}
-.store-seg-btn:last-child {
-  border-radius: 0 999px 999px 0;
-}
-.store-seg-btn:is(:hover, :focus-visible) {
-  border-color: var(--accent);
-  color: var(--fg);
-  position: relative;
-  z-index: 1;
-}
-.store-seg-btn.on {
-  border-color: var(--accent);
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
-  position: relative;
-  z-index: 1;
-}
 /* every host and its copy */
 .store-hosts {
   list-style: none;
@@ -628,10 +550,6 @@
 .store-log.full {
   max-height: 24rem;
 }
-.store-host-note {
-  color: var(--muted);
-  font-size: 0.7rem;
-}
 .store-about.dim {
   color: var(--muted);
 }
@@ -686,9 +604,6 @@
 .store-pick-note.warn {
   color: var(--sand);
 }
-.store-host-state.behind {
-  color: var(--accent);
-}
 .store-remove {
   align-self: flex-start;
   padding: 0.2rem 0.75rem;
@@ -722,6 +637,474 @@
 .acct-editor .dk-host {
   text-transform: none;
 }
+/* --- the installer: catalogues' apps, a repo opened, what the mesh runs (store/front.ts) */
+.store-empty.bad {
+  color: var(--offmesh);
+}
+.store-tile-sub.dim {
+  color: var(--muted);
+}
+.store-filters {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.store-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.store-chip {
+  padding: 0.15rem 0.7rem;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.74rem;
+  cursor: pointer;
+}
+.store-chip:is(:hover, :focus-visible) {
+  border-color: var(--accent);
+  color: var(--fg);
+  outline: none;
+}
+.store-chip.on {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.store-more {
+  align-self: center;
+  padding: 0.3rem 1.2rem;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+.store-more:is(:hover, :focus-visible) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.store-credit {
+  align-self: flex-start;
+}
+/* the repo box: a url and open */
+.store-repo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.8rem 0.9rem;
+  border: 1px dashed var(--border);
+}
+.store-repo-head {
+  color: var(--fg);
+  font-weight: 600;
+}
+.store-repo-sub {
+  color: var(--muted);
+}
+.store-repo-line {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.2rem;
+}
+.store-repo-url,
+.store-env-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.35rem 0.6rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.8rem;
+}
+.store-repo-url:focus-visible,
+.store-env-input:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+}
+.store-repo-err {
+  color: var(--offmesh);
+  font-size: 0.74rem;
+  overflow-wrap: anywhere;
+}
+/* on the mesh: a row per installed app, its hosts and how they are */
+.store-runs {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  background: var(--card);
+}
+.store-run {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.6rem 0.9rem;
+  background: none;
+  border: 0;
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+}
+.store-run + .store-run {
+  border-top: 1px solid var(--border);
+}
+.store-run:is(:hover, :focus-visible) {
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  outline: none;
+}
+.store-run .store-icon.md {
+  width: 2.6rem;
+  height: 2.6rem;
+}
+.store-run-where {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.6ch;
+  font-size: 0.74rem;
+}
+.store-run-role {
+  color: var(--muted);
+}
+.store-run-host {
+  color: var(--fg);
+}
+.store-run-host + .store-run-role {
+  margin-left: 1ch;
+}
+.store-run-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.1rem;
+  text-align: right;
+}
+/* the app page: its badge, the viewer's panes, the check, the form */
+.store-badge {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  font-size: 0.7rem;
+  text-decoration: none;
+  overflow: hidden;
+}
+.store-badge-src {
+  padding: 0 0.5rem;
+  background: var(--card);
+  color: var(--fg);
+}
+.store-badge-lic {
+  padding: 0 0.5rem;
+  color: var(--accent);
+  font-size: 0.7rem;
+}
+.store-badge:is(:hover, :focus-visible) {
+  border-color: var(--accent);
+}
+.store-hero-meta {
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 1.2ch;
+}
+.store-hero-link {
+  color: var(--muted);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+.store-hero-link:hover {
+  color: var(--accent);
+}
+.store-panes {
+  display: flex;
+  gap: 1.2rem;
+  border-bottom: 1px solid var(--border);
+}
+.store-pane {
+  padding: 0 0 0.3rem;
+  margin-bottom: -1px;
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+.store-pane.on {
+  color: var(--fg);
+  border-bottom-color: var(--accent);
+}
+.store-pane:not(.on):is(:hover, :focus-visible) {
+  color: var(--fg);
+  outline: none;
+}
+.store-readme {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--fg);
+}
+.store-readme :is(h1, h2, h3, h4) {
+  margin: 1em 0 0.3em;
+  color: var(--fg);
+  font-size: 1em;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+.store-readme h1 {
+  font-size: 1.25em;
+}
+.store-readme h2 {
+  display: block;
+  font-size: 1.1em;
+}
+.store-readme h2::after {
+  content: none;
+}
+.store-readme > :first-child {
+  margin-top: 0;
+}
+.store-readme :is(p, ul, ol, pre, blockquote, table) {
+  margin: 0.5em 0 0;
+}
+.store-readme :is(ul, ol) {
+  padding-left: 1.4em;
+}
+.store-readme img {
+  max-width: 100%;
+  height: auto;
+}
+.store-readme a {
+  color: var(--accent);
+}
+.store-readme code {
+  background: var(--card);
+  padding: 0 0.25em;
+}
+.store-readme pre,
+.store-code {
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  overflow: auto;
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 0.72rem;
+  line-height: 1.45;
+  white-space: pre;
+}
+.store-readme pre code {
+  background: none;
+  padding: 0;
+}
+.store-readme table {
+  border-collapse: collapse;
+  display: block;
+  overflow-x: auto;
+}
+.store-readme :is(th, td) {
+  border: 1px solid var(--border);
+  padding: 0.2em 0.5em;
+}
+.store-readme blockquote {
+  padding-left: 0.8em;
+  border-left: 2px solid var(--border);
+  color: var(--muted);
+}
+.store-code {
+  max-height: 32rem;
+  color: var(--fg);
+}
+.store-tree {
+  list-style: none;
+  margin: 0;
+  padding: 0.3rem 0;
+  border: 1px solid var(--border);
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 0.72rem;
+  max-height: 32rem;
+  overflow: auto;
+}
+.store-tree-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.1rem 0.6rem;
+}
+.store-tree-name {
+  color: var(--fg);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+.store-tree-row.dir .store-tree-name {
+  color: var(--muted);
+}
+.store-tree-row.compose .store-tree-name {
+  color: var(--accent);
+}
+a.store-tree-name:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+.store-tree-size {
+  flex: none;
+  color: var(--muted);
+}
+.store-verdict {
+  font-weight: 600;
+  color: var(--muted);
+}
+.store-verdict.on {
+  color: var(--online);
+}
+.store-verdict.wait {
+  color: var(--sand);
+}
+.store-verdict.bad {
+  color: var(--offmesh);
+}
+.store-verdict.new {
+  color: var(--accent);
+}
+.store-count.wait {
+  color: var(--sand);
+  animation: update-blink 1.2s ease-in-out infinite;
+}
+.store-check {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.76rem;
+}
+.store-check li {
+  display: grid;
+  grid-template-columns: 1.1rem 1fr;
+  color: var(--fg);
+}
+.store-check li::before {
+  font-weight: 700;
+}
+.store-check li.ok::before {
+  content: "\2713";
+  color: var(--online);
+}
+.store-check li.warn::before {
+  content: "\21";
+  color: var(--sand);
+}
+.store-check li.block::before {
+  content: "\2715";
+  color: var(--offmesh);
+}
+.store-env {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.store-env-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.store-env-label {
+  color: var(--fg);
+  font-size: 0.76rem;
+}
+.store-env-req {
+  color: var(--sand);
+  font-size: 0.7rem;
+}
+.store-env-name {
+  color: var(--muted);
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 0.66rem;
+}
+.store-go {
+  gap: 0.4rem;
+}
+.store-go .store-pill {
+  align-self: flex-start;
+}
+a.store-pill {
+  text-decoration: none;
+  text-align: center;
+}
+.store-acts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+.store-acts .store-host-btn {
+  padding: 0.2rem 0.75rem;
+  font-size: 0.74rem;
+}
+.store-host-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.store-role {
+  padding: 0 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.66rem;
+}
+.store-role.active {
+  border-color: var(--online);
+  color: var(--online);
+}
+.store-side .store-pick-list {
+  font-size: 0.76rem;
+}
+.store-side .store-host-top .store-host-acts {
+  margin-left: auto;
+}
+.store-side .store-host.svc > .store-host-state {
+  margin-left: 1.1rem;
+  white-space: normal;
+}
+/* sources and licences */
+.store-sources {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr));
+  gap: 0.7rem;
+}
+.store-source {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.8rem 0.9rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+}
+.store-source-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+}
+.store-source-head b {
+  color: var(--fg);
+}
+.store-source-repo {
+  color: var(--fg);
+  text-decoration: none;
+  border-bottom: 1px solid var(--border);
+  align-self: flex-start;
+  overflow-wrap: anywhere;
+}
+.store-source-repo:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
 @media (max-width: 720px) {
   .store {
     padding: 0.8rem;
@@ -736,5 +1119,21 @@
     grid-column: 1 / -1;
     flex-direction: row;
     align-items: center;
+  }
+  .store-icon.lg {
+    width: 4rem;
+    height: 4rem;
+  }
+  /* the install first, the readme under it */
+  .store-cols .store-side {
+    order: -1;
+  }
+  .store-run {
+    grid-template-columns: auto 1fr;
+  }
+  .store-run-side {
+    grid-column: 2;
+    align-items: flex-start;
+    text-align: left;
   }
 }
