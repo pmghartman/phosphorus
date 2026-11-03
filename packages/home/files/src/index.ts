@@ -73,7 +73,7 @@ export const realOf = (p: string) => {
     return undefined;
   }
 };
-export { gateCode, homeFilterList, homeFilterTree, homeGate, pending, quiet, type Who } from "./gate.ts";
+export { gateCode, homeFilterList, homeFilterTree, homeGate, pending, type Who } from "./gate.ts";
 export { globRe, jsNumber, list, search, setTreeMax, TreeMax, tree } from "./listing.ts";
 export { adopt, mkdirAll, ownerAt } from "./owner.ts";
 export { type Entry, inside, type Located, locate, relOf, safePath, toAbs } from "./paths.ts";

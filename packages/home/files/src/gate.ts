@@ -2,18 +2,7 @@
 import { existsSync, mkdirSync } from "node:fs";
 import { join, posix } from "node:path";
 import { RepoDir } from "@phosphorus/util";
-import {
-  absRe,
-  configuredDirs,
-  Desktop,
-  Gone,
-  HomeRoot,
-  mountedDirs,
-  type Res,
-  Shared,
-  Sys,
-  slashed,
-} from "./index.ts";
+import { absRe, configuredDirs, Desktop, Gone, HomeRoot, mountedDirs, Shared, Sys, slashed } from "./index.ts";
 import { type Entry } from "./paths.ts";
 
 // what phosphorus.ini asks for against what is mounted
@@ -66,9 +55,3 @@ export const homeFilterList = (who: Who | undefined, rel: string, entries: Entry
 // a tree's paths off the share's root
 export const homeFilterTree = (who: Who | undefined, entries: { path: string }[], isUser: (u: string) => boolean) =>
   entries.filter((e) => homeGate(who, e.path, isUser) === "");
-
-// a missing path a 200 flagged missing, for probes of paths a host may lack
-export function quiet(q: URLSearchParams, [st, b]: Res): Res {
-  if (!q.has("quiet") || st !== 404) return [st, b];
-  return [200, { missing: true, error: b?.error }];
-}

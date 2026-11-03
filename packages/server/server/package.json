@@ -9,7 +9,6 @@
     "@phosphorus/app-sdk": "workspace:*",
     "@phosphorus/chatmedia": "workspace:*",
     "@phosphorus/code": "workspace:*",
-    "@phosphorus/collab": "workspace:*",
     "@phosphorus/config": "workspace:*",
     "@phosphorus/envfile": "workspace:*",
     "@phosphorus/files": "workspace:*",

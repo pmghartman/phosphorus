@@ -596,6 +596,8 @@ async function filesRoute(c: Ctx, host: string, op: string, q: URLSearchParams):
       return copyTree(caller, from, to, p.move === true);
     });
   }
+  // a tree only for a peer's hop: the agents' files_list on another host
+  if (op === "tree" && !q.has("hop")) return sendJSON(404, { error: "not found" });
   if (host !== selfHost) {
     if (q.has("hop")) {
       const [st, b] = hopErr(host);
@@ -628,7 +630,7 @@ async function filesRoute(c: Ctx, host: string, op: string, q: URLSearchParams):
     return sendJSON(st, out);
   }
   if (m === "GET" && ["info", "list", "tree", "search", "read"].includes(op)) {
-    const [st, b] = await filesHere(who, op, share, Object.fromEntries(q), q.has("quiet"));
+    const [st, b] = await filesHere(who, op, share, Object.fromEntries(q));
     return sendJSON(st, b);
   }
   if (m === "POST" && op !== "info")

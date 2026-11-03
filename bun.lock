@@ -117,15 +117,6 @@
     "packages/core/wire": {
       "name": "@phosphorus/wire",
     },
-    "packages/home/collab": {
-      "name": "@phosphorus/collab",
-      "dependencies": {
-        "@phosphorus/files": "workspace:*",
-        "@phosphorus/users": "workspace:*",
-        "@phosphorus/util": "workspace:*",
-        "@phosphorus/wsock": "workspace:*",
-      },
-    },
     "packages/home/files": {
       "name": "@phosphorus/files",
       "dependencies": {
@@ -299,7 +290,6 @@
         "@phosphorus/app-sdk": "workspace:*",
         "@phosphorus/chatmedia": "workspace:*",
         "@phosphorus/code": "workspace:*",
-        "@phosphorus/collab": "workspace:*",
         "@phosphorus/config": "workspace:*",
         "@phosphorus/envfile": "workspace:*",
         "@phosphorus/files": "workspace:*",
@@ -362,8 +352,6 @@
     "@phosphorus/chatmedia": ["@phosphorus/chatmedia@workspace:packages/chat/chatmedia"],
 
     "@phosphorus/code": ["@phosphorus/code@workspace:packages/ai/code"],
-
-    "@phosphorus/collab": ["@phosphorus/collab@workspace:packages/home/collab"],
 
     "@phosphorus/config": ["@phosphorus/config@workspace:packages/host/config"],
 

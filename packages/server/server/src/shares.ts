@@ -2,7 +2,6 @@
 // the same calls for a peer's shares carried over the tailnet
 import { statSync } from "node:fs";
 import { basename, extname, posix } from "node:path";
-import { Write as collabWrite, type WriteP } from "@phosphorus/collab";
 import * as files from "@phosphorus/files";
 import type { Caller } from "@phosphorus/mcp";
 import { requestURI } from "@phosphorus/proxy";
@@ -235,14 +234,12 @@ export function openShare(who: files.Who | undefined, share: string, ...rels: st
   return [sh];
 }
 
-// filesHere one files op on this host's shares, its paths and options in p; quiet a
-// missing path a 200 flagged missing, for probes of paths a host may lack
+// filesHere one files op on this host's shares, its paths and options in p
 export async function filesHere(
   who: files.Who | undefined,
   op: string,
   share: string,
   p: Record<string, any>,
-  quiet = false,
 ): Promise<Res> {
   if (op === "info") return [200, filesInfo()];
   const path = str(p.path);
@@ -274,7 +271,7 @@ export async function filesHere(
       res = await files.read(sh, path);
       break;
     case "save":
-      return collabWrite(sh, path, writeP(p));
+      return files.save(sh, path, { text: strPtr(p.text), old: strPtr(p.old), new: strPtr(p.new) });
     case "mkdir":
       return files.mkdir(sh, path);
     case "rename":
@@ -286,7 +283,7 @@ export async function filesHere(
     default:
       return [400, { error: "no op " + op }];
   }
-  return quiet && res[0] === 404 ? [200, { missing: true, error: res[1]?.error }] : res;
+  return res;
 }
 
 // filesCall a files call, here or on its host; homes only for a keyed caller, as their user
@@ -318,14 +315,3 @@ export async function filesCall(
 }
 
 const strPtr = (v: unknown) => (typeof v === "string" ? v : undefined);
-
-export function writeP(p: Record<string, any>): WriteP {
-  const by = obj(p.by);
-  return {
-    text: strPtr(p.text),
-    old: strPtr(p.old),
-    new: strPtr(p.new),
-    byName: str(by?.name),
-    byColor: str(by?.color),
-  };
-}

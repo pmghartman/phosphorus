@@ -1,7 +1,6 @@
-// the frontend's websockets: chat, the state push, stats, editors and
-// terminals, here or spliced onto the owning peer's
+// the frontend's websockets: chat, the state push, stats and terminals, here
+// or spliced onto the owning peer's
 
-import { Attach as collabAttach, Forward as collabForward } from "@phosphorus/collab";
 import { Purge } from "@phosphorus/model";
 import { acceptLink, HostHeader } from "@phosphorus/peers";
 import { attach as statsAttach } from "@phosphorus/stats";
@@ -18,10 +17,8 @@ import { decode, obj, str } from "./js.ts";
 import { mcpSocket } from "./mcpops.ts";
 import { addPage, pageCount, toPages } from "./push.ts";
 import { buildState, noteState } from "./server.ts";
-import { homeWho } from "./shares.ts";
 
 const termPathRe = /^\/api\/term\/([a-z0-9][a-z0-9-]*)$/;
-const codePathRe = /^\/api\/code\/([a-z0-9][a-z0-9-]*)$/;
 const sidRe = /^[0-9a-f]{32}$/;
 
 let termConns = 0;
@@ -77,30 +74,7 @@ export async function onUpgrade(c: Ctx, pathname: string, q: URLSearchParams): P
   if (as !== false) return as;
   const cs = codeSocket(c, pathname, q);
   if (cs !== false) return cs;
-  let m = codePathRe.exec(pathname);
-  if (m) {
-    if (!sameOrigin(c)) return refuse(403);
-    const host = m[1]!;
-    if (host !== selfHost && q.has("hop")) return refuse(421);
-    const who = await homeWho(c);
-    return accept(c, (ws) => {
-      if (host === selfHost) {
-        void collabAttach(ws, q.get("share") ?? "", q.get("path") ?? "", who);
-        return;
-      }
-      q.set("hop", "1");
-      const cookie = c.req.headers.get("cookie") ?? "";
-      collabForward(
-        ws,
-        async () => {
-          const ip = await tailnetIP(host);
-          return ip ? `ws://${ip}:${port}/api/code/${host}?${q}` : "";
-        },
-        cookie,
-      );
-    });
-  }
-  m = termPathRe.exec(pathname);
+  const m = termPathRe.exec(pathname);
   if (!m) return refuse(404);
   const host = m[1]!;
   if (!sameOrigin(c)) return refuse(403);
