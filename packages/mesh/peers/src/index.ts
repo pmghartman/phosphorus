@@ -1,5 +1,5 @@
 // the mesh as this host sees it: the tailnet asked who is there, one socket to
-// each phosphorus peer carrying state, chat and the store's changes as they
+// each phosphorus peer carrying state and the store's changes as they
 // happen, and the views the rest of the host reads: routes, devices, locks,
 // the git and model states of live peers
 import { join } from "node:path";
@@ -66,7 +66,6 @@ const pullBatch = 40;
 // --- hooks: the server's side ----------------------------------------------------
 
 export type Own = {
-  presence: unknown[];
   lock: unknown;
   chain: unknown;
   git: unknown;
@@ -76,30 +75,20 @@ export type Own = {
 };
 
 export type Hooks = {
-  mergeChat?: (chat: any[]) => void;
-  mergePresence?: (peers: Record<string, any[]>) => void;
   platform?: () => string;
   ownLock?: () => unknown;
   // a peer's rows as the store published them, undefined before they arrived
   hostServices?: (host: string) => Row[] | undefined;
   // this host's state for its peers
   own?: () => Own;
-  // this host's chat lines after seq
-  ownChat?: (since: number) => unknown[];
-  // the highest seq of a host's lines already held here
-  chatSince?: (host: string) => number;
   self?: () => { version: string; bootId: string };
 };
 
 const hooks: Required<Hooks> = {
-  mergeChat: () => {},
-  mergePresence: () => {},
   platform: () => "",
   ownLock: () => null,
   hostServices: () => undefined,
-  own: () => ({ presence: [], lock: null, chain: null, git: null, model: null }),
-  ownChat: () => [],
-  chatSince: () => 0,
+  own: () => ({ lock: null, chain: null, git: null, model: null }),
   self: () => ({ version: "", bootId: "" }),
 };
 
@@ -111,7 +100,6 @@ type PeerInfo = {
   everUp: boolean;
   platform: string;
   version: string;
-  presence: any[];
   lock: Record<string, any> | null;
   chain: Record<string, any> | null;
   git: Record<string, any> | null;
@@ -137,7 +125,6 @@ function infoFor(host: string): PeerInfo {
       everUp: false,
       platform: "",
       version: "",
-      presence: [],
       lock: null,
       chain: null,
       git: null,
@@ -167,8 +154,7 @@ function objOrNull(v: unknown, key: string): Record<string, any> | null {
 
 // a peer's state frame taken in; true when anything it holds changed
 function applyState(s: PeerInfo, f: PeerState): boolean {
-  const before = marshal([s.presence, s.lock, s.chain, s.git, s.model, s.ha, s.services]);
-  if ("presence" in f) s.presence = Array.isArray(f.presence) ? f.presence : [];
+  const before = marshal([s.lock, s.chain, s.git, s.model, s.ha, s.services]);
   if ("lock" in f) s.lock = objOrNull(f.lock, "initiator");
   if ("chain" in f) s.chain = objOrNull(f.chain, "initiator");
   if ("git" in f) s.git = objOrNull(f.git, "");
@@ -185,26 +171,13 @@ function applyState(s: PeerInfo, f: PeerState): boolean {
     }
   }
   s.stateAt = now();
-  return before !== marshal([s.presence, s.lock, s.chain, s.git, s.model, s.ha, s.services]);
-}
-
-let lastPresence = "";
-function handPresence() {
-  const peers: Record<string, any[]> = {};
-  for (const h of upHosts()) {
-    const s = infos.get(h)!;
-    if (s.presence.length) peers[h] = s.presence;
-  }
-  const j = marshal(peers);
-  if (j === lastPresence) return;
-  lastPresence = j;
-  hooks.mergePresence(peers);
+  return before !== marshal([s.lock, s.chain, s.git, s.model, s.ha, s.services]);
 }
 
 // --- the links -------------------------------------------------------------------------
 
-// this host's hello for a peer: what it holds of that peer's chat says where to resume
-const helloFrame = (peer: string): PeerHello => {
+// this host's hello for a peer
+const helloFrame = (): PeerHello => {
   const self = hooks.self();
   return {
     type: "hello",
@@ -214,7 +187,6 @@ const helloFrame = (peer: string): PeerHello => {
     bootId: self.bootId,
     storeDigest: store.digest(),
     storeSeq: store.seq(),
-    chatSince: hooks.chatSince(peer),
   };
 };
 
@@ -222,7 +194,7 @@ const helloFrame = (peer: string): PeerHello => {
 const dials = (host: string) => selfHost < host;
 
 const events = {
-  hello: (link: Link) => helloFrame(link.host),
+  hello: () => helloFrame(),
   onHello(link: Link, hello: PeerHello): boolean {
     if (hello.host !== link.host) return false;
     return true;
@@ -237,10 +209,8 @@ const events = {
     s.sentState = {};
     s.stateAt = now();
     notes.note(`peer:${link.host}`, `${link.host} is online`);
-    // everything the far side wants, now: the state, its missing chat, the store
+    // everything the far side wants, now: the state, the store
     sendState(s, true);
-    const lines = hooks.ownChat(h.chatSince);
-    if (lines.length) link.send({ type: "chat", lines });
     link.sent = store.seq();
     if (h.storeDigest !== store.digest()) void syncWith(link);
     rebuildDevices(lastKnown());
@@ -253,12 +223,10 @@ const events = {
   onDown(link: Link) {
     const s = infos.get(link.host);
     if (s) {
-      s.presence = [];
       s.lock = s.chain = s.git = s.model = s.ha = null;
       s.synced = "";
     }
     notes.note(`peer:${link.host}`, `${link.host} is not answering on its link, is phosphorus running there?`);
-    handPresence();
     rebuildDevices(lastKnown());
     markHot();
   },
@@ -266,16 +234,7 @@ const events = {
     const s = infoFor(link.host);
     switch (f.type) {
       case "state":
-        if (applyState(s, f)) {
-          handPresence();
-          markHot();
-        }
-        break;
-      case "chat":
-        if (Array.isArray(f.lines) && f.lines.length) {
-          hooks.mergeChat(f.lines);
-          markHot();
-        }
+        if (applyState(s, f)) markHot();
         break;
       case "store": {
         if (f.files && typeof f.files === "object") {
@@ -309,8 +268,6 @@ const events = {
           : [];
         return store.dump(rels);
       }
-      case "chat.since":
-        return hooks.ownChat(typeof body.seq === "number" ? body.seq : 0);
     }
     throw new Error(`no such op ${req.op}`);
   },
@@ -404,12 +361,6 @@ function pushState() {
       sendState(s, now() - s.sentAllAt > fullStateMS);
     }
   }, stateCoalesceMS);
-}
-
-// this host's chat lines to every live peer, as the chat posts them
-export function pushChat(lines: unknown[]) {
-  if (!lines.length) return;
-  for (const h of upHosts()) infos.get(h)!.link!.send({ type: "chat", lines });
 }
 
 // the links reconciled with the tailnet: dialled where this host dials, dropped

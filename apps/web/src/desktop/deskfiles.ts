@@ -126,7 +126,7 @@ export function dkFileIcon(e: FileEntry): HTMLButtonElement {
 
 // --- a file to edit: a plain text window each
 
-// a file as the chat, the agent or a share names it; label and share may be missing
+// a file as an app, the agent or a share names it; label and share may be missing
 export interface FileRef {
   host: string;
   share?: string;

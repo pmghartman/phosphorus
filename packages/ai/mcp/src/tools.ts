@@ -1,7 +1,6 @@
-// the tools every caller gets: the mesh read, its files, chat and buttons
+// the tools every caller gets: the mesh read, its files and buttons
 import { jsNumber } from "@phosphorus/files";
 import { obj } from "@phosphorus/util";
-import { chatRows, chatWait, chatWaitMax } from "./chat.ts";
 import {
   adminOf,
   arr,
@@ -26,13 +25,10 @@ import {
   waitMaxS,
 } from "./common.ts";
 import { fileStat } from "./control.ts";
-import { channelKnown, noteOpened, openedFor, viaOf } from "./extra.ts";
+import { noteOpened, openedFor } from "./extra.ts";
 import { hostStats, statsAll, watchScreens } from "./hosts.ts";
 
-const chatMax = 50;
 const filePage = 12000;
-
-const notKnown = (to: string) => errc("not_found", `no one called ${to}; people lists who's on, any user's name works`);
 
 export const coreTools = (): Tool[] => [
   {
@@ -118,21 +114,6 @@ export const coreTools = (): Tool[] => [
       "each mesh model host, its file, state, memory and the agents on it, and the last call's context window in tokens (system prompt, chat, prompt, reply) and speed.",
     schema: object(),
     run: () => src.model(),
-  },
-  {
-    name: "people",
-    title: "People online",
-    read: true,
-    description:
-      "Who is on phosphorus right now: each person connected, the host they are on, and whether they are typing.",
-    schema: object(),
-    run: () =>
-      src.people().map((p) => {
-        const row: Record<string, any> = { name: p.name ?? null, host: p.host ?? null };
-        const t = str(p.typing);
-        if (t) row.typing = t.startsWith("dm:") ? "a direct message" : t;
-        return row;
-      }),
   },
   {
     name: "terminal_screen",
@@ -474,86 +455,6 @@ export const coreTools = (): Tool[] => [
         state: "opened, waiting for login",
         note: "it shares with phosphorus once they log in; terminal_screen with wait_s reads it then",
       };
-    },
-  },
-  {
-    name: "chat_history",
-    title: "Read chat",
-    read: true,
-    description: "",
-    schema: object({
-      limit: { type: "integer", description: `lines, at most ${chatMax}`, default: 20 },
-      channel: { type: "string", description: "one channel only: mesh for the main one, or dm:<name>" },
-      wait_s: {
-        type: "integer",
-        description: `key only: wait up to this many seconds (max ${chatWaitMax}) for lines newer than since`,
-        default: 0,
-      },
-      since: { type: "integer", description: "with wait_s: only lines after this ms, default now" },
-    }),
-    run: (a, m) => {
-      const want = str(a.channel).replace(/^#/, "");
-      channelKnown(m, want);
-      if (numOr(a.wait_s, 0) > 0) {
-        if (!m.caller) throw errc("forbidden", "wait_s on a user's key only");
-        return chatWait(a, m, want);
-      }
-      let n = 20;
-      if ("limit" in a) {
-        const x = jsNumber(a.limit);
-        if (Number.isNaN(x) || x < 1 || x > chatMax) throw errc("bad_input", `limit is 1 to ${chatMax}`);
-        n = Math.trunc(x);
-      }
-      const lines = chatRows(m, want);
-      return lines.length > n ? lines.slice(lines.length - n) : lines;
-    },
-  },
-  {
-    name: "send_message",
-    title: "Send a chat message",
-    description:
-      "Post as yourself to the mesh group chat, or as a direct message to one person by their chat name, " +
-      "for when the asker wants someone else told something. Never needed to answer the asker.",
-    schema: object(
-      {
-        text: { type: "string", description: "the message, markdown" },
-        to: { type: "string", description: "a person's chat name for a direct message, blank for the group chat" },
-      },
-      "text",
-    ),
-    run: (a, m) => {
-      askerOf(m);
-      const to = str(a.to).trim().replace(/^@/, "");
-      if (to && !src.known(to)) throw notKnown(to);
-      return pressed(src.post(byOf(m), to, str(a.text), viaOf(m)));
-    },
-  },
-  {
-    name: "show_file",
-    title: "Show a file to someone",
-    description:
-      "Invite a person into a share's file in the editor, as /share does: a dialog and a notification for them, " +
-      "open in a tab on accepting. For when the asker wants someone to look at or work on a file with them.",
-    schema: object(
-      {
-        to: { type: "string", description: "the person's chat name" },
-        host: name,
-        share: { type: "string" },
-        path: { type: "string", description: "the file, relative to the share's root" },
-      },
-      "to",
-      "host",
-      "share",
-      "path",
-    ),
-    run: async (a, m) => {
-      askerOf(m);
-      const host = knownHost(a);
-      const to = str(a.to).trim().replace(/^@/, "");
-      if (!src.known(to)) throw notKnown(to);
-      const p = str(a.path);
-      await pressed(src.actions.files(m.caller, host, "read", str(a.share), { path: p }));
-      return pressed(src.show(byOf(m), to, { host, share: str(a.share), path: p, label: host + "/" + p }));
     },
   },
   {

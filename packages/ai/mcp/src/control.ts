@@ -1,4 +1,4 @@
-// the mesh's control past the files and chat: power, chat edits, terminals,
+// the mesh's control past the files: power, terminals,
 // the audit, and a file's stat for files_list
 import { obj } from "@phosphorus/util";
 import {
@@ -47,26 +47,6 @@ export const controlTools = (): Tool[] => [
       const h = knownHost(a);
       if (str(a.confirm) !== h) throw errc("bad_input", `confirm must be ${h}`);
       return pressed(src.actions.op(h, "power", { action: str(a.action) }));
-    },
-  },
-  {
-    name: "chat_edit",
-    title: "Edit or withdraw a chat line",
-    scope: "key",
-    description:
-      "Edit or delete one of your own chat lines by its ref from chat_history; deleting an invite from show_file withdraws it.",
-    schema: object(
-      {
-        ref: { type: "string", description: "host:seq, from chat_history" },
-        action: { type: "string", enum: ["edit", "delete"] },
-        text: { type: "string", description: "edit only: the new text" },
-      },
-      "ref",
-      "action",
-    ),
-    run: (a, m) => {
-      if (!m.caller) throw errc("forbidden", "on a user's key only");
-      return pressed(src.actions.chatEdit(m.caller.user, str(a.ref), str(a.action), str(a.text)));
     },
   },
   {

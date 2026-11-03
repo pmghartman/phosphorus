@@ -3,7 +3,6 @@
 import type { UiAction } from '@phosphorus/wire';
 import { appCall } from '../../apps/index.ts';
 import { agentArm, agentOwn, agentStep, agentViewOn } from '../../features/agent.ts';
-import { chatName, chatText, convNow, joined, openConv, setConv } from '../../features/chat/chat.ts';
 import { filesWin } from '../../features/home/home.ts';
 import { phosphorusHosts, switchHost } from '../../features/mesh/mesh.ts';
 import { noteAdd, notifyOs } from '../../features/notes.ts';
@@ -11,14 +10,12 @@ import { stash } from '../../lib/dom.ts';
 import { deskApps, dk, st } from '../../lib/state.ts';
 import { dkSettings, type SettingsAt, settingsShows } from '../../settings/settings.ts';
 import { dkCode } from '../deskfiles.ts';
-import { dkBadge } from '../taskbar.ts';
 import { dkFocus, dkSize, dkWin } from '../windows.ts';
 import { dkGit } from './git.ts';
 import { dkTermFor } from './terminal.ts';
 import { dkWebApp, dkWebApps } from './webapps.ts';
 
 export const DK_APPS: Record<string, { title: string; view: string; w: number; h: number }> = {
-  chat: { title: 'chat', view: 'view-chat', w: 880, h: 560 },
   apps: { title: 'apps', view: 'view-apps', w: 820, h: 700 },
   games: { title: 'game servers', view: 'view-games', w: 460, h: 420 },
 };
@@ -40,12 +37,6 @@ export function dkOpenApp(id: string): void {
     view.classList.remove('active');
     stash.appendChild(view);
   };
-  if (id === 'chat') {
-    w.task.appendChild(dkBadge());
-    w.onFocus = () => {
-      if (!w.body.contains(document.activeElement)) (joined() ? chatText : chatName).focus({ preventScroll: true });
-    };
-  }
   dkFocus(w);
 }
 
@@ -63,11 +54,9 @@ export function dkAppsChanged(): void {
   if (up('status')) appCall('status', true, (m) => m.statusWatch(st.lastState));
   if (deskApps.has('apps') !== was.has('apps'))
     appCall('store', deskApps.has('apps'), (m) => m.storeWatch(deskApps.has('apps')));
-  // the conversation's news read once it's on screen
-  if (up('chat')) setConv(convNow());
 }
 
-// a shell from the chat or phosphorus, on a host this desktop is logged into: its tab
+// a shell from an app or phosphorus, on a host this desktop is logged into: its tab
 // brought forward, else a new one; one asked for by phosphorus shared with it, the
 // window its own only if it opened it
 export function dkOpenTerminal(host: string, shared = false): void {
@@ -81,7 +70,6 @@ export function dkOpenTerminal(host: string, shared = false): void {
 
 // phosphorus's presses, each the app it names, or the settings section
 export const DK_VIEWS: Record<string, string> = {
-  chat: 'chat',
   git: 'git',
   games: 'games',
   home: 'games',
@@ -107,8 +95,7 @@ export function dkPressed(a: UiAction): void {
   else if (a.kind === 'code' && a.host && a.path) {
     if (dk.desk) dkCode({ host: a.host, share: a.share as string | undefined, path: a.path });
   } else if (a.kind === 'view') {
-    if (a.view === 'chat') openConv('mesh');
-    else if (DK_VIEWS[a.view!]) dkOpenApp(DK_VIEWS[a.view!]!);
+    if (DK_VIEWS[a.view!]) dkOpenApp(DK_VIEWS[a.view!]!);
     else if (SET_VIEWS[a.view!]) dkSettings(SET_VIEWS[a.view!]);
     // an installed app's own, by its id
     else if (dkWebApps().some((x) => x.id === a.view)) dkWebApp(a.view!);

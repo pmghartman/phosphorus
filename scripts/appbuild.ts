@@ -46,6 +46,8 @@ try {
     outdir: web,
     minify: true,
     sourcemap: "none",
+    // a lazy import its own chunk, fetched when asked
+    splitting: true,
   });
   for (const l of res.logs) console.error(String(l));
   if (!res.success) die("the page didn't build");

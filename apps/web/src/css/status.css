@@ -548,3 +548,20 @@
   border: 1px solid var(--border);
   color: var(--accent);
 }
+
+/* clear a model host's context, in its card */
+.st-clear {
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+.st-clear:hover:not(:disabled) {
+  color: var(--accent);
+}
+.st-clear:disabled {
+  cursor: default;
+}

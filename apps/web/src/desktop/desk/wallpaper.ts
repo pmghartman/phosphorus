@@ -2,7 +2,6 @@
 
 import type { Route } from '@phosphorus/wire';
 import { appCall } from '../../apps/index.ts';
-import { dragsFiles } from '../../features/chat/chat.ts';
 import { filesJoin, filesParent, fmSame, fmTransfer } from '../../features/home/home.ts';
 import {
   activeConnections,
@@ -79,6 +78,9 @@ export function dkPlaceAt(x: number, y: number, names: string[], dir = dkDeskAt(
     localStorage.setItem(DK_POS_KEY, JSON.stringify(saved));
   } catch {}
 }
+
+// the computer's own files being dragged in
+const dragsFiles = (e: DragEvent) => [...(e.dataTransfer?.types || [])].includes('Files');
 
 // a right click on the desk or an icon, a drop of the computer's files
 export function dkDeskMenu(icons: HTMLElement) {

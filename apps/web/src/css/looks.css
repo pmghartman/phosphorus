@@ -22,38 +22,16 @@
     .fm-row,
     .fm-crumbs,
     .toast,
-    .msg-file,
-    .chat-find,
-    .chat-bar,
     .dk-snap,
     .dk-band,
-    .dk-badge,
     .update-row,
-    .cw-item,
     .fm-share,
     .dk-ap-tab,
     .dk-ap-item
   ) {
   border-radius: var(--r-ctl);
 }
-:where(:root[data-round])
-  :where(
-    .msg-img img,
-    .chat-log .md pre,
-    .code-md .md pre,
-    .home-note,
-    .chat-form,
-    .chat-join,
-    .home-col,
-    .st-card,
-    .st-mesh,
-    .about-info,
-    .cw-side,
-    .mesh-panel,
-    .chat-panel,
-    .st-box,
-    .bubble
-  ) {
+:where(:root[data-round]) :where(.home-note, .home-col, .st-card, .st-mesh, .about-info, .mesh-panel, .st-box) {
   border-radius: var(--r-card);
 }
 :where(:root[data-round])
@@ -182,7 +160,6 @@
     .home-col-head,
     .mesh-stats-head,
     .dk-menu-title,
-    .cw-head,
     .fm-side-head,
     .dk-note-head,
     .dk-cl-title,
@@ -306,8 +283,7 @@
   color: var(--fg);
 }
 /* the accent's own ink wherever the page fills with it */
-:root:is([data-palette="macos"], [data-palette="win11"])
-  :is(.dk-badge, .dk-ghost-n, .cw-item .chat-badge, .dk-icon.sel .dk-label) {
+:root:is([data-palette="macos"], [data-palette="win11"]) :is(.dk-ghost-n, .dk-icon.sel .dk-label) {
   color: var(--on-accent);
 }
 /* desktop icons: plain glyphs, a rounded box when picked */
@@ -386,8 +362,7 @@
     .acct-users input,
     .acct-unlock input,
     .dk-login input
-  ):focus,
-:root[data-palette="macos"] :is(.chat-form, .chat-join):focus-within {
+  ):focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent);
 }
@@ -487,8 +462,7 @@
     .acct-users input,
     .acct-unlock input,
     .dk-login input
-  ):focus,
-:root[data-palette="win11"] :is(.chat-form, .chat-join):focus-within {
+  ):focus {
   border-bottom-color: var(--accent);
   box-shadow: inset 0 -1px 0 var(--accent);
 }
@@ -645,74 +619,12 @@
   background: var(--accent);
 }
 
-/* chat: messages' bubbles, or a chat app's flat list; the conversations a sidebar */
-:root:is([data-palette="macos"], [data-palette="win11"]) .cw-side {
-  border: 0;
-  border-radius: var(--r-card);
-  background: var(--tabbar);
-  padding-top: 0.6rem;
-}
-:root:is([data-palette="macos"], [data-palette="win11"]) .cw-side > .home-col-head {
-  display: none;
-}
-:root:is([data-palette="macos"], [data-palette="win11"]) :is(.cw-side, .chat-panel, .mesh-panel) {
+/* the mesh pane flat */
+:root:is([data-palette="macos"], [data-palette="win11"]) .mesh-panel {
   box-shadow: none;
 }
-:root:is([data-palette="macos"], [data-palette="win11"]) .cw-head {
-  font-weight: 600;
-}
-:root:is([data-palette="macos"], [data-palette="win11"]) .cw-item:hover {
-  background: var(--tab-hover);
-}
-:root:is([data-palette="macos"], [data-palette="win11"]) .cw-item.on {
-  background: color-mix(in srgb, var(--fg) 10%, transparent);
-  box-shadow: none;
-}
-:root:is([data-palette="macos"], [data-palette="win11"]) .chat-panel {
-  border-color: transparent;
-}
-:root:is([data-palette="macos"], [data-palette="win11"]) :is(.mesh-header, .chat-header) > * {
+:root:is([data-palette="macos"], [data-palette="win11"]) .mesh-header > * {
   background: var(--bg);
-}
-:root:is([data-palette="macos"], [data-palette="win11"]) .chat-header .chat-title {
-  color: var(--fg);
-  font-weight: 600;
-}
-:root:is([data-palette="macos"], [data-palette="win11"]) :is(.chat-form, .chat-join) {
-  border-color: var(--border);
-  background: var(--bg);
-  box-shadow: none;
-}
-:root:is([data-palette="macos"], [data-palette="win11"]) .chat-prompt {
-  display: none;
-}
-:root[data-palette="macos"] .bubble {
-  border: 0;
-  border-radius: 16px;
-  padding: 0.4rem 0.75rem;
-  background: var(--card);
-  box-shadow: none;
-}
-:root[data-palette="macos"] .msg.mine .bubble {
-  border: 0;
-  background: var(--accent);
-  color: #fff;
-}
-:root[data-palette="macos"] .msg.mine .bubble a {
-  color: #fff;
-}
-:root[data-palette="macos"] :is(.chat-form, .chat-join) {
-  border-radius: 18px;
-}
-:root[data-palette="win11"] .bubble {
-  border: 0;
-  border-radius: 6px;
-  background: var(--card);
-  box-shadow: var(--lift-sm);
-}
-:root[data-palette="win11"] .msg.mine .bubble {
-  border: 0;
-  background: color-mix(in srgb, var(--accent) 16%, var(--card));
 }
 
 /* status and about: plain panels; the mark in its own colors, as an app's about window shows its icon,

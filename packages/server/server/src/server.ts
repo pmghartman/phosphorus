@@ -14,7 +14,6 @@ import * as homesync from "@phosphorus/sync";
 import * as update from "@phosphorus/update";
 import { lockACL, logf, markHot, marshal, peerCall, run, tailnetIP } from "@phosphorus/util";
 import * as webapps from "@phosphorus/webapps";
-import { presence } from "./chat.ts";
 import {
   adminPass,
   baseDomain,
@@ -221,7 +220,6 @@ export function noteState(s: Record<string, any>): string {
 // this host's state as its peers' links carry it
 export function ownState(): peers.Own {
   return {
-    presence: presence(),
     lock: update.ownLock(),
     chain: update.sharedChain(),
     git: git.state(),

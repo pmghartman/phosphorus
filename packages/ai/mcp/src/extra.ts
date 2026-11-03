@@ -4,7 +4,6 @@ import { appendFileSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { marshal, obj, StateDir } from "@phosphorus/util";
 import { clientOf } from "./calls.ts";
-import { chatRows } from "./chat.ts";
 import { type Caller, errc, type Meta, src, str } from "./common.ts";
 
 const openedFor_ = 10 * 60_000;
@@ -27,20 +26,6 @@ export function openedFor(who: string, host: string): boolean {
 export function viaOf(m: Meta): string {
   if (!m.caller) return "";
   return m.caller.via || clientOf(m.caller.user) || "agent";
-}
-
-// channelKnown throws unless want is blank, mesh, a known person's dm or a channel with lines
-export function channelKnown(m: Meta, want: string) {
-  if (!want || want === "mesh") return;
-  if (want.startsWith("dm:")) {
-    const p = want.slice(3);
-    if (src.known(p)) return;
-    throw errc("not_found", `no one called ${p}`);
-  }
-  const seen = new Set(["mesh"]);
-  for (const r of chatRows(m, "")) seen.add(str(r.channel));
-  if (seen.has(want)) return;
-  throw errc("not_found", `no channel ${want}; there are ${[...seen].join(", ")}, or dm:<name>`);
 }
 
 const auditFile = () => join(StateDir, "mcp-audit.jsonl");

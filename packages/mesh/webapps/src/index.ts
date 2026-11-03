@@ -88,6 +88,22 @@ export const Catalog: App[] = [
     agents: ["agent-claude-code", "agent-claude-code-fast", "agent-opencode", "agent-opencode-fast"],
     server: true,
   }),
+  firstParty({
+    id: "chat",
+    name: "Chat",
+    tagline: "the mesh's own chat",
+    about:
+      "One chat for everyone on the mesh, on whichever host they reach it from: #mesh, channels anyone opens, direct messages, attachments, replies, reactions and edits. Every host keeps the whole history; agents read and post through the MCP tools.",
+    features: [
+      "channels and direct messages",
+      "pictures, video and files, fetched from the host they were sent to",
+      "replies, reactions, edits and markdown with math",
+      "who's online and typing, on every host",
+      "agents read, wait on and post to it",
+    ],
+    category: "communication",
+    server: true,
+  }),
 ];
 
 export const appOf = (id: string) => Catalog.find((a) => a.id === id);

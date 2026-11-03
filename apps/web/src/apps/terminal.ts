@@ -219,7 +219,7 @@ function startTerminal(
         ws.onopen = () => {
           delay = RETRY_MIN_MS;
           sendSize();
-          ws!.send(JSON.stringify({ type: 'share', on: shared, by: st.name }));
+          ws!.send(JSON.stringify({ type: 'share', on: shared, by: st.acct?.user ?? '' }));
           if (login && !resume)
             ws!.send(
               JSON.stringify({

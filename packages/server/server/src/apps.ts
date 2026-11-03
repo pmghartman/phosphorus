@@ -2,7 +2,7 @@
 // server/index.js imported and handed its context (@phosphorus/app-sdk); its
 // routes under /api/app/<id>/ and /internal/app/<id>/, its sockets and tools
 // dropped when it's removed or replaced by another version
-import { mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, renameSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type {
@@ -17,7 +17,7 @@ import type {
   Vault,
   Who,
 } from "@phosphorus/app-sdk";
-import { setAppTools, skill, type Tool, ToolError } from "@phosphorus/mcp";
+import { setAppTools, skill, type Tool, ToolError, viaOf } from "@phosphorus/mcp";
 import * as peers from "@phosphorus/peers";
 import * as store from "@phosphorus/store";
 import * as users from "@phosphorus/users";
@@ -40,6 +40,8 @@ type Running = {
   id: string;
   version: string;
   live: boolean;
+  // its register() done
+  up: boolean;
   routes: Route[];
   socks: Sock[];
   stops: (() => void | Promise<void>)[];
@@ -76,6 +78,32 @@ function storeFor(r: Running): AppStore {
         if (r.live && p.startsWith(base + "/")) fn(p.slice(base.length + 1).replace(/\.json$/, ""));
       }),
   };
+}
+
+// a first-party app's data from before it was one: var/<id>/ into its folder,
+// moved, what's there already kept; etc/<id>/ into etc/appdata/<id>/, the old
+// files removed mesh-wide
+function adopt(id: string, dataDir: string): boolean {
+  if (webapps.appOf(id)?.key !== "release") throw new Error("only phosphorus's own apps adopt");
+  let any = false;
+  const old = join(store.Root, "var", id);
+  if (existsSync(old)) {
+    for (const n of readdirSync(old)) {
+      const to = join(dataDir, n);
+      if (!existsSync(to)) renameSync(join(old, n), to);
+    }
+    rmSync(old, { recursive: true, force: true });
+    any = true;
+  }
+  for (const f of store.list(`etc/${id}`)) {
+    const from = `etc/${id}/${f}`;
+    const to = `etc/appdata/${id}/${f}`;
+    if (store.validRel(to) && store.read(to) === undefined) store.write(to, store.read(from));
+    store.remove(from);
+    any = true;
+  }
+  if (any) logf("%s: took over what phosphorus kept for it", id);
+  return any;
 }
 
 function whoOf(r: Running, c: Ctx): Who | undefined {
@@ -152,7 +180,10 @@ function wrap(conn: Conn): AppSocket {
   };
 }
 
-// an app's tool as the mcp server runs it: a user's key only, its person handed on
+const toolCodes = new Set(["not_found", "bad_input", "forbidden", "unreachable", "conflict"]);
+
+// an app's tool as the mcp server runs it: a user's key only, its person and
+// agent handed on, an error's code kept
 function mcpTool(t: AppTool): Tool {
   return {
     name: t.name,
@@ -163,10 +194,16 @@ function mcpTool(t: AppTool): Tool {
     admin: t.admin,
     destructive: t.destructive,
     scope: "key",
-    run: (a, m) => {
+    run: async (a, m) => {
       if (!m.caller) throw new ToolError("forbidden", "on a user's key only");
       if (t.admin && !m.caller.admin) throw new ToolError("forbidden", "admins only");
-      return t.run(a, { user: m.caller.user, admin: !!m.caller.admin });
+      try {
+        return await t.run(a, { user: m.caller.user, admin: !!m.caller.admin, via: viaOf(m) });
+      } catch (e) {
+        const code = (e as { code?: unknown })?.code;
+        if (typeof code === "string" && toolCodes.has(code)) throw new ToolError(code, errText(e));
+        throw e;
+      }
     },
   };
 }
@@ -212,6 +249,18 @@ function context(r: Running): AppContext {
       if (res.status !== 200) throw new Error(`${host} answered ${res.status}`);
       return res.body;
     },
+    async peerFetch(host, path, init = {}) {
+      if (!pathRe.test(path)) throw new Error(`bad path ${path}`);
+      const ip = host === SelfHost ? "127.0.0.1" : peers.peerIPs()[host];
+      if (!ip) throw new Error(`${host} isn't up`);
+      return fetch(`http://${ip}:${FrontendPort}/internal/app/${r.id}${path}`, {
+        method: init.method ?? "GET",
+        body: init.body,
+        signal: AbortSignal.timeout(init.timeoutMs ?? 60000),
+      });
+    },
+    isUser: (name) => users.Exists(name),
+    adopt: () => adopt(r.id, dataDir),
     ui: (user, action) => {
       if (r.live) userUIAsync(user, action);
     },
@@ -252,6 +301,7 @@ async function settle(id: string) {
     id,
     version: want.version,
     live: true,
+    up: false,
     routes: [],
     socks: [],
     stops: [],
@@ -264,6 +314,7 @@ async function settle(id: string) {
     const app = mod.default ?? mod;
     if (typeof app?.register !== "function") throw new Error("its module exports no register()");
     await app.register(context(r));
+    r.up = true;
     logf("%s v%s running", id, want.version);
   } catch (e) {
     logf("%s v%s didn't start: %s", id, want.version, errText(e));
@@ -285,8 +336,14 @@ export function startApps() {
   for (const a of webapps.Catalog) if (a.server) void settleApp(a.id);
 }
 
-// which apps run here, for the page and the tests
-export const runningApps = () => [...running.values()].map((r) => ({ id: r.id, version: r.version }));
+// every app stopped as the host goes down, so each saves what it holds
+export async function stopApps() {
+  await Promise.all([...running.values()].map(stop));
+}
+
+// which apps run here, their register() done, for the page and the tests
+export const runningApps = () =>
+  [...running.values()].filter((r) => r.up).map((r) => ({ id: r.id, version: r.version }));
 
 async function bodyJSON(c: Ctx): Promise<any> {
   const b = await readRaw(c, maxJSONBody);

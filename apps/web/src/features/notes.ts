@@ -6,72 +6,17 @@ import { DK_GLYPHS, dkGlyph, el } from '../lib/dom.ts';
 import { dk, st } from '../lib/state.ts';
 import { ago2 } from '../lib/util.ts';
 import { dkSettings } from '../settings/settings.ts';
-import { chatNote, openConv } from './chat/chat.ts';
-
-// unread tally in the tab title, counted only while the tab is away
-const BASE_TITLE = document.title;
-let unread = 0;
 
 // away: another tab, minimized, or a window behind this one
 export function away(): boolean {
   return document.hidden || !document.hasFocus();
 }
 
-function titleBadge() {
-  document.title = unread ? `(${unread > 99 ? '99+' : unread}) ${BASE_TITLE}` : BASE_TITLE;
-}
-
-export function bumpUnread(): void {
-  if (!away()) return;
-  unread += 1;
-  titleBadge();
-}
-
-// back on the tab: badge cleared, however many piled up (the chat's clearUnread, after
-// its own conversation's reads)
-export function dropUnread(): void {
-  if (away() || !unread) return;
-  unread = 0;
-  titleBadge();
-}
-
-// desktop notifications, opt-in per browser, on a secure page only, the bell
-// hidden without them
-const chatBell = document.getElementById('chat-bell') as HTMLButtonElement;
+// desktop notifications, opt-in per browser (an app's bell sets the switch), on a secure page only
 const canNotify = 'Notification' in window;
 const notifyGranted = () => Notification.permission === 'granted';
-let notifyOn = canNotify && notifyGranted() && localStorage.getItem('phosphorus-chat-notify') === '1';
 // whether the bell is on
-export const notifying = () => notifyOn;
-
-function paintBell() {
-  chatBell.setAttribute('aria-pressed', String(notifyOn));
-  chatBell.title = notifyOn ? 'desktop notifications on, click to mute' : 'notify me when someone chats';
-}
-
-if (canNotify) {
-  chatBell.hidden = false;
-  paintBell();
-}
-
-// permission asked on the click, the gesture browsers want
-chatBell.addEventListener('click', async () => {
-  if (notifyOn) {
-    notifyOn = false;
-    localStorage.setItem('phosphorus-chat-notify', '0');
-    paintBell();
-    return;
-  }
-  let perm = Notification.permission;
-  if (perm === 'default') perm = await Notification.requestPermission();
-  if (perm !== 'granted') {
-    chatNote('notifications blocked');
-    return;
-  }
-  notifyOn = true;
-  localStorage.setItem('phosphorus-chat-notify', '1');
-  paintBell();
-});
+export const notifying = () => canNotify && notifyGranted() && localStorage.getItem('phosphorus-chat-notify') === '1';
 
 // a burst's group in the bell: a channel's, a person's, an agent's
 export interface NoteGroup {
@@ -80,9 +25,8 @@ export interface NoteGroup {
   line?: string;
   seen?: boolean;
 }
-// where an entry leads when clicked, a conversation or a view
+// where an entry leads when clicked, a view
 export interface NoteGo {
-  conv?: string;
   view?: string;
 }
 // one entry of the notification center
@@ -94,21 +38,6 @@ export interface Note {
   g?: string;
   c?: number;
   go?: NoteGo;
-}
-
-// silent, one live popup replaced by the next, a burst never stacking
-// an invite to a file past the bell: asked of this person by name
-// g groups a burst into one bell entry: a channel's, a person's, an agent's
-// c the conversation its entry opens
-export function notifyChat(
-  m: { name: string; text: string },
-  invite = false,
-  g: NoteGroup | null = null,
-  c = '',
-): void {
-  if (!g?.seen) noteAdd(m.name, m.text, g, c ? { conv: c } : null);
-  if ((!notifyOn && !invite) || !away()) return;
-  notifyOs(m.name, m.text);
 }
 
 // one notification, the browser's
@@ -123,7 +52,7 @@ export function notifyOs(title: string, body: string): void {
   } catch {}
 }
 
-// mesh updates in the bell, never the chat: one note as one starts, one as it ends
+// mesh updates in the bell: one note as one starts, one as it ends
 // with the hosts that failed in it if any
 // kept across the reload a host's own update brings
 const CHAIN_SEEN = 'phosphorus-chain-running';
@@ -141,7 +70,7 @@ export function notifyMesh(state: State): void {
       sessionStorage.setItem(CHAIN_SEEN, ch.chainId);
     } catch {}
     noteAdd('mesh update started', (ch.order || []).join(', '), null, { view: 'update' });
-    if (notifyOn) notifyOs('mesh update started', '');
+    if (notifying()) notifyOs('mesh update started', '');
     return;
   }
   if (ch.chainId !== running) return;
@@ -157,7 +86,7 @@ export function notifyMesh(state: State): void {
     .filter(Boolean)
     .join('; ');
   noteAdd(t, b, null, { view: 'update' });
-  if (notifyOn) notifyOs(t, b);
+  if (notifying()) notifyOs(t, b);
 }
 
 // *.<domain> not reaching the mesh, to admins in the bell: once per reason, the
@@ -194,7 +123,7 @@ let notes: Note[] = (() => {
   }
 })();
 
-// go where the entry leads when clicked, a conversation or a view
+// go where the entry leads when clicked, a view
 export function noteAdd(title: string, body: string, g: NoteGroup | null = null, go: NoteGo | null = null): void {
   // a burst still unread folded into its one entry, raised to the top
   const at = g?.key ? notes.findIndex((n) => n.g === g.key && !n.read) : -1;
@@ -297,22 +226,10 @@ function toastClose(t: ToastEl) {
 }
 
 function noteGo(go: NoteGo) {
-  if (go?.conv) openConv(go.conv);
-  else if (go?.view === 'status') dkSettings('hosts');
+  if (go?.view === 'status') dkSettings('hosts');
   else if (go?.view === 'update') dkSettings('update');
   else if (go?.view === 'control') dk.ctl?.show(true);
 }
-
-// a conversation read: its entries gone from the bell
-export function notesReadConv(c: string): void {
-  const left = notes.filter((n) => !n.go?.conv || (n.go.conv !== c && `dm:${n.go.conv}` !== c));
-  if (left.length === notes.length) return;
-  notes = left;
-  notesSave();
-}
-
-// whether an entry leads to a conversation, for the history's count of what came while away
-export const noteFor = (c: string) => notes.some((n) => n.go?.conv === c);
 
 function notesSave() {
   try {

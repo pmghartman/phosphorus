@@ -1,0 +1,574 @@
+/* --- the mesh pane: its graph, its nodes and git rows ------------------------ */
+
+/* height set per frame by app.js drawMesh(), in step with the graph */
+.mesh-panel {
+  flex: 0 0 var(--mesh-basis, 25%);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  position: relative;
+  border: 1px solid var(--border);
+  animation: rise-in 0.2s ease-out backwards;
+}
+/* its header on the top edge, sage */
+.mesh-header {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  left: 0.5rem;
+  right: 0.5rem;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  height: auto;
+  padding: 0;
+  line-height: 1;
+  color: var(--muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  background: none;
+  border: 0;
+  pointer-events: none;
+}
+.mesh-header > * {
+  background: var(--bg);
+  padding: 0 0.45ch;
+  pointer-events: auto;
+}
+.mesh-header > span:first-child {
+  color: var(--sage);
+}
+
+.mesh-count {
+  font-size: 0.7rem;
+  letter-spacing: normal;
+}
+
+.mesh-body {
+  flex: 1;
+  min-height: 0;
+  padding: 0.6rem 0.35rem 0.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+/* no page relayout from the per-frame svg rebuild */
+.mesh-graph-wrap {
+  position: relative;
+  contain: strict;
+  flex: 1;
+  min-height: 0;
+}
+
+/* redrawn by app.js every animation frame with tweened coordinates, no CSS
+   transform, the redraw itself the "animation" */
+.mesh-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.mesh-svg .mesh-hub {
+  fill: var(--accent);
+}
+.mesh-svg .mesh-hub-dns {
+  fill: var(--sky);
+  font-size: 6px;
+  font-family: inherit;
+}
+
+.mesh-svg .mesh-line-tunnel {
+  stroke: var(--sky);
+  stroke-width: 1;
+  opacity: 0.45;
+}
+.mesh-svg .mesh-line-tunnel.self {
+  stroke: var(--accent);
+  opacity: 0.7;
+}
+
+/* fainter than even an inactive spoke */
+.mesh-svg .mesh-line-peer {
+  stroke: var(--teal);
+  stroke-width: 0.5;
+  opacity: calc(0.35 * var(--fade, 1));
+  fill: none;
+}
+.mesh-svg .mesh-line-peer.touched {
+  stroke: var(--accent);
+  stroke-width: 0.8;
+  opacity: 0.8;
+}
+
+/* host-to-service stem, below the host row */
+.mesh-svg .mesh-line-stem {
+  stroke: var(--sage);
+  stroke-width: 0.5;
+  opacity: 0.5;
+}
+.mesh-svg .mesh-line-stem.touched {
+  stroke: var(--accent);
+  opacity: 0.85;
+}
+
+/* purple the active path (self, a live request's path and target), green a serving
+   host, grey an idle one, sky services, dark grey non-phosphorus devices */
+.mesh-svg .mesh-node.active {
+  fill: var(--mesh-active);
+}
+.mesh-svg .mesh-node.idle {
+  fill: var(--muted);
+}
+.mesh-svg .mesh-node.svc {
+  fill: var(--sky);
+}
+.mesh-svg .mesh-node.self {
+  fill: var(--mesh-self);
+}
+.mesh-svg .mesh-node.outside {
+  fill: var(--dim);
+}
+.mesh-svg .mesh-node.svc.touched {
+  fill: var(--accent);
+}
+.mesh-svg .mesh-label {
+  fill: var(--muted);
+  font-size: 7px;
+  font-family: inherit;
+}
+.mesh-svg .mesh-git {
+  --git-c: var(--sand);
+}
+.mesh-svg .mesh-git.stale {
+  --git-c: var(--dim);
+}
+.mesh-svg .mesh-git.down {
+  --git-c: var(--offmesh);
+}
+.mesh-svg .mesh-git.master {
+  --git-c: var(--accent);
+}
+/* the git service's own glyph, sized in graph units by app.js */
+.mesh-svg .mesh-git {
+  color: var(--git-c);
+}
+.mesh-svg .mesh-git-star {
+  fill: var(--git-c);
+  font-size: 9px;
+  font-family: inherit;
+}
+
+/* what the git marks mean, stacked in the graph's top-right corner */
+.mesh-legend {
+  position: absolute;
+  right: 0.35rem;
+  top: 0.3rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  padding: 0.25rem 0.35rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.6rem;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+/* expanded only, hidden rather than gone so the layout can still measure it */
+.mesh-panel:not(.expanded) .mesh-legend,
+.mesh-panel:not(.legend-on) .mesh-legend {
+  visibility: hidden;
+  opacity: 0;
+}
+.mesh-legend > span {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+.mesh-legend-star {
+  color: var(--sand);
+}
+.mesh-legend-git .db-icon {
+  margin: 0;
+  color: var(--accent);
+}
+/* a model host's role letters and their legend, in the glyph's shifting purple and orange */
+.mesh-legend-model {
+  width: 0.5rem;
+  text-align: center;
+  font-weight: 600;
+  color: transparent;
+  background: linear-gradient(90deg, var(--glyph-purple), var(--glyph-orange));
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+.mesh-svg .mesh-model-mark {
+  fill: url(#phosphorus-grad);
+  font-family: inherit;
+  font-weight: 600;
+}
+.mesh-svg .mesh-model-mark.down {
+  fill: var(--dim);
+}
+/* sized to nothing but still rendered: a display:none svg dropping its paints */
+.svg-defs {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+.phosphorus-grad-p {
+  stop-color: var(--glyph-purple);
+}
+.phosphorus-grad-o {
+  stop-color: var(--glyph-orange);
+}
+
+/* pulse along a touched path, one lap a second, on its own rAF loop in app.js */
+.mesh-svg .mesh-pulse {
+  fill: var(--accent);
+}
+
+/* expanded graph's detail table, bottom of the panel, display, opacity and
+   max-height from drawMesh(), in step with the graph's rotation */
+.mesh-stats {
+  display: none;
+  flex-direction: column;
+  flex: 0 0 auto;
+  overflow: hidden;
+  font-size: 0.68rem;
+  border-top: 1px solid var(--border);
+  opacity: 0;
+}
+
+.mesh-stats-head,
+.mesh-stat-row {
+  display: grid;
+  grid-template-columns: 1fr 4.6rem;
+  gap: 0.4rem;
+  padding: 0.3rem 0.4rem;
+  flex: none;
+}
+.mesh-stats-head {
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  font-size: 0.6rem;
+  padding-top: 0.35rem;
+}
+.mesh-stats-head span:last-child {
+  text-align: right;
+}
+.mesh-fold {
+  width: 100%;
+  background: none;
+  border: 0;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.mesh-fold > span:first-child::before {
+  content: "▾ ";
+}
+.mesh-fold[aria-expanded="false"] > span:first-child::before {
+  content: "▸ ";
+}
+.mesh-fold[aria-expanded="false"] > span:last-child {
+  visibility: hidden;
+}
+.mesh-fold:hover {
+  color: var(--fg);
+}
+.mesh-fold-n {
+  color: var(--sage);
+}
+.mesh-stats.fold-nodes > .mesh-stats-rows,
+.mesh-git-box.fold-git > .mesh-git-rows {
+  display: none;
+}
+.mesh-head-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.mesh-legend-btn {
+  width: 1rem;
+  height: 1rem;
+  padding: 0;
+  font: inherit;
+  font-size: 0.65rem;
+  line-height: 1;
+  color: var(--muted);
+  background: none;
+  border: 1px solid var(--border);
+  cursor: pointer;
+}
+.mesh-legend-btn:hover,
+.mesh-legend-btn[aria-pressed="true"] {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.mesh-stat-row {
+  transition: background-color 0.15s;
+}
+.mesh-stat-row:hover {
+  background: var(--border);
+}
+/* a host to switch to, expanded only */
+.mesh-panel.expanded [data-host] {
+  cursor: pointer;
+}
+.mesh-svg .mesh-hit {
+  fill: transparent;
+}
+.mesh-panel.expanded .mesh-host,
+.mesh-stat-row[data-host] {
+  cursor: pointer;
+}
+.mesh-panel:not(.expanded) .mesh-svg .mesh-hit {
+  pointer-events: none;
+}
+.mesh-panel.expanded .mesh-host:hover .mesh-node {
+  stroke: var(--accent);
+  stroke-width: 1;
+}
+.mesh-panel.expanded .mesh-host:hover .mesh-label {
+  fill: var(--fg);
+}
+.mesh-panel.expanded .mesh-stat-row[data-host]:active {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+.mesh-svg .mesh-node.pending {
+  animation: mesh-host-pending 0.8s ease-in-out infinite alternate;
+}
+@keyframes mesh-host-pending {
+  to {
+    opacity: 0.35;
+  }
+}
+
+/* a host switch's progress and outcome, expanded only */
+
+/* each git host's copy, a freshness bar for every backup */
+.mesh-git-box {
+  border-top: 1px solid var(--border);
+}
+.mesh-git-rows {
+  max-height: 9rem;
+  overflow-y: auto;
+}
+.mesh-git-box[hidden] {
+  display: none;
+}
+.mesh-git-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.4rem;
+  padding: 0.3rem 0.4rem;
+}
+.mesh-git-dot {
+  flex: none;
+  width: 0.45rem;
+  height: 0.45rem;
+  border: 1px solid var(--sage);
+  align-self: center;
+}
+.mesh-git-row.master .mesh-git-dot {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.mesh-git-row.catching .mesh-git-dot {
+  border-color: var(--sand);
+}
+.mesh-git-row.down .mesh-git-dot {
+  border-color: var(--offmesh);
+}
+.mesh-git-row.down .mesh-stat-nm {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+.mesh-git-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+}
+.git-spin {
+  display: inline-block;
+  width: 0.6em;
+  height: 0.6em;
+  margin-right: 0.35em;
+  vertical-align: -0.05em;
+  border: 1.5px solid var(--sand);
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: game-spin 0.8s linear infinite;
+}
+.mesh-git-behind {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.mesh-git-take {
+  font: inherit;
+  font-size: 0.85em;
+  padding: 0 0.35rem;
+  color: var(--muted);
+  background: none;
+  border: 1px solid var(--border);
+  cursor: pointer;
+}
+.mesh-git-take:hover,
+.mesh-git-take:focus-visible {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.git-ago {
+  min-width: 2.2rem;
+  text-align: right;
+  color: var(--muted);
+}
+.git-lag {
+  font-size: 0.7em;
+  letter-spacing: 0;
+}
+.git-lag .good {
+  color: var(--online);
+}
+.git-lag .slow {
+  color: var(--warn);
+}
+.git-lag .stale {
+  color: var(--offmesh);
+}
+.git-lag .off {
+  color: color-mix(in srgb, var(--muted) 55%, var(--border));
+}
+
+/* up to 8 rows (a px max-height from mesh.ts), then a scroll */
+.mesh-stats-rows {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.mesh-stat-name {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  overflow: hidden;
+}
+.mesh-stat-nm {
+  flex: none;
+  max-width: 65%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mesh-stat-os {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--teal);
+}
+
+.mesh-stat-dot {
+  display: inline-block;
+  width: 0.4rem;
+  height: 0.4rem;
+  margin-right: 0.1rem;
+
+  background: var(--muted);
+  flex: none;
+}
+.mesh-stat-dot.active {
+  background: var(--mesh-active);
+}
+.mesh-stat-dot.idle {
+  background: var(--muted);
+}
+.mesh-stat-dot.self {
+  background: var(--mesh-self);
+}
+
+.mesh-stat-ping-cell {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.3rem;
+}
+.mesh-spark {
+  width: 1.6rem;
+  height: 0.7rem;
+  flex: none;
+}
+.mesh-spark polyline {
+  fill: none;
+  stroke-width: 1.5;
+}
+.mesh-spark .good {
+  stroke: var(--online);
+}
+.mesh-spark .slow {
+  stroke: var(--warn);
+}
+.mesh-spark .bad {
+  stroke: var(--offmesh);
+}
+
+.mesh-stat-ping.good {
+  color: var(--online);
+}
+.mesh-stat-ping.slow {
+  color: var(--warn);
+}
+.mesh-stat-ping.bad {
+  color: var(--offmesh);
+}
+
+@media (max-width: 720px) {
+  .layout {
+    flex-direction: column;
+    height: calc(100vh - var(--mobile-tabbar-h));
+    height: calc(100dvh - var(--mobile-tabbar-h));
+  }
+
+  /* unwrapped: pane-main and mesh-panel as siblings, one full-height
+     section at a time */
+
+  .mesh-panel {
+    display: none;
+    flex: 1 1 auto;
+    min-height: 0;
+    margin: 0.9rem 0.5rem 0.5rem;
+    animation: none;
+    transition: none;
+  }
+
+  /* too narrow for the glyph beside the text, stacked instead */
+  .about-wrap {
+    flex-direction: column;
+  }
+  .about-mark {
+    width: 11rem;
+    height: 11rem;
+  }
+
+  /* services above game servers, each full width */
+  /* game servers stretched to the bottom, the note at the screen's foot */
+  .home-col {
+    flex: none;
+  }
+  .home-col:last-child {
+    flex: 1 0 auto;
+  }
+  #game-servers-list {
+    margin-bottom: 0.75rem;
+  }
+}

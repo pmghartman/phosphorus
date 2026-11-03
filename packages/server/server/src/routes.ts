@@ -1,6 +1,5 @@
 // every request on the frontend port, and the ingress's leftovers
 import * as catalog from "@phosphorus/catalog";
-import * as chatmedia from "@phosphorus/chatmedia";
 import { Keys as envKeys } from "@phosphorus/envfile";
 import * as files from "@phosphorus/files";
 import * as git from "@phosphorus/git";
@@ -50,7 +49,6 @@ import { onUpgrade } from "./ws.ts";
 
 const gitForceRe = /^\/api\/githosts\/([A-Za-z0-9-]{1,63})\/force$/;
 const gameRe = /^\/api\/games\/([a-z0-9][a-z0-9-]*)\/([a-z0-9][a-z0-9-]*)\/(start|stop)$/;
-const mediaRe = /^\/api\/chat\/media\/([a-z0-9][a-z0-9-]*)\/([0-9a-f]{32})$/;
 const runRe = /^\/api\/run\/([a-z0-9][a-z0-9-]*)\/([A-Za-z0-9_-]+)\/(.*)$/;
 const stacksAppRe = /^\/api\/stacks\/app\/([a-z]+)\/(.+)$/;
 const appsTarRe = /^\/internal\/apps\/([a-z][a-z0-9-]*)\/(\d+(?:\.\d+){0,3})$/;
@@ -472,26 +470,6 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
     else if (q.has("hop")) r = [421, { error: `${name} was sent to ${selfHost}, which isn't ${host}` }];
     else r = await forwardGame(host, name, action);
     return sendJSON(r[0], r[1]);
-  }
-
-  if (pathname === "/api/chat/upload" && method === "POST") {
-    if (!isBrowser(c)) return forbidden();
-    const [st, b] = await chatmedia.save(selfHost, c.req, q.get("name") ?? "", q.get("type") ?? "");
-    return sendJSON(st, b);
-  }
-
-  m = mediaRe.exec(pathname);
-  if (m && method === "GET") {
-    if (!(await isLocalOrPeer(c))) return forbidden();
-    const host = m[1]!,
-      id = m[2]!;
-    const dl = q.has("dl");
-    const held = chatmedia.serve(host, id, dl);
-    if (held) return held;
-    if (host === selfHost || q.has("hop")) return sendJSON(404, { error: "no such attachment" });
-    const ip = await tailnetIP(host);
-    const got = !!ip && (await chatmedia.pull(host, id, ip, port)) ? chatmedia.serve(host, id, dl) : undefined;
-    return got ?? sendJSON(502, { error: host + " has it and isn't answering" });
   }
 
   m = runRe.exec(pathname);

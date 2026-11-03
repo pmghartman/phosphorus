@@ -67,25 +67,15 @@ test("http smoke", async () => {
     // the catalogue: for a logged-in user alone
     const cat = await fetch(base + "/api/stacks/catalog");
     expect([cat.status, await cat.json()]).toEqual([403, { error: "log in as a user" }]);
-    // the chat socket: a join's history and presence
-    const got = await new Promise<any[]>((res, rej) => {
-      const out: any[] = [];
+    // no chat in the core: its socket and routes are the chat app's, 404 while it isn't running
+    const sock = await new Promise<string>((res) => {
       const ws = new WebSocket(`ws://127.0.0.1:${srv.port}/api/chat`);
-      ws.onopen = () => ws.send(JSON.stringify({ type: "join", name: "tester" }));
-      ws.onmessage = (e) => {
-        out.push(JSON.parse(String(e.data)));
-        if (out.some((m) => m.type === "history") && out.filter((m) => m.type === "presence").length >= 2) {
-          ws.close();
-          res(out);
-        }
-      };
-      ws.onerror = () => rej(new Error("ws failed"));
-      setTimeout(() => rej(new Error("no history")), 5000);
+      ws.onopen = () => res("open");
+      ws.onerror = () => res("refused");
     });
-    expect(got[0].type).toBe("presence");
-    const h = got.find((m) => m.type === "history");
-    expect(h.messages).toEqual([]);
-    expect(got.at(-1).people).toEqual([{ name: "tester", color: expect.stringMatching(/^#/), host: "testhost" }]);
+    expect(sock).toBe("refused");
+    expect((await fetch(base + "/api/chat/upload", { method: "POST", body: "x" })).status).toBe(404);
+    expect((await fetch(base + "/api/app/chat/upload", { method: "POST", body: "x" })).status).toBe(404);
   } finally {
     srv.stop(true);
   }

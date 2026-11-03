@@ -58,7 +58,7 @@ outside #mesh-svg (emptied every redraw) so it never restarts -->
 </svg>
 <!-- the desktop: the login, then the desk, drawn by desktop/ -->
 <div class="dk" id="view-desktop"></div>
-<!-- the apps' views, the mesh and chat panels and the update pane, each moved into a
+<!-- the apps' views, the mesh panel and the update pane, each moved into a
 window or popup while open and back here on close -->
 <div class="stash" id="dk-stash" hidden>
     <div class="update-pane" id="update-modal" hidden>
@@ -106,12 +106,6 @@ window or popup while open and back here on close -->
           <div class="home-note">mesh only</div>
         </div>
     </div>
-    <div class="view" id="view-chat">
-      <div class="cw">
-        <div class="cw-side"><div class="home-col-head">conversations</div><nav class="cw-list" id="cw-list" aria-label="conversations"></nav></div>
-        <div class="cw-main" id="cw-main"></div>
-      </div>
-    </div>
     <!-- optional apps for the mesh, drawn by apps/store.ts -->
     <div class="view" id="view-apps"></div>
     <div class="view" id="view-about">
@@ -151,72 +145,7 @@ window or popup while open and back here on close -->
         </div>
       </div>
     </div>
-    <div class="chat-panel" id="chat-panel">
-      <div class="chat-header">
-        <span class="chat-title" id="chat-title"><span class="chat-title-text">#mesh</span><span class="chat-title-dot" title="news in another conversation" hidden></span></span>
-        <span class="chat-status" id="chat-status"><span class="label">offline</span></span>
-        <span class="chat-tools">
-          <button class="chat-icon chat-files-btn" id="chat-files-btn" type="button" aria-label="attachments" hidden>
-            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5h5l3 3v8H4z"></path><polyline points="9 2.5 9 5.5 12 5.5"></polyline><line x1="6" y1="8.5" x2="10" y2="8.5"></line><line x1="6" y1="11" x2="10" y2="11"></line></svg><span class="n">0</span>
-          </button>
-          <button class="chat-icon" id="chat-find-btn" type="button" title="search this conversation (ctrl+f)" aria-label="search">
-            <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.2"></circle><line x1="10.2" y1="10.2" x2="13.5" y2="13.5"></line></svg>
-          </button>
-          <button class="chat-icon chat-bell" id="chat-bell" type="button" aria-pressed="false" hidden>
-            <svg viewBox="0 0 16 16" aria-hidden="true">
-              <path d="M8 2.2a3.1 3.1 0 0 0-3.1 3.1v2.2L3.4 10.2h9.2L11.1 7.5V5.3A3.1 3.1 0 0 0 8 2.2z"></path>
-              <path d="M6.6 12a1.4 1.4 0 0 0 2.8 0"></path>
-              <line class="slash" x1="3" y1="13.2" x2="13" y2="2.8"></line>
-            </svg>
-          </button>
-        </span>
-      </div>
-      <div class="chat-find" id="chat-find" hidden>
-        <span class="chat-prompt">/</span><input id="chat-find-input" type="text" placeholder="search this conversation" autocomplete="off" spellcheck="false"><span class="chat-find-count" id="chat-find-count"></span>
-      </div>
-      <ul id="chat-log" class="chat-log"></ul>
-      <div class="chat-drop" id="chat-drop" hidden><span>drop to share</span></div>
-      <form id="chat-join" class="chat-join">
-        <span class="chat-prompt">&gt;</span>
-        <input id="chat-name" type="text" placeholder="your name" maxlength="32" required autocomplete="off">
-        <button type="submit" class="chat-go" id="chat-join-go" aria-label="join" title="join" disabled><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 12.5V3.5M4 7.5L8 3.5l4 4"/></svg></button>
-      </form>
-      <div class="chat-compose" id="chat-compose" hidden>
-        <ul class="chat-cmds" id="chat-cmds" hidden></ul>
-        <div class="chat-bar" id="chat-bar" hidden></div>
-        <ul class="chat-atts" id="chat-atts" hidden></ul>
-        <form id="chat-form" class="chat-form">
-          <span class="chat-prompt">&gt;</span>
-          <span class="chat-chip" id="chat-chip" hidden></span>
-          <textarea id="chat-text" placeholder="message" maxlength="2000" rows="1"></textarea>
-          <button type="button" class="chat-icon chat-attach" id="chat-attach" title="attach files, or paste or drop them" aria-label="attach">
-            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 4.5l-4.8 4.8a1.4 1.4 0 0 0 2 2l5-5a2.8 2.8 0 0 0-4-4l-5 5a4.2 4.2 0 0 0 6 6l4.3-4.3"></path></svg>
-          </button>
-          <button type="submit" class="chat-go" id="chat-send" aria-label="send" title="send" disabled><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 12.5V3.5M4 7.5L8 3.5l4 4"/></svg></button>
-        </form>
-        <div class="chat-foot"><span class="chat-typing" id="chat-typing"></span></div>
-        <input type="file" id="chat-file" multiple hidden>
-      </div>
-    </div>
 </div>
-    <div class="modal show-modal" id="show-modal" hidden role="dialog" aria-modal="true" aria-labelledby="show-modal-title">
-      <div class="modal-box">
-        <div class="modal-header">
-          <span id="show-modal-title">shared workspace</span>
-          <button class="modal-close" id="show-modal-close" type="button" title="close">&times;</button>
-        </div>
-        <div class="update-confirm">
-          <p id="show-modal-text"></p>
-          <div class="update-actions">
-            <button type="button" id="show-modal-no">not now</button>
-            <button type="button" id="show-modal-go" class="primary">open</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-<!-- the chat's one popup: a conversation's actions, or what's been shared -->
-<div class="chat-pop" id="chat-pop" role="menu" hidden></div>
 
 <script type="module" src="/src/main.ts"></script>
 </body>

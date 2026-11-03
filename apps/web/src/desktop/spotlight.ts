@@ -72,7 +72,6 @@ function hits(): Hit[] {
   for (const h of dkLiveHosts())
     add(G.terminal!, 'terminal', h, 'terminal', `shell console ssh ${h}`, () => dkTerminal(h));
   add(G.files!, 'files', '', 'files', 'folders browse home share', () => filesWin());
-  add(G.chat!, 'chat', '', 'app', 'messages talk mesh', () => dkOpenApp('chat'));
   if (st.gitRoute) add(G.git!, 'git', '', 'app', 'forgejo repos', () => dkOpenApp('git'));
   add(G.games!, 'game servers', '', 'app', 'games play', () => dkOpenApp('games'));
   add(G.apps!, 'apps', '', 'app', 'install store services extras', () => dkOpenApp('apps'));

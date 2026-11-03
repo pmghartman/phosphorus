@@ -22,7 +22,7 @@ function remember(key: string, html: string) {
   cache.set(key, html);
 }
 
-// el's text as markdown: html given (a chat line's own) used at once, a known
+// el's text as markdown: html given (a page's own) used at once, a known
 // text from the cache, anything else plain until the server's render lands
 export function renderMd(el: HTMLElement, src: string, breaks = true, html: string | null | undefined = null): void {
   const key = keyOf(src, breaks);

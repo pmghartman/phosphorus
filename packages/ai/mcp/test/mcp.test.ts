@@ -83,6 +83,10 @@ const skillWords = new Set([
   "mcp__phosphorus__",
   "bad_input",
   "not_found",
+  // the Chat app's, there while it's installed
+  "chat_history",
+  "send_message",
+  "chat_edit",
 ]);
 
 test("skill", async () => {

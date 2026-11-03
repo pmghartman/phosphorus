@@ -45,7 +45,12 @@ export type UiAction =
   | { kind: "terminal"; host: string }
   | { kind: "view"; view: string };
 
-// a tool for the mesh's MCP server, listed to agents while the app is installed
+// a tool's caller: a user's key, via the agent using it
+export type Caller = Who & { via: string };
+
+// a tool for the mesh's MCP server, listed to agents while the app is installed;
+// an error thrown with a code (not_found, bad_input, forbidden, unreachable,
+// conflict) is reported with it
 export type Tool = {
   name: string;
   title: string;
@@ -54,7 +59,7 @@ export type Tool = {
   read?: boolean;
   admin?: boolean;
   destructive?: boolean;
-  run(args: Record<string, any>, who: Who): Promise<unknown>;
+  run(args: Record<string, any>, who: Caller): Promise<unknown>;
 };
 
 // where a socket was opened: what follows the app's prefix, and its query
@@ -93,6 +98,9 @@ export interface AppStore {
   watch(fn: (rel: string) => void): void;
 }
 
+// a peerFetch: GET unless a method is given
+export type PeerInit = { method?: string; body?: BodyInit; timeoutMs?: number };
+
 export interface AppContext {
   id: string;
   version: string;
@@ -118,9 +126,17 @@ export interface AppContext {
   vault: Vault;
   // the app's internal route on another host: POST with body as JSON, its JSON back
   peer(host: string, path: string, body?: unknown): Promise<any>;
+  // the same route's response as it comes, for a body that isn't JSON (a file)
+  peerFetch(host: string, path: string, init?: PeerInit): Promise<Response>;
+  // whether name is one of the mesh's users
+  isUser(name: string): boolean;
+  // phosphorus's own apps only: what the core kept for the app before it was one
+  // taken over, this host's var/<id>/ moved into dataDir and the mesh's etc/<id>/
+  // into the store's slice; true when there was any
+  adopt(): boolean;
   ui(user: string, action: UiAction): void;
   tools(list: Tool[]): void;
-  // run when the app is removed or replaced by another version
+  // run when the app is removed, replaced by another version, or the host stops
   onStop(fn: () => void | Promise<void>): void;
 }
 

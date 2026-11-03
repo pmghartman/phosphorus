@@ -12,7 +12,6 @@ import { applyTheme, systemLight } from '../lib/scheme.ts';
 import { type Account, dk, PREF_LS, PREF_OF, st } from '../lib/state.ts';
 import { connectState, stateStop, stateUp } from '../lib/sync.ts';
 import { themeFromStorage } from '../lib/theme.ts';
-import { chatAs } from './chat/chat.ts';
 
 const dkView = document.getElementById('view-desktop')!;
 
@@ -25,7 +24,6 @@ export async function acctStart(): Promise<void> {
 // a real form, so the browser offers to save and fill it
 function acctLogin(setup: boolean) {
   st.acct = null;
-  chatAs('');
   stateStop();
   dkLogout();
   const form = Object.assign(el('form', 'dk-login acct-login'), { method: 'post', action: '/api/login' });
@@ -93,7 +91,6 @@ function acctIn(me: Me) {
     return;
   }
   acctPrefs(me.prefs || {}, me.prefsAt || 0);
-  chatAs(acct.user);
   if (acctNext()) return;
   if (!stateUp()) connectState();
   dk.creds = new Map(Object.entries(acct.vault.hosts).map(([h, c]) => [h, { user: c.user, pass: c.pass }]));
@@ -188,7 +185,6 @@ function acctPrefs(prefs: Record<string, string>, at = 0) {
   let theme: string | null = null;
   try {
     theme = localStorage.getItem(PREF_LS.theme!);
-    st.color = localStorage.getItem(PREF_LS.color!) || st.color;
   } catch {}
   themeFromStorage();
   applyTheme(theme || (systemLight.matches ? 'light' : 'dark'));

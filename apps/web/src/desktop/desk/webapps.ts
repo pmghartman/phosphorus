@@ -1,7 +1,7 @@
 // the optional apps: each one the mesh wants and this host serves, its page in a window
 
 import type { AppWant } from '@phosphorus/wire';
-import { noteAdd } from '../../features/notes.ts';
+import { away, noteAdd, notifying, notifyOs } from '../../features/notes.ts';
 import { DK_UI, dkGlyph, el } from '../../lib/dom.ts';
 import { dk, st } from '../../lib/state.ts';
 import { PALETTE_EVENT } from '../../lib/theme.ts';
@@ -59,7 +59,10 @@ function bridge(w: DkWin, frame: HTMLIFrameElement) {
       const t = w.head.querySelector('.tab-label');
       if (t) t.textContent = a.title.slice(0, 80);
     } else if (a.kind === 'notify' && typeof a.title === 'string') {
-      noteAdd(a.title.slice(0, 120), String(a.body ?? '').slice(0, 500));
+      const [t, b] = [a.title.slice(0, 120), String(a.body ?? '').slice(0, 500)];
+      noteAdd(t, b);
+      // the browser's own while the tab is away, once its bell is on
+      if (away() && notifying()) notifyOs(t, b);
     } else if (a.kind === 'terminal' && typeof a.host === 'string') {
       if (typeof a.run === 'string' && a.run && dk.creds.has(a.host)) dkTerminal(a.host, a.run.slice(0, 2000));
       else dkOpenTerminal(a.host);

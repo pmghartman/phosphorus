@@ -203,11 +203,7 @@
     font-size: 0.85rem;
   }
   /* the apps' views closer to the screen's edges */
-  .dk-app .dk-body > .view,
-  .dk-app-chat .dk-body > .view {
+  .dk-app .dk-body > .view {
     padding: 0.6rem 0.5rem 0.5rem;
-  }
-  .cw-item {
-    min-height: 2.5rem;
   }
 }

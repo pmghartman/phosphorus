@@ -24,7 +24,7 @@ import { dkDeskDir, dkDeskView, dkDeskWatch, dkFileIcon } from '../deskfiles.ts'
 import { dkLoginHosts } from '../login.ts';
 import { dkSessionHold, dkSessionRestore, dkSessionTry } from '../session.ts';
 import { dkSpotlightTray } from '../spotlight.ts';
-import { dkBadge, dkBar, dkChips, dkClock, dkHomeBtn, dkPlaceItems } from '../taskbar.ts';
+import { dkBar, dkChips, dkClock, dkHomeBtn, dkPlaceItems } from '../taskbar.ts';
 import { dkClose, dkFocus, dkPlace, dkSnap } from '../windows.ts';
 import { dkGitFrame } from './git.ts';
 import { dkTermApp, dkTermDrop } from './terminal.ts';
@@ -180,7 +180,7 @@ export function dkTryIcons(tile: HTMLElement, icons: string[], again = 0, retry 
     img.addEventListener(
       'load',
       () => {
-        tile.replaceChildren(img, ...tile.querySelectorAll('.dk-public, .dk-badge'));
+        tile.replaceChildren(img, ...tile.querySelectorAll('.dk-public'));
         tile.classList.add('dk-tile-img');
         tile.classList.remove('dk-wait');
       },
@@ -206,7 +206,6 @@ export function dkIcon(
   });
   const tile = el('span', 'dk-tile');
   tile.appendChild(kind === 'service' ? dkMono(label) : dkGlyph(DK_GLYPHS[kind]!));
-  if (kind === 'chat') tile.appendChild(dkBadge());
   // a site's own icon once it loads
   dkTryIcons(tile, ([] as string[]).concat(icon), again);
   b.append(tile, el('span', 'dk-label', label));
@@ -278,7 +277,6 @@ export function dkIcons(): void {
   const want: [string, () => HTMLButtonElement][] = [
     ['terminal', () => dkIcon('terminal', 'terminal', '', dkTermApp)],
     ['files', () => dkIcon('files', 'files', '', () => filesWin())],
-    ['chat', () => dkIcon('chat', 'chat', '', () => dkOpenApp('chat'))],
     ...(git
       ? [
           [

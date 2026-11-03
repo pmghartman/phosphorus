@@ -3,9 +3,11 @@
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import * as files from "@phosphorus/files";
+import { allTools } from "@phosphorus/mcp";
 import * as peers from "@phosphorus/peers";
-import { mergedChat, postOwn, start } from "@phosphorus/server";
+import { runningApps, start } from "@phosphorus/server";
 import * as store from "@phosphorus/store";
+import * as webapps from "@phosphorus/webapps";
 
 const srv = await start();
 
@@ -52,10 +54,16 @@ Bun.serve({
       case "link.drop":
         peers.dropLink(a.host);
         return Response.json({ ok: true });
-      case "chat.post":
-        return Response.json({ seq: postOwn({ name: a.name, color: "#aabbcc", text: a.text }).seq });
-      case "chat.lines":
-        return Response.json(mergedChat.map((m) => ({ host: m.host, seq: m.seq, text: m.text })));
+      case "app.install":
+        return Response.json(await webapps.Install(a.id));
+      case "app.running":
+        return Response.json(runningApps());
+      case "tool": {
+        const t = allTools().find((x) => x.name === a.name);
+        if (!t) return Response.json({ error: `no tool ${a.name}` }, { status: 404 });
+        const caller = { user: a.user, admin: false, via: "test" };
+        return Response.json(await t.run(a.args ?? {}, { caller, local: false }));
+      }
       case "home.write":
         await Bun.write(join(files.HomeRoot, a.rel), a.text);
         return Response.json({ ok: true });

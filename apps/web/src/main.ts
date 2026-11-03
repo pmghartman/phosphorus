@@ -9,7 +9,6 @@ import './features/games.ts';
 import './features/mesh/mesh.ts';
 import './features/home/home.ts';
 import './features/notes.ts';
-import { setConv } from './features/chat/chat.ts';
 import './features/update.ts';
 import './lib/sync.ts';
 import './lib/scheme.ts';
@@ -28,7 +27,4 @@ import { acctStart } from './features/account.ts';
 import './features/mcp.ts';
 import './features/agent.ts';
 
-// the chat on #mesh from the start, once every module is up (app.js ran it at the end of its
-// chat section; here after the notes it reads have loaded)
-setConv('mesh');
 acctStart();

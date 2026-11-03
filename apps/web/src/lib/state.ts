@@ -1,5 +1,5 @@
-// the page's state shared across its modules: what /api/state last said, the account, the
-// chat's name and socket, and the desktop's own. Each was a module-level let of app.js read by
+// the page's state shared across its modules: what /api/state last said, the account
+// and the desktop's own. Each was a module-level let of app.js read by
 // several sections; here one object, read where it was read and set where it was set
 import type { FileEntry, GitHost, HostInfo, Route, State, Vault } from '@phosphorus/wire';
 import type { LoginRow } from '../desktop/login.ts';
@@ -33,13 +33,7 @@ export const st = {
   hostsInfo: {} as Record<string, HostInfo>,
   // the newest /api/state, handed to an app as it loads
   lastState: null as State | null,
-  // unread lines, for the chat icon's and task's badges
-  deskNews: 0,
   acct: null as Account | null,
-  // the chat's own name and colour, kept per browser; ws its socket
-  name: localStorage.getItem('phosphorus-chat-name') || '',
-  color: localStorage.getItem('phosphorus-chat-color') || '',
-  ws: null as WebSocket | null,
 };
 
 // the desktop's apps up and not minimized, for each view's own watchers
@@ -81,8 +75,7 @@ export interface FmClip {
   items: PickedItem[];
 }
 
-// the desktop's state, up here because code run at load (the chat's first
-// setConv) asks dk.desk long before the desktop section below
+// the desktop's state, up here for code run at load, before the desktop section below
 // creds: host -> {user, pass}, this page's memory only
 export interface Dk {
   creds: Map<string, { user: string; pass: string }>;

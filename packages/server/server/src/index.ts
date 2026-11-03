@@ -1,8 +1,7 @@
 // phosphorus in one process, the ingress, the mesh loop, the page, this
-// host's state for peers, chat and terminal websockets
+// host's state for peers, and the websockets
 
 import * as catalog from "@phosphorus/catalog";
-import * as chatmedia from "@phosphorus/chatmedia";
 import * as files from "@phosphorus/files";
 import * as git from "@phosphorus/git";
 import { type Caller, type Loc, init as mcpInit } from "@phosphorus/mcp";
@@ -20,20 +19,7 @@ import { env, errText, flushWrites, logf, markHot, tailnetIP } from "@phosphorus
 import * as webapps from "@phosphorus/webapps";
 import type { WSData } from "@phosphorus/wsock";
 import type { Server } from "bun";
-import { startApps } from "./apps.ts";
-import {
-  allPresence,
-  chatEditAs,
-  initChat,
-  knownPerson,
-  mergedChat,
-  mergeFromPeers,
-  mergePeerPresence,
-  ownChatSince,
-  peerSeq,
-  postAs,
-  showAs,
-} from "./chat.ts";
+import { startApps, stopApps } from "./apps.ts";
 import {
   baseDomain,
   bootID,
@@ -73,7 +59,7 @@ import { copyTree, homeSource } from "./transfer.ts";
 import { startPushes } from "./ws.ts";
 
 // for a test mesh's hosts
-export { mergedChat, postOwn } from "./chat.ts";
+export { runningApps } from "./apps.ts";
 export { lineTime, logTime } from "./hostops.ts";
 export { pageUser } from "./http.ts";
 export { driveShell, errShellTimeout, Lines, readLines } from "./mcpshell.ts";
@@ -85,11 +71,9 @@ export async function start(): Promise<Server<WSData>> {
   files.init();
   users.Init();
   store.start();
-  chatmedia.init();
   git.init(isUpdating, bootID);
   update.onFinish(rememberChain);
   update.onFailed(() => setUpdating(false));
-  initChat();
   setInterval(reapShells, 60000);
 
   // FRONTEND_BIND: one address alone, for a test mesh of several hosts on loopback
@@ -119,14 +103,10 @@ export async function start(): Promise<Server<WSData>> {
   await stats.init();
   initMCP();
   peers.start({
-    mergeChat: mergeFromPeers,
-    mergePresence: mergePeerPresence,
     platform: getPlatform,
     ownLock: update.ownLock,
     hostServices,
     own: ownState,
-    ownChat: ownChatSince,
-    chatSince: peerSeq,
     self: () => ({ version: Version(), bootId: bootID }),
   });
   startHA();
@@ -151,6 +131,7 @@ export async function serve(): Promise<number> {
   });
   // each stack this host runs handed over while its final pull can still be served
   await stopHA();
+  await stopApps();
   await flushWrites();
   return 0;
 }
@@ -164,8 +145,6 @@ function initMCP() {
     peerIPs: peers.peerIPs,
     gitHosts: () => gitRowsAny(),
     model: Summary,
-    chat: () => [...mergedChat],
-    people: allPresence,
     lock: update.meshLock,
     chain: () => update.chainStatus() ?? peers.chain(),
     actions: {
@@ -197,16 +176,12 @@ function initMCP() {
         if (op === "exec" || op === "shell") wait = (num(p?.timeout) + 30) * 1000;
         return opOn(host, op, p, wait);
       },
-      chatEdit: chatEditAs,
       config: hostConfig,
       userUI,
       userUIAsync,
       service: svcRequest,
       modelColor,
     },
-    post: postAs,
-    show: showAs,
     locate: files.locate,
-    known: knownPerson,
   });
 }

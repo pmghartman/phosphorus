@@ -53,7 +53,11 @@ export class Mesh {
   online = new Map<string, boolean>();
   gone = new Set<string>();
 
-  constructor(private names: string[]) {
+  // env: more for every host, an app feed's url and key
+  constructor(
+    private names: string[],
+    private env: Record<string, string> = {},
+  ) {
     [this.port, this.ctlPort] = pickPorts(names.map((n) => this.ipOf(n)));
     mkdirSync(join(this.dir, "bin"));
     if (win)
@@ -127,6 +131,7 @@ export class Mesh {
       INGRESS_PORT: "0",
       GAME_DNS_PORT: "0",
       POLL_HOT_MS: "600000",
+      ...this.env,
     };
     for (const k of ["TS_API_KEY", "BASE_DOMAIN", "ADMIN_PASS", "TUNNEL_TOKEN"]) delete env[k];
     const proc = Bun.spawn(["bun", join(import.meta.dir, "mesh-node.ts")], {

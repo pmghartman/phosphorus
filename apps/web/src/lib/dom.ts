@@ -85,31 +85,6 @@ export function databaseIcon(): SVGSVGElement {
   return icon;
 }
 
-// a copy button on each code block of a chat line, its text as written
-export function codeCopies(root: HTMLElement): void {
-  for (const pre of root.querySelectorAll('pre')) {
-    if (pre.parentElement?.classList.contains('code-wrap')) continue;
-    const wrap = el('div', 'code-wrap');
-    pre.replaceWith(wrap);
-    const copy = Object.assign(el('button', 'game-copy code-copy'), {
-      type: 'button',
-      title: 'copy',
-      ariaLabel: 'copy',
-    });
-    copy.appendChild(gameIcon('copy'));
-    copy.addEventListener('click', (e) => {
-      e.stopPropagation();
-      copyText(pre.innerText.replace(/\n$/, ''))
-        .then(() => {
-          copy.replaceChildren(gameIcon('check'));
-          setTimeout(() => copy.replaceChildren(gameIcon('copy')), 1200);
-        })
-        .catch(() => {});
-    });
-    wrap.append(pre, copy);
-  }
-}
-
 // a box over the whole page, any user's: true for its action, false for cancel or esc
 export function pageAsk({
   title,

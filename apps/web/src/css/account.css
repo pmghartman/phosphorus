@@ -224,7 +224,6 @@
 .home-col-head,
 .about-info::before,
 .mesh-header > *,
-.chat-header > *,
 .modal-header > * {
   background: linear-gradient(transparent calc(50% - 1px), var(--edge) calc(50% - 1px));
 }

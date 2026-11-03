@@ -27,7 +27,6 @@ export type Actions = {
   // op a host operation: health, power, term_close, shell, exec,
   // service_health, or mesh-wide mesh_health and update_history (services, mesh_hosts, update_status)
   op: (host: string, op: string, p: Record<string, any> | undefined) => R;
-  chatEdit: (user: string, ref: string, action: string, text: string) => R;
   files: (c: Caller | undefined, host: string, op: string, share: string, body: Record<string, any>) => R;
   copy: (c: Caller | undefined, from: Loc, to: Loc, move: boolean) => R;
   logs: (host: string, p: Record<string, any>) => R;
@@ -55,15 +54,9 @@ export type Src = {
   peerIPs: () => Record<string, string>;
   gitHosts: () => unknown;
   model: () => Record<string, any>;
-  chat: () => Record<string, any>[];
-  people: () => Record<string, any>[];
   lock: () => unknown;
   chain: () => unknown;
   actions: Actions;
-  post: (by: string, to: string, text: string, via: string) => R;
-  // known a person by chat name: a user, or anyone the chat has seen
-  known: (name: string) => boolean;
-  show: (by: string, to: string, f: Record<string, any>) => R;
   locate: (abs: string) => Located | undefined;
 };
 

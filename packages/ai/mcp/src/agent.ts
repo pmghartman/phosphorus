@@ -344,19 +344,11 @@ export function describe() {
     files_change:
       "Organize a share within its perms: mkdir, rename or move (to ending in / moves into that folder), delete (permanent). " +
       "Several in steps run in order and stop at the first failure.",
-    chat_history:
-      "The last chat lines, oldest first: channels (mesh is the main one), and on a key your own direct messages as dm:<name>. " +
-      "Each line has its ms. On a key, wait_s waits for lines newer than since (that ms), returning as soon as one lands: " +
-      "for a reply after send_message.",
-    send_message:
-      "Post to the mesh chat, or a direct message to one person by their chat name. On a key it's posted as you.",
     open_file:
       "Open a share's text or code file in a editor tab on the person's Phosphorus window (on a key, every window of yours that's open). " +
       "Highlighted, syntax errors marked; nothing in it runs.",
     open_terminal:
       "Open a terminal tab to a host on the person's Phosphorus window, shared with phosphorus. On a key it logs in with their saved login for that host (none saved: nothing opens); terminal_run then runs commands in it. Else they log in themselves.",
-    show_file:
-      "Invite a person into a share's file in the editor: they get a dialog and a notification, and it opens in a tab on accepting.",
     terminal_screen:
       "Read the screen and recent scrollback of the person's terminal tabs that are shared with phosphorus on one host. wait_s waits for new output first.",
     game_power: "Start or stop a game server, running only the start or stop command its service declares.",
@@ -370,7 +362,6 @@ export function describe() {
       "Assign a mesh host's model to an agent (an app's while it's on the mesh: code, claude-code, opencode for the Code app, tavern, sulfur), mesh-wide: phosphorus/<host>, blank for the automatic pick; slot fast is the small background model. Admins only.",
     models:
       "The models: each agent's mesh host assigned and answering, each mesh model host's file, state and memory, and the last call's context use.",
-    people: "Who is on phosphorus right now: each person, the host serving them, and whether they are typing.",
   };
   for (const t of tools) {
     if (d[t.name]) t.description = d[t.name]!;

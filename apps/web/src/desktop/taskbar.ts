@@ -1,5 +1,5 @@
 // the task bar: its clock, the status items where the layout puts them, the host chips,
-// the chat badge, and every popup grown out of a bar button
+// every popup grown out of a bar button
 
 import { dkUnlock } from '../features/account.ts';
 import { hostSwitchNow } from '../features/mesh/mesh.ts';
@@ -142,19 +142,6 @@ function dkChipsFold(hosts: HTMLElement, n: number) {
   dk.chipFold.hidden = n < 2;
   dk.chipFold.title = open ? 'fewer hosts' : 'all hosts';
   dk.chipFold.setAttribute('aria-expanded', String(open));
-}
-
-export function deskBadge(total: number): void {
-  st.deskNews = total;
-  for (const b of document.querySelectorAll<HTMLElement>('.dk-badge')) {
-    b.hidden = !total;
-    b.textContent = total > 99 ? '99+' : String(total);
-  }
-}
-export function dkBadge(): HTMLElement {
-  const b = el('span', 'dk-badge', st.deskNews > 99 ? '99+' : String(st.deskNews));
-  b.hidden = !st.deskNews;
-  return b;
 }
 
 // --- task bar popups: each grown out of its own button, its bottom on the

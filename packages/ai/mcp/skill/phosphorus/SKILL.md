@@ -21,7 +21,7 @@ Read the one that fits before the first call; a one-tool question needs none.
 | find, read, edit, copy, move or organize files | `references/files.md` |
 | publish, change, remove or check a service or game server, call its API | `references/service.md` |
 | update the mesh, follow, retry or cancel an update | `references/update.md` |
-| read or post chat, message someone, wait for a reply | `references/chat.md` |
+| read or post chat, message someone, wait for a reply (the Chat app) | `references/chat.md` |
 | Forgejo repos, issues, PRs, clone or push, replication | `references/git.md` |
 
 ## Rules
@@ -37,7 +37,7 @@ Read the one that fits before the first call; a one-tool question needs none.
 ## Not covered by a job file
 
 - Models: `models` shows which mesh host's model each agent (code, claude-code, opencode, and tavern while the tavern app is on the mesh) is assigned and answering with; `set_agent_model` assigns one (admin).
-- The user's own Phosphorus window: `open_file` opens a share's file in a editor tab, `show_file` invites someone else into one, `open_terminal` opens a shared terminal tab.
+- The user's own Phosphorus window: `open_file` opens a share's file in a editor tab, `open_terminal` opens a shared terminal tab.
 
 ## Errors
 

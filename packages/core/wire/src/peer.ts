@@ -10,14 +10,11 @@ export interface PeerHello {
   // the store's digest and log head, the peer's cursor from then on
   storeDigest: string;
   storeSeq: number;
-  // the highest seq of the other host's chat lines the sender already holds
-  chatSince: number;
 }
 
 // the sender's state, only the keys that changed; every key again now and then
 export interface PeerState {
   type: "state";
-  presence?: unknown[];
   lock?: unknown;
   chain?: unknown;
   git?: unknown;
@@ -25,12 +22,6 @@ export interface PeerState {
   // each failover group's state, by group
   ha?: unknown;
   services?: unknown[];
-}
-
-// the sender's own chat lines
-export interface PeerChat {
-  type: "chat";
-  lines: unknown[];
 }
 
 // the store's files changed up to seq
@@ -46,7 +37,7 @@ export interface PeerDigest {
   store: string;
 }
 
-// a request and its answer: ops store.stamps, store.files {rels}, chat.since {seq}, home.stamps
+// a request and its answer: ops store.stamps, store.files {rels}, home.stamps
 export interface PeerReq {
   type: "req";
   id: number;
@@ -67,7 +58,7 @@ export interface PeerHome {
   files?: Record<string, unknown>;
 }
 
-export type PeerFrame = PeerHello | PeerState | PeerChat | PeerStore | PeerDigest | PeerHome | PeerReq | PeerRes;
+export type PeerFrame = PeerHello | PeerState | PeerStore | PeerDigest | PeerHome | PeerReq | PeerRes;
 
 // close codes a link uses
 export const PeerCloseDuplicate = 4001;

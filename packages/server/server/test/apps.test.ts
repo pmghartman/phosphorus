@@ -162,3 +162,66 @@ export function register(ctx) {
   W.reset();
   await A.settleApp("demo");
 });
+
+// the chat's own bundle, built and signed as the release builds it, checked and
+// unpacked as the installer does, run; the history the core kept handed over
+test("the chat app's signed bundle loads, takes over the core's chat, and is refused unsigned", async () => {
+  const { generate } = await import("@phosphorus/minisign");
+  const { mkdtempSync, readFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const key = generate();
+  const out = mkdtempSync(join(tmpdir(), "phos-chat-"));
+  const root = join(import.meta.dir, "..", "..", "..", "..");
+  const build = Bun.spawnSync(["bun", "scripts/appbuild.ts", "chat", out, "1.0.0"], {
+    cwd: root,
+    env: { ...process.env, UPDATE_SIGNING_KEY: key.secret, APPS_FEED_BASE: "http://127.0.0.1:1" },
+  });
+  expect(build.exitCode).toBe(0);
+  const data = new Uint8Array(readFileSync(join(out, "chat-1.0.0.tar.gz")));
+  const rel = JSON.parse(readFileSync(join(out, "chat.json"), "utf8"));
+  const chat = W.appOf("chat")!;
+  process.env.APPS_PUBKEY = key.public;
+  expect(() => W.verify(chat, { ...rel, signature: "" }, data)).toThrow();
+  process.env.APPS_PUBKEY = generate().public;
+  expect(() => W.verify(chat, rel, data)).toThrow();
+  process.env.APPS_PUBKEY = key.public;
+  W.verify(chat, rel, data);
+
+  // what the core kept: this host's lines, and a channel's topic in the store
+  mkdirSync(join(store.Root, "var", "chat"), { recursive: true });
+  const old = { host: "testhost", seq: 7, timestamp: Date.now(), name: "ann", color: "#4f9eff", text: "from before" };
+  writeFileSync(join(store.Root, "var", "chat", "own.json"), JSON.stringify([old]));
+  writeFileSync(join(store.Root, "var", "chat", "merged.json"), JSON.stringify([old]));
+  store.write("etc/chat/ch/ops.json", { created: 1, topic: "the ops room" });
+
+  W.unpack(chat, { ...rel, from: "testhost", at: Date.now() }, data);
+  W.reset();
+  await A.settleApp("chat");
+  expect(A.runningApps()).toEqual([{ id: "chat", version: "1.0.0" }]);
+  expect(store.read("etc/appdata/chat/ch/ops.json")).toEqual({ created: 1, topic: "the ops room" });
+  expect(store.read("etc/chat/ch/ops.json")).toBeUndefined();
+  expect(existsSync(join(store.Root, "var", "chat"))).toBe(false);
+  expect(JSON.parse(readFileSync(join(A.appDataDir("chat"), "own.json"), "utf8"))[0].text).toBe("from before");
+
+  // its tools, on a key, as that user
+  const tool = (n: string) => allTools().find((t) => t.name === n)!;
+  const m = { caller: { user: "ann", admin: false, via: "claude" }, local: false };
+  const rows = (await tool("chat_history").run({}, m)) as any[];
+  expect(rows.map((r) => [r.ref, r.text])).toEqual([["testhost:7", "from before"]]);
+  const sent = (await tool("send_message").run({ text: "hello from an agent" }, m)) as any;
+  expect(sent.seq).toBe(8);
+  const after = (await tool("chat_history").run({ limit: 1 }, m)) as any[];
+  expect(after[0]).toMatchObject({ ref: "testhost:8", name: "ann", via: "claude", text: "hello from an agent" });
+  await expect(tool("send_message").run({ text: "x", to: "nobody" }, m)).rejects.toMatchObject({ code: "not_found" });
+  expect((await tool("chat_edit").run({ ref: "testhost:8", action: "delete" }, m)) as any).toMatchObject({ ok: true });
+  expect(((await tool("chat_history").run({}, m)) as any[]).length).toBe(1);
+
+  // the page served, its routes behind the login
+  expect(W.serve(new Request("http://127.0.0.1/app/chat/"))?.status).toBe(200);
+  expect((await call("/api/app/chat/upload", "POST"))![0]).toBe(401);
+
+  rmSync(join(process.env.STATE_DIR!, "apps", "chat"), { recursive: true, force: true });
+  W.reset();
+  await A.settleApp("chat");
+  expect(allTools().some((t) => t.name === "chat_history")).toBe(false);
+}, 60_000);

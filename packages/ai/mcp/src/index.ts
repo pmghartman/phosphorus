@@ -26,6 +26,7 @@ export {
   type Tool,
   ToolError,
 } from "./common.ts";
+export { viaOf } from "./extra.ts";
 export { statsRow, statsShape } from "./hosts.ts";
 export { skill, skillFiles } from "./skill.ts";
 

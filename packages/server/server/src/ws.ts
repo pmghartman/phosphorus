@@ -1,4 +1,4 @@
-// the frontend's websockets: chat, the state push, stats and terminals, here
+// the frontend's websockets: the state push, stats and terminals, here
 // or spliced onto the owning peer's
 
 import { Purge } from "@phosphorus/model";
@@ -9,7 +9,6 @@ import { Of } from "@phosphorus/users";
 import { errText, intervalMS, marshal, now, onHot, sleep, tailnetIP } from "@phosphorus/util";
 import { type Conn, type Ctx, upgrade } from "@phosphorus/wsock";
 import { appSocket } from "./apps.ts";
-import { onChat } from "./chatws.ts";
 import { getPlatform, hostSSHHost, hostSSHPort, maxTerms, port, selfHost } from "./config.ts";
 import { isLocalOrPeer, isLoopback, isTailnet, refuse, sameOrigin } from "./http.ts";
 import { decode, obj, str } from "./js.ts";
@@ -36,10 +35,6 @@ const intOf = (v: string | null) => (v !== null && /^[+-]?\d+$/.test(v) ? Number
 export async function onUpgrade(c: Ctx, pathname: string, q: URLSearchParams): Promise<Response | undefined> {
   if (!(await isLocalOrPeer(c))) return refuse(403);
   switch (pathname) {
-    case "/api/chat": {
-      const s = Of(c);
-      return accept(c, (ws) => onChat(ws, s));
-    }
     case "/api/me/mcp": {
       const s = Of(c);
       if (!s || s.boot || !sameOrigin(c)) return refuse(403);

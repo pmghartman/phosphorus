@@ -1,0 +1,10 @@
+{
+  "name": "@phosphorus/app-chat",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@phosphorus/app-sdk": "workspace:*",
+    "@phosphorus/web-md": "workspace:*",
+    "katex": "0.18.10"
+  }
+}

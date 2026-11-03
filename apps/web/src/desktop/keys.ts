@@ -43,7 +43,6 @@ document.addEventListener(
     else if (code === 'Space') dkSpotlight();
     else if (code === 'KeyT') dkTermNew();
     else if (code === 'KeyF') filesWin();
-    else if (code === 'KeyC') dkOpenApp('chat');
     else if (code === 'KeyS') dkSettings('hosts');
     else if (code === 'KeyD') dkShowDesktop();
     else if (code === 'KeyO') dkOverview();

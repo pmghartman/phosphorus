@@ -8,7 +8,6 @@ import { dkCode } from '../desktop/deskfiles.ts';
 import { type DkWin, dkClose, dkFocus, dkWin } from '../desktop/windows.ts';
 import { dk, PREF_LS, st } from '../lib/state.ts';
 import { dkSettings } from '../settings/settings.ts';
-import { openConv } from './chat/chat.ts';
 import { type Fm, filesParent, filesWin, homeLoc, type Loc } from './home/home.ts';
 
 const AGENT_VIEW_LS = PREF_LS.agentview!;
@@ -44,7 +43,6 @@ const AGENT_CONSOLE = new Set([
   'game_power',
 ]);
 const AGENT_STATUS = new Set(['mesh_hosts', 'host_stats', 'services', 'models', 'set_agent_model']);
-const AGENT_CHAT = new Set(['send_message', 'chat_history', 'chat_edit']);
 const AGENT_LIT_MS = 2400;
 // the windows the agent opened itself, closed this long after it goes quiet
 const AGENT_CLOSE_MS = 5000;
@@ -169,16 +167,7 @@ ${args.path}`,
   if (done) return;
   if (AGENT_STATUS.has(t)) agentOpen('app:settings', () => dkSettings('hosts'));
   else if (t === 'git' || t === 'make_git_master') agentOpen('app:git', () => dkOpenApp('git'));
-  else if (AGENT_CHAT.has(t)) {
-    const c = args.to
-      ? `dm:${String(args.to).replace(/^@/, '')}`
-      : !args.channel || args.channel === 'mesh'
-        ? 'mesh'
-        : /^dm:/.test(args.channel)
-          ? args.channel
-          : `ch:${args.channel}`;
-    agentOpen('app:chat', () => openConv(c));
-  } else if (t === 'update_control' && st.acct?.admin) agentOpen('app:settings', () => dkSettings('update'));
+  else if (t === 'update_control' && st.acct?.admin) agentOpen('app:settings', () => dkSettings('update'));
 }
 
 // one files window the agent browses in, opened or moved to the place

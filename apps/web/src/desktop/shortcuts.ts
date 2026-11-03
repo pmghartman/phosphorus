@@ -1,6 +1,4 @@
 // --- keys and popups ------------------------------------------------------------
-import { chatPanel, cwList, stepConv } from '../features/chat/chat.ts';
-import { modalOpen } from '../lib/dom.ts';
 import { dkIconKeys } from './desk.ts';
 
 // swipe down on a popup: dismissed, as by its ×
@@ -34,22 +32,6 @@ for (const box of document.querySelectorAll<HTMLElement>('.modal-box')) {
   box.addEventListener('pointercancel', end);
 }
 
-// ctrl+↑↓ through the chats, from the chat or anywhere not typing; ahead of
-// the chat box's own ↑, an editor's and a terminal's left alone
-document.addEventListener(
-  'keydown',
-  (e) => {
-    if (!e.ctrlKey || e.altKey || e.shiftKey || e.metaKey || !['ArrowUp', 'ArrowDown'].includes(e.key)) return;
-    const t = e.target as Element;
-    const inChat = chatPanel.contains(t) || cwList.contains(t);
-    if (modalOpen() || (!inChat && t.closest?.('input, textarea, select, [contenteditable], .xterm'))) return;
-    e.preventDefault();
-    e.stopPropagation();
-    stepConv(e.key === 'ArrowDown' ? 1 : -1);
-  },
-  true,
-);
-
 // shift+esc only ever unfocusing a terminal
 document.addEventListener('keydown', (e) => {
   if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || e.key !== 'Escape') return;
@@ -59,7 +41,6 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     return;
   }
-  if (t.closest?.('.chat-panel') && t.closest('input, textarea')) t.blur();
 });
 
 // esc and ctrl+a for the desktop's icons, after the escape above

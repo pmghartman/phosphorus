@@ -1,6 +1,6 @@
 # Chat
 
-Reads and posts to the mesh chat and direct messages, and waits for replies.
+Reads and posts to the mesh chat and direct messages, and waits for replies. The tools are there while the Chat app is installed on the mesh; without them, say so.
 
 - Who's on: `people`.
 - Read: `chat_history` with `channel: mesh` or `dm:<name>`; summarize, quoting what matters.

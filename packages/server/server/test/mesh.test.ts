@@ -1,6 +1,10 @@
 // three real hosts on loopback: links, the store converging over them, clock
 // skew, tombstones, a dropped link and a host leaving
 import { afterAll, beforeAll, test as bunTest, expect } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { generate } from "@phosphorus/minisign";
 import { Mesh, unavailable } from "./mesh-harness.ts";
 
 const names = ["alpha", "bravo", "charlie"];
@@ -9,11 +13,36 @@ const why = unavailable(names.length);
 if (why) console.log(`[mesh test] skipped, ${why}`);
 const test = bunTest.skipIf(!!why);
 
-const m = (why ? undefined : new Mesh(names)) as Mesh;
+// the chat app's bundle built and signed here, its feed served from this process
+const key = generate();
+const out = mkdtempSync(join(tmpdir(), "phos-feed-"));
+const feed = why
+  ? undefined
+  : Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: (req) => new Response(Bun.file(join(out, new URL(req.url).pathname.slice(1)))),
+    });
+const m = (
+  why
+    ? undefined
+    : new Mesh(names, { CHAT_FEED_URL: `http://127.0.0.1:${feed!.port}/chat.json`, APPS_PUBKEY: key.public })
+) as Mesh;
 beforeAll(async () => {
-  await m?.start();
-}, 60_000);
-afterAll(() => m?.stop());
+  if (!m) return;
+  const root = join(import.meta.dir, "..", "..", "..", "..");
+  const build = Bun.spawnSync(["bun", "scripts/appbuild.ts", "chat", out, "1.0.0"], {
+    cwd: root,
+    env: { ...process.env, UPDATE_SIGNING_KEY: key.secret, APPS_FEED_BASE: `http://127.0.0.1:${feed!.port}` },
+  });
+  if (build.exitCode !== 0) throw new Error(`appbuild: ${build.stderr}`);
+  await m.start();
+}, 90_000);
+afterAll(() => {
+  m?.stop();
+  feed?.stop(true);
+  rmSync(out, { recursive: true, force: true });
+});
 
 const linked = async (name: string, ...peers: string[]) => {
   const v = await m.view(name);
@@ -106,21 +135,31 @@ test("a dropped link comes back, and the writes made meanwhile arrive", async ()
   expect(v.tailnet.find((d: any) => d.name === "bravo").phosphorus).toBe(true);
 }, 30_000);
 
-test("chat lines cross the links, and a host away gets what it missed on its hello", async () => {
-  await m.call("alpha", "chat.post", { name: "ann", text: "hello mesh" });
+test("the chat app installs on every host from its signed feed, its lines cross, and a host away catches up", async () => {
+  expect((await m.call("alpha", "app.install", { id: "chat" }))[0]).toBe(200);
+  for (const h of names)
+    await m.until(
+      async () => (await m.call(h, "app.running")).some((a: any) => a.id === "chat" && a.version === "1.0.0"),
+      `chat running on ${h}`,
+      30_000,
+    );
+  const lines = async (h: string) =>
+    (await m.call(h, "tool", { name: "chat_history", user: "bob", args: { limit: 50 } })) as any[];
+  await m.call("alpha", "tool", { name: "send_message", user: "ann", args: { text: "hello mesh" } });
   await m.until(
-    async () => (await m.call("charlie", "chat.lines")).some((l: any) => l.host === "alpha" && l.text === "hello mesh"),
+    async () => (await lines("charlie")).some((l) => l.ref.startsWith("alpha:") && l.text === "hello mesh"),
     "alpha's line on charlie",
   );
   await m.call("charlie", "link.drop", { host: "alpha" });
   await m.until(async () => (await m.view("charlie")).links.alpha === false, "charlie sees alpha down", 7000);
-  await m.call("alpha", "chat.post", { name: "ann", text: "while away" });
+  await m.call("alpha", "tool", { name: "send_message", user: "ann", args: { text: "while away" } });
   await m.until(() => linked("charlie", "alpha"), "the link back", 10_000);
   await m.until(
-    async () => (await m.call("charlie", "chat.lines")).some((l: any) => l.text === "while away"),
+    async () => (await lines("charlie")).some((l) => l.text === "while away"),
     "the missed line on charlie",
   );
-}, 30_000);
+  expect((await lines("bravo")).map((l) => l.text)).toEqual(["hello mesh", "while away"]);
+}, 90_000);
 
 test("a home file written on one host is on every other within the moment, follows its changes, and goes to their trash when deleted", async () => {
   // a change the watcher missed waits for the digests, every 10s

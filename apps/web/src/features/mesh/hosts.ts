@@ -40,8 +40,7 @@ export async function switchHost(host: string): Promise<void> {
     redrawHost(from);
     return;
   }
-  // chat, state and stats reconnected through the new host
-  st.ws?.close();
+  // state and stats reconnected through the new host
   connectState();
   appCall('status', false, (m) => m.statusReconnect());
 }

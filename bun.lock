@@ -45,6 +45,14 @@
         "katex": "0.18.10",
       },
     },
+    "optional/chat": {
+      "name": "@phosphorus/app-chat",
+      "dependencies": {
+        "@phosphorus/app-sdk": "workspace:*",
+        "@phosphorus/web-md": "workspace:*",
+        "katex": "0.18.10",
+      },
+    },
     "optional/code": {
       "name": "@phosphorus/app-code",
       "dependencies": {
@@ -89,14 +97,16 @@
         "@phosphorus/util": "workspace:*",
       },
     },
-    "packages/chat/chatmedia": {
-      "name": "@phosphorus/chatmedia",
-      "dependencies": {
-        "@phosphorus/store": "workspace:*",
-        "@phosphorus/util": "workspace:*",
-      },
+    "packages/core/app-sdk": {
+      "name": "@phosphorus/app-sdk",
     },
-    "packages/chat/web-md": {
+    "packages/core/theme": {
+      "name": "@phosphorus/theme",
+    },
+    "packages/core/util": {
+      "name": "@phosphorus/util",
+    },
+    "packages/core/web-md": {
       "name": "@phosphorus/web-md",
       "dependencies": {
         "highlight.js": "11.12.0",
@@ -106,15 +116,6 @@
       "devDependencies": {
         "@types/sanitize-html": "2.16.2",
       },
-    },
-    "packages/core/app-sdk": {
-      "name": "@phosphorus/app-sdk",
-    },
-    "packages/core/theme": {
-      "name": "@phosphorus/theme",
-    },
-    "packages/core/util": {
-      "name": "@phosphorus/util",
     },
     "packages/core/wire": {
       "name": "@phosphorus/wire",
@@ -302,7 +303,6 @@
       "dependencies": {
         "@phosphorus/app-sdk": "workspace:*",
         "@phosphorus/catalog": "workspace:*",
-        "@phosphorus/chatmedia": "workspace:*",
         "@phosphorus/config": "workspace:*",
         "@phosphorus/envfile": "workspace:*",
         "@phosphorus/files": "workspace:*",
@@ -361,6 +361,8 @@
 
     "@biomejs/cli-win32-x64": ["@biomejs/cli-win32-x64@2.6.3", "", { "os": "win32", "cpu": "x64" }, "sha512-GhtOPphBWlnCepqpNk/w5eGN5oGRCzL20EbAkL1XCIpyboeVC9R642noyT43l8LSenGS4qz9IL8sKPfwY37V/Q=="],
 
+    "@phosphorus/app-chat": ["@phosphorus/app-chat@workspace:optional/chat"],
+
     "@phosphorus/app-code": ["@phosphorus/app-code@workspace:optional/code"],
 
     "@phosphorus/app-sdk": ["@phosphorus/app-sdk@workspace:packages/core/app-sdk"],
@@ -368,8 +370,6 @@
     "@phosphorus/appfeed": ["@phosphorus/appfeed@workspace:packages/mesh/appfeed"],
 
     "@phosphorus/catalog": ["@phosphorus/catalog@workspace:packages/mesh/catalog"],
-
-    "@phosphorus/chatmedia": ["@phosphorus/chatmedia@workspace:packages/chat/chatmedia"],
 
     "@phosphorus/config": ["@phosphorus/config@workspace:packages/host/config"],
 
@@ -431,7 +431,7 @@
 
     "@phosphorus/web": ["@phosphorus/web@workspace:apps/web"],
 
-    "@phosphorus/web-md": ["@phosphorus/web-md@workspace:packages/chat/web-md"],
+    "@phosphorus/web-md": ["@phosphorus/web-md@workspace:packages/core/web-md"],
 
     "@phosphorus/webapps": ["@phosphorus/webapps@workspace:packages/mesh/webapps"],
 
