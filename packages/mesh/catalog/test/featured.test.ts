@@ -113,9 +113,10 @@ test("Jellyfin, Audiobookshelf and JupyterLab: images pulled, data kept, one nam
     "ghcr.io/advplyr/audiobookshelf:2.36.0",
     "ghcr.io/prefix-dev/pixi:0.83.0-bookworm",
   ]);
-  expect([jellyfin, audiobookshelf, jupyterlab].map((d) => d.id)).toEqual(["media", "audiobookshelf", "jupyterlab"]);
+  expect([jellyfin, audiobookshelf, jupyterlab].map((d) => d.id)).toEqual(["jellyfin", "audiobookshelf", "jupyterlab"]);
+  expect(jellyfin.manifest.aliases).toEqual(["media"]);
   expect(find("phosphorus", "jellyfin")).toBe(jellyfin);
-  expect(all().filter((d) => d.manifest.aliases?.length)).toEqual([forgejo]);
+  expect(all().filter((d) => d.manifest.aliases?.length)).toEqual([forgejo, jellyfin]);
   for (const d of [jellyfin, audiobookshelf, jupyterlab]) {
     expect(check(d, {}, [linux], { [img(d)]: { archs: ["amd64"] } }).verdict).toBe("installable");
     expect([...vars(d.compose).keys()].filter((v) => !phosVars.includes(v)).sort()).toEqual(

@@ -274,11 +274,10 @@ volumes:
 
 const jellyfinAbout = `Jellyfin is a media server: films, shows, music and books from your own folders, streamed to a browser, a phone or a TV.
 
-Installed from here it answers at media.<your domain>. Your media folder appears at /srv/media inside it, so a library at /srv/media/movies keeps that path. Its settings, users and watch history live in the stack's data folder; its cache is rebuilt wherever it runs.`;
+Installed from here it answers at jellyfin.<your domain>, and at media.<your domain> for players still set to that address. Your media folder appears at /srv/media inside it, so a library at /srv/media/movies keeps that path. Its settings, users and watch history live in the stack's data folder; its cache is rebuilt wherever it runs.`;
 
-// routed as media, the page people open for it
 export const jellyfin: AppDef = {
-  id: "media",
+  id: "jellyfin",
   source: "phosphorus",
   ref: "jellyfin",
   name: "Jellyfin",
@@ -301,6 +300,8 @@ export const jellyfin: AppDef = {
     ],
     health: { service: "jellyfin", path: "/health", port: 8096 },
     web: { service: "jellyfin", port: 8096 },
+    // the old address, for TVs and phones still set to it
+    aliases: ["media"],
   },
 };
 
