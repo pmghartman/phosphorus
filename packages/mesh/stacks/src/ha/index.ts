@@ -158,10 +158,28 @@ export class Replica implements Group {
   local(): Local {
     const v = this.version();
     const w = this.want();
-    // a first install: the want's active holds the only data there is
-    const fresh = !v && w?.active === this.ha.m.self;
-    const inSync = this.amMaster || fresh || (this.lastGood > 0 && this.now() - this.lastGood < inSyncMS);
+    // the want's active holds the data there is, a first install's or the copy an earlier one left
+    // here, unless another candidate holds a newer one; with nothing here, only once every
+    // candidate has been heard from, so an empty host never counts over data it hasn't seen yet
+    const held = this.heldElsewhere();
+    const current = w?.active === this.ha.m.self && held.stamp <= (v?.stamp ?? 0) && (!!v || held.unheard.length === 0);
+    const inSync = this.amMaster || current || (this.lastGood > 0 && this.now() - this.lastGood < inSyncMS);
     return { gen: v?.gen ?? 0, stamp: v?.stamp ?? 0, inSync, force: false };
+  }
+
+  // the newest copy another candidate holds, by its snapshot's stamp, and whose; the candidates
+  // not heard from
+  heldElsewhere(): { stamp: number; host: string; unheard: string[] } {
+    const out = { stamp: 0, host: "", unheard: [] as string[] };
+    const heard = new Set<string>();
+    for (const s of this.ha.states(this.name)) {
+      if (s.host === this.ha.m.self || s.candidate !== true) continue;
+      heard.add(String(s.host));
+      if (typeof s.held === "number" && s.held > out.stamp) Object.assign(out, { stamp: s.held, host: String(s.host) });
+    }
+    const w = this.want();
+    out.unheard = w ? candidates(w).filter((h) => h !== this.ha.m.self && !heard.has(h)) : [];
+    return out;
   }
 
   up = () => !this.disposed && this.state !== "down";
@@ -188,7 +206,14 @@ export class Replica implements Group {
 
   blocked(): string {
     const w = this.want();
-    if (!this.version() && w?.active !== this.ha.m.self) return "no copy of the data yet";
+    const v = this.version();
+    if (!v && w?.active !== this.ha.m.self) return "no copy of the data yet";
+    const ahead = this.heldElsewhere();
+    if (!this.amMaster && w?.active === this.ha.m.self) {
+      if (ahead.stamp > (v?.stamp ?? 0))
+        return `${ahead.host} holds a newer copy of the data than this host: make it the active host, or move its data here`;
+      if (!v && ahead.unheard.length) return `no data here yet, waiting to hear from ${ahead.unheard.join(", ")}`;
+    }
     const ref = this.masterApp;
     if (ref && this.appGen !== ref) return `this host's copy is at app gen ${this.appGen}, the active's at ${ref}`;
     return "";
@@ -525,6 +550,8 @@ export class HA {
       bootId: this.m.bootId(),
       app: r?.appGen ?? 0,
       lastSync: r?.lastSync ?? 0,
+      // the stamp of the copy of the data this host holds, 0 for none
+      held: r?.version()?.stamp ?? 0,
     };
   }
 

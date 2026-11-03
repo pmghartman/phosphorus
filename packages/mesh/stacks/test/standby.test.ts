@@ -355,3 +355,33 @@ test("standbys edited: the gen bumped, a dropped standby no longer a candidate",
   expect(a.ha.setStandbys("vault", ["bad host"], "admin")[0]).toBe(400);
   expect(existsSync(join(b.rt.dataDir("vault"), "..", "ha"))).toBe(true);
 });
+
+// the outage this guards against: an app removed and installed again with its active on a host
+// that has nothing, while the host it ran on before still holds its data
+test("an install whose active has no data never starts over a candidate holding an earlier copy", async () => {
+  const w = new World();
+  const a = w.node("a");
+  const b = w.node("b");
+  const c = w.node("c");
+  w.wants.vault = { def: def("vault"), env: {}, active: "a", standbys: ["b"], gen: 1, by: "admin", at: 1 };
+  // b ran it before: its data, and the version of the copy it last held
+  mkdirSync(b.rt.dataDir("vault"), { recursive: true });
+  writeFileSync(join(b.rt.dataDir("vault"), "db"), "real");
+  const ha = join(b.rt.dataDir("vault"), "..", "ha");
+  mkdirSync(ha, { recursive: true });
+  writeFileSync(join(ha, "version"), "4 1750000000\n");
+  // b's phosphorus restarting as the install lands: a and c see nothing of it at first
+  for (const n of [a, c]) n.boot();
+  await w.run(15_000);
+  b.boot();
+  await w.run(60_000);
+  // a never comes up empty, and b's data is never set aside for a's nothing
+  expect(a.rt.on.has("vault")).toBe(false);
+  expect(b.rt.read("vault")).toBe("real");
+  expect(existsSync(join(b.rt.dataDir("vault"), "..", "data.orphan-1"))).toBe(false);
+  // the admin points the install at b: it leads on its own copy, a pulls it
+  w.wants.vault = { ...w.wants.vault!, active: "b", standbys: ["a"], gen: 2 };
+  expect(await w.until(() => b.rt.on.has("vault"), 60_000)).toBeGreaterThanOrEqual(0);
+  expect(b.rt.read("vault")).toBe("real");
+  expect(await w.until(() => copyOf(a) === "real", 30_000)).toBeGreaterThanOrEqual(0);
+});
