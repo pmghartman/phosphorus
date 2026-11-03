@@ -40,7 +40,7 @@ Off by default. An admin installs them from the Apps page, and every host serves
 | App | What it does | Status |
 |---|---|---|
 | Code | Claude Code or opencode sessions in a folder on any host, run there as your own login, on the mesh's models or your Claude subscription | installable, [`optional/code`](optional/code) |
-| Chat | Mesh-wide chat with channels and direct messages | moving out of the core |
+| Chat | Mesh-wide chat with channels, direct messages, attachments and agents posting through the MCP tools, every host holding the whole history | installable, [`optional/chat`](optional/chat) |
 | Git | A Forgejo server for the mesh, with failover | moving out of the core |
 | Games | Game servers you start and stop from the desktop, with join addresses | moving out of the core |
 | Viewer | Images, video, audio and PDFs, plus a text editor | moving out of the core |
