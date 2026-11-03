@@ -64,7 +64,7 @@ export const dkWallPick = (): void =>
 // --- the section ---------------------------------------------------------------------------------
 
 export type ApSub = 'theme' | 'desktop' | 'bar' | 'windows';
-export const AP_SUBS: readonly ApSub[] = ['theme', 'desktop', 'bar', 'windows'];
+const SUBS: ApSub[] = ['theme', 'desktop', 'bar', 'windows'];
 
 // the layout's choices by name
 const LAYOUT_NAMES: Record<string, string> = {
@@ -107,16 +107,15 @@ function swatch(accent: string, bg: string): HTMLElement {
 }
 
 let sub: ApSub = 'theme';
-// the part shown, its submenu marked in the settings rail
-export const appearanceSub = (): ApSub => sub;
 
 // Every control shows what is worn: a built-in theme's own values, or the custom theme's. Changing
 // one makes the custom theme, based on the theme worn, and wears it at once; it is kept with the
 // user's settings on every host
 export function appearanceSection(pane: HTMLElement, at?: ApSub): () => void {
-  if (at && AP_SUBS.includes(at)) sub = at;
+  if (at && SUBS.includes(at)) sub = at;
+  const tabs = el('div', 'dk-ap-segs set-subs');
   const body = el('div', 'set-sub');
-  pane.append(body);
+  pane.append(tabs, body);
 
   const shown = (): CustomConfig => (paletteNow() === 'custom' ? customNow() : themeConfig(paletteNow()));
   // quiet while a color is dragged: the page follows, the controls stay put until it is let go
@@ -431,6 +430,19 @@ export function appearanceSection(pane: HTMLElement, at?: ApSub): () => void {
 
   const draw = () => {
     const focus = (document.activeElement as HTMLElement | null)?.dataset.k;
+    tabs.replaceChildren(
+      ...SUBS.map((s) => {
+        const b = Object.assign(el('button', `dk-ap-seg${s === sub ? ' on' : ''}`, s), { type: 'button' });
+        b.dataset.k = `tab:${s}`;
+        b.setAttribute('aria-pressed', String(s === sub));
+        b.addEventListener('click', () => {
+          sub = s;
+          draw();
+          pane.scrollTop = 0;
+        });
+        return b;
+      }),
+    );
     const subs: Record<ApSub, () => HTMLElement[]> = {
       theme: themeSection,
       desktop: desktopSection,
