@@ -123,7 +123,7 @@ export const LAYOUT_CHOICES: Record<string, string[]> = {
   labels: ['both', 'icons', 'titles'],
 };
 // the bar's status items, every one the layout may show or not, in its order; the profile always
-export const BAR_ITEMS = ['search', 'hosts', 'mesh', 'update', 'agent', 'bell', 'clock', 'profile'];
+export const BAR_ITEMS = ['hosts', 'search', 'mesh', 'update', 'agent', 'bell', 'clock', 'profile'];
 // a built-in theme's own whole config, every value concrete: what the custom theme starts as and
 // what a reset sets it to
 export function themeConfig(id: string): CustomConfig {
