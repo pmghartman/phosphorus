@@ -28,7 +28,8 @@ const pad: App = W.firstParty({
   repoIcon: "web/static/pad/icon.svg",
   key: "",
 });
-W.Catalog.push(pad);
+// the catalogue the test app alone: phosphorus's own apps' feeds are never asked here
+W.Catalog.splice(0, W.Catalog.length, pad);
 
 // a gzipped ustar of files: name -> text
 function tarGz(files: Record<string, string>): Uint8Array<ArrayBuffer> {

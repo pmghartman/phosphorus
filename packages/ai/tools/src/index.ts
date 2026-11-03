@@ -1,7 +1,7 @@
 // llama-server, fetched on the model host alone into the model volume, pinned to
 // upstream's releases, gone once it stops being the model host
 import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { basename, join } from "node:path";
 import { env, StateDir, which } from "@phosphorus/util";
 import { untar, unzip } from "./archive.ts";
 
@@ -73,23 +73,9 @@ const states = new Map<string, State>();
 // llama-server here, fetched in the background once missing; its state by name:
 // ready, fetching or the failure
 export function ensure(gpu: boolean): Record<string, string> {
-  dropOpencode();
   const out = { llama: ensureOne(llamaFetch(gpu)) };
   prune(gpu);
   return out;
-}
-
-let dropped = false;
-// once per run, what older releases fetched for opencode: its opencode-* folders
-// under the tools root and its home on the model volume, so the disk is handed back
-function dropOpencode() {
-  if (dropped) return;
-  dropped = true;
-  try {
-    for (const n of readdirSync(root))
-      if (n.startsWith("opencode-")) rmSync(join(root, n), { recursive: true, force: true });
-  } catch {}
-  rmSync(join(dirname(root), "opencode"), { recursive: true, force: true });
 }
 
 function ensureOne(f: Fetch): string {
@@ -125,7 +111,6 @@ function prune(gpu: boolean) {
 export function remove() {
   for (const s of states.values()) if (s.busy) return;
   rmSync(root, { recursive: true, force: true });
-  dropOpencode();
 }
 
 // each archive into dir.part, renamed to dir once all are in

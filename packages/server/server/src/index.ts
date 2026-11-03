@@ -71,7 +71,6 @@ import { startPushes } from "./ws.ts";
 
 // for a test mesh's hosts
 export { mergedChat, postOwn } from "./chat.ts";
-export { codeBlocked, codeBlockedMsg, codeLogin, codeOptions } from "./code.ts";
 export { lineTime, logTime } from "./hostops.ts";
 export { pageUser } from "./http.ts";
 export { driveShell, errShellTimeout, Lines, readLines } from "./mcpshell.ts";
@@ -83,7 +82,6 @@ export async function start(): Promise<Server<WSData>> {
   files.init();
   users.Init();
   store.start();
-  users.DropOldTokens();
   chatmedia.init();
   git.init(isUpdating, bootID);
   update.onFinish(rememberChain);

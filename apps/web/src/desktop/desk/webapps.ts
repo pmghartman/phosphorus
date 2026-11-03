@@ -6,6 +6,7 @@ import { DK_UI, dkGlyph, el } from '../../lib/dom.ts';
 import { dk, st } from '../../lib/state.ts';
 import { PALETTE_EVENT } from '../../lib/theme.ts';
 import { type DkWin, dkFocus, dkNav, dkSize, dkWin, type NavFrame } from '../windows.ts';
+import { dkTerminal } from './terminal.ts';
 import { dkOpenTerminal } from './windows.ts';
 
 // the apps picked for the mesh that this host has a copy of, each under its mount
@@ -60,7 +61,8 @@ function bridge(w: DkWin, frame: HTMLIFrameElement) {
     } else if (a.kind === 'notify' && typeof a.title === 'string') {
       noteAdd(a.title.slice(0, 120), String(a.body ?? '').slice(0, 500));
     } else if (a.kind === 'terminal' && typeof a.host === 'string') {
-      dkOpenTerminal(a.host);
+      if (typeof a.run === 'string' && a.run && dk.creds.has(a.host)) dkTerminal(a.host, a.run.slice(0, 2000));
+      else dkOpenTerminal(a.host);
     } else if (a.kind === 'open' && typeof a.id === 'string') {
       const q = a.query && typeof a.query === 'object' ? a.query : undefined;
       dkWebApp(a.id, q);

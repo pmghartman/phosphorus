@@ -284,13 +284,6 @@ test("cleanVault keeps the token", () => {
   expect(U.cleanVault({ anthropic: "bad token\n" }).anthropic).toBeUndefined();
 });
 
-test("drop old tokens", () => {
-  store.write("home/ann/anthropic.json", { t: "x" });
-  store.write("home/ann/prefs.json", {});
-  U.DropOldTokens();
-  expect([store.read("home/ann/anthropic.json"), store.read("home/ann/prefs.json")]).toEqual([undefined, {}]);
-});
-
 test("oauth: a registered agent's code traded once for the user's mcp key", async () => {
   expect(U.OAuthRegister({ redirect_uris: ["https://evil.example/cb"] }).status).toBe(400);
   expect(U.OAuthRegister({ redirect_uris: ["https://claude.ai/elsewhere"] }).status).toBe(400);

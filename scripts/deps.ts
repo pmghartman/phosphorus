@@ -37,7 +37,7 @@ for (const d of dirs) {
   if (!existsSync(f)) continue;
   const pj = JSON.parse(readFileSync(f, "utf8"));
   const want = new Set<string>();
-  for (const sub of ["src", "test", "tests"]) {
+  for (const sub of ["src", "test", "tests", "server", "web"]) {
     for (const file of files(join(root, d, sub))) {
       const text = readFileSync(file, "utf8");
       for (const m of text.matchAll(importRe)) {

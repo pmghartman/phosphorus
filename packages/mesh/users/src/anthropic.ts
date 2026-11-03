@@ -8,8 +8,9 @@ import { cleanVault, errR, notSynced, type R, type Session, type Vault, vaultOf,
 
 // a user's own Anthropic subscription token (claude setup-token's), kept in
 // their vault under their password: only a request carrying their login
-// opens it; and what a Code session needs of a logged in user: a host
-// login, their mcp key, all from that same vault
+// opens it; and what an app acting as a logged in user needs of them (the app
+// sdk's Vault, the Code app's sessions): a host login, their mcp key, all from
+// that same vault
 
 export const maxToken = 512;
 export const tokenRe = /^[A-Za-z0-9_.:+/=-]+$/;
@@ -20,24 +21,9 @@ export function cleanToken(v: unknown): string {
   return Buffer.byteLength(t) > maxToken || !tokenRe.test(t) ? "" : t;
 }
 
-// DropOldTokens the tokens older releases sealed with the mesh key, gone
-export function DropOldTokens() {
-  for (const f of store.list("home"))
-    if (f.split("/").length === 2 && f.endsWith("/anthropic.json")) store.remove("home/" + f);
-}
-
-// the old tokens gone on the first read too, any synced in late
-export let dropped = false;
-export function dropOnce() {
-  if (dropped) return;
-  dropped = true;
-  DropOldTokens();
-}
-
 // SetAnthropic the token sealed in the vault, "" clearing it
 export async function SetAnthropic(s: Session | undefined, p: Record<string, any>): Promise<R> {
   if (!s || s.boot || !s.key?.length) return errR(403, "log in as a user");
-  dropOnce();
   const t = str(p.token).trim();
   if (t !== "" && cleanToken(t) === "")
     return errR(400, "that isn't a token: run claude setup-token and paste what it prints");
@@ -54,7 +40,6 @@ export async function SetAnthropic(s: Session | undefined, p: Record<string, any
 
 // AnthropicToken the session's user's token, "" for none
 export async function AnthropicToken(s: Session | undefined): Promise<string> {
-  dropOnce();
   const [v] = await vaultOf(s);
   const t = cleanVault(v).anthropic;
   return typeof t === "string" ? t : "";

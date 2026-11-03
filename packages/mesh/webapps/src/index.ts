@@ -71,7 +71,24 @@ export const firstParty = (
 });
 
 // the optional apps the mesh can take; each adds its firstParty() entry here
-export const Catalog: App[] = [];
+export const Catalog: App[] = [
+  firstParty({
+    id: "code",
+    name: "Code",
+    tagline: "Claude Code and opencode sessions on any host",
+    about:
+      "Agent sessions in a folder on any computer of the mesh, run there over ssh with your own saved login: Claude Code on your Anthropic subscription or on the mesh's models, or opencode. Each session's transcript streams live, its permission asks answered from the page; pick a folder, attach files, switch model or permission mode as it goes.",
+    features: [
+      "Claude Code or opencode on any host you have a login on",
+      "the mesh's models, or your own Claude subscription",
+      "permission asks, diffs and todos as they happen",
+      "the phosphorus tools and skill in every session",
+    ],
+    category: "developer tools",
+    agents: ["agent-claude-code", "agent-claude-code-fast", "agent-opencode", "agent-opencode-fast"],
+    server: true,
+  }),
+];
 
 export const appOf = (id: string) => Catalog.find((a) => a.id === id);
 
@@ -344,6 +361,16 @@ async function fromFeed(app: App, w: Want): Promise<Uint8Array> {
 
 // the tarball unpacked into <version>.part, the mount's index.html checked,
 // then swapped in; every other version gone
+// a copy no longer wanted, deleted; one whose server half this process still has
+// loaded is locked on windows until it exits, left for the next prune or start
+function drop(p: string) {
+  try {
+    rmSync(p, { recursive: true, force: true });
+  } catch (e) {
+    logf("%s left for later: %s", p, errText(e));
+  }
+}
+
 export function unpack(app: App, w: Want, data: Uint8Array) {
   const dir = versionDir(app.id, w.version);
   const part = dir + ".part";
@@ -366,7 +393,7 @@ export function unpack(app: App, w: Want, data: Uint8Array) {
   writeJSONAtomic(currentFile(app.id), { version: w.version, sha256: w.sha256 });
   for (const n of readdirSync(appDir(app.id))) {
     if (n === w.version || n === w.version + ".tar.gz" || n === w.version + ".ok" || n === "current.json") continue;
-    rmSync(join(appDir(app.id), n), { recursive: true, force: true });
+    drop(join(appDir(app.id), n));
   }
 }
 
@@ -375,7 +402,9 @@ async function settle(app: App, ipOf: IPOf, port: number) {
   const l = local(app.id);
   if (!w) {
     if (!l.version && !existsSync(appDir(app.id))) return;
-    rmSync(appDir(app.id), { recursive: true, force: true });
+    // the copy gone for this host's reads first, whatever of its folder stays
+    rmSync(currentFile(app.id), { force: true });
+    drop(appDir(app.id));
     if (l.version) logf("%s v%s removed here", app.name, l.version);
     Object.assign(l, { version: "", sha256: "", error: "", errorFor: "" });
     changed(app.id);

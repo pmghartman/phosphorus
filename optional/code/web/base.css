@@ -1,0 +1,325 @@
+/* the code app's page: what the desktop's own sheets gave it, its theme's tokens
+   pushed in by the desktop (followTheme) over the default theme's below, worn
+   when the page is opened on its own */
+
+:root {
+  color-scheme: dark;
+  --bg: #141414;
+  --fg: #e0e0e0;
+  --muted: #9d9d9d;
+  --accent: #9f81cf;
+  --dim: #555555;
+  --border: #2e2e2e;
+  --card: #1b1b1b;
+  --tabbar: #0c0c0c;
+  --online: #3fb950;
+  --offmesh: #f85149;
+  --warn: #d29922;
+  --tab-hover: #121212;
+  --drop: 0 2px 6px rgb(0 0 0 / 0.35), 0 18px 40px -16px rgb(0 0 0 / 0.85);
+  --lift: 0 1px 2px rgb(0 0 0 / 0.3), 0 14px 30px -18px rgb(0 0 0 / 0.8);
+  --lift-sm: 0 1px 2px rgb(0 0 0 / 0.35);
+  --sage: #93ad7d;
+  --sky: #7fa0c9;
+  --glyph-purple: #a371f7;
+  --glyph-orange: #f0883e;
+  --font: ui-monospace, SFMono-Regular, "SF Mono", "Cascadia Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", "Cascadia Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    color-scheme: light;
+    --bg: #ffffff;
+    --fg: #1f1f23;
+    --muted: #6b6b73;
+    --accent: #6a4bb0;
+    --dim: #b4b4bb;
+    --border: #e4e4e7;
+    --card: #f4f4f5;
+    --tabbar: #f7f7f8;
+    --online: #1a7f37;
+    --offmesh: #cf222e;
+    --warn: #9a6700;
+    --tab-hover: #efeff1;
+    --drop: 0 2px 6px rgb(24 24 27 / 0.08), 0 18px 40px -18px rgb(24 24 27 / 0.3);
+    --lift: 0 1px 2px rgb(24 24 27 / 0.05), 0 14px 30px -20px rgb(24 24 27 / 0.22);
+    --lift-sm: 0 1px 2px rgb(24 24 27 / 0.08);
+    --sage: #577a3c;
+    --sky: #3d6a9e;
+    --glyph-purple: #7c4ddb;
+    --glyph-orange: #c4621a;
+  }
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+  scrollbar-width: none;
+}
+*::-webkit-scrollbar {
+  display: none;
+}
+:focus,
+:focus-visible {
+  outline: none;
+}
+button,
+input,
+textarea,
+select {
+  font-family: inherit;
+}
+[hidden] {
+  display: none !important;
+}
+html,
+body {
+  height: 100%;
+  margin: 0;
+  overscroll-behavior: none;
+}
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+#view-code {
+  position: fixed;
+  inset: 0;
+}
+
+.ic {
+  width: 0.85rem;
+  height: 0.85rem;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: var(--ic-w, 1.3);
+  stroke-linecap: var(--ic-cap, round);
+  stroke-linejoin: var(--ic-join, round);
+}
+/* a token typed in dotted, never offered to a password manager */
+.no-fill-secret {
+  -webkit-text-security: disc;
+  text-security: disc;
+}
+.st-wait {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.st-dim {
+  color: var(--muted);
+}
+
+/* the sessions' rows */
+.cd-cw-name {
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cd-cw-sub {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.7rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cd-cw-empty {
+  padding: 0.3rem 0.6rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+/* the composer: a prompt, the box, the attach clip and the send arrow */
+.chat-form {
+  display: flex;
+  align-items: flex-end;
+  border: 1px solid var(--border);
+  background: var(--card);
+  box-shadow: var(--lift-sm);
+  transition: border-color 0.15s;
+}
+.chat-form:focus-within {
+  border-color: var(--accent);
+}
+.chat-prompt {
+  flex: none;
+  align-self: flex-start;
+  padding: 0.55rem 0 0.55rem 0.7rem;
+  color: var(--accent);
+  font-weight: 600;
+}
+.chat-form textarea {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  color: var(--fg);
+  padding: 0.55rem 0.6rem;
+  font: inherit;
+  resize: none;
+  overflow-y: auto;
+  max-height: 9rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.chat-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 1.1rem;
+  height: 1rem;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.chat-icon svg {
+  width: 0.8rem;
+  height: 0.8rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: calc(var(--ic-w, 1.3) - 0.1);
+  stroke-linecap: var(--ic-cap, round);
+  stroke-linejoin: var(--ic-join, round);
+}
+.chat-icon:hover {
+  color: var(--fg);
+}
+.chat-form .chat-attach {
+  margin: 0 0.35rem 0.6rem 0;
+}
+.chat-go {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  margin: 0 0.45rem 0.4rem 0;
+  padding: 0;
+  border: none;
+  background: var(--accent);
+  color: var(--bg);
+  cursor: pointer;
+}
+.chat-go svg {
+  width: 0.8rem;
+  height: 0.8rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: calc(var(--ic-w, 1.3) + 0.7);
+  stroke-linecap: var(--ic-cap, round);
+  stroke-linejoin: var(--ic-join, round);
+}
+.chat-go:disabled {
+  background: var(--border);
+  color: var(--muted);
+  cursor: default;
+}
+
+/* [ label ] buttons, hover inverting as a selection would */
+.update-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+.update-actions button {
+  white-space: nowrap;
+  font: inherit;
+  font-size: 0.75rem;
+  color: var(--fg);
+  background: none;
+  border: 1px solid var(--muted);
+  padding: 0.2rem 0.65rem;
+  cursor: pointer;
+  transition:
+    background-color 0.15s,
+    color 0.15s,
+    border-color 0.15s;
+}
+.update-actions button:hover {
+  background: var(--fg);
+  color: var(--bg);
+  border-color: var(--fg);
+}
+.update-actions button.primary {
+  color: var(--accent);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.update-actions button.primary:hover {
+  background: var(--accent);
+  color: var(--bg);
+}
+.update-actions button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* the Claude token box */
+.cd-k-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0.6rem 0.6rem 0;
+}
+.cd-k-url {
+  width: 100%;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--accent);
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.7rem;
+}
+.cd-k-key {
+  flex: 1;
+  min-width: 0;
+  padding: 0.45rem 0.6rem;
+  font: inherit;
+  cursor: pointer;
+  border: 1px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+  transition:
+    border-color 0.15s,
+    color 0.15s,
+    background 0.15s;
+}
+.cd-k-key:hover,
+.cd-k-key:focus-visible {
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+}
+.cd-k-key.quiet {
+  border-color: var(--border);
+  background: none;
+  color: var(--muted);
+}
+.cd-k-key.quiet:focus-visible,
+.cd-k-key.quiet:active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+}
+.cd-k-state {
+  color: var(--muted);
+}
+.cd-k-state[data-state="online"] {
+  color: var(--online);
+}
+.cd-k-sec-t {
+  padding: 0.5rem 0.7rem 0.2rem;
+  color: var(--sage);
+  letter-spacing: 0.04em;
+}

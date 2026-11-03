@@ -86,7 +86,7 @@ const store = await import("@phosphorus/store");
 const M = await import("@phosphorus/model");
 // tavern published on the mesh, so its agent is listed; one test takes it away
 M.seams.published = (name: string) => name === "tavern";
-M.seams.installed = () => false;
+M.seams.installed = (id: string) => id === "code";
 const { StateDir } = await import("@phosphorus/util");
 
 const gib = 1 << 30;
@@ -449,6 +449,10 @@ test("chat as an agent or a mesh name", async () => {
     { error: "agent is code, claude-code, opencode" },
   ]);
   expect((await M.ServeChat(req(), { model: "agent-tavern", messages: [] }, true)).status).toBe(503);
+  // the Code app's agents only while it's installed
+  M.seams.installed = () => false;
+  expect(M.Summary().agents).toEqual([]);
+  M.seams.installed = (id: string) => id === "code";
   M.seams.published = (name: string) => name === "tavern";
   // tavern asks as agent-tavern: unassigned, the biggest ready model, this host's
   const a = await M.ServeChat(req(), { model: "agent-tavern", messages: [{ role: "user", content: "hi" }] }, true);

@@ -65,6 +65,9 @@ try {
       target: "bun",
       format: "esm",
       naming: "index.js",
+      // native addons left out, built for this machine alone: ssh2's are optional,
+      // pure js taking over when they don't load
+      external: ["*.node"],
       minify: true,
       sourcemap: "none",
     });

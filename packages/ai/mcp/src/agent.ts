@@ -367,7 +367,7 @@ export function describe() {
     make_git_master:
       "Make a git host the master: the live one hands off, or with none it's force-promoted. Returns once it leads (up to 30s); never press it twice. Admins only.",
     set_agent_model:
-      "Assign a mesh host's model to an agent (code, claude-code, opencode; tavern while the tavern app is on the mesh), mesh-wide: phosphorus/<host>, blank for the automatic pick; slot fast is the small background model. Admins only.",
+      "Assign a mesh host's model to an agent (an app's while it's on the mesh: code, claude-code, opencode for the Code app, tavern, sulfur), mesh-wide: phosphorus/<host>, blank for the automatic pick; slot fast is the small background model. Admins only.",
     models:
       "The models: each agent's mesh host assigned and answering, each mesh model host's file, state and memory, and the last call's context use.",
     people: "Who is on phosphorus right now: each person, the host serving them, and whether they are typing.",

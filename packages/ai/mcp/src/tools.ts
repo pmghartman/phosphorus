@@ -114,7 +114,7 @@ export const coreTools = (): Tool[] => [
     title: "Models and agents",
     read: true,
     description:
-      "The models: each agent's (chat, inline, code, claude-code, opencode) assigned mesh host and the one answering, " +
+      "The models: each agent's (chat, inline; code, claude-code, opencode while the Code app is installed) assigned mesh host and the one answering, " +
       "each mesh model host, its file, state, memory and the agents on it, and the last call's context window in tokens (system prompt, chat, prompt, reply) and speed.",
     schema: object(),
     run: () => src.model(),
@@ -282,11 +282,11 @@ export const coreTools = (): Tool[] => [
     title: "Assign an agent's model",
     description:
       "Assign a mesh host's model to an agent, mesh-wide: the host as phosphorus/<host> (or just <host>), blank for the " +
-      "automatic pick. The agents: code, claude-code, opencode, and an app on the mesh while it is published, as tavern " +
-      "(the tavern app's dungeon master). slot fast is the small model an agent uses for background work (code, claude-code, opencode only).",
+      "automatic pick. The agents are the apps on the mesh that ask a model, each while it is there: code, claude-code, opencode " +
+      "(the Code app), tavern (the tavern app's dungeon master), sulfur. slot fast is the small model an agent uses for background work.",
     schema: object(
       {
-        agent: { type: "string", description: "code, claude-code, opencode, or an app on the mesh such as tavern" },
+        agent: { type: "string", description: "an app's agent on the mesh, such as claude-code or tavern" },
         slot: { type: "string", enum: ["model", "fast"] },
         model: { type: "string" },
       },

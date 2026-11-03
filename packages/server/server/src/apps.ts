@@ -13,13 +13,15 @@ import type {
   Tool as AppTool,
   Handler,
   RouteOpts,
+  SocketAt,
+  Vault,
   Who,
 } from "@phosphorus/app-sdk";
-import { setAppTools, type Tool, ToolError } from "@phosphorus/mcp";
+import { setAppTools, skill, type Tool, ToolError } from "@phosphorus/mcp";
 import * as peers from "@phosphorus/peers";
 import * as store from "@phosphorus/store";
 import * as users from "@phosphorus/users";
-import { errText, FrontendPort, logf as log, requestJSON, SelfHost, StateDir } from "@phosphorus/util";
+import { errText, FrontendPort, logf as log, requestJSON, SelfHost, StateDir, tailnetIP } from "@phosphorus/util";
 import * as webapps from "@phosphorus/webapps";
 import { type Conn, type Ctx, upgrade } from "@phosphorus/wsock";
 import { userUIAsync } from "./hostops.ts";
@@ -28,7 +30,12 @@ import { forbidden, isLocalOrPeer, isLoopback, isTailnet, maxJSONBody, readRaw, 
 const logf = (f: string, ...a: unknown[]) => log("[apps] " + f, ...a);
 
 type Route = { method: string; path: string; under: boolean; h: Handler; opts: RouteOpts };
-type Sock = { path: string; open: (ws: AppSocket, who: Who | undefined) => void; pub: boolean };
+type Sock = {
+  path: string;
+  under: boolean;
+  open: (ws: AppSocket, who: Who | undefined, at: SocketAt) => void;
+  pub: boolean;
+};
 type Running = {
   id: string;
   version: string;
@@ -37,6 +44,9 @@ type Running = {
   socks: Sock[];
   stops: (() => void | Promise<void>)[];
   conns: Set<Conn>;
+  // each person this app was handed, to the login and request behind them: what
+  // opens their vault for it, nothing it can make up itself
+  whos: WeakMap<Who, { s: users.Session; c: Ctx }>;
 };
 
 const running = new Map<string, Running>();
@@ -68,10 +78,50 @@ function storeFor(r: Running): AppStore {
   };
 }
 
-const whoOf = (c: Ctx): Who | undefined => {
+function whoOf(r: Running, c: Ctx): Who | undefined {
   const s = users.Of(c);
-  return s && !s.boot ? { user: s.user, admin: !!s.admin } : undefined;
-};
+  if (!s || s.boot) return;
+  const who = { user: s.user, admin: !!s.admin };
+  r.whos.set(who, { s, c });
+  return who;
+}
+
+// where this host's phosphorus answers another host over the tailnet
+async function meshBase(): Promise<string> {
+  const ip = await tailnetIP(SelfHost);
+  if (!ip) throw new Error(`can't find ${SelfHost}'s own tailnet address`);
+  return `http://${ip}:${FrontendPort}`;
+}
+
+// the person's vault as the app may use it (the sdk's Vault says what and why)
+function vaultFor(r: Running): Vault {
+  const of = (who: Who) => {
+    const x = r.whos.get(who);
+    if (!x) throw new Error("not a person this app was handed");
+    return x;
+  };
+  return {
+    ready: (who) => users.VaultOK(of(who).s),
+    hosts: (who) => users.HostLogins(of(who).s),
+    async login(who, host) {
+      const [user, pass, ok] = await users.HostLogin(of(who).s, host);
+      return ok ? { user, pass } : undefined;
+    },
+    anthropic: (who) => users.AnthropicToken(of(who).s),
+    async setAnthropic(who, token) {
+      const o = await users.SetAnthropic(of(who).s, { token });
+      if (o.status !== 200) throw new Error(String(o.body?.error ?? `status ${o.status}`));
+    },
+    async agent(who) {
+      const { s, c } = of(who);
+      const [key, ok] = await users.KeyOf(s, c);
+      if (!ok) throw new Error("this host hasn't your mcp key yet, try again shortly");
+      const base = await meshBase();
+      // the skill names the address the person knows, the base domain's when there is one
+      return { key, base, skill: await skill(process.env.BASE_DOMAIN ? users.MCPBase(c) : base) };
+    },
+  };
+}
 
 // the asking host on an internal route, by its tailnet address
 function peerOf(c: Ctx): string {
@@ -85,6 +135,7 @@ function wrap(conn: Conn): AppSocket {
     get open() {
       return conn.open();
     },
+    queued: () => conn.queued(),
     send: (m) => void (typeof m === "string" ? conn.text(m) : conn.json(m)),
     close: (code = 1000) => conn.close(code),
     onMessage: (fn) =>
@@ -137,11 +188,15 @@ function context(r: Running): AppContext {
       r.routes.push({ method: method.toUpperCase(), path: p || (under ? "" : "/"), under, h, opts });
     },
     socket(path, open, opts = {}) {
-      if (!pathRe.test(path)) throw new Error(`bad socket ${path}`);
-      r.socks.push({ path, open, pub: !!opts.public });
+      const under = path.endsWith("/*");
+      const p = under ? path.slice(0, -2) : path;
+      if (!pathRe.test(p || "/")) throw new Error(`bad socket ${path}`);
+      r.socks.push({ path: p, under, open, pub: !!opts.public });
     },
     store: storeFor(r),
     hosts: () => [SelfHost, ...Object.keys(peers.peerIPs())].sort(),
+    address: (host) => tailnetIP(host),
+    vault: vaultFor(r),
     async peer(host, path, body) {
       if (!pathRe.test(path)) throw new Error(`bad path ${path}`);
       const ip = host === SelfHost ? "127.0.0.1" : peers.peerIPs()[host];
@@ -193,7 +248,16 @@ async function settle(id: string) {
     if (cur) logf("%s stopped", id);
     return;
   }
-  const r: Running = { id, version: want.version, live: true, routes: [], socks: [], stops: [], conns: new Set() };
+  const r: Running = {
+    id,
+    version: want.version,
+    live: true,
+    routes: [],
+    socks: [],
+    stops: [],
+    conns: new Set(),
+    whos: new WeakMap(),
+  };
   running.set(id, r);
   try {
     const mod = await import(pathToFileURL(want.entry).href);
@@ -260,7 +324,7 @@ export async function appRoute(c: Ctx, pathname: string): Promise<Response | und
     peer = peerOf(c);
   } else {
     if (!(await isLocalOrPeer(c))) return forbidden();
-    who = whoOf(c);
+    who = whoOf(r, c);
     if (!rt.opts.public && !who) return sendJSON(401, { error: "log in first" });
     if (rt.opts.admin && !who?.admin) return forbidden();
   }
@@ -280,16 +344,16 @@ export function appSocket(c: Ctx, pathname: string): Response | undefined | fals
   if (!m || m[1] !== "api") return false;
   const r = running.get(m[2]!);
   const path = m[3] || "/";
-  const sk = r?.socks.find((s) => s.path === path);
+  const sk = r?.socks.find((s) => (s.under ? path === s.path || path.startsWith(s.path + "/") : path === s.path));
   if (!r || !sk) return refuse(404);
-  const who = whoOf(c);
+  const who = whoOf(r, c);
   if (!sk.pub && !who) return refuse(403);
   const ok = upgrade(c, (conn) => {
     conn.keepAlive();
     r.conns.add(conn);
     conn.onClose(() => r.conns.delete(conn));
     try {
-      sk.open(wrap(conn), who);
+      sk.open(wrap(conn), who, { path, query: c.url.searchParams });
     } catch (e) {
       logf("%s socket %s: %s", r.id, path, errText(e));
       conn.close(1011);

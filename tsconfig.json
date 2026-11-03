@@ -14,5 +14,14 @@
     "noFallthroughCasesInSwitch": true,
     "noImplicitOverride": true
   },
-  "include": ["apps/*/src", "apps/web/tests", "packages/*/*/src", "packages/*/*/test", "scripts"]
+  "include": [
+    "apps/*/src",
+    "apps/web/tests",
+    "packages/*/*/src",
+    "packages/*/*/test",
+    "optional/*/server",
+    "optional/*/test",
+    "optional/*/web",
+    "scripts"
+  ]
 }

@@ -74,7 +74,6 @@ function hits(): Hit[] {
   add(G.files!, 'files', '', 'files', 'folders browse home share', () => filesWin());
   add(G.chat!, 'chat', '', 'app', 'messages talk mesh', () => dkOpenApp('chat'));
   if (st.gitRoute) add(G.git!, 'git', '', 'app', 'forgejo repos', () => dkOpenApp('git'));
-  add(G.code!, 'code', '', 'app', 'claude opencode agent sessions', () => dkOpenApp('code'));
   add(G.games!, 'game servers', '', 'app', 'games play', () => dkOpenApp('games'));
   add(G.apps!, 'apps', '', 'app', 'install store services extras', () => dkOpenApp('apps'));
   for (const a of dkWebApps()) add(G.app!, a.id, `v${a.want.version}`, 'app', 'editor code app', () => dkWebApp(a.id));

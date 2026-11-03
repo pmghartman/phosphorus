@@ -31,6 +31,8 @@ export type RouteOpts = { public?: boolean; admin?: boolean; internal?: boolean 
 
 export interface AppSocket {
   readonly open: boolean;
+  // bytes sent and not yet taken by the network, to hold back on
+  queued(): number;
   send(msg: unknown): void;
   close(code?: number, reason?: string): void;
   onMessage(fn: (msg: any) => void): void;
@@ -55,6 +57,32 @@ export type Tool = {
   run(args: Record<string, any>, who: Who): Promise<unknown>;
 };
 
+// where a socket was opened: what follows the app's prefix, and its query
+export type SocketAt = { path: string; query: URLSearchParams };
+
+// a person's own secrets, for an app that acts as them on their hosts (Code runs
+// claude there over ssh). Their vault is sealed under their password and opens
+// only for a request carrying their login, so each call takes the Who one of this
+// app's routes or sockets was handed: one made up, or another app's, opens
+// nothing. Narrow on purpose: host logins, the Anthropic token and what an agent
+// needs to reach the mesh, never the page logins or the vault whole
+export interface Vault {
+  // whether this host can open it yet: just after a login it may still be syncing in
+  ready(who: Who): Promise<boolean>;
+  // the hosts they saved a login for, sorted
+  hosts(who: Who): Promise<string[]>;
+  // their saved login on host, undefined for none
+  login(who: Who, host: string): Promise<{ user: string; pass: string } | undefined>;
+  // their Anthropic subscription token (claude setup-token's), "" for none
+  anthropic(who: Who): Promise<string>;
+  // the token kept, "" clearing it; throws saying why it wasn't
+  setAnthropic(who: Who, token: string): Promise<void>;
+  // what an agent the app runs as them needs to reach the mesh: their MCP key (the
+  // mesh's tools and models answer it as them), where this host's phosphorus answers
+  // over the tailnet, and the phosphorus skill's zip naming the address they know
+  agent(who: Who): Promise<{ key: string; base: string; skill: Uint8Array }>;
+}
+
 // the mesh's store under etc/appdata/<id>/: JSON on every host, the newest write
 // winning; rel is a path of up to three [a-z0-9._-] parts, no .json
 export interface AppStore {
@@ -75,11 +103,19 @@ export interface AppContext {
   log(fmt: string, ...a: unknown[]): void;
   // a route: path exact, or ending /* for everything under it
   route(method: string, path: string, h: Handler, opts?: RouteOpts): void;
-  // a websocket at /api/app/<id><path>, for logged in people unless public
-  socket(path: string, open: (ws: AppSocket, who: Who | undefined) => void, opts?: { public?: boolean }): void;
+  // a websocket at /api/app/<id><path>, for logged in people unless public; path
+  // exact, or ending /* for everything under it
+  socket(
+    path: string,
+    open: (ws: AppSocket, who: Who | undefined, at: SocketAt) => void,
+    opts?: { public?: boolean },
+  ): void;
   store: AppStore;
   // the phosphorus hosts up now, this one too
   hosts(): string[];
+  // a host's tailnet IPv4, "" when it can't be found
+  address(host: string): Promise<string>;
+  vault: Vault;
   // the app's internal route on another host: POST with body as JSON, its JSON back
   peer(host: string, path: string, body?: unknown): Promise<any>;
   ui(user: string, action: UiAction): void;

@@ -45,7 +45,6 @@ document.addEventListener(
     else if (code === 'KeyF') filesWin();
     else if (code === 'KeyC') dkOpenApp('chat');
     else if (code === 'KeyS') dkSettings('hosts');
-    else if (code === 'KeyE') dkOpenApp('code');
     else if (code === 'KeyD') dkShowDesktop();
     else if (code === 'KeyO') dkOverview();
     else if (code === 'KeyQ' && w) dkClose(w);

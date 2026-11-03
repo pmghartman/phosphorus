@@ -102,3 +102,63 @@ test("a module that throws or exports no register() never runs", async () => {
   rmSync(appDir, { recursive: true, force: true });
   W.reset();
 });
+
+// a person's vault as an app may use it: opened by the Who a route of its own was
+// handed, never one it made up
+test("an app's vault: the person's own logins and token, through their request alone", async () => {
+  const users = await import("@phosphorus/users");
+  const { marshal } = await import("@phosphorus/util");
+  const admin = { user: "root", admin: true, boot: false, token: "", e: 0 };
+  expect((await users.Create(admin, { name: "ann", pass: "pw-ann" })).status).toBe(200);
+  const login = await users.Login({ user: "ann", pass: "pw-ann" }, ctx("/api/login", "POST"));
+  const cookie = "phosphorus-user=" + /^phosphorus-user=([^;]+)/.exec(login.cookie![0]!)![1]!;
+  const s = users.Of({ ...ctx("/"), req: new Request("http://127.0.0.1/", { headers: { cookie } }) })!;
+  store.write(
+    users.vaultFile("ann"),
+    users.Seal(s.key!, marshal({ hosts: { razer: { user: "ann", pass: "x" } }, pages: {} })),
+  );
+
+  install(
+    "3.0.0",
+    `
+export function register(ctx) {
+  ctx.route("GET", "/vault", async (r) => [200, {
+    ready: await ctx.vault.ready(r.who),
+    hosts: await ctx.vault.hosts(r.who),
+    razer: await ctx.vault.login(r.who, "razer"),
+    pi: (await ctx.vault.login(r.who, "pi")) ?? null,
+  }]);
+  ctx.route("POST", "/token", async (r) => {
+    await ctx.vault.setAnthropic(r.who, (await r.json()).token);
+    return [200, { token: await ctx.vault.anthropic(r.who) }];
+  });
+  ctx.route("GET", "/forged", async (r) => [200, { hosts: await ctx.vault.hosts({ ...r.who }) }]);
+}`,
+  );
+  await A.settleApp("demo");
+  const as = async (path: string, method = "GET", body?: unknown) => {
+    const c = ctx(path, method, body);
+    const req = new Request(c.url, {
+      method,
+      headers: { cookie },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const res = (await A.appRoute({ ...c, req }, path))!;
+    return [res.status, await res.json()];
+  };
+  expect(await as("/api/app/demo/vault")).toEqual([
+    200,
+    { ready: true, hosts: ["razer"], razer: { user: "ann", pass: "x" }, pi: null },
+  ]);
+  expect(await as("/api/app/demo/token", "POST", { token: "sk-ant-oat01-abc" })).toEqual([
+    200,
+    { token: "sk-ant-oat01-abc" },
+  ]);
+  expect(await users.AnthropicToken(s)).toBe("sk-ant-oat01-abc");
+  expect((await as("/api/app/demo/token", "POST", { token: "not a token\n" }))[0]).toBe(500);
+  // a Who copied, not handed, opens nothing
+  expect(await as("/api/app/demo/forged")).toEqual([500, { error: "not a person this app was handed" }]);
+  rmSync(appDir, { recursive: true, force: true });
+  W.reset();
+  await A.settleApp("demo");
+});

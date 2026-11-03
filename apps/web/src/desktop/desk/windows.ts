@@ -15,12 +15,12 @@ import { dkBadge } from '../taskbar.ts';
 import { dkFocus, dkSize, dkWin } from '../windows.ts';
 import { dkGit } from './git.ts';
 import { dkTermFor } from './terminal.ts';
+import { dkWebApp, dkWebApps } from './webapps.ts';
 
 export const DK_APPS: Record<string, { title: string; view: string; w: number; h: number }> = {
   chat: { title: 'chat', view: 'view-chat', w: 880, h: 560 },
   apps: { title: 'apps', view: 'view-apps', w: 820, h: 700 },
   games: { title: 'game servers', view: 'view-games', w: 460, h: 420 },
-  code: { title: 'code', view: 'view-code', w: 1040, h: 660 },
 };
 
 export function dkOpenApp(id: string): void {
@@ -63,8 +63,6 @@ export function dkAppsChanged(): void {
   if (up('status')) appCall('status', true, (m) => m.statusWatch(st.lastState));
   if (deskApps.has('apps') !== was.has('apps'))
     appCall('store', deskApps.has('apps'), (m) => m.storeWatch(deskApps.has('apps')));
-  if (deskApps.has('code') !== was.has('code'))
-    appCall('code', deskApps.has('code'), (m) => m.codeWatch(deskApps.has('code')));
   // the conversation's news read once it's on screen
   if (up('chat')) setConv(convNow());
 }
@@ -87,8 +85,6 @@ export const DK_VIEWS: Record<string, string> = {
   git: 'git',
   games: 'games',
   home: 'games',
-  code: 'code',
-  projects: 'code',
   apps: 'apps',
   store: 'apps',
 };
@@ -114,6 +110,8 @@ export function dkPressed(a: UiAction): void {
     if (a.view === 'chat') openConv('mesh');
     else if (DK_VIEWS[a.view!]) dkOpenApp(DK_VIEWS[a.view!]!);
     else if (SET_VIEWS[a.view!]) dkSettings(SET_VIEWS[a.view!]);
+    // an installed app's own, by its id
+    else if (dkWebApps().some((x) => x.id === a.view)) dkWebApp(a.view!);
     else if (a.view === 'files' && dk.desk) filesWin();
   } else if (a.kind === 'notify') {
     noteAdd(a.title!, a.body!);

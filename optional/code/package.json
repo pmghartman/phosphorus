@@ -1,0 +1,14 @@
+{
+  "name": "@phosphorus/app-code",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@phosphorus/app-sdk": "workspace:*",
+    "@phosphorus/util": "workspace:*",
+    "@phosphorus/web-md": "workspace:*",
+    "ssh2": "1.17.0"
+  },
+  "devDependencies": {
+    "@types/ssh2": "1.15.6"
+  }
+}

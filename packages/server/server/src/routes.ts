@@ -18,7 +18,6 @@ import * as webapps from "@phosphorus/webapps";
 import { serveStatic } from "@phosphorus/webstatic";
 import { type Ctx, isUpgrade } from "@phosphorus/wsock";
 import { appRoute } from "./apps.ts";
-import { codeRoute } from "./code.ts";
 import { adminPass, port, selfHost, selfInfo, setUpdating, whoHeader } from "./config.ts";
 import { configOp, hostConfig, hostLogs, localUI } from "./hostops.ts";
 import {
@@ -85,7 +84,6 @@ const userCalls: Record<string, UserCall> = {
   "POST /api/me/mcp-revoke": (s, p) => users.MCPRevoke(s, p),
   // the key in use as a url, an agent's whole connector: pasted in, no sign-in
   "POST /api/me/mcp-url": (s, p, c) => users.MCPURL(s, p, c),
-  "POST /api/me/anthropic": (s, p) => users.SetAnthropic(s, p),
   "GET /api/users": (s) => users.List(s),
   "POST /api/users": (s, p) => users.Create(s, p),
   "POST /api/users/admin": (s, p) => users.SetAdmin(s, p),
@@ -176,11 +174,6 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
     if (b === undefined) return plain(400, "bad request");
     const p = obj(decode(b)) ?? {};
     return reply(await call(await users.Soon(c), p, c));
-  }
-
-  if (pathname.startsWith("/api/code/")) {
-    const r = await codeRoute(c, pathname, q);
-    if (r) return r;
   }
 
   if (pathname.startsWith("/api/git/")) {

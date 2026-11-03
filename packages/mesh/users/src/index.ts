@@ -6,7 +6,6 @@ import "./anthropic.ts";
 
 export {
   AnthropicToken,
-  DropOldTokens,
   HostLogin,
   HostLogins,
   KeyOf,

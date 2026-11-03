@@ -500,8 +500,10 @@ export type Agent = {
   tier: string;
 };
 
-// the built-in agents, every implementation of phosphorus's own that asks a model, in the pages' order
-const builtin: Agent[] = [
+// apps on the mesh that ask a model, each an agent while it's there: a service of its
+// name published on any host, or an app of the apps page installed onto the mesh;
+// in the pages' order
+const apps: (Agent & { service?: string; app?: string })[] = [
   {
     id: "code",
     label: "Code app",
@@ -509,6 +511,7 @@ const builtin: Agent[] = [
     parent: "",
     tier: "large",
     fast: true,
+    app: "code",
   },
   {
     id: "claude-code",
@@ -517,6 +520,7 @@ const builtin: Agent[] = [
     parent: "code",
     tier: "large",
     fast: true,
+    app: "code",
   },
   {
     id: "opencode",
@@ -525,12 +529,8 @@ const builtin: Agent[] = [
     parent: "code",
     tier: "large",
     fast: true,
+    app: "code",
   },
-];
-
-// apps on the mesh that ask a model, each an agent while it's there: a service of its
-// name published on any host, or an app of the apps page installed onto the mesh
-const apps: (Agent & { service?: string; app?: string })[] = [
   {
     id: "tavern",
     label: "Tavern",
@@ -549,14 +549,11 @@ export const seams = {
   installed: (id: string) => wantOf(id) !== undefined,
 };
 
-// Agents the agents right now: the built-ins, then the apps on the mesh
+// Agents the agents right now: the apps on the mesh's
 export function Agents(): Agent[] {
-  return [
-    ...builtin,
-    ...apps
-      .filter((a) => (a.service ? seams.published(a.service) : seams.installed(a.app!)))
-      .map(({ service: _, app: __, ...a }) => a),
-  ];
+  return apps
+    .filter((a) => (a.service ? seams.published(a.service) : seams.installed(a.app!)))
+    .map(({ service: _, app: __, ...a }) => a);
 }
 
 // slots an agent's assignments: its model, and for some a fast one

@@ -2,7 +2,8 @@
 // by postMessage to the window around it, and the desktop's theme pushed back
 
 export type Ask =
-  | { kind: "terminal"; host: string }
+  // a terminal tab on host, run typed into it when given
+  | { kind: "terminal"; host: string; run?: string }
   | { kind: "notify"; title: string; body?: string }
   | { kind: "open"; id: string; query?: Record<string, string> }
   | { kind: "title"; title: string }
