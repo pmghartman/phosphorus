@@ -1,4 +1,4 @@
-// docker on this host: found and its compose v2 checked, installed from the
+// docker on this host: found and its compose (the v2 plugin or later) checked, installed from the
 // distribution on Debian and Ubuntu when asked; every docker command run with its
 // output appended to a log
 import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync } from "node:fs";
@@ -44,8 +44,9 @@ export async function detect(): Promise<DockerInfo> {
     if (v.ok) next.version = v.stdout.trim();
     if (c.ok) next.compose = c.stdout.trim().replace(/^v/, "");
     if (!v.ok) why = "the docker daemon isn't answering: " + (v.output.trim().split("\n").at(-1) ?? "");
-    else if (!c.ok) why = "docker compose v2 isn't installed";
-    else if (!/^2\./.test(next.compose ?? "")) why = `docker compose ${next.compose} isn't v2`;
+    else if (!c.ok) why = "docker compose isn't installed";
+    // the old python docker-compose was 1.x; the plugin went from 2.x to 5.x
+    else if (!(Number.parseInt(next.compose ?? "", 10) >= 2)) why = `docker compose ${next.compose} is older than v2`;
   }
   if (!why) next.state = "present";
   else {
@@ -65,7 +66,7 @@ export async function docker(): Promise<DockerInfo> {
   return now() - checkedAt > recheckMS ? detect() : info;
 }
 
-// the distribution's docker.io and a compose v2 plugin, whichever name it ships under
+// the distribution's docker.io and a compose plugin (v2 or later), whichever name it ships under
 const installScript = `set -e
 export DEBIAN_FRONTEND=noninteractive
 apt-get update

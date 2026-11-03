@@ -367,6 +367,21 @@ test("docker: found with compose v2 through the fake", async () => {
   expect(d).toMatchObject({ state: "present", version: "27.3.1", compose: "2.29.7", arch: S.arch() });
 });
 
+test("docker: compose 5 is fine, the old 1.x docker-compose isn't", async () => {
+  const v = join(bin, "compose-version");
+  try {
+    writeFileSync(v, "v5.6.1\n");
+    expect(await S.detectDocker()).toMatchObject({ state: "present", compose: "5.6.1" });
+    writeFileSync(v, "1.29.2\n");
+    const d = await S.detectDocker();
+    expect(d.state).not.toBe("present");
+    expect(d.error).toBe("docker compose 1.29.2 is older than v2");
+  } finally {
+    rmSync(v, { force: true });
+  }
+  expect((await S.detectDocker()).state).toBe("present");
+});
+
 test("with standbys: every candidate renders and pulls, failover alone brings it up or down", async () => {
   await want({ standbys: ["b"] }, def({ id: "vault", ref: "Vault" }));
   await S.tick();

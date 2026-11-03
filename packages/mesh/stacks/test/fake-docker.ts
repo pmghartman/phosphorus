@@ -1,6 +1,7 @@
 // a fake docker, its folder its first argument: each argv logged as a JSON line to
 // docker.log there; compose up marks the project's services running in <project>.json,
-// down and stop clear them, ps reads them back; a subcommand named in fail exits 1
+// down and stop clear them, ps reads them back; a subcommand named in fail exits 1;
+// compose's version the one in compose-version there, else 2.29.7
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -14,7 +15,8 @@ if (argv[0] === "version") {
 }
 if (argv[0] !== "compose") process.exit(1);
 if (argv[1] === "version") {
-  console.log("2.29.7");
+  const v = join(home, "compose-version");
+  console.log(existsSync(v) ? readFileSync(v, "utf8").trim() : "2.29.7");
   process.exit(0);
 }
 
