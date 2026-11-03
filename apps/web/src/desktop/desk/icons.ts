@@ -101,10 +101,8 @@ mobileQuery.addEventListener('change', () => {
 export function dkArt(): HTMLElement {
   dkWallPaint();
   const art = el('div', 'dk-art');
-  const mark = el('img', 'about-mark') as HTMLImageElement;
-  mark.src = '/phosphorus-ascii.svg';
-  mark.alt = '';
-  mark.draggable = false;
+  // the mark painted in the theme's glyph colors (about.css)
+  const mark = el('span', 'about-mark');
   mark.setAttribute('aria-hidden', 'true');
   art.appendChild(mark);
   return art;

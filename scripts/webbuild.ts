@@ -3,7 +3,7 @@
 // file precompressed, and a manifest module naming each file so bun build
 // --compile embeds them
 
-import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, extname, join, relative } from "node:path";
 import { load } from "@phosphorus/theme";
 import { gzipSync } from "bun";
@@ -92,6 +92,12 @@ if (
 }
 write("index.html", html);
 for (const f of walk(join(src, "static"))) write(relative(join(src, "static"), f), readFileSync(f));
+// the licence and the third-party notices, read from about: the notices as scripts/licenses.ts
+// last wrote them into notices/ (a release writes them first), left out when it hasn't
+write("licenses/LICENSE.txt", readFileSync("LICENSE"));
+const notices = "notices/THIRD_PARTY_NOTICES.txt";
+if (existsSync(notices)) write("licenses/THIRD_PARTY_NOTICES.txt", readFileSync(notices));
+else log(`no ${notices}: bun scripts/licenses.ts notices writes it, about's link to it 404s until then`);
 
 // precompressed as .gz, a hashed file's raw copy then dropped
 const hashedPath = (rel: string) => rel.startsWith("assets/") || rel.startsWith("vendor/h/");

@@ -738,7 +738,7 @@
   -webkit-background-clip: border-box;
   background-clip: border-box;
 }
-/* the marks and app icons in the terminal's own grey, nothing in color but the text */
-:root[data-palette="cli"] :is(.about-mark, .dk-tile-img .dk-favicon) {
+/* app icons in the terminal's own grey; the mark keeps the theme's glyph colors */
+:root[data-palette="cli"] .dk-tile-img .dk-favicon {
   filter: grayscale(1);
 }

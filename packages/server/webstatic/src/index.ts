@@ -19,6 +19,7 @@ const types: Record<string, string> = {
   ".gif": "image/gif",
   ".wasm": "application/wasm",
   ".map": "application/json",
+  ".txt": "text/plain; charset=utf-8",
 };
 
 const etags = new Map<string, string>();

@@ -547,8 +547,3 @@
     transition: none;
   }
 }
-
-/* the mark as ascii art, on the desk and in about */
-.about-mark {
-  object-fit: contain;
-}

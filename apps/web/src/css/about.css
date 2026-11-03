@@ -17,12 +17,16 @@
   position: relative;
 }
 
+/* the ascii mark: its shape the svg, its color the theme's glyph gradient */
 .about-mark {
   display: block;
   width: 16rem;
   height: 16rem;
   max-width: 100%;
   user-select: none;
+  background: linear-gradient(150deg, var(--glyph-purple), var(--glyph-orange) 50%, var(--glyph-purple));
+  -webkit-mask: url("../../static/phosphorus-ascii.svg") center / contain no-repeat;
+  mask: url("../../static/phosphorus-ascii.svg") center / contain no-repeat;
 }
 
 .about-version {
@@ -102,4 +106,14 @@
   color: var(--muted);
   font-size: 0.85rem;
   line-height: 1.4;
+}
+
+.about-link {
+  color: var(--accent);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.about-link:is(:hover, :focus-visible) {
+  text-decoration: underline;
+  outline: none;
 }
