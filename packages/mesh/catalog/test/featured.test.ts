@@ -106,18 +106,16 @@ test("Circuit: its port a field, nothing kept, the version asked for health", ()
   });
 });
 
-test("Jellyfin, Audiobookshelf and JupyterLab: images pulled, data kept, the old names as aliases", () => {
-  const img = (d: typeof jellyfin) => parse(d.compose).services[d.id]!.image;
+test("Jellyfin, Audiobookshelf and JupyterLab: images pulled, data kept, one name each, Jellyfin's media", () => {
+  const img = (d: typeof jellyfin) => parse(d.compose).services[d.manifest.web!.service]!.image;
   expect([jellyfin, audiobookshelf, jupyterlab].map(img)).toEqual([
     "jellyfin/jellyfin:10.11.11",
     "ghcr.io/advplyr/audiobookshelf:2.36.0",
-    "ghcr.io/prefix-dev/pixi:0.40.2-bookworm",
+    "ghcr.io/prefix-dev/pixi:0.83.0-bookworm",
   ]);
-  expect([jellyfin, audiobookshelf, jupyterlab].map((d) => d.manifest.aliases)).toEqual([
-    ["media"],
-    ["audiobooks"],
-    ["lab"],
-  ]);
+  expect([jellyfin, audiobookshelf, jupyterlab].map((d) => d.id)).toEqual(["media", "audiobookshelf", "jupyterlab"]);
+  expect(find("phosphorus", "jellyfin")).toBe(jellyfin);
+  expect(all().filter((d) => d.manifest.aliases?.length)).toEqual([forgejo]);
   for (const d of [jellyfin, audiobookshelf, jupyterlab]) {
     expect(check(d, {}, [linux], { [img(d)]: { archs: ["amd64"] } }).verdict).toBe("installable");
     expect([...vars(d.compose).keys()].filter((v) => !phosVars.includes(v)).sort()).toEqual(
@@ -157,19 +155,17 @@ test("Audiobookshelf: its db and metadata kept, the books from the host, 13378 o
   expect(audiobookshelf.manifest.health).toEqual({ service: "audiobookshelf", path: "/healthcheck", port: 80 });
 });
 
-test("JupyterLab: the pixi workspace seeded once, both names allowed as origins, a token typed at install", () => {
+test("JupyterLab: the pixi workspace seeded once, its own page the origin, a token typed at install", () => {
   const s = parse(jupyterlab.compose).services.jupyterlab!;
   const sh = s.entrypoint[2] as string;
   expect(sh).toContain("if [ ! -f hub/pixi.toml ]; then");
   expect(sh).toContain("[ -f hub/jupyter_server_config.py ] ||");
-  // compose's $$ for the shell's own
-  expect(sh).toContain('base="$${APP_DOMAIN#*.}"');
-  expect(sh).toContain(String.raw`pat="^https://(jupyterlab|lab)\\.$$(printf %s "$$base" | sed 's/[.]/\\./g')"'$$'`);
   expect(sh).toContain("exec pixi run --manifest-path hub/pixi.toml jupyter lab");
-  expect(sh).toContain("--ServerApp.root_dir=/lab --ServerApp.allow_origin= ");
+  // compose's $$ for the shell's own
+  expect(sh).toContain('--ServerApp.root_dir=/lab --ServerApp.allow_origin="$$APP_URL" ');
   expect(environment(s)).toMatchObject({
     HOME: "/lab",
-    APP_DOMAIN: "${APP_DOMAIN}",
+    APP_URL: "${APP_URL}",
     JUPYTER_TOKEN: "${JUPYTER_TOKEN}",
   });
   expect(s.volumes).toEqual(["jupyterlab:/lab"]);

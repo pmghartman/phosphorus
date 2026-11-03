@@ -5,6 +5,7 @@
 import { createHash } from "node:crypto";
 import {
   chmodSync,
+  chownSync,
   closeSync,
   existsSync,
   mkdirSync,
@@ -271,6 +272,8 @@ type Plan = {
   dirs: string[];
   build: boolean;
   clone: boolean;
+  // PUID and PGID: a folder made for a bind theirs, so a service run as them can write it
+  owner: [number, number];
 };
 
 // the project as the want and this host make it; its hash, over the role it runs in
@@ -284,13 +287,19 @@ async function plan(w: StackWant, mode: string): Promise<Plan> {
   const r = render(w.def, values, ctx);
   const envT = envText(w.def, values, ctx, r.webPort);
   const hash = createHash("sha256").update(`${mode}\0${r.compose}\0${envT}`).digest("hex").slice(0, 32);
-  return { ...r, env: envT, hash };
+  return { ...r, env: envT, hash, owner: [Number(ctx.puid), Number(ctx.pgid)] };
 }
 
 function writeProject(id: string, p: Plan) {
   mkdirSync(dirOf(id), { recursive: true, mode: 0o750 });
   mkdirSync(join(dirOf(id), "data"), { recursive: true });
-  for (const d of p.dirs) mkdirSync(d, { recursive: true });
+  for (const d of p.dirs) {
+    if (existsSync(d)) continue;
+    mkdirSync(d, { recursive: true });
+    try {
+      if (process.platform !== "win32") chownSync(d, ...p.owner);
+    } catch {}
+  }
   writeFileSync(composeFile(id), p.compose, { mode: 0o600 });
   const envF = join(dirOf(id), ".env");
   writeFileSync(envF, p.env, { mode: 0o600 });

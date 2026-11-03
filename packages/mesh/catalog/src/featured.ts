@@ -274,10 +274,11 @@ volumes:
 
 const jellyfinAbout = `Jellyfin is a media server: films, shows, music and books from your own folders, streamed to a browser, a phone or a TV.
 
-Installed from here it answers at jellyfin.<your domain>, and at media.<your domain> too. Your media folder appears at /srv/media inside it, so a library at /srv/media/movies keeps that path. Its settings, users and watch history live in the stack's data folder; its cache is rebuilt wherever it runs.`;
+Installed from here it answers at media.<your domain>. Your media folder appears at /srv/media inside it, so a library at /srv/media/movies keeps that path. Its settings, users and watch history live in the stack's data folder; its cache is rebuilt wherever it runs.`;
 
+// routed as media, the page people open for it
 export const jellyfin: AppDef = {
-  id: "jellyfin",
+  id: "media",
   source: "phosphorus",
   ref: "jellyfin",
   name: "Jellyfin",
@@ -300,7 +301,6 @@ export const jellyfin: AppDef = {
     ],
     health: { service: "jellyfin", path: "/health", port: 8096 },
     web: { service: "jellyfin", port: 8096 },
-    aliases: ["media"],
   },
 };
 
@@ -325,7 +325,7 @@ volumes:
 
 const audiobookshelfAbout = `Audiobookshelf serves audiobooks and podcasts: progress synced across devices, chapters, bookmarks, and its own phone apps.
 
-Installed from here it answers at audiobookshelf.<your domain>, and at audiobooks.<your domain> too. Your audiobooks folder appears at /audiobooks inside it; its database, covers and metadata live in the stack's data folder.`;
+Installed from here it answers at audiobookshelf.<your domain>. Your audiobooks folder appears at /audiobooks inside it; its database, covers and metadata live in the stack's data folder.`;
 
 export const audiobookshelf: AppDef = {
   id: "audiobookshelf",
@@ -351,15 +351,14 @@ export const audiobookshelf: AppDef = {
     ],
     health: { service: "audiobookshelf", path: "/healthcheck", port: 80 },
     web: { service: "audiobookshelf", port: 80 },
-    aliases: ["audiobooks"],
   },
 };
 
 // JupyterLab from a pixi workspace in /lab/hub, seeded when missing; its env
-// rebuilt from pixi.lock on first start, origins allowed for both its names
+// rebuilt from pixi.lock on first start, its own page the one origin allowed
 const jupyterlabCompose = `services:
   jupyterlab:
-    image: ghcr.io/prefix-dev/pixi:0.40.2-bookworm
+    image: ghcr.io/prefix-dev/pixi:0.83.0-bookworm
     restart: unless-stopped
     user: \${PUID}:\${PGID}
     working_dir: /lab
@@ -373,14 +372,12 @@ const jupyterlabCompose = `services:
           printf '%s\\n' '[workspace]' 'name = "lab"' 'channels = ["conda-forge"]' 'platforms = ["linux-64", "linux-aarch64"]' '' '[dependencies]' 'python = "3.12.*"' 'jupyterlab = ">=4.2"' 'ipykernel = "*"' > hub/pixi.toml
         fi
         [ -f hub/jupyter_server_config.py ] || echo 'c = get_config()' > hub/jupyter_server_config.py
-        base="$\${APP_DOMAIN#*.}"
-        pat="^https://(jupyterlab|lab)\\\\.$$(printf %s "$$base" | sed 's/[.]/\\\\./g')"'$$'
-        exec pixi run --manifest-path hub/pixi.toml jupyter lab --config=hub/jupyter_server_config.py --ip=0.0.0.0 --port=8888 --no-browser --ServerApp.root_dir=/lab --ServerApp.allow_origin= --ServerApp.allow_origin_pat="$$pat" --ServerApp.trust_xheaders=True
+        exec pixi run --manifest-path hub/pixi.toml jupyter lab --config=hub/jupyter_server_config.py --ip=0.0.0.0 --port=8888 --no-browser --ServerApp.root_dir=/lab --ServerApp.allow_origin="$$APP_URL" --ServerApp.trust_xheaders=True
     environment:
       TZ: \${TZ}
       HOME: /lab
       XDG_CACHE_HOME: /lab/.cache
-      APP_DOMAIN: \${APP_DOMAIN}
+      APP_URL: \${APP_URL}
       JUPYTER_TOKEN: \${JUPYTER_TOKEN}
     ports:
       - \${HTTP_PORT:-8888}:8888
@@ -392,7 +389,7 @@ volumes:
 
 const jupyterlabAbout = `JupyterLab: notebooks, a terminal and an editor in the browser, its Python from a [pixi](https://pixi.sh) workspace.
 
-Installed from here it answers at jupyterlab.<your domain>, and at lab.<your domain> too. Everything lives in the stack's data folder: notebooks and files at its top, the workspace in hub/ (pixi.toml, pixi.lock and jupyter_server_config.py), seeded with Python 3.12 and JupyterLab when missing. Add packages to hub/pixi.toml; the environment is built on first start, which takes a few minutes.
+Installed from here it answers at jupyterlab.<your domain>. Everything lives in the stack's data folder: notebooks and files at its top, the workspace in hub/ (pixi.toml, pixi.lock and jupyter_server_config.py), seeded with Python 3.12 and JupyterLab when missing. Add packages to hub/pixi.toml; the environment is built on first start, which takes a few minutes.
 
 Sign in with the token you type at install; a token set in hub/jupyter_server_config.py wins over it.`;
 
@@ -417,7 +414,6 @@ export const jupyterlab: AppDef = {
     volumes: [{ service: "jupyterlab", target: "/lab", kind: "data" }],
     health: { service: "jupyterlab", path: "/api", port: 8888 },
     web: { service: "jupyterlab", port: 8888 },
-    aliases: ["lab"],
   },
 };
 
