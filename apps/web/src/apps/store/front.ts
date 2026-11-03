@@ -1,6 +1,8 @@
-// the front: tiles; the services tab an installer, the apps tab the desktop's extras
+// the front: tiles; the services tab an installer, the apps tab the desktop's extras, the
+// running tab what the mesh runs: installed services, every host's published ones, the apps got
 
-import type { AppSummary, FoundPage, SourceId, StackView } from '@phosphorus/wire';
+import type { AppSummary, FoundPage, Route, SourceId, StackView } from '@phosphorus/wire';
+import { serviceUrl } from '../../features/mesh/routes.ts';
 import { jsonPost } from '../../lib/api.ts';
 import { DK_GLYPHS, dkGlyph, el, ICONS } from '../../lib/dom.ts';
 import { dk, st } from '../../lib/state.ts';
@@ -10,6 +12,7 @@ import {
   agoText,
   catalog,
   catalogError,
+  hostUp,
   installedAs,
   keyOf,
   openRepo,
@@ -20,7 +23,6 @@ import {
   stackViews,
 } from './catalog.ts';
 import { draw } from './draw.ts';
-import { legacyGitBox } from './legacy.ts';
 import { apps, nativeLeft, read, readError, type StoreApp, stateVars, storeShow } from './state.ts';
 
 // whether a tile matches the search: every word in its name, tagline, category or id
@@ -40,11 +42,13 @@ function search(): HTMLElement {
     placeholder:
       stateVars.tab === 'apps'
         ? `search ${apps?.length ?? 0} apps`
-        : catalog
-          ? `search ${catalog.apps.length} apps, every source`
-          : 'search every source',
+        : stateVars.tab === 'running'
+          ? 'search by name or host'
+          : catalog
+            ? `search ${catalog.apps.length} apps, every source`
+            : 'search every source',
     value: stateVars.filter,
-    ariaLabel: stateVars.tab === 'apps' ? 'search apps' : 'search services',
+    ariaLabel: `search ${stateVars.tab}`,
   });
   box.dataset.keep = 'search';
   box.addEventListener('input', () => {
@@ -270,7 +274,7 @@ function foundTile(f: Discovered): HTMLElement {
   return t;
 }
 
-// the front's two tabs: services onto hosts, apps for the desktop
+// the front's tabs: services onto hosts, apps for the desktop, what runs now
 const TABS = {
   services: {
     title: 'services',
@@ -279,6 +283,10 @@ const TABS = {
   apps: {
     title: 'apps',
     lead: 'Extras for the desktop. Get an app and every host serves its own copy, beside this desktop.',
+  },
+  running: {
+    title: 'running',
+    lead: 'What the mesh runs now: the services installed from here, every host’s published services, and the apps got for the desktop.',
   },
 } as const;
 
@@ -351,9 +359,6 @@ function servicesTab(wrap: HTMLElement, q: string) {
         (f) => !q || matches({ id: f.name, name: f.title, tagline: f.host, category: 'discovered' }, q),
       )
     : [];
-  // the old built-in git's data, offered to Forgejo
-  const legacy = q ? null : legacyGitBox();
-  if (legacy) wrap.append(legacy);
   // services the retired installer left on hosts, nothing following them now
   if (nativeLeft.length && !q)
     wrap.append(
@@ -473,10 +478,58 @@ function servicesTab(wrap: HTMLElement, q: string) {
   wrap.append(credit);
 }
 
+// a published service's row: its name opening it, its address, port and who may open it
+function routeRow(r: Route): HTMLElement {
+  const up = hostUp(r.host);
+  const row = el('li', `store-route${up ? '' : ' off'}`);
+  const url = serviceUrl(r);
+  const name = up
+    ? Object.assign(el('a', 'store-route-name', r.name), { href: url, target: '_blank', rel: 'noopener' })
+    : el('span', 'store-route-name', r.name);
+  const stack = stackViews().find((v) => v.summary.id === r.name);
+  row.append(
+    name,
+    el('span', 'store-route-addr', url.replace(/^https:\/\//, '').replace(/\/$/, '')),
+    el('span', 'store-route-port', r.port ? `:${r.port}` : ''),
+    el('span', `store-route-tag${r.public ? ' warn' : ''}`, r.public ? 'public' : 'login'),
+    el(
+      'span',
+      `store-route-tag${up ? (stack ? ' on' : '') : ' bad'}`,
+      !up ? 'not answering' : stack ? (r.master ? 'installed, active' : 'installed') : r.auto ? 'found' : 'declared',
+    ),
+  );
+  return row;
+}
+
+function runningTab(wrap: HTMLElement, q: string) {
+  const hit = (...words: string[]) => !q || matches({ id: '', name: words.join(' '), tagline: '', category: '' }, q);
+  const views = stackViews().filter((v) => hit(v.summary.name, v.summary.id, ...stackFacts(v).hosts));
+  section(wrap, 'installed services', views.map(meshRow), 'store-runs', `${views.length}`);
+  // each host's published services, this host first, the rest by name; game servers aside
+  const routes = dk.services.filter((r) => !r.type && hit(r.name, r.host));
+  const hosts = [...new Set(routes.map((r) => r.host))].sort(
+    (a, b) => Number(b === st.selfHost) - Number(a === st.selfHost) || a.localeCompare(b),
+  );
+  for (const h of hosts) {
+    const list = routes.filter((r) => r.host === h).sort((a, b) => a.name.localeCompare(b.name));
+    const ul = el('ul', 'store-routes');
+    ul.append(...list.map(routeRow));
+    const s = el('section', 'store-section');
+    const head = el('h2', 'store-section-head', `${h}${h === st.selfHost ? ' · this host' : ''}`);
+    head.append(el('span', `store-count${hostUp(h) ? '' : ' bad'}`, hostUp(h) ? `${list.length}` : 'not answering'));
+    s.append(head, ul);
+    wrap.append(s);
+  }
+  const got = (apps ?? []).filter((a) => a.want && (!q || matches(a, q)));
+  section(wrap, 'desktop apps', got.map(tile), 'store-grid', `${got.length}`);
+  if (!hosts.length && !got.length && !views.length)
+    wrap.append(el('div', 'store-empty', q ? `nothing running matches “${q}”` : 'nothing published on the mesh yet'));
+}
+
 export function front(): HTMLElement {
   const wrap = el('div', 'store-front');
   const onApps = stateVars.tab === 'apps';
-  // the wizard's own banner, then its two tabs and what the one open is for
+  // the wizard's own banner, then its tabs and what the one open is for
   const hero = el('div', 'store-hero');
   const words = el('div', 'store-hero-t');
   words.append(
@@ -500,6 +553,7 @@ export function front(): HTMLElement {
   wrap.append(head);
   const q = stateVars.filter.trim();
   if (onApps) appsTab(wrap, q);
+  else if (stateVars.tab === 'running') runningTab(wrap, q);
   else servicesTab(wrap, q);
   return wrap;
 }

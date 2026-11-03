@@ -62,7 +62,7 @@ const SECTIONS: Section[] = [
     glyph: () => DK_GLYPHS.mesh!,
     group: 'mesh',
     blurb: 'every host on the mesh, how it is doing, and what each one shares and runs',
-    draw: hostsSection,
+    draw: (body, sub) => hostsSection(body, sub),
   },
   {
     id: 'agents',

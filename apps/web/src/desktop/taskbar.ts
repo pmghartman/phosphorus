@@ -115,7 +115,7 @@ export function dkChips(): void {
       type: 'button',
       title: `${h === here ? `this page is served by ${h}` : `${h}, logged in`}; the hosts in settings`,
     });
-    b.addEventListener('click', () => dkSettings('hosts'));
+    b.addEventListener('click', () => dkSettings('hosts', h));
     return b;
   });
   chips.forEach((c, i) => c.classList.toggle('cur', names[i] === here));

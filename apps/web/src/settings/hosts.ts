@@ -1,24 +1,72 @@
-// --- settings › hosts: the mesh graph with its pings, each host's stats, and for
-// an admin each host's own phosphorus.ini: the folders it shares, the model it runs
+// --- settings › hosts: a bar of the mesh's hosts over one view. All: the mesh graph with its
+// pings and every host's stats. One host: its stats open and, for an admin signed into it (its
+// login saved in their vault), its own phosphorus.ini: the folders it shares, the model it runs
 
 import { appCall } from '../apps/index.ts';
 import { drawMesh, meshPanel, phosphorusHosts, pingHosts } from '../features/mesh/mesh.ts';
 import { meshAnimFrame, uiVars } from '../features/mesh/ui.ts';
 import { el, noFill, stash } from '../lib/dom.ts';
 import { st } from '../lib/state.ts';
+import { dkSettings } from './settings.ts';
 
-export function hostsSection(pane: HTMLElement): () => void {
+// the host picked, '' for all; kept while the window lives on
+let picked = '';
+
+// whether this account may change a host's config: an admin with its login saved
+const signedIn = (host: string) => !!st.acct?.vault.hosts[host];
+
+export function hostsSection(pane: HTMLElement, sub?: string): () => void {
+  if (sub !== undefined) picked = sub;
+  const bar = Object.assign(el('div', 'set-hostbar'), { role: 'tablist', ariaLabel: 'hosts' });
   const mesh = el('div', 'set-mesh');
   mesh.append(meshPanel);
   const status = document.getElementById('view-status')!;
   status.classList.add('active');
-  pane.append(mesh, el('div', 'dk-ap-head', 'status'), status);
-  const cfg = st.acct?.admin ? hostForms() : null;
-  if (cfg) pane.append(el('div', 'dk-ap-head', 'configure'), cfg.node);
-  // measured while stashed, 0 tall: measured again now it shows
-  uiVars.meshDims = null;
-  uiVars.meshStatsDirty = true;
-  drawMesh();
+  const statusHead = el('div', 'dk-ap-head', 'status');
+  const cfg = el('div', 'set-host-cfg');
+  pane.append(bar, mesh, statusHead, status, cfg);
+  let sig = '';
+  const draw = () => {
+    const hosts = phosphorusHosts();
+    if (picked && !hosts.includes(picked)) picked = '';
+    const next = `${picked}|${hosts.join()}|${Object.keys(st.acct?.vault.hosts ?? {}).join()}`;
+    if (next === sig) return;
+    const moved = !sig || sig.split('|')[0] !== picked;
+    sig = next;
+    bar.replaceChildren(
+      ...['', ...hosts].map((h) => {
+        const on = h === picked;
+        const b = Object.assign(el('button', `set-hostchip${on ? ' on' : ''}`), {
+          type: 'button',
+          role: 'tab',
+          ariaSelected: String(on),
+          title: !h ? 'the mesh and every host' : signedIn(h) ? `${h}, signed in` : `${h}, not signed in`,
+        });
+        if (h && h === st.selfHost) b.classList.add('self');
+        if (h && signedIn(h)) b.classList.add('in');
+        b.append(h || 'all hosts');
+        b.addEventListener('click', () => {
+          if (picked === h) return;
+          picked = h;
+          draw();
+        });
+        return b;
+      }),
+    );
+    if (!moved) return;
+    mesh.hidden = !!picked;
+    statusHead.textContent = picked ? `${picked}${picked === st.selfHost ? ' · this page’s host' : ''}` : 'status';
+    appCall('status', true, (m) => m.statusOnly(picked || null));
+    cfg.replaceChildren(...(picked ? configFor(picked) : []));
+    if (!picked) {
+      // measured while hidden, 0 tall: measured again now it shows
+      uiVars.meshDims = null;
+      uiVars.meshStatsDirty = true;
+      drawMesh();
+    }
+  };
+  draw();
+  const t = setInterval(draw, 3000);
   pingHosts();
   const fit = new ResizeObserver(() => {
     uiVars.meshDims = null;
@@ -28,15 +76,45 @@ export function hostsSection(pane: HTMLElement): () => void {
   fit.observe(mesh);
   fit.observe(status);
   return () => {
+    clearInterval(t);
     fit.disconnect();
-    cfg?.leave();
+    appCall('status', false, (m) => m.statusOnly(null));
     status.classList.remove('active');
     stash.prepend(meshPanel);
     stash.append(status);
   };
 }
 
-// --- each host's config, read when its row opens ----------------------------------------------
+// the picked host's configure part: its forms when this admin is signed into it, else why not
+function configFor(host: string): HTMLElement[] {
+  if (!st.acct?.admin) return [];
+  const head = el('div', 'dk-ap-head', 'configure');
+  if (!signedIn(host)) {
+    const go = Object.assign(el('button', 'store-link', 'sign in under profile'), { type: 'button' });
+    go.addEventListener('click', () => dkSettings('profile'));
+    const p = el(
+      'p',
+      'dk-note',
+      `Only a host you’re signed into is configured from here: save your ${host} login, then come back. `,
+    );
+    p.append(go);
+    return [head, p];
+  }
+  const body = el('div', 'set-host-body acct-pane');
+  body.append(el('p', 'dk-note', 'reading its config'));
+  void cfgCall(host).then((r) => {
+    if (!r.ok || !r.ini) {
+      body.replaceChildren(
+        el('p', 'dk-state bad', r.ok ? `${host} runs an older phosphorus: update the mesh first` : r.error),
+      );
+      return;
+    }
+    body.replaceChildren(...hostForm(host, r.ini as HostIni));
+  });
+  return [head, body];
+}
+
+// --- a host's config, read when it's picked -----------------------------------------------------
 
 interface Share {
   dir: string;
@@ -69,54 +147,6 @@ async function cfgCall(host: string, body?: Record<string, unknown>): Promise<Re
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }
-}
-
-function hostForms(): { node: HTMLElement; leave: () => void } {
-  const node = el('div', 'set-hosts');
-  const opened = new Set<string>();
-  let sig = '';
-  const draw = () => {
-    const hosts = phosphorusHosts();
-    const next = hosts.join();
-    if (next === sig) return;
-    sig = next;
-    const had = new Map([...node.querySelectorAll<HTMLElement>('.set-host')].map((d) => [d.dataset.host!, d]));
-    node.replaceChildren(
-      ...(hosts.length ? hosts.map((h) => had.get(h) || hostRow(h, opened)) : [el('p', 'dk-note', 'no hosts in view')]),
-    );
-  };
-  draw();
-  const t = setInterval(draw, 3000);
-  return { node, leave: () => clearInterval(t) };
-}
-
-// one host: its name, opened for its forms
-function hostRow(host: string, opened: Set<string>): HTMLElement {
-  const d = el('details', 'set-host');
-  d.dataset.host = host;
-  const sum = el('summary', 'set-host-sum');
-  sum.append(el('span', 'dk-host', host), el('span', 'dk-state', host === st.selfHost ? 'this page’s host' : ''));
-  const body = el('div', 'set-host-body acct-pane');
-  d.append(sum, body);
-  const load = async () => {
-    body.replaceChildren(el('p', 'dk-note', 'reading its config'));
-    const r = await cfgCall(host);
-    if (!r.ok || !r.ini) {
-      body.replaceChildren(
-        el('p', 'dk-state bad', r.ok ? `${host} runs an older phosphorus: update the mesh first` : r.error),
-      );
-      return;
-    }
-    body.replaceChildren(...hostForm(host, r.ini as HostIni));
-  };
-  d.addEventListener('toggle', () => {
-    if (d.open) {
-      opened.add(host);
-      load();
-    } else opened.delete(host);
-  });
-  if (opened.has(host)) d.open = true;
-  return d;
 }
 
 function hostForm(host: string, ini: HostIni): HTMLElement[] {

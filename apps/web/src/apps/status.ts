@@ -88,6 +88,13 @@ export function statusRender() {
   fitTiles(names);
 }
 
+// settings' hosts page: one host's card shown open, the rest hidden; null shows them all again
+export function statusOnly(name: string | null) {
+  stHostsEl.parentElement!.toggleAttribute('data-only', !!name);
+  stateVars.stOpenHost = name;
+  statusRender();
+}
+
 // one host open at a time, the opened or closed one keeping the arrow keys' pick
 export function stToggle(name: string) {
   stateVars.stOpenHost = stateVars.stOpenHost === name ? null : name;

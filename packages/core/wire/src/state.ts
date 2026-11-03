@@ -1,4 +1,4 @@
-import type { DockerInfo, LegacyGit, StackStatus, StackView } from "./stacks.ts";
+import type { DockerInfo, StackStatus, StackView } from "./stacks.ts";
 
 // --- /api/state: buildState() in packages/server/src/server.ts, pushed over the same path's socket
 
@@ -116,8 +116,6 @@ export interface HostInfo {
   stacks?: Record<string, StackStatus>;
   // docker here, for the install check
   docker?: DockerInfo;
-  // the old built-in git's copy of Forgejo's data here, its version, until it's deleted
-  legacyGit?: { gen: number; stamp: number };
 }
 
 export interface FoundPage {
@@ -167,8 +165,6 @@ export interface State {
   apps?: Record<string, AppWant>;
   // the installed services, by id
   stacks?: Record<string, StackView>;
-  // the move off the old built-in git, while there's one
-  legacyGit?: LegacyGit | null;
   // the home's digest on this host: anything in it changed, the folders shown read again
   home?: string;
   pollMs?: number;

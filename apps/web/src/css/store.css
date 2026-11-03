@@ -841,6 +841,76 @@
   gap: 0.1rem;
   text-align: right;
 }
+/* running: each host's published services, a row each */
+.store-routes {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  background: var(--card);
+}
+.store-route {
+  display: grid;
+  grid-template-columns: minmax(8ch, 14ch) minmax(0, 1fr) 7ch auto auto;
+  align-items: baseline;
+  gap: 0.4rem 1.2ch;
+  padding: 0.45rem 0.9rem;
+  font-size: 0.8rem;
+}
+.store-route + .store-route {
+  border-top: 1px solid var(--border);
+}
+.store-route.off {
+  opacity: 0.55;
+}
+.store-route-name {
+  color: var(--fg);
+  font-weight: 600;
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+a.store-route-name:is(:hover, :focus-visible) {
+  color: var(--accent);
+  text-decoration: underline;
+}
+.store-route-addr {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.store-route-port {
+  color: var(--muted);
+  text-align: right;
+}
+.store-route-tag {
+  color: var(--muted);
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+.store-route-tag.on {
+  color: var(--accent);
+}
+.store-route-tag.warn {
+  color: var(--sand);
+}
+.store-route-tag.bad,
+.store-count.bad {
+  color: var(--offmesh);
+}
+@media (max-width: 720px) {
+  .store-route {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+  }
+  .store-route-addr,
+  .store-route-port {
+    display: none;
+  }
+}
 /* the app page: its badge, the viewer's panes, the check, the form */
 .store-badge {
   display: inline-flex;

@@ -337,17 +337,12 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
   }
   // the installed services: an admin's install, update or removal, every host following
   let m = stackOpRe.exec(pathname);
-  const legacy = pathname === "/api/stacks/legacy-git/move" || pathname === "/api/stacks/legacy-git/clear";
-  if ((m || legacy || pathname === "/api/stacks/install" || pathname === "/api/stacks/docker") && method === "POST") {
+  if ((m || pathname === "/api/stacks/install" || pathname === "/api/stacks/docker") && method === "POST") {
     const s = users.Of(c);
     if (!isBrowser(c) || !((!!s && s.admin) || (adminPass === "" && isLoopback(c)))) return forbidden();
     const by = s?.user ?? "admin";
-    if (pathname === "/api/stacks/install")
-      return onJSON(c, 512 << 10, true, (p) => stacks.InstallOrMove(p, by) ?? stacks.Install(p, by));
+    if (pathname === "/api/stacks/install") return onJSON(c, 512 << 10, true, (p) => stacks.Install(p, by));
     if (pathname === "/api/stacks/docker") return onJSON(c, 1024, true, (p) => stacks.AskDocker(str(p.host), by));
-    // the move off the old built-in git: its master's copy into the git stack, then the old copies deleted
-    if (pathname === "/api/stacks/legacy-git/move") return onJSON(c, 4096, true, (p) => stacks.LegacyMove(p, by));
-    if (legacy) return onJSON(c, 1024, true, () => stacks.LegacyClear(by, stackServing("forgejo")));
     const [id, op] = [m![1]!, m![2]!];
     return onJSON(c, 1024, true, (p) =>
       op === "update" ? stacks.Update(id, by) : stacks.Remove(id, p.keepData !== false, by),
@@ -389,6 +384,9 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
     if (!isBrowser(c) || !sameOrigin(c) || !((!!s && s.admin) || (adminPass === "" && isLoopback(c))))
       return forbidden();
     const host = m[1]!;
+    // only a host the admin is signed into: their own login for it saved
+    if (s && !(await users.HostLogin(s, host))[2])
+      return sendJSON(403, { error: `sign in to ${host} first: profile, the hosts you log into` });
     if (method === "GET") return sendJSON(...(await hostConfig(host, { op: "get" })));
     return onJSON(c, 16 * 1024, true, (p) =>
       ["shares", "model"].includes(str(p.op)) ? hostConfig(host, p) : [400, { error: "op is shares or model" }],

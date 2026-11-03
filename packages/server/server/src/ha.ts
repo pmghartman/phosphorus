@@ -128,8 +128,7 @@ export async function haRoute(c: Ctx, pathname: string, method: string, q: URLSe
     return;
   }
   m = stackRe.exec(pathname);
-  // the old git's move is the stacks' own route, not a failover move
-  if (m && method === "POST" && m[1] !== "legacy-git") {
+  if (m && method === "POST") {
     const s = Of(c);
     if (!isBrowser(c) || !((!!s && s.admin) || (adminPass === "" && isLoopback(c)))) return forbidden();
     if (!h) return sendJSON(503, { error: "failover not started" });

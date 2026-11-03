@@ -190,27 +190,6 @@ export interface StackStatus {
 // POST /api/stacks/<id>/move { to }               -> { ok }   a planned handoff                      (ha, admin)
 // State.stacks carries every StackView; HostInfo.stacks each host's StackStatus, HostInfo.docker its DockerInfo.
 
-// the move off the git service phosphorus used to run itself (etc/stacks/legacy/git.json):
-// the old master's Forgejo data copied into the git stack on that host, the old servants
-// its standbys; the old copies deleted once an admin says the stack serves
-export interface LegacyGit {
-  from: string;
-  standbys: string[];
-  by: string;
-  at: number;
-  state: "asked" | "copying" | "moved" | "failed";
-  // the install's own fields when it came as one, its secrets left out
-  env?: Record<string, string>;
-  error?: string;
-  cleared?: { by: string; at: number };
-}
-
-// POST /api/stacks/legacy-git/move { from, standbys } -> { ok, legacy }   (stacks, admin)
-// POST /api/stacks/legacy-git/clear                    -> { ok, legacy }   (stacks, admin)
-// POST /api/stacks/install of the featured Forgejo while an old copy waits is that move,
-// answering { ok, legacy }; fresh: true installs it empty instead.
-// State.legacyGit carries the record, HostInfo.legacyGit each host's old copy while it has one.
-
 export interface AppPage {
   def: AppDef;
   readme: string;

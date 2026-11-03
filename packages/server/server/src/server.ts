@@ -37,10 +37,8 @@ export function publishHost() {
     wildcard: wildcard(),
     stacks: stacks.statuses(),
     docker: stacks.dockerInfo(),
-    legacyGit: stacks.legacyInfo(),
     ...catalog.facts(),
   });
-  void stacks.tickLegacy(selfHost);
 }
 
 // every phosphorus host as a place to install an app: its tailnet os and its info
@@ -95,7 +93,6 @@ export function buildState(): Record<string, any> {
     apps: webapps.wants(),
     home: homesync.digest(),
     stacks: stacks.views(),
-    legacyGit: stacks.legacyOf() ?? null,
   };
 }
 
@@ -112,20 +109,7 @@ let lastStateFp = "";
 function stateFp(s: Record<string, any>): string {
   const tn = (s.tailnet as Record<string, any>[]).map((d) => [d.name, d.os, d.phosphorus, d.phosphorusSeen, d.version]);
   const m = s.model as Record<string, any>;
-  return marshal([
-    s.self,
-    s.routes,
-    s.lock,
-    s.chain,
-    tn,
-    m.agents,
-    m.keys,
-    s.hosts,
-    s.apps,
-    s.home,
-    s.stacks,
-    s.legacyGit,
-  ]);
+  return marshal([s.self, s.routes, s.lock, s.chain, tn, m.agents, m.keys, s.hosts, s.apps, s.home, s.stacks]);
 }
 
 export function noteState(s: Record<string, any>): string {

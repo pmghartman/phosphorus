@@ -59,8 +59,8 @@ export const stateVars = {
   category: '',
   // every match shown, not the first few dozen
   all: false,
-  // the front's tab: self-hosted services, or apps for the desktop
-  tab: 'services' as 'services' | 'apps',
+  // the front's tab: self-hosted services, apps for the desktop, or what the mesh runs
+  tab: 'services' as 'services' | 'apps' | 'running',
 };
 // a service's log shown in full, by host
 export const logsOpen = new Set<string>();
@@ -110,10 +110,11 @@ export function storeWatch(on: boolean): void {
 // an app's or service's page shown, the window opened for it when needed
 export function storeShow(id: string): void {
   stateVars.openId = id;
-  // the way back lands on the tab the page belongs to
-  if (id.startsWith('stack:') || id === 'sources') stateVars.tab = 'services';
+  // the way back lands on the tab the page belongs to, or on running when opened from there
+  const keep = stateVars.tab === 'running' && !!id && id !== 'sources';
+  if (!keep && (id.startsWith('stack:') || id === 'sources')) stateVars.tab = 'services';
   if (id.startsWith('stack:')) loadPage(id.slice(6));
-  else if (apps?.some((a) => a.id === id)) stateVars.tab = 'apps';
+  else if (!keep && apps?.some((a) => a.id === id)) stateVars.tab = 'apps';
   stateVars.sig = '';
   if (!watching) dkOpenApp('apps');
   draw();

@@ -76,15 +76,6 @@ export async function start(): Promise<Server<WSData>> {
     hosts: stackHosts,
     installed: () => new Set(store.list("etc/stacks").map((f) => f.replace(/\.json$/, ""))),
   });
-  // the hosts with the old built-in git's data, the newest first, as the services tab orders them
-  stacks.legacySeam.copies = () =>
-    Object.entries(hostsInfo())
-      .filter(([, i]) => i?.legacyGit)
-      .sort(
-        ([a, x], [b, y]) =>
-          y.legacyGit.gen - x.legacyGit.gen || y.legacyGit.stamp - x.legacyGit.stamp || a.localeCompare(b),
-      )
-      .map(([h]) => h);
   // the installed services: this host's copies brought to the mesh's wants
   stacks.Start({
     defOf: catalog.defOf,

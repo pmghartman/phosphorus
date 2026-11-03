@@ -172,9 +172,8 @@ export function recheck(key: string) {
   }, 450);
 }
 
-// fresh: Forgejo installed empty though old git data waits; also: hosts Docker is asked of
-// besides the picked ones, the old data's host when the install moves it
-export async function install(key: string, o: { fresh?: boolean; also?: string[] } = {}) {
+// an admin's install of the form's app onto the hosts picked
+export async function install(key: string) {
   const f = formOf(key);
   const { source, ref } = splitKey(key);
   f.busy = true;
@@ -184,11 +183,7 @@ export async function install(key: string, o: { fresh?: boolean; also?: string[]
     // Docker asked first of each picked host that has none yet, those hosts installing it
     const hosts = (f.check ?? pages.get(key)?.page?.check)?.hosts ?? [];
     for (const h of hosts)
-      if (
-        (h.host === f.active || f.standbys.includes(h.host) || o.also?.includes(h.host)) &&
-        h.docker === 'installable' &&
-        !dockerBusy(h.host)
-      )
+      if ((h.host === f.active || f.standbys.includes(h.host)) && h.docker === 'installable' && !dockerBusy(h.host))
         await call('/api/stacks/docker', jsonPost({ host: h.host }));
     await call(
       '/api/stacks/install',
@@ -198,7 +193,6 @@ export async function install(key: string, o: { fresh?: boolean; also?: string[]
         env: given(f),
         active: f.active,
         standbys: f.standbys,
-        ...(o.fresh ? { fresh: true } : {}),
       }),
     );
     // the secrets typed are the server's now; the want in the state before the form goes

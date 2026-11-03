@@ -186,42 +186,65 @@
   max-width: none;
 }
 
-/* each host's config, a row opened for its forms */
-.set-hosts {
+/* the hosts page's bar: all hosts, then each one; a signed-in host marked */
+.set-hostbar {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
+  gap: 0.2rem;
+  padding: 0.2rem;
+  margin-top: 0.4rem;
   border: 1px solid var(--border);
+  border-radius: var(--r-pop, 0);
+  background: var(--card);
 }
-.set-host + .set-host {
-  border-top: 1px solid var(--border);
-}
-.set-host-sum {
-  display: flex;
+.set-hostchip {
+  display: inline-flex;
   align-items: center;
-  gap: 0.6rem;
-  padding: 0.45rem 0.7rem;
-  cursor: pointer;
-  list-style: none;
-}
-.set-host-sum::-webkit-details-marker {
-  display: none;
-}
-.set-host-sum::before {
-  content: "›";
+  gap: 0.45ch;
+  padding: 0.25rem 0.8rem;
+  background: none;
+  border: 0;
+  border-radius: var(--r-pop, 0);
   color: var(--muted);
-  transition: transform 0.15s;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
 }
-.set-host[open] > .set-host-sum::before {
-  transform: rotate(90deg);
+.set-hostchip.in::before {
+  content: "";
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: var(--ok, var(--accent));
 }
-.set-host-sum:hover .dk-host,
-.set-host-sum:focus-visible .dk-host {
+.set-hostchip.self {
   color: var(--accent);
 }
-.set-host-sum:focus-visible {
-  outline: 1px solid var(--accent);
-  outline-offset: -1px;
+.set-hostchip.on {
+  color: var(--fg);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
 }
+.set-hostchip:not(.on):is(:hover, :focus-visible) {
+  color: var(--fg);
+  outline: none;
+}
+.set-mesh[hidden] {
+  display: none;
+}
+#view-status[data-only] .st-card:not(.open),
+#view-status[data-only] .st-top {
+  display: none;
+}
+.set-host-cfg .set-host-body {
+  padding: 0;
+}
+.set-host-cfg .store-link {
+  display: inline;
+  padding: 0;
+}
+
+/* the picked host's config forms */
 .set-host-body {
   display: flex;
   flex-direction: column;
