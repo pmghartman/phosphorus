@@ -6,7 +6,6 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@phosphorus/gamedns": "workspace:*",
     "@phosphorus/proxy": "workspace:*",
     "@phosphorus/services": "workspace:*",
     "@phosphorus/store": "workspace:*",

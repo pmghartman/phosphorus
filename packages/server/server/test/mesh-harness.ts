@@ -129,7 +129,6 @@ export class Mesh {
       FRONTEND_PORT: String(this.port),
       CTL_PORT: String(this.ctlPort),
       INGRESS_PORT: "0",
-      GAME_DNS_PORT: "0",
       POLL_HOT_MS: "600000",
       ...this.env,
     };

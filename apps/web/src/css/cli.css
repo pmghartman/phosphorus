@@ -2,11 +2,10 @@
 
 /* the selection marker: a › in the accent, sliding in on hover or ↑↓ */
 .list li a,
-.game-card,
 .tab-menu-list li {
   position: relative;
 }
-:is(.list li a, .game-card, .tab-menu-list li:not(.empty))::after {
+:is(.list li a, .tab-menu-list li:not(.empty))::after {
   content: "›";
   position: absolute;
   left: 0.4rem;
@@ -18,7 +17,7 @@
     opacity 0.15s,
     transform 0.15s;
 }
-:is(.list li a, .game-card):is(:focus-visible)::after {
+.list li a:focus-visible::after {
   opacity: 1;
   transform: translate(0, -50%);
 }
@@ -132,22 +131,11 @@
   padding: 0.9rem;
 }
 
-.dk-icon.dk-games .ic {
-  color: var(--teal);
-}
 .dk-favicon {
   width: 1.4rem;
   height: 1.4rem;
   object-fit: contain;
   image-rendering: auto;
-}
-#view-games > .home-col {
-  min-height: 100%;
-  border: 0;
-  padding: 0;
-}
-#view-games > .home-col > .home-col-head {
-  display: none;
 }
 
 /* the tray's mesh: an icon, its graph and pings in a popup above it */

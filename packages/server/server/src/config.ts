@@ -15,11 +15,7 @@ export const adminPass = env("ADMIN_PASS");
 export const tsAPIKey = process.env.TS_API_KEY ?? "";
 
 export const platformFile = join(stateDir, "platform.json");
-export const gameKeyDir = join(stateDir, "game-control");
 export const bootID = uuid();
-// the key the frontend ssh's with: a copy kept apart from the user's
-// profile, under state on Windows where /root doesn't exist
-export const gameKey = process.platform === "win32" ? join(gameKeyDir, "run-key") : "/root/.ssh/game-control";
 
 export const runMS = 12 * 3600 * 1000;
 export const runSandbox =

@@ -10,7 +10,6 @@ const base = await import("../src/base.ts");
 const { durText, lastLine, setHome, splitLines, sshInclude } = base;
 const { plistText, xmlEsc } = await import("../src/darwin.ts");
 const { escapeArg, psq } = await import("../src/windows.ts");
-const { authorizedKeysKept, gameKeyLine } = await import("../src/game.ts");
 const { absTo, bakeEnv, envFileText, migrateHome, oldHomes, readEnvFile, signature, splitComma, withPath } =
   await import("../src/native.ts");
 const { kept, syncPayload } = await import("../src/install.ts");
@@ -42,8 +41,6 @@ test("commands and usage", async () => {
     "setup",
     "rebuild",
     "upgrade",
-    "game-control",
-    "game-control-setup",
     "run",
     "uninstall",
     "status",
@@ -110,26 +107,6 @@ test("escapeArg as syscall.EscapeArg, psq as a PowerShell literal", () => {
   expect(escapeArg("a b\\")).toBe('"a b\\\\"');
   expect(escapeArg("a\\b c")).toBe('"a\\b c"');
   expect(psq("it's")).toBe("'it''s'");
-});
-
-test("the play/stop key's authorized_keys line and what's kept around it", () => {
-  const pub = "ssh-ed25519 AAAAC3 phosphorus-game-control\n";
-  const line = gameKeyLine("/var/lib/phosphorus/bin/phosphorus", "/var/lib/phosphorus", pub);
-  expect(line).toBe(
-    'restrict,command="/var/lib/phosphorus/bin/phosphorus game-control --home /var/lib/phosphorus" ssh-ed25519 AAAAC3 phosphorus-game-control',
-  );
-  expect(gameKeyLine(String.raw`C:\p\bin\phosphorus.exe`, String.raw`C:\p`, pub)).toBe(
-    String.raw`restrict,command="C:\\p\\bin\\phosphorus.exe game-control --home C:\\p" ssh-ed25519 AAAAC3 phosphorus-game-control`,
-  );
-  const keyPart = "ssh-ed25519 AAAAC3";
-  // already there: nothing to write
-  expect(authorizedKeysKept("ssh-rsa X me\n" + line + "\n", line, keyPart)).toBeUndefined();
-  // an older line for the key, a stale script line and blanks dropped; others kept
-  const old = 'command="/old/game.sh" ssh-ed25519 AAAAC3 phosphorus-game-control';
-  expect(
-    authorizedKeysKept(`ssh-rsa X me\n\n${old}\nrestrict ssh-ed25519 AAAAC3 other\nssh-rsa Y you\n`, line, keyPart),
-  ).toEqual(["ssh-rsa X me", "ssh-rsa Y you"]);
-  expect(authorizedKeysKept("", line, keyPart)).toEqual([]);
 });
 
 test("phos alone: the front page, linked to the desktop", () => {

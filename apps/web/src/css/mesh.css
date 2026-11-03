@@ -406,7 +406,12 @@
   border: 1.5px solid var(--sand);
   border-right-color: transparent;
   border-radius: 50%;
-  animation: game-spin 0.8s linear infinite;
+  animation: git-spin 0.8s linear infinite;
+}
+@keyframes git-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 .mesh-git-behind {
   display: flex;
@@ -558,17 +563,5 @@
   .about-mark {
     width: 11rem;
     height: 11rem;
-  }
-
-  /* services above game servers, each full width */
-  /* game servers stretched to the bottom, the note at the screen's foot */
-  .home-col {
-    flex: none;
-  }
-  .home-col:last-child {
-    flex: 1 0 auto;
-  }
-  #game-servers-list {
-    margin-bottom: 0.75rem;
   }
 }

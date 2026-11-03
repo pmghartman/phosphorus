@@ -125,8 +125,8 @@ export const agentTools = (): Tool[] => [
     read: true,
     scope: "key",
     description:
-      "A host's logs: phosphorus's own (systemd's journal on Linux, phosphorus.log elsewhere), one part of it, " +
-      "or a game's start/stop output; the last lines, filtered. The first stop when something misbehaves. Admins only.",
+      "A host's logs: phosphorus's own (systemd's journal on Linux, phosphorus.log elsewhere) or one part of it, " +
+      "the last lines, filtered. The first stop when something misbehaves. Admins only.",
     schema: object(
       {
         host: name,
@@ -134,7 +134,7 @@ export const agentTools = (): Tool[] => [
         match: { type: "string", description: "only lines holding this, case-insensitive" },
         source: {
           type: "string",
-          description: "phosphorus (all, default), frontend, cloudflared, git, model, mesh, game:<name>",
+          description: "phosphorus (all, default), frontend, cloudflared, git, model, mesh",
         },
         level: {
           type: "string",
@@ -168,7 +168,7 @@ export const agentTools = (): Tool[] => [
     scope: "key",
     description:
       "A host's two config files as they stand: phosphorus.ini (shares in [files], [git], [model]) and " +
-      "services.export (each [service]: port, scheme, max_body, public, type game with start/stop). Read before service_edit or config_set. Admins only.",
+      "services.export (each [service]: port, scheme, max_body, public). Read before service_edit or config_set. Admins only.",
     schema: object({ host: name }, "host"),
     run: (a, m) => {
       adminOf(m);
@@ -185,7 +185,7 @@ export const agentTools = (): Tool[] => [
       "checked before it's written and live within seconds. fields only change the keys given; a blank value drops one. " +
       "Pages listening on a host are found and offered, not published: publish one with its port alone (removed stays removed). " +
       "Each is a subdomain once *.<domain> reaches the mesh, a path when another host has the name. " +
-      "Web: port (required), scheme http|https (blank: sniffed), max_body (e.g. 50MB), public true. Game: type game, port, start and stop commands. " +
+      "port (required), scheme http|https (blank: sniffed), max_body (e.g. 50MB), public true. " +
       "Old keys (mode, base_path, extras) are dropped on any edit, extras' max_body kept. Admins only.",
     schema: object(
       {
@@ -325,9 +325,9 @@ export function describe() {
       "plus this host and the mesh's domain. Host names from here are what every other tool's host takes. " +
       "health true adds each phosphorus host's health: answering, version, round trip in ms, its Cloudflare tunnel and whether *.<domain> reaches the mesh through it (wildcard, with the Cloudflare entries to add when missing).",
     services:
-      "Every web service and game server published on the mesh: host, name, port, mode, public, and the URL a person opens. " +
+      "Every web service published on the mesh: host, name, port, mode, public, and the URL a person opens. " +
       "With host and name, that one service checked right now instead: listening, its HTTP status, published or why not. " +
-      "service_request calls one's API; game_power starts or stops a game.",
+      "service_request calls one's API.",
     host_stats:
       "One host right now: cpu, memory and disk with percents, gpu, network, phosphorus's own parts by role and the top processes. " +
       "No host: one row of percents per host at once, the cheap way to scan the mesh before drilling into one.",
@@ -351,7 +351,6 @@ export function describe() {
       "Open a terminal tab to a host on the person's Phosphorus window, shared with phosphorus. On a key it logs in with their saved login for that host (none saved: nothing opens); terminal_run then runs commands in it. Else they log in themselves.",
     terminal_screen:
       "Read the screen and recent scrollback of the person's terminal tabs that are shared with phosphorus on one host. wait_s waits for new output first.",
-    game_power: "Start or stop a game server, running only the start or stop command its service declares.",
     update_status:
       "The mesh update: whether one runs, who started it, each host's step and result. history true adds the last fifty started from this host with any errors.",
     update_control:
@@ -377,7 +376,7 @@ export function describe() {
       ].includes(t.name)
     )
       t.admin = true;
-    if (["files_change", "game_power", "update_control", "make_git_master"].includes(t.name)) t.destructive = true;
+    if (["files_change", "update_control", "make_git_master"].includes(t.name)) t.destructive = true;
     else if (t.name === "fetch_page") t.open = true;
   }
 }

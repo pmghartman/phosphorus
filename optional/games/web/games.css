@@ -1,0 +1,325 @@
+/* the game servers' page: its theme's tokens pushed in by the desktop
+   (followTheme) over the default theme's below, worn when opened on its own */
+
+:root {
+  color-scheme: dark;
+  --bg: #141414;
+  --fg: #e0e0e0;
+  --muted: #9d9d9d;
+  --accent: #9f81cf;
+  --border: #2e2e2e;
+  --card: #1b1b1b;
+  --online: #3fb950;
+  --offmesh: #f85149;
+  --warn: #d29922;
+  --teal: #56b6c2;
+  --font: ui-monospace, SFMono-Regular, "SF Mono", "Cascadia Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    color-scheme: light;
+    --bg: #ffffff;
+    --fg: #1f1f23;
+    --muted: #6b6b73;
+    --accent: #6a4bb0;
+    --border: #e4e4e7;
+    --card: #f4f4f5;
+    --online: #1a7f37;
+    --offmesh: #cf222e;
+    --warn: #9a6700;
+    --teal: #1b7c83;
+  }
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+:focus {
+  outline: none;
+}
+[hidden] {
+  display: none !important;
+}
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+button,
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+a {
+  color: var(--accent);
+}
+
+.gm {
+  padding: 0.5rem 0;
+}
+.gm-list,
+.gm-hosts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.gm-list .empty,
+.gm-out {
+  padding: 0.3rem 1.2rem;
+  color: var(--muted);
+}
+
+/* one game: its play/stop, name and host, the address to join at */
+.game-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.3rem 0.5rem 0.3rem 1.2rem;
+  transition: background-color 0.15s;
+}
+.game-card:hover,
+.game-card:focus-visible {
+  background: var(--border);
+}
+/* the selection marker: a › in the accent, sliding in on focus */
+.game-card::after {
+  content: "›";
+  position: absolute;
+  left: 0.4rem;
+  top: 50%;
+  color: var(--accent);
+  opacity: 0;
+  transform: translate(-0.3rem, -50%);
+  transition:
+    opacity 0.15s,
+    transform 0.15s;
+}
+.game-card:focus-visible::after {
+  opacity: 1;
+  transform: translate(0, -50%);
+}
+.game-info {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.game-info > div:first-child,
+.game-addr {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.meta {
+  margin-left: 0.6ch;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.game-detail {
+  flex: 0 3 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.game-addr {
+  min-width: 0;
+  user-select: all;
+  color: var(--teal);
+}
+.game-error {
+  color: var(--offmesh);
+  font-size: 0.75rem;
+  margin-top: 0.25rem;
+  overflow-wrap: anywhere;
+}
+
+/* play/pause/spinner, colored by status */
+.game-btn {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 1.05rem;
+  height: 1.05rem;
+  padding: 0;
+  background: none;
+  border: 1px solid currentColor;
+  cursor: pointer;
+}
+.game-btn svg {
+  width: 0.55rem;
+  height: 0.55rem;
+  fill: currentColor;
+}
+.game-btn.online {
+  color: var(--online);
+}
+.game-btn.offline,
+.game-btn.down,
+.game-btn.unknown {
+  color: var(--muted);
+}
+.game-btn.offline:hover:not(:disabled) {
+  color: var(--fg);
+}
+.game-btn.busy {
+  color: var(--warn);
+}
+.game-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, currentColor 15%, transparent);
+}
+.game-btn:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+.game-btn.busy:disabled {
+  opacity: 1;
+}
+.game-spin {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+}
+.game-btn.busy svg {
+  animation: game-spin 1s linear infinite;
+}
+@keyframes game-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.game-copy,
+.game-edit {
+  display: grid;
+  place-items: center;
+  padding: 0.15rem;
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.game-copy:hover,
+.game-edit:hover,
+.game-copy:focus-visible,
+.game-edit:focus-visible {
+  color: var(--accent);
+}
+.game-copy svg,
+.game-edit svg {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+.stroke {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1;
+}
+
+/* an admin's: the form, the hosts' logins */
+.gm-admin {
+  margin: 0.9rem 1.2rem 0.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  align-items: flex-start;
+}
+.gm-head {
+  margin-top: 0.4rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+}
+.gm-hosts {
+  width: 100%;
+}
+.gm-hosts li {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.2rem 0;
+  font-size: 0.85rem;
+}
+.gm-hosts .who {
+  flex: 1;
+  color: var(--muted);
+}
+.gm-hosts .who.none {
+  color: var(--warn);
+}
+.gm-btn {
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    color 0.15s,
+    background-color 0.15s;
+}
+.gm-btn:hover:not(:disabled),
+.gm-btn:focus-visible {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--fg);
+}
+.gm-btn:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+.gm-danger:hover:not(:disabled),
+.gm-danger:focus-visible {
+  border-color: var(--offmesh);
+  background: color-mix(in srgb, var(--offmesh) 18%, transparent);
+}
+.gm-form {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.7rem;
+  border: 1px solid var(--border);
+  background: var(--card);
+}
+.gm-form label {
+  display: grid;
+  grid-template-columns: 4rem 1fr;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.gm-form input,
+.gm-form select {
+  min-width: 0;
+  padding: 0.2rem 0.4rem;
+  border: 1px solid var(--border);
+  background: var(--bg);
+}
+.gm-form input:focus,
+.gm-form select:focus {
+  border-color: var(--accent);
+}
+.gm-row {
+  display: flex;
+  gap: 0.5rem;
+}
+.gm-error {
+  margin: 0;
+  color: var(--offmesh);
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}

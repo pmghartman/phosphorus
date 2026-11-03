@@ -19,7 +19,7 @@ Read the one that fits before the first call; a one-tool question needs none.
 | something down, slow, full, failing or silent | `references/diagnose.md` |
 | run a command or script on a host or every host | `references/run.md` |
 | find, read, edit, copy, move or organize files | `references/files.md` |
-| publish, change, remove or check a service or game server, call its API | `references/service.md` |
+| publish, change, remove or check a service, call its API; start or stop a game server | `references/service.md` |
 | update the mesh, follow, retry or cancel an update | `references/update.md` |
 | read or post chat, message someone, wait for a reply (the Chat app) | `references/chat.md` |
 | Forgejo repos, issues, PRs, clone or push, replication | `references/git.md` |
@@ -30,7 +30,7 @@ Read the one that fits before the first call; a one-tool question needs none.
 - **Real host names only.** Take them from `mesh_hosts`, once per session; never guess or shorten one. A device with `phosphorus: false` can't be acted on: say so.
 - **Batch and go narrow.** Load the tools a job needs in one tool search, run independent reads in one parallel batch. Prefer the cheap call: `host_stats` with no host before one host, `files_list` `stat: true` before `files_read`, `files_search` over walking `files_list`, a `services` check over curl in `terminal_run`, `host_logs` filtered by `level`, `match`, `since`.
 - **Read before writing.** `host_config` before `config_set` or `service_edit`; read the passage before `files_write` with old/new; `update_status` before `update_control`.
-- **Changes need the user's word for that target.** `host_power`, `files_change` delete, `files_copy` move, `config_set`, `service_edit`, `update_control`, `make_git_master`, `game_power`, and any `terminal_run` that changes a machine. Use `dry_run` first where it exists and show the diff. `host_power` takes `confirm` equal to the host name; never press `make_git_master` twice.
+- **Changes need the user's word for that target.** `host_power`, `files_change` delete, `files_copy` move, `config_set`, `service_edit`, `update_control`, `make_git_master`, `game_power` (the Games app's), and any `terminal_run` that changes a machine. Use `dry_run` first where it exists and show the diff. `host_power` takes `confirm` equal to the host name; never press `make_git_master` twice.
 - **No secrets.** Never ask for, take or type a password, key or token. `terminal_run` and `forgejo` use the user's saved logins; a missing login is a finding to report, not a prompt.
 - **Writes are audited** in `audit_log`. Report what changed, where, and how to undo it.
 

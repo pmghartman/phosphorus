@@ -5,7 +5,6 @@
 import './lib/md.ts';
 import './lib/theme.ts';
 import './lib/icons.ts';
-import './features/games.ts';
 import './features/mesh/mesh.ts';
 import './features/home/home.ts';
 import './features/notes.ts';

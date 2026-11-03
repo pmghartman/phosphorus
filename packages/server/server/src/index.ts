@@ -45,13 +45,11 @@ import { appHandler } from "./routes.ts";
 import {
   buildState,
   chainAction,
-  forwardGame,
   gitRowsAny,
   hostServices,
   hostsInfo,
   ownState,
   publishHost,
-  runGameLocally,
   stackHosts,
 } from "./server.ts";
 import { filesCall } from "./shares.ts";
@@ -148,8 +146,6 @@ function initMCP() {
     lock: update.meshLock,
     chain: () => update.chainStatus() ?? peers.chain(),
     actions: {
-      game: (host, name, action) =>
-        host === selfHost ? runGameLocally(name, action) : forwardGame(host, name, action),
       gitMaster: (host) => {
         markHot();
         return git.makeMaster(host);

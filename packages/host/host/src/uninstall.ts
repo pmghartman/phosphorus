@@ -1,8 +1,7 @@
 // uninstall everything this host added, its home last: the service, the admin
-// setup behind its own prompt, PATH, the play/stop key; Linux's the package purged
+// setup behind its own prompt, PATH; Linux's the package purged
 import { rmSync } from "node:fs";
 import { at, envPath, fail, fileExists, home, isLinux, run, say } from "./base.ts";
-import { unauthorizeGame } from "./game.ts";
 import { os } from "./os.ts";
 
 export async function uninstall(opts: string[]) {
@@ -19,7 +18,6 @@ export async function uninstall(opts: string[]) {
     await os.svcStop();
   } catch {}
   os.svcRemove();
-  unauthorizeGame();
   await os.unpath();
   if (await os.isAdmin()) {
     try {

@@ -289,7 +289,6 @@ export function dkIcons(): void {
           ] as [string, () => HTMLButtonElement],
         ]
       : []),
-    ['games', () => dkIcon('games', 'games', '', () => dkOpenApp('games'))],
     ['apps', () => dkIcon('apps', 'apps', '', () => dkOpenApp('apps'))],
     ...webapps.map((a): [string, () => HTMLButtonElement] => [
       `webapp\n${a.id}`,

@@ -42,7 +42,7 @@ Off by default. An admin installs them from the Apps page, and every host serves
 | Code | Claude Code or opencode sessions in a folder on any host, run there as your own login, on the mesh's models or your Claude subscription | installable, [`optional/code`](optional/code) |
 | Chat | Mesh-wide chat with channels, direct messages, attachments and agents posting through the MCP tools, every host holding the whole history | installable, [`optional/chat`](optional/chat) |
 | Git | A Forgejo server for the mesh, with failover | moving out of the core |
-| Games | Game servers you start and stop from the desktop, with join addresses | moving out of the core |
+| Games | Game servers you start and stop from the desktop or an agent, each run on its host as a login an admin allowed, with join addresses on the tailnet | installable, [`optional/games`](optional/games) |
 | Viewer | Images with zoom, video, audio and PDFs from any host's files, plus a plain text editor; opening a file in Files opens it here, without it files download | installable, [`optional/viewer`](optional/viewer) |
 
 Each optional app lives in [`optional/<id>`](optional) and is built into a signed bundle with `bun run app <id> OUT VERSION`.

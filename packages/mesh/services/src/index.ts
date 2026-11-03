@@ -1,5 +1,5 @@
 // this host's own services, services.export validated whole or not at all,
-// health checked, live ones, games and git published; a blank scheme sniffed,
+// health checked, live ones and git published; a blank scheme sniffed,
 // each a subdomain once *.<domain> answers; pages it doesn't name found and
 // offered, a section taken out not offered for writing back
 import { readFileSync } from "node:fs";
@@ -33,27 +33,27 @@ const gitRoleFile = join(StateDir, "git-role");
 // the ports of sections taken out of services.export, a found page there left alone
 const removedFile = join(StateDir, "services-removed");
 const notes = new Notes("services");
-// a web service's port, scheme (blank: sniffed), max_body and public; a game's
-// type, start and stop until the Games app takes them
-export const Keys = ["port", "scheme", "max_body", "public", "type", "start", "stop"];
+// a web service's port, scheme (blank: sniffed), max_body and public
+export const Keys = ["port", "scheme", "max_body", "public"];
 // older keys still read, dropped whenever the file is rewritten: mode is picked
 // (a subdomain once *.<domain> answers, settled across hosts), base_path is gone,
 // extras' max_body is a key of its own, forwarded_proto follows the ingress
 const oldKeys = ["mode", "base_path", "extras"];
 const extraKeys = ["flush_interval", "max_body", "forwarded_proto"];
+// a game server's, from before Games was an app: its section left alone, not
+// served, till the app takes it
+const gameKeys = ["type", "start", "stop"];
 const headRe = /^\[\s*(.*?)\s*\]$/;
 const commentRe = /^[#;]/;
 const digitsRe = /^[0-9]+$/;
 const quoteRe = /^"|"$/g;
 
 const probeTimeout = 1000;
-const gameConnectMS = 10000;
-const gameActionMS: Record<string, number> = { start: 180000, stop: 60000 };
 
 type Section = { name: string; f: Map<string, string> };
 
 // every section as a declared row, or the first reason to reject; old keys
-// still read listed as "[name] key"
+// still read listed as "[name] key", a game's section skipped
 export function parse(text: string): [Row[], string, string[]] {
   const sections: Section[] = [];
   let cur: Section | undefined;
@@ -70,7 +70,8 @@ export function parse(text: string): [Row[], string, string[]] {
     if (eq < 0) return [[], `line ${i + 1} is not key = value`, []];
     const key = line.slice(0, eq).trim();
     if (!cur) return [[], `line ${i + 1}: ${key} outside any [section]`, []];
-    if (!Keys.includes(key) && !oldKeys.includes(key)) return [[], `[${cur.name}] has an unknown key, ${key}`, []];
+    if (!Keys.includes(key) && !oldKeys.includes(key) && !gameKeys.includes(key))
+      return [[], `[${cur.name}] has an unknown key, ${key}`, []];
     cur.f.set(
       key,
       line
@@ -86,39 +87,33 @@ export function parse(text: string): [Row[], string, string[]] {
     const no = (why: string): [Row[], string, string[]] => [[], `[${s.name}] ${why}`, []];
     if (names.has(s.name)) return no("is declared twice");
     names.add(s.name);
+    if (s.f.get("type") === "game") continue;
+    const stray = gameKeys.find((k) => s.f.has(k));
+    if (stray) return no(`has an unknown key, ${stray}`);
     for (const k of oldKeys) if (s.f.has(k)) old.push(`[${s.name}] ${k}`);
     if (!s.f.has("port")) return no("has no port");
     let port: unknown = s.f.get("port");
     if (digitsRe.test(s.f.get("port")!)) port = Number(s.f.get("port"));
-    const game = s.f.get("type") === "game";
-    if (game && !s.f.get("start") !== !s.f.get("stop")) return no("start and stop go together");
-    if (!game && (s.f.get("start") || s.f.get("stop"))) return no("start and stop are for games only");
-    let row: Row;
-    if (game) {
-      row = { name: s.name, port, type: "game", mode: "game", controllable: !!s.f.get("start") && !!s.f.get("stop") };
-    } else {
-      let maxBody: unknown = s.f.get("max_body") || undefined;
-      if (s.f.has("extras")) {
-        let extras: unknown;
-        try {
-          extras = JSON.parse(s.f.get("extras") || "{}");
-        } catch {
-          return no("extras is not valid JSON");
-        }
-        if (!extras || typeof extras !== "object" || Array.isArray(extras)) return no("extras is not a JSON object");
-        for (const k of Object.keys(extras)) if (!extraKeys.includes(k)) return no(`extras has an unknown key, ${k}`);
-        maxBody ??= (extras as Row).max_body;
+    let maxBody: unknown = s.f.get("max_body") || undefined;
+    if (s.f.has("extras")) {
+      let extras: unknown;
+      try {
+        extras = JSON.parse(s.f.get("extras") || "{}");
+      } catch {
+        return no("extras is not valid JSON");
       }
-      // a blank scheme sniffed when published
-      row = { name: s.name, port, scheme: s.f.get("scheme") || "" };
-      if (maxBody !== undefined) row.max_body = maxBody;
-      if (s.f.get("type")) row.type = s.f.get("type");
-      if (s.f.has("public")) {
-        const p = s.f.get("public")!;
-        row.public = p === "true" || p === "false" ? p === "true" : p;
-      }
+      if (!extras || typeof extras !== "object" || Array.isArray(extras)) return no("extras is not a JSON object");
+      for (const k of Object.keys(extras)) if (!extraKeys.includes(k)) return no(`extras has an unknown key, ${k}`);
+      maxBody ??= (extras as Row).max_body;
     }
-    const why = rowError(game ? row : { ...row, scheme: row.scheme || "http", mode: "path" });
+    // a blank scheme sniffed when published
+    const row: Row = { name: s.name, port, scheme: s.f.get("scheme") || "" };
+    if (maxBody !== undefined) row.max_body = maxBody;
+    if (s.f.has("public")) {
+      const p = s.f.get("public")!;
+      row.public = p === "true" || p === "false" ? p === "true" : p;
+    }
+    const why = rowError({ ...row, scheme: row.scheme || "http", mode: "path" });
     if (why) return no(why);
     rows.push(row);
   }
@@ -299,38 +294,7 @@ function connects(host: string, port: number): Promise<boolean> {
   });
 }
 
-// --- game presses ----------------------------------------------------------
-
-type Press = { action: string; until: number };
-
-const pending = new Map<string, Press>();
-
-// starting/stopping until the port flips, "" clearing it
-export function setPending(name: string, action: string) {
-  if (action) pending.set(name, { action, until: now() + (gameActionMS[action] ?? 0) });
-  else pending.delete(name);
-  markHot();
-}
-
-function pendingFor(name: string): string {
-  const p = pending.get(name);
-  if (p && p.until > now()) return p.action;
-  pending.delete(name);
-  return "";
-}
-
 // --- rows ------------------------------------------------------------------
-
-function gameRow(r: Row, ip: string, ports: Set<number> | undefined): Row {
-  const port = r.port as number;
-  let up = ports?.has(port) ?? false;
-  if (!up) up = probe(`game:${ip}:${port}`, gameConnectMS, () => connects(ip, port)) === true;
-  const name = r.name as string;
-  const pr = pendingFor(name);
-  const status = up && pr === "stop" ? "stopping" : up ? "online" : pr === "start" ? "starting" : "offline";
-  notes.note("svc:" + name, `game ${name} on port ${port} is ${status}`);
-  return { ...r, status };
-}
 
 // a subdomain once *.<domain> reaches the mesh, a path till then
 const pickMode = () => (wildcardUp() ? "subdomain" : "path");
@@ -413,13 +377,12 @@ const findAtOnce = 8;
 const titleRe = /<title[^>]*>([^<]*)<\/title>/i;
 const nameRe = /^[a-z0-9][a-z0-9-]*$/;
 
-// phosphorus's own: ssh, the ingress, the frontend, game DNS, the model, git
+// phosphorus's own: ssh, the ingress, the frontend, the model, git
 function ownPorts(): Set<number> {
   const out = new Set([
     envInt("HOST_SSH_PORT", 22) || 22,
     envInt("INGRESS_PORT", 80),
     FrontendPort,
-    envInt("GAME_DNS_PORT", 53),
     envInt("MODEL_SERVER_PORT", 8791),
   ]);
   const g = readJSONMap(gitRoleFile);
@@ -555,25 +518,14 @@ async function find(ip: string) {
 export const unpublished = () => found;
 
 let ownRows: Row[] = [];
-let lastScan = 0;
-let ports: Set<number> | undefined;
 
 // once per tick at ip, the tailnet address peers route to
 export async function refresh(ip: string): Promise<Row[]> {
   readDeclared();
-  let pressing = false;
-  for (const name of [...pending.keys()]) if (pendingFor(name)) pressing = true;
-  const games = declared.some((r) => r.type === "game");
-  const scan = games && (pressing || now() - lastScan >= IdleMS);
-  if (pressing) markHot();
-  if (scan) {
-    lastScan = now();
-    ports = await listening(ip);
-  }
   for (const p of probes.values()) p.seen = false;
   const rows: Row[] = [];
   for (const r of declared) {
-    const out = r.type === "game" ? gameRow(r, ip, ports) : webRow(r, ip);
+    const out = webRow(r, ip);
     if (out) rows.push(out);
   }
   const g = gitRow(ip);
@@ -628,8 +580,6 @@ export function setPublic(name: string, on: boolean): [number, any] {
   const text = migrate(out.join("\n"));
   const [rows, why] = parse(text);
   if (why) return [400, { error: why }];
-  for (const r of rows)
-    if (r.name === name && r.type === "game") return [400, { error: "public is for web services only" }];
   try {
     writeFileAtomic(servicesFile, text);
   } catch (e) {
@@ -651,14 +601,9 @@ export async function health(name: string, ip: string): Promise<Record<string, a
   const out: Record<string, any> = {
     name,
     port,
-    type: (typeof r.type === "string" && r.type) || "web",
     published,
     listening: (await connects(ip, port)) || (await connects("127.0.0.1", port)),
   };
-  if (r.type === "game") {
-    out.why = out.listening ? "up" : `nothing listening on :${port}, start it with game_power`;
-    return out;
-  }
   const scheme = (typeof r.scheme === "string" && r.scheme) || (await sniff("", ip, port, "")) || "http";
   out.scheme = scheme;
   out.mode = pickMode();

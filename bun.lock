@@ -65,6 +65,17 @@
         "@types/ssh2": "1.15.6",
       },
     },
+    "optional/games": {
+      "name": "@phosphorus/app-games",
+      "dependencies": {
+        "@phosphorus/app-sdk": "workspace:*",
+        "@phosphorus/util": "workspace:*",
+        "ssh2": "1.17.0",
+      },
+      "devDependencies": {
+        "@types/ssh2": "1.15.6",
+      },
+    },
     "optional/viewer": {
       "name": "@phosphorus/app-viewer",
       "dependencies": {
@@ -218,7 +229,6 @@
     "packages/mesh/peers": {
       "name": "@phosphorus/peers",
       "dependencies": {
-        "@phosphorus/gamedns": "workspace:*",
         "@phosphorus/proxy": "workspace:*",
         "@phosphorus/services": "workspace:*",
         "@phosphorus/store": "workspace:*",
@@ -276,12 +286,6 @@
         "@phosphorus/util": "workspace:*",
       },
     },
-    "packages/net/gamedns": {
-      "name": "@phosphorus/gamedns",
-      "dependencies": {
-        "@phosphorus/util": "workspace:*",
-      },
-    },
     "packages/net/proxy": {
       "name": "@phosphorus/proxy",
       "dependencies": {
@@ -312,7 +316,6 @@
         "@phosphorus/config": "workspace:*",
         "@phosphorus/envfile": "workspace:*",
         "@phosphorus/files": "workspace:*",
-        "@phosphorus/gamedns": "workspace:*",
         "@phosphorus/git": "workspace:*",
         "@phosphorus/mcp": "workspace:*",
         "@phosphorus/minisign": "workspace:*",
@@ -371,6 +374,8 @@
 
     "@phosphorus/app-code": ["@phosphorus/app-code@workspace:optional/code"],
 
+    "@phosphorus/app-games": ["@phosphorus/app-games@workspace:optional/games"],
+
     "@phosphorus/app-sdk": ["@phosphorus/app-sdk@workspace:packages/core/app-sdk"],
 
     "@phosphorus/app-viewer": ["@phosphorus/app-viewer@workspace:optional/viewer"],
@@ -386,8 +391,6 @@
     "@phosphorus/envfile": ["@phosphorus/envfile@workspace:packages/host/envfile"],
 
     "@phosphorus/files": ["@phosphorus/files@workspace:packages/home/files"],
-
-    "@phosphorus/gamedns": ["@phosphorus/gamedns@workspace:packages/net/gamedns"],
 
     "@phosphorus/git": ["@phosphorus/git@workspace:packages/mesh/git"],
 

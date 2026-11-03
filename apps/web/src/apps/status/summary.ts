@@ -57,7 +57,7 @@ export function drawMeshSum(names: string[]) {
   const ctr = sum((s) => s.parts?.length);
   const git = (stNet?.gitHosts || []).filter((g) => g.reachable);
   const master = git.find((g) => g.role === 'master');
-  const svc = (stNet?.routes || []).filter((r) => r.type !== 'game').length;
+  const svc = (stNet?.routes || []).filter((r) => !r.type).length;
   const off = names.length - live.length;
   const rows = (
     [

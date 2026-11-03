@@ -1,5 +1,5 @@
 // the machine's side, run by the installers and phos: install, bring-up,
-// rebuild, start and stop, keys, the update agent and game play/stop
+// rebuild, start and stop, keys and the update agent
 import {
   at,
   ExitCode,
@@ -17,7 +17,6 @@ import {
 } from "./base.ts";
 import { restart, stop, update } from "./ctl.ts";
 import { desktopLinks } from "./front.ts";
-import { gameControl, gameControlSetup } from "./game.ts";
 import { install } from "./install.ts";
 import { rebuild } from "./native.ts";
 import { os } from "./os.ts";
@@ -38,8 +37,6 @@ export const commands = new Set([
   "setup",
   "rebuild",
   "upgrade",
-  "game-control",
-  "game-control-setup",
   "run",
   "uninstall",
   "status",
@@ -95,11 +92,7 @@ export async function main(cmd: string, args: string[]): Promise<number> {
   if (f.home) setHome(f.home);
   if (!home) setHome(homeDir());
   // Linux: root's /var/lib/phosphorus, its .env root's alone
-  if (
-    isLinux &&
-    process.geteuid?.() !== 0 &&
-    !["game-control", "game-control-setup", "help", "-h", "--help", "version"].includes(cmd)
-  )
+  if (isLinux && process.geteuid?.() !== 0 && !["help", "-h", "--help", "version"].includes(cmd))
     return os.asRoot([cmd, ...args]);
   setTag(cmd);
   try {
@@ -135,12 +128,6 @@ export async function main(cmd: string, args: string[]): Promise<number> {
         break;
       case "upgrade":
         await upgrade(f.rest[0] ?? "");
-        break;
-      case "game-control":
-        await gameControl();
-        break;
-      case "game-control-setup":
-        await gameControlSetup();
         break;
       case "run":
         return await runHost();

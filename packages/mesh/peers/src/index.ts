@@ -39,7 +39,7 @@ import {
   selfIPNow,
   trusted,
 } from "./discovery.ts";
-import { bindGameDNS, jsString, mapGames, startGameDNS, sweepGuests, syncSplitDNS, truthy } from "./dns.ts";
+import { jsString, sweepGuests, truthy } from "./guests.ts";
 import { HostHeader, Link } from "./link.ts";
 import { type Peer as SSHPeer, writeConfig } from "./ssh.ts";
 
@@ -567,29 +567,19 @@ async function tick() {
     }
     if (best) curChain = best;
   }
-  mapGames(merged, hostIPs);
   const live = devices
     .filter((d) => d.phosphorus === true)
     .map((d) => String(d.name))
     .sort();
-  const ns = live
-    .map((m) => hostIPs.get(m) ?? "")
-    .filter(isIPv4)
-    .sort();
   swap(merged, (h) => hostIPs.get(h) ?? "");
   if (curLock != null || hooks.ownLock() != null) hot = true;
-  bindGameDNS(selfIPNow());
-  if (selfHost && live.length && live[0] === selfHost) {
-    syncSplitDNS(ns);
-    sweepGuests();
-  }
+  if (selfHost && live.length && live[0] === selfHost) sweepGuests();
   if (hot) markHot();
 }
 
 // the loops: discovery on its own clock, the tick on the mesh's, the pushes on changes
 export function start(h: Hooks) {
   Object.assign(hooks, Object.fromEntries(Object.entries(h).filter(([, v]) => v !== undefined)));
-  startGameDNS();
   if (selfHost) writeFileAtomic(selfHostFile, selfHost);
   store.setSyncer(syncStore);
   store.onDelta(pushStore);

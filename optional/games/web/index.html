@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>game servers</title>
+    <link rel="stylesheet" href="./games.css" />
+  </head>
+  <body>
+    <main class="gm">
+      <ul id="games" class="gm-list"></ul>
+      <p class="gm-out" id="out" hidden>log in to <a href="/" target="_top">phosphorus</a> first</p>
+      <!-- an admin's: the form, each host's login, a game added -->
+      <section id="admin" class="gm-admin" hidden>
+        <form id="form" class="gm-form" hidden>
+          <label>name <input name="name" required pattern="[a-z0-9][a-z0-9\-]*" maxlength="63" autocomplete="off" spellcheck="false" /></label>
+          <label>host <select name="host" required></select></label>
+          <label>port <input name="port" required inputmode="numeric" pattern="[0-9]+" maxlength="5" autocomplete="off" /></label>
+          <label>start <input name="start" autocomplete="off" spellcheck="false" placeholder="the line that starts it" /></label>
+          <label>stop <input name="stop" autocomplete="off" spellcheck="false" placeholder="the line that stops it" /></label>
+          <p class="gm-error" id="form-error" hidden></p>
+          <div class="gm-row">
+            <button type="submit" class="gm-btn">save</button>
+            <button type="button" class="gm-btn" id="cancel">cancel</button>
+            <button type="button" class="gm-btn gm-danger" id="remove" hidden>remove</button>
+          </div>
+        </form>
+        <button type="button" class="gm-btn" id="add">add a game</button>
+        <div class="gm-head">play/stop runs as</div>
+        <ul id="hosts" class="gm-hosts"></ul>
+      </section>
+    </main>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

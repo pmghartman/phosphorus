@@ -96,21 +96,16 @@ test("editService creates, edits, rejects and removes", () => {
   // services' own checks, nothing of config's
   expect(editService("Web", { port: "1" }, false, false)).toEqual(["[Web] 'Web' is not a valid name", ""]);
   expect(editService("web", { nope: "1" }, false, false)).toEqual([
-    "no field nope, only port, scheme, max_body, public, type, start, stop",
+    "no field nope, only port, scheme, max_body, public",
     "",
   ]);
   expect(editService("web", { mode: "path" }, false, false)[0]).toBe(
-    "no field mode, only port, scheme, max_body, public, type, start, stop",
+    "no field mode, only port, scheme, max_body, public",
   );
   expect(editService("web", {}, false, false)).toEqual(["[web] has no port", ""]);
-  expect(editService("web", { port: "1", start: "x" }, false, false)).toEqual([
-    "[web] start and stop are for games only",
-    "",
-  ]);
-  expect(editService("mc", { port: "1", type: "game", start: "x" }, false, false)).toEqual([
-    "[mc] start and stop go together",
-    "",
-  ]);
+  expect(editService("web", { port: "1", start: "x" }, false, false)[0]).toBe(
+    "no field start, only port, scheme, max_body, public",
+  );
   expect(editService("web", {}, true, false)).toEqual(["no service web", ""]);
   // dry: the diff alone, nothing on disk
   expect(editService("web", { port: " 8080 " }, false, true)).toEqual(["", "+ [web]\n+ port = 8080"]);
@@ -118,8 +113,9 @@ test("editService creates, edits, rejects and removes", () => {
   expect(editService("web", { port: "8080" }, false, false)).toEqual(["", "+ [web]\n+ port = 8080"]);
   expect(read(svc)).toBe("[web]\nport = 8080\n");
   // a second one after a blank line, the first untouched
-  expect(setService("mc", { port: "25565", type: "game", start: "a", stop: "b" }, false)).toBe("");
-  expect(read(svc)).toBe("[web]\nport = 8080\n\n[mc]\nport = 25565\ntype = game\nstart = a\nstop = b\n");
+  expect(setService("mc", { port: "25565" }, false)).toBe("");
+  expect(read(svc)).toBe("[web]\nport = 8080\n\n[mc]\nport = 25565\n");
+  // a game server's section from before Games was an app, left as it is
   writeFileSync(
     svc,
     "# mine\n[web]\n# the port\nport = 8080\nscheme = https\n\n[mc]\nport = 25565\ntype = game\nstart = a\nstop = b\n",
@@ -154,12 +150,10 @@ test("editService drops old keys and renames", () => {
   ]);
   expect(read(svc)).toBe("[web]\nport = 8080\nmax_body = 50MB\npublic = true\n");
   expect(editService("site", {}, false, false, "nope")).toEqual(["no service nope", ""]);
-  expect(setService("mc", { port: "25565", type: "game", start: "a", stop: "b" }, false)).toBe("");
+  expect(setService("mc", { port: "25565" }, false)).toBe("");
   expect(editService("mc", {}, false, false, "web")).toEqual(["there's already a service mc", ""]);
   expect(editService("site", { port: "8081" }, false, false, "web")[0]).toBe("");
-  expect(read(svc)).toBe(
-    "[site]\nport = 8081\nmax_body = 50MB\npublic = true\n\n[mc]\nport = 25565\ntype = game\nstart = a\nstop = b\n",
-  );
+  expect(read(svc)).toBe("[site]\nport = 8081\nmax_body = 50MB\npublic = true\n\n[mc]\nport = 25565\n");
 });
 
 test("editIni holds to IniKeys and drops an emptied section", () => {

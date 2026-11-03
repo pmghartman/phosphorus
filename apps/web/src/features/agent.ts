@@ -41,7 +41,6 @@ const AGENT_CONSOLE = new Set([
   'service_edit',
   'config_set',
   'host_power',
-  'game_power',
 ]);
 const AGENT_STATUS = new Set(['mesh_hosts', 'host_stats', 'services', 'models', 'set_agent_model']);
 const AGENT_LIT_MS = 2400;

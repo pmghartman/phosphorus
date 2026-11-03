@@ -17,7 +17,12 @@ export const Keys: Key[] = [
     hint: "optional, with the domain; its routes <domain> and *.<domain> to http://localhost:80",
     mesh: true,
   },
-  { name: "TS_API_KEY", label: "Tailscale API token", hint: "game split DNS, expires every 90 days", mesh: true },
+  {
+    name: "TS_API_KEY",
+    label: "Tailscale API token",
+    hint: "guest join keys and their sweep, expires every 90 days",
+    mesh: true,
+  },
   { name: "ADMIN_PASS", label: "Admin password", hint: "setup admin's login, the gate on a mesh update", mesh: true },
 ];
 

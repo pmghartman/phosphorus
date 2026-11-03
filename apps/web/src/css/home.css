@@ -1,4 +1,4 @@
-/* --- home tab: services + game servers ------------------------------------ */
+/* --- framed columns, the guest key ------------------------------------------ */
 .home-col {
   flex: 1 1 0;
   min-width: 0;
@@ -21,13 +21,6 @@
   letter-spacing: 0.04em;
   font-size: 0.72rem;
   white-space: nowrap;
-}
-.home-note {
-  margin-top: auto;
-  padding: 0.6rem 0.75rem;
-  border: 1px dashed var(--border);
-  color: var(--muted);
-  font-size: 0.78rem;
 }
 .join-key {
   display: flex;
@@ -56,7 +49,28 @@
   color: var(--fg);
   outline: none;
 }
-.join-key-cmd .game-copy:focus-visible {
+.copy-btn {
+  display: grid;
+  place-items: center;
+  padding: 0.15rem;
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.copy-btn:hover {
+  color: var(--accent);
+}
+.copy-btn svg {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+.copy-btn .stroke {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1;
+}
+.join-key-cmd .copy-btn:focus-visible {
   color: var(--accent);
   background: var(--border);
   outline: none;

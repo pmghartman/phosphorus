@@ -12,13 +12,13 @@ export interface TailnetDevice {
   version?: string;
 }
 
-// a served destination: a host's service, or a game server (packages/services rows, with host put in)
+// a served destination: a host's service (packages/services rows, with host put in)
 export interface Route {
   host: string;
   name: string;
-  // 'game' for a game server, else a web service
+  // set on an older peer's game servers alone, never routed
   type?: string;
-  // subdomain or path for a service, game for a game server
+  // subdomain or path
   mode?: string;
   // the mode picked by its host, services.export leaving it blank
   auto?: boolean;
@@ -29,9 +29,6 @@ export interface Route {
   public?: boolean;
   // the git service: its master flag, set on the serving copy
   master?: boolean;
-  // a game server's: online, offline, starting, stopping; and whether it has start/stop commands
-  status?: string;
-  controllable?: boolean;
   [k: string]: unknown;
 }
 
@@ -168,7 +165,6 @@ export interface AppStatus {
 
 export interface State {
   domain?: string;
-  gameZone?: string;
   self: SelfInfo;
   routes: Route[];
   tailnet: TailnetDevice[];

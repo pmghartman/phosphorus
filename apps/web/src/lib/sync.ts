@@ -1,5 +1,5 @@
 // /api/state: everything the page knows of the mesh, pushed over its socket, one read right
-// after the user's own action; each push applied to the mesh graph, the games, the desktop,
+// after the user's own action; each push applied to the mesh graph, the desktop,
 // the update pane and the apps
 
 import type { PageMessage, Route, State, TailnetDevice } from '@phosphorus/wire';
@@ -7,7 +7,6 @@ import { appCall } from '../apps/index.ts';
 import { dkHostsGone, dkPressed, dkRoutes } from '../desktop/desk.ts';
 import { dkHomeSeen } from '../desktop/deskfiles.ts';
 import { acctCheck } from '../features/account.ts';
-import { renderGames } from '../features/games.ts';
 import {
   GIT_SERVICE,
   meshModelsFrom,
@@ -24,8 +23,8 @@ const aboutVersion = document.getElementById('about-version')!;
 
 function renderRoutes(routes: Route[], tailnet: TailnetDevice[]) {
   st.terminalHosts = tailnet.filter((d) => d.phosphorus).map((d) => d.name);
-  const services = routes.filter((r) => r.type !== 'game' && r.name !== GIT_SERVICE);
-  renderGames(routes.filter((r) => r.type === 'game'));
+  // a typed row an older peer's: its game servers
+  const services = routes.filter((r) => !r.type && r.name !== GIT_SERVICE);
   st.gitRoute = routes.find((r) => r.name === GIT_SERVICE) || null;
   renderMesh(routes, tailnet);
   dkRoutes(services);

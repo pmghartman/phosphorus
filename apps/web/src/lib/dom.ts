@@ -53,19 +53,14 @@ export function dkGlyph(d: string, cls = ''): SVGSVGElement {
   return svg;
 }
 
-export function gameIcon(kind: string): SVGSVGElement {
+// copy, or the check once copied
+export function copyIcon(done = false): SVGSVGElement {
   const icon = svgEl('svg', { viewBox: '0 0 10 10', 'aria-hidden': 'true' });
-  if (kind === 'play') icon.appendChild(svgEl('path', { d: 'M 2.5 1.5 L 8.5 5 L 2.5 8.5 Z' }));
-  if (kind === 'pause') {
-    icon.appendChild(svgEl('rect', { x: 2, y: 1.5, width: 2, height: 7 }));
-    icon.appendChild(svgEl('rect', { x: 6, y: 1.5, width: 2, height: 7 }));
-  }
-  if (kind === 'busy') icon.appendChild(svgEl('path', { d: 'M 5 1.5 A 3.5 3.5 0 1 1 1.5 5', class: 'game-spin' }));
-  if (kind === 'copy') {
+  if (done) icon.appendChild(svgEl('path', { d: 'M 1.5 5.5 L 4 8 L 8.5 2', class: 'stroke' }));
+  else {
     icon.appendChild(svgEl('rect', { x: 3.5, y: 3.5, width: 5, height: 5, class: 'stroke' }));
     icon.appendChild(svgEl('path', { d: 'M 1.5 6.5 V 1.5 H 6.5', class: 'stroke' }));
   }
-  if (kind === 'check') icon.appendChild(svgEl('path', { d: 'M 1.5 5.5 L 4 8 L 8.5 2', class: 'stroke' }));
   return icon;
 }
 

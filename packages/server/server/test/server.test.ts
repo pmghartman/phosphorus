@@ -44,7 +44,6 @@ test("http smoke", async () => {
     const st = await (await fetch(base + "/api/state")).json();
     expect(st.self.host).toBe("testhost");
     expect(typeof st.pollMs).toBe("number");
-    expect(st.gameZone).toBe("phosphorus");
     // this host's files, shares on by default under the repo
     const fi = await (await fetch(base + "/api/files/testhost/info")).json();
     expect(fi.host).toBe("testhost");

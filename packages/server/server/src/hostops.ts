@@ -9,11 +9,10 @@ import * as peers from "@phosphorus/peers";
 import { health } from "@phosphorus/services";
 import { SealGrant } from "@phosphorus/users";
 import { errText, FrontendPort, peerCall, RepoDir, requestJSON, run, sleep, tailnetIP } from "@phosphorus/util";
-import { gameKeyDir, selfHost } from "./config.ts";
+import { selfHost } from "./config.ts";
 import type { Res } from "./http.ts";
 import { decode, jsString, obj, str, truthy, utf8 } from "./js.ts";
 import { toUser } from "./push.ts";
-import { gameUserRe } from "./server.ts";
 import { filesInfo } from "./shares.ts";
 
 const logLinesMax = 2000;
@@ -100,8 +99,8 @@ export function lineTime(l: string): Date | undefined {
 }
 
 // hostLogs this host's logs, their last lines filtered: source phosphorus (all
-// of it), frontend, cloudflared, git, model or another role's tag, game:<name>
-// for a game's start/stop output; match, level, since, until
+// of it), frontend, cloudflared, git, model or another role's tag; match,
+// level, since, until
 export async function hostLogs(p: Record<string, any>): Promise<Res> {
   let lines = Math.trunc(jsNumber(p.lines)) || 0;
   if (lines < 1) lines = 200;
@@ -119,21 +118,10 @@ export async function hostLogs(p: Record<string, any>): Promise<Res> {
   }
   const filtered = match !== "" || level !== "" || source !== "phosphorus";
   const n = filtered ? logLinesMax * 10 : lines;
-  let all: string[];
-  let from = "";
-  if (source.startsWith("game:")) {
-    const name = source.slice(5);
-    if (!gameUserRe.test(name) || name.includes("..")) return [400, { error: "bad game name" }];
-    const got = await tailFile(join(gameKeyDir, name + ".log"));
-    if (!got) return [404, { error: "no output from " + name + " yet" }];
-    all = got;
-    from = "game";
-  } else {
-    [all, from] = await phosphorusLog(n, since, until);
-    if (source !== "phosphorus") {
-      const tag = "[" + source;
-      all = all.filter((l) => l.includes(tag));
-    }
+  let [all, from] = await phosphorusLog(n, since, until);
+  if (source !== "phosphorus") {
+    const tag = "[" + source;
+    all = all.filter((l) => l.includes(tag));
   }
   const m = match.toLowerCase();
   const kept: string[] = [];

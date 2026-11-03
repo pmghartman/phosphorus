@@ -18,7 +18,6 @@ const nameRe = /^[a-z0-9][a-z0-9-]*$/;
 const baseRe = /^[a-z0-9]([a-z0-9/_-]*[a-z0-9])?$/;
 const sizeRe = /^([0-9]+)(KB|MB|GB)?$/;
 const unit: Record<string, number> = { "": 1, KB: 1e3, MB: 1e6, GB: 1e9 };
-const gameStatus = new Set(["online", "offline", "starting", "stopping"]);
 
 const validPort = (p: unknown) => typeof p === "number" && Number.isInteger(p) && p >= 1 && p <= 65535;
 
@@ -29,10 +28,6 @@ export function rowError(r: Row | undefined | null): string {
   if (!r || typeof r !== "object") return "not an object";
   if (!r.name || !nameRe.test(String(r.name))) return `'${r.name}' is not a valid name`;
   if (!validPort(r.port)) return `'${r.port}' is not a valid port`;
-  if (r.type === "game") {
-    if (!("status" in r)) return "";
-    return typeof r.status === "string" && gameStatus.has(r.status) ? "" : `'${r.status}' is not a game status`;
-  }
   if ("type" in r && r.type !== "") return `'${r.type}' is not a service type`;
   if (r.scheme !== "http" && r.scheme !== "https") return `'${r.scheme}' is not http or https`;
   if (r.mode !== "path" && r.mode !== "subdomain") return `'${r.mode}' is not path or subdomain`;
@@ -124,7 +119,8 @@ export function swap(rows: Row[], ipOf: (h: string) => string): boolean {
   const paths: Route[] = [];
   const all: Route[] = [];
   for (const r of rows) {
-    if (r.type === "game") continue;
+    // a kind of row this version doesn't route: an older peer's game servers
+    if (r.type) continue;
     const why = typeof r.host === "string" && nameRe.test(r.host) ? rowError(r) : `'${r.host}' is not a valid host`;
     if (why) {
       notes.note("table", `routes rejected, still serving the previous ones: ${r.host}'s ${r.name}: ${why}`);

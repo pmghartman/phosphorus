@@ -39,7 +39,6 @@ import {
   statOf,
   version,
 } from "./base.ts";
-import { refreshGameKey } from "./game.ts";
 import { copyFile, replace } from "./install.ts";
 import { os } from "./os.ts";
 
@@ -214,7 +213,6 @@ export async function rebuild() {
     }
     mkdirSync(at("state"), { recursive: true });
     const old = oldHomes();
-    await refreshGameKey();
     const env = bakeEnv();
     const sig = signature(env);
     await os.svcInstall();

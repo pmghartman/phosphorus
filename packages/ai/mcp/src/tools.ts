@@ -8,7 +8,6 @@ import {
   byOf,
   codeOf,
   errc,
-  gameNameRe,
   jsString,
   knownHost,
   meshHosts,
@@ -73,15 +72,13 @@ export const coreTools = (): Tool[] => [
       }
       return src.routes().map((r) => {
         const row = { ...r };
-        if (r.type !== "game") {
-          const bp = str(r.base_path);
-          const base = bp ? bp.replace(/^\/+|\/+$/g, "") + "/" : "";
-          // no domain: this host's own name on the tailnet
-          const domain = src.domain();
-          const at = domain ? "https://" + domain : "http://" + (process.env.SELF_HOST ?? "");
-          if (r.mode === "subdomain" && domain) row.url = `https://${str(r.name)}.${domain}/${base}`;
-          else row.url = `${at}/${str(r.host)}/${str(r.name)}/${base}`;
-        }
+        const bp = str(r.base_path);
+        const base = bp ? bp.replace(/^\/+|\/+$/g, "") + "/" : "";
+        // no domain: this host's own name on the tailnet
+        const domain = src.domain();
+        const at = domain ? "https://" + domain : "http://" + (process.env.SELF_HOST ?? "");
+        if (r.mode === "subdomain" && domain) row.url = `https://${str(r.name)}.${domain}/${base}`;
+        else row.url = `${at}/${str(r.host)}/${str(r.name)}/${base}`;
         return row;
       });
     },
@@ -225,24 +222,6 @@ export const coreTools = (): Tool[] => [
       };
       if (end < u.length) out.next = end;
       return out;
-    },
-  },
-  {
-    name: "game_power",
-    title: "Start or stop a game server",
-    description:
-      "Press play or stop on a game service, as its button does, runs only the start or stop command declared for it.",
-    schema: object(
-      { host: name, name: { type: "string" }, action: { type: "string", enum: ["start", "stop"] } },
-      "host",
-      "name",
-      "action",
-    ),
-    run: (a, m) => {
-      askerOf(m);
-      const act = str(a.action);
-      if ((act !== "start" && act !== "stop") || !gameNameRe.test(str(a.name))) throw new Error("bad name or action");
-      return pressed(src.actions.game(knownHost(a), str(a.name), act));
     },
   },
   {

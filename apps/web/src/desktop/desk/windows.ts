@@ -17,7 +17,6 @@ import { dkWebApp, dkWebApps } from './webapps.ts';
 
 export const DK_APPS: Record<string, { title: string; view: string; w: number; h: number }> = {
   apps: { title: 'apps', view: 'view-apps', w: 820, h: 700 },
-  games: { title: 'game servers', view: 'view-games', w: 460, h: 420 },
 };
 
 export function dkOpenApp(id: string): void {
@@ -71,8 +70,6 @@ export function dkOpenTerminal(host: string, shared = false): void {
 // phosphorus's presses, each the app it names, or the settings section
 export const DK_VIEWS: Record<string, string> = {
   git: 'git',
-  games: 'games',
-  home: 'games',
   apps: 'apps',
   store: 'apps',
 };

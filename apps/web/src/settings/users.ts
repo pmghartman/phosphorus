@@ -1,7 +1,7 @@
 // --- settings › users: the mesh's users for an admin, and a device invited onto the tailnet
 
 import { acctUsers } from '../features/account.ts';
-import { el, gameIcon } from '../lib/dom.ts';
+import { copyIcon, el } from '../lib/dom.ts';
 import { copyText } from '../lib/util.ts';
 
 export function usersSection(pane: HTMLElement): void {
@@ -40,13 +40,13 @@ function invite(): HTMLElement {
       const cmd = `tailscale up --auth-key=${got.key}`;
       const row = el('div', 'join-key-cmd');
       row.title = 'run once tailscale is installed, single use, gone in 3 days';
-      const copy = Object.assign(el('button', 'game-copy'), { type: 'button', title: 'copy', ariaLabel: 'copy' });
-      copy.appendChild(gameIcon('copy'));
+      const copy = Object.assign(el('button', 'copy-btn'), { type: 'button', title: 'copy', ariaLabel: 'copy' });
+      copy.appendChild(copyIcon());
       copy.addEventListener('click', () =>
         copyText(cmd)
           .then(() => {
-            copy.replaceChildren(gameIcon('check'));
-            setTimeout(() => copy.replaceChildren(gameIcon('copy')), 1200);
+            copy.replaceChildren(copyIcon(true));
+            setTimeout(() => copy.replaceChildren(copyIcon()), 1200);
           })
           .catch(() => {}),
       );

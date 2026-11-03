@@ -128,6 +128,21 @@ export const Catalog: App[] = [
       ...["diff", "patch", "gitignore", "dockerfile", "service", "nix", "tex", "rst"],
     ],
   }),
+  firstParty({
+    id: "games",
+    name: "Games",
+    tagline: "game servers you start and stop from the desktop",
+    about:
+      "The mesh's game servers, each on the host it runs on: play and stop from the desktop or an agent, and the address players join at over the tailnet. Admins say which games there are, the lines that start and stop each, and which login a host runs them as, allowed with that login's own password.",
+    features: [
+      "play and stop on Linux, macOS and Windows hosts",
+      "whether each server is up, starting or stopping",
+      "a join address to copy, on the tailnet",
+      "agents list, start and stop them",
+    ],
+    category: "games",
+    server: true,
+  }),
 ];
 
 export const appOf = (id: string) => Catalog.find((a) => a.id === id);

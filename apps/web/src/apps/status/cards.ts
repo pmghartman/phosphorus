@@ -66,7 +66,7 @@ export const usedOf = (a: number, b: number) =>
   `${pct(a / b).padStart(4)} <span class="st-dim">${humanSize(a)}/${humanSize(b)}</span>`;
 export const dotJoin = (bits: (string | false | number | undefined | null)[]) =>
   bits.filter(Boolean).join('<span class="st-dim"> · </span>');
-export const hostServices = (name: string) => (stNet?.routes || []).filter((r) => r.host === name && r.type !== 'game');
+export const hostServices = (name: string) => (stNet?.routes || []).filter((r) => r.host === name && !r.type);
 
 export function fitTiles(names: string[]) {
   const view = stHostsEl.parentElement!;

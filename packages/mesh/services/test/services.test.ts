@@ -13,21 +13,8 @@ process.env.SERVICES_FIND_MS = "0";
 // proxy's domain is fixed on its first import: the one its own test expects
 process.env.BASE_DOMAIN ??= "mulab.dev";
 mkdirSync(process.env.STATE_DIR);
-const {
-  adopt,
-  health,
-  migrate,
-  nameFrom,
-  own,
-  pagesOn,
-  parse,
-  portsOf,
-  refresh,
-  removedPorts,
-  setPending,
-  setPublic,
-  tunnelID,
-} = await import("@phosphorus/services");
+const { adopt, health, migrate, nameFrom, own, pagesOn, parse, portsOf, refresh, removedPorts, setPublic, tunnelID } =
+  await import("@phosphorus/services");
 // util's StateDir is fixed on its first import, another test's in a whole run
 const { StateDir } = await import("@phosphorus/util");
 
@@ -62,12 +49,8 @@ test("parse", () => {
   );
   expect(none).toBe("");
   expect(old).toEqual([]);
-  expect(ok).toEqual([
-    // scheme blank, sniffed when published
-    { name: "web", port: 8080, scheme: "", max_body: "10MB", public: true },
-    { name: "mc", port: 25565, type: "game", mode: "game", controllable: true },
-    { name: "idle", port: 7777, type: "game", mode: "game", controllable: false },
-  ]);
+  // a game server's section left for the Games app to take
+  expect(ok).toEqual([{ name: "web", port: 8080, scheme: "", max_body: "10MB", public: true }]);
 });
 
 test("parse rejects", () => {
@@ -82,12 +65,11 @@ test("parse rejects", () => {
     ['[a]\nport = 1\nextras = {"x": 1}', "[a] extras has an unknown key, x"],
     ["[a]\nscheme = http", "[a] has no port"],
     ["[a]\nport = 1\nmax_body = lots", "[a] 'lots' is not a valid max_body"],
-    ["[a]\nport = 1\nstart = x", "[a] start and stop are for games only"],
-    ["[a]\nport = 1\ntype = game\nstart = x", "[a] start and stop go together"],
+    ["[a]\nport = 1\nstart = x", "[a] has an unknown key, start"],
     ["[a]\nport = 1\nflush_interval = 5", "[a] has an unknown key, flush_interval"],
     ["[a]\nport = 80a", "[a] '80a' is not a valid port"],
     ["[a]\nport = 80\nscheme = ftp", "[a] 'ftp' is not http or https"],
-    ["[a]\nport = 80\ntype = db", "[a] 'db' is not a service type"],
+    ["[a]\nport = 80\ntype = db", "[a] has an unknown key, type"],
     ["[a b]\nport = 80", "[a b] 'a b' is not a valid name"],
   ])
     expect(parse(text!)[1]).toBe(why!);
@@ -126,7 +108,6 @@ test("old keys still read, dropped on a rewrite", () => {
     { name: "jelly", port: 8096, scheme: "", max_body: "50MB" },
     { name: "up", port: 3001, scheme: "", max_body: "1GB" },
     { name: "proto", port: 9000, scheme: "" },
-    { name: "rl", port: 25565, type: "game", mode: "game", controllable: true },
   ]);
   const clean = migrate(text);
   expect(clean).toBe(
@@ -171,9 +152,7 @@ test("set public", () => {
   );
   expect(setPublic("web", false)).toEqual([200, { public: false }]);
   expect(readFileSync(file, "utf8")).toBe("[web]\nport = 8080\n# keep\n\n[mc]\ntype = game\nport = 25565\n");
-  expect(setPublic("mc", true)).toEqual([400, { error: "public is for web services only" }]);
   expect(setPublic("nope", true)).toEqual([404, { error: "this host declares no service called nope" }]);
-  expect(setPublic("mc", false)).toEqual([400, { error: "public is for web services only" }]);
   writeFileSync(file, "[web]\nport = 8080\n[bad]\nport = x\n");
   expect(setPublic("web", true)[0]).toBe(400);
 });
@@ -201,21 +180,21 @@ test("refresh and health", async () => {
     );
     git = true;
   } catch {}
-  const want = git ? ["web", "mc", "git"] : ["web", "mc"];
+  // a game server's section not served
+  const want = git ? ["web", "git"] : ["web"];
   // probes answer in the background: nothing on the first pass
   const first = await refresh("127.0.0.1");
-  expect(first.map((r) => r.name)).toEqual(["mc"]);
+  expect(first.map((r) => r.name)).toEqual([]);
   for (let i = 0; i < 150 && own().length < want.length; i++) {
     await Bun.sleep(20);
     await refresh("127.0.0.1");
   }
   const rows = own();
   expect(rows.map((r) => r.name)).toEqual(want);
-  expect(rows[1]!.status).toBe("offline");
   // the scheme sniffed, the mode a path while *.<domain> isn't known to answer
   expect(rows[0]).toEqual({ name: "web", port: srv.port, scheme: "http", mode: "path", auto: true });
   if (git)
-    expect(rows[2]).toEqual({
+    expect(rows[1]).toEqual({
       name: "git",
       port: srv.port,
       scheme: "http",
@@ -223,16 +202,10 @@ test("refresh and health", async () => {
       base_path: "",
       master: true,
     });
-  setPending("mc", "start");
-  expect((await refresh("127.0.0.1")).find((r) => r.name === "mc")!.status).toBe("starting");
-  setPending("mc", "");
-  expect((await refresh("127.0.0.1")).find((r) => r.name === "mc")!.status).toBe("offline");
-
   expect(await health("nope", "127.0.0.1")).toBeUndefined();
   expect(await health("web", "127.0.0.1")).toEqual({
     name: "web",
     port: srv.port,
-    type: "web",
     published: true,
     listening: true,
     scheme: "http",
@@ -243,21 +216,13 @@ test("refresh and health", async () => {
   expect(await health("gone", "127.0.0.1")).toEqual({
     name: "gone",
     port: deadPort,
-    type: "web",
     published: false,
     listening: false,
     scheme: "http",
     mode: "path",
     why: `not published: nothing on :${deadPort}`,
   });
-  expect(await health("mc", "127.0.0.1")).toEqual({
-    name: "mc",
-    port: deadPort,
-    type: "game",
-    published: true,
-    listening: false,
-    why: `nothing listening on :${deadPort}, start it with game_power`,
-  });
+  expect(await health("mc", "127.0.0.1")).toBeUndefined();
   srv.stop(true);
 });
 

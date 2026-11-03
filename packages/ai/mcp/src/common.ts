@@ -20,7 +20,6 @@ export type Asker = { name: string; ui: (action: Action) => boolean | Promise<bo
 
 // Actions the buttons phosphorus may press
 export type Actions = {
-  game: (host: string, name: string, action: string) => R;
   gitMaster: (host: string) => R;
   agentModel: (agent: string, slot: string, model: string) => R;
   update: (action: string, admin: boolean, only: string[]) => R;
@@ -147,7 +146,6 @@ export const object = (props?: Record<string, any>, ...required: string[]) => ({
 export const name = { type: "string", description: "host name, as mesh_hosts lists it" };
 
 export const nameRe = /^[A-Za-z0-9-]{1,63}$/;
-export const gameNameRe = /^[a-z0-9][a-z0-9-]*$/;
 
 export function hostOf(a: Record<string, any>): string {
   const h = str(a.host);

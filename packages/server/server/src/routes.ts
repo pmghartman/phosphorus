@@ -42,13 +42,12 @@ import {
 import { decode, obj, str, truthy } from "./js.ts";
 import { mcpCallsMesh, peerOp } from "./mcpops.ts";
 import { oauthRoute, Unauthorized } from "./oauth.ts";
-import { buildState, chainAction, forwardGame, mintGuestKey, noteState, runGameLocally } from "./server.ts";
+import { buildState, chainAction, mintGuestKey, noteState } from "./server.ts";
 import { filesHere, forwardFiles, homeWho, openShare, pingPeer, sendFile, serveRun, withHop } from "./shares.ts";
 import { copyTree } from "./transfer.ts";
 import { onUpgrade } from "./ws.ts";
 
 const gitForceRe = /^\/api\/githosts\/([A-Za-z0-9-]{1,63})\/force$/;
-const gameRe = /^\/api\/games\/([a-z0-9][a-z0-9-]*)\/([a-z0-9][a-z0-9-]*)\/(start|stop)$/;
 const runRe = /^\/api\/run\/([a-z0-9][a-z0-9-]*)\/([A-Za-z0-9_-]+)\/(.*)$/;
 const stacksAppRe = /^\/api\/stacks\/app\/([a-z]+)\/(.+)$/;
 const appsTarRe = /^\/internal\/apps\/([a-z][a-z0-9-]*)\/(\d+(?:\.\d+){0,3})$/;
@@ -457,19 +456,6 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
         return [400, { error: "port is 1-65535" }];
       return hostConfig(host, { op: "service", name, fields: { port: String(port) } });
     });
-  }
-
-  m = gameRe.exec(pathname);
-  if (m && method === "POST") {
-    if (!(await isLocalOrPeer(c))) return forbidden();
-    const host = m[1]!,
-      name = m[2]!,
-      action = m[3]!;
-    let r: Res;
-    if (host === selfHost) r = await runGameLocally(name, action);
-    else if (q.has("hop")) r = [421, { error: `${name} was sent to ${selfHost}, which isn't ${host}` }];
-    else r = await forwardGame(host, name, action);
-    return sendJSON(r[0], r[1]);
   }
 
   m = runRe.exec(pathname);

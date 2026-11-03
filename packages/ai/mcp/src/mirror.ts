@@ -20,7 +20,6 @@ const mirrorPrinted = new Set([
   "service_edit",
   "config_set",
   "host_power",
-  "game_power",
   "terminal_screen",
 ]);
 

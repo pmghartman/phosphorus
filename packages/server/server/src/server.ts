@@ -1,108 +1,21 @@
-// this host for the mesh: its games run, its state published to peers and
-// built for the page, the update chain and guest keys
-import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+// this host for the mesh: its state published to peers and built for the
+// page, the update chain and guest keys
 import * as catalog from "@phosphorus/catalog";
-import { Zone } from "@phosphorus/gamedns";
 import * as git from "@phosphorus/git";
 import { State as modelState, Summary } from "@phosphorus/model";
 import * as peers from "@phosphorus/peers";
-import { own as ownServices, setPending, unpublished, wildcard } from "@phosphorus/services";
+import { own as ownServices, unpublished, wildcard } from "@phosphorus/services";
 import * as stacks from "@phosphorus/stacks";
 import * as store from "@phosphorus/store";
 import * as homesync from "@phosphorus/sync";
 import * as update from "@phosphorus/update";
-import { lockACL, logf, markHot, marshal, peerCall, run, tailnetIP } from "@phosphorus/util";
+import { logf, markHot, marshal } from "@phosphorus/util";
 import * as webapps from "@phosphorus/webapps";
-import {
-  adminPass,
-  baseDomain,
-  gameKey,
-  gameKeyDir,
-  getPlatform,
-  hostSSHHost,
-  hostSSHPort,
-  selfHost,
-  selfInfo,
-  tsAPIKey,
-  Version,
-} from "./config.ts";
+import { adminPass, baseDomain, getPlatform, selfHost, selfInfo, tsAPIKey, Version } from "./config.ts";
 import { ownHA } from "./ha.ts";
 import type { Res } from "./http.ts";
 import { decode, obj, str } from "./js.ts";
 import { filesInfo } from "./shares.ts";
-
-// --- game servers ------------------------------------------------------------
-
-export const gameUserRe = /^[A-Za-z0-9._\\-]+$/;
-
-export async function runGameLocally(name: string, action: string): Promise<Res> {
-  let game: Record<string, any> | undefined;
-  for (const r of ownServices()) if (r.type === "game" && r.name === name) game = r;
-  if (!game) return [404, { error: `${selfHost} hosts no game called ${name}` }];
-  if (game.controllable !== true) return [409, { error: name + " has no start/stop commands in services.export" }];
-  let user = "";
-  try {
-    user = readFileSync(join(gameKeyDir, "user"), "utf8").trim();
-    if (!gameUserRe.test(user) || user.startsWith("-")) throw new Error("bad user");
-    mkdirSync(dirname(gameKey), { recursive: true, mode: 0o700 });
-    const key = readFileSync(join(gameKeyDir, "id_ed25519"));
-    writeFileSync(gameKey, key, { mode: 0o600 });
-    chmodSync(gameKey, 0o600);
-    lockACL(gameKey, false);
-  } catch {
-    return [503, { error: `play/stop isn't set up on ${selfHost}; run phos game-control-setup there` }];
-  }
-  setPending(name, action);
-  const r = await run(
-    [
-      "ssh",
-      "-i",
-      gameKey,
-      "-p",
-      hostSSHPort,
-      "-o",
-      "BatchMode=yes",
-      "-o",
-      "IdentitiesOnly=yes",
-      "-o",
-      "ConnectTimeout=5",
-      "-o",
-      "StrictHostKeyChecking=no",
-      "-o",
-      "UserKnownHostsFile=/dev/null",
-      "-o",
-      "LogLevel=ERROR",
-      `${user}@${hostSSHHost}`,
-      `${action} ${name}`,
-    ],
-    { timeoutMs: 60000 },
-  );
-  if (!r.ok) {
-    setPending(name, "");
-    let why = r.stderr.trim() || r.error || `exit status ${r.code}`;
-    if (why.length > 300) why = why.slice(-300);
-    if (!why) why = action + " failed";
-    // the key's forced command still naming a file an old release had
-    if (why.includes("No such file") || why.includes("not found"))
-      why += `; the play/stop key on ${selfHost} points at a missing program, run phos game-control-setup there or update it`;
-    logf("[frontend] game %s: %s failed: %s", name, action, why);
-    return [502, { error: why }];
-  }
-  logf("[frontend] game %s: %s ran", name, action);
-  return [200, { ok: true }];
-}
-
-export async function forwardGame(host: string, name: string, action: string): Promise<Res> {
-  const ip = await tailnetIP(host);
-  if (!ip) return [502, { error: `can't find ${host} on the tailnet` }];
-  return peerCall(host, {
-    host: ip,
-    method: "POST",
-    path: `/api/games/${host}/${name}/${action}?hop=1`,
-    timeoutMs: 65000,
-  });
-}
 
 // --- etc/hosts/<host>/ ------------------------------------------------------
 
@@ -172,7 +85,6 @@ export function buildState(): Record<string, any> {
   if (!mine) chain = peers.chain();
   return {
     domain: baseDomain,
-    gameZone: Zone,
     self: selfInfo(),
     routes: peers.routes(),
     tailnet: peers.tailnet(),
