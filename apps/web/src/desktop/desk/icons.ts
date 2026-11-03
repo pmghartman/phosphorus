@@ -21,7 +21,6 @@ import { dk, st } from '../../lib/state.ts';
 import { dkControlTray } from '../control.ts';
 import { dkView } from '../desk.ts';
 import { dkDeskDir, dkDeskView, dkDeskWatch, dkFileIcon } from '../deskfiles.ts';
-import { dkLoginHosts } from '../login.ts';
 import { dkSessionHold, dkSessionRestore, dkSessionTry } from '../session.ts';
 import { dkSpotlightTray } from '../spotlight.ts';
 import { dkBar, dkChips, dkClock, dkHomeBtn, dkPlaceItems } from '../taskbar.ts';
@@ -32,7 +31,6 @@ import { dkWebApp, dkWebApps } from './webapps.ts';
 import { dkOpenApp } from './windows.ts';
 
 export function dkDesktop(): void {
-  dk.login = null;
   const icons = el('div', 'dk-icons');
   const wins = el('div', 'dk-wins');
   const tasks = el('div', 'dk-tasks');
@@ -643,7 +641,6 @@ export function dkRoutes(services: Route[]): void {
   dk.services = services;
   dkIcons();
   dkChips();
-  dkLoginHosts();
 }
 
 // a host gone from the mesh: its terminals closed, its chip and places gone until it answers again

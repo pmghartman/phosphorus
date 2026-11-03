@@ -117,7 +117,7 @@ function hits(): Hit[] {
       );
   add(G.bell!, 'notifications', '', 'menu', 'bell alerts', () => dk.bell?.show(true));
   add(G.app!, 'arrange icons', '', 'menu', 'desktop tidy sort', dkArrange);
-  add(G.power!, 'log out', '', 'menu', 'sign out quit exit', acctLogout);
+  add(G.power!, 'log out', '', 'menu', 'sign out quit exit', () => acctLogout());
   // windows
   const up = dkStack();
   const top = up.find((w) => w.node.classList.contains('focused')) || up[0];

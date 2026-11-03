@@ -41,7 +41,7 @@
 /* the mesh graph and its pings, a card of its own height */
 .set-mesh {
   display: flex;
-  height: 24rem;
+  height: 15rem;
   margin-top: 0.4rem;
 }
 .set-mesh > .mesh-panel {
@@ -216,7 +216,7 @@ button.dk-chip:not(.locked) {
     padding: 0.8rem 0.8rem 1.2rem;
   }
   .set-mesh {
-    height: 20rem;
+    height: 12rem;
   }
   .set-host-body.acct-pane {
     padding-left: 0.9rem;

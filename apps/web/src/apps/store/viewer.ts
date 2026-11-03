@@ -268,10 +268,32 @@ function info(def: AppDef, v?: StackView): HTMLElement {
   );
   if (m.health) row('health', `${m.health.service} ${m.health.path ?? `port ${m.health.port ?? ''}`}`, 'mono');
   const hooks = [...(m.backup?.pre ?? []), ...(m.backup?.post ?? [])];
-  if (hooks.length) row('around a copy', hooks.map((h) => `${h.service}: ${h.run.join(' ')}`).join('; '), 'mono');
+  // in words, the commands themselves on hover
+  if (hooks.length) {
+    const what = el('span', '', hookWords(hooks));
+    what.title = hooks.map((h) => `${h.service}: ${h.run.join(' ')}`).join('\n');
+    row('before a copy', what);
+  }
   if (def.archs.length) row('runs on', def.archs.join(', '), 'mono');
   row('category', def.category);
   return dl;
+}
+
+// a copy's hooks said plainly: the databases dumped, else the services a step runs in
+function hookWords(hooks: { service: string; run: string[] }[]): string {
+  const said = new Set<string>();
+  for (const h of hooks) {
+    const cmd = h.run.join(' ');
+    const kind = /pg_dump/.test(cmd)
+      ? 'a PostgreSQL dump'
+      : /mysqldump|mariadb-dump/.test(cmd)
+        ? 'a MySQL dump'
+        : /sqlite3/.test(cmd)
+          ? 'a SQLite backup'
+          : 'a step';
+    said.add(`${kind} in ${h.service}`);
+  }
+  return [...said].join(', ');
 }
 
 // --- the check and the install ---------------------------------------------------------------

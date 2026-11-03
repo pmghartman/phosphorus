@@ -2,7 +2,6 @@
 // and the desktop's own. Each was a module-level let of app.js read by
 // several sections; here one object, read where it was read and set where it was set
 import type { FileEntry, HostInfo, Route, State, Vault } from '@phosphorus/wire';
-import type { LoginRow } from '../desktop/login.ts';
 import type { DkWin } from '../desktop/windows.ts';
 import type { FmView, Loc, PickedItem } from '../features/home/home.ts';
 
@@ -76,7 +75,6 @@ export interface FmClip {
 // creds: host -> {user, pass}, this page's memory only
 export interface Dk {
   creds: Map<string, { user: string; pass: string }>;
-  rows: Map<string, LoginRow>;
   wins: Map<string, DkWin>;
   services: Route[];
   deskFiles: FileEntry[];
@@ -87,7 +85,6 @@ export interface Dk {
   // the icons picked
   sel: Set<string>;
   clock?: HTMLElement;
-  login?: { list: HTMLElement; go: HTMLButtonElement } | null;
   bell?: { show: (on: boolean) => void; paint: () => void };
   ctl?: { show: (on: boolean) => void; btn: HTMLButtonElement; wrap: HTMLElement; draw: () => void };
   mcp?: { show: (on: boolean) => void; paint: () => void } | null;
@@ -104,7 +101,6 @@ export interface Dk {
 }
 export const dk: Dk = {
   creds: new Map(),
-  rows: new Map(),
   wins: new Map(),
   services: [],
   deskFiles: [],

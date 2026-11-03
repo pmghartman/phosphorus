@@ -3,7 +3,7 @@
 
 import type { Me, UserRow } from '@phosphorus/wire';
 import { dkArt, dkDesktop, dkIcons, dkLayout, dkLogout, dkTermDrop, dkWallPaint } from '../desktop/desk.ts';
-import { DK_USERS_KEY, dkLogin, dkProbe, dkUsers } from '../desktop/login.ts';
+import { DK_USERS_KEY, dkProbe, dkUsers } from '../desktop/login.ts';
 import { dkAnchor, dkBar, dkChips, dkPopsClose, type Pop } from '../desktop/taskbar.ts';
 import { dkClose } from '../desktop/windows.ts';
 import { acctCall } from '../lib/api.ts';
@@ -22,7 +22,8 @@ export async function acctStart(): Promise<void> {
 }
 
 // a real form, so the browser offers to save and fill it
-function acctLogin(setup: boolean) {
+// the login form; setup the first visit's, the setup admin's; as a name typed in for the person
+function acctLogin(setup: boolean, as = '') {
   st.acct = null;
   stateStop();
   dkLogout();
@@ -34,6 +35,7 @@ function acctLogin(setup: boolean) {
     spellcheck: false,
     autocapitalize: 'off',
     required: true,
+    value: as,
   });
   const pass = Object.assign(el('input'), {
     name: 'password',
@@ -47,7 +49,15 @@ function acctLogin(setup: boolean) {
   actions.append(why, go);
   form.append(
     el('div', 'home-col-head', 'phosphorus'),
-    el('p', 'dk-note', setup ? 'admin, ADMIN_PASS' : 'log in'),
+    el(
+      'p',
+      'dk-note',
+      as
+        ? `${as} is the admin now: log in as them`
+        : setup
+          ? 'first time here: log in as admin with the admin password given to phos keys'
+          : 'log in',
+    ),
     user,
     pass,
     actions,
@@ -94,8 +104,8 @@ function acctIn(me: Me) {
   if (acctNext()) return;
   if (!stateUp()) connectState();
   dk.creds = new Map(Object.entries(acct.vault.hosts).map(([h, c]) => [h, { user: c.user, pass: c.pass }]));
-  if (dk.creds.size) dkDesktop();
-  else dkLogin();
+  // hosts logged into later, from the terminal's device menu, a host's lock or settings
+  dkDesktop();
 }
 
 export async function acctSave(): Promise<string> {
@@ -258,9 +268,9 @@ function acctNext(): boolean {
   return true;
 }
 
-export async function acctLogout(): Promise<void> {
+export async function acctLogout(as = ''): Promise<void> {
   await acctCall('/api/logout', {});
-  acctLogin(false);
+  acctLogin(false, as);
 }
 
 // the setup admin: only the users list, then out
@@ -268,13 +278,14 @@ function acctSetup() {
   dkLogout();
   const box = el('div', 'dk-login');
   const out = Object.assign(el('button', '', 'log out'), { type: 'button' });
-  out.addEventListener('click', acctLogout);
+  out.addEventListener('click', () => acctLogout());
   const actions = el('div', 'update-actions');
   actions.appendChild(out);
   box.append(
     el('div', 'home-col-head', 'setup admin'),
-    el('p', 'dk-note', 'make an admin user, then log out and in as them; the setup admin is off once an admin exists'),
-    acctUsers(),
+    el('p', 'dk-note', 'make the first admin; the setup admin is off once one exists, and you log in as them'),
+    // the first admin made: the setup admin's done, the login asked of them
+    acctUsers((name, admin) => admin && acctLogout(name)),
     actions,
   );
   const stage = el('div', 'dk-stage');
@@ -284,8 +295,8 @@ function acctSetup() {
   dkView.replaceChildren(desk);
 }
 
-// the users list and a new user's form, for admins
-export function acctUsers(): HTMLElement {
+// the users list and a new user's form, for admins; added told of each user made
+export function acctUsers(added?: (name: string, admin: boolean) => void): HTMLElement {
   const wrap = el('div', 'acct-users');
   const list = el('ul', 'dk-rows');
   const name = noFill(
@@ -334,13 +345,15 @@ export function acctUsers(): HTMLElement {
     );
   };
   add.addEventListener('click', async () => {
-    const r = await acctCall('/api/users', { name: name.value.trim(), pass: pass.value, admin: admin.checked });
+    const made = { name: name.value.trim(), admin: admin.checked };
+    const r = await acctCall('/api/users', { name: made.name, pass: pass.value, admin: made.admin });
     if (r.ok) {
       name.value = '';
       pass.value = '';
       admin.checked = false;
     }
     draw(r);
+    if (r.ok) added?.(made.name, made.admin);
   });
   for (const i of [name, pass])
     i.addEventListener('keydown', (e) => {

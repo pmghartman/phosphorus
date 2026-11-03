@@ -133,7 +133,8 @@ export const cosmos: Adapter = {
       ref,
       id,
       name: String(desc.name || ref),
-      tagline: /^[^.!?]*[.!?]?/.exec(tagline)?.[0] ?? tagline,
+      // its first sentence: a stop then a space or the end, never the dot in Node.js or a url
+      tagline: /^[\s\S]*?[.!?](?=\s|$)/.exec(tagline)?.[0] ?? tagline,
       description: String(desc.longDescription || desc.description || ""),
       icon: icon || `https://azukaar.github.io/cosmos-servapps-official/servapps/${ref}/icon.png`,
       category: Array.isArray(desc.tags) ? String(desc.tags[0] ?? "") : "",

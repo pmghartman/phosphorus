@@ -732,6 +732,10 @@
   font-size: 0.74rem;
   overflow-wrap: anywhere;
 }
+.store-repo-note {
+  color: var(--muted);
+  font-size: 0.74rem;
+}
 /* on the mesh: a row per installed app, its hosts and how they are */
 .store-runs {
   display: flex;

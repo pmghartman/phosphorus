@@ -34,7 +34,9 @@ export async function fmLoad(fm: Fm): Promise<void> {
   try {
     const body = await filesCall(fm.loc, 'list', undefined, { path: fm.dir });
     if (fm.loading !== want) return;
-    fm.entries = body.entries;
+    // the home's .sys, phosphorus's own store, never a person's folder
+    const top = fm.loc.share === 'home' && (!fm.dir || fm.dir === '/');
+    fm.entries = top ? body.entries.filter((e: { name: string }) => e.name !== '.sys') : body.entries;
     fm.error = body.truncated ? 'truncated' : '';
   } catch (err) {
     if (fm.loading !== want) return;

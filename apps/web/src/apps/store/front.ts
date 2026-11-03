@@ -332,6 +332,9 @@ function appsTab(wrap: HTMLElement, q: string) {
     wrap.append(el('div', 'store-empty', q ? `no app matches “${q}”` : 'no apps in the catalogue yet'));
 }
 
+// a catalogue not yet in on this host and not failed: its first download under way
+const fetching = (s: { fetchedAt: number; error?: string; apps: number }) => !s.fetchedAt && !s.error && !s.apps;
+
 function servicesTab(wrap: HTMLElement, q: string) {
   section(
     wrap,
@@ -341,13 +344,13 @@ function servicesTab(wrap: HTMLElement, q: string) {
       .map(meshRow),
     'store-runs',
   );
-  // publishing is an admin's: the others aren't shown what they can't do
+  // publishing is an admin's: the others aren't shown what they can't do; after what's
+  // featured, so the catalogue leads
   const found = st.acct?.admin
     ? discovered().filter(
         (f) => !q || matches({ id: f.name, name: f.title, tagline: f.host, category: 'discovered' }, q),
       )
     : [];
-  section(wrap, 'discovered', found.map(foundTile));
   // the old built-in git's data, offered to the git service
   const legacy = q ? null : legacyGitBox();
   if (legacy) wrap.append(legacy);
@@ -375,7 +378,10 @@ function servicesTab(wrap: HTMLElement, q: string) {
   const filters = el('div', 'store-filters');
   filters.append(
     chips(
-      [['', 'every source'], ...sources.map((s): [string, string] => [s.id, `${s.name} · ${s.apps}`])],
+      [
+        ['', 'every source'],
+        ...sources.map((s): [string, string] => [s.id, `${s.name} · ${fetching(s) ? '…' : s.apps}`]),
+      ],
       stateVars.source,
       (v) => {
         stateVars.source = v;
@@ -383,8 +389,10 @@ function servicesTab(wrap: HTMLElement, q: string) {
       },
     ),
   );
-  // a catalogue this host couldn't fetch, said beside its name
-  for (const s of sources) if (s.error) filters.append(el('span', 'store-repo-err', `${s.name}: ${s.error}`));
+  // a catalogue this host couldn't fetch, or is fetching for the first time, said beside its name
+  for (const s of sources)
+    if (s.error) filters.append(el('span', 'store-repo-err', `${s.name}: ${s.error}`));
+    else if (fetching(s)) filters.append(el('span', 'store-repo-note', `fetching ${s.name}…`));
   wrap.append(filters);
   const inSource = catalog.apps.filter((a) => !stateVars.source || a.source === stateVars.source);
   if (!q && !stateVars.category) {
@@ -395,6 +403,7 @@ function servicesTab(wrap: HTMLElement, q: string) {
     }
     section(wrap, 'featured', featured.slice(0, 8).map(stackTile));
   }
+  section(wrap, 'discovered', found.map(foundTile));
   const cats = new Map<string, number>();
   for (const a of inSource) if (a.category) cats.set(a.category, (cats.get(a.category) ?? 0) + 1);
   // the catalogues' own words, many used once: the common ones, the picked one always

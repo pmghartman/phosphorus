@@ -171,17 +171,8 @@ test("refresh and health", async () => {
   const deadPort = dead.port;
   dead.stop(true);
   writeFileSync(file, `[web]\nport = ${srv.port}\n[gone]\nport = ${deadPort}\n[mc]\ntype = game\nport = ${deadPort}\n`);
-  let git = false;
-  try {
-    mkdirSync(StateDir, { recursive: true });
-    writeFileSync(
-      join(StateDir, "git-role"),
-      JSON.stringify({ publish: true, name: "git", port: srv.port, mode: "subdomain", master: true }),
-    );
-    git = true;
-  } catch {}
   // a game server's section not served
-  const want = git ? ["web", "git"] : ["web"];
+  const want = ["web"];
   // probes answer in the background: nothing on the first pass
   const first = await refresh("127.0.0.1");
   expect(first.map((r) => r.name)).toEqual([]);
@@ -193,15 +184,6 @@ test("refresh and health", async () => {
   expect(rows.map((r) => r.name)).toEqual(want);
   // the scheme sniffed, the mode a path while *.<domain> isn't known to answer
   expect(rows[0]).toEqual({ name: "web", port: srv.port, scheme: "http", mode: "path", auto: true });
-  if (git)
-    expect(rows[1]).toEqual({
-      name: "git",
-      port: srv.port,
-      scheme: "http",
-      mode: "subdomain",
-      base_path: "",
-      master: true,
-    });
   expect(await health("nope", "127.0.0.1")).toBeUndefined();
   expect(await health("web", "127.0.0.1")).toEqual({
     name: "web",

@@ -29,7 +29,6 @@ export { tunnelID, type Wildcard, wildcard, wildcardUp } from "./wildcard.ts";
 export type { Row };
 
 const servicesFile = env("SERVICES_FILE", join(RepoDir, "config", "services.export"));
-const gitRoleFile = join(StateDir, "git-role");
 // the ports of sections taken out of services.export, a found page there left alone
 const removedFile = join(StateDir, "services-removed");
 const notes = new Notes("services");
@@ -325,42 +324,6 @@ function webRow(r: Row, ip: string): Row | undefined {
   return;
 }
 
-function gitRow(ip: string): Row | undefined {
-  const g = readJSONMap(gitRoleFile);
-  if (!g || g.publish !== true) {
-    notes.clear("git");
-    return;
-  }
-  // a non-empty string, else any truthy value as JS strings it, else def
-  const str = (k: string, def: string) =>
-    typeof g[k] === "string" && g[k] ? g[k] : k in g && g[k] ? String(g[k]) : def;
-  const row: Row = {
-    name: g.name,
-    port: g.port,
-    scheme: str("scheme", "http"),
-    mode: str("mode", "subdomain"),
-    base_path: str("base_path", ""),
-    master: g.master === true,
-  };
-  const why = rowError(row);
-  if (why) {
-    notes.note("git", "ignoring git-role: " + why);
-    return;
-  }
-  const port = row.port as number,
-    scheme = row.scheme as string,
-    base = row.base_path as string;
-  const up = probe(`web:${scheme}:${ip}:${port}:${base}`, IdleMS, () => answers(scheme, ip, port, base));
-  if (up === undefined) return;
-  const name = String(row.name);
-  if (up) {
-    notes.note("git", `${name} is up on port ${port}, published (master=${row.master})`);
-    return row;
-  }
-  notes.note("git", `git-role says publish, but ${name} is not answering on port ${port}, not published`);
-  return;
-}
-
 // --- found -----------------------------------------------------------------
 
 // a web page on this host that services.export doesn't name yet, offered for
@@ -377,17 +340,14 @@ const findAtOnce = 8;
 const titleRe = /<title[^>]*>([^<]*)<\/title>/i;
 const nameRe = /^[a-z0-9][a-z0-9-]*$/;
 
-// phosphorus's own: ssh, the ingress, the frontend, the model, git
+// phosphorus's own: ssh, the ingress, the frontend, the model
 function ownPorts(): Set<number> {
-  const out = new Set([
+  return new Set([
     envInt("HOST_SSH_PORT", 22) || 22,
     envInt("INGRESS_PORT", 80),
     FrontendPort,
     envInt("MODEL_SERVER_PORT", 8791),
   ]);
-  const g = readJSONMap(gitRoleFile);
-  if (typeof g?.port === "number") out.add(g.port);
-  return out;
 }
 
 const unentity = (s: string) =>
@@ -528,8 +488,6 @@ export async function refresh(ip: string): Promise<Row[]> {
     const out = webRow(r, ip);
     if (out) rows.push(out);
   }
-  const g = gitRow(ip);
-  if (g) rows.push(g);
   for (const [k, p] of probes) if (!p.seen && !p.busy) probes.delete(k);
   pollWildcard();
   if (findMS > 0 && !finding && now() - lastFind >= findMS) {
