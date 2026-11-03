@@ -4,7 +4,7 @@
 import type { AppSummary, FoundPage, Route, SourceId, StackView } from '@phosphorus/wire';
 import { serviceUrl } from '../../features/mesh/routes.ts';
 import { jsonPost } from '../../lib/api.ts';
-import { DK_GLYPHS, dkGlyph, el, ICONS } from '../../lib/dom.ts';
+import { dkGlyph, el, ICONS } from '../../lib/dom.ts';
 import { dk, st } from '../../lib/state.ts';
 import { pollState } from '../../lib/sync.ts';
 import { facts, iconOf, iconTile, pill, tileSub } from './apps.ts';
@@ -529,15 +529,7 @@ function runningTab(wrap: HTMLElement, q: string) {
 export function front(): HTMLElement {
   const wrap = el('div', 'store-front');
   const onApps = stateVars.tab === 'apps';
-  // the wizard's own banner, then its tabs and what the one open is for
-  const hero = el('div', 'store-hero');
-  const words = el('div', 'store-hero-t');
-  words.append(
-    el('h1', 'store-hero-title', 'service wizard'),
-    el('p', 'store-hero-sub', 'Install self-hosted services onto your hosts, and apps onto this desktop.'),
-  );
-  hero.append(dkGlyph(DK_GLYPHS.apps!, 'store-hero-ic'), words);
-  wrap.append(hero);
+  // its tabs and what the one open is for, no banner over them
   const head = el('div', 'store-head');
   const title = el('div', 'store-title');
   title.append(tabs(), el('p', 'store-lead', TABS[stateVars.tab].lead));

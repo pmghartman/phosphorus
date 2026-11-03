@@ -88,6 +88,16 @@ export function pill(a: StoreApp, f: Facts, big = false): HTMLElement {
 }
 
 // the icon tile: the first of srcs that loads, the initial when none does
+// a page's top line: the way back to the front's tab, then the page's own name
+export function crumb(back: string, name: string): HTMLElement {
+  const row = el('div', 'store-crumb');
+  const b = Object.assign(el('button', 'store-back'), { type: 'button' });
+  b.append(dkGlyph(DK_UI.back!, 'store-back-ic'), back);
+  b.addEventListener('click', () => storeShow(''));
+  row.append(b, el('span', 'store-crumb-sep', '/'), el('h1', 'store-crumb-name', name));
+  return row;
+}
+
 export function iconTile(name: string, srcs: string[], cls: string): HTMLElement {
   const tile = el('span', `store-icon ${cls}`);
   const mono = () => el('span', 'store-mono', name[0]!.toUpperCase());
@@ -194,20 +204,13 @@ export function page(a: StoreApp): HTMLElement {
   const f = facts(a);
   const admin = !!st.acct?.admin;
   const wrap = el('div', 'store-page');
-  const back = Object.assign(el('button', 'store-back'), { type: 'button' });
-  back.append(dkGlyph(DK_UI.back!, 'store-back-ic'), 'apps');
-  back.addEventListener('click', () => storeShow(''));
-  wrap.append(back);
+  wrap.append(crumb('apps', a.name));
 
-  const hero = el('div', 'store-hero');
-  const text = el('div', 'store-hero-text');
-  const meta = el('div', 'store-hero-meta');
-  meta.append(el('span', '', `by ${a.by}`), el('span', 'store-hero-dot', '·'), el('span', '', a.category));
-  text.append(el('h1', '', a.name), el('p', 'store-hero-tag', a.tagline), meta);
-  const acts = el('div', 'store-hero-acts');
+  // get, update or remove, and how it is, at the top of the side column
+  const acts = el('section', 'store-sec store-acts-sec');
   acts.append(pill(a, f, true));
   const [cls, sub] = tileSub(a, f);
-  acts.append(el('span', `store-hero-sub ${cls}`, sub));
+  acts.append(el('span', `store-tile-sub ${cls}`, sub));
   if (f.here && f.update && admin) {
     const open = Object.assign(
       el('button', 'store-link'),
@@ -217,13 +220,11 @@ export function page(a: StoreApp): HTMLElement {
     open.addEventListener('click', () => dkWebApp(a.id));
     acts.append(open);
   }
-  hero.append(iconOf(a, f, 'lg'), text, acts);
-  wrap.append(hero);
 
   const cols = el('div', 'store-cols');
   const main = el('div', 'store-main');
   const aboutSec = el('section', 'store-sec');
-  aboutSec.append(el('h2', '', 'about'), el('p', 'store-about', a.about));
+  aboutSec.append(el('p', 'store-tag', a.tagline), el('h2', '', 'about'), el('p', 'store-about', a.about));
   if (a.features.length) {
     const ul = el('ul', 'store-features');
     for (const x of a.features) ul.append(el('li', '', x));
@@ -236,6 +237,7 @@ export function page(a: StoreApp): HTMLElement {
   hostsSec.append(hh, hostList(a, f));
   main.append(hostsSec);
   const side = el('aside', 'store-side');
+  side.append(acts);
   const infoSec = el('section', 'store-sec');
   infoSec.append(el('h2', '', 'information'), infoRows(a, f));
   side.append(infoSec);

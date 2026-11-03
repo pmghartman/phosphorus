@@ -164,7 +164,6 @@
     .dk-note-head,
     .dk-cl-title,
     .dk-cl-sec-t,
-    .update-pane-header > span,
     .modal-header > span,
     .about-key
   ) {
@@ -254,7 +253,7 @@
 }
 :root:is([data-palette="macos"], [data-palette="win11"])
   :is(.update-actions button, .acct-pane button, .acct-users button).danger {
-  color: var(--offmesh);
+  color: color-mix(in srgb, var(--offmesh) 72%, var(--fg));
 }
 :root:is([data-palette="macos"], [data-palette="win11"])
   :is(.update-actions button, .acct-pane button, .acct-users button).danger:hover:not(:disabled) {
@@ -693,7 +692,7 @@
   background: var(--fg);
   color: var(--bg);
 }
-:root[data-palette="cli"] :is(.dk-ap-seg.on, .dk-ap-tab.on) {
+:root[data-palette="cli"] :is(.dk-ap-seg.on, .dk-ap-tab.on, .set-hostchip.on, .store-tab.on) {
   background: var(--fg);
   color: var(--bg);
 }

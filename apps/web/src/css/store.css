@@ -42,44 +42,6 @@
   letter-spacing: 0.04em;
 }
 /* the wizard's banner: its wand in a tile of the accent, its name and what it does */
-.store-hero {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 1.1rem 1.2rem;
-  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
-  border-radius: var(--r-pop, 0);
-  background:
-    radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 60%),
-    radial-gradient(90% 120% at 100% 100%, color-mix(in srgb, var(--sand) 10%, transparent), transparent 65%),
-    var(--card);
-}
-.store-hero-ic {
-  flex: none;
-  width: 3rem;
-  height: 3rem;
-  padding: 0.65rem;
-  border-radius: var(--r-pop, 0);
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 14%, var(--bg));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 25%, transparent);
-}
-.store-hero-t {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  min-width: 0;
-}
-.store .store-hero-title {
-  margin: 0;
-  font-size: 1.35rem;
-  font-weight: 650;
-  letter-spacing: -0.01em;
-}
-.store-hero-sub {
-  margin: 0;
-  color: var(--muted);
-}
 /* the catalogues not reached, one quiet line */
 .store-unfetched {
   flex-basis: 100%;
@@ -344,6 +306,39 @@
   animation: update-blink 1.2s ease-in-out infinite;
 }
 /* the page: back, a hero, two columns */
+/* a page's top line: the way back, then its name */
+.store-crumb {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6ch;
+  min-width: 0;
+}
+.store-crumb .store-back {
+  align-self: baseline;
+}
+.store-crumb-sep {
+  color: var(--muted);
+  opacity: 0.6;
+}
+.store-crumb-name {
+  margin: 0;
+  color: var(--fg);
+  font-size: 0.95rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.store-tag {
+  margin: 0;
+  color: var(--muted);
+}
+.store-acts-sec {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.4rem;
+}
 .store-back {
   align-self: flex-start;
   display: inline-flex;
@@ -363,53 +358,6 @@
 .store-back-ic {
   width: 0.9rem;
   height: 0.9rem;
-}
-.store-hero {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 1.2rem;
-  padding-bottom: 1.2rem;
-  border-bottom: 1px solid var(--border);
-}
-.store-hero-text {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  min-width: 0;
-}
-.store-hero-tag {
-  margin: 0;
-  color: var(--fg);
-  font-size: 0.95rem;
-}
-.store-hero-meta {
-  display: flex;
-  gap: 0.6ch;
-  color: var(--muted);
-  font-size: 0.74rem;
-}
-.store-hero-acts {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.4rem;
-}
-.store-hero-sub {
-  font-size: 0.72rem;
-  color: var(--muted);
-}
-.store-hero-sub.on {
-  color: var(--online);
-}
-.store-hero-sub.new {
-  color: var(--accent);
-}
-.store-hero-sub.bad {
-  color: var(--offmesh);
-}
-.store-hero-sub.wait {
-  color: var(--sand);
 }
 .store-cols {
   display: grid;
@@ -932,19 +880,6 @@ a.store-route-name:is(:hover, :focus-visible) {
 .store-badge:is(:hover, :focus-visible) {
   border-color: var(--accent);
 }
-.store-hero-meta {
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.4rem 1.2ch;
-}
-.store-hero-link {
-  color: var(--muted);
-  text-decoration: none;
-  overflow-wrap: anywhere;
-}
-.store-hero-link:hover {
-  color: var(--accent);
-}
 .store-panes {
   display: flex;
   gap: 1.2rem;
@@ -1236,14 +1171,6 @@ a.store-pill {
   }
   .store-cols {
     grid-template-columns: 1fr;
-  }
-  .store-hero {
-    grid-template-columns: auto 1fr;
-  }
-  .store-hero-acts {
-    grid-column: 1 / -1;
-    flex-direction: row;
-    align-items: center;
   }
   .store-icon.lg {
     width: 4rem;

@@ -1,8 +1,8 @@
 // the catalogues the services tab draws on, their repos and licences, and whose the logos are
 
-import { DK_UI, dkGlyph, el } from '../../lib/dom.ts';
+import { el } from '../../lib/dom.ts';
+import { crumb } from './apps.ts';
 import { agoText, catalog, catalogError } from './catalog.ts';
-import { storeShow } from './state.ts';
 
 // how each catalogue's terms let phosphorus use it
 const USE: Record<string, string> = {
@@ -16,12 +16,8 @@ const USE: Record<string, string> = {
 
 export function sourcesPage(): HTMLElement {
   const wrap = el('div', 'store-page');
-  const back = Object.assign(el('button', 'store-back'), { type: 'button' });
-  back.append(dkGlyph(DK_UI.back!, 'store-back-ic'), 'services');
-  back.addEventListener('click', () => storeShow(''));
   wrap.append(
-    back,
-    el('h1', '', 'sources and licences'),
+    crumb('services', 'sources and licences'),
     el(
       'p',
       'store-about',

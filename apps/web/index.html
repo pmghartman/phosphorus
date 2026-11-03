@@ -62,9 +62,7 @@ outside #mesh-svg (emptied every redraw) so it never restarts -->
 window or popup while open and back here on close -->
 <div class="stash" id="dk-stash" hidden>
     <div class="update-pane" id="update-modal" hidden>
-    <div class="update-pane-header">
-      <span id="update-title">mesh update</span>
-    </div>
+    <span id="update-title" hidden>mesh update</span>
     <div class="update-pane-body">
       <div class="update-confirm" id="update-confirm" hidden>
         <p id="update-confirm-text"></p>
@@ -113,7 +111,6 @@ window or popup while open and back here on close -->
     </div>
     <div class="mesh-panel" id="mesh-panel">
       <div class="mesh-header">
-        <span>mesh</span>
         <span class="mesh-head-right"><span class="mesh-count" id="mesh-count"></span><button type="button" class="mesh-legend-btn" id="mesh-legend-btn" title="legend" aria-label="legend" aria-pressed="false">?</button></span>
       </div>
       <div class="mesh-body">

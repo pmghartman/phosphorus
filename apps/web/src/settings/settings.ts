@@ -1,6 +1,6 @@
 // --- settings: one window, its sections down a rail in three groups (you: profile, appearance;
-// the mesh: hosts, agents, users; phosphorus: update, about), each under a header saying what it
-// holds, drawn on a press and its borrowed views given back to the stash on leaving
+// the mesh: hosts, agents, users; phosphorus: update, about), a section with parts showing them
+// under it in the rail while open; drawn on a press, its borrowed views given back on leaving
 
 import { dkAppsChanged } from '../desktop/desk.ts';
 import { dkFocus, dkSize, dkTouch, dkWin } from '../desktop/windows.ts';
@@ -8,8 +8,8 @@ import { updateModal, updateOpen } from '../features/update.ts';
 import { DK_GLYPHS, dkGlyph, el, stash } from '../lib/dom.ts';
 import { dk, st } from '../lib/state.ts';
 import { agentsSection } from './agents.ts';
-import { type ApSub, appearanceSection } from './appearance.ts';
-import { hostsSection } from './hosts.ts';
+import { AP_SUBS, type ApSub, appearanceSection, appearanceSub } from './appearance.ts';
+import { HOST_SUBS, hostsSection, hostsSub } from './hosts.ts';
 import { profileSection } from './profile.ts';
 import { usersSection } from './users.ts';
 
@@ -22,9 +22,12 @@ interface Section {
   label: string;
   glyph: () => string;
   group: Group;
-  // a line under the section's title
+  // what it holds, the rail's hover
   blurb: string;
   admin?: boolean;
+  // its parts, each a submenu under it in the rail, and the one shown
+  subs?: () => readonly string[];
+  sub?: () => string;
   draw: (body: HTMLElement, sub?: string) => (() => void) | void;
 }
 
@@ -54,6 +57,8 @@ const SECTIONS: Section[] = [
     glyph: () => DK_GLYPHS.palette!,
     group: 'you',
     blurb: 'theme, colours, fonts and where the bars sit',
+    subs: () => AP_SUBS,
+    sub: appearanceSub,
     draw: (body, sub) => appearanceSection(body, sub as ApSub | undefined),
   },
   {
@@ -62,6 +67,8 @@ const SECTIONS: Section[] = [
     glyph: () => DK_GLYPHS.mesh!,
     group: 'mesh',
     blurb: 'every host on the mesh, how it is doing, and what each one shares and runs',
+    subs: () => HOST_SUBS.filter((s) => s !== 'configure' || !!st.acct?.admin),
+    sub: hostsSub,
     draw: (body, sub) => hostsSection(body, sub),
   },
   {
@@ -123,11 +130,11 @@ let live: ((s: SettingsAt, sub?: string) => void) | null = null;
 export function settingsShows(): string[] {
   const w = dk.wins.get('app:settings');
   if (!w || w.node.hidden || w.leaving) return [];
-  return at === 'hosts' ? ['status'] : at === 'agents' ? ['agents'] : [];
+  return at === 'hosts' && hostsSub() === 'status' ? ['status'] : at === 'agents' ? ['agents'] : [];
 }
 export const settingsAt = (): SettingsAt => at;
 
-// the window, opened or raised, at a section (and the appearance's own part) when named
+// the window, opened or raised, at a section (and its own part, or a host) when named
 export function dkSettings(s?: SettingsAt, sub?: string): void {
   if (!dk.desk || !st.acct || st.acct.boot) return;
   const pick = SECTIONS.find((x) => x.id === s && shown(x));
@@ -142,35 +149,45 @@ export function dkSettings(s?: SettingsAt, sub?: string): void {
   const nav = el('nav', 'dk-ap-nav set-nav');
   nav.ariaLabel = 'settings';
   const main = el('div', 'set-main');
-  const head = el('header', 'set-head');
   const body = el('div', 'dk-ap-body set-body');
-  main.append(head, body);
+  main.append(body);
   pane.append(nav, main);
   w.body.appendChild(pane);
   dkSize(w, 900, 640);
 
   let leave: (() => void) | void;
-  const go = (s: SettingsAt, sub?: string) => {
-    const same = s === at && body.dataset.at === s;
-    at = s;
+  // the rail's marks: the section open, its part, and its parts shown under it alone
+  const mark = () => {
+    const sec = SECTIONS.find((x) => x.id === at)!;
+    const part = sec.sub?.() ?? '';
     for (const b of nav.querySelectorAll<HTMLElement>('.dk-ap-tab')) {
-      const on = b.dataset.at === s;
+      const here = b.dataset.at === at;
+      // a section with parts: open over them, its part the one marked
+      const parent = b.classList.contains('has-subs');
+      const on = here && !parent && (b.dataset.sub ?? part) === part;
       b.classList.toggle('on', on);
+      b.classList.toggle('open', here && parent);
       if (on) b.setAttribute('aria-current', 'page');
       else b.removeAttribute('aria-current');
     }
-    // the same section asked again: only its part moved to, nothing redrawn
-    if (same && !sub) return;
+    for (const g of nav.querySelectorAll<HTMLElement>('.set-subnav')) g.hidden = g.dataset.at !== at;
+  };
+  const go = (s: SettingsAt, sub?: string) => {
+    const same = s === at && body.dataset.at === s;
+    at = s;
+    // the same section asked again: nothing redrawn
+    if (same && !sub) {
+      mark();
+      return;
+    }
     leave?.();
     leave = undefined;
     body.replaceChildren();
     body.dataset.at = s;
     body.scrollTop = 0;
     const sec = SECTIONS.find((x) => x.id === s)!;
-    const text = el('div', 'set-head-t');
-    text.append(el('h2', 'set-title', sec.label), el('p', 'set-blurb', sec.blurb));
-    head.replaceChildren(dkGlyph(sec.glyph(), 'set-head-ic'), text);
     leave = sec.draw(body, sub);
+    mark();
     dkAppsChanged();
     dkTouch();
   };
@@ -180,12 +197,26 @@ export function dkSettings(s?: SettingsAt, sub?: string): void {
       if (!secs.length) return [];
       return [
         el('div', 'set-group', g),
-        ...secs.map((s) => {
+        ...secs.flatMap((s) => {
           const b = Object.assign(el('button', 'dk-ap-tab'), { type: 'button', title: s.blurb });
           b.dataset.at = s.id;
           b.append(dkGlyph(s.glyph()), s.label);
           b.addEventListener('click', () => go(s.id));
-          return b;
+          const parts = s.subs?.() ?? [];
+          if (!parts.length) return [b];
+          b.classList.add('has-subs');
+          const list = el('div', 'set-subnav');
+          list.dataset.at = s.id;
+          list.append(
+            ...parts.map((p) => {
+              const sb = Object.assign(el('button', 'dk-ap-tab set-subtab', p), { type: 'button' });
+              sb.dataset.at = s.id;
+              sb.dataset.sub = p;
+              sb.addEventListener('click', () => go(s.id, p));
+              return sb;
+            }),
+          );
+          return [b, list];
         }),
       ];
     }),

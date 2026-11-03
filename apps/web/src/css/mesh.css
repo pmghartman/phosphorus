@@ -10,7 +10,7 @@
   border: 1px solid var(--border);
   animation: rise-in 0.2s ease-out backwards;
 }
-/* its header on the top edge, sage */
+/* its count and legend on the top edge, at the right */
 .mesh-header {
   position: absolute;
   z-index: 2;
@@ -20,7 +20,7 @@
   transform: translateY(-50%);
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 0.5rem;
   height: auto;
   padding: 0;
@@ -36,9 +36,6 @@
   background: var(--bg);
   padding: 0 0.45ch;
   pointer-events: auto;
-}
-.mesh-header > span:first-child {
-  color: var(--sage);
 }
 
 .mesh-count {

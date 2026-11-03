@@ -126,15 +126,6 @@ body {
 .update-pane[hidden] {
   display: none;
 }
-.update-pane-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding-bottom: 0.2rem;
-  border-bottom: 1px solid var(--border);
-  color: var(--fg);
-  font-weight: 600;
-}
 .update-pane-body {
   display: flex;
   flex-direction: column;

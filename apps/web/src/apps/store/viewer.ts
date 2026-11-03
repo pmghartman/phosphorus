@@ -3,11 +3,11 @@
 // form, the host and its backups; once installed, its hosts, their logs and an admin's steps
 
 import type { AppDef, AppPage, CheckResult, HostFit, StackView } from '@phosphorus/wire';
-import { DK_UI, dkGlyph, el, noFill, pageAsk } from '../../lib/dom.ts';
+import { el, noFill, pageAsk } from '../../lib/dom.ts';
 import { renderMd } from '../../lib/md.ts';
 import { st } from '../../lib/state.ts';
 import { humanSize } from '../../lib/util.ts';
-import { iconTile } from './apps.ts';
+import { crumb } from './apps.ts';
 import {
   agoText,
   dockerBusy,
@@ -31,7 +31,7 @@ import {
   statusOn,
 } from './catalog.ts';
 import { draw } from './draw.ts';
-import { logsOpen, stateVars, storeShow } from './state.ts';
+import { logsOpen, stateVars } from './state.ts';
 
 const redraw = () => {
   stateVars.sig = '';
@@ -109,55 +109,6 @@ function hostChoice(
 // the words on backups, said once wherever they're picked
 const BACKUP_WORDS =
   'A backup host keeps a copy of the app’s data, synced from the active host, and takes over by itself if the active host goes down.';
-
-// --- the header -------------------------------------------------------------------------
-
-function badge(def: Pick<AppDef, 'source' | 'repo' | 'licence'>): HTMLElement {
-  const src = sourceOf(def.source);
-  const href = def.source === 'github' ? def.repo : src?.repo || def.repo;
-  const a = Object.assign(el('a', 'store-badge'), {
-    href,
-    target: '_blank',
-    rel: 'noopener',
-    title: def.source === 'github' ? 'the repo, under its own licence' : `the ${SOURCE_NAMES[def.source]} catalogue`,
-  });
-  a.append(
-    el('span', 'store-badge-src', SOURCE_NAMES[def.source]),
-    el('span', 'store-badge-lic', def.licence || 'no licence'),
-  );
-  return a;
-}
-
-function hero(
-  name: string,
-  tagline: string,
-  icon: string,
-  def: Pick<AppDef, 'source' | 'repo' | 'licence' | 'category'>,
-  sub?: [string, string],
-): HTMLElement {
-  const box = el('div', 'store-hero');
-  const text = el('div', 'store-hero-text');
-  const meta = el('div', 'store-hero-meta');
-  meta.append(badge(def));
-  if (def.category && def.source !== 'github') meta.append(el('span', '', def.category));
-  if (def.repo && def.source !== 'github')
-    meta.append(
-      Object.assign(el('a', 'store-hero-link', def.repo.replace(/^https?:\/\/(www\.)?/, '')), {
-        href: def.repo,
-        target: '_blank',
-        rel: 'noopener',
-        title: 'the app’s own project',
-      }),
-    );
-  text.append(el('h1', '', name), el('p', 'store-hero-tag', tagline), meta);
-  box.append(iconTile(name, [icon], 'lg'), text);
-  if (sub) {
-    const acts = el('div', 'store-hero-acts');
-    acts.append(el('span', `store-hero-sub ${sub[0]}`, sub[1]));
-    box.append(acts);
-  }
-  return box;
-}
 
 // --- the viewer: readme, compose, files -----------------------------------------------
 
@@ -637,7 +588,7 @@ function installedSec(v: StackView, page: AppPage | undefined): HTMLElement[] {
   h.append(el('span', 'store-count', `gen ${v.gen}`));
   const list = el('ul', 'store-hosts');
   for (const x of f.hosts) list.append(hostRow(v, x));
-  sec.append(h);
+  sec.append(h, el('div', `store-verdict ${f.sub[0]}`, f.sub[1]));
   if (f.event) sec.append(el('div', `store-verdict ${f.event[0]}`, f.event[1]));
   sec.append(list);
   sec.append(
@@ -692,10 +643,6 @@ function installedSec(v: StackView, page: AppPage | undefined): HTMLElement[] {
 
 export function stackPage(key: string): HTMLElement {
   const wrap = el('div', 'store-page');
-  const back = Object.assign(el('button', 'store-back'), { type: 'button' });
-  back.append(dkGlyph(DK_UI.back!, 'store-back-ic'), 'services');
-  back.addEventListener('click', () => storeShow(''));
-  wrap.append(back);
   const { source, ref } = splitKey(key);
   const loaded: Loaded | undefined = pages.get(key);
   if (!loaded) loadPage(key);
@@ -709,24 +656,17 @@ export function stackPage(key: string): HTMLElement {
         pages.delete(key);
         loadPage(key);
       });
-      wrap.append(el('h1', '', ref), box, again);
-    } else wrap.append(el('div', 'store-empty', `reading ${ref}`));
+      wrap.append(crumb('services', ref), box, again);
+    } else wrap.append(crumb('services', ref), el('div', 'store-empty', `reading ${ref}`));
     return wrap;
   }
   const def = page?.def;
   const sum = v?.summary;
-  wrap.append(
-    hero(
-      def?.name ?? sum!.name,
-      def?.tagline ?? sum!.tagline,
-      def?.icon ?? sum!.icon,
-      def ?? { source: sum!.source, repo: '', licence: sum!.licence, category: sum!.category },
-      v ? stackFacts(v).sub : page ? verdict(formOf(key).check ?? page.check) : undefined,
-    ),
-  );
+  wrap.append(crumb('services', def?.name ?? sum!.name));
   const cols = el('div', 'store-cols');
   const main = el('div', 'store-main');
   const side = el('aside', 'store-side');
+  main.append(el('p', 'store-tag', def?.tagline ?? sum!.tagline));
   if (page) {
     // a catalogue's app has its description for a readme: said once
     const about = page.def.description.trim();

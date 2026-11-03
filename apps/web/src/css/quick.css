@@ -51,7 +51,7 @@
   background: var(--card);
 }
 
-/* the update: its pane a card as wide and tall as what it holds, its title on the top edge */
+/* the update: its pane a card as wide and tall as what it holds */
 .dk-update-pop {
   z-index: 20;
   display: flex;
@@ -71,29 +71,6 @@
   box-shadow: var(--drop);
   font-size: 0.75rem;
   animation: pop-in 0.16s ease-out;
-}
-.dk-update-pop .update-pane-header {
-  position: absolute;
-  z-index: 2;
-  top: 0;
-  left: 0.5rem;
-  right: 0.5rem;
-  transform: translateY(-50%);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  line-height: 1;
-  font-size: 0.72rem;
-  letter-spacing: 0.04em;
-  pointer-events: none;
-}
-.dk-update-pop .update-pane-header > * {
-  padding: 0 0.45ch;
-  background: var(--card);
-  pointer-events: auto;
-}
-.dk-update-pop .update-pane-header > span {
-  color: var(--sage);
 }
 .dk-update-pop .update-pane-body {
   flex: 1 1 auto;
