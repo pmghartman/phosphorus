@@ -835,6 +835,8 @@ export class Groups {
     private self: string,
     private call: Call = httpCall,
     private clock: Clock = realClock,
+    // where a request to self goes, when not the tailnet address
+    private addr?: () => string,
   ) {}
 
   has = (name: string) => this.running.has(name);
@@ -845,6 +847,7 @@ export class Groups {
     const had = this.running.get(g.name);
     if (had) return had.e;
     const e = new Elector(this.self, this.call, g, this.clock, t);
+    if (this.addr) e.addr = this.addr;
     const run = { e, done: Promise.resolve(), stop: false, wake: () => {} };
     e.start();
     run.done = loop(

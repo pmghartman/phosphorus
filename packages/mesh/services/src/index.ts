@@ -335,6 +335,11 @@ function gameRow(r: Row, ip: string, ports: Set<number> | undefined): Row {
 // a subdomain once *.<domain> reaches the mesh, a path till then
 const pickMode = () => (wildcardUp() ? "subdomain" : "path");
 
+// a name this host serves as the active copy of a failover stack: its row the
+// master one, the proxy serving it over a former active's
+let masterOf: (name: string) => boolean = () => false;
+export const setMasterOf = (fn: (name: string) => boolean) => void (masterOf = fn);
+
 function webRow(r: Row, ip: string): Row | undefined {
   const port = r.port as number;
   const want = typeof r.scheme === "string" ? r.scheme : "";
@@ -350,7 +355,7 @@ function webRow(r: Row, ip: string): Row | undefined {
     const mode = pickMode();
     notes.note("svc:" + name, `${name} is up on port ${port}, published (${scheme}, ${mode})`);
     // auto: the mode picked here, a subdomain yielding to one asked for by name (proxy settle)
-    return { ...r, scheme, mode, auto: true };
+    return { ...r, scheme, mode, auto: true, ...(masterOf(name) ? { master: true } : {}) };
   }
   notes.note("svc:" + name, `${name} is not answering on port ${port}, not published`);
   return;

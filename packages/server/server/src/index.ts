@@ -49,6 +49,7 @@ import {
   setUpdating,
   Version,
 } from "./config.ts";
+import { startHA, stopHA } from "./ha.ts";
 import { configOp, hostConfig, hostLogsOn, svcRequest, userUI, userUIAsync } from "./hostops.ts";
 import { meshOnly } from "./http.ts";
 import { num } from "./js.ts";
@@ -128,6 +129,7 @@ export async function start(): Promise<Server<WSData>> {
     chatSince: peerSeq,
     self: () => ({ version: Version(), bootId: bootID }),
   });
+  startHA();
   publishHost();
   setInterval(publishHost, 2000);
   reconfigStart(() => isUpdating() || update.busy());
@@ -147,6 +149,8 @@ export async function serve(): Promise<number> {
     process.once("SIGTERM", () => r());
     process.once("SIGINT", () => r());
   });
+  // each stack this host runs handed over while its final pull can still be served
+  await stopHA();
   await flushWrites();
   return 0;
 }

@@ -28,6 +28,7 @@ import {
   tsAPIKey,
   Version,
 } from "./config.ts";
+import { ownHA } from "./ha.ts";
 import type { Res } from "./http.ts";
 import { decode, obj, str } from "./js.ts";
 import { filesInfo } from "./shares.ts";
@@ -225,6 +226,7 @@ export function ownState(): peers.Own {
     chain: update.sharedChain(),
     git: git.state(),
     model: modelState() ?? null,
+    ha: ownHA(),
   };
 }
 

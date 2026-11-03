@@ -22,6 +22,8 @@ export interface PeerState {
   chain?: unknown;
   git?: unknown;
   model?: unknown;
+  // each failover group's state, by group
+  ha?: unknown;
   services?: unknown[];
 }
 

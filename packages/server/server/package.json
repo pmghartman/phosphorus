@@ -32,6 +32,7 @@
     "@phosphorus/web-md": "workspace:*",
     "@phosphorus/webapps": "workspace:*",
     "@phosphorus/webstatic": "workspace:*",
+    "@phosphorus/wire": "workspace:*",
     "@phosphorus/wsock": "workspace:*",
     "ssh2": "1.17.0"
   },

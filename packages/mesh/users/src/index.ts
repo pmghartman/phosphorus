@@ -37,7 +37,7 @@ export {
   OAuthToken,
   Setup,
 } from "./oauth.ts";
-export { Cookie, Init, MaxWall, MeshKey, type Req, str, truthy, vaultFile } from "./secrets.ts";
+export { admins, Cookie, Init, MaxWall, MeshKey, type Req, str, truthy, vaultFile } from "./secrets.ts";
 export {
   ChangePass,
   ClearCookie,

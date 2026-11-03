@@ -71,6 +71,8 @@ export type Own = {
   chain: unknown;
   git: unknown;
   model: unknown;
+  // this host's state in each failover group, by group
+  ha?: unknown;
 };
 
 export type Hooks = {
@@ -114,6 +116,7 @@ type PeerInfo = {
   chain: Record<string, any> | null;
   git: Record<string, any> | null;
   model: Record<string, any> | null;
+  ha: Record<string, any> | null;
   services: Row[];
   stateAt: number;
   // the far side's digest as last heard, and the one already matched
@@ -139,6 +142,7 @@ function infoFor(host: string): PeerInfo {
       chain: null,
       git: null,
       model: null,
+      ha: null,
       services: [],
       stateAt: 0,
       digest: "",
@@ -163,12 +167,13 @@ function objOrNull(v: unknown, key: string): Record<string, any> | null {
 
 // a peer's state frame taken in; true when anything it holds changed
 function applyState(s: PeerInfo, f: PeerState): boolean {
-  const before = marshal([s.presence, s.lock, s.chain, s.git, s.model, s.services]);
+  const before = marshal([s.presence, s.lock, s.chain, s.git, s.model, s.ha, s.services]);
   if ("presence" in f) s.presence = Array.isArray(f.presence) ? f.presence : [];
   if ("lock" in f) s.lock = objOrNull(f.lock, "initiator");
   if ("chain" in f) s.chain = objOrNull(f.chain, "initiator");
   if ("git" in f) s.git = objOrNull(f.git, "");
   if ("model" in f) s.model = objOrNull(f.model, "");
+  if ("ha" in f) s.ha = objOrNull(f.ha, "");
   if ("services" in f) {
     const entries = (Array.isArray(f.services) ? f.services : []).map(obj);
     let bad = "";
@@ -180,7 +185,7 @@ function applyState(s: PeerInfo, f: PeerState): boolean {
     }
   }
   s.stateAt = now();
-  return before !== marshal([s.presence, s.lock, s.chain, s.git, s.model, s.services]);
+  return before !== marshal([s.presence, s.lock, s.chain, s.git, s.model, s.ha, s.services]);
 }
 
 let lastPresence = "";
@@ -249,7 +254,7 @@ const events = {
     const s = infos.get(link.host);
     if (s) {
       s.presence = [];
-      s.lock = s.chain = s.git = s.model = null;
+      s.lock = s.chain = s.git = s.model = s.ha = null;
       s.synced = "";
     }
     notes.note(`peer:${link.host}`, `${link.host} is not answering on its link, is phosphorus running there?`);
@@ -475,6 +480,16 @@ export function peerGit(): any[] {
   for (const h of sortedHosts()) {
     const s = infos.get(h)!;
     if (fresh(s) && s.git) out.push(s.git);
+  }
+  return out;
+}
+
+// live peers' failover states, by host then group
+export function peerHA(): Record<string, Record<string, any>> {
+  const out: Record<string, Record<string, any>> = {};
+  for (const h of sortedHosts()) {
+    const s = infos.get(h)!;
+    if (fresh(s) && s.ha) out[h] = s.ha;
   }
   return out;
 }

@@ -20,6 +20,7 @@ import { serveStatic } from "@phosphorus/webstatic";
 import { type Ctx, isUpgrade } from "@phosphorus/wsock";
 import { appRoute } from "./apps.ts";
 import { adminPass, port, selfHost, selfInfo, setUpdating, whoHeader } from "./config.ts";
+import { haRoute } from "./ha.ts";
 import { configOp, hostConfig, hostLogs, localUI } from "./hostops.ts";
 import {
   crossSite,
@@ -176,6 +177,11 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
     if (b === undefined) return plain(400, "bad request");
     const p = obj(decode(b)) ?? {};
     return reply(await call(await users.Soon(c), p, c));
+  }
+
+  if (pathname.startsWith("/api/ha/") || pathname.startsWith("/api/stacks/")) {
+    const r = await haRoute(c, pathname, method, q);
+    if (r) return r;
   }
 
   if (pathname.startsWith("/api/git/")) {

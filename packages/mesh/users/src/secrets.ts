@@ -90,6 +90,9 @@ export const names = () =>
 
 export const hasAdmin = () => names().some((n) => live(n)?.admin);
 
+// every admin's name
+export const admins = () => names().filter((n) => live(n)?.admin);
+
 // a fresh host's empty etc/ never taken for a mesh without admins
 export async function anyAdmin(): Promise<boolean> {
   if (hasAdmin()) return true;

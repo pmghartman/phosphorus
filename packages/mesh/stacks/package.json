@@ -3,9 +3,11 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./ha": "./src/ha/index.ts"
   },
   "dependencies": {
+    "@phosphorus/elector": "workspace:*",
     "@phosphorus/store": "workspace:*",
     "@phosphorus/users": "workspace:*",
     "@phosphorus/util": "workspace:*",

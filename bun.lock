@@ -230,6 +230,7 @@
     "packages/mesh/stacks": {
       "name": "@phosphorus/stacks",
       "dependencies": {
+        "@phosphorus/elector": "workspace:*",
         "@phosphorus/store": "workspace:*",
         "@phosphorus/users": "workspace:*",
         "@phosphorus/util": "workspace:*",
@@ -325,6 +326,7 @@
         "@phosphorus/web-md": "workspace:*",
         "@phosphorus/webapps": "workspace:*",
         "@phosphorus/webstatic": "workspace:*",
+        "@phosphorus/wire": "workspace:*",
         "@phosphorus/wsock": "workspace:*",
         "ssh2": "1.17.0",
       },
