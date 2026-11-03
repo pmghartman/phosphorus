@@ -5,9 +5,8 @@ import { st } from '../../lib/state.ts';
 import { drawMesh } from './draw.ts';
 
 export function serviceUrl(route: Route): string {
-  const base = route.base_path ? `${route.base_path.replace(/^\/+|\/+$/g, '')}/` : '';
-  if (route.mode === 'subdomain' && st.meshDomain) return `https://${route.name}.${st.meshDomain}/${base}`;
-  return `/${route.host}/${route.name}/${base}`;
+  if (route.mode === 'subdomain' && st.meshDomain) return `https://${route.name}.${st.meshDomain}/`;
+  return `/${route.host}/${route.name}/`;
 }
 
 export const serviceKey = (route: { host: string; name: string }) => `${route.host}::${route.name}`;

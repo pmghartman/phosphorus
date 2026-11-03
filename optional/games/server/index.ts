@@ -1,13 +1,12 @@
 // the game servers' server half: the games every host runs, listed with whether
 // each is up, play and stop run on the game's host as its login, the admins' form
-// for what exists, and the MCP tools; what the core kept in services.export and
-// game-control taken over on first start
+// for what exists, and the MCP tools; game-control's login taken over on first start
 import { closeSync, existsSync, openSync, readFileSync, readSync, rmSync, statSync } from "node:fs";
 import { connect } from "node:net";
 import { join } from "node:path";
 import type { AppContext, Reply, Who } from "@phosphorus/app-sdk";
-import { env, envInt, errText, now, RepoDir, StateDir, writeFileAtomic } from "@phosphorus/util";
-import { check, drop, gameOf, games, loginOf, loginRe, nameRe, save, setLogin, takeGames } from "./config.ts";
+import { env, envInt, errText, now, StateDir } from "@phosphorus/util";
+import { check, drop, gameOf, games, loginOf, loginRe, nameRe, save, setLogin } from "./config.ts";
 import { authorize, type Key, keyIn, lookupUser, unauthorize } from "./keys.ts";
 import { checkLogin, runAs } from "./run.ts";
 import { tools } from "./tools.ts";
@@ -189,21 +188,8 @@ export function register(ctx: AppContext) {
     return [200, { login }];
   }
 
-  // what the core kept: services.export's games, game-control's account and key
+  // what the core kept: game-control's account and key
   async function adopt() {
-    const file = env("SERVICES_FILE", join(RepoDir, "config", "services.export"));
-    let text = "";
-    try {
-      text = readFileSync(file, "utf8");
-    } catch {}
-    const { found, rest } = takeGames(text);
-    for (const g of found) if (!gameOf(ctx.store, self, g.name)) save(ctx.store, { ...g, host: self });
-    if (found.length) {
-      // the core moved its pages to the store: nothing left, the file goes
-      if (/^\s*\[/m.test(rest)) writeFileAtomic(file, rest);
-      else rmSync(file, { force: true });
-      ctx.log("took %s from services.export", found.map((g) => g.name).join(", "));
-    }
     const old = join(StateDir, "game-control");
     if (!existsSync(old)) return;
     let user = "";

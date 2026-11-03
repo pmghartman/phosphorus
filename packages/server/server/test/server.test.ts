@@ -50,9 +50,8 @@ test("http smoke", async () => {
     expect(Array.isArray(fi.shares)).toBe(true);
     // a ping answered here
     expect((await fetch(base + "/api/ping/testhost")).status).toBe(204);
-    // the apps page: no native services left on a fresh mesh
+    // the apps page: the catalogue alone
     const apps = await (await fetch(base + "/api/apps")).json();
-    expect(apps.nativeLeft).toEqual([]);
     expect(apps.services).toBeUndefined();
     expect((await fetch(base + "/api/apps/services/install", { method: "POST", body: "{}" })).status).toBe(404);
     // the installed services: none yet; an install asked for an app the catalogue can't give

@@ -16,10 +16,8 @@ const aboutVersion = document.getElementById('about-version')!;
 
 function renderRoutes(routes: Route[], tailnet: TailnetDevice[]) {
   st.terminalHosts = tailnet.filter((d) => d.phosphorus).map((d) => d.name);
-  // a typed row an older peer's: its game servers
-  const services = routes.filter((r) => !r.type);
   renderMesh(routes, tailnet);
-  dkRoutes(services);
+  dkRoutes(routes);
   dkHostsGone();
 }
 

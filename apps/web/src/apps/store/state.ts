@@ -40,8 +40,6 @@ export interface StoreApp {
 }
 
 export let apps: StoreApp[] | null = null;
-// services the retired native installer left on hosts, by id
-export let nativeLeft: string[] = [];
 export let readError = '';
 
 // the module's variables other modules set
@@ -78,7 +76,6 @@ export async function read(fresh = false) {
     if (!r.ok) throw new Error(`status ${r.status}`);
     const got = await r.json();
     apps = got.apps as StoreApp[];
-    nativeLeft = (got.nativeLeft || []) as string[];
     readError = '';
   } catch (e) {
     readError = (e as Error).message;

@@ -420,7 +420,7 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
       const port = p.port;
       if (typeof port !== "number" || !Number.isInteger(port) || port < 1 || port > 65535)
         return [400, { error: "port is 1-65535" }];
-      return hostConfig(host, { op: "service", name, fields: { port: String(port) } });
+      return hostConfig(host, { op: "service", name, port });
     });
   }
 

@@ -258,6 +258,13 @@
 .store-icon.sm .store-mono {
   font-size: 1rem;
 }
+.store-icon.xs {
+  width: 1.4rem;
+  height: 1.4rem;
+}
+.store-icon.xs .store-mono {
+  font-size: 0.8rem;
+}
 .store-icon.md {
   width: 3.8rem;
   height: 3.8rem;
@@ -279,10 +286,10 @@
 .store-icon.lg .store-mono {
   font-size: 2.4rem;
 }
-/* the pill: the store's one button, the thing it does in a word */
+/* the pill: the store's one button, the thing it does in a word, its width the word's */
 .store-pill {
-  min-width: 4.6rem;
   padding: 0.25rem 0.9rem;
+  text-align: center;
   border-radius: 999px;
   border: 1px solid var(--accent);
   background: color-mix(in srgb, var(--accent) 14%, transparent);
@@ -783,8 +790,8 @@
 }
 .store-route {
   display: grid;
-  grid-template-columns: minmax(8ch, 14ch) minmax(0, 1fr) 7ch auto auto;
-  align-items: baseline;
+  grid-template-columns: auto minmax(8ch, 14ch) minmax(0, 1fr) 7ch auto auto;
+  align-items: center;
   gap: 0.4rem 1.2ch;
   padding: 0.45rem 0.9rem;
   font-size: 0.8rem;
@@ -858,7 +865,7 @@ a.store-route-addr:is(:hover, :focus-visible) {
 }
 @media (max-width: 720px) {
   .store-route {
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
   }
   .store-route-addr,
   .store-route-port {
@@ -1113,7 +1120,6 @@ a.store-tree-name:hover {
 }
 a.store-pill {
   text-decoration: none;
-  text-align: center;
 }
 .store-acts {
   display: flex;

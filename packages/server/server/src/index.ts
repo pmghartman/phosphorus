@@ -8,7 +8,7 @@ import { Assign, Summary } from "@phosphorus/model";
 import * as peers from "@phosphorus/peers";
 import { listen as ingressListen, serve as proxyServe } from "@phosphorus/proxy";
 import { start as reconfigStart } from "@phosphorus/reconfig";
-import { migrateFile, setStackRows } from "@phosphorus/services";
+import { setStackRows } from "@phosphorus/services";
 import * as stacks from "@phosphorus/stacks";
 import * as stats from "@phosphorus/stats";
 import * as store from "@phosphorus/store";
@@ -61,8 +61,6 @@ export async function start(): Promise<Server<WSData>> {
   files.init();
   users.Init();
   store.start();
-  // a services.export left from before the store, moved in once
-  migrateFile();
   update.onFinish(rememberChain);
   update.onFailed(() => setUpdating(false));
   setInterval(reapShells, 60000);

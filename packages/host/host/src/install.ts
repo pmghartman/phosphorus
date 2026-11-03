@@ -74,8 +74,6 @@ export async function install(payload: string, update: boolean) {
 
 // per host, never overwritten once there
 export const kept = (f: string) => f === "config/phosphorus.ini" || f.startsWith("files/");
-// in the release, no longer a host's: its pages are records in the store
-const retired = (f: string) => f === "config/services.export";
 
 // every file under dir, slash-separated and relative, .phosphorus-* ones skipped
 function walk(dir: string): string[] {
@@ -96,7 +94,7 @@ function walk(dir: string): string[] {
 // every release file into dst, what the last one shipped and this one doesn't
 // removed, this host's config and share left alone
 export function syncPayload(src: string, dst: string) {
-  const next = walk(src).filter((f) => !retired(f));
+  const next = walk(src);
   for (const f of next) {
     const to = join(dst, f);
     if (kept(f) && fileExists(to)) continue;

@@ -1,7 +1,6 @@
 // the Games app as a host takes it: built by appbuild from optional/games with a
-// key of the test's own, verified, unpacked and loaded; the games the core kept
-// in services.export and game-control taken over, its list, form and presses
-// answering as the asker may
+// key of the test's own, verified, unpacked and loaded; game-control's login taken
+// over, its list, form and presses answering as the asker may
 import "./env.ts";
 import { expect, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -17,7 +16,6 @@ const A = await import("../src/apps.ts");
 
 const root = resolve(import.meta.dir, "../../../..");
 const out = join(process.env.STATE_DIR!, "..", "gamesbuild");
-const services = join(process.env.PHOSPHORUS_HOME!, "config", "services.export");
 const gameControl = join(process.env.STATE_DIR!, "game-control");
 
 const ctx = (path: string, method = "GET", headers: Record<string, string> = {}, body?: unknown): Ctx => {
@@ -33,13 +31,10 @@ async function cookieOf(name: string, admin: boolean) {
   return "phosphorus-user=" + /^phosphorus-user=([^;]+)/.exec(login.cookie![0]!)![1]!;
 }
 
-test("the games app: built, loaded, the core's games taken over, answering", async () => {
-  // what the core kept: two games beside a web service, game-control's account
-  mkdirSync(join(services, ".."), { recursive: true });
-  writeFileSync(
-    services,
-    "[web]\nport = 8080\n\n[mc]\nport = 25565\ntype = game\nstart = ./start.sh\nstop = ./stop.sh\n\n[idle]\ntype = game\nport = 7777\n",
-  );
+test("the games app: built, loaded, game-control taken over, answering", async () => {
+  // two games in its store, game-control's account
+  store.write("etc/appdata/games/game/testhost/mc.json", { port: 25565, start: "./start.sh", stop: "./stop.sh" });
+  store.write("etc/appdata/games/game/testhost/idle.json", { port: 7777, start: "", stop: "" });
   mkdirSync(gameControl, { recursive: true });
   // a name no account has: nothing written to a real authorized_keys
   writeFileSync(join(gameControl, "user"), "-nobody\n");
@@ -63,15 +58,8 @@ test("the games app: built, loaded, the core's games taken over, answering", asy
   expect(W.serve(new Request("http://127.0.0.1/app/games/"))!.status).toBe(200);
   expect(allTools().some((t) => t.name === "game_power")).toBe(true);
 
-  // taken over: the games in its store, services.export left the web service
+  // taken over: game-control gone
   for (let i = 0; i < 50 && existsSync(gameControl); i++) await Bun.sleep(20);
-  expect(store.read("etc/appdata/games/game/testhost/mc.json")).toEqual({
-    port: 25565,
-    start: "./start.sh",
-    stop: "./stop.sh",
-  });
-  expect(store.read("etc/appdata/games/game/testhost/idle.json")).toEqual({ port: 7777, start: "", stop: "" });
-  expect(readFileSync(services, "utf8")).toBe("[web]\nport = 8080\n");
   expect(existsSync(gameControl)).toBe(false);
 
   const admin = await cookieOf("gamer", true);
@@ -136,7 +124,6 @@ test("the games app: built, loaded, the core's games taken over, answering", asy
   // the users gone again, the next test's host still awaiting its first admin
   const boss = { user: "root", admin: true, boot: false, token: "", e: 0 };
   for (const name of ["gamer", "player"]) expect(users.Remove(boss, { name }).status).toBe(200);
-  rmSync(services);
 
   rmSync(join(process.env.STATE_DIR!, "apps", "games", "current.json"));
   W.reset();

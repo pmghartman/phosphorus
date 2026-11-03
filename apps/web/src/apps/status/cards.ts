@@ -75,4 +75,4 @@ export const usedOf = (a: number, b: number) => `${humanSize(a)}<span class="st-
 export const usedPct = (a: number, b: number) => `${usedOf(a, b)} <span class="st-pct">${pct(a / b)}</span>`;
 export const dotJoin = (bits: (string | false | number | undefined | null)[]) =>
   bits.filter(Boolean).join('<span class="st-dim"> · </span>');
-export const hostServices = (name: string) => (stNet?.routes || []).filter((r) => r.host === name && !r.type);
+export const hostServices = (name: string) => (stNet?.routes || []).filter((r) => r.host === name);

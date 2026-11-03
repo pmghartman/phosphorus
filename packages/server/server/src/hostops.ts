@@ -233,9 +233,16 @@ export async function configOp(p: Record<string, any>): Promise<Res> {
       ];
     }
     case "service": {
-      const fields: Record<string, string> = {};
-      for (const [k, v] of Object.entries(obj(p.fields) ?? {})) fields[k] = jsString(v);
-      [why, diff] = editService(str(p.name), fields, truthy(p.remove), dry);
+      const set: { port?: number; public?: boolean } = {};
+      if (p.port !== undefined) {
+        if (typeof p.port !== "number") return [400, { error: "port is a number" }];
+        set.port = p.port;
+      }
+      if (p.public !== undefined) {
+        if (typeof p.public !== "boolean") return [400, { error: "public is true or false" }];
+        set.public = p.public;
+      }
+      [why, diff] = editService(str(p.name), set, truthy(p.remove), dry);
       break;
     }
     case "ini":
@@ -375,20 +382,17 @@ export async function svcRequest(
 ): Promise<Res> {
   let r: Record<string, any> | undefined;
   for (const x of peers.routes()) {
-    if (str(x.name) === name && x.type !== "game" && (host === "" || str(x.host) === host) && (!r || x.master === true))
-      r = x;
+    if (str(x.name) === name && (host === "" || str(x.host) === host) && (!r || x.master === true)) r = x;
   }
   if (!r) return [404, { error: `no web service ${name} on the mesh` }];
   const ip = (await tailnetIP(str(r.host))) || str(r.host);
   const scheme = str(r.scheme) === "https" ? "https" : "http";
-  const bp = str(r.base_path).replace(/^\/+|\/+$/g, "");
-  const base = bp ? "/" + bp : "";
   if (!path.startsWith("/")) path = "/" + path;
   const h = new Headers(headers);
   if (body !== "" && !h.has("content-type")) h.set("Content-Type", "application/json");
   let res: Response;
   try {
-    res = await fetch(`${scheme}://${ip}:${jsString(r.port)}${base}${path}`, {
+    res = await fetch(`${scheme}://${ip}:${jsString(r.port)}${path}`, {
       method: (method || "GET").toUpperCase(),
       headers: h,
       body: body === "" ? undefined : body,

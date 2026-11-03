@@ -16,13 +16,10 @@ export interface TailnetDevice {
 export interface Route {
   host: string;
   name: string;
-  // set on an older peer's game servers alone, never routed
-  type?: string;
   // subdomain or path
   mode?: string;
   // the mode picked by its host, nothing asking for one
   auto?: boolean;
-  base_path?: string;
   port?: number;
   scheme?: string;
   // open to all behind its own login, no phosphorus login

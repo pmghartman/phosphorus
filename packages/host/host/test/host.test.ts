@@ -170,25 +170,22 @@ test("bakeEnv from phosphorus.ini, missing share dirs skipped", () => {
   expect(s1).toMatch(/^[0-9a-f]{64}$/);
 });
 
-test("syncPayload copies the release, keeps this host's config, leaves services.export out, prunes the last release's files", () => {
+test("syncPayload copies the release, keeps this host's config, prunes the last release's files", () => {
   const src = join(dir, "payload"),
     dst = join(dir, "home");
   mkdirSync(join(src, "config"), { recursive: true });
   mkdirSync(join(src, "web", "assets"), { recursive: true });
   writeFileSync(join(src, "VERSION"), "2\n");
-  writeFileSync(join(src, "config", "services.export"), "[new]\n");
   writeFileSync(join(src, "config", "phosphorus.ini"), "new\n");
   writeFileSync(join(src, "web", "assets", "a.js"), "a");
   writeFileSync(join(src, ".phosphorus-installed"), "x");
   mkdirSync(join(dst, "config"), { recursive: true });
   mkdirSync(join(dst, "old", "deep"), { recursive: true });
-  writeFileSync(join(dst, "config", "services.export"), "[mine]\n");
   writeFileSync(join(dst, "old", "deep", "gone.js"), "g");
   writeFileSync(join(dst, "old", "stay.txt"), "s");
   writeFileSync(join(dst, ".phosphorus-manifest"), "old/deep/gone.js\nconfig/phosphorus.ini\nfiles/x\n");
   syncPayload(src, dst);
   expect(readFileSync(join(dst, "VERSION"), "utf8")).toBe("2\n");
-  expect(readFileSync(join(dst, "config", "services.export"), "utf8")).toBe("[mine]\n");
   expect(readFileSync(join(dst, "config", "phosphorus.ini"), "utf8")).toBe("new\n");
   expect(readFileSync(join(dst, "web", "assets", "a.js"), "utf8")).toBe("a");
   expect(existsSync(join(dst, ".phosphorus-installed"))).toBe(false);
@@ -197,7 +194,6 @@ test("syncPayload copies the release, keeps this host's config, leaves services.
   expect(readFileSync(join(dst, ".phosphorus-manifest"), "utf8")).toBe(
     `VERSION\n${process.platform === "win32" ? "bin/phos.exe\nbin/phosphorus.exe" : "bin/phosphorus"}\nconfig/phosphorus.ini\nweb/assets/a.js\n`,
   );
-  expect(kept("config/services.export")).toBe(false);
   expect(kept("config/phosphorus.ini")).toBe(true);
   expect(kept("files/a/b")).toBe(true);
   expect(kept("web/a")).toBe(false);

@@ -46,7 +46,7 @@ export function drawMeshSum(names: string[]) {
   const vramT = gpus.reduce((a, g) => a + (g.memTotal || 0), 0);
   const load = sum((s) => s.cpu.load[0]);
   const ctr = sum((s) => s.parts?.length);
-  const svc = (stNet?.routes || []).filter((r) => !r.type).length;
+  const svc = (stNet?.routes || []).length;
   const off = names.length - live.length;
 
   setHtml(

@@ -72,13 +72,11 @@ export const coreTools = (): Tool[] => [
       }
       return src.routes().map((r) => {
         const row = { ...r };
-        const bp = str(r.base_path);
-        const base = bp ? bp.replace(/^\/+|\/+$/g, "") + "/" : "";
         // no domain: this host's own name on the tailnet
         const domain = src.domain();
         const at = domain ? "https://" + domain : "http://" + (process.env.SELF_HOST ?? "");
-        if (r.mode === "subdomain" && domain) row.url = `https://${str(r.name)}.${domain}/${base}`;
-        else row.url = `${at}/${str(r.host)}/${str(r.name)}/${base}`;
+        if (r.mode === "subdomain" && domain) row.url = `https://${str(r.name)}.${domain}/`;
+        else row.url = `${at}/${str(r.host)}/${str(r.name)}/`;
         return row;
       });
     },

@@ -117,7 +117,6 @@ test("call log", () => {
 const skillWords = new Set([
   "dry_run",
   "wait_s",
-  "max_body",
   "clone_url",
   "mcp__phosphorus__",
   "bad_input",

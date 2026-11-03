@@ -15,9 +15,6 @@ export const notes = new Notes("ingress");
 // --- validation ------------------------------------------------------------
 
 const nameRe = /^[a-z0-9][a-z0-9-]*$/;
-const baseRe = /^[a-z0-9]([a-z0-9/_-]*[a-z0-9])?$/;
-const sizeRe = /^([0-9]+)(KB|MB|GB)?$/;
-const unit: Record<string, number> = { "": 1, KB: 1e3, MB: 1e6, GB: 1e9 };
 
 const validPort = (p: unknown) => typeof p === "number" && Number.isInteger(p) && p >= 1 && p <= 65535;
 
@@ -28,13 +25,9 @@ export function rowError(r: Row | undefined | null): string {
   if (!r || typeof r !== "object") return "not an object";
   if (!r.name || !nameRe.test(String(r.name))) return `'${r.name}' is not a valid name`;
   if (!validPort(r.port)) return `'${r.port}' is not a valid port`;
-  if ("type" in r && r.type !== "") return `'${r.type}' is not a service type`;
   if (r.scheme !== "http" && r.scheme !== "https") return `'${r.scheme}' is not http or https`;
   if (r.mode !== "path" && r.mode !== "subdomain") return `'${r.mode}' is not path or subdomain`;
   if ("public" in r && r.public !== true && r.public !== false) return `'${r.public}' is not true or false`;
-  if (r.base_path && (typeof r.base_path !== "string" || r.base_path.includes("..") || !baseRe.test(r.base_path)))
-    return `'${r.base_path}' is not a valid base_path`;
-  if (r.max_body !== undefined && !sizeRe.test(String(r.max_body))) return `'${r.max_body}' is not a valid max_body`;
   if (r.aliases !== undefined) {
     if (!Array.isArray(r.aliases)) return `'${r.aliases}' is not a list of aliases`;
     const bad = r.aliases.find((a: unknown) => typeof a !== "string" || !nameRe.test(a) || a === r.name);
@@ -72,7 +65,6 @@ export type Route = {
   scheme: string;
   ip: string;
   port: number;
-  maxBody: number;
   // the other domains it answers at, each yielding to a route of its own
   aliases: string[];
   // a peer's own frontend, its pin cookie kept
@@ -86,7 +78,6 @@ let tableFp = "[]";
 let pinIPs: Record<string, string> = {};
 
 function toRoute(r: Row, ip: string): Route {
-  const base = r.base_path ? "/" + r.base_path : "";
   // no domain: a subdomain service on a path instead
   const sub = r.mode === "subdomain" && !!baseDomain;
   const name = String(r.name);
@@ -101,7 +92,6 @@ function toRoute(r: Row, ip: string): Route {
     scheme: String(r.scheme),
     ip,
     port: r.port,
-    maxBody: 0,
     aliases: [],
   };
   if (typeof r.master === "boolean") {
@@ -110,13 +100,8 @@ function toRoute(r: Row, ip: string): Route {
   }
   if (sub) {
     rt.domain = name + "." + baseDomain;
-    rt.prefix = base;
     if (Array.isArray(r.aliases)) rt.aliases = r.aliases.map((a: string) => a + "." + baseDomain);
-  } else rt.prefix = `/${r.host}/${name}${base}`;
-  if (r.max_body) {
-    const m = sizeRe.exec(String(r.max_body));
-    if (m) rt.maxBody = Number(m[1]) * unit[m[2] ?? ""]!;
-  }
+  } else rt.prefix = `/${r.host}/${name}`;
   return rt;
 }
 
@@ -128,8 +113,6 @@ export function swap(rows: Row[], ipOf: (h: string) => string): boolean {
   const paths: Route[] = [];
   const all: Route[] = [];
   for (const r of rows) {
-    // a kind of row this version doesn't route: an older peer's game servers
-    if (r.type) continue;
     const why = typeof r.host === "string" && nameRe.test(r.host) ? rowError(r) : `'${r.host}' is not a valid host`;
     if (why) {
       notes.note("table", `routes rejected, still serving the previous ones: ${r.host}'s ${r.name}: ${why}`);
@@ -310,7 +293,6 @@ function peerIngress(host: string): Route | undefined {
     public: false,
     domain: "",
     prefix: "",
-    maxBody: 0,
     aliases: [],
   };
 }
@@ -356,43 +338,22 @@ function outHeaders(rt: Route, c: Ctx): Headers {
   return h;
 }
 
-class TooLarge extends Error {}
-
-// a body cut off past max bytes
-function capped(body: ReadableStream<Uint8Array>, max: number) {
-  let seen = 0;
-  return body.pipeThrough(
-    new TransformStream<Uint8Array, Uint8Array>({
-      transform(chunk, ctl) {
-        seen += chunk.length;
-        if (seen > max) ctl.error(new TooLarge("request body too large"));
-        else ctl.enqueue(chunk);
-      },
-    }),
-  );
-}
-
 async function forward(rt: Route, c: Ctx, p: string): Promise<Response | undefined> {
   if (isUpgrade(c.req)) return forwardSocket(rt, c, p);
   const req = c.req;
-  if (rt.maxBody > 0 && Number(req.headers.get("content-length")) > rt.maxBody)
-    return refuse(413, "request body too large");
-  let body: ReadableStream<Uint8Array> | null = req.body;
-  if (body && rt.maxBody > 0) body = capped(body, rt.maxBody);
   let res: Response;
   try {
     res = await fetch(`${rt.scheme}://${hostPort(rt)}${p}`, {
       method: req.method,
       headers: outHeaders(rt, c),
-      body: req.method === "GET" || req.method === "HEAD" ? undefined : body,
+      body: req.method === "GET" || req.method === "HEAD" ? undefined : req.body,
       redirect: "manual",
       decompress: false,
       tls: { rejectUnauthorized: false },
       signal: req.signal,
       duplex: "half",
     } as RequestInit);
-  } catch (e) {
-    if (e instanceof TooLarge || (e as any)?.cause instanceof TooLarge) return refuse(413, "request body too large");
+  } catch {
     return refuse(502, `${rt.host}'s ${rt.name} didn't answer`, rt.pin ? { "Set-Cookie": pinCookieFor(selfHost) } : {});
   }
   const h = new Headers(res.headers);

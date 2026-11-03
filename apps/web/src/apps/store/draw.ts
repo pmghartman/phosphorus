@@ -6,15 +6,18 @@ import { page } from './apps.ts';
 import { catalog, catalogError, followJobs, repoBox } from './catalog.ts';
 import { front } from './front.ts';
 import { sourcesPage } from './sources.ts';
-import { apps, logsOpen, nativeLeft, readError, stateVars, view, watching } from './state.ts';
+import { apps, logsOpen, readError, stateVars, view, watching } from './state.ts';
 import { stackPage } from './viewer.ts';
+
+// the page last drawn, '' for the front, and the front's scroll as a page opened over it
+let drawnId = '';
+let frontScroll = 0;
 
 export function draw() {
   if (!watching) return;
   followJobs(watching);
   const next = JSON.stringify([
     apps,
-    nativeLeft,
     readError,
     catalog?.apps.length,
     catalog?.sources,
@@ -40,14 +43,17 @@ export function draw() {
   stateVars.sig = next;
   // a page kept at its scroll across redraws, and the field being typed in at its caret
   const was = view.firstElementChild as HTMLElement | null;
-  const scroll = was?.scrollTop || 0;
   const focus = document.activeElement as HTMLInputElement | null;
   const keep = focus && view.contains(focus) ? focus.dataset.keep : undefined;
   const caret = keep && 'selectionStart' in focus! ? [focus!.selectionStart, focus!.selectionEnd] : null;
   const wrap = el('div', 'store');
-  const id = stateVars.openId;
+  let id = stateVars.openId;
   const open = id ? apps?.find((a) => a.id === id) : undefined;
-  if (id && !id.startsWith('stack:') && id !== 'sources' && !open && apps) stateVars.openId = '';
+  if (id && !id.startsWith('stack:') && id !== 'sources' && !open && apps) id = stateVars.openId = '';
+  // a page opened at its top, the way back landing where the front was left
+  if (!drawnId && id) frontScroll = was?.scrollTop || 0;
+  const scroll = id === drawnId ? was?.scrollTop || 0 : id ? 0 : frontScroll;
+  drawnId = id;
   wrap.append(
     id.startsWith('stack:') ? stackPage(id.slice(6)) : id === 'sources' ? sourcesPage() : open ? page(open) : front(),
   );

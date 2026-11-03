@@ -1,7 +1,7 @@
-// this host's own services: the installed ones it serves (packages/stacks) and its
-// records in the store (records.ts), health checked, live ones and git published;
-// a blank scheme sniffed, each a subdomain once *.<domain> answers; pages neither
-// names found and offered, one whose record was removed not written back
+// this host's own services: the installed ones it serves (packages/stacks) and the
+// found pages published as records in the store (records.ts), health checked, live ones
+// published; a blank scheme sniffed, each a subdomain once *.<domain> answers; pages
+// neither names found and offered, one whose record was removed not written back
 import { connect } from "node:net";
 import type { Row } from "@phosphorus/proxy";
 import { env, envInt, errText, FrontendPort, IdleMS, markHot, marshal, Notes, now } from "@phosphorus/util";
@@ -10,8 +10,7 @@ import { adoptOne, records, removedPorts } from "./records.ts";
 import { pollWildcard, wildcardUp } from "./wildcard.ts";
 
 export { listening, portsOf } from "./listen.ts";
-export { Keys, parse } from "./parse.ts";
-export { editService, listed, migrateFile, records, removedPorts, setPublic } from "./records.ts";
+export { editService, listed, records, removedPorts, setPublic } from "./records.ts";
 export { tunnelID, type Wildcard, wildcard, wildcardUp } from "./wildcard.ts";
 export type { Row };
 

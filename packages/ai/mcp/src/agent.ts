@@ -167,8 +167,8 @@ export const agentTools = (): Tool[] => [
     read: true,
     scope: "key",
     description:
-      "A host's config as it stands: phosphorus.ini (shares in [files], [model]) and services, the pages it " +
-      "publishes by hand (each: name, port, scheme, max_body, public, aliases; installed services are the wizard's). " +
+      "A host's config as it stands: phosphorus.ini (shares in [files], [model]) and services, the found pages it " +
+      "publishes (each: name, port, public; installed services are the wizard's). " +
       "Read before service_edit or config_set. Admins only.",
     schema: object({ host: name }, "host"),
     run: (a, m) => {
@@ -182,20 +182,22 @@ export const agentTools = (): Tool[] => [
     scope: "key",
     destructive: true,
     description:
-      "Publish, change or remove a page a host publishes by hand, its record in the mesh's store, " +
-      "checked before it's written and live within seconds. fields only change the keys given; a blank value drops one. " +
-      "Pages listening on a host are found and offered, not published: publish one with its port alone (removed stays removed). " +
+      "Publish, change or remove a page a host publishes, its record in the mesh's store: its port and whether it's public, " +
+      "the scheme sniffed; checked before it's written and live within seconds. " +
+      "Pages listening on a host are found and offered, not published: publish one with its port (removed stays removed). " +
       "Each is a subdomain once *.<domain> reaches the mesh, a path when another host has the name. " +
-      "port (required), scheme http|https (blank: sniffed), max_body (e.g. 50MB), public true, aliases (more names, comma separated). " +
       "An installed service's page is the wizard's (stack_control), not this. Admins only.",
     schema: object(
       {
         host: name,
         name: { type: "string", description: "the service, lowercase letters, digits and -" },
-        fields: {
-          type: "object",
-          description: 'keys to set, e.g. {"port":"8096","public":"true"}',
-          additionalProperties: { type: "string" },
+        port: {
+          type: "integer",
+          description: "the port it listens on; required for a new one, its own kept otherwise",
+        },
+        public: {
+          type: "boolean",
+          description: "open to all, not behind the phosphorus login; its own kept when left out",
         },
         remove: { type: "boolean", default: false },
         dry_run: { type: "boolean", description: "return the diff alone, nothing written", default: false },
@@ -207,7 +209,14 @@ export const agentTools = (): Tool[] => [
       adminOf(m);
       const h = knownHost(a);
       return pressed(
-        src.actions.config(h, { op: "service", name: a.name, fields: a.fields, remove: a.remove, dry_run: a.dry_run }),
+        src.actions.config(h, {
+          op: "service",
+          name: a.name,
+          port: a.port,
+          public: a.public,
+          remove: a.remove,
+          dry_run: a.dry_run,
+        }),
       );
     },
   },

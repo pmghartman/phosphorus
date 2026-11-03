@@ -1,11 +1,11 @@
-// the games app's own parts: a game checked, services.export's games taken out,
-// the key's line kept alone, a start line run as this machine's shell would
+// the games app's own parts: a game checked, the key's line kept alone, a start
+// line run as this machine's shell would
 import { expect, test } from "bun:test";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { which } from "@phosphorus/util";
-import { check, takeGames } from "../server/config.ts";
+import { check } from "../server/config.ts";
 import { keptAround, keyLine } from "../server/keys.ts";
 import { unixRun, windowsRun } from "../server/run.ts";
 
@@ -22,25 +22,6 @@ test("a game checked", () => {
   expect(check({ host: "razer", name: "mc", port: 70000 })).toBe("port is 1-65535");
   expect(check({ host: "razer", name: "mc", port: 1, start: "a" })).toBe("start and stop go together");
   expect(check({ host: "", name: "mc", port: 1 })).toBe("pick a host");
-});
-
-test("services.export's games taken out, the rest as it was", () => {
-  const text =
-    "[audiobooks]\nport = 13378\npublic = true\n\n[tmodloader]\nport = 7777\ntype = game\n" +
-    "start = tmux new-session -d -s t './start.sh -nosteam'\nstop = tmux send-keys -t t exit Enter\n\n" +
-    "[circuit]\nport = 8099\n\n[idle]\r\ntype = game\r\nport = 1234\r\n";
-  const { found, rest } = takeGames(text);
-  expect(found).toEqual([
-    {
-      name: "tmodloader",
-      port: 7777,
-      start: "tmux new-session -d -s t './start.sh -nosteam'",
-      stop: "tmux send-keys -t t exit Enter",
-    },
-    { name: "idle", port: 1234, start: "", stop: "" },
-  ]);
-  expect(rest).toBe("[audiobooks]\nport = 13378\npublic = true\n\n[circuit]\nport = 8099\n");
-  expect(takeGames("[web]\nport = 1\n")).toEqual({ found: [], rest: "[web]\nport = 1\n" });
 });
 
 test("the key's line: added once, game-control's swapped out", () => {

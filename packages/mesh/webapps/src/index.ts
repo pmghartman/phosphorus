@@ -658,18 +658,7 @@ export async function summary(fresh: boolean): Promise<Record<string, any>> {
       };
     }),
   );
-  return { apps, nativeLeft: nativeLeft() };
-}
-
-// the services the retired native installer left on hosts: etc/services/<id>/<host>.json
-// records, nothing following them now; the apps page notes them for removal by hand
-export function nativeLeft(): string[] {
-  const ids = new Set<string>();
-  for (const f of store.list("etc/services")) {
-    const [id, host, more] = f.split("/");
-    if (id && host?.endsWith(".json") && more === undefined) ids.add(id);
-  }
-  return [...ids].sort();
+  return { apps };
 }
 
 export { newer };

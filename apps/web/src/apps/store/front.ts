@@ -28,7 +28,7 @@ import {
   twinsNamed,
 } from './catalog.ts';
 import { draw } from './draw.ts';
-import { apps, nativeLeft, read, readError, type StoreApp, stateVars, storeShow } from './state.ts';
+import { apps, read, readError, type StoreApp, stateVars, storeShow } from './state.ts';
 
 // whether a tile matches the search: every word in its name, tagline, category or id
 function matches(x: { id: string; name: string; tagline: string; category: string }, q: string): boolean {
@@ -315,15 +315,6 @@ const fetching = (s: { fetchedAt: number; error?: string; apps: number }) => !s.
 
 function servicesTab(wrap: HTMLElement, q: string) {
   // what's installed and what's found listening are in running, its tile here marked so
-  // services the retired installer left on hosts, nothing following them now
-  if (nativeLeft.length && !q)
-    wrap.append(
-      el(
-        'p',
-        'store-empty',
-        `Left by the old installer, no longer managed: ${nativeLeft.join(', ')}. Remove them on their hosts by hand, or install them again from here.`,
-      ),
-    );
   if (!q) wrap.append(repoOpener());
   if (!catalog) {
     wrap.append(
@@ -430,7 +421,12 @@ function servicesTab(wrap: HTMLElement, q: string) {
   wrap.append(credit);
 }
 
-// a published service's row: its name opening it, its address, port and who may open it
+// the page's own icon as its host fetched it
+const faviconOf = (host: string, name: string) =>
+  `/api/favicon/${encodeURIComponent(host)}/${encodeURIComponent(name)}`;
+
+// a published service's row: its icon (a catalogue's of its name, else its page's), its name
+// opening it, its address, port and who may open it
 function routeRow(r: Route): HTMLElement {
   const up = hostUp(r.host);
   const row = el('li', `store-route${up ? '' : ' off'}`);
@@ -439,6 +435,7 @@ function routeRow(r: Route): HTMLElement {
     ? Object.assign(el('a', 'store-route-name', r.name), { href: url, target: '_blank', rel: 'noopener' })
     : el('span', 'store-route-name', r.name);
   row.append(
+    iconTile(r.name, [...twinsNamed(r.name).map((a) => a.icon), faviconOf(r.host, r.name)], 'xs'),
     name,
     el('span', 'store-route-addr', url.replace(/^https:\/\//, '').replace(/\/$/, '')),
     el('span', 'store-route-port', r.port ? `:${r.port}` : ''),
@@ -464,6 +461,7 @@ function stackRow(v: StackView, r: Route | undefined): HTMLElement {
   const pub = !!(v.public || r?.public);
   const [cls, sub] = f.sub;
   row.append(
+    iconTile(v.summary.name, [v.summary.icon, faviconOf(r?.host ?? f.live, v.summary.id)], 'xs'),
     name,
     up && url
       ? Object.assign(el('a', 'store-route-addr', addr), { href: url, target: '_blank', rel: 'noopener' })
@@ -487,11 +485,11 @@ function stackRow(v: StackView, r: Route | undefined): HTMLElement {
 function runningTab(wrap: HTMLElement, q: string) {
   const hit = (...words: string[]) => !q || matches({ id: '', name: words.join(' '), tagline: '', category: '' }, q);
   // the installed services each under the host serving it, their routes theirs whichever host
-  // published one last; game servers aside
+  // published one last
   const views = stackViews();
   const ids = new Set(views.map((v) => v.summary.id));
   const shownViews = views.filter((v) => hit(v.summary.name, v.summary.id, ...stackFacts(v).hosts));
-  const all = dk.services.filter((r) => !r.type);
+  const all = dk.services;
   const routes = all.filter((r) => !ids.has(r.name) && hit(r.name, r.host));
   // this host first, the rest by name
   const hosts = [...new Set([...routes.map((r) => r.host), ...shownViews.map(liveHost)])].sort(

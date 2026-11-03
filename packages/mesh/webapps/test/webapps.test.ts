@@ -298,14 +298,6 @@ W.iconSeams.fetchBytes = async () => {
 };
 process.env.APPS_ICON_DIR = join(dir, "icons");
 
-test("the native installer's records named for the apps page, nothing following them", async () => {
-  store.write("etc/services/navidrome/a.json", { login: "pat", by: "pmh", at: 1, commit: "" });
-  store.write("etc/services/navidrome/jobs/a.json", { op: "install" });
-  store.write("etc/services/jellyfin/jobs/b.json", { op: "install" });
-  expect(W.nativeLeft()).toEqual(["navidrome"]);
-  expect((await W.summary(false)).nativeLeft).toEqual(["navidrome"]);
-});
-
 test("a web app's icon off its repository, for the page before any host serves it", async () => {
   const hits = iconHits;
   const ic = (await W.AppIcon("pad"))!;
