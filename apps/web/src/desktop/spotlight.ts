@@ -2,14 +2,13 @@
 // words finding apps, settings, menu actions, open windows, hosts and files
 
 import type { FileEntry } from '@phosphorus/wire';
-import { acctLogout, dkProfileWin, dkUsersWin } from '../features/account.ts';
+import { acctLogout } from '../features/account.ts';
 import { fileOpen, filesApi, filesJoin, filesWin, homeLoc } from '../features/home/home.ts';
-import { openUpdateModal } from '../features/update.ts';
 import { DK_GLYPHS, dkGlyph, el, isMobile } from '../lib/dom.ts';
 import { MODES, modePick, setTheme } from '../lib/scheme.ts';
 import { dk, st } from '../lib/state.ts';
 import { PALETTES, paletteNow, setPalette } from '../lib/theme.ts';
-import { dkAppearanceWin } from './control.ts';
+import { dkSettings } from '../settings/settings.ts';
 import {
   dkArrange,
   dkLiveHosts,
@@ -74,37 +73,34 @@ function hits(): Hit[] {
     add(G.terminal!, 'terminal', h, 'terminal', `shell console ssh ${h}`, () => dkTerminal(h));
   add(G.files!, 'files', '', 'files', 'folders browse home share', () => filesWin());
   add(G.chat!, 'chat', '', 'app', 'messages talk mesh', () => dkOpenApp('chat'));
-  add(G.status!, 'status', '', 'app', 'stats cpu memory disk hosts health', () => dkOpenApp('status'));
   if (st.gitRoute) add(G.git!, 'git', '', 'app', 'forgejo repos', () => dkOpenApp('git'));
   add(G.code!, 'code', '', 'app', 'claude opencode agent sessions', () => dkOpenApp('code'));
-  add(G.agents!, 'agents', '', 'app', 'models assign', () => dkOpenApp('agents'));
   add(G.games!, 'game servers', '', 'app', 'games play', () => dkOpenApp('games'));
   add(G.apps!, 'apps', '', 'app', 'install store services extras', () => dkOpenApp('apps'));
-  add(G.about!, 'about', '', 'app', 'version license', () => dkOpenApp('about'));
   for (const a of dkWebApps()) add(G.app!, a.id, `v${a.want.version}`, 'app', 'editor code app', () => dkWebApp(a.id));
   for (const r of dk.services)
     add(G.service!, r.name, r.host, 'service', `service site ${r.public ? 'public' : ''}`, () => dkService(r));
-  // settings
+  // settings, each section its own hit
   if (st.acct && !st.acct.boot) {
-    add(
-      G.user!,
-      'profile',
-      'hosts, page logins, password',
-      'setting',
-      'account settings password logins vault prefs',
-      dkProfileWin,
+    add(G.gear!, 'settings', '', 'setting', 'preferences options control panel', () => dkSettings());
+    add(G.user!, 'profile', 'settings', 'setting', 'account password logins vault hosts pages', () =>
+      dkSettings('profile'),
     );
-    add(
-      G.palette!,
-      'appearance',
-      'theme, desk, bar, windows',
-      'setting',
-      'theme editor accent font corners layout bar customize look wallpaper',
-      () => dkAppearanceWin(),
+    add(G.palette!, 'appearance', 'settings', 'setting', 'theme accent font corners layout bar look wallpaper', () =>
+      dkSettings('appearance'),
     );
+    add(G.agents!, 'agents', 'settings', 'setting', 'models assign mcp connector skill claude', () =>
+      dkSettings('agents'),
+    );
+    add(G.mesh!, 'hosts', 'settings', 'setting', 'status stats cpu memory disk mesh graph ping git shares model', () =>
+      dkSettings('hosts'),
+    );
+    add(G.about!, 'about', 'settings', 'setting', 'version license', () => dkSettings('about'));
     if (st.acct.admin) {
-      add(G.users!, 'users', '', 'setting', 'accounts admin', dkUsersWin);
-      add(G.update!, 'mesh update', '', 'setting', 'upgrade version release', openUpdateModal);
+      add(G.users!, 'users', 'settings', 'setting', 'accounts admin invite device guest key tailscale', () =>
+        dkSettings('users'),
+      );
+      add(G.update!, 'mesh update', 'settings', 'setting', 'upgrade version release', () => dkSettings('update'));
     }
     add(G.doc!, 'change wallpaper', '', 'setting', 'background picture desk', dkWallPick);
     if (st.acct.wallpaper) add(G.doc!, 'remove wallpaper', '', 'setting', 'background picture', dkWallClear);
@@ -123,7 +119,6 @@ function hits(): Hit[] {
         'look palette style appearance',
         () => setPalette(p.id),
       );
-  add(G.mesh!, 'mesh', '', 'menu', 'graph hosts peers tailnet', () => dk.meshTray?.show(true));
   add(G.bell!, 'notifications', '', 'menu', 'bell alerts', () => dk.bell?.show(true));
   add(G.app!, 'arrange icons', '', 'menu', 'desktop tidy sort', dkArrange);
   add(G.power!, 'log out', '', 'menu', 'sign out quit exit', acctLogout);

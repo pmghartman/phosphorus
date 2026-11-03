@@ -5,11 +5,11 @@ import { appCall } from '../../apps/index.ts';
 import { agentArm, agentOwn, agentStep, agentViewOn } from '../../features/agent.ts';
 import { chatName, chatText, convNow, joined, openConv, setConv } from '../../features/chat/chat.ts';
 import { filesWin } from '../../features/home/home.ts';
-import { phosphorusHosts, pingHosts, switchHost } from '../../features/mesh/mesh.ts';
+import { phosphorusHosts, switchHost } from '../../features/mesh/mesh.ts';
 import { noteAdd, notifyOs } from '../../features/notes.ts';
-import { openUpdateModal, updateModal } from '../../features/update.ts';
 import { stash } from '../../lib/dom.ts';
 import { deskApps, dk, st } from '../../lib/state.ts';
+import { dkSettings, type SettingsAt, settingsShows } from '../../settings/settings.ts';
 import { dkCode } from '../deskfiles.ts';
 import { dkBadge } from '../taskbar.ts';
 import { dkFocus, dkSize, dkWin } from '../windows.ts';
@@ -19,11 +19,8 @@ import { dkTermFor } from './terminal.ts';
 export const DK_APPS: Record<string, { title: string; view: string; w: number; h: number }> = {
   chat: { title: 'chat', view: 'view-chat', w: 880, h: 560 },
   apps: { title: 'apps', view: 'view-apps', w: 820, h: 700 },
-  status: { title: 'status', view: 'view-status', w: 920, h: 600 },
-  about: { title: 'about', view: 'view-about', w: 700, h: 420 },
   games: { title: 'game servers', view: 'view-games', w: 460, h: 420 },
   code: { title: 'code', view: 'view-code', w: 1040, h: 660 },
-  agents: { title: 'agents', view: 'view-agents', w: 860, h: 640 },
 };
 
 export function dkOpenApp(id: string): void {
@@ -39,13 +36,7 @@ export function dkOpenApp(id: string): void {
   view.classList.add('active');
   w.body.appendChild(view);
   dkSize(w, app.w, app.h);
-  if (id === 'status') pingHosts();
-  const fit = new ResizeObserver(() => {
-    if (id === 'status') appCall('status', false, (m) => m.statusDraw());
-  });
-  fit.observe(w.body);
   w.onClose = () => {
-    fit.disconnect();
     view.classList.remove('active');
     stash.appendChild(view);
   };
@@ -66,13 +57,10 @@ export function dkAppsChanged(): void {
     const w = dk.wins.get(`app:${id}`);
     if (w && !w.node.hidden && !w.leaving) deskApps.add(id);
   }
+  // settings' hosts and agents, their views' own watchers
+  for (const id of settingsShows()) deskApps.add(id);
   const up = (id: string) => deskApps.has(id) && !was.has(id);
   if (up('status')) appCall('status', true, (m) => m.statusWatch(st.lastState));
-  if (up('agents'))
-    appCall('agents', true, (m) => {
-      m.agentsState(st.lastState);
-      m.agentsWatch(true);
-    });
   if (deskApps.has('apps') !== was.has('apps'))
     appCall('store', deskApps.has('apps'), (m) => m.storeWatch(deskApps.has('apps')));
   if (deskApps.has('code') !== was.has('code'))
@@ -93,20 +81,29 @@ export function dkOpenTerminal(host: string, shared = false): void {
   }
 }
 
-// phosphorus's presses, each the app it names
+// phosphorus's presses, each the app it names, or the settings section
 export const DK_VIEWS: Record<string, string> = {
-  status: 'status',
-  about: 'about',
   chat: 'chat',
   git: 'git',
   games: 'games',
   home: 'games',
   code: 'code',
   projects: 'code',
-  agents: 'agents',
-  models: 'agents',
   apps: 'apps',
   store: 'apps',
+};
+const SET_VIEWS: Record<string, SettingsAt> = {
+  settings: 'profile',
+  profile: 'profile',
+  appearance: 'appearance',
+  users: 'users',
+  agents: 'agents',
+  models: 'agents',
+  status: 'hosts',
+  hosts: 'hosts',
+  mesh: 'hosts',
+  update: 'update',
+  about: 'about',
 };
 export function dkPressed(a: UiAction): void {
   if (a.kind === 'terminal') dkOpenTerminal(a.host!, a.share === true);
@@ -116,8 +113,8 @@ export function dkPressed(a: UiAction): void {
   } else if (a.kind === 'view') {
     if (a.view === 'chat') openConv('mesh');
     else if (DK_VIEWS[a.view!]) dkOpenApp(DK_VIEWS[a.view!]!);
+    else if (SET_VIEWS[a.view!]) dkSettings(SET_VIEWS[a.view!]);
     else if (a.view === 'files' && dk.desk) filesWin();
-    else if (a.view === 'update' && updateModal.hidden) openUpdateModal();
   } else if (a.kind === 'notify') {
     noteAdd(a.title!, a.body!);
     notifyOs(String(a.title || ''), String(a.body || ''));

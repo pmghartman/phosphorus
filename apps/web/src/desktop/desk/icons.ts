@@ -15,9 +15,7 @@ import {
   may,
 } from '../../features/home/home.ts';
 import { dkMcpTray, mcpStat } from '../../features/mcp.ts';
-import { dkMeshTray } from '../../features/mesh/mesh.ts';
 import { dkBellTray } from '../../features/notes.ts';
-import { updateModal } from '../../features/update.ts';
 import { DK_GLYPHS, dkGlyph, el, isMobile, mobileQuery, svgEl } from '../../lib/dom.ts';
 import { dk, st } from '../../lib/state.ts';
 import { dkControlTray } from '../control.ts';
@@ -26,7 +24,7 @@ import { dkDeskDir, dkDeskView, dkDeskWatch, dkFileIcon } from '../deskfiles.ts'
 import { dkLoginHosts } from '../login.ts';
 import { dkSessionHold, dkSessionRestore, dkSessionTry } from '../session.ts';
 import { dkSpotlightTray } from '../spotlight.ts';
-import { dkAnchor, dkBadge, dkBar, dkChips, dkClock, dkHomeBtn, dkPlaceItems, type Pop } from '../taskbar.ts';
+import { dkBadge, dkBar, dkChips, dkClock, dkHomeBtn, dkPlaceItems } from '../taskbar.ts';
 import { dkClose, dkFocus, dkPlace, dkSnap } from '../windows.ts';
 import { dkGitFrame } from './git.ts';
 import { dkTermApp, dkTermDrop } from './terminal.ts';
@@ -48,9 +46,6 @@ export function dkDesktop(): void {
   const agent = st.acct?.boot ? null : dkMcpTray();
   const search = dkSpotlightTray();
   bar.append(search, ...(agent ? [agent] : []), bell, ctl);
-  // the mesh and update panes opened from the panel
-  ctl.append(dkMeshTray(dk.ctl!.btn), updateModal);
-  dkAnchor(updateModal as Pop, dk.ctl!.btn);
   const menubar = el('div', 'dk-bar dk-menubar');
   const app = el('span', 'dk-menubar-app');
   app.append(dkGlyph(DK_GLYPHS.mesh!, 'dk-menubar-app-ic'), el('span', 'dk-menubar-app-t', 'phosphorus'));
@@ -123,7 +118,6 @@ export function dkArt(): HTMLElement {
 export function dkLogout(): void {
   // the session kept as it was, never saved empty on the way out
   dkSessionHold(true);
-  dk.meshTray?.show(false);
   dk.ctl?.show(false);
   dk.mcp?.show(false);
   // the last user's key and calls never shown to the next
@@ -285,7 +279,6 @@ export function dkIcons(): void {
     ['terminal', () => dkIcon('terminal', 'terminal', '', dkTermApp)],
     ['files', () => dkIcon('files', 'files', '', () => filesWin())],
     ['chat', () => dkIcon('chat', 'chat', '', () => dkOpenApp('chat'))],
-    ['status', () => dkIcon('status', 'status', '', () => dkOpenApp('status'))],
     ...(git
       ? [
           [
@@ -299,10 +292,8 @@ export function dkIcons(): void {
         ]
       : []),
     ['code', () => dkIcon('code', 'code', '', () => dkOpenApp('code'))],
-    ['agents', () => dkIcon('agents', 'agents', '', () => dkOpenApp('agents'))],
     ['games', () => dkIcon('games', 'games', '', () => dkOpenApp('games'))],
     ['apps', () => dkIcon('apps', 'apps', '', () => dkOpenApp('apps'))],
-    ['about', () => dkIcon('about', 'about', '', () => dkOpenApp('about'))],
     ...webapps.map((a): [string, () => HTMLButtonElement] => [
       `webapp\n${a.id}`,
       () => dkIcon('app', a.id, '', () => dkWebApp(a.id), a.mount + 'icon.svg'),

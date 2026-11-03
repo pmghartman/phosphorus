@@ -17,6 +17,7 @@ import {
   settleHost,
 } from '../features/mesh/mesh.ts';
 import { updateState } from '../features/update.ts';
+import { agentsState } from '../settings/agents.ts';
 import { st } from './state.ts';
 
 const aboutVersion = document.getElementById('about-version')!;
@@ -51,7 +52,7 @@ function applyState(state: State) {
   renderRoutes(state.routes, state.tailnet);
   st.lastState = state;
   appCall('status', false, (m) => m.statusState(state));
-  appCall('agents', false, (m) => m.agentsState(state));
+  agentsState(state);
   appCall('store', false, (m) => m.storeState(state));
   meshModelsFrom(state, gitChanged);
   updateState(state);

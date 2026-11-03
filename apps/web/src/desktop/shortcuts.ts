@@ -1,6 +1,5 @@
 // --- keys and popups ------------------------------------------------------------
 import { chatPanel, cwList, stepConv } from '../features/chat/chat.ts';
-import { closeUpdateModal, updateModal } from '../features/update.ts';
 import { modalOpen } from '../lib/dom.ts';
 import { dkIconKeys } from './desk.ts';
 
@@ -51,16 +50,7 @@ document.addEventListener(
   true,
 );
 
-// a press outside the update pane and its button closing it
-document.addEventListener(
-  'pointerdown',
-  (e) => {
-    if (!updateModal.hidden && !updateModal.parentElement!.contains(e.target as Node)) closeUpdateModal();
-  },
-  true,
-);
-
-// shift+esc only ever unfocusing a terminal, esc the update pane
+// shift+esc only ever unfocusing a terminal
 document.addEventListener('keydown', (e) => {
   if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || e.key !== 'Escape') return;
   const t = e.target as HTMLElement;
@@ -70,7 +60,6 @@ document.addEventListener('keydown', (e) => {
     return;
   }
   if (t.closest?.('.chat-panel') && t.closest('input, textarea')) t.blur();
-  if (!updateModal.hidden) closeUpdateModal();
 });
 
 // esc and ctrl+a for the desktop's icons, after the escape above

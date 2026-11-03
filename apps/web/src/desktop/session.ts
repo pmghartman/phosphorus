@@ -2,10 +2,9 @@
 // next visit once its host, route or login is there
 
 import { app } from '../apps/index.ts';
-import { dkProfileWin, dkUsersWin } from '../features/account.ts';
 import { dkFms, filesWin, type Loc } from '../features/home/home.ts';
 import { dk, st } from '../lib/state.ts';
-import { dkAppearanceWin } from './control.ts';
+import { dkSettings, type SettingsAt, settingsAt } from '../settings/settings.ts';
 import { dkTermRestore, dkTermSaved } from './desk/terminal.ts';
 import { dkOpenApp, dkService, dkTerminal } from './desk.ts';
 import { dkCode } from './deskfiles.ts';
@@ -34,6 +33,7 @@ let pending: Saved[] = [];
 // what opens a window again, from its key and kind; null for one that can't come back
 function openerOf(w: DkWin): Record<string, any> | null {
   const k = w.key;
+  if (k === 'app:settings') return { t: 'app', id: 'settings', at: settingsAt() };
   if (k.startsWith('app:')) return { t: 'app', id: k.slice(4) };
   if (k.startsWith('svc:')) {
     const [host, name] = k.slice(4).split('::');
@@ -86,6 +86,8 @@ export function dkSessionHold(on: boolean): void {
   hold = on;
 }
 
+const OLD_SETTINGS = new Set(['profile', 'users', 'appearance', 'agents', 'about']);
+
 // one saved window opened, undefined while what it needs isn't here yet
 async function reopen(s: Saved): Promise<DkWin | undefined | null> {
   const o = s.open;
@@ -94,12 +96,13 @@ async function reopen(s: Saved): Promise<DkWin | undefined | null> {
   switch (o.t) {
     case 'app': {
       const id = String(o.id);
-      if (id === 'profile') dkProfileWin();
-      else if (id === 'users') {
-        if (!st.acct?.admin) return null;
-        dkUsersWin();
-      } else if (id === 'appearance') dkAppearanceWin();
-      else if (id === 'git') {
+      // the windows settings took in, each its section now
+      const at = id === 'settings' ? o.at : id === 'status' ? 'hosts' : OLD_SETTINGS.has(id) ? id : '';
+      if (at) {
+        dkSettings(String(at) as SettingsAt);
+        return dk.wins.get('app:settings') ?? null;
+      }
+      if (id === 'git') {
         if (!st.gitRoute) return undefined;
         dkOpenApp('git');
       } else dkOpenApp(id);

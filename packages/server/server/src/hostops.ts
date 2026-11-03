@@ -3,7 +3,7 @@
 import { existsSync } from "node:fs";
 import { open } from "node:fs/promises";
 import { join } from "node:path";
-import { configText, editIni, editService } from "@phosphorus/config";
+import { configText, editGitHost, editIni, editModel, editService, editShares, iniValues } from "@phosphorus/config";
 import { jsNumber } from "@phosphorus/files";
 import * as peers from "@phosphorus/peers";
 import { health } from "@phosphorus/services";
@@ -224,8 +224,9 @@ export async function onHost(
   return peerCall(host, { host: ip, method: "POST", path, body, timeoutMs: waitMs });
 }
 
-// configOp this host's config: get both files, or set one service or ini key,
-// dry returning the diff alone; a service's outcome waited on once written
+// configOp this host's config: get both files, or set one service or ini key, or settings ›
+// hosts' shares, model or git host whole; dry returning the diff alone, a service's outcome
+// waited on once written
 export async function configOp(p: Record<string, any>): Promise<Res> {
   let why = "",
     diff = "";
@@ -233,7 +234,10 @@ export async function configOp(p: Record<string, any>): Promise<Res> {
   switch (str(p.op)) {
     case "get": {
       const [ini, svc] = configText();
-      return [200, { host: selfHost, "phosphorus.ini": ini, "services.export": svc, shares: filesInfo().shares }];
+      return [
+        200,
+        { host: selfHost, "phosphorus.ini": ini, "services.export": svc, shares: filesInfo().shares, ini: iniValues() },
+      ];
     }
     case "service": {
       const fields: Record<string, string> = {};
@@ -244,8 +248,24 @@ export async function configOp(p: Record<string, any>): Promise<Res> {
     case "ini":
       [why, diff] = editIni(str(p.section), str(p.key), str(p.value), dry);
       break;
+    case "shares": {
+      if (!Array.isArray(p.shares)) return [400, { error: "shares is a list" }];
+      const list = p.shares.map((x: unknown) => ({ dir: str(obj(x)?.dir), perms: str(obj(x)?.perms) }));
+      [why, diff] = editShares(list, dry);
+      break;
+    }
+    case "model": {
+      const vals: Record<string, string> = {};
+      for (const [k, v] of Object.entries(obj(p.values) ?? {})) vals[k] = jsString(v);
+      [why, diff] = editModel(vals, dry);
+      break;
+    }
+    case "git":
+      if (typeof p.on !== "boolean") return [400, { error: "on is true or false" }];
+      [why, diff] = editGitHost(p.on, dry);
+      break;
     default:
-      return [400, { error: "op is get, service or ini" }];
+      return [400, { error: "op is get, service, ini, shares, model or git" }];
   }
   if (why) return [400, { error: why }];
   const out: Record<string, any> = { ok: true, host: selfHost, diff };

@@ -85,7 +85,6 @@ body {
 .mesh-panel,
 .chat-panel,
 .cw-side,
-.update-pane,
 .chat-find,
 .msg-file,
 .msg-img img,
@@ -125,81 +124,44 @@ body {
   display: block;
 }
 
-/* the update pane, a popup under its icon as the theme's */
-.update-wrap {
-  position: relative;
-  display: flex;
-  align-self: stretch;
-  height: 100%;
-}
+/* the update pane: settings › update, the hosts' versions and the walk */
 .update-pane {
-  position: absolute;
-  z-index: 20;
-  top: calc(100% + 0.6rem);
-  right: 0;
-  /* as wide and tall as what it holds, the window its only limit */
-  width: max-content;
-  min-width: 15rem;
-  max-width: calc(100vw - 1rem);
-  max-height: calc(100vh - var(--header-h) - 1.5rem);
   display: flex;
   flex-direction: column;
   min-height: 0;
-  padding: 0.45rem 0.15rem 0.2rem;
-  background: var(--card);
-  border: 1px solid var(--border);
-  box-shadow: var(--drop);
-  animation: pop-in 0.16s ease-out;
 }
 .update-pane[hidden] {
   display: none;
 }
 .update-pane-header {
-  position: absolute;
-  z-index: 2;
-  top: 0;
-  left: 0.5rem;
-  right: 0.5rem;
-  transform: translateY(-50%);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  line-height: 1;
-  font-size: 0.72rem;
-  letter-spacing: 0.04em;
-  pointer-events: none;
-}
-.update-pane-header > * {
-  padding: 0 0.45ch;
-  background: var(--card);
-  pointer-events: auto;
-}
-.update-pane-header > span {
-  color: var(--sage);
+  padding-bottom: 0.2rem;
+  border-bottom: 1px solid var(--border);
+  color: var(--fg);
+  font-weight: 600;
 }
 .update-pane-body {
-  flex: 1 1 auto;
-  min-height: 0;
   display: flex;
   flex-direction: column;
-  padding-top: 0.2rem;
-  overflow-y: auto;
+  padding-top: 0.3rem;
 }
-/* tighter inside the popup */
 .update-pane .update-row {
-  padding: 0.2rem 0.5rem;
+  padding: 0.3rem 0;
 }
 .update-pane .update-head {
-  padding: 0.3rem 0.5rem 0.05rem;
+  padding: 0.3rem 0 0.1rem;
 }
 .update-pane .update-confirm {
-  padding: 0.45rem 0.5rem;
+  padding: 0.45rem 0;
 }
 .update-pane .update-mesh {
   padding-bottom: 0.35rem;
 }
 .update-pane .update-mesh .update-actions {
-  padding: 0.2rem 0.5rem 0;
+  padding: 0.4rem 0 0;
+  justify-content: flex-start;
 }
 /* sideways swipes ours, up and down the browser's */
 .view,

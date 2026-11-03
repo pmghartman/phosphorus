@@ -1,12 +1,14 @@
+// --- settings › agents: the connector agents reach the mesh by, and which mesh model each
+// implementation that asks one runs on; a model is assigned to any number of agents, an
+// assignment mesh-wide, one POST each, and a host runs a model once settings › hosts says so
+
 import type { ModelAgent, ModelHost, ModelSummary, State } from '@phosphorus/wire';
+import { mcpPanel } from '../features/mcp.ts';
 import { jsonPost } from '../lib/api.ts';
 import { el } from '../lib/dom.ts';
 
-// --- agents: which mesh model each implementation that asks one runs on ------
-// a model is assigned to any number of agents; an assignment is mesh-wide, one
-// POST each, and the models themselves are installed by a model host's [model]
-
-const view = document.getElementById('view-agents')!;
+// the models' part while the section is up
+let view: HTMLElement | null = null;
 
 // the newest model summary, and the last refusal
 let model: ModelSummary | null = null;
@@ -20,13 +22,22 @@ const fileName = (m: { file?: string }) =>
     .split('/')
     .pop();
 
-function agentsState(state: State | null): void {
+// every state push
+export function agentsState(state: State | null): void {
   model = state?.model || null;
   draw();
 }
 
-function agentsWatch(on: boolean): void {
-  if (on) draw();
+export function agentsSection(pane: HTMLElement): () => void {
+  const mcp = mcpPanel();
+  view = el('div', 'set-models');
+  sig = '';
+  pane.append(mcp.node, view);
+  draw();
+  return () => {
+    mcp.leave();
+    view = null;
+  };
 }
 
 // ready, loading or down, as the status tab words a model
@@ -140,6 +151,7 @@ function group(title: string, note: string, body: HTMLElement): HTMLElement {
 }
 
 function draw() {
+  if (!view) return;
   const next = JSON.stringify([model, error]);
   if (next === sig) return;
   // never rebuilt under a hand on a pill
@@ -154,11 +166,7 @@ function draw() {
   if (model.models.length) models.append(...model.models.map(modelCard));
   else
     models.append(
-      el(
-        'div',
-        'ag-empty',
-        "no model host yet: set [model] host = true in a host's phosphorus.ini (an agent's config_set can), and its model installs here",
-      ),
+      el('div', 'ag-empty', 'no model host yet: turn one on under hosts, model, and its model installs here'),
     );
   wrap.append(group('models', `${model.models.length} on the mesh`, models));
   if (model.models.length) {
@@ -175,5 +183,3 @@ function draw() {
   if (error) wrap.append(el('div', 'ag-err', error));
   view.replaceChildren(wrap);
 }
-
-export { agentsState, agentsWatch };

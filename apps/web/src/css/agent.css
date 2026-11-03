@@ -1,4 +1,4 @@
-/* --- the agent tray beside the bell: its glyph tinted, a popup of status and calls ---- */
+/* --- the agent tray beside the bell, its glyph tinted; the connector in settings › agents ---- */
 /* the glyph alone, tinted by state: off and waiting dim, connected and running in phosphorus's
    moving purple and orange, working pulsing too */
 .dk-mcp-btn[data-state="online"] .ic path,
@@ -13,21 +13,8 @@
     opacity: 0.45;
   }
 }
-.dk-mcp-btn:hover,
-.dk-mcp-btn[aria-expanded="true"] {
+.dk-mcp-btn:hover {
   color: var(--accent);
-}
-.dk-mcp-pop {
-  display: flex;
-  flex-direction: column;
-  background: var(--card);
-  border: 1px solid var(--border);
-  box-shadow: var(--drop);
-  font-size: 0.75rem;
-  animation: pop-in 0.12s ease-out;
-}
-.dk-mcp-pop[hidden] {
-  display: none;
 }
 .dk-cl-bar {
   display: flex;

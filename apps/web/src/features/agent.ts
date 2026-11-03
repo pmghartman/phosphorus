@@ -7,9 +7,9 @@ import { dkOpenApp, dkTermOn } from '../desktop/desk.ts';
 import { dkCode } from '../desktop/deskfiles.ts';
 import { type DkWin, dkClose, dkFocus, dkWin } from '../desktop/windows.ts';
 import { dk, PREF_LS, st } from '../lib/state.ts';
+import { dkSettings } from '../settings/settings.ts';
 import { openConv } from './chat/chat.ts';
 import { type Fm, filesParent, filesWin, homeLoc, type Loc } from './home/home.ts';
-import { openUpdateModal, updateModal } from './update.ts';
 
 const AGENT_VIEW_LS = PREF_LS.agentview!;
 export const agentViewOn = () => {
@@ -167,7 +167,7 @@ ${args.path}`,
     return;
   }
   if (done) return;
-  if (AGENT_STATUS.has(t)) agentOpen('app:status', () => dkOpenApp('status'));
+  if (AGENT_STATUS.has(t)) agentOpen('app:settings', () => dkSettings('hosts'));
   else if (t === 'git' || t === 'make_git_master') agentOpen('app:git', () => dkOpenApp('git'));
   else if (AGENT_CHAT.has(t)) {
     const c = args.to
@@ -178,7 +178,7 @@ ${args.path}`,
           ? args.channel
           : `ch:${args.channel}`;
     agentOpen('app:chat', () => openConv(c));
-  } else if (t === 'update_control' && st.acct?.admin && updateModal.hidden) openUpdateModal();
+  } else if (t === 'update_control' && st.acct?.admin) agentOpen('app:settings', () => dkSettings('update'));
 }
 
 // one files window the agent browses in, opened or moved to the place

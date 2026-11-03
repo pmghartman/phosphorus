@@ -52,7 +52,6 @@ export const PREF_LS: Record<string, string> = {
   theme: 'phosphorus-theme',
   palette: 'phosphorus-palette',
   custom: 'phosphorus-theme-custom',
-  recent: 'phosphorus-recent-files',
   color: 'phosphorus-chat-color',
   agentview: 'phosphorus-agent-view',
 };
@@ -101,7 +100,6 @@ export interface Dk {
   login?: { list: HTMLElement; go: HTMLButtonElement } | null;
   bell?: { show: (on: boolean) => void; paint: () => void };
   ctl?: { show: (on: boolean) => void; btn: HTMLButtonElement; wrap: HTMLElement; draw: () => void };
-  meshTray?: { show: (on: boolean) => void };
   mcp?: { show: (on: boolean) => void; paint: () => void } | null;
   mcpStop?: () => void;
   chips?: string;

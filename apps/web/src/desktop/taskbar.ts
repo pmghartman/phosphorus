@@ -4,10 +4,10 @@
 import { dkUnlock } from '../features/account.ts';
 import { hostSwitchNow } from '../features/mesh/mesh.ts';
 import { toastPlace } from '../features/notes.ts';
-import { closeUpdateModal, updateModal } from '../features/update.ts';
 import { DK_GLYPHS, DK_UI, dkGlyph, el, isMobile } from '../lib/dom.ts';
 import { dk, st } from '../lib/state.ts';
 import { BAR_ITEMS, layoutNow, PALETTE_EVENT } from '../lib/theme.ts';
+import { dkSettings } from '../settings/settings.ts';
 import { dkMenuEl } from './desk.ts';
 import { dkMin } from './windows.ts';
 
@@ -16,8 +16,6 @@ export function dkBar(...before: HTMLElement[]): HTMLElement {
   dk.clock = el('span', 'dk-clock');
   if (!before.length) bar.appendChild(el('span', 'dk-tasks'));
   bar.append(...before.slice(0, 2), dk.clock, ...before.slice(2));
-  updateModal.classList.add('dk-pop');
-  if (!st.acct?.admin) closeUpdateModal();
   dkClock();
   return bar;
 }
@@ -113,9 +111,12 @@ export function dkChips(): void {
       b.addEventListener('click', () => dkUnlock(h, b));
       return b;
     }
-    return Object.assign(el('span', `dk-chip${h === here ? ' here' : ''}`, h), {
-      title: h === here ? `this page is served by ${h}` : `${h}, logged in`,
+    const b = Object.assign(el('button', `dk-chip${h === here ? ' here' : ''}`, h), {
+      type: 'button',
+      title: `${h === here ? `this page is served by ${h}` : `${h}, logged in`}; the hosts in settings`,
     });
+    b.addEventListener('click', () => dkSettings('hosts'));
+    return b;
   });
   chips.forEach((c, i) => c.classList.toggle('cur', names[i] === here));
   hosts.replaceChildren(dk.chipFold!, ...chips);
@@ -163,12 +164,10 @@ const DK_POP_GAP = 6;
 
 // one task bar popup open at a time, every other closed as one opens
 export function dkPopsClose(keep?: string): void {
-  if (keep !== 'mesh') dk.meshTray?.show(false);
   if (keep !== 'bell') dk.bell?.show(false);
   if (keep !== 'ctl') dk.ctl?.show(false);
   if (keep !== 'mcp') dk.mcp?.show(false);
   if (keep !== 'menu') dkMenuEl.hidden = true;
-  if (keep !== 'update' && !updateModal.hidden) closeUpdateModal();
   if (keep !== 'unlock') for (const p of document.querySelectorAll<Pop>('.acct-unlock')) p.dkClose?.();
 }
 const DK_POP_EDGE = 8;

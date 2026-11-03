@@ -53,7 +53,7 @@ function dkWinGlyph(key: string | null, kind: string): string {
   const k = String(key || '');
   if (k.startsWith('app:')) {
     const id = k.slice(4);
-    return ({ appearance: 'palette', profile: 'user' } as Record<string, string>)[id] || (DK_GLYPHS[id] ? id : 'app');
+    return id === 'settings' ? 'gear' : DK_GLYPHS[id] ? id : 'app';
   }
   if (String(kind).startsWith('term')) return 'terminal';
   if (kind === 'fm') return 'files';

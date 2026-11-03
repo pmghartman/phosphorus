@@ -334,6 +334,83 @@ export function editIni(section: string, key: string, value: string, dry: boolea
   return [writeDoc(iniFile, d), diff];
 }
 
+// --- the same three sections from settings › hosts, whole, held to what the forms allowed --------
+
+const permsRe = /^[rwd]+$/;
+const once = (s: string, ch: string) => s.split(ch).length <= 2;
+
+// editShares [files] as this list of shares, none sharing nothing; dry the diff alone
+export function editShares(shares: Share[], dry: boolean): [string, string] {
+  const seen = new Set<string>();
+  for (const sh of shares) {
+    const dir = sh.dir.trim();
+    if (dir === "") return ["a share's folder is required", ""];
+    if (dir.includes(",")) return ["a folder can't contain a comma", ""];
+    if (/[\n\r]/.test(dir)) return ["one line only", ""];
+    if (seen.has(dir)) return [dir + " is shared twice", ""];
+    seen.add(dir);
+    if (!permsRe.test(sh.perms) || !once(sh.perms, "r") || !once(sh.perms, "w") || !once(sh.perms, "d"))
+      return ["perms is a mix of r, w and d", ""];
+  }
+  const before = readText(iniFile);
+  const d = splitSections(before);
+  const s = iniSection(d, "files");
+  const list = shares.map((x) => ({ dir: x.dir.trim(), perms: x.perms }));
+  s.lines = rewriteSection(
+    s,
+    "files",
+    list.length
+      ? { dir: list.map((x) => x.dir).join(", "), priv: list.map((x) => x.perms).join(", ") }
+      : { dir: undefined, priv: undefined },
+    ["dir", "priv"],
+  );
+  if (Object.keys(fieldsOf(s)).length === 0) d.secs = d.secs.filter((x) => x !== s);
+  return commitIni(d, before, dry);
+}
+
+// editModel [model] as these values, the TUI form's checks on them
+export function editModel(vals: Record<string, string>, dry: boolean): [string, string] {
+  const v = { ...readModel() };
+  for (const [k, x] of Object.entries(vals)) {
+    if (!modelKeys.includes(k)) return ["no key " + k + " in [model], only " + modelKeys.join(", "), ""];
+    v[k] = String(x).trim();
+  }
+  for (const k of ["host", "gpu"]) if (v[k] !== "true" && v[k] !== "false") return [k + " is true or false", ""];
+  if (v.ctx && !wholeAtLeast(v.ctx, 512)) return ["ctx is a whole number of tokens, 512 or more", ""];
+  if (v.slots && !wholeAtLeast(v.slots, 1)) return ["slots is a whole number, 1 or more", ""];
+  if (v.url && !linkOk(v.url)) return ["url is a https link to a single .gguf", ""];
+  const before = readText(iniFile);
+  const d = splitSections(before);
+  const s = iniSection(d, "model");
+  const out: Record<string, string | undefined> = {};
+  for (const k of modelKeys) out[k] = v[k] !== "" ? v[k] : modelKept.has(k) ? "" : undefined;
+  s.lines = rewriteSection(s, "model", out, modelKeys);
+  return commitIni(d, before, dry);
+}
+
+// editGitHost [git] host, Linux only
+export function editGitHost(on: boolean, dry: boolean): [string, string] {
+  if (on && process.platform !== "linux")
+    return ["git hosts run on Linux alone: forgejo and the git daemon ship for it only", ""];
+  const before = readText(iniFile);
+  const d = splitSections(before);
+  const s = iniSection(d, "git");
+  s.lines = rewriteSection(s, "git", { host: String(on) }, ["host"]);
+  return commitIni(d, before, dry);
+}
+
+function commitIni(d: Doc, before: string, dry: boolean): [string, string] {
+  const diff = lineDiff(before, joinDoc(d));
+  if (dry || diff === "") return ["", diff];
+  return [writeDoc(iniFile, d), diff];
+}
+
+// iniValues the three sections as settings › hosts shows them
+export function iniValues(): Record<string, any> {
+  const git = fieldsOf(findSection(splitSections(readText(iniFile)), "git"));
+  return { shares: readShares(), model: readModel(), git: git.host === "true", platform: process.platform };
+}
+
 // lineDiff the lines b changed from a, "- " gone and "+ " new, unchanged left out
 export function lineDiff(a: string, b: string): string {
   const lines = (t: string) => {

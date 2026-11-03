@@ -1,11 +1,4 @@
-/* --- agents: which model each agent asks (apps/agents.ts) -------------------- */
-.dk-icon.dk-agents .ic {
-  color: var(--accent);
-}
-.dk-app-agents .dk-body > .view {
-  padding: 1rem 1rem 1.2rem;
-  overflow-y: auto;
-}
+/* --- agents: which model each agent asks (settings/agents.ts) --------------- */
 .ag {
   display: flex;
   flex-direction: column;

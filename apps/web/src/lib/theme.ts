@@ -3,7 +3,6 @@
 // style.css; here the pick, a custom theme over any of them, and what the page's head needs to
 // put them up before paint. Kept per user across the mesh with the rest of their settings.
 import { type LibraryData, library, type Theme } from '@phosphorus/theme';
-import { setIconSet } from './icons.ts';
 
 const LIB: LibraryData = library();
 
@@ -71,7 +70,6 @@ export const PALETTES: Palette[] = [
     custom: true,
   },
 ];
-const LOOKS = [...new Set(LIB.themes.map((t) => t.look))];
 const builtIn = (id: string | undefined) => LIB.themes.find((t) => t.id === id);
 
 // --- a custom theme: a built-in one to start from, any of these over it, '' the theme's own ------
@@ -234,10 +232,8 @@ const stored = (): string => {
   }
 };
 
-// the theme picked, custom included; lookNow the built-in one whose structure the page wears
+// the theme picked, custom included
 export const paletteNow = (): string => document.documentElement.dataset.themeId || stored();
-export const lookNow = (): string => builtIn(document.documentElement.dataset.palette)?.look || 'phosphorus';
-export const LOOK_IDS = LOOKS;
 let layout = themeLayout('phosphorus');
 // the layout worn: the theme's, a custom one's choices over it
 export const layoutNow = (): LayoutNow => layout;
@@ -254,7 +250,6 @@ function apply(id: string) {
   const attrs = Object.fromEntries(Object.keys(LAYOUT_CHOICES).map((k) => [k, layout[k] as string]));
   for (const [k, v] of Object.entries(attrs)) r.dataset[`l${k[0]!.toUpperCase()}${k.slice(1)}`] = v;
   r.dataset.palette = t.id;
-  setIconSet(t.icons);
   r.dataset.themeId = id;
   r.toggleAttribute('data-round', round);
   r.toggleAttribute('data-sans', sans);

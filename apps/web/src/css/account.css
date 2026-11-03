@@ -183,8 +183,7 @@
 .dk-bar .dk-ctl {
   margin-left: 0;
 }
-.dk-bar .dk-tray:not(.dk-profile),
-.dk-bar .update-wrap > button {
+.dk-bar .dk-tray:not(.dk-profile) {
   width: 2.25rem;
   padding: 0;
   justify-content: center;
@@ -195,9 +194,6 @@
 .dk-bar .top-side svg {
   width: 0.85rem;
   height: 0.85rem;
-}
-.dk-bar .update-wrap[hidden] {
-  display: none;
 }
 .dk-bar .dk-profile .dk-crown {
   stroke: var(--sand);
@@ -223,7 +219,6 @@
   --edge: var(--bg);
 }
 .tab-menu-title,
-.update-pane-header > *,
 .st-card-head,
 .st-head,
 .home-col-head,
@@ -234,8 +229,6 @@
   background: linear-gradient(transparent calc(50% - 1px), var(--edge) calc(50% - 1px));
 }
 /* a popup floating over anything: its title inside its frame, nothing to cut through */
-.dk-mesh-pop .mesh-header,
-.update-pane-header,
 .tab-menu-title,
 .modal-header,
 .dk-login > .home-col-head,
@@ -243,24 +236,12 @@
   transform: none;
   top: 0.4rem;
 }
-.dk-mesh-pop .mesh-header > *,
-.update-pane-header > *,
 .tab-menu-title,
 .modal-header > *,
 .dk-login > .home-col-head,
 .acct-unlock > .home-col-head {
   background: none;
   padding: 0;
-}
-.dk-mesh-pop .mesh-header {
-  left: 0.6rem;
-  right: 0.6rem;
-}
-.dk-mesh-pop > .mesh-panel {
-  padding-top: 1.3rem;
-}
-.update-pane {
-  padding-top: 1.5rem;
 }
 .tab-menu {
   padding-top: 1.5rem;

@@ -1,13 +1,12 @@
 // --- unread and notifications -------------------------------------------------
 
 import type { Chain, State } from '@phosphorus/wire';
-import { dkOpenApp } from '../desktop/desk.ts';
 import { dkAnchor, dkBarSide, dkPopsClose, type Pop } from '../desktop/taskbar.ts';
 import { DK_GLYPHS, dkGlyph, el } from '../lib/dom.ts';
 import { dk, st } from '../lib/state.ts';
 import { ago2 } from '../lib/util.ts';
+import { dkSettings } from '../settings/settings.ts';
 import { chatNote, openConv } from './chat/chat.ts';
-import { openUpdateModal, updateModal } from './update.ts';
 
 // unread tally in the tab title, counted only while the tab is away
 const BASE_TITLE = document.title;
@@ -299,10 +298,9 @@ function toastClose(t: ToastEl) {
 
 function noteGo(go: NoteGo) {
   if (go?.conv) openConv(go.conv);
-  else if (go?.view === 'status') dkOpenApp('status');
-  else if (go?.view === 'update') {
-    if (updateModal.hidden) openUpdateModal();
-  } else if (go?.view === 'control') dk.ctl?.show(true);
+  else if (go?.view === 'status') dkSettings('hosts');
+  else if (go?.view === 'update') dkSettings('update');
+  else if (go?.view === 'control') dk.ctl?.show(true);
 }
 
 // a conversation read: its entries gone from the bell

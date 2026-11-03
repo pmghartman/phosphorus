@@ -6,7 +6,6 @@ export interface AppMods {
   terminal: typeof import('./terminal.ts');
   files: typeof import('./files.ts');
   code: typeof import('./code.ts');
-  agents: typeof import('./agents.ts');
   editor: typeof import('./editor.ts');
   store: typeof import('./store.ts');
 }
@@ -17,7 +16,6 @@ const APPS: { [K in AppName]: () => Promise<AppMods[K]> } = {
   terminal: () => import('./terminal.ts'),
   files: () => import('./files.ts'),
   code: () => import('./code.ts'),
-  agents: () => import('./agents.ts'),
   editor: () => import('./editor.ts'),
   store: () => import('./store.ts'),
 };

@@ -56,25 +56,6 @@
   .keybar {
     display: none;
   }
-  /* phones: the popup the screen's width */
-  .update-pane {
-    position: fixed;
-    left: 0.5rem;
-    right: 0.5rem;
-    width: auto;
-  }
-}
-/* the update popup's own close on a phone, the icon's tap on a wide screen */
-.update-pane-header .modal-close {
-  position: static;
-  padding: 0 0.45ch;
-  font-size: 0.9rem;
-  line-height: 1;
-}
-@media (min-width: 721px) {
-  .update-pane-header .modal-close {
-    display: none;
-  }
 }
 
 /* the mobile bar's accent edge, sliding between sections */
@@ -238,12 +219,9 @@
   background: color-mix(in srgb, var(--accent) 14%, transparent);
 }
 
-/* the mesh's own apps: chat, status, git and about in windows */
+/* the mesh's own apps: chat and git in windows */
 .dk-icon.dk-chat .ic {
   color: var(--accent);
-}
-.dk-icon.dk-status .ic {
-  color: var(--online);
 }
 .dk-icon.dk-git .ic {
   color: var(--sand);
@@ -297,9 +275,6 @@
 .dk-icon.dk-games .ic {
   color: var(--teal);
 }
-.dk-icon.dk-about .ic {
-  color: var(--muted);
-}
 .dk-favicon {
   width: 1.4rem;
   height: 1.4rem;
@@ -339,52 +314,4 @@
   background: var(--tab-hover);
   color: var(--accent);
 }
-.dk-mesh-pop {
-  z-index: 20;
-  display: flex;
-  animation: pop-in 0.16s ease-out;
-}
-.dk-mesh-pop[hidden] {
-  display: none;
-}
-.dk-mesh-grip {
-  position: absolute;
-  z-index: 3;
-  left: 0;
-  top: 0;
-  width: 0.8rem;
-  height: 0.8rem;
-  cursor: nwse-resize;
-  touch-action: none;
-}
-.dk-mesh-grip::before {
-  content: "";
-  position: absolute;
-  left: 3px;
-  top: 3px;
-  width: 5px;
-  height: 5px;
-  border-left: 1px solid var(--muted);
-  border-top: 1px solid var(--muted);
-  opacity: 0.5;
-}
-.dk-mesh-grip:hover::before {
-  opacity: 1;
-  border-color: var(--accent);
-}
 /* the update pane's card: its border, its shadow, the name on the top edge */
-.dk-mesh-pop > .mesh-panel {
-  display: flex !important;
-  flex: 1 1 auto;
-  min-height: 0;
-  margin: 0;
-  animation: none;
-  background: var(--card);
-  box-shadow: var(--drop);
-}
-.dk-mesh-pop .mesh-header {
-  font-size: 0.72rem;
-}
-.dk-mesh-pop .mesh-header > * {
-  background: var(--card);
-}

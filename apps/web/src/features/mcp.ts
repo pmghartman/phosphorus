@@ -2,14 +2,13 @@
 // the calls of the agents connected as they happen
 
 import type { McpCall, McpStatus } from '@phosphorus/wire';
-import { dkAnchor, dkPopsClose, type Pop } from '../desktop/taskbar.ts';
 import { acctCall } from '../lib/api.ts';
 import { DK_GLYPHS, dkGlyph, el, pageAsk, svgEl } from '../lib/dom.ts';
 import { dk } from '../lib/state.ts';
 import { copyText } from '../lib/util.ts';
+import { dkSettings } from '../settings/settings.ts';
 import { agentViewOn, agentViewSet } from './agent.ts';
 import { noteAdd } from './notes.ts';
-import { updateModal } from './update.ts';
 
 // whether the user has agents signed in, and their calls from the mesh
 export const mcpStat: {
@@ -72,14 +71,85 @@ function mcpGlyph(): SVGSVGElement {
   return svg;
 }
 
+// the tray's star, its state painted; a press opens settings at the agents
 export function dkMcpTray(): HTMLElement {
   const wrap = el('div', 'dk-tray-wrap dk-mcp');
   const b = Object.assign(el('button', 'dk-tray dk-mcp-btn'), { type: 'button', title: 'agent', ariaLabel: 'agent' });
-  b.setAttribute('aria-expanded', 'false');
   b.append(mcpGlyph());
-  const pop = Object.assign(el('div', 'dk-mcp-pop dk-pop'), { hidden: true }) as Pop;
-  wrap.append(b, pop);
-  dkAnchor(pop, b, { fill: 300 });
+  wrap.append(b);
+  b.addEventListener('click', () => dkSettings('agents'));
+  const paint = () => {
+    const st = mcpState();
+    b.dataset.state = st;
+    b.title = {
+      off: 'agent, not connected',
+      idle: 'agent, nothing heard lately',
+      online: 'agent, connected',
+      active: 'agent, working',
+    }[st];
+    panel?.paint();
+  };
+  const show = (on: boolean) => {
+    if (on) dkSettings('agents');
+  };
+  const me = { show, paint };
+  dk.mcp = me;
+  dk.mcpStop?.();
+  // one socket while the page is visible, the server pushing on a change; ended by a
+  // logout or a newer tray, a dropped one retried and read once over fetch meanwhile
+  let sock: WebSocket | null = null;
+  let retry: ReturnType<typeof setTimeout> | null = null;
+  let retryMs = 1000;
+  const open = () => {
+    if (dk.mcp !== me || document.hidden || sock) return;
+    const s = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/api/me/mcp`);
+    sock = s;
+    s.onmessage = (ev) => {
+      retryMs = 1000;
+      try {
+        mcpApply(JSON.parse(ev.data));
+      } catch {
+        return;
+      }
+      me.paint();
+    };
+    s.onclose = () => {
+      if (sock === s) sock = null;
+      if (dk.mcp !== me || document.hidden) return;
+      pollMcp();
+      retry = setTimeout(open, retryMs);
+      retryMs = Math.min(retryMs * 2, 15000);
+    };
+    s.onerror = () => s.close();
+  };
+  const seen = () => {
+    if (dk.mcp !== me) return;
+    if (document.hidden) {
+      clearTimeout(retry!);
+      sock?.close();
+      return;
+    }
+    open();
+  };
+  document.addEventListener('visibilitychange', seen);
+  dk.mcpStop = () => {
+    document.removeEventListener('visibilitychange', seen);
+    clearTimeout(retry!);
+    const s = sock;
+    sock = null;
+    s?.close();
+  };
+  open();
+  return wrap;
+}
+
+// the connector as settings shows it, painted on every push while it's up
+let panel: { paint: () => void } | null = null;
+
+// the address and skill an agent connects with, its calls as they happen, and whether its moves
+// show on this desk; left, it stops being painted
+export function mcpPanel(): { node: HTMLElement; leave: () => void } {
+  const node = el('div', 'dk-cl set-cl');
   const row = (label: string, value: string, tone = '') => {
     const r = el('div', 'dk-cl-row');
     r.append(el('span', 'dk-cl-k', label), el('span', `dk-cl-v ${tone}`, value));
@@ -113,8 +183,8 @@ export function dkMcpTray(): HTMLElement {
   box.addEventListener('change', () => agentViewSet(box.checked));
   view.append(box, el('span', '', 'show agent on screen'));
   view.title = 'open the files, editor, consoles and views the agent works in, as it works';
-  pop.append(bar, hint, view, head, body);
-  head.append(el('span', 'dk-cl-title', 'agent'), stateLine);
+  node.append(head, bar, hint, body, view);
+  head.append(el('span', 'dk-cl-title', 'connector'), stateLine);
   const flash = (x: HTMLElement, text: string) => {
     const was = x.dataset.label!;
     x.textContent = text;
@@ -187,7 +257,6 @@ export function dkMcpTray(): HTMLElement {
     }
     hint.replaceChildren();
     const out = button('sign out agents', 'quiet wide', async () => {
-      show(false);
       if (
         !(await pageAsk({
           title: 'sign out agents?',
@@ -212,14 +281,6 @@ export function dkMcpTray(): HTMLElement {
   };
   const paint = () => {
     const st = mcpState();
-    b.dataset.state = st;
-    b.title = {
-      off: 'agent, not connected',
-      idle: 'agent, nothing heard lately',
-      online: 'agent, connected',
-      active: 'agent, working',
-    }[st];
-    if (pop.hidden) return;
     drawBar();
     const c = mcpStat;
     stateLine.textContent = { off: 'not connected', idle: 'idle', online: 'connected', active: 'working' }[st];
@@ -257,83 +318,21 @@ export function dkMcpTray(): HTMLElement {
     list.style.maxHeight = list.children.length > 5 ? `${last.reduce((h, x) => h + x.offsetHeight, 0) + 4}px` : '';
     list.scrollTop = stick ? list.scrollHeight : keep;
   };
-  const show = (on: boolean) => {
-    if (!on && pop.hidden) return;
-    if (on) dkPopsClose('mcp');
-    pop.hidden = !on;
-    b.setAttribute('aria-expanded', String(on));
-    if (on) {
-      box.checked = agentViewOn();
-      drawn = null;
-      list = null;
-      paint();
-      // the url ready before a tap, so copying it is the tap's own
-      if (mcpStat.configured)
-        acctCall<{ url: string }>('/api/me/mcp-url', {}).then((r) => {
-          if (r.ok) mcpStat.url = r.url!;
-        });
-    }
-  };
-  b.addEventListener('click', () => show(pop.hidden as boolean));
-  document.addEventListener(
-    'pointerdown',
-    (e) => {
-      if (!pop.hidden && !wrap.contains(e.target as Node) && !updateModal.contains(e.target as Node)) show(false);
+  const me = { paint };
+  panel = me;
+  box.checked = agentViewOn();
+  paint();
+  // the url ready before a tap, so copying it is the tap's own
+  if (mcpStat.configured)
+    acctCall<{ url: string }>('/api/me/mcp-url', {}).then((r) => {
+      if (r.ok) mcpStat.url = r.url!;
+    });
+  return {
+    node,
+    leave: () => {
+      if (panel === me) panel = null;
     },
-    true,
-  );
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !pop.hidden) show(false);
-  });
-  const me = { show, paint };
-  dk.mcp = me;
-  dk.mcpStop?.();
-  // one socket while the page is visible, the server pushing on a change; ended by a
-  // logout or a newer tray, a dropped one retried and read once over fetch meanwhile
-  let sock: WebSocket | null = null;
-  let retry: ReturnType<typeof setTimeout> | null = null;
-  let retryMs = 1000;
-  const open = () => {
-    if (dk.mcp !== me || document.hidden || sock) return;
-    const s = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/api/me/mcp`);
-    sock = s;
-    s.onmessage = (ev) => {
-      retryMs = 1000;
-      try {
-        mcpApply(JSON.parse(ev.data));
-      } catch {
-        return;
-      }
-      me.paint();
-    };
-    s.onclose = () => {
-      if (sock === s) sock = null;
-      if (dk.mcp !== me || document.hidden) return;
-      pollMcp();
-      retry = setTimeout(open, retryMs);
-      retryMs = Math.min(retryMs * 2, 15000);
-    };
-    s.onerror = () => s.close();
   };
-  const seen = () => {
-    if (dk.mcp !== me) return;
-    if (document.hidden) {
-      clearTimeout(retry!);
-      sock?.close();
-      return;
-    }
-    open();
-  };
-  document.addEventListener('visibilitychange', seen);
-  dk.mcpStop = () => {
-    document.removeEventListener('visibilitychange', seen);
-    clearTimeout(retry!);
-    const s = sock;
-    sock = null;
-    s?.close();
-  };
-  open();
-  return wrap;
 }
 
 // the user's key and calls from the mesh, read once: after a key change, a dropped socket

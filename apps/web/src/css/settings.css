@@ -1,0 +1,227 @@
+/* --- settings: one window, its sections down a rail (settings/); the appearance's controls,
+   rows and segments its own throughout, the borrowed views laid flat in its page ---------------- */
+.set-pane {
+  grid-template-columns: 9rem minmax(0, 1fr);
+}
+.set-nav {
+  overflow-y: auto;
+}
+.set-body {
+  gap: 0.7rem;
+  padding: 1rem 1.1rem 1.4rem;
+}
+.set-body > * {
+  flex: none;
+}
+/* the appearance's parts, one segmented row */
+.set-subs {
+  align-self: flex-start;
+  min-width: min(100%, 22rem);
+}
+.set-sub {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+/* a stashed view in the page's flow, not filling a window */
+.set-body > .view.active {
+  position: static;
+  inset: auto;
+  overflow: visible;
+  padding: 0;
+}
+.set-body > #view-status {
+  padding-top: 0.6rem;
+}
+.set-body > #view-about {
+  padding-top: 0.4rem;
+}
+
+/* the mesh graph and its pings, a card of its own height */
+.set-mesh {
+  display: flex;
+  height: 24rem;
+  margin-top: 0.4rem;
+}
+.set-mesh > .mesh-panel {
+  display: flex !important;
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+  animation: none;
+}
+.set-mesh .mesh-header {
+  font-size: 0.72rem;
+}
+
+/* profile, users and each host's config: the account's own rows, in the page's flow */
+.set-acct,
+.set-host-body.acct-pane {
+  height: auto;
+  overflow: visible;
+}
+.set-acct {
+  padding: 0;
+}
+.set-body .dk-note {
+  padding: 0;
+  border: 0;
+  color: var(--muted);
+}
+.set-acct .dk-pick-head:first-child {
+  margin-top: 0;
+}
+.set-body .join-key {
+  margin-top: 0.3rem;
+}
+
+/* the connector: its keys, steps and calls, at the page's own width */
+.set-cl {
+  border: 1px solid var(--border);
+  font-size: 0.75rem;
+}
+.set-cl .dk-cl-key.half {
+  flex-basis: auto;
+}
+.set-cl .dk-cl-bar {
+  padding-bottom: 0.1rem;
+}
+.set-cl .dk-cl-check {
+  margin: 0.5rem 0.6rem 0.6rem;
+}
+.set-models {
+  margin-top: 0.6rem;
+}
+.set-models .ag {
+  margin: 0;
+  max-width: none;
+}
+
+/* each host's config, a row opened for its forms */
+.set-hosts {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+}
+.set-host + .set-host {
+  border-top: 1px solid var(--border);
+}
+.set-host-sum {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.45rem 0.7rem;
+  cursor: pointer;
+  list-style: none;
+}
+.set-host-sum::-webkit-details-marker {
+  display: none;
+}
+.set-host-sum::before {
+  content: "›";
+  color: var(--muted);
+  transition: transform 0.15s;
+}
+.set-host[open] > .set-host-sum::before {
+  transform: rotate(90deg);
+}
+.set-host-sum:hover .dk-host,
+.set-host-sum:focus-visible .dk-host {
+  color: var(--accent);
+}
+.set-host-sum:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+.set-host-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.2rem 0.9rem 0.9rem 1.6rem;
+  font-size: 0.8rem;
+}
+.set-host-body .dk-pick-head {
+  margin-top: 0.4rem;
+}
+.set-host-body .dk-note {
+  margin: 0;
+}
+.set-host-body :is(.set-shares .dk-row, .acct-new) {
+  grid-template-columns: minmax(0, 1fr) 10rem 5.5rem;
+}
+.set-host-body select.dk-ap-in {
+  font-size: 0.8rem;
+}
+.set-shares .dk-host {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.set-acts {
+  justify-content: flex-start;
+}
+
+/* the control panel: light or dark, then settings */
+.dk-ctl-modes {
+  margin: 0 0.6rem;
+}
+.dk-ctl-modes .dk-ap-seg {
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.4rem 0;
+  font-size: 0.68rem;
+}
+.dk-ctl-row {
+  position: relative;
+}
+.dk-ctl-row.fresh .dk-ctl-row-v {
+  color: var(--sky);
+}
+.dk-ctl-row.fresh::after {
+  content: "";
+  position: absolute;
+  top: 0.35rem;
+  left: 1.15rem;
+  width: 0.35rem;
+  height: 0.35rem;
+  border-radius: 50%;
+  background: var(--sky);
+}
+/* the bar's hosts, a press their settings */
+button.dk-chip:not(.locked) {
+  cursor: pointer;
+}
+
+/* a phone: the rail a row of tabs across the top */
+@media (max-width: 720px) {
+  .set-pane {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .set-nav {
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0.4rem;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+    scrollbar-width: none;
+  }
+  .set-nav .dk-ap-tab {
+    flex: none;
+  }
+  .set-body {
+    padding: 0.8rem 0.8rem 1.2rem;
+  }
+  .set-mesh {
+    height: 20rem;
+  }
+  .set-host-body.acct-pane {
+    padding-left: 0.9rem;
+  }
+  .set-host-body :is(.set-shares .dk-row, .acct-new) {
+    grid-template-columns: minmax(0, 1fr) 6.5rem 4.5rem;
+  }
+}

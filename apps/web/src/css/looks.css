@@ -72,14 +72,10 @@
     .dk-ctl-pop,
     .dk-menu,
     .cd-pop,
-    .update-pane,
     .modal-box,
-    .dk-mcp-pop,
     .dk-login,
     .acct-unlock,
-    .dk-mesh-pop > .mesh-panel,
-    .dk-ctl-tile,
-    .dk-ctl-chip,
+    .set-mesh > .mesh-panel,
     .dk-ctl-out,
     .dk-ctl-row,
     .dk-ap-segs,
@@ -202,7 +198,6 @@
     .cw-head,
     .fm-side-head,
     .dk-note-head,
-    .dk-ctl-head,
     .dk-cl-title,
     .dk-cl-sec-t,
     .update-pane-header > span,
@@ -233,7 +228,7 @@
 }
 /* popups and menus: opaque, rounded, a hairline edge */
 :root:is([data-palette="macos"], [data-palette="win11"])
-  :is(.dk-note-pop, .dk-ctl-pop, .dk-menu, .update-pane, .modal-box, .dk-mcp-pop, .dk-login, .acct-unlock, .toast) {
+  :is(.dk-note-pop, .dk-ctl-pop, .dk-menu, .modal-box, .dk-login, .acct-unlock, .toast) {
   border: 1px solid var(--pop-edge);
   border-radius: var(--r-pop);
   background: var(--pop-bg);
@@ -248,7 +243,7 @@
 :root:is([data-palette="macos"], [data-palette="win11"]) .toast {
   border-left: 1px solid var(--pop-edge);
 }
-:root:is([data-palette="macos"], [data-palette="win11"]) .dk-mesh-pop > .mesh-panel {
+:root:is([data-palette="macos"], [data-palette="win11"]) .set-mesh > .mesh-panel {
   border-radius: var(--r-pop);
   box-shadow: var(--drop);
 }
@@ -909,8 +904,7 @@
 :root[data-palette="cli"] .dk-win.focused .dk-title {
   color: var(--fg);
 }
-:root[data-palette="cli"]
-  :is(.dk-note-pop, .dk-ctl-pop, .dk-menu, .update-pane, .modal-box, .dk-mcp-pop, .dk-login, .acct-unlock, .toast) {
+:root[data-palette="cli"] :is(.dk-note-pop, .dk-ctl-pop, .dk-menu, .modal-box, .dk-login, .acct-unlock, .toast) {
   border-color: var(--muted);
   box-shadow: none;
   animation: none;

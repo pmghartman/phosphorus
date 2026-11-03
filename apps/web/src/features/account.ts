@@ -2,20 +2,17 @@
 // of host and page logins kept on the mesh, sealed with its password
 
 import type { Me, UserRow } from '@phosphorus/wire';
-import { appCall } from '../apps/index.ts';
 import { dkArt, dkDesktop, dkIcons, dkLayout, dkLogout, dkTermDrop, dkWallPaint } from '../desktop/desk.ts';
 import { DK_USERS_KEY, dkLogin, dkProbe, dkUsers } from '../desktop/login.ts';
 import { dkAnchor, dkBar, dkChips, dkPopsClose, type Pop } from '../desktop/taskbar.ts';
-import { dkClose, dkFocus, dkSize, dkWin } from '../desktop/windows.ts';
+import { dkClose } from '../desktop/windows.ts';
 import { acctCall } from '../lib/api.ts';
 import { DK_GLYPHS, dkGlyph, el, noFill, pageAsk, svgEl } from '../lib/dom.ts';
 import { applyTheme, systemLight } from '../lib/scheme.ts';
 import { type Account, dk, PREF_LS, PREF_OF, st } from '../lib/state.ts';
 import { connectState, stateStop, stateUp } from '../lib/sync.ts';
 import { themeFromStorage } from '../lib/theme.ts';
-import { copyText } from '../lib/util.ts';
 import { chatAs } from './chat/chat.ts';
-import { serviceUrl } from './mesh/mesh.ts';
 
 const dkView = document.getElementById('view-desktop')!;
 
@@ -292,7 +289,7 @@ function acctSetup() {
 }
 
 // the users list and a new user's form, for admins
-function acctUsers(): HTMLElement {
+export function acctUsers(): HTMLElement {
   const wrap = el('div', 'acct-users');
   const list = el('ul', 'dk-rows');
   const name = noFill(
@@ -358,18 +355,8 @@ function acctUsers(): HTMLElement {
   return wrap;
 }
 
-export function dkUsersWin(): void {
-  const w = dkWin('app:users', 'users', '', 'app dk-app-users');
-  if (!w) return;
-  const body = el('div', 'acct-pane');
-  body.appendChild(acctUsers());
-  w.body.appendChild(body);
-  dkSize(w, 560, 420);
-  dkFocus(w);
-}
-
 // a locked host chip, remembering when its own login last closed
-type Chip = HTMLElement & { unlockClosed?: number };
+export type Chip = HTMLElement & { unlockClosed?: number };
 
 // a locked host chip's own login, saved to the vault once the shell answers
 export function dkUnlock(host: string, chip: Chip, then?: () => void): void {
@@ -447,7 +434,7 @@ function dkRemember(host: string, user: string, pass: string) {
   dkIcons();
 }
 
-function dkForget(host: string) {
+export function dkForget(host: string) {
   dk.creds.delete(host);
   if (st.acct) {
     delete st.acct.vault.hosts[host];
@@ -459,7 +446,6 @@ function dkForget(host: string) {
   dkIcons();
 }
 
-// the task bar's profile: a menu of settings, users and log out
 // the user's glyph, an admin's crowned
 export function dkUserGlyph(): SVGSVGElement {
   if (!st.acct?.admin) return dkGlyph(DK_GLYPHS.user!);
@@ -467,121 +453,4 @@ export function dkUserGlyph(): SVGSVGElement {
   const svg = dkGlyph('M8 4.6a2.6 2.6 0 1 0 0 5.2 2.6 2.6 0 0 0 0-5.2zM2.5 15c.6-2.8 2.8-4.2 5.5-4.2s4.9 1.4 5.5 4.2');
   svg.appendChild(svgEl('path', { d: DK_GLYPHS.crown!, class: 'dk-crown' }));
   return svg;
-}
-
-// the profile window: saved hosts, page logins and the password
-export function dkProfileWin(): void {
-  const w = dkWin('app:profile', 'profile', st.acct?.user || '', 'app dk-app-profile');
-  if (!w) return;
-  const body = el('div', 'acct-pane');
-  w.body.appendChild(body);
-  const draw = () => {
-    const acct = st.acct!;
-    const hosts = el('ul', 'dk-rows');
-    const names = [...new Set([...Object.keys(acct.vault.hosts), ...st.terminalHosts])].sort(
-      (a, b) => Number(!acct.vault.hosts[a]) - Number(!acct.vault.hosts[b]) || a.localeCompare(b),
-    );
-    hosts.replaceChildren(
-      ...(names.length
-        ? names.map((h) => {
-            const li = el('li', 'dk-row acct-user');
-            const saved = acct.vault.hosts[h];
-            const act = Object.assign(el('button', saved ? 'danger' : '', saved ? 'forget' : 'log in'), {
-              type: 'button',
-            });
-            act.addEventListener('click', () => {
-              if (saved) {
-                dkForget(h);
-                draw();
-                return;
-              }
-              const chip = [...(dk.desk?.hosts.children || [])].find((c) => c.textContent === h) as Chip | undefined;
-              if (chip) dkUnlock(h, chip);
-            });
-            li.append(
-              el('span', 'dk-host', h),
-              el('span', 'dk-state', saved ? saved.user : st.terminalHosts.includes(h) ? 'locked' : ''),
-              act,
-            );
-            return li;
-          })
-        : [el('li', 'empty', 'no hosts')]),
-    );
-
-    const pages = el('ul', 'dk-rows');
-    const keys = Object.keys(acct.vault.pages).sort();
-    pages.replaceChildren(
-      ...(keys.length
-        ? keys.map((k) => {
-            const p = acct.vault.pages[k]!;
-            const li = el('li', 'dk-row acct-page');
-            const cu = Object.assign(el('button', '', 'copy user'), { type: 'button' });
-            const cp = Object.assign(el('button', '', 'copy pass'), { type: 'button' });
-            const del = Object.assign(el('button', 'danger', 'delete'), { type: 'button' });
-            cu.addEventListener('click', () => copyText(p.user));
-            cp.addEventListener('click', () => copyText(p.pass));
-            del.addEventListener('click', () => {
-              delete acct.vault.pages[k];
-              acctSave();
-              draw();
-            });
-            const name = Object.assign(el('span', 'dk-host', k), { title: p.url || k });
-            li.append(name, el('span', 'dk-state', p.user), cu, cp, del);
-            return li;
-          })
-        : [el('li', 'empty', 'none saved')]),
-    );
-    const pName = noFill(Object.assign(el('input'), { placeholder: 'page', spellcheck: false }));
-    pName.setAttribute('list', 'acct-page-names');
-    const opts = el('datalist');
-    opts.id = 'acct-page-names';
-    // the mesh's services and its git (forgejo) login, each a page login's name
-    const loginable = [...dk.services, ...(st.gitRoute ? [st.gitRoute] : [])];
-    opts.replaceChildren(...loginable.map((r) => Object.assign(el('option'), { value: r.name })));
-    const pUser = noFill(Object.assign(el('input'), { placeholder: 'user', spellcheck: false }));
-    const pPass = noFill(Object.assign(el('input'), { placeholder: 'password' }), true);
-    const pAdd = Object.assign(el('button', 'primary', 'save'), { type: 'button' });
-    pAdd.addEventListener('click', () => {
-      const k = pName.value.trim();
-      if (!k || !pUser.value) return;
-      const svc = loginable.find((r) => r.name === k);
-      acct.vault.pages[k] = { url: svc ? serviceUrl(svc) : '', user: pUser.value, pass: pPass.value };
-      acctSave();
-      draw();
-    });
-    const pRow = el('div', 'dk-row acct-new');
-    pRow.append(pName, pUser, pPass, pAdd);
-
-    const pw = el('form', 'dk-row acct-new');
-    const old = noFill(Object.assign(el('input'), { placeholder: 'current' }), true);
-    const neu = noFill(Object.assign(el('input'), { placeholder: 'new' }), true);
-    const pwGo = Object.assign(el('button', 'primary', 'change'), { type: 'submit' });
-    const pwWhy = el('div', 'dk-state');
-    pw.append(old, neu, pwGo);
-    pw.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const r = await acctCall('/api/me/password', { old: old.value, pass: neu.value });
-      pwWhy.className = `dk-state ${r.ok ? 'ok' : 'bad'}`;
-      pwWhy.textContent = r.ok ? 'changed' : r.error || 'no answer';
-      if (r.ok) {
-        old.value = '';
-        neu.value = '';
-      }
-    });
-
-    body.replaceChildren(
-      el('div', 'dk-pick-head', 'hosts'),
-      hosts,
-      el('div', 'dk-pick-head', 'page logins'),
-      pages,
-      pRow,
-      opts,
-      el('div', 'dk-pick-head', 'password'),
-      pw,
-      pwWhy,
-    );
-  };
-  draw();
-  dkSize(w, 620, 520);
-  dkFocus(w);
 }

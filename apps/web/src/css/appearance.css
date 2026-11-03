@@ -344,38 +344,3 @@
   outline: none;
 }
 /* the account's own actions, chips under the tiles */
-.dk-ctl-chips {
-  display: flex;
-  gap: 0.35rem;
-  padding: 0 0.6rem 0.6rem;
-}
-.dk-ctl-chip {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.35rem;
-  padding: 0.4rem 0.3rem;
-  background: none;
-  border: 1px solid var(--border);
-  color: var(--fg);
-  font: inherit;
-  cursor: pointer;
-  transition:
-    border-color 0.15s,
-    color 0.15s;
-}
-.dk-ctl-chip .ic {
-  width: 0.8rem;
-  height: 0.8rem;
-  color: var(--muted);
-  transition: color 0.15s;
-}
-.dk-ctl-chip:hover,
-.dk-ctl-chip:focus-visible {
-  border-color: var(--accent);
-  outline: none;
-}
-.dk-ctl-chip:hover .ic {
-  color: var(--accent);
-}

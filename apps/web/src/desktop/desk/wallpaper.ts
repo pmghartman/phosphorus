@@ -12,10 +12,10 @@ import {
   serviceUrl,
   startPulseLoop,
 } from '../../features/mesh/mesh.ts';
-import { acctCall } from '../../lib/api.ts';
 import { DK_UI, dkGlyph, el } from '../../lib/dom.ts';
 import { dk, st } from '../../lib/state.ts';
-import { dkAppearanceWin } from '../control.ts';
+import { dkWallPick } from '../../settings/appearance.ts';
+import { dkSettings } from '../../settings/settings.ts';
 import { dkView } from '../desk.ts';
 import { dkDeskAt, dkDeskUpload, dkDeskView } from '../deskfiles.ts';
 import { dkClock, type Pop } from '../taskbar.ts';
@@ -35,9 +35,7 @@ import {
 } from './icons.ts';
 import { dkTerminal } from './terminal.ts';
 
-export const DK_WALL_MAX = 2560;
-
-// the wallpaper set or removed, for the appearance window's row
+// the wallpaper set or removed, for settings' appearance row
 export const WALL_EVENT = 'phosphorus-wallpaper';
 export function dkWallPaint(): void {
   const at = st.acct?.wallpaper || 0;
@@ -47,36 +45,6 @@ export function dkWallPaint(): void {
   dispatchEvent(new CustomEvent(WALL_EVENT, { detail: at }));
 }
 
-// shrunk to the screen's size at most, a jpeg; '' once set, else why not
-export async function dkWallSet(blob: Blob): Promise<string> {
-  let url;
-  try {
-    const bmp = await createImageBitmap(blob);
-    const k = Math.min(1, DK_WALL_MAX / Math.max(bmp.width, bmp.height));
-    const c = Object.assign(document.createElement('canvas'), {
-      width: Math.round(bmp.width * k),
-      height: Math.round(bmp.height * k),
-    });
-    c.getContext('2d')!.drawImage(bmp, 0, 0, c.width, c.height);
-    bmp.close?.();
-    url = c.toDataURL('image/jpeg', 0.85);
-  } catch {
-    return 'not an image';
-  }
-  const r = await acctCall('/api/me/wallpaper', { data: url });
-  if (!r.ok) return r.error || 'not saved';
-  st.acct!.wallpaper = r.wallpaper;
-  dkWallPaint();
-  return '';
-}
-
-export async function dkWallClear(): Promise<void> {
-  const r = await acctCall('/api/me/wallpaper', { data: '' });
-  if (!r.ok) return;
-  st.acct!.wallpaper = 0;
-  dkWallPaint();
-}
-
 export const dkPick = (accept: string, multiple: boolean, then: (files: File[]) => void) => {
   const input = Object.assign(el('input'), { type: 'file', accept, multiple });
   input.addEventListener('change', () => {
@@ -84,9 +52,6 @@ export const dkPick = (accept: string, multiple: boolean, then: (files: File[]) 
   });
   input.click();
 };
-// a picture picked for the wallpaper
-export const dkWallPick = (): void =>
-  dkPick('image/*', false, ([f]) => dkWallSet(f!).then((why) => why && dkMenuNote(why)));
 
 // files about to land on the desktop held to the cell at x, y (else the
 // nearest free ones after it), their icons placed there once they show
@@ -159,7 +124,7 @@ export function dkDeskMenu(icons: HTMLElement) {
       ['paste', () => appCall('files', true, (m) => m.fmPaste(dkDeskView())), !!dk.clip && !!dkDeskAt()],
       null,
       ['change wallpaper…', dkWallPick, !!st.acct && !st.acct.boot],
-      ['appearance…', () => dkAppearanceWin('desktop'), true],
+      ['appearance…', () => dkSettings('appearance', 'desktop'), true],
       null,
       [
         'select all',

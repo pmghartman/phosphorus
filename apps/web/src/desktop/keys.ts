@@ -4,6 +4,7 @@
 import { filesWin } from '../features/home/home.ts';
 import { isMobile } from '../lib/dom.ts';
 import { dk } from '../lib/state.ts';
+import { dkSettings } from '../settings/settings.ts';
 import { dkOpenApp, dkTermNew } from './desk.ts';
 import { dkSpotlight } from './spotlight.ts';
 import { dkOverview, dkOverviewEnd, dkOverviewOn, dkSwitchEnd, dkSwitching, dkSwitchStep } from './switcher.ts';
@@ -43,7 +44,7 @@ document.addEventListener(
     else if (code === 'KeyT') dkTermNew();
     else if (code === 'KeyF') filesWin();
     else if (code === 'KeyC') dkOpenApp('chat');
-    else if (code === 'KeyS') dkOpenApp('status');
+    else if (code === 'KeyS') dkSettings('hosts');
     else if (code === 'KeyE') dkOpenApp('code');
     else if (code === 'KeyD') dkShowDesktop();
     else if (code === 'KeyO') dkOverview();

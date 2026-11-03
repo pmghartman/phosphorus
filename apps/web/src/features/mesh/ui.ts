@@ -35,7 +35,7 @@ export interface Dims {
 // height whatever the stats table leaves
 export function meshLayoutParams(expanded: boolean): Dims {
   const width = expanded ? 200 : 232;
-  const box = meshPanel.closest('.dk-mesh-pop');
+  const box = meshPanel.parentElement;
   const bodyH = (box?.clientHeight || 240) - meshHeader.clientHeight - (expanded ? uiVars.lastStatsHeight : 0);
   const widthPx = meshGraphWrap.clientWidth || width;
   // the legend expanded only, hidden, not gone, so still measured

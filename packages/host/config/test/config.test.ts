@@ -206,3 +206,49 @@ test("model link and number checks", () => {
   expect(osErrText(new Error("EACCES: permission denied, open '/x'"))).toBe("permission denied");
   expect(osErrText(new Error("other"))).toBe("other");
 });
+
+test("settings › hosts: shares, model and git host written whole and checked", async () => {
+  const { editGitHost, editModel, editShares, iniValues } = await import("@phosphorus/config");
+  writeFileSync(ini, "[git]\nhost = false\n");
+  expect(iniValues().shares).toEqual([]);
+  expect(editShares([{ dir: "", perms: "r" }], false)[0]).toBe("a share's folder is required");
+  expect(editShares([{ dir: "/a,b", perms: "r" }], false)[0]).toBe("a folder can't contain a comma");
+  expect(editShares([{ dir: "/srv", perms: "rr" }], false)[0]).toBe("perms is a mix of r, w and d");
+  expect(
+    editShares(
+      [
+        { dir: "/srv", perms: "r" },
+        { dir: "/srv", perms: "rw" },
+      ],
+      false,
+    )[0],
+  ).toBe("/srv is shared twice");
+  expect(
+    editShares(
+      [
+        { dir: " /srv ", perms: "r" },
+        { dir: "/media", perms: "rwd" },
+      ],
+      false,
+    ),
+  ).toEqual(["", "+ [files]\n+ dir = /srv, /media\n+ priv = r, rwd"]);
+  expect(iniValues().shares).toEqual([
+    { dir: "/srv", perms: "r" },
+    { dir: "/media", perms: "rwd" },
+  ]);
+  // none shared: the section gone
+  expect(editShares([], false)).toEqual(["", "- [files]\n- dir = /srv, /media\n- priv = r, rwd"]);
+  expect(editModel({ host: "maybe" }, false)[0]).toBe("host is true or false");
+  expect(editModel({ ctx: "100" }, false)[0]).toBe("ctx is a whole number of tokens, 512 or more");
+  expect(editModel({ url: "http://x/a.gguf" }, false)[0]).toBe("url is a https link to a single .gguf");
+  expect(editModel({ nope: "1" }, false)[0]).toBe("no key nope in [model], only host, gpu, url, ctx, slots");
+  expect(editModel({ host: "true", slots: "2" }, false)[0]).toBe("");
+  expect(iniValues().model).toEqual({ host: "true", gpu: "false", url: "", ctx: "", slots: "2" });
+  // nothing new: no write, no diff
+  expect(editModel({ host: "true" }, false)).toEqual(["", ""]);
+  if (process.platform === "linux") {
+    expect(editGitHost(true, false)[0]).toBe("");
+    expect(iniValues().git).toBe(true);
+  } else expect(editGitHost(true, false)[0]).toMatch(/Linux alone/);
+  expect(editGitHost(false, true)).toEqual(["", ""]);
+});

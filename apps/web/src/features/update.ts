@@ -1,13 +1,13 @@
 // --- mesh update ----------------------------------------------------------
 
 import type { Chain, MeshLock, State, TailnetDevice, UpdateCheck } from '@phosphorus/wire';
-import { dkPopsClose } from '../desktop/taskbar.ts';
 // one chain at a time, mesh-wide, its state on the host that started it,
-// this pane only ever talking to its own frontend
+// this pane (settings › update) only ever talking to its own frontend
 import { el, maskField } from '../lib/dom.ts';
 import { dk, st } from '../lib/state.ts';
 import { pollState } from '../lib/sync.ts';
 import { newerVersion } from '../lib/util.ts';
+import { dkSettings } from '../settings/settings.ts';
 import { hostPlatform } from './mesh/mesh.ts';
 import { noteAdd, notifying, notifyMesh, notifyOs } from './notes.ts';
 
@@ -207,11 +207,11 @@ function applyChain(status: Chain | null, mine: boolean) {
   renderVersions();
 }
 
-export function openUpdateModal(): void {
+// the pane as settings shows it: the hosts' versions, the feed asked again
+export function updateOpen(): void {
   if (!st.acct?.admin) return;
   updateConfirm.hidden = true;
   updateMesh.hidden = false;
-  updateModal.hidden = false;
   pollState();
   checkLatest();
 }
@@ -252,15 +252,9 @@ async function checkLatest() {
   latestFeed = c.latest ? c : null;
 }
 
-export function closeUpdateModal(): void {
-  // the chain outliving the pane, nothing decided by closing it
-  if (updateModal.contains(document.activeElement)) dk.ctl?.btn.focus();
-  updateModal.hidden = true;
-}
-
 // one/two-button prompt inside the pane itself instead of confirm()/alert(),
 // those outside the page, unstyleable, and flagged by some hosts
-// cancel back to the update pane only for the update's own asks
+// cancel back to the hosts' versions
 function openConfirm(
   message: string,
   {
@@ -268,7 +262,7 @@ function openConfirm(
     hideCancel,
     actionLabel,
     onAction,
-    onCancel = closeUpdateModal,
+    onCancel = updateOpen,
     password,
   }: {
     title: string;
@@ -279,7 +273,6 @@ function openConfirm(
     password?: boolean;
   },
 ) {
-  updateModal.hidden = false;
   updateTitle.textContent = title;
   updateConfirmText.textContent = message;
   updateConfirmCancel.hidden = !!hideCancel;
@@ -323,7 +316,6 @@ async function askToStart() {
       title: 'update',
       actionLabel: 'update anyway',
       onAction: () => startChain(),
-      onCancel: openUpdateModal,
     });
     return;
   }
@@ -332,7 +324,7 @@ async function askToStart() {
       title: 'up to date',
       hideCancel: true,
       actionLabel: 'ok',
-      onAction: openUpdateModal,
+      onAction: updateOpen,
     });
     return;
   }
@@ -340,7 +332,6 @@ async function askToStart() {
     title: 'update',
     actionLabel: 'update',
     onAction: () => startChain(),
-    onCancel: openUpdateModal,
   });
 }
 
@@ -369,7 +360,7 @@ function showLockedInfo(by: string) {
     title: 'updating',
     hideCancel: true,
     actionLabel: 'ok',
-    onAction: closeUpdateModal,
+    onAction: updateOpen,
   });
 }
 
@@ -395,39 +386,10 @@ async function startChain(password?: string) {
     showLockedInfo(body.by || 'another host');
     return;
   }
-  openUpdateModal();
+  updateOpen();
 }
 
 updateBtn.addEventListener('click', askToStart);
-// a popup under its icon, as the theme's, a second tap to close; the side
-// column never touched
-const toggleUpdatePane = () => {
-  if (!updateModal.hidden) {
-    closeUpdateModal();
-    return;
-  }
-  dkPopsClose('update');
-  openUpdateModal();
-};
-document.getElementById('update-close')!.addEventListener('click', closeUpdateModal);
-// closed by a click outside it, never by the one that opened it
-let updateWasOpen = false;
-document.addEventListener(
-  'pointerdown',
-  () => {
-    updateWasOpen = !updateModal.hidden;
-  },
-  true,
-);
-document.addEventListener('click', (e) => {
-  if (
-    updateWasOpen &&
-    !updateModal.hidden &&
-    !updateModal.contains(e.target as Node) &&
-    !(e.target as Element).closest?.('.modal, .dk-ctl-pop')
-  )
-    closeUpdateModal();
-});
 
 document.getElementById('update-cancel')!.addEventListener('click', () => {
   chainAction('cancel').then(pollState);
@@ -441,11 +403,11 @@ export function updateState(state: State): void {
   updateSeen = { tailnet: state.tailnet, selfVersion: state.self.version || '' };
   // ours with its buttons, else a peer's, to watch
   const chain = holdChain(state.chain);
-  // a walk starting anywhere opens the pane on every host, once
+  // a walk starting anywhere opens the pane on every host's desk, once, for an admin
   if (chain && !chain.done && chain.chainId !== paneOpenedFor && updateConfirm.hidden) {
     paneOpenedFor = chain.chainId;
     updateMesh.hidden = false;
-    updateModal.hidden = false;
+    if (st.acct?.admin) dkSettings('update');
   }
   // the confirm prompt borrowing this same pane, its text otherwise lost
   if (updateConfirm.hidden) applyChain(chain, !!state.chainMine);

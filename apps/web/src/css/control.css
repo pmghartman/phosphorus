@@ -1,9 +1,6 @@
 /* --- the bar's bell and control panel ------------------------------------------ */
 
 /* the panes the panel opens, their own buttons out of sight */
-.dk-ctl > .dk-tray-wrap > .dk-tray {
-  display: none;
-}
 .dk-bell {
   position: relative;
 }
@@ -31,8 +28,7 @@
 .dk-ctl-pop[hidden] {
   display: none;
 }
-.dk-note-head,
-.dk-ctl-head {
+.dk-note-head {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -100,48 +96,7 @@
   color: var(--muted);
   text-align: center;
 }
-.dk-ctl-tiles {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(5.2rem, 1fr));
-  gap: 0.35rem;
-  padding: 0 0.6rem;
-}
-.dk-ctl-tile {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.15rem;
-  padding: 0.5rem 0.55rem;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  color: var(--fg);
-  font: inherit;
-  cursor: pointer;
-  text-align: left;
-  transition:
-    border-color 0.15s,
-    color 0.15s;
-}
-.dk-ctl-tile .ic {
-  width: 0.95rem;
-  height: 0.95rem;
-  color: var(--muted);
-  margin-bottom: 0.2rem;
-  transition: color 0.15s;
-}
-.dk-ctl-tile:hover,
-.dk-ctl-tile:focus-visible {
-  border-color: var(--accent);
-  outline: none;
-}
-.dk-ctl-tile:hover .ic {
-  color: var(--accent);
-}
-.dk-ctl-sub {
-  color: var(--muted);
-  font-size: 0.68rem;
-}
-/* the appearance, one row: what is worn, the window on a press */
+/* settings, one row */
 .dk-ctl-row {
   display: flex;
   align-items: center;
@@ -223,12 +178,11 @@
 .dk-ctl-avatar .dk-crown {
   stroke: var(--sand);
 }
-/* an update waiting: a blue dot on the button and its tile */
+/* an update waiting: a blue dot on the button */
 .dk-ctl > .dk-profile {
   position: relative;
 }
-.dk-ctl > .dk-profile.has-update::after,
-.dk-ctl-tile.fresh::after {
+.dk-ctl > .dk-profile.has-update::after {
   content: "";
   position: absolute;
   width: 0.4rem;
@@ -239,14 +193,4 @@
 .dk-ctl > .dk-profile.has-update::after {
   top: 0.45rem;
   right: 0.35rem;
-}
-.dk-ctl-tile {
-  position: relative;
-}
-.dk-ctl-tile.fresh::after {
-  top: 0.5rem;
-  right: 0.5rem;
-}
-.dk-ctl-tile.fresh .ic {
-  color: var(--sky);
 }

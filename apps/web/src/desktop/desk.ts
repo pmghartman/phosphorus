@@ -6,6 +6,7 @@ import './desk/webapps.ts';
 import './desk/git.ts';
 
 export const dkView = document.getElementById('view-desktop')!;
+export { dkWallClear, dkWallPick, dkWallSet } from '../settings/appearance.ts';
 export {
   dkArt,
   dkDesktop,
@@ -25,10 +26,7 @@ export {
   dkMenuEl,
   dkMenuNote,
   dkService,
-  dkWallClear,
   dkWallPaint,
-  dkWallPick,
-  dkWallSet,
   type MenuItem,
   WALL_EVENT,
 } from './desk/wallpaper.ts';

@@ -64,7 +64,6 @@ window or popup while open and back here on close -->
     <div class="update-pane" id="update-modal" hidden>
     <div class="update-pane-header">
       <span id="update-title">mesh update</span>
-      <button class="modal-close" id="update-close" type="button" title="close (u)" aria-label="close">&times;</button>
     </div>
     <div class="update-pane-body">
       <div class="update-confirm" id="update-confirm" hidden>
@@ -104,12 +103,7 @@ window or popup while open and back here on close -->
           <ul id="game-servers-list" class="list">
             <li class="empty">none yet</li>
           </ul>
-          <div class="home-note">mesh only
-            <div class="join-key" id="join-key">
-              <button type="button" class="join-key-btn" id="join-key-btn" title="single use, lasts 3 days">request guest key</button>
-              <a href="https://tailscale.com/download" target="_blank" rel="noopener">install tailscale</a>
-            </div>
-          </div>
+          <div class="home-note">mesh only</div>
         </div>
     </div>
     <div class="view" id="view-chat">
@@ -120,7 +114,6 @@ window or popup while open and back here on close -->
     </div>
     <!-- claude code sessions on the mesh's hosts, drawn by apps/code.ts -->
     <div class="view" id="view-code"></div>
-    <div class="view" id="view-agents"></div>
     <!-- optional apps for the mesh, drawn by apps/store.ts -->
     <div class="view" id="view-apps"></div>
     <div class="view" id="view-about">

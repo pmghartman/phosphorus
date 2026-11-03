@@ -60,6 +60,7 @@ const filesRe =
   /^\/api\/files\/([a-z0-9][a-z0-9-]*)\/(info|list|tree|search|read|download|upload|save|mkdir|rename|delete|run|copy)$/;
 const publicRe = /^\/api\/services\/([a-z0-9][a-z0-9-]*)\/([a-z0-9][a-z0-9-]*)\/public$/;
 const publishRe = /^\/api\/services\/([a-z0-9][a-z0-9-]*)\/([a-z0-9][a-z0-9-]*)\/publish$/;
+const hostCfgRe = /^\/api\/hosts\/([a-z0-9][a-z0-9-]*)\/config$/;
 const faviconRe = /^\/api\/favicon\/([a-z0-9][a-z0-9-]*)\/([a-z0-9][a-z0-9-]*)$/;
 
 type UserCall = (s: users.Session | undefined, p: Record<string, any>, c: Ctx) => users.R | Promise<users.R>;
@@ -396,6 +397,21 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
     if (!isBrowser(c) || !((!!s && s.admin) || (adminPass === "" && isLoopback(c)))) return forbidden();
     const [st, b] = await mintGuestKey();
     return sendJSON(st, b);
+  }
+
+  // a host's shares, model and git host, read and written for an admin (settings › hosts)
+  m = hostCfgRe.exec(pathname);
+  if (m && (method === "GET" || method === "POST")) {
+    const s = users.Of(c);
+    if (!isBrowser(c) || !sameOrigin(c) || !((!!s && s.admin) || (adminPass === "" && isLoopback(c))))
+      return forbidden();
+    const host = m[1]!;
+    if (method === "GET") return sendJSON(...(await hostConfig(host, { op: "get" })));
+    return onJSON(c, 16 * 1024, true, (p) =>
+      ["shares", "model", "git"].includes(str(p.op))
+        ? hostConfig(host, p)
+        : [400, { error: "op is shares, model or git" }],
+    );
   }
 
   m = publicRe.exec(pathname);
