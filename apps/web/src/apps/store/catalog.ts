@@ -232,7 +232,8 @@ export const hostUp = (host: string) =>
   host === st.selfHost || !!st.lastState?.tailnet?.some((d) => d.name === host && d.phosphorus);
 
 export interface StackFacts {
-  // the hosts named, active first
+  // the host serving it, and the hosts named, it first
+  live: string;
   hosts: string[];
   active?: StackStatus;
   // a step under way somewhere, and the hosts with one
@@ -245,16 +246,24 @@ export interface StackFacts {
   sub: [cls: string, text: string];
 }
 
+// the host serving it now, as the hosts tell it: failover's leader, which may not be the
+// want's active (an install naming an empty host never starts over another's copy)
+export function liveHost(v: StackView): string {
+  const id = v.summary.id;
+  return [v.active, ...v.standbys].find((h) => statusOn(h, id)?.role === 'active') ?? v.active;
+}
+
 export function stackFacts(v: StackView): StackFacts {
   const id = v.summary.id;
-  const hosts = [v.active, ...v.standbys];
-  const active = statusOn(v.active, id);
+  const live = liveHost(v);
+  const hosts = [live, ...[v.active, ...v.standbys].filter((h) => h !== live)];
+  const active = statusOn(live, id);
   const busy = hosts.filter((h) => {
     const j = statusOn(h, id)?.job;
     return j && !j.done;
   });
   const failed = hosts.filter((h) => statusOn(h, id)?.job?.ok === false);
-  const syncs = v.standbys.map((h) => statusOn(h, id)?.lastSync ?? 0);
+  const syncs = hosts.slice(1).map((h) => statusOn(h, id)?.lastSync ?? 0);
   const synced = syncs.length ? Math.min(...syncs) : undefined;
   // a promotion under way or done, or the active host gone quiet
   let event: [string, string] | undefined;
@@ -266,10 +275,11 @@ export function stackFacts(v: StackView): StackFacts {
       : j.ok
         ? ['new', `${promoting} took over`]
         : ['bad', `${promoting} couldn't take over`];
-  } else if (!hostUp(v.active))
-    event = v.standbys.length
-      ? ['bad', `${v.active} is down; a backup takes over`]
-      : ['bad', `${v.active} is down and it has no backup`];
+  } else if (!hostUp(live))
+    event =
+      hosts.length > 1
+        ? ['bad', `${live} is down; a backup takes over`]
+        : ['bad', `${live} is down and it has no backup`];
   const op = busy.length ? statusOn(busy[0]!, id)!.job!.op : '';
   const sub: [string, string] = busy.length
     ? ['wait', `${opWords[op] ?? op} on ${busy.join(', ')}`]
@@ -278,13 +288,13 @@ export function stackFacts(v: StackView): StackFacts {
       : active?.error
         ? ['bad', active.error]
         : !active
-          ? ['wait', `waiting for ${v.active}`]
+          ? ['wait', `waiting for ${live}`]
           : !active.running
-            ? ['bad', `stopped on ${v.active}`]
+            ? ['bad', `stopped on ${live}`]
             : active.healthy === false
-              ? ['bad', `unhealthy on ${v.active}`]
-              : ['on', `on ${v.active}`];
-  return { hosts, active, busy, failed, synced, event, sub };
+              ? ['bad', `unhealthy on ${live}`]
+              : ['on', `on ${live}`];
+  return { live, hosts, active, busy, failed, synced, event, sub };
 }
 
 export const opWords: Record<string, string> = {

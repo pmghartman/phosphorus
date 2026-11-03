@@ -687,14 +687,20 @@ export class HA {
     return s;
   }
 
-  // the standbys an admin picked, the want's gen bumped
-  setStandbys(id: string, standbys: unknown, by: string): [number, any] {
+  // the standbys an admin picked, the want's gen bumped; active, when given, names the host
+  // serving it now as the want's active, the one named before dropped unless picked again
+  setStandbys(id: string, standbys: unknown, by: string, active?: unknown): [number, any] {
     const w = this.m.wants()[id];
     if (!w) return [404, { error: `no stack ${id}` }];
     if (!Array.isArray(standbys) || standbys.some((h) => typeof h !== "string" || !nameRe.test(h)))
       return [400, { error: "standbys must be host names" }];
-    const list = uniq(standbys as string[]).filter((h) => h !== w.active);
-    const next: StackWant = { ...w, standbys: list, gen: w.gen + 1, by, at: this.clock.wall() };
+    if (active !== undefined && (typeof active !== "string" || !nameRe.test(active)))
+      return [400, { error: "active must be a host name" }];
+    const act = (active as string | undefined) ?? w.active;
+    if (act !== w.active && this.leader(groupOf(id)) !== act)
+      return [409, { error: `${act} isn't serving ${id}: move it there instead` }];
+    const list = uniq(standbys as string[]).filter((h) => h !== act);
+    const next: StackWant = { ...w, active: act, standbys: list, gen: w.gen + 1, by, at: this.clock.wall() };
     this.m.setWant(id, next);
     this.sync();
     return [200, { ok: true, want: next }];

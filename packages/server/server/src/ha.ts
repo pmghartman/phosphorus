@@ -137,7 +137,7 @@ export async function haRoute(c: Ctx, pathname: string, method: string, q: URLSe
     if (m[2] === "standbys")
       return onJSON(c, maxJSONBody, true, (p) => {
         markHot();
-        const [st, out] = h!.setStandbys(id, p.standbys, s?.user ?? "admin");
+        const [st, out] = h!.setStandbys(id, p.standbys, s?.user ?? "admin", p.active);
         return st === 200 ? [st, { ok: true, want: viewOf(out.want) }] : [st, out];
       });
     return onJSON(c, maxJSONBody, true, (p) => {

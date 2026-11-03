@@ -18,6 +18,7 @@ import {
   install,
   installedAs,
   type Loaded,
+  liveHost,
   loadPage,
   opWords,
   pages,
@@ -77,9 +78,10 @@ function ask(title: string, body: (HTMLElement | string)[], action: string, dang
   });
 }
 
-// a list of hosts to tick or pick one of, each with a note, or why it can't be; returns the picked
+// a list of hosts to tick or pick one of, each with a note, or why it can't be; a locked one
+// shown ticked, never changed nor returned; returns the picked
 function hostChoice(
-  hosts: { host: string; note?: string; why?: string; on?: boolean }[],
+  hosts: { host: string; note?: string; why?: string; on?: boolean; lock?: boolean }[],
   type: 'radio' | 'checkbox',
   onChange?: (picked: string[]) => void,
 ): { el: HTMLElement; picked: () => string[] } {
@@ -88,7 +90,12 @@ function hostChoice(
   const boxes: [string, HTMLInputElement][] = [];
   for (const h of hosts) {
     const li = el('li', `store-pick-row${h.why ? ' off' : ''}`);
-    const cb = Object.assign(el('input'), { type, name, checked: !!h.on && !h.why, disabled: !!h.why });
+    const cb = Object.assign(el('input'), {
+      type,
+      name,
+      checked: !!h.lock || (!!h.on && !h.why),
+      disabled: !!h.why || !!h.lock,
+    });
     const lab = el('label', 'store-pick-label');
     lab.append(cb, el('span', 'store-pick-host', h.host));
     li.append(lab);
@@ -497,7 +504,7 @@ function installSec(key: string, page: AppPage): HTMLElement[] {
 function hostRow(v: StackView, h: string): HTMLElement {
   const id = v.summary.id;
   const s = statusOn(h, id);
-  const role = h === v.active ? 'active' : 'backup';
+  const role = h === liveHost(v) ? 'active' : 'backup';
   const job = s?.job;
   const running = !!job && !job.done;
   const failed = !!job && job.done && job.ok === false;
@@ -580,30 +587,41 @@ function fitHosts(page: AppPage | undefined): string[] {
   return names.sort();
 }
 
-async function changeBackups(v: StackView, page: AppPage | undefined) {
-  const rest = fitHosts(page).filter((h) => h !== v.active);
+// the hosts it's on: the one serving it kept, every other one ticked to keep a copy or
+// unticked to take it off there, its data there kept for a later install
+async function changeHosts(v: StackView, page: AppPage | undefined) {
+  const live = liveHost(v);
+  const named = [v.active, ...v.standbys];
+  const rest = [...new Set([...named, ...fitHosts(page)])].filter((h) => h !== live).sort();
   const pick = hostChoice(
-    rest.map((h) => ({ host: h, on: v.standbys.includes(h) })),
+    [
+      { host: live, lock: true, note: 'serving it; move it to take it off' },
+      ...rest.map((h) => ({ host: h, on: named.includes(h), note: named.includes(h) ? 'a backup' : '' })),
+    ],
     'checkbox',
   );
-  const body: (HTMLElement | string)[] = [BACKUP_WORDS];
-  body.push(rest.length ? pick.el : el('p', 'store-pick-note warn', 'No other host can run it.'));
-  if (await ask(`backups for ${v.summary.name}`, body, 'save'))
-    stackAct(v.summary.id, 'standbys', { standbys: pick.picked() });
+  const body: (HTMLElement | string)[] = [
+    BACKUP_WORDS,
+    pick.el,
+    el('p', 'store-pick-note', 'An unticked host stops it and takes it down there, its data kept.'),
+  ];
+  if (await ask(`hosts for ${v.summary.name}`, body, 'save'))
+    stackAct(v.summary.id, 'standbys', { active: live, standbys: pick.picked() });
 }
 
-async function moveTo(v: StackView, page: AppPage | undefined) {
-  // the backups first: they hold a copy already
-  const rest = fitHosts(page)
-    .filter((h) => h !== v.active)
-    .sort((a, b) => Number(v.standbys.includes(b)) - Number(v.standbys.includes(a)));
+// a handoff goes to a backup, the one holding a copy
+async function moveTo(v: StackView) {
+  const live = liveHost(v);
+  const rest = [v.active, ...v.standbys].filter((h) => h !== live);
   const pick = hostChoice(
-    rest.map((h, i) => ({ host: h, on: i === 0, note: v.standbys.includes(h) ? 'a backup, its copy ready' : '' })),
+    rest.map((h, i) => ({ host: h, on: i === 0, note: 'a backup, its copy ready' })),
     'radio',
   );
   const body: (HTMLElement | string)[] = [
-    `${v.summary.name} stops on ${v.active}, its data is copied over a last time, and it starts on the host you pick. It’s offline for that moment.`,
-    rest.length ? pick.el : el('p', 'store-pick-note warn', 'No other host can run it.'),
+    `${v.summary.name} stops on ${live}, its data is copied over a last time, and it starts on the host you pick. It’s offline for that moment.`,
+    rest.length
+      ? pick.el
+      : el('p', 'store-pick-note warn', 'It has no backup to move to: add the host under hosts… first.'),
   ];
   if ((await ask(`move ${v.summary.name} to…`, body, 'move')) && pick.picked()[0])
     stackAct(v.summary.id, 'move', { to: pick.picked()[0] });
@@ -612,7 +630,7 @@ async function moveTo(v: StackView, page: AppPage | undefined) {
 async function remove(v: StackView) {
   const keep = Object.assign(el('input'), { type: 'checkbox', checked: true });
   const lab = el('label', 'store-pick-label');
-  lab.append(keep, el('span', '', `keep its data on ${[v.active, ...v.standbys].join(', ')}`));
+  lab.append(keep, el('span', '', `keep its data on ${stackFacts(v).hosts.join(', ')}`));
   const note = el('p', 'store-pick-note', 'put back by a later install of it');
   keep.addEventListener('change', () => {
     note.textContent = keep.checked
@@ -647,7 +665,7 @@ function installedSec(v: StackView, page: AppPage | undefined): HTMLElement[] {
     el(
       'p',
       'store-pick-note',
-      `installed by ${v.by || 'an admin'}, ${agoText(v.at)}${v.standbys.length ? '' : '; no backups'}`,
+      `installed by ${v.by || 'an admin'}, ${agoText(v.at)}${f.hosts.length > 1 ? '' : '; no backups'}`,
     ),
   );
   const out = [sec];
@@ -676,14 +694,14 @@ function installedSec(v: StackView, page: AppPage | undefined): HTMLElement[] {
       if (
         await pageAsk({
           title: `update ${v.summary.name}`,
-          message: `Its images are pulled again and it restarts on ${v.active}; its backups pull them too.`,
+          message: `Its images are pulled again and it restarts on ${f.live}; its backups pull them too.`,
           action: 'update',
         })
       )
         stackAct(id, 'update');
     });
-    btn('backups…', 'pick the hosts that take over', () => changeBackups(v, page));
-    btn('move to host…', 'a planned handoff to another host', () => moveTo(v, page));
+    btn('hosts…', 'the hosts it keeps a copy on, added or taken off', () => changeHosts(v, page));
+    btn('move to host…', 'a planned handoff to a backup', () => moveTo(v));
     btn('remove…', 'take it off the mesh', () => remove(v), 'danger');
   } else row.append(el('span', 'store-pick-note', 'An admin updates, moves or removes it.'));
   acts.append(row);

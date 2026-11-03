@@ -356,6 +356,18 @@ test("standbys edited: the gen bumped, a dropped standby no longer a candidate",
   expect(existsSync(join(b.rt.dataDir("vault"), "..", "ha"))).toBe(true);
 });
 
+test("hosts edited: the active named only as the host serving it, the one named before dropped", async () => {
+  const { w, a } = await mesh3();
+  await w.run(2000);
+  expect(a.ha.setStandbys("vault", ["a"], "admin", "c")[0]).toBe(409);
+  expect(a.ha.setStandbys("vault", [], "admin", "bad host")[0]).toBe(400);
+  w.wants.vault = { ...w.wants.vault!, active: "b", standbys: ["a"] };
+  const [st, out] = a.ha.setStandbys("vault", [], "admin", "a");
+  expect(st).toBe(200);
+  expect(out.want.active).toBe("a");
+  expect(out.want.standbys).toEqual([]);
+});
+
 // the outage this guards against: an app removed and installed again with its active on a host
 // that has nothing, while the host it ran on before still holds its data
 test("an install whose active has no data never starts over a candidate holding an earlier copy", async () => {

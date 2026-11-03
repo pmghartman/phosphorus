@@ -108,14 +108,14 @@ function meshRow(v: StackView): HTMLElement {
   const row = Object.assign(el('button', 'store-run'), { type: 'button' });
   const text = el('span', 'store-tile-text');
   const where = el('span', 'store-run-where');
-  where.append(el('span', 'store-run-role', 'active'), el('span', 'store-run-host', v.active));
-  if (v.standbys.length)
-    where.append(el('span', 'store-run-role', 'backups'), el('span', 'store-run-host', v.standbys.join(', ')));
+  where.append(el('span', 'store-run-role', 'active'), el('span', 'store-run-host', f.live));
+  if (f.hosts.length > 1)
+    where.append(el('span', 'store-run-role', 'backups'), el('span', 'store-run-host', f.hosts.slice(1).join(', ')));
   else where.append(el('span', 'store-run-role', 'no backups'));
   text.append(el('b', 'store-tile-name', v.summary.name), where);
   const side = el('span', 'store-run-side');
   side.append(el('span', `store-tile-sub ${f.sub[0]}`, f.sub[1]));
-  if (v.standbys.length)
+  if (f.hosts.length > 1)
     side.append(
       el(
         'span',

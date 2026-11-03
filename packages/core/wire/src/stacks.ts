@@ -186,7 +186,7 @@ export interface StackStatus {
 // POST /api/stacks/<id>/update                    -> { ok }                                          (stacks, admin)
 // POST /api/stacks/<id>/remove { keepData }       -> { ok }                                          (stacks, admin)
 // POST /api/stacks/docker { host }                -> { ok }   Docker installed on a Debian/Ubuntu host  (stacks, admin)
-// POST /api/stacks/<id>/standbys { standbys }     -> { ok, want: StackView }                         (ha, admin)
+// POST /api/stacks/<id>/standbys { standbys, active? } -> { ok, want: StackView }; active only the host serving it (ha, admin)
 // POST /api/stacks/<id>/move { to }               -> { ok }   a planned handoff                      (ha, admin)
 // State.stacks carries every StackView; HostInfo.stacks each host's StackStatus, HostInfo.docker its DockerInfo.
 
