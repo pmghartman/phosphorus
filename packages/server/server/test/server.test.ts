@@ -63,7 +63,10 @@ test("http smoke", async () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ source: "casaos", ref: "UptimeKuma", active: "testhost" }),
     });
-    expect([inst.status, await inst.json()]).toEqual([400, { error: "the catalogue isn't on this host yet" }]);
+    expect([inst.status, await inst.json()]).toEqual([404, { error: "no app UptimeKuma in casaos" }]);
+    // the catalogue: for a logged-in user alone
+    const cat = await fetch(base + "/api/stacks/catalog");
+    expect([cat.status, await cat.json()]).toEqual([403, { error: "log in as a user" }]);
     // the chat socket: a join's history and presence
     const got = await new Promise<any[]>((res, rej) => {
       const out: any[] = [];

@@ -7,6 +7,7 @@
   },
   "dependencies": {
     "@phosphorus/app-sdk": "workspace:*",
+    "@phosphorus/catalog": "workspace:*",
     "@phosphorus/chatmedia": "workspace:*",
     "@phosphorus/config": "workspace:*",
     "@phosphorus/envfile": "workspace:*",

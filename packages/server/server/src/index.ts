@@ -1,6 +1,7 @@
 // phosphorus in one process, the ingress, the mesh loop, the page, this
 // host's state for peers, chat and terminal websockets
 
+import * as catalog from "@phosphorus/catalog";
 import * as chatmedia from "@phosphorus/chatmedia";
 import * as files from "@phosphorus/files";
 import * as git from "@phosphorus/git";
@@ -64,6 +65,7 @@ import {
   ownState,
   publishHost,
   runGameLocally,
+  stackHosts,
 } from "./server.ts";
 import { filesCall } from "./shares.ts";
 import { copyTree, homeSource } from "./transfer.ts";
@@ -97,8 +99,14 @@ export async function start(): Promise<Server<WSData>> {
   void homesync.start(homeSource);
   webapps.Start(tailnetIP, port);
   startApps();
+  catalog.start({
+    ip: () => tailnetIP(selfHost),
+    hosts: stackHosts,
+    installed: () => new Set(store.list("etc/stacks").map((f) => f.replace(/\.json$/, ""))),
+  });
   // the installed services: this host's copies brought to the mesh's wants
   stacks.Start({
+    defOf: catalog.defOf,
     ipOf: tailnetIP,
     hosts: () => peers.tailnet().flatMap((d) => (d.phosphorus === true && typeof d.name === "string" ? [d.name] : [])),
     publish: (name, fields) =>

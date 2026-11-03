@@ -2,6 +2,7 @@
 // built for the page, the update chain and guest keys
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import * as catalog from "@phosphorus/catalog";
 import { Zone } from "@phosphorus/gamedns";
 import * as git from "@phosphorus/git";
 import { State as modelState, Summary } from "@phosphorus/model";
@@ -124,7 +125,22 @@ export function publishHost() {
     wildcard: wildcard(),
     stacks: stacks.statuses(),
     docker: stacks.dockerInfo(),
+    ...catalog.facts(),
   });
+}
+
+// every phosphorus host as a place to install an app: its tailnet os and its info
+export function stackHosts(): catalog.HostFacts[] {
+  const os = new Map(peers.tailnet().map((d) => [d.name.toLowerCase(), d.os]));
+  return Object.entries(hostsInfo()).map(([host, i]) => ({
+    host,
+    os: os.get(host),
+    platform: i.platform,
+    arch: i.arch,
+    distro: i.distro,
+    docker: i.docker,
+    listening: i.listening,
+  }));
 }
 
 export function hostsInfo(): Record<string, any> {

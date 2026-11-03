@@ -1,0 +1,28 @@
+{
+  "cosmos-installer": {
+    "form": [
+      { "name": "mediaPath", "label": "Path to your media", "initialValue": "{DefaultDataPath}/media", "type": "text" },
+      { "name": "useCache", "label": "Keep a cache?", "initialValue": false, "type": "checkbox" }
+    ]
+  },
+  "minVersion": "0.8.0",
+  "services": {
+    "{ServiceName}": {
+      "image": "example/cosmo:3",
+      "container_name": "{ServiceName}",
+      "UID": 1000,
+      "environment": ["SECRET={Passwords.0}", "HOST={Hostnames.{StaticServiceName}.{StaticServiceName}.host}"],
+      "labels": { "cosmos-icon": "https://example.test/cosmo.png", "keep": "yes" },
+      "volumes": [
+        { "source": "{ServiceName}-config", "target": "/config", "type": "volume" }
+        {if Context.mediaPath}
+        , { "source": "{Context.mediaPath}", "target": "/media", "type": "bind" }
+        {/if}
+        {if Context.useCache}
+        , { "source": "{ServiceName}-cache", "target": "/cache", "type": "volume" }
+        {/if}
+      ],
+      "routes": [{ "name": "{ServiceName}", "target": "http://{ServiceName}:9000", "mode": "SERVAPP" }]
+    }
+  }
+}

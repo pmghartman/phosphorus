@@ -1,0 +1,3 @@
+services:
+  plain:
+    image: example/plain

@@ -1,0 +1,8 @@
+{
+  "name": "Cosmo Demo",
+  "description": "A demo servapp. It does little.",
+  "longDescription": "<p>The demo at length.</p>",
+  "tags": ["tools", "demo"],
+  "repository": "https://github.com/example/cosmo",
+  "supported_architectures": ["amd64", "arm64"]
+}

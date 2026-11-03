@@ -183,6 +183,14 @@
         "@phosphorus/minisign": "workspace:*",
       },
     },
+    "packages/mesh/catalog": {
+      "name": "@phosphorus/catalog",
+      "dependencies": {
+        "@phosphorus/services": "workspace:*",
+        "@phosphorus/util": "workspace:*",
+        "@phosphorus/wire": "workspace:*",
+      },
+    },
     "packages/mesh/elector": {
       "name": "@phosphorus/elector",
       "dependencies": {
@@ -292,6 +300,7 @@
       "name": "@phosphorus/server",
       "dependencies": {
         "@phosphorus/app-sdk": "workspace:*",
+        "@phosphorus/catalog": "workspace:*",
         "@phosphorus/chatmedia": "workspace:*",
         "@phosphorus/config": "workspace:*",
         "@phosphorus/envfile": "workspace:*",
@@ -299,6 +308,7 @@
         "@phosphorus/gamedns": "workspace:*",
         "@phosphorus/git": "workspace:*",
         "@phosphorus/mcp": "workspace:*",
+        "@phosphorus/minisign": "workspace:*",
         "@phosphorus/model": "workspace:*",
         "@phosphorus/peers": "workspace:*",
         "@phosphorus/proxy": "workspace:*",
@@ -354,6 +364,8 @@
     "@phosphorus/app-sdk": ["@phosphorus/app-sdk@workspace:packages/core/app-sdk"],
 
     "@phosphorus/appfeed": ["@phosphorus/appfeed@workspace:packages/mesh/appfeed"],
+
+    "@phosphorus/catalog": ["@phosphorus/catalog@workspace:packages/mesh/catalog"],
 
     "@phosphorus/chatmedia": ["@phosphorus/chatmedia@workspace:packages/chat/chatmedia"],
 

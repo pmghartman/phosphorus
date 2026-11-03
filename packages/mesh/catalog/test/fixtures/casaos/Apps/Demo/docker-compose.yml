@@ -1,0 +1,39 @@
+name: demo
+services:
+  demo:
+    image: example/demo:1.0
+    environment:
+      PUID: $PUID
+      PGID: $PGID
+      TZ: $TZ
+    ports:
+      - target: 8080
+        published: "8181"
+        protocol: tcp
+    volumes:
+      - type: bind
+        source: /DATA/AppData/$AppID/config
+        target: /config
+      - /DATA/Media:/media
+    x-casaos:
+      envs:
+        - container: TZ
+          description:
+            en_us: Timezone
+x-casaos:
+  architectures:
+    - amd64
+    - arm64
+  main: demo
+  category: Utilities
+  title:
+    en_us: Demo App
+    de_de: Demo-App
+  tagline:
+    de_DE: Eine Demo
+    en_US: A demo
+  description:
+    en_US: The demo, at length.
+  icon: https://example.test/demo.png
+  port_map: "8181"
+  repo: https://github.com/example/demo

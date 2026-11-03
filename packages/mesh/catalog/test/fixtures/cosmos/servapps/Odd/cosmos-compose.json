@@ -1,0 +1,1 @@
+{ "services": { "{ServiceName}": { "image": "example/odd", "environment": ["H={RootHostname}"] } } }

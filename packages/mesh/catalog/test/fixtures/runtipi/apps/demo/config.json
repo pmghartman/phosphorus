@@ -1,0 +1,16 @@
+{
+  "name": "Demo",
+  "id": "demo",
+  "available": true,
+  "port": 8107,
+  "categories": ["utilities"],
+  "short_desc": "A demo with a database",
+  "description": "Short.",
+  "source": "https://github.com/example/demo",
+  "supported_architectures": ["amd64"],
+  "form_fields": [
+    { "type": "password", "label": "Admin password", "required": true, "env_variable": "DEMO_ADMIN_PASSWORD" },
+    { "type": "random", "label": "Database password", "min": 32, "env_variable": "DEMO_DB_PASSWORD" },
+    { "type": "text", "label": "Mode", "default": "a", "options": [{ "label": "A", "value": "a" }, { "label": "B", "value": "b" }], "env_variable": "DEMO_MODE" }
+  ]
+}

@@ -79,7 +79,8 @@ export interface AppDef {
   // docker platforms its images run on, empty when unknown
   archs: string[];
   // the compose file as phosphorus will render it: source variables already mapped to
-  // ${APP_DATA}, ${PUID}, ${PGID}, ${TZ}, ${APP_URL}, ${APP_DOMAIN} and the env fields
+  // ${APP_DATA}, ${PUID}, ${PGID}, ${TZ}, ${APP_URL}, ${APP_DOMAIN} and the env fields;
+  // a repo's build contexts and files under ${APP_REPO}, its clone
   compose: string;
   env: EnvField[];
   manifest: PhosManifest;

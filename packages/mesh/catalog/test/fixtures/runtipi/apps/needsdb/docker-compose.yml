@@ -1,0 +1,5 @@
+services:
+  needsdb:
+    image: example/needsdb:1
+    depends_on:
+      - tipi-db

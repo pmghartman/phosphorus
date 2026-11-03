@@ -12,6 +12,7 @@
       "!apps/web/static",
       "!notices",
       "!**/testdata",
+      "!packages/mesh/catalog/test/fixtures",
       "!**/*.md"
     ]
   },

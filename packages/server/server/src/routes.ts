@@ -1,4 +1,5 @@
 // every request on the frontend port, and the ingress's leftovers
+import * as catalog from "@phosphorus/catalog";
 import * as chatmedia from "@phosphorus/chatmedia";
 import { Keys as envKeys } from "@phosphorus/envfile";
 import * as files from "@phosphorus/files";
@@ -50,6 +51,7 @@ const gitForceRe = /^\/api\/githosts\/([A-Za-z0-9-]{1,63})\/force$/;
 const gameRe = /^\/api\/games\/([a-z0-9][a-z0-9-]*)\/([a-z0-9][a-z0-9-]*)\/(start|stop)$/;
 const mediaRe = /^\/api\/chat\/media\/([a-z0-9][a-z0-9-]*)\/([0-9a-f]{32})$/;
 const runRe = /^\/api\/run\/([a-z0-9][a-z0-9-]*)\/([A-Za-z0-9_-]+)\/(.*)$/;
+const stacksAppRe = /^\/api\/stacks\/app\/([a-z]+)\/(.+)$/;
 const appsTarRe = /^\/internal\/apps\/([a-z][a-z0-9-]*)\/(\d+(?:\.\d+){0,3})$/;
 const appsIconRe = /^\/api\/apps\/([a-z][a-z0-9-]*)\/icon$/;
 const hostRe = /^[a-z0-9][a-z0-9-]*$/;
@@ -336,6 +338,12 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
       const admin = (!!s && s.admin) || (adminPass === "" && isLoopback(c));
       return chainAction(str(p.action), str(p.password), admin);
     });
+  }
+  // the installer's catalogue: apps from the catalogues and opened repos, and
+  // whether each installs; for anyone logged in
+  if (pathname.startsWith("/api/stacks/")) {
+    const r = await stacksCatalogRoute(c, pathname, q, method);
+    if (r) return r;
   }
   // the optional apps: the catalogue, what the mesh wants and this host has;
   // an admin's pick followed by every host
@@ -640,4 +648,32 @@ async function filesRoute(c: Ctx, host: string, op: string, q: URLSearchParams):
   if (m === "POST" && op !== "info")
     return onJSON(c, op === "save" ? maxTextBody : maxJSONBody, op === "save", (p) => filesHere(who, op, share, p));
   return sendJSON(405, { error: "method not allowed" });
+}
+
+// the catalogue half of /api/stacks (packages/catalog), undefined for the rest
+async function stacksCatalogRoute(c: Ctx, pathname: string, q: URLSearchParams, method: string) {
+  const get = method === "GET";
+  const m = get ? stacksAppRe.exec(pathname) : null;
+  const post = method === "POST" && (pathname === "/api/stacks/repo" || pathname === "/api/stacks/check");
+  if (!(get && (pathname === "/api/stacks/catalog" || m)) && !post) return;
+  if (!(await isLocalOrPeer(c)) || (post && (!isBrowser(c) || !sameOrigin(c)))) return forbidden();
+  const s = await users.Soon(c);
+  if (!s || s.boot) return sendJSON(403, { error: "log in as a user" });
+  if (pathname === "/api/stacks/catalog") {
+    const [st, b] = catalog.catalogRoute(q);
+    return sendJSON(st, b, { "Cache-Control": "no-store" });
+  }
+  if (m) {
+    let ref: string;
+    try {
+      ref = decodeURIComponent(m[2]!);
+    } catch {
+      return plain(400, "bad request");
+    }
+    const [st, b] = await catalog.appRoute(m[1]!, ref);
+    return sendJSON(st, b, { "Cache-Control": "no-store" });
+  }
+  return onJSON(c, 16 * 1024, true, (p) =>
+    pathname === "/api/stacks/repo" ? catalog.repoRoute(p) : catalog.checkRoute(p),
+  );
 }

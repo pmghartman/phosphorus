@@ -1,0 +1,1 @@
+{ "name": "Needs DB", "id": "needsdb", "port": 8300, "categories": ["utilities"], "short_desc": "Leans on another app" }

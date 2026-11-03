@@ -114,6 +114,11 @@ export interface HostShare {
 export interface HostInfo {
   version?: string;
   platform?: string;
+  // the cpu as docker names it (amd64, arm64, arm), os-release's ID and ID_LIKE, and the
+  // TCP ports open on the host: what the installer's check reads (packages/catalog)
+  arch?: string;
+  distro?: string;
+  listening?: number[];
   files?: { enabled?: boolean; shares?: HostShare[] };
   apps?: Record<string, AppStatus>;
   // a service's step on the host (packages/webapps services): its log's tail, its exit once ended
