@@ -82,7 +82,7 @@ export function records(host = SelfHost): Row[] {
 }
 
 // a host's records as an admin reads them: each one's fields
-export const listed = (host = SelfHost) =>
+export const listed = (host = SelfHost): Record<string, string>[] =>
   store.list(dirOf(host)).map((f) => {
     const name = f.replace(/\.json$/, "");
     return { name, ...fieldsOf(store.read<Rec>(relOf(host, name))) };
