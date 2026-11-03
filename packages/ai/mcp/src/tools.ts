@@ -222,7 +222,7 @@ export const coreTools = (): Tool[] => [
     description:
       "Assign a mesh host's model to an agent, mesh-wide: the host as phosphorus/<host> (or just <host>), blank for the " +
       "automatic pick. The agents are the apps on the mesh that ask a model, each while it is there: code, claude-code, opencode " +
-      "(the Code app), tavern (the tavern app's dungeon master), sulfur. slot fast is the small model an agent uses for background work.",
+      "(the Code app), tavern (the tavern app's dungeon master). slot fast is the small model an agent uses for background work.",
     schema: object(
       {
         agent: { type: "string", description: "an app's agent on the mesh, such as claude-code or tavern" },
