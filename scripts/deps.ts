@@ -30,7 +30,9 @@ function* files(dir: string): Generator<string> {
   }
 }
 
-const importRe = /from\s+["'](@phosphorus\/[a-z-]+)["']|import\(\s*["'](@phosphorus\/[a-z-]+)["']\s*\)/g;
+// a package's name, whatever subpath of it is imported
+const importRe =
+  /from\s+["'](@phosphorus\/[a-z-]+)(?:\/[^"']*)?["']|import\(\s*["'](@phosphorus\/[a-z-]+)(?:\/[^"']*)?["']\s*\)/g;
 let bad = 0;
 for (const d of dirs) {
   const f = join(root, d, "package.json");

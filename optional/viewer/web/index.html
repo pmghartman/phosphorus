@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Viewer</title>
+    <link rel="stylesheet" href="./viewer.css" />
+  </head>
+  <body>
+    <!-- the file's bar: where it is, how it went, its kind's own tools -->
+    <div class="vw-bar">
+      <span class="vw-path" id="vw-path"></span>
+      <span class="vw-note" id="vw-note"></span>
+      <span class="vw-tools" id="vw-tools"></span>
+      <a class="vw-btn" id="vw-down" title="download" hidden>download</a>
+    </div>
+    <main class="vw-main" id="vw-main"></main>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

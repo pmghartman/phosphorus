@@ -5,7 +5,6 @@ export interface AppMods {
   status: typeof import('./status.ts');
   terminal: typeof import('./terminal.ts');
   files: typeof import('./files.ts');
-  editor: typeof import('./editor.ts');
   store: typeof import('./store.ts');
 }
 export type AppName = keyof AppMods;
@@ -14,7 +13,6 @@ const APPS: { [K in AppName]: () => Promise<AppMods[K]> } = {
   status: () => import('./status.ts'),
   terminal: () => import('./terminal.ts'),
   files: () => import('./files.ts'),
-  editor: () => import('./editor.ts'),
   store: () => import('./store.ts'),
 };
 const appMods = new Map<AppName, Promise<any>>();

@@ -10,7 +10,6 @@ import {
   filesCall,
   filesJoin,
   filesParent,
-  filesPath,
   fmHomeChanged,
   fmIcon,
   fmKind,
@@ -19,8 +18,9 @@ import {
 import { el } from '../lib/dom.ts';
 import { dk, st } from '../lib/state.ts';
 import { dkPaintSel } from './desk/icons.ts';
+import { dkFileApp, dkWebApp } from './desk/webapps.ts';
 import { dkIcon, dkIcons, dkMenuNote } from './desk.ts';
-import { dkFocus, dkSize, dkWin } from './windows.ts';
+import type { DkWin } from './windows.ts';
 
 // the Desktop folder in the home, none for the boot admin
 export const dkDeskDir = () => (st.acct && !st.acct.boot ? `${st.acct.user}/Desktop` : '');
@@ -124,7 +124,7 @@ export function dkFileIcon(e: FileEntry): HTMLButtonElement {
   return b;
 }
 
-// --- a file to edit: a plain text window each
+// --- a file opened for the agent or a share
 
 // a file as an app, the agent or a share names it; label and share may be missing
 export interface FileRef {
@@ -146,45 +146,17 @@ export async function fileThere(f: FileRef): Promise<boolean> {
   }
 }
 
-// a file to edit, refused with a note when it's gone
-export async function dkCode(f: FileRef): Promise<void> {
+// a file in the app that opens it, refused with a note when it's gone or none does
+export async function dkCode(f: FileRef): Promise<DkWin | undefined> {
+  const name = f.path.split('/').pop() || f.path;
   if (!(await fileThere(f))) {
-    dkMenuNote(`${f.path.split('/').pop()} is gone`);
+    dkMenuNote(`${name} is gone`);
     return;
   }
-  if (st.acct?.boot) {
-    dkMenuNote('make your own account to edit files');
+  const id = dkFileApp(name);
+  if (!id) {
+    dkMenuNote(`nothing installed opens ${name}`);
     return;
   }
-  dkEditor(f);
-}
-
-function dkEditor(f: FileRef) {
-  if (!dk.desk || !st.acct || st.acct.boot) return;
-  const label = f.label || filesPath(f.host, String(f.share ?? ''), f.path);
-  const w = dkWin(
-    `view:edit
-${f.host}
-${f.share ?? ''}
-${f.path}`,
-    f.path.split('/').pop() || f.path,
-    '',
-    'edit',
-  );
-  if (!w) return;
-  dkSize(w, 720, 560);
-  w.body.append(el('div', 'ed-note', 'loading'));
-  let now: { focus: () => void; holdClose: () => boolean } | null = null;
-  app('editor').then(
-    (m) => {
-      if (!w.node.isConnected) return;
-      now = m.editorStart(w, { ...f, label });
-    },
-    (e) => {
-      w.body.textContent = `failed: ${e.message}`;
-    },
-  );
-  w.onFocus = () => now?.focus();
-  w.holdClose = () => !!now?.holdClose();
-  dkFocus(w);
+  return dkWebApp(id, { host: f.host, share: String(f.share || '0'), path: f.path });
 }

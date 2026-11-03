@@ -65,6 +65,12 @@
         "@types/ssh2": "1.15.6",
       },
     },
+    "optional/viewer": {
+      "name": "@phosphorus/app-viewer",
+      "dependencies": {
+        "@phosphorus/app-sdk": "workspace:*",
+      },
+    },
     "packages/ai/mcp": {
       "name": "@phosphorus/mcp",
       "dependencies": {
@@ -366,6 +372,8 @@
     "@phosphorus/app-code": ["@phosphorus/app-code@workspace:optional/code"],
 
     "@phosphorus/app-sdk": ["@phosphorus/app-sdk@workspace:packages/core/app-sdk"],
+
+    "@phosphorus/app-viewer": ["@phosphorus/app-viewer@workspace:optional/viewer"],
 
     "@phosphorus/appfeed": ["@phosphorus/appfeed@workspace:packages/mesh/appfeed"],
 

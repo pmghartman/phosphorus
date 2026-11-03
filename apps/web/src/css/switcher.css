@@ -116,14 +116,6 @@
   color: var(--offmesh);
 }
 
-/* the editor's bar: where the caret is */
-.ed-pos {
-  flex: none;
-  color: var(--dim);
-  font-size: 0.7rem;
-  font-variant-numeric: tabular-nums;
-}
-
 /* the search: a box in the upper middle of the desk over a faint veil, as spotlight's */
 .dk-spot-veil {
   position: absolute;

@@ -1,0 +1,8 @@
+{
+  "name": "@phosphorus/app-viewer",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@phosphorus/app-sdk": "workspace:*"
+  }
+}

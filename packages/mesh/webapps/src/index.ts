@@ -45,6 +45,8 @@ export type App = {
   repoIcon: string;
   // the agents it asks the mesh's models as, listed in the agents app while installed
   agents?: string[];
+  // the files it opens, by extension: opening one on the desktop opens it in the app
+  opens?: string[];
   // its bundle carries server/index.js, run in phosphorus: never without a signature
   // against a pinned key
   server?: boolean;
@@ -103,6 +105,28 @@ export const Catalog: App[] = [
     ],
     category: "communication",
     server: true,
+  }),
+  firstParty({
+    id: "viewer",
+    name: "Viewer",
+    tagline: "pictures, video, sound, pdfs and text from any host",
+    about:
+      "Opens what you open in Files or on the desktop, from any host's shares or the home, as you: pictures with zoom, video, sound and pdfs as the browser plays them, and anything else as plain text to edit and save. Without it, files download.",
+    features: [
+      "pictures fit to the window, zoomed with the wheel and dragged about",
+      "video, audio and pdfs in the browser's own players",
+      "a plain text editor: save, where the caret is, unsaved changes kept",
+      "any host's files, read and saved as the logged-in user",
+    ],
+    category: "files",
+    opens: [
+      ...["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico", "avif"],
+      ...["mp4", "m4v", "webm", "mkv", "mov", "ogv", "mp3", "wav", "flac", "ogg", "oga", "m4a", "opus", "aac", "pdf"],
+      ...["txt", "md", "log", "csv", "tsv", "json", "jsonc", "yml", "yaml", "toml", "ini", "conf", "cfg", "env"],
+      ...["xml", "html", "htm", "css", "scss", "js", "mjs", "cjs", "ts", "tsx", "jsx", "py", "sh", "bash", "ps1"],
+      ...["bat", "c", "h", "cpp", "hpp", "go", "rs", "java", "kt", "swift", "rb", "lua", "cs", "php", "sql"],
+      ...["diff", "patch", "gitignore", "dockerfile", "service", "nix", "tex", "rst"],
+    ],
   }),
 ];
 
@@ -194,11 +218,11 @@ export function wantOf(id: string): Want | undefined {
   return { ...rel, from: typeof o.from === "string" ? o.from : "", at: typeof o.at === "number" ? o.at : 0 };
 }
 
-export function wants(): Record<string, Want & { mount: string }> {
-  const out: Record<string, Want & { mount: string }> = {};
+export function wants(): Record<string, Want & { mount: string; opens?: string[] }> {
+  const out: Record<string, Want & { mount: string; opens?: string[] }> = {};
   for (const a of Catalog) {
     const w = wantOf(a.id);
-    if (w) out[a.id] = { ...w, mount: a.mount };
+    if (w) out[a.id] = { ...w, mount: a.mount, ...(a.opens ? { opens: a.opens } : {}) };
   }
   return out;
 }

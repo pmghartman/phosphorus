@@ -3,6 +3,7 @@
 
 import type { UiAction } from '@phosphorus/wire';
 import { app } from '../apps/index.ts';
+import { dkFileApp } from '../desktop/desk/webapps.ts';
 import { dkOpenApp, dkTermOn } from '../desktop/desk.ts';
 import { dkCode } from '../desktop/deskfiles.ts';
 import { type DkWin, dkClose, dkFocus, dkWin } from '../desktop/windows.ts';
@@ -135,14 +136,11 @@ function agentAct(a: UiAction, args: Record<string, any>, done: boolean) {
     agentLit(dkTermOn(String(args.host)));
     return;
   }
-  const code = () =>
-    agentOpen(
-      `view:edit
-${args.host}
-${args.share ?? ''}
-${args.path}`,
-      () => dkCode({ host: args.host, share: args.share, path: args.path }),
-    );
+  // in the app that opens it, when one is installed
+  const code = () => {
+    const id = dkFileApp(String(args.path));
+    if (id) agentOpen(`webapp:${id}`, () => dkCode({ host: args.host, share: args.share, path: args.path }));
+  };
   if (t === 'files_read' && !done && args.host && args.path) {
     code();
     return;

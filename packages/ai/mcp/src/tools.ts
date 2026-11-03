@@ -326,7 +326,7 @@ export const coreTools = (): Tool[] => [
         text: { type: "string", description: "the whole file" },
         old: { type: "string", description: "the exact passage to replace" },
         new: { type: "string", description: "what replaces it" },
-        open: { type: "boolean", description: "also open the file in a editor tab on their page", default: false },
+        open: { type: "boolean", description: "also open the file in the Viewer on their page", default: false },
       },
       "host",
       "share",
@@ -346,7 +346,7 @@ export const coreTools = (): Tool[] => [
       const out = obj(await pressed(src.actions.files(m.caller, host, "save", share, body))) ?? {};
       if (a.open === true) {
         const p = str(out.path) || str(body.path);
-        if (await who.ui({ kind: "code", host, share, path: p })) out.opened = "in a editor tab on their page";
+        if (await who.ui({ kind: "code", host, share, path: p })) out.opened = "in the Viewer on their page";
       }
       return out;
     },
@@ -414,9 +414,9 @@ export const coreTools = (): Tool[] => [
   },
   {
     name: "open_file",
-    title: "Open a file in the editor",
+    title: "Open a file in the Viewer",
     description:
-      "Open a text or code file from a share in a code editor tab on the asker's page, highlighted, its syntax errors marked, to read and edit together. Nothing in it can be run.",
+      "Open a file from a share in the Viewer app on the asker's page: text to read and edit together, or a picture, video, sound or pdf. Nothing opens while Viewer isn't installed.",
     schema: object(
       {
         host: name,

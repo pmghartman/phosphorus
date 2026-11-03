@@ -7,7 +7,6 @@ import { dk, st } from '../lib/state.ts';
 import { dkSettings, type SettingsAt, settingsAt } from '../settings/settings.ts';
 import { dkTermRestore, dkTermSaved } from './desk/terminal.ts';
 import { dkOpenApp, dkService, dkTerminal } from './desk.ts';
-import { dkCode } from './deskfiles.ts';
 import { type DkWin, dkFocus, dkHide, dkOnTouch, dkPlace, dkSnap } from './windows.ts';
 
 interface Saved {
@@ -40,10 +39,6 @@ function openerOf(w: DkWin): Record<string, any> | null {
     return { t: 'svc', host, name };
   }
   if (k === 'terminal') return dkTermSaved();
-  if (k.startsWith('view:edit\n')) {
-    const [, host, share, path] = k.split('\n');
-    return { t: 'edit', host, share, path };
-  }
   if (w.kind === 'fm') {
     const fm = [...dkFms].find((f) => f.w === w);
     return fm?.loc ? { t: 'fm', loc: fm.loc, dir: fm.dir } : null;
@@ -91,8 +86,6 @@ const OLD_SETTINGS = new Set(['profile', 'users', 'appearance', 'agents', 'about
 // one saved window opened, undefined while what it needs isn't here yet
 async function reopen(s: Saved): Promise<DkWin | undefined | null> {
   const o = s.open;
-  const was = new Set(dk.wins.keys());
-  const fresh = () => [...dk.wins.values()].find((w) => !was.has(w.key));
   switch (o.t) {
     case 'app': {
       const id = String(o.id);
@@ -119,9 +112,6 @@ async function reopen(s: Saved): Promise<DkWin | undefined | null> {
     case 'term':
       if (!dk.creds.has(String(o.host))) return st.terminalHosts.includes(String(o.host)) ? undefined : null;
       return dkTerminal(String(o.host)) ?? null;
-    case 'edit':
-      await dkCode({ host: String(o.host), share: String(o.share), path: String(o.path) });
-      return fresh() ?? null;
     case 'fm': {
       const fm = await filesWin({ loc: o.loc as Loc, dir: String(o.dir) });
       return fm?.w ?? null;

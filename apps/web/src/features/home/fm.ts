@@ -3,10 +3,11 @@
 
 import type { FileEntry } from '@phosphorus/wire';
 import { app, appCall } from '../../apps/index.ts';
+import { dkFileApp, dkWebApp } from '../../desktop/desk/webapps.ts';
 import { dkDeskDir, dkDeskLoad } from '../../desktop/deskfiles.ts';
 import type { DkWin } from '../../desktop/windows.ts';
 import { dkGlyph, ICONS } from '../../lib/dom.ts';
-import { filesApi, filesCopy, filesJoin, filesParent, isHome, type Loc, may } from './api.ts';
+import { filesApi, filesCopy, filesJoin, filesParent, hostOf, isHome, type Loc, may } from './api.ts';
 
 export interface PickedItem {
   rel: string;
@@ -120,13 +121,16 @@ export function fmHomeChanged(): void {
   dkDeskLoad();
 }
 
-// a folder opens in a files window; anything else downloads
+// a folder opens in a files window, a file in the app that opens it or downloads
 export function fileOpen(loc: Loc, rel: string, e: { dir?: boolean }): void {
   if (e.dir) {
     filesWin({ loc, dir: rel });
     return;
   }
-  fileDownload(loc, rel);
+  // in the installed app that opens its kind, else downloaded
+  const id = dkFileApp(rel);
+  if (id) dkWebApp(id, { host: hostOf(loc), share: loc.share || '0', path: rel });
+  else fileDownload(loc, rel);
 }
 
 export function fileDownload(loc: Loc, rel: string): void {

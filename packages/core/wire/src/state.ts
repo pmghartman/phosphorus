@@ -153,6 +153,8 @@ export interface AppWant {
   version: string;
   // where every host serves it
   mount?: string;
+  // the file extensions it opens, a file opened on the desktop going to it
+  opens?: string[];
   url?: string;
   sha256?: string;
   from?: string;

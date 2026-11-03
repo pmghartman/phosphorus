@@ -18,6 +18,14 @@ export function dkWebApps(): { id: string; mount: string; want: AppWant }[] {
     .map(([id, w]) => ({ id, mount: w.mount || `/${id}/`, want: w }));
 }
 
+// the installed app that opens a file so named, by the extensions its catalogue
+// entry lists; none and the file downloads
+export function dkFileApp(name: string): string | undefined {
+  const base = name.split('/').pop()!;
+  const x = base.includes('.') ? base.split('.').pop()!.toLowerCase() : '';
+  return x ? dkWebApps().find((a) => a.want.opens?.includes(x))?.id : undefined;
+}
+
 // --- the bridge: an app's page asking the desktop (@phosphorus/app-sdk/web) ---
 
 // the theme's tokens as this page has them now, for an app's page to wear
@@ -31,8 +39,9 @@ function themeNow(): { kind: 'theme'; vars: Record<string, string>; scheme: stri
   return { kind: 'theme', vars, scheme: document.documentElement.dataset.theme || '' };
 }
 
-// the app windows whose page asked for the theme
+// the app windows whose page asked for the theme, and those taking opens while up
 const themed = new Set<HTMLIFrameElement>();
+const opening = new WeakSet<HTMLIFrameElement>();
 function sendTheme(f: HTMLIFrameElement) {
   f.contentWindow?.postMessage(themeNow(), location.origin);
 }
@@ -55,9 +64,13 @@ function bridge(w: DkWin, frame: HTMLIFrameElement) {
     if (a.kind === 'ready') {
       themed.add(frame);
       sendTheme(frame);
+    } else if (a.kind === 'opens') {
+      opening.add(frame);
     } else if (a.kind === 'title' && typeof a.title === 'string') {
-      const t = w.head.querySelector('.tab-label');
-      if (t) t.textContent = a.title.slice(0, 80);
+      for (const t of [w.head.querySelector('.tab-label'), w.task.querySelector('.dk-task-t')])
+        if (t) t.textContent = a.title.slice(0, 80);
+    } else if (a.kind === 'unsaved') {
+      w.node.classList.toggle('dirty', a.on === true);
     } else if (a.kind === 'notify' && typeof a.title === 'string') {
       const [t, b] = [a.title.slice(0, 120), String(a.body ?? '').slice(0, 500)];
       noteAdd(t, b);
@@ -78,10 +91,22 @@ function bridge(w: DkWin, frame: HTMLIFrameElement) {
   };
 }
 
-// the app's window, the page's url carrying query when given
+// the app's window, the page's url carrying query when given; a window already
+// up handed the query, or loaded anew with it when its page doesn't take opens
 export function dkWebApp(id: string, query?: Record<string, string>): DkWin | undefined {
   const a = dkWebApps().find((x) => x.id === id);
   if (!a) return;
+  const up = dk.wins.get(`webapp:${id}`);
+  if (up && query && up.frame) {
+    const f = up.frame as HTMLIFrameElement;
+    if (opening.has(f)) f.contentWindow?.postMessage({ kind: 'open', query }, location.origin);
+    else if (!up.holdClose?.()) {
+      up.node.classList.remove('dirty');
+      f.src = `${a.mount}?${new URLSearchParams(query)}`;
+    }
+    dkFocus(up);
+    return up;
+  }
   const w = dkWin(`webapp:${id}`, id, `v${a.want.version}`, 'svc dk-webapp');
   if (!w) return;
   const pop = Object.assign(el('button', 'dk-out'), {
@@ -90,7 +115,14 @@ export function dkWebApp(id: string, query?: Record<string, string>): DkWin | un
     ariaLabel: 'open in a browser tab',
   });
   pop.appendChild(dkGlyph(DK_UI.pop!));
-  pop.addEventListener('click', () => window.open(a.mount, '_blank', 'noopener'));
+  // where the page is now, the file it shows with it
+  pop.addEventListener('click', () => {
+    let at = a.mount;
+    try {
+      at = frame.contentWindow?.location.href || at;
+    } catch {}
+    window.open(at, '_blank', 'noopener');
+  });
   w.head.querySelector('.dk-btns')!.prepend(pop);
   const src = query ? `${a.mount}?${new URLSearchParams(query)}` : a.mount;
   const frame: NavFrame = Object.assign(el('iframe', 'dk-frame'), {
@@ -103,6 +135,12 @@ export function dkWebApp(id: string, query?: Record<string, string>): DkWin | un
   dkNav(w, frame);
   dkSize(w, 1100, 680);
   w.onFocus = () => frame.contentWindow?.focus();
+  // unsaved changes asked about first
+  w.holdClose = () =>
+    w.node.classList.contains('dirty') &&
+    !confirm(
+      `${(w.head.querySelector('.tab-label')?.textContent || id).replace(/ •$/, '')} has unsaved changes. Close without saving?`,
+    );
   const unbridge = bridge(w, frame);
   w.onClose = () => {
     unbridge();

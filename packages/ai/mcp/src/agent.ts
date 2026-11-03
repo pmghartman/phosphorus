@@ -345,8 +345,8 @@ export function describe() {
       "Organize a share within its perms: mkdir, rename or move (to ending in / moves into that folder), delete (permanent). " +
       "Several in steps run in order and stop at the first failure.",
     open_file:
-      "Open a share's text or code file in a editor tab on the person's Phosphorus window (on a key, every window of yours that's open). " +
-      "Highlighted, syntax errors marked; nothing in it runs.",
+      "Open a share's file in the Viewer app on the person's Phosphorus window (on a key, every window of yours that's open): " +
+      "text to edit, pictures, video, sound or a pdf. Nothing opens while Viewer isn't installed.",
     open_terminal:
       "Open a terminal tab to a host on the person's Phosphorus window, shared with phosphorus. On a key it logs in with their saved login for that host (none saved: nothing opens); terminal_run then runs commands in it. Else they log in themselves.",
     terminal_screen:
