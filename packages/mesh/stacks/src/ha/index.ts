@@ -335,7 +335,7 @@ export class Replica implements Group {
     this.fencing = this.rt
       .down(this.id)
       .catch((e) => logf("%s: couldn't stop: %s", this.id, errText(e)))
-      .then(() => this.snapshot(false))
+      .then(async () => void (await this.snapshot(false)))
       .catch(() => {})
       .finally(() => {
         if (this.state === "stopping") this.state = "down";

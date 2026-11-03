@@ -20,12 +20,16 @@ const stackRe = /^\/api\/stacks\/([a-z][a-z0-9-]{0,39})\/(standbys|move)$/;
 
 let h: HA | undefined;
 
+// read several times a tick, parsed at most every 250ms
+let cached: { at: number; wants: Record<string, StackWant> } | undefined;
 function wants(): Record<string, StackWant> {
+  if (cached && Date.now() - cached.at < 250) return cached.wants;
   const out: Record<string, StackWant> = {};
   for (const id of ids()) {
     const w = wantOf(id);
     if (w) out[id] = w;
   }
+  cached = { at: Date.now(), wants: out };
   return out;
 }
 
@@ -33,6 +37,7 @@ function wants(): Record<string, StackWant> {
 function setWant(id: string, w: StackWant) {
   const { active, standbys, gen, by, at } = w;
   store.write(wantRel(id), { ...obj(store.read(wantRel(id))), active, standbys, gen, by, at });
+  cached = undefined;
   seams.kick();
 }
 
