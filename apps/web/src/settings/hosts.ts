@@ -8,7 +8,7 @@ import { drawMesh, meshPanel, phosphorusHosts, pingHosts } from '../features/mes
 import { meshAnimFrame, uiVars } from '../features/mesh/ui.ts';
 import { el, noFill, stash } from '../lib/dom.ts';
 import { st } from '../lib/state.ts';
-import { dkSettings } from './settings.ts';
+import { cardify, dkSettings } from './settings.ts';
 
 export const HOST_SUBS = ['status', 'graph', 'configure'] as const;
 type HostSub = (typeof HOST_SUBS)[number];
@@ -344,7 +344,7 @@ function hostForm(host: string, ini: HostIni): HTMLElement[] {
     d.append(...b);
     return d;
   };
-  return [
+  return cardify([
     head('shared folders'),
     el('p', 'dk-note', 'Nothing is shared until you add it: each folder shows in files for the mesh’s users.'),
     list,
@@ -359,5 +359,5 @@ function hostForm(host: string, ini: HostIni): HTMLElement[] {
     acts(saveModel),
     el('p', 'dk-note', RESTARTS),
     say,
-  ];
+  ]);
 }

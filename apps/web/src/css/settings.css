@@ -8,16 +8,60 @@
   gap: 0.1rem;
   padding: 0.75rem 0.55rem;
 }
-/* the rail's groups: a small caps word over its sections */
+/* the rail's groups: a quiet word over its sections */
 .set-group {
-  padding: 0.85rem 0.6rem 0.3rem;
+  padding: 0.85rem 0.65rem 0.3rem;
   color: var(--muted);
-  font-size: 0.64rem;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
+  font-size: 0.7rem;
+  font-weight: 600;
 }
-.set-group:first-child {
-  padding-top: 0.2rem;
+.set-who + .set-group {
+  padding-top: 0.6rem;
+}
+/* the rail's top: who is signed in, their initial on the accent */
+.set-who {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.45rem 0.55rem 0.6rem;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.set-who:is(:hover, :focus-visible) {
+  background: var(--tab-hover);
+  outline: none;
+}
+.set-who-mark {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  border-radius: var(--r-pop, 0);
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--accent);
+  font-weight: 700;
+}
+.set-who-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.set-who-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.set-who-role {
+  color: var(--muted);
+  font-size: 0.7rem;
 }
 /* the rail's quiet words, its groups and the sections not open: the theme's muted drawn a little
    toward the text, readable on the rail in every theme */
@@ -35,8 +79,27 @@
   width: 0.95rem;
   height: 0.95rem;
 }
-.set-nav .dk-ap-tab.on .ic {
+/* each section's glyph its own hue, open or not; the open one marked by its bar */
+:is(.set-nav .dk-ap-tab, .set-head)[data-at="profile"] .ic {
+  color: var(--sky);
+}
+:is(.set-nav .dk-ap-tab, .set-head)[data-at="appearance"] .ic {
+  color: var(--rose);
+}
+:is(.set-nav .dk-ap-tab, .set-head)[data-at="hosts"] .ic {
+  color: var(--teal);
+}
+:is(.set-nav .dk-ap-tab, .set-head)[data-at="agents"] .ic {
   color: var(--accent);
+}
+:is(.set-nav .dk-ap-tab, .set-head)[data-at="users"] .ic {
+  color: var(--sage);
+}
+:is(.set-nav .dk-ap-tab, .set-head)[data-at="update"] .ic {
+  color: var(--sand);
+}
+:is(.set-nav .dk-ap-tab, .set-head)[data-at="about"] .ic {
+  color: var(--glyph-orange);
 }
 /* the section open: a bar of the accent down its left edge */
 .set-nav .dk-ap-tab.on::before {
@@ -79,10 +142,7 @@
 .set-nav .dk-ap-tab.open {
   color: var(--fg);
 }
-.set-nav .dk-ap-tab.open .ic {
-  color: var(--accent);
-}
-/* the page: the section's own body, no header over it */
+/* the page: its head, then the section's own body */
 .set-main {
   display: flex;
   flex-direction: column;
@@ -92,15 +152,189 @@
 .set-body {
   flex: 1 1 auto;
   gap: 0.8rem;
-  padding: 1rem 1.3rem 1.5rem;
+  padding: 1.1rem 1.6rem 1.8rem;
 }
-/* the sections' own headings, quiet small caps */
-.set-body .dk-ap-head {
-  margin-top: 0.8rem;
+/* the page's head: the section's glyph and name, its part, what it holds */
+.set-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding-bottom: 0.9rem;
+  border-bottom: 1px solid var(--border);
+}
+.set-title {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin: 0;
+  color: var(--fg);
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+.set-title .ic {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+.set-title-sep {
+  color: var(--dim);
+  font-weight: 400;
+}
+.set-title-part {
   color: var(--muted);
-  font-size: 0.68rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-weight: 400;
+}
+.set-blurb {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+/* forms and lists at a readable width, the status, graph and models across the whole page */
+.set-body :is(.set-sub, .set-acct, .set-host-cfg, .set-host-rest, .set-cl, .update-pane) {
+  width: 100%;
+  max-width: 50rem;
+}
+/* every section's headings alike: a word in the text colour over its card or list */
+.set-body :is(.dk-ap-head, .dk-pick-head, .ag-group-head) {
+  display: flex;
+  align-items: baseline;
+  gap: 1ch;
+  margin: 1.2rem 0 0.1rem;
+  padding: 0;
+  border: 0;
+  color: var(--fg);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+.set-body .ag-group-head::after {
+  display: none;
+}
+.set-body :is(.dk-ap-head, .dk-pick-head):first-child,
+.set-body .ag-group:first-child > .ag-group-head {
+  margin-top: 0;
+}
+/* a run of controls: a card, a row each, hairlines between */
+.set-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--r-pop, 0);
+  background: var(--card);
+}
+.set-card > * {
+  padding: 0.6rem 0.9rem;
+}
+.set-card > * + * {
+  border-top: 1px solid var(--border);
+}
+.set-card .dk-ap-row {
+  grid-template-columns: 10rem minmax(0, 1fr);
+  min-height: 2.6rem;
+}
+.set-card .dk-ap-k {
+  color: var(--fg);
+}
+.set-card :is(select.dk-ap-in, input.dk-ap-in:not([type="color"])) {
+  justify-self: start;
+  width: min(100%, 20rem);
+}
+.set-card .dk-ap-check {
+  min-height: 2.6rem;
+}
+/* lists: the hosts, the page logins, the users, the shares; a card of rows */
+.set-body .dk-rows {
+  margin: 0;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-pop, 0);
+  background: var(--card);
+}
+.set-body .dk-rows > li {
+  min-height: 2.6rem;
+  padding: 0.4rem 0.9rem;
+}
+.set-body .dk-rows > li + li {
+  border-top: 1px solid var(--border);
+}
+.set-body .dk-rows > li.empty {
+  display: flex;
+  align-items: center;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+/* a row of fields adding to a list: its card's foot, else a card of its own */
+.set-body .acct-new {
+  margin: 0;
+  padding: 0.55rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--r-pop, 0);
+  background: var(--card);
+}
+.set-body .dk-rows:has(+ .acct-new) {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.set-body .dk-rows + .acct-new {
+  border-top-style: dashed;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+  margin-top: -1px;
+}
+/* fields on a card: the page's ground, so they read as wells */
+.set-body
+  :is(.set-card, .dk-rows, .acct-new)
+  :is(input:not([type="checkbox"], [type="radio"], [type="color"]), select) {
+  background: var(--bg);
+}
+/* the account panes' buttons as the rest of settings: outlined, quiet on hover */
+.set-body :is(.acct-pane, .acct-users) button {
+  padding: 0.3rem 0.8rem;
+  border-color: var(--border);
+  border-radius: var(--r-pop, 0);
+}
+.set-body :is(.acct-pane, .acct-users) button:hover:not(:disabled) {
+  background: var(--tab-hover);
+  color: var(--fg);
+  border-color: var(--accent);
+}
+.set-body :is(.acct-pane, .acct-users) button.danger {
+  color: var(--offmesh);
+  border-color: color-mix(in srgb, var(--offmesh) 45%, var(--border));
+}
+.set-body :is(.acct-pane, .acct-users) button.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--offmesh) 12%, transparent);
+  color: var(--offmesh);
+  border-color: var(--offmesh);
+}
+.set-body :is(.acct-pane, .acct-users) button.primary {
+  background: var(--accent);
+  color: var(--bg);
+  border-color: var(--accent);
+}
+.set-body :is(.acct-pane, .acct-users) button.primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 85%, var(--fg));
+  color: var(--bg);
+  border-color: var(--accent);
+}
+/* the update's hosts and their releases, a card of rows */
+.set-body .update-versions {
+  border: 1px solid var(--border);
+  border-radius: var(--r-pop, 0);
+  background: var(--card);
+}
+.set-body .update-versions:empty {
+  display: none;
+}
+.set-body .update-pane .update-row {
+  padding: 0.5rem 0.9rem;
+}
+.set-body .update-pane .update-row + .update-row {
+  border-top: 1px solid var(--border);
+}
+/* the connector, a card like the rest */
+.set-body .set-cl {
+  border-radius: var(--r-pop, 0);
+  background: var(--card);
 }
 .set-body > * {
   flex: none;
@@ -168,9 +402,18 @@
   padding: 0;
 }
 .set-body .dk-note {
+  margin: 0;
   padding: 0;
   border: 0;
   color: var(--muted);
+}
+/* the password's two fields and its button, no empty column */
+.set-acct form.acct-new {
+  grid-template-columns: 1fr 1fr auto;
+}
+/* light or dark: a control at its labels' width, not the page's */
+.set-body .dk-ap-segs {
+  max-width: 24rem;
 }
 .set-acct .dk-pick-head:first-child {
   margin-top: 0;
@@ -231,7 +474,7 @@
   width: 0.45rem;
   height: 0.45rem;
   border-radius: 50%;
-  background: var(--ok, var(--accent));
+  background: var(--online);
 }
 .set-hostchip.self {
   color: var(--accent);
@@ -269,9 +512,6 @@
   gap: 0.5rem;
   padding: 0.2rem 0.9rem 0.9rem 1.6rem;
   font-size: 0.8rem;
-}
-.set-host-body .dk-pick-head {
-  margin-top: 0.4rem;
 }
 .set-host-body .dk-note {
   margin: 0;
@@ -363,6 +603,14 @@ button.dk-chip:not(.locked) {
   }
   .set-body {
     padding: 0.8rem 0.8rem 1.2rem;
+  }
+  /* a phone: no account card nor page head, the rail's tabs say where */
+  .set-who,
+  .set-head {
+    display: none;
+  }
+  .set-card .dk-ap-row {
+    grid-template-columns: 6.5rem minmax(0, 1fr);
   }
   .set-mesh {
     height: 12rem;

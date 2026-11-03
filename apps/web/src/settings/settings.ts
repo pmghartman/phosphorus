@@ -122,6 +122,45 @@ const SECTIONS: Section[] = [
 
 const shown = (s: Section) => !s.admin || !!st.acct?.admin;
 
+// a section's controls grouped: each run of rows and checks in a card of its own, hairlines between
+export function cardify(items: HTMLElement[]): HTMLElement[] {
+  const out: HTMLElement[] = [];
+  let card: HTMLElement | null = null;
+  for (const x of items) {
+    if (!x.matches('.dk-ap-row, .dk-ap-check')) {
+      card = null;
+      out.push(x);
+      continue;
+    }
+    if (!card) out.push((card = el('div', 'set-card')));
+    card.append(x);
+  }
+  return out;
+}
+
+// the page's head: the section's name and part, what it holds under them
+function header(sec: Section): HTMLElement {
+  const h = el('header', 'set-head');
+  const title = el('h1', 'set-title');
+  title.append(dkGlyph(sec.glyph()), sec.label);
+  const part = sec.sub?.();
+  if (part) title.append(el('span', 'set-title-sep', '/'), el('span', 'set-title-part', part));
+  h.dataset.at = sec.id;
+  h.append(title, el('p', 'set-blurb', sec.blurb));
+  return h;
+}
+
+// the rail's top: who is signed in, a press their profile
+function who(go: () => void): HTMLElement {
+  const b = Object.assign(el('button', 'set-who'), { type: 'button', title: 'your profile' });
+  const name = st.acct?.user ?? '';
+  const text = el('span', 'set-who-text');
+  text.append(el('span', 'set-who-name', name), el('span', 'set-who-role', st.acct?.admin ? 'admin' : 'user'));
+  b.append(el('span', 'set-who-mark', (name[0] ?? '?').toLowerCase()), text);
+  b.addEventListener('click', go);
+  return b;
+}
+
 let at: SettingsAt = 'profile';
 // the open window's way to another section, null while none is open
 let live: ((s: SettingsAt, sub?: string) => void) | null = null;
@@ -153,7 +192,7 @@ export function dkSettings(s?: SettingsAt, sub?: string): void {
   main.append(body);
   pane.append(nav, main);
   w.body.appendChild(pane);
-  dkSize(w, 900, 640);
+  dkSize(w, 1000, 700);
 
   let leave: (() => void) | void;
   // the rail's marks: the section open, its part, and its parts shown under it alone
@@ -187,11 +226,13 @@ export function dkSettings(s?: SettingsAt, sub?: string): void {
     body.scrollTop = 0;
     const sec = SECTIONS.find((x) => x.id === s)!;
     leave = sec.draw(body, sub);
+    body.prepend(header(sec));
     mark();
     dkAppsChanged();
     dkTouch();
   };
   nav.replaceChildren(
+    who(() => go('profile')),
     ...GROUPS.flatMap((g) => {
       const secs = SECTIONS.filter((s) => s.group === g && shown(s));
       if (!secs.length) return [];

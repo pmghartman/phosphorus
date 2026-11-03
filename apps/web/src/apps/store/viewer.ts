@@ -5,7 +5,7 @@
 import type { AppDef, AppPage, CheckResult, HostFit, StackView } from '@phosphorus/wire';
 import { el, noFill, pageAsk } from '../../lib/dom.ts';
 import { renderMd } from '../../lib/md.ts';
-import { st } from '../../lib/state.ts';
+import { dk, st } from '../../lib/state.ts';
 import { humanSize } from '../../lib/util.ts';
 import { crumb, iconTile } from './apps.ts';
 import {
@@ -14,6 +14,7 @@ import {
   dockerError,
   fitting,
   formOf,
+  given,
   hostUp,
   install,
   installedAs,
@@ -195,13 +196,48 @@ function tree(page: AppPage): HTMLElement {
 
 // --- information --------------------------------------------------------------------------
 
-function info(def: AppDef, v?: StackView): HTMLElement {
-  const dl = el('dl', 'store-info');
+// a compose service's host port for a container port, its ${VAR:-default} filled from env; 0 if unmapped
+function composePort(compose: string, service: string, target: number, env: Record<string, string>): number {
+  const esc = service.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const head = new RegExp(`^\\s+["']?${esc}["']?:\\s*$`);
+  let indent = -1;
+  for (const line of compose.split('\n')) {
+    const lead = line.search(/\S/);
+    if (lead < 0) continue;
+    if (indent < 0) {
+      if (head.test(line)) indent = lead;
+      continue;
+    }
+    if (lead <= indent) break;
+    const m = line.match(/^\s*-\s*["']?([^"'#\s]+)["']?/);
+    if (!m) continue;
+    const parts = m[1]!.replace(/\$\{(\w+)(?::?-([^}]*))?\}/g, (_, k, d) => env[k] || d || '').split(':');
+    if (parts.length >= 2 && parts.at(-1)!.split('/')[0] === String(target)) return Number(parts.at(-2)) || 0;
+  }
+  return 0;
+}
+
+// the port its host publishes the web page on: the route once installed, else the compose
+// file's mapping as the form fills it
+function hostPort(key: string, def: AppDef, v?: StackView): number {
+  const web = v?.web ?? def.manifest.web;
+  if (!web) return 0;
+  const route = v && dk.services.find((r) => r.name === v.summary.id && r.host === liveHost(v));
+  if (route?.port) return route.port;
+  const env = { ...Object.fromEntries(def.env.map((x) => [x.name, x.default ?? ''])), ...given(formOf(key)) };
+  return composePort(def.compose, web.service, web.port, env) || web.port;
+}
+
+// the facts at a glance, over the readme: a grid of label over value
+function info(key: string, def: AppDef, v?: StackView): HTMLElement {
+  const dl = el('dl', 'store-facts');
   const row = (k: string, val: string | HTMLElement, cls = '') => {
-    dl.append(el('dt', '', k));
+    const cell = el('div', 'store-fact');
     const dd = el('dd', cls);
     dd.append(val);
-    dl.append(dd);
+    cell.append(el('dt', '', k), dd);
+    dl.append(cell);
+    return dd;
   };
   const link = (text: string, href: string) =>
     Object.assign(el('a', '', text), { href, target: '_blank', rel: 'noopener' });
@@ -216,11 +252,11 @@ function info(def: AppDef, v?: StackView): HTMLElement {
   if (def.source !== 'github' && def.repo) row('project', link(def.repo.replace(/^https?:\/\/(www\.)?/, ''), def.repo));
   const m = def.manifest;
   const web = v?.web ?? m.web;
-  if (web)
-    row(
-      'published as',
-      st.meshDomain ? `${def.id}.${st.meshDomain}, from ${web.service}:${web.port}` : `${web.service}:${web.port}`,
-    );
+  if (web) {
+    const port = hostPort(key, def, v);
+    const dd = row('published as', st.meshDomain ? `${def.id}.${st.meshDomain}, from :${port}` : `:${port}`);
+    dd.title = `port ${port} on its host, ${web.service}:${web.port} in its container`;
+  }
   const data = m.volumes.filter((x) => x.kind === 'data');
   row(
     'data copied',
@@ -275,11 +311,33 @@ function checkSec(check: CheckResult, checking: boolean): HTMLElement {
   const h = el('h2', '', 'install check');
   if (checking) h.append(el('span', 'store-count wait', 'checking'));
   const [cls, text] = verdict(check);
-  const ul = el('ul', 'store-check');
-  for (const i of check.items) ul.append(el('li', i.level, i.text));
   sec.append(h, el('div', `store-verdict ${cls}`, text));
-  if (check.items.length) sec.append(ul);
+  // what's wrong in full, what passed folded into one line
+  const flagged = check.items.filter((i) => i.level !== 'ok');
+  const passed = check.items.filter((i) => i.level === 'ok');
+  if (flagged.length) {
+    const ul = el('ul', 'store-check');
+    for (const i of flagged) ul.append(el('li', i.level, i.text));
+    sec.append(ul);
+  }
+  if (passed.length)
+    sec.append(
+      fold(
+        `${passed.length} passed`,
+        passed.map((i) => el('li', 'ok', i.text)),
+        'store-check',
+      ),
+    );
   return sec;
+}
+
+// a list folded under one line, opened on a press
+function fold(label: string, items: HTMLElement[], cls: string): HTMLElement {
+  const d = el('details', 'store-fold');
+  const ul = el('ul', cls);
+  ul.append(...items);
+  d.append(el('summary', '', label), ul);
+  return d;
 }
 
 // a field still wanting a value: required, no default, not one generated
@@ -290,12 +348,16 @@ function envSec(key: string, def: AppDef): HTMLElement | null {
   if (!def.env.length) return null;
   const f = formOf(key);
   const sec = el('section', 'store-sec');
-  sec.append(el('h2', '', 'settings'));
+  sec.append(el('h2', '', 'configuration'));
   const form = el('div', 'store-env');
   for (const x of def.env) {
     const lab = el('label', 'store-env-row');
-    const head = el('span', 'store-env-label', x.label || x.name);
-    if (x.required && !x.secret && !x.default) head.append(el('span', 'store-env-req', ' required'));
+    // its label and variable on one line, the field under them
+    const head = el('span', 'store-env-head');
+    const name = el('span', 'store-env-label', x.label || x.name);
+    if (x.required && !x.secret && !x.default) name.append(el('span', 'store-env-req', ' required'));
+    head.append(name);
+    if (x.label && x.label !== x.name) head.append(el('span', 'store-env-name', x.name));
     let input: HTMLInputElement | HTMLSelectElement;
     if (x.options?.length) {
       input = el('select', 'store-env-input');
@@ -319,7 +381,7 @@ function envSec(key: string, def: AppDef): HTMLElement | null {
       if (go) go.disabled = !canInstall(key, def, f.check);
     });
     input.addEventListener('keydown', (e) => e.stopPropagation());
-    lab.append(head, input, el('span', 'store-env-name', x.name));
+    lab.append(head, input);
     form.append(lab);
   }
   sec.append(form);
@@ -354,13 +416,21 @@ function hostSec(key: string, page: AppPage, check: CheckResult): HTMLElement {
     ]
       .filter(Boolean)
       .join(' · ');
-  if (!fit.length)
+  const unfit = check.hosts.filter((h) => !h.ok);
+  const why = (h: HostFit) => {
+    const li = el('li', 'store-pick-row off');
+    li.append(el('span', 'store-pick-host', h.host), el('span', 'store-pick-why', h.why || 'doesn’t fit'));
+    return li;
+  };
+  if (!fit.length) {
     sec.append(el('div', 'store-verdict bad', 'No host can run it'), el('p', 'store-pick-note', 'Each host and why:'));
+    const ul = el('ul', 'store-pick-list');
+    ul.append(...unfit.map(why));
+    sec.append(ul);
+    return sec;
+  }
   const pick = hostChoice(
-    [
-      ...fit.map((h) => ({ host: h.host, on: h.host === f.active, note: note(h) })),
-      ...check.hosts.filter((h) => !h.ok).map((h) => ({ host: h.host, why: h.why || 'doesn’t fit' })),
-    ],
+    fit.map((h) => ({ host: h.host, on: h.host === f.active, note: note(h) })),
     'radio',
     ([h]) => {
       f.active = h ?? '';
@@ -368,6 +438,8 @@ function hostSec(key: string, page: AppPage, check: CheckResult): HTMLElement {
     },
   );
   sec.append(pick.el);
+  // the hosts that can't, out of the way with their reasons
+  if (unfit.length) sec.append(fold(`${unfit.length} can’t run it`, unfit.map(why), 'store-pick-list'));
   return sec;
 }
 
@@ -378,7 +450,8 @@ function backupSec(key: string, page: AppPage, check: CheckResult): HTMLElement 
   const sec = el('section', 'store-sec');
   const h = el('h2', '', 'backups');
   h.append(el('span', 'store-count', f.standbys.length ? `${f.standbys.length}` : 'none'));
-  sec.append(h, el('p', 'store-pick-note', BACKUP_WORDS));
+  h.title = BACKUP_WORDS;
+  sec.append(h, el('p', 'store-pick-note', 'Keeps a synced copy, takes over if the active host goes down.'));
   if (!rest.length) {
     sec.append(el('p', 'store-pick-note warn', 'No other host can run it, so it can’t have a backup.'));
     return sec;
@@ -649,8 +722,9 @@ function sourceSec(key: string): HTMLElement | null {
   const { source, ref } = splitKey(key);
   const list = twins(source, ref);
   if (list.length < 2) return null;
-  const sec = el('section', 'store-sec');
-  sec.append(el('h2', '', 'install from'));
+  const sec = el('div', 'store-listed');
+  sec.title = `${list.length} catalogues list it, each with its own compose file and licence; this page is ${SOURCE_NAMES[source]}’s`;
+  sec.append(el('span', 'store-listed-k', 'install from'));
   const row = el('div', 'store-chips');
   for (const a of list) {
     const on = a.source === source;
@@ -666,14 +740,7 @@ function sourceSec(key: string): HTMLElement | null {
     });
     row.append(b);
   }
-  sec.append(
-    row,
-    el(
-      'p',
-      'store-pick-note',
-      `${list.length} catalogues list it, each with its own compose file and licence; this page is ${SOURCE_NAMES[source]}’s.`,
-    ),
-  );
+  sec.append(row);
   return sec;
 }
 
@@ -709,6 +776,10 @@ export function stackPage(key: string): HTMLElement {
   const main = el('div', 'store-main');
   const side = el('aside', 'store-side');
   main.append(el('p', 'store-tag', def?.tagline ?? sum!.tagline));
+  // the page's facts and catalogues over its readme, the side column the install alone
+  const from = sourceSec(key);
+  if (from) main.append(from);
+  if (def) main.append(info(key, def, v));
   if (page) {
     // a catalogue's app has its description for a readme: said once
     const about = page.def.description.trim();
@@ -720,8 +791,6 @@ export function stackPage(key: string): HTMLElement {
   const f = formOf(key);
   // the same service installed from another catalogue: that one's page, not a second install
   const twin = v ? undefined : others.map((a) => installedAs(a.source, a.ref)).find(Boolean);
-  const from = sourceSec(key);
-  if (from) side.append(from);
   if (v) side.append(...installedSec(v, page));
   else if (twin) {
     const go = Object.assign(el('button', 'store-link', 'its page'), { type: 'button' });
@@ -731,11 +800,6 @@ export function stackPage(key: string): HTMLElement {
     side.append(note);
   } else if (page && f.busy) side.append(el('div', 'store-verdict wait', `installing onto ${f.active}`));
   else if (page) side.append(...installSec(key, page));
-  if (def) {
-    const sec = el('section', 'store-sec');
-    sec.append(el('h2', '', 'information'), info(def, v));
-    side.append(sec);
-  }
   cols.append(main, side);
   wrap.append(cols);
   return wrap;

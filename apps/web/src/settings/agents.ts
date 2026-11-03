@@ -138,8 +138,8 @@ function agentCard(a: ModelAgent): HTMLElement {
 
 // agents by where they run
 const GROUPS: [string, string[]][] = [
-  ['Code', ['code', 'claude-code', 'opencode']],
-  ['Apps', ['tavern']],
+  ['code', ['code', 'claude-code', 'opencode']],
+  ['apps', ['tavern']],
 ];
 
 function group(title: string, note: string, body: HTMLElement): HTMLElement {
@@ -172,7 +172,7 @@ function draw() {
   if (model.models.length) {
     const known = new Set(GROUPS.flatMap(([, ids]) => ids));
     const rest = (model.agents || []).filter((a) => !known.has(a.id));
-    for (const [title, ids] of [...GROUPS, ['Other', rest.map((a) => a.id)] as [string, string[]]]) {
+    for (const [title, ids] of [...GROUPS, ['other', rest.map((a) => a.id)] as [string, string[]]]) {
       const agents = (model.agents || []).filter((a) => ids.includes(a.id));
       if (!agents.length) continue;
       const cards = el('div', 'ag-cards');

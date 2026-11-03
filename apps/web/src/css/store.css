@@ -230,13 +230,23 @@
   letter-spacing: 0.03em;
 }
 /* the icon: the app's own once a host serves it, its initial until then */
+/* each app its own colour: its hue (--hue, from its name) at the theme's teal lightness and
+   chroma, so every theme keeps it muted and readable */
 .store-icon {
+  --tint: var(--teal);
   flex: none;
   display: grid;
   place-items: center;
   border: 1px solid var(--border);
   background: var(--bg);
   overflow: hidden;
+}
+@supports (color: oklch(from red l c h)) {
+  .store-icon {
+    --tint: oklch(from var(--teal) l c var(--hue, 180));
+    border-color: color-mix(in srgb, var(--tint) 35%, var(--border));
+    background: color-mix(in srgb, var(--tint) 12%, var(--bg));
+  }
 }
 .store-icon.sm {
   width: 1.7rem;
@@ -259,7 +269,7 @@
   object-fit: contain;
 }
 .store-mono {
-  color: var(--teal);
+  color: var(--tint);
   font-size: 1.3rem;
   font-weight: 600;
 }
@@ -277,8 +287,6 @@
   font: inherit;
   font-size: 0.74rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
   cursor: pointer;
   transition:
     background 0.15s,
@@ -1091,6 +1099,19 @@ a.store-tree-name:hover {
   flex-direction: column;
   gap: 0.2rem;
 }
+/* a field's label, its variable at the line's end */
+.store-env-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1ch;
+  min-width: 0;
+}
+.store-env-head .store-env-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .store-env-label {
   color: var(--fg);
   font-size: 0.76rem;
@@ -1141,6 +1162,91 @@ a.store-pill {
 }
 .store-side .store-pick-list {
   font-size: 0.76rem;
+}
+/* a list folded under one quiet line: the checks passed, the hosts that can't */
+.store-fold > summary {
+  width: fit-content;
+  color: var(--muted);
+  font-size: 0.72rem;
+  cursor: pointer;
+  list-style: none;
+}
+.store-fold > summary::-webkit-details-marker {
+  display: none;
+}
+.store-fold > summary::before {
+  content: "\25B8";
+  display: inline-block;
+  width: 1.1rem;
+  color: var(--dim);
+}
+.store-fold[open] > summary::before {
+  content: "\25BE";
+}
+.store-fold > summary:is(:hover, :focus-visible) {
+  color: var(--fg);
+}
+.store-fold > ul {
+  margin-top: 0.35rem;
+}
+.store-fold .store-check li {
+  color: var(--muted);
+}
+/* the page's facts over its readme: label over value, as many across as fit */
+.store-facts {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr));
+  border: 1px solid var(--border);
+  border-radius: var(--r-pop, 0);
+  background: var(--card);
+  font-size: 0.74rem;
+  overflow: hidden;
+}
+.store-fact {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+  padding: 0.5rem 0.75rem;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  margin: 0 -1px -1px 0;
+}
+.store-fact dt {
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+.store-fact dd {
+  margin: 0;
+  color: var(--fg);
+  overflow-wrap: anywhere;
+}
+.store-fact dd.dim {
+  color: var(--muted);
+}
+.store-fact dd.mono {
+  font-family: var(--mono, ui-monospace, monospace);
+}
+.store-fact a {
+  color: var(--fg);
+  text-decoration: none;
+  border-bottom: 1px solid var(--border);
+}
+.store-fact a:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+/* the catalogues listing it, one picked: a row over the facts */
+.store-listed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 1ch;
+}
+.store-listed-k {
+  color: var(--muted);
+  font-size: 0.74rem;
 }
 .store-side .store-host-top .store-host-acts {
   margin-left: auto;

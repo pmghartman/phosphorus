@@ -22,6 +22,7 @@ import {
   setPalette,
   themeConfig,
 } from '../lib/theme.ts';
+import { cardify } from './settings.ts';
 
 // --- the wallpaper ------------------------------------------------------------------------------
 
@@ -483,7 +484,7 @@ export function appearanceSection(pane: HTMLElement, at?: ApSub): () => void {
       bar: barSection,
       windows: windowsSection,
     };
-    body.replaceChildren(...subs[sub]());
+    body.replaceChildren(...cardify(subs[sub]()));
     if (focus) pane.querySelector<HTMLElement>(`[data-k="${CSS.escape(focus)}"]`)?.focus();
   };
   const onPalette = () => {

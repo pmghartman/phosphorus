@@ -89,9 +89,9 @@ export function profileSection(pane: HTMLElement): void {
     pRow.append(pName, pUser, pPass, pAdd);
 
     const pw = el('form', 'dk-row acct-new');
-    const old = noFill(Object.assign(el('input'), { placeholder: 'current' }), true);
-    const neu = noFill(Object.assign(el('input'), { placeholder: 'new' }), true);
-    const pwGo = Object.assign(el('button', 'primary', 'change'), { type: 'submit' });
+    const old = noFill(Object.assign(el('input'), { placeholder: 'current password' }), true);
+    const neu = noFill(Object.assign(el('input'), { placeholder: 'new password' }), true);
+    const pwGo = Object.assign(el('button', 'primary', 'change password'), { type: 'submit' });
     const pwWhy = el('div', 'dk-state');
     pw.append(old, neu, pwGo);
     pw.addEventListener('submit', async (e) => {

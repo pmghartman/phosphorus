@@ -98,9 +98,20 @@ export function crumb(back: string, name: string, icon?: HTMLElement): HTMLEleme
   return row;
 }
 
+// each name's slot, in the order first drawn: tiles drawn together spread evenly round the wheel
+const slots = new Map<string, number>();
+// an app's hue: its slot by the golden ratio over the wheel, orange (the about tab's) skipped
+export function hueOf(name: string): number {
+  const key = name.toLowerCase().replace(/[^a-z0-9]/g, '');
+  let n = slots.get(key);
+  if (n === undefined) slots.set(key, (n = slots.size));
+  return Math.round((75 + ((n * 0.381966 * 315) % 315)) % 360);
+}
+
 // the icon tile: the first of srcs that loads, the initial when none does
 export function iconTile(name: string, srcs: string[], cls: string): HTMLElement {
   const tile = el('span', `store-icon ${cls}`);
+  tile.style.setProperty('--hue', String(hueOf(name)));
   const mono = () => el('span', 'store-mono', name[0]!.toUpperCase());
   const next = (rest: string[], at: HTMLElement) => {
     const [src, ...more] = rest.filter(Boolean);
