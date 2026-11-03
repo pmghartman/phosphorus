@@ -1,6 +1,6 @@
-// git master election, every host's frontend voting, a majority lease making
-// one master, joint rosters keeping quorums overlapping, acted on by
-// git-daemon.sh
+// master elections in named groups, every host's frontend voting, a majority
+// lease making one master, joint rosters keeping quorums overlapping: the group
+// git acted on by git-daemon.sh, each stack's (stack-<id>) by @phosphorus/stacks' ha
 import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { networkInterfaces } from "node:os";
 import { join } from "node:path";
@@ -19,32 +19,41 @@ import {
 } from "@phosphorus/util";
 
 const frontendPort = envInt("FRONTEND_PORT", 8090);
-const claimFile = join(StateDir, "git-claim.json");
-const rosterFile = join(StateDir, "git-elector-roster.json");
-const handoffFile = join(StateDir, "git-handoff.json");
-const localFile = env("LOCAL_FILE", "/run/phosphorus/git-local");
-const decisionFile = env("DECISION_FILE", "/run/phosphorus/git-decision");
-const leaseFile = env("LEASE_UNTIL_FILE", "/run/phosphorus/git-lease-until");
-const forgejoPidFile = env("FORGEJO_PID_FILE", "/run/phosphorus/git-forgejo-pid");
-const promotingFile = env("PROMOTING_FILE", "/run/phosphorus/git-promoting");
-
-const tickMS = envInt("TICK_MS", 500);
 const probeTimeoutMs = envInt("PROBE_TIMEOUT_MS", 500);
-const leaseMS = envInt("LEASE_MS", 4000);
-const leaseMarginMS = envInt("LEASE_MARGIN_MS", 1500);
-const promoteGrace = envInt("PROMOTE_GRACE", 2);
-const addAfterMS = envInt("ADD_AFTER_MS", 3000);
-const removeAfterMS = envInt("REMOVE_AFTER_MS", 300000);
-const holdMS = envInt("HOLD_MS", 15000);
-const witnessMS = envInt("WITNESS_MS", 60000);
-const vouchMS = envInt("VOUCH_MS", 120000);
-const handoffMaxAgeMS = 30000;
+
+// an election's pace, every host of a group on the same
+export type Timing = {
+  tickMS: number;
+  leaseMS: number;
+  leaseMarginMS: number;
+  promoteGrace: number;
+  addAfterMS: number;
+  removeAfterMS: number;
+  holdMS: number;
+  witnessMS: number;
+  vouchMS: number;
+  handoffMaxAgeMS: number;
+};
+
+export const timing = (): Timing => ({
+  tickMS: envInt("TICK_MS", 500),
+  leaseMS: envInt("LEASE_MS", 4000),
+  leaseMarginMS: envInt("LEASE_MARGIN_MS", 1500),
+  promoteGrace: envInt("PROMOTE_GRACE", 2),
+  addAfterMS: envInt("ADD_AFTER_MS", 3000),
+  removeAfterMS: envInt("REMOVE_AFTER_MS", 300000),
+  holdMS: envInt("HOLD_MS", 15000),
+  witnessMS: envInt("WITNESS_MS", 60000),
+  vouchMS: envInt("VOUCH_MS", 120000),
+  handoffMaxAgeMS: 30000,
+});
 
 const nameRe = /^[A-Za-z0-9-]{1,63}$/;
+// a group's name, in its frontend paths
+export const groupRe = /^[a-z][a-z0-9-]{0,62}$/;
 
-const logf = (fmt: string, ...a: unknown[]) => log("[elector] " + fmt, ...a);
-
-// of a roster, tb kept absent when a peer sent none
+// of a roster, git a candidate (named for the first group), tb kept absent
+// when a peer sent none
 export type Member = { name: string; git: boolean; tb?: boolean };
 // prev null marshals as null
 export type Roster = { epoch: number; members: Member[]; prev: Member[] | null };
@@ -81,7 +90,7 @@ export function validRoster(v: unknown): Roster | undefined {
   return { epoch: o.epoch, members, prev };
 }
 
-type Claim = {
+export type Claim = {
   host: string;
   role: string;
   master: string;
@@ -116,6 +125,11 @@ export function uptimeMS(): number {
     return Date.now();
   }
 }
+
+// the monotonic clock leases are on, the wall clock handoff requests are
+// stamped with, and a wait; a simulation's own in tests
+export type Clock = { mono: () => number; wall: () => number; sleep: (ms: number) => Promise<void> };
+export const realClock: Clock = { mono: uptimeMS, wall: Date.now, sleep };
 
 function writeAtomic(file: string, text: string) {
   try {
@@ -163,10 +177,13 @@ function partOK(m: Member[], granted: Set<string>, leader: string): boolean {
 const quorum = (r: Roster, granted: Set<string>, leader: string) =>
   partOK(r.members, granted, leader) && (r.prev === null || partOK(r.prev, granted, leader));
 
-type Local = { gen: number; stamp: number; inSync: boolean; force: boolean };
+// the copy's data version, whether it can vouch for being current, and an
+// admin's push to lead without proof it holds the newest
+export type Local = { gen: number; stamp: number; inSync: boolean; force: boolean };
 
-function readLocal(): Local {
-  const f = read(localFile).trim().split(/\s+/);
+// "<gen> <stamp> <inSync> <force>", git-daemon.sh's local file
+export function parseLocal(text: string): Local {
+  const f = text.trim().split(/\s+/);
   const at = (i: number) => f[i] ?? "";
   const num = (s: string) => {
     const v = Number(s);
@@ -192,8 +209,6 @@ function selfAddr(self: string): string {
   return self;
 }
 
-const forgejoUp = () => read(forgejoPidFile).trim() !== "";
-
 // one frontend request: parsed JSON on a 200, else undefined
 export type Call = (
   host: string,
@@ -201,6 +216,87 @@ export type Call = (
   path: string,
   body?: unknown,
 ) => Promise<Record<string, any> | undefined>;
+
+// a tick's outcome for whatever acts on it: gen the data's, a new master's
+// own; from the handing-off master a new one pulls from last; promoting while
+// the master's service isn't up yet
+export type Decision = {
+  role: string;
+  master: string;
+  gen: number;
+  at: number;
+  from: string;
+  leaseUntil: number;
+  promoting: boolean;
+};
+
+// one election: its frontend paths, the key in a host's state naming it a
+// candidate, and the copy it decides for
+export interface Group {
+  name: string;
+  view: string;
+  vote: string;
+  flag: string;
+  local(): Local;
+  // the master's service up, what a handoff waits out
+  up(): boolean;
+  decide(d: Decision): void;
+  // this host's claim, published by the frontend
+  claim(c: Record<string, unknown> | undefined): void;
+  roster(): Roster | undefined;
+  saveRoster(r: Roster): void;
+  // a handoff asked of this master, taken once
+  handoff(): { to: string; at: number } | undefined;
+  // why this host may not lead now, beside the election's own reasons
+  blocked?(): string;
+}
+
+// state-dir files under a prefix, git's names: <prefix>-claim.json,
+// <prefix>-elector-roster.json, <prefix>-handoff.json
+export function fileStore(dir: string, prefix: string): Pick<Group, "claim" | "roster" | "saveRoster" | "handoff"> {
+  const claimFile = join(dir, `${prefix}-claim.json`);
+  const rosterFile = join(dir, `${prefix}-elector-roster.json`);
+  const handoffFile = join(dir, `${prefix}-handoff.json`);
+  return {
+    claim: (c) => (c ? writeAtomic(claimFile, marshal(c)) : rm(claimFile)),
+    roster: () => validRoster(readJSON(rosterFile)),
+    saveRoster: (r) => writeAtomic(rosterFile, marshal(r)),
+    handoff() {
+      const req = readJSONMap(handoffFile);
+      if (!req) return;
+      rm(handoffFile);
+      return { to: typeof req.to === "string" ? req.to : "", at: typeof req.at === "number" ? req.at : 0 };
+    },
+  };
+}
+
+// git: files shared with git-daemon.sh, forgejo the service
+export function gitGroup(): Group {
+  const localFile = env("LOCAL_FILE", "/run/phosphorus/git-local");
+  const decisionFile = env("DECISION_FILE", "/run/phosphorus/git-decision");
+  const leaseFile = env("LEASE_UNTIL_FILE", "/run/phosphorus/git-lease-until");
+  const forgejoPidFile = env("FORGEJO_PID_FILE", "/run/phosphorus/git-forgejo-pid");
+  const promotingFile = env("PROMOTING_FILE", "/run/phosphorus/git-promoting");
+  return {
+    name: "git",
+    // the first paths, every version answering them
+    view: "/api/git/view",
+    vote: "/api/git/vote",
+    flag: "gitHost",
+    ...fileStore(StateDir, "git"),
+    local: () => parseLocal(read(localFile)),
+    up: () => read(forgejoPidFile).trim() !== "",
+    decide(d) {
+      if (d.promoting) {
+        try {
+          writeFileSync(promotingFile, "", { mode: 0o644 });
+        } catch {}
+      } else rm(promotingFile);
+      writeAtomic(leaseFile, `${d.leaseUntil}\n`);
+      writeAtomic(decisionFile, `${d.role} ${d.master || "-"} ${d.gen} ${d.at} ${d.from || "-"}\n`);
+    },
+  };
+}
 
 // the elector's state, one tick at a time driving it
 export class Elector {
@@ -212,7 +308,7 @@ export class Elector {
   selfState?: Record<string, any>;
   viewOK = false;
   witnessed = new Set<string>();
-  pollMS = tickMS;
+  pollMS: number;
 
   role = "none";
   master = "";
@@ -236,16 +332,29 @@ export class Elector {
   constructor(
     public self: string,
     private callFn: Call = httpCall,
-  ) {}
+    public g: Group = gitGroup(),
+    private clock: Clock = realClock,
+    public t: Timing = timing(),
+  ) {
+    this.pollMS = t.tickMS;
+  }
+
+  private now = () => this.clock.mono();
+  // where a request to self goes, a simulation's own name in tests
+  addr = () => selfAddr(this.self);
+
+  logf(fmt: string, ...a: unknown[]) {
+    log((this.g.name === "git" ? "[elector] " : `[elector ${this.g.name}] `) + fmt, ...a);
+  }
 
   private stall(why: string) {
     if (why === this.lastStall) return;
     this.lastStall = why;
-    logf("no master, not campaigning: %s", why);
+    this.logf("no master, not campaigning: %s", why);
   }
 
   private call(host: string, method: string, path: string, body?: unknown) {
-    return this.callFn(host === this.self ? selfAddr(this.self) : host, method, path, body);
+    return this.callFn(host === this.self ? this.addr() : host, method, path, body);
   }
 
   private adopt(v: unknown) {
@@ -256,18 +365,18 @@ export class Elector {
   }
 
   private saveKnown() {
-    writeAtomic(rosterFile, marshal(this.known));
+    this.g.saveRoster(this.known);
   }
 
-  // every host's git state as the local frontend's mesh poll carried it
+  // every host's state in this group as the local frontend's mesh poll carried it
   private async probe(): Promise<boolean> {
-    const now = uptimeMS();
-    const view = await this.call(this.self, "GET", "/api/git/view");
+    const now = this.now();
+    const view = await this.call(this.self, "GET", this.g.view);
     const states = view?.states;
     this.viewOK = !!view && Array.isArray(states);
     if (!this.viewOK) return false;
     const pm = view!.pollMs;
-    this.pollMS = typeof pm === "number" && pm > 0 && Number.isFinite(pm) ? Math.trunc(pm) : tickMS;
+    this.pollMS = typeof pm === "number" && pm > 0 && Number.isFinite(pm) ? Math.trunc(pm) : this.t.tickMS;
     const byHost = new Map<string, Record<string, any>>();
     for (const s of states as unknown[]) {
       const o = obj(s);
@@ -277,14 +386,14 @@ export class Elector {
     this.claims = new Map();
     this.witnessed = new Set();
     for (const [h, f] of Object.entries(obj(view!.offlineMs) ?? {}))
-      if (nameRe.test(h) && h !== this.self && !byHost.has(h) && typeof f === "number" && f >= witnessMS)
+      if (nameRe.test(h) && h !== this.self && !byHost.has(h) && typeof f === "number" && f >= this.t.witnessMS)
         this.witnessed.add(h);
     for (const h of [...this.firstSeen.keys()]) if (!byHost.has(h)) this.firstSeen.delete(h);
     for (const [h, s] of byHost) {
       this.adopt(s.roster);
       this.lastSeen.set(h, now);
       if (!this.firstSeen.has(h)) this.firstSeen.set(h, now);
-      this.gitFlag.set(h, s.gitHost === true);
+      this.gitFlag.set(h, s[this.g.flag] === true);
       if (h === this.self) this.selfState = s;
       const c = validClaim(s.claim);
       if (c && h !== this.self) {
@@ -298,7 +407,7 @@ export class Elector {
   private async campaign(r: Roster, ms: number, extra: string[]): Promise<Set<string>> {
     const vs = uniq([...voters(r), ...extra]);
     const replies = await Promise.all(
-      vs.map((h) => this.call(h, "POST", "/api/git/vote", { c: this.self, ms, roster: r })),
+      vs.map((h) => this.call(h, "POST", this.g.vote, { c: this.self, ms, roster: r })),
     );
     const granted = new Set<string>();
     replies.forEach((rep, i) => {
@@ -324,19 +433,19 @@ export class Elector {
   }
 
   private pending(): string[] {
-    const now = uptimeMS();
+    const now = this.now();
     const members = new Set(names(this.known.members));
     const out: string[] = [];
-    for (const [h, t] of this.firstSeen) if (!members.has(h) && now - t >= addAfterMS) out.push(h);
+    for (const [h, t] of this.firstSeen) if (!members.has(h) && now - t >= this.t.addAfterMS) out.push(h);
     return out.sort();
   }
 
   private desiredMembers(grantedLast: Set<string>): Member[] {
-    const now = uptimeMS();
+    const now = this.now();
     const out = new Map<string, Member>();
     for (const m of this.known.members) {
       const ls = this.lastSeen.get(m.name) ?? now;
-      if (m.name !== this.self && now - ls > removeAfterMS) continue;
+      if (m.name !== this.self && now - ls > this.t.removeAfterMS) continue;
       out.set(m.name, member(m.name, this.gitFlag.get(m.name) ?? m.git, false));
     }
     for (const h of this.pending()) if (grantedLast.has(h)) out.set(h, member(h, this.gitFlag.get(h) === true, false));
@@ -358,19 +467,19 @@ export class Elector {
     if (changed) {
       this.known = r;
       this.saveKnown();
-      logf("roster %d: %s%s", r.epoch, describe(r.members), r.prev ? ` (joint with ${describe(r.prev)})` : "");
+      this.logf("roster %d: %s%s", r.epoch, describe(r.members), r.prev ? ` (joint with ${describe(r.prev)})` : "");
     }
-    const sent = uptimeMS();
+    const sent = this.now();
     // the probe run beside the campaign: adopt is the shared write, both
     // rare enough to tolerate the ordering
-    const [, granted] = await Promise.all([this.probe(), this.campaign(r, leaseMS, this.pending())]);
+    const [, granted] = await Promise.all([this.probe(), this.campaign(r, this.t.leaseMS, this.pending())]);
     this.grantedLast = granted;
     if (quorum(r, granted, this.self)) {
-      this.leaseUntil = sent + leaseMS - leaseMarginMS;
+      this.leaseUntil = sent + this.t.leaseMS - this.t.leaseMarginMS;
       this.committed = r.epoch;
     }
-    if (uptimeMS() >= this.leaseUntil) {
-      logf("lost the vote majority, stepping down");
+    if (this.now() >= this.leaseUntil) {
+      this.logf("lost the vote majority, stepping down");
       this.role = "none";
       this.master = "";
     }
@@ -384,7 +493,7 @@ export class Elector {
       this.noMasterTicks = 0;
       if (best.gen < l.gen) {
         if (this.refused !== best.host)
-          logf(
+          this.logf(
             "refusing to follow %s: its data (gen %d) is older than ours (gen %d), fix by hand",
             best.host,
             best.gen,
@@ -399,8 +508,8 @@ export class Elector {
       }
       this.refused = "";
       this.lastStall = "";
-      if (this.synced(l)) this.vouchedAt = uptimeMS();
-      this.vouched = uptimeMS() - this.vouchedAt < vouchMS;
+      if (this.synced(l)) this.vouchedAt = this.now();
+      this.vouched = this.now() - this.vouchedAt < this.t.vouchMS;
       this.lastMaster = best.host;
       this.role = "servant";
       this.master = best.host;
@@ -416,8 +525,8 @@ export class Elector {
       this.skip--;
       return;
     }
-    if (uptimeMS() < this.holdUntil) return;
-    if (this.noMasterTicks < promoteGrace) return;
+    if (this.now() < this.holdUntil) return;
+    if (this.noMasterTicks < this.t.promoteGrace) return;
 
     const boot = this.known.epoch === 0 || l.force;
     const gone: string[] = [];
@@ -440,7 +549,12 @@ export class Elector {
       same = false;
     }
     if (!r.members.some((m) => m.name === this.self && m.git)) {
-      this.stall("not a git member of the roster");
+      this.stall(`not a ${this.g.name} member of the roster`);
+      return;
+    }
+    const blocked = this.g.blocked?.() ?? "";
+    if (blocked && !l.force) {
+      this.stall(blocked);
       return;
     }
     if (!this.eligible(l, r)) {
@@ -458,20 +572,20 @@ export class Elector {
         this.stall(`${c.host} has newer data, waiting on it`);
         return;
       }
-    if (l.force) logf("forced: resetting roster to %s", describe(r.members));
+    if (l.force) this.logf("forced: resetting roster to %s", describe(r.members));
     else if (gone.length)
-      logf(
+      this.logf(
         "%s offline per tailscale for %ds, roster without it: %s",
         gone.join(", "),
-        Math.trunc(witnessMS / 1000),
+        Math.trunc(this.t.witnessMS / 1000),
         describe(r.members),
       );
     if (!same) {
       this.known = r;
       this.saveKnown();
     }
-    const sent = uptimeMS();
-    const granted = await this.campaign(r, leaseMS, []);
+    const sent = this.now();
+    const granted = await this.campaign(r, this.t.leaseMS, []);
     if (!quorum(r, granted, this.self)) {
       await this.campaign(r, 0, []);
       this.stall(`${granted.size} of ${voters(r).length} votes, no majority`);
@@ -484,15 +598,18 @@ export class Elector {
     let g = l.gen;
     for (const c of this.claims.values()) if (c.gen > g) g = c.gen;
     this.gen = g + 1;
-    this.leaseUntil = sent + leaseMS - leaseMarginMS;
+    this.leaseUntil = sent + this.t.leaseMS - this.t.leaseMarginMS;
     this.committed = r.epoch;
     this.role = "master";
     this.master = this.self;
     this.vouched = false;
     this.vouchedAt = 0;
     this.lastStall = "";
-    const how = gitNames(r.members).length === 1 ? "sole git host" : `won ${granted.size} of ${voters(r).length} votes`;
-    logf("%s (roster %d: %s), promoting self, gen %d", how, r.epoch, describe(r.members), this.gen);
+    const how =
+      gitNames(r.members).length === 1
+        ? `sole ${this.g.name} host`
+        : `won ${granted.size} of ${voters(r).length} votes`;
+    this.logf("%s (roster %d: %s), promoting self, gen %d", how, r.epoch, describe(r.members), this.gen);
   }
 
   // claims in view order is a JS Map's insertion order, sorted here: ties
@@ -502,32 +619,30 @@ export class Elector {
   }
 
   writeOut(l: Local) {
-    if (this.role === "master" && !forgejoUp()) {
-      try {
-        writeFileSync(promotingFile, "", { mode: 0o644 });
-      } catch {}
-    } else rm(promotingFile);
-    writeAtomic(leaseFile, `${this.leaseUntil}\n`);
     const g = this.role === "master" && this.gen > l.gen ? this.gen : l.gen;
-    const ff = this.role === "master" && this.finalFrom ? this.finalFrom : "-";
-    writeAtomic(decisionFile, `${this.role} ${this.master || "-"} ${g} ${uptimeMS()} ${ff}\n`);
+    this.g.decide({
+      role: this.role,
+      master: this.master,
+      gen: g,
+      at: this.now(),
+      from: this.role === "master" ? this.finalFrom : "",
+      leaseUntil: this.leaseUntil,
+      promoting: this.role === "master" && !this.g.up(),
+    });
     this.writeClaim(l, g);
   }
 
   private writeClaim(l: Local, g: number) {
-    writeAtomic(
-      claimFile,
-      marshal({
-        host: this.self,
-        role: this.role,
-        master: this.master,
-        gen: g,
-        stamp: l.stamp,
-        eligible: this.role === "master" || this.synced(l),
-        roster: this.known.epoch,
-        handoffTo: uptimeMS() < this.holdUntil ? this.handoffTo : "",
-      }),
-    );
+    this.g.claim({
+      host: this.self,
+      role: this.role,
+      master: this.master,
+      gen: g,
+      stamp: l.stamp,
+      eligible: this.role === "master" || this.synced(l),
+      roster: this.known.epoch,
+      handoffTo: this.now() < this.holdUntil ? this.handoffTo : "",
+    });
   }
 
   private canTakeOver(h: string): boolean {
@@ -549,26 +664,26 @@ export class Elector {
       const r: Roster = { epoch: this.known.epoch + 1, members, prev };
       this.known = r;
       this.saveKnown();
-      if (!quorum(r, await this.campaign(r, leaseMS, []), this.self)) return;
+      if (!quorum(r, await this.campaign(r, this.t.leaseMS, []), this.self)) return;
     }
-    logf("%s is now the tiebreaker", to);
+    this.logf("%s is now the tiebreaker", to);
   }
 
   async handOff(reason: string, to: string) {
-    logf("%s, handing off%s", reason, to ? " to " + to : "");
+    this.logf("%s, handing off%s", reason, to ? " to " + to : "");
     this.role = "none";
     this.master = "";
     this.handoffTo = to;
-    this.holdUntil = uptimeMS() + holdMS;
-    this.writeOut(readLocal());
-    while (forgejoUp()) {
-      const sent = uptimeMS();
-      if (quorum(this.known, await this.campaign(this.known, leaseMS, []), this.self))
-        this.leaseUntil = sent + leaseMS - leaseMarginMS;
-      if (uptimeMS() >= this.leaseUntil) return;
-      const l = readLocal();
+    this.holdUntil = this.now() + this.t.holdMS;
+    this.writeOut(this.g.local());
+    while (this.g.up()) {
+      const sent = this.now();
+      if (quorum(this.known, await this.campaign(this.known, this.t.leaseMS, []), this.self))
+        this.leaseUntil = sent + this.t.leaseMS - this.t.leaseMarginMS;
+      if (this.now() >= this.leaseUntil) return;
+      const l = this.g.local();
       this.writeClaim(l, l.gen);
-      await sleep(200);
+      await this.clock.sleep(200);
     }
     await this.passTiebreak(to);
     await this.campaign(this.known, 0, []);
@@ -581,13 +696,12 @@ export class Elector {
   }
 
   private handoffRequest(): string {
-    const req = readJSONMap(handoffFile);
+    const req = this.g.handoff();
     if (!req) return "";
-    rm(handoffFile);
-    if (typeof req.at !== "number" || Date.now() - req.at > handoffMaxAgeMS) return "";
-    const to = typeof req.to === "string" ? req.to : "";
+    if (this.clock.wall() - req.at > this.t.handoffMaxAgeMS) return "";
+    const to = req.to;
     if (!this.canTakeOver(to)) {
-      logf("not handing off to %s: not an in-sync servant of ours", to);
+      this.logf("not handing off to %s: not an in-sync servant of ours", to);
       return "";
     }
     return to;
@@ -595,7 +709,7 @@ export class Elector {
 
   async tick() {
     if (this.stopping) return;
-    const l = readLocal();
+    const l = this.g.local();
     let leaving = false;
     if (this.role === "master" && this.selfState) {
       const boot = typeof this.selfState.bootId === "string" ? this.selfState.bootId : "";
@@ -610,7 +724,7 @@ export class Elector {
       const to = this.handoffRequest();
       if (to) await this.handOff("asked from the frontend", to);
       else {
-        if (leaving) logf("an update is about to restart this host, no servant to take over, staying master");
+        if (leaving) this.logf("an update is about to restart this host, no servant to take over, staying master");
         await this.lead();
       }
     } else await this.followOrCampaign(l);
@@ -619,20 +733,73 @@ export class Elector {
 
   // the saved roster and its voters as last seen, then the first files out
   start() {
-    const r = validRoster(readJSON(rosterFile));
+    const r = this.g.roster();
     if (r) this.known = r;
-    const now = uptimeMS();
+    const now = this.now();
     for (const h of voters(this.known)) this.lastSeen.set(h, now);
-    this.writeOut(readLocal());
-    logf("starting as %s, roster %d: %s", this.self, this.known.epoch, describe(this.known.members) || "(none yet)");
+    this.writeOut(this.g.local());
+    this.logf(
+      "starting as %s, roster %d: %s",
+      this.self,
+      this.known.epoch,
+      describe(this.known.members) || "(none yet)",
+    );
   }
 
   // the claim withdrawn, the lease handed off or released
   async stop() {
     this.stopping = true;
-    rm(claimFile);
+    this.g.claim(undefined);
     if (this.role === "master") await this.handOff("shutting down", this.successor());
     else await this.campaign(this.known, 0, []);
+  }
+}
+
+// a frontend's side of one group's votes: a monotonic lease, the newest roster
+// kept; abstaining for its first leaseCapMS, no lease granted before a restart
+// outlived
+export class Voter {
+  holder = "";
+  until = 0;
+  roster: Roster = { epoch: 0, members: [], prev: null };
+
+  constructor(
+    private rosterFile: string,
+    public started = Date.now(),
+    private now: () => number = Date.now,
+    public leaseCapMS = 10000,
+  ) {
+    this.roster = validRoster(readJSON(rosterFile)) ?? { epoch: 0, members: [], prev: null };
+  }
+
+  vote(p: Record<string, any>): [number, any] {
+    const r = validRoster(p.roster);
+    const c = p.c;
+    const ms = p.ms;
+    if (
+      typeof c !== "string" ||
+      !nameRe.test(c) ||
+      typeof ms !== "number" ||
+      !Number.isInteger(ms) ||
+      ms < 0 ||
+      ms > this.leaseCapMS ||
+      !r
+    )
+      return [400, { error: "bad c, ms or roster" }];
+    const roster = this.roster;
+    if (r.epoch < roster.epoch) return [200, { granted: false, roster }];
+    if (r.epoch > roster.epoch) {
+      this.roster = r;
+      writeAtomic(this.rosterFile, marshal(r));
+    }
+    if (this.now() - this.started < this.leaseCapMS)
+      return [200, { granted: false, abstaining: true, roster: this.roster }];
+    const t = this.now();
+    if (this.holder !== "" && this.holder !== c && t < this.until)
+      return [200, { granted: false, holder: this.holder, roster: this.roster }];
+    if (ms === 0) (this.holder = ""), (this.until = 0);
+    else (this.holder = c), (this.until = t + ms);
+    return [200, { granted: ms > 0, roster: this.roster }];
   }
 }
 
@@ -645,44 +812,93 @@ const httpCall: Call = async (host, method, path, body) => {
   }
 };
 
-// runs the elector until SIGTERM, the exit code
+// one elector's loop until stopped: its pace the frontend's poll, at most a tick
+export async function loop(e: Elector, stopped: () => boolean, wait: (ms: number) => Promise<void>) {
+  for (;;) {
+    const t0 = Date.now();
+    try {
+      await e.tick();
+    } catch (err) {
+      e.logf("tick failed: %s", err instanceof Error ? (err.stack ?? err.message) : err);
+    }
+    if (!stopped()) await wait(Math.max(0, Math.min(e.pollMS, e.t.tickMS) - (Date.now() - t0)));
+    if (stopped()) return;
+  }
+}
+
+// many groups in one process, each on its own loop: a slow handoff in one
+// never starving another's lease
+export class Groups {
+  private running = new Map<string, { e: Elector; done: Promise<void>; stop: boolean; wake: () => void }>();
+
+  constructor(
+    private self: string,
+    private call: Call = httpCall,
+    private clock: Clock = realClock,
+  ) {}
+
+  has = (name: string) => this.running.has(name);
+  get = (name: string) => this.running.get(name)?.e;
+  names = () => [...this.running.keys()].sort();
+
+  add(g: Group, t: Timing = timing()): Elector {
+    const had = this.running.get(g.name);
+    if (had) return had.e;
+    const e = new Elector(this.self, this.call, g, this.clock, t);
+    const run = { e, done: Promise.resolve(), stop: false, wake: () => {} };
+    e.start();
+    run.done = loop(
+      e,
+      () => run.stop,
+      (ms) =>
+        new Promise<void>((res) => {
+          run.wake = res;
+          void this.clock.sleep(ms).then(res);
+        }),
+    );
+    this.running.set(g.name, run);
+    return e;
+  }
+
+  // the group's claim withdrawn and its lease handed off or released
+  async remove(name: string) {
+    const run = this.running.get(name);
+    if (!run) return;
+    this.running.delete(name);
+    run.stop = true;
+    run.e.stopping = true;
+    run.wake();
+    await run.done;
+    await run.e.stop();
+  }
+
+  async stopAll() {
+    await Promise.all(this.names().map((n) => this.remove(n)));
+  }
+}
+
+// runs git's elector until SIGTERM, the exit code
 export async function main(): Promise<number> {
   const selfFile = join(StateDir, "self-host");
   let self: string;
   try {
     self = readFileSync(selfFile, "utf8").trim();
   } catch (e) {
-    logf("can't read %s: %s", selfFile, e instanceof Error ? e.message : e);
+    log("[elector] can't read %s: %s", selfFile, e instanceof Error ? e.message : e);
     return 1;
   }
-  const e = new Elector(self);
-  e.start();
-  let wake = () => {};
+  const gs = new Groups(self);
   let signalled = false;
-  const onSignal = () => {
-    signalled = true;
-    e.stopping = true;
-    wake();
-  };
-  process.on("SIGTERM", onSignal);
-  process.on("SIGINT", onSignal);
-  for (;;) {
-    const t0 = Date.now();
-    try {
-      await e.tick();
-    } catch (err) {
-      logf("tick failed: %s", err instanceof Error ? (err.stack ?? err.message) : err);
-    }
-    if (!signalled) {
-      const d = Math.max(0, Math.min(e.pollMS, tickMS) - (Date.now() - t0));
-      await new Promise<void>((res) => {
-        wake = res;
-        setTimeout(res, d);
-      });
-    }
-    if (signalled) {
-      await e.stop();
-      return 0;
-    }
-  }
+  const done = new Promise<void>((res) => {
+    const onSignal = () => {
+      signalled = true;
+      res();
+    };
+    process.on("SIGTERM", onSignal);
+    process.on("SIGINT", onSignal);
+  });
+  gs.add(gitGroup());
+  await done;
+  if (signalled) await gs.stopAll();
+  return 0;
 }

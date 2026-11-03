@@ -1,7 +1,7 @@
 // this host's vote in the git master election and the git card
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { type Roster, validRoster } from "@phosphorus/elector";
+import { Voter } from "@phosphorus/elector";
 import { peerGit } from "@phosphorus/peers";
 import {
   ini,
@@ -11,7 +11,6 @@ import {
   obj,
   peerCall,
   readFresh,
-  readJSON,
   SelfHost,
   StateDir,
   sleep,
@@ -24,15 +23,11 @@ const rosterFile = join(StateDir, "git-roster.json");
 const handoffFile = join(StateDir, "git-handoff.json");
 const forceFile = join(StateDir, "git-force-promote");
 const nameRe = /^[A-Za-z0-9-]{1,63}$/;
-let started = Date.now();
 
-const leaseCapMS = 10000;
 const claimMaxAgeMS = 3000;
 const settleMS = 30000;
 
-let holder = "";
-let until = 0;
-let roster: Roster = { epoch: 0, members: [], prev: null };
+let voter = new Voter(rosterFile);
 let updating = () => false;
 let bootID = "";
 
@@ -50,50 +45,34 @@ const jsString = (v: unknown): string =>
 const str = (v: unknown) => (truthy(v) ? jsString(v) : "");
 
 // with server's updating flag and boot id; startedAt the process start, for tests
-export function init(isUpdating: () => boolean, boot: string, startedAt = started) {
+export function init(isUpdating: () => boolean, boot: string, startedAt = voter.started) {
   updating = isUpdating;
   bootID = boot;
-  started = startedAt;
-  roster = validRoster(readJSON(rosterFile)) ?? { epoch: 0, members: [], prev: null };
+  voter = new Voter(rosterFile, startedAt);
 }
 
 // Linux alone, as the host's own check
 const isGitHost = () => process.platform === "linux" && ini("git", "host") === "true";
 
 // a monotonic lease, the newest roster kept
-export function vote(p: Record<string, any>): [number, any] {
-  const r = validRoster(p.roster);
-  const c = p.c;
-  const ms = p.ms;
-  if (
-    typeof c !== "string" ||
-    !nameRe.test(c) ||
-    typeof ms !== "number" ||
-    !Number.isInteger(ms) ||
-    ms < 0 ||
-    ms > leaseCapMS ||
-    !r
-  )
-    return [400, { error: "bad c, ms or roster" }];
-  if (r.epoch < roster.epoch) return [200, { granted: false, roster }];
-  if (r.epoch > roster.epoch) {
-    roster = r;
-    writeJSONAtomic(rosterFile, roster);
-  }
-  if (Date.now() - started < leaseCapMS) return [200, { granted: false, abstaining: true, roster }];
-  const t = Date.now();
-  if (holder !== "" && holder !== c && t < until) return [200, { granted: false, holder, roster }];
-  if (ms === 0) (holder = ""), (until = 0);
-  else (holder = c), (until = t + ms);
-  return [200, { granted: ms > 0, roster }];
-}
+export const vote = (p: Record<string, any>): [number, any] => voter.vote(p);
+
+// the group's voter, for /api/ha/git/vote
+export const gitVoter = () => voter;
 
 // null as Go's nil marshals, the key kept in the snapshot
 const claim = (): any => readFresh(claimFile, claimMaxAgeMS) ?? null;
 
 // this host's, published in the mesh snapshot
 export function state(): Record<string, any> {
-  return { host: selfHost, gitHost: isGitHost(), roster, claim: claim(), updating: updating(), bootId: bootID };
+  return {
+    host: selfHost,
+    gitHost: isGitHost(),
+    roster: voter.roster,
+    claim: claim(),
+    updating: updating(),
+    bootId: bootID,
+  };
 }
 
 // ours and every answering peer's, for the elector
@@ -114,7 +93,7 @@ export function rowsOf(states: unknown[], nowSec: number): Row[] {
     if (!out.has(h)) order.push(h);
     out.set(h, r);
   };
-  for (const m of roster.members) if (m.git) set(m.name, { host: m.name, reachable: false });
+  for (const m of voter.roster.members) if (m.git) set(m.name, { host: m.name, reachable: false });
   for (const s of states) {
     const sm = obj(s);
     if (!sm) continue;
