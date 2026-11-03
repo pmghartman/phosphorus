@@ -16,9 +16,15 @@ test("Forgejo is listed first, under phosphorus, routed as forgejo with git its 
   expect(tree("phosphorus", "forgejo")).toEqual([{ path: "docker-compose.yml", type: "file" }]);
 });
 
-test("its compose: one service, the web and ssh ports, /data its data", () => {
+test("its compose: Forgejo, the web and ssh ports, /data its data; the runner only when picked", () => {
   const c = parse(forgejo.compose);
-  expect(Object.keys(c.services)).toEqual(["forgejo"]);
+  expect(Object.keys(c.services)).toEqual(["forgejo", "runner-docker", "runner"]);
+  expect(Object.keys(rendered(forgejo, {}).services)).toEqual(["forgejo"]);
+  expect(Object.keys(rendered(forgejo, { COMPOSE_PROFILES: "runner" }).services)).toEqual([
+    "forgejo",
+    "runner-docker",
+    "runner",
+  ]);
   const s = c.services.forgejo!;
   // as the check reads them, the defaults filled in
   expect(ports(rendered(forgejo, {}).services.forgejo!)).toEqual([
@@ -37,20 +43,55 @@ test("its compose: one service, the web and ssh ports, /data its data", () => {
   expect(s.healthcheck.test).toEqual(["CMD", "curl", "-fsS", "http://localhost:3000/api/healthz"]);
 });
 
-test("its fields: the ports defaulted, the secrets generated, nothing else left open", () => {
+test("its fields: the ports defaulted, the secrets generated, the runner off, nothing else left open", () => {
   const open = [...vars(forgejo.compose).keys()].filter((v) => !phosVars.includes(v)).sort();
-  expect(open).toEqual(["HTTP_PORT", "INTERNAL_TOKEN", "SECRET_KEY", "SSH_PORT"]);
+  expect(open).toEqual([
+    "COMPOSE_PROFILES",
+    "HTTP_PORT",
+    "INTERNAL_TOKEN",
+    "RUNNER_CAPACITY",
+    "RUNNER_SECRET",
+    "SECRET_KEY",
+    "SSH_PORT",
+  ]);
   expect(forgejo.env).toEqual([
     { name: "HTTP_PORT", label: "Web port on the host", default: "3001" },
     { name: "SSH_PORT", label: "SSH port on the host", default: "2222" },
     { name: "SECRET_KEY", label: "Secret key", secret: true },
     { name: "INTERNAL_TOKEN", label: "Internal token", secret: true },
+    { name: "COMPOSE_PROFILES", label: "Actions runner", default: "none", options: ["none", "runner"] },
+    { name: "RUNNER_CAPACITY", label: "Runner's jobs at once", default: "2" },
+    { name: "RUNNER_SECRET", label: "Runner's shared secret", secret: true },
   ]);
+});
+
+test("its runner: checked only when picked, linked by the one secret on both sides", () => {
+  const off = check(forgejo, {}, [linux], {});
+  expect(off.items.some((i) => i.text.includes("privileged"))).toBe(false);
+  const on = check(forgejo, { COMPOSE_PROFILES: "runner" }, [linux], {});
+  expect(on.items).toContainEqual({ level: "warn", text: "runner-docker runs privileged" });
+  const c = parse(forgejo.compose);
+  const fj = c.services.forgejo!.entrypoint[2] as string;
+  expect(fj).toContain("forgejo-cli actions register --name phosphorus --keep-labels --secret $$s");
+  expect(environment(c.services.forgejo!).RUNNER_SECRET).toBe("${RUNNER_SECRET}");
+  const r = c.services.runner!;
+  expect(environment(r).RUNNER_SECRET).toBe("${RUNNER_SECRET}");
+  expect(environment(r).DOCKER_HOST).toBe("tcp://runner-docker:2375");
+  // both derive the 40 hex the same way; the runner's uuid its first 16 as bytes
+  const derive = 's=$$(printf %s "$$RUNNER_SECRET" | sha1sum | cut -c1-40)';
+  expect(fj).toContain(derive);
+  expect(r.entrypoint[2]).toContain(derive);
+  expect(r.entrypoint[2]).toContain("url: http://forgejo:3000");
+  expect(r.entrypoint[2]).toContain('u="$${h:0:8}-$${h:8:4}-$${h:12:4}-$${h:16:4}-$${h:20:12}"');
 });
 
 test("its manifest: /data copied after a sqlite .backup, the healthz checked", () => {
   const m = forgejo.manifest;
-  expect(m.volumes).toEqual([{ service: "forgejo", target: "/data", kind: "data" }]);
+  expect(m.volumes).toEqual([
+    { service: "forgejo", target: "/data", kind: "data" },
+    { service: "runner", target: "/data", kind: "data" },
+    { service: "runner-docker", target: "/var/lib/docker", kind: "cache" },
+  ]);
   expect(m.web).toEqual({ service: "forgejo", port: 3000 });
   expect(m.health).toEqual({ service: "forgejo", path: "/api/healthz", port: 3000 });
   const pre = m.backup!.pre!;

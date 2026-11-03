@@ -1,7 +1,7 @@
 // a stack's project as one host writes it: the compose file with every data volume
 // a bind mount under data/ (cache under cache/), phosphorus's variables filled in,
 // host ports only on the web service and bound to the tailnet address; the .env beside it
-import { type AppDef, fromRepo } from "@phosphorus/wire";
+import { type AppDef, fromRepo, profileOn } from "@phosphorus/wire";
 
 // what the host puts into the render
 export type Ctx = {
@@ -141,6 +141,29 @@ export function render(def: AppDef, env: Record<string, string>, ctx: Ctx): Rend
 
   const doc = fill(raw, vars) as Doc;
   const top = (doc.volumes && typeof doc.volumes === "object" ? doc.volumes : {}) as Doc;
+  // a service whose profiles aren't picked left out (a copy already up then an orphan its up
+  // removes), the rest shed their profiles; what's left out no longer depended on, its volumes undeclared
+  const dropped = new Set<string>();
+  const droppedVols = new Set<string>();
+  for (const [name, s] of Object.entries(doc.services as Doc)) {
+    if (!s || typeof s !== "object") continue;
+    const svc = s as Doc;
+    if (profileOn(svc.profiles, all.COMPOSE_PROFILES ?? "")) {
+      delete svc.profiles;
+      continue;
+    }
+    dropped.add(name);
+    for (const v of Array.isArray(svc.volumes) ? svc.volumes : [])
+      droppedVols.add(typeof v === "string" ? v.split(":")[0]! : String((v as Doc)?.source ?? ""));
+    delete (doc.services as Doc)[name];
+  }
+  if (!Object.keys(doc.services as Doc).length) throw new Error("no service runs with the profiles picked");
+  for (const s of Object.values(doc.services as Doc)) {
+    const svc = s as Doc;
+    if (Array.isArray(svc?.depends_on)) svc.depends_on = svc.depends_on.filter((d: unknown) => !dropped.has(String(d)));
+    else if (svc?.depends_on && typeof svc.depends_on === "object")
+      for (const d of Object.keys(svc.depends_on)) if (dropped.has(d)) delete svc.depends_on[d];
+  }
   const kindOf = (service: string, target: string) =>
     def.manifest.volumes.find(
       (v) => v.service === service && v.target.replace(/\/+$/, "") === target.replace(/\/+$/, ""),
@@ -229,6 +252,7 @@ export function render(def: AppDef, env: Record<string, string>, ctx: Ctx): Rend
     }
   }
   for (const n of used) delete top[n];
+  for (const n of droppedVols) if (n in top && !(top[n] as Doc | null)?.external) delete top[n];
   if (doc.volumes && !Object.keys(top).length) delete doc.volumes;
   doc.name = `phos-${def.id}`;
   const { name, ...rest } = doc;

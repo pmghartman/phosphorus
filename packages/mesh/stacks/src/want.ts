@@ -202,6 +202,9 @@ export function viewOf(w: StackWant): StackView {
   const { def, env: _, ...rest } = w;
   const v: StackView = { ...rest, summary: summaryOf(def) };
   if (def.manifest.web) v.web = def.manifest.web;
+  const values: Record<string, string> = {};
+  for (const f of def.env) if (!f.secret) values[f.name] = w.env[f.name] ?? "";
+  if (Object.keys(values).length) v.values = values;
   return v;
 }
 
@@ -268,9 +271,9 @@ export async function Install(p: Record<string, any>, by: string): Promise<[numb
   return [200, { ok: true, want: viewOf(w) }];
 }
 
-// an update: the def again from its source when it has one, new fields filled,
-// the gen bumped so every copy pulls and comes up again
-export async function Update(id: string, by: string): Promise<[number, any]> {
+// an update: the def again from its source when it has one, new fields filled and
+// the values given taken, the gen bumped so every copy pulls and comes up again
+export async function Update(id: string, by: string, given: Record<string, unknown> = {}): Promise<[number, any]> {
   const w = wantOf(id);
   if (!w) return [404, { error: `no stack called ${id}` }];
   let def = w.def;
@@ -279,7 +282,7 @@ export async function Update(id: string, by: string): Promise<[number, any]> {
     const fresh = d && defOf(d);
     if (fresh && typeof fresh !== "string" && fresh.id === id) def = fresh;
   }
-  const [env, missing, bad] = fillEnv(def, {}, w.env);
+  const [env, missing, bad] = fillEnv(def, given, w.env);
   if (bad) return [400, { error: bad }];
   if (missing.length) return [400, { error: `${missing.join(", ")} wanted`, missing }];
   const next: StackWant = { ...w, def, env, gen: w.gen + 1, by, at: now() };

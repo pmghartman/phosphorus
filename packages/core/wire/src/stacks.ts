@@ -92,6 +92,14 @@ export interface AppDef {
 // built from a clone of its repo: one opened from GitHub, or one of phosphorus's own
 export const fromRepo = (d: Pick<AppDef, "source">) => d.source === "github" || d.source === "phosphorus";
 
+// whether a service runs: none of its own profiles, or one of them in picked (COMPOSE_PROFILES,
+// comma separated, * for all)
+export function profileOn(profiles: unknown, picked = ""): boolean {
+  if (!Array.isArray(profiles) || !profiles.length) return true;
+  const on = picked.split(",").map((p) => p.trim());
+  return on.includes("*") || profiles.some((p) => on.includes(String(p)));
+}
+
 // one entry in the store's grid
 export type AppSummary = Pick<
   AppDef,
@@ -163,8 +171,12 @@ export interface StackWant {
   public?: boolean;
 }
 
-// the want as the page sees it: no env values
-export type StackView = Omit<StackWant, "env" | "def"> & { summary: AppSummary; web?: PhosManifest["web"] };
+// the want as the page sees it: no secrets, its other values to change under settings
+export type StackView = Omit<StackWant, "env" | "def"> & {
+  summary: AppSummary;
+  web?: PhosManifest["web"];
+  values?: Record<string, string>;
+};
 
 export type StackRole = "active" | "standby" | "none";
 

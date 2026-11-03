@@ -7,7 +7,10 @@ import { envFields } from "./manifest.ts";
 // /data: gitea/ the custom dir, app.ini, the sqlite db and app data, git/ the
 // repositories and LFS. Queues in memory, the issue index in the db and the log on
 // stdout, so nothing rebuildable is copied to standbys. On start a db failing its
-// check (a standby's copy taken mid-write) is swapped for the last backup.
+// check (a standby's copy taken mid-write) is swapped for the last backup. With the
+// runner profile picked an Actions runner runs beside it on its own Docker, both
+// sides taking one shared secret from RUNNER_SECRET (its sha1 the 40 hex Forgejo
+// wants), so it's registered with nothing to copy.
 const forgejoCompose = `services:
   forgejo:
     image: codeberg.org/forgejo/forgejo:16
@@ -21,6 +24,14 @@ const forgejoCompose = `services:
           echo "phosphorus: $$db fails its check, the last backup put back"
           cp "$$db.phos-backup" "$$db" && rm -f "$$db-journal" "$$db-wal" "$$db-shm"
         fi
+        case ",$$PHOS_PROFILES," in *,runner,*)
+          s=$$(printf %s "$$RUNNER_SECRET" | sha1sum | cut -c1-40)
+          (
+            until curl -fsS -o /dev/null http://localhost:3000/api/healthz; do sleep 5; done
+            su git -c "forgejo forgejo-cli actions register --name phosphorus --keep-labels --secret $$s" &&
+              echo "phosphorus: the runner registered"
+          ) &
+        esac
         exec /usr/bin/entrypoint "$$@"
       - sh
     command: [/usr/bin/s6-svscan, /etc/s6]
@@ -49,6 +60,8 @@ const forgejoCompose = `services:
       FORGEJO__security__SECRET_KEY: \${SECRET_KEY}
       FORGEJO__security__INTERNAL_TOKEN: \${INTERNAL_TOKEN}
       FORGEJO__cron_0X2E_git_gc_repos__ENABLED: "true"
+      PHOS_PROFILES: \${COMPOSE_PROFILES:-}
+      RUNNER_SECRET: \${RUNNER_SECRET}
     ports:
       - \${HTTP_PORT:-3001}:3000
       - \${SSH_PORT:-2222}:22
@@ -60,15 +73,74 @@ const forgejoCompose = `services:
       timeout: 5s
       retries: 3
       start_period: 60s
+  runner-docker:
+    image: data.forgejo.org/oci/docker:dind
+    profiles: [runner]
+    restart: unless-stopped
+    privileged: true
+    environment:
+      DOCKER_TLS_CERTDIR: ""
+    command: [dockerd, -H, tcp://0.0.0.0:2375, --tls=false]
+    volumes:
+      - runner-docker:/var/lib/docker
+  runner:
+    image: data.forgejo.org/forgejo/runner:13
+    profiles: [runner]
+    restart: unless-stopped
+    user: \${PUID}:\${PGID}
+    depends_on: [forgejo, runner-docker]
+    environment:
+      HOME: /data
+      DOCKER_HOST: tcp://runner-docker:2375
+      RUNNER_SECRET: \${RUNNER_SECRET}
+      RUNNER_CAPACITY: \${RUNNER_CAPACITY:-2}
+    volumes:
+      - runner:/data
+    entrypoint:
+      - bash
+      - -ec
+      - |
+        cd /data
+        s=$$(printf %s "$$RUNNER_SECRET" | sha1sum | cut -c1-40)
+        h=$$(printf %s "$$s" | cut -c1-16 | od -An -tx1 | tr -dc 0-9a-f)
+        u="$$\{h:0:8}-$$\{h:8:4}-$$\{h:12:4}-$$\{h:16:4}-$$\{h:20:12}"
+        cat > config.yml <<EOF
+        log:
+          level: info
+        runner:
+          file: .runner
+          capacity: $$RUNNER_CAPACITY
+          envs:
+            DOCKER_HOST: tcp://runner-docker:2375
+          labels:
+            - docker:docker://data.forgejo.org/oci/node:lts
+            - ubuntu-latest:docker://data.forgejo.org/oci/node:lts
+            - docker-cli:docker://data.forgejo.org/oci/docker:cli
+        container:
+          network: host
+          docker_host: "-"
+        server:
+          connections:
+            phosphorus:
+              url: http://forgejo:3000
+              uuid: $$u
+              token: $$s
+        EOF
+        echo "phosphorus: runner $$u for http://forgejo:3000"
+        exec forgejo-runner --config config.yml daemon
 volumes:
   forgejo: {}
+  runner: {}
+  runner-docker: {}
 `;
 
 const forgejoAbout = `Forgejo is a self-hosted git forge: repositories, issues, pull requests, packages and CI.
 
 Installed from here it answers at forgejo.<your domain>, and at git.<your domain> too. Its data (the sqlite database, the repositories, LFS objects and avatars) lives in the stack's data folder; pick standby hosts and each keeps a copy, taken after a consistent sqlite \`.backup\` of the database, ready to take over.
 
-SSH clones go to port 2222 (or the one you pick) of the host serving it, and the first account registered is the admin.`;
+SSH clones go to port 2222 (or the one you pick) of the host serving it, and the first account registered is the admin.
+
+Pick the runner under Actions and a Forgejo Actions runner comes up beside it, already linked: it runs on its own Docker (privileged, in its own container), its jobs on \`docker\`, \`ubuntu-latest\` (Node) and \`docker-cli\`, as many at once as the runner's capacity. It runs where Forgejo runs and moves with it, reaching Forgejo inside the stack, so jobs check out code whether or not Forgejo is public. Turn it on or off later under settings on Forgejo's page.`;
 
 export const forgejo: AppDef = {
   id: "forgejo",
@@ -88,9 +160,16 @@ export const forgejo: AppDef = {
     { name: "SSH_PORT", label: "SSH port on the host", default: "2222" },
     { name: "SECRET_KEY", label: "Secret key", secret: true },
     { name: "INTERNAL_TOKEN", label: "Internal token", secret: true },
+    { name: "COMPOSE_PROFILES", label: "Actions runner", default: "none", options: ["none", "runner"] },
+    { name: "RUNNER_CAPACITY", label: "Runner's jobs at once", default: "2" },
+    { name: "RUNNER_SECRET", label: "Runner's shared secret", secret: true },
   ]),
   manifest: {
-    volumes: [{ service: "forgejo", target: "/data", kind: "data" }],
+    volumes: [
+      { service: "forgejo", target: "/data", kind: "data" },
+      { service: "runner", target: "/data", kind: "data" },
+      { service: "runner-docker", target: "/var/lib/docker", kind: "cache" },
+    ],
     backup: {
       pre: [
         {

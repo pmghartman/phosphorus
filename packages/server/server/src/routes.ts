@@ -343,7 +343,7 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
     if (pathname === "/api/stacks/docker") return onJSON(c, 1024, true, (p) => stacks.AskDocker(str(p.host), by));
     const [id, op] = [m![1]!, m![2]!];
     return onJSON(c, 1024, true, (p) =>
-      op === "update" ? stacks.Update(id, by) : stacks.Remove(id, p.keepData !== false, by),
+      op === "update" ? stacks.Update(id, by, obj(p.env) ?? {}) : stacks.Remove(id, p.keepData !== false, by),
     );
   }
   // an app's icon off its repository, kept here

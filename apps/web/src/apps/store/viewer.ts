@@ -2,7 +2,7 @@
 // comes from and under what licence, the install check, and the install itself: the env
 // form, the host and its backups; once installed, its hosts, their logs and an admin's steps
 
-import type { AppDef, AppPage, CheckResult, HostFit, StackView } from '@phosphorus/wire';
+import type { AppDef, AppPage, CheckResult, EnvField, HostFit, StackView } from '@phosphorus/wire';
 import { el, noFill, pageAsk } from '../../lib/dom.ts';
 import { renderMd } from '../../lib/md.ts';
 import { dk, st } from '../../lib/state.ts';
@@ -636,6 +636,39 @@ async function remove(v: StackView) {
     stackAct(v.summary.id, 'remove', { keepData: keep.checked });
 }
 
+// its values to change, secrets aside: a choice its options, the rest typed; saved, it's updated
+// with them and comes up again
+async function settings(v: StackView, page: AppPage | undefined) {
+  const fields: EnvField[] =
+    page?.def.env.filter((x) => !x.secret) ?? Object.keys(v.values ?? {}).map((name) => ({ name, label: name }));
+  const now = v.values ?? {};
+  const inputs = new Map<string, HTMLInputElement | HTMLSelectElement>();
+  const form = el('div', 'store-env');
+  for (const x of fields) {
+    const lab = el('label', 'store-env-row');
+    const head = el('span', 'store-env-head');
+    head.append(el('span', 'store-env-label', x.label || x.name));
+    if (x.label && x.label !== x.name) head.append(el('span', 'store-env-name', x.name));
+    let input: HTMLInputElement | HTMLSelectElement;
+    if (x.options?.length) {
+      input = el('select', 'store-env-input');
+      for (const o of x.options) input.append(Object.assign(el('option', '', o), { value: o }));
+      input.value = now[x.name] || x.default || x.options[0]!;
+    } else {
+      input = Object.assign(el('input', 'store-env-input'), { value: now[x.name] ?? '', spellcheck: false });
+    }
+    lab.append(head, input);
+    form.append(lab);
+    inputs.set(x.name, input);
+  }
+  if (!inputs.size) form.append(el('p', 'store-pick-note', 'nothing to set but its secrets'));
+  const body = [form, el('p', 'store-pick-note', `Saving restarts it on ${liveHost(v)}; its backups follow.`)];
+  if (!(await ask(`${v.summary.name} settings`, body, 'save')) || !inputs.size) return;
+  const env: Record<string, string> = {};
+  for (const [k, input] of inputs) if (input.value !== (now[k] ?? '')) env[k] = input.value;
+  if (Object.keys(env).length) stackAct(v.summary.id, 'update', { env });
+}
+
 function installedSec(v: StackView, page: AppPage | undefined): HTMLElement[] {
   const f = stackFacts(v);
   const id = v.summary.id;
@@ -687,6 +720,7 @@ function installedSec(v: StackView, page: AppPage | undefined): HTMLElement[] {
       )
         stackAct(id, 'update');
     });
+    btn('settings…', 'its values: extras like a runner, ports', () => settings(v, page));
     btn('hosts…', 'its backup hosts', () => changeHosts(v, page));
     btn('move to host…', 'a planned handoff to a backup', () => moveTo(v));
     btn('remove…', 'take it off the mesh', () => remove(v), 'danger');

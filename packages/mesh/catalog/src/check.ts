@@ -1,7 +1,7 @@
 // whether an app installs, and where: a pure function of the app, the person's
 // values, the hosts as their info tells them and what the registries said of
 // its images; and the small fetcher that asks the registries first
-import { type AppDef, type CheckItem, type CheckResult, fromRepo, type HostFit } from "@phosphorus/wire";
+import { type AppDef, type CheckItem, type CheckResult, fromRepo, type HostFit, profileOn } from "@phosphorus/wire";
 import { type Compose, interpolate, parse, ports } from "./compose.ts";
 import { archsOf, type Fetch, type ImageInfo, normArch } from "./registry.ts";
 
@@ -38,7 +38,11 @@ export function rendered(def: AppDef, env: Record<string, string>): Compose {
     if (f.secret) values[f.name] = "secret";
   }
   Object.assign(values, env);
-  return parse(interpolate(def.compose, values));
+  const c = parse(interpolate(def.compose, values));
+  // what the profiles picked leave out isn't run, nor checked
+  for (const [n, s] of Object.entries(c.services))
+    if (!profileOn(s.profiles, values.COMPOSE_PROFILES)) delete c.services[n];
+  return c;
 }
 
 // the images the app pulls, those it builds left out
