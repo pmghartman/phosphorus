@@ -7,6 +7,7 @@ import * as git from "@phosphorus/git";
 import { State as modelState, Summary } from "@phosphorus/model";
 import * as peers from "@phosphorus/peers";
 import { own as ownServices, setPending, unpublished, wildcard } from "@phosphorus/services";
+import * as stacks from "@phosphorus/stacks";
 import * as store from "@phosphorus/store";
 import * as homesync from "@phosphorus/sync";
 import * as update from "@phosphorus/update";
@@ -119,9 +120,10 @@ export function publishHost() {
     platform: getPlatform(),
     files: filesInfo(),
     apps: webapps.installed(),
-    services: webapps.svcProgress(),
     found: unpublished(),
     wildcard: wildcard(),
+    stacks: stacks.statuses(),
+    docker: stacks.dockerInfo(),
   });
 }
 
@@ -166,6 +168,7 @@ export function buildState(): Record<string, any> {
     hosts: hostsInfo(),
     apps: webapps.wants(),
     home: homesync.digest(),
+    stacks: stacks.views(),
   };
 }
 
@@ -186,6 +189,7 @@ function stateFp(s: Record<string, any>): string {
     s.hosts,
     s.apps,
     s.home,
+    s.stacks,
   ]);
 }
 

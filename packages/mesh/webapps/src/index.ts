@@ -22,7 +22,7 @@ import {
   StateDir,
   writeJSONAtomic,
 } from "@phosphorus/util";
-import { RepoIcon, summary as svcSummaryFn } from "./services.ts";
+import { RepoIcon } from "./icon.ts";
 
 const logf = (f: string, ...a: unknown[]) => log("[apps] " + f, ...a);
 
@@ -544,7 +544,6 @@ export function serve(req: Request): Response | undefined {
 // --- the page's read: the catalogue with what the mesh wants and the feed says ---
 
 export async function summary(fresh: boolean): Promise<Record<string, any>> {
-  const services = svcSummaryFn();
   const apps = await Promise.all(
     Catalog.map(async (a) => {
       const f = await latest(a, fresh);
@@ -571,7 +570,18 @@ export async function summary(fresh: boolean): Promise<Record<string, any>> {
       };
     }),
   );
-  return { apps, services: await services };
+  return { apps, nativeLeft: nativeLeft() };
+}
+
+// the services the retired native installer left on hosts: etc/services/<id>/<host>.json
+// records, nothing following them now; the apps page notes them for removal by hand
+export function nativeLeft(): string[] {
+  const ids = new Set<string>();
+  for (const f of store.list("etc/services")) {
+    const [id, host, more] = f.split("/");
+    if (id && host?.endsWith(".json") && more === undefined) ids.add(id);
+  }
+  return [...ids].sort();
 }
 
 export { newer };
@@ -584,40 +594,4 @@ export async function AppIcon(id: string): Promise<{ data: Uint8Array; type: str
   return a ? RepoIcon({ id: a.id, name: a.name, repo: a.repo, icon: a.repoIcon }) : undefined;
 }
 
-// the services beside the apps: a checkout per host, run as a person's own login
-export {
-  behindMain as svcBehindMain,
-  type Device as SvcDevice,
-  type HostView as SvcHostView,
-  Icon as svcIcon,
-  iconPath as svcIconPath,
-  type Job as SvcJob,
-  type JobView as SvcJobView,
-  jobOf as svcJobOf,
-  jobs as svcJobs,
-  type Login as SvcLogin,
-  launch as svcLaunch,
-  type Op as SvcOp,
-  Ops as SvcOps,
-  opTimeoutMS as svcTimeoutMS,
-  type Progress as SvcProgress,
-  type PublishLocal as SvcPublishLocal,
-  progress as svcProgress,
-  type Record_ as SvcRecord,
-  type Route as SvcRoute,
-  type Runner as SvcRunner,
-  recordOf as svcRecordOf,
-  records as svcRecords,
-  repoOf as svcRepoOf,
-  reset as svcReset,
-  type Service,
-  ServiceOp,
-  Services,
-  Start as StartServices,
-  script as svcScript,
-  seams as svcSeams,
-  serviceOf,
-  summary as svcSummary,
-  tick as svcTick,
-  unitOf as svcUnitOf,
-} from "./services.ts";
+export { iconSeams, RepoIcon } from "./icon.ts";

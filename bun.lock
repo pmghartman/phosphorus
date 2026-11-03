@@ -219,6 +219,12 @@
     },
     "packages/mesh/stacks": {
       "name": "@phosphorus/stacks",
+      "dependencies": {
+        "@phosphorus/store": "workspace:*",
+        "@phosphorus/users": "workspace:*",
+        "@phosphorus/util": "workspace:*",
+        "@phosphorus/wire": "workspace:*",
+      },
     },
     "packages/mesh/store": {
       "name": "@phosphorus/store",
@@ -250,10 +256,6 @@
         "@phosphorus/store": "workspace:*",
         "@phosphorus/tools": "workspace:*",
         "@phosphorus/util": "workspace:*",
-        "ssh2": "1.17.0",
-      },
-      "devDependencies": {
-        "@types/ssh2": "1.15.6",
       },
     },
     "packages/net/gamedns": {
@@ -301,6 +303,7 @@
         "@phosphorus/proxy": "workspace:*",
         "@phosphorus/reconfig": "workspace:*",
         "@phosphorus/services": "workspace:*",
+        "@phosphorus/stacks": "workspace:*",
         "@phosphorus/stats": "workspace:*",
         "@phosphorus/store": "workspace:*",
         "@phosphorus/sync": "workspace:*",

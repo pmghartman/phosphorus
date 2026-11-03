@@ -119,6 +119,18 @@ export interface HostFit {
   why?: string;
 }
 
+// docker on one host, in its info: what the check reads of it (packages/stacks)
+export interface DockerInfo {
+  state: HostFit["docker"];
+  // docker's name for the machine: amd64, arm64, arm
+  arch: string;
+  version?: string;
+  compose?: string;
+  // Docker being installed here, asked by POST /api/stacks/docker
+  installing?: boolean;
+  error?: string;
+}
+
 export interface CheckResult {
   verdict: Verdict;
   items: CheckItem[];
@@ -169,9 +181,10 @@ export interface StackStatus {
 // POST /api/stacks/install { source, ref, env, active, standbys } -> { ok, want: StackView }         (stacks, admin)
 // POST /api/stacks/<id>/update                    -> { ok }                                          (stacks, admin)
 // POST /api/stacks/<id>/remove { keepData }       -> { ok }                                          (stacks, admin)
+// POST /api/stacks/docker { host }                -> { ok }   Docker installed on a Debian/Ubuntu host  (stacks, admin)
 // POST /api/stacks/<id>/standbys { standbys }     -> { ok, want: StackView }                         (ha, admin)
 // POST /api/stacks/<id>/move { to }               -> { ok }   a planned handoff                      (ha, admin)
-// State.stacks carries every StackView; HostInfo.stacks each host's StackStatus.
+// State.stacks carries every StackView; HostInfo.stacks each host's StackStatus, HostInfo.docker its DockerInfo.
 
 export interface AppPage {
   def: AppDef;

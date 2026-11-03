@@ -20,6 +20,7 @@
     "@phosphorus/proxy": "workspace:*",
     "@phosphorus/reconfig": "workspace:*",
     "@phosphorus/services": "workspace:*",
+    "@phosphorus/stacks": "workspace:*",
     "@phosphorus/stats": "workspace:*",
     "@phosphorus/store": "workspace:*",
     "@phosphorus/sync": "workspace:*",

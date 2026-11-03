@@ -1,4 +1,4 @@
-import type { StackStatus, StackView } from "./stacks.ts";
+import type { DockerInfo, StackStatus, StackView } from "./stacks.ts";
 
 // --- /api/state: buildState() in packages/server/src/server.ts, pushed over the same path's socket
 
@@ -124,6 +124,8 @@ export interface HostInfo {
   wildcard?: { state: string; why?: string };
   // this host's copy of each installed app (packages/stacks)
   stacks?: Record<string, StackStatus>;
+  // docker here, for the install check
+  docker?: DockerInfo;
 }
 
 export interface FoundPage {

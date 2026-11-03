@@ -9,6 +9,7 @@ import { Assign, Summary } from "@phosphorus/model";
 import * as peers from "@phosphorus/peers";
 import { listen as ingressListen, serve as proxyServe } from "@phosphorus/proxy";
 import { start as reconfigStart } from "@phosphorus/reconfig";
+import * as stacks from "@phosphorus/stacks";
 import * as stats from "@phosphorus/stats";
 import * as store from "@phosphorus/store";
 import * as homesync from "@phosphorus/sync";
@@ -98,12 +99,11 @@ export async function start(): Promise<Server<WSData>> {
   void homesync.start(homeSource);
   webapps.Start(tailnetIP, port);
   startApps();
-  webapps.StartServices({
-    routes: peers.routes,
-    tailnet: peers.tailnet,
+  // the installed services: this host's copies brought to the mesh's wants
+  stacks.Start({
     ipOf: tailnetIP,
-    hostInfo: (h) => hostsInfo()[h],
-    publishLocal: (name, fields) =>
+    hosts: () => peers.tailnet().flatMap((d) => (d.phosphorus === true && typeof d.name === "string" ? [d.name] : [])),
+    publish: (name, fields) =>
       configOp(fields ? { op: "service", name, fields } : { op: "service", name, remove: true }),
   });
   ingressListen(ingressPort, appHandler, { pass: users.Pass, issuers: users.Issuers });

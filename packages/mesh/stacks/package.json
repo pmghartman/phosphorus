@@ -4,5 +4,11 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@phosphorus/store": "workspace:*",
+    "@phosphorus/users": "workspace:*",
+    "@phosphorus/util": "workspace:*",
+    "@phosphorus/wire": "workspace:*"
   }
 }

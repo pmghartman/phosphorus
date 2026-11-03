@@ -8,6 +8,7 @@ import { Assign, EraseSlots, ServeChat, ServeMessages, ServeModels } from "@phos
 import * as peers from "@phosphorus/peers";
 import { favicon, faviconWhy, requestURI } from "@phosphorus/proxy";
 import { setPublic } from "@phosphorus/services";
+import * as stacks from "@phosphorus/stacks";
 import * as term from "@phosphorus/term";
 import * as update from "@phosphorus/update";
 import * as users from "@phosphorus/users";
@@ -51,10 +52,9 @@ const gameRe = /^\/api\/games\/([a-z0-9][a-z0-9-]*)\/([a-z0-9][a-z0-9-]*)\/(star
 const mediaRe = /^\/api\/chat\/media\/([a-z0-9][a-z0-9-]*)\/([0-9a-f]{32})$/;
 const runRe = /^\/api\/run\/([a-z0-9][a-z0-9-]*)\/([A-Za-z0-9_-]+)\/(.*)$/;
 const appsTarRe = /^\/internal\/apps\/([a-z][a-z0-9-]*)\/(\d+(?:\.\d+){0,3})$/;
-const appsSvcRe = /^\/api\/apps\/services\/(install|update|remove)$/;
-const appsSvcIconRe = /^\/api\/apps\/services\/([a-z][a-z0-9-]*)\/icon$/;
 const appsIconRe = /^\/api\/apps\/([a-z][a-z0-9-]*)\/icon$/;
 const hostRe = /^[a-z0-9][a-z0-9-]*$/;
+const stackOpRe = /^\/api\/stacks\/([a-z][a-z0-9-]{0,39})\/(update|remove)$/;
 const pingRe = /^\/api\/ping\/([a-z0-9-]+)$/;
 const filesRe =
   /^\/api\/files\/([a-z0-9][a-z0-9-]*)\/(info|list|tree|search|read|download|upload|save|mkdir|rename|delete|run|copy)$/;
@@ -356,29 +356,24 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
       pathname === "/api/apps/install" ? webapps.Install(str(p.id)) : webapps.Remove(str(p.id)),
     );
   }
-  // a service onto, updated on or off one host, run there as the person's saved login
-  // for that host: anyone who logged into the host, admin or not
-  m = appsSvcRe.exec(pathname);
-  if (m && method === "POST") {
-    if (!isBrowser(c) || !sameOrigin(c)) return forbidden();
-    const s = await users.Soon(c);
-    if (!s || s.boot) return sendJSON(403, { error: "log in as a user" });
-    const op = m[1]!;
-    return onJSON(c, 2048, true, async (p) => {
-      const host = str(p.host);
-      if (!hostRe.test(host)) return [400, { error: "pick a host" }];
-      const [user, pass, ok] = await users.HostLogin(s, host);
-      if (!ok) return [403, { error: `no saved login for ${host}: log into it on the desktop first` }];
-      // sudo: the login's sudo password for a recipe needing root, the saved one's when blank
-      return webapps.ServiceOp(op, str(p.id), host, { user, pass }, s.user, truthy(p.keep), str(p.sudo));
-    });
+  // the installed services: an admin's install, update or removal, every host following
+  m = stackOpRe.exec(pathname);
+  if ((m || pathname === "/api/stacks/install" || pathname === "/api/stacks/docker") && method === "POST") {
+    const s = users.Of(c);
+    if (!isBrowser(c) || !((!!s && s.admin) || (adminPass === "" && isLoopback(c)))) return forbidden();
+    const by = s?.user ?? "admin";
+    if (pathname === "/api/stacks/install") return onJSON(c, 512 << 10, true, (p) => stacks.Install(p, by));
+    if (pathname === "/api/stacks/docker") return onJSON(c, 1024, true, (p) => stacks.AskDocker(str(p.host), by));
+    const [id, op] = [m![1]!, m![2]!];
+    return onJSON(c, 1024, true, (p) =>
+      op === "update" ? stacks.Update(id, by) : stacks.Remove(id, p.keepData !== false, by),
+    );
   }
-  // a service's icon, or an app's, off its repository, kept here
-  const svcIc = appsSvcIconRe.exec(pathname);
-  m = svcIc ?? appsIconRe.exec(pathname);
+  // an app's icon off its repository, kept here
+  m = appsIconRe.exec(pathname);
   if (m && method === "GET") {
     if (!(await isLocalOrPeer(c))) return forbidden();
-    const ic = await (svcIc ? webapps.svcIcon(m[1]!) : webapps.AppIcon(m[1]!));
+    const ic = await webapps.AppIcon(m[1]!);
     if (!ic) return new Response(null, { status: 404, headers: { "Cache-Control": "max-age=600" } });
     return new Response(ic.data as Uint8Array<ArrayBuffer>, {
       status: 200,
