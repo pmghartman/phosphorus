@@ -1,14 +1,15 @@
 // a stack's data copied between hosts: the active keeps a consistent snapshot
-// beside data/ (only changed files copied, each by a fresh file renamed into
-// place, so a reader never sees one half-written), a manifest naming each
-// file's version; a standby pulls the files whose version moved into a staging
-// tree, then hard-links that into its copy once a pull lands whole under one
-// token. Promotion moves the copy into data/.
+// beside data/ (only changed files copied, off the event loop into a staging
+// folder, then all renamed into place at once, so a reader never sees one
+// half-written nor a snapshot half-moved), a manifest naming each file's
+// version; a standby pulls the files whose version moved into a staging tree,
+// then hard-links that into its copy once a pull lands whole under one token.
+// Promotion moves the copy into data/.
+
 import {
   type BigIntStats,
   chmodSync,
   chownSync,
-  copyFileSync,
   existsSync,
   linkSync,
   lstatSync,
@@ -21,6 +22,7 @@ import {
   symlinkSync,
   utimesSync,
 } from "node:fs";
+import { copyFile } from "node:fs/promises";
 import { dirname, join, posix } from "node:path";
 import { marshal, readJSON, writeFileAtomic } from "@phosphorus/util";
 
@@ -52,8 +54,10 @@ export function paths(data: string) {
     ha,
     snap: join(ha, "snap"),
     snapJSON: join(ha, "snap.json"),
-    // the data's signature as last snapshotted, unchanged data skipping the hooks
+    // each snapshotted file's source version, so a restart or a new term copies only what moved
     sigJSON: join(ha, "sig.json"),
+    // the files a snapshot copied, before they're swapped in
+    stage: join(ha, "stage"),
     pull: join(ha, "pull"),
     pullJSON: join(ha, "pull.json"),
     copy: join(ha, "copy"),
@@ -159,40 +163,62 @@ function place(file: string, e: Entry, had?: Entry) {
   }
 }
 
-// data/ mirrored into the snapshot: changed files copied fresh and renamed in;
-// true when anything moved
-export function mirror(src: string, dst: string, sigs: Record<string, string>): boolean {
+// data/ mirrored into the snapshot in two steps: the changed files copied into
+// stage off the event loop, however long that takes, then commit swapping them
+// in with no await between, its caller offering the snapshot in the same turn;
+// commit true when anything moved
+export async function mirror(
+  src: string,
+  dst: string,
+  stage: string,
+  sigs: Record<string, string>,
+): Promise<() => boolean> {
   mkdirSync(dst, { recursive: true });
+  rmrf(stage);
+  mkdirSync(stage, { recursive: true });
   const from = walk(src);
   const have = new Map(walk(dst).map((e) => [e.p, e]));
-  let moved = false;
-  const keep = new Set<string>();
+  const staged = new Map<string, string>();
   for (const e of from) {
-    keep.add(e.p);
-    const file = join(dst, e.p);
+    if (e.t !== "f") continue;
     const had = have.get(e.p);
-    if (e.t !== "f") {
-      if (!had || had.t !== e.t || had.l !== e.l) moved = true;
-      place(file, e, had);
-      continue;
-    }
     if (had?.t === "f" && sigs[e.p] === e.v) continue;
-    if (had && had.t !== "f") rmrf(file);
-    const tmp = join(dirname(file), `.phos-tmp-${process.pid}-${Math.random().toString(36).slice(2)}`);
+    const tmp = join(stage, String(staged.size));
     try {
-      copyFileSync(join(src, e.p), tmp);
+      await copyFile(join(src, e.p), tmp);
       stamp(tmp, e);
-      renameSync(tmp, file);
-      sigs[e.p] = e.v!;
-      moved = true;
+      staged.set(e.p, tmp);
     } catch {
       safe(() => rmSync(tmp, { force: true }));
     }
   }
-  for (const p of Object.keys(sigs)) if (!keep.has(p)) delete sigs[p];
-  if ([...have.keys()].some((p) => !keep.has(p))) moved = true;
-  prune(dst, have, keep);
-  return moved;
+  return () => {
+    let moved = false;
+    const keep = new Set<string>();
+    for (const e of from) {
+      keep.add(e.p);
+      const file = join(dst, e.p);
+      const had = have.get(e.p);
+      if (e.t !== "f") {
+        if (!had || had.t !== e.t || had.l !== e.l) moved = true;
+        place(file, e, had);
+        continue;
+      }
+      const tmp = staged.get(e.p);
+      if (!tmp) continue;
+      try {
+        if (had && had.t !== "f") rmrf(file);
+        renameSync(tmp, file);
+        sigs[e.p] = e.v!;
+        moved = true;
+      } catch {}
+    }
+    for (const p of Object.keys(sigs)) if (!keep.has(p)) delete sigs[p];
+    if ([...have.keys()].some((p) => !keep.has(p))) moved = true;
+    prune(dst, have, keep);
+    rmrf(stage);
+    return moved;
+  };
 }
 
 // what a fetch of one snapshot file gives: its bytes written to file, false when gone

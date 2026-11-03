@@ -61,6 +61,9 @@ const replicateMS = 5000;
 const inSyncMS = 30000;
 // an unchanged token still pulled whole this often
 const fullPullMS = 60000;
+// data that looks unchanged still snapshotted this often: a write landing while
+// a long copy ran is caught by then
+const resnapMS = 60000;
 const claimMaxAgeMS = 3000;
 const keepDownMS = 15000;
 const retryUpMS = 5000;
@@ -129,9 +132,12 @@ export class Replica implements Group {
   // the want gen this host's project is rendered from, and the active's
   appGen = 0;
   masterApp = 0;
-  // the data's signature after the last snapshot, and each snapshotted file's source version
+  // the data's signature after the last snapshot, when it was taken, and each
+  // snapshotted file's source version (kept on disk, a restart copying only what moved)
   private lastSig = "";
-  private sigs: Record<string, string> = {};
+  private lastSnap = -Infinity;
+  private sigs: Record<string, string>;
+  private snaps: Promise<unknown> = Promise.resolve();
   private chain: Promise<void> = Promise.resolve();
   private busy = false;
 
@@ -144,6 +150,7 @@ export class Replica implements Group {
     this.view = `/api/ha/${this.name}/view`;
     this.vote = `/api/ha/${this.name}/vote`;
     this.p = paths(rt.dataDir(id));
+    this.sigs = readMap(this.p.sigJSON);
     this.files = fileStore(join(ha.m.stateDir, "ha"), this.name);
   }
 
@@ -235,7 +242,8 @@ export class Replica implements Group {
       });
   }
 
-  idle = () => this.chain;
+  // its step and any snapshot in flight done
+  idle = () => Promise.all([this.chain, this.snaps]);
 
   async step() {
     if (this.disposed) return;
@@ -283,12 +291,17 @@ export class Replica implements Group {
     }
     if (this.disposed) return;
     const copy = readMap(this.p.copyJSON) as Record<string, any>;
-    if (install(this.p)) logf("%s: the copy from %s is the live data now", this.id, prev || "the last active");
+    if (install(this.p)) {
+      logf("%s: the copy from %s is the live data now", this.id, prev || "the last active");
+      // the snapshot an earlier term here left is of other data: never offered, copied afresh
+      for (const f of [this.p.snapJSON, this.p.sigJSON, this.p.snap]) rmSync(f, { recursive: true, force: true });
+      this.sigs = {};
+    }
     const stamp = Math.floor(this.wall() / 1000);
     writeVersion(this.p.version, d.gen, stamp);
     writeFileAtomic(this.p.led, `${d.gen}\n`);
+    // re-elected over the same data, the snapshot and what it holds kept: only what moved is copied
     this.lastSig = "";
-    this.sigs = {};
     this.promoting = false;
     this.makeActive(d, prev, typeof copy?.at === "number" ? copy.at : 0, pulled);
   }
@@ -406,10 +419,23 @@ export class Replica implements Group {
   }
 
   // data/ copied consistently into the snapshot, the hooks around it when the
-  // app runs; skipped while unchanged
-  async snapshot(running: boolean): Promise<boolean> {
+  // app runs; skipped while unchanged, though never for longer than resnapMS; one
+  // at a time, a fence's after the step's in flight
+  snapshot(running: boolean): Promise<boolean> {
+    const next = this.snaps.then(() => this.snapOnce(running));
+    this.snaps = next.catch(() => {});
+    return next;
+  }
+
+  private async snapOnce(running: boolean): Promise<boolean> {
     if (!existsSync(this.p.data)) return false;
-    if (this.lastSig && signature(walk(this.p.data)) === this.lastSig && existsSync(this.p.snapJSON)) return true;
+    if (
+      this.lastSig &&
+      this.now() - this.lastSnap < resnapMS &&
+      signature(walk(this.p.data)) === this.lastSig &&
+      existsSync(this.p.snapJSON)
+    )
+      return true;
     if (running)
       try {
         await this.rt.hook(this.id, "pre");
@@ -417,7 +443,26 @@ export class Replica implements Group {
         logf("%s: backup.pre failed, standbys keep the last snapshot: %s", this.id, errText(e));
         return false;
       }
-    const moved = mirror(this.p.data, this.p.snap, this.sigs);
+    // the copying awaited, the event loop (the lease's renewals) never held up by it;
+    // swapped in and offered with no await between, so a pull never takes half of it
+    const commit = await mirror(this.p.data, this.p.snap, this.p.stage, this.sigs);
+    const moved = commit();
+    this.lastSnap = this.now();
+    if (moved || !existsSync(this.p.snapJSON)) {
+      writeJSON(this.p.sigJSON, this.sigs);
+      const v = this.version();
+      const stamp = Math.floor(this.wall() / 1000);
+      const man: Manifest = {
+        token: `${this.ha.m.self}-${stamp}-${Math.random().toString(36).slice(2, 10)}`,
+        gen: v?.gen ?? 0,
+        stamp,
+        app: this.appGen,
+        files: walk(this.p.snap),
+      };
+      writeJSON(this.p.snapJSON, man);
+      writeVersion(this.p.version, man.gen, stamp);
+      this.lastSync = this.wall();
+    }
     if (running)
       try {
         await this.rt.hook(this.id, "post");
@@ -425,19 +470,6 @@ export class Replica implements Group {
         logf("%s: backup.post failed: %s", this.id, errText(e));
       }
     this.lastSig = signature(walk(this.p.data));
-    if (!moved && existsSync(this.p.snapJSON)) return true;
-    const v = this.version();
-    const stamp = Math.floor(this.wall() / 1000);
-    const man: Manifest = {
-      token: `${this.ha.m.self}-${stamp}-${Math.random().toString(36).slice(2, 10)}`,
-      gen: v?.gen ?? 0,
-      stamp,
-      app: this.appGen,
-      files: walk(this.p.snap),
-    };
-    writeJSON(this.p.snapJSON, man);
-    writeVersion(this.p.version, man.gen, stamp);
-    this.lastSync = this.wall();
     return true;
   }
 

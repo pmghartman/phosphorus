@@ -1,13 +1,23 @@
 // the env (./env.ts) before anything reads it
 import "./env.ts";
 import { expect, test } from "bun:test";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Clock } from "@phosphorus/elector";
 import type { Runtime } from "@phosphorus/stacks";
-import { groupOf, HA, type Mesh } from "@phosphorus/stacks/ha";
+import { groupOf, HA, type Mesh, Replica } from "@phosphorus/stacks/ha";
 import type { AppDef, StackWant } from "@phosphorus/wire";
+import { mirror } from "../src/ha/copy.ts";
 
 // --- a small mesh on simulated time ---------------------------------------------
 
@@ -86,8 +96,12 @@ class FakeRuntime implements Runtime {
     const d = this.dataDir(id);
     if (phase === "pre") writeFileSync(join(d, "db.dump"), readFileSync(join(d, "db"), "utf8"));
   }
-  // an acknowledged write, only on a running copy
-  write(id: string, v: string) {
+  // the host's snapshot in flight, its copying open on the data's files
+  settle?: () => Promise<unknown>;
+  // an acknowledged write, only on a running copy; after any copy in flight, which
+  // holds the file open (Windows refusing a write meanwhile, as to the app's own process)
+  async write(id: string, v: string) {
+    await this.settle?.();
     if (!this.on.has(id)) return false;
     writeFileSync(join(this.dataDir(id), "db"), v);
     return true;
@@ -182,6 +196,8 @@ class Node {
     this.life++;
     this.ha = new HA(this.mesh());
     this.ha.attach(this.rt);
+    const ha = this.ha;
+    this.rt.settle = () => Promise.all([...ha.replicas.values()].map((r) => r.idle()));
     const life = this.life;
     const every = (ms: number, fn: () => void) => {
       const go = () => {
@@ -233,7 +249,7 @@ async function mesh3() {
   for (const n of [a, b, c]) n.boot();
   // voters abstain their first 10s
   expect(await w.until(() => a.rt.on.has("vault"), 30_000)).toBeGreaterThan(0);
-  expect(a.rt.write("vault", "v1")).toBe(true);
+  expect(await a.rt.write("vault", "v1")).toBe(true);
   expect(await w.until(() => b.rt.read("vault") === "" && copyOf(b) === "v1", 20_000)).toBeGreaterThanOrEqual(0);
   return { w, a, b, c };
 }
@@ -281,7 +297,7 @@ test("the active's host failing: the standby promotes, the want and route follow
   expect(b.ha.leads("vault")).toBe(true);
   expect(b.ha.leader(g)).toBe("b");
   expect(w.notes.some((n) => n.startsWith("b: Vault moved to b: a stopped answering"))).toBe(true);
-  expect(b.rt.write("vault", "v2")).toBe(true);
+  expect(await b.rt.write("vault", "v2")).toBe(true);
 
   // back with its containers still up: stopped at once, its data set aside, a standby again
   expect(a.rt.on.has("vault")).toBe(true);
@@ -298,11 +314,52 @@ test("the active's host failing: the standby promotes, the want and route follow
   expect(a.rt.log.filter((x) => x === "up").length).toBe(1);
 });
 
+test("a snapshot's copies staged first, the snapshot moved only when committed", async () => {
+  const root = mkdtempSync(join(tmpdir(), "phos-mirror-"));
+  const [src, dst, stage] = ["src", "dst", "stage"].map((d) => join(root, d)) as [string, string, string];
+  mkdirSync(join(src, "sub"), { recursive: true });
+  writeFileSync(join(src, "a"), "a1");
+  writeFileSync(join(src, "sub", "b"), "b1");
+  const sigs: Record<string, string> = {};
+  expect((await mirror(src, dst, stage, sigs))()).toBe(true);
+  expect(readFileSync(join(dst, "sub", "b"), "utf8")).toBe("b1");
+  const ino = statSync(join(dst, "sub", "b")).ino;
+  writeFileSync(join(src, "a"), "a2");
+  const commit = await mirror(src, dst, stage, sigs);
+  // copied, not yet in place
+  expect(readFileSync(join(dst, "a"), "utf8")).toBe("a1");
+  expect(commit()).toBe(true);
+  expect(readFileSync(join(dst, "a"), "utf8")).toBe("a2");
+  // the unchanged file never copied again, the stage gone
+  expect(statSync(join(dst, "sub", "b")).ino).toBe(ino);
+  expect(existsSync(stage)).toBe(false);
+  expect((await mirror(src, dst, stage, sigs))()).toBe(false);
+});
+
+test("an active's snapshot copies only what moved, across a restart too", async () => {
+  const { w, a } = await mesh3();
+  const g = groupOf("vault");
+  const snap = join(a.rt.dataDir("vault"), "..", "ha", "snap");
+  writeFileSync(join(a.rt.dataDir("vault"), "big"), "x".repeat(1 << 16));
+  expect(await w.until(() => existsSync(join(snap, "big")), 20_000)).toBeGreaterThanOrEqual(0);
+  const ino = statSync(join(snap, "big")).ino;
+  expect(await a.rt.write("vault", "v2")).toBe(true);
+  expect(await w.until(() => readFileSync(join(snap, "db"), "utf8") === "v2", 20_000)).toBeGreaterThanOrEqual(0);
+  expect(statSync(join(snap, "big")).ino).toBe(ino);
+  // a fresh replica, as after phosphorus restarts, picks up what the snapshot holds
+  const r = new Replica(a.ha, "vault", a.rt);
+  expect(a.ha.replicas.get(g)).toBeDefined();
+  expect(await a.rt.write("vault", "v3")).toBe(true);
+  expect(await r.snapshot(false)).toBe(true);
+  expect(readFileSync(join(snap, "db"), "utf8")).toBe("v3");
+  expect(statSync(join(snap, "big")).ino).toBe(ino);
+});
+
 test("a planned move: the active stops, the standby's final pull carries every write", async () => {
   const { w, a, b } = await mesh3();
   // written after the last snapshot: only the final pull has it
   await w.run(2000);
-  expect(a.rt.write("vault", "v-last")).toBe(true);
+  expect(await a.rt.write("vault", "v-last")).toBe(true);
   const res = b.ha.move("vault", "b", 30_000);
   let out: [number, any] | undefined;
   void res.then((r) => (out = r));
