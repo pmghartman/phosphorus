@@ -90,6 +90,8 @@ const set: IconSet = {
     up: 'M3 10.5l5-5 5 5',
     down: 'M3 5.5l5 5 5-5',
     list: 'M2.5 4h11M2.5 8h11M2.5 12h11',
+    // a drag handle: two columns of three dots
+    grip: 'M6 3.5h.01M10 3.5h.01M6 8h.01M10 8h.01M6 12.5h.01M10 12.5h.01',
     desk: 'M1.5 2.5h13v8.5h-13zM5.5 13.5h5M8 11v2.5M4 5h3M4 7.5h2',
   },
 };

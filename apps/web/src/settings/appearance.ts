@@ -4,7 +4,7 @@
 import { dkPick, dkWallPaint, WALL_EVENT } from '../desktop/desk/wallpaper.ts';
 import { dkMenuNote } from '../desktop/desk.ts';
 import { acctCall } from '../lib/api.ts';
-import { el } from '../lib/dom.ts';
+import { DK_UI, dkGlyph, el } from '../lib/dom.ts';
 import { MODES, modeIcon, modePick, setTheme } from '../lib/scheme.ts';
 import { st } from '../lib/state.ts';
 import {
@@ -190,7 +190,8 @@ export function appearanceSection(pane: HTMLElement, at?: ApSub): () => void {
     return d;
   };
 
-  // the status items: each shown or not, moved earlier or later; the profile always, the way here
+  // the status items: each shown or not, a shown one dragged by its handle to its place (or moved
+  // a step by the arrow keys on it); the profile always, the way here
   const items = (L: LayoutNow) => {
     const now = L.items;
     const all = [...now, ...BAR_ITEMS.filter((i) => !now.includes(i))];
@@ -199,6 +200,47 @@ export function appearanceSection(pane: HTMLElement, at?: ApSub): () => void {
         l.items = next;
       });
     const list = el('div', 'dk-ap-items');
+    const rows: HTMLElement[] = [];
+    // a shown row dragged: it follows the pointer, the others making room, its place taken on letting go
+    const drag = (e: PointerEvent, r: HTMLElement, i: number) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      const shownRows = rows.slice(0, now.length);
+      const tops = shownRows.map((x) => x.getBoundingClientRect());
+      const h = tops[i]!.height;
+      const y0 = e.clientY;
+      let to = i;
+      const grip = e.currentTarget as HTMLElement;
+      grip.setPointerCapture(e.pointerId);
+      list.classList.add('dragging');
+      r.classList.add('lifted');
+      const move = (ev: PointerEvent) => {
+        const dy = ev.clientY - y0;
+        r.style.transform = `translateY(${dy}px)`;
+        const mid = tops[i]!.top + h / 2 + dy;
+        to = tops.filter((t, j) => j !== i && t.top + t.height / 2 < mid).length;
+        shownRows.forEach((x, j) => {
+          if (j === i) return;
+          const shift = j > i && j <= to ? -h : j < i && j >= to ? h : 0;
+          x.style.transform = shift ? `translateY(${shift}px)` : '';
+        });
+      };
+      const end = () => {
+        grip.removeEventListener('pointermove', move);
+        grip.removeEventListener('pointerup', end);
+        grip.removeEventListener('pointercancel', end);
+        list.classList.remove('dragging');
+        r.classList.remove('lifted');
+        for (const x of shownRows) x.style.transform = '';
+        if (to === i) return;
+        const next = [...now];
+        next.splice(to, 0, ...next.splice(i, 1));
+        set(next);
+      };
+      grip.addEventListener('pointermove', move);
+      grip.addEventListener('pointerup', end);
+      grip.addEventListener('pointercancel', end);
+    };
     all.forEach((id, i) => {
       const r = el('div', 'dk-ap-item');
       const on = now.includes(id);
@@ -213,22 +255,26 @@ export function appearanceSection(pane: HTMLElement, at?: ApSub): () => void {
         set(box.checked ? all.filter((x) => x === id || now.includes(x)) : now.filter((x) => x !== id)),
       );
       const name = Object.assign(el('label', '', ITEM_NAMES[id] || id), { htmlFor: box.id });
-      const mv = (d: number, glyph: string, label: string) => {
-        const b = Object.assign(el('button', 'dk-ap-mv', glyph), {
-          type: 'button',
-          title: label,
-          ariaLabel: `${ITEM_NAMES[id]} ${label}`,
-          disabled: !on || !now.includes(all[i + d]!),
-        });
-        b.dataset.k = `mv:${id}:${d}`;
-        b.addEventListener('click', () => {
-          const next = [...now];
-          [next[i], next[i + d]] = [next[i + d]!, next[i]!];
-          set(next);
-        });
-        return b;
-      };
-      r.append(box, name, mv(-1, '↑', 'earlier'), mv(1, '↓', 'later'));
+      const grip = Object.assign(el('button', 'dk-ap-grip'), {
+        type: 'button',
+        title: on ? 'drag to move it; or the arrow keys' : 'shown items move',
+        ariaLabel: `move ${ITEM_NAMES[id] || id}, up or down arrow`,
+        disabled: !on,
+      });
+      grip.dataset.k = `grip:${id}`;
+      grip.append(dkGlyph(DK_UI.grip!));
+      grip.addEventListener('pointerdown', (e) => drag(e, r, i));
+      grip.addEventListener('keydown', (e) => {
+        const d = e.key === 'ArrowUp' ? -1 : e.key === 'ArrowDown' ? 1 : 0;
+        if (!d || !now.includes(all[i + d]!)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const next = [...now];
+        [next[i], next[i + d]] = [next[i + d]!, next[i]!];
+        set(next);
+      });
+      r.append(grip, box, name);
+      rows.push(r);
       list.append(r);
     });
     return list;

@@ -240,22 +240,48 @@
   color: var(--muted);
   cursor: default;
 }
-:root .dk-ap-pane .dk-ap-mv {
-  width: 1.5rem;
-  padding: 0.05rem 0;
+/* an item's drag handle, before it; the row lifted while dragged, the others sliding aside */
+:root .dk-ap-pane .dk-ap-grip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.1rem;
+  align-self: stretch;
+  margin-left: -0.25rem;
+  padding: 0;
   background: none;
   border: 0;
   color: var(--muted);
-  font: inherit;
-  cursor: pointer;
+  cursor: grab;
+  touch-action: none;
 }
-:root .dk-ap-pane .dk-ap-mv:hover:not(:disabled) {
-  background: var(--tab-hover);
+:root .dk-ap-pane .dk-ap-grip .ic {
+  width: 0.85rem;
+  height: 0.85rem;
+  stroke-width: 2.4;
+}
+:root .dk-ap-pane .dk-ap-grip:hover:not(:disabled),
+:root .dk-ap-pane .dk-ap-grip:focus-visible {
   color: var(--fg);
 }
-:root .dk-ap-pane .dk-ap-mv:disabled {
+:root .dk-ap-pane .dk-ap-grip:disabled {
   opacity: 0.3;
   cursor: default;
+}
+.dk-ap-items.dragging,
+.dk-ap-items.dragging .dk-ap-grip {
+  cursor: grabbing;
+  user-select: none;
+}
+.dk-ap-items.dragging .dk-ap-item:not(.lifted) {
+  transition: transform 0.15s ease;
+}
+.dk-ap-item.lifted {
+  position: relative;
+  z-index: 1;
+  background: var(--card);
+  box-shadow: var(--drop);
+  outline: 1px solid var(--accent);
 }
 /* plain buttons: the wallpaper's, the way back to a theme */
 .dk-ap-acts {
