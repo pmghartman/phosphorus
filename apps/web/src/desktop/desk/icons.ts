@@ -17,6 +17,7 @@ import {
 import { dkMcpTray, mcpStat } from '../../features/mcp.ts';
 import { dkBellTray } from '../../features/notes.ts';
 import { DK_GLYPHS, dkGlyph, el, isMobile, mobileQuery, svgEl } from '../../lib/dom.ts';
+import { iconKnown, iconLearn, iconOrder } from '../../lib/iconmem.ts';
 import { dk, st } from '../../lib/state.ts';
 import { dkSettings } from '../../settings/settings.ts';
 import { dkControlTray } from '../control.ts';
@@ -29,7 +30,7 @@ import { dkBar, dkChips, dkClock, dkHomeBtn, dkPlaceItems } from '../taskbar.ts'
 import { dkClose, dkFocus, dkPlace, dkSnap } from '../windows.ts';
 import { dkTermApp, dkTermDrop } from './terminal.ts';
 import { dkDeskMenu, dkService, dkWallPaint } from './wallpaper.ts';
-import { dkWebApp, dkWebApps } from './webapps.ts';
+import { dkOpenWaiting, dkWebApp, dkWebApps } from './webapps.ts';
 import { dkOpenApp } from './windows.ts';
 
 export function dkDesktop(): void {
@@ -161,32 +162,58 @@ export function dkMono(label: string): SVGSVGElement {
 export function dkTryIcons(tile: HTMLElement, icons: string[], again = 0, retry = false) {
   const srcs = icons.filter(Boolean);
   if (!srcs.length) return;
-  if (!retry) {
+  const known = retry ? undefined : iconKnown(srcs);
+  const order = retry ? srcs : iconOrder(srcs);
+  // none loaded last time: the glyph at once, no hole while they're asked
+  if (!retry && known !== '') {
     tile.classList.add('dk-wait');
     // the glyph shown after a while, a slow host never leaving a hole
     setTimeout(() => tile.classList.remove('dk-wait'), 600);
   }
+  const glyph = [...tile.childNodes];
+  const show = (img: HTMLImageElement) => {
+    tile.replaceChildren(img, ...tile.querySelectorAll('.dk-public'));
+    tile.classList.add('dk-tile-img');
+    tile.classList.remove('dk-wait');
+  };
   const next = (i: number) => {
-    if (i === srcs.length) {
+    if (i === order.length) {
       tile.classList.remove('dk-wait');
+      iconLearn(srcs, '');
       if (again)
         setTimeout(() => {
           if (tile.isConnected) dkTryIcons(tile, srcs, Math.min(again * 2, 600000), true);
         }, again);
       return;
     }
-    const img = Object.assign(el('img', 'dk-favicon'), { alt: '', decoding: 'async' as const, draggable: false });
+    // the one that loaded last time up at once, the glyph back if it fails now
+    const early = i === 0 && !!known;
+    const img = Object.assign(el('img', 'dk-favicon'), {
+      alt: '',
+      decoding: early ? ('sync' as const) : ('async' as const),
+      draggable: false,
+    });
     img.addEventListener(
       'load',
       () => {
-        tile.replaceChildren(img, ...tile.querySelectorAll('.dk-public'));
-        tile.classList.add('dk-tile-img');
-        tile.classList.remove('dk-wait');
+        if (!early) show(img);
+        iconLearn(srcs, order[i]!);
       },
       { once: true },
     );
-    img.addEventListener('error', () => next(i + 1), { once: true });
-    img.src = srcs[i]!;
+    img.addEventListener(
+      'error',
+      () => {
+        if (early) {
+          tile.replaceChildren(...glyph, ...tile.querySelectorAll('.dk-public'));
+          tile.classList.remove('dk-tile-img');
+        }
+        next(i + 1);
+      },
+      { once: true },
+    );
+    img.src = order[i]!;
+    if (early) show(img);
   };
   next(0);
 }
@@ -269,6 +296,7 @@ export function dkIcons(): void {
   dk.sig = sig;
   // a host, login or service newly here: a saved window waiting on it opened
   dkSessionTry();
+  dkOpenWaiting();
   const files = new Map(dk.deskFiles.map((e) => [`doc\n${filesJoin(dkDeskDir(), e.name)}`, e]));
   // one key per icon and what it shows, an unchanged one kept as it is
   const want: [string, () => HTMLButtonElement][] = [
@@ -278,7 +306,7 @@ export function dkIcons(): void {
     ['settings', () => dkIcon('settings', 'settings', '', () => dkSettings())],
     ...webapps.map((a): [string, () => HTMLButtonElement] => [
       `webapp\n${a.id}`,
-      () => dkIcon('app', a.id, '', () => dkWebApp(a.id), a.mount + 'icon.svg'),
+      () => dkIcon('app', a.id, '', () => dkWebApp(a.id), `${a.mount}icon.svg?v=${a.want.version}`),
     ]),
     ...dk.services.map((r): [string, () => HTMLButtonElement] => [
       JSON.stringify([r.host, r.name, !!r.public]),

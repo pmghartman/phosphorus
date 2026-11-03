@@ -185,6 +185,15 @@ test("render: a repo's build and its own files from its clone in src/", () => {
     "/srv/phos/stacks/kuma/src/nginx.conf:/etc/nginx.conf:ro",
     "/srv/phos/stacks/kuma/data/state:/state",
   ]);
+  // one of phosphorus's own built the same way, a catalogue's own folder its data
+  const own = S.render({ ...d, source: "phosphorus", ref: "app" }, {}, ctx);
+  expect(own.clone).toBe(true);
+  expect((Bun.YAML.parse(own.compose) as any).services.app.build).toBe("/srv/phos/stacks/kuma/src/");
+  const cat = S.render({ ...d, source: "casaos" }, {}, ctx);
+  expect(cat.clone).toBe(false);
+  expect((Bun.YAML.parse(cat.compose) as any).services.app.volumes[0]).toBe(
+    "/srv/phos/stacks/kuma/data/nginx.conf:/etc/nginx.conf:ro",
+  );
 });
 
 test("render: .env quoting, and interpolation as compose does it", () => {
@@ -413,4 +422,19 @@ test("with standbys: every candidate renders and pulls, failover alone brings it
   await S.tick();
   expect(composed("vault")).toEqual(["pull"]);
   expect(await S.runtime.gen("vault")).toBe(2);
+});
+
+test("render: a volume's source from the person's values, a default naming ${APP_DATA} filled", () => {
+  const d = def({
+    compose:
+      "services:\n  app:\n    image: x\n    volumes:\n      - ${MEDIA_DIR:-/srv/media}:/media\n      - ${BOOKS:-/srv/books}/a:/books:ro\n      - type: bind\n        source: ${MEDIA_DIR:-/srv/media}\n        target: /m2\n",
+    manifest: { volumes: [], web: { service: "app", port: 80 } },
+  });
+  const doc = Bun.YAML.parse(S.render(d, { MEDIA_DIR: "/data/m", BOOKS: "${APP_DATA}/Books" }, ctx).compose) as any;
+  expect(doc.services.app.volumes).toEqual([
+    "/data/m:/media",
+    "/srv/phos/stacks/kuma/data/Books/a:/books:ro",
+    { type: "bind", source: "/data/m", target: "/m2" },
+  ]);
+  expect((Bun.YAML.parse(S.render(d, {}, ctx).compose) as any).services.app.volumes[0]).toBe("/srv/media:/media");
 });

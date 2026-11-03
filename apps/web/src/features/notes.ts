@@ -1,6 +1,7 @@
 // --- unread and notifications -------------------------------------------------
 
 import type { Chain, State } from '@phosphorus/wire';
+import { dkPressed } from '../desktop/desk/windows.ts';
 import { dkAnchor, dkBarSide, dkPopsClose, type Pop } from '../desktop/taskbar.ts';
 import { DK_GLYPHS, dkGlyph, el } from '../lib/dom.ts';
 import { dk, st } from '../lib/state.ts';
@@ -25,9 +26,10 @@ export interface NoteGroup {
   line?: string;
   seen?: boolean;
 }
-// where an entry leads when clicked, a view
+// where an entry leads when clicked, a view; keep holds it until that view is seen
 export interface NoteGo {
   view?: string;
+  keep?: boolean;
 }
 // one entry of the notification center
 export interface Note {
@@ -69,7 +71,7 @@ export function notifyMesh(state: State): void {
     try {
       sessionStorage.setItem(CHAIN_SEEN, ch.chainId);
     } catch {}
-    noteAdd('mesh update started', (ch.order || []).join(', '), null, { view: 'update' });
+    noteAdd('mesh update started', (ch.order || []).join(', '), null, { view: 'update', keep: true });
     if (notifying()) notifyOs('mesh update started', '');
     return;
   }
@@ -85,7 +87,7 @@ export function notifyMesh(state: State): void {
     .map((h) => ch.errors?.[h])
     .filter(Boolean)
     .join('; ');
-  noteAdd(t, b, null, { view: 'update' });
+  noteAdd(t, b, null, { view: 'update', keep: true });
   if (notifying()) notifyOs(t, b);
 }
 
@@ -114,14 +116,29 @@ function notifyWildcard(state: State): void {
 
 const NOTES_KEY = 'phosphorus-notes';
 const NOTES_MAX = 50;
+// an entry gone an hour after it came, unless kept until its view is seen
+const NOTE_TTL_MS = 3600000;
+const live = (n: Note) => !!n.go?.keep || Date.now() - n.at < NOTE_TTL_MS;
 let notes: Note[] = (() => {
   try {
     const v = JSON.parse(localStorage.getItem(NOTES_KEY)!);
-    return Array.isArray(v) ? v : [];
+    return Array.isArray(v) ? v.filter(live) : [];
   } catch {
     return [];
   }
 })();
+setInterval(() => {
+  if (notes.every(live)) return;
+  notes = notes.filter(live);
+  notesSave();
+}, 60000);
+
+// a view seen: the entries kept for it gone
+export function noteSeen(view: string): void {
+  if (!notes.some((n) => n.go?.keep && n.go.view === view)) return;
+  notes = notes.filter((n) => !(n.go?.keep && n.go.view === view));
+  notesSave();
+}
 
 // go where the entry leads when clicked, a view
 export function noteAdd(title: string, body: string, g: NoteGroup | null = null, go: NoteGo | null = null): void {
@@ -228,7 +245,11 @@ function toastClose(t: ToastEl) {
 function noteGo(go: NoteGo) {
   if (go?.view === 'status') dkSettings('hosts');
   else if (go?.view === 'update') dkSettings('update');
-  else if (go?.view === 'control') dk.ctl?.show(true);
+  // the control panel, or settings while the profile is hidden from the bar
+  else if (go?.view === 'control') {
+    if (dk.ctl?.btn.offsetParent) dk.ctl.show(true);
+    else dkSettings();
+  } else if (go?.view) dkPressed({ kind: 'view', view: go.view });
 }
 
 function notesSave() {

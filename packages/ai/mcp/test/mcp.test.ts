@@ -62,6 +62,45 @@ test("handle", async () => {
   expect(st).toBe(202);
 });
 
+test("the wizard's tools: a page cut short, its changes an admin's", async () => {
+  const asked: [string, Record<string, any>][] = [];
+  init({
+    self: () => ({ host: "h", version: "1" }),
+    tailnet: () => [],
+    actions: {
+      stacks: (_c: unknown, op: string, p: Record<string, any>) => {
+        asked.push([op, p]);
+        if (op === "app")
+          return [
+            200,
+            {
+              def: { id: "x", env: [], manifest: { volumes: [{ kind: "data" }, { kind: "cache" }] } },
+              readme: "r".repeat(5000),
+              check: { verdict: "installable" },
+            },
+          ];
+        return [200, { ok: true }];
+      },
+      userUI: () => true,
+    } as any,
+  });
+  const call = async (c: Caller, name: string, args: Record<string, any>) =>
+    (await handle(rpc("tools/call", { name, arguments: args }), false, c))[1];
+  const pg = JSON.parse(
+    (await call({ user: "u" }, "stack_catalog", { source: "phosphorus", ref: "x" })).result.content[0].text,
+  );
+  expect(pg.readme).toHaveLength(1500);
+  expect(pg.data).toEqual([{ kind: "data" }]);
+  expect((await call({ user: "u" }, "stack_control", { action: "update", id: "x" })).error.message).toContain(
+    "admins only",
+  );
+  const ok = await call({ user: "a", admin: true }, "stack_control", { action: "remove", id: "x" });
+  expect(ok.result.isError).toBeUndefined();
+  expect(asked.at(-1)).toEqual(["remove", { id: "x", keepData: true }]);
+  const bad = await call({ user: "a", admin: true }, "stack_control", { action: "install", source: "phosphorus" });
+  expect(bad.result.content[0].text).toStartWith("bad_input");
+});
+
 test("call log", () => {
   expect(callDetail({ host: "a", command: "ls   -la\n/tmp" })).toBe("ls -la /tmp");
   expect(callDetail({ n: 1, zz: "z", b: "b" })).toBe("b");
@@ -83,6 +122,7 @@ const skillWords = new Set([
   "mcp__phosphorus__",
   "bad_input",
   "not_found",
+  "keep_data",
   // the Chat app's, there while it's installed
   "chat_history",
   "send_message",
@@ -106,7 +146,7 @@ test("skill", async () => {
   const sk = got.get("phosphorus/SKILL.md")!;
   expect(sk.startsWith("---\nname: phosphorus\ndescription: ")).toBe(true);
   expect(sk).toContain("https://mesh.example.");
-  for (const f of ["status", "diagnose", "run", "files", "service", "update", "chat", "git"]) {
+  for (const f of ["status", "diagnose", "run", "files", "service", "install", "update", "chat", "git"]) {
     expect(got.get(`phosphorus/references/${f}.md`)).toBeTruthy();
     expect(sk).toContain(`references/${f}.md`);
   }

@@ -1,13 +1,12 @@
 // glyphs
 import { cssVar } from '../../lib/dom.ts';
 import { humanSize } from '../../lib/util.ts';
-import { type StHost, stHostsEl } from './state.ts';
+import { type StHost, stView } from './state.ts';
 
 // low to high: sage, sand, rose
 export const heat = (t: number) => (t < 0.5 ? 'st-lo' : t < 0.8 ? 'st-mid' : 'st-hi');
 
-// a glyph's width in the view's font, ■ often from a fallback font,
-// measured again once a font lands
+// a glyph's width in the view's font, measured again once a font lands
 export const stCh = new Map<string, number>();
 document.fonts.addEventListener('loadingdone', () => stCh.clear());
 export function chWidth(glyph: string): number {
@@ -15,26 +14,19 @@ export function chWidth(glyph: string): number {
   const probe = document.createElement('span');
   probe.className = 'st-probe';
   probe.textContent = glyph.repeat(20);
-  stHostsEl.appendChild(probe);
+  stView.appendChild(probe);
   const w = probe.getBoundingClientRect().width / 20;
   probe.remove();
   if (w) stCh.set(glyph, w);
   return w || 8;
 }
-// meter cells fitting in el past `reserve` characters of text
-export const meterCells = (el: HTMLElement, reserve: number) =>
-  Math.max(4, Math.floor((el.clientWidth - reserve * chWidth('0')) / chWidth('■')));
-
-// btop's bar: filled cells by heat, the rest dim
-export function meter(frac: number, cells: number, cls?: string): string {
-  const n = Math.round(Math.max(0, Math.min(1, frac || 0)) * cells);
-  let out = '';
-  for (let i = 0; i < n; i++) out += `<span class="${cls || heat(i / cells)}">■</span>`;
-  return `${out}<span class="st-empty">${'■'.repeat(cells - n)}</span>`;
+// a share as a thin bar, filled by heat unless a class is given
+export function bar(frac: number, cls?: string): string {
+  const f = Math.max(0, Math.min(1, frac || 0));
+  return `<span class="st-bar"><i class="${cls || heat(f)}" style="width:${(f * 100).toFixed(1)}%"></i></span>`;
 }
 
-// btop's braille area graph as dots on a canvas, newest on the right (real
-// braille glyphs off a fallback font in most monospace faces)
+// an area graph as dots on a canvas, newest on the right
 export const HEAT_VAR: Record<string, string> = { 'st-lo': '--sage', 'st-mid': '--sand', 'st-hi': '--rose' };
 export const heatVar = (t: number) => HEAT_VAR[heat(t)]!;
 export function dotGraph(

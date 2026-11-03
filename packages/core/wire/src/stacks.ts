@@ -89,6 +89,9 @@ export interface AppDef {
   manifest: PhosManifest;
 }
 
+// built from a clone of its repo: one opened from GitHub, or one of phosphorus's own
+export const fromRepo = (d: Pick<AppDef, "source">) => d.source === "github" || d.source === "phosphorus";
+
 // one entry in the store's grid
 export type AppSummary = Pick<
   AppDef,

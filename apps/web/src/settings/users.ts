@@ -24,12 +24,7 @@ function invite(): HTMLElement {
     rel: 'noopener',
   });
   const out = el('div', 'join-key-out');
-  box.append(
-    el('p', 'dk-note', 'A key for one device: install Tailscale on it, then run the command shown.'),
-    go,
-    get,
-    out,
-  );
+  box.append(el('p', 'dk-note', 'Install Tailscale on the device, then run this.'), go, get, out);
   go.addEventListener('click', async () => {
     out.replaceChildren();
     go.disabled = true;
@@ -39,7 +34,7 @@ function invite(): HTMLElement {
       if (!r.ok || !got.key) throw new Error(got.error || `status ${r.status}`);
       const cmd = `tailscale up --auth-key=${got.key}`;
       const row = el('div', 'join-key-cmd');
-      row.title = 'run once tailscale is installed, single use, gone in 3 days';
+      row.title = 'single use, 3 days';
       const copy = Object.assign(el('button', 'copy-btn'), { type: 'button', title: 'copy', ariaLabel: 'copy' });
       copy.appendChild(copyIcon());
       copy.addEventListener('click', () =>

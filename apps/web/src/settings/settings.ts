@@ -48,7 +48,7 @@ const SECTIONS: Section[] = [
     label: 'profile',
     glyph: () => DK_GLYPHS.user!,
     group: 'you',
-    blurb: 'the hosts you log into, the page logins kept for you, and your password',
+    blurb: 'host logins, page logins, password',
     draw: profileSection,
   },
   {
@@ -56,7 +56,7 @@ const SECTIONS: Section[] = [
     label: 'appearance',
     glyph: () => DK_GLYPHS.palette!,
     group: 'you',
-    blurb: 'theme, colours, fonts and where the bars sit',
+    blurb: 'theme, fonts, bars',
     subs: () => AP_SUBS,
     sub: appearanceSub,
     draw: (body, sub) => appearanceSection(body, sub as ApSub | undefined),
@@ -66,7 +66,7 @@ const SECTIONS: Section[] = [
     label: 'hosts',
     glyph: () => DK_GLYPHS.mesh!,
     group: 'mesh',
-    blurb: 'every host on the mesh, how it is doing, and what each one shares and runs',
+    blurb: 'status, shares, services',
     subs: () => HOST_SUBS.filter((s) => s !== 'configure' || !!st.acct?.admin),
     sub: hostsSub,
     draw: (body, sub) => hostsSection(body, sub),
@@ -76,7 +76,7 @@ const SECTIONS: Section[] = [
     label: 'agents',
     glyph: () => DK_GLYPHS.agents!,
     group: 'mesh',
-    blurb: 'connect Claude and other agents, and pick the model each one asks',
+    blurb: 'connect agents, pick models',
     draw: agentsSection,
   },
   {
@@ -84,7 +84,7 @@ const SECTIONS: Section[] = [
     label: 'users',
     glyph: () => DK_GLYPHS.users!,
     group: 'mesh',
-    blurb: 'who can log in, and who is an admin',
+    blurb: 'who logs in, who is admin',
     admin: true,
     draw: usersSection,
   },
@@ -93,7 +93,7 @@ const SECTIONS: Section[] = [
     label: 'update',
     glyph: () => DK_GLYPHS.update!,
     group: 'phosphorus',
-    blurb: 'the release each host runs, and updating the whole mesh at once',
+    blurb: 'releases, mesh update',
     admin: true,
     draw: (body) => {
       updateModal.hidden = false;
@@ -107,7 +107,7 @@ const SECTIONS: Section[] = [
     label: 'about',
     glyph: () => DK_GLYPHS.about!,
     group: 'phosphorus',
-    blurb: 'this release and the software it is built on',
+    blurb: 'version, licenses',
     draw: (body) => {
       const view = document.getElementById('view-about')!;
       view.classList.add('active');
@@ -136,29 +136,6 @@ export function cardify(items: HTMLElement[]): HTMLElement[] {
     card.append(x);
   }
   return out;
-}
-
-// the page's head: the section's name and part, what it holds under them
-function header(sec: Section): HTMLElement {
-  const h = el('header', 'set-head');
-  const title = el('h1', 'set-title');
-  title.append(dkGlyph(sec.glyph()), sec.label);
-  const part = sec.sub?.();
-  if (part) title.append(el('span', 'set-title-sep', '/'), el('span', 'set-title-part', part));
-  h.dataset.at = sec.id;
-  h.append(title, el('p', 'set-blurb', sec.blurb));
-  return h;
-}
-
-// the rail's top: who is signed in, a press their profile
-function who(go: () => void): HTMLElement {
-  const b = Object.assign(el('button', 'set-who'), { type: 'button', title: 'your profile' });
-  const name = st.acct?.user ?? '';
-  const text = el('span', 'set-who-text');
-  text.append(el('span', 'set-who-name', name), el('span', 'set-who-role', st.acct?.admin ? 'admin' : 'user'));
-  b.append(el('span', 'set-who-mark', (name[0] ?? '?').toLowerCase()), text);
-  b.addEventListener('click', go);
-  return b;
 }
 
 let at: SettingsAt = 'profile';
@@ -226,13 +203,11 @@ export function dkSettings(s?: SettingsAt, sub?: string): void {
     body.scrollTop = 0;
     const sec = SECTIONS.find((x) => x.id === s)!;
     leave = sec.draw(body, sub);
-    body.prepend(header(sec));
     mark();
     dkAppsChanged();
     dkTouch();
   };
   nav.replaceChildren(
-    who(() => go('profile')),
     ...GROUPS.flatMap((g) => {
       const secs = SECTIONS.filter((s) => s.group === g && shown(s));
       if (!secs.length) return [];

@@ -64,26 +64,27 @@ export function copyIcon(done = false): SVGSVGElement {
   return icon;
 }
 
-// a box over the whole page, any user's: true for its action, false for cancel or esc
+type AskOpts = { title: string; message: string; action?: string; danger?: boolean; cancel?: boolean };
+
+// a box over the whole page, any user's: true for its action, false for cancel or esc,
+// 'alt' for a second action beside it
+export function pageAsk(o: AskOpts & { alt: string }): Promise<boolean | 'alt'>;
+export function pageAsk(o: AskOpts): Promise<boolean>;
+export function pageAsk(o: AskOpts & { alt?: string }): Promise<boolean | 'alt'>;
 export function pageAsk({
   title,
   message,
   action = 'ok',
   danger = false,
   cancel = true,
-}: {
-  title: string;
-  message: string;
-  action?: string;
-  danger?: boolean;
-  cancel?: boolean;
-}): Promise<boolean> {
+  alt,
+}: AskOpts & { alt?: string }): Promise<boolean | 'alt'> {
   return new Promise((resolve) => {
     const veil = el('div', 'fm-veil page-veil');
     const box = el('form', 'fm-ask');
     const go = Object.assign(el('button', danger ? 'danger' : 'primary', action), { type: 'submit' });
     const acts = el('div', 'update-actions');
-    const end = (v: boolean) => {
+    const end = (v: boolean | 'alt') => {
       veil.remove();
       resolve(v);
     };
@@ -91,6 +92,11 @@ export function pageAsk({
       const no = Object.assign(el('button', '', 'cancel'), { type: 'button' });
       no.addEventListener('click', () => end(false));
       acts.append(no);
+    }
+    if (alt) {
+      const other = Object.assign(el('button', '', alt), { type: 'button' });
+      other.addEventListener('click', () => end('alt'));
+      acts.append(other);
     }
     acts.append(go);
     box.append(el('div', 'fm-ask-title', title), el('p', '', message), acts);

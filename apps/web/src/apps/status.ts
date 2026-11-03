@@ -1,4 +1,3 @@
-import { modalOpen } from '../lib/dom.ts';
 import { st } from '../lib/state.ts';
 import './status/state.ts';
 import './status/glyphs.ts';
@@ -8,8 +7,7 @@ import './status/summary.ts';
 import './status/context.ts';
 import './status/boxes.ts';
 import './status/purge.ts';
-import { fitTiles, ST_BOXES, stCard } from './status/cards.ts';
-import { drawModel, drawSum, headLine, modelOf } from './status/model.ts';
+import { drawHost, hostPage } from './status/boxes.ts';
 import {
   ST_STALE_MS,
   stateVars,
@@ -17,97 +15,51 @@ import {
   statusWatch,
   stHost,
   stHosts,
-  stHostsEl,
   stNet,
-  stOpen,
+  stView,
   stWs,
 } from './status/state.ts';
-import { drawMeshSum } from './status/summary.ts';
+import { drawMeshSum, meshPage } from './status/summary.ts';
 
-// self first, then by name, hosts gone from the mesh dropped
-
+// the page shown: the mesh summed, or the host picked alone; hosts gone from the mesh dropped
 export function statusRender() {
   const live = stNet ? stNet.tailnet.filter((d) => d.phosphorus).map((d) => d.name) : [...stHosts.keys()];
   const names = [...new Set(live)].sort(
     (a, b) => Number(b === st.selfHost) - Number(a === st.selfHost) || a.localeCompare(b),
   );
   for (const [name, h] of stHosts)
-    if (!names.includes(name)) {
-      h.card?.card.remove();
+    if (!names.includes(name) && name !== stateVars.stPicked) {
+      h.page?.node.remove();
       stHosts.delete(name);
     }
-  if (!names.includes(stateVars.stOpenHost!)) stateVars.stOpenHost = null;
-  if (names.length) stHostsEl.querySelector('.st-wait')?.remove();
-  // the mesh's sums left as they were rather than every card after them
+  if (names.length) stView.querySelector('.st-wait')?.remove();
+  else return;
+  const name = stateVars.stPicked;
+  const page = name ? (stHost(name).page ||= hostPage(name)) : meshPage;
+  if (page.node.parentNode !== stView) stView.replaceChildren(page.node);
+  // a sample this page can't draw spoils it alone, the next one tried again
   try {
-    drawMeshSum(names);
-  } catch (e) {
-    console.error('status: the mesh summary', e);
-  }
-  let prev: HTMLElement | null = null;
-  for (const name of names) {
+    if (!name) {
+      drawMeshSum(names);
+      return;
+    }
     const h = stHost(name);
-    h.card ||= stCard(name);
-    const { card, parts } = h.card;
-    if (card.parentNode !== stHostsEl || card.previousElementSibling !== prev) {
-      if (prev) prev.after(card);
-      else stHostsEl.prepend(card);
-    }
-    prev = card;
-    const open = name === stateVars.stOpenHost;
-    card.classList.toggle('open', open);
-    parts.head.innerHTML = headLine(name, h, open);
-    const model = modelOf(name);
-    card.classList.toggle('has-model', !!model);
-    drawModel(parts, model, open);
-    card.classList.toggle('stale', !!h.s?.cpu && Date.now() - h.at > ST_STALE_MS);
-    card.classList.toggle('waiting', !h.s?.cpu);
-    if (!h.s?.cpu) {
-      card.dataset.note = 'waiting for stats';
-      continue;
-    }
-    // a sample this page can't draw spoils its own card only, never the hosts after it
-    try {
-      if (!open) {
-        drawSum(parts, h);
-        continue;
-      }
-      // no gpu, no gpu box
-      for (const [k, , draw] of ST_BOXES) {
-        const box = parts[`${k}Box`] as HTMLElement;
-        box.hidden = k === 'gpu' && !h.s.gpus.length;
-        if (!box.hidden) draw(parts, h);
-      }
-    } catch (e) {
-      card.classList.add('waiting');
-      card.dataset.note = 'can’t draw its stats';
-      console.error(`status: ${name}'s stats`, e);
-    }
+    page.node.classList.toggle('stale', !!h.s?.cpu && Date.now() - h.at > ST_STALE_MS);
+    page.node.classList.toggle('waiting', !h.s?.cpu);
+    page.node.dataset.note = 'waiting for stats';
+    if (h.s?.cpu) drawHost(page, name, h);
+  } catch (e) {
+    page.node.classList.add('waiting');
+    page.node.dataset.note = 'can’t draw its stats';
+    console.error(`status: ${name || 'the mesh'}'s stats`, e);
   }
-  stHostsEl.classList.toggle('has-open', !!stateVars.stOpenHost);
-  fitTiles(names);
 }
 
-// settings' hosts page: one host's card shown open, the rest hidden; null shows them all again
+// settings' hosts page: one host in full, null for the mesh summed
 export function statusOnly(name: string | null) {
-  stHostsEl.parentElement!.toggleAttribute('data-only', !!name);
-  stateVars.stOpenHost = name;
+  stateVars.stPicked = name;
   statusRender();
 }
-
-// one host open at a time, the opened or closed one keeping the arrow keys' pick
-export function stToggle(name: string) {
-  stateVars.stOpenHost = stateVars.stOpenHost === name ? null : name;
-  statusRender();
-  const card = stHosts.get(name)?.card?.card;
-  card?.focus({ preventScroll: true });
-  card?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-}
-
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && !e.shiftKey && stateVars.stOpenHost && stOpen() && !modalOpen())
-    stToggle(stateVars.stOpenHost);
-});
 
 // a quiet peer's stale mark, with no message to trigger it
 setInterval(() => {

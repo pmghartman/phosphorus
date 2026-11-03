@@ -109,7 +109,319 @@ export const forgejo: AppDef = {
   },
 };
 
-export const apps: AppDef[] = [forgejo];
+// Tavern built from its clone, on the host's network for the model gateway's 127.0.0.1;
+// a db failing its check on start swapped for the last backup
+const tavernCompose = `services:
+  tavern:
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM node:22-bookworm-slim AS deps
+        RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*
+        WORKDIR /app
+        COPY package.json package-lock.json ./
+        RUN npm ci --omit=dev --no-audit --no-fund
+        FROM node:22-bookworm-slim
+        RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/* && git config --system --add safe.directory /app
+        WORKDIR /app
+        COPY --from=deps /app/node_modules node_modules
+        COPY . .
+        CMD ["node", "server/index.js"]
+    restart: unless-stopped
+    user: \${PUID}:\${PGID}
+    network_mode: host
+    entrypoint:
+      - sh
+      - -c
+      - |
+        node -e '
+        const fs = require("fs"), db = "/app/data/tavern.db", bk = db + ".phos-backup";
+        const has = (f) => fs.existsSync(f) && fs.statSync(f).size > 0;
+        if (has(db) && has(bk)) {
+          let ok = false;
+          try {
+            const c = new (require("better-sqlite3"))(db);
+            ok = c.pragma("quick_check", { simple: true }) === "ok";
+            c.close();
+          } catch {}
+          if (!ok) {
+            console.log("phosphorus: " + db + " fails its check, the last backup put back");
+            for (const x of ["-wal", "-shm", "-journal"]) fs.rmSync(db + x, { force: true });
+            fs.copyFileSync(bk, db);
+          }
+        }'
+        exec node server/index.js
+    environment:
+      TZ: \${TZ}
+      TAVERN_PORT: "8484"
+      TAVERN_DATA_DIR: /app/data
+      TAVERN_UPDATES: "off"
+    volumes:
+      - tavern:/app/data
+volumes:
+  tavern: {}
+`;
+
+const tavernAbout = `Tavern is D&D 5e in a chat room: a strict rules engine decides every outcome while a dungeon master on the mesh's models tells the story. Campaigns, character sheets, grid combat and adventure modules read from a PDF.
+
+Installed from here it's built from [its repository](https://github.com/pmghartman/tavern) on the host and answers at tavern.<your domain>. The DM asks phosphorus's model gateway as the tavern agent, its model assigned on the agents page. Its data (the sqlite database and the modules read in) lives in the stack's data folder; pick standby hosts and each keeps a copy, taken after a consistent backup of the database.
+
+It runs on the host's own network, on port 8484, so the gateway on that host answers it.`;
+
+export const tavern: AppDef = {
+  id: "tavern",
+  source: "phosphorus",
+  ref: "tavern",
+  name: "Tavern",
+  tagline: "D&D 5e in a chat room, an AI dungeon master on the mesh",
+  description: tavernAbout,
+  icon: "https://raw.githubusercontent.com/pmghartman/tavern/main/src-tauri/app-icon.svg",
+  category: "games",
+  repo: "https://github.com/pmghartman/tavern",
+  licence: "UNLICENSED",
+  archs: ["amd64", "arm64"],
+  compose: tavernCompose,
+  env: envFields(tavernCompose, []),
+  manifest: {
+    volumes: [{ service: "tavern", target: "/app/data", kind: "data" }],
+    backup: {
+      pre: [
+        {
+          service: "tavern",
+          run: [
+            "node",
+            "-e",
+            'const fs = require("fs"), db = "/app/data/tavern.db";' +
+              " if (fs.existsSync(db) && fs.statSync(db).size > 0) {" +
+              ' const c = new (require("better-sqlite3"))(db, { timeout: 5000 });' +
+              ' c.backup(db + ".phos-backup").then(() => c.close(), (e) => { console.error(e.message); process.exit(1); }); }',
+          ],
+        },
+      ],
+    },
+    health: { service: "tavern", path: "/api/health", port: 8484 },
+    web: { service: "tavern", port: 8484 },
+  },
+};
+
+// Circuit's server built from its clone, the ui in the binary; nothing kept on the host
+const circuitCompose = `services:
+  circuit:
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM rust:1-bookworm AS build
+        WORKDIR /src
+        COPY . .
+        RUN cargo build --release -p circuit-server
+        FROM debian:bookworm-slim
+        COPY --from=build /src/target/release/circuit-server /usr/local/bin/circuit-server
+        CMD ["circuit-server"]
+    restart: unless-stopped
+    user: \${PUID}:\${PGID}
+    environment:
+      PORT: "8099"
+      CIRCUIT_UPDATES: "off"
+    ports:
+      - \${HTTP_PORT:-8099}:8099
+`;
+
+const circuitAbout = `Circuit is a schematic editor with a live solver: draw a circuit and watch it solve as you edit, DC, transient and graph layout from a Rust core.
+
+Installed from here it's built from [its repository](https://github.com/pmghartman/circuit) on the host (several minutes the first time, while Rust compiles it) and answers at circuit.<your domain>. It keeps nothing on the host, so there's no data to copy to standbys.`;
+
+export const circuit: AppDef = {
+  id: "circuit",
+  source: "phosphorus",
+  ref: "circuit",
+  name: "Circuit",
+  tagline: "a schematic editor with a live circuit solver",
+  description: circuitAbout,
+  icon: "https://raw.githubusercontent.com/pmghartman/circuit/main/src-tauri/icons/icon.png",
+  category: "engineering",
+  repo: "https://github.com/pmghartman/circuit",
+  licence: "Apache-2.0",
+  archs: ["amd64", "arm64"],
+  compose: circuitCompose,
+  env: envFields(circuitCompose, [{ name: "HTTP_PORT", label: "Web port on the host", default: "8099" }]),
+  manifest: {
+    volumes: [],
+    health: { service: "circuit", path: "/api/version", port: 8099 },
+    web: { service: "circuit", port: 8099 },
+  },
+};
+
+// Jellyfin's own image: /config its data with config/ inside, /cache rebuildable;
+// the media folder at /srv/media inside, so libraries keep their paths
+const jellyfinCompose = `services:
+  jellyfin:
+    image: jellyfin/jellyfin:10.11.11
+    restart: unless-stopped
+    user: \${PUID}:\${PGID}
+    environment:
+      TZ: \${TZ}
+      JELLYFIN_PublishedServerUrl: \${APP_URL}
+    ports:
+      - \${HTTP_PORT:-8096}:8096
+    volumes:
+      - jellyfin-config:/config
+      - jellyfin-cache:/cache
+      - \${MEDIA_DIR:-/srv/media}:/srv/media
+volumes:
+  jellyfin-config: {}
+  jellyfin-cache: {}
+`;
+
+const jellyfinAbout = `Jellyfin is a media server: films, shows, music and books from your own folders, streamed to a browser, a phone or a TV.
+
+Installed from here it answers at jellyfin.<your domain>, and at media.<your domain> too. Your media folder appears at /srv/media inside it, so a library at /srv/media/movies keeps that path. Its settings, users and watch history live in the stack's data folder; its cache is rebuilt wherever it runs.`;
+
+export const jellyfin: AppDef = {
+  id: "jellyfin",
+  source: "phosphorus",
+  ref: "jellyfin",
+  name: "Jellyfin",
+  tagline: "your films, shows and music, streamed anywhere",
+  description: jellyfinAbout,
+  icon: "https://raw.githubusercontent.com/jellyfin/jellyfin-ux/master/branding/SVG/icon-transparent.svg",
+  category: "media",
+  repo: "https://github.com/jellyfin/jellyfin",
+  licence: "GPL-2.0-only",
+  archs: ["amd64", "arm64"],
+  compose: jellyfinCompose,
+  env: envFields(jellyfinCompose, [
+    { name: "HTTP_PORT", label: "Web port on the host", default: "8096" },
+    { name: "MEDIA_DIR", label: "Media folder on the host", default: "/srv/media" },
+  ]),
+  manifest: {
+    volumes: [
+      { service: "jellyfin", target: "/config", kind: "data" },
+      { service: "jellyfin", target: "/cache", kind: "cache" },
+    ],
+    health: { service: "jellyfin", path: "/health", port: 8096 },
+    web: { service: "jellyfin", port: 8096 },
+    aliases: ["media"],
+  },
+};
+
+// Audiobookshelf: /config its sqlite db, /metadata covers and caches, the books from the host
+const audiobookshelfCompose = `services:
+  audiobookshelf:
+    image: ghcr.io/advplyr/audiobookshelf:2.36.0
+    restart: unless-stopped
+    user: \${PUID}:\${PGID}
+    environment:
+      TZ: \${TZ}
+    ports:
+      - \${HTTP_PORT:-13378}:80
+    volumes:
+      - audiobookshelf-config:/config
+      - audiobookshelf-metadata:/metadata
+      - \${AUDIOBOOKS_DIR:-/srv/media/audiobooks}:/audiobooks
+volumes:
+  audiobookshelf-config: {}
+  audiobookshelf-metadata: {}
+`;
+
+const audiobookshelfAbout = `Audiobookshelf serves audiobooks and podcasts: progress synced across devices, chapters, bookmarks, and its own phone apps.
+
+Installed from here it answers at audiobookshelf.<your domain>, and at audiobooks.<your domain> too. Your audiobooks folder appears at /audiobooks inside it; its database, covers and metadata live in the stack's data folder.`;
+
+export const audiobookshelf: AppDef = {
+  id: "audiobookshelf",
+  source: "phosphorus",
+  ref: "audiobookshelf",
+  name: "Audiobookshelf",
+  tagline: "audiobooks and podcasts, your progress on every device",
+  description: audiobookshelfAbout,
+  icon: "https://raw.githubusercontent.com/advplyr/audiobookshelf/master/client/static/icon.svg",
+  category: "media",
+  repo: "https://github.com/advplyr/audiobookshelf",
+  licence: "GPL-3.0-only",
+  archs: ["amd64", "arm64"],
+  compose: audiobookshelfCompose,
+  env: envFields(audiobookshelfCompose, [
+    { name: "HTTP_PORT", label: "Web port on the host", default: "13378" },
+    { name: "AUDIOBOOKS_DIR", label: "Audiobooks folder on the host", default: "/srv/media/audiobooks" },
+  ]),
+  manifest: {
+    volumes: [
+      { service: "audiobookshelf", target: "/config", kind: "data" },
+      { service: "audiobookshelf", target: "/metadata", kind: "data" },
+    ],
+    health: { service: "audiobookshelf", path: "/healthcheck", port: 80 },
+    web: { service: "audiobookshelf", port: 80 },
+    aliases: ["audiobooks"],
+  },
+};
+
+// JupyterLab from a pixi workspace in /lab/hub, seeded when missing; its env
+// rebuilt from pixi.lock on first start, origins allowed for both its names
+const jupyterlabCompose = `services:
+  jupyterlab:
+    image: ghcr.io/prefix-dev/pixi:0.40.2-bookworm
+    restart: unless-stopped
+    user: \${PUID}:\${PGID}
+    working_dir: /lab
+    entrypoint:
+      - sh
+      - -c
+      - |
+        set -e
+        mkdir -p hub
+        if [ ! -f hub/pixi.toml ]; then
+          printf '%s\\n' '[workspace]' 'name = "lab"' 'channels = ["conda-forge"]' 'platforms = ["linux-64", "linux-aarch64"]' '' '[dependencies]' 'python = "3.12.*"' 'jupyterlab = ">=4.2"' 'ipykernel = "*"' > hub/pixi.toml
+        fi
+        [ -f hub/jupyter_server_config.py ] || echo 'c = get_config()' > hub/jupyter_server_config.py
+        base="$\${APP_DOMAIN#*.}"
+        pat="^https://(jupyterlab|lab)\\\\.$$(printf %s "$$base" | sed 's/[.]/\\\\./g')"'$$'
+        exec pixi run --manifest-path hub/pixi.toml jupyter lab --config=hub/jupyter_server_config.py --ip=0.0.0.0 --port=8888 --no-browser --ServerApp.root_dir=/lab --ServerApp.allow_origin= --ServerApp.allow_origin_pat="$$pat" --ServerApp.trust_xheaders=True
+    environment:
+      TZ: \${TZ}
+      HOME: /lab
+      XDG_CACHE_HOME: /lab/.cache
+      APP_DOMAIN: \${APP_DOMAIN}
+      JUPYTER_TOKEN: \${JUPYTER_TOKEN}
+    ports:
+      - \${HTTP_PORT:-8888}:8888
+    volumes:
+      - jupyterlab:/lab
+volumes:
+  jupyterlab: {}
+`;
+
+const jupyterlabAbout = `JupyterLab: notebooks, a terminal and an editor in the browser, its Python from a [pixi](https://pixi.sh) workspace.
+
+Installed from here it answers at jupyterlab.<your domain>, and at lab.<your domain> too. Everything lives in the stack's data folder: notebooks and files at its top, the workspace in hub/ (pixi.toml, pixi.lock and jupyter_server_config.py), seeded with Python 3.12 and JupyterLab when missing. Add packages to hub/pixi.toml; the environment is built on first start, which takes a few minutes.
+
+Sign in with the token you type at install; a token set in hub/jupyter_server_config.py wins over it.`;
+
+export const jupyterlab: AppDef = {
+  id: "jupyterlab",
+  source: "phosphorus",
+  ref: "jupyterlab",
+  name: "JupyterLab",
+  tagline: "notebooks, a terminal and an editor in the browser",
+  description: jupyterlabAbout,
+  icon: "https://raw.githubusercontent.com/jupyterlab/jupyterlab/main/packages/ui-components/style/icons/jupyter/jupyter.svg",
+  category: "developer",
+  repo: "https://github.com/jupyterlab/jupyterlab",
+  licence: "BSD-3-Clause",
+  archs: ["amd64", "arm64"],
+  compose: jupyterlabCompose,
+  env: envFields(jupyterlabCompose, [
+    { name: "HTTP_PORT", label: "Web port on the host", default: "8888" },
+    { name: "JUPYTER_TOKEN", label: "Token to sign in with (type one to know it)", secret: true },
+  ]),
+  manifest: {
+    volumes: [{ service: "jupyterlab", target: "/lab", kind: "data" }],
+    health: { service: "jupyterlab", path: "/api", port: 8888 },
+    web: { service: "jupyterlab", port: 8888 },
+    aliases: ["lab"],
+  },
+};
+
+export const apps: AppDef[] = [forgejo, tavern, circuit, jellyfin, audiobookshelf, jupyterlab];
 
 export const source: SourceInfo = {
   id: "phosphorus",

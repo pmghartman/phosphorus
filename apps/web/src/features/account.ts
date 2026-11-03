@@ -55,7 +55,7 @@ function acctLogin(setup: boolean, as = '') {
       as
         ? `${as} is the admin now: log in as them`
         : setup
-          ? 'first time here: log in as admin with the admin password given to phos keys'
+          ? 'first time: log in as admin, password from phos keys'
           : 'log in',
     ),
     user,
@@ -283,7 +283,7 @@ function acctSetup() {
   actions.appendChild(out);
   box.append(
     el('div', 'home-col-head', 'setup admin'),
-    el('p', 'dk-note', 'make the first admin; the setup admin is off once one exists, and you log in as them'),
+    el('p', 'dk-note', 'make the first admin'),
     // the first admin made: the setup admin's done, the login asked of them
     acctUsers((name, admin) => admin && acctLogout(name)),
     actions,

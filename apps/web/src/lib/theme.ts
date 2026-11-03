@@ -122,7 +122,7 @@ export const LAYOUT_CHOICES: Record<string, string[]> = {
   // what the bar's windows and the menu bar's app show: an icon, a title, both
   labels: ['both', 'icons', 'titles'],
 };
-// the bar's status items, every one the layout may show or not, in its order; the profile always
+// the bar's status items, every one the layout may show or not, in its order
 export const BAR_ITEMS = ['hosts', 'search', 'mesh', 'update', 'agent', 'bell', 'clock', 'profile'];
 // a built-in theme's own whole config, every value concrete: what the custom theme starts as and
 // what a reset sets it to
@@ -147,7 +147,7 @@ export function themeConfig(id: string): CustomConfig {
   };
 }
 
-// a layout made whole: each key valid, the profile never hidden (it opens the appearance window)
+// a layout made whole: each key valid
 function cleanLayout(l: unknown, under?: LayoutNow): LayoutNow {
   const o = {} as LayoutNow;
   const src = (l && typeof l === 'object' ? l : {}) as Record<string, unknown>;
@@ -155,7 +155,6 @@ function cleanLayout(l: unknown, under?: LayoutNow): LayoutNow {
     o[k] = vals.includes(src[k] as string) ? (src[k] as string) : (under?.[k] as string) || vals[0]!;
   const items = Array.isArray(src.items) ? (src.items as string[]) : under?.items || BAR_ITEMS;
   o.items = [...new Set(items.filter((i) => BAR_ITEMS.includes(i)))];
-  if (!o.items.includes('profile')) o.items.push('profile');
   return o;
 }
 // a built-in theme's own layout, over the base's

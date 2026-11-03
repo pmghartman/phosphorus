@@ -1,16 +1,18 @@
 // phosphorus's own apps: Forgejo as the mesh's git, whole without a fetch
 import { expect, test } from "bun:test";
 import { all, find, sources, tree } from "../src/catalogs.ts";
-import { rendered } from "../src/check.ts";
+import { check, rendered } from "../src/check.ts";
 import { environment, parse, phosVars, ports, vars } from "../src/compose.ts";
-import { forgejo } from "../src/featured.ts";
+import { audiobookshelf, circuit, forgejo, jellyfin, jupyterlab, tavern } from "../src/featured.ts";
+
+const linux = { host: "razer", platform: "linux", arch: "amd64", docker: { state: "present" as const } };
 
 test("Forgejo is listed first, under phosphorus, routed as forgejo with git its alias", () => {
   expect(all()[0]).toBe(forgejo);
   expect(find("phosphorus", "forgejo")).toBe(forgejo);
   expect(forgejo.id).toBe("forgejo");
   expect(forgejo.manifest.aliases).toEqual(["git"]);
-  expect(sources()[0]).toMatchObject({ id: "phosphorus", apps: 1, licence: "Apache-2.0" });
+  expect(sources()[0]).toMatchObject({ id: "phosphorus", apps: 6, licence: "Apache-2.0" });
   expect(tree("phosphorus", "forgejo")).toEqual([{ path: "docker-compose.yml", type: "file" }]);
 });
 
@@ -56,4 +58,122 @@ test("its manifest: /data copied after a sqlite .backup, the healthz checked", (
   expect(pre[0]!.service).toBe("forgejo");
   expect(pre[0]!.run[2]).toContain(`.backup '$db.phos-backup'`);
   expect(pre[0]!.run[2]).toContain("[ ! -s $db ] ||");
+});
+
+test("Tavern and Circuit follow Forgejo, each built from its own repo", () => {
+  expect(all().slice(0, 6)).toEqual([forgejo, tavern, circuit, jellyfin, audiobookshelf, jupyterlab]);
+  expect(find("phosphorus", "tavern")).toBe(tavern);
+  expect(find("phosphorus", "circuit")).toBe(circuit);
+  for (const d of [tavern, circuit]) {
+    expect(d.repo).toMatch(/^https:\/\/github\.com\/pmghartman\//);
+    const r = check(d, {}, [linux], {});
+    expect(r.verdict).toBe("installable");
+    expect(r.items).toContainEqual({ level: "ok", text: `builds ${d.id} from the repo` });
+    expect(parse(d.compose).services[d.id]!.build.context).toBe(".");
+  }
+});
+
+test("Tavern: the host's network for the gateway, data/ its data, the db backed up and checked", () => {
+  const s = parse(tavern.compose).services.tavern!;
+  expect(s.network_mode).toBe("host");
+  expect(s.ports).toBeUndefined();
+  expect(s.volumes).toEqual(["tavern:/app/data"]);
+  expect(s.user).toBe("${PUID}:${PGID}");
+  expect(environment(s)).toMatchObject({ TAVERN_PORT: "8484", TAVERN_DATA_DIR: "/app/data", TAVERN_UPDATES: "off" });
+  expect(s.entrypoint[2]).toContain("fs.copyFileSync(bk, db)");
+  expect(s.entrypoint[2]).toContain("exec node server/index.js");
+  // nothing left for compose to fill but phosphorus's own
+  expect([...vars(tavern.compose).keys()].filter((v) => !phosVars.includes(v))).toEqual([]);
+  expect(tavern.env).toEqual([]);
+  const m = tavern.manifest;
+  expect(m.volumes).toEqual([{ service: "tavern", target: "/app/data", kind: "data" }]);
+  expect(m.web).toEqual({ service: "tavern", port: 8484 });
+  expect(m.health).toEqual({ service: "tavern", path: "/api/health", port: 8484 });
+  expect(m.backup!.pre![0]!.run[2]).toContain('c.backup(db + ".phos-backup")');
+});
+
+test("Circuit: its port a field, nothing kept, the version asked for health", () => {
+  const s = parse(circuit.compose).services.circuit!;
+  expect(ports(rendered(circuit, {}).services.circuit!)).toEqual([{ host: 8099, container: 8099 }]);
+  expect(ports(rendered(circuit, { HTTP_PORT: "8100" }).services.circuit!)).toEqual([{ host: 8100, container: 8099 }]);
+  expect(environment(s)).toEqual({ PORT: "8099", CIRCUIT_UPDATES: "off" });
+  expect(s.volumes).toBeUndefined();
+  expect(circuit.env).toEqual([{ name: "HTTP_PORT", label: "Web port on the host", default: "8099" }]);
+  expect(circuit.manifest).toEqual({
+    volumes: [],
+    health: { service: "circuit", path: "/api/version", port: 8099 },
+    web: { service: "circuit", port: 8099 },
+  });
+});
+
+test("Jellyfin, Audiobookshelf and JupyterLab: images pulled, data kept, the old names as aliases", () => {
+  const img = (d: typeof jellyfin) => parse(d.compose).services[d.id]!.image;
+  expect([jellyfin, audiobookshelf, jupyterlab].map(img)).toEqual([
+    "jellyfin/jellyfin:10.11.11",
+    "ghcr.io/advplyr/audiobookshelf:2.36.0",
+    "ghcr.io/prefix-dev/pixi:0.40.2-bookworm",
+  ]);
+  expect([jellyfin, audiobookshelf, jupyterlab].map((d) => d.manifest.aliases)).toEqual([
+    ["media"],
+    ["audiobooks"],
+    ["lab"],
+  ]);
+  for (const d of [jellyfin, audiobookshelf, jupyterlab]) {
+    expect(check(d, {}, [linux], { [img(d)]: { archs: ["amd64"] } }).verdict).toBe("installable");
+    expect([...vars(d.compose).keys()].filter((v) => !phosVars.includes(v)).sort()).toEqual(
+      d.env.map((f) => f.name).sort(),
+    );
+  }
+});
+
+test("Jellyfin: /config its data with config/ inside, /cache not copied, the media at /srv/media", () => {
+  const s = parse(jellyfin.compose).services.jellyfin!;
+  expect(s.volumes).toEqual([
+    "jellyfin-config:/config",
+    "jellyfin-cache:/cache",
+    "${MEDIA_DIR:-/srv/media}:/srv/media",
+  ]);
+  expect(ports(rendered(jellyfin, {}).services.jellyfin!)).toEqual([{ host: 8096, container: 8096 }]);
+  expect(jellyfin.manifest.volumes).toEqual([
+    { service: "jellyfin", target: "/config", kind: "data" },
+    { service: "jellyfin", target: "/cache", kind: "cache" },
+  ]);
+  expect(jellyfin.manifest.health).toEqual({ service: "jellyfin", path: "/health", port: 8096 });
+  expect(jellyfin.env.map((f) => [f.name, f.default])).toEqual([
+    ["HTTP_PORT", "8096"],
+    ["MEDIA_DIR", "/srv/media"],
+  ]);
+});
+
+test("Audiobookshelf: its db and metadata kept, the books from the host, 13378 outside", () => {
+  const s = parse(audiobookshelf.compose).services.audiobookshelf!;
+  expect(s.volumes).toEqual([
+    "audiobookshelf-config:/config",
+    "audiobookshelf-metadata:/metadata",
+    "${AUDIOBOOKS_DIR:-/srv/media/audiobooks}:/audiobooks",
+  ]);
+  expect(ports(rendered(audiobookshelf, {}).services.audiobookshelf!)).toEqual([{ host: 13378, container: 80 }]);
+  expect(audiobookshelf.manifest.web).toEqual({ service: "audiobookshelf", port: 80 });
+  expect(audiobookshelf.manifest.health).toEqual({ service: "audiobookshelf", path: "/healthcheck", port: 80 });
+});
+
+test("JupyterLab: the pixi workspace seeded once, both names allowed as origins, a token typed at install", () => {
+  const s = parse(jupyterlab.compose).services.jupyterlab!;
+  const sh = s.entrypoint[2] as string;
+  expect(sh).toContain("if [ ! -f hub/pixi.toml ]; then");
+  expect(sh).toContain("[ -f hub/jupyter_server_config.py ] ||");
+  // compose's $$ for the shell's own
+  expect(sh).toContain('base="$${APP_DOMAIN#*.}"');
+  expect(sh).toContain(String.raw`pat="^https://(jupyterlab|lab)\\.$$(printf %s "$$base" | sed 's/[.]/\\./g')"'$$'`);
+  expect(sh).toContain("exec pixi run --manifest-path hub/pixi.toml jupyter lab");
+  expect(sh).toContain("--ServerApp.root_dir=/lab --ServerApp.allow_origin= ");
+  expect(environment(s)).toMatchObject({
+    HOME: "/lab",
+    APP_DOMAIN: "${APP_DOMAIN}",
+    JUPYTER_TOKEN: "${JUPYTER_TOKEN}",
+  });
+  expect(s.volumes).toEqual(["jupyterlab:/lab"]);
+  expect(jupyterlab.env.find((f) => f.name === "JUPYTER_TOKEN")).toMatchObject({ secret: true });
+  expect(jupyterlab.manifest.volumes).toEqual([{ service: "jupyterlab", target: "/lab", kind: "data" }]);
+  expect(jupyterlab.manifest.health).toEqual({ service: "jupyterlab", path: "/api", port: 8888 });
 });

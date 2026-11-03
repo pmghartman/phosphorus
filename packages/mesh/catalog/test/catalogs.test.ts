@@ -68,5 +68,5 @@ test("ids unique across sources; search over name, tagline and category", async 
   expect(new Set(all().map((d) => d.id)).size).toBe(all().length);
   expect(search({ q: "database" }).map((d) => d.ref)).toEqual(["demo"]);
   expect(search({ q: "demo", source: "casaos" }).map((d) => d.name)).toEqual(["Demo App"]);
-  expect(search({ category: "media" }).map((d) => d.ref)).toEqual(["v2only"]);
+  expect(search({ category: "media" }).map((d) => d.ref)).toEqual(["audiobookshelf", "jellyfin", "v2only"]);
 });

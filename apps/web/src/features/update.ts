@@ -9,7 +9,7 @@ import { pollState } from '../lib/sync.ts';
 import { newerVersion } from '../lib/util.ts';
 import { dkSettings } from '../settings/settings.ts';
 import { hostPlatform } from './mesh/mesh.ts';
-import { noteAdd, notifying, notifyMesh, notifyOs } from './notes.ts';
+import { noteAdd, noteSeen, notifying, notifyMesh, notifyOs } from './notes.ts';
 
 const updateBtn = document.getElementById('mesh-update') as HTMLButtonElement;
 export const updateModal = document.getElementById('update-modal')!;
@@ -80,7 +80,7 @@ const stepLabel = (chain: Chain | null, host: string, step: string) =>
 function renderUpdateButton() {
   updateBtn.disabled = !!meshLock;
   updateBtn.textContent = !meshLock ? 'update' : 'updating';
-  updateBtn.title = meshLock ? `started by ${meshLock.initiator}` : 'update every host on the mesh at once';
+  updateBtn.title = meshLock ? `started by ${meshLock.initiator}` : 'update every host';
 }
 
 // every phosphorus host and the version it answered with, ours from
@@ -210,6 +210,7 @@ function applyChain(status: Chain | null, mine: boolean) {
 // the pane as settings shows it: the hosts' versions, the feed asked again
 export function updateOpen(): void {
   if (!st.acct?.admin) return;
+  noteSeen('update');
   updateConfirm.hidden = true;
   updateMesh.hidden = false;
   pollState();
@@ -434,7 +435,7 @@ function paintUpdates() {
   const say = (k: string, title: string) => {
     if (!updates[k] || noted[k] === updates[k]) return;
     noted[k] = updates[k]!;
-    noteAdd(title, `v${updates[k]}`, null, { view: 'update' });
+    noteAdd(title, `v${updates[k]}`, null, { view: 'update', keep: true });
     if (notifying()) notifyOs(title, `v${updates[k]}`);
   };
   say('mesh', 'mesh update');

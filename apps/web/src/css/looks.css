@@ -31,7 +31,7 @@
   ) {
   border-radius: var(--r-ctl);
 }
-:where(:root[data-round]) :where(.home-col, .st-card, .st-mesh, .about-info, .mesh-panel, .st-box) {
+:where(:root[data-round]) :where(.home-col, .about-info, .mesh-panel) {
   border-radius: var(--r-card);
 }
 :where(:root[data-round])
@@ -79,23 +79,7 @@
   }
 }
 /* tables, gauges and art laid out in character cells: mono whatever the page's type (data-sans) */
-:root[data-sans]
-  :is(
-    code,
-    pre,
-    kbd,
-    samp,
-    .st-body,
-    .st-probe,
-    .st-sum,
-    .st-mesh-grid,
-    .st-ctx,
-    .st-cores,
-    .st-ctr-row,
-    .st-proc-row,
-    .dk-cl-calls,
-    .dk-cl-out
-  ) {
+:root[data-sans] :is(code, pre, kbd, samp, .st-probe, .st-panel-body, .st-stat-v, .st-line, .dk-cl-calls, .dk-cl-out) {
   font-family: var(--mono);
 }
 
@@ -123,19 +107,14 @@
   display: none;
 }
 /* panels filled and rounded, their titles inside over the content, not cut into the frame */
-:root:is([data-palette="macos"], [data-palette="win11"]) :is(.home-col, .st-card, .st-mesh, .about-info) {
+:root:is([data-palette="macos"], [data-palette="win11"]) :is(.home-col, .about-info) {
   --edge: var(--card);
   background: var(--card);
   border-color: var(--border);
   border-radius: var(--r-card);
   box-shadow: none;
 }
-:root:is([data-palette="macos"], [data-palette="win11"]) .st-box {
-  border: 0;
-  border-radius: var(--r-ctl);
-  background: color-mix(in srgb, var(--fg) 4%, transparent);
-}
-:root:is([data-palette="macos"], [data-palette="win11"]) :is(.home-col-head, .st-card-head, .st-head),
+:root:is([data-palette="macos"], [data-palette="win11"]) .home-col-head,
 :root:is([data-palette="macos"], [data-palette="win11"]) .about-info::before {
   position: static;
   transform: none;
@@ -148,11 +127,7 @@
   letter-spacing: 0;
   color: var(--fg);
 }
-:root:is([data-palette="macos"], [data-palette="win11"]) .st-head {
-  padding-bottom: 0.25rem;
-  font-size: 0.72rem;
-}
-:root:is([data-palette="macos"], [data-palette="win11"]) :is(.home-col, .st-card, .st-mesh, .about-info) {
+:root:is([data-palette="macos"], [data-palette="win11"]) :is(.home-col, .about-info) {
   padding-top: 0.65rem;
 }
 :root:is([data-palette="macos"], [data-palette="win11"])
@@ -640,12 +615,6 @@
   animation: none;
   -webkit-background-clip: border-box;
   background-clip: border-box;
-}
-:root:is([data-palette="macos"], [data-palette="win11"]) .st-card {
-  cursor: default;
-}
-:root:is([data-palette="macos"], [data-palette="win11"]) .st-card:hover {
-  border-color: var(--border);
 }
 
 /* terminal: terminal.app's basic profile, light or dark as the system; windows terminal's campbell, always dark */

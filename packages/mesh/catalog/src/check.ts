@@ -1,7 +1,7 @@
 // whether an app installs, and where: a pure function of the app, the person's
 // values, the hosts as their info tells them and what the registries said of
 // its images; and the small fetcher that asks the registries first
-import type { AppDef, CheckItem, CheckResult, HostFit } from "@phosphorus/wire";
+import { type AppDef, type CheckItem, type CheckResult, fromRepo, type HostFit } from "@phosphorus/wire";
 import { type Compose, interpolate, parse, ports } from "./compose.ts";
 import { archsOf, type Fetch, type ImageInfo, normArch } from "./registry.ts";
 
@@ -90,7 +90,7 @@ export function check(
   if (c) {
     for (const [n, s] of Object.entries(c.services)) {
       if (s.build) {
-        if (def.source === "github") ok(`builds ${n} from the repo`);
+        if (fromRepo(def)) ok(`builds ${n} from the repo`);
         else block(`${n} builds from source, which only a repo opened from GitHub can`);
       } else if (typeof s.image !== "string" || !s.image) block(`${n} has no image`);
       if (s.privileged) warn(`${n} runs privileged`);

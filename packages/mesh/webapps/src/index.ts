@@ -568,12 +568,13 @@ function fileAt(abs: string): number {
   }
 }
 
-function sendFile(req: Request, abs: string, size: number): Response {
+// for good: a content-hashed name, or one asked with ?v= its copy's version
+function sendFile(req: Request, abs: string, size: number, versioned = false): Response {
   const ext = extname(abs).toLowerCase();
   const h = new Headers({
     "Content-Type": types[ext] ?? "application/octet-stream",
     "Content-Length": String(size),
-    "Cache-Control": hashedRe.test(abs) ? "public, max-age=31536000, immutable" : "no-cache",
+    "Cache-Control": versioned || hashedRe.test(abs) ? "public, max-age=31536000, immutable" : "no-cache",
     "X-Content-Type-Options": "nosniff",
   });
   return new Response(req.method === "HEAD" ? null : Bun.file(abs), { status: 200, headers: h });
@@ -605,7 +606,8 @@ export function serve(req: Request): Response | undefined {
     const base = join(root, mountDir(m.app));
     const want = rel === "" || rel.endsWith("/") ? join(base, rel, "index.html") : join(base, rel);
     let size = fileAt(want);
-    if (size >= 0) return sendFile(req, want, size);
+    const v = url.searchParams.get("v");
+    if (size >= 0) return sendFile(req, want, size, !!v && v === local(m.app.id).version);
     // a route of the page's own, when a page is what's asked
     if (!extname(rel) || (req.headers.get("accept") ?? "").includes("text/html")) {
       const index = join(base, "index.html");
@@ -642,9 +644,11 @@ export async function summary(fresh: boolean): Promise<Record<string, any>> {
         by: a.by,
         repo: a.repo,
         mount: a.mount,
-        icon: a.icon,
+        // the copy's version on it, kept by the browser until the next one
+        icon: l.version ? `${a.icon}?v=${l.version}` : a.icon,
         repoIcon: appIconPath(a.id),
         agents: a.agents ?? [],
+        opens: a.opens ?? [],
         want: wantOf(a.id) ?? null,
         latest: f.latest ? f.latest.version : "",
         feedError: f.error,

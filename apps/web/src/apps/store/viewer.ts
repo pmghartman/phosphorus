@@ -111,8 +111,7 @@ function hostChoice(
 }
 
 // the words on backups, said once wherever they're picked
-const BACKUP_WORDS =
-  'A backup host keeps a copy of the app’s data, synced from the active host, and takes over by itself if the active host goes down.';
+const BACKUP_WORDS = 'A backup keeps a synced copy and takes over if the active host goes down.';
 
 // --- the viewer: readme, compose, files -----------------------------------------------
 
@@ -145,23 +144,8 @@ function viewer(key: string, page: AppPage): HTMLElement {
       sec.append(md);
     }
   } else if (pane === 'compose') {
-    if (!page.def.compose.trim())
-      sec.append(
-        el(
-          'div',
-          'store-empty bad',
-          'No compose file here. Phosphorus looks for compose.yml or docker-compose.yml at the repo’s root, in docker/ and in deploy/.',
-        ),
-      );
-    else
-      sec.append(
-        el(
-          'p',
-          'store-pick-note',
-          'Read only, as phosphorus renders it: each data volume becomes a folder under its data/.',
-        ),
-        el('pre', 'store-code', page.def.compose),
-      );
+    if (!page.def.compose.trim()) sec.append(el('div', 'store-empty bad', 'No compose file found.'));
+    else sec.append(el('pre', 'store-code', page.def.compose));
   } else sec.append(tree(page));
   return sec;
 }
@@ -451,9 +435,9 @@ function backupSec(key: string, page: AppPage, check: CheckResult): HTMLElement 
   const h = el('h2', '', 'backups');
   h.append(el('span', 'store-count', f.standbys.length ? `${f.standbys.length}` : 'none'));
   h.title = BACKUP_WORDS;
-  sec.append(h, el('p', 'store-pick-note', 'Keeps a synced copy, takes over if the active host goes down.'));
+  sec.append(h);
   if (!rest.length) {
-    sec.append(el('p', 'store-pick-note warn', 'No other host can run it, so it can’t have a backup.'));
+    sec.append(el('p', 'store-pick-note', 'no other host can run it'));
     return sec;
   }
   const pick = hostChoice(
@@ -609,7 +593,7 @@ async function changeHosts(v: StackView, page: AppPage | undefined) {
   const body: (HTMLElement | string)[] = [
     BACKUP_WORDS,
     pick.el,
-    el('p', 'store-pick-note', 'An unticked host stops it and takes it down there, its data kept.'),
+    el('p', 'store-pick-note', 'Unticked hosts stop it, data kept.'),
   ];
   if (await ask(`hosts for ${v.summary.name}`, body, 'save'))
     stackAct(v.summary.id, 'standbys', { active: live, standbys: pick.picked() });
@@ -624,10 +608,8 @@ async function moveTo(v: StackView) {
     'radio',
   );
   const body: (HTMLElement | string)[] = [
-    `${v.summary.name} stops on ${live}, its data is copied over a last time, and it starts on the host you pick. It’s offline for that moment.`,
-    rest.length
-      ? pick.el
-      : el('p', 'store-pick-note warn', 'It has no backup to move to: add the host under hosts… first.'),
+    `${v.summary.name} is briefly offline while it moves from ${live}.`,
+    rest.length ? pick.el : el('p', 'store-pick-note warn', 'no backup to move to: add one under hosts…'),
   ];
   if ((await ask(`move ${v.summary.name} to…`, body, 'move')) && pick.picked()[0])
     stackAct(v.summary.id, 'move', { to: pick.picked()[0] });
@@ -706,10 +688,10 @@ function installedSec(v: StackView, page: AppPage | undefined): HTMLElement[] {
       )
         stackAct(id, 'update');
     });
-    btn('hosts…', 'the hosts it keeps a copy on, added or taken off', () => changeHosts(v, page));
+    btn('hosts…', 'its backup hosts', () => changeHosts(v, page));
     btn('move to host…', 'a planned handoff to a backup', () => moveTo(v));
     btn('remove…', 'take it off the mesh', () => remove(v), 'danger');
-  } else row.append(el('span', 'store-pick-note', 'An admin updates, moves or removes it.'));
+  }
   acts.append(row);
   out.push(acts);
   return out;

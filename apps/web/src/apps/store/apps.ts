@@ -3,6 +3,7 @@
 import type { AppStatus, AppWant } from '@phosphorus/wire';
 import { dkWebApp } from '../../desktop/desk.ts';
 import { DK_UI, dkGlyph, el, pageAsk } from '../../lib/dom.ts';
+import { iconKnown, iconLearn, iconOrder } from '../../lib/iconmem.ts';
 import { st } from '../../lib/state.ts';
 import { ago2, newerVersion } from '../../lib/util.ts';
 import { draw } from './draw.ts';
@@ -108,24 +109,36 @@ export function hueOf(name: string): number {
   return Math.round((75 + ((n * 0.381966 * 315) % 315)) % 360);
 }
 
-// the icon tile: the first of srcs that loads, the initial when none does
+// the icon tile: the first of srcs that loads, the initial when none does; the one
+// that loaded last time tried first, none last time the initial at once, tried behind it
 export function iconTile(name: string, srcs: string[], cls: string): HTMLElement {
   const tile = el('span', `store-icon ${cls}`);
   tile.style.setProperty('--hue', String(hueOf(name)));
   const mono = () => el('span', 'store-mono', name[0]!.toUpperCase());
-  const next = (rest: string[], at: HTMLElement) => {
-    const [src, ...more] = rest.filter(Boolean);
+  const list = srcs.filter(Boolean);
+  const order = iconOrder(list);
+  const quiet = iconKnown(list) === '';
+  const next = (i: number) => {
+    const src = order[i];
     if (!src) {
-      at.replaceWith(mono());
+      if (!quiet) tile.replaceChildren(mono());
+      iconLearn(list, '');
       return;
     }
     const img = Object.assign(el('img'), { src, alt: '', draggable: false });
-    img.addEventListener('error', () => next(more, img), { once: true });
-    at.replaceWith(img);
+    img.addEventListener(
+      'load',
+      () => {
+        if (quiet) tile.replaceChildren(img);
+        iconLearn(list, src);
+      },
+      { once: true },
+    );
+    img.addEventListener('error', () => next(i + 1), { once: true });
+    if (!quiet) tile.replaceChildren(img);
   };
-  const first = el('span');
-  tile.append(first);
-  next(srcs, first);
+  tile.append(quiet ? mono() : el('span'));
+  next(0);
   return tile;
 }
 

@@ -1,118 +1,78 @@
-// cards
-import { humanSize } from '../../lib/util.ts';
-import { stToggle } from '../status.ts';
-import { drawCpu, drawCtr, drawDisk, drawGpu, drawMem, drawNet, drawProc } from './boxes.ts';
-import { pct } from './glyphs.ts';
-import { modelVars, ST_GRAPH_MAX, ST_GRAPH_MIN, ST_TILE_MAX, ST_TILE_MIN } from './model.ts';
-import { type Parts, type StHost, stateVars, statusDraw, stHostsEl, stNet } from './state.ts';
-import { stMeshEl, stTopEl } from './summary.ts';
+// the pages' pieces: panels, the headline strip, meter and key rows
+import { esc, humanSize } from '../../lib/util.ts';
+import { bar, pct } from './glyphs.ts';
+import { type Page, type Panel, stNet } from './state.ts';
 
-// box, title, its drawing
-export const ST_BOXES: [string, string, (p: Parts, h: StHost) => void][] = [
-  ['cpu', 'cpu', drawCpu],
-  ['mem', 'mem', drawMem],
-  ['disk', 'disk', drawDisk],
-  ['net', 'net', drawNet],
-  ['gpu', 'gpu', drawGpu],
-  ['ctr', 'phosphorus', drawCtr],
-  ['proc', 'processes', drawProc],
-];
-
-// a tile of the headline numbers, clicked open to the full btop grid; a model
-// host's model box beside the tile's graphs, and among the open grid's boxes
-export function stCard(name: string): { card: HTMLElement; parts: Parts } {
-  const card = document.createElement('section');
-  card.className = 'st-card';
-  card.dataset.host = name;
-  card.innerHTML =
-    '<div class="st-card-head"></div><div class="st-tile"><div class="st-sum"><canvas class="st-graph st-sum-cpu"></canvas>' +
-    '<div class="st-sum-rows"></div><div class="st-row st-sum-netrow"><span class="st-key">net</span><span></span>' +
-    '<div class="st-sum-net"><canvas class="st-graph"></canvas><canvas class="st-graph"></canvas></div></div></div>' +
-    '<div class="st-box st-model" hidden><div class="st-head">model</div><div class="st-body"></div></div></div><div class="st-grid"></div>';
-  const grid = card.querySelector('.st-grid')!;
-  const tile = card.querySelector('.st-tile') as HTMLElement;
-  const modelBox = tile.lastElementChild as HTMLElement;
-  const parts = {
-    head: card.querySelector('.st-card-head') as HTMLElement,
-    tile,
-    modelBox,
-    model: modelBox.lastElementChild as HTMLElement,
-    modelHtml: '',
-  } as Parts;
-  const [cpuGraph, rows, netRow] = tile.firstElementChild!.children as unknown as [
-    HTMLCanvasElement,
-    HTMLElement,
-    HTMLElement,
-  ];
-  parts.sum = rows;
-  parts.sumCpu = cpuGraph;
-  parts.sumNet = netRow.children[1] as HTMLElement;
-  [parts.sumRx, parts.sumTx] = netRow.lastElementChild!.children as unknown as [HTMLCanvasElement, HTMLCanvasElement];
-  card.tabIndex = 0;
-  card.addEventListener('click', () => stToggle(name));
-  for (const [k, t] of ST_BOXES) {
-    const b = document.createElement('div');
-    b.className = `st-box st-${k}`;
-    b.innerHTML = `<div class="st-head">${t}</div><div class="st-body"></div>`;
-    grid.appendChild(b);
-    parts[k] = b.querySelector('.st-body');
-    parts[`${k}Head`] = b.querySelector('.st-head');
-    parts[`${k}Box`] = b;
-  }
-  return { card, parts };
+// a panel: its head a word in its kind's hue, then its body
+export function panel(kind: string, title: string): Panel {
+  const box = document.createElement('section');
+  box.className = `st-panel st-${kind}`;
+  box.innerHTML = `<header class="st-panel-head"><span class="st-panel-t">${title}</span></header><div class="st-panel-body"></div>`;
+  return { box, head: box.firstElementChild as HTMLElement, body: box.lastElementChild as HTMLElement };
 }
 
-export const usedOf = (a: number, b: number) =>
-  `${pct(a / b).padStart(4)} <span class="st-dim">${humanSize(a)}/${humanSize(b)}</span>`;
+// a panel's head: its word, then a dim detail after it
+export const panelHead = (p: Panel, title: string, detail = '') =>
+  setHtml(p.head, `<span class="st-panel-t">${title}</span>${detail ? `<span class="st-dim">${detail}</span>` : ''}`);
+
+// a page's frame: facts, headline strip, the cpu and net graphs, then the panels named
+export function pageFrame(panels: [string, string][]): Page {
+  const node = document.createElement('div');
+  node.className = 'st-page';
+  node.innerHTML =
+    '<div class="st-facts"></div><div class="st-stats"></div><div class="st-graphs"></div><div class="st-panels"></div>';
+  const [facts, stats, graphs, rest] = node.children as unknown as HTMLElement[];
+  const cpu = panel('cpu', 'cpu');
+  cpu.body.innerHTML = '<canvas class="st-graph"></canvas><div class="st-line"></div>';
+  const [graph, line] = cpu.body.children as unknown as [HTMLCanvasElement, HTMLElement];
+  const net = panel('net', 'net');
+  net.body.innerHTML =
+    '<canvas class="st-graph"></canvas><div class="st-line"></div><canvas class="st-graph"></canvas><div class="st-line"></div>';
+  const [rx, rates, tx, day] = net.body.children as unknown as [
+    HTMLCanvasElement,
+    HTMLElement,
+    HTMLCanvasElement,
+    HTMLElement,
+  ];
+  graphs!.append(cpu.box, net.box);
+  const box: Record<string, Panel> = {};
+  for (const [k, t] of panels) {
+    box[k] = panel(k, t);
+    rest!.append(box[k].box);
+  }
+  return {
+    node,
+    facts: facts!,
+    stats: stats!,
+    cpu: { ...cpu, graph, line },
+    net: { ...net, rx, tx, rates, day },
+    panels: rest!,
+    box,
+  };
+}
+
+// a headline: its word, the value, a detail under it, a bar of its share
+export const stat = (kind: string, k: string, v: string, d: string, frac?: number) =>
+  `<div class="st-stat st-${kind}"><span class="st-stat-k">${k}</span><span class="st-stat-v">${v}</span>` +
+  `<span class="st-stat-d">${d}</span>${frac === undefined ? '' : bar(frac)}</div>`;
+
+// key, a bar to the row's width, a value
+export const meterRow = (k: string, frac: number, val: string, cls?: string) =>
+  `<div class="st-meter"><span class="st-key">${esc(k)}</span>${bar(frac, cls)}<span class="st-val">${val}</span></div>`;
+// key, a value
+export const kvRow = (k: string, v: string) =>
+  `<div class="st-kv"><span class="st-key">${esc(k)}</span><span class="st-val">${v}</span></div>`;
+
+// html set only when changed, no reflow a tick
+const drawn = new WeakMap<HTMLElement, string>();
+export function setHtml(el: HTMLElement, html: string) {
+  if (drawn.get(el) === html) return;
+  drawn.set(el, html);
+  el.innerHTML = html;
+}
+
+export const usedOf = (a: number, b: number) => `${humanSize(a)}<span class="st-dim"> / ${humanSize(b)}</span>`;
+export const usedPct = (a: number, b: number) => `${usedOf(a, b)} <span class="st-pct">${pct(a / b)}</span>`;
 export const dotJoin = (bits: (string | false | number | undefined | null)[]) =>
   bits.filter(Boolean).join('<span class="st-dim"> · </span>');
 export const hostServices = (name: string) => (stNet?.routes || []).filter((r) => r.host === name && !r.type);
-
-export function fitTiles(names: string[]) {
-  const view = stHostsEl.parentElement!;
-  const tile = (stHostsEl.querySelector('.st-card:not(.open):not(.waiting):not(.has-model)') ||
-    stHostsEl.querySelector('.st-card:not(.open):not(.waiting)')) as HTMLElement | null;
-  if (!tile) return;
-  // a host open: the page scrolling anyway, the rest kept compact
-  if (stateVars.stOpenHost) {
-    modelVars.stFit = '';
-    stHostsEl.style.setProperty('--st-sum-graph', `${ST_GRAPH_MAX}px`);
-    return;
-  }
-  const css = getComputedStyle(stHostsEl);
-  const rem = parseFloat(getComputedStyle(document.documentElement).fontSize);
-  const colGap = parseFloat(css.columnGap) || 0;
-  const rowGap = parseFloat(css.rowGap) || 0;
-  const vs = getComputedStyle(view);
-  const avail =
-    view.clientHeight -
-    parseFloat(vs.paddingTop) -
-    parseFloat(vs.paddingBottom) -
-    (stMeshEl.hidden ? 0 : stTopEl.offsetHeight + parseFloat(getComputedStyle(stTopEl).marginBottom));
-  const width = stHostsEl.clientWidth;
-  const graph = tile.querySelector('.st-sum-cpu') as HTMLElement;
-  const base = tile.offsetHeight - graph.offsetHeight;
-  const fits = (w: number) => Math.max(1, Math.floor((width + colGap) / (w * rem + colGap)));
-  const rowsFit = Math.max(1, Math.floor((avail + rowGap) / (base + ST_GRAPH_MIN + rowGap)));
-  const most = Math.min(
-    names.length,
-    fits(ST_TILE_MIN),
-    Math.max(fits(ST_TILE_MAX), Math.ceil(names.length / rowsFit)),
-  );
-  const rows = Math.ceil(names.length / most);
-  // rows evened out: 4 hosts as 2 by 2, never 3 and a lone 1
-  const cols = Math.ceil(names.length / rows);
-  // the rows not fitting even at their smallest (a phone): scrolling anyway, so no shrinking
-  const h =
-    rows * (base + ST_GRAPH_MIN + rowGap) - rowGap > avail
-      ? ST_GRAPH_MAX / 2
-      : Math.round(Math.max(ST_GRAPH_MIN, Math.min(ST_GRAPH_MAX, (avail - rowGap * (rows - 1)) / rows - base)));
-  const fit = `${cols}/${h}`;
-  if (fit === modelVars.stFit) return;
-  modelVars.stFit = fit;
-  stHostsEl.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
-  // a model host's tile twice as wide where three columns or more fit, its model box beside its graphs
-  stHostsEl.classList.toggle('st-wide', cols >= 3);
-  stHostsEl.style.setProperty('--st-sum-graph', `${h}px`);
-  statusDraw();
-}

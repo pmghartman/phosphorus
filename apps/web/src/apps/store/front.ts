@@ -173,11 +173,7 @@ function repoOpener(): HTMLElement {
   line.append(input, go);
   box.append(
     el('b', 'store-repo-head', 'open a GitHub repo'),
-    el(
-      'span',
-      'store-repo-sub',
-      'Any public repo with a compose file: its readme, its files, and whether it installs.',
-    ),
+    el('span', 'store-repo-sub', 'any public repo with a compose file'),
     line,
   );
   if (repoBox.error) box.append(el('span', 'store-repo-err', repoBox.error));

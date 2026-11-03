@@ -5,7 +5,7 @@ import { appCall } from '../../apps/index.ts';
 import { agentArm, agentOwn, agentStep, agentViewOn } from '../../features/agent.ts';
 import { filesWin } from '../../features/home/home.ts';
 import { phosphorusHosts, switchHost } from '../../features/mesh/mesh.ts';
-import { noteAdd, notifyOs } from '../../features/notes.ts';
+import { noteAdd, noteSeen, notifyOs } from '../../features/notes.ts';
 import { stash } from '../../lib/dom.ts';
 import { deskApps, dk, st } from '../../lib/state.ts';
 import { dkSettings, type SettingsAt, settingsShows } from '../../settings/settings.ts';
@@ -48,6 +48,7 @@ export function dkAppsChanged(): void {
   if (up('status')) appCall('status', true, (m) => m.statusWatch(st.lastState));
   if (deskApps.has('apps') !== was.has('apps'))
     appCall('store', deskApps.has('apps'), (m) => m.storeWatch(deskApps.has('apps')));
+  if (up('apps')) noteSeen('apps');
 }
 
 // a shell from an app or phosphorus, on a host this desktop is logged into: its tab
@@ -92,7 +93,8 @@ export function dkPressed(a: UiAction): void {
     else if (dkWebApps().some((x) => x.id === a.view)) dkWebApp(a.view!);
     else if (a.view === 'files' && dk.desk) filesWin();
   } else if (a.kind === 'notify') {
-    noteAdd(a.title!, a.body!);
+    // one naming a view kept in the bell until that view is seen
+    noteAdd(a.title!, a.body!, null, a.view ? { view: a.view, keep: true } : null);
     notifyOs(String(a.title || ''), String(a.body || ''));
   } else if (a.kind === 'agent') agentStep(a);
 }

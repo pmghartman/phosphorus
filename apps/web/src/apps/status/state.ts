@@ -1,4 +1,4 @@
-// status: btop for the whole mesh
+// status: settings › hosts › status, the whole mesh summed or one host in full
 
 import type { State, StatsSample } from '@phosphorus/wire';
 import { deskApps } from '../../lib/state.ts';
@@ -7,31 +7,34 @@ import { statusRender } from '../status.ts';
 // one socket to the serving host, every host's samples fanned in there, open
 // only while the tab is up
 
-export const stHostsEl = document.getElementById('st-hosts')!;
+export const stView = document.getElementById('view-status')!;
 // samples kept per host, one per dot column
 export const ST_HIST = 400;
 // a host silent this long drawn stale
 export const ST_STALE_MS = 4000;
 
-// a card's elements: the parts drawn into, by box name and a few extras
-export type Parts = Record<string, any> & {
+// a panel of a page: its head and body
+export interface Panel {
+  box: HTMLElement;
   head: HTMLElement;
-  tile: HTMLElement;
-  model: HTMLElement;
-  modelBox: HTMLElement;
-  modelHtml: string;
-  sum: HTMLElement;
-  sumCpu: HTMLCanvasElement;
-  sumNet: HTMLElement;
-  sumRx: HTMLCanvasElement;
-  sumTx: HTMLCanvasElement;
-};
-// host -> {s, at, hist: {cpu, rx, tx}, card}
+  body: HTMLElement;
+}
+// a page's elements: its strips, its graphs, its panels by name
+export interface Page {
+  node: HTMLElement;
+  facts: HTMLElement;
+  stats: HTMLElement;
+  cpu: Panel & { graph: HTMLCanvasElement; line: HTMLElement };
+  net: Panel & { rx: HTMLCanvasElement; tx: HTMLCanvasElement; rates: HTMLElement; day: HTMLElement };
+  panels: HTMLElement;
+  box: Record<string, Panel>;
+}
+// host -> {s, at, hist: {cpu, rx, tx}, page}
 export interface StHost {
   s: StatsSample | null;
   at: number;
   hist: Record<string, number[]>;
-  card: { card: HTMLElement; parts: Parts } | null;
+  page: Page | null;
   gpu?: boolean;
   netMax?: number;
 }
@@ -44,8 +47,8 @@ export let stNet: State | null = null;
 
 // the module's variables other modules set
 export const stateVars = {
-  // the one host shown in full, the rest as tiles
-  stOpenHost: null as string | null,
+  // the one host shown in full, null for the mesh summed
+  stPicked: null as string | null,
 };
 
 export const stOpen = () => deskApps.has('status') && !document.hidden;
@@ -129,7 +132,7 @@ window.addEventListener('online', () => {
 export function stHost(name: string): StHost {
   let h = stHosts.get(name);
   if (!h) {
-    h = { s: null, at: 0, hist: { cpu: [], rx: [], tx: [], gpu: [] }, card: null };
+    h = { s: null, at: 0, hist: { cpu: [], rx: [], tx: [], gpu: [] }, page: null };
     stHosts.set(name, h);
   }
   return h;

@@ -1,7 +1,7 @@
 // a stack's project as one host writes it: the compose file with every data volume
 // a bind mount under data/ (cache under cache/), phosphorus's variables filled in,
 // host ports only on the web service and bound to the tailnet address; the .env beside it
-import type { AppDef } from "@phosphorus/wire";
+import { type AppDef, fromRepo } from "@phosphorus/wire";
 
 // what the host puts into the render
 export type Ctx = {
@@ -145,7 +145,7 @@ export function render(def: AppDef, env: Record<string, string>, ctx: Ctx): Rend
     def.manifest.volumes.find(
       (v) => v.service === service && v.target.replace(/\/+$/, "") === target.replace(/\/+$/, ""),
     )?.kind;
-  const github = def.source === "github";
+  const github = fromRepo(def);
   const dirs = new Set<string>();
   const used = new Set<string>();
   let build = false;
@@ -180,23 +180,27 @@ export function render(def: AppDef, env: Record<string, string>, ctx: Ctx): Rend
     return under(kind, inside(source));
   };
 
+  // a volume's source as compose will read it: the person's values, a default naming ${APP_DATA} filled too
+  const paths = { ...Object.fromEntries(Object.entries(all).map(([k, x]) => [k, interp(x, vars)])), ...vars };
   for (const [name, s] of Object.entries(doc.services as Doc)) {
     if (!s || typeof s !== "object") continue;
     const svc = s as Doc;
     if (Array.isArray(svc.volumes))
       svc.volumes = svc.volumes.map((v: unknown) => {
         if (typeof v === "string") {
-          const parts = v.split(":");
+          const filled = interp(v, paths, true);
+          const parts = filled.split(":");
           const [source, target, mode] =
             parts.length === 1 ? ["", parts[0]!, ""] : [parts[0]!, parts[1]!, parts[2] ?? ""];
           const to = rewrite(name, source, target);
-          return to === undefined ? v : `${to}:${target}${mode ? ":" + mode : ""}`;
+          return to === undefined ? filled : `${to}:${target}${mode ? ":" + mode : ""}`;
         }
         const o = v as Doc;
         if (!o || typeof o !== "object" || typeof o.target !== "string") return v;
         if (o.type && o.type !== "volume" && o.type !== "bind") return v;
-        const to = rewrite(name, typeof o.source === "string" ? o.source : "", o.target);
-        if (to === undefined) return v;
+        const source = typeof o.source === "string" ? interp(o.source, paths, true) : "";
+        const to = rewrite(name, source, o.target);
+        if (to === undefined) return source ? { ...o, source } : v;
         const { volume: _, ...rest } = o;
         return { ...rest, type: "bind", source: to, bind: { ...(o.bind ?? {}), create_host_path: true } };
       });

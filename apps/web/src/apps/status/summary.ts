@@ -1,25 +1,16 @@
-// mesh summary
+// the whole mesh summed: headlines, its cpu and net graphs, its totals and models
 import type { StatsSample } from '@phosphorus/wire';
-import { esc, humanSize, plural } from '../../lib/util.ts';
-import { dotJoin, usedOf } from './cards.ts';
-import { cpuTop, dotGraph, meterCells, pct, rate } from './glyphs.ts';
-import { SUM_VAL, sumRow } from './model.ts';
-import { ST_STALE_MS, type StHost, stHosts, stNet } from './state.ts';
+import { humanSize, plural } from '../../lib/util.ts';
+import { dotJoin, kvRow, meterRow, pageFrame, panel, panelHead, setHtml, stat, usedOf, usedPct } from './cards.ts';
+import { cpuTop, dotGraph, pct, rate } from './glyphs.ts';
+import { drawModel, stModels } from './model.ts';
+import { type Panel, ST_STALE_MS, type StHost, stHosts, stNet } from './state.ts';
 
-export const stTopEl = document.getElementById('st-top')!;
-export const stMeshEl = document.getElementById('st-mesh')!;
-// bars over the cpu graph, counts over the net graph
-export const [stMeshA, stMeshB] = stMeshEl.querySelector('.st-mesh-grid')!.children as unknown as [
-  HTMLElement,
-  HTMLElement,
-];
-export const [stMeshBars, stMeshCpu] = stMeshA.children as unknown as [HTMLElement, HTMLCanvasElement];
-export const stMeshText = stMeshB.firstElementChild as HTMLElement;
-export const [stMeshRx, stMeshTx] = stMeshB.lastElementChild!.children as unknown as [
-  HTMLCanvasElement,
-  HTMLCanvasElement,
-];
-export const stMeshHist = { max: 0 };
+export const meshPage = pageFrame([['more', 'totals']]);
+meshPage.node.classList.add('st-mesh-page');
+const meshHist = { max: 0 };
+// host -> its model's panel, in the models' order
+const models = new Map<string, Panel>();
 
 // every live host's history summed, newest aligned, each weighted by weight(h)
 export function sumHist(live: StHost[], k: string, weight: (h: StHost) => number = () => 1): number[] {
@@ -30,10 +21,12 @@ export function sumHist(live: StHost[], k: string, weight: (h: StHost) => number
 }
 
 export function drawMeshSum(names: string[]) {
+  const p = meshPage;
   const live = names
     .map((n) => stHosts.get(n))
     .filter((h): h is StHost => !!h?.s?.cpu && Date.now() - h.at <= ST_STALE_MS);
-  stMeshEl.hidden = !live.length;
+  p.node.classList.toggle('waiting', !live.length);
+  p.node.dataset.note = 'waiting for stats';
   if (!live.length) return;
   const sum = (f: (s: StatsSample) => number | null | undefined) => live.reduce((a, h) => a + (f(h.s!) || 0), 0);
   const cores = sum((s) => s.cpu.cores.length);
@@ -51,50 +44,87 @@ export function drawMeshSum(names: string[]) {
   const gpuLoad = loaded.reduce((a, g) => a + g.util!, 0) / Math.max(1, loaded.length) / 100;
   const vramU = gpus.reduce((a, g) => a + (g.memUsed || 0), 0);
   const vramT = gpus.reduce((a, g) => a + (g.memTotal || 0), 0);
-  const ioR = sum((s) => s.io?.r);
-  const ioW = sum((s) => s.io?.w);
   const load = sum((s) => s.cpu.load[0]);
   const ctr = sum((s) => s.parts?.length);
   const svc = (stNet?.routes || []).filter((r) => !r.type).length;
   const off = names.length - live.length;
-  const rows = (
+
+  setHtml(
+    p.facts,
+    dotJoin([
+      `<span class="st-name">${plural(names.length, 'host')}</span>`,
+      `<span class="st-lo">${live.length} up</span>`,
+      off && `<span class="st-mid">${off} stale or waiting</span>`,
+      plural(svc, 'service'),
+      stModels().length && `<span class="st-model-mark">${plural(stModels().length, 'model')}</span>`,
+    ]),
+  );
+  setHtml(
+    p.stats,
     [
-      ['cpu', cpu, `${pct(cpu).padStart(4)} <span class="st-dim">${cores} cores</span>`],
-      ['mem', memU / memT, usedOf(memU, memT)],
-      swapT && ['swap', swapU / swapT, usedOf(swapU, swapT)],
-      ['disk', diskU / diskT, usedOf(diskU, diskT)],
-      loaded.length && [
-        'gpu',
-        gpuLoad,
-        `${pct(gpuLoad).padStart(4)} <span class="st-dim">${plural(gpus.length, 'gpu')}</span>`,
-      ],
-      vramT && ['vram', vramU / vramT, usedOf(vramU, vramT)],
-    ] as (false | 0 | [string, number, string, string?])[]
-  ).filter(Boolean) as [string, number, string, string?][];
-  const text = (k: string, v: string) => `<div class="st-row"><span class="st-key">${k}</span>${v}</div>`;
-  const n = meterCells(stMeshBars, 8 + SUM_VAL);
-  stMeshBars.innerHTML = rows.map(([k, f, v, cls]) => sumRow(k, f, n, v, cls)).join('');
+      stat('cpu', 'cpu', pct(cpu), plural(cores, 'core'), cpu),
+      stat('mem', 'mem', pct(memU / memT), usedOf(memU, memT), memU / memT),
+      stat('disk', 'disk', pct(diskU / diskT), usedOf(diskU, diskT), diskU / diskT),
+      loaded.length &&
+        stat('gpu', 'gpu', pct(gpuLoad), vramT ? `vram ${usedOf(vramU, vramT)}` : plural(gpus.length, 'gpu'), gpuLoad),
+      stat('net', 'net', `<span class="st-rx">▼</span> ${rate(rx)}`, `<span class="st-tx">▲</span> ${rate(tx)}`),
+    ]
+      .filter(Boolean)
+      .join(''),
+  );
+
+  const cpus = sumHist(live, 'cpu', (h) => h.s!.cpu.cores.length / Math.max(1, cores));
+  panelHead(p.cpu, 'cpu', `${plural(cores, 'core')} summed`);
+  dotGraph(p.cpu.graph, cpus, cpuTop(cpus), () => '--sage');
+  setHtml(
+    p.cpu.line,
+    `${(cpu * 100).toFixed(1)}%${load ? `<span class="st-dim">  load </span>${load.toFixed(2)}<span class="st-dim"> 1m, all hosts</span>` : ''}`,
+  );
   const rxs = sumHist(live, 'rx');
   const txs = sumHist(live, 'tx');
-  stMeshHist.max = Math.max(1024, ...rxs, ...txs, stMeshHist.max * 0.98);
-  const cpus = sumHist(live, 'cpu', (h) => h.s!.cpu.cores.length / Math.max(1, cores));
-  dotGraph(stMeshCpu, cpus, cpuTop(cpus), () => '--sage');
-  dotGraph(stMeshRx, rxs, stMeshHist.max, () => '--accent');
-  dotGraph(stMeshTx, txs, stMeshHist.max, () => '--teal', true);
-  stMeshText.innerHTML = [
-    text(
-      'hosts',
-      `<span class="st-lo">${live.length} up</span>${off ? `<span class="st-dim"> · ${off} stale or waiting</span>` : ''}`,
-    ),
-    text('net', `<span class="st-rx">▼ ${rate(rx)}</span>  <span class="st-tx">▲ ${rate(tx)}</span>`),
-    text(
-      '24h',
-      `<span class="st-rx">▼ ${humanSize(sum((s) => s.netDay.rx))}</span>  <span class="st-tx">▲ ${humanSize(sum((s) => s.netDay.tx))}</span>`,
-    ),
-    text('io', `<span class="st-rx">▼ ${rate(ioR)}</span>  <span class="st-tx">▲ ${rate(ioW)}</span>`),
-    text('load', `${load.toFixed(2)} <span class="st-dim">1m, all hosts</span>`),
-    text('run', dotJoin([plural(svc, 'service'), plural(ctr, 'process', 'processes')])),
-  ]
-    .filter(Boolean)
-    .join('');
+  meshHist.max = Math.max(1024, ...rxs, ...txs, meshHist.max * 0.98);
+  dotGraph(p.net.rx, rxs, meshHist.max, () => '--accent');
+  dotGraph(p.net.tx, txs, meshHist.max, () => '--teal', true);
+  setHtml(
+    p.net.rates,
+    `<span class="st-rx">▼ ${rate(rx)}</span>  <span class="st-tx">▲ ${rate(tx)}</span><span class="st-dim">  top ${rate(meshHist.max)}</span>`,
+  );
+  setHtml(
+    p.net.day,
+    `<span class="st-dim">24h  </span><span class="st-rx">▼ ${humanSize(sum((s) => s.netDay.rx))}</span>  <span class="st-tx">▲ ${humanSize(sum((s) => s.netDay.tx))}</span>`,
+  );
+
+  setHtml(
+    p.box.more!.body,
+    [
+      swapT && meterRow('swap', swapU / swapT, usedPct(swapU, swapT)),
+      vramT && meterRow('vram', vramU / vramT, usedPct(vramU, vramT)),
+      kvRow(
+        'io',
+        `<span class="st-rx">r ${rate(sum((s) => s.io?.r))}</span>  <span class="st-tx">w ${rate(sum((s) => s.io?.w))}</span>`,
+      ),
+      kvRow('run', dotJoin([plural(svc, 'service'), plural(ctr, 'process', 'processes')])),
+    ]
+      .filter(Boolean)
+      .join(''),
+  );
+  drawModels();
+}
+
+// a panel per model host, after the totals
+function drawModels() {
+  const list = stModels();
+  for (const [host, m] of models)
+    if (!list.some((x) => x.host === host)) {
+      m.box.remove();
+      models.delete(host);
+    }
+  let prev = meshPage.box.more!.box;
+  for (const m of list) {
+    let box = models.get(m.host);
+    if (!box) models.set(m.host, (box = panel('model', 'model')));
+    if (prev.nextElementSibling !== box.box) prev.after(box.box);
+    prev = box.box;
+    drawModel(box, m, true);
+  }
 }

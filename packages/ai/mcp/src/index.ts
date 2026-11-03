@@ -10,6 +10,7 @@ import { audit } from "./extra.ts";
 import { forgejoTools } from "./forgejo.ts";
 import { grantsOf, keyDescription, keyNote, sig, withheld } from "./grants.ts";
 import { mirror, mirrorArgs, mirrorEnd } from "./mirror.ts";
+import { stackTools } from "./stacks.ts";
 import { coreTools } from "./tools.ts";
 
 export { callBegin, callDetail, callEnd, calls, watch } from "./calls.ts";
@@ -37,7 +38,7 @@ const listed = new Map<string, Record<string, any>[]>();
 // the tools built once, on the first call
 function build() {
   if (tools.length) return;
-  tools.push(...coreTools(), ...agentTools(), ...controlTools(), ...forgejoTools());
+  tools.push(...coreTools(), ...agentTools(), ...controlTools(), ...forgejoTools(), ...stackTools());
   describe();
   for (const t of tools) toolIndex.set(t.name, t);
 }
@@ -133,7 +134,7 @@ async function initialize(id: unknown, params: Record<string, any>, caller: Call
 // instructions the server's, and on a key what that key can and can't do
 function instructions(caller: Caller | undefined): string {
   const s =
-    "phosphorus, a self-hosted mesh: read its hosts, services, stats, models, chat and updates, its buttons " +
+    "phosphorus, a self-hosted mesh: read its hosts, services, installed apps, stats, models and updates, its buttons " +
     "and messages pressed and sent only for a person asking phosphorus.";
   return caller ? s + keyNote(caller) : s;
 }

@@ -40,6 +40,7 @@ import { meshOnly } from "./http.ts";
 import { num } from "./js.ts";
 import { chainHistory, meshHealth, opOn, rememberChain } from "./mcpops.ts";
 import { reapShells } from "./mcpshell.ts";
+import { appsOp, stacksOp } from "./mcpstacks.ts";
 import { appHandler } from "./routes.ts";
 import { buildState, chainAction, hostServices, hostsInfo, ownState, publishHost, stackHosts } from "./server.ts";
 import { filesCall } from "./shares.ts";
@@ -160,6 +161,8 @@ function initMCP() {
       userUI,
       userUIAsync,
       service: svcRequest,
+      stacks: stacksOp,
+      apps: appsOp,
       modelColor,
     },
     locate: files.locate,

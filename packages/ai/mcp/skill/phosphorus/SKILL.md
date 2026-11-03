@@ -1,6 +1,6 @@
 ---
 name: phosphorus
-description: "Operates the user's live, self-hosted Phosphorus mesh through the Phosphorus connector's tools. Use whenever the user names phosphorus or the mesh, one of its hosts, or asks about their own servers, homelab or tailnet, even without saying \"phosphorus\": a host up, down, slow or full; services or game servers on the mesh; files in mesh shares; running a command on a host; host logs; the mesh's Forgejo; the mesh chat; its models and agents; a mesh update. Not for editing or building the phosphorus source code itself."
+description: "Operates the user's live, self-hosted Phosphorus mesh through the Phosphorus connector's tools. Use whenever the user names phosphorus or the mesh, one of its hosts, or asks about their own servers, homelab or tailnet, even without saying \"phosphorus\": a host up, down, slow or full; services or game servers on the mesh; installing, moving or removing a self-hosted service or app; files in mesh shares; running a command on a host; host logs; the mesh's Forgejo; the mesh chat; its models and agents; a mesh update. Not for editing or building the phosphorus source code itself."
 ---
 
 # Phosphorus
@@ -20,6 +20,7 @@ Read the one that fits before the first call; a one-tool question needs none.
 | run a command or script on a host or every host | `references/run.md` |
 | find, read, edit, copy, move or organize files | `references/files.md` |
 | publish, change, remove or check a service, call its API; start or stop a game server | `references/service.md` |
+| install, update, move or remove a service from the wizard; failover standbys; an optional app | `references/install.md` |
 | update the mesh, follow, retry or cancel an update | `references/update.md` |
 | read or post chat, message someone, wait for a reply (the Chat app) | `references/chat.md` |
 | Forgejo repos, issues, PRs, clone or push | `references/git.md` |
@@ -30,13 +31,13 @@ Read the one that fits before the first call; a one-tool question needs none.
 - **Real host names only.** Take them from `mesh_hosts`, once per session; never guess or shorten one. A device with `phosphorus: false` can't be acted on: say so.
 - **Batch and go narrow.** Load the tools a job needs in one tool search, run independent reads in one parallel batch. Prefer the cheap call: `host_stats` with no host before one host, `files_list` `stat: true` before `files_read`, `files_search` over walking `files_list`, a `services` check over curl in `terminal_run`, `host_logs` filtered by `level`, `match`, `since`.
 - **Read before writing.** `host_config` before `config_set` or `service_edit`; read the passage before `files_write` with old/new; `update_status` before `update_control`.
-- **Changes need the user's word for that target.** `host_power`, `files_change` delete, `files_copy` move, `config_set`, `service_edit`, `update_control`, `game_power` (the Games app's), and any `terminal_run` that changes a machine. Use `dry_run` first where it exists and show the diff. `host_power` takes `confirm` equal to the host name.
+- **Changes need the user's word for that target.** `host_power`, `files_change` delete, `files_copy` move, `config_set`, `service_edit`, `update_control`, `stack_control`, `app_control`, `game_power` (the Games app's), and any `terminal_run` that changes a machine. Use `dry_run` first where it exists and show the diff. `host_power` takes `confirm` equal to the host name.
 - **No secrets.** Never ask for, take or type a password, key or token. `terminal_run` and `forgejo` use the user's saved logins; a missing login is a finding to report, not a prompt.
 - **Writes are audited** in `audit_log`. Report what changed, where, and how to undo it.
 
 ## Not covered by a job file
 
-- Models: `models` shows which mesh host's model each agent (code, claude-code, opencode, and tavern while the tavern app is on the mesh) is assigned and answering with; `set_agent_model` assigns one (admin).
+- Models: `models` shows which mesh host's model each agent (code, claude-code, opencode, and tavern while Tavern is installed) is assigned and answering with; `set_agent_model` assigns one (admin).
 - The user's own Phosphorus window: `open_file` opens a share's file in a editor tab, `open_terminal` opens a shared terminal tab.
 
 ## Errors

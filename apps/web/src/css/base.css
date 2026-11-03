@@ -34,6 +34,11 @@ select {
   font-family: inherit;
 }
 
+/* a secret field masked by css, never a password input (lib/dom.ts noFill) */
+.no-fill-secret {
+  -webkit-text-security: disc;
+  text-security: disc;
+}
 /* else an author display rule beating the UA sheet, hidden no longer working */
 [hidden] {
   display: none !important;
@@ -79,9 +84,6 @@ body {
 /* every card the page is built from, lifted off it */
 .home-col,
 .about-info,
-.st-card,
-.st-mesh,
-.st-box,
 .mesh-panel {
   box-shadow: var(--lift);
 }

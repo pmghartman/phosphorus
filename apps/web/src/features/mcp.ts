@@ -210,7 +210,7 @@ export function mcpPanel(quick = false): { node: HTMLElement; leave: () => void 
   const box = Object.assign(el('input'), { type: 'checkbox', checked: agentViewOn() });
   box.addEventListener('change', () => agentViewSet(box.checked));
   view.append(box, el('span', '', 'show agent on screen'));
-  view.title = 'open the files, editor, consoles and views the agent works in, as it works';
+  view.title = 'follow the agent’s work';
   if (quick) node.append(bar, hint, view, head, body);
   else node.append(head, bar, hint, body, view);
   head.append(el('span', 'dk-cl-title', quick ? 'agent' : 'connector'), stateLine);
@@ -270,7 +270,7 @@ export function mcpPanel(quick = false): { node: HTMLElement; leave: () => void 
       flash(x, r.copied ? 'copied' : 'copy it below');
       showUrl(r.url, r.copied);
     });
-    url.title = 'the mcp server address with your key in it: claude mcp add --transport http phosphorus <it>';
+    url.title = 'the mcp address, your key in it';
     // the claude skill, no key: the connector does the calling
     const skill = button('download skill', 'quiet half', async (x) => {
       x.disabled = true;
@@ -278,7 +278,7 @@ export function mcpPanel(quick = false): { node: HTMLElement; leave: () => void 
       x.disabled = false;
       if (ok) flash(x, 'downloaded');
     });
-    skill.title = 'the phosphorus skill as a zip: a skills folder, or claude.ai, Settings, Capabilities, Skills';
+    skill.title = 'the phosphorus skill, a zip';
     if (!done) {
       bar.replaceChildren(url, skill);
       hint.replaceChildren(steps());
@@ -305,7 +305,7 @@ export function mcpPanel(quick = false): { node: HTMLElement; leave: () => void 
       noteAdd('agents signed out', 'copy mcp again for each');
       pollMcp();
     });
-    out.title = 'void the key in every agent; a password change does the same';
+    out.title = 'sign every agent out';
     bar.replaceChildren(url, skill, out);
   };
   const paint = () => {

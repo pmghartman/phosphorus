@@ -13,7 +13,7 @@ import { normArch } from "./registry.ts";
 
 export { adapters, build, setup } from "./catalogs.ts";
 export { check, checkApp, type HostFacts, rendered } from "./check.ts";
-export { forgejo } from "./featured.ts";
+export { audiobookshelf, circuit, forgejo, jellyfin, jupyterlab, tavern } from "./featured.ts";
 export { GitHubError, openRepo, repoOf, setHosts } from "./github.ts";
 export { derive, envFields } from "./manifest.ts";
 export { archsOf, type ImageInfo, parseRef } from "./registry.ts";

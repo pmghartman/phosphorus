@@ -442,6 +442,19 @@
   width: 1.25rem;
   height: 1.25rem;
 }
+/* a dock's or full bar's tile square along a top or bottom edge, the icon over its dot */
+@media (min-width: 721px) {
+  :root[data-l-labels="icons"]:is([data-l-bar-style="dock"], [data-l-bar-style="full"]):not(
+      [data-l-bar="left"],
+      [data-l-bar="right"]
+    )
+    .dk-bar:not(.dk-menubar)
+    .dk-task {
+    aspect-ratio: 1;
+    min-width: 0;
+    padding: 0 0 2px;
+  }
+}
 
 @media (min-width: 721px) {
   /* a bar with no windows in it and its status items in the menu bar has nothing to show, and no sliver of itself */

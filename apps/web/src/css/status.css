@@ -1,203 +1,304 @@
-/* --- status tab: btop per host --------------------------------------------- */
+/* --- settings › hosts › status: the mesh summed or one host, in the page's own cards ---------- */
 
-#view-status {
-  padding: 1.2rem 1rem 0.6rem;
-}
-/* tiles as many across as fit, an open host a full width row of its own */
-.st-hosts {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr));
-  grid-auto-flow: row dense;
-  gap: 1rem 0.7rem;
+/* the page's rest: a column whose graphs take the spare height, scrolled once nothing spares */
+.set-body > #view-status.active {
+  display: flex;
+  flex-direction: column;
+  flex: 1 0 auto;
+  min-height: 0;
 }
 .st-wait {
   color: var(--muted);
   font-size: 0.8rem;
 }
-/* a click anywhere on a host opens or closes it, hover and the arrow keys' pick lit */
-.st-card {
-  position: relative;
-  border: 1px solid var(--border);
-  padding: 0.95rem 0.6rem 0.6rem;
-  transition:
-    opacity 0.3s,
-    border-color 0.15s;
-  cursor: pointer;
-  scroll-margin-top: 1.2rem;
-}
-.st-card:hover,
-.st-card:focus {
-  border-color: var(--accent);
-}
-.st-card.open {
-  grid-column: 1 / -1;
-}
-.st-card.open .st-tile,
-.st-card:not(.open) .st-grid {
-  display: none;
-}
-.st-card.waiting .st-tile {
-  display: none;
-}
-/* the tile: its summary, and a model host's model box under it, or beside it where the tile is wide */
-.st-tile {
+.st-page {
+  --st-r: var(--set-r, 0px);
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
-}
-.st-tile > * {
+  flex: 1 0 auto;
+  gap: 0.8rem;
   min-width: 0;
 }
-.st-tile > [hidden] {
+.st-page.stale > :not(.st-facts) {
+  opacity: 0.45;
+}
+.st-page.waiting > :not(.st-facts) {
   display: none;
 }
-.st-hosts.st-wide .st-card.has-model:not(.open) {
-  grid-column: span 2;
+.st-page.waiting::after {
+  content: attr(data-note);
+  color: var(--muted);
+  font-size: 0.76rem;
 }
-.st-hosts.st-wide .st-tile {
-  flex-direction: row;
-  gap: 0.7rem;
-}
-.st-hosts.st-wide .st-tile > * {
-  flex: 1 1 0;
-}
-.st-tile > .st-model {
-  margin-top: 0.35rem;
-}
-.st-hosts.st-wide .st-tile > .st-model {
-  margin-top: 0;
-}
-.st-card:not(.open) {
-  padding: 0.8rem 0.5rem 0.4rem;
-}
-.st-sum {
-  font-size: 0.7rem;
-  line-height: 1.3;
-  white-space: pre;
-}
-.st-sum .st-key {
-  width: 6ch;
-}
-/* cpu graph on top, grown to fit, net's beside its rates, down above, up below */
-.st-sum > .st-sum-cpu {
-  height: var(--st-sum-graph, 2rem);
-  margin-bottom: 4px;
-}
-.st-sum-netrow {
-  display: flex;
-  align-items: center;
-  height: 1.9em;
-}
-.st-sum-net {
-  flex: 1 1 0;
-  min-width: 0;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  margin-left: 1ch;
-}
-.st-sum-net > .st-graph.st-graph {
-  flex: 1 1 0;
-  min-height: 0;
-  height: auto;
+.st-mesh-page.waiting > .st-facts {
+  display: none;
 }
 
-/* the whole mesh at a glance, bars left and counts right */
-/* side by side down to narrow widths: the model at its text's width, the mesh the rest */
-.st-top {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: stretch;
-  gap: 1.2rem 1rem;
-  margin-bottom: 1.2rem;
+/* the facts: a quiet line over the headlines */
+.st-facts {
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.4;
 }
-.st-top:not(:has(> :not([hidden]))) {
-  display: none;
+.st-name {
+  color: var(--fg);
+  font-weight: 600;
 }
-.st-mesh {
-  position: relative;
+.st-name.self {
+  color: var(--mesh-self);
+}
+
+/* each kind of thing its own hue, on its headline and its panel's word */
+:is(.st-stat, .st-panel) {
+  --st-hue: var(--fg);
+}
+:is(.st-stat, .st-panel):is(.st-cpu, .st-cpus) {
+  --st-hue: var(--accent);
+}
+:is(.st-stat, .st-panel).st-mem {
+  --st-hue: var(--sand);
+}
+:is(.st-stat, .st-panel).st-disk {
+  --st-hue: var(--sky);
+}
+:is(.st-stat, .st-panel).st-net {
+  --st-hue: var(--teal);
+}
+:is(.st-stat, .st-panel).st-gpu {
+  --st-hue: var(--sage);
+}
+.st-panel.st-ctr {
+  --st-hue: var(--rose);
+}
+.st-panel.st-proc {
+  --st-hue: var(--sky);
+}
+.st-panel.st-model {
+  --st-hue: var(--glyph-purple);
+}
+
+/* the headlines: one card, a cell each, hairlines between however they wrap */
+.st-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 9.5rem), 1fr));
+  overflow: hidden;
   border: 1px solid var(--border);
-  padding: 0.9rem 0.6rem 0.5rem;
-  flex: 3 1 22rem;
-  min-width: 0;
+  border-radius: var(--st-r);
+  background: var(--card);
 }
-/* room for a few agents joined, as "chat + inline" */
-/* stretched beside the model box: the graphs taking the spare height */
-.st-mesh-grid > * {
+.st-stat {
   display: flex;
   flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+  padding: 0.65rem 0.9rem 0.75rem;
+  box-shadow:
+    -1px 0 0 var(--border),
+    0 -1px 0 var(--border);
+}
+.st-stat-k {
+  color: var(--st-hue);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+.st-stat-v {
+  color: var(--fg);
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+.st-stat-d {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.72rem;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.st-stat > .st-bar {
+  margin-top: 0.35rem;
+}
+
+/* a panel: a card, its word in a head row, its body under a hairline */
+.st-panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--st-r);
+  background: var(--card);
+}
+.st-panel-head {
+  display: flex;
+  align-items: baseline;
+  gap: 1ch;
+  min-width: 0;
+  padding: 0.5rem 0.9rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.76rem;
+  white-space: nowrap;
+}
+.st-panel-head > .st-dim {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.st-panel-t {
+  flex: none;
+  color: var(--st-hue);
+  font-weight: 600;
+}
+.st-panel-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  gap: 0.3rem;
+  min-height: 0;
+  padding: 0.6rem 0.9rem 0.7rem;
+  font-size: 0.74rem;
+  line-height: 1.4;
+}
+
+/* the graphs: cpu and net side by side, the page's spare height theirs */
+.st-graphs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+  flex: 1 1 auto;
+  gap: 0.8rem;
+  min-height: 15rem;
 }
 /* basis 0: a canvas's own 150px never sets the height, only the spare room does */
-.st-mesh .st-mesh-g.st-mesh-g {
+.st-graph {
+  display: block;
   flex: 1 1 0;
-  height: auto;
-  min-height: 1.6rem;
+  width: 100%;
+  min-height: 3.5rem;
 }
-/* each role's model and the api keys, ruled off over the roles' blocks */
-.no-fill-secret {
-  -webkit-text-security: disc;
-  text-security: disc;
+.st-line {
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.st-mesh > .st-card-head {
-  color: var(--accent);
-}
-.st-mesh {
-  container-type: inline-size;
-}
-/* sized by its text, so no containment */
-.st-mesh-grid {
+.st-cores {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 0.3rem 1.6rem;
-  font-size: 0.72rem;
-  line-height: 1.35;
+  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+  gap: 0.15rem 1.4rem;
+}
+.st-core {
+  display: grid;
+  grid-template-columns: 2.5ch minmax(0, 1fr) 4ch;
+  align-items: center;
+  gap: 1ch;
+}
+.st-core > :last-child {
+  text-align: right;
+}
+
+/* the rest: as many columns as fit, a panel each */
+.st-panels {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr));
+  align-items: start;
+  gap: 0.8rem;
+}
+
+/* a share: a thin track, its fill by heat */
+.st-bar {
+  display: block;
+  height: 0.3rem;
+  overflow: hidden;
+  border-radius: min(var(--st-r), 2px);
+  background: color-mix(in srgb, var(--dim) 30%, transparent);
+}
+.st-bar > i {
+  display: block;
+  height: 100%;
+  background: currentColor;
+}
+/* key, bar, value; key, value */
+.st-meter,
+.st-kv {
+  display: grid;
+  grid-template-columns: 6ch minmax(3rem, 1fr) auto;
+  align-items: center;
+  gap: 0 1.2ch;
+  white-space: nowrap;
+}
+.st-kv {
+  grid-template-columns: 6ch minmax(0, 1fr);
+}
+.st-val {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.st-meter > .st-val {
+  text-align: right;
+}
+.st-key {
+  color: var(--muted);
+}
+.st-pct {
+  display: inline-block;
+  min-width: 4ch;
+  text-align: right;
+}
+.st-sub {
+  margin-top: 0.2rem;
+  color: var(--muted);
+}
+.st-sub:first-child {
+  margin-top: 0;
+}
+
+/* process tables: a name, then numbers right aligned */
+.st-table {
+  display: grid;
+  column-gap: 1ch;
+  white-space: nowrap;
+}
+.st-ctr-row {
+  grid-template-columns: minmax(0, 1fr) 7ch 8ch 4ch;
+}
+.st-proc-row {
+  grid-template-columns: minmax(0, 1fr) 7ch 7ch 8ch;
+}
+.st-table > :not(:first-child) {
+  text-align: right;
+}
+.st-cut {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.st-proc > .st-panel-body,
+.st-ctr > .st-panel-body {
+  gap: 0.1rem;
+}
+
+/* a glyph's width, measured off screen */
+.st-probe {
+  position: absolute;
+  visibility: hidden;
+  font-size: 0.74rem;
   white-space: pre;
 }
-.st-mesh-grid > * {
-  min-width: 0;
-}
-.st-mesh .st-mesh-g {
-  height: 1.6rem;
-  margin: 4px 0 0 0;
-}
-@container (min-width: 29rem) {
-  .st-mesh-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
+
 /* the context window: the grid, its legend beside it or under it when narrow */
 .st-ctx {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 0.5rem 1.6rem;
-  margin-top: 0.6rem;
-  font-size: 0.72rem;
+  align-items: center;
+  gap: 0.4rem 1.2ch;
   line-height: 1.35;
-  white-space: pre;
-}
-.st-ctx[hidden] {
-  display: none;
 }
 .st-ctx-grid {
   display: grid;
-  grid-template-columns: repeat(10, 1.1ch);
-  gap: 0.3ch 0.5ch;
+  grid-template-columns: repeat(10, 0.9ch);
+  gap: 0.25ch;
   flex: none;
-  padding-top: 0.2em;
 }
-.st-ctx-legend {
-  flex: 1 1 36ch;
-  min-width: 0;
-}
-.st-ctx-legend .st-row {
-  white-space: pre-wrap;
-}
-/* beside the chat: the grid over its legend, the cpu beside the grid, the gpu beside the legend */
 .st-ctx i {
   display: inline-block;
-  width: 1.1ch;
-  height: 1.1ch;
+  width: 0.9ch;
+  height: 0.9ch;
   border: 1px solid var(--border);
   vertical-align: -0.1em;
 }
@@ -209,8 +310,6 @@
   border-color: currentColor;
   background: linear-gradient(to top, currentColor 50%, transparent 50%);
 }
-/* the corner's: the chat tab's shrunk, the grid beside small graphs, one legend line */
-/* the grid's height (ten cells, nine gaps): a line each for cpu and gpu */
 .st-ctx .ctx-system {
   color: var(--sky);
 }
@@ -223,270 +322,10 @@
 .st-ctx .ctx-reply {
   color: var(--rose);
 }
-.st-card.stale {
-  opacity: 0.45;
-}
-.st-card.waiting .st-grid {
-  display: none;
-}
-.st-card.waiting::after {
-  content: attr(data-note);
-  color: var(--muted);
-  font-size: 0.75rem;
-}
-/* titles in the border, as the home columns */
-.st-card-head,
-.st-head {
-  position: absolute;
-  top: 0;
-  left: 0.6rem;
-  right: 0.6rem;
-  transform: translateY(-50%);
-  width: fit-content;
-  max-width: calc(100% - 1.2rem);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  padding: 0 0.45ch;
-  background: var(--bg);
-  line-height: 1.35;
-  white-space: nowrap;
-  font-size: 0.72rem;
-  letter-spacing: 0.04em;
-}
-.st-head {
-  left: 0.45rem;
-  font-size: 0.68rem;
-}
-.st-name {
-  color: var(--fg);
-  font-weight: 600;
-}
-.st-name.self {
-  color: var(--mesh-self);
-}
 
-/* columns by the card's own width */
-.st-card {
-  container-type: inline-size;
-}
-.st-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  grid-auto-flow: row dense;
-  gap: 1.1rem 0.7rem;
-}
-.st-box {
-  position: relative;
-  min-width: 0;
-  border: 1px solid var(--border);
-  padding: 0.6rem 0.5rem 0.4rem;
-}
-.st-grid > .st-box[hidden] {
-  display: none;
-}
-.st-cpu > .st-head {
-  color: var(--accent);
-}
-.st-mem > .st-head {
-  color: var(--sand);
-}
-.st-disk > .st-head {
-  color: var(--sky);
-}
-.st-net > .st-head {
-  color: var(--teal);
-}
-.st-gpu > .st-head {
-  color: var(--sage);
-}
-.st-ctr > .st-head {
-  color: var(--rose);
-}
-.st-proc > .st-head {
-  color: var(--sky);
-}
-.st-model > .st-head {
-  color: var(--glyph-purple);
-}
-.st-body,
-.st-probe {
-  font-size: 0.72rem;
-  line-height: 1.35;
-  white-space: pre;
-}
-.st-body {
-  overflow: hidden;
-}
-.st-probe {
-  position: absolute;
-  visibility: hidden;
-}
-.st-row {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-/* long text under its own start, never cut */
-.st-row.st-wrap {
-  white-space: pre-wrap;
-  padding-left: 7ch;
-  text-indent: -7ch;
-}
-.st-wrap .st-key {
-  text-indent: 0;
-}
-.st-key {
-  display: inline-block;
-  width: 7ch;
-  color: var(--muted);
-}
-.st-graph {
-  display: block;
-  width: 100%;
-  height: 1.9rem;
-}
-.st-graph-cpu {
-  height: 2.4rem;
-}
-
-.st-cpu > .st-body {
-  display: flex;
-  flex-direction: column;
+/* a model host's model: phase and speed, file, context window, its agents */
+.st-model > .st-panel-body {
   gap: 0.4rem;
-}
-.st-cpu-left {
-  flex: 1 1 45%;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  gap: 0.3rem;
-}
-.st-cores {
-  flex: 1 1 55%;
-  min-width: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(12ch, 1fr));
-  column-gap: 1.2ch;
-  align-content: start;
-}
-
-.st-ctr-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 7ch 7ch 4ch;
-  column-gap: 1ch;
-}
-.st-proc-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 7ch 7ch 7ch;
-  column-gap: 1ch;
-}
-.st-ctr-row > :not(:first-child),
-.st-proc-row > :not(:first-child) {
-  text-align: right;
-}
-.st-ctr-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-/* the longest lists cut, not the card stretched */
-.st-ctr > .st-body,
-.st-proc > .st-body {
-  max-height: calc(1.35em * 14);
-}
-
-.st-lo {
-  color: var(--sage);
-}
-.st-mid {
-  color: var(--sand);
-}
-.st-hi {
-  color: var(--rose);
-}
-.st-cache {
-  color: var(--sky);
-}
-.st-rx {
-  color: var(--accent);
-}
-.st-tx {
-  color: var(--teal);
-}
-.st-dim {
-  color: var(--muted);
-}
-.st-empty {
-  color: color-mix(in srgb, var(--dim) 45%, transparent);
-}
-
-/* each width's rows filled, with or without the gpu box, and with a model box after cpu */
-@container (min-width: 44rem) {
-  .st-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .st-cpu,
-  .st-ctr,
-  .st-proc {
-    grid-column: span 2;
-  }
-  .st-cpu > .st-body {
-    flex-direction: row;
-    gap: 1.2rem;
-  }
-  .st-grid:has(> .st-gpu[hidden]) > .st-net {
-    grid-column: span 2;
-  }
-  .st-card.has-model .st-grid > .st-ctr {
-    grid-column: auto;
-  }
-  .st-card.has-model .st-grid:has(> .st-gpu[hidden]) > :is(.st-net, .st-proc) {
-    grid-column: auto;
-  }
-}
-@container (min-width: 76rem) {
-  .st-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-  .st-ctr,
-  .st-grid:has(> .st-gpu[hidden]) > .st-net {
-    grid-column: auto;
-  }
-  .st-grid:has(> .st-gpu[hidden]) > .st-proc {
-    grid-column: 1 / -1;
-  }
-  .st-card.has-model .st-grid > .st-proc {
-    grid-column: auto;
-  }
-  .st-card.has-model .st-grid:has(> .st-gpu[hidden]) > .st-proc {
-    grid-column: span 2;
-  }
-}
-@container (min-width: 110rem) {
-  .st-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-  .st-proc {
-    grid-column: auto;
-  }
-  .st-grid:has(> .st-gpu[hidden]) > .st-proc {
-    grid-column: span 2;
-  }
-  .st-card.has-model .st-grid > .st-proc {
-    grid-column: 1 / -1;
-  }
-  .st-card.has-model .st-grid:has(> .st-gpu[hidden]) > .st-proc {
-    grid-column: auto;
-  }
-}
-
-/* a model host's model box: phase and speed, file, context window, its agents */
-.st-model > .st-body {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  white-space: normal;
-  line-height: 1.4;
-  cursor: default;
 }
 .st-model-head {
   display: flex;
@@ -498,21 +337,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.st-model .st-ctx {
-  margin-top: 0;
-  align-items: center;
-  gap: 0.4rem 1.2ch;
-  white-space: normal;
-}
-.st-model .st-ctx-grid {
-  grid-template-columns: repeat(10, 0.8ch);
-  gap: 0.2ch;
-  padding-top: 0;
-}
-.st-model .st-ctx i {
-  width: 0.8ch;
-  height: 0.8ch;
 }
 .st-model-key {
   flex: 1 1 12ch;
@@ -543,17 +367,17 @@
 .st-model-a {
   padding: 0 0.5ch;
   border: 1px solid var(--border);
+  border-radius: var(--st-r);
   color: var(--accent);
 }
 
-/* clear a model host's context, in its card */
+/* clear a model host's context, in its panel */
 .st-clear {
   padding: 0;
   background: none;
   border: 0;
   color: var(--muted);
   font: inherit;
-  font-size: 0.72rem;
   cursor: pointer;
 }
 .st-clear:hover:not(:disabled) {
@@ -561,4 +385,50 @@
 }
 .st-clear:disabled {
   cursor: default;
+}
+
+.st-lo {
+  color: var(--sage);
+}
+.st-mid {
+  color: var(--sand);
+}
+.st-hi {
+  color: var(--rose);
+}
+.st-cache {
+  color: var(--sky);
+}
+.st-rx {
+  color: var(--accent);
+}
+.st-tx {
+  color: var(--teal);
+}
+.st-dim {
+  color: var(--muted);
+}
+
+/* a phone: the headlines two across, the graphs shorter */
+@media (max-width: 720px) {
+  .st-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .st-stat {
+    padding: 0.55rem 0.7rem 0.65rem;
+  }
+  .st-stat-v {
+    font-size: 1.05rem;
+  }
+  .st-graphs {
+    min-height: 0;
+  }
+  .st-graph {
+    min-height: 4.5rem;
+  }
+  .st-panel-head,
+  .st-panel-body {
+    padding-left: 0.7rem;
+    padding-right: 0.7rem;
+  }
 }

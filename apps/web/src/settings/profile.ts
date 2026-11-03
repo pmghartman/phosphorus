@@ -1,7 +1,7 @@
 // --- settings › profile: the hosts this user logs into, the page logins kept for them and the
 // password, all sealed in the vault on the mesh
 
-import { acctSave, type Chip, dkForget, dkUnlock } from '../features/account.ts';
+import { acctLogout, acctSave, type Chip, dkForget, dkUnlock } from '../features/account.ts';
 import { serviceUrl } from '../features/mesh/mesh.ts';
 import { acctCall } from '../lib/api.ts';
 import { el, noFill } from '../lib/dom.ts';
@@ -105,7 +105,15 @@ export function profileSection(pane: HTMLElement): void {
       }
     });
 
+    // signed in as whom, log out beside it; the bar's profile may be hidden
+    const me = el('div', 'dk-row acct-me');
+    const out = Object.assign(el('button', 'danger', 'log out'), { type: 'button' });
+    out.addEventListener('click', () => void acctLogout());
+    me.append(el('span', 'dk-host', acct.user), el('span', 'dk-state', acct.admin ? 'admin' : 'user'), out);
+
     body.replaceChildren(
+      el('div', 'dk-pick-head', 'signed in'),
+      me,
       el('div', 'dk-pick-head', 'hosts'),
       hosts,
       el('div', 'dk-pick-head', 'page logins'),

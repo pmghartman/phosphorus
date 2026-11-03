@@ -3,7 +3,7 @@
 
 import type { FileEntry } from '@phosphorus/wire';
 import { app, appCall } from '../../apps/index.ts';
-import { dkFileApp, dkWebApp } from '../../desktop/desk/webapps.ts';
+import { dkFileApp, dkFileOffer, dkWebApp } from '../../desktop/desk/webapps.ts';
 import { dkDeskDir, dkDeskLoad } from '../../desktop/deskfiles.ts';
 import type { DkWin } from '../../desktop/windows.ts';
 import { dkGlyph, ICONS } from '../../lib/dom.ts';
@@ -127,10 +127,14 @@ export function fileOpen(loc: Loc, rel: string, e: { dir?: boolean }): void {
     filesWin({ loc, dir: rel });
     return;
   }
-  // in the installed app that opens its kind, else downloaded
+  // in the installed app that opens its kind, else that app offered, else downloaded
+  const query = { host: hostOf(loc), share: loc.share || '0', path: rel };
   const id = dkFileApp(rel);
-  if (id) dkWebApp(id, { host: hostOf(loc), share: loc.share || '0', path: rel });
-  else fileDownload(loc, rel);
+  if (id) dkWebApp(id, query);
+  else
+    dkFileOffer(rel, query, () => fileDownload(loc, rel)).then((asked) => {
+      if (!asked) fileDownload(loc, rel);
+    });
 }
 
 export function fileDownload(loc: Loc, rel: string): void {

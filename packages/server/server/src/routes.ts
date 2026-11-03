@@ -358,7 +358,8 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
       status: 200,
       headers: {
         "Content-Type": ic.type,
-        "Cache-Control": "max-age=3600",
+        // a reload's copy at once, the next fetched behind it
+        "Cache-Control": "max-age=3600, stale-while-revalidate=604800",
         "X-Content-Type-Options": "nosniff",
         "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
       },
@@ -518,7 +519,8 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
       status: 200,
       headers: {
         "Content-Type": v.type,
-        "Cache-Control": "max-age=3600",
+        // a reload's copy at once, the next fetched behind it
+        "Cache-Control": "max-age=3600, stale-while-revalidate=604800",
         "X-Content-Type-Options": "nosniff",
         "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
       },

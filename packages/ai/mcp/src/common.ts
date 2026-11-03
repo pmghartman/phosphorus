@@ -40,6 +40,10 @@ export type Actions = {
     headers: Record<string, string>,
     body: string,
   ) => R;
+  // stacks the installed services: list, catalog, app, check, install, update, remove, standbys, move
+  stacks: (c: Caller | undefined, op: string, p: Record<string, any>) => R;
+  // apps the optional apps: list, install, remove
+  apps: (op: string, id: string) => R;
   modelColor: string;
 };
 

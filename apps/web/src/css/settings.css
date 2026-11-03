@@ -1,12 +1,33 @@
 /* --- settings: one window, its sections down a rail (settings/); the appearance's controls,
    rows and segments its own throughout, the borrowed views laid flat in its page ---------------- */
+/* a workstation's panel: corners at most a few pixels whatever the theme's rounding */
 .set-pane {
+  --set-r: min(var(--r-ctl, 0px), 4px);
   grid-template-columns: 11rem minmax(0, 1fr);
+}
+.set-pane
+  :is(
+    button,
+    input:not([type="checkbox"], [type="radio"]),
+    select,
+    textarea,
+    .dk-ap-tab,
+    .dk-ap-item,
+    .dk-ap-segs,
+    .dk-ap-card,
+    .dk-ap-items,
+    .update-row,
+    .mesh-panel
+  ) {
+  border-radius: var(--set-r);
+}
+:root[data-round] .set-pane .dk-ap-seg {
+  border-radius: max(0px, calc(var(--set-r) - 2px));
 }
 .set-nav {
   overflow-y: auto;
   gap: 0.1rem;
-  padding: 0.75rem 0.55rem;
+  padding: 0.6rem 0.5rem;
 }
 /* the rail's groups: a quiet word over its sections */
 .set-group {
@@ -15,53 +36,8 @@
   font-size: 0.7rem;
   font-weight: 600;
 }
-.set-who + .set-group {
-  padding-top: 0.6rem;
-}
-/* the rail's top: who is signed in, their initial on the accent */
-.set-who {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  width: 100%;
-  padding: 0.45rem 0.55rem 0.6rem;
-  background: none;
-  border: 0;
-  border-bottom: 1px solid var(--border);
-  color: var(--fg);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-.set-who:is(:hover, :focus-visible) {
-  background: var(--tab-hover);
-  outline: none;
-}
-.set-who-mark {
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: 1.9rem;
-  height: 1.9rem;
-  border-radius: var(--r-pop, 0);
-  background: color-mix(in srgb, var(--accent) 22%, transparent);
-  color: var(--accent);
-  font-weight: 700;
-}
-.set-who-text {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-.set-who-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-weight: 600;
-}
-.set-who-role {
-  color: var(--muted);
-  font-size: 0.7rem;
+.set-group:first-child {
+  padding-top: 0.3rem;
 }
 /* the rail's quiet words, its groups and the sections not open: the theme's muted drawn a little
    toward the text, readable on the rail in every theme */
@@ -73,33 +49,15 @@
   position: relative;
   gap: 0.6rem;
   padding: 0.45rem 0.65rem;
-  border-radius: var(--r-pop, 0);
+  border-radius: var(--set-r);
 }
 .set-nav .dk-ap-tab .ic {
   width: 0.95rem;
   height: 0.95rem;
 }
-/* each section's glyph its own hue, open or not; the open one marked by its bar */
-:is(.set-nav .dk-ap-tab, .set-head)[data-at="profile"] .ic {
-  color: var(--sky);
-}
-:is(.set-nav .dk-ap-tab, .set-head)[data-at="appearance"] .ic {
-  color: var(--rose);
-}
-:is(.set-nav .dk-ap-tab, .set-head)[data-at="hosts"] .ic {
-  color: var(--teal);
-}
-:is(.set-nav .dk-ap-tab, .set-head)[data-at="agents"] .ic {
-  color: var(--accent);
-}
-:is(.set-nav .dk-ap-tab, .set-head)[data-at="users"] .ic {
-  color: var(--sage);
-}
-:is(.set-nav .dk-ap-tab, .set-head)[data-at="update"] .ic {
-  color: var(--sand);
-}
-:is(.set-nav .dk-ap-tab, .set-head)[data-at="about"] .ic {
-  color: var(--glyph-orange);
+/* glyphs in their words' colour, one ink throughout; the open section marked by its bar */
+.set-nav .dk-ap-tab .ic {
+  color: inherit;
 }
 /* the section open: a bar of the accent down its left edge */
 .set-nav .dk-ap-tab.on::before {
@@ -142,7 +100,7 @@
 .set-nav .dk-ap-tab.open {
   color: var(--fg);
 }
-/* the page: its head, then the section's own body */
+/* the page: the section's own body */
 .set-main {
   display: flex;
   flex-direction: column;
@@ -153,40 +111,6 @@
   flex: 1 1 auto;
   gap: 0.8rem;
   padding: 1.1rem 1.6rem 1.8rem;
-}
-/* the page's head: the section's glyph and name, its part, what it holds */
-.set-head {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  padding-bottom: 0.9rem;
-  border-bottom: 1px solid var(--border);
-}
-.set-title {
-  display: flex;
-  align-items: center;
-  gap: 0.55rem;
-  margin: 0;
-  color: var(--fg);
-  font-size: 1.05rem;
-  font-weight: 600;
-}
-.set-title .ic {
-  width: 1.1rem;
-  height: 1.1rem;
-}
-.set-title-sep {
-  color: var(--dim);
-  font-weight: 400;
-}
-.set-title-part {
-  color: var(--muted);
-  font-weight: 400;
-}
-.set-blurb {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.76rem;
 }
 /* forms and lists at a readable width, the status, graph and models across the whole page */
 .set-body :is(.set-sub, .set-acct, .set-host-cfg, .set-host-rest, .set-cl, .update-pane) {
@@ -218,7 +142,7 @@
   display: flex;
   flex-direction: column;
   border: 1px solid var(--border);
-  border-radius: var(--r-pop, 0);
+  border-radius: var(--set-r);
   background: var(--card);
 }
 .set-card > * {
@@ -246,7 +170,7 @@
   margin: 0;
   gap: 0;
   border: 1px solid var(--border);
-  border-radius: var(--r-pop, 0);
+  border-radius: var(--set-r);
   background: var(--card);
 }
 .set-body .dk-rows > li {
@@ -267,7 +191,7 @@
   margin: 0;
   padding: 0.55rem 0.9rem;
   border: 1px solid var(--border);
-  border-radius: var(--r-pop, 0);
+  border-radius: var(--set-r);
   background: var(--card);
 }
 .set-body .dk-rows:has(+ .acct-new) {
@@ -290,7 +214,7 @@
 .set-body :is(.acct-pane, .acct-users) button {
   padding: 0.3rem 0.8rem;
   border-color: var(--border);
-  border-radius: var(--r-pop, 0);
+  border-radius: var(--set-r);
 }
 .set-body :is(.acct-pane, .acct-users) button:hover:not(:disabled) {
   background: var(--tab-hover);
@@ -319,7 +243,7 @@
 /* the update's hosts and their releases, a card of rows */
 .set-body .update-versions {
   border: 1px solid var(--border);
-  border-radius: var(--r-pop, 0);
+  border-radius: var(--set-r);
   background: var(--card);
 }
 .set-body .update-versions:empty {
@@ -333,7 +257,7 @@
 }
 /* the connector, a card like the rest */
 .set-body .set-cl {
-  border-radius: var(--r-pop, 0);
+  border-radius: var(--set-r);
   background: var(--card);
 }
 .set-body > * {
@@ -356,9 +280,6 @@
   inset: auto;
   overflow: visible;
   padding: 0;
-}
-.set-body > #view-status {
-  padding-top: 0.6rem;
 }
 .set-body > #view-about {
   padding-top: 0.4rem;
@@ -452,7 +373,7 @@
   padding: 0.2rem;
   margin-top: 0.4rem;
   border: 1px solid var(--border);
-  border-radius: var(--r-pop, 0);
+  border-radius: var(--set-r);
   background: var(--card);
 }
 .set-hostchip {
@@ -462,7 +383,7 @@
   padding: 0.25rem 0.8rem;
   background: none;
   border: 0;
-  border-radius: var(--r-pop, 0);
+  border-radius: var(--set-r);
   color: var(--muted);
   font: inherit;
   font-size: 0.8rem;
@@ -488,10 +409,6 @@
   outline: none;
 }
 .set-mesh[hidden] {
-  display: none;
-}
-#view-status[data-only] .st-card:not(.open),
-#view-status[data-only] .st-top {
   display: none;
 }
 .set-host-rest {
@@ -603,11 +520,6 @@ button.dk-chip:not(.locked) {
   }
   .set-body {
     padding: 0.8rem 0.8rem 1.2rem;
-  }
-  /* a phone: no account card nor page head, the rail's tabs say where */
-  .set-who,
-  .set-head {
-    display: none;
   }
   .set-card .dk-ap-row {
     grid-template-columns: 6.5rem minmax(0, 1fr);

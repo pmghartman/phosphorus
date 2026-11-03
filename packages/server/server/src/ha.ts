@@ -55,7 +55,8 @@ export function startHA(): HA {
     updating: isUpdating,
     bootId: () => bootID,
     notify: (title, body) => {
-      for (const u of admins()) userUIAsync(u, { kind: "notify", title, body });
+      // kept in each admin's bell until they open the wizard
+      for (const u of admins()) userUIAsync(u, { kind: "notify", title, body, view: "apps" });
     },
     call: async (host, method, path, body) => {
       try {
@@ -105,6 +106,19 @@ export async function stopHA() {
 // this host's state in each group, for its peers
 export const ownHA = () => h?.own() ?? {};
 
+// an admin's standby edit or planned move, from the page or the connector
+export function haStandbys(id: string, standbys: unknown, by: string, active?: unknown): [number, any] {
+  if (!h) return [503, { error: "failover not started" }];
+  markHot();
+  const [st, out] = h.setStandbys(id, standbys, by, active);
+  return st === 200 ? [st, { ok: true, want: viewOf(out.want) }] : [st, out];
+}
+export async function haMove(id: string, to: unknown): Promise<[number, any]> {
+  if (!h) return [503, { error: "failover not started" }];
+  markHot();
+  return h.move(id, to);
+}
+
 export async function haRoute(c: Ctx, pathname: string, method: string, q: URLSearchParams) {
   let m = haRe.exec(pathname);
   if (m) {
@@ -134,15 +148,8 @@ export async function haRoute(c: Ctx, pathname: string, method: string, q: URLSe
     if (!h) return sendJSON(503, { error: "failover not started" });
     const id = m[1]!;
     if (m[2] === "standbys")
-      return onJSON(c, maxJSONBody, true, (p) => {
-        markHot();
-        const [st, out] = h!.setStandbys(id, p.standbys, s?.user ?? "admin", p.active);
-        return st === 200 ? [st, { ok: true, want: viewOf(out.want) }] : [st, out];
-      });
-    return onJSON(c, maxJSONBody, true, (p) => {
-      markHot();
-      return h!.move(id, p.to);
-    });
+      return onJSON(c, maxJSONBody, true, (p) => haStandbys(id, p.standbys, s?.user ?? "admin", p.active));
+    return onJSON(c, maxJSONBody, true, (p) => haMove(id, p.to));
   }
   return;
 }

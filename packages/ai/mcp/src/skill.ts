@@ -6,6 +6,7 @@ import chatMD from "../skill/phosphorus/references/chat.md" with { type: "file" 
 import diagnoseMD from "../skill/phosphorus/references/diagnose.md" with { type: "file" };
 import filesMD from "../skill/phosphorus/references/files.md" with { type: "file" };
 import gitMD from "../skill/phosphorus/references/git.md" with { type: "file" };
+import installMD from "../skill/phosphorus/references/install.md" with { type: "file" };
 import runMD from "../skill/phosphorus/references/run.md" with { type: "file" };
 import serviceMD from "../skill/phosphorus/references/service.md" with { type: "file" };
 import statusMD from "../skill/phosphorus/references/status.md" with { type: "file" };
@@ -20,6 +21,7 @@ export const skillFiles: Record<string, string> = {
   "phosphorus/references/diagnose.md": diagnoseMD,
   "phosphorus/references/files.md": filesMD,
   "phosphorus/references/git.md": gitMD,
+  "phosphorus/references/install.md": installMD,
   "phosphorus/references/run.md": runMD,
   "phosphorus/references/service.md": serviceMD,
   "phosphorus/references/status.md": statusMD,

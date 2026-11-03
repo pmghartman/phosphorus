@@ -87,8 +87,7 @@ export function why(status: number, error: string): string {
     return status === 429 && error
       ? error
       : `GitHub's limit on unsigned calls is spent for now: ${error || `status ${status}`}`;
-  if (/compose/i.test(error) && /\bno\b|not found|without|none/i.test(error))
-    return 'This repo has no compose file. Phosphorus looks for compose.yml or docker-compose.yml at its root, in docker/ and in deploy/.';
+  if (/compose/i.test(error) && /\bno\b|not found|without|none/i.test(error)) return 'This repo has no compose file.';
   if (status === 404) return error || 'not found';
   return error || `status ${status}`;
 }

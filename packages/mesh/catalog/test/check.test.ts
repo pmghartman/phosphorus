@@ -68,6 +68,7 @@ describe("verdicts", () => {
       text: "a builds from source, which only a repo opened from GitHub can",
     });
     expect(check(app(b, { source: "github" }), {}, [linux], {}).verdict).toBe("installable");
+    expect(check(app(b, { source: "phosphorus" }), {}, [linux], {}).verdict).toBe("installable");
   });
 
   test("no image for any host's arch blocks; one host lacking it is unfit", () => {

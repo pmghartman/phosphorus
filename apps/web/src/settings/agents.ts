@@ -164,10 +164,7 @@ function draw() {
   const wrap = el('div', 'ag');
   const models = el('div', 'ag-models');
   if (model.models.length) models.append(...model.models.map(modelCard));
-  else
-    models.append(
-      el('div', 'ag-empty', 'no model host yet: turn one on under hosts, model, and its model installs here'),
-    );
+  else models.append(el('div', 'ag-empty', 'no model host: turn one on under hosts'));
   wrap.append(group('models', `${model.models.length} on the mesh`, models));
   if (model.models.length) {
     const known = new Set(GROUPS.flatMap(([, ids]) => ids));

@@ -193,7 +193,7 @@ export function appearanceSection(pane: HTMLElement, at?: ApSub): () => void {
   };
 
   // the status items: each shown or not, a shown one dragged by its handle to its place (or moved
-  // a step by the arrow keys on it); the profile always, the way here
+  // a step by the arrow keys on it)
   const items = (L: LayoutNow) => {
     const now = L.items;
     const all = [...now, ...BAR_ITEMS.filter((i) => !now.includes(i))];
@@ -249,7 +249,6 @@ export function appearanceSection(pane: HTMLElement, at?: ApSub): () => void {
       const box = Object.assign(el('input'), {
         type: 'checkbox',
         checked: on,
-        disabled: id === 'profile',
         id: `dk-ap-item-${id}`,
       });
       box.dataset.k = `item:${id}`;
@@ -320,9 +319,7 @@ export function appearanceSection(pane: HTMLElement, at?: ApSub): () => void {
       head('theme'),
       cards,
       head('yours'),
-      note(
-        'Change anything here, or in the other sections, and the theme becomes yours: based on the one worn, kept with your settings on every host.',
-      ),
+      note('any change makes the theme yours'),
       row('accent', color('accent')),
       row(
         'page font',
@@ -380,15 +377,7 @@ export function appearanceSection(pane: HTMLElement, at?: ApSub): () => void {
             }),
         ),
       ),
-      ...(worn === 'custom'
-        ? [
-            row(
-              '',
-              acts(btn(`back to ${base?.label || c.base}`, () => setPalette(c.base))),
-              'every setting of yours dropped, the theme worn as it comes',
-            ),
-          ]
-        : []),
+      ...(worn === 'custom' ? [row('', acts(btn(`back to ${base?.label || c.base}`, () => setPalette(c.base))))] : []),
     ];
   };
 
@@ -412,11 +401,9 @@ export function appearanceSection(pane: HTMLElement, at?: ApSub): () => void {
     );
     return [
       head('wallpaper'),
-      can
-        ? row('picture', wall, 'kept in your home on the mesh, shown on every host')
-        : note('log in to keep a wallpaper'),
+      can ? row('picture', wall) : note('log in to keep a wallpaper'),
       head('desk'),
-      row('color', color('desk'), 'under the icons, unless a picture is set'),
+      row('color', color('desk')),
     ];
   };
 
@@ -425,14 +412,11 @@ export function appearanceSection(pane: HTMLElement, at?: ApSub): () => void {
     const menubarOn = L.menubar !== 'off';
     return [
       head('task bar'),
-      note(
-        'The open windows, the hosts and the status items along one edge of the screen. In the dock style it floats centered on that edge, as a dock.',
-      ),
       row('edge', layoutSel('bar')),
       row('style', layoutSel('barStyle')),
       check(
         'autohide',
-        'hidden until the pointer reaches its edge',
+        'autohide',
         L.autohide === 'on',
         (on) =>
           lay((l) => {
@@ -440,18 +424,13 @@ export function appearanceSection(pane: HTMLElement, at?: ApSub): () => void {
           }),
         'while a window is maximized',
       ),
-      row('labels', layoutSel('labels'), 'on the bar’s windows and the menu bar’s app'),
-      row('items', items(L), 'the profile is always shown: settings and log out are under it'),
+      row('labels', layoutSel('labels')),
+      row('items', items(L), 'log out is also under profile'),
       head('menu bar'),
-      check(
-        'menubar',
-        'a bar of its own for the status items',
-        menubarOn,
-        (on) =>
-          lay((l) => {
-            l.menubar = on ? 'top' : 'off';
-          }),
-        'the task bar keeps the windows; never on a phone',
+      check('menubar', 'status items in a bar of their own', menubarOn, (on) =>
+        lay((l) => {
+          l.menubar = on ? 'top' : 'off';
+        }),
       ),
       ...(menubarOn
         ? [

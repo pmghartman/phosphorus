@@ -1,8 +1,10 @@
 // the optional apps: each one the mesh wants and this host serves, its page in a window
 
 import type { AppWant } from '@phosphorus/wire';
+import { appCall } from '../../apps/index.ts';
 import { away, noteAdd, notifying, notifyOs } from '../../features/notes.ts';
-import { DK_UI, dkGlyph, el } from '../../lib/dom.ts';
+import { jsonPost } from '../../lib/api.ts';
+import { DK_UI, dkGlyph, el, pageAsk } from '../../lib/dom.ts';
 import { dk, st } from '../../lib/state.ts';
 import { PALETTE_EVENT } from '../../lib/theme.ts';
 import { type DkWin, dkFocus, dkNav, dkSize, dkWin, type NavFrame } from '../windows.ts';
@@ -18,12 +20,106 @@ export function dkWebApps(): { id: string; mount: string; want: AppWant }[] {
     .map(([id, w]) => ({ id, mount: w.mount || `/${id}/`, want: w }));
 }
 
-// the installed app that opens a file so named, by the extensions its catalogue
-// entry lists; none and the file downloads
-export function dkFileApp(name: string): string | undefined {
+const extOf = (name: string) => {
   const base = name.split('/').pop()!;
-  const x = base.includes('.') ? base.split('.').pop()!.toLowerCase() : '';
+  return base.includes('.') ? base.split('.').pop()!.toLowerCase() : '';
+};
+
+// the installed app that opens a file so named, by the extensions its catalogue
+// entry lists; none and the app that would is offered
+export function dkFileApp(name: string): string | undefined {
+  const x = extOf(name);
   return x ? dkWebApps().find((a) => a.want.opens?.includes(x))?.id : undefined;
+}
+
+// --- a file no installed app opens: the catalogue's app that would, offered ---
+
+type Offer = { id: string; name: string; opens: string[] };
+let offers: { at: number; list: Promise<Offer[]> } | null = null;
+
+// the catalogue's apps and what each opens, asked again after ten minutes
+function catalogue(): Promise<Offer[]> {
+  if (!offers || Date.now() - offers.at > 600000) {
+    const list = fetch('/api/apps', { cache: 'no-store', signal: AbortSignal.timeout(10000) })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`status ${r.status}`))))
+      .then((b) =>
+        (Array.isArray(b?.apps) ? b.apps : []).map((a: Record<string, unknown>) => ({
+          id: String(a.id),
+          name: String(a.name).toLowerCase(),
+          opens: Array.isArray(a.opens) ? a.opens.map(String) : [],
+        })),
+      )
+      .catch(() => {
+        offers = null;
+        return [] as Offer[];
+      });
+    offers = { at: Date.now(), list };
+  }
+  return offers.list;
+}
+
+// a file waiting on its app, opened once this host serves it
+let waiting: { id: string; query: Record<string, string>; at: number } | null = null;
+
+// on each change of the apps here (desk/icons.ts)
+export function dkOpenWaiting(): void {
+  if (!waiting) return;
+  if (Date.now() - waiting.at > 30 * 60000) {
+    waiting = null;
+    return;
+  }
+  const { id, query } = waiting;
+  if (!dkWebApps().some((a) => a.id === id)) return;
+  waiting = null;
+  dkWebApp(id, query);
+}
+
+// the app that would open the file asked about: an admin gets it for every host, the file
+// opening once it's here; false when the catalogue has none, download then the file's
+export async function dkFileOffer(
+  name: string,
+  query: Record<string, string>,
+  download?: () => void,
+): Promise<boolean> {
+  const x = extOf(name);
+  const app = x ? (await catalogue()).find((a) => a.opens.includes(x)) : undefined;
+  if (!app) return false;
+  const base = name.split('/').pop()!;
+  const coming = !!st.lastState?.apps?.[app.id];
+  const get = !coming && !!st.acct?.admin;
+  const message = coming
+    ? `${app.name} opens .${x} files and is still being installed on ${st.selfHost}; ${base} opens in it once it's here`
+    : get
+      ? `${app.name} opens .${x} files; get it for every host and ${base} opens in it once it's here`
+      : `${app.name} opens .${x} files; an admin gets it for the mesh from the service wizard`;
+  const action = coming ? 'open when ready' : get ? `get ${app.name}` : download ? 'download' : 'ok';
+  const r = await pageAsk({
+    title: `open ${base}`,
+    message,
+    action,
+    cancel: coming || get || !!download,
+    alt: (coming || get) && download ? 'download' : undefined,
+  });
+  if (r === 'alt') download?.();
+  else if (r && !coming && !get) download?.();
+  else if (r) {
+    waiting = { id: app.id, query, at: Date.now() };
+    if (get) {
+      try {
+        const res = await fetch('/api/apps/install', jsonPost({ id: app.id }));
+        const out = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(out.error || `status ${res.status}`);
+      } catch (e) {
+        waiting = null;
+        noteAdd(`${app.name} wasn't installed`, (e as Error).message);
+        return true;
+      }
+      // its progress on its page
+      appCall('store', true, (m) => m.storeShow(app.id));
+    }
+    dkOpenWaiting();
+  }
+  return true;
 }
 
 // --- the bridge: an app's page asking the desktop (@phosphorus/app-sdk/web) ---

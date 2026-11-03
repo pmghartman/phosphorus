@@ -18,7 +18,7 @@ import {
 import { el } from '../lib/dom.ts';
 import { dk, st } from '../lib/state.ts';
 import { dkPaintSel } from './desk/icons.ts';
-import { dkFileApp, dkWebApp } from './desk/webapps.ts';
+import { dkFileApp, dkFileOffer, dkWebApp } from './desk/webapps.ts';
 import { dkIcon, dkIcons, dkMenuNote } from './desk.ts';
 import type { DkWin } from './windows.ts';
 
@@ -146,17 +146,16 @@ export async function fileThere(f: FileRef): Promise<boolean> {
   }
 }
 
-// a file in the app that opens it, refused with a note when it's gone or none does
+// a file in the app that opens it, the app offered when none here does; refused with
+// a note when it's gone or nothing could
 export async function dkCode(f: FileRef): Promise<DkWin | undefined> {
   const name = f.path.split('/').pop() || f.path;
   if (!(await fileThere(f))) {
     dkMenuNote(`${name} is gone`);
     return;
   }
+  const query = { host: f.host, share: String(f.share || '0'), path: f.path };
   const id = dkFileApp(name);
-  if (!id) {
-    dkMenuNote(`nothing installed opens ${name}`);
-    return;
-  }
-  return dkWebApp(id, { host: f.host, share: String(f.share || '0'), path: f.path });
+  if (id) return dkWebApp(id, query);
+  if (!(await dkFileOffer(name, query))) dkMenuNote(`nothing installed opens ${name}`);
 }
