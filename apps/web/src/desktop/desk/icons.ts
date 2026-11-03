@@ -71,6 +71,8 @@ export function dkDesktop(): void {
   dk.chips = '';
   dkChips();
   new ResizeObserver(() => dkLayout()).observe(icons);
+  // the menu bar's width, a dock beside it on the same edge kept clear of it
+  new ResizeObserver(() => desk.style.setProperty('--dk-mb-w', `${menubar.offsetWidth}px`)).observe(menubar);
   // the desk resized, floating windows kept on it
   new ResizeObserver(() => {
     const W = wins.clientWidth;
@@ -265,6 +267,37 @@ export function dkServiceIcon(r: Route): HTMLButtonElement {
   return r.public ? dkGlobe(b, 'public: no phosphorus login') : b;
 }
 
+// the host serving an installed service: the one its failover made active, the want's until one is
+function dkLiveHost(id: string): string {
+  const v = st.lastState?.stacks?.[id];
+  if (!v) return '';
+  return [v.active, ...v.standbys].find((h) => st.hostsInfo[h]?.stacks?.[id]?.role === 'active') ?? v.active;
+}
+
+// the route an installed service answers at now: its serving host's, else whichever host has one
+const dkStackRoute = (id: string): Route | undefined =>
+  dk.services.find((r) => r.name === id && r.host === dkLiveHost(id)) ?? dk.services.find((r) => r.name === id);
+
+// an installed service once, under the host serving it: an install or a takeover moving its
+// route between hosts never redraws it, its icon its catalogue's before the page's own
+function dkStackIcon(id: string): HTMLButtonElement {
+  const v = st.lastState!.stacks![id]!;
+  const live = dkLiveHost(id);
+  const r = dkStackRoute(id);
+  const b = dkIcon(
+    'service',
+    id,
+    live,
+    () => {
+      const now = dkStackRoute(id);
+      if (now) dkService(now);
+    },
+    [v.summary.icon, `/api/favicon/${encodeURIComponent(r?.host ?? live)}/${encodeURIComponent(id)}`],
+    30000,
+  );
+  return v.public || r?.public ? dkGlobe(b, 'public: no phosphorus login') : b;
+}
+
 // the logged in hosts still on the mesh, a dead one's terminal never offered
 export function dkLiveHosts(): string[] {
   const up = new Set([...st.terminalHosts, st.selfHost]);
@@ -285,10 +318,17 @@ export function dkIcons(): void {
   dkDeskWatch();
   const hosts = dkLiveHosts();
   const webapps = dkWebApps();
+  // installed services by name, the rest by host and name
+  const stacks = st.lastState?.stacks ?? {};
+  const stackIds = [...new Set(dk.services.filter((r) => stacks[r.name]).map((r) => r.name))];
+  const others = dk.services.filter((r) => !stacks[r.name]);
+  const stackKey = (id: string) =>
+    JSON.stringify(['stack', id, dkLiveHost(id), !!(stacks[id]!.public || dkStackRoute(id)?.public)]);
   const sig = JSON.stringify([
     hosts,
     !!st.acct?.admin,
-    dk.services.map((r) => [r.host, r.name, !!r.public]),
+    others.map((r) => [r.host, r.name, !!r.public]),
+    stackIds.map(stackKey),
     webapps.map((a) => a.id),
     dk.deskFiles.map((e) => [e.name, e.dir, e.mtime]),
   ]);
@@ -308,10 +348,11 @@ export function dkIcons(): void {
       `webapp\n${a.id}`,
       () => dkIcon('app', a.id, '', () => dkWebApp(a.id), `${a.mount}icon.svg?v=${a.want.version}`),
     ]),
-    ...dk.services.map((r): [string, () => HTMLButtonElement] => [
+    ...others.map((r): [string, () => HTMLButtonElement] => [
       JSON.stringify([r.host, r.name, !!r.public]),
       () => dkServiceIcon(r),
     ]),
+    ...stackIds.map((id): [string, () => HTMLButtonElement] => [stackKey(id), () => dkStackIcon(id)]),
     ...[...files.values()].map((e): [string, () => HTMLButtonElement] => [
       JSON.stringify([dkDeskDir(), e.name, e.dir, e.mtime]),
       () => dkFileIcon(e),

@@ -67,6 +67,8 @@ type Applied = {
   published: number;
   // the aliases published with it, comma separated
   aliases: string;
+  // published open to all
+  pub: boolean;
 };
 
 type Local = Applied & {
@@ -96,6 +98,7 @@ function local(id: string): Local {
       webPort: typeof a?.webPort === "number" ? a.webPort : 0,
       published: typeof a?.published === "number" ? a.published : 0,
       aliases: typeof a?.aliases === "string" ? a.aliases : "",
+      pub: a?.pub === true,
       running: false,
       checkedAt: 0,
       error: "",
@@ -117,6 +120,7 @@ const saveApplied = (id: string, l: Local) =>
     webPort: l.webPort,
     published: l.published,
     aliases: l.aliases,
+    pub: l.pub,
   } satisfies Applied);
 
 export const roleOf = (w: StackWant | undefined, host = SelfHost): StackRole =>
@@ -221,15 +225,19 @@ async function healthOf(id: string, w: StackWant, l: Local): Promise<boolean | u
 // --- publishing: [<id>] port = in this host's services.export --------------------
 
 async function publish(id: string, l: Local, port: number) {
-  const aliases = (wantOf(id)?.def.manifest.aliases ?? []).join(",");
-  if (l.published === port && l.aliases === aliases) return;
-  // aliases sent when it has some, or to clear the ones it had
+  const w = wantOf(id);
+  const aliases = (w?.def.manifest.aliases ?? []).join(",");
+  const pub = !!w?.public;
+  if (l.published === port && l.aliases === aliases && l.pub === pub) return;
+  // aliases and public sent when set, or to clear what it had
   const fields: Record<string, string> = { port: String(port) };
   if (aliases || l.aliases) fields.aliases = aliases;
+  if (pub || l.pub) fields.public = pub ? "true" : "";
   const [st, b] = await seams.publish(id, fields);
   if (st !== 200) throw new Error(`publishing: ${b?.error ?? `status ${st}`}`);
   l.published = port;
   l.aliases = aliases;
+  l.pub = pub;
   saveApplied(id, l);
 }
 
@@ -241,6 +249,7 @@ async function unpublish(id: string, l: Local) {
     throw new Error(`unpublishing: ${b?.error ?? `status ${st}`}`);
   l.published = 0;
   l.aliases = "";
+  l.pub = false;
   saveApplied(id, l);
 }
 
@@ -412,6 +421,7 @@ async function teardown(id: string, keepData: boolean) {
       webPort: 0,
       published: 0,
       aliases: "",
+      pub: false,
       running: false,
       healthy: undefined,
     });
@@ -464,6 +474,8 @@ async function settle(id: string) {
     return;
   }
   if (l.error && !l.errorFor) l.error = "";
+  // the want's public or aliases moved: the page published again as they are now
+  if (l.published && w.def.manifest.web) await publish(id, l, l.published).catch((e) => logf("%s: %s", id, errText(e)));
   if ((!ha && role !== "active") || now() - l.checkedAt < checkMS) return;
   l.checkedAt = now();
   const was = [l.running, l.healthy];

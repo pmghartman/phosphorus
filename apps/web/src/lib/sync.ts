@@ -33,8 +33,9 @@ function applyState(state: State) {
     aboutVersion.textContent = `v${state.self.version}`;
   }
 
-  renderRoutes(state.routes, state.tailnet);
+  // the state in place before the desktop draws from it: its apps and installed services this push's
   st.lastState = state;
+  renderRoutes(state.routes, state.tailnet);
   appCall('status', false, (m) => m.statusState(state));
   agentsState(state);
   appCall('store', false, (m) => m.storeState(state));

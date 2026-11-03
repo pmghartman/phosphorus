@@ -159,6 +159,8 @@ export interface StackWant {
   gen: number;
   by: string;
   at: number;
+  // open to all behind its own login, whichever host serves it
+  public?: boolean;
 }
 
 // the want as the page sees it: no env values
@@ -174,6 +176,8 @@ export interface StackStatus {
   healthy?: boolean;
   // a standby's last copy of the data, ms; the active's last snapshot
   lastSync?: number;
+  // a standby's copy under way, bytes
+  copying?: { done: number; total: number };
   // an install, update or removal under way here, its log's tail
   job?: { op: "install" | "update" | "remove" | "promote"; log: string; done: boolean; ok?: boolean };
   error?: string;

@@ -107,6 +107,41 @@
     background: var(--tab-hover);
     color: var(--fg);
   }
+  /* its tiles centered in it, a lone one under its minimum width too */
+  :root[data-l-bar-style="dock"] .dk-bar:not(.dk-menubar) {
+    justify-content: center;
+  }
+  :root[data-l-bar-style="dock"] .dk-bar:not(.dk-menubar) .dk-tasks {
+    justify-content: center;
+  }
+  /* the dock names no app: the menu bar its status items alone */
+  :root[data-l-bar-style="dock"] .dk-menubar-app {
+    visibility: hidden;
+  }
+  /* dock and menu bar both on the bottom: the status items their own piece in the bottom
+     right, the dock's height and row, the dock kept clear of it */
+  :root[data-l-bar-style="dock"][data-l-bar="bottom"][data-l-menubar="bottom"] {
+    --bar-bot: 0px;
+  }
+  :root[data-l-bar-style="dock"][data-l-bar="bottom"][data-l-menubar="bottom"] .dk-bar.dk-menubar {
+    grid-area: bb;
+    justify-self: end;
+    align-self: end;
+    height: 2.9rem;
+    margin: 0.3rem 0.6rem 0.4rem;
+    padding: 0 0.6rem;
+    border: 1px solid var(--pop-edge, var(--border));
+    border-radius: calc(var(--r-win, 0px) * 1.4);
+    background: color-mix(in srgb, var(--tabbar) 88%, transparent);
+    box-shadow: var(--drop);
+    font-size: 12px;
+  }
+  :root[data-l-bar-style="dock"][data-l-bar="bottom"][data-l-menubar="bottom"] .dk-menubar-app {
+    display: none;
+  }
+  :root[data-l-bar-style="dock"][data-l-bar="bottom"][data-l-menubar="bottom"] .dk-bar:not(.dk-menubar) {
+    max-width: calc(100% - 2 * var(--dk-mb-w, 0px) - 3rem);
+  }
 
   /* full: edge to edge, tasks centered, a short line under each, the focused one's long and in the accent */
   :root[data-l-bar-style="full"] .dk-bar:not(.dk-menubar) {

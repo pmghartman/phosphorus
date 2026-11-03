@@ -238,20 +238,17 @@
 /* the icon: the app's own once a host serves it, its initial until then */
 /* each app its own colour: its hue (--hue, from its name) at the theme's teal lightness and
    chroma, so every theme keeps it muted and readable */
+/* an icon alone, no box: the app's own picture, else its initial in its hue */
 .store-icon {
   --tint: var(--teal);
   flex: none;
   display: grid;
   place-items: center;
-  border: 1px solid var(--border);
-  background: var(--bg);
   overflow: hidden;
 }
 @supports (color: oklch(from red l c h)) {
   .store-icon {
     --tint: oklch(from var(--teal) l c var(--hue, 180));
-    border-color: color-mix(in srgb, var(--tint) 35%, var(--border));
-    background: color-mix(in srgb, var(--tint) 12%, var(--bg));
   }
 }
 .store-icon.sm {
@@ -270,8 +267,8 @@
   height: 6rem;
 }
 .store-icon img {
-  width: 80%;
-  height: 80%;
+  width: 100%;
+  height: 100%;
   object-fit: contain;
 }
 .store-mono {
@@ -770,59 +767,9 @@
   color: var(--muted);
   font-size: 0.74rem;
 }
-/* on the mesh: a row per installed app, its hosts and how they are */
-.store-runs {
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--border);
-  background: var(--card);
-}
-.store-run {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 0.85rem;
-  padding: 0.6rem 0.9rem;
-  background: none;
-  border: 0;
-  color: var(--fg);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  min-width: 0;
-}
-.store-run + .store-run {
-  border-top: 1px solid var(--border);
-}
-.store-run:is(:hover, :focus-visible) {
-  background: color-mix(in srgb, var(--accent) 7%, transparent);
-  outline: none;
-}
-.store-run .store-icon.md {
-  width: 3.2rem;
-  height: 3.2rem;
-}
-.store-run-where {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.15rem 0.6ch;
-  font-size: 0.74rem;
-}
+/* an installed service's backups, under its row */
 .store-run-role {
   color: var(--muted);
-}
-.store-run-host {
-  color: var(--fg);
-}
-.store-run-host + .store-run-role {
-  margin-left: 1ch;
-}
-.store-run-side {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.1rem;
-  text-align: right;
 }
 /* running: each host's published services, a row each */
 .store-routes {
@@ -856,7 +803,31 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-a.store-route-name:is(:hover, :focus-visible) {
+button.store-route-name {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+a.store-route-addr:is(:hover, :focus-visible) {
+  color: var(--fg);
+  text-decoration: underline;
+}
+/* an installed service's line under its row: each backup and its copy */
+.store-route-more {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.1rem 0.6ch;
+  font-size: 0.72rem;
+}
+.store-route-more .store-tile-sub + .store-run-role {
+  margin-left: 1.2ch;
+}
+:is(a, button).store-route-name:is(:hover, :focus-visible) {
   color: var(--accent);
   text-decoration: underline;
 }
@@ -1317,13 +1288,5 @@ a.store-pill {
   /* the install first, the readme under it */
   .store-cols .store-side {
     order: -1;
-  }
-  .store-run {
-    grid-template-columns: auto 1fr;
-  }
-  .store-run-side {
-    grid-column: 2;
-    align-items: flex-start;
-    text-align: left;
   }
 }

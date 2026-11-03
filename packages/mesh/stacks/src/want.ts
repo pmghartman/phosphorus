@@ -167,7 +167,7 @@ export function wantOf(id: string): StackWant | undefined {
   if (typeof def === "string" || def.id !== id) return;
   const env: Record<string, string> = {};
   for (const [k, v] of Object.entries(obj(o.env) ?? {})) if (typeof v === "string") env[k] = v;
-  return {
+  const w: StackWant = {
     def,
     env,
     active: str(o.active),
@@ -176,6 +176,8 @@ export function wantOf(id: string): StackWant | undefined {
     by: str(o.by),
     at: typeof o.at === "number" ? o.at : 0,
   };
+  if (o.public === true) w.public = true;
+  return w;
 }
 
 // every stack the mesh wants, by id
@@ -296,6 +298,18 @@ export function Remove(id: string, keepData: boolean, by: string): [number, any]
   seams.kick();
   logf("%s removed for %s, data %s", id, by, keepData ? "kept" : "deleted");
   return [200, { ok: true }];
+}
+
+// open to all or behind the phosphorus login, kept in the want so every host that serves it
+// publishes it so; no gen bumped, nothing restarted
+export function SetPublic(id: string, on: boolean, by: string): [number, any] {
+  const w = wantOf(id);
+  if (!w) return [404, { error: `no stack called ${id}` }];
+  if (!!w.public === on) return [200, { ok: true, public: on }];
+  const { public: _, ...rest } = w;
+  write({ ...rest, ...(on ? { public: true } : {}), by, at: now() });
+  logf("%s made %s for %s", id, on ? "public" : "private", by);
+  return [200, { ok: true, public: on }];
 }
 
 // Docker asked of a host: etc/stacks/docker/<host>.json, that host installing it

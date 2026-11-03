@@ -129,6 +129,8 @@ export class Replica implements Group {
   lastUpTry = -Infinity;
   // wall ms: a standby's last whole copy, the active's last snapshot
   lastSync = 0;
+  // a pull under way: its bytes moved and to move
+  copying?: { done: number; total: number };
   // the want gen this host's project is rendered from, and the active's
   appGen = 0;
   masterApp = 0;
@@ -495,7 +497,24 @@ export class Replica implements Group {
     }
     const index = readMap(this.p.pullJSON);
     const fetch: Fetch = (path, file) => this.ha.m.fetchFile(from, this.name, path, file);
-    const ok = await pullInto(this.p.pull, man, index, fetch);
+    // this host's own last snapshot seeds it, a former active refetching nothing it still holds;
+    // the index kept now and then, a restart mid-copy keeping what landed
+    let saved = this.now();
+    const progress = (done: number, total: number) => {
+      this.copying = total ? { done, total } : undefined;
+      if (this.now() - saved < 10000) return;
+      saved = this.now();
+      writeJSON(this.p.pullJSON, index);
+    };
+    let ok: boolean;
+    try {
+      ok = await pullInto(this.p.pull, man, index, fetch, 8, {
+        seed: existsSync(this.p.snapJSON) ? this.p.snap : undefined,
+        progress,
+      });
+    } finally {
+      this.copying = undefined;
+    }
     writeJSON(this.p.pullJSON, index);
     if (!ok) return false;
     const again = await this.ha.manifestOf(from, this.name);
@@ -711,11 +730,12 @@ export class HA {
 
   // failover's part of this host's status for a stack: the docker side's own
   // running and health left to the runtime
-  status(id: string): Pick<StackStatus, "role" | "gen" | "lastSync"> | undefined {
+  status(id: string): Pick<StackStatus, "role" | "gen" | "lastSync" | "copying"> | undefined {
     const r = this.replicas.get(groupOf(id));
     if (!r) return;
-    const s: Pick<StackStatus, "role" | "gen" | "lastSync"> = { role: r.role(), gen: r.appGen };
+    const s: Pick<StackStatus, "role" | "gen" | "lastSync" | "copying"> = { role: r.role(), gen: r.appGen };
     if (r.lastSync) s.lastSync = r.lastSync;
+    if (r.copying) s.copying = { ...r.copying };
     return s;
   }
 

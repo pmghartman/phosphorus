@@ -292,6 +292,26 @@ test("reconcile: an update pulls and comes up again with the new gen", async () 
   expect(published).toEqual([]);
 });
 
+test("public: kept in the want, no gen bumped, and published so wherever it comes up next", async () => {
+  expect(S.SetPublic("kuma", true, "pat")[0]).toBe(200);
+  expect(S.wantOf("kuma")).toMatchObject({ public: true, gen: 2 });
+  await S.tick();
+  expect(composed("kuma")).toEqual([]);
+  expect(published).toEqual([["kuma", { port: String(webPort), public: "true" }]]);
+  // down and up again, as on a host taking over: public with it
+  await S.runtime.down("kuma");
+  await S.runtime.up("kuma");
+  expect(published.slice(1)).toEqual([
+    ["kuma", null],
+    ["kuma", { port: String(webPort), public: "true" }],
+  ]);
+  // made private: the line cleared
+  published = [];
+  S.SetPublic("kuma", false, "pat");
+  await S.tick();
+  expect(published).toEqual([["kuma", { port: String(webPort), public: "" }]]);
+});
+
 test("reconcile: standbys added to a running copy: pulled again, left running for failover", async () => {
   place("kuma", "a", ["b"]);
   await S.tick();

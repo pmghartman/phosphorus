@@ -15,7 +15,7 @@ import type {
 import { jsonPost } from '../../lib/api.ts';
 import { st } from '../../lib/state.ts';
 import { pollState } from '../../lib/sync.ts';
-import { ago2 } from '../../lib/util.ts';
+import { ago2, humanSize } from '../../lib/util.ts';
 import { draw } from './draw.ts';
 import { stateVars } from './state.ts';
 
@@ -350,6 +350,14 @@ export const opWords: Record<string, string> = {
 
 // ms ago in words: 'just now', '5m ago'
 export const agoText = (ms: number) => (ago2(ms) === 'now' ? 'just now' : `${ago2(ms)} ago`);
+
+// a backup's copy in words: one under way and how far, when the last landed, or none yet
+export function copyWords(s: StackStatus | undefined): [cls: string, text: string] {
+  const c = s?.copying;
+  if (c && c.total > 0) return ['wait', `copying, ${humanSize(c.done)} of ${humanSize(c.total)}`];
+  if (s?.lastSync) return ['', `copy synced ${agoText(s.lastSync)}`];
+  return ['wait', c ? 'copying' : 'no copy yet'];
+}
 
 // an admin's step on an installed app: update, remove, standbys, move
 export async function stackAct(id: string, op: 'update' | 'remove' | 'standbys' | 'move', body: unknown = {}) {

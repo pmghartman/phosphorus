@@ -34,6 +34,7 @@ export {
   opened,
   Remove,
   removedRel,
+  SetPublic,
   seal,
   Update,
   unseal,

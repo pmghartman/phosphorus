@@ -117,7 +117,8 @@ export function iconTile(name: string, srcs: string[], cls: string): HTMLElement
   const mono = () => el('span', 'store-mono', name[0]!.toUpperCase());
   const list = srcs.filter(Boolean);
   const order = iconOrder(list);
-  const quiet = iconKnown(list) === '';
+  const known = iconKnown(list);
+  const quiet = known === '';
   const next = (i: number) => {
     const src = order[i];
     if (!src) {
@@ -125,7 +126,13 @@ export function iconTile(name: string, srcs: string[], cls: string): HTMLElement
       iconLearn(list, '');
       return;
     }
-    const img = Object.assign(el('img'), { src, alt: '', draggable: false });
+    // the one that loaded before drawn with the tile, no blank frame on a redraw
+    const img = Object.assign(el('img'), {
+      src,
+      alt: '',
+      draggable: false,
+      decoding: src === known ? ('sync' as const) : ('async' as const),
+    });
     img.addEventListener(
       'load',
       () => {

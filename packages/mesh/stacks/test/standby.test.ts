@@ -9,6 +9,7 @@ import {
   readdirSync,
   readFileSync,
   statSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -17,7 +18,7 @@ import type { Clock } from "@phosphorus/elector";
 import type { Runtime } from "@phosphorus/stacks";
 import { groupOf, HA, type Mesh, Replica } from "@phosphorus/stacks/ha";
 import type { AppDef, StackWant } from "@phosphorus/wire";
-import { mirror } from "../src/ha/copy.ts";
+import { type Manifest, mirror, pullInto, walk } from "../src/ha/copy.ts";
 
 // --- a small mesh on simulated time ---------------------------------------------
 
@@ -334,6 +335,40 @@ test("a snapshot's copies staged first, the snapshot moved only when committed",
   expect(statSync(join(dst, "sub", "b")).ino).toBe(ino);
   expect(existsSync(stage)).toBe(false);
   expect((await mirror(src, dst, stage, sigs))()).toBe(false);
+});
+
+test("a pull seeded from this host's own snapshot fetches only what differs, its bytes told", async () => {
+  const root = mkdtempSync(join(tmpdir(), "phos-seed-"));
+  const [src, seed, dst] = ["src", "seed", "dst"].map((d) => join(root, d)) as [string, string, string];
+  for (const d of [src, seed]) mkdirSync(d, { recursive: true });
+  writeFileSync(join(src, "same"), "x".repeat(100));
+  writeFileSync(join(src, "moved"), "new");
+  copyFileSync(join(src, "same"), join(seed, "same"));
+  writeFileSync(join(seed, "moved"), "old");
+  utimesSync(join(seed, "moved"), 1_000_000, 1_000_000);
+  // the seed's copy of same as the active's: same size and mtime
+  const t = statSync(join(src, "same")).mtime;
+  utimesSync(join(seed, "same"), t, t);
+  const man: Manifest = { token: "t", gen: 1, stamp: 1, app: 1, files: walk(src) };
+  const fetched: string[] = [];
+  const told: number[][] = [];
+  const ok = await pullInto(
+    dst,
+    man,
+    {},
+    async (p, file) => {
+      fetched.push(p);
+      copyFileSync(join(src, p), file);
+      return true;
+    },
+    8,
+    { seed, progress: (done, total) => told.push([done, total]) },
+  );
+  expect(ok).toBe(true);
+  expect(fetched).toEqual(["moved"]);
+  expect(readFileSync(join(dst, "same"), "utf8")).toBe("x".repeat(100));
+  expect(readFileSync(join(dst, "moved"), "utf8")).toBe("new");
+  expect(told.at(-1)).toEqual([103, 103]);
 });
 
 test("an active's snapshot copies only what moved, across a restart too", async () => {

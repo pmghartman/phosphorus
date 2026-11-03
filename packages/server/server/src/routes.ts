@@ -404,6 +404,11 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
     return onJSON(c, 1024, true, async (p) => {
       if (typeof p.public !== "boolean") return [400, { error: "public is true or false" }];
       const on = p.public;
+      // an installed service's kept in its want, so the host that serves it next publishes it so
+      if (!q.has("hop") && stacks.wantOf(name)) {
+        const [code, out] = stacks.SetPublic(name, on, s?.user ?? "admin");
+        if (code !== 200) return [code, out];
+      }
       if (host === selfHost) return setPublic(name, on);
       if (q.has("hop")) return hopErr(host);
       const ip = await tailnetIP(host);

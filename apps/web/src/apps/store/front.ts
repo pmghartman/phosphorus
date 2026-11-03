@@ -1,5 +1,5 @@
 // the front: tiles; the services tab an installer, the apps tab the desktop's extras, the
-// running tab what the mesh runs: installed services, every host's published ones, the apps got
+// running tab what the mesh runs: each host's services, those installed from here among them, the apps got
 
 import type { AppSummary, FoundPage, Route, SourceId, StackView } from '@phosphorus/wire';
 import { serviceUrl } from '../../features/mesh/routes.ts';
@@ -9,14 +9,14 @@ import { dk, st } from '../../lib/state.ts';
 import { pollState } from '../../lib/sync.ts';
 import { facts, iconOf, iconTile, pill, tileSub } from './apps.ts';
 import {
-  agoText,
-  bare,
   catalog,
   catalogError,
+  copyWords,
   hostUp,
   installedAs,
   keyOf,
   lead,
+  liveHost,
   openRepo,
   readCatalog,
   repoBox,
@@ -24,6 +24,7 @@ import {
   services,
   stackFacts,
   stackViews,
+  statusOn,
   twinsNamed,
 } from './catalog.ts';
 import { draw } from './draw.ts';
@@ -115,33 +116,6 @@ function stackTile(list: AppSummary[]): HTMLElement {
   return t;
 }
 
-// an installed app: its active host, its backups, their health and last copy, a takeover
-function meshRow(v: StackView): HTMLElement {
-  const f = stackFacts(v);
-  const row = Object.assign(el('button', 'store-run'), { type: 'button' });
-  const text = el('span', 'store-tile-text');
-  const where = el('span', 'store-run-where');
-  where.append(el('span', 'store-run-role', 'active'), el('span', 'store-run-host', f.live));
-  if (f.hosts.length > 1)
-    where.append(el('span', 'store-run-role', 'backups'), el('span', 'store-run-host', f.hosts.slice(1).join(', ')));
-  else where.append(el('span', 'store-run-role', 'no backups'));
-  text.append(el('b', 'store-tile-name', v.summary.name), where);
-  const side = el('span', 'store-run-side');
-  side.append(el('span', `store-tile-sub ${f.sub[0]}`, f.sub[1]));
-  if (f.hosts.length > 1)
-    side.append(
-      el(
-        'span',
-        `store-tile-sub ${f.synced ? '' : 'wait'}`,
-        f.synced ? `synced ${agoText(f.synced)}` : 'first copy pending',
-      ),
-    );
-  if (f.event) side.append(el('span', `store-tile-sub ${f.event[0]}`, f.event[1]));
-  row.append(iconTile(v.summary.name, [v.summary.icon], 'md'), text, side);
-  row.addEventListener('click', () => storeShow(`stack:${keyOf(v.summary.source, v.summary.ref)}`));
-  return row;
-}
-
 // a public github repo with a compose file, opened by its url
 function repoOpener(): HTMLElement {
   const box = el('form', 'store-repo');
@@ -198,22 +172,6 @@ function chips(list: [string, string][], now: string, pick: (v: string) => void)
   return bar;
 }
 
-// the apps worth a first look, by id in whichever catalogue lists them first
-const FEATURED = [
-  'forgejo',
-  'uptime-kuma',
-  'vaultwarden',
-  'jellyfin',
-  'immich',
-  'nextcloud',
-  'home-assistant',
-  'paperless-ngx',
-  'audiobookshelf',
-  'navidrome',
-  'syncthing',
-  'gitea',
-  'adguard-home',
-];
 // tiles shown before 'show all'
 const FIRST = 48;
 // categories offered: those with a few apps, the most used first
@@ -338,17 +296,16 @@ function appsTab(wrap: HTMLElement, q: string) {
     wrap.append(el('div', 'store-empty', readError ? `can't read the catalogue: ${readError}` : 'connecting'));
     return;
   }
+  // the ones got are in running too; here each in its place, its pill saying so
   const shown = apps.filter((a) => !q || matches(a, q));
-  const have = shown.filter((a) => a.want);
-  const updates = have.filter((a) => facts(a).update).length;
+  const updates = shown.filter((a) => a.want && facts(a).update).length;
   section(
     wrap,
-    'on the mesh',
-    have.map(tile),
+    q ? 'matches' : 'every app',
+    shown.map(tile),
     'store-grid',
-    updates ? `${updates} update${updates === 1 ? '' : 's'}` : '',
+    updates ? `${updates} update${updates === 1 ? '' : 's'}` : `${shown.length}`,
   );
-  section(wrap, have.length ? 'more' : 'get', shown.filter((a) => !a.want).map(tile));
   if (!shown.length)
     wrap.append(el('div', 'store-empty', q ? `no app matches “${q}”` : 'no apps in the catalogue yet'));
 }
@@ -357,16 +314,8 @@ function appsTab(wrap: HTMLElement, q: string) {
 const fetching = (s: { fetchedAt: number; error?: string; apps: number }) => !s.fetchedAt && !s.error && !s.apps;
 
 function servicesTab(wrap: HTMLElement, q: string) {
-  section(
-    wrap,
-    'on the mesh',
-    stackViews()
-      .filter((v) => !q || matches(v.summary, q))
-      .map(meshRow),
-    'store-runs',
-  );
-  // publishing is an admin's: the others aren't shown what they can't do; after what's
-  // featured, so the catalogue leads
+  // what's installed is in running, its tile here marked so; publishing is an admin's:
+  // the others aren't shown what they can't do
   const found = st.acct?.admin
     ? discovered().filter(
         (f) => !q || matches({ id: f.name, name: f.title, tagline: f.host, category: 'discovered' }, q),
@@ -425,14 +374,6 @@ function servicesTab(wrap: HTMLElement, q: string) {
   // each service once, the catalogue filtered on one of those listing it
   const inSource = services().filter((l) => !stateVars.source || l.some((a) => a.source === stateVars.source));
   const leadOf = (l: AppSummary[]) => lead(l, stateVars.source);
-  if (!q && !stateVars.category) {
-    const featured: AppSummary[][] = [];
-    for (const id of FEATURED) {
-      const l = inSource.find((x) => x.some((a) => bare(a.id) === bare(id)));
-      if (l) featured.push(l);
-    }
-    section(wrap, 'featured', featured.slice(0, 8).map(stackTile));
-  }
   section(wrap, 'discovered', found.map(foundTile));
   const cats = new Map<string, number>();
   for (const l of inSource) {
@@ -504,43 +445,87 @@ function routeRow(r: Route): HTMLElement {
   const name = up
     ? Object.assign(el('a', 'store-route-name', r.name), { href: url, target: '_blank', rel: 'noopener' })
     : el('span', 'store-route-name', r.name);
-  const stack = stackViews().find((v) => v.summary.id === r.name);
   row.append(
     name,
     el('span', 'store-route-addr', url.replace(/^https:\/\//, '').replace(/\/$/, '')),
     el('span', 'store-route-port', r.port ? `:${r.port}` : ''),
     el('span', `store-route-tag${r.public ? ' warn' : ''}`, r.public ? 'public' : 'login'),
-    el(
-      'span',
-      `store-route-tag${up ? (stack ? ' on' : '') : ' bad'}`,
-      !up ? 'not answering' : stack ? (r.master ? 'installed, active' : 'installed') : r.auto ? 'found' : 'declared',
-    ),
+    el('span', `store-route-tag${up ? '' : ' bad'}`, !up ? 'not answering' : r.auto ? 'found' : 'declared'),
   );
+  return row;
+}
+
+// an installed service in its host's list: its page, its address and who may open it, how it
+// runs; under it its backups and their copies
+function stackRow(v: StackView, r: Route | undefined): HTMLElement {
+  const f = stackFacts(v);
+  const up = hostUp(f.live);
+  const row = el('li', `store-route store-route-stack${up ? '' : ' off'}`);
+  const name = Object.assign(el('button', 'store-route-name', v.summary.name), {
+    type: 'button',
+    title: `${v.summary.name}'s page`,
+  });
+  name.addEventListener('click', () => storeShow(`stack:${keyOf(v.summary.source, v.summary.ref)}`));
+  const url = r ? serviceUrl(r) : '';
+  const addr = url.replace(/^https:\/\//, '').replace(/\/$/, '');
+  const pub = !!(v.public || r?.public);
+  const [cls, sub] = f.sub;
+  row.append(
+    name,
+    up && url
+      ? Object.assign(el('a', 'store-route-addr', addr), { href: url, target: '_blank', rel: 'noopener' })
+      : el('span', 'store-route-addr', addr),
+    el('span', 'store-route-port', r?.port ? `:${r.port}` : ''),
+    el('span', `store-route-tag${pub ? ' warn' : ''}`, pub ? 'public' : 'login'),
+    el('span', `store-route-tag ${cls === 'on' ? 'on' : cls === 'bad' ? 'bad' : ''}`, cls === 'on' ? 'installed' : sub),
+  );
+  const more = el('span', 'store-route-more');
+  const backups = f.hosts.slice(1);
+  if (!backups.length) more.append(el('span', 'store-run-role', 'no backups'));
+  for (const h of backups) {
+    const [c, t] = copyWords(statusOn(h, v.summary.id));
+    more.append(el('span', 'store-run-role', `backup ${h}`), el('span', `store-tile-sub ${c}`, t));
+  }
+  if (f.event) more.append(el('span', `store-tile-sub ${f.event[0]}`, f.event[1]));
+  row.append(more);
   return row;
 }
 
 function runningTab(wrap: HTMLElement, q: string) {
   const hit = (...words: string[]) => !q || matches({ id: '', name: words.join(' '), tagline: '', category: '' }, q);
-  const views = stackViews().filter((v) => hit(v.summary.name, v.summary.id, ...stackFacts(v).hosts));
-  section(wrap, 'installed services', views.map(meshRow), 'store-runs', `${views.length}`);
-  // each host's published services, this host first, the rest by name; game servers aside
-  const routes = dk.services.filter((r) => !r.type && hit(r.name, r.host));
-  const hosts = [...new Set(routes.map((r) => r.host))].sort(
+  // the installed services each under the host serving it, their routes theirs whichever host
+  // published one last; game servers aside
+  const views = stackViews();
+  const ids = new Set(views.map((v) => v.summary.id));
+  const shownViews = views.filter((v) => hit(v.summary.name, v.summary.id, ...stackFacts(v).hosts));
+  const all = dk.services.filter((r) => !r.type);
+  const routes = all.filter((r) => !ids.has(r.name) && hit(r.name, r.host));
+  // this host first, the rest by name
+  const hosts = [...new Set([...routes.map((r) => r.host), ...shownViews.map(liveHost)])].sort(
     (a, b) => Number(b === st.selfHost) - Number(a === st.selfHost) || a.localeCompare(b),
   );
   for (const h of hosts) {
-    const list = routes.filter((r) => r.host === h).sort((a, b) => a.name.localeCompare(b.name));
+    const rows: [string, HTMLElement][] = [
+      ...routes.filter((r) => r.host === h).map((r): [string, HTMLElement] => [r.name, routeRow(r)]),
+      ...shownViews
+        .filter((v) => liveHost(v) === h)
+        .map((v): [string, HTMLElement] => {
+          const id = v.summary.id;
+          const r = all.find((x) => x.name === id && x.host === h) ?? all.find((x) => x.name === id);
+          return [v.summary.name.toLowerCase(), stackRow(v, r)];
+        }),
+    ].sort(([a], [b]) => a.localeCompare(b));
     const ul = el('ul', 'store-routes');
-    ul.append(...list.map(routeRow));
+    ul.append(...rows.map(([, li]) => li));
     const s = el('section', 'store-section');
     const head = el('h2', 'store-section-head', `${h}${h === st.selfHost ? ' · this host' : ''}`);
-    head.append(el('span', `store-count${hostUp(h) ? '' : ' bad'}`, hostUp(h) ? `${list.length}` : 'not answering'));
+    head.append(el('span', `store-count${hostUp(h) ? '' : ' bad'}`, hostUp(h) ? `${rows.length}` : 'not answering'));
     s.append(head, ul);
     wrap.append(s);
   }
   const got = (apps ?? []).filter((a) => a.want && (!q || matches(a, q)));
   section(wrap, 'desktop apps', got.map(tile), 'store-grid', `${got.length}`);
-  if (!hosts.length && !got.length && !views.length)
+  if (!hosts.length && !got.length)
     wrap.append(el('div', 'store-empty', q ? `nothing running matches “${q}”` : 'nothing published on the mesh yet'));
 }
 

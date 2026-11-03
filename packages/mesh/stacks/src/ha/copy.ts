@@ -224,14 +224,30 @@ export async function mirror(
 // what a fetch of one snapshot file gives: its bytes written to file, false when gone
 export type Fetch = (path: string, file: string) => Promise<boolean>;
 
-// the manifest's files brought into dst, those whose version moved fetched;
-// versions held in index; false when a fetch failed
+// how a pull goes: a local tree whose files of the same path, size and mtime are copied rather
+// than fetched (this host's own last snapshot), and its bytes so far of those it moves
+export type PullOpts = { seed?: string; progress?: (done: number, total: number) => void };
+
+// a seed's file at p when it looks like e's: same size, mtime within a millisecond
+function seedOf(seed: string | undefined, p: string, e: Entry): string | undefined {
+  if (!seed) return;
+  const file = join(seed, p);
+  try {
+    const s = lstatSync(file);
+    if (s.isFile() && s.size === e.s && Math.abs(s.mtimeMs - e.m) <= 1) return file;
+  } catch {}
+  return;
+}
+
+// the manifest's files brought into dst, those whose version moved fetched (or copied from a
+// seed that has them); versions held in index; false when a fetch failed
 export async function pullInto(
   dst: string,
   man: Manifest,
   index: Record<string, string>,
   fetch: Fetch,
   parallel = 8,
+  o: PullOpts = {},
 ): Promise<boolean> {
   mkdirSync(dst, { recursive: true });
   const have = new Map(walk(dst).map((e) => [e.p, e]));
@@ -250,11 +266,16 @@ export async function pullInto(
     todo.push(e);
   }
   let ok = true;
+  const total = todo.reduce((n, e) => n + e.s, 0);
+  let done = 0;
+  o.progress?.(0, total);
   const one = async (e: Entry) => {
     const file = join(dst, e.p);
     const tmp = join(dirname(file), `.phos-tmp-${process.pid}-${Math.random().toString(36).slice(2)}`);
     try {
-      if (!(await fetch(e.p, tmp))) throw new Error("gone");
+      const from = seedOf(o.seed, e.p, e);
+      if (from) await copyFile(from, tmp);
+      else if (!(await fetch(e.p, tmp))) throw new Error("gone");
       stamp(tmp, e);
       const had = have.get(e.p);
       if (had && had.t !== "f") rmrf(file);
@@ -264,6 +285,8 @@ export async function pullInto(
       ok = false;
       safe(() => rmSync(tmp, { force: true }));
     }
+    done += e.s;
+    o.progress?.(done, total);
   };
   for (let i = 0; i < todo.length; i += parallel) await Promise.all(todo.slice(i, i + parallel).map(one));
   for (const p of Object.keys(index)) if (!keep.has(p)) delete index[p];

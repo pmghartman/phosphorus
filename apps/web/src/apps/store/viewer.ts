@@ -10,6 +10,7 @@ import { humanSize } from '../../lib/util.ts';
 import { crumb, iconTile } from './apps.ts';
 import {
   agoText,
+  copyWords,
   dockerBusy,
   dockerError,
   fitting,
@@ -524,9 +525,7 @@ function hostRow(v: StackView, h: string): HTMLElement {
                   : s.healthy
                     ? 'running, healthy'
                     : 'running'
-              : s.lastSync
-                ? `copy synced ${agoText(s.lastSync)}`
-                : 'no copy yet';
+              : copyWords(s)[1];
   const li = el('li', `store-host svc ${cls}`);
   const top = el('div', 'store-host-top');
   top.append(
