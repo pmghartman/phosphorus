@@ -200,7 +200,9 @@
 .dk-spot-row.dk-service .dk-spot-row-ic {
   color: var(--teal);
 }
-.dk-spot-row.dk-setting .dk-spot-row-ic,
+.dk-spot-row.dk-setting .dk-spot-row-ic {
+  color: var(--sage);
+}
 .dk-spot-row.dk-menu .dk-spot-row-ic {
   color: var(--sky);
 }

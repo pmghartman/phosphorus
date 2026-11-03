@@ -214,16 +214,21 @@
   border: 1px solid var(--border);
 }
 /* the bar's items: each shown or not, moved earlier or later */
+/* the status items: a short list at its names' width, not the page's */
 .dk-ap-items {
   display: flex;
   flex-direction: column;
+  justify-self: start;
+  width: max-content;
+  min-width: min(100%, 11rem);
   border: 1px solid var(--border);
 }
 .dk-ap-item {
   display: flex;
   align-items: center;
-  gap: 0.45rem;
-  padding: 0.15rem 0.2rem 0.15rem 0.45rem;
+  gap: 0.4rem;
+  padding: 0.05rem 0.6rem 0.05rem 0.45rem;
+  line-height: 1.35;
 }
 .dk-ap-item + .dk-ap-item {
   border-top: 1px solid var(--border);

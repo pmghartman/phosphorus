@@ -19,6 +19,12 @@
 .set-group:first-child {
   padding-top: 0.2rem;
 }
+/* the rail's quiet words, its groups and the sections not open: the theme's muted drawn a little
+   toward the text, readable on the rail in every theme */
+.set-group,
+.set-nav .dk-ap-tab:not(.on, .open, :hover, :focus-visible) {
+  color: color-mix(in srgb, var(--muted) 80%, var(--fg));
+}
 .set-nav .dk-ap-tab {
   position: relative;
   gap: 0.6rem;
@@ -42,6 +48,39 @@
   width: 2px;
   border-radius: 2px;
   background: var(--accent);
+}
+/* a section's parts: a submenu under it, open while it is, indented on a thread */
+.set-subnav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  margin: 0.1rem 0 0.35rem 1.1rem;
+  padding-left: 0.55rem;
+  border-left: 1px solid var(--border);
+}
+.set-subnav[hidden] {
+  display: none;
+}
+.set-nav .set-subtab {
+  padding: 0.3rem 0.6rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.set-nav .set-subtab:is(:hover, :focus-visible) {
+  color: var(--fg);
+}
+.set-nav .set-subtab.on {
+  color: var(--fg);
+}
+.set-nav .set-subtab.on::before {
+  left: calc(-0.55rem - 1px);
+}
+/* the section over its open submenu: its name and glyph lit, the mark on its part */
+.set-nav .dk-ap-tab.open {
+  color: var(--fg);
+}
+.set-nav .dk-ap-tab.open .ic {
+  color: var(--accent);
 }
 /* the page: the section's own body, no header over it */
 .set-main {
@@ -70,11 +109,7 @@
 .set-body .dk-ap-note {
   color: var(--muted);
 }
-/* the appearance's parts, one segmented row */
-.set-subs {
-  align-self: flex-start;
-  min-width: min(100%, 22rem);
-}
+/* a section's part, its rows */
 .set-sub {
   display: flex;
   flex-direction: column;
@@ -100,6 +135,17 @@
   display: flex;
   height: 15rem;
   margin-top: 0.4rem;
+}
+/* the graph alone: the page's whole height */
+.set-mesh-full {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 22rem;
+  margin-top: 0.7rem;
+}
+.set-body[data-at="hosts"]:has(> .set-mesh-full) {
+  display: flex;
+  flex-direction: column;
 }
 .set-mesh > .mesh-panel {
   display: flex !important;
@@ -205,6 +251,9 @@
 #view-status[data-only] .st-top {
   display: none;
 }
+.set-host-rest {
+  margin-top: 0.6rem;
+}
 .set-host-cfg .set-host-body {
   padding: 0;
 }
@@ -294,6 +343,15 @@ button.dk-chip:not(.locked) {
   }
   .set-group {
     display: none;
+  }
+  .set-subnav {
+    flex-direction: row;
+    margin: 0;
+    padding: 0 0 0 0.3rem;
+    border-left: 1px solid var(--border);
+  }
+  .set-nav .set-subtab.on::before {
+    left: 0.5rem;
   }
   .set-nav .dk-ap-tab.on::before {
     top: auto;

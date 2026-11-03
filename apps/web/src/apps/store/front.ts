@@ -10,17 +10,21 @@ import { pollState } from '../../lib/sync.ts';
 import { facts, iconOf, iconTile, pill, tileSub } from './apps.ts';
 import {
   agoText,
+  bare,
   catalog,
   catalogError,
   hostUp,
   installedAs,
   keyOf,
+  lead,
   openRepo,
   readCatalog,
   repoBox,
   SOURCE_NAMES,
+  services,
   stackFacts,
   stackViews,
+  twinsNamed,
 } from './catalog.ts';
 import { draw } from './draw.ts';
 import { apps, nativeLeft, read, readError, type StoreApp, stateVars, storeShow } from './state.ts';
@@ -45,7 +49,7 @@ function search(): HTMLElement {
         : stateVars.tab === 'running'
           ? 'search by name or host'
           : catalog
-            ? `search ${catalog.apps.length} apps, every source`
+            ? `search ${services().length} apps, every source`
             : 'search every source',
     value: stateVars.filter,
     ariaLabel: `search ${stateVars.tab}`,
@@ -83,8 +87,10 @@ export function tile(a: StoreApp): HTMLElement {
   return t;
 }
 
-// an installable app's tile: what it is, where it's from, whether the mesh has it
-function stackTile(a: AppSummary): HTMLElement {
+// an installable app's tile, once however many catalogues list it: what it is, where it's from,
+// whether the mesh has it; its icon the first of theirs that loads
+function stackTile(list: AppSummary[]): HTMLElement {
+  const a = lead(list, stateVars.source);
   const on = installedAs(a.source, a.ref);
   const t = Object.assign(el('button', `store-tile${on ? ' on' : ''}`), { type: 'button' });
   const text = el('span', 'store-tile-text');
@@ -95,13 +101,16 @@ function stackTile(a: AppSummary): HTMLElement {
     el('span', `store-tile-sub ${cls}`, sub),
   );
   const side = el('span', 'store-tile-side');
+  const more = list.length - 1;
   side.append(
     el('span', `store-pill${on ? ' open' : ''}`, on ? 'installed' : 'view'),
-    Object.assign(el('span', 'store-tile-badge', SOURCE_NAMES[a.source]), {
-      title: `from ${SOURCE_NAMES[a.source]}, ${a.licence}`,
+    Object.assign(el('span', 'store-tile-badge', `${SOURCE_NAMES[a.source]}${more ? ` +${more}` : ''}`), {
+      title: more
+        ? `in ${list.map((x) => SOURCE_NAMES[x.source]).join(', ')}; ${on ? 'installed' : 'shown'} from ${SOURCE_NAMES[a.source]}, ${a.licence}`
+        : `from ${SOURCE_NAMES[a.source]}, ${a.licence}`,
     }),
   );
-  t.append(iconTile(a.name, [a.icon], 'md'), text, side);
+  t.append(iconTile(a.name, [a.icon, ...list.map((x) => x.icon)], 'md'), text, side);
   t.addEventListener('click', () => storeShow(`stack:${keyOf(a.source, a.ref)}`));
   return t;
 }
@@ -209,7 +218,6 @@ const FEATURED = [
   'gitea',
   'adguard-home',
 ];
-const bare = (id: string) => id.toLowerCase().replace(/[^a-z0-9]/g, '');
 // tiles shown before 'show all'
 const FIRST = 48;
 // categories offered: those with a few apps, the most used first
@@ -270,7 +278,16 @@ function foundTile(f: Discovered): HTMLElement {
   go.addEventListener('click', () => publish(f));
   const side = el('span', 'store-tile-side');
   side.append(go);
-  t.append(iconTile(f.title, [], 'md'), text, side);
+  // its icon the catalogues', when one lists a service of its name
+  t.append(
+    iconTile(
+      f.title,
+      twinsNamed(f.name).map((a) => a.icon),
+      'md',
+    ),
+    text,
+    side,
+  );
   return t;
 }
 
@@ -409,18 +426,23 @@ function servicesTab(wrap: HTMLElement, q: string) {
   for (const s of sources)
     if (!s.error && fetching(s)) filters.append(el('span', 'store-repo-note', `fetching ${s.name}…`));
   wrap.append(filters);
-  const inSource = catalog.apps.filter((a) => !stateVars.source || a.source === stateVars.source);
+  // each service once, the catalogue filtered on one of those listing it
+  const inSource = services().filter((l) => !stateVars.source || l.some((a) => a.source === stateVars.source));
+  const leadOf = (l: AppSummary[]) => lead(l, stateVars.source);
   if (!q && !stateVars.category) {
-    const featured: AppSummary[] = [];
+    const featured: AppSummary[][] = [];
     for (const id of FEATURED) {
-      const a = inSource.find((x) => bare(x.id) === bare(id));
-      if (a) featured.push(a);
+      const l = inSource.find((x) => x.some((a) => bare(a.id) === bare(id)));
+      if (l) featured.push(l);
     }
     section(wrap, 'featured', featured.slice(0, 8).map(stackTile));
   }
   section(wrap, 'discovered', found.map(foundTile));
   const cats = new Map<string, number>();
-  for (const a of inSource) if (a.category) cats.set(a.category, (cats.get(a.category) ?? 0) + 1);
+  for (const l of inSource) {
+    const c = leadOf(l).category;
+    if (c) cats.set(c, (cats.get(c) ?? 0) + 1);
+  }
   // the catalogues' own words, many used once: the common ones, the picked one always
   const common = [...cats]
     .filter(([c, n]) => n >= CAT_MIN || c === stateVars.category)
@@ -441,7 +463,7 @@ function servicesTab(wrap: HTMLElement, q: string) {
     wrap.append(s);
   }
   const picked = inSource.filter(
-    (a) => (!stateVars.category || a.category === stateVars.category) && (!q || matches(a, q)),
+    (l) => (!stateVars.category || leadOf(l).category === stateVars.category) && (!q || l.some((a) => matches(a, q))),
   );
   const name = q
     ? 'matches'

@@ -255,6 +255,10 @@
   :is(.update-actions button, .acct-pane button, .acct-users button).danger {
   color: color-mix(in srgb, var(--offmesh) 72%, var(--fg));
 }
+/* the wizard's section heads: macOS's blue too light on white */
+:root[data-palette="macos"] .store h2 {
+  color: color-mix(in srgb, var(--accent) 80%, var(--fg));
+}
 :root:is([data-palette="macos"], [data-palette="win11"])
   :is(.update-actions button, .acct-pane button, .acct-users button).danger:hover:not(:disabled) {
   background: var(--offmesh);

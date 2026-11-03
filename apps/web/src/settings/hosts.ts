@@ -1,6 +1,7 @@
-// --- settings › hosts: a bar of the mesh's hosts over one view. All: the mesh graph with its
-// pings and every host's stats. One host: its stats open and, for an admin signed into it (its
-// login saved in their vault), its own phosphorus.ini: the folders it shares, the model it runs
+// --- settings › hosts, in three parts down the rail. Status: a bar of the mesh's hosts over their
+// stats, all of them or one alone. Graph: the mesh graph with its pings. Configure: for an admin, a
+// host they're signed into (its login saved in their vault) and its own phosphorus.ini: the folders
+// it shares, the model it runs
 
 import { appCall } from '../apps/index.ts';
 import { drawMesh, meshPanel, phosphorusHosts, pingHosts } from '../features/mesh/mesh.ts';
@@ -9,97 +10,171 @@ import { el, noFill, stash } from '../lib/dom.ts';
 import { st } from '../lib/state.ts';
 import { dkSettings } from './settings.ts';
 
-// the host picked, '' for all; kept while the window lives on
+export const HOST_SUBS = ['status', 'graph', 'configure'] as const;
+type HostSub = (typeof HOST_SUBS)[number];
+
+// the part shown, the host status shows alone ('' for all) and the one configured; kept while
+// the window lives on
+let part: HostSub = 'status';
 let picked = '';
+let configured = '';
+export const hostsSub = (): HostSub => part;
 
 // whether this account may change a host's config: an admin with its login saved
 const signedIn = (host: string) => !!st.acct?.vault.hosts[host];
 
+// sub a part, or a host's name (the bar's host chips): that host's status
 export function hostsSection(pane: HTMLElement, sub?: string): () => void {
-  if (sub !== undefined) picked = sub;
-  const bar = Object.assign(el('div', 'set-hostbar'), { role: 'tablist', ariaLabel: 'hosts' });
-  const mesh = el('div', 'set-mesh');
-  mesh.append(meshPanel);
-  const status = document.getElementById('view-status')!;
-  status.classList.add('active');
-  const statusHead = el('div', 'dk-ap-head', 'status');
-  const cfg = el('div', 'set-host-cfg');
-  pane.append(bar, mesh, statusHead, status, cfg);
+  if (HOST_SUBS.includes(sub as HostSub)) part = sub as HostSub;
+  else if (sub) {
+    part = 'status';
+    picked = sub;
+  }
+  if (part === 'configure' && !st.acct?.admin) part = 'status';
+  if (part === 'graph') return graphPart(pane);
+  if (part === 'configure') return configurePart(pane);
+  return statusPart(pane);
+}
+
+// a bar of hosts to pick one of, redrawn as the mesh changes; first an entry of its own when named
+function hostBar(
+  hosts: () => string[],
+  now: () => string,
+  pick: (h: string) => void,
+  first?: string,
+): { node: HTMLElement; draw: () => boolean } {
+  const node = Object.assign(el('div', 'set-hostbar'), { role: 'tablist', ariaLabel: 'hosts' });
   let sig = '';
   const draw = () => {
-    const hosts = phosphorusHosts();
-    if (picked && !hosts.includes(picked)) picked = '';
-    const next = `${picked}|${hosts.join()}|${Object.keys(st.acct?.vault.hosts ?? {}).join()}`;
-    if (next === sig) return;
-    const moved = !sig || sig.split('|')[0] !== picked;
+    const list = hosts();
+    const next = `${now()}|${list.join()}|${Object.keys(st.acct?.vault.hosts ?? {}).join()}`;
+    if (next === sig) return false;
     sig = next;
-    bar.replaceChildren(
-      ...['', ...hosts].map((h) => {
-        const on = h === picked;
+    node.replaceChildren(
+      ...[...(first !== undefined ? [''] : []), ...list].map((h) => {
+        const on = h === now();
         const b = Object.assign(el('button', `set-hostchip${on ? ' on' : ''}`), {
           type: 'button',
           role: 'tab',
           ariaSelected: String(on),
-          title: !h ? 'the mesh and every host' : signedIn(h) ? `${h}, signed in` : `${h}, not signed in`,
+          title: !h ? 'every host' : signedIn(h) ? `${h}, signed in` : `${h}, not signed in`,
         });
         if (h && h === st.selfHost) b.classList.add('self');
         if (h && signedIn(h)) b.classList.add('in');
-        b.append(h || 'all hosts');
+        b.append(h || first || '');
         b.addEventListener('click', () => {
-          if (picked === h) return;
-          picked = h;
-          draw();
+          if (now() !== h) pick(h);
         });
         return b;
       }),
     );
-    if (!moved) return;
-    mesh.hidden = !!picked;
-    statusHead.textContent = picked ? `${picked}${picked === st.selfHost ? ' · this page’s host' : ''}` : 'status';
-    appCall('status', true, (m) => m.statusOnly(picked || null));
-    cfg.replaceChildren(...(picked ? configFor(picked) : []));
-    if (!picked) {
-      // measured while hidden, 0 tall: measured again now it shows
-      uiVars.meshDims = null;
-      uiVars.meshStatsDirty = true;
-      drawMesh();
-    }
+    return true;
   };
-  draw();
-  const t = setInterval(draw, 3000);
-  pingHosts();
-  const fit = new ResizeObserver(() => {
-    uiVars.meshDims = null;
-    if (!meshAnimFrame) drawMesh();
-    appCall('status', false, (m) => m.statusDraw());
-  });
-  fit.observe(mesh);
+  return { node, draw };
+}
+
+function statusPart(pane: HTMLElement): () => void {
+  const status = document.getElementById('view-status')!;
+  status.classList.add('active');
+  const bar = hostBar(
+    phosphorusHosts,
+    () => picked,
+    (h) => {
+      picked = h;
+      show();
+    },
+    'all hosts',
+  );
+  pane.append(bar.node, status);
+  const show = () => {
+    if (picked && !phosphorusHosts().includes(picked)) picked = '';
+    bar.draw();
+    appCall('status', true, (m) => m.statusOnly(picked || null));
+  };
+  show();
+  const t = setInterval(() => {
+    if (picked && !phosphorusHosts().includes(picked)) show();
+    else bar.draw();
+  }, 3000);
+  const fit = new ResizeObserver(() => appCall('status', false, (m) => m.statusDraw()));
   fit.observe(status);
   return () => {
     clearInterval(t);
     fit.disconnect();
     appCall('status', false, (m) => m.statusOnly(null));
     status.classList.remove('active');
-    stash.prepend(meshPanel);
     stash.append(status);
   };
 }
 
-// the picked host's configure part: its forms when this admin is signed into it, else why not
+function graphPart(pane: HTMLElement): () => void {
+  const mesh = el('div', 'set-mesh set-mesh-full');
+  mesh.append(meshPanel);
+  pane.append(mesh);
+  // measured while stashed, 0 tall: measured again now it shows
+  uiVars.meshDims = null;
+  uiVars.meshStatsDirty = true;
+  drawMesh();
+  pingHosts();
+  const fit = new ResizeObserver(() => {
+    uiVars.meshDims = null;
+    if (!meshAnimFrame) drawMesh();
+  });
+  fit.observe(mesh);
+  return () => {
+    fit.disconnect();
+    stash.prepend(meshPanel);
+  };
+}
+
+// the hosts this admin is signed into, this page's host first; the rest named, a way to sign in
+function configurePart(pane: HTMLElement): () => void {
+  const mine = () => {
+    const all = phosphorusHosts();
+    return all
+      .filter(signedIn)
+      .sort((a, b) => Number(b === st.selfHost) - Number(a === st.selfHost) || a.localeCompare(b));
+  };
+  const cfg = el('div', 'set-host-cfg');
+  const rest = el('p', 'dk-note set-host-rest');
+  const bar = hostBar(
+    mine,
+    () => configured,
+    (h) => {
+      configured = h;
+      show();
+    },
+  );
+  pane.append(bar.node, cfg, rest);
+  let was = '';
+  const show = () => {
+    const list = mine();
+    if (!list.includes(configured)) configured = list[0] ?? '';
+    bar.node.hidden = !list.length;
+    bar.draw();
+    const others = phosphorusHosts().filter((h) => !signedIn(h));
+    rest.replaceChildren();
+    if (others.length) {
+      const go = Object.assign(el('button', 'store-link', 'sign in under profile'), { type: 'button' });
+      go.addEventListener('click', () => dkSettings('profile'));
+      rest.append(
+        list.length
+          ? `Not signed in, so not configured from here: ${others.join(', ')}. `
+          : `You aren’t signed into any host, so none is configured from here. `,
+        go,
+      );
+    }
+    if (configured === was) return;
+    was = configured;
+    cfg.replaceChildren(...(configured ? configFor(configured) : []));
+  };
+  show();
+  const t = setInterval(show, 3000);
+  return () => clearInterval(t);
+}
+
+// a host's forms, read when it's picked
 function configFor(host: string): HTMLElement[] {
-  if (!st.acct?.admin) return [];
-  const head = el('div', 'dk-ap-head', 'configure');
-  if (!signedIn(host)) {
-    const go = Object.assign(el('button', 'store-link', 'sign in under profile'), { type: 'button' });
-    go.addEventListener('click', () => dkSettings('profile'));
-    const p = el(
-      'p',
-      'dk-note',
-      `Only a host you’re signed into is configured from here: save your ${host} login, then come back. `,
-    );
-    p.append(go);
-    return [head, p];
-  }
   const body = el('div', 'set-host-body acct-pane');
   body.append(el('p', 'dk-note', 'reading its config'));
   void cfgCall(host).then((r) => {
@@ -111,7 +186,7 @@ function configFor(host: string): HTMLElement[] {
     }
     body.replaceChildren(...hostForm(host, r.ini as HostIni));
   });
-  return [head, body];
+  return [body];
 }
 
 // --- a host's config, read when it's picked -----------------------------------------------------

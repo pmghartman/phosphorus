@@ -87,17 +87,18 @@ export function pill(a: StoreApp, f: Facts, big = false): HTMLElement {
   return b;
 }
 
-// the icon tile: the first of srcs that loads, the initial when none does
-// a page's top line: the way back to the front's tab, then the page's own name
-export function crumb(back: string, name: string): HTMLElement {
+// a page's top line, pinned while the page scrolls: the way back to the front's tab, then the
+// page's own icon and name
+export function crumb(back: string, name: string, icon?: HTMLElement): HTMLElement {
   const row = el('div', 'store-crumb');
   const b = Object.assign(el('button', 'store-back'), { type: 'button' });
   b.append(dkGlyph(DK_UI.back!, 'store-back-ic'), back);
   b.addEventListener('click', () => storeShow(''));
-  row.append(b, el('span', 'store-crumb-sep', '/'), el('h1', 'store-crumb-name', name));
+  row.append(b, el('span', 'store-crumb-sep', '/'), ...(icon ? [icon] : []), el('h1', 'store-crumb-name', name));
   return row;
 }
 
+// the icon tile: the first of srcs that loads, the initial when none does
 export function iconTile(name: string, srcs: string[], cls: string): HTMLElement {
   const tile = el('span', `store-icon ${cls}`);
   const mono = () => el('span', 'store-mono', name[0]!.toUpperCase());
@@ -204,7 +205,7 @@ export function page(a: StoreApp): HTMLElement {
   const f = facts(a);
   const admin = !!st.acct?.admin;
   const wrap = el('div', 'store-page');
-  wrap.append(crumb('apps', a.name));
+  wrap.append(crumb('apps', a.name, iconOf(a, f, 'sm')));
 
   // get, update or remove, and how it is, at the top of the side column
   const acts = el('section', 'store-sec store-acts-sec');

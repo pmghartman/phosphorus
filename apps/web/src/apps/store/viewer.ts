@@ -7,7 +7,7 @@ import { el, noFill, pageAsk } from '../../lib/dom.ts';
 import { renderMd } from '../../lib/md.ts';
 import { st } from '../../lib/state.ts';
 import { humanSize } from '../../lib/util.ts';
-import { crumb } from './apps.ts';
+import { crumb, iconTile } from './apps.ts';
 import {
   agoText,
   dockerBusy,
@@ -17,11 +17,13 @@ import {
   hostUp,
   install,
   installedAs,
+  keyOf,
   type Loaded,
   liveHost,
   loadPage,
   opWords,
   pages,
+  pickSource,
   recheck,
   SOURCE_NAMES,
   sourceOf,
@@ -29,9 +31,10 @@ import {
   stackAct,
   stackFacts,
   statusOn,
+  twins,
 } from './catalog.ts';
 import { draw } from './draw.ts';
-import { logsOpen, stateVars } from './state.ts';
+import { logsOpen, stateVars, storeShow } from './state.ts';
 
 const redraw = () => {
   stateVars.sig = '';
@@ -639,6 +642,41 @@ function installedSec(v: StackView, page: AppPage | undefined): HTMLElement[] {
   return out;
 }
 
+// --- the catalogue it's from -----------------------------------------------------------------
+
+// the same service in other catalogues: the one to install from picked, its own page shown
+function sourceSec(key: string): HTMLElement | null {
+  const { source, ref } = splitKey(key);
+  const list = twins(source, ref);
+  if (list.length < 2) return null;
+  const sec = el('section', 'store-sec');
+  sec.append(el('h2', '', 'install from'));
+  const row = el('div', 'store-chips');
+  for (const a of list) {
+    const on = a.source === source;
+    const here = !!installedAs(a.source, a.ref);
+    const b = Object.assign(
+      el('button', `store-chip${on ? ' on' : ''}`, `${SOURCE_NAMES[a.source]}${here ? ' · installed' : ''}`),
+      { type: 'button', ariaPressed: String(on), title: `${SOURCE_NAMES[a.source]}’s listing, ${a.licence}` },
+    );
+    b.addEventListener('click', () => {
+      if (on) return;
+      pickSource(a);
+      storeShow(`stack:${keyOf(a.source, a.ref)}`);
+    });
+    row.append(b);
+  }
+  sec.append(
+    row,
+    el(
+      'p',
+      'store-pick-note',
+      `${list.length} catalogues list it, each with its own compose file and licence; this page is ${SOURCE_NAMES[source]}’s.`,
+    ),
+  );
+  return sec;
+}
+
 // --- the page ----------------------------------------------------------------------------------
 
 export function stackPage(key: string): HTMLElement {
@@ -662,7 +700,11 @@ export function stackPage(key: string): HTMLElement {
   }
   const def = page?.def;
   const sum = v?.summary;
-  wrap.append(crumb('services', def?.name ?? sum!.name));
+  const name = def?.name ?? sum!.name;
+  const others = twins(source, ref);
+  wrap.append(
+    crumb('services', name, iconTile(name, [def?.icon ?? sum?.icon ?? '', ...others.map((a) => a.icon)], 'sm')),
+  );
   const cols = el('div', 'store-cols');
   const main = el('div', 'store-main');
   const side = el('aside', 'store-side');
@@ -676,8 +718,18 @@ export function stackPage(key: string): HTMLElement {
   } else if (loaded?.error) main.append(el('div', 'store-empty bad', loaded.error));
   else main.append(el('div', 'store-empty', 'reading its page'));
   const f = formOf(key);
+  // the same service installed from another catalogue: that one's page, not a second install
+  const twin = v ? undefined : others.map((a) => installedAs(a.source, a.ref)).find(Boolean);
+  const from = sourceSec(key);
+  if (from) side.append(from);
   if (v) side.append(...installedSec(v, page));
-  else if (page && f.busy) side.append(el('div', 'store-verdict wait', `installing onto ${f.active}`));
+  else if (twin) {
+    const go = Object.assign(el('button', 'store-link', 'its page'), { type: 'button' });
+    go.addEventListener('click', () => storeShow(`stack:${keyOf(twin.summary.source, twin.summary.ref)}`));
+    const note = el('p', 'store-pick-note', `Already on the mesh from ${SOURCE_NAMES[twin.summary.source]}: `);
+    note.append(go);
+    side.append(note);
+  } else if (page && f.busy) side.append(el('div', 'store-verdict wait', `installing onto ${f.active}`));
   else if (page) side.append(...installSec(key, page));
   if (def) {
     const sec = el('section', 'store-sec');

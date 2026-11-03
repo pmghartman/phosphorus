@@ -30,6 +30,57 @@ export function splitKey(key: string): { source: SourceId; ref: string } {
 }
 const refPath = (ref: string) => ref.split('/').map(encodeURIComponent).join('/');
 
+// --- one service in several catalogues ------------------------------------------------------
+
+// a service known by its name, bare: the same in every catalogue that lists it
+export const bare = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+const twinKey = (a: { id: string; name: string }) => bare(a.name) || bare(a.id);
+
+// every service once, its listings one per catalogue in the catalogues' order; worked out again
+// when the catalogue is read again
+let grouped: { of: AppSummary[]; map: Map<string, AppSummary[]> } | null = null;
+export function services(): AppSummary[][] {
+  if (!catalog) return [];
+  if (grouped?.of !== catalog.apps) {
+    const order: string[] = catalog.sources.map((s) => s.id);
+    const map = new Map<string, AppSummary[]>();
+    for (const a of catalog.apps) {
+      const list = map.get(twinKey(a)) ?? [];
+      if (!list.some((x) => x.source === a.source)) list.push(a);
+      map.set(twinKey(a), list);
+    }
+    for (const list of map.values()) list.sort((x, y) => order.indexOf(x.source) - order.indexOf(y.source));
+    grouped = { of: catalog.apps, map };
+  }
+  return [...grouped.map.values()];
+}
+
+// an app's listings in every catalogue that has it, its own among them
+export function twins(source: string, ref: string): AppSummary[] {
+  const a = catalog?.apps.find((x) => x.source === source && x.ref === ref);
+  if (!a) return [];
+  services();
+  return grouped?.map.get(twinKey(a)) ?? [a];
+}
+
+// a discovered page's service in the catalogues, by its guessed name
+export function twinsNamed(name: string): AppSummary[] {
+  services();
+  return grouped?.map.get(bare(name)) ?? [];
+}
+
+// the catalogue picked on a service's page, kept for its tile while the page lives
+const picks = new Map<string, string>();
+export const pickSource = (a: AppSummary) => picks.set(twinKey(a), a.source);
+
+// the listing a service's tile shows: the one installed, else the catalogue filtered on, else the
+// one picked on its page, else the first catalogue's
+export const lead = (list: AppSummary[], source = ''): AppSummary =>
+  list.find((a) => installedAs(a.source, a.ref)) ??
+  list.find((a) => a.source === source) ??
+  list.find((a) => a.source === picks.get(twinKey(a))) ??
+  list[0]!;
+
 // a failed call's words for people: github's rate limit, a repo with no compose file
 export function why(status: number, error: string): string {
   if (status === 429 || /rate.?limit/i.test(error))

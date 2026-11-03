@@ -1,6 +1,6 @@
 /* --- apps: a store for the mesh's optional extras (apps/store.ts) ---------- */
 .dk-icon.dk-apps .ic {
-  color: var(--sand);
+  color: var(--rose);
 }
 .dk-icon.dk-app .ic {
   color: var(--teal);
@@ -226,7 +226,7 @@
 }
 .store-tile-badge {
   font-size: 0.66rem;
-  color: var(--accent);
+  color: color-mix(in srgb, var(--accent) 65%, var(--fg));
   letter-spacing: 0.03em;
 }
 /* the icon: the app's own once a host serves it, its initial until then */
@@ -237,6 +237,13 @@
   border: 1px solid var(--border);
   background: var(--bg);
   overflow: hidden;
+}
+.store-icon.sm {
+  width: 1.7rem;
+  height: 1.7rem;
+}
+.store-icon.sm .store-mono {
+  font-size: 0.85rem;
 }
 .store-icon.md {
   width: 3.2rem;
@@ -306,15 +313,25 @@
   animation: update-blink 1.2s ease-in-out infinite;
 }
 /* the page: back, a hero, two columns */
-/* a page's top line: the way back, then its name */
+/* a page's top line: the way back, then its icon and name; pinned over the page as it scrolls,
+   the store's top padding taken into it so nothing shows above it */
 .store-crumb {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 0.6ch;
   min-width: 0;
 }
-.store-crumb .store-back {
-  align-self: baseline;
+.store-page > .store-crumb {
+  position: sticky;
+  top: -1.1rem;
+  z-index: 2;
+  margin: -1.1rem 0 -0.5rem;
+  padding: 1.1rem 0 0.55rem;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+.store-crumb .store-icon {
+  margin-left: 0.2rem;
 }
 .store-crumb-sep {
   color: var(--muted);
@@ -671,7 +688,8 @@
 }
 .store-chip.on {
   border-color: var(--accent);
-  color: var(--accent);
+  /* drawn toward the text's colour: the accent alone too faint on its own tint in light themes */
+  color: color-mix(in srgb, var(--accent) 65%, var(--fg));
   background: color-mix(in srgb, var(--accent) 14%, transparent);
 }
 .store-more {
@@ -1168,6 +1186,11 @@ a.store-pill {
 @media (max-width: 720px) {
   .store {
     padding: 0.8rem;
+  }
+  .store-page > .store-crumb {
+    top: -0.8rem;
+    margin-top: -0.8rem;
+    padding-top: 0.8rem;
   }
   .store-cols {
     grid-template-columns: 1fr;
