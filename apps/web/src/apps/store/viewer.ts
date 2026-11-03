@@ -183,14 +183,23 @@ function viewer(key: string, page: AppPage): HTMLElement {
       sec.append(md);
     }
   } else if (pane === 'compose') {
-    sec.append(
-      el(
-        'p',
-        'store-pick-note',
-        'Read only, as phosphorus renders it: each data volume becomes a folder under its data/.',
-      ),
-      el('pre', 'store-code', page.def.compose),
-    );
+    if (!page.def.compose.trim())
+      sec.append(
+        el(
+          'div',
+          'store-empty bad',
+          'No compose file here. Phosphorus looks for compose.yml or docker-compose.yml at the repo’s root, in docker/ and in deploy/.',
+        ),
+      );
+    else
+      sec.append(
+        el(
+          'p',
+          'store-pick-note',
+          'Read only, as phosphorus renders it: each data volume becomes a folder under its data/.',
+        ),
+        el('pre', 'store-code', page.def.compose),
+      );
   } else sec.append(tree(page));
   return sec;
 }
@@ -679,7 +688,9 @@ export function stackPage(key: string): HTMLElement {
   const main = el('div', 'store-main');
   const side = el('aside', 'store-side');
   if (page) {
-    if (page.def.description && page.def.description !== page.def.tagline)
+    // a catalogue's app has its description for a readme: said once
+    const about = page.def.description.trim();
+    if (about && about !== page.def.tagline && about !== page.readme.trim())
       main.append(el('p', 'store-about', page.def.description));
     main.append(viewer(key, page));
   } else if (loaded?.error) main.append(el('div', 'store-empty bad', loaded.error));

@@ -206,6 +206,9 @@ const FEATURED = [
 const bare = (id: string) => id.toLowerCase().replace(/[^a-z0-9]/g, '');
 // tiles shown before 'show all'
 const FIRST = 48;
+// categories offered: those with a few apps, the most used first
+const CAT_MIN = 3;
+const CAT_MAX = 24;
 
 // a found page on a host and its host's name
 type Discovered = FoundPage & { host: string };
@@ -388,13 +391,18 @@ function servicesTab(wrap: HTMLElement, q: string) {
     section(wrap, 'featured', featured.slice(0, 8).map(stackTile));
   }
   const cats = new Map<string, number>();
-  for (const a of inSource) cats.set(a.category, (cats.get(a.category) ?? 0) + 1);
-  if (cats.size > 1) {
+  for (const a of inSource) if (a.category) cats.set(a.category, (cats.get(a.category) ?? 0) + 1);
+  // the catalogues' own words, many used once: the common ones, the picked one always
+  const common = [...cats]
+    .filter(([c, n]) => n >= CAT_MIN || c === stateVars.category)
+    .sort(([a, n], [b, m]) => m - n || a.localeCompare(b))
+    .slice(0, CAT_MAX);
+  if (common.length > 1) {
     const s = el('section', 'store-section');
     s.append(
       el('h2', 'store-section-head', 'categories'),
       chips(
-        [...cats].sort(([a], [b]) => a.localeCompare(b)).map(([c, n]): [string, string] => [c, `${c} · ${n}`]),
+        common.map(([c, n]): [string, string] => [c, `${c} · ${n}`]),
         stateVars.category,
         (v) => {
           stateVars.category = v;

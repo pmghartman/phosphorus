@@ -33,7 +33,9 @@ const refPath = (ref: string) => ref.split('/').map(encodeURIComponent).join('/'
 // a failed call's words for people: github's rate limit, a repo with no compose file
 export function why(status: number, error: string): string {
   if (status === 429 || /rate.?limit/i.test(error))
-    return `GitHub's limit on unsigned requests is used up for now; try again later. (${error || `status ${status}`})`;
+    return status === 429 && error
+      ? error
+      : `GitHub's limit on unsigned calls is spent for now: ${error || `status ${status}`}`;
   if (/compose/i.test(error) && /\bno\b|not found|without|none/i.test(error))
     return 'This repo has no compose file. Phosphorus looks for compose.yml or docker-compose.yml at its root, in docker/ and in deploy/.';
   if (status === 404) return error || 'not found';
