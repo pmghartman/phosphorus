@@ -1,18 +1,16 @@
-// --- settings › hosts, in four parts down the rail. Status: a bar of the mesh's hosts over the
-// mesh's stats summed, or one host's in full. Graph: the mesh graph with its pings. Desktops: every
-// computer on the tailnet, opened as its own desktop. Configure: for an admin, a host they're signed
-// into (its login saved in their vault) and its settings: the folders it shares, the model it runs
+// --- settings › hosts, in three parts down the rail. Status: a bar of the mesh's hosts over the
+// mesh's stats summed, or one host's in full. Graph: the mesh graph with its pings. Configure: for
+// an admin, a host they're signed into (its login saved in their vault) and its settings: the folders it
+// shares, the model it runs
 
 import { appCall } from '../apps/index.ts';
-import { dkHostDesk } from '../desktop/desk/hostdesk.ts';
 import { drawMesh, meshPanel, phosphorusHosts, pingHosts } from '../features/mesh/mesh.ts';
 import { meshAnimFrame, uiVars } from '../features/mesh/ui.ts';
-import { acctCall } from '../lib/api.ts';
 import { el, noFill, stash } from '../lib/dom.ts';
 import { st } from '../lib/state.ts';
 import { cardify, dkSettings } from './settings.ts';
 
-export const HOST_SUBS = ['status', 'graph', 'desktops', 'configure'] as const;
+export const HOST_SUBS = ['status', 'graph', 'configure'] as const;
 type HostSub = (typeof HOST_SUBS)[number];
 
 // the part shown, the host status shows alone ('' for all) and the one configured; kept while
@@ -34,7 +32,6 @@ export function hostsSection(pane: HTMLElement, sub?: string): () => void {
   }
   if (part === 'configure' && !st.acct?.admin) part = 'status';
   if (part === 'graph') return graphPart(pane);
-  if (part === 'desktops') return desktopsPart(pane);
   if (part === 'configure') return configurePart(pane);
   return statusPart(pane);
 }
@@ -128,78 +125,6 @@ function graphPart(pane: HTMLElement): () => void {
     fit.disconnect();
     stash.prepend(meshPanel);
   };
-}
-
-// every computer the tailnet names, each opened as its own desktop; an admin's switch
-// for each, the viewer's saved login named beside it
-function desktopsPart(pane: HTMLElement): () => void {
-  const list = el('ul', 'dk-rows set-desks');
-  const note = el(
-    'p',
-    'dk-note',
-    'a computer opens as its own desktop, signed in with your saved login for it; nothing is installed on it',
-  );
-  pane.append(...cardify([note, list]));
-  let on: Record<string, unknown> = {};
-  let sig = '';
-  const draw = (force = false) => {
-    const devs = new Map<string, string>();
-    if (st.selfHost) devs.set(st.selfHost, st.hostsInfo[st.selfHost]?.platform || '');
-    for (const d of st.lastState?.tailnet ?? []) devs.set(d.name, d.os || devs.get(d.name) || '');
-    const names = [...devs.keys()].sort(
-      (a, b) => Number(b === st.selfHost) - Number(a === st.selfHost) || a.localeCompare(b),
-    );
-    const next = JSON.stringify([names, on, Object.keys(st.acct?.vault.hosts ?? {})]);
-    if (next === sig && !force) return;
-    sig = next;
-    list.replaceChildren(
-      ...(names.length
-        ? names.map((h) => {
-            const os = devs.get(h) || '';
-            const mac = /mac|darwin|ios/i.test(os);
-            const li = el('li', 'dk-row');
-            const name = el('span', `dk-host${h === st.selfHost ? ' is-self' : ''}`, h);
-            const kind = el('span', 'dk-note', os.toLowerCase() || 'unknown os');
-            const login = el('span', 'dk-note', signedIn(h) ? 'login saved' : 'no login saved');
-            li.append(name, kind, login);
-            if (st.acct?.admin) {
-              const box = Object.assign(el('input'), { type: 'checkbox', checked: !!on[h], disabled: mac });
-              const lab = el('label', 'dk-ap-check');
-              lab.append(box, el('span', 'dk-ap-check-t', 'enabled'));
-              box.addEventListener('change', async () => {
-                box.disabled = true;
-                const r = await acctCall('/api/hostdesk/enable', { host: h, on: box.checked });
-                box.disabled = false;
-                if (!r.ok) box.checked = !box.checked;
-                await fetchOn();
-              });
-              li.append(lab);
-            } else li.append(el('span', 'dk-note', on[h] ? 'enabled' : 'not enabled'));
-            const open = Object.assign(el('button', 'btn primary', 'open'), {
-              type: 'button',
-              disabled: mac || !on[h],
-            });
-            open.title = mac
-              ? "macos isn't drawn"
-              : !on[h]
-                ? 'an admin enables it first'
-                : `open ${h} as its own desktop`;
-            open.addEventListener('click', () => dkHostDesk(h, open));
-            li.append(open);
-            return li;
-          })
-        : [el('li', 'empty', 'no computers on the tailnet')]),
-    );
-  };
-  const fetchOn = async () => {
-    const r = await acctCall<{ hosts: Record<string, unknown> }>('/api/hostdesk');
-    if (r.ok) on = r.hosts ?? {};
-    draw(true);
-  };
-  draw();
-  void fetchOn();
-  const t = setInterval(() => draw(), 3000);
-  return () => clearInterval(t);
 }
 
 // the hosts this admin is signed into, this page's host first; the rest named, a way to sign in

@@ -46,7 +46,33 @@ export type Desk = {
   // gnome: its dock's side when one is on, and whether DING draws icons
   dock?: string;
   ding?: boolean;
+  look: Look;
 };
+
+// Look how the host draws its own chrome, as near as its settings say
+export type Look = {
+  // desk icons in px
+  iconSize: number;
+  clock: { h24: boolean; seconds: boolean; weekday: boolean };
+  transparent: boolean;
+  // windows' taskbar: its search, task view and widgets buttons, small icons, its edge
+  search: "" | "icon" | "box";
+  taskView: boolean;
+  widgets: boolean;
+  small: boolean;
+  edge: "bottom" | "top" | "left" | "right";
+};
+
+export const plainLook = (): Look => ({
+  iconSize: 48,
+  clock: { h24: false, seconds: false, weekday: false },
+  transparent: true,
+  search: "",
+  taskView: false,
+  widgets: false,
+  small: false,
+  edge: "bottom",
+});
 
 export type BinItem = { id: string; name: string; from: string; deleted: number; size: number; dir: boolean };
 

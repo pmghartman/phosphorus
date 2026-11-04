@@ -1,9 +1,7 @@
-// host desktop's routes: a user's alone, an admin's switch, a host refused until
-// enabled, the saved login asked for before anything opens
+// host desktop's routes: signed in users only, every host on the tailnet open to them,
+// the saved login asked for before anything opens
 import "./env.ts";
 import { expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import type { Ctx } from "@phosphorus/wsock";
 
 const users = await import("@phosphorus/users");
@@ -30,44 +28,13 @@ async function signIn(name: string, admin: boolean): Promise<string> {
   return `phosphorus-user=${/^phosphorus-user=([^;]+)/.exec(login.cookie![0]!)![1]!}`;
 }
 
-test("host desktop: users only, enabled by an admin, the saved login first", async () => {
-  expect(await call("/api/hostdesk")).toEqual([401, { error: "log in as a user" }]);
+test("host desktop: users only, no admin switch, the saved login first", async () => {
+  expect(await call("/api/hostdesk/testhost/desktop")).toEqual([401, { error: "log in as a user" }]);
   const dina = await signIn("dina", false);
-  const deskadmin = await signIn("deskadmin", true);
-  expect(await call("/api/hostdesk", "GET", undefined, { cookie: dina })).toEqual([200, { hosts: {} }]);
-  // not an admin, not a host on the tailnet, another site's page
-  const no = await call("/api/hostdesk/enable", "POST", { host: "testhost", on: true }, { cookie: dina });
-  expect(no![0]).toBe(403);
-  expect((await call("/api/hostdesk/enable", "POST", { host: "nowhere", on: true }, { cookie: deskadmin }))![0]).toBe(
-    404,
-  );
-  const cross = { cookie: deskadmin, origin: "https://elsewhere.test" };
-  expect((await call("/api/hostdesk/enable", "POST", { host: "testhost", on: true }, cross))![0]).toBe(403);
-  // a host on the tailnet but not enabled refuses to open
-  const shut = await call("/api/hostdesk/testhost/desktop", "GET", undefined, { cookie: dina });
-  expect(shut![0]).toBe(403);
-  expect(shut![1].enable).toBe(true);
+  // the old list and switch gone
+  expect((await call("/api/hostdesk", "GET", undefined, { cookie: dina }))![0]).toBe(404);
+  expect((await call("/api/hostdesk/enable", "POST", { host: "testhost", on: true }, { cookie: dina }))![0]).toBe(404);
   expect((await call("/api/hostdesk/nowhere/desktop", "GET", undefined, { cookie: dina }))![0]).toBe(404);
-  // enabled by the admin, for everyone
-  expect(await call("/api/hostdesk/enable", "POST", { host: "testhost", on: true }, { cookie: deskadmin })).toEqual([
-    200,
-    { host: "testhost", on: true },
-  ]);
-  // the switch in the audit log, as the desktop's
-  const { LogDir } = await import("@phosphorus/util");
-  const rows = readFileSync(join(LogDir, "mcp-audit.jsonl"), "utf8")
-    .trim()
-    .split("\n")
-    .map((l) => JSON.parse(l));
-  expect(rows.at(-1)).toMatchObject({
-    user: "deskadmin",
-    via: "desktop",
-    tool: "host_desktop_enable",
-    args: { host: "testhost", on: true },
-    ok: true,
-  });
-  const list = await call("/api/hostdesk", "GET", undefined, { cookie: dina });
-  expect(Object.keys(list![1].hosts)).toEqual(["testhost"]);
   // still nothing opened without dina's own saved login
   const nologin = await call("/api/hostdesk/testhost/desktop?cached=1", "GET", undefined, { cookie: dina });
   expect(nologin![0]).toBe(403);
@@ -82,12 +49,7 @@ test("host desktop: users only, enabled by an admin, the saved login first", asy
     200,
     { cached: false },
   ]);
-  // switched off again
-  expect(
-    (await call("/api/hostdesk/enable", "POST", { host: "testhost", on: false }, { cookie: deskadmin }))![1].on,
-  ).toBe(false);
-  expect((await call("/api/hostdesk/testhost/desktop?cached=1", "GET", undefined, { cookie: dina }))![0]).toBe(403);
   // gone again, the smoke test after still a fresh mesh's setup
   const root = { user: "root", admin: true, boot: false, token: "", e: 0 };
-  for (const name of ["dina", "deskadmin"]) expect(users.Remove(root, { name }).status).toBe(200);
+  for (const name of ["dina"]) expect(users.Remove(root, { name }).status).toBe(200);
 });

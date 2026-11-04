@@ -11,13 +11,14 @@ import {
   serviceUrl,
   startPulseLoop,
 } from '../../features/mesh/mesh.ts';
+import { noteAdd } from '../../features/notes.ts';
 import { DK_UI, dkGlyph, el } from '../../lib/dom.ts';
 import { dk, PREF_LS, st } from '../../lib/state.ts';
 import { dkWallPick } from '../../settings/appearance.ts';
 import { dkSettings } from '../../settings/settings.ts';
 import { dkView } from '../desk.ts';
 import { dkDeskAt, dkDeskUpload, dkDeskView } from '../deskfiles.ts';
-import { dkClock, type Pop } from '../taskbar.ts';
+import type { Pop } from '../taskbar.ts';
 import { type DkWin, dkFocus, dkNav, dkWin, type NavFrame } from '../windows.ts';
 import {
   DK_GX,
@@ -174,11 +175,9 @@ export function dkDeskMenu(icons: HTMLElement) {
   });
 }
 
-// a word in the clock's place a moment
-export function dkMenuNote(text: string): void {
-  if (!dk.clock) return;
-  dk.clock.textContent = text;
-  setTimeout(dkClock, 4000);
+// what a desk action has to say, as a toast and in the bell, never over the clock
+export function dkSay(text: string): void {
+  if (text) noteAdd(text, '');
 }
 
 // every icon back in the default order
@@ -281,7 +280,6 @@ function dkFound(): MenuItem[] {
 }
 
 export async function dkPublish(host: string, name: string, port: number) {
-  dkMenuNote(`publishing ${name}…`);
   const res = await fetch(`/api/services/${encodeURIComponent(host)}/${encodeURIComponent(name)}/publish`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -289,7 +287,7 @@ export async function dkPublish(host: string, name: string, port: number) {
   }).catch(() => null);
   const out = res ? await res.json().catch(() => ({})) : {};
   const why = out.outcome && out.outcome.published !== true ? out.outcome.why : '';
-  dkMenuNote(res?.ok && !why ? `${name} published` : why || out.error || 'not published');
+  dkSay(res?.ok && !why ? `${name} published` : why || out.error || 'not published');
 }
 
 // a service behind the phosphorus login or open to all, its record or want rewritten
@@ -300,7 +298,7 @@ export async function dkSetPublic(r: Route, on: boolean) {
     body: JSON.stringify({ public: on }),
   }).catch(() => null);
   const out = res ? await res.json().catch(() => ({})) : {};
-  dkMenuNote(res?.ok ? `${r.name} ${on ? 'public' : 'private'}` : out.error || 'not changed');
+  dkSay(res?.ok ? `${r.name} ${on ? 'public' : 'private'}` : out.error || 'not changed');
 }
 
 // a service opened in a browser tab of its own rather than a window, by the user's choice

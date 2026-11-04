@@ -37,12 +37,14 @@ type Ctx = {
   psTerm: boolean;
   // the recycle bin as last listed: id to where it came from
   bin?: Record<string, string>;
+  // icons on their way, by cache key
+  pending: Map<string, Promise<Blob | undefined>>;
 };
 
 const win = (s: Session) => s.os === "windows";
 
 export function ctxOf(s: Session, psTerm = false): Ctx {
-  s.extra.ctx ??= { scope: new Scope("", win(s)), icons: new Set<string>(), psTerm } satisfies Ctx;
+  s.extra.ctx ??= { scope: new Scope("", win(s)), icons: new Set<string>(), psTerm, pending: new Map() } satisfies Ctx;
   return s.extra.ctx as Ctx;
 }
 
@@ -135,31 +137,77 @@ function sniff(b: Uint8Array, p: string): string {
 const iconMax = 1 << 20;
 const wallMax = 48 << 20;
 
+const iconKey = (spec: string, v: string) => `icon\0${spec}\0${v}`;
+
 // an icon the probe issued, from the cache when its version matches
 export async function icon(s: Session, host: string, spec: string, v: string): Promise<Blob | undefined> {
   const c = ctxOf(s);
   if (!c.icons.has(spec)) return;
-  const key = `icon\0${spec}\0${v}`;
+  const key = iconKey(spec, v);
   const hit = cacheGet(host, key);
   if (hit) return unpack(hit);
-  let blob: Blob | undefined;
+  const p = c.pending.get(key) ?? track(c, key, host, fetchIcon(s, spec));
+  return p;
+}
+
+function track(c: Ctx, key: string, host: string, p: Promise<Blob | undefined>) {
+  const q = p.then((b) => {
+    if (b) cachePut(host, key, pack(b));
+    return b;
+  });
+  c.pending.set(key, q);
+  void q.finally(() => c.pending.delete(key)).catch(() => {});
+  return q;
+}
+
+async function fetchIcon(s: Session, spec: string): Promise<Blob | undefined> {
   if (win(s)) {
     const r = json(await s.call("icon", spec));
-    if (typeof r?.png === "string" && r.png) blob = { type: "image/png", bytes: Buffer.from(r.png, "base64") };
-  } else {
-    let path = "";
-    if (spec.startsWith("p:")) path = spec.slice(2);
-    else if (spec.startsWith("x:")) {
-      const [theme, names] = spec.slice(2).split("|");
-      path = (await s.call("icon", `${theme}\n${(names ?? "").split(",").join("\n")}`)).trim();
-    }
-    if (path) {
-      const b = await readAll(s, path, iconMax);
-      blob = { type: sniff(b, path), bytes: b };
-    }
+    return typeof r?.png === "string" && r.png ? { type: "image/png", bytes: Buffer.from(r.png, "base64") } : undefined;
   }
-  if (blob) cachePut(host, key, pack(blob));
-  return blob;
+  let path = "";
+  if (spec.startsWith("p:")) path = spec.slice(2);
+  else if (spec.startsWith("x:")) {
+    const [theme, names] = spec.slice(2).split("|");
+    path = (await s.call("icon", `${theme}\n${(names ?? "").split(",").join("\n")}`)).trim();
+  }
+  if (!path) return;
+  const b = await readAll(s, path, iconMax);
+  return { type: sniff(b, path), bytes: b };
+}
+
+// the icons a desk draws first, fetched and cached before the page asks: one
+// request for all of them on Windows, pipelined on Linux
+export async function prefetch(s: Session, host: string, items: Item[]): Promise<void> {
+  const c = ctxOf(s);
+  const want = new Map<string, string>();
+  for (const it of items) {
+    if (!it.icon || !c.icons.has(it.icon)) continue;
+    const key = iconKey(it.icon, it.iv ?? "");
+    if (!c.pending.has(key) && !cacheGet(host, key)) want.set(key, it.icon);
+  }
+  if (!want.size) return;
+  if (!win(s)) {
+    await Promise.allSettled([...want].map(([key, spec]) => track(c, key, host, fetchIcon(s, spec))));
+    return;
+  }
+  const specs = [...new Set(want.values())];
+  const all = s.call("icons", JSON.stringify(specs), 120_000).then((t) => {
+    const m = new Map<string, Blob>();
+    for (const r of json(t) as { k?: string; png?: string }[])
+      if (r?.k && r.png) m.set(r.k, { type: "image/png", bytes: Buffer.from(r.png, "base64") });
+    return m;
+  });
+  await Promise.allSettled(
+    [...want].map(([key, spec]) =>
+      track(
+        c,
+        key,
+        host,
+        all.then((m) => m.get(spec)),
+      ),
+    ),
+  );
 }
 
 // a blob kept as one file: its type, a newline, its bytes

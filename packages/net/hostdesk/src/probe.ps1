@@ -17,8 +17,15 @@ function Ver($p) {
   try { [string](Get-Item -LiteralPath $p -Force).LastWriteTimeUtc.Ticks } catch { '' }
 }
 
+# a cloud placeholder not on disk: read only by its attributes, never hydrated
+# offline 0x1000, recall on open 0x40000, recall on data access 0x400000
+function Cloud($p) {
+  try { ([int][IO.File]::GetAttributes($p) -band 0x441000) -ne 0 } catch { $false }
+}
+
 # the PE header's subsystem: 2 a window, 3 a console
 function Subsys($p) {
+  if (Cloud $p) { return 0 }
   try {
     $fs = [IO.File]::OpenRead($p)
     try {
@@ -39,6 +46,11 @@ function Describe($p, $group) {
   $ext = [IO.Path]::GetExtension($p).ToLower()
   if (Test-Path -LiteralPath $p -PathType Container) {
     $it.name = [IO.Path]::GetFileName($p); $it.kind = 'folder'; return $it
+  }
+  if (Cloud $p) {
+    $it.icon = "a:$p"
+    if ($ext -in '.lnk', '.url', '.exe') { $it.kind = 'gui' } else { $it.name = [IO.Path]::GetFileName($p) }
+    return $it
   }
   if ($ext -eq '.lnk') {
     try { $s = $sh.CreateShortcut($p) } catch { $it.kind = 'gui'; return $it }
@@ -96,6 +108,9 @@ function Do-desktop($a) {
   $al = [int](Reg "$cv\Explorer\Advanced" 'TaskbarAl' 1)
   $hide = [int](Reg "$cv\Explorer\Advanced" 'HideIcons' 0)
   $binHidden = [int](Reg "$cv\Explorer\HideDesktopIcons\NewStartPanel" '{645FF040-5081-101B-9F08-00AA002F954E}' 0)
+  $stuck = Reg "$cv\Explorer\StuckRects3" 'Settings' $null
+  $edge = 3
+  if ($stuck -is [byte[]] -and $stuck.Length -gt 12) { $edge = [int]$stuck[12] }
   $icons = @()
   $dirs = @([Environment]::GetFolderPath('Desktop'), [Environment]::GetFolderPath('CommonDesktopDirectory')) | Where-Object { $_ -and (Test-Path -LiteralPath $_) }
   if (-not $hide) {
@@ -133,6 +148,15 @@ function Do-desktop($a) {
     icons = $icons
     pins = $pins
     sshShell = [string](Reg 'HKLM:\SOFTWARE\OpenSSH' 'DefaultShell' '')
+    iconSize = [int](Reg 'HKCU:\Software\Microsoft\Windows\Shell\Bags\1\Desktop' 'IconSize' 48)
+    search = [int](Reg "$cv\Search" 'SearchboxTaskbarMode' 1)
+    taskView = [int](Reg "$cv\Explorer\Advanced" 'ShowTaskViewButton' 1)
+    widgets = [int](Reg "$cv\Explorer\Advanced" 'TaskbarDa' 1)
+    small = [int](Reg "$cv\Explorer\Advanced" 'TaskbarSmallIcons' 0)
+    seconds = [int](Reg "$cv\Explorer\Advanced" 'ShowSecondsInSystemClock' 0)
+    edge = $edge
+    transparent = [int](Reg "$cv\Themes\Personalize" 'EnableTransparency' 1)
+    time = [string](Reg 'HKCU:\Control Panel\International' 'sShortTime' 'h:mm tt')
   }
 }
 
@@ -160,9 +184,7 @@ function Do-apps($a) {
   , $out
 }
 
-function IconsReady {
-  if ($script:iconsReady) { return }
-  Add-Type -ReferencedAssemblies System.Drawing -TypeDefinition @'
+$iconSrc = @'
 using System; using System.IO; using System.Drawing; using System.Drawing.Imaging; using System.Runtime.InteropServices;
 public static class PhIcon {
   [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
@@ -191,9 +213,22 @@ public static class PhIcon {
     try { var s = new SFI(); if (SHGetFileInfoP(pidl, 0, ref s, (uint)Marshal.SizeOf(s), 0x4008) == IntPtr.Zero) return null; return Index(s.i); }
     finally { CoTaskMemFree(pidl); }
   }
+  public static string Attr(string p) { var s = new SFI(); if (SHGetFileInfo(p, 0x80, ref s, (uint)Marshal.SizeOf(s), 0x4010) == IntPtr.Zero) return null; return Index(s.i); }
   public static string Loc(string f, int i) { var h = new IntPtr[1]; var id = new int[1]; if (PrivateExtractIcons(f, i, 48, 48, h, id, 1, 0) == 0 || h[0] == IntPtr.Zero) return null; return Png(h[0]); }
 }
 '@
+
+# compiled in a runspace of its own from the start, so the first icon pays no csc
+# the slow lane draws no icons
+if ($lane -ne 'slow') {
+  $script:iconJob = [powershell]::Create().AddScript({ param($src) Add-Type -ReferencedAssemblies System.Drawing -TypeDefinition $src }).AddArgument($iconSrc)
+  $script:iconWait = $script:iconJob.BeginInvoke()
+}
+
+function IconsReady {
+  if ($script:iconsReady) { return }
+  if ($script:iconJob) { try { $script:iconJob.EndInvoke($script:iconWait) | Out-Null } catch {} }
+  if (-not ('PhIcon' -as [type])) { Add-Type -ReferencedAssemblies System.Drawing -TypeDefinition $iconSrc }
   $script:iconsReady = $true
 }
 
@@ -227,7 +262,8 @@ function Do-icon($a) {
   $v = $a.Substring(2)
   $png = $null
   switch ($k) {
-    'f:' { $png = [PhIcon]::File($v) }
+    'f:' { if (Cloud $v) { $png = [PhIcon]::Attr($v) } else { $png = [PhIcon]::File($v) } }
+    'a:' { $png = [PhIcon]::Attr($v) }
     'b:' { $png = [PhIcon]::Bin() }
     'u:' { $png = Uwp $v }
     'l:' {
@@ -238,10 +274,23 @@ function Do-icon($a) {
   @{ png = $png }
 }
 
+# many icons in one answer, a miss as null
+function Do-icons($a) {
+  $r = @()
+  $list = $a | ConvertFrom-Json
+  foreach ($k in $list) {
+    $png = $null
+    try { $png = (Do-icon ([string]$k)).png } catch {}
+    $r += [ordered]@{ k = [string]$k; png = $png }
+  }
+  , $r
+}
+
+# fixed drives only: a network or removable one never waited on
 function Bins {
-  foreach ($d in Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue) {
-    if (-not $d.Root) { continue }
-    $b = Join-Path $d.Root ('$Recycle.Bin\' + $sid)
+  foreach ($d in [IO.DriveInfo]::GetDrives()) {
+    if ($d.DriveType -ne 'Fixed' -or -not $d.IsReady) { continue }
+    $b = Join-Path $d.RootDirectory.FullName ('$Recycle.Bin\' + $sid)
     if (Test-Path -LiteralPath $b) { $b }
   }
 }
@@ -386,7 +435,7 @@ function Do-set($a) {
   @{ live = (Live $live) }
 }
 
-$cmds = 'desktop', 'apps', 'icon', 'trash', 'restore', 'empty', 'stat', 'delete', 'open', 'ls', 'images', 'set'
+$cmds = 'desktop', 'apps', 'icon', 'icons', 'trash', 'restore', 'empty', 'stat', 'delete', 'open', 'ls', 'images', 'set'
 $out = [Console]::Out
 while ($true) {
   $l = [Console]::In.ReadLine()

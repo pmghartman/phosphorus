@@ -21,8 +21,11 @@ import './desktop/control.ts';
 import './desktop/switcher.ts';
 import './desktop/keys.ts';
 import './desktop/session.ts';
+import { dkDeskTabBoot } from './desktop/desk/hostdesk.ts';
 import { acctStart } from './features/account.ts';
 import './features/mcp.ts';
 import './features/agent.ts';
 
+// a host's own tab drawn and asked for before the login answers
+dkDeskTabBoot();
 acctStart();

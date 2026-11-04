@@ -114,8 +114,8 @@
   inset: 4px 4px calc(var(--hd-bar) + 4px) 4px;
   display: grid;
   grid-auto-flow: column;
-  grid-template-rows: repeat(auto-fill, 92px);
-  grid-auto-columns: 82px;
+  grid-template-rows: repeat(auto-fill, calc(var(--hd-icon, 48px) + 44px));
+  grid-auto-columns: calc(var(--hd-icon, 48px) + 34px);
   gap: 2px;
   align-content: start;
 }
@@ -146,8 +146,8 @@
 }
 .hd-icon img,
 .hd-icon .hd-noicon {
-  width: 48px;
-  height: 48px;
+  width: var(--hd-icon, 48px);
+  height: var(--hd-icon, 48px);
   object-fit: contain;
 }
 .hd-icon .hd-name {
@@ -780,4 +780,197 @@
   .hd-row-m {
     grid-column: 1 / -1;
   }
+}
+
+/* a tab of its own: the host's desk over the whole page, phosphorus's windows above it */
+.hd-tabroot {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+}
+.dk-desk > .hd-tabroot {
+  position: absolute;
+}
+body:has(.acct-login) .hd-tabroot {
+  display: none;
+}
+.dk-desk.hd-tabdesk > .dk-art,
+.dk-desk.hd-tabdesk > .dk-icons,
+.dk-desk.hd-tabdesk > .dk-bar {
+  display: none;
+}
+.hd .dk-tasks {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  height: 100%;
+}
+.hd .dk-task {
+  height: calc(var(--hd-bar) - 8px);
+  max-width: 9rem;
+  color: var(--hd-fg);
+  border-radius: 4px;
+  box-shadow: inset 0 -2px 0 var(--hd-accent);
+}
+.hd .dk-task:hover {
+  color: var(--hd-fg);
+  background: var(--hd-hover);
+}
+
+/* the host's look: no transparency, win10's small taskbar */
+.hd-solid .hd-bar,
+.hd-solid .hd-menu,
+.hd-solid .hd-w {
+  background: var(--hd-bg);
+  backdrop-filter: none;
+}
+.hd-win10.hd-small {
+  --hd-bar: 30px;
+}
+
+/* a taskbar on another edge than the bottom */
+.hd-edge-top .hd-bar {
+  top: 0;
+  bottom: auto;
+  border-top: 0;
+  border-bottom: 1px solid var(--hd-line);
+}
+.hd-edge-top .hd-icons {
+  inset: calc(var(--hd-bar) + 4px) 4px 4px 4px;
+}
+.hd-edge-top .hd-menu {
+  top: calc(var(--hd-bar) + 10px);
+  bottom: auto;
+}
+.hd-edge-left .hd-bar,
+.hd-edge-right .hd-bar {
+  top: 0;
+  bottom: 0;
+  width: 62px;
+  height: auto;
+  flex-direction: column;
+  padding: 0;
+  border-top: 0;
+}
+.hd-edge-left .hd-bar {
+  right: auto;
+  border-right: 1px solid var(--hd-line);
+}
+.hd-edge-right .hd-bar {
+  left: auto;
+  border-left: 1px solid var(--hd-line);
+}
+.hd-edge-left .hd-pins,
+.hd-edge-right .hd-pins,
+.hd-edge-left .hd-tray,
+.hd-edge-right .hd-tray,
+.hd-edge-left .dk-tasks,
+.hd-edge-right .dk-tasks {
+  flex-direction: column;
+  height: auto;
+}
+.hd-edge-left .hd-tray,
+.hd-edge-right .hd-tray {
+  margin-top: auto;
+}
+.hd-edge-left .hd-icons {
+  inset: 4px 4px 4px 66px;
+}
+.hd-edge-right .hd-icons {
+  inset: 4px 66px 4px 4px;
+}
+.hd-edge-left .hd-menu {
+  left: 62px;
+  bottom: 0;
+}
+.hd-edge-right .hd-menu {
+  left: auto;
+  right: 62px;
+  bottom: 0;
+}
+
+/* windows' search box or button, task view and widgets, drawn with no pictures */
+.hd-sbox {
+  height: calc(var(--hd-bar) - 14px);
+  min-width: 200px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 4px;
+  padding: 0 14px;
+  border: 1px solid var(--hd-line);
+  border-radius: 999px;
+  background: var(--hd-hover);
+  color: var(--hd-dim);
+}
+.hd-win10 .hd-sbox {
+  height: 100%;
+  margin: 0;
+  border-radius: 0;
+  border-width: 0 1px;
+  background: color-mix(in srgb, var(--hd-bg) 80%, #fff);
+}
+.hd-sbox-ic {
+  position: relative;
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+.hd-sbox-ic::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+}
+.hd-sbox-ic::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  top: 10px;
+  width: 5px;
+  height: 1.5px;
+  background: currentColor;
+  transform: rotate(45deg);
+  transform-origin: 0 0;
+}
+.hd-sic {
+  color: var(--hd-fg);
+}
+.hd-tview {
+  position: relative;
+}
+.hd-tview::before,
+.hd-tview::after {
+  content: "";
+  position: absolute;
+  width: 12px;
+  height: 10px;
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
+}
+.hd-tview::before {
+  transform: translate(-3px, -2px);
+}
+.hd-tview::after {
+  transform: translate(3px, 2px);
+  background: var(--hd-panel);
+}
+.hd-widgets {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  margin-top: -9px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #ffc83d 45%, transparent 50%);
+  box-shadow: 0 0 0 3px color-mix(in srgb, #ffc83d 30%, transparent);
+}
+.hd-bar[data-align="left"] .hd-widgets {
+  display: none;
 }

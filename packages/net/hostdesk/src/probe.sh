@@ -79,7 +79,10 @@ do_desktop() {
       "org.gnome.desktop.background picture-options" "org.gnome.desktop.background primary-color" \
       "org.gnome.desktop.interface color-scheme" "org.gnome.desktop.interface accent-color" \
       "org.gnome.desktop.interface icon-theme" "org.gnome.desktop.interface gtk-theme" \
-      "org.gnome.shell favorite-apps" "org.gnome.shell enabled-extensions" "org.gnome.shell disabled-extensions"; do
+      "org.gnome.shell favorite-apps" "org.gnome.shell enabled-extensions" "org.gnome.shell disabled-extensions" \
+      "org.gnome.desktop.interface clock-format" "org.gnome.desktop.interface clock-show-seconds" \
+      "org.gnome.desktop.interface clock-show-weekday" \
+      "org.gnome.shell.extensions.ding icon-size"; do
       v=$(gsettings get $k 2>/dev/null) || continue
       printf '\036gs\t%s\n%s\n' "$k" "$v"
     done

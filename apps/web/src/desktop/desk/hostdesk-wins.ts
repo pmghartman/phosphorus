@@ -6,7 +6,7 @@ import { DK_UI, dkGlyph, el, pageAsk } from '../../lib/dom.ts';
 import { humanSize } from '../../lib/util.ts';
 import { dkFocus, dkNav, dkWin, type NavFrame } from '../windows.ts';
 import { api, type Desk, draw, type HD, type Item, iconBtn, openItem, pic } from './hostdesk.ts';
-import { dkMenuNote } from './wallpaper.ts';
+import { dkSay } from './wallpaper.ts';
 import { dkFileApp, dkFileOffer, dkWebApp } from './webapps.ts';
 
 // one window inside the host desktop, moved by its title, the newest on top
@@ -70,7 +70,7 @@ export async function binWin(hd: HD, o?: { delete: string }) {
     });
     if (!ok) return;
     const r = await acctCall(api(hd.host, 'trash'), { op: 'delete', path: o.delete });
-    if (!r.ok) return dkMenuNote(r.error || 'not deleted');
+    if (!r.ok) return dkSay(r.error || 'not deleted');
     await refresh(hd);
   }
   const { body, head } = inner(hd, 'bin', binName, 'hd-binw');
@@ -100,7 +100,7 @@ export async function binWin(hd: HD, o?: { delete: string }) {
           const x = await acctCall(api(hd.host, 'trash'), { op: 'restore', id: it.id });
           if (!x.ok) {
             back.disabled = false;
-            return dkMenuNote(x.error || 'not restored');
+            return dkSay(x.error || 'not restored');
           }
           await fill();
           await refresh(hd);
@@ -125,7 +125,7 @@ export async function binWin(hd: HD, o?: { delete: string }) {
     if (!ok) return;
     emptyBtn.disabled = true;
     const x = await acctCall(api(hd.host, 'trash'), { op: 'empty' });
-    if (!x.ok) dkMenuNote(x.error || 'not emptied');
+    if (!x.ok) dkSay(x.error || 'not emptied');
     await fill();
     await refresh(hd);
   });
@@ -191,7 +191,7 @@ export function folderWin(hd: HD, path: string) {
 // a file in a folder: what it is asked first, a shortcut or launcher followed
 async function openPath(hd: HD, path: string) {
   const r = await acctCall<{ item: Item }>(api(hd.host, 'open'), { path });
-  if (!r.ok || !r.item) return dkMenuNote(r.error || 'not opened');
+  if (!r.ok || !r.item) return dkSay(r.error || 'not opened');
   openItem(hd, r.item);
 }
 
@@ -260,11 +260,11 @@ async function apply(hd: HD, change: Record<string, unknown>, what: string): Pro
   if (!ok) return false;
   const r = await acctCall<{ desk: Desk; live: boolean }>(api(hd.host, 'set'), change);
   if (!r.ok || !r.desk) {
-    dkMenuNote(r.error || 'not changed');
+    dkSay(r.error || 'not changed');
     return false;
   }
   draw(hd, r.desk);
-  if (!r.live) dkMenuNote(`${hd.host} takes it at its next sign in`);
+  if (!r.live) dkSay(`${hd.host} takes it at its next sign in`);
   return true;
 }
 

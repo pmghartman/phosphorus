@@ -1,6 +1,6 @@
 // a Windows host's desktop from its probe's JSON, in the shape every OS shares
 
-import type { BinItem, Desk, Item, Kind } from "./model.ts";
+import { type BinItem, type Desk, type Item, type Kind, type Look, plainLook } from "./model.ts";
 import { baseName } from "./paths.ts";
 import { parseInfo } from "./recycle.ts";
 
@@ -49,15 +49,38 @@ const fit = (style: string, tile: string) =>
     ? "tile"
     : ({ "0": "center", "2": "fill", "6": "contain", "10": "cover", "22": "cover" }[style] ?? "cover");
 
+const edges = ["left", "top", "right", "bottom"] as const;
+
+// the taskbar, clock and icons as the registry has them; win10's search box is mode 2
+export function winLook(o: Record<string, any>, win11: boolean): Look {
+  const l = plainLook();
+  const n = (k: string, d: number) =>
+    Number.isFinite(Number(o[k])) && o[k] !== null && o[k] !== "" ? Number(o[k]) : d;
+  const size = n("iconSize", 48);
+  l.iconSize = Math.max(16, Math.min(256, size));
+  const t = s(o.time) || "h:mm tt";
+  l.clock = { h24: /H/.test(t), seconds: n("seconds", 0) === 1, weekday: false };
+  l.transparent = n("transparent", 1) !== 0;
+  const mode = n("search", 1);
+  l.search = mode === 0 ? "" : mode === 1 ? "icon" : "box";
+  l.taskView = n("taskView", 1) !== 0;
+  l.widgets = win11 && n("widgets", 1) !== 0;
+  l.small = !win11 && n("small", 0) === 1;
+  l.edge = edges[n("edge", 3)] ?? "bottom";
+  if (win11 && (l.edge === "left" || l.edge === "right")) l.edge = "bottom";
+  return l;
+}
+
 export function winDesk(o: Record<string, any>, psShell: boolean): Desk {
   const shell = o.sshShell ? s(o.sshShell) : "cmd";
   const ps = psShell || /powershell|pwsh/i.test(shell);
   const icons = (Array.isArray(o.icons) ? o.icons : []).map((x: any) => winItem(x, ps));
   if (o.bin !== false)
     icons.unshift({ name: "recycle bin", kind: "bin", icon: "b:", iv: o.binFull ? "full" : "empty" });
+  const win11 = Number(o.build) >= 22000;
   return {
     os: "windows",
-    shell: Number(o.build) >= 22000 ? "win11" : "win10",
+    shell: win11 ? "win11" : "win10",
     user: s(o.user),
     home: s(o.home),
     wallpaper: { path: s(o.wallpaper), fit: fit(s(o.style), s(o.tile)), color: rgb(s(o.bg)), iv: s(o.wpv) },
@@ -70,6 +93,7 @@ export function winDesk(o: Record<string, any>, psShell: boolean): Desk {
     can: { wallpaper: true, dark: true, accent: true, pins: false },
     accents: [],
     sshShell: ps ? "powershell" : "cmd",
+    look: winLook(o, win11),
   };
 }
 

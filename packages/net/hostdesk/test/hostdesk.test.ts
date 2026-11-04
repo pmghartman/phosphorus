@@ -11,7 +11,7 @@ import type { Desk } from "../src/model.ts";
 import { norm, Scope, sftpPath, within } from "../src/paths.ts";
 import { bootLine, records, reply, request, shBootScript } from "../src/proto.ts";
 import { binName, binRe, fromFiletime, parseInfo, toFiletime, writeInfo } from "../src/recycle.ts";
-import { abgrHex, winDesk, winRun, winTrash } from "../src/windows.ts";
+import { abgrHex, winDesk, winLook, winRun, winTrash } from "../src/windows.ts";
 
 test("protocol: a request and its reply", () => {
   expect(request(7, "icon", "a\tb")).toBe(`7\ticon\t${Buffer.from("a\tb").toString("base64")}\n`);
@@ -385,3 +385,27 @@ test.skipIf(!sh)(
   },
   60000,
 );
+
+test("windows: the taskbar, clock and icons as the registry has them", () => {
+  // win11 defaults: search icon, task view, widgets, 12 hour clock
+  expect(winLook({}, true)).toEqual({
+    iconSize: 48,
+    clock: { h24: false, seconds: false, weekday: false },
+    transparent: true,
+    search: "icon",
+    taskView: true,
+    widgets: true,
+    small: false,
+    edge: "bottom",
+  });
+  const l = winLook(
+    { iconSize: 32, time: "HH:mm", seconds: 1, transparent: 0, search: 2, taskView: 0, small: 1, edge: 1 },
+    false,
+  );
+  expect(l).toMatchObject({ iconSize: 32, transparent: false, search: "box", taskView: false, small: true, edge: "top" });
+  expect(l.clock).toEqual({ h24: true, seconds: true, weekday: false });
+  // no widgets on win10, no side taskbar on win11
+  expect(l.widgets).toBe(false);
+  expect(winLook({ edge: 0, search: 0 }, true)).toMatchObject({ edge: "bottom", search: "" });
+  expect(winDesk({ build: 22631, search: 3 }, false).look.search).toBe("box");
+});

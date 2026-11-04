@@ -19,7 +19,7 @@ import { el } from '../lib/dom.ts';
 import { dk, st } from '../lib/state.ts';
 import { dkPaintSel } from './desk/icons.ts';
 import { dkFileApp, dkFileOffer, dkWebApp } from './desk/webapps.ts';
-import { dkIcon, dkIcons, dkMenuNote } from './desk.ts';
+import { dkIcon, dkIcons, dkSay } from './desk.ts';
 import type { DkWin } from './windows.ts';
 
 // the Desktop folder in the home, none for the boot admin
@@ -76,7 +76,7 @@ export function dkDeskView(): FmView {
     busy: '',
     box: document.body,
     input: dkInput,
-    say: (text) => text && dkMenuNote(text),
+    say: (text) => text && dkSay(text),
     focus: () => {},
     load: () => dkDeskLoad(),
     paint: () => {
@@ -151,11 +151,11 @@ export async function fileThere(f: FileRef): Promise<boolean> {
 export async function dkCode(f: FileRef): Promise<DkWin | undefined> {
   const name = f.path.split('/').pop() || f.path;
   if (!(await fileThere(f))) {
-    dkMenuNote(`${name} is gone`);
+    dkSay(`${name} is gone`);
     return;
   }
   const query = { host: f.host, share: String(f.share || '0'), path: f.path };
   const id = dkFileApp(name);
   if (id) return dkWebApp(id, query);
-  if (!(await dkFileOffer(name, query))) dkMenuNote(`nothing installed opens ${name}`);
+  if (!(await dkFileOffer(name, query))) dkSay(`nothing installed opens ${name}`);
 }

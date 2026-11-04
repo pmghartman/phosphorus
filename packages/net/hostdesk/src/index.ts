@@ -13,6 +13,7 @@ export {
   images,
   ls,
   open,
+  prefetch,
   readAll,
   readStream,
   remove,
@@ -22,6 +23,6 @@ export {
   wallpaper,
   writeText,
 } from "./desk.ts";
-export type { BinItem, Change, Desk, Entry, Item, Kind, Shell } from "./model.ts";
+export type { BinItem, Change, Desk, Entry, Item, Kind, Look, Shell } from "./model.ts";
 export { norm, Scope, within } from "./paths.ts";
 export { dropSession, Refused, reap, Session, sessionCount, sessionFor, sessionOf, type Target } from "./session.ts";

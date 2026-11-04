@@ -1,7 +1,7 @@
 // a Linux host's desktop read from what its probe sends: desktop entries, gsettings
 // values, KDE and XFCE config files, trashinfo; each parsed here, not in sh
 
-import type { Desk, Item, Kind, Shell } from "./model.ts";
+import { type Desk, type Item, type Kind, plainLook, type Shell } from "./model.ts";
 import type { Rec } from "./proto.ts";
 
 // --- ini files: desktop entries, trashinfo, kdeglobals, appletsrc ------------------
@@ -334,6 +334,7 @@ export function buildDesk(recs: Rec[], apps: App[]): LinuxDesk {
     can: { wallpaper: false, dark: false, accent: false, pins: false },
     accents: [],
     icontheme: "hicolor",
+    look: plainLook(),
   };
   let pinIds: string[] = [];
   const pinItems: Item[] = [];
@@ -363,6 +364,16 @@ export function buildDesk(recs: Rec[], apps: App[]): LinuxDesk {
       pins: bus,
     };
     if (desk.can.accent) desk.accents = gnomeAccentNames;
+    const gb = (k: string) => gs.get(k) === "true";
+    desk.look.clock = {
+      h24: gStr(gs.get("org.gnome.desktop.interface clock-format") ?? "") !== "12h",
+      seconds: gb("org.gnome.desktop.interface clock-show-seconds"),
+      weekday: gb("org.gnome.desktop.interface clock-show-weekday"),
+    };
+    desk.look.iconSize =
+      { tiny: 36, small: 48, standard: 64, large: 96 }[
+        gStr(gs.get("org.gnome.shell.extensions.ding icon-size") ?? "")
+      ] ?? 64;
   } else if (shell === "kde") {
     const g = parseIni(fileOf("/kdeglobals")?.body ?? "");
     const scheme = g.get("General")?.get("ColorScheme") ?? "BreezeLight";

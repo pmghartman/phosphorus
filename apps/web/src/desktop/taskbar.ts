@@ -9,7 +9,7 @@ import { dk, st } from '../lib/state.ts';
 import { BAR_ITEMS, layoutNow, PALETTE_EVENT } from '../lib/theme.ts';
 import { when } from '../lib/util.ts';
 import { dkSettings } from '../settings/settings.ts';
-import { dkHostDesk } from './desk/hostdesk.ts';
+import { dkZoom } from './desk/hostdesk.ts';
 import { dkMenu, dkMenuEl } from './desk.ts';
 import { dkMin } from './windows.ts';
 
@@ -103,12 +103,21 @@ export function dkChips(): void {
       type: 'button',
       title: `${h === here ? `this page is served by ${h}` : `${h}, logged in`}; the hosts in settings`,
     });
-    b.addEventListener('click', () => dkSettings('hosts', h));
+    // one press its settings, held back a moment so a double click zooms in instead
+    let t: ReturnType<typeof setTimeout> | undefined;
+    b.addEventListener('click', (e) => {
+      clearTimeout(t);
+      if (e.detail < 2) t = setTimeout(() => dkSettings('hosts', h), 220);
+    });
+    b.addEventListener('dblclick', (e) => {
+      clearTimeout(t);
+      dkZoom(h, b, e);
+    });
     return b;
   });
   chips.forEach((c, i) => {
     c.classList.toggle('cur', names[i] === here);
-    // a right click: the host as its own desktop, or its settings
+    // a right click: zoomed into the host, or its settings
     c.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       const h = names[i]!;
@@ -116,7 +125,7 @@ export function dkChips(): void {
         e.clientX,
         e.clientY,
         [
-          ['open desktop', () => dkHostDesk(h, c), true],
+          ['zoom in', () => dkZoom(h, c), true],
           ['settings', () => dkSettings('hosts', h), true],
         ],
         undefined,

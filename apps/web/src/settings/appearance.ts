@@ -2,7 +2,7 @@
 // wallpaper, a picture of the user's kept on the mesh
 
 import { dkPick, dkWallPaint, servicesInTabs, WALL_EVENT } from '../desktop/desk/wallpaper.ts';
-import { dkMenuNote } from '../desktop/desk.ts';
+import { dkSay } from '../desktop/desk.ts';
 import { acctCall } from '../lib/api.ts';
 import { DK_UI, dkGlyph, el } from '../lib/dom.ts';
 import { MODES, modeIcon, modePick, setTheme } from '../lib/scheme.ts';
@@ -59,8 +59,7 @@ export async function dkWallClear(): Promise<void> {
 }
 
 // a picture picked for the wallpaper
-export const dkWallPick = (): void =>
-  dkPick('image/*', false, ([f]) => dkWallSet(f!).then((why) => why && dkMenuNote(why)));
+export const dkWallPick = (): void => dkPick('image/*', false, ([f]) => dkWallSet(f!).then((why) => why && dkSay(why)));
 
 // --- the section ---------------------------------------------------------------------------------
 

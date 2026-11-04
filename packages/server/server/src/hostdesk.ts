@@ -1,24 +1,18 @@
 // host desktop: any computer on the tailnet opened as its own desktop, as the
-// viewer's saved login for it; an admin enables each host once
+// viewer's saved login for it; open to every signed in user with one
 
 import * as hd from "@phosphorus/hostdesk";
 import { auditRow } from "@phosphorus/mcp";
 import * as peers from "@phosphorus/peers";
-import * as store from "@phosphorus/store";
 import * as users from "@phosphorus/users";
 import { errText, tailnetIP } from "@phosphorus/util";
 import type { Ctx } from "@phosphorus/wsock";
 import { getPlatform, hostSSHHost, hostSSHPort, selfHost } from "./config.ts";
-import { isLocalOrPeer, maxJSONBody, maxSaveBody, onJSON, type Res, readRaw, sameOrigin, sendJSON } from "./http.ts";
+import { isLocalOrPeer, maxJSONBody, maxSaveBody, type Res, readRaw, sameOrigin, sendJSON } from "./http.ts";
 import { decode, obj, str } from "./js.ts";
 
 const deskRe = /^\/api\/hostdesk\/([a-z0-9][a-z0-9-]*)\/([a-z]+)$/;
-const hostRe = /^[a-z0-9][a-z0-9-]*$/;
 const maxText = 16 << 20;
-const recFile = (h: string) => `etc/hostdesk/${h}.json`;
-
-// enabled by an admin, for every user of the mesh
-export const enabled = (h: string) => obj(store.read(recFile(h)))?.on === true;
 
 // every computer the tailnet names, this one too
 const known = (h: string) => h === selfHost || peers.tailnet().some((d: any) => d?.name === h);
@@ -136,7 +130,7 @@ function allowed(s: hd.Session, p: string): string {
   return ok;
 }
 
-// GET /api/hostdesk: the hosts enabled; POST /api/hostdesk/enable an admin's switch
+// /api/hostdesk/<host>/<op>: that computer's desktop, as the viewer's saved login
 export async function hostdeskRoute(
   c: Ctx,
   pathname: string,
@@ -147,36 +141,11 @@ export async function hostdeskRoute(
   if (!(await isLocalOrPeer(c))) return sendJSON(403, { error: "forbidden" });
   const s = await users.Soon(c);
   if (!s || s.boot) return sendJSON(401, { error: "log in as a user" });
-  if (pathname === "/api/hostdesk" && method === "GET") {
-    const hosts: Record<string, any> = {};
-    for (const f of store.list("etc/hostdesk")) {
-      const h = f.replace(/\.json$/, "");
-      const r = obj(store.read(recFile(h)));
-      if (r?.on === true) hosts[h] = { by: str(r.by), at: Number(r.at) || 0 };
-    }
-    return sendJSON(200, { hosts }, { "Cache-Control": "no-store" });
-  }
-  if (pathname === "/api/hostdesk/enable" && method === "POST") {
-    if (!s.admin || !sameOrigin(c)) return sendJSON(403, { error: "admins enable host desktop" });
-    return onJSON(c, 1024, true, (p) => {
-      const h = str(p.host);
-      if (!hostRe.test(h) || !known(h)) return [404, { error: "no such host on the tailnet" }];
-      if (p.on === true) store.write(recFile(h), { on: true, by: s.user, at: Date.now() });
-      else store.remove(recFile(h));
-      note(s.user, "host_desktop_enable", { host: h, on: p.on === true });
-      return [200, { host: h, on: p.on === true }];
-    });
-  }
   const m = deskRe.exec(pathname);
   if (!m) return sendJSON(404, { error: "not found" });
   const w: Who = { s, host: m[1]! };
   const op = m[2]!;
   if (!known(w.host)) return sendJSON(404, { error: `${w.host} isn't on the tailnet` });
-  if (!enabled(w.host))
-    return sendJSON(403, {
-      error: `host desktop isn't enabled for ${w.host}; an admin enables it under settings › hosts`,
-      enable: true,
-    });
   if (method === "POST" && !sameOrigin(c)) return sendJSON(403, { error: "forbidden" });
   try {
     if (method === "GET") return await getOp(w, op, q);
@@ -193,6 +162,10 @@ async function getOp(w: Who, op: string, q: URLSearchParams): Promise<Response> 
     const k = hd.cacheJSON<Cached>(w.host, cacheKey(w));
     if (!(await users.HostLogin(w.s, w.host))[2])
       throw new Coded(403, `save a login for ${w.host} first: profile, the hosts you log into`);
+    // the ssh session opened now, ready by the time the page asks for the live desk
+    void session(w)
+      .then((s) => k?.desk && hd.prefetch(s, w.host, [...k.desk.icons, ...k.desk.pins]))
+      .catch(() => {});
     return sendJSON(200, k ? { desk: k.desk, apps: k.apps ?? [], cached: true } : { cached: false }, nc);
   }
   const s = await session(w);
@@ -200,6 +173,7 @@ async function getOp(w: Who, op: string, q: URLSearchParams): Promise<Response> 
     case "desktop": {
       const desk = await hd.desktop(s);
       remember(w, s);
+      void hd.prefetch(s, w.host, [...desk.icons, ...desk.pins]).catch(() => {});
       return sendJSON(200, { desk }, nc);
     }
     case "apps": {
@@ -209,7 +183,8 @@ async function getOp(w: Who, op: string, q: URLSearchParams): Promise<Response> 
     }
     case "icon": {
       const b = await hd.icon(s, w.host, q.get("k") ?? "", q.get("v") ?? "");
-      if (!b) return new Response(null, { status: 404, headers: { "Cache-Control": "max-age=300" } });
+      // a miss never kept, so the page's retry asks again
+      if (!b) return new Response(null, { status: 404, headers: nc });
       return blobRes(b, "private, max-age=31536000, immutable");
     }
     case "wallpaper": {

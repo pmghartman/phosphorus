@@ -68,7 +68,7 @@ const SECTIONS: Section[] = [
     label: 'hosts',
     glyph: () => DK_GLYPHS.mesh!,
     group: 'mesh',
-    blurb: 'status, desktops, shares, services',
+    blurb: 'status, shares, services',
     subs: () => HOST_SUBS.filter((s) => s !== 'configure' || !!st.acct?.admin),
     sub: hostsSub,
     draw: (body, sub) => hostsSection(body, sub),

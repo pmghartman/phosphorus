@@ -23,7 +23,7 @@ export {
   dkArrange,
   dkMenu,
   dkMenuEl,
-  dkMenuNote,
+  dkSay,
   dkService,
   dkWallPaint,
   type MenuItem,
