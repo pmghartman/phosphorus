@@ -32,19 +32,6 @@ interface Section {
 }
 
 type Group = 'you' | 'mesh' | 'phosphorus';
-// a part's line under the page's title, its section's blurb otherwise
-const PART_BLURBS: Record<string, string> = {
-  'profile/account': 'who you’re signed in as, and your password',
-  'profile/host logins': 'your login on each host, sealed in your vault, for terminals and files',
-  'profile/page logins': 'logins for the mesh’s pages, kept to copy when a page asks',
-  'appearance/theme': 'colors, type and corners, light or dark',
-  'appearance/desktop': 'the wallpaper and the desk behind your windows',
-  'appearance/bar': 'where the bar sits and what it shows',
-  'appearance/windows': 'title bars, buttons and how windows open',
-  'hosts/status': 'live load across the mesh, or one host at a time',
-  'hosts/graph': 'how the hosts, their services and the other devices connect',
-  'hosts/configure': 'each host’s shares, services and settings',
-};
 const GROUPS: Group[] = ['you', 'mesh', 'phosphorus'];
 
 // a stashed view borrowed whole, back in the stash on leaving
@@ -180,13 +167,8 @@ export function dkSettings(s?: SettingsAt, sub?: string): void {
   const nav = el('nav', 'dk-ap-nav set-nav');
   nav.ariaLabel = 'settings';
   const main = el('div', 'set-main');
-  // the page's title over whatever the section draws, never inside it
-  const head = el('header', 'set-head');
-  const title = el('h1', 'set-title');
-  const blurb = el('p', 'set-blurb');
-  head.append(title, blurb);
   const body = el('div', 'dk-ap-body set-body');
-  main.append(head, body);
+  main.append(body);
   pane.append(nav, main);
   w.body.appendChild(pane);
   dkSize(w, 1000, 700);
@@ -223,9 +205,6 @@ export function dkSettings(s?: SettingsAt, sub?: string): void {
     body.scrollTop = 0;
     const sec = SECTIONS.find((x) => x.id === s)!;
     leave = sec.draw(body, sub);
-    const part = sec.sub?.() ?? '';
-    title.replaceChildren(...(part ? [el('span', 'set-crumb', `${sec.label} /`), ' '] : []), part || sec.label);
-    blurb.textContent = PART_BLURBS[`${s}/${part}`] ?? sec.blurb;
     mark();
     dkAppsChanged();
     dkTouch();
