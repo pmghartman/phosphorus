@@ -154,8 +154,8 @@ export function vendorGpus(haveNvidia: boolean): Gpu[] {
     if (!/^card\d+$/.test(c)) continue;
     const dev = `/sys/class/drm/${c}/device`;
     const v = vendor[read(dev + "/vendor").trim()];
-    if (!v || (v === "nvidia" && haveNvidia)) continue;
-    const igpu = integrated(v, dev);
+    // an igpu shares system memory, the dedicated ones alone shown
+    if (!v || (v === "nvidia" && haveNvidia) || integrated(v, dev)) continue;
     let temp: number | null = null;
     const hw = readdir(dev + "/hwmon");
     if (hw.length) {
@@ -163,24 +163,18 @@ export function vendorGpus(haveNvidia: boolean): Gpu[] {
       if (t !== null) temp = Math.round(t / 1000);
     }
     let name = read(dev + "/product_name").trim();
-    if (!name) name = igpu ? `${v} integrated gpu` : `${v} gpu`;
-    let used = numFile(dev + "/mem_info_vram_used"),
-      total = numFile(dev + "/mem_info_vram_total");
-    // an amd igpu's memory the gtt it maps from system ram
-    if (igpu && v === "amd")
-      [used, total] = [numFile(dev + "/mem_info_gtt_used"), numFile(dev + "/mem_info_gtt_total")];
+    if (!name) name = `${v} gpu`;
     let mhz = numFile(`/sys/class/drm/${c}/gt_act_freq_mhz`),
       mhzMax = numFile(`/sys/class/drm/${c}/gt_max_freq_mhz`);
     if (v === "amd") [mhz, mhzMax] = amdClock(read(dev + "/pp_dpm_sclk"));
     out.push({
       name: name.toLowerCase(),
       util: numFile(dev + "/gpu_busy_percent"),
-      memUsed: used,
-      memTotal: total,
+      memUsed: numFile(dev + "/mem_info_vram_used"),
+      memTotal: numFile(dev + "/mem_info_vram_total"),
       mhz,
       mhzMax,
       temp,
-      integrated: igpu,
     });
   }
   return out;

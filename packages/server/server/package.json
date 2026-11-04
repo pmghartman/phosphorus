@@ -12,6 +12,7 @@
     "@phosphorus/delta": "workspace:*",
     "@phosphorus/envfile": "workspace:*",
     "@phosphorus/files": "workspace:*",
+    "@phosphorus/hostdesk": "workspace:*",
     "@phosphorus/mcp": "workspace:*",
     "@phosphorus/minisign": "workspace:*",
     "@phosphorus/model": "workspace:*",

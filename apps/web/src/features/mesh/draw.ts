@@ -21,8 +21,8 @@ import {
   uiVars,
 } from './ui.ts';
 
-// one square plus its name, the rest in the tooltip, opts: size (half-width),
-// scale (depth), opacity, noLabel, host (a host to switch to), all optional
+// one square plus its name, the rest in the tooltip, opts: size (half-width), scale (depth),
+// opacity, noLabel, host (a host to switch to), desk (a computer to open), all optional
 
 export function drawNode(
   x: number,
@@ -30,17 +30,18 @@ export function drawNode(
   name: string,
   cls: string,
   tooltip: string,
-  opts?: { size?: number; scale?: number; opacity?: number; noLabel?: boolean; host?: string },
+  opts?: { size?: number; scale?: number; opacity?: number; noLabel?: boolean; host?: string; desk?: string },
 ) {
   const o = opts || {};
   const scale = o.scale || 1;
   const size = o.size || NODE_HALF * scale;
   const opacity = o.opacity === undefined ? 1 : o.opacity;
   // a host: square, name and a wider hit area as one target
-  const parent: SVGElement = o.host
-    ? meshSvg.appendChild(svgEl('g', { class: 'mesh-host', 'data-host': o.host }))
-    : meshSvg;
-  if (o.host) {
+  const attrs: Record<string, string> = { class: o.host ? 'mesh-host mesh-desk' : 'mesh-desk' };
+  if (o.host) attrs['data-host'] = o.host;
+  if (o.desk) attrs['data-desk'] = o.desk;
+  const parent: SVGElement = o.host || o.desk ? meshSvg.appendChild(svgEl('g', attrs)) : meshSvg;
+  if (o.host || o.desk) {
     const w = Math.max(18, name.length * 4.3 + 6);
     parent.appendChild(svgEl('rect', { x: x - w / 2, y: y - 8, width: w, height: 24, class: 'mesh-hit' }));
   }
@@ -462,6 +463,7 @@ export function drawMesh(): void {
     const os = hostPlatform.get(m);
     drawNode(p.x, p.y, m, cls, `${m}${os ? ` (${os})` : ''}: ${own.length} service${own.length === 1 ? '' : 's'}`, {
       host: isSelf ? '' : m,
+      desk: m,
       scale: p.s,
       opacity: p.fog,
     });
@@ -506,7 +508,11 @@ export function drawMesh(): void {
   others.forEach((name) => {
     const { os } = outside.get(name)!;
     const p = posOf(name, false);
-    drawNode(p.x, p.y, name, 'outside', `${name}${os ? ` (${os})` : ''}: in-mesh`, { scale: p.s, opacity: p.fog });
+    drawNode(p.x, p.y, name, 'outside', `${name}${os ? ` (${os})` : ''}: in-mesh`, {
+      scale: p.s,
+      opacity: p.fog,
+      desk: name,
+    });
   });
   fitMesh(width, height + grow, t ? expanded : collapsed);
 }

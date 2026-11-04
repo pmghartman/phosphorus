@@ -1,5 +1,6 @@
 // this host's cpu, memory, disk, network, gpus, phosphorus's own processes by
 // role and the top ones, sampled only while watched, peers fanned in, one socket each
+import { cpus } from "node:os";
 import { basename, join } from "node:path";
 import { snapshot } from "@phosphorus/procs";
 import { DataDir, FrontendPort, marshal, now, readJSON, run, writeJSONAtomic } from "@phosphorus/util";
@@ -21,11 +22,17 @@ const dayMS = 24 * 3600 * 1000;
 export const sys: Sys = process.platform === "linux" ? linux : process.platform === "darwin" ? darwin : win32;
 const tunnelIf = /^(tailscale|wg|tun|utun)/i;
 
-// --- net totals over the last day --------------------------------------------
+// --- the last day: net totals, cpu and memory in 5 minute buckets ----------------
+// kept two days, so each hour of the last one has a whole day behind it
 
-type NetDay = { boot: string; last?: Record<string, RxTx> | null; buckets: [number, number, number][]; at?: number };
+// a bucket: its end, rx and tx bytes, cpu and memory percent over it, null unread
+type Bucket = [number, number, number, number | null, number | null];
+type NetDay = { boot: string; last?: Record<string, RxTx> | null; cpu?: CpuT; buckets: Bucket[]; at?: number };
 
 const netDayFile = join(DataDir, "net-day.json");
+const keepMS = 2 * dayMS;
+const hourMS = 3600 * 1000;
+const trendHours = 24;
 let bootID = "";
 let netDay: NetDay = { boot: "", buckets: [] };
 
@@ -47,27 +54,79 @@ function netSince(cur: Record<string, RxTx>): RxTx {
   return d;
 }
 
+const pct1 = (f: number) => Math.round(f * 1000) / 10;
+
 async function netDayTick() {
   await sys.poll?.();
   const at = now();
   const cur = realLinks();
+  const cpu = sys.cpuTimes()[0];
   const buckets = netDay.buckets.slice();
   if (netDay.last) {
     const d = netSince(cur);
-    buckets.push([at, d.rx, d.tx]);
+    const was = netDay.boot === bootID ? netDay.cpu : undefined;
+    const busy = cpu && was && cpu.total > was.total ? 1 - (cpu.idle - was.idle) / (cpu.total - was.total) : null;
+    const m = sys.memInfo();
+    buckets.push([at, d.rx, d.tx, busy === null ? null : pct1(busy), m.total ? pct1(m.used / m.total) : null]);
   }
-  netDay = { boot: bootID, last: cur, buckets: buckets.filter((b) => at - b[0] < dayMS), at: netDay.at };
+  netDay = { boot: bootID, last: cur, cpu, buckets: buckets.filter((b) => at - b[0] < keepMS), at: netDay.at };
   writeJSONAtomic(netDayFile, netDay);
 }
 
 function netDayTotals() {
+  const at = now();
   const d = netSince(realLinks());
-  for (const b of netDay.buckets) {
+  const day = netDay.buckets.filter((b) => at - b[0] < dayMS);
+  for (const b of day) {
     d.rx += b[1];
     d.tx += b[2];
   }
-  const since = netDay.buckets.length ? netDay.buckets[0]![0] - netBucketMS : (netDay.at ?? null);
+  const since = day.length ? day[0]![0] - netBucketMS : (netDay.at ?? null);
   return { rx: d.rx, tx: d.tx, since };
+}
+
+// Trend the day ending at each of the last 24 hour marks, oldest first: rx and tx
+// summed, cpu and memory averaged, null where no bucket fell in it
+export type Trend = {
+  at: number;
+  step: number;
+  rx: (number | null)[];
+  tx: (number | null)[];
+  cpu: (number | null)[];
+  mem: (number | null)[];
+  since: number | null;
+};
+
+export function trendOf(buckets: Bucket[], at: number): Trend {
+  const end = Math.floor(at / hourMS) * hourMS;
+  const t: Trend = { at: end, step: hourMS, rx: [], tx: [], cpu: [], mem: [], since: null };
+  const mean = (v: (number | null)[]) => {
+    const got = v.filter((x): x is number => x !== null);
+    return got.length ? Math.round((10 * got.reduce((a, x) => a + x, 0)) / got.length) / 10 : null;
+  };
+  for (let k = trendHours - 1; k >= 0; k--) {
+    const h = end - k * hourMS;
+    const w = buckets.filter((b) => b[0] <= h && b[0] > h - dayMS);
+    t.rx.push(w.length ? w.reduce((a, b) => a + b[1], 0) : null);
+    t.tx.push(w.length ? w.reduce((a, b) => a + b[2], 0) : null);
+    t.cpu.push(mean(w.map((b) => b[3] ?? null)));
+    t.mem.push(mean(w.map((b) => b[4] ?? null)));
+  }
+  if (buckets.length) t.since = buckets[0]![0] - netBucketMS;
+  return t;
+}
+
+// the trend sent when it changes and every tenth sample, so a page just opened has it soon
+const trendEvery = 10;
+let trendSent = "";
+let trendN = 0;
+function trendNow(): Trend | undefined {
+  const at = now();
+  const sig = `${Math.floor(at / hourMS)}:${netDay.buckets.at(-1)?.[0] ?? 0}`;
+  if (sig === trendSent && ++trendN % trendEvery) return;
+  trendSent = sig;
+  trendN = 0;
+  return trendOf(netDay.buckets, at);
 }
 
 // --- gpus ------------------------------------------------------------------------
@@ -133,8 +192,23 @@ let jobPrev: number | undefined;
 let procAt = 0;
 let procList: unknown = null;
 
-// cpu seconds over an interval as a percent of one core
-const perCore = (s: number, secs: number) => (secs > 0 ? Math.round((1000 * Math.max(0, s)) / secs) / 10 : 0);
+// cpu seconds over an interval as a percent of the whole machine, as the host's own cpu reads
+const share = (s: number, secs: number) =>
+  secs > 0 ? Math.round((1000 * Math.max(0, s)) / (secs * Math.max(1, cpus().length))) / 10 : 0;
+
+// each figure the last few intervals' cpu seconds over their span, so a row reads
+// steady and the top ones keep their places
+const avgOver = 5;
+let spentWas = new Map<string, [number, number][]>();
+let spentNow = new Map<string, [number, number][]>();
+function avg(key: string, spent: number, secs: number): number {
+  const h = [...(spentWas.get(key) ?? []), [Math.max(0, spent), secs] as [number, number]].slice(-avgOver);
+  spentNow.set(key, h);
+  return share(
+    h.reduce((a, x) => a + x[0], 0),
+    h.reduce((a, x) => a + x[1], 0),
+  );
+}
 
 function refreshProcs(at: number) {
   if (at - procAt < procMS) return;
@@ -153,7 +227,7 @@ function refreshProcs(at: number) {
   for (const p of procs) {
     if (!p.rss) continue;
     const was = procPrev.get(p.pid);
-    const cpu = was ? perCore(p.cpu - was.cpu, secs) : 0;
+    const cpu = avg(`p:${p.pid}`, was ? p.cpu - was.cpu : 0, secs);
     const row: Row = {
       pid: p.pid,
       name: linuxOS ? p.name : (p.name || basename(p.cmd)).replace(/\.exe$/, ""),
@@ -182,15 +256,16 @@ function refreshProcs(at: number) {
     list.push(row);
   }
   procPrev = cur;
-  for (const r of roles.values()) r.cpu = perCore(r.cpu, secs);
+  for (const r of roles.values()) r.cpu = avg(`r:${r.name}`, r.cpu, secs);
   parts = [...roles.values()].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
   // run's job counts what ended between samples too, Windows' only record of them
   const inJob = job && jobPrev !== undefined && secs ? Math.max(0, job.cpu - jobPrev) : 0;
   jobPrev = job?.cpu;
   const spent = job ? inJob + tot.outside : tot.roles;
-  own = { cpu: perCore(spent, secs), mem: tot.mem, pids: tot.pids };
+  own = { cpu: avg("own", spent, secs), mem: tot.mem, pids: tot.pids };
   // the ended ones no role's figure holds, so the rows add up to the total
-  const gone = perCore(spent - tot.roles, secs);
+  const gone = avg("gone", spent - tot.roles, secs);
+  [spentWas, spentNow] = [spentNow, new Map()];
   if (gone >= 0.1) own.exited = gone;
   list.sort((a, b) => b.cpu - a.cpu || b.mem - a.mem);
   const top = list.slice(0, procTop);
@@ -208,6 +283,7 @@ function refreshProcs(at: number) {
 
 function resetProcs() {
   procPrev = new Map();
+  spentWas = new Map();
   jobPrev = undefined;
   procAt = 0;
   procList = null;
@@ -264,6 +340,7 @@ async function sample(): Promise<Record<string, any> | undefined> {
     mem: sys.memInfo(),
     net: nets,
     netDay: netDayTotals(),
+    trend: trendNow(),
     io: { r: rate(cur.r, last.r), w: rate(cur.w, last.w) },
     disk: sys.disk(),
     gpus: gpus(),

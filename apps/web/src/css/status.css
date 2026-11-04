@@ -126,6 +126,61 @@
   margin-top: 0.35rem;
 }
 
+/* the day by the hour: the chip's line under its averages, the panel's a row each */
+:is(.st-stat, .st-panel).st-day {
+  --st-hue: var(--teal);
+}
+.st-stat.st-day {
+  flex-basis: 12rem;
+}
+.st-stat-v .st-rx,
+.st-stat-v .st-tx {
+  font-size: var(--fs-sm);
+}
+.st-trend-spark {
+  display: block;
+  width: 100%;
+  height: 1.1rem;
+  overflow: visible;
+}
+.st-stat > .st-trend-spark {
+  margin-top: 0.3rem;
+}
+.st-trend-spark polyline {
+  fill: none;
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+.st-trend-net,
+.st-trend-tx {
+  stroke: var(--teal);
+  fill: var(--teal);
+}
+.st-trend-rx {
+  stroke: var(--accent);
+  fill: var(--accent);
+}
+.st-trend-cpu {
+  stroke: var(--accent);
+  fill: var(--accent);
+}
+.st-trend-mem {
+  stroke: var(--sand);
+  fill: var(--sand);
+}
+.st-trend-row {
+  display: grid;
+  grid-template-columns: 8ch minmax(3rem, 1fr) 7ch 7ch;
+  align-items: center;
+  gap: 0 1.2ch;
+  white-space: nowrap;
+}
+.st-trend-row > :nth-child(n + 3) {
+  text-align: right;
+}
+
 /* a panel: a card, its word in a head row, its body under a hairline */
 .st-panel {
   display: flex;

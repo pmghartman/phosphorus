@@ -95,10 +95,6 @@ export function uptime(sec: number): string {
   return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m`;
 }
 
-// relative: the graph's top its own recent peak so a quiet host still moves,
-// one hue since height no longer means heat
-export const cpuTop = (v: number[]) => Math.max(5, Math.ceil(Math.max(0, ...v) * 1.15));
-
 // quick to grow, slow to shrink, no jumping graph
 export function netScale(h: StHost): number {
   const peak = Math.max(1024, ...h.hist.rx!, ...h.hist.tx!);

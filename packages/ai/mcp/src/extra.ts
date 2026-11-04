@@ -47,6 +47,13 @@ export function audit(c: Caller, tool: string, args: Record<string, any>, err: E
     host: src.self().host,
   };
   if (err) row.error = err.message;
+  auditRow(row);
+}
+
+// auditRow one row as written, its time and host filled in when missing
+export function auditRow(row: Record<string, any>) {
+  row.at ??= new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+  row.host ??= src.self().host;
   const p = auditFile();
   try {
     // the older half dropped once it grows past its cap

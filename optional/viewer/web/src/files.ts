@@ -4,10 +4,13 @@
 // a file: the host whose share holds it ("home" the synced one), its path there
 export type At = { host: string; share: string; path: string };
 
-export const nameOf = (path: string) => path.split("/").pop() || path;
+export const nameOf = (path: string) => path.split(/[\\/]/).pop() || path;
 
+// a host desktop's file ("desk") over that host's own sftp, else a share's
 export const fileApi = (at: At, op: string, params: Record<string, string> = {}) =>
-  `/api/files/${encodeURIComponent(at.host)}/${op}?${new URLSearchParams({ share: at.share || "0", ...params })}`;
+  at.share === "desk"
+    ? `/api/hostdesk/${encodeURIComponent(at.host)}/${op}?${new URLSearchParams(params)}`
+    : `/api/files/${encodeURIComponent(at.host)}/${op}?${new URLSearchParams({ share: at.share || "0", ...params })}`;
 
 // its bytes as the browser shows them, or as a download
 export const fileSrc = (at: At, inline: boolean) =>

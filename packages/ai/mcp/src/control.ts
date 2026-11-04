@@ -156,7 +156,8 @@ export const controlTools = (): Tool[] => [
     scope: "key",
     description:
       "Every write made through a key on this host, newest last: when, who, through which agent, the tool, its " +
-      "arguments and whether it went through. Your own; an admin may ask for everyone's.",
+      "arguments and whether it went through; host desktop sessions and changes served here too, via desktop. " +
+      "Your own; an admin may ask for everyone's.",
     schema: object({
       all: { type: "boolean", default: false },
       limit: { type: "integer", description: "up to 500", default: 100 },

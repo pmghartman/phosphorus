@@ -1,4 +1,6 @@
 // mesh status diagram
+import { dkHostDesk } from '../../desktop/desk/hostdesk.ts';
+import { dkMenu } from '../../desktop/desk/wallpaper.ts';
 import { drawMesh } from './draw.ts';
 import { switchHost } from './hosts.ts';
 
@@ -147,6 +149,23 @@ window.addEventListener('resize', () => {
 meshSvg.addEventListener('click', (e) => {
   const g = (e.target as Element).closest('.mesh-host') as SVGElement | null;
   if (g && meshPanel.classList.contains('expanded')) switchHost(g.dataset.host!);
+});
+// a right click on any computer: its desktop, or a switch to its phosphorus
+meshSvg.addEventListener('contextmenu', (e) => {
+  const g = (e.target as Element).closest('.mesh-desk') as SVGElement | null;
+  if (!g) return;
+  e.preventDefault();
+  const h = g.dataset.desk!;
+  dkMenu(
+    e.clientX,
+    e.clientY,
+    [
+      ['open desktop', () => dkHostDesk(h, g), true],
+      ['switch to it', () => switchHost(h), !!g.dataset.host],
+    ],
+    undefined,
+    h,
+  );
 });
 meshStatsRows.addEventListener('click', (e) => {
   const row = (e.target as Element).closest('.mesh-stat-row[data-host]') as HTMLElement | null;

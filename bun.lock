@@ -288,6 +288,16 @@
         "@phosphorus/util": "workspace:*",
       },
     },
+    "packages/net/hostdesk": {
+      "name": "@phosphorus/hostdesk",
+      "dependencies": {
+        "@phosphorus/util": "workspace:*",
+        "ssh2": "1.17.0",
+      },
+      "devDependencies": {
+        "@types/ssh2": "1.15.6",
+      },
+    },
     "packages/net/proxy": {
       "name": "@phosphorus/proxy",
       "dependencies": {
@@ -319,6 +329,7 @@
         "@phosphorus/delta": "workspace:*",
         "@phosphorus/envfile": "workspace:*",
         "@phosphorus/files": "workspace:*",
+        "@phosphorus/hostdesk": "workspace:*",
         "@phosphorus/mcp": "workspace:*",
         "@phosphorus/minisign": "workspace:*",
         "@phosphorus/model": "workspace:*",
@@ -399,6 +410,8 @@
     "@phosphorus/host": ["@phosphorus/host@workspace:packages/host/host"],
 
     "@phosphorus/host-app": ["@phosphorus/host-app@workspace:apps/host"],
+
+    "@phosphorus/hostdesk": ["@phosphorus/hostdesk@workspace:packages/net/hostdesk"],
 
     "@phosphorus/mcp": ["@phosphorus/mcp@workspace:packages/ai/mcp"],
 

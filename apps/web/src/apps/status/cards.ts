@@ -1,6 +1,6 @@
 // the pages' pieces: panels, the headline strip, meter and key rows
 import { esc, humanSize } from '../../lib/util.ts';
-import { bar, pct } from './glyphs.ts';
+import { bar, heat, pct } from './glyphs.ts';
 import { type Page, type Panel, stNet } from './state.ts';
 
 // a panel: its head a word in its kind's hue, then its body
@@ -54,9 +54,10 @@ export function pageFrame(panels: [string, string][]): Page {
   };
 }
 
-// a headline: its word, the value, a detail under it, a bar of its share
+// a headline: its word, the value, a detail under it, a bar of its share, the value in its heat
 export const stat = (kind: string, k: string, v: string, d: string, frac?: number) =>
-  `<div class="st-stat st-${kind}"><span class="st-stat-k">${k}</span><span class="st-stat-v">${v}</span>` +
+  `<div class="st-stat st-${kind}"><span class="st-stat-k">${k}</span>` +
+  `<span class="st-stat-v${frac === undefined ? '' : ` ${heat(frac)}`}">${v}</span>` +
   `<span class="st-stat-d">${d}</span>${frac === undefined ? '' : bar(frac)}</div>`;
 
 // key, a bar to the row's width, a value
@@ -93,7 +94,9 @@ export function setHtml(el: HTMLElement, html: string) {
 }
 
 export const usedOf = (a: number, b: number) => `${humanSize(a)}<span class="st-dim"> / ${humanSize(b)}</span>`;
-export const usedPct = (a: number, b: number) => `${usedOf(a, b)} <span class="st-pct">${pct(a / b)}</span>`;
+// the percent in its heat, or a row's own hue where more is no worse (avail, free, cached)
+export const usedPct = (a: number, b: number, cls = heat(a / b)) =>
+  `${usedOf(a, b)} <span class="st-pct ${cls}">${pct(a / b)}</span>`;
 export const dotJoin = (bits: (string | false | number | undefined | null)[]) =>
   bits.filter(Boolean).join('<span class="st-dim"> · </span>');
 export const hostServices = (name: string) => (stNet?.routes || []).filter((r) => r.host === name);

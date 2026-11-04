@@ -30,6 +30,17 @@ export interface StatsProc {
   cmd?: string;
   role?: string;
 }
+// the day ending at each of the last 24 hour marks, oldest first, the last at at;
+// rx and tx summed, cpu and mem averaged percents, null where nothing was read
+export interface StatsTrend {
+  at: number;
+  step: number;
+  rx: (number | null)[];
+  tx: (number | null)[];
+  cpu: (number | null)[];
+  mem: (number | null)[];
+  since: number | null;
+}
 export interface StatsSample {
   host: string;
   at: number;
@@ -40,6 +51,8 @@ export interface StatsSample {
   mem: { total: number; used: number; avail: number; cached: number; swapTotal: number; swapUsed: number };
   net: { name: string; rx: number; tx: number }[];
   netDay: { rx: number; tx: number; since: number };
+  // sent when it changes and every few samples, kept by the page between
+  trend?: StatsTrend;
   io: { r: number; w: number };
   disk: { total: number; used: number; count: number };
   gpus: StatsGpu[];

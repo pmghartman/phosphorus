@@ -1,0 +1,404 @@
+// host desktop: a computer on the mesh opened as its own desktop in a window, drawn
+// in its OS's style from what its own settings and files say; zoomed in from where it was asked for
+
+import { dkUnlock } from '../../features/account.ts';
+import { acctCall } from '../../lib/api.ts';
+import { DK_UI, dkGlyph, el } from '../../lib/dom.ts';
+import { dk, st } from '../../lib/state.ts';
+import { dkSettings } from '../../settings/settings.ts';
+import { type DkWin, dkFocus, dkMax, dkWin } from '../windows.ts';
+import { binWin, folderWin, openFile, setWin, webWin } from './hostdesk-wins.ts';
+import { dkTerminal } from './terminal.ts';
+import { dkMenu, dkMenuNote, type MenuItem } from './wallpaper.ts';
+
+export type Kind = 'file' | 'folder' | 'cli' | 'web' | 'gui' | 'bin';
+export interface Item {
+  name: string;
+  kind: Kind;
+  path?: string;
+  icon?: string;
+  iv?: string;
+  run?: string;
+  url?: string;
+  group?: string;
+  id?: string;
+}
+export interface Desk {
+  os: 'windows' | 'linux';
+  shell: 'win11' | 'win10' | 'gnome' | 'kde' | 'xfce' | 'plain';
+  user: string;
+  home: string;
+  wallpaper: { path: string; fit: string; color: string; iv: string };
+  dark: boolean;
+  accent: string;
+  align: 'center' | 'left';
+  icons: Item[];
+  pins: Item[];
+  binFull: boolean;
+  can: { wallpaper: boolean; dark: boolean; accent: boolean; pins: boolean };
+  accents: string[];
+  dock?: string;
+}
+
+// HD one open host desktop: its window, root, what it last drew
+export interface HD {
+  host: string;
+  w: DkWin;
+  root: HTMLElement;
+  desk?: Desk;
+  apps: Item[];
+  start?: HTMLElement;
+}
+
+export const api = (h: string, op: string, q: Record<string, string> = {}) =>
+  `/api/hostdesk/${encodeURIComponent(h)}/${op}${Object.keys(q).length ? `?${new URLSearchParams(q)}` : ''}`;
+
+export const iconSrc = (hd: HD, it: Item) => (it.icon ? api(hd.host, 'icon', { k: it.icon, v: it.iv ?? '' }) : '');
+
+const motion = matchMedia('(prefers-reduced-motion: reduce)');
+
+// the one way in: a host's desktop, zoomed in from the element it was asked from
+export function dkHostDesk(host: string, from?: Element | null): DkWin | undefined {
+  if (!dk.desk) return;
+  const key = `hostdesk:${host}`;
+  const had = dk.wins.get(key);
+  if (had) {
+    dkFocus(had);
+    return had;
+  }
+  const w = dkWin(key, host, 'desktop', 'hostdesk');
+  if (!w) return;
+  const full = Object.assign(el('button', 'dk-out'), {
+    type: 'button',
+    title: 'full screen',
+    ariaLabel: 'full screen',
+  });
+  full.appendChild(dkGlyph(DK_UI.max!));
+  full.addEventListener('click', () => void w.body.requestFullscreen?.().catch(() => {}));
+  w.head.querySelector('.dk-btns')!.prepend(full);
+  const root = el('div', 'hd');
+  w.body.appendChild(root);
+  const hd: HD = { host, w, root, apps: [] };
+  dkMax(w);
+  zoom(w, from);
+  void load(hd);
+  return w;
+}
+
+// grown from the element pressed into the window it fills
+function zoom(w: DkWin, from?: Element | null) {
+  if (!from || motion.matches || !w.node.animate) return;
+  const a = from.getBoundingClientRect();
+  const b = w.node.getBoundingClientRect();
+  if (!a.width || !b.width) return;
+  const sx = a.width / b.width;
+  const sy = a.height / b.height;
+  w.node.animate(
+    [
+      {
+        transformOrigin: '0 0',
+        transform: `translate(${a.left - b.left}px, ${a.top - b.top}px) scale(${sx}, ${sy})`,
+        opacity: 0.3,
+      },
+      { transformOrigin: '0 0', transform: 'none', opacity: 1 },
+    ],
+    { duration: 320, easing: 'cubic-bezier(.2,.7,.2,1)' },
+  );
+}
+
+async function load(hd: HD) {
+  const say = (msg: string, acts: [string, () => void][] = []) => {
+    const box = el('div', 'hd-say');
+    box.append(el('p', '', msg));
+    for (const [label, f] of acts) {
+      const b = Object.assign(el('button', 'btn', label), { type: 'button' });
+      b.addEventListener('click', f);
+      box.append(b);
+    }
+    hd.root.replaceChildren(box);
+  };
+  if (!hd.desk) say(`opening ${hd.host}`);
+  const cached = await acctCall<{ desk?: Desk; apps?: Item[]; cached?: boolean }>(
+    api(hd.host, 'desktop', { cached: '1' }),
+  );
+  if (!cached.ok) return refused(hd, cached.status, cached.error ?? '', say);
+  if (cached.desk) {
+    hd.apps = cached.apps ?? [];
+    draw(hd, cached.desk);
+  }
+  const r = await acctCall<{ desk: Desk }>(api(hd.host, 'desktop'));
+  if (!r.ok || !r.desk) {
+    if (hd.desk) return dkMenuNote(`${hd.host}: ${r.error || 'no answer'}`);
+    return refused(hd, r.status, r.error ?? '', say);
+  }
+  draw(hd, r.desk);
+  const a = await acctCall<{ apps: Item[] }>(api(hd.host, 'apps'));
+  if (a.ok && a.apps) hd.apps = a.apps;
+}
+
+function refused(hd: HD, status: number, error: string, say: (m: string, a?: [string, () => void][]) => void) {
+  const again: [string, () => void] = ['try again', () => void load(hd)];
+  if (status === 403 && /enable/.test(error))
+    return say(error, st.acct?.admin ? [['enable it', () => dkSettings('hosts', 'desktops')], again] : [again]);
+  if (status === 403 && /save a login/.test(error))
+    return say(error, [['host logins', () => dkSettings('profile', 'host logins')], again]);
+  say(error || `${hd.host} didn't answer`, [again]);
+}
+
+// the whole desktop drawn again from what the host says
+export function draw(hd: HD, d: Desk) {
+  hd.desk = d;
+  const r = hd.root;
+  r.className = `hd hd-${d.shell} ${d.dark ? 'hd-dark' : 'hd-light'}${d.dock ? ` hd-dock-${d.dock}` : ''}`;
+  r.style.setProperty('--hd-accent', d.accent || 'var(--accent)');
+  const wall = el('div', 'hd-wall');
+  if (d.wallpaper.color) wall.style.backgroundColor = d.wallpaper.color;
+  if (d.wallpaper.path) {
+    wall.style.backgroundImage = `url("${api(hd.host, 'wallpaper', { v: d.wallpaper.iv || d.wallpaper.path })}")`;
+    wall.dataset.fit = d.wallpaper.fit;
+  }
+  wall.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    dkMenu(e.clientX, e.clientY, [
+      ['personalize', () => setWin(hd), true],
+      ['recycle bin', () => binWin(hd), true],
+      ['refresh', () => void load(hd), true],
+    ]);
+  });
+  const icons = el('div', 'hd-icons');
+  for (const it of d.icons) icons.append(iconBtn(hd, it, 'hd-icon'));
+  wall.addEventListener('pointerdown', (e) => {
+    if (e.target === wall || e.target === icons)
+      for (const x of icons.querySelectorAll('.on')) x.classList.remove('on');
+  });
+  wall.append(icons);
+  const layer = el('div', 'hd-layer');
+  r.replaceChildren(wall, chrome(hd, d), layer);
+}
+
+// one launcher: its icon and name, opened by a double click on the desk, one press elsewhere
+export function iconBtn(hd: HD, it: Item, cls: string, single = false): HTMLButtonElement {
+  const b = Object.assign(el('button', `${cls} hd-k-${it.kind}`), { type: 'button', title: tip(it) });
+  b.append(pic(hd, it), el('span', 'hd-name', it.name));
+  if (it.kind === 'gui') b.classList.add('off');
+  const go = () => openItem(hd, it, b);
+  if (single) b.addEventListener('click', go);
+  else {
+    b.addEventListener('click', () => {
+      for (const x of b.parentElement?.querySelectorAll('.on') ?? []) x.classList.remove('on');
+      b.classList.add('on');
+    });
+    b.addEventListener('dblclick', go);
+    b.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') go();
+    });
+  }
+  b.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dkMenu(e.clientX, e.clientY, itemMenu(hd, it, b), undefined, it.name);
+  });
+  return b;
+}
+
+// the host's own icon, its first letter while there's none
+export function pic(hd: HD, it: Item): HTMLElement {
+  const glyph = () => el('span', 'hd-noicon', it.name.slice(0, 1).toLowerCase());
+  const src = iconSrc(hd, it);
+  if (!src) return glyph();
+  const img = Object.assign(el('img'), { alt: '', draggable: false, loading: 'lazy', decoding: 'async', src });
+  img.addEventListener('error', () => img.replaceWith(glyph()));
+  return img;
+}
+
+const tip = (it: Item) =>
+  it.kind === 'gui'
+    ? `${it.name}: a window app, it opens once app streaming lands`
+    : it.path
+      ? `${it.name}\n${it.path}`
+      : it.name;
+
+const imageRe = /\.(png|jpe?g|webp|bmp|svg)$/i;
+
+function itemMenu(hd: HD, it: Item, b: HTMLElement): MenuItem[] {
+  const d = hd.desk!;
+  const items: MenuItem[] = [['open', () => openItem(hd, it, b), it.kind !== 'gui']];
+  if (it.path && imageRe.test(it.path) && d.can.wallpaper)
+    items.push(['set as desktop background', () => void setWin(hd, { wallpaper: it.path }), true]);
+  if (it.id && d.can.pins) {
+    const pinned = d.pins.some((p) => p.id === it.id);
+    items.push([pinned ? 'unpin' : 'pin', () => void setWin(hd, { pin: it.id!, on: !pinned }), true]);
+  }
+  if (it.path && it.kind !== 'bin') {
+    items.push(null, ['delete', () => void binWin(hd, { delete: it.path! }), true, 'danger']);
+  }
+  return items;
+}
+
+// what a launcher does: the viewer, a folder, a terminal tab, a window; window apps wait
+export function openItem(hd: HD, it: Item, from?: Element) {
+  switch (it.kind) {
+    case 'bin':
+      return binWin(hd);
+    case 'folder':
+      return folderWin(hd, it.path!);
+    case 'file':
+      return void openFile(hd, it.path!);
+    case 'web':
+      return it.url ? webWin(it.url, it.name) : undefined;
+    case 'cli': {
+      if (!dk.creds.has(hd.host)) {
+        if (from) dkUnlock(hd.host, from as HTMLElement, () => openItem(hd, it));
+        return;
+      }
+      dkTerminal(hd.host, it.run ?? '');
+      return;
+    }
+    case 'gui':
+      return dkMenuNote(`${it.name} is a window app; it opens once app streaming lands`);
+  }
+}
+
+// --- the shell around the desk: a taskbar, a top bar and dock, a panel ---------------
+
+function chrome(hd: HD, d: Desk): HTMLElement {
+  const bar = el('div', 'hd-bar');
+  const startBtn = Object.assign(el('button', 'hd-start'), { type: 'button', title: 'start', ariaLabel: 'start' });
+  startBtn.append(el('span', 'hd-start-mark'));
+  if (d.shell === 'gnome') startBtn.append(el('span', 'hd-start-t', 'activities'));
+  if (d.shell === 'xfce') startBtn.append(el('span', 'hd-start-t', 'applications'));
+  if (d.shell === 'plain') startBtn.append(el('span', 'hd-start-t', 'apps'));
+  startBtn.addEventListener('click', () => toggleStart(hd, startBtn));
+  const pins = el('div', 'hd-pins');
+  for (const p of d.pins) pins.append(iconBtn(hd, p, 'hd-pin', true));
+  const tray = el('div', 'hd-tray');
+  const clock = el('span', 'hd-clock');
+  const tick = () => {
+    const n = new Date();
+    clock.textContent =
+      d.shell === 'gnome'
+        ? n.toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' }).toLowerCase()
+        : n.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }).toLowerCase();
+  };
+  tick();
+  const t = setInterval(() => (clock.isConnected ? tick() : clearInterval(t)), 15000);
+  tray.append(el('span', 'hd-user', d.user), clock);
+  if (d.shell === 'gnome') {
+    bar.append(startBtn, el('span', 'hd-gap'), clock, el('span', 'hd-gap'), el('span', 'hd-user', d.user));
+    const wrap = el('div', 'hd-gchrome');
+    const dock = el('div', 'hd-dock');
+    dock.append(pins);
+    const all = Object.assign(el('button', 'hd-pin hd-grid'), { type: 'button', title: 'show apps' });
+    all.append(el('span', 'hd-grid-dots'));
+    all.addEventListener('click', () => toggleStart(hd, all));
+    dock.append(all);
+    wrap.append(bar, dock);
+    return wrap;
+  }
+  if (d.shell === 'xfce') {
+    bar.append(startBtn, pins, el('span', 'hd-gap'), tray);
+    return bar;
+  }
+  bar.append(startBtn, pins, tray);
+  bar.dataset.align = d.shell === 'win11' ? d.align : 'left';
+  return bar;
+}
+
+function toggleStart(hd: HD, btn: HTMLElement) {
+  if (hd.start?.isConnected) {
+    hd.start.remove();
+    hd.root.classList.remove('hd-open');
+    hd.start = undefined;
+    return;
+  }
+  const d = hd.desk!;
+  const m = el('div', 'hd-menu');
+  const shut = () => {
+    m.remove();
+    hd.root.classList.remove('hd-open');
+  };
+  const search = Object.assign(el('input', 'hd-search'), {
+    placeholder: d.os === 'windows' ? 'search for apps' : 'type to search',
+    spellcheck: false,
+  });
+  const list = el('div', 'hd-apps');
+  const fill = () => {
+    const q = search.value.trim().toLowerCase();
+    const apps = hd.apps.filter((a) => !q || a.name.toLowerCase().includes(q));
+    const rows: HTMLElement[] = [];
+    let head = '';
+    const grouped = d.shell === 'kde' || d.shell === 'xfce';
+    const sorted = grouped
+      ? [...apps].sort((a, b) => (a.group ?? '').localeCompare(b.group ?? '') || a.name.localeCompare(b.name))
+      : apps;
+    for (const a of sorted) {
+      const h = grouped
+        ? a.group || 'other'
+        : d.os === 'windows'
+          ? /^[a-z]/i.test(a.name)
+            ? a.name[0]!.toLowerCase()
+            : '#'
+          : '';
+      if (h && h !== head && !q) {
+        head = h;
+        rows.push(el('div', 'hd-apps-head', h));
+      }
+      const b = iconBtn(hd, a, 'hd-app', true);
+      b.addEventListener('click', () => {
+        if (a.kind !== 'gui') shut();
+      });
+      rows.push(b);
+    }
+    if (!rows.length) rows.push(el('p', 'hd-empty', hd.apps.length ? 'nothing matches' : 'reading the apps'));
+    list.replaceChildren(...rows);
+  };
+  search.addEventListener('input', fill);
+  search.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') shut();
+    if (e.key === 'Enter') (list.querySelector('.hd-app:not(.off)') as HTMLButtonElement | null)?.click();
+  });
+  const foot = el('div', 'hd-menu-foot');
+  const who = el('span', 'hd-user', d.user);
+  const gear = Object.assign(el('button', 'hd-menu-btn', 'personalize'), { type: 'button' });
+  gear.addEventListener('click', () => {
+    shut();
+    setWin(hd);
+  });
+  const bin = Object.assign(el('button', 'hd-menu-btn', d.os === 'windows' ? 'recycle bin' : 'trash'), {
+    type: 'button',
+  });
+  bin.addEventListener('click', () => {
+    shut();
+    binWin(hd);
+  });
+  foot.append(who, el('span', 'hd-gap'), bin, gear);
+  m.append(search, list, foot);
+  hd.root.append(m);
+  hd.root.classList.add('hd-open');
+  hd.start = m;
+  fill();
+  search.focus();
+  const away = (e: PointerEvent) => {
+    if (!m.isConnected) return document.removeEventListener('pointerdown', away, true);
+    const dock = hd.root.querySelector('.hd-dock');
+    if (!m.contains(e.target as Node) && !btn.contains(e.target as Node) && !dock?.contains(e.target as Node)) {
+      shut();
+      document.removeEventListener('pointerdown', away, true);
+    }
+  };
+  document.addEventListener('pointerdown', away, true);
+  if (!hd.apps.length)
+    void acctCall<{ apps: Item[] }>(api(hd.host, 'apps')).then((a) => {
+      if (a.ok && a.apps) {
+        hd.apps = a.apps;
+        if (m.isConnected) fill();
+      }
+    });
+}
+
+// #desk=<host> opened once the desktop is up, and on each change of it
+export function dkHostDeskHash(): void {
+  const m = /^#desk=([a-z0-9][a-z0-9-]*)$/.exec(location.hash);
+  if (m && dk.desk) dkHostDesk(m[1]!);
+}
+addEventListener('hashchange', dkHostDeskHash);

@@ -2,7 +2,7 @@
 // or spliced onto the owning peer's
 
 import { Purge } from "@phosphorus/model";
-import { acceptLink, HostHeader } from "@phosphorus/peers";
+import { acceptLink, HostHeader, peerIPs } from "@phosphorus/peers";
 import { attach as statsAttach } from "@phosphorus/stats";
 import * as term from "@phosphorus/term";
 import { Of } from "@phosphorus/users";
@@ -76,6 +76,14 @@ export async function onUpgrade(c: Ctx, pathname: string, q: URLSearchParams): P
   const resume = q.has("resume");
   const n = Math.max(termConns, term.sessionCount());
   if (!resume && n >= maxTerms) return refuse(503);
+  // a host without phosphorus reached over its tailnet address, for a signed in user
+  let direct = "";
+  if (host !== selfHost && !(host in peerIPs())) {
+    const u = Of(c);
+    if (!u || u.boot) return refuse(403);
+    direct = await tailnetIP(host);
+    if (!direct) return refuse(404);
+  }
   return accept(c, (ws) => {
     termConns++;
     ws.onClose(() => termConns--);
@@ -99,6 +107,20 @@ export async function onUpgrade(c: Ctx, pathname: string, q: URLSearchParams): P
         sshHost: hostSSHHost,
         port: intOf(hostSSHPort),
         shell,
+        auto: q.get("auto") === "1",
+      });
+      return;
+    }
+    // a computer without phosphorus: its own sshd, from here
+    if (direct) {
+      term.attach(ws, {
+        host,
+        sid: q.get("sid")!,
+        since: Math.max(intOf(q.get("since")), 0),
+        resume,
+        sshHost: direct,
+        port: 22,
+        shell: "",
         auto: q.get("auto") === "1",
       });
       return;

@@ -1,6 +1,6 @@
 // status: settings › hosts › status, the whole mesh summed or one host in full
 
-import type { State, StatsSample } from '@phosphorus/wire';
+import type { State, StatsSample, StatsTrend } from '@phosphorus/wire';
 import { deskApps } from '../../lib/state.ts';
 import { statusRender } from '../status.ts';
 
@@ -37,6 +37,28 @@ export interface StHost {
   page: Page | null;
   gpu?: boolean;
   netMax?: number;
+  // the day by the hour, sent now and then and kept between
+  trend?: StatsTrend;
+  // the figures read off it, eased over a few samples; the graphs keep each one
+  calm?: Calm;
+}
+// a host's eased figures, its latest sample's before any were eased
+export const calmOf = (h: StHost): Calm =>
+  h.calm ?? { cpu: h.s!.cpu.total, cores: h.s!.cpu.cores, rx: 0, tx: 0, gpus: h.s!.gpus.map((g) => g.util) };
+export type Calm = { cpu: number; cores: number[]; rx: number; tx: number; gpus: (number | null)[] };
+
+// about three samples' worth: a spike shows, a flicker doesn't
+const EASE = 0.35;
+const ease = (was: number | null | undefined, v: number | null) =>
+  v === null ? null : was == null ? v : was + EASE * (v - was);
+function easeIn(was: Calm | undefined, s: StatsSample, rx: number, tx: number): Calm {
+  return {
+    cpu: ease(was?.cpu, s.cpu.total)!,
+    cores: s.cpu.cores.map((c, i) => ease(was?.cores[i], c)!),
+    rx: ease(was?.rx, rx)!,
+    tx: ease(was?.tx, tx)!,
+    gpus: s.gpus.map((g, i) => ease(was?.gpus[i], g.util)),
+  };
 }
 export const stHosts = new Map<string, StHost>();
 export let stWs: WebSocket | null = null;
@@ -86,20 +108,18 @@ export function statusConnect() {
     const h = stHost(s.host);
     h.s = s;
     h.at = Date.now();
+    if (s.trend) h.trend = s.trend;
     if (s.cpu) {
       const push = (k: string, v: number) => {
         h.hist[k]!.push(v);
         if (h.hist[k]!.length > ST_HIST) h.hist[k]!.shift();
       };
       push('cpu', s.cpu.total);
-      push(
-        'rx',
-        s.net.reduce((a, n) => a + n.rx, 0),
-      );
-      push(
-        'tx',
-        s.net.reduce((a, n) => a + n.tx, 0),
-      );
+      const rx = s.net.reduce((a, n) => a + n.rx, 0);
+      const tx = s.net.reduce((a, n) => a + n.tx, 0);
+      push('rx', rx);
+      push('tx', tx);
+      h.calm = easeIn(h.calm, s, rx, tx);
       // the gpus' mean load, 0 on a host with none reporting
       const util = (s.gpus || []).filter((g) => g.util !== null);
       if (util.length) h.gpu = true;

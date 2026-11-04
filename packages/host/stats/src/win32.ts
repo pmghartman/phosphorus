@@ -1,8 +1,9 @@
-// Windows through PowerShell: one CIM query per sample for the cache, pagefile,
-// adapters, disk bytes and volumes; the gpus from DirectX's registry adapters
-// and the GPU Engine and GPU Adapter Memory counters, nvidia's left to nvidia-smi
+// Windows through one PowerShell kept open, a request a line: CIM for the cache,
+// pagefile, adapters, disk bytes and volumes; the dedicated gpus from DirectX's
+// registry adapters and the raw GPU Engine and Adapter Memory classes, nvidia's left to nvidia-smi
 import { freemem, totalmem, uptime } from "node:os";
-import { now, run } from "@phosphorus/util";
+import { now } from "@phosphorus/util";
+import type { Subprocess } from "bun";
 import {
   type Disk,
   type Gpu,
@@ -18,7 +19,10 @@ import {
 
 const virtualIf = /^(lo|loopback|vEthernet|veth|bridge|awdl|llw|anpi|ap\d|gif|stf|isatap|teredo)/i;
 
-const pollScript = `$ErrorActionPreference='SilentlyContinue'
+// a fresh PowerShell a sample cost half a core in startup alone, Get-Counter more
+const serveScript = `$ErrorActionPreference='SilentlyContinue'
+[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
+function poll {
 $m=Get-CimInstance Win32_PerfRawData_PerfOS_Memory
 $p=Get-CimInstance Win32_PageFileUsage
 @{cache=$m.CacheBytes;standby=$m.StandbyCacheCoreBytes+$m.StandbyCacheNormalPriorityBytes+$m.StandbyCacheReserveBytes
@@ -26,34 +30,106 @@ swapTotal=($p|Measure-Object AllocatedBaseSize -Sum).Sum;swapUsed=($p|Measure-Ob
 net=@(Get-NetAdapterStatistics|%{@{name=$_.Name;rx=$_.ReceivedBytes;tx=$_.SentBytes}})
 io=@(Get-CimInstance Win32_PerfRawData_PerfDisk_PhysicalDisk|?{$_.Name -ne '_Total'}|%{@{r=$_.DiskReadBytesPersec;w=$_.DiskWriteBytesPersec}})
 disks=@(Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3'|%{@{total=$_.Size;free=$_.FreeSpace}})
-}|ConvertTo-Json -Compress -Depth 4`;
+}}
+function gpu {
+$a=@(Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\DirectX\\*'|?{$_.AdapterLuid}|%{@{name=$_.Description;vendor=$_.VendorId;luid=[string]$_.AdapterLuid;dedicated=[string]$_.DedicatedVideoMemory;type=$_.AdapterType;seen=[string]$_.LastSeen}})
+$e=@(Get-CimInstance Win32_PerfRawData_GPUPerformanceCounters_GPUEngine|%{@{n=$_.Name;u=[string]$_.UtilizationPercentage;t=[string]$_.Timestamp_Sys100NS}})
+$d=@(Get-CimInstance Win32_PerfRawData_GPUPerformanceCounters_GPUAdapterMemory|%{@{n=$_.Name;v=[string]$_.DedicatedUsage}})
+@{adapters=$a;engines=$e;mem=$d}}
+while ($null -ne ($l=[Console]::In.ReadLine())) {
+$o=switch ($l) { 'poll' { poll } 'gpu' { gpu } default { @{} } }
+[Console]::Out.WriteLine(($o|ConvertTo-Json -Compress -Depth 4)); [Console]::Out.Flush()
+}`;
 
-const gpuScript = `$ErrorActionPreference='SilentlyContinue'
-$a=@(Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\DirectX\\*'|?{$_.AdapterLuid}|%{@{name=$_.Description;vendor=$_.VendorId;luid=[string]$_.AdapterLuid;dedicated=[string]$_.DedicatedVideoMemory;shared=[string]$_.SharedSystemMemory;seen=[string]$_.LastSeen}})
-$c=@((Get-Counter '\\GPU Engine(*)\\Utilization Percentage','\\GPU Adapter Memory(*)\\Dedicated Usage','\\GPU Adapter Memory(*)\\Shared Usage').CounterSamples|%{@{p=$_.Path;v=$_.CookedValue}})
-@{adapters=$a;counters=$c}|ConvertTo-Json -Compress -Depth 4`;
+const askTimeout = 15000;
+const idleMS = 60000;
 
-// a script's JSON, undefined when PowerShell couldn't run it
-async function ps(script: string): Promise<any> {
-  const enc = Buffer.from(script, "utf16le").toString("base64");
-  const r = await run(
-    ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", enc],
-    { timeoutMs: 15000 },
-  );
-  try {
-    return JSON.parse(r.stdout);
-  } catch {
-    return undefined;
+type Timer = ReturnType<typeof setTimeout>;
+type Shell = { p: Subprocess<"pipe", "pipe", "ignore">; lines: AsyncIterator<string>; idle?: Timer };
+let shell: Shell | undefined;
+let turn: Promise<unknown> = Promise.resolve();
+
+// stdout cut into lines, one reply each
+async function* linesOf(s: ReadableStream<Uint8Array>) {
+  const dec = new TextDecoder();
+  let buf = "";
+  for await (const b of s) {
+    buf += dec.decode(b, { stream: true });
+    for (let i = buf.indexOf("\n"); i >= 0; i = buf.indexOf("\n")) {
+      yield buf.slice(0, i);
+      buf = buf.slice(i + 1);
+    }
   }
+}
+
+function open(): Shell {
+  const enc = Buffer.from(serveScript, "utf16le").toString("base64");
+  const p = Bun.spawn(
+    ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", enc],
+    { stdin: "pipe", stdout: "pipe", stderr: "ignore", windowsHide: true },
+  );
+  const sh: Shell = { p, lines: linesOf(p.stdout)[Symbol.asyncIterator]() };
+  void p.exited.then(() => {
+    if (shell === sh) shell = undefined;
+  });
+  return sh;
+}
+
+// its stdin's end its exit, killed if it lingers
+function close(sh: Shell) {
+  if (shell === sh) shell = undefined;
+  clearTimeout(sh.idle);
+  try {
+    sh.p.stdin.end();
+  } catch {}
+  setTimeout(() => sh.p.kill(), 2000).unref();
+}
+
+// one request's JSON, undefined when the shell couldn't answer; one at a time,
+// the shell closed after a minute unasked
+function ask(what: "poll" | "gpu"): Promise<any> {
+  const next = turn.then(async () => {
+    const sh = (shell ??= open());
+    clearTimeout(sh.idle);
+    let t: Timer | undefined;
+    try {
+      sh.p.stdin.write(what + "\n");
+      sh.p.stdin.flush();
+      const got = await Promise.race([
+        sh.lines.next(),
+        new Promise<undefined>((r) => (t = setTimeout(() => r(undefined), askTimeout))),
+      ]);
+      if (!got || got.done) {
+        close(sh);
+        return;
+      }
+      return JSON.parse(got.value);
+    } catch {
+      close(sh);
+      return;
+    } finally {
+      clearTimeout(t);
+      if (shell === sh) sh.idle = setTimeout(() => close(sh), idleMS);
+    }
+  });
+  turn = next.catch(() => {});
+  return next;
 }
 
 // ConvertTo-Json hands a lone element back bare
 const arr = (v: unknown): any[] => (Array.isArray(v) ? v : v == null ? [] : [v]);
 const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : Number(v) || 0);
+const big = (v: unknown) => {
+  try {
+    return BigInt(String(v ?? "0"));
+  } catch {
+    return 0n;
+  }
+};
 
 export type Polled = { mem: Mem; net: Net; io: [number, number]; disk: Disk };
 
-// the poll script's JSON into the sample's figures; total and avail from the OS
+// the poll's JSON into the sample's figures; total and avail from the OS
 export function parsePoll(j: any, total = totalmem(), avail = freemem()): Polled {
   const mem: Mem = {
     total,
@@ -92,46 +168,60 @@ export function parsePoll(j: any, total = totalmem(), avail = freemem()): Polled
   return { mem, net, io, disk };
 }
 
-const luidRe = /luid_0x([0-9a-fA-F]+)_0x([0-9a-fA-F]+)_phys_(\d+)/;
-const engRe = /_eng_(\d+)/;
+// a gpu with memory of its own: a hybrid laptop's flags when set, else its name,
+// an APU's carve-out reading as dedicated as any card's
+export function discrete(v: string, name: string, type: number): boolean {
+  if (type & 0x4) return false;
+  if (type & 0x10) return true;
+  if (type & 0x20) return false;
+  const s = name.toLowerCase();
+  if (v === "nvidia") return true;
+  if (v === "amd") return /\b(rx|pro|vii|firepro|instinct|r[579]|hd)\b/.test(s);
+  if (v === "intel") return /\barc\b.*\b([ab]\d{3}|pro)\b|xe max/.test(s);
+  return false;
+}
+
+const luidRe = /luid_0x([0-9a-f]+)_0x([0-9a-f]+)_phys_\d+(?:_eng_(\d+))?/;
 const hex8 = (v: bigint) => v.toString(16).padStart(8, "0");
 
 type Adapter = Gpu & { vendor: string };
+// each engine instance's busy time and timestamp, both in 100ns
+export type Engines = Map<string, [bigint, bigint]>;
 
-// the gpu script's JSON into rows: an adapter's load its busiest engine's summed
-// over processes; under 1GB dedicated taken as an igpu's carve-out, its memory
-// the shared pool. Registry entries outlive their adapters, so only those the
-// counters list now count, every vendor-known one when there are no counters
-export function parseGpus(j: any): Adapter[] {
+// the gpu JSON into the dedicated adapters and the engines to diff the next against:
+// an adapter's load its busiest engine's summed over processes since the last read.
+// Registry entries outlive their adapters, so only those the classes list now count,
+// every vendor-known one when there are none
+export function parseGpus(j: any, prev: Engines = new Map()): [Adapter[], Engines] {
+  const next: Engines = new Map();
   const busy = new Map<string, Map<string, number>>(),
-    mem = new Map<string, number>(),
-    shMem = new Map<string, number>();
-  for (const c of arr(j?.counters)) {
-    const p = String(c?.p ?? "").toLowerCase(),
-      v = n(c?.v);
-    const m = luidRe.exec(p);
-    if (!m) continue;
-    const l = `${m[1]}_${m[2]}`.toLowerCase();
-    if (p.endsWith("\\utilization percentage")) {
-      const e = engRe.exec(p);
-      if (!e) continue;
-      const b = busy.get(l) ?? new Map<string, number>();
-      b.set(e[1]!, (b.get(e[1]!) ?? 0) + v);
-      busy.set(l, b);
-    } else if (p.endsWith("\\dedicated usage")) mem.set(l, (mem.get(l) ?? 0) + v);
-    else if (p.endsWith("\\shared usage")) shMem.set(l, (shMem.get(l) ?? 0) + v);
+    mem = new Map<string, number>();
+  for (const e of arr(j?.engines)) {
+    const name = String(e?.n ?? "").toLowerCase();
+    const m = luidRe.exec(name);
+    if (!m?.[3]) continue;
+    const l = `${m[1]!.padStart(8, "0")}_${m[2]!.padStart(8, "0")}`;
+    const cur: [bigint, bigint] = [big(e?.u), big(e?.t)];
+    next.set(name, cur);
+    const b = busy.get(l) ?? new Map<string, number>();
+    busy.set(l, b);
+    const was = prev.get(name);
+    if (!was || cur[1] <= was[1] || cur[0] < was[0]) continue;
+    const pct = (100 * Number(cur[0] - was[0])) / Number(cur[1] - was[1]);
+    b.set(m[3], (b.get(m[3]) ?? 0) + pct);
   }
-  const present = new Set([...busy.keys(), ...mem.keys(), ...shMem.keys()]);
+  for (const c of arr(j?.mem)) {
+    const m = luidRe.exec(String(c?.n ?? "").toLowerCase());
+    if (!m) continue;
+    const l = `${m[1]!.padStart(8, "0")}_${m[2]!.padStart(8, "0")}`;
+    mem.set(l, (mem.get(l) ?? 0) + Number(big(c?.v)));
+  }
+  const present = new Set([...busy.keys(), ...mem.keys()]);
   const newest = new Map<string, any>();
   for (const a of arr(j?.adapters)) {
     const v = vendor["0x" + n(a?.vendor).toString(16).padStart(4, "0")];
-    if (!v) continue;
-    let luid: bigint;
-    try {
-      luid = BigInt.asUintN(64, BigInt(String(a?.luid ?? "0")));
-    } catch {
-      continue;
-    }
+    if (!v || !discrete(v, String(a?.name ?? ""), n(a?.type))) continue;
+    const luid = BigInt.asUintN(64, big(a?.luid));
     const l = `${hex8(luid >> 32n)}_${hex8(luid & 0xffffffffn)}`;
     const key = present.size ? l : String(a?.name ?? "");
     if (present.size ? !present.has(l) : n(newest.get(key)?.seen) > n(a?.seen)) continue;
@@ -139,46 +229,45 @@ export function parseGpus(j: any): Adapter[] {
   }
   const out: Adapter[] = [];
   for (const a of newest.values()) {
-    const dedicated = n(a.dedicated);
-    const integrated = dedicated < 1 << 30;
-    let util: number | null = null,
-      memUsed: number | null = null;
     const b = busy.get(a.l);
-    if (b) util = Math.min(Math.max(0, ...b.values()), 100);
-    if (mem.has(a.l)) memUsed = mem.get(a.l)!;
-    if (shMem.has(a.l) && integrated) memUsed = shMem.get(a.l)!;
     out.push({
       name: String(a.name ?? "").toLowerCase(),
-      util,
-      memUsed,
-      memTotal: integrated ? n(a.shared) : dedicated,
+      util: b?.size ? Math.min(Math.max(0, ...b.values()), 100) : null,
+      memUsed: mem.get(a.l) ?? null,
+      memTotal: n(a.dedicated) || null,
       mhz: null,
       mhzMax: null,
       temp: null,
-      integrated,
       vendor: a.v,
     });
   }
-  return out;
+  return [out, next];
 }
 
 let polled = parsePoll(undefined);
 let gpus: Adapter[] = [];
+let engines: Engines = new Map();
 let gpuAt = 0,
   gpuBusy = false;
 
 function vendorGpus(haveNvidia: boolean): Gpu[] {
   if (!gpuBusy && now() - gpuAt >= gpuMS) {
     gpuBusy = true;
-    ps(gpuScript)
-      .then((j) => (gpus = parseGpus(j)))
+    ask("gpu")
+      .then((j) => {
+        if (j) [gpus, engines] = parseGpus(j, engines);
+      })
       .finally(() => ((gpuAt = now()), (gpuBusy = false)));
   }
   return gpus.filter((g) => !(g.vendor === "nvidia" && haveNvidia)).map(({ vendor: _, ...g }) => g);
 }
 
 export const win32: Sys = {
-  poll: async () => void (polled = parsePoll(await ps(pollScript))),
+  // a shell that didn't answer leaves the last figures, never a counter dropped to zero
+  poll: async () => {
+    const j = await ask("poll");
+    if (j) polled = parsePoll(j);
+  },
   cpuTimes: osCpuTimes,
   memInfo: () => polled.mem,
   netBytes: () => polled.net,

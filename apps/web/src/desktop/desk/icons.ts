@@ -27,6 +27,7 @@ import { dkMeshQuick, dkUpdateQuick } from '../quick.ts';
 import { dkSessionHold, dkSessionRestore, dkSessionTry } from '../session.ts';
 import { dkBar, dkChips, dkClock, dkHomeBtn, dkPlaceItems } from '../taskbar.ts';
 import { dkClose, dkFocus, dkPlace, dkSnap } from '../windows.ts';
+import { dkHostDeskHash } from './hostdesk.ts';
 import { dkTermApp, dkTermDrop } from './terminal.ts';
 import { dkDeskMenu, dkService, dkWallPaint } from './wallpaper.ts';
 import { dkOpenWaiting, dkWebApp, dkWebApps } from './webapps.ts';
@@ -91,6 +92,7 @@ export function dkDesktop(): void {
   dkClock();
   dkIcons();
   dkSessionRestore();
+  dkHostDeskHash();
 }
 
 // a phone's windows always filling the screen

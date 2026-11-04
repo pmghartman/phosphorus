@@ -4,6 +4,7 @@
 import * as catalog from "@phosphorus/catalog";
 import { migrate as migrateConfig } from "@phosphorus/config";
 import * as files from "@phosphorus/files";
+import { reap as reapDesks } from "@phosphorus/hostdesk";
 import { type Caller, type Loc, init as mcpInit } from "@phosphorus/mcp";
 import { Assign, Summary } from "@phosphorus/model";
 import * as peers from "@phosphorus/peers";
@@ -66,6 +67,7 @@ export async function start(): Promise<Server<WSData>> {
   update.onFinish(rememberChain);
   update.onFailed(() => setUpdating(false));
   setInterval(reapShells, 60000);
+  setInterval(reapDesks, 60000);
 
   // FRONTEND_BIND: one address alone, for a test mesh of several hosts on loopback
   const srv = proxyServe(port, meshOnly(appHandler), false, env("FRONTEND_BIND") || undefined);

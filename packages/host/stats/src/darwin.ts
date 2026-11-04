@@ -1,19 +1,8 @@
 // macOS from its commands, read once per sample: vm_stat and sysctl for memory,
-// netstat for the links, ioreg for disk bytes and the gpu, df for the volumes
+// netstat for the links, ioreg for disk bytes, df for the volumes
 import { totalmem, uptime } from "node:os";
-import { now, run } from "@phosphorus/util";
-import {
-  type Disk,
-  type Gpu,
-  gpuMS,
-  type Mem,
-  type Net,
-  num,
-  osCpuModel,
-  osCpuTimes,
-  osLoadAvg,
-  type Sys,
-} from "./common.ts";
+import { run } from "@phosphorus/util";
+import { type Disk, type Mem, type Net, num, osCpuModel, osCpuTimes, osLoadAvg, type Sys } from "./common.ts";
 
 const virtualIf = /^(lo|loopback|vEthernet|veth|bridge|awdl|llw|anpi|ap\d|gif|stf|isatap|teredo)/i;
 const unit: Record<string, number> = { K: 1024, M: 1 << 20, G: 1 << 30, T: 2 ** 40 };
@@ -87,36 +76,6 @@ export function disk(df: string): Disk {
   return { total, used, count };
 }
 
-// Apple silicon's gpu from ioreg's IOAccelerator: its utilization and the
-// unified memory it holds, the chip's name for its own
-export function appleGpus(ioreg: string, chip = osCpuModel(), memTotal = totalmem()): Gpu[] {
-  const out: Gpu[] = [];
-  // one block per accelerator, each opening with +-o
-  for (const blk of ioreg.split("+-o ").slice(1)) {
-    const m = /"Device Utilization %"=(\d+)/.exec(blk);
-    if (!m) continue;
-    const model = /"model" = "([^"]+)"/.exec(blk);
-    const name = model ? model[1]!.toLowerCase() : chip ? `${chip.toLowerCase()} gpu` : "apple gpu";
-    const g: Gpu = {
-      name,
-      util: Number(m[1]),
-      memUsed: null,
-      memTotal: null,
-      mhz: null,
-      mhzMax: null,
-      temp: null,
-      integrated: true,
-    };
-    const mem = /"In use system memory"=(\d+)/.exec(blk);
-    if (mem) g.memUsed = Number(mem[1]);
-    if (memTotal) g.memTotal = memTotal;
-    const cores = /"gpu-core-count" = (\d+)/.exec(blk);
-    if (cores) g.cores = Number(cores[1]);
-    out.push(g);
-  }
-  return out;
-}
-
 export const bootTime = (s: string) => /sec = (\d+)/.exec(s)?.[1] ?? "";
 
 const cmd = async (argv: string[]) => (await run(argv, { timeoutMs: 5000 })).stdout;
@@ -125,9 +84,6 @@ let mem: Mem = { total: totalmem(), used: 0, avail: 0, cached: 0, swapTotal: 0, 
 let net: Net = { bytes: {}, order: [] };
 let io: [number, number] = [0, 0];
 let vols: Disk = { total: 0, used: 0, count: 0 };
-let apple: Gpu[] = [];
-let appleAt = 0,
-  appleBusy = false;
 
 async function poll() {
   const [vm, swap, ns, ioreg, df] = await Promise.all([
@@ -143,16 +99,6 @@ async function poll() {
   vols = disk(df);
 }
 
-function vendorGpus(): Gpu[] {
-  if (!appleBusy && now() - appleAt >= gpuMS) {
-    appleBusy = true;
-    cmd(["ioreg", "-r", "-d", "1", "-w", "0", "-c", "IOAccelerator"])
-      .then((s) => (apple = appleGpus(s)))
-      .finally(() => ((appleAt = now()), (appleBusy = false)));
-  }
-  return [...apple];
-}
-
 export const darwin: Sys = {
   poll,
   cpuTimes: osCpuTimes,
@@ -164,5 +110,6 @@ export const darwin: Sys = {
   bootID: async () => bootTime(await cmd(["sysctl", "-n", "kern.boottime"])),
   loadAvg: osLoadAvg,
   uptimeSecs: uptime,
-  vendorGpus,
+  // Apple silicon's gpu shares the chip's memory, none of its own
+  vendorGpus: () => [],
 };

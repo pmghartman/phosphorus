@@ -165,23 +165,7 @@ test("darwin disk bytes and volumes", () => {
   expect(d.used).toBe((10485760 + 520000000 + 976562500 + 1953125000) * 1024);
 });
 
-test("darwin apple gpu", () => {
-  expect(darwin.appleGpus(data("darwin/ioreg-gpu.txt"), "Apple M1", 17179869184)).toEqual([
-    {
-      name: "apple m1",
-      util: 23,
-      memUsed: 1879048192,
-      memTotal: 17179869184,
-      mhz: null,
-      mhzMax: null,
-      temp: null,
-      integrated: true,
-      cores: 8,
-    },
-  ]);
-  const noModel = data("darwin/ioreg-gpu.txt").replace(/ *"model" = "Apple M1"\n/, "");
-  expect(darwin.appleGpus(noModel, "Apple M2 Pro", 0)[0]).toMatchObject({ name: "apple m2 pro gpu", memTotal: null });
-  expect(darwin.appleGpus("", "", 0)).toEqual([]);
+test("darwin boot time", () => {
   expect(darwin.bootTime(data("darwin/boottime.txt"))).toBe("1729000000");
 });
 
@@ -222,40 +206,65 @@ test("windows poll", () => {
 });
 
 test("windows gpus", () => {
-  const g = win32.parseGpus(JSON.parse(data("win32/gpu.json")));
-  // the stale igpu entry (no counters) and the software adapter dropped
+  const j = JSON.parse(data("win32/gpu.json"));
+  // the stale entry, the APU and the software adapter dropped; no load before a second read
+  const [g, eng] = win32.parseGpus(j);
+  const card = { mhz: null, mhzMax: null, temp: null };
   expect(g).toEqual([
     {
       name: "nvidia geforce rtx 3080",
-      util: 42.75,
+      util: null,
       memUsed: 3221225472,
       memTotal: 10737418240,
-      mhz: null,
-      mhzMax: null,
-      temp: null,
-      integrated: false,
+      ...card,
       vendor: "nvidia",
     },
-    {
-      name: "amd radeon(tm) graphics",
-      util: 100,
-      memUsed: 805306368,
-      memTotal: 17119785984,
-      mhz: null,
-      mhzMax: null,
-      temp: null,
-      integrated: true,
-      vendor: "amd",
-    },
+    { name: "amd radeon rx 6600 xt", util: null, memUsed: 67108864, memTotal: 8589934592, ...card, vendor: "amd" },
   ]);
-  // no counters: every vendor-known adapter, the newest of a name
-  const j = JSON.parse(data("win32/gpu.json"));
-  const none = win32.parseGpus({ adapters: j.adapters, counters: [] });
+  // a second later: the busiest engine summed over processes, 30% and 10% on the 3d one
+  const add = (u: string, by: number) => String(BigInt(u) + BigInt(by));
+  const later = {
+    ...j,
+    engines: j.engines.map((e: any) => ({
+      ...e,
+      t: add(e.t, 10_000_000),
+      u: add(
+        e.u,
+        e.n.startsWith("pid_1234")
+          ? 3_000_000
+          : e.n.startsWith("pid_5678_luid_0x00000000_0x0000CB9B_phys_0_eng_0")
+            ? 1_000_000
+            : e.n.includes("eng_3")
+              ? 500_000
+              : 0,
+      ),
+    })),
+  };
+  const [g2] = win32.parseGpus(later, eng);
+  expect(g2.map((x) => [x.name, x.util])).toEqual([
+    ["nvidia geforce rtx 3080", 40],
+    ["amd radeon rx 6600 xt", 0],
+  ]);
+  // none listed by the classes: every vendor-known dedicated one, the newest of a name
+  const [none] = win32.parseGpus({ adapters: j.adapters });
   expect(none.map((a) => [a.name, a.util, a.memUsed])).toEqual([
     ["nvidia geforce rtx 3080", null, null],
-    ["amd radeon(tm) graphics", null, null],
+    ["amd radeon rx 6600 xt", null, null],
   ]);
-  expect(win32.parseGpus(undefined)).toEqual([]);
+  expect(win32.parseGpus(undefined)[0]).toEqual([]);
+});
+
+test("windows discrete", () => {
+  expect(win32.discrete("amd", "AMD Radeon(TM) Graphics", 8195)).toBe(false);
+  expect(win32.discrete("amd", "AMD Radeon 780M Graphics", 8195)).toBe(false);
+  expect(win32.discrete("amd", "AMD Radeon RX 7900 XTX", 8195)).toBe(true);
+  expect(win32.discrete("amd", "AMD Radeon(TM) Graphics", 0x10)).toBe(true);
+  expect(win32.discrete("intel", "Intel(R) Arc(TM) Graphics", 8195)).toBe(false);
+  expect(win32.discrete("intel", "Intel(R) Arc(TM) 140V GPU", 8195)).toBe(false);
+  expect(win32.discrete("intel", "Intel(R) Arc(TM) B580 Graphics", 8195)).toBe(true);
+  expect(win32.discrete("intel", "Intel(R) Iris(R) Xe Graphics", 8195)).toBe(false);
+  expect(win32.discrete("nvidia", "NVIDIA GeForce RTX 4060 Laptop GPU", 0x20)).toBe(false);
+  expect(win32.discrete("nvidia", "NVIDIA GeForce RTX 4060 Laptop GPU", 0x10)).toBe(true);
 });
 
 // --- the sampler ----------------------------------------------------------------
@@ -308,3 +317,28 @@ test.skipIf(process.platform !== "linux")(
       expect(top[i - 1].cpu > top[i].cpu || (top[i - 1].cpu === top[i].cpu && top[i - 1].mem >= top[i].mem)).toBe(true);
   },
 );
+
+test("day trend", () => {
+  const H = 3600 * 1000;
+  const at = 100 * H + 30 * 60 * 1000;
+  // a bucket every hour for two days: 10 bytes in and 1 out each, cpu i%, memory unread in the old ones
+  const b: [number, number, number, number | null, number | null][] = [];
+  for (let i = 0; i < 48; i++) b.push([at - (47 - i) * H, 10, 1, i, i < 24 ? null : 50]);
+  const t = stats.trendOf(b, at);
+  expect(t.at).toBe(100 * H);
+  expect(t.rx.length).toBe(24);
+  // each mark's day holds 24 buckets
+  expect(t.rx.every((v) => v === 240)).toBe(true);
+  expect(t.tx.at(-1)).toBe(24);
+  // the last mark's day: buckets 23 to 46, the newest past it
+  expect(t.cpu.at(-1)).toBe(34.5);
+  expect(t.mem.at(-1)).toBe(50);
+  // the oldest mark's day all before memory was read, the next one's with one reading
+  expect(t.mem[0]).toBe(null);
+  expect(t.mem[1]).toBe(50);
+  // two buckets, the newest past the last mark: that mark alone holds one, the rest null
+  const short = stats.trendOf(b.slice(-2), at);
+  expect(short.rx.at(-1)).toBe(10);
+  expect(short.rx.slice(0, -1).every((v) => v === null)).toBe(true);
+  expect(short.since).toBe(b.at(-2)![0] - 5 * 60 * 1000);
+});

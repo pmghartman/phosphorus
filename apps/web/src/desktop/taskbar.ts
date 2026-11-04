@@ -9,7 +9,8 @@ import { dk, st } from '../lib/state.ts';
 import { BAR_ITEMS, layoutNow, PALETTE_EVENT } from '../lib/theme.ts';
 import { when } from '../lib/util.ts';
 import { dkSettings } from '../settings/settings.ts';
-import { dkMenuEl } from './desk.ts';
+import { dkHostDesk } from './desk/hostdesk.ts';
+import { dkMenu, dkMenuEl } from './desk.ts';
 import { dkMin } from './windows.ts';
 
 export function dkBar(...before: HTMLElement[]): HTMLElement {
@@ -105,7 +106,24 @@ export function dkChips(): void {
     b.addEventListener('click', () => dkSettings('hosts', h));
     return b;
   });
-  chips.forEach((c, i) => c.classList.toggle('cur', names[i] === here));
+  chips.forEach((c, i) => {
+    c.classList.toggle('cur', names[i] === here);
+    // a right click: the host as its own desktop, or its settings
+    c.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      const h = names[i]!;
+      dkMenu(
+        e.clientX,
+        e.clientY,
+        [
+          ['open desktop', () => dkHostDesk(h, c), true],
+          ['settings', () => dkSettings('hosts', h), true],
+        ],
+        undefined,
+        h,
+      );
+    });
+  });
   hosts.replaceChildren(dk.chipFold!, ...chips);
 }
 
