@@ -25,7 +25,6 @@ const pad: App = W.firstParty({
   repo: "https://github.com/example/pad",
   mount: "/pad/",
   icon: "/pad/icon.svg",
-  repoIcon: "web/static/pad/icon.svg",
   key: "",
 });
 // the catalogue the test app alone: phosphorus's own apps' feeds are never asked here
@@ -289,20 +288,15 @@ test("the feed read once per ttl, fresh on demand", async () => {
   srv.stop(true);
 });
 
-// --- an app's icon off GitHub, faked; what the retired native installer left ----
+// --- phosphorus's own apps' icons, carried by the build -------------------------
 
-let iconHits = 0;
-W.iconSeams.fetchBytes = async () => {
-  iconHits++;
-  return { data: new TextEncoder().encode("PNG!"), type: "image/png" };
-};
-process.env.APPS_ICON_DIR = join(dir, "icons");
-
-test("a web app's icon off its repository, for the page before any host serves it", async () => {
-  const hits = iconHits;
-  const ic = (await W.AppIcon("pad"))!;
-  expect([ic.type, new TextDecoder().decode(ic.data), iconHits - hits]).toEqual(["image/svg+xml", "PNG!", 1]);
-  expect(await W.AppIcon("nothing")).toBeUndefined();
+test("an own app's icon from the build, the repository's file as it is; none for any other app", async () => {
+  const ic = (await W.AppIcon("code"))!;
+  expect(ic.type).toBe("image/svg+xml");
+  expect(new TextDecoder().decode(ic.data)).toBe(
+    readFileSync(join(import.meta.dir, "../../../../optional/code/web/static/icon.svg"), "utf8"),
+  );
+  expect(await W.AppIcon("pad")).toBeUndefined();
 });
 
 test("an app running code in phosphorus: never without a key, its signature checked, its server half found once in", async () => {

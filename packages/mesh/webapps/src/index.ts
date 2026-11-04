@@ -22,7 +22,6 @@ import {
   SelfHost,
   writeJSONAtomic,
 } from "@phosphorus/util";
-import { RepoIcon } from "./icon.ts";
 
 const logf = (f: string, ...a: unknown[]) => log("[apps] " + f, ...a);
 
@@ -41,8 +40,6 @@ export type App = {
   feed: string;
   mount: string;
   icon: string;
-  // the icon's path in the repository, shown before any host serves the app
-  repoIcon: string;
   // the agents it asks the mesh's models as, listed in the agents app while installed
   agents?: string[];
   // the files it opens, by extension: opening one on the desktop opens it in the app
@@ -67,7 +64,6 @@ export const firstParty = (
   ),
   mount: `/app/${a.id}/`,
   icon: `/app/${a.id}/icon.svg`,
-  repoIcon: `optional/${a.id}/web/static/icon.svg`,
   key: "release",
   ...a,
 });
@@ -665,10 +661,4 @@ export { newer };
 
 export const appIconPath = (id: string) => `/api/apps/${id}/icon`;
 
-// an app's icon off its repository, for the page before any host serves the app
-export async function AppIcon(id: string): Promise<{ data: Uint8Array; type: string } | undefined> {
-  const a = appOf(id);
-  return a ? RepoIcon({ id: a.id, name: a.name, repo: a.repo, icon: a.repoIcon }) : undefined;
-}
-
-export { iconSeams, RepoIcon } from "./icon.ts";
+export { AppIcon } from "./icon.ts";
