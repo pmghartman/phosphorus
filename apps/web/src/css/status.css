@@ -274,6 +274,13 @@
 .st-proc-row {
   grid-template-columns: minmax(0, 1fr) 7ch 7ch 8ch;
 }
+/* every phosphorus process summed, set off from the roles under it */
+.st-ctr-total {
+  font-weight: 600;
+  padding-bottom: 0.15rem;
+  margin-bottom: 0.1rem;
+  border-bottom: 1px solid var(--border);
+}
 .st-table > :not(:first-child) {
   text-align: right;
 }

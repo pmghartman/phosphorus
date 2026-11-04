@@ -168,23 +168,24 @@ function drawGpu(p: Page, h: StHost) {
   );
 }
 
-// phosphorus's own processes, by role
+// one row of the phosphorus panel; a figure left out shown as a dash
+const ctrRow = (name: string, cpu: number, mem: number | null, pids: number | null, cls = '') =>
+  `<div class="st-table st-ctr-row${cls}"><span class="st-cut">${esc(name)}</span>` +
+  `<span class="${heat(cpu / 100)}">${cpu.toFixed(1)}%</span><span>${mem == null ? '–' : humanSize(mem)}</span>` +
+  `<span class="st-dim">${pids ?? '–'}</span></div>`;
+
+// phosphorus's own processes, all of them summed first, then by role
 function drawCtr(p: Page, h: StHost) {
-  const list = h.s!.parts;
+  const { parts: list, own } = h.s!;
   const b = p.box.ctr!;
   panelHead(b, 'phosphorus', list ? String(list.length) : '');
   setHtml(
     b.body,
     list
       ? '<div class="st-table st-ctr-row st-dim"><span>name</span><span>cpu</span><span>mem</span><span>pids</span></div>' +
-          list
-            .map(
-              (c) =>
-                `<div class="st-table st-ctr-row"><span class="st-cut">${esc(c.name)}</span>` +
-                `<span class="${heat(c.cpu / 100)}">${c.cpu.toFixed(1)}%</span><span>${humanSize(c.mem)}</span>` +
-                `<span class="st-dim">${c.pids}</span></div>`,
-            )
-            .join('')
+          (own ? ctrRow('total', own.cpu, own.mem, own.pids, ' st-ctr-total') : '') +
+          list.map((c) => ctrRow(c.name, c.cpu, c.mem, c.pids)).join('') +
+          (own?.exited ? ctrRow('exited', own.exited, null, null, ' st-dim') : '')
       : '<div class="st-dim">no process list</div>',
   );
 }

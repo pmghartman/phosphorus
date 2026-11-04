@@ -4,7 +4,7 @@ import { FFIType, JSCallback, type Pointer, ptr } from "bun:ffi";
 import { closeSync, mkdirSync, openSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { Feed } from "@phosphorus/appfeed";
-import { list } from "@phosphorus/procs";
+import { jobName, list } from "@phosphorus/procs";
 import type { Subprocess } from "bun";
 import {
   at,
@@ -65,10 +65,12 @@ import {
   wstr,
 } from "./setup.ts";
 
-// killOnClose run in a job its children inherit, all of them gone with run
+// killOnClose run in a job its children inherit, all of them gone with run;
+// named so the status tab can read what the job ever spent
 export function killOnClose() {
   const k = kernel32();
-  const j = k.CreateJobObjectW(0n, 0n) as bigint;
+  const name = wstr(jobName(process.pid));
+  const j = k.CreateJobObjectW(0n, BigInt(ptr(name))) as bigint;
   if (!j) return;
   // JOBOBJECT_EXTENDED_LIMIT_INFORMATION, LimitFlags at 16: JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
   const info = Buffer.alloc(144);

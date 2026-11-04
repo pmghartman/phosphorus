@@ -15,6 +15,13 @@ export interface StatsPart {
   mem: number;
   pids: number;
 }
+// every phosphorus process summed; exited: cpu of ones that ended unseen, in no part's figure
+export interface StatsOwn {
+  cpu: number;
+  mem: number;
+  pids: number;
+  exited?: number;
+}
 export interface StatsProc {
   name: string;
   pid: number;
@@ -38,5 +45,6 @@ export interface StatsSample {
   gpus: StatsGpu[];
   uptime?: number;
   parts?: StatsPart[];
+  own?: StatsOwn | null;
   procs?: { count: number; top: StatsProc[] };
 }

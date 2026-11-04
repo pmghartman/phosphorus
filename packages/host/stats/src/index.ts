@@ -1,7 +1,7 @@
 // this host's cpu, memory, disk, network, gpus, phosphorus's own processes by
 // role and the top ones, sampled only while watched, peers fanned in, one socket each
 import { basename, join } from "node:path";
-import { list as procsList } from "@phosphorus/procs";
+import { snapshot } from "@phosphorus/procs";
 import { DataDir, FrontendPort, marshal, now, readJSON, run, writeJSONAtomic } from "@phosphorus/util";
 import { type Conn, dial } from "@phosphorus/wsock";
 import { type CpuT, type Gpu, gpuMS, num, type RxTx, read, round, runes, type Sys } from "./common.ts";
@@ -124,25 +124,36 @@ function gpus(): Gpu[] {
 
 type Row = Record<string, any>;
 
-// parts phosphorus's own processes by role, from refreshProcs
+// parts phosphorus's own processes by role and own their total, from refreshProcs
 let parts: Row[] = [];
-let procPrev = new Map<number, number>();
+let own: Row | null = null;
+type Prev = { cpu: number; kids: number; ppid: number };
+let procPrev = new Map<number, Prev>();
+let jobPrev: number | undefined;
 let procAt = 0;
 let procList: unknown = null;
+
+// cpu seconds over an interval as a percent of one core
+const perCore = (s: number, secs: number) => (secs > 0 ? Math.round((1000 * Math.max(0, s)) / secs) / 10 : 0);
 
 function refreshProcs(at: number) {
   if (at - procAt < procMS) return;
   const secs = procAt ? (at - procAt) / 1000 : 0;
   procAt = at;
-  const cur = new Map<number, number>();
+  const { procs, job } = snapshot();
+  const cur = new Map<number, Prev>();
+  for (const p of procs) cur.set(p.pid, { cpu: p.cpu, kids: p.kids, ppid: p.ppid });
+  // each ended one's last figures by parent, taken off what the parent's kids grew by
+  const ended = new Map<number, number>();
+  for (const [pid, q] of procPrev) if (!cur.has(pid)) ended.set(q.ppid, (ended.get(q.ppid) ?? 0) + q.cpu + q.kids);
   const list: Row[] = [];
   const roles = new Map<string, Row>();
+  const tot = { mem: 0, pids: 0, roles: 0, outside: 0 };
   const linuxOS = process.platform === "linux";
-  for (const p of procsList()) {
+  for (const p of procs) {
     if (!p.rss) continue;
-    cur.set(p.pid, p.cpu);
     const was = procPrev.get(p.pid);
-    const cpu = was !== undefined && secs > 0 ? Math.round((1000 * (p.cpu - was)) / secs) / 10 : 0;
+    const cpu = was ? perCore(p.cpu - was.cpu, secs) : 0;
     const row: Row = {
       pid: p.pid,
       name: linuxOS ? p.name : (p.name || basename(p.cmd)).replace(/\.exe$/, ""),
@@ -152,16 +163,35 @@ function refreshProcs(at: number) {
     if (!linuxOS && p.cmd) row.cmd = runes(p.cmd, 300);
     if (p.role) {
       row.role = p.role;
+      // its own time and its ended children's, each counted once; a new one's all of it
+      const spent = !secs
+        ? 0
+        : was
+          ? Math.max(0, p.cpu - was.cpu) + Math.max(0, p.kids - was.kids - (ended.get(p.pid) ?? 0))
+          : p.cpu + p.kids;
       const r = roles.get(p.role) ?? { name: p.role, cpu: 0, mem: 0, pids: 0 };
-      r.cpu = Math.round(10 * (r.cpu + cpu)) / 10;
+      r.cpu += spent;
       r.mem += p.rss;
       r.pids++;
       roles.set(p.role, r);
+      tot.mem += p.rss;
+      tot.pids++;
+      tot.roles += spent;
+      if (!job?.pids.has(p.pid)) tot.outside += spent;
     }
     list.push(row);
   }
   procPrev = cur;
+  for (const r of roles.values()) r.cpu = perCore(r.cpu, secs);
   parts = [...roles.values()].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  // run's job counts what ended between samples too, Windows' only record of them
+  const inJob = job && jobPrev !== undefined && secs ? Math.max(0, job.cpu - jobPrev) : 0;
+  jobPrev = job?.cpu;
+  const spent = job ? inJob + tot.outside : tot.roles;
+  own = { cpu: perCore(spent, secs), mem: tot.mem, pids: tot.pids };
+  // the ended ones no role's figure holds, so the rows add up to the total
+  const gone = perCore(spent - tot.roles, secs);
+  if (gone >= 0.1) own.exited = gone;
   list.sort((a, b) => b.cpu - a.cpu || b.mem - a.mem);
   const top = list.slice(0, procTop);
   // the top ones named by their argv[0] on Linux, where comm is 15 bytes
@@ -178,8 +208,10 @@ function refreshProcs(at: number) {
 
 function resetProcs() {
   procPrev = new Map();
+  jobPrev = undefined;
   procAt = 0;
   procList = null;
+  own = null;
 }
 
 // --- own sampler -----------------------------------------------------------
@@ -237,6 +269,7 @@ async function sample(): Promise<Record<string, any> | undefined> {
     gpus: gpus(),
     uptime: Math.round(sys.uptimeSecs()),
     parts,
+    own,
     procs: procList,
   };
 }

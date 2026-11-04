@@ -188,9 +188,12 @@ test("stats shape", () => {
     gpus: [{ name: "g", util: 38.886, temp: null }],
     procs: { count: 9, top: [{ name: "a", cmd: long }, {}, {}, {}, {}, {}, {}] },
     parts: [{ name: "frontend", cpu: 1, mem: 2, pids: 3 }],
+    own: { cpu: 4, mem: 5, pids: 6, exited: 3 },
   };
   const st = statsShape(s);
   expect(st.parts).toHaveLength(1);
+  expect(st.own).toEqual({ cpu: 4, mem: 5, pids: 6 });
+  expect(statsShape({}).own).toBeNull();
   expect(st.mem.usedPct).toBe(25);
   expect(st.mem.cached).toBeUndefined();
   expect(st.procs.top).toHaveLength(6);

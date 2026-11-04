@@ -293,6 +293,7 @@ test.skipIf(process.platform !== "linux")(
     expect(Array.isArray(s.gpus)).toBe(true);
     expect(s.uptime).toBeGreaterThan(0);
     expect(Array.isArray(s.parts)).toBe(true);
+    expect(s.own).toMatchObject({ cpu: expect.any(Number), mem: expect.any(Number), pids: expect.any(Number) });
     expect(s.procs.count).toBeGreaterThan(0);
     expect(s.procs.top.length).toBeLessThanOrEqual(25);
     expect(s.procs.top[0]).toMatchObject({

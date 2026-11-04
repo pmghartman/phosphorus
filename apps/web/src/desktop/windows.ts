@@ -113,8 +113,8 @@ export function dkWin(key: string | null, title: string, sub: string, kind: stri
   const step = (dk.n++ % 8) * 24;
   const W = wins.clientWidth;
   const H = wins.clientHeight;
-  w.w = Math.min(760, W - 24);
-  w.h = Math.min(460, H - 24);
+  w.w = dkFill(760, W);
+  w.h = dkFill(460, H);
   w.x = Math.max(0, Math.min(W - w.w, 120 + step));
   w.y = Math.max(0, Math.min(H - w.h, 16 + step));
   dkPlace(w);
@@ -533,13 +533,17 @@ export function dkNav(w: DkWin, frame: NavFrame): void {
   dkNavSync();
 }
 
+// a fresh window's side: most of the desk, never under what it asked for unless the desk is smaller
+const DK_FILL = 0.82;
+const dkFill = (want: number, avail: number) => Math.min(avail - 24, Math.max(want, Math.round(avail * DK_FILL)));
+
 // a fresh window's size, centered, a phone's left filling the desk
 export function dkSize(w: DkWin, width: number, height: number): void {
   if (w.snap) return;
   const W = dk.desk!.wins.clientWidth;
   const H = dk.desk!.wins.clientHeight;
-  w.w = Math.min(width, W - 24);
-  w.h = Math.min(height, H - 24);
+  w.w = dkFill(width, W);
+  w.h = dkFill(height, H);
   // centered, each next one stepped down and right
   const step = (dk.n % 6) * 26;
   w.x = Math.max(0, Math.min(W - w.w, Math.round((W - w.w) / 2) - 65 + step));

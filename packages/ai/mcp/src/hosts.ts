@@ -23,7 +23,7 @@ export function pctOf(a: unknown, b: unknown): number | null {
 }
 
 // statsShape one host's sample trimmed for an agent: percents beside the bytes,
-// phosphorus's own processes as parts, the top six others with short command lines
+// phosphorus's own processes as parts and summed, the top six others with short command lines
 export function statsShape(s: Record<string, any>): Record<string, any> {
   const cpu = obj(s.cpu);
   const cs = Array.isArray(s.parts) ? s.parts : [];
@@ -31,6 +31,8 @@ export function statsShape(s: Record<string, any>): Record<string, any> {
     const m = obj(c);
     return { name: m?.name ?? null, cpu: m?.cpu ?? null, mem: m?.mem ?? null };
   });
+  const o = obj(s.own);
+  const own = o ? { cpu: o.cpu ?? null, mem: o.mem ?? null, pids: o.pids ?? null } : null;
   let procs: unknown = null;
   const p = obj(s.procs);
   if (p) {
@@ -83,6 +85,7 @@ export function statsShape(s: Record<string, any>): Record<string, any> {
     gpus,
     netDay: s.netDay ?? null,
     parts,
+    own,
     procs,
   };
 }
