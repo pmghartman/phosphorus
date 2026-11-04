@@ -1,83 +1,111 @@
-<img src="apps/web/static/phosphorus-ascii.svg" alt="" width="280">
+<p align="center">
+  <img src="apps/web/static/phosphorus-ascii.svg" alt="" width="280">
+</p>
 
-# Phosphorus
+<h1 align="center">Phosphorus</h1>
 
-<p>
+<p align="center">
+  Self-hosted apps on every computer you own: install one onto any host in a click,<br>
+  with backup hosts that take over if it fails.
+</p>
+
+<p align="center">
   <a href="https://github.com/pmghartman/phosphorus/releases/latest"><img alt="release" src="https://img.shields.io/github/v/release/pmghartman/phosphorus?style=flat-square&color=a371f7"></a>
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/github/license/pmghartman/phosphorus?style=flat-square&color=f0883e"></a>
   <img alt="platforms" src="https://img.shields.io/badge/macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-555?style=flat-square">
 </p>
 
-Self-hosted apps on every computer you own: install one onto any host in a click, with backup hosts that take over if it fails.
+<p align="center">
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#features">Features</a> ·
+  <a href="#the-phos-command">The phos command</a> ·
+  <a href="#where-things-live">Where things live</a> ·
+  <a href="#development">Development</a>
+</p>
 
-Each machine runs one Phosphorus service. They find each other over your [Tailscale](https://tailscale.com) tailnet, keep a full copy of the mesh's settings, and serve one web desktop from any of them.
+---
+
+Each machine runs one Phosphorus service. They find each other over your [Tailscale](https://tailscale.com) tailnet, each keeps a full copy of the mesh's settings, and any of them serves the same web desktop.
 
 ## Quick start
 
-1. Install the [latest release](https://github.com/pmghartman/phosphorus/releases/latest) on each machine (`.deb`, `.dmg` or setup `.exe`).
-2. Run `phos` and give it a Tailscale auth key. Every other host copies the rest from the mesh.
-3. Open the link it prints from any device on your tailnet. The first login is `admin`.
+1. **Install** the [latest release](https://github.com/pmghartman/phosphorus/releases/latest) on each machine: `.deb` (Linux), `.dmg` (macOS) or setup `.exe` (Windows).
+2. **Join the mesh.** Run `phos` and give it a Tailscale auth key. Every other host copies the rest from the mesh.
+3. **Open the desktop** at the link it prints, from any device on your tailnet. The first login is `admin`.
 
-## What it does
+## Features
 
-- **Services.** Apps from the CasaOS, Runtipi and Cosmos catalogues, Phosphorus's own (Forgejo), or any public repo with a Compose file. Each one is checked before install (images for your CPUs, free ports, risky settings), runs under Docker Compose with its data in one folder, and gets its own subdomain.
-- **Standby hosts.** Picked at install, they keep a fresh copy of a service's data and take over if its host fails.
-- **Found pages.** Web servers already listening on a host can be published on the mesh, behind the login or public.
-- **Desktop.** Terminal on any host, Files across hosts' shares, Settings, mesh-wide updates.
-- **Optional apps.** Code, Chat, Games and Viewer in [`optional/`](optional), signed bundles an admin installs.
-- **MCP server**, so Claude can run the mesh for you.
+| | |
+| --- | --- |
+| **Services** | Apps from the CasaOS, Runtipi and Cosmos catalogues, Phosphorus's own (Forgejo), or any public repo with a Compose file. Each one is checked before install (images for your CPUs, free ports, risky settings), runs under Docker Compose with its data in one folder, and gets its own subdomain. |
+| **Standby hosts** | Picked at install, they keep a fresh copy of a service's data and take over if its host fails. |
+| **Found pages** | Web servers already listening on a host can be published on the mesh, behind the login or public. |
+| **Desktop** | Terminal on any host, Files across hosts' shares, Settings, mesh-wide updates. |
+| **Optional apps** | Code, Chat, Games and Viewer in [`optional/`](optional), signed bundles an admin installs. |
+| **MCP server** | Lets Claude run the mesh for you. |
 
-## `phos`
+## The `phos` command
 
-```
-phos            this host's state and the desktop link (asks for keys on a new host)
-phos keys       change this host's keys
-phos start | stop | restart | status
-phos update     update this host (every host: settings › update)
-phos uninstall
-```
+| Command | What it does |
+| --- | --- |
+| `phos` | This host's state and the desktop link. Asks for keys on a new host. |
+| `phos keys` | Change this host's keys. |
+| `phos start` · `stop` · `restart` · `status` | Control the service on this host. |
+| `phos update` | Update this host. To update every host, use settings › update. |
+| `phos uninstall` | Remove Phosphorus from this host. |
 
-## On disk
+A host's settings are edited in settings › hosts, or with the MCP `config_set` tool, from any host.
 
-`/var/lib/phosphorus` on Linux, `~/Library/Phosphorus` on macOS, `%USERPROFILE%\phosphorus` on Windows.
+## Where things live
 
-```
-bin/        the phosphorus binary (a link to the package's on Linux)
-sys/        the store every host holds a full copy of, root only
-  etc/        users, hosts, services, stacks, chat, models
-  etc/hosts/<host>/config.json   a host's settings: shares, model, stacks
-  var/        this host's own: chat media, the home sync's index
-home/       each user's files and shared/
-stacks/     installed services, one folder each
-state/      this host's own
-  run/        what the service writes about itself: its baked env, locks, roles
-  log/        phosphorus.log, the MCP audit, each phos command's output
-  cache/      catalogue indexes, app icons, model weights, tailscale and cloudflared; safe to delete
-  data/       installed apps and their data, standby rosters, update history
-              (its root: only what other programs and versions read there)
-.env        keys, root only
-```
+| OS | Folder |
+| --- | --- |
+| Linux | `/var/lib/phosphorus` |
+| macOS | `~/Library/Phosphorus` |
+| Windows | `%USERPROFILE%\phosphorus` |
 
-A host's settings are edited in settings › hosts or with the MCP `config_set` tool, from any host.
+<details>
+<summary>What's inside it</summary>
 
-## Repository
+| Path | Holds |
+| --- | --- |
+| `bin/` | The phosphorus binary (a link to the package's on Linux). |
+| `sys/` | The store every host holds a full copy of. Root only. |
+| `sys/etc/` | Users, hosts, services, stacks, chat, models. |
+| `sys/etc/hosts/<host>/config.json` | A host's settings: shares, model, stacks. |
+| `sys/var/` | This host's own: chat media, the home sync's index. |
+| `home/` | Each user's files, and `shared/`. |
+| `stacks/` | Installed services, one folder each. |
+| `state/run/` | What the service writes about itself: its baked env, locks, roles. |
+| `state/log/` | `phosphorus.log`, the MCP audit, each `phos` command's output. |
+| `state/cache/` | Catalogue indexes, app icons, model weights, tailscale and cloudflared. Safe to delete. |
+| `state/data/` | Installed apps and their data, standby rosters, update history. Its root holds only what other programs and versions read there. |
+| `.env` | Keys. Root only. |
 
-```
-apps        host (phosphorus, phos), tray, the web desktop
-packages    the core's libraries: core, mesh, net, host, home, server, ai
-optional    code, chat, games, viewer
-scripts     build, test, licences, icons, app bundles
-packaging   installers per platform
-```
+</details>
+
+## Development
+
+Needs [Bun](https://bun.sh).
 
 ```bash
 bun install
 bun run check   # dependency links and types
 bun run test
-bun run web     # the desktop page
+bun run web     # build the desktop page
 ```
 
-Apache 2.0, see [`LICENSE`](LICENSE). Bundled software keeps its own licence; full texts ship as `THIRD_PARTY_NOTICES.txt`.
+| Folder | Contents |
+| --- | --- |
+| [`apps/`](apps) | The host (`phosphorus`, `phos`), the tray, the web desktop. |
+| [`packages/`](packages) | The core's libraries: core, mesh, net, host, home, server, ai. |
+| [`optional/`](optional) | Code, Chat, Games, Viewer. |
+| [`scripts/`](scripts) | Build, test, licenses, icons, app bundles. |
+| [`packaging/`](packaging) | Installers per platform. |
+
+## License
+
+Apache 2.0, see [`LICENSE`](LICENSE). Bundled software keeps its own license; the full texts ship as `THIRD_PARTY_NOTICES.txt`.
 
 <p align="center">
   <img src=".github/assets/wright-alchemist.jpg" alt="The Alchemist Discovering Phosphorus, Joseph Wright of Derby" width="420">

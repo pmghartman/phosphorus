@@ -1,7 +1,19 @@
 // the whole mesh summed: headlines, its cpu and net graphs, its totals and models
 import type { StatsSample } from '@phosphorus/wire';
 import { humanSize, plural } from '../../lib/util.ts';
-import { dotJoin, kvRow, meterRow, pageFrame, panel, panelHead, setHtml, stat, usedOf, usedPct } from './cards.ts';
+import {
+  dotJoin,
+  kvRow,
+  meterRow,
+  pack,
+  pageFrame,
+  panel,
+  panelHead,
+  setHtml,
+  stat,
+  usedOf,
+  usedPct,
+} from './cards.ts';
 import { cpuTop, dotGraph, pct, rate } from './glyphs.ts';
 import { drawModel, stModels } from './model.ts';
 import { type Panel, ST_STALE_MS, type StHost, stHosts, stNet } from './state.ts';
@@ -65,8 +77,14 @@ export function drawMeshSum(names: string[]) {
       stat('cpu', 'cpu', pct(cpu), plural(cores, 'core'), cpu),
       stat('mem', 'mem', pct(memU / memT), usedOf(memU, memT), memU / memT),
       stat('disk', 'disk', pct(diskU / diskT), usedOf(diskU, diskT), diskU / diskT),
-      loaded.length &&
-        stat('gpu', 'gpu', pct(gpuLoad), vramT ? `vram ${usedOf(vramU, vramT)}` : plural(gpus.length, 'gpu'), gpuLoad),
+      live.some((h) => h.gpu) &&
+        stat(
+          'gpu',
+          'gpu',
+          loaded.length ? pct(gpuLoad) : '–',
+          vramT ? `vram ${usedOf(vramU, vramT)}` : plural(gpus.length, 'gpu'),
+          gpuLoad,
+        ),
       stat('net', 'net', `<span class="st-rx">▼</span> ${rate(rx)}`, `<span class="st-tx">▲</span> ${rate(tx)}`),
     ]
       .filter(Boolean)
@@ -119,12 +137,12 @@ function drawModels() {
       m.box.remove();
       models.delete(host);
     }
-  let prev = meshPage.box.more!.box;
+  const order = [meshPage.box.more!.box];
   for (const m of list) {
     let box = models.get(m.host);
     if (!box) models.set(m.host, (box = panel('model', 'model')));
-    if (prev.nextElementSibling !== box.box) prev.after(box.box);
-    prev = box.box;
+    order.push(box.box);
     drawModel(box, m, true);
   }
+  pack(meshPage.panels, order);
 }

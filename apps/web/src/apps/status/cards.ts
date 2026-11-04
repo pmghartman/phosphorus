@@ -36,10 +36,13 @@ export function pageFrame(panels: [string, string][]): Page {
   ];
   graphs!.append(cpu.box, net.box);
   const box: Record<string, Panel> = {};
+  const col = document.createElement('div');
+  col.className = 'st-col';
   for (const [k, t] of panels) {
     box[k] = panel(k, t);
-    rest!.append(box[k].box);
+    col.append(box[k].box);
   }
+  rest!.append(col);
   return {
     node,
     facts: facts!,
@@ -62,6 +65,24 @@ export const meterRow = (k: string, frac: number, val: string, cls?: string) =>
 // key, a value
 export const kvRow = (k: string, v: string) =>
   `<div class="st-kv"><span class="st-key">${esc(k)}</span><span class="st-val">${v}</span></div>`;
+
+// panels dealt across as many columns as fit, by their order alone
+// so none sits under a hole or changes column as heights move
+export function pack(box: HTMLElement, panels: HTMLElement[]) {
+  const w = box.clientWidth;
+  if (!w) return;
+  const rem = Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+  const n = Math.max(1, Math.floor((w + 0.8 * rem) / (20.8 * rem)));
+  const want: HTMLElement[][] = Array.from({ length: n }, () => []);
+  let i = 0;
+  for (const p of panels) want[p.hidden ? n - 1 : i++ % n]!.push(p);
+  while (box.children.length < n) box.append(Object.assign(document.createElement('div'), { className: 'st-col' }));
+  want.forEach((list, k) => {
+    const col = box.children[k] as HTMLElement;
+    if (col.children.length !== list.length || list.some((p, j) => col.children[j] !== p)) col.replaceChildren(...list);
+  });
+  while (box.children.length > n) box.lastElementChild!.remove();
+}
 
 // html set only when changed, no reflow a tick
 const drawn = new WeakMap<HTMLElement, string>();

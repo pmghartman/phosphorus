@@ -19,6 +19,10 @@
   gap: 0.8rem;
   min-width: 0;
 }
+/* eased, so a late sample dims rather than blinks */
+.st-page > * {
+  transition: opacity 0.4s;
+}
 .st-page.stale > :not(.st-facts) {
   opacity: 0.45;
 }
@@ -196,12 +200,18 @@
   text-align: right;
 }
 
-/* the rest: as many columns as fit, a panel each */
+/* the rest: as many 20rem columns as fit, each stacking its own panels */
 .st-panels {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr));
-  align-items: start;
+  display: flex;
+  align-items: flex-start;
   gap: 0.8rem;
+}
+.st-col {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  gap: 0.8rem;
+  min-width: 0;
 }
 
 /* a share: a thin track, its fill by heat */
@@ -412,11 +422,8 @@
   color: var(--muted);
 }
 
-/* a phone: the headlines two across, the graphs shorter */
+/* a phone: tighter headlines, the graphs shorter */
 @media (max-width: 720px) {
-  .st-stats {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
   .st-stat {
     padding: 0.55rem 0.7rem 0.65rem;
   }

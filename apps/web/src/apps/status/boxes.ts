@@ -1,6 +1,6 @@
 // one host's page: its facts, headlines, graphs, and a panel for each part of it
 import { esc, humanSize, plural } from '../../lib/util.ts';
-import { dotJoin, kvRow, meterRow, pageFrame, panelHead, setHtml, stat, usedOf, usedPct } from './cards.ts';
+import { dotJoin, kvRow, meterRow, pack, pageFrame, panelHead, setHtml, stat, usedOf, usedPct } from './cards.ts';
 import { bar, dotGraph, heat, heatVar, netScale, pct, rate } from './glyphs.ts';
 import { drawModel, facts, modelOf } from './model.ts';
 import type { Page, StHost } from './state.ts';
@@ -41,8 +41,15 @@ export function drawHost(p: Page, name: string, h: StHost) {
       ),
       stat('mem', 'mem', pct(mem.used / mem.total), usedOf(mem.used, mem.total), mem.used / mem.total),
       stat('disk', 'disk', pct(disk.used / disk.total), usedOf(disk.used, disk.total), disk.used / disk.total),
-      load.length &&
-        stat('gpu', 'gpu', pct(gpuLoad), vramT ? `vram ${usedOf(vramU, vramT)}` : plural(gpus.length, 'gpu'), gpuLoad),
+      // kept once a load was read, a sample without one no reflow
+      h.gpu &&
+        stat(
+          'gpu',
+          'gpu',
+          load.length ? pct(gpuLoad) : '–',
+          vramT ? `vram ${usedOf(vramU, vramT)}` : plural(gpus.length, 'gpu'),
+          gpuLoad,
+        ),
       stat('net', 'net', `<span class="st-rx">▼</span> ${rate(rx)}`, `<span class="st-tx">▲</span> ${rate(tx)}`),
     ]
       .filter(Boolean)
@@ -57,6 +64,10 @@ export function drawHost(p: Page, name: string, h: StHost) {
   if (gpus.length) drawGpu(p, h);
   drawCtr(p, h);
   drawProc(p, h);
+  pack(
+    p.panels,
+    Object.values(p.box).map((b) => b.box),
+  );
 }
 
 function drawCpu(p: Page, h: StHost) {
