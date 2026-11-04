@@ -30,7 +30,7 @@ export const baseDomain = env("BASE_DOMAIN").toLowerCase();
 export const selfHost = env("SELF_HOST");
 export const triesMax: Record<string, number> = { ip: 5, user: 20 };
 export const tries = new Map<string, number[]>();
-export const prefKeys = ["icons", "theme", "palette", "custom", "color", "agentview"];
+export const prefKeys = ["icons", "theme", "palette", "custom", "color", "agentview", "svctab"];
 export const wallTypes = ["image/png", "image/jpeg", "image/webp", "image/gif"];
 
 // the request a session is read from or a cookie is written for

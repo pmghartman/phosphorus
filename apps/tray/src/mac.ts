@@ -38,7 +38,7 @@ const send = {
   b: sender([P, P, bool], P),
   i: sender([P, P, i64], P),
   d: sender([P, P, double], P),
-  // an NSSize by value: two doubles, in registers on x86_64 (xmm0, xmm1) and arm64 (d0, d1) alike
+  // an NSSize by value: two doubles, in registers (d0, d1)
   size: sender([P, P, double, double], P),
   bytes: sender([P, P, P, u64], P),
   event: sender([P, P, u64, P, P, bool], P),

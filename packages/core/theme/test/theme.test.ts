@@ -31,7 +31,7 @@ test("layout", () => {
   expect([m.btnStyle, m.menubar, m.bar]).toEqual(["lights", "top", "bottom"]);
   expect(m.items?.length).toBeGreaterThan(0);
   const d = l.layout(Default);
-  expect([d.barStyle, d.btns]).toEqual(["panel", "right"]);
+  expect([d.barStyle, d.btns]).toEqual(["full", "right"]);
 });
 
 test("css", () => {

@@ -1,9 +1,9 @@
-// an app's icon off its repository's main, kept a day in state/cache/icons
+// an app's icon off its repository's main, kept an hour in state/cache/icons
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { CacheDir, env, errText, logf, now } from "@phosphorus/util";
 
-export const iconTTL = 86400000;
+export const iconTTL = 3600000;
 export const iconDir = () => env("APPS_ICON_DIR", join(CacheDir, "icons"));
 export const iconTypes: Record<string, string> = {
   ".png": "image/png",

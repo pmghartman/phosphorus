@@ -8,7 +8,14 @@ import { el, noFill } from '../lib/dom.ts';
 import { dk, st } from '../lib/state.ts';
 import { copyText } from '../lib/util.ts';
 
-export function profileSection(pane: HTMLElement): void {
+// the parts, each its own page under profile in the rail
+export const PROFILE_SUBS = ['account', 'host logins', 'page logins'] as const;
+type ProfileSub = (typeof PROFILE_SUBS)[number];
+let sub: ProfileSub = 'account';
+export const profileSub = (): ProfileSub => sub;
+
+export function profileSection(pane: HTMLElement, at?: string): void {
+  if (at && (PROFILE_SUBS as readonly string[]).includes(at)) sub = at as ProfileSub;
   const body = el('div', 'acct-pane set-acct');
   pane.appendChild(body);
   const draw = () => {
@@ -111,19 +118,12 @@ export function profileSection(pane: HTMLElement): void {
     out.addEventListener('click', () => void acctLogout());
     me.append(el('span', 'dk-host', acct.user), el('span', 'dk-state', acct.admin ? 'admin' : 'user'), out);
 
-    body.replaceChildren(
-      el('div', 'dk-pick-head', 'signed in'),
-      me,
-      el('div', 'dk-pick-head', 'hosts'),
-      hosts,
-      el('div', 'dk-pick-head', 'page logins'),
-      pages,
-      pRow,
-      opts,
-      el('div', 'dk-pick-head', 'password'),
-      pw,
-      pwWhy,
-    );
+    const parts: Record<ProfileSub, HTMLElement[]> = {
+      account: [el('div', 'dk-pick-head', 'signed in'), me, el('div', 'dk-pick-head', 'password'), pw, pwWhy],
+      'host logins': [hosts],
+      'page logins': [pages, el('div', 'dk-pick-head', 'add a login'), pRow, opts],
+    };
+    body.replaceChildren(...parts[sub]);
   };
   draw();
 }

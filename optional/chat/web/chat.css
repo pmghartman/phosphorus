@@ -1461,14 +1461,6 @@ body {
   }
 }
 
-/* an invite to a shared editor, from before chat was an app */
-.chat-log .sys.show {
-  color: var(--fg);
-}
-.chat-log .sys.show code {
-  color: var(--sky);
-}
-
 /* a code block's copy button, its glyph drawn in strokes */
 .code-copy {
   display: grid;

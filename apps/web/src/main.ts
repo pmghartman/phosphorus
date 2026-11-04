@@ -19,7 +19,6 @@ import './desktop/desk.ts';
 import './desktop/deskfiles.ts';
 import './desktop/control.ts';
 import './desktop/switcher.ts';
-import './desktop/spotlight.ts';
 import './desktop/keys.ts';
 import './desktop/session.ts';
 import { acctStart } from './features/account.ts';

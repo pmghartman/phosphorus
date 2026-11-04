@@ -30,8 +30,7 @@ if (isMac) {
 
 const label = "dev.phosphorus.host";
 
-// libexec the app's bundled tools, synced into the home with the release
-const libexec = () => at("tools");
+const libexec = () => at("state", "cache", "tools");
 const tool = (name: string) => join(libexec(), name);
 const logHint = () => at("state", "log", "phosphorus.log");
 const plistPath = () => join(process.env.HOME ?? "", "Library", "LaunchAgents", label + ".plist");
@@ -120,6 +119,7 @@ export const darwin: OS = {
   elevateUninstall,
   ...unixOnly,
   libexec,
+  ownTailscale: () => false,
   logHint,
   async svcInstall() {
     const plist = plistText(binPath("phosphorus"), home, logHint());
@@ -181,11 +181,7 @@ export const darwin: OS = {
     try {
       have = readFileSync(tool("tailscale"), "utf8");
     } catch {}
-    if (have !== sh) {
-      // an old symlink removed, never written through
-      rmSync(tool("tailscale"), { force: true });
-      writeFileSync(tool("tailscale"), sh, { mode: 0o755 });
-    }
+    if (have !== sh) writeFileSync(tool("tailscale"), sh, { mode: 0o755 });
     await tailscaleLogin(tailscaleLaunch, tailscaleHint);
   },
   async tailscaleStart() {},

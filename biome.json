@@ -13,7 +13,6 @@
       "!notices",
       "!**/testdata",
       "!packages/mesh/catalog/test/fixtures",
-      "!packages/mesh/stacks/test/fixtures",
       "!**/*.md"
     ]
   },

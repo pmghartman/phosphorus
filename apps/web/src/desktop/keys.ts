@@ -1,4 +1,4 @@
-// the desktop's keys, ctrl+alt the desk's own modifier: windows, the search and apps
+// the desktop's keys, ctrl+alt the desk's own modifier: windows and apps
 // without a pointer, by key code so a mac's alt letters count too
 
 import { filesWin } from '../features/home/home.ts';
@@ -6,7 +6,6 @@ import { isMobile } from '../lib/dom.ts';
 import { dk } from '../lib/state.ts';
 import { dkSettings } from '../settings/settings.ts';
 import { dkOpenApp, dkTermNew } from './desk.ts';
-import { dkSpotlight } from './spotlight.ts';
 import { dkOverview, dkOverviewEnd, dkOverviewOn, dkSwitchEnd, dkSwitching, dkSwitchStep } from './switcher.ts';
 import { type DkWin, dkClose, dkFocus, dkMax, dkMin, dkSnapTo, dkStack } from './windows.ts';
 
@@ -40,7 +39,6 @@ document.addEventListener(
     const code = e.code;
     let done = true;
     if (code === 'Tab') dkSwitchStep(e.shiftKey);
-    else if (code === 'Space') dkSpotlight();
     else if (code === 'KeyT') dkTermNew();
     else if (code === 'KeyF') filesWin();
     else if (code === 'KeyS') dkSettings('hosts');

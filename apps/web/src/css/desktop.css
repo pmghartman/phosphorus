@@ -12,7 +12,8 @@
   margin: auto;
   width: min(34rem, calc(100% - 2rem));
   border: 1px solid var(--border);
-  padding: 0.9rem 0.6rem 0.6rem;
+  border-radius: var(--r-pop, 0);
+  padding: 1.1rem 1rem 1rem;
   animation: pop-in 0.12s ease-out;
   background: var(--card);
   box-shadow: var(--drop);
@@ -37,7 +38,7 @@
   align-items: center;
 }
 .dk-host {
-  color: var(--sage);
+  color: var(--fg);
   font-size: var(--fs-md);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -46,9 +47,10 @@
 .dk-row input,
 .fm-ask input {
   min-width: 0;
-  padding: 0.3rem 0.45rem;
-  background: var(--card);
+  padding: 0.34rem 0.55rem;
+  background: var(--bg);
   border: 1px solid var(--border);
+  border-radius: var(--r-ctl, 0);
   color: var(--fg);
   font: inherit;
   font-size: var(--fs-md);
@@ -87,8 +89,8 @@
       1fr
     ) auto;
   background:
-    radial-gradient(var(--border) 1px, transparent 1px) 0 0 / 22px 22px,
-    var(--bg);
+    radial-gradient(color-mix(in srgb, var(--fg) 8%, transparent) 1px, transparent 1px) 0 0 / 24px 24px,
+    var(--desk, var(--bg));
 }
 /* the user's own picture over the dots, the art hidden */
 .dk-walled .dk-desk {
@@ -106,7 +108,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  opacity: 0.06;
+  opacity: 0.035;
   pointer-events: none;
   user-select: none;
   overflow: hidden;
@@ -202,8 +204,9 @@
 }
 /* the glyph box and the label's own text the only highlight, never the whole cell */
 .dk-icon .dk-label {
-  padding: 0 0.2rem;
+  padding: 0 0.3rem;
   border: 1px solid transparent;
+  border-radius: var(--r-ctl, 0);
 }
 .dk-icon .dk-tile {
   border: 1px solid transparent;
@@ -321,8 +324,11 @@
     --agent-turn: 360deg;
   }
 }
+.dk-win:not(.focused) {
+  box-shadow: var(--lift);
+}
 .dk-win.focused {
-  border-color: var(--dim);
+  border-color: color-mix(in srgb, var(--fg) 14%, var(--border));
 }
 @keyframes dk-open {
   from {
@@ -444,12 +450,12 @@
 }
 .dk-head {
   flex: none;
-  height: 1.6rem;
+  height: 2rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-  padding: 0 0.15rem 0 0.55rem;
+  padding: 0 0.3rem 0 0.75rem;
   background: var(--card);
   border-bottom: 1px solid var(--border);
   font-size: var(--fs-sm);
@@ -492,7 +498,7 @@
   cursor: default;
 }
 .dk-win.focused .dk-title {
-  color: var(--sage);
+  color: var(--fg);
 }
 .dk-win.dirty .dk-title .tab-label {
   color: var(--warn);
@@ -501,15 +507,19 @@
   display: flex;
   flex: none;
 }
+.dk-btns {
+  gap: 0.15rem;
+}
 .dk-btns button {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 1.6rem;
-  height: 1.35rem;
+  width: 1.75rem;
+  height: 1.5rem;
   padding: 0;
   background: none;
   border: none;
+  border-radius: var(--r-ctl, 0);
   color: var(--muted);
   cursor: pointer;
 }
@@ -665,7 +675,8 @@
 }
 .dk-task.active {
   color: var(--fg);
-  border-color: var(--accent);
+  background: color-mix(in srgb, var(--fg) 7%, transparent);
+  border-color: color-mix(in srgb, var(--fg) 10%, transparent);
 }
 .dk-hosts {
   display: flex;
@@ -770,8 +781,8 @@ span.dk-chip {
 .dk-menu {
   position: fixed;
   z-index: var(--z-menu);
-  min-width: 11rem;
-  padding: 0.2rem 0;
+  min-width: 12rem;
+  padding: 0.25rem;
   display: flex;
   flex-direction: column;
   background: var(--card);
@@ -784,24 +795,26 @@ span.dk-chip {
   display: none;
 }
 .dk-menu button {
-  padding: 0.25rem 0.75rem;
+  padding: 0.3rem 0.6rem;
+  line-height: 1.3;
   text-align: left;
   background: none;
   border: 0;
+  border-radius: calc(var(--r-pop, 0px) - 3px);
   color: var(--fg);
   font: inherit;
   cursor: pointer;
 }
 .dk-menu button:hover:not(:disabled) {
-  background: var(--accent);
-  color: var(--bg);
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  color: var(--fg);
 }
 .dk-menu button.danger {
   color: var(--offmesh);
 }
 .dk-menu button.danger:hover:not(:disabled) {
-  background: var(--offmesh);
-  color: var(--bg);
+  background: color-mix(in srgb, var(--offmesh) 16%, transparent);
+  color: var(--offmesh);
 }
 .dk-menu button:disabled {
   color: var(--dim);
@@ -820,26 +833,26 @@ span.dk-chip {
   color: var(--dim);
 }
 .dk-menu-item.open > .dk-menu-more:not(:disabled) {
-  background: var(--accent);
-  color: var(--bg);
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  color: var(--fg);
 }
 .dk-menu .dk-submenu {
   position: absolute;
-  left: 100%;
+  left: calc(100% + 0.25rem);
   top: 0;
-  margin-top: -0.2rem;
+  margin-top: -0.25rem;
   display: none;
   animation: none;
 }
 .dk-menu .dk-submenu.left {
   left: auto;
-  right: 100%;
+  right: calc(100% + 0.25rem);
 }
 .dk-menu-item.open > .dk-submenu {
   display: flex;
 }
 .dk-menu-sep {
   height: 1px;
-  margin: 0.2rem 0;
+  margin: 0.25rem 0.35rem;
   background: var(--border);
 }

@@ -125,7 +125,13 @@ export function syncPayload(src: string, dst: string) {
   for (const f of old.replaceAll("\r\n", "\n").split("\n")) {
     if (!f || want.has(f)) continue;
     const p = join(dst, f);
-    rmSync(p, { force: true });
+    // a running Windows exe kept listed, tried again next time
+    try {
+      rmSync(p, { force: true });
+    } catch {
+      want.add(f);
+      continue;
+    }
     // its folders too, once nothing else is in them
     for (let d = dirname(p); d.length > dst.length; d = dirname(d)) {
       try {
@@ -135,7 +141,7 @@ export function syncPayload(src: string, dst: string) {
       }
     }
   }
-  writeFileSync(manifest, next.join("\n") + "\n", { mode: 0o644 });
+  writeFileSync(manifest, [...want].sort().join("\n") + "\n", { mode: 0o644 });
 }
 
 // same bytes already at to: size and mtime alike (copyFile keeps it), else compared

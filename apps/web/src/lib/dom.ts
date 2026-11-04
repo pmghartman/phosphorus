@@ -82,19 +82,19 @@ export function pageAsk({
   return new Promise((resolve) => {
     const veil = el('div', 'fm-veil page-veil');
     const box = el('form', 'fm-ask');
-    const go = Object.assign(el('button', danger ? 'danger' : 'primary', action), { type: 'submit' });
+    const go = Object.assign(el('button', danger ? 'btn danger' : 'btn primary', action), { type: 'submit' });
     const acts = el('div', 'update-actions');
     const end = (v: boolean | 'alt') => {
       veil.remove();
       resolve(v);
     };
     if (cancel) {
-      const no = Object.assign(el('button', '', 'cancel'), { type: 'button' });
+      const no = Object.assign(el('button', 'btn', 'cancel'), { type: 'button' });
       no.addEventListener('click', () => end(false));
       acts.append(no);
     }
     if (alt) {
-      const other = Object.assign(el('button', '', alt), { type: 'button' });
+      const other = Object.assign(el('button', 'btn', alt), { type: 'button' });
       other.addEventListener('click', () => end('alt'));
       acts.append(other);
     }

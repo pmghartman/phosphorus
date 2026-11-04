@@ -25,7 +25,6 @@ import { dkView } from '../desk.ts';
 import { dkDeskDir, dkDeskView, dkDeskWatch, dkFileIcon } from '../deskfiles.ts';
 import { dkMeshQuick, dkUpdateQuick } from '../quick.ts';
 import { dkSessionHold, dkSessionRestore, dkSessionTry } from '../session.ts';
-import { dkSpotlightTray } from '../spotlight.ts';
 import { dkBar, dkChips, dkClock, dkHomeBtn, dkPlaceItems } from '../taskbar.ts';
 import { dkClose, dkFocus, dkPlace, dkSnap } from '../windows.ts';
 import { dkTermApp, dkTermDrop } from './terminal.ts';
@@ -44,10 +43,9 @@ export function dkDesktop(): void {
   const ctl = dkControlTray();
   const bell = dkBellTray();
   const agent = st.acct?.boot ? null : dkMcpTray();
-  const search = dkSpotlightTray();
   const mesh = st.acct?.boot ? null : dkMeshQuick();
   const update = st.acct?.boot ? null : dkUpdateQuick();
-  bar.append(search, ...[mesh, update, agent].filter((x): x is HTMLElement => !!x), bell, ctl);
+  bar.append(...[mesh, update, agent].filter((x): x is HTMLElement => !!x), bell, ctl);
   const menubar = el('div', 'dk-bar dk-menubar');
   const app = el('span', 'dk-menubar-app');
   app.append(dkGlyph(DK_GLYPHS.mesh!, 'dk-menubar-app-ic'), el('span', 'dk-menubar-app-t', 'phosphorus'));
@@ -65,7 +63,7 @@ export function dkDesktop(): void {
     bar,
     menubar,
     app,
-    items: { search, hosts, mesh, update, agent, bell, clock: dk.clock!, profile: ctl },
+    items: { hosts, mesh, update, agent, bell, clock: dk.clock!, profile: ctl },
   };
   dkPlaceItems();
   dk.chips = '';
@@ -145,8 +143,8 @@ export function dkLogout(): void {
 // icons on a grid, any cell, kept per browser; a press selects, a drag moves
 // the selection, a double click (a tap on touch) opens
 export const DK_POS_KEY = 'phosphorus-dk-icons';
-export const DK_GX = 92;
-export const DK_GY = 86;
+export const DK_GX = 96;
+export const DK_GY = 96;
 export const DK_PAD = 8;
 
 // a service with no icon of its own: its initial in a square

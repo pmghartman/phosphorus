@@ -32,8 +32,9 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0.5rem 0.7rem 0.35rem;
-  color: var(--sage);
+  padding: 0.55rem 0.75rem 0.4rem;
+  color: var(--muted);
+  font-weight: 600;
   font-size: var(--fs-xs);
   letter-spacing: 0.04em;
 }
@@ -123,17 +124,7 @@
   color: var(--accent);
 }
 .dk-ctl-row-k {
-  flex: none;
-}
-.dk-ctl-row-v {
   flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--muted);
-  font-size: var(--fs-xs);
-  text-align: right;
 }
 .dk-ctl-row-ch {
   flex: none;
@@ -172,20 +163,4 @@
 }
 .dk-ctl-avatar .dk-crown {
   stroke: var(--sand);
-}
-/* an update waiting: a blue dot on the button */
-.dk-ctl > .dk-profile {
-  position: relative;
-}
-.dk-ctl > .dk-profile.has-update::after {
-  content: "";
-  position: absolute;
-  width: 0.4rem;
-  height: 0.4rem;
-  border-radius: 50%;
-  background: var(--sky);
-}
-.dk-ctl > .dk-profile.has-update::after {
-  top: 0.45rem;
-  right: 0.35rem;
 }

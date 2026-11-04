@@ -9,8 +9,8 @@
 Unicode true
 ManifestDPIAware true
 RequestExecutionLevel user
-; zlib: solid lzma took two and a half minutes over the two bun binaries for a
-; third off the setup's size; zlib takes seconds
+; zlib: solid lzma a third smaller but minutes slower on the critical path; zlib
+; takes seconds
 SetCompressor zlib
 
 !include "MUI2.nsh"

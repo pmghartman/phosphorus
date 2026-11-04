@@ -42,8 +42,7 @@ type Part = {
   purl?: string;
 };
 const npmGroup = "npm packages in the phosphorus binary and web client";
-const bundled = "Programs bundled with the host installers",
-  fetched = "Programs a model host downloads at run time";
+const fetched = "Programs a host downloads at run time";
 
 const filesIn = (dir: string) =>
   readdirSync(dir, { withFileTypes: true })
@@ -175,25 +174,21 @@ all.push({
   texts: [await fetchText(`https://raw.githubusercontent.com/oven-sh/bun/bun-v${Bun.version}/LICENSE.md`)],
 });
 const tools = JSON.parse(readFileSync(join(root, "packaging/tools-licenses.json"), "utf8"));
-for (const [group, list] of [
-  [bundled, tools.bundled],
-  [fetched, tools.fetched],
-] as [string, any[]][])
-  for (const t of list) {
-    const v = pinned(t.pin[0], t.pin[1]);
-    all.push({
-      group,
-      name: t.name,
-      version: v,
-      spdx: t.spdx,
-      source: t.source.replaceAll("{v}", v),
-      texts: [await fetchText(t.license.replaceAll("{v}", v))],
-    });
-  }
+for (const t of tools.fetched as any[]) {
+  const v = pinned(t.pin[0], t.pin[1]);
+  all.push({
+    group: fetched,
+    name: t.name,
+    version: v,
+    spdx: t.spdx,
+    source: t.source.replaceAll("{v}", v),
+    texts: [await fetchText(t.license.replaceAll("{v}", v))],
+  });
+}
 
 // --- output: each component under its group, then each distinct text once ----
 const norm = (s: string) => s.replaceAll("\r\n", "\n").trim();
-const groups = ["Runtime compiled into the phosphorus binary", npmGroup, bundled, fetched];
+const groups = ["Runtime compiled into the phosphorus binary", npmGroup, fetched];
 all.sort(
   (a, b) =>
     groups.indexOf(a.group) - groups.indexOf(b.group) ||
@@ -251,7 +246,7 @@ const sbom = {
     component: { type: "application", name: "phosphorus", version, licenses: [{ license: { id: "Apache-2.0" } }] },
   },
   components: all.map((p) => ({
-    type: p.group === fetched || p.group === bundled ? "application" : "library",
+    type: p.group === fetched ? "application" : "library",
     name: p.name,
     version: p.version,
     ...(p.purl ? { purl: p.purl } : {}),

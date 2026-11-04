@@ -87,7 +87,8 @@
   padding: 0.65rem 0.7rem 0.3rem;
 }
 .dk-cl-title {
-  color: var(--sage);
+  color: var(--fg);
+  font-weight: 600;
   letter-spacing: 0.04em;
 }
 .dk-cl-state {
@@ -104,7 +105,7 @@
   display: flex;
   justify-content: space-between;
   gap: 1rem;
-  padding: 0.2rem 0.7rem;
+  padding: 0.2rem 0.85rem;
 }
 .dk-cl-k {
   color: var(--muted);
@@ -122,8 +123,9 @@
   border-top: 1px solid var(--border);
 }
 .dk-cl-sec-t {
-  padding: 0.5rem 0.7rem 0.2rem;
-  color: var(--sage);
+  padding: 0.6rem 0.85rem 0.3rem;
+  color: var(--muted);
+  font-weight: 600;
   letter-spacing: 0.04em;
 }
 /* the calls a running log like a coding agent's: a bullet and the call, its outcome hung under it */
@@ -136,7 +138,10 @@
   overscroll-behavior: contain;
 }
 .dk-cl-call {
-  padding: 0.2rem 0.7rem;
+  padding: 0.3rem 0.85rem;
+}
+.dk-cl-call + .dk-cl-call {
+  border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
 }
 .dk-cl-ln {
   display: flex;
@@ -163,7 +168,7 @@
 }
 .dk-cl-host {
   flex: none;
-  color: var(--sage);
+  color: var(--muted);
 }
 .dk-cl-tool {
   flex: none;
@@ -175,6 +180,7 @@
   font-weight: 600;
 }
 .dk-cl-arg {
+  font-size: var(--fs-xs);
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -185,9 +191,10 @@
 }
 .dk-cl-out {
   position: relative;
-  margin: 0.05rem 0 0 0.85rem;
-  padding-left: 1.1rem;
-  color: var(--dim);
+  margin: 0.1rem 0 0 0.85rem;
+  padding-left: 0;
+  color: var(--muted);
+  font-size: var(--fs-xs);
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
   display: -webkit-box;
@@ -195,12 +202,7 @@
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.dk-cl-out::before {
-  content: "⎿";
-  position: absolute;
-  left: 0;
-  color: var(--dim);
-}
+
 .dk-cl-call.live .dk-cl-out {
   color: var(--online);
 }

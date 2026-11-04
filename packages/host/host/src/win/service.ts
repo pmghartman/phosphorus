@@ -48,7 +48,7 @@ export async function createService() {
 
 // svcWait true once the service is in want, false past wait
 export async function svcWait(want: number, waitMs: number): Promise<boolean> {
-  for (const end = Date.now() + waitMs; ; await sleep(1000)) {
+  for (const end = Date.now() + waitMs; ; await sleep(250)) {
     if ((await svcState()) === want) return true;
     if (Date.now() > end) return false;
   }

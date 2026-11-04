@@ -1,12 +1,11 @@
 #!/bin/sh
-# Linux package: the release and its binary under /usr/lib/phosphorus, the bundled tools
-# under /usr/libexec/phosphorus, the service's and update agent's units, the apt feed
-# Usage: packaging/deb/build.sh OUT.deb VER PAYLOAD ARCH (amd64|arm64) BIN TOOLS (packaging/tools.sh linux)   Env: PHOSPHORUS_APT_KEY (binary keyring)
+# Linux package: the release and its binary under /usr/lib/phosphorus, the service's and
+# update agent's units, the apt feed; tailscale and cloudflared fetched by the host itself
+# Usage: packaging/deb/build.sh OUT.deb VER PAYLOAD ARCH (amd64|arm64) BIN   Env: PHOSPHORUS_APT_KEY (binary keyring)
 set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
-OUT=${1:?usage: packaging/deb/build.sh OUT.deb VER PAYLOAD ARCH BIN TOOLS}
+OUT=${1:?usage: packaging/deb/build.sh OUT.deb VER PAYLOAD ARCH BIN}
 VER=$2 PAYLOAD=$3 ARCH=${4:?ARCH amd64 or arm64} BIN=${5:?BIN the linux/ARCH phosphorus binary}
-TOOLS=${6:?TOOLS packaging/tools.sh output}
 T=$(mktemp -d)
 trap 'rm -rf "$T"' EXIT
 chmod 755 "$T"
@@ -17,7 +16,6 @@ install -Dm755 "$BIN" "$T/usr/lib/phosphorus/bin/phosphorus"
 # the licenses where Debian looks for them too
 install -Dm644 "$PAYLOAD/LICENSE" "$T/usr/share/doc/phosphorus/copyright"
 install -Dm644 "$PAYLOAD/THIRD_PARTY_NOTICES.txt" "$T/usr/share/doc/phosphorus/THIRD_PARTY_NOTICES.txt"
-for t in tailscale tailscaled cloudflared; do install -Dm755 "$TOOLS/$t" "$T/usr/libexec/phosphorus/$t"; done
 for u in phosphorus.service phosphorus-tailscaled.service phosphorus-update.path phosphorus-update.service; do
     install -Dm644 "$HERE/$u" "$T/usr/lib/systemd/system/$u"
 done
@@ -43,7 +41,7 @@ Priority: optional
 Homepage: https://github.com/pmghartman/phosphorus
 Description: one service per machine, a mesh of hosts
  The phosphorus host: its services published, the others' polled, one web UI and cli.
- Runs under systemd with tailscale and cloudflared bundled; installed services run in Docker.
+ Runs under systemd, fetching its pinned tailscale and cloudflared; installed services run in Docker.
 CTL
-dpkg-deb --root-owner-group -Zxz --build "$T" "$OUT" >/dev/null
+dpkg-deb --root-owner-group -Zxz -z9 --build "$T" "$OUT" >/dev/null
 echo "package: $OUT"

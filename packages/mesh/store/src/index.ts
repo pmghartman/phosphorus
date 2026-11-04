@@ -102,6 +102,10 @@ function parseFile(v: unknown): File | undefined {
   return { t, h, c, data: o.data };
 }
 
+// shim until every disk is rewritten: files still in the {at, data} shape, put
+// back as {t, h, c, data} under the same stamp on start; next release drops at
+const legacy: string[] = [];
+
 // each file under dir handed to fn as rel and parsed entry; a write's leftover
 // temp swept, an unreadable file logged and left to the peers to send again
 function walk(dir: string, rel: string, fn: (rel: string, f: File) => void) {
@@ -120,7 +124,9 @@ function walk(dir: string, rel: string, fn: (rel: string, f: File) => void) {
     else if (relRe.test(r)) {
       let f: File | undefined;
       try {
-        f = parseFile(JSON.parse(readFileSync(abs, "utf8")));
+        const o = JSON.parse(readFileSync(abs, "utf8"));
+        f = parseFile(o);
+        if (f && typeof o?.t !== "number") legacy.push(r);
       } catch {
         logf("[sys] %s unreadable, left for the peers to send again", r);
       }
@@ -312,12 +318,19 @@ export function start() {
   started = true;
   mkdirSync(Root, { recursive: true, mode: 0o700 });
   load(Root, "");
+  for (const r of legacy.splice(0)) {
+    const f = tree.get(r);
+    if (f) writeSoon(join(Root, r), encode(f), true);
+  }
   prune();
   setInterval(prune, pruneEveryMs);
 }
 
 // loaded without the loops, for tests and the cli
-export const loadTree = () => load(Root, "");
+export const loadTree = () => {
+  load(Root, "");
+  legacy.length = 0;
+};
 
 // tests: the tree emptied
 export function reset() {

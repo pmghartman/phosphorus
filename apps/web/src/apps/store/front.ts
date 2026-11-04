@@ -4,7 +4,7 @@
 import type { AppSummary, FoundPage, Route, SourceId, StackView } from '@phosphorus/wire';
 import { serviceUrl } from '../../features/mesh/routes.ts';
 import { jsonPost } from '../../lib/api.ts';
-import { dkGlyph, el, ICONS } from '../../lib/dom.ts';
+import { DK_GLYPHS, dkGlyph, el, ICONS } from '../../lib/dom.ts';
 import { dk, st } from '../../lib/state.ts';
 import { pollState } from '../../lib/sync.ts';
 import { facts, iconOf, iconTile, pill, tileSub } from './apps.ts';
@@ -28,7 +28,7 @@ import {
   twinsNamed,
 } from './catalog.ts';
 import { draw } from './draw.ts';
-import { apps, read, readError, type StoreApp, stateVars, storeShow } from './state.ts';
+import { apps, read, readError, type StoreApp, type StoreView, stateVars, storeShow } from './state.ts';
 
 // whether a tile matches the search: every word in its name, tagline, category or id
 function matches(x: { id: string; name: string; tagline: string; category: string }, q: string): boolean {
@@ -154,24 +154,6 @@ function repoOpener(): HTMLElement {
   return box;
 }
 
-// a row of choices, one picked or none: the sources, the categories
-function chips(list: [string, string][], now: string, pick: (v: string) => void): HTMLElement {
-  const bar = el('div', 'store-chips');
-  for (const [v, label] of list) {
-    const b = Object.assign(el('button', `store-chip${now === v ? ' on' : ''}`, label), {
-      type: 'button',
-      ariaPressed: String(now === v),
-    });
-    b.addEventListener('click', () => {
-      pick(now === v ? '' : v);
-      stateVars.all = false;
-      draw();
-    });
-    bar.append(b);
-  }
-  return bar;
-}
-
 // tiles shown before 'show all'
 const FIRST = 48;
 // categories offered: those with a few apps, the most used first
@@ -245,39 +227,117 @@ function foundTile(f: Discovered): HTMLElement {
   return t;
 }
 
-// the front's tabs: services onto hosts, apps for the desktop, what runs now
-const TABS = {
+// the front's views, down its rail: what the mesh runs, services onto hosts, apps for the
+// desktop, and a GitHub repo of one's own
+const VIEWS = {
+  running: {
+    title: 'on the mesh',
+    lead: 'installed services, every host’s published pages, pages found listening, and the desktop’s apps',
+  },
   services: {
     title: 'services',
-    lead: 'self-hosted apps from open catalogues or any GitHub repo, installed onto a host you pick, with backup hosts that take over if it fails',
+    lead: 'self-hosted apps from open catalogues, installed onto a host you pick, with backups that take over',
   },
   apps: {
-    title: 'apps',
+    title: 'desktop apps',
     lead: 'extras for the desktop: get one and every host serves its own copy',
   },
-  running: {
-    title: 'running',
-    lead: 'what the mesh runs now: installed services, every host’s published pages, pages found listening, and the desktop’s apps',
+  github: {
+    title: 'from GitHub',
+    lead: 'any public repo with a compose file, installed like a catalogue’s',
   },
 } as const;
 
-function tabs(): HTMLElement {
-  const bar = Object.assign(el('div', 'store-tabs'), { role: 'tablist' });
-  for (const id of Object.keys(TABS) as (keyof typeof TABS)[]) {
-    const on = stateVars.tab === id;
-    const b = Object.assign(el('button', `store-tab${on ? ' on' : ''}`, TABS[id].title), {
-      type: 'button',
-      role: 'tab',
-      ariaSelected: String(on),
-    });
-    b.addEventListener('click', () => {
-      if (stateVars.tab === id) return;
-      stateVars.tab = id;
-      draw();
-    });
-    bar.append(b);
+// a rail row: a glyph, its words and a count, the view or filter it picks
+function navRow(
+  label: string,
+  on: boolean,
+  count: string,
+  pick: () => void,
+  glyph?: string | HTMLElement,
+): HTMLElement {
+  const b = Object.assign(el('button', `store-nav-row${on ? ' on' : ''}`), { type: 'button' });
+  if (on) b.setAttribute('aria-current', 'page');
+  if (glyph) b.append(typeof glyph === 'string' ? dkGlyph(glyph, 'store-nav-ic') : glyph);
+  b.append(el('span', 'store-nav-t', label));
+  if (count) b.append(el('span', 'store-nav-n', count));
+  // a pick leaves any page open for the list it names
+  b.addEventListener('click', () => {
+    pick();
+    stateVars.openId = '';
+    stateVars.all = false;
+    draw();
+  });
+  return b;
+}
+// phosphorus's own mark, the phi, for what the mesh runs
+const phi = () =>
+  Object.assign(el('img', 'store-nav-ic store-nav-phi'), { src: '/favicon.svg', alt: '', draggable: false });
+const goTo = (v: StoreView) => () => {
+  stateVars.tab = v;
+};
+
+// the rail: the views, then the services' categories and catalogues while those are open
+function rail(): HTMLElement {
+  const nav = Object.assign(el('nav', 'store-nav'), { ariaLabel: 'service wizard' });
+  const t = stateVars.tab;
+  const running = stackViews().length + dk.services.length;
+  nav.append(
+    navRow(VIEWS.running.title, t === 'running', running ? `${running}` : '', goTo('running'), phi()),
+    el('div', 'store-nav-group', 'add'),
+    navRow(
+      VIEWS.services.title,
+      t === 'services',
+      catalog ? `${services().length}` : '',
+      goTo('services'),
+      DK_GLYPHS.service,
+    ),
+    navRow(VIEWS.apps.title, t === 'apps', apps ? `${apps.length}` : '', goTo('apps'), DK_GLYPHS.app),
+    navRow(VIEWS.github.title, t === 'github', '', goTo('github'), DK_GLYPHS.code),
+  );
+  if (t === 'services' && catalog) {
+    const sources = catalog.sources.filter((x) => x.id !== 'github');
+    const inSource = services().filter((l) => !stateVars.source || l.some((a) => a.source === stateVars.source));
+    const cats = new Map<string, number>();
+    for (const l of inSource) {
+      const c = lead(l, stateVars.source).category;
+      if (c) cats.set(c, (cats.get(c) ?? 0) + 1);
+    }
+    const common = [...cats]
+      .filter(([c, n]) => n >= CAT_MIN || c === stateVars.category)
+      .sort(([a, n], [b, m]) => m - n || a.localeCompare(b))
+      .slice(0, CAT_MAX);
+    if (common.length > 1) {
+      nav.append(
+        el('div', 'store-nav-group', 'categories'),
+        navRow('every category', !stateVars.category, `${inSource.length}`, () => {
+          stateVars.category = '';
+        }),
+        ...common.map(([c, n]) =>
+          navRow(c, stateVars.category === c, `${n}`, () => {
+            stateVars.category = stateVars.category === c ? '' : c;
+          }),
+        ),
+      );
+    }
+    nav.append(
+      el('div', 'store-nav-group', 'catalogues'),
+      navRow('every catalogue', !stateVars.source, '', () => {
+        stateVars.source = '';
+        stateVars.category = '';
+      }),
+      ...sources.map((x) =>
+        navRow(x.name, stateVars.source === x.id, fetching(x) ? '…' : x.error ? '!' : `${x.apps}`, () => {
+          stateVars.source = stateVars.source === x.id ? '' : x.id;
+          stateVars.category = '';
+        }),
+      ),
+    );
+    const credit = Object.assign(el('button', 'store-link store-credit', 'sources and licenses'), { type: 'button' });
+    credit.addEventListener('click', () => storeShow('sources'));
+    nav.append(credit);
   }
-  return bar;
+  return nav;
 }
 
 function section(wrap: HTMLElement, name: string, list: HTMLElement[], cls = 'store-grid', count = '') {
@@ -298,14 +358,9 @@ function appsTab(wrap: HTMLElement, q: string) {
   }
   // the ones got are in running too; here each in its place, its pill saying so
   const shown = apps.filter((a) => !q || matches(a, q));
-  const updates = shown.filter((a) => a.want && facts(a).update).length;
-  section(
-    wrap,
-    q ? 'matches' : 'every app',
-    shown.map(tile),
-    'store-grid',
-    updates ? `${updates} update${updates === 1 ? '' : 's'}` : `${shown.length}`,
-  );
+  const grid = el('div', 'store-grid');
+  grid.append(...shown.map(tile));
+  if (shown.length) wrap.append(grid);
   if (!shown.length)
     wrap.append(el('div', 'store-empty', q ? `no app matches “${q}”` : 'no apps in the catalogue yet'));
 }
@@ -313,9 +368,18 @@ function appsTab(wrap: HTMLElement, q: string) {
 // a catalogue not yet in on this host and not failed: its first download under way
 const fetching = (s: { fetchedAt: number; error?: string; apps: number }) => !s.fetchedAt && !s.error && !s.apps;
 
+// the services the rail's category and catalogue and the search leave
+function servicesPicked(q: string): AppSummary[][] {
+  if (!catalog) return [];
+  return services().filter(
+    (l) =>
+      (!stateVars.source || l.some((a) => a.source === stateVars.source)) &&
+      (!stateVars.category || lead(l, stateVars.source).category === stateVars.category) &&
+      (!q || l.some((a) => matches(a, q))),
+  );
+}
+
 function servicesTab(wrap: HTMLElement, q: string) {
-  // what's installed and what's found listening are in running, its tile here marked so
-  if (!q) wrap.append(repoOpener());
   if (!catalog) {
     wrap.append(
       el(
@@ -326,76 +390,25 @@ function servicesTab(wrap: HTMLElement, q: string) {
     );
     return;
   }
-  const sources = catalog.sources.filter((s) => s.id !== 'github');
-  const filters = el('div', 'store-filters');
-  filters.append(
-    chips(
-      [
-        ['', 'every source'],
-        ...sources.map((s): [string, string] => [s.id, `${s.name} · ${fetching(s) ? '…' : s.apps}`]),
-      ],
-      stateVars.source,
-      (v) => {
-        stateVars.source = v;
-        stateVars.category = '';
-      },
-    ),
-  );
   // the catalogues this host couldn't fetch, said once with each one's why on hover; one being
   // fetched for the first time said by name
-  const failed = sources.filter((s) => s.error);
+  const sources = catalog.sources.filter((x) => x.id !== 'github');
+  const failed = sources.filter((x) => x.error);
   if (failed.length) {
     const n = el(
       'span',
       'store-repo-note store-unfetched',
-      `${failed.map((s) => s.name).join(', ')} couldn’t be reached from this host; refresh tries again`,
+      `${failed.map((x) => x.name).join(', ')} couldn’t be reached from this host; refresh tries again`,
     );
-    n.title = failed.map((s) => `${s.name}: ${s.error}`).join('\n');
-    filters.append(n);
+    n.title = failed.map((x) => `${x.name}: ${x.error}`).join('\n');
+    wrap.append(n);
   }
-  for (const s of sources)
-    if (!s.error && fetching(s)) filters.append(el('span', 'store-repo-note', `fetching ${s.name}…`));
-  wrap.append(filters);
-  // each service once, the catalogue filtered on one of those listing it
-  const inSource = services().filter((l) => !stateVars.source || l.some((a) => a.source === stateVars.source));
-  const leadOf = (l: AppSummary[]) => lead(l, stateVars.source);
-  const cats = new Map<string, number>();
-  for (const l of inSource) {
-    const c = leadOf(l).category;
-    if (c) cats.set(c, (cats.get(c) ?? 0) + 1);
-  }
-  // the catalogues' own words, many used once: the common ones, the picked one always
-  const common = [...cats]
-    .filter(([c, n]) => n >= CAT_MIN || c === stateVars.category)
-    .sort(([a, n], [b, m]) => m - n || a.localeCompare(b))
-    .slice(0, CAT_MAX);
-  if (common.length > 1) {
-    const s = el('section', 'store-section');
-    s.append(
-      el('h2', 'store-section-head', 'categories'),
-      chips(
-        common.map(([c, n]): [string, string] => [c, `${c} · ${n}`]),
-        stateVars.category,
-        (v) => {
-          stateVars.category = v;
-        },
-      ),
-    );
-    wrap.append(s);
-  }
-  const picked = inSource.filter(
-    (l) => (!stateVars.category || leadOf(l).category === stateVars.category) && (!q || l.some((a) => matches(a, q))),
-  );
-  const name = q
-    ? 'matches'
-    : stateVars.category || (stateVars.source ? SOURCE_NAMES[stateVars.source as SourceId] : 'every app');
-  section(
-    wrap,
-    name,
-    (stateVars.all ? picked : picked.slice(0, FIRST)).map(stackTile),
-    'store-grid',
-    `${picked.length}`,
-  );
+  for (const x of sources)
+    if (!x.error && fetching(x)) wrap.append(el('span', 'store-repo-note', `fetching ${x.name}…`));
+  const picked = servicesPicked(q);
+  const grid = el('div', 'store-grid');
+  grid.append(...(stateVars.all ? picked : picked.slice(0, FIRST)).map(stackTile));
+  if (picked.length) wrap.append(grid);
   if (picked.length > FIRST && !stateVars.all) {
     const more = Object.assign(el('button', 'store-more', `show all ${picked.length}`), { type: 'button' });
     more.addEventListener('click', () => {
@@ -410,15 +423,12 @@ function servicesTab(wrap: HTMLElement, q: string) {
         'div',
         'store-empty',
         q
-          ? `no app matches “${q}”${stateVars.source || stateVars.category ? ' here; try every source' : ''}`
+          ? `no app matches “${q}”${stateVars.source || stateVars.category ? ' here; try every catalogue' : ''}`
           : catalog.apps.length
             ? 'nothing here'
             : 'no catalogue fetched yet',
       ),
     );
-  const credit = Object.assign(el('button', 'store-link store-credit', 'sources and licenses'), { type: 'button' });
-  credit.addEventListener('click', () => storeShow('sources'));
-  wrap.append(credit);
 }
 
 // the page's own icon as its host fetched it
@@ -524,26 +534,52 @@ function runningTab(wrap: HTMLElement, q: string) {
     wrap.append(el('div', 'store-empty', q ? `nothing running matches “${q}”` : 'nothing published on the mesh yet'));
 }
 
+// a page opened from the front, beside the same rail so the way around stays in reach
+export function framed(page: HTMLElement): HTMLElement {
+  const wrap = el('div', 'store-front store-shell');
+  const main = el('div', 'store-main');
+  main.append(page);
+  wrap.append(rail(), main);
+  return wrap;
+}
+
 export function front(): HTMLElement {
-  const wrap = el('div', 'store-front');
-  const onApps = stateVars.tab === 'apps';
-  // its tabs and what the one open is for, no banner over them
+  const wrap = el('div', 'store-front store-shell');
+  const v = stateVars.tab;
+  const q = stateVars.filter.trim();
+  const main = el('div', 'store-main');
+  // the view's title, what it's for and its count; search and refresh to its right
   const head = el('div', 'store-head');
   const title = el('div', 'store-title');
-  title.append(tabs(), el('p', 'store-lead', TABS[stateVars.tab].lead));
-  const refresh = Object.assign(el('button', 'store-link'), {
-    type: 'button',
-    title: onApps ? 'ask each release feed again' : 'read the catalogues again',
-  });
-  refresh.append(dkGlyph(ICONS.refresh!, 'store-link-ic'), 'refresh');
-  refresh.addEventListener('click', () => (onApps ? read(true) : readCatalog()));
+  const h = el('h1', 'store-view', VIEWS[v].title);
+  const n =
+    v === 'services'
+      ? servicesPicked(q).length
+      : v === 'apps'
+        ? (apps ?? []).filter((a) => !q || matches(a, q)).length
+        : v === 'running'
+          ? stackViews().length + dk.services.length
+          : 0;
+  if (n) h.append(el('span', 'store-view-n', `${n}`));
+  const picks = [stateVars.category, stateVars.source && SOURCE_NAMES[stateVars.source as SourceId]].filter(Boolean);
+  title.append(h, el('p', 'store-lead', v === 'services' && picks.length ? picks.join(' · ') : VIEWS[v].lead));
   const tools = el('div', 'store-tools');
-  tools.append(search(), refresh);
+  if (v !== 'github') {
+    const refresh = Object.assign(el('button', 'store-icon-btn'), {
+      type: 'button',
+      title: v === 'apps' ? 'ask each release feed again' : 'read the catalogues again',
+      ariaLabel: 'refresh',
+    });
+    refresh.append(dkGlyph(ICONS.refresh!, 'store-link-ic'));
+    refresh.addEventListener('click', () => (v === 'apps' ? read(true) : readCatalog()));
+    tools.append(search(), refresh);
+  }
   head.append(title, tools);
-  wrap.append(head);
-  const q = stateVars.filter.trim();
-  if (onApps) appsTab(wrap, q);
-  else if (stateVars.tab === 'running') runningTab(wrap, q);
-  else servicesTab(wrap, q);
+  main.append(head);
+  if (v === 'apps') appsTab(main, q);
+  else if (v === 'running') runningTab(main, q);
+  else if (v === 'github') main.append(repoOpener());
+  else servicesTab(main, q);
+  wrap.append(rail(), main);
   return wrap;
 }

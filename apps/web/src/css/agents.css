@@ -154,9 +154,16 @@
     border-color 0.15s,
     color 0.15s;
 }
-.ag-pill:is(:hover, :focus-visible) {
+.ag-pill:is(:hover, :focus-visible):not(:disabled) {
   border-color: var(--accent);
   color: var(--fg);
+}
+/* someone else's to pick: shown, not pressable, the pick still marked */
+.ag-pill:disabled {
+  cursor: default;
+}
+.ag-pill:disabled:not(.on) {
+  opacity: 0.55;
 }
 .ag-pill.on {
   border-color: var(--accent);

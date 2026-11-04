@@ -21,7 +21,16 @@ import { setAppTools, skill, type Tool, ToolError, viaOf } from "@phosphorus/mcp
 import * as peers from "@phosphorus/peers";
 import * as store from "@phosphorus/store";
 import * as users from "@phosphorus/users";
-import { DataDir, errText, FrontendPort, logf as log, requestJSON, SelfHost, tailnetIP } from "@phosphorus/util";
+import {
+  DataDir,
+  errText,
+  FrontendPort,
+  logf as log,
+  requestJSON,
+  SelfHost,
+  StateDir,
+  tailnetIP,
+} from "@phosphorus/util";
 import * as webapps from "@phosphorus/webapps";
 import { type Conn, type Ctx, upgrade } from "@phosphorus/wsock";
 import { userUIAsync } from "./hostops.ts";
@@ -80,30 +89,27 @@ function storeFor(r: Running): AppStore {
   };
 }
 
-// a first-party app's data from before it was one: var/<id>/ into its folder,
-// moved, what's there already kept; etc/<id>/ into etc/appdata/<id>/, the old
-// files removed mesh-wide
-function adopt(id: string, dataDir: string): boolean {
-  if (webapps.appOf(id)?.key !== "release") throw new Error("only phosphorus's own apps adopt");
+// shim for one release: what the core kept for its apps before they were apps,
+// never taken over now, dropped (the store's mesh-wide, the rest this host's)
+export function dropTakeovers() {
   let any = false;
-  const old = join(store.Root, "var", id);
-  if (existsSync(old)) {
-    for (const n of readdirSync(old)) {
-      const to = join(dataDir, n);
-      if (!existsSync(to)) renameSync(join(old, n), to);
+  for (const id of ["chat", "code", "viewer", "games"]) {
+    for (const f of store.list(`etc/${id}`)) {
+      store.remove(`etc/${id}/${f}`);
+      any = true;
     }
-    rmSync(old, { recursive: true, force: true });
-    any = true;
+    any = rmAny(join(store.Root, "var", id)) || any;
   }
-  for (const f of store.list(`etc/${id}`)) {
-    const from = `etc/${id}/${f}`;
-    const to = `etc/appdata/${id}/${f}`;
-    if (store.validRel(to) && store.read(to) === undefined) store.write(to, store.read(from));
-    store.remove(from);
-    any = true;
-  }
-  if (any) logf("%s: took over what phosphorus kept for it", id);
-  return any;
+  any = rmAny(join(DataDir, "claude-runs")) || any;
+  any = rmAny(join(StateDir, "game-control")) || any;
+  if (process.platform !== "win32") rmAny("/root/.ssh/game-control");
+  if (any) log("[apps] what the core kept for its apps before they were apps dropped");
+}
+
+function rmAny(p: string): boolean {
+  if (!existsSync(p)) return false;
+  rmSync(p, { recursive: true, force: true });
+  return true;
 }
 
 function whoOf(r: Running, c: Ctx): Who | undefined {
@@ -260,7 +266,6 @@ function context(r: Running): AppContext {
       });
     },
     isUser: (name) => users.Exists(name),
-    adopt: () => adopt(r.id, dataDir),
     ui: (user, action) => {
       if (r.live) userUIAsync(user, action);
     },

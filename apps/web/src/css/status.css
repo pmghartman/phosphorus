@@ -103,9 +103,10 @@
 }
 .st-stat-v {
   color: var(--fg);
-  font-size: var(--fs-xl);
+  font-size: var(--fs-2xl);
   font-weight: 600;
-  line-height: 1.25;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
   white-space: nowrap;
 }
 .st-stat-d {
@@ -206,7 +207,7 @@
   display: block;
   height: 0.3rem;
   overflow: hidden;
-  border-radius: min(var(--st-r), 2px);
+  border-radius: calc(var(--st-r) * 99);
   background: color-mix(in srgb, var(--dim) 30%, transparent);
 }
 .st-bar > i {

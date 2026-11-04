@@ -20,7 +20,7 @@ import { env, errText, flushWrites, logf, markHot, tailnetIP } from "@phosphorus
 import * as webapps from "@phosphorus/webapps";
 import type { WSData } from "@phosphorus/wsock";
 import type { Server } from "bun";
-import { startApps, stopApps } from "./apps.ts";
+import { dropTakeovers, startApps, stopApps } from "./apps.ts";
 import {
   baseDomain,
   bootID,
@@ -63,6 +63,7 @@ export async function start(): Promise<Server<WSData>> {
   users.Init();
   store.start();
   migrateConfig();
+  dropTakeovers();
   update.onFinish(rememberChain);
   update.onFailed(() => setUpdating(false));
   setInterval(reapShells, 60000);

@@ -208,20 +208,6 @@ export function lineEl(m: ChatLine, prev: Element | null): HTMLLIElement {
     li.textContent = m.text!;
     return li;
   }
-  // an invite to a shared editor, from before chat was an app
-  if (m.kind === "show") {
-    li.className = "sys show";
-    const by = m.via ? `${m.via} from ${m.name}` : m.name;
-    li.append(
-      m.name === st.name && !m.via
-        ? `invited ${m.dm}: `
-        : m.name === st.name
-          ? `${m.via} from you invited ${m.dm}: `
-          : `${by} invited you: `,
-      el("code", "", m.file?.label || m.text),
-    );
-    return li;
-  }
   if (m.kind === "topic") {
     li.className = "sys";
     li.textContent = m.text ? `topic: ${m.text}` : `#${m.ch} opened`;

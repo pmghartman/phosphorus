@@ -40,7 +40,10 @@ export type OS = {
   unpath(): Promise<void>;
   uninstallAdmin(): Promise<void>;
   elevateUninstall(): Promise<void>;
+  // tools.ts's fetched tools
   libexec(): string;
+  // phosphorus's own tailscale wanted, none of the machine's
+  ownTailscale(): boolean;
   logHint(): string;
   svcInstall(): Promise<void>;
   svcActive(): Promise<boolean>;

@@ -1,7 +1,7 @@
-// build: the host binary compiled by bun for a target, into OUT; off Linux it
-// carries the tray app too (phosphorus-host tray)
+// build: the host binary compiled by bun for a target, into OUT, the tray app in
+// it (phosphorus-host tray)
 //   bun scripts/build.ts TARGET OUT [VERSION]
-// TARGET: linux-x64 linux-arm64 darwin-x64 darwin-arm64 windows-x64; the web
+// TARGET: linux-x64 linux-arm64 darwin-arm64 windows-x64; the web
 // client must be built first (bun run web). The tray's feed comes from
 // FEED_URL and FEED_PUBKEY, baked in like the Go -X flags were.
 import { mkdirSync } from "node:fs";

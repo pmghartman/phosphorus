@@ -19,8 +19,8 @@ export function dkAsk(
     const box = el('form', 'fm-ask');
     const input =
       value != null && Object.assign(el('input'), { value, spellcheck: false, autocomplete: 'off' as const });
-    const no = Object.assign(el('button', '', 'cancel'), { type: 'button' });
-    const go = Object.assign(el('button', danger ? 'danger' : 'primary', action), { type: 'submit' });
+    const no = Object.assign(el('button', 'btn', 'cancel'), { type: 'button' });
+    const go = Object.assign(el('button', danger ? 'btn danger' : 'btn primary', action), { type: 'submit' });
     const acts = el('div', 'update-actions');
     acts.append(no, go);
     box.append(el('div', 'fm-ask-title', title), el('p', '', message), ...(input ? [input] : []), acts);

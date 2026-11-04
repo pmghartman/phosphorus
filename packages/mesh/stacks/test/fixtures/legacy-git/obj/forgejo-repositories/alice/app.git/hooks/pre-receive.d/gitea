@@ -1,2 +1,0 @@
-#!/usr/bin/env bash
-"/usr/libexec/phosphorus/forgejo" hook --config='/var/lib/phosphorus/git/conf/app.ini' pre-receive

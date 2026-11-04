@@ -5,7 +5,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import * as envfile from "@phosphorus/envfile";
 import { writeRoles } from "@phosphorus/procs";
-import { env as envOf, sortState, TunnelMetrics } from "@phosphorus/util";
+import { env as envOf, TunnelMetrics } from "@phosphorus/util";
 import type { Subprocess } from "bun";
 import {
   at,
@@ -27,6 +27,7 @@ import {
 import { nativeEnvFile, runEnv, tool, withPath } from "./native.ts";
 import { os, type Stop } from "./os.ts";
 import { meshKeyValues, tailnetJoin, tailscaleStatus } from "./tailnet.ts";
+import { ensureTools } from "./tools.ts";
 
 // child one process phosphorus run keeps, labelled by PHOSPHORUS_ROLE
 type Child = {
@@ -184,13 +185,17 @@ function exits(): Exits {
 
 export async function runMain(stop: Stop): Promise<number> {
   setTag("run");
-  // 3.7's flat state/ sorted into its kinds, before anything opens a file there
-  sortState(at("state"), say);
   mkdirSync(os.runtimeDir(), { recursive: true });
   os.logToFile();
   noteRole(process.pid, "run");
   for (const [k, v] of Object.entries(runEnv())) process.env[k] = v;
   if (!fileExists(nativeEnvFile())) throw fail(`no ${nativeEnvFile()}, run: phos start`);
+  // the pinned tools fetched again when state/cache/ was cleared, tailscaled back up
+  try {
+    if ((await ensureTools()).includes("tailscale")) await os.tailscaleStart();
+  } catch (e) {
+    say(errText(e));
+  }
   const dns = await tailnetSelf();
   say(`on the tailnet as ${dns}`);
   await fillMeshKeys();
@@ -264,10 +269,11 @@ export async function runMain(stop: Stop): Promise<number> {
   const ex = exits();
   const watch = (c: Child) => void c.done?.then(() => ex.push(c));
   for (const c of all) watch(c);
-  // the model before the tunnel and frontend, the frontend last so its
-  // services hand off while the mesh can still see it
+  // the model and tunnel at once, the frontend last so its services hand off
+  // while the mesh can still see it
   const shutdown = async () => {
-    for (let i = all.length - 1; i >= 0; i--) await stopChild(all[i]!);
+    await Promise.all(all.filter((c) => c !== frontend).map(stopChild));
+    await stopChild(frontend);
   };
   const backoff = new Map<string, number>();
   for (;;) {

@@ -11,8 +11,6 @@ import { tools } from "./tools.ts";
 const mediaRe = /^\/media\/([a-z0-9][a-z0-9-]*)\/([0-9a-f]{32})$/;
 
 export function register(ctx: AppContext) {
-  // the history the core kept before chat was an app, once
-  ctx.adopt();
   const files = media(join(ctx.dataDir, "media"), ctx.log);
   const log = start(ctx);
   const m = mesh(ctx);

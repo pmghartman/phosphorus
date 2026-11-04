@@ -92,9 +92,10 @@ textarea {
 
 /* > at the tree's left edge, only on the unfoldable row under the pointer */
 
-/* section heads and column labels, a quiet green over the grey */
+/* section heads and column labels, quiet and a little heavier */
 .home-col-head,
 .mesh-stats-head,
 .tab-menu-title {
-  color: var(--sage);
+  color: var(--muted);
+  font-weight: 600;
 }

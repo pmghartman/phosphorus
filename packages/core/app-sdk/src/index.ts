@@ -130,10 +130,6 @@ export interface AppContext {
   peerFetch(host: string, path: string, init?: PeerInit): Promise<Response>;
   // whether name is one of the mesh's users
   isUser(name: string): boolean;
-  // phosphorus's own apps only: what the core kept for the app before it was one
-  // taken over, this host's var/<id>/ moved into dataDir and the mesh's etc/<id>/
-  // into the store's slice; true when there was any
-  adopt(): boolean;
   ui(user: string, action: UiAction): void;
   tools(list: Tool[]): void;
   // run when the app is removed, replaced by another version, or the host stops

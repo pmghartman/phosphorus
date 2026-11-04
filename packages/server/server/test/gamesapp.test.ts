@@ -1,6 +1,6 @@
 // the Games app as a host takes it: built by appbuild from optional/games with a
-// key of the test's own, verified, unpacked and loaded; game-control's login taken
-// over, its list, form and presses answering as the asker may
+// key of the test's own, verified, unpacked and loaded; its list, form and presses
+// answering as the asker may
 import "./env.ts";
 import { expect, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -16,7 +16,6 @@ const A = await import("../src/apps.ts");
 
 const root = resolve(import.meta.dir, "../../../..");
 const out = join(process.env.STATE_DIR!, "..", "gamesbuild");
-const gameControl = join(process.env.STATE_DIR!, "game-control");
 
 const ctx = (path: string, method = "GET", headers: Record<string, string> = {}, body?: unknown): Ctx => {
   const url = new URL("http://127.0.0.1" + path);
@@ -31,13 +30,10 @@ async function cookieOf(name: string, admin: boolean) {
   return "phosphorus-user=" + /^phosphorus-user=([^;]+)/.exec(login.cookie![0]!)![1]!;
 }
 
-test("the games app: built, loaded, game-control taken over, answering", async () => {
-  // two games in its store, game-control's account
+test("the games app: built, loaded, answering", async () => {
+  // two games in its store
   store.write("etc/appdata/games/game/testhost/mc.json", { port: 25565, start: "./start.sh", stop: "./stop.sh" });
   store.write("etc/appdata/games/game/testhost/idle.json", { port: 7777, start: "", stop: "" });
-  mkdirSync(gameControl, { recursive: true });
-  // a name no account has: nothing written to a real authorized_keys
-  writeFileSync(join(gameControl, "user"), "-nobody\n");
 
   const pair = M.generate();
   const build = Bun.spawnSync(["bun", "scripts/appbuild.ts", "games", out, "1.0.0"], {
@@ -57,10 +53,6 @@ test("the games app: built, loaded, game-control taken over, answering", async (
   expect(A.runningApps()).toEqual([{ id: "games", version: "1.0.0" }]);
   expect(W.serve(new Request("http://127.0.0.1/app/games/"))!.status).toBe(200);
   expect(allTools().some((t) => t.name === "game_power")).toBe(true);
-
-  // taken over: game-control gone
-  for (let i = 0; i < 50 && existsSync(gameControl); i++) await Bun.sleep(20);
-  expect(existsSync(gameControl)).toBe(false);
 
   const admin = await cookieOf("gamer", true);
   const player = await cookieOf("player", false);

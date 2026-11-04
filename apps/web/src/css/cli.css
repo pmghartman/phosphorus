@@ -98,8 +98,8 @@
   border-color: color-mix(in srgb, var(--accent) 60%, transparent);
 }
 .dk-icon.sel .dk-label {
-  background: var(--accent);
-  color: var(--bg);
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+  color: var(--fg);
 }
 .dk-band {
   position: absolute;

@@ -81,6 +81,8 @@ function renderUpdateButton() {
   updateBtn.disabled = !!meshLock;
   updateBtn.textContent = !meshLock ? 'update' : 'updating';
   updateBtn.title = meshLock ? `started by ${meshLock.initiator}` : 'update every host';
+  // the accent only while a host is behind the release
+  updateBtn.classList.toggle('primary', !meshLock && !!updates.mesh);
 }
 
 // every phosphorus host and the version it answered with, ours from
@@ -238,11 +240,11 @@ async function checkLatest() {
     if (r.ok) c = await r.json();
   } catch {}
   if (me !== latestRun) return;
-  const versions = [
-    updateSeen.selfVersion,
-    ...updateSeen.tailnet.filter((d) => d.phosphorus).map((d) => d.version),
-  ].filter(Boolean) as string[];
-  const behind = c.latest && versions.some((v) => newerVersion(c.latest!, v));
+  const behind = !!c.latest && behindOf(c.latest);
+  if (c.latest) {
+    feedLatest = c.latest;
+    meshDot();
+  }
   updateLatest.dataset.state = !c.latest ? 'bad' : behind ? 'new' : 'ok';
   updateLatest.textContent = !c.latest
     ? 'release feed unreachable'
@@ -403,6 +405,7 @@ export function updateState(state: State): void {
   notifyMesh(state);
   renderUpdateButton();
   updateSeen = { tailnet: state.tailnet, selfVersion: state.self.version || '' };
+  meshDot();
   // ours with its buttons, else a peer's, to watch
   const chain = holdChain(state.chain);
   // a walk starting anywhere opens the pane on every host's desk, once, for an admin
@@ -419,6 +422,20 @@ export function updateState(state: State): void {
 // --- updates waiting: the mesh's release, a blue dot and one note
 
 export const updates: Record<string, string> = { mesh: '' };
+// the newest release the feed last named; the dot held against every state push, so a
+// finished walk clears it at once rather than at the next feed check
+let feedLatest = '';
+const behindOf = (latest: string) =>
+  [updateSeen.selfVersion, ...(updateSeen.tailnet || []).filter((d) => d.phosphorus).map((d) => d.version)]
+    .filter(Boolean)
+    .some((v) => newerVersion(latest, v as string));
+function meshDot() {
+  const v = feedLatest && behindOf(feedLatest) ? feedLatest : '';
+  if (v === updates.mesh) return;
+  updates.mesh = v;
+  renderUpdateButton();
+  paintUpdates();
+}
 // told whenever a release or a walk comes or goes: the bar's update button
 const watchers = new Set<() => void>();
 export const updateWatch = (fn: () => void) => void watchers.add(fn);
@@ -426,8 +443,6 @@ const UPDATE_NOTED = 'phosphorus-update-noted';
 
 function paintUpdates() {
   for (const fn of watchers) fn();
-  dk.ctl?.btn.classList.toggle('has-update', !!updates.mesh);
-  dk.ctl?.draw();
   let noted: Record<string, string> = {};
   try {
     noted = JSON.parse(localStorage.getItem(UPDATE_NOTED)!) || {};
@@ -449,11 +464,9 @@ export async function checkUpdates(): Promise<void> {
   if (st.acct?.admin) {
     try {
       const c: UpdateCheck = await (await fetch('/api/update/check')).json();
-      const versions = [
-        updateSeen.selfVersion,
-        ...(updateSeen.tailnet || []).filter((d) => d.phosphorus).map((d) => d.version),
-      ].filter(Boolean) as string[];
-      updates.mesh = c.latest && versions.some((v) => newerVersion(c.latest!, v)) ? c.latest : '';
+      if (c.latest) feedLatest = c.latest;
+      updates.mesh = feedLatest && behindOf(feedLatest) ? feedLatest : '';
+      renderUpdateButton();
     } catch {}
   }
   paintUpdates();

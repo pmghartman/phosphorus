@@ -44,6 +44,7 @@ export const PREF_LS: Record<string, string> = {
   custom: 'phosphorus-theme-custom',
   color: 'phosphorus-chat-color',
   agentview: 'phosphorus-agent-view',
+  svctab: 'phosphorus-services-in-tabs',
 };
 export const PREF_OF: Record<string, string> = Object.fromEntries(Object.entries(PREF_LS).map(([k, v]) => [v, k]));
 

@@ -19,13 +19,149 @@
   font-size: var(--fs-md);
   line-height: 1.45;
 }
-.store-front,
 .store-page {
   max-width: 62rem;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
   gap: 1.2rem;
+}
+.store-main > .store-page {
+  width: 100%;
+}
+/* the front: a rail of views and filters, a main pane scrolling beside it */
+.store:has(> .store-shell) {
+  display: flex;
+  padding: 0;
+  overflow: hidden;
+}
+.store-shell {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 13rem minmax(0, 1fr);
+  /* the row held to the window, so the pane scrolls rather than growing past it */
+  grid-template-rows: minmax(0, 1fr);
+  min-height: 0;
+  container-type: inline-size;
+}
+.store-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.9rem 0.6rem 1rem;
+  border-right: 1px solid var(--border);
+  background: var(--card);
+}
+.store-nav-group {
+  padding: 0.95rem 0.6rem 0.3rem;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+.store-nav-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  width: 100%;
+  min-width: 0;
+  padding: 0.38rem 0.6rem;
+  background: none;
+  border: 0;
+  border-radius: var(--r-ctl, 0);
+  color: color-mix(in srgb, var(--muted) 80%, var(--fg));
+  font: inherit;
+  font-size: var(--fs-sm);
+  text-align: left;
+  cursor: pointer;
+}
+.store-nav-row:hover {
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  color: var(--fg);
+}
+.store-nav-row.on {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--fg);
+}
+.store-nav-ic {
+  flex: none;
+  width: 0.95rem;
+  height: 0.95rem;
+}
+.store-nav-t {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.store-nav-n {
+  flex: none;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+.store-nav .store-credit {
+  margin: 1rem 0.6rem 0;
+}
+.store-main {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  padding: 1.3rem 1.5rem 1.6rem;
+}
+.store-view {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  font-size: var(--fs-xl);
+}
+.store-view-n {
+  color: var(--muted);
+  font-size: var(--fs-md);
+  font-weight: 400;
+}
+.store-icon-btn {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--r-ctl, 0);
+  color: var(--muted);
+  cursor: pointer;
+}
+.store-icon-btn:hover {
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  color: var(--fg);
+}
+/* narrow: the rail a row of its views over the pane */
+@container (max-width: 40rem) {
+  .store-shell {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .store-nav {
+    flex-direction: row;
+    overflow-x: auto;
+    padding: 0.5rem;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .store-nav-row {
+    width: auto;
+    flex: none;
+  }
+  .store-nav :is(.store-nav-group, .store-credit),
+  .store-nav-row:not(:has(.store-nav-ic)) {
+    display: none;
+  }
 }
 .store h1 {
   margin: 0;
@@ -37,8 +173,8 @@
 .store h2 {
   margin: 0;
   font-size: var(--fs-xs);
-  font-weight: 400;
-  color: var(--accent);
+  font-weight: 600;
+  color: var(--muted);
   letter-spacing: 0.04em;
 }
 /* the wizard's banner: its wand in a tile of the accent, its name and what it does */
@@ -56,38 +192,8 @@
   flex-wrap: wrap;
 }
 .store-lead {
-  margin: 0.45rem 0 0;
+  margin: 0.25rem 0 0;
   color: var(--muted);
-}
-.store-tabs {
-  display: inline-flex;
-  gap: 0.2rem;
-  padding: 0.2rem;
-  border: 1px solid var(--border);
-  border-radius: var(--r-pop, 0);
-  background: var(--card);
-}
-.store-tab {
-  padding: 0.3rem 0.95rem;
-  background: none;
-  border: 0;
-  border-radius: var(--r-pop, 0);
-  color: var(--muted);
-  font: inherit;
-  font-size: var(--fs-base);
-  font-weight: 600;
-  cursor: pointer;
-  transition:
-    background-color 0.15s,
-    color 0.15s;
-}
-.store-tab.on {
-  color: var(--fg);
-  background: color-mix(in srgb, var(--accent) 18%, transparent);
-}
-.store-tab:not(.on):is(:hover, :focus-visible) {
-  color: var(--fg);
-  outline: none;
 }
 .store-tools {
   display: flex;
@@ -97,9 +203,11 @@
 }
 .store-search {
   width: min(100%, 18rem);
-  padding: 0.35rem 0.6rem;
-  background: var(--card);
+  height: 2rem;
+  padding: 0 0.65rem;
+  background: var(--bg);
   border: 1px solid var(--border);
+  border-radius: var(--r-ctl, 0);
   color: var(--fg);
   font: inherit;
   font-size: var(--fs-md);
@@ -635,12 +743,6 @@
 }
 .store-tile-sub.dim {
   color: var(--muted);
-}
-.store-filters {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  flex-wrap: wrap;
 }
 .store-chips {
   display: flex;

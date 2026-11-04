@@ -12,7 +12,7 @@ import {
   startPulseLoop,
 } from '../../features/mesh/mesh.ts';
 import { DK_UI, dkGlyph, el } from '../../lib/dom.ts';
-import { dk, st } from '../../lib/state.ts';
+import { dk, PREF_LS, st } from '../../lib/state.ts';
 import { dkWallPick } from '../../settings/appearance.ts';
 import { dkSettings } from '../../settings/settings.ts';
 import { dkView } from '../desk.ts';
@@ -303,7 +303,20 @@ export async function dkSetPublic(r: Route, on: boolean) {
   dkMenuNote(res?.ok ? `${r.name} ${on ? 'public' : 'private'}` : out.error || 'not changed');
 }
 
+// a service opened in a browser tab of its own rather than a window, by the user's choice
+export function servicesInTabs(): boolean {
+  try {
+    return localStorage.getItem(PREF_LS.svctab!) === '1';
+  } catch {
+    return false;
+  }
+}
+
 export function dkService(r: Route): DkWin | undefined {
+  if (servicesInTabs()) {
+    window.open(serviceUrl(r), '_blank', 'noopener');
+    return;
+  }
   const w = dkWin(`svc:${serviceKey(r)}`, r.name, r.public ? `${r.host}, public` : r.host, 'svc');
   if (!w) return;
   const url = serviceUrl(r);

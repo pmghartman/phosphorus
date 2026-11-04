@@ -1,7 +1,7 @@
 // --- the control panel: the clock and the user one button; under it light or dark, the way to
 // settings and log out
 import { acctLogout, dkUserGlyph } from '../features/account.ts';
-import { checkUpdates, meshLockNow, updates } from '../features/update.ts';
+import { checkUpdates } from '../features/update.ts';
 import { DK_GLYPHS, DK_UI, dkGlyph, el } from '../lib/dom.ts';
 import { MODES, modeIcon, modePick, setTheme } from '../lib/scheme.ts';
 import { dk, st } from '../lib/state.ts';
@@ -33,18 +33,16 @@ export function dkControlTray(): HTMLElement {
       });
       modes.append(t);
     }
-    // settings, at the update while one waits for an admin
-    const fresh = !!st.acct?.admin && !!updates.mesh && !meshLockNow();
-    const set = Object.assign(el('button', `dk-ctl-row${fresh ? ' fresh' : ''}`), { type: 'button' });
+    // settings; a waiting release told on the bar's update button alone
+    const set = Object.assign(el('button', 'dk-ctl-row'), { type: 'button' });
     set.append(
       dkGlyph(DK_GLYPHS.gear!, 'dk-ctl-row-ic'),
       el('span', 'dk-ctl-row-k', 'settings'),
-      el('span', 'dk-ctl-row-v', fresh ? `v${updates.mesh} out` : ''),
       dkGlyph(DK_UI.fwd!, 'dk-ctl-row-ch'),
     );
     set.addEventListener('click', () => {
       show(false);
-      dkSettings(fresh ? 'update' : undefined);
+      dkSettings();
     });
     const head = el('div', 'dk-ctl-id');
     const who = el('div', 'dk-ctl-who');

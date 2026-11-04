@@ -1,7 +1,7 @@
 // run: its children in a job, the service's main, the update agent
 
 import { FFIType, JSCallback, type Pointer, ptr } from "bun:ffi";
-import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { closeSync, mkdirSync, openSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { Feed } from "@phosphorus/appfeed";
 import { list } from "@phosphorus/procs";
@@ -176,8 +176,18 @@ export function updating(): boolean {
   }
 }
 
-// watchUpdateRequests run's: a request the app left past appPickup handed on
-// to a detached upgrade
+// the app's lock held, opened with no sharing while it runs; never run, none
+function trayUp(): boolean {
+  try {
+    closeSync(openSync(at("state", "tray.lock"), "r"));
+    return false;
+  } catch (e) {
+    return (e as any)?.code !== "ENOENT";
+  }
+}
+
+// watchUpdateRequests run's: a request the app left past appPickup, or with no
+// app running at once, handed on to a detached upgrade
 export async function watchUpdateRequests(stop: Stop) {
   const req = at("state", "update-request.json");
   while (!stop.on) {
@@ -189,7 +199,7 @@ export async function watchUpdateRequests(stop: Stop) {
     } catch {
       continue;
     }
-    if (Date.now() - mtime < appPickup || updating()) continue;
+    if ((Date.now() - mtime < appPickup && trayUp()) || updating()) continue;
     let id = "";
     try {
       id = String(JSON.parse(readFileSync(req, "utf8"))?.id ?? "");
@@ -312,8 +322,8 @@ export const windows: OS = {
   uninstallAdmin,
   // elevateUninstall the admin half through UAC, waited on
   elevateUninstall: () => runAs(["uninstall", "--admin"]),
-  // libexec the app's bundled tools, synced into the home with the release
-  libexec: () => at("tools"),
+  libexec: () => at("state", "cache", "tools"),
+  ownTailscale: () => false,
   logHint: () => at("state", "log", "phosphorus.log"),
   async svcInstall() {
     if (await svcInstalled()) return;

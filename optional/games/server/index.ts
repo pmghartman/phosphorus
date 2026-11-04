@@ -1,6 +1,6 @@
 // the game servers' server half: the games every host runs, listed with whether
 // each is up, play and stop run on the game's host as its login, the admins' form
-// for what exists, and the MCP tools; game-control's login taken over on first start
+// for what exists, and the MCP tools
 import { closeSync, existsSync, openSync, readFileSync, readSync, rmSync, statSync } from "node:fs";
 import { connect } from "node:net";
 import { join } from "node:path";
@@ -187,29 +187,6 @@ export function register(ctx: AppContext) {
     ctx.log("play/stop runs as %s", login);
     return [200, { login }];
   }
-
-  // what the core kept: game-control's account and key
-  async function adopt() {
-    const old = join(StateDir, "game-control");
-    if (!existsSync(old)) return;
-    let user = "";
-    try {
-      user = readFileSync(join(old, "user"), "utf8").trim();
-    } catch {}
-    if (loginRe.test(user) && !loginOf(ctx.store, self))
-      try {
-        await authorize(user, key());
-        setLogin(ctx.store, self, user);
-        ctx.log("play/stop runs as %s, as game-control did", user);
-      } catch (e) {
-        // kept for the next start to try again
-        return ctx.log("couldn't take over game-control's login %s: %s", user, errText(e));
-      }
-    rmSync(old, { recursive: true, force: true });
-    if (process.platform !== "win32") rmSync("/root/.ssh/game-control", { force: true });
-  }
-
-  void adopt().catch((e) => ctx.log("taking over the core's games: %s", errText(e)));
 
   ctx.route("GET", "/games", async (r) => {
     const who = r.who as Who;

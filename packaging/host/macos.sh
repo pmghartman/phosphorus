@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Phosphorus.app for macOS, universal: the one binary, host and tray, as the
+# Phosphorus.app for macOS on Apple silicon: the one binary, host and tray, as the
 # bundle's Phosphorus, the release beside it; then its .dmg and, with a signing key,
 # the feed's signed .app.tar.gz
 # usage: macos.sh VERSION PAYLOAD_DIR OUT_DIR UPDATE_DIR
@@ -13,14 +13,11 @@ APP=$WORK/Phosphorus.app
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$OUT" "$UPD"
 export MACOSX_DEPLOYMENT_TARGET=12.0
 
-# the binary compiled by bun per arch, then one universal one, the bundle's
-# executable: opened as the app it runs the tray, called by it the host's commands
-(cd "$ROOT" && bun scripts/build.ts darwin-arm64 "$WORK/arm64" "$VER" && bun scripts/build.ts darwin-x64 "$WORK/x64" "$VER")
-lipo -create -output "$APP/Contents/MacOS/Phosphorus" "$WORK/arm64/phosphorus-host" "$WORK/x64/phosphorus-host"
-
+# the bundle's executable: opened as the app it runs the tray, called by it the host's commands
+(cd "$ROOT" && bun scripts/build.ts darwin-arm64 "$WORK/bin" "$VER")
+cp "$WORK/bin/phosphorus-host" "$APP/Contents/MacOS/Phosphorus"
 # not "phosphorus": beside the Phosphorus binary on a case-insensitive disk
 cp -R "$PAYLOAD" "$APP/Contents/Resources/release"
-cp "$ROOT/LICENSE" "$PAYLOAD/THIRD_PARTY_NOTICES.txt" "$APP/Contents/Resources/"
 cp "$ROOT/packaging/icons/icon.icns" "$APP/Contents/Resources/icon.icns"
 sed "s/@VERSION@/$VER/g" "$HERE/Info.plist" > "$APP/Contents/Info.plist"
 # ad hoc: the binary inside first, then the bundle
@@ -31,17 +28,17 @@ DMG=$WORK/dmg
 mkdir -p "$DMG"
 cp -R "$APP" "$DMG/"
 ln -s /Applications "$DMG/Applications"
-# lzfse (ULFO, macOS 10.11+): smaller than zlib's UDZO and several times faster over
-# the four bun binaries; the runners' disk images now and then busy: a few tries
+# lzfse (ULFO, macOS 10.11+): smaller than zlib's UDZO and several times faster;
+# the runners' disk images now and then busy: a few tries
 for i in 1 2 3; do
-  hdiutil create -volname Phosphorus -srcfolder "$DMG" -ov -format ULFO "$OUT/phosphorus-$VER-macos-universal.dmg" && break
+  hdiutil create -volname Phosphorus -srcfolder "$DMG" -ov -format ULFO "$OUT/phosphorus-$VER-macos-arm64.dmg" && break
   [ $i = 3 ] && exit 1
   sleep 5
 done
 
 if [ -n "${UPDATE_SIGNING_KEY:-}" ] && [ -n "${FEED_PUBKEY:-}" ]; then
-  # gzip at its fastest: the bun binaries barely compress better at the default level
-  tar -cf - -C "$WORK" Phosphorus.app | gzip -1 > "$UPD/phosphorus-macos-universal.app.tar.gz"
-  (cd "$ROOT" && bun scripts/feedsign.ts "$UPD/phosphorus-macos-universal.app.tar.gz")
+  # gzip at its fastest: the bun binary barely compresses better at the default level
+  tar -cf - -C "$WORK" Phosphorus.app | gzip -1 > "$UPD/phosphorus-macos-arm64.app.tar.gz"
+  (cd "$ROOT" && bun scripts/feedsign.ts "$UPD/phosphorus-macos-arm64.app.tar.gz")
 fi
 rm -rf "$WORK"

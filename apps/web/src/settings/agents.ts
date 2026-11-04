@@ -6,6 +6,7 @@ import type { ModelAgent, ModelHost, ModelSummary, State } from '@phosphorus/wir
 import { mcpPanel } from '../features/mcp.ts';
 import { jsonPost } from '../lib/api.ts';
 import { el } from '../lib/dom.ts';
+import { st } from '../lib/state.ts';
 
 // the models' part while the section is up
 let view: HTMLElement | null = null;
@@ -87,9 +88,11 @@ function slotRow(a: ModelAgent, slot: string, label: string): HTMLElement {
   if (label) row.append(el('span', 'ag-slot-k', label));
   const pills = el('div', 'ag-pills');
   const pill = (value: string, text: string, title?: string) => {
+    // the picks mesh-wide, an admin's; anyone else sees them
     const b = Object.assign(el('button', `ag-pill${(s.chosen || '') === value ? ' on' : ''}`, text), {
       type: 'button',
       title: title || text,
+      disabled: !st.acct?.admin,
     });
     b.addEventListener('click', () => {
       if ((s.chosen || '') !== value) assign(a.id, slot, value);
@@ -166,6 +169,8 @@ function draw() {
   if (model.models.length) models.append(...model.models.map(modelCard));
   else models.append(el('div', 'ag-empty', 'no model host: turn one on under hosts'));
   wrap.append(group('models', `${model.models.length} on the mesh`, models));
+  if (model.models.length && !st.acct?.admin)
+    wrap.append(el('div', 'ag-empty', 'an admin picks which model each agent asks; here is what each uses now'));
   if (model.models.length) {
     const known = new Set(GROUPS.flatMap(([, ids]) => ids));
     const rest = (model.agents || []).filter((a) => !known.has(a.id));

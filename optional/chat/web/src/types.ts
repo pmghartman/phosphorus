@@ -10,7 +10,7 @@ export interface ChatFile {
 }
 
 // one line of the log as the host keeps it: by host:seq; kind '' or absent for a plain line,
-// else dm, model, sys, show (an old invite), topic, or a mark (react, edit, delete) on ref
+// else dm, model, sys, topic, or a mark (react, edit, delete) on ref
 export interface ChatMsg {
   host: string;
   seq: number;
@@ -31,7 +31,6 @@ export interface ChatMsg {
   emoji?: string;
   on?: boolean;
   files?: ChatFile[];
-  file?: { label: string };
   [k: string]: unknown;
 }
 

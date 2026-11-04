@@ -43,15 +43,6 @@ async function body(r: AppRequest): Promise<Record<string, any>> {
 export function register(ctx: AppContext) {
   const vault = ctx.vault;
   const runs = join(ctx.dataDir, "runs");
-  // the sessions kept by the releases that ran Code in phosphorus itself, moved in once
-  const old = join(ctx.dataDir, "..", "..", "claude-runs");
-  if (existsSync(old) && !(existsSync(runs) && readdirSync(runs).length))
-    try {
-      renameSync(old, runs);
-      ctx.log("sessions moved in from %s", old);
-    } catch (e) {
-      ctx.log("couldn't move %s in: %s", old, errText(e));
-    }
   code.setRunDir(runs);
   code.setHosts(
     () => ctx.host,

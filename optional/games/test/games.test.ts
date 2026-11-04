@@ -24,10 +24,10 @@ test("a game checked", () => {
   expect(check({ host: "", name: "mc", port: 1 })).toBe("pick a host");
 });
 
-test("the key's line: added once, game-control's swapped out", () => {
+test("the key's line: added once, an older one swapped out", () => {
   const line = keyLine("ssh-ed25519 AAAAC3 phosphorus-games\n");
   expect(line).toBe('restrict,from="127.0.0.1,::1" ssh-ed25519 AAAAC3 phosphorus-games');
-  const old = 'restrict,command="/x/phosphorus game-control --home /x" ssh-ed25519 OLD phosphorus-game-control';
+  const old = 'restrict,from="127.0.0.1,::1" ssh-ed25519 OLD phosphorus-games';
   expect(keptAround(`ssh-rsa mine\n${old}\n`, line)).toEqual(["ssh-rsa mine"]);
   expect(keptAround(`ssh-rsa mine\n${line}\n`, line)).toBeUndefined();
 });

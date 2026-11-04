@@ -164,8 +164,8 @@ export function register(ctx) {
 });
 
 // the chat's own bundle, built and signed as the release builds it, checked and
-// unpacked as the installer does, run; the history the core kept handed over
-test("the chat app's signed bundle loads, takes over the core's chat, and is refused unsigned", async () => {
+// unpacked as the installer does, run on the lines in its folder
+test("the chat app's signed bundle loads, and is refused unsigned", async () => {
   const { generate } = await import("@phosphorus/minisign");
   const { mkdtempSync, readFileSync } = await import("node:fs");
   const { tmpdir } = await import("node:os");
@@ -187,21 +187,17 @@ test("the chat app's signed bundle loads, takes over the core's chat, and is ref
   process.env.APPS_PUBKEY = key.public;
   W.verify(chat, rel, data);
 
-  // what the core kept: this host's lines, and a channel's topic in the store
-  mkdirSync(join(store.Root, "var", "chat"), { recursive: true });
+  // this host's lines, already in its folder
+  const dir = A.appDataDir("chat");
+  mkdirSync(dir, { recursive: true });
   const old = { host: "testhost", seq: 7, timestamp: Date.now(), name: "ann", color: "#4f9eff", text: "from before" };
-  writeFileSync(join(store.Root, "var", "chat", "own.json"), JSON.stringify([old]));
-  writeFileSync(join(store.Root, "var", "chat", "merged.json"), JSON.stringify([old]));
-  store.write("etc/chat/ch/ops.json", { created: 1, topic: "the ops room" });
+  writeFileSync(join(dir, "own.json"), JSON.stringify([old]));
+  writeFileSync(join(dir, "merged.json"), JSON.stringify([old]));
 
   W.unpack(chat, { ...rel, from: "testhost", at: Date.now() }, data);
   W.reset();
   await A.settleApp("chat");
   expect(A.runningApps()).toEqual([{ id: "chat", version: "1.0.0" }]);
-  expect(store.read("etc/appdata/chat/ch/ops.json")).toEqual({ created: 1, topic: "the ops room" });
-  expect(store.read("etc/chat/ch/ops.json")).toBeUndefined();
-  expect(existsSync(join(store.Root, "var", "chat"))).toBe(false);
-  expect(JSON.parse(readFileSync(join(A.appDataDir("chat"), "own.json"), "utf8"))[0].text).toBe("from before");
 
   // its tools, on a key, as that user
   const tool = (n: string) => allTools().find((t) => t.name === n)!;

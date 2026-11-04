@@ -31,6 +31,10 @@ export interface Dims {
   legendPx: number;
 }
 
+// the graph's height over its width, at least and at most
+const MESH_RATIO_MIN = 1;
+const MESH_RATIO_MAX = 1.7;
+
 // expanded: fewer logical units per pixel width, a real zoom, the popup's
 // height whatever the stats table leaves
 export function meshLayoutParams(expanded: boolean): Dims {
@@ -41,9 +45,12 @@ export function meshLayoutParams(expanded: boolean): Dims {
   // the legend expanded only, hidden, not gone, so still measured
   const legend = meshGraphWrap.querySelector('.mesh-legend') as HTMLElement;
   const legendOn = expanded && meshPanel.classList.contains('legend-on');
+  // the frame's shape held near the bar popup's: a wide pane spreads the hosts out
+  // rather than flattening the rows, a tall one centers the graph rather than stretching it
+  const r = Math.max(60, bodyH) / widthPx;
   return {
-    width,
-    height: width * (Math.max(60, bodyH) / widthPx),
+    width: r < MESH_RATIO_MIN ? (width * MESH_RATIO_MIN) / r : width,
+    height: width * Math.min(MESH_RATIO_MAX, Math.max(MESH_RATIO_MIN, r)),
     widthPx,
     legendPx: legendOn ? legend.offsetTop + legend.offsetHeight : 0,
   };

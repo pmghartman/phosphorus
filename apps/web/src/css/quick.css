@@ -50,6 +50,18 @@
 .dk-mesh-pop .mesh-header > * {
   background: var(--card);
 }
+/* rounded: the count inside the card's top edge, nothing cut through the corner */
+:root[data-round] :is(.dk-mesh-pop, .set-mesh) .mesh-header {
+  top: 0.55rem;
+  right: 0.6rem;
+  transform: none;
+}
+:root[data-round] :is(.dk-mesh-pop, .set-mesh) .mesh-header > * {
+  background: none;
+}
+:root[data-round] :is(.dk-mesh-pop, .set-mesh) .mesh-body {
+  padding-top: 1.9rem;
+}
 
 /* the update: its pane a card as wide and tall as what it holds */
 .dk-update-pop {
@@ -145,4 +157,46 @@
   .dk-quick > .dk-tray.busy .ic {
     animation: none;
   }
+}
+
+/* the agent's card read top down: who's connected, what it called, then the switch and the actions
+   in a footer under a hairline */
+.dk-mcp-pop {
+  width: min(24rem, calc(100vw - 1rem));
+}
+.dk-mcp-pop .dk-cl-head {
+  order: 1;
+  padding: 0.75rem 0.85rem 0.35rem;
+}
+.dk-mcp-pop .dk-cl-body {
+  order: 2;
+}
+.dk-mcp-pop .dk-cl-hint {
+  order: 3;
+}
+.dk-mcp-pop .dk-cl-check {
+  order: 4;
+  padding: 0.6rem 0.85rem 0.55rem;
+  border-top: 1px solid var(--border);
+}
+.dk-mcp-pop .dk-cl-bar {
+  order: 5;
+  flex-wrap: nowrap;
+  gap: 0.35rem;
+  padding: 0.55rem 0.6rem 0.6rem;
+  border-top: 1px solid var(--border);
+}
+.dk-mcp-pop .dk-cl-bar .dk-cl-key {
+  flex: 1 1 auto;
+  min-height: 1.75rem;
+  padding-inline: 0.5rem;
+  font-size: var(--fs-xs);
+}
+.dk-mcp-pop .dk-cl-bar .dk-cl-key.quiet {
+  color: var(--offmesh);
+}
+
+/* every bar popup one card: the same corners, edge and shadow */
+:is(.dk-ctl-pop, .dk-note-pop, .dk-mcp-pop, .dk-update-pop > .update-pane, .dk-mesh-pop > .mesh-panel) {
+  border-radius: calc(var(--r-pop, 0px) * 1.25);
 }

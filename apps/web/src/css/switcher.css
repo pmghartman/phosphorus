@@ -1,4 +1,4 @@
-/* --- the desktop's own: the switcher, the overview, the search ---------- */
+/* --- the desktop's own: the switcher and the overview ---------- */
 
 /* the switcher: a list over the desk, the pick in the accent */
 .dk-sw {
@@ -9,9 +9,10 @@
   transform: translate(-50%, -50%);
   min-width: 20rem;
   max-width: 80%;
-  padding: 0.3rem 0;
+  padding: 0.3rem;
   background: var(--card);
   border: 1px solid var(--border);
+  border-radius: var(--r-pop, 0);
   box-shadow: var(--drop);
   font-size: var(--fs-sm);
   animation: pop-in 0.08s ease-out;
@@ -20,7 +21,8 @@
   display: flex;
   align-items: center;
   gap: 0.6rem;
-  padding: 0.35rem 0.8rem;
+  padding: 0.4rem 0.65rem;
+  border-radius: calc(var(--r-pop, 0px) - 3px);
   color: var(--muted);
   cursor: pointer;
 }
@@ -42,12 +44,11 @@
   font-size: var(--fs-xs);
 }
 .dk-sw-row.cur {
-  background: var(--accent);
-  color: var(--bg);
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  color: var(--fg);
 }
-.dk-sw-row.cur .dk-sw-t,
 .dk-sw-row.cur .dk-sw-s {
-  color: var(--bg);
+  color: var(--muted);
 }
 
 /* the overview: every window scaled into a grid, its own transform set aside; the cells over
@@ -77,6 +78,7 @@
   padding: 0;
   background: none;
   border: 1px solid transparent;
+  border-radius: var(--r-win, 0);
   cursor: pointer;
   font: inherit;
   color: var(--fg);
@@ -114,133 +116,4 @@
 }
 .dk-ov-x:hover {
   color: var(--offmesh);
-}
-
-/* the search: a box in the upper middle of the desk over a faint veil, as spotlight's */
-.dk-spot-veil {
-  position: absolute;
-  inset: 0;
-  z-index: var(--z-spot);
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding-top: 18vh;
-  background: color-mix(in srgb, var(--bg) 35%, transparent);
-}
-.dk-spot {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  width: min(40rem, calc(100% - 2rem));
-  max-height: 60vh;
-  background: var(--card);
-  border: 1px solid var(--border);
-  box-shadow: var(--drop);
-  animation: pop-in 0.1s ease-out;
-}
-.dk-spot-ic {
-  position: absolute;
-  left: 0.8rem;
-  top: 0.95rem;
-  width: 1rem;
-  height: 1rem;
-  color: var(--muted);
-  pointer-events: none;
-}
-.dk-spot-find {
-  flex: none;
-  padding: 0.7rem 0.8rem 0.7rem 2.5rem;
-  background: none;
-  border: 0;
-  border-bottom: 1px solid var(--border);
-  color: var(--fg);
-  font: inherit;
-  font-size: var(--fs-lg);
-}
-.dk-spot-find:focus {
-  outline: none;
-}
-.dk-spot-find::placeholder {
-  color: var(--dim);
-}
-.dk-spot-list {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding: 0.25rem 0;
-}
-.dk-spot-row {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  width: 100%;
-  padding: 0.35rem 0.9rem;
-  background: none;
-  border: 0;
-  color: var(--fg);
-  font: inherit;
-  font-size: var(--fs-md);
-  text-align: left;
-  cursor: pointer;
-}
-.dk-spot-row-ic {
-  flex: none;
-  width: 0.9rem;
-  height: 0.9rem;
-  color: var(--muted);
-}
-.dk-spot-row.dk-terminal .dk-spot-row-ic {
-  color: var(--accent);
-}
-.dk-spot-row.dk-files .dk-spot-row-ic,
-.dk-spot-row.dk-file .dk-spot-row-ic {
-  color: var(--sand);
-}
-.dk-spot-row.dk-service .dk-spot-row-ic {
-  color: var(--teal);
-}
-.dk-spot-row.dk-setting .dk-spot-row-ic {
-  color: var(--sage);
-}
-.dk-spot-row.dk-menu .dk-spot-row-ic {
-  color: var(--sky);
-}
-.dk-spot-t {
-  flex: none;
-}
-.dk-spot-s {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--muted);
-}
-.dk-spot-k {
-  flex: none;
-  margin-left: auto;
-  color: var(--dim);
-  font-size: var(--fs-2xs);
-}
-.dk-spot-row.cur {
-  background: var(--accent);
-  color: var(--bg);
-}
-.dk-spot-row.cur .dk-spot-row-ic,
-.dk-spot-row.cur .dk-spot-s,
-.dk-spot-row.cur .dk-spot-k {
-  color: var(--bg);
-}
-.dk-spot-none {
-  padding-inline: 0.9rem;
-  font-size: var(--fs-md);
-}
-.dk-bar .dk-spot-btn {
-  width: 1.9rem;
-}
-@media (max-width: 720px) {
-  .dk-spot-tray {
-    display: none;
-  }
 }

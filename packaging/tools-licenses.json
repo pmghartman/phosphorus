@@ -1,22 +1,20 @@
 {
-  "_": "programs phosphorus bundles or fetches that aren't npm packages: their version pin and license text, merged into THIRD_PARTY_NOTICES.txt by scripts/licenses.ts",
-  "bundled": [
+  "_": "programs a host fetches that aren't npm packages: their version pin and license text, merged into THIRD_PARTY_NOTICES.txt by scripts/licenses.ts",
+  "fetched": [
     {
       "name": "Tailscale",
       "spdx": "BSD-3-Clause",
-      "pin": ["packaging/tools.sh", "^TAILSCALE=(\\S+)"],
+      "pin": ["packages/host/host/src/tools.ts", "Tailscale\\s*=\\s*\"([^\"]+)\""],
       "source": "https://github.com/tailscale/tailscale",
       "license": "https://raw.githubusercontent.com/tailscale/tailscale/v{v}/LICENSE"
     },
     {
       "name": "cloudflared",
       "spdx": "Apache-2.0",
-      "pin": ["packaging/tools.sh", "^CLOUDFLARED=(\\S+)"],
+      "pin": ["packages/host/host/src/tools.ts", "Cloudflared\\s*=\\s*\"([^\"]+)\""],
       "source": "https://github.com/cloudflare/cloudflared",
       "license": "https://raw.githubusercontent.com/cloudflare/cloudflared/{v}/LICENSE"
-    }
-  ],
-  "fetched": [
+    },
     {
       "name": "llama.cpp",
       "spdx": "MIT",

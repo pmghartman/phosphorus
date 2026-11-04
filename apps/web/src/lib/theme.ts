@@ -123,7 +123,7 @@ export const LAYOUT_CHOICES: Record<string, string[]> = {
   labels: ['both', 'icons', 'titles'],
 };
 // the bar's status items, every one the layout may show or not, in its order
-export const BAR_ITEMS = ['hosts', 'search', 'mesh', 'update', 'agent', 'bell', 'clock', 'profile'];
+export const BAR_ITEMS = ['hosts', 'mesh', 'update', 'agent', 'bell', 'clock', 'profile'];
 // a built-in theme's own whole config, every value concrete: what the custom theme starts as and
 // what a reset sets it to
 export function themeConfig(id: string): CustomConfig {
@@ -162,8 +162,8 @@ export const themeLayout = (id: string): LayoutNow =>
   cleanLayout({ ...LIB.base.layout, ...(builtIn(id) || builtIn('phosphorus')!).layout });
 
 const hex = (v: unknown) => (/^#[0-9a-f]{6}$/i.test((v as string) || '') ? (v as string).toLowerCase() : '');
-// a stored custom theme made whole and safe: unknown keys and values dropped, anything missing (or
-// left blank by an older save) the theme it was last reset to, a bad one the default's
+// a stored custom theme made whole and safe: unknown keys and values dropped, anything missing
+// the theme it was last reset to, a bad one the default's
 function cleanCustom(c: unknown): CustomConfig {
   const src = (c && typeof c === 'object' ? c : {}) as Partial<Record<keyof CustomConfig, unknown>>;
   const own = themeConfig(builtIn(src.base as string) ? (src.base as string) : 'phosphorus');

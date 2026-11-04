@@ -43,12 +43,13 @@ export async function onUpgrade(c: Ctx, pathname: string, q: URLSearchParams): P
     case "/api/state": {
       const s = Of(c);
       const user = s && !s.boot ? s.user : "";
+      const admin = !!s && !s.boot && s.admin;
       return accept(c, (ws) => {
         const st = buildState();
         noteState(st);
         ws.json(st);
         addPage(ws, user);
-        ws.onMessage((raw) => void onPage(ws, user, raw));
+        ws.onMessage((raw) => void onPage(ws, admin, raw));
       });
     }
     case "/api/peer": {
@@ -133,10 +134,10 @@ function pushState() {
   toPages(marshal(s));
 }
 
-// a page's own ask: a logged in user's, the model host's idle slots erased
-async function onPage(ws: Conn, user: string, raw: string | Uint8Array) {
+// a page's own ask: an admin's, the model host's idle slots erased
+async function onPage(ws: Conn, admin: boolean, raw: string | Uint8Array) {
   const msg = obj(decode(raw));
-  if (!msg || user === "" || msg.type !== "model-purge") return;
+  if (!msg || !admin || msg.type !== "model-purge") return;
   const host = str(msg.to);
   const body: Record<string, any> = { type: "model-purged", id: host };
   try {

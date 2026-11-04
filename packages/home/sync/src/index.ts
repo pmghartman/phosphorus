@@ -1,7 +1,9 @@
 // the home kept alike on every host over the peers' links: a change pushed to
 // every peer as it's found, the digests swapped now and then, a peer whose
 // digest differs asked for all its versions and the newer ones taken
-import { HomeRoot, setOnChange } from "@phosphorus/files";
+import { readdirSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { HomeRoot, setOnChange, Trash } from "@phosphorus/files";
 import * as peers from "@phosphorus/peers";
 import * as store from "@phosphorus/store";
 import { errText, logf, markHot, SelfHost } from "@phosphorus/util";
@@ -56,10 +58,26 @@ function onFrame(host: string, f: PeerFrame) {
     void pull(host, f.digest);
 }
 
+// shim for one release: the store's old folder in the home, at its root, in each
+// user's and in the trashes, gone before the scan so peers get the tombstones
+function dropOldStore() {
+  let names: string[] = [];
+  try {
+    names = readdirSync(HomeRoot);
+  } catch {}
+  for (const d of ["", Trash, ...names.flatMap((n) => [n, `${n}/${Trash}`])])
+    try {
+      rmSync(join(HomeRoot, d, ".sys"), { recursive: true, force: true });
+    } catch (e) {
+      if ((e as any)?.code !== "ENOTDIR") logf("[home] couldn't remove %s/.sys: %s", d || "the home", errText(e));
+    }
+}
+
 // the home indexed and watched, and kept in step with every peer; open streams a
 // path's bytes from the peer that has it
 export async function start(open: Source) {
   from = open;
+  dropOldStore();
   sync = new HomeSync({ root: HomeRoot, self: SelfHost, file: store.local("home-index.json") });
   sync.load();
   const s = sync;

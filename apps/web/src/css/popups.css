@@ -50,7 +50,8 @@
   pointer-events: auto;
 }
 .modal-header > span {
-  color: var(--sage);
+  color: var(--fg);
+  font-weight: 600;
 }
 
 .modal-close {
@@ -85,7 +86,8 @@
   padding: 0.45rem 0.75rem 0.1rem;
   font-size: var(--fs-2xs);
   letter-spacing: 0.04em;
-  color: var(--sage);
+  color: var(--muted);
+  font-weight: 600;
 }
 .update-host {
   overflow: hidden;
@@ -224,7 +226,7 @@
 }
 
 .update-os {
-  color: var(--teal);
+  color: var(--muted);
   font-size: var(--fs-xs);
   margin-left: 0.5rem;
 }
@@ -256,11 +258,12 @@
 }
 /* the newest release, asked on opening: a turning ring until the feed answers */
 .update-latest {
-  margin: 0 0.75rem 0.4rem;
+  margin: 0.15rem 0.75rem 0.5rem;
   display: flex;
   align-items: center;
   gap: 0.6ch;
   color: var(--muted);
+  font-weight: 600;
 }
 .update-latest[data-state="ok"] {
   color: var(--online);

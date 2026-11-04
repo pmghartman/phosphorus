@@ -27,6 +27,7 @@ export {
   dkService,
   dkWallPaint,
   type MenuItem,
+  servicesInTabs,
   WALL_EVENT,
 } from './desk/wallpaper.ts';
 export { dkWebApp, dkWebApps } from './desk/webapps.ts';

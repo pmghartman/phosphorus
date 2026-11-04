@@ -238,30 +238,38 @@ test("small helpers", () => {
   expect(sshInclude()).toBe(`Include "${join(dir, "state", "ssh_config").replaceAll("\\", "/")}"`);
 });
 
-test("3.7's flat state/ sorted into its kinds once, the hand-off files left at its root", async () => {
-  const { sortState } = await import("@phosphorus/util");
-  const st = join(dir, "flat-state");
-  mkdirSync(join(st, "apps", "icons"), { recursive: true });
-  mkdirSync(join(st, "apps", "pad"), { recursive: true });
-  mkdirSync(join(st, "models"), { recursive: true });
-  mkdirSync(join(st, "run"), { recursive: true });
-  for (const f of ["native.env", "phosphorus.log", "net-day.json", "update-agent.json", "ssh_config", "tray.lock"])
-    writeFileSync(join(st, f), f);
-  writeFileSync(join(st, "apps", "icons", "a.png"), "i");
-  writeFileSync(join(st, "models", "m.gguf"), "w");
-  // a newer copy already in place wins
-  writeFileSync(join(st, "run", "native.env"), "new");
-  sortState(st);
-  expect(readFileSync(join(st, "run", "native.env"), "utf8")).toBe("new");
-  expect(readFileSync(join(st, "log", "phosphorus.log"), "utf8")).toBe("phosphorus.log");
-  expect(readFileSync(join(st, "data", "net-day.json"), "utf8")).toBe("net-day.json");
-  expect(readFileSync(join(st, "cache", "icons", "a.png"), "utf8")).toBe("i");
-  expect(readFileSync(join(st, "cache", "models", "m.gguf"), "utf8")).toBe("w");
-  expect(existsSync(join(st, "data", "apps", "pad"))).toBe(true);
-  for (const f of ["native.env", "phosphorus.log", "net-day.json", "apps", "models"])
-    expect(existsSync(join(st, f))).toBe(false);
-  for (const f of ["update-agent.json", "ssh_config", "tray.lock"]) expect(existsSync(join(st, f))).toBe(true);
-  // a second run moves nothing
-  sortState(st);
-  expect(readFileSync(join(st, "log", "phosphorus.log"), "utf8")).toBe("phosphorus.log");
-});
+test("the tools pinned per OS, fetched only when a pin moves or a file is gone", async () => {
+  const { Cloudflared, ensureTools, pins, Tailscale } = await import("../src/tools.ts");
+  const { os } = await import("../src/os.ts");
+  const names = (p: { files: Record<string, string> }[]) => p.flatMap((x) => Object.keys(x.files));
+  expect(names(pins("linux", "x64"))).toEqual(["tailscale", "tailscaled", "cloudflared"]);
+  expect(names(pins("linux", "arm64", false))).toEqual(["cloudflared"]);
+  expect(names(pins("darwin", "arm64"))).toEqual(["cloudflared"]);
+  expect(names(pins("win32", "x64"))).toEqual(["cloudflared.exe"]);
+  expect(pins("linux", "arm64")[0]!.url).toContain(`tailscale_${Tailscale}_arm64.tgz`);
+
+  // every pin's file here at its version: nothing fetched
+  const lib = os.libexec();
+  mkdirSync(lib, { recursive: true });
+  const want = pins();
+  for (const p of want) for (const f of Object.keys(p.files)) writeFileSync(join(lib, f), "x");
+  writeFileSync(join(lib, "versions.json"), JSON.stringify(Object.fromEntries(want.map((p) => [p.name, p.ver]))));
+  const real = globalThis.fetch;
+  let asked = 0;
+  globalThis.fetch = (async () => {
+    asked++;
+    return new Response("not cloudflared");
+  }) as unknown as typeof fetch;
+  try {
+    await ensureTools();
+    expect(asked).toBe(0);
+    // a moved pin fetched, the wrong bytes refused
+    writeFileSync(join(lib, "versions.json"), JSON.stringify({ cloudflared: "old", tailscale: Tailscale }));
+    await expect(ensureTools()).rejects.toThrow(/checksum mismatch/);
+    expect(asked).toBeGreaterThan(0);
+    expect(JSON.parse(readFileSync(join(lib, "versions.json"), "utf8")).cloudflared).toBe("old");
+  } finally {
+    globalThis.fetch = real;
+  }
+  expect(Cloudflared).toMatch(/^\d{4}\.\d+\.\d+$/);
+}, 30_000);

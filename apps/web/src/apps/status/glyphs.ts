@@ -26,7 +26,8 @@ export function bar(frac: number, cls?: string): string {
   return `<span class="st-bar"><i class="${cls || heat(f)}" style="width:${(f * 100).toFixed(1)}%"></i></span>`;
 }
 
-// an area graph as dots on a canvas, newest on the right
+// an area graph on a canvas, newest on the right: a line over a soft fill, in the hue of
+// its peak; down hangs it from the top, for the second of a pair
 export const HEAT_VAR: Record<string, string> = { 'st-lo': '--sage', 'st-mid': '--sand', 'st-hi': '--rose' };
 export const heatVar = (t: number) => HEAT_VAR[heat(t)]!;
 export function dotGraph(
@@ -47,22 +48,41 @@ export function dotGraph(
   const g = canvas.getContext('2d')!;
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
   g.clearRect(0, 0, w, h);
-  // two dot columns and four dot rows to a character cell, fine times more
+  // a sample every half character, fine times more, so a window keeps its span of time
   const px = chWidth('0') / 2 / fine;
-  const cols = Math.floor(w / px);
-  const rows = Math.max(1, Math.floor(h / (px * 1.4)));
-  const py = h / rows;
-  const colors = Array.from({ length: rows }, (_, d) => cssVar(hue(d / Math.max(1, rows - 1))));
-  const v = values.slice(-cols);
-  const x0 = w - v.length * px;
-  v.forEach((val, i) => {
-    const level = val > 0 ? Math.max(1, Math.round((Math.min(val, max) / max) * rows)) : 0;
-    for (let d = 0; d < level; d++) {
-      g.fillStyle = colors[d]!;
-      const y = down ? d * py : h - (d + 1) * py;
-      g.fillRect(x0 + i * px + px * 0.2, y + py * 0.2, px * 0.6, py * 0.6);
-    }
-  });
+  const v = values.slice(-Math.max(2, Math.floor(w / px) + 1));
+  if (v.length < 2) return;
+  const x0 = w - (v.length - 1) * px;
+  const edge = down ? 0.5 : h - 0.5;
+  const at = (val: number) => {
+    const f = max > 0 ? Math.min(Math.max(val, 0), max) / max : 0;
+    return down ? 1 + f * (h - 2) : h - 1 - f * (h - 2);
+  };
+  const color = cssVar(hue(Math.min(1, Math.max(0, ...v) / (max || 1))));
+  g.beginPath();
+  g.moveTo(x0, at(v[0]!));
+  v.forEach((val, i) => g.lineTo(x0 + i * px, at(val)));
+  g.lineJoin = 'round';
+  g.lineWidth = 1.5;
+  g.strokeStyle = color;
+  g.stroke();
+  g.lineTo(w, edge);
+  g.lineTo(x0, edge);
+  g.closePath();
+  const hex = /^#([0-9a-f]{6})$/i.exec(color.trim());
+  if (hex) {
+    const n = Number.parseInt(hex[1]!, 16);
+    const rgba = (a: number) => `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`;
+    const fade = g.createLinearGradient(0, down ? h : 0, 0, edge);
+    fade.addColorStop(0, rgba(0.32));
+    fade.addColorStop(1, rgba(0.03));
+    g.fillStyle = fade;
+  } else {
+    g.globalAlpha = 0.15;
+    g.fillStyle = color;
+  }
+  g.fill();
+  g.globalAlpha = 1;
 }
 
 export const rate = (n: number) => `${humanSize(n)}/s`;

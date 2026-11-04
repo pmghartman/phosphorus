@@ -1,12 +1,12 @@
 // --- settings › appearance: light or dark, the theme, the desk, the bar and the windows; and the
 // wallpaper, a picture of the user's kept on the mesh
 
-import { dkPick, dkWallPaint, WALL_EVENT } from '../desktop/desk/wallpaper.ts';
+import { dkPick, dkWallPaint, servicesInTabs, WALL_EVENT } from '../desktop/desk/wallpaper.ts';
 import { dkMenuNote } from '../desktop/desk.ts';
 import { acctCall } from '../lib/api.ts';
 import { DK_UI, dkGlyph, el } from '../lib/dom.ts';
 import { MODES, modeIcon, modePick, setTheme } from '../lib/scheme.ts';
-import { st } from '../lib/state.ts';
+import { PREF_LS, st } from '../lib/state.ts';
 import {
   BAR_ITEMS,
   CUSTOM_CORNERS,
@@ -90,7 +90,6 @@ const LAYOUT_NAMES: Record<string, string> = {
 };
 // the bar's status items by name
 const ITEM_NAMES: Record<string, string> = {
-  search: 'search',
   hosts: 'hosts',
   mesh: 'mesh',
   update: 'update',
@@ -448,6 +447,19 @@ export function appearanceSection(pane: HTMLElement, at?: ApSub): () => void {
   };
 
   const windowsSection = (): HTMLElement[] => [
+    head('opening'),
+    check(
+      'svctab',
+      'open services in a browser tab',
+      servicesInTabs(),
+      (on) => {
+        try {
+          if (on) localStorage.setItem(PREF_LS.svctab!, '1');
+          else localStorage.removeItem(PREF_LS.svctab!);
+        } catch {}
+      },
+      'pages like jellyfin or forgejo; code, files and the other desktop apps still open in a window',
+    ),
     head('title bar'),
     row('buttons', layoutSel('btns')),
     row('button style', layoutSel('btnStyle')),

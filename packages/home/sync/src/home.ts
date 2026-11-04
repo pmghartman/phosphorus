@@ -54,6 +54,8 @@ const relOk = (rel: string) =>
 export function skipped(rel: string): boolean {
   const parts = rel.split("/");
   if (parts.some((p) => p.toLowerCase() === Trash)) return true;
+  // shim for one release: the store's old folder, dropped on start, never taken back
+  if (parts[0] === ".sys" || parts[1] === ".sys") return true;
   return parts[parts.length - 1]!.startsWith(uploadTmp);
 }
 

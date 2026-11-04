@@ -6,7 +6,7 @@ import { dkFms, filesWin, type Loc } from '../features/home/home.ts';
 import { dk, st } from '../lib/state.ts';
 import { dkSettings, type SettingsAt, settingsAt } from '../settings/settings.ts';
 import { dkTermRestore, dkTermSaved } from './desk/terminal.ts';
-import { dkOpenApp, dkService, dkTerminal } from './desk.ts';
+import { dkOpenApp, dkService, dkTerminal, servicesInTabs } from './desk.ts';
 import { type DkWin, dkFocus, dkHide, dkOnTouch, dkPlace, dkSnap } from './windows.ts';
 
 interface Saved {
@@ -81,18 +81,14 @@ export function dkSessionHold(on: boolean): void {
   hold = on;
 }
 
-const OLD_SETTINGS = new Set(['profile', 'users', 'appearance', 'agents', 'about']);
-
 // one saved window opened, undefined while what it needs isn't here yet
 async function reopen(s: Saved): Promise<DkWin | undefined | null> {
   const o = s.open;
   switch (o.t) {
     case 'app': {
       const id = String(o.id);
-      // the windows settings took in, each its section now
-      const at = id === 'settings' ? o.at : id === 'status' ? 'hosts' : OLD_SETTINGS.has(id) ? id : '';
-      if (at) {
-        dkSettings(String(at) as SettingsAt);
+      if (id === 'settings') {
+        dkSettings(String(o.at) as SettingsAt);
         return dk.wins.get('app:settings') ?? null;
       }
       dkOpenApp(id);
@@ -100,15 +96,12 @@ async function reopen(s: Saved): Promise<DkWin | undefined | null> {
     }
     case 'svc': {
       const r = dk.services.find((x) => x.host === o.host && x.name === o.name);
-      if (!r) return undefined;
+      // in browser tabs by choice: never a tab opened again on a desk coming back
+      if (!r || servicesInTabs()) return undefined;
       return dkService(r) ?? null;
     }
     case 'terms':
       return Array.isArray(o.hosts) ? dkTermRestore(o.hosts.map(String), Number(o.at) || 0) : null;
-    // one window per terminal before tabs: each a tab now
-    case 'term':
-      if (!dk.creds.has(String(o.host))) return st.terminalHosts.includes(String(o.host)) ? undefined : null;
-      return dkTerminal(String(o.host)) ?? null;
     case 'fm': {
       const fm = await filesWin({ loc: o.loc as Loc, dir: String(o.dir) });
       return fm?.w ?? null;

@@ -134,7 +134,8 @@ export const agentTools = (): Tool[] => [
         match: { type: "string", description: "only lines holding this, case-insensitive" },
         source: {
           type: "string",
-          description: "phosphorus (all, default), frontend, cloudflared, model, mesh",
+          description:
+            "phosphorus (all, default), run (the service's start, its tools fetched), frontend, cloudflared, model, mesh",
         },
         level: {
           type: "string",

@@ -41,12 +41,13 @@ import {
 } from "./base.ts";
 import { copyFile, replace } from "./install.ts";
 import { os } from "./os.ts";
+import { ensureTools } from "./tools.ts";
 
 export const frontendUp = "http://127.0.0.1:8090/";
 
 export const nativeEnvFile = () => at("state", "run", "native.env");
 
-// tool a bundled binary: tailscale, cloudflared
+// tool a fetched binary: tailscale, tailscaled, cloudflared
 export const tool = (name: string) => join(os.libexec(), isWindows ? name + ".exe" : name);
 
 // --- the baked env ------------------------------------------------------------
@@ -162,7 +163,7 @@ export function signature(env: Record<string, string>): string {
 }
 
 export async function waitFrontend(ms: number): Promise<boolean> {
-  for (const end = Date.now() + ms; Date.now() < end; await sleep(1000)) {
+  for (const end = Date.now() + ms; Date.now() < end; await sleep(200)) {
     try {
       await fetch(frontendUp, { signal: AbortSignal.timeout(2000) });
       return true;
@@ -202,6 +203,12 @@ export async function rebuild() {
     }
     mkdirSync(at("state", "run"), { recursive: true });
     tidy();
+    await ensureTools();
+    // shim for one release: the tools' old folder in the home, a running exe left for the next
+    if (!isLinux)
+      try {
+        rmSync(at("tools"), { recursive: true, force: true });
+      } catch {}
     const env = bakeEnv();
     const sig = signature(env);
     await os.svcInstall();

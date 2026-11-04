@@ -156,7 +156,7 @@ function configurePart(pane: HTMLElement): () => void {
     rest.replaceChildren();
     if (others.length) {
       const go = Object.assign(el('button', 'store-link', 'sign in under profile'), { type: 'button' });
-      go.addEventListener('click', () => dkSettings('profile'));
+      go.addEventListener('click', () => dkSettings('profile', 'host logins'));
       rest.append(
         list.length
           ? `not signed in, so not configured from here: ${others.join(', ')}; `
@@ -178,10 +178,8 @@ function configFor(host: string): HTMLElement[] {
   const body = el('div', 'set-host-body acct-pane');
   body.append(el('p', 'dk-note', 'reading its config'));
   void cfgCall(host).then((r) => {
-    if (!r.ok || !r.values) {
-      body.replaceChildren(
-        el('p', 'dk-state bad', r.ok ? `${host} runs an older phosphorus: update the mesh first` : r.error),
-      );
+    if (!r.ok) {
+      body.replaceChildren(el('p', 'dk-state bad', r.error));
       return;
     }
     body.replaceChildren(...hostForm(host, r.values as HostIni));

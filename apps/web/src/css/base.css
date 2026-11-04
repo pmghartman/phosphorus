@@ -4,11 +4,11 @@
 :root {
   --header-h: 1.5rem;
   /* the type scale: every size in the sheets one of these */
-  --fs-3xs: 0.6rem;
-  --fs-2xs: 0.66rem;
-  --fs-xs: 0.72rem;
-  --fs-sm: 0.76rem;
-  --fs-md: 0.8rem;
+  --fs-3xs: 0.66rem;
+  --fs-2xs: 0.7rem;
+  --fs-xs: 0.74rem;
+  --fs-sm: 0.79rem;
+  --fs-md: 0.83rem;
   --fs-base: 0.875rem;
   --fs-lg: 1rem;
   --fs-xl: 1.25rem;
@@ -47,13 +47,30 @@
 ::-webkit-scrollbar-thumb {
   border-radius: 0;
 }
-/* no browser focus ring or tap flash, the UI marks its own selection */
+/* no tap flash or mouse focus ring; the keyboard's focus one accent ring everywhere */
 * {
   -webkit-tap-highlight-color: transparent;
 }
-:focus,
-:focus-visible {
+:focus {
   outline: none;
+}
+:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 75%, transparent);
+  outline-offset: 1px;
+}
+:is(input, textarea, select):focus-visible,
+.xterm :focus-visible,
+[contenteditable]:focus-visible {
+  outline: none;
+}
+/* a typed-in field: its accent edge with a soft halo, never in a terminal */
+:is(input:not([type="checkbox"], [type="radio"], [type="color"], [type="range"]), textarea, select):focus:not(
+  .xterm *
+) {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+::selection {
+  background: color-mix(in srgb, var(--accent) 32%, transparent);
 }
 button,
 input,
@@ -72,15 +89,10 @@ select {
   display: none !important;
 }
 
-/* scrolling everywhere, scrollbar chrome nowhere */
+/* thin quiet scrollbars, so a long list shows it scrolls */
 * {
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
-*::-webkit-scrollbar {
-  display: none;
-  width: 0;
-  height: 0;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--muted) 30%, transparent) transparent;
 }
 
 html,
@@ -104,6 +116,8 @@ body {
   background: var(--bg);
   color: var(--fg);
   font-size: var(--fs-base);
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
@@ -190,6 +204,16 @@ body {
     transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1),
     opacity 0.22s;
 }
+/* motion kept to a blink for those who ask the system for less */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
 @keyframes pop-in {
   from {
     opacity: 0;
@@ -205,7 +229,7 @@ body {
 
 /* the states every tab shows the same way: nothing here in a list, nothing here
    filling a panel, and what went wrong */
-:is(.store-empty, .ag-empty, .dk-cl-none, .dk-spot-none) {
+:is(.store-empty, .ag-empty, .dk-cl-none) {
   padding: var(--sp-2) 0;
   color: var(--muted);
 }
@@ -229,26 +253,29 @@ body {
   align-items: center;
   justify-content: center;
   gap: var(--sp-1);
-  padding: 0.3rem 0.8rem;
+  min-height: 1.85rem;
+  padding: 0.28rem 0.8rem;
   font: inherit;
   font-size: var(--fs-sm);
   line-height: 1.25;
   white-space: nowrap;
   color: var(--fg);
-  background: none;
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
   border: 1px solid var(--border);
   border-radius: var(--r-ctl, 0);
   text-decoration: none;
   cursor: pointer;
   transition:
-    background-color 0.15s,
-    border-color 0.15s,
-    color 0.15s;
+    background-color 0.12s,
+    border-color 0.12s,
+    color 0.12s;
 }
-.btn:is(:hover, :focus-visible):not(:disabled) {
-  background: var(--tab-hover);
-  border-color: var(--accent);
-  outline: none;
+.btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--fg) 9%, transparent);
+  border-color: color-mix(in srgb, var(--fg) 16%, var(--border));
+}
+.btn:active:not(:disabled) {
+  background: color-mix(in srgb, var(--fg) 12%, transparent);
 }
 .btn.primary {
   background: var(--accent);
@@ -256,17 +283,17 @@ body {
   color: var(--bg);
   font-weight: 600;
 }
-.btn.primary:is(:hover, :focus-visible):not(:disabled) {
-  background: color-mix(in srgb, var(--accent) 85%, var(--fg));
-  border-color: var(--accent);
+.btn.primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 88%, var(--fg));
+  border-color: color-mix(in srgb, var(--accent) 88%, var(--fg));
 }
+/* red words on a quiet button, red filled only under the pointer */
 .btn.danger {
   color: var(--offmesh);
-  border-color: color-mix(in srgb, var(--offmesh) 45%, var(--border));
 }
-.btn.danger:is(:hover, :focus-visible):not(:disabled) {
-  background: color-mix(in srgb, var(--offmesh) 12%, transparent);
-  border-color: var(--offmesh);
+.btn.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--offmesh) 14%, transparent);
+  border-color: color-mix(in srgb, var(--offmesh) 55%, var(--border));
 }
 .btn:disabled,
 .btn.wait {
@@ -276,9 +303,15 @@ body {
 .btn.wait:not(:disabled) {
   animation: update-blink 1.2s ease-in-out infinite;
 }
-/* at a row's end, its own width, not its column's */
+/* at a row's end, its own width, not its column's; quiet until the pointer is on it */
 .dk-row > .btn {
   justify-self: end;
+}
+@media (min-width: 721px) {
+  .dk-row > .btn:not(.primary, :hover, :focus-visible) {
+    background: none;
+    border-color: transparent;
+  }
 }
 .btn.big {
   padding: 0.4rem 1.3rem;

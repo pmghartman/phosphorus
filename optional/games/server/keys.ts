@@ -8,8 +8,6 @@ import { lockACL, run } from "@phosphorus/util";
 import { utils } from "ssh2";
 
 const tag = "phosphorus-games";
-// what game-control-setup authorized before Games was an app
-const oldTag = "phosphorus-game-control";
 const isWindows = process.platform === "win32";
 
 export type Key = { priv: string; pub: string };
@@ -32,12 +30,12 @@ export function keyIn(dir: string): Key {
 export const keyLine = (pub: string) => `restrict,from="127.0.0.1,::1" ${pub.trim()}`;
 
 // the lines to keep around line: undefined when it's there already, else every
-// other one that isn't this app's or game-control's
+// other one that isn't this app's
 export function keptAround(text: string, line: string): string[] | undefined {
   const kept: string[] = [];
   for (const l of text.replace(/\n+$/, "").split("\n")) {
     if (l === line) return undefined;
-    if (l !== "" && !l.includes(tag) && !l.includes(oldTag)) kept.push(l);
+    if (l !== "" && !l.includes(tag)) kept.push(l);
   }
   return kept;
 }
@@ -111,7 +109,7 @@ function chownTo(u: User, ...paths: string[]) {
 }
 
 // the key's line in login's authorized_keys, or out of it with line ""; an older
-// line of this app's or game-control's swapped out either way
+// line of this app's swapped out either way
 async function edit(login: string, line: string) {
   const u = await lookupUser(login);
   if (!u) throw new Error(`there's no account ${login} here`);

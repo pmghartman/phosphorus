@@ -42,6 +42,9 @@ export interface StoreApp {
 export let apps: StoreApp[] | null = null;
 export let readError = '';
 
+// the front's views, down its rail
+export type StoreView = 'running' | 'services' | 'apps' | 'github';
+
 // the module's variables other modules set
 export const stateVars = {
   busyId: '',
@@ -57,8 +60,8 @@ export const stateVars = {
   category: '',
   // every match shown, not the first few dozen
   all: false,
-  // the front's tab: self-hosted services, apps for the desktop, or what the mesh runs
-  tab: 'services' as 'services' | 'apps' | 'running',
+  // the front's view: what the mesh runs, self-hosted services, apps for the desktop, a repo
+  tab: 'services' as StoreView,
 };
 // a service's log shown in full, by host
 export const logsOpen = new Set<string>();

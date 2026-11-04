@@ -337,19 +337,9 @@ function validChatMessage(m: Msg | undefined): m is Msg {
   if (isClearEntry(m)) return true;
   if (isClose(m)) return channelOf(m.ch) !== "";
   if (isRetract(m) && !isFinite(m.target)) return false;
-  if ((m.kind === "dm" || m.kind === "show") && !isDm(m)) return false;
+  if (m.kind === "dm" && !isDm(m)) return false;
   if (isMark(m) && !refRe.test(str(m.ref))) return false;
   return typeof m.color === "string" && typeof m.text === "string";
-}
-
-export function fileOf(v: unknown): Record<string, any> | undefined {
-  const f = obj(v);
-  if (!f || typeof f.host !== "string" || !chHostRe.test(f.host)) return;
-  const share = f.share !== undefined && f.share !== null ? clipU(jsString(f.share), 64) : "";
-  const p = clipU(str(f.path), 1024);
-  if (!p) return;
-  const label = str(f.label) || p;
-  return { host: f.host, share, path: p, label: clipU(label, 300) };
 }
 
 function cleanChatMessage(m: Msg): Msg {
@@ -360,9 +350,6 @@ function cleanChatMessage(m: Msg): Msg {
   const ch = channelOf(m.ch);
   if (ch) out.ch = ch;
   else delete out.ch;
-  const f = fileOf(m.file);
-  if (f) out.file = f;
-  else delete out.file;
   if (typeof m.re !== "string" || !refRe.test(m.re)) delete out.re;
   if (m.kind === "react" && !reactions.some((r) => m.emoji === r)) out.emoji = reactions[0];
   return out;

@@ -107,6 +107,28 @@
   min-width: 0;
   min-height: 0;
 }
+/* the page's title and its line, over the section */
+.set-head {
+  flex: none;
+  padding: 1.4rem 1.6rem 0.2rem;
+}
+.set-title {
+  margin: 0;
+  color: var(--fg);
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+.set-crumb {
+  color: var(--muted);
+  font-weight: 400;
+}
+.set-blurb {
+  margin: 0.2rem 0 0;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
 .set-body {
   flex: 1 1 auto;
   gap: 0.8rem;
@@ -431,22 +453,6 @@
   padding: 0.4rem 0;
   font-size: var(--fs-2xs);
 }
-.dk-ctl-row {
-  position: relative;
-}
-.dk-ctl-row.fresh .dk-ctl-row-v {
-  color: var(--sky);
-}
-.dk-ctl-row.fresh::after {
-  content: "";
-  position: absolute;
-  top: 0.35rem;
-  left: 1.15rem;
-  width: 0.35rem;
-  height: 0.35rem;
-  border-radius: 50%;
-  background: var(--sky);
-}
 /* the bar's hosts, a press their settings */
 button.dk-chip:not(.locked) {
   cursor: pointer;
@@ -492,6 +498,9 @@ button.dk-chip:not(.locked) {
   }
   .set-body {
     padding: 0.8rem 0.8rem 1.2rem;
+  }
+  .set-head {
+    padding: 1rem 0.8rem 0;
   }
   .set-card .dk-ap-row {
     grid-template-columns: 6.5rem minmax(0, 1fr);

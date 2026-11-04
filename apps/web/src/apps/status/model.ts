@@ -68,9 +68,11 @@ export function modelHtml(m: ModelHost): string {
   const file = m.file
     ? `<div class="st-model-file st-dim" title="${esc(m.file)}">${esc(String(m.file).replace(/\\/g, '/').split('/').pop())}</div>`
     : '';
-  const clear = m.ready
-    ? `<button type="button" class="st-clear" data-host="${esc(m.host)}" title="erase ${esc(m.host)}'s context windows">clear context</button>`
-    : '';
+  // the mesh's model, an admin's to clear
+  const clear =
+    m.ready && st.acct?.admin
+      ? `<button type="button" class="st-clear" data-host="${esc(m.host)}" title="erase ${esc(m.host)}'s context windows">clear context</button>`
+      : '';
   return `<div class="st-model-head">${head}</div>${file}${ctx}<div class="st-model-foot"><div class="st-model-agents">${agents}</div>${clear}</div>`;
 }
 
