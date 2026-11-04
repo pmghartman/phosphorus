@@ -402,7 +402,14 @@ test("windows: the taskbar, clock and icons as the registry has them", () => {
     { iconSize: 32, time: "HH:mm", seconds: 1, transparent: 0, search: 2, taskView: 0, small: 1, edge: 1 },
     false,
   );
-  expect(l).toMatchObject({ iconSize: 32, transparent: false, search: "box", taskView: false, small: true, edge: "top" });
+  expect(l).toMatchObject({
+    iconSize: 32,
+    transparent: false,
+    search: "box",
+    taskView: false,
+    small: true,
+    edge: "top",
+  });
   expect(l.clock).toEqual({ h24: true, seconds: true, weekday: false });
   // no widgets on win10, no side taskbar on win11
   expect(l.widgets).toBe(false);
