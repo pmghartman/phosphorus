@@ -87,8 +87,7 @@ const encode = (f: File) =>
     ? `{"t":${f.t},"h":${JSON.stringify(f.h)},"gone":true}`
     : `{"t":${f.t},"h":${JSON.stringify(f.h)},"c":${JSON.stringify(f.c)},"data":${JSON.stringify(f.data ?? null)}}`;
 
-// a stored or received entry; the shape before versions ({at, data}) read as
-// stamped by nobody, rewritten on its next write
+// a stored or received entry, {t, h, c, data} or a tombstone
 function parseFile(v: unknown): File | undefined {
   if (!v || typeof v !== "object") return;
   const o = v as Record<string, unknown>;
