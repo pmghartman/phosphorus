@@ -74,7 +74,10 @@ export function mesh(ctx: AppContext): { stop: () => void } {
 
   // a line posted here, to every host up; one that misses it catches up later
   onOwnLines((lines) => {
-    for (const h of others()) ctx.peer(h, "/lines", { host: ctx.host, lines }).catch(() => caught.delete(h));
+    const up = others();
+    // a host away misses them, told of them on its return
+    for (const h of caught.keys()) if (!up.includes(h)) caught.delete(h);
+    for (const h of up) ctx.peer(h, "/lines", { host: ctx.host, lines }).catch(() => caught.delete(h));
   });
 
   let shown = "";
