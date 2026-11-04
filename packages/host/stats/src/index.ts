@@ -22,17 +22,17 @@ const dayMS = 24 * 3600 * 1000;
 export const sys: Sys = process.platform === "linux" ? linux : process.platform === "darwin" ? darwin : win32;
 const tunnelIf = /^(tailscale|wg|tun|utun)/i;
 
-// --- the last day: net totals, cpu and memory in 5 minute buckets ----------------
-// kept two days, so each hour of the last one has a whole day behind it
+// --- the last day: net totals, cpu, memory, disk and gpu in 5 minute buckets ------
+// kept two days, so each hour of the last one has a whole day of net behind it
 
-// a bucket: its end, rx and tx bytes, cpu and memory percent over it, null unread
-type Bucket = [number, number, number, number | null, number | null];
+// a bucket: its end, rx and tx bytes, cpu, memory, disk and gpu percent over it, null unread
+type Bucket = [number, number, number, number | null, number | null, (number | null)?, (number | null)?];
 type NetDay = { boot: string; last?: Record<string, RxTx> | null; cpu?: CpuT; buckets: Bucket[]; at?: number };
 
 const netDayFile = join(DataDir, "net-day.json");
+const trendStepMS = 3600 * 1000;
+const trendPoints = dayMS / trendStepMS;
 const keepMS = 2 * dayMS;
-const hourMS = 3600 * 1000;
-const trendHours = 24;
 let bootID = "";
 let netDay: NetDay = { boot: "", buckets: [] };
 
@@ -56,6 +56,20 @@ function netSince(cur: Record<string, RxTx>): RxTx {
 
 const pct1 = (f: number) => Math.round(f * 1000) / 10;
 
+// the gpus' mean load over a bucket, from the samples taken while watched
+let gpuSum = 0;
+let gpuN = 0;
+const gpuLoad = (list: Gpu[]) => {
+  const u = list.map((g) => g.util).filter((x): x is number => x !== null);
+  return u.length ? u.reduce((a, x) => a + x, 0) / u.length : null;
+};
+function gpuNote(list: Gpu[]) {
+  const u = gpuLoad(list);
+  if (u === null) return;
+  gpuSum += u;
+  gpuN++;
+}
+
 async function netDayTick() {
   await sys.poll?.();
   const at = now();
@@ -67,8 +81,21 @@ async function netDayTick() {
     const was = netDay.boot === bootID ? netDay.cpu : undefined;
     const busy = cpu && was && cpu.total > was.total ? 1 - (cpu.idle - was.idle) / (cpu.total - was.total) : null;
     const m = sys.memInfo();
-    buckets.push([at, d.rx, d.tx, busy === null ? null : pct1(busy), m.total ? pct1(m.used / m.total) : null]);
+    const dk = sys.disk();
+    // no one watching: the gpus as they read now
+    const g = gpuN ? gpuSum / gpuN : gpuLoad(gpus());
+    buckets.push([
+      at,
+      d.rx,
+      d.tx,
+      busy === null ? null : pct1(busy),
+      m.total ? pct1(m.used / m.total) : null,
+      dk.total ? pct1(dk.used / dk.total) : null,
+      g === null ? null : Math.round(g * 10) / 10,
+    ]);
   }
+  gpuSum = 0;
+  gpuN = 0;
   netDay = { boot: bootID, last: cur, cpu, buckets: buckets.filter((b) => at - b[0] < keepMS), at: netDay.at };
   writeJSONAtomic(netDayFile, netDay);
 }
@@ -85,8 +112,8 @@ function netDayTotals() {
   return { rx: d.rx, tx: d.tx, since };
 }
 
-// Trend the day ending at each of the last 24 hour marks, oldest first: rx and tx
-// summed, cpu and memory averaged, null where no bucket fell in it
+// Trend the last day by the hour, oldest first, the last one still filling: rx and tx the day
+// ending at each hour, cpu, memory, disk and gpu that hour's mean and highest bucket, null unread
 export type Trend = {
   at: number;
   step: number;
@@ -94,23 +121,49 @@ export type Trend = {
   tx: (number | null)[];
   cpu: (number | null)[];
   mem: (number | null)[];
+  disk: (number | null)[];
+  gpu: (number | null)[];
+  cpuPeak: (number | null)[];
+  memPeak: (number | null)[];
+  gpuPeak: (number | null)[];
   since: number | null;
 };
 
 export function trendOf(buckets: Bucket[], at: number): Trend {
-  const end = Math.floor(at / hourMS) * hourMS;
-  const t: Trend = { at: end, step: hourMS, rx: [], tx: [], cpu: [], mem: [], since: null };
-  const mean = (v: (number | null)[]) => {
-    const got = v.filter((x): x is number => x !== null);
-    return got.length ? Math.round((10 * got.reduce((a, x) => a + x, 0)) / got.length) / 10 : null;
+  const end = Math.ceil(at / trendStepMS) * trendStepMS;
+  const t: Trend = {
+    at: end,
+    step: trendStepMS,
+    rx: [],
+    tx: [],
+    cpu: [],
+    mem: [],
+    disk: [],
+    gpu: [],
+    cpuPeak: [],
+    memPeak: [],
+    gpuPeak: [],
+    since: null,
   };
-  for (let k = trendHours - 1; k >= 0; k--) {
-    const h = end - k * hourMS;
-    const w = buckets.filter((b) => b[0] <= h && b[0] > h - dayMS);
-    t.rx.push(w.length ? w.reduce((a, b) => a + b[1], 0) : null);
-    t.tx.push(w.length ? w.reduce((a, b) => a + b[2], 0) : null);
-    t.cpu.push(mean(w.map((b) => b[3] ?? null)));
-    t.mem.push(mean(w.map((b) => b[4] ?? null)));
+  const got = (v: (number | null | undefined)[]) => v.filter((x): x is number => typeof x === "number");
+  const mean = (v: (number | null | undefined)[]) => {
+    const g = got(v);
+    return g.length ? Math.round((10 * g.reduce((a, x) => a + x, 0)) / g.length) / 10 : null;
+  };
+  const peak = (v: (number | null | undefined)[]) => (got(v).length ? Math.max(...got(v)) : null);
+  for (let k = trendPoints - 1; k >= 0; k--) {
+    const h = end - k * trendStepMS;
+    const w = buckets.filter((b) => b[0] <= h && b[0] > h - trendStepMS);
+    const day = buckets.filter((b) => b[0] <= h && b[0] > h - dayMS);
+    t.rx.push(day.length ? day.reduce((a, b) => a + b[1], 0) : null);
+    t.tx.push(day.length ? day.reduce((a, b) => a + b[2], 0) : null);
+    t.cpu.push(mean(w.map((b) => b[3])));
+    t.mem.push(mean(w.map((b) => b[4])));
+    t.disk.push(mean(w.map((b) => b[5])));
+    t.gpu.push(mean(w.map((b) => b[6])));
+    t.cpuPeak.push(peak(w.map((b) => b[3])));
+    t.memPeak.push(peak(w.map((b) => b[4])));
+    t.gpuPeak.push(peak(w.map((b) => b[6])));
   }
   if (buckets.length) t.since = buckets[0]![0] - netBucketMS;
   return t;
@@ -122,7 +175,7 @@ let trendSent = "";
 let trendN = 0;
 function trendNow(): Trend | undefined {
   const at = now();
-  const sig = `${Math.floor(at / hourMS)}:${netDay.buckets.at(-1)?.[0] ?? 0}`;
+  const sig = `${Math.ceil(at / trendStepMS)}:${netDay.buckets.at(-1)?.[0] ?? 0}`;
   if (sig === trendSent && ++trendN % trendEvery) return;
   trendSent = sig;
   trendN = 0;
@@ -328,6 +381,8 @@ async function sample(): Promise<Record<string, any> | undefined> {
   const cpus = cur.cpu.map(pct);
   const ld = sys.loadAvg();
   refreshProcs(at);
+  const g = gpus();
+  gpuNote(g);
   const nets = order.map((n) => ({
     name: n,
     rx: rate(cur.net[n]!.rx, last.net[n]?.rx),
@@ -343,7 +398,7 @@ async function sample(): Promise<Record<string, any> | undefined> {
     trend: trendNow(),
     io: { r: rate(cur.r, last.r), w: rate(cur.w, last.w) },
     disk: sys.disk(),
-    gpus: gpus(),
+    gpus: g,
     uptime: Math.round(sys.uptimeSecs()),
     parts,
     own,

@@ -261,11 +261,11 @@
   font-size: var(--fs-2xs);
 }
 
+/* windows placed in w but drawn past it, under the bars as on windows or macos; .dk clips them */
 .dk-wins {
   position: relative;
   grid-area: w;
   min-height: 0;
-  overflow: clip;
   z-index: 2;
   pointer-events: none;
 }

@@ -126,58 +126,127 @@
   margin-top: 0.35rem;
 }
 
-/* the day by the hour: the chip's line under its averages, the panel's a row each */
-:is(.st-stat, .st-panel).st-day {
+/* the day by the hour across the page: one graph out of 100%, net's 24h totals under it on their own axis */
+.st-panel.st-day {
   --st-hue: var(--teal);
 }
-.st-stat.st-day {
-  flex-basis: 12rem;
+.st-panels:not(:has(.st-panel)) {
+  display: none;
 }
-.st-stat-v .st-rx,
-.st-stat-v .st-tx {
-  font-size: var(--fs-sm);
+.st-day > .st-panel-body {
+  position: relative;
+  gap: 0.5rem;
 }
-.st-trend-spark {
+.st-tr-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.2rem 1.4ch;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+.st-tr-key b,
+.st-tr-row b {
+  color: var(--fg);
+  font-family: var(--mono);
+  font-weight: 500;
+}
+.st-tr-sep {
+  width: 1px;
+  height: 0.9em;
+  background: var(--border);
+}
+.st-tr-sw {
+  display: inline-block;
+  width: 0.9em;
+  height: 2px;
+  margin-right: 0.5ch;
+  border-radius: 1px;
+  vertical-align: middle;
+  background: currentColor;
+}
+.st-tr-plot {
+  min-width: 0;
+  overflow: hidden;
+}
+.st-tr-svg {
   display: block;
-  width: 100%;
-  height: 1.1rem;
-  overflow: visible;
 }
-.st-stat > .st-trend-spark {
-  margin-top: 0.3rem;
+.st-tr-grid {
+  stroke: var(--border);
+  stroke-width: 1;
 }
-.st-trend-spark polyline {
+.st-tr-v {
+  stroke-dasharray: 2 3;
+}
+.st-tr-tick {
+  fill: var(--muted);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+.st-tr-hl {
+  fill: color-mix(in srgb, var(--fg) 7%, transparent);
+}
+.st-tr-svg polyline {
   fill: none;
-  stroke-width: 1.5;
+  stroke: currentColor;
+  stroke-width: 2;
   stroke-linejoin: round;
   stroke-linecap: round;
-  vector-effect: non-scaling-stroke;
 }
-.st-trend-net,
-.st-trend-tx {
-  stroke: var(--teal);
-  fill: var(--teal);
+.st-tr-dot {
+  fill: currentColor;
+  stroke: var(--card);
+  stroke-width: 1;
 }
-.st-trend-rx {
-  stroke: var(--accent);
-  fill: var(--accent);
+.st-tr-peak {
+  stroke: currentColor;
+  stroke-width: 1;
+  opacity: 0.7;
 }
-.st-trend-cpu {
-  stroke: var(--accent);
-  fill: var(--accent);
+.st-tr-cpu {
+  color: var(--accent);
 }
-.st-trend-mem {
-  stroke: var(--sand);
-  fill: var(--sand);
+.st-tr-mem {
+  color: var(--sand);
 }
-.st-trend-row {
+.st-tr-disk {
+  color: var(--sky);
+}
+.st-tr-gpu {
+  color: var(--sage);
+}
+.st-tr-rx {
+  color: var(--accent);
+}
+.st-tr-tx {
+  color: var(--teal);
+}
+.st-tr-tip {
+  position: absolute;
+  z-index: 2;
   display: grid;
-  grid-template-columns: 8ch minmax(3rem, 1fr) 7ch 7ch;
+  gap: 0.15rem;
+  min-width: 12rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--st-r);
+  background: var(--bg);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  font-size: var(--fs-xs);
+  pointer-events: none;
+}
+.st-tr-tip[hidden] {
+  display: none;
+}
+.st-tr-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
   align-items: center;
-  gap: 0 1.2ch;
+  gap: 0 1ch;
   white-space: nowrap;
 }
-.st-trend-row > :nth-child(n + 3) {
+.st-tr-row b {
   text-align: right;
 }
 

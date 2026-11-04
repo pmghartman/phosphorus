@@ -1,29 +1,17 @@
-// the whole mesh summed: headlines, its cpu and net graphs, its totals and models
+// the whole mesh summed: headlines, its cpu and net graphs, its models, its last day under them
 import type { StatsSample } from '@phosphorus/wire';
 import { humanSize, plural } from '../../lib/util.ts';
-import {
-  dotJoin,
-  kvRow,
-  meterRow,
-  pack,
-  pageFrame,
-  panel,
-  panelHead,
-  setHtml,
-  stat,
-  usedOf,
-  usedPct,
-} from './cards.ts';
+import { dotJoin, pack, pageFrame, panel, panelHead, setHtml, stat, usedOf } from './cards.ts';
 import { dotGraph, heatVar, pct, rate } from './glyphs.ts';
 import { drawModel, stModels } from './model.ts';
 import { calmOf, type Panel, ST_STALE_MS, type StHost, stHosts, stNet } from './state.ts';
-import { drawTrend, meshTrend, trendStat } from './trend.ts';
+import { drawTrend, meshTrend } from './trend.ts';
 
-export const meshPage = pageFrame([
-  ['day', '24h'],
-  ['more', 'totals'],
-]);
+export const meshPage = pageFrame([]);
 meshPage.node.classList.add('st-mesh-page');
+// the day across the whole page, under every panel
+const day = panel('day', '24h');
+meshPage.node.append(day.box);
 const meshHist = { max: 0 };
 // host -> its model's panel, in the models' order
 const models = new Map<string, Panel>();
@@ -54,8 +42,6 @@ export function drawMeshSum(names: string[]) {
   const rx = live.reduce((a, h) => a + calmOf(h).rx, 0);
   const tx = live.reduce((a, h) => a + calmOf(h).tx, 0);
   const gpus = live.flatMap((h) => h.s!.gpus);
-  const swapU = sum((s) => s.mem.swapUsed);
-  const swapT = sum((s) => s.mem.swapTotal);
   const loaded = live.flatMap((h) => calmOf(h).gpus).filter((u): u is number => u !== null);
   const gpuLoad = loaded.reduce((a, u) => a + u, 0) / Math.max(1, loaded.length) / 100;
   // the gpus reading both, used never set against a total it's no part of
@@ -63,7 +49,6 @@ export function drawMeshSum(names: string[]) {
   const vramU = vram.reduce((a, g) => a + g.memUsed!, 0);
   const vramT = vram.reduce((a, g) => a + g.memTotal!, 0);
   const load = sum((s) => s.cpu.load[0]);
-  const ctr = sum((s) => s.parts?.length);
   const svc = (stNet?.routes || []).length;
   const off = names.length - live.length;
   const trend = meshTrend(live);
@@ -93,16 +78,11 @@ export function drawMeshSum(names: string[]) {
           gpuLoad,
         ),
       stat('net', 'net', `<span class="st-rx">▼</span> ${rate(rx)}`, `<span class="st-tx">▲</span> ${rate(tx)}`),
-      trendStat(
-        trend,
-        sum((s) => s.netDay.rx),
-        sum((s) => s.netDay.tx),
-      ),
     ]
       .filter(Boolean)
       .join(''),
   );
-  drawTrend(p.box.day!, trend);
+  drawTrend(day, trend);
 
   const cpus = sumHist(live, 'cpu', (h) => h.s!.cpu.cores.length / Math.max(1, cores));
   panelHead(p.cpu, 'cpu', `${plural(cores, 'core')} summed`);
@@ -125,24 +105,10 @@ export function drawMeshSum(names: string[]) {
     `<span class="st-dim">24h  </span><span class="st-rx">▼ ${humanSize(sum((s) => s.netDay.rx))}</span>  <span class="st-tx">▲ ${humanSize(sum((s) => s.netDay.tx))}</span>`,
   );
 
-  setHtml(
-    p.box.more!.body,
-    [
-      swapT && meterRow('swap', swapU / swapT, usedPct(swapU, swapT)),
-      vramT && meterRow('vram', vramU / vramT, usedPct(vramU, vramT)),
-      kvRow(
-        'io',
-        `<span class="st-rx">r ${rate(sum((s) => s.io?.r))}</span>  <span class="st-tx">w ${rate(sum((s) => s.io?.w))}</span>`,
-      ),
-      kvRow('run', dotJoin([plural(svc, 'service'), plural(ctr, 'process', 'processes')])),
-    ]
-      .filter(Boolean)
-      .join(''),
-  );
   drawModels();
 }
 
-// a panel per model host, after the totals
+// a panel per model host
 function drawModels() {
   const list = stModels();
   for (const [host, m] of models)
@@ -150,7 +116,7 @@ function drawModels() {
       m.box.remove();
       models.delete(host);
     }
-  const order = [meshPage.box.day!.box, meshPage.box.more!.box];
+  const order: HTMLElement[] = [];
   for (const m of list) {
     let box = models.get(m.host);
     if (!box) models.set(m.host, (box = panel('model', 'model')));

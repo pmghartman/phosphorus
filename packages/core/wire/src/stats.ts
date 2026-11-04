@@ -30,8 +30,8 @@ export interface StatsProc {
   cmd?: string;
   role?: string;
 }
-// the day ending at each of the last 24 hour marks, oldest first, the last at at;
-// rx and tx summed, cpu and mem averaged percents, null where nothing was read
+// the last day by the hour, oldest first, the last ending at at and still filling; rx and tx
+// the bytes of the day ending at each hour, cpu, mem, disk and gpu that hour's mean and 5 minute peak
 export interface StatsTrend {
   at: number;
   step: number;
@@ -39,6 +39,11 @@ export interface StatsTrend {
   tx: (number | null)[];
   cpu: (number | null)[];
   mem: (number | null)[];
+  disk: (number | null)[];
+  gpu: (number | null)[];
+  cpuPeak: (number | null)[];
+  memPeak: (number | null)[];
+  gpuPeak: (number | null)[];
   since: number | null;
 }
 export interface StatsSample {

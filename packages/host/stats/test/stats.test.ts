@@ -320,25 +320,40 @@ test.skipIf(process.platform !== "linux")(
 
 test("day trend", () => {
   const H = 3600 * 1000;
-  const at = 100 * H + 30 * 60 * 1000;
-  // a bucket every hour for two days: 10 bytes in and 1 out each, cpu i%, memory unread in the old ones
-  const b: [number, number, number, number | null, number | null][] = [];
-  for (let i = 0; i < 48; i++) b.push([at - (47 - i) * H, 10, 1, i, i < 24 ? null : 50]);
+  const M = 5 * 60 * 1000;
+  const at = 100 * H + 12 * 60 * 1000;
+  // a bucket every 5 minutes for a day and a bit: 10 bytes in and 1 out each, cpu i%,
+  // disk and gpu unread in the oldest, as a file from before they were kept
+  const b: [number, number, number, number | null, number | null, (number | null)?, (number | null)?][] = [];
+  for (let i = 0; i < 300; i++) {
+    const end = at - (299 - i) * M;
+    b.push(i < 150 ? [end, 10, 1, i % 12, 50] : [end, 10, 1, i % 12, 50, 40, i % 2 ? null : 20]);
+  }
   const t = stats.trendOf(b, at);
-  expect(t.at).toBe(100 * H);
+  // the last hour still filling: it ends at the next mark
+  expect(t.at).toBe(101 * H);
+  expect(t.step).toBe(H);
   expect(t.rx.length).toBe(24);
-  // each mark's day holds 24 buckets
-  expect(t.rx.every((v) => v === 240)).toBe(true);
-  expect(t.tx.at(-1)).toBe(24);
-  // the last mark's day: buckets 23 to 46, the newest past it
-  expect(t.cpu.at(-1)).toBe(34.5);
-  expect(t.mem.at(-1)).toBe(50);
-  // the oldest mark's day all before memory was read, the next one's with one reading
-  expect(t.mem[0]).toBe(null);
-  expect(t.mem[1]).toBe(50);
-  // two buckets, the newest past the last mark: that mark alone holds one, the rest null
+  // net the day ending at each hour: 288 buckets once a whole day is kept
+  expect(t.rx.at(-2)).toBe(2880);
+  expect(t.tx.at(-2)).toBe(288);
+  // the oldest hour's day only as far back as the first bucket, 33 of them
+  expect(t.rx[0]).toBe(330);
+  // the filling hour's day: up to now, 279 buckets
+  expect(t.rx.at(-1)).toBe(2790);
+  // each hour its own: cpu 0 to 11 over it, averaged and its highest bucket
+  expect(t.cpu.at(-2)).toBe(5.5);
+  expect(t.cpuPeak.at(-2)).toBe(11);
+  expect(t.mem.every((v) => v === 50)).toBe(true);
+  expect(t.disk[0]).toBe(null);
+  expect(t.disk.at(-1)).toBe(40);
+  // a gpu unread in some buckets averaged over the ones it was read in
+  expect(t.gpu.at(-2)).toBe(20);
+  expect(t.gpuPeak[0]).toBe(null);
+  // two buckets: the hours before them null
   const short = stats.trendOf(b.slice(-2), at);
-  expect(short.rx.at(-1)).toBe(10);
+  expect(short.rx.at(-1)).toBe(20);
+  expect(short.cpu.slice(0, -1).every((v) => v === null)).toBe(true);
   expect(short.rx.slice(0, -1).every((v) => v === null)).toBe(true);
-  expect(short.since).toBe(b.at(-2)![0] - 5 * 60 * 1000);
+  expect(short.since).toBe(b.at(-2)![0] - M);
 });
