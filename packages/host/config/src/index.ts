@@ -1,208 +1,76 @@
-// config/ edited in place: phosphorus.ini section by section, comments, order
-// and every other section kept; the frontend's and the agents' edits come through here
+// this host's settings edited: its record in the store, etc/hosts/<host>/config.json,
+// every edit checked first; the old phosphorus.ini moved in once, then gone
+import { readFileSync, renameSync, rmdirSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import * as store from "@phosphorus/store";
+import {
+  configLines,
+  configRel,
+  errText,
+  fromIni,
+  type HostConfig,
+  LegacyIni,
+  logf,
+  normalize,
+  SelfHost,
+  type Share,
+  StateDir,
+} from "@phosphorus/util";
 
-import { chmodSync, readFileSync, renameSync, type Stats, statSync, unlinkSync, writeFileSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
-import { chownLike, env, errText, RepoDir } from "@phosphorus/util";
+export type { HostConfig, Share };
 
-// the home's config/, read-write, /etc/phosphorus a read-only mount
-const configDir = env("PHOSPHORUS_CONFIG_DIR", join(RepoDir, "config"));
-export const iniFile = join(configDir, "phosphorus.ini");
+const rel = () => configRel(SelfHost);
 
-// --- config files ---------------------------------------------------------------
+// this host's record as it stands, defaults filled
+export const current = (): HostConfig => normalize(store.read(rel()));
 
-export type Section = { name: string; lines: string[] };
-export type Doc = { head: string[]; secs: Section[] };
+// --- the move from phosphorus.ini ---------------------------------------------------
 
-const headRe = /^\[\s*(.*?)\s*\]$/;
-const quotesRe = /^"|"$/g;
+const lastName = join(StateDir, "config-host");
 
-export function splitSections(text: string): Doc {
-  const d: Doc = { head: [], secs: [] };
-  let cur: Section | undefined;
-  for (const line of text.split(/\r?\n/)) {
-    const m = headRe.exec(line.trim());
-    if (m) {
-      cur = { name: m[1]!, lines: [line] };
-      d.secs.push(cur);
-      continue;
-    }
-    if (cur) cur.lines.push(line);
-    else d.head.push(line);
-  }
-  return d;
-}
-
-export const joinDoc = (d: Doc) => [...d.head, ...d.secs.flatMap((s) => s.lines)].join("\n");
-
-export const findSection = (d: Doc, name: string) => d.secs.find((s) => s.name === name);
-
-export function keyOf(line: string): string {
-  const t = line.trim();
-  const eq = t.indexOf("=");
-  if (t === "" || t[0] === "#" || t[0] === ";" || eq <= 0) return "";
-  return t.slice(0, eq).trim();
-}
-
-export function fieldsOf(s: Section | undefined): Record<string, string> {
-  const f: Record<string, string> = {};
-  if (!s) return f;
-  for (const line of s.lines.slice(1)) {
-    const k = keyOf(line);
-    if (k !== "")
-      f[k] = line
-        .slice(line.indexOf("=") + 1)
-        .trim()
-        .replace(quotesRe, "");
-  }
-  return f;
-}
-
-// vals key to value, undefined drops the key, absent untouched, new keys after the last
-export function rewriteSection(
-  s: Section,
-  name: string,
-  vals: Record<string, string | undefined>,
-  order: string[],
-): string[] {
-  const out = ["[" + name + "]"];
-  const done = new Set<string>();
-  let after = 1;
-  const kv = (k: string, v: string) => (k + " = " + v).replace(/[ \t]+$/, "");
-  for (const line of s.lines.slice(1)) {
-    const k = keyOf(line);
-    if (k !== "" && k in vals) {
-      done.add(k);
-      const v = vals[k];
-      if (v !== undefined) {
-        out.push(kv(k, v));
-        after = out.length;
-      }
-      continue;
-    }
-    out.push(line);
-    if (k !== "") after = out.length;
-  }
-  const extra: string[] = [];
-  for (const k of order) {
-    const v = vals[k];
-    if (!done.has(k) && v !== undefined) extra.push(kv(k, v));
-  }
-  return [...out.slice(0, after), ...extra, ...out.slice(after)];
-}
-
-// one blank line before it, one trailing newline after
-export function appendSection(d: Doc, name: string): Section {
-  const last = d.secs.length > 0 ? d.secs[d.secs.length - 1]!.lines : d.head;
-  while (last.length > 0 && last[last.length - 1]!.trim() === "") last.pop();
-  if (last.length > 0) last.push("");
-  const s = { name, lines: ["[" + name + "]", ""] };
-  d.secs.push(s);
-  return s;
-}
-
-export function readText(file: string): string {
+// the old ini into the store unless a record is there, then removed; a record left
+// under this host's last name, renamed on the tailnet since, carried over
+export function migrate() {
+  if (!SelfHost) return;
+  let before = "";
   try {
-    return readFileSync(file, "utf8");
-  } catch {
-    return "";
-  }
-}
-
-// a node fs error's reason alone, as Go's PathError.Err reads it: "permission denied"
-export function osErrText(e: unknown): string {
-  const m = errText(e);
-  return /^[A-Z]+: ([^,]*), \w+ '/.exec(m)?.[1] ?? m;
-}
-
-// temp then rename, owner and mode kept, else a root-owned file in the host's home
-function writeAtomic(file: string, text: string) {
-  let st: Stats | undefined;
-  try {
-    st = statSync(file);
+    before = readFileSync(lastName, "utf8").trim();
   } catch {}
-  const tmp = join(dirname(file), `.${basename(file)}.phosphorus-${process.pid}`);
-  writeFileSync(tmp, text, { mode: 0o644 });
-  try {
-    if (st) {
-      chmodSync(tmp, st.mode & 0o7777);
-      chownLike(tmp, st);
+  if (before && before !== SelfHost && store.read(rel()) === undefined) {
+    const old = store.read(configRel(before));
+    if (old !== undefined) {
+      store.write(rel(), old);
+      store.remove(configRel(before));
+      logf("[config] %s's settings carried over to %s", before, SelfHost);
     }
-    renameSync(tmp, file);
-  } catch (e) {
-    try {
-      unlinkSync(tmp);
-    } catch {}
-    throw e;
   }
-}
-
-function writeDoc(file: string, d: Doc): string {
   try {
-    writeAtomic(file, joinDoc(d));
+    writeFileSync(lastName + ".tmp", SelfHost + "\n", { mode: 0o644 });
+    renameSync(lastName + ".tmp", lastName);
+  } catch {}
+  let text: string;
+  try {
+    text = readFileSync(LegacyIni, "utf8");
+  } catch {
+    return;
+  }
+  if (store.read(rel()) === undefined) {
+    // on disk before the ini goes
+    store.write(rel(), fromIni(text), true);
+    logf("[config] %s moved into the store as %s", LegacyIni, rel());
+  } else logf("[config] %s left over, the store's record kept", LegacyIni);
+  try {
+    rmSync(LegacyIni, { force: true });
   } catch (e) {
-    return `can't write ${file}: ${osErrText(e)}`;
+    logf("[config] couldn't remove %s: %s", LegacyIni, errText(e));
   }
-  return "";
+  // config/ gone too when it held nothing else
+  try {
+    rmdirSync(dirname(LegacyIni));
+  } catch {}
 }
 
-// --- phosphorus.ini [files] -----------------------------------------------------
-
-export type Share = { dir: string; perms: string };
-
-const splitList = (v: string) =>
-  v
-    .split(",")
-    .map((s) => s.trim())
-    .filter((s) => s !== "");
-
-// unset perms full access, as the frontend reads them
-export function readShares(): Share[] {
-  const f = fieldsOf(findSection(splitSections(readText(iniFile)), "files"));
-  const perms = splitList(f.priv ?? "");
-  return splitList(f.dir ?? "").map((dir, i) => ({ dir, perms: i < perms.length ? perms[i]! : "rwd" }));
-}
-
-const iniSection = (d: Doc, name: string) => findSection(d, name) ?? appendSection(d, name);
-
-export function writeShares(shares: Share[]): string {
-  const d = splitSections(readText(iniFile));
-  const s = iniSection(d, "files");
-  let vals: Record<string, string | undefined> = { dir: "", priv: undefined };
-  if (shares.length > 0)
-    vals = { dir: shares.map((x) => x.dir).join(", "), priv: shares.map((x) => x.perms).join(", ") };
-  s.lines = rewriteSection(s, "files", vals, ["dir", "priv"]);
-  return writeDoc(iniFile, d);
-}
-
-// --- phosphorus.ini [model] -----------------------------------------------------
-
-// host, gpu and url always written, ctx and slots only once set
-const modelKeys = ["host", "gpu", "url", "ctx", "slots"];
-const modelKept = new Set(["host", "gpu", "url"]);
-
-export function readModel(): Record<string, string> {
-  const f = fieldsOf(findSection(splitSections(readText(iniFile)), "model"));
-  const out: Record<string, string> = {};
-  for (const k of modelKeys) {
-    out[k] = f[k] ?? "";
-    // flags never blank, the form's choices always somewhere to start
-    if (out[k] === "" && (k === "host" || k === "gpu")) out[k] = "false";
-  }
-  return out;
-}
-
-export function writeModel(vals: Record<string, string>): string {
-  const d = splitSections(readText(iniFile));
-  const s = iniSection(d, "model");
-  const out: Record<string, string | undefined> = {};
-  for (const k of modelKeys) {
-    const v = (vals[k] ?? "").trim();
-    out[k] = v !== "" ? v : modelKept.has(k) ? "" : undefined;
-  }
-  s.lines = rewriteSection(s, "model", out, modelKeys);
-  return writeDoc(iniFile, d);
-}
+// --- edits ---------------------------------------------------------------------------
 
 // as the daemon reads it: https, a path ending .gguf
 export function linkOk(raw: string): boolean {
@@ -222,100 +90,121 @@ export function wholeAtLeast(v: string, lo: number): boolean {
   return Number.isInteger(n) && n >= lo;
 }
 
-// --- edits from the frontend: the same rewrites as the forms ---------------------
-
-// IniKeys the phosphorus.ini keys phosphorus reads, by section
-export const IniKeys: Record<string, string[]> = {
+// the keys config_set takes, by section
+export const Keys: Record<string, string[]> = {
   files: ["dir", "priv"],
   model: ["host", "gpu", "url", "ctx", "slots"],
+  stacks: ["tz", "puid", "pgid"],
 };
-
-// setIni phosphorus.ini's section key set, blank dropping it; "" once saved
-export const setIni = (section: string, key: string, value: string) => editIni(section, key, value, false)[0];
-
-// editIni setIni held to IniKeys, a section left empty removed, or with dry
-// the change it would make as a diff
-export function editIni(section: string, key: string, value: string, dry: boolean): [string, string] {
-  const keys = IniKeys[section];
-  if (!keys) return ["no section " + section + ", only " + Object.keys(IniKeys).sort().join(", "), ""];
-  if (!keys.includes(key)) return ["no key " + key + " in [" + section + "], only " + keys.join(", "), ""];
-  if (/[\n\r]/.test(value)) return ["one line only", ""];
-  const before = readText(iniFile);
-  const d = splitSections(before);
-  const s = iniSection(d, section);
-  value = value.trim();
-  s.lines = rewriteSection(s, section, { [key]: value !== "" ? value : undefined }, [key]);
-  // a header with no keys left dropped, its blank lines with it
-  if (Object.keys(fieldsOf(s)).length === 0) d.secs = d.secs.filter((x) => x !== s);
-  const diff = lineDiff(before, joinDoc(d));
-  if (dry) return ["", diff];
-  return [writeDoc(iniFile, d), diff];
-}
-
-// --- the same three sections from settings › hosts, whole, held to what the forms allowed --------
 
 const permsRe = /^[rwd]+$/;
 const once = (s: string, ch: string) => s.split(ch).length <= 2;
 
-// editShares [files] as this list of shares, none sharing nothing; dry the diff alone
-export function editShares(shares: Share[], dry: boolean): [string, string] {
+function checkShares(shares: Share[]): string {
   const seen = new Set<string>();
   for (const sh of shares) {
     const dir = sh.dir.trim();
-    if (dir === "") return ["a share's folder is required", ""];
-    if (dir.includes(",")) return ["a folder can't contain a comma", ""];
-    if (/[\n\r]/.test(dir)) return ["one line only", ""];
-    if (seen.has(dir)) return [dir + " is shared twice", ""];
+    if (dir === "") return "a share's folder is required";
+    if (dir.includes(",")) return "a folder can't contain a comma";
+    if (/[\n\r]/.test(dir)) return "one line only";
+    if (seen.has(dir)) return dir + " is shared twice";
     seen.add(dir);
     if (!permsRe.test(sh.perms) || !once(sh.perms, "r") || !once(sh.perms, "w") || !once(sh.perms, "d"))
-      return ["perms is a mix of r, w and d", ""];
+      return "perms is a mix of r, w and d";
   }
-  const before = readText(iniFile);
-  const d = splitSections(before);
-  const s = iniSection(d, "files");
-  const list = shares.map((x) => ({ dir: x.dir.trim(), perms: x.perms }));
-  s.lines = rewriteSection(
-    s,
-    "files",
-    list.length
-      ? { dir: list.map((x) => x.dir).join(", "), priv: list.map((x) => x.perms).join(", ") }
-      : { dir: undefined, priv: undefined },
-    ["dir", "priv"],
-  );
-  if (Object.keys(fieldsOf(s)).length === 0) d.secs = d.secs.filter((x) => x !== s);
-  return commitIni(d, before, dry);
+  return "";
 }
 
-// editModel [model] as these values, the TUI form's checks on them
+// the model's form values checked and typed
+function checkModel(v: Record<string, string>): [string, HostConfig["model"]?] {
+  for (const k of ["host", "gpu"]) if (v[k] !== "true" && v[k] !== "false") return [k + " is true or false"];
+  if (v.ctx && !wholeAtLeast(v.ctx, 512)) return ["ctx is a whole number of tokens, 512 or more"];
+  if (v.slots && !wholeAtLeast(v.slots, 1)) return ["slots is a whole number, 1 or more"];
+  if (v.url && !linkOk(v.url)) return ["url is a https link to a single .gguf"];
+  return [
+    "",
+    {
+      host: v.host === "true",
+      gpu: v.gpu === "true",
+      url: v.url ?? "",
+      ctx: Number(v.ctx || 0),
+      slots: Number(v.slots || 0),
+    },
+  ];
+}
+
+// the change written unless dry, as [why, diff]
+function commit(next: HostConfig, dry: boolean): [string, string] {
+  const diff = lineDiff(configLines(current()).join("\n"), configLines(next).join("\n"));
+  if (dry || diff === "") return ["", diff];
+  store.write(rel(), next);
+  return ["", diff];
+}
+
+// the model as the forms show it: every value a string
+export function modelValues(c = current()): Record<string, string> {
+  const m = c.model;
+  return {
+    host: String(m.host),
+    gpu: String(m.gpu),
+    url: m.url,
+    ctx: m.ctx ? String(m.ctx) : "",
+    slots: m.slots ? String(m.slots) : "",
+  };
+}
+
+// editKey one key set, blank dropping it: [files] dir and priv in step, as the ini had them
+export function editKey(section: string, key: string, value: string, dry: boolean): [string, string] {
+  const keys = Keys[section];
+  if (!keys) return ["no section " + section + ", only " + Object.keys(Keys).sort().join(", "), ""];
+  if (!keys.includes(key)) return ["no key " + key + " in [" + section + "], only " + keys.join(", "), ""];
+  if (/[\n\r]/.test(value)) return ["one line only", ""];
+  value = value.trim();
+  const c = current();
+  if (section === "files") {
+    const list = (v: string) => v.split(",").map((x) => x.trim());
+    let dirs = c.shares.map((s) => s.dir),
+      perms = c.shares.map((s) => s.perms);
+    if (key === "dir") dirs = value ? list(value).filter(Boolean) : [];
+    else perms = value ? list(value) : [];
+    const shares = dirs.map((dir, i) => ({ dir, perms: perms[i] || "rwd" }));
+    return editShares(shares, dry);
+  }
+  if (section === "model") {
+    const v = { ...modelValues(c), [key]: value };
+    if ((key === "host" || key === "gpu") && value === "") v[key] = "false";
+    return editModel(v, dry);
+  }
+  return commit({ ...c, stacks: { ...c.stacks, [key]: value } }, dry);
+}
+
+// editShares the shares as this list, each checked
+export function editShares(shares: Share[], dry: boolean): [string, string] {
+  const why = checkShares(shares);
+  if (why) return [why, ""];
+  return commit({ ...current(), shares: shares.map((x) => ({ dir: x.dir.trim(), perms: x.perms })) }, dry);
+}
+
+// editModel the model as these values, the form's checks on them
 export function editModel(vals: Record<string, string>, dry: boolean): [string, string] {
-  const v = { ...readModel() };
+  const v = modelValues();
   for (const [k, x] of Object.entries(vals)) {
-    if (!modelKeys.includes(k)) return ["no key " + k + " in [model], only " + modelKeys.join(", "), ""];
+    if (!Keys.model!.includes(k)) return ["no key " + k + " in [model], only " + Keys.model!.join(", "), ""];
     v[k] = String(x).trim();
   }
-  for (const k of ["host", "gpu"]) if (v[k] !== "true" && v[k] !== "false") return [k + " is true or false", ""];
-  if (v.ctx && !wholeAtLeast(v.ctx, 512)) return ["ctx is a whole number of tokens, 512 or more", ""];
-  if (v.slots && !wholeAtLeast(v.slots, 1)) return ["slots is a whole number, 1 or more", ""];
-  if (v.url && !linkOk(v.url)) return ["url is a https link to a single .gguf", ""];
-  const before = readText(iniFile);
-  const d = splitSections(before);
-  const s = iniSection(d, "model");
-  const out: Record<string, string | undefined> = {};
-  for (const k of modelKeys) out[k] = v[k] !== "" ? v[k] : modelKept.has(k) ? "" : undefined;
-  s.lines = rewriteSection(s, "model", out, modelKeys);
-  return commitIni(d, before, dry);
+  const [why, m] = checkModel(v);
+  if (why) return [why, ""];
+  return commit({ ...current(), model: m! }, dry);
 }
 
-function commitIni(d: Doc, before: string, dry: boolean): [string, string] {
-  const diff = lineDiff(before, joinDoc(d));
-  if (dry || diff === "") return ["", diff];
-  return [writeDoc(iniFile, d), diff];
+// the values settings › hosts shows
+export function configValues(): Record<string, any> {
+  const c = current();
+  return { shares: c.shares, model: modelValues(c), platform: process.platform };
 }
 
-// iniValues the sections as settings › hosts shows them
-export function iniValues(): Record<string, any> {
-  return { shares: readShares(), model: readModel(), platform: process.platform };
-}
+// configText the record as lines
+export const configText = () => configLines(current()).join("\n");
 
 // lineDiff the lines b changed from a, "- " gone and "+ " new, unchanged left out
 export function lineDiff(a: string, b: string): string {
@@ -348,6 +237,3 @@ export function lineDiff(a: string, b: string): string {
   }
   return out.join("\n");
 }
-
-// iniText phosphorus.ini as it stands
-export const iniText = () => readText(iniFile);

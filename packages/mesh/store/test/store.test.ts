@@ -9,10 +9,11 @@ const dir = mkdtempSync(join(tmpdir(), "phos-store-"));
 process.env.PHOSPHORUS_REPO_DIR = dir;
 process.env.SELF_HOST = "mike";
 const store = await import("@phosphorus/store");
+const { flushWrites } = await import("@phosphorus/util");
 
 const day = 24 * 3600 * 1000;
 
-test("write, read, list, remove, and what reaches the disk", () => {
+test("write, read, list, remove, and what reaches the disk", async () => {
   store.write("etc/a/one.json", { n: 1 });
   store.write("etc/a/two.json", "two");
   expect(store.read("etc/a/one.json")).toEqual({ n: 1 });
@@ -20,6 +21,7 @@ test("write, read, list, remove, and what reaches the disk", () => {
   const st = store.stamps()["etc/a/one.json"]!;
   expect(st[1]).toBe("mike");
   expect(st[2]).toHaveLength(16);
+  await flushWrites();
   const onDisk = JSON.parse(readFileSync(join(store.Root, "etc/a/one.json"), "utf8"));
   expect(onDisk).toEqual({ t: st[0], h: "mike", c: st[2], data: { n: 1 } });
   store.remove("etc/a/two.json");
@@ -87,12 +89,13 @@ test("oldest wins: the first live version stays, an older one from elsewhere rep
   expect(store.read("etc/e/secret.json")).toBe("older");
 });
 
-test("the legacy shape reads, stamped by nobody, and is rewritten on its next write", () => {
+test("the legacy shape reads, stamped by nobody, and is rewritten on its next write", async () => {
   expect(store.merge({ "etc/f/old.json": { at: 1700000000000, data: { v: 1 } } })).toBe(true);
   expect(store.read("etc/f/old.json")).toEqual({ v: 1 });
   expect(store.stamps()["etc/f/old.json"]!.slice(0, 2)).toEqual([1700000000000, ""]);
   store.write("etc/f/old.json", { v: 2 });
   expect(store.stamps()["etc/f/old.json"]![1]).toBe("mike");
+  await flushWrites();
   expect(readFileSync(join(store.Root, "etc/f/old.json"), "utf8")).toContain('"h":"mike"');
 });
 
@@ -115,13 +118,14 @@ test("the log: a cursor per peer, what changed after it, nothing for a cursor it
   expect(seqs).toEqual([store.seq()]);
 });
 
-test("tombstones: pruned after their keep, never taken back past it, a live file of any age not", () => {
+test("tombstones: pruned after their keep, never taken back past it, a live file of any age not", async () => {
   const old = Date.now() - 89 * day;
   store.merge({
     "etc/h/gone.json": { t: old, h: "zulu", gone: true },
     "etc/h/kept.json": { t: old, h: "zulu", c: "k", data: 1 },
   });
   expect(store.stamps()["etc/h/gone.json"]).toBeDefined();
+  await flushWrites();
   expect(existsSync(join(store.Root, "etc/h/gone.json"))).toBe(true);
   // one past its keep is not even merged
   expect(store.merge({ "etc/h/ancient.json": { t: Date.now() - 91 * day, h: "zulu", gone: true } })).toBe(false);
@@ -142,4 +146,20 @@ test("pull runs the syncer once at a time", async () => {
   });
   await Promise.all([store.pull(), store.pull()]);
   expect(runs).toBe(1);
+});
+
+test("the store moved out of home/ once, merged when both are there", async () => {
+  const { mkdirSync, writeFileSync } = await import("node:fs");
+  const old = store.OldRoot;
+  mkdirSync(join(old, "etc", "m"), { recursive: true });
+  mkdirSync(join(old, "var", "chat"), { recursive: true });
+  const t = Date.now();
+  writeFileSync(join(old, "etc", "m", "new.json"), JSON.stringify({ t, h: "zulu", c: "n", data: "from old" }));
+  writeFileSync(join(old, "etc", "m", "new.json.123.tmp"), "half");
+  writeFileSync(join(old, "var", "chat", "x"), "media");
+  store.mergeOld();
+  expect(existsSync(old)).toBe(false);
+  expect(store.read("etc/m/new.json")).toBe("from old");
+  expect(readFileSync(join(store.Root, "var", "chat", "x"), "utf8")).toBe("media");
+  expect(existsSync(join(store.Root, "etc", "m", "new.json"))).toBe(true);
 });

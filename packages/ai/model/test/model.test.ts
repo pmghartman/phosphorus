@@ -190,7 +190,7 @@ test("fold system", () => {
 test("excuses", () => {
   const a = { host: "a", file: "f", runs: true };
   expect(M.excuse([], undefined)).toBe("not loaded: no host is running the model daemon");
-  expect(M.excuse([a], undefined)).toBe("not loaded: no host has host = true under [model] in its phosphorus.ini");
+  expect(M.excuse([a], undefined)).toBe("not loaded: no host is set as the model host (settings › hosts)");
   expect(M.excuse([a], { ...a, why: "no gpu" })).toBe("not loaded: no gpu");
   expect(M.excuse([a], { ...a, oom: true, server: "loading" })).toBe("out of vram, lower ctx or slots");
   expect(M.excuse([a], { ...a, server: "down", exits: 1, lastExit: "x" })).toBe(
@@ -417,7 +417,7 @@ test("chat for another host", async () => {
   const r = await M.ServeChat(req(), { model: "torus", messages: [] }, true);
   expect(r.status).toBe(503);
   expect(await r.json()).toEqual({
-    error: { message: "not loaded: no host has host = true under [model] in its phosphorus.ini" },
+    error: { message: "not loaded: no host is set as the model host (settings › hosts)" },
   });
   await claim({ ...ready, host: "torus" });
   const far = await M.ServeChat(req(), { model: "torus", messages: [] }, false);

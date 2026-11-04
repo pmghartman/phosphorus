@@ -2,21 +2,38 @@
 // or, for an update, the rebuild; no keys yet: left for phos or the app
 import {
   chmodSync,
+  closeSync,
   copyFileSync,
   mkdirSync,
+  openSync,
   readdirSync,
   readFileSync,
+  readSync,
   realpathSync,
   renameSync,
   rmdirSync,
   rmSync,
   statSync,
+  symlinkSync,
   utimesSync,
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import * as envfile from "@phosphorus/envfile";
-import { at, binPath, envPath, exe, fail, fileExists, home, isWindows, keysMissing, say, version } from "./base.ts";
+import {
+  at,
+  binPath,
+  envPath,
+  exe,
+  fail,
+  fileExists,
+  home,
+  isLinux,
+  isWindows,
+  keysMissing,
+  say,
+  version,
+} from "./base.ts";
 import { desktopLinks } from "./front.ts";
 import { rebuild } from "./native.ts";
 import { start } from "./start.ts";
@@ -73,7 +90,7 @@ export async function install(payload: string, update: boolean) {
 }
 
 // per host, never overwritten once there
-export const kept = (f: string) => f === "config/phosphorus.ini" || f.startsWith("files/");
+export const kept = (f: string) => f.startsWith("config/") || f.startsWith("files/");
 
 // every file under dir, slash-separated and relative, .phosphorus-* ones skipped
 function walk(dir: string): string[] {
@@ -98,6 +115,7 @@ export function syncPayload(src: string, dst: string) {
   for (const f of next) {
     const to = join(dst, f);
     if (kept(f) && fileExists(to)) continue;
+    if (same(join(src, f), to)) continue;
     copyFile(join(src, f), to);
   }
   // the binary, copied in by installSelf
@@ -123,6 +141,33 @@ export function syncPayload(src: string, dst: string) {
     }
   }
   writeFileSync(manifest, next.join("\n") + "\n", { mode: 0o644 });
+}
+
+// same bytes already at to: size and mtime alike (copyFile keeps it), else compared
+export function same(from: string, to: string): boolean {
+  let a: ReturnType<typeof statSync>, b: ReturnType<typeof statSync>;
+  try {
+    a = statSync(from);
+    b = statSync(to);
+  } catch {
+    return false;
+  }
+  if (!b.isFile() || a.size !== b.size) return false;
+  if (a.mtimeMs === b.mtimeMs) return true;
+  const fa = openSync(from, "r"),
+    fb = openSync(to, "r");
+  try {
+    const x = Buffer.alloc(1 << 20),
+      y = Buffer.alloc(1 << 20);
+    for (;;) {
+      const n = readSync(fa, x, 0, x.length, null);
+      if (n === 0) return true;
+      if (readSync(fb, y, 0, n, null) !== n || !x.subarray(0, n).equals(y.subarray(0, n))) return false;
+    }
+  } finally {
+    closeSync(fa);
+    closeSync(fb);
+  }
 }
 
 export function copyFile(from: string, to: string) {
@@ -157,6 +202,9 @@ export function replace(tmp: string, to: string) {
 // phos beside it on Windows, a second link elsewhere
 export const binNames = () => (isWindows ? ["phosphorus", "phos"] : ["phosphorus"]);
 
+// the .deb's binary, dpkg's to replace: the home links it instead of a second copy
+export const packaged = (self: string) => isLinux && self.startsWith("/usr/lib/phosphorus/");
+
 // installSelf this binary into the home's bin/
 function installSelf() {
   const self = exe();
@@ -165,6 +213,14 @@ function installSelf() {
     try {
       if (realpathSync(to) === self) continue;
     } catch {}
+    if (packaged(self)) {
+      mkdirSync(dirname(to), { recursive: true });
+      const tmp = to + ".phosphorus-tmp";
+      rmSync(tmp, { force: true });
+      symlinkSync(self, tmp);
+      renameSync(tmp, to);
+      continue;
+    }
     copyFile(self, to);
     try {
       chmodSync(to, 0o755);

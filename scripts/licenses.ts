@@ -219,7 +219,7 @@ under its own license; the phosphorus license (LICENSE) covers none of them.
 Components are listed by group, then every distinct license text follows once,
 with the components it covers.
 
-With [model] gpu on an nvidia gpu, the model host also downloads NVIDIA's CUDA
+With the model's gpu setting on an nvidia gpu, the model host also downloads NVIDIA's CUDA
 runtime from llama.cpp's releases, under the NVIDIA CUDA EULA
 (https://docs.nvidia.com/cuda/eula/). phosphorus ships no model; a model's
 weights come under its own license.

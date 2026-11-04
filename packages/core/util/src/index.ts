@@ -1,17 +1,27 @@
-// env, JSON files on disk, JSON over HTTP, phosphorus.ini, tailnet name lookups
-// and change-only logging
-import { mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
-import { rename, writeFile } from "node:fs/promises";
+// env, JSON files on disk, JSON over HTTP, this host's settings, tailnet name
+// lookups and change-only logging
+import {
+  closeSync,
+  fdatasyncSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  statSync,
+  writeFileSync,
+  writeSync,
+} from "node:fs";
+import { open, rename } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { env, envInt } from "./env.ts";
-import { IniFile } from "./ini.ts";
+import { type HostConfig, readConfig } from "./hostconf.ts";
 import { logf } from "./log.ts";
 import { run } from "./proc.ts";
 
 export * from "./acl.ts";
 export * from "./clock.ts";
 export { env, envInt } from "./env.ts";
-export { IniFile, parse as parseIni } from "./ini.ts";
+export * from "./hostconf.ts";
 export * from "./log.ts";
 export * from "./net.ts";
 export * from "./proc.ts";
@@ -23,13 +33,17 @@ export const SelfHost = process.env.SELF_HOST ?? "";
 // the install, phosphorus run's PHOSPHORUS_HOME
 export const RepoDir = env("PHOSPHORUS_REPO_DIR", env("PHOSPHORUS_HOME", "/var/lib/phosphorus"));
 export const StateDir = env("STATE_DIR", join(RepoDir, "state"));
-const iniFile = new IniFile(env("PHOSPHORUS_INI_FILE", join(RepoDir, "config", "phosphorus.ini")));
+// the replicated store, never inside a user's reach
+export const SysDir = env("PHOSPHORUS_SYS_DIR", join(RepoDir, "sys"));
+// the retired per-host file, read until the service moves it into the store
+export const LegacyIni = env("PHOSPHORUS_INI_FILE", join(RepoDir, "config", "phosphorus.ini"));
 
 export const now = () => Date.now();
 export const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-// one key of phosphorus.ini, blank when unset
-export const ini = (section: string, key: string) => iniFile.get(section, key);
+// this host's settings, re-read only when changed
+export const hostConfig = (): HostConfig =>
+  readConfig({ sys: SysDir, ini: LegacyIni, state: StateDir, self: SelfHost });
 
 // a file's JSON, undefined on any failure
 export function readJSON<T = any>(file: string): T | undefined {
@@ -85,20 +99,39 @@ export function writeFileAtomic(file: string, data: string | Uint8Array) {
 
 export const writeJSONAtomic = (file: string, v: unknown) => writeFileAtomic(file, marshal(v));
 
-const soonDue = new Map<string, string>();
-const soonBusy = new Set<string>();
+// writeFileAtomic, on the disk before it replaces the old one
+export function writeFileDurable(file: string, data: string) {
+  const tmp = `${file}.${process.pid}.tmp`;
+  const fd = openSync(tmp, "w", 0o644);
+  try {
+    writeSync(fd, data);
+    fdatasyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+  renameSync(tmp, file);
+}
 
-// off the hot path, one write in flight per file, latest next
-export function writeJSONSoon(file: string, v: unknown) {
-  soonDue.set(file, marshal(v));
+const soonDue = new Map<string, { d: string; durable: boolean }>();
+const soonBusy = new Map<string, Promise<void>>();
+
+// off the hot path, one write in flight per file, latest next; durable flushed to
+// the disk before it replaces the old one
+export function writeSoon(file: string, d: string, durable = false) {
+  soonDue.set(file, { d, durable });
   if (soonBusy.has(file)) return;
-  soonBusy.add(file);
-  (async () => {
-    for (let d = soonDue.get(file); d !== undefined; d = soonDue.get(file)) {
+  const p = (async () => {
+    for (let w = soonDue.get(file); w; w = soonDue.get(file)) {
       soonDue.delete(file);
       const tmp = `${file}.${process.pid}.soon.tmp`;
       try {
-        await writeFile(tmp, d, { mode: 0o644 });
+        const fh = await open(tmp, "w", 0o644);
+        try {
+          await fh.writeFile(w.d);
+          if (w.durable) await fh.datasync();
+        } finally {
+          await fh.close();
+        }
         await rename(tmp, file);
       } catch (e) {
         logf("[frontend] couldn't write %s: %s", file, errText(e));
@@ -106,11 +139,16 @@ export function writeJSONSoon(file: string, v: unknown) {
     }
     soonBusy.delete(file);
   })();
+  soonBusy.set(file, p);
 }
 
-// every pending writeJSONSoon done, for shutdown
+export const writeJSONSoon = (file: string, v: unknown) => writeSoon(file, marshal(v));
+
+// every pending write done, for shutdown; ten seconds at most
 export async function flushWrites() {
-  for (let i = 0; i < 200 && soonBusy.size; i++) await sleep(10);
+  const end = Date.now() + 10_000;
+  while (soonBusy.size && Date.now() < end)
+    await Promise.race([Promise.all([...soonBusy.values()]), sleep(Math.max(0, end - Date.now()))]);
 }
 
 export type Response = { status: number; body: any; text: string };

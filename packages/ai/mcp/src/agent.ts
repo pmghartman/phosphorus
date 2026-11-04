@@ -167,7 +167,7 @@ export const agentTools = (): Tool[] => [
     read: true,
     scope: "key",
     description:
-      "A host's config as it stands: phosphorus.ini (shares in [files], [model]) and services, the found pages it " +
+      "A host's config as it stands: its settings (shares, model, stacks; its record in the mesh's store) and services, the found pages it " +
       "publishes (each: name, port, public; installed services are the wizard's). " +
       "Read before service_edit or config_set. Admins only.",
     schema: object({ host: name }, "host"),
@@ -226,13 +226,14 @@ export const agentTools = (): Tool[] => [
     scope: "key",
     destructive: true,
     description:
-      "Set one key of a host's phosphorus.ini, blank value to drop it (a section left empty goes too); phosphorus applies it within seconds. " +
-      "Keys: [files] dir and priv (the shares and their rwd perms, comma-separated in step), [model] host/gpu/url/ctx/slots. " +
+      "Set one of a host's settings, blank value to drop it; phosphorus applies it within seconds. " +
+      "Keys: files dir and priv (the shares and their rwd perms, comma-separated in step), model host/gpu/url/ctx/slots, " +
+      "stacks tz/puid/pgid. " +
       "Read host_config first and keep the other values. Admins only.",
     schema: object(
       {
         host: name,
-        section: { type: "string", enum: ["files", "model"] },
+        section: { type: "string", enum: ["files", "model", "stacks"] },
         key: { type: "string" },
         value: { type: "string" },
         dry_run: { type: "boolean", description: "return the diff alone, nothing written", default: false },

@@ -12,7 +12,7 @@ import {
   env,
   errText,
   FrontendPort,
-  ini,
+  hostConfig,
   logf as log,
   markHot,
   now,
@@ -166,9 +166,9 @@ export function releaseKey(): string {
   return env("APPS_PUBKEY", "");
 }
 
-// the app's minisign key: [apps] <id>_key in phosphorus.ini, else the catalogue's pin
+// the app's minisign key: this host's settings' apps.<id>.key, else the catalogue's pin
 export function keyOf(id: string): string {
-  const set = ini("apps", id + "_key").trim();
+  const set = hostConfig().apps[id]?.key ?? "";
   if (set) return set;
   const pin = appOf(id)?.key ?? "";
   return pin === "release" ? releaseKey() : pin;
@@ -375,11 +375,11 @@ export function verify(app: App, r: Release, data: Uint8Array) {
   const key = keyOf(app.id);
   if (!key && app.server) throw new Error("no key to check it against, and it runs code in phosphorus");
   if (!key) return;
-  if (!r.signature) throw new Error("the release is unsigned, and [apps] " + app.id + "_key is set");
+  if (!r.signature) throw new Error("the release is unsigned, and apps." + app.id + ".key is set");
   try {
     parsePublicKey(key).verify(data, r.signature);
   } catch (e) {
-    throw new Error("the download's signature doesn't match [apps] " + app.id + "_key: " + errText(e));
+    throw new Error("the download's signature doesn't match apps." + app.id + ".key: " + errText(e));
   }
 }
 

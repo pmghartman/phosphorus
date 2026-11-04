@@ -1,7 +1,7 @@
-// the catalogues: each one tarball off GitHub's codeload, kept under
-// state/catalogs/<source>/ with the index read from it, asked again at most
-// daily with its ETag; a failed fetch keeps the last good copy
-import { existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
+// the catalogues: each one tarball off GitHub's codeload, read as it streams in, only
+// its index kept under state/catalogs/<source>/; asked again at most daily with its
+// ETag; a failed fetch keeps the last good index
+import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { errText, logf, now, readJSON, StateDir, writeJSONAtomic } from "@phosphorus/util";
 import type { AppDef, AppSummary, SourceInfo, TreeEntry } from "@phosphorus/wire";
@@ -109,51 +109,40 @@ function load(a: Adapter): Index | undefined {
   return ix;
 }
 
-// the catalogue fetched again when a day old (or force), its index rebuilt
-// when the tarball changed or the adapters did
+// the catalogue fetched again when a day old (or force), its index rebuilt when
+// the tarball changed or the adapters did
 export function refresh(a: Adapter, force = false): Promise<void> {
   const cur = busy.get(a.id);
   if (cur) return cur;
   const p = (async () => {
     const m = meta(a);
-    const tgz = join(dirOf(a), "catalog.tar.gz");
-    const have = existsSync(tgz);
-    let ix = load(a);
-    if (!force && have && ix && now() - m.checkedAt < DayMS) return;
+    // an older release's kept tarball, never read again
+    rmSync(join(dirOf(a), "catalog.tar.gz"), { force: true });
+    const ix = load(a);
+    if (!force && ix && now() - m.checkedAt < DayMS) return;
     const next: Meta = { ...m, checkedAt: now() };
     try {
       const h: Record<string, string> = {};
-      if (have && m.etag) h["If-None-Match"] = m.etag;
-      if (have && m.lastModified) h["If-Modified-Since"] = m.lastModified;
+      if (ix && m.etag) h["If-None-Match"] = m.etag;
+      if (ix && m.lastModified) h["If-Modified-Since"] = m.lastModified;
       const res = await fetcher(urlOf(a), { headers: h });
-      if (res.status === 304) {
-        delete next.error;
-      } else if (res.ok && res.body) {
+      if (res.status === 304) delete next.error;
+      else if (res.ok && res.body) {
+        const etag = res.headers.get("etag") ?? undefined;
+        const built = await build(a, res.body, etag ?? "");
         mkdirSync(dirOf(a), { recursive: true });
-        const part = tgz + ".part";
-        await Bun.write(part, res);
-        renameSync(part, tgz);
-        next.etag = res.headers.get("etag") ?? undefined;
+        writeJSONAtomic(join(dirOf(a), "index.json"), built);
+        indexes.set(a.id, built);
+        merged = undefined;
+        next.etag = etag;
         next.lastModified = res.headers.get("last-modified") ?? undefined;
         next.fetchedAt = now();
         delete next.error;
-        ix = undefined;
+        logf("[catalog] %s: %d apps, %d skipped", a.id, built.apps.length, built.skipped.length);
       } else throw new Error(`${urlOf(a)}: HTTP ${res.status}`);
     } catch (e) {
       next.error = `couldn't fetch: ${errText(e)}`;
       logf("[catalog] %s: %s", a.id, next.error);
-    }
-    if (!ix && existsSync(tgz)) {
-      try {
-        ix = await build(a, Bun.file(tgz).stream(), next.etag ?? "");
-        writeJSONAtomic(join(dirOf(a), "index.json"), ix);
-        indexes.set(a.id, ix);
-        merged = undefined;
-        logf("[catalog] %s: %d apps, %d skipped", a.id, ix.apps.length, ix.skipped.length);
-      } catch (e) {
-        next.error = `couldn't read the tarball: ${errText(e)}`;
-        rmSync(tgz, { force: true });
-      }
     }
     saveMeta(a, next);
   })().finally(() => busy.delete(a.id));

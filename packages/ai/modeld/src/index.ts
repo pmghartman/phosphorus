@@ -1,4 +1,4 @@
-// llama-server on the one host with [model] host = true, fetched there alone,
+// llama-server on the one host whose settings say model host, fetched there alone,
 // every other host asking it through its frontend
 
 import { mkdirSync, readFileSync, renameSync, rmSync, statSync } from "node:fs";
@@ -9,7 +9,7 @@ import {
   env,
   envInt,
   errText,
-  ini,
+  hostConfig,
   marshal,
   Notes,
   now,
@@ -106,11 +106,12 @@ function jsNum(s: string): number {
 }
 
 export function readConfig(): Config {
-  const raw = ini("model", "url");
+  const m = hostConfig().model;
+  const raw = m.url;
   const l = modelLink(raw);
-  let ctx = Math.trunc(jsNum(ini("model", "ctx")));
+  let ctx = m.ctx;
   if (ctx === 0) ctx = defaultCtx;
-  let slots = Math.floor(jsNum(ini("model", "slots")));
+  let slots = m.slots;
   if (slots === 0) slots = defaultSlots;
   if (slots < 1) slots = 1;
   return {
@@ -119,8 +120,8 @@ export function readConfig(): Config {
     file: l?.file ?? "",
     ctx,
     slots,
-    host: ini("model", "host") === "true",
-    gpu: ini("model", "gpu") === "true",
+    host: m.host,
+    gpu: m.gpu,
   };
 }
 

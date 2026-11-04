@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -10,9 +10,20 @@ const base = await import("../src/base.ts");
 const { durText, lastLine, setHome, splitLines, sshInclude } = base;
 const { plistText, xmlEsc } = await import("../src/darwin.ts");
 const { escapeArg, psq } = await import("../src/windows.ts");
-const { absTo, bakeEnv, envFileText, migrateHome, oldHomes, readEnvFile, signature, splitComma, withPath } =
-  await import("../src/native.ts");
-const { kept, syncPayload } = await import("../src/install.ts");
+const {
+  absTo,
+  bakeEnv,
+  deadState,
+  envFileText,
+  migrateHome,
+  oldHomes,
+  readEnvFile,
+  signature,
+  splitComma,
+  tidy,
+  withPath,
+} = await import("../src/native.ts");
+const { kept, packaged, same, syncPayload } = await import("../src/install.ts");
 const { field } = await import("../src/upgrade.ts");
 const { keySet } = await import("../src/start.ts");
 const { desktopURLs, frontPage } = await import("../src/front.ts");
@@ -197,6 +208,37 @@ test("syncPayload copies the release, keeps this host's config, prunes the last 
   expect(kept("config/phosphorus.ini")).toBe(true);
   expect(kept("files/a/b")).toBe(true);
   expect(kept("web/a")).toBe(false);
+});
+
+test("an unchanged file left as it is, a changed one copied", () => {
+  const src = join(dir, "same-src"),
+    dst = join(dir, "same-dst");
+  mkdirSync(src, { recursive: true });
+  mkdirSync(dst, { recursive: true });
+  writeFileSync(join(src, "a"), "one");
+  syncPayload(src, dst);
+  // same bytes, other mtime: compared, not rewritten
+  utimesSync(join(dst, "a"), 1, 1);
+  expect(same(join(src, "a"), join(dst, "a"))).toBe(true);
+  syncPayload(src, dst);
+  expect(statSync(join(dst, "a")).mtimeMs).toBe(1000);
+  writeFileSync(join(src, "a"), "two");
+  expect(same(join(src, "a"), join(dst, "a"))).toBe(false);
+  syncPayload(src, dst);
+  expect(readFileSync(join(dst, "a"), "utf8")).toBe("two");
+  expect(same(join(src, "a"), join(dir, "nope"))).toBe(false);
+  expect(packaged("/usr/lib/phosphorus/bin/phosphorus")).toBe(process.platform === "linux");
+  expect(packaged("/var/lib/phosphorus/bin/phosphorus")).toBe(false);
+});
+
+test("tidy sweeps state no release reads", () => {
+  setHome(dir);
+  mkdirSync(join(dir, "state"), { recursive: true });
+  for (const f of deadState) writeFileSync(join(dir, "state", f), "x");
+  writeFileSync(join(dir, "state", "native-sig"), "keep");
+  tidy();
+  for (const f of deadState) expect(existsSync(join(dir, "state", f))).toBe(false);
+  expect(existsSync(join(dir, "state", "native-sig"))).toBe(true);
 });
 
 test("small helpers", () => {

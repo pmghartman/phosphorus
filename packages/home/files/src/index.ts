@@ -1,6 +1,6 @@
 import { realpathSync } from "node:fs";
 import { join } from "node:path";
-import { ini, RepoDir, StateDir as UtilStateDir } from "@phosphorus/util";
+import { hostConfig, RepoDir, StateDir as UtilStateDir } from "@phosphorus/util";
 import "./shares.ts";
 import "./paths.ts";
 import "./listing.ts";
@@ -10,7 +10,7 @@ import "./gate.ts";
 
 export const StateDir = UtilStateDir;
 export const Home = "home";
-// every user's home, shared/ and the system's .sys/: <phosphorus>/home
+// every user's home and shared/: <phosphorus>/home
 export const HomeRoot = join(RepoDir, Home);
 
 // a text file read or saved whole: source as big as an amalgamation's
@@ -24,6 +24,7 @@ export const Trash = ".trash";
 export const fullPerms = "rwd";
 export const Desktop = "Desktop";
 export const Shared = "shared";
+// the store's old place in the home, hidden and never synced
 export const Sys = ".sys";
 // what a path nobody may see answers, the same as one that is not there
 export const Gone = "no such file or folder";
@@ -58,8 +59,8 @@ export const splitList = (v: string) =>
     .map((s) => s.trim())
     .filter(Boolean);
 
-// [files] dir as phosphorus.ini says now
-export const configuredDirs = () => splitList(ini("files", "dir"));
+// the shares' folders as this host's settings say now
+export const configuredDirs = () => hostConfig().shares.map((s) => s.dir);
 export const mountedDirs = () => splitList(process.env.PHOSPHORUS_FILES_DIRS ?? "");
 
 // a path with forward slashes, trailing ones dropped

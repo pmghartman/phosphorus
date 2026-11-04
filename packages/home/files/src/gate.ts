@@ -5,7 +5,7 @@ import { RepoDir } from "@phosphorus/util";
 import { absRe, configuredDirs, Desktop, Gone, HomeRoot, mountedDirs, Shared, Sys, slashed } from "./index.ts";
 import { type Entry } from "./paths.ts";
 
-// what phosphorus.ini asks for against what is mounted
+// what the settings ask for against what is mounted
 
 export function pending(): boolean {
   const home = slashed(RepoDir);
@@ -38,7 +38,7 @@ export function homeGate(who: Who | undefined, rel: string, isUser: (u: string) 
   if (!who) return "log in to reach home";
   const seg = firstSeg(rel);
   if (who.user) ensureHome(who.user);
-  // the system's folder: admins see it, everyone else gets nothing, as if it were not there
+  // the store's old place, left only if its move failed: admins alone
   if (seg === Sys) return who.admin ? "" : Gone;
   if (!seg || seg === who.user || seg === Shared) return "";
   if (isUser(seg)) return "another user's home";

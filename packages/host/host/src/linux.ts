@@ -12,12 +12,12 @@ import {
   fileExists,
   has,
   home,
-  iniGet,
   isModelHost,
   output,
   quiet,
   run,
   say,
+  settings,
   sleep,
   spawnIO,
 } from "./base.ts";
@@ -86,7 +86,7 @@ async function missingDeps(): Promise<string[]> {
       { lib: "libgomp.so.1", pkg: "libgomp1" },
     );
     // llama-server's vulkan build, for amd and intel gpus
-    if (iniGet("model", "gpu") === "true" && !has("nvidia-smi"))
+    if (settings().model.gpu && !has("nvidia-smi"))
       want.push(
         { lib: "libvulkan.so.1", pkg: "libvulkan1" },
         { file: "/usr/share/vulkan/icd.d/radeon_icd.x86_64.json", pkg: "mesa-vulkan-drivers" },

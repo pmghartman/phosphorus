@@ -4,10 +4,9 @@
 // versions when their digests differ (the link lives in peers)
 
 import { createHash } from "node:crypto";
-import { type Dirent, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { cpSync, type Dirent, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { HomeRoot, Sys } from "@phosphorus/files";
-import { logf, markHot, SelfHost, writeFileAtomic } from "@phosphorus/util";
+import { errText, logf, markHot, RepoDir, SelfHost, SysDir, writeFileDurable, writeSoon } from "@phosphorus/util";
 import { ahead as aheadOf, contentHash, newer, sameVer, seen, tick, type Ver, wall } from "./hlc.ts";
 
 // the clock itself, for an index kept beside the store (the synced home)
@@ -16,8 +15,10 @@ export { AheadMs, setClockSkew, type Ver } from "./hlc.ts";
 // a stamp too far past this clock to take
 export const ahead = (t: unknown) => typeof t === "number" && aheadOf(t);
 
-// in <phosphorus>/home/.sys, hidden from every user but the admins
-export const Root = join(HomeRoot, Sys);
+// <phosphorus>/sys, root's alone, outside every user's files
+export const Root = SysDir;
+// where releases before 3.7 kept it, inside the users' home
+export const OldRoot = join(RepoDir, "home", ".sys");
 
 const relRe = /^(etc|home)(\/[a-z0-9][a-z0-9._-]{0,63}){1,5}\.json$/;
 // a replicated path
@@ -103,7 +104,9 @@ function parseFile(v: unknown): File | undefined {
   return { t, h, c, data: o.data };
 }
 
-function load(dir: string, rel: string) {
+// each file under dir handed to fn as rel and parsed entry; a write's leftover
+// temp swept, an unreadable file logged and left to the peers to send again
+function walk(dir: string, rel: string, fn: (rel: string, f: File) => void) {
   let ents: Dirent[];
   try {
     ents = readdirSync(dir, { withFileTypes: true });
@@ -112,21 +115,60 @@ function load(dir: string, rel: string) {
   }
   for (const e of ents) {
     const r = rel ? `${rel}/${e.name}` : e.name;
+    const abs = join(dir, e.name);
     if (e.isDirectory()) {
-      if (r !== "var") load(join(dir, e.name), r);
-    } else if (relRe.test(r)) {
+      if (r !== "var") walk(abs, r, fn);
+    } else if (e.name.endsWith(".tmp")) rmSync(abs, { force: true });
+    else if (relRe.test(r)) {
+      let f: File | undefined;
       try {
-        const f = parseFile(JSON.parse(readFileSync(join(dir, e.name), "utf8")));
-        if (f) {
-          tree.set(r, f);
-          seen(f.t);
-        }
-      } catch {}
+        f = parseFile(JSON.parse(readFileSync(abs, "utf8")));
+      } catch {
+        logf("[sys] %s unreadable, left for the peers to send again", r);
+      }
+      if (f) fn(r, f);
     }
   }
 }
 
-function put(rel: string, f: File) {
+function load(dir: string, rel: string) {
+  walk(dir, rel, (r, f) => {
+    tree.set(r, f);
+    seen(f.t);
+  });
+}
+
+// the store from inside home/ moved to its own place once: renamed whole, or file by
+// file with the newest winning when both are there, var/ merged, the old gone after
+function renameOld() {
+  if (!existsSync(OldRoot) || existsSync(Root)) return;
+  try {
+    mkdirSync(dirname(Root), { recursive: true });
+    renameSync(OldRoot, Root);
+    logf("[sys] the store moved from %s to %s", OldRoot, Root);
+  } catch {}
+}
+
+// what renameOld couldn't, merged into the loaded tree
+export function mergeOld() {
+  if (!existsSync(OldRoot)) return;
+  walk(OldRoot, "", (r, f) => {
+    if (wins(r, f, f.c)) put(r, f, true);
+  });
+  const ov = join(OldRoot, "var");
+  if (existsSync(ov))
+    try {
+      cpSync(ov, join(Root, "var"), { recursive: true, force: false, errorOnExist: false });
+    } catch (e) {
+      logf("[sys] couldn't copy all of %s: %s, it stays", ov, errText(e));
+      return;
+    }
+  rmSync(OldRoot, { recursive: true, force: true });
+  logf("[sys] the store merged from %s into %s", OldRoot, Root);
+}
+
+// sync: on disk before it returns, for a move that deletes the source after
+function put(rel: string, f: File, sync = false) {
   tree.set(rel, f);
   digestMemo = "";
   seen(f.t);
@@ -141,7 +183,11 @@ function put(rel: string, f: File) {
   markHot();
   const abs = join(Root, rel);
   mkdirSync(dirname(abs), { recursive: true, mode: 0o700 });
-  writeFileAtomic(abs, encode(f));
+  // off the event loop, a burst to one file one write; on disk before it replaces the last
+  const text = encode(f);
+  // sync: a pending write of this file landing after holds the same bytes
+  if (sync) writeFileDurable(abs, text);
+  writeSoon(abs, text, true);
 }
 
 const live = (f: File | undefined) => !!f && !f.gone && f.data !== undefined && f.data !== null;
@@ -152,12 +198,12 @@ export function read<T = any>(rel: string): T | undefined {
   return live(f) ? (f!.data as T) : undefined;
 }
 
-// a file written, the oldest-wins ones never overwritten
-export function write(rel: string, data: unknown) {
+// a file written, the oldest-wins ones never overwritten; now: on disk before it returns
+export function write(rel: string, data: unknown, now = false) {
   if (!relRe.test(rel)) throw new Error(`bad sys path ${rel}`);
   if (oldest.has(rel) && read(rel) !== undefined) return;
   const copy = JSON.parse(JSON.stringify(data ?? null));
-  put(rel, { t: tick(tree.get(rel)?.t), h: SelfHost, c: contentHash(copy), data: copy });
+  put(rel, { t: tick(tree.get(rel)?.t), h: SelfHost, c: contentHash(copy), data: copy }, now);
 }
 
 // a live file removed, a tombstone left
@@ -295,7 +341,10 @@ let started = false;
 export function start() {
   if (started) return;
   started = true;
+  renameOld();
+  mkdirSync(Root, { recursive: true, mode: 0o700 });
   load(Root, "");
+  mergeOld();
   prune();
   setInterval(prune, pruneEveryMs);
 }

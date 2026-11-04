@@ -173,8 +173,8 @@ jobs:
         with:
           name: notices
           path: notices
-      # the release's tree (.github and packaging export-ignored) and its bundled tools;
-      # Linux's packaged at once, the tools fetched beside the compile
+      # the release hosts receive: what the binary reads off disk, nothing it embeds,
+      # and its bundled tools; Linux's packaged at once, the tools fetched beside the compile
       - name: host binary
         shell: bash
         # the release key baked in, the one first-party apps' bundles are checked against
@@ -182,8 +182,8 @@ jobs:
           FEED_PUBKEY: ${{ vars.UPDATE_PUBKEY }}
         run: |
           mkdir -p out upd art $APP/payload
-          git archive HEAD | tar -x -C $APP/payload && echo "$VER" > $APP/payload/VERSION
-          cp notices/THIRD_PARTY_NOTICES.txt notices/phosphorus.cdx.json $APP/payload/
+          mkdir -p $APP/payload && echo "$VER" > $APP/payload/VERSION
+          cp LICENSE notices/THIRD_PARTY_NOTICES.txt notices/phosphorus.cdx.json $APP/payload/
           case "${{ matrix.name }}" in
             linux-*)
               packaging/tools.sh linux ${{ matrix.arch }} art/tools > art/tools.log 2>&1 & t=$!
@@ -271,7 +271,7 @@ jobs:
             echo
             echo "Then enter the Tailscale auth key when asked; every other host copies the rest from the mesh. Open \`http://HOST\` from any device on the tailnet, by a host's name or tailnet IP. The first login is \`admin\` with your admin password."
             echo
-            echo "Installed hosts update themselves: **Check for Updates** in the menu bar or tray, \`phos update all\`, or the mesh update in the browser, every host at once."
+            echo "Installed hosts update themselves: **Check for Updates** in the menu bar or tray, \`phos update\`, or the mesh update in the browser, every host at once."
           } > "$RUNNER_TEMP/notes.md"
           cat "$RUNNER_TEMP/notes.md"
       - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3

@@ -10,7 +10,7 @@ import { pct, uptime } from './glyphs.ts';
 import { type Panel, ST_STALE_MS, type StHost, stNet } from './state.ts';
 
 // the mesh's models as the status tab shows them: nothing at all until some
-// host has [model] host = true, and then only on the hosts that do
+// host is set as the model host, and then only on the hosts that are
 
 export const stModel = () => stNet?.model || null;
 export const stModels = () => stModel()?.models || [];

@@ -1,7 +1,7 @@
 // --- settings › hosts, in three parts down the rail. Status: a bar of the mesh's hosts over the
 // mesh's stats summed, or one host's in full. Graph: the mesh graph with its pings. Configure: for
-// an admin, a host they're signed into (its login saved in their vault) and its own phosphorus.ini: the folders
-// it shares, the model it runs
+// an admin, a host they're signed into (its login saved in their vault) and its settings: the folders it
+// shares, the model it runs
 
 import { appCall } from '../apps/index.ts';
 import { drawMesh, meshPanel, phosphorusHosts, pingHosts } from '../features/mesh/mesh.ts';

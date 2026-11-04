@@ -1,4 +1,4 @@
-// shares: the [files] dirs and the home
+// shares: the settings' folders and the home
 import { mkdirSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
@@ -21,7 +21,7 @@ export function makeShare(id: string, perms: string, root: string): Share {
   return { id, label: root, perms, root, real: realOf(root) ?? root, ok };
 }
 
-// the [files] dirs as shares; none configured, only the home
+// the settings' folders as shares; none configured, only the home
 export function buildShares(): Share[] {
   const dirs = mountedDirs();
   if (!dirs.length) return [];

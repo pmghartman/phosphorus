@@ -1,10 +1,10 @@
-// phosphorus.ini's [files] and [model] host and gpu applied
+// this host's shares and model host and gpu settings applied
 // as soon as edited, a rebuild
 import { join } from "node:path";
 import {
   env,
+  hostConfig,
   IdleMS,
-  ini,
   logf,
   marshal,
   now,
@@ -24,11 +24,12 @@ const settleMS = 2000;
 
 // the signature JS wrote, the same bytes
 export function current(): string {
+  const c = hostConfig();
   return marshal({
-    dir: ini("files", "dir"),
-    priv: ini("files", "priv"),
-    gpu: ini("model", "gpu") === "true",
-    model: ini("model", "host") === "true",
+    dir: c.shares.map((s) => s.dir).join(", "),
+    priv: c.shares.map((s) => s.perms).join(", "),
+    gpu: c.model.gpu,
+    model: c.model.host,
   });
 }
 
@@ -55,7 +56,7 @@ export function start(busy: () => boolean) {
       }
       if (s === applied() || now() - since < settleMS || busy()) continue;
       writeJSONAtomic(appliedFile, { sig: s });
-      logf("[reconfig] phosphorus.ini [files] or [model] host or gpu changed, rebuilding");
+      logf("[reconfig] shares or model host or gpu changed, rebuilding");
       const r = await run([rebuildCmd, "rebuild", "--home", RepoDir], { timeoutMs: rebuildTimeoutMs });
       if (!r.ok) logf("[reconfig] rebuild failed: %s", last(r.stderr || r.error || `exit status ${r.code}`));
       else if (last(r.stdout)) logf("[reconfig] %s", last(r.stdout));

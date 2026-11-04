@@ -3,7 +3,7 @@
 import { existsSync } from "node:fs";
 import { open } from "node:fs/promises";
 import { join } from "node:path";
-import { editIni, editModel, editShares, iniText, iniValues } from "@phosphorus/config";
+import { configText, configValues, current, editKey, editModel, editShares } from "@phosphorus/config";
 import { jsNumber } from "@phosphorus/files";
 import * as peers from "@phosphorus/peers";
 import { editService, health, listed } from "@phosphorus/services";
@@ -212,8 +212,8 @@ export async function onHost(
   return peerCall(host, { host: ip, method: "POST", path, body, timeoutMs: waitMs });
 }
 
-// configOp this host's config: get phosphorus.ini and its services' records, or set one
-// service or ini key, or settings › hosts' shares or model whole; dry returning the
+// configOp this host's config: get its settings record and services' records, or set
+// one service or key, or settings › hosts' shares or model whole; dry returning the
 // diff alone, a service's outcome waited on once written
 export async function configOp(p: Record<string, any>): Promise<Res> {
   let why = "",
@@ -225,10 +225,12 @@ export async function configOp(p: Record<string, any>): Promise<Res> {
         200,
         {
           host: selfHost,
-          "phosphorus.ini": iniText(),
+          config: current(),
+          lines: configText(),
           services: listed(),
           shares: filesInfo().shares,
-          ini: iniValues(),
+          // the form's values, the key older desktops read
+          ini: configValues(),
         },
       ];
     }
@@ -245,8 +247,10 @@ export async function configOp(p: Record<string, any>): Promise<Res> {
       [why, diff] = editService(str(p.name), set, truthy(p.remove), dry);
       break;
     }
+    // "ini" the name older peers send
+    case "key":
     case "ini":
-      [why, diff] = editIni(str(p.section), str(p.key), str(p.value), dry);
+      [why, diff] = editKey(str(p.section), str(p.key), str(p.value), dry);
       break;
     case "shares": {
       if (!Array.isArray(p.shares)) return [400, { error: "shares is a list" }];
@@ -261,7 +265,7 @@ export async function configOp(p: Record<string, any>): Promise<Res> {
       break;
     }
     default:
-      return [400, { error: "op is get, service, ini, shares or model" }];
+      return [400, { error: "op is get, service, key, shares or model" }];
   }
   if (why) return [400, { error: why }];
   const out: Record<string, any> = { ok: true, host: selfHost, diff };

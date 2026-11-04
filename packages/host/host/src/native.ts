@@ -2,6 +2,8 @@
 // (re)starts it, stop and restart
 import { createHash } from "node:crypto";
 import {
+  chmodSync,
+  chownSync,
   lstatSync,
   mkdirSync,
   readdirSync,
@@ -25,15 +27,16 @@ import {
   home,
   inDpkg,
   iniFile,
-  iniGet,
   isLinux,
   isModelHost,
   isWindows,
+  legacyHomeDir,
   lockEnv,
   println,
   readTrim,
   say,
   setTag,
+  settings,
   sleep,
   statOf,
   version,
@@ -57,7 +60,6 @@ export function bakeEnv(): Record<string, string> {
     PHOSPHORUS_REPO_DIR: home,
     STATE_DIR: at("state"),
     PHOSPHORUS_INI_FILE: iniFile(),
-    PHOSPHORUS_CONFIG_DIR: at("config"),
     PHOSPHORUS_ENV_FILE: envPath(),
     VERSION_FILE: at("VERSION"),
     REBUILD_CMD: binPath("phosphorus"),
@@ -67,18 +69,17 @@ export function bakeEnv(): Record<string, string> {
   if (process.env.TS_HOSTNAME) m.TS_HOSTNAME = process.env.TS_HOSTNAME;
   const dirs: string[] = [],
     perms: string[] = [];
-  const ps = splitComma(iniGet("files", "priv"));
-  splitComma(iniGet("files", "dir")).forEach((d, i) => {
-    d = d.replace(/[/\\]+$/, "");
-    if (!d) return;
+  for (const sh of settings().shares) {
+    const d = sh.dir.replace(/[/\\]+$/, "");
+    if (!d) continue;
     const abs = normalize(absTo(home, d));
     if (!fileExists(abs)) {
       eprint(`[files] skipping '${d}'; no such directory on this host\n`);
-      return;
+      continue;
     }
     dirs.push(abs);
-    perms.push(ps[i] || "rwd");
-  });
+    perms.push(sh.perms || "rwd");
+  }
   if (dirs.length) {
     m.PHOSPHORUS_FILES_DIRS = dirs.join(",");
     m.PHOSPHORUS_FILES_PERMS = perms.join(",");
@@ -203,6 +204,7 @@ export async function rebuild() {
       await os.aptInstall(missing);
     }
     mkdirSync(at("state"), { recursive: true });
+    tidy();
     const old = oldHomes();
     const env = bakeEnv();
     const sig = signature(env);
@@ -251,6 +253,36 @@ export async function rebuild() {
   }
 }
 
+// --- the home kept safe and clean ---------------------------------------------------
+
+// state/ files no release reads any more
+export const deadState = [
+  "git-hosts-seen.json",
+  "git-roster.json",
+  "model-active.json",
+  "model-keys.json",
+  "model-roles.json",
+  "self-muon",
+  "seen-version.json",
+  "update-result.json",
+  "restart.log",
+];
+
+// what root runs from root's alone: a login owning state/ or bin/ could swap
+// native.env or the binary under the service; dead state swept
+export function tidy() {
+  if (isLinux && process.getuid?.() === 0)
+    for (const d of [home, at("state"), at("bin"), at("sys")]) {
+      try {
+        const st = lstatSync(d);
+        if (st.isSymbolicLink()) continue;
+        if (st.uid !== 0 || st.gid !== 0) chownSync(d, 0, 0);
+        if (st.mode & 0o022) chmodSync(d, st.mode & 0o755);
+      } catch {}
+    }
+  for (const f of deadState) rmSync(at("state", f), { force: true });
+}
+
 // removeOne a file, link or empty folder, as os.Remove did; anything else left
 function removeOne(p: string) {
   try {
@@ -266,7 +298,7 @@ function removeOne(p: string) {
 
 // oldHomes where earlier releases kept home/: files/home, or under an old [home] dir
 export function oldHomes(): string[] {
-  const dirs = [readTrim(at("state", "native-home")), iniGet("home", "dir"), at("files")];
+  const dirs = [readTrim(at("state", "native-home")), legacyHomeDir(), at("files")];
   const out: string[] = [];
   for (const d of dirs) {
     if (!d) continue;

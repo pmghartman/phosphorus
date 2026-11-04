@@ -184,7 +184,7 @@ export function infoRows(a: StoreApp, f: Facts): HTMLElement {
     'source',
     Object.assign(el('a', '', a.repo.replace(/^https?:\/\//, '')), { href: a.repo, target: '_blank', rel: 'noopener' }),
   );
-  row('verified by', a.signed ? 'sha256 and the signature against [apps] key' : 'sha256 from the release feed');
+  row('verified by', a.signed ? 'sha256 and the signature against the app key' : 'sha256 from the release feed');
   if (a.agents.length) row('asks models as', a.agents.join(', '), 'mono');
   row('category', a.category);
   return dl;

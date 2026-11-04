@@ -167,7 +167,7 @@ export function Summary(): Record<string, any> {
 
 export function excuse(states: State[], s: State | undefined): string {
   if (!states.length) return "not loaded: no host is running the model daemon";
-  if (!s) return "not loaded: no host has host = true under [model] in its phosphorus.ini";
+  if (!s) return "not loaded: no host is set as the model host (settings › hosts)";
   const why = str(s.why);
   if (why) return "not loaded: " + why;
   if (truthy(s.oom) && s.server !== "ready") return "out of vram, lower ctx or slots";

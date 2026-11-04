@@ -21,7 +21,7 @@ import * as store from "@phosphorus/store";
 import {
   env,
   errText,
-  ini,
+  hostConfig,
   markHot,
   now,
   obj,
@@ -250,7 +250,8 @@ export function webRows(): { name: string; port: number; scheme: string; aliases
 // --- the project's files -------------------------------------------------------
 
 function ctxOf(id: string, ip: string): Ctx {
-  let tz = ini("stacks", "tz") || "";
+  const st = hostConfig().stacks;
+  let tz = st.tz;
   if (!tz)
     try {
       tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
@@ -260,8 +261,8 @@ function ctxOf(id: string, ip: string): Ctx {
   return {
     dir: dirOf(id).replaceAll("\\", "/"),
     ip,
-    puid: ini("stacks", "puid") || "1000",
-    pgid: ini("stacks", "pgid") || "1000",
+    puid: st.puid || "1000",
+    pgid: st.pgid || "1000",
     tz,
     domain: env("BASE_DOMAIN"),
   };

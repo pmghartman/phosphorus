@@ -2,6 +2,7 @@
 // host's state for peers, and the websockets
 
 import * as catalog from "@phosphorus/catalog";
+import { migrate as migrateConfig } from "@phosphorus/config";
 import * as files from "@phosphorus/files";
 import { type Caller, type Loc, init as mcpInit } from "@phosphorus/mcp";
 import { Assign, Summary } from "@phosphorus/model";
@@ -61,6 +62,7 @@ export async function start(): Promise<Server<WSData>> {
   files.init();
   users.Init();
   store.start();
+  migrateConfig();
   update.onFinish(rememberChain);
   update.onFailed(() => setUpdating(false));
   setInterval(reapShells, 60000);
