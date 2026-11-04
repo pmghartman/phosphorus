@@ -15,7 +15,6 @@ import {
   isTailnet,
   maxJSONBody,
   maxSaveBody,
-  onJSON,
   type Res,
   readRaw,
   refuse,
