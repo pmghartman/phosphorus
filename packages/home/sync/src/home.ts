@@ -480,9 +480,12 @@ export class HomeSync {
     let kept = false;
     const to = conflictName(rel, cur.h, cur.t, (x) => {
       const e = this.idx.get(x);
-      // another host's copy of this same clash already here
-      if (e && !e.gone && e.c === cur.c) kept = true;
-      return kept || !!e || existsSync(this.abs(x));
+      // another host's copy of this same clash already here: stop looking
+      if (e && !e.gone && e.c === cur.c) {
+        kept = true;
+        return false;
+      }
+      return !!e || existsSync(this.abs(x));
     });
     if (kept) return rmSync(this.abs(rel), { force: true });
     renameSync(this.abs(rel), this.abs(to));

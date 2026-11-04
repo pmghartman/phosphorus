@@ -82,6 +82,29 @@ test("two edits neither saw: the newest stays, the other kept as a conflict copy
   }
 });
 
+test("the clash's copy already here from a third host: the loser dropped, never looped on", async () => {
+  const a = host("alpha"),
+    b = host("bravo"),
+    c = host("charlie");
+  put(a, "ann/plan.md", "base");
+  await swap(a, b);
+  await swap(a, c);
+  put(a, "ann/plan.md", "alpha's edit");
+  await a.scan();
+  await c.merge(a.self, a.stamps(), from(a));
+  put(b, "ann/plan.md", "bravo's later edit");
+  await b.scan();
+  // charlie sets alpha's aside, and pushes only the copy it made
+  await c.merge(b.self, b.stamps(), from(b));
+  const copy = conflictName("ann/plan.md", "alpha", a.get("ann/plan.md")!.t, () => false);
+  expect(get(c, copy)).toBe("alpha's edit");
+  await a.merge(c.self, c.stamps([copy]), from(c));
+  await a.merge(c.self, c.stamps(), from(c));
+  expect(get(a, "ann/plan.md")).toBe("bravo's later edit");
+  expect(ls(a)).toEqual([basename(copy), "plan.md"]);
+  expect(get(a, copy)).toBe("alpha's edit");
+});
+
 test("a delete reaches the other host's trash; a tombstone is kept 90 days, then pruned", async () => {
   const a = host("alpha"),
     b = host("bravo");
