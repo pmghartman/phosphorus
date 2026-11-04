@@ -56,6 +56,14 @@ async function localOp(op: string, p: Record<string, any>): Promise<Res> {
       return [200, { closed: p.id }];
     case "exec":
       return localExec(str(p.user), str(p.pass), str(p.cmd), str(p.stdin), Math.trunc(num(p.timeout)));
+    case "exec_via": {
+      // a peer whose phosphorus isn't answering, its own sshd reached over the tailnet
+      const t = str(p.target);
+      if (!/^[a-z0-9][a-z0-9-]*$/.test(t) || t === selfHost) return [400, { error: "a peer to sign in to" }];
+      const ip = await tailnetIP(t);
+      if (!ip) return [404, { error: `${t} has no tailnet address here` }];
+      return localExec(str(p.user), str(p.pass), str(p.cmd), str(p.stdin), Math.trunc(num(p.timeout)), t, ip);
+    }
     case "shell":
       return shellExec(
         str(p.user),
@@ -219,7 +227,15 @@ class Capped {
 
 // localExec one command as user over this host's own sshd, no pty, stdin fed
 // it: its exit code, stdout and stderr; killed past timeout seconds
-async function localExec(user: string, pass: string, cmd: string, stdin: string, timeout: number): Promise<Res> {
+async function localExec(
+  user: string,
+  pass: string,
+  cmd: string,
+  stdin: string,
+  timeout: number,
+  host = selfHost,
+  sshHost = hostSSHHost,
+): Promise<Res> {
   if (user === "" || cmd.trim() === "") return [400, { error: "a login and a command" }];
   if (timeout < 1 || timeout > execMax) timeout = 60;
   let c: Client;
@@ -233,8 +249,8 @@ async function localExec(user: string, pass: string, cmd: string, stdin: string,
       });
       cl.on("keyboard-interactive", (_n, _i, _l, prompts, finish) => finish(prompts.map(() => pass)));
       cl.connect({
-        host: hostSSHHost,
-        port: Number(hostSSHPort) || 22,
+        host: sshHost,
+        port: sshHost === hostSSHHost ? Number(hostSSHPort) || 22 : 22,
         username: user,
         password: pass,
         tryKeyboard: true,
@@ -244,8 +260,8 @@ async function localExec(user: string, pass: string, cmd: string, stdin: string,
   } catch (e) {
     const msg = errText(e);
     if (/authentication methods failed|unable to authenticate/i.test(msg))
-      return [403, { error: `the saved login for ${selfHost} was refused` }];
-    return [502, { error: `ssh to ${selfHost}: ${msg}` }];
+      return [403, { error: `the saved login for ${host} was refused` }];
+    return [502, { error: `ssh to ${host}: ${msg}` }];
   }
   c.on("error", () => {});
   const stdout = new Capped(execOutMax),
@@ -281,7 +297,7 @@ async function localExec(user: string, pass: string, cmd: string, stdin: string,
     c.end();
   }
   const out: Record<string, any> = {
-    host: selfHost,
+    host,
     user,
     exit: code,
     stdout: stdout.text(),

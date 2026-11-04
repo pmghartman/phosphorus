@@ -338,3 +338,40 @@ test("terminal_run git hands the forgejo login to a fresh shell", async () => {
   );
   expect(got).toMatchObject({ op: "shell", p: { cmd: "ls", stdin: "", reset: true } });
 });
+
+test("terminal_run on a quiet phosphorus host signs in from this host over the tailnet", async () => {
+  let got: any;
+  init({
+    self: () => ({ host: "h", version: "1" }),
+    tailnet: () => [
+      { name: "q", phosphorus: false, phosphorusSeen: true },
+      { name: "phone", phosphorus: false },
+    ],
+    domain: () => "mesh.example",
+    actions: acts({
+      op: (h, op, p) => ((got = { h, op, p }), [200, { exit: 0, stdout: "ok" }]),
+      userUIAsync: () => {},
+    }),
+  });
+  const c: Caller = { user: "u", login: () => ({ user: "me", pass: "pw" }) };
+  const [, o] = await handle(
+    rpc("tools/call", { name: "terminal_run", arguments: { host: "q", command: "uptime" } }),
+    false,
+    c,
+  );
+  expect(o.result.isError).toBeUndefined();
+  expect(got).toMatchObject({ h: "h", op: "exec_via", p: { target: "q", user: "me", pass: "pw", cmd: "uptime" } });
+  // never a phosphorus host, or a tab: still refused
+  const [, n] = await handle(
+    rpc("tools/call", { name: "terminal_run", arguments: { host: "phone", command: "ls" } }),
+    false,
+    c,
+  );
+  expect(n.result.content[0].text).toMatch(/^not_found: /);
+  const [, t] = await handle(
+    rpc("tools/call", { name: "terminal_run", arguments: { host: "q", command: "ls", mode: "tab" } }),
+    false,
+    c,
+  );
+  expect(t.result.content[0].text).toMatch(/^not_found: /);
+});

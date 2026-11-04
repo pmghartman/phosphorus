@@ -22,7 +22,7 @@ export type Asker = { name: string; ui: (action: Action) => boolean | Promise<bo
 export type Actions = {
   agentModel: (agent: string, slot: string, model: string) => R;
   update: (action: string, admin: boolean, only: string[]) => R;
-  // op a host operation: health, power, term_close, shell, exec,
+  // op a host operation: health, power, term_close, shell, exec, exec_via (a quiet peer over ssh from here),
   // service_health, or mesh-wide mesh_health and update_history (services, mesh_hosts, update_status)
   op: (host: string, op: string, p: Record<string, any> | undefined) => R;
   files: (c: Caller | undefined, host: string, op: string, share: string, body: Record<string, any>) => R;
@@ -175,6 +175,14 @@ export function knownHost(a: Record<string, any>): string {
   const h = hostOf(a);
   if (meshHosts().includes(h)) return h;
   throw errc("not_found", `no phosphorus host ${h} answering on the mesh; mesh_hosts lists them`);
+}
+
+// quietHost hostOf when it's a phosphorus host on the tailnet not answering now, else ""
+export function quietHost(a: Record<string, any>): string {
+  const h = hostOf(a);
+  if (meshHosts().includes(h)) return "";
+  const d = src.tailnet().find((x) => str(x.name) === h);
+  return d?.phosphorusSeen === true ? h : "";
 }
 
 // adminOf throws unless the caller, when keyed, is an admin

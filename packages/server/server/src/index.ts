@@ -156,7 +156,7 @@ function initMCP() {
         if (op === "mesh_health") return meshHealth().then((h) => [200, h] as [number, any]);
         if (op === "update_history") return [200, chainHistory()];
         let wait = 100000;
-        if (op === "exec" || op === "shell") wait = (num(p?.timeout) + 30) * 1000;
+        if (op === "exec" || op === "exec_via" || op === "shell") wait = (num(p?.timeout) + 30) * 1000;
         return opOn(host, op, p, wait);
       },
       config: hostConfig,

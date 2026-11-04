@@ -12,6 +12,7 @@ import {
   numOr,
   object,
   pressed,
+  quietHost,
   src,
   str,
   type Tool,
@@ -61,7 +62,8 @@ export const controlTools = (): Tool[] => [
       "starts it fresh. mode ssh runs each command in a fresh shell instead (no state kept); mode tab types one line into your " +
       "shared, logged-in terminal tab (open_terminal opens one) and returns its screen. stdin feeds the command's input, e.g. " +
       "cat > file to write any file the login may. git true hands git your forgejo login for clone, fetch and push over https. " +
-      "Never types a password. " +
+      "A host on the tailnet whose phosphorus isn't answering is still reached with its saved login, over ssh from " +
+      "this host, one fresh shell per call. Never types a password. " +
       noCreds,
     schema: object(
       {
@@ -100,7 +102,8 @@ export const controlTools = (): Tool[] => [
       "command",
     ),
     run: async (a, m) => {
-      const h = knownHost(a);
+      const quiet = str(a.mode) === "tab" ? "" : quietHost(a);
+      const h = quiet || knownHost(a);
       let cmd = str(a.command);
       if (!cmd.trim()) throw errc("bad_input", "missing 'command'");
       if (!m.caller) throw errc("forbidden", "on a user's key only");
@@ -125,6 +128,8 @@ export const controlTools = (): Tool[] => [
           stdin = creds + stdin;
         }
         const p = { user: login.user, pass: login.pass, cmd, stdin, timeout: w };
+        // its phosphorus not answering: this host signs in over the tailnet instead
+        if (quiet) return pressed(src.actions.op(str(src.self().host), "exec_via", { ...p, target: h }));
         if (persistent) return pressed(src.actions.op(h, "shell", { ...p, reset: a.reset === true }));
         return pressed(src.actions.op(h, "exec", p));
       }
