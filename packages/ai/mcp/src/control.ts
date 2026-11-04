@@ -62,7 +62,7 @@ export const controlTools = (): Tool[] => [
       "starts it fresh. mode ssh runs each command in a fresh shell instead (no state kept); mode tab types one line into your " +
       "shared, logged-in terminal tab (open_terminal opens one) and returns its screen. stdin feeds the command's input, e.g. " +
       "cat > file to write any file the login may. git true hands git your forgejo login for clone, fetch and push over https. " +
-      "A host on the tailnet whose phosphorus isn't answering is still reached with its saved login, over ssh from " +
+      "A tailnet machine whose phosphorus isn't answering is still reached with its saved login, over ssh from " +
       "this host, one fresh shell per call. Never types a password. " +
       noCreds,
     schema: object(
@@ -102,7 +102,7 @@ export const controlTools = (): Tool[] => [
       "command",
     ),
     run: async (a, m) => {
-      const quiet = str(a.mode) === "tab" ? "" : quietHost(a);
+      const quiet = str(a.mode) === "tab" ? "" : quietHost(a, m);
       const h = quiet || knownHost(a);
       let cmd = str(a.command);
       if (!cmd.trim()) throw errc("bad_input", "missing 'command'");

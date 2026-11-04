@@ -177,12 +177,12 @@ export function knownHost(a: Record<string, any>): string {
   throw errc("not_found", `no phosphorus host ${h} answering on the mesh; mesh_hosts lists them`);
 }
 
-// quietHost hostOf when it's a phosphorus host on the tailnet not answering now, else ""
-export function quietHost(a: Record<string, any>): string {
+// quietHost hostOf when it's on the tailnet, not answering as a phosphorus host now, and
+// the caller saved a login for it, else ""; a restarted host's view of who answered is gone
+export function quietHost(a: Record<string, any>, m: Meta): string {
   const h = hostOf(a);
-  if (meshHosts().includes(h)) return "";
-  const d = src.tailnet().find((x) => str(x.name) === h);
-  return d?.phosphorusSeen === true ? h : "";
+  if (meshHosts().includes(h) || !m.caller?.login?.(h)) return "";
+  return src.tailnet().some((x) => str(x.name) === h) ? h : "";
 }
 
 // adminOf throws unless the caller, when keyed, is an admin
