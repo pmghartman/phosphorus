@@ -781,3 +781,104 @@
     grid-column: 1 / -1;
   }
 }
+
+/* a streamed window app: the host's frames on a canvas, resized from its corner */
+.hd-appw {
+  max-height: none;
+  min-width: 240px;
+  min-height: 160px;
+  resize: both;
+}
+.hd-appw-max {
+  inset: 0 0 var(--hd-bar, 0) 0 !important;
+  width: auto !important;
+  height: auto !important;
+  border-radius: 0;
+  resize: none;
+}
+.hd-appw-body {
+  display: flex;
+  padding: 0;
+  overflow: hidden;
+  user-select: none;
+}
+.hd-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  background: #000;
+  outline: none;
+  touch-action: none;
+  overflow: hidden;
+}
+.hd-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.hd-ime {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  border: 0;
+  padding: 0;
+  resize: none;
+  pointer-events: none;
+}
+.hd-stream-say {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 16px;
+  color: #ddd;
+  background: rgba(0, 0, 0, 0.6);
+  text-align: center;
+}
+.hd-stream-log {
+  max-width: 100%;
+  max-height: 50%;
+  overflow: auto;
+  font-size: 11px;
+  text-align: left;
+  white-space: pre-wrap;
+  opacity: 0.8;
+}
+.hd-stream-stats {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font:
+    11px / 1.4 ui-monospace,
+    monospace;
+  color: #eee;
+  background: rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+}
+.hd-w-glyph {
+  font-size: 12px;
+  font-weight: 600;
+}
+.hd-w-up.on {
+  background: var(--hd-hover);
+  color: var(--hd-accent);
+}
+.hd-app-wins {
+  max-width: 180px;
+  height: 26px;
+  font: inherit;
+  font-size: 12px;
+  background: var(--hd-bg);
+  color: inherit;
+  border: 1px solid var(--hd-line);
+  border-radius: 4px;
+}

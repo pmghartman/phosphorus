@@ -10,7 +10,7 @@ import { dkMenuNote } from './wallpaper.ts';
 import { dkFileApp, dkFileOffer, dkWebApp } from './webapps.ts';
 
 // one window inside the host desktop, moved by its title, the newest on top
-function inner(
+export function inner(
   hd: HD,
   key: string,
   title: string,
@@ -32,7 +32,7 @@ function inner(
   box.style.left = `${8 + ((n * 4) % 30)}%`;
   box.style.top = `${6 + ((n * 4) % 30)}%`;
   head.addEventListener('pointerdown', (e) => {
-    if ((e.target as Element).closest('button')) return;
+    if ((e.target as Element).closest('button, select')) return;
     const r = box.getBoundingClientRect();
     const p = layer.getBoundingClientRect();
     const dx = e.clientX - r.left;

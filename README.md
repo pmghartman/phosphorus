@@ -59,6 +59,7 @@ Each machine runs one Phosphorus service. They find each other over your [Tailsc
 | **Standby hosts** | Picked at install, they keep a fresh copy of a service's data and take over if its host fails. |
 | **Found pages** | Web servers already listening on a host can be published on the mesh, behind the login or public. |
 | **Desktop** | Terminal on any host, Files across hosts' shares, Settings, mesh-wide updates. |
+| **Host desktop and app streaming** | Any computer on the tailnet opened as its own desktop over your saved ssh login. A Linux host's window apps open as windows in the browser: each runs on its own headless display there, as you, and streams as low-latency H.264 to WebCodecs, with your keys, pointer and clipboard sent back. The host needs `xvfb`, `ffmpeg` and `python3`. |
 | **Optional apps** | Code, Chat, Games and Viewer in [`optional/`](optional), signed bundles an admin installs. |
 | **Cloudflare tunnel** | Optional: the desktop and services on your own domain, reachable from anywhere. |
 | **MCP server** | Lets AI assistants and agents run the mesh for you, through any MCP client. |

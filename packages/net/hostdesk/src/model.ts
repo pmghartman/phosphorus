@@ -1,7 +1,7 @@
 // what a host's desktop is drawn from, the same shape for every OS
 
 // file: the viewer; folder: a folder window; cli: a terminal tab; web: a window;
-// gui: listed, not run; bin: the recycle bin
+// gui: streamed from a Linux host (@phosphorus/appstream), listed elsewhere; bin: the recycle bin
 export type Kind = "file" | "folder" | "cli" | "web" | "gui" | "bin";
 
 export type Item = {

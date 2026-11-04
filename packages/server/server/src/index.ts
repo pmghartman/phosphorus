@@ -1,6 +1,7 @@
 // phosphorus in one process, the ingress, the mesh loop, the page, this
 // host's state for peers, and the websockets
 
+import { busy as appsBusy, reapApps } from "@phosphorus/appstream";
 import * as catalog from "@phosphorus/catalog";
 import { migrate as migrateConfig } from "@phosphorus/config";
 import * as files from "@phosphorus/files";
@@ -67,7 +68,10 @@ export async function start(): Promise<Server<WSData>> {
   update.onFinish(rememberChain);
   update.onFailed(() => setUpdating(false));
   setInterval(reapShells, 60000);
-  setInterval(reapDesks, 60000);
+  setInterval(() => {
+    reapApps();
+    reapDesks(appsBusy);
+  }, 60000);
 
   // FRONTEND_BIND: one address alone, for a test mesh of several hosts on loopback
   const srv = proxyServe(port, meshOnly(appHandler), false, env("FRONTEND_BIND") || undefined);
