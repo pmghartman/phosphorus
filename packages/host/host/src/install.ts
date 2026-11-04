@@ -193,8 +193,16 @@ export function replace(tmp: string, to: string) {
   } catch (e) {
     if (!isWindows) throw e;
   }
-  const old = to + ".old";
-  rmSync(old, { force: true });
+  // last update's .old swept, one still running (tray, unrestarted service) a fresh name
+  const dir = dirname(to),
+    stem = basename(to) + ".old";
+  for (const n of readdirSync(dir))
+    if (n.startsWith(stem))
+      try {
+        rmSync(join(dir, n), { force: true });
+      } catch {}
+  let old = to + ".old";
+  for (let i = 1; fileExists(old); i++) old = `${to}.old${i}`;
   renameSync(to, old);
   renameSync(tmp, to);
 }
