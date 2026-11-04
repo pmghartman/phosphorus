@@ -1,14 +1,15 @@
 // host desktop: any computer on the tailnet opened as its own desktop, as the
 // viewer's saved login for it; open to every signed in user with one
 
+import * as as from "@phosphorus/appstream";
 import * as hd from "@phosphorus/hostdesk";
 import { auditRow } from "@phosphorus/mcp";
 import * as peers from "@phosphorus/peers";
 import * as users from "@phosphorus/users";
 import { errText, tailnetIP } from "@phosphorus/util";
-import type { Ctx } from "@phosphorus/wsock";
+import { type Conn, type Ctx, upgrade } from "@phosphorus/wsock";
 import { getPlatform, hostSSHHost, hostSSHPort, selfHost } from "./config.ts";
-import { isLocalOrPeer, maxJSONBody, maxSaveBody, type Res, readRaw, sameOrigin, sendJSON } from "./http.ts";
+import { isLocalOrPeer, maxJSONBody, maxSaveBody, type Res, readRaw, refuse, sameOrigin, sendJSON } from "./http.ts";
 import { decode, obj, str } from "./js.ts";
 
 const deskRe = /^\/api\/hostdesk\/([a-z0-9][a-z0-9-]*)\/([a-z]+)$/;
@@ -196,6 +197,11 @@ async function getOp(w: Who, op: string, q: URLSearchParams): Promise<Response> 
       return sendJSON(200, { entries: await hd.ls(s, allowed(s, q.get("path") ?? "")) }, nc);
     case "images":
       return sendJSON(200, { images: await hd.images(s) }, nc);
+    case "running": {
+      const [login] = await users.HostLogin(w.s, w.host);
+      const apps = as.list(keyOf(w, login)).map((a) => ({ id: a.id, title: a.title, name: a.start.name }));
+      return sendJSON(200, { apps }, nc);
+    }
     case "trash":
       return sendJSON(200, { items: await hd.trash(s) }, nc);
     case "read": {
@@ -283,4 +289,133 @@ async function postOp(w: Who, op: string, c: Ctx): Promise<Response> {
     }
   }
   throw new Coded(404, "not found");
+}
+
+// --- app streaming ---------------------------------------------------------------------
+
+const streamRe = /^\/api\/hostdesk\/([a-z0-9][a-z0-9-]*)\/stream$/;
+const idRe = /^[0-9a-f]{24}$/;
+
+// the host's connection as commands to run: the stream's agent and encoder
+function runnerOf(s: hd.Session): as.Runner {
+  s.extra.runner ??= {
+    async run(cmd: string): Promise<as.Chan> {
+      const ch = await s.channel(cmd);
+      return {
+        write: (d) => void ch.write(d),
+        onData: (f) => void ch.on("data", (b: Uint8Array) => f(b)),
+        onClose: (f) => void ch.on("close", f),
+        close: () => {
+          try {
+            ch.end();
+            ch.close();
+          } catch {}
+        },
+      };
+    },
+    output: (cmd: string) => s.exec(cmd),
+  } satisfies as.Runner;
+  return s.extra.runner;
+}
+
+const num = (q: URLSearchParams, k: string, d: number) => {
+  const v = Number(q.get(k));
+  return Number.isFinite(v) && v > 0 ? v : d;
+};
+
+// a gui app's desktop entry, read on the host, as what the agent runs: only an entry
+// the host listed itself, never a command the page sent
+async function entryOf(s: hd.Session, path: string): Promise<{ argv: string[]; name: string }> {
+  if (!/\.desktop$/.test(path)) throw new Coded(400, "not a desktop entry");
+  const text = Buffer.from(await hd.readAll(s, path, 256 << 10)).toString("utf8");
+  const e = hd.parseEntry(text);
+  if (!e || e.type !== "Application" || e.terminal || !e.exec) throw new Coded(400, "not a window app");
+  return { argv: as.parseExec(e.exec, { name: e.name, icon: e.icon, path }), name: e.name };
+}
+
+// /api/hostdesk/<host>/stream: one app's window; ?path= a desktop entry opens it,
+// ?id= takes up one already open
+export async function streamSocket(
+  c: Ctx,
+  pathname: string,
+  q: URLSearchParams,
+): Promise<Response | undefined | false> {
+  const m = streamRe.exec(pathname);
+  if (!m) return false;
+  if (!sameOrigin(c)) return refuse(403);
+  const u = await users.Soon(c);
+  if (!u || u.boot) return refuse(401);
+  const w: Who = { s: u, host: m[1]! };
+  if (!known(w.host)) return refuse(404);
+  const ok = upgrade(c, (ws) => {
+    ws.keepAlive();
+    void runStream(ws, w, q);
+  });
+  return ok ? undefined : refuse(400);
+}
+
+async function runStream(ws: Conn, w: Who, q: URLSearchParams) {
+  const v: as.Viewer = {
+    binary: (b) => void ws.binary(b),
+    json: (m) => void ws.json(m),
+    queued: () => ws.queued(),
+    close: (code) => ws.close(code),
+  };
+  let app: as.AppSession | undefined;
+  // input that came while the app was opening, played once it's there
+  const early: unknown[] = [];
+  ws.onMessage((d, bin) => {
+    if (bin) return;
+    let msg: unknown;
+    try {
+      msg = JSON.parse(String(d));
+    } catch {
+      return;
+    }
+    if (app) app.input(msg);
+    else if (early.length < 64) early.push(msg);
+  });
+  ws.onClose(() => app?.detach(v));
+  const path = q.get("path") ?? "";
+  try {
+    const s = await session(w);
+    if (s.os !== "linux") throw new Coded(400, `app streaming runs on Linux hosts for now; ${w.host} runs Windows`);
+    const [login] = await users.HostLogin(w.s, w.host);
+    const owner = keyOf(w, login);
+    const id = q.get("id") ?? "";
+    if (idRe.test(id)) {
+      app = as.find(owner, id);
+      if (!app) throw new Coded(404, "that app has closed");
+    } else {
+      const p = allowed(s, path);
+      const e = await entryOf(s, p);
+      const dpr = Math.min(3, num(q, "dpr", 1));
+      ws.json({ t: "opening", name: e.name });
+      app = await as
+        .launch(owner, runnerOf(s), {
+          argv: e.argv,
+          name: e.name,
+          w: num(q, "w", 1280),
+          h: num(q, "h", 720),
+          sw: num(q, "sw", 1920),
+          sh: num(q, "sh", 1080),
+          scale: dpr,
+          full: q.get("full") === "1",
+          fps: Math.min(120, num(q, "fps", 60)),
+        })
+        .then(
+          (a) => (note(w.s.user, "host_app_open", { host: w.host, app: p }), a),
+          (err) => {
+            note(w.s.user, "host_app_open", { host: w.host, app: p }, err);
+            throw err;
+          },
+        );
+    }
+    if (!ws.open()) return;
+    app.attach(v);
+    for (const m of early.splice(0)) app.input(m);
+  } catch (e) {
+    ws.json({ t: "error", s: errText(e) });
+    ws.close(1000);
+  }
 }

@@ -10,6 +10,7 @@ import { errText, intervalMS, marshal, now, onHot, sleep, tailnetIP } from "@pho
 import { type Conn, type Ctx, upgrade } from "@phosphorus/wsock";
 import { appSocket } from "./apps.ts";
 import { getPlatform, hostSSHHost, hostSSHPort, maxTerms, port, selfHost } from "./config.ts";
+import { streamSocket } from "./hostdesk.ts";
 import { isLocalOrPeer, isLoopback, isTailnet, refuse, sameOrigin } from "./http.ts";
 import { decode, obj, str } from "./js.ts";
 import { mcpSocket } from "./mcpops.ts";
@@ -67,6 +68,8 @@ export async function onUpgrade(c: Ctx, pathname: string, q: URLSearchParams): P
   }
   const as = appSocket(c, pathname);
   if (as !== false) return as;
+  const st = await streamSocket(c, pathname, q);
+  if (st !== false) return st;
   const m = termPathRe.exec(pathname);
   if (!m) return refuse(404);
   const host = m[1]!;

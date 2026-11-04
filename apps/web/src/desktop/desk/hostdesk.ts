@@ -8,6 +8,7 @@ import { dk } from '../../lib/state.ts';
 import { dkSettings } from '../../settings/settings.ts';
 import { type DkWin, dkFocus, dkMax, dkWin } from '../windows.ts';
 import { binWin, folderWin, openFile, setWin, webWin } from './hostdesk-wins.ts';
+import { streamWin } from './hoststream.ts';
 import { dkTerminal } from './terminal.ts';
 import { dkMenu, dkSay, type MenuItem } from './wallpaper.ts';
 
@@ -304,7 +305,7 @@ export function draw(hd: HD, d: Desk) {
 export function iconBtn(hd: HD, it: Item, cls: string, single = false): HTMLButtonElement {
   const b = Object.assign(el('button', `${cls} hd-k-${it.kind}`), { type: 'button', title: tip(it) });
   b.append(pic(hd, it), el('span', 'hd-name', it.name));
-  if (it.kind === 'gui') b.classList.add('off');
+  if (it.kind === 'gui' && !streams(hd)) b.classList.add('off');
   const go = () => openItem(hd, it, b);
   if (single) b.addEventListener('click', go);
   else {
@@ -342,18 +343,17 @@ export function pic(hd: HD, it: Item): HTMLElement {
   return img;
 }
 
+// window apps stream from Linux hosts; Windows' wait
+const streams = (hd: HD) => hd.desk?.os === 'linux';
+
 const tip = (it: Item) =>
-  it.kind === 'gui'
-    ? `${it.name}: a window app, it opens once app streaming lands`
-    : it.path
-      ? `${it.name}\n${it.path}`
-      : it.name;
+  it.kind === 'gui' && !it.path ? `${it.name}: a window app` : it.path ? `${it.name}\n${it.path}` : it.name;
 
 const imageRe = /\.(png|jpe?g|webp|bmp|svg)$/i;
 
 function itemMenu(hd: HD, it: Item, b: HTMLElement): MenuItem[] {
   const d = hd.desk!;
-  const items: MenuItem[] = [['open', () => openItem(hd, it, b), it.kind !== 'gui']];
+  const items: MenuItem[] = [['open', () => openItem(hd, it, b), it.kind !== 'gui' || streams(hd)]];
   if (it.path && imageRe.test(it.path) && d.can.wallpaper)
     items.push(['set as desktop background', () => void setWin(hd, { wallpaper: it.path }), true]);
   if (it.id && d.can.pins) {
@@ -386,7 +386,8 @@ export function openItem(hd: HD, it: Item, from?: Element) {
       return;
     }
     case 'gui':
-      return dkSay(`${it.name} is a window app; it opens once app streaming lands`);
+      if (streams(hd) && it.path) return streamWin(hd, it);
+      return dkSay(`${it.name} is a window app; streaming runs from Linux hosts for now`);
   }
 }
 
@@ -493,7 +494,7 @@ function toggleStart(hd: HD, btn: HTMLElement) {
       }
       const b = iconBtn(hd, a, 'hd-app', true);
       b.addEventListener('click', () => {
-        if (a.kind !== 'gui') shut();
+        if (a.kind !== 'gui' || streams(hd)) shut();
       });
       rows.push(b);
     }
@@ -521,6 +522,26 @@ function toggleStart(hd: HD, btn: HTMLElement) {
   });
   foot.append(who, el('span', 'hd-gap'), bin, gear);
   m.append(search, list, foot);
+  // apps already streaming from here, taken up again
+  if (streams(hd))
+    void acctCall<{ apps: { id: string; title: string; name: string }[] }>(api(hd.host, 'running')).then((r) => {
+      if (!r.ok || !r.apps?.length || !m.isConnected) return;
+      const run = el('div', 'hd-apps hd-running');
+      run.append(el('div', 'hd-apps-head', 'open'));
+      for (const a of r.apps) {
+        const b = Object.assign(el('button', 'hd-app'), { type: 'button', title: a.title || a.name });
+        b.append(
+          el('span', 'hd-noicon', (a.name || '?').slice(0, 1).toLowerCase()),
+          el('span', 'hd-name', a.title || a.name),
+        );
+        b.addEventListener('click', () => {
+          shut();
+          streamWin(hd, { id: a.id, name: a.name });
+        });
+        run.append(b);
+      }
+      m.insertBefore(run, list);
+    });
   hd.root.append(m);
   hd.root.classList.add('hd-open');
   hd.start = m;
