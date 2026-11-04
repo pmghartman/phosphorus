@@ -344,7 +344,8 @@ export function pic(hd: HD, it: Item): HTMLElement {
 }
 
 // window apps stream from Linux hosts; Windows' wait
-const streams = (hd: HD) => hd.desk?.os === 'linux';
+// window apps stream from Linux hosts (their own X display) and Windows ones (their Sunshine or Apollo)
+const streams = (hd: HD) => hd.desk?.os === 'linux' || hd.desk?.os === 'windows';
 
 const tip = (it: Item) =>
   it.kind === 'gui' && !it.path ? `${it.name}: a window app` : it.path ? `${it.name}\n${it.path}` : it.name;
@@ -387,7 +388,7 @@ export function openItem(hd: HD, it: Item, from?: Element) {
     }
     case 'gui':
       if (streams(hd) && it.path) return streamWin(hd, it);
-      return dkSay(`${it.name} is a window app; streaming runs from Linux hosts for now`);
+      return dkSay(`${it.name} is a window app with nothing to start it by`);
   }
 }
 

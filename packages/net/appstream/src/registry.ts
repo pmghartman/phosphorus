@@ -1,7 +1,7 @@
 // the apps streaming from this server: each one its owner's (a phosphorus user on a
 // host, as one login), found again by id after a reload, ended after a while unwatched
 
-import { AppSession, type Runner, type Start } from "./session.ts";
+import { AppSession, type Runner, type Source, type Start } from "./session.ts";
 
 // unwatched this long, an app is closed: a reload or a dropped link comes back well within
 export const lingerMs = 30 * 60_000;
@@ -11,9 +11,9 @@ const apps = new Map<string, { owner: string; s: AppSession }>();
 
 const newId = () => Buffer.from(crypto.getRandomValues(new Uint8Array(12))).toString("hex");
 
-export async function launch(owner: string, runner: Runner, start: Start): Promise<AppSession> {
+export async function launch(owner: string, source: Source | Runner, start: Start): Promise<AppSession> {
   if (list(owner).length >= perOwner) throw new Error(`${perOwner} apps are open on this host already; close one`);
-  const s = new AppSession(newId(), runner, start);
+  const s = new AppSession(newId(), source, start);
   apps.set(s.id, { owner, s });
   s.onEnd = () => apps.delete(s.id);
   try {
