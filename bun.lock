@@ -282,6 +282,9 @@
         "@phosphorus/util": "workspace:*",
       },
     },
+    "packages/net/appstream": {
+      "name": "@phosphorus/appstream",
+    },
     "packages/net/delta": {
       "name": "@phosphorus/delta",
       "dependencies": {
@@ -324,6 +327,7 @@
       "name": "@phosphorus/server",
       "dependencies": {
         "@phosphorus/app-sdk": "workspace:*",
+        "@phosphorus/appstream": "workspace:*",
         "@phosphorus/catalog": "workspace:*",
         "@phosphorus/config": "workspace:*",
         "@phosphorus/delta": "workspace:*",
@@ -394,6 +398,8 @@
     "@phosphorus/app-viewer": ["@phosphorus/app-viewer@workspace:optional/viewer"],
 
     "@phosphorus/appfeed": ["@phosphorus/appfeed@workspace:packages/mesh/appfeed"],
+
+    "@phosphorus/appstream": ["@phosphorus/appstream@workspace:packages/net/appstream"],
 
     "@phosphorus/catalog": ["@phosphorus/catalog@workspace:packages/mesh/catalog"],
 

@@ -96,6 +96,9 @@ export class Session {
       });
     });
     c.on("close", () => this.close());
+    // every write out at once: ssh2 leaves Nagle on, which holds a keypress or a
+    // pointer move back behind the last unacknowledged segment
+    c.setNoDelay(true);
     this.os = await this.detect();
     // both lanes started at once; a host refusing a second channel keeps one
     const [fast, slow] = await Promise.allSettled([this.lane(false), this.lane(true)]);
@@ -170,6 +173,21 @@ export class Session {
     });
   }
 
+  // a command of its own on the connection, its stdin and stdout raw: an app stream's
+  // agent and encoder
+  channel(cmd: string): Promise<ClientChannel> {
+    this.lastUse = Date.now();
+    return new Promise((res, rej) => {
+      const c = this.client;
+      if (this.dead || !c) return rej(new Error(`the session with ${this.target.host} closed`));
+      c.exec(cmd, (e, ch) => {
+        if (e) return rej(e);
+        ch.stderr.on("data", () => {});
+        res(ch);
+      });
+    });
+  }
+
   sftp(): Promise<SFTPWrapper> {
     this.lastUse = Date.now();
     this.sftpP ??= new Promise<SFTPWrapper>((res, rej) => {
@@ -227,9 +245,13 @@ export function dropSession(key: string) {
   sessions.get(key)?.close();
 }
 
-// idle sessions closed, from the server's tick
-export function reap() {
-  for (const s of [...sessions.values()]) if (Date.now() - s.lastUse > idleMs) s.close();
+// idle sessions closed, from the server's tick; one keep says is in use (an app
+// streaming over it) kept
+export function reap(keep: (key: string) => boolean = () => false) {
+  for (const s of [...sessions.values()]) {
+    if (keep(s.key)) s.lastUse = Date.now();
+    else if (Date.now() - s.lastUse > idleMs) s.close();
+  }
 }
 
 export const sessionCount = () => sessions.size;
