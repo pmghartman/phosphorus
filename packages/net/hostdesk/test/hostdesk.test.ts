@@ -9,7 +9,7 @@ import { linuxOps } from "../src/desk.ts";
 import * as L from "../src/linux.ts";
 import type { Desk } from "../src/model.ts";
 import { norm, Scope, sftpPath, within } from "../src/paths.ts";
-import { records, reply, request } from "../src/proto.ts";
+import { bootLine, records, reply, request, shBootScript } from "../src/proto.ts";
 import { binName, binRe, fromFiletime, parseInfo, toFiletime, writeInfo } from "../src/recycle.ts";
 import { abgrHex, winDesk, winRun, winTrash } from "../src/windows.ts";
 
@@ -320,7 +320,13 @@ test("windows: a desktop and what its console apps type", () => {
 });
 
 // the probe itself in sh, a temp home's trash: delete, list, restore, empty
-const sh = ["/bin/sh", "/usr/bin/sh", "C:/Program Files/Git/usr/bin/sh.exe"].find((p) => existsSync(p));
+// dash where Git for Windows has it, as Ubuntu's sh is, which reads its script ahead
+const sh = [
+  "/bin/sh",
+  "/usr/bin/sh",
+  "C:/Program Files/Git/usr/bin/dash.exe",
+  "C:/Program Files/Git/usr/bin/sh.exe",
+].find((p) => existsSync(p));
 test.skipIf(!sh)(
   "probe.sh: a file to the trash and back",
   async () => {
@@ -333,13 +339,14 @@ test.skipIf(!sh)(
     const f = posix(native);
     const probe = readFileSync(join(import.meta.dir, "../src/probe.sh"), "utf8");
     const run = async (reqs: [string, string][]) => {
-      const p = Bun.spawn([sh!, "-s"], {
+      const p = Bun.spawn([sh!, "-c", shBootScript], {
         stdin: "pipe",
         stdout: "pipe",
         stderr: "pipe",
         env: { ...process.env, HOME: posix(home), XDG_DATA_HOME: "" },
       });
-      p.stdin.write(`${probe}\n`);
+      // the script and every request at once, as a fast link lands them
+      p.stdin.write(bootLine(probe));
       reqs.forEach(([c, a], i) => p.stdin.write(request(i + 1, c, a)));
       p.stdin.end();
       const out = await new Response(p.stdout).text();

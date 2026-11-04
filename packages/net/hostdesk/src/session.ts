@@ -5,7 +5,7 @@ import { errText } from "@phosphorus/util";
 import { Client, type ClientChannel, type SFTPWrapper } from "ssh2";
 import winProbe from "./probe.ps1" with { type: "text" };
 import linuxProbe from "./probe.sh" with { type: "text" };
-import { encodedCommand, reply, request, winBoot } from "./proto.ts";
+import { bootLine, encodedCommand, reply, request, shBoot, winBoot } from "./proto.ts";
 
 const idleMs = 15 * 60_000;
 const callMs = 60_000;
@@ -66,13 +66,13 @@ export class Session {
     const cmd =
       this.os === "windows"
         ? `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand ${encodedCommand(winBoot)}`
-        : "sh -s";
+        : shBoot;
     const ch = await new Promise<ClientChannel>((res, rej) => c.exec(cmd, (e, s) => (e ? rej(e) : res(s))));
     this.chan = ch;
     ch.on("data", (b: Uint8Array) => this.feed(b));
     ch.stderr.on("data", () => {});
     ch.on("close", () => this.close());
-    ch.write(this.os === "windows" ? `${Buffer.from(winProbe, "utf8").toString("base64")}\n` : `${linuxProbe}\n`);
+    ch.write(bootLine(this.os === "windows" ? winProbe : linuxProbe));
   }
 
   // the OS as the tailnet named it, else what uname says

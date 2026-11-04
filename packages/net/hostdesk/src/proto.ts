@@ -38,3 +38,11 @@ export const winBoot =
   "$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue';" +
   "$s=[Console]::In.ReadLine();" +
   "iex ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($s)))";
+
+// Linux's the same way: read stops at its newline, leaving the requests on stdin, where
+// sh -s reads its script ahead in blocks and takes requests already waiting as script
+export const shBootScript = 'IFS= read -r s; eval "$(printf %s "$s" | base64 -d)"';
+export const shBoot = `sh -c '${shBootScript}'`;
+
+// the probe as either bootstrap reads it: one base64 line
+export const bootLine = (script: string) => `${Buffer.from(script, "utf8").toString("base64")}\n`;

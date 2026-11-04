@@ -275,7 +275,7 @@ test.skipIf(process.platform !== "linux")(
     stats.hooks.self = () => ({ host: "box", platform: "linux", version: "t" });
     await stats.init();
     const nd = JSON.parse(readFileSync(join(tmp, "data", "net-day.json"), "utf8"));
-    expect(Object.keys(nd)).toEqual(["boot", "last", "buckets"]);
+    expect(Object.keys(nd)).toEqual(["boot", "last", "cpu", "buckets"]);
     expect(nd.boot).toBe(readFileSync("/proc/sys/kernel/random/boot_id", "utf8").trim());
     expect(nd.buckets).toEqual([]);
     // a second init on the file: one bucket of what moved since
