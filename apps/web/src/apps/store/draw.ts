@@ -12,8 +12,33 @@ import { stackPage } from './viewer.ts';
 // the page last drawn, '' for the front, and the front's scroll as a page opened over it
 let drawnId = '';
 let frontScroll = 0;
+// the list the front last showed: another view, category, catalogue or search starts at its top
+let drawnList = '';
 // what scrolls: the front's main pane beside its rail, a page the whole store
 const scroller = (x: HTMLElement | null) => x?.querySelector<HTMLElement>(':scope > .store-shell > .store-main') ?? x;
+
+// each host's facts as the store words them: a copy's sync to the half minute and its progress to
+// the percent, so a standby pulling every few seconds never redraws the whole store under the pointer
+function calm(info: typeof st.hostsInfo) {
+  return Object.fromEntries(
+    Object.entries(info).map(([h, i]) => [
+      h,
+      {
+        ...i,
+        stacks: Object.fromEntries(
+          Object.entries(i.stacks ?? {}).map(([id, x]) => [
+            id,
+            {
+              ...x,
+              lastSync: Math.floor((x.lastSync ?? 0) / 30000),
+              copying: x.copying ? Math.floor((100 * x.copying.done) / Math.max(1, x.copying.total)) : -1,
+            },
+          ]),
+        ),
+      },
+    ]),
+  );
+}
 
 export function draw() {
   if (!watching) return;
@@ -36,7 +61,7 @@ export function draw() {
     [...logsOpen],
     st.selfHost,
     st.acct?.admin,
-    st.hostsInfo,
+    calm(st.hostsInfo),
     st.lastState?.stacks,
     dk.services.map((r) => [r.host, r.name]),
     (st.lastState?.tailnet || []).map((d) => [d.name, d.phosphorus, d.os]),
@@ -54,7 +79,11 @@ export function draw() {
   if (id && !id.startsWith('stack:') && id !== 'sources' && !open && apps) id = stateVars.openId = '';
   // a page opened at its top, the way back landing where the front was left
   if (!drawnId && id) frontScroll = scroller(was)?.scrollTop || 0;
-  const scroll = id === drawnId ? scroller(was)?.scrollTop || 0 : id ? 0 : frontScroll;
+  const list = JSON.stringify([stateVars.tab, stateVars.category, stateVars.source, stateVars.filter.trim()]);
+  const moved = list !== drawnList;
+  drawnList = list;
+  if (moved) frontScroll = 0;
+  const scroll = id === drawnId && !moved ? scroller(was)?.scrollTop || 0 : id ? 0 : frontScroll;
   drawnId = id;
   wrap.append(
     id.startsWith('stack:')

@@ -1,24 +1,14 @@
 // the env (./env.ts) before anything reads it
 import "./env.ts";
 import { expect, test } from "bun:test";
-import {
-  copyFileSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  statSync,
-  utimesSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Clock } from "@phosphorus/elector";
 import type { Runtime } from "@phosphorus/stacks";
 import { groupOf, HA, type Mesh, Replica } from "@phosphorus/stacks/ha";
 import type { AppDef, StackWant } from "@phosphorus/wire";
-import { type Manifest, mirror, pullInto, walk } from "../src/ha/copy.ts";
+import { mirror } from "../src/ha/copy.ts";
 
 // --- a small mesh on simulated time ---------------------------------------------
 
@@ -31,6 +21,9 @@ class World {
   hosts = new Map<string, Node>();
   cuts = new Set<string>();
   notes: string[] = [];
+  // what crossed between hosts: chunk bytes, and whole manifests sent
+  fetched = 0;
+  manifests = 0;
 
   at(ms: number, fn: () => void) {
     this.timers.push({ at: this.t + ms, seq: this.seq++, fn });
@@ -174,21 +167,31 @@ class Node {
       call: async (h, method, path, body) => {
         const p = this.peer(h);
         if (!p) return undefined;
-        const m = /^\/api\/ha\/([a-z0-9-]+)\/(view|vote|snap|handoff)$/.exec(path);
+        const m = /^\/api\/ha\/([a-z0-9-]+)\/(view|vote|snap|handoff)(?:\?have=(.*))?$/.exec(path);
         if (!m) return undefined;
         const g = m[1]!;
         if (m[2] === "view") return p.ha.view(g);
-        if (m[2] === "snap") return p.ha.manifest(g) as any;
+        if (m[2] === "snap") {
+          const out = p.ha.snap(g, m[3] ? decodeURIComponent(m[3]) : undefined);
+          if (out && !("same" in out)) this.w.manifests++;
+          return out as any;
+        }
         const [st, out] = m[2] === "vote" ? p.ha.vote(g, body as any) : p.ha.askHandoff(g, (body as any)?.to);
         return st === 200 ? out : undefined;
       },
-      fetchFile: async (h, g, path, file) => {
-        const f = this.peer(h)?.ha.file(g, path);
-        if (!f) return false;
-        copyFileSync(f, file);
-        return true;
+      lists: async (h, g, paths) => this.peer(h)?.ha.lists(g, paths),
+      blocks: async (h, g, want) => {
+        const all = await this.peer(h)?.ha.blocks(g, want);
+        if (!all) return;
+        this.w.fetched += all.length;
+        const out: Uint8Array[] = [];
+        let at = 0;
+        for (const [, n] of want) out.push(all.subarray(at, (at += n)));
+        return out;
       },
       clock: this.clock(),
+      // every write offered at once, the tests' seconds not a minute
+      snapMinMS: 0,
     };
   }
 
@@ -335,40 +338,6 @@ test("a snapshot's copies staged first, the snapshot moved only when committed",
   expect(statSync(join(dst, "sub", "b")).ino).toBe(ino);
   expect(existsSync(stage)).toBe(false);
   expect((await mirror(src, dst, stage, sigs))()).toBe(false);
-});
-
-test("a pull seeded from this host's own snapshot fetches only what differs, its bytes told", async () => {
-  const root = mkdtempSync(join(tmpdir(), "phos-seed-"));
-  const [src, seed, dst] = ["src", "seed", "dst"].map((d) => join(root, d)) as [string, string, string];
-  for (const d of [src, seed]) mkdirSync(d, { recursive: true });
-  writeFileSync(join(src, "same"), "x".repeat(100));
-  writeFileSync(join(src, "moved"), "new");
-  copyFileSync(join(src, "same"), join(seed, "same"));
-  writeFileSync(join(seed, "moved"), "old");
-  utimesSync(join(seed, "moved"), 1_000_000, 1_000_000);
-  // the seed's copy of same as the active's: same size and mtime
-  const t = statSync(join(src, "same")).mtime;
-  utimesSync(join(seed, "same"), t, t);
-  const man: Manifest = { token: "t", gen: 1, stamp: 1, app: 1, files: walk(src) };
-  const fetched: string[] = [];
-  const told: number[][] = [];
-  const ok = await pullInto(
-    dst,
-    man,
-    {},
-    async (p, file) => {
-      fetched.push(p);
-      copyFileSync(join(src, p), file);
-      return true;
-    },
-    8,
-    { seed, progress: (done, total) => told.push([done, total]) },
-  );
-  expect(ok).toBe(true);
-  expect(fetched).toEqual(["moved"]);
-  expect(readFileSync(join(dst, "same"), "utf8")).toBe("x".repeat(100));
-  expect(readFileSync(join(dst, "moved"), "utf8")).toBe("new");
-  expect(told.at(-1)).toEqual([103, 103]);
 });
 
 test("an active's snapshot copies only what moved, across a restart too", async () => {

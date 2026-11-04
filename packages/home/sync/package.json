@@ -6,6 +6,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@phosphorus/delta": "workspace:*",
     "@phosphorus/files": "workspace:*",
     "@phosphorus/peers": "workspace:*",
     "@phosphorus/store": "workspace:*",

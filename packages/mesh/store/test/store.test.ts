@@ -1,5 +1,5 @@
 // the store on its own: versions by the hybrid clock, merging, the digest, the
-// log, tombstones and the legacy shape
+// log and tombstones
 import { expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -87,16 +87,6 @@ test("oldest wins: the first live version stays, an older one from elsewhere rep
   expect(store.merge({ "etc/e/secret.json": { t: t + 10, h: "zulu", c: "x", data: "newer" } })).toBe(false);
   expect(store.merge({ "etc/e/secret.json": { t: t - 10, h: "zulu", c: "x", data: "older" } })).toBe(true);
   expect(store.read("etc/e/secret.json")).toBe("older");
-});
-
-test("the legacy shape reads, stamped by nobody, and is rewritten on its next write", async () => {
-  expect(store.merge({ "etc/f/old.json": { at: 1700000000000, data: { v: 1 } } })).toBe(true);
-  expect(store.read("etc/f/old.json")).toEqual({ v: 1 });
-  expect(store.stamps()["etc/f/old.json"]!.slice(0, 2)).toEqual([1700000000000, ""]);
-  store.write("etc/f/old.json", { v: 2 });
-  expect(store.stamps()["etc/f/old.json"]![1]).toBe("mike");
-  await flushWrites();
-  expect(readFileSync(join(store.Root, "etc/f/old.json"), "utf8")).toContain('"h":"mike"');
 });
 
 test("the log: a cursor per peer, what changed after it, nothing for a cursor it never had", async () => {

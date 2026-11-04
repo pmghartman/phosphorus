@@ -10,6 +10,8 @@ const state = mkdtempSync(join(tmpdir(), "phos-elector-"));
 process.env.PROMOTE_GRACE = "2";
 process.env.ADD_AFTER_MS = "0";
 process.env.TICK_MS = "50";
+process.env.LEASE_MS = "4000";
+process.env.LEASE_MARGIN_MS = "1500";
 const { Elector: Base, fileStore, validRoster } = await import("@phosphorus/elector");
 
 const files = { local: "local", decision: "decision", lease: "lease", up: "up", promoting: "promoting" };

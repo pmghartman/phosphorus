@@ -17,7 +17,8 @@ import {
 } from "@phosphorus/util";
 
 const frontendPort = envInt("FRONTEND_PORT", 8090);
-const probeTimeoutMs = envInt("PROBE_TIMEOUT_MS", 500);
+// a vote answered within this, a link busy with a download or a copy still in time
+const probeTimeoutMs = envInt("PROBE_TIMEOUT_MS", 1500);
 
 // an election's pace, every host of a group on the same
 export type Timing = {
@@ -35,8 +36,9 @@ export type Timing = {
 
 export const timing = (): Timing => ({
   tickMS: envInt("TICK_MS", 500),
-  leaseMS: envInt("LEASE_MS", 4000),
-  leaseMarginMS: envInt("LEASE_MARGIN_MS", 1500),
+  // a master held through a few missed rounds of votes, never stepping down over one slow link
+  leaseMS: envInt("LEASE_MS", 10000),
+  leaseMarginMS: envInt("LEASE_MARGIN_MS", 3000),
   promoteGrace: envInt("PROMOTE_GRACE", 2),
   addAfterMS: envInt("ADD_AFTER_MS", 3000),
   removeAfterMS: envInt("REMOVE_AFTER_MS", 300000),

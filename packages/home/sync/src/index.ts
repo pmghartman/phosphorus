@@ -1,23 +1,21 @@
 // the home kept alike on every host over the peers' links: a change pushed to
 // every peer as it's found, the digests swapped now and then, a peer whose
 // digest differs asked for all its versions and the newer ones taken
-import { readdirSync, rmSync } from "node:fs";
-import { join } from "node:path";
-import { HomeRoot, setOnChange, Trash } from "@phosphorus/files";
+import { HomeRoot, setOnChange } from "@phosphorus/files";
 import * as peers from "@phosphorus/peers";
 import * as store from "@phosphorus/store";
 import { errText, logf, markHot, SelfHost } from "@phosphorus/util";
 import type { PeerFrame } from "@phosphorus/wire";
-import { HomeSync, type Source } from "./home.ts";
+import { HomeSync, type Remote } from "./home.ts";
 
-export { conflictName, HomeSync, type Rec, type Source, skipped, TombstoneMs } from "./home.ts";
+export { conflictName, HomeSync, type Rec, type Remote, skipped, TombstoneMs } from "./home.ts";
 
 const digestEveryMs = 10_000;
 // a whole index asked of a peer: a big home's takes a while
 const stampsWaitMs = 120_000;
 
 let sync: HomeSync | undefined;
-let from: Source = async () => undefined;
+let from: Remote = { list: async () => undefined, blocks: async () => undefined };
 // each peer's digest once everything it had was taken, and a pull under way
 const synced = new Map<string, string>();
 const pulling = new Set<string>();
@@ -58,26 +56,14 @@ function onFrame(host: string, f: PeerFrame) {
     void pull(host, f.digest);
 }
 
-// shim for one release: the store's old folder in the home, at its root, in each
-// user's and in the trashes, gone before the scan so peers get the tombstones
-function dropOldStore() {
-  let names: string[] = [];
-  try {
-    names = readdirSync(HomeRoot);
-  } catch {}
-  for (const d of ["", Trash, ...names.flatMap((n) => [n, `${n}/${Trash}`])])
-    try {
-      rmSync(join(HomeRoot, d, ".sys"), { recursive: true, force: true });
-    } catch (e) {
-      if ((e as any)?.code !== "ENOTDIR") logf("[home] couldn't remove %s/.sys: %s", d || "the home", errText(e));
-    }
-}
+// a peer's ask of this home: a version's chunk list, and chunks by name
+export const listOf = (rel: string, c: string) => sync?.listOf(rel, c) ?? Promise.resolve(undefined);
+export const blocksOf = (want: unknown) => sync?.blocksOf(want) ?? Promise.resolve(undefined);
 
-// the home indexed and watched, and kept in step with every peer; open streams a
-// path's bytes from the peer that has it
-export async function start(open: Source) {
-  from = open;
-  dropOldStore();
+// the home indexed and watched, and kept in step with every peer; remote asks the peer that has
+// a version for its chunks
+export async function start(remote: Remote) {
+  from = remote;
   sync = new HomeSync({ root: HomeRoot, self: SelfHost, file: store.local("home-index.json") });
   sync.load();
   const s = sync;

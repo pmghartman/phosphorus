@@ -1,7 +1,9 @@
 // a file copied from any host's share to any other's, through this host
 import { statSync } from "node:fs";
+import { type ChunkList, splitChunks } from "@phosphorus/delta";
 import * as files from "@phosphorus/files";
 import type { Caller } from "@phosphorus/mcp";
+import type { Remote } from "@phosphorus/sync";
 import { uuid } from "@phosphorus/update";
 import { SealGrant } from "@phosphorus/users";
 import { errText, FrontendPort, tailnetIP } from "@phosphorus/util";
@@ -150,17 +152,32 @@ export async function copyTree(c: Caller | undefined, from: Loc, to: Loc, move: 
   return [200, { ok: true, path: to.path, ...(move ? { moved: true } : {}) }];
 }
 
-// homeSource a home file's bytes from a peer, for the sync: its own route, the mesh's grant along
-export async function homeSource(host: string, rel: string) {
+// the home sync's asks of a peer, on its own routes with the mesh's grant: a version's chunk
+// list, and chunks by name
+async function homeAsk(host: string, path: string, body?: unknown): Promise<Response | undefined> {
   const ip = await tailnetIP(host);
   if (!ip) return;
-  const res = await fetch(`http://${ip}:${FrontendPort}/internal/home?path=${encodeURIComponent(rel)}`, {
-    headers: { [whoHeader]: SealGrant({ s: "home" }, transferWait) },
-    signal: AbortSignal.timeout(transferWait),
-  });
-  if (res.status !== 200 || !res.body) {
+  try {
+    const res = await fetch(`http://${ip}:${FrontendPort}${path}`, {
+      method: body === undefined ? "GET" : "POST",
+      headers: { [whoHeader]: SealGrant({ s: "home" }, transferWait), "content-type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: AbortSignal.timeout(transferWait),
+    });
+    if (res.status === 200) return res;
     await res.body?.cancel().catch(() => {});
-    return;
-  }
-  return { body: res.body, size: Number(res.headers.get("content-length")) || 0 };
+  } catch {}
+  return;
 }
+
+export const homeRemote: Remote = {
+  list: async (host, rel, c) => {
+    const r = await homeAsk(host, `/internal/home/list?path=${encodeURIComponent(rel)}&c=${encodeURIComponent(c)}`);
+    const o = r && obj(await r.json().catch(() => undefined));
+    return o && typeof o.v === "string" && Array.isArray(o.c) ? (o as ChunkList) : undefined;
+  },
+  blocks: async (host, want) => {
+    const r = await homeAsk(host, "/internal/home/blocks", { want });
+    return r ? splitChunks(new Uint8Array(await r.arrayBuffer()), want) : undefined;
+  },
+};

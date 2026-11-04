@@ -10,6 +10,9 @@ process.env.PHOSPHORUS_REPO_DIR = dir;
 process.env.STATE_DIR = join(dir, "state");
 process.env.STACKS_DIR = join(dir, "stacks");
 process.env.SELF_HOST = "a";
+// the elector's timing these tests were written against
+process.env.LEASE_MS = "4000";
+process.env.LEASE_MARGIN_MS = "1500";
 process.env.BASE_DOMAIN = "";
 export const bin = join(dir, "bin");
 export const log = join(bin, "docker.log");

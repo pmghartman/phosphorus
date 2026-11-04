@@ -17,6 +17,8 @@ process.env.PHOSPHORUS_REPO_DIR = mkdtempSync(join(tmpdir(), "phos-sync-"));
 const { HomeSync, TombstoneMs, conflictName } = await import("../src/home.ts");
 const { hlc } = await import("@phosphorus/store");
 type Sync = import("../src/home.ts").HomeSync;
+type Remote = import("../src/home.ts").Remote;
+const { splitChunks, chunkMax } = await import("@phosphorus/delta");
 
 // a host's home in a temp dir, its index beside it
 function host(name: string): Sync {
@@ -34,11 +36,19 @@ const put = (s: Sync, rel: string, text: string, mtime?: number) => {
 };
 const get = (s: Sync, rel: string) => (existsSync(join(s.root, rel)) ? readFileSync(join(s.root, rel), "utf8") : null);
 const ls = (s: Sync, rel = "ann") => readdirSync(join(s.root, rel)).sort();
-// a peer's bytes as the server would stream them
-const from = (s: Sync) => async (_h: string, rel: string) => {
-  const f = Bun.file(join(s.root, rel));
-  return (await f.exists()) ? { body: f.stream(), size: f.size } : undefined;
-};
+// a peer as the server would answer for it, every chunk fetched and list asked counted
+const seen = { fetched: 0, lists: 0 };
+const from = (s: Sync): Remote => ({
+  list: async (_h, rel, c) => {
+    seen.lists++;
+    return s.listOf(rel, c);
+  },
+  blocks: async (_h, want) => {
+    const all = await s.blocksOf(want);
+    if (all) seen.fetched += all.length;
+    return all && splitChunks(all, want);
+  },
+});
 // both ways, twice: what a merge set aside reaches the other too
 async function swap(a: Sync, b: Sync) {
   for (let i = 0; i < 2; i++) {
@@ -146,13 +156,9 @@ test("a rename moves the file on the other host, copied there, nothing fetched o
   await swap(a, b);
   renameSync(join(a.root, "ann", "draft.txt"), join(a.root, "ann", "final.txt"));
   await a.scan();
-  let fetched = 0;
-  const counting = async (h: string, rel: string) => {
-    fetched++;
-    return from(a)(h, rel);
-  };
-  await b.merge("alpha", a.stamps(), counting);
-  expect(fetched).toBe(0);
+  seen.fetched = seen.lists = 0;
+  await b.merge("alpha", a.stamps(), from(a));
+  expect(seen).toEqual({ fetched: 0, lists: 0 });
   expect(ls(b)).toEqual(["final.txt"]);
   expect(get(b, "ann/final.txt")).toBe("words");
   expect(a.digest()).toBe(b.digest());
@@ -209,4 +215,29 @@ test("a home that can't be read takes nothing as gone", async () => {
   expect(await a.scan()).toEqual([]);
   expect(a.get("ann/keep.txt")?.gone).toBeUndefined();
   renameSync(away, a.root);
+});
+
+test("an edit to a big file sends only the chunks it changed", async () => {
+  const a = host("alpha"),
+    b = host("bravo");
+  const big = new Uint8Array(2 << 20);
+  let x = 7;
+  for (let i = 0; i < big.length; i++) {
+    x = (Math.imul(x, 1664525) + 1013904223) >>> 0;
+    big[i] = x >>> 24;
+  }
+  mkdirSync(join(a.root, "ann"), { recursive: true });
+  writeFileSync(join(a.root, "ann", "photos.db"), big);
+  await swap(a, b);
+  // one 4KB page rewritten in the middle
+  const next = big.slice();
+  next.fill(1, 1_000_000, 1_004_096);
+  writeFileSync(join(a.root, "ann", "photos.db"), next);
+  await a.scan();
+  seen.fetched = 0;
+  await b.merge("alpha", a.stamps(), from(a));
+  expect(readFileSync(join(b.root, "ann", "photos.db"))).toEqual(Buffer.from(next));
+  expect(seen.fetched).toBeGreaterThan(0);
+  expect(seen.fetched).toBeLessThanOrEqual(2 * chunkMax);
+  expect(a.digest()).toBe(b.digest());
 });

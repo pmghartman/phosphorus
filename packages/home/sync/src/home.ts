@@ -1,8 +1,8 @@
 // one home on every host: each host's index of its own, path -> version by the
 // store's hybrid clock, content hash and size, or a tombstone. A peer's newer
-// entries merged in, the bytes fetched from it or copied from a file here with
-// the same hash; two edits neither saw the other of: the newest in place, the
-// other kept beside it as "name (conflict <host> <date>).ext"
+// entries merged in, the bytes copied from a file here with the same hash or rebuilt
+// from the chunks here, only the rest fetched; two edits neither saw the other of: the
+// newest in place, the other kept beside it as "name (conflict <host> <date>).ext"
 import { createHash } from "node:crypto";
 import type { EventEmitter } from "node:events";
 import {
@@ -17,8 +17,9 @@ import {
   rmSync,
   type Stats,
 } from "node:fs";
-import { open, readdir } from "node:fs/promises";
+import { readdir } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
+import { type Chunk, type ChunkList, Chunks, rebuild, serveChunks } from "@phosphorus/delta";
 import { adopt, mkdirAll, ownerAt, Trash, uploadTmp } from "@phosphorus/files";
 import { hlc } from "@phosphorus/store";
 import { logf, writeFileAtomic } from "@phosphorus/util";
@@ -38,11 +39,12 @@ export type Rec = { t: number; h: string; c: string; s: number; d?: true; gone?:
 // as held here: the mtime it was hashed at, a change noticed without rereading it
 type Ent = Rec & { m?: number };
 
-// a version's bytes from the host that sent it
-export type Source = (
-  host: string,
-  rel: string,
-) => Promise<{ body: ReadableStream<Uint8Array>; size: number } | undefined>;
+// what a peer is asked for a version it sent: its chunk list (none once that file moved on),
+// and its chunks by name
+export type Remote = {
+  list(host: string, rel: string, c: string): Promise<ChunkList | undefined>;
+  blocks(host: string, want: Chunk[]): Promise<Uint8Array[] | undefined>;
+};
 
 const relOk = (rel: string) =>
   !!rel &&
@@ -54,8 +56,6 @@ const relOk = (rel: string) =>
 export function skipped(rel: string): boolean {
   const parts = rel.split("/");
   if (parts.some((p) => p.toLowerCase() === Trash)) return true;
-  // shim for one release: the store's old folder, dropped on start, never taken back
-  if (parts[0] === ".sys" || parts[1] === ".sys") return true;
   return parts[parts.length - 1]!.startsWith(uploadTmp);
 }
 
@@ -111,12 +111,15 @@ export class HomeSync {
   private changeFns: ((rels: string[]) => void)[] = [];
   private saveTimer?: ReturnType<typeof setTimeout>;
   private stopFns: (() => void)[] = [];
+  // the home's files' chunks, cut as a peer or a rebuild needs them, kept beside the index
+  readonly chunks: Chunks;
 
   constructor(o: { root: string; self: string; file: string; caseless?: boolean }) {
     this.root = o.root;
     this.self = o.self;
     this.file = o.file;
     this.caseless = o.caseless ?? (process.platform === "win32" || process.platform === "darwin");
+    this.chunks = new Chunks(o.root, o.file.replace(/(\.json)?$/, "-chunks.json"));
   }
 
   // the index as last saved
@@ -323,11 +326,27 @@ export class HomeSync {
     }
   }
 
+  // --- asked by a peer ------------------------------------------------------------------
+
+  // the chunk list of the version here with content hash c, none once the file moved on from it
+  async listOf(rel: string, c: string): Promise<ChunkList | undefined> {
+    const e = this.idx.get(rel);
+    if (!relOk(rel) || skipped(rel) || !e || e.gone || e.d || e.c !== c || !(await this.exact(rel))) return;
+    const l = await this.chunks.list(rel);
+    // edited since the index last looked: not the version asked for
+    return l && l.c.reduce((n, [, b]) => n + b, 0) === e.s ? l : undefined;
+  }
+
+  // chunks by name, end to end in the order asked; none unless this home holds every one
+  blocksOf(want: unknown): Promise<Uint8Array<ArrayBuffer> | undefined> {
+    return serveChunks(this.chunks, want);
+  }
+
   // --- a peer's ----------------------------------------------------------------------
 
   // a peer's versions merged: the newer ones applied, their bytes from it; far
   // the ones stamped too far ahead of this clock, left the ones still to come
-  merge(host: string, got: Record<string, unknown>, from: Source): Promise<{ far: number; left: number }> {
+  merge(host: string, got: Record<string, unknown>, from: Remote): Promise<{ far: number; left: number }> {
     return this.serial(async () => {
       const dirs: [string, Rec][] = [],
         files: [string, Rec][] = [],
@@ -364,6 +383,7 @@ export class HomeSync {
         }
       }
       this.save();
+      this.chunks.forget(new Set([...this.idx].filter(([, e]) => !e.gone && !e.d).map(([p]) => p)));
       if (out.length) for (const fn of this.changeFns) fn(out);
       return { far, left };
     });
@@ -385,7 +405,7 @@ export class HomeSync {
     host: string,
     rel: string,
     r: Rec,
-    from: Source,
+    from: Remote,
     out: string[],
     byHash: Map<string, string>,
   ): Promise<boolean> {
@@ -446,14 +466,14 @@ export class HomeSync {
     return true;
   }
 
-  // the bytes for r into tmp: a file here with its hash copied, else the peer's streamed;
-  // false unless they hash as r says
+  // the bytes for r into tmp: a file here with its hash copied, else rebuilt from the chunks
+  // here (the version this replaces first), only the rest fetched; false unless they hash as r says
   private async fill(
     host: string,
     rel: string,
     r: Rec,
     tmp: string,
-    from: Source,
+    from: Remote,
     same: string | undefined,
   ): Promise<boolean> {
     if (same && same !== rel) {
@@ -462,19 +482,11 @@ export class HomeSync {
         if ((await hashFile(tmp)) === r.c) return true;
       } catch {}
     }
-    const src = await from(host, rel).catch(() => undefined);
-    if (!src) return false;
-    const h = createHash("sha256");
-    const f = await open(tmp, "w", 0o644);
-    try {
-      for await (const chunk of src.body as any as AsyncIterable<Uint8Array>) {
-        h.update(chunk);
-        await f.write(chunk);
-      }
-    } finally {
-      await f.close();
-    }
-    return h.digest("hex").slice(0, 32) === r.c;
+    const l = await from.list(host, rel, r.c).catch(() => undefined);
+    if (!l) return false;
+    if (existsSync(this.abs(rel))) await this.chunks.list(rel);
+    if (!(await rebuild(tmp, l.c, [this.chunks], (want) => from.blocks(host, want)))) return false;
+    return (await hashFile(tmp)) === r.c;
   }
 
   // the version here renamed out of the way as a conflict copy, noted as a file of its own

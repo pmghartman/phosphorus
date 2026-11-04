@@ -186,10 +186,19 @@
 }
 .store-head {
   display: flex;
-  align-items: flex-end;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 1rem;
+  gap: 0.6rem 1rem;
   flex-wrap: wrap;
+}
+/* the title and its line take what's left, search and refresh beside it at its top */
+.store-title {
+  flex: 1 1 18rem;
+  min-width: 0;
+}
+.store-head > .store-tools {
+  flex: none;
+  flex-wrap: nowrap;
 }
 .store-lead {
   margin: 0.25rem 0 0;

@@ -2,7 +2,7 @@
 // server/index.js imported and handed its context (@phosphorus/app-sdk); its
 // routes under /api/app/<id>/ and /internal/app/<id>/, its sockets and tools
 // dropped when it's removed or replaced by another version
-import { existsSync, mkdirSync, readdirSync, renameSync, rmSync } from "node:fs";
+import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type {
@@ -21,16 +21,7 @@ import { setAppTools, skill, type Tool, ToolError, viaOf } from "@phosphorus/mcp
 import * as peers from "@phosphorus/peers";
 import * as store from "@phosphorus/store";
 import * as users from "@phosphorus/users";
-import {
-  DataDir,
-  errText,
-  FrontendPort,
-  logf as log,
-  requestJSON,
-  SelfHost,
-  StateDir,
-  tailnetIP,
-} from "@phosphorus/util";
+import { DataDir, errText, FrontendPort, logf as log, requestJSON, SelfHost, tailnetIP } from "@phosphorus/util";
 import * as webapps from "@phosphorus/webapps";
 import { type Conn, type Ctx, upgrade } from "@phosphorus/wsock";
 import { userUIAsync } from "./hostops.ts";
@@ -87,29 +78,6 @@ function storeFor(r: Running): AppStore {
         if (r.live && p.startsWith(base + "/")) fn(p.slice(base.length + 1).replace(/\.json$/, ""));
       }),
   };
-}
-
-// shim for one release: what the core kept for its apps before they were apps,
-// never taken over now, dropped (the store's mesh-wide, the rest this host's)
-export function dropTakeovers() {
-  let any = false;
-  for (const id of ["chat", "code", "viewer", "games"]) {
-    for (const f of store.list(`etc/${id}`)) {
-      store.remove(`etc/${id}/${f}`);
-      any = true;
-    }
-    any = rmAny(join(store.Root, "var", id)) || any;
-  }
-  any = rmAny(join(DataDir, "claude-runs")) || any;
-  any = rmAny(join(StateDir, "game-control")) || any;
-  if (process.platform !== "win32") rmAny("/root/.ssh/game-control");
-  if (any) log("[apps] what the core kept for its apps before they were apps dropped");
-}
-
-function rmAny(p: string): boolean {
-  if (!existsSync(p)) return false;
-  rmSync(p, { recursive: true, force: true });
-  return true;
 }
 
 function whoOf(r: Running, c: Ctx): Who | undefined {

@@ -11,7 +11,6 @@ import {
   readlinkSync,
   renameSync,
   rmdirSync,
-  rmSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -204,11 +203,6 @@ export async function rebuild() {
     mkdirSync(at("state", "run"), { recursive: true });
     tidy();
     await ensureTools();
-    // shim for one release: the tools' old folder in the home, a running exe left for the next
-    if (!isLinux)
-      try {
-        rmSync(at("tools"), { recursive: true, force: true });
-      } catch {}
     const env = bakeEnv();
     const sig = signature(env);
     await os.svcInstall();

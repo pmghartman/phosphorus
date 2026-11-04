@@ -8,6 +8,7 @@ import * as peers from "@phosphorus/peers";
 import { favicon, faviconWhy, requestURI } from "@phosphorus/proxy";
 import { setPublic } from "@phosphorus/services";
 import * as stacks from "@phosphorus/stacks";
+import * as homesync from "@phosphorus/sync";
 import * as term from "@phosphorus/term";
 import * as update from "@phosphorus/update";
 import * as users from "@phosphorus/users";
@@ -430,15 +431,28 @@ export async function appHandler(c: Ctx): Promise<Response | undefined> {
     return serveRun(c, m[1]!, m[2]!, m[3]!, q.has("hop"));
   }
 
-  // a peer's sync fetching a home file, with the mesh's grant
-  if (pathname === "/internal/home" && method === "GET") {
+  // a peer's sync asking this home for a version's chunks, with the mesh's grant
+  if (pathname.startsWith("/internal/home/")) {
     if (
       (!(await isTailnet(c)) && !isLoopback(c)) ||
       str(users.OpenGrant(c.req.headers.get(whoHeader) ?? "")?.s) !== "home"
     )
       return forbidden();
-    const abs = files.downloadPath(files.shareOf("home"), q.get("path") ?? "");
-    return abs ? sendFile(abs, true) : sendJSON(404, { error: "no such file" });
+    if (pathname === "/internal/home/list" && method === "GET") {
+      const l = await homesync.listOf(q.get("path") ?? "", q.get("c") ?? "");
+      return l ? sendJSON(200, l) : sendJSON(409, { error: "that version isn't here" });
+    }
+    if (pathname === "/internal/home/blocks" && method === "POST") {
+      const raw = await readRaw(c, maxJSONBody);
+      let want: unknown;
+      try {
+        want = raw && obj(JSON.parse(Buffer.from(raw).toString("utf8")))?.want;
+      } catch {}
+      const b = want ? await homesync.blocksOf(want) : undefined;
+      return b
+        ? new Response(b, { headers: { "content-type": "application/octet-stream" } })
+        : sendJSON(409, { error: "a chunk is no longer here" });
+    }
   }
 
   m = filesRe.exec(pathname);

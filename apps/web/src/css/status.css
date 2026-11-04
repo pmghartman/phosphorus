@@ -78,15 +78,17 @@
 }
 
 /* the headlines: one card, a cell each, hairlines between however they wrap */
+/* a row that wraps, the cells of a short last line stretched to fill it rather than leaving holes */
 .st-stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 9.5rem), 1fr));
+  display: flex;
+  flex-wrap: wrap;
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: var(--st-r);
   background: var(--card);
 }
 .st-stat {
+  flex: 1 1 9rem;
   display: flex;
   flex-direction: column;
   gap: 0.15rem;

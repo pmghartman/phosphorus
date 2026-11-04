@@ -147,6 +147,7 @@
     "packages/home/sync": {
       "name": "@phosphorus/sync",
       "dependencies": {
+        "@phosphorus/delta": "workspace:*",
         "@phosphorus/files": "workspace:*",
         "@phosphorus/peers": "workspace:*",
         "@phosphorus/store": "workspace:*",
@@ -242,6 +243,7 @@
     "packages/mesh/stacks": {
       "name": "@phosphorus/stacks",
       "dependencies": {
+        "@phosphorus/delta": "workspace:*",
         "@phosphorus/elector": "workspace:*",
         "@phosphorus/store": "workspace:*",
         "@phosphorus/users": "workspace:*",
@@ -280,6 +282,12 @@
         "@phosphorus/util": "workspace:*",
       },
     },
+    "packages/net/delta": {
+      "name": "@phosphorus/delta",
+      "dependencies": {
+        "@phosphorus/util": "workspace:*",
+      },
+    },
     "packages/net/proxy": {
       "name": "@phosphorus/proxy",
       "dependencies": {
@@ -308,6 +316,7 @@
         "@phosphorus/app-sdk": "workspace:*",
         "@phosphorus/catalog": "workspace:*",
         "@phosphorus/config": "workspace:*",
+        "@phosphorus/delta": "workspace:*",
         "@phosphorus/envfile": "workspace:*",
         "@phosphorus/files": "workspace:*",
         "@phosphorus/mcp": "workspace:*",
@@ -378,6 +387,8 @@
     "@phosphorus/catalog": ["@phosphorus/catalog@workspace:packages/mesh/catalog"],
 
     "@phosphorus/config": ["@phosphorus/config@workspace:packages/host/config"],
+
+    "@phosphorus/delta": ["@phosphorus/delta@workspace:packages/net/delta"],
 
     "@phosphorus/elector": ["@phosphorus/elector@workspace:packages/mesh/elector"],
 

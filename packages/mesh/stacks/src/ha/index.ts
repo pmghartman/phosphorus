@@ -7,8 +7,9 @@
 // A former active coming back never runs its old copy: it is set aside as
 // data.orphan-<gen> and the host rejoins as a standby. Runs in the frontend,
 // which answers the group's votes and serves its snapshot.
-import { existsSync, readFileSync, rmSync, statSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { type Chunk, type ChunkList, Chunks, serveChunks } from "@phosphorus/delta";
 import {
   type Call,
   type Clock,
@@ -29,8 +30,6 @@ import type { StackRole, StackStatus, StackWant } from "@phosphorus/wire";
 import { idRe } from "../ids.ts";
 import type { Runtime } from "../index.ts";
 import {
-  cleanRel,
-  type Fetch,
   install,
   linkTree,
   type Manifest,
@@ -59,16 +58,19 @@ const nameRe = /^[A-Za-z0-9-]{1,63}$/;
 const decisionMaxAgeMS = 2000;
 const replicateMS = 5000;
 const inSyncMS = 30000;
-// an unchanged token still pulled whole this often
-const fullPullMS = 60000;
 // data that looks unchanged still snapshotted this often: a write landing while
 // a long copy ran is caught by then
 const resnapMS = 60000;
+// a running app snapshotted at most this often: a database written all the time
+// otherwise copied, its backup with it, to every standby every few seconds
+const snapMinDefaultMS = 60000;
 const claimMaxAgeMS = 3000;
 const keepDownMS = 15000;
 const retryUpMS = 5000;
 const watchdogMS = 200;
 const stepMS = 250;
+// a standby's ask at most this many files' chunk lists
+export const maxListAsk = 64;
 // a frontend's lazily made voters, at most
 const maxVoters = 256;
 
@@ -91,12 +93,15 @@ export interface Mesh {
   notify(title: string, body: string): void;
   // a peer frontend's JSON on a 200
   call: Call;
-  // a peer's snapshot file written to file, false when it failed
-  fetchFile(host: string, group: string, path: string, file: string): Promise<boolean>;
+  // a peer's chunk lists for files of its snapshot, and its chunks by name in the order asked
+  lists(host: string, group: string, paths: string[]): Promise<Record<string, ChunkList> | undefined>;
+  blocks(host: string, group: string, want: Chunk[]): Promise<Uint8Array[] | undefined>;
   // this host's published state moved, for its peers at once
   changed?: () => void;
   clock?: Clock;
   timing?: Timing;
+  // a running app snapshotted at most this often, 60s by default
+  snapMinMS?: number;
 }
 
 const candidates = (w: StackWant) => [w.active, ...w.standbys].filter(Boolean);
@@ -142,6 +147,9 @@ export class Replica implements Group {
   private snaps: Promise<unknown> = Promise.resolve();
   private chain: Promise<void> = Promise.resolve();
   private busy = false;
+  // the snapshot's chunks as served to standbys, and the pull's as this host rebuilds from them
+  served: Chunks;
+  pulled: Chunks;
 
   constructor(
     public ha: HA,
@@ -152,6 +160,8 @@ export class Replica implements Group {
     this.view = `/api/ha/${this.name}/view`;
     this.vote = `/api/ha/${this.name}/vote`;
     this.p = paths(rt.dataDir(id));
+    this.served = new Chunks(this.p.snap, this.p.snapChunks);
+    this.pulled = new Chunks(this.p.pull, this.p.pullChunks);
     this.sigs = readMap(this.p.sigJSON);
     this.files = fileStore(join(ha.m.stateDir, "ha"), this.name);
   }
@@ -288,7 +298,7 @@ export class Replica implements Group {
     this.authoritative = this.ha.m.self;
     let pulled = false;
     if (d.from) {
-      pulled = await this.pull(d.from, true);
+      pulled = await this.pull(d.from);
       if (!pulled) logf("%s: final pull from %s failed, leading on the last copy", this.id, d.from);
     }
     if (this.disposed) return;
@@ -296,8 +306,11 @@ export class Replica implements Group {
     if (install(this.p)) {
       logf("%s: the copy from %s is the live data now", this.id, prev || "the last active");
       // the snapshot an earlier term here left is of other data: never offered, copied afresh
-      for (const f of [this.p.snapJSON, this.p.sigJSON, this.p.snap]) rmSync(f, { recursive: true, force: true });
+      for (const f of [this.p.snapJSON, this.p.sigJSON, this.p.snapChunks, this.p.snap])
+        rmSync(f, { recursive: true, force: true });
       this.sigs = {};
+      this.served = new Chunks(this.p.snap, this.p.snapChunks);
+      this.pulled = new Chunks(this.p.pull, this.p.pullChunks);
     }
     const stamp = Math.floor(this.wall() / 1000);
     writeVersion(this.p.version, d.gen, stamp);
@@ -413,10 +426,10 @@ export class Replica implements Group {
     if (this.promoting || this.now() - this.lastRepl < replicateMS) return;
     if (this.amMaster && this.state === "up") {
       this.lastRepl = this.now();
-      await this.snapshot(true);
+      if (this.now() - this.lastSnap >= (this.ha.m.snapMinMS ?? snapMinDefaultMS)) await this.snapshot(true);
     } else if (!this.amMaster && this.authoritative) {
       this.lastRepl = this.now();
-      if (await this.pull(this.authoritative, false)) this.lastGood = this.now();
+      if (await this.pull(this.authoritative)) this.lastGood = this.now();
     }
   }
 
@@ -445,6 +458,8 @@ export class Replica implements Group {
         logf("%s: backup.pre failed, standbys keep the last snapshot: %s", this.id, errText(e));
         return false;
       }
+    // the data as it stood before the copy: a write landing during it unlike this, so snapshotted next
+    const before = signature(walk(this.p.data));
     // the copying awaited, the event loop (the lease's renewals) never held up by it;
     // swapped in and offered with no await between, so a pull never takes half of it
     const commit = await mirror(this.p.data, this.p.snap, this.p.stage, this.sigs);
@@ -464,6 +479,7 @@ export class Replica implements Group {
       writeJSON(this.p.snapJSON, man);
       writeVersion(this.p.version, man.gen, stamp);
       this.lastSync = this.wall();
+      this.served.forget(new Set(man.files.filter((e) => e.t === "f").map((e) => e.p)));
     }
     if (running)
       try {
@@ -471,7 +487,10 @@ export class Replica implements Group {
       } catch (e) {
         logf("%s: backup.post failed: %s", this.id, errText(e));
       }
-    this.lastSig = signature(walk(this.p.data));
+    // a file not in the snapshot as it is now (written meanwhile, or held open on Windows when its
+    // copy was swapped in): taken again next round, never left for the minute's resnap
+    const behind = walk(this.p.data).some((e) => e.t === "f" && this.sigs[e.p] !== e.v);
+    this.lastSig = behind ? "" : before;
     return true;
   }
 
@@ -485,18 +504,21 @@ export class Replica implements Group {
     }
   }
 
-  // from's snapshot into the staging tree, then the copy once whole under one
-  // token; an unchanged token skipped unless full
-  async pull(from: string, full: boolean): Promise<boolean> {
-    const man = await this.ha.manifestOf(from, this.name);
-    if (!man) return false;
+  // from's snapshot into the staging tree, then the copy once whole under one token; the
+  // manifest itself only sent when its token moved past the copy's
+  async pull(from: string): Promise<boolean> {
     const had = obj(readMap(this.p.copyJSON));
-    if (!full && had?.token === man.token && this.wall() - Number(had.at) < fullPullMS) {
+    const man = await this.ha.manifestOf(from, this.name, typeof had?.token === "string" ? had.token : undefined);
+    if (!man) return false;
+    if (man === "same") {
       this.lastSync = this.wall();
       return true;
     }
     const index = readMap(this.p.pullJSON);
-    const fetch: Fetch = (path, file) => this.ha.m.fetchFile(from, this.name, path, file);
+    const remote = {
+      lists: (paths: string[]) => this.ha.m.lists(from, this.name, paths),
+      blocks: (want: Chunk[]) => this.ha.m.blocks(from, this.name, want),
+    };
     // this host's own last snapshot seeds it, a former active refetching nothing it still holds;
     // the index kept now and then, a restart mid-copy keeping what landed
     let saved = this.now();
@@ -508,17 +530,17 @@ export class Replica implements Group {
     };
     let ok: boolean;
     try {
-      ok = await pullInto(this.p.pull, man, index, fetch, 8, {
-        seed: existsSync(this.p.snapJSON) ? this.p.snap : undefined,
+      ok = await pullInto(this.pulled, man, index, remote, {
+        seed: existsSync(this.p.snapJSON) ? this.served : undefined,
         progress,
       });
     } finally {
       this.copying = undefined;
     }
     writeJSON(this.p.pullJSON, index);
+    this.pulled.save();
     if (!ok) return false;
-    const again = await this.ha.manifestOf(from, this.name);
-    if (again?.token !== man.token) return false;
+    if ((await this.ha.manifestOf(from, this.name, man.token)) !== "same") return false;
     linkTree(this.p.pull, this.p.copy);
     writeJSON(this.p.copyJSON, { token: man.token, gen: man.gen, stamp: man.stamp, app: man.app, at: this.wall() });
     writeVersion(this.p.version, man.gen, man.stamp);
@@ -603,6 +625,8 @@ export class HA {
       lastSync: r?.lastSync ?? 0,
       // the stamp of the copy of the data this host holds, 0 for none
       held: r?.version()?.stamp ?? 0,
+      // the active copy running here: promoted, its final copy in place, the app up
+      up: !!r?.amMaster && !r.promoting && r.state === "up",
     };
   }
 
@@ -638,23 +662,42 @@ export class HA {
     return this.replicas.get(g)?.manifest();
   }
 
-  // a snapshot file's path, undefined unless it is one
-  file(g: string, p: string): string | undefined {
-    const r = this.replicas.get(g);
-    const rel = cleanRel(p);
-    if (!r || !rel || r.promoting) return;
-    const f = join(r.p.snap, rel);
-    try {
-      return statSync(f).isFile() ? f : undefined;
-    } catch {
-      return;
-    }
+  // the snapshot, or a word that the one a standby holds (have) is still it
+  snap(g: string, have?: string): Manifest | { token: string; same: true } | undefined {
+    const m = this.manifest(g);
+    return m && have && m.token === have ? { token: have, same: true } : m;
   }
 
-  async manifestOf(host: string, g: string): Promise<Manifest | undefined> {
-    const v = host === this.m.self ? this.manifest(g) : await this.m.call(host, "GET", `/api/ha/${g}/snap`);
+  // chunk lists for snapshot files, each as the file is now; none while promoting
+  async lists(g: string, paths: unknown): Promise<Record<string, ChunkList> | undefined> {
+    const r = this.replicas.get(g);
+    if (!r || r.promoting || !Array.isArray(paths) || paths.length > maxListAsk) return;
+    const out: Record<string, ChunkList> = {};
+    for (const p of paths) {
+      if (typeof p !== "string") return;
+      const l = await r.served.list(p);
+      if (l) out[p] = l;
+    }
+    return out;
+  }
+
+  // the snapshot's chunks by name, end to end in the order asked; none unless all are still there
+  async blocks(g: string, want: unknown): Promise<Uint8Array<ArrayBuffer> | undefined> {
+    const r = this.replicas.get(g);
+    if (!r || r.promoting) return;
+    return serveChunks(r.served, want);
+  }
+
+  // a host's snapshot; "same" when the one at have is still offered
+  async manifestOf(host: string, g: string, have?: string): Promise<Manifest | "same" | undefined> {
+    const v =
+      host === this.m.self
+        ? this.snap(g, have)
+        : await this.m.call(host, "GET", `/api/ha/${g}/snap${have ? `?have=${encodeURIComponent(have)}` : ""}`);
     const o = obj(v);
-    if (!o || typeof o.token !== "string" || !Array.isArray(o.files)) return;
+    if (!o || typeof o.token !== "string") return;
+    if (o.same === true) return o.token === have ? "same" : undefined;
+    if (!Array.isArray(o.files)) return;
     return o as Manifest;
   }
 
@@ -790,8 +833,10 @@ export class HA {
             .then((r): [number, any] => (r ? [200, r] : [502, { error: `${lead} didn't take the handoff` }]));
     if (st !== 200) return [st, out];
     const end = this.clock.mono() + settleMS;
+    // done once the target runs it, its final copy in place: not merely once it leads
     while (this.clock.mono() < end) {
-      if (this.leader(g) === to) return [200, { ok: true }];
+      if (this.leader(g) === to && this.states(g).some((s) => s.host === to && s.up === true))
+        return [200, { ok: true }];
       await this.clock.sleep(500);
     }
     return [504, { error: `${to} didn't take over in ${settleMS / 1000}s` }];

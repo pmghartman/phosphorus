@@ -20,7 +20,7 @@ import { env, errText, flushWrites, logf, markHot, tailnetIP } from "@phosphorus
 import * as webapps from "@phosphorus/webapps";
 import type { WSData } from "@phosphorus/wsock";
 import type { Server } from "bun";
-import { dropTakeovers, startApps, stopApps } from "./apps.ts";
+import { startApps, stopApps } from "./apps.ts";
 import {
   baseDomain,
   bootID,
@@ -46,7 +46,7 @@ import { appsOp, stacksOp } from "./mcpstacks.ts";
 import { appHandler } from "./routes.ts";
 import { buildState, chainAction, hostServices, hostsInfo, ownState, publishHost, stackHosts } from "./server.ts";
 import { filesCall } from "./shares.ts";
-import { copyTree, homeSource } from "./transfer.ts";
+import { copyTree, homeRemote } from "./transfer.ts";
 import { startPushes } from "./ws.ts";
 
 // for a test mesh's hosts
@@ -63,7 +63,6 @@ export async function start(): Promise<Server<WSData>> {
   users.Init();
   store.start();
   migrateConfig();
-  dropTakeovers();
   update.onFinish(rememberChain);
   update.onFailed(() => setUpdating(false));
   setInterval(reapShells, 60000);
@@ -73,7 +72,7 @@ export async function start(): Promise<Server<WSData>> {
   logf("[frontend] listening on port %d as %s, version %s", srv.port, selfHost || "an unnamed host", Version());
   recordPlatform();
   update.restoreChain();
-  void homesync.start(homeSource);
+  void homesync.start(homeRemote);
   webapps.Start(tailnetIP, port);
   startApps();
   catalog.start({

@@ -2,9 +2,9 @@
 // beside data/ (only changed files copied, off the event loop into a staging
 // folder, then all renamed into place at once, so a reader never sees one
 // half-written nor a snapshot half-moved), a manifest naming each file's
-// version; a standby pulls the files whose version moved into a staging tree,
-// then hard-links that into its copy once a pull lands whole under one token.
-// Promotion moves the copy into data/.
+// version; a standby rebuilds each file whose version moved from chunks it already
+// holds, fetching only those it lacks, then hard-links that tree into its copy once
+// a pull lands whole under one token. Promotion moves the copy into data/.
 
 import {
   type BigIntStats,
@@ -23,7 +23,8 @@ import {
   utimesSync,
 } from "node:fs";
 import { copyFile } from "node:fs/promises";
-import { dirname, join, posix } from "node:path";
+import { dirname, join } from "node:path";
+import { type ChunkList, Chunks, cleanRel, type Fetch, rebuild, versionOf } from "@phosphorus/delta";
 import { marshal, readJSON, writeFileAtomic } from "@phosphorus/util";
 
 // one entry of a tree: f a file, d a directory, l a link to l; v the file's
@@ -56,6 +57,9 @@ export function paths(data: string) {
     snapJSON: join(ha, "snap.json"),
     // each snapshotted file's source version, so a restart or a new term copies only what moved
     sigJSON: join(ha, "sig.json"),
+    // the snapshot's and the pull's chunk lists by file version, nothing cut twice
+    snapChunks: join(ha, "snap-chunks.json"),
+    pullChunks: join(ha, "pull-chunks.json"),
     // the files a snapshot copied, before they're swapped in
     stage: join(ha, "stage"),
     pull: join(ha, "pull"),
@@ -136,14 +140,6 @@ function stamp(file: string, e: Entry) {
   own(file, e);
 }
 
-// a relative path that stays under its root
-export function cleanRel(p: string): string | undefined {
-  if (typeof p !== "string" || !p || p.includes("\0") || p.includes("\\")) return;
-  const n = posix.normalize(p);
-  if (n !== p || n.startsWith("/") || n === ".." || n.startsWith("../")) return;
-  return n;
-}
-
 // entries under dst not in want, deepest first
 function prune(dst: string, have: Map<string, Entry>, want: Set<string>) {
   for (const p of [...have.keys()].sort().reverse()) if (!want.has(p)) safe(() => rmrf(join(dst, p)));
@@ -221,36 +217,35 @@ export async function mirror(
   };
 }
 
-// what a fetch of one snapshot file gives: its bytes written to file, false when gone
-export type Fetch = (path: string, file: string) => Promise<boolean>;
+// what a standby asks of the active: chunk lists for the files that moved, chunks by name
+export type Remote = {
+  lists(paths: string[]): Promise<Record<string, ChunkList> | undefined>;
+  blocks: Fetch;
+};
 
-// how a pull goes: a local tree whose files of the same path, size and mtime are copied rather
-// than fetched (this host's own last snapshot), and its bytes so far of those it moves
-export type PullOpts = { seed?: string; progress?: (done: number, total: number) => void };
+// another folder whose chunks are taken rather than fetched (this host's own last snapshot),
+// the bytes of the files rebuilt so far, and the bytes fetched
+export type PullOpts = {
+  seed?: Chunks;
+  progress?: (done: number, total: number) => void;
+  fetched?: (bytes: number) => void;
+};
 
-// a seed's file at p when it looks like e's: same size, mtime within a millisecond
-function seedOf(seed: string | undefined, p: string, e: Entry): string | undefined {
-  if (!seed) return;
-  const file = join(seed, p);
-  try {
-    const s = lstatSync(file);
-    if (s.isFile() && s.size === e.s && Math.abs(s.mtimeMs - e.m) <= 1) return file;
-  } catch {}
-  return;
-}
+// lists asked this many files at a time
+const listBatch = 64;
 
-// the manifest's files brought into dst, those whose version moved fetched (or copied from a
-// seed that has them); versions held in index; false when a fetch failed
+// the manifest's files brought into dst, each one whose version moved rebuilt from chunks
+// already here, only the missing ones fetched; versions held in index; false when any failed
 export async function pullInto(
-  dst: string,
+  dst: Chunks,
   man: Manifest,
   index: Record<string, string>,
-  fetch: Fetch,
-  parallel = 8,
+  remote: Remote,
   o: PullOpts = {},
 ): Promise<boolean> {
-  mkdirSync(dst, { recursive: true });
-  const have = new Map(walk(dst).map((e) => [e.p, e]));
+  const root = dst.root;
+  mkdirSync(root, { recursive: true });
+  const have = new Map(walk(root).map((e) => [e.p, e]));
   const keep = new Set<string>();
   const todo: Entry[] = [];
   for (const e of man.files) {
@@ -259,7 +254,7 @@ export async function pullInto(
     keep.add(p);
     const had = have.get(p);
     if (e.t !== "f") {
-      place(join(dst, p), e, had);
+      place(join(root, p), e, had);
       continue;
     }
     if (had?.t === "f" && index[p] === e.v) continue;
@@ -269,28 +264,45 @@ export async function pullInto(
   const total = todo.reduce((n, e) => n + e.s, 0);
   let done = 0;
   o.progress?.(0, total);
-  const one = async (e: Entry) => {
-    const file = join(dst, e.p);
+
+  const one = async (e: Entry, l: ChunkList): Promise<boolean> => {
+    const file = join(root, e.p);
+    // the file's own last version cut here when it never was: where its chunks most likely are
+    if (have.get(e.p)?.t === "f") await dst.list(e.p);
+    mkdirSync(dirname(file), { recursive: true });
     const tmp = join(dirname(file), `.phos-tmp-${process.pid}-${Math.random().toString(36).slice(2)}`);
     try {
-      const from = seedOf(o.seed, e.p, e);
-      if (from) await copyFile(from, tmp);
-      else if (!(await fetch(e.p, tmp))) throw new Error("gone");
+      if (!(await rebuild(tmp, l.c, o.seed ? [dst, o.seed] : [dst], remote.blocks, o.fetched))) return false;
       stamp(tmp, e);
       const had = have.get(e.p);
       if (had && had.t !== "f") rmrf(file);
       renameSync(tmp, file);
       index[e.p] = e.v ?? "";
+      const v = versionOf(file);
+      if (v) dst.set(e.p, v, l.c);
+      return true;
     } catch {
-      ok = false;
+      return false;
+    } finally {
       safe(() => rmSync(tmp, { force: true }));
     }
-    done += e.s;
-    o.progress?.(done, total);
   };
-  for (let i = 0; i < todo.length; i += parallel) await Promise.all(todo.slice(i, i + parallel).map(one));
+
+  for (let i = 0; i < todo.length && ok; i += listBatch) {
+    const batch = todo.slice(i, i + listBatch);
+    const lists = await remote.lists(batch.map((e) => e.p));
+    if (!lists) ok = false;
+    for (const e of lists ? batch : []) {
+      const l = lists![e.p];
+      // the active's file moved past the manifest: the next pull takes it
+      if (!l || l.v !== e.v || !(await one(e, l))) ok = false;
+      done += e.s;
+      o.progress?.(done, total);
+    }
+  }
   for (const p of Object.keys(index)) if (!keep.has(p)) delete index[p];
-  prune(dst, have, keep);
+  dst.forget(keep);
+  prune(root, have, keep);
   return ok;
 }
 
@@ -325,8 +337,7 @@ export function install(p: Paths, orphan?: string) {
   renameSync(p.copy, p.data);
   rmrf(`${p.data}.old`);
   rmrf(p.pull);
-  safe(() => rmSync(p.pullJSON, { force: true }));
-  safe(() => rmSync(p.copyJSON, { force: true }));
+  for (const f of [p.pullJSON, p.pullChunks, p.copyJSON]) safe(() => rmSync(f, { force: true }));
   return true;
 }
 
