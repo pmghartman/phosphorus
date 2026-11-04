@@ -98,11 +98,11 @@ export const tailscaleInstall = () =>
 
 export const INVALID = 0xffffffffffffffffn;
 
-// lockRebuild state/rebuild.lock held for the rebuild, a second one waiting: the
+// lockRebuild state/run/rebuild.lock held for the rebuild, a second one waiting: the
 // file opened with no sharing, a second open failing while the first holds it
 export async function lockRebuild(): Promise<() => void> {
   const k = kernel32();
-  const name = wstr(at("state", "rebuild.lock"));
+  const name = wstr(at("state", "run", "rebuild.lock"));
   for (;;) {
     const h = k.CreateFileW(
       ptr(name),

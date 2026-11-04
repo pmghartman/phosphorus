@@ -9,11 +9,11 @@ import { app, read } from "./os.ts";
 // the host binary, no console window, the home passed along
 export const hostCmd = (args: string[], input?: string) => run([app.host, ...args, "--home", app.home], { input });
 
-// a host command's result, its output kept in state/<log>.log
+// a host command's result, its output kept in state/log/<log>.log
 export async function hostRun(log: string, ...args: string[]): Promise<RunResult> {
-  mkdirSync(join(app.home, "state"), { recursive: true });
+  mkdirSync(join(app.home, "state", "log"), { recursive: true });
   const r = await hostCmd(args);
-  writeFileSync(join(app.home, "state", log + ".log"), r.output);
+  writeFileSync(join(app.home, "state", "log", log + ".log"), r.output);
   return r;
 }
 

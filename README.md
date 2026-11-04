@@ -49,7 +49,12 @@ sys/        the store every host holds a full copy of, root only
   var/        this host's own: chat media, the home sync's index
 home/       each user's files and shared/
 stacks/     installed services, one folder each
-state/      this host's own: logs, caches, the baked env, update status
+state/      this host's own
+  run/        what the service writes about itself: its baked env, locks, roles
+  log/        phosphorus.log, the MCP audit, each phos command's output
+  cache/      catalogue indexes, app icons, model weights; safe to delete
+  data/       installed apps and their data, standby rosters, update history
+              (its root: only what other programs and versions read there)
 .env        keys, root only
 ```
 

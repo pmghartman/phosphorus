@@ -44,7 +44,7 @@ import { os } from "./os.ts";
 
 export const frontendUp = "http://127.0.0.1:8090/";
 
-export const nativeEnvFile = () => at("state", "native.env");
+export const nativeEnvFile = () => at("state", "run", "native.env");
 
 // tool a bundled binary: tailscale, cloudflared
 export const tool = (name: string) => join(os.libexec(), isWindows ? name + ".exe" : name);
@@ -60,7 +60,7 @@ export function bakeEnv(): Record<string, string> {
     PHOSPHORUS_ENV_FILE: envPath(),
     VERSION_FILE: at("VERSION"),
     REBUILD_CMD: binPath("phosphorus"),
-    MODEL_DIR: at("state", "models"),
+    MODEL_DIR: at("state", "cache", "models"),
     HOST_SSH_HOST: "127.0.0.1",
   };
   if (process.env.TS_HOSTNAME) m.TS_HOSTNAME = process.env.TS_HOSTNAME;
@@ -200,13 +200,13 @@ export async function rebuild() {
       if (inDpkg()) return os.deferRebuild();
       await os.aptInstall(missing);
     }
-    mkdirSync(at("state"), { recursive: true });
+    mkdirSync(at("state", "run"), { recursive: true });
     tidy();
     const env = bakeEnv();
     const sig = signature(env);
     await os.svcInstall();
     const up = await os.svcActive();
-    if (up && readTrim(at("state", "native-sig")) === sig) {
+    if (up && readTrim(at("state", "run", "native-sig")) === sig) {
       say("already up to date, nothing to restart");
       return;
     }
@@ -216,7 +216,7 @@ export async function rebuild() {
     await os.tailscaleStart();
     if (up && inService()) {
       await notifyUpdating();
-      writeFileSync(at("state", "native-sig"), sig + "\n", { mode: 0o644 });
+      writeFileSync(at("state", "run", "native-sig"), sig + "\n", { mode: 0o644 });
       say("restarting phosphorus");
       return os.svcRestart(true);
     }
@@ -237,7 +237,7 @@ export async function rebuild() {
       }
     }
     if (!(await waitFrontend(3 * 60_000))) throw fail(`the frontend never came up, see ${os.logHint()}`);
-    writeFileSync(at("state", "native-sig"), sig + "\n", { mode: 0o644 });
+    writeFileSync(at("state", "run", "native-sig"), sig + "\n", { mode: 0o644 });
   } finally {
     unlock();
   }

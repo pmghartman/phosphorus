@@ -24,7 +24,7 @@ W.Catalog.push(
   }),
 );
 
-const appDir = join(process.env.STATE_DIR!, "apps", "demo");
+const appDir = join(process.env.STATE_DIR!, "data", "apps", "demo");
 
 // the copy the installer would leave: the page, the server half, the stamps
 function install(version: string, js: string) {
@@ -220,7 +220,7 @@ test("the chat app's signed bundle loads, takes over the core's chat, and is ref
   expect(W.serve(new Request("http://127.0.0.1/app/chat/"))?.status).toBe(200);
   expect((await call("/api/app/chat/upload", "POST"))![0]).toBe(401);
 
-  rmSync(join(process.env.STATE_DIR!, "apps", "chat"), { recursive: true, force: true });
+  rmSync(join(process.env.STATE_DIR!, "data", "apps", "chat"), { recursive: true, force: true });
   W.reset();
   await A.settleApp("chat");
   expect(allTools().some((t) => t.name === "chat_history")).toBe(false);

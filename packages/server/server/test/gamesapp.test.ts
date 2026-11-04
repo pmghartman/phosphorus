@@ -125,7 +125,7 @@ test("the games app: built, loaded, game-control taken over, answering", async (
   const boss = { user: "root", admin: true, boot: false, token: "", e: 0 };
   for (const name of ["gamer", "player"]) expect(users.Remove(boss, { name }).status).toBe(200);
 
-  rmSync(join(process.env.STATE_DIR!, "apps", "games", "current.json"));
+  rmSync(join(process.env.STATE_DIR!, "data", "apps", "games", "current.json"));
   W.reset();
   await A.settleApp("games");
   expect(A.runningApps()).toEqual([]);

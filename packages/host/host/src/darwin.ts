@@ -33,7 +33,7 @@ const label = "dev.phosphorus.host";
 // libexec the app's bundled tools, synced into the home with the release
 const libexec = () => at("tools");
 const tool = (name: string) => join(libexec(), name);
-const logHint = () => at("state", "phosphorus.log");
+const logHint = () => at("state", "log", "phosphorus.log");
 const plistPath = () => join(process.env.HOME ?? "", "Library", "LaunchAgents", label + ".plist");
 const domain = () => "gui/" + process.getuid!();
 
@@ -200,7 +200,7 @@ export const darwin: OS = {
   async killTree(p: Subprocess) {
     p.kill("SIGKILL");
   },
-  // logToFile state/phosphorus.log for run and its children, the last one kept
+  // logToFile state/log/phosphorus.log for run and its children, the last one kept
   // as .1 once past 20MB
   logToFile() {
     const fd = openLog();

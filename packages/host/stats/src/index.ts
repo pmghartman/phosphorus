@@ -2,7 +2,7 @@
 // role and the top ones, sampled only while watched, peers fanned in, one socket each
 import { basename, join } from "node:path";
 import { list as procsList } from "@phosphorus/procs";
-import { FrontendPort, marshal, now, readJSON, run, StateDir, writeJSONAtomic } from "@phosphorus/util";
+import { DataDir, FrontendPort, marshal, now, readJSON, run, writeJSONAtomic } from "@phosphorus/util";
 import { type Conn, dial } from "@phosphorus/wsock";
 import { type CpuT, type Gpu, gpuMS, num, type RxTx, read, round, runes, type Sys } from "./common.ts";
 import { darwin } from "./darwin.ts";
@@ -25,7 +25,7 @@ const tunnelIf = /^(tailscale|wg|tun|utun)/i;
 
 type NetDay = { boot: string; last?: Record<string, RxTx> | null; buckets: [number, number, number][]; at?: number };
 
-const netDayFile = join(StateDir, "net-day.json");
+const netDayFile = join(DataDir, "net-day.json");
 let bootID = "";
 let netDay: NetDay = { boot: "", buckets: [] };
 

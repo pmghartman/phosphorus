@@ -90,7 +90,7 @@ M.seams.installed = (id: string) => id === "code";
 const { StateDir } = await import("@phosphorus/util");
 
 const gib = 1 << 30;
-const claimFile = join(StateDir, "model-claim.json");
+const claimFile = join(StateDir, "run", "model-claim.json");
 const claim = async (c: Record<string, any> | undefined) => {
   // readFresh keys its cache on the mtime
   await Bun.sleep(2);

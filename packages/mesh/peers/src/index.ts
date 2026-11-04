@@ -21,6 +21,7 @@ import {
   now,
   obj,
   onHot,
+  RunDir,
   SelfHost,
   StateDir,
   sleep,
@@ -46,7 +47,7 @@ import { type Peer as SSHPeer, writeConfig } from "./ssh.ts";
 export { HostHeader, hostOf, offlineMS, trusted };
 
 const selfHost = SelfHost;
-const selfHostFile = join(StateDir, "self-host");
+const selfHostFile = join(RunDir, "self-host");
 const sshConfigFile = join(StateDir, "ssh_config");
 const notes = new Notes("mesh");
 

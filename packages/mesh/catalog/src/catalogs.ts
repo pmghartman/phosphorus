@@ -1,9 +1,9 @@
 // the catalogues: each one tarball off GitHub's codeload, read as it streams in, only
-// its index kept under state/catalogs/<source>/; asked again at most daily with its
+// its index kept under state/cache/catalogs/<source>/; asked again at most daily with its
 // ETag; a failed fetch keeps the last good index
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { errText, logf, now, readJSON, StateDir, writeJSONAtomic } from "@phosphorus/util";
+import { CacheDir, errText, logf, now, readJSON, writeJSONAtomic } from "@phosphorus/util";
 import type { AppDef, AppSummary, SourceInfo, TreeEntry } from "@phosphorus/wire";
 import { casaos } from "./adapters/casaos.ts";
 import { type Adapter, Skip } from "./adapters/common.ts";
@@ -38,7 +38,7 @@ interface Meta {
   error?: string;
 }
 
-let root = join(StateDir, "catalogs");
+let root = join(CacheDir, "catalogs");
 let fetcher: Fetch = (url, init) => fetch(url, init);
 // where each catalogue's tarball comes from, codeload unless a test says
 let urlOf = (a: Adapter) => `https://codeload.github.com/${a.repo}/tar.gz/HEAD`;

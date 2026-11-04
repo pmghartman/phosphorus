@@ -4,7 +4,7 @@
 import { join } from "node:path";
 import { type Row, rowError } from "@phosphorus/proxy";
 import * as store from "@phosphorus/store";
-import { Notes, readJSON, SelfHost, StateDir, writeFileAtomic } from "@phosphorus/util";
+import { DataDir, Notes, readJSON, SelfHost, writeFileAtomic } from "@phosphorus/util";
 
 const notes = new Notes("services");
 const dirOf = (host: string) => `etc/services/${host}`;
@@ -53,7 +53,7 @@ const installed = (name: string) => store.read(`etc/stacks/${name}.json`) !== un
 
 // --- removed: a found page whose record was taken out left alone ------------------
 
-const removedFile = join(StateDir, "services-removed");
+const removedFile = join(DataDir, "services-removed");
 
 // the ports whose records were removed here, kept across restarts
 export function removedPorts(): Set<number> {

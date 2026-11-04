@@ -15,7 +15,7 @@ const { writeJSONAtomic } = await import("@phosphorus/util");
 const { seams, testing } = u;
 
 const agentFile = join(dir, "update-agent.json");
-const chainFile = join(dir, "update-chain.json");
+const chainFile = join(dir, "run", "update-chain.json");
 const http = { askPeer: seams.askPeer, peerState: seams.peerState, peerSelf: seams.peerSelf };
 
 function setup() {

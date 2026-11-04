@@ -265,13 +265,13 @@ test.skipIf(process.platform !== "linux")(
   async () => {
     stats.hooks.self = () => ({ host: "box", platform: "linux", version: "t" });
     await stats.init();
-    const nd = JSON.parse(readFileSync(join(tmp, "net-day.json"), "utf8"));
+    const nd = JSON.parse(readFileSync(join(tmp, "data", "net-day.json"), "utf8"));
     expect(Object.keys(nd)).toEqual(["boot", "last", "buckets"]);
     expect(nd.boot).toBe(readFileSync("/proc/sys/kernel/random/boot_id", "utf8").trim());
     expect(nd.buckets).toEqual([]);
     // a second init on the file: one bucket of what moved since
     await stats.init();
-    expect(JSON.parse(readFileSync(join(tmp, "net-day.json"), "utf8")).buckets.length).toBe(1);
+    expect(JSON.parse(readFileSync(join(tmp, "data", "net-day.json"), "utf8")).buckets.length).toBe(1);
 
     const got: any[] = [];
     const off = stats.listen((t) => got.push(JSON.parse(t)));

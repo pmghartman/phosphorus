@@ -1,5 +1,5 @@
 // every process with its phosphorus role on any OS: from PHOSPHORUS_ROLE where
-// readable, else the nearest ancestor in state/roles.json
+// readable, else the nearest ancestor in state/run/roles.json
 import { readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { env, runSync, StateDir } from "@phosphorus/util";
@@ -9,7 +9,7 @@ import { listWindows } from "./win32.ts";
 export type P = { pid: number; ppid: number; name: string; cmd: string; role: string; rss: number; cpu: number };
 
 // phosphorus run's own children by pid, STATE_DIR read late: run sets it after start
-export const rolesFile = () => join(env("STATE_DIR", StateDir), "roles.json");
+export const rolesFile = () => join(env("STATE_DIR", StateDir), "run", "roles.json");
 
 // the pid of each of run's children and run's own
 export function writeRoles(m: Map<number, string>) {

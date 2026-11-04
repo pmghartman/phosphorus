@@ -1,7 +1,17 @@
 // the host's shared state and small helpers: the home, the log's tag and
 // stamp, where output goes once run logs to a file, and child processes
 
-import { existsSync, openSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeSync,
+} from "node:fs";
 import { createConnection } from "node:net";
 import { join } from "node:path";
 import * as envfile from "@phosphorus/envfile";
@@ -243,9 +253,10 @@ export function sshdUp(): Promise<boolean> {
 // the Include line for state/ssh_config, one Host per tailnet peer
 export const sshInclude = () => `Include "${at("state", "ssh_config").replaceAll("\\", "/")}"`;
 
-// openLog state/phosphorus.log appended to, the previous one kept as .1 once past 20MB
+// openLog state/log/phosphorus.log appended to, the previous one kept as .1 once past 20MB
 export function openLog(): number | undefined {
-  const p = at("state", "phosphorus.log");
+  mkdirSync(at("state", "log"), { recursive: true });
+  const p = at("state", "log", "phosphorus.log");
   const st = statOf(p);
   if (st && st.size > 20 << 20) {
     rmSync(p + ".1", { force: true });

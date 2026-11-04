@@ -119,7 +119,7 @@ async function hostAction(action: "start" | "stop", thenOpen: boolean) {
   const r = await hostRun(action, action);
   busy = false;
   await refresh();
-  if (!r.ok) await os.alert(lastError(r.output) || "failed, see state/ in the Phosphorus folder");
+  if (!r.ok) await os.alert(lastError(r.output) || "failed, see state/log/ in the Phosphorus folder");
   else if (thenOpen) await openMain();
   else await os.notify(action === "start" ? "Phosphorus is running." : "Phosphorus stopped.");
 }
@@ -254,7 +254,7 @@ async function startForKeys(): Promise<string> {
     setTip("Phosphorus starting…");
     const r = await hostRun("start", "start");
     if (r.ok) return "";
-    return lastError(r.output) || "see state/ in the Phosphorus folder";
+    return lastError(r.output) || "see state/log/ in the Phosphorus folder";
   } finally {
     busy = false;
     await refresh();
@@ -298,7 +298,7 @@ async function quit() {
   if (!r.ok) {
     busy = false;
     await refresh();
-    await os.alert(lastError(r.output) || "couldn't stop phosphorus, see state/ in the Phosphorus folder");
+    await os.alert(lastError(r.output) || "couldn't stop phosphorus, see state/log/ in the Phosphorus folder");
     return;
   }
   tray.quit();

@@ -3,7 +3,7 @@
 // out to the page's sockets, permission asks answered there
 import { readdirSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
-import { errText, marshal, now, obj, readJSON, StateDir } from "@phosphorus/util";
+import { DataDir, errText, marshal, now, obj, readJSON } from "@phosphorus/util";
 import { Claude, harnessOf, missing, Opencode } from "./harness.ts";
 import { EvLog, writePrivate } from "./log.ts";
 import { type OcRun, ocBegin, ocEvents, ocExited } from "./opencode.ts";
@@ -18,7 +18,7 @@ const idleAfter = 30 * 60_000;
 export const queueHigh = 256;
 const outMax = 64 << 20;
 
-export let runDir = join(StateDir, "claude-runs");
+export let runDir = join(DataDir, "claude-runs");
 export const idRe = /^[a-z0-9]{12}$/;
 export const all = new Map<string, Session>();
 let loaded = false;

@@ -6,6 +6,7 @@ import { networkInterfaces, totalmem } from "node:os";
 import { join } from "node:path";
 import * as tools from "@phosphorus/tools";
 import {
+  CacheDir,
   env,
   envInt,
   errText,
@@ -13,21 +14,20 @@ import {
   marshal,
   Notes,
   now,
+  RunDir,
   readJSON,
   run,
-  StateDir,
   sleep,
   writeJSONAtomic,
 } from "@phosphorus/util";
 import { type Subprocess, spawn } from "bun";
 
-const stateDir = StateDir;
 let selfHost = process.env.SELF_HOST ?? "";
-const selfHostFile = join(stateDir, "self-host");
-const claimFile = join(stateDir, "model-claim.json");
-const installedFile = join(stateDir, "model-installed.json");
-const slotDir = join(stateDir, "llama-slots");
-const modelDir = env("MODEL_DIR", join(StateDir, "models"));
+const selfHostFile = join(RunDir, "self-host");
+const claimFile = join(RunDir, "model-claim.json");
+const installedFile = join(RunDir, "model-installed.json");
+const slotDir = join(RunDir, "llama-slots");
+const modelDir = env("MODEL_DIR", join(CacheDir, "models"));
 const serverPort = envInt("MODEL_SERVER_PORT", 8791);
 const tickMS = envInt("MODEL_TICK_MS", 1000);
 const notes = new Notes("model");

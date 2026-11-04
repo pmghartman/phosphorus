@@ -67,7 +67,7 @@ const text = (p: string) => {
 
 // this host's name: the service's, else the one it last wrote down
 export function selfName(p: Places): string {
-  return (p.self || text(join(p.state, "self-host")) || "").trim().toLowerCase();
+  return (p.self || text(join(p.state, "run", "self-host")) || "").trim().toLowerCase();
 }
 
 let memo: { sig: string; c: HostConfig } | undefined;

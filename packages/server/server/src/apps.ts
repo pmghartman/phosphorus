@@ -21,7 +21,7 @@ import { setAppTools, skill, type Tool, ToolError, viaOf } from "@phosphorus/mcp
 import * as peers from "@phosphorus/peers";
 import * as store from "@phosphorus/store";
 import * as users from "@phosphorus/users";
-import { errText, FrontendPort, logf as log, requestJSON, SelfHost, StateDir, tailnetIP } from "@phosphorus/util";
+import { DataDir, errText, FrontendPort, logf as log, requestJSON, SelfHost, tailnetIP } from "@phosphorus/util";
 import * as webapps from "@phosphorus/webapps";
 import { type Conn, type Ctx, upgrade } from "@phosphorus/wsock";
 import { userUIAsync } from "./hostops.ts";
@@ -56,7 +56,7 @@ const apiRe = /^\/(api|internal)\/app\/([a-z][a-z0-9-]*)(\/.*)?$/;
 const storeRelRe = /^[a-z0-9][a-z0-9._-]{0,63}(\/[a-z0-9][a-z0-9._-]{0,63}){0,2}$/;
 const pathRe = /^\/[A-Za-z0-9._~\/-]*$/;
 
-export const appDataDir = (id: string) => join(StateDir, "appdata", id);
+export const appDataDir = (id: string) => join(DataDir, "appdata", id);
 
 // the app's slice of the store, etc/appdata/<id>/
 function storeFor(r: Running): AppStore {

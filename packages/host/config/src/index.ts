@@ -9,9 +9,9 @@ import {
   type HostConfig,
   logf,
   normalize,
+  RunDir,
   SelfHost,
   type Share,
-  StateDir,
 } from "@phosphorus/util";
 
 export type { HostConfig, Share };
@@ -23,7 +23,7 @@ export const current = (): HostConfig => normalize(store.read(rel()));
 
 // --- a host renamed on the tailnet --------------------------------------------------
 
-const lastName = join(StateDir, "config-host");
+const lastName = join(RunDir, "config-host");
 
 // a record left under this host's last name carried over to its new one
 export function migrate() {

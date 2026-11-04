@@ -2,11 +2,10 @@
 // every route file shares
 import { join } from "node:path";
 import { readVersion, uuid, VersionFile } from "@phosphorus/update";
-import { env, envInt, logf, readJSONMap, StateDir, writeJSONAtomic } from "@phosphorus/util";
+import { env, envInt, logf, RunDir, readJSONMap, writeJSONAtomic } from "@phosphorus/util";
 
 export const port = envInt("FRONTEND_PORT", 8090);
 export const ingressPort = envInt("INGRESS_PORT", 80);
-export const stateDir = StateDir;
 export const selfHost = process.env.SELF_HOST ?? "";
 export const baseDomain = process.env.BASE_DOMAIN ?? "";
 export const hostSSHHost = env("HOST_SSH_HOST", "127.0.0.1");
@@ -14,7 +13,7 @@ export const hostSSHPort = env("HOST_SSH_PORT", "22");
 export const adminPass = env("ADMIN_PASS");
 export const tsAPIKey = process.env.TS_API_KEY ?? "";
 
-export const platformFile = join(stateDir, "platform.json");
+export const platformFile = join(RunDir, "platform.json");
 export const bootID = uuid();
 
 export const runMS = 12 * 3600 * 1000;

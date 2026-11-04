@@ -11,15 +11,15 @@ import {
   marshal,
   now,
   obj,
+  RunDir,
   readFresh,
   requestJSON,
   SelfHost,
-  StateDir,
 } from "@phosphorus/util";
 import { wantOf } from "@phosphorus/webapps";
 
 export const selfHost = SelfHost;
-const claimFile = join(StateDir, "model-claim.json");
+const claimFile = join(RunDir, "model-claim.json");
 export const serverPort = envInt("MODEL_SERVER_PORT", 8791);
 const nameRe = /^[A-Za-z0-9-]{1,63}$/;
 const contextRe = /<context>\n[\s\S]*?\n<\/context>\n\n/;

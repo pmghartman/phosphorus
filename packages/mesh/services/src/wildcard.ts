@@ -4,10 +4,10 @@
 import { lookup } from "node:dns/promises";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { env, errText, markHot, Notes, now, StateDir, writeFileAtomic } from "@phosphorus/util";
+import { env, errText, markHot, Notes, now, RunDir, writeFileAtomic } from "@phosphorus/util";
 
 const domain = env("BASE_DOMAIN").toLowerCase();
-const file = join(StateDir, "wildcard");
+const file = join(RunDir, "wildcard");
 const notes = new Notes("wildcard");
 // again soon while it isn't up, so a route just added shows within the minute
 const unsureMS = 30_000;

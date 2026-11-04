@@ -33,6 +33,7 @@ export const SelfHost = process.env.SELF_HOST ?? "";
 // the install, phosphorus run's PHOSPHORUS_HOME
 export const RepoDir = env("PHOSPHORUS_REPO_DIR", env("PHOSPHORUS_HOME", "/var/lib/phosphorus"));
 export const StateDir = env("STATE_DIR", join(RepoDir, "state"));
+export * from "./statedir.ts";
 // the replicated store, never inside a user's reach
 export const SysDir = env("PHOSPHORUS_SYS_DIR", join(RepoDir, "sys"));
 

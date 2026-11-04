@@ -9,6 +9,7 @@ import { parsePublicKey } from "@phosphorus/minisign";
 import * as store from "@phosphorus/store";
 import { untar } from "@phosphorus/tools";
 import {
+  DataDir,
   env,
   errText,
   FrontendPort,
@@ -19,7 +20,6 @@ import {
   obj,
   readJSON,
   SelfHost,
-  StateDir,
   writeJSONAtomic,
 } from "@phosphorus/util";
 import { RepoIcon } from "./icon.ts";
@@ -270,9 +270,9 @@ export function Remove(id: string): [number, any] {
   return [200, { ok: true }];
 }
 
-// --- this host's copies: state/apps/<id>/<version>/, the tarball beside it -----
+// --- this host's copies: state/data/apps/<id>/<version>/, the tarball beside it
 
-const root = () => env("APPS_DIR", join(StateDir, "apps"));
+const root = () => env("APPS_DIR", join(DataDir, "apps"));
 const appDir = (id: string) => join(root(), id);
 const versionDir = (id: string, v: string) => join(appDir(id), v);
 const tarball = (id: string, v: string) => join(appDir(id), v + ".tar.gz");

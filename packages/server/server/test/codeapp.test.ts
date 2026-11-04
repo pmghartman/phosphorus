@@ -114,7 +114,7 @@ test("the code app: built, signed, verified, loaded, answering", async () => {
   }
 
   // gone as the installer drops it: its folder locked while loaded, on windows
-  rmSync(join(process.env.STATE_DIR!, "apps", "code", "current.json"));
+  rmSync(join(process.env.STATE_DIR!, "data", "apps", "code", "current.json"));
   W.reset();
   await A.settleApp("code");
   expect(A.runningApps()).toEqual([]);

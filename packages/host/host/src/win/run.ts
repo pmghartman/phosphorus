@@ -1,7 +1,7 @@
 // run: its children in a job, the service's main, the update agent
 
 import { FFIType, JSCallback, type Pointer, ptr } from "bun:ffi";
-import { readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { Feed } from "@phosphorus/appfeed";
 import { list } from "@phosphorus/procs";
@@ -204,8 +204,9 @@ export async function watchUpdateRequests(stop: Stop) {
     }
     say(`update ${id}: no app picked it up, updating as the service`);
     try {
-      writeFileSync(at("state", "upgrade.log"), "");
-      void (await spawnDetached(["upgrade", id, "--home", home], at("state", "upgrade.log")))();
+      mkdirSync(at("state", "log"), { recursive: true });
+      writeFileSync(at("state", "log", "upgrade.log"), "");
+      void (await spawnDetached(["upgrade", id, "--home", home], at("state", "log", "upgrade.log")))();
     } catch (e) {
       say(`couldn't start the update: ${errText(e)}`);
       agentReport(id)("failed", false, "", "couldn't start the update: " + errText(e));
@@ -313,7 +314,7 @@ export const windows: OS = {
   elevateUninstall: () => runAs(["uninstall", "--admin"]),
   // libexec the app's bundled tools, synced into the home with the release
   libexec: () => at("tools"),
-  logHint: () => at("state", "phosphorus.log"),
+  logHint: () => at("state", "log", "phosphorus.log"),
   async svcInstall() {
     if (await svcInstalled()) return;
     if (!(await quiet("net", "session")))
@@ -371,7 +372,7 @@ export const windows: OS = {
   async killTree(p: Subprocess) {
     if (!(await quiet("taskkill", "/T", "/F", "/PID", String(p.pid)))) p.kill();
   },
-  // logToFile state/phosphorus.log for run and its children, the last one kept
+  // logToFile state/log/phosphorus.log for run and its children, the last one kept
   // as .1 once past 20MB
   logToFile() {
     killOnClose();

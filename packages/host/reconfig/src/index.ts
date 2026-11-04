@@ -9,14 +9,14 @@ import {
   marshal,
   now,
   RepoDir,
+  RunDir,
   readJSONMap,
   run,
-  StateDir,
   sleep,
   writeJSONAtomic,
 } from "@phosphorus/util";
 
-const appliedFile = join(StateDir, "reconfig.json");
+const appliedFile = join(RunDir, "reconfig.json");
 // the image's binary, or natively the home's, run against the install
 const rebuildCmd = env("REBUILD_CMD", join(RepoDir, "bin", "phosphorus"));
 const rebuildTimeoutMs = 20 * 60 * 1000;

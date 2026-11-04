@@ -35,7 +35,7 @@ export type OS = {
   needSetup(): Promise<string>;
   elevateWindows(): Promise<void>;
   setupOS(): Promise<void>;
-  // state/rebuild.lock held for the rebuild, a second one waiting; the unlock
+  // state/run/rebuild.lock held for the rebuild, a second one waiting; the unlock
   lockRebuild(): Promise<() => void>;
   unpath(): Promise<void>;
   uninstallAdmin(): Promise<void>;

@@ -28,9 +28,9 @@ test("signature as JS wrote it", () => {
 
 test("the applied signature seeded on first start", async () => {
   start(() => true);
-  expect(readJSON(join(dir, "reconfig.json"))).toEqual({ sig: current() });
+  expect(readJSON(join(dir, "run", "reconfig.json"))).toEqual({ sig: current() });
   // busy: a change seen but never applied
   put({ shares: [{ dir: "/elsewhere" }] });
   await Bun.sleep(100);
-  expect(readJSON(join(dir, "reconfig.json"))?.sig).not.toBe(current());
+  expect(readJSON(join(dir, "run", "reconfig.json"))?.sig).not.toBe(current());
 });

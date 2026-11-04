@@ -8,7 +8,7 @@ import { jsNumber } from "@phosphorus/files";
 import * as peers from "@phosphorus/peers";
 import { editService, health, listed } from "@phosphorus/services";
 import { SealGrant } from "@phosphorus/users";
-import { errText, FrontendPort, peerCall, RepoDir, requestJSON, run, sleep, tailnetIP } from "@phosphorus/util";
+import { errText, FrontendPort, LogDir, peerCall, RepoDir, requestJSON, run, sleep, tailnetIP } from "@phosphorus/util";
 import { selfHost } from "./config.ts";
 import type { Res } from "./http.ts";
 import { decode, jsString, obj, str, truthy, utf8 } from "./js.ts";
@@ -152,10 +152,10 @@ function splitLines(s: string): string[] {
   return s === "" ? [] : s.split("\n");
 }
 
-// phosphorusLog systemd's journal on Linux, state/phosphorus.log where it's
+// phosphorusLog systemd's journal on Linux, state/log/phosphorus.log where it's
 // empty or unreadable, and elsewhere
 async function phosphorusLog(n: number, since: Date | undefined, until: Date | undefined): Promise<[string[], string]> {
-  const logFile = join(RepoDir, "state", "phosphorus.log");
+  const logFile = join(LogDir, "phosphorus.log");
   if (process.platform === "linux") {
     const args = ["journalctl", "-u", "phosphorus", "-n", String(n), "--no-pager", "-o", "short-iso", "-q"];
     if (since) args.push("--since", stamp(since));

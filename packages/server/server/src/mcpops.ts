@@ -9,6 +9,7 @@ import { close as termClose } from "@phosphorus/term";
 import type { Chain } from "@phosphorus/update";
 import { HasMCPKey, OpenGrant, SealGrant } from "@phosphorus/users";
 import {
+  DataDir,
   errText,
   marshal,
   now,
@@ -20,7 +21,7 @@ import {
 } from "@phosphorus/util";
 import type { Conn } from "@phosphorus/wsock";
 import { Client } from "ssh2";
-import { hostSSHHost, hostSSHPort, selfHost, stateDir, Version } from "./config.ts";
+import { hostSSHHost, hostSSHPort, selfHost, Version } from "./config.ts";
 import { onHost } from "./hostops.ts";
 import type { Res } from "./http.ts";
 import { decode, num, obj, str, utf8 } from "./js.ts";
@@ -157,7 +158,7 @@ function binSelf(): string[] {
 }
 
 const historyMax = 50;
-const historyFile = () => join(stateDir, "update-history.json");
+const historyFile = () => join(DataDir, "update-history.json");
 
 function readHistory(): any[] {
   try {

@@ -2,7 +2,7 @@
 // the audit of every write a key made
 import { appendFileSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { marshal, obj, StateDir } from "@phosphorus/util";
+import { LogDir, marshal, obj } from "@phosphorus/util";
 import { clientOf } from "./calls.ts";
 import { type Caller, errc, type Meta, src, str } from "./common.ts";
 
@@ -28,9 +28,9 @@ export function viaOf(m: Meta): string {
   return m.caller.via || clientOf(m.caller.user) || "agent";
 }
 
-const auditFile = () => join(StateDir, "mcp-audit.jsonl");
+const auditFile = () => join(LogDir, "mcp-audit.jsonl");
 
-// audit one write a key made, kept per host in state/mcp-audit.jsonl
+// audit one write a key made, kept per host in state/log/mcp-audit.jsonl
 export function audit(c: Caller, tool: string, args: Record<string, any>, err: Error | undefined) {
   const a: Record<string, any> = {};
   for (const [k, v] of Object.entries(args)) {

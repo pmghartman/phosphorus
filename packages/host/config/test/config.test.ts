@@ -13,8 +13,8 @@ const { configValues, current, editKey, editModel, editShares, Keys, lineDiff, l
   await import("@phosphorus/config");
 
 test("a record under the host's last name carried over once it's renamed", () => {
-  mkdirSync(join(dir, "state"), { recursive: true });
-  writeFileSync(join(dir, "state", "config-host"), "oldname\n");
+  mkdirSync(join(dir, "state", "run"), { recursive: true });
+  writeFileSync(join(dir, "state", "run", "config-host"), "oldname\n");
   store.write(configRel("oldname"), {
     shares: [
       { dir: "/srv/media", perms: "r" },
@@ -35,7 +35,7 @@ test("a record under the host's last name carried over once it's renamed", () =>
     stacks: { tz: "UTC", puid: "", pgid: "" },
     apps: { code: { key: "RWabc" } },
   });
-  expect(readFileSync(join(dir, "state", "config-host"), "utf8")).toBe("mike\n");
+  expect(readFileSync(join(dir, "state", "run", "config-host"), "utf8")).toBe("mike\n");
 });
 
 test("editKey holds to Keys, files dir and priv in step", () => {

@@ -5,7 +5,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import * as envfile from "@phosphorus/envfile";
 import { writeRoles } from "@phosphorus/procs";
-import { env as envOf, TunnelMetrics } from "@phosphorus/util";
+import { env as envOf, sortState, TunnelMetrics } from "@phosphorus/util";
 import type { Subprocess } from "bun";
 import {
   at,
@@ -184,6 +184,8 @@ function exits(): Exits {
 
 export async function runMain(stop: Stop): Promise<number> {
   setTag("run");
+  // 3.7's flat state/ sorted into its kinds, before anything opens a file there
+  sortState(at("state"), say);
   mkdirSync(os.runtimeDir(), { recursive: true });
   os.logToFile();
   noteRole(process.pid, "run");
@@ -194,7 +196,7 @@ export async function runMain(stop: Stop): Promise<number> {
   await fillMeshKeys();
   // no domain: the tailnet alone, http://<host>/
   if (!process.env.BASE_DOMAIN) say("no BASE_DOMAIN, served on the tailnet only");
-  writeFileSync(at("state", "base-domain"), (process.env.BASE_DOMAIN ?? "") + "\n", { mode: 0o644 });
+  writeFileSync(at("state", "run", "base-domain"), (process.env.BASE_DOMAIN ?? "") + "\n", { mode: 0o644 });
   const first = dns.split(".")[0] ?? "";
   process.env.SELF_HOST = first
     .toLowerCase()

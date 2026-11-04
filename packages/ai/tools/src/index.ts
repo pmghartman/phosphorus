@@ -2,7 +2,7 @@
 // upstream's releases, gone once it stops being the model host
 import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { env, StateDir, which } from "@phosphorus/util";
+import { CacheDir, env, which } from "@phosphorus/util";
 import { untar, unzip } from "./archive.ts";
 
 export { tarGz, untar, unzip } from "./archive.ts";
@@ -12,7 +12,7 @@ export const LlamaTag = "b11838";
 const retryAfterMs = 60_000;
 const okStamp = ".phosphorus-ok";
 
-const root = join(env("MODEL_DIR", join(StateDir, "models")), "tools");
+const root = join(env("MODEL_DIR", join(CacheDir, "models")), "tools");
 
 // where every fetched tool lives
 export const toolsRoot = () => root;

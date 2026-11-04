@@ -152,9 +152,9 @@ test("the baked env file round-trips, PATH gets the tools first", () => {
 test("bakeEnv from this host's settings record, missing share dirs skipped", () => {
   setHome(dir);
   mkdirSync(join(dir, "share"), { recursive: true });
-  mkdirSync(join(dir, "state"), { recursive: true });
+  mkdirSync(join(dir, "state", "run"), { recursive: true });
   mkdirSync(join(dir, "sys", "etc", "hosts", "mike"), { recursive: true });
-  writeFileSync(join(dir, "state", "self-host"), "mike\n");
+  writeFileSync(join(dir, "state", "run", "self-host"), "mike\n");
   const shares = [
     { dir: "share/", perms: "r" },
     { dir: "nope", perms: "" },
@@ -236,4 +236,32 @@ test("small helpers", () => {
   expect(durText(60_000)).toBe("1m0s");
   expect(splitLines("a\r\nb\n")).toEqual(["a", "b"]);
   expect(sshInclude()).toBe(`Include "${join(dir, "state", "ssh_config").replaceAll("\\", "/")}"`);
+});
+
+test("3.7's flat state/ sorted into its kinds once, the hand-off files left at its root", async () => {
+  const { sortState } = await import("@phosphorus/util");
+  const st = join(dir, "flat-state");
+  mkdirSync(join(st, "apps", "icons"), { recursive: true });
+  mkdirSync(join(st, "apps", "pad"), { recursive: true });
+  mkdirSync(join(st, "models"), { recursive: true });
+  mkdirSync(join(st, "run"), { recursive: true });
+  for (const f of ["native.env", "phosphorus.log", "net-day.json", "update-agent.json", "ssh_config", "tray.lock"])
+    writeFileSync(join(st, f), f);
+  writeFileSync(join(st, "apps", "icons", "a.png"), "i");
+  writeFileSync(join(st, "models", "m.gguf"), "w");
+  // a newer copy already in place wins
+  writeFileSync(join(st, "run", "native.env"), "new");
+  sortState(st);
+  expect(readFileSync(join(st, "run", "native.env"), "utf8")).toBe("new");
+  expect(readFileSync(join(st, "log", "phosphorus.log"), "utf8")).toBe("phosphorus.log");
+  expect(readFileSync(join(st, "data", "net-day.json"), "utf8")).toBe("net-day.json");
+  expect(readFileSync(join(st, "cache", "icons", "a.png"), "utf8")).toBe("i");
+  expect(readFileSync(join(st, "cache", "models", "m.gguf"), "utf8")).toBe("w");
+  expect(existsSync(join(st, "data", "apps", "pad"))).toBe(true);
+  for (const f of ["native.env", "phosphorus.log", "net-day.json", "apps", "models"])
+    expect(existsSync(join(st, f))).toBe(false);
+  for (const f of ["update-agent.json", "ssh_config", "tray.lock"]) expect(existsSync(join(st, f))).toBe(true);
+  // a second run moves nothing
+  sortState(st);
+  expect(readFileSync(join(st, "log", "phosphorus.log"), "utf8")).toBe("phosphorus.log");
 });

@@ -10,8 +10,8 @@ import { os } from "./os.ts";
 // terminal inside phosphorus dropping mid-stop never leaves it half stopped
 async function detached(cmd: string): Promise<boolean> {
   if (process.env.PHOSPHORUS_DETACHED) return false;
-  mkdirSync(at("state"), { recursive: true });
-  const logf = at("state", cmd + ".log");
+  mkdirSync(at("state", "log"), { recursive: true });
+  const logf = at("state", "log", cmd + ".log");
   let wait: Promise<void>;
   try {
     writeFileSync(logf, "");

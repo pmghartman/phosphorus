@@ -129,12 +129,12 @@ test("install: the want written for the mesh, this host following, the page serv
   await W.tick(() => "");
   expect(W.installed()).toEqual({ pad: { version: "1.0.1" } });
   const root = W.dirOf("pad");
-  expect(root.endsWith(join("state", "apps", "pad", "1.0.1"))).toBe(true);
+  expect(root.endsWith(join("state", "data", "apps", "pad", "1.0.1"))).toBe(true);
   expect(existsSync(join(root, "pad", "index.html"))).toBe(true);
   // the tarball kept for peers, the escaping entry dropped
   expect(existsSync(join(root, "..", "1.0.1.tar.gz"))).toBe(true);
   expect(existsSync(join(root, "..", "escape.txt"))).toBe(false);
-  expect(existsSync(join(dir, "state", "apps", "escape.txt"))).toBe(false);
+  expect(existsSync(join(dir, "state", "data", "apps", "escape.txt"))).toBe(false);
 
   // the mount: its page, a file, a route of the page's own, a missing asset
   let res = W.serve(req("/pad/"))!;
@@ -199,10 +199,10 @@ test("a newer release: picked, fetched, the old copy gone", async () => {
   expect(st).toBe(200);
   await W.tick(() => "");
   expect(W.installed()).toEqual({ pad: { version: "1.0.2" } });
-  expect(existsSync(join(dir, "state", "apps", "pad", "1.0.1"))).toBe(false);
-  expect(existsSync(join(dir, "state", "apps", "pad", "1.0.1.tar.gz"))).toBe(false);
+  expect(existsSync(join(dir, "state", "data", "apps", "pad", "1.0.1"))).toBe(false);
+  expect(existsSync(join(dir, "state", "data", "apps", "pad", "1.0.1.tar.gz"))).toBe(false);
   expect(await W.serve(req("/pad/"))!.text()).toContain("pad 1.0.2");
-  expect(JSON.parse(readFileSync(join(dir, "state", "apps", "pad", "current.json"), "utf8"))).toEqual({
+  expect(JSON.parse(readFileSync(join(dir, "state", "data", "apps", "pad", "current.json"), "utf8"))).toEqual({
     version: "1.0.2",
     sha256: sha256(tar),
   });
@@ -265,7 +265,7 @@ test("remove: the want gone, every copy with it", async () => {
   expect(W.Remove("pad")).toEqual([200, { ok: true }]);
   await W.tick(() => "");
   expect(W.installed()).toEqual({});
-  expect(existsSync(join(dir, "state", "apps", "pad"))).toBe(false);
+  expect(existsSync(join(dir, "state", "data", "apps", "pad"))).toBe(false);
   expect(W.serve(req("/pad/"))).toBeUndefined();
   expect(W.Remove("nothing")[0]).toBe(404);
 });

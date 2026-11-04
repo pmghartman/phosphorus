@@ -85,15 +85,16 @@ const libc = () =>
   (flock ??= dlopen(isMac ? "libSystem.B.dylib" : "libc.so.6", { flock: { args: ["i32", "i32"], returns: "i32" } })
     .symbols.flock);
 
-// lockRebuild state/rebuild.lock held for the rebuild, a second one waiting
+// lockRebuild state/run/rebuild.lock held for the rebuild, a second one waiting
 export async function lockRebuild(): Promise<() => void> {
-  const fd = openSync(at("state", "rebuild.lock"), "a+", 0o644);
+  mkdirSync(at("state", "run"), { recursive: true });
+  const fd = openSync(at("state", "run", "rebuild.lock"), "a+", 0o644);
   const lock = libc();
   if (lock(fd, LOCK_EX | LOCK_NB) !== 0) {
     say("another rebuild is running, waiting for it...");
     if (lock(fd, LOCK_EX) !== 0) {
       closeSync(fd);
-      throw fail("couldn't lock " + at("state", "rebuild.lock"));
+      throw fail("couldn't lock " + at("state", "run", "rebuild.lock"));
     }
   }
   return () => closeSync(fd);

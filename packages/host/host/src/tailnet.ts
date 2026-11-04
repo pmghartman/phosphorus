@@ -34,9 +34,9 @@ export async function vpnState(): Promise<string> {
 // install is signed in to a tailnet where no peer has the mesh's keys
 export async function tailnetJoin(state: string) {
   const env = envfile.read(envPath());
-  const joined = at("state", "tailnet-joined");
+  const joined = at("state", "run", "tailnet-joined");
   const mark = () => {
-    mkdirSync(at("state"), { recursive: true });
+    mkdirSync(at("state", "run"), { recursive: true });
     writeFileSync(joined, new Date().toISOString().replace(/\.\d+Z$/, "Z") + "\n");
   };
   const known = !!env.BASE_DOMAIN || !!env.ADMIN_PASS || fileExists(joined);

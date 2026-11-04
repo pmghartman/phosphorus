@@ -9,9 +9,9 @@ import {
   logf as log,
   now,
   obj,
+  RunDir,
   readJSON,
   SelfHost,
-  StateDir,
   writeJSONAtomic,
 } from "@phosphorus/util";
 import {
@@ -47,7 +47,7 @@ export {
 } from "./local.ts";
 
 const selfHost = SelfHost;
-const chainFile = join(StateDir, "update-chain.json");
+const chainFile = join(RunDir, "update-chain.json");
 const feedURL = env(
   "PHOSPHORUS_FEED_URL",
   "https://github.com/pmghartman/phosphorus/releases/download/update/latest.json",

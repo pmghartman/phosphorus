@@ -79,7 +79,7 @@ test("the viewer app: built, signed, verified, served, opening its files", async
     expect([n, sendFile(f, false).headers.get("content-type")]).toEqual([n, t]);
   }
 
-  rmSync(join(process.env.STATE_DIR!, "apps", "viewer", "current.json"));
+  rmSync(join(process.env.STATE_DIR!, "data", "apps", "viewer", "current.json"));
   W.reset();
   delete process.env.APPS_PUBKEY;
 }, 120000);

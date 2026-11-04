@@ -7,7 +7,7 @@ import { ids, runtime, seams, viewOf, wantOf, wantRel } from "@phosphorus/stacks
 import { attach, HA, haStatus, leads, setHA } from "@phosphorus/stacks/ha";
 import * as store from "@phosphorus/store";
 import { admins, Of } from "@phosphorus/users";
-import { FrontendPort, intervalMS, logf, markHot, obj, requestJSON, StateDir, tailnetIP } from "@phosphorus/util";
+import { DataDir, FrontendPort, intervalMS, logf, markHot, obj, requestJSON, tailnetIP } from "@phosphorus/util";
 import type { StackWant } from "@phosphorus/wire";
 import type { Ctx } from "@phosphorus/wsock";
 import { adminPass, bootID, isUpdating, selfHost } from "./config.ts";
@@ -46,7 +46,7 @@ const addr = async (host: string) => (await tailnetIP(host)) || host;
 export function startHA(): HA {
   h = new HA({
     self: selfHost,
-    stateDir: StateDir,
+    stateDir: DataDir,
     wants,
     setWant,
     peers: peers.peerHA,
